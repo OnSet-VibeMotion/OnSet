@@ -7,7 +7,7 @@ import type { RunAction } from './Preview';
 type Labels = MemoryState['labels'];
 
 const label = (table: Record<string, string> | undefined, id: string) => table?.[id] ?? id;
-const checkText = (labels: Labels, ids: readonly string[] | null | undefined) => (ids ?? []).map((id) => label(labels?.checks, id)).join('、');
+const checkText = (labels: Labels, ids: readonly string[] | null | undefined) => [...new Set(ids ?? [])].map((id) => label(labels?.checks, id)).join('、');
 
 interface Props {
   scene: Scene | null;
@@ -16,8 +16,9 @@ interface Props {
 }
 
 /**
- * 记忆面板。先回答用户关心的三件事：记住了我什么、从失败里学到了什么、这个镜头会用上哪几条；
- * 再列本项目最近发生的事。考试、批次对比、存档与回退是维护用的，收进「高级」。
+ * 记忆面板。页头用三步讲清记忆在做什么：记下的问题 → 整理成的提醒 → 渲染时用上，各带现在的数字；
+ * 下面依次是等你确认的、还没整理的问题（按问题归组，不是渲染日志）、你的要求、学到的经验、当前镜头会带上的几条。
+ * 渲染记录、考试、批次对比、存档与回退是维护用的，收进「高级」。
  * 面板上不直接露出校验器 ID、事件类型和特征名，一律经 labels 换成大白话。改动一律经 am memory 子命令。
  */
 export function MemoryTab({ scene, version, run }: Props) {
@@ -34,6 +35,14 @@ export function MemoryTab({ scene, version, run }: Props) {
       (err) => setError(errorText(err)),
     );
   }, [version, refresh]);
+
+  // 当前镜头渲染时会带上哪几条：页头的第三步与「会带上」一节共用。
+  const [recall, setRecall] = useState<RecallResponse | null>(null);
+  useEffect(() => {
+    setRecall(null);
+    if (!scene) return;
+    api<RecallResponse>(`/api/memory/recall?scene=${encodeURIComponent(scene.id)}`).then(setRecall, () => setRecall(null));
+  }, [scene?.id, version, refresh]);
 
   if (error) return <div className="empty">{error}</div>;
   if (!state) return <div className="empty">正在读取记忆…</div>;
@@ -55,55 +64,113 @@ export function MemoryTab({ scene, version, run }: Props) {
     />
   );
 
+  const project = state.project ?? '';
+  const pendingProblems = state.pending ?? [];
+  const pendingTotal = state.status.pending_failures;
+  const recalled = recall?.recall.items ?? [];
+
+  if (!state.enabled) {
+    return (
+      <div className="memory-tab">
+        <header className="memory-head">
+          <span className="eyebrow">记忆 · 已关闭</span>
+          <h2>记忆</h2>
+          <p>项目配置里写着 MEMORY=off：渲染时不会带上任何提醒，也不再记下新的问题。改回 on 就会继续。</p>
+        </header>
+      </div>
+    );
+  }
+
   return (
     <div className="memory-tab">
-      <header className="memory-intro">
-        <div>
-          <span className="eyebrow">记忆 · {state.enabled ? '已打开' : '已关闭'} · 所有项目共用</span>
-          <strong>am 记得什么</strong>
-          <p className="small muted">
-            {state.enabled
-              ? '你说过的偏好，和从渲染失败里总结的经验。下次渲染类似的镜头时，相关的几条会自动交给渲染工具。'
-              : '项目配置里 MEMORY=off，渲染时不会想起任何记忆，也不记录新的经历。'}
-          </p>
-        </div>
+      <header className="memory-head">
+        <span className="eyebrow">记忆 · 所有项目共用</span>
+        <h2>记忆</h2>
+        <p>
+          渲染里出过的问题、你提过的要求，am 都会记下来，整理成几句简短的提醒。以后渲染相似的镜头时，这些提醒跟着镜头说明一起交给渲染工具，同样的错就不容易再犯。
+        </p>
+        <ol className="memory-flow" aria-label="记忆怎么起作用">
+          <li className={pendingTotal > 0 ? 'on' : ''}>
+            <strong>{pendingTotal}</strong>
+            <span>记下的问题</span>
+            <small>{pendingTotal > 0 ? '等整理' : '暂时没有新的'}</small>
+          </li>
+          <li>
+            <strong>{preferences.length + lessons.length}</strong>
+            <span>整理成的提醒</span>
+            <small>
+              你的要求 {preferences.length} · 经验 {lessons.length}
+            </small>
+          </li>
+          <li>
+            <strong>{scene ? recalled.length : '—'}</strong>
+            <span>渲染时用上</span>
+            <small>{scene ? `${scene.id} 会带上 ${recalled.length} 条` : '还没有镜头'}</small>
+          </li>
+        </ol>
       </header>
 
       {pending.length > 0 && (
         <section className="memory-section memory-pending">
           <h4>等你确认 · {pending.length}</h4>
-          <p className="small muted">这些是推测出来的，你认可之后才会生效。也可以直接在对话里回答。</p>
+          <p className="small muted">这些是推测出来的，你认可之后才会用上。也可以直接在对话里回答。</p>
           {pending.map(card)}
         </section>
       )}
 
+      {pendingProblems.length > 0 && (
+        <section className="memory-section">
+          <h4>记下的问题</h4>
+          <p className="small muted">上次整理之后，渲染和检查里出过这些问题。</p>
+          <ul className="memory-problems">
+            {pendingProblems.map((g) => (
+              <li key={g.check}>
+                <span className="memory-problem">{g.check === 'human' ? '你回退过、或说不满意' : label(labels?.checks, g.check)}</span>
+                <span className="memory-count">{g.count} 次</span>
+                <span className="memory-scenes">
+                  {g.scenes
+                    .filter((x) => x.project === project)
+                    .map((x) => (
+                      <span key={x.scene} className="memory-scene">
+                        {x.scene}
+                      </span>
+                    ))}
+                  {g.scenes.some((x) => x.project !== project) && (
+                    <span className="small muted" title={[...new Set(g.scenes.filter((x) => x.project !== project).map((x) => x.project))].join('\n')}>
+                      {g.scenes.some((x) => x.project === project) ? '另有' : ''}其他项目 {g.scenes.filter((x) => x.project !== project).length} 个镜头
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="memory-consolidate">
+            <button className="primary" onClick={() => run('/api/memory/actions/consolidate')}>
+              整理成经验
+            </button>
+            <span className="small muted">会调用一次 AI 读这些问题，写成几条经验。新经验先试用，用对照渲染考过了才会生效。</span>
+          </div>
+        </section>
+      )}
+
       <section className="memory-section">
-        <h4>你的偏好 · {preferences.length}</h4>
-        {preferences.length === 0 ? (
-          <p className="small muted">还没有。在对话里说「以后都……」会自动记下，也可以在这里直接写。</p>
-        ) : (
-          preferences.map(card)
-        )}
+        <h4>你的要求 · {preferences.length}</h4>
+        <p className="small muted">每次渲染、每轮对话都会照着做。在对话里说「以后都……」会自动记下，也可以在这里写。</p>
+        {preferences.map(card)}
         <RememberForm onDone={() => setRefresh((n) => n + 1)} />
       </section>
 
       <section className="memory-section">
-        <div className="toolbar">
-          <h4>学到的经验 · {lessons.length}</h4>
-          <span className="spacer" />
-          {state.status.pending_failures > 0 && (
-            <>
-              <span className="small muted">有 {state.status.pending_failures} 次失败还没总结</span>
-              <button onClick={() => run('/api/memory/actions/consolidate')}>总结成经验</button>
-            </>
-          )}
-        </div>
+        <h4>学到的经验 · {lessons.length}</h4>
         {lessons.length === 0 ? (
           <p className="small muted">
-            还没有。渲染失败或检查查出问题时会记下来，攒够几次后点「总结成经验」，新经验先经过对照考试再生效。
+            {pendingTotal > 0 ? '还没有。把上面记下的问题整理一下就会有。' : '还没有。渲染或检查出了问题会先记下来，整理后变成经验。'}
           </p>
         ) : (
-          lessons.map(card)
+          <>
+            <p className="small muted">只在相似的镜头上用，考过试的才会生效。</p>
+            {lessons.map(card)}
+          </>
         )}
         {retired.length > 0 && (
           <details className="memory-retired">
@@ -113,13 +180,29 @@ export function MemoryTab({ scene, version, run }: Props) {
         )}
       </section>
 
-      <RecallSection scene={scene} version={version + refresh} labels={labels} />
-
-      <ActivitySection state={state} />
+      {scene && recalled.length > 0 && (
+        <section className="memory-section">
+          <h4>渲染 {scene.id} 时会带上</h4>
+          <ul className="memory-recall">
+            {recalled.map((item) => (
+              <li key={item.name}>
+                <span className="memory-kind">{item.kind === 'preference' ? '要求' : '经验'}</span>
+                <span>{item.description}</span>
+              </li>
+            ))}
+          </ul>
+          {recall?.recall.omitted?.length ? (
+            <p className="small muted">另有 {recall.recall.omitted.length} 条相关但没带上（每个镜头最多 {recall.recall.max_lessons} 条经验）。</p>
+          ) : null}
+        </section>
+      )}
 
       <details className="memory-advanced">
-        <summary>高级：效果对比、考试、存档</summary>
-        <AdvancedSection state={state} version={version} run={run} />
+        <summary>高级：渲染记录、效果对比、考试、存档</summary>
+        <div className="memory-advanced-body">
+          <ActivitySection state={state} />
+          <AdvancedSection state={state} version={version} run={run} />
+        </div>
       </details>
     </div>
   );
@@ -165,44 +248,6 @@ function RememberForm({ onDone }: { onDone: () => void }) {
   );
 }
 
-function RecallSection({ scene, version, labels }: { scene: Scene | null; version: number; labels: Labels }) {
-  const [recall, setRecall] = useState<RecallResponse | null>(null);
-  const [error, setError] = useState('');
-  useEffect(() => {
-    setRecall(null);
-    setError('');
-    if (!scene) return;
-    api<RecallResponse>(`/api/memory/recall?scene=${encodeURIComponent(scene.id)}`).then(setRecall, (err) => setError(errorText(err)));
-  }, [scene?.id, version]);
-  const items = recall?.recall.items ?? [];
-  return (
-    <section className="memory-section">
-      <h4>{scene ? `渲染 ${scene.id} 时会用上` : '渲染时会用上'}</h4>
-      {!scene && <p className="small muted">还没有镜头。分镜完成后，这里显示每个镜头渲染前会想起哪几条。</p>}
-      {error && <p className="error-line">{error}</p>}
-      {recall &&
-        (items.length === 0 ? (
-          <p className="small muted">没有相关的记忆，这个镜头会按默认做法渲染。</p>
-        ) : (
-          <ul className="memory-recall">
-            {items.map((item) => (
-              <li key={item.name}>
-                <span className="memory-kind">{item.kind === 'preference' ? '偏好' : '经验'}</span>
-                <span>{item.description}</span>
-              </li>
-            ))}
-          </ul>
-        ))}
-      {recall && recall.recall.features.length > 0 && (
-        <p className="small muted">
-          这个镜头：{recall.recall.features.map((f) => label(labels?.features, f)).join('、')}
-          {recall.recall.omitted?.length ? `。另有 ${recall.recall.omitted.length} 条相关但没放进去（每个镜头最多 ${recall.recall.max_lessons} 条经验）` : ''}
-        </p>
-      )}
-    </section>
-  );
-}
-
 /** 本项目最近的事，写成一句话。 */
 function ActivitySection({ state }: { state: MemoryState }) {
   const [more, setMore] = useState(false);
@@ -210,9 +255,9 @@ function ActivitySection({ state }: { state: MemoryState }) {
   const shown = more ? events : events.slice(0, 8);
   return (
     <section className="memory-section">
-      <h4>最近</h4>
+      <h4>渲染记录</h4>
       {events.length === 0 ? (
-        <p className="small muted">这个项目还没有和记忆有关的事。渲染、检查、总结和记下的偏好会出现在这里。</p>
+        <p className="small muted">这个项目还没有渲染记录。</p>
       ) : (
         <ol className="memory-activity">
           {shown.map((event, index) => {
@@ -263,7 +308,7 @@ function AdvancedSection({ state, version, run }: { state: MemoryState; version:
   const previous = state.snapshots.filter((id) => id !== state.status.snapshot);
   const others = state.timeline.filter((e) => e.type === 'episode' && e.project !== state.project);
   return (
-    <div className="memory-advanced-body">
+    <>
       <p className="small muted">
         记忆库 {state.dir} · 当前存档 #{state.status.snapshot || '—'}
         {state.pinned > 0 ? `（项目钉在 #${state.pinned}）` : ''} · 共 {state.status.episodes} 段经历 · 每个镜头最多注入 {state.budget} 字
@@ -349,7 +394,7 @@ function AdvancedSection({ state, version, run }: { state: MemoryState; version:
           )}
         </section>
       )}
-    </div>
+    </>
   );
 }
 

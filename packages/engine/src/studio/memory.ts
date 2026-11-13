@@ -88,9 +88,10 @@ export function memoryAPI(s: Server, request: Request): Response {
       const { cells: _hidden, ...rest } = memory.examResultToJSON(exam);
       return { ...rest, cells };
     });
+    const episodes = store.episodes();
     let runs: memory.RunSummary[] = [];
     try {
-      runs = memory.runReport(store.episodes()).filter((r) => r.project === project);
+      runs = memory.runReport(episodes).filter((r) => r.project === project);
     } catch {
       runs = [];
     }
@@ -111,6 +112,7 @@ export function memoryAPI(s: Server, request: Request): Response {
         exams: views,
         snapshots,
         runs: runs.map(memory.runSummaryToJSON),
+        pending: pendingProblems(episodes, status.last_consolidated),
         // 面板显示的大白话：校验器、事件类型与镜头特征都不直接露出 ID。
         labels: goMap({ checks: labels(memory.CheckerLabels), events: labels(memory.EventLabels), features: labels(memory.FeatureDescriptions) }),
       }),
@@ -118,6 +120,26 @@ export function memoryAPI(s: Server, request: Request): Response {
   } catch (err) {
     return writeError(500, 'memory_unavailable', (err as Error).message);
   }
+}
+
+/**
+ * 上次整理之后还没整理的问题，按校验器归组：面板要讲「记下了哪些问题、各出现几次、在哪些镜头」，
+ * 而不是一串渲染日志。口径与 status 的 pending_failures 相同（考试不算）；
+ * 同一次经历里同一个问题报了几处只算一次。
+ */
+function pendingProblems(episodes: memory.Episode[], since: string): { check: string; count: number; scenes: { project: string; scene: string }[] }[] {
+  const groups = new Map<string, { check: string; count: number; scenes: { project: string; scene: string }[] }>();
+  for (const e of episodes) {
+    if (e.created_at <= since || e.source === memory.SourceExam || !memory.failure(e)) continue;
+    const checks = e.checks?.length ? e.checks : [memory.CheckerHuman];
+    for (const check of new Set(checks)) {
+      let g = groups.get(check);
+      if (!g) groups.set(check, (g = { check, count: 0, scenes: [] }));
+      g.count++;
+      if (e.scene_id && !g.scenes.some((x) => x.project === e.project && x.scene === e.scene_id)) g.scenes.push({ project: e.project, scene: e.scene_id });
+    }
+  }
+  return [...groups.values()].sort((a, b) => b.count - a.count || (a.check < b.check ? -1 : 1));
 }
 
 /** GET /api/memory/recall?scene=…[&renderer=…]：「本镜头想起了什么」。 */

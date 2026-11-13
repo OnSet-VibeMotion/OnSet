@@ -169,3 +169,119 @@
   flex-direction: column;
   gap: 10px;
 }
+
+/* 页头：一句话讲清记忆在做什么，下面三步各带现在的数字。 */
+.memory-tab {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 760px;
+}
+.memory-tab .memory-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.memory-tab .memory-head h2 {
+  margin: 0;
+  font: 600 30px/1.3 var(--serif);
+  letter-spacing: 0.02em;
+}
+.memory-tab .memory-head p {
+  margin: 0;
+  line-height: 1.7;
+  color: var(--text-2);
+}
+.memory-tab .memory-flow {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.memory-tab .memory-flow li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 18px;
+}
+.memory-tab .memory-flow li + li {
+  border-left: 1px solid var(--line);
+}
+.memory-tab .memory-flow li + li::before {
+  content: '→';
+  position: absolute;
+  left: -9px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg);
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 0;
+}
+.memory-tab .memory-flow strong {
+  font: 500 26px/1.2 var(--mono);
+  color: var(--text);
+}
+.memory-tab .memory-flow li.on strong {
+  color: var(--accent-text);
+}
+.memory-tab .memory-flow span {
+  font-size: 13px;
+  color: var(--text-2);
+}
+.memory-tab .memory-flow small {
+  font-size: 12px;
+  color: var(--faint);
+}
+.memory-tab .memory-section > p.small {
+  margin: -4px 0 0;
+}
+
+/* 记下的问题：按问题归组，一行一个。 */
+.memory-tab .memory-problems {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.memory-tab .memory-problems li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.memory-tab .memory-problem {
+  color: var(--text);
+}
+.memory-tab .memory-count {
+  font: 13px var(--mono);
+  color: var(--bad);
+}
+.memory-tab .memory-scenes {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.memory-tab .memory-scene {
+  font: 11px var(--mono);
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--text-3);
+}
+.memory-tab .memory-consolidate {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.memory-tab .memory-consolidate .small {
+  line-height: 1.5;
+}

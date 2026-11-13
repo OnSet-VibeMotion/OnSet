@@ -204,3 +204,20 @@ test('steps scene frames with the arrow keys', async ({ page, project }) => {
   await page.keyboard.press('ArrowLeft');
   await expect(frame).toContainText('帧 12 / 30');
 });
+
+test('memory page explains the loop in three steps and records a preference', async ({ page, project }) => {
+  await openProject(page, project);
+  await page.locator('[data-tab="memory"]').click();
+  const flow = page.locator('.memory-flow li');
+  await expect(flow).toHaveCount(3);
+  await expect(flow.nth(0)).toContainText('记下的问题');
+  await expect(flow.nth(1)).toContainText('整理成的提醒');
+  await expect(flow.nth(2)).toContainText('scene-001 会带上 0 条');
+  // 没有失败时不出「记下的问题」一节，渲染日志收在「高级」里。
+  await expect(page.locator('.memory-problems')).toHaveCount(0);
+  await expect(page.locator('.memory-activity')).toBeHidden();
+  await page.locator('.memory-preference').fill('节奏慢一点，每个画面多停一秒');
+  await page.getByRole('button', { name: '记住' }).click();
+  await expect(page.locator('.memory-card')).toContainText('节奏慢一点');
+  await expect(flow.nth(1)).toContainText('你的要求 1');
+});
