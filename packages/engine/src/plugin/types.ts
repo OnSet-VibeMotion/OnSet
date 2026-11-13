@@ -8,6 +8,7 @@
  * | 登记的 | 谁来用 |
  * |---|---|
  * | 站（站点、提示词段落、判断函数） | flow（路线、文件归站、关卡、制作提示词）与 studio/progress.ts（判断函数） |
+ * | 流程（片型：路线与提示词段落顺序） | flow（allFlows、flowPrompt、运行期组合） |
  * | 操作 | cli 的操作表（plugin_ops.ts 订阅后 defineOp），工具服务与客户端后端随之都有 |
  * | 页面 | studioview（studio_show 能切的页面、专门页面）与客户端后端（这个项目用不上的页面） |
  * | 接口 | studio.ts 的路由表 |
@@ -36,15 +37,39 @@ export interface NodeJudge<C extends JudgeContext = JudgeContext> {
 }
 
 /**
- * 一段制作提示词。正文是插件目录里的文件；after 是它在制作提示词里跟在哪一段后面（`站/段`，可以是宿主的段，
- * 也可以是先登记的插件段）。开启一个阶段时写 stage 与 title（「## 第N阶段：<标题>」冒号后面那段）。
+ * 一段制作提示词。正文是插件目录里的文件（相对插件目录）。它进哪些流程的提示词、排在哪：
+ *
+ * - after：在 flows 里每个流程的提示词中跟在哪一段后面（`站/段`，可以是宿主的段，也可以是先登记的插件段）。
+ *   口播流程里的这类段落也进生成的 PROMPT-PRODUCTION.md。
+ * - append：接在 flows 里每个流程的提示词最后（与上一段之间空一行，正文去掉首尾空白）。不进生成的文件：
+ *   没有流程记录的老项目里，这段由清单的 prompt 在运行时接上。
+ * - 两样都不写：只由插件自己登记的流程（PluginFlow.prompt）点名使用。
+ *
+ * flows 不写时用站的 flows。开启一个阶段时写 stage 与 title（「## 第N阶段：<标题>」冒号后面那段）。
  */
 export interface PluginSection {
   id: string;
   file: string;
-  after: string;
+  after?: string;
+  append?: boolean;
+  flows?: readonly string[];
   stage?: string;
   title?: string;
+}
+
+/**
+ * 插件带来的一整套流程（片型）。路线：stations，或者 base（沿用那个流程的路线，含插件排进去的站）。
+ * 提示词：prompt 是段落顺序（「站/段」，可以点名宿主与插件的段落）。
+ */
+export interface PluginFlow {
+  id: string;
+  name: string;
+  base?: string;
+  stations?: string[];
+  prompt: string[];
+  first_page: string;
+  land_first?: boolean;
+  stage_aliases?: Record<string, string>;
 }
 
 /** 插件带来的站。flows 是它出现在哪些内置流程里，after 是在这些流程里跟在哪个站后面（找不到时接在最后）。 */
@@ -130,6 +155,7 @@ export interface PluginContext {
   /** 插件目录（缺省 assets/plugins/<id>/），提示词段落的 file 相对它。 */
   readonly dir: string;
   station(s: PluginStation): void;
+  flow(f: PluginFlow): void;
   op(op: PluginOp): void;
   page(p: PluginPage): void;
   route(r: PluginRoute): void;

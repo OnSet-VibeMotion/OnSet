@@ -3,9 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as beat from '../beat';
-import { builtinFlows, builtinStations, chineseNumber, composePrompt, detectFlow, gateFiles, productionPrompt, route, stationOfPath } from './index';
+import { builtinFlows, builtinStations, chineseNumber, composePrompt, detectFlow, gateFiles, route, stationOfPath } from './index';
 
-const templates = path.join(__dirname, '..', 'preset', 'gen', 'templates', 'production');
+const templates = path.join(__dirname, '..', '..', '..', '..', 'assets', 'prompts');
 
 describe('stations and flows', () => {
   it('every flow names existing stations and has unique stops', () => {
@@ -91,11 +91,14 @@ describe('composePrompt', () => {
       .map((f) => f.replaceAll('\\', '/').replace(/\.md$/, ''))
       .sort();
     expect(files).toEqual(declared);
-    expect([...productionPrompt].sort()).toEqual(declared);
+    // 每一段都至少进一个内置流程的提示词，每个流程的段落都声明过、不重复。
+    const used = new Set(builtinFlows.flatMap((f) => f.prompt ?? []));
+    expect([...used].sort()).toEqual(declared);
+    for (const f of builtinFlows) expect(new Set(f.prompt).size, f.id).toBe(f.prompt!.length);
   });
 
   it('leaves no hard-coded stage numbers in the sections', () => {
-    for (const ref of productionPrompt) {
+    for (const ref of new Set(builtinFlows.flatMap((f) => f.prompt ?? []))) {
       const body = fs.readFileSync(path.join(templates, ref + '.md'), 'utf8');
       expect(body, ref).not.toMatch(/第[一二三四五六七八九十]+阶段/);
     }

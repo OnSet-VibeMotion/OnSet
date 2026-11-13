@@ -1,7 +1,8 @@
 export * from './types';
-export { builtinFlows, builtinStations, productionPrompt, stageTitles } from './builtin';
-export { allFlows, allStageTitles, allStations, productionOrder } from './registered';
-export { chineseNumber, composeProduction, composePrompt, detectFlow, flow, gateFiles, route, station, stationOfPath, type RouteStop, type SectionReader } from './flow';
+export { beatPrompt, builtinFlows, builtinStations, productionPrompt, stageTitles } from './builtin';
+export { allFlows, allStageTitles, allStations, appendedSections, flowPrompt, productionOrder, sectionsDir } from './registered';
+export { composeProduction, detectFlow, flow, gateFiles, route, station, stationOfPath, type RouteStop } from './flow';
+export { chineseNumber, composeFlowPrompt, composeParts, composePrompt, readSection, type ComposeOptions, type FlowComposeInput, type PromptPart, type SectionReader } from './compose';
 export {
   addToProject,
   activeFlowStation,

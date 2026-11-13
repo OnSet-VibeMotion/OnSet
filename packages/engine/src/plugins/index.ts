@@ -6,5 +6,7 @@
  */
 import { registerBuiltin } from '../plugin/registry';
 import { publishing } from './publishing';
+import { songPlugin } from './song';
 
 registerBuiltin(publishing);
+registerBuiltin(songPlugin);

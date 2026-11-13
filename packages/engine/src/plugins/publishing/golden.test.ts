@@ -64,7 +64,8 @@ async function collect(): Promise<Record<string, unknown>> {
     }
   }
   out.gateFiles = flow.gateFiles();
-  out.stationOwners = [...flow.stationOwners()].sort();
+  // 只看发布插件的站（后来歌曲讲解插件登记了自己的站 song-prompt，与发布无关）。
+  out.stationOwners = [...flow.stationOwners()].filter(([, owner]) => owner === 'publishing').sort();
   // 制作路线：发布信息的几种状态。
   const states: Record<string, Record<string, string>> = {
     none: {},

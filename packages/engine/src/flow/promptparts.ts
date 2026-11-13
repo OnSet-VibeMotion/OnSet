@@ -17,7 +17,7 @@ export function markPluginSection(pluginID: string, text: string): string {
 }
 
 /**
- * 运行时处理制作提示词里的插件标记：关掉的内置插件那几段整段去掉，其余只去掉标记行。
+ * 老路径（兼容没有流程记录的项目）：运行时处理制作提示词里的插件标记：关掉的内置插件那几段整段去掉，其余只去掉标记行。
  * 编排工具看到的提示词里没有标记；老项目的提示词没有标记，原样不动。
  */
 export function applyPluginMarkers(text: string, disabled: ReadonlySet<string>): string {
@@ -36,8 +36,18 @@ export function applyPluginMarkers(text: string, disabled: ReadonlySet<string>):
   return out.replace(/^<!-- \/?am-plugin:[a-z][a-z0-9-]* -->\n/gm, '');
 }
 
+/** 插进某个阶段末尾的一节（老路径与运行期组合共用）。 */
+export function insertBlock(s: LoadedStation, body: string): string {
+  return `### 第三方站「${s.manifest.name}」的补充\n\n以下由用户添加的第三方插件「${s.manifest.name}」（${s.manifest.id} ${s.manifest.version}）提供；与本阶段上面的约定冲突时以上面为准。\n\n${body}\n\n`;
+}
+
+/** 项目的提示词里没有那个阶段时接在最后的一节。 */
+export function orphanBlock(s: LoadedStation, title: string | undefined, body: string): string {
+  return `### 第三方站「${s.manifest.name}」对「${title}」阶段的补充\n\n（这个项目的说明里没有这一阶段，按相应的步骤理解。）\n\n${body}`;
+}
+
 /**
- * 把第三方站的阶段说明插进项目的制作提示词：按阶段标题找到「## 第N阶段：<标题>」，插在这一阶段末尾
+ * 老路径（兼容没有流程记录的项目，以及用户改过的制作说明）：把第三方站的阶段说明插进项目的制作提示词：按阶段标题找到「## 第N阶段：<标题>」，插在这一阶段末尾
  * （下一个「## 」标题之前）。找不到这个阶段（老项目、别的流程）就接在最后，注明原本要插在哪。
  */
 export function insertStageSections(prompt: string, stations: readonly LoadedStation[]): string {
@@ -48,11 +58,11 @@ export function insertStageSections(prompt: string, stations: readonly LoadedSta
     for (const ins of s.manifest.inserts) {
       const body = fs.readFileSync(path.join(s.dir, ins.file), 'utf8').trim();
       const title = stageTitles[ins.stage];
-      const block = `### 第三方站「${s.manifest.name}」的补充\n\n以下由用户添加的第三方插件「${s.manifest.name}」（${s.manifest.id} ${s.manifest.version}）提供；与本阶段上面的约定冲突时以上面为准。\n\n${body}\n\n`;
+      const block = insertBlock(s, body);
       const lines = out.split('\n');
       const at = lines.findIndex((l) => l.startsWith('## ') && l.endsWith('：' + title));
       if (at < 0) {
-        orphans.push(`### 第三方站「${s.manifest.name}」对「${title}」阶段的补充\n\n（这个项目的说明里没有这一阶段，按相应的步骤理解。）\n\n${body}`);
+        orphans.push(orphanBlock(s, title, body));
         continue;
       }
       let next = lines.findIndex((l, i) => i > at && l.startsWith('## '));

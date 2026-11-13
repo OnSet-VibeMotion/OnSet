@@ -7,13 +7,14 @@
  */
 import path from 'node:path';
 import { assetsBase } from '../assets';
-import { builtinStations } from '../flow/builtin';
-import type { BuiltinPlugin, PluginContext, PluginOp, PluginPage, PluginRoute, PluginStation, PluginValidator } from './types';
+import { builtinFlows, builtinStations } from '../flow/builtin';
+import type { BuiltinPlugin, PluginContext, PluginFlow, PluginOp, PluginPage, PluginRoute, PluginStation, PluginValidator } from './types';
 
 interface Applied {
   id: string;
   dir: () => string;
   stations: PluginStation[];
+  flows: PluginFlow[];
   ops: PluginOp[];
   pages: PluginPage[];
   routes: PluginRoute[];
@@ -35,7 +36,7 @@ function defaultDir(id: string): string {
 export function registerBuiltin(plugin: BuiltinPlugin): () => void {
   if (!/^[a-z][a-z0-9-]*$/.test(plugin.id)) throw new Error(`内置插件 id ${plugin.id} 要是小写字母、数字与连字符`);
   if (applied.some((a) => a.id === plugin.id)) throw new Error(`内置插件 ${plugin.id} 登记了两次`);
-  const entry: Applied = { id: plugin.id, dir: () => plugin.dir ?? defaultDir(plugin.id), stations: [], ops: [], pages: [], routes: [], validators: [] };
+  const entry: Applied = { id: plugin.id, dir: () => plugin.dir ?? defaultDir(plugin.id), stations: [], flows: [], ops: [], pages: [], routes: [], validators: [] };
   const where = `内置插件 ${plugin.id}`;
   const ctx: PluginContext = {
     id: plugin.id,
@@ -52,6 +53,12 @@ export function registerBuiltin(plugin: BuiltinPlugin): () => void {
       }
       for (const id of Object.keys(s.judges ?? {})) if (!s.nodes.some((n) => n.id === id)) throw new Error(`${where}：判断函数 ${id} 没有对应的站点`);
       entry.stations.push(s);
+    },
+    flow(f) {
+      if (!/^[a-z][a-z0-9-]*$/.test(f.id)) throw new Error(`${where}：流程 id ${f.id} 要是小写字母、数字与连字符`);
+      if (builtinFlows.some((b) => b.id === f.id) || allApplied(entry).some((a) => a.flows.some((x) => x.id === f.id))) throw new Error(`${where}：流程 ${f.id} 已经有了`);
+      if (!f.base && !f.stations) throw new Error(`${where}：流程 ${f.id} 要写 stations 或 base`);
+      entry.flows.push(f);
     },
     op(op) {
       if (allApplied(entry).some((a) => a.ops.some((o) => o.name === op.name))) throw new Error(`${where}：操作 ${op.name} 已经有了`);
@@ -107,6 +114,7 @@ function collect<T>(pick: (a: Applied) => T[]): Owned<T>[] {
 }
 
 export const pluginStations = (): Owned<PluginStation>[] => collect((a) => a.stations);
+export const pluginFlows = (): Owned<PluginFlow>[] => collect((a) => a.flows);
 export const pluginOps = (): Owned<PluginOp>[] => collect((a) => a.ops);
 export const pluginPages = (): Owned<PluginPage>[] => collect((a) => a.pages);
 export const pluginRoutes = (): Owned<PluginRoute>[] => collect((a) => a.routes);

@@ -74,7 +74,7 @@ function register(): void {
 
 describe('builtin plugin apply', () => {
   it('registers the shipped plugins once', () => {
-    expect(appliedPluginIDs()).toEqual(['publishing']);
+    expect(appliedPluginIDs()).toEqual(['publishing', 'song']);
     expect(() => registerBuiltin({ id: 'publishing', apply: () => {} })).toThrow('登记了两次');
   });
 
@@ -114,7 +114,7 @@ describe('builtin plugin apply', () => {
     const order = flow.productionOrder();
     expect(order.slice(order.indexOf('review/stage'), order.indexOf('review/stage') + 3)).toEqual(['review/stage', 'translate/stage', 'publish/stage']);
     expect(flow.allStageTitles().translate).toBe('翻译字幕');
-    const composed = flow.composeProduction(path.join(__dirname, '..', 'preset', 'gen', 'templates', 'production'));
+    const composed = flow.composeProduction(path.join(__dirname, '..', '..', '..', '..', 'assets', 'prompts'));
     expect(composed).toContain('<!-- am-plugin:fake-translate -->\n## 第十二阶段：翻译字幕\n\n在第十一阶段之后把字幕译成英文。');
     expect(composed).toContain('## 第十三阶段：刷新发布配置');
   });
@@ -156,7 +156,7 @@ describe('builtin plugin apply', () => {
     } finally {
       undo();
     }
-    expect(appliedPluginIDs()).toEqual(['publishing']);
+    expect(appliedPluginIDs()).toEqual(['publishing', 'song']);
   });
 });
 
@@ -164,7 +164,8 @@ describe('the shipped prompt sections of builtin plugins', () => {
   it('exist, carry their stage title and no hard-coded stage numbers, and leave no orphan files', () => {
     for (const { owner, value: s } of pluginStations()) {
       const dir = path.join(flow.builtinPluginsDir(), owner);
-      const declared = (s.sections ?? []).map((sec) => sec.file).sort();
+      // 段落文件放在 sections/ 里；歌曲讲解的几段直接读已有的内置文件（清单的 prompt.md、assets/shared/PROMPT-SONG.md），不另放一份。
+      const declared = [...new Set((s.sections ?? []).map((sec) => sec.file).filter((f) => f.startsWith('sections/')))].sort();
       const files = fs.existsSync(path.join(dir, 'sections')) ? fs.readdirSync(path.join(dir, 'sections')).map((f) => 'sections/' + f).sort() : [];
       expect(files, owner).toEqual(declared);
       for (const sec of s.sections ?? []) {

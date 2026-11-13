@@ -7,6 +7,7 @@ import { runPrompt } from '../project/runprompt';
 import { resolveAllSkills, pluginSkillSection } from '../scene/skills';
 import {
   addToProject,
+  builtinStations,
   detectFlow,
   extraPrompt,
   fetchStation,
@@ -23,7 +24,7 @@ import {
 } from './index';
 
 const fake = path.join(__dirname, 'testdata', 'fake-publisher');
-const templates = path.join(__dirname, '..', 'preset', 'gen', 'templates', 'production');
+const templates = path.join(__dirname, '..', '..', '..', '..', 'assets', 'prompts');
 const temps: string[] = [];
 afterEach(() => {
   for (const dir of temps.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
@@ -71,7 +72,8 @@ describe('manifest extensions', () => {
 
   it('keeps the stage titles in step with the templates', () => {
     for (const [stage, title] of Object.entries(stageTitles)) {
-      const file = stage === 'mix' ? 'sound/mix.md' : `${stage}/stage.md`;
+      const owner = builtinStations.find((st) => st.prompt.some((sec) => sec.stage === stage))!;
+      const file = `${owner.id}/${owner.prompt.find((sec) => sec.stage === stage)!.id}.md`;
       expect(fs.readFileSync(path.join(templates, file), 'utf8').split('\n')[0], stage).toBe(`## {{STAGE:${stage}}}：${title}`);
     }
   });

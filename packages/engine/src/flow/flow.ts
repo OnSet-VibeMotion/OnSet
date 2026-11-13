@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as beat from '../beat';
+import { composePrompt } from './compose';
 import { markPluginSection, stationOwners } from './external';
 import { allFlows, allStations, pluginSectionFile, productionOrder } from './registered';
 import { chosenFlow } from './lock';
@@ -121,57 +122,12 @@ export function stationOfPath(rel: string, id: FlowID, extra: readonly ExtraStat
 // ---------------------------------------------------------------------------
 // 制作提示词
 
-const numerals = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
-
-/** 1–99 的中文数字：十、十一、二十三。 */
-export function chineseNumber(n: number): string {
-  if (!Number.isInteger(n) || n < 1 || n > 99) throw new Error(`阶段编号超出范围：${n}`);
-  if (n < 10) return numerals[n];
-  const tens = Math.floor(n / 10);
-  return (tens === 1 ? '' : numerals[tens]) + '十' + numerals[n % 10];
-}
-
-/** 读一段提示词正文：`站/段` → 文本。 */
-export type SectionReader = (station: string, section: string) => string;
-
 /**
- * 按段落顺序拼出制作提示词，并把 `{{STAGE:…}}` / `{{STAGE_N:…}}` 换成阶段编号。
- * 段落不存在、阶段名重复、引用了没有的阶段，一律报错。
- */
-export function composePrompt(order: readonly string[], read: SectionReader): string {
-  const stages = new Map<string, number>();
-  const parts: string[] = [];
-  const stations = allStations();
-  for (const ref of order) {
-    const slash = ref.indexOf('/');
-    const sid = ref.slice(0, slash);
-    const sec = slash < 0 ? undefined : stations.find((s) => s.id === sid)?.prompt.find((x) => x.id === ref.slice(slash + 1));
-    if (!sec) throw new Error(`没有这段提示词：${ref}`);
-    if (sec.stage) {
-      if (stages.has(sec.stage)) throw new Error(`阶段 ${sec.stage} 出现了两次`);
-      stages.set(sec.stage, stages.size + 1);
-    }
-    parts.push(read(sid, sec.id));
-  }
-  const missing: string[] = [];
-  const out = parts.join('').replace(/\{\{STAGE(_N)?:([a-z][a-z0-9-]*)\}\}/g, (match: string, numberOnly: string | undefined, name: string) => {
-    const n = stages.get(name);
-    if (n === undefined) {
-      missing.push(match);
-      return match;
-    }
-    return numberOnly ? chineseNumber(n) : `第${chineseNumber(n)}阶段`;
-  });
-  if (missing.length > 0) throw new Error(`提示词引用了没有的阶段：${missing.join(' ')}`);
-  return out;
-}
-
-/**
- * 内置的制作提示词（未替换画幅占位符）。宿主段落的正文目录是 preset/gen/templates/production，
- * 内置插件登记的段落读插件目录里的文件。
+ * 生成器用的制作提示词（未替换画幅占位符）：口播流程写进 PROMPT-PRODUCTION.md 的段落顺序。宿主段落的正文目录是 dir
+ * （assets/prompts），内置插件登记的段落读插件目录里的文件。
  */
 export function composeProduction(dir: string): string {
-  // 内置插件的站，它们的段落用标记包住：项目关掉那个插件时运行时整段去掉（flow.applyPluginMarkers）。
+  // 内置插件的站，它们的段落用标记包住：老项目关掉那个插件时运行时整段去掉（flow.applyPluginMarkers）。
   const owners = stationOwners();
   return composePrompt(productionOrder(), (sid, sec) => {
     const text = fs.readFileSync(pluginSectionFile(sid, sec) ?? path.join(dir, sid, sec + '.md'), 'utf8');

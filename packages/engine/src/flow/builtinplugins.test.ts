@@ -103,7 +103,7 @@ describe('builtin plugins that claim stations of the built-in flow', () => {
   });
 
   it('marks their prompt sections when composing, and the markers vanish at run time', () => {
-    const composed = composeProduction(path.join(__dirname, '..', 'preset', 'gen', 'templates', 'production'));
+    const composed = composeProduction(path.join(__dirname, '..', '..', '..', '..', 'assets', 'prompts'));
     expect(composed).toContain('<!-- am-plugin:publishing -->\n### 发布配置生命周期');
     const on = applyPluginMarkers(composed, new Set());
     expect(on).not.toContain('am-plugin');

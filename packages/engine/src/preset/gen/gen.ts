@@ -9,7 +9,7 @@
  * 重新序列化一律还原不出来，会让「产物与签入版本逐字节相同」这条红线失守。这里只整体替换 canvas 与 safe_area
  * 两个块和占位符，其余原样透传。
  *
- * 模板的真相源是本目录下的 templates/（production/<站>/ 下的制作提示词段落与 styles/<风格>/ 下三份模板）。
+ * 模板的真相源：制作提示词段落在 assets/prompts/<站>/（运行期也读），风格模板在本目录 templates/styles/<风格>/。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -37,11 +37,11 @@ export function templatesDir(repo: string): string {
 }
 
 /**
- * 与风格无关的编排提示词模板：按内置流程的段落顺序，从 templates/production/<站>/<段>.md 拼出来
- * （flow.composeProduction），阶段编号在这里定下。
+ * 与风格无关的编排提示词模板：按口播流程的段落顺序，从 assets/prompts/<站>/<段>.md 拼出来
+ * （flow.composeProduction），阶段编号在这里定下。段落正文放在资产树里，有流程记录的项目运行期按流程现组合时读同一份。
  */
 export function loadProduction(repo: string): string {
-  return flow.composeProduction(path.join(templatesDir(repo), 'production'));
+  return flow.composeProduction(path.join(repo, 'assets', 'prompts'));
 }
 
 /** 一套风格的模板，目录名即风格 id。 */

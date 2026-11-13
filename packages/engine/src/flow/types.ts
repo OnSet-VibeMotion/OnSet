@@ -40,7 +40,7 @@ export interface RouteNode {
   declared?: { outputs: string[]; stale_after: string[] };
 }
 
-/** 站的一段制作提示词。正文在 preset/gen/templates/production/<站>/<id>.md。 */
+/** 站的一段制作提示词。宿主的段落正文在 assets/prompts/<站>/<id>.md（运行期也读得到），内置插件的在它的目录里。 */
 export interface PromptSection {
   id: string;
   /**
@@ -69,7 +69,7 @@ export interface ExtraStation {
   flow?: Flow;
 }
 
-/** 内置流程是 speech / beat；第三方站带来的流程是 x:<站 id>。 */
+/** 内置流程是 speech / beat，内置插件带来的有 song；第三方站带来的流程是 x:<站 id>。 */
 export type FlowID = string;
 
 export interface Flow {
@@ -77,6 +77,19 @@ export interface Flow {
   name: string;
   /** 路线页上的先后，按站展开各自的站点。 */
   stations: string[];
+  /**
+   * 这个流程的制作提示词：段落的先后（「站/段」）。路线与提示词是同一个流程的两面，写在一处；
+   * 提示词里可以有路线上没有站点的站的段落（例如公共约定 host）。内置插件的段落按各自的 after 并进来（flowPrompt）。
+   * 第三方站带来的流程没有它（提示词由 compose.ts 按 stations 现组合）。
+   */
+  prompt?: string[];
+  /**
+   * 段落里引用了这个流程没有的阶段时改指哪个阶段（`{{STAGE:script}}` → 卡点的 beat 阶段）。
+   * 只给「意思对得上」的引用用；对不上的引用直接报错。
+   */
+  stage_aliases?: Record<string, string>;
   /** 顶栏第一步打开哪一页：script、beat，或第三方站自己的页面（x:<站>:<页面>）。 */
   first_page?: string;
+  /** 还没有镜头时打开项目先落在第一步那一页（卡点：节拍、分镜都在节拍页上做）。 */
+  land_first?: boolean;
 }
