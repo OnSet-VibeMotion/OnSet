@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { api, errorText, post } from './api';
-import { Chat } from './components/Chat';
+import { Chat, type Outbox } from './components/Chat';
 import { Icon } from './components/Icon';
 import { Preview, type Tab } from './components/Preview';
 import { ProjectDialog } from './components/ProjectDialog';
@@ -57,6 +57,7 @@ export function App() {
   const [sceneId, setSceneId] = useState('');
   const [filePath, setFilePath] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [outbox, setOutbox] = useState<Outbox | null>(null);
   const [recent, setRecent] = useState<Set<string>>(new Set());
   const [version, setVersion] = useState(1);
   const [dialog, setDialog] = useState(false);
@@ -114,6 +115,21 @@ export function App() {
     }
     await loadSessions();
   }, [loadSessions, notify]);
+
+  // 项目被占用（对话或渲染任务在跑）时定时刷新镜头列表，对话顶部的进度靠它看到出片与渲染中的镜头。
+  useEffect(() => {
+    if (!busy || !currentId) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const result = await api<{ scenes: Scene[]; usage?: ProjectUsage }>('/api/scenes');
+        setScenes(result.scenes ?? []);
+        setUsage(result.usage ?? null);
+      } catch {
+        // 刷新失败不打扰用户，下一次再试。
+      }
+    }, 8000);
+    return () => window.clearInterval(timer);
+  }, [busy, currentId]);
 
   const loadTasks = useCallback(async () => {
     try {
@@ -303,6 +319,10 @@ export function App() {
               setAttachments((current) => [...current, attachment]);
               notify('已附到对话，发送消息时一起带上。');
             }}
+            onQuick={(text, quickAttachments, draftOnly) => {
+              setOutbox({ text, attachments: quickAttachments, nonce: Date.now(), draftOnly });
+              if (!draftOnly) notify('已发给编排工具，进度看右侧对话。');
+            }}
             onFile={(path) => {
               setFilePath(path);
               setTab('file');
@@ -331,6 +351,9 @@ export function App() {
               setFilePath(path);
               setTab('file');
             }}
+            onAddAttachments={(list) => setAttachments((current) => [...current, ...list])}
+            scenes={scenes}
+            outbox={outbox}
           />
         </div>
       )}

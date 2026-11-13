@@ -1707,3 +1707,121 @@ h4 {
 .score-curve .run-bar {
   fill: var(--accent);
 }
+
+/* 渲染中：琥珀色进度条在镜头条底部流动。 */
+.strip .scene.rendering::after {
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: 200% 100%;
+  animation: rendering-flow 1.4s linear infinite;
+}
+.status-rendering {
+  color: var(--accent-text);
+}
+@keyframes rendering-flow {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* 对话顶部的进度：待办清单与出片情况。 */
+.progress {
+  margin: 0 12px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--raised);
+  padding: 6px 10px;
+}
+.progress-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  padding: 4px 0;
+  justify-content: flex-start;
+  text-align: left;
+}
+.progress-head .ellipsis {
+  min-width: 0;
+  flex: 1;
+}
+.plan {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  max-height: 180px;
+  overflow: auto;
+}
+.plan li {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+  color: var(--text-3);
+}
+.plan li span {
+  width: 12px;
+  flex: none;
+  text-align: center;
+  font-family: var(--mono);
+}
+.plan li.completed {
+  color: var(--faint);
+  text-decoration: line-through;
+}
+.plan li.in_progress {
+  color: var(--accent-text);
+}
+.scene-progress {
+  margin: 4px 0 2px;
+}
+
+/* 编排工具要用户拍板时给出的选项。 */
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 12px;
+}
+.choice {
+  height: auto;
+  min-height: 30px;
+  padding: 6px 12px;
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  text-align: left;
+  white-space: normal;
+}
+.choice:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+/* 这一轮进行中发的消息：排队中。 */
+.message.user.queued {
+  opacity: 0.7;
+  border-style: dashed;
+}
+.queued-tag {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.composer-box.dragging {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* 镜头页的快捷动作。 */
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+}

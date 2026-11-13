@@ -34,6 +34,8 @@ interface Props {
   beat: BeatState | null;
   busy: string;
   onAttach: (attachment: Attachment) => void;
+  /** 把一条消息交给对话：draftOnly 为 true 时只填进输入框。 */
+  onQuick: (text: string, attachments: Attachment[], draftOnly?: boolean) => void;
   onFile: (path: string) => void;
   onScene: (id: string) => void;
   run: RunAction;
@@ -93,12 +95,37 @@ function BeatBanner({ beat, version, run }: { beat: BeatState; version: number; 
 
 const FPS = 30;
 
-function sceneStatus(scene: Scene): 'ok' | 'stale' | 'todo' {
+function sceneStatus(scene: Scene): 'ok' | 'stale' | 'todo' | 'rendering' {
+  if (scene.rendering) return 'rendering';
   if (!scene.exists) return 'todo';
   return scene.stale ? 'stale' : 'ok';
 }
 
-const statusText = { ok: '已出片', stale: '输入改过，产物已过期', todo: '未出片' };
+const statusText = { ok: '已出片', stale: '输入改过，产物已过期', todo: '未出片', rendering: '渲染中' };
+
+/** 镜头页的快捷动作：带上镜头编号直接发给编排工具，由它改项目文件、重渲染。 */
+const quickActions: { label: string; needsOutput?: boolean; text: (id: string) => string }[] = [
+  {
+    label: '重做这个镜头',
+    text: (id) =>
+      `重做镜头 ${id}：保留文案、时长和与相邻镜头的交接约定，换一个更贴合文案的视觉方案。改好这个镜头的 prompt.md 后用 am scene run 重渲染它，渲染完用几句话说明新方案。`,
+  },
+  {
+    label: '节奏放慢',
+    needsOutput: true,
+    text: (id) => `镜头 ${id} 的动画节奏放慢：元素出现更从容，关键信息多停留一会，总时长不变。改好后重渲染这个镜头。`,
+  },
+  {
+    label: '节奏加快',
+    needsOutput: true,
+    text: (id) => `镜头 ${id} 的动画节奏加快：减少等待和空镜，信息更紧凑，总时长不变。改好后重渲染这个镜头。`,
+  },
+  {
+    label: '文字太多',
+    needsOutput: true,
+    text: (id) => `镜头 ${id} 画面上的文字太多、读不过来：精简成关键词，信息交给画面和字幕，每块文字留够阅读时间。改好后重渲染这个镜头。`,
+  },
+];
 
 function clock(seconds: number): string {
   const total = Math.max(0, seconds);
@@ -212,9 +239,9 @@ function SceneTab(props: Props & { scene: Scene | null }) {
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
   };
 
-  const attach = async () => {
+  const capture = async (): Promise<Attachment | null> => {
     const v = video.current;
-    if (!v) return;
+    if (!v) return null;
     setError('');
     try {
       const attachment = await api<Attachment>(`/api/scenes/${encodeURIComponent(scene.id)}/attachment`, {
@@ -222,12 +249,24 @@ function SceneTab(props: Props & { scene: Scene | null }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seconds: Number(v.currentTime.toFixed(3)), region: toVideoBox() }),
       });
-      props.onAttach(attachment);
       setDrag(null);
       setSelecting(false);
+      return attachment;
     } catch (err) {
       setError(errorText(err));
+      return null;
     }
+  };
+
+  const attach = async () => {
+    const attachment = await capture();
+    if (attachment) props.onAttach(attachment);
+  };
+
+  // 「修这一帧」：带上当前帧（和圈选）填进输入框，用户说清楚哪里不对再发。
+  const fixFrame = async () => {
+    const attachment = await capture();
+    if (attachment) props.onQuick(`镜头 ${scene.id} 这一帧的问题：`, [attachment], true);
   };
 
   // 👍 / 👎 写成一段记忆经历：当前帧时间、圈选区域（归一化）与说明。
@@ -308,6 +347,21 @@ function SceneTab(props: Props & { scene: Scene | null }) {
         <button id="render-scene" class={scene.exists ? '' : 'primary'} onClick={() => props.run(`/api/scenes/${encodeURIComponent(scene.id)}/render`)}>
           {scene.exists ? '重新渲染' : '渲染'}
         </button>
+      </div>
+      <div class="quick-actions" role="group" aria-label="快捷动作">
+        <span class="small muted">让编排工具：</span>
+        {quickActions
+          .filter((action) => scene.exists || !action.needsOutput)
+          .map((action) => (
+            <button key={action.label} class="quiet" onClick={() => props.onQuick(action.text(scene.id), [])}>
+              {action.label}
+            </button>
+          ))}
+        {scene.exists && (
+          <button class="quiet" onClick={fixFrame} title="带上当前帧（和圈选的区域），在对话里说哪里不对">
+            修这一帧…
+          </button>
+        )}
       </div>
       {scene.exists ? (
         <>

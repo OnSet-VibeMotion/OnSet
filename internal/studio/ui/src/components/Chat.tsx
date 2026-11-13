@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { ApiError, errorText, post, rawURL } from '../api';
-import type { AgentChoice, AgentsResponse, Attachment, EventKind, FileChange, SessionEvent, SessionMeta, Usage } from '../types';
+import { api, ApiError, errorText, post, rawURL } from '../api';
+import type { AgentChoice, AgentsResponse, Attachment, EventKind, FileChange, PlanItem, Scene, SessionEvent, SessionMeta, Usage } from '../types';
 import { AgentPicker } from './AgentPicker';
 import { DiffDialog } from './DiffDialog';
 import { Icon } from './Icon';
@@ -21,7 +21,18 @@ const kinds: EventKind[] = [
   'files-changed',
   'notice',
   'turn-reverted',
+  'queued',
+  'plan',
 ];
+
+/** 镜头页的快捷动作发来的消息：nonce 变了就发一次。 */
+export interface Outbox {
+  text: string;
+  attachments: Attachment[];
+  nonce: number;
+  /** 为 true 时只填进输入框等用户补充，不直接发送。 */
+  draftOnly?: boolean;
+}
 
 interface Props {
   agents: AgentsResponse | null;
@@ -38,6 +49,9 @@ interface Props {
   onFilesChanged: (files: string[]) => void;
   onTurnEnd: () => void;
   onOpenFile: (path: string) => void;
+  onAddAttachments: (attachments: Attachment[]) => void;
+  scenes: Scene[];
+  outbox: Outbox | null;
 }
 
 export function Chat(props: Props) {
@@ -45,6 +59,7 @@ export function Chat(props: Props) {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
 
@@ -62,11 +77,14 @@ export function Chat(props: Props) {
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
   }, [events]);
 
-  const blocked = running || sending || (props.busy !== '' && !running);
+  // 这一轮进行中照样能发：消息排到这一轮之后，或「打断并发送」。别的写任务占着项目时不能发。
+  const blocked = sending || (props.busy !== '' && !running);
+  const [uploading, setUploading] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const textarea = useRef<HTMLTextAreaElement>(null);
 
-  const send = async () => {
-    const message = draft.trim();
-    if (!message || blocked) return;
+  const deliver = async (message: string, attachments: Attachment[], interrupt = false) => {
+    if (!message || blocked) return false;
     setSending(true);
     setError('');
     try {
@@ -76,16 +94,58 @@ export function Chat(props: Props) {
         id = created.session_id;
         props.onSession(id);
       }
-      await post(`/api/sessions/${id}/turns`, { message, attachments: props.attachments });
-      setDraft('');
-      props.onClearAttachments();
+      await post(`/api/sessions/${id}/turns`, { message, attachments, interrupt });
       props.onSessionsChanged();
+      return true;
     } catch (err) {
       setError(errorText(err));
+      return false;
     } finally {
       setSending(false);
     }
   };
+
+  const send = async (interrupt = false) => {
+    if (await deliver(draft.trim(), props.attachments, interrupt)) {
+      setDraft('');
+      props.onClearAttachments();
+    }
+  };
+
+  const upload = async (files: FileList | File[]) => {
+    const list = Array.from(files);
+    if (list.length === 0) return;
+    setUploading(true);
+    setError('');
+    try {
+      const form = new FormData();
+      for (const file of list) form.append('file', file, file.name || 'pasted.png');
+      const result = await api<{ attachments: Attachment[] }>('/api/uploads', { method: 'POST', body: form });
+      props.onAddAttachments(result.attachments);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // 镜头页快捷动作：直接发，或填进输入框等用户补充。
+  const lastOutbox = useRef(0);
+  useEffect(() => {
+    const out = props.outbox;
+    if (!out || out.nonce === lastOutbox.current) return;
+    lastOutbox.current = out.nonce;
+    if (out.draftOnly) {
+      setDraft(out.text);
+      if (out.attachments.length) props.onAddAttachments(out.attachments);
+      textarea.current?.focus();
+      return;
+    }
+    void deliver(out.text, out.attachments);
+  }, [props.outbox]);
+
+  const plan = useMemo(() => latestPlan(events), [events]);
+  const choices = useMemo(() => (running ? null : pendingChoices(events)), [events, running]);
 
   const startProduction = async () => {
     setSending(true);
@@ -152,6 +212,15 @@ export function Chat(props: Props) {
           </div>
         )}
         <Transcript events={events} onOpenFile={props.onOpenFile} onReverted={props.onTurnEnd} />
+        {choices && (
+          <div class="choices" role="group" aria-label="选一个回复">
+            {choices.map((choice) => (
+              <button key={choice} class="choice" disabled={blocked} onClick={() => void deliver(choice, [])}>
+                {choice}
+              </button>
+            ))}
+          </div>
+        )}
         {running && (
           <div class="typing">
             <span class="dot busy" />
@@ -160,15 +229,32 @@ export function Chat(props: Props) {
         )}
       </div>
 
+      {(running || plan) && <Progress plan={plan} scenes={props.scenes} running={running} />}
+
       <footer class="composer">
         {props.busy && !running && <p class="busy-line">项目正忙：{props.busy}</p>}
-        <div class="composer-box">
+        <div
+          class={'composer-box' + (dragging ? ' dragging' : '')}
+          onDragOver={(e) => {
+            if (!e.dataTransfer?.types.includes('Files')) return;
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            setDragging(false);
+            if (!e.dataTransfer?.files.length) return;
+            e.preventDefault();
+            void upload(e.dataTransfer.files);
+          }}
+        >
           {props.attachments.length > 0 && (
             <ul class="chips" id="attachments">
               {props.attachments.map((a, index) => (
-                <li key={index}>
-                  {a.path && <img src={rawURL(a.path)} alt="" />}
+                <li key={index} title={a.upload ? `${a.name}（${formatSize(a.size ?? 0)}）` : undefined}>
+                  {a.path && (!a.upload || /\.(png|jpe?g|webp|gif)$/i.test(a.path)) && <img src={rawURL(a.path)} alt="" />}
                   <span>
+                    {a.upload && a.name}
                     {a.scene_id}
                     {a.seconds !== undefined && a.path ? ` · 帧 ${Math.round(a.seconds * 30)}` : ''}
                     {a.region ? ' · 区域' : ''}
@@ -186,10 +272,18 @@ export function Chat(props: Props) {
           </label>
           <textarea
             id="prompt"
+            ref={textarea}
             rows={2}
             value={draft}
-            placeholder={running ? '这一轮还在进行…' : '说说要改什么……（⌘/Ctrl + Enter 发送）'}
+            placeholder={running ? '这一轮还在进行：现在发的消息会排在它之后，或点「打断并发送」' : '说说要改什么……可以拖入或粘贴文章、图片、音频（⌘/Ctrl + Enter 发送）'}
             onInput={(e) => setDraft(e.currentTarget.value)}
+            onPaste={(e) => {
+              const files = e.clipboardData?.files;
+              if (files && files.length > 0) {
+                e.preventDefault();
+                void upload(files);
+              }
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
@@ -198,17 +292,55 @@ export function Chat(props: Props) {
             }}
           />
           <div class="composer-actions">
+            <input
+              ref={fileInput}
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => {
+                const files = e.currentTarget.files;
+                if (files) void upload(files);
+                e.currentTarget.value = '';
+              }}
+            />
+            <button
+              class="quiet"
+              id="upload"
+              disabled={uploading}
+              onClick={() => fileInput.current?.click()}
+              aria-label="上传文件"
+              title="上传文章、图片、音频或视频（也可以拖进来或粘贴）"
+            >
+              <Icon name="attach" size={14} />
+              {uploading ? '上传中…' : ''}
+            </button>
             <AgentPicker agents={props.agents} value={props.choice} disabled={running || sending} onChange={props.onChoice} />
             <span class="spacer" />
-            {running ? (
-              <button id="cancel-turn" class="primary" onClick={cancel} aria-label="停止本轮" title="停止本轮">
-                <Icon name="stop" />
-              </button>
-            ) : (
-              <button id="send" class="primary" disabled={blocked || !draft.trim()} onClick={send} aria-label="发送" title="发送">
-                <Icon name="send" size={14} />
-              </button>
+            {running && (
+              <>
+                <button id="cancel-turn" onClick={cancel} aria-label="停止本轮" title="停止本轮（排队的消息一并作废）">
+                  <Icon name="stop" />
+                </button>
+                <button
+                  id="interrupt"
+                  disabled={blocked || !draft.trim()}
+                  onClick={() => void send(true)}
+                  title="停掉这一轮，马上发这条"
+                >
+                  打断并发送
+                </button>
+              </>
             )}
+            <button
+              id="send"
+              class="primary"
+              disabled={blocked || !draft.trim()}
+              onClick={() => void send()}
+              aria-label={running ? '排队发送' : '发送'}
+              title={running ? '排到这一轮之后发送' : '发送'}
+            >
+              <Icon name="send" size={14} />
+            </button>
           </div>
         </div>
         {error && <p class="error-line">{error}</p>}
@@ -259,19 +391,32 @@ function useSessionEvents(sessionId: string, onFilesChanged: (files: string[]) =
 type Item =
   | { type: 'event'; event: SessionEvent }
   | { type: 'tool'; call: SessionEvent; result?: SessionEvent }
-  | { type: 'turn-end'; event: SessionEvent; usage?: Usage; reverted: boolean };
+  | { type: 'turn-end'; event: SessionEvent; usage?: Usage; reverted: boolean }
+  | { type: 'skip' };
 
 function group(events: SessionEvent[]): Item[] {
   const items: Item[] = [];
   const calls = new Map<string, { type: 'tool'; call: SessionEvent; result?: SessionEvent }>();
   const usage = new Map<string, Usage>();
   const reverted = new Set(events.filter((e) => e.kind === 'turn-reverted').map((e) => e.turn_id));
+  const pendingQueued: number[] = [];
   for (const event of events) {
     switch (event.kind) {
       case 'session':
       case 'done':
       case 'turn-start':
       case 'turn-reverted':
+      case 'plan':
+        break;
+      case 'queued':
+        pendingQueued.push(items.length);
+        items.push({ type: 'event', event });
+        break;
+      case 'user':
+        // 排队的消息发出时会以合并后的 user 消息出现，之前的「排队中」气泡不再显示。
+        for (const index of pendingQueued) items[index] = { type: 'skip' };
+        pendingQueued.length = 0;
+        items.push({ type: 'event', event });
         break;
       case 'usage':
         if (event.turn_id && event.usage) usage.set(event.turn_id, event.usage);
@@ -303,6 +448,7 @@ function Transcript(props: { events: SessionEvent[]; onOpenFile: (path: string) 
   return (
     <>
       {items.map((item) => {
+        if (item.type === 'skip') return null;
         if (item.type === 'tool') return <ToolCard key={item.call.seq} call={item.call} result={item.result} />;
         if (item.type === 'turn-end')
           return (
@@ -323,10 +469,17 @@ function Transcript(props: { events: SessionEvent[]; onOpenFile: (path: string) 
                 {event.text}
               </div>
             );
+          case 'queued':
+            return (
+              <div key={event.seq} class="message user queued">
+                <span class="queued-tag">排队中 · 这一轮结束后发送</span>
+                {event.text}
+              </div>
+            );
           case 'text':
             return (
               <div key={event.seq} class="message assistant">
-                {event.text}
+                {stripChoices(event.text ?? '')}
               </div>
             );
           case 'thinking':
@@ -457,6 +610,96 @@ function TurnCard(props: {
       )}
       {error && <p class="error-line">{error}</p>}
       {diffPath && <DiffDialog turnId={event.turn_id ?? ''} path={diffPath} onClose={() => setDiffPath('')} />}
+    </section>
+  );
+}
+
+const choicesBlock = /```choices\s*\n([\s\S]*?)```/;
+
+/** 去掉回复里的 choices 代码块：选项另外显示成按钮。 */
+export function stripChoices(text: string): string {
+  return text.replace(choicesBlock, '').trimEnd();
+}
+
+/** 解析 choices 代码块里的选项：每行一个，去掉列表符号。 */
+export function parseChoices(text: string): string[] {
+  const match = choicesBlock.exec(text);
+  if (!match) return [];
+  return match[1]
+    .split('\n')
+    .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)、])\s*/, '').trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+/** 最后一条回复里的选项；用户之后已经说过话（或有排队的消息）就不再显示。 */
+function pendingChoices(events: SessionEvent[]): string[] | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (event.kind === 'user' || event.kind === 'queued') return null;
+    if (event.kind === 'text') {
+      const choices = parseChoices(event.text ?? '');
+      return choices.length ? choices : null;
+    }
+  }
+  return null;
+}
+
+/** 最近一轮的待办清单：每条 plan 事件都是完整的最新清单。 */
+function latestPlan(events: SessionEvent[]): PlanItem[] | null {
+  let turn = '';
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (event.kind === 'turn-start') {
+      turn = event.turn_id ?? '';
+      break;
+    }
+  }
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (event.kind === 'plan' && event.plan?.length) return event.turn_id === turn ? event.plan : null;
+  }
+  return null;
+}
+
+function formatSize(bytes: number): string {
+  if (bytes >= 1 << 20) return `${(bytes / (1 << 20)).toFixed(1)} MB`;
+  if (bytes >= 1 << 10) return `${Math.round(bytes / (1 << 10))} KB`;
+  return `${bytes} B`;
+}
+
+/** 对话顶部的进度：编排工具的待办清单，加上镜头出片情况（渲染中的镜头由日志判断）。 */
+function Progress({ plan, scenes, running }: { plan: PlanItem[] | null; scenes: Scene[]; running: boolean }) {
+  const [open, setOpen] = useState(true);
+  const done = plan?.filter((item) => item.status === 'completed').length ?? 0;
+  const current = plan?.find((item) => item.status === 'in_progress');
+  const rendered = scenes.filter((scene) => scene.exists && !scene.stale).length;
+  const rendering = scenes.filter((scene) => scene.rendering);
+  const showScenes = scenes.length > 0 && (running || rendering.length > 0);
+  if (!plan && !showScenes) return null;
+  return (
+    <section class="progress" aria-label="进度">
+      <button class="progress-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        {running && <span class="dot busy" />}
+        <strong>{plan ? `进度 ${done}/${plan.length}` : '进度'}</strong>
+        <span class="ellipsis muted">{current?.text ?? (running ? '正在处理…' : plan && done === plan.length ? '全部完成' : '')}</span>
+      </button>
+      {open && plan && (
+        <ol class="plan">
+          {plan.map((item, index) => (
+            <li key={index} class={item.status}>
+              <span aria-hidden="true">{item.status === 'completed' ? '✓' : item.status === 'in_progress' ? '→' : '·'}</span>
+              {item.text}
+            </li>
+          ))}
+        </ol>
+      )}
+      {showScenes && (
+        <p class="small muted scene-progress">
+          镜头已出片 {rendered}/{scenes.length}
+          {rendering.length > 0 && ` · 渲染中 ${rendering.length} 个：${rendering.map((scene) => scene.id).join('、')}`}
+        </p>
+      )}
     </section>
   );
 }

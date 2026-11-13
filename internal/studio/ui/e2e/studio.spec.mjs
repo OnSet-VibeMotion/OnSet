@@ -96,3 +96,44 @@ test('picks the orchestrator and renderer per session', async ({ page }) => {
   await expect(page.locator('#messages')).toContainText('编排工具改为 codex');
   await expect(page.locator('#agent-tool')).toHaveValue('codex');
 });
+
+test('uploads a file, answers with a choice button, and queues a message mid-turn', async ({ page }) => {
+  await openProject(page);
+  await page.locator('#upload + input, input[type="file"]').first().setInputFiles({
+    name: '文章.md',
+    mimeType: 'text/markdown',
+    buffer: Buffer.from('# 标题\n正文'),
+  });
+  await expect(page.locator('#attachments')).toContainText('文章.md');
+
+  await page.locator('#prompt').fill('给我选项');
+  await page.locator('#send').click();
+  await expect(page.locator('.progress')).toContainText('进度 1/2');
+  await expect(page.locator('.progress')).toContainText('正在定风格');
+  const choice = page.locator('.choice', { hasText: '白板手绘风' });
+  await expect(choice).toBeVisible();
+  await expect(page.locator('.message.assistant').last()).not.toContainText('```');
+
+  // 点选项就是把这一行发出去；之后选项消失。
+  await choice.click();
+  await expect(page.locator('.message.user').last()).toContainText('白板手绘风');
+  await expect(page.locator('.turn-card').last()).toContainText('本轮完成');
+  await expect(page.locator('.choice')).toHaveCount(0);
+
+  // 进行中再发一条：先显示排队中，这一轮结束后自动发出。
+  await page.locator('#prompt').fill('稍等，先改提示词');
+  await page.locator('#send').click();
+  await expect(page.locator('#cancel-turn')).toBeVisible();
+  await page.locator('#prompt').fill('顺便检查一下');
+  await page.locator('#send').click();
+  await expect(page.locator('.message.queued')).toContainText('顺便检查一下');
+  await expect(page.locator('.message.user', { hasText: '顺便检查一下' }).last()).not.toHaveClass(/queued/, { timeout: 15_000 });
+  await expect(page.locator('.message.queued')).toHaveCount(0);
+});
+
+test('sends a scene quick action to the orchestrator', async ({ page }) => {
+  await openProject(page);
+  await page.locator('.quick-actions button', { hasText: '重做这个镜头' }).click();
+  await expect(page.locator('.message.user').last()).toContainText('重做镜头 scene-001');
+  await expect(page.locator('.turn-card').last()).toContainText('本轮完成');
+});

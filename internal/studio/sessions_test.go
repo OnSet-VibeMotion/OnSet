@@ -244,8 +244,12 @@ func TestProductionStartBusyAndCancel(t *testing.T) {
 		status, body = studioRequest(t, http.MethodPost, f.url+path, "{}")
 		requireStudioStatus(t, status, http.StatusConflict, body)
 	}
+	// 同一个会话里再发一条：排到这一轮之后，不是 409。
 	status, body = studioRequest(t, http.MethodPost, f.url+"/api/sessions/"+id+"/turns", `{"message":"再来"}`)
-	requireStudioStatus(t, status, http.StatusConflict, body)
+	requireStudioStatus(t, status, http.StatusAccepted, body)
+	if body["queued"] != true {
+		t.Fatalf("应当排队：%#v", body)
+	}
 	status, body = studioRequest(t, http.MethodGet, f.url+"/api/sessions", "")
 	requireStudioStatus(t, status, http.StatusOK, body)
 	if body["busy"] == "" {
@@ -254,7 +258,8 @@ func TestProductionStartBusyAndCancel(t *testing.T) {
 	// 等编排工具真正启动后再取消。
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, err := os.Stat(f.argsLog); err == nil {
+		// 文件先被重定向建出来、内容随后才写进去，要等到整行写完。
+		if body, err := os.ReadFile(f.argsLog); err == nil && strings.HasSuffix(string(body), "\n") {
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -265,6 +270,13 @@ func TestProductionStartBusyAndCancel(t *testing.T) {
 	turn := lastTurn(t, detail)
 	if turn["status"] != "cancelled" || detail["session"].(map[string]any)["kind"] != "production" {
 		t.Fatalf("turn=%#v", turn)
+	}
+	// 按停止：排队的消息一并作废，不会自己开下一轮。
+	if turns := studioList(t, detail["turns"]); len(turns) != 1 {
+		t.Fatalf("停止后不该再跑排队的消息：%d 轮", len(turns))
+	}
+	if _, raw := rawStudioGet(t, f.url+"/api/sessions/"+id+"/events?follow=0"); !strings.Contains(raw, "event: queued") || !strings.Contains(raw, "排队的 1 条消息不再发送") {
+		t.Fatalf("events=%s", raw)
 	}
 	if args := f.args(t); !strings.Contains(args[0], "整片制作提示词") || !strings.Contains(args[0], "用户补充：竖屏，三分钟") {
 		t.Fatalf("args=%q", args)
@@ -424,4 +436,64 @@ func TestAttachmentText(t *testing.T) {
 
 func eventOf(kind agentrun.Kind, text string) agentrun.Event {
 	return agentrun.Event{Kind: kind, Text: text}
+}
+
+// TestQueuedMessagesRunAfterTurnAndInterrupt：进行中发的消息排队，这一轮结束后合并成
+// 下一轮；「打断并发送」停掉当前这一轮，马上发出排队的消息。
+func TestQueuedMessagesRunAfterTurnAndInterrupt(t *testing.T) {
+	f := newSessionFixture(t)
+	t.Setenv("FAKE_SLEEP", "1")
+	status, body := studioRequest(t, http.MethodPost, f.url+"/api/sessions", `{"title":"排队"}`)
+	requireStudioStatus(t, status, http.StatusCreated, body)
+	id := body["session_id"].(string)
+	status, body = studioRequest(t, http.MethodPost, f.url+"/api/sessions/"+id+"/turns", `{"message":"第一件事"}`)
+	requireStudioStatus(t, status, http.StatusAccepted, body)
+	for _, message := range []string{"补充一", "补充二"} {
+		status, body = studioRequest(t, http.MethodPost, f.url+"/api/sessions/"+id+"/turns", `{"message":"`+message+`"}`)
+		requireStudioStatus(t, status, http.StatusAccepted, body)
+		if body["queued"] != true {
+			t.Fatalf("应当排队：%#v", body)
+		}
+	}
+	// 第一轮结束后自动开第二轮，两条补充合并成一条消息。
+	deadline := time.Now().Add(10 * time.Second)
+	var turns []any
+	for time.Now().Before(deadline) {
+		detail := f.waitIdle(t, id)
+		if turns = studioList(t, detail["turns"]); len(turns) == 2 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if len(turns) != 2 {
+		t.Fatalf("排队的消息应当自动发出：%d 轮", len(turns))
+	}
+	if second := turns[1].(map[string]any); !strings.Contains(second["message"].(string), "补充一") || !strings.Contains(second["message"].(string), "补充二") {
+		t.Fatalf("second=%#v", second)
+	}
+
+	// 打断并发送。
+	t.Setenv("FAKE_SLEEP", "5")
+	status, body = studioRequest(t, http.MethodPost, f.url+"/api/sessions/"+id+"/turns", `{"message":"慢活"}`)
+	requireStudioStatus(t, status, http.StatusAccepted, body)
+	for time.Now().Before(deadline.Add(10 * time.Second)) {
+		if args, err := os.ReadFile(f.argsLog); err == nil && strings.Count(string(args), "\n") >= 3 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Setenv("FAKE_SLEEP", "")
+	status, body = studioRequest(t, http.MethodPost, f.url+"/api/sessions/"+id+"/turns", `{"message":"改主意了","interrupt":true}`)
+	requireStudioStatus(t, status, http.StatusAccepted, body)
+	deadline = time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		detail := f.waitIdle(t, id)
+		if turns = studioList(t, detail["turns"]); len(turns) == 4 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if len(turns) != 4 || turns[2].(map[string]any)["status"] != "cancelled" || turns[3].(map[string]any)["message"] != "改主意了" {
+		t.Fatalf("turns=%#v", turns)
+	}
 }

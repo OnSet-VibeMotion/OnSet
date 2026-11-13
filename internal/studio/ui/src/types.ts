@@ -26,6 +26,8 @@ export interface Scene {
   /** 全部渲染尝试（含归档）的次数与用量合计。 */
   attempts: number;
   usage?: Usage;
+  /** 此刻正在渲染（渲染日志最近还在写）。 */
+  rendering?: boolean;
 }
 
 /** 渲染用量，口径见 internal/tools.Usage：输入含缓存，输出含推理。 */
@@ -72,6 +74,10 @@ export interface Box {
 }
 
 export interface Attachment {
+  /** 用户上传的文件（path 在 production/studio/uploads/ 下）。 */
+  upload?: boolean;
+  name?: string;
+  size?: number;
   scene_id?: string;
   path?: string;
   seconds?: number;
@@ -114,7 +120,15 @@ export type EventKind =
   | 'turn-end'
   | 'files-changed'
   | 'notice'
-  | 'turn-reverted';
+  | 'turn-reverted'
+  | 'queued'
+  | 'plan';
+
+/** 编排工具的待办清单一项。 */
+export interface PlanItem {
+  text: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
 
 export interface SessionEvent {
   seq: number;
@@ -131,6 +145,7 @@ export interface SessionEvent {
   status?: string;
   files?: string[];
   changes?: FileChange[];
+  plan?: PlanItem[];
 }
 
 export interface Turn {

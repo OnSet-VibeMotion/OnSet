@@ -2,7 +2,10 @@ package studio
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/chouheiwa/articale-to-motion/internal/ledger"
 )
@@ -42,5 +45,29 @@ func TestChatTurnUsageIsRecordedAndSurvivesRevert(t *testing.T) {
 	total := usage["total"].(map[string]any)
 	if orchestrator["calls"].(float64) != 1 || total["output_tokens"].(float64) != 4 || total["cost_usd"].(float64) != 0.01 {
 		t.Fatalf("usage=%#v", usage)
+	}
+}
+
+// TestSceneRenderingFollowsLogActivity：日志在写、比尝试记录新才算渲染中。
+func TestSceneRenderingFollowsLogActivity(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+	if sceneRendering(dir, "s1", now) {
+		t.Fatal("没有日志不是渲染中")
+	}
+	log := filepath.Join(dir, "render-s1.stream.jsonl")
+	os.WriteFile(log, []byte("{}"), 0o644)
+	if !sceneRendering(dir, "s1", now) {
+		t.Fatal("刚写的日志、还没有尝试记录：渲染中")
+	}
+	attempt := filepath.Join(dir, "render-s1.attempt.json")
+	os.WriteFile(attempt, []byte("{}"), 0o644)
+	os.Chtimes(log, now.Add(-time.Second), now.Add(-time.Second))
+	if sceneRendering(dir, "s1", now) {
+		t.Fatal("尝试记录比日志新：已经结束")
+	}
+	os.Chtimes(attempt, now.Add(-time.Hour), now.Add(-time.Hour))
+	if sceneRendering(dir, "s1", now.Add(renderingWindow+time.Minute)) {
+		t.Fatal("日志太久没动：不算渲染中")
 	}
 }

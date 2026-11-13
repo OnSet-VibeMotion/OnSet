@@ -25,7 +25,16 @@ const (
 	KindUsage      Kind = "usage"
 	KindError      Kind = "error"
 	KindDone       Kind = "done"
+	// KindPlan 是编排工具的待办清单（claude 的 TodoWrite、codex 的 todo_list、
+	// opencode 的 todowrite）。每条都是完整的最新清单，不是增量。
+	KindPlan Kind = "plan"
 )
+
+// PlanItem 是待办清单的一项。Status 是 pending、in_progress 或 completed。
+type PlanItem struct {
+	Text   string `json:"text"`
+	Status string `json:"status"`
+}
 
 // maxToolOutput 限制工具结果正文的长度：渲染日志、ffprobe 输出动辄几万字，
 // 全文推给网页没有意义，原始流另有日志可查。
@@ -41,6 +50,49 @@ type Event struct {
 	IsError   bool            `json:"is_error,omitempty"`
 	SessionID string          `json:"session_id,omitempty"`
 	Usage     *tools.Usage    `json:"usage,omitempty"`
+	Plan      []PlanItem      `json:"plan,omitempty"`
+}
+
+// planFromTodos 读 claude 系与 opencode 的 todos 数组：[{content, status, activeForm?}]。
+func planFromTodos(input any) []PlanItem {
+	todos, _ := obj(input)["todos"].([]any)
+	var plan []PlanItem
+	for _, item := range todos {
+		todo := obj(item)
+		text := str(todo["content"])
+		if text == "" {
+			continue
+		}
+		status := str(todo["status"])
+		if status == "in_progress" {
+			if active := str(todo["activeForm"]); active != "" {
+				text = active
+			}
+		}
+		if status != "in_progress" && status != "completed" {
+			status = "pending"
+		}
+		plan = append(plan, PlanItem{Text: text, Status: status})
+	}
+	return plan
+}
+
+// planFromCodex 读 codex 的 todo_list：items 为 [{text, completed}]，第一项未完成的算进行中。
+func planFromCodex(item map[string]any) []PlanItem {
+	entries, _ := item["items"].([]any)
+	var plan []PlanItem
+	current := false
+	for _, entry := range entries {
+		todo := obj(entry)
+		status := "pending"
+		if done, _ := todo["completed"].(bool); done {
+			status = "completed"
+		} else if !current {
+			status, current = "in_progress", true
+		}
+		plan = append(plan, PlanItem{Text: str(todo["text"]), Status: status})
+	}
+	return plan
 }
 
 // Parser 把一行原始输出译成零到多条事件。Parser 有状态（会话 id 去重、用量累计），
@@ -150,6 +202,11 @@ func parseClaudeLike(e map[string]any) []Event {
 				}
 			case "tool_use":
 				events = append(events, Event{Kind: KindToolCall, Tool: str(block["name"]), CallID: str(block["id"]), Input: rawJSON(block["input"])})
+				if str(block["name"]) == "TodoWrite" {
+					if plan := planFromTodos(block["input"]); len(plan) > 0 {
+						events = append(events, Event{Kind: KindPlan, Plan: plan})
+					}
+				}
 			}
 		}
 	case "user":
@@ -196,14 +253,19 @@ func parseCodex(e map[string]any) []Event {
 	switch str(e["type"]) {
 	case "thread.started":
 		return []Event{{Kind: KindSession, SessionID: str(e["thread_id"])}}
-	case "item.started":
-		if str(item["type"]) == "command_execution" {
+	case "item.started", "item.updated":
+		if str(item["type"]) == "todo_list" {
+			return []Event{{Kind: KindPlan, Plan: planFromCodex(item)}}
+		}
+		if str(e["type"]) == "item.started" && str(item["type"]) == "command_execution" {
 			return []Event{{Kind: KindToolCall, Tool: "shell", CallID: str(item["id"]), Input: rawJSON(map[string]any{"command": item["command"]})}}
 		}
 	case "item.completed":
 		switch str(item["type"]) {
 		case "agent_message":
 			return []Event{{Kind: KindText, Text: str(item["text"])}}
+		case "todo_list":
+			return []Event{{Kind: KindPlan, Plan: planFromCodex(item)}}
 		case "reasoning":
 			return []Event{{Kind: KindThinking, Text: str(item["text"])}}
 		case "command_execution":
@@ -243,6 +305,11 @@ func parseOpencode(e map[string]any) []Event {
 		state := obj(part["state"])
 		id, tool := str(part["id"]), str(part["tool"])
 		events = append(events, Event{Kind: KindToolCall, Tool: tool, CallID: id, Input: rawJSON(state["input"])})
+		if tool == "todowrite" {
+			if plan := planFromTodos(state["input"]); len(plan) > 0 {
+				events = append(events, Event{Kind: KindPlan, Plan: plan})
+			}
+		}
 		switch str(state["status"]) {
 		case "completed":
 			events = append(events, Event{Kind: KindToolResult, Tool: tool, CallID: id, Text: clip(str(state["output"]))})

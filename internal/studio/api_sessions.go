@@ -33,6 +33,7 @@ func (s *Server) sessionRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/turns/", s.turnAPI)
 	mux.HandleFunc("/api/commands/", s.commandAPI)
 	mux.HandleFunc("/api/files", s.filesAPI)
+	mux.HandleFunc("/api/uploads", s.uploadsAPI)
 	mux.HandleFunc("/api/skills", s.skillsAPI)
 	mux.HandleFunc("/api/agents", s.agentsAPI)
 	mux.HandleFunc("/preview/scenes/", s.previewAPI)
@@ -151,12 +152,27 @@ func (s *Server) sessionAPI(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Message     string       `json:"message"`
 			Attachments []Attachment `json:"attachments"`
+			// Interrupt 为 true 时停掉进行中的一轮，马上发这条；否则排到这一轮之后。
+			Interrupt bool `json:"interrupt"`
 		}
 		if err := decodeJSON(r, &req); err != nil || strings.TrimSpace(req.Message) == "" {
 			s.error(w, http.StatusBadRequest, "invalid_request", "消息不能为空")
 			return
 		}
-		turn, err := s.startTurn(p, sess, turnRequest{Message: strings.TrimSpace(req.Message), Attachments: req.Attachments})
+		next := turnRequest{Message: strings.TrimSpace(req.Message), Attachments: req.Attachments}
+		queued, err := s.enqueueTurn(p, sess, next)
+		if err != nil {
+			s.writeStartError(w, err)
+			return
+		}
+		if queued {
+			if req.Interrupt {
+				_ = s.cancelSession(sess, true)
+			}
+			s.write(w, http.StatusAccepted, map[string]any{"queued": true, "session_id": sess.meta.ID})
+			return
+		}
+		turn, err := s.startTurn(p, sess, next)
 		if err != nil {
 			s.writeStartError(w, err)
 			return
@@ -171,7 +187,7 @@ func (s *Server) sessionAPI(w http.ResponseWriter, r *http.Request) {
 			s.method(w, http.MethodPost)
 			return
 		}
-		if err := s.cancelSession(sess); err != nil {
+		if err := s.cancelSession(sess, false); err != nil {
 			s.error(w, http.StatusConflict, "not_running", err.Error())
 			return
 		}

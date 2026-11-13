@@ -9,6 +9,7 @@ const paths = {
   send: <path d="M6 10V2.5M2.5 6L6 2.5 9.5 6" />,
   close: <path d="M3 3l6 6M9 3L3 9" />,
   plus: <path d="M6 2v8M2 6h8" />,
+  attach: <path d="M8.5 4.5L5 8a1.4 1.4 0 01-2-2l4-4a2.3 2.3 0 013.2 3.2L6 9.4" />,
   region: <rect x="1.5" y="1.5" width="9" height="9" rx="1" stroke-dasharray="2 1.6" />,
   pointer: <path d="M2 1.5l3.4 8.5 1.3-3.4 3.4-1.3z" />,
   up: <path d="M6 9.5V2.5M2.5 6L6 2.5 9.5 6" />,

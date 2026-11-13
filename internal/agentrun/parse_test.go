@@ -197,3 +197,25 @@ func TestClipKeepsUTF8Boundaries(t *testing.T) {
 		t.Fatal("短文本不应改动")
 	}
 }
+
+// TestPlansAreUnified：三家的待办清单译成同一种 plan 事件，进行中的项用 activeForm。
+func TestPlansAreUnified(t *testing.T) {
+	cases := []struct {
+		tool, line string
+	}{
+		{"claude", `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"TodoWrite","input":{"todos":[{"content":"写分镜","status":"completed","activeForm":"写分镜中"},{"content":"渲染镜头","status":"in_progress","activeForm":"正在渲染镜头"},{"content":"拼接","status":"pending","activeForm":"拼接中"}]}}]}}`},
+		{"codex", `{"type":"item.updated","item":{"id":"i1","type":"todo_list","items":[{"text":"写分镜","completed":true},{"text":"正在渲染镜头","completed":false},{"text":"拼接","completed":false}]}}`},
+		{"opencode", `{"type":"tool_use","sessionID":"s","part":{"id":"p1","tool":"todowrite","state":{"status":"completed","input":{"todos":[{"content":"写分镜","status":"completed"},{"content":"正在渲染镜头","status":"in_progress"},{"content":"拼接","status":"pending"}]},"output":"ok"}}}`},
+	}
+	for _, c := range cases {
+		parser, _ := NewParser(c.tool)
+		plans := kinds(parser.Parse(c.line), KindPlan)
+		if len(plans) != 1 || len(plans[0].Plan) != 3 {
+			t.Fatalf("%s: plans=%+v", c.tool, plans)
+		}
+		got := plans[0].Plan
+		if got[0].Status != "completed" || got[1].Status != "in_progress" || got[1].Text != "正在渲染镜头" || got[2].Status != "pending" {
+			t.Errorf("%s: plan=%+v", c.tool, got)
+		}
+	}
+}

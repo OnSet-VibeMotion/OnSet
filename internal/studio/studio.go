@@ -600,6 +600,26 @@ type SceneSummary struct {
 	// Attempts 与 Usage 是这个镜头全部渲染尝试（含归档）的次数与用量合计。
 	Attempts int          `json:"attempts"`
 	Usage    *tools.Usage `json:"usage,omitempty"`
+	// Rendering 表示这个镜头此刻正在渲染：渲染日志最近还在写，且比上一次尝试记录新。
+	Rendering bool `json:"rendering,omitempty"`
+}
+
+// renderingWindow 是判定「还在渲染」的日志静默上限。渲染工具一直往流日志里写事件，
+// 超过这么久没动静，多半是进程已经没了（被杀、机器睡眠），不再显示成渲染中。
+const renderingWindow = 3 * time.Minute
+
+func sceneRendering(dir, id string, now time.Time) bool {
+	var latest time.Time
+	for _, name := range []string{"render-" + id + ".stream.jsonl", "render-" + id + ".user.log", "render-" + id + ".stderr.log"} {
+		if info, err := os.Stat(filepath.Join(dir, name)); err == nil && info.ModTime().After(latest) {
+			latest = info.ModTime()
+		}
+	}
+	if latest.IsZero() || now.Sub(latest) > renderingWindow {
+		return false
+	}
+	attempt, err := os.Stat(filepath.Join(dir, "render-"+id+".attempt.json"))
+	return err != nil || attempt.ModTime().Before(latest)
 }
 
 func discoverScenes(root string) []SceneSummary {
@@ -635,7 +655,8 @@ func discoverScenes(root string) []SceneSummary {
 			outputInfo, outputErr := os.Stat(output)
 			stale = sceneErr == nil && outputErr == nil && sceneInfo.ModTime().After(outputInfo.ModTime())
 		}
-		summary := SceneSummary{ID: v.ID, Directory: filepath.Dir(path), DurationSeconds: v.Duration, Output: v.Output, Exists: exists, Stale: stale}
+		summary := SceneSummary{ID: v.ID, Directory: filepath.Dir(path), DurationSeconds: v.Duration, Output: v.Output, Exists: exists, Stale: stale,
+			Rendering: sceneRendering(filepath.Dir(path), v.ID, time.Now())}
 		if history := scene.AttemptHistory(summary.Directory, v.ID); len(history) > 0 {
 			var total tools.Usage
 			for _, attempt := range history {

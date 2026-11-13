@@ -34,6 +34,12 @@ func (p *eventPrinter) print(event agentrun.Event) {
 		if event.IsError {
 			fmt.Fprintf(p.stdout, "  ✗ %s\n", firstLine(event.Text))
 		}
+	case agentrun.KindPlan:
+		marks := map[string]string{"completed": "✓", "in_progress": "→", "pending": "·"}
+		fmt.Fprintln(p.stdout, "计划：")
+		for _, item := range event.Plan {
+			fmt.Fprintf(p.stdout, "  %s %s\n", marks[item.Status], item.Text)
+		}
 	case agentrun.KindError:
 		fmt.Fprintf(p.stderr, "错误: %s\n", event.Text)
 	case agentrun.KindUsage:

@@ -33,6 +33,8 @@ const (
 	kindFilesChanged agentrun.Kind = "files-changed"
 	kindNotice       agentrun.Kind = "notice"
 	kindTurnReverted agentrun.Kind = "turn-reverted"
+	// kindQueued 是这一轮进行中用户又发的消息：排队，这一轮结束后作为下一轮发出。
+	kindQueued agentrun.Kind = "queued"
 )
 
 const (
@@ -79,6 +81,10 @@ type Attachment struct {
 	Selector string  `json:"selector,omitempty"`
 	Source   string  `json:"source,omitempty"`
 	Note     string  `json:"note,omitempty"`
+	// Upload 表示用户上传的文件（Path 在 production/studio/uploads/ 下），Name 是原文件名。
+	Upload bool   `json:"upload,omitempty"`
+	Name   string `json:"name,omitempty"`
+	Size   int64  `json:"size,omitempty"`
 }
 
 // Box 是画面上的一个区域，单位是视频像素。
@@ -95,6 +101,9 @@ type session struct {
 	events  []SessionEvent
 	wake    chan struct{}
 	cancel  context.CancelFunc
+	// queue 是这一轮进行中排队的消息，结束后合并成下一轮。只在内存里：
+	// Studio 重启时进行中的轮次本来就会被标成 interrupted，排队的消息随之作废。
+	queue []turnRequest
 }
 
 type sessionState struct {
@@ -305,8 +314,22 @@ func attachmentText(attachments []Attachment) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("\n\n附带的画面上下文：")
+	var frames []Attachment
 	for _, a := range attachments {
+		if a.Upload {
+			if b.Len() == 0 {
+				b.WriteString("\n\n用户上传的文件（存在 Studio 的上传目录里，不属于项目；要用时先复制或转换到项目里合适的位置，例如文章放项目根或 docs/，素材放 assets/）：")
+			}
+			fmt.Fprintf(&b, "\n- %s「%s」：%s", uploadKind(a.Name), a.Name, a.Path)
+			continue
+		}
+		frames = append(frames, a)
+	}
+	if len(frames) == 0 {
+		return b.String()
+	}
+	b.WriteString("\n\n附带的画面上下文：")
+	for _, a := range frames {
 		b.WriteString("\n- ")
 		if a.SceneID != "" {
 			fmt.Fprintf(&b, "镜头 %s ", a.SceneID)
@@ -335,8 +358,12 @@ func validateAttachments(projectPath string, attachments []Attachment) error {
 	for _, a := range attachments {
 		if a.Path != "" {
 			clean := filepath.ToSlash(filepath.Clean(a.Path))
-			if !strings.HasPrefix(clean, "production/studio/attachments/") || strings.Contains(clean, "..") {
-				return fmt.Errorf("附件路径不在 production/studio/attachments/ 下：%s", a.Path)
+			prefix := "production/studio/attachments/"
+			if a.Upload {
+				prefix = uploadDir + "/"
+			}
+			if !strings.HasPrefix(clean, prefix) || strings.Contains(clean, "..") {
+				return fmt.Errorf("附件路径不在 %s 下：%s", prefix, a.Path)
 			}
 			if !fileExists(filepath.Join(projectPath, filepath.FromSlash(clean))) {
 				return fmt.Errorf("附件不存在：%s", a.Path)
@@ -351,11 +378,20 @@ func validateAttachments(projectPath string, attachments []Attachment) error {
 	return nil
 }
 
-// chatPreamble 是聊天会话第一轮的开场说明。整片制作会话第一轮直接发制作提示词。
+// chatPreamble 是聊天会话第一轮的开场说明。整片制作会话第一轮直接发制作提示词，末尾附 studioInteraction。
 func chatPreamble(rulesName string) string {
 	return "你正在协助用户修改当前目录下的 ArticleToMotion 视频项目。动手前先读项目规则 " + rulesName +
-		"。需要渲染、校验、复查时直接运行 am 的子命令。改完用几句话说明改了哪些文件、为什么，以及接下来要不要重渲染哪些镜头。\n\n用户的请求："
+		"。需要渲染、校验、复查时直接运行 am 的子命令。改完用几句话说明改了哪些文件、为什么，以及接下来要不要重渲染哪些镜头。\n\n" +
+		studioInteraction + "\n\n用户的请求："
 }
+
+// studioInteraction 告诉编排工具怎样在 Studio 里和用户来回：多步任务先列待办清单
+// （网页据此显示进度），要用户拍板时用 choices 代码块（网页渲染成按钮，见 Chat.tsx 的 parseChoices）。
+const studioInteraction = `你在 Studio 网页里和用户对话，下面两条约定让网页能把你的进度和问题显示好：
+- 多步骤的工作先用你的待办清单工具列出步骤，做的过程中及时更新状态，用户会在对话顶部看到进度。
+- 需要用户拍板时（选风格、确认分镜、确认一条推测的偏好、几种做法里选一种），先把问题和各选项的差别写清楚，再在回复的最后单独放一个语言标成 choices 的代码块，每行一个选项，例如：
+` + "```choices\n用方案 A：深色科技风\n用方案 B：白板手绘风\n```" + `
+  用户会看到可点的按钮，点了就把那一行原样发给你。问完就结束这一轮等用户回复，不要替用户选。用户也可能直接打字回答。`
 
 // transcript 把会话里已有的对话整理成文字，供续接失败时补发。只保留末尾 transcriptLimit 字。
 func transcript(events []SessionEvent) string {
@@ -426,6 +462,7 @@ func (s *Server) prepareTurn(p Project, sess *session, cfg config.Config, req tu
 	prompt := req.Prompt
 	switch {
 	case prompt != "":
+		prompt += "\n\n---\n\n" + studioInteraction
 		if req.Message != "" {
 			prompt += "\n\n用户补充：" + message
 		}
@@ -529,7 +566,8 @@ func (s *Server) runTurn(ctx context.Context, p Project, sess *session, cfg conf
 }
 
 func reseedPrompt(history, prompt string) string {
-	return "下面是这个项目里你和用户之前的对话记录（较早的部分可能被截掉），供你接上上下文：\n\n" + history + "\n\n---\n\n" + prompt
+	return "下面是这个项目里你和用户之前的对话记录（较早的部分可能被截掉），供你接上上下文：\n\n" + history + "\n\n---\n\n" +
+		studioInteraction + "\n\n---\n\n" + prompt
 }
 
 func (s *Server) finishTurn(ctx context.Context, p Project, sess *session, turn *Turn, runErr error) {
@@ -562,18 +600,70 @@ func (s *Server) finishTurn(ctx context.Context, p Project, sess *session, turn 
 	s.release(p.Path)
 	end := SessionEvent{Event: agentrun.Event{Kind: kindTurnEnd, Text: turn.Error}, Status: turn.Status, Changes: turn.Changes}
 	s.emit(sess, turn.ID, end)
+	s.drainQueue(p, sess)
 }
 
-// cancelSession 取消会话里正在进行的一轮。
-func (s *Server) cancelSession(sess *session) error {
+// cancelSession 取消会话里正在进行的一轮。keepQueue 为 false 时一并清掉排队的消息：
+// 用户按停止，多半是不想让这些要求接着跑了；「打断并发送」要保留它们。
+func (s *Server) cancelSession(sess *session, keepQueue bool) error {
 	s.sessions.mu.Lock()
 	cancel := sess.cancel
+	dropped := 0
+	if cancel != nil && !keepQueue {
+		dropped = len(sess.queue)
+		sess.queue = nil
+	}
+	turnID := sess.meta.RunningTurn
 	s.sessions.mu.Unlock()
 	if cancel == nil {
 		return errors.New("这个会话没有正在进行的对话")
 	}
+	if dropped > 0 {
+		s.emit(sess, turnID, SessionEvent{Event: agentrun.Event{Kind: kindNotice, Text: fmt.Sprintf("已停止，排队的 %d 条消息不再发送", dropped)}})
+	}
 	cancel()
 	return nil
+}
+
+// enqueueTurn 在这一轮进行中收下一条消息：返回 false 表示会话此刻没有在跑，调用方直接开新一轮。
+func (s *Server) enqueueTurn(p Project, sess *session, req turnRequest) (bool, error) {
+	if err := validateAttachments(p.Path, req.Attachments); err != nil {
+		return false, err
+	}
+	s.sessions.mu.Lock()
+	if sess.cancel == nil {
+		s.sessions.mu.Unlock()
+		return false, nil
+	}
+	sess.queue = append(sess.queue, req)
+	turnID := sess.meta.RunningTurn
+	s.sessions.mu.Unlock()
+	s.emit(sess, turnID, SessionEvent{Event: agentrun.Event{Kind: kindQueued, Text: req.Message + attachmentText(req.Attachments)}})
+	return true, nil
+}
+
+// drainQueue 在一轮结束后把排队的消息合并成下一轮发出。
+func (s *Server) drainQueue(p Project, sess *session) {
+	s.sessions.mu.Lock()
+	queue := sess.queue
+	sess.queue = nil
+	s.sessions.mu.Unlock()
+	if len(queue) == 0 {
+		return
+	}
+	merged := turnRequest{}
+	var messages []string
+	for _, req := range queue {
+		messages = append(messages, req.Message)
+		merged.Attachments = append(merged.Attachments, req.Attachments...)
+	}
+	merged.Message = strings.Join(messages, "\n\n")
+	if len(queue) > 1 {
+		merged.Message = "（上一轮进行中你陆续补充了几条要求，一并处理）\n\n" + merged.Message
+	}
+	if _, err := s.startTurn(p, sess, merged); err != nil {
+		s.emit(sess, "", SessionEvent{Event: agentrun.Event{Kind: kindNotice, Text: "排队的消息没能发出（" + err.Error() + "），请重新发送：" + merged.Message}})
+	}
 }
 
 // revert 回退一轮，并在会话里记一条事件。
