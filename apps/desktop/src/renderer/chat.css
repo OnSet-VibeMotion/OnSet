@@ -181,6 +181,10 @@
 .chat-log.has-plan {
   padding-bottom: 52px;
 }
+/* 场记小人站在左下角，比进度药丸高，给它让出地方，免得挡住最后几行。 */
+.chat-log.has-crew {
+  padding-bottom: 84px;
+}
 .chat-log > .user-stack:not(:first-child),
 .chat-log > .assistant-flow {
   margin-top: 12px;
@@ -933,6 +937,77 @@ div.tool {
 .chat-float > * {
   pointer-events: auto;
 }
+
+/* ---- 场记小人（Crew.tsx）：编排工具在做什么 ---- */
+.chat .crew {
+  /* 贴着正文的左边站，进度药丸照旧居中。 */
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+  animation: pop-in var(--enter) var(--ease-strong);
+}
+.chat .crew-sprite {
+  flex: none;
+  image-rendering: pixelated;
+}
+.chat .crew-line {
+  position: relative;
+  margin-bottom: 26px;
+  max-width: 220px;
+  padding: 4px 10px;
+  border-radius: 10px 10px 10px 2px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.chat .crew[data-mood='waiting'] .crew-line {
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
+.chat .crew[data-mood='failed'] .crew-line {
+  color: var(--bad);
+}
+/* 小人的色板：只用象牙白、暖灰与一种黄铜色，「在录」那一点红是唯一的例外。 */
+.chat .crew {
+  --px-coat: #d9d1c3;
+  --px-coat-shade: #9d9485;
+  --px-skin: #e4c4a2;
+  --px-skin-shade: #bf9a78;
+  --px-trousers: #5a5148;
+  --px-shoe: #3f3832;
+  --px-frame: #6f6557;
+  --px-frame-deep: #2a2520;
+  --px-metal: #3a342d;
+  --px-hair: #5a4330;
+}
+.crew .px-brass { fill: var(--accent); }
+.crew .px-brass-deep { fill: color-mix(in srgb, var(--accent) 62%, var(--bg)); }
+.crew .px-brass-light { fill: var(--accent-text); }
+.crew .px-skin { fill: var(--px-skin); }
+.crew .px-skin-shade { fill: var(--px-skin-shade); }
+.crew .px-eye { fill: var(--accent-ink); }
+.crew .px-coat { fill: var(--px-coat); }
+.crew .px-coat-shade { fill: var(--px-coat-shade); }
+.crew .px-trousers { fill: var(--px-trousers); }
+.crew .px-shoe { fill: var(--px-shoe); }
+.crew .px-frame { fill: var(--px-frame); }
+.crew .px-frame-deep { fill: var(--px-frame-deep); }
+.crew .px-metal { fill: var(--px-metal); }
+.crew .px-hair { fill: var(--px-hair); }
+.crew .px-screen { fill: var(--well); }
+.crew .px-paper { fill: var(--text); }
+.crew .px-ink { fill: var(--muted); }
+.crew .px-rec { fill: var(--bad); }
+.crew .px-floor { stop-color: var(--accent); }
 .chat .float-pill {
   height: auto;
   padding: 6px 12px;

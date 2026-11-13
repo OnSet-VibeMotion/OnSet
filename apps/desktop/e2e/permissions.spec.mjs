@@ -14,6 +14,9 @@ test('asks before running a command outside the allowlist and remembers "always"
   await expect(card).toBeVisible();
   await expect(card.locator('.permission-command')).toHaveText('npm install three');
   await expect(card).toContainText('安装 three.js');
+  // 场记小人举着场记板等你：气泡与卡片说的是同一件事。
+  await expect(page.locator('#crew')).toHaveAttribute('data-mood', 'waiting');
+  await expect(page.locator('#crew .crew-line')).toHaveText('等你批准');
   await card.locator('button', { hasText: '以后都允许' }).click();
   await expect(card).toHaveCount(0);
   await expect(page.locator('.message.assistant').last()).toContainText('behavior:allow');

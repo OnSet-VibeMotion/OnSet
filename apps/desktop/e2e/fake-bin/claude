@@ -9,6 +9,16 @@ for a in "$@"; do
 done
 printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "$sid"
 case "$prompt" in *慢慢来*) exec sleep 60 ;; esac
+# 「看看稿子」：发一次读文件调用就挂起，供场记小人测试使用（调用一直没有结果，小人停在「读」）。
+case "$prompt" in *看看稿子*)
+  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"r1","name":"Read","input":{"file_path":"production/script-final.md"}}]}}\n'
+  exec sleep 60 ;;
+esac
+# 「拍一下」：调用 am 的 scene_run 就挂起，小人停在「拍」。
+case "$prompt" in *拍一下*)
+  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"f1","name":"mcp__am__scene_run","input":{"scene":"scenes/scene-001"}}]}}\n'
+  exec sleep 60 ;;
+esac
 # 「给我选项」：列一份待办清单，回复末尾带 choices 代码块，不改文件。
 case "$prompt" in *给我选项*)
   printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"p1","name":"TodoWrite","input":{"todos":[{"content":"读稿子","status":"completed","activeForm":"读稿子中"},{"content":"定风格","status":"in_progress","activeForm":"正在定风格"}]}}]}}\n'
