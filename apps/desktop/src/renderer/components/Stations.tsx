@@ -121,6 +121,7 @@ function BuiltinDetail({ contents }: { contents: BuiltinContents }) {
   if (contents.skills.length > 0) rows.push(['给渲染器的技能', contents.skills.join('、')]);
   if (contents.blocks.length > 0) rows.push(['镜头里的设定', contents.blocks.join('、')]);
   if (contents.pages.length > 0) rows.push(['页面', contents.pages.join('、')]);
+  if (contents.film_styles.length > 0) rows.push(['整片风格库', contents.film_styles.join('、')]);
   if (rows.length === 0) return null;
   return (
     <div className="station-detail builtin-detail">

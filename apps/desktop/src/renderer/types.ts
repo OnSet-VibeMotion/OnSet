@@ -878,6 +878,8 @@ export interface BuiltinContents {
   blocks: string[];
   pages: string[];
   flows: string[];
+  /** 它带来的整片风格库（名字）。 */
+  film_styles: string[];
 }
 
 export interface StationOp {

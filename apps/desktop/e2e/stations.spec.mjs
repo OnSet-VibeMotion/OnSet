@@ -285,6 +285,11 @@ test('builtin features are plugins too: always on, listed with what they bring, 
   await expect(cast.locator('.builtin-detail')).toContainText('character-rig');
   await expect(cast.locator('.builtin-detail')).toContainText('校验多角色项目');
   await cast.getByRole('button', { name: '收起' }).click();
+  // 带风格库的功能，详情里写明它带了哪个库。
+  const lemo = builtin.locator('li[data-builtin="lemo-styles"]');
+  await lemo.getByRole('button', { name: '详情' }).click();
+  await expect(lemo.locator('.builtin-detail')).toContainText('整片风格库');
+  await lemo.getByRole('button', { name: '收起' }).click();
   // 口播项目的顶栏有发布这一步。
   await expect(page.locator('.steps [data-tab="publish"]')).toBeAttached();
 });

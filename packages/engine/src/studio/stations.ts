@@ -72,6 +72,7 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
         blocks: owned(plugin.pluginSceneBlocks()).map((b) => b.key),
         pages: owned(plugin.pluginPages()).map((pg) => pg.label),
         flows: owned(plugin.pluginFlows()).map((f) => f.name),
+        film_styles: owned(plugin.pluginFilmStyleSources()).map((src) => src.name()),
       }
     : null;
   return {
