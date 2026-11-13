@@ -260,7 +260,19 @@
   letter-spacing: 0.06em;
   color: var(--faint);
 }
+.station-page .station-frame-wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 360px;
+}
 .station-page .station-confirm {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 2;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -287,7 +299,7 @@
 }
 .station-page .station-frame {
   flex: 1;
-  min-height: 360px;
+  min-height: 0;
   width: 100%;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);

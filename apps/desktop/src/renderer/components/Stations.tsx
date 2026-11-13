@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, errorText, post } from '../api';
 import type { BuiltinContents, ProgressState, ProjectState, Scene, StationInfo, StationOp, StationPageInfo, StationParam, StationRun, StationSetting, StationsResponse } from '../types';
 import { setPluginCommands } from './chat/complete';
@@ -711,9 +711,13 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
     if (pendingRef.current) throw new Error('上一个请求还在等用户确认');
     pendingRef.current = req;
     setPending(req);
+    // 收到了、在等用户：页面的 SDK 据此停掉「宿主没回应」的计时，用户想多久都行。
+    frame.current?.contentWindow?.postMessage({ am: 'host', id: req.id, ack: true }, '*');
   };
 
-  useEffect(() => {
+  // 监听在布局阶段挂上：iframe 元素与监听在同一次提交里出现，页面脚本最早也要等这次提交之后才跑，
+  // 所以页面一加载就发的请求不会落空。换站、换上下文时卸旧挂新也在同一个任务里，中间收不到消息。
+  useLayoutEffect(() => {
     const onMessage = async (event: MessageEvent) => {
       if (!frame.current || event.source !== frame.current.contentWindow) return;
       const m = event.data as PageRequest;
@@ -815,36 +819,33 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
 
   return (
     <>
-      {pending && (
-        <div className="station-confirm" role="alertdialog" aria-label="插件请求执行">
-          <div>
-            <strong>
-              {pending.kind === 'send'
-                ? `「${station.name}」想替你发一条消息给 AI`
-                : `「${station.name}」请求${pending.kind === 'call' ? '调用 ArticleToMotion 的' : '执行'}：${pending.label}`}
-            </strong>
-            {pending.kind === 'send' && <span className="station-confirm-text">{pending.label}</span>}
-            {paramText(pending.params) && <span>参数：{paramText(pending.params)}</span>}
+      <div className="station-frame-wrap" style={height ? { height, minHeight: height, flex: 'none' } : undefined}>
+        {/* 确认条盖在页面上方，不挤动 iframe：页面一挪位置，紧跟着的点击会按旧位置命中，落不进页面（e2e 实测）。 */}
+        {pending && (
+          <div className="station-confirm" role="alertdialog" aria-label="插件请求执行">
+            <div>
+              <strong>
+                {pending.kind === 'send'
+                  ? `「${station.name}」想替你发一条消息给 AI`
+                  : `「${station.name}」请求${pending.kind === 'call' ? '调用 ArticleToMotion 的' : '执行'}：${pending.label}`}
+              </strong>
+              {pending.kind === 'send' && <span className="station-confirm-text">{pending.label}</span>}
+              {paramText(pending.params) && <span>参数：{paramText(pending.params)}</span>}
+            </div>
+            <button className="primary" onClick={() => decide(true)}>
+              执行
+            </button>
+            <button onClick={() => decide(false)}>不执行</button>
           </div>
-          <button className="primary" onClick={() => decide(true)}>
-            执行
-          </button>
-          <button onClick={() => decide(false)}>不执行</button>
-        </div>
-      )}
+        )}
+        <iframe ref={frame} className="station-frame" title={page.label} sandbox="allow-scripts" src={page.url} />
+      </div>
+      {/* 越界提醒排在页面下面，理由同确认条：不能把页面往下推。 */}
       {station.ops
         .filter((o) => ran[o.name] && o.last_run && o.last_run.at >= ran[o.name])
         .map((o) => (
           <ScopeWarning key={o.name} run={o.last_run} label={`「${station.name}」执行「${o.summary.replace(/（.*?）/g, '')}」`} />
         ))}
-      <iframe
-        ref={frame}
-        className="station-frame"
-        title={page.label}
-        sandbox="allow-scripts"
-        src={page.url}
-        style={height ? { height, minHeight: height, flex: 'none' } : undefined}
-      />
     </>
   );
 }
