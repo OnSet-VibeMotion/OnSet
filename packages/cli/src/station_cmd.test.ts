@@ -23,7 +23,7 @@ async function projectWithFake(): Promise<string> {
 
 describe('station ops', () => {
   it('are not tools the orchestrator can call', () => {
-    for (const name of ['station_add', 'station_remove', 'station_list', 'station_run', 'station_flow', 'station_builtin', 'station_update']) {
+    for (const name of ['station_add', 'station_remove', 'station_list', 'station_run', 'station_flow', 'station_update']) {
       expect(allOps().find((op) => op.name === name)?.scopes, name).toEqual(['cli']);
     }
     expect(describeTools('orchestrator').some((t) => t.name.startsWith('station_'))).toBe(false);
@@ -118,24 +118,13 @@ describe('builtin plugins', () => {
     expect(owner.get('validate_publish')).toBe('publishing');
   });
 
-  it('hide the ops of a plugin the project turned off', async () => {
+  it('are always on: their ops are listed in every project and there is no switch', () => {
     const root = tempDir();
-    expect(describeTools('orchestrator', root).some((t) => t.name === 'song_generate')).toBe(true);
-    const out = new Buffer();
-    expect(await run(['station', 'builtin', 'song', '--enabled=false', '--project-root', root], out), out.text).toBe(0);
+    // 旧锁文件里的 disabled 直接忽略。
+    fs.writeFileSync(path.join(root, 'article-to-motion.flow.json'), JSON.stringify({ version: 1, stations: [], disabled: ['song', 'publishing'] }));
     const names = describeTools('orchestrator', root).map((t) => t.name);
-    expect(names.some((n) => n.startsWith('song_'))).toBe(false);
-    expect(names).not.toContain('validate_song');
-    expect(names).toContain('scene_run');
+    expect(names).toContain('song_generate');
+    expect(names).toContain('validate_publish');
   });
 
-  it('hide the ops a plugin registered in apply when the project turns it off', async () => {
-    const root = tempDir();
-    expect(describeTools('orchestrator', root).some((t) => t.name === 'validate_publish')).toBe(true);
-    const out = new Buffer();
-    expect(await run(['station', 'builtin', 'publishing', '--enabled=false', '--project-root', root], out), out.text).toBe(0);
-    expect(describeTools('orchestrator', root).map((t) => t.name)).not.toContain('validate_publish');
-    // 不在项目里（开发用的命令行、没有 root）照样有。
-    expect(describeTools('orchestrator').some((t) => t.name === 'validate_publish')).toBe(true);
-  });
 });

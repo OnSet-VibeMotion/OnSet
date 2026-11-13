@@ -11,7 +11,6 @@ import { AlignAuto, Aligners, defaultTTSProvider, resolveAligner, TTSProviders, 
 import { envMap } from '../envutil';
 import type { ModelSpec, ToolSpec } from '../toolinstall';
 import type * as filmstyle from '../filmstyle';
-import { readLock } from '../flow/lock';
 import * as plugin from '../plugin';
 import * as hyperframes from '../hyperframes';
 import * as toolinstall from '../toolinstall';
@@ -85,8 +84,6 @@ export function hyperframesStage(p: hyperframes.Progress): string {
 export interface Selection {
   tts: string;
   align: string;
-  /** 项目目录：这个项目关掉的内置插件登记的前置资源不列。空是不在项目里（全部列出）。 */
-  root?: string;
 }
 
 /**
@@ -97,7 +94,7 @@ export function selection(env: Record<string, string>, root = ''): Selection {
   if (root !== '' && fs.existsSync(path.join(root, 'article-to-motion.conf'))) {
     try {
       const cfg = config.load(root, env);
-      return { tts: cfg.ttsProvider, align: cfg.alignProvider, root };
+      return { tts: cfg.ttsProvider, align: cfg.alignProvider };
     } catch {
       // 配置写错了：退回缺省，错误留给 am config / am run 去报。
     }
@@ -115,17 +112,7 @@ export function selection(env: Record<string, string>, root = ''): Selection {
   const alignValue = pick('ALIGN_PROVIDER');
   const tts = validTTSProvider(ttsValue) ? ttsValue : defaultTTSProvider();
   const align = resolveAligner(validAligner(alignValue) ? alignValue : AlignAuto, process.platform, process.arch);
-  return root !== '' ? { tts, align, root } : { tts, align };
-}
-
-/** 项目关掉的内置插件（锁文件的 disabled）；不在项目里或读不了锁文件时为空。 */
-function disabledPlugins(root: string): Set<string> {
-  if (root === '') return new Set();
-  try {
-    return new Set(readLock(root).disabled ?? []);
-  } catch {
-    return new Set();
-  }
+  return { tts, align };
 }
 
 /** 配音或对齐工具的一项：装进 am 自己的目录，不碰全局；版本钉死。有 model 时连模型一起下好。 */
@@ -220,9 +207,8 @@ export function items(pick?: Selection): Item[] {
       },
     },
   ];
-  // 内置插件登记的前置资源（例如卡点的节拍分析环境）；这个项目关掉了那个插件就不列。
-  const off = disabledPlugins(chosen.root ?? '');
-  for (const { owner, value } of plugin.pluginPrereqs()) if (!off.has(owner)) out.push(value);
+  // 内置插件登记的前置资源（例如卡点的节拍分析环境）。
+  for (const { value } of plugin.pluginPrereqs()) out.push(value);
   const tts = TTSProviders.find((p) => p.id === chosen.tts);
   if (tts) out.push(toolItem('tts', tts.id, '配音 ' + tts.name, tts.install, tts.model));
   // 音色页的「按描述设计」用本机的 Breeze，与项目选的配音工具无关；项目配音本来就是 Breeze 时上面那一项就是它。

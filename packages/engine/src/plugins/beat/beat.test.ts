@@ -3,8 +3,6 @@
  * 宿主没有一处按名字认识它；项目关掉它时操作、页面、前置资源都不在，有 beat.yaml 时不许关。
  */
 import '../../studio/testsupport';
-import fs from 'node:fs';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as config from '../../config';
 import * as flow from '../../flow';
@@ -67,30 +65,15 @@ describe('the beat plugin', () => {
     expect(tools.amToolsServer('am', 'orchestrator', root, { SECRET: 'no' }).env?.SECRET).toBeUndefined();
   });
 
-  it('goes away from a project that turns it off, and cannot be turned off while the project uses it', async () => {
+  it('is there in every project: its prerequisite is listed and /api/stations has no switch for it', async () => {
     const f = newSessionFixture();
-    const ops = owned(plugin.pluginOps()).map((o) => o.name);
-    const prereqIDs = () => prereqs.items(prereqs.selection(process.env as Record<string, string>, f.root)).map((i) => i.id);
-    const hidden = async () => (await studioRequest(f.s, 'GET', '/api/stations')).body.hidden_pages as string[];
-
-    // 打开（缺省）：操作在、安装页列出节拍分析环境、节拍页没藏（口播项目里它照样被流程藏起来，见 flowView）。
-    expect(ops.filter((n) => flow.disabledPluginOps(f.root).has(n))).toEqual([]);
-    expect(prereqIDs()).toContain('beat');
-    expect(await hidden()).toEqual([]);
-
-    flow.setBuiltinEnabled(f.root, 'beat', false);
-    for (const n of ops) expect(flow.disabledPluginOps(f.root).has(n), n).toBe(true);
-    expect(prereqIDs()).not.toContain('beat');
-    // 不在项目里（am setup 在项目外运行）时照样列出。
+    expect(prereqs.items(prereqs.selection(process.env as Record<string, string>, f.root)).map((i) => i.id)).toContain('beat');
     expect(prereqs.items(prereqs.selection(process.env as Record<string, string>)).map((i) => i.id)).toContain('beat');
-    expect(await hidden()).toEqual(['beat']);
-    flow.setBuiltinEnabled(f.root, 'beat', true);
-    expect(await hidden()).toEqual([]);
-
-    writeTree(f.root, { 'beat.yaml': 'schema: 1\n' });
-    expect(() => flow.setBuiltinEnabled(f.root, 'beat', false)).toThrow('（有 beat.yaml）');
-    fs.rmSync(path.join(f.root, 'beat.yaml'));
-    expect(() => flow.setBuiltinEnabled(f.root, 'beat', false)).not.toThrow();
+    const body = (await studioRequest(f.s, 'GET', '/api/stations')).body as { stations: Record<string, unknown>[] };
+    const beat = body.stations.find((x) => x.id === 'beat');
+    expect(beat).toMatchObject({ builtin: true });
+    expect(beat).not.toHaveProperty('enabled');
+    expect(body).not.toHaveProperty('hidden_pages');
   });
 
   it('serves /api/beat and its two page commands through the plugin', async () => {

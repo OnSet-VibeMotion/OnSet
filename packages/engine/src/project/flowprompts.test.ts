@@ -44,23 +44,20 @@ const stageTitles = (text: string) => [...text.matchAll(/^## (第[一二三四�
 const sha = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 
 describe('new projects compose the prompt of their own flow', () => {
-  // 每种讲解形式一种画幅，外加关掉发布：全文摘要与阶段标题序列都钉住。改了提示词段落就要重写金样，并在差异里看清改了什么。
-  const cases: [string, string, boolean][] = [
-    ['speech', 'vertical-3x4', false],
-    ['speech', 'vertical-3x4', true],
-    ['beat', 'vertical-9x16', false],
-    ['beat', 'vertical-9x16', true],
-    ['song', 'landscape-16x9', false],
+  // 每种讲解形式一种画幅：全文摘要与阶段标题序列都钉住。改了提示词段落就要重写金样，并在差异里看清改了什么。
+  const cases: [string, string][] = [
+    ['speech', 'vertical-3x4'],
+    ['beat', 'vertical-9x16'],
+    ['song', 'landscape-16x9'],
   ];
   const collect = () => {
     const out: Record<string, { sha256: string; bytes: number; stages: string[] }> = {};
-    for (const [delivery, canvas, publishOff] of cases) {
+    for (const [delivery, canvas] of cases) {
       const root = created(delivery, canvas);
-      if (publishOff) flow.setBuiltinEnabled(root, 'publishing', false);
       const got = runPrompt(root, '');
       const text = got.prompt.toString('utf8');
       expect(got.path).toBe('');
-      out[`${delivery}/${canvas}${publishOff ? '/publishing-off' : ''}`] = { sha256: sha(text), bytes: got.prompt.length, stages: stageTitles(text) };
+      out[`${delivery}/${canvas}`] = { sha256: sha(text), bytes: got.prompt.length, stages: stageTitles(text) };
     }
     return out;
   };
@@ -90,18 +87,6 @@ describe('new projects compose the prompt of their own flow', () => {
     expect(got.prompt.toString('utf8')).toBe('CUSTOM');
     expect(got.path).toBe(custom);
     expect(() => runPrompt(root, path.join(root, 'missing.md'))).toThrow('找不到 prompt 文件');
-  });
-
-  it('keeps stage numbers continuous when publishing is off', () => {
-    for (const id of ['speech', 'beat']) {
-      const on = composeFor(id, 'vertical-3x4');
-      const off = composeFor(id, 'vertical-3x4', ['publish']);
-      expect(on).toContain('：刷新发布配置');
-      expect(off).not.toContain('刷新发布配置');
-      expect(off).not.toContain('发布配置生命周期');
-      const numbers = stageTitles(off).map((t) => t.slice(0, t.indexOf('阶段')));
-      expect(numbers, id).toEqual(numbers.map((_, i) => '第' + flow.chineseNumber(i + 1)));
-    }
   });
 
   // song.yaml 由歌曲讲解插件经 Flow.check 核对：写坏了在开工组合提示词时就报。
@@ -356,12 +341,6 @@ describe('prompt content', () => {
   });
 
   // 多角色对话的作业规程是口播流程的附录（项目根有 cast.yaml 时生效），不再是项目里的一份文件。
-  it('drops the cast rules when the multi-role plugin is off', () => {
-    const off = composeFor('speech', 'vertical-9x16', ['cast-rules']);
-    expect(off).not.toContain('多角色叙事作业规程');
-    expect(off).not.toContain('cast.yaml');
-  });
-
   it('carries the cast rules as an appendix of the speech flow', () => {
     has(speech, ['必须同时遵守文末的「附：多角色叙事作业规程」', '## 附：多角色叙事作业规程（cast 模式）', 'dialogue_assemble()'], '口播·多角色');
     lacks(speech, ['PROMPT-CAST-ADDENDUM.md', 'PROMPT-PRODUCTION.md'], '口播');

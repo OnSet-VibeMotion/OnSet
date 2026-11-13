@@ -6,7 +6,6 @@
 //
 // 块的先后由 order 决定，不由登记顺序决定：scene.json 写回、提示词段、校验与指纹项的先后都按它排。
 // timing 是 scene 自己的块，不在表里，固定排在所有扩展块之后。
-import { disabledBuiltins } from '../flow/builtinplugins';
 import { pluginSceneBlocks } from '../plugin/registry';
 import type { FieldType } from './jsondecode';
 import type { Scene } from './scene';
@@ -109,21 +108,10 @@ export function blockExtraInputDirs(s: Scene): string[] {
   });
 }
 
-/**
- * 镜头所在项目用得上的块：宿主的，加上项目没关掉的内置插件登记的。关掉的插件的块仍认得（scene.json 照常解析），
- * 只是不往提示词里写它那一段。
- */
-export function activeSceneBlocks(dir: string): readonly SceneBlock[] {
-  const off = disabledBuiltins(dir);
-  if (off.size === 0) return sceneBlocks();
-  const hidden = new Set(pluginSceneBlocks().filter((p) => off.has(p.owner)).map((p) => p.value));
-  return sceneBlocks().filter((b) => !hidden.has(b));
-}
-
 /** 所有块的提示词段，按 order 拼接。 */
 export function blockPromptSections(s: Scene, resolved: Record<string, string>): string {
   let out = '';
-  for (const block of activeSceneBlocks(s.directory)) {
+  for (const block of sceneBlocks()) {
     if (block.promptSection && blockValue(s, block.key) !== null) out += block.promptSection(s, resolved);
   }
   return out;

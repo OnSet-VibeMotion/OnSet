@@ -16,7 +16,9 @@ import '../home.css';
  */
 
 export interface ProjectSummary {
+  /** 制作走到了顶栏的哪一步（与顶栏同一个来源）与它的名字；没有流程记录时为空。 */
   stage: string;
+  stage_label: string;
   completed: number;
   total: number;
   busy?: string;
@@ -78,15 +80,6 @@ const placeholders = [
   '讲讲复利是怎么回事，配上数据图表',
   '把这周的产品更新做成一条横屏讲解',
 ];
-
-const stageLabels: Record<string, string> = {
-  setup: '准备',
-  plan: '脚本与分镜',
-  render: '渲染',
-  assemble: '合成',
-  review: '复查',
-  publish: '发布',
-};
 
 const LAST_TOOL = 'am-studio:home-tool';
 
@@ -519,7 +512,8 @@ function summaryText(summary?: ProjectSummary): string {
   if (!summary) return '';
   if (summary.missing) return '目录不见了';
   if (summary.busy) return summary.busy;
-  const stage = stageLabels[summary.stage] ?? summary.stage;
+  const stage = summary.stage_label;
+  if (!stage) return summary.total ? `${summary.completed}/${summary.total} 镜头` : '';
   return summary.total ? `${stage} · ${summary.completed}/${summary.total} 镜头` : stage;
 }
 

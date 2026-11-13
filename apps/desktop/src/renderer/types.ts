@@ -9,7 +9,6 @@ export interface Project {
 
 export interface ProjectState {
   project: Project;
-  stage: 'setup' | 'plan' | 'render' | 'assemble' | 'review' | 'publish' | string;
   metadata: Record<string, string>;
   scenes: { total: number; completed: number; stale: number };
   /** 整片制作现在在哪一步（beat / script / storyboard / scene / final / publish）。 */
@@ -647,7 +646,16 @@ export interface ScriptBlock {
   nodes?: ScriptNode[];
 }
 
+/** 一页上的「确认」按钮记到哪个关卡（后端按当前流程路线上这一页的审核关卡给出）。 */
+export interface PageGate {
+  id: string;
+  /** 内置插件登记的确认时发给 AI 的话；宿主的关卡为空，查 gateMessages。 */
+  confirm?: string;
+}
+
 export interface ScriptResponse {
+  /** 这一页的确认按钮记到的关卡；这个流程的路线上没有为 null。 */
+  gate?: PageGate | null;
   path: string;
   content: string;
   final: boolean;
@@ -775,6 +783,8 @@ export interface StoryboardScene {
 }
 
 export interface StoryboardResponse {
+  /** 这一页的确认按钮记到的关卡（口播 gate-storyboard，卡点 gate-beat-storyboard）；路线上没有为 null。 */
+  gate?: PageGate | null;
   plan_path: string;
   updated_at?: string;
   parse_error?: string;
@@ -888,14 +898,8 @@ export interface StationInfo {
   description: string;
   /** 随 ArticleToMotion 下发的内置插件。 */
   builtin: boolean;
-  /** 这个项目里打开着（内置插件可以关掉）。 */
-  enabled: boolean;
-  /** 内置插件：项目在用它的凭据文件（例如 song.yaml），有就不能关。 */
-  busy: string;
   /** 内置插件在 apply 里登记的东西（第三方站为 null）：设置页「详情」照实列出。 */
   contents: BuiltinContents | null;
-  /** 内置插件认领了渲染技能：开关会让已渲染的镜头要重渲染。 */
-  affects_render: boolean;
   source: string;
   commit: string;
   linked: boolean;
@@ -968,6 +972,4 @@ export interface StationsResponse {
   problems: string[];
   /** 项目选用的第三方流程（顶栏第一步换成它的页面）。 */
   active_flow?: { station: string; name: string; first_tab: string } | null;
-  /** 内置插件的页面里这个项目用不上的（插件关了、也没有别的站接手）：不显示这一页与同名的步骤。 */
-  hidden_pages?: string[];
 }

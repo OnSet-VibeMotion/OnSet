@@ -39,3 +39,22 @@ test('a directory without a flow record says so on the route page', async ({ pag
   await expect(page.locator('#progress-flow-error')).toContainText('这个目录没有流程记录');
   await expect(page.locator('#progress-flow-error')).toContainText('不是用这一版 ArticleToMotion 新建的项目');
 });
+
+test('confirming the storyboard of a beat project records the beat storyboard gate', async ({ page, project }) => {
+  fs.writeFileSync(path.join(project.path, 'beat.yaml'), 'schema: 1\n');
+  recordFlow(project, 'beat');
+  // 卡点的分镜计划（按小节）：分镜关卡绑定的是它。
+  fs.mkdirSync(path.join(project.path, 'production', 'beat'), { recursive: true });
+  fs.writeFileSync(path.join(project.path, 'production', 'beat', 'plan.json'), JSON.stringify({ schema: 1, scenes: [{ id: 'scene-001', bars: 2 }] }));
+  await openProject(page, project);
+  await page.locator('nav.steps [data-tab="storyboard"]').click();
+  await page.locator('#storyboard-confirm').click();
+  await expect(page.locator('.message.user').last()).toContainText('分镜我看过了，没问题，开始渲染。');
+  await expect.poll(() => {
+    const file = path.join(project.path, 'production', 'studio', 'gates.json');
+    return fs.existsSync(file) ? Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).gates) : [];
+  }).toEqual(['gate-beat-storyboard']);
+  // 路线页上那一站显示已确认。
+  await page.locator('#progress-open').click();
+  await expect(page.locator('[data-station="gate-beat-storyboard"]')).toContainText('你在');
+});

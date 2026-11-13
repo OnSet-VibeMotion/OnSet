@@ -14,7 +14,7 @@ export interface RunPromptResult {
 
 /**
  * 按项目的流程组合出整片制作的提示词（flow.composeFlowPrompt）：流程只来自锁文件里的记录（没有记录直接报错），
- * 画幅取记录里的，关掉的内置插件的站不参与，第三方站的阶段补充与说明按组合规则插进去。项目里不放提示词文件。
+ * 画幅取记录里的，第三方站的阶段补充与说明按组合规则插进去。项目里不放提示词文件。
  */
 export function composeProjectPrompt(root: string): { text: string; flow: flow.FlowID; name: string } {
   const rec = flow.flowRecord(root);
@@ -26,7 +26,7 @@ export function composeProjectPrompt(root: string): { text: string; flow: flow.F
   // detectFlow 没报错就一定有记录；画幅不认得时说清楚是哪一段写错了。
   const p = preset.byID(rec?.canvas ?? '');
   if (!p) throw new flow.MissingFlowRecordError(`${flow.LockFile} 的 production.canvas 不是认得的画幅：${rec?.canvas ?? ''}（可选：${preset.ids().join('、')}）`);
-  const text = flow.composeFlowPrompt({ flow: id, stations: extras.stations, disabled: new Set(flow.disabledPluginStations(root)), canvas: (t) => substituteCanvas(p, t) });
+  const text = flow.composeFlowPrompt({ flow: id, stations: extras.stations, canvas: (t) => substituteCanvas(p, t) });
   return { text, flow: id, name: flow.flow(id, flow.projectExtras(root)).name };
 }
 

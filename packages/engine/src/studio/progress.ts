@@ -416,6 +416,29 @@ export function stationDefs(id: flow.FlowID, extras: readonly flow.ExtraStation[
   });
 }
 
+/** 一页上的「确认」按钮记到哪个关卡：关卡 id 与内置插件登记的确认时发给 AI 的话（宿主关卡的话在界面里）。 */
+export interface PageGate {
+  id: string;
+  confirm?: string;
+}
+
+/**
+ * 这个项目当前流程的路线上，page 是这一页的第一个审核关卡（口播的分镜页是 gate-storyboard，卡点的是
+ * gate-beat-storyboard）；没有为 null。界面的确认按钮按它记，不写死关卡 id。
+ */
+export function pageGate(root: string, page: string): PageGate | null {
+  const extras = flow.projectExtras(root);
+  let id: flow.FlowID;
+  try {
+    id = flow.detectFlow(root, extras);
+  } catch {
+    return null;
+  }
+  const def = stationDefs(id, extras).find((d) => d.gate && d.page === page);
+  if (!def) return null;
+  return def.guide?.confirm ? { id: def.id, confirm: def.guide.confirm } : { id: def.id };
+}
+
 // ---------------------------------------------------------------------------
 // 文件归站
 

@@ -1,17 +1,16 @@
 /**
- * 内置插件：ArticleToMotion 自己的可选功能也写成插件，清单（开关、名字、说明）在 assets/plugins/<id>/am-station.json，
- * 代码在 packages/engine/src/plugins/<id>/ 的 apply 里登记（站、操作、渲染技能、镜头扩展块……）。项目关掉一个内置插件，
- * 它登记的东西就都不在：路线上没有它的站、工具列表里没有它的操作、渲染器拿不到它的技能。
+ * 内置插件：ArticleToMotion 自己的功能也写成插件，清单（名字、说明）在 assets/plugins/<id>/am-station.json，
+ * 代码在 packages/engine/src/plugins/<id>/ 的 apply 里登记（站、操作、渲染技能、镜头扩展块……）。内置插件常开，
+ * 没有关掉的办法：它登记的东西对每个项目都在，一个流程用不用得上由流程自己的声明决定。
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { assetsBase } from '../assets';
 import { compareBytes } from '../gojson';
 import { checkFiles } from './fetch';
-import { lockRootOf, readLock, writeLock, type LoadedStation, type Lock } from './lock';
+import type { LoadedStation } from './lock';
 import { ManifestFile } from './manifest';
 import { parseManifest } from './parse';
-import * as plugin from '../plugin';
 import { pluginStationOwners } from './registered';
 
 /** 内置插件的目录：assets/plugins/<id>/am-station.json，随客户端下发（extraResources 带着整棵 assets）。 */
@@ -54,61 +53,6 @@ export function builtinPlugins(): LoadedStation[] {
 /** 内置插件的 id（第三方站不能重名）。 */
 export function builtinPluginIDs(): string[] {
   return builtinPlugins().map((p) => p.manifest.id);
-}
-
-function disabledIn(root: string): Set<string> {
-  let lock: Lock;
-  try {
-    lock = readLock(root);
-  } catch {
-    return new Set();
-  }
-  return new Set(lock.disabled ?? []);
-}
-
-/** 这个项目关掉的内置插件的 id。dir 是项目里的任意目录（例如镜头目录）：向上找有锁文件的项目根，没有锁文件就一个都没关。 */
-export function disabledBuiltins(dir: string): Set<string> {
-  const root = lockRootOf(dir);
-  return root === '' ? new Set() : disabledIn(root);
-}
-
-/** 这个项目关掉的内置插件登记的操作：工具服务据此把它们从工具列表里拿掉。 */
-export function disabledPluginOps(root: string): Set<string> {
-  const disabled = disabledIn(root);
-  return new Set(plugin.pluginOps().filter((o) => disabled.has(o.owner)).map((o) => o.value.name));
-}
-
-/**
- * 打开或关掉这个项目的一个内置插件。项目正在用它（插件登记的在用判断，例如歌曲讲解看 song.yaml）时不许关：
- * 关了它，正在做的片子就少了工具。
- */
-export function setBuiltinEnabled(root: string, id: string, enabled: boolean): Lock {
-  const found = builtinPlugins().find((p) => p.manifest.id === id);
-  if (!found) throw new Error(`没有内置插件 ${id}`);
-  if (!enabled) {
-    const busy = inUse(root, id);
-    if (busy !== '') throw new Error(`这个项目正在用「${found.manifest.name}」（有 ${busy}），不能关掉`);
-  }
-  const lock = readLock(root);
-  const disabled = new Set(lock.disabled ?? []);
-  if (enabled) disabled.delete(id);
-  else disabled.add(id);
-  const next: Lock = { ...lock };
-  if (disabled.size > 0) next.disabled = [...disabled].sort(compareBytes);
-  else delete next.disabled;
-  writeLock(root, next);
-  return next;
-}
-
-/** 项目在用这个内置插件的凭据（插件登记的在用判断给出的项目内路径）；没在用为空。 */
-export function inUse(root: string, id: string): string {
-  return plugin.pluginInUse(id, root);
-}
-
-/** 这个项目关掉的内置插件登记的站：路线上用空站顶替，制作提示词里它们的段落不参与。 */
-export function disabledPluginStations(root: string): string[] {
-  const disabled = disabledIn(root);
-  return plugin.pluginStations().filter((s) => disabled.has(s.owner)).map((s) => s.value.id);
 }
 
 /** 自带的站归哪个内置插件（apply 登记的；没有归属的不在表里）。生成制作提示词时据此加标记。 */

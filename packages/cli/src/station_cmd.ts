@@ -180,22 +180,3 @@ id 留空回到自带的流程（口播或卡点）。去掉那个站时也会�
   },
 });
 
-defineOp({
-  name: 'station_builtin',
-  cli: ['station', 'builtin'],
-  summary: '在这个项目里打开或关掉一个内置插件',
-  description: `内置插件随 ArticleToMotion 下发、默认打开（例如歌曲讲解）。关掉后它认领的操作不再出现在编排工具的工具列表里，它的说明也不再接进制作提示词。
-写进项目的 ${flow.LockFile}。项目正在用它时（例如有 song.yaml）不能关。`,
-  examples: ['station_builtin({"id": "song", "enabled": false})'],
-  scopes: ['cli'],
-  params: {
-    id: { type: 'string', description: '内置插件的 id', required: true, positional: 0 },
-    enabled: { type: 'boolean', description: '打开（true）或关掉（false）' },
-    project_root: projectRoot,
-  },
-  run: (p, { out }) => {
-    flow.setBuiltinEnabled(path.resolve(str(p.project_root)), str(p.id), p.enabled === true);
-    out.write(`内置插件 ${str(p.id)} 已${p.enabled === true ? '打开' : '关掉'}\n`);
-    return { data: { id: str(p.id), enabled: p.enabled === true } };
-  },
-});

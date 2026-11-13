@@ -35,6 +35,7 @@ export interface SceneData {
   duration_seconds: number;
   start_frame: number | null;
   safe_area: Record<string, unknown>;
+  /** frame.md 的字幕版式约束（字号范围、最大宽度、行数、每行字数、行高、断句规则），原样搬运；没有配色，配色由镜头定。 */
   subtitles: unknown;
   cues: LocalCue[];
   phrases: LocalPhrase[];

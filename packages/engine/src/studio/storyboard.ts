@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as scene from '../scene';
 import { writeError, writeJSON } from './http';
+import { pageGate } from './progress';
 import { discoverScenes } from './scenes';
 import { localRFC3339 } from './script';
 import type { Server } from './studio';
@@ -68,7 +69,7 @@ export function storyboardAPI(s: Server, request: Request): Response {
   } catch (err) {
     return writeError(404, 'no_project', (err as Error).message);
   }
-  return writeJSON(200, readStoryboard(root));
+  return writeJSON(200, { ...readStoryboard(root), gate: pageGate(root, 'storyboard') });
 }
 
 function readText(file: string): string | null {

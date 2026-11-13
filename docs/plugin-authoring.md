@@ -97,12 +97,12 @@ echo 'am-result {"url": "https://example.com/v/1"}'
 | `slots` | 实验性 | 把页面嵌进自带页面：`[{"at": "publish", "page": "mini", "height": 140}]`。`at` 取 `script`、`storyboard`、`scene`、`final`、`publish`、`progress`；`height` 80–1200，缺省 240 |
 | `commands` | 实验性 | 对话框的斜杠命令：`[{"name": "publish", "description": "打开发布面板", "page": "dashboard"}]`，`page`（打开本插件的页面）与 `prompt`（填进输入框的一段话）二选一 |
 | `inserts` | 实验性 | 插进制作说明某个阶段末尾的补充：`[{"stage": "render", "file": "prompts/render.md"}]`。`stage` 取 `intake`、`script`、`voice`、`timeline`、`plan`、`render`、`visual-qc`、`assemble`、`sound`、`mix`、`review`、`publish`、`wrapup` |
-| `flow` | 实验性 | 整套流程（新片型）：`{"name": "快剪", "stations": ["intake", "render", "my-publisher"], "first_page": "script", "prompt": "prompts/flow.md"}`。`stations` 写自带站的 id 与本插件的 id；`first_page` 取自带流程的第一步页（口播是 `script`，打开了「音乐卡点」的是 `beat`）或本插件页面的 id；用户在设置页选用后，制作路线、顶栏第一步与各阶段说明都换成它的，公共约定照旧。新建时记了流程的项目，`stations` 里写的自带站会带上自带站的那几段说明（引用了你的流程里没有的阶段时写成那一步的标题），你的 `prompt` 只需要写你自己那几站 |
+| `flow` | 实验性 | 整套流程（新片型）：`{"name": "快剪", "stations": ["intake", "render", "my-publisher"], "first_page": "script", "prompt": "prompts/flow.md"}`。`stations` 写自带站的 id 与本插件的 id；`first_page` 取自带流程的第一步页（口播是 `script`，卡点是 `beat`）或本插件页面的 id；用户在设置页选用后，制作路线、顶栏第一步与各阶段说明都换成它的，公共约定照旧。新建时记了流程的项目，`stations` 里写的自带站会带上自带站的那几段说明（引用了你的流程里没有的阶段时写成那一步的标题），你的 `prompt` 只需要写你自己那几站 |
 | `provides` | 实验性 | 提供配音或字幕对齐：`{"tts": {"name": "某配音", "op": "speak", "timestamps": "none"}, "align": {"name": "某对齐", "op": "align"}}`。`timestamps` 取 `none`、`sentence`、`word`；项目把 `TTS_PROVIDER` / `ALIGN_PROVIDER` 设成 `x:<插件 id>` 时 AI 用这条操作 |
 | `renderer_skills` | 实验性 | 给渲染镜头的技能：`[{"name": "caption-kit", "dir": "skills/caption-kit", "summary": "字幕卡片的写法", "scenes": "opt-in"}]`。`dir` 下必须有 `SKILL.md`；`scenes: all` 每个镜头都带（加上后已渲染的镜头要重渲染），`opt-in`（缺省）只给 `scene.json` 的 `plugin_skills` 点名的镜头 |
 | `film_styles` | 实验性 | 整片风格库：`{"name": "我的风格库", "dir": "styles"}`。`dir` 下每个子目录是一种风格（`STYLE.md` 必需，`SKILL.md`、`poster.jpg`、`style.json` 可选） |
 
-ArticleToMotion 自己的内置功能（音乐卡点、歌曲讲解、多角色对话、发布……）也用这份清单（只写名字与说明，作开关用），它们带来的代码在 ArticleToMotion 进程里登记，不经清单，所以没有给内置插件专用的字段。音乐卡点也是这样一个内置插件：项目里没有 `beat.yaml` 时可以在设置页关掉，关掉后它的操作、节拍页与安装页的「音乐卡点」都不在。
+ArticleToMotion 自己的内置功能（音乐卡点、歌曲讲解、多角色对话、发布……）也用这份清单（只写名字与说明），它们带来的代码在 ArticleToMotion 进程里登记，不经清单，所以没有给内置插件专用的字段。内置功能常开、不能关：它们的工具与说明对每个项目都在，一个项目用不用得上由片型（流程）决定，例如口播项目的制作说明里没有卡点的那几段。
 
 写了不认识的字段直接报错（「有不认识的字段」）。所有路径都是相对路径：插件目录里的（`prompt`、命令、页面、技能、风格库）不能跑出插件目录；项目里的（`outputs`、`gate_files`、`state.file`、`produces`、`reads`）不能是绝对路径、不能有 `..`，也不能是 ArticleToMotion 自己的文件（`production/studio/`、`production/usage/`、`production/memory-exams/`、`.agents/`、`.env`）。
 
@@ -275,7 +275,7 @@ ArticleToMotion 自己的内置功能（音乐卡点、歌曲讲解、多角色�
 }
 ```
 
-另有 `flow`（项目选用了哪个插件带来的流程）、`disabled`（关掉的内置插件）与 `production`（新建项目时记下的片型、提示词组合版本、画幅与制作说明的摘要；有它的项目，制作说明在运行期按流程组合，你的 `inserts` 插在那个阶段末尾、`prompt` 接在最后）。
+另有 `flow`（项目选用了哪个插件带来的流程）与 `production`（新建项目时记下的片型、提示词组合版本、画幅与制作说明的摘要；有它的项目，制作说明在运行期按流程组合，你的 `inserts` 插在那个阶段末尾、`prompt` 接在最后）。
 
 来源有三种写法：
 

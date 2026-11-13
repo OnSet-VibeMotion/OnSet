@@ -19,6 +19,7 @@ import { computeStations } from '../studio/progress';
 import { discoverScenes } from '../studio/scenes';
 import { newSessionFixture, studioRequest } from '../studio/testsupport';
 import * as studioview from '../studioview';
+import * as plugin from './index';
 import { appliedPluginIDs, pluginStations, registerBuiltin, type BuiltinPlugin } from './index';
 
 const cleanups: (() => void)[] = [];
@@ -121,7 +122,7 @@ describe('builtin plugin apply', () => {
     const order = flow.flowPrompt('speech');
     expect(order.slice(order.indexOf('review/stage'), order.indexOf('review/stage') + 3)).toEqual(['review/stage', 'translate/stage', 'publish/stage']);
     expect(flow.allStageTitles().translate).toBe('翻译字幕');
-    const composed = flow.composeFlowPrompt({ flow: 'speech', stations: [], disabled: new Set(), canvas: (t) => t });
+    const composed = flow.composeFlowPrompt({ flow: 'speech', stations: [], canvas: (t) => t });
     expect(composed).toContain('## 第十二阶段：翻译字幕\n\n在第十一阶段之后把字幕译成英文。');
     expect(composed).toContain('## 第十三阶段：刷新发布配置');
   });
@@ -142,11 +143,10 @@ describe('builtin plugin apply', () => {
     expect(r.body.message).toBe('找不到 production/translate/en.srt');
   });
 
-  it('goes away with the project switch and with its registration', () => {
+  it('is on every project\'s route and goes away with its registration', () => {
     register();
     const root = tempDir();
-    fs.writeFileSync(path.join(root, flow.LockFile), JSON.stringify({ version: 1, stations: [], disabled: ['fake-translate'] }));
-    expect(flow.route('speech', flow.projectExtras(root)).some((r) => r.node.id === 'translate')).toBe(false);
+    expect(flow.route('speech', flow.projectExtras(root)).some((r) => r.node.id === 'translate')).toBe(true);
     expect(flow.route('speech', flow.projectExtras(root)).some((r) => r.node.id === 'publish')).toBe(true);
     cleanups.pop()!();
     expect(pluginStations().some((s) => s.value.id === 'translate')).toBe(false);
@@ -240,24 +240,16 @@ describe('a builtin plugin with a skill, a scene block and a narration', () => {
     expect(scene.sceneToJSON(s)).toMatchObject({ chorus: { voices: 4 } });
     expect(memory.features(s)).toContain('chorus');
 
-    // 新建项目：叙事模式与新建选项来自登记表，选中时写出它的初始文件；项目在用时不许关。
+    // 新建项目：叙事模式与新建选项来自登记表，选中时写出它的初始文件，之后算项目在用它（新建时的互斥据此判断）。
     expect(projectinit.narrations().some((n) => n.id === 'chorus' && n.owner === 'fake-chorus')).toBe(true);
     expect(projectinit.presets().some((p) => p.id === 'chorus')).toBe(true);
     const created = path.join(tempDir(), 'p');
     projectinit.create({ target: created, canvas: preset.defaultPreset().id, delivery: 'speech', narration: 'chorus' });
     expect(fs.readFileSync(path.join(created, 'chorus.yaml'), 'utf8')).toBe('voices: 4\n');
-    expect(flow.inUse(created, 'fake-chorus')).toBe('chorus.yaml');
+    expect(plugin.pluginInUse('fake-chorus', created)).toBe('chorus.yaml');
     const f = newSessionFixture();
     const styles = await studioRequest(f.s, 'GET', '/api/styles');
     expect((styles.body.modes as { id: string }[]).map((m) => m.id)).toContain('chorus');
-
-    // 项目关掉它：技能不给渲染器、提示词里没有技能段与块的那一段。
-    fs.writeFileSync(path.join(root, flow.LockFile), JSON.stringify({ version: 1, stations: [], disabled: ['fake-chorus'] }));
-    const off = scene.resolveAllSkills('claude', dir, {}, s);
-    expect(off['chorus-kit']).toBeUndefined();
-    const offPrompt = scene.buildPrompt(s, off);
-    expect(offPrompt).not.toContain('合唱技能');
-    expect(offPrompt).not.toContain('合唱（强制）');
   });
 });
 

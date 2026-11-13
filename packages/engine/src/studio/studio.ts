@@ -54,6 +54,7 @@ import { TaskState, loadPersistedTasks, runStudioOp, runWriteTask, taskFeatureAP
 import { uploadsAPI } from './uploads';
 import * as flow from '../flow';
 import * as plugin from '../plugin';
+import * as studioview from '../studioview';
 
 export interface Config {
   projectPath?: string;
@@ -89,7 +90,9 @@ interface Registry {
 
 /** 最近项目列表里每个项目的一行状态：做到哪一步、出了几个镜头、是否正忙。 */
 export interface ProjectSummary {
+  /** 制作走到了顶栏的哪一步（步骤 id）与它的名字。 */
   stage: string;
+  stage_label: string;
   completed: number;
   total: number;
   busy?: string;
@@ -97,7 +100,7 @@ export interface ProjectSummary {
 }
 
 function summaryJSON(s: ProjectSummary): Record<string, unknown> {
-  return { stage: s.stage, completed: s.completed, total: s.total, busy: s.busy || undefined, missing: s.missing || undefined };
+  return { stage: s.stage, stage_label: s.stage_label, completed: s.completed, total: s.total, busy: s.busy || undefined, missing: s.missing || undefined };
 }
 
 /** summaryLimit 是首页侧栏要摘要的最近项目数：每个摘要要扫一遍项目目录。 */
@@ -481,7 +484,7 @@ export class Server {
     recent.forEach((p, i) => {
       if (i < summaryLimit) summaries[p.id] = summaryJSON(this.summarize(p));
       // 只查目录还在不在，便宜；完整摘要只给最近的几个。
-      else if (!dirExists(p.path)) summaries[p.id] = summaryJSON({ stage: '', completed: 0, total: 0, missing: true });
+      else if (!dirExists(p.path)) summaries[p.id] = summaryJSON({ stage: '', stage_label: '', completed: 0, total: 0, missing: true });
     });
     return writeJSON(
       200,
@@ -495,9 +498,10 @@ export class Server {
   }
 
   private summarize(p: Project): ProjectSummary {
-    if (!dirExists(p.path)) return { stage: '', completed: 0, total: 0, missing: true };
+    if (!dirExists(p.path)) return { stage: '', stage_label: '', completed: 0, total: 0, missing: true };
     const scenes = discoverScenes(p.path);
-    const summary: ProjectSummary = { stage: stageFor(p.path, scenes), completed: 0, total: scenes.length, busy: this.busyHolder(p.path) || undefined };
+    const at = stageFor(p.path, scenes);
+    const summary: ProjectSummary = { stage: at.stage, stage_label: at.label, completed: 0, total: scenes.length, busy: this.busyHolder(p.path) || undefined };
     for (const sc of scenes) if (sc.exists && !sc.stale) summary.completed++;
     return summary;
   }
@@ -819,7 +823,6 @@ export function inspectProject(p: Project): Record<string, unknown> {
   }
   return goMap({
     project: projectJSON(p),
-    stage: stageFor(p.path, scenes),
     ...flowState,
     // 客户端有哪些页（宿主的加上内置插件登记的）：界面只列这里有的，组件仍在界面里按 id 对上。
     pages: viewPages().map((pg) => goMap({ id: pg.id, label: pg.label })),
@@ -886,28 +889,16 @@ export function stepOf(root: string, scenes: SceneSummary[]): { step?: string; s
 }
 
 /**
- * stageFor 按项目里已有的产物推断制作进度，不分流程（处理方案 treatment.md 是各流程分镜之前都要写的）。只看文件是否存在，
- * 不读内容：它是网页上的一行提示，判断错了也不影响任何流程。
+ * stageFor 是首页最近项目那一行的阶段：与顶栏同一个来源（stepOf：编排标的步骤，否则制作路线当前一站所在的步骤），
+ * 不另看文件。没有流程记录的目录排不出路线，为空。
  */
-export function stageFor(root: string, scenes: SceneSummary[]): string {
-  const exists = (...parts: string[]) => fileExists(path.join(root, ...parts));
-  const final = exists('final.mp4') || exists('production', 'final.mp4');
-  let rendered = scenes.length > 0;
-  for (const sc of scenes) rendered = rendered && sc.exists;
-  if (final && exists('publish.md')) return 'publish';
-  if (final) return 'review';
-  if (rendered) return 'assemble';
-  if (scenes.length > 0) return 'render';
-  if (
-    exists('production', 'script-final.md') ||
-    exists('production', 'audio', 'voice.srt') ||
-    exists('production', 'scene-plan.json') ||
-    exists('production', 'treatment.md') ||
-    exists('script.md') ||
-    exists('SCRIPT.md') ||
-    exists('transcription.srt')
-  ) {
-    return 'plan';
+export function stageFor(root: string, scenes: SceneSummary[]): { stage: string; label: string } {
+  let step: string;
+  try {
+    step = stepOf(root, scenes).step ?? '';
+  } catch (err) {
+    if (err instanceof flow.MissingFlowRecordError) return { stage: '', label: '' };
+    throw err;
   }
-  return 'setup';
+  return { stage: step, label: studioview.steps().find((x) => x.id === step)?.label ?? step };
 }

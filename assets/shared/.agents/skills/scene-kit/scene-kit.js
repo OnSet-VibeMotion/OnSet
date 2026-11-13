@@ -441,9 +441,12 @@
     var minFont = Math.min(fontRange.min || maxFont, maxFont);
     var lhRange = tokens.line_height || {};
     var lineHeight = opts.lineHeight || lhRange.max || lhRange.min || 1.4;
-    var pad = tokens.padding_px || {};
+    // frame.md 的字幕规范只有版式上的技术约束；配色、内边距、圆角由镜头自己定（options），
+    // 不给时文字跟随整片配色的 ink（分镜计划定了 look 时），否则继承根节点，没有底框。
+    var pad = opts.padding || {};
     var padV = pad.vertical || 0;
     var padH = pad.horizontal || 0;
+    var look = s.look || null;
     var boxWidth = Math.min(tokens.max_width_px || area.width, area.width);
     var cfg = {
       fontSize: maxFont,
@@ -511,9 +514,10 @@
     bs.boxSizing = 'border-box';
     bs.maxWidth = px(boxWidth);
     bs.padding = px(padV) + ' ' + px(padH);
-    bs.borderRadius = px(tokens.radius_px || 0);
-    bs.background = tokens.background || 'transparent';
-    bs.color = tokens.text_color || '#FFFFFF';
+    bs.borderRadius = px(opts.radius || 0);
+    bs.background = opts.background || 'transparent';
+    var color = opts.color || (look && look.ink) || '';
+    if (color) bs.color = color;
     bs.lineHeight = String(lineHeight);
     bs.textAlign = 'center';
     if (opts.fontFamily) bs.fontFamily = opts.fontFamily;

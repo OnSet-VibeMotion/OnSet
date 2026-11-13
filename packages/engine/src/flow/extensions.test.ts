@@ -98,7 +98,7 @@ describe('stage inserts', () => {
     const stations = loadProjectStations(project()).stations.map((st) =>
       st.builtin ? st : { ...st, manifest: { ...st.manifest, inserts: st.manifest.inserts.map((ins) => ({ ...ins, stage: 'voice' })) } },
     );
-    const out = composeFlowPrompt({ flow: 'beat', stations, disabled: new Set(), canvas: (t) => t.replaceAll('{{CANVAS}}', '1080×1440').replaceAll('{{ORIENTATION}}', '竖屏') });
+    const out = composeFlowPrompt({ flow: 'beat', stations, canvas: (t) => t.replaceAll('{{CANVAS}}', '1080×1440').replaceAll('{{ORIENTATION}}', '竖屏') });
     expect(out).toContain('对「TTS 和断句校对」阶段的补充');
     expect(out.indexOf('对「TTS 和断句校对」阶段的补充')).toBeGreaterThan(out.indexOf('## 第十阶段'));
   });

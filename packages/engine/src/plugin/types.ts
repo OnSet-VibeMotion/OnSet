@@ -241,7 +241,6 @@ export interface PluginOpGroup {
 /**
  * 一项前置资源（要联网准备的东西，见 prereqs）。字段与 prereqs.Item 相同；later 是客户端安装页「以后可能用到」里
  * 的一组（体积大、用到才装）：同一 group 的几项合成一张卡片，icon 是界面图标名（不认识时用缺省图标）。
- * 项目关掉这个插件时，这个项目的安装页与 am setup 不列它。
  */
 export interface PluginPrereq extends PrereqItem {
   later?: { title: string; desc: string; icon?: string };
@@ -280,7 +279,7 @@ export interface PluginCommand {
 }
 
 export interface PluginContext {
-  /** 插件 id，与 assets/plugins/<id>/am-station.json 的 id 相同（开关、名字、说明都在那份清单里）。 */
+  /** 插件 id，与 assets/plugins/<id>/am-station.json 的 id 相同（名字、说明都在那份清单里）。 */
   readonly id: string;
   /** 插件目录（缺省 assets/plugins/<id>/），提示词段落的 file 相对它。 */
   readonly dir: string;
@@ -290,14 +289,14 @@ export interface PluginContext {
   page(p: PluginPage): void;
   route(r: PluginRoute): void;
   validator(v: PluginValidator): void;
-  /** 渲染技能：技能目录要在内置资产树里（skilltree 门禁查）。项目关掉插件时不给渲染器、提示词里也没有它。 */
+  /** 渲染技能：技能目录要在内置资产树里（skilltree 门禁查）。每个镜头都带。 */
   skill(desc: SkillDescriptor): void;
   /** 镜头扩展块（scene.json 里功能自己的字段）。 */
   sceneBlock<T>(block: SceneBlock<T>): void;
   narration(n: PluginNarration): void;
   /** 新建对话框的选项卡片。 */
   preset(p: PluginPreset): void;
-  /** 项目在用这个插件的凭据（项目里的相对路径）；没在用为空串。设了它，项目在用时不许关掉。 */
+  /** 项目在用这个插件的凭据（项目里的相对路径）；没在用为空串。新建项目时的互斥（Flow.excludes.plugins）据此判断目标目录。 */
   inUse(judge: (root: string) => string): void;
   renderCheck(c: PluginRenderCheck): void;
   opGroup(g: PluginOpGroup): void;
