@@ -97,7 +97,7 @@ function plainScene(extra: string): string {
   writeFile(path.join(dir, 'frame.md'), frameWithCanvas(1080, 1920));
   writeFile(
     path.join(dir, 'scene.json'),
-    `{"id":"scene-001","duration_seconds":4,"output":"scene-001.mp4","transcript":"transcript.srt","text":"一句话","style_guide":"frame.md"${extra}}`,
+    `{"id":"scene-001","duration_seconds":4,"output":"scene-001.mp4","transcript":"transcript.srt","text":"一句话"${extra}}`,
   );
   return dir;
 }
@@ -142,7 +142,7 @@ function songScene(): Scene {
   };
   writeFile(
     path.join(dir, 'scene.json'),
-    JSON.stringify({ id: 'scene-001', duration_seconds: duration, output: 'out.mp4', transcript: 'transcript.srt', text: '歌词', style_guide: 'frame.md', song: cue }),
+    JSON.stringify({ id: 'scene-001', duration_seconds: duration, output: 'out.mp4', transcript: 'transcript.srt', text: '歌词', song: cue }),
   );
   return load(dir);
 }
@@ -184,7 +184,7 @@ function beatScene(): Scene {
   };
   writeFile(
     path.join(dir, 'scene.json'),
-    JSON.stringify({ id: 'scene-001', duration_seconds: segment.frames / 30, output: 'out.mp4', transcript: 'transcript.srt', text: '卡点', style_guide: 'frame.md', beat: cue }),
+    JSON.stringify({ id: 'scene-001', duration_seconds: segment.frames / 30, output: 'out.mp4', transcript: 'transcript.srt', text: '卡点', beat: cue }),
   );
   return load(dir);
 }

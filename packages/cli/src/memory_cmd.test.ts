@@ -32,7 +32,7 @@ describe('memory', () => {
     fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\nMEMORY=on\n');
     const dir = writeScene(
       project,
-      '{"id":"scene-001","duration_seconds":1.0,"output":"out.mp4","transcript":"transcription.srt","text":"中文内容","style_guide":"frame.md"}',
+      '{"id":"scene-001","duration_seconds":1.0,"output":"out.mp4","transcript":"transcription.srt","text":"中文内容"}',
     );
 
     const store = memory.open(memoryDir);
@@ -141,7 +141,7 @@ describe('memory', () => {
     fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\nMEMORY=off\n');
     writeScene(
       project,
-      '{"id":"scene-001","duration_seconds":1.0,"output":"out.mp4","transcript":"transcription.srt","text":"中文","style_guide":"frame.md"}',
+      '{"id":"scene-001","duration_seconds":1.0,"output":"out.mp4","transcript":"transcription.srt","text":"中文"}',
     );
     process.chdir(project);
     setenv('PATH', binDir + path.delimiter + path.dirname(lookPath('ffmpeg')));

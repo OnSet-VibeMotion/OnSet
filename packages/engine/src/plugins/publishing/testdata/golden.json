@@ -117,15 +117,6 @@
         },
         {
           "prefix": ".agents/am-film-styles/"
-        },
-        {
-          "prefix": "assets/style-guide/"
-        },
-        {
-          "path": "frame.md"
-        },
-        {
-          "path": "docs/style-brief.md"
         }
       ]
     },
@@ -345,15 +336,6 @@
         },
         {
           "prefix": ".agents/am-film-styles/"
-        },
-        {
-          "prefix": "assets/style-guide/"
-        },
-        {
-          "path": "frame.md"
-        },
-        {
-          "path": "docs/style-brief.md"
         }
       ]
     },
@@ -617,15 +599,6 @@
         },
         {
           "prefix": ".agents/am-film-styles/"
-        },
-        {
-          "prefix": "assets/style-guide/"
-        },
-        {
-          "path": "frame.md"
-        },
-        {
-          "path": "docs/style-brief.md"
         }
       ]
     },
@@ -830,15 +803,6 @@
         },
         {
           "prefix": ".agents/am-film-styles/"
-        },
-        {
-          "prefix": "assets/style-guide/"
-        },
-        {
-          "path": "frame.md"
-        },
-        {
-          "path": "docs/style-brief.md"
         }
       ]
     },

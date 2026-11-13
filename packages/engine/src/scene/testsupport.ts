@@ -26,8 +26,10 @@ export function tempDir(): string {
   return dir;
 }
 
+/** 镜头目录里放一份 3:4 的 frame.md（画幅只从 frame.md 取，没有它镜头读不出画幅）。 */
 export function writeScene(payload: string): string {
   const dir = tempDir();
+  fs.writeFileSync(path.join(dir, 'frame.md'), frameWithCanvas(1080, 1440));
   fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\ntest\n');
   fs.writeFileSync(path.join(dir, 'scene.json'), payload);
   return dir;
@@ -42,7 +44,7 @@ export function quote(value: string): string {
   return '"' + value.replaceAll('\\', '\\\\').replaceAll('"', '\\"') + '"';
 }
 
-/** 最小视觉规范：buildPrompt 只读 canvas 这一段。 */
+/** 最小 frame.md：buildPrompt 只读 canvas 这一段。 */
 export function frameWithCanvas(width: number, height: number): string {
   return `---\ncanvas:\n  width_px: ${width}\n  height_px: ${height}\n  fps: 30\n  orientation: vertical\n---\n正文\n`;
 }
@@ -116,7 +118,6 @@ export const dataSRT = `1
 `;
 
 export const dataFrame = `---
-style_id: test-style
 canvas:
   width_px: 1080
   height_px: 1920
@@ -145,7 +146,7 @@ export function dataScene(): Scene {
   fs.writeFileSync(path.join(dir, PhraseCopyFile), dataPhrases);
   fs.writeFileSync(
     path.join(dir, 'scene.json'),
-    `{"id":"scene-002","duration_seconds":5.000000,"output":"out.mp4","transcript":"transcript.srt","text":"hello","style_guide":"frame.md",
+    `{"id":"scene-002","duration_seconds":5.000000,"output":"out.mp4","transcript":"transcript.srt","text":"hello",
 "timing":{"fps":30,"start_frame":150,"end_frame_exclusive":300,"plan":"${testPlanSHA}","phrases":"${PhraseCopyFile}"}}`,
   );
   return load(dir);

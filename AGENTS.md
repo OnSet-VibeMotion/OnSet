@@ -22,7 +22,7 @@ npm run build -w @am/cli          # → packages/cli/dist/am.cjs
 npm run build -w am-desktop       # → apps/desktop/out/
 npm run test:e2e -w am-desktop    # Playwright 的 Electron 模式，会先构建命令行与客户端
 npm run dist -w am-desktop        # 本机出一份 .app（apps/desktop/release/）
-npm run generate -w @am/engine    # 由画幅表、风格表与模板重新生成 assets/styles
+npm run generate -w @am/engine    # 由画幅表与模板重新生成 assets/presets/<画幅>/frame.md
 ```
 
 CI（`.github/workflows/ci.yml`）跑类型检查、两包的 Vitest、构建、生成器幂等与 e2e；发布（`.github/workflows/release.yml`）在推 `v*` tag 时出 arm64 与 x64 两份 dmg。
@@ -33,12 +33,12 @@ CI（`.github/workflows/ci.yml`）跑类型检查、两包的 Vitest、构建、
 
 | 源树 | 内容 |
 |---|---|
-| `assets/shared/` | 与画幅、风格都无关，所有项目共用（配置模板、中文正文字体、`templates/`、`.agents/skills/`） |
-| `assets/styles/<风格>/<画幅>/` | 风格 × 画幅（`frame.md`、风格说明书、示例图，以及该风格独有的字体） |
+| `assets/shared/` | 与画幅无关，所有项目共用（配置模板、中文正文字体、`templates/`、`.agents/skills/`） |
+| `assets/presets/<画幅>/` | 只随画幅变化：`frame.md`（由生成器从画幅表写出） |
 
 制作提示词不在任何一棵树里、不拷进项目：段落在 `assets/prompts/` 与 `assets/plugins/<id>/sections/`，开工时按项目记下的流程组合（见「Prompt 文件」）。
 
-**每棵树的内部路径就是它在用户项目根下的目标路径**，`project.initialize`（`packages/engine/src/project/init.ts`）把选中的两棵树叠加拷贝，不做任何路径改写。所以 `assets/shared/assets/fonts/` 这层嵌套是刻意的——它对应项目里的 `assets/fonts/`。多棵树写入同一路径会直接报错，不静默覆盖；风格独有的字体要换一个文件名放进风格树，不能与共用树里的字体同名。
+**每棵树的内部路径就是它在用户项目根下的目标路径**，`project.initialize`（`packages/engine/src/project/init.ts`）把选中的两棵树叠加拷贝，不做任何路径改写。所以 `assets/shared/assets/fonts/` 这层嵌套是刻意的——它对应项目里的 `assets/fonts/`。两棵树写入同一路径会直接报错，不静默覆盖：画幅树里不放与共用树同名的文件。
 
 资产不打进 JS：开发时直接读仓库里的 `assets/`，打包时 `apps/desktop/package.json` 的 `extraResources` 把整棵 `assets/` 拷进应用资源目录，客户端与命令行的启动方经 `AM_ASSETS_DIR` 告诉引擎它在哪。遍历时有一条过滤规则：**目录里名字以 `.` 或 `_` 开头的条目一律跳过**（macOS 的 `.DS_Store` 就靠它挡住），只有 `explicitDotEntries` 里列出的 `assets/shared/.env.example` 与 `assets/shared/.agents` 两个入口例外。**新增一个需要随 `am init` 下发的点开头条目时，要把它加进 `explicitDotEntries`**——漏了不报错，只是那份内容静默到不了用户项目。`packages/engine/src/assets/index.test.ts` 的「skips dot and underscore entries except the explicit ones」与「includes the explicitly embedded dot entries」钉着这条规则；打包规则里的 `**/.*` 也要保留，否则点开头的文件在 .app 里根本不存在。
 
@@ -116,40 +116,23 @@ HyperFrames **CLI** 与技能分开管理但同一个版本：`hyperframes.ensur
 
 fork 自外部项目的技能要带 `LICENSE` 和 `ATTRIBUTION.md`，后者记清上游 commit、保留了什么、丢了什么、改了哪几处，供日后同步上游时重做。`text-to-lottie` 的 `references/` 还有一道门禁止上游播放器契约（`Skottie`、`public/projects` 等）回流（`skilltree.test.ts` 的「forked skill carries no upstream player contract」）。
 
-## 画幅预设与风格
+## 画幅预设
 
-画幅与风格是两个正交维度，都在 `am init` 时各选一次（`--canvas`、`--style`）。画幅决定画布与安全区，风格决定配色、字体、版式骨架、动效语法与禁用项；生成器把二者组合成每个风格 × 画幅的 `frame.md`：canvas 与 safe_area 两块来自画幅，其余 token 来自风格模板。2026-10-20 起内置风格只作为旧项目的兼容资产保留：新镜头的提示词不再把 `frame.md` 的风格 token、`style_id`、风格说明书当作视觉命令，`am init` 不传 `--style` 时取自定义草稿（`packages/cli/src/canvas.ts` 的 `resolveStyle`），视觉由各镜头自主决定或由「整片风格」统一。画幅部分（画布、帧率、安全区）照常生效。
+画幅在 `am init` / 客户端新建时选一次（`--canvas`），之后不再改。它决定画布、帧率与安全区；配色、字体、版式、材质与动效不由项目文件规定，由各镜头自主决定或由「整片风格」统一。旧版的内置风格体系（风格表、风格说明书、示例图、自定义风格草稿、`--style` / `--style-brief`、`am validate style`、`am style fonts` / `add-font`、字体池）已整套删除。
 
-镜头的画幅一律经 `scene.sceneCanvas` 取（`scene/scene.ts` 的 `styleSource`）：`scene.json` 写了 `style_guide` 用它，没写就近找 `frame.md`——镜头目录，再逐级向上到项目根（有 `article-to-motion.conf` 的那一层），找不到项目根时只看镜头目录。**不要再写 `canvasOf(s.directory, s.style_guide)`**：新镜头不写 `style_guide`，那样会静默落到默认的 1080×1440，提示词、`am-scene.js` 与产物校验三处一起错，选了 9:16 的项目整片出成 3:4 还照样「通过」（2026-11 实测）。`scene.test.ts` 的「reads the project frame.md when scene.json has no style guide」钉着。
+项目根的 `frame.md` 是画幅的唯一落点，只有四块技术信息：`canvas`（宽高、帧率、朝向）、`safe_area`（五个安全区的像素内缩）、`subtitles`（烧录字幕的缺省样式，`scene-kit` 的 `SceneKit.captions` 读它）与 `audio`（混音与成片响度目标，`am review` 读 `final_*` 三项）。正文说明这些是技术信息、不是视觉命令。
 
-`assets/styles/<风格>/<画幅>/` 下的**文本产物全部由 `npm run generate -w @am/engine` 生成，不要手改**。真相源是 `packages/engine/src/preset/table.ts` 的画幅表、`packages/engine/src/preset/style.ts` 的风格表，以及 `packages/engine/src/preset/gen/templates/styles/<风格>/` 下每套风格的 `frontmatter.yaml`、`frame.body.md`、`style-guide.body.md`。安全区在预设表里用 anchor 声明（贴顶 / 贴底 / 上下固定），构建期推导成绝对像素写进 `frame.md`——anchor 不进项目文件，渲染工具读到的始终是现成像素值。
+镜头的画幅一律经 `scene.sceneCanvas` 取（`scene/scene.ts` 的 `frameSource`）：就近找 `frame.md`——镜头目录，再逐级向上到项目根（有 `article-to-motion.conf` 的那一层），找不到项目根时只看镜头目录。**哪儿都没有就报错，不回退任何默认画幅**：静默落到某个默认值的话，提示词、`am-scene.js` 与产物校验三处一起错，选了 9:16 的项目整片出成 3:4 还照样「通过」（2026-11 实测）。`scene.json` 没有画幅字段（旧的 `style_guide` 已删，写了会报未知字段）。`scene.test.ts` 的「reads the project frame.md」「fails without any frame.md」钉着。记忆的考试重放时，`freezeInput` 把镜头当时就近读到的 `frame.md` 一起冻结进输入，重放按当时的画幅。
 
-改完预设表后必须重跑生成器并提交产物，CI 的 `generated-assets` job 会校验二者一致（`packages/engine/src/preset/gen/gen.test.ts` 的「matches the committed assets byte-for-byte」在本地也能先拦下）。
+`assets/presets/<画幅>/frame.md` **由 `npm run generate -w @am/engine` 生成，不要手改**。真相源是 `packages/engine/src/preset/table.ts` 的画幅表与 `packages/engine/src/preset/gen/templates/frame.md` 模板；生成器（`preset/gen/gen.ts`）整块替换 `canvas` 与 `safe_area`，再填占位符，不做 YAML 重序列化。安全区在画幅表里用 anchor 声明（贴顶 / 贴底 / 上下固定），构建期推导成绝对像素——anchor 不进项目文件，渲染工具读到的始终是现成像素值。`project.initialize` 把共用树与选中画幅的树叠加拷贝，`frame.md` 逐字节来自这里（`projectinit/index.test.ts` 的「writes the canvas frame.md and nothing of the old styles」）。
 
-示例 SVG 是手绘的排版基准，生成器不改它们的内容；改完 SVG 用 `npm run generate -w @am/engine -- -examples -style <风格> -preset <画幅>` 更新 PNG（入口是 `packages/engine/src/preset/gen/main.ts`）。PNG 不参与 CI 幂等门——不同版本的 `rsvg-convert` 输出字节不同，纳进来会让门随 runner 随机失败。
+改完画幅表或模板后必须重跑生成器并提交产物，CI 的 `generated-assets` job 会校验二者一致（`gen.test.ts` 的「matches the committed assets byte-for-byte」在本地也能先拦下）。
 
-SVG 转 PNG 必须走 `rsvg-convert`（`packages/engine/src/styleimage`），**不能用 ImageMagick**：多数 ImageMagick 构建自带内置 XML SVG 渲染器，会抢在 rsvg 委托前接管 `.svg`，渲染不出文字也画不对背景填充，却返回退出码 0。
+模板里随画幅变化的东西一律写占位符，不写死：`{{SUBTITLE_MAX_WIDTH_PX}}` 等像素由生成器从安全区推导（可带整数偏移，如 `{{CONTENT_LEFT_PX+8}}`）；`{{ORIENTATION}}`、`{{PLATFORM_UI}}`、`{{AVOIDANCE_ZONES}}` 取自画幅表的 `platform`；`{{CANVAS}}` 是全角乘号写法的画幅。未知占位符会让生成器直接报错。同一个 `substituteCanvas` 也给运行期组合的制作提示词换画幅占位符。
 
-新增画幅要动的地方：`packages/engine/src/preset/table.ts` 加一条（安全区、`platform` 平台措辞，必要时加 `layoutNotes` 构图要点）、为每套风格手绘 4 张该尺寸的示例 SVG、跑生成器与 `-examples`。`validate` 与 `scene.buildPrompt` 都向预设表反查，不持有画幅常量，无需改动。
+新增画幅要动的地方：`packages/engine/src/preset/table.ts` 加一条（安全区、`platform` 平台措辞，必要时加 `layoutNotes` 构图要点，它接在 `frame.md` 正文末尾），跑生成器并提交 `assets/presets/<新画幅>/`。`scene.buildPrompt` 与产物校验只读 `frame.md` 的数字，不持有画幅常量。`assets/trees.test.ts` 查 `assets/presets/` 的目录与画幅表一一对应。
 
-风格模板是所有画幅共用的，**随画幅变化的东西一律写占位符，不写死**：`{{CONTENT_LEFT_PX}}`、`{{CONTENT_WIDTH_PX}}`、`{{SUBTITLE_MAX_WIDTH_PX}}`、`{{COVER_MAX_WIDTH_PX}}` 由生成器从安全区推导（可带整数偏移，如 `{{CONTENT_LEFT_PX+8}}`）；`{{ORIENTATION}}`、`{{PLATFORM_UI}}`、`{{UI_ZONE}}`、`{{AVOIDANCE_ZONES}}` 取自画幅表的 `platform`。在模板里写「竖屏」「抖音右侧互动栏」或 `904` 这类数字，横屏项目就会拿到错的规范。未知占位符会让生成器直接报错。
-
-新增风格要动的地方：`packages/engine/src/preset/style.ts` 加一条；在 `templates/styles/<风格>/` 写三份模板（`style_id` / `style_name` 必须与风格表一致，生成器会校验）；为每个画幅手绘 4 张示例 SVG，放进 `assets/styles/<风格>/<画幅>/assets/style-guide/examples/`；跑生成器与 `-examples`。四种镜头骨架的 id（`preset.ArchetypeIDs`）是叙事职责，所有风格共用、顺序固定，风格只换名字、用途说明和示例图。`packages/engine/src/validate/validate.test.ts` 的「accepts every builtin preset」对每个风格 × 画幅的产物跑一遍 `validate.style`，`packages/engine/src/assets/trees.test.ts` 的「resolve for every combination」确认每个组合的三棵树都在。
-
-### 自定义风格
-
-`am init --style custom --style-brief "…"` 不套内置风格：只写入描述（`docs/style-brief.md`）和草稿树 `assets/styles/custom-draft/<画幅>/`。草稿由生成器产出（模板在 `templates/styles/custom-draft/`），字段齐全但 token 只是默认风格的占位值，没有示例图。原先由编排提示词的「第一阶段补充：定风格」定稿；2026-10-20 起那一节已从制作提示词里拿掉，`gen.test.ts` 的「leaves the visual style free」钉着它与 `custom-draft`、`docs/style-brief.md` 不回流。以下约定仍对存量项目成立：
-
-| 位置 | 约定 |
-|---|---|
-| `preset.CustomStyle` | 草稿身份（`style_id: custom-draft`）。**刻意不进 `builtinStyles`**——生成器、选择框和一串枚举内置风格的测试都遍历那张表，混进去会把草稿当成带示例图的正式风格（`preset.test.ts` 的「keeps the custom draft out of the builtin table」） |
-| `preset.isCustomStyleID` | 自定义风格的命名空间 `custom-<小写短名>`。内置风格不得以 `custom-` 开头 |
-| `validate.style` | 草稿直接报「定风格阶段未完成」；定稿后说明书路径固定为 `preset.guideDoc(preset.CustomStyle)`，不从用户写的 `style_name` 拼；其余检查与内置风格相同 |
-| `validate.regenerateExamples` | 自定义风格直接渲染项目里的四张 SVG，不重着色、不改写；草稿也放行。`am validate style --regenerate-examples` 因此先出图再校验 |
-| `scene.load` | 原先在 `style_guide` 仍是草稿时拒绝加载；风格不再是渲染前置条件后改为放行，旧项目仍从中读技术画布（`scene/style_guide.test.ts` 的「load accepts a draft style guide」） |
-| `am style fonts` / `add-font` | 字体只能来自 `preset.allFonts`（与 `assets/fontpool/` 双向一致，`packages/engine/src/assets/trees.test.ts` 的「matches AllFonts in both directions」守着）或用户自带 woff2 |
-
-可选键 `mood_refs` 列氛围参照图，通常来自编排工具的内置生图（官方 Codex 的 `$imagegen`）。它**不查尺寸**——生图工具不能指定像素——也不当版式基准；现在 `buildPrompt` 已不读它（`style_guide.test.ts` 的「buildPrompt does not read mood refs」）。生图只在 ChatGPT 登录的官方 Codex 下才可能可用（API key 与第三方 provider 会被上游过滤），所以它只能是可跳过的一步，不能变成任何流程的前提。`CODEX_HOME` 为此进了安全模式白名单。
+SVG 转 PNG（角色包预览，`packages/engine/src/svgimage`）必须走 `rsvg-convert`，**不能用 ImageMagick**：多数 ImageMagick 构建自带内置 XML SVG 渲染器，会抢在 rsvg 委托前接管 `.svg`，渲染不出文字也画不对背景填充，却返回退出码 0。
 
 ## 整片风格
 
@@ -296,7 +279,7 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 
 `am validate reads`（`packages/engine/src/reads`）读 `visible-event-inventory.json` 检查每个可读元素的停留时长、短语绑定与顺序。阈值取 Netflix 简体中文字幕规范（每秒 9 字、每条至少 5/6 秒），那是固定位置字幕的下限；画面元素还要先被找到，所以只能放宽不能收紧——收紧会把合法的快节奏镜头判死。字数按阅读单位算（一个英文词算一个），同理是为了不高估。两个 JSON 的字段名写死在制作提示词第四阶段，改字段要同步改那里。
 
-`mediaprobe` / `concat` 的集成测试需要真实 ffmpeg，缺失时自行跳过。CI 装了 ffmpeg 与 librsvg——不装的话测试仍然「通过」，真正跑外部命令的代码再没被验证过。
+`mediaprobe` / `concat` 的集成测试需要真实 ffmpeg，缺失时自行跳过。CI 装了 ffmpeg——不装的话测试仍然「通过」，真正跑外部命令的代码再没被验证过。
 
 ## 镜头时长、局部数据与复用
 
@@ -481,7 +464,7 @@ opencode 默认模型不可用时加 `AM_TEST_OPENCODE_MODEL`。
 | 待办清单统一成 `agentrun` 的 `KindPlan`（claude 的 TodoWrite、codex 的 `todo_list`、opencode 的 `todowrite`），每条是完整清单；镜头的「渲染中」只看进行中标记（`sceneRendering`，`scenes.ts`） | 整片制作要跑几个小时，只看一串工具调用不知道做到哪了。新增一家 CLI 时它的待办工具也要译成 plan 事件 |
 | 建项目只走 `packages/engine/src/projectinit`：`am init` 与客户端的新建（`Server.createAPI`）共用 `create`（讲解形式、叙事模式、cast 骨架）与 `installSkills`（HyperFrames 官方技能）。客户端新建后在后台从本机缓存拷技能（`studio/skills.ts`，不联网；缓存是 `am setup` 准备的前置资源，缺了显示指向 `am setup` 的错误），顶栏在缺技能时给「安装」，安装中显示进度条（`hyperframes.Options.progress`，拷贝按技能计数；`am setup` 下载时克隆让 git `--progress` 并解析百分比，在终端里用一行回车刷新）；端到端测试用 `AM_STUDIO_SKIP_SKILL_INSTALL=1` 跳过 | 两边各写一份时界面漏了讲解形式、多角色对话，也不装官方技能，渲染器拿不到 hyperframes 入口技能 |
 | `/api/files` 与 `/preview/scenes/` 经 `containedPath`（`sessions.ts`）解析（含符号链接），`.env` 一律不读 | 这两个接口按路径读文件，而预览 iframe 里跑的是渲染器写出的合成页面、与界面同在 `am://app/` 下；不限定在项目内的话，一段生成的 HTML 就能读到项目外的文件与 `.env` |
-| 风格只展示整片风格（`studio/filmstyle.ts`）：首页、新建对话框、「风格」页与镜头页共用 `FilmStyles.tsx`（首页、换风格、添加风格用整体弹窗 `FilmStyleDialog`）；旧版内置风格不再出现在界面里（`/api/styles` 只剩画幅还在用）。装、换、添加、去掉都经 `am film-style` 写任务（`startFilmStyleTask` / `startAddFilmStyleTask`）；「风格」页列出默认风格与其他风格及各自在用的镜头，镜头页显示本镜头的风格，新建时 `/api/projects/create` 收 `film_style` 并返回 `film_style_task`，开机画面跟这个任务；顶栏显示的是 `metadata.film_style` | 旧风格 10 月 20 日起已不影响渲染，留在选择器里只会让人选一个不起作用的东西。风格改的是项目文件，走写任务才不会和一轮对话的快照打架 |
+| 风格只展示整片风格（`studio/filmstyle.ts`）：首页、新建对话框、「风格」页与镜头页共用 `FilmStyles.tsx`（首页、换风格、添加风格用整体弹窗 `FilmStyleDialog`）；`/api/styles` 只给新建对话框的画幅与做法（旧版内置风格已删除）。装、换、添加、去掉都经 `am film-style` 写任务（`startFilmStyleTask` / `startAddFilmStyleTask`）；「风格」页列出默认风格与其他风格及各自在用的镜头，镜头页显示本镜头的风格，新建时 `/api/projects/create` 收 `film_style` 并返回 `film_style_task`，开机画面跟这个任务；顶栏显示的是 `metadata.film_style` | 旧风格 10 月 20 日起已不影响渲染，留在选择器里只会让人选一个不起作用的东西。风格改的是项目文件，走写任务才不会和一轮对话的快照打架 |
 | 客户端不下载风格来源与海报（前置资源，`am setup` 准备）：来源没准备好时 `/api/film-styles` 的那个来源报 `ready: false` 并附指向 `am setup` 的说明，界面显示分类色占位块；`/api/film-styles/{来源}/{目录名}/poster.jpg` 默认给 480 宽的缩略图（`posterThumbWidth`，缓存在 `<风格根目录>/.thumbs/<来源>/`），`?size=full` 给原图 | 原图一张 1920×1080，菜单一屏几十张会卡 |
 | 编排工具与界面互通（`studio/view.ts`、`packages/engine/src/studioview`）：编排工具调用 `studio_show` 工具（`am studio show <页面> [对象] [--note …]`）把界面切到要用户看的那一页——请求写进这一轮的收件目录（`AM_STUDIO_INBOX`，在 `production/studio/inbox/<轮次>/`，`runTurn` 经子进程环境传下去），后端每 300 毫秒取一次、译成 `view` 事件，界面只执行刚发生的（15 秒内，重放历史不切页），回复下面留一个可点的「↗ 页面」。反方向，界面每条消息带 `view`（当前页、镜头、文件），`describeView` 把它写进这一轮的提示词，不进对话显示。约定写在 `studioInteraction`（`viewInteraction`），页面表 `ViewPages` 与 `Preview.tsx` 的 `tabs` 一一对应。要看的文件有专门页面时（口播稿、分镜计划与处理方案、成片与配音合成版、发布信息、镜头目录里的文件），`validateViewRequest` 经 `dedicatedPage` 改切到那一页，不开文件页。编排每轮结束前调用 `studio_step`（只标步骤、不切页，请求里 `page` 为空、`step` 取 `StepIDs`）标出整片制作在哪一步，后端记进 `production/studio/step.json`（`writeStepMark`），`/api/state` 的 `step` / `step_marked`（`stepOf`：标记比项目里最新的产物新时用标记，否则取制作路线当前一站所在的步骤）给顶栏：做过的步骤编号换成 ✓，当前一步是黄铜色小章 | 走文件不走 HTTP：codex 沙箱默认断网，项目目录总是可写，编排工具也不必知道客户端的任何地址。不在客户端里（`am run`）时 `am studio show` 静默跳过、页面写错照样报错，编排工具照提示词调用不会失败。实测 claude 在安全模式下能直接调用并切页 |
 | 口播稿页（`studio/script.ts` 的 `/api/script`、`Script.tsx`）排在标签第一位：读 `production/script-final.md`，经 `align` 的 `view`（`align/view.ts`）排成标题、段落、读法（ruby）与受保护短语，附字数、估算时长（每秒 4.5 字）、`voice.srt` 的实际配音时长与 `script-change-log.md`；没有终稿时原样显示原稿，标记写错时给出位置并显示原文。有终稿、还没有镜头时自动切到这一页，稿子改过没看过时标签打点，聊天里点到终稿也打开这一页。「确认，开始配音」「提修改意见」「针对所选提意见」都只是往对话里发话或填输入框 | 稿件审核关卡要用户看稿，以前只能在聊天里翻；视图与 `am align` 共用一份解析器，读法与短语和配音、对齐看到的是同一份。客户端自己不改稿 |

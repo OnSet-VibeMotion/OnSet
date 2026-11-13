@@ -3,7 +3,6 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import * as assets from '../assets';
 import * as beat from '../beat';
 import { compareBytes } from '../gojson';
 import { envMap } from '../envutil';
@@ -23,39 +22,19 @@ import { skipDir, walkDir } from './turns';
  */
 export const maxTreeEntries = 5000;
 
-/** stylesAPI 列出新建项目可选的画幅、风格与做法，示例图经 /api/styles/{风格}/{画幅}/{骨架}.png 取。 */
+/** stylesAPI 列出新建项目可选的画幅与做法。 */
 export function stylesAPI(request: Request): Response {
   if (request.method !== 'GET') return methodNotAllowed('GET');
   const canvases = preset.all().map((p) => ({ id: p.id, label: p.label, width: p.canvas.widthPx, height: p.canvas.heightPx, orientation: p.canvas.orientation }));
-  const styles = preset.allStyles().map((st) => ({ id: st.id, name: st.name, label: st.label }));
   return writeJSON(
     200,
     goMap({
       canvases,
-      styles,
-      custom: { id: preset.CustomStyle.id, name: preset.CustomStyle.name, label: '由模型按描述自主定风格' },
-      archetypes: preset.ArchetypeIDs,
       default_canvas: preset.defaultPreset().id,
       // 新建对话框的做法（讲解形式 + 叙事模式），宿主的与内置插件登记的。
       modes: projectinit.presets(),
     }),
   );
-}
-
-export function styleExampleAPI(rest: string): Response {
-  const parts = rest.split('/');
-  if (parts.length !== 3 || !parts[2].endsWith('.png')) return notFound();
-  const [styleID, canvasID] = parts;
-  const archetype = parts[2].slice(0, -'.png'.length);
-  if (!preset.styleByID(styleID)) return notFound();
-  if (!preset.ArchetypeIDs.includes(archetype)) return notFound();
-  let body: Buffer;
-  try {
-    body = assets.style(styleID, canvasID).readFile('assets/style-guide/examples/' + archetype + '.png');
-  } catch {
-    return notFound();
-  }
-  return new Response(new Uint8Array(body), { status: 200, headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=3600' } });
 }
 
 export function isEnvFile(file: string): boolean {

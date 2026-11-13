@@ -45,7 +45,7 @@ describe('flowView', () => {
 
   it('follows the recorded flow of a new song project', () => {
     const dir = root('');
-    projectinit.create({ target: dir, canvas: preset.defaultPreset().id, style: preset.defaultStyle(), delivery: 'song', narration: 'solo' });
+    projectinit.create({ target: dir, canvas: preset.defaultPreset().id, delivery: 'song', narration: 'solo' });
     const v = flowView(dir);
     expect(v.id).toBe('song');
     expect(v.steps).toEqual(['script', 'storyboard', 'scene', 'final', 'publish']);

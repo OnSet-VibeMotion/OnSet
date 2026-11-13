@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { compareBytes } from '../gojson';
 import { goQuote } from '../gofmt';
-import { blockExtraInputDirs, OutcomeSucceeded, OutcomeVerificationFailed, inputFiles, type Attempt, type Scene } from '../scene';
+import { blockExtraInputDirs, FrameFile, frameSource, OutcomeSucceeded, OutcomeVerificationFailed, inputFiles, type Attempt, type Scene } from '../scene';
 import { usageJSON, type Usage } from '../tools';
 import { features as sceneFeatures } from './features';
 import { compactStamp, monthStamp, rfc3339Nano } from './gostr';
@@ -474,10 +474,13 @@ function episodeOutcome(e: Episode): string {
 
 /**
  * 把镜头声明过的输入原样拷进 target，供考试重放。
- * 清单与输入指纹同源（scene.inputFiles），另加镜头扩展块要带的目录（例如角色包）。
+ * 清单与输入指纹同源（scene.inputFiles），另加镜头扩展块要带的目录（例如角色包），
+ * 以及镜头当时就近读到的 frame.md：画幅只从 frame.md 取，重放要按当时的画幅。
  */
 export function freezeInput(sc: Scene, target: string): void {
   for (const rel of inputFiles(sc)) copyFile(path.join(sc.directory, rel), path.join(target, rel));
+  const frame = frameSource(sc);
+  if (frame) copyFile(path.join(frame.directory, frame.file), path.join(target, FrameFile));
   for (const rel of blockExtraInputDirs(sc)) {
     const root = path.join(sc.directory, rel);
     walkDir(root, (file, entry, _isDir, err) => {

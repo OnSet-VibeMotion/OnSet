@@ -58,8 +58,8 @@ description: 在 HyperFrames 组合中创建算法艺术/生成式视觉 — 确
 
 1. **作为 scene 目录中的 HTML 文件** — 在 scene 目录中创建 `composition.html`，包含完整的 viewer 引擎和你的 ART 对象
 2. **通过 `__art.renderFrame` 钩子** — HyperFrames 可以调用 `window.__art.renderFrame(n, total)` 来逐帧渲染
-3. **配色与风格规范一致** — 生成式作品的调色板必须来自项目的 `frame.md` 风格规范
-4. **画布尺寸匹配** — 使用项目预设的画布尺寸（如 1080×1440），不要自由选择
+3. **配色与本镜头一致** — 生成式作品的调色板跟随本镜头的配色（有整片风格时按它的 `STYLE.md`，分镜计划统一了全片配色时按那份配色）；`frame.md` 只给画布与安全区，不给配色
+4. **画布尺寸匹配** — 使用项目 `frame.md` 里的画布尺寸（如 1080×1440），不要自由选择
 
 ## 文件
 

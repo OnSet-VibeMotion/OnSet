@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { compareBytes } from '../gojson';
-import { contactSheet, renderSVG } from '../styleimage';
+import { contactSheet, renderSVG } from '../svgimage';
 import { formatFixed, pathError } from './gofmt';
 import { own, view, viewNames, type Pack } from './pack';
 import { attr, JointPrefix } from './rig';

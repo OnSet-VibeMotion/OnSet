@@ -257,12 +257,6 @@ export interface CanvasOption {
   orientation: string;
 }
 
-export interface StyleOption {
-  id: string;
-  name: string;
-  label: string;
-}
-
 /** 新建对话框的一种做法（projectinit.presets）：讲解形式加叙事模式。canvas、example 给首页模板。 */
 export interface ModeOption {
   id: string;
@@ -276,9 +270,6 @@ export interface ModeOption {
 
 export interface StylesResponse {
   canvases: CanvasOption[];
-  styles: StyleOption[];
-  custom: StyleOption;
-  archetypes: string[];
   default_canvas: string;
   modes: ModeOption[];
 }

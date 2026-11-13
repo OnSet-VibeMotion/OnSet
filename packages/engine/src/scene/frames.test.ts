@@ -10,7 +10,7 @@ describe('frame alignment', () => {
   // 实跑 C 语言那期时，4 个镜头写成 14.367 秒一类的时长：14.367×30=431.01 帧，
   // 渲染器向上取整多渲一帧，母版因此比时间轴长 4 帧，只能重渲染。
   it('rejects fractional frames', () => {
-    const dir = writeScene('{"id":"scene-001","duration_seconds":14.367,"output":"out.mp4","transcript":"transcript.srt","text":"hello","style_guide":"frame.md"}');
+    const dir = writeScene('{"id":"scene-001","duration_seconds":14.367,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
     fs.writeFileSync(path.join(dir, 'frame.md'), frameWithCanvas(1080, 1440));
     const s = load(dir);
     let err: unknown = null;

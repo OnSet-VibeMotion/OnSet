@@ -36,7 +36,7 @@ function tempProject(): string {
 
 function created(delivery: string, canvas = 'vertical-3x4'): string {
   const root = tempProject();
-  projectinit.create({ target: root, canvas, style: preset.defaultStyle(), delivery, narration: projectinit.NarrationSolo });
+  projectinit.create({ target: root, canvas, delivery, narration: projectinit.NarrationSolo });
   return root;
 }
 

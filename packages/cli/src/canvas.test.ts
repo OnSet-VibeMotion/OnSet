@@ -7,13 +7,9 @@ import * as preset from '@am/engine/preset';
 import {
   canvasPicker,
   isTerminal,
-  maxStyleBriefRunes,
   pickerUpdate,
   pickerView,
   resolveCanvas,
-  resolveStyle,
-  resolveStyleBrief,
-  stylePicker,
   type PickerKey,
 } from './canvas';
 
@@ -83,42 +79,5 @@ describe('canvas', () => {
     const view = pickerView(canvasPicker(), 1);
     for (const p of preset.all()) expect(view).toContain(p.label);
     expect(view).toContain('❯ ' + preset.all()[1].label);
-  });
-});
-
-describe('style', () => {
-  it('accepts a known id', () => {
-    expect(resolveStyle(preset.allStyles()[1].id).id).toBe(preset.allStyles()[1].id);
-  });
-
-  it('rejects an unknown id and lists the choices', () => {
-    expect(() => resolveStyle('no-such-style')).toThrow(preset.defaultStyle().id);
-  });
-
-  it('defaults to the custom draft without --style', () => {
-    expect(resolveStyle('').id).toBe(preset.CustomStyle.id);
-  });
-
-  it('accepts the custom flag', () => {
-    expect(resolveStyle(preset.CustomStyleFlag).id).toBe(preset.CustomStyle.id);
-  });
-
-  it('offers custom first in the picker', () => {
-    expect(stylePicker().choices[0].id).toBe(preset.CustomStyle.id);
-  });
-
-  it('resolves the style brief', () => {
-    const builtin = preset.defaultStyle();
-    expect(() => resolveStyleBrief(builtin, 'x', '')).toThrow('只能与 --style custom 一起使用');
-    expect(resolveStyleBrief(builtin, '', '')).toBe('');
-    expect(() => resolveStyleBrief(preset.CustomStyle, 'a', 'b')).toThrow('只能二选一');
-    expect(resolveStyleBrief(preset.CustomStyle, '  暖色胶片  ', '')).toBe('暖色胶片');
-    expect(() => resolveStyleBrief(preset.CustomStyle, '   ', '')).toThrow('风格描述不能为空');
-    expect(() => resolveStyleBrief(preset.CustomStyle, '字'.repeat(maxStyleBriefRunes + 1), '')).toThrow('风格描述过长');
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'am-cli-')), 'brief.md');
-    fs.writeFileSync(file, '文件里的描述\n');
-    expect(resolveStyleBrief(preset.CustomStyle, '', file)).toBe('文件里的描述');
-    expect(() => resolveStyleBrief(preset.CustomStyle, '', file + '.missing')).toThrow('no such file or directory');
-    expect(resolveStyleBrief(preset.CustomStyle, '', '')).toBe(preset.AutomaticStyleBrief);
   });
 });

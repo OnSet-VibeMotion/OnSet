@@ -68,7 +68,7 @@ first_subtitle 与 first_phrase 每个镜头恰好填一个；第一个镜头固
 可以不填。最后一个镜头延伸到 total_frames。锚点必须严格递增，每个镜头至少一帧，
 合计正好等于 total_frames。秒换帧统一按「秒 × 帧率四舍五入」。
 
-帧率缺省取镜头视觉规范的画幅（全部镜头必须一致）；给了 fps 时必须与画幅相同。
+帧率缺省取镜头 frame.md 的画幅（全部镜头必须一致）；给了 fps 时必须与画幅相同。
 给了 phrases 时，把短语时间轴原样复制进每个镜头目录（` +
       scene.PhraseCopyFile +
       `），

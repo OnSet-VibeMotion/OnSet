@@ -61,26 +61,26 @@ function sceneWith(extra: string): string {
   fs.writeFileSync(path.join(dir, 'frame.md'), frameWithCanvas(1080, 1440));
   fs.writeFileSync(
     path.join(dir, 'scene.json'),
-    `{"id":"scene-001","duration_seconds":2,"output":"out.mp4","transcript":"transcript.srt","text":"一句话","style_guide":"frame.md"${extra}}`,
+    `{"id":"scene-001","duration_seconds":2,"output":"out.mp4","transcript":"transcript.srt","text":"一句话"${extra}}`,
   );
   return dir;
 }
 
 describe('scene block registry', () => {
   it('registers the builtin blocks through the package entry in their fixed order', () => {
-    expect(indexOptionalFields()).toEqual(['style_guide', 'renderer', 'film_style', 'plugin_skills', 'cast', 'song', 'beat', 'timing']);
+    expect(indexOptionalFields()).toEqual(['renderer', 'film_style', 'plugin_skills', 'cast', 'song', 'beat', 'timing']);
   });
 
   it('a registered block goes through load, writeback, prompt and fingerprint', () => {
     const dir = sceneWith(',"fake":{"note":"hello","weight":3}');
     expect(() => load(dir), '未登记时应是未知字段').toThrow('scene.json 含未知字段：fake');
     register(fakeBlock());
-    expect(optionalFields()).toEqual(['style_guide', 'renderer', 'film_style', 'plugin_skills', 'cast', 'song', 'fake', 'beat', 'timing']);
+    expect(optionalFields()).toEqual(['renderer', 'film_style', 'plugin_skills', 'cast', 'song', 'fake', 'beat', 'timing']);
     expect(fake(newScene()), '零值镜头上的块是 null').toBeNull();
 
     const s = load(dir);
     expect(fake(s)).toEqual({ note: 'hello', weight: 3 });
-    expect(Object.keys(sceneToJSON(s) as object)).toEqual(['id', 'duration_seconds', 'output', 'transcript', 'text', 'style_guide', 'renderer', 'film_style', 'plugin_skills', 'cast', 'song', 'fake', 'beat', 'timing']);
+    expect(Object.keys(sceneToJSON(s) as object)).toEqual(['id', 'duration_seconds', 'output', 'transcript', 'text', 'renderer', 'film_style', 'plugin_skills', 'cast', 'song', 'fake', 'beat', 'timing']);
     expect((sceneToJSON(s) as Record<string, unknown>).fake).toEqual({ note: 'hello', weight: 3 });
 
     const prompt = buildPrompt(s, {});

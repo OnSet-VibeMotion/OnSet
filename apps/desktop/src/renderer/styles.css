@@ -1700,23 +1700,6 @@ button.skills-pill.bad {
   background: var(--chip);
   color: var(--accent-text);
 }
-.style-brief {
-  margin: 0;
-  padding: 10px 12px;
-  border-left: 2px solid var(--accent);
-  border-radius: 0 8px 8px 0;
-  background: color-mix(in srgb, var(--bg) 60%, transparent);
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--text);
-  white-space: pre-wrap;
-}
-.style-brief span {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 11px;
-  color: var(--muted);
-}
 .palette {
   display: flex;
   flex-wrap: wrap;

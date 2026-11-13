@@ -112,9 +112,6 @@ export const builtinStations: readonly Station[] = [
         produces: [
           { prefix: '.agents/skills/am-film-style/' },
           { prefix: '.agents/am-film-styles/' },
-          { prefix: 'assets/style-guide/' },
-          { path: 'frame.md' },
-          { path: 'docs/style-brief.md' },
         ],
       },
     ],
