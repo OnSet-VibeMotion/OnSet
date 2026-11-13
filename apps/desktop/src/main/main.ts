@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, protocol, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { startGoBackend, type GoBackend } from './gobackend';
@@ -135,6 +135,23 @@ if (!app.requestSingleInstanceLock()) {
     }
     protocol.handle(SCHEME, handleRequest);
     installMenu();
+    // 界面报来的任务数与完成通知。通知只在没有窗口在前台时弹：人就在看着的时候不打扰。
+    ipcMain.on('am:badge', (_event, count: number) => {
+      app.setBadgeCount(Math.max(0, Math.trunc(Number(count) || 0)));
+    });
+    ipcMain.on('am:notify', (_event, message: { title?: string; body?: string }) => {
+      if (BrowserWindow.getFocusedWindow() || !Notification.isSupported()) return;
+      const note = new Notification({ title: String(message?.title ?? 'ArticleToMotion'), body: String(message?.body ?? '') });
+      note.on('click', () => {
+        const win = BrowserWindow.getAllWindows()[0];
+        if (win) {
+          if (win.isMinimized()) win.restore();
+          win.show();
+          win.focus();
+        }
+      });
+      note.show();
+    });
     createWindow();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

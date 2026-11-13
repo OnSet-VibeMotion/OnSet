@@ -400,6 +400,20 @@ export function App() {
     }
   }, [tab, scriptMtime, scriptSeen, seenKey]);
 
+  // Dock 角标与完成通知（客户端里才有）：一轮对话、一次渲染要跑很久，人多半去做别的事了。
+  const taskStatus = useRef(new Map<string, Task['status']>());
+  useEffect(() => {
+    const active = tasks.filter((t) => t.status === 'queued' || t.status === 'running').length;
+    window.am?.setBadge?.(active);
+    for (const task of tasks) {
+      const before = taskStatus.current.get(task.task_id);
+      if ((before === 'running' || before === 'queued') && (task.status === 'succeeded' || task.status === 'failed')) {
+        window.am?.notify?.(task.status === 'succeeded' ? '任务完成' : '任务失败', task.message || task.error || task.type);
+      }
+      taskStatus.current.set(task.task_id, task.status);
+    }
+  }, [tasks]);
+
   // 原生菜单（客户端里才有）：新建回首页，打开文件夹走与「打开项目」同一个接口，⌘1–⌘4 切四个步骤。
   useEffect(() => {
     return window.am?.onMenu?.((action) => {
@@ -582,7 +596,10 @@ export function App() {
               onRemoveAttachment={(index) => setAttachments((current) => current.filter((_, i) => i !== index))}
               onClearAttachments={() => setAttachments([])}
               onFilesChanged={onFilesChanged}
-              onTurnEnd={() => void loadProject()}
+              onTurnEnd={() => {
+                void loadProject();
+                window.am?.notify?.('这一轮做完了', project?.name ?? 'ArticleToMotion');
+              }}
               onOpenFile={(path) => {
                 const page = pageForFile(path);
                 if (page) {

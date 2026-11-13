@@ -10,4 +10,12 @@ contextBridge.exposeInMainWorld('am', {
     ipcRenderer.on('am:menu', listener);
     return () => ipcRenderer.removeListener('am:menu', listener);
   },
+  /** Dock 图标上的数字：正在跑的任务数，0 清掉。 */
+  setBadge(count: number): void {
+    ipcRenderer.send('am:badge', count);
+  },
+  /** 系统通知；窗口在前台时主进程不弹。 */
+  notify(title: string, body: string): void {
+    ipcRenderer.send('am:notify', { title, body });
+  },
 });

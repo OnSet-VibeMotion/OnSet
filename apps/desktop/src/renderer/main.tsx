@@ -13,6 +13,8 @@ declare global {
       platform: string;
       /** 原生菜单的动作：new / home / open（带路径）/ step（第几步）。返回取消订阅。 */
       onMenu?: (callback: (action: MenuAction) => void) => () => void;
+      setBadge?: (count: number) => void;
+      notify?: (title: string, body: string) => void;
     };
   }
 }
