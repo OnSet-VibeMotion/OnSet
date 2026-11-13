@@ -22,6 +22,14 @@ case "$prompt" in *推荐风格*)
   printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
   exit 0 ;;
 esac
+# 「做几个试听」：生成一个音频文件，回复里只写文件名（目录在前文另说），网页要能找到并放播放器。
+case "$prompt" in *做几个试听*)
+  mkdir -p production/audio/auditions
+  printf 'RIFF$\000\000\000WAVEfmt \020\000\000\000\001\000\001\000@\037\000\000@\037\000\000\001\000\010\000data\000\000\000\000' > production/audio/auditions/try-A.wav
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"试听在 `production/audio/auditions/` 里：\\n\\n| 文件 | 音色 |\\n|---|---|\\n| `try-A.wav` | 稳重 |"}]}}\n'
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
+  exit 0 ;;
+esac
 # 「稍等」：先停 3 秒再照常改，供排队测试使用。
 case "$prompt" in *稍等*) sleep 3 ;; esac
 printf 'after\n' > scenes/scene-001/prompt.md

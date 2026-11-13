@@ -270,3 +270,47 @@ export function describeTool(tool: string, input: unknown): { verb: string; targ
   const fallback = text('description') || text('url') || text('pattern') || '';
   return { verb: tool, target: fallback, command: false };
 }
+
+/** 回复里提到的媒体文件：试听、封面、预览视频。 */
+export interface MediaRef {
+  path: string;
+  kind: 'audio' | 'image' | 'video';
+}
+
+const mediaPattern = /[^\s`'"“”‘’（）()<>|，。、；：！？]+?\.(mp3|wav|m4a|aac|flac|ogg|opus|png|jpe?g|webp|gif|mp4|mov|webm)(?![\w])/gi;
+
+function mediaKind(path: string): MediaRef['kind'] {
+  if (/\.(mp4|mov|webm)$/i.test(path)) return 'video';
+  if (/\.(png|jpe?g|webp|gif)$/i.test(path)) return 'image';
+  return 'audio';
+}
+
+/**
+ * 找出回复里写到的、项目里确实存在的媒体文件，按出现顺序。编排工具常常只写文件名
+ * （表格里一列 `try-A.wav`，目录在前文另说），所以也按文件名找：同名的有多个时，
+ * 优先回复里提到过的那个目录下的。
+ */
+export function findMedia(text: string, files: string[]): MediaRef[] {
+  const out: MediaRef[] = [];
+  const seen = new Set<string>();
+  const byName = new Map<string, string[]>();
+  for (const file of files) {
+    const name = file.split('/').pop() ?? file;
+    byName.set(name, [...(byName.get(name) ?? []), file]);
+  }
+  const fileSet = new Set(files);
+  for (const match of text.matchAll(mediaPattern)) {
+    const token = match[0].replace(/^\.\//, '').replace(/^\/+/, '');
+    let path = '';
+    if (fileSet.has(token)) path = token;
+    else if (token.includes('/')) path = files.find((file) => file.endsWith('/' + token) || token.endsWith('/' + file)) ?? '';
+    if (!path) {
+      const candidates = byName.get(token.split('/').pop() ?? token) ?? [];
+      path = candidates.find((file) => text.includes(file.slice(0, file.lastIndexOf('/') + 1))) ?? candidates[0] ?? '';
+    }
+    if (!path || seen.has(path)) continue;
+    seen.add(path);
+    out.push({ path, kind: mediaKind(path) });
+  }
+  return out.slice(0, 12);
+}

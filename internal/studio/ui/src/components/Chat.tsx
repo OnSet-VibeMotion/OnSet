@@ -3,7 +3,7 @@ import { api, ApiError, errorText, post, rawURL } from '../api';
 import type { AgentChoice, AgentsResponse, Attachment, EventKind, PlanItem, Scene, SessionEvent, SessionMeta, ViewRequest, ViewState } from '../types';
 import { tabs } from './Preview';
 import { Poster, styleKey, useFilmStyles } from './FilmStyles';
-import type { FilmStyle } from '../types';
+import type { FilmStyle, TreeFile } from '../types';
 import { AgentPicker } from './AgentPicker';
 import { DiffDialog } from './DiffDialog';
 import { Icon } from './Icon';
@@ -14,6 +14,8 @@ import {
   formatElapsed,
   parseChoices,
   parseStylePicks,
+  findMedia,
+  type MediaRef,
   type StylePick,
   queuedMessages,
   seconds,
@@ -81,8 +83,8 @@ interface Props {
   view: ViewState;
   /** 打开编排工具请用户看的页面。 */
   onView: (view: ViewRequest) => void;
-  /** 项目里的文件（@ 补全用）。 */
-  files: string[];
+  /** 项目里的文件（@ 补全、回复里的媒体播放器用）。 */
+  tree: TreeFile[];
   /** 触发一个写任务（/render 这类命令用）。 */
   run: (path: string, payload?: Record<string, unknown>) => void;
 }
@@ -113,6 +115,8 @@ export function Chat(props: Props) {
   const blocks = useMemo(() => buildBlocks(events), [events]);
   // 整片风格目录：回复里推荐风格时按标识找名字与海报。
   const filmStyles = useFilmStyles(!!props.sessionId);
+  const files = useMemo(() => props.tree.map((f) => f.path), [props.tree]);
+  const mtimes = useMemo(() => new Map(props.tree.map((f) => [f.path, f.mtime])), [props.tree]);
   const styleIndex = useMemo(() => new Map((filmStyles.data?.styles ?? []).map((style) => [styleKey(style), style])), [filmStyles.data]);
   const queue = useMemo(() => queuedMessages(events), [events]);
   const lastTurn = [...blocks].reverse().find((b): b is TurnBlock => b.kind === 'turn');
@@ -177,7 +181,7 @@ export function Chat(props: Props) {
     }
   };
 
-  const completion = { scenes: props.scenes.map((s) => s.id), files: props.files };
+  const completion = { scenes: props.scenes.map((s) => s.id), files };
   const token = dismissed ? null : findToken(draft, caret);
   const suggestions = token ? suggest(token, completion, running) : [];
   useEffect(() => setPicked(0), [token?.trigger, token?.query, token?.command?.name]);
@@ -433,6 +437,8 @@ export function Chat(props: Props) {
               onOpenFile={props.onOpenFile}
               onView={props.onView}
               styles={styleIndex}
+              files={files}
+              mtimes={mtimes}
               posterVersion={filmStyles.posterVersion}
               onReverted={props.onTurnEnd}
               onToggle={() => (following.current = false)}
@@ -704,6 +710,8 @@ interface BlockProps {
   onToggle: () => void;
   styles: Map<string, FilmStyle>;
   posterVersion: number;
+  files: string[];
+  mtimes: Map<string, number>;
 }
 
 function BlockView(props: BlockProps) {
@@ -764,6 +772,37 @@ const stateLabels: Record<TurnBlock['state'], string> = {
   interrupted: '被中断',
 };
 
+/** 回复里写到的音频、图片、视频：直接在对话里试听、看。 */
+function MediaStrip(props: { media: MediaRef[]; mtimes: Map<string, number>; onOpenFile: (path: string) => void }) {
+  const images = props.media.filter((m) => m.kind === 'image');
+  const others = props.media.filter((m) => m.kind !== 'image');
+  return (
+    <div class="media-strip" aria-label="回复里提到的媒体">
+      {others.map((m) => {
+        const src = rawURL(m.path, props.mtimes.get(m.path));
+        const name = m.path.split('/').pop();
+        return (
+          <div key={m.path} class={'media-item ' + m.kind} data-ctx-file={m.path}>
+            <button class="link media-name" title={m.path} onClick={() => props.onOpenFile(m.path)}>
+              {name}
+            </button>
+            {m.kind === 'audio' ? <audio controls preload="metadata" src={src} /> : <video controls preload="metadata" src={src} />}
+          </div>
+        );
+      })}
+      {images.length > 0 && (
+        <div class="media-images">
+          {images.map((m) => (
+            <a key={m.path} href={rawURL(m.path, props.mtimes.get(m.path))} target="_blank" rel="noreferrer" title={m.path} data-ctx-file={m.path}>
+              <img src={rawURL(m.path, props.mtimes.get(m.path))} alt={m.path.split('/').pop()} loading="lazy" />
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** 编排工具推荐的整片风格：海报、名字与理由，点了把选择发回去。认不出的标识照样列出，只是没有图。 */
 function StylePicks(props: { picks: StylePick[]; styles: Map<string, FilmStyle>; version: number; enabled: boolean; onPick: (text: string) => void }) {
   return (
@@ -818,6 +857,7 @@ function TurnView(props: BlockProps & { turn: TurnBlock }) {
   const proseText = turn.prose.map((event) => event.text ?? '').join('\n\n');
   const choices = parseChoices(proseText);
   const picks = useMemo(() => parseStylePicks(proseText, new Set(props.styles.keys())), [proseText, props.styles]);
+  const media = useMemo(() => findMedia(proseText, props.files), [proseText, props.files]);
   return (
     <div class="assistant-flow msg-enter">
       {(turn.process.length > 0 || live) && (
@@ -839,6 +879,7 @@ function TurnView(props: BlockProps & { turn: TurnBlock }) {
           ))}
         </div>
       )}
+      {media.length > 0 && <MediaStrip media={media} mtimes={props.mtimes} onOpenFile={props.onOpenFile} />}
       {picks.length > 0 && (
         <StylePicks picks={picks} styles={props.styles} version={props.posterVersion} enabled={props.choicesEnabled} onPick={props.onChoice} />
       )}

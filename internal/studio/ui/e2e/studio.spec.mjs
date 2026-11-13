@@ -154,6 +154,16 @@ test('shows posters for film styles the orchestrator recommends', async ({ page 
   await expect(page.locator('.message.user').last()).toContainText('整片风格用「油画厚涂」（lemo-opuscar/impasto）');
 });
 
+test('plays audio files a reply mentions', async ({ page }) => {
+  await openProject(page);
+  await page.locator('#prompt').fill('做几个试听');
+  await page.locator('#send').click();
+  const item = page.locator('.media-strip .media-item.audio');
+  await expect(item).toHaveCount(1);
+  await expect(item).toContainText('try-A.wav');
+  await expect(item.locator('audio')).toHaveAttribute('src', /production%2Faudio%2Fauditions%2Ftry-A\.wav/);
+});
+
 test('picks the orchestrator and renderer per session', async ({ page }) => {
   await openProject(page);
   await expect(page.locator('#agent-tool')).toHaveValue('claude');

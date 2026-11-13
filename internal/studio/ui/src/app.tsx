@@ -525,7 +525,7 @@ export function App() {
             scenes={scenes}
             outbox={outbox}
             view={{ page: tab, scene: sceneId || undefined, file: tab === 'file' ? filePath : undefined }}
-            files={tree.map((f) => f.path)}
+            tree={tree}
             run={run}
             onView={openView}
           />

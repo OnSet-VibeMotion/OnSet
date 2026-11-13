@@ -450,6 +450,7 @@ var studioInteraction = `你在 Studio 网页里和用户对话，下面几条�
 - 推荐整片风格时（用户没指定画风、或要换风格），先用 am film-style list --json 挑出两三种贴合的，在回复里放一个语言标成 film-styles 的代码块，每行一种，写「来源/目录名」加一句为什么合适，例如：
 ` + "```film-styles\nlemo-opuscar/impasto 厚涂笔触适合讲历史人物的分量\n```" + `
   网页会显示每种风格的海报，用户点「用这个风格」就把选择发给你，你再运行 am film-style use。「不用整片风格，各镜头自主定视觉」写进同一条回复的 choices 代码块。
+- 要用户试听音频、看图片或视频时（音色试听、配音片段、封面候选、预览帧），在回复里写出每个文件在项目里的相对路径，例如 production/audio/auditions/try-A.wav，网页会在回复下面直接放播放器和缩略图；只写文件名、目录另说的话网页未必找得到。
 ` + viewInteraction()
 
 // transcript 把会话里已有的对话整理成文字，供续接失败时补发。只保留末尾 transcriptLimit 字。
