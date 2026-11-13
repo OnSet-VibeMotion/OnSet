@@ -1331,8 +1331,7 @@ function tokenLabel(u: Usage): string {
   return parts.join(' · ');
 }
 
-// run 是早先命令行 am run 记下的账，命令行不对外后不再产生，旧账照样显示。
-const usageSources: Record<string, string> = { run: '命令行（旧）', studio: 'Studio 对话', consolidate: '整理记忆' };
+const usageSources: Record<string, string> = { studio: 'Studio 对话', consolidate: '整理记忆' };
 
 function projectUsageTitle(u: ProjectUsage): string {
   const lines = [`渲染：${u.attempts} 次尝试 · ${tokenLabel(u.renders)}`, `编排：${u.orchestrator.calls} 次调用 · ${tokenLabel(u.orchestrator.total)}`];

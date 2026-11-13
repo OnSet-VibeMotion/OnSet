@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { BasisTotalInput, newUsage, type Usage } from '../tools';
-import { SourceRun, SourceStudio, append, fromResult, memoryFile, projectFile, read, sortedKeys, summarize } from './index';
+import { SourceConsolidate, SourceStudio, append, fromResult, memoryFile, projectFile, read, sortedKeys, summarize } from './index';
 
 describe('ledger', () => {
   it('append, read and summarize', () => {
@@ -13,7 +13,7 @@ describe('ledger', () => {
     const claude: Usage = { input_tokens: 100, cached_input_tokens: 80, output_tokens: 10, cost_usd: 0.5, source: 'claude result', basis: BasisTotalInput };
     const codex: Usage = { input_tokens: 200, output_tokens: 20, source: 'codex turn.completed', basis: BasisTotalInput };
     for (const entry of [
-      fromResult(SourceRun, 'claude', 'claude-opus', 's1', claude, null, false),
+      fromResult(SourceConsolidate, 'claude', 'claude-opus', 's1', claude, null, false),
       fromResult(SourceStudio, 'codex', '', 's2', codex, new Error('boom'), false),
       fromResult(SourceStudio, 'codex', '', 's3', newUsage(), null, true),
     ]) {
@@ -36,7 +36,7 @@ describe('ledger', () => {
     // 有一次没读到用量、codex 不报费用：合计只是下限。
     expect(summary.total.partial).toBe(true);
     expect(summary.by_source[SourceStudio].partial).toBe(true);
-    expect(summary.by_source[SourceRun].partial).toBe(false);
+    expect(summary.by_source[SourceConsolidate].partial).toBe(false);
     expect(summary.by_model['claude/claude-opus']).toBeDefined();
     expect(sortedKeys(summary.by_model)).toEqual(['claude/claude-opus', 'codex']);
     expect(memoryFile('/m')).toBe(path.join('/m', 'orchestrator-usage.jsonl'));
@@ -45,9 +45,9 @@ describe('ledger', () => {
   // TS 额外：写出的行与 Go 的 json.Marshal(Entry) 字段顺序一致。
   it('writes Go-compatible lines', () => {
     const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'am-ledger-')), 'x.jsonl');
-    append(file, { ...fromResult(SourceRun, 'codex', '', '', { input_tokens: 1, source: 'codex turn.completed', basis: BasisTotalInput }, null, false), time: 't' });
+    append(file, { ...fromResult(SourceConsolidate, 'codex', '', '', { input_tokens: 1, source: 'codex turn.completed', basis: BasisTotalInput }, null, false), time: 't' });
     expect(fs.readFileSync(file, 'utf8')).toBe(
-      '{"time":"t","source":"run","tool":"codex","status":"succeeded","usage":{"input_tokens":1,"basis":"total-input","source":"codex turn.completed"}}\n',
+      '{"time":"t","source":"consolidate","tool":"codex","status":"succeeded","usage":{"input_tokens":1,"basis":"total-input","source":"codex turn.completed"}}\n',
     );
   });
 });

@@ -11,13 +11,11 @@ import { compareBytes, marshal, sortedKeys as sortedRecord } from '../gojson';
 import { newUsage, usageAdd, usageEmpty, usageJSON, type Usage } from '../tools';
 
 // 调用来源。
-export const SourceRun = 'run'; // am run
 export const SourceStudio = 'studio'; // Studio 的一轮对话或「开始制作」
 export const SourceConsolidate = 'consolidate'; // am memory consolidate 的整理者
 
 /**
- * 项目里的账本路径。它在 production/usage/ 下而不是 production/studio/：
- * am run 不是 Studio，但两者的账要记在一起。Studio 扫描项目时跳过这个目录，
+ * 项目里的账本路径。它在 production/usage/ 下而不是 production/studio/：Studio 扫描项目时跳过这个目录，
  * 回退一轮不会把账抹掉。
  */
 export function projectFile(project: string): string {
