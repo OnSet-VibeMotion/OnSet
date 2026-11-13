@@ -13,3 +13,5 @@ docs/superpowers/
 node_modules/
 /apps/desktop/out/
 /apps/desktop/release/
+/packages/cli/dist/
+/packages/engine/node_modules/
