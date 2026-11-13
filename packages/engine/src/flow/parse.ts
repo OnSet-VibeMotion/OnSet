@@ -276,10 +276,13 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
   let filmStyles: Manifest['film_styles'] = null;
   if (raw.film_styles !== undefined) {
     if (!isObject(raw.film_styles)) throw new Error('station.film_styles 要是对象');
-    knownFields(raw.film_styles, ['name', 'dir'], 'film_styles');
+    knownFields(raw.film_styles, ['name', 'dir', 'only_referenced'], 'film_styles');
     const dir = str(raw.film_styles, 'dir', 'film_styles');
     relativeInside(dir, 'film_styles.dir');
     filmStyles = { name: str(raw.film_styles, 'name', 'film_styles'), dir };
+    const only = raw.film_styles.only_referenced;
+    if (only !== undefined && typeof only !== 'boolean') throw new Error('station.film_styles.only_referenced 要是 true 或 false');
+    if (only === true) filmStyles.only_referenced = true;
   }
   const slots = list('slots').map((sl, i): ManifestSlot => {
     const where = `slots[${i}]`;

@@ -3,3 +3,4 @@
 export * from './filmstyle';
 export * from './install';
 export * from './dirsource';
+export * from './select';

@@ -148,8 +148,11 @@ export interface Manifest {
    * 会标成要重渲染（渲染输入变了）；opt-in 时只有 scene.json 的 plugin_skills 点名的镜头带上。
    */
   renderer_skills: { name: string; dir: string; summary: string; scenes: 'all' | 'opt-in' }[];
-  /** 整片风格库：dir 下每个子目录是一种风格（STYLE.md 必需，SKILL.md、poster.jpg、style.json 可选）。 */
-  film_styles: { name: string; dir: string } | null;
+  /**
+   * 整片风格库：dir 下每个子目录是一种风格（STYLE.md 必需，SKILL.md、poster.jpg、style.json 可选）。
+   * only_referenced 为真时装进项目只带用到的素材与 three.js 模块（filmstyle.DirectorySource 的 onlyReferenced）。
+   */
+  film_styles: { name: string; dir: string; only_referenced?: boolean } | null;
   slots: ManifestSlot[];
   commands: ManifestCommand[];
 }
