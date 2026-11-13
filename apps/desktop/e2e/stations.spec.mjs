@@ -254,7 +254,7 @@ test('builtin features are plugins too: on by default, off per project, locked w
   await expect(toggle).toBeChecked();
 
   // 登记了渲染技能或镜头扩展块的内置功能提醒开关会让镜头重渲染；发布只有站、操作与页面，不提醒。
-  await expect(builtin.locator('li[data-builtin]')).toHaveCount(5);
+  await expect(builtin.locator('li[data-builtin]')).toHaveCount(6);
   await expect(builtin.locator('li[data-builtin="algorithmic-art"]')).toContainText('已经渲染的镜头要重新渲染');
   await expect(builtin.locator('li[data-builtin="cast"]')).toContainText('多角色对话');
   await expect(song).toContainText('重新渲染');
