@@ -152,7 +152,7 @@ export async function sceneFeatureAPI(s: Server, request: Request, rest: string)
         }
       }
       case 'activity':
-        return writeJSON(200, sceneActivity(sc, new Date()));
+        return writeJSON(200, sceneActivity(sc));
       case 'attachment':
         if (request.method !== 'POST') return methodNotAllowed('POST');
         return sceneAttachment(request, p, sc);
