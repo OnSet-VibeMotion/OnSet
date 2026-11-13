@@ -164,6 +164,30 @@ test('plays audio files a reply mentions', async ({ page }) => {
   await expect(item.locator('audio')).toHaveAttribute('src', /production%2Faudio%2Fauditions%2Ftry-A\.wav/);
 });
 
+test('renders GitHub-flavored markdown safely', async ({ page }) => {
+  await openProject(page);
+  await page.locator('#prompt').fill('排版测试');
+  await page.locator('#send').click();
+  const prose = page.locator('.message.assistant .prose');
+  await expect(prose.locator('table td').nth(1)).toHaveText('稳重');
+  await expect(prose.locator('h3')).toHaveText('标题');
+  await expect(prose.locator('li ul li')).toHaveText('第二层');
+  await expect(prose.locator('input[type="checkbox"]')).toHaveCount(2);
+  await expect(prose.locator('del')).toHaveText('删掉');
+  // 中文里收尾的 ** 前是标点、后面紧跟汉字，也要认成粗体。
+  await expect(prose.locator('strong', { hasText: '好。' })).toHaveCount(1);
+  await expect(prose.locator('a[href="https://example.com"]')).toHaveAttribute('target', '_blank');
+  await expect(prose.locator('pre .code-lang')).toHaveText('bash');
+  // 清洗：脚本、事件属性、javascript: 链接都不留。
+  await expect(prose.locator('script')).toHaveCount(0);
+  await expect(prose.locator('[onerror]')).toHaveCount(0);
+  await expect(prose.locator('a[href^="javascript"]')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__xss)).toBeUndefined();
+  // 写成行内代码的项目文件可点，打开文件页。
+  await prose.locator('code.file-link', { hasText: 'PROMPT.md' }).click();
+  await expect(page.locator('#file-content')).toContainText('整片制作提示词');
+});
+
 test('picks the orchestrator and renderer per session', async ({ page }) => {
   await openProject(page);
   await expect(page.locator('#agent-tool')).toHaveValue('claude');

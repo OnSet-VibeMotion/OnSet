@@ -30,6 +30,12 @@ case "$prompt" in *做几个试听*)
   printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
   exit 0 ;;
 esac
+# 「排版测试」：回复带表格、嵌套列表、任务列表、代码块，以及要被清洗掉的 HTML。
+case "$prompt" in *排版测试*)
+  printf '%s\n' '{"type": "assistant", "message": {"content": [{"type": "text", "text": "# 标题\n\n| 文件 | 音色 |\n|---|---|\n| `PROMPT.md` | **稳重** |\n\n- 第一层\n  - 第二层\n- [x] 已完成\n- [ ] 待办\n\n~~删掉~~ *斜体* **好。**了 见 https://example.com\n\n```bash\nam setup\n```\n\n<img src=x onerror=\"window.__xss=1\"><script>window.__xss=2</script>[坏链接](javascript:alert(1))\n"}]}}'
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
+  exit 0 ;;
+esac
 # 「稍等」：先停 3 秒再照常改，供排队测试使用。
 case "$prompt" in *稍等*) sleep 3 ;; esac
 printf 'after\n' > scenes/scene-001/prompt.md

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { api, errorText, post } from './api';
 import { Chat, type Outbox } from './components/Chat';
 import { Home, type ProjectSummary } from './components/Home';
@@ -8,6 +8,7 @@ import { Icon } from './components/Icon';
 import { Preview, tabs, type Tab } from './components/Preview';
 import { scriptFinalPath } from './components/Script';
 import { ContextMenu } from './components/ContextMenu';
+import { MarkdownContext } from './components/chat/Markdown';
 import { ProjectDialog } from './components/ProjectDialog';
 import { Sidebar } from './components/Sidebar';
 import { Tasks } from './components/Tasks';
@@ -322,6 +323,23 @@ export function App() {
     if (!draftOnly) notify('已发给编排工具，进度看右侧对话。');
   };
 
+  // Markdown 里写到的项目文件可点：口播稿开口播稿页，其余开文件页。
+  const treePaths = useMemo(() => tree.map((f) => f.path), [tree]);
+  const markdownLinks = useMemo(
+    () => ({
+      files: treePaths,
+      onOpenFile: (path: string) => {
+        if (path === scriptFinalPath) {
+          setTab('script');
+          return;
+        }
+        setFilePath(path);
+        setTab('file');
+      },
+    }),
+    [treePaths],
+  );
+
   // 编排工具经 am studio show 请用户看某一页：切过去，镜头与文件页带上对象。
   const openView = (view: ViewRequest) => {
     const page = tabs.find(([id]) => id === view.page)?.[0];
@@ -446,90 +464,92 @@ export function App() {
           onBack={currentId ? () => setHomeOpen(false) : undefined}
         />
       ) : (
-        <div class="workspace">
-          <ContextMenu
-            onAttach={addAttachment}
-            onQuick={quick}
-            onScene={(id) => {
-              setSceneId(id);
-              setTab('scene');
-            }}
-            onFile={(path) => {
-              if (path === scriptFinalPath) {
-                setTab('script');
-                return;
-              }
-              setFilePath(path);
-              setTab('file');
-            }}
-          />
-          <Sidebar
-            state={state}
-            tree={tree}
-            filePath={filePath}
-            recent={recent}
-            onFile={(path) => {
-              setFilePath(path);
-              setTab('file');
-            }}
-          />
-          <Preview
-            tab={tab}
-            onTab={setTab}
-            unseen={{ script: scriptMtime > scriptSeen }}
-            state={state}
-            scenes={scenes}
-            usage={usage}
-            sceneId={sceneId}
-            filePath={filePath}
-            tree={tree}
-            version={version}
-            beat={beat}
-            busy={busy}
-            onAttach={addAttachment}
-            onQuick={quick}
-            onFile={(path) => {
-              setFilePath(path);
-              setTab('file');
-            }}
-            onScene={(id) => {
-              setSceneId(id);
-              if (tab !== 'scene' && tab !== 'compose' && tab !== 'memory') setTab('scene');
-            }}
-            run={run}
-          />
-          <Chat
-            projectPath={project?.path ?? ''}
-            agents={agents}
-            choice={choice}
-            onChoice={changeChoice}
-            sessions={sessions}
-            sessionId={sessionId}
-            busy={busy}
-            attachments={attachments}
-            onSession={chooseSession}
-            onSessionsChanged={loadSessions}
-            onRemoveAttachment={(index) => setAttachments((current) => current.filter((_, i) => i !== index))}
-            onClearAttachments={() => setAttachments([])}
-            onFilesChanged={onFilesChanged}
-            onTurnEnd={() => void loadProject()}
-            onOpenFile={(path) => {
-              if (path === scriptFinalPath) {
-                setTab('script');
-                return;
-              }
-              setFilePath(path);
-              setTab('file');
-            }}
-            onAddAttachments={(list) => setAttachments((current) => [...current, ...list])}
-            scenes={scenes}
-            outbox={outbox}
-            view={{ page: tab, scene: sceneId || undefined, file: tab === 'file' ? filePath : undefined }}
-            tree={tree}
-            run={run}
-            onView={openView}
-          />
-        </div>
+        <MarkdownContext.Provider value={markdownLinks}>
+          <div class="workspace">
+            <ContextMenu
+              onAttach={addAttachment}
+              onQuick={quick}
+              onScene={(id) => {
+                setSceneId(id);
+                setTab('scene');
+              }}
+              onFile={(path) => {
+                if (path === scriptFinalPath) {
+                  setTab('script');
+                  return;
+                }
+                setFilePath(path);
+                setTab('file');
+              }}
+            />
+            <Sidebar
+              state={state}
+              tree={tree}
+              filePath={filePath}
+              recent={recent}
+              onFile={(path) => {
+                setFilePath(path);
+                setTab('file');
+              }}
+            />
+            <Preview
+              tab={tab}
+              onTab={setTab}
+              unseen={{ script: scriptMtime > scriptSeen }}
+              state={state}
+              scenes={scenes}
+              usage={usage}
+              sceneId={sceneId}
+              filePath={filePath}
+              tree={tree}
+              version={version}
+              beat={beat}
+              busy={busy}
+              onAttach={addAttachment}
+              onQuick={quick}
+              onFile={(path) => {
+                setFilePath(path);
+                setTab('file');
+              }}
+              onScene={(id) => {
+                setSceneId(id);
+                if (tab !== 'scene' && tab !== 'compose' && tab !== 'memory') setTab('scene');
+              }}
+              run={run}
+            />
+            <Chat
+              projectPath={project?.path ?? ''}
+              agents={agents}
+              choice={choice}
+              onChoice={changeChoice}
+              sessions={sessions}
+              sessionId={sessionId}
+              busy={busy}
+              attachments={attachments}
+              onSession={chooseSession}
+              onSessionsChanged={loadSessions}
+              onRemoveAttachment={(index) => setAttachments((current) => current.filter((_, i) => i !== index))}
+              onClearAttachments={() => setAttachments([])}
+              onFilesChanged={onFilesChanged}
+              onTurnEnd={() => void loadProject()}
+              onOpenFile={(path) => {
+                if (path === scriptFinalPath) {
+                  setTab('script');
+                  return;
+                }
+                setFilePath(path);
+                setTab('file');
+              }}
+              onAddAttachments={(list) => setAttachments((current) => [...current, ...list])}
+              scenes={scenes}
+              outbox={outbox}
+              view={{ page: tab, scene: sceneId || undefined, file: tab === 'file' ? filePath : undefined }}
+              tree={tree}
+              run={run}
+              onView={openView}
+            />
+          </div>
+        </MarkdownContext.Provider>
       )}
 
       {setupOpen && setup.status && (

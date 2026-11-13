@@ -332,18 +332,42 @@
   color: var(--accent-text);
 }
 .prose pre.prose-code {
+  position: relative;
   margin: 0 0 14px;
-  padding: 10px 12px;
+  padding: 0;
   border-radius: 8px;
   background: var(--well);
   border: 1px solid var(--line);
-  overflow-x: auto;
+  overflow: hidden;
 }
 .prose pre.prose-code code {
-  padding: 0;
+  display: block;
+  padding: 10px 12px;
+  overflow-x: auto;
   background: none;
   color: var(--text-2);
   line-height: 1.6;
+  border-radius: 0;
+}
+.prose .code-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px 4px 12px;
+  border-bottom: 1px solid var(--line);
+  font: 11px var(--mono);
+  color: var(--faint);
+}
+.prose .code-copy {
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--muted);
+}
+.prose .code-copy:hover,
+.prose .code-copy:focus-visible {
+  background: var(--chip);
+  color: var(--text);
 }
 .prose blockquote {
   margin: 0 0 14px;
@@ -351,8 +375,79 @@
   border-left: 2px solid var(--line-strong);
   color: var(--text-2);
 }
+.prose blockquote > :last-child {
+  margin-bottom: 0;
+}
 .prose a {
   color: var(--accent-text);
+}
+.prose .file-link {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.prose .file-link:hover {
+  color: var(--accent);
+}
+.prose li > ul,
+.prose li > ol {
+  margin: 4px 0 0;
+}
+.prose li > p {
+  margin: 0 0 6px;
+}
+.prose li:has(> input[type='checkbox']) {
+  list-style: none;
+  margin-left: -20px;
+}
+.prose input[type='checkbox'] {
+  margin: 0 6px 0 0;
+  vertical-align: -1px;
+  accent-color: var(--accent);
+}
+.prose del {
+  color: var(--muted);
+}
+.prose hr {
+  margin: 16px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.prose img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+.prose .table-wrap {
+  margin: 0 0 14px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.prose th,
+.prose td {
+  min-width: 4.5em;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.prose th {
+  background: var(--raised);
+  color: var(--text);
+  font-weight: 600;
+}
+.prose tr:last-child td {
+  border-bottom: 0;
+}
+.prose td code,
+.prose th code {
+  word-break: break-word;
 }
 
 /* ---- 一轮的过程：平铺的折叠块 ---- */

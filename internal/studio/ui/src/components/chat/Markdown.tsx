@@ -1,112 +1,171 @@
-import type { ComponentChildren } from 'preact';
+import { createContext } from 'preact';
+import { useContext, useMemo } from 'preact/hooks';
+import { Marked } from 'marked';
+import DOMPurify from 'dompurify';
+import { rawURL } from '../../api';
 
 /**
- * 编排工具回复的极简 Markdown：段落、标题、有序 / 无序列表、代码块、引用、
- * 行内代码、粗体、链接。只认这几种，不引第三方库——回复里用得到的就这些，
- * 而且不渲染任何 HTML，回复内容原样当文本，没有注入的口子。
+ * 回复、修改记录等 Markdown 的渲染：GitHub 风格（表格、任务列表、删除线、嵌套列表、
+ * 自动链接……）由 marked 解析，DOMPurify 清洗后才进页面——回复里的原始 HTML 只剩
+ * 安全的标签，脚本、事件属性、javascript: 链接一律去掉。
+ *
+ * 在此之上做几件对话里用得着的事：
+ *   - 标题降两级（回复里的 # 不该比面板标题还大）；
+ *   - 外部链接新窗口打开；指向项目文件的链接、写成行内代码的项目文件路径可点，打开文件页；
+ *   - 代码块带语言标签与「复制」按钮；表格可以横向滚动；
+ *   - 图片写项目里的相对路径时从项目读。
  */
-export function Markdown({ text }: { text: string }) {
-  return <div class="prose">{blocks(text)}</div>;
+
+export interface MarkdownLinks {
+  /** 项目里的文件，用来认出可点的路径。 */
+  files: string[];
+  onOpenFile?: (path: string) => void;
 }
 
-function blocks(text: string): ComponentChildren[] {
-  const lines = text.replace(/\r\n/g, '\n').split('\n');
-  const out: ComponentChildren[] = [];
-  let i = 0;
-  let key = 0;
-  while (i < lines.length) {
-    const line = lines[i];
-    if (!line.trim()) {
-      i++;
-      continue;
-    }
-    const fence = /^\s*```(\S*)/.exec(line);
-    if (fence) {
-      const body: string[] = [];
-      i++;
-      while (i < lines.length && !/^\s*```/.test(lines[i])) body.push(lines[i++]);
-      i++;
-      out.push(
-        <pre key={key++} class="prose-code">
-          <code>{body.join('\n')}</code>
-        </pre>,
-      );
-      continue;
-    }
-    const heading = /^(#{1,4})\s+(.*)$/.exec(line);
-    if (heading) {
-      const level = Math.min(heading[1].length, 3);
-      const Tag = (['h3', 'h4', 'h5'] as const)[level - 1];
-      out.push(<Tag key={key++}>{inline(heading[2])}</Tag>);
-      i++;
-      continue;
-    }
-    if (/^\s*([-*+]|\d+[.)])\s+/.test(line)) {
-      const ordered = /^\s*\d+[.)]/.test(line);
-      const items: string[] = [];
-      while (i < lines.length && /^\s*([-*+]|\d+[.)])\s+/.test(lines[i])) {
-        let item = lines[i].replace(/^\s*([-*+]|\d+[.)])\s+/, '');
-        i++;
-        // 列表项的续行：缩进的非空行并进上一项。
-        while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !/^\s*([-*+]|\d+[.)])\s+/.test(lines[i])) item += ' ' + lines[i++].trim();
-        items.push(item);
-      }
-      const list = items.map((item, n) => <li key={n}>{inline(item)}</li>);
-      out.push(ordered ? <ol key={key++}>{list}</ol> : <ul key={key++}>{list}</ul>);
-      continue;
-    }
-    if (/^\s*>/.test(line)) {
-      const quote: string[] = [];
-      while (i < lines.length && /^\s*>/.test(lines[i])) quote.push(lines[i++].replace(/^\s*>\s?/, ''));
-      out.push(<blockquote key={key++}>{inline(quote.join(' '))}</blockquote>);
-      continue;
-    }
-    const paragraph: string[] = [];
-    while (i < lines.length && lines[i].trim() && !/^\s*(```|#{1,4}\s|[-*+]\s|\d+[.)]\s|>)/.test(lines[i])) paragraph.push(lines[i++]);
-    if (paragraph.length === 0) paragraph.push(lines[i++]);
-    out.push(<p key={key++}>{inlineLines(paragraph)}</p>);
-  }
-  return out;
+/** 由对话面板提供：Markdown 据此把项目文件路径变成可点的链接。 */
+export const MarkdownContext = createContext<MarkdownLinks>({ files: [] });
+
+const marked = new Marked({ gfm: true, breaks: true });
+
+/**
+ * 中文里的粗体、斜体、删除线。CommonMark 的「左右侧分隔符」规则按英文标点设计：
+ * `**字体还没下载。**下载` 里收尾的 ** 前面是标点、后面紧跟汉字，不算右侧分隔符，
+ * 整段原样显示星号（marked 与 GitHub 都这样）。编排工具的中文回复里这种写法到处都是，
+ * 所以在内置规则之前先按「成对的符号、里面不以空白开头结尾」认一遍。
+ */
+const cjkEmphasis = [
+  { name: 'cjkStrong', mark: '**', tag: 'strong', pattern: /^\*\*(?=\S)([\s\S]*?\S)\*\*/ },
+  { name: 'cjkDel', mark: '~~', tag: 'del', pattern: /^~~(?=\S)([\s\S]*?\S)~~/ },
+] as const;
+marked.use({
+  extensions: cjkEmphasis.map(({ name, mark, tag, pattern }) => ({
+    name,
+    level: 'inline' as const,
+    start(src: string) {
+      const index = src.indexOf(mark);
+      return index < 0 ? undefined : index;
+    },
+    tokenizer(this: { lexer: { inlineTokens: (src: string) => unknown[] } }, src: string) {
+      const match = pattern.exec(src);
+      if (!match) return undefined;
+      return { type: name, raw: match[0], tokens: this.lexer.inlineTokens(match[1]) };
+    },
+    renderer(this: { parser: { parseInline: (tokens: unknown[]) => string } }, token: { tokens?: unknown[] }) {
+      return `<${tag}>${this.parser.parseInline(token.tokens ?? [])}</${tag}>`;
+    },
+  })) as never,
+});
+
+function projectPath(value: string, files: Set<string>): string {
+  const clean = value.trim().replace(/^\.\//, '').replace(/[，。,.;；:：]+$/, '');
+  return files.has(clean) ? clean : '';
 }
 
-/** 段落里的换行保留成 <br>：回复常用单换行分句。 */
-function inlineLines(lines: string[]): ComponentChildren[] {
-  const out: ComponentChildren[] = [];
-  lines.forEach((line, n) => {
-    if (n > 0) out.push(<br key={'br' + n} />);
-    out.push(...inline(line, n));
+function render(text: string, files: Set<string>): string {
+  const html = marked.parse(text, { async: false }) as string;
+  const clean = DOMPurify.sanitize(html, { FORBID_TAGS: ['style', 'form', 'button', 'textarea', 'select'], FORBID_ATTR: ['style'] });
+  const root = document.createElement('template');
+  root.innerHTML = clean;
+  const doc = root.content;
+
+  // 标题降级：h1→h3、h2→h4，其余→h5。
+  doc.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((heading) => {
+    const level = Number(heading.tagName[1]);
+    const tag = level <= 1 ? 'h3' : level === 2 ? 'h4' : 'h5';
+    if (heading.tagName.toLowerCase() === tag) return;
+    const next = document.createElement(tag);
+    next.innerHTML = heading.innerHTML;
+    heading.replaceWith(next);
   });
-  return out;
+
+  doc.querySelectorAll('a[href]').forEach((link) => {
+    const href = link.getAttribute('href') ?? '';
+    if (/^https?:\/\//i.test(href)) {
+      link.setAttribute('target', '_blank');
+      link.setAttribute('rel', 'noreferrer');
+      return;
+    }
+    const path = projectPath(decodeURIComponent(href), files);
+    if (path) {
+      link.setAttribute('href', '#');
+      link.setAttribute('data-open-file', path);
+      link.classList.add('file-link');
+    } else if (!href.startsWith('#') && !/^mailto:/i.test(href)) {
+      // 既不是外链也不是项目文件：留下文字，去掉打不开的链接。
+      link.replaceWith(...Array.from(link.childNodes));
+    }
+  });
+
+  doc.querySelectorAll('img[src]').forEach((img) => {
+    const src = img.getAttribute('src') ?? '';
+    if (/^https?:\/\//i.test(src) || src.startsWith('data:')) return;
+    const path = projectPath(decodeURIComponent(src), files);
+    if (path) img.setAttribute('src', rawURL(path));
+    else img.remove();
+  });
+
+  // 行内代码写的是项目文件路径时可点。
+  doc.querySelectorAll('code').forEach((code) => {
+    if (code.closest('pre')) return;
+    const path = projectPath(code.textContent ?? '', files);
+    if (path) {
+      code.classList.add('file-link');
+      code.setAttribute('data-open-file', path);
+      code.setAttribute('title', '打开 ' + path);
+    }
+  });
+
+  doc.querySelectorAll('pre').forEach((pre) => {
+    pre.classList.add('prose-code');
+    const code = pre.querySelector('code');
+    const language = /language-([\w+-]+)/.exec(code?.className ?? '')?.[1] ?? '';
+    const head = document.createElement('div');
+    head.className = 'code-head';
+    head.innerHTML = `<span class="code-lang"></span><span class="code-copy" role="button" tabindex="0" data-copy>复制</span>`;
+    head.querySelector('.code-lang')!.textContent = language;
+    pre.prepend(head);
+  });
+
+  doc.querySelectorAll('table').forEach((table) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    table.replaceWith(wrap);
+    wrap.append(table);
+  });
+
+  return root.innerHTML;
 }
 
-const token = /(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)\s]+\))/g;
-
-function inline(text: string, salt = 0): ComponentChildren[] {
-  const out: ComponentChildren[] = [];
-  let last = 0;
-  let n = 0;
-  for (const match of text.matchAll(token)) {
-    const index = match.index ?? 0;
-    if (index > last) out.push(text.slice(last, index));
-    const part = match[0];
-    const key = `${salt}-${n++}`;
-    if (part.startsWith('`')) out.push(<code key={key}>{part.slice(1, -1)}</code>);
-    else if (part.startsWith('**')) out.push(<strong key={key}>{part.slice(2, -2)}</strong>);
-    else {
-      const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(part);
-      const href = link?.[2] ?? '';
-      out.push(
-        /^https?:\/\//.test(href) ? (
-          <a key={key} href={href} target="_blank" rel="noreferrer">
-            {link?.[1]}
-          </a>
-        ) : (
-          <span key={key}>{link?.[1]}</span>
-        ),
-      );
+export function Markdown({ text }: { text: string }) {
+  const links = useContext(MarkdownContext);
+  const files = useMemo(() => new Set(links.files), [links.files]);
+  const html = useMemo(() => render(text, files), [text, files]);
+  const act = (target: HTMLElement) => {
+    const copy = target.closest<HTMLElement>('[data-copy]');
+    if (copy) {
+      const code = copy.closest('pre')?.querySelector('code')?.textContent ?? '';
+      void navigator.clipboard?.writeText(code);
+      copy.textContent = '已复制';
+      window.setTimeout(() => (copy.textContent = '复制'), 1200);
+      return true;
     }
-    last = index + part.length;
-  }
-  if (last < text.length) out.push(text.slice(last));
-  return out;
+    const file = target.closest<HTMLElement>('[data-open-file]');
+    if (file && links.onOpenFile) {
+      links.onOpenFile(file.dataset.openFile ?? '');
+      return true;
+    }
+    return false;
+  };
+  return (
+    <div
+      class="prose"
+      dangerouslySetInnerHTML={{ __html: html }}
+      onClick={(event) => {
+        if (act(event.target as HTMLElement)) event.preventDefault();
+      }}
+      onKeyDown={(event) => {
+        if ((event.key === 'Enter' || event.key === ' ') && act(event.target as HTMLElement)) event.preventDefault();
+      }}
+    />
+  );
 }
