@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { api, errorText } from '../api';
 import type { AgentsResponse, CanvasOption, DirectoryEntry, Project, StylesResponse } from '../types';
 import { FilmStylePicker, styleKey, useFilmStyles } from './FilmStyles';
+import { SetupGuide, useSetup } from './SetupGuide';
 import { Creation, type CreationJob } from './Creation';
 import { Icon } from './Icon';
 import '../home.css';
@@ -123,7 +124,10 @@ export function Home(props: Props) {
   }, [text]);
 
   const working = job !== null;
-  const canSend = !working && (text.trim() !== '' || files.length > 0) && !!tool && !!parent;
+  const setup = useSetup();
+  // 技能与 CLI 没准备好时建了项目也装不上技能、渲染不了：先引导去跑 am setup。
+  const prereqsReady = setup.status?.ready !== false;
+  const canSend = !working && prereqsReady && (text.trim() !== '' || files.length > 0) && !!tool && !!parent;
   const current = templates.find((t) => t.id === template);
   const canvasInfo = styles?.canvases.find((c) => c.id === canvas);
   const modeInfo = modes.find((m) => m.id === mode)!;
@@ -200,6 +204,11 @@ export function Home(props: Props) {
             <RotatingWord words={rotatingWords} />？
           </h1>
           <p class="home-sub">粘贴一篇文章、拖进讲稿，或者说说你想要的视频。剩下的交给编排工具。</p>
+          {setup.status && setup.status.items.some((item) => !item.ready) && (
+            <div class="home-setup">
+              <SetupGuide status={setup.status} onRecheck={() => void setup.recheck()} checking={setup.checking} />
+            </div>
+          )}
 
           <div class="composer-card">
             <div
@@ -344,7 +353,7 @@ export function Home(props: Props) {
                       />
                     ))}
                   </Dropdown>
-                  <button id="home-send" class="send" disabled={!canSend} onClick={() => void submit()} aria-label="开始制作" title="建项目并开始制作（Enter）">
+                  <button id="home-send" class="send" disabled={!canSend} onClick={() => void submit()} aria-label="开始制作" title={prereqsReady ? '建项目并开始制作（Enter）' : '先在终端运行 am setup 准备前置资源'}>
                     {working ? <span class="spinner" /> : <Icon name="up" size={15} />}
                   </button>
                 </div>

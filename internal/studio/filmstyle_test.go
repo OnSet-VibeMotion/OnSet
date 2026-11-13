@@ -115,3 +115,28 @@ func TestFilmStyleEndpoints(t *testing.T) {
 	// 合法风格会起一个 am film-style 任务；测试里 os.Executable 是测试二进制本身，
 	// 真起任务会把整套测试再跑一遍，所以这里只验到拒绝未知风格为止。
 }
+
+// 前置资源引导：只读状态，缺技能时 ready 为 false，并给出 am setup。
+func TestSetupStatusEndpoint(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir()) // 技能缓存在这里找，必然没有
+	_, ts := startStudio(t, Config{ProjectPath: t.TempDir(), ConfigPath: filepath.Join(t.TempDir(), "projects.json")})
+	status, body := studioRequest(t, http.MethodGet, ts.URL+"/api/setup", "")
+	requireStudioStatus(t, status, http.StatusOK, body)
+	if body["ready"] != false || body["command"] != "am setup" {
+		t.Fatalf("缺技能时应当 ready=false 并给出 am setup：%v", body)
+	}
+	byID := map[string]map[string]any{}
+	for _, item := range studioList(t, body["items"]) {
+		entry := item.(map[string]any)
+		byID[entry["id"].(string)] = entry
+	}
+	if byID["skills"]["ready"] != false || byID["skills"]["required"] != true {
+		t.Errorf("技能应当是缺的必需项：%v", byID["skills"])
+	}
+	if byID["cli"]["ready"] != true {
+		t.Errorf("TestMain 放了假的 CLI，应当就绪：%v", byID["cli"])
+	}
+	if entry, ok := byID["styles:lemo-opuscar"]; !ok || entry["required"] != false {
+		t.Errorf("整片风格来源应当是可选项：%v", entry)
+	}
+}

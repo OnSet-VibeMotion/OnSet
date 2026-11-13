@@ -1,0 +1,120 @@
+/* 前置资源引导（components/SetupGuide.tsx）。选择器挂在 .setup-guide 下。 */
+
+.setup-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--raised);
+  text-align: left;
+}
+
+.setup-guide.blocking {
+  border-color: var(--accent-line);
+  background: color-mix(in srgb, var(--accent-soft) 60%, var(--raised));
+}
+
+.setup-guide .setup-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.setup-guide .setup-lead {
+  margin: 4px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.setup-guide .setup-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup-guide .setup-items li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.setup-guide .setup-items li.ready .setup-icon {
+  color: var(--ok);
+}
+
+.setup-guide .setup-items li.missing .setup-icon,
+.setup-guide .setup-items li.missing .setup-location {
+  color: var(--bad);
+}
+
+.setup-guide .setup-version,
+.setup-guide .setup-location {
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.setup-guide .setup-location {
+  max-width: 320px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.setup-guide .setup-optional {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--chip);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.setup-guide .setup-command {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.setup-guide .setup-command code {
+  padding: 5px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--well);
+  color: var(--accent-text);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.setup-guide .setup-copy {
+  height: 26px;
+  padding: 0 10px;
+}
+
+.setup-guide .setup-command-note,
+.setup-guide .setup-auto {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.setup-guide .setup-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.setup-guide.compact {
+  border: none;
+  background: none;
+  padding: 0;
+}

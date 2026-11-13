@@ -428,3 +428,22 @@ export interface ProjectFilmStyle {
   style?: FilmStyle;
   style_file?: string;
 }
+
+/** 一项前置资源（/api/setup）。 */
+export interface PrereqStatus {
+  id: string;
+  group: string;
+  name: string;
+  version?: string;
+  /** 做片必需（技能与 CLI）；整片风格来源只有选了风格才要。 */
+  required: boolean;
+  ready: boolean;
+  location: string;
+}
+
+export interface SetupStatus {
+  /** 做片必需的项都已就绪。 */
+  ready: boolean;
+  items: PrereqStatus[];
+  command: string;
+}

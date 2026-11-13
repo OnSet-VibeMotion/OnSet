@@ -127,7 +127,7 @@ SVG 转 PNG 必须走 `rsvg-convert`（`internal/styleimage`），**不能用 Im
 | 风格标识是「来源/目录名」（`Style.Key`）；`filmstyle.Lookup` 也认唯一的目录名、中文名、英文名，多个来源重名时要求写全 | 来源之间目录名会撞 |
 | 各来源的数据放在 `filmstyle.RootDir`（`~/.local/share/am/film-styles`，`AM_FILM_STYLES_DIR` 覆盖）下以来源 ID 分目录；`ChildEnvironment` 显式传根目录与各来源 `EnvKeys()` 里设了的变量 | 默认目录由 `XDG_DATA_HOME` 推出而它不在白名单，子进程会算出另一个目录 |
 | 来源数据是前置资源：只由 `am setup` 经 `Source.Prepare` 下载（每个来源一项 `styles:<来源>`），其余路径用 `Source.Check` / `Fill` 只读，缺了返回 `prereq.MissingError`。编排工具的可写范围里**没有**来源数据 | 见「技能树」一节前置资源的理由 |
-| 新增来源：子包实现 `Source`、`init` 里 `Register`，在 `internal/cli/filmstyle.go` 与 `internal/studio/filmstyle.go` 各加一行空白 import。`filmstyle_test.go` 的假来源证明通用部分不依赖任何具体来源 | 登记靠 import 副作用，漏 import 的话那个二进制里没有这个来源 |
+| 新增来源：子包实现 `Source`、`init` 里 `Register`，在 `internal/filmstyle/sources` 里加一行空白 import（am 命令、Studio 与前置资源清单都 import 这个包）。`filmstyle_test.go` 的假来源证明通用部分不依赖任何具体来源 | 登记靠 import 副作用，集中在一处才不会漏 |
 | 早先只有一个来源时装在 `.agents/skills/lemo-film-style/`（`lemo-upstream.json`）：`Installed`、`ResolveFilmStyle` 照样认，`Install` 装好新目录后删掉旧目录 | 两份并存会被当成两套整片风格 |
 
 lemo 来源（`internal/filmstyle/lemo`）自己的约定：
@@ -293,7 +293,8 @@ lemo 来源（`internal/filmstyle/lemo`）自己的约定：
 | 没有打开项目、或点左上角时显示首页（`Home.tsx`，照 OpenDesign 首页）：在输入框说要做什么、拖进文章，发送后进入「开机」画面（`Creation.tsx`）：场记板、按画幅的监视器、四段片段的时间线，依次 `projects/create` → `uploads` → 等 `/api/skills` 装完 → `production/start`（带 `attachments`），播放头按真实进度走，装技能可以「不等了」转后台，最后打板推进到项目。先装技能再开工，编排工具一开工就有 hyperframes 技能。项目名由第一句话或文件名推出，重名加 `-2`；「保存到」默认取上次新建时的父目录（`registry.LastParent`），最近项目带阶段与出片摘要（`ProjectSummary`） | 从一句话到开始制作不该要先填一张表；已经不存在的项目不混进最近列表，给一键清理 |
 | `/api/files` 与 `/preview/scenes/` 经 `containedPath` 解析（含符号链接），`.env` 一律不读 | 默认只监听回环地址，但手机经隧道访问时这两个接口就是对外的 |
 | 风格只展示整片风格（`filmstyle.go`）：首页菜单、新建对话框与「风格」页共用 `FilmStyles.tsx`；旧版内置风格不再出现在 Studio 里（`/api/styles` 只剩画幅还在用）。装、换、去掉都经 `am film-style` 写任务（`startFilmStyleTask`），新建时 `/api/projects/create` 收 `film_style` 并返回 `film_style_task`，开机画面跟这个任务；顶栏显示的是 `metadata.film_style` | 旧风格 10 月 20 日起已不影响渲染，留在选择器里只会让人选一个不起作用的东西。风格改的是项目文件，走写任务才不会和一轮对话的快照打架 |
-| Studio 不下载风格库与海报（前置资源，`am setup` 准备）：没准备好时 `/api/film-styles` 报 `posters: missing` 并附指向 `am setup` 的说明，网页显示分类色占位块；`/api/film-styles/{slug}/poster.jpg` 默认给 480 宽的缩略图（缓存在 `<风格库>.thumbs/`），`?size=full` 给原图 | 原图一张 1920×1080，菜单一屏几十张会卡 |
+| Studio 不下载风格来源与海报（前置资源，`am setup` 准备）：来源没准备好时 `/api/film-styles` 的那个来源报 `ready: false` 并附指向 `am setup` 的说明，网页显示分类色占位块；`/api/film-styles/{来源}/{目录名}/poster.jpg` 默认给 480 宽的缩略图（缓存在 `<风格根目录>/.thumbs/<来源>/`），`?size=full` 给原图 | 原图一张 1920×1080，菜单一屏几十张会卡 |
+| 前置资源引导（`setup.go` 的 `/api/setup`、`SetupGuide.tsx`）：清单来自 `internal/prereqs`，与 `am setup` 同一份；只读不下载。缺了在首页输入框上方显示引导卡片（缺哪几项、可复制的 `am setup` 命令、重新检查，每 10 秒自动查一次），顶栏给「前置资源缺 N 项」打开同一份引导；技能或 CLI 缺时「开始制作」不可点，项目里的「安装技能」按钮也让位给引导。`AM_STUDIO_SKIP_SKILL_INSTALL=1` 时当作全部就绪 | 前置资源只由用户在终端里跑 `am setup`；没有引导的话，用户第一次建项目只会在装技能那一步看到一条报错 |
 
 ### 前端
 

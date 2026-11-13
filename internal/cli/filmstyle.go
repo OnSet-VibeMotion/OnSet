@@ -11,8 +11,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/chouheiwa/articale-to-motion/internal/filmstyle"
-	// 风格来源在 init 里登记进 filmstyle；新增来源在这里加一行。
-	_ "github.com/chouheiwa/articale-to-motion/internal/filmstyle/lemo"
+	// 全部风格来源经 sources 登记进 filmstyle；新增来源只改 sources 包。
+	_ "github.com/chouheiwa/articale-to-motion/internal/filmstyle/sources"
 )
 
 // sourceSummary 是 am film-style 帮助里列出的已登记来源。

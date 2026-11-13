@@ -849,3 +849,10 @@
     transition: none !important;
   }
 }
+
+/* 前置资源没准备好时的引导卡片：与输入框同宽，放在输入框上方。 */
+.home .home-setup {
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto 16px;
+}

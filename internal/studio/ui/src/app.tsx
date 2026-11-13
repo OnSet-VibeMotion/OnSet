@@ -3,6 +3,7 @@ import { api, errorText, post } from './api';
 import { Chat, type Outbox } from './components/Chat';
 import { Home, type ProjectSummary } from './components/Home';
 import { SkillsPill, type SkillsStatus } from './components/SkillsPill';
+import { SetupGuide, useSetup } from './components/SetupGuide';
 import { Icon } from './components/Icon';
 import { Preview, type Tab } from './components/Preview';
 import { ProjectDialog } from './components/ProjectDialog';
@@ -48,6 +49,11 @@ export function App() {
   const [defaultParent, setDefaultParent] = useState('');
   const [homeAgents, setHomeAgents] = useState<AgentsResponse | null>(null);
   const [skills, setSkills] = useState<SkillsStatus | null>(null);
+  // 前置资源（am setup 准备）：缺了在顶栏提示，点开看怎么准备。
+  const setup = useSetup();
+  const [setupOpen, setSetupOpen] = useState(false);
+  const setupMissing = setup.status?.items.filter((item) => !item.ready).length ?? 0;
+  const setupRequiredMissing = setup.status ? !setup.status.ready : false;
   // 首页：没有打开项目时总是显示；打开项目后点左上角也能回到首页。
   const [homeOpen, setHomeOpen] = useState(false);
   const [currentId, setCurrentId] = useState('');
@@ -324,7 +330,12 @@ export function App() {
             {state.metadata.film_style}
           </span>
         )}
-        {currentId && !homeOpen && skills && !skills.installed && <SkillsPill status={skills} onInstall={installSkills} />}
+        {setupMissing > 0 && (
+          <button class={'skills-pill' + (setupRequiredMissing ? ' bad' : '')} id="setup-pill" onClick={() => setSetupOpen(true)} title="前置资源由终端里的 am setup 准备">
+            {setupRequiredMissing ? `前置资源缺 ${setupMissing} 项 · 怎么准备` : `整片风格来源缺 ${setupMissing} 项`}
+          </button>
+        )}
+        {currentId && !homeOpen && !setupRequiredMissing && skills && !skills.installed && <SkillsPill status={skills} onInstall={installSkills} />}
         <span class="spacer" />
         {busy && (
           <span class="pill busy" title="同一时间只有一个写入者">
@@ -439,6 +450,22 @@ export function App() {
         </div>
       )}
 
+      {setupOpen && setup.status && (
+        <div class="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setSetupOpen(false)}>
+          <section class="modal" role="dialog" aria-label="前置资源" id="setup-dialog">
+            <header class="modal-head">
+              <h2>前置资源</h2>
+              <span class="spacer" />
+              <button class="ghost icon" onClick={() => setSetupOpen(false)} aria-label="关闭">
+                <Icon name="close" />
+              </button>
+            </header>
+            <div class="pad">
+              <SetupGuide status={setup.status} onRecheck={() => void setup.recheck()} checking={setup.checking} compact />
+            </div>
+          </section>
+        </div>
+      )}
       {dialog && (
         <ProjectDialog
           projects={projects}

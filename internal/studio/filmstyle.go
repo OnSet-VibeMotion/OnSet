@@ -14,8 +14,8 @@ import (
 
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
 	"github.com/chouheiwa/articale-to-motion/internal/filmstyle"
-	// 风格来源在 init 里登记进 filmstyle；新增来源在这里加一行（cli 里同样一行）。
-	_ "github.com/chouheiwa/articale-to-motion/internal/filmstyle/lemo"
+	// 全部风格来源经 sources 登记进 filmstyle；新增来源只改 sources 包。
+	_ "github.com/chouheiwa/articale-to-motion/internal/filmstyle/sources"
 	"github.com/chouheiwa/articale-to-motion/internal/fsutil"
 )
 
@@ -28,6 +28,7 @@ func (s *Server) filmStyleRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/film-styles", s.filmStylesAPI)
 	mux.HandleFunc("/api/film-styles/", s.filmStylePosterAPI)
 	mux.HandleFunc("/api/film-style", s.projectFilmStyleAPI)
+	mux.HandleFunc("/api/setup", s.setupAPI)
 }
 
 // FilmStyleSource 是 /api/film-styles 里的一个来源。
