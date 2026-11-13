@@ -26,7 +26,10 @@ export function defaultDir(env: Record<string, string | undefined>): string {
   return data === '' ? '' : path.join(data, 'agent');
 }
 
-/** 凭据文件（pi 的 auth.json 格式：{服务商: {type: "api_key", key}}），权限 0600。 */
+/**
+ * 凭据文件，权限 0600：{服务商: {type: "api_key", enc}}（客户端里 safeStorage 加密）或 {type: "api_key", key}
+ * （没有加密可用时的明文）。只有父进程读它（loadKeys），导演子进程与 pi 都不读。
+ */
 export function authFile(dir: string): string {
   return path.join(dir, 'auth.json');
 }
@@ -61,7 +64,43 @@ export const Providers: readonly Provider[] = [
   { id: 'openrouter', label: 'OpenRouter', keyURL: 'https://openrouter.ai/keys', defaultModel: 'openrouter/anthropic/claude-sonnet-5.5' },
 ];
 
-type AuthEntry = { type?: string; key?: string };
+/**
+ * 磁盘上的 key 怎么加密。客户端主进程注入 Electron 的 safeStorage（apps/desktop/src/main/keycodec.ts）：
+ * 引擎不能 import electron，所以经这里换。没有注入时（开发用的命令行、vitest）key 以明文写进 0600 的文件；
+ * 注入了但 available() 为 false（safeStorage 用不了，例如 Linux 没有钥匙串）时同样退回明文，
+ * 设置页经 keyStorage() 照实说一句。
+ */
+export interface KeyCodec {
+  available(): boolean;
+  /** 明文 → 可以写进 JSON 的字符串（base64）。 */
+  encrypt(plain: string): string;
+  decrypt(cipher: string): string;
+}
+
+let codec: KeyCodec | null = null;
+
+/** 换掉加解密（客户端主进程启动时调用一次；传 null 回到明文）。 */
+export function useKeyCodec(c: KeyCodec | null): void {
+  codec = c;
+}
+
+function activeCodec(): KeyCodec | null {
+  try {
+    return codec && codec.available() ? codec : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 现在写入的 key 是不是加密的；不是时附一句给设置页的说明。 */
+export function keyStorage(): { encrypted: boolean; note?: string } {
+  if (activeCodec()) return { encrypted: true };
+  if (codec) return { encrypted: false, note: '这台电脑的系统钥匙串用不了，API key 只能以明文存在用户目录里一个只有你能读的文件中。' };
+  return { encrypted: false, note: '不在客户端里运行：API key 以明文存在用户目录里一个只有你能读的文件中。' };
+}
+
+/** auth.json 的一项：明文是 key，加密的是 enc（codec 加密后的字符串）。 */
+type AuthEntry = { type?: string; key?: string; enc?: string };
 
 function readAuth(dir: string): Record<string, AuthEntry> {
   try {
@@ -72,11 +111,15 @@ function readAuth(dir: string): Record<string, AuthEntry> {
   }
 }
 
-/** 已经填了 API key 的服务商（只返回 id，不返回 key）。 */
+function filled(v: AuthEntry | undefined): boolean {
+  return !!v && ((typeof v.key === 'string' && v.key !== '') || (typeof v.enc === 'string' && v.enc !== ''));
+}
+
+/** 已经填了 API key 的服务商（只返回 id，不返回 key；加密的也算，不用解密）。 */
 export function configuredProviders(dir: string): string[] {
   if (dir === '') return [];
   return Object.entries(readAuth(dir))
-    .filter(([, v]) => v && typeof v.key === 'string' && v.key !== '')
+    .filter(([, v]) => filled(v))
     .map(([k]) => k)
     .sort();
 }
@@ -84,22 +127,72 @@ export function configuredProviders(dir: string): string[] {
 const providerIDPattern = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 /**
- * 写入或删除（key 为空）一家服务商的 API key。文件权限 0600，先写临时文件再改名。
- * key 不进 settings.conf、不进项目、不进子进程环境：编排工具能跑的命令里拿不到它。
+ * 写入或删除（key 为空）一家服务商的 API key。有 codec 时加密写入，顺手把文件里还是明文的几项也加密；
+ * 文件权限 0600，先写临时文件再改名。key 不进 settings.conf、不进项目、不进子进程环境，
+ * 导演用到时由父进程解密后经 stdin 交给它（Request.keys）。
  */
 export function setProviderKey(dir: string, provider: string, key: string): void {
   if (!providerIDPattern.test(provider)) throw new Error(`不认识的服务商：${provider}`);
   if (/[\s"'\\]/.test(key.trim()) && key.trim() !== '') throw new Error('API key 里不能有空白或引号');
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const c = activeCodec();
   const auth = readAuth(dir);
   if (key.trim() === '') delete auth[provider];
   else auth[provider] = { type: 'api_key', key: key.trim() };
+  for (const [id, v] of Object.entries(auth)) {
+    if (c && typeof v.key === 'string' && v.key !== '') auth[id] = { type: 'api_key', enc: c.encrypt(v.key) };
+  }
   const file = authFile(dir);
   const tmp = file + '.' + process.pid + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(auth, null, 2) + '\n', { mode: 0o600 });
   fs.renameSync(tmp, file);
   fs.chmodSync(file, 0o600);
 }
+
+/** 交给子进程的 key（useKeys）；设了就不再读文件。 */
+let handedKeys: Record<string, string> | null = null;
+
+/**
+ * 这个进程里的 key 来自父进程（经 stdin 交来，见 KeysStdinEnv），不读磁盘：执行进程里没有 safeStorage，
+ * 解不开客户端加密写下的文件。
+ */
+export function useKeys(keys: Record<string, string> | null): void {
+  handedKeys = keys ? { ...keys } : null;
+}
+
+/**
+ * 读出全部 API key（服务商 → key），给导演的请求用。父进程交过 key 就用交来的；否则读文件，
+ * 加密的项用 codec 解密，解不开（没有 codec，例如在终端里跑 am run 而 key 是客户端加密写下的）就跳过，
+ * 导演会照常报「还没有填 key」。
+ */
+export function loadKeys(dir: string): Record<string, string> {
+  if (handedKeys) return { ...handedKeys };
+  const out: Record<string, string> = {};
+  if (dir === '') return out;
+  const c = activeCodec();
+  for (const [id, v] of Object.entries(readAuth(dir))) {
+    if (typeof v?.key === 'string' && v.key !== '') out[id] = v.key;
+    else if (typeof v?.enc === 'string' && v.enc !== '' && c) {
+      try {
+        const plain = c.decrypt(v.enc);
+        if (plain !== '') out[id] = plain;
+      } catch {
+        // 解不开（换了机器、钥匙串重置）：当作没填。
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * 执行进程（am.cjs __op）的环境里有它（值为 1）时，先从 stdin 读一行 JSON（服务商 → key）交给 useKeys。
+ * 只给 KeyOps 里的操作这样起：它们会再起导演（整理经验的整理者），而执行进程解不开加密的文件。
+ * key 只走 stdin，不进环境、命令行与磁盘。
+ */
+export const KeysStdinEnv = 'AM_AGENT_KEYS_STDIN';
+
+/** 会起导演的操作。 */
+export const KeyOps: ReadonlySet<string> = new Set(['memory_consolidate']);
 
 /** 模型「服务商/模型」里的服务商；没有斜杠时为空。 */
 export function providerOf(model: string): string {
@@ -124,8 +217,13 @@ export interface Request {
   commands?: string[];
   /** 工作目录之外还能读写的目录（记忆库、音色库）。 */
   writable_dirs?: string[];
-  /** 凭据所在目录（defaultDir）。由父进程算好传下来：子进程的环境按安全模式白名单裁过，算不出同一个目录。 */
+  /** 导演的数据目录（defaultDir，会话、模型缓存都在这里）。由父进程算好传下来：子进程的环境按安全模式白名单裁过，算不出同一个目录。 */
   agent_dir: string;
+  /**
+   * 服务商 → API key，由父进程读出（loadKeys，客户端里经 safeStorage 解密）交下来。导演不读磁盘上的凭据：
+   * 文件可能是加密的，而且 key 只该在内存里。
+   */
+  keys?: Record<string, string>;
 }
 
 /** 选不出模型时的报错：界面据此引导用户去设置里填 key。 */

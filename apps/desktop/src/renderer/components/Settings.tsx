@@ -155,8 +155,8 @@ export function Settings({ version, run, onPluginsChanged }: { version: number; 
 }
 
 /**
- * 导演用哪家模型服务：每家一行，填了 key 就能在「编排模型」里选它的模型。key 只写进用户目录里一个
- * 只有自己能读的文件，界面上不回显。
+ * 导演用哪家模型服务：每家一行，填了 key 就能在「编排模型」里选它的模型。key 经系统钥匙串加密后写进
+ * 用户目录里一个只有自己能读的文件，界面上不回显；钥匙串用不了时照实说一句。
  */
 export function AgentKeys({ version, onChange }: { version: number; onChange?: (data: AgentKeysResponse) => void }) {
   const [data, setData] = useState<AgentKeysResponse | null>(null);
@@ -236,6 +236,7 @@ export function AgentKeys({ version, onChange }: { version: number; onChange?: (
           </li>
         ))}
       </ul>
+      {data.storage && !data.storage.encrypted && data.storage.note && <p className="agent-keys-note">{data.storage.note}</p>}
       {error && <div className="settings-error">{error}</div>}
     </section>
   );

@@ -759,6 +759,8 @@ export interface AgentKeyProvider {
 export interface AgentKeysResponse {
   providers: AgentKeyProvider[];
   others: string[];
+  /** key 在磁盘上是否加密（safeStorage）；没加密时 note 是给用户的一句说明。 */
+  storage?: { encrypted: boolean; note?: string };
 }
 
 /** GET /api/storyboard（后端 studio/storyboard.ts）：分镜页。 */

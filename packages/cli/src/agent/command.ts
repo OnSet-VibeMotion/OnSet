@@ -13,7 +13,7 @@ import * as director from '@am/engine/director';
 import * as studioview from '@am/engine/studioview';
 import { currentEnvironment } from '../cli';
 import { Command, ref } from '../cobra';
-import { callTarget, describeTools, Jobs, prepareCall, spawnOp, type Spawner } from '../toolsmcp';
+import { callTarget, describeTools, Jobs, prepareCall, spawnOp, spawnOpWithKeys, type Spawner } from '../toolsmcp';
 import type { ParamValues } from '../ops/op';
 import { newGate } from './gate';
 import type { AgentModule, AgentTool, Gate } from './types';
@@ -97,7 +97,16 @@ export function parseRequest(text: string): director.Request {
     commands: Array.isArray(r.commands) ? r.commands.filter((c): c is string => typeof c === 'string') : [],
     writable_dirs: Array.isArray(r.writable_dirs) ? r.writable_dirs.filter((c): c is string => typeof c === 'string') : [],
     agent_dir: r.agent_dir,
+    keys: parseKeys(r.keys),
   };
+}
+
+/** 服务商 → key；只留字符串值。 */
+function parseKeys(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) if (typeof v === 'string' && v !== '') out[k] = v;
+  return out;
 }
 
 /** 跑一轮；测试直接调它（换掉 spawner、gate，给假模型）。 */
@@ -108,7 +117,8 @@ export async function runBuiltinAgent(
   options: { spawner?: Spawner; gate?: Gate; setupModels?: (runtime: unknown) => Promise<string> | string; env?: Record<string, string | undefined> } = {},
 ): Promise<{ ok: boolean; error?: string }> {
   const env = options.env ?? currentEnvironment();
-  const { tools, jobs } = amTools(options.spawner, req.workdir);
+  // 整理经验这类会再起导演的操作要拿到 key：经执行进程的 stdin 交下去（spawnOpWithKeys），不进环境。
+  const { tools, jobs } = amTools(options.spawner ?? spawnOpWithKeys(req.keys ?? {}), req.workdir);
   const gate =
     options.gate ??
     newGate({
@@ -116,6 +126,7 @@ export async function runBuiltinAgent(
       unsafe: req.unsafe === true,
       commands: req.commands ?? [],
       writableDirs: req.writable_dirs ?? [],
+      agentDir: req.agent_dir,
       amTools: new Set(tools.map((t) => t.name)),
       inbox: env[studioview.ViewInboxEnv] ?? '',
     });

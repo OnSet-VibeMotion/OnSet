@@ -75,6 +75,8 @@ export const test = base.extend({
       AM_VOICES_DIR: sandbox.voices,
       // 导演的模型服务密钥：不碰开发者自己填的。
       AM_AGENT_DIR: sandbox.agent,
+      // 不用 safeStorage：测试不能碰开发者的钥匙串（第一次用会弹授权框），key 照旧写成 0600 的明文文件。
+      AM_AGENT_KEYS_PLAINTEXT: '1',
       // 第三方插件（已装插件清单与插件的数据目录）：不碰开发者自己装的。
       AM_STATIONS_DIR: sandbox.stations,
       AM_SETTINGS_FILE: sandbox.settings,
