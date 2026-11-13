@@ -8,6 +8,7 @@ import { initialize } from './init';
 import { RulesTemplate } from './rules';
 import { builtinSources, skillTreeRoot } from './testsupport';
 import * as scene from '../scene';
+import { SongExplainerSkillName, songExplainerPrompt } from '../plugins/song';
 
 describe('skill tree gates that need scene', () => {
   // 防静默失败的门：漏了 .agents 入口时整棵技能树从发行物里消失，resolveSkill 找不到技能时按设计
@@ -70,13 +71,15 @@ describe('skill tree gates that need scene', () => {
   });
 
   // 注册了却不注入提示词等于没注册——技能装进项目，渲染器却不知道它存在。
+  // song-explainer 不进通用技能段：它的片段由歌曲镜头的 song 块引用（songExplainerPrompt），照样要过这道门。
   it('every skill has a prompt section', () => {
     for (const desc of scene.allSkills()) {
-      expect(desc.promptSection, `技能 ${desc.name} 缺少 PromptSection`).not.toBeNull();
-      const resolved = desc.promptSection!('/tmp/skills');
+      const section = desc.promptSection ?? (desc.name === SongExplainerSkillName ? songExplainerPrompt : undefined);
+      expect(section, `技能 ${desc.name} 缺少 PromptSection`).toBeTypeOf('function');
+      const resolved = section!('/tmp/skills');
       expect(resolved.includes(desc.name), `技能 ${desc.name} 的提示词片段没有点名自己：${resolved}`).toBe(true);
       // 解析不到目录时必须退回按名字引用，不能写死本机路径或直接空掉。
-      const fallback = desc.promptSection!('');
+      const fallback = section!('');
       expect(fallback.trim(), `技能 ${desc.name} 在未解析到目录时产出空片段`).not.toBe('');
       expect(fallback.includes('/tmp/skills'), `技能 ${desc.name} 的兜底片段里泄漏了路径`).toBe(false);
     }
