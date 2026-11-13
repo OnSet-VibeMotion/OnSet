@@ -23,7 +23,7 @@ func TestTurnCarriesViewBothWays(t *testing.T) {
 		t.Fatalf("turn = %v", turn)
 	}
 	args := f.args(t)
-	if !strings.Contains(args[0], "Studio 网页上开着「镜头」页，镜头 scene-001") || !strings.Contains(args[0], "am studio show") {
+	if !strings.Contains(args[0], "Studio 网页上开着「镜头」页，镜头 scene-001") || !strings.Contains(args[0], "am studio show") || !strings.Contains(args[0], "film-styles") {
 		t.Fatalf("提示词应当带上用户在看的页面与 am studio show 的约定：%s", args[0])
 	}
 	_, raw := rawStudioGet(t, f.url+"/api/sessions/"+id+"/events?follow=0")

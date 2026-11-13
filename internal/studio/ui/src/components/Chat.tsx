@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { api, ApiError, errorText, post, rawURL } from '../api';
 import type { AgentChoice, AgentsResponse, Attachment, EventKind, PlanItem, Scene, SessionEvent, SessionMeta, ViewRequest, ViewState } from '../types';
 import { tabs } from './Preview';
+import { Poster, styleKey, useFilmStyles } from './FilmStyles';
+import type { FilmStyle } from '../types';
 import { AgentPicker } from './AgentPicker';
 import { DiffDialog } from './DiffDialog';
 import { Icon } from './Icon';
@@ -11,6 +13,8 @@ import {
   describeTool,
   formatElapsed,
   parseChoices,
+  parseStylePicks,
+  type StylePick,
   queuedMessages,
   seconds,
   splitAttachmentText,
@@ -107,6 +111,9 @@ export function Chat(props: Props) {
   const pendingCaret = useRef<number | null>(null);
 
   const blocks = useMemo(() => buildBlocks(events), [events]);
+  // 整片风格目录：回复里推荐风格时按标识找名字与海报。
+  const filmStyles = useFilmStyles(!!props.sessionId);
+  const styleIndex = useMemo(() => new Map((filmStyles.data?.styles ?? []).map((style) => [styleKey(style), style])), [filmStyles.data]);
   const queue = useMemo(() => queuedMessages(events), [events]);
   const lastTurn = [...blocks].reverse().find((b): b is TurnBlock => b.kind === 'turn');
   const running = !!lastTurn && !lastTurn.end;
@@ -425,6 +432,8 @@ export function Chat(props: Props) {
               onRetry={(text) => void deliver(text, [])}
               onOpenFile={props.onOpenFile}
               onView={props.onView}
+              styles={styleIndex}
+              posterVersion={filmStyles.posterVersion}
               onReverted={props.onTurnEnd}
               onToggle={() => (following.current = false)}
             />
@@ -693,6 +702,8 @@ interface BlockProps {
   onView: (view: ViewRequest) => void;
   onReverted: () => void;
   onToggle: () => void;
+  styles: Map<string, FilmStyle>;
+  posterVersion: number;
 }
 
 function BlockView(props: BlockProps) {
@@ -753,6 +764,47 @@ const stateLabels: Record<TurnBlock['state'], string> = {
   interrupted: '被中断',
 };
 
+/** 编排工具推荐的整片风格：海报、名字与理由，点了把选择发回去。认不出的标识照样列出，只是没有图。 */
+function StylePicks(props: { picks: StylePick[]; styles: Map<string, FilmStyle>; version: number; enabled: boolean; onPick: (text: string) => void }) {
+  return (
+    <div class="style-picks film-styles" role="group" aria-label="推荐的整片风格">
+      {props.picks.map((pick) => {
+        const style = props.styles.get(pick.key);
+        const [source, slug] = pick.key.split('/');
+        const name = style ? style.cn : pick.key;
+        return (
+          <figure key={pick.key} class="style-pick" data-style={pick.key}>
+            <a
+              class="style-pick-poster"
+              href={`/api/film-styles/${encodeURIComponent(source)}/${encodeURIComponent(slug)}/poster.jpg?size=full`}
+              target="_blank"
+              rel="noreferrer"
+              title="看大图"
+            >
+              <Poster style={style ?? { source, slug, order: '', cn: pick.key, en: '', category_cn: source, category_en: '', uses: [], summary: '' }} version={props.version} />
+            </a>
+            <figcaption>
+              <span class="style-pick-name">
+                {name}
+                {style?.en && <span class="style-pick-en">{style.en}</span>}
+              </span>
+              <span class="style-pick-reason">{pick.reason || style?.summary || ''}</span>
+              <button
+                class="pill"
+                disabled={!props.enabled}
+                title={props.enabled ? '把这个选择发给编排工具' : '只有最新一条回复的推荐可以点'}
+                onClick={() => props.onPick(`整片风格用「${name}」（${pick.key}）`)}
+              >
+                用这个风格
+              </button>
+            </figcaption>
+          </figure>
+        );
+      })}
+    </div>
+  );
+}
+
 /** 切页请求的说法：「口播稿」「镜头 scene-003」「文件 production/treatment.md」。 */
 function viewLabel(view: ViewRequest): string {
   const label = tabs.find(([id]) => id === view.page)?.[1] ?? view.page;
@@ -765,6 +817,7 @@ function TurnView(props: BlockProps & { turn: TurnBlock }) {
   const elapsed = seconds(turn.start, turn.end?.time ?? props.now);
   const proseText = turn.prose.map((event) => event.text ?? '').join('\n\n');
   const choices = parseChoices(proseText);
+  const picks = useMemo(() => parseStylePicks(proseText, new Set(props.styles.keys())), [proseText, props.styles]);
   return (
     <div class="assistant-flow msg-enter">
       {(turn.process.length > 0 || live) && (
@@ -785,6 +838,9 @@ function TurnView(props: BlockProps & { turn: TurnBlock }) {
             </button>
           ))}
         </div>
+      )}
+      {picks.length > 0 && (
+        <StylePicks picks={picks} styles={props.styles} version={props.posterVersion} enabled={props.choicesEnabled} onPick={props.onChoice} />
       )}
       {choices.length > 0 && (
         <div class="choices" role="group" aria-label="选一个回复">

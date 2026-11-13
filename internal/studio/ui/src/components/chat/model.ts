@@ -189,7 +189,43 @@ const choicesBlock = /```choices\s*\n([\s\S]*?)```/;
 
 /** 去掉回复里的 choices 代码块：选项另外显示成按钮。 */
 export function stripChoices(text: string): string {
-  return text.replace(choicesBlock, '').trimEnd();
+  return text.replace(choicesBlock, '').replace(filmStylesBlock, '').trimEnd();
+}
+
+/** 推荐的整片风格：film-styles 代码块，每行「来源/目录名 理由」。 */
+const filmStylesBlock = /```film-styles\s*\n([\s\S]*?)```/;
+
+export interface StylePick {
+  key: string;
+  reason: string;
+}
+
+/**
+ * 回复里推荐的整片风格。优先读 film-styles 代码块；没有代码块时，回复里写到的
+ * 已知风格标识（「来源/目录名」，制作提示词要求推荐时写明）也算，按出现顺序。
+ */
+export function parseStylePicks(text: string, known: Set<string>): StylePick[] {
+  const block = filmStylesBlock.exec(text);
+  const picks: StylePick[] = [];
+  const seen = new Set<string>();
+  if (block) {
+    for (const raw of block[1].split('\n')) {
+      const line = raw.replace(/^\s*(?:[-*•]|\d+[.)、])\s*/, '').trim();
+      const match = /^`?([\w.-]+\/[\w.-]+)`?\s*[:：—–-]*\s*(.*)$/.exec(line);
+      if (!match || seen.has(match[1])) continue;
+      seen.add(match[1]);
+      picks.push({ key: match[1], reason: match[2].trim() });
+    }
+    return picks.slice(0, 6);
+  }
+  if (known.size === 0) return [];
+  for (const match of text.matchAll(/[\w.-]+\/[\w.-]+/g)) {
+    const key = match[0];
+    if (!known.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    picks.push({ key, reason: '' });
+  }
+  return picks.slice(0, 6);
 }
 
 /** 解析 choices 代码块里的选项：每行一个，去掉列表符号。 */

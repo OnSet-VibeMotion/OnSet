@@ -138,6 +138,22 @@ test('completes @ mentions and / commands in the input', async ({ page }) => {
   await expect(page.locator('#completions')).toHaveCount(0);
 });
 
+test('shows posters for film styles the orchestrator recommends', async ({ page }) => {
+  await openProject(page);
+  await page.locator('#prompt').fill('推荐风格');
+  await page.locator('#send').click();
+  const picks = page.locator('.style-picks .style-pick');
+  await expect(picks).toHaveCount(2);
+  await expect(picks.first()).toContainText('油画厚涂');
+  await expect(picks.first()).toContainText('厚涂有分量');
+  await expect(picks.nth(1)).toContainText('浮世绘');
+  await expect(page.locator('.message.assistant')).not.toContainText('film-styles');
+  await expect(page.locator('.choices')).toContainText('不用整片风格');
+  // 点「用这个风格」：把选择作为下一条消息发出。
+  await picks.first().locator('button', { hasText: '用这个风格' }).click();
+  await expect(page.locator('.message.user').last()).toContainText('整片风格用「油画厚涂」（lemo-opuscar/impasto）');
+});
+
 test('picks the orchestrator and renderer per session', async ({ page }) => {
   await openProject(page);
   await expect(page.locator('#agent-tool')).toHaveValue('claude');

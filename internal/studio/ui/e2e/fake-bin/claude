@@ -16,6 +16,12 @@ case "$prompt" in *给我选项*)
   printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
   exit 0 ;;
 esac
+# 「推荐风格」：回复带 film-styles 代码块与 choices 代码块，不改文件。
+case "$prompt" in *推荐风格*)
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"推荐两种：\\n```film-styles\\nlemo-opuscar/impasto 厚涂有分量\\nlemo-opuscar/ukiyoe 版画感强\\n```\\n```choices\\n不用整片风格\\n```"}]}}\n'
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
+  exit 0 ;;
+esac
 # 「稍等」：先停 3 秒再照常改，供排队测试使用。
 case "$prompt" in *稍等*) sleep 3 ;; esac
 printf 'after\n' > scenes/scene-001/prompt.md
