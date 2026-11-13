@@ -8,6 +8,8 @@
  * 文案与格式照抄 cobra / pflag 源码（见各函数注释里对应的上游函数名）。
  */
 
+import { formatG } from '@am/engine/gofmt';
+
 export interface Out {
   write(text: string): void;
   /** 输出是不是终端（对应 Go 里 *os.File 且 term.IsTerminal）。process.stdout 自带这个字段。 */
@@ -31,7 +33,7 @@ export class ExitError extends Error {
 
 // ---------------------------------------------------------------- flags
 
-type FlagType = 'string' | 'bool' | 'int' | 'stringArray' | 'stringSlice' | 'duration';
+type FlagType = 'string' | 'bool' | 'int' | 'float64' | 'stringArray' | 'stringSlice' | 'duration';
 
 interface Flag {
   name: string;
@@ -144,6 +146,15 @@ function parseGoInt(raw: string): number {
   return m[1] === '-' ? -value : value;
 }
 
+/** strconv.ParseFloat 的常用子集：十进制、科学计数法、inf / infinity / nan（不区分大小写，可带正负号）。 */
+function parseGoFloat(raw: string): number {
+  const s = raw.trim() === raw ? raw : '';
+  if (/^[+-]?(inf|infinity)$/i.test(s)) return s.startsWith('-') ? -Infinity : Infinity;
+  if (/^nan$/i.test(s)) return NaN;
+  if (/^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/.test(s)) return Number(s);
+  throw new Error(`strconv.ParseFloat: parsing ${goQuote(raw)}: invalid syntax`);
+}
+
 function parseGoBool(raw: string): boolean {
   if (['1', 't', 'T', 'TRUE', 'true', 'True'].includes(raw)) return true;
   if (['0', 'f', 'F', 'FALSE', 'false', 'False'].includes(raw)) return false;
@@ -204,6 +215,11 @@ export class FlagSet {
   intVar(target: Ref<number>, name: string, def: number, usage: string, shorthand = ''): void {
     target.value = def;
     this.add({ name, shorthand, usage, type: 'int', defValue: String(def), set: (v) => (target.value = parseGoInt(v)) });
+  }
+
+  float64Var(target: Ref<number>, name: string, def: number, usage: string, shorthand = ''): void {
+    target.value = def;
+    this.add({ name, shorthand, usage, type: 'float64', defValue: formatG(def), set: (v) => (target.value = parseGoFloat(v)) });
   }
 
   durationVar(target: Ref<Duration>, name: string, def: Duration, usage: string, shorthand = ''): void {
@@ -307,7 +323,7 @@ function unquoteUsage(flag: Flag): [string, string] {
       return [name, usage.slice(0, i) + name + usage.slice(j + 1)];
     }
   }
-  const names: Record<FlagType, string> = { string: 'string', bool: '', int: 'int', stringArray: 'stringArray', stringSlice: 'strings', duration: 'duration' };
+  const names: Record<FlagType, string> = { string: 'string', bool: '', int: 'int', float64: 'float', stringArray: 'stringArray', stringSlice: 'strings', duration: 'duration' };
   return [names[flag.type], usage];
 }
 
@@ -318,6 +334,7 @@ function defaultIsZero(flag: Flag): boolean {
     case 'duration':
       return flag.defValue === '0' || flag.defValue === '0s';
     case 'int':
+    case 'float64':
       return flag.defValue === '0';
     case 'string':
       return flag.defValue === '';
