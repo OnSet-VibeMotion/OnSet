@@ -13,6 +13,7 @@ import { newAlignCommand } from './align';
 import { newAudioCommand } from './audio';
 import { newArchiveCommand, newConfigCommand, newInitCommand } from './project_cmds';
 import { newSetupCommand } from './setup';
+import { newStyleCommand } from './style_cmd';
 
 /**
  * `am --version` 的版本号。由发布流程在构建时注入（esbuild --define:AM_VERSION），本地构建是 dev。
@@ -81,7 +82,7 @@ export function newRoot(stdout: Out, stderr: Out): { root: Command; flags: RootF
   );
   const flags: RootFlags = { unsafe };
   root.addCommand(newSetupCommand(stdout, stderr), newHyperframesCommand(stdout, stderr), newFilmStyleCommand(stdout, stderr));
-  root.addCommand(newInitCommand(stdout, stderr), newConfigCommand(stdout), newArchiveCommand(stdout), newAlignCommand(stdout), newAudioCommand(stdout));
+  root.addCommand(newInitCommand(stdout, stderr), newConfigCommand(stdout), newArchiveCommand(stdout), newAlignCommand(stdout), newAudioCommand(stdout), newStyleCommand(stdout));
   return { root, flags };
 }
 

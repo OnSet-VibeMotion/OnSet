@@ -121,4 +121,17 @@ export const cases = [
       ['audio', 'check', '--audio', 'voice.wav', '--srt', 'good.srt', '--tolerance', 'abc'],
     ],
   },
+  {
+    name: 'style fonts',
+    setup: [['init', '--canvas', 'vertical-3x4', '--skip-hyperframes']],
+    commands: [
+      ['style', '--help'],
+      ['style', 'fonts'],
+      ['style', 'add-font', 'lxgw wenkai'],
+      ['style', 'add-font', 'Fredoka', '--weight', '700'],
+      ['style', 'add-font', 'Fredoka', '--weight', '500'],
+      ['style', 'add-font', 'Nope'],
+      ['style', 'add-font', 'Fredoka', '--project-root', 'nowhere'],
+    ],
+  },
 ];

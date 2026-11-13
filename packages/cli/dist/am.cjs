@@ -106,17 +106,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path26) {
-      const ctrl = callVisitor(key, node, visitor, path26);
+    function visit_(key, node, visitor, path27) {
+      const ctrl = callVisitor(key, node, visitor, path27);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path26, ctrl);
-        return visit_(key, ctrl, visitor, path26);
+        replaceNode(key, path27, ctrl);
+        return visit_(key, ctrl, visitor, path27);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path26 = Object.freeze(path26.concat(node));
+          path27 = Object.freeze(path27.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci2 = visit_(i, node.items[i], visitor, path26);
+            const ci2 = visit_(i, node.items[i], visitor, path27);
             if (typeof ci2 === "number")
               i = ci2 - 1;
             else if (ci2 === BREAK)
@@ -127,13 +127,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path26 = Object.freeze(path26.concat(node));
-          const ck = visit_("key", node.key, visitor, path26);
+          path27 = Object.freeze(path27.concat(node));
+          const ck = visit_("key", node.key, visitor, path27);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path26);
+          const cv = visit_("value", node.value, visitor, path27);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -154,17 +154,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path26) {
-      const ctrl = await callVisitor(key, node, visitor, path26);
+    async function visitAsync_(key, node, visitor, path27) {
+      const ctrl = await callVisitor(key, node, visitor, path27);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path26, ctrl);
-        return visitAsync_(key, ctrl, visitor, path26);
+        replaceNode(key, path27, ctrl);
+        return visitAsync_(key, ctrl, visitor, path27);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path26 = Object.freeze(path26.concat(node));
+          path27 = Object.freeze(path27.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci2 = await visitAsync_(i, node.items[i], visitor, path26);
+            const ci2 = await visitAsync_(i, node.items[i], visitor, path27);
             if (typeof ci2 === "number")
               i = ci2 - 1;
             else if (ci2 === BREAK)
@@ -175,13 +175,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path26 = Object.freeze(path26.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path26);
+          path27 = Object.freeze(path27.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path27);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path26);
+          const cv = await visitAsync_("value", node.value, visitor, path27);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -208,23 +208,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path26) {
+    function callVisitor(key, node, visitor, path27) {
       if (typeof visitor === "function")
-        return visitor(key, node, path26);
+        return visitor(key, node, path27);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path26);
+        return visitor.Map?.(key, node, path27);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path26);
+        return visitor.Seq?.(key, node, path27);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path26);
+        return visitor.Pair?.(key, node, path27);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path26);
+        return visitor.Scalar?.(key, node, path27);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path26);
+        return visitor.Alias?.(key, node, path27);
       return void 0;
     }
-    function replaceNode(key, path26, node) {
-      const parent = path26[path26.length - 1];
+    function replaceNode(key, path27, node) {
+      const parent = path27[path27.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -836,10 +836,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path26, value) {
+    function collectionFromPath(schema, path27, value) {
       let v = value;
-      for (let i = path26.length - 1; i >= 0; --i) {
-        const k = path26[i];
+      for (let i = path27.length - 1; i >= 0; --i) {
+        const k = path27[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -858,7 +858,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path26) => path26 == null || typeof path26 === "object" && !!path26[Symbol.iterator]().next().done;
+    var isEmptyPath = (path27) => path27 == null || typeof path27 === "object" && !!path27[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -888,11 +888,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path26, value) {
-        if (isEmptyPath(path26))
+      addIn(path27, value) {
+        if (isEmptyPath(path27))
           this.add(value);
         else {
-          const [key, ...rest] = path26;
+          const [key, ...rest] = path27;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -906,8 +906,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path26) {
-        const [key, ...rest] = path26;
+      deleteIn(path27) {
+        const [key, ...rest] = path27;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -921,8 +921,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path26, keepScalar) {
-        const [key, ...rest] = path26;
+      getIn(path27, keepScalar) {
+        const [key, ...rest] = path27;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -940,8 +940,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path26) {
-        const [key, ...rest] = path26;
+      hasIn(path27) {
+        const [key, ...rest] = path27;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -951,8 +951,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path26, value) {
-        const [key, ...rest] = path26;
+      setIn(path27, value) {
+        const [key, ...rest] = path27;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -3467,9 +3467,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path26, value) {
+      addIn(path27, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path26, value);
+          this.contents.addIn(path27, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3544,14 +3544,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path26) {
-        if (Collection.isEmptyPath(path26)) {
+      deleteIn(path27) {
+        if (Collection.isEmptyPath(path27)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path26) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path27) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3566,10 +3566,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path26, keepScalar) {
-        if (Collection.isEmptyPath(path26))
+      getIn(path27, keepScalar) {
+        if (Collection.isEmptyPath(path27))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path26, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path27, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3580,10 +3580,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path26) {
-        if (Collection.isEmptyPath(path26))
+      hasIn(path27) {
+        if (Collection.isEmptyPath(path27))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path26) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path27) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3600,13 +3600,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path26, value) {
-        if (Collection.isEmptyPath(path26)) {
+      setIn(path27, value) {
+        if (Collection.isEmptyPath(path27)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path26), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path27), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path26, value);
+          this.contents.setIn(path27, value);
         }
       }
       /**
@@ -5567,9 +5567,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path26) => {
+    visit.itemAtPath = (cst, path27) => {
       let item = cst;
-      for (const [field, index] of path26) {
+      for (const [field, index] of path27) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5578,23 +5578,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path26) => {
-      const parent = visit.itemAtPath(cst, path26.slice(0, -1));
-      const field = path26[path26.length - 1][0];
+    visit.parentCollection = (cst, path27) => {
+      const parent = visit.itemAtPath(cst, path27.slice(0, -1));
+      const field = path27[path27.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path26, item, visitor) {
-      let ctrl = visitor(item, path26);
+    function _visit(path27, item, visitor) {
+      let ctrl = visitor(item, path27);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci2 = _visit(Object.freeze(path26.concat([[field, i]])), token.items[i], visitor);
+            const ci2 = _visit(Object.freeze(path27.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci2 === "number")
               i = ci2 - 1;
             else if (ci2 === BREAK)
@@ -5605,10 +5605,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path26);
+            ctrl = ctrl(item, path27);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path26) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path27) : ctrl;
     }
     exports2.visit = visit;
   }
@@ -6910,14 +6910,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs30 = this.flowScalar(this.type);
+              const fs31 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs30, sep: [] });
+                map.items.push({ start, key: fs31, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs30);
+                this.stack.push(fs31);
               } else {
-                Object.assign(it, { key: fs30, sep: [] });
+                Object.assign(it, { key: fs31, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -7045,13 +7045,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs30 = this.flowScalar(this.type);
+              const fs31 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs30, sep: [] });
+                fc.items.push({ start: [], key: fs31, sep: [] });
               else if (it.sep)
-                this.stack.push(fs30);
+                this.stack.push(fs31);
               else
-                Object.assign(it, { key: fs30, sep: [] });
+                Object.assign(it, { key: fs31, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -11419,6 +11419,32 @@ var FontOxanium600 = font("oxanium-600.woff2", "Oxanium", 600, "LICENSE-oxanium.
 var FontSpaceGrotesk500 = font("space-grotesk-500.woff2", "Space Grotesk", 500, "LICENSE-space-grotesk.txt");
 var FontSpaceGrotesk700 = font("space-grotesk-700.woff2", "Space Grotesk", 700, "LICENSE-space-grotesk.txt");
 var FontCaveat600 = font("caveat-600.woff2", "Caveat", 600, "LICENSE-caveat.txt");
+var allFonts = [
+  FontNotoSerifSC400,
+  FontNotoSerifSC700,
+  FontLXGWWenKai400,
+  FontXiaolai400,
+  FontSmileySans400,
+  FontZCOOLKuaiLe400,
+  FontZCOOLQingKe400,
+  FontFusionPixel400,
+  FontPressStart2P400,
+  FontSilkscreen400,
+  FontOrbitron,
+  FontChakraPetch700,
+  FontFredoka600,
+  FontFredoka700,
+  FontBungee400,
+  FontCinzel700,
+  FontBebasNeue400,
+  FontOxanium600,
+  FontSpaceGrotesk500,
+  FontSpaceGrotesk700,
+  FontCaveat600
+];
+function allFontsCopy() {
+  return allFonts.map((f) => ({ ...f }));
+}
 var SharedFonts = [
   font("noto-sans-sc-400.woff2", "Noto Sans SC", 400, "LICENSE-Noto-Sans-SC.txt"),
   font("noto-sans-sc-600.woff2", "Noto Sans SC", 600, "LICENSE-Noto-Sans-SC.txt"),
@@ -16544,9 +16570,9 @@ function tailLines(text, n) {
   }
   return out;
 }
-function homeShort(path26) {
+function homeShort(path27) {
   const home = import_node_os4.default.homedir();
-  return home && path26.startsWith(home) ? "~" + path26.slice(home.length) : path26;
+  return home && path27.startsWith(home) ? "~" + path27.slice(home.length) : path27;
 }
 
 // src/setup.ts
@@ -16715,6 +16741,88 @@ ${view3.paint("31", "\u2717")} ${item.name} \u6CA1\u51C6\u5907\u597D\uFF1A${mess
   }
 }
 
+// src/style_cmd.ts
+var import_node_fs30 = __toESM(require("node:fs"), 1);
+var import_node_path26 = __toESM(require("node:path"), 1);
+function newStyleCommand(stdout) {
+  const styleCmd = new Command({
+    use: "style",
+    short: "\u65E7\u7248\u9879\u76EE\u7684\u5B57\u4F53\u5DE5\u5177",
+    long: `\u65E7\u7248\u9879\u76EE\u6216\u9700\u8981\u672C\u5730\u5B57\u4F53\u7684\u955C\u5934\u53EF\u4EE5\u4F7F\u7528\u3002
+
+fonts \u5217\u51FA\u53EF\u7528\u5B57\u4F53\uFF1A\u968F\u6BCF\u4E2A\u9879\u76EE\u4E0B\u53D1\u7684\u6B63\u6587\u5B57\u4F53\uFF0C\u4EE5\u53CA\u5B57\u4F53\u6C60\u91CC\u53EF\u6309\u9700\u62F7\u5165\u7684\u5B57\u4F53\u3002
+add-font \u628A\u5B57\u4F53\u6C60\u91CC\u7684\u5B57\u4F53\u8FDE\u540C\u8BB8\u53EF\u8BC1\u62F7\u8FDB\u9879\u76EE\u7684 assets/fonts/\uFF1B\u62F7\u5165\u540E\u8FD8\u8981\u5728
+\u955C\u5934\u4EE3\u7801\u901A\u8FC7\u76F8\u5BF9\u8DEF\u5F84\u5F15\u7528\uFF1B\u4E0D\u8981\u4F9D\u8D56\u7CFB\u7EDF\u5B57\u4F53\u3002`
+  });
+  const fontLine = (font2) => `  ${padRight(font2.family, 32)} ${String(font2.weight).padStart(4)}  ${FontsDir}${font2.file}
+`;
+  styleCmd.addCommand(
+    new Command({
+      use: "fonts",
+      args: noArgs,
+      short: "\u5217\u51FA\u53EF\u7528\u5B57\u4F53",
+      long: `\u5217\u51FA\u81EA\u5B9A\u4E49\u98CE\u683C\u53EF\u4EE5\u4F7F\u7528\u7684\u5168\u90E8\u5B57\u4F53\uFF1A\u65CF\u540D\u3001\u5B57\u91CD\u4E0E\u9879\u76EE\u5185\u8DEF\u5F84\u3002
+
+\u7B2C\u4E00\u7EC4\u968F\u6BCF\u4E2A\u9879\u76EE\u4E0B\u53D1\uFF1B\u7B2C\u4E8C\u7EC4\u5728\u5B57\u4F53\u6C60\u91CC\uFF0C\u8981\u5148\u7528 am style add-font \u62F7\u8FDB\u9879\u76EE\u3002
+\u4E0D\u5728\u6E05\u5355\u91CC\u7684\u5B57\u4F53\u53EA\u80FD\u7531\u7528\u6237\u81EA\u5E26 woff2 \u6587\u4EF6\uFF0C
+\u4E0D\u5F97\u5F15\u7528\u672C\u673A\u7CFB\u7EDF\u5B57\u4F53\u2014\u2014\u6E32\u67D3\u673A\u4E0A\u6CA1\u6709\u3002`,
+      example: "  am style fonts",
+      runE: () => {
+        stdout.write("\u968F\u9879\u76EE\u4E0B\u53D1\uFF08\u65E0\u9700\u62F7\u5165\uFF0C\u53EF\u76F4\u63A5\u58F0\u660E\uFF09\uFF1A\n");
+        for (const font2 of SharedFonts) stdout.write(fontLine(font2));
+        stdout.write("\u5B57\u4F53\u6C60\uFF08\u7528 am style add-font FAMILY [--weight N] \u62F7\u5165\uFF09\uFF1A\n");
+        for (const font2 of allFontsCopy()) stdout.write(fontLine(font2));
+      }
+    })
+  );
+  const projectRoot = ref("");
+  const weight = ref(0);
+  const addCmd = new Command({
+    use: "add-font FAMILY",
+    args: exactArgs(1, "FAMILY"),
+    short: "\u628A\u5B57\u4F53\u6C60\u91CC\u7684\u5B57\u4F53\u62F7\u8FDB\u9879\u76EE",
+    long: `\u628A\u5B57\u4F53\u6C60\u91CC FAMILY \u7684\u5B57\u4F53\u6587\u4EF6\u4E0E\u8BB8\u53EF\u8BC1\u62F7\u8FDB assets/fonts/\u3002\u65CF\u540D\u4E0D\u533A\u5206\u5927\u5C0F\u5199\uFF1B
+\u4E0D\u4F20 --weight \u65F6\u62F7\u5165\u8BE5\u65CF\u5168\u90E8\u5B57\u91CD\u3002
+
+\u5DF2\u5B58\u5728\u4E14\u5185\u5BB9\u76F8\u540C\u7684\u6587\u4EF6\u8DF3\u8FC7\uFF0C\u5185\u5BB9\u4E0D\u540C\u65F6\u6574\u4F53\u5931\u8D25\u3001\u4E0D\u8986\u76D6\u3002`,
+    example: `  am style add-font "LXGW WenKai"
+  am style add-font Fredoka --weight 700 --project-root .`,
+    runE: (_cmd, args) => {
+      const fonts = poolFonts(args[0], weight.value);
+      const files2 = fontFiles(fonts);
+      const rootDir2 = projectRoot.value || ".";
+      let isFile = false;
+      try {
+        isFile = import_node_fs30.default.statSync(import_node_path26.default.join(rootDir2, "frame.md")).isFile();
+      } catch {
+        isFile = false;
+      }
+      if (!isFile) throw new Error(`${rootDir2} \u4E0D\u662F am \u9879\u76EE\uFF08\u7F3A\u5C11 frame.md\uFF09\uFF0C\u7528 --project-root \u6307\u5411\u9879\u76EE\u6839\u76EE\u5F55`);
+      const result = initializeWithFiles(rootDir2, files2);
+      stdout.write(`\u5DF2\u62F7\u5165 ${fonts[0].family}\uFF08\u65B0\u589E ${result.created}\uFF0C\u672A\u53D8 ${result.unchanged}\uFF09\u3002\u8BF7\u5728\u955C\u5934\u4EE3\u7801\u4E2D\u7528\u76F8\u5BF9\u8DEF\u5F84\u5F15\u7528\uFF1A
+`);
+      for (const font2 of fonts) stdout.write(`  - {family: ${goQuote(font2.family)}, weight: ${font2.weight}, file: ${goQuote(FontsDir + font2.file)}}
+`);
+    }
+  });
+  addCmd.flags().stringVar(projectRoot, "project-root", "", "\u9879\u76EE\u6839\u76EE\u5F55\uFF0C\u7F3A\u7701\u4E3A\u5F53\u524D\u76EE\u5F55");
+  addCmd.flags().intVar(weight, "weight", 0, "\u53EA\u62F7\u5165\u6307\u5B9A\u5B57\u91CD\uFF0C\u7F3A\u7701\u4E3A\u8BE5\u65CF\u5168\u90E8\u5B57\u91CD");
+  styleCmd.addCommand(addCmd);
+  return styleCmd;
+}
+function poolFonts(family, weight) {
+  const matched = [];
+  const weights = [];
+  for (const font2 of allFontsCopy()) {
+    if (font2.family.toLowerCase() !== family.trim().toLowerCase()) continue;
+    weights.push(String(font2.weight));
+    if (weight === 0 || font2.weight === weight) matched.push(font2);
+  }
+  if (weights.length === 0) throw new Error(`\u5B57\u4F53\u6C60\u91CC\u6CA1\u6709\u5B57\u4F53\u65CF ${goQuote(family)}\uFF0C\u7528 am style fonts \u67E5\u770B\u53EF\u9009\u5B57\u4F53`);
+  if (matched.length === 0) throw new Error(`\u5B57\u4F53\u65CF ${goQuote(family)} \u6CA1\u6709\u5B57\u91CD ${weight}\uFF0C\u53EF\u9009\uFF1A${weights.join(" ")}`);
+  return matched;
+}
+
 // src/cli.ts
 var Version = typeof AM_VERSION === "string" ? AM_VERSION : "dev";
 var hyperframesVersion = PinnedVersion;
@@ -16760,7 +16868,7 @@ function newRoot(stdout, stderr) {
   );
   const flags = { unsafe };
   root.addCommand(newSetupCommand(stdout, stderr), newHyperframesCommand(stdout, stderr), newFilmStyleCommand(stdout, stderr));
-  root.addCommand(newInitCommand(stdout, stderr), newConfigCommand(stdout), newArchiveCommand(stdout), newAlignCommand(stdout), newAudioCommand(stdout));
+  root.addCommand(newInitCommand(stdout, stderr), newConfigCommand(stdout), newArchiveCommand(stdout), newAlignCommand(stdout), newAudioCommand(stdout), newStyleCommand(stdout));
   return { root, flags };
 }
 async function execute3(args, stdout, stderr, signal) {
