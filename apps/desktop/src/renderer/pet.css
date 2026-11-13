@@ -1,5 +1,5 @@
 /*
- * 桌宠窗口（Pet.tsx）：透明无边框的小窗，里面一张放映室色的卡片是等距线稿工作室。
+ * 桌宠窗口（Pet.tsx）：透明无边框的小窗，里面一张放映室色的卡片是等距块面的微缩工作室。
  * 窗口本身透明，卡片以外不画任何东西。
  */
 html.pet-window,
@@ -161,11 +161,22 @@ html.pet-window body {
   fill: rgba(0, 0, 0, 0.45);
 }
 .pet .pet-glass {
-  fill: color-mix(in srgb, var(--text) 4%, transparent);
+  fill: color-mix(in srgb, #cfe0e8 10%, transparent);
+  stroke: color-mix(in srgb, var(--text) 18%, transparent);
+  stroke-width: 0.8;
+}
+.pet .pet-glass-dark {
+  fill: color-mix(in srgb, #cfe0e8 6%, transparent);
+  stroke: color-mix(in srgb, var(--text) 12%, transparent);
+  stroke-width: 0.8;
 }
 .pet .pet-light polygon {
-  fill: var(--accent);
-  opacity: 0.05;
+  fill: #f4e7cf;
+  opacity: 0.06;
+}
+.pet .pet-light .pet-lit-paper {
+  fill: #f4e7cf;
+  opacity: 0.16;
 }
 .pet .pet-glow-stop {
   stop-color: var(--accent);
