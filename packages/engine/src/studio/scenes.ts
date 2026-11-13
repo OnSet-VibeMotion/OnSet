@@ -128,5 +128,48 @@ export function discoverScenes(root: string): SceneSummary[] {
     out.push(summary);
   });
   out.sort((a, b) => compareBytes(a.id, b.id));
+  return currentScenes(root, out);
+}
+
+/**
+ * 同一个镜头 id 只留一份。重做分镜时编排工具常把旧的一套整体挪进 `production/v1/scenes/` 之类的地方留底，
+ * 两套 id 相同：不去重的话镜头列表出现两组，按 id 找镜头的地方（镜头页、渲染、校验）又先碰到旧的那份。
+ * 取舍：分镜计划 `dir` 指向的 → 项目根 `scenes/` 下的 → 路径层级浅的 → 路径字典序。
+ */
+function currentScenes(root: string, scenes: SceneSummary[]): SceneSummary[] {
+  const planned = plannedDirs(root);
+  const top = path.join(root, 'scenes') + path.sep;
+  const rank = (sc: SceneSummary): number[] => [
+    planned.has(path.resolve(sc.directory)) ? 0 : 1,
+    sc.directory.startsWith(top) ? 0 : 1,
+    sc.directory.split(path.sep).length,
+  ];
+  const better = (a: SceneSummary, b: SceneSummary): boolean => {
+    const ra = rank(a);
+    const rb = rank(b);
+    for (let i = 0; i < ra.length; i++) if (ra[i] !== rb[i]) return ra[i] < rb[i];
+    return compareBytes(a.directory, b.directory) < 0;
+  };
+  const chosen = new Map<string, SceneSummary>();
+  for (const sc of scenes) {
+    const prev = chosen.get(sc.id);
+    if (!prev || better(sc, prev)) chosen.set(sc.id, sc);
+  }
+  return scenes.filter((sc) => chosen.get(sc.id) === sc);
+}
+
+/** 分镜计划 `production/scene-plan.json` 里每个镜头的 `dir`（绝对路径）；没有或读不了时为空。 */
+function plannedDirs(root: string): Set<string> {
+  const out = new Set<string>();
+  try {
+    const plan = JSON.parse(fs.readFileSync(path.join(root, 'production', 'scene-plan.json'), 'utf8')) as { scenes?: unknown };
+    if (!Array.isArray(plan.scenes)) return out;
+    for (const entry of plan.scenes) {
+      const dir = (entry as { dir?: unknown } | null)?.dir;
+      if (typeof dir === 'string' && dir !== '') out.add(path.resolve(root, dir));
+    }
+  } catch {
+    // 没有计划（卡点项目、旧项目）就只按位置判断。
+  }
   return out;
 }

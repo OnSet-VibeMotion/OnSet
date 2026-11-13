@@ -385,6 +385,7 @@ opencode 默认模型不可用时加 `AM_TEST_OPENCODE_MODEL`。
 | 预先指定或从流里读到会话 id 立刻落盘；续接失败且没有任何产出时，带对话记录开新会话 | 进程中途崩了也能续接；CLI 会话过期是常态，不能让对话就此断掉 |
 | 会话、事件（`<id>.events.jsonl`，SSE 的 id 就是 seq）、轮次记录都在项目的 `production/studio/` 下 | 状态跟着项目走，`am archive` 一起归档；客户端重启后进行中的轮次标成 `interrupted` |
 | 编排工具与渲染工具按会话选（`SessionMeta.tool` / `renderer`，`sessions.ts`），默认取项目配置；客户端不改 `article-to-motion.conf`，选择经 `sessionConfig` 覆盖后由 `childEnvironment` 写进子进程的 `ORCHESTRATOR` / `RENDERER` | 环境变量优先于项目配置，编排工具在这一轮里调用的 `am scene run` 因此也用会话选的渲染工具。换编排工具时清掉 CLI 会话 id，下一轮按续接失败的路子带上对话记录开新会话 |
+| 镜头列表（`discoverScenes`，`studio/scenes.ts`）同一个 id 只留一份：分镜计划 `dir` 指向的 → 项目根 `scenes/` 下的 → 层级浅的；`scenes.test.ts` 钉着 | 重做分镜时编排工具会把旧的一套挪进 `production/v1/scenes/` 留底，id 与新的一套相同；不去重时镜头列表出现两组，镜头页按 id 先找到旧的那份，换了风格也一直显示旧画面（2026-11 实测） |
 | 项目路径一律用 `Server.currentProject()` 返回的（登记时已 realpath） | macOS 的 `/var` 是 `/private/var` 的链接，两种写法会被当成两个项目，锁和会话都对不上 |
 | 上传的文件存进 `production/studio/uploads/`（`uploads.ts`），附件带 `upload: true`，提示词里只给路径和种类，由编排工具在这一轮里复制或转换到项目里；`.env` 拒收 | 客户端不写项目文件。上传落在不进快照的状态目录，文件真正进项目的那一步是某一轮的改动，照常能看差异、能回退 |
 | 一轮进行中发的消息排队（`enqueueTurn`，事件 `queued` 带 `queue_id`），这一轮结束后合并成下一轮（`drainQueue`）；`DELETE …/queue/{id}` 移除（事件 `unqueued`），`POST …/queue/{id}/steer` 把它提到最前并停掉当前这一轮；按停止会清掉排队 | 各家 CLI 在非交互模式下都不能中途注入输入，只能排到下一轮。按停止多半是不想让后面的要求接着跑 |
