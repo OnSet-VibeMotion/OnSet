@@ -20,6 +20,8 @@ export interface ProjectState {
   flow?: FlowView;
   /** 没有流程记录（不是这一版新建的项目）时的说明；这时没有 flow 与 step。 */
   flow_error?: string;
+  /** 客户端有哪些页（宿主的加上内置插件登记的，studioview.viewPages）：界面只列这里有的。 */
+  pages?: { id: string; label: string }[];
 }
 
 export interface FlowView {
@@ -605,6 +607,8 @@ export interface PrereqStatus {
   required: boolean;
   ready: boolean;
   location: string;
+  /** 内置插件登记的项：安装页「以后可能用到」里的那一组（同一 group 合成一张卡片）。 */
+  later?: { title: string; desc: string; icon?: string };
 }
 
 /** 一项在这次安装里的进展（/api/setup 的 task.items）。 */
@@ -814,7 +818,16 @@ export interface ProgressStation {
   file?: string;
   turns: ProgressTurn[];
   /** 内置插件给这一站写的「接下来」说法。 */
-  guide?: { ai?: string; user?: string; page?: string; page_label?: string };
+  guide?: {
+    ai?: string;
+    user?: string;
+    page?: string;
+    page_label?: string;
+    /** 等你时的按钮（内置插件登记的）。 */
+    actions?: ({ kind: 'page'; label: string; page: string } | { kind: 'say' | 'draft'; label: string; text: string } | { kind: 'gate'; label: string; gate: string })[];
+    /** 关卡：点「确认」时发给 AI 的话。 */
+    confirm?: string;
+  };
 }
 
 export interface ProgressState {

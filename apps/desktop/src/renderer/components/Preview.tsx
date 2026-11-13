@@ -1,8 +1,8 @@
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { api, errorText, post, rawURL } from '../api';
-import type { Attachment, BeatState, ProgressState, Box, ProjectFilmStyle, ProjectState, ProjectUsage, Scene, TreeFile, Usage } from '../types';
+import type { Attachment, ProgressState, Box, ProjectFilmStyle, ProjectState, ProjectUsage, Scene, TreeFile, Usage } from '../types';
 import { cssSelector } from '../selector';
 import { Icon } from './Icon';
 import { MemoryTab } from './Memory';
@@ -11,7 +11,7 @@ import { FilmStyleDialog, FilmStylePicker, Poster, styleKey, useFilmStyles } fro
 import { Markdown } from './chat/Markdown';
 import { SceneActivityPanel } from './RenderActivity';
 import { ScriptTab } from './Script';
-import { BeatTab } from './Beat';
+import { pageView, pageViews, type PageViewID } from './pageViews';
 import { PublishTab } from './Publish';
 import { isStationTab, StationPage, StationSlots } from './Stations';
 
@@ -20,13 +20,13 @@ import { ProgressTab } from './Progress';
 import { FileTree } from './Sidebar';
 import { canReveal, revealInFinder, revealLabel } from '../reveal';
 
-export type BuiltinTab = 'progress' | 'beat' | 'script' | 'storyboard' | 'scene' | 'compose' | 'final' | 'style' | 'voice' | 'review' | 'publish' | 'memory' | 'file';
-/** 第三方插件自己的页面：x:<站>:<页面>（Stations.tsx）。 */
-export type Tab = BuiltinTab | `x:${string}`;
+export type BuiltinTab = 'progress' | 'script' | 'storyboard' | 'scene' | 'compose' | 'final' | 'style' | 'voice' | 'review' | 'publish' | 'memory' | 'file';
+/** 内置插件登记的页面（组件在 pageViews.tsx）与第三方插件自己的页面：x:<站>:<页面>（Stations.tsx）。 */
+export type Tab = BuiltinTab | PageViewID | `x:${string}`;
 
-export const tabs: [Tab, string][] = [
+/** 宿主的页面。内置插件的页面（例如卡点的节拍页）有没有、排在哪由后端的页面表定（/api/state 的 pages）。 */
+const hostTabs: [Tab, string][] = [
   ['progress', '制作路线'],
-  ['beat', '节拍'],
   ['script', '口播稿'],
   ['storyboard', '分镜'],
   ['scene', '镜头'],
@@ -40,16 +40,24 @@ export const tabs: [Tab, string][] = [
   ['file', '文件'],
 ];
 
+/** 全部页面的名字（宿主的与界面认识的内置插件页面），切页、显示名字时查它。 */
+export const tabs: [Tab, string][] = [...hostTabs, ...Object.entries(pageViews).map(([id, v]): [Tab, string] => [id as Tab, v.label])];
+
 /**
  * 顶栏中间的五个步骤，按制作顺序编号；其余页面（合成、复查、风格、音色、记忆、文件）在顶栏右侧用小字列出。
  * 项目的步骤来自它的流程声明（/api/state 的 flow.steps），这里只是还没读到时的缺省（口播）。
  */
 export const stepTabs: Tab[] = ['script', 'storyboard', 'scene', 'final', 'publish'];
 
-/** 顶栏列出的页面：不列这个项目的流程用不上的页（flow.hidden_pages；编排工具仍可以 studio_show 切过去）。 */
-export function visibleTabs(hidden: readonly string[]): [Tab, string][] {
+/**
+ * 顶栏列出的页面：后端页面表里有的（pages，按它的顺序；还没读到时只列宿主的），不列这个项目的流程用不上的页
+ * （flow.hidden_pages；编排工具仍可以 studio_show 切过去）。界面没有组件的页面不列。
+ */
+export function visibleTabs(hidden: readonly string[], pages?: readonly { id: string; label: string }[]): [Tab, string][] {
+  const known = (id: string) => hostTabs.some(([t]) => t === id) || pageView(id) !== undefined;
+  const list: [Tab, string][] = pages ? pages.filter((pg) => known(pg.id)).map((pg) => [pg.id as Tab, pg.label]) : hostTabs;
   // 制作路线在顶栏步骤条左边有自己的按钮。
-  return tabs.filter(([id]) => id !== 'progress' && !hidden.includes(id));
+  return list.filter(([id]) => id !== 'progress' && !hidden.includes(id));
 }
 
 /** 按钮触发的写任务：返回 task_id 的接口。App 负责发请求、提示与刷新任务列表。 */
@@ -68,7 +76,8 @@ interface Props {
   /** 这一轮对话改过的文件，文件树里打点。 */
   recent: Set<string>;
   version: number;
-  beat: BeatState | null;
+  /** 这个项目用得上的内置插件页面（后端页面表里有、流程没藏起来的）：它们的提示条挂在面板顶上。 */
+  pages: string[];
   progress: ProgressState | null;
   busy: string;
   onAttach: (attachment: Attachment) => void;
@@ -85,7 +94,12 @@ export function Preview(props: Props) {
   const scene = props.scenes.find((s) => s.id === props.sceneId) ?? null;
   return (
     <main className="pane center">
-      {props.beat?.enabled && props.tab !== 'beat' && <BeatBanner beat={props.beat} onTab={props.onTab} />}
+      {props.pages
+        .filter((id) => id !== props.tab)
+        .map((id) => {
+          const banner = pageView(id)?.banner;
+          return banner ? <Fragment key={id}>{banner(viewProps(props))}</Fragment> : null;
+        })}
       <div className="preview-body">
         {props.tab === 'progress' && (
           <ProgressTab
@@ -101,7 +115,7 @@ export function Preview(props: Props) {
             onTurn={props.onTurn}
           />
         )}
-        {props.tab === 'beat' && <BeatTab beat={props.beat} version={props.version} busy={props.busy} run={props.run} onQuick={props.onQuick} onScene={props.onScene} />}
+        {pageView(props.tab)?.render(viewProps(props))}
         {props.tab === 'script' && (
           <ScriptTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} onAttach={props.onAttach} />
         )}
@@ -153,23 +167,9 @@ function Empty({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
 }
 
-/** 不在节拍页时的一行提示：网格还没确认、或分镜计划算不出来时才出现。 */
-function BeatBanner({ beat, onTab }: { beat: BeatState; onTab?: (tab: Tab) => void }) {
-  let text = '';
-  if (!beat.grid) text = '卡点模式：还没有节拍网格。';
-  else if (beat.grid.kind === 'draft') text = '节拍网格还没确认：试听一遍，重拍对上了再确认。';
-  else if (beat.plan_error) text = '分镜计划和节拍网格对不上：' + beat.plan_error;
-  if (!text) return null;
-  return (
-    <div className="banner beat" id="beat-banner">
-      <span>{text}</span>
-      {onTab && (
-        <button className="primary" onClick={() => onTab('beat')}>
-          去节拍页
-        </button>
-      )}
-    </div>
-  );
+/** 内置插件页面组件拿到的回调。 */
+function viewProps(props: Props) {
+  return { version: props.version, busy: props.busy, run: props.run, onQuick: props.onQuick, onScene: props.onScene, onTab: props.onTab as ((tab: string) => void) | undefined };
 }
 
 const FPS = 30;

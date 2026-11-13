@@ -246,7 +246,7 @@ export function Chat(props: Props) {
         fill(action.text);
         return;
       case 'gate':
-        void confirmGate(action.gate, (text) => void deliver(text, []));
+        void confirmGate(action.gate, (text) => void deliver(text, []), action.text);
         return;
       case 'start':
         void startProduction();

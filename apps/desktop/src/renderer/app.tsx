@@ -9,6 +9,7 @@ import { SetupGuide, useSetup } from './components/SetupGuide';
 import { Settings } from './components/Settings';
 import { Icon } from './components/Icon';
 import { Preview, stepTabs, tabs, visibleTabs, type Tab } from './components/Preview';
+import { pageView } from './components/pageViews';
 import { scriptFinalPath } from './components/Script';
 import { storyboardFiles } from './components/Storyboard';
 import { currentSummary } from './components/Progress';
@@ -41,7 +42,6 @@ import type {
   AgentChoice,
   AgentsResponse,
   Attachment,
-  BeatState,
   Project,
   ProgressState,
   ProjectState,
@@ -59,7 +59,7 @@ const PANEL_WIDTH_KEY = 'am-studio.panel-width:';
 
 /** 看画面的页面面板默认宽一些，读文字的页面窄一些；宽度按这两类分别记住。 */
 type PanelKind = 'media' | 'doc';
-const panelKind = (tab: Tab): PanelKind => (['scene', 'compose', 'final', 'review', 'style', 'beat'].includes(tab) || isStationTab(tab) ? 'media' : 'doc');
+const panelKind = (tab: Tab): PanelKind => (['scene', 'compose', 'final', 'review', 'style'].includes(tab) || pageView(tab)?.media || isStationTab(tab) ? 'media' : 'doc');
 const panelDefault: Record<PanelKind, number> = { media: 0.58, doc: 0.45 };
 /** 对话栏最窄 420px，面板最窄 360px：拖动时两边都夹住。 */
 const minChat = 420;
@@ -122,7 +122,6 @@ export function App() {
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [usage, setUsage] = useState<ProjectUsage | null>(null);
   const [tree, setTree] = useState<TreeFile[]>([]);
-  const [beat, setBeat] = useState<BeatState | null>(null);
   // 制作路线：每一站做没做、现在在哪；对话顶上的一行与每轮结尾的标签也用它。
   const [route, setRoute] = useState<ProgressState | null>(null);
   // 从制作路线跳到对话里的某一轮：nonce 让同一轮能再跳一次。
@@ -132,7 +131,7 @@ export function App() {
    * 第三方流程的第一步页也在里面。还没读到时按口播。
    */
   const flowDecl = state?.flow;
-  const flowHidden = useMemo(() => flowDecl?.hidden_pages ?? ['beat'], [flowDecl]);
+  const flowHidden = useMemo(() => flowDecl?.hidden_pages ?? [], [flowDecl]);
   const landPage = (flowDecl?.land_page ?? '') as Tab | '';
   /**
    * 内置插件的页面里这个项目用不上的（后端 /api/stations 的 hidden_pages：插件关了、也没有别的站接手），
@@ -140,9 +139,14 @@ export function App() {
    */
   const [hiddenPages, setHiddenPages] = useState<string[]>([]);
   const steps = useMemo(() => ((flowDecl?.steps ?? stepTabs) as Tab[]).filter((t, i) => i === 0 || !hiddenPages.includes(t)), [flowDecl, hiddenPages]);
+  // 这个项目用得上的内置插件页面（后端页面表里有、流程与插件开关都没藏起来）：它们的提示条（例如卡点的节拍提示）挂在面板顶上。
+  const pluginPages = useMemo(
+    () => (state?.pages ?? []).map((pg) => pg.id).filter((id) => pageView(id) !== undefined && !flowHidden.includes(id) && !hiddenPages.includes(id)),
+    [state, flowHidden, hiddenPages],
+  );
   // 整片制作现在在哪一步（编排工具每轮结束前用 studio_step 标的，没标过时按产物推），顶栏据此标出进度。
   // 第一步可能换成了第三方流程的页面：流程声明里算第一步的标记（口播稿、节拍）都落在第一步上。
-  const firstSteps = flowDecl?.first_steps ?? ['script', 'beat'];
+  const firstSteps = flowDecl?.first_steps ?? ['script'];
   const progress = state?.step ? (firstSteps.includes(state.step) ? 0 : steps.indexOf(state.step as Tab)) : -1;
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [busy, setBusy] = useState('');
@@ -267,11 +271,10 @@ export function App() {
   }, []);
   const loadProject = useCallback(async () => {
     try {
-      const [st, sc, tr, bt, sts] = await Promise.all([
+      const [st, sc, tr, sts] = await Promise.all([
         api<ProjectState>('/api/state'),
         api<{ scenes: Scene[]; usage?: ProjectUsage }>('/api/scenes'),
         api<{ files: TreeFile[] }>('/api/tree'),
-        api<BeatState>('/api/beat'),
         // 第三方插件的页面：读不到不影响别的（插件坏了时设置页会说明）。
         api<StationsResponse>('/api/stations').catch(() => ({ stations: [], problems: [] }) as StationsResponse),
       ]);
@@ -288,7 +291,6 @@ export function App() {
       setScenes(sc.scenes ?? []);
       setUsage(sc.usage ?? null);
       setTree(tr.files ?? []);
-      setBeat(bt);
       setVersion((v) => v + 1);
     } catch (err) {
       notify(errorText(err));
@@ -728,7 +730,7 @@ export function App() {
         <span className="spacer" />
         {currentId && !homeOpen && (
           <nav className="more-pages" aria-label="更多页面">
-            {visibleTabs(flowHidden)
+            {visibleTabs(flowHidden, state?.pages)
               .filter(([id]) => !hiddenPages.includes(id))
               .filter(([id]) => !steps.includes(id))
               .map(([id, label]) => (
@@ -918,7 +920,7 @@ export function App() {
                     tree={tree}
                     recent={recent}
                     version={version}
-                    beat={beat}
+                    pages={pluginPages}
                     progress={route}
                     busy={busy}
                     onAttach={addAttachment}

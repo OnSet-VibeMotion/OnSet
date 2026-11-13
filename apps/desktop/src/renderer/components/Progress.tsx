@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { post } from '../api';
 import type { Attachment, ProgressState, ProgressStation, ProgressTurn } from '../types';
 import { Icon } from './Icon';
+import { pageView } from './pageViews';
 import '../progress.css';
 
-/** 顶栏五步（卡点项目第一步是节拍）的名字：站按它分组。 */
+/** 顶栏五步的名字：站按它分组。内置插件登记的步骤（例如卡点的节拍）用它那一页的名字。 */
 const stepLabels: Record<string, string> = {
-  beat: '节拍',
   script: '口播稿',
   storyboard: '分镜',
   scene: '镜头',
@@ -14,23 +14,29 @@ const stepLabels: Record<string, string> = {
   publish: '发布',
 };
 
-/** 能在界面上点「确认」的审核关卡，以及确认时发给 AI 的话。 */
+/**
+ * 能在界面上点「确认」的宿主审核关卡，以及确认时发给 AI 的话。内置插件的关卡（例如卡点的故事审核）由插件登记
+ * 那句话（判断函数的 guide.confirm），经 /api/progress 的 station.guide.confirm 带过来。
+ */
 export const gateMessages: Record<string, string> = {
   'gate-script': '口播稿我看过了，没问题，按这版继续配音。',
   'gate-voice': '配音我听过了，没问题，继续。',
   'gate-storyboard': '分镜我看过了，没问题，开始渲染。',
-  'gate-story': '故事和文案我看过了，没问题，继续。',
-  'gate-beat-storyboard': '分镜我看过了，没问题，开始渲染。',
 };
 
-/** 用户确认一道关卡：先记下确认（记不下也不拦着），再把话交给 AI。 */
-export async function confirmGate(id: string, onQuick: (text: string, attachments: Attachment[]) => void): Promise<void> {
+/** 关卡确认时发给 AI 的话：宿主的查表，内置插件的用它登记的。 */
+export function gateMessage(station: Pick<ProgressStation, 'id' | 'guide'>): string | undefined {
+  return gateMessages[station.id] ?? station.guide?.confirm;
+}
+
+/** 用户确认一道关卡：先记下确认（记不下也不拦着），再把话交给 AI。message 不给时按宿主的表。 */
+export async function confirmGate(id: string, onQuick: (text: string, attachments: Attachment[]) => void, message?: string): Promise<void> {
   try {
     await post(`/api/progress/gates/${id}`);
   } catch {
     // 记录失败（比如内容还没写出来）不影响把确认告诉 AI。
   }
-  onQuick(gateMessages[id], []);
+  onQuick(message ?? gateMessages[id], []);
 }
 
 /** 「11-10 10:07」：同一年里不写年份。 */
@@ -149,7 +155,7 @@ export function ProgressTab(props: Props) {
           <li key={group.step + gi} className="pg-group">
             <h2 className="pg-group-title">
               <span className="pg-group-no">{String(gi + 1).padStart(2, '0')}</span>
-              {stepLabels[group.step] ?? group.step}
+              {stepLabels[group.step] ?? pageView(group.step)?.label ?? group.step}
             </h2>
             <ol className="pg-stations">
               {group.stations.map((station) => (
@@ -170,7 +176,7 @@ function StationRow(props: Props & { station: ProgressStation; current: boolean 
   const note = statusNote(station);
   const canLook = !!station.page || !!station.file;
   const look = () => (station.page ? props.onPage(station.page) : station.file && props.onFile(station.file));
-  const confirmable = station.gate && gateMessages[station.id] && (current || station.status === 'changed');
+  const confirmable = station.gate && gateMessage(station) && (current || station.status === 'changed');
   return (
     <li className={'pg-station' + (station.gate ? ' gate' : '') + (current ? ' current' : '') + ' ' + station.status} data-station={station.id}>
       <span className={'pg-mark ' + mark.cls} aria-hidden="true">
@@ -196,7 +202,7 @@ function StationRow(props: Props & { station: ProgressStation; current: boolean 
               <button onClick={look}>{station.gate ? '去看看' : '打开'}</button>
             )}
             {confirmable && (
-              <button className="primary" disabled={!!props.busy} onClick={() => void confirmGate(station.id, props.onQuick)}>
+              <button className="primary" disabled={!!props.busy} onClick={() => void confirmGate(station.id, props.onQuick, gateMessage(station))}>
                 确认，继续
               </button>
             )}
@@ -215,7 +221,7 @@ function StationRow(props: Props & { station: ProgressStation; current: boolean 
         {!current && station.status === 'changed' && confirmable && (
           <div className="pg-actions">
             {canLook && <button onClick={look}>去看看</button>}
-            <button className="primary" disabled={!!props.busy} onClick={() => void confirmGate(station.id, props.onQuick)}>
+            <button className="primary" disabled={!!props.busy} onClick={() => void confirmGate(station.id, props.onQuick, gateMessage(station))}>
               确认，继续
             </button>
           </div>
