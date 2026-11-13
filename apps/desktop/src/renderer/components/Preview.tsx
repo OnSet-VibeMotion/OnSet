@@ -2,7 +2,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { api, errorText, post, rawURL } from '../api';
-import type { Attachment, BeatState, Box, ProjectFilmStyle, ProjectState, ProjectUsage, Scene, TreeFile, Usage } from '../types';
+import type { Attachment, BeatState, ProgressState, Box, ProjectFilmStyle, ProjectState, ProjectUsage, Scene, TreeFile, Usage } from '../types';
 import { cssSelector } from '../selector';
 import { Icon } from './Icon';
 import { MemoryTab } from './Memory';
@@ -14,12 +14,14 @@ import { ScriptTab } from './Script';
 import { BeatTab } from './Beat';
 import { PublishTab } from './Publish';
 import { SceneBrief, StoryboardTab } from './Storyboard';
+import { ProgressTab } from './Progress';
 import { FileTree } from './Sidebar';
 import { canReveal, revealInFinder, revealLabel } from '../reveal';
 
-export type Tab = 'beat' | 'script' | 'storyboard' | 'scene' | 'compose' | 'final' | 'style' | 'voice' | 'review' | 'publish' | 'memory' | 'file';
+export type Tab = 'progress' | 'beat' | 'script' | 'storyboard' | 'scene' | 'compose' | 'final' | 'style' | 'voice' | 'review' | 'publish' | 'memory' | 'file';
 
 export const tabs: [Tab, string][] = [
+  ['progress', '制作路线'],
   ['beat', '节拍'],
   ['script', '口播稿'],
   ['storyboard', '分镜'],
@@ -44,7 +46,8 @@ export function stepTabsFor(beatMode: boolean): Tab[] {
 
 /** 顶栏列出的页面：卡点项目不列口播稿，其他项目不列节拍（编排工具仍可以 am studio show 切过去）。 */
 export function visibleTabs(beatMode: boolean): [Tab, string][] {
-  return tabs.filter(([id]) => (beatMode ? id !== 'script' : id !== 'beat'));
+  // 制作路线在顶栏步骤条左边有自己的按钮。
+  return tabs.filter(([id]) => id !== 'progress' && (beatMode ? id !== 'script' : id !== 'beat'));
 }
 
 /** 按钮触发的写任务：返回 task_id 的接口。App 负责发请求、提示与刷新任务列表。 */
@@ -64,12 +67,15 @@ interface Props {
   recent: Set<string>;
   version: number;
   beat: BeatState | null;
+  progress: ProgressState | null;
   busy: string;
   onAttach: (attachment: Attachment) => void;
   /** 把一条消息交给对话：draftOnly 为 true 时只填进输入框。 */
   onQuick: (text: string, attachments: Attachment[], draftOnly?: boolean) => void;
   onFile: (path: string) => void;
   onScene: (id: string) => void;
+  /** 跳到对话里的某一轮（制作路线里点「做了什么」）。 */
+  onTurn: (sessionId: string, turnId: string) => void;
   run: RunAction;
 }
 
@@ -79,6 +85,19 @@ export function Preview(props: Props) {
     <main className="pane center">
       {props.beat?.enabled && props.tab !== 'beat' && <BeatBanner beat={props.beat} onTab={props.onTab} />}
       <div className="preview-body">
+        {props.tab === 'progress' && (
+          <ProgressTab
+            progress={props.progress}
+            busy={props.busy}
+            onPage={(page) => {
+              const tab = tabs.find(([id]) => id === page)?.[0];
+              if (tab) props.onTab?.(tab);
+            }}
+            onFile={props.onFile}
+            onQuick={props.onQuick}
+            onTurn={props.onTurn}
+          />
+        )}
         {props.tab === 'beat' && <BeatTab beat={props.beat} version={props.version} busy={props.busy} run={props.run} onQuick={props.onQuick} onScene={props.onScene} />}
         {props.tab === 'script' && (
           <ScriptTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} onAttach={props.onAttach} />

@@ -234,7 +234,7 @@ function readBeatTrack(root: string): { audio: string; source: string; duration_
   }
 }
 
-function sameDownbeats(a: beat.Grid, b: beat.Grid): boolean {
+export function sameDownbeats(a: beat.Grid, b: beat.Grid): boolean {
   const x = a.downbeats ?? [];
   const y = b.downbeats ?? [];
   if (x.length !== y.length || (a.beats ?? []).length !== (b.beats ?? []).length) return false;

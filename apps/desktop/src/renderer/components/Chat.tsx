@@ -4,7 +4,8 @@ import { api, ApiError, errorText, post, rawURL } from '../api';
 import type { AgentChoice, AgentsResponse, Attachment, EventKind, PermissionAsk, PlanItem, Scene, SessionEvent, SessionMeta, ViewRequest, ViewState } from '../types';
 import { tabs } from './Preview';
 import { Poster, styleKey, useFilmStyles } from './FilmStyles';
-import type { FilmStyle, TreeFile } from '../types';
+import type { FilmStyle, ProgressState, TreeFile } from '../types';
+import { currentSummary } from './Progress';
 import { AgentPicker } from './AgentPicker';
 import { DiffDialog } from './DiffDialog';
 import { Icon } from './Icon';
@@ -92,6 +93,11 @@ interface Props {
   tree: TreeFile[];
   /** 触发一个写任务（/render 这类命令用）。 */
   run: (path: string, payload?: Record<string, unknown>) => void;
+  /** 制作路线：对话顶上一行「现在在哪」，每轮结尾标出推进到了哪几站。 */
+  progress: ProgressState | null;
+  /** 从制作路线跳到某一轮。 */
+  jump: { turn: string; nonce: number } | null;
+  onProgress: () => void;
 }
 
 /** 视为「在底部」的容差：比这近就继续跟随新消息。 */
@@ -118,6 +124,23 @@ export function Chat(props: Props) {
   const pendingCaret = useRef<number | null>(null);
 
   const blocks = useMemo(() => buildBlocks(events), [events]);
+  // 从制作路线跳过来：等那一轮出现在页面上（可能要先切会话、读完事件）再滚过去闪一下。
+  const pendingJump = useRef('');
+  useEffect(() => {
+    if (props.jump) pendingJump.current = props.jump.turn;
+  }, [props.jump]);
+  useEffect(() => {
+    const id = pendingJump.current;
+    if (!id) return;
+    const el = document.getElementById('turn-' + id);
+    if (!el) return;
+    pendingJump.current = '';
+    following.current = false;
+    const target = el.closest('.assistant-flow') ?? el;
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    target.classList.add('jump-flash');
+    window.setTimeout(() => target.classList.remove('jump-flash'), 1800);
+  }, [props.jump, blocks]);
   // 整片风格目录：回复里推荐风格时按标识找名字与海报。
   const filmStyles = useFilmStyles(!!props.sessionId);
   const files = useMemo(() => props.tree.map((f) => f.path), [props.tree]);
@@ -432,6 +455,7 @@ export function Chat(props: Props) {
           开始制作
         </button>
       </header>
+      <ProgressStrip progress={props.progress} onOpen={props.onProgress} />
 
       <div className={'chat-log-wrap' + (scrolled ? ' edge' : '')}>
         <div className={'chat-log' + (plan ? ' has-plan' : '')} id="messages" ref={scroller} onScroll={onScroll}>
@@ -461,6 +485,7 @@ export function Chat(props: Props) {
               styles={styleIndex}
               files={files}
               mtimes={mtimes}
+              stations={props.progress?.turns}
               posterVersion={filmStyles.posterVersion}
               onReverted={props.onTurnEnd}
               onToggle={() => (following.current = false)}
@@ -738,6 +763,8 @@ interface BlockProps {
   posterVersion: number;
   files: string[];
   mtimes: Map<string, number>;
+  /** 每一轮推进到了哪几站（站名）。 */
+  stations?: Record<string, string[]>;
 }
 
 function BlockView(props: BlockProps) {
@@ -1244,6 +1271,11 @@ function TurnEnd(props: BlockProps & { turn: TurnBlock; elapsed: number }) {
           <span>{formatElapsed(props.elapsed)}</span>
           {tokens > 0 && <span className="mono">{tokens.toLocaleString()} tokens</span>}
           {changes.length === 0 && <span>没有改动项目文件</span>}
+          {(props.stations?.[end.turn_id ?? ''] ?? []).length > 0 && (
+            <span className="turn-stations" title="这一轮推进到的制作环节">
+              → {props.stations![end.turn_id ?? ''].join(' · ')}
+            </span>
+          )}
           <span>{clockOf(end.time)}</span>
         </footer>
       )}
@@ -1440,5 +1472,28 @@ function HistoryMenu(props: { sessions: SessionMeta[]; current: string; onPick: 
         </button>
       ))}
     </div>
+  );
+}
+
+/** 对话顶上的一行：现在在制作路线的哪一站、在等谁；点开制作路线。 */
+function ProgressStrip({ progress, onOpen }: { progress: ProgressState | null; onOpen: () => void }) {
+  const { station, text } = currentSummary(progress);
+  if (!progress || !text) return null;
+  const waiting = progress.waiting_on === 'user' || station?.status === 'changed';
+  return (
+    <button className={'progress-strip' + (waiting ? ' waiting' : '')} id="progress-strip" onClick={onOpen} title="打开制作路线">
+      {station && !waiting ? <span className="orb tiny" aria-hidden="true" /> : <span className={'ps-dot' + (station ? '' : ' done')} aria-hidden="true" />}
+      {station ? (
+        <>
+          <span className="ps-label">现在 · {station.label}</span>
+          <span className="ps-text">{text}</span>
+        </>
+      ) : (
+        <span className="ps-label">{text}</span>
+      )}
+      <span className="spacer" />
+      <span className="ps-open">制作路线</span>
+      <Icon name="next" size={10} />
+    </button>
   );
 }

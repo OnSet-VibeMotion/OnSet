@@ -26,6 +26,7 @@ const paths = {
   pointer: <path d="M2 1.5l3.4 8.5 1.3-3.4 3.4-1.3z" />,
   up: <path d="M6 9.5V2.5M2.5 6L6 2.5 9.5 6" />,
   folder: <path d="M1.5 3.5h3l1 1.2h5v5.3h-9z" />,
+  route: <path d="M3 2.2a1 1 0 1 0 0 .01M9 9.8a1 1 0 1 0 0 .01M3 3.4v1.6a1.5 1.5 0 0 0 1.5 1.5h3A1.5 1.5 0 0 1 9 8v.6" />,
   settings: (
     <>
       <circle cx="6" cy="6" r="1.6" />

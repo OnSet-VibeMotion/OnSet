@@ -1,3 +1,4 @@
+import { confirmGate } from './Progress';
 import { useEffect, useRef, useState } from 'react';
 import { api, errorText } from '../api';
 import type { Attachment, ScriptBlock, ScriptNode, ScriptResponse } from '../types';
@@ -186,7 +187,7 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
                 className="primary"
                 disabled={!!busy}
                 title={busy ? 'AI 正在工作，等这一轮结束' : '确认终稿，开始正式配音'}
-                onClick={() => onQuick('口播稿我看过了，没问题，按这版继续配音。', [])}
+                onClick={() => void confirmGate('gate-script', onQuick)}
               >
                 确认，开始配音
               </button>

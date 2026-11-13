@@ -129,9 +129,8 @@ test('sends a scene quick action to the orchestrator', async ({ page, project })
 
 test('the orchestrator marks which production step the project is at', async ({ page, project }) => {
   await openProject(page, project);
-  // 没标过时按产物推：只有一个没渲染的镜头，算在分镜这一步。
-  await expect(page.locator('[data-tab="storyboard"]')).toHaveClass(/current/);
-  await expect(page.locator('[data-tab="script"]')).toHaveClass(/done/);
+  // 没标过时按产物推：项目里还没有任何制作产物，算在第一步。
+  await expect(page.locator('[data-tab="script"]')).toHaveClass(/current/);
   await page.locator('#prompt').fill('标步骤');
   await page.locator('#send').click();
   await expect(page.locator('#messages')).toContainText('成片拼好了');

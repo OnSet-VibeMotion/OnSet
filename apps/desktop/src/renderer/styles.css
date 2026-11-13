@@ -286,12 +286,30 @@ svg {
   letter-spacing: 0.14em;
   color: var(--muted);
 }
+/* 制作路线的入口，在五个步骤左边：描边胶囊；有关卡在等你时是黄铜色。 */
+.route-button {
+  margin-left: 20px;
+  height: 26px;
+  padding: 0 10px;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.route-button.on {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.route-button.waiting {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
 /* 五个制作步骤，编号是等宽字；正在看的一页下面一条黄铜色细线。
    制作进度另外标：做过的步骤编号换成 ✓，现在在做的那一步编号是一枚黄铜色小章。 */
 .steps {
   display: flex;
   gap: 28px;
-  margin-left: 28px;
+  margin-left: 20px;
 }
 .steps .step {
   height: 36px;

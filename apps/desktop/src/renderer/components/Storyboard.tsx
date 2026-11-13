@@ -1,3 +1,4 @@
+import { confirmGate } from './Progress';
 import { Fragment, useEffect, useState } from 'react';
 import { api, errorText } from '../api';
 import type { Attachment, StoryboardResponse, StoryboardScene } from '../types';
@@ -105,7 +106,7 @@ export function StoryboardTab({ version, busy, onQuick, onFile, onScene }: Props
               id="storyboard-confirm"
               disabled={!!busy}
               title={busy ? 'AI 正在工作，等这一轮结束' : '确认分镜，开始渲染全部镜头'}
-              onClick={() => onQuick('分镜我看过了，没问题，开始渲染。', [])}
+              onClick={() => void confirmGate('gate-storyboard', onQuick)}
             >
               确认，开始渲染
             </button>

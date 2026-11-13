@@ -40,6 +40,7 @@ import {
 import { memoryAPI, memoryActionAPI, memoryRecallAPI } from './memory';
 import { discoverScenes, fileExists, type SceneSummary } from './scenes';
 import { scriptAPI } from './script';
+import { computeStations, latestOutput, progressAPI } from './progress';
 import { storyboardAPI } from './storyboard';
 import { readStepMark } from './view';
 import { BusyError, type Session } from './sessions';
@@ -315,6 +316,8 @@ export class Server {
       ['/api/scenes', () => scenesAPI(this)],
       ['/api/script', (r) => scriptAPI(this, r)],
       ['/api/storyboard', (r) => storyboardAPI(this, r)],
+      ['/api/progress', (r) => progressAPI(this, r, '')],
+      ['/api/progress/', (r, rest) => progressAPI(this, r, rest)],
       ['/api/assets', () => this.assetsAPI()],
       ['/api/publish', () => publishAPI(this)],
       ['/api/scenes/', (r, rest) => sceneFeatureAPI(this, r, rest)],
@@ -890,22 +893,12 @@ export function projectMetadata(root: string): Record<string, string> {
  */
 export function stepOf(root: string, scenes: SceneSummary[]): { step?: string; step_marked?: boolean } {
   const mark = readStepMark(root);
-  if (mark) return { step: mark.step, step_marked: true };
-  const exists = (...parts: string[]) => fileExists(path.join(root, ...parts));
-  switch (stageFor(root, scenes)) {
-    case 'publish':
-      return { step: 'publish' };
-    case 'review':
-    case 'assemble':
-      return { step: 'final' };
-    case 'render':
-      return { step: scenes.some((sc) => sc.exists) ? 'scene' : 'storyboard' };
-    case 'plan':
-      if (exists('production', 'scene-plan.json')) return { step: 'storyboard' };
-      return { step: exists('beat.yaml') ? 'beat' : 'script' };
-    default:
-      return {};
-  }
+  // 编排工具的标记只在它比项目里最新的产物还新时才算：之后又有了新产物，说明它标的已经过时。
+  if (mark && Date.parse(mark.at) >= latestOutput(root, scenes) - 1000) return { step: mark.step, step_marked: true };
+  const { stations, current } = computeStations(root, scenes);
+  const at = stations.find((s) => s.id === current);
+  // 全部做完：停在最后一步。
+  return { step: (at ?? stations[stations.length - 1]).step };
 }
 
 /**

@@ -739,3 +739,37 @@ export interface StoryboardResponse {
   doc_path?: string;
   scenes: StoryboardScene[];
 }
+
+/** /api/progress：制作路线（studio/progress.ts）。 */
+export interface ProgressTurn {
+  turn_id: string;
+  session_id: string;
+  message: string;
+  status: string;
+  at: string;
+  files: number;
+  paths: string[];
+}
+
+export interface ProgressStation {
+  id: string;
+  label: string;
+  /** 归在顶栏哪一步下（页面 id）。 */
+  step: string;
+  gate?: boolean;
+  optional?: boolean;
+  status: 'done' | 'skipped' | 'stale' | 'todo' | 'confirmed' | 'passed' | 'changed';
+  detail?: string;
+  at?: string;
+  page?: string;
+  file?: string;
+  turns: ProgressTurn[];
+}
+
+export interface ProgressState {
+  mode: 'speech' | 'beat';
+  stations: ProgressStation[];
+  current: string;
+  waiting_on: '' | 'user' | 'ai';
+  turns: Record<string, string[]>;
+}

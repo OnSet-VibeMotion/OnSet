@@ -50,6 +50,7 @@ export const slashCommands: SlashCommand[] = [
 ];
 
 export const pageNames: [string, string][] = [
+  ['progress', '制作路线'],
   ['script', '口播稿'],
   ['storyboard', '分镜'],
   ['scene', '镜头'],

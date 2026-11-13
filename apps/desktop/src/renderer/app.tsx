@@ -10,6 +10,7 @@ import { Icon } from './components/Icon';
 import { Preview, stepTabsFor, tabs, visibleTabs, type Tab } from './components/Preview';
 import { scriptFinalPath } from './components/Script';
 import { storyboardFiles } from './components/Storyboard';
+import { currentSummary } from './components/Progress';
 
 const tabLabel = (id: Tab) => tabs.find(([t]) => t === id)?.[1] ?? id;
 
@@ -38,6 +39,7 @@ import type {
   Attachment,
   BeatState,
   Project,
+  ProgressState,
   ProjectState,
   ProjectUsage,
   Scene,
@@ -117,6 +119,10 @@ export function App() {
   const [usage, setUsage] = useState<ProjectUsage | null>(null);
   const [tree, setTree] = useState<TreeFile[]>([]);
   const [beat, setBeat] = useState<BeatState | null>(null);
+  // 制作路线：每一站做没做、现在在哪；对话顶上的一行与每轮结尾的标签也用它。
+  const [route, setRoute] = useState<ProgressState | null>(null);
+  // 从制作路线跳到对话里的某一轮：nonce 让同一轮能再跳一次。
+  const [jump, setJump] = useState<{ turn: string; nonce: number } | null>(null);
   const beatMode = !!beat?.enabled;
   const steps = useMemo(() => stepTabsFor(beatMode), [beatMode]);
   // 整片制作现在在哪一步（编排工具每轮结束前用 studio_step 标的，没标过时按产物推），顶栏据此标出进度。
@@ -233,6 +239,13 @@ export function App() {
     }
   }, []);
 
+  const loadRoute = useCallback(async () => {
+    try {
+      setRoute(await api<ProgressState>('/api/progress'));
+    } catch {
+      // 制作路线读不到不影响别的页面。
+    }
+  }, []);
   const loadProject = useCallback(async () => {
     try {
       const [st, sc, tr, bt] = await Promise.all([
@@ -250,8 +263,9 @@ export function App() {
     } catch (err) {
       notify(errorText(err));
     }
+    await loadRoute();
     await loadSessions();
-  }, [loadSessions, notify]);
+  }, [loadSessions, loadRoute, notify]);
 
   // 项目被占用（对话或渲染任务在跑）时定时刷新镜头列表，对话顶部的进度靠它看到出片与渲染中的镜头。
   useEffect(() => {
@@ -416,6 +430,13 @@ export function App() {
     setSessionId(id);
     remember(currentId, id);
   };
+  const jumpToTurn = (session: string, turn: string) => {
+    if (session && session !== sessionId) chooseSession(session);
+    setJump({ turn, nonce: Date.now() });
+    // 窄窗口里面板是盖在对话上的抽屉，收起来才看得到对话。
+    if (window.innerWidth < 1180) setPanelOpen(false);
+  };
+  const now = currentSummary(route);
 
   const project = projects.find((p) => p.id === currentId);
 
@@ -433,6 +454,8 @@ export function App() {
   };
   const quick = (text: string, quickAttachments: Attachment[], draftOnly?: boolean) => {
     setOutbox({ text, attachments: quickAttachments, nonce: Date.now(), draftOnly });
+    // 确认关卡的按钮先记下确认再发话：路线上的那一站马上变成「你确认了」。
+    if (!draftOnly) void loadRoute();
     if (!draftOnly) notify('已发给 AI，进度看对话。');
   };
 
@@ -620,6 +643,19 @@ export function App() {
           </button>
         )}
         {currentId && !homeOpen && (
+          <button
+            className={'route-button' + (tab === 'progress' && panelOpen ? ' on' : '') + (route?.waiting_on === 'user' || now.station?.status === 'changed' ? ' waiting' : '')}
+            id="progress-open"
+            data-tab="progress"
+            aria-current={tab === 'progress' && panelOpen ? 'page' : undefined}
+            title={now.station ? `制作路线：现在在「${now.station.label}」，${now.text}` : '制作路线'}
+            onClick={() => showTab('progress')}
+          >
+            <Icon name="route" size={13} />
+            路线
+          </button>
+        )}
+        {currentId && !homeOpen && (
           <nav className="steps" aria-label="制作步骤">
             {steps.map((id, index) => (
               <button
@@ -784,6 +820,9 @@ export function App() {
               tree={tree}
               run={run}
               onView={openView}
+              progress={route}
+              jump={jump}
+              onProgress={() => showTab('progress')}
             />
             {panelOpen ? (
               <>
@@ -821,6 +860,7 @@ export function App() {
                     recent={recent}
                     version={version}
                     beat={beat}
+                    progress={route}
                     busy={busy}
                     onAttach={addAttachment}
                     onQuick={quick}
@@ -832,6 +872,7 @@ export function App() {
                       setSceneId(id);
                       if (tab !== 'scene' && tab !== 'compose' && tab !== 'memory') setTab('scene');
                     }}
+                    onTurn={jumpToTurn}
                     run={run}
                   />
                 </section>
