@@ -217,16 +217,16 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
                 </span>
                 <div className="station-title">
                   <strong>{s.name}</strong>
-                  <span>{s.in_use ? `${s.description} · 这个项目正在用（有 ${s.in_use}）` : s.description}</span>
-                  {s.affects_render && !s.in_use && <em className="station-needs">开关后，已经渲染的镜头要重新渲染</em>}
+                  <span>{s.busy ? `${s.description} · 这个项目正在用（有 ${s.busy}）` : s.description}</span>
+                  {s.affects_render && !s.busy && <em className="station-needs">开关后，已经渲染的镜头要重新渲染</em>}
                 </div>
-                <label className="station-switch" title={s.in_use ? '这个项目正在用，不能关' : undefined}>
+                <label className="station-switch" title={s.busy ? '这个项目正在用，不能关' : undefined}>
                   <input
                     type="checkbox"
                     role="switch"
                     aria-label={`${s.name}在这个项目里打开`}
                     checked={s.enabled}
-                    disabled={s.in_use !== ''}
+                    disabled={s.busy !== ''}
                     onChange={(e) => run(`/api/stations/${encodeURIComponent(s.id)}/enabled`, { enabled: e.target.checked })}
                   />
                   <span>{s.enabled ? '打开' : '关闭'}</span>

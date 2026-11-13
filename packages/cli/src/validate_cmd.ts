@@ -1,15 +1,14 @@
 /**
- * 校验类操作：validate style。validate 组下的 video、cast、song、beat、reads 在各自的文件里定义，
- * validate publish 由内置插件「发布」登记（engine 的 plugins/publishing），都由 mountOps 挂进同一个组。
+ * 校验类操作：validate style。validate 组下的 video、beat、reads 在各自的文件里定义，
+ * validate cast、song、publish 由内置插件登记（engine 的 plugins/），都由 mountOps 挂进同一个组。
  * style 移植自 internal/cli/cli.go 里内联定义的部分。
  */
 import * as validate from '@am/engine/validate';
 import { defineGroup } from './ops/cli';
 import { bool, projectRoot, str } from './ops/common';
 import { defineOp } from './ops/op';
-// 这两个文件只登记操作，没有别的地方 import 它们。
+// 这个文件只登记操作，没有别的地方 import 它。
 import './reads_cmd';
-import './validate_cast';
 
 defineGroup({
   path: ['validate'],

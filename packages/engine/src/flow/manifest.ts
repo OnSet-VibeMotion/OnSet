@@ -146,23 +146,6 @@ export interface Manifest {
   renderer_skills: { name: string; dir: string; summary: string; scenes: 'all' | 'opt-in' }[];
   /** 整片风格库：dir 下每个子目录是一种风格（STYLE.md 必需，SKILL.md、poster.jpg、style.json 可选）。 */
   film_styles: { name: string; dir: string } | null;
-  /**
-   * 只有内置插件（assets/plugins/）能写：认领的 am 自带操作。项目关掉这个插件时，这些操作不再出现在
-   * 编排工具的工具列表里。代码仍在引擎里，认领的只是归属与开关。
-   */
-  am_ops: string[];
-  /**
-   * 只有内置插件能写：认领 am 注册的渲染技能（scene.registeredSkills 里的名字）。项目关掉这个插件时，
-   * 渲染器拿不到这些技能，提示词里也没有它们那一段——已渲染的镜头因此要重渲染。
-   */
-  am_skills: string[];
-  /**
-   * 只有内置插件能写：认领自带流程里的站（flow/builtin.ts 的站 id）。项目关掉这个插件时，这些站从制作路线上
-   * 拿掉，它们在制作提示词里的段落也去掉（生成时用 am-plugin 标记包住，见 markPluginSection）。
-   */
-  am_stations: string[];
-  /** 项目在用这个插件的凭据文件（例如 song.yaml）：存在时不许在这个项目里关掉它。 */
-  in_use: string[];
   slots: ManifestSlot[];
   commands: ManifestCommand[];
 }
@@ -171,10 +154,10 @@ export interface Manifest {
 // 字段分级
 
 /**
- * 字段分级：stable 是承诺兼容的；experimental 以后的版本可能调整（设置页、station_add 会照实告诉用户）；
- * builtin 只有随 ArticleToMotion 下发的内置插件能写。
+ * 字段分级：stable 是承诺兼容的；experimental 以后的版本可能调整（设置页、station_add 会照实告诉用户）。
+ * 内置插件与第三方站用同一份字段：内置插件带来的代码在进程内登记（apply），不经清单。
  */
-export type FieldTier = 'stable' | 'experimental' | 'builtin';
+export type FieldTier = 'stable' | 'experimental';
 
 /**
  * 清单顶层字段的唯一来源：解析器只认这里列出的字段，作者文档（docs/plugin-authoring.md）也按它核对。
@@ -205,10 +188,6 @@ export const ManifestFields: readonly { name: string; tier: FieldTier; used?: (m
   { name: 'provides', tier: 'experimental', used: (m) => m.provides.tts !== undefined || m.provides.align !== undefined },
   { name: 'renderer_skills', tier: 'experimental', used: (m) => m.renderer_skills.length > 0 },
   { name: 'film_styles', tier: 'experimental', used: (m) => m.film_styles !== null },
-  { name: 'am_ops', tier: 'builtin' },
-  { name: 'am_skills', tier: 'builtin' },
-  { name: 'am_stations', tier: 'builtin' },
-  { name: 'in_use', tier: 'builtin' },
 ];
 
 /** 解析器认的顶层字段名。 */

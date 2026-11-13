@@ -12,7 +12,7 @@
 // 向，两边都走 schedule.plan + schedule.startOffsets，不各自累加一遍。
 import type { Line } from '../dialogue';
 import { goRound } from '../gofmt';
-import type { Beat } from '../scene';
+import type { Beat } from '../plugins/cast/block';
 
 /**
  * 一拍能被写出去的最小长度。一行台词恰好止于镜头切点时，

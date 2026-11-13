@@ -12,7 +12,6 @@ import { Command, ExitError, type Out, type PositionalArgs, ref } from './cobra'
 import './align';
 import './audio';
 import './beat_cmd';
-import './cast_cmd';
 import './filmstyle';
 import './hyperframes';
 import './media';
@@ -21,11 +20,9 @@ import './reads_cmd';
 import './review_cmd';
 import './scene_cmd';
 import './scene_cues';
-import './song_cmd';
 import './station_cmd';
 import './style_cmd';
 import './usage_cmd';
-import './validate_cast';
 import './validate_cmd';
 // 内置插件登记的操作（例如发布的 validate_publish）。
 import './plugin_ops';

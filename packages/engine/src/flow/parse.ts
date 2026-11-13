@@ -33,7 +33,7 @@ import type { PathRule } from './types';
 const paramTypes: readonly ParamType[] = ['string', 'boolean', 'integer', 'number', 'strings'];
 
 export interface ParseOptions {
-  /** 随 ArticleToMotion 下发的内置插件：能写 am_ops / am_skills / am_stations。 */
+  /** 随 ArticleToMotion 下发的内置插件（assets/plugins/）：id 可以就是内置插件的 id。 */
   builtin?: boolean;
   /** 拿来比 requires.am 的 am 版本；缺省是当前 am 的版本（manifest.amVersion）。 */
   amVersion?: string;
@@ -266,7 +266,6 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
     return { name, dir, summary: str(rs, 'summary', where), scenes: scenes as 'all' | 'opt-in' };
   });
   if (new Set(rendererSkills.map((r) => r.name)).size !== rendererSkills.length) throw new Error('station.renderer_skills 里有重名的技能');
-  const inUseFiles = strings(raw, 'in_use', 'station').map((p) => projectPath(p, 'station.in_use'));
   let filmStyles: Manifest['film_styles'] = null;
   if (raw.film_styles !== undefined) {
     if (!isObject(raw.film_styles)) throw new Error('station.film_styles 要是对象');
@@ -274,16 +273,6 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
     const dir = str(raw.film_styles, 'dir', 'film_styles');
     relativeInside(dir, 'film_styles.dir');
     filmStyles = { name: str(raw.film_styles, 'name', 'film_styles'), dir };
-  }
-  const amOps = strings(raw, 'am_ops', 'station');
-  if (amOps.length > 0 && !opts.builtin) throw new Error('station.am_ops：只有随 ArticleToMotion 下发的内置插件能认领 am 自带的操作');
-  for (const name of amOps) if (!/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/.test(name)) throw new Error(`station.am_ops：${name} 不是操作名`);
-  const amSkills = strings(raw, 'am_skills', 'station');
-  if (amSkills.length > 0 && !opts.builtin) throw new Error('station.am_skills：只有随 ArticleToMotion 下发的内置插件能认领 am 的渲染技能');
-  const amStations = strings(raw, 'am_stations', 'station');
-  if (amStations.length > 0 && !opts.builtin) throw new Error('station.am_stations：只有随 ArticleToMotion 下发的内置插件能认领自带流程里的站');
-  for (const sid of amStations) {
-    if (sid === 'host' || !allStations().some((b) => b.id === sid)) throw new Error(`station.am_stations：没有自带的站 ${sid}`);
   }
   const slots = list('slots').map((sl, i): ManifestSlot => {
     const where = `slots[${i}]`;
@@ -331,10 +320,6 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
     provides,
     renderer_skills: rendererSkills,
     film_styles: filmStyles,
-    am_ops: amOps,
-    am_skills: amSkills,
-    am_stations: amStations,
-    in_use: inUseFiles,
     slots,
     commands,
   };

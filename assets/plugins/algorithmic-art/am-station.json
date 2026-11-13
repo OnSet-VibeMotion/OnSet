@@ -2,6 +2,5 @@
   "id": "algorithmic-art",
   "version": "1",
   "name": "生成式艺术",
-  "description": "让渲染器在合适的镜头里用算法画面：流场、粒子、分形、循环动画，按固定种子保证每次一样",
-  "am_skills": ["algorithmic-art"]
+  "description": "让渲染器在合适的镜头里用算法画面：流场、粒子、分形、循环动画，按固定种子保证每次一样"
 }

@@ -11,7 +11,7 @@ import {
   hyperFramesPrompt,
   HyperFramesSkillName,
   HyperFramesCLISkillName,
-  CharacterRigSkillName,
+  allSkills,
   registeredSkills,
   rendererAccess,
   resolveAllSkills,
@@ -20,11 +20,12 @@ import {
   sceneKitPrompt,
   SkillsDirEnv,
   skillsEnvironment,
-  SongExplainerSkillName,
   SourceUpstream,
-  textToLottiePrompt,
   type SkillDescriptor,
 } from './skills';
+import { CharacterRigSkillName } from '../plugins/cast';
+import { SongExplainerSkillName } from '../plugins/song';
+import { textToLottiePrompt } from '../plugins/text-to-lottie';
 import { SceneDataFile } from './scenedata';
 import { containsString, tempDir, writeScene } from './testsupport';
 
@@ -192,10 +193,16 @@ describe('skill prompts', () => {
   });
 
   // 注册表里加了技能却忘了写提示词片段时会失败——注册但不注入等于白装。
+  // 只有 song-explainer 不进通用技能段：它的提示词由歌曲镜头的 song 块引用。
   it('every registered skill contributes a prompt section', () => {
-    for (const desc of registeredSkills) {
-      expect(desc.promptSection, `${desc.name} 没有 promptSection`).toBeTypeOf('function');
+    for (const desc of allSkills()) {
       expect(desc.requiredFiles.length, `${desc.name} 的 requiredFiles 为空：resolveSkill 会把任何目录都判为已安装`).toBeGreaterThan(0);
+      if (desc.name === SongExplainerSkillName) {
+        expect(desc.promptSection).toBeUndefined();
+        continue;
+      }
+      expect(desc.promptSection, `${desc.name} 没有 promptSection`).toBeTypeOf('function');
+      if (!desc.promptSection) continue;
       // 未解析时必须按技能名引用，且不得凭空造出一条本机路径。
       const unresolved = desc.promptSection('');
       expect(unresolved, `${desc.name} 未解析时的片段没提到技能名`).toContain(desc.name);
@@ -227,13 +234,13 @@ describe('skill prompts', () => {
     const home = tempDir();
     const skills = path.join(home, '.claude', 'skills');
     const resolved: Record<string, string> = {};
-    for (const desc of registeredSkills) {
+    for (const desc of allSkills()) {
       installNamedSkill(skills, desc);
       resolved[desc.name] = skills;
     }
     const dir = writeScene('{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
     const prompt = buildPrompt(load(dir), resolved);
-    for (const desc of registeredSkills) {
+    for (const desc of allSkills()) {
       if (desc.name === SongExplainerSkillName) {
         expect(prompt, 'speech prompt includes song skill').not.toContain(desc.name);
         continue;
@@ -246,7 +253,7 @@ describe('skill prompts', () => {
   it('buildPrompt degrades to skill names when nothing is installed', () => {
     const dir = writeScene('{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
     const prompt = buildPrompt(load(dir), null);
-    for (const desc of registeredSkills) {
+    for (const desc of allSkills()) {
       if (desc.name === SongExplainerSkillName) {
         expect(prompt, 'speech prompt includes song skill').not.toContain(desc.name);
         continue;
@@ -311,7 +318,7 @@ describe('skill prompts', () => {
   // 解析不到目录时必须退回按技能名引用。
   it('upstream skill prompts degrade gracefully', () => {
     for (const desc of registeredSkills) {
-      if (desc.source !== SourceUpstream) continue;
+      if (desc.source !== SourceUpstream || !desc.promptSection) continue;
       const fallback = desc.promptSection('');
       expect(fallback, `${desc.name} 的兜底片段没有点名技能`).toContain(desc.name);
       expect(fallback.includes('/') && fallback.includes('skills/'), `${desc.name} 的兜底片段里写死了路径`).toBe(false);

@@ -2,7 +2,6 @@
 // 移植自 internal/validate。
 export { frontmatter, parseFrontmatter, regenerateExamples, resolveExisting, safeRelative, style, validateFontStacks, validateNumericMap, validateStyleSchema, pngDimensions } from './validate';
 export type { Writer } from './validate';
-export { beatsRecomputeHint, castProblems, setDialogueRelPath } from './cast';
 export { decodeConfig } from './imageconfig';
 export type { ImageConfig } from './imageconfig';
 export { AnyMap, GoFloat, YamlDecodeError, decodeFrontmatterYAML, deepEqual, formatV, toPlain } from './yamlany';

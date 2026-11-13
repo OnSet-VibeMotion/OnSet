@@ -65,32 +65,9 @@ export const Second = 1_000_000_000;
 export const Minute = 60 * Second;
 export const Hour = 60 * Minute;
 
-const unitMap: Record<string, number> = { ns: 1, us: 1e3, µs: 1e3, μs: 1e3, ms: 1e6, s: 1e9, m: 60e9, h: 3600e9 };
-
-/** time.ParseDuration。错误文案照抄 Go。 */
-export function parseDuration(s: string): Duration {
-  const orig = s;
-  let d = 0;
-  let neg = false;
-  if (s && (s[0] === '-' || s[0] === '+')) {
-    neg = s[0] === '-';
-    s = s.slice(1);
-  }
-  if (s === '0') return 0;
-  if (s === '') throw new Error(`time: invalid duration ${JSON.stringify(orig)}`);
-  while (s !== '') {
-    const m = /^(\d*)(?:\.(\d*))?/.exec(s)!;
-    if (!m[1] && !m[2]) throw new Error(`time: invalid duration ${JSON.stringify(orig)}`);
-    s = s.slice(m[0].length);
-    const u = /^[^\d.]+/.exec(s)?.[0] ?? '';
-    if (!u) throw new Error(`time: missing unit in duration ${JSON.stringify(orig)}`);
-    const unit = unitMap[u];
-    if (unit === undefined) throw new Error(`time: unknown unit ${JSON.stringify(u)} in duration ${JSON.stringify(orig)}`);
-    s = s.slice(u.length);
-    d += Number(m[1] || '0') * unit + (m[2] ? Number('0.' + m[2]) * unit : 0);
-  }
-  return Math.round(neg ? -d : d);
-}
+/** time.ParseDuration（与内置插件的操作共用一份）。 */
+export { parseDuration } from '@am/engine/opkit';
+import { parseDuration } from '@am/engine/opkit';
 
 /** time.Duration.String()：1h2m3.5s、500ms、0s。 */
 export function formatDuration(d: Duration): string {

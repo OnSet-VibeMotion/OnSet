@@ -82,7 +82,7 @@ timing 块：{"fps", "start_frame", "end_frame_exclusive", "plan", "phrases",
 
 check 只重算并核对，不写文件：时长、timing 块或短语副本与重算结果不符
 （例如有人手改了 duration_seconds）时逐条列出并失败。
-镜头带 song 或 beat 块时拒绝：歌曲、卡点的时长由 song_cues() / beat_cues() 决定。`,
+镜头带自己时间轴的块（歌曲、卡点镜头）时拒绝：它们的时长由各自的 cues 操作决定。`,
   examples: [
     'scene_cues({"scenes": "scenes/", "plan": "production/scene-plan.json", "srt": "transcription-production.srt", "total_frames": 5400})',
     'scene_cues({"scenes": "scenes/", "plan": "production/scene-plan.json", "srt": "transcription-production.srt", "phrases": "production/phrase-timeline.json", "total_frames": 5400})',
@@ -171,8 +171,9 @@ function runSceneCues(opts: SceneCuesOptions, stdout: Out): unknown {
   const look = plan.look ?? scene.zeroLook();
   const planScenes = plan.scenes ?? [];
   const results: SceneCue[] = scenes.map((s, i) => {
-    if (s.song !== null || s.beat !== null) {
-      throw new Error(`镜头 ${s.id} 带 song 或 beat 块：歌曲与卡点镜头的时长不由 scene_cues() 决定`);
+    const own = scene.sceneTimelineBlocks(s);
+    if (own.length > 0) {
+      throw new Error(`镜头 ${s.id} 带 ${own.map((b) => b.key).join('、')} 块：${own.map((b) => b.timeline!.label).join('、')}镜头的时长不由 scene_cues() 决定`);
     }
     const timing = scene.newTiming({
       fps,

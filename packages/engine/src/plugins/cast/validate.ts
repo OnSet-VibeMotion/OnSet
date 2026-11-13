@@ -1,13 +1,13 @@
-// 移植自 internal/validate/cast.go。
+// 多角色项目的项目级一致性校验（validate_cast 用它）。移植自 internal/validate/cast.go。
 import fs from 'node:fs';
 import path from 'node:path';
-import * as cast from '../cast';
-import * as dialogue from '../dialogue';
-import type { Line } from '../dialogue';
-import { formatFixed, formatG, goPathError, goQuote } from '../gofmt';
-import { compareBytes } from '../gojson';
-import * as schedule from '../schedule';
-import * as srt from '../srt';
+import * as cast from '../../cast';
+import * as dialogue from '../../dialogue';
+import type { Line } from '../../dialogue';
+import { formatFixed, formatG, goPathError, goQuote } from '../../gofmt';
+import { compareBytes } from '../../gojson';
+import * as schedule from '../../schedule';
+import * as srt from '../../srt';
 
 /**
  * 把镜头本地 beats 换算回全局时间后，与 dialogue.json 对应行做覆盖/相接比对时的容差。

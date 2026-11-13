@@ -859,7 +859,7 @@ export interface StationInfo {
   /** 这个项目里打开着（内置插件可以关掉）。 */
   enabled: boolean;
   /** 内置插件：项目在用它的凭据文件（例如 song.yaml），有就不能关。 */
-  in_use: string;
+  busy: string;
   /** 内置插件认领了渲染技能：开关会让已渲染的镜头要重渲染。 */
   affects_render: boolean;
   source: string;

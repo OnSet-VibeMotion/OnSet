@@ -50,6 +50,6 @@ export { treeDigest } from './digest';
 export { fetchStation, parseSource, StationsDirEnv, stationsDir, writeStationForTest } from './fetch';
 export { activeFlowStation, loadProjectStations, projectExtras, setProjectFlow } from './load';
 export { permissionLines, updateStation, type StationUpdate } from './update';
-export { builtinPluginIDs, builtinPlugins, builtinPluginsDir, disabledAmOps, disabledAmSkills, disabledAmStations, inUse, setBuiltinEnabled, stationOwners } from './builtinplugins';
+export { builtinPluginIDs, builtinPlugins, builtinPluginsDir, disabledBuiltins, disabledPluginOps, disabledPluginStations, inUse, setBuiltinEnabled, stationOwners } from './builtinplugins';
 export { applyPluginMarkers, extraPrompt, insertStageSections, markPluginSection } from './promptparts';
 export { pluginSkillsFor } from './skills';

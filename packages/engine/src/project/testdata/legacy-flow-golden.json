@@ -376,7 +376,7 @@
     ]
   },
   "fingerprint:speech": {
-    "fingerprint": "7f57d2bf1eb4636d98f285de559ac21fb5744d8985783c083776675fb7f6b82d",
+    "fingerprint": "6f00699dd063f1727500e1fb33b40dc142526cec15f59b7c90e4d95f9fe4d5e3",
     "parts": {
       "renderer": "c857d09db23e6822e3600bc06ad8d58f92ed62bc8efd81c753f77048662cb97d",
       "am": "ef260e9aa3c673af240d17a2660480361a8e081d1ffeca2a5ed0e3219fc18567",
@@ -385,7 +385,7 @@
       "skill:scene-kit": "42568e8f6f5486d1dc6b40eaf692c5be1af06781e02a2f90d97b4ba6df38b812",
       "skill:song-explainer": "42568e8f6f5486d1dc6b40eaf692c5be1af06781e02a2f90d97b4ba6df38b812",
       "skill:text-to-lottie": "42568e8f6f5486d1dc6b40eaf692c5be1af06781e02a2f90d97b4ba6df38b812",
-      "prompt": "7c460ca555199981c9735bbb5af81a6b2dd55f618f59ea31d7a31dd3b84844fe",
+      "prompt": "f1cbb68f37643aa23f0f94fbddfe6cfe5677b4b3d82f2d7a02ee5d450a01e4a5",
       "file:scene.json": "e681d14f0cc5652c85fdb035e9ae7a2037908d6713096a5673dd67ac27832fdc",
       "file:transcription.srt": "fe22e24fe78219a0572be21dbea7ab53dbae02960a6f39fc805d4388575be968"
     }

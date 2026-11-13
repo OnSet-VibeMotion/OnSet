@@ -14,18 +14,14 @@ import * as scene from '@am/engine/scene';
 import type { Scene } from '@am/engine/scene';
 import * as schedule from '@am/engine/schedule';
 import { currentEnvironment } from './cli';
-import { type Duration, type Out } from './cobra';
+import { type Out } from './cobra';
 import { defineGroup } from './ops/cli';
 import { bool, num, positiveDuration, projectRoot, str, timeout } from './ops/common';
 import { defineOp, type ParamValues } from './ops/op';
-import { decodeRawMap, encodeRawMapIndent } from './rawjson';
+import { decodeRawMap, encodeRawMapIndent } from '@am/engine/rawjson';
 
-/** context.WithTimeout：父信号与超时任一触发即取消。setTimeout 只认 2^31-1 毫秒以内，更长的超时等于不设。 */
-export function withTimeoutSignal(parent: AbortSignal, timeout: Duration): AbortSignal {
-  const ms = timeout / 1e6;
-  if (ms > 2 ** 31 - 1) return parent;
-  return AbortSignal.any([parent, AbortSignal.timeout(Math.max(1, Math.ceil(ms)))]);
-}
+export { withTimeoutSignal } from './ops/common';
+import { withTimeoutSignal } from './ops/common';
 
 defineGroup({
   path: ['beat'],

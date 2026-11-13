@@ -14,6 +14,7 @@ import {
   pluginSkillSection,
   filmStyleSection,
   sceneFilmStyleSection,
+  sceneSkills,
   skillPromptSections,
   styleShiftSection,
 } from './skills';
@@ -668,7 +669,7 @@ export function buildPrompt(s: Scene, resolvedSkills: Record<string, string> | n
     timing +
     styleShiftSection(s, resolved) +
     '\n' +
-    skillPromptSections(resolved) +
+    skillPromptSections(resolved, sceneSkills(s.directory)) +
     pluginSkillSection(resolved) +
     determinismSection +
     memorySection(s) +

@@ -1,12 +1,12 @@
 // 镜头扩展块的注册表。
 //
 // scene.json 除了镜头本身的字段，还可以带功能自己的块（多角色对话的 cast、歌曲讲解的 song、
-// 卡点的 beat）。以前每个块的解析、校验、提示词段、指纹都写死在 scene 里，加一种功能就要改内核；
-// 现在功能在 scene/blocks/ 下各自登记一个 SceneBlock，内核只遍历注册表。
+// 卡点的 beat）。功能由内置插件在 apply 里登记它的块（ctx.sceneBlock），内核只遍历注册表，
+// 不按名字认识任何一个块。宿主自己的块（还没做成插件的卡点）经 registerBlock 登记。
 //
-// 接口只收这三个块真实用到的东西。块的先后由 order 决定，不由登记顺序决定：scene.json 写回、
-// 提示词段、校验与指纹项的先后都按它排，而这些都要与引入注册表之前逐字节相同。
+// 块的先后由 order 决定，不由登记顺序决定：scene.json 写回、提示词段、校验与指纹项的先后都按它排。
 // timing 是 scene 自己的块，不在表里，固定排在所有扩展块之后。
+import { pluginSceneBlocks } from '../plugin/registry';
 import type { FieldType } from './jsondecode';
 import type { Scene } from './scene';
 import { VerificationError } from './verification';
@@ -35,6 +35,10 @@ export interface SceneBlock<T = unknown> {
   promptSection?(s: Scene, resolved: Record<string, string>): string;
   /** 块存在时额外记进输入指纹的项（键是 parts 的项名）。 */
   fingerprintParts?(s: Scene, value: T): Record<string, string>;
+  /** 块存在时镜头带的记忆特征（memory 的镜头特征词表）：特征名 → 说明。缺省没有。 */
+  readonly feature?: { name: string; description: string };
+  /** 块存在时，考试重放要另外拷进考场的目录（相对镜头目录，例如角色包）。 */
+  extraInputDirs?(s: Scene, value: T): string[];
 }
 
 const registry: SceneBlock[] = [];
@@ -44,7 +48,7 @@ const registry: SceneBlock[] = [];
  * 键与已有块重名时直接报错；与 scene.json 内核字段重名由 scene 在用到注册表时报错。
  */
 export function registerBlock<T>(block: SceneBlock<T>): () => void {
-  if (registry.some((b) => b.key === block.key)) throw new Error(`镜头扩展块重名：${block.key}`);
+  if (sceneBlocks().some((b) => b.key === block.key)) throw new Error(`镜头扩展块重名：${block.key}`);
   const entry = block as SceneBlock;
   registry.push(entry);
   registry.sort((a, b) => a.order - b.order);
@@ -54,9 +58,11 @@ export function registerBlock<T>(block: SceneBlock<T>): () => void {
   };
 }
 
-/** 已登记的块，按 order 排好。 */
+/** 已登记的块（宿主的与内置插件登记的），按 order 排好。 */
 export function sceneBlocks(): readonly SceneBlock[] {
-  return registry;
+  const plugins = pluginSceneBlocks();
+  if (plugins.length === 0) return registry;
+  return [...registry, ...plugins.map((p) => p.value)].sort((a, b) => a.order - b.order);
 }
 
 /** 镜头上某个块的值；没有这个块时为 null。 */
@@ -74,18 +80,38 @@ export function verifyBlock(block: SceneBlock, s: Scene): void {
 
 /** 按 order 核对所有块。 */
 export function verifyBlockInputs(s: Scene): void {
-  for (const block of registry) verifyBlock(block, s);
+  for (const block of sceneBlocks()) verifyBlock(block, s);
 }
 
 /** 给出自己时间轴的块（与 timing 互斥），按 order 排好。 */
 export function timelineBlocks(): SceneBlock[] {
-  return registry.filter((b) => b.timeline !== undefined);
+  return sceneBlocks().filter((b) => b.timeline !== undefined);
+}
+
+/** 镜头带的块里给出自己时间轴的那几个（例如歌曲、卡点镜头）。 */
+export function sceneTimelineBlocks(s: Scene): SceneBlock[] {
+  return timelineBlocks().filter((b) => blockValue(s, b.key) !== null);
+}
+
+/** 镜头带的块给出的记忆特征名。 */
+export function blockFeatures(s: Scene): string[] {
+  return sceneBlocks()
+    .filter((b) => b.feature && blockValue(s, b.key) !== null)
+    .map((b) => b.feature!.name);
+}
+
+/** 镜头带的块要另外拷进考场的目录（相对镜头目录）。 */
+export function blockExtraInputDirs(s: Scene): string[] {
+  return sceneBlocks().flatMap((b) => {
+    const v = blockValue(s, b.key);
+    return v !== null && b.extraInputDirs ? b.extraInputDirs(s, v) : [];
+  });
 }
 
 /** 所有块的提示词段，按 order 拼接。 */
 export function blockPromptSections(s: Scene, resolved: Record<string, string>): string {
   let out = '';
-  for (const block of registry) {
+  for (const block of sceneBlocks()) {
     if (block.promptSection && blockValue(s, block.key) !== null) out += block.promptSection(s, resolved);
   }
   return out;

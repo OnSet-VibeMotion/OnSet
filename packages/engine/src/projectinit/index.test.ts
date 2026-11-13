@@ -3,18 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as preset from '../preset';
-import {
-  castYAML,
-  create,
-  DeliveryBeat,
-  DeliverySong,
-  DeliverySpeech,
-  NarrationCast,
-  NarrationSolo,
-  skillsInstalled,
-  validate,
-  writeCastScaffold,
-} from './index';
+import { create, DeliveryBeat, DeliverySong, DeliverySpeech, narrations, NarrationSolo, skillsInstalled, validate } from './index';
+
+// 多角色对话插件登记的叙事模式。
+const NarrationCast = 'cast';
 
 const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-projectinit-'));
 const style = preset.CustomStyle;
@@ -46,15 +38,17 @@ describe('projectinit', () => {
       create({ target: dir, canvas: preset.defaultPreset().id, style, delivery, narration, extra: { 'docs/note.md': 'x' } });
       for (const file of [...want, 'docs/note.md']) expect(fs.existsSync(path.join(dir, file)), `${name} 缺 ${file}`).toBe(true);
     }
-    // 已有内容不同的 cast.yaml 不覆盖。
+    // 叙事模式写出的初始文件与已有内容不同时整体失败，不覆盖。
     const dir = temp();
     fs.writeFileSync(path.join(dir, 'cast.yaml'), 'other');
-    expect(() => writeCastScaffold(dir)).toThrow('内容不同');
+    expect(() => create({ target: dir, canvas: preset.defaultPreset().id, style, delivery: DeliverySpeech, narration: NarrationCast })).toThrow('内容不同');
     expect(skillsInstalled(dir)).toBe(false);
   });
 
-  // Go 版用 yaml.v3 序列化；字节取自 Go 版 am init --narration cast 实际写出的 cast.yaml。
-  it('writes cast.yaml byte-identical to the Go version', () => {
-    expect(castYAML()).toBe('schema: cast/v1\npacks: []\ndefaults:\n    ground_y: 0.78\n    gap_ms:\n        turn: 240\n        interject: 100\n');
+  it('lists solo first, then the narrations that plugins register', () => {
+    expect(narrations().map((n) => [n.id, n.owner])).toEqual([
+      ['solo', ''],
+      ['cast', 'cast'],
+    ]);
   });
 });

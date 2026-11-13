@@ -50,6 +50,7 @@ const beatBlock: SceneBlock<beat.Cue> = {
   excludes: { keys: ['song', 'cast'], message: '卡点镜头不能同时带 song 或 cast 块' },
   verifyInputs: verifyBeat,
   timeline: { label: '卡点' },
+  feature: { name: 'beat', description: '卡点模式' },
 };
 registerBlock(beatBlock);
 

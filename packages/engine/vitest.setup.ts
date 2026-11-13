@@ -3,9 +3,10 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-// 镜头扩展块（cast、song、beat）在 scene/blocks/index.ts 里登记，经 scene 的包入口 index.ts 加载。
+// 镜头扩展块（宿主的 beat 在 scene/blocks/，cast、song 由内置插件登记）经 scene 的包入口 index.ts 加载。
 // scene/ 自己的测试直接 import './scene'，绕过了包入口，这里替它们登记一次。
 import './src/scene/blocks';
+import './src/plugin';
 
 process.env.AM_SETTINGS_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'am-settings-test-')), 'settings.conf');
 // 编排工具与渲染器 PATH 最前面那个只有 am 的目录（envutil.agentBinDir）默认写在 <数据目录>/am 下，测试里指到临时目录。

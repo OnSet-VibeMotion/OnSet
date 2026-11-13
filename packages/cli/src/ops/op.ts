@@ -74,8 +74,9 @@ export interface Op {
   run(params: ParamValues, ctx: OpContext): void | OpResult | Promise<void | OpResult>;
 }
 
-/** 参数校验或调用方式不对：工具服务把它原样交给 agent，不当成操作失败的堆栈。 */
-export class ParamError extends Error {}
+/** 参数校验或调用方式不对：工具服务把它原样交给 agent，不当成操作失败的堆栈（与内置插件的操作同一个类）。 */
+export { ParamError } from '@am/engine/opkit';
+import { ParamError } from '@am/engine/opkit';
 
 const registry = new Map<string, Op>();
 

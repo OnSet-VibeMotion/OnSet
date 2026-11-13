@@ -13,7 +13,7 @@ import * as song from '../song';
 import { fingerprint } from './record';
 import { buildPrompt, load, sceneToJSON, type Scene } from './scene';
 import { encodeSceneData, buildSceneData } from './scenedata';
-import { SongExplainerSkillName } from './skills';
+import { SongExplainerSkillName } from '../plugins/song';
 import { dataScene, frameWithCanvas, tempDir } from './testsupport';
 
 const goldenDir = path.join(__dirname, 'testdata', 'blocks-golden');

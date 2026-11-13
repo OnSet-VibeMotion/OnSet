@@ -14,3 +14,5 @@ export * from './run';
 export * from './live';
 export * from './block';
 export * from './blocks';
+// 内置插件登记的镜头扩展块与渲染技能：导入 plugin 包即登记全部内置插件。
+import '../plugin';
