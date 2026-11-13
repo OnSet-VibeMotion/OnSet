@@ -1490,3 +1490,91 @@ button.skills-pill.bad {
     animation: none;
   }
 }
+
+/* 风格页开头的说明。 */
+.style-intro {
+  margin-bottom: 14px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--raised);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.style-intro.draft {
+  border-color: var(--accent-line);
+  background: linear-gradient(135deg, var(--accent-soft), var(--raised) 60%);
+}
+.style-intro-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.style-intro h3 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text);
+}
+.style-badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--chip);
+  color: var(--accent-text);
+  border: 1px solid var(--accent-line);
+}
+.style-intro p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-2);
+}
+.style-intro code {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--chip);
+  color: var(--accent-text);
+}
+.style-brief {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 2px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+.style-brief span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 3px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--text-3);
+}
+.swatch i {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}

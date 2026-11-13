@@ -350,22 +350,24 @@ export function Home(props: Props) {
               {focused && !working && <span class="composer-beam" aria-hidden="true" />}
             </div>
             <div class="under-row">
-              <Dropdown id="style" open={menu === 'style'} onOpen={(open) => setMenu(open ? 'style' : '')} label={<>风格：{styleLabel}</>} flat>
-                <MenuItem
+              <Dropdown id="style" open={menu === 'style'} onOpen={(open) => setMenu(open ? 'style' : '')} label={<>风格：{styleLabel}</>} flat wide>
+                <StyleItem
                   selected={style === ''}
                   title="自动定风格"
-                  desc="由模型按内容和文案定配色、字体与版式"
+                  desc="不套固定风格：开工后由编排工具读完稿子，按内容定配色、字体、版式和动效，先出四张示例图给你确认。"
                   onClick={() => {
                     setStyle('');
                     setMenu('');
                   }}
                 />
                 {styles?.styles.map((s) => (
-                  <MenuItem
+                  <StyleItem
                     key={s.id}
                     selected={s.id === style}
                     title={s.name}
-                    desc={s.label}
+                    desc={styleDescription(s.name, s.label)}
+                    image={`/api/styles/${encodeURIComponent(s.id)}/${encodeURIComponent(canvas || styles.default_canvas)}/${styles.archetypes[0] ?? 'proposition'}.png`}
+                    ratio={canvasInfo ? canvasInfo.width / canvasInfo.height : 3 / 4}
                     onClick={() => {
                       setStyle(s.id);
                       setMenu('');
@@ -540,6 +542,7 @@ function Dropdown(props: {
   children: preact.ComponentChildren;
   align?: 'left' | 'right';
   flat?: boolean;
+  wide?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -568,7 +571,7 @@ function Dropdown(props: {
         <Icon name="chevron" size={10} />
       </button>
       {props.open && (
-        <div class={'dropdown-menu' + (props.align === 'right' ? ' right' : '')} role="menu">
+        <div class={'dropdown-menu' + (props.align === 'right' ? ' right' : '') + (props.wide ? ' wide' : '')} role="menu">
           {props.children}
         </div>
       )}
@@ -587,6 +590,30 @@ function MenuItem(props: { title: string; desc?: string; icon?: preact.Component
       {props.selected && <span class="menu-check">✓</span>}
     </button>
   );
+}
+
+/** 风格选项：左边一张该风格在当前画幅下的示例图，右边名字与适用场合。 */
+function StyleItem(props: { title: string; desc: string; image?: string; ratio?: number; selected: boolean; onClick: () => void }) {
+  return (
+    <button role="menuitemradio" aria-checked={props.selected} class={'menu-item style-item' + (props.selected ? ' selected' : '')} onClick={props.onClick}>
+      <span class="style-swatch" style={{ aspectRatio: String(props.ratio ?? 3 / 4) }}>
+        {props.image ? <img src={props.image} alt="" loading="lazy" /> : <span class="style-auto">Aa</span>}
+      </span>
+      <span class="menu-text">
+        <span class="style-name">{props.title}</span>
+        <span class="menu-desc">{props.desc}</span>
+      </span>
+      {props.selected && <span class="menu-check">✓</span>}
+    </button>
+  );
+}
+
+/** 风格表里的说明以「名字：」开头，菜单里名字已经单列，去掉重复的那段。 */
+function styleDescription(name: string, label: string): string {
+  const plain = (text: string) => text.replace(/\s+/g, '');
+  const index = label.search(/[：:]/);
+  if (index > 0 && plain(label.slice(0, index)) === plain(name)) return label.slice(index + 1).trim();
+  return label;
 }
 
 /** 保存位置：最近用过的目录加一个简单的目录浏览。 */

@@ -64,7 +64,7 @@ export function Preview(props: Props) {
         {props.tab === 'scene' && <SceneTab {...props} scene={scene} />}
         {props.tab === 'compose' && <ComposeTab {...props} scene={scene} />}
         {props.tab === 'final' && <FinalTab tree={props.tree} version={props.version} run={props.run} />}
-        {props.tab === 'style' && <StyleTab tree={props.tree} version={props.version} onFile={props.onFile} />}
+        {props.tab === 'style' && <StyleTab tree={props.tree} version={props.version} onFile={props.onFile} state={props.state} />}
         {props.tab === 'review' && <ReviewTab tree={props.tree} version={props.version} run={props.run} />}
         {props.tab === 'publish' && <PublishTab version={props.version} run={props.run} />}
         {props.tab === 'memory' && <MemoryTab scene={scene} version={props.version} run={props.run} />}
@@ -548,11 +548,76 @@ function FinalTab({ tree, version, run }: { tree: TreeFile[]; version: number; r
   );
 }
 
-function StyleTab({ tree, version, onFile }: { tree: TreeFile[]; version: number; onFile: (path: string) => void }) {
+/**
+ * 风格页：先说清楚这是什么风格、现在走到哪一步，再给示例图与文件。
+ * 自定义风格在定稿前是草稿（style_id: custom-draft）：frame.md 里的配色、字体只是
+ * 默认风格的占位值，不展示，免得被当成定下来的风格；只展示用户写的风格描述。
+ */
+function StyleTab({ tree, version, onFile, state }: { tree: TreeFile[]; version: number; onFile: (path: string) => void; state: ProjectState | null }) {
   const images = tree.filter((f) => /assets\/style-guide\/.*\.png$/.test(f.path));
   const docs = tree.filter((f) => f.path === 'frame.md' || /^docs\/.*说明书\.md$/.test(f.path) || f.path === 'docs/style-brief.md');
+  const styleID = state?.metadata.style_id ?? '';
+  const draft = styleID === 'custom-draft';
+  const custom = draft || styleID.startsWith('custom-');
+  const [brief, setBrief] = useState('');
+  const [frame, setFrame] = useState('');
+  const hasBrief = tree.some((f) => f.path === 'docs/style-brief.md');
+  useEffect(() => {
+    setBrief('');
+    if (hasBrief)
+      fetch(rawURL('docs/style-brief.md', version))
+        .then((r) => (r.ok ? r.text() : ''))
+        .then(setBrief, () => setBrief(''));
+  }, [hasBrief, version]);
+  useEffect(() => {
+    setFrame('');
+    if (!draft)
+      fetch(rawURL('frame.md', version))
+        .then((r) => (r.ok ? r.text() : ''))
+        .then(setFrame, () => setFrame(''));
+  }, [draft, version]);
+  const palette = draft ? [] : framePalette(frame);
+  const briefText = brief
+    .replace(/^#.*$/m, '')
+    .replace(/^>.*$/gm, '')
+    .trim();
   return (
     <div class="style-tab">
+      <section class={'style-intro' + (draft ? ' draft' : '')}>
+        <div class="style-intro-head">
+          <span class="style-badge">{draft ? '风格待定' : custom ? '自定义风格' : '内置风格'}</span>
+          <h3>{draft ? '由模型按这条片子自己定风格' : state?.metadata.style_name || '未命名风格'}</h3>
+        </div>
+        {draft ? (
+          <>
+            <p>
+              这个项目没有套用预设风格。点「开始制作」后，编排工具会先读完稿子，按主题和受众定下配色、字体、版式骨架、动效和禁用项，写出
+              <code>frame.md</code> 与风格说明书，再出四张示例图——图出来后会显示在下面。
+            </p>
+            {briefText && (
+              <blockquote class="style-brief">
+                <span>风格描述</span>
+                {briefText}
+              </blockquote>
+            )}
+            <p class="muted small">想指定方向（比如「深色科技感」「手绘」「少用红色」）就在对话里说，或者直接改 docs/style-brief.md。</p>
+          </>
+        ) : (
+          <>
+            {briefText && custom && <p>{briefText}</p>}
+            {palette.length > 0 && (
+              <div class="palette" aria-label="配色">
+                {palette.map(([name, color]) => (
+                  <span key={name} class="swatch" title={`${name} ${color}`}>
+                    <i style={{ background: color }} />
+                    <span class="mono">{name}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </section>
       <div class="toolbar">
         {docs.map((doc) => (
           <button key={doc.path} class="mono" onClick={() => onFile(doc.path)}>
@@ -561,7 +626,7 @@ function StyleTab({ tree, version, onFile }: { tree: TreeFile[]; version: number
         ))}
       </div>
       {images.length === 0 ? (
-        <Empty>项目里还没有风格示例图。</Empty>
+        <Empty>{draft ? '定风格之后，四张示例图会出现在这里。' : '项目里还没有风格示例图。'}</Empty>
       ) : (
         <div class="gallery">
           {images.map((image) => (
@@ -574,6 +639,21 @@ function StyleTab({ tree, version, onFile }: { tree: TreeFile[]; version: number
       )}
     </div>
   );
+}
+
+/** 从 frame.md 的 front matter 里读出 colors 段的「名字: 色值」。 */
+function framePalette(frame: string): [string, string][] {
+  const head = /^---\n([\s\S]*?)\n---/.exec(frame)?.[1] ?? '';
+  const lines = head.split('\n');
+  const start = lines.findIndex((line) => /^colors:\s*$/.test(line));
+  if (start < 0) return [];
+  const out: [string, string][] = [];
+  for (const line of lines.slice(start + 1)) {
+    if (!/^\s+/.test(line)) break;
+    const match = /^\s+([\w-]+):\s*["']?(#[0-9a-fA-F]{3,8})["']?/.exec(line);
+    if (match) out.push([match[1], match[2]]);
+  }
+  return out.slice(0, 12);
 }
 
 interface ReviewResponse {

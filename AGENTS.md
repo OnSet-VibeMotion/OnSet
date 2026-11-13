@@ -270,6 +270,7 @@ SVG 转 PNG 必须走 `rsvg-convert`（`internal/styleimage`），**不能用 Im
 | 产物文件名固定（`assets/app.js`、`assets/index.css`），不带 hash | 带 hash 的话每次改动都换文件名，产物 diff 难读；`index.html` 发 `no-cache`，不靠文件名破缓存 |
 | `static` 只把不带扩展名的路径回落到 `index.html`，带扩展名找不到直接 404；JS 按扩展名设 MIME | 缺失的脚本拿到一份 HTML，浏览器只报模块 MIME 错误，看不出真正原因 |
 | `package-lock.json` 里的地址是 `registry.npmjs.org` | 用镜像装完依赖要把 `resolved` 换回官方源再提交，CI 访问不到国内镜像 |
+| 新组件的样式放进各自的 css（`chat.css`、`home.css`、`creation.css`），选择器挂在组件根类下（`.chat …`、`.home …`） | 全局 `styles.css` 里已有 `.legend`、`.style-thumb` 这类通用名，同名类后写的覆盖先写的，撞过两次：时间线图例被挤成一条、风格缩略图撑满整个菜单 |
 | `ui/src/types.ts` 与后端 JSON 字段一一对应 | 前后端之间没有生成代码，改字段两边一起改 |
 
 `internal/studio/ui/e2e/fake-bin/claude` 是 e2e 用的假编排工具（同目录的 `codex` 只用来显示为「已安装」，被调用时直接失败），`ui/playwright.config.mjs` 只给 Studio 服务进程的 PATH 加上它；提示词里带「慢慢来」时它只回报会话然后挂起，供取消测试使用。单元测试里的假工具同理，子进程环境按安全模式白名单构造，测试开关要经 `AM_PASSTHROUGH_ENV` 透传。
