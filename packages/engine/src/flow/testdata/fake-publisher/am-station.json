@@ -29,7 +29,8 @@
       "summary": "把成片发到平台（测试用：只写回执，不联网）",
       "trigger": "user",
       "command": [
-        "bin/publish"
+        "{node}",
+        "bin/publish.cjs"
       ],
       "params": {
         "platform": {
@@ -43,7 +44,8 @@
       "name": "status",
       "summary": "查看发布回执",
       "command": [
-        "bin/status"
+        "{node}",
+        "bin/status.cjs"
       ],
       "params": {},
       "examples": [
@@ -54,7 +56,8 @@
       "name": "on_event",
       "summary": "记下发生了什么事件（测试用）",
       "command": [
-        "bin/hook"
+        "{node}",
+        "bin/hook.cjs"
       ],
       "params": {}
     },
@@ -62,7 +65,18 @@
       "name": "speak",
       "summary": "把一段文字读成配音（测试用，不出声）",
       "command": [
-        "bin/status"
+        "{node}",
+        "bin/status.cjs"
+      ],
+      "params": {}
+    },
+    {
+      "name": "scribble",
+      "summary": "顺手记一笔（测试用：会写一个没声明的文件）",
+      "trigger": "user",
+      "command": [
+        "{node}",
+        "bin/scribble.cjs"
       ],
       "params": {}
     }

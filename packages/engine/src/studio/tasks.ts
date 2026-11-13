@@ -22,6 +22,8 @@ export interface Task {
   progress: number;
   message: string;
   error?: string;
+  /** 任务跑完了，但有要用户留意的事（第三方站的操作写了声明范围之外的文件）。 */
+  warning?: string;
   created_at: string;
   updated_at: string;
 }
@@ -34,6 +36,7 @@ export function taskJSON(t: Task): Record<string, unknown> {
     progress: t.progress,
     message: t.message,
     error: t.error || undefined,
+    warning: t.warning || undefined,
     created_at: t.created_at,
     updated_at: t.updated_at,
   };
@@ -88,6 +91,7 @@ export function loadPersistedTasks(s: Server): void {
       progress: typeof r.progress === 'number' ? r.progress : 0,
       message: str('message'),
       error: str('error') || undefined,
+      warning: str('warning') || undefined,
       created_at: str('created_at') || '0001-01-01T00:00:00Z',
       updated_at: str('updated_at') || '0001-01-01T00:00:00Z',
     };
@@ -144,6 +148,14 @@ export function updateTask(s: Server, id: string, status: string, message: strin
   if (status === 'succeeded') event = 'task.completed';
   if (status === 'failed') event = 'task.failed';
   s.tasks.events.get(id)?.push({ event, task_id: id, progress, message, timestamp: t.updated_at });
+  persistTasks(s);
+}
+
+/** 给任务记一条提醒（与成败无关，界面用警示样式显示）。 */
+export function warnTask(s: Server, id: string, warning: string): void {
+  const t = s.tasks.tasks.get(id);
+  if (!t) return;
+  t.warning = warning;
   persistTasks(s);
 }
 

@@ -14,6 +14,9 @@ async function projectWithFake(): Promise<string> {
   expect(out.text).toContain('已加入第三方站 假发布（fake-publisher 0.1.0）');
   expect(out.text).toContain('[按钮] send');
   expect(out.text).toContain('[工具] x_fake_publisher_status');
+  // 操作与页面分开说：操作是电脑上的普通程序，页面才受权限约束。
+  expect(out.text).toContain('它的操作是在你电脑上运行的程序，能读写你的文件、能联网');
+  expect(out.text).toContain('它的页面在沙箱里运行，只能做清单里申请过的事：\n  看项目：');
   return root;
 }
 
@@ -35,6 +38,11 @@ describe('station ops', () => {
     const bad = new Buffer();
     expect(await run(['station', 'run', 'fake-publisher', 'send', '--params', '{}', '--project-root', root], bad)).toBe(1);
     expect(bad.text).toContain('缺参数 platform');
+
+    // 写了清单没声明的文件：照实列在输出末尾，操作照样算成功。
+    const stray = new Buffer();
+    expect(await run(['station', 'run', 'fake-publisher', 'scribble', '--project-root', root], stray), stray.text).toBe(0);
+    expect(stray.text).toContain('没有声明会写的项目文件（1 个）：\n  notes/scribble.txt');
 
     const list = new Buffer();
     expect(await run(['station', 'list', '--project-root', root], list), list.text).toBe(0);

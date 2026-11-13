@@ -21,7 +21,8 @@ import { decodeJSON, DecodeError, fieldString, goMap, methodNotAllowed, notFound
 import { containedPath } from './sessions';
 import type { Project, Server } from './studio';
 import { onStudioEvent } from './events';
-import { runStudioOp, runWriteTask, updateTask, writeTaskError, type Task } from './tasks';
+import { emit, getSession, kindNotice, listSessions } from './sessions';
+import { runStudioOp, runWriteTask, updateTask, warnTask, writeTaskError, type Task } from './tasks';
 
 /** 最近一次从界面执行的结果，按「项目 站 操作」记，客户端重启就没了（站自己写的回执才是凭据）。 */
 interface LastRun {
@@ -30,6 +31,11 @@ interface LastRun {
   ok: boolean;
   text: string;
   data?: unknown;
+  /** 写了声明范围之外的项目文件（flow.scopeReport）；没有越界时不出现。 */
+  out_of_scope?: string[];
+  out_of_scope_more?: number;
+  /** 其中属于 am 自己的文件（这次操作因此算失败）。 */
+  reserved?: string[];
 }
 
 const lastRuns = new Map<string, LastRun>();
@@ -130,6 +136,10 @@ async function readParams(request: Request): Promise<Record<string, unknown>> {
 
 /**
  * 跑一条第三方操作：插件写的 am-progress 行变成任务进度；结果记进 lastRuns。
+ *
+ * 越界检查在执行进程里（flow.runStationOp）已经做过一遍，结果写进了操作的文字，给编排工具看；这里在调用点
+ * 外面再扫一遍项目，拿到结构化的列表给界面（任务、发布页的按钮、插件页面）。执行进程的协议只回传插件自己的 data，
+ * 不为它另开字段；两遍都只 stat，代价很小。钩子与定时触发的（event 不为空）越界时另发一条 notice。
  */
 async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: Task, id: string, op: string, params: Record<string, unknown>, event?: Record<string, unknown>): Promise<void> {
   const key = `${p.path}\n${id}\n${op}`;
@@ -143,6 +153,16 @@ async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: 
       if (progress) updateTask(s, task.task_id, 'running', progress.message || task.message, Math.max(0.1, Math.min(0.99, progress.progress)), null);
     }
   };
+  const station = flow.loadProjectStations(p.path).stations.find((x) => x.manifest.id === id);
+  const before = station ? flow.statProject(p.path) : null;
+  const scope = () => {
+    if (!station || !before) return null;
+    const r = flow.scopeReport(station.manifest, before, flow.statProject(p.path));
+    if (r) reportScope(s, p, task, station.manifest.name, r, event);
+    return r;
+  };
+  const scopeFields = (r: flow.ScopeReport | null) =>
+    r ? { out_of_scope: r.out_of_scope, out_of_scope_more: r.out_of_scope_more, ...(r.reserved.length > 0 ? { reserved: r.reserved } : {}) } : {};
   try {
     const r = await runStudioOp(
       s,
@@ -152,10 +172,29 @@ async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: 
       { station: id, op, params: JSON.stringify(params), event: event ? JSON.stringify(event) : '', project_root: p.path },
       { onText },
     );
-    lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: true, text: stripProgress(r.text).slice(-maxRunText), ...(r.data !== undefined ? { data: r.data } : {}) });
+    lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: true, text: stripProgress(r.text).slice(-maxRunText), ...(r.data !== undefined ? { data: r.data } : {}), ...scopeFields(scope()) });
   } catch (err) {
-    lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: false, text: (err as Error).message.slice(-maxRunText) });
+    lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: false, text: (err as Error).message.slice(-maxRunText), ...scopeFields(scope()) });
     throw err;
+  }
+}
+
+/** 越界写入：记在任务上；钩子、定时这类没人在看的触发，另在最近的对话里发一条 notice。 */
+function reportScope(s: Server, p: Project, task: Task, name: string, r: flow.ScopeReport, event?: Record<string, unknown>): void {
+  const total = r.out_of_scope.length + r.out_of_scope_more;
+  const files = r.out_of_scope.join('、') + (r.out_of_scope_more > 0 ? ` 等 ${total} 个` : '');
+  const text =
+    r.reserved.length > 0
+      ? `插件「${name}」写了 ArticleToMotion 自己的文件（${files}），这次操作按失败处理。文件已经写了，没法自动撤销：可以回退那一轮对话，或者用 git 恢复。`
+      : `插件「${name}」改了它没有声明会写的项目文件：${files}。`;
+  warnTask(s, task.task_id, text);
+  if (!event) return;
+  try {
+    const latest = listSessions(s, p.path)[0];
+    const sess = latest ? getSession(s, p.path, latest.session_id) : undefined;
+    if (sess) emit(sess, '', { kind: kindNotice, text: `${event.name === 'schedule' ? '定时' : '自动'}执行的${text}` });
+  } catch {
+    // 发不出 notice 不影响任务上的提醒。
   }
 }
 
