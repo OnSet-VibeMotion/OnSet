@@ -262,6 +262,9 @@ export interface MemoryEvent {
   type: string;
   snapshot?: number;
   summary: string;
+  /** 经历与导入事件所属的项目；记忆库级事件（整理、考试、快照）为空。 */
+  project?: string;
+  detail?: Record<string, unknown>;
 }
 
 export interface ExamCell {
@@ -320,6 +323,8 @@ export interface MemorySuspect {
 export interface MemoryState {
   enabled: boolean;
   dir: string;
+  /** 当前项目名，用来筛时间线。 */
+  project?: string;
   pinned: number;
   budget: number;
   renderer: string;

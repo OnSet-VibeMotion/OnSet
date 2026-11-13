@@ -165,11 +165,14 @@ func (s *Store) writeIndex() error {
 
 // Event 是时间线上的一条事件。
 type Event struct {
-	Time     string         `json:"time"`
-	Type     string         `json:"type"`
-	Snapshot int            `json:"snapshot,omitempty"`
-	Summary  string         `json:"summary"`
-	Detail   map[string]any `json:"detail,omitempty"`
+	Time     string `json:"time"`
+	Type     string `json:"type"`
+	Snapshot int    `json:"snapshot,omitempty"`
+	Summary  string `json:"summary"`
+	// Project 是事件所属的项目名（经历、导入）；整理、考试、快照这类记忆库级事件为空。
+	// 记忆库所有项目共用，Studio 据此只显示当前项目的经历。
+	Project string         `json:"project,omitempty"`
+	Detail  map[string]any `json:"detail,omitempty"`
 }
 
 // 时间线事件类型。

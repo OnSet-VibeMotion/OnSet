@@ -94,12 +94,17 @@ func (s *Server) memoryAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 经历事件可能成百上千条，面板只要最近的；整理、考试这些节点事件全留。
+	// 记忆库所有项目共用：本项目与其他项目的经历各留最近 50 条，网页默认只显示本项目的。
+	project := memory.ProjectName(p.Path)
 	timeline := make([]memory.Event, 0, len(events))
-	episodes := 0
+	mine, others := 0, 0
 	for i := len(events) - 1; i >= 0; i-- {
 		if events[i].Type == memory.EventEpisode {
-			episodes++
-			if episodes > 50 {
+			counter := &others
+			if events[i].Project == project {
+				counter = &mine
+			}
+			if *counter++; *counter > 50 {
 				continue
 			}
 		}
@@ -122,7 +127,6 @@ func (s *Server) memoryAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		views = append(views, view)
 	}
-	project := memory.ProjectName(p.Path)
 	runs := []memory.RunSummary{}
 	if episodes, err := store.Episodes(); err == nil {
 		for _, r := range memory.RunReport(episodes) {
@@ -143,7 +147,7 @@ func (s *Server) memoryAPI(w http.ResponseWriter, r *http.Request) {
 		snapshots = []int{}
 	}
 	s.write(w, http.StatusOK, map[string]any{
-		"enabled": cfg.Memory.Enabled, "dir": store.Dir, "pinned": cfg.Memory.Snapshot, "budget": cfg.Memory.RecallBudget,
+		"enabled": cfg.Memory.Enabled, "dir": store.Dir, "project": project, "pinned": cfg.Memory.Snapshot, "budget": cfg.Memory.RecallBudget,
 		"renderer": cfg.Renderer, "status": status, "memories": rows, "timeline": timeline, "exams": views, "snapshots": snapshots, "runs": runs,
 	})
 }

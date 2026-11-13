@@ -23,6 +23,8 @@ export function MemoryTab({ scene, version, run }: Props) {
   const [globalPreference, setGlobalPreference] = useState(false);
   const [notice, setNotice] = useState('');
   const [refresh, setRefresh] = useState(0);
+  const [allProjects, setAllProjects] = useState(false);
+  const [showRenders, setShowRenders] = useState(false);
 
   useEffect(() => {
     api<MemoryState>('/api/memory').then(
@@ -54,6 +56,14 @@ export function MemoryTab({ scene, version, run }: Props) {
   const pendingPreferences = state.memories.filter((m) => m.kind === 'preference' && m.status === 'trial');
   const pendingLessons = state.memories.filter((m) => m.kind === 'lesson' && m.status === 'trial' && !m.examinable);
   const previous = state.snapshots.filter((id) => id !== state.status.snapshot);
+  // 记忆库所有项目共用：默认只看本项目的经历与记忆库级事件（整理、考试、快照），
+  // 逐次渲染的经历默认收起，导入一个项目只显示一行汇总。
+  const timeline = state.timeline.filter(
+    (event) =>
+      // 经历必须属于本项目（早期写下的经历没有项目名，算作其他项目）；记忆库级事件都显示。
+      (allProjects || (event.type === 'episode' ? event.project === state.project : !event.project || event.project === state.project)) &&
+      (showRenders || event.type !== 'episode' || Boolean(event.detail?.import)),
+  );
   return (
     <div class="memory-tab">
       <div class="toolbar">
@@ -61,7 +71,7 @@ export function MemoryTab({ scene, version, run }: Props) {
         <span class="chip mono">快照 #{state.status.snapshot || '—'}</span>
         {state.pinned > 0 && <span class="chip mono">钉住 #{state.pinned}</span>}
         <span class="small muted">
-          经历 {state.status.episodes} 段 · 待整理失败 {state.status.pending_failures} 段 · 召回预算 {state.budget} 字
+          记忆库（所有项目）经历 {state.status.episodes} 段 · 待整理失败 {state.status.pending_failures} 段 · 召回预算 {state.budget} 字
         </span>
         <span class="spacer" />
         <button onClick={() => run('/api/memory/actions/consolidate')}>整理</button>
@@ -165,7 +175,16 @@ export function MemoryTab({ scene, version, run }: Props) {
       <section class="memory-section">
         <div class="toolbar">
           <h4>时间线</h4>
+          <span class="small muted">记忆库所有项目共用</span>
           <span class="spacer" />
+          <label class="small">
+            <input type="checkbox" checked={allProjects} onChange={(e) => setAllProjects(e.currentTarget.checked)} />
+            其他项目
+          </label>
+          <label class="small">
+            <input type="checkbox" checked={showRenders} onChange={(e) => setShowRenders(e.currentTarget.checked)} />
+            逐条经历
+          </label>
           {previous.length > 0 && (
             <>
               <select value={rollbackTo} aria-label="回退目标快照" onChange={(e) => setRollbackTo(Number(e.currentTarget.value))}>
@@ -182,8 +201,13 @@ export function MemoryTab({ scene, version, run }: Props) {
             </>
           )}
         </div>
+        {timeline.length === 0 && (
+          <p class="small muted">
+            {allProjects ? '记忆库还没有事件。' : '本项目还没有记忆事件。渲染、整理、考试和记下的偏好会出现在这里；勾选「其他项目」看共用记忆库的全部历史。'}
+          </p>
+        )}
         <ol class="memory-timeline">
-          {state.timeline.map((event, index) => (
+          {timeline.map((event, index) => (
             <li key={index} class={'event-' + event.type}>
               <span class="mono small muted">{event.time.replace('T', ' ').replace('Z', '')}</span>
               <span class="chip mono">{event.type}</span>

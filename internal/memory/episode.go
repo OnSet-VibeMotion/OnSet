@@ -193,7 +193,7 @@ func (s *Store) saveEpisode(sc scene.Scene, episode Episode) (Episode, error) {
 		return Episode{}, err
 	}
 	episode.Dir = dir
-	return episode, s.Log(Event{Type: EventEpisode, Summary: episodeSummary(episode),
+	return episode, s.Log(Event{Type: EventEpisode, Summary: episodeSummary(episode), Project: episode.Project,
 		Detail: map[string]any{"episode": episode.ID, "scene": episode.SceneID, "renderer": episode.Renderer, "model": episode.Model,
 			"outcome": episode.Outcome, "checks": episode.Checks, "recalled": episode.Recalled, "source": episode.Source, "exam": episode.Exam}})
 }

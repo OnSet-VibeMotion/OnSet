@@ -151,7 +151,7 @@ func (s *Store) ImportProject(root string, opts ImportOptions) (ImportResult, er
 		return result, err
 	}
 	return result, s.Log(Event{Type: EventEpisode, Summary: fmt.Sprintf("导入项目 %s：%d 个镜头、%d 次尝试（%d 次校验失败）、%d 条事后检查问题",
-		project, result.Scenes, result.Attempts, result.Failures, result.Checks), Detail: map[string]any{"import": result}})
+		project, result.Scenes, result.Attempts, result.Failures, result.Checks), Project: project, Detail: map[string]any{"import": result}})
 }
 
 func (s *Store) recordImported(sc scene.Scene, attempt scene.Attempt, run, key string) (Episode, error) {

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/chouheiwa/articale-to-motion/internal/memory"
+	scenepkg "github.com/chouheiwa/articale-to-motion/internal/scene"
 )
 
 // TestMemoryPanelReadsStoreAndRecallsForScene：面板的读接口只读记忆库，
@@ -41,6 +42,18 @@ func TestMemoryPanelReadsStoreAndRecallsForScene(t *testing.T) {
 	requireStudioStatus(t, status, http.StatusOK, body)
 	if body["enabled"] != true || len(studioList(t, body["memories"])) != 1 || len(studioList(t, body["snapshots"])) != 1 {
 		t.Fatalf("记忆面板数据不对：%#v", body)
+	}
+	// 记忆库所有项目共用：经历事件带项目名，面板据此只显示本项目的。
+	if sc, err := scenepkg.Load(scene); err != nil {
+		t.Fatal(err)
+	} else if _, err := store.RecordAttempt(sc, scenepkg.Attempt{SceneID: "scene-001", Renderer: "claude", Outcome: scenepkg.OutcomeSucceeded}, memory.AttemptSource{Source: memory.SourceRender}); err != nil {
+		t.Fatal(err)
+	}
+	status, body = studioRequest(t, http.MethodGet, ts.URL+"/api/memory", "")
+	requireStudioStatus(t, status, http.StatusOK, body)
+	events := studioList(t, body["timeline"])
+	if project := body["project"]; project != filepath.Base(root) || events[0].(map[string]any)["project"] != project {
+		t.Fatalf("project=%v 最新事件=%#v", project, events[0])
 	}
 	status, body = studioRequest(t, http.MethodGet, ts.URL+"/api/memory/recall?scene=scene-001", "")
 	requireStudioStatus(t, status, http.StatusOK, body)
