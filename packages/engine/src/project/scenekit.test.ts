@@ -19,6 +19,15 @@ function exampleFontFiles(shared: assets.AssetTree, file: string): string[] {
 }
 
 describe('scene-kit', () => {
+  // HyperFrames lint 的 gsap_timeline_not_registered 逐个脚本按正则查（0.8.225 实测）：脚本里出现 gsap 紧跟 .timeline，
+  // 又没有 window.__timelines 赋值，就判「建了时间线却没注册」。scene-kit.js 被复制进每个镜头目录、作为单独的
+  // <script> 加载，它的注释或报错文案里只要写了这串字，所有用 scene-kit 的镜头都报这条错，渲染器自己修不掉，
+  // 只能去翻 HyperFrames 的源码（实测）。
+  it('does not trip HyperFrames lint as a separate script', () => {
+    const body = assets.shared().readText(`${skillTreeRoot}/scene-kit/scene-kit.js`);
+    expect(/gsap\.timeline/.test(body)).toBe(false);
+  });
+
   // 把 scene-kit 放进一个照技能说明搭起来的镜头目录，跑一遍 am 自己的确定性源码扫描。
   //
   // 技能要求渲染器把 scene-kit.js 复制进每个镜头目录，所以它会被每个镜头的

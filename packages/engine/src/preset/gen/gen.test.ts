@@ -241,6 +241,11 @@ describe('PROMPT-PRODUCTION template', () => {
 
   // 配音与对齐工具是前置资源（toolinstall，由 am setup 装进用户级目录）：提示词里写安装命令的话，编排工具会在对话里
   // 自己装一份全局的，版本不受控，客户端用户的机器上还常常没有 npm、pip、brew。
+  // 编排工具缺了信息时会 strings / grep 已装的 am 程序反推格式（实测：反推 story.md 的格式），每次都弹权限确认打断用户。
+  it('keeps the orchestrator out of am internals', () => {
+    has(['不要用 `which`、`strings`、`grep` 去读 `am` 程序本身', '节拍页把这个文件当普通 Markdown 原样显示'], '格式约定');
+  });
+
   it('leaves voice tools to am setup', () => {
     has(['配音与对齐工具都是前置资源', 'am setup --only tts,align', 'funasr-python', '--model "$(am config get ALIGN_MODEL)"'], '配音工具');
     lacks(['pipx install', 'npm install -g', 'brew install', 'uv tool install', 'pip install funasr', 'pip install tccli'], '配音工具');

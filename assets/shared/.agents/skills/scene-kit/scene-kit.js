@@ -619,7 +619,9 @@
   // 返回一个无参的 draw()，调用它会按时间线当前位置补出一帧。
   function attach(timeline, render) {
     if (!timeline || typeof timeline.to !== 'function' || typeof timeline.time !== 'function') {
-      throw new Error('SceneKit.attach：第一个参数必须是 gsap.timeline({ paused: true }) 建出的时间线');
+      // 措辞里不能出现「gsap」紧跟「.timeline」：HyperFrames lint 的 gsap_timeline_not_registered 逐个脚本按正则查，
+      // 见到它又没有 window.__timelines 赋值就报错，整个文件被当成「建了时间线却没注册」，用 scene-kit 的镜头全部报错。
+      throw new Error('SceneKit.attach：第一个参数必须是 GSAP 建出的暂停时间线（timeline，paused: true）');
     }
     if (typeof render !== 'function') {
       throw new Error('SceneKit.attach：第二个参数必须是 render(frame) 函数');
