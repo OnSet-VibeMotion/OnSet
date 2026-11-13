@@ -137,6 +137,19 @@ export function validateViewRequest(project: string, req: ViewRequest): ViewRequ
   return out;
 }
 
+let lastStamp = 0n;
+
+/**
+ * 「纳秒时间戳」：毫秒时间拼上 hrtime 的低位。hrtime 的低位在同一毫秒里会回绕，直接拼会让同一毫秒里
+ * 先写的请求排到后面（Go 的 UnixNano 是单调的），所以保证同一进程里严格递增。
+ */
+function nextStamp(): bigint {
+  let n = BigInt(Date.now()) * 1_000_000n + (process.hrtime.bigint() % 1_000_000n);
+  if (n <= lastStamp) n = lastStamp + 1n;
+  lastStamp = n;
+  return n;
+}
+
 /**
  * 把请求放进这一轮的收件目录。不在客户端里（没有收件目录）时返回 false。页面写错照样抛错：
  * 编排工具在 am run 里也会照着提示词调用，写错要让它知道。
@@ -148,7 +161,7 @@ export function writeViewRequest(env: Record<string, string | undefined>, req: V
   fs.mkdirSync(inbox, { recursive: true, mode: 0o755 });
   const body = marshal({ page: valid.page, target: valid.target || undefined, note: valid.note || undefined });
   // 先写临时名再改名，轮询时不会读到写了一半的文件。文件名是纳秒时间戳，补零到 20 位以便按名字排序。
-  const name = String(BigInt(Date.now()) * 1_000_000n + (process.hrtime.bigint() % 1_000_000n)).padStart(20, '0');
+  const name = String(nextStamp()).padStart(20, '0');
   const tmp = path.join(inbox, '.' + name + '.tmp');
   fs.writeFileSync(tmp, body, { mode: 0o644 });
   fs.renameSync(tmp, path.join(inbox, name + '.json'));
