@@ -140,7 +140,7 @@ function statState(info: fs.BigIntStats): string {
  * renderRecord 报告文件是不是渲染的尝试记录。它记的是已经发生的事（花了多少
  * token、为什么失败），回退一轮不能把它删掉，所以和媒体一样只记 stat、不回退。
  */
-function renderRecord(file: string): boolean {
+export function renderRecord(file: string): boolean {
   const name = path.basename(file);
   return name.startsWith('render-') && name.endsWith('.attempt.json');
 }

@@ -6,10 +6,7 @@
  * 承接界面的 /api/…、EventSource 与上传请求后直接调它。路由、JSON 字段、状态码与错误文案与 Go 版一致。
  * 界面本身（Go 版 go:embed 的 web/）由 Electron 自己加载，这里不服务静态文件。
  *
- * 尚未移植、先返回 501 的路由：
- * - TODO(scene)：/api/scenes、/api/scenes/…（镜头详情、渲染、抽帧、附件、产物）、/api/render/all、/preview/scenes/…
- * - TODO(validate)：/api/publish
- * - TODO(memory)：/api/memory、/api/memory/recall、/api/memory/actions/…
+ * 镜头、发布与合成预览的接口在 features.ts，记忆面板在 memory.ts。
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -25,6 +22,7 @@ import * as projectinit from '../projectinit';
 import { agentsAPI } from './agents';
 import { beatAPI, rawAPI, styleExampleAPI, stylesAPI, treeAPI } from './api_ui';
 import { commandAPI, filesAPI, productionStartAPI, sessionAPI, sessionsAPI, turnAPI } from './api_sessions';
+import { previewAPI, publishAPI, renderAllAPI, sceneFeatureAPI, scenesAPI } from './features';
 import { filmStylePosterAPI, filmStylesAPI, projectFilmStyleAPI, startFilmStyleTask } from './filmstyle';
 import {
   DecodeError,
@@ -39,6 +37,7 @@ import {
   writeError,
   writeJSON,
 } from './http';
+import { memoryAPI, memoryActionAPI, memoryRecallAPI } from './memory';
 import { discoverScenes, fileExists, type SceneSummary } from './scenes';
 import { scriptAPI } from './script';
 import { BusyError, type Session } from './sessions';
@@ -109,11 +108,6 @@ function defaultConfigPath(): string {
   } catch {
     return path.join(os.tmpdir(), 'am-studio-projects.json');
   }
-}
-
-/** 501：这条路由依赖的包还没移植。 */
-function notPorted(what: string): Response {
-  return writeError(501, 'not_implemented', '尚未移植：' + what);
 }
 
 type Handler = (request: Request, rest: string) => Response | Promise<Response>;
@@ -264,10 +258,6 @@ export class Server {
   // ---- 路由 ----
 
   private routeTable(): [string, Handler][] {
-    const withProject = (what: string): Handler => () => {
-      const p = this.projectOr404();
-      return p instanceof Response ? p : notPorted(what);
-    };
     return [
       ['/api/health', () => this.health()],
       ['/api/projects', () => this.projectsAPI()],
@@ -278,26 +268,16 @@ export class Server {
       ['/api/workspaces/current', () => this.currentAPI()],
       ['/api/workspaces/switch', (r) => this.switchAPI(r)],
       ['/api/state', () => this.stateAPI()],
-      // TODO(scene)：镜头列表与镜头详情依赖 scene.AttemptHistory。
-      ['/api/scenes', withProject('镜头列表（等 scene 包）')],
+      ['/api/scenes', () => scenesAPI(this)],
       ['/api/script', (r) => scriptAPI(this, r)],
       ['/api/assets', () => this.assetsAPI()],
-      // TODO(validate)：发布页依赖 validate.ReadPublish。
-      ['/api/publish', withProject('发布信息（等 validate 包）')],
-      // TODO(scene)：镜头渲染、抽帧、附件、产物。
-      ['/api/scenes/', withProject('镜头接口（等 scene 包）')],
+      ['/api/publish', () => publishAPI(this)],
+      ['/api/scenes/', (r, rest) => sceneFeatureAPI(this, r, rest)],
       ['/api/tasks', (r) => tasksAPI(this, r)],
       ['/api/tasks/', (r, rest) => taskFeatureAPI(this, r, rest)],
       ['/api/review', () => this.reviewAPI()],
       ['/api/review/run', (r) => this.reviewRunAPI(r)],
-      // TODO(scene)：渲染全部镜头。
-      [
-        '/api/render/all',
-        (r) => {
-          if (r.method !== 'POST') return methodNotAllowed('POST');
-          return withProject('渲染全部镜头（等 scene 包）')(r, '');
-        },
-      ],
+      ['/api/render/all', (r) => renderAllAPI(this, r)],
       ['/api/sessions', (r) => sessionsAPI(this, r)],
       ['/api/sessions/', (r, rest) => sessionAPI(this, r, rest)],
       ['/api/production/start', (r) => productionStartAPI(this, r)],
@@ -308,17 +288,15 @@ export class Server {
       ['/api/skills', () => skillsAPI(this)],
       ['/api/skills/install', (r) => skillsInstallAPI(this, r)],
       ['/api/agents', (r) => agentsAPI(this, r)],
-      // TODO(scene)：合成实时预览按镜头目录服务文件。
-      ['/preview/scenes/', withProject('合成预览（等 scene 包）')],
+      ['/preview/scenes/', (r, rest) => previewAPI(this, r, rest)],
       ['/api/styles', (r) => stylesAPI(r)],
       ['/api/styles/', (_r, rest) => styleExampleAPI(rest)],
       ['/api/tree', (r) => treeAPI(this, r)],
       ['/api/raw', (r) => rawAPI(this, r)],
       ['/api/beat', () => beatAPI(this)],
-      // TODO(memory)：记忆面板依赖 memory 包。
-      ['/api/memory', withProject('记忆面板（等 memory 包）')],
-      ['/api/memory/recall', withProject('记忆召回（等 memory 包）')],
-      ['/api/memory/actions/', withProject('记忆操作（等 memory 包）')],
+      ['/api/memory', (r) => memoryAPI(this, r)],
+      ['/api/memory/recall', (r) => memoryRecallAPI(this, r)],
+      ['/api/memory/actions/', (r, rest) => memoryActionAPI(this, r, rest)],
       ['/api/film-styles', (r) => filmStylesAPI(r)],
       ['/api/film-styles/', (r, rest) => filmStylePosterAPI(r, rest)],
       ['/api/film-style', (r) => projectFilmStyleAPI(this, r)],

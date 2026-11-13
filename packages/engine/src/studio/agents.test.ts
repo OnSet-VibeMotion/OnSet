@@ -1,7 +1,4 @@
 // 移植自 internal/studio/agents_test.go。
-//
-// 推迟到下一轮（依赖 scene 包）：TestProductionStartAndRendersAcceptAgentChoice 里
-// /api/scenes/scene-001/render 与 /api/render/all 拒绝无效渲染工具（400 invalid_agent）的断言。
 import './testsupport';
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -89,7 +86,7 @@ describe('agents', () => {
     await waitIdle(f, id);
   });
 
-  it('production start accepts agent choice', async () => {
+  it('production start and renders accept agent choice', async () => {
     const f = newSessionFixture();
     let { status, body } = await studioRequest(f.s, 'POST', '/api/production/start', '{"tool":"nope"}');
     expect(status).toBe(400);
@@ -99,6 +96,12 @@ describe('agents', () => {
     const detail = await waitIdle(f, body.session_id);
     expect(detail.session.tool).toBe('claude');
     expect(detail.session.renderer).toBe('opencode');
+
+    for (const p of ['/api/scenes/scene-001/render', '/api/render/all']) {
+      ({ status, body } = await studioRequest(f.s, 'POST', p, '{"renderer":"nope"}'));
+      expect(status, p).toBe(400);
+      expect(body.code, p).toBe('invalid_agent');
+    }
   });
 
   it('overrideAgents keeps config for empty choice', () => {

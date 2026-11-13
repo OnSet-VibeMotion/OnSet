@@ -13,6 +13,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { afterAll, afterEach } from 'vitest';
 import { CLIDirEnv } from '../hyperframes';
 import { fakeCLI } from '../hyperframes/hftest';
@@ -62,6 +63,41 @@ export function writeStudioFile(file: string, content: string | Buffer): void {
 
 export function writeTree(root: string, files: Record<string, string>): void {
   for (const [rel, body] of Object.entries(files)) writeStudioFile(path.join(root, rel), body);
+}
+
+function crc32(data: Buffer): number {
+  let c = 0xffffffff;
+  for (const byte of data) {
+    c ^= byte;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  }
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body));
+  return Buffer.concat([length, body, crc]);
+}
+
+/** 写一张 width×height 的全透明 RGBA PNG（Go 测试用 png.Encode(image.NewRGBA(...))）。 */
+export function writeStudioPNG(file: string, width = 2, height = 3): void {
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8; // 位深
+  header[9] = 6; // RGBA
+  const raw = Buffer.alloc((width * 4 + 1) * height);
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', header),
+    pngChunk('IDAT', zlib.deflateSync(raw)),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+  writeStudioFile(file, png);
 }
 
 export const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0;

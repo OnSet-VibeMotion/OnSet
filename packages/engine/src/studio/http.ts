@@ -128,6 +128,32 @@ export function fieldNumber(object: Record<string, unknown>, name: string): numb
   return value;
 }
 
+/** *float64 字段：没有或 null 时为 null（Go 的 nil 指针）。 */
+export function fieldNumberPtr(object: Record<string, unknown>, name: string): number | null {
+  const value = lookup(object, name);
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'number') throw new DecodeError(`json: cannot unmarshal into Go struct field .${name} of type float64`);
+  return value;
+}
+
+/** []string 字段：没有或 null 时为空数组。 */
+export function fieldStrings(object: Record<string, unknown>, name: string): string[] {
+  return (fieldArray(object, name) ?? []).map((item) => {
+    if (item === null) return '';
+    if (typeof item !== 'string') throw new DecodeError(`json: cannot unmarshal into Go struct field .${name} of type string`);
+    return item;
+  });
+}
+
+/** []float64 字段：没有或 null 时为空数组。 */
+export function fieldNumbers(object: Record<string, unknown>, name: string): number[] {
+  return (fieldArray(object, name) ?? []).map((item) => {
+    if (item === null) return 0;
+    if (typeof item !== 'number') throw new DecodeError(`json: cannot unmarshal into Go struct field .${name} of type float64`);
+    return item;
+  });
+}
+
 /** 整数字段（Go 的 int / int64）：带小数的数也算类型错误。 */
 export function fieldInt(object: Record<string, unknown>, name: string): number {
   const value = fieldNumber(object, name);

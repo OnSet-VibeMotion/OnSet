@@ -1,9 +1,4 @@
 // 移植自 internal/studio/sessions_test.go。
-//
-// 推迟到下一轮（依赖 scene 包，路由现在返回 501）：
-// - TestProductionStartBusyAndCancel 里 /api/render/all 与 /api/scenes/scene-001/render 的 409 断言；
-// - TestSessionRequestValidation 里 /api/scenes/scene-001/render（405）与 /api/scenes/scene-001/attachment（400）三条；
-// - TestFilesPreviewAndSkills 里 /preview/scenes/… 的断言。
 import './testsupport';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -138,8 +133,8 @@ describe('sessions', () => {
     expect(status).toBe(202);
     const id = body.session_id as string;
     expect(body.prompt).toBe('PROMPT.md');
-    // 进行中：其他写入一律 409。（/api/render/all、/api/scenes/…/render 等 scene 包，推迟）
-    for (const p of ['/api/production/start', '/api/commands/project.concat']) {
+    // 进行中：其他写入一律 409。
+    for (const p of ['/api/production/start', '/api/render/all', '/api/scenes/scene-001/render', '/api/commands/project.concat']) {
       ({ status, body } = await studioRequest(f.s, 'POST', p, '{}'));
       expect(status, p).toBe(409);
     }
@@ -213,6 +208,9 @@ describe('sessions', () => {
       ['GET', '/api/commands/project.concat', '', 405],
       ['POST', '/api/commands/scene.validate', '{"scene_id":"missing"}', 404],
       ['POST', '/api/commands/publish.check', '{}', 400],
+      ['GET', '/api/scenes/scene-001/render', '', 405],
+      ['POST', '/api/scenes/scene-001/attachment', '{"seconds":0}', 400],
+      ['POST', '/api/scenes/scene-001/attachment', '{"seconds":-1}', 400],
     ];
     for (const [method, p, payload, want] of cases) {
       const res = await studioRequest(f.s, method, p, payload);
@@ -220,7 +218,7 @@ describe('sessions', () => {
     }
   });
 
-  it('files and skills', async () => {
+  it('files, preview and skills', async () => {
     const f = newSessionFixture();
     let { status, body } = await studioRequest(f.s, 'GET', '/api/files?path=scenes/scene-001/prompt.md');
     expect(status).toBe(200);
@@ -241,6 +239,15 @@ describe('sessions', () => {
     ({ body } = await studioRequest(f.s, 'GET', '/api/files?path=blob.bin'));
     expect(body.binary).toBe(true);
     expect(body.content).toBe('');
+
+    const preview = await rawGet(f.s, '/preview/scenes/scene-001/');
+    expect(preview.status).toBe(200);
+    expect(preview.text).toContain('composition');
+    for (const p of ['/preview/scenes/scene-001/.env', '/preview/scenes/missing/index.html', '/preview/scenes/scene-001/%2e%2e/%2e%2e/PROMPT.md']) {
+      const res = await rawGet(f.s, p);
+      const leaked = res.status === 200 && (res.text.includes('NOTE=1') || res.text.includes('整片制作提示词'));
+      expect(leaked, `${p} 不应可读：${res.text}`).toBe(false);
+    }
 
     ({ status, body } = await studioRequest(f.s, 'GET', '/api/skills'));
     expect(status).toBe(200);

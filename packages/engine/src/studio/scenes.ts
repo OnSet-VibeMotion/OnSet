@@ -1,16 +1,11 @@
 /**
- * 项目里的镜头列表（studio.go 的 discoverScenes / SceneSummary 中不依赖 scene 包的部分）。
- *
- * /api/state、最近项目摘要、制作进度推断与「校验镜头」命令都只要知道有哪些镜头、产物在不在、是不是过期，
- * 这部分是纯文件扫描，先移植过来。
- *
- * TODO(scene)：scene 包移植完成后补上 attempts / usage（scene.AttemptHistory）与 rendering（sceneRendering），
- * 并接回 /api/scenes 系列路由。
+ * 项目里的镜头列表：studio.go 的 discoverScenes / SceneSummary / sceneRendering。
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { compareBytes } from '../gojson';
-import type { Usage } from '../tools';
+import * as scene from '../scene';
+import { newUsage, usageAdd, usageJSON, type Usage } from '../tools';
 import { walkDir } from './turns';
 
 export interface SceneSummary {
@@ -20,11 +15,51 @@ export interface SceneSummary {
   output?: string;
   exists: boolean;
   stale: boolean;
-  /** 这个镜头全部渲染尝试（含归档）的次数与用量合计。TODO(scene)：现在总是 0 / 空。 */
+  /** 这个镜头全部渲染尝试（含归档）的次数与用量合计。 */
   attempts: number;
   usage?: Usage;
-  /** 这个镜头此刻正在渲染。TODO(scene)：现在总是 false。 */
+  /** 这个镜头此刻正在渲染：渲染日志最近还在写，且比上一次尝试记录新。 */
   rendering?: boolean;
+}
+
+/** SceneSummary 的 JSON（Go struct 的字段顺序与 omitempty）。 */
+export function sceneSummaryJSON(sc: SceneSummary): Record<string, unknown> {
+  return {
+    id: sc.id,
+    directory: sc.directory,
+    duration_seconds: sc.duration_seconds || undefined,
+    output: sc.output || undefined,
+    exists: sc.exists,
+    stale: sc.stale,
+    attempts: sc.attempts,
+    usage: sc.usage ? usageJSON(sc.usage) : undefined,
+    rendering: sc.rendering || undefined,
+  };
+}
+
+/**
+ * renderingWindow 是判定「还在渲染」的日志静默上限（毫秒）。渲染工具一直往流日志里写事件，
+ * 超过这么久没动静，多半是进程已经没了（被杀、机器睡眠），不再显示成渲染中。
+ */
+export const renderingWindow = 3 * 60 * 1000;
+
+function mtime(file: string): number | null {
+  try {
+    return fs.statSync(file).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
+export function sceneRendering(dir: string, id: string, now: Date): boolean {
+  let latest: number | null = null;
+  for (const name of ['render-' + id + '.stream.jsonl', 'render-' + id + '.user.log', 'render-' + id + '.stderr.log']) {
+    const t = mtime(path.join(dir, name));
+    if (t !== null && (latest === null || t > latest)) latest = t;
+  }
+  if (latest === null || now.getTime() - latest > renderingWindow) return false;
+  const attempt = mtime(path.join(dir, 'render-' + id + '.attempt.json'));
+  return attempt === null || attempt < latest;
 }
 
 export function fileExists(file: string): boolean {
@@ -69,7 +104,24 @@ export function discoverScenes(root: string): SceneSummary[] {
         stale = false;
       }
     }
-    out.push({ id, directory: dir, duration_seconds: duration || undefined, output: output || undefined, exists, stale, attempts: 0 });
+    const summary: SceneSummary = {
+      id,
+      directory: dir,
+      duration_seconds: duration || undefined,
+      output: output || undefined,
+      exists,
+      stale,
+      attempts: 0,
+      rendering: sceneRendering(dir, id, new Date()) || undefined,
+    };
+    const history = scene.attemptHistory(dir, id);
+    if (history.length > 0) {
+      const total = newUsage();
+      for (const attempt of history) usageAdd(total, attempt.usage ?? newUsage());
+      summary.attempts = history.length;
+      summary.usage = total;
+    }
+    out.push(summary);
   });
   out.sort((a, b) => compareBytes(a.id, b.id));
   return out;

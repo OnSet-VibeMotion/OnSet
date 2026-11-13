@@ -4,23 +4,17 @@
 // - TestListenAndServeStopsWithContext：TS 版后端不监听端口，Electron 主进程经 am://app/ 协议直接调 handle。
 // - TestStudioContentAndTaskEndpoints 里静态文件的两条（/missing-asset.js 404、/some/route 回落到 index.html）：
 //   界面文件由 Electron 加载，这里不服务。
-//
-// 推迟到下一轮：
-// - TODO(scene)：TestStudioContentAndTaskEndpoints 里 /api/scenes、/api/scenes/{id}（详情、asset、frames、抽帧任务、
-//   bogus）、/api/render/all 的断言；TestStudioDirectoryAndProjectLifecycle 里打开项目后的 /api/scenes 与
-//   /api/scenes/missing。没有项目时这些路由的 404 照样测。
-// - TODO(validate)：两个用例里打开项目后的 /api/publish 断言（发布信息解析与封面尺寸）。
-// - TODO(memory)：memory_test.go 整个文件（TestMemoryPanelReadsStoreAndRecallsForScene、TestChatTurnsCarryUserPreferences、
-//   TestChatTurnsAndRevertsBecomeConversationEpisodes、TestScenesReportRenderUsageAndKeepAttemptRecordsOnRevert）。
-// 原用例里由抽帧任务提供的「失败任务」改由 /api/review/run（没有成片时失败）提供，任务接口的断言不变。
+// - 「/api/scenes/scene-001/frames/../evil.jpg」那一条：Go 版绕过 ServeMux 直接调 sceneFeatureAPI，
+//   这里同样直接调 sceneFeatureAPI（handle 会先把不规整的路径 301 掉）。
 import './testsupport';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { sceneFeatureAPI } from './features';
 import type { SceneSummary } from './scenes';
 import { projectMetadata, stageFor } from './studio';
 import { addTask, runTask, updateTask } from './tasks';
-import { rawGet, setEnv, sleep, startStudio, studioRequest, tempDir, waitStudioTask, writeStudioFile } from './testsupport';
+import { rawGet, setEnv, sleep, startStudio, studioRequest, tempDir, waitStudioTask, writeStudioFile, writeStudioPNG } from './testsupport';
 
 function scene(id: string, exists = false): SceneSummary {
   return { id, directory: '', exists, stale: false, attempts: 0 };
@@ -231,9 +225,16 @@ describe('studio', () => {
     expect(body.path).toBe('');
     expect(body.content).toBe('');
     expect((await studioRequest(s, 'GET', '/api/assets')).status).toBe(200);
+    ({ status, body } = await studioRequest(s, 'GET', '/api/publish'));
+    expect(status).toBe(200);
+    expect(body.available).toBe(false);
     ({ status, body } = await studioRequest(s, 'GET', '/api/review'));
     expect(status).toBe(200);
     expect(body.available).toBe(false);
+    ({ status, body } = await studioRequest(s, 'GET', '/api/scenes'));
+    expect(status).toBe(200);
+    expect(body.scenes ?? []).toHaveLength(0);
+    expect((await studioRequest(s, 'GET', '/api/scenes/missing')).status).toBe(404);
 
     expect((await studioRequest(s, 'POST', '/api/projects/create', JSON.stringify({ parent: home, name: 'my-project' }))).status).toBe(409);
     expect((await studioRequest(s, 'POST', '/api/projects/open', JSON.stringify({ path: target }))).status).toBe(200);
@@ -252,6 +253,7 @@ describe('studio', () => {
     const sceneOne = path.join(root, 'scenes', 'scene-001');
     writeStudioFile(path.join(sceneOne, 'scene.json'), '{"id":"scene-001","duration_seconds":2,"output":"out.mp4","text":"before"}');
     writeStudioFile(path.join(sceneOne, 'out.mp4'), 'video-bytes');
+    writeStudioFile(path.join(sceneOne, '.studio-frames', 'frame-01.jpg'), 'jpg-bytes');
     writeStudioFile(path.join(root, 'scenes', 'scene-002', 'scene.json'), '{"id":"scene-002","duration_seconds":1,"output":"missing.mp4"}');
     writeStudioFile(path.join(root, 'SCRIPT.md'), 'script body');
     // macOS 的默认文件系统大小写不敏感，不能再写一份小写 script.md：
@@ -259,12 +261,49 @@ describe('studio', () => {
     writeStudioFile(path.join(root, 'transcription.srt'), '1\n00:00:00,000 --> 00:00:01,000\nline\n');
     writeStudioFile(path.join(root, 'assets', 'logo.txt'), 'logo');
     writeStudioFile(path.join(root, 'cast', 'char.txt'), 'cast');
-    writeStudioFile(path.join(root, 'publish.md'), '---\nplatform: douyin\n---\n\n# publish\n');
+    writeStudioFile(path.join(root, 'publish.md'), '---\nplatform: douyin\ncopy:\n  primary_title: 复利到底是什么\n---\n\n# publish\n');
+    writeStudioPNG(path.join(root, 'covers', 'cover.png'));
+    writeStudioFile(path.join(root, 'covers', 'broken.png'), 'not an image');
     writeStudioFile(path.join(root, 'production', 'review', 'review.json'), '{"issues":[{"id":"i1"}]}');
 
     const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
 
-    let { status, body } = await studioRequest(s, 'GET', '/api/script');
+    let { status, body } = await studioRequest(s, 'GET', '/api/scenes');
+    expect(status).toBe(200);
+    expect(body.scenes).toHaveLength(2);
+    expect(body.scenes[0]).toMatchObject({ id: 'scene-001', exists: true, stale: false });
+    expect(body.scenes[1]).toMatchObject({ id: 'scene-002', exists: false });
+
+    ({ status, body } = await studioRequest(s, 'GET', '/api/scenes/scene-001'));
+    expect(status).toBe(200);
+    expect(body.data.id).toBe('scene-001');
+    expect(body.exists).toBe(true);
+    expect((await studioRequest(s, 'GET', '/api/scenes/missing')).status).toBe(404);
+
+    let raw = await rawGet(s, '/api/scenes/scene-001/asset');
+    expect(raw.status).toBe(200);
+    expect(raw.text).toBe('video-bytes');
+    raw = await rawGet(s, '/api/scenes/scene-001/frames/frame-01.jpg');
+    expect(raw.status).toBe(200);
+    expect(raw.text).toBe('jpg-bytes');
+    ({ status, body } = await studioRequest(s, 'GET', '/api/scenes/scene-001/frames'));
+    expect(status).toBe(200);
+    expect(body.frames).toEqual(['.studio-frames/frame-01.jpg']);
+
+    const evil = await sceneFeatureAPI(s, new Request('http://studio.test/api/scenes/scene-001/frames/../evil.jpg'), 'scene-001/frames/../evil.jpg');
+    expect(evil.status).toBe(400);
+
+    expect((await studioRequest(s, 'GET', '/api/scenes/scene-001/bogus')).status).toBe(404);
+    expect((await studioRequest(s, 'GET', '/api/scenes/missing/asset')).status).toBe(404);
+
+    ({ status, body } = await studioRequest(s, 'POST', '/api/scenes/scene-002/frames'));
+    expect(status).toBe(202);
+    const frameTask = await waitStudioTask(s, body.task_id);
+    expect(frameTask.status).toBe('failed');
+    expect(frameTask.error).toContain('镜头产物不存在');
+    const taskID = frameTask.task_id as string;
+
+    ({ status, body } = await studioRequest(s, 'GET', '/api/script'));
     expect(status).toBe(200);
     expect(body.path).toBe('SCRIPT.md');
     expect(body.content).toBe('script body');
@@ -272,6 +311,26 @@ describe('studio', () => {
     expect(status).toBe(200);
     const assetPaths = new Set((body.assets as { path: string }[]).map((a) => a.path));
     expect(assetPaths.has('assets/logo.txt') && assetPaths.has('cast/char.txt')).toBe(true);
+
+    ({ status, body } = await studioRequest(s, 'GET', '/api/publish'));
+    expect(status).toBe(200);
+    expect(body.available).toBe(true);
+    expect(body.covers).toHaveLength(2);
+    // 发布页应只拿到解析后的字段，不拿 Markdown 原文。
+    expect(body.content).toBeUndefined();
+    expect(body.platform_name).toBe('抖音');
+    expect(body.data.copy.primary_title).toBe('复利到底是什么');
+    for (const cover of body.covers as Record<string, unknown>[]) {
+      if (cover.path === 'covers/cover.png') {
+        expect(cover.width).toBe(2);
+        expect(cover.height).toBe(3);
+        expect(cover.sha256).not.toBe('');
+      } else if (cover.path === 'covers/broken.png') {
+        expect(cover.error).toBe('无法读取图片尺寸');
+      } else {
+        throw new Error('unexpected cover ' + JSON.stringify(cover));
+      }
+    }
 
     ({ status, body } = await studioRequest(s, 'GET', '/api/review'));
     expect(status).toBe(200);
@@ -300,17 +359,11 @@ describe('studio', () => {
     fs.utimesSync(path.join(sceneOne, 'scene.json'), future, future);
     writeStudioFile(path.join(root, 'scenes', 'scene-004', 'scene.json'), '{"id":"scene-004","duration_seconds":1,"output":"/etc/passwd"}');
     writeStudioFile(path.join(root, 'scenes', 'scene-003', 'scene.json'), 'not json');
+    ({ status, body } = await studioRequest(s, 'GET', '/api/scenes'));
+    expect(status).toBe(200);
+    expect(body.scenes, 'scenes with invalid/absolute outputs').toHaveLength(3);
     ({ body } = await studioRequest(s, 'GET', '/api/state'));
-    expect(body.scenes.total, 'scenes with invalid/absolute outputs').toBe(3);
     expect(body.scenes.stale).toBe(1);
-
-    // 一个失败的任务：没有成片时运行成片审查。
-    ({ status, body } = await studioRequest(s, 'POST', '/api/review/run'));
-    expect(status).toBe(202);
-    const reviewTask = await waitStudioTask(s, body.task_id);
-    expect(reviewTask.status).toBe('failed');
-    expect(reviewTask.error).toContain('找不到可审查的成片');
-    const taskID = reviewTask.task_id as string;
 
     ({ status, body } = await studioRequest(s, 'GET', '/api/tasks'));
     expect(status).toBe(200);
@@ -318,7 +371,7 @@ describe('studio', () => {
     ({ status, body } = await studioRequest(s, 'GET', '/api/tasks/' + taskID));
     expect(status).toBe(200);
     expect(body.status).toBe('failed');
-    let raw = await rawGet(s, `/api/tasks/${taskID}/events`);
+    raw = await rawGet(s, `/api/tasks/${taskID}/events`);
     expect(raw.status).toBe(200);
     expect(raw.text).toContain('event: task.queued');
     expect(raw.text).toContain('task.failed');
@@ -329,13 +382,22 @@ describe('studio', () => {
     expect((await studioRequest(s, 'GET', '/api/tasks/')).status).toBe(404);
     expect((await studioRequest(s, 'GET', '/api/tasks/missing')).status).toBe(404);
     expect((await studioRequest(s, 'POST', '/api/tasks')).status).toBe(405);
+
+    ({ status, body } = await studioRequest(s, 'POST', '/api/review/run'));
+    expect(status).toBe(202);
+    const reviewTask = await waitStudioTask(s, body.task_id);
+    expect(reviewTask.status).toBe('failed');
+    expect(reviewTask.error).toContain('找不到可审查的成片');
     expect((await studioRequest(s, 'GET', '/api/review/run')).status).toBe(405);
     expect((await studioRequest(s, 'GET', '/api/render/all')).status).toBe(405);
+
+    const empty = startStudio({ projectPath: tempDir(), configPath: path.join(tempDir(), 'projects.json') });
+    ({ status, body } = await studioRequest(empty, 'POST', '/api/render/all'));
+    expect(status).toBe(400);
+    expect(body.code).toBe('no_scenes');
 
     ({ status, body } = await studioRequest(s, 'GET', '/api/missing-endpoint'));
     expect(status).toBe(404);
     expect(body.code).toBe('not_found');
-    // 尚未移植的路由：有项目时 501。
-    for (const p of ['/api/scenes', '/api/publish', '/api/memory']) expect((await studioRequest(s, 'GET', p)).status, p).toBe(501);
   });
 });

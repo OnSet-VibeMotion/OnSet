@@ -20,6 +20,7 @@ import * as tools from '../tools';
 import { compareTimes, nowTime } from './http';
 import type { Project, Server } from './studio';
 import { changedPaths, diffTrees, loadTurn, revertTurn, saveTurn, scanTree, statTree, studioRoot, validID, type FileChange, type Turn } from './turns';
+import { preferenceBrief, recordUtterance } from './memory';
 import { uploadDir, uploadKind } from './uploads';
 
 // Studio 在 agentrun 事件之外自己发的几种事件。
@@ -581,7 +582,7 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
   } else {
     prompt = message;
   }
-  const [brief, digest] = preferenceBrief(cfg);
+  const [brief, digest] = preferenceBrief(p, cfg);
   const resend = brief !== '' && (digest !== (sess.meta.preference_digest ?? '') || !sess.meta.cli_session_id || (sess.meta.turns ?? []).length === 0);
   if (resend) prompt = brief + '\n---\n\n' + prompt;
   const display = req.message || '开始整片制作';
@@ -606,30 +607,6 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
   emit(sess, turn.turn_id, { kind: kindTurnStart, status: 'running' });
   return { turn, prompt };
 }
-
-/**
- * preferenceBrief 是这一轮要交给编排工具的用户偏好段与摘要；记忆关闭或读不到时为空。
- *
- * TODO(memory)：memory 包还没移植。Go 版经 memory.OpenReadOnly(...).PreferenceBrief 取偏好段；
- * 这里先只做它的副作用——建好记忆库目录（codex 沙箱只能把已存在的目录加进可写范围，见 OrchestratorAccess），
- * 偏好段为空。
- */
-function preferenceBrief(cfg: config.Config): [string, string] {
-  if (!cfg.memory.enabled) return ['', ''];
-  try {
-    fs.mkdirSync(cfg.memory.dir, { recursive: true, mode: 0o755 });
-  } catch {
-    // 与 Go 版一样忽略。
-  }
-  return ['', ''];
-}
-
-/**
- * recordUtterance 把用户在这一轮说的话（或回退了这一轮）写成对话经历。
- *
- * TODO(memory)：memory 包还没移植，Go 版经 store.RecordUtterance 追加经历；这里暂不记录。
- */
-function recordUtterance(_p: Project, _turn: Turn, _reverted: boolean): void {}
 
 /**
  * runTurn 在后台跑一轮。写权由 finishTurn 释放，这里不能再释放一次：
