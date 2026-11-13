@@ -23,6 +23,8 @@ export function pageCallableOp(name: string): boolean {
 export function toExtra(m: Manifest): ExtraStation {
   const nodes = m.nodes.map((n): RouteNode => {
     const node: RouteNode = { id: n.id, label: n.label, step: n.step, declared: { outputs: n.outputs, stale_after: n.stale_after } };
+    if (n.state) node.declared!.state = n.state;
+    if (n.guide) node.declared!.guide = n.guide;
     if (n.gate) node.gate = true;
     // 站点指向插件自己的页面时，换成客户端里的页面 id。
     if (n.page) node.page = m.pages.some((pg) => pg.id === n.page) ? pageTab(m.id, n.page) : n.page;

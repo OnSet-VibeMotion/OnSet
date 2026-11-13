@@ -47,6 +47,10 @@ export interface NodeJudge<C extends JudgeContext = JudgeContext> {
    * page 给一个「去看」按钮（页面 id）。
    */
   guide?: PluginGuide;
+  /** 说法随项目状态变时用它（有它就不看 guide）。 */
+  guideFor?: (c: C) => PluginGuide | undefined;
+  /** 进行中：还没做完，但已经开了头——后面的站做了也不算「跳过」。 */
+  inProgress?: (c: C) => boolean;
 }
 
 /** 「接下来」卡片上的一个按钮：开一页、把一句话发给 AI、填进输入框、确认关卡（同界面 guide.ts 的 GuideAction）。 */
@@ -54,7 +58,9 @@ export type PluginGuideAction =
   | { kind: 'page'; label: string; page: string }
   | { kind: 'say'; label: string; text: string }
   | { kind: 'draft'; label: string; text: string }
-  | { kind: 'gate'; label: string; gate: string };
+  | { kind: 'gate'; label: string; gate: string }
+  /** 请用户确认后执行一个第三方站的操作（只限 trigger: user、没有必填参数的）。 */
+  | { kind: 'op'; label: string; station: string; op: string; summary: string };
 
 export interface PluginGuide {
   ai?: string;

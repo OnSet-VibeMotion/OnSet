@@ -345,10 +345,14 @@ function pluginJudges(): Record<string, Judge> {
   return out;
 }
 
-/** 第三方站点的声明式判断：outputs 里最新的修改时间；stale_after 里的站点产物比它新就要重做。 */
+/**
+ * 第三方站点的声明式判断：outputs 里最新的修改时间；stale_after 里的站点产物比它新就要重做。
+ * 写了 state 时：outputs 有产物就算做完（产物是最硬的证据，不再看 state）；没有时按文件里的字段定状态
+ * （flow.readDeclaredState），做完的产物时间取状态文件的修改时间，说明、在等谁与「接下来」也从落到的那一项来。
+ */
 function declaredJudge(node: flow.RouteNode, byID: Map<string, Def>): Judge {
   const declared = node.declared!;
-  const output = (c: Ctx) => Math.max(0, ...declared.outputs.map((rel) => {
+  const outputsTime = (c: Ctx) => Math.max(0, ...declared.outputs.map((rel) => {
     const full = path.join(c.root, rel);
     try {
       return fs.statSync(full).isDirectory() ? dirMtime(full) : mtime(full);
@@ -357,10 +361,45 @@ function declaredJudge(node: flow.RouteNode, byID: Map<string, Def>): Judge {
     }
   }));
   if (node.gate) return {};
-  return {
-    output,
-    stale: declared.stale_after.length === 0 ? undefined : (c, out) => declared.stale_after.some((id) => (byID.get(id)?.output(c) ?? 0) > out),
+  const stale: Judge['stale'] = declared.stale_after.length === 0 ? undefined : (c, out) => declared.stale_after.some((id) => (byID.get(id)?.output(c) ?? 0) > out);
+  const state = declared.state;
+  const guide = declared.guide ? toPluginGuide(declared.guide) : undefined;
+  if (!state) return { output: outputsTime, stale, guide };
+  // 一次计算里各项判断读同一份结果。
+  const memo = new WeakMap<Ctx, { time: number; outcome?: flow.DeclaredOutcome }>();
+  const read = (c: Ctx): { time: number; outcome?: flow.DeclaredOutcome } => {
+    let got = memo.get(c);
+    if (!got) {
+      const done = outputsTime(c);
+      if (done > 0) got = { time: done };
+      else {
+        const r = flow.readDeclaredState(c.root, state);
+        got = { time: r.outcome.status === 'done' ? r.mtime : 0, outcome: r.outcome };
+      }
+      memo.set(c, got);
+    }
+    return got;
   };
+  return {
+    output: (c) => read(c).time,
+    stale,
+    detail: (c) => read(c).outcome?.detail,
+    waiting: (c) => read(c).outcome?.waiting,
+    inProgress: (c) => read(c).outcome?.status === 'doing',
+    guide,
+    guideFor: (c) => {
+      const own = read(c).outcome?.guide;
+      return own ? toPluginGuide(own) : guide;
+    },
+  };
+}
+
+function toPluginGuide(g: flow.DeclaredGuide): plugin.PluginGuide {
+  const out: plugin.PluginGuide = {};
+  if (g.ai !== undefined) out.ai = g.ai;
+  if (g.user !== undefined) out.user = g.user;
+  if (g.actions) out.actions = g.actions.map((a) => ({ ...a }));
+  return out;
 }
 
 /** 流程的站点连同判断。内置的普通站必须有判断函数，漏了直接报错，不让一站永远显示「没做」。 */
@@ -460,7 +499,8 @@ export function computeStations(root: string, scenes: SceneSummary[]): { mode: f
     if (d.optional) station.optional = true;
     if (d.page) station.page = d.page;
     if (d.file) station.file = d.file;
-    if (d.guide) station.guide = { ai: d.guide.ai, user: d.guide.user, page: d.guide.page, page_label: d.guide.pageLabel, actions: d.guide.actions, confirm: d.guide.confirm };
+    const g = d.guideFor ? d.guideFor(ctx) : d.guide;
+    if (g) station.guide = { ai: g.ai, user: g.user, page: g.page, page_label: g.pageLabel, actions: g.actions, confirm: g.confirm };
     // 第三方站的产物不算「后面已经做了」：宿主不凭插件写的文件推断自带流程走到了哪（插件一发布，前面全成了跳过）。
     const laterDone = outputs.some((t, j) => j > i && t > 0 && !defs[j].optional && !defs[j].declared);
     if (d.gate) {
@@ -480,7 +520,7 @@ export function computeStations(root: string, scenes: SceneSummary[]): { mode: f
         station.at = localRFC3339(new Date(out));
       } else if (d.id === 'render' && d.stale?.(ctx, 0)) {
         station.status = 'stale';
-      } else if (laterDone && !d.optional) station.status = 'skipped';
+      } else if (laterDone && !d.optional && !d.inProgress?.(ctx)) station.status = 'skipped';
     }
     const detail = d.detail?.(ctx);
     if (detail) station.detail = detail;

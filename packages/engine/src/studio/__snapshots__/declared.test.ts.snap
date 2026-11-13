@@ -1,0 +1,14 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`declared station state > matches the builtin publishing judge in every publish state 1`] = `
+[
+  "没有 publish.md: {"status":"todo","detail":"","current":true,"waiting_on":"ai"}",
+  "draft: {"status":"todo","detail":"草稿","current":true,"waiting_on":"ai"}",
+  "pending_manual_checks: {"status":"todo","detail":"还剩人工检查","current":true,"waiting_on":"user"}",
+  "blocked: {"status":"todo","detail":"有问题挡着","current":true,"waiting_on":"ai"}",
+  "ready: {"status":"done","detail":"可以发布","current":false,"waiting_on":""}",
+  "frontmatter 写坏了: {"status":"todo","detail":"草稿","current":true,"waiting_on":"ai"}",
+  "没有 publish_status: {"status":"todo","detail":"草稿","current":true,"waiting_on":"ai"}",
+  "不认识的状态: {"status":"todo","detail":"archived","current":true,"waiting_on":"ai"}",
+]
+`;

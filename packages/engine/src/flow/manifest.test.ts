@@ -12,6 +12,7 @@ import {
   loadProjectStations,
   ManifestFields,
   manifestFieldNames,
+  nodeFieldNames,
   parseManifest,
   readLock,
   treeDigest,
@@ -97,10 +98,14 @@ describe('field tiers', () => {
   it('has one row per field and the agreed tiers', () => {
     const names = manifestFieldNames();
     expect(new Set(names).size).toBe(names.length);
-    const tier = (t: string) => ManifestFields.filter((f) => f.tier === t).map((f) => f.name).sort();
+    const tier = (t: string) => ManifestFields.filter((f) => f.tier === t && !f.parent).map((f) => f.name).sort();
     expect(tier('stable')).toEqual(['after', 'description', 'id', 'manifest_version', 'name', 'nodes', 'ops', 'pages', 'permissions', 'produces', 'prompt', 'replaces', 'requires', 'settings', 'version']);
     expect(tier('experimental')).toEqual(['commands', 'film_styles', 'flow', 'hooks', 'inserts', 'provides', 'renderer_skills', 'schedules', 'slots']);
     for (const f of ManifestFields) expect(f.tier === 'experimental').toBe(f.used !== undefined);
+    // 站点里的字段：基本的几项稳定，按文件内容定状态与「接下来」是实验性的。
+    const nodeTier = (t: string) => ManifestFields.filter((f) => f.tier === t && f.parent === 'nodes').map((f) => f.name).sort();
+    expect(nodeFieldNames()).toEqual(['id', 'label', 'step', 'gate', 'page', 'outputs', 'stale_after', 'gate_files', 'state', 'guide']);
+    expect(nodeTier('experimental')).toEqual(['nodes.guide', 'nodes.state']);
   });
 
   it('reports the experimental fields a manifest uses', () => {
@@ -198,10 +203,21 @@ describe('authoring doc', () => {
   it('lists exactly the top-level fields the parser accepts, with their tiers', () => {
     const doc = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'docs', 'plugin-authoring.md'), 'utf8');
     // 「顶层字段」表：每行 | `字段` | 分级 | …
-    const section = doc.slice(doc.indexOf('## 顶层字段'), doc.indexOf('\n## ', doc.indexOf('## 顶层字段') + 1));
+    // 到下一个小节（站点、操作……的字段表）为止。
+    const section = doc.slice(doc.indexOf('## 顶层字段'), doc.indexOf('\n### ', doc.indexOf('## 顶层字段') + 1));
     const rows = [...section.matchAll(/^\| `([a-z_]+)` \| (稳定|实验性) \|/gm)].map((m) => [m[1], m[2]]);
     const tierName = { stable: '稳定', experimental: '实验性' } as const;
     expect(rows.map((r) => r[0]).sort()).toEqual(manifestFieldNames().sort());
     for (const [name, tier] of rows) expect(tier).toBe(tierName[ManifestFields.find((f) => f.name === name)!.tier]);
+  });
+
+  it('lists exactly the node fields the parser accepts, with their tiers', () => {
+    const doc = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'docs', 'plugin-authoring.md'), 'utf8');
+    const start = doc.indexOf('### 站点（`nodes`）');
+    const section = doc.slice(start, doc.indexOf('\n### ', start + 1));
+    const rows = [...section.matchAll(/^\| `([a-z_]+)` \| (稳定|实验性) \|/gm)].map((m) => [m[1], m[2]]);
+    const tierName = { stable: '稳定', experimental: '实验性' } as const;
+    expect(rows.map((r) => r[0])).toEqual(nodeFieldNames());
+    for (const [name, tier] of rows) expect(tier).toBe(tierName[ManifestFields.find((f) => f.name === `nodes.${name}`)!.tier]);
   });
 });

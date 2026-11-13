@@ -6,7 +6,7 @@
  * （声明式判断）、会写的文件、子进程执行的操作。代码不进 am 的进程，操作在子进程里跑（run.ts）。
  */
 import { compatVersion } from '../version';
-import type { PathRule } from './types';
+import type { DeclaredGuide, DeclaredState, PathRule } from './types';
 
 export const ManifestFile = 'am-station.json';
 
@@ -43,6 +43,10 @@ export interface ManifestNode {
   outputs: string[];
   stale_after: string[];
   gate_files: string[];
+  /** 按项目文件里的一个字段定这一站的状态、说明与在等谁（实验性）。 */
+  state?: DeclaredState;
+  /** 「接下来」卡片的说法与按钮（实验性）。 */
+  guide?: DeclaredGuide;
 }
 
 /**
@@ -163,7 +167,7 @@ export type FieldTier = 'stable' | 'experimental';
  * 清单顶层字段的唯一来源：解析器只认这里列出的字段，作者文档（docs/plugin-authoring.md）也按它核对。
  * used 判断一份解析好的清单是否真的用到了这个字段（给实验性字段报告用）。
  */
-export const ManifestFields: readonly { name: string; tier: FieldTier; used?: (m: Manifest) => boolean }[] = [
+export const ManifestFields: readonly { name: string; tier: FieldTier; parent?: 'nodes'; used?: (m: Manifest) => boolean }[] = [
   { name: 'manifest_version', tier: 'stable' },
   { name: 'requires', tier: 'stable' },
   { name: 'id', tier: 'stable' },
@@ -188,11 +192,20 @@ export const ManifestFields: readonly { name: string; tier: FieldTier; used?: (m
   { name: 'provides', tier: 'experimental', used: (m) => m.provides.tts !== undefined || m.provides.align !== undefined },
   { name: 'renderer_skills', tier: 'experimental', used: (m) => m.renderer_skills.length > 0 },
   { name: 'film_styles', tier: 'experimental', used: (m) => m.film_styles !== null },
+  // 站点（nodes[]）里的字段：基本的几项是稳定的，按文件内容定状态与「接下来」是实验性的。
+  ...['id', 'label', 'step', 'gate', 'page', 'outputs', 'stale_after', 'gate_files'].map((name) => ({ name: `nodes.${name}`, tier: 'stable' as const, parent: 'nodes' as const })),
+  { name: 'nodes.state', tier: 'experimental', parent: 'nodes', used: (m) => m.nodes.some((n) => n.state !== undefined) },
+  { name: 'nodes.guide', tier: 'experimental', parent: 'nodes', used: (m) => m.nodes.some((n) => n.guide !== undefined) },
 ];
 
 /** 解析器认的顶层字段名。 */
 export function manifestFieldNames(): string[] {
-  return ManifestFields.map((f) => f.name);
+  return ManifestFields.filter((f) => !f.parent).map((f) => f.name);
+}
+
+/** 解析器认的站点（nodes[]）字段名，不带 `nodes.` 前缀。 */
+export function nodeFieldNames(): string[] {
+  return ManifestFields.filter((f) => f.parent === 'nodes').map((f) => f.name.slice('nodes.'.length));
 }
 
 /** 这份清单用到了哪些实验性字段（按 ManifestFields 的顺序）。 */

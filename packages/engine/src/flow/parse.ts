@@ -4,13 +4,14 @@
 import { stepIDs } from '../studioview';
 import { allStageTitles, allStations, builtinFirstPages } from './registered';
 import { builtinPluginIDs } from './builtinplugins';
-import { pageCallableOp } from './pages';
+import { pageCallableOp, pageMayRead, pageTab } from './pages';
 import { idPattern, isObject, knownFields, opPattern, projectPath, relativeInside, str, strings } from './fields';
 import {
   checkCompatible,
   HookEvents,
   ManifestFile,
   manifestFieldNames,
+  nodeFieldNames,
   ManifestVersion,
   validSemver,
   type HookEvent,
@@ -28,7 +29,7 @@ import {
   type SlotPage,
 } from './manifest';
 import * as studioview from '../studioview';
-import type { PathRule } from './types';
+import type { DeclaredGuide, DeclaredGuideAction, DeclaredOutcome, DeclaredState, DeclaredValue, PathRule } from './types';
 
 const paramTypes: readonly ParamType[] = ['string', 'boolean', 'integer', 'number', 'strings'];
 
@@ -79,7 +80,7 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
   const nodes = nodesRaw.map((n, i): ManifestNode => {
     const where = `nodes[${i}]`;
     if (!isObject(n)) throw new Error(`${where} 要是对象`);
-    knownFields(n, ['id', 'label', 'step', 'gate', 'page', 'outputs', 'stale_after', 'gate_files'], where);
+    knownFields(n, nodeFieldNames(), where);
     const step = str(n, 'step', where);
     if (!stepIDs().includes(step)) throw new Error(`${where}.step 要是 ${stepIDs().join(' / ')} 之一`);
     const gate = n.gate === true;
@@ -94,7 +95,12 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
     if (!idPattern.test(node.id)) throw new Error(`${where}.id ${node.id} 要是小写字母、数字与连字符`);
     if (gate) node.gate = true;
     if (n.page !== undefined) node.page = str(n, 'page', where);
-    if (!gate && node.outputs.length === 0) throw new Error(`${where} 不是关卡，要写 outputs（据此判断做没做）`);
+    if (n.state !== undefined) {
+      if (gate) throw new Error(`${where} 是关卡，不能写 state（关卡看用户的确认）`);
+      node.state = parseState(n.state, `${where}.state`);
+    }
+    if (n.guide !== undefined) node.guide = parseGuide(n.guide, `${where}.guide`);
+    if (!gate && node.outputs.length === 0 && !node.state) throw new Error(`${where} 不是关卡，要写 outputs 或 state（据此判断做没做）`);
     if (gate && node.gate_files.length === 0) throw new Error(`${where} 是关卡，要写 gate_files（确认的是哪些文件）`);
     return node;
   });
@@ -300,7 +306,7 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
 
   const prompt = str(raw, 'prompt', 'station', false);
   if (prompt !== '') relativeInside(prompt, 'station.prompt');
-  return {
+  const m: Manifest = {
     ...header,
     id,
     version: str(raw, 'version', 'station'),
@@ -325,6 +331,8 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
     slots,
     commands,
   };
+  checkDeclared(m);
+  return m;
 }
 
 function parseSettings(v: unknown): ManifestSetting[] {
@@ -373,4 +381,106 @@ function parsePermissions(v: unknown): ManifestPermissions {
   const uses = strings(v, 'uses', 'permissions');
   for (const name of uses) if (!pageCallableOp(name)) throw new Error(`permissions.uses：插件页面不能调 ${name}`);
   return { project: v.project === true, network, uses };
+}
+
+// ---------------------------------------------------------------------------
+// 站点的声明式状态（nodes[].state）与「接下来」（nodes[].guide）
+
+const keySegment = /^[A-Za-z0-9_-]+$/;
+
+function isScalar(x: unknown): x is DeclaredValue {
+  return typeof x === 'string' || typeof x === 'boolean' || (typeof x === 'number' && Number.isFinite(x));
+}
+
+function parseOutcome(v: unknown, where: string): DeclaredOutcome {
+  if (!isObject(v)) throw new Error(`${where} 要是对象`);
+  knownFields(v, ['status', 'detail', 'waiting', 'guide'], where);
+  const status = v.status === undefined ? 'todo' : v.status;
+  if (status !== 'todo' && status !== 'doing' && status !== 'done') throw new Error(`${where}.status 要是 todo / doing / done 之一`);
+  const out: DeclaredOutcome = { status };
+  if (v.detail !== undefined) out.detail = str(v, 'detail', where);
+  if (v.waiting !== undefined) {
+    if (v.waiting !== 'user' && v.waiting !== 'ai') throw new Error(`${where}.waiting 要是 user 或 ai`);
+    out.waiting = v.waiting;
+  }
+  if (v.guide !== undefined) out.guide = parseGuide(v.guide, `${where}.guide`);
+  return out;
+}
+
+function parseState(v: unknown, where: string): DeclaredState {
+  if (!isObject(v)) throw new Error(`${where} 要是对象`);
+  knownFields(v, ['file', 'json', 'frontmatter', 'cases', 'otherwise', 'missing', 'invalid', 'no_field'], where);
+  const file = projectPath(str(v, 'file', where), `${where}.file`);
+  if ((v.json === undefined) === (v.frontmatter === undefined)) throw new Error(`${where} 要写 json 或 frontmatter 之一（读哪个字段）`);
+  const format = v.json !== undefined ? 'json' : 'frontmatter';
+  const key = str(v, format, where).split('.');
+  if (key.some((k) => !keySegment.test(k))) throw new Error(`${where}.${format} 要是用 . 分隔的键（字母、数字、下划线与连字符）`);
+  if (!Array.isArray(v.cases) || v.cases.length === 0) throw new Error(`${where}.cases 要是非空数组`);
+  const cases = v.cases.map((c, i) => {
+    const cw = `${where}.cases[${i}]`;
+    if (!isObject(c)) throw new Error(`${cw} 要是对象`);
+    const { is, ...rest } = c;
+    const raw = Array.isArray(is) ? is : [is];
+    if (raw.length === 0 || !raw.every(isScalar)) throw new Error(`${cw}.is 要是字符串、数字、布尔，或它们的数组`);
+    return { is: raw, ...parseOutcome(rest, cw) };
+  });
+  const state: DeclaredState = { file, format, key, cases };
+  for (const k of ['otherwise', 'missing', 'invalid', 'no_field'] as const) {
+    if (v[k] !== undefined) state[k] = parseOutcome(v[k], `${where}.${k}`);
+  }
+  return state;
+}
+
+function parseGuide(v: unknown, where: string): DeclaredGuide {
+  if (!isObject(v)) throw new Error(`${where} 要是对象`);
+  knownFields(v, ['ai', 'user', 'actions'], where);
+  const guide: DeclaredGuide = {};
+  if (v.ai !== undefined) guide.ai = str(v, 'ai', where);
+  if (v.user !== undefined) guide.user = str(v, 'user', where);
+  if (v.actions !== undefined) {
+    if (!Array.isArray(v.actions)) throw new Error(`${where}.actions 要是数组`);
+    guide.actions = v.actions.map((a, i): DeclaredGuideAction => {
+      const aw = `${where}.actions[${i}]`;
+      if (!isObject(a)) throw new Error(`${aw} 要是对象`);
+      knownFields(a, ['label', 'say', 'draft', 'page', 'op'], aw);
+      const label = str(a, 'label', aw);
+      const kinds = (['say', 'draft', 'page', 'op'] as const).filter((k) => a[k] !== undefined);
+      if (kinds.length !== 1) throw new Error(`${aw} 要在 say、draft、page、op 里写且只写一个`);
+      const kind = kinds[0];
+      const value = str(a, kind, aw);
+      if (kind === 'page') return { kind, label, page: value };
+      if (kind === 'op') return { kind, label, station: '', op: value, summary: '' };
+      return { kind, label, text: value };
+    });
+  }
+  return guide;
+}
+
+/** 整份清单解析完再查：state 读的文件要在本站能读的范围里，按钮指向的操作与页面要存在。 */
+function checkDeclared(m: Manifest): void {
+  const fixGuide = (g: DeclaredGuide | undefined, where: string) => {
+    g?.actions?.forEach((a, i) => {
+      const aw = `${where}.actions[${i}]`;
+      if (a.kind === 'page') {
+        if (m.pages.some((pg) => pg.id === a.page)) a.page = pageTab(m.id, a.page);
+        else if (!studioview.viewPage(a.page)) throw new Error(`${aw}.page：没有页面 ${a.page}`);
+      }
+      if (a.kind === 'op') {
+        const op = m.ops.find((o) => o.name === a.op);
+        if (!op) throw new Error(`${aw}.op：没有操作 ${a.op}`);
+        if (op.trigger !== 'user') throw new Error(`${aw}.op：${op.name} 不是 trigger: user 的操作`);
+        if (Object.values(op.params).some((p) => p.required)) throw new Error(`${aw}.op：${op.name} 有必填参数，按钮填不了，改用 page 指向能填参数的页面`);
+        a.station = m.id;
+        a.summary = op.summary;
+      }
+    });
+  };
+  m.nodes.forEach((n, i) => {
+    const where = `nodes[${i}]`;
+    fixGuide(n.guide, `${where}.guide`);
+    if (!n.state) return;
+    if (!pageMayRead(m, n.state.file)) throw new Error(`${where}.state.file：${n.state.file} 不在本站的 produces、outputs 或页面 reads 里`);
+    n.state.cases.forEach((c, j) => fixGuide(c.guide, `${where}.state.cases[${j}].guide`));
+    for (const k of ['otherwise', 'missing', 'invalid', 'no_field'] as const) fixGuide(n.state[k]?.guide, `${where}.state.${k}.guide`);
+  });
 }
