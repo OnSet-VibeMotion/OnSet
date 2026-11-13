@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as config from '../config';
+import * as director from '../director';
 import { amCommand, envMap, parsePassthrough } from '../envutil';
 import { marshal, marshalIndent } from '../gojson';
 import { parseWorkerOutput, workerArgs } from '../opworker';
@@ -263,7 +264,15 @@ async function runOpIn(s: Server, signal: AbortSignal, cwd: string, cfg: config.
   const am = amCommand(s.executable());
   const args = [...am.args, ...(s.config.unsafe ? ['--unsafe'] : []), ...workerArgs(name, params)];
   const env = { ...config.childEnvironment(cfg, envMap(), s.config.unsafe, parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? '')), ...am.env, ...(opts.env ?? {}) };
-  const started = await start(am.command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], signal });
+  // 整理经验会起导演：执行进程里没有 safeStorage，解不开加密的凭据文件，key 由这里解密后经 stdin 交下去（不进环境）。
+  const keys = director.KeyOps.has(name) && cfg.orchestrator === director.Tool ? director.loadKeys(director.defaultDir(envMap())) : {};
+  const handKeys = Object.keys(keys).length > 0;
+  if (handKeys) env[director.KeysStdinEnv] = '1';
+  const started = await start(am.command, args, { cwd, env, stdio: [handKeys ? 'pipe' : 'ignore', 'pipe', 'pipe'], signal });
+  if (handKeys && started.child.stdin) {
+    started.child.stdin.on('error', () => {});
+    started.child.stdin.end(JSON.stringify(keys) + '\n');
+  }
   const chunks: Buffer[] = [];
   started.child.stdout!.on('data', (chunk: Buffer) => {
     chunks.push(chunk);

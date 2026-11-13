@@ -5,7 +5,8 @@
  *   POST /api/agent-keys   {provider, key}：填写或替换；key 为空即删除
  *
  * 与音色库、安装页一样写的是用户级目录（director.defaultDir），在进程里直接写，不占项目写锁、
- * 不进轮次快照。key 只落在那个 0600 的文件里：不进 settings.conf、项目文件与任何子进程的环境。
+ * 不进轮次快照。key 只落在那个 0600 的文件里，客户端里经 safeStorage 加密（director.useKeyCodec，
+ * 用不了时退回明文，storage.note 告诉设置页）：不进 settings.conf、项目文件与任何子进程的环境。
  */
 import * as director from '../director';
 import { envMap } from '../envutil';
@@ -18,12 +19,15 @@ function dir(): string {
 function listing(): Response {
   const d = dir();
   const configured = director.configuredProviders(d);
+  const storage = director.keyStorage();
   return writeJSON(
     200,
     goMap({
       providers: director.Providers.map((p) => goMap({ id: p.id, label: p.label, key_url: p.keyURL, default_model: p.defaultModel, configured: configured.includes(p.id) })),
       // 不在上表里、但用户手动填过的服务商（模型名照样能用）。
       others: configured.filter((id) => !director.Providers.some((p) => p.id === id)),
+      // key 在磁盘上是否加密；没加密时附一句说明（safeStorage 用不了、或不在客户端里）。
+      storage: goMap({ encrypted: storage.encrypted, ...(storage.note ? { note: storage.note } : {}) }),
     }),
   );
 }

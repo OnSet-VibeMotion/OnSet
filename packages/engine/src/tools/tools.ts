@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { marshal } from '../gojson';
-import { defaultDir as directorDir, Tool as DirectorToolName } from '../director';
+import { defaultDir as directorDir, loadKeys as directorKeys, Tool as DirectorToolName } from '../director';
 import { amCommand, WindowsBaseEnvKeys } from '../envutil';
 import { pluginChildEnvs } from '../plugin/registry';
 
@@ -412,6 +412,7 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
       // 导演是 am 自己（am studio agent），请求经 stdin 给，见 director.Request。
       // 不能按名字找 am：编排工具的 PATH 最前面是只会报错的那个 am（envutil.addToolsLocation）。
       const am = amCommand();
+      const agentDir = o.agentDir || directorDir({ ...process.env, ...env });
       const request = {
         workdir,
         prompt: o.prompt,
@@ -421,7 +422,10 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
         unsafe: o.unsafe || undefined,
         commands: access.commands && access.commands.length > 0 ? access.commands : undefined,
         writable_dirs: access.writableDirs && access.writableDirs.length > 0 ? access.writableDirs : undefined,
-        agent_dir: o.agentDir || directorDir({ ...process.env, ...env }),
+        agent_dir: agentDir,
+        // key 由这里（父进程）读出、经 stdin 交下去；客户端里经 safeStorage 解密（director.useKeyCodec）。
+        // 导演与它跑的命令都不读磁盘上的凭据，见 director.loadKeys。
+        keys: directorKeys(agentDir),
       };
       return { argv: [am.command, ...am.args, 'studio', 'agent'], stdin: JSON.stringify(request) + '\n', env: am.env };
     }

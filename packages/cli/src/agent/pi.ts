@@ -9,7 +9,8 @@
  * | 东西 | 这里怎么给 |
  * |---|---|
  * | 设置 | SettingsManager.inMemory，不读 ~/.pi/agent/settings.json |
- * | 凭据、模型缓存 | request.agent_dir 下的 auth.json / models-store.json，不联网刷新模型目录 |
+ * | 凭据 | 只在内存里：父进程经 stdin 交来的 request.keys，设成运行时 key（setRuntimeApiKey），不读也不写任何凭据文件 |
+ * | 模型缓存 | request.agent_dir 下的 models-store.json，不联网刷新模型目录 |
  * | 扩展 | 只有这里的权限闸门（extensionsOverride 去掉其余） |
  * | 技能 | 只有项目根 .agents/skills（am init 装进去的那一份） |
  * | 上下文文件 | 只有项目根的 AGENTS.md（项目规则，project.rules 写的） |
@@ -19,7 +20,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ExtensionAPI, ExtensionFactory } from '@earendil-works/pi-coding-agent';
+import type { CreateModelRuntimeOptions, ExtensionAPI, ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -52,16 +53,46 @@ const preamble = `你在一个视频项目的目录里工作，帮用户把文�
 - 要用户拍板的事（选方案、确认稿件或分镜、几种做法里选一种）停下来问，不替用户决定。
 - 回复用户时用中文，每一轮结束时说清做了什么、接下来做什么或在等用户什么。`;
 
+type CredentialStore = NonNullable<CreateModelRuntimeOptions['credentials']>;
+type Credential = Awaited<ReturnType<CredentialStore['read']>>;
+
+/**
+ * 只在内存里的凭据：不给 pi authPath（它默认读写 agent_dir/auth.json，那份文件在客户端里是加密的，
+ * 也不该让导演自己去读）。key 由 setRuntimeApiKey 设进来，进程退出就没了。
+ */
+function memoryCredentials(): CredentialStore {
+  const store = new Map<string, NonNullable<Credential>>();
+  return {
+    read: async (id) => store.get(id),
+    list: async () => [...store.entries()].map(([providerId, c]) => ({ providerId, type: c.type })),
+    modify: async (id, fn) => {
+      const next = await fn(store.get(id));
+      if (next) store.set(id, next);
+      return store.get(id);
+    },
+    delete: async (id) => {
+      store.delete(id);
+    },
+  };
+}
+
 async function modelRuntime(agentDir: string): Promise<ModelRuntime> {
   fs.mkdirSync(agentDir, { recursive: true, mode: 0o700 });
   return ModelRuntime.create({
-    authPath: director.authFile(agentDir),
+    credentials: memoryCredentials(),
     // 不读用户自己的 ~/.pi/agent/models.json；自定义服务商以后经设置页写进 agent_dir。
     modelsPath: null,
     modelsStorePath: path.join(agentDir, 'models-store.json'),
     // 模型目录用 pi 自带的那份，不在开工时联网刷新：国内网络下这一步可能卡住。
     allowModelNetwork: false,
   });
+}
+
+/** 父进程交来的 key 设成运行时 key（只在内存里）。 */
+async function applyKeys(runtime: ModelRuntime, keys: Record<string, string> | undefined): Promise<void> {
+  for (const [provider, key] of Object.entries(keys ?? {})) {
+    if (key !== '') await runtime.setRuntimeApiKey(provider, key);
+  }
 }
 
 function splitModel(model: string): { provider: string; id: string } {
@@ -136,12 +167,14 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
 
   let model = req.model ?? '';
   if (o.setupModels) model = await o.setupModels(runtime);
-  model = director.pickModel(model, director.configuredProviders(req.agent_dir));
+  await applyKeys(runtime, req.keys);
+  const keyed = Object.keys(req.keys ?? {}).filter((p) => req.keys![p] !== '');
+  model = director.pickModel(model, keyed);
   if (model === '') throw new Error(director.NoModelMessage);
   const { provider, id } = splitModel(model);
   const selected = runtime.getModel(provider, id);
   if (!selected) throw new Error(`导演不认识模型 ${model}（写成「服务商/模型」，例如 ${director.Providers[0]!.defaultModel}）`);
-  if (!o.setupModels && !runtime.hasConfiguredAuth(provider)) throw new Error(`还没有填 ${provider} 的 API key：请在设置里填写`);
+  if (!keyed.includes(provider) && !runtime.hasConfiguredAuth(provider)) throw new Error(`还没有填 ${provider} 的 API key：请在设置里填写`);
 
   const gate: ExtensionFactory = (pi: ExtensionAPI) => {
     pi.on('tool_call', async (event) => {
@@ -212,6 +245,7 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
   }
 };
 
+/** 列模型只要服务商 id（configuredProviders 不解密），pi 的模型目录不需要 key。 */
 export const listModels: AgentModule['listModels'] = async (agentDir: string) => {
   const runtime = await modelRuntime(agentDir);
   const out: string[] = [];

@@ -11,6 +11,7 @@
  * job_cancel 停掉。
  */
 import { type ChildProcess, spawn } from 'node:child_process';
+import * as director from '@am/engine/director';
 import * as flow from '@am/engine/flow';
 import { parseWorkerOutput, visibleText, workerArgs } from '@am/engine/opworker';
 import { groupSpawnOptions, killTree } from '@am/engine/procgroup';
@@ -247,6 +248,26 @@ export const spawnOp: Spawner = (name, params) => {
     ...groupSpawnOptions(),
   });
 };
+
+/**
+ * 导演（am studio agent）用的执行进程：会再起导演的操作（director.KeyOps，整理经验）经 stdin 拿到导演的 key，
+ * 其余与 spawnOp 相同。执行进程解不开客户端加密的凭据文件，key 只能由手里有它的进程往下交。
+ */
+export function spawnOpWithKeys(keys: Record<string, string>): Spawner {
+  return (name, params) => {
+    if (!director.KeyOps.has(name) || Object.keys(keys).length === 0) return spawnOp(name, params);
+    const command = opCommand(name, params);
+    const child = spawn(command.file, command.args, {
+      cwd: process.cwd(),
+      env: { ...command.env, [director.KeysStdinEnv]: '1' },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      ...groupSpawnOptions(),
+    });
+    child.stdin!.on('error', () => {});
+    child.stdin!.end(JSON.stringify(keys) + '\n');
+    return child;
+  };
+}
 
 interface Job {
   id: string;

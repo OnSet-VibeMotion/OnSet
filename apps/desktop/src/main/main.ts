@@ -4,6 +4,7 @@ import path from 'node:path';
 import { newServer, type Server } from '@am/engine/studio';
 import { setHostVersion } from '@am/engine/version';
 import { assetsDir, browserPath, browserScript, cliEntry, npmCLI, shimScript, writeScript } from './clishim';
+import { installKeyCodec } from './keycodec';
 import { installMenu } from './menu';
 import { loginShellPath } from './shellpath';
 
@@ -161,6 +162,8 @@ if (!app.requestSingleInstanceLock()) {
       // 进程内的后端（客户端的安装页、新建项目）装 HyperFrames CLI 与 npm 类工具时用客户端自带的 npm。
       const npm = npmCLI();
       if (npm !== '') process.env.AM_NPM_CLI = npm;
+      // 导演的 API key 经 safeStorage 加密落盘、解密后经 stdin 交给导演（见 keycodec.ts）。
+      installKeyCodec();
       backend = newServer({ executable });
     } catch (err) {
       dialog.showErrorBox('后台服务起不来', err instanceof Error ? err.message : String(err));
