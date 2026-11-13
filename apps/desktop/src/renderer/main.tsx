@@ -2,10 +2,18 @@ import { createRoot } from 'react-dom/client';
 import { App } from './app';
 import './styles.css';
 
+/** 原生菜单发给界面的动作，与主进程 menu.ts 的 MenuAction 一致。 */
+export type MenuAction = { type: 'new' } | { type: 'home' } | { type: 'open'; path: string } | { type: 'step'; index: number };
+
 declare global {
   interface Window {
     /** 客户端的 preload 注入；浏览器里没有。 */
-    am?: { desktop: boolean; platform: string };
+    am?: {
+      desktop: boolean;
+      platform: string;
+      /** 原生菜单的动作：new / home / open（带路径）/ step（第几步）。返回取消订阅。 */
+      onMenu?: (callback: (action: MenuAction) => void) => () => void;
+    };
   }
 }
 

@@ -400,6 +400,30 @@ export function App() {
     }
   }, [tab, scriptMtime, scriptSeen, seenKey]);
 
+  // 原生菜单（客户端里才有）：新建回首页，打开文件夹走与「打开项目」同一个接口，⌘1–⌘4 切四个步骤。
+  useEffect(() => {
+    return window.am?.onMenu?.((action) => {
+      if (action.type === 'new' || action.type === 'home') setHomeOpen(true);
+      else if (action.type === 'step') {
+        const id = stepTabs[action.index];
+        if (id && currentId) {
+          setHomeOpen(false);
+          setTab(id);
+        }
+      } else if (action.type === 'open') {
+        void (async () => {
+          try {
+            await post('/api/projects/open', { path: action.path });
+            await loadProjects();
+            setHomeOpen(false);
+          } catch (err) {
+            notify(errorText(err));
+          }
+        })();
+      }
+    });
+  }, [currentId, loadProjects]);
+
   return (
     <div className="app">
       <header className="topbar">

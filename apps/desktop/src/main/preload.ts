@@ -1,8 +1,13 @@
-import { contextBridge } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
 
-// 界面只需要知道「我在客户端里」和平台：据此给 macOS 的红绿灯按钮留位置、让顶栏可以拖动窗口。
-// 原生菜单、通知、选目录这些能力后续按需在这里加，界面拿不到 Node 与 Electron 的其余接口。
+// 界面只拿到这几样：「我在客户端里」、平台（给 macOS 红绿灯留位置、顶栏可拖动），以及原生菜单发来的动作。
+// 界面拿不到 Node 与 Electron 的其余接口；请求照旧走 /api（由主进程经 am:// 协议处理）。
 contextBridge.exposeInMainWorld('am', {
   desktop: true,
   platform: process.platform,
+  onMenu(callback: (action: unknown) => void): () => void {
+    const listener = (_event: unknown, action: unknown) => callback(action);
+    ipcRenderer.on('am:menu', listener);
+    return () => ipcRenderer.removeListener('am:menu', listener);
+  },
 });

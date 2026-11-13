@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, protocol, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { startGoBackend, type GoBackend } from './gobackend';
+import { installMenu } from './menu';
 import { loginShellPath } from './shellpath';
 
 /*
@@ -133,6 +134,7 @@ if (!app.requestSingleInstanceLock()) {
       return;
     }
     protocol.handle(SCHEME, handleRequest);
+    installMenu();
     createWindow();
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
