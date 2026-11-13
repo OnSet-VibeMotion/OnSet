@@ -329,17 +329,24 @@ func (s *Server) projectsAPI(w http.ResponseWriter, _ *http.Request) {
 	sort.SliceStable(recent, func(i, j int) bool { return recent[i].LastOpenedAt > recent[j].LastOpenedAt })
 	summaries := map[string]ProjectSummary{}
 	for i, p := range recent {
-		if i >= summaryLimit {
-			break
+		if i < summaryLimit {
+			summaries[p.ID] = s.summarize(p)
+		} else if !dirExists(p.Path) {
+			// 只查目录还在不在，便宜；完整摘要只给最近的几个。
+			summaries[p.ID] = ProjectSummary{Missing: true}
 		}
-		summaries[p.ID] = s.summarize(p)
 	}
 	s.write(w, http.StatusOK, map[string]any{"projects": projects, "current_project_id": current, "summaries": summaries,
 		"default_parent": defaultParent(lastParent, recent)})
 }
 
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
 func (s *Server) summarize(p Project) ProjectSummary {
-	if info, err := os.Stat(p.Path); err != nil || !info.IsDir() {
+	if !dirExists(p.Path) {
 		return ProjectSummary{Missing: true}
 	}
 	scenes := discoverScenes(p.Path)
