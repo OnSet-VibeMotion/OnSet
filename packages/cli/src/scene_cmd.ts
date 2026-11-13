@@ -99,7 +99,7 @@ defineOp({
 
 输入指纹覆盖组好的渲染提示词、scene.json、prompt.md、字幕、角色包、
 渲染工具、技能内容与 am 版本，产物通过校验时记在镜头目录的 .am-render.json。
-没有渲染记录的老产物退回旧判定：scene.json 或 prompt.md 的修改时间晚于产物即 Stale。
+没有渲染记录的产物同样标 Stale。
 
 force 跳过全部上述判定，无条件重渲染每个镜头。
 

@@ -406,7 +406,7 @@ export interface PendingWrite {
  * 都还没动；第二轮只剩同文件系统内的 rename。rename 本身仍可能中途失败，
  * 那时 am validate beat 会按网格摘要把没换上的镜头报出来。
  *
- * 内容不变的文件不重写：run-all 靠 scene.json 的修改时间判断产物是否过期，
+ * 内容不变的文件不重写：客户端的镜头列表靠 scene.json 的修改时间判断产物是否过期，
  * 无变化的重跑不能把所有镜头都标成需要重渲染。
  */
 export function commitWrites(writes: readonly PendingWrite[]): void {

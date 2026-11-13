@@ -181,8 +181,7 @@ export function writeRecord(s: Scene, inputs: Inputs): void {
 /**
  * 读出仍然适用于当前产物的渲染记录。
  *
- * 产物被替换过（大小或内容摘要对不上）时记录不再适用，返回 null，
- * 由调用方退回旧的修改时间判定——那份记录描述的是另一个文件。
+ * 产物被替换过（大小或内容摘要对不上）时记录不再适用，返回 null——那份记录描述的是另一个文件。
  */
 export function loadRecord(s: Scene): RenderRecord | null {
   let body: Buffer;
