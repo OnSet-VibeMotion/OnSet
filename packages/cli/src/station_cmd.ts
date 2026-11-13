@@ -46,7 +46,46 @@ git 来源按 ref 克隆、记下 commit 与内容摘要，存进用户级目录
       out.write('它的页面在沙箱里运行，只能做清单里申请过的事：\n');
       for (const line of pageLines) out.write(`  ${line}\n`);
     }
-    return { data: { entry: got.entry, name: m.name } };
+    const experimental = flow.experimentalFields(m);
+    writeExperimental(out, experimental);
+    return { data: { entry: got.entry, name: m.name, experimental } };
+  },
+});
+
+/** 用到了实验性字段时照实告诉用户：这些能力以后的版本可能调整。 */
+function writeExperimental(out: { write: (text: string) => unknown }, fields: readonly string[]): void {
+  if (fields.length > 0) out.write(`  [实验性] 用到了实验性能力：${fields.join('、')}，以后的版本可能调整\n`);
+}
+
+defineOp({
+  name: 'station_update',
+  cli: ['station', 'update'],
+  summary: '按添加时的来源重新取一个第三方站，更新到来源现在的版本',
+  description: `按 ${flow.LockFile} 里记的来源重新取：来源写的是分支时拿到它现在的 commit，写的是 tag 时 tag 被移动过才会变。
+列出版本、commit、新申请的权限与新用到的实验性能力，写回 ${flow.LockFile}；用户级目录里存的旧版本不删。
+link: 来源是本机目录，改动立即生效，不需要更新。`,
+  examples: ['station_update({"id": "am-publisher"})'],
+  scopes: ['cli'],
+  params: {
+    id: { type: 'string', description: '站的 id', required: true, positional: 0 },
+    project_root: projectRoot,
+  },
+  run: (p, { out }) => {
+    const up = flow.updateStation(path.resolve(str(p.project_root)), str(p.id), process.env, (line) => out.write(line + '\n'));
+    if (up.linked) {
+      out.write(`第三方站 ${up.id} 来自本机目录（${up.before.source}），改动立即生效，不需要更新\n`);
+      return { data: up };
+    }
+    if (!up.changed) {
+      out.write(`第三方站 ${up.id} 已是来源上的最新版本（${up.new_version}，commit ${up.after.commit.slice(0, 12)}）\n`);
+    } else {
+      const from = up.old_version === '' ? '（本机已没有原来那一版）' : up.old_version;
+      out.write(`已更新第三方站 ${up.id}：${from} → ${up.new_version}，commit ${up.before.commit.slice(0, 12)} → ${up.after.commit.slice(0, 12)}\n`);
+      for (const line of up.new_permissions) out.write(`  [新权限] ${line}\n`);
+      if (up.new_experimental.length > 0) out.write(`  [新的实验性能力] ${up.new_experimental.join('、')}\n`);
+    }
+    writeExperimental(out, up.experimental);
+    return { data: up };
   },
 });
 

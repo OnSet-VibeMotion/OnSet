@@ -31,6 +31,9 @@ describe('stations API', () => {
     expect(body.problems[0]).toContain('第三方站 gone');
     const station = body.stations.find((x: { id: string }) => x.id === 'fake-publisher');
     expect(station).toMatchObject({ id: 'fake-publisher', name: '假发布', linked: true, after: 'publish' });
+    expect(station.experimental).toEqual(['hooks', 'schedules', 'slots', 'commands', 'inserts', 'flow', 'provides', 'renderer_skills', 'film_styles']);
+    // 内置插件不标实验性。
+    for (const b of body.stations.filter((x: { builtin: boolean }) => x.builtin)) expect(b.experimental).toEqual([]);
     expect(station.prompt).toContain('请用户在发布页点');
     expect(station.nodes).toEqual([{ id: 'auto-publish', label: '自动发布', step: 'publish', gate: false }]);
     expect(station.ops.map((o: { name: string; trigger: string; tool: string }) => [o.name, o.trigger, o.tool])).toEqual([
@@ -53,6 +56,8 @@ describe('stations API', () => {
     expect((await post('/api/stations/fake-publisher/ops/send', { params: {} })).body.message).toContain('缺参数 platform');
     expect((await post('/api/stations/fake-publisher/ops/send', { params: { platform: 1 } })).body.message).toContain('要是 string');
     expect((await post('/api/stations/nope/remove', {})).status).toBe(404);
+    expect((await post('/api/stations/nope/update', {})).status).toBe(404);
+    expect((await post('/api/stations/fake-publisher/update', {})).body.message).toContain('不需要更新');
   });
 
   it('serves plugin pages from the station only, under a CSP that blocks every request', async () => {

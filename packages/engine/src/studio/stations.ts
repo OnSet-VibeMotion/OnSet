@@ -3,6 +3,7 @@
  *   GET  /api/stations                         这个项目加的站（清单、设置、权限、页面、嵌入位、命令）
  *   POST /api/stations                         添加（写任务 station_add）
  *   POST /api/stations/{id}/remove             去掉（写任务 station_remove）
+ *   POST /api/stations/{id}/update             按添加时的来源更新（写任务 station_update）
  *   POST /api/stations/{id}/settings           改一项插件设置（用户级，不进项目）
  *   POST /api/stations/{id}/ops/{操作}         执行本站的一条操作（写任务 station_run）
  *   POST /api/stations/{id}/call/{操作}        替插件页面调一条 am 自带的操作（清单 permissions.uses 里申请过的）
@@ -70,6 +71,8 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
     source: s.entry.source,
     commit: s.entry.commit,
     linked: s.entry.commit === '',
+    /** 用到的实验性字段（以后的版本可能调整）。内置插件不标。 */
+    experimental: s.builtin ? [] : flow.experimentalFields(m),
     replaces: m.replaces,
     after: m.after,
     prompt,
@@ -263,6 +266,22 @@ export async function stationsAPI(s: Server, request: Request, rest: string): Pr
     try {
       const t = runWriteTask(s, p, 'station.remove', `去掉第三方站：${id}`, async (signal) => {
         await runStudioOp(s, signal, p, 'station_remove', { id, project_root: p.path });
+      });
+      return writeJSON(202, goMap({ task_id: t.task_id }));
+    } catch (err) {
+      return writeTaskError(err);
+    }
+  }
+
+  if (parts.length === 2 && parts[1] === 'update') {
+    if (request.method !== 'POST') return methodNotAllowed('POST');
+    // 读不出来的站（例如内容被改过）也能更新：不先 loadProjectStations。
+    const entry = flow.readLock(p.path).stations.find((e) => e.id === id);
+    if (!entry) return writeError(404, 'not_found', `这个项目没有加第三方站 ${id}`);
+    if (flow.parseSource(entry.source).kind === 'link') return writeError(400, 'invalid_request', `第三方站 ${id} 来自本机目录，改动立即生效，不需要更新`);
+    try {
+      const t = runWriteTask(s, p, 'station.update', `更新第三方站：${id}`, async (signal) => {
+        await runStudioOp(s, signal, p, 'station_update', { id, project_root: p.path });
       });
       return writeJSON(202, goMap({ task_id: t.task_id }));
     } catch (err) {

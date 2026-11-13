@@ -29,6 +29,9 @@ test('a third-party station is added in settings and its publish action runs onl
   await expect(card.locator('.station-prompt')).toContainText('请用户在发布页点');
   await expect(card).toContainText('要你点的');
   await expect(card.locator('.station-trust')).toContainText('它的操作是在你电脑上运行的程序');
+  await expect(card.locator('.station-experimental')).toContainText('用到了实验性能力：hooks');
+  // 本机目录的站改动立即生效，没有「更新」。
+  await expect(card.getByRole('button', { name: '更新' })).toHaveCount(0);
   await stations.scrollIntoViewIfNeeded();
   await page.screenshot({ path: test.info().outputPath('stations-settings.png') });
   await page.locator('#settings-dialog').getByRole('button', { name: '关闭' }).click();

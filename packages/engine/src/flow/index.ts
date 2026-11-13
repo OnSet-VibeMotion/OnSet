@@ -54,6 +54,20 @@ export {
   type ManifestSlot,
   type SlotPage,
   type ManifestParam,
+  ManifestFields,
+  ManifestVersion,
+  amVersion,
+  checkCompatible,
+  compareSemver,
+  experimentalFields,
+  manifestFieldNames,
+  permissionLines,
+  updateStation,
+  validSemver,
+  type FieldTier,
+  type ParamType,
+  type ParseOptions,
+  type StationUpdate,
 } from './external';
 export { checkParams, findStationOp, managedPython, NodePlaceholder, parseProgressLine, parseResultLine, ProgressPrefix, PythonPlaceholder, resolveCommand, ResultPrefix, runStationOp, StationDataEnv, stationEnv, type StationResult } from './run';
 export { changedFiles, declaredPath, isReservedPath, MaxListedPaths, ReservedPrefixes, scopeReport, scopeText, statProject, type ScopeReport, type StatSnapshot } from './scope';

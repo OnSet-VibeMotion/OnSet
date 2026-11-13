@@ -8,22 +8,13 @@ import { goPathError } from '../gofmt';
 import { blockValue, sceneBlocks } from './block';
 import { mapOf, unmarshal, type StructType } from './jsondecode';
 import { buildPrompt, memoryActive, outputPath, type Scene } from './scene';
-
-let toolVersion = 'dev';
+import { getToolVersion } from '../version';
 
 /**
  * 写进输入指纹的 am 版本，由 cli 在启动时设为 cli 的版本号（Go 的 scene.ToolVersion = cli.Version）。
- *
- * 换了 am 版本，提示词措辞、技能清单和校验规则都可能变了，同一份 scene.json
- * 渲出的已不是同一件东西，所以版本号算作一项输入。
+ * 存取在 version 包（不依赖任何功能包，flow 的兼容检查也读它），这里转出，原有的 import 不用改。
  */
-export function setToolVersion(version: string): void {
-  toolVersion = version;
-}
-
-export function getToolVersion(): string {
-  return toolVersion;
-}
+export { getToolVersion, setToolVersion } from '../version';
 
 /** Go 的 scene.Record。 */
 export type { RenderRecord as Record };
@@ -88,7 +79,7 @@ export function fingerprint(s: Scene, renderer: string, resolvedSkills: Record<s
   let prompt = buildPrompt(s, resolved);
   const parts: Record<string, string> = {
     renderer: digestString(renderer),
-    am: digestString(toolVersion),
+    am: digestString(getToolVersion()),
   };
   // 技能目录的绝对路径换成技能名：项目整体挪个位置不该让所有镜头变成 Stale，
   // 技能内容的变化由下面的 skill:<名字> 单独记录。

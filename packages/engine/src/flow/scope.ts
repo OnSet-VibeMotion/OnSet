@@ -15,7 +15,7 @@ import { ProjectSkippedDirs, walkDir } from '../fsutil';
 import { compareBytes } from '../gojson';
 import type { Manifest } from './external';
 
-/** am 自己的文件，第三方站不能写。与 external.ts 清单校验里的 reservedPrefixes 是同一份。 */
+/** am 自己的文件，第三方站不能写。清单校验（fields.ts）用的也是这一份。 */
 export const ReservedPrefixes: readonly string[] = ['production/studio/', 'production/usage/', 'production/memory-exams/', '.agents/', '.env'];
 
 /** 操作进行中客户端自己会写的状态：不计入（分不清是谁写的）。 */

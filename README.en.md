@@ -295,6 +295,10 @@ A draft grid never takes effect directly; you move on only after listening and c
 
 Beat analysis uses [beat-this](https://github.com/CPJKU/beat_this) (ISMIR 2024; code and weights are MIT). It gives both beats and downbeats and runs on a CPU, with no dependency on madmom.
 
+## Writing a plugin
+
+To add a step to the production flow (for example, automatic publishing), write an `am-station.json` as described in [docs/plugin-authoring.md](docs/plugin-authoring.md) (Chinese) and add it to a project under "流程插件" in the client's settings.
+
 ## Development
 
 Building from source needs Node.js 22+:

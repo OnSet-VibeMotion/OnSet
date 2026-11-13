@@ -271,6 +271,11 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
                   <button className="link" onClick={() => setOpen(open === s.id ? '' : s.id)}>
                     {open === s.id ? '收起' : '详情与设置'}
                   </button>
+                  {!s.linked && (
+                    <button className="link" onClick={() => run(`/api/stations/${encodeURIComponent(s.id)}/update`)}>
+                      更新
+                    </button>
+                  )}
                   <button className="link danger" onClick={() => run(`/api/stations/${encodeURIComponent(s.id)}/remove`)}>
                     去掉
                   </button>
@@ -283,6 +288,12 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
                         {s.source}
                         {s.commit ? ` · ${s.commit.slice(0, 12)}` : s.linked ? ' · 本机目录，改动立即生效' : ''}
                       </dd>
+                      {s.experimental.length > 0 && (
+                        <>
+                          <dt>实验性</dt>
+                          <dd className="station-experimental">用到了实验性能力：{s.experimental.join('、')}，以后的版本可能调整</dd>
+                        </>
+                      )}
                       {s.ops.some((o) => o.trigger === 'agent') && (
                         <>
                           <dt>AI 能用的</dt>

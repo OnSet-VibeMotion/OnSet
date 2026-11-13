@@ -843,6 +843,8 @@ export interface StationInfo {
   source: string;
   commit: string;
   linked: boolean;
+  /** 第三方站用到的实验性字段（以后的版本可能调整）；内置插件为空。 */
+  experimental: string[];
   replaces: string;
   after: string;
   prompt: string;
