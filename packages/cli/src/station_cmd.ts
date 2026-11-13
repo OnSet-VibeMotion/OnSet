@@ -21,49 +21,57 @@ defineGroup({
 这一组命令只给客户端与开发用：编排工具不能自己装或执行第三方插件。`,
 });
 
+type Out = { write: (text: string) => unknown };
+
+/** 装上之前给用户看的实情（与设置页的确认同一份：flow.StationPreview）。 */
+function writePreview(out: Out, p: flow.StationPreview): void {
+  out.write(`第三方插件 ${p.name}（${p.id} ${p.version}）${p.commit ? `，commit ${p.commit.slice(0, 12)}` : p.linked ? '，本机目录' : ''}\n`);
+  if (p.description) out.write(`  ${p.description}\n`);
+  for (const op of p.ops) out.write(`  ${op.trigger === 'user' ? '[按钮]' : '[工具]'} ${op.trigger === 'user' ? op.name : op.tool}：${op.summary}\n`);
+  // 页面在沙箱里，受清单的权限约束；操作不是：两者分开说，不混成一张「权限」表。
+  if (p.ops_trust) out.write(`${p.ops_trust}\n`);
+  if (p.page_permissions.length > 0) {
+    out.write('它的页面在沙箱里运行，只能做清单里申请过的事：\n');
+    for (const line of p.page_permissions) out.write(`  ${line}\n`);
+  }
+  for (const h of p.hooks) out.write(`  [自动执行] ${h.label}：${h.summary}\n`);
+  for (const sc of p.schedules) out.write(`  [定时] 客户端开着时每 ${sc.every_minutes} 分钟：${sc.summary}\n`);
+  for (const rs of p.renderer_skills) out.write(`  [渲染技能] ${rs.name}：${rs.summary}（${rs.scenes === 'all' ? '每个镜头都用' : 'AI 点名的镜头才用'}）\n`);
+  if (p.rerender_all) out.write('  [渲染] 它给每个镜头都带上技能：装上后所有项目里已渲染的镜头都会标成要重渲染\n');
+  if (p.flow) out.write(`  [做法] 新建项目时能选「${p.flow}」\n`);
+  if (p.film_styles) out.write(`  [风格库] ${p.film_styles}\n`);
+  if (p.replaces) out.write(`  [路线] 顶替自带的「${p.replaces}」这一站\n`);
+  else if (p.nodes.length > 0) out.write(`  [路线] ${p.after ? `接在「${p.after}」后面` : p.flow ? '只在它自己的做法里' : '接在每个项目路线的最后'}：${p.nodes.join('、')}\n`);
+  if (p.experimental.length > 0) out.write(`  [实验性] 用到了实验性能力：${p.experimental.join('、')}，以后的版本可能调整\n`);
+  out.write('装上后对这台电脑上的所有项目生效。\n');
+}
+
 defineOp({
   name: 'station_add',
   cli: ['station', 'add'],
-  summary: '装上一个第三方插件（对所有项目生效）',
+  summary: '取回一个第三方插件给你看，确认后再装（station_install）',
   description: `来源可以是 link:/绝对路径（本机目录，开发用，不核对内容）、github:owner/repo#ref 或 git 地址#ref。
-git 来源按 ref 克隆、记下 commit 与内容摘要，存进用户级目录（${flow.StationsDirEnv} 可覆盖）；之后内容对不上就不再使用。
-记进用户级的 ${flow.InstalledFile}，对这台电脑上的所有项目生效；同 id 的插件换成新的。`,
+只取回到用户级目录的暂存处（${flow.StationsDirEnv} 可覆盖）并校验清单，列出它的操作、页面权限、实验性能力、钩子、定时、渲染技能、带来的做法与风格库、
+在路线上的位置；不写 ${flow.InstalledFile}，不参与任何项目。看过之后用 station_install 装上，或 station_discard 取消。`,
   examples: ['station_add({"source": "github:someone/am-publisher#v0.1.0"})', 'station_add({"source": "link:/Users/me/dev/my-station"})'],
   scopes: ['cli'],
   params: {
     source: { type: 'string', description: '来源', required: true, positional: 0 },
   },
   run: (p, { out }) => {
-    const got = flow.installStation(str(p.source), process.env, (line) => out.write(line + '\n'));
-    const m = got.manifest;
-    out.write(`已装上第三方插件 ${m.name}（${m.id} ${m.version}）${got.entry.commit ? `，commit ${got.entry.commit.slice(0, 12)}` : ''}，对所有项目生效\n`);
-    for (const op of m.ops) out.write(`  ${op.trigger === 'user' ? '[按钮]' : '[工具]'} ${op.trigger === 'user' ? op.name : flow.toolName(m.id, op.name)}：${op.summary}\n`);
-    // 页面在沙箱里，受清单的权限约束；操作不是：两者分开说，不混成一张「权限」表。
-    if (m.ops.length > 0) out.write(`${flow.OpsTrustNotice}\n`);
-    const pageLines = flow.pagePermissionLines(m);
-    if (pageLines.length > 0) {
-      out.write('它的页面在沙箱里运行，只能做清单里申请过的事：\n');
-      for (const line of pageLines) out.write(`  ${line}\n`);
-    }
-    const allScenes = m.renderer_skills.filter((rs) => rs.scenes === 'all');
-    if (allScenes.length > 0) out.write(`  [渲染] 它给每个镜头都带上技能（${allScenes.map((rs) => rs.name).join('、')}）：所有项目里已渲染的镜头都会标成要重渲染\n`);
-    const experimental = flow.experimentalFields(m);
-    writeExperimental(out, experimental);
-    return { data: { entry: got.entry, name: m.name, experimental } };
+    const staged = flow.stageStation(str(p.source), process.env, (line) => out.write(line + '\n'));
+    writePreview(out, staged.preview);
+    out.write(`还没有装上。确认装上：station_install({"staged": "${staged.token}"})；不装：station_discard({"staged": "${staged.token}"})\n`);
+    return { data: { staged: staged.token, preview: staged.preview } };
   },
 });
-
-/** 用到了实验性字段时照实告诉用户：这些能力以后的版本可能调整。 */
-function writeExperimental(out: { write: (text: string) => unknown }, fields: readonly string[]): void {
-  if (fields.length > 0) out.write(`  [实验性] 用到了实验性能力：${fields.join('、')}，以后的版本可能调整\n`);
-}
 
 defineOp({
   name: 'station_update',
   cli: ['station', 'update'],
-  summary: '按添加时的来源重新取一个第三方插件，更新到来源现在的版本',
-  description: `按 ${flow.InstalledFile} 里记的来源重新取：来源写的是分支时拿到它现在的 commit，写的是 tag 时 tag 被移动过才会变。
-列出版本、commit、新申请的权限与新用到的实验性能力，写回 ${flow.InstalledFile}；用户级目录里存的旧版本不删。
+  summary: '取回一个第三方插件的新版本给你看，确认后再换上（station_install）',
+  description: `按 ${flow.InstalledFile} 里记的来源重新取到暂存处：来源写的是分支时拿到它现在的 commit，写的是 tag 时 tag 被移动过才会变。
+列出版本、commit、新申请的权限与新用到的实验性能力；已装的那一版不动，用 station_install 换上，或 station_discard 取消。
 link: 来源是本机目录，改动立即生效，不需要更新。`,
   examples: ['station_update({"id": "am-publisher"})'],
   scopes: ['cli'],
@@ -71,21 +79,53 @@ link: 来源是本机目录，改动立即生效，不需要更新。`,
     id: { type: 'string', description: '插件的 id', required: true, positional: 0 },
   },
   run: (p, { out }) => {
-    const up = flow.updateStation(str(p.id), process.env, (line) => out.write(line + '\n'));
-    if (up.linked) {
-      out.write(`第三方插件 ${up.id} 来自本机目录（${up.before.source}），改动立即生效，不需要更新\n`);
-      return { data: up };
+    const staged = flow.stageUpdate(str(p.id), process.env, (line) => out.write(line + '\n'));
+    const d = staged.preview.update!;
+    if (!d.changed) out.write(`第三方插件 ${d.id} 已是来源上的最新版本（${d.new_version}，commit ${d.commit_after.slice(0, 12)}）\n`);
+    else {
+      const from = d.old_version === '' ? '（本机已没有原来那一版）' : d.old_version;
+      out.write(`第三方插件 ${d.id} 有新版本：${from} → ${d.new_version}，commit ${d.commit_before.slice(0, 12)} → ${d.commit_after.slice(0, 12)}\n`);
+      for (const line of d.new_permissions) out.write(`  [新权限] ${line}\n`);
+      if (d.new_experimental.length > 0) out.write(`  [新的实验性能力] ${d.new_experimental.join('、')}\n`);
     }
-    if (!up.changed) {
-      out.write(`第三方插件 ${up.id} 已是来源上的最新版本（${up.new_version}，commit ${up.after.commit.slice(0, 12)}）\n`);
-    } else {
-      const from = up.old_version === '' ? '（本机已没有原来那一版）' : up.old_version;
-      out.write(`已更新第三方插件 ${up.id}：${from} → ${up.new_version}，commit ${up.before.commit.slice(0, 12)} → ${up.after.commit.slice(0, 12)}\n`);
-      for (const line of up.new_permissions) out.write(`  [新权限] ${line}\n`);
-      if (up.new_experimental.length > 0) out.write(`  [新的实验性能力] ${up.new_experimental.join('、')}\n`);
-    }
-    writeExperimental(out, up.experimental);
-    return { data: up };
+    writePreview(out, staged.preview);
+    out.write(`还没有换上。确认换上：station_install({"staged": "${staged.token}"})；不换：station_discard({"staged": "${staged.token}"})\n`);
+    return { data: { staged: staged.token, preview: staged.preview } };
+  },
+});
+
+defineOp({
+  name: 'station_install',
+  cli: ['station', 'install'],
+  summary: '装上（或换上）看过的第三方插件',
+  description: `把 station_add / station_update 取回到暂存处的插件写进用户级的 ${flow.InstalledFile}，对这台电脑上的所有项目生效；同 id 的换成新的。
+git 来源再核对一遍内容摘要，看过之后被改过的不装。`,
+  examples: ['station_install({"staged": "0123456789abcdef"})'],
+  scopes: ['cli'],
+  params: {
+    staged: { type: 'string', description: 'station_add 或 station_update 给出的待装编号', required: true, positional: 0 },
+  },
+  run: (p, { out }) => {
+    const entry = flow.installStaged(str(p.staged));
+    out.write(`已装上第三方插件 ${entry.id} ${entry.version}${entry.commit ? `（commit ${entry.commit.slice(0, 12)}）` : ''}，对所有项目生效\n`);
+    return { data: { entry } };
+  },
+});
+
+defineOp({
+  name: 'station_discard',
+  cli: ['station', 'discard'],
+  summary: '不装看过的第三方插件：清掉暂存',
+  description: `清掉 station_add / station_update 取回的暂存，不碰 ${flow.InstalledFile}。`,
+  examples: ['station_discard({"staged": "0123456789abcdef"})'],
+  scopes: ['cli'],
+  params: {
+    staged: { type: 'string', description: '待装编号', required: true, positional: 0 },
+  },
+  run: (p, { out }) => {
+    flow.discardStaged(str(p.staged));
+    out.write('没有装，暂存已清掉\n');
+    return { data: { staged: str(p.staged) } };
   },
 });
 

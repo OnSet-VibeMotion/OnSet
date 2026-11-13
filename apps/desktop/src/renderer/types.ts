@@ -115,6 +115,8 @@ export interface Task {
   error?: string;
   /** 跑完了但要用户留意的事（第三方插件写了它没声明的文件）。 */
   warning?: string;
+  /** 跑完后的结构化结果（取回插件时是 {staged, preview}）。 */
+  result?: unknown;
   created_at: string;
   updated_at: string;
 }
@@ -969,6 +971,36 @@ export interface StationPageInfo {
   tab: string;
   url: string;
   reads: string[];
+}
+
+/** 取回、还没装上的插件给你看的实情（flow.StationPreview）。 */
+export interface StationPreview {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  source: string;
+  commit: string;
+  linked: boolean;
+  ops: { name: string; summary: string; trigger: 'agent' | 'user'; tool: string }[];
+  ops_trust: string;
+  page_permissions: string[];
+  permissions: { project: boolean; network: string[]; uses: string[] };
+  reads: string[];
+  pages: string[];
+  experimental: string[];
+  hooks: { on: string; label: string; op: string; summary: string }[];
+  schedules: { every_minutes: number; op: string; summary: string }[];
+  renderer_skills: { name: string; summary: string; scenes: 'all' | 'opt-in' }[];
+  rerender_all: boolean;
+  flow: string;
+  film_styles: string;
+  provides: { tts: string; align: string };
+  replaces: string;
+  after: string;
+  nodes: string[];
+  inserts: string[];
+  update?: { id: string; old_version: string; new_version: string; new_permissions: string[]; new_experimental: string[]; experimental: string[]; changed: boolean; commit_before: string; commit_after: string };
 }
 
 /** 装了却读不出来的插件（本机没有、内容被改过、清单写坏）。 */

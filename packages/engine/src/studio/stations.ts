@@ -1,9 +1,12 @@
 /**
  * 插件（/api/stations）。插件装在用户级，对所有项目生效；装、去掉、更新、设置不要打开项目：
  *   GET  /api/stations                         全部插件（内置与已装的第三方插件：清单、设置、权限、页面、嵌入位、命令）与读不出来的
- *   POST /api/stations                         装上（任务 station_add，不占项目写锁）
+ *   POST /api/stations                         取回给用户看（任务 station_add，不占项目写锁）：任务的 result 是 {staged, preview}，还没装上
+ *   GET  /api/stations/staged/{编号}           再看一次待装插件的实情
+ *   POST /api/stations/staged/{编号}/install   用户看过、点了「装上」（任务 station_install）
+ *   POST /api/stations/staged/{编号}/discard   取消：清掉暂存
  *   POST /api/stations/{id}/remove             去掉（任务 station_remove）
- *   POST /api/stations/{id}/update             按添加时的来源更新（任务 station_update）
+ *   POST /api/stations/{id}/update             取回新版本给用户看（任务 station_update，result 同上，带差异），确认后同样走 install
  *   POST /api/stations/{id}/settings           改一项插件设置（用户级，不进项目）
  * 下面几样针对当前项目：
  *   POST /api/stations/{id}/ops/{操作}         执行本站的一条操作（写任务 station_run）
@@ -142,11 +145,12 @@ export function listStations(root: string): Record<string, unknown> {
   };
 }
 
-/** 装、去掉、更新插件：不占项目写锁（插件在用户级），没有打开项目也能做。 */
+/** 装、去掉、更新插件：不占项目写锁（插件在用户级），没有打开项目也能做。操作的 data 放进任务的 result。 */
 function startUserTask(s: Server, type: string, message: string, name: string, params: Record<string, unknown>): Response {
   const t = addTask(s, type, message);
   runTask(s, t, async (signal) => {
-    await runUserOp(s, signal, name, params);
+    const r = await runUserOp(s, signal, name, params);
+    t.result = r.data;
   });
   return writeJSON(202, goMap({ task_id: t.task_id }));
 }
@@ -247,7 +251,29 @@ export async function stationsAPI(s: Server, request: Request, rest: string): Pr
     } catch (err) {
       return writeError(400, 'invalid_request', (err as Error).message);
     }
-    return startUserTask(s, 'station.add', `添加插件：${source}`, 'station_add', { source });
+    return startUserTask(s, 'station.stage', `取回插件：${source}`, 'station_add', { source });
+  }
+
+  // 待装的插件：看、装上、取消。
+  if (parts[0] === 'staged' && parts.length >= 2) {
+    const token = decodeURIComponent(parts[1]);
+    let staged: flow.Staged;
+    try {
+      staged = flow.readStaged(token);
+    } catch (err) {
+      return writeError(404, 'not_found', (err as Error).message);
+    }
+    if (parts.length === 2) {
+      if (request.method !== 'GET') return methodNotAllowed('GET');
+      return writeJSON(200, goMap({ staged: staged.token, preview: staged.preview }));
+    }
+    if (request.method !== 'POST') return methodNotAllowed('POST');
+    if (parts[2] === 'install') return startUserTask(s, 'station.install', `装上插件：${staged.preview.name}`, 'station_install', { staged: token });
+    if (parts[2] === 'discard') {
+      flow.discardStaged(token);
+      return writeJSON(200, goMap({ staged: token }));
+    }
+    return writeError(404, 'not_found', 'Studio API 路径不存在');
   }
 
   const id = decodeURIComponent(parts[0]);
@@ -263,7 +289,7 @@ export async function stationsAPI(s: Server, request: Request, rest: string): Pr
     if (!entry) return writeError(404, 'not_found', `没有装插件 ${id}`);
     if (parts[1] === 'remove') return startUserTask(s, 'station.remove', `去掉插件：${id}`, 'station_remove', { id });
     if (flow.parseSource(entry.source).kind === 'link') return writeError(400, 'invalid_request', `插件 ${id} 来自本机目录，改动立即生效，不需要更新`);
-    return startUserTask(s, 'station.update', `更新插件：${id}`, 'station_update', { id });
+    return startUserTask(s, 'station.stage', `取回插件的新版本：${id}`, 'station_update', { id });
   }
 
   const station = flow.loadStations().stations.find((x) => x.manifest.id === id);

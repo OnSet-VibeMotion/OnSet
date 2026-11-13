@@ -28,15 +28,27 @@ test('a plugin is added in settings without a project, every project gets it, an
   const stations = page.locator('#settings-dialog section.stations[aria-label="我的插件"]');
   await stations.getByLabel('插件来源').fill(`link:${fake}`);
   await stations.getByRole('button', { name: '添加' }).click();
-  // 添加前先说实话：插件的操作是电脑上的普通程序，不在沙箱里；装上对所有项目生效。
+  // 第一步：取回、给你看这个插件自己的实情，还没装上——任何项目都看不到它。
   const confirmAdd = stations.getByRole('alertdialog', { name: '确认添加插件' });
+  await expect(confirmAdd).toContainText('假发布');
+  await expect(confirmAdd).toContainText('把成片发到平台');
   await expect(confirmAdd).toContainText('能读写你的文件、能联网');
-  await expect(confirmAdd).toContainText('写了声明范围之外的项目文件时告诉你');
+  await expect(confirmAdd.locator('.staged-page-perms')).toContainText('镜头、制作进度、发布信息的概况');
+  await expect(confirmAdd.locator('.staged-page-perms')).toContainText('整片复查');
+  await expect(confirmAdd).toContainText('你确认一个审核关卡后');
+  await expect(confirmAdd).toContainText('快剪（新建项目时在「做法」里选）');
+  await expect(confirmAdd).toContainText('假风格库');
+  await expect(confirmAdd).toContainText('接在「发布」后面');
+  await expect(confirmAdd).toContainText('用到了实验性能力：hooks');
   await expect(confirmAdd).toContainText('对这台电脑上的所有项目生效');
-  await expect(confirmAdd).toContainText('已经渲染好的镜头都会标成要重新渲染');
   expect(installedPlugins(sandbox)).toEqual([]);
-  await confirmAdd.getByRole('button', { name: '确认添加' }).click();
+  expect((await api(page, '/api/stations')).body.stations.some((x) => x.id === 'fake-publisher')).toBe(false);
+  await stations.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: test.info().outputPath('stations-staged.png') });
+  // 第二步：点「装上」才写进已装插件清单。
+  await confirmAdd.getByRole('button', { name: '装上' }).click();
   await expect.poll(() => installedPlugins(sandbox)).toEqual(['fake-publisher']);
+  await expect(confirmAdd).toHaveCount(0);
   const lock = path.join(project.path, 'article-to-motion.flow.json');
   expect(JSON.parse(fs.readFileSync(lock, 'utf8'))).toEqual({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } });
   const card = stations.locator('li[data-station="fake-publisher"]');

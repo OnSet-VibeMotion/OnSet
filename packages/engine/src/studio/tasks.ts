@@ -24,6 +24,8 @@ export interface Task {
   error?: string;
   /** 任务跑完了，但有要用户留意的事（第三方站的操作写了声明范围之外的文件）。 */
   warning?: string;
+  /** 跑完后给界面的结构化结果（取回插件时是给用户看的实情与待装编号）。不落盘。 */
+  result?: unknown;
   created_at: string;
   updated_at: string;
 }
@@ -37,6 +39,7 @@ export function taskJSON(t: Task): Record<string, unknown> {
     message: t.message,
     error: t.error || undefined,
     warning: t.warning || undefined,
+    result: t.result,
     created_at: t.created_at,
     updated_at: t.updated_at,
   };

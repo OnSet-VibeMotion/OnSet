@@ -548,3 +548,36 @@
   font-size: 11px;
   color: var(--muted);
 }
+
+/* 取回、还没装上的插件：装上前给你看它自己的实情。 */
+.stations .staged-confirm {
+  gap: 10px;
+}
+.stations .staged-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stations .staged-head strong {
+  font-family: var(--serif);
+  font-size: 15px;
+}
+.stations .staged-head span {
+  color: var(--text-3);
+  font-size: 12px;
+}
+.stations .staged-update {
+  color: var(--accent-text);
+}
+.stations .staged-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.stations .staged-rerender {
+  display: block;
+  margin-top: 4px;
+  color: var(--stale);
+  font-weight: 500;
+}

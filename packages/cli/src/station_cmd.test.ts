@@ -7,24 +7,35 @@ import { callTarget, describeTools, prepareCall } from './toolsmcp';
 
 const fake = path.resolve(__dirname, '..', '..', 'engine', 'src', 'flow', 'testdata', 'fake-publisher');
 
-/** 装上假发布插件（用户级，对所有项目生效），返回一个空的项目目录。 */
+/** 先看后装：取回假发布插件看清它要什么，再装上（用户级，对所有项目生效）；返回一个空的项目目录。 */
 async function projectWithFake(): Promise<string> {
   const root = tempDir();
   const out = new Buffer();
   expect(await run(['station', 'add', `link:${fake}`], out), out.text).toBe(0);
-  expect(out.text).toContain('已装上第三方插件 假发布（fake-publisher 0.1.0），对所有项目生效');
+  expect(out.text).toContain('第三方插件 假发布（fake-publisher 0.1.0）');
   expect(out.text).toContain('[按钮] send');
   expect(out.text).toContain('[工具] x_fake_publisher_status');
   // 操作与页面分开说：操作是电脑上的普通程序，页面才受权限约束。
   expect(out.text).toContain('它的操作是在你电脑上运行的程序，能读写你的文件、能联网');
   expect(out.text).toContain('它的页面在沙箱里运行，只能做清单里申请过的事：\n  看项目：');
+  expect(out.text).toContain('[自动执行] 你确认一个审核关卡后');
+  expect(out.text).toContain('[做法] 新建项目时能选「快剪」');
   expect(out.text).toContain('[实验性] 用到了实验性能力：hooks、schedules、slots、commands、inserts、flow、provides、renderer_skills、film_styles，以后的版本可能调整');
+  expect(out.text).toContain('还没有装上');
+  // 只看了没装：别的命令看不到它。
+  const listed = new Buffer();
+  expect(await run(['station', 'list'], listed), listed.text).toBe(0);
+  expect(listed.text).toContain('没有装第三方插件');
+  const token = /station_install\(\{"staged": "([0-9a-f]+)"\}\)/.exec(out.text)![1];
+  const installed = new Buffer();
+  expect(await run(['station', 'install', token], installed), installed.text).toBe(0);
+  expect(installed.text).toContain('已装上第三方插件 fake-publisher 0.1.0，对所有项目生效');
   return root;
 }
 
 describe('station ops', () => {
   it('are not tools the orchestrator can call', () => {
-    for (const name of ['station_add', 'station_remove', 'station_list', 'station_run', 'station_update']) {
+    for (const name of ['station_add', 'station_install', 'station_discard', 'station_remove', 'station_list', 'station_run', 'station_update']) {
       expect(allOps().find((op) => op.name === name)?.scopes, name).toEqual(['cli']);
     }
     // 流程只在新建时定：没有给已有项目换流程的操作。
@@ -59,9 +70,16 @@ describe('station ops', () => {
     expect(list.text).toContain('fake-publisher 0.1.0  假发布');
 
     const update = new Buffer();
-    expect(await run(['station', 'update', 'fake-publisher'], update), update.text).toBe(0);
+    expect(await run(['station', 'update', 'fake-publisher'], update), update.text).toBe(1);
     expect(update.text).toContain('来自本机目录');
     expect(update.text).toContain('不需要更新');
+
+    // 取消：暂存清掉，已装的不变。
+    const staged = new Buffer();
+    expect(await run(['station', 'add', `link:${fake}`], staged), staged.text).toBe(0);
+    const token = /station_discard\(\{"staged": "([0-9a-f]+)"\}\)/.exec(staged.text)![1];
+    expect(await run(['station', 'discard', token], new Buffer())).toBe(0);
+    expect(await run(['station', 'install', token], new Buffer())).toBe(1);
 
     expect(await run(['station', 'remove', 'fake-publisher'], new Buffer())).toBe(0);
     // 项目里不留插件的记录。

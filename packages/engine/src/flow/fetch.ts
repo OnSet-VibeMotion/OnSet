@@ -81,8 +81,40 @@ export function checkFiles(dir: string, m: Manifest): void {
 }
 
 /**
- * 取来一个插件（git 按 ref 克隆、记 commit；link 直接读），校验清单，返回已装插件清单里的一项。
- * 只做下载与校验，不改清单（installStation 才记进去）。
+ * 按来源取到 checkout 目录（git 按 ref 克隆、去掉 .git），校验清单，返回 commit、摘要与清单。checkout 必须还不存在。
+ */
+export function cloneSource(url: string, ref: string, checkout: string, env: Record<string, string | undefined>, log: (line: string) => void = () => {}): { commit: string; digest: string; manifest: Manifest } {
+  const git = usableGit(env);
+  if (git === '') throw new Error(`添加 git 来源的插件要用 git：${gitHint()}`);
+  const run = (args: string[], cwd?: string) => {
+    log(`git ${args.join(' ')}`);
+    const r = spawnSync(git, args, { cwd, env: { ...env, GIT_TERMINAL_PROMPT: '0' } as NodeJS.ProcessEnv, encoding: 'utf8' });
+    if (r.status !== 0) throw new Error(`git ${args[0]} 失败：${(r.stderr || r.stdout || '').trim().split('\n').slice(-3).join('\n')}`);
+    return r.stdout.trim();
+  };
+  run(['clone', '--quiet', url, checkout]);
+  if (ref !== '') run(['checkout', '--quiet', ref], checkout);
+  const commit = run(['rev-parse', 'HEAD'], checkout);
+  const manifest = readManifest(checkout);
+  checkFiles(checkout, manifest);
+  fs.rmSync(path.join(checkout, '.git'), { recursive: true, force: true });
+  return { commit, digest: treeDigest(checkout), manifest };
+}
+
+/** 把校验过的 checkout 放到 <stationsDir>/<id>/<commit>（已有且内容相同就沿用），返回最终目录。 */
+export function placeCheckout(checkout: string, entry: InstalledEntry, env: Record<string, string | undefined>): string {
+  const final = path.join(stationsDir(env), entry.id, entry.commit);
+  if (fs.existsSync(final) && treeDigest(final) !== entry.digest) fs.rmSync(final, { recursive: true, force: true });
+  if (!fs.existsSync(final)) {
+    fs.mkdirSync(path.dirname(final), { recursive: true });
+    fs.renameSync(checkout, final);
+  }
+  return final;
+}
+
+/**
+ * 取来一个插件（git 按 ref 克隆、记 commit；link 直接读），校验清单，放进按 commit 存的目录，返回已装插件清单里的一项。
+ * 不改清单；装不装由用户看过之后决定（staging.ts）。
  */
 export function fetchStation(spec: string, env: Record<string, string | undefined>, log: (line: string) => void = () => {}): { entry: InstalledEntry; dir: string; manifest: Manifest } {
   const src = parseSource(spec);
@@ -91,35 +123,13 @@ export function fetchStation(spec: string, env: Record<string, string | undefine
     checkFiles(src.dir, manifest);
     return { entry: { id: manifest.id, version: manifest.version, source: `link:${src.dir}`, commit: '', digest: '', role: roleOf(manifest) }, dir: src.dir, manifest };
   }
-  const git = usableGit(env);
-  if (git === '') throw new Error(`添加 git 来源的站要用 git：${gitHint()}`);
   const store = stationsDir(env);
   fs.mkdirSync(store, { recursive: true });
   const tmp = fs.mkdtempSync(path.join(store, '.fetch-'));
   try {
-    const run = (args: string[], cwd?: string) => {
-      log(`git ${args.join(' ')}`);
-      const r = spawnSync(git, args, { cwd, env: { ...env, GIT_TERMINAL_PROMPT: '0' } as NodeJS.ProcessEnv, encoding: 'utf8' });
-      if (r.status !== 0) throw new Error(`git ${args[0]} 失败：${(r.stderr || r.stdout || '').trim().split('\n').slice(-3).join('\n')}`);
-      return r.stdout.trim();
-    };
-    const checkout = path.join(tmp, 'src');
-    run(['clone', '--quiet', src.url, checkout]);
-    if (src.ref !== '') run(['checkout', '--quiet', src.ref], checkout);
-    const commit = run(['rev-parse', 'HEAD'], checkout);
-    const manifest = readManifest(checkout);
-    checkFiles(checkout, manifest);
-    fs.rmSync(path.join(checkout, '.git'), { recursive: true, force: true });
-    const digest = treeDigest(checkout);
-    const final = path.join(store, manifest.id, commit);
-    if (fs.existsSync(final)) {
-      if (treeDigest(final) !== digest) fs.rmSync(final, { recursive: true, force: true });
-    }
-    if (!fs.existsSync(final)) {
-      fs.mkdirSync(path.dirname(final), { recursive: true });
-      fs.renameSync(checkout, final);
-    }
-    return { entry: { id: manifest.id, version: manifest.version, source: spec.trim(), commit, digest, role: roleOf(manifest) }, dir: final, manifest };
+    const got = cloneSource(src.url, src.ref, path.join(tmp, 'src'), env, log);
+    const entry: InstalledEntry = { id: got.manifest.id, version: got.manifest.version, source: spec.trim(), commit: got.commit, digest: got.digest, role: roleOf(got.manifest) };
+    return { entry, dir: placeCheckout(path.join(tmp, 'src'), entry, env), manifest: got.manifest };
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

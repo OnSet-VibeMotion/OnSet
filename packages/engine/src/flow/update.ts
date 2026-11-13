@@ -1,10 +1,10 @@
 /**
- * 装、去掉、升级第三方插件（用户级，对所有项目生效）。升级按已装插件清单里记的来源重新取（git 来源的 ref 是分支时
- * 会拿到新 commit），比出版本、commit、新申请的权限与新用到的实验性字段，写回清单。link: 来源本来就是本机目录，不用更新。
+ * 装、去掉、升级第三方插件（用户级，对所有项目生效）的底层：已装插件清单的读写与升级前后的差异。
+ * 用户装与升级都先取到暂存处、看过再换上（staging.ts）；installStation 不经确认，只给测试与引擎内部用。
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fetchStation, parseSource, sourceDir, stationsDir } from './fetch';
+import { fetchStation, sourceDir, stationsDir } from './fetch';
 import { forgetInstalled, readInstalled, recordInstalled, type InstalledEntry } from './installed';
 import { experimentalFields, ManifestFile, type Manifest, type ManifestPermissions } from './manifest';
 import { parseManifest } from './parse';
@@ -50,7 +50,7 @@ function oldManifest(entry: InstalledEntry, env: Env): Manifest | null {
 
 type Env = Record<string, string | undefined>;
 
-/** 装上一个插件：取来、校验，记进已装插件清单（同 id 的换成新的）。对所有项目生效。 */
+/** 不经确认直接装上一个插件（测试与引擎内部用；用户的添加走 staging.ts）：取来、校验，记进已装插件清单。 */
 export function installStation(spec: string, env: Env = process.env, log: (line: string) => void = () => {}): ReturnType<typeof fetchStation> {
   const got = fetchStation(spec, env, log);
   recordInstalled(stationsDir(env), got.entry);
@@ -67,30 +67,22 @@ export function installedEntry(id: string, env: Env = process.env): InstalledEnt
   return readInstalled(stationsDir(env)).plugins.find((e) => e.id === id);
 }
 
-/** 按清单里记的来源重新取这个插件并写回清单。不删用户级目录里存的旧版本。 */
-export function updateStation(id: string, env: Env = process.env, log: (line: string) => void = () => {}): StationUpdate {
-  const before = installedEntry(id, env);
-  if (!before) throw new Error(`没有装插件 ${id}`);
-  if (parseSource(before.source).kind === 'link') {
-    return { id, linked: true, before, after: before, old_version: before.version, new_version: before.version, new_permissions: [], new_experimental: [], experimental: [], changed: false };
-  }
+/** 升级前后的差异：before 是已装的那一项，after 与 manifest 是取回的新一版。 */
+export function updateDiff(before: InstalledEntry, after: InstalledEntry, manifest: Manifest, env: Env = process.env): StationUpdate {
   const old = oldManifest(before, env);
-  const got = fetchStation(before.source, env, log);
-  if (got.manifest.id !== id) throw new Error(`来源 ${before.source} 现在的清单 id 是 ${got.manifest.id}，与这个站（${id}）不符；要换站请先去掉再添加`);
-  recordInstalled(stationsDir(env), got.entry);
   const oldPerms = new Set(old ? permissionLines(old.permissions) : []);
   const oldExp = new Set(old ? experimentalFields(old) : []);
-  const experimental = experimentalFields(got.manifest);
+  const experimental = experimentalFields(manifest);
   return {
-    id,
+    id: before.id,
     linked: false,
     before,
-    after: got.entry,
+    after,
     old_version: old?.version ?? '',
-    new_version: got.manifest.version,
-    new_permissions: permissionLines(got.manifest.permissions).filter((l) => !oldPerms.has(l)),
+    new_version: manifest.version,
+    new_permissions: permissionLines(manifest.permissions).filter((l) => !oldPerms.has(l)),
     new_experimental: experimental.filter((f) => !oldExp.has(f)),
     experimental,
-    changed: before.commit !== got.entry.commit || before.digest !== got.entry.digest || before.version !== got.entry.version,
+    changed: before.commit !== after.commit || before.digest !== after.digest || before.version !== after.version,
   };
 }

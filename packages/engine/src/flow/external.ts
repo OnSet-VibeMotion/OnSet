@@ -12,7 +12,8 @@
  * | digest.ts | 站目录的内容摘要（带进程内缓存） |
  * | fetch.ts | 来源、git 下载、读清单与检查文件 |
  * | load.ts | 读出全部插件、路线用的站、读不出来的插件参与了哪些制作 |
- * | update.ts | 装、去掉、升级第三方插件 |
+ * | update.ts | 已装插件清单的读写、升级前后的差异 |
+ * | staging.ts | 装与升级的两步：取到暂存处、给用户看、装上或取消 |
  * | builtinplugins.ts | 内置插件与 am_* 认领 |
  * | promptparts.ts | 第三方站的阶段补充与接在最后的说明 |
  * | skills.ts | 第三方渲染技能 |
@@ -51,7 +52,8 @@ export { InstalledFile, readInstalled, roleOf, type Installed, type InstalledEnt
 export { treeDigest } from './digest';
 export { fetchStation, parseSource, StationsDirEnv, stationsDir, writeStationForTest } from './fetch';
 export { brokenParticipants, loadStations, stationExtras, type LoadedStations, type StationProblem } from './load';
-export { installedEntry, installStation, permissionLines, removeStation, updateStation, type StationUpdate } from './update';
+export { installedEntry, installStation, permissionLines, removeStation, updateDiff, type StationUpdate } from './update';
+export { discardStaged, HookEventLabels, installStaged, previewOf, readStaged, stageStation, stageUpdate, StagingDir, type Staged, type StationPreview } from './staging';
 export { builtinPluginIDs, builtinPlugins, builtinPluginsDir, stationOwners } from './builtinplugins';
 export { extraPrompt } from './promptparts';
 export { pluginSkillsFor } from './skills';

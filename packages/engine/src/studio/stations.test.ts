@@ -2,7 +2,7 @@ import './testsupport';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { installStation, writeStationForTest } from '../flow';
+import { installStation, stageStation, writeStationForTest } from '../flow';
 import { onStudioEvent } from './events';
 import { emitStationHook, pageCSP, tickStationSchedules } from './stations';
 import { newSessionFixture, send, startStudio, studioRequest, tempDir, waitStudioTask } from './testsupport';
@@ -207,6 +207,15 @@ describe('stations API', () => {
     r = await studioRequest(s, 'POST', '/api/stations', JSON.stringify({ source: `link:${fake}` }));
     expect(r.status).toBe(202);
     await waitStudioTask(s, r.body.task_id);
+    // 取回待装的插件：能再看一次它的实情，取消后就没了，已装的不变。
+    const staged = stageStation(`link:${fake}`);
+    r = await studioRequest(s, 'GET', `/api/stations/staged/${staged.token}`);
+    expect(r.status).toBe(200);
+    expect(r.body.preview).toMatchObject({ id: 'fake-publisher', flow: '快剪', after: 'publish' });
+    expect(r.body.preview.ops_trust).toContain('它的操作是在你电脑上运行的程序');
+    expect((await studioRequest(s, 'POST', `/api/stations/staged/${staged.token}/discard`, '{}')).status).toBe(200);
+    expect((await studioRequest(s, 'GET', `/api/stations/staged/${staged.token}`)).status).toBe(404);
+    expect((await studioRequest(s, 'POST', '/api/stations/staged/not-a-token/install', '{}')).status).toBe(404);
     expect((await studioRequest(s, 'POST', '/api/stations/nope/remove', '{}')).status).toBe(404);
     expect((await studioRequest(s, 'POST', '/api/stations/fake-publisher/update', '{}')).body.message).toContain('不需要更新');
     // 执行操作、读项目文件要打开项目。
