@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { dataDir, envMap, WindowsBaseEnvKeys } from '../envutil';
-import { RootEnv, childEnvKeys, rootDir } from '../filmstyle';
+import { RootEnv, rootDir } from '../filmstyle';
 import { formatG, goPathError, goTrimSpace } from '../gofmt';
 import { BrowserEnv, CLIDirEnv, HyperFramesBrowserEnv, PinnedVersion, cliDir } from '../hyperframes';
 import { childEnvKeys as toolpathEnvKeys } from '../toolpath';
@@ -371,13 +371,8 @@ export function childEnvironment(
   }
   // 风格来源的数据目录同理显式写进去：默认根目录由 XDG_DATA_HOME 推出，而它不在白名单里，
   // 编排工具调用的 am film-style 会算出另一个目录，找不到 am setup 准备好的数据。
-  // 各来源自己的覆盖变量（filmstyle.childEnvKeys）设了才传。
+  // 各来源自己的覆盖变量由登记来源的内置插件经 ctx.childEnv 登记，随下面的 pluginEnv 一起写。
   if (config.filmStyleRoot !== '') out[RootEnv] = config.filmStyleRoot;
-  for (const key of childEnvKeys()) {
-    if (key === RootEnv) continue;
-    if (source[key]) out[key] = source[key]!;
-    if (config.overlay[key]) out[key] = config.overlay[key]!;
-  }
   // CLI 目录同理：子进程里的 am hyperframes 要找到同一份已装好的 CLI，否则会按 HOME
   // 另算一个目录，在渲染途中重新 npm install。
   if (config.hyperFramesCLI !== '') out[CLIDirEnv] = config.hyperFramesCLI;

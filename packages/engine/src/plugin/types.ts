@@ -17,7 +17,9 @@
  * | 前置资源 | prereqs.items（am setup、客户端安装页） |
  * | 子进程环境变量 | config.childEnvironment 与工具服务（tools.amToolsServer）的放行表 |
  * | 顶栏步骤 | studioview.stepIDs（studio_step 能标的步骤、顶栏的步骤） |
+ * | 整片风格来源 | filmstyle 的来源表（风格目录、装进项目、风格选择器） |
  */
+import type { Source as FilmStyleSource } from '../filmstyle/filmstyle';
 import type { FlowExcludes, FlowMarker, RouteNode } from '../flow/types';
 import type { Item as PrereqItem } from '../prereqs';
 import type { SceneBlock } from '../scene/block';
@@ -297,6 +299,11 @@ export interface PluginContext {
   childEnv(e: PluginChildEnv): void;
   step(s: PluginStep): void;
   command(c: PluginCommand): void;
+  /**
+   * 整片风格来源（filmstyle.Source）：进 filmstyle 的来源表，所有项目都看得到。来源要联网准备的数据另登记前置资源
+   * （prereq，id 写 styles:<来源 id>），数据目录的覆盖变量另登记 childEnv。来源 id 不能以 x- 开头（那是第三方插件的）。
+   */
+  filmStyleSource(source: FilmStyleSource): void;
 }
 
 export interface BuiltinPlugin {
