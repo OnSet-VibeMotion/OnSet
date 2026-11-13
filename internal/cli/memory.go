@@ -49,16 +49,20 @@ func attachMemory(s scene.Scene, cfg config.Config, warn io.Writer, run string) 
 	if renderer == "" {
 		renderer = cfg.Renderer
 	}
+	// 探索是这一批渲染的决定：按批次编号加镜头抽签，同一批里的重试拿到同一份召回。
 	result, err := store.RecallScene(s, memory.RecallOptions{Snapshot: cfg.Memory.Snapshot, Budget: cfg.Memory.RecallBudget,
-		Renderer: renderer, Model: store.CurrentModel(renderer, currentEnvironment())})
+		Renderer: renderer, Model: store.CurrentModel(renderer, currentEnvironment()), Explore: cfg.Memory.Explore, ExploreSeed: run})
 	if err != nil {
 		return s, fmt.Errorf("召回记忆：%w", err)
 	}
 	s = result.Attach(s)
+	if x := result.Explored; x != nil {
+		fmt.Fprintf(warn, "[%s] 记忆探索：这次用 %s 替换 %s（概率 %g，镜头是否过期不受影响）\n", s.ID, x.Added, x.Dropped, x.Propensity)
+	}
 	s.AfterAttempt = func(attempt scene.Attempt) {
 		recorded := s
 		recorded.AfterAttempt = nil
-		if _, err := store.RecordAttempt(recorded, attempt, memory.AttemptSource{Source: memory.SourceRender, Run: run}); err != nil {
+		if _, err := store.RecordAttempt(recorded, attempt, memory.AttemptSource{Source: memory.SourceRender, Run: run, Explored: result.Explored}); err != nil {
 			fmt.Fprintf(warn, "警告：镜头 %s 的经历没能写进记忆库：%v\n", s.ID, err)
 		}
 	}
@@ -979,10 +983,10 @@ func newMemoryReportCommand(stdout io.Writer) *cobra.Command {
 				fmt.Fprintln(stdout, "还没有带批次编号的渲染记录。")
 				return nil
 			}
-			fmt.Fprintln(stdout, "批次\t\t\t镜头\t一次通过\t重试\t问题(事后)\t耗时\ttoken(入/出)\t召回/镜\t快照")
+			fmt.Fprintln(stdout, "批次\t\t\t镜头\t一次通过\t重试\t问题(事后)\t耗时\ttoken(入/出)\t召回/镜\t探索(通过)\t快照")
 			for _, r := range runs {
-				fmt.Fprintf(stdout, "%s\t%d\t%d（%.0f%%）\t%d\t%d(%d)\t%.0fs\t%d/%d\t%.1f\t%v\n", r.Run, r.Scenes, r.PassedFirstTry, r.PassRate*100,
-					r.Retries, r.Problems, r.CheckProblems, r.Seconds, r.InputTokens, r.OutputTokens, r.Recalled, r.Snapshots)
+				fmt.Fprintf(stdout, "%s\t%d\t%d（%.0f%%）\t%d\t%d(%d)\t%.0fs\t%d/%d\t%.1f\t%d(%d)\t%v\n", r.Run, r.Scenes, r.PassedFirstTry, r.PassRate*100,
+					r.Retries, r.Problems, r.CheckProblems, r.Seconds, r.InputTokens, r.OutputTokens, r.Recalled, r.Explored, r.ExploredPassed, r.Snapshots)
 			}
 			if len(pair) == 2 {
 				fmt.Fprintf(stdout, "\n对比 %s → %s\n", pair[0].Run, pair[1].Run)

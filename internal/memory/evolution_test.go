@@ -3,6 +3,7 @@ package memory
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -165,5 +166,62 @@ func TestContrastCodeIsCopiedOnlyWhenStillCurrent(t *testing.T) {
 	}
 	if line := contrastLine(current); !strings.Contains(line, current.PassedCode) {
 		t.Errorf("line=%s", line)
+	}
+}
+
+// TestExplorationSwapsLastLessonButKeepsCanonicalDigest：抽中时把排最后的经验换成
+// 上限外的第一条，记下倾向分数；输入指纹仍用不探索时的摘要，镜头不会因此 Stale。
+func TestExplorationSwapsLastLessonButKeepsCanonicalDigest(t *testing.T) {
+	store := newStore(t)
+	for _, name := range []string{"rule-a", "rule-b", "rule-c", "rule-d"} {
+		store.Write(lesson(name, StatusActive, []string{"cjk_text"}, "output.frames"))
+	}
+	if _, err := store.TakeSnapshot(EventManualEdit, "初始", true); err != nil {
+		t.Fatal(err)
+	}
+	sc := writeSceneDir(t, filepath.Join(t.TempDir(), "scene-001"), "scene-001", "中文文本", "")
+	base, err := store.RecallScene(sc, RecallOptions{Budget: 100000, Renderer: "claude"})
+	if err != nil || base.Explored != nil || len(base.Items) != DefaultMaxLessons {
+		t.Fatalf("base=%+v err=%v", base, err)
+	}
+	always, _ := store.RecallScene(sc, RecallOptions{Budget: 100000, Renderer: "claude", Explore: 1, ExploreSeed: "run-1"})
+	x := always.Explored
+	if x == nil || x.Dropped != base.Items[2].Name || x.Added != "rule-d" || x.Propensity != 1 {
+		t.Fatalf("explored=%+v items=%v", x, always.Names())
+	}
+	if always.Names()[2] != "rule-d" || !strings.Contains(always.Section(), "【rule-d】") || strings.Contains(always.Section(), "【"+x.Dropped+"】") {
+		t.Fatalf("注入的应是探索后的：%s", always.Section())
+	}
+	if always.Digest() != base.Digest() || always.Attach(sc).Memory.Digest != base.Digest() {
+		t.Fatal("输入指纹要用不探索时的召回")
+	}
+	if last := always.Omitted[len(always.Omitted)-1]; last.Name != x.Dropped || last.OmitReason != "explore" {
+		t.Fatalf("omitted=%+v", always.Omitted)
+	}
+	// 同一个种子永远同一个决定；概率为 0 时从不探索。
+	again, _ := store.RecallScene(sc, RecallOptions{Budget: 100000, Renderer: "claude", Explore: 0.5, ExploreSeed: "run-7"})
+	twice, _ := store.RecallScene(sc, RecallOptions{Budget: 100000, Renderer: "claude", Explore: 0.5, ExploreSeed: "run-7"})
+	if (again.Explored == nil) != (twice.Explored == nil) {
+		t.Fatal("同一批次同一镜头的探索决定要可复现")
+	}
+	hits := 0
+	for i := 0; i < 400; i++ {
+		if draw(strconv.Itoa(i)) < 0.1 {
+			hits++
+		}
+	}
+	if hits < 20 || hits > 60 {
+		t.Fatalf("抽签比例偏离 0.1 太多：%d/400", hits)
+	}
+
+	// 经历记下探索；批次报告单列探索的镜头。
+	attempt := scene.Attempt{SceneID: "scene-001", Renderer: "claude", Outcome: scene.OutcomeSucceeded}
+	episode, err := store.RecordAttempt(always.Attach(sc), attempt, AttemptSource{Source: SourceRender, Run: "run-1", Explored: always.Explored})
+	if err != nil || episode.Explored == nil || episode.Recalled[2] != "rule-d" {
+		t.Fatalf("episode=%+v err=%v", episode, err)
+	}
+	episodes, _ := store.Episodes()
+	if runs := RunReport(episodes); len(runs) != 1 || runs[0].Explored != 1 || runs[0].ExploredPassed != 1 {
+		t.Fatalf("runs=%+v", runs)
 	}
 }

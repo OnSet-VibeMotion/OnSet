@@ -106,21 +106,21 @@ func TestLoadMemorySettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Memory.Enabled || cfg.Memory.Snapshot != 0 || cfg.Memory.RecallBudget != DefaultMemoryRecallBudget ||
+	if !cfg.Memory.Enabled || cfg.Memory.Snapshot != 0 || cfg.Memory.RecallBudget != DefaultMemoryRecallBudget || cfg.Memory.Explore != DefaultMemoryExplore ||
 		cfg.Memory.Dir != filepath.Join("/home/u", ".local", "share", "am", "memory") {
 		t.Fatalf("缺省值不对：%+v", cfg.Memory)
 	}
 	if off, _ := Load(root, map[string]string{"MEMORY": "off"}); off.Memory.Enabled {
 		t.Error("MEMORY=off 应当关闭")
 	}
-	cfg, err = Load(root, map[string]string{"MEMORY": "on", "MEMORY_SNAPSHOT": "7", "MEMORY_RECALL_BUDGET": "800", "AM_MEMORY_DIR": "/tmp/mem"})
+	cfg, err = Load(root, map[string]string{"MEMORY": "on", "MEMORY_SNAPSHOT": "7", "MEMORY_RECALL_BUDGET": "800", "MEMORY_EXPLORE": "0", "AM_MEMORY_DIR": "/tmp/mem"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Memory.Enabled || cfg.Memory.Snapshot != 7 || cfg.Memory.RecallBudget != 800 || cfg.Memory.Dir != "/tmp/mem" {
+	if !cfg.Memory.Enabled || cfg.Memory.Snapshot != 7 || cfg.Memory.RecallBudget != 800 || cfg.Memory.Explore != 0 || cfg.Memory.Dir != "/tmp/mem" {
 		t.Fatalf("配置没生效：%+v", cfg.Memory)
 	}
-	for _, bad := range []map[string]string{{"MEMORY": "yes"}, {"MEMORY_SNAPSHOT": "0"}, {"MEMORY_SNAPSHOT": "x"}, {"MEMORY_RECALL_BUDGET": "-1"}} {
+	for _, bad := range []map[string]string{{"MEMORY": "yes"}, {"MEMORY_SNAPSHOT": "0"}, {"MEMORY_SNAPSHOT": "x"}, {"MEMORY_RECALL_BUDGET": "-1"}, {"MEMORY_EXPLORE": "0.9"}, {"MEMORY_EXPLORE": "x"}} {
 		if _, err := Load(root, bad); err == nil {
 			t.Errorf("%v 应当报错", bad)
 		}
@@ -131,9 +131,9 @@ func TestLoadMemorySettings(t *testing.T) {
 // 安全模式的白名单不放行 AM_MEMORY_DIR，必须显式写进去。
 func TestChildEnvironmentCarriesMemorySettings(t *testing.T) {
 	cfg := Config{Orchestrator: "codex", Renderer: "claude", TTSProvider: "minimax",
-		Memory: MemorySettings{Enabled: true, Dir: "/data/mem", RecallBudget: 800, Snapshot: 3}}
+		Memory: MemorySettings{Enabled: true, Dir: "/data/mem", RecallBudget: 800, Snapshot: 3, Explore: 0.2}}
 	env := cfg.ChildEnvironment(map[string]string{"PATH": "/bin", "AM_MEMORY_DIR": "/elsewhere"}, false, nil)
-	if env["AM_MEMORY_DIR"] != "/data/mem" || env["MEMORY"] != "on" || env["MEMORY_RECALL_BUDGET"] != "800" || env["MEMORY_SNAPSHOT"] != "3" {
+	if env["AM_MEMORY_DIR"] != "/data/mem" || env["MEMORY"] != "on" || env["MEMORY_RECALL_BUDGET"] != "800" || env["MEMORY_SNAPSHOT"] != "3" || env["MEMORY_EXPLORE"] != "0.2" {
 		t.Fatalf("记忆设置没传给子进程：%v", env)
 	}
 }

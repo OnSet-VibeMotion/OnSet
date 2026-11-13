@@ -37,6 +37,9 @@ type RunStats struct {
 	Recalled float64 `json:"recalled"`
 	// Snapshots 是这一批用到的记忆快照号。
 	Snapshots []int `json:"snapshots"`
+	// Explored 是做了记忆探索的镜头数，ExploredPassed 是其中一次通过的。
+	Explored       int `json:"explored"`
+	ExploredPassed int `json:"explored_passed"`
 }
 
 type runAccumulator struct {
@@ -62,8 +65,15 @@ func (a *runAccumulator) add(e Episode, failed map[string]bool) {
 		a.snaps = map[int]bool{}
 	}
 	a.snaps[e.Snapshot] = true
-	if effectivelyPassed(e, failed) {
+	passed := effectivelyPassed(e, failed)
+	if passed {
 		a.stats.PassedFirstTry++
+	}
+	if e.Explored != nil {
+		a.stats.Explored++
+		if passed {
+			a.stats.ExploredPassed++
+		}
 	}
 	a.stats.Problems += len(e.Problems)
 }

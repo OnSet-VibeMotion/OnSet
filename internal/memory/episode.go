@@ -68,6 +68,8 @@ type Episode struct {
 	// Recalled 是这次渲染召回的记忆名，Snapshot 是召回依据的快照号。
 	Recalled []string `json:"recalled,omitempty"`
 	Snapshot int      `json:"snapshot,omitempty"`
+	// Explored 非空表示这次召回做了探索，Recalled 是探索后真正注入的。
+	Explored *Exploration `json:"explored,omitempty"`
 	// Run 是这次渲染所属的批次（一次 am scene run / run-all 调用），用于按批次对比。
 	Run string `json:"run,omitempty"`
 	// Session 与 Turn 是 Studio 对话的会话与轮次，只对 SourceConversation 有值。
@@ -130,6 +132,8 @@ type AttemptSource struct {
 	Run string
 	// Exam 是考试编号，只对 SourceExam 有值。
 	Exam string
+	// Explored 是这次召回的探索，见 RecallResult.Explored。
+	Explored *Exploration
 }
 
 // RecordAttempt 把一次渲染尝试写成经历，冻结镜头输入，并写进时间线。
@@ -147,6 +151,7 @@ func (s *Store) RecordAttempt(sc scene.Scene, attempt scene.Attempt, from Attemp
 	if sc.Memory != nil {
 		episode.Recalled = append([]string(nil), sc.Memory.Names...)
 		episode.Snapshot = sc.Memory.Snapshot
+		episode.Explored = from.Explored
 	}
 	if err := s.ObserveModel(attempt.Renderer, attempt.Model); err != nil {
 		return Episode{}, err

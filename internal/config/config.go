@@ -46,10 +46,19 @@ type MemorySettings struct {
 	Snapshot int
 	// RecallBudget 是每个镜头召回的记忆总字数上限。
 	RecallBudget int
+	// Explore 是正式渲染时探索的比例：这么多比例的镜头把召回里排最后的一条经验换成
+	// 排在上限外的第一条，给没机会被召回的经验攒样本。0 关闭。
+	Explore float64
 }
 
 // DefaultMemoryRecallBudget 是每个镜头召回记忆的默认总字数上限。
 const DefaultMemoryRecallBudget = 1500
+
+// DefaultMemoryExplore 是默认的探索比例；MaxMemoryExplore 是上限。
+const (
+	DefaultMemoryExplore = 0.1
+	MaxMemoryExplore     = 0.5
+)
 
 // DefaultMemoryDir 返回默认记忆库目录：用户级，可跨项目复用。
 // XDG_DATA_HOME 有值时用它，否则落在 HOME 下的 .local/share。
@@ -160,6 +169,10 @@ func Load(root string, environ map[string]string) (Config, error) {
 	if err != nil || cfg.Memory.RecallBudget < 0 {
 		return Config{}, fmt.Errorf("MEMORY_RECALL_BUDGET 必须是非负整数")
 	}
+	cfg.Memory.Explore, err = strconv.ParseFloat(resolve("MEMORY_EXPLORE", strconv.FormatFloat(DefaultMemoryExplore, 'f', -1, 64)), 64)
+	if err != nil || cfg.Memory.Explore < 0 || cfg.Memory.Explore > MaxMemoryExplore {
+		return Config{}, fmt.Errorf("MEMORY_EXPLORE 必须是 0 到 %g 之间的小数（0 关闭探索）", MaxMemoryExplore)
+	}
 	return cfg, nil
 }
 
@@ -208,6 +221,7 @@ func (c Config) ChildEnvironment(base map[string]string, unsafe bool, passthroug
 			out["MEMORY"] = "on"
 		}
 		out["MEMORY_RECALL_BUDGET"] = strconv.Itoa(c.Memory.RecallBudget)
+		out["MEMORY_EXPLORE"] = strconv.FormatFloat(c.Memory.Explore, 'f', -1, 64)
 		if c.Memory.Snapshot > 0 {
 			out["MEMORY_SNAPSHOT"] = strconv.Itoa(c.Memory.Snapshot)
 		}

@@ -2,6 +2,7 @@ package memory
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"sort"
@@ -67,6 +68,25 @@ type RecallResult struct {
 	Items      []RecallItem `json:"items"`
 	// Omitted 是匹配上但超出字数预算或条数上限的记忆。
 	Omitted []RecallItem `json:"omitted,omitempty"`
+	// Explored 非空表示这次召回做了探索：Items 是探索后真正注入的，canonical 是
+	// 不探索时的摘要，写进输入指纹。
+	Explored  *Exploration `json:"explored,omitempty"`
+	canonical string
+}
+
+// Exploration 记下一次探索：把召回里排最后的经验 Dropped 换成排在上限外的第一条 Added。
+//
+// 召回排序用的一次通过率只统计了「当时被召回」的经验，排在上限外的经验永远攒不到
+// 样本，排序就固化了（Kiyohara et al. 2025 讨论的日志 bandit 数据偏差）。探索给它们
+// 机会，Propensity 是这次换的概率，日后可以按它做反倾向加权的离线评估。
+//
+// 探索是这一次运行（agent 一次 am scene run / run-all）的决定，不是镜头的属性：
+// 输入指纹仍用不探索时的召回，镜头不会因为探索被判 Stale，也不会因为某次探索
+// 过就以后都被判 Stale。
+type Exploration struct {
+	Dropped    string  `json:"dropped"`
+	Added      string  `json:"added"`
+	Propensity float64 `json:"propensity"`
 }
 
 // Names 返回召回的记忆名，按注入顺序。
@@ -95,9 +115,17 @@ func (r RecallResult) Section() string {
 }
 
 // Digest 是召回条目规则内容的摘要，写进输入指纹的 memory 项。
+// 探索过的召回返回不探索时的摘要。
 func (r RecallResult) Digest() string {
+	if r.canonical != "" {
+		return r.canonical
+	}
+	return itemsDigest(r.Items)
+}
+
+func itemsDigest(items []RecallItem) string {
 	h := sha256.New()
-	for _, item := range r.Items {
+	for _, item := range items {
 		fmt.Fprintf(h, "%s=%s\n", item.Name, item.digest)
 	}
 	return hex.EncodeToString(h.Sum(nil))
@@ -255,6 +283,10 @@ type RecallOptions struct {
 	Extra []Memory
 	// Exclude 是不参与召回的记忆名（重考生效记忆时的对照组）。
 	Exclude []string
+	// Explore 是探索的概率，0 不探索；ExploreSeed 决定这一次抽中与否
+	// （同一批次里同一镜头的重试拿到同一个决定）。
+	Explore     float64
+	ExploreSeed string
 }
 
 // RecallScene 对一个镜头做召回。记忆库还没有快照且没有 Extra 时什么也不召回。
@@ -293,7 +325,53 @@ func (s *Store) RecallScene(sc scene.Scene, opts RecallOptions) (RecallResult, e
 	result := Recall(RecallInput{Memories: memories, Stats: stats, Renderer: opts.Renderer, Model: opts.Model, Features: features,
 		Text: sc.Text + "\n" + promptText(sc), Project: projectOf(sc.Directory), Budget: opts.Budget, MaxLessons: opts.MaxLessons})
 	result.Snapshot = snapshotID
+	if opts.Explore > 0 {
+		result = explore(result, opts.Explore, opts.ExploreSeed+"|"+sc.Directory)
+	}
 	return result, nil
+}
+
+// explore 以 rate 的概率把注入的最后一条经验换成 Omitted 里第一条换得进去的经验
+// （字数预算仍然成立）。抽签由 seed 的哈希决定，可复现。
+func explore(r RecallResult, rate float64, seed string) RecallResult {
+	last := -1
+	for i, item := range r.Items {
+		if item.Kind == KindLesson {
+			last = i
+		}
+	}
+	if last < 0 {
+		return r
+	}
+	dropped := r.Items[last]
+	pick := -1
+	for i, item := range r.Omitted {
+		if item.Kind == KindLesson && r.Used-dropped.Chars+item.Chars <= r.Budget {
+			pick = i
+			break
+		}
+	}
+	if pick < 0 || draw(seed) >= rate {
+		return r
+	}
+	added := r.Omitted[pick]
+	r.canonical = itemsDigest(r.Items)
+	added.OmitReason = ""
+	items := append([]RecallItem{}, r.Items...)
+	items[last] = added
+	omitted := append([]RecallItem{}, r.Omitted[:pick]...)
+	omitted = append(omitted, r.Omitted[pick+1:]...)
+	dropped.OmitReason = "explore"
+	r.Items, r.Omitted = items, append(omitted, dropped)
+	r.Used += added.Chars - dropped.Chars
+	r.Explored = &Exploration{Dropped: dropped.Name, Added: added.Name, Propensity: rate}
+	return r
+}
+
+// draw 把 seed 映射到 [0, 1)。
+func draw(seed string) float64 {
+	sum := sha256.Sum256([]byte(seed))
+	return float64(binary.BigEndian.Uint64(sum[:8])>>11) / float64(1<<53)
 }
 
 // withExtra 把试用记忆加进召回池；试用记忆是某条生效记忆的修订时，
