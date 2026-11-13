@@ -11,9 +11,7 @@ export interface ProjectState {
   project: Project;
   stage: 'setup' | 'plan' | 'render' | 'assemble' | 'review' | 'publish' | string;
   metadata: Record<string, string>;
-  media: { audio: boolean; final: boolean; publish: boolean };
   scenes: { total: number; completed: number; stale: number };
-  issues: unknown[];
   /** 整片制作现在在哪一步（beat / script / storyboard / scene / final / publish）。 */
   step?: string;
   /** step 是编排工具用 studio_step 标的；否则是按产物推的。 */

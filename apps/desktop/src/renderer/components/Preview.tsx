@@ -1169,13 +1169,12 @@ function StyleTab({ version, run, scenes, onScene }: { version: number; run: Run
   );
 }
 
-/** production/review/review.json（review.Report）。问题字段是 problems；issues 是早期写法，照样认。 */
+/** production/review/review.json（review.Report）。 */
 interface ReviewResponse {
   available: boolean;
   report?: {
     ok?: boolean;
     problems?: string[];
-    issues?: unknown[];
     hints?: unknown[];
     expected_frames?: number;
     counted_frames?: number;
@@ -1184,7 +1183,7 @@ interface ReviewResponse {
   } & Record<string, unknown>;
 }
 
-const reviewProblems = (r?: ReviewResponse['report']) => [...(r?.problems ?? []), ...(r?.issues ?? [])];
+const reviewProblems = (r?: ReviewResponse['report']) => r?.problems ?? [];
 
 function ReviewTab({ tree, version, run }: { tree: TreeFile[]; version: number; run: RunAction }) {
   const [review, setReview] = useState<ReviewResponse | null>(null);
