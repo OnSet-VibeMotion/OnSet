@@ -10,6 +10,8 @@ import { checkFiles } from './fetch';
 import { lockRootOf, readLock, writeLock, type LoadedStation, type Lock } from './lock';
 import { ManifestFile, type Manifest } from './manifest';
 import { parseManifest } from './parse';
+import * as plugin from '../plugin';
+import { pluginStationOwners } from './registered';
 
 /** 内置插件的目录：assets/plugins/<id>/am-station.json，随客户端下发（extraResources 带着整棵 assets）。 */
 export function builtinPluginsDir(): string {
@@ -53,7 +55,7 @@ export function builtinPluginIDs(): string[] {
   return builtinPlugins().map((p) => p.manifest.id);
 }
 
-/** 这个项目关掉的内置插件认领的 am 操作：工具服务据此把它们从工具列表里拿掉。 */
+/** 这个项目关掉的内置插件的 am 操作（清单 am_ops 认领的与 apply 登记的）：工具服务据此把它们从工具列表里拿掉。 */
 export function disabledAmOps(root: string): Set<string> {
   let lock: Lock;
   try {
@@ -62,10 +64,12 @@ export function disabledAmOps(root: string): Set<string> {
     return new Set();
   }
   const disabled = new Set(lock.disabled ?? []);
-  return new Set(builtinPlugins().filter((p) => disabled.has(p.manifest.id)).flatMap((p) => p.manifest.am_ops));
+  return new Set([
+    ...builtinPlugins().filter((p) => disabled.has(p.manifest.id)).flatMap((p) => p.manifest.am_ops),
+    ...plugin.pluginOps().filter((o) => disabled.has(o.owner)).map((o) => o.value.name),
+  ]);
 }
 
-/**
 /**
  * 镜头所在项目关掉的内置插件认领的渲染技能。从镜头目录向上找有锁文件的项目根；没有锁文件就一个都没关。
  */
@@ -109,7 +113,7 @@ export function inUse(root: string, m: Manifest): string {
   return m.in_use.find((rel) => fs.existsSync(path.join(root, rel))) ?? '';
 }
 
-/** 这个项目关掉的内置插件认领的自带站。 */
+/** 这个项目关掉的内置插件的站（清单 am_stations 认领的与 apply 登记的）。 */
 export function disabledAmStations(root: string): string[] {
   let lock: Lock;
   try {
@@ -118,14 +122,17 @@ export function disabledAmStations(root: string): string[] {
     return [];
   }
   const disabled = new Set(lock.disabled ?? []);
-  return builtinPlugins()
-    .filter((p) => disabled.has(p.manifest.id))
-    .flatMap((p) => p.manifest.am_stations);
+  return [
+    ...builtinPlugins()
+      .filter((p) => disabled.has(p.manifest.id))
+      .flatMap((p) => p.manifest.am_stations),
+    ...plugin.pluginStations().filter((s) => disabled.has(s.owner)).map((s) => s.value.id),
+  ];
 }
 
-/** 自带的站归哪个内置插件（没有归属的不在表里）。生成制作提示词时据此加标记。 */
+/** 自带的站归哪个内置插件（清单认领的与 apply 登记的；没有归属的不在表里）。生成制作提示词时据此加标记。 */
 export function stationOwners(): Map<string, string> {
-  const out = new Map<string, string>();
+  const out = pluginStationOwners();
   for (const p of builtinPlugins()) for (const sid of p.manifest.am_stations) out.set(sid, p.manifest.id);
   return out;
 }

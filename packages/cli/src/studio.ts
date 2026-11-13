@@ -30,7 +30,7 @@ function pageLabel(id: string): string {
   return studioview.viewPage(id)?.label ?? id;
 }
 
-const pageLines = studioview.ViewPages.map((page) => {
+const pageLines = studioview.viewPages().map((page) => {
   let line = '  ' + page.id + '  ' + page.label;
   if (page.target === 'scene') line += '，要给镜头编号';
   else if (page.target === 'scene?') line += '，可以给镜头编号';

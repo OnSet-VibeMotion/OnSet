@@ -1,0 +1,144 @@
+/**
+ * 内置插件的进程内入口（apply）能登记的东西。设计见 docs/superpowers/specs/2026-11-11-流程插件-design.md 第二节：
+ * 第三方站只能声明（am-station.json），内置插件随客户端下发、与宿主同进程，在 apply(ctx) 里登记代码。
+ *
+ * 这一层在依赖的最底下：只 import flow 的类型（不 import 运行时代码），不依赖 studio 与 cli。
+ * 各层从登记表里取自己要的东西：
+ *
+ * | 登记的 | 谁来用 |
+ * |---|---|
+ * | 站（站点、提示词段落、判断函数） | flow（路线、文件归站、关卡、制作提示词）与 studio/progress.ts（判断函数） |
+ * | 操作 | cli 的操作表（plugin_ops.ts 订阅后 defineOp），工具服务与客户端后端随之都有 |
+ * | 页面 | studioview（studio_show 能切的页面、专门页面）与客户端后端（这个项目用不上的页面） |
+ * | 接口 | studio.ts 的路由表 |
+ * | 校验器 | 客户端后端的「检查」命令（/api/commands/<id>.check） |
+ */
+import type { RouteNode } from '../flow/types';
+
+/** 判断函数拿到的项目状态。字段是 studio/progress.ts 的 Ctx 的子集，那边的 Ctx 可以直接传进来。 */
+export interface JudgeContext {
+  root: string;
+  scenes: readonly { directory: string; output?: string; exists: boolean; stale: boolean }[];
+  gates: Readonly<Record<string, { at: string; files: Record<string, string> }>>;
+}
+
+/** 一个站点做没做的判断（与 studio/progress.ts 的内置判断同一种写法）。 */
+export interface NodeJudge<C extends JudgeContext = JudgeContext> {
+  /** 产物的修改时间（毫秒）；0 表示没做。关卡不用写。 */
+  output?: (c: C) => number;
+  /** 上游产物比这一站的产物新：要重做。 */
+  stale?: (c: C, out: number) => boolean;
+  detail?: (c: C) => string | undefined;
+  /** 关卡的状态不经 gates.json 时自己判断。 */
+  gateState?: (c: C) => { status: 'confirmed' | 'changed' | 'todo'; at?: number | string };
+  /** 这一站是「现在在这」时在等谁；不写（或返回 undefined）就按缺省：关卡等用户，其余等 AI。 */
+  waiting?: (c: C) => 'user' | 'ai' | undefined;
+}
+
+/**
+ * 一段制作提示词。正文是插件目录里的文件；after 是它在制作提示词里跟在哪一段后面（`站/段`，可以是宿主的段，
+ * 也可以是先登记的插件段）。开启一个阶段时写 stage 与 title（「## 第N阶段：<标题>」冒号后面那段）。
+ */
+export interface PluginSection {
+  id: string;
+  file: string;
+  after: string;
+  stage?: string;
+  title?: string;
+}
+
+/** 插件带来的站。flows 是它出现在哪些内置流程里，after 是在这些流程里跟在哪个站后面（找不到时接在最后）。 */
+export interface PluginStation {
+  id: string;
+  name: string;
+  nodes: RouteNode[];
+  flows: readonly string[];
+  after: string;
+  sections?: PluginSection[];
+  /** 站点的判断函数，键是站点 id。普通站点必须有（漏了 progress.ts 直接报错）。 */
+  judges?: Record<string, NodeJudge>;
+}
+
+/** 操作的参数，字段与 cli 的 ops/op.ts 的 ParamSpec 相同。 */
+export interface PluginParamSpec {
+  type: 'string' | 'boolean' | 'integer' | 'number' | 'strings' | 'duration';
+  description: string;
+  default?: string | number | boolean | string[];
+  required?: boolean;
+  positional?: number | 'rest';
+  flag?: string;
+  shorthand?: string;
+  cliOnly?: boolean;
+}
+
+export interface PluginOpContext {
+  out: { write(text: string): void };
+  err: { write(text: string): void };
+  signal: AbortSignal;
+  unsafe: boolean;
+}
+
+/** 一条 am 操作，字段与 cli 的 ops/op.ts 的 Op 相同；cli 订阅登记表后照旧 defineOp。 */
+export interface PluginOp {
+  name: string;
+  cli: string[];
+  summary: string;
+  description?: string;
+  examples?: string[];
+  params: Record<string, PluginParamSpec>;
+  scopes?: ('orchestrator' | 'renderer' | 'cli')[];
+  run(params: Record<string, unknown>, ctx: PluginOpContext): void | { data?: unknown } | Promise<void | { data?: unknown }>;
+}
+
+/**
+ * 客户端里的一页（页面组件仍在界面里，按 id 对上）。after 是它在页面表（studioview.ViewPages）里排在哪一页后面；
+ * files 是有专门页面的项目文件：编排工具要用户看它们时切到这一页，不开文件页。
+ */
+export interface PluginPage {
+  id: string;
+  label: string;
+  target: '' | 'scene' | 'scene?' | 'file';
+  after: string;
+  files?: string[];
+}
+
+/** 客户端后端交给插件接口的宿主（studio 的 Server 满足它）。 */
+export interface ApiHost {
+  projectOr404(): { path: string } | Response;
+}
+
+/** 客户端后端的一条接口。pattern 照 studio.ts 路由表的写法：精确路径，或以 / 结尾的子树。 */
+export interface PluginRoute {
+  pattern: string;
+  handle(host: ApiHost, request: Request, rest: string): Response | Promise<Response>;
+}
+
+/**
+ * 校验项目里的一个文件：客户端后端据此提供 `/api/commands/<id>.check`（写任务，跑 op，参数是 file 与 project_root）。
+ * 文件不在时回 400 `<id>_missing`。
+ */
+export interface PluginValidator {
+  id: string;
+  label: string;
+  file: string;
+  op: string;
+}
+
+export interface PluginContext {
+  /** 插件 id，与 assets/plugins/<id>/am-station.json 的 id 相同（开关、名字、说明都在那份清单里）。 */
+  readonly id: string;
+  /** 插件目录（缺省 assets/plugins/<id>/），提示词段落的 file 相对它。 */
+  readonly dir: string;
+  station(s: PluginStation): void;
+  op(op: PluginOp): void;
+  page(p: PluginPage): void;
+  route(r: PluginRoute): void;
+  validator(v: PluginValidator): void;
+}
+
+export interface BuiltinPlugin {
+  id: string;
+  /** 插件目录；不写是 assets/plugins/<id>/。 */
+  dir?: string;
+  apply(ctx: PluginContext): void;
+}

@@ -1,8 +1,8 @@
 // 移植自 internal/validate/copy_titles.go。
-import { goQuote, goTrimSpace } from '../gofmt';
-import { compareBytes } from '../gojson';
+import { goQuote, goTrimSpace } from '../../gofmt';
+import { compareBytes } from '../../gojson';
 import { coverSpecs } from './cover_images';
-import { get, isGoMap, type GoMap } from './yamlany';
+import { get, isGoMap, type GoMap } from '../../validate/yamlany';
 
 /**
  * 一个平台发布标题的字数上限，按字符计（一个汉字、一个字母、

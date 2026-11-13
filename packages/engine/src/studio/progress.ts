@@ -13,7 +13,7 @@ import * as beat from '../beat';
 import * as flow from '../flow';
 import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
-import * as validate from '../validate';
+import * as plugin from '../plugin';
 import { sameDownbeats } from './api_ui';
 import { writeError, writeJSON } from './http';
 import { discoverScenes, fileExists, type SceneSummary } from './scenes';
@@ -202,16 +202,11 @@ interface Ctx {
   gates: Record<string, GateRecord>;
 }
 
-/** 一站做没做的判断。站点的名字、归哪一步、是不是关卡来自流程声明（flow.route）。 */
-interface Judge {
-  /** 产物的修改时间（毫秒）；0 表示没做。关卡不用写。 */
-  output?: (c: Ctx) => number;
-  /** 上游产物比这一站的产物新：要重做。 */
-  stale?: (c: Ctx, out: number) => boolean;
-  detail?: (c: Ctx) => string | undefined;
-  /** 关卡的状态不经 gates.json 时（试听确认、节拍确认）自己判断。 */
-  gateState?: (c: Ctx) => { status: 'confirmed' | 'changed' | 'todo'; at?: number | string };
-}
+/**
+ * 一站做没做的判断。站点的名字、归哪一步、是不是关卡来自流程声明（flow.route）。
+ * 与内置插件在 apply 里登记的判断函数是同一种写法（plugin.NodeJudge）。
+ */
+type Judge = plugin.NodeJudge<Ctx>;
 
 type Def = flow.RouteNode & Judge & { output: (c: Ctx) => number };
 
@@ -220,17 +215,6 @@ const anyOf = (c: Ctx, ...rels: string[]) => Math.max(0, ...rels.map((rel) => f(
 
 function sceneOutputs(c: Ctx): number[] {
   return c.scenes.filter((sc) => sc.exists && sc.output).map((sc) => mtime(path.join(sc.directory, sc.output!)));
-}
-
-function publishStatus(root: string): string {
-  const file = path.join(root, 'publish.md');
-  if (!fileExists(file)) return '';
-  try {
-    const data = validate.readPublish(file);
-    return typeof data?.publish_status === 'string' ? data.publish_status : 'draft';
-  } catch {
-    return 'draft';
-  }
 }
 
 function storyboardDetail(c: Ctx): string | undefined {
@@ -253,7 +237,7 @@ function readGrid(root: string, rel: string): beat.Grid | null {
   }
 }
 
-/** 内置站的判断，键是「站:站点」：口播与卡点的「拆分镜头」同叫 plan，判断不同。 */
+/** 宿主自带的站的判断，键是「站:站点」：口播与卡点的「拆分镜头」同叫 plan，判断不同。内置插件的判断随它登记（pluginJudges）。 */
 const judges: Record<string, Judge> = {
   'intake:intake': { output: (c) => anyOf(c, 'production/input-inventory.md', 'production/production-config.json') },
   'script:script': {
@@ -360,15 +344,6 @@ const judges: Record<string, Judge> = {
       return { status: f(c, 'production/audio/candidate.mp4') > approved ? 'changed' : 'confirmed', at };
     },
   },
-  'publish:publish': {
-    // 发布信息要到「ready」才算做完；写了但还有人工检查没做的，停在这一站。
-    output: (c) => (publishStatus(c.root) === 'ready' ? f(c, 'publish.md') : 0),
-    detail: (c) => {
-      const status = publishStatus(c.root);
-      const label: Record<string, string> = { draft: '草稿', pending_manual_checks: '还剩人工检查', blocked: '有问题挡着', ready: '可以发布' };
-      return status ? label[status] ?? status : undefined;
-    },
-  },
   'beat-story:story': { output: (c) => f(c, beat.Store + '/story.md') },
   'beat-music:music': { output: (c) => f(c, beat.TrackFile) },
   'beat-music:grid': {
@@ -389,6 +364,13 @@ const judges: Record<string, Judge> = {
     stale: (c, out) => f(c, beat.GridFile) > out,
   },
 };
+
+/** 内置插件在 apply 里登记的判断，键同 judges。 */
+function pluginJudges(): Record<string, Judge> {
+  const out: Record<string, Judge> = {};
+  for (const { value: s } of plugin.pluginStations()) for (const [node, judge] of Object.entries(s.judges ?? {})) out[`${s.id}:${node}`] = judge;
+  return out;
+}
 
 /** 第三方站点的声明式判断：outputs 里最新的修改时间；stale_after 里的站点产物比它新就要重做。 */
 function declaredJudge(node: flow.RouteNode, byID: Map<string, Def>): Judge {
@@ -411,8 +393,10 @@ function declaredJudge(node: flow.RouteNode, byID: Map<string, Def>): Judge {
 /** 流程的站点连同判断。内置的普通站必须有判断函数，漏了直接报错，不让一站永远显示「没做」。 */
 export function stationDefs(id: flow.FlowID, extras: readonly flow.ExtraStation[] = []): Def[] {
   const byID = new Map<string, Def>();
+  const registered = pluginJudges();
   return flow.route(id, extras).map(({ station, node }) => {
-    const judge = node.declared ? declaredJudge(node, byID) : judges[`${station}:${node.id}`] ?? {};
+    const key = `${station}:${node.id}`;
+    const judge = node.declared ? declaredJudge(node, byID) : judges[key] ?? registered[key] ?? {};
     if (!node.gate && !judge.output) throw new Error(`站点 ${station}:${node.id} 没有判断函数`);
     const def: Def = { ...node, ...judge, output: judge.output ?? (() => 0) };
     byID.set(node.id, def);
@@ -531,8 +515,9 @@ export function computeStations(root: string, scenes: SceneSummary[]): { mode: f
   const complete = (s: Station) => s.optional || ['done', 'skipped', 'confirmed', 'passed'].includes(s.status);
   const current = stations.find((s) => !complete(s));
   let waiting: '' | 'user' | 'ai' = !current ? '' : current.gate ? 'user' : 'ai';
-  // 发布信息只差人工检查（上传前的几项手动核对）时，是在等你。
-  if (current?.id === 'publish' && publishStatus(root) === 'pending_manual_checks') waiting = 'user';
+  // 站点自己知道在等谁时听它的（例如发布信息只差上传前的人工检查，是在等你）。
+  const own = current ? defs[stations.indexOf(current)].waiting?.(ctx) : undefined;
+  if (own) waiting = own;
   return { mode, stations, current: current?.id ?? '', waiting_on: waiting };
 }
 

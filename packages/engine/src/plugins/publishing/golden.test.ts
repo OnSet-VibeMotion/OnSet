@@ -90,7 +90,7 @@ async function collect(): Promise<Record<string, unknown>> {
   }
   // 界面的页面表与专门页面。
   out.viewPage = studioview.viewPage('publish') ?? null;
-  out.viewPages = studioview.ViewPages.map((p) => p.id);
+  out.viewPages = studioview.viewPages().map((p) => p.id);
   out.dedicated = studioview.dedicatedPage('', 'publish.md');
   // 后端接口：/api/publish 与发布校验命令。
   const f = newSessionFixture();

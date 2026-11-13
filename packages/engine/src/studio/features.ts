@@ -1,16 +1,15 @@
 /**
- * 镜头与发布相关的接口：镜头列表与详情、镜头渲染 / 抽帧 / 附件 / 产物、渲染全部镜头、合成实时预览、发布页。
+ * 镜头相关的接口：镜头列表与详情、镜头渲染 / 抽帧 / 附件 / 产物、渲染全部镜头、合成实时预览。
+ * （发布页的接口随「发布」搬进了内置插件 plugins/publishing。）
  * 移植自 internal/studio/studio.go（scenesAPI、projectUsage、sceneAPI）、features.go（renderAllAPI、
- * sceneFeatureAPI、captureSceneFrames、publishAPI）与 api_sessions.go（previewAPI、sceneAttachment）。
+ * sceneFeatureAPI、captureSceneFrames）与 api_sessions.go（previewAPI、sceneAttachment）。
  */
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { envMap } from '../envutil';
 import * as ledger from '../ledger';
 import * as mediaprobe from '../mediaprobe';
 import { newUsage, usageAdd, usageJSON, type Usage } from '../tools';
-import * as validate from '../validate';
 import { sceneActivity } from './activity';
 import { decodeChoice } from './agents';
 import { isEnvFile } from './api_ui';
@@ -19,7 +18,6 @@ import { discoverScenes, sceneSummaryJSON, type SceneSummary } from './scenes';
 import { attachmentJSON, containedPath, newID, validateChoice, type AgentChoice, type Box } from './sessions';
 import type { Project, Server } from './studio';
 import { addTask, runStudioOpWith, runTask, runWriteTask, updateTask, writeTaskError } from './tasks';
-import { walkDir } from './turns';
 
 // ---- 镜头列表与详情 ----
 
@@ -265,58 +263,4 @@ export function previewAPI(s: Server, request: Request, rest: string): Response 
     return serveFile(request, full);
   }
   return notFound();
-}
-
-// ---- 发布页 ----
-
-/** GET /api/publish：publish.md 解析出的字段与 covers/ 下的封面（不回传 Markdown 原文）。 */
-export function publishAPI(s: Server): Response {
-  const p = s.projectOr404();
-  if (p instanceof Response) return p;
-  const file = path.join(p.path, 'publish.md');
-  const available = fs.existsSync(file);
-  // 不回传 Markdown 原文：发布页只按解析出的字段排版。
-  const result: Record<string, unknown> = { available, path: 'publish.md' };
-  const covers: unknown[] = [];
-  // 结构化的发布信息供页面排版；解析失败时页面给出原因。
-  if (available) {
-    try {
-      const data = validate.readPublish(file);
-      result.data = data === null ? null : goValue(data);
-      const platform = data !== null && typeof data.platform === 'string' ? data.platform : '';
-      result.platform_name = validate.platformName(platform);
-    } catch (err) {
-      result.parse_error = (err as Error).message;
-    }
-  }
-  walkDir(path.join(p.path, 'covers'), (full, entry) => {
-    if (!entry || entry.isDirectory()) return;
-    let info: fs.Stats;
-    try {
-      info = fs.lstatSync(full);
-    } catch {
-      return;
-    }
-    const cover: Record<string, unknown> = { path: path.relative(p.path, full).split(path.sep).join('/'), size: info.size };
-    let body: Buffer | null = null;
-    try {
-      body = fs.readFileSync(full);
-    } catch {
-      body = null;
-    }
-    if (body) {
-      cover.sha256 = crypto.createHash('sha256').update(body).digest('hex');
-      try {
-        // Go 版用 image.Decode（只注册了 PNG 与 JPEG）；这里读文件头里的宽高。
-        const config = validate.decodeConfig(full);
-        cover.width = config.width;
-        cover.height = config.height;
-      } catch {
-        cover.error = '无法读取图片尺寸';
-      }
-    }
-    covers.push(goMap(cover));
-  });
-  result.covers = covers;
-  return writeJSON(200, goMap(result));
 }

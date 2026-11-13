@@ -8,6 +8,7 @@ import path from 'node:path';
 import * as config from '../config';
 import { goClean, goTrimSpace } from '../gofmt';
 import { marshal } from '../gojson';
+import * as plugin from '../plugin';
 import * as project from '../project';
 import type { ViewState } from '../studioview';
 import { decodeChoice, withDefaults } from './agents';
@@ -447,11 +448,11 @@ export function turnAPI(s: Server, request: Request, rest: string): Response {
 /**
  * studioCommands 是可以从网页直接触发的确定性步骤。它们不经过编排工具，
  * 参数只有镜头 id（beat.regrid 另收两个整数：拍号与起始拍），不接受任意命令行。
+ * 内置插件登记的校验器另有 `<id>.check`（例如发布的 publish.check），见 pluginCheck。
  */
 export const studioCommands: Readonly<Record<string, string>> = {
   'scene.validate': '校验镜头',
   'project.concat': '拼接无声母版',
-  'publish.check': '检查发布信息',
   'beat.confirm': '确认卡点网格',
   'beat.regrid': '重排重拍',
 };
@@ -461,8 +462,9 @@ export async function commandAPI(s: Server, request: Request, rest: string): Pro
   const p = s.projectOr404();
   if (p instanceof Response) return p;
   const name = rest.replace(/^\/+|\/+$/g, '');
-  if (!Object.hasOwn(studioCommands, name)) return writeError(404, 'unknown_command', '不支持的命令：' + name);
-  let label = studioCommands[name];
+  const validator = plugin.pluginValidators().find((v) => `${v.value.id}.check` === name)?.value;
+  if (!Object.hasOwn(studioCommands, name) && !validator) return writeError(404, 'unknown_command', '不支持的命令：' + name);
+  let label = validator ? validator.label : studioCommands[name];
   let sceneID: string;
   let body: Record<string, unknown>;
   try {
@@ -482,12 +484,6 @@ export async function commandAPI(s: Server, request: Request, rest: string): Pro
     case 'project.concat':
       op = { name: 'concat', params: { scenes: path.join(p.path, 'scenes'), out: path.join(p.path, 'production', 'silent-master.mp4') } };
       break;
-    case 'publish.check': {
-      const publish = path.join(p.path, 'publish.md');
-      if (!fileExists(publish)) return writeError(400, 'publish_missing', '找不到 publish.md');
-      op = { name: 'validate_publish', params: { file: publish, project_root: p.path } };
-      break;
-    }
     case 'beat.confirm':
       op = { name: 'beat_confirm', params: { project_root: p.path } };
       break;
@@ -501,6 +497,12 @@ export async function commandAPI(s: Server, request: Request, rest: string): Pro
       label += `（${meter} 拍，从第 ${(anchor as number) + 1} 拍起）`;
       break;
     }
+  }
+  if (validator) {
+    // 内置插件登记的校验器：校验项目里的一个文件。
+    const file = path.join(p.path, validator.file);
+    if (!fileExists(file)) return writeError(400, `${validator.id}_missing`, `找不到 ${validator.file}`);
+    op = { name: validator.op, params: { file, project_root: p.path } };
   }
   const call = op!;
   try {

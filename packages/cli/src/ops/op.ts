@@ -91,6 +91,11 @@ export function defineOp(op: Op): Op {
   return op;
 }
 
+/** 撤掉一条操作：只给内置插件撤销登记用（测试里登记的假插件）。 */
+export function removeOp(name: string): void {
+  registry.delete(name);
+}
+
 export function allOps(): Op[] {
   return [...registry.values()];
 }

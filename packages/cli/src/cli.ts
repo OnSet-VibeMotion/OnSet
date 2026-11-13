@@ -27,6 +27,8 @@ import './style_cmd';
 import './usage_cmd';
 import './validate_cast';
 import './validate_cmd';
+// 内置插件登记的操作（例如发布的 validate_publish）。
+import './plugin_ops';
 import './voice_cmd';
 import { mountOps } from './ops/cli';
 import { newInitCommand } from './project_cmds';

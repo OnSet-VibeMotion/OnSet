@@ -1,7 +1,7 @@
 /**
- * 校验类操作：validate publish、validate style。validate 组下的 video、cast、song、beat、reads
- * 在各自的文件里定义，由 mountOps 挂进同一个组。
- * publish 与 style 移植自 internal/cli/cli.go 里内联定义的部分。
+ * 校验类操作：validate style。validate 组下的 video、cast、song、beat、reads 在各自的文件里定义，
+ * validate publish 由内置插件「发布」登记（engine 的 plugins/publishing），都由 mountOps 挂进同一个组。
+ * style 移植自 internal/cli/cli.go 里内联定义的部分。
  */
 import * as validate from '@am/engine/validate';
 import { defineGroup } from './ops/cli';
@@ -16,30 +16,6 @@ defineGroup({
   summary: '校验发布配置',
   description: `只读校验，不修改任何项目文件（唯一例外是 validate_style 的 regenerate_examples）。
 校验通过时给出一行结论，失败时把具体不符项一次列全。`,
-});
-
-defineOp({
-  name: 'validate_publish',
-  cli: ['validate', 'publish'],
-  summary: '校验 publish.md',
-  description: `校验 file 指向的发布配置。
-
-publish.md 必须以安全 YAML frontmatter 提供机器字段，并以固定 Markdown 章节
-提供人工可复制内容。校验会核对字段完整性，以及它引用的产物是否与项目实际一致，
-因此需要 project_root 定位项目（缺省为当前目录）。
-
-通过时给出 publish 校验通过：<路径>（<状态>）。`,
-  examples: ['validate_publish({"file": "publish.md"})'],
-  params: {
-    file: { type: 'string', description: 'publish.md 的路径', required: true, positional: 0 },
-    project_root: { ...projectRoot, description: '项目根目录，缺省为当前目录' },
-  },
-  run: (p, { out }) => {
-    const rootDir = str(p.project_root) === '' ? '.' : str(p.project_root);
-    const data = validate.publish(str(p.file), rootDir);
-    out.write(`publish 校验通过：${str(p.file)}（${validate.formatV(data.publish_status)}）\n`);
-    return { data: { ok: true, file: str(p.file), status: data.publish_status } };
-  },
 });
 
 defineOp({

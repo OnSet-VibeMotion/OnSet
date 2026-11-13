@@ -2,8 +2,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { errorOf, read, replaceOnce, sharedSource, tempDir } from './testsupport';
-import { publish } from './validate';
+import { errorOf, read, replaceOnce, sharedSource, tempDir } from '../../validate/testsupport';
+import { publish } from './publish';
 
 /** 在模板基础上写入平台与 copy 块里的标题行。 */
 function publishWithCopy(platform: string, copyLines: string): string {

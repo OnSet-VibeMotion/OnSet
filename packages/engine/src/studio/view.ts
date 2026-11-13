@@ -10,7 +10,7 @@ import path from 'node:path';
 import * as studioview from '../studioview';
 import { studioRoot } from './turns';
 
-export { KindView as kindView, StepIDs, ViewInboxEnv, ViewPages, ViewPollInterval, ViewProjectEnv, viewInteraction, viewPage } from '../studioview';
+export { KindView as kindView, StepIDs, ViewInboxEnv, ViewPages, viewPages, ViewPollInterval, ViewProjectEnv, viewInteraction, viewPage } from '../studioview';
 export type { ViewPage, ViewRequest, ViewState } from '../studioview';
 
 /** ViewState.Describe：把用户在看的位置写成一句话，附在发给编排工具的消息后面。 */

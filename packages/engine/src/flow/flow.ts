@@ -1,19 +1,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as beat from '../beat';
-import { builtinFlows, builtinStations, productionPrompt } from './builtin';
 import { markPluginSection, stationOwners } from './external';
+import { allFlows, allStations, pluginSectionFile, productionOrder } from './registered';
 import { chosenFlow } from './lock';
 import type { ExtraStation, Flow, FlowID, PathRule, RouteNode, Station } from './types';
 
 export function station(id: string, extra: readonly ExtraStation[] = []): Station {
-  const found = builtinStations.find((s) => s.id === id) ?? extra.find((x) => x.station.id === id)?.station;
+  const found = allStations().find((s) => s.id === id) ?? extra.find((x) => x.station.id === id)?.station;
   if (!found) throw new Error(`没有这个站：${id}`);
   return found;
 }
 
 export function flow(id: FlowID, extra: readonly ExtraStation[] = []): Flow {
-  const found = builtinFlows.find((f) => f.id === id) ?? extra.find((x) => x.flow?.id === id)?.flow;
+  const found = allFlows().find((f) => f.id === id) ?? extra.find((x) => x.flow?.id === id)?.flow;
   if (!found) throw new Error(`没有这个流程：${id}`);
   return found;
 }
@@ -69,10 +69,10 @@ export function route(id: FlowID, extra: readonly ExtraStation[] = []): RouteSto
   return out;
 }
 
-/** 可以经界面按钮记确认的关卡及其绑定文件（所有内置站）。 */
+/** 可以经界面按钮记确认的关卡及其绑定文件（所有内置站，含内置插件登记的）。 */
 export function gateFiles(): Record<string, string[]> {
   const out: Record<string, string[]> = {};
-  for (const s of builtinStations) {
+  for (const s of allStations()) {
     for (const node of s.nodes) {
       if (!node.gateFiles) continue;
       if (out[node.id]) throw new Error(`关卡 ${node.id} 登记了两次`);
@@ -141,10 +141,11 @@ export type SectionReader = (station: string, section: string) => string;
 export function composePrompt(order: readonly string[], read: SectionReader): string {
   const stages = new Map<string, number>();
   const parts: string[] = [];
+  const stations = allStations();
   for (const ref of order) {
     const slash = ref.indexOf('/');
     const sid = ref.slice(0, slash);
-    const sec = slash < 0 ? undefined : builtinStations.find((s) => s.id === sid)?.prompt.find((x) => x.id === ref.slice(slash + 1));
+    const sec = slash < 0 ? undefined : stations.find((s) => s.id === sid)?.prompt.find((x) => x.id === ref.slice(slash + 1));
     if (!sec) throw new Error(`没有这段提示词：${ref}`);
     if (sec.stage) {
       if (stages.has(sec.stage)) throw new Error(`阶段 ${sec.stage} 出现了两次`);
@@ -165,12 +166,15 @@ export function composePrompt(order: readonly string[], read: SectionReader): st
   return out;
 }
 
-/** 内置的制作提示词（未替换画幅占位符）。正文目录是 preset/gen/templates/production。 */
+/**
+ * 内置的制作提示词（未替换画幅占位符）。宿主段落的正文目录是 preset/gen/templates/production，
+ * 内置插件登记的段落读插件目录里的文件。
+ */
 export function composeProduction(dir: string): string {
-  // 内置插件认领的站，它们的段落用标记包住：项目关掉那个插件时运行时整段去掉（flow.applyPluginMarkers）。
+  // 内置插件的站，它们的段落用标记包住：项目关掉那个插件时运行时整段去掉（flow.applyPluginMarkers）。
   const owners = stationOwners();
-  return composePrompt(productionPrompt, (sid, sec) => {
-    const text = fs.readFileSync(path.join(dir, sid, sec + '.md'), 'utf8');
+  return composePrompt(productionOrder(), (sid, sec) => {
+    const text = fs.readFileSync(pluginSectionFile(sid, sec) ?? path.join(dir, sid, sec + '.md'), 'utf8');
     const owner = owners.get(sid);
     return owner ? markPluginSection(owner, text) : text;
   });

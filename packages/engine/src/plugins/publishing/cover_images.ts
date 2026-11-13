@@ -1,10 +1,10 @@
 // 移植自 internal/validate/cover_images.go。
 import path from 'node:path';
-import { goQuote } from '../gofmt';
-import { compareBytes } from '../gojson';
-import { decodeConfig } from './imageconfig';
-import { safeRelative } from './validate';
-import { get, GoFloat, isGoInt, isGoMap, type GoMap } from './yamlany';
+import { goQuote } from '../../gofmt';
+import { compareBytes } from '../../gojson';
+import { decodeConfig } from '../../validate/imageconfig';
+import { safeRelative } from '../../validate/validate';
+import { get, GoFloat, isGoInt, isGoMap, type GoMap } from '../../validate/yamlany';
 
 /**
  * 平台封面短边的下限。低于 1080 的封面在手机全屏和

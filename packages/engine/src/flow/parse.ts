@@ -2,7 +2,7 @@
  * 解析并校验 am-station.json（清单的类型与字段分级见 manifest.ts）。错误一律带上字段位置。
  */
 import { StepIDs } from '../studioview';
-import { builtinStations, stageTitles } from './builtin';
+import { allStageTitles, allStations } from './registered';
 import { builtinPluginIDs } from './builtinplugins';
 import { pageCallableOp } from './pages';
 import { idPattern, isObject, knownFields, opPattern, projectPath, relativeInside, str, strings } from './fields';
@@ -69,10 +69,10 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
   knownFields(raw, manifestFieldNames(), ManifestFile);
   const id = str(raw, 'id', 'station');
   if (!idPattern.test(id)) throw new Error(`station.id ${id} 要是小写字母开头的小写字母、数字与连字符（2–40 个字符）`);
-  if (builtinStations.some((s) => s.id === id)) throw new Error(`station.id ${id} 与内置站重名`);
+  if (allStations().some((s) => s.id === id)) throw new Error(`station.id ${id} 与内置站重名`);
   if (!opts.builtin && builtinPluginIDs().includes(id)) throw new Error(`station.id ${id} 与内置插件重名`);
   const replaces = str(raw, 'replaces', 'station', false);
-  if (replaces !== '' && (replaces === 'host' || !builtinStations.some((s) => s.id === replaces))) throw new Error(`station.replaces：没有内置站 ${replaces}`);
+  if (replaces !== '' && (replaces === 'host' || !allStations().some((s) => s.id === replaces))) throw new Error(`station.replaces：没有内置站 ${replaces}`);
 
   const nodesRaw = raw.nodes ?? [];
   if (!Array.isArray(nodesRaw)) throw new Error('station.nodes 要是数组');
@@ -206,7 +206,8 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
     const where = `inserts[${i}]`;
     knownFields(ins, ['stage', 'file'], where);
     const stage = str(ins, 'stage', where);
-    if (!(stage in stageTitles)) throw new Error(`${where}.stage 要是 ${Object.keys(stageTitles).join(' / ')} 之一`);
+    const titles = allStageTitles();
+  if (!(stage in titles)) throw new Error(`${where}.stage 要是 ${Object.keys(titles).join(' / ')} 之一`);
     const file = str(ins, 'file', where);
     relativeInside(file, `${where}.file`);
     return { stage, file };
@@ -219,7 +220,7 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
     const stations = strings(f, 'stations', 'flow');
     if (stations.length === 0) throw new Error('flow.stations 不能为空');
     for (const sid of stations) {
-      if (sid !== id && (sid === 'host' || !builtinStations.some((b) => b.id === sid))) throw new Error(`flow.stations：没有站 ${sid}（写内置站的 id 或本站的 id ${id}）`);
+      if (sid !== id && (sid === 'host' || !allStations().some((b) => b.id === sid))) throw new Error(`flow.stations：没有站 ${sid}（写内置站的 id 或本站的 id ${id}）`);
     }
     if (new Set(stations).size !== stations.length) throw new Error('flow.stations 里有重复的站');
     const first = str(f, 'first_page', 'flow');
@@ -282,7 +283,7 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
   const amStations = strings(raw, 'am_stations', 'station');
   if (amStations.length > 0 && !opts.builtin) throw new Error('station.am_stations：只有随 ArticleToMotion 下发的内置插件能认领自带流程里的站');
   for (const sid of amStations) {
-    if (sid === 'host' || !builtinStations.some((b) => b.id === sid)) throw new Error(`station.am_stations：没有自带的站 ${sid}`);
+    if (sid === 'host' || !allStations().some((b) => b.id === sid)) throw new Error(`station.am_stations：没有自带的站 ${sid}`);
   }
   const slots = list('slots').map((sl, i): ManifestSlot => {
     const where = `slots[${i}]`;

@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { marshal } from '../gojson';
 import { goQuote } from '../gofmt';
+import * as plugin from '../plugin';
 
 /** 这一轮的收件目录；不在客户端里运行时没有它，am studio show 什么都不做。 */
 export const ViewInboxEnv = 'AM_STUDIO_INBOX';
@@ -27,7 +28,10 @@ export interface ViewPage {
   target: '' | 'scene' | 'scene?' | 'file';
 }
 
-/** 与界面 Preview.tsx 的标签一一对应。 */
+/**
+ * 宿主自己的页面。内置插件在 apply 里登记的页面（例如发布）按各自的 after 插进来，全部的页面用 viewPages()。
+ * 合起来与界面 Preview.tsx 的标签一一对应。
+ */
 export const ViewPages: readonly ViewPage[] = [
   { id: 'progress', label: '制作路线', target: '' },
   { id: 'beat', label: '节拍', target: '' },
@@ -39,13 +43,22 @@ export const ViewPages: readonly ViewPage[] = [
   { id: 'style', label: '风格', target: '' },
   { id: 'voice', label: '音色', target: '' },
   { id: 'review', label: '复查', target: '' },
-  { id: 'publish', label: '发布', target: '' },
   { id: 'memory', label: '记忆', target: '' },
   { id: 'file', label: '文件', target: 'file' },
 ];
 
+/** 全部页面：宿主的加上内置插件登记的（插在 after 那一页后面，找不到时接在最后）。 */
+export function viewPages(): ViewPage[] {
+  const out: ViewPage[] = [...ViewPages];
+  for (const { value: p } of plugin.pluginPages()) {
+    const at = out.findIndex((x) => x.id === p.after);
+    out.splice(at < 0 ? out.length : at + 1, 0, { id: p.id, label: p.label, target: p.target });
+  }
+  return out;
+}
+
 export function viewPage(id: string): ViewPage | undefined {
-  return ViewPages.find((page) => page.id === id);
+  return viewPages().find((page) => page.id === id);
 }
 
 /** 一次切页请求：编排工具写，界面执行。字段顺序与 Go 的 JSON tag 一致。 */
@@ -74,14 +87,15 @@ export function dedicatedPage(project: string, rel: string): { page: string; tar
     case 'production/scene-plan.md':
     case 'production/treatment.md':
       return { page: 'storyboard' };
-    case 'publish.md':
-      return { page: 'publish' };
     case 'final.mp4':
     case 'production/final.mp4':
     case 'production/audio/candidate.mp4':
     case 'production/silent-master.mp4':
       return { page: 'final' };
   }
+  // 内置插件登记的页面声明的专门文件（例如发布页的 publish.md）。
+  const owned = plugin.pluginPages().find(({ value }) => value.files?.includes(rel));
+  if (owned) return { page: owned.value.id };
   if (project === '') return null;
   // 从文件所在目录往上找最近的 scene.json，到项目根为止。
   let dir = path.posix.dirname(rel);
@@ -165,7 +179,7 @@ export function validateViewRequest(project: string, req: ViewRequest): ViewRequ
     return { ...out, page: req.page };
   }
   const page = viewPage(req.page);
-  if (!page) throw new Error(`没有页面 ${goQuote(req.page)}（可选：${ViewPages.map((p) => p.id).join('、')}）`);
+  if (!page) throw new Error(`没有页面 ${goQuote(req.page)}（可选：${viewPages().map((p) => p.id).join('、')}）`);
   out.target = (req.target ?? '').trim();
   switch (page.target) {
     case 'scene':
@@ -276,7 +290,7 @@ export function drainViewInbox(dir: string): ViewRequest[] {
 
 /** 写进对话约定（studioInteraction）的一条：怎样把用户带到某一页。 */
 export function viewInteraction(): string {
-  const pages = ViewPages.map((page) => {
+  const pages = viewPages().map((page) => {
     let item = page.id + '（' + page.label;
     if (page.target === 'scene') item += '，后面跟镜头编号';
     else if (page.target === 'scene?') item += '，可以跟镜头编号';

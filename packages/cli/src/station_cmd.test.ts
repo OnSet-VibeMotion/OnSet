@@ -103,6 +103,7 @@ describe('op worker scope', () => {
 describe('builtin plugins', () => {
   it('claim only ops that exist, each op by one plugin at most', async () => {
     const flow = await import('@am/engine/flow');
+    const registry = await import('@am/engine/plugin');
     const names = new Set(allOps().map((o) => o.name));
     const owner = new Map<string, string>();
     for (const plugin of flow.builtinPlugins()) {
@@ -111,6 +112,12 @@ describe('builtin plugins', () => {
         expect(owner.get(op), `${op} 被两个内置插件认领`).toBeUndefined();
         owner.set(op, plugin.manifest.id);
       }
+    }
+    // 内置插件在 apply 里登记的操作进了操作表，而且不再被清单认领第二次。
+    for (const { owner: id, value } of registry.pluginOps()) {
+      expect(names.has(value.name), `${id} 登记的操作 ${value.name} 不在操作表里`).toBe(true);
+      expect(owner.get(value.name), `${value.name} 被两个内置插件认领`).toBeUndefined();
+      owner.set(value.name, id);
     }
     // 歌曲讲解认领了全部 song_* 操作，多角色对话认领了全部 cast_* / dialogue_* 操作，一个都不漏。
     for (const name of names) if (name.startsWith('song_')) expect(owner.get(name), name).toBe('song');
@@ -128,5 +135,15 @@ describe('builtin plugins', () => {
     expect(names.some((n) => n.startsWith('song_'))).toBe(false);
     expect(names).not.toContain('validate_song');
     expect(names).toContain('scene_run');
+  });
+
+  it('hide the ops a plugin registered in apply when the project turns it off', async () => {
+    const root = tempDir();
+    expect(describeTools('orchestrator', root).some((t) => t.name === 'validate_publish')).toBe(true);
+    const out = new Buffer();
+    expect(await run(['station', 'builtin', 'publishing', '--enabled=false', '--project-root', root], out), out.text).toBe(0);
+    expect(describeTools('orchestrator', root).map((t) => t.name)).not.toContain('validate_publish');
+    // 不在项目里（开发用的命令行、没有 root）照样有。
+    expect(describeTools('orchestrator').some((t) => t.name === 'validate_publish')).toBe(true);
   });
 });

@@ -4,6 +4,9 @@
  * 制作提示词（productionPrompt）现在仍是一份：口播、卡点、歌曲讲解共用，卡点与歌曲讲解是文末的分支。
  * 拼出来的结果与拆分前的 PROMPT-PRODUCTION.md 逐字节相同（gen.test.ts 的「matches the committed
  * assets byte-for-byte」守着）。各流程拼自己的提示词是下一步的事。
+ *
+ * 这里只有宿主自己的站。内置插件在 apply 里登记的站（例如发布）由 registered.ts 并进来：
+ * 要「全部的站、流程、阶段、段落顺序」时用 allStations / allFlows / allStageTitles / productionOrder。
  */
 import * as beat from '../beat';
 import type { Flow, PathRule, Station } from './types';
@@ -184,12 +187,6 @@ export const builtinStations: readonly Station[] = [
     prompt: [{ id: 'stage', stage: 'review' }],
   },
   {
-    id: 'publish',
-    name: '发布',
-    nodes: [{ id: 'publish', label: '封面与发布信息', step: 'publish', page: 'publish', produces: [{ path: 'publish.md' }, { prefix: 'covers/' }] }],
-    prompt: [{ id: 'config-lifecycle' }, { id: 'stage', stage: 'publish' }, { id: 'deliverables' }],
-  },
-  {
     id: 'wrapup',
     name: '收尾与归档',
     nodes: [],
@@ -232,8 +229,8 @@ export const builtinStations: readonly Station[] = [
   },
 ];
 
-/** 口播与卡点共用的后半程。 */
-const tail = ['render', 'visual-qc', 'assemble', 'sound', 'review', 'publish', 'wrapup'];
+/** 口播与卡点共用的后半程（发布由内置插件 publishing 排在 review 后面）。 */
+const tail = ['render', 'visual-qc', 'assemble', 'sound', 'review', 'wrapup'];
 
 export const builtinFlows: readonly Flow[] = [
   { id: 'speech', name: '口播', stations: ['intake', 'script', 'voice', 'timeline', 'style', 'plan', ...tail] },
@@ -256,16 +253,14 @@ export const stageTitles: Readonly<Record<string, string>> = {
   sound: '选择 BGM 和 SFX',
   mix: '配音优先的声音混合',
   review: '最终验收、试听与交付',
-  publish: '刷新发布配置',
   wrapup: '项目收尾与归档',
 };
 
-/** 制作提示词的段落顺序：「站/段」。 */
+/** 制作提示词里宿主自己的段落顺序：「站/段」。插件的段落按各自的 after 插进来（productionOrder）。 */
 export const productionPrompt: readonly string[] = [
   'host/head',
   'intake/stage',
   'style/film-style',
-  'publish/config-lifecycle',
   'script/stage',
   'plan/treatment',
   'voice/stage',
@@ -278,9 +273,7 @@ export const productionPrompt: readonly string[] = [
   'sound/stage',
   'sound/mix',
   'review/stage',
-  'publish/stage',
   'host/deliverables',
-  'publish/deliverables',
   'host/deliverables-tail',
   'wrapup/stage',
   'beat-story/branch-intro',

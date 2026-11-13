@@ -2,8 +2,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { errorOf, read, replaceOnce, sharedSource, tempDir, writeImage } from './testsupport';
-import { publish } from './validate';
+import { errorOf, read, replaceOnce, sharedSource, tempDir, writeImage } from '../../validate/testsupport';
+import { publish } from './publish';
 
 interface CoverImage {
   platform: string;

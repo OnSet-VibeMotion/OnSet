@@ -23,7 +23,7 @@ import { agentKeysAPI } from './agentkeys';
 import { agentModelsAPI, agentsAPI } from './agents';
 import { beatAPI, rawAPI, styleExampleAPI, stylesAPI, treeAPI } from './api_ui';
 import { commandAPI, filesAPI, productionStartAPI, sessionAPI, sessionsAPI, turnAPI } from './api_sessions';
-import { previewAPI, publishAPI, renderAllAPI, sceneFeatureAPI, scenesAPI } from './features';
+import { previewAPI, renderAllAPI, sceneFeatureAPI, scenesAPI } from './features';
 import { filmStylePosterAPI, filmStylesAPI, projectFilmStyleAPI, startFilmStyleTask } from './filmstyle';
 import {
   DecodeError,
@@ -53,6 +53,7 @@ import { SkillsState, installSkills, skillsAPI, skillsInstallAPI } from './skill
 import { TaskState, loadPersistedTasks, runStudioOp, runWriteTask, taskFeatureAPI, tasksAPI, writeTaskError } from './tasks';
 import { uploadsAPI } from './uploads';
 import * as flow from '../flow';
+import * as plugin from '../plugin';
 
 export interface Config {
   projectPath?: string;
@@ -332,7 +333,6 @@ export class Server {
       ['/station-ui/', (r, rest) => stationUIAPI(this, r, rest)],
       ['/station-media/', (r, rest) => stationMediaAPI(this, r, rest)],
       ['/api/assets', () => this.assetsAPI()],
-      ['/api/publish', () => publishAPI(this)],
       ['/api/scenes/', (r, rest) => sceneFeatureAPI(this, r, rest)],
       ['/api/tasks', (r) => tasksAPI(this, r)],
       ['/api/tasks/', (r, rest) => taskFeatureAPI(this, r, rest)],
@@ -375,6 +375,8 @@ export class Server {
       ['/api/setup', (r) => setupAPI(r, this.projectRoot())],
       ['/api/setup/run', (r) => setupRunAPI(r, this.projectRoot())],
       ['/api/setup/cancel', (r) => setupCancelAPI(r)],
+      // 内置插件在 apply 里登记的接口（例如发布页的 /api/publish）。
+      ...plugin.pluginRoutes().map(({ value: route }): [string, Handler] => [route.pattern, (r, rest) => route.handle(this, r, rest)]),
     ];
   }
 

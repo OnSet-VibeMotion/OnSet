@@ -1,5 +1,6 @@
 export * from './types';
 export { builtinFlows, builtinStations, productionPrompt, stageTitles } from './builtin';
+export { allFlows, allStageTitles, allStations, productionOrder } from './registered';
 export { chineseNumber, composeProduction, composePrompt, detectFlow, flow, gateFiles, route, station, stationOfPath, type RouteStop, type SectionReader } from './flow';
 export {
   addToProject,

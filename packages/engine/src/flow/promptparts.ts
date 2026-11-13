@@ -4,7 +4,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { stageTitles } from './builtin';
+import { allStageTitles } from './registered';
 import type { LoadedStation } from './lock';
 import { pageTab, toolName } from './pages';
 
@@ -43,6 +43,7 @@ export function applyPluginMarkers(text: string, disabled: ReadonlySet<string>):
 export function insertStageSections(prompt: string, stations: readonly LoadedStation[]): string {
   let out = prompt;
   const orphans: string[] = [];
+  const stageTitles = allStageTitles();
   for (const s of stations) {
     for (const ins of s.manifest.inserts) {
       const body = fs.readFileSync(path.join(s.dir, ins.file), 'utf8').trim();
