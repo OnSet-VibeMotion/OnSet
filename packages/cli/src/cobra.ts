@@ -359,6 +359,8 @@ export interface CommandOptions {
   aliases?: string[];
   version?: string;
   hidden?: boolean;
+  /** 不解析参数，原样交给 runE（cobra DisableFlagParsing）；--help 也一并转交。 */
+  disableFlagParsing?: boolean;
   args?: PositionalArgs;
   runE?: (cmd: Command, args: string[]) => void | Promise<void>;
 }
@@ -373,6 +375,7 @@ export class Command {
   aliases: string[];
   version: string;
   hidden: boolean;
+  disableFlagParsing: boolean;
   args?: PositionalArgs;
   runE?: (cmd: Command, args: string[]) => void | Promise<void>;
   parent?: Command;
@@ -391,6 +394,7 @@ export class Command {
     this.aliases = options.aliases ?? [];
     this.version = options.version ?? '';
     this.hidden = options.hidden ?? false;
+    this.disableFlagParsing = options.disableFlagParsing ?? false;
     this.args = options.args;
     this.runE = options.runE;
   }
@@ -632,6 +636,10 @@ export class Command {
       return;
     }
     cmd.initDefaultFlags();
+    if (cmd.disableFlagParsing && cmd.runnable()) {
+      await cmd.runE!(cmd, rest);
+      return;
+    }
     const positional = cmd.parseFlags(rest);
     if (cmd.local.lookup('help')?.changed && helpRequested(cmd)) {
       cmd.outOrStdout().write(cmd.helpString());

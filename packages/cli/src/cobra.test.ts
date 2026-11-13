@@ -95,3 +95,14 @@ describe('durations', () => {
     }
   });
 });
+
+describe('disableFlagParsing', () => {
+  it('passes every argument through, --help included', async () => {
+    let got: string[] = [];
+    const root = new Command({ use: 'am' });
+    root.persistentFlags().boolVar(ref(false), 'unsafe', false, 'x');
+    root.addCommand(new Command({ use: 'hyperframes [ARGS...]', disableFlagParsing: true, runE: (_c, a) => void (got = a) }));
+    await root.execute(['hyperframes', 'render', '--quality', 'high', '--help']);
+    expect(got).toEqual(['render', '--quality', 'high', '--help']);
+  });
+});
