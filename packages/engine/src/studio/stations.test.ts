@@ -2,7 +2,7 @@ import './testsupport';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { addToProject, fetchStation, setBuiltinEnabled } from '../flow';
+import { addToProject, fetchStation } from '../flow';
 import { onStudioEvent } from './events';
 import { emitStationHook, pageCSP, tickStationSchedules } from './stations';
 import { newSessionFixture, send, studioRequest } from './testsupport';
@@ -10,32 +10,22 @@ import { newSessionFixture, send, studioRequest } from './testsupport';
 const fake = path.join(__dirname, '..', 'flow', 'testdata', 'fake-publisher');
 
 describe('stations API', () => {
-  it('hides the pages of a builtin plugin the project turned off, unless another station takes its step', async () => {
-    const f = newSessionFixture();
-    let { body } = await studioRequest(f.s, 'GET', '/api/stations');
-    expect(body.hidden_pages).toEqual([]);
-    setBuiltinEnabled(f.root, 'publishing', false);
-    ({ body } = await studioRequest(f.s, 'GET', '/api/stations'));
-    expect(body.hidden_pages).toEqual(['publish']);
-    // 假发布在发布这一步放了站点：发布页照样要有。
-    addToProject(f.root, fetchStation(`link:${fake}`, process.env).entry);
-    ({ body } = await studioRequest(f.s, 'GET', '/api/stations'));
-    expect(body.hidden_pages).toEqual([]);
-  });
-
   it('lists the stations of the project with their prompt, stops and ops', async () => {
     const f = newSessionFixture();
     let { status, body } = await studioRequest(f.s, 'GET', '/api/stations');
     expect(status).toBe(200);
     expect(body.problems).toEqual([]);
-    expect(body.stations.map((x: { id: string; builtin: boolean; enabled: boolean }) => [x.id, x.builtin, x.enabled])).toEqual([
-      ['algorithmic-art', true, true],
-      ['beat', true, true],
-      ['cast', true, true],
-      ['publishing', true, true],
-      ['song', true, true],
-      ['text-to-lottie', true, true],
+    expect(body.stations.map((x: { id: string; builtin: boolean }) => [x.id, x.builtin])).toEqual([
+      ['algorithmic-art', true],
+      ['beat', true],
+      ['cast', true],
+      ['publishing', true],
+      ['song', true],
+      ['text-to-lottie', true],
     ]);
+    // 内置插件常开：没有开关，也没有「因为关掉而藏起来的页面」。
+    expect(body).not.toHaveProperty('hidden_pages');
+    for (const b of body.stations) expect(b).not.toHaveProperty('enabled');
 
     addToProject(f.root, fetchStation(`link:${fake}`, process.env).entry);
     addToProject(f.root, { id: 'gone', version: '1', source: 'link:/nonexistent/station', commit: '', digest: '' });

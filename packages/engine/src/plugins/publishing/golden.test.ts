@@ -34,22 +34,14 @@ function project(files: Record<string, string> = {}): string {
 const rule = (r: flow.PathRule) => ({ path: r.path, prefix: r.prefix, base: r.base?.source });
 const routeJSON = (stops: flow.RouteStop[]) => stops.map(({ station, node }) => ({ station, ...node, produces: node.produces?.map(rule) }));
 
-function setDisabled(root: string, off: boolean): void {
-  if (off) flow.setBuiltinEnabled(root, 'publishing', false);
-}
-
 async function collect(): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = {};
   // 制作提示词不在这里钉：它按流程组合，门禁与金样在 project/flowprompts.test.ts。
   // 路线、文件归站、关卡、阶段标题。
-  for (const off of [false, true]) {
-    const root = project();
-    setDisabled(root, off);
-    const extras = flow.projectExtras(root);
-    for (const id of ['speech', 'beat']) {
-      out[`route:${id}:${off ? 'off' : 'on'}`] = routeJSON(flow.route(id, extras));
-      out[`owner:${id}:${off ? 'off' : 'on'}`] = ['publish.md', 'covers/douyin-4x3.png', 'production/approval.json'].map((p) => flow.stationOfPath(p, id, extras));
-    }
+  const extras = flow.projectExtras(project());
+  for (const id of ['speech', 'beat']) {
+    out[`route:${id}`] = routeJSON(flow.route(id, extras));
+    out[`owner:${id}`] = ['publish.md', 'covers/douyin-4x3.png', 'production/approval.json'].map((p) => flow.stationOfPath(p, id, extras));
   }
   out.gateFiles = flow.gateFiles();
   // 只看发布插件的站（后来歌曲讲解插件登记了自己的站 song-prompt，与发布无关）。
@@ -64,18 +56,15 @@ async function collect(): Promise<Record<string, unknown>> {
     broken: { 'publish.md': '---\n: [\n---\n' },
   };
   for (const [name, files] of Object.entries(states)) {
-    for (const off of [false, true]) {
-      const root = project(files);
-      setDisabled(root, off);
-      const got = computeStations(root, discoverScenes(root));
-      out[`progress:${name}:${off ? 'off' : 'on'}`] = {
-        mode: got.mode,
-        current: got.current,
-        waiting_on: got.waiting_on,
-        stations: got.stations.map((s) => ({ id: s.id, status: s.status, detail: s.detail ?? '', page: s.page ?? '', step: s.step })),
-      };
-      out[`progress-turns:${name}:${off ? 'off' : 'on'}`] = readProgress(root).turns;
-    }
+    const root = project(files);
+    const got = computeStations(root, discoverScenes(root));
+    out[`progress:${name}`] = {
+      mode: got.mode,
+      current: got.current,
+      waiting_on: got.waiting_on,
+      stations: got.stations.map((s) => ({ id: s.id, status: s.status, detail: s.detail ?? '', page: s.page ?? '', step: s.step })),
+    };
+    out[`progress-turns:${name}`] = readProgress(root).turns;
   }
   // 界面的页面表与专门页面。
   out.viewPage = studioview.viewPage('publish') ?? null;

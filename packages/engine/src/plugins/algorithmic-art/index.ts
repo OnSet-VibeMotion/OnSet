@@ -1,7 +1,6 @@
 /**
  * 内置插件「生成式艺术」（algorithmic-art）：登记渲染技能 algorithmic-art 与它在镜头提示词里的那一段。
- * 技能本体随项目骨架下发（assets/shared/.agents/skills/algorithmic-art/）。项目关掉这个插件时，渲染器拿不到它、
- * 提示词里也没有这一段（已渲染的镜头因此变成要重渲染，这是对的：渲染输入变了）。
+ * 技能本体随项目骨架下发（assets/shared/.agents/skills/algorithmic-art/），每个镜头都带。
  */
 import path from 'node:path';
 import type { BuiltinPlugin } from '../../plugin/types';

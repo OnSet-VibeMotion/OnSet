@@ -42,26 +42,21 @@ describe('ops registered by builtin plugins', () => {
       const tool = describeTools('orchestrator').find((t) => t.name === 'fake_echo');
       expect(tool?.inputSchema.required).toEqual(['text']);
       expect(tool?.help).toContain('fake_echo({"text": "hi"})');
-      // 项目关掉它时工具列表里没有。
-      const root = tempDir();
-      fs.writeFileSync(path.join(root, 'article-to-motion.flow.json'), JSON.stringify({ version: 1, stations: [], disabled: ['fake-echo'] }));
-      expect(describeTools('orchestrator', root).some((t) => t.name === 'fake_echo')).toBe(false);
+      // 项目里同样有（内置插件常开）。
+      expect(describeTools('orchestrator', tempDir()).some((t) => t.name === 'fake_echo')).toBe(true);
     } finally {
       undo();
     }
     expect(findOp('fake_echo')).toBeUndefined();
   });
 
-  it('the tool list drops a builtin plugin\'s tools when the project turns it off', () => {
+  it('the tool list of every project carries every builtin plugin\'s tools', () => {
+    const listed = describeTools('orchestrator', tempDir()).map((t) => t.name);
     for (const id of ['song', 'cast', 'publishing']) {
       const names = plugin.pluginOps().filter((o) => o.owner === id).map((o) => o.value.name);
       expect(names.length, id).toBeGreaterThan(0);
-      const root = tempDir();
-      const listed = describeTools('orchestrator', root).map((t) => t.name);
       for (const name of names) expect(listed, name).toContain(name);
-      fs.writeFileSync(path.join(root, 'article-to-motion.flow.json'), JSON.stringify({ version: 1, stations: [], disabled: [id] }));
-      const off = describeTools('orchestrator', root).map((t) => t.name);
-      for (const name of names) expect(off, name).not.toContain(name);
     }
   });
+
 });

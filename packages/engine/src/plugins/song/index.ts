@@ -1,7 +1,7 @@
 /**
  * 内置插件「歌曲讲解」（song）的进程内登记：流程 song 与它的制作提示词段落、song_* 操作与 validate_song（ops.ts）、
- * 渲染技能 song-explainer（skill.ts）、镜头的 song 块（block.ts）、渲染与拼接前的整批检查，以及「项目里有 song.yaml
- * 就不许关」。引擎里的歌曲实现（song/）仍在原包里，这里引用它。
+ * 渲染技能 song-explainer（skill.ts）、镜头的 song 块（block.ts）、渲染与拼接前的整批检查，以及在用判断（项目里有
+ * song.yaml，新建时的互斥据此判断）。引擎里的歌曲实现（song/）仍在原包里，这里引用它。
  *
  * 流程 song 的提示词只有一段 main（assets/plugins/song/sections/main.md）：歌曲讲解的完整制作说明。
  */

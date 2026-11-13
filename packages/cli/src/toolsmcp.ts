@@ -155,11 +155,8 @@ export function callTarget(tool: ToolDef, params: ParamValues): { name: string; 
 export function describeTools(profile: Profile, root = ''): ToolDef[] {
   const out: ToolDef[] = [];
   const extras = profile === 'orchestrator' && root !== '' ? externalOps(root) : [];
-  // 项目关掉的内置插件登记的操作不给（例如关掉歌曲讲解，song_* 都不出现）。
-  const hidden = root !== '' ? flow.disabledPluginOps(root) : new Set<string>();
   for (const { op, external } of [...allOps().map((op) => ({ op, external: undefined as ToolDef['external'] })), ...extras]) {
     if (!external && !opScopes(op).includes(profile)) continue;
-    if (!external && hidden.has(op.name)) continue;
     const properties: Record<string, JSONSchema> = {};
     const required: string[] = [];
     for (const [key, spec] of visibleParams(op)) {

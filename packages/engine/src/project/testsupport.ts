@@ -40,21 +40,19 @@ export function builtinFlowIDs(): string[] {
     .map((f) => f.id);
 }
 
-/** 按流程组合出的制作提示词（不加任何项目里的站）；disabled 是关掉的内置插件的站。 */
-export function composeFor(id: string, canvas: string, disabled: readonly string[] = []): string {
+/** 按流程组合出的制作提示词（不加任何项目里的站）。 */
+export function composeFor(id: string, canvas: string): string {
   const p = preset.byID(canvas);
   if (!p) throw new Error(`没有画幅 ${canvas}`);
-  return flow.composeFlowPrompt({ flow: id, stations: [], disabled: new Set(disabled), canvas: (t) => substituteCanvas(p, t) });
+  return flow.composeFlowPrompt({ flow: id, stations: [], canvas: (t) => substituteCanvas(p, t) });
 }
 
-/** 每个内置流程 × 每个画幅 × 发布开与关的组合结果，给对全部提示词成立的门禁用。 */
+/** 每个内置流程 × 每个画幅的组合结果，给对全部提示词成立的门禁用。 */
 export function everyBuiltinPrompt(): { name: string; flow: string; canvas: string; text: string }[] {
   const out: { name: string; flow: string; canvas: string; text: string }[] = [];
   for (const id of builtinFlowIDs()) {
     for (const p of preset.all()) {
-      for (const disabled of [[], ['publish']]) {
-        out.push({ name: `${id}/${p.id}${disabled.length ? '（关掉发布）' : ''}`, flow: id, canvas: p.id, text: composeFor(id, p.id, disabled) });
-      }
+      out.push({ name: `${id}/${p.id}`, flow: id, canvas: p.id, text: composeFor(id, p.id) });
     }
   }
   return out;

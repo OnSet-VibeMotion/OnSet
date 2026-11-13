@@ -2,7 +2,7 @@
  * 按流程组合制作提示词：段落按流程的顺序拼起来，`{{STAGE:…}}` 按这个流程自己的阶段先后编号。
  * 这是制作提示词唯一的来源（project.runPrompt 经 composeFlowPrompt），项目里不放提示词文件。组合时：
  *
- * - 关掉的内置插件的站整个不参与，阶段编号自然连续；
+ * - 内置插件的站按流程声明的段落顺序参与（流程里没有它的段落就不出现），阶段编号按出现先后连续；
  * - 第三方站的 inserts 作为段落插在那个阶段的末尾（找不到这个阶段时接在最后并注明），prompt 接在最后；
  * - 第三方站带来的流程（x:<站>）：公共约定（口播流程第一个阶段之前的那几段）在前，stations 里写的内置站复用内置站的段落，
  *   本站自己那一节是它清单里的 flow.prompt。内置站的段落引用了这个流程没有的阶段时写成「<标题>」那一步
@@ -116,10 +116,8 @@ export function composePrompt(order: readonly string[], read: SectionReader, opt
 
 export interface FlowComposeInput {
   flow: FlowID;
-  /** 项目加的站（loadProjectStations：没关掉的内置插件与第三方站）。 */
+  /** 项目加的站（loadProjectStations：内置插件与第三方站）。 */
   stations: readonly LoadedStation[];
-  /** 这个项目关掉的内置插件的站（disabledPluginStations）：它们的段落不参与。 */
-  disabled: ReadonlySet<string>;
   /** 宿主与内置插件段落的画幅占位符替换（第三方站的文字不经过它）。 */
   canvas: (text: string) => string;
   read?: SectionReader;
@@ -166,7 +164,6 @@ export function composeFlowPrompt(input: FlowComposeInput): string {
         });
         continue;
       }
-      if (input.disabled.has(sid)) continue;
       for (const ref of stationSections(sid)) if (!preamble.includes(ref)) parts.push(builtinPart(ref));
     }
     const titles = allStageTitles();
@@ -178,7 +175,7 @@ export function composeFlowPrompt(input: FlowComposeInput): string {
     if (def.stage_aliases) opts.aliases = def.stage_aliases;
     appended = appendedSections(input.flow);
     for (const ref of flowPrompt(input.flow)) {
-      if (input.disabled.has(ref.slice(0, ref.indexOf('/'))) || appended.includes(ref)) continue;
+      if (appended.includes(ref)) continue;
       parts.push(builtinPart(ref));
     }
   }
@@ -200,10 +197,7 @@ export function composeFlowPrompt(input: FlowComposeInput): string {
     }
   }
   if (orphans.length > 0) parts.push({ ref: '', raw: true, append: true, text: orphans.join('\n\n') });
-  for (const ref of appended) {
-    if (input.disabled.has(ref.slice(0, ref.indexOf('/')))) continue;
-    parts.push({ ...builtinPart(ref), append: true });
-  }
+  for (const ref of appended) parts.push({ ...builtinPart(ref), append: true });
   // 第三方站各自的说明接在最后。
   const extra = extraPrompt(input.stations.filter((s) => !s.builtin));
   if (extra !== '') parts.push({ ref: '', raw: true, append: true, text: extra });

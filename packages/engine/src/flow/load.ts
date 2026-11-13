@@ -1,8 +1,8 @@
 /**
- * 读出项目加的站（第三方站加上没关掉的内置插件）、路线用的站、项目选用的流程。
+ * 读出项目加的站（内置插件加上第三方站）、路线用的站、项目选用的流程。
  */
 import fs from 'node:fs';
-import { builtinPlugins, disabledPluginStations } from './builtinplugins';
+import { builtinPlugins } from './builtinplugins';
 import { treeDigest } from './digest';
 import { checkFiles, readManifest, sourceDir } from './fetch';
 import { readLock, writeLock, type LoadedStation, type Lock } from './lock';
@@ -35,20 +35,13 @@ export function loadProjectStations(root: string, env: Record<string, string | u
       problems.push(`第三方站 ${entry.id}：${(err as Error).message}`);
     }
   }
-  // 内置插件：默认启用，项目关掉的（锁文件 disabled）不算。排在第三方站前面，按 id 排序。
-  const disabled = new Set(lock.disabled ?? []);
-  const builtins = builtinPlugins().filter((b) => !disabled.has(b.manifest.id));
-  return { stations: [...builtins, ...out], problems };
+  // 内置插件常开，排在第三方站前面，按 id 排序。
+  return { stations: [...builtinPlugins(), ...out], problems };
 }
 
 /** 项目路线用的第三方站。 */
 export function projectExtras(root: string, env: Record<string, string | undefined> = process.env): ExtraStation[] {
-  const extras = loadProjectStations(root, env).stations.map((s) => toExtra(s.manifest));
-  // 关掉的内置插件登记的站：用一个没有站点的站顶替，路线上就没有它了。排在最后：第三方站顶替了同一个站时以第三方为准。
-  for (const sid of disabledPluginStations(root)) {
-    extras.push({ station: { id: `off:${sid}`, name: '', nodes: [], prompt: [] }, after: '', replaces: sid });
-  }
-  return extras;
+  return loadProjectStations(root, env).stations.map((s) => toExtra(s.manifest));
 }
 
 /** 选用某个站带来的流程（id 为空回到内置流程）。 */

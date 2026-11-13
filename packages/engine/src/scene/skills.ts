@@ -111,15 +111,9 @@ export const registeredSkills: readonly SkillDescriptor[] = [
   },
 ];
 
-/** 宿主的技能加上全部内置插件登记的技能（不论哪个项目关没关）：技能树门禁按它查。 */
+/** 宿主的技能加上全部内置插件登记的技能：技能树门禁按它查，每个镜头都带。 */
 export function allSkills(): SkillDescriptor[] {
   return [...registeredSkills, ...pluginSkills().map((p) => p.value)];
-}
-
-/** 镜头所在项目实际用的技能：宿主的，加上项目没关掉的内置插件登记的。 */
-export function sceneSkills(sceneDir: string): SkillDescriptor[] {
-  const off = flow.disabledBuiltins(sceneDir);
-  return [...registeredSkills, ...pluginSkills().filter((p) => !off.has(p.owner)).map((p) => p.value)];
 }
 
 /** 一个渲染工具的技能目录：家目录级与项目级的相对路径可能不同。 */
@@ -244,8 +238,7 @@ export function resolveAllSkills(
   film: SceneFilmInput | null = null,
 ): Record<string, string> {
   const result: Record<string, string> = {};
-  // 项目关掉的内置插件登记的技能不在 sceneSkills 里：不给渲染器，提示词里也没有那一段。
-  for (const desc of sceneSkills(sceneDir)) {
+  for (const desc of allSkills()) {
     const dir = resolveSkill(renderer, sceneDir, environ, desc);
     if (dir !== '') result[desc.name] = dir;
   }

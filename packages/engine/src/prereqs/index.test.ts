@@ -50,7 +50,7 @@ describe('prereqs', () => {
   it('picks tools from the project config, then the environment, then the defaults', () => {
     const project = fs.mkdtempSync(path.join(os.tmpdir(), 'am-prereqs-project-'));
     fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\nTTS_PROVIDER=tencent\nALIGN_PROVIDER=funasr\n');
-    expect(selection({ HOME: project }, project)).toEqual({ tts: 'tencent', align: 'funasr', root: project });
+    expect(selection({ HOME: project }, project)).toEqual({ tts: 'tencent', align: 'funasr' });
     expect(selection({ TTS_PROVIDER: 'edge', ALIGN_PROVIDER: 'mlx' })).toEqual({ tts: 'edge', align: 'mlx' });
     expect(selection({ TTS_PROVIDER: 'nope' }).tts).toBe(defaultTTSProvider());
   });

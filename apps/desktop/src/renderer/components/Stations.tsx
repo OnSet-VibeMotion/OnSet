@@ -230,31 +230,19 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
       <section className="stations builtin-stations" aria-label="内置功能">
         <div className="stations-head">
           <strong>内置功能</strong>
-          <span>ArticleToMotion 自带、默认打开的功能。这个项目用不到的可以关掉，AI 就不会再看到它的工具和说明。</span>
+          <span>ArticleToMotion 自带的功能，每个项目都有。用不用得上由片子的做法决定，点「详情」看它带了什么。</span>
         </div>
         <ul className="stations-list">
           {builtins.map((s) => (
-            <li key={s.id} className={'station-card' + (s.enabled ? '' : ' off')} data-builtin={s.id}>
+            <li key={s.id} className="station-card" data-builtin={s.id}>
               <div className="station-row">
                 <span className="station-icon">
                   <PluginGlyph />
                 </span>
                 <div className="station-title">
                   <strong>{s.name}</strong>
-                  <span>{s.busy ? `${s.description} · 这个项目正在用（有 ${s.busy}）` : s.description}</span>
-                  {s.affects_render && !s.busy && <em className="station-needs">开关后，已经渲染的镜头要重新渲染</em>}
+                  <span>{s.description}</span>
                 </div>
-                <label className="station-switch" title={s.busy ? '这个项目正在用，不能关' : undefined}>
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    aria-label={`${s.name}在这个项目里打开`}
-                    checked={s.enabled}
-                    disabled={s.busy !== ''}
-                    onChange={(e) => run(`/api/stations/${encodeURIComponent(s.id)}/enabled`, { enabled: e.target.checked })}
-                  />
-                  <span>{s.enabled ? '打开' : '关闭'}</span>
-                </label>
                 {s.contents && (
                   <button className="link" onClick={() => setOpen(open === s.id ? '' : s.id)}>
                     {open === s.id ? '收起' : '详情'}

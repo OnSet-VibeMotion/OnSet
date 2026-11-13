@@ -1,6 +1,6 @@
 /**
  * 项目里的 article-to-motion.flow.json（LockFile）：记下这个项目加了哪些第三方站、从哪来、内容摘要，
- * 选用了哪个站带来的流程，关掉了哪些内置插件。
+ * 新建时记下的流程，选用了哪个站带来的流程。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -39,8 +39,6 @@ export interface Lock {
   production?: FlowRecord;
   /** 选用了哪个站带来的流程（站 id）；空是内置流程。 */
   flow?: string;
-  /** 这个项目关掉的内置插件。 */
-  disabled?: string[];
   stations: LockEntry[];
 }
 
@@ -74,16 +72,12 @@ export function readLock(root: string): Lock {
     out.production = { id: rec.id, canvas: typeof rec.canvas === 'string' ? rec.canvas : '' };
   }
   if (typeof raw.flow === 'string' && raw.flow !== '') out.flow = raw.flow;
-  if (Array.isArray(raw.disabled)) {
-    const disabled = raw.disabled.filter((x): x is string => typeof x === 'string').sort(compareBytes);
-    if (disabled.length > 0) out.disabled = disabled;
-  }
   return out;
 }
 
 export function writeLock(root: string, lock: Lock): void {
   const file = path.join(root, LockFile);
-  if (lock.stations.length === 0 && !lock.flow && !lock.production && !(lock.disabled ?? []).length) {
+  if (lock.stations.length === 0 && !lock.flow && !lock.production) {
     fs.rmSync(file, { force: true });
     return;
   }

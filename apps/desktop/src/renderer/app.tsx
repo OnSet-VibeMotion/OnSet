@@ -133,16 +133,11 @@ export function App() {
   const flowDecl = state?.flow;
   const flowHidden = useMemo(() => flowDecl?.hidden_pages ?? [], [flowDecl]);
   const landPage = (flowDecl?.land_page ?? '') as Tab | '';
-  /**
-   * 内置插件的页面里这个项目用不上的（后端 /api/stations 的 hidden_pages：插件关了、也没有别的站接手），
-   * 顶栏不显示这一页与同名的步骤（例如关掉「发布」时没有发布这一步）。
-   */
-  const [hiddenPages, setHiddenPages] = useState<string[]>([]);
-  const steps = useMemo(() => ((flowDecl?.steps ?? stepTabs) as Tab[]).filter((t, i) => i === 0 || !hiddenPages.includes(t)), [flowDecl, hiddenPages]);
-  // 这个项目用得上的内置插件页面（后端页面表里有、流程与插件开关都没藏起来）：它们的提示条（例如卡点的节拍提示）挂在面板顶上。
+  const steps = useMemo(() => (flowDecl?.steps ?? stepTabs) as Tab[], [flowDecl]);
+  // 这个项目用得上的内置插件页面（后端页面表里有、流程没藏起来）：它们的提示条（例如卡点的节拍提示）挂在面板顶上。
   const pluginPages = useMemo(
-    () => (state?.pages ?? []).map((pg) => pg.id).filter((id) => pageView(id) !== undefined && !flowHidden.includes(id) && !hiddenPages.includes(id)),
-    [state, flowHidden, hiddenPages],
+    () => (state?.pages ?? []).map((pg) => pg.id).filter((id) => pageView(id) !== undefined && !flowHidden.includes(id)),
+    [state, flowHidden],
   );
   // 整片制作现在在哪一步（编排工具每轮结束前用 studio_step 标的，没标过时按产物推），顶栏据此标出进度。
   // 第一步可能换成了第三方流程的页面：流程声明里算第一步的标记（口播稿、节拍）都落在第一步上。
@@ -280,7 +275,6 @@ export function App() {
       ]);
       setStationPages(sts.stations);
       setPluginVerbs(sts.stations.flatMap((x) => x.contents?.ops ?? []));
-      setHiddenPages(sts.hidden_pages ?? []);
       // 只用来嵌进别的页面的小窗不单独列。
       setPluginTabs(
         sts.stations.flatMap((x) =>
@@ -731,7 +725,6 @@ export function App() {
         {currentId && !homeOpen && (
           <nav className="more-pages" aria-label="更多页面">
             {visibleTabs(flowHidden, state?.pages)
-              .filter(([id]) => !hiddenPages.includes(id))
               .filter(([id]) => !steps.includes(id))
               .map(([id, label]) => (
                 <button key={id} data-tab={id} className={tab === id && panelOpen ? 'on' : ''} aria-current={tab === id && panelOpen ? 'page' : undefined} onClick={() => showTab(id)}>

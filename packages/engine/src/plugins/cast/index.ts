@@ -7,7 +7,7 @@
  * | 渲染技能 | character-rig（skill.ts）：角色驱动库与它在镜头提示词里的那一段 |
  * | 镜头扩展块 | scene.json 的 cast 块（block.ts）：校验、角色段提示词、角色包摘要进指纹 |
  * | 叙事模式 | cast：新建项目时写出 cast.yaml 与空的 cast/（scaffold.ts） |
- * | 在用判断 | 项目里有 cast.yaml 就不许关 |
+ * | 在用判断 | 项目里有 cast.yaml 就算在用（新建时与卡点、歌曲讲解互斥据此判断） |
  * | 提示词段落 | 站 cast-rules（没有站点，只进口播流程）：口播稿阶段末尾一句指向附录（pointer），文末「附：多角色叙事作业规程」（addendum） |
  *
  * 引擎里的角色包格式（cast/）、对白（dialogue/）与节拍切分（castbeats/）仍在原包里，这里引用它们。
@@ -48,7 +48,7 @@ export const castPlugin: BuiltinPlugin = {
       canvas: 'vertical-3x4',
       example: '用两个角色一问一答的方式讲这件事，一个好奇一个专业',
     });
-    // 多角色的作业规程是口播制作提示词的一部分：关掉多角色对话，这两段也不组合进去。
+    // 多角色的作业规程是口播制作提示词的一部分（只进口播流程）。
     ctx.station({
       // 站 id 不能与插件 id 相同。
       id: 'cast-rules',

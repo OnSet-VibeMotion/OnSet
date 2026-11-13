@@ -261,61 +261,31 @@ test('a plugin can bring a whole flow, a voice, a style library, and send a mess
   await expect.poll(() => JSON.parse(fs.readFileSync(lock, 'utf8')).flow).toBeUndefined();
 });
 
-test('builtin features are plugins too: on by default, off per project, locked while in use', async ({ page, project }) => {
+test('builtin features are plugins too: always on, listed with what they bring, no switch', async ({ page, project }) => {
   await openProject(page, project);
   await page.locator('#settings-trigger').click();
   const builtin = page.locator('#settings-dialog section[aria-label="内置功能"]');
   const song = builtin.locator('li[data-builtin="song"]');
   await expect(song).toContainText('歌曲讲解');
-  const toggle = song.getByRole('switch');
-  await expect(toggle).toBeChecked();
+  // 内置功能常开：没有开关，也不提醒重新渲染。
+  await expect(builtin.getByRole('switch')).toHaveCount(0);
+  await expect(builtin).not.toContainText('重新渲染');
   // 内置的不算第三方，也不能去掉。
   await expect(song).not.toContainText('第三方');
   await expect(song.getByRole('button', { name: '去掉' })).toHaveCount(0);
   await builtin.scrollIntoViewIfNeeded();
   await page.screenshot({ path: test.info().outputPath('builtin-features.png') });
 
-  const lock = path.join(project.path, 'article-to-motion.flow.json');
-  // 开关是写任务：点了之后等它写完、界面刷新再看。
-  await toggle.click();
-  await expect.poll(() => (fs.existsSync(lock) ? JSON.parse(fs.readFileSync(lock, 'utf8')).disabled : null)).toEqual(['song']);
-  await expect(song).toHaveClass(/off/);
-  await expect(toggle).not.toBeChecked();
-  await toggle.click();
-  // 打开回来：锁文件里只剩新建时记下的流程。
-  await expect.poll(() => JSON.parse(fs.readFileSync(lock, 'utf8')).disabled ?? null).toBe(null);
-  await expect(toggle).toBeChecked();
-
-  // 登记了渲染技能或镜头扩展块的内置功能提醒开关会让镜头重渲染；发布只有站、操作与页面，不提醒。
   await expect(builtin.locator('li[data-builtin]')).toHaveCount(6);
-  await expect(builtin.locator('li[data-builtin="algorithmic-art"]')).toContainText('已经渲染的镜头要重新渲染');
   await expect(builtin.locator('li[data-builtin="cast"]')).toContainText('多角色对话');
-  await expect(song).toContainText('重新渲染');
-  await expect(builtin.locator('li[data-builtin="publishing"]')).not.toContainText('重新渲染');
   // 「详情」照实列出这个功能在 ArticleToMotion 里登记了什么。
   const cast = builtin.locator('li[data-builtin="cast"]');
   await cast.getByRole('button', { name: '详情' }).click();
   await expect(cast.locator('.builtin-detail')).toContainText('character-rig');
   await expect(cast.locator('.builtin-detail')).toContainText('校验多角色项目');
   await cast.getByRole('button', { name: '收起' }).click();
-
-  // 关掉「发布」：顶栏没有发布这一步；打开又回来。
+  // 口播项目的顶栏有发布这一步。
   await expect(page.locator('.steps [data-tab="publish"]')).toBeAttached();
-  const publishing = builtin.locator('li[data-builtin="publishing"]');
-  await publishing.getByRole('switch').click();
-  await expect.poll(() => (fs.existsSync(lock) ? JSON.parse(fs.readFileSync(lock, 'utf8')).disabled : null)).toEqual(['publishing']);
-  await expect(page.locator('.steps [data-tab="publish"]')).toHaveCount(0);
-  await expect(page.locator('.more-pages [data-tab="publish"]')).toHaveCount(0);
-  await publishing.getByRole('switch').click();
-  await expect.poll(() => JSON.parse(fs.readFileSync(lock, 'utf8')).disabled ?? null).toBe(null);
-  await expect(page.locator('.steps [data-tab="publish"]')).toBeAttached();
-
-  // 项目正在用歌曲讲解：开关锁住。
-  fs.writeFileSync(path.join(project.path, 'song.yaml'), 'provider: none\n');
-  await page.locator('#settings-dialog').getByRole('button', { name: '关闭' }).click();
-  await page.locator('#settings-trigger').click();
-  await expect(page.locator('#settings-dialog li[data-builtin="song"]').getByRole('switch')).toBeDisabled();
-  await expect(page.locator('#settings-dialog li[data-builtin="song"]')).toContainText('这个项目正在用（有 song.yaml）');
 });
 
 test('files a plugin op writes outside what it declared are shown as a warning', async ({ page, project }) => {

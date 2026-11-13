@@ -9,11 +9,11 @@ import { blockPromptSections, blockValue, sceneBlocks, verifyBlockInputs } from 
 import { formatGPrecision } from './gofmt';
 import { ptrTo, sliceOf, topLevelKeys, unmarshal, type FieldType, type StructType } from './jsondecode';
 import {
+  allSkills,
   FilmStyleOwnKey,
   pluginSkillSection,
   filmStyleSection,
   sceneFilmStyleSection,
-  sceneSkills,
   skillPromptSections,
   styleShiftSection,
 } from './skills';
@@ -602,7 +602,7 @@ export function buildPrompt(s: Scene, resolvedSkills: Record<string, string> | n
     timing +
     styleShiftSection(s, resolved) +
     '\n' +
-    skillPromptSections(resolved, sceneSkills(s.directory)) +
+    skillPromptSections(resolved, allSkills()) +
     pluginSkillSection(resolved) +
     determinismSection +
     memorySection(s) +
