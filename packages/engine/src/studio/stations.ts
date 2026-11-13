@@ -538,7 +538,14 @@ const pageHeaders = (stationID: string, network: readonly string[] = []): Record
   'Referrer-Policy': 'no-referrer',
 });
 
-/** 插件页面的辅助脚本：页面里 <script src="/station-ui/_sdk.js"> 后用 window.am。协议见 StationPage.tsx。 */
+/** 页面请求等宿主回应（回答或 ack）的上限。读文件、看项目都在本机，几百毫秒内就回。 */
+export const pageHostTimeoutMs = 15_000;
+
+/**
+ * 插件页面的辅助脚本：页面里 <script src="/station-ui/_sdk.js"> 后用 window.am。宿主一侧是
+ * apps/desktop 的 Stations.tsx（StationFrame）：请求 {am:'station', id, type, …}，回答 {am:'host', id, ok, result|error}，
+ * 执行类请求先回 {am:'host', id, ack:true}，项目变化时发 {am:'host', type:'refresh'}。
+ */
 export const pageSDK = `// ArticleToMotion 插件页面 SDK：页面在沙箱里，只能经宿主读文件、执行操作、往对话框填字。
 (() => {
   // 本站 id：页面地址 /station-ui/<站>/…
@@ -546,6 +553,8 @@ export const pageSDK = `// ArticleToMotion 插件页面 SDK：页面在沙箱里
   let seq = 0;
   const pending = new Map();
   const refreshers = [];
+  // 宿主在这么久里既没回答、也没说「收到了，在等用户确认」，就当请求没送到，给页面一个清楚的错误。
+  const HOST_TIMEOUT_MS = ${pageHostTimeoutMs};
   window.addEventListener('message', (e) => {
     if (e.source !== window.parent) return;
     const m = e.data;
@@ -556,12 +565,19 @@ export const pageSDK = `// ArticleToMotion 插件页面 SDK：页面在沙箱里
     }
     const p = pending.get(m.id);
     if (!p) return;
+    clearTimeout(p.timer);
+    // 执行类请求（run、call、send）先回一条 ack：宿主已经弹出确认条，等用户多久都不算超时。
+    if (m.ack) return;
     pending.delete(m.id);
     if (m.ok) p.resolve(m.result); else p.reject(new Error(m.error || '宿主拒绝了这个请求'));
   });
   const call = (type, payload) => new Promise((resolve, reject) => {
     const id = ++seq;
-    pending.set(id, { resolve, reject });
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      reject(new Error('ArticleToMotion 没有回应这个请求（' + type + '），请重新打开这个页面再试'));
+    }, HOST_TIMEOUT_MS);
+    pending.set(id, { resolve, reject, timer });
     window.parent.postMessage(Object.assign({ am: 'station', id, type }, payload), '*');
   });
   // 跟随宿主的配色与基础控件：宿主把 :root 的颜色变量交过来，页面照着用 var(--accent) 等。

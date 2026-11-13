@@ -5,6 +5,19 @@ import { test, expect, openProject, api, desktopDir } from './fixtures.mjs';
 // 测试用的假发布站：只写回执，不联网（packages/engine/src/flow/testdata/fake-publisher）。
 const fake = path.resolve(desktopDir, '..', '..', 'packages', 'engine', 'src', 'flow', 'testdata', 'fake-publisher');
 
+/**
+ * 点插件页面里的按钮，直到宿主有反应。Chromium 按合成器的命中数据把点击转进进程外的 iframe，后台运行的测试窗口里
+ * 这份数据会落后于布局：iframe 刚挂上、刚挪过位置（面板滑入）时，Playwright 在 iframe 里算好的坐标点下去，事件落在
+ * 宿主的 iframe 元素上，页面根本没收到（实测偶发，日志里宿主收到 mousedown、页面一个事件都没有）。没送到的点击什么都
+ * 不会发生，所以按「宿主有没有反应」重点即可；reacted 用短超时断言那个反应。
+ */
+async function clickInPage(target, reacted) {
+  await expect(async () => {
+    await target.click();
+    await reacted();
+  }).toPass({ timeout: 20_000 });
+}
+
 test('a third-party station is added in settings and its publish action runs only when the user clicks', async ({ page, project }) => {
   fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: draft\ncopy:\n  primary_title: 测试标题\n---\n');
   await openProject(page, project);
@@ -87,9 +100,17 @@ test('a plugin page runs sandboxed and gets everything through the host', async 
   await expect(frame.locator('#receipt')).toHaveText('还没有回执');
 
   // 页面里的按钮不算用户同意：宿主先弹确认。
-  await frame.locator('#send').click();
+  // 只比纵向：面板滑入的动画可能还在走，横向会差一两个像素。
+  const vertical = async () => {
+    const box = await host.locator('.station-frame').boundingBox();
+    return { y: box?.y, height: box?.height };
+  };
+  const before = await vertical();
   const confirm = host.locator('.station-confirm');
+  await clickInPage(frame.locator('#send'), () => expect(confirm).toBeVisible({ timeout: 2000 }));
   await expect(confirm).toContainText('「假发布」请求执行：把成片发到平台');
+  // 确认条盖在页面上，不把页面往下推：页面一挪，紧跟着的点击会按旧位置命中、落不进页面。
+  expect(await vertical()).toEqual(before);
   await expect(confirm).toContainText('platform=douyin');
   await page.screenshot({ path: test.info().outputPath('station-page-confirm.png') });
   const receipt = path.join(project.path, 'production', 'publish', 'receipts.json');
@@ -100,16 +121,27 @@ test('a plugin page runs sandboxed and gets everything through the host', async 
   await expect(frame.locator('#receipt')).toHaveText('回执：https://example.invalid/douyin/1');
 
   // 拒绝：页面拿到「没有同意」。
-  await frame.locator('#send').click();
-  await host.locator('.station-confirm').getByRole('button', { name: '不执行' }).click();
+  await clickInPage(frame.locator('#send'), () => expect(confirm).toBeVisible({ timeout: 2000 }));
+  await confirm.getByRole('button', { name: '不执行' }).click();
   await expect(frame.locator('#result')).toHaveText('没执行：用户没有同意');
 
   // 交给 AI：只填进对话框，不发送。
-  await frame.locator('#ask').click();
-  await expect(page.locator('#prompt')).toHaveValue(/帮我写一句抖音的发布语/);
+  await clickInPage(frame.locator('#ask'), () => expect(page.locator('#prompt')).toHaveValue(/帮我写一句抖音的发布语/, { timeout: 2000 }));
   await expect(page.locator('#prompt')).toHaveValue(/来自插件「假发布」的页面/);
   await page.screenshot({ path: test.info().outputPath('station-page.png') });
   expect(await page.content()).not.toContain('do-not-leak');
+
+  // 切走再切回来（iframe 重新挂载）：页面一加载就发的请求照样有回应，执行请求照样弹确认。
+  await page.locator('#prompt').fill('');
+  await page.locator('.steps [data-tab="script"]').click();
+  await expect(page.locator('.station-frame')).toHaveCount(0);
+  await page.locator('#plugin-menu-trigger').click();
+  await page.locator('.plugin-menu-list [data-tab="x:fake-publisher:dashboard"]').click();
+  await expect(frame.locator('#title')).toHaveText(`假发布 · ${project.name}`);
+  await expect(frame.locator('#receipt')).toHaveText('回执：https://example.invalid/douyin/1');
+  await clickInPage(frame.locator('#send'), () => expect(confirm).toBeVisible({ timeout: 2000 }));
+  await confirm.getByRole('button', { name: '不执行' }).click();
+  await expect(frame.locator('#result')).toHaveText('没执行：用户没有同意');
 });
 
 test('plugins get settings, a slot in the publish page, a slash command, hooks and calls into am', async ({ page, project }) => {
@@ -147,15 +179,15 @@ test('plugins get settings, a slot in the publish page, a slash command, hooks a
   const slot = page.frameLocator('.station-slots[data-slot="publish"] .station-frame');
   await expect(slot.locator('#where')).toHaveText('嵌在 publish · 默认平台 bilibili');
   // 小窗里打开插件的整页。
-  await slot.locator('#open').click();
+  await clickInPage(slot.locator('#open'), () => expect(page.locator('.station-page:not(.station-slot) .station-frame')).toBeVisible({ timeout: 2000 }));
   const frame = page.frameLocator('.station-page:not(.station-slot) .station-frame');
   await expect(frame.locator('#project')).toHaveText(/项目有 1 个镜头/);
   // 页面跟随宿主的配色。
   await expect(frame.locator('#theme')).toHaveText('强调色 #d9a35f');
 
   // 调 am 自带的操作：先请用户确认，拒绝就不跑。
-  await frame.locator('#review').click();
   const confirm = page.locator('.station-confirm');
+  await clickInPage(frame.locator('#review'), () => expect(confirm).toBeVisible({ timeout: 2000 }));
   await expect(confirm).toContainText('「假发布」请求调用 ArticleToMotion 的：整片复查');
   await confirm.getByRole('button', { name: '不执行' }).click();
   await expect(frame.locator('#result')).toHaveText('没执行：用户没有同意');
@@ -214,8 +246,9 @@ test('a plugin can bring a whole flow, a voice, a style library, and send a mess
   // 页面替用户发消息：先确认，确认后才进对话。
   await page.locator('.steps [data-tab="x:fake-publisher:dashboard"]').click();
   const frame = page.frameLocator('.station-page:not(.station-slot) .station-frame');
-  await frame.locator('#send-msg').click();
+  await expect(frame.locator('#title')).toHaveText(/^假发布 · /);
   const confirm = page.locator('.station-confirm');
+  await clickInPage(frame.locator('#send-msg'), () => expect(confirm).toBeVisible({ timeout: 2000 }));
   await expect(confirm).toContainText('「假发布」想替你发一条消息给 AI');
   await expect(confirm).toContainText('帮我把发布标题改短一点');
   await confirm.getByRole('button', { name: '执行', exact: true }).click();
@@ -316,7 +349,7 @@ test('files a plugin op writes outside what it declared are shown as a warning',
   const frame = page.frameLocator('.station-frame');
   await expect(frame.locator('#title')).toHaveText(`假发布 · ${project.name}`);
   await expect(host.locator('.station-scope')).toHaveCount(0);
-  await frame.locator('#scribble').click();
+  await clickInPage(frame.locator('#scribble'), () => expect(host.locator('.station-confirm')).toBeVisible({ timeout: 2000 }));
   await host.locator('.station-confirm').getByRole('button', { name: '执行', exact: true }).click();
   await expect(host.locator('.station-scope')).toContainText('「假发布」执行「顺手记一笔」');
   await expect(host.locator('.station-scope')).toContainText('notes/scribble.txt');
