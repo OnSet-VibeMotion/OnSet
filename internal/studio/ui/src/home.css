@@ -428,7 +428,7 @@
   color: var(--accent-ink);
 }
 .home .send:hover:not(:disabled) {
-  background: #ff9b57;
+  background: var(--accent-hover);
 }
 .home .send:disabled {
   background: var(--chip);

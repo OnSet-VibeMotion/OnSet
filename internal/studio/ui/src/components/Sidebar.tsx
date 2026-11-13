@@ -1,76 +1,7 @@
 import { useMemo, useState } from 'preact/hooks';
-import type { ProjectState, TreeFile } from '../types';
+import type { TreeFile } from '../types';
 
-// 与 internal/studio/studio.go 的 stageFor 一一对应，顺序就是制作顺序。
-const stages: [string, string][] = [
-  ['setup', '准备'],
-  ['plan', '脚本与分镜'],
-  ['render', '渲染'],
-  ['assemble', '合成'],
-  ['review', '复查'],
-  ['publish', '发布'],
-];
-
-interface Props {
-  state: ProjectState | null;
-  tree: TreeFile[];
-  filePath: string;
-  recent: Set<string>;
-  onFile: (path: string) => void;
-}
-
-export function Sidebar(props: Props) {
-  const { state } = props;
-  const current = state ? stages.findIndex(([id]) => id === state.stage) : -1;
-  const changed = props.tree.filter((f) => props.recent.has(f.path)).length;
-  return (
-    <aside class="pane left">
-      {state && (
-        <section id="stage" aria-label="制作阶段">
-          <div class="section-head">
-            <span class="label">制作阶段</span>
-          </div>
-          <ol class="stages">
-            {stages.map(([id, name], index) => {
-              const status = index < current ? 'done' : index === current ? 'now' : '';
-              return (
-                <li key={id} class={status} aria-current={status === 'now' ? 'step' : undefined}>
-                  <div class="stage-rail" aria-hidden="true">
-                    <span class="stage-dot" />
-                    {index < stages.length - 1 && <span class="stage-line" />}
-                  </div>
-                  <div class="stage-body">
-                    <div class="stage-name">{name}</div>
-                    {status === 'now' && state.scenes.total > 0 && (
-                      <div class="stage-detail">
-                        <div class="meter" title={`${state.scenes.completed}/${state.scenes.total}`}>
-                          <i style={{ width: `${(state.scenes.completed / state.scenes.total) * 100}%` }} />
-                        </div>
-                        <span>
-                          {state.scenes.completed} / {state.scenes.total} 镜头已出片
-                          {state.scenes.stale > 0 && <span class="warn"> · {state.scenes.stale} 个过期</span>}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-          <div class="rule" />
-        </section>
-      )}
-
-      <section aria-label="文件" style={{ flex: 1, minHeight: 0 }}>
-        <div class="section-head">
-          <span class="label">文件</span>
-          {changed > 0 && <span class="recent-count">● 本轮改动 {changed}</span>}
-        </div>
-        <FileTree files={props.tree} selected={props.filePath} recent={props.recent} onFile={props.onFile} />
-      </section>
-    </aside>
-  );
-}
+// 文件树。原来放在左侧栏，放映室版去掉了侧栏，文件树只在「文件」页里出现。
 
 interface Dir {
   name: string;
@@ -97,7 +28,7 @@ function buildTree(files: TreeFile[]): Dir {
   return root;
 }
 
-function FileTree(props: { files: TreeFile[]; selected: string; recent: Set<string>; onFile: (path: string) => void }) {
+export function FileTree(props: { files: TreeFile[]; selected: string; recent: Set<string>; onFile: (path: string) => void }) {
   const root = useMemo(() => buildTree(props.files), [props.files]);
   const [open, setOpen] = useState<Set<string>>(() => new Set(['scenes', 'production']));
   const toggle = (path: string) =>

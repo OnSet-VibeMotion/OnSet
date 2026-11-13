@@ -8,6 +8,7 @@ import { FilmStylePicker, Poster, styleKey, useFilmStyles } from './FilmStyles';
 import { Markdown } from './chat/Markdown';
 import { ScriptTab } from './Script';
 import { PublishTab } from './Publish';
+import { FileTree } from './Sidebar';
 
 export type Tab = 'script' | 'scene' | 'compose' | 'final' | 'style' | 'review' | 'publish' | 'memory' | 'file';
 
@@ -23,20 +24,22 @@ export const tabs: [Tab, string][] = [
   ['file', '文件'],
 ];
 
+/** 顶栏中间的四个步骤，按制作顺序编号；其余页面（合成、复查、风格、记忆、文件）在顶栏右侧用小字列出。 */
+export const stepTabs: Tab[] = ['script', 'scene', 'final', 'publish'];
+
 /** 按钮触发的写任务：返回 task_id 的接口。App 负责发请求、提示与刷新任务列表。 */
 export type RunAction = (path: string, payload?: Record<string, unknown>) => void;
 
 interface Props {
   tab: Tab;
-  onTab: (tab: Tab) => void;
-  /** 有新内容还没看过的页，标签上打一个点。 */
-  unseen?: Partial<Record<Tab, boolean>>;
   state: ProjectState | null;
   scenes: Scene[];
   usage: ProjectUsage | null;
   sceneId: string;
   filePath: string;
   tree: TreeFile[];
+  /** 这一轮对话改过的文件，文件树里打点。 */
+  recent: Set<string>;
   version: number;
   beat: BeatState | null;
   busy: string;
@@ -52,21 +55,6 @@ export function Preview(props: Props) {
   const scene = props.scenes.find((s) => s.id === props.sceneId) ?? null;
   return (
     <main class="pane center">
-      <nav class="tabs" role="tablist" aria-label="预览">
-        {tabs.map(([id, label]) => (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={props.tab === id}
-            class={props.tab === id ? 'on' : ''}
-            data-tab={id}
-            onClick={() => props.onTab(id)}
-          >
-            {label}
-            {props.unseen?.[id] && props.tab !== id && <i class="tab-dot" aria-label="有更新" />}
-          </button>
-        ))}
-      </nav>
       {props.beat?.enabled && <BeatBanner beat={props.beat} version={props.version} run={props.run} />}
       <div class="preview-body">
         {props.tab === 'script' && (
@@ -79,9 +67,9 @@ export function Preview(props: Props) {
         {props.tab === 'review' && <ReviewTab tree={props.tree} version={props.version} run={props.run} />}
         {props.tab === 'publish' && <PublishTab version={props.version} run={props.run} />}
         {props.tab === 'memory' && <MemoryTab scene={scene} version={props.version} run={props.run} />}
-        {props.tab === 'file' && <FileView path={props.filePath} version={props.version} />}
+        {props.tab === 'file' && <FilesTab tree={props.tree} recent={props.recent} path={props.filePath} version={props.version} onFile={props.onFile} />}
       </div>
-      <Timeline scenes={props.scenes} usage={props.usage} sceneId={props.sceneId} onScene={props.onScene} />
+      <Timeline scenes={props.scenes} usage={props.usage} sceneId={props.sceneId} version={props.version} onScene={props.onScene} />
     </main>
   );
 }
@@ -146,52 +134,38 @@ function clock(seconds: number): string {
 }
 
 /** 镜头时间线：宽度按时长比例，底部色条是出片状态。点哪个镜头就预览哪个。 */
-function Timeline({ scenes, usage, sceneId, onScene }: { scenes: Scene[]; usage: ProjectUsage | null; sceneId: string; onScene: (id: string) => void }) {
+function Timeline({ scenes, usage, sceneId, version, onScene }: { scenes: Scene[]; usage: ProjectUsage | null; sceneId: string; version: number; onScene: (id: string) => void }) {
   if (scenes.length === 0) return null;
   const total = scenes.reduce((sum, s) => sum + (s.duration_seconds ?? 0), 0);
+  // 镜头条就是缩略图：每格是那个镜头的画面，宽度按时长；状态只在出问题时用一道色条提示。
   return (
     <section class="timeline" aria-label="时间线">
-      <div class="timeline-head">
-        <span class="label">时间线</span>
-        <span class="small muted">
-          {scenes.length} 个镜头{total > 0 ? ` · 共 ${clock(total).replace(/\.\d+$/, '')}` : ''}
-        </span>
-        {usage && (usage.attempts > 0 || usage.orchestrator.calls > 0) && (
-          <span class="small muted mono" title={projectUsageTitle(usage)}>
-            本项目 {tokenLabel(usage.total)}
-          </span>
-        )}
-        <span class="spacer" />
-        <span class="legend" aria-hidden="true">
-          <span>
-            <i class="ok" />
-            已出片
-          </span>
-          <span>
-            <i class="stale" />
-            过期
-          </span>
-          <span>
-            <i class="todo" />
-            未出片
-          </span>
-        </span>
-      </div>
       <div class="strip">
-        {scenes.map((scene) => {
+        {scenes.map((scene, index) => {
           const status = sceneStatus(scene);
-          const label = scene.id.replace(/^scene-?/, '') || scene.id;
           return (
             <button
               key={scene.id}
               class={`scene ${status}${scene.id === sceneId ? ' on' : ''}`}
               data-ctx-scene={scene.id}
               style={{ flex: `${scene.duration_seconds || 1} 1 0` }}
-              title={`${scene.id}${scene.duration_seconds ? ` · ${scene.duration_seconds.toFixed(1)} 秒` : ''} · ${statusText[status]}${scene.attempts ? ` · ${usageLabel(scene)}` : ''}`}
+              title={`镜头 ${String(index + 1).padStart(2, '0')}（${scene.id}）${scene.duration_seconds ? ` · ${scene.duration_seconds.toFixed(1)} 秒` : ''} · ${statusText[status]}${scene.attempts ? ` · ${usageLabel(scene)}` : ''}`}
               aria-pressed={scene.id === sceneId}
               onClick={() => onScene(scene.id)}
             >
-              <span aria-hidden="true">{label}</span>
+              {scene.exists && (
+                <video
+                  class="thumb"
+                  muted
+                  preload="metadata"
+                  aria-hidden="true"
+                  tabIndex={-1}
+                  src={`/api/scenes/${encodeURIComponent(scene.id)}/asset?v=${version}#t=${Math.min(1, (scene.duration_seconds || 2) / 2)}`}
+                />
+              )}
+              <span class="scene-no" aria-hidden="true">
+                {String(index + 1).padStart(2, '0')}
+              </span>
               <span class="sr-only">
                 {scene.id} {statusText[status]}
               </span>
@@ -199,6 +173,9 @@ function Timeline({ scenes, usage, sceneId, onScene }: { scenes: Scene[]; usage:
           );
         })}
       </div>
+      <span class="timeline-total" title={usage && (usage.attempts > 0 || usage.orchestrator.calls > 0) ? `本项目 ${tokenLabel(usage.total)}\n${projectUsageTitle(usage)}` : undefined}>
+        {total > 0 ? clock(total).replace(/\.\d+$/, '') : ''}
+      </span>
     </section>
   );
 }
@@ -214,8 +191,20 @@ function SceneTab(props: Props & { scene: Scene | null }) {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [feedback, setFeedback] = useState('');
+  const menu = useRef<HTMLDetailsElement>(null);
+
+  // 「⋯」菜单点外面就收起；菜单里的输入框与按钮不收。
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      const el = menu.current;
+      if (el?.open && !el.contains(e.target as Node)) el.open = false;
+    };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, []);
 
   useEffect(() => {
+    if (menu.current) menu.current.open = false;
     setDrag(null);
     setSelecting(false);
     setError('');
@@ -315,145 +304,172 @@ function SceneTab(props: Props & { scene: Scene | null }) {
     else v.pause();
   };
 
+  const index = props.scenes.findIndex((s) => s.id === scene.id);
+  const number = String(index + 1).padStart(2, '0');
+
+  // 镜头页只留画面、名字和「重新渲染」；圈选、附帧、快捷指令、反馈、校验与用量都收进「⋯」菜单。
   return (
     <div class="scene-tab" data-ctx-scene={scene?.id}>
-      <div class="toolbar">
-        <span class="scene-title">{scene.id}</span>
-        {scene.duration_seconds ? <span class="mono small muted">{scene.duration_seconds.toFixed(2)}s</span> : null}
-        <span class={'status-' + status}>{statusText[status]}</span>
-        {scene.attempts > 0 && (
-          <span class="chip mono" title={usageTitle(scene)}>
-            {usageLabel(scene)}
-          </span>
-        )}
-        <span class="spacer" />
-        {scene.exists && (
-          <>
-            <button class={selecting ? 'armed' : ''} aria-pressed={selecting} onClick={() => setSelecting(!selecting)}>
-              <Icon name="region" />
-              {selecting ? '取消圈选' : '圈选区域'}
-            </button>
-            <button id="attach-frame" onClick={attach}>
-              {drag ? '附上这一帧和选区' : '附当前帧'}
-            </button>
-          </>
-        )}
-        {scene.exists && (
-          <>
-            <input
-              class="feedback-note"
-              value={note}
-              placeholder="反馈说明（可选）"
-              aria-label="反馈说明"
-              onInput={(e) => setNote(e.currentTarget.value)}
-            />
-            <button title="记为好的经历" aria-label="赞" onClick={() => sendFeedback('up')}>
-              👍
-            </button>
-            <button title="记为需要改进的经历，下次整理时参考" aria-label="踩" onClick={() => sendFeedback('down')}>
-              👎
-            </button>
-          </>
-        )}
-        <button onClick={() => props.run('/api/commands/scene.validate', { scene_id: scene.id })}>校验</button>
-        <button id="render-scene" class={scene.exists ? '' : 'primary'} onClick={() => props.run(`/api/scenes/${encodeURIComponent(scene.id)}/render`)}>
-          {scene.exists ? '重新渲染' : '渲染'}
-        </button>
-      </div>
-      <div class="quick-actions" role="group" aria-label="快捷动作">
-        <span class="small muted">让编排工具：</span>
-        {quickActions
-          .filter((action) => scene.exists || !action.needsOutput)
-          .map((action) => (
-            <button key={action.label} class="quiet" onClick={() => props.onQuick(action.text(scene.id), [])}>
-              {action.label}
-            </button>
-          ))}
-        {scene.exists && (
-          <button class="quiet" onClick={fixFrame} title="带上当前帧（和圈选的区域），在对话里说哪里不对">
-            修这一帧…
-          </button>
-        )}
-      </div>
-      {scene.exists ? (
-        <>
-          <div class="stage-frame">
-            <video
-              ref={video}
-              preload="metadata"
-              src={`/api/scenes/${encodeURIComponent(scene.id)}/asset?v=${props.version}`}
-              onClick={selecting ? undefined : toggle}
-              onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
-              onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
-              onSeeked={(e) => setTime(e.currentTarget.currentTime)}
-              onPlay={() => setPlaying(true)}
-              onPause={() => setPlaying(false)}
-            />
-            <span class="frame-badge">F {String(Math.round(time * FPS)).padStart(3, '0')}</span>
-            {selecting && (
-              <div
-                class="select-layer"
-                onPointerDown={(e) => {
-                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                  const p = point(e);
-                  setDrag({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
-                }}
-                onPointerMove={(e) => {
-                  if (!drag || !(e.buttons & 1)) return;
-                  const p = point(e);
-                  setDrag({ ...drag, x1: p.x, y1: p.y });
-                }}
-              >
-                {!drag && <span class="select-hint">拖出一个区域</span>}
-                {drag && (
-                  <i
-                    class="select-box"
-                    style={{
-                      left: Math.min(drag.x0, drag.x1),
-                      top: Math.min(drag.y0, drag.y1),
-                      width: Math.abs(drag.x1 - drag.x0),
-                      height: Math.abs(drag.y1 - drag.y0),
+      <div class="scene-layout">
+        {scene.exists ? (
+          <div class="scene-stage">
+              <div class="stage-frame">
+                <video
+                  ref={video}
+                  preload="metadata"
+                  src={`/api/scenes/${encodeURIComponent(scene.id)}/asset?v=${props.version}`}
+                  onClick={selecting ? undefined : toggle}
+                  onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+                  onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+                  onSeeked={(e) => setTime(e.currentTarget.currentTime)}
+                  onPlay={() => setPlaying(true)}
+                  onPause={() => setPlaying(false)}
+                />
+                {selecting && (
+                  <div
+                    class="select-layer"
+                    onPointerDown={(e) => {
+                      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                      const p = point(e);
+                      setDrag({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
                     }}
-                  />
+                    onPointerMove={(e) => {
+                      if (!drag || !(e.buttons & 1)) return;
+                      const p = point(e);
+                      setDrag({ ...drag, x1: p.x, y1: p.y });
+                    }}
+                  >
+                    {!drag && <span class="select-hint">拖出一个区域</span>}
+                    {drag && (
+                      <i
+                        class="select-box"
+                        style={{
+                          left: Math.min(drag.x0, drag.x1),
+                          top: Math.min(drag.y0, drag.y1),
+                          width: Math.abs(drag.x1 - drag.x0),
+                          height: Math.abs(drag.y1 - drag.y0),
+                        }}
+                      />
+                    )}
+                  </div>
                 )}
               </div>
-            )}
+              <div class="transport">
+                <button class="step" onClick={() => step(-1)} aria-label="后退一帧" title="后退一帧">
+                  <Icon name="prev" size={14} />
+                </button>
+                <button class="play" onClick={toggle} aria-label={playing ? '暂停' : '播放'}>
+                  <Icon name={playing ? 'pause' : 'play'} size={14} />
+                </button>
+                <button class="step" onClick={() => step(1)} aria-label="前进一帧" title="前进一帧">
+                  <Icon name="next" size={14} />
+                </button>
+                <span class="timecode">{clock(time)}</span>
+                <span class="mono small muted">/ {clock(duration)}</span>
+                <input
+                  class="scrub"
+                  type="range"
+                  min={0}
+                  max={duration || 0}
+                  step={1 / FPS}
+                  value={time}
+                  aria-label="播放位置"
+                  onInput={(e) => {
+                    const v = video.current;
+                    if (v) v.currentTime = Number(e.currentTarget.value);
+                  }}
+                />
+                <span class="mono small muted">
+                  帧 {Math.round(time * FPS)} / {Math.round(duration * FPS)}
+                </span>
+              </div>
           </div>
-          <div class="transport">
-            <button class="step" onClick={() => step(-1)} aria-label="后退一帧" title="后退一帧">
-              <Icon name="prev" size={14} />
+        ) : (
+          <div class="scene-stage">
+            <Empty>这个镜头还没有产物。点「渲染」，或在对话里让它处理。</Empty>
+          </div>
+        )}
+
+        <aside class="scene-info">
+          <span class="eyebrow">
+            镜头 {number} / {String(props.scenes.length).padStart(2, '0')}
+          </span>
+          <h1 class="scene-title" title={scene.id}>
+            镜头 {number}
+          </h1>
+          <p class="scene-meta">
+            {scene.duration_seconds ? `${scene.duration_seconds.toFixed(1)} 秒 · ` : ''}
+            <span class={'status-' + status}>{statusText[status]}</span>
+          </p>
+          <div class="scene-actions">
+            <button id="render-scene" class={scene.exists ? '' : 'primary'} onClick={() => props.run(`/api/scenes/${encodeURIComponent(scene.id)}/render`)}>
+              {scene.exists ? '重新渲染' : '渲染'}
             </button>
-            <button class="play" onClick={toggle} aria-label={playing ? '暂停' : '播放'}>
-              <Icon name={playing ? 'pause' : 'play'} size={14} />
-            </button>
-            <button class="step" onClick={() => step(1)} aria-label="前进一帧" title="前进一帧">
-              <Icon name="next" size={14} />
-            </button>
-            <span class="timecode">{clock(time)}</span>
-            <span class="mono small muted">/ {clock(duration)}</span>
-            <input
-              class="scrub"
-              type="range"
-              min={0}
-              max={duration || 0}
-              step={1 / FPS}
-              value={time}
-              aria-label="播放位置"
-              onInput={(e) => {
-                const v = video.current;
-                if (v) v.currentTime = Number(e.currentTarget.value);
-              }}
-            />
-            <span class="mono small muted">
-              帧 {Math.round(time * FPS)} / {Math.round(duration * FPS)}
-            </span>
+            <details class="scene-menu" ref={menu}>
+              <summary aria-label="更多操作" title="更多操作">
+                <Icon name="more" size={16} />
+              </summary>
+              <div class="scene-menu-body">
+                {scene.exists && (
+                  <div class="menu-group">
+                    <button class={selecting ? 'armed' : ''} aria-pressed={selecting} onClick={() => setSelecting(!selecting)}>
+                      <Icon name="region" />
+                      {selecting ? '取消圈选' : '圈选区域'}
+                    </button>
+                    <button id="attach-frame" onClick={attach}>
+                      {drag ? '附上这一帧和选区' : '附当前帧到对话'}
+                    </button>
+                    <button onClick={fixFrame} title="带上当前帧（和圈选的区域），在对话里说哪里不对">
+                      修这一帧…
+                    </button>
+                  </div>
+                )}
+                <div class="menu-group quick-actions" role="group" aria-label="让编排工具">
+                  <span class="menu-label">让编排工具</span>
+                  {quickActions
+                    .filter((action) => scene.exists || !action.needsOutput)
+                    .map((action) => (
+                      <button key={action.label} onClick={() => props.onQuick(action.text(scene.id), [])}>
+                        {action.label}
+                      </button>
+                    ))}
+                </div>
+                {scene.exists && (
+                  <div class="menu-group">
+                    <span class="menu-label">记一笔（进记忆）</span>
+                    <input
+                      class="feedback-note"
+                      value={note}
+                      placeholder="说明（可选）"
+                      aria-label="反馈说明"
+                      onInput={(e) => setNote(e.currentTarget.value)}
+                    />
+                    <div class="menu-row">
+                      <button title="记为好的经历" aria-label="赞" onClick={() => sendFeedback('up')}>
+                        👍 这一镜好
+                      </button>
+                      <button title="记为需要改进的经历，下次整理时参考" aria-label="踩" onClick={() => sendFeedback('down')}>
+                        👎 不满意
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div class="menu-group">
+                  <button onClick={() => props.run('/api/commands/scene.validate', { scene_id: scene.id })}>校验</button>
+                  {scene.attempts > 0 && (
+                    <span class="menu-note" title={usageTitle(scene)}>
+                      {usageLabel(scene)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </details>
           </div>
           {error && <p class="error-line">{error}</p>}
           {feedback && <p class="ok-line">{feedback}</p>}
-        </>
-      ) : (
-        <Empty>这个镜头还没有产物。点「渲染」，或在对话里让它处理。</Empty>
-      )}
+          {selecting && <p class="menu-note">在画面上拖出一个区域，再从「⋯」里附上这一帧。</p>}
+        </aside>
+      </div>
     </div>
   );
 }
@@ -477,7 +493,7 @@ function ComposeTab(props: Props & { scene: Scene | null }) {
     const over = (e: Event) => {
       hovered?.style.removeProperty('outline');
       hovered = e.target as HTMLElement;
-      hovered.style.outline = '2px dashed #ff8a3d';
+      hovered.style.outline = '2px dashed #d9a35f';
     };
     const click = (e: Event) => {
       e.preventDefault();
@@ -750,7 +766,7 @@ export function FileView({ path, version }: { path: string; version: number }) {
     api<FileResponse>('/api/files?path=' + encodeURIComponent(path)).then(setFile, (err) => setError(errorText(err)));
   }, [path, version]);
 
-  if (!path) return <Empty>在左栏的文件树里选一个文件。</Empty>;
+  if (!path) return <Empty>在左边的文件树里选一个文件。</Empty>;
   return (
     <div class="file-tab">
       <div class="toolbar">
@@ -771,6 +787,22 @@ export function FileView({ path, version }: { path: string; version: number }) {
       {file && (file.binary ? <Empty>二进制文件或超过 2 MB，不显示内容。</Empty> : <pre class="text" id="file-content" data-ctx-source={path} data-ctx-label={path.split('/').pop()}>
             {file.content}
           </pre>)}
+    </div>
+  );
+}
+
+/** 文件页：左边文件树，右边内容。文件树原来常驻左侧栏，现在只在这里出现。 */
+function FilesTab(props: { tree: TreeFile[]; recent: Set<string>; path: string; version: number; onFile: (path: string) => void }) {
+  const changed = props.tree.filter((f) => props.recent.has(f.path)).length;
+  return (
+    <div class="files-tab">
+      <aside class="files-tree" aria-label="文件">
+        {changed > 0 && <div class="recent-count">本轮改动 {changed} 个文件</div>}
+        <FileTree files={props.tree} selected={props.path} recent={props.recent} onFile={props.onFile} />
+      </aside>
+      <div class="files-view">
+        <FileView path={props.path} version={props.version} />
+      </div>
     </div>
   );
 }

@@ -77,6 +77,8 @@ test('starts production and can stop a running turn', async ({ page }) => {
 
 test('opens a project file from the tree', async ({ page }) => {
   await openProject(page);
+  // 文件树只在「文件」页里。
+  await page.locator('[data-tab="file"]').click();
   await page.locator('.tree-file', { hasText: 'PROMPT.md' }).click();
   await expect(page.locator('#file-content')).toContainText('整片制作提示词');
 });
@@ -94,6 +96,7 @@ test('right-click quotes script text and files into the chat', async ({ page }) 
   await expect(page.locator('#attachments .quote-card')).toContainText('第一段，2025年很贵。');
   await expect(page.locator('#attachments .quote-card')).not.toContainText('二零二五年');
   // 文件树上右键：引用文件。
+  await page.locator('[data-tab="file"]').click();
   await page.locator('.tree-file', { hasText: 'PROMPT.md' }).click({ button: 'right' });
   await page.locator('.ctx-item', { hasText: '引用这个文件到对话' }).click();
   await expect(page.locator('#attachments .quote-card')).toHaveCount(2);
@@ -250,6 +253,8 @@ test('uploads a file, answers with a choice button, and queues a message mid-tur
 
 test('sends a scene quick action to the orchestrator', async ({ page }) => {
   await openProject(page);
+  // 快捷指令收在镜头页的「⋯」菜单里。
+  await page.locator('.scene-menu summary').click();
   await page.locator('.quick-actions button', { hasText: '重做这个镜头' }).click();
   await expect(page.locator('.message.user').last()).toContainText('重做镜头 scene-001');
   await expect(page.locator('.done-line').last()).toContainText('已完成');

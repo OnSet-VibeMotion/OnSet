@@ -1,34 +1,37 @@
 /*
- * 剪辑台：深石墨底、单一琥珀强调色。状态色只有两种——绿色已出片、黄色过期；
- * 未出片用虚线框，不再多加一种颜色。
+ * 放映室：暖黑底、象牙白字、只有一种黄铜色强调。作品（画面、封面、海报）是主角，界面往后退：
+ * 少用边框和底色块，靠留白与细线分区；标题用宋体，数字与小标签用等宽字。
+ * 状态色只有两种——绿色已出片、黄色过期；未出片用虚线框，不再多加一种颜色。
  * 字体只用本机字体栈：Studio 常在离线或内网里开，不从外部加载字体。
  */
 :root {
-  --bg: #0e0f11;
-  --panel: #121316;
-  --raised: #16181b;
-  --well: #08090a;
-  --chip: #1d2024;
-  --hover: #23262b;
-  --line: #23262b;
-  --line-strong: #2e3238;
-  --text: #e8e6e1;
-  --text-2: #c9ccd1;
-  --text-3: #a9adb3;
-  --muted: #8e9299;
-  --faint: #6f737a;
-  --accent: #ff8a3d;
-  --accent-ink: #121316;
-  --accent-soft: #2a1e14;
-  --accent-line: #4a3020;
-  --accent-text: #ffd0a8;
-  --ok: #5cc98f;
-  --stale: #e8c547;
-  --bad: #f08a7e;
-  --add-bg: #12301f;
-  --del-bg: #3a1b1f;
+  --bg: #0b0a09;
+  --panel: #11100e;
+  --raised: #171512;
+  --well: #070605;
+  --chip: #1f1c18;
+  --hover: #26231f;
+  --line: #24211d;
+  --line-strong: #33302a;
+  --text: #efe9dd;
+  --text-2: #c2bbae;
+  --text-3: #a9a294;
+  --muted: #8f887c;
+  --faint: #7a746a;
+  --accent: #d9a35f;
+  --accent-hover: #e6b273;
+  --accent-ink: #14110d;
+  --accent-soft: #241c12;
+  --accent-line: #4a3a24;
+  --accent-text: #ecc890;
+  --ok: #9cc2a0;
+  --stale: #e0c068;
+  --bad: #e39a8c;
+  --add-bg: #15291b;
+  --del-bg: #35191a;
   --radius: 10px;
-  --sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --sans: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --serif: 'Songti SC', 'STSong', 'Noto Serif SC', 'Source Han Serif SC', 'Noto Serif CJK SC', 'SimSun', serif;
   --mono: 'IBM Plex Mono', 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
   color-scheme: dark;
   font-family: var(--sans);
@@ -56,10 +59,10 @@ a.button {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 0 12px;
-  border-radius: 6px;
+  padding: 0 14px;
+  border-radius: 999px;
   border: 1px solid var(--line-strong);
-  background: var(--chip);
+  background: transparent;
   color: var(--text);
   cursor: pointer;
   text-decoration: none;
@@ -76,7 +79,8 @@ button.primary {
   font-weight: 600;
 }
 button.primary:hover {
-  background: #ff9b57;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 button.armed {
   background: var(--accent-soft);
@@ -230,20 +234,25 @@ svg {
   flex-direction: column;
 }
 .topbar {
-  height: 52px;
+  height: 60px;
   flex: none;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  gap: 16px;
+  padding: 0 24px;
+  background: var(--bg);
 }
 .brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 600;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+}
+.brand:hover {
+  background: transparent;
+  opacity: 0.85;
 }
 .brand-mark {
   width: 26px;
@@ -254,34 +263,107 @@ svg {
   display: flex;
   align-items: center;
   justify-content: center;
-  font: 700 12px var(--mono);
+  font: 700 11px var(--mono);
 }
-.divider {
-  width: 1px;
-  height: 20px;
-  background: var(--line-strong);
-}
+/* 项目名用宋体，像片名；路径只在悬停提示里。 */
 .project-switch {
-  height: 34px;
-  gap: 10px;
-  border-radius: 8px;
-  background: #181a1e;
-  font-size: 13px;
-  max-width: 44vw;
+  height: 36px;
+  gap: 12px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  max-width: 32vw;
   min-width: 0;
+}
+.project-switch:hover {
+  background: transparent;
 }
 .project-switch strong {
-  font-weight: 600;
+  font: 600 17px/1 var(--serif);
+  letter-spacing: 0.02em;
+  color: var(--text);
 }
-.project-switch .path {
-  min-width: 0;
+.project-switch:hover strong {
+  color: var(--accent-text);
+}
+.project-meta {
+  font: 11px var(--mono);
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+/* 四个制作步骤，编号是等宽字；当前一步下面一条黄铜色细线。 */
+.steps {
+  display: flex;
+  gap: 28px;
+  margin-left: 28px;
+}
+.steps .step {
+  height: 36px;
+  padding: 0;
+  gap: 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+}
+.steps .step:hover {
+  background: transparent;
+  color: var(--text);
+}
+.steps .step.on {
+  color: var(--text);
+  box-shadow: inset 0 -1px 0 var(--accent);
+}
+.step-no {
+  font: 11px var(--mono);
+  color: var(--faint);
+}
+.steps .step.on .step-no {
+  color: var(--accent);
+}
+.step-count {
+  font: 11px var(--mono);
+  color: var(--muted);
+}
+.step-count.warn {
+  color: var(--stale);
+}
+.steps .tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+/* 其余页面：小字列在右侧，不和四个步骤抢。 */
+.more-pages {
+  display: flex;
+  gap: 2px;
+}
+.more-pages button {
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--faint);
+  font-size: 12px;
+}
+.more-pages button:hover {
+  background: transparent;
+  color: var(--text-2);
+}
+.more-pages button.on {
+  color: var(--text);
+  box-shadow: inset 0 -1px 0 var(--accent);
+  border-radius: 0;
 }
 .chip {
   font-size: 12px;
   color: var(--text-3);
   padding: 4px 8px;
   border-radius: 6px;
-  background: #181a1e;
+  background: var(--raised);
   white-space: nowrap;
 }
 .pill {
@@ -314,19 +396,11 @@ svg {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 264px minmax(0, 1fr) minmax(360px, 400px);
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 400px);
 }
 .pane {
   min-height: 0;
   overflow: auto;
-}
-.pane.left {
-  background: var(--panel);
-  border-right: 1px solid var(--line);
-  display: flex;
-  flex-direction: column;
-  padding: 16px 12px;
-  gap: 4px;
 }
 .pane.center {
   background: var(--bg);
@@ -340,7 +414,17 @@ svg {
 
 @media (max-width: 1180px) {
   .workspace {
-    grid-template-columns: 232px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .topbar {
+    height: auto;
+    min-height: 60px;
+    flex-wrap: wrap;
+    row-gap: 4px;
+    padding-block: 8px;
+  }
+  .steps {
+    margin-left: 0;
   }
   .pane.right {
     grid-column: 1 / -1;
@@ -356,7 +440,7 @@ svg {
     display: none;
   }
 }
-/* 手机：预览在上、对话在中、阶段与文件放最后。 */
+/* 手机：预览在上、对话在下。 */
 @media (max-width: 720px) {
   .topbar {
     padding: 0 12px;
@@ -382,10 +466,9 @@ svg {
     order: 2;
     height: 80vh;
   }
-  .pane.left {
-    order: 3;
-    border-right: 0;
-    border-top: 1px solid var(--line);
+  .steps {
+    gap: 18px;
+    overflow-x: auto;
   }
   .preview-body {
     padding: 12px;
@@ -453,7 +536,7 @@ svg {
   height: 10px;
   margin-top: 5px;
   border-radius: 50%;
-  border: 1.5px solid #4a4e55;
+  border: 1.5px solid #4a463f;
   flex: none;
 }
 .stage-line {
@@ -467,12 +550,12 @@ svg {
   border-color: var(--ok);
 }
 .stages li.done .stage-line {
-  background: #3c6e55;
+  background: #4f6b53;
 }
 .stages li.now .stage-dot {
   background: var(--accent);
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(255, 138, 61, 0.18);
+  box-shadow: 0 0 0 4px rgba(217, 163, 95, 0.18);
 }
 .stage-body {
   flex: 1;
@@ -638,9 +721,6 @@ li.active > .row {
   gap: 8px;
   flex-wrap: wrap;
 }
-.scene-title {
-  font: 500 15px var(--mono);
-}
 .status-ok {
   font-size: 12px;
   color: var(--ok);
@@ -659,15 +739,6 @@ li.active > .row {
   text-align: center;
   border: 1px dashed var(--line-strong);
   border-radius: var(--radius);
-}
-.stage-frame {
-  position: relative;
-  background: var(--well);
-  border: 1px solid #1c1f23;
-  border-radius: var(--radius);
-  overflow: hidden;
-  height: min(56vh, 680px);
-  min-height: 240px;
 }
 .stage-frame video {
   width: 100%;
@@ -692,7 +763,7 @@ li.active > .row {
 .select-box {
   position: absolute;
   border: 1.5px dashed var(--accent);
-  background: rgba(255, 138, 61, 0.08);
+  background: rgba(217, 163, 95, 0.08);
 }
 .select-hint {
   position: absolute;
@@ -712,25 +783,9 @@ li.active > .row {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
 }
-.transport .step {
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border-radius: 8px;
-}
-.transport .play {
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border-radius: 50%;
-  border: 0;
-  background: var(--text);
-  color: var(--accent-ink);
-}
-.transport .play:hover {
-  background: #fff;
+.transport > span {
+  white-space: nowrap;
 }
 .timecode {
   font: 14px var(--mono);
@@ -739,8 +794,8 @@ li.active > .row {
 }
 .scrub {
   flex: 1;
-  min-width: 120px;
-  margin: 0 12px;
+  min-width: 60px;
+  margin: 0 8px;
   accent-color: var(--accent);
   padding: 0;
   border: 0;
@@ -748,92 +803,6 @@ li.active > .row {
 }
 
 /* 时间线 */
-.timeline {
-  flex: none;
-  margin: 0 24px 16px;
-  border-radius: var(--radius);
-  border: 1px solid var(--line);
-  background: var(--panel);
-  padding: 12px 12px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.timeline-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.legend {
-  flex: none;
-  white-space: nowrap;
-  display: flex;
-  gap: 12px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.legend i {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  margin-right: 4px;
-  vertical-align: -1px;
-}
-.legend .ok {
-  background: var(--ok);
-}
-.legend .stale {
-  background: var(--stale);
-}
-.legend .todo {
-  border: 1px dashed var(--faint);
-}
-.strip {
-  display: flex;
-  gap: 3px;
-  height: 48px;
-}
-.strip .scene {
-  position: relative;
-  min-width: 18px;
-  height: 100%;
-  padding: 6px 6px 0;
-  align-items: flex-start;
-  justify-content: flex-start;
-  border-radius: 5px;
-  font: 11px var(--mono);
-  color: var(--text-3);
-  background: var(--chip);
-  border: 1px solid var(--line-strong);
-  overflow: hidden;
-}
-.strip .scene::after {
-  content: '';
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  bottom: 6px;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--ok);
-}
-.strip .scene.stale::after {
-  background: var(--stale);
-}
-.strip .scene.todo {
-  background: transparent;
-  border: 1px dashed #4a4e55;
-}
-.strip .scene.todo::after {
-  display: none;
-}
-.strip .scene.on {
-  border-color: var(--accent);
-  background: var(--hover);
-  color: var(--text);
-}
 
 .compose-frame {
   width: 100%;
@@ -1083,7 +1052,7 @@ h4 {
 }
 .style-card.on {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(255, 138, 61, 0.18);
+  box-shadow: 0 0 0 3px rgba(217, 163, 95, 0.18);
 }
 .style-card-text {
   display: flex;
@@ -1112,7 +1081,7 @@ h4 {
   justify-content: center;
   color: var(--text-2);
   border: 0;
-  border-bottom: 1px dashed #4a4e55;
+  border-bottom: 1px dashed #4a463f;
   background: transparent;
 }
 
@@ -1379,13 +1348,6 @@ h4 {
 }
 
 /* 镜头页的快捷动作。 */
-.quick-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 10px;
-}
 
 
 /* 项目缺 HyperFrames 官方技能时顶栏的提示。 */
@@ -1542,4 +1504,280 @@ button.skills-pill.bad {
   height: 18px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* 文件页：左边文件树，右边内容。 */
+.files-tab {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+  gap: 24px;
+  min-height: 0;
+}
+.files-tree {
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid var(--line);
+  padding-right: 12px;
+}
+.files-tree .recent-count {
+  font-size: 12px;
+  color: var(--accent-text);
+  padding: 0 8px 8px;
+}
+.files-view {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+@media (max-width: 720px) {
+  .files-tab {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .files-tree {
+    border-right: 0;
+    max-height: 40vh;
+  }
+}
+
+/* ---- 镜头页（放映室） ---- */
+.scene-tab {
+  flex: 1;
+}
+.scene-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px 48px;
+  align-items: center;
+  justify-content: center;
+}
+.scene-stage {
+  flex: 1 1 420px;
+  min-width: 0;
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+/* 画面不加边框和底色块，只留一层柔和的阴影，让它像放在幕布上。 */
+.stage-frame {
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
+  height: min(62vh, 720px);
+  min-height: 240px;
+}
+.scene-info {
+  flex: 0 1 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.eyebrow {
+  font: 11px var(--mono);
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+.scene-title {
+  margin: 0;
+  font: 600 34px/1.25 var(--serif);
+  letter-spacing: 0.02em;
+}
+.scene-meta {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.scene-actions {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.scene-actions > button {
+  height: 38px;
+  padding: 0 18px;
+  font-size: 13px;
+}
+.scene-menu {
+  position: relative;
+}
+.scene-menu > summary {
+  list-style: none;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--muted);
+  cursor: pointer;
+}
+.scene-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.scene-menu > summary:hover,
+.scene-menu[open] > summary {
+  color: var(--text);
+  border-color: var(--muted);
+}
+.scene-menu-body {
+  position: absolute;
+  z-index: 20;
+  top: 46px;
+  right: 0;
+  width: 260px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+.menu-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+.menu-group + .menu-group {
+  border-top: 1px solid var(--line);
+}
+.menu-group > button,
+.menu-row > button {
+  justify-content: flex-start;
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.menu-group > button:hover,
+.menu-row > button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.menu-label {
+  padding: 4px 14px 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.menu-row {
+  display: flex;
+  gap: 2px;
+}
+.menu-group .feedback-note {
+  width: auto;
+  margin: 2px 8px;
+}
+.menu-note {
+  margin: 0;
+  padding: 4px 14px;
+  font: 11px var(--mono);
+  color: var(--muted);
+}
+/* 走带：播放键是象牙白圆钮，逐帧按钮退成无边框。 */
+.transport .step {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+}
+.transport .play {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  border: 0;
+  background: var(--text);
+  color: var(--accent-ink);
+}
+.transport .play:hover {
+  background: #fff;
+}
+/* 时间线：每格是那个镜头的画面，宽度按时长。当前镜头描一圈黄铜色，其余压暗。 */
+.timeline {
+  flex: none;
+  margin: 0 24px 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.timeline-total {
+  font: 12px var(--mono);
+  color: var(--muted);
+}
+.strip {
+  flex: 1;
+  display: flex;
+  gap: 3px;
+  height: 56px;
+}
+.strip .scene {
+  position: relative;
+  min-width: 22px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--raised);
+}
+.strip .scene:hover {
+  background: var(--raised);
+}
+.strip .scene .thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.5;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+.strip .scene:hover .thumb {
+  opacity: 0.8;
+}
+.strip .scene.on {
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.strip .scene.on .thumb {
+  opacity: 1;
+}
+.strip .scene-no {
+  position: absolute;
+  left: 6px;
+  top: 4px;
+  font: 10px var(--mono);
+  color: var(--text);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.strip .scene.todo {
+  background: transparent;
+  border: 1px dashed #4a463f;
+}
+.strip .scene.todo .scene-no {
+  color: var(--muted);
+  text-shadow: none;
+}
+/* 过期与渲染中用底部一道色条提示；已出片不加标记。 */
+.strip .scene.stale::after,
+.strip .scene.rendering::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+}
+.strip .scene.stale::after {
+  background: var(--stale);
 }

@@ -5,8 +5,20 @@ import { Home, type ProjectSummary } from './components/Home';
 import { SkillsPill, type SkillsStatus } from './components/SkillsPill';
 import { SetupGuide, useSetup } from './components/SetupGuide';
 import { Icon } from './components/Icon';
-import { Preview, tabs, type Tab } from './components/Preview';
+import { Preview, stepTabs, tabs, type Tab } from './components/Preview';
 import { scriptFinalPath } from './components/Script';
+
+const tabLabel = (id: Tab) => tabs.find(([t]) => t === id)?.[1] ?? id;
+
+/** 画幅写成比例（1080x1440 → 3:4），帧率不在顶栏里出现。 */
+function canvasLabel(canvas: string): string {
+  const m = /^(\d+)\s*[x×]\s*(\d+)/.exec(canvas);
+  if (!m) return canvas;
+  const [w, h] = [Number(m[1]), Number(m[2])];
+  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+  const g = gcd(w, h) || 1;
+  return `${w / g}:${h / g}`;
+}
 
 /** 有专门页面的项目文件：口播稿开口播稿页，publish.md 开发布页，不在文件页里显示原文。 */
 const pageForFile = (path: string): 'script' | 'publish' | null =>
@@ -14,7 +26,6 @@ const pageForFile = (path: string): 'script' | 'publish' | null =>
 import { ContextMenu } from './components/ContextMenu';
 import { MarkdownContext } from './components/chat/Markdown';
 import { ProjectDialog } from './components/ProjectDialog';
-import { Sidebar } from './components/Sidebar';
 import { Tasks } from './components/Tasks';
 import type {
   AgentChoice,
@@ -392,30 +403,50 @@ export function App() {
   return (
     <div class="app">
       <header class="topbar">
-        <div class="brand" title="回到首页" role="button" tabIndex={0} onClick={() => setHomeOpen(true)} onKeyDown={(e) => e.key === 'Enter' && setHomeOpen(true)}>
+        <button class="brand" title="回到首页" aria-label="回到首页" onClick={() => setHomeOpen(true)}>
           <span class="brand-mark" aria-hidden="true">
             AM
           </span>
-          <span class="brand-name">Studio</span>
-        </div>
-        <span class="divider" aria-hidden="true" />
-        <button class="project-switch" id="open-project-trigger" onClick={() => setDialog(true)}>
+        </button>
+        <button class="project-switch" id="open-project-trigger" title={project ? `${project.path}\n切换项目` : '选择项目'} onClick={() => setDialog(true)}>
           <strong id="title" class="ellipsis">
             {project?.name ?? '选择项目'}
           </strong>
-          {project && <span class="path ellipsis">{project.path}</span>}
-          <Icon name="chevron" />
+          {state?.metadata.canvas && <span class="project-meta">{canvasLabel(state.metadata.canvas)}</span>}
         </button>
-        {state?.metadata.canvas && (
-          <span class="chip mono">
-            {state.metadata.canvas}
-            {state.metadata.fps ? ` · ${state.metadata.fps}fps` : ''}
-          </span>
+        {currentId && !homeOpen && (
+          <nav class="steps" aria-label="制作步骤">
+            {stepTabs.map((id, index) => (
+              <button
+                key={id}
+                data-tab={id}
+                class={'step' + (tab === id ? ' on' : '')}
+                aria-current={tab === id ? 'page' : undefined}
+                onClick={() => setTab(id)}
+              >
+                <span class="step-no">{String(index + 1).padStart(2, '0')}</span>
+                {tabLabel(id)}
+                {id === 'scene' && state && state.scenes.total > 0 && (
+                  <span class={'step-count' + (state.scenes.stale > 0 ? ' warn' : '')} title={state.scenes.stale > 0 ? `${state.scenes.stale} 个镜头过期` : '已出片 / 全部镜头'}>
+                    {state.scenes.completed}/{state.scenes.total}
+                  </span>
+                )}
+                {id === 'script' && scriptMtime > scriptSeen && tab !== 'script' && <i class="tab-dot" aria-label="有更新" />}
+              </button>
+            ))}
+          </nav>
         )}
-        {state?.metadata.film_style && (
-          <span class="chip" title="整片风格">
-            {state.metadata.film_style}
-          </span>
+        <span class="spacer" />
+        {currentId && !homeOpen && (
+          <nav class="more-pages" aria-label="更多页面">
+            {tabs
+              .filter(([id]) => !stepTabs.includes(id))
+              .map(([id, label]) => (
+                <button key={id} data-tab={id} class={tab === id ? 'on' : ''} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>
+                  {label}
+                </button>
+              ))}
+          </nav>
         )}
         {setupMissing > 0 && (
           <button class={'skills-pill' + (setupRequiredMissing ? ' bad' : '')} id="setup-pill" onClick={() => setSetupOpen(true)} title="前置资源由终端里的 am setup 准备">
@@ -423,7 +454,6 @@ export function App() {
           </button>
         )}
         {currentId && !homeOpen && !setupRequiredMissing && skills && !skills.installed && <SkillsPill status={skills} onInstall={installSkills} />}
-        <span class="spacer" />
         {busy && (
           <span class="pill busy" title="同一时间只有一个写入者">
             <span class="dot busy" />
@@ -431,9 +461,9 @@ export function App() {
           </span>
         )}
         <Tasks tasks={tasks} onCancel={(id) => run(`/api/tasks/${id}/cancel`)} />
-        <span class="pill conn" title={connected ? '已连接' : '连接断开'}>
+        <span class={'pill conn' + (connected ? '' : ' down')} title={connected ? '已连接' : '连接断开'} aria-label={connected ? '已连接' : '连接断开'}>
           <span class={'dot ' + (connected ? 'ok' : 'bad')} />
-          <span>{connected ? '已连接' : '连接断开'}</span>
+          {!connected && <span>连接断开</span>}
         </span>
       </header>
 
@@ -489,26 +519,15 @@ export function App() {
                 setTab('file');
               }}
             />
-            <Sidebar
-              state={state}
-              tree={tree}
-              filePath={filePath}
-              recent={recent}
-              onFile={(path) => {
-                setFilePath(path);
-                setTab('file');
-              }}
-            />
             <Preview
               tab={tab}
-              onTab={setTab}
-              unseen={{ script: scriptMtime > scriptSeen }}
               state={state}
               scenes={scenes}
               usage={usage}
               sceneId={sceneId}
               filePath={filePath}
               tree={tree}
+              recent={recent}
               version={version}
               beat={beat}
               busy={busy}

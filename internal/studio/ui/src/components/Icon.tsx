@@ -20,6 +20,7 @@ const paths = {
   trash: <path d="M2 3.5h8M4.5 3.5V2h3v1.5M3 3.5l.6 6.5h4.8L9 3.5" />,
   attach: <path d="M8.5 4.5L5 8a1.4 1.4 0 01-2-2l4-4a2.3 2.3 0 013.2 3.2L6 9.4" />,
   region: <rect x="1.5" y="1.5" width="9" height="9" rx="1" stroke-dasharray="2 1.6" />,
+  more: <path d="M2.5 6h.01M6 6h.01M9.5 6h.01" stroke-width="2" />,
   pointer: <path d="M2 1.5l3.4 8.5 1.3-3.4 3.4-1.3z" />,
   up: <path d="M6 9.5V2.5M2.5 6L6 2.5 9.5 6" />,
   folder: <path d="M1.5 3.5h3l1 1.2h5v5.3h-9z" />,
