@@ -5,7 +5,7 @@ import { ruleIDs as determinismRuleIDs } from '../determinism';
 import { compareBytes } from '../gojson';
 import { ruleIDs as readsRuleIDs } from '../reads';
 import {
-  canvasOf,
+  sceneCanvas,
   CheckFramesBlank,
   CheckReviewHandoff,
   DeterminismCheckPrefix,
@@ -77,7 +77,7 @@ export function features(s: Scene): string[] {
   if (s.duration_seconds > 0 && readable / s.duration_seconds > 6.5) set.add('dense_text');
   if (s.duration_seconds < 2) set.add('short_scene');
   if (s.duration_seconds > 10) set.add('long_scene');
-  const canvas = canvasOf(s.directory, s.style_guide);
+  const canvas = sceneCanvas(s);
   if (canvas.heightPx > canvas.widthPx) set.add('portrait');
   else if (canvas.widthPx > canvas.heightPx) set.add('landscape');
   else set.add('square');

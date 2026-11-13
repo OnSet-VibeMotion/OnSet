@@ -286,7 +286,7 @@ function scenesFPS(scenes: readonly scene.Scene[], flag: number): number {
   for (const s of scenes) {
     let canvas: scene.Canvas;
     try {
-      canvas = scene.canvasOf(s.directory, s.style_guide);
+      canvas = scene.sceneCanvas(s);
     } catch (err) {
       throw new Error(`镜头 ${s.id}：${(err as Error).message}`);
     }

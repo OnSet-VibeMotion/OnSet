@@ -24,7 +24,7 @@ import { formatFixed, goRound } from '../gofmt';
 import { newAttempt, OutcomeFailed, OutcomeInterrupted, OutcomeSucceeded, OutcomeVerificationFailed, timestamp, writeAttempt, archiveAttempt } from './attempt';
 import { CheckOutputFrames, classifyOutputProblem, DeterminismCheckPrefix } from './checks';
 import { fingerprint, removeRecord, writeRecord } from './record';
-import { buildPrompt, canvasOf, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
+import { buildPrompt, sceneCanvas, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
 import { writeSceneData } from './scenedata';
 import { HyperFramesSkillName, rendererAccess, resolveAllSkills, skillsEnvironment, SkillsDirEnv } from './skills';
 import { VerificationError } from './verification';
@@ -219,7 +219,7 @@ export async function run(
  * 另外静态扫描合成源码的确定性（determinism）：读时钟、未播种随机数、
  * requestAnimationFrame 这类写法渲染照样成功，要到重渲染对不上时才暴露。
  *
- *   - 画幅：style_guide 声明了画布，渲染成别的尺寸无法靠后期规范化补救——
+ *   - 画幅：视觉规范（style_guide 或就近的 frame.md）声明了画布，渲染成别的尺寸无法靠后期规范化补救——
  *     把 720p 拉伸到 1080 是画质损失而不是格式统一。
  *   - 静音：镜头产物按契约就该无音轨，混音在后面的阶段统一做。
  *
@@ -245,7 +245,7 @@ export function verifyOutput(s: Scene, baseEnv: Record<string, string>, toleranc
   const resolved = evalSymlinks(file);
   const rel = root === '' ? '..' : relPath(root, resolved);
   if (rel === '..' || rel.startsWith('..' + path.sep)) throw new Error(`产物不得链接到镜头目录外：${s.output}`);
-  const canvas = canvasOf(s.directory, s.style_guide);
+  const canvas = sceneCanvas(s);
   const toolchain = mediaprobe.newToolchain(baseEnv);
   const media = toolchain.probe(file);
   const spec: mediaprobe.Spec = {

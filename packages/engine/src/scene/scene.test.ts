@@ -2,7 +2,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildPrompt, load, outputPath } from './scene';
+import { buildPrompt, load, outputPath, sceneCanvas } from './scene';
+import { buildSceneData } from './scenedata';
 import { frameWithCanvas, quote, tempDir, writeScene } from './testsupport';
 
 describe('load', () => {
@@ -304,10 +305,41 @@ describe('canvas', () => {
     expect(prompt, '提示词仍含硬编码的 1080x1440').not.toContain('1080x1440');
   });
 
-  // 无 style_guide 时保持改造前的行为，存量镜头目录不受影响。
-  it('falls back without a style guide', () => {
+  // 哪儿都没有视觉规范时才回退默认画幅。
+  it('falls back without any style guide', () => {
     const dir = writeScene('{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
-    expect(buildPrompt(load(dir), null), '缺 style_guide 时应回退到 1080x1440').toContain('1080x1440');
+    expect(buildPrompt(load(dir), null), '没有任何 frame.md 时应回退到 1080x1440').toContain('1080x1440');
+  });
+
+  // 新项目的 scene.json 不写 style_guide（旧字段），画幅取自项目的 frame.md。以前这里静默按 1080x1440，
+  // 选了 9:16 的项目整片出成 3:4，产物校验也按 1440 放行。
+  it('reads the project frame.md when scene.json has no style guide', () => {
+    const project = tempDir();
+    fs.writeFileSync(path.join(project, 'article-to-motion.conf'), '');
+    fs.writeFileSync(path.join(project, 'frame.md'), frameWithCanvas(1080, 1920));
+    const dir = path.join(project, 'scenes', 'scene-001');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\ntest\n');
+    fs.writeFileSync(path.join(dir, 'scene.json'), '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
+    const s = load(dir);
+    expect(buildPrompt(s, null)).toContain('1080x1920');
+    expect(sceneCanvas(s)).toEqual({ widthPx: 1080, heightPx: 1920, fps: 30 });
+    expect(buildSceneData(s).height_px).toBe(1920);
+
+    // 镜头目录里自己有一份时用它（离镜头最近）。
+    fs.writeFileSync(path.join(dir, 'frame.md'), frameWithCanvas(1920, 1080));
+    expect(sceneCanvas(s)).toEqual({ widthPx: 1920, heightPx: 1080, fps: 30 });
+  });
+
+  // 找不到项目根时不往上翻：项目外的 frame.md 与这个镜头无关。
+  it('does not read a frame.md outside the project', () => {
+    const outside = tempDir();
+    fs.writeFileSync(path.join(outside, 'frame.md'), frameWithCanvas(1080, 1920));
+    const dir = path.join(outside, 'loose', 'scene-001');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\ntest\n');
+    fs.writeFileSync(path.join(dir, 'scene.json'), '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
+    expect(sceneCanvas(load(dir)).heightPx).toBe(1440);
   });
 
   // 声明了 style_guide 却读不出 canvas，说明规范文件是坏的：报错而不是回退默认。

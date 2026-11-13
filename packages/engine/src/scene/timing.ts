@@ -13,7 +13,7 @@ import { unmarshal as beatUnmarshal, type StructType as BeatStructType } from '.
 import { formatFixed, formatG, goQuote, goRound, goTrimSpace } from '../gofmt';
 import type * as srt from '../srt';
 import { decodeFirst, ptrTo, sliceOf, type StructType } from './jsondecode';
-import { canvasOf, contained, type Canvas, type Scene } from './scene';
+import { sceneCanvas, contained, type Canvas, type Scene } from './scene';
 import { verifyFrameAlignment } from './frames';
 import { VerificationError } from './verification';
 
@@ -242,7 +242,7 @@ export function verifyTimingInputs(s: Scene): void {
   if (s.song !== null || s.beat !== null) throw fail('timing 块不能与 song 或 beat 块同时出现：口播、歌曲、卡点的时间轴来源互斥');
   let canvas: Canvas;
   try {
-    canvas = canvasOf(s.directory, s.style_guide);
+    canvas = sceneCanvas(s);
   } catch (err) {
     throw fail((err as Error).message);
   }

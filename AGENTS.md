@@ -118,6 +118,8 @@ fork 自外部项目的技能要带 `LICENSE` 和 `ATTRIBUTION.md`，后者记�
 
 画幅与风格是两个正交维度，都在 `am init` 时各选一次（`--canvas`、`--style`）。画幅决定画布与安全区，风格决定配色、字体、版式骨架、动效语法与禁用项；生成器把二者组合成每个风格 × 画幅的 `frame.md`：canvas 与 safe_area 两块来自画幅，其余 token 来自风格模板。2026-10-20 起内置风格只作为旧项目的兼容资产保留：新镜头的提示词不再把 `frame.md` 的风格 token、`style_id`、风格说明书当作视觉命令，`am init` 不传 `--style` 时取自定义草稿（`packages/cli/src/canvas.ts` 的 `resolveStyle`），视觉由各镜头自主决定或由「整片风格」统一。画幅部分（画布、帧率、安全区）照常生效。
 
+镜头的画幅一律经 `scene.sceneCanvas` 取（`scene/scene.ts` 的 `styleSource`）：`scene.json` 写了 `style_guide` 用它，没写就近找 `frame.md`——镜头目录，再逐级向上到项目根（有 `article-to-motion.conf` 的那一层），找不到项目根时只看镜头目录。**不要再写 `canvasOf(s.directory, s.style_guide)`**：新镜头不写 `style_guide`，那样会静默落到默认的 1080×1440，提示词、`am-scene.js` 与产物校验三处一起错，选了 9:16 的项目整片出成 3:4 还照样「通过」（2026-11 实测）。`scene.test.ts` 的「reads the project frame.md when scene.json has no style guide」钉着。
+
 `assets/presets/<画幅>/` 与 `assets/styles/<风格>/<画幅>/` 下的**文本产物全部由 `npm run generate -w @am/engine` 生成，不要手改**。真相源是 `packages/engine/src/preset/table.ts` 的画幅表、`packages/engine/src/preset/style.ts` 的风格表，以及 `packages/engine/src/preset/gen/templates/` 下的模板（`PROMPT-PRODUCTION.md` 与风格无关；每套风格在 `templates/styles/<风格>/` 下各有 `frontmatter.yaml`、`frame.body.md`、`style-guide.body.md`）。安全区在预设表里用 anchor 声明（贴顶 / 贴底 / 上下固定），构建期推导成绝对像素写进 `frame.md`——anchor 不进项目文件，渲染工具读到的始终是现成像素值。
 
 改完预设表后必须重跑生成器并提交产物，CI 的 `generated-assets` job 会校验二者一致（`packages/engine/src/preset/gen/gen.test.ts` 的「matches the committed assets byte-for-byte」在本地也能先拦下）。

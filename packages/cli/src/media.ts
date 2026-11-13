@@ -185,7 +185,7 @@ crop 写成 x,y,宽,高，只保留画面上这块区域的原始像素，用来
   },
   run: (p, { out }) => {
     const s = scene.load(str(p.scene));
-    const canvas = scene.canvasOf(s.directory, s.style_guide);
+    const canvas = scene.sceneCanvas(s);
     const toolchain = mediaprobe.newToolchain(currentEnvironment());
     // 时间点按实测时长换算：产物时长与声明时长不一致，
     // 正是要靠抽帧去看的情况之一。

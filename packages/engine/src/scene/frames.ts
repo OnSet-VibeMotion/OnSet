@@ -1,6 +1,6 @@
 // 移植自 internal/scene/frames.go。
 import { formatFixed, formatG, goRound } from '../gofmt';
-import { canvasOf, type Scene } from './scene';
+import { sceneCanvas, type Scene } from './scene';
 import { VerificationError } from './verification';
 
 /**
@@ -19,7 +19,7 @@ export const frameAlignmentTolerance = 1e-3;
  * 重跑只会得到同样的产物，所以抛 VerificationError 走不重试的路径。
  */
 export function verifyFrameAlignment(s: Scene): void {
-  const canvas = canvasOf(s.directory, s.style_guide);
+  const canvas = sceneCanvas(s);
   const fps = canvas.fps;
   const frames = s.duration_seconds * fps;
   if (Math.abs(frames - goRound(frames)) <= frameAlignmentTolerance) return;

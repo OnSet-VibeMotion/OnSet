@@ -725,6 +725,52 @@ export function readStyleFrontmatterAny(directory: string, styleGuide: string): 
  * 声明了 style_guide 却读不出 canvas 时报错而不是回退默认：静默按 1080x1440
  * 渲染正是这次改造要消除的故障——校验层和执行层各说各的，成片才暴露。
  */
+/** 视觉规范在哪：镜头目录（或它的某个上级）加相对它的文件名。 */
+export interface StyleSource {
+  directory: string;
+  file: string;
+}
+
+/** 项目根的标志：项目配置文件。 */
+const projectMarker = 'article-to-motion.conf';
+/** 画幅预设下发到项目根的视觉规范。 */
+const frameFile = 'frame.md';
+
+/**
+ * 镜头的画幅从哪份视觉规范读。
+ *
+ * scene.json 写了 style_guide 就用它（旧项目）。没写时就近找 frame.md：先看镜头目录，再逐级向上到项目根
+ * （有 article-to-motion.conf 的那一层）。2026-10-20 起提示词与项目规则都说「画幅取自 frame.md」、
+ * style_guide 是旧字段不用再写，而这里以前只认 style_guide，没写就静默按 1080x1440 渲染、
+ * 校验，选了 9:16 的项目整片出成 3:4（实测）。找不到项目根时只看镜头目录本身，不去翻项目外的 frame.md。
+ */
+export function styleSource(s: Pick<Scene, 'directory' | 'style_guide'>): StyleSource | null {
+  if (s.style_guide !== '') return { directory: s.directory, file: s.style_guide };
+  const sceneDir = path.resolve(s.directory);
+  const candidates: string[] = [];
+  let projectFound = false;
+  for (let dir = sceneDir; ; ) {
+    candidates.push(dir);
+    if (isRegularFile(path.join(dir, projectMarker))) {
+      projectFound = true;
+      break;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  for (const dir of projectFound ? candidates : [sceneDir]) {
+    if (isRegularFile(path.join(dir, frameFile))) return { directory: dir, file: frameFile };
+  }
+  return null;
+}
+
+/** 镜头的画幅：见 styleSource；哪儿都没有视觉规范时用默认画幅。 */
+export function sceneCanvas(s: Pick<Scene, 'directory' | 'style_guide'>): Canvas {
+  const source = styleSource(s);
+  return source ? canvasOf(source.directory, source.file) : { ...defaultCanvas };
+}
+
 export function canvasOf(directory: string, styleGuide: string): Canvas {
   if (styleGuide === '') return { ...defaultCanvas };
   const c = readStyleTokens(directory, styleGuide).canvas;
@@ -861,7 +907,7 @@ export function buildPrompt(s: Scene, resolvedSkills: Record<string, string> | n
   } catch {
     // 没有 prompt.md 时用默认创意方向。
   }
-  const canvas = canvasOf(s.directory, s.style_guide);
+  const canvas = sceneCanvas(s);
   const frames = goRound(s.duration_seconds * canvas.fps);
   const hasLook = s.timing !== null && !lookIsZero(s.timing.look);
   // 风格由渲染器根据本镜头文案自主决定。style_guide 仅作为旧项目的
@@ -1005,7 +1051,7 @@ export function verifySongInputs(s: Scene): void {
     if (s.cast !== null) throw verification(s, '首版不支持 song + cast');
     let canvas: Canvas;
     try {
-      canvas = canvasOf(s.directory, s.style_guide);
+      canvas = sceneCanvas(s);
     } catch (err) {
       throw verification(s, (err as Error).message);
     }
@@ -1037,7 +1083,7 @@ export function verifyBeatInputs(s: Scene): void {
     if (s.song !== null || s.cast !== null) throw verification(s, '卡点镜头不能同时带 song 或 cast 块');
     let canvas: Canvas;
     try {
-      canvas = canvasOf(s.directory, s.style_guide);
+      canvas = sceneCanvas(s);
     } catch (err) {
       throw verification(s, (err as Error).message);
     }

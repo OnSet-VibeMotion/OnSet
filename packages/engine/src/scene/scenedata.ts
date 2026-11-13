@@ -13,7 +13,7 @@ import { marshalIndent, sortedKeys } from '../gojson';
 import { goRound } from '../gofmt';
 import * as reads from '../reads';
 import * as srt from '../srt';
-import { canvasOf, contained, delimiterMatchAll, readStyleFrontmatterAny, type Scene } from './scene';
+import { contained, sceneCanvas, styleSource, delimiterMatchAll, readStyleFrontmatterAny, type Scene } from './scene';
 import { handoffGuide, handoffIsZero, loadPhraseTimelineIn, lookIsZero, lookToJSON, type Handoff, type Look, type Timing } from './timing';
 
 /** 写进镜头目录的局部数据文件名。 */
@@ -68,7 +68,7 @@ export interface LocalPhrase {
  * 的位置，cues 与 phrases 为空数组、start_frame 为 null。
  */
 export function buildSceneData(s: Scene): SceneData {
-  const canvas = canvasOf(s.directory, s.style_guide);
+  const canvas = sceneCanvas(s);
   const data: SceneData = {
     schema: SceneDataSchema,
     scene_id: s.id,
@@ -84,9 +84,10 @@ export function buildSceneData(s: Scene): SceneData {
     phrases: [],
     look: null,
   };
-  if (s.style_guide !== '') {
+  const source = styleSource(s);
+  if (source) {
     // 视觉规范里的这两块原样搬运。用 any 接收，写错类型也不会让整份 frontmatter 解析失败。
-    const extras = readStyleFrontmatterAny(s.directory, s.style_guide);
+    const extras = readStyleFrontmatterAny(source.directory, source.file);
     const area = extras.safe_area;
     if (area !== null && typeof area === 'object' && !Array.isArray(area)) data.safe_area = area as Record<string, unknown>;
     data.subtitles = extras.subtitles ?? null;
