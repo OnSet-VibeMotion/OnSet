@@ -7,7 +7,7 @@
 ## 适用范围与生效条件
 
 - 触发条件只有一个：项目根存在 `cast.yaml`。不存在则本附录不适用。
-- 出场角色必须先通过 `cast_add({"args": ["<外部角色包目录>"]})` 或 `cast_new({"args": ["<id>"]})` 登记进 `cast.yaml` 的 `packs` 列表，才能出现在对话体脚本和 `scene.json` 的 `cast` 块里。
+- 出场角色必须先通过 `cast_add({"dir": "<外部角色包目录>"})` 或 `cast_new({"id": "<id>"})` 登记进 `cast.yaml` 的 `packs` 列表，才能出现在对话体脚本和 `scene.json` 的 `cast` 块里。
 - 选「多角色对话」新建的项目，`cast.yaml` 里 `packs` 是空列表——这是预期状态，不是错误。项目在第一次 `cast_add()` / `cast_new()` 之前本来就还没有可用角色，此时若强行渲染角色相关镜头会在角色装载阶段清楚报错，好过带着不存在的角色渲到一半才发现。
 - 这样新建的项目同时会有空的 `cast/` 目录。Git 不跟踪空目录，`git status` 在第一次 `cast_add()` / `cast_new()` 之前不会显示它——这是正常现象，不代表目录没建成功；目录一旦被写入第一个角色包（即目录不再为空），Git 就会正常跟踪其内容。
 
@@ -132,7 +132,7 @@ dialogue_assemble()
 
 ## 七、角色包的引入
 
-- 角色包通过 `cast_add({"args": ["<外部角色包目录>"]})` 引入一个已存在的角色，或 `cast_new({"args": ["<id>"]})` 现场生成一个新角色骨架（`character.yaml` + `rig.svg` + `dna.md`）后手工补全真实 `voiceId`、外观与人设。两条命令都会自动把角色登记进项目根 `cast.yaml` 的 `packs` 列表，不需要手工编辑 `cast.yaml`。
+- 角色包通过 `cast_add({"dir": "<外部角色包目录>"})` 引入一个已存在的角色，或 `cast_new({"id": "<id>"})` 现场生成一个新角色骨架（`character.yaml` + `rig.svg` + `dna.md`）后手工补全真实 `voiceId`、外观与人设。两条命令都会自动把角色登记进项目根 `cast.yaml` 的 `packs` 列表，不需要手工编辑 `cast.yaml`。
 - 登记是幂等的：重复引入同一路径不会在 `packs` 里留下重复项，`cast.yaml` 已有的 `defaults` 也原样保留。
 - 写对话体脚本之前，先确认脚本里会用到的每一个说话人 id 都已经登记；未登记的说话人既过不了 `cast_validate()`，也过不了渲染前的镜头级校验。
 - 手改 `cast/<id>/character.yaml` 之后要重新跑一次 `cast_validate()` 才会同步 `character.json`；渲染机实际读取的是 `character.json`，不会因为 yaml 改过就自动感知。

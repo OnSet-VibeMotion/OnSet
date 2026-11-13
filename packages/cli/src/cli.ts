@@ -1,29 +1,35 @@
 /**
  * am 的根命令与命令之间共用的小工具。移植自 internal/cli/cli.go。
  *
- * 子命令按引擎移植进度逐个挂上；newRoot 里的注册顺序与 Go 版无关（帮助按名字排序）。
+ * 命令行只给开发与 CI 用，不对外提供：制作步骤都是操作表里的操作（ops/），由 mountOps 挂进命令树；
+ * 这里另挂几个客户端自己的入口（setup、init、studio 下的两个 MCP 服务）。
  */
 import * as envutil from '@am/engine/envutil';
 import { formatFixed } from '@am/engine/gofmt';
 import { PinnedVersion } from '@am/engine/hyperframes';
 import { Command, ExitError, type Out, type PositionalArgs, ref } from './cobra';
-import { newFilmStyleCommand } from './filmstyle';
-import { newHyperframesCommand } from './hyperframes';
-import { newAlignCommand } from './align';
-import { newAudioCommand } from './audio';
-import { newArchiveCommand, newConfigCommand, newInitCommand } from './project_cmds';
+// 各模块在加载时把自己的操作登记进操作表（ops/op.ts）；命令行与工具服务都从那张表来。
+import './align';
+import './audio';
+import './beat_cmd';
+import './cast_cmd';
+import './filmstyle';
+import './hyperframes';
+import './media';
+import './memory_cmd';
+import './reads_cmd';
+import './review_cmd';
+import './scene_cmd';
+import './scene_cues';
+import './song_cmd';
+import './style_cmd';
+import './usage_cmd';
+import './validate_cast';
+import './validate_cmd';
+import { mountOps } from './ops/cli';
+import { newInitCommand } from './project_cmds';
 import { newSetupCommand } from './setup';
 import { newStudioCommand } from './studio';
-import { newStyleCommand } from './style_cmd';
-import { newBeatCommand } from './beat_cmd';
-import { newCastCmd, newDialogueCmd } from './cast_cmd';
-import { newConcatCommand } from './media';
-import { newMemoryCommand } from './memory_cmd';
-import { newReviewCommand } from './review_cmd';
-import { newSceneCommand } from './scene_cmd';
-import { newSongCmd } from './song_cmd';
-import { newUsageCommand } from './usage_cmd';
-import { newValidateCommand } from './validate_cmd';
 import { setToolVersion } from '@am/engine/scene';
 
 /**
@@ -91,14 +97,9 @@ export function newRoot(stdout: Out, stderr: Out): { root: Command; flags: RootF
     '关闭 AI CLI 的权限隔离（危险）。只对会启动 AI CLI 的 run / studio / scene run / scene run-all 生效，对 init、config、validate、archive 无作用；会传递给嵌套镜头任务',
   );
   const flags: RootFlags = { unsafe };
-  root.addCommand(newSetupCommand(stdout, stderr), newHyperframesCommand(stdout, stderr), newFilmStyleCommand(stdout, stderr));
-  root.addCommand(newInitCommand(stdout, stderr), newConfigCommand(stdout), newArchiveCommand(stdout), newAlignCommand(stdout), newAudioCommand(stdout), newStyleCommand(stdout), newStudioCommand(stdout));
-  // validate、concat、review 在 Go 版里共用同一个 --project-root 变量。
-  const projectRoot = ref('');
-  root.addCommand(newSceneCommand(stdout, stderr, unsafe), newUsageCommand(stdout));
-  root.addCommand(newValidateCommand(stdout, projectRoot), newConcatCommand(stdout, projectRoot), newReviewCommand(stdout, projectRoot));
-  root.addCommand(newSongCmd(stdout), newBeatCommand(stdout), newCastCmd(stdout), newDialogueCmd(stdout));
-  root.addCommand(newMemoryCommand(stdout, stderr, unsafe));
+  // 只给开发与客户端自己用的入口：准备前置资源、建项目、两个 MCP 服务。其余命令都来自操作表。
+  root.addCommand(newSetupCommand(stdout, stderr), newInitCommand(stdout, stderr), newStudioCommand(stdout));
+  mountOps(root, stdout, stderr, unsafe);
   return { root, flags };
 }
 

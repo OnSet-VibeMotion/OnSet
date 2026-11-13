@@ -16,7 +16,7 @@ import '../filmstyle/sources';
 import { newToolchain } from '../mediaprobe';
 import { DecodeError, decodeJSON, fieldBool, fieldString, goMap, methodNotAllowed, serveFile, writeError, writeJSON } from './http';
 import type { Project, Server } from './studio';
-import { runStudioCLI, runWriteTask, writeTaskError, type Task } from './tasks';
+import { runStudioOp, runWriteTask, writeTaskError, type Task } from './tasks';
 
 /** /api/film-styles 里的一个来源。ready 为 false 时来源数据还没由 am setup 准备好（附 problem）。 */
 export interface FilmStyleSource {
@@ -266,28 +266,26 @@ export async function projectFilmStyleAPI(s: Server, request: Request): Promise<
   }
 }
 
-/** startFilmStyleTask 起一个 am film-style use 写任务。 */
+/** startFilmStyleTask 起一个 film_style_use 写任务。 */
 export function startFilmStyleTask(s: Server, p: Project, style: filmstyle.Style, replace: boolean): Task {
-  const args = ['film-style', 'use', filmstyle.styleKey(style), '--project-root', p.path];
-  if (replace) args.push('--replace');
   return runWriteTask(s, p, 'film-style.use', '整片风格：' + style.cn, async (signal) => {
-    await runStudioCLI(s, signal, p, ...args);
+    await runStudioOp(s, signal, p, 'film_style_use', { style: filmstyle.styleKey(style), project_root: p.path, replace });
   });
 }
 
-/** startAddFilmStyleTask 起一个 am film-style add 写任务：添一种额外风格，给个别镜头用。 */
+/** startAddFilmStyleTask 起一个 film_style_add 写任务：添一种额外风格，给个别镜头用。 */
 export function startAddFilmStyleTask(s: Server, p: Project, style: filmstyle.Style): Task {
   return runWriteTask(s, p, 'film-style.add', '添加风格：' + style.cn, async (signal) => {
-    await runStudioCLI(s, signal, p, 'film-style', 'add', filmstyle.styleKey(style), '--project-root', p.path);
+    await runStudioOp(s, signal, p, 'film_style_add', { style: filmstyle.styleKey(style), project_root: p.path });
   });
 }
 
 /** 去掉一种风格；key 为空时去掉默认风格。还有镜头点名它时 am 会拒绝，错误进任务日志。 */
 function removeFilmStyle(s: Server, p: Project, key: string): Response {
   try {
-    const args = ['film-style', 'remove', ...(key !== '' ? [key] : []), '--project-root', p.path];
+    const params: Record<string, unknown> = { project_root: p.path, ...(key !== '' ? { style: key } : {}) };
     const t = runWriteTask(s, p, 'film-style.remove', key !== '' ? '去掉风格：' + key : '去掉整片风格', async (signal) => {
-      await runStudioCLI(s, signal, p, ...args);
+      await runStudioOp(s, signal, p, 'film_style_remove', params);
     });
     return writeJSON(202, goMap({ task_id: t.task_id }));
   } catch (err) {

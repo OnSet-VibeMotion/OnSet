@@ -41,10 +41,10 @@ describe('review', () => {
     const out = new Buffer();
     let errOut = new Buffer();
     expect(await run(['review', 'x.mp4', '--fps', '30'], out, errOut)).toBe(1);
-    expect(errOut.text).toContain('--out');
+    expect(errOut.text).toContain('out 指定');
     errOut = new Buffer();
     expect(await run(['review', 'x.mp4', '--out', tempDir(), '--project-root', tempDir()], out, errOut)).toBe(1);
-    expect(errOut.text).toContain('--fps');
+    expect(errOut.text).toContain('显式传 fps');
   });
 
   it('scene lint', async () => {

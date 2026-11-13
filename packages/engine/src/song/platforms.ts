@@ -27,7 +27,7 @@ function platform(id: string, name: string, model: string, key: string, console:
 }
 
 export const Platforms: Platform[] = [
-  platform('manual', '网页手动生成 / 导入歌曲', 'external', '', '由用户选择歌曲生成网页', 'tool_help({"tool": "song_handoff"})', '无需 API Key；输出歌词和曲风说明后暂停，用户在网页生成并提供音频，再运行 song_receive({"args": ["<音频文件>"]})。'),
+  platform('manual', '网页手动生成 / 导入歌曲', 'external', '', '由用户选择歌曲生成网页', 'tool_help({"tool": "song_handoff"})', '无需 API Key；输出歌词和曲风说明后暂停，用户在网页生成并提供音频，再运行 song_receive({"audio": "<音频文件>"})。'),
   platform('mureka', 'Mureka 官方 API', 'mureka-9.5', 'MUREKA_API_KEY', 'https://platform.mureka.ai/', 'https://platform.mureka.ai/docs/en/quickstart.html', '支持中文及自带歌词；API 单独充值，与网页会员不互通。每次请求一首，按任务 ID 续跑；时长/BPM 仅作为创作提示。'),
   platform('lyria', 'Google Lyria', 'lyria-3.5', 'GEMINI_API_KEY', 'https://aistudio.google.com/api-keys', 'https://ai.google.dev/gemini-api/docs/music-generation', '需 Gemini API 项目及对应模型权限/计费；使用 Interactions API 指定歌词。目标时长与 BPM 是提示，需试听核对是否改词；同步请求中断不自动重发。'),
   platform('bailian', '阿里云百炼 Fun-Music', 'fun-music-v1', 'DASHSCOPE_API_KEY', 'https://bailian.console.aliyun.com/', 'https://help.aliyun.com/zh/model-studio/fun-music-api', '需北京地域 Fun-Music 邀测权限及普通按量 API Key；当前 Token Plan 清单未包含音乐。指定歌词时曲风提示被忽略，时长/BPM 不作为 API 控制参数。'),
@@ -70,11 +70,11 @@ export function platformGuide(out: Writer, id: string, env: Record<string, strin
     out.write(`  配置：song_configure({"provider": "${p.id}"${extra}})\n`);
   }
   if (id === 'manual') {
-    out.write('\n流程：编写歌词/曲风 → song_handoff() → 等待用户提供音频 → song_receive({"args": ["AUDIO"]}) → 用户确认 → song_select({"args": ["ID"]}) → song_prepare()。网页模式无需 API Key。\n');
+    out.write('\n流程：编写歌词/曲风 → song_handoff() → 等待用户提供音频 → song_receive({"audio": "AUDIO"}) → 用户确认 → song_select({"candidate": "ID"}) → song_prepare()。网页模式无需 API Key。\n');
     return;
   }
   out.write(
-    '\n配置后：song_doctor() → 编写 lyrics.txt → song_generate({"count": 1}) → 试听后 song_select({"args": ["<id>"]})。\n配置和密钥检查不会产生生成费用，也不会验证账户额度。外部歌曲可用 song_import() 导入。\n',
+    '\n配置后：song_doctor() → 编写 lyrics.txt → song_generate({"count": 1}) → 试听后 song_select({"candidate": "<id>"})。\n配置和密钥检查不会产生生成费用，也不会验证账户额度。外部歌曲可用 song_import() 导入。\n',
   );
 }
 
@@ -122,7 +122,7 @@ export function checkCredential(c: Config, env: Record<string, string> | null): 
   const p = providerInfo(c.provider);
   if (p.key === '' || c.provider === 'acestep') return;
   const key = goTrimSpace(env?.[p.key] ?? '');
-  if (key === '') throw new Error(`缺少 ${p.key}；运行 song_providers({"args": ["${p.id}"]}) 查看申请及配置步骤；安全模式下需通过 AM_PASSTHROUGH_ENV 透传`);
+  if (key === '') throw new Error(`缺少 ${p.key}；运行 song_providers({"platform": "${p.id}"}) 查看申请及配置步骤；安全模式下需通过 AM_PASSTHROUGH_ENV 透传`);
   if (c.provider === 'bailian' && key.startsWith('sk-sp-')) {
     throw new Error('Fun-Music 不支持 Token Plan 专用 Key，请配置北京地域普通 DASHSCOPE_API_KEY');
   }

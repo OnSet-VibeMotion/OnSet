@@ -50,7 +50,7 @@ export function errorText(err: unknown): string {
   return forUser(err instanceof Error ? err.message : String(err));
 }
 
-/** 工具调用写法：beat_cues()、film_style_add({"args": ["x"]})。 */
+/** 工具调用写法：beat_cues()、film_style_add({"style": "x"})。 */
 const toolCall = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)*\((?:\{[^)]*\})?\)/;
 
 /**

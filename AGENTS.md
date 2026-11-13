@@ -5,7 +5,7 @@
 | 目录 | 内容 |
 |---|---|
 | `packages/engine/src/<包>/` | 引擎。包的公开 API 从各自的 `index.ts` 导出，外部用 `@am/engine/<包>` 引用。编码约定见 `packages/engine/CONVENTIONS.md`——为了与用户已有的项目文件、记忆库和渲染指纹逐字节兼容，JSON、数字格式、正则都有固定写法 |
-| `packages/cli/src/` | `am` 命令行：`cobra.ts` 是命令与参数的解析框架，`cli.ts` 注册全部命令，各命令在 `*_cmd.ts` 等文件里。esbuild 打成 `packages/cli/dist/am.cjs` |
+| `packages/cli/src/` | am：制作步骤是操作表里的操作（`ops/op.ts` 的 `defineOp`，各模块加载时登记，例如 `beat_cmd.ts`），工具服务、客户端后端与开发用的命令行都从这张表来；`cli.ts` 只另挂 setup、init 与两个 MCP 服务。esbuild 打成 `packages/cli/dist/am.cjs` |
 | `apps/desktop/` | Electron 客户端：主进程 `src/main/`，React 19 界面 `src/renderer/`，端到端测试 `e2e/` |
 | `assets/` | 随客户端下发的内置资产，运行时从磁盘读，见「内置资产」 |
 
@@ -66,7 +66,7 @@ CI（`.github/workflows/ci.yml`）跑类型检查、两包的 Vitest、构建、
 | 没有 git 时技能改从 GitHub 逐个文件下载（`hyperframes/download.ts`），按 git blob 摘要核对；`toolpath.usableGit` 用 `xcode-select -p` 判断 `/usr/bin/git` 是不是占位程序 | 整仓 tarball 144 MB，技能只有几 MB；占位 git 一运行就弹窗要装命令行工具。lemo 风格库与 `am archive` 仍要 git，缺了提示 `xcode-select --install` |
 | ffmpeg 不打进 .app，由 `am setup` 下载 eugeneware/ffmpeg-static 的静态构建（`toolinstall.FFmpegRelease`）；系统里已有就直接就绪 | HyperFrames 与 `concat` 都写死 libx264（GPL），LGPL 构建渲染不了；随应用发布 GPL + x264 要背许可与专利义务 |
 | Python 类工具（edge-tts、tccli、mlx-audio、funasr）与没有合适 Python 时的节拍环境都用 uv，Python 装在 `<数据目录>/am/python`；uv 不读 pip.conf，`toolinstall.pipIndexURL` 把 pip.conf 的 `index-url` 转成 `UV_DEFAULT_INDEX`。节拍环境用 `uv venv --seed`，后面照旧 `python -m pip`（读 pip.conf） | 国内用户的镜像配在 pip.conf 里，不转过去 torch 会从境外直连 |
-| 工具第一次运行才下的模型也是前置资源：对齐工具与配音工具的 `model`（`providers.ts` 的 `QwenForcedAligner`、`BreezeTTS2`，文件与 sha256 钉死）由 `toolinstall.ensureModel` 下到 `<数据目录>/am/models/`，先探 Hugging Face 通不通，不通就从魔搭下同名仓库；提示词用 `am config get ALIGN_MODEL` / `TTS_MODEL` 拿本地目录 | huggingface.co 在国内常常连不上，hf-mirror 现在也 308 跳回 huggingface.co（2026-11 实测），不预先下好就是在对齐时现下载 1.27 GB |
+| 工具第一次运行才下的模型也是前置资源：对齐工具与配音工具的 `model`（`providers.ts` 的 `QwenForcedAligner`、`BreezeTTS2`，文件与 sha256 钉死）由 `toolinstall.ensureModel` 下到 `<数据目录>/am/models/`，先探 Hugging Face 通不通，不通就从魔搭下同名仓库；提示词用 `config_get({"key": "ALIGN_MODEL"})` / `TTS_MODEL` 拿本地目录 | huggingface.co 在国内常常连不上，hf-mirror 现在也 308 跳回 huggingface.co（2026-11 实测），不预先下好就是在对齐时现下载 1.27 GB |
 | 测试的 testsupport 把 `AM_BROWSER` 指到假浏览器（`hftest.fakeBrowser`）、`AM_BIN_DIR` 指到空目录 | 开发机上 `~/.local/share/am/bin` 里真实的 ffmpeg、mmx 不能混进测试 |
 
 
@@ -186,7 +186,7 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 
 - 要像直接写给人类操作者的任务说明，不暴露执行者是 agent、Codex 或 AI，也不使用「主控 agent」这类身份设定；但可以明确说明他需要操作其他 AI。
 - 不得出现 `./am` —— 用户项目里没有这个可执行文件。
-- 制作步骤写成 am 工具服务里的工具调用：`工具名({参数})`（例如 `scene_run({"args": ["scenes/scene-001"]})`、`align_build({"fps": 30})`），位置参数放进 `args`，`--a-b` 写成参数 `a_b`。不教 `am <命令>`，更不写 `$(am …)` 这样的命令替换——am 不在编排工具与渲染器的 PATH 里。前置资源缺了一律指向客户端的工具准备页，不写「在终端运行 am setup」。`gen.test.ts` 的「keeps the orchestrator out of am internals」「leaves voice tools to am setup」钉着。
+- 制作步骤写成 am 工具服务里的工具调用：`工具名({参数})`，参数一律按名字（例如 `scene_run({"scene": "scenes/scene-001"})`、`align_build({"fps": 30})`、`scene_frames({"scene": "…", "at": "0", "check_blank": true})`），不写 `--flag`。参数名以操作表为准（`tool_help` 里有）。不教 `am <命令>`，更不写 `$(am …)` 这样的命令替换——am 不在编排工具与渲染器的 PATH 里。前置资源缺了一律指向客户端的工具准备页，不写「在终端运行 am setup」。`gen.test.ts` 的「keeps the orchestrator out of am internals」「leaves voice tools to am setup」钉着。
 - 这两条由 `packages/engine/src/project/boundary.test.ts` 的「prompts use installed CLI and do not expose executor identity」强制执行，违反会让测试失败。
 
 ## 媒体校验与拼接
@@ -312,20 +312,35 @@ AM_TEST_BEAT_PYTHON=/path/to/venv/bin/python npx vitest run --root packages/engi
 
 调试产生的单片内容留在仓库外，不要靠 `.gitignore` 遮掩——未跟踪文件同样会被这个测试扫到。
 
+## 操作表
+
+am 的每一条制作步骤是一条操作（`packages/cli/src/ops/op.ts`）：
+
+| 字段 | 约定 |
+|---|---|
+| `name` | 工具名，小写加下划线（`beat_import`），重复登记直接报错 |
+| `cli` | 开发用命令行里的路径（`['beat', 'import']`），由 `ops/cli.ts` 的 `mountOps` 挂进 cobra 命令树；命令组的说明用 `defineGroup` |
+| `params` | 具名参数：`type`（string / boolean / integer / number / strings / duration）、`description`、`default`、`required`；`positional` 只影响命令行（位置参数的次序），工具服务一律按名字传 |
+| `summary` / `description` / `examples` | 按工具写法写，见「am 的工具服务」 |
+| `scopes` | 缺省只给编排工具；`hyperframes` 另给渲染器 |
+| `run(params, ctx)` | 文字写进 `ctx.out`（工具输出、命令行屏幕都是它），结构化结果 `return { data }`；取消看 `ctx.signal`，`ctx.unsafe` 是根命令的 `--unsafe` |
+
+新增一步制作：在对应模块里 `defineOp` 一条（模块要在 `cli.ts` 里 import，登记靠加载时的副作用），写好说明、参数与至少一个例子；工具、`tool_help`、客户端后端（`runStudioOp`）与开发用命令行自动都有。多条操作共用的参数（`project_root`、`timeout`）用 `ops/common.ts`。
+
 ## am 的工具服务（MCP）
 
 客户端里的编排工具与渲染器**只经 MCP 调用 am**：`am studio tools-mcp --profile orchestrator|renderer --workdir <目录>`（`packages/cli/src/toolsmcp.ts`，隐藏命令）。以前 am 在它们的 PATH 里，缺信息时它们会 `which am`、`strings "$(which am)"` 反推格式（实测两次），每次都撞白名单、弹审批卡片打断用户。
 
 | 约定 | 原因 |
 |---|---|
-| 工具由命令树自动生成，每个叶子命令一个（`scene run-all` → `scene_run_all`），参数与说明来自命令本身；flag 的连字符换成下划线，位置参数放 `args`。不出现的：`setup`、`run`、`init`、两个 `*-mcp`、隐藏命令、`--unsafe` | 以后加命令自动有工具，不会漏；前置资源只在安装页装，建项目由客户端做 |
-| 工具列表里只放一句话说明（工具 74 个，带完整帮助有 7.5 万字），完整说明与例子由 `tool_help` 按需取；参数说明只留第一句 | 每次请求都要把工具定义塞进上下文。claude、codebuddy 会按需加载（ToolSearch / DeferExecuteTool），opencode 经它的代码执行工具调 |
+| 工具就是操作表（`ops/op.ts`）里 `scopes` 含这一档位的操作：工具名、具名参数（`params`，含类型、缺省值、必填）、一句话说明（`summary`）、完整说明与例子（`description` / `examples`，按工具写法写）都是操作自己定义的。`setup`、`init` 与两个 `*-mcp` 不是操作；`cliOnly` 的参数不进工具 | 以后加操作自动有工具，不会漏；参数按名字传，agent 不用记位置参数的顺序 |
+| 工具列表里只放一句话说明（工具 75 个，列表约 3.6 万字），完整说明、参数与例子由 `tool_help` 按需取；参数说明只留第一句 | 每次请求都要把工具定义塞进上下文。claude、codebuddy 会按需加载（ToolSearch / DeferExecuteTool），opencode 经它的代码执行工具调 |
 | `hyperframes` 单独一个工具（子命令枚举 + `args`），只放行本机渲染与只读检查；`snapshot` 自动加 `--describe false`，`timeline` 只放行 `--json`。renderer 档位只有它加 `job_wait` / `job_cancel` / `tool_help` | 与渲染提示词的禁令同一份：远端渲染、改动已装技能、交互与遥测命令一律不给 |
-| 每次调用起一个 am 子进程（同一个运行时、同一个 am.cjs），最多等 `wait_seconds`（缺省 50）；没跑完返回任务号，`job_wait` 接着等，MCP 进程退出时整组结束子进程 | codex 的 MCP 调用默认 60 秒超时，而渲染、拼接动辄几分钟到几小时 |
+| 每次调用先经 `normalizeParams` 校验参数（未知参数、类型不对、缺必填直接回给 agent，不起进程），再起一个执行进程 `am.cjs __op <名字> <参数 JSON>`（`ops/worker.ts`，协议在 `@am/engine/opworker`：先是操作写下的文字，最后一行是结果 JSON），最多等 `wait_seconds`（缺省 50）；没跑完返回任务号，`job_wait` 接着等，MCP 进程退出时整组结束子进程。结果的 `data` 既附在文字后面（「结果：」一行），也放进 `structuredContent` | codex 的 MCP 调用默认 60 秒超时，而渲染、拼接动辄几分钟到几小时；单独的进程才能整组取消，崩了也不拖垮服务 |
 | 挂法（`tools.ts`）：claude / qoder / codebuddy 用 `--mcp-config`（claude 与审批服务合在一份，放在 `--verbose` 前面免得吞掉提示词），claude 系 `--settings` 放行 `mcp__am`、拒绝 `Bash(am:*)`，qoder 加 `--allowed-tools mcp__am`；ACP（codebuddy、opencode 在客户端里）走 `session/new` 的 `mcpServers`；codex app-server 走 `thread/start` 的 `config.mcp_servers`，exec 走 `-c mcp_servers.am.*`；opencode run 走 `OPENCODE_CONFIG_CONTENT` 的 `mcp`，并且**必须** `--standalone` | opencode run 默认连后台常驻服务，这一次给的配置（MCP、模型）全被忽略（2.1.0 实测）。codex 在 untrusted 策略下给每次 MCP 调用发 `mcpServer/elicitation/request`，`codexapp.ts` 对 am 服务直接同意，别的服务照常问用户 |
 | 服务的环境只挑 am 自己要的变量（`tools.amToolsServer`：`AM_*`、`HYPERFRAMES_*`、记忆与配置键、PATH、HOME……），不整份传 | MCP 配置会出现在命令行里，不安全模式下子进程环境里还有凭据 |
 | agent 的 PATH 不含 am：`envutil.addToolsLocation` 只把 am setup 的工具目录加在末尾，并拿掉含客户端 am shim 的目录；`orchestratorBaseCommands` 与 `rendererAccess` 都不含 am | 两边都靠白名单的话，换一家 CLI 就漏 |
-| 提示词写工具调用（见「Prompt 文件」）；引擎报错与 am 输出里的提示也写成工具调用（`请重新运行 beat_cues()`）。命令行帮助（`long` / `example`）仍按命令行写，`tool_help` 与每次工具输出交给 agent 前经 `toolNotation` 把「am 命令 …」换成工具调用（`toolsmcp.test.ts` 的「rewrites am command lines as tool calls」）；没有对应工具的 `am setup`、`am init`、`am run` 不写进帮助与提示，改说工具准备页、新建项目 | agent 拿到什么就照着调什么：报错里写 `am beat cues`，它就会去终端里找 am。帮助文本几百处，在出口统一换比逐处改稳，开发时终端里的帮助也照样能用 |
+| 提示词、操作的说明与输出、引擎报错里的下一步都按工具写法写（`请重新运行 beat_cues()`），`toolsmcp.test.ts` 的「writes every description and example as tool calls」查每条操作的说明里没有 `am <命令>`、例子调的是它自己、参数名都存在。没有对应操作的 `am setup`、`am init`、`am run` 不写进说明与提示，改说工具准备页、新建项目。客户端显示报错时经 `forUser`（`apps/desktop/src/renderer/api.ts`）去掉这些给 agent 的下一步 | agent 拿到什么就照着调什么：报错里写 `am beat cues`，它就会去终端里找 am；用户则不会去调工具 |
 
 改了任何一家挂 MCP 的方式，在本机用真实 CLI 跑一遍（答案放在 agent 读不到的 `.env` 里，答对说明真的调了工具）：
 
@@ -359,7 +374,7 @@ opencode 默认模型不可用时加 `AM_TEST_OPENCODE_MODEL`。
 
 | 约定 | 原因 |
 |---|---|
-| 客户端自己不写项目文件；改动只来自一轮对话，或 `studioCommands`（`api_sessions.ts`）/ 镜头渲染这类直接调 `am` 子命令的按钮 | 旧版自造过一套 Operation 类型，镜头动作、相机写进 `production/studio/*.json` 再注入渲染提示词，等于绕开项目文件的第二条编辑通道。不要再加回来：要改什么就让编排工具改项目文件 |
+| 客户端自己不写项目文件；改动只来自一轮对话，或 `studioCommands`（`api_sessions.ts`）/ 镜头渲染这类直接跑 am 操作的按钮：`runStudioOp`（`tasks.ts`）按名字与参数起执行进程，不拼命令行 | 旧版自造过一套 Operation 类型，镜头动作、相机写进 `production/studio/*.json` 再注入渲染提示词，等于绕开项目文件的第二条编辑通道。不要再加回来：要改什么就让编排工具改项目文件 |
 | 每轮前后各扫一遍项目（`scanTree`，`turns.ts`），差异即本轮改动，回退按快照恢复 | 编排工具改了哪些文件只有事后比对才知道，工具调用事件并不可靠（Bash 里也能写文件） |
 | 回退时任一文件在本轮之后又变过，整体拒绝（`ConflictError`），不做部分回退 | 部分回退会留下一半新一半旧的项目，比不回退更难收拾 |
 | 文本按 sha256 存进 `production/studio/blobs/`；媒体扩展名、含 NUL、超过 2 MB 的只记 stat，列出但不回退 | 渲染产物每轮存一份不现实，重渲染即可 |

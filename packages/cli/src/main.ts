@@ -2,7 +2,9 @@
  * am 命令行入口。由应用自带的 Electron 以 ELECTRON_RUN_AS_NODE=1 运行（见客户端安装的 shim），
  * 开发时也可以直接 node packages/cli/dist/am.cjs。Ctrl-C 取消正在进行的命令，退出码 130。
  */
+import { WorkerArg } from '@am/engine/opworker';
 import { execute } from './cli';
+import { runOpWorker } from './ops/worker';
 
 // shim 用 ELECTRON_RUN_AS_NODE=1 把客户端自带的 Electron 当 Node 跑；这个变量不能漏给 am 启动的子进程
 // （编排工具、渲染器、ffmpeg），它们之中若有 Electron 应用会被它改变行为。
@@ -26,7 +28,13 @@ process.on('SIGINT', () => {
   controller.abort();
 });
 
-execute(process.argv.slice(2), process.stdout, process.stderr, controller.signal).then(
+// 操作的执行进程：`am.cjs [--unsafe] __op <名字> <参数 JSON>`，工具服务与客户端后端都起它跑一条操作（ops/worker.ts）。
+const argv = process.argv.slice(2);
+const unsafe = argv[0] === '--unsafe';
+const rest = unsafe ? argv.slice(1) : argv;
+const running = rest[0] === WorkerArg ? runOpWorker(rest[1] ?? '', rest[2] ?? '', process.stdout, controller.signal, unsafe) : execute(argv, process.stdout, process.stderr, controller.signal);
+
+running.then(
   (code) => {
     process.exitCode = code;
   },

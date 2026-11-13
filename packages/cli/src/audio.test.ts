@@ -48,13 +48,13 @@ describe('audio check', () => {
     const out = new Buffer();
     const errOut = new Buffer();
     expect(await run(['audio', 'check', '--audio', 'x.wav'], out, errOut)).toBe(1);
-    expect(errOut.text, '缺 --srt 应失败并点名').toContain('--srt');
+    expect(errOut.text, '缺 srt 应失败并点名').toContain('srt');
   });
 
   it('rejects non-positive options', async () => {
     const out = new Buffer();
     const errOut = new Buffer();
     expect(await run(['audio', 'check', '--audio', 'x.wav', '--srt', 'x.srt', '--tolerance', '0'], out, errOut)).toBe(1);
-    expect(errOut.text, '容差为 0 应报错而不是悄悄换成默认值').toContain('--tolerance');
+    expect(errOut.text, '容差为 0 应报错而不是悄悄换成默认值').toContain('tolerance 必须');
   });
 });

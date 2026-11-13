@@ -48,15 +48,15 @@ export function preferenceBrief(s: Store, project: string, pinned: number): { te
   if (pending.length > 0) {
     b += '\n待确认的偏好（从用户以往的回退、反复提的要求和 👍 / 👎 里归纳的，或从对话里推测的，还没生效）：\n';
     for (const m of pending) b += `- 【${m.name}】${m.description}\n`;
-    b += '找合适的时机用一句话问用户认不认可；认可就调用 `memory_promote({"args": ["<名字>"]})`，不认可调用 `memory_reject({"args": ["<名字>"]})`。不要一次问完，也不要打断正在做的事。\n\n';
+    b += '找合适的时机用一句话问用户认不认可；认可就调用 `memory_promote({"name": "<名字>"})`，不认可调用 `memory_reject({"name": "<名字>"})`。不要一次问完，也不要打断正在做的事。\n\n';
   }
   b += `用户这次的话说得简短或含糊时，先按这些偏好补全意图再动手；这次明说的要求与偏好冲突时以这次为准，并问一句要不要更新偏好。
 
 记住新偏好：用户表达了以后也适用的取向（如「以后都…」「我不喜欢…」「默认用…」「每次都要…」）时，当场调用
-  memory_remember({"name": "<小写英文短名>", "description": "<一句话概括>", "args": ["<完整说明>"]})
+  memory_remember({"text": "<完整说明>", "name": "<小写英文短名>", "description": "<一句话概括>"})
 只对这个项目成立时照此写；对用户所有项目都成立时加 "global": true；替换一条旧偏好时加 "revises": "<旧名>"。
 用户没有明说、是你从他的话或反复修改里推测出来的取向，加 "inferred": true：它先进入试用，下次由你找时机问用户，认可后才生效。
-用户收回一条偏好时调用 memory_retire({"args": ["<名字>"]})。只记长期取向，不记这一次的具体修改要求。
+用户收回一条偏好时调用 memory_retire({"name": "<名字>"})。只记长期取向，不记这一次的具体修改要求。
 `;
   return { text: b, digest: crypto.createHash('sha256').update(b, 'utf8').digest('hex') };
 }

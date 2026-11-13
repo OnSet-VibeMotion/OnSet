@@ -62,7 +62,7 @@ export class HostedClient {
           hint = '；检查额度或限流';
           break;
       }
-      throw new Error(`${this.config.provider} HTTP ${r.status}${hint}（song_providers({"args": ["${this.config.provider}"]}) 查看配置）`);
+      throw new Error(`${this.config.provider} HTTP ${r.status}${hint}（song_providers({"platform": "${this.config.provider}"}) 查看配置）`);
     }
     return r;
   }

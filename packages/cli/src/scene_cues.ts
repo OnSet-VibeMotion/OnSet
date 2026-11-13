@@ -1,5 +1,5 @@
 /**
- * am scene cues：由字幕或短语锚点推导口播镜头的帧区间，写入各镜头的 duration_seconds 与 timing 块。
+ * scene_cues：由字幕或短语锚点推导口播镜头的帧区间，写入各镜头的 duration_seconds 与 timing 块。
  * 移植自 internal/cli/scene_cues.go（commitWrites 与 pendingWrite 移植自 internal/cli/beat.go）。
  */
 import crypto from 'node:crypto';
@@ -11,27 +11,20 @@ import * as filmstyle from '@am/engine/filmstyle';
 import * as scene from '@am/engine/scene';
 import * as schedule from '@am/engine/schedule';
 import * as srt from '@am/engine/srt';
-import { exactArgs } from './cli';
-import { Command, type Out, ref } from './cobra';
+import { type Out } from './cobra';
+import { bool, num, str } from './ops/common';
+import { defineOp } from './ops/op';
 
-export function newSceneCuesCommand(stdout: Out): Command {
-  const plan = ref('');
-  const srtPath = ref('');
-  const phrases = ref('');
-  const totalFrames = ref(0);
-  const fps = ref(0);
-  const projectRoot = ref('.');
-  const check = ref(false);
-  const cmd = new Command({
-    use: 'cues SCENES',
-    args: exactArgs(1, 'SCENES'),
-    short: '由字幕或短语锚点推导镜头帧区间，写入时长与 timing 块',
-    long:
-      `按分镜计划里每个镜头的起始锚点，把全片切成首尾相接的整数帧区间，
-写入 SCENES 下每个镜头 scene.json 的 duration_seconds（帧数 ÷ 帧率，保留 6 位小数）
-与 timing 块。镜头时长从此由本命令决定，不要手算、不要手改。
+defineOp({
+  name: 'scene_cues',
+  cli: ['scene', 'cues'],
+  summary: '由字幕或短语锚点推导镜头帧区间，写入时长与 timing 块',
+  description:
+    `按分镜计划里每个镜头的起始锚点，把全片切成首尾相接的整数帧区间，
+写入 scenes 下每个镜头 scene.json 的 duration_seconds（帧数 ÷ 帧率，保留 6 位小数）
+与 timing 块。镜头时长从此由这一步决定，不要手算、不要手改。
 
-分镜计划（--plan，JSON）：
+分镜计划（plan，JSON）：
   {
     "schema": 1,
     "look": {"background": "#0F1720", "ink": "#F5F1E8", "accent": "#F2B134"},
@@ -44,10 +37,10 @@ export function newSceneCuesCommand(stdout: Out): Command {
   }
 
   id              必须与镜头目录里 scene.json 的 id 一致
-  dir             镜头目录，相对 --project-root；顺序必须与 SCENES 下镜头目录的
+  dir             镜头目录，相对 project_root；顺序必须与 scenes 下镜头目录的
                   字典序一一对应，不得遗漏或多出
-  first_subtitle  本镜头第一条字幕在 --srt 里的序号（按出现顺序，从 1 开始）
-  first_phrase    本镜头第一条短语的 phrase_id，需要 --phrases
+  first_subtitle  本镜头第一条字幕在 srt 里的序号（按出现顺序，从 1 开始）
+  first_phrase    本镜头第一条短语的 phrase_id，需要 phrases
   cut             切点规则，缺省 next_start：
                     next_start  切在锚点开始处，前面的无文字空白并入前一个镜头
                     prev_end    切在锚点前一条字幕/短语结束处，空白并入本镜头
@@ -69,15 +62,15 @@ export function newSceneCuesCommand(stdout: Out): Command {
                   相邻两个章节交界不得用同一种手法。交接写进两侧镜头的 timing.enter /
                   timing.exit，两个镜头的渲染提示词拿到同一份约定。
   film_style      可选，本镜头的整片风格：不写用项目的默认风格，「来源/目录名」用项目里装的
-                  另一种（先 am film-style add），none 不用整片风格。抄进镜头 scene.json 的
+                  另一种（先 film_style_add()），none 不用整片风格。抄进镜头 scene.json 的
                   film_style；相邻镜头实际用的风格不同即风格交界，必须写 handoff.style_shift
 
 first_subtitle 与 first_phrase 每个镜头恰好填一个；第一个镜头固定从第 0 帧开始，
-可以不填。最后一个镜头延伸到 --total-frames。锚点必须严格递增，每个镜头至少一帧，
-合计正好等于 --total-frames。秒换帧统一按「秒 × 帧率四舍五入」。
+可以不填。最后一个镜头延伸到 total_frames。锚点必须严格递增，每个镜头至少一帧，
+合计正好等于 total_frames。秒换帧统一按「秒 × 帧率四舍五入」。
 
-帧率缺省取镜头视觉规范的画幅（全部镜头必须一致）；给了 --fps 时必须与画幅相同。
-给了 --phrases 时，把短语时间轴原样复制进每个镜头目录（` +
+帧率缺省取镜头视觉规范的画幅（全部镜头必须一致）；给了 fps 时必须与画幅相同。
+给了 phrases 时，把短语时间轴原样复制进每个镜头目录（` +
       scene.PhraseCopyFile +
       `），
 并写进 timing.phrases，渲染时据此生成局部短语表。
@@ -87,39 +80,41 @@ timing 块：{"fps", "start_frame", "end_frame_exclusive", "plan", "phrases",
 帧号是全片全局帧，plan 是分镜计划文件的 SHA-256。scene.json 其余字段与顺序不变。
 任何一处不合格都不写文件；内容没变的文件不重写。
 
---check 只重算并核对，不写文件：时长、timing 块或短语副本与重算结果不符
-（例如有人手改了 duration_seconds）时逐条列出并退出 1。
-镜头带 song 或 beat 块时拒绝：歌曲、卡点的时长由 am song cues / am beat cues 决定。`,
-    example: `  am scene cues --plan production/scene-plan.json --srt transcription-production.srt --total-frames 5400 scenes/
-  am scene cues --plan production/scene-plan.json --srt transcription-production.srt \\
-    --phrases production/phrase-timeline.json --total-frames 5400 scenes/
-  am scene cues --check --plan production/scene-plan.json --srt transcription-production.srt --total-frames 5400 scenes/`,
-    runE: (_cmd, args) => {
-      runSceneCues(
-        {
-          plan: plan.value,
-          srt: srtPath.value,
-          phrases: phrases.value,
-          projectRoot: projectRoot.value,
-          scenesRoot: args[0],
-          totalFrames: totalFrames.value,
-          fps: fps.value,
-          check: check.value,
-        },
-        stdout,
-      );
-    },
-  });
-  const flags = cmd.flags();
-  flags.stringVar(plan, 'plan', '', '分镜计划 JSON（必填）');
-  flags.stringVar(srtPath, 'srt', '', '全片字幕 SRT（必填）');
-  flags.stringVar(phrases, 'phrases', '', '全片短语时间轴 phrase-timeline.json（可选）');
-  flags.intVar(totalFrames, 'total-frames', 0, '全片总帧数（必填）');
-  flags.intVar(fps, 'fps', 0, '帧率，缺省取镜头画幅');
-  flags.stringVar(projectRoot, 'project-root', '.', '项目根目录，计划里的 dir 相对它解析');
-  flags.boolVar(check, 'check', false, '只核对，不写文件');
-  return cmd;
-}
+check 只重算并核对，不写文件：时长、timing 块或短语副本与重算结果不符
+（例如有人手改了 duration_seconds）时逐条列出并失败。
+镜头带 song 或 beat 块时拒绝：歌曲、卡点的时长由 song_cues() / beat_cues() 决定。`,
+  examples: [
+    'scene_cues({"scenes": "scenes/", "plan": "production/scene-plan.json", "srt": "transcription-production.srt", "total_frames": 5400})',
+    'scene_cues({"scenes": "scenes/", "plan": "production/scene-plan.json", "srt": "transcription-production.srt", "phrases": "production/phrase-timeline.json", "total_frames": 5400})',
+    'scene_cues({"scenes": "scenes/", "check": true, "plan": "production/scene-plan.json", "srt": "transcription-production.srt", "total_frames": 5400})',
+  ],
+  params: {
+    scenes: { type: 'string', description: '镜头目录的上级目录', required: true, positional: 0 },
+    plan: { type: 'string', description: '分镜计划 JSON（必填）' },
+    srt: { type: 'string', description: '全片字幕 SRT（必填）' },
+    phrases: { type: 'string', description: '全片短语时间轴 phrase-timeline.json（可选）' },
+    total_frames: { type: 'integer', description: '全片总帧数（必填）' },
+    fps: { type: 'integer', description: '帧率，缺省取镜头画幅' },
+    project_root: { type: 'string', description: '项目根目录，计划里的 dir 相对它解析', default: '.' },
+    check: { type: 'boolean', description: '只核对，不写文件' },
+  },
+  run: (p, { out }) => {
+    const data = runSceneCues(
+      {
+        plan: str(p.plan),
+        srt: str(p.srt),
+        phrases: str(p.phrases),
+        projectRoot: str(p.project_root),
+        scenesRoot: str(p.scenes),
+        totalFrames: num(p.total_frames),
+        fps: num(p.fps),
+        check: bool(p.check),
+      },
+      out,
+    );
+    return { data };
+  },
+});
 
 interface SceneCuesOptions {
   plan: string;
@@ -149,10 +144,10 @@ function readFileOr(file: string, prefix: string): Buffer {
   }
 }
 
-function runSceneCues(opts: SceneCuesOptions, stdout: Out): void {
-  if (opts.plan === '' || opts.srt === '') throw new Error('--plan 与 --srt 必填');
-  if (opts.totalFrames <= 0) throw new Error('--total-frames 必须是正整数');
-  if (opts.fps < 0) throw new Error('--fps 必须是正整数');
+function runSceneCues(opts: SceneCuesOptions, stdout: Out): unknown {
+  if (opts.plan === '' || opts.srt === '') throw new Error('plan 与 srt 必填');
+  if (opts.totalFrames <= 0) throw new Error('total_frames 必须是正整数');
+  if (opts.fps < 0) throw new Error('fps 必须是正整数');
   const planBody = readFileOr(opts.plan, '无法读取分镜计划：');
   const plan = scene.parseTimingPlan(planBody);
   const planSHA = crypto.createHash('sha256').update(planBody).digest('hex');
@@ -199,7 +194,7 @@ function runSceneCues(opts: SceneCuesOptions, stdout: Out): void {
     }
     printSceneCues(stdout, results);
     stdout.write(`核对通过：${results.length} 个镜头，合计 ${opts.totalFrames} 帧\n`);
-    return;
+    return cuesData(results, opts.totalFrames, true);
   }
   const writes: PendingWrite[] = [];
   for (const r of results) {
@@ -222,6 +217,22 @@ function runSceneCues(opts: SceneCuesOptions, stdout: Out): void {
   commitWrites(writes);
   printSceneCues(stdout, results);
   stdout.write(`已写入 ${results.length} 个镜头的时长与 timing 块，合计 ${opts.totalFrames} 帧\n`);
+  return cuesData(results, opts.totalFrames, false);
+}
+
+/** 结构化结果：每个镜头的全局帧区间。 */
+function cuesData(results: readonly SceneCue[], totalFrames: number, checked: boolean): unknown {
+  return {
+    checked,
+    total_frames: totalFrames,
+    scenes: results.map((r) => ({
+      id: r.scene.id,
+      start_frame: r.segment.startFrame,
+      end_frame_exclusive: r.segment.endFrameExclusive,
+      frames: scene.segmentFrames(r.segment),
+      duration_seconds: scene.durationLiteral(scene.segmentFrames(r.segment), r.timing.fps),
+    })),
+  };
 }
 
 /**
@@ -281,7 +292,7 @@ function scenesFPS(scenes: readonly scene.Scene[], flag: number): number {
     }
     if (fps === 0) fps = canvas.fps;
     if (canvas.fps !== fps) {
-      if (flag !== 0) throw new Error(`--fps ${flag} 与镜头 ${s.id} 的画幅 ${canvas.fps}fps 不符`);
+      if (flag !== 0) throw new Error(`fps ${flag} 与镜头 ${s.id} 的画幅 ${canvas.fps}fps 不符`);
       throw new Error(`镜头帧率不一致：镜头 ${s.id} 是 ${canvas.fps}fps，前面的镜头是 ${fps}fps`);
     }
   }
@@ -353,7 +364,7 @@ function verifyPlanFilmStyles(projectRoot: string, plan: scene.TimingPlan): void
   for (const entry of plan.scenes ?? []) {
     const value = entry.film_style;
     if (value === '' || value === filmstyle.NoFilmStyle) continue;
-    if (filmstyle.styleDirOf(projectRoot, value) === '') problems.push(`镜头 ${entry.id} 点名的风格 ${value} 没装进项目：先运行 film_style_add({"args": ["${value}"]})`);
+    if (filmstyle.styleDirOf(projectRoot, value) === '') problems.push(`镜头 ${entry.id} 点名的风格 ${value} 没装进项目：先运行 film_style_add({"style": "${value}"})`);
   }
   if (problems.length > 0) throw new Error(`分镜计划的风格不合格：\n  - ${problems.join('\n  - ')}`);
   scene.verifyStyleBoundaries(plan, (value) => (value === '' ? defaultKey : value === filmstyle.NoFilmStyle ? '' : value));

@@ -1,13 +1,14 @@
 /**
  * 后台任务（渲染、拼接、复查、装整片风格……）与它们的事件流。移植自 internal/studio/features.go 里
  * 与 scene / validate 无关的部分：Task、addTask / updateTask / runTask / runWriteTask、/api/tasks、
- * 任务 SSE、runStudioCLI。
+ * 任务 SSE、runStudioOp。
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import * as config from '../config';
 import { envMap, parsePassthrough } from '../envutil';
 import { marshal, marshalIndent } from '../gojson';
+import { parseWorkerOutput, workerArgs } from '../opworker';
 import { ExitError, start } from '../procgroup';
 import { goMap, methodNotAllowed, nowTime, writeError, writeJSON } from './http';
 import { BusyError, overrideAgents, type AgentChoice } from './sessions';
@@ -189,37 +190,42 @@ export function writeTaskError(err: unknown): Response {
   return writeError(500, 'task_failed', (err as Error).message);
 }
 
-export function runStudioCLI(s: Server, signal: AbortSignal, p: Project, ...args: string[]): Promise<string> {
-  return runStudioCLIWith(s, signal, p, { tool: '', renderer: '' }, ...args);
+/** 一条操作跑完的结果：操作写下的文字与结构化的 data。 */
+export interface OpOutcome {
+  text: string;
+  data?: unknown;
+}
+
+export function runStudioOp(s: Server, signal: AbortSignal, p: Project, name: string, params: Record<string, unknown>): Promise<OpOutcome> {
+  return runStudioOpWith(s, signal, p, { tool: '', renderer: '' }, name, params);
 }
 
 /**
- * runStudioCLIWith 与 runStudioCLI 相同，但用网页选的工具覆盖项目配置：子进程环境里的
- * RENDERER 优先于 article-to-motion.conf，am scene run 因此用网页选的渲染工具。
- *
- * Go 版运行 os.Executable()（am 自己）；TS 版运行 Server 的 executable()（命令行入口的 shim）。
+ * runStudioOpWith 在执行进程里跑一条 am 操作（`am.cjs __op <名字> <参数>`，见 opworker），
+ * 用网页选的工具覆盖项目配置：子进程环境里的 RENDERER 优先于 article-to-motion.conf，
+ * scene_run 因此用网页选的渲染工具。参数按名字给，不拼命令行。
  */
-export async function runStudioCLIWith(s: Server, signal: AbortSignal, p: Project, choice: AgentChoice, ...args: string[]): Promise<string> {
+export async function runStudioOpWith(s: Server, signal: AbortSignal, p: Project, choice: AgentChoice, name: string, params: Record<string, unknown>): Promise<OpOutcome> {
   const self = s.executable();
   const projectConfig = overrideAgents(config.load(p.path, null), choice);
-  if (s.config.unsafe) args = ['--unsafe', ...args];
+  const args = [...(s.config.unsafe ? ['--unsafe'] : []), ...workerArgs(name, params)];
   const env = config.childEnvironment(projectConfig, envMap(), s.config.unsafe, parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? ''));
   const started = await start(self, args, { cwd: p.path, env, stdio: ['ignore', 'pipe', 'pipe'], signal });
   const chunks: Buffer[] = [];
   started.child.stdout!.on('data', (chunk: Buffer) => chunks.push(chunk));
   started.child.stderr!.on('data', (chunk: Buffer) => chunks.push(chunk));
-  let err: unknown = null;
+  let waitErr: unknown = null;
   try {
     await started.wait();
   } catch (e) {
-    err = e;
+    waitErr = e;
   }
-  const out = Buffer.concat(chunks).toString('utf8');
-  if (err) {
-    const reason = err instanceof ExitError ? err.message : (err as Error).message;
-    throw new Error(`am ${args.join(' ')} 失败：${reason}：${out.trim()}`);
-  }
-  return out;
+  const { text, result } = parseWorkerOutput(Buffer.concat(chunks).toString('utf8'));
+  if (result?.ok) return { text, data: result.data };
+  // 失败原因放在前面；操作写下的文字（例如逐条列出的不合格项）接在后面。
+  const reason = result?.error ?? (waitErr instanceof ExitError ? waitErr.message : waitErr ? (waitErr as Error).message : '执行进程意外退出');
+  const detail = text.trim();
+  throw new Error(detail === '' || detail.includes(reason) ? reason : `${reason}\n${detail.slice(-4000)}`);
 }
 
 export function tasksAPI(s: Server, request: Request): Response {

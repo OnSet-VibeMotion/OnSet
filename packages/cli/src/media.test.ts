@@ -97,7 +97,7 @@ describe('media', () => {
     const out = new Buffer();
     const errOut = new Buffer();
     expect(await run(['validate', 'video', clip, '--project-root', dir], out, errOut)).toBe(1);
-    expect(errOut.text).toContain('--canvas');
+    expect(errOut.text).toContain('canvas');
   });
 
   it.skipIf(!hasFfmpeg)('scene frames extracts and flags blank frames', async () => {
@@ -153,6 +153,6 @@ describe('media', () => {
     const out = new Buffer();
     const errOut = new Buffer();
     expect(await run(['concat', tempDir()], out, errOut)).toBe(1);
-    expect(errOut.text).toContain('--out');
+    expect(errOut.text).toContain('out 指定');
   });
 });

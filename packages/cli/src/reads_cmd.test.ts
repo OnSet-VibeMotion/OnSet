@@ -35,7 +35,7 @@ describe('validate reads', () => {
     const out = new Buffer();
     let errOut = new Buffer();
     expect(await run(['validate', 'reads', '--chars-per-second', '0'], out, errOut)).toBe(1);
-    expect(errOut.text).toContain('--chars-per-second');
+    expect(errOut.text).toContain('chars_per_second');
     errOut = new Buffer();
     expect(await run(['validate', 'reads', '--project-root', tempDir()], out, errOut)).toBe(1);
     expect(errOut.text).toContain('visible-event-inventory.json');

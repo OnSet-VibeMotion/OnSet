@@ -5,17 +5,17 @@ import { describe, expect, it } from 'vitest';
 import * as align from '@am/engine/align';
 import { readCues } from '@am/engine/srt';
 import { Buffer, tempDir } from './testutil';
-import { newAlignCommand } from './align';
+import './align';
+import { newRoot } from './cli';
 import { ExitError } from './cobra';
+import { findOp } from './ops/op';
 
-/** runAlign：只执行 align 子命令树，返回 stdout 与错误。 */
+/** runAlign：执行 am align 子命令，返回 stdout 与错误。 */
 async function runAlign(...args: string[]): Promise<{ out: string; err: unknown }> {
   const out = new Buffer();
-  const cmd = newAlignCommand(out);
-  cmd.setOut(new Buffer());
-  cmd.setErr(new Buffer());
+  const { root: cmd } = newRoot(out, new Buffer());
   try {
-    await cmd.execute(args);
+    await cmd.execute(['align', ...args]);
     return { out: out.text, err: undefined };
   } catch (err) {
     return { out: out.text, err };
@@ -90,7 +90,7 @@ describe('align', () => {
     const root = tempDir();
     writeAlignFile(path.join(root, 'production/script-final.md'), '你好<世界\n');
     expect(message((await runAlign('text', '--project-root', root)).err), '标记错误应报出位置').toContain('第 1 行第 3 列');
-    expect(message((await runAlign('build', '--project-root', root)).err), '缺 --fps 应报错').toContain('--fps');
+    expect(message((await runAlign('build', '--project-root', root)).err), '缺 fps 应报错').toContain('fps 必须');
     writeAlignFile(path.join(root, 'production/script-final.md'), '你好。\n');
     writeAlignFile(path.join(root, 'production/audio/align.json'), '{"result":{"words":[{"w":"你"}]}}');
     expect(message((await runAlign('build', '--project-root', root, '--fps', '30')).err), '认不出的对齐结果应报出顶层结构').toContain('键：result');
@@ -103,15 +103,14 @@ describe('align', () => {
   });
 
   it('help is complete', () => {
-    const cmd = newAlignCommand(new Buffer());
     const problems: string[] = [];
-    for (const sub of cmd.commands()) {
-      if (sub.long.trim() === '' || !sub.example.includes('am align ' + sub.name())) problems.push(`am align ${sub.name()} 缺少 Long 或 Example`);
+    for (const name of ['align_text', 'align_build']) {
+      const op = findOp(name);
+      if (!op || (op.description ?? '').trim() === '' || !(op.examples ?? []).some((e) => e.startsWith(name + '('))) problems.push(`${name} 缺少说明或例子`);
     }
     expect(problems).toEqual([]);
-    const build = cmd.commands().find((c) => c.name() === 'build');
-    expect(build, 'build 的帮助应写明规范形状与 funasr 形状').toBeDefined();
-    expect(build!.long).toContain('"start"');
-    expect(build!.long).toContain('timestamp');
+    const build = findOp('align_build');
+    expect(build?.description, 'align_build 的说明应写明规范形状与 funasr 形状').toContain('"start"');
+    expect(build?.description).toContain('timestamp');
   });
 });

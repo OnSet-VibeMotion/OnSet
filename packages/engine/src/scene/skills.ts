@@ -304,7 +304,7 @@ export function resolveSceneFilmStyle(sceneDir: string, value: string): string {
     }
     if (dir !== '' && hasSkill(path.dirname(dir), path.basename(dir), [filmstyle.GuideFile, filmstyle.StyleFile])) return dir;
   }
-  throw new Error(`镜头要用的整片风格 ${value} 没装进项目：运行 film_style_add({"args": ["${value}"]})`);
+  throw new Error(`镜头要用的整片风格 ${value} 没装进项目：运行 film_style_add({"style": "${value}"})`);
 }
 
 /** 本镜头实际用的风格目录（默认或点名），没有整片风格时为空串。 */

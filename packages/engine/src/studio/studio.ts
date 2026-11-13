@@ -43,7 +43,7 @@ import { scriptAPI } from './script';
 import { BusyError, type Session } from './sessions';
 import { cancelSetup, setupAPI, setupCancelAPI, setupRunAPI } from './setup';
 import { SkillsState, installSkills, skillsAPI, skillsInstallAPI } from './skills';
-import { TaskState, loadPersistedTasks, runStudioCLI, runWriteTask, taskFeatureAPI, tasksAPI, writeTaskError } from './tasks';
+import { TaskState, loadPersistedTasks, runStudioOp, runWriteTask, taskFeatureAPI, tasksAPI, writeTaskError } from './tasks';
 import { uploadsAPI } from './uploads';
 
 export interface Config {
@@ -649,7 +649,7 @@ export class Server {
         fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
         const video = findProjectVideo(p.path);
         if (video === '') throw new Error('找不到可审查的成片，请先生成 candidate.mp4 或 final.mp4');
-        await runStudioCLI(this, signal, p, 'review', video, '--out', dir);
+        await runStudioOp(this, signal, p, 'review', { video, out: dir });
       });
       return writeJSON(202, goMap({ task_id: t.task_id }));
     } catch (err) {

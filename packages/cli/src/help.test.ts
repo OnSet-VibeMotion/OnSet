@@ -44,8 +44,10 @@ describe('help', () => {
         problems.push(`${cmd.commandPath()} 缺少 Example`);
         return;
       }
-      // 样例必须真的调用这个命令，否则是复制粘贴留下的错样例。
-      if (!cmd.example.includes(cmd.commandPath())) problems.push(`${cmd.commandPath()} 的 Example 里没有出现该命令本身：${cmd.example}`);
+      // 样例必须真的调用这个命令，否则是复制粘贴留下的错样例。来自操作表的命令按工具写法举例
+      //（scene run → scene_run(…)），只给开发用的命令（init、setup）按命令行写法。
+      const tool = cmd.commandPath().replace(/^am /, '').replace(/[ -]/g, '_');
+      if (!cmd.example.includes(cmd.commandPath()) && !cmd.example.includes(tool + '(')) problems.push(`${cmd.commandPath()} 的 Example 里没有出现该命令本身：${cmd.example}`);
     });
     expect(problems).toEqual([]);
   });
@@ -53,10 +55,10 @@ describe('help', () => {
   // cobra 默认给的是 "accepts 1 arg(s), received 0"：既是英文，也没说缺的是哪个参数。
   it('positional arg errors are Chinese and name the argument', async () => {
     const cases: [string[], string][] = [
-      [['scene', 'run'], 'DIRECTORY'],
-      [['scene', 'run-all'], 'ROOT'],
+      [['scene', 'run'], 'SCENE'],
+      [['scene', 'run-all'], 'SCENES'],
       [['config', 'get'], 'KEY'],
-      [['validate', 'publish'], 'PATH'],
+      [['validate', 'publish'], 'FILE'],
       [['init', 'a', 'b'], 'DIR'],
       [['archive', 'extra'], '不接受位置参数'],
     ];

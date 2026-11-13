@@ -26,17 +26,17 @@
    不轮询目录、不循环重试、不编造音频、不继续对齐/分镜/渲染。命令正常退出不代表已生成歌曲。
    交接记录在 production/song/web-handoff.json，可跨会话续跑。再次开始时先读取它：
    waiting_for_audio 表示仍需用户提供音频；imported 表示已有候选，先核对用户是否选定。
-   等待期间不得擅自改词重发；需要新版材料时明确告知用户重新生成，并运行 handoff --refresh。
-   收到可访问的本机文件后，核对用户是否沿用原歌词，用 `song_receive({"args": ["AUDIO"]})` 导入；
+   等待期间不得擅自改词重发；需要新版材料时明确告知用户重新生成，并运行 `song_handoff({"refresh": true})`。
+   收到可访问的本机文件后，核对用户是否沿用原歌词，用 `song_receive({"audio": "AUDIO"})` 导入；
    它绑定交接时的歌词快照。若用户提供了改过的最终歌词，先核对知识，再用
-   `song_import({"args": ["AUDIO"], "lyrics": "FINAL_LYRICS"})` 显式导入。用户只给网页分享链接时，
+   `song_import({"audio": "AUDIO", "lyrics": "FINAL_LYRICS"})` 显式导入。用户只给网页分享链接时，
    请其下载并提供实际音频文件，不把网页链接当音频，不索要网页登录凭据。
    用户尚未提供文件时，允许结束本次会话等待；收到文件后在同一会话继续。
    网页交接不需要 API Key、Python 或媒体工具；接收时需要媒体工具，对齐前再运行 doctor。
    API 模式则先运行 `song_doctor()`，再运行 `song_generate()`（默认两首，串行）；
    相同请求复用候选，已知 ACE-Step / fal / Mureka 任务继续轮询。提交不明时不得重发。
 3. 展示候选位置并暂停，等待用户试听确认。用户明确表示“就用这首”时，
-   可替其执行 `song_select({"args": ["CANDIDATE"]})`；只上传音频不等于已确认选定，不得代替用户选择。
+   可替其执行 `song_select({"candidate": "CANDIDATE"})`；只上传音频不等于已确认选定，不得代替用户选择。
    已有 selected.json 时检查有效性再续跑；已有用户明确选定记录不重复询问。
 4. 运行 `song_prepare()`。保留 production/song/alignment 下的原始报告。
    检查唱词与知识准确性，抽查句首偏差目标不超过 200 ms；缺失、倒序、越界
@@ -46,12 +46,12 @@
    visible-event-inventory 的可读文字顺序核对。字幕来自 production/song/lyrics.srt。
    每次重复副歌独立计时，前奏、间奏、尾奏不填假字幕。镜头顺序按目录名排序，
    总帧数为 ceil(实际音频秒数 × 项目 fps)，每镜头均为整数帧。
-6. 运行 `song_cues({"args": ["scenes/"]})` 写入局部歌词、节拍与摘要。运行 `validate_song()`，
-   再运行 `scene_run_all({"args": ["scenes/"], "song_timeline": "production/song/timeline.json"})`。
-   修改选歌或时间轴后必须重算 cues，并以 --force 重渲染过期镜头。
+6. 运行 `song_cues({"scenes": "scenes/"})` 写入局部歌词、节拍与摘要。运行 `validate_song()`，
+   再运行 `scene_run_all({"scenes": "scenes/", "song_timeline": "production/song/timeline.json"})`。
+   修改选歌或时间轴后必须重跑 `song_cues()`，并以 `"force": true` 重渲染过期镜头。
 7. 使用 `scene_frames()` 和项目既有视觉检查流程验收两端帧、中文字体与可读顺序。
-   用 `concat({"args": ["scenes/"], "out": "production/silent-master.mp4"})` 拼静音母版，随后
-   `song_mux({"args": ["production/silent-master.mp4"], "out": "final.mp4"})`。
+   用 `concat({"scenes": "scenes/", "out": "production/silent-master.mp4"})` 拼静音母版，随后
+   `song_mux({"master": "production/silent-master.mp4", "out": "final.mp4"})`。
    仅末尾不足一帧补静音；不拉伸歌曲、不缩放或变速镜头，不另叠 BGM，
    不套用口播侧链压低。最终继续执行项目媒体规格及发布材料校验。
 

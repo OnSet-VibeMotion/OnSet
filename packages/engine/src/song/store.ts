@@ -346,7 +346,7 @@ export function selected(root: string): Candidate {
   try {
     c = readCandidate(p);
   } catch (err) {
-    throw new Error(`尚未选定歌曲，请试听后运行 song_select({"args": ["<id>"]})：${err instanceof Error ? err.message : String(err)}`, { cause: err });
+    throw new Error(`尚未选定歌曲，请试听后运行 song_select({"candidate": "<id>"})：${err instanceof Error ? err.message : String(err)}`, { cause: err });
   }
   const actual = loadCandidate(root, c.id);
   if (digest(candidateToJSON(actual)) !== digest(candidateToJSON(c))) throw new Error('选定记录与候选不一致，请重新选择');

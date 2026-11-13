@@ -2,7 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as filmstyle from '@am/engine/filmstyle';
-import { newFilmStyleCommand } from './filmstyle';
+import './filmstyle';
+import { Command, ref } from './cobra';
+import { opCommand } from './ops/cli';
+import { allOps } from './ops/op';
 import { Buffer, tempDir } from './testutil';
 
 // 假来源：命令只依赖 filmstyle 的通用部分，不需要真实风格库。
@@ -52,7 +55,9 @@ function sceneWith(root: string, id: string, filmStyle: string): void {
 
 async function am(root: string, ...args: string[]): Promise<{ out: string; err: Error | null }> {
   const out = new Buffer();
-  const cmd = newFilmStyleCommand(out);
+  // 只挂 film-style 这一组操作：命令行适配与 mountOps 相同。
+  const cmd = new Command({ use: 'film-style' });
+  for (const op of allOps().filter((o) => o.cli[0] === 'film-style')) cmd.addCommand(opCommand(op, out, out, ref(false)));
   cmd.setOut(out);
   cmd.setErr(out);
   try {

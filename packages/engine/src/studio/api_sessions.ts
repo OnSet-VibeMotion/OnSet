@@ -38,7 +38,7 @@ import {
 } from './sessions';
 import type { Server } from './studio';
 import { answerPermission } from './permissions';
-import { runStudioCLI, runWriteTask, writeTaskError } from './tasks';
+import { runStudioOp, runWriteTask, writeTaskError } from './tasks';
 import { ConflictError, isContentState, loadTurn, readBlob, turnJSON, validID } from './turns';
 
 /** maxFileBytes 是 /api/files 返回正文的上限。 */
@@ -472,24 +472,24 @@ export async function commandAPI(s: Server, request: Request, rest: string): Pro
     if (err instanceof DecodeError) return writeError(400, 'invalid_json', '请求不是合法 JSON');
     throw err;
   }
-  let args: string[] | null = null;
+  let op: { name: string; params: Record<string, unknown> } | null = null;
   switch (name) {
     case 'scene.validate':
-      for (const sc of discoverScenes(p.path)) if (sc.id === sceneID) args = ['scene', 'lint', sc.directory];
-      if (!args) return writeError(404, 'scene_not_found', '镜头不存在');
+      for (const sc of discoverScenes(p.path)) if (sc.id === sceneID) op = { name: 'scene_lint', params: { scene: sc.directory } };
+      if (!op) return writeError(404, 'scene_not_found', '镜头不存在');
       label += ' ' + sceneID;
       break;
     case 'project.concat':
-      args = ['concat', path.join(p.path, 'scenes'), '--out', path.join(p.path, 'production', 'silent-master.mp4')];
+      op = { name: 'concat', params: { scenes: path.join(p.path, 'scenes'), out: path.join(p.path, 'production', 'silent-master.mp4') } };
       break;
     case 'publish.check': {
       const publish = path.join(p.path, 'publish.md');
       if (!fileExists(publish)) return writeError(400, 'publish_missing', '找不到 publish.md');
-      args = ['validate', 'publish', publish, '--project-root', p.path];
+      op = { name: 'validate_publish', params: { file: publish, project_root: p.path } };
       break;
     }
     case 'beat.confirm':
-      args = ['beat', 'confirm', '--project-root', p.path];
+      op = { name: 'beat_confirm', params: { project_root: p.path } };
       break;
     case 'beat.regrid': {
       const meter = body.meter;
@@ -497,16 +497,16 @@ export async function commandAPI(s: Server, request: Request, rest: string): Pro
       if (!Number.isInteger(meter) || !Number.isInteger(anchor) || (meter as number) < 1 || (meter as number) > 16 || (anchor as number) < 0 || (anchor as number) >= (meter as number)) {
         return writeError(400, 'invalid_regrid', '拍号要在 1..16 之间，起始拍要在 0..拍号-1 之间');
       }
-      args = ['beat', 'regrid', '--meter', String(meter), '--anchor', String(anchor), '--project-root', p.path];
+      op = { name: 'beat_regrid', params: { meter, anchor, project_root: p.path } };
       label += `（${meter} 拍，从第 ${(anchor as number) + 1} 拍起）`;
       break;
     }
   }
-  const cliArgs = args!;
+  const call = op!;
   try {
     const t = runWriteTask(s, p, name, label, async (signal) => {
       if (name === 'project.concat') fs.mkdirSync(path.join(p.path, 'production'), { recursive: true, mode: 0o755 });
-      await runStudioCLI(s, signal, p, ...cliArgs);
+      await runStudioOp(s, signal, p, call.name, call.params);
     });
     return writeJSON(202, goMap({ task_id: t.task_id, command: name }));
   } catch (err) {

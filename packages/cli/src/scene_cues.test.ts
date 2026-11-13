@@ -5,7 +5,10 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as filmstyle from '@am/engine/filmstyle';
 import * as scene from '@am/engine/scene';
-import { newSceneCuesCommand } from './scene_cues';
+import { ref } from './cobra';
+import { opCommand } from './ops/cli';
+import { findOp } from './ops/op';
+import './scene_cues';
 
 // 四条字幕，30fps 下：[0,30) [45,90) [90,120) [150,180)。
 const cuesSRT = `1
@@ -63,7 +66,7 @@ function writePlan(root: string, body: string): void {
 
 async function runCues(root: string, ...extra: string[]): Promise<{ out: string; err: Error | null }> {
   const out = new Buffer();
-  const cmd = newSceneCuesCommand(out);
+  const cmd = opCommand(findOp('scene_cues')!, out, out, ref(false));
   cmd.setOut(out);
   cmd.setErr(out);
   const args = [
@@ -174,7 +177,7 @@ describe('am scene cues', () => {
 
   it('validates flags', async () => {
     const root = cuesProject();
-    expect((await runCues(root, '--fps', '25')).err?.message).toContain('--fps 25');
+    expect((await runCues(root, '--fps', '25')).err?.message).toContain('fps 25');
     expect((await runCues(root, '--total-frames', '90')).err?.message).toContain('不早于总帧数');
   });
 
@@ -228,7 +231,7 @@ describe('am scene cues', () => {
   {"id":"scene-003","dir":"scenes/scene-003","first_phrase":"p-4","cut":"prev_end","film_style":"beta/oil"}]}`;
     writePlan(root, plan(',"style_shift":"window"'));
     const missing = await runCues(root);
-    expect(missing.err?.message).toContain('film_style_add({"args": ["beta/oil"]})');
+    expect(missing.err?.message).toContain('film_style_add({"style": "beta/oil"})');
 
     writeStyle(filmstyle.extraDir(root, 'beta/oil'), 'beta/oil');
     writePlan(root, plan(''));

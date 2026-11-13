@@ -5,19 +5,20 @@
  */
 import readline from 'node:readline';
 import * as studioview from '@am/engine/studioview';
-import { currentEnvironment, rangeArgs } from './cli';
+import { currentEnvironment } from './cli';
 import { Command, type Out, ref } from './cobra';
+import { str } from './ops/common';
+import { defineOp } from './ops/op';
 import { type Profile, serveToolsMCP } from './toolsmcp';
 
-export function newStudioCommand(stdout: Out): Command {
+export function newStudioCommand(_stdout?: Out): Command {
   const cmd = new Command({
     use: 'studio',
     short: '与 ArticleToMotion 客户端打交道',
     long: `ArticleToMotion 客户端是制作视频的界面（浏览器版 Studio 已去掉）。
 
-这里只有编排工具在客户端对话里使用的 show：把用户的界面切到要看的那一页。`,
+这里有编排工具在客户端对话里使用的 show（把用户的界面切到要看的那一页），以及客户端内部用的两个 MCP 服务。`,
   });
-  cmd.addCommand(newStudioShowCommand(stdout));
   cmd.addCommand(newPermissionMCPCommand());
   cmd.addCommand(newToolsMCPCommand());
   return cmd;
@@ -27,45 +28,49 @@ function pageLabel(id: string): string {
   return studioview.viewPage(id)?.label ?? id;
 }
 
-/** 让客户端里的编排工具把界面切到某一页。 */
-function newStudioShowCommand(stdout: Out): Command {
-  const note = ref('');
-  const pages = studioview.ViewPages.map((page) => {
-    let line = '  ' + page.id + '  ' + page.label;
-    if (page.target === 'scene') line += '，要给镜头编号';
-    else if (page.target === 'scene?') line += '，可以给镜头编号';
-    else if (page.target === 'file') line += '，要给项目里的相对路径';
-    return line;
-  });
-  const cmd = new Command({
-    use: 'show PAGE [TARGET]',
-    args: rangeArgs(1, 2, 'PAGE [TARGET]'),
-    short: '把 Studio 网页切到某一页（在 Studio 的对话里运行时有效）',
-    long:
-      `给 Studio 里的编排工具用：把用户的网页切到要用户看的那一页，例如口播稿写好请用户审、
-某个镜头渲染完请用户看效果。--note 的一句话显示在对话里，说明为什么要看这一页。
+const pageLines = studioview.ViewPages.map((page) => {
+  let line = '  ' + page.id + '  ' + page.label;
+  if (page.target === 'scene') line += '，要给镜头编号';
+  else if (page.target === 'scene?') line += '，可以给镜头编号';
+  else if (page.target === 'file') line += '，要给项目里的相对路径';
+  return line;
+});
 
-不在 Studio 的对话里运行（例如终端里手动执行）时什么都不做，退出码为 0。
+/** 让客户端里的编排工具把界面切到某一页。 */
+defineOp({
+  name: 'studio_show',
+  cli: ['studio', 'show'],
+  summary: '把客户端界面切到某一页（在客户端的对话里调用时有效）',
+  description:
+    `把用户的界面切到要用户看的那一页，例如口播稿写好请用户审、某个镜头渲染完请用户看效果。
+note 的一句话显示在对话里，说明为什么要看这一页。
+
+不在客户端的对话里调用时什么都不做，也不算失败。
 
 页面：
-` + pages.join('\n'),
-    example: `  am studio show script --note "口播稿写好了，请看一遍"
-  am studio show scene scene-003
-  am studio show file production/treatment.md`,
-    runE: (_cmd, args) => {
-      const req: studioview.ViewRequest = { page: args[0], note: note.value.trim() };
-      if (args.length === 2) req.target = args[1];
-      const inStudio = studioview.writeViewRequest(currentEnvironment(), req);
-      if (!inStudio) {
-        stdout.write('当前不在 Studio 的对话里，没有网页可切，已跳过。\n');
-        return;
-      }
-      stdout.write('已请 Studio 网页切到「' + pageLabel(req.page) + '」。\n');
-    },
-  });
-  cmd.flags().stringVar(note, 'note', '', '显示在对话里的一句说明');
-  return cmd;
-}
+` + pageLines.join('\n'),
+  examples: [
+    'studio_show({"page": "script", "note": "口播稿写好了，请看一遍"})',
+    'studio_show({"page": "scene", "target": "scene-003"})',
+    'studio_show({"page": "file", "target": "production/treatment.md"})',
+  ],
+  params: {
+    page: { type: 'string', description: '页面', required: true, positional: 0 },
+    target: { type: 'string', description: '对象：镜头编号或项目里的相对路径', positional: 1 },
+    note: { type: 'string', description: '显示在对话里的一句说明' },
+  },
+  run: (p, { out }) => {
+    const req: studioview.ViewRequest = { page: str(p.page), note: str(p.note).trim() };
+    if (str(p.target) !== '') req.target = str(p.target);
+    const inStudio = studioview.writeViewRequest(currentEnvironment(), req);
+    if (!inStudio) {
+      out.write('当前不在客户端的对话里，没有界面可切，已跳过。\n');
+      return { data: { shown: false } };
+    }
+    out.write('已请客户端界面切到「' + pageLabel(req.page) + '」。\n');
+    return { data: { shown: true, page: req.page, target: req.target ?? '' } };
+  },
+});
 
 /**
  * 客户端给 claude 挂的权限审批服务（--permission-prompt-tool），claude 自己启动它，人不直接用。

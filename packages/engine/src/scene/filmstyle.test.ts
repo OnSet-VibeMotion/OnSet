@@ -101,7 +101,7 @@ describe('film style', () => {
     expect(nonePrompt).not.toContain('整片风格（强制）');
 
     const missing = load(writeScene(root, 'scene-004', 'beta/watercolor'));
-    expect(() => resolveAllSkills('claude', missing.directory, env, missing)).toThrow('film_style_add({"args": ["beta/watercolor"]})');
+    expect(() => resolveAllSkills('claude', missing.directory, env, missing)).toThrow('film_style_add({"style": "beta/watercolor"})');
   });
 
   // 风格交界：两侧各拿到同一份约定、对方风格的路径，以及自己负责的那一段。

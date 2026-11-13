@@ -17,7 +17,7 @@
 - 你负责整理稿件、建立真实时间轴、拆分镜头、准备镜头目录、调整每个镜头 `prompt.md` 的提示词、并发调度、检查产物、处理配音和声音、拼接与最终验收。
 - 不替渲染工具设计镜头内部的具体 MG 动效。可以根据镜头文案强化提示词中的语义、艺术方向和表达重点。
 - 不得改变 `am` 保证的执行契约：非交互式运行、镜头编号、时长、输出文件名、完整字幕路径、阶段性汇报格式、日志过滤方式和 MP4 交付要求必须保持确定。
-- 用 `scene_run_all({"args": ["scenes/"]})` 并发调度镜头，并发数由配置 `SCENE_JOBS` 决定（默认 3）。镜头之间无创作依赖，跨镜头关系由各镜头的交接状态和 `prompt.md` 保证。
+- 用 `scene_run_all({"scenes": "scenes/"})` 并发调度镜头，并发数由配置 `SCENE_JOBS` 决定（默认 3）。镜头之间无创作依赖，跨镜头关系由各镜头的交接状态和 `prompt.md` 保证。
 - 不把任何 API 密钥写入脚本、Markdown、JSON、命令行参数或日志。
 - 制作命令都是 am 工具服务（MCP）里的工具：下文写成 `工具名({参数})` 的就是一次工具调用，位置参数放进 `args`，其余参数按名字填；参数怎么填、会产出什么用 `tool_help({"tool": "<工具名>"})` 查。渲染、拼接这类长任务会先返回任务号，用 `job_wait` 等到完成，不要重复发起。说明、报错或工具输出里写成 `am <命令> <子命令>` 的，指的就是同名工具（空格与连字符换成下划线，例如 `am scene run-all` 就是 `scene_run_all`）。`am` 不在终端里，不要在 Bash 里找它或运行它。
 - 文件格式与命令用法以本说明、`templates/project-rules.md`、`.agents/skills/` 里的技能和 am 工具服务里每个工具的说明（`tool_help({"tool": "<工具名>"})`）为准，这些就是全部约定。不要用 `which`、`strings`、`grep` 去找、去读 `am` 程序本身或 HyperFrames、风格库的安装目录来反推格式：那是内部实现，随版本会变，而且会弹出权限确认打断用户。说明里没写到的细节按最自然的写法做；检查工具报错看不懂、又确信不是自己写错时，把原文报给用户，不要去翻它的源码。
@@ -26,7 +26,7 @@
 ### 渲染器配置
 
 - 开始前读取仓库根目录的 `article-to-motion.conf`，并考虑当前环境变量或 `.env` 的覆盖值，确定本次使用的 `RENDERER`。
-- 把解析后的渲染器写入 `production/production-config.json` 和执行日志。每个镜头用 `scene_run({"args": ["<镜头目录>"]})` 调用，渲染器由 `am` 从配置解析；需要单独指定时写入该镜头 `scene.json` 的 `renderer` 字段，不能静默回退到其他渲染工具。
+- 把解析后的渲染器写入 `production/production-config.json` 和执行日志。每个镜头用 `scene_run({"scene": "<镜头目录>"})` 调用，渲染器由 `am` 从配置解析；需要单独指定时写入该镜头 `scene.json` 的 `renderer` 字段，不能静默回退到其他渲染工具。
 - 如果配置的渲染工具不可用，停止并明确报告缺失的 CLI；未经用户确认不得替换渲染器。
 
 ## 第一阶段：盘点输入和制作规格
@@ -69,7 +69,7 @@
 
 - 用户点名了某种画风（油画、水墨、浮世绘、像素 RPG、黑板粉笔……）或希望全片统一画风时，用 `film_style_list()` 找到对应风格；对不上时列出最接近的两三种让用户挑。
 - 用户没有提时，在第二阶段的稿件审核关卡一并给出建议：按题材、受众和平台推荐两三种贴合的风格（写明中文名、标识、为什么合适），再加一项「不用整片风格，各镜头自主定视觉」，由用户选。不为这件事单独停一次。
-- 用户选定后运行 `film_style_use({"args": ["<来源/目录名>"]})`，它成为默认风格。风格来源没准备好时它会报缺前置资源：请用户在客户端的工具准备页（首页的「召集你的摄制组」，或顶栏的「还差几项工具」）里安装，不要自己去下载。默认风格必须在第六阶段渲染镜头之前定下：之后再换（`--replace`）或去掉（`film_style_remove()`）会让用默认风格的已渲染镜头全部 Stale、需要重渲染，要先征得用户同意。
+- 用户选定后运行 `film_style_use({"style": "<来源/目录名>"})`，它成为默认风格。风格来源没准备好时它会报缺前置资源：请用户在客户端的工具准备页（首页的「召集你的摄制组」，或顶栏的「还差几项工具」）里安装，不要自己去下载。默认风格必须在第六阶段渲染镜头之前定下：之后再换（`"replace": true`）或去掉（`film_style_remove()`）会让用默认风格的已渲染镜头全部 Stale、需要重渲染，要先征得用户同意。
 
 **有整片风格时**，上面「视觉风格不由项目预设或字段锁定」不再适用，改为：
 
@@ -84,12 +84,12 @@
 
 镜头可以用和默认风格不同的风格：回忆、片中片、引用的史料、两种观点的对照、梦境或想象、换一个讲述者，都可以换一种画法来讲。用户点名「这一段用水墨」「这几个镜头换成像素风」时照做；你觉得某段换一种画风讲得更清楚时，在稿件审核关卡把建议连同理由一起给用户。
 
-- 先运行 `film_style_add({"args": ["<来源/目录名>"]})` 把那种风格装进项目（不动默认风格），再读它的 `SKILL.md` 与 `STYLE.md`（`film_style_show()` 列出每种风格装在哪个目录）。
+- 先运行 `film_style_add({"style": "<来源/目录名>"})` 把那种风格装进项目（不动默认风格），再读它的 `SKILL.md` 与 `STYLE.md`（`film_style_show()` 列出每种风格装在哪个目录）。
 - 在 `treatment.md` 里写清哪些段落用哪种风格、为什么换，以及每个风格交界靠什么换过去。
 - 在 `scene-plan.json` 里给这些镜头写 `film_style`：写「来源/目录名」用那一种，写 `none` 表示这个镜头不用整片风格、自主定视觉，不写就是默认风格。`scene_cues()` 把它抄进镜头的 `scene.json`。
 - 相邻两个镜头实际用的风格不同，就是风格交界：交界后面那个镜头的 `handoff` 必填，并且要写 `style_shift`，说明画法怎么在画面里换过去（见第五阶段「风格交界」）。`scene_cues()` 会拒绝没写 `style_shift` 的风格交界。风格交界是全片最容易显得生硬的地方，`bridge` 要写得比普通交界更具体。
 - 改镜头的风格只影响那个镜头和它两侧的交界：只有用到那种风格的镜头会被判为 Stale。给项目添一种风格不影响别的镜头。
-- 不再用的额外风格用 `film_style_remove({"args": ["<来源/目录名>"]})` 去掉；还有镜头点名用它时会被拒绝，先改分镜。
+- 不再用的额外风格用 `film_style_remove({"style": "<来源/目录名>"})` 去掉；还有镜头点名用它时会被拒绝，先改分镜。
 
 ### 发布配置生命周期
 
@@ -144,7 +144,7 @@
 
 ## 第三阶段：TTS 和断句校对
 
-TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定，用 `config_get({"args": ["TTS_PROVIDER"]})` 读取解析结果。可选：
+TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定，用 `config_get({"key": "TTS_PROVIDER"})` 读取解析结果。可选：
 
 | 取值 | 服务 | 自带时间戳 | 适合 |
 |---|---|---|---|
@@ -202,7 +202,7 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
 **Breeze TTS 2（`TTS_PROVIDER=breeze`）**
 
 - 仅限 Apple Silicon。免鉴权，不联网。
-- 模型由客户端预先下好（约 4.6 GB），本地目录用 `config_get({"args": ["TTS_MODEL"]})` 读取；它返回的不是本地目录（而是 `mlx-community/…` 仓库名）时说明还没下好，请用户在客户端的工具准备页（首页的「召集你的摄制组」，或顶栏的「还差几项工具」）里安装，不要让工具在合成时现下载。
+- 模型由客户端预先下好（约 4.6 GB），本地目录用 `config_get({"key": "TTS_MODEL"})` 读取；它返回的不是本地目录（而是 `mlx-community/…` 仓库名）时说明还没下好，请用户在客户端的工具准备页（首页的「召集你的摄制组」，或顶栏的「还差几项工具」）里安装，不要让工具在合成时现下载。
 
 ### 试听和正式生成
 
@@ -311,17 +311,17 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
 
 ### 强制对齐与时间轴校验
 
-文稿是现成的，把它逐字对到配音上比语音识别更准，也不会把专有名词识别错。对齐工具由 `ALIGN_PROVIDER` 决定，用 `config_get({"args": ["ALIGN_PROVIDER"]})` 读取：缺省在 Apple Silicon 上是 `mlx`，其余平台是 `funasr`。
+文稿是现成的，把它逐字对到配音上比语音识别更准，也不会把专有名词识别错。对齐工具由 `ALIGN_PROVIDER` 决定，用 `config_get({"key": "ALIGN_PROVIDER"})` 读取：缺省在 Apple Silicon 上是 `mlx`，其余平台是 `funasr`。
 
 送进对齐的文本必须是 `align_text()` 生成的 `production/audio/tts-text.txt`。对齐结果不手工映射回原文：由 `align_build()` 逐字匹配回终稿，生成 `voice.srt` 和短语时间轴（见下文）。先用 FFmpeg 把 `voice.wav` 转成 16kHz 单声道的 `production/audio/voice-16k.wav`。
 
 **`mlx`（Qwen3-ForcedAligner）**
 
-- 模型由客户端预先下好，本地目录用 `config_get({"args": ["ALIGN_MODEL"]})` 读取；它返回的不是本地目录（而是 `mlx-community/…` 仓库名）时说明还没下好，请用户在客户端的工具准备页（首页的「召集你的摄制组」，或顶栏的「还差几项工具」）里安装，不要让工具在对齐时现下载。
+- 模型由客户端预先下好，本地目录用 `config_get({"key": "ALIGN_MODEL"})` 读取；它返回的不是本地目录（而是 `mlx-community/…` 仓库名）时说明还没下好，请用户在客户端的工具准备页（首页的「召集你的摄制组」，或顶栏的「还差几项工具」）里安装，不要让工具在对齐时现下载。
 - 命令：`mlx_audio.stt.generate --model <ALIGN_MODEL 的本地目录> --audio production/audio/voice-16k.wav --text "$(cat production/audio/tts-text.txt)" --language Chinese --output-path production/audio/align --format json`，结果写到 `production/audio/align.json`（`--output-path` 是不带扩展名的文件路径，不是目录）。
 - `--language Chinese` 必须显式传，缺省是英文。
 - 输出按单字给出开始、结束秒数，粒度约 0.08 秒；标点会被丢掉。`align_build()` 直接读这份 JSON。
-- 单次最多 5 分钟音频。更长的配音在句间停顿处切段分别对齐，存成 `align-01.json`、`align-02.json`……，交给 `align_build()` 时写明各段起点（`--align production/audio/align-02.json@312.48`）；切点从下面 `audio_check()` 报告的 `speech` 区间之间选，不要切在发声中间。
+- 单次最多 5 分钟音频。更长的配音在句间停顿处切段分别对齐，存成 `align-01.json`、`align-02.json`……，交给 `align_build()` 时写明各段起点（`"align": ["production/audio/align.json", "production/audio/align-02.json@312.48"]`）；切点从下面 `audio_check()` 报告的 `speech` 区间之间选，不要切在发声中间。
 
 **`funasr`（时间戳预测）**
 
@@ -544,10 +544,10 @@ scenes/
 全部镜头目录与 `scene.json` 建好后，由分镜计划推出每个镜头的时长：
 
 ```bash
-scene_cues({"args": ["scenes/"], "plan": "production/scene-plan.json", "srt": "transcription-production.srt", "phrases": "production/phrase-timeline.json", "total_frames": "<总帧数>"})
+scene_cues({"scenes": "scenes/", "plan": "production/scene-plan.json", "srt": "transcription-production.srt", "phrases": "production/phrase-timeline.json", "total_frames": "<总帧数>"})
 ```
 
-它把全片切成首尾相接的整数帧区间，写入每个镜头的 `duration_seconds`（帧数 ÷ 帧率，6 位小数）与 `timing` 块，并把短语时间轴复制进镜头目录；合计不等于总帧数、锚点不递增或有镜头不足一帧时整体失败、不写任何文件。之后不得手改 `duration_seconds`：改分镜就改 `scene-plan.json` 再重跑本命令。渲染前用同样的参数加 `--check` 复核一次，有人手改过时长会被逐条列出。
+它把全片切成首尾相接的整数帧区间，写入每个镜头的 `duration_seconds`（帧数 ÷ 帧率，6 位小数）与 `timing` 块，并把短语时间轴复制进镜头目录；合计不等于总帧数、锚点不递增或有镜头不足一帧时整体失败、不写任何文件。之后不得手改 `duration_seconds`：改分镜就改 `scene-plan.json` 再重跑本命令。渲染前用同样的参数加 `"check": true` 复核一次，有人手改过时长会被逐条列出。
 
 阶段性汇报和日志规则必须保留：
 
@@ -557,15 +557,15 @@ scene_cues({"args": ["scenes/"], "plan": "production/scene-plan.json", "srt": "t
 - 保留 `render-<scene>.user.log`。
 - 阶段消息至少覆盖需求与素材检查、联网搜索、代码完成开始渲染、MP4 渲染完成。
 
-用 `scene_run_all({"args": ["scenes/"], "srt": "transcription.srt", "strict_coverage": true, "report_json": "production/run-report.json"})` 一次性调度。已有合格产物且输入没变的镜头会被跳过：`am` 在产物通过校验时把输入指纹（渲染提示词、`scene.json`、`prompt.md`、字幕、角色包、渲染工具、技能内容与 `am` 版本）记在镜头目录的 `.am-render.json`。输入变了的镜头会被跳过并在报告里写明是哪几项变了，确认要重渲染时用 `scene_run({"args": ["<镜头目录>"]})` 或 `--force`。渲染器非零退出自动重试（退避 10 秒与 30 秒）并把失败证据保留在 `attempts/attempt-NN/`；产物校验失败不重试。每次尝试的耗时、结果与用量写在镜头目录的 `render-<镜头编号>.attempt.json`，重跑前上一次的产物与日志会先归档进 `attempts/`。
+用 `scene_run_all({"scenes": "scenes/", "srt": "transcription.srt", "strict_coverage": true, "report_json": "production/run-report.json"})` 一次性调度。已有合格产物且输入没变的镜头会被跳过：`am` 在产物通过校验时把输入指纹（渲染提示词、`scene.json`、`prompt.md`、字幕、角色包、渲染工具、技能内容与 `am` 版本）记在镜头目录的 `.am-render.json`。输入变了的镜头会被跳过并在报告里写明是哪几项变了，确认要重渲染时用 `scene_run({"scene": "<镜头目录>"})` 或加 `"force": true`。渲染器非零退出自动重试（退避 10 秒与 30 秒）并把失败证据保留在 `attempts/attempt-NN/`；产物校验失败不重试。每次尝试的耗时、结果与用量写在镜头目录的 `render-<镜头编号>.attempt.json`，重跑前上一次的产物与日志会先归档进 `attempts/`。
 
-`--srt` 加 `--strict-coverage` 在开始渲染前核对镜头编号唯一性与「镜头总时长等于字幕跨度」。务必带上：这条规则本来就写在第五阶段，但漏掉一镜等到拼接时才发现的话，每一镜都已经烧掉一次完整的渲染调用。
+`srt` 加 `"strict_coverage": true` 在开始渲染前核对镜头编号唯一性与「镜头总时长等于字幕跨度」。务必带上：这条规则本来就写在第五阶段，但漏掉一镜等到拼接时才发现的话，每一镜都已经烧掉一次完整的渲染调用。
 
 产物校验查画幅、帧率、时长、逐帧解码的总帧数和「必须无音轨」，画幅取自 `frame.md`。不符时回镜头工程重渲染，不要在后面的阶段缩放补救。
 
-产物校验还会静态扫描镜头合成源码：读时钟、`Math.random()`、`requestAnimationFrame`、`setInterval`、无限 `repeat`、渲染时联网、在线字体与未固定版本的 CDN 库都会让同一帧在两次渲染间不同；`@font-face` 指向镜头目录里不存在的字体文件、或 `font-display` 写成 `swap` / `fallback` / `optional`，会让字体静默回退或部分帧抓到回退字体。这些命中即判失败且不重试。改完合成代码、重渲染前可用 `scene_lint({"args": ["<镜头目录>"]})` 先确认。
+产物校验还会静态扫描镜头合成源码：读时钟、`Math.random()`、`requestAnimationFrame`、`setInterval`、无限 `repeat`、渲染时联网、在线字体与未固定版本的 CDN 库都会让同一帧在两次渲染间不同；`@font-face` 指向镜头目录里不存在的字体文件、或 `font-display` 写成 `swap` / `fallback` / `optional`，会让字体静默回退或部分帧抓到回退字体。这些命中即判失败且不重试。改完合成代码、重渲染前可用 `scene_lint({"scene": "<镜头目录>"})` 先确认。
 
-`--report-json` 落盘的报告是判断结果的依据，不要去解析终端上的中文汇总。每个镜头一条记录，字段为 `scene_id`、`status`（`succeeded` / `skipped` / `stale` / `failed`）、`attempts`、`seconds`、`reason`；顶层还有 `counts`、`exit_code` 和 `interrupted`。被中断时报告照常落盘，据 `interrupted` 与各镜头 `status` 判断哪些还需要重跑。
+`report_json` 落盘的报告是判断结果的依据，不要去解析终端上的中文汇总。每个镜头一条记录，字段为 `scene_id`、`status`（`succeeded` / `skipped` / `stale` / `failed`）、`attempts`、`seconds`、`reason`；顶层还有 `counts`、`exit_code` 和 `interrupted`。被中断时报告照常落盘，据 `interrupted` 与各镜头 `status` 判断哪些还需要重跑。
 
 渲染前语义关卡：
 
@@ -594,11 +594,11 @@ scene_cues({"args": ["scenes/"], "plan": "production/scene-plan.json", "srt": "t
 - 对第 0 帧、转场开始帧和转场进行中的代表帧截图检查。
 - 眼镜、连线、图标、人物或其他核心视觉隐喻必须检查几何形状、对齐和语义是否正确。
 
-抽帧用 `scene_frames({"args": ["<镜头目录>"], "out": "production/visual-qc/<镜头编号>", "report_json": "production/visual-qc/<镜头编号>.json"})`，不要自己拼 FFmpeg。`--at` 接受秒数、百分比和 `end`，可混用；`end` 取时长减一帧，直接用时长会超出末帧，FFmpeg 会返回成功却什么都不输出。
+抽帧用 `scene_frames({"scene": "<镜头目录>", "out": "production/visual-qc/<镜头编号>", "report_json": "production/visual-qc/<镜头编号>.json"})`，不要自己拼 FFmpeg。参数 `at` 接受秒数、百分比和 `end`，可混用；`end` 取时长减一帧，直接用时长会超出末帧，FFmpeg 会返回成功却什么都不输出。
 
-静帧看不出动作。入场、阶段切换和转场用 `--strip 开始:结束` 把该段每一帧拼成一张条带图，检查有没有一帧蹦出或闪烁、是否全程匀速、几个元素是否同一帧齐动、上一个信息点读完前下一个是否已经抢视线。小字号文字用 `--crop x,y,宽,高` 在原始分辨率下看清楚，不要凭缩略图判断可读。
+静帧看不出动作。入场、阶段切换和转场用 `"strip": "开始:结束"` 把该段每一帧拼成一张条带图，检查有没有一帧蹦出或闪烁、是否全程匀速、几个元素是否同一帧齐动、上一个信息点读完前下一个是否已经抢视线。小字号文字用 `"crop": "x,y,宽,高"` 在原始分辨率下看清楚，不要凭缩略图判断可读。
 
-第 0 帧要做封面时加 `--at 0 --check-blank`，空白帧直接判失败。判定阈值刻意保守，只拦几乎完全均匀的画面：深色背景配浅色标题是常见设计，偏暗但有内容的帧只进报告的 `hints`，不影响退出码。
+第 0 帧要做封面时加 `"at": "0", "check_blank": true`，空白帧直接判失败。判定阈值刻意保守，只拦几乎完全均匀的画面：深色背景配浅色标题是常见设计，偏暗但有内容的帧只进报告的 `hints`，不影响退出码。
 
 命令只负责把 MP4 变成可以逐张打开看的 PNG，并标出纯色帧这种机器能判的情况。画面对不对要你自己看图判断——上面列的几何、对齐和语义检查没有任何机器替代。
 
@@ -631,7 +631,7 @@ validate_reads({"report_json": "production/visual-qc/reads-check.json"})
 
 ## 第八阶段：规范化和拼接静音母版
 
-用 `concat({"args": ["scenes/"], "out": "production/silent-master.mp4"})` 完成规范化和拼接。先跑一次 `--dry-run` 看有哪些镜头规格不一致，再正式执行。
+用 `concat({"scenes": "scenes/", "out": "production/silent-master.mp4"})` 完成规范化和拼接。先加 `"dry_run": true` 跑一次，看有哪些镜头规格不一致，再正式执行。
 
 这条命令按镜头目录名字典序拼接，规格一致时全程 `-c copy` 不重新编码；只有编码或像素格式与目标不同的片段会先生成规范化副本，渲染工具的原始 MP4 保留在原处。拼完会自证时长等于各片段之和、无音轨、画幅与帧率符合目标。
 
@@ -640,10 +640,10 @@ validate_reads({"report_json": "production/visual-qc/reads-check.json"})
 只有一个镜头时同样用这条命令。母版生成后跑：
 
 ```bash
-validate_video({"args": ["production/silent-master.mp4", "的总帧数>"], "silent": true, "decode": true, "expect_frames": "<timing-report.json", "report_json": "production/silent-master-check.json"})
+validate_video({"video": "的总帧数>", "silent": true, "decode": true, "expect_frames": "<timing-report.json", "report_json": "production/silent-master-check.json"})
 ```
 
-`--expect-frames` 会完整解码精确统计帧数，容器声明的 `nb_frames` 可能缺失或不准，不能用来断言时间轴。`--decode` 发现截断和损坏：`moov` 在文件头时，截断一半的文件照样能读出正确规格。判断结果读 `--report-json` 落盘的文件，不要解析终端输出。
+`expect_frames` 会完整解码精确统计帧数，容器声明的 `nb_frames` 可能缺失或不准，不能用来断言时间轴。`decode` 发现截断和损坏：`moov` 在文件头时，截断一半的文件照样能读出正确规格。判断结果读 `report_json` 落盘的文件，不要解析终端输出。
 
 ## 第九阶段：选择 BGM 和 SFX
 
@@ -708,17 +708,17 @@ validate_video({"args": ["production/silent-master.mp4", "的总帧数>"], "sile
 画幅、帧率、编码、像素格式、总帧数、音轨规格、可完整解码和第 0 帧封面这几项由一条命令完成，不要自己拼 FFprobe：
 
 ```bash
-validate_video({"args": ["<候选成片>"], "audio": true, "expect_frames": "<冻结时间轴总帧数>", "decode": true, "check_frame_zero": true, "report_json": "production/final-check.json"})
+validate_video({"video": "<候选成片>", "audio": true, "expect_frames": "<冻结时间轴总帧数>", "decode": true, "check_frame_zero": true, "report_json": "production/final-check.json"})
 ```
 
-不符项会一次全部列出。判断结果读 `--report-json` 落盘的报告，`ok` 为 `false` 时 `problems` 数组里是全部不符项，`hints` 里是值得看一眼但不构成失败的观察（例如第 0 帧偏暗）。
+不符项会一次全部列出。判断结果读 `report_json` 落盘的报告，`ok` 为 `false` 时 `problems` 数组里是全部不符项，`hints` 里是值得看一眼但不构成失败的观察（例如第 0 帧偏暗）。
 
 ### 整片复查
 
 机器检查只看规格，拼接与混音之后才出现的问题要靠整片复查：
 
 ```bash
-review({"args": ["<候选成片>"], "scenes": "scenes/", "out": "production/review"})
+review({"video": "<候选成片>", "scenes": "scenes/", "out": "production/review"})
 ```
 
 它比对音轨与视频流各自的时长，精确统计总帧数并与各镜头帧数之和比对（漏拼、重拼、掉帧都会被拦下），检查每个镜头交界两侧的帧，并把每个镜头的首帧、中间帧、末帧拼成联系表，每个交界再出一张前后各 6 帧的条带 `seam-NN.png`。判断结果读 `production/review/review.json`：`ok` 为 `false` 时 `problems` 里是全部不符项；交界处的纯色帧只进 `hints`，因为切黑、切白可能是有意的转场，要你看图确认。写了 `handoff` 的交界还会比对前一镜末帧与后一镜首帧：差异大到是两张不同的画面时进 `problems`，说明有一侧没照 `bridge` 画，重渲染没接上的那一侧；差异中等时进 `hints`，看对应的 `seam-NN.png` 确认。有音轨时它还会解码成片，测量积分响度、真峰与响度范围写进报告的 `loudness`，并与项目音频目标比对；偏离只进 `hints`，不影响退出码，但除非平台另有响度规范，出现了就回第十阶段重新混音，不要在成片上再叠一次规范化。
@@ -783,7 +783,7 @@ review({"args": ["<候选成片>"], "scenes": "scenes/", "out": "production/revi
 1. 封面沿用本片已经形成的视觉语汇与画面主体；配色、字体和构图由封面根据主题自由决定，定格在全片最有戏剧性、最能说明主题的一刻。标题用已确认的封面标题，必要时加一到两个短钩子（数字、反差），不新增片中没有的事实。
 2. 文件命名为 `covers/<平台>-<宽>x<高>.png`，例如 `covers/douyin-1440x1080.png`、`covers/bilibili-1920x1200.png`。源文件放在 `covers/src/<同名>/index.html`，各自是一个 `data-duration` 为 1 秒的 HyperFrames 合成。字体与脚本复制进各自目录、用目录内路径引用，不得用 `../` 引用目录外的文件，否则字体与脚本不会被加载。
 3. 每种比例分别构图，不要把一张缩放成另一张：横版通常文字在左、主体在右，竖版通常标题在上、主体在中、钩子在下。标题与主体都不得出画，文字不得压在主体上。
-4. 每张先跑 `hyperframes({"subcommand": "check", "args": ["covers/src/<目录>"]})` 直到通过，再用 `snapshot --at 0.5` 出图，复制为上面的文件名，打开看一遍。
+4. 每张先跑 `hyperframes({"subcommand": "check", "args": ["covers/src/<目录>"]})` 直到通过，再用 `hyperframes({"subcommand": "snapshot", "args": ["covers/src/<目录>", "--at", "0.5"]})` 出图，复制为上面的文件名，打开看一遍。
 5. 在 `publish.md` 的 `cover.images` 里逐张登记 `{platform, ratio, path, width_px, height_px}`，`cover.source_type` 写 `designed_image`；「封面文字」章节写出封面标题并列出每张图的路径。`validate_publish()` 会按上表核对平台是否接受该比例、实测尺寸与比例、短边不小于 1080，并在 `ready` 时检查发布平台要的封面是否齐全。封面预览（`manual_checks.cover_preview`）仍需人工在平台上确认。
 
 ### 发布配置
@@ -797,7 +797,7 @@ review({"args": ["<候选成片>"], "scenes": "scenes/", "out": "production/revi
 - 可复用工具不得硬编码某个 revision 名称、旧总帧数、旧总采样数或旧候选哈希。当前合同值必须从活动的 `timing-report.json`、`phrase-timeline.json` 和 `approval.json` 推导；只有不可变备份的哈希可以显式冻结。
 - 将耳机、手机外放、封面预览、版权确认四项人工检查写入 `manual_checks`；机器检查不能代替人工检查。
 - 按合同计算且只使用 `draft`、`pending_manual_checks`、`blocked`、`ready`。没有成片或非人工字段/证据缺失时用 `draft`；替换、解码、哈希、规格、审批、失败检查或署名证据异常时用 `blocked`；只有非人工信息完整且仍有适用检查待执行时才用 `pending_manual_checks`。
-- YAML 必须使用支持安全模式的 YAML 库序列化。先在与目标文件同一文件系统写临时文件，执行 `validate_publish({"args": ["<临时文件>"], "project_root": "."})`，验证通过后才原子重命名为 `publish.md`。
+- YAML 必须使用支持安全模式的 YAML 库序列化。先在与目标文件同一文件系统写临时文件，执行 `validate_publish({"file": "<临时文件>", "project_root": "."})`，验证通过后才原子重命名为 `publish.md`。
 - 不得用无效临时文档覆盖最后一个有效 `publish.md`。如果无法构造合同有效的状态文档，保留旧文件并在最终汇报中明确刷新失败，绝不声称 `ready`。
 
 ## 最终交付清单
@@ -841,7 +841,7 @@ archive({"dry_run": true})
 
 如果 dry-run 检出相对 `main` 的共享文件修改，或发现 ignored（被忽略）文件，立即停止，不得绕过检查、移动文件或重置工作目录。原样汇报脚本列出的问题，并请用户决定应该删除、保留、拆分还是归档这些文件；问题处理完后再重新 dry-run。
 
-dry-run 无阻断时，向用户展示归档计划，然后运行 `archive()`，保留脚本的交互式确认提示；除非用户明确要求非交互执行，否则不要使用 `--yes`。成功后汇报归档路径、原项目分支和提交、复位后的 `main` 提交及工作区状态。不得删除旧项目分支或 Git 历史。
+dry-run 无阻断时，向用户展示归档计划，用户确认后运行 `archive({"yes": true})`。没有用户明确同意不要加 `"yes": true`。成功后汇报归档路径、原项目分支和提交、复位后的 `main` 提交及工作区状态。不得删除旧项目分支或 Git 历史。
 
 ## 歌曲讲解分支
 
@@ -861,18 +861,18 @@ dry-run 无阻断时，向用户展示归档计划，然后运行 `archive()`，
 - 「段落」一节用表格逐段列出：段落名、大约时长（网格确认后改成小节范围）、画面里发生什么、画面里的字、字幕。画面里的字与字幕就是这部片子的文案，逐字写出，不写「此处放一句金句」这类占位。
 - 读字预算按快慢段分别估算：每块字至少停留 4 秒，字幕每秒不超过 6.5 字。
 
-客户端的节拍页把这个文件当普通 Markdown 原样显示，没有其他格式要求，按上面几条写清楚即可。写好后运行 `studio_show({"args": ["beat"], "note": "故事和文案写好了，请看一遍"})`，并停下来等用户确认或修改。用户没有点头之前不进入分镜计划。
+客户端的节拍页把这个文件当普通 Markdown 原样显示，没有其他格式要求，按上面几条写清楚即可。写好后运行 `studio_show({"page": "beat", "note": "故事和文案写好了，请看一遍"})`，并停下来等用户确认或修改。用户没有点头之前不进入分镜计划。
 
 ### 音乐与节拍网格
 
 节拍分析环境（beat-this 与 torch 的 Python 环境）是前置资源，由用户在客户端的工具准备页（首页的「召集你的摄制组」，或顶栏的「还差几项工具」）里安装（「以后可能用到」里的「音乐卡点」），所有卡点项目共用。不要自己建 Python 环境、不要 pip install，也不要在 beat.yaml 里写 python 指向别的环境；`beat_analyze()` 报缺少前置资源时，请用户去装，装好后再继续。
 
-1. `beat_import({"args": ["<音乐文件>"]})` 导入音乐，`beat_analyze()` 分析出草稿网格。
-2. 运行 `studio_show({"args": ["beat"], "note": "请试听节拍"})`，让用户在节拍页试听：每拍一声、重拍更高。重拍整体错位或拍号判错时用 `beat_regrid()` 重排，零星错误按用户指出的小节修正草稿后 `beat_click()` 重做试听轨。
+1. `beat_import({"music": "<音乐文件>"})` 导入音乐，`beat_analyze()` 分析出草稿网格。
+2. 运行 `studio_show({"page": "beat", "note": "请试听节拍"})`，让用户在节拍页试听：每拍一声、重拍更高。重拍整体错位或拍号判错时用 `beat_regrid()` 重排，零星错误按用户指出的小节修正草稿后 `beat_click()` 重做试听轨。
 3. 只有用户确认后才运行 `beat_confirm()`。不得替用户确认。
 
 ### 分镜计划与镜头
 
-1. 网格确认后，把 story.md 的段落表改成小节范围，按小节写 `production/beat/plan.json`（每个镜头 {"id", "bars"}，小节合计必须等于网格的小节数），运行 `studio_show({"args": ["beat"]})` 让用户在节拍页看切点。
-2. 建好镜头目录后运行 `beat_cues({"args": ["scenes/"]})` 写入镜头时长与拍点，再 `validate_beat()`。镜头时长只能由这条命令写，不得手改 duration_seconds。
+1. 网格确认后，把 story.md 的段落表改成小节范围，按小节写 `production/beat/plan.json`（每个镜头 {"id", "bars"}，小节合计必须等于网格的小节数），运行 `studio_show({"page": "beat"})` 让用户在节拍页看切点。
+2. 建好镜头目录后运行 `beat_cues({"scenes": "scenes/"})` 写入镜头时长与拍点，再 `validate_beat()`。镜头时长只能由这条命令写，不得手改 duration_seconds。
 3. 镜头说明里写清楚哪一拍发生什么、画面里的字与字幕逐字照 story.md。成片音轨就是导入的音乐，可另加音效，不加配音。

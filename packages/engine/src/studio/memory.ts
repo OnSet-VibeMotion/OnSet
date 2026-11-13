@@ -16,7 +16,7 @@ import * as tools from '../tools';
 import { DecodeError, decodeJSON, fieldBool, fieldInt, fieldNumberPtr, fieldNumbers, fieldString, fieldStrings, goMap, methodNotAllowed, writeError, writeJSON } from './http';
 import { discoverScenes, fileExists } from './scenes';
 import type { Project, Server } from './studio';
-import { addTask, runStudioCLI, runTask, runWriteTask, writeTaskError } from './tasks';
+import { addTask, runStudioOp, runTask, runWriteTask, writeTaskError } from './tasks';
 import type { Turn } from './turns';
 
 function memoryStore(s: Server): { p: Project; cfg: config.Config; store: memory.Store } | Response {
@@ -205,7 +205,8 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
     if (err instanceof DecodeError) return writeError(400, 'invalid_json', '请求不是合法 JSON');
     throw err;
   }
-  let args: string[];
+  let name: string;
+  let params: Record<string, unknown> = {};
   let label = '';
   switch (action) {
     case 'consolidate':
@@ -214,7 +215,7 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
       for (const t of s.tasks.tasks.values()) {
         if (t.type === 'memory.consolidate' && (t.status === 'queued' || t.status === 'running')) return writeJSON(202, goMap({ task_id: t.task_id }));
       }
-      args = ['memory', 'consolidate'];
+      name = 'memory_consolidate';
       label = req.final ? '成片已确认：整理这次制作的记忆' : '整理记忆';
       break;
     case 'exam':
@@ -222,33 +223,34 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
       for (const renderer of req.renderers) {
         if (!tools.ValidTools.has(renderer)) return writeError(400, 'invalid_renderers', '无效的渲染工具：' + renderer);
       }
-      args = ['memory', 'exam', '--renderers', req.renderers.join(',')];
+      name = 'memory_exam';
+      params = { renderers: req.renderers.join(',') };
       label = '记忆考试';
       if (req.name !== '') {
         if (!memory.validName(req.name)) return writeError(400, 'invalid_name', '记忆名不合法');
-        args.push('--retest', req.name);
+        params.retest = req.name;
         label = '重考 ' + req.name;
       }
       break;
     case 'rollback':
       if (req.to < 1) return writeError(400, 'invalid_snapshot', '要给出快照号');
-      args = ['memory', 'rollback', '--to', String(req.to)];
+      name = 'memory_rollback';
+      params = { to: req.to };
       label = `回退到快照 #${req.to}`;
       break;
     case 'promote':
     case 'reject':
     case 'retire':
       if (!memory.validName(req.name)) return writeError(400, 'invalid_name', '记忆名不合法');
-      args = ['memory', action, req.name];
+      name = 'memory_' + action;
+      params = { name: req.name };
       label = actionLabels[action] + req.name;
       break;
     case 'remember': {
       if (goTrimSpace(req.note) === '') return writeError(400, 'empty_note', '偏好内容为空');
-      args = ['memory', 'remember', req.note];
-      if (req.global) args.push('--global');
       try {
-        const out = await runStudioCLI(s, request.signal, p, ...args);
-        return writeJSON(200, goMap({ message: goTrimSpace(out) }));
+        const out = await runStudioOp(s, request.signal, p, 'memory_remember', { text: req.note, global: req.global });
+        return writeJSON(200, goMap({ message: goTrimSpace(out.text) }));
       } catch (err) {
         return writeError(400, 'remember_failed', (err as Error).message);
       }
@@ -258,13 +260,13 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
       for (const sc of discoverScenes(p.path)) if (sc.id === req.scene_id) directory = sc.directory;
       if (directory === '') return writeError(404, 'scene_not_found', '镜头不存在');
       if (req.verdict !== 'up' && req.verdict !== 'down') return writeError(400, 'invalid_verdict', '反馈只能是 up 或 down');
-      args = ['memory', 'feedback', directory, '--' + req.verdict, '--note', req.note];
-      if (req.seconds !== null) args.push('--at', formatFixed(req.seconds, 3));
-      if (req.region.length === 4) args.push('--region', req.region.map((v) => formatFixed(v, 4)).join(','));
+      const feedback: Record<string, unknown> = { scene: directory, [req.verdict]: true, note: req.note };
+      if (req.seconds !== null) feedback.at = Number(formatFixed(req.seconds, 3));
+      if (req.region.length === 4) feedback.region = req.region.map((v) => formatFixed(v, 4)).join(',');
       // 反馈只写一段经历，很快，直接同步返回。
       try {
-        const out = await runStudioCLI(s, request.signal, p, ...args);
-        return writeJSON(200, goMap({ message: goTrimSpace(out) }));
+        const out = await runStudioOp(s, request.signal, p, 'memory_feedback', feedback);
+        return writeJSON(200, goMap({ message: goTrimSpace(out.text) }));
       } catch (err) {
         return writeError(400, 'feedback_failed', (err as Error).message);
       }
@@ -273,7 +275,7 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
       return writeError(404, 'unknown_action', '不支持的操作：' + action);
   }
   const work = async (signal: AbortSignal): Promise<void> => {
-    await runStudioCLI(s, signal, p, ...args);
+    await runStudioOp(s, signal, p, name, params);
   };
   // 考试会在项目的 production/memory-exams 下渲染，占项目写权；其余只改记忆库。
   if (action === 'exam') {

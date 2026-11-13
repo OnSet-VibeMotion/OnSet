@@ -17,7 +17,7 @@ import { DecodeError, decodeJSON, fieldInt, fieldNumber, fieldObject, goMap, goV
 import { discoverScenes, sceneSummaryJSON, type SceneSummary } from './scenes';
 import { attachmentJSON, containedPath, newID, validateChoice, type AgentChoice, type Box } from './sessions';
 import type { Project, Server } from './studio';
-import { addTask, runStudioCLIWith, runTask, runWriteTask, updateTask, writeTaskError } from './tasks';
+import { addTask, runStudioOpWith, runTask, runWriteTask, updateTask, writeTaskError } from './tasks';
 import { walkDir } from './turns';
 
 // ---- 镜头列表与详情 ----
@@ -116,7 +116,7 @@ export async function renderAllAPI(s: Server, request: Request): Promise<Respons
         if (signal.aborted) throw new Error('context canceled');
         updateTask(s, t.task_id, 'running', `正在渲染 ${sc.id}（${index + 1}/${scenes.length}）`, index / scenes.length, null);
         try {
-          await runStudioCLIWith(s, signal, p, { tool: '', renderer: choice.renderer }, 'scene', 'run', sc.directory);
+          await runStudioOpWith(s, signal, p, { tool: '', renderer: choice.renderer }, 'scene_run', { scene: sc.directory });
         } catch (err) {
           throw new Error(`${sc.id}：${(err as Error).message}`, { cause: err });
         }
@@ -145,7 +145,7 @@ export async function sceneFeatureAPI(s: Server, request: Request, rest: string)
         const sceneDir = sc.directory;
         try {
           const t = runWriteTask(s, p, 'scene.render', '渲染 ' + id, async (signal) => {
-            await runStudioCLIWith(s, signal, p, { tool: '', renderer: choice.renderer }, 'scene', 'run', sceneDir);
+            await runStudioOpWith(s, signal, p, { tool: '', renderer: choice.renderer }, 'scene_run', { scene: sceneDir });
           });
           return writeJSON(202, goMap({ task_id: t.task_id, scene_id: id }));
         } catch (err) {

@@ -52,7 +52,7 @@ describe('RealToolsMCP', () => {
         {
           tool,
           workdir: project,
-          prompt: '调用 am 工具服务里的 config_get 工具查询 TTS_PROVIDER（参数 args 填 ["TTS_PROVIDER"]），只回复它返回的值，不要做别的。',
+          prompt: '调用 am 工具服务里的 config_get 工具查询 TTS_PROVIDER（参数 key 填 "TTS_PROVIDER"），只回复它返回的值，不要做别的。',
           sessionID: newSessionID(tool),
           env,
           toolsServer: amToolsServer(am, 'orchestrator', project, env),

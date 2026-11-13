@@ -1,5 +1,5 @@
 /**
- * am init、am config、am archive。移植自 internal/cli/cli.go 里内联定义的这三个命令。
+ * init（命令行专用）、config_get、archive。移植自 internal/cli/cli.go 里内联定义的这三个命令。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,9 +12,12 @@ import * as preset from '@am/engine/preset';
 import * as projectinit from '@am/engine/projectinit';
 import * as toolinstall from '@am/engine/toolinstall';
 import { canvasOptions, resolveCanvas, resolveStyle, resolveStyleBrief, styleBriefDocument, styleBriefPath, styleOptions } from './canvas';
-import { currentEnvironment, exactArgs, hyperframesVersion, maxArgs, noArgs, skillsProgressPrinter } from './cli';
+import { currentEnvironment, hyperframesVersion, maxArgs, skillsProgressPrinter } from './cli';
 import { Command, type Out, ref } from './cobra';
 import { reportFilmStyle } from './filmstyle';
+import { defineGroup } from './ops/cli';
+import { bool, str } from './ops/common';
+import { defineOp } from './ops/op';
 
 const narrationSolo = projectinit.NarrationSolo;
 const narrationCast = projectinit.NarrationCast;
@@ -134,7 +137,7 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
         try {
           installed = filmstyle.install({ projectDir: target, style: filmStyle, env: currentEnvironment() });
         } catch (err) {
-          throw new Error(`项目文件已写入，但整片风格安装失败（之后可用 film_style_use({"args": ["${filmstyle.styleKey(filmStyle)}"]}) 重试）：${(err as Error).message}`);
+          throw new Error(`项目文件已写入，但整片风格安装失败（之后可用 film_style_use({"style": "${filmstyle.styleKey(filmStyle)}"}) 重试）：${(err as Error).message}`);
         }
         reportFilmStyle(stdout, filmStyle, installed);
       }
@@ -169,61 +172,58 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
   return initCmd;
 }
 
-export function newConfigCommand(stdout: Out): Command {
-  const configCmd = new Command({
-    use: 'config',
-    short: '读取解析后的配置',
-    long: `读取 am 解析后的配置值。
+defineGroup({
+  path: ['config'],
+  summary: '读取解析后的配置',
+  description: `读取 am 解析后的配置值。
 
 不要自己去读 article-to-motion.conf 或 .env——解析涉及四层优先级
-（环境变量 > 项目 .env > article-to-motion.conf > 内置默认），只有本命令的
-输出等于 am 实际会用的值。`,
-  });
-  configCmd.addCommand(
-    new Command({
-      use: 'get ORCHESTRATOR|RENDERER|TTS_PROVIDER|TTS_MODEL|ALIGN_PROVIDER|ALIGN_MODEL',
-      args: exactArgs(1, 'KEY'),
-      short: '打印单个配置键',
-      long:
-        `把单个配置键的解析结果打印到 stdout，只有值本身加一个换行，便于直接捕获。
+（环境变量 > 项目 .env > article-to-motion.conf > 内置默认），只有 config_get 的
+结果等于 am 实际会用的值。`,
+});
+
+defineOp({
+  name: 'config_get',
+  cli: ['config', 'get'],
+  summary: '读取单个配置键',
+  description:
+    `返回单个配置键的解析结果，只有值本身加一个换行。
 
 可用键：
   ORCHESTRATOR   编排工具：codex | claude | qoder | codebuddy | opencode
   RENDERER       渲染工具：同上取值范围
   TTS_PROVIDER   语音合成：` +
-        config.ttsProviderIDs().split(' ').join(' | ') +
-        `
+    config.ttsProviderIDs().split(' ').join(' | ') +
+    `
   TTS_MODEL      语音合成用的本机模型（目前只有 breeze）：客户端工具准备页下好的本地目录；
-                 还没下好时打印模型的仓库名，先在工具准备页安装配音；不用本机模型时为空
+                 还没下好时返回模型的仓库名，请用户先在工具准备页安装配音；不用本机模型时为空
   ALIGN_PROVIDER 已知文本强制对齐：` +
-        config.alignerIDs().split(' ').join(' | ') +
-        `
+    config.alignerIDs().split(' ').join(' | ') +
+    `
                  auto 在 Apple Silicon 上解析为 mlx，其余平台为 funasr；
-                 本命令打印的是解析后的具体工具，不会是 auto
-  ALIGN_MODEL    对齐工具用的模型：客户端工具准备页下好的本地目录；还没下好时打印模型的仓库名
-                 （此时工具会在第一次运行时自己去下，网络不好会失败，先在工具准备页安装字幕）
+                 返回的是解析后的具体工具，不会是 auto
+  ALIGN_MODEL    对齐工具用的模型：客户端工具准备页下好的本地目录；还没下好时返回模型的仓库名
+                 （此时工具会在第一次运行时自己去下，网络不好会失败，请用户先在工具准备页安装字幕）
 
-在当前工作目录解析配置，因此要在项目根运行。键名未知或解析出的值非法时退出码 1。`,
-      example: `  # 捕获解析后的渲染工具
-  renderer="$(am config get RENDERER)"
-
-  # 环境变量优先级最高，可临时覆盖
-  RENDERER=codex am config get RENDERER`,
-      runE: (_cmd, args) => {
-        const cfg = config.load('.', null);
-        const values: Record<string, string> = { ORCHESTRATOR: cfg.orchestrator, RENDERER: cfg.renderer, TTS_PROVIDER: cfg.ttsProvider, ALIGN_PROVIDER: cfg.alignProvider };
-        const env = currentEnvironment();
-        const local = (model: toolinstall.ModelSpec | undefined) =>
-          !model ? '' : toolinstall.modelReady(model, env) ? toolinstall.modelDir(model, env) : model.repo;
-        values.TTS_MODEL = local(config.TTSProviders.find((p) => p.id === cfg.ttsProvider)?.model);
-        values.ALIGN_MODEL = local(config.Aligners.find((a) => a.id === cfg.alignProvider)?.model);
-        if (!Object.hasOwn(values, args[0])) throw new Error(`未知配置键：${args[0]}`);
-        stdout.write(values[args[0]] + '\n');
-      },
-    }),
-  );
-  return configCmd;
-}
+在项目根解析配置。键名未知或解析出的值非法时报错。`,
+  examples: ['config_get({"key": "RENDERER"})', 'config_get({"key": "ALIGN_MODEL"})'],
+  params: {
+    key: { type: 'string', description: 'ORCHESTRATOR、RENDERER、TTS_PROVIDER、TTS_MODEL、ALIGN_PROVIDER 或 ALIGN_MODEL', required: true, positional: 0 },
+  },
+  run: (p, { out }) => {
+    const key = str(p.key);
+    const cfg = config.load('.', null);
+    const values: Record<string, string> = { ORCHESTRATOR: cfg.orchestrator, RENDERER: cfg.renderer, TTS_PROVIDER: cfg.ttsProvider, ALIGN_PROVIDER: cfg.alignProvider };
+    const env = currentEnvironment();
+    const local = (model: toolinstall.ModelSpec | undefined) =>
+      !model ? '' : toolinstall.modelReady(model, env) ? toolinstall.modelDir(model, env) : model.repo;
+    values.TTS_MODEL = local(config.TTSProviders.find((x) => x.id === cfg.ttsProvider)?.model);
+    values.ALIGN_MODEL = local(config.Aligners.find((a) => a.id === cfg.alignProvider)?.model);
+    if (!Object.hasOwn(values, key)) throw new Error(`未知配置键：${key}`);
+    out.write(values[key] + '\n');
+    return { data: { key, value: values[key] } };
+  },
+});
 
 /** Go 的 time.Now().Format("20060102-150405")（本地时间）。 */
 function archiveStamp(now = new Date()): string {
@@ -247,19 +247,14 @@ function readLine(): string {
   return line;
 }
 
-export function newArchiveCommand(stdout: Out): Command {
-  const mainRef = ref('');
-  const archiveRoot = ref('');
-  const archiveName = ref('');
-  const yes = ref(false);
-  const dryRun = ref(false);
-  const archiveCmd = new Command({
-    use: 'archive',
-    short: '归档当前项目并复位到 main',
-    long: `把本片的单片文件连同 SHA-256 清单移出仓库，并把工作区复位到冻结的 main 提交。
+defineOp({
+  name: 'archive',
+  cli: ['archive'],
+  summary: '归档当前项目并复位到 main',
+  description: `把本片的单片文件连同 SHA-256 清单移出仓库，并把工作区复位到冻结的 main 提交。
 
 破坏性操作，且不属于成片验收的一部分。未经用户明确确认不要执行：
-先跑 --dry-run 看计划，把结果原样汇报给用户，由用户决定是否继续。
+先用 "dry_run": true 看计划，把结果原样汇报给用户，由用户决定是否继续。
 
 会把相对 main 的改动分成三类，只有第一类会被归档：
   候选文件   main 提交里不存在的新增文件，以及全部未跟踪文件 → 移入归档目录
@@ -269,34 +264,32 @@ export function newArchiveCommand(stdout: Out): Command {
 存在共享修改或 ignored 文件时拒绝执行并报告。不要为了让它通过而删文件、移文件、
 改 .gitignore 或重置工作区——那会掩盖问题。也不要删除项目分支或改写 Git 历史。
 
---archive-name 缺省为 project-<年月日-时分秒>。成功后工作区 detach 到 --main-ref
-指向的提交。除非传 --yes，否则会在 stdin 上交互确认；非交互环境下没有 --yes 会取消。`,
-    example: `  # 先看计划，不做任何改动
-  am archive --dry-run
-
-  # 用户确认后执行
-  am archive
-
-  # 非交互环境必须显式跳过确认
-  am archive --yes --archive-root ~/video-archive --archive-name my-video-2026-08`,
-    args: noArgs,
-    runE: () => {
-      const name = archiveName.value || 'project-' + archiveStamp();
-      const plan = archive.buildPlan('.', mainRef.value, archiveRoot.value, name);
-      stdout.write(`归档目标：${plan.destination}\n候选文件：${plan.candidates.length}\n共享修改：${plan.shared.length}\nignored：${plan.ignored.length}\n`);
-      if (dryRun.value) return;
-      if (!yes.value) {
-        stdout.write('确认归档并复位到 main？[y/N] ');
-        if (readLine().trim().toLowerCase() !== 'y') throw new Error('用户取消归档');
-      }
-      archive.execute(plan);
-    },
-  });
-  const flags = archiveCmd.flags();
-  flags.stringVar(mainRef, 'main-ref', 'main', '冻结的 main ref，归档后工作区 detach 到它指向的提交');
-  flags.stringVar(archiveRoot, 'archive-root', '', '归档父目录，须在仓库之外');
-  flags.stringVar(archiveName, 'archive-name', '', '归档目录名，缺省为 project-<年月日-时分秒>');
-  flags.boolVar(yes, 'yes', false, '跳过交互确认；非交互环境执行归档时必须传');
-  flags.boolVar(dryRun, 'dry-run', false, '只打印计划，不移动任何文件、不改动工作区');
-  return archiveCmd;
-}
+archive_name 缺省为 project-<年月日-时分秒>。成功后工作区 detach 到 main_ref
+指向的提交。没有交互确认的地方（工具调用就是）必须在用户明确确认后传 "yes": true，否则取消。`,
+  examples: [
+    'archive({"dry_run": true})',
+    '# 用户确认后执行',
+    'archive({"yes": true})',
+    'archive({"yes": true, "archive_root": "~/video-archive", "archive_name": "my-video-2026-08"})',
+  ],
+  params: {
+    main_ref: { type: 'string', description: '冻结的 main ref，归档后工作区 detach 到它指向的提交', default: 'main' },
+    archive_root: { type: 'string', description: '归档父目录，须在仓库之外' },
+    archive_name: { type: 'string', description: '归档目录名，缺省为 project-<年月日-时分秒>' },
+    yes: { type: 'boolean', description: '跳过交互确认；没有交互（工具调用）时执行归档必须传，且要用户先明确确认' },
+    dry_run: { type: 'boolean', description: '只打印计划，不移动任何文件、不改动工作区' },
+  },
+  run: (p, { out }) => {
+    const name = str(p.archive_name) || 'project-' + archiveStamp();
+    const plan = archive.buildPlan('.', str(p.main_ref), str(p.archive_root), name);
+    out.write(`归档目标：${plan.destination}\n候选文件：${plan.candidates.length}\n共享修改：${plan.shared.length}\nignored：${plan.ignored.length}\n`);
+    const data = { destination: plan.destination, candidates: plan.candidates.length, shared: plan.shared, ignored: plan.ignored, archived: false };
+    if (bool(p.dry_run)) return { data };
+    if (!bool(p.yes)) {
+      out.write('确认归档并复位到 main？[y/N] ');
+      if (readLine().trim().toLowerCase() !== 'y') throw new Error('用户取消归档');
+    }
+    archive.execute(plan);
+    return { data: { ...data, archived: true } };
+  },
+});

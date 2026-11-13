@@ -21,7 +21,7 @@ export interface TTSProvider {
   command: string;
   /** am setup 怎么装它（版本钉死）。客户端用户不必自己 npm / pipx / brew。 */
   install: ToolSpec;
-  /** 工具第一次运行会去下的模型：am setup 预先下好，提示词经 am config get TTS_MODEL 拿本地路径。 */
+  /** 工具第一次运行会去下的模型：am setup（客户端的工具准备页）预先下好，提示词经 config_get 工具取 TTS_MODEL 的本地路径。 */
   model?: ModelSpec;
 }
 
@@ -114,7 +114,7 @@ export interface Aligner {
   name: string;
   command: string;
   install: ToolSpec;
-  /** 工具第一次运行会去下的模型：am setup 预先下好，提示词经 am config get ALIGN_MODEL 拿本地路径。 */
+  /** 工具第一次运行会去下的模型：am setup（客户端的工具准备页）预先下好，提示词经 config_get 工具取 ALIGN_MODEL 的本地路径。 */
   model?: ModelSpec;
 }
 

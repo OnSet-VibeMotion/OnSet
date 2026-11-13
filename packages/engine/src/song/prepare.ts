@@ -259,7 +259,7 @@ export async function doctor(root: string, env: Record<string, string>, out: Wri
   if (c.provider !== 'minimax' && c.provider !== 'acestep' && c.provider !== 'manual') {
     check(providerInfo(c.provider).key + '（仅本地存在性，不验证权限/额度）', await attempt(() => checkCredential(c, env)));
   }
-  out.write(`平台接入说明：song_providers({"args": ["${c.provider}"]})\n`);
+  out.write(`平台接入说明：song_providers({"platform": "${c.provider}"})\n`);
   if (failures.length > 0) throw new Error(`歌曲环境检查未通过：${failures.join('；')}`);
 }
 
