@@ -110,6 +110,9 @@
 .stations .station-detail dd.mono {
   font: 11px var(--mono);
 }
+.stations .station-detail dd.station-experimental {
+  color: var(--stale);
+}
 .stations .station-prompt-label {
   font: 11px var(--mono);
   letter-spacing: 0.08em;

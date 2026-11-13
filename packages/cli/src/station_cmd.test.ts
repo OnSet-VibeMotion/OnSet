@@ -14,12 +14,13 @@ async function projectWithFake(): Promise<string> {
   expect(out.text).toContain('已加入第三方站 假发布（fake-publisher 0.1.0）');
   expect(out.text).toContain('[按钮] send');
   expect(out.text).toContain('[工具] x_fake_publisher_status');
+  expect(out.text).toContain('[实验性] 用到了实验性能力：hooks、schedules、slots、commands、inserts、flow、provides、renderer_skills、film_styles，以后的版本可能调整');
   return root;
 }
 
 describe('station ops', () => {
   it('are not tools the orchestrator can call', () => {
-    for (const name of ['station_add', 'station_remove', 'station_list', 'station_run', 'station_flow', 'station_builtin']) {
+    for (const name of ['station_add', 'station_remove', 'station_list', 'station_run', 'station_flow', 'station_builtin', 'station_update']) {
       expect(allOps().find((op) => op.name === name)?.scopes, name).toEqual(['cli']);
     }
     expect(describeTools('orchestrator').some((t) => t.name.startsWith('station_'))).toBe(false);
@@ -39,6 +40,11 @@ describe('station ops', () => {
     const list = new Buffer();
     expect(await run(['station', 'list', '--project-root', root], list), list.text).toBe(0);
     expect(list.text).toContain('fake-publisher 0.1.0  假发布');
+
+    const update = new Buffer();
+    expect(await run(['station', 'update', 'fake-publisher', '--project-root', root], update), update.text).toBe(0);
+    expect(update.text).toContain('来自本机目录');
+    expect(update.text).toContain('不需要更新');
 
     expect(await run(['station', 'remove', 'fake-publisher', '--project-root', root], new Buffer())).toBe(0);
     expect(fs.existsSync(path.join(root, 'article-to-motion.flow.json'))).toBe(false);
