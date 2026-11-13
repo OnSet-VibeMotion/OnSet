@@ -192,11 +192,17 @@ describe('tools', () => {
     const at = argv.indexOf('--mcp-config');
     expect(at).toBeGreaterThan(0);
     expect(JSON.parse(argv[at + 1])).toEqual({ mcpServers: { am_studio: { command: '/app/am', args: ['studio', 'permission-mcp'] } } });
-    expect(argv[at + 2]).toBe('--permission-prompts');
-    expect(argv.slice(at + 2, at + 6)).toEqual(['--permission-prompts', 'host', '--permission-prompt-tool', 'mcp__am_studio__ask']);
+    expect(argv.slice(at + 2, at + 6)).toEqual(['--permission-prompt-tool', 'mcp__am_studio__ask', '--permission-prompts', 'host']);
     expect(argv[argv.length - 1]).toBe('hello');
     expect(orchestratorInvocation('claude', { prompt: 'hello', unsafe: true, permissionPrompt }).argv).not.toContain('--mcp-config');
     expect(orchestratorInvocation('codebuddy', { prompt: 'hello', permissionPrompt }).argv).not.toContain('--mcp-config');
+    // qoder 认同一个（帮助里没列的）参数，没有 --permission-prompts。
+    const qoder = orchestratorInvocation('qoder', { prompt: 'hello', permissionPrompt }).argv;
+    const q = qoder.indexOf('--mcp-config');
+    expect(q).toBeGreaterThan(0);
+    expect(qoder.slice(q + 2, q + 4)).toEqual(['--permission-prompt-tool', 'mcp__am_studio__ask']);
+    expect(qoder).not.toContain('--permission-prompts');
+    expect(orchestratorInvocation('qoder', { prompt: 'hello', unsafe: true, permissionPrompt }).argv).not.toContain('--mcp-config');
     expect(orchestratorInvocation('claude', { prompt: 'hello' }).argv).not.toContain('--permission-prompts');
   });
 });

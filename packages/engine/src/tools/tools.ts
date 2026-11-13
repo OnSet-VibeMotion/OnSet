@@ -112,7 +112,7 @@ export interface OrchestratorOptions {
   /**
    * 安全模式下需要批准的调用交给谁问。给了就让 claude 把审批交给这个 MCP 服务（客户端里是
    * am studio permission-mcp，问界面上的用户）；不给（am run）时照旧，白名单外的一律拒绝。
-   * 只有 claude 支持，其他工具忽略它。
+   * claude 与 qoder 支持（qoder 的帮助里没列，实测可用），其他工具忽略它。
    */
   permissionPrompt?: PermissionPrompt;
 }
@@ -123,6 +123,60 @@ export interface PermissionPrompt {
   args: string[];
   /** MCP 配置里的服务名；工具名是 mcp__<server>__ask。 */
   server: string;
+}
+
+/**
+ * 让工具把需要批准的调用交给审批服务（MCP）去问：claude 与 qoder 同一套参数。
+ * --mcp-config 吃多个值，后面紧跟 --permission-prompt-tool 这个选项，才不会把提示词也吞进去。
+ */
+function permissionPromptArgs(p: PermissionPrompt): string[] {
+  const mcp = { mcpServers: { [p.server]: { command: p.command, args: p.args } } };
+  return ['--mcp-config', JSON.stringify(mcp), '--permission-prompt-tool', 'mcp__' + p.server + '__ask'];
+}
+
+/** 双向协议的调用：ACP（opencode、codebuddy）或 codex app-server。 */
+export interface InteractiveInvocation {
+  protocol: 'acp' | 'codex-app';
+  argv: string[];
+  /** 要加进子进程环境的变量。 */
+  env: Record<string, string>;
+}
+
+/**
+ * 客户端里、安全模式下要能中途问用户时，codebuddy、opencode、codex 换成双向协议：它们的一次性模式
+ * （-p、run、exec）要么不能把审批交出来，要么根本不拦命令。claude、qoder 照旧走一次性模式加审批 MCP，
+ * 返回 null；--unsafe 不拦任何东西，也返回 null。
+ *
+ * - codebuddy --acp：权限设置与 -p 模式相同（acceptEdits + 白名单 --settings），白名单外的调用发
+ *   session/request_permission。
+ * - opencode acp：opencode 只认配置里的 permission，经 OPENCODE_CONFIG_CONTENT 把 bash 设成 ask（2026-11
+ *   用 2.1.0 实测会来问）；白名单由 agentrun 在收到请求时先过一遍，不写进 opencode 的规则。
+ * - codex app-server：审批策略与沙箱在 thread/start 里给，见 agentrun/codexapp.ts。
+ */
+export function interactiveInvocation(tool: string, o: Pick<OrchestratorOptions, 'unsafe' | 'access'>, env: Record<string, string | undefined> = {}): InteractiveInvocation | null {
+  if (o.unsafe) return null;
+  switch (tool) {
+    case 'codebuddy':
+      return {
+        protocol: 'acp',
+        argv: ['codebuddy', '--acp', '--permission-mode', 'acceptEdits', '--settings', claudeSettings({ commands: o.access?.commands })],
+        env: {},
+      };
+    case 'opencode': {
+      let config: Record<string, unknown> = {};
+      try {
+        const own = JSON.parse(env.OPENCODE_CONFIG_CONTENT ?? '{}');
+        if (own && typeof own === 'object' && !Array.isArray(own)) config = own as Record<string, unknown>;
+      } catch {
+        // 用户自己的 OPENCODE_CONFIG_CONTENT 不是 JSON：不合并，只给我们这一条。
+      }
+      const permission = config.permission && typeof config.permission === 'object' ? (config.permission as Record<string, unknown>) : {};
+      return { protocol: 'acp', argv: ['opencode', 'acp'], env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...config, permission: { ...permission, bash: 'ask' } }) } };
+    }
+    case 'codex':
+      return { protocol: 'codex-app', argv: ['codex', 'app-server'], env: {} };
+  }
+  return null;
 }
 
 /**
@@ -190,9 +244,7 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions): In
       else if (o.unsafe) args.push('-y');
       else args.push('--permission-mode', 'acceptEdits', '--settings', claudeSettings({ commands: access.commands }));
       if (!o.unsafe && tool === 'claude' && o.permissionPrompt) {
-        // --mcp-config 吃多个值，后面紧跟一个选项才不会把提示词也吞进去。
-        const mcp = { mcpServers: { [o.permissionPrompt.server]: { command: o.permissionPrompt.command, args: o.permissionPrompt.args } } };
-        args.push('--mcp-config', JSON.stringify(mcp), '--permission-prompts', 'host', '--permission-prompt-tool', 'mcp__' + o.permissionPrompt.server + '__ask');
+        args.push(...permissionPromptArgs(o.permissionPrompt), '--permission-prompts', 'host');
       }
       args.push(...claudeSession());
       args.push(o.prompt);
@@ -205,6 +257,7 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions): In
       } else {
         args.push('--permission-mode', 'accept_edits');
         for (const command of access.commands ?? []) args.push('--allowed-tools', 'Bash(' + command + ':*)');
+        if (o.permissionPrompt) args.push(...permissionPromptArgs(o.permissionPrompt));
       }
       if (o.resume) args.push('-r', sessionID);
       else if (sessionID !== '') args.push('--session-id', sessionID);

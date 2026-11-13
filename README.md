@@ -267,14 +267,14 @@ am --unsafe run
 
 `--unsafe` 会传递给嵌套镜头任务。安全模式需要额外传递的环境变量通过 `AM_PASSTHROUGH_ENV=NAME1,NAME2` 显式列出。
 
-安全模式下，编排工具（`am run` 与客户端的对话）只被放行文件编辑和一组命令：`am`（含 `am hyperframes`，am 管理的固定版本 HyperFrames CLI）、`ffmpeg`、`ffprobe`；只读查看的 `ls` `cat` `head` `tail` `wc` `grep` `rg` `find` `sort` `uniq` `cut` `diff` `cmp` `stat` `file` `du` `pwd` `basename` `dirname` `realpath` `jq` `tree` `which` `date`；`echo` `printf` `cd`；工作区内的 `mkdir` `cp` `mv` `touch`；算哈希的 `shasum` `sha256sum` `md5`；只读的 `git status` `git diff` `git log` `git show`；下载字体与授权素材的 `curl`；跑脚本的 `python3` `python` `node`；文本处理的 `sed` `awk` `tr` `tee` `column` `paste` `nl` `fold` `iconv` `base64` `xxd` `od` `comm` `join` `rev`；压缩解压的 `tar` `unzip` `zip` `gzip` `gunzip`；`ln` `sleep` `test` `true` `false`；macOS 自带的 `sips` `mdls` `afplay` `open`；以及 `TTS_PROVIDER` 与 `ALIGN_PROVIDER` 各自对应的那一个命令（如 `mmx`、`edge-tts`、`mlx_audio.stt.generate`；`funasr` 对应 `python3`）。`sh` / `bash`、`rm`、改权限与安装命令（`brew`、`pip`、`uv`、`npm`）不在其中，相关工具要先自己装好；在客户端里、编排工具是 claude 时，白名单外的命令不会直接被拒：对话框上方弹出卡片问你，可以允许这一次、以后都允许（把命令前缀记进这个项目的 `production/studio/permissions.json`，以后不再问）或拒绝；其他编排工具没有中途审批的接口，仍直接拒绝。还要放行别的命令就写进项目配置的 `ORCHESTRATOR_ALLOW_COMMANDS`（逗号分隔的命令前缀，如 `uv run, pnpm, magick`），不必改用 `--unsafe`。放行解释器意味着脚本能做任何事（包括读 `.env`），安全模式防的是误操作和越界命令，不可信的输入仍不要交给编排工具。命令要单独执行，不用 `&&`、`;`、管道拼接，见项目规则「安全模式下怎么写命令」。各工具的实现方式不同：
+安全模式下，编排工具（`am run` 与客户端的对话）只被放行文件编辑和一组命令：`am`（含 `am hyperframes`，am 管理的固定版本 HyperFrames CLI）、`ffmpeg`、`ffprobe`；只读查看的 `ls` `cat` `head` `tail` `wc` `grep` `rg` `find` `sort` `uniq` `cut` `diff` `cmp` `stat` `file` `du` `pwd` `basename` `dirname` `realpath` `jq` `tree` `which` `date`；`echo` `printf` `cd`；工作区内的 `mkdir` `cp` `mv` `touch`；算哈希的 `shasum` `sha256sum` `md5`；只读的 `git status` `git diff` `git log` `git show`；下载字体与授权素材的 `curl`；跑脚本的 `python3` `python` `node`；文本处理的 `sed` `awk` `tr` `tee` `column` `paste` `nl` `fold` `iconv` `base64` `xxd` `od` `comm` `join` `rev`；压缩解压的 `tar` `unzip` `zip` `gzip` `gunzip`；`ln` `sleep` `test` `true` `false`；macOS 自带的 `sips` `mdls` `afplay` `open`；以及 `TTS_PROVIDER` 与 `ALIGN_PROVIDER` 各自对应的那一个命令（如 `mmx`、`edge-tts`、`mlx_audio.stt.generate`；`funasr` 对应 `python3`）。`sh` / `bash`、`rm`、改权限与安装命令（`brew`、`pip`、`uv`、`npm`）不在其中，相关工具要先自己装好；在客户端里，白名单外的命令不会直接被拒：对话框上方弹出卡片问你，可以允许这一次、以后都允许（把命令前缀记进这个项目的 `production/studio/permissions.json`，以后不再问）或拒绝；五家编排工具都会这样问：claude、qoder 照旧一次性调用，加一个审批服务；codebuddy、opencode、codex 在客户端里改用双向协议（`codebuddy --acp`、`opencode acp`、`codex app-server`）。opencode 与 codebuddy 被拒后会直接结束这一轮，对话里会说明，可以告诉它换个做法再继续。终端里的 `am run` 没有人能回答，白名单外的命令仍直接拒绝。还要放行别的命令就写进项目配置的 `ORCHESTRATOR_ALLOW_COMMANDS`（逗号分隔的命令前缀，如 `uv run, pnpm, magick`），不必改用 `--unsafe`。放行解释器意味着脚本能做任何事（包括读 `.env`），安全模式防的是误操作和越界命令，不可信的输入仍不要交给编排工具。命令要单独执行，不用 `&&`、`;`、管道拼接，见项目规则「安全模式下怎么写命令」。各工具的实现方式不同：
 
 | 工具 | 安全模式的限制方式 |
 |---|---|
 | claude、codebuddy | `acceptEdits` 加 `--settings` 白名单；`.env` 禁读。Claude Code 的 `acceptEdits` 自身还会放行工作区内的 `touch`、`mkdir`、`rm` 等文件系统命令 |
 | qoder | `accept_edits` 加逐条 `--allowed-tools` |
-| codex | 没有命令白名单，由 `workspace-write` 沙箱限制写入范围；为了 TTS 放开了沙箱网络 |
-| opencode | 没有可用的白名单机制，安全模式下仍能执行任何命令 |
+| codex | `am run`：没有命令白名单，由 `workspace-write` 沙箱限制写入范围；为了 TTS 放开了沙箱网络。客户端里改用 `codex app-server`：沙箱不变，审批策略 `untrusted`，白名单外的命令问你 |
+| opencode | `am run`：没有可用的白名单机制，安全模式下仍能执行任何命令。客户端里改用 `opencode acp`，bash 设成 ask，白名单外的命令问你 |
 
 codebuddy 的这套参数没有经过完整实测。
 

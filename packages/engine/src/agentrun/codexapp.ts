@@ -1,0 +1,173 @@
+/**
+ * codex app-server 编排（JSON-RPC，stdio）。codex exec 不能中途审批，app-server 能：
+ * initialize → thread/start（或 thread/resume 续接）→ turn/start，然后等 turn/completed。
+ * 期间 codex 以 item/commandExecution/requestApproval、item/fileChange/requestApproval 请我们批准。
+ *
+ * 审批策略用 untrusted（codex 自认安全的只读命令直接跑，其余都来问），沙箱仍是 workspace-write 并打开网络
+ * （TTS 要连外网，理由同 exec 路径）。来问的命令先过白名单，白名单里的直接放行，其余交给用户。
+ * 字段名按 codex-cli 0.163 的 app-server generate-json-schema 写。
+ */
+import { BasisTotalInput, newUsage, type Usage } from '../tools';
+import { runInteractive, unwrapShell, type DriveContext, type PermissionAnswer } from './interactive';
+import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, clip, type Event, type PlanItem } from './parse';
+import type { Outcome, Spec } from './run';
+
+type Obj = Record<string, unknown>;
+const obj = (v: unknown): Obj => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Obj) : {});
+const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+const num = (v: unknown): number => (typeof v === 'number' ? v : 0);
+
+/** 一次 codex 用量（TokenUsageBreakdown）→ 统一口径。codex 的 inputTokens 本就含缓存命中。 */
+export function codexUsage(breakdown: unknown, turns: number): Usage {
+  const b = obj(breakdown);
+  const u = newUsage();
+  u.input_tokens = num(b.inputTokens);
+  u.cached_input_tokens = num(b.cachedInputTokens);
+  u.output_tokens = num(b.outputTokens);
+  u.turns = turns;
+  u.source = 'codex app-server';
+  u.basis = BasisTotalInput;
+  return u;
+}
+
+function subtract(total: unknown, base: Obj | null): Obj {
+  const t = obj(total);
+  if (!base) return t;
+  const out: Obj = {};
+  for (const key of ['inputTokens', 'cachedInputTokens', 'outputTokens', 'reasoningOutputTokens', 'totalTokens']) out[key] = num(t[key]) - num(base[key]);
+  return out;
+}
+
+function planStatus(status: string): string {
+  if (status === 'inProgress') return 'in_progress';
+  if (status === 'completed') return 'completed';
+  return 'pending';
+}
+
+/** 把 codex 的 ThreadItem 译成统一事件；工具名与 exec 路径（parse.ts 的 parseCodex）一致。 */
+export function codexItemEvents(phase: 'started' | 'completed', item: Obj): Event[] {
+  const id = str(item.id);
+  switch (str(item.type)) {
+    case 'agentMessage':
+      return phase === 'completed' && str(item.text) !== '' ? [{ kind: KindText, text: str(item.text) }] : [];
+    case 'reasoning': {
+      if (phase !== 'completed') return [];
+      const parts = [...(Array.isArray(item.summary) ? item.summary : []), ...(Array.isArray(item.content) ? item.content : [])].map((x) => (typeof x === 'string' ? x : str(obj(x).text)));
+      const text = parts.filter((x) => x !== '').join('\n');
+      return text !== '' ? [{ kind: KindThinking, text }] : [];
+    }
+    case 'commandExecution':
+      if (phase === 'started') return [{ kind: KindToolCall, tool: 'shell', call_id: id, input: { command: unwrapShell(str(item.command)) } }];
+      return [{ kind: KindToolResult, tool: 'shell', call_id: id, text: clip(str(item.aggregatedOutput)), is_error: num(item.exitCode) !== 0 || str(item.status) === 'failed' || undefined }];
+    case 'fileChange':
+    case 'mcpToolCall':
+    case 'webSearch': {
+      const tool = ({ fileChange: 'file_change', mcpToolCall: 'mcp_tool_call', webSearch: 'web_search' } as Record<string, string>)[str(item.type)];
+      if (phase === 'started') return [{ kind: KindToolCall, tool, call_id: id, input: item }];
+      return [{ kind: KindToolResult, tool, call_id: id, input: item, is_error: str(item.status) === 'failed' || undefined }];
+    }
+  }
+  return [];
+}
+
+/** 用户的回答 → codex 的审批决定。拒绝用 decline（codex 接着这一轮换做法），不用 cancel（会打断整轮）。 */
+export function codexDecision(answer: PermissionAnswer): string {
+  return answer.decision === 'allow' || answer.decision === 'always' ? 'accept' : 'decline';
+}
+
+/** codex 一轮（argv 与环境由 tools.codexAppInvocation 给出）。 */
+export function runCodexApp(spec: Spec, emit: (event: Event) => void, signal: AbortSignal | undefined, argv: string[], env: Record<string, string> | undefined): Promise<Outcome> {
+  return runInteractive(spec, emit, signal, argv, env, (ctx) => driveCodex(ctx));
+}
+
+async function driveCodex(ctx: DriveContext): Promise<void> {
+  const { peer, spec, signal } = ctx;
+  let threadID = '';
+  let turnID = '';
+  let baseline: Obj | null = null;
+  let finished: (turn: Obj) => void = () => {};
+  const completed = new Promise<Obj>((resolve) => (finished = resolve));
+  const early: Obj[] = [];
+
+  peer.onNotification((method, params) => {
+    const p = obj(params);
+    if (threadID !== '' && str(p.threadId) !== '' && str(p.threadId) !== threadID) return;
+    switch (method) {
+      case 'item/started':
+      case 'item/completed':
+        for (const event of codexItemEvents(method === 'item/started' ? 'started' : 'completed', obj(p.item))) ctx.emit(event);
+        return;
+      case 'turn/plan/updated': {
+        const steps = Array.isArray(p.plan) ? p.plan.map(obj) : [];
+        const plan: PlanItem[] = steps.map((s) => ({ text: str(s.step), status: planStatus(str(s.status)) })).filter((s) => s.text !== '');
+        if (plan.length > 0) ctx.emit({ kind: KindPlan, plan });
+        return;
+      }
+      case 'thread/tokenUsage/updated': {
+        const usage = obj(p.tokenUsage);
+        // total 是整条会话的累计；续接时要扣掉这一轮之前的部分。第一条更新之前的总数 = total - last。
+        if (!baseline) baseline = subtract(usage.total, obj(usage.last));
+        ctx.result.usage = codexUsage(subtract(usage.total, baseline), 1);
+        return;
+      }
+      case 'error': {
+        const message = str(obj(p.error).message) || str(p.message);
+        if (message !== '' && p.willRetry !== true) ctx.emit({ kind: KindError, text: message });
+        return;
+      }
+      case 'turn/completed': {
+        const turn = obj(p.turn);
+        if (turnID === '') early.push(turn);
+        else if (str(turn.id) === turnID) finished(turn);
+        return;
+      }
+    }
+  });
+  peer.onRequest('item/commandExecution/requestApproval', async (params) => {
+    const p = obj(params);
+    const answer = await ctx.decide('Bash', { command: unwrapShell(str(p.command)), description: str(p.reason) || undefined });
+    return { decision: codexDecision(answer) };
+  });
+  peer.onRequest('item/fileChange/requestApproval', async (params) => {
+    const p = obj(params);
+    const answer = await ctx.decide('Edit', { path: str(p.grantRoot) || undefined, reason: str(p.reason) || '修改工作区之外的文件' });
+    return { decision: codexDecision(answer) };
+  });
+  const race = <T>(p: Promise<T>) => Promise.race([p, ctx.exited]);
+
+  await race(peer.request('initialize', { clientInfo: { name: 'article-to-motion', title: 'ArticleToMotion', version: '1' } }));
+  peer.notification('initialized', {});
+  const cwd = spec.workdir || process.cwd();
+  const writable = spec.access?.writableDirs ?? [];
+  const settings = {
+    cwd,
+    approvalPolicy: 'untrusted',
+    sandbox: 'workspace-write',
+    config: { 'sandbox_workspace_write.network_access': true, ...(writable.length > 0 ? { 'sandbox_workspace_write.writable_roots': writable } : {}) },
+  };
+  let opened: Obj;
+  if (spec.resume && spec.sessionID) opened = obj(await race(peer.request('thread/resume', { threadId: spec.sessionID, excludeTurns: true, ...settings })));
+  else opened = obj(await race(peer.request('thread/start', settings)));
+  threadID = str(obj(opened.thread).id) || spec.sessionID || '';
+  if (threadID === '') throw new Error('thread/start 没有返回会话 id');
+  ctx.result.model = str(opened.model);
+  ctx.emit({ kind: KindSession, session_id: threadID });
+
+  const started = obj(await race(peer.request('turn/start', { threadId: threadID, input: [{ type: 'text', text: spec.prompt }] })));
+  turnID = str(obj(started.turn).id);
+  const already = early.find((t) => str(t.id) === turnID);
+  if (already) finished(already);
+  const onAbort = () => void peer.request('turn/interrupt', { threadId: threadID, turnId: turnID }).catch(() => {});
+  signal?.addEventListener('abort', onAbort, { once: true });
+  let turn: Obj;
+  try {
+    turn = await race(completed);
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+  }
+  if (str(turn.status) === 'failed') {
+    const message = str(obj(turn.error).message) || 'codex 这一轮失败了';
+    ctx.emit({ kind: KindError, text: message });
+    throw new Error(message);
+  }
+}

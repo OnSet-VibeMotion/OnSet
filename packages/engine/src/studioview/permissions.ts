@@ -6,8 +6,9 @@
  * permissions/ 子目录，等客户端写回答复；客户端后端轮询到请求就发 permission 事件，界面弹出卡片，
  * 用户点了之后后端写答复文件。走文件而不是 HTTP，理由与 am studio show 相同（见 ./index.ts）。
  *
- * 只有 claude 有这个口子：codebuddy、qoder 没有 --permission-prompt-tool，codex exec 不能中途审批，
- * opencode 安全模式本就不拦命令。它们仍只靠白名单。
+ * claude 与 qoder 经这个审批 MCP 问（qoder 的 --permission-prompt-tool 帮助里没列，实测可用）；codebuddy、opencode、
+ * codex 在客户端里改用双向协议（ACP、codex app-server，见 agentrun/acp.ts、codexapp.ts），它们的审批请求由
+ * agentrun 直接写进同一个收件目录（studio/sessions.ts 的 spec.ask），后面的轮询、卡片、以后都允许完全相同。
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';

@@ -15,7 +15,7 @@ import { formatFixed, goClean, goTrimSpace } from '../gofmt';
 import { marshal, marshalIndent } from '../gojson';
 import * as ledger from '../ledger';
 import * as project from '../project';
-import { KindView, PermissionServerName, ViewInboxEnv, ViewPollInterval, ViewProjectEnv, describeView, drainViewInbox, viewInbox, viewInteraction, type ViewRequest, type ViewState } from '../studioview';
+import { KindView, PermissionPollInterval, PermissionServerName, ViewInboxEnv, waitPermissionResponse, writePermissionRequest, ViewPollInterval, ViewProjectEnv, describeView, drainViewInbox, viewInbox, viewInteraction, type ViewRequest, type ViewState } from '../studioview';
 import * as tools from '../tools';
 import { compareTimes, nowTime } from './http';
 import type { Project, Server } from './studio';
@@ -663,6 +663,12 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
       unsafe: s.config.unsafe,
       access,
       permissionPrompt: { command: s.executable(), args: ['studio', 'permission-mcp'], server: PermissionServerName },
+      // codebuddy、opencode、codex 走双向协议，审批请求由 agentrun 直接交到这里：写进同一个收件目录，
+      // 与审批 MCP 走同一条路（轮询、卡片、以后都允许），等用户回答。
+      ask: async (toolName, input) => {
+        const req = writePermissionRequest(inbox, toolName, input);
+        return (await waitPermissionResponse(inbox, req.id, PermissionPollInterval, signal)) ?? { decision: 'expired' };
+      },
       env,
       lookPath: (name) => lookPath(name, env.PATH ?? ''),
     };

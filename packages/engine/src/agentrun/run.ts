@@ -2,7 +2,10 @@
 import crypto from 'node:crypto';
 import { MissingToolError, lookPath as envLookPath } from '../envutil';
 import { DefaultGrace, ExitError as ProcessExitError, abortReason, start } from '../procgroup';
-import { detectModel, newUsage, orchestratorInvocation, presetSessionID, usageEmpty, type OrchestratorAccess, type PermissionPrompt, type Usage } from '../tools';
+import { detectModel, interactiveInvocation, newUsage, orchestratorInvocation, presetSessionID, usageEmpty, type OrchestratorAccess, type PermissionPrompt, type Usage } from '../tools';
+import { runACP } from './acp';
+import { runCodexApp } from './codexapp';
+import type { AskPermission } from './interactive';
 import { KindDone, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, KindUsage, newParser, type Event } from './parse';
 
 /** 一次编排调用。 */
@@ -17,6 +20,11 @@ export interface Spec {
   access?: OrchestratorAccess;
   /** 见 tools.OrchestratorOptions.permissionPrompt。 */
   permissionPrompt?: PermissionPrompt;
+  /**
+   * 请用户批准一次调用（客户端里给）。给了且是安全模式时，codebuddy、opencode、codex 改用双向协议
+   * （tools.interactiveInvocation），白名单外的调用经它问用户；claude、qoder 经 permissionPrompt 的审批 MCP。
+   */
+  ask?: AskPermission;
   /**
    * 子进程的完整环境，由调用方按安全模式白名单算好。Go 里是 KEY=VALUE 列表，
    * 这里是 map；不给时继承当前进程环境（与 Go 的 nil Env 相同）。
@@ -150,6 +158,14 @@ function asError(err: unknown): Error {
  * signal 取消时整组终止，error 是取消原因（对应 ctx.Err()）。
  */
 export async function run(spec: Spec, emit: (event: Event) => void, signal?: AbortSignal): Promise<Outcome> {
+  if (spec.ask) {
+    const base = spec.env ?? (process.env as Record<string, string>);
+    const inter = interactiveInvocation(spec.tool, { unsafe: spec.unsafe, access: spec.access }, base);
+    if (inter) {
+      const env = { ...base, ...inter.env };
+      return inter.protocol === 'acp' ? runACP(spec, emit, signal, inter.argv, env) : runCodexApp(spec, emit, signal, inter.argv, env);
+    }
+  }
   let parser;
   let argv: string[];
   let stdin: string;

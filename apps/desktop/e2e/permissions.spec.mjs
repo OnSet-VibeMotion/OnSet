@@ -38,3 +38,23 @@ test('a denied command is reported back to the orchestrator', async ({ page, pro
   await expect(page.locator('.message.assistant').last()).toContainText('behavior:deny');
   await expect(page.locator('.message.assistant').last()).toContainText('用户拒绝了');
 });
+
+// opencode 在客户端里走 ACP：它的审批请求经同一条收件目录弹卡片。假 opencode 请求 npm install three。
+test('asks for an ACP orchestrator too', async ({ page, project }) => {
+  await openProject(page, project);
+  await page.locator('#agent-tool').selectOption('opencode');
+  await page.locator('#prompt').fill('装一下依赖');
+  await page.locator('#prompt').press('Enter');
+  const card = page.locator('.permission-card');
+  await expect(card).toBeVisible();
+  await expect(card.locator('.permission-command')).toHaveText('npm install three');
+  await card.locator('button', { hasText: '允许' }).first().click();
+  await expect(card).toHaveCount(0);
+  await expect(page.locator('.message.assistant').last()).toContainText('装好了');
+
+  await page.locator('#prompt').fill('再装一次');
+  await page.locator('#prompt').press('Enter');
+  await expect(card).toBeVisible();
+  await card.locator('button', { hasText: '拒绝' }).click();
+  await expect(page.locator('#messages')).toContainText('你拒绝了一条调用');
+});
