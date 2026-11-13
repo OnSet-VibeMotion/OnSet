@@ -1,8 +1,5 @@
 // 移植自 internal/cli/cli_test.go。
-//
-// 推迟到 memory 那一轮的断言：
-//   - TestRunStartsConfiguredOrchestrator 里「prompt 之后是用户偏好段（以「用户偏好」开头、含 am memory remember）」：
-//     偏好段来自 memory.PreferenceBrief，这一轮 memoryhooks.preferenceBrief 返回空，只断言 prompt 原样送达。
+
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -63,8 +60,9 @@ describe('cli', () => {
     const out = new Buffer();
     expect(await run(['run'], out), out.text).toBe(0);
     const body = fs.readFileSync(path.join(root, 'received.txt'), 'utf8');
-    // prompt 原样在前。其后的用户偏好段（记忆默认打开）推迟到 memory 那一轮断言。
-    expect(body.startsWith('hello orchestrator'), body).toBe(true);
+    // prompt 原样在前，其后是用户偏好段（记忆默认打开）。
+    expect(body.startsWith('hello orchestrator\n\n用户偏好'), body).toBe(true);
+    expect(body, body).toContain('am memory remember');
     const executablePath = fs.readFileSync(path.join(root, 'am-executable.txt'), 'utf8').trim();
     expect(executablePath !== '' && path.isAbsolute(executablePath), executablePath).toBe(true);
     const childPath = fs.readFileSync(path.join(root, 'child-path.txt'), 'utf8').trim();

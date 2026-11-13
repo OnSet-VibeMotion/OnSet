@@ -329,6 +329,15 @@ function parseEvent(line: string): Event | null {
   };
   if (r.snapshot) event.snapshot = r.snapshot as number;
   if (r.project) event.project = r.project as string;
-  if (r.detail) event.detail = r.detail as Record<string, unknown>;
+  // Go 把 detail 读成 map[string]any：各层对象再写出时都按键排序，与写入时的字段顺序无关。
+  if (r.detail) event.detail = sortDeep(r.detail) as Record<string, unknown>;
   return event;
+}
+
+function sortDeep(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortDeep);
+  if (value === null || typeof value !== 'object') return value;
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(value).sort(compareBytes)) out[key] = sortDeep((value as Record<string, unknown>)[key]);
+  return out;
 }

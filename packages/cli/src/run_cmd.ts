@@ -11,7 +11,8 @@ import * as tools from '@am/engine/tools';
 import { EventPrinter } from './agentprint';
 import { addExecutableLocation, currentEnvironment, maxArgs, rulesDisplay } from './cli';
 import { Command, ExitError, type Out, type Ref, ref } from './cobra';
-import { openMemoryStore, preferenceBrief } from './memoryhooks';
+import * as memory from '@am/engine/memory';
+import { preferenceBrief } from './memory_cmd';
 import { recordOrchestratorUsage } from './usage_cmd';
 
 export function newRunCommand(stdout: Out, stderr: Out, unsafe: Ref<boolean>): Command {
@@ -65,13 +66,11 @@ opencode 没有可用的白名单机制，安全模式下仍能执行任何命�
       if (cfg.memory.enabled) {
         // 先建好记忆库：codex 沙箱只能把已存在的目录加进可写范围。
         try {
-          // TODO(memory): memory.open(cfg.memory.dir)
-          openMemoryStore(cfg.memory.dir);
+          memory.open(cfg.memory.dir);
         } catch (err) {
           stderr.write(`警告：无法建立记忆库，本次渲染的经历可能写不进去：${(err as Error).message}\n`);
         }
       }
-      // TODO(memory): 用户偏好段，见 memoryhooks.preferenceBrief。
       const brief = preferenceBrief(cfg, rootDir, stderr);
       if (brief !== '') prompt = prompt + '\n\n' + brief;
       const rulesName = tools.projectRulesFilename(cfg.orchestrator);

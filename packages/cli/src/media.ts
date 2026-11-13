@@ -11,7 +11,7 @@ import * as scene from '@am/engine/scene';
 import * as schedule from '@am/engine/schedule';
 import { currentEnvironment, exactArgs } from './cli';
 import { Command, type Out, type Ref, ref } from './cobra';
-import { type Finding, recordCheckFindings } from './memoryhooks';
+import { type Finding, recordCheckFindings } from './memory_cmd';
 import { songOutputsCurrent } from './song_cmd';
 
 /** strconv.ParseFloat 的常用子集：十进制、科学计数法、inf / infinity / nan（不区分大小写，可带正负号）。失败返回 null。 */
@@ -212,7 +212,6 @@ mp4」变成「可以逐张打开看的 PNG」，并把机器能判的情况标�
       for (const hint of report.hints ?? []) stdout.write(`提示：${hint}\n`);
       if (checkBlank.value && !report.ok) {
         const findings: Finding[] = (report.problems ?? []).map((problem) => ({ check: scene.CheckFramesBlank, problem }));
-        // TODO(memory): 接上 @am/engine/memory 后由 recordCheckFindings 写进记忆库。
         recordCheckFindings(stdout, '.', [s], new Map([[s.id, findings]]));
         throw new Error(`抽帧发现空白帧：${s.output}\n  - ${(report.problems ?? []).join('\n  - ')}`);
       }

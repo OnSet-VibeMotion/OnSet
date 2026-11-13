@@ -11,7 +11,7 @@ import * as scene from '@am/engine/scene';
 import * as schedule from '@am/engine/schedule';
 import { currentEnvironment, exactArgs } from './cli';
 import { Command, type Out, type Ref, ref } from './cobra';
-import { type Finding, recordCheckFindings } from './memoryhooks';
+import { type Finding, recordCheckFindings } from './memory_cmd';
 
 export function newReviewCommand(stdout: Out, projectRoot: Ref<string>): Command {
   const scenesRoot = ref('');
@@ -115,7 +115,6 @@ export function newReviewCommand(stdout: Out, projectRoot: Ref<string>): Command
           for (const id of [cut.from, cut.to]) broken.set(id, [...(broken.get(id) ?? []), { check: scene.CheckReviewHandoff, problem }]);
         }
       }
-      // TODO(memory): 接上 @am/engine/memory 后由 recordCheckFindings 写进记忆库。
       recordCheckFindings(stdout, rootDir, planned, broken);
       if (!report.ok) throw new Error(`整片复查未通过：${args[0]}\n  - ${(report.problems ?? []).join('\n  - ')}`);
       stdout.write('机器检查通过；请逐页打开联系表做视觉复查\n');

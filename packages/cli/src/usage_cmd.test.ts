@@ -1,7 +1,7 @@
 // 移植自 internal/cli/usage_test.go。
 //
-// 推迟到 memory 那一轮的用例（依赖 am memory 命令与记忆库）：
-//   - TestConsolidateRecordsDrafterUsageInMemoryStore：整理者的用量记在记忆库的账本里，要 am memory consolidate。
+// TestConsolidateRecordsDrafterUsageInMemoryStore（整理者的用量记在记忆库的账本里）移植在 memory_cmd.test.ts，
+// 与 am memory 的其余用例放在一起。
 import { Buffer, hasFfmpeg, lookPath, makeClip, run, setenv, tempDir } from './testutil';
 import fs from 'node:fs';
 import path from 'node:path';

@@ -18,6 +18,7 @@ import { newStyleCommand } from './style_cmd';
 import { newBeatCommand } from './beat_cmd';
 import { newCastCmd, newDialogueCmd } from './cast_cmd';
 import { newConcatCommand } from './media';
+import { newMemoryCommand } from './memory_cmd';
 import { newReviewCommand } from './review_cmd';
 import { newRunCommand } from './run_cmd';
 import { newSceneCommand } from './scene_cmd';
@@ -100,7 +101,7 @@ export function newRoot(stdout: Out, stderr: Out): { root: Command; flags: RootF
   root.addCommand(newSceneCommand(stdout, stderr, unsafe), newRunCommand(stdout, stderr, unsafe), newUsageCommand(stdout));
   root.addCommand(newValidateCommand(stdout, projectRoot), newConcatCommand(stdout, projectRoot), newReviewCommand(stdout, projectRoot));
   root.addCommand(newSongCmd(stdout), newBeatCommand(stdout), newCastCmd(stdout), newDialogueCmd(stdout));
-  // TODO(memory): root.addCommand(newMemoryCommand(stdout, stderr, unsafe))——am memory 整组命令下一轮移植。
+  root.addCommand(newMemoryCommand(stdout, stderr, unsafe));
   return { root, flags };
 }
 

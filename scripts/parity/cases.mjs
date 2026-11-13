@@ -16,6 +16,7 @@ import path from 'node:path';
 import { cases as beatSongCast } from './cases-beat-song-cast.mjs';
 import { cases as cuesUsage } from './cases-cues-usage.mjs';
 import { cases as mediaReviewReads } from './cases-media-review-reads.mjs';
+import { cases as memoryCases } from './cases-memory.mjs';
 import { cases as sceneRunValidate } from './cases-scene-run-validate.mjs';
 
 const goAm = process.env.AM_GO || path.join(os.homedir(), '.local/bin/am');
@@ -154,4 +155,5 @@ export const cases = [
   ...beatSongCast,
   ...mediaReviewReads,
   ...cuesUsage,
+  ...memoryCases,
 ];

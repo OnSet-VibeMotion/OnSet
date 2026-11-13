@@ -17,7 +17,7 @@ import { beatCoverage } from './beat_cmd';
 import { currentEnvironment, exactArgs, validateTolerance } from './cli';
 import { Command, ExitError, type Out, type Ref, ref } from './cobra';
 import { newSceneFramesCommand } from './media';
-import { attachMemory, newRunID } from './memoryhooks';
+import { attachMemory, newRunID } from './memory_cmd';
 import { reuseDecision } from './reuse';
 import { newSceneLintCommand } from './review_cmd';
 import { newSceneCuesCommand } from './scene_cues';
@@ -74,7 +74,6 @@ text 不得含 [[USER_MESSAGE]] 或 <scene-text> 定界标记，含则失败。
       validateTolerance(runTolerance.value);
       const cfg = config.load('.', null);
       let s = scene.load(args[0]);
-      // TODO(memory): 召回与经历回调，见 memoryhooks.attachMemory。
       s = attachMemory(s, cfg, stderr, newRunID());
       await scene.run(s, cfg, envutil.isUnsafe(unsafe.value), currentEnvironment(), stdout, runTolerance.value, cmd.context());
     },
@@ -181,7 +180,6 @@ AI CLI 调用。这类失败要先改提示词或时长声明再重跑。
       // 召回在判定复用之前做：召回的记忆是输入指纹的一项，记忆变了镜头要能被判成 Stale。
       const run = newRunID();
       for (let i = 0; i < scenes.length; i++) {
-        // TODO(memory): 召回与经历回调，见 memoryhooks.attachMemory。
         scenes[i] = attachMemory(scenes[i], cfg, stderr, run);
       }
       // 每个镜头这一批里全部尝试（含重试）的用量，渲染结束后填进报告。

@@ -9,7 +9,7 @@ import * as scene from '@am/engine/scene';
 import * as schedule from '@am/engine/schedule';
 import { noArgs } from './cli';
 import { Command, type Out, ref } from './cobra';
-import { type Finding, recordCheckFindings } from './memoryhooks';
+import { type Finding, recordCheckFindings } from './memory_cmd';
 
 export function newValidateReadsCommand(stdout: Out): Command {
   const inventoryPath = ref('');
@@ -121,6 +121,5 @@ export function recordReadsFindings(warn: Out, root: string, report: reads.Repor
   } catch {
     return;
   }
-  // TODO(memory): 接上 @am/engine/memory 后由 recordCheckFindings 写进记忆库。
   recordCheckFindings(warn, root, scenes, byScene);
 }
