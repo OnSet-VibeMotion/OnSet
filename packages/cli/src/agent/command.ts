@@ -16,6 +16,7 @@ import { Command, ref } from '../cobra';
 import { callTarget, describeTools, Jobs, prepareCall, spawnOp, type Spawner } from '../toolsmcp';
 import type { ParamValues } from '../ops/op';
 import { newGate } from './gate';
+import { todoTool } from './todo';
 import type { AgentModule, AgentTool, Gate } from './types';
 
 /** 打包时由 esbuild 定义成 am-agent.cjs 的文件名；开发与测试时没有定义，直接 import 源码。 */
@@ -33,7 +34,10 @@ export async function loadAgentModule(): Promise<AgentModule> {
 /** 一次调用最多等多久：比任何一步制作都长（整片渲染几个小时），真正的上限是用户按停止。 */
 const maxToolSeconds = 24 * 3600;
 
-/** 把编排档位的操作做成 agent 的工具；job_wait、job_cancel 不要（这里直接等到跑完）。 */
+/**
+ * 把编排档位的操作做成 agent 的工具；job_wait、job_cancel 不要（这里直接等到跑完）。
+ * 除了只读的 tool_help，都顺序执行：模型一次发出 scene_cues 与 scene_run 时，后者要等前者写完 scene.json。
+ */
 export function amTools(spawner: Spawner = spawnOp, root = ''): { tools: AgentTool[]; jobs: Jobs } {
   const jobs = new Jobs(spawner);
   const defs = describeTools('orchestrator', root).filter((t) => t.name !== 'job_wait' && t.name !== 'job_cancel');
@@ -46,6 +50,7 @@ export function amTools(spawner: Spawner = spawnOp, root = ''): { tools: AgentTo
       label: def.name,
       description: def.description,
       parameters: schema as Record<string, unknown>,
+      sequential: def.name !== 'tool_help',
       async execute(input, signal) {
         if (def.name === 'tool_help') {
           const target = byName.get(String(input.tool ?? ''));
@@ -108,7 +113,10 @@ export async function runBuiltinAgent(
   options: { spawner?: Spawner; gate?: Gate; setupModels?: (runtime: unknown) => Promise<string> | string; env?: Record<string, string | undefined> } = {},
 ): Promise<{ ok: boolean; error?: string }> {
   const env = options.env ?? currentEnvironment();
-  const { tools, jobs } = amTools(options.spawner, req.workdir);
+  const am = amTools(options.spawner, req.workdir);
+  const jobs = am.jobs;
+  // 待办清单与 am 的工具一样直接放行：它只把清单写进工具调用，什么也不做。
+  const tools = [...am.tools, todoTool()];
   const gate =
     options.gate ??
     newGate({

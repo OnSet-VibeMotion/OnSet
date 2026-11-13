@@ -14,6 +14,7 @@
  * | 技能 | 只有项目根 .agents/skills（am init 装进去的那一份） |
  * | 上下文文件 | 只有项目根的 AGENTS.md（项目规则，project.rules 写的） |
  * | 提示词模板、主题 | 不要 |
+ * | 遥测、归因头 | 关掉（enableInstallTelemetry 与 PI_TELEMETRY，见 runAgent） |
  * | 会话 | 应用数据目录：request.agent_dir 下的 sessions/<按项目路径编码>/（与 claude 的 ~/.claude、codex 的 ~/.codex 同理），不写进项目 |
  */
 import fs from 'node:fs';
@@ -37,10 +38,19 @@ const builtinTools = ['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls'];
 
 const GateExtension = 'am-gate';
 
-/** 系统提示词的开头。具体做什么由每一轮的提示词说（制作提示词、客户端的交互约定），这里只交代环境。 */
-const preamble = `你在一个视频项目的目录里工作，帮用户把文章做成动态视频。项目里的每一步制作都有对应的工具（beat_import、scene_run、align_build……），参数与用法用 tool_help 查；不要在终端里找 am 这个命令，它不在那里。
-文件只在项目目录里读写。.env 里是凭据，不要读。要运行的命令在安全模式下有白名单，白名单外的会先问用户，被拒绝了就换一种做法。
-回复用户时用中文，说清做了什么、接下来要什么。`;
+/**
+ * 系统提示词：只交代环境与工作习惯。做什么由每一轮的提示词说（制作提示词、客户端的交互约定 studioInteraction：
+ * 待办清单、choices 代码块、studio_show / studio_step 都在那里），这里不重复，免得两处说法不一。
+ * 每一轮都要发、按 token 计费，所以一条一句话。成熟的编码 CLI 自带的习惯（先读后改、失败先看报错）pi 没有，要写明。
+ */
+const preamble = `你在一个视频项目的目录里工作，帮用户把文章做成动态视频。
+- 项目里的每一步制作都有对应的工具（scene_run、align_build……）。参数不确定时先 tool_help({"tool": "<工具名>"}) 查，不要猜。am 不在终端里，不要在 bash 里找它或运行它。
+- 这里的制作工具会一直等到做完才返回，渲染、拼接可能要几十分钟：直接等结果，不要中途重复发起；没有任务号，也没有 job_wait。
+- 文件只在项目目录里读写，.env 里是凭据，不要读。改文件前先读它；大文件按段读，不要一次读全。
+- 工具报错或命令失败时，先读报错弄清原因，再换一种做法；不要原样重试同一条调用。命令被拒绝了就换一种在白名单内的做法。
+- 有好几步的工作，开工时用 TodoWrite 列出步骤，每开始、做完一步就更新一次（每次传完整清单）。
+- 要用户拍板的事（选方案、确认稿件或分镜、几种做法里选一种）停下来问，不替用户决定。
+- 回复用户时用中文，每一轮结束时说清做了什么、接下来做什么或在等用户什么。`;
 
 async function modelRuntime(agentDir: string): Promise<ModelRuntime> {
   fs.mkdirSync(agentDir, { recursive: true, mode: 0o700 });
@@ -65,6 +75,8 @@ function toPiTool(tool: AgentTool) {
     label: tool.label,
     description: tool.description,
     parameters: Type.Unsafe<Record<string, unknown>>(tool.parameters),
+    // pi 自带的 read、bash 这些保持 pi 的默认（并行）；am 的写操作顺序执行，见 AgentTool.sequential。
+    executionMode: tool.sequential ? 'sequential' : 'parallel',
     async execute(_id, params, signal) {
       const r = await tool.execute((params ?? {}) as Record<string, unknown>, signal);
       if (r.isError) throw new Error(r.text);
@@ -155,7 +167,12 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
   });
   await loader.reload();
 
+  // pi 的「安装遥测」开关同时管给 OpenRouter、NVIDIA、OpenCode 的请求加归因头（pi-ai 的 utils/identity.js），默认开。
+  // 环境变量 PI_TELEMETRY 优先于设置（pi-coding-agent 的 core/telemetry.js），所以两处都关：设置给 false，
+  // 这个进程里的 PI_TELEMETRY 也写成 0（--unsafe 时子进程拿到的是用户的完整环境，里面可能有 PI_TELEMETRY=1）。
+  process.env.PI_TELEMETRY = '0';
   const settings = SettingsManager.inMemory({
+    enableInstallTelemetry: false,
     // 整片制作一轮能跑很久，上下文快满时自动压缩；完整记录仍在会话文件里。
     compaction: { enabled: true },
     retry: { enabled: true, maxRetries: 3 },

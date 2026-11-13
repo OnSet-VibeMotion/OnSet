@@ -14,6 +14,11 @@ export interface AgentTool {
   label: string;
   description: string;
   parameters: Record<string, unknown>;
+  /**
+   * 是否要与同一批里的其他工具调用排队执行。pi 默认把模型一次发出的几个工具调用并行跑；一批里只要有一个
+   * 是顺序的，整批就逐个执行（pi-agent-core 的 executeToolCalls）。am 的制作步骤都写项目文件，必须顺序。
+   */
+  sequential: boolean;
   execute(input: Record<string, unknown>, signal: AbortSignal | undefined): Promise<{ text: string; isError: boolean }>;
 }
 

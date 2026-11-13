@@ -1,15 +1,18 @@
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from '@earendil-works/pi-ai';
+import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall, getAttributionHeaders, type ClientIdentity } from '@earendil-works/pi-ai';
 import * as agentrun from '@am/engine/agentrun';
 import * as director from '@am/engine/director';
+import * as opworker from '@am/engine/opworker';
 import * as studioview from '@am/engine/studioview';
 import * as tools from '@am/engine/tools';
 import { amTools, parseRequest, runBuiltinAgent } from './command';
 import { newGate } from './gate';
 import { StreamWriter } from './stream';
+import { TodoToolName } from './todo';
 
 let tmp: string;
 beforeEach(() => {
@@ -215,6 +218,86 @@ describe('runBuiltinAgent', () => {
     expect(resumed).toEqual({ ok: true });
     expect(parse(again).session).toBe(session);
     expect(seenMessages).toBeGreaterThan(4);
+  });
+
+  /** 登记假服务商的 setupModels，与上一条用例相同。 */
+  const fauxSetup = (faux: ReturnType<typeof fauxProvider>) => async (runtime: unknown) => {
+    const r = runtime as { registerNativeProvider(p: unknown): void; setRuntimeApiKey(p: string, k: string): Promise<void> };
+    r.registerNativeProvider(faux.provider);
+    await r.setRuntimeApiKey('faux', 'x');
+    return 'faux/m1';
+  };
+
+  it('turns TodoWrite into a plan event and mentions it in the system prompt', async () => {
+    const faux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    let systemPrompt = '';
+    let identity: ClientIdentity | undefined;
+    const todos: Array<Record<string, string>> = [
+      { content: '写口播稿', status: 'completed' },
+      { content: '配音', status: 'in_progress', activeForm: '正在配音' },
+      { content: '渲染镜头', status: 'pending' },
+    ];
+    faux.setResponses([
+      (context, options) => {
+        systemPrompt = JSON.stringify(context);
+        identity = options?.identity;
+        return fauxAssistantMessage([fauxToolCall(TodoToolName, { todos })], { stopReason: 'toolUse' });
+      },
+      fauxAssistantMessage('列好了'),
+    ]);
+    const req: director.Request = { workdir: tmp, prompt: '开始制作', agent_dir: path.join(tmp, 'agent'), commands: [], writable_dirs: [] };
+    const lines: string[] = [];
+    // 不在客户端里（没有收件目录）：闸门拒绝一切白名单外的调用，TodoWrite 照样放行。
+    expect(await runBuiltinAgent(req, (l) => lines.push(l), undefined, { setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
+    const { events } = parse(lines);
+    const plans = events.filter((e) => e.kind === agentrun.KindPlan);
+    expect(plans).toHaveLength(1);
+    expect(plans[0]!.plan).toEqual([
+      { text: '写口播稿', status: 'completed' },
+      { text: '正在配音', status: 'in_progress' },
+      { text: '渲染镜头', status: 'pending' },
+    ]);
+    const result = events.find((e) => e.kind === 'tool-result');
+    expect(result).toMatchObject({ is_error: false });
+    expect(result!.text).toContain('3 项');
+    expect(systemPrompt).toContain(TodoToolName);
+    // pi 的遥测开关关掉了：请求不带给模型服务的归因头（OpenRouter 的 HTTP-Referer / X-OpenRouter-Title 这类）。
+    expect(identity).toBeDefined();
+    expect(identity!.attribution ?? null).toBeNull();
+    expect(getAttributionHeaders({ provider: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1' }, identity)).toEqual({});
+  });
+
+  it('runs am tools one at a time even when the model sends several in one message', async () => {
+    let active = 0;
+    let peak = 0;
+    const started: string[] = [];
+    const spawner = (name: string, params: Record<string, unknown>) => {
+      started.push(name + ' ' + String(params.scene ?? ''));
+      active++;
+      peak = Math.max(peak, active);
+      // 照执行进程的协议：先是文字，最后一行是结果标记加 JSON（opworker.ResultMarker）。
+      const script = `setTimeout(() => process.stdout.write("渲染完了\\n" + ${JSON.stringify(opworker.ResultMarker)} + '{"ok":true,"exit_code":0}\\n'), 150)`;
+      const child = spawn(process.execPath, ['-e', script], { stdio: ['ignore', 'pipe', 'pipe'] });
+      child.on('close', () => active--);
+      return child;
+    };
+    const faux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall('scene_run', { scene: 'scenes/scene-001' }), fauxToolCall('scene_run', { scene: 'scenes/scene-002' })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage('都渲染了'),
+    ]);
+    const req: director.Request = { workdir: tmp, prompt: '渲染', agent_dir: path.join(tmp, 'agent'), commands: [], writable_dirs: [] };
+    const lines: string[] = [];
+    expect(await runBuiltinAgent(req, (l) => lines.push(l), undefined, { spawner, setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
+    expect(started).toEqual(['scene_run scenes/scene-001', 'scene_run scenes/scene-002']);
+    expect(peak).toBe(1);
+    expect(parse(lines).events.filter((e) => e.kind === 'tool-result').map((e) => e.is_error === true)).toEqual([false, false]);
+  });
+
+  it('marks am ops sequential except the read-only tool_help', () => {
+    const { tools: list } = amTools();
+    expect(list.find((t) => t.name === 'tool_help')!.sequential).toBe(false);
+    expect(list.filter((t) => t.name !== 'tool_help').every((t) => t.sequential)).toBe(true);
   });
 
   it('fails clearly when no provider has a key', async () => {
