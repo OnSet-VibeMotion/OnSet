@@ -5,16 +5,16 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { resetTreeDigestCache } from './digest';
 import {
-  addToProject,
   compareSemver,
   experimentalFields,
-  fetchStation,
-  loadProjectStations,
+  installStation,
+  loadStations,
+  readInstalled,
+  stationsDir,
   ManifestFields,
   manifestFieldNames,
   nodeFieldNames,
   parseManifest,
-  readLock,
   treeDigest,
   updateStation,
   writeStationForTest,
@@ -122,11 +122,9 @@ describe('digest cache', () => {
     if (!hasGit) return;
     const { repo } = gitRepo();
     const env = { ...process.env, AM_STATIONS_DIR: temp('am-stations-') };
-    const got = fetchStation(`file://${repo}#main`, env);
-    const root = temp('am-flow-project-');
-    addToProject(root, got.entry);
-    expect(loadProjectStations(root, env).problems).toEqual([]);
-    expect(loadProjectStations(root, env).problems).toEqual([]);
+    const got = installStation(`file://${repo}#main`, env);
+    expect(loadStations(env).problems).toEqual([]);
+    expect(loadStations(env).problems).toEqual([]);
 
     // 同样大小的改动，还把 mtime 改回原样：ctime 照样变，仍然重算。
     const file = path.join(got.dir, 'prompt.md');
@@ -135,9 +133,9 @@ describe('digest cache', () => {
     fs.writeFileSync(file, body.replace(/.$/su, body.endsWith('X') ? 'Y' : 'X'));
     fs.utimesSync(file, before.atime, before.mtime);
     expect(fs.statSync(file).size).toBe(before.size);
-    const after = loadProjectStations(root, env);
+    const after = loadStations(env);
     expect(after.stations.filter((s) => !s.builtin)).toEqual([]);
-    expect(after.problems[0]).toContain('内容和添加时不一样了');
+    expect(after.problems[0].message).toContain('内容和添加时不一样了');
   });
 
   it('recomputes when a file is added, and agrees with a fresh computation', () => {
@@ -160,11 +158,9 @@ describe('station update', () => {
     if (!hasGit) return;
     const { repo, git } = gitRepo();
     const env = { ...process.env, AM_STATIONS_DIR: temp('am-stations-') };
-    const root = temp('am-flow-project-');
-    const got = fetchStation(`file://${repo}#main`, env);
-    addToProject(root, got.entry);
+    const got = installStation(`file://${repo}#main`, env);
 
-    const same = updateStation(root, 'fake-publisher', env);
+    const same = updateStation('fake-publisher', env);
     expect(same.changed).toBe(false);
     expect(same.new_permissions).toEqual([]);
     expect(same.new_experimental).toEqual([]);
@@ -176,26 +172,26 @@ describe('station update', () => {
     fs.writeFileSync(file, JSON.stringify(raw, null, 2));
     git('commit', '-qam', 'v2');
 
-    const up = updateStation(root, 'fake-publisher', env);
+    const up = updateStation('fake-publisher', env);
     expect(up.changed).toBe(true);
     expect(up.old_version).toBe('0.1.0');
     expect(up.new_version).toBe('0.2.0');
     expect(up.after.commit).not.toBe(got.entry.commit);
     expect(up.new_permissions).toEqual(['连网：https://api.example.com']);
     expect(up.experimental.length).toBeGreaterThan(0);
-    expect(readLock(root).stations[0]).toEqual(up.after);
-    expect(loadProjectStations(root, env).problems).toEqual([]);
+    expect(readInstalled(stationsDir(env)).plugins[0]).toEqual(up.after);
+    expect(loadStations(env).problems).toEqual([]);
   });
 
   it('leaves a linked station alone', () => {
-    const root = temp('am-flow-project-');
-    addToProject(root, { id: 'fake-publisher', version: '0.1.0', source: `link:${fake}`, commit: '', digest: '' });
-    const lockBefore = fs.readFileSync(path.join(root, 'article-to-motion.flow.json'), 'utf8');
-    const up = updateStation(root, 'fake-publisher');
+    installStation(`link:${fake}`);
+    const file = path.join(stationsDir(process.env), 'installed.json');
+    const before = fs.readFileSync(file, 'utf8');
+    const up = updateStation('fake-publisher');
     expect(up.linked).toBe(true);
     expect(up.changed).toBe(false);
-    expect(fs.readFileSync(path.join(root, 'article-to-motion.flow.json'), 'utf8')).toBe(lockBefore);
-    expect(() => updateStation(root, 'nope')).toThrow(/没有加第三方站/);
+    expect(fs.readFileSync(file, 'utf8')).toBe(before);
+    expect(() => updateStation('nope')).toThrow(/没有装插件 nope/);
   });
 });
 

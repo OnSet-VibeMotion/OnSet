@@ -26,6 +26,7 @@ import {
   enqueueTurn,
   eventsAfter,
   getSession,
+  kindNotice,
   listSessions,
   revert,
   sessionEventJSON,
@@ -361,8 +362,9 @@ export async function productionStartAPI(s: Server, request: Request): Promise<R
   let prompt: Buffer;
   let promptPath: string;
   let promptLabel: string;
+  let warnings: string[];
   try {
-    ({ prompt, path: promptPath, label: promptLabel } = project.runPrompt(p.path, override));
+    ({ prompt, path: promptPath, label: promptLabel, warnings } = project.runPrompt(p.path, override));
   } catch (err) {
     return writeError(400, 'prompt_missing', (err as Error).message);
   }
@@ -382,8 +384,10 @@ export async function productionStartAPI(s: Server, request: Request): Promise<R
     return writeError(500, 'session_failed', (err as Error).message);
   }
   try {
+    // 读不出来、但这个项目用不到的插件：照常开工，在对话里说一声。
+    for (const text of warnings) emit(sess, '', { kind: kindNotice, text });
     const turn = startTurn(s, p, sess, { message: goTrimSpace(message), prompt: prompt.toString('utf8'), attachments });
-    return writeJSON(202, goMap({ session_id: sess.meta.session_id, turn_id: turn.turn_id, prompt: rel }));
+    return writeJSON(202, goMap({ session_id: sess.meta.session_id, turn_id: turn.turn_id, prompt: rel, warnings }));
   } catch (err) {
     return writeStartError(err);
   }

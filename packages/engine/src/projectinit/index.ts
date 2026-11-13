@@ -12,7 +12,8 @@ import * as hyperframes from '../hyperframes';
 import * as plugin from '../plugin';
 import * as project from '../project';
 
-// 讲解形式（am init --delivery）：就是项目的流程（片型），可选值是内置流程与内置插件登记的流程（deliveryFlows）。
+// 讲解形式（am init --delivery）：就是项目的流程（片型），可选值是内置流程、内置插件登记的流程与已装的第三方插件
+// 带来的流程（x:<插件 id>，deliveryFlows）。流程只在新建时定。
 export const DeliverySpeech = 'speech';
 export const DeliverySong = 'song';
 
@@ -55,19 +56,26 @@ export interface Preset {
   narration: string;
   canvas?: string;
   example?: string;
+  /** 第三方插件带来的做法：插件名（首页标明来自哪个插件）；自带的没有。 */
+  plugin?: string;
 }
 
 /** 宿主自己的做法：口播。其余（卡点、歌曲讲解……）由内置插件登记。 */
 const hostPresets: Preset[] = [{ id: 'speech', label: '口播讲解', hint: '配音 + 动画，最常用', delivery: DeliverySpeech, narration: NarrationSolo }];
 
-/** 新建对话框的全部做法：宿主的在前，其后是内置插件登记的（ctx.preset）。 */
+/** 新建对话框的全部做法：宿主的在前，其后是内置插件登记的（ctx.preset），最后是已装的第三方插件带来的流程。 */
 export function presets(): Preset[] {
-  return [...hostPresets, ...plugin.pluginPresets().map((p) => ({ ...p.value }))];
+  const third = flow
+    .loadStations()
+    .stations.filter((s) => !s.builtin && s.manifest.flow)
+    .map((s): Preset => ({ id: `x:${s.manifest.id}`, label: s.manifest.flow!.name, hint: `来自插件「${s.manifest.name}」`, delivery: `x:${s.manifest.id}`, narration: NarrationSolo, plugin: s.manifest.name }));
+  return [...hostPresets, ...plugin.pluginPresets().map((p) => ({ ...p.value })), ...third];
 }
 
-/** 可选的讲解形式：内置流程与内置插件登记的流程（有提示词段落顺序的），口播在前。 */
+/** 可选的讲解形式：内置流程与内置插件登记的流程（有提示词段落顺序的），口播在前；其后是已装的第三方插件带来的（x:<插件 id>）。 */
 export function deliveryFlows(): flow.Flow[] {
-  return flow.allFlows().filter((f) => f.prompt);
+  const third = flow.stationExtras().flatMap((x) => (x.flow ? [x.flow] : []));
+  return [...flow.allFlows().filter((f) => f.prompt), ...third];
 }
 
 function fileThere(file: string): boolean {
@@ -93,8 +101,8 @@ export function validate(opts: Options): void {
     throw new Error(`讲解形式必须为 ${ids.slice(0, -1).join('、')} 或 ${ids[ids.length - 1]}`);
   }
   const target = opts.target;
-  // 选的叙事模式是哪个插件登记的，就算在用它；目标目录里已经在用某个内置插件（它登记的在用判断）也算。
-  const pluginUsed = (id: string) => mode.owner === id || (fs.existsSync(target) && plugin.pluginInUse(id, target) !== '');
+  // 选的叙事模式是哪个插件登记的，就算在用它；目标目录里已经有某个内置插件的文件（它登记的已有判断）也算。
+  const pluginUsed = (id: string) => mode.owner === id || (fs.existsSync(target) && plugin.pluginPresentIn(id, target) !== '');
   const markerThere = (id: string) => {
     const m = flows.find((f) => f.id === id)?.marker;
     return !!m && fileThere(path.join(target, m.file));

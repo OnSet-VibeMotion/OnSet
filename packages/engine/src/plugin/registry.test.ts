@@ -92,10 +92,9 @@ describe('builtin plugin apply', () => {
 
   it('puts the station on the route and its files under it', () => {
     register();
-    const root = tempDir();
-    const ids = flow.route('speech', flow.projectExtras(root)).map((r) => r.node.id);
+    const ids = flow.route('speech', flow.stationExtras()).map((r) => r.node.id);
     expect(ids.slice(ids.indexOf('gate-final'), ids.indexOf('gate-final') + 3)).toEqual(['gate-final', 'translate', 'publish']);
-    expect(flow.route('beat', flow.projectExtras(root)).some((r) => r.node.id === 'translate')).toBe(false);
+    expect(flow.route('beat', flow.stationExtras()).some((r) => r.node.id === 'translate')).toBe(false);
     expect(flow.stationOfPath('production/translate/en.srt', 'speech')).toBe('translate');
   });
 
@@ -145,9 +144,8 @@ describe('builtin plugin apply', () => {
 
   it('is on every project\'s route and goes away with its registration', () => {
     register();
-    const root = tempDir();
-    expect(flow.route('speech', flow.projectExtras(root)).some((r) => r.node.id === 'translate')).toBe(true);
-    expect(flow.route('speech', flow.projectExtras(root)).some((r) => r.node.id === 'publish')).toBe(true);
+    expect(flow.route('speech', flow.stationExtras()).some((r) => r.node.id === 'translate')).toBe(true);
+    expect(flow.route('speech', flow.stationExtras()).some((r) => r.node.id === 'publish')).toBe(true);
     cleanups.pop()!();
     expect(pluginStations().some((s) => s.value.id === 'translate')).toBe(false);
     expect(flow.route('speech').some((r) => r.node.id === 'translate')).toBe(false);
@@ -214,7 +212,7 @@ function chorusPlugin(): BuiltinPlugin {
       });
       ctx.narration({ id: 'chorus', name: '合唱', hint: '大家一起唱', init: (target) => fs.writeFileSync(path.join(target, 'chorus.yaml'), 'voices: 4\n') });
       ctx.preset({ id: 'chorus', label: '合唱', hint: '大家一起唱', delivery: 'speech', narration: 'chorus' });
-      ctx.inUse((root) => (fs.existsSync(path.join(root, 'chorus.yaml')) ? 'chorus.yaml' : ''));
+      ctx.presentIn((root) => (fs.existsSync(path.join(root, 'chorus.yaml')) ? 'chorus.yaml' : ''));
     },
   };
 }
@@ -246,7 +244,7 @@ describe('a builtin plugin with a skill, a scene block and a narration', () => {
     const created = path.join(tempDir(), 'p');
     projectinit.create({ target: created, canvas: preset.defaultPreset().id, delivery: 'speech', narration: 'chorus' });
     expect(fs.readFileSync(path.join(created, 'chorus.yaml'), 'utf8')).toBe('voices: 4\n');
-    expect(plugin.pluginInUse('fake-chorus', created)).toBe('chorus.yaml');
+    expect(plugin.pluginPresentIn('fake-chorus', created)).toBe('chorus.yaml');
     const f = newSessionFixture();
     const styles = await studioRequest(f.s, 'GET', '/api/styles');
     expect((styles.body.modes as { id: string }[]).map((m) => m.id)).toContain('chorus');

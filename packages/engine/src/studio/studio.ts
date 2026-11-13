@@ -361,8 +361,8 @@ export class Server {
       ['/api/memory/recall', (r) => memoryRecallAPI(this, r)],
       ['/api/memory/actions/', (r, rest) => memoryActionAPI(this, r, rest)],
       // 先按当前项目换上第三方插件带来的风格库。
-      ['/api/film-styles', (r) => (flow.syncStyleSources(this.projectRoot()), filmStylesAPI(r))],
-      ['/api/film-styles/', (r, rest) => (flow.syncStyleSources(this.projectRoot()), filmStylePosterAPI(r, rest))],
+      ['/api/film-styles', (r) => filmStylesAPI(r)],
+      ['/api/film-styles/', (r, rest) => filmStylePosterAPI(r, rest)],
       ['/api/film-style', (r) => projectFilmStyleAPI(this, r)],
       ['/api/settings', (r) => settingsAPI(this, r)],
       ['/api/agent-keys', (r) => agentKeysAPI(r)],

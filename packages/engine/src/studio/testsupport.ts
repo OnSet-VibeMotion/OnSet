@@ -214,7 +214,7 @@ export function newSessionFixture(): SessionFixture {
   writeTree(root, {
     'article-to-motion.conf': 'ORCHESTRATOR=claude\nRENDERER=claude\n',
     // 新建时记下的流程：制作提示词、路线与顶栏都按它。
-    'article-to-motion.flow.json': '{"version": 1, "production": {"id": "speech", "canvas": "vertical-3x4"}, "stations": []}\n',
+    'article-to-motion.flow.json': '{"version": 1, "production": {"id": "speech", "canvas": "vertical-3x4"}}\n',
     'templates/project-rules.md': '# 项目规则\n',
     'scenes/scene-001/scene.json': '{"id":"scene-001","duration_seconds":1,"output":"out.mp4"}',
     'scenes/scene-001/prompt.md': 'original',

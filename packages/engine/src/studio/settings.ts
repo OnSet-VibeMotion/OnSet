@@ -99,7 +99,7 @@ export function settingsAPI(s: Server, request: Request): Response {
       rows: rows.map((r) => {
         const d = describe(r.key);
         // 这个项目加的第三方插件提供的配音、对齐，也列进可选项。
-        if (r.key === 'TTS_PROVIDER' || r.key === 'ALIGN_PROVIDER') d.options = [...d.options, ...pluginProviders(root, r.key === 'TTS_PROVIDER' ? 'tts' : 'align')];
+        if (r.key === 'TTS_PROVIDER' || r.key === 'ALIGN_PROVIDER') d.options = [...d.options, ...pluginProviders(r.key === 'TTS_PROVIDER' ? 'tts' : 'align')];
         return goMap({
           key: r.key,
           label: d.label,
@@ -167,11 +167,10 @@ export async function settingsProjectAPI(s: Server, request: Request): Promise<R
   }
 }
 
-/** 项目里第三方插件提供的配音或对齐工具（设置页的可选项）。 */
-function pluginProviders(root: string, kind: 'tts' | 'align'): { value: string; label: string }[] {
-  if (root === '') return [];
+/** 已装的第三方插件提供的配音或对齐工具（设置页的可选项，全局与项目一栏都能选）。 */
+function pluginProviders(kind: 'tts' | 'align'): { value: string; label: string }[] {
   return flow
-    .loadProjectStations(root)
+    .loadStations()
     .stations.filter((s) => s.manifest.provides[kind])
     .map((s) => ({ value: `x:${s.manifest.id}`, label: `${s.manifest.provides[kind]!.name}（插件）` }));
 }

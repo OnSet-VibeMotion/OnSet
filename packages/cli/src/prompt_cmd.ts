@@ -22,14 +22,15 @@ defineOp({
   cli: ['prompt', 'show'],
   summary: '打印这个项目现在组合出的整片制作提示词',
   description:
-    '按项目 article-to-motion.flow.json 记的流程与画幅，把制作提示词的段落组合出来原样打印：第三方站的补充与说明照样插进去，与「开始制作」发给编排工具的是同一份。没有流程记录的目录直接报错。',
+    '按项目 article-to-motion.flow.json 记的流程与画幅，把制作提示词的段落组合出来原样打印：已装的第三方插件的补充与说明照样插进去，与「开始制作」发给编排工具的是同一份。没有流程记录的目录直接报错。',
   examples: ['prompt_show({})'],
   scopes: ['cli'],
   params: { project_root: projectRoot },
   run: (p, { out }) => {
-    const { prompt, label } = project.runPrompt(path.resolve(str(p.project_root)), '');
+    const { prompt, label, warnings } = project.runPrompt(path.resolve(str(p.project_root)), '');
     const text = prompt.toString('utf8');
     out.write(text);
-    return { data: { flow: label, bytes: prompt.length } };
+    // 读不出来、但这个项目用不到的插件：不混进提示词全文，放在结构化结果里。
+    return { data: { flow: label, bytes: prompt.length, warnings } };
   },
 });

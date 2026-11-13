@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { addToProject, fetchStation } from '../flow';
+import { installStation } from '../flow';
 import { fingerprint, load, resolveAllSkills } from './index';
 
 const fake = path.join(__dirname, '..', 'flow', 'testdata', 'fake-publisher');
@@ -32,11 +32,12 @@ describe('plugin skills on scenes', () => {
   it('puts an opt-in skill into the fingerprint of the scenes that name it only', () => {
     const plain = load(sceneDir());
     const named = load(sceneDir({ plugin_skills: ['fake-publisher/caption-kit'] }));
-    const before = fingerprint(plain, 'claude', resolveAllSkills('claude', plain.directory, {}, plain));
-    for (const s of [plain, named]) addToProject(path.dirname(path.dirname(s.directory)), fetchStation(`link:${fake}`, process.env).entry);
-    // 加了插件，没点名它的镜头指纹不变。
-    expect(fingerprint(plain, 'claude', resolveAllSkills('claude', plain.directory, {}, plain)).fingerprint).toBe(before.fingerprint);
-    const inputs = fingerprint(named, 'claude', resolveAllSkills('claude', named.directory, {}, named));
+    const env = { AM_STATIONS_DIR: process.env.AM_STATIONS_DIR! };
+    const before = fingerprint(plain, 'claude', resolveAllSkills('claude', plain.directory, env, plain));
+    installStation(`link:${fake}`);
+    // 装了插件，没点名它的镜头指纹不变。
+    expect(fingerprint(plain, 'claude', resolveAllSkills('claude', plain.directory, env, plain)).fingerprint).toBe(before.fingerprint);
+    const inputs = fingerprint(named, 'claude', resolveAllSkills('claude', named.directory, env, named));
     expect(Object.keys(inputs.parts ?? {})).toContain('skill:plugin:fake-publisher/caption-kit');
   });
 });

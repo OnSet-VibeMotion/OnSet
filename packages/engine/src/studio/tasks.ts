@@ -13,6 +13,7 @@ import { goMap, methodNotAllowed, nowTime, writeError, writeJSON } from './http'
 import { BusyError, overrideAgents, type AgentChoice } from './sessions';
 import type { Project, Server } from './studio';
 import { emitStudioEvent } from './events';
+import { stationsDir } from '../flow/fetch';
 
 export interface Task {
   task_id: string;
@@ -241,12 +242,25 @@ export async function runStudioOpWith(
   params: Record<string, unknown>,
   opts: OpRunOptions = {},
 ): Promise<OpOutcome> {
+  return runOpIn(s, signal, p.path, overrideAgents(config.load(p.path, null), choice), name, params, opts);
+}
+
+/**
+ * 跑一条与项目无关的操作（装、去掉、更新插件）：工作目录是插件的存放目录，配置只有全局设置，
+ * 不占项目写锁，没有打开项目也能跑。
+ */
+export function runUserOp(s: Server, signal: AbortSignal, name: string, params: Record<string, unknown>): Promise<OpOutcome> {
+  const dir = stationsDir(envMap());
+  fs.mkdirSync(dir, { recursive: true });
+  return runOpIn(s, signal, dir, config.load(dir, null), name, params);
+}
+
+async function runOpIn(s: Server, signal: AbortSignal, cwd: string, cfg: config.Config, name: string, params: Record<string, unknown>, opts: OpRunOptions = {}): Promise<OpOutcome> {
   // Windows 上 executable 是 am.cjs，用 Electron / Node 来跑（envutil.amCommand）。
   const am = amCommand(s.executable());
-  const projectConfig = overrideAgents(config.load(p.path, null), choice);
   const args = [...am.args, ...(s.config.unsafe ? ['--unsafe'] : []), ...workerArgs(name, params)];
-  const env = { ...config.childEnvironment(projectConfig, envMap(), s.config.unsafe, parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? '')), ...am.env, ...(opts.env ?? {}) };
-  const started = await start(am.command, args, { cwd: p.path, env, stdio: ['ignore', 'pipe', 'pipe'], signal });
+  const env = { ...config.childEnvironment(cfg, envMap(), s.config.unsafe, parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? '')), ...am.env, ...(opts.env ?? {}) };
+  const started = await start(am.command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], signal });
   const chunks: Buffer[] = [];
   started.child.stdout!.on('data', (chunk: Buffer) => {
     chunks.push(chunk);

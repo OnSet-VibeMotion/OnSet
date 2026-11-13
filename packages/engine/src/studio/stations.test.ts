@@ -2,10 +2,10 @@ import './testsupport';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { addToProject, fetchStation } from '../flow';
+import { installStation, writeStationForTest } from '../flow';
 import { onStudioEvent } from './events';
 import { emitStationHook, pageCSP, tickStationSchedules } from './stations';
-import { newSessionFixture, send, studioRequest } from './testsupport';
+import { newSessionFixture, send, startStudio, studioRequest, tempDir, waitStudioTask } from './testsupport';
 
 const fake = path.join(__dirname, '..', 'flow', 'testdata', 'fake-publisher');
 
@@ -28,12 +28,15 @@ describe('stations API', () => {
     expect(body).not.toHaveProperty('hidden_pages');
     for (const b of body.stations) expect(b).not.toHaveProperty('enabled');
 
-    addToProject(f.root, fetchStation(`link:${fake}`, process.env).entry);
-    addToProject(f.root, { id: 'gone', version: '1', source: 'link:/nonexistent/station', commit: '', digest: '' });
+    installStation(`link:${fake}`);
+    const gone = writeStationForTest({ 'am-station.json': JSON.stringify({ id: 'gone', version: '1', name: '没了' }) });
+    installStation(`link:${gone}`);
+    fs.rmSync(gone, { recursive: true, force: true });
     ({ status, body } = await studioRequest(f.s, 'GET', '/api/stations'));
     expect(status).toBe(200);
     expect(body.problems).toHaveLength(1);
-    expect(body.problems[0]).toContain('第三方站 gone');
+    expect(body.problems[0]).toMatchObject({ id: 'gone', linked: true });
+    expect(body.problems[0].message).toContain('第三方插件 gone');
     const station = body.stations.find((x: { id: string }) => x.id === 'fake-publisher');
     expect(station).toMatchObject({ id: 'fake-publisher', name: '假发布', linked: true, after: 'publish' });
     expect(station.experimental).toEqual(['hooks', 'schedules', 'slots', 'commands', 'inserts', 'flow', 'provides', 'renderer_skills', 'film_styles']);
@@ -52,7 +55,7 @@ describe('stations API', () => {
 
   it('validates requests before starting a write task', async () => {
     const f = newSessionFixture();
-    addToProject(f.root, fetchStation(`link:${fake}`, process.env).entry);
+    installStation(`link:${fake}`);
     const post = (url: string, body: unknown) => studioRequest(f.s, 'POST', url, JSON.stringify(body));
     expect((await post('/api/stations', { source: '' })).status).toBe(400);
     expect((await post('/api/stations', { source: 'npm:thing' })).body.message).toContain('认不出来源');
@@ -67,7 +70,7 @@ describe('stations API', () => {
 
   it('serves plugin pages from the station only, under a CSP that blocks every request', async () => {
     const f = newSessionFixture();
-    addToProject(f.root, fetchStation(`link:${fake}`, process.env).entry);
+    installStation(`link:${fake}`);
     const { body } = await studioRequest(f.s, 'GET', '/api/stations');
     expect(body.stations.find((x: { id: string }) => x.id === 'fake-publisher').pages).toEqual([
       { id: 'dashboard', label: '发布看板', tab: 'x:fake-publisher:dashboard', url: '/station-ui/fake-publisher/ui/index.html', reads: ['publish.md'] },
@@ -92,7 +95,7 @@ describe('stations API', () => {
 
   it('lets a page read only what the station declared', async () => {
     const f = newSessionFixture();
-    addToProject(f.root, fetchStation(`link:${fake}`, process.env).entry);
+    installStation(`link:${fake}`);
     fs.writeFileSync(path.join(f.root, 'publish.md'), '---\nplatform: douyin\n---\n');
     fs.writeFileSync(path.join(f.root, '.env'), 'SECRET=1\n');
     fs.mkdirSync(path.join(f.root, 'production', 'publish'), { recursive: true });
@@ -111,7 +114,7 @@ describe('stations API', () => {
 
   it('serves declared project media to pages, and checks what a page may call', async () => {
     const f = newSessionFixture();
-    addToProject(f.root, fetchStation(`link:${fake}`, process.env).entry);
+    installStation(`link:${fake}`);
     fs.mkdirSync(path.join(f.root, 'production', 'publish'), { recursive: true });
     fs.writeFileSync(path.join(f.root, 'production', 'publish', 'cover.png'), 'png');
     let res = await send(f.s, 'GET', '/station-media/fake-publisher/production/publish/cover.png');
@@ -147,7 +150,7 @@ describe('stations API', () => {
 
   it('starts scheduled ops when they are due, and only then', async () => {
     const f = newSessionFixture();
-    addToProject(f.root, fetchStation(`link:${fake}`, process.env).entry);
+    installStation(`link:${fake}`);
     const t0 = Date.now();
     expect(tickStationSchedules(f.s, t0)).toEqual(['fake-publisher/on_event']);
     // 等这个任务结束（测试里执行进程起不来，很快失败），放出写权。
@@ -159,7 +162,7 @@ describe('stations API', () => {
 
   it('shows files an op wrote outside its declared scope, and posts a notice when a hook ran it', async () => {
     const f = newSessionFixture();
-    addToProject(f.root, fetchStation(`link:${fake}`, process.env).entry);
+    installStation(`link:${fake}`);
     // 测试里没有真的执行进程：换一个假的 am，像插件那样在项目里顺手写一个没声明的文件。
     const bin = fs.mkdtempSync(path.join(f.root, '..', 'am-fake-'));
     const fakeAm = path.join(bin, 'am');
@@ -189,6 +192,27 @@ describe('stations API', () => {
     const events = (await send(f.s, 'GET', `/api/sessions/${created.body.session_id}/events?follow=0`)).text();
     expect(await events).toContain('自动执行的插件「假发布」改了它没有声明会写的项目文件：notes/stray.txt。');
     f.s.shutdown();
+  });
+
+  it('manages plugins without an open project, and keeps project things behind one', async () => {
+    const s = startStudio({ configPath: path.join(tempDir(), 'projects.json') });
+    installStation(`link:${fake}`);
+    let r = await studioRequest(s, 'GET', '/api/stations');
+    expect(r.status).toBe(200);
+    expect(r.body.stations.some((x: { id: string }) => x.id === 'fake-publisher')).toBe(true);
+    // 设置是用户级的。
+    r = await studioRequest(s, 'POST', '/api/stations/fake-publisher/settings', JSON.stringify({ key: 'token', value: 'tok' }));
+    expect(r.status).toBe(200);
+    // 装、去掉、更新是不占项目写锁的后台任务。
+    r = await studioRequest(s, 'POST', '/api/stations', JSON.stringify({ source: `link:${fake}` }));
+    expect(r.status).toBe(202);
+    await waitStudioTask(s, r.body.task_id);
+    expect((await studioRequest(s, 'POST', '/api/stations/nope/remove', '{}')).status).toBe(404);
+    expect((await studioRequest(s, 'POST', '/api/stations/fake-publisher/update', '{}')).body.message).toContain('不需要更新');
+    // 执行操作、读项目文件要打开项目。
+    expect((await studioRequest(s, 'POST', '/api/stations/fake-publisher/ops/status', '{"params":{}}')).status).not.toBe(202);
+    expect((await studioRequest(s, 'GET', '/api/stations/fake-publisher/read?path=publish.md')).status).not.toBe(200);
+    s.shutdown();
   });
 
   it('refuses API calls from a sandboxed page', async () => {

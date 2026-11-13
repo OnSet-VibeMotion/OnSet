@@ -1,15 +1,16 @@
 /**
- * 第三方站（/api/stations）：
- *   GET  /api/stations                         这个项目加的站（清单、设置、权限、页面、嵌入位、命令）
- *   POST /api/stations                         添加（写任务 station_add）
- *   POST /api/stations/{id}/remove             去掉（写任务 station_remove）
- *   POST /api/stations/{id}/update             按添加时的来源更新（写任务 station_update）
+ * 插件（/api/stations）。插件装在用户级，对所有项目生效；装、去掉、更新、设置不要打开项目：
+ *   GET  /api/stations                         全部插件（内置与已装的第三方插件：清单、设置、权限、页面、嵌入位、命令）与读不出来的
+ *   POST /api/stations                         装上（任务 station_add，不占项目写锁）
+ *   POST /api/stations/{id}/remove             去掉（任务 station_remove）
+ *   POST /api/stations/{id}/update             按添加时的来源更新（任务 station_update）
  *   POST /api/stations/{id}/settings           改一项插件设置（用户级，不进项目）
+ * 下面几样针对当前项目：
  *   POST /api/stations/{id}/ops/{操作}         执行本站的一条操作（写任务 station_run）
  *   POST /api/stations/{id}/call/{操作}        替插件页面调一条 am 自带的操作（清单 permissions.uses 里申请过的）
  *   GET  /api/stations/{id}/read?path=         插件页面读项目文件（只给声明过的）
  *
- * 改项目文件的一律走写任务，与一轮对话互斥；客户端自己不写项目文件。插件页面发来的执行请求，
+ * 改项目文件的一律走写任务，与一轮对话互斥；客户端自己不写项目文件。钩子与定时只对当前打开的项目跑。插件页面发来的执行请求，
  * 界面先请用户确认才会打到这里（StationPage.tsx）。
  */
 import fs from 'node:fs';
@@ -24,7 +25,7 @@ import { containedPath } from './sessions';
 import type { Project, Server } from './studio';
 import { onStudioEvent } from './events';
 import { emit, getSession, kindNotice, listSessions } from './sessions';
-import { runStudioOp, runWriteTask, updateTask, warnTask, writeTaskError, type Task } from './tasks';
+import { addTask, runStudioOp, runTask, runUserOp, runWriteTask, updateTask, warnTask, writeTaskError, type Task } from './tasks';
 
 /** 最近一次从界面执行的结果，按「项目 站 操作」记，客户端重启就没了（站自己写的回执才是凭据）。 */
 interface LastRun {
@@ -131,15 +132,23 @@ function toFirstTab(m: flow.Manifest): string {
   return flow.builtinFirstPages().includes(m.flow.first_page) ? m.flow.first_page : flow.pageTab(m.id, m.flow.first_page);
 }
 
+/** 全部插件；root 是当前项目（没有打开项目为空），只用来带上这个项目里最近一次执行的结果。 */
 export function listStations(root: string): Record<string, unknown> {
-  const { stations, problems } = flow.loadProjectStations(root);
-  const active = flow.activeFlowStation(root, stations);
+  const { stations, problems } = flow.loadStations();
   return {
     stations: stations.map((s) => stationJSON(root, s)),
-    problems,
-    // 项目选用的第三方流程：顶栏第一步换成它的页面。
-    active_flow: active ? { station: active.manifest.id, name: active.manifest.flow!.name, first_tab: toFirstTab(active.manifest) } : null,
+    // 读不出来的插件：设置页显示原因，给「更新 / 去掉」。
+    problems: problems.map((p) => ({ id: p.id, message: p.message, linked: p.entry ? flow.parseSource(p.entry.source).kind === 'link' : false })),
   };
+}
+
+/** 装、去掉、更新插件：不占项目写锁（插件在用户级），没有打开项目也能做。 */
+function startUserTask(s: Server, type: string, message: string, name: string, params: Record<string, unknown>): Response {
+  const t = addTask(s, type, message);
+  runTask(s, t, async (signal) => {
+    await runUserOp(s, signal, name, params);
+  });
+  return writeJSON(202, goMap({ task_id: t.task_id }));
 }
 
 async function readParams(request: Request): Promise<Record<string, unknown>> {
@@ -168,7 +177,7 @@ async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: 
       if (progress) updateTask(s, task.task_id, 'running', progress.message || task.message, Math.max(0.1, Math.min(0.99, progress.progress)), null);
     }
   };
-  const station = flow.loadProjectStations(p.path).stations.find((x) => x.manifest.id === id);
+  const station = flow.loadStations().stations.find((x) => x.manifest.id === id);
   const before = station ? flow.statProject(p.path) : null;
   const scope = () => {
     if (!station || !before) return null;
@@ -221,12 +230,10 @@ function stripProgress(text: string): string {
 }
 
 export async function stationsAPI(s: Server, request: Request, rest: string): Promise<Response> {
-  const p = s.projectOr404();
-  if (p instanceof Response) return p;
   const parts = rest.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
 
   if (parts.length === 0) {
-    if (request.method === 'GET') return writeJSON(200, goMap(listStations(p.path)));
+    if (request.method === 'GET') return writeJSON(200, goMap(listStations(s.projectRoot())));
     if (request.method !== 'POST') return methodNotAllowed('GET, POST');
     let source: string;
     try {
@@ -234,78 +241,33 @@ export async function stationsAPI(s: Server, request: Request, rest: string): Pr
     } catch (err) {
       return writeError(400, 'invalid_json', err instanceof DecodeError ? err.message : (err as Error).message);
     }
-    if (source === '') return writeError(400, 'invalid_request', '写上第三方站的来源');
+    if (source === '') return writeError(400, 'invalid_request', '写上插件的来源');
     try {
       flow.parseSource(source);
     } catch (err) {
       return writeError(400, 'invalid_request', (err as Error).message);
     }
-    try {
-      const t = runWriteTask(s, p, 'station.add', `添加第三方站：${source}`, async (signal) => {
-        await runStudioOp(s, signal, p, 'station_add', { source, project_root: p.path });
-      });
-      return writeJSON(202, goMap({ task_id: t.task_id }));
-    } catch (err) {
-      return writeTaskError(err);
-    }
+    return startUserTask(s, 'station.add', `添加插件：${source}`, 'station_add', { source });
   }
 
   const id = decodeURIComponent(parts[0]);
-  if (parts.length === 2 && parts[1] === 'remove') {
+  if (parts.length === 2 && (parts[1] === 'remove' || parts[1] === 'update')) {
     if (request.method !== 'POST') return methodNotAllowed('POST');
-    if (!flow.readLock(p.path).stations.some((e) => e.id === id)) return writeError(404, 'not_found', `这个项目没有加第三方站 ${id}`);
+    // 读不出来的插件（例如内容被改过）也能更新、去掉：只看已装插件清单，不读插件目录。
+    let entry: flow.InstalledEntry | undefined;
     try {
-      const t = runWriteTask(s, p, 'station.remove', `去掉第三方站：${id}`, async (signal) => {
-        await runStudioOp(s, signal, p, 'station_remove', { id, project_root: p.path });
-      });
-      return writeJSON(202, goMap({ task_id: t.task_id }));
+      entry = flow.installedEntry(id);
     } catch (err) {
-      return writeTaskError(err);
+      return writeError(500, 'invalid_installed', (err as Error).message);
     }
+    if (!entry) return writeError(404, 'not_found', `没有装插件 ${id}`);
+    if (parts[1] === 'remove') return startUserTask(s, 'station.remove', `去掉插件：${id}`, 'station_remove', { id });
+    if (flow.parseSource(entry.source).kind === 'link') return writeError(400, 'invalid_request', `插件 ${id} 来自本机目录，改动立即生效，不需要更新`);
+    return startUserTask(s, 'station.update', `更新插件：${id}`, 'station_update', { id });
   }
 
-  if (parts.length === 2 && parts[1] === 'update') {
-    if (request.method !== 'POST') return methodNotAllowed('POST');
-    // 读不出来的站（例如内容被改过）也能更新：不先 loadProjectStations。
-    const entry = flow.readLock(p.path).stations.find((e) => e.id === id);
-    if (!entry) return writeError(404, 'not_found', `这个项目没有加第三方站 ${id}`);
-    if (flow.parseSource(entry.source).kind === 'link') return writeError(400, 'invalid_request', `第三方站 ${id} 来自本机目录，改动立即生效，不需要更新`);
-    try {
-      const t = runWriteTask(s, p, 'station.update', `更新第三方站：${id}`, async (signal) => {
-        await runStudioOp(s, signal, p, 'station_update', { id, project_root: p.path });
-      });
-      return writeJSON(202, goMap({ task_id: t.task_id }));
-    } catch (err) {
-      return writeTaskError(err);
-    }
-  }
-
-  const station = flow.loadProjectStations(p.path).stations.find((x) => x.manifest.id === id);
-  if (!station) return writeError(404, 'not_found', `这个项目没有加第三方站 ${id}`);
-
-  if (parts.length === 2 && parts[1] === 'flow') {
-    if (request.method !== 'POST') return methodNotAllowed('POST');
-    let use: boolean;
-    try {
-      use = (await decodeJSON(request)).use === true;
-    } catch (err) {
-      return writeError(400, 'invalid_json', (err as Error).message);
-    }
-    if (use && !station.manifest.flow) return writeError(400, 'invalid_request', `第三方站 ${station.manifest.name} 没有带流程`);
-    try {
-      const t = runWriteTask(s, p, 'station.flow', use ? `改用流程：${station.manifest.flow!.name}` : '回到自带的流程', async (signal) => {
-        await runStudioOp(s, signal, p, 'station_flow', { id: use ? id : '', project_root: p.path });
-      });
-      return writeJSON(202, goMap({ task_id: t.task_id }));
-    } catch (err) {
-      return writeTaskError(err);
-    }
-  }
-
-  if (parts.length === 2 && parts[1] === 'read') {
-    if (request.method !== 'GET') return methodNotAllowed('GET');
-    return readForPage(p.path, station, new URL(request.url).searchParams.get('path') ?? '');
-  }
+  const station = flow.loadStations().stations.find((x) => x.manifest.id === id);
+  if (!station) return writeError(404, 'not_found', `没有装插件 ${id}`);
 
   if (parts.length === 2 && parts[1] === 'settings') {
     if (request.method !== 'POST') return methodNotAllowed('POST');
@@ -315,7 +277,16 @@ export async function stationsAPI(s: Server, request: Request, rest: string): Pr
     } catch (err) {
       return writeError(400, 'invalid_setting', (err as Error).message);
     }
-    return writeJSON(200, goMap(stationJSON(p.path, station)));
+    return writeJSON(200, goMap(stationJSON(s.projectRoot(), station)));
+  }
+
+  // 下面几样针对当前项目。
+  const p = s.projectOr404();
+  if (p instanceof Response) return p;
+
+  if (parts.length === 2 && parts[1] === 'read') {
+    if (request.method !== 'GET') return methodNotAllowed('GET');
+    return readForPage(p.path, station, new URL(request.url).searchParams.get('path') ?? '');
   }
 
   if (parts.length === 3 && parts[1] === 'ops') {
@@ -368,7 +339,8 @@ export async function stationsAPI(s: Server, request: Request, rest: string): Pr
 // 事件钩子
 
 /**
- * 事件发生时，跑项目里挂在这个事件上的第三方操作（各自一个写任务）。项目正忙（一轮对话、另一个写任务）时
+ * 事件发生时，跑挂在这个事件上的插件操作（各自一个写任务）。插件对所有项目生效，但事件只来自当前打开的项目，
+ * 操作也只在这个项目里跑。项目正忙（一轮对话、另一个写任务）时
  * 这一次跳过并记一条失败的任务说明，不排队：钩子是「顺手做」的事，不能挡住用户的下一步。
  * 第三方站自己的任务结束不触发 task.finished，免得钩子互相触发、没完没了。
  */
@@ -378,7 +350,7 @@ onStudioEvent((s, p, event, payload) => emitStationHook(s, p, event, payload));
 const lastScheduled = new Map<string, number>();
 
 /**
- * 检查当前项目的定时任务，到点的各起一个写任务。项目正忙就等下一次检查，不排队、不补跑。
+ * 检查插件的定时任务，到点的在当前打开的项目里各起一个写任务（没打开项目就不跑）。项目正忙就等下一次检查，不排队、不补跑。
  * 客户端每分钟调一次（Server 的定时器）；返回这次起了哪些，测试用。
  */
 export function tickStationSchedules(s: Server, now = Date.now()): string[] {
@@ -390,7 +362,7 @@ export function tickStationSchedules(s: Server, now = Date.now()): string[] {
   }
   let stations: flow.LoadedStation[];
   try {
-    stations = flow.loadProjectStations(p.path).stations;
+    stations = flow.loadStations().stations;
   } catch {
     return [];
   }
@@ -425,7 +397,7 @@ export function tickStationSchedules(s: Server, now = Date.now()): string[] {
 export function emitStationHook(s: Server, p: Project, event: flow.HookEvent, payload: Record<string, unknown> = {}): void {
   let stations: flow.LoadedStation[];
   try {
-    stations = flow.loadProjectStations(p.path).stations;
+    stations = flow.loadStations().stations;
   } catch {
     return;
   }
@@ -577,14 +549,14 @@ export const pageSDK = `// ArticleToMotion 插件页面 SDK：页面在沙箱里
 export function stationUIAPI(s: { projectOr404(): unknown }, request: Request, rest: string): Response {
   if (request.method !== 'GET' && request.method !== 'HEAD') return methodNotAllowed('GET');
   if (rest === '_sdk.js') return new Response(pageSDK, { headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' } });
+  // 插件页面只在打开的项目里用（它要的项目数据经宿主转交）。
   const p = s.projectOr404();
   if (p instanceof Response) return p;
-  const root = (p as { path: string }).path;
   const cut = rest.indexOf('/');
   if (cut <= 0) return notFound();
   const id = rest.slice(0, cut);
   const file = rest.slice(cut + 1);
-  const station = flow.loadProjectStations(root).stations.find((x) => x.manifest.id === id);
+  const station = flow.loadStations().stations.find((x) => x.manifest.id === id);
   if (!station || file === '' || file.split('/').some((seg) => seg === '..' || seg === '' || seg.startsWith('.'))) return notFound();
   const allowed = station.manifest.pages.some((pg) => {
     const dir = pg.entry.includes('/') ? pg.entry.slice(0, pg.entry.lastIndexOf('/') + 1) : '';
@@ -610,7 +582,7 @@ export function stationMediaAPI(s: { projectOr404(): unknown }, request: Request
   const root = (p as { path: string }).path;
   const cut = rest.indexOf('/');
   if (cut <= 0) return notFound();
-  const station = flow.loadProjectStations(root).stations.find((x) => x.manifest.id === rest.slice(0, cut));
+  const station = flow.loadStations().stations.find((x) => x.manifest.id === rest.slice(0, cut));
   const rel = rest.slice(cut + 1);
   if (!station || !flow.pageMayRead(station.manifest, rel) || !fs.existsSync(path.join(root, rel))) return notFound();
   let full: string;

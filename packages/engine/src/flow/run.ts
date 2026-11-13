@@ -23,7 +23,7 @@ import { MissingError } from '../prereq';
 import { groupSpawnOptions, killTree } from '../procgroup';
 import { pythonInstallDir, ToolPythonVersion } from '../toolinstall';
 import { nodeCommand } from '../toolpath';
-import { loadProjectStations, stationsDir, type LoadedStation, type ManifestOp } from './external';
+import { loadStations, stationsDir, type LoadedStation, type ManifestOp } from './external';
 import { scopeReport, scopeText, statProject, type ScopeReport } from './scope';
 import { stationSettings } from './settings';
 
@@ -135,13 +135,13 @@ export function resolveCommand(
   }
 }
 
-/** 找到项目里某个站的某条操作。 */
-export function findStationOp(root: string, stationID: string, opName: string, env: Record<string, string | undefined> = process.env): { station: LoadedStation; op: ManifestOp } {
-  const { stations, problems } = loadProjectStations(root, env);
+/** 找到某个插件的某条操作（插件装在用户级，对所有项目一样）。 */
+export function findStationOp(stationID: string, opName: string, env: Record<string, string | undefined> = process.env): { station: LoadedStation; op: ManifestOp } {
+  const { stations, problems } = loadStations(env);
   const station = stations.find((s) => s.manifest.id === stationID);
   if (!station) {
-    const why = problems.find((p) => p.startsWith(`第三方站 ${stationID}：`));
-    throw new Error(why ?? `这个项目没有加第三方站 ${stationID}`);
+    const why = problems.find((p) => p.id === stationID);
+    throw new Error(why?.message ?? `没有装插件 ${stationID}`);
   }
   const op = station.manifest.ops.find((o) => o.name === opName);
   if (!op) throw new Error(`第三方站 ${stationID} 没有操作 ${opName}`);
@@ -197,7 +197,7 @@ export async function runStationOp(
   /** 事件钩子触发时的事件（交给插件的 stdin）。 */
   event?: Record<string, unknown>,
 ): Promise<StationResult> {
-  const { station, op } = findStationOp(root, stationID, opName, env);
+  const { station, op } = findStationOp(stationID, opName, env);
   const checked = checkParams(op, params);
   const dataDir = path.join(stationsDir(env), station.manifest.id, 'data');
   fs.mkdirSync(dataDir, { recursive: true });

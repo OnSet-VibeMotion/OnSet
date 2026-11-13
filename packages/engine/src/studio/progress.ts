@@ -80,18 +80,18 @@ interface GateRecord {
   files: Record<string, string>;
 }
 
-/** 关卡绑定的文件：确认后它们变了，确认就不算数。来自各站的声明，项目加的第三方站的关卡也算。 */
-function gateFilesFor(root: string): Record<string, string[]> {
+/** 关卡绑定的文件：确认后它们变了，确认就不算数。来自各站的声明，已装的第三方插件的关卡也算。 */
+function gateFilesFor(): Record<string, string[]> {
   const out = flow.gateFiles();
-  for (const x of flow.projectExtras(root)) {
+  for (const x of flow.stationExtras()) {
     for (const node of x.station.nodes) if (node.gateFiles && !out[node.id]) out[node.id] = node.gateFiles;
   }
   return out;
 }
 
 /** 可以经界面按钮记确认的关卡。试听确认（approval.json）与节拍确认（grid.json）由编排与 am 写，不在这里。 */
-export function gateIDs(root = ''): string[] {
-  return Object.keys(root === '' ? flow.gateFiles() : gateFilesFor(root));
+export function gateIDs(): string[] {
+  return Object.keys(gateFilesFor());
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +173,7 @@ export function readGates(root: string): Record<string, GateRecord> {
 
 /** 记下用户确认了某个关卡：绑定的文件一个都没有时拒绝（没东西可确认）。 */
 export function recordGate(root: string, id: string, now = new Date()): GateRecord {
-  const bound = gateFilesFor(root)[id];
+  const bound = gateFilesFor()[id];
   if (!bound) throw new Error(`没有这个审核关卡：${id}`);
   const files: Record<string, string> = {};
   for (const rel of bound) {
@@ -427,7 +427,7 @@ export interface PageGate {
  * gate-beat-storyboard）；没有为 null。界面的确认按钮按它记，不写死关卡 id。
  */
 export function pageGate(root: string, page: string): PageGate | null {
-  const extras = flow.projectExtras(root);
+  const extras = flow.stationExtras();
   let id: flow.FlowID;
   try {
     id = flow.detectFlow(root, extras);
@@ -510,7 +510,7 @@ function firstLine(message: string): string {
  * 返回各站的状态与现在在哪一站。
  */
 export function computeStations(root: string, scenes: SceneSummary[]): { mode: flow.FlowID; stations: Station[]; current: string; waiting_on: '' | 'user' | 'ai' } {
-  const extras = flow.projectExtras(root);
+  const extras = flow.stationExtras();
   const mode = flow.detectFlow(root, extras);
   const defs = stationDefs(mode, extras);
   const ctx: Ctx = { root, scenes, gates: readGates(root) };
@@ -561,7 +561,7 @@ export function computeStations(root: string, scenes: SceneSummary[]): { mode: f
 /** 各站的产物里最新的一次写入（毫秒），判断编排工具的步骤标记是不是比产物新。 */
 export function latestOutput(root: string, scenes: SceneSummary[]): number {
   const ctx: Ctx = { root, scenes, gates: {} };
-  const extras = flow.projectExtras(root);
+  const extras = flow.stationExtras();
   return Math.max(0, ...stationDefs(flow.detectFlow(root, extras), extras).filter((d) => !d.gate).map((d) => d.output(ctx)));
 }
 
@@ -570,7 +570,7 @@ const maxStationTurns = 12;
 export function readProgress(root: string): ProgressResponse {
   const scenes = discoverScenes(root);
   const base = computeStations(root, scenes);
-  const extras = flow.projectExtras(root);
+  const extras = flow.stationExtras();
   const byID = new Map(base.stations.map((s) => [s.id, s]));
   const labels: Record<string, string[]> = {};
   for (const turn of turnSummaries(root)) {
@@ -624,7 +624,7 @@ export async function progressAPI(s: Server, request: Request, rest: string): Pr
   const match = /^gates\/([a-z-]+)$/.exec(rest);
   if (!match) return writeError(404, 'not_found', 'Studio API 路径不存在');
   if (request.method !== 'POST') return writeError(405, 'method_not_allowed', '只支持 POST');
-  if (!gateFilesFor(root)[match[1]]) return writeError(404, 'not_found', `没有这个审核关卡：${match[1]}`);
+  if (!gateFilesFor()[match[1]]) return writeError(404, 'not_found', `没有这个审核关卡：${match[1]}`);
   try {
     const record = recordGate(root, match[1]);
     emitStudioEvent(s, s.currentProject(), 'gate.confirmed', { gate: match[1] });
@@ -655,12 +655,13 @@ export interface FlowView {
 }
 
 export function flowView(root: string): FlowView {
-  const extras = flow.projectExtras(root);
+  const extras = flow.stationExtras();
   const id = flow.detectFlow(root, extras);
   const def = flow.flow(id, extras);
-  // 第三方流程叠在项目自己的片型上：用不上的页、落在哪一页仍按项目自己的片型（新建时记的）。
-  const base = id.startsWith('x:') ? flow.flow(flow.detectFlow(root), []) : def;
   const firstPages = flow.builtinFirstPages();
+  // 第三方流程的第一页可以是自带的第一页（口播稿、节拍）或插件自己的页面：用不上的自带第一页、
+  // 落在哪一页按第一页是自带的哪一页的那个片型；是插件页面时按口播。
+  const base = id.startsWith('x:') ? (flow.allFlows().find((f) => f.prompt && (f.first_page ?? 'script') === def.first_page) ?? flow.flow('speech')) : def;
   const baseFirst = base.first_page ?? 'script';
   const first = def.first_page ?? baseFirst;
   return {

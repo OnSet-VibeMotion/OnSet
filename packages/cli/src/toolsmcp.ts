@@ -112,12 +112,12 @@ function helpText(op: Op): string {
 }
 
 /**
- * 第三方站里编排工具能调的操作，做成不进操作表的 Op（参数校验、说明与内置工具同一套）。
+ * 已装的第三方插件里编排工具能调的操作，做成不进操作表的 Op（参数校验、说明与内置工具同一套）。插件对所有项目生效。
  * 只能由用户触发的操作（trigger: user）不在这里：它们只有界面上的按钮。
  */
-export function externalOps(root: string): { op: Op; external: { station: string; op: string } }[] {
+export function externalOps(): { op: Op; external: { station: string; op: string } }[] {
   const out: { op: Op; external: { station: string; op: string } }[] = [];
-  for (const s of flow.loadProjectStations(root).stations) {
+  for (const s of flow.loadStations().stations) {
     for (const m of s.manifest.ops) {
       if (m.trigger !== 'agent') continue;
       const params: Record<string, ParamSpec> = {};
@@ -130,7 +130,7 @@ export function externalOps(root: string): { op: Op; external: { station: string
           name,
           cli: [],
           summary: `${m.summary}（第三方站「${s.manifest.name}」）`,
-          description: (m.description ? m.description + '\n\n' : '') + `由用户添加的第三方插件「${s.manifest.name}」（${s.manifest.id} ${s.manifest.version}）提供，不是 am 自带的工具。`,
+          description: (m.description ? m.description + '\n\n' : '') + `由用户装的第三方插件「${s.manifest.name}」（${s.manifest.id} ${s.manifest.version}）提供，不是 am 自带的工具。`,
           ...(m.examples ? { examples: m.examples } : {}),
           params,
           scopes: ['orchestrator'],
@@ -154,7 +154,7 @@ export function callTarget(tool: ToolDef, params: ParamValues): { name: string; 
 /** 这一档位的全部工具。root 给了时（编排档位），再加上项目里第三方站的工具。 */
 export function describeTools(profile: Profile, root = ''): ToolDef[] {
   const out: ToolDef[] = [];
-  const extras = profile === 'orchestrator' && root !== '' ? externalOps(root) : [];
+  const extras = profile === 'orchestrator' && root !== '' ? externalOps() : [];
   for (const { op, external } of [...allOps().map((op) => ({ op, external: undefined as ToolDef['external'] })), ...extras]) {
     if (!external && !opScopes(op).includes(profile)) continue;
     const properties: Record<string, JSONSchema> = {};

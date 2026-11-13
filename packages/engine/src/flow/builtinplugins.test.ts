@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildPrompt, fingerprint, load, resolveAllSkills } from '../scene';
 import { runPrompt } from '../project/runprompt';
-import { projectExtras, recordFlow, route, stationOwners, builtinPlugins, loadProjectStations, parseManifest, readLock, addToProject, fetchStation } from './index';
+import { stationExtras, recordFlow, route, stationOwners, builtinPlugins, loadStations, parseManifest, readLock } from './index';
 
 const temps: string[] = [];
 afterEach(() => {
@@ -29,15 +29,15 @@ describe('builtin plugins', () => {
     expect(parseManifest(JSON.stringify({ ...base, id: 'song' }), { builtin: true }).id).toBe('song');
   });
 
-  it('is always on: an old lock file\'s disabled field is ignored and not written back', () => {
+  it('is always on, and a project lock file has no say in which plugins there are', () => {
     const root = project();
     const all = ['algorithmic-art', 'beat', 'cast', 'lemo-styles', 'publishing', 'song', 'text-to-lottie'];
-    expect(loadProjectStations(root).stations.map((s) => s.manifest.id)).toEqual(all);
-    fs.writeFileSync(path.join(root, 'article-to-motion.flow.json'), JSON.stringify({ version: 1, stations: [], disabled: ['song'] }));
-    expect(loadProjectStations(root).stations.map((s) => s.manifest.id)).toEqual(all);
-    expect('disabled' in readLock(root)).toBe(false);
-    addToProject(root, fetchStation(`link:${path.join(__dirname, 'testdata', 'fake-publisher')}`, process.env).entry);
-    expect(fs.readFileSync(path.join(root, 'article-to-motion.flow.json'), 'utf8')).not.toContain('disabled');
+    expect(loadStations().stations.map((s) => s.manifest.id)).toEqual(all);
+    // 锁文件里写的 stations、flow、disabled 都不认，也不写回。
+    fs.writeFileSync(path.join(root, 'article-to-motion.flow.json'), JSON.stringify({ version: 1, stations: [{ id: 'x', source: 'link:/nope' }], flow: 'x', disabled: ['song'] }));
+    expect(readLock(root)).toEqual({ version: 1 });
+    recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
+    expect(JSON.parse(fs.readFileSync(path.join(root, 'article-to-motion.flow.json'), 'utf8'))).toEqual({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } });
   });
 });
 
@@ -71,7 +71,7 @@ describe('builtin plugins that register stations', () => {
   it('put their station on the production map and into the prompt of every project', () => {
     const root = project();
     recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
-    expect(route('speech', projectExtras(root)).some((r) => r.node.id === 'publish')).toBe(true);
+    expect(route('speech', stationExtras()).some((r) => r.node.id === 'publish')).toBe(true);
     expect(runPrompt(root, '').prompt.toString('utf8')).toContain('### 发布配置生命周期');
   });
 });

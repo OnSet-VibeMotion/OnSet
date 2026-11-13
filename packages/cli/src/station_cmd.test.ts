@@ -7,11 +7,12 @@ import { callTarget, describeTools, prepareCall } from './toolsmcp';
 
 const fake = path.resolve(__dirname, '..', '..', 'engine', 'src', 'flow', 'testdata', 'fake-publisher');
 
+/** 装上假发布插件（用户级，对所有项目生效），返回一个空的项目目录。 */
 async function projectWithFake(): Promise<string> {
   const root = tempDir();
   const out = new Buffer();
-  expect(await run(['station', 'add', `link:${fake}`, '--project-root', root], out), out.text).toBe(0);
-  expect(out.text).toContain('已加入第三方站 假发布（fake-publisher 0.1.0）');
+  expect(await run(['station', 'add', `link:${fake}`], out), out.text).toBe(0);
+  expect(out.text).toContain('已装上第三方插件 假发布（fake-publisher 0.1.0），对所有项目生效');
   expect(out.text).toContain('[按钮] send');
   expect(out.text).toContain('[工具] x_fake_publisher_status');
   // 操作与页面分开说：操作是电脑上的普通程序，页面才受权限约束。
@@ -23,13 +24,15 @@ async function projectWithFake(): Promise<string> {
 
 describe('station ops', () => {
   it('are not tools the orchestrator can call', () => {
-    for (const name of ['station_add', 'station_remove', 'station_list', 'station_run', 'station_flow', 'station_update']) {
+    for (const name of ['station_add', 'station_remove', 'station_list', 'station_run', 'station_update']) {
       expect(allOps().find((op) => op.name === name)?.scopes, name).toEqual(['cli']);
     }
+    // 流程只在新建时定：没有给已有项目换流程的操作。
+    expect(allOps().some((op) => op.name === 'station_flow')).toBe(false);
     expect(describeTools('orchestrator').some((t) => t.name.startsWith('station_'))).toBe(false);
   });
 
-  it('adds, runs, lists and removes a station', async () => {
+  it('installs once for every project, runs, lists and removes a plugin', async () => {
     const root = await projectWithFake();
     const out = new Buffer();
     expect(await run(['station', 'run', 'fake-publisher', 'send', '--params', '{"platform": "douyin"}', '--project-root', root], out), out.text).toBe(0);
@@ -45,17 +48,27 @@ describe('station ops', () => {
     expect(await run(['station', 'run', 'fake-publisher', 'scribble', '--project-root', root], stray), stray.text).toBe(0);
     expect(stray.text).toContain('没有声明会写的项目文件（1 个）：\n  notes/scribble.txt');
 
+    // 另一个项目不用再装就能用。
+    const other = tempDir();
+    const again = new Buffer();
+    expect(await run(['station', 'run', 'fake-publisher', 'send', '--params', '{"platform": "bilibili"}', '--project-root', other], again), again.text).toBe(0);
+    expect(fs.existsSync(path.join(other, 'production', 'publish', 'receipts.json'))).toBe(true);
+
     const list = new Buffer();
-    expect(await run(['station', 'list', '--project-root', root], list), list.text).toBe(0);
+    expect(await run(['station', 'list'], list), list.text).toBe(0);
     expect(list.text).toContain('fake-publisher 0.1.0  假发布');
 
     const update = new Buffer();
-    expect(await run(['station', 'update', 'fake-publisher', '--project-root', root], update), update.text).toBe(0);
+    expect(await run(['station', 'update', 'fake-publisher'], update), update.text).toBe(0);
     expect(update.text).toContain('来自本机目录');
     expect(update.text).toContain('不需要更新');
 
-    expect(await run(['station', 'remove', 'fake-publisher', '--project-root', root], new Buffer())).toBe(0);
+    expect(await run(['station', 'remove', 'fake-publisher'], new Buffer())).toBe(0);
+    // 项目里不留插件的记录。
     expect(fs.existsSync(path.join(root, 'article-to-motion.flow.json'))).toBe(false);
+    const gone = new Buffer();
+    expect(await run(['station', 'run', 'fake-publisher', 'status', '--project-root', other], gone)).toBe(1);
+    expect(gone.text).toContain('没有装插件 fake-publisher');
   });
 });
 
@@ -63,6 +76,8 @@ describe('third-party tools', () => {
   it('registers only agent-triggered ops and routes them to station_run', async () => {
     const root = await projectWithFake();
     const tools = describeTools('orchestrator', root);
+    // 另一个项目同样有这些工具。
+    expect(describeTools('orchestrator', tempDir()).some((t) => t.name === 'x_fake_publisher_status')).toBe(true);
     const names = tools.map((t) => t.name);
     expect(names).toContain('x_fake_publisher_status');
     expect(names.some((n) => n.includes('send'))).toBe(false);
@@ -120,7 +135,7 @@ describe('builtin plugins', () => {
 
   it('are always on: their ops are listed in every project and there is no switch', () => {
     const root = tempDir();
-    // 旧锁文件里的 disabled 直接忽略。
+    // 锁文件里的 disabled、stations 直接忽略。
     fs.writeFileSync(path.join(root, 'article-to-motion.flow.json'), JSON.stringify({ version: 1, stations: [], disabled: ['song', 'publishing'] }));
     const names = describeTools('orchestrator', root).map((t) => t.name);
     expect(names).toContain('song_generate');

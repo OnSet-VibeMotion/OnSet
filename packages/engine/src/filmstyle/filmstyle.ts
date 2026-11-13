@@ -13,7 +13,7 @@
 //
 // 其余文件（demo 源码、引擎、模型）由各来源自己决定。镜头渲染与制作提示词只依赖
 // 这份契约，不点名任何来源。具体来源由内置插件在 apply 里 ctx.filmStyleSource 登记
-// （例如 plugins/lemo-styles），第三方插件清单的 film_styles 由 flow.syncStyleSources 按项目换上。
+// （例如 plugins/lemo-styles），已装的第三方插件清单的 film_styles 由 flow 经 usePluginSources 交进来。
 // 新增来源不需要改这里。
 //
 // 风格来源的数据是前置资源：只由 am setup 经 Source.prepare 下载，其余路径只检查。
@@ -93,28 +93,30 @@ export interface Source {
   fill(dir: string, style: Style, env: Record<string, string>): string;
 }
 
-/** 第三方插件带来的风格来源的 ID 前缀（x-<站 id>），由 flow.syncStyleSources 按当前项目换上。 */
+/** 第三方插件带来的风格来源的 ID 前缀（x-<插件 id>）。 */
 export const PluginSourcePrefix = 'x-';
 
-/** 当前项目的第三方来源（flow.syncStyleSources 换上）。内置来源不在这里，在插件登记表里。 */
-let projectSources: Source[] = [];
+/** 读已装的第三方插件带来的来源（flow/styles.ts 加载时交进来）。内置来源不在这里，在插件登记表里。 */
+let pluginSources: () => Source[] = () => [];
 
 /**
- * 换上当前项目的第三方来源（项目切换、插件加减时整组换掉）。ID 必须以 x- 开头，与内置来源分开。
+ * 交进读第三方插件来源的函数。插件装在用户级，对所有项目与首页都一样；每次 sources() 现读，
+ * 装上、去掉插件立即生效。ID 必须以 x- 开头，与内置来源分开。
  */
-export function useProjectSources(next: Source[]): void {
-  for (const source of next) {
-    if (!source.id().startsWith(PluginSourcePrefix)) throw new Error('filmstyle: 插件来源的 ID 要以 x- 开头：' + source.id());
-  }
-  projectSources = [...next];
+export function usePluginSources(load: () => Source[]): void {
+  pluginSources = load;
 }
 
 /**
- * 全部来源，按 ID 排序：内置插件登记的（plugin.PluginContext.filmStyleSource）加当前项目的第三方来源。
+ * 全部来源，按 ID 排序：内置插件登记的（plugin.PluginContext.filmStyleSource）加已装的第三方插件带来的。
  * ID 重复直接报错。
  */
 export function sources(): Source[] {
-  const all = [...pluginFilmStyleSources().map((o) => o.value), ...projectSources];
+  const extra = pluginSources();
+  for (const source of extra) {
+    if (!source.id().startsWith(PluginSourcePrefix)) throw new Error('filmstyle: 插件来源的 ID 要以 x- 开头：' + source.id());
+  }
+  const all = [...pluginFilmStyleSources().map((o) => o.value), ...extra];
   const seen = new Set<string>();
   for (const source of all) {
     if (seen.has(source.id())) throw new Error('filmstyle: 风格来源重复登记：' + source.id());

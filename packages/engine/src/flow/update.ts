@@ -1,11 +1,11 @@
 /**
- * 升级项目里的一个第三方站：按锁文件里记的来源重新取（git 来源的 ref 是分支时会拿到新 commit），
- * 比出版本、commit、新申请的权限与新用到的实验性字段，写回锁文件。link: 来源本来就是本机目录，不用更新。
+ * 装、去掉、升级第三方插件（用户级，对所有项目生效）。升级按已装插件清单里记的来源重新取（git 来源的 ref 是分支时
+ * 会拿到新 commit），比出版本、commit、新申请的权限与新用到的实验性字段，写回清单。link: 来源本来就是本机目录，不用更新。
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fetchStation, parseSource, sourceDir } from './fetch';
-import { addToProject, readLock, type LockEntry } from './lock';
+import { fetchStation, parseSource, sourceDir, stationsDir } from './fetch';
+import { forgetInstalled, readInstalled, recordInstalled, type InstalledEntry } from './installed';
 import { experimentalFields, ManifestFile, type Manifest, type ManifestPermissions } from './manifest';
 import { parseManifest } from './parse';
 
@@ -13,9 +13,9 @@ export interface StationUpdate {
   id: string;
   /** link: 来源：不用更新，什么都没改。 */
   linked: boolean;
-  /** 锁文件里原来的一项与更新后的一项（linked 时两者相同）。 */
-  before: LockEntry;
-  after: LockEntry;
+  /** 已装插件清单里原来的一项与更新后的一项（linked 时两者相同）。 */
+  before: InstalledEntry;
+  after: InstalledEntry;
   /** 原来那一版的清单版本号；本机已经没有原来那一版（或读不出来）时为空。 */
   old_version: string;
   new_version: string;
@@ -38,7 +38,7 @@ export function permissionLines(p: ManifestPermissions): string[] {
   return out;
 }
 
-function oldManifest(entry: LockEntry, env: Record<string, string | undefined>): Manifest | null {
+function oldManifest(entry: InstalledEntry, env: Env): Manifest | null {
   try {
     const dir = sourceDir(entry, env);
     // 只用来比差异：原来那一版被改过也照读，读不出来就当没有。
@@ -48,17 +48,36 @@ function oldManifest(entry: LockEntry, env: Record<string, string | undefined>):
   }
 }
 
-/** 按锁文件里记的来源重新取这个站并写回锁文件。只改锁文件，不删用户级目录里存的旧版本。 */
-export function updateStation(root: string, id: string, env: Record<string, string | undefined> = process.env, log: (line: string) => void = () => {}): StationUpdate {
-  const before = readLock(root).stations.find((e) => e.id === id);
-  if (!before) throw new Error(`这个项目没有加第三方站 ${id}`);
+type Env = Record<string, string | undefined>;
+
+/** 装上一个插件：取来、校验，记进已装插件清单（同 id 的换成新的）。对所有项目生效。 */
+export function installStation(spec: string, env: Env = process.env, log: (line: string) => void = () => {}): ReturnType<typeof fetchStation> {
+  const got = fetchStation(spec, env, log);
+  recordInstalled(stationsDir(env), got.entry);
+  return got;
+}
+
+/** 去掉一个插件：只改已装插件清单，不删存着的插件目录，也不删它在各项目里写过的文件。 */
+export function removeStation(id: string, env: Env = process.env): void {
+  forgetInstalled(stationsDir(env), id);
+}
+
+/** 已装插件清单里的一项；没装为 undefined。清单读不了时抛错。 */
+export function installedEntry(id: string, env: Env = process.env): InstalledEntry | undefined {
+  return readInstalled(stationsDir(env)).plugins.find((e) => e.id === id);
+}
+
+/** 按清单里记的来源重新取这个插件并写回清单。不删用户级目录里存的旧版本。 */
+export function updateStation(id: string, env: Env = process.env, log: (line: string) => void = () => {}): StationUpdate {
+  const before = installedEntry(id, env);
+  if (!before) throw new Error(`没有装插件 ${id}`);
   if (parseSource(before.source).kind === 'link') {
     return { id, linked: true, before, after: before, old_version: before.version, new_version: before.version, new_permissions: [], new_experimental: [], experimental: [], changed: false };
   }
   const old = oldManifest(before, env);
   const got = fetchStation(before.source, env, log);
   if (got.manifest.id !== id) throw new Error(`来源 ${before.source} 现在的清单 id 是 ${got.manifest.id}，与这个站（${id}）不符；要换站请先去掉再添加`);
-  addToProject(root, got.entry);
+  recordInstalled(stationsDir(env), got.entry);
   const oldPerms = new Set(old ? permissionLines(old.permissions) : []);
   const oldExp = new Set(old ? experimentalFields(old) : []);
   const experimental = experimentalFields(got.manifest);

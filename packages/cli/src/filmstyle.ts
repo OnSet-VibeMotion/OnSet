@@ -14,7 +14,8 @@ import { padRight } from './canvas';
 import { defineGroup } from './ops/cli';
 import { bool, str } from './ops/common';
 import { defineOp, type ParamSpec } from './ops/op';
-import * as flow from '@am/engine/flow';
+// 已装的第三方插件带来的风格来源由 flow 加载时交给 filmstyle（flow/styles.ts）。
+import '@am/engine/flow';
 
 /** 帮助里列出的已登记来源。 */
 export function sourceSummary(): string {
@@ -70,15 +71,6 @@ style_shift，说明画法怎么在画面里换过去。
 const projectRootParam: ParamSpec = { type: 'string', description: '项目根目录，缺省为当前目录' };
 const styleParam = (description: string, required = true): ParamSpec => ({ type: 'string', description, required, positional: 0 });
 
-/** 这个项目加的第三方插件带来的风格库也列进来（不是项目时只有内置来源）。 */
-function syncPluginStyles(value: unknown): void {
-  try {
-    flow.syncStyleSources(path.resolve(str(value) || '.'));
-  } catch {
-    flow.syncStyleSources('');
-  }
-}
-
 function projectDir(value: unknown): string {
   const abs = path.resolve(str(value) || '.');
   if (!fs.existsSync(path.join(abs, 'article-to-motion.conf'))) {
@@ -100,7 +92,6 @@ defineOp({
     project_root: projectRootParam,
   },
   run: (p, { out }) => {
-    syncPluginStyles(p.project_root);
     let sources = filmstyle.sources();
     if (str(p.source) !== '') {
       const source = filmstyle.sourceByID(str(p.source));
@@ -166,7 +157,6 @@ defineOp({
     project_root: projectRootParam,
   },
   run: (p, { out }) => {
-    syncPluginStyles(p.project_root);
     const dir = projectDir(p.project_root);
     const style = filmstyle.lookup(str(p.style));
     const { manifest: current, ok } = filmstyle.installed(dir);
@@ -194,7 +184,6 @@ defineOp({
     project_root: projectRootParam,
   },
   run: (p, { out }) => {
-    syncPluginStyles(p.project_root);
     const dir = projectDir(p.project_root);
     const style = filmstyle.lookup(str(p.style));
     const result = filmstyle.install({ projectDir: dir, style, env: currentEnvironment(), as: 'extra' });
@@ -218,7 +207,6 @@ defineOp({
     project_root: projectRootParam,
   },
   run: (p, { out }) => {
-    syncPluginStyles(p.project_root);
     const dir = projectDir(p.project_root);
     const { manifest, ok: isInstalled } = filmstyle.installed(dir);
     const env = currentEnvironment();
@@ -297,7 +285,6 @@ defineOp({
     project_root: projectRootParam,
   },
   run: (p, { out }) => {
-    syncPluginStyles(p.project_root);
     const dir = projectDir(p.project_root);
     const arg = str(p.style);
     let key = '';

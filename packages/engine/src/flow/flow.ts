@@ -1,5 +1,5 @@
 import { allFlows, allStations } from './registered';
-import { chosenFlow, LockFile, readLock } from './lock';
+import { LockFile, readLock } from './lock';
 import type { ExtraStation, Flow, FlowID, PathRule, RouteNode, Station } from './types';
 
 export function station(id: string, extra: readonly ExtraStation[] = []): Station {
@@ -25,8 +25,9 @@ export class MissingFlowRecordError extends Error {
 /**
  * 新建时记下的流程（article-to-motion.flow.json 的 production.id）。没有记录、读不了锁文件、
  * 或记的流程这一版不认得，一律抛 MissingFlowRecordError：项目用哪个流程只看记录，不按 beat.yaml、song.yaml 这类文件推断。
+ * 第三方插件带来的流程记成 x:<插件 id>，要这台电脑装着那个插件（extra 里有它的流程）；没装时说清楚缺哪个插件。
  */
-export function recordedFlow(root: string): FlowID {
+export function recordedFlow(root: string, extra: readonly ExtraStation[] = []): FlowID {
   let rec;
   try {
     rec = readLock(root).production;
@@ -42,18 +43,25 @@ export function recordedFlow(root: string): FlowID {
         '它不是用这一版 ArticleToMotion 新建的项目（旧版建的项目没有这一段）：请新建一个项目，再把文章与素材拷进去。',
     );
   }
+  if (rec.id.startsWith('x:')) {
+    if (extra.some((x) => x.flow?.id === rec.id)) return rec.id;
+    throw new MissingPluginFlowError(rec.id.slice(2));
+  }
   if (!ids.includes(rec.id)) throw new MissingFlowRecordError(`${LockFile} 记的流程 ${rec.id} 不是这一版认得的流程（可选：${ids.join('、')}）`);
   return rec.id;
 }
 
-/**
- * 项目用的是哪个流程：锁文件里选了第三方站的流程（article-to-motion.flow.json 的 flow）且那个站读得到时用它，
- * 否则是新建时记下的流程（recordedFlow，没有记录直接报错）。
- */
+/** 项目的流程来自一个这台电脑上没装（或读不出来、没带流程）的第三方插件。 */
+export class MissingPluginFlowError extends MissingFlowRecordError {
+  constructor(readonly plugin: string) {
+    super(`这个项目用的是插件「${plugin}」带来的做法，这台电脑上没有装这个插件（或者它读不出来了）：在设置的「我的插件」里添加或更新它`);
+    this.name = 'MissingPluginFlowError';
+  }
+}
+
+/** 项目用的是哪个流程：新建时记下的（recordedFlow，没有记录直接报错）。 */
 export function detectFlow(root: string, extra: readonly ExtraStation[] = []): FlowID {
-  const chosen = chosenFlow(root);
-  if (chosen !== '' && extra.some((x) => x.flow?.id === chosen)) return chosen;
-  return recordedFlow(root);
+  return recordedFlow(root, extra);
 }
 
 /** 路线上的一站，连同它属于哪个站。 */
@@ -63,7 +71,7 @@ export interface RouteStop {
 }
 
 /**
- * 流程的路线：按站的先后展开站点，再放进项目加的第三方站（ExtraStation）。同一条路线里站点 id 重复直接报错。
+ * 流程的路线：按站的先后展开站点，再放进插件的站（ExtraStation：内置插件与已装的第三方插件）。同一条路线里站点 id 重复直接报错。
  */
 export function route(id: FlowID, extra: readonly ExtraStation[] = []): RouteStop[] {
   const out: RouteStop[] = [];

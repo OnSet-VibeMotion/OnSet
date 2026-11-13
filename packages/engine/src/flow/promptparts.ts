@@ -4,7 +4,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import type { LoadedStation } from './lock';
+import type { LoadedStation } from './installed';
 import { pageTab, toolName } from './pages';
 
 /** 插进某个阶段末尾的一节。 */

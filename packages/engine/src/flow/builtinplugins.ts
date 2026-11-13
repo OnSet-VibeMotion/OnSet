@@ -8,7 +8,7 @@ import path from 'node:path';
 import { assetsBase } from '../assets';
 import { compareBytes } from '../gojson';
 import { checkFiles } from './fetch';
-import type { LoadedStation } from './lock';
+import { roleOf, type LoadedStation } from './installed';
 import { ManifestFile } from './manifest';
 import { parseManifest } from './parse';
 import { pluginStationOwners } from './registered';
@@ -44,7 +44,7 @@ export function builtinPlugins(): LoadedStation[] {
     const manifest = parseManifest(fs.readFileSync(path.join(pluginDir, ManifestFile), 'utf8'), { builtin: true });
     if (manifest.id !== name) throw new Error(`内置插件 ${name} 的 id 写成了 ${manifest.id}`);
     checkFiles(pluginDir, manifest);
-    return { entry: { id: manifest.id, version: manifest.version, source: 'builtin', commit: '', digest: '' }, dir: pluginDir, manifest, builtin: true };
+    return { entry: { id: manifest.id, version: manifest.version, source: 'builtin', commit: '', digest: '', role: roleOf(manifest) }, dir: pluginDir, manifest, builtin: true };
   });
   builtinCache = { dir, plugins };
   return plugins;

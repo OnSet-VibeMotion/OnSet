@@ -259,14 +259,14 @@ export function resolveAllSkills(
     const dir = resolveSceneFilmStyle(sceneDir, h.peer_film_style);
     if (dir !== '') result[key] = dir;
   }
-  // 第三方插件给渲染器的技能：键 plugin:<站>/<技能>，指纹、读取放行与提示词都从这里来。
-  // 项目没加插件时一个都没有，老镜头的指纹不变。
-  Object.assign(result, flow.pluginSkillsFor(sceneDir, film?.plugin_skills ?? [], environ));
+  // 第三方插件给渲染器的技能：键 plugin:<插件>/<技能>，指纹、读取放行与提示词都从这里来。
+  // 插件装在用户级：装上一个 scenes: all 的技能，所有项目的镜头都带上它（输入确实变了，已渲染的标成要重渲染）。
+  Object.assign(result, flow.pluginSkillsFor(film?.plugin_skills ?? [], environ));
   return result;
 }
 
 /**
- * 第三方插件技能的提示词段：没有时为空串（老镜头的提示词逐字不变）。
+ * 第三方插件技能的提示词段：没有时为空串（没装插件时提示词与不带这一段逐字相同）。
  */
 export function pluginSkillSection(resolved: Record<string, string>): string {
   const keys = Object.keys(resolved)

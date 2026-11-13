@@ -38,7 +38,8 @@ async function collect(): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = {};
   // 制作提示词不在这里钉：它按流程组合，门禁与金样在 project/flowprompts.test.ts。
   // 路线、文件归站、关卡、阶段标题。
-  const extras = flow.projectExtras(project());
+  project();
+  const extras = flow.stationExtras();
   for (const id of ['speech', 'beat']) {
     out[`route:${id}`] = routeJSON(flow.route(id, extras));
     out[`owner:${id}`] = ['publish.md', 'covers/douyin-4x3.png', 'production/approval.json'].map((p) => flow.stationOfPath(p, id, extras));

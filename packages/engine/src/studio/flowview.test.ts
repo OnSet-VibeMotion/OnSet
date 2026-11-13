@@ -52,16 +52,20 @@ describe('flowView', () => {
     expect(v.hidden_pages).toEqual(['beat']);
   });
 
-  it('puts the first page of a third-party flow first and keeps the base flow pages', () => {
-    const dir = root('beat');
-    flow.addToProject(dir, flow.fetchStation(`link:${path.join(__dirname, '..', 'flow', 'testdata', 'fake-publisher')}`, process.env).entry);
-    flow.setProjectFlow(dir, 'fake-publisher');
+  it('puts the first page of a third-party flow first', () => {
+    flow.installStation(`link:${path.join(__dirname, '..', 'flow', 'testdata', 'fake-publisher')}`);
+    const dir = root('x:fake-publisher');
     const v = flowView(dir);
     expect(v.id).toBe('x:fake-publisher');
     expect(v.steps[0]).toBe('x:fake-publisher:dashboard');
-    expect(v.hidden_pages).toEqual(['script']);
-    expect(v.land_page).toBe('beat');
+    // 第一页是插件自己的页面：自带的第一页按口播算，节拍页用不上。
+    expect(v.hidden_pages).toEqual(['beat']);
+    expect(v.land_page).toBe('');
     expect(v.first_steps).toEqual(['x:fake-publisher:dashboard', 'script', 'beat']);
+  });
+
+  it('says which plugin is missing when the project flow comes from one that is not installed', () => {
+    expect(() => flowView(root('x:fake-publisher'))).toThrow('插件「fake-publisher」带来的做法');
   });
 });
 

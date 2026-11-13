@@ -10,7 +10,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import type { LoadedStation } from './lock';
+import type { LoadedStation } from './installed';
 import { extraPrompt, insertBlock, orphanBlock } from './promptparts';
 import { allFlows, allStageTitles, allStations, appendedSections, flowPrompt, pluginSectionFile, sectionsDir } from './registered';
 import type { FlowID } from './types';
@@ -116,7 +116,7 @@ export function composePrompt(order: readonly string[], read: SectionReader, opt
 
 export interface FlowComposeInput {
   flow: FlowID;
-  /** 项目加的站（loadProjectStations：内置插件与第三方站）。 */
+  /** 全部插件（loadStations：内置插件与已装的第三方插件）。 */
   stations: readonly LoadedStation[];
   /** 宿主与内置插件段落的画幅占位符替换（第三方站的文字不经过它）。 */
   canvas: (text: string) => string;
@@ -150,7 +150,7 @@ export function composeFlowPrompt(input: FlowComposeInput): string {
   if (input.flow.startsWith('x:')) {
     const id = input.flow.slice(2);
     const own = input.stations.find((s) => s.manifest.id === id && s.manifest.flow);
-    if (!own) throw new Error(`这个项目选用的流程 ${input.flow} 读不到`);
+    if (!own) throw new Error(`这个项目的流程 ${input.flow} 来自插件 ${id}，这台电脑上读不到它`);
     const def = own.manifest.flow!;
     const preamble = preambleSections();
     for (const ref of preamble) parts.push(builtinPart(ref));

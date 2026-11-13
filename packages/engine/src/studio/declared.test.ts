@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { addToProject, fetchStation, recordFlow } from '../flow';
+import { installedEntry, installStation, recordFlow, removeStation } from '../flow';
 import { computeStations } from './progress';
 import { discoverScenes } from './scenes';
 
@@ -36,14 +36,16 @@ function declaredPublisher(): string {
   return dir;
 }
 
-/** 走到发布这一站的项目：试听确认过，前面的站都算过了。 */
+/** 走到发布这一站的项目：试听确认过，前面的站都算过了。给了 station 时装上它，没给时不装。 */
 function project(publishMD: string | null, station?: string): string {
   const root = temp('am-declared-');
   recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
   fs.mkdirSync(path.join(root, 'production'), { recursive: true });
   fs.writeFileSync(path.join(root, 'production', 'approval.json'), '{"approved_at":"2026-11-01T00:00:00Z"}');
   if (publishMD !== null) fs.writeFileSync(path.join(root, 'publish.md'), publishMD);
-  if (station) addToProject(root, fetchStation(`link:${station}`, process.env).entry);
+  // 插件装在用户级：不带插件的项目要先把上一轮装的去掉。
+  if (station) installStation(`link:${station}`);
+  else if (installedEntry('fake-publisher')) removeStation('fake-publisher');
   return root;
 }
 

@@ -1,18 +1,28 @@
 export * from './types';
 export { builtinFlows, builtinStations, planRules, speechPrompt, stageTitles, tailStations } from './builtin';
 export { allFlows, allStageTitles, allStations, appendedSections, builtinFirstPages, flowPrompt, sectionsDir } from './registered';
-export { detectFlow, flow, gateFiles, MissingFlowRecordError, recordedFlow, route, station, stationOfPath, type RouteStop } from './flow';
+export { detectFlow, flow, gateFiles, MissingFlowRecordError, MissingPluginFlowError, recordedFlow, route, station, stationOfPath, type RouteStop } from './flow';
 export { chineseNumber, composeFlowPrompt, composeParts, composePrompt, readSection, type ComposeOptions, type FlowComposeInput, type PromptPart, type SectionReader } from './compose';
 export {
-  addToProject,
-  activeFlowStation,
+  brokenParticipants,
+  installedEntry,
+  installStation,
+  InstalledFile,
+  readInstalled,
+  removeStation,
+  roleOf,
+  stationExtras,
+  type Installed,
+  type InstalledEntry,
+  type InstalledRole,
+  type LoadedStations,
+  type StationProblem,
   builtinPluginIDs,
   builtinPlugins,
   builtinPluginsDir,
   stationOwners,
   pluginSkillsFor,
   extraPrompt,
-  setProjectFlow,
   type ManifestFlow,
   fetchStation,
   LockFile,
@@ -20,14 +30,12 @@ export {
   recordFlow,
   type FlowRecord,
   ManifestFile,
-  loadProjectStations,
+  loadStations,
   pageMayRead,
   pageTab,
   parseManifest,
   parseSource,
-  projectExtras,
   readLock,
-  removeFromProject,
   StationsDirEnv,
   stationsDir,
   toExtra,
@@ -36,7 +44,6 @@ export {
   writeStationForTest,
   type LoadedStation,
   type Lock,
-  type LockEntry,
   type Manifest,
   type ManifestNode,
   type ManifestOp,
@@ -70,5 +77,5 @@ export { checkParams, findStationOp, managedPython, NodePlaceholder, parseProgre
 export { changedFiles, declaredPath, isReservedPath, MaxListedPaths, ReservedPrefixes, scopeReport, scopeText, statProject, type ScopeReport, type StatSnapshot } from './scope';
 export { MaxStateFileBytes, readDeclaredState, type StateReading } from './state';
 export { OpsTrustNotice, pagePermissionLines } from './trust';
-export { pluginStyleSource, syncStyleSources } from './styles';
+export { pluginStyleSource, pluginStyleSources } from './styles';
 export { coerceSetting, publicSettings, stationSettings, writeStationSetting, type SettingValue } from './settings';

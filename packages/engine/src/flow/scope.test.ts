@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { lookPath } from '../envutil';
 import { MissingError } from '../prereq';
-import { addToProject, fetchStation, parseManifest, runStationOp, writeStationForTest } from './index';
+import { installStation, parseManifest, runStationOp, writeStationForTest } from './index';
 import { managedPython, resolveCommand } from './run';
 import { MaxListedPaths, scopeReport, statProject } from './scope';
 
@@ -26,7 +26,7 @@ function project(): string {
 }
 
 /** 一个用 {node} 跑一段脚本的站：脚本按 stdin 的 params.files 写文件。 */
-function writer(root: string): void {
+function writer(): void {
   const dir = writeStationForTest({
     'am-station.json': JSON.stringify({
       id: 'my-step',
@@ -43,19 +43,19 @@ console.log('am-result {"n":' + (input.params.files ?? []).length + '}');
 `,
   });
   temps.push(dir);
-  addToProject(root, fetchStation(`link:${dir}`, process.env).entry);
+  installStation(`link:${dir}`);
 }
 
 /** 没有 node 的 PATH：一个空目录。 */
 function bareEnv(): Record<string, string | undefined> {
   const empty = temp('am-empty-path-');
-  return { HOME: process.env.HOME, PATH: empty, AM_STATIONS_DIR: temp('am-stations-'), XDG_DATA_HOME: temp('am-data-') };
+  return { HOME: process.env.HOME, PATH: empty, AM_STATIONS_DIR: process.env.AM_STATIONS_DIR, XDG_DATA_HOME: temp('am-data-') };
 }
 
 describe('scope check', () => {
   it('stays quiet when the op writes only what it declared', async () => {
     const root = project();
-    writer(root);
+    writer();
     let out = '';
     const r = await runStationOp(root, 'my-step', 'write', { files: ['production/mine/out.json', 'production/mine/a/b.txt', 'exports/film.mp4'] }, (t) => (out += t), undefined, bareEnv());
     expect(r).toEqual({ ok: true, data: { n: 3 }, exit_code: 0 });
@@ -64,7 +64,7 @@ describe('scope check', () => {
 
   it('lists files written outside the declared scope', async () => {
     const root = project();
-    writer(root);
+    writer();
     let out = '';
     const r = await runStationOp(root, 'my-step', 'write', { files: ['production/mine/ok.json', 'notes/x.md', 'exports/cover.png'] }, (t) => (out += t), undefined, bareEnv());
     expect(r).toEqual({ ok: true, data: { n: 3 }, exit_code: 0, out_of_scope: ['exports/cover.png', 'notes/x.md'], out_of_scope_more: 0 });
@@ -74,7 +74,7 @@ describe('scope check', () => {
 
   it('fails the op when it writes am’s own files, and says the files stay written', async () => {
     const root = project();
-    writer(root);
+    writer();
     let out = '';
     const r = await runStationOp(root, 'my-step', 'write', { files: ['.agents/skills/x/SKILL.md', '.env', 'production/studio/hack.json', 'production/mine/ok.json'] }, (t) => (out += t), undefined, bareEnv());
     expect(r.ok).toBe(false);
@@ -112,7 +112,7 @@ describe('scope check', () => {
 
   it('checks ops started by a hook the same way', async () => {
     const root = project();
-    addToProject(root, fetchStation(`link:${fake}`, process.env).entry);
+    installStation(`link:${fake}`);
     let out = '';
     const r = await runStationOp(root, 'fake-publisher', 'on_event', {}, (t) => (out += t), undefined, bareEnv(), { name: 'film.approved', scribble: true });
     expect(r).toMatchObject({ ok: true, out_of_scope: ['notes/hook.txt'], out_of_scope_more: 0 });
@@ -123,7 +123,7 @@ describe('scope check', () => {
 describe('station runtimes', () => {
   it('runs {node} scripts without a node on PATH', async () => {
     const root = project();
-    addToProject(root, fetchStation(`link:${fake}`, process.env).entry);
+    installStation(`link:${fake}`);
     const env = bareEnv();
     expect(() => lookPath('node', env.PATH!)).toThrow();
     let out = '';

@@ -9,11 +9,11 @@ import path from 'node:path';
 import { dataDir } from '../envutil';
 import { gitHint, usableGit } from '../toolpath';
 import { treeDigest } from './digest';
-import type { LockEntry } from './lock';
+import { roleOf, type InstalledEntry } from './installed';
 import { ManifestFile, type Manifest } from './manifest';
 import { parseManifest } from './parse';
 
-/** 第三方站的存放目录（默认 <数据目录>/am/stations）。 */
+/** 第三方插件的存放目录（默认 <数据目录>/am/stations）：已装插件清单 installed.json 与按 commit 存的插件目录。 */
 export const StationsDirEnv = 'AM_STATIONS_DIR';
 
 export function stationsDir(env: Record<string, string | undefined>): string {
@@ -45,7 +45,7 @@ export function parseSource(spec: string): { kind: 'link'; dir: string } | { kin
 }
 
 /** 某个来源在本机的目录：link 就是它自己，git 按 commit 存在 stationsDir 下。 */
-export function sourceDir(entry: LockEntry, env: Record<string, string | undefined>): string {
+export function sourceDir(entry: InstalledEntry, env: Record<string, string | undefined>): string {
   const src = parseSource(entry.source);
   if (src.kind === 'link') return src.dir;
   return path.join(stationsDir(env), entry.id, entry.commit);
@@ -81,15 +81,15 @@ export function checkFiles(dir: string, m: Manifest): void {
 }
 
 /**
- * 取来一个站（git 按 ref 克隆、记 commit；link 直接读），校验清单，返回锁文件里的一项。
- * 只做下载与校验，不改项目。
+ * 取来一个插件（git 按 ref 克隆、记 commit；link 直接读），校验清单，返回已装插件清单里的一项。
+ * 只做下载与校验，不改清单（installStation 才记进去）。
  */
-export function fetchStation(spec: string, env: Record<string, string | undefined>, log: (line: string) => void = () => {}): { entry: LockEntry; dir: string; manifest: Manifest } {
+export function fetchStation(spec: string, env: Record<string, string | undefined>, log: (line: string) => void = () => {}): { entry: InstalledEntry; dir: string; manifest: Manifest } {
   const src = parseSource(spec);
   if (src.kind === 'link') {
     const manifest = readManifest(src.dir);
     checkFiles(src.dir, manifest);
-    return { entry: { id: manifest.id, version: manifest.version, source: `link:${src.dir}`, commit: '', digest: '' }, dir: src.dir, manifest };
+    return { entry: { id: manifest.id, version: manifest.version, source: `link:${src.dir}`, commit: '', digest: '', role: roleOf(manifest) }, dir: src.dir, manifest };
   }
   const git = usableGit(env);
   if (git === '') throw new Error(`添加 git 来源的站要用 git：${gitHint()}`);
@@ -119,7 +119,7 @@ export function fetchStation(spec: string, env: Record<string, string | undefine
       fs.mkdirSync(path.dirname(final), { recursive: true });
       fs.renameSync(checkout, final);
     }
-    return { entry: { id: manifest.id, version: manifest.version, source: spec.trim(), commit, digest }, dir: final, manifest };
+    return { entry: { id: manifest.id, version: manifest.version, source: spec.trim(), commit, digest, role: roleOf(manifest) }, dir: final, manifest };
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

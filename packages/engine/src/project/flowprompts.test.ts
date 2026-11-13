@@ -72,7 +72,7 @@ describe('new projects compose the prompt of their own flow', () => {
     for (const delivery of ['speech', 'beat', 'song']) {
       const root = created(delivery, 'vertical-9x16');
       expect(flow.flowRecord(root)).toEqual({ id: delivery, canvas: 'vertical-9x16' });
-      expect(flow.detectFlow(root, flow.projectExtras(root))).toBe(delivery);
+      expect(flow.detectFlow(root, flow.stationExtras())).toBe(delivery);
       // 项目里不放任何提示词文件。
       for (const file of ['PROMPT.md', 'PROMPT-PRODUCTION.md', 'PROMPT-SONG.md', 'PROMPT-CAST-ADDENDUM.md']) expect(fs.existsSync(path.join(root, file)), file).toBe(false);
     }
@@ -99,7 +99,8 @@ describe('new projects compose the prompt of their own flow', () => {
 
   it('keeps the route of song projects on the speech route', () => {
     const root = created('song');
-    const extras = flow.projectExtras(root);
+    const extras = flow.stationExtras();
+    expect(flow.detectFlow(root, extras)).toBe('song');
     expect(flow.route('song', extras)).toEqual(flow.route('speech', extras));
   });
 
@@ -357,9 +358,10 @@ describe('prompt content', () => {
 
 describe('third-party flow reuses builtin station sections', () => {
   it('takes the shared preamble, the builtin stations it names and its own prompt', () => {
-    const root = created('speech');
-    flow.addToProject(root, flow.fetchStation(`link:${fake}`, process.env).entry);
-    flow.setProjectFlow(root, 'fake-publisher');
+    // 插件带来的流程是新建时的一个做法：项目的流程记录写 x:<插件 id>。
+    flow.installStation(`link:${fake}`);
+    const root = created('x:fake-publisher');
+    expect(flow.flowRecord(root)).toEqual({ id: 'x:fake-publisher', canvas: 'vertical-3x4' });
     const { text: body, flow: id } = composeProjectPrompt(root);
     expect(id).toBe('x:fake-publisher');
     // 假发布插件的流程：intake、render、assemble、review、本站。

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { addToProject, builtinFlows, fetchStation, recordFlow } from '../flow';
+import { builtinFlows, installStation, recordFlow } from '../flow';
 import { computeStations, readProgress, recordGate, stationDefs, stationOfPath } from './progress';
 import { discoverScenes } from './scenes';
 
@@ -152,7 +152,7 @@ describe('production map', () => {
   it('places and judges a third-party station from its declaration', () => {
     const root = project({});
     write(root, 'production/review/review.json', '{"problems":[]}', 120);
-    addToProject(root, fetchStation(`link:${path.join(__dirname, '..', 'flow', 'testdata', 'fake-publisher')}`, process.env).entry);
+    installStation(`link:${path.join(__dirname, '..', 'flow', 'testdata', 'fake-publisher')}`);
     const ids = stations(root).stations.map((s) => s.id);
     expect(ids.slice(-2)).toEqual(['publish', 'auto-publish']);
     expect(status(root)['auto-publish']).toBe('todo');

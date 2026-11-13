@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { beforeEach } from 'vitest';
 // 镜头扩展块（beat、cast、song）由内置插件登记，经 scene 的包入口 index.ts 加载。
 // scene/ 自己的测试直接 import './scene'，绕过了包入口，这里替它们登记一次。
 import './src/plugin';
@@ -12,5 +13,9 @@ process.env.AM_SETTINGS_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), '
 process.env.AM_AGENT_BIN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-agent-bin-test-'));
 // 导演的模型服务密钥（director.defaultDir）也是用户级的：测试不能读到、更不能改开发者自己填的 key。
 process.env.AM_AGENT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-agent-dir-test-'));
-// 第三方站的存放目录（含插件的数据目录）也指到临时目录：测试不能往开发者真实的 ~/.local/share/am/stations 写。
+// 第三方插件的存放目录（已装插件清单、插件的数据目录）也指到临时目录：测试不能往开发者真实的 ~/.local/share/am/stations 写。
+// 插件装在用户级、对所有项目生效，所以每个用例一个新目录：一个用例装的插件不能漏进下一个用例。
 process.env.AM_STATIONS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-stations-test-'));
+beforeEach(() => {
+  process.env.AM_STATIONS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-stations-test-'));
+});
