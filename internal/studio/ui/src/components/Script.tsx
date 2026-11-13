@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api, errorText } from '../api';
-import type { Attachment, ScriptNode, ScriptResponse } from '../types';
+import type { Attachment, ScriptBlock, ScriptNode, ScriptResponse } from '../types';
+import { focusChatInput, readableText } from './ContextMenu';
 import { Markdown } from './chat/Markdown';
 import '../script.css';
 
@@ -27,6 +28,12 @@ function writeBool(key: string, value: boolean) {
 function duration(seconds: number): string {
   const total = Math.round(Math.max(0, seconds));
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/** 给正文段落编号（标题不算），右键引用时说「口播稿第 3 段」。 */
+function numberParagraphs(blocks: ScriptBlock[]): { block: ScriptBlock; para: number }[] {
+  let para = 0;
+  return blocks.map((block) => ({ block, para: block.kind === 'para' ? ++para : 0 }));
 }
 
 /** 稿子里有没有读法或短语标记：没有就不显示图例。 */
@@ -80,10 +87,11 @@ interface Props {
   /** 把一条消息交给对话：draftOnly 为 true 时只填进输入框。 */
   onQuick: (text: string, attachments: Attachment[], draftOnly?: boolean) => void;
   onFile: (path: string) => void;
+  onAttach: (attachment: Attachment) => void;
 }
 
 /** 口播稿页：终稿排成可读的文稿，标出读法与受保护短语；确认或提意见都交给对话。 */
-export function ScriptTab({ version, busy, onQuick, onFile }: Props) {
+export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
   const [script, setScript] = useState<ScriptResponse | null>(null);
   const [error, setError] = useState('');
   const [marks, setMarks] = useState(() => readBool('am-studio.script-marks', true));
@@ -110,9 +118,7 @@ export function ScriptTab({ version, busy, onQuick, onFile }: Props) {
         return;
       }
       // 引用的是字幕文字：去掉标注出来的读法与只读不显示的部分。
-      const fragment = sel.getRangeAt(0).cloneContents();
-      fragment.querySelectorAll('rt, .spoken-only').forEach((el) => el.remove());
-      setSelection((fragment.textContent ?? '').trim());
+      setSelection(readableText(sel.getRangeAt(0).cloneContents()));
     };
     document.addEventListener('selectionchange', update);
     return () => document.removeEventListener('selectionchange', update);
@@ -133,7 +139,6 @@ export function ScriptTab({ version, busy, onQuick, onFile }: Props) {
     setMarks(!marks);
     writeBool('am-studio.script-marks', !marks);
   };
-  const quote = selection.length > 120 ? selection.slice(0, 120) + '…' : selection;
 
   return (
     <div class="script-tab">
@@ -152,10 +157,13 @@ export function ScriptTab({ version, busy, onQuick, onFile }: Props) {
           <>
             <button
               disabled={!selection}
-              title={selection ? '把选中的这段带进输入框' : '先在稿子里选中一段文字'}
-              onClick={() => onQuick(`口播稿这一段要改：\n> ${quote}\n\n`, [], true)}
+              title={selection ? '把选中的文字加进对话的引用（也可以右键）' : '先在稿子里选中一段文字，或在段落上右键'}
+              onClick={() => {
+                onAttach({ quote: selection, label: '口播稿', source: script.path });
+                focusChatInput();
+              }}
             >
-              针对所选提意见
+              引用所选
             </button>
             <button onClick={() => onQuick('口播稿要改：', [], true)}>提修改意见</button>
             {!voiced && (
@@ -188,14 +196,14 @@ export function ScriptTab({ version, busy, onQuick, onFile }: Props) {
       )}
 
       {script.blocks ? (
-        <article ref={body} class={`script-body${marks ? ' marks' : ''}`}>
-          {script.blocks.map((block, index) =>
+        <article ref={body} class={`script-body${marks ? ' marks' : ''}`} data-ctx-source={script.path} data-ctx-label="口播稿">
+          {numberParagraphs(script.blocks).map(({ block, para }, index) =>
             block.kind === 'heading' ? (
               <h3 key={index} class={`level-${Math.min(block.level ?? 1, 3)}`}>
                 {block.text}
               </h3>
             ) : (
-              <p key={index}>
+              <p key={index} data-ctx-para={para}>
                 <Nodes nodes={block.nodes ?? []} />
               </p>
             ),
@@ -204,7 +212,9 @@ export function ScriptTab({ version, busy, onQuick, onFile }: Props) {
       ) : (
         <div ref={body}>
           {!script.final && <p class="small muted">还没有口播终稿，下面是项目里的原稿。</p>}
-          <pre class="text">{script.content}</pre>
+          <pre class="text" data-ctx-source={script.path} data-ctx-label={script.final ? '口播稿' : '原稿'}>
+            {script.content}
+          </pre>
         </div>
       )}
 

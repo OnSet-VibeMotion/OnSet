@@ -432,6 +432,26 @@ func TestAttachmentText(t *testing.T) {
 	if attachmentText(nil) != "" {
 		t.Fatal("没有附件时不加内容")
 	}
+	quoted := attachmentText([]Attachment{
+		{Quote: "第一行\n第二行", Label: "口播稿第 2 段", Source: "production/script-final.md"},
+		{Ref: true, SceneID: "scene-003"},
+		{Ref: true, Source: "production/treatment.md", Note: "看主旨"},
+	})
+	for _, want := range []string{"用户引用的内容", "口播稿第 2 段（production/script-final.md）：\n  > 第一行\n  > 第二行", "- 镜头 scene-003", "- 文件 production/treatment.md\n  备注：看主旨"} {
+		if !strings.Contains(quoted, want) {
+			t.Fatalf("缺少 %q：%s", want, quoted)
+		}
+	}
+	root := t.TempDir()
+	if err := validateAttachments(root, []Attachment{{Quote: strings.Repeat("字", maxQuoteRunes+1)}}); err == nil {
+		t.Fatal("超长引用应当拒绝")
+	}
+	if err := validateAttachments(root, []Attachment{{Ref: true}}); err == nil {
+		t.Fatal("空引用应当拒绝")
+	}
+	if err := validateAttachments(root, []Attachment{{Quote: "x", Source: "../outside.md"}}); err == nil {
+		t.Fatal("项目外的出处应当拒绝")
+	}
 	if got := transcript([]SessionEvent{{Event: eventOf(kindUser, strings.Repeat("长", transcriptLimit+10))}}); len([]rune(got)) > transcriptLimit {
 		t.Fatalf("对话记录没有截断：%d", len([]rune(got)))
 	}

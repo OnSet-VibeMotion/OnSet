@@ -1222,3 +1222,22 @@ div.tool {
 .chat .view-link .view-note {
   color: var(--text-2);
 }
+
+/* 引用：右键「引用到对话」加进来的文字、镜头、文件。 */
+.chat .tray .quote-card {
+  width: 220px;
+  align-items: flex-start;
+}
+.chat .tray .quote-card .quote-mark {
+  flex: none;
+  color: var(--accent);
+  font-size: 15px;
+  line-height: 1;
+}
+.chat .tray .quote-card .doc-meta {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+}

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/chouheiwa/articale-to-motion/internal/agentrun"
 	"github.com/chouheiwa/articale-to-motion/internal/config"
@@ -90,7 +91,16 @@ type Attachment struct {
 	Upload bool   `json:"upload,omitempty"`
 	Name   string `json:"name,omitempty"`
 	Size   int64  `json:"size,omitempty"`
+	// Quote 是用户右键「引用到对话」的一段文字，Source 是它所在的项目文件（可以为空，
+	// 例如引用的是编排工具的回复），Label 是给人看的出处（「口播稿第 3 段」）。
+	Quote string `json:"quote,omitempty"`
+	Label string `json:"label,omitempty"`
+	// Ref 为 true 表示只是指给编排工具看的一样东西（镜头 SceneID 或文件 Source），不带截图。
+	Ref bool `json:"ref,omitempty"`
 }
+
+// maxQuoteRunes 是一条引用的上限：再长就该让编排工具自己去读文件。
+const maxQuoteRunes = 4000
 
 // Box 是画面上的一个区域，单位是视频像素。
 type Box struct {
@@ -318,17 +328,51 @@ func attachmentText(attachments []Attachment) string {
 	if len(attachments) == 0 {
 		return ""
 	}
-	var b strings.Builder
-	var frames []Attachment
+	var uploads, refs, frames []Attachment
 	for _, a := range attachments {
-		if a.Upload {
-			if b.Len() == 0 {
-				b.WriteString("\n\n用户上传的文件（存在 Studio 的上传目录里，不属于项目；要用时先复制或转换到项目里合适的位置，例如文章放项目根或 docs/，素材放 assets/）：")
-			}
-			fmt.Fprintf(&b, "\n- %s「%s」：%s", uploadKind(a.Name), a.Name, a.Path)
-			continue
+		switch {
+		case a.Upload:
+			uploads = append(uploads, a)
+		case a.Quote != "" || a.Ref:
+			refs = append(refs, a)
+		default:
+			frames = append(frames, a)
 		}
-		frames = append(frames, a)
+	}
+	var b strings.Builder
+	if len(uploads) > 0 {
+		b.WriteString("\n\n用户上传的文件（存在 Studio 的上传目录里，不属于项目；要用时先复制或转换到项目里合适的位置，例如文章放项目根或 docs/，素材放 assets/）：")
+		for _, a := range uploads {
+			fmt.Fprintf(&b, "\n- %s「%s」：%s", uploadKind(a.Name), a.Name, a.Path)
+		}
+	}
+	if len(refs) > 0 {
+		b.WriteString("\n\n用户引用的内容（这条消息说的就是这些）：")
+		for _, a := range refs {
+			b.WriteString("\n- ")
+			switch {
+			case a.Quote != "":
+				label := a.Label
+				if label == "" {
+					label = "一段文字"
+				}
+				b.WriteString(label)
+				if a.Source != "" {
+					fmt.Fprintf(&b, "（%s）", a.Source)
+				}
+				b.WriteString("：")
+				for _, line := range strings.Split(strings.TrimSpace(a.Quote), "\n") {
+					b.WriteString("\n  > " + line)
+				}
+			case a.SceneID != "":
+				fmt.Fprintf(&b, "镜头 %s", a.SceneID)
+			case a.Source != "":
+				fmt.Fprintf(&b, "文件 %s", a.Source)
+			}
+			if a.Note != "" {
+				b.WriteString("\n  备注：" + a.Note)
+			}
+		}
 	}
 	if len(frames) == 0 {
 		return b.String()
@@ -378,6 +422,12 @@ func validateAttachments(projectPath string, attachments []Attachment) error {
 			if _, err := containedPath(projectPath, a.Source); err != nil {
 				return err
 			}
+		}
+		if n := utf8.RuneCountInString(a.Quote); n > maxQuoteRunes {
+			return fmt.Errorf("引用太长（%d 字，上限 %d）：长内容请直接说文件名，让编排工具自己读", n, maxQuoteRunes)
+		}
+		if a.Ref && a.SceneID == "" && a.Source == "" {
+			return fmt.Errorf("引用要指明镜头或文件")
 		}
 	}
 	return nil

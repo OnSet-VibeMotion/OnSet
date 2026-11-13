@@ -597,7 +597,7 @@ function TurnView(props: BlockProps & { turn: TurnBlock }) {
         <ExecutionShell turn={turn} live={live} elapsed={elapsed} projectPath={props.projectPath} onOpenFile={props.onOpenFile} onToggle={props.onToggle} />
       )}
       {proseText.trim() && (
-        <div class="message assistant">
+        <div class="message assistant" data-ctx-label="回复" data-ctx-whole>
           <Markdown text={stripChoices(proseText)} />
         </div>
       )}
@@ -949,6 +949,22 @@ function AttachmentTray({ attachments, onRemove }: { attachments: Attachment[]; 
     <ul class="tray" id="attachments">
       {attachments.map((a, index) => {
         const image = a.path && (!a.upload || /\.(png|jpe?g|webp|gif)$/i.test(a.path));
+        if (a.quote || a.ref) {
+          const title = a.quote ? a.label || '引用' : a.scene_id ? `镜头 ${a.scene_id}` : a.source ?? '';
+          const meta = a.quote ? a.quote.replace(/\s+/g, ' ') : a.scene_id ? '镜头' : '文件';
+          return (
+            <li key={index} class="doc-card quote-card" title={a.quote ? `${title}\n${a.quote}` : title}>
+              <span class="quote-mark" aria-hidden="true">{a.quote ? '❝' : a.scene_id ? <Icon name="film" size={14} /> : <Icon name="file" size={14} />}</span>
+              <span class="doc-text">
+                <span class="doc-name">{title}</span>
+                <span class="doc-meta">{meta}</span>
+              </span>
+              <button class="remove" onClick={() => onRemove(index)} aria-label="移除引用">
+                <Icon name="close" size={9} />
+              </button>
+            </li>
+          );
+        }
         const title = a.upload ? a.name ?? '文件' : a.scene_id ?? '画面';
         const meta = a.upload
           ? formatSize(a.size ?? 0)

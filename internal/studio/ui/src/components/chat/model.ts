@@ -205,7 +205,7 @@ export function parseChoices(text: string): string[] {
 
 /** 用户消息里服务端附上的附件说明，拆出来另外显示。 */
 export function splitAttachmentText(text: string): { body: string; extra: string } {
-  const index = text.search(/\n\n(用户上传的文件|附带的画面上下文)/);
+  const index = text.search(/\n\n(用户上传的文件|用户引用的内容|附带的画面上下文)/);
   if (index < 0) return { body: text, extra: '' };
   return { body: text.slice(0, index), extra: text.slice(index).trim() };
 }

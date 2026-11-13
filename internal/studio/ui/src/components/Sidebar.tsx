@@ -134,6 +134,7 @@ function FileTree(props: { files: TreeFile[]; selected: string; recent: Set<stri
             class={'row tree-file' + (props.recent.has(file.path) ? ' recent' : '')}
             style={{ paddingLeft: 26 + depth * 14 }}
             title={file.path}
+            data-ctx-file={file.path}
             onClick={() => props.onFile(file.path)}
           >
             <span class="ellipsis">{file.path.split('/').pop()}</span>

@@ -81,6 +81,31 @@ test('opens a project file from the tree', async ({ page }) => {
   await expect(page.locator('#file-content')).toContainText('整片制作提示词');
 });
 
+test('right-click quotes script text and files into the chat', async ({ page }) => {
+  await fs.mkdir(path.join(project, 'production'), { recursive: true });
+  await fs.writeFile(path.join(project, 'production', 'script-final.md'), '# 开场\n\n第一段，<2025年|二零二五年>很贵。\n\n第二段。\n');
+  await openProject(page);
+  await page.locator('[data-tab="script"]').click();
+  // 段落上右键：整段引用，引用里是字幕文字，不带读法。
+  await page.locator('.script-body p').first().click({ button: 'right' });
+  await expect(page.locator('.ctx-menu')).toContainText('口播稿第 1 段');
+  await page.locator('.ctx-item', { hasText: '引用这一段到对话' }).click();
+  await expect(page.locator('.ctx-menu')).toHaveCount(0);
+  await expect(page.locator('#attachments .quote-card')).toContainText('第一段，2025年很贵。');
+  await expect(page.locator('#attachments .quote-card')).not.toContainText('二零二五年');
+  // 文件树上右键：引用文件。
+  await page.locator('.tree-file', { hasText: 'PROMPT.md' }).click({ button: 'right' });
+  await page.locator('.ctx-item', { hasText: '引用这个文件到对话' }).click();
+  await expect(page.locator('#attachments .quote-card')).toHaveCount(2);
+  // 输入框里保留浏览器自己的菜单。
+  await page.locator('#prompt').click({ button: 'right' });
+  await expect(page.locator('.ctx-menu')).toHaveCount(0);
+  await page.locator('#prompt').fill('这段太长');
+  await page.locator('#send').click();
+  await expect(page.locator('.user-extra')).toContainText('口播稿第 1 段（production/script-final.md）');
+  await expect(page.locator('.user-extra')).toContainText('文件 PROMPT.md');
+});
+
 test('picks the orchestrator and renderer per session', async ({ page }) => {
   await openProject(page);
   await expect(page.locator('#agent-tool')).toHaveValue('claude');

@@ -68,7 +68,9 @@ export function Preview(props: Props) {
       </nav>
       {props.beat?.enabled && <BeatBanner beat={props.beat} version={props.version} run={props.run} />}
       <div class="preview-body">
-        {props.tab === 'script' && <ScriptTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} />}
+        {props.tab === 'script' && (
+          <ScriptTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} onAttach={props.onAttach} />
+        )}
         {props.tab === 'scene' && <SceneTab {...props} scene={scene} />}
         {props.tab === 'compose' && <ComposeTab {...props} scene={scene} />}
         {props.tab === 'final' && <FinalTab tree={props.tree} version={props.version} run={props.run} />}
@@ -182,6 +184,7 @@ function Timeline({ scenes, usage, sceneId, onScene }: { scenes: Scene[]; usage:
             <button
               key={scene.id}
               class={`scene ${status}${scene.id === sceneId ? ' on' : ''}`}
+              data-ctx-scene={scene.id}
               style={{ flex: `${scene.duration_seconds || 1} 1 0` }}
               title={`${scene.id}${scene.duration_seconds ? ` · ${scene.duration_seconds.toFixed(1)} 秒` : ''} · ${statusText[status]}${scene.attempts ? ` · ${usageLabel(scene)}` : ''}`}
               aria-pressed={scene.id === sceneId}
@@ -312,7 +315,7 @@ function SceneTab(props: Props & { scene: Scene | null }) {
   };
 
   return (
-    <div class="scene-tab">
+    <div class="scene-tab" data-ctx-scene={scene?.id}>
       <div class="toolbar">
         <span class="scene-title">{scene.id}</span>
         {scene.duration_seconds ? <span class="mono small muted">{scene.duration_seconds.toFixed(2)}s</span> : null}
@@ -745,7 +748,11 @@ function PublishTab({ version, run }: { version: number; run: RunAction }) {
           发布校验
         </button>
       </div>
-      {publish.available && <pre class="text">{publish.content}</pre>}
+      {publish.available && (
+        <pre class="text" data-ctx-source="publish.md" data-ctx-label="发布文案">
+          {publish.content}
+        </pre>
+      )}
       <div class="gallery">
         {publish.covers.map((cover) => (
           <figure key={cover.path}>
@@ -800,7 +807,9 @@ export function FileView({ path, version }: { path: string; version: number }) {
       {imageExt.test(path) && <img class="file-image" src={rawURL(path, version)} alt="" />}
       {audioExt.test(path) && <audio controls src={rawURL(path, version)} />}
       {error && <p class="error-line">{error}</p>}
-      {file && (file.binary ? <Empty>二进制文件或超过 2 MB，不显示内容。</Empty> : <pre class="text" id="file-content">{file.content}</pre>)}
+      {file && (file.binary ? <Empty>二进制文件或超过 2 MB，不显示内容。</Empty> : <pre class="text" id="file-content" data-ctx-source={path} data-ctx-label={path.split('/').pop()}>
+            {file.content}
+          </pre>)}
     </div>
   );
 }

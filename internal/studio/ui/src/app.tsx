@@ -7,6 +7,7 @@ import { SetupGuide, useSetup } from './components/SetupGuide';
 import { Icon } from './components/Icon';
 import { Preview, tabs, type Tab } from './components/Preview';
 import { scriptFinalPath } from './components/Script';
+import { ContextMenu } from './components/ContextMenu';
 import { ProjectDialog } from './components/ProjectDialog';
 import { Sidebar } from './components/Sidebar';
 import { Tasks } from './components/Tasks';
@@ -304,6 +305,23 @@ export function App() {
 
   const project = projects.find((p) => p.id === currentId);
 
+  // 附到对话：截图、圈选、右键引用都走这里；同一段引用、同一个镜头或文件不重复加。
+  const addAttachment = (attachment: Attachment) => {
+    const same = (a: Attachment) =>
+      (attachment.quote && a.quote === attachment.quote && a.source === attachment.source) ||
+      (attachment.ref && a.ref && a.scene_id === attachment.scene_id && a.source === attachment.source);
+    if (attachments.some(same)) {
+      notify('已经在对话的引用里了。');
+      return;
+    }
+    setAttachments((current) => [...current, attachment]);
+    notify(attachment.quote || attachment.ref ? '已加进对话的引用，说说要怎么改。' : '已附到对话，发送消息时一起带上。');
+  };
+  const quick = (text: string, quickAttachments: Attachment[], draftOnly?: boolean) => {
+    setOutbox({ text, attachments: quickAttachments, nonce: Date.now(), draftOnly });
+    if (!draftOnly) notify('已发给编排工具，进度看右侧对话。');
+  };
+
   // 编排工具经 am studio show 请用户看某一页：切过去，镜头与文件页带上对象。
   const openView = (view: ViewRequest) => {
     const page = tabs.find(([id]) => id === view.page)?.[0];
@@ -429,6 +447,22 @@ export function App() {
         />
       ) : (
         <div class="workspace">
+          <ContextMenu
+            onAttach={addAttachment}
+            onQuick={quick}
+            onScene={(id) => {
+              setSceneId(id);
+              setTab('scene');
+            }}
+            onFile={(path) => {
+              if (path === scriptFinalPath) {
+                setTab('script');
+                return;
+              }
+              setFilePath(path);
+              setTab('file');
+            }}
+          />
           <Sidebar
             state={state}
             tree={tree}
@@ -452,14 +486,8 @@ export function App() {
             version={version}
             beat={beat}
             busy={busy}
-            onAttach={(attachment) => {
-              setAttachments((current) => [...current, attachment]);
-              notify('已附到对话，发送消息时一起带上。');
-            }}
-            onQuick={(text, quickAttachments, draftOnly) => {
-              setOutbox({ text, attachments: quickAttachments, nonce: Date.now(), draftOnly });
-              if (!draftOnly) notify('已发给编排工具，进度看右侧对话。');
-            }}
+            onAttach={addAttachment}
+            onQuick={quick}
             onFile={(path) => {
               setFilePath(path);
               setTab('file');

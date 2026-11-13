@@ -85,6 +85,11 @@ export interface Attachment {
   selector?: string;
   source?: string;
   note?: string;
+  /** 右键「引用到对话」的文字与出处（label 给人看，source 是项目内路径）。 */
+  quote?: string;
+  label?: string;
+  /** 只指给编排工具看的镜头（scene_id）或文件（source）。 */
+  ref?: boolean;
 }
 
 export interface SessionMeta {
