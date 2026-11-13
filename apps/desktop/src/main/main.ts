@@ -25,6 +25,10 @@ protocol.registerSchemesAsPrivileged([
 
 app.setName('ArticleToMotion');
 
+// 端到端测试用（apps/desktop/e2e）：把 userData 指到临时目录，私有 am shim、单实例锁与浏览器存储都不碰
+// 真实的 ~/Library/Application Support/ArticleToMotion。必须在 requestSingleInstanceLock 之前设。
+if (process.env.AM_DESKTOP_USER_DATA) app.setPath('userData', process.env.AM_DESKTOP_USER_DATA);
+
 const rendererDir = path.join(__dirname, 'renderer');
 let backend: Server | null = null;
 
@@ -131,7 +135,9 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(async () => {
-    process.env.PATH = loginShellPath();
+    // 端到端测试用：AM_DESKTOP_KEEP_PATH=1 时不并入登录 shell 的 PATH，否则测试放在 PATH 最前面的
+    // 假编排工具（e2e/fake-bin/claude）会被登录 shell 里真实的 claude 挤到后面。
+    if (process.env.AM_DESKTOP_KEEP_PATH !== '1') process.env.PATH = loginShellPath();
     // 引擎从这里读内置资产（Go 版是 go:embed 进二进制的）。
     process.env.AM_ASSETS_DIR ??= assetsDir();
     try {

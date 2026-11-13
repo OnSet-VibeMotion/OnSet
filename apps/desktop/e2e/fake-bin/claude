@@ -1,0 +1,45 @@
+#!/bin/sh
+# Studio e2e 用的假 claude：回报会话、改写 scenes/scene-001/prompt.md、输出 stream-json。
+# apps/desktop/e2e/fixtures.mjs 把本目录放在客户端进程 PATH 的最前面。
+# 提示词（最后一个参数）里带「慢慢来」时只回报会话然后挂起，供取消测试使用。
+sid="e2e-session"; prev=""; prompt=""
+for a in "$@"; do
+  if [ "$prev" = "--session-id" ] || [ "$prev" = "--resume" ]; then sid="$a"; fi
+  prev="$a"; prompt="$a"
+done
+printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "$sid"
+case "$prompt" in *慢慢来*) exec sleep 60 ;; esac
+# 「给我选项」：列一份待办清单，回复末尾带 choices 代码块，不改文件。
+case "$prompt" in *给我选项*)
+  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"p1","name":"TodoWrite","input":{"todos":[{"content":"读稿子","status":"completed","activeForm":"读稿子中"},{"content":"定风格","status":"in_progress","activeForm":"正在定风格"}]}}]}}\n'
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"选一个风格：\\n```choices\\n深色科技风\\n白板手绘风\\n```"}]}}\n'
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
+  exit 0 ;;
+esac
+# 「推荐风格」：回复带 film-styles 代码块与 choices 代码块，不改文件。
+case "$prompt" in *推荐风格*)
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"推荐两种：\\n```film-styles\\nlemo-opuscar/impasto 厚涂有分量\\nlemo-opuscar/ukiyoe 版画感强\\n```\\n```choices\\n不用整片风格\\n```"}]}}\n'
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
+  exit 0 ;;
+esac
+# 「做几个试听」：生成一个音频文件，回复里只写文件名（目录在前文另说），网页要能找到并放播放器。
+case "$prompt" in *做几个试听*)
+  mkdir -p production/audio/auditions
+  printf 'RIFF$\000\000\000WAVEfmt \020\000\000\000\001\000\001\000@\037\000\000@\037\000\000\001\000\010\000data\000\000\000\000' > production/audio/auditions/try-A.wav
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"试听在 `production/audio/auditions/` 里：\\n\\n| 文件 | 音色 |\\n|---|---|\\n| `try-A.wav` | 稳重 |"}]}}\n'
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
+  exit 0 ;;
+esac
+# 「排版测试」：回复带表格、嵌套列表、任务列表、代码块，以及要被清洗掉的 HTML。
+case "$prompt" in *排版测试*)
+  printf '%s\n' '{"type": "assistant", "message": {"content": [{"type": "text", "text": "# 标题\n\n| 文件 | 音色 |\n|---|---|\n| `PROMPT.md` | **稳重** |\n\n- 第一层\n  - 第二层\n- [x] 已完成\n- [ ] 待办\n\n~~删掉~~ *斜体* **好。**了 见 https://example.com\n\n```bash\nam setup\n```\n\n<img src=x onerror=\"window.__xss=1\"><script>window.__xss=2</script>[坏链接](javascript:alert(1))\n"}]}}'
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
+  exit 0 ;;
+esac
+# 「稍等」：先停 3 秒再照常改，供排队测试使用。
+case "$prompt" in *稍等*) sleep 3 ;; esac
+printf 'after\n' > scenes/scene-001/prompt.md
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"scenes/scene-001/prompt.md"}}]}}\n'
+printf '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}\n'
+printf '{"type":"assistant","message":{"content":[{"type":"text","text":"已把镜头提示词改好"}]}}\n'
+printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
