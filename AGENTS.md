@@ -252,9 +252,10 @@ SVG 转 PNG 必须走 `rsvg-convert`（`internal/styleimage`），**不能用 Im
 | 编排工具与渲染工具按会话选（`SessionMeta.Tool` / `Renderer`），默认取项目配置；Studio 不改 `article-to-motion.conf`，选择经 `sessionConfig` 覆盖后由 `ChildEnvironment` 写进子进程的 `ORCHESTRATOR` / `RENDERER` | 环境变量优先于项目配置，编排工具在这一轮里调用的 `am scene run` 因此也用会话选的渲染工具。换编排工具时清掉 CLI 会话 id，下一轮按续接失败的路子带上对话记录开新会话 |
 | 项目路径一律用 `currentProject()` 返回的（已 `EvalSymlinks`） | macOS 的 `/var` 是 `/private/var` 的链接，两种写法会被当成两个项目，锁和会话都对不上 |
 | 上传的文件存进 `production/studio/uploads/`（`uploads.go`），附件带 `upload: true`，提示词里只给路径和种类，由编排工具在这一轮里复制或转换到项目里；`.env` 拒收 | Studio 不写项目文件。上传落在不进快照的状态目录，文件真正进项目的那一步是某一轮的改动，照常能看差异、能回退 |
-| 一轮进行中发的消息排队（`enqueueTurn`，事件 `queued`），这一轮结束后合并成下一轮（`drainQueue`）；`interrupt: true` 停掉当前这一轮马上发；按停止会清掉排队 | 各家 CLI 在非交互模式下都不能中途注入输入，只能排到下一轮。按停止多半是不想让后面的要求接着跑 |
+| 一轮进行中发的消息排队（`enqueueTurn`，事件 `queued` 带 `queue_id`），这一轮结束后合并成下一轮（`drainQueue`）；`DELETE …/queue/{id}` 移除（事件 `unqueued`），`POST …/queue/{id}/steer` 把它提到最前并停掉当前这一轮；按停止会清掉排队 | 各家 CLI 在非交互模式下都不能中途注入输入，只能排到下一轮。按停止多半是不想让后面的要求接着跑 |
 | 编排工具要用户拍板时在回复末尾写 ` ```choices ` 代码块，网页渲染成按钮（`Chat.tsx` 的 `parseChoices`），点了把那一行原样发出；约定写在 `studioInteraction`，聊天开场、整片制作第一轮、续接失败补发时都带上 | 没有结构化的「提问」事件，这是三家都能做到的最小约定；改格式要两边一起改 |
 | 待办清单统一成 `agentrun.KindPlan`（claude 的 TodoWrite、codex 的 `todo_list`、opencode 的 `todowrite`），每条是完整清单；镜头的「渲染中」由渲染日志三分钟内有写入且比尝试记录新判断（`sceneRendering`） | 整片制作要跑几个小时，只看一串工具调用不知道做到哪了。新增一家 CLI 时它的待办工具也要译成 plan 事件 |
+| 聊天面板的结构照 OpenDesign：一轮的过程（思考、工具、中间的话）收进一个折叠块，进行中展开、结束收起，结尾的话才是回复；进度是底部浮动的药丸，排队的消息叠在输入框上方。事件到界面的整理只在 `ui/src/components/chat/model.ts`（`buildBlocks`） | 一轮动辄几十次工具调用，平铺会把回复淹没；整理逻辑放一处，渲染组件只管画 |
 | `/api/files` 与 `/preview/scenes/` 经 `containedPath` 解析（含符号链接），`.env` 一律不读 | 默认只监听回环地址，但手机经隧道访问时这两个接口就是对外的 |
 
 ### 前端

@@ -122,6 +122,7 @@ export type EventKind =
   | 'notice'
   | 'turn-reverted'
   | 'queued'
+  | 'unqueued'
   | 'plan';
 
 /** 编排工具的待办清单一项。 */
@@ -146,6 +147,7 @@ export interface SessionEvent {
   files?: string[];
   changes?: FileChange[];
   plan?: PlanItem[];
+  queue_id?: string;
 }
 
 export interface Turn {

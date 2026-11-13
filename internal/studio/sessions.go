@@ -35,6 +35,8 @@ const (
 	kindTurnReverted agentrun.Kind = "turn-reverted"
 	// kindQueued 是这一轮进行中用户又发的消息：排队，这一轮结束后作为下一轮发出。
 	kindQueued agentrun.Kind = "queued"
+	// kindUnqueued 是用户移除了一条排队的消息。
+	kindUnqueued agentrun.Kind = "unqueued"
 )
 
 const (
@@ -70,6 +72,8 @@ type SessionEvent struct {
 	Status  string       `json:"status,omitempty"`
 	Files   []string     `json:"files,omitempty"`
 	Changes []FileChange `json:"changes,omitempty"`
+	// QueueID 标出 queued / unqueued 事件说的是哪一条排队的消息。
+	QueueID string `json:"queue_id,omitempty"`
 }
 
 // Attachment 是随消息附上的画面上下文。
@@ -413,6 +417,8 @@ func transcript(events []SessionEvent) string {
 
 // turnRequest 是发起一轮对话所需的全部输入。
 type turnRequest struct {
+	// QueueID 只对排队的消息有值，网页用它移除、引导某一条。
+	QueueID     string
 	Message     string
 	Prompt      string // 非空时直接作为发给编排工具的提示词（整片制作的第一轮）
 	Attachments []Attachment
@@ -635,11 +641,52 @@ func (s *Server) enqueueTurn(p Project, sess *session, req turnRequest) (bool, e
 		s.sessions.mu.Unlock()
 		return false, nil
 	}
+	req.QueueID = newID("q")
 	sess.queue = append(sess.queue, req)
 	turnID := sess.meta.RunningTurn
 	s.sessions.mu.Unlock()
-	s.emit(sess, turnID, SessionEvent{Event: agentrun.Event{Kind: kindQueued, Text: req.Message + attachmentText(req.Attachments)}})
+	s.emit(sess, turnID, SessionEvent{Event: agentrun.Event{Kind: kindQueued, Text: req.Message + attachmentText(req.Attachments)}, QueueID: req.QueueID})
 	return true, nil
+}
+
+// unqueue 移除一条排队的消息；找不到（已经发出去了）时返回 false。
+func (s *Server) unqueue(sess *session, queueID string) bool {
+	s.sessions.mu.Lock()
+	found := false
+	for i, req := range sess.queue {
+		if req.QueueID == queueID {
+			sess.queue = append(sess.queue[:i:i], sess.queue[i+1:]...)
+			found = true
+			break
+		}
+	}
+	turnID := sess.meta.RunningTurn
+	s.sessions.mu.Unlock()
+	if found {
+		s.emit(sess, turnID, SessionEvent{Event: agentrun.Event{Kind: kindUnqueued}, QueueID: queueID})
+	}
+	return found
+}
+
+// steer 把一条排队的消息提到最前，并停掉进行中的一轮：这一轮结束后排队的消息立刻发出。
+func (s *Server) steer(sess *session, queueID string) bool {
+	s.sessions.mu.Lock()
+	index := -1
+	for i, req := range sess.queue {
+		if req.QueueID == queueID {
+			index = i
+			break
+		}
+	}
+	if index > 0 {
+		req := sess.queue[index]
+		sess.queue = append([]turnRequest{req}, append(sess.queue[:index:index], sess.queue[index+1:]...)...)
+	}
+	s.sessions.mu.Unlock()
+	if index < 0 {
+		return false
+	}
+	return s.cancelSession(sess, true) == nil
 }
 
 // drainQueue 在一轮结束后把排队的消息合并成下一轮发出。

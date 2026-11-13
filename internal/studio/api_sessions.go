@@ -182,6 +182,27 @@ func (s *Server) sessionAPI(w http.ResponseWriter, r *http.Request) {
 		s.sessionEvents(w, r, sess)
 	case "agents":
 		s.switchSessionAgents(w, r, sess)
+	case "queue":
+		// /api/sessions/{id}/queue/{queue_id}：DELETE 移除，POST …/steer 引导对话。
+		if len(parts) < 3 || !validID(parts[2]) {
+			s.error(w, http.StatusNotFound, "not_found", "排队的消息不存在")
+			return
+		}
+		var ok bool
+		switch {
+		case r.Method == http.MethodDelete && len(parts) == 3:
+			ok = s.unqueue(sess, parts[2])
+		case r.Method == http.MethodPost && len(parts) == 4 && parts[3] == "steer":
+			ok = s.steer(sess, parts[2])
+		default:
+			s.method(w, "DELETE, POST")
+			return
+		}
+		if !ok {
+			s.error(w, http.StatusConflict, "not_queued", "这条消息已经发出，或这一轮已经结束")
+			return
+		}
+		s.write(w, http.StatusOK, map[string]any{"ok": true})
 	case "cancel":
 		if r.Method != http.MethodPost {
 			s.method(w, http.MethodPost)

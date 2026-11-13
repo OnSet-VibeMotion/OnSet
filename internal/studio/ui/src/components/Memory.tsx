@@ -446,7 +446,7 @@ function ScoreCurve({ exams }: { exams: ExamResult[] }) {
         ))}
       </svg>
       <figcaption class="small muted">
-        <span class="legend control" /> 对照 <span class="legend trial" /> 试用
+        <span class="curve-key control" /> 对照 <span class="curve-key trial" /> 试用
       </figcaption>
     </figure>
   );

@@ -1,6 +1,7 @@
 package studio
 
 import (
+	"github.com/chouheiwa/articale-to-motion/internal/ledger"
 	"io/fs"
 	"net/http"
 	"os"
@@ -114,13 +115,14 @@ func (s *Server) treeAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	entries := []treeEntry{}
 	truncated := false
-	studioDir := studioRoot(p.Path)
+	studioDir, ledgerDir := studioRoot(p.Path), ledger.ProjectDir(p.Path)
 	_ = filepath.WalkDir(p.Path, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if d.IsDir() {
-			if path != p.Path && (skippedDirs[d.Name()] || path == studioDir) {
+			// 用量账本是 Studio 与 am 自己记的账，不是项目内容，文件树里不列。
+			if path != p.Path && (skippedDirs[d.Name()] || path == studioDir || path == ledgerDir) {
 				return filepath.SkipDir
 			}
 			return nil

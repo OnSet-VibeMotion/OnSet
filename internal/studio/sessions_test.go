@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -495,5 +496,48 @@ func TestQueuedMessagesRunAfterTurnAndInterrupt(t *testing.T) {
 	}
 	if len(turns) != 4 || turns[2].(map[string]any)["status"] != "cancelled" || turns[3].(map[string]any)["message"] != "改主意了" {
 		t.Fatalf("turns=%#v", turns)
+	}
+}
+
+// TestQueuedMessagesCanBeRemovedAndSteered：排队的消息能移除；「引导对话」停掉这一轮，
+// 把那条提到最前马上发出。
+func TestQueuedMessagesCanBeRemovedAndSteered(t *testing.T) {
+	f := newSessionFixture(t)
+	t.Setenv("FAKE_SLEEP", "5")
+	status, body := studioRequest(t, http.MethodPost, f.url+"/api/sessions", `{"title":"排队管理"}`)
+	requireStudioStatus(t, status, http.StatusCreated, body)
+	id := body["session_id"].(string)
+	status, body = studioRequest(t, http.MethodPost, f.url+"/api/sessions/"+id+"/turns", `{"message":"慢活"}`)
+	requireStudioStatus(t, status, http.StatusAccepted, body)
+	for _, message := range []string{"不要了", "先做这个"} {
+		status, body = studioRequest(t, http.MethodPost, f.url+"/api/sessions/"+id+"/turns", `{"message":"`+message+`"}`)
+		requireStudioStatus(t, status, http.StatusAccepted, body)
+	}
+	_, raw := rawStudioGet(t, f.url+"/api/sessions/"+id+"/events?follow=0")
+	ids := regexp.MustCompile(`"queue_id":"(q-[a-z0-9-]+)"`).FindAllStringSubmatch(raw, -1)
+	if len(ids) != 2 {
+		t.Fatalf("queued events=%s", raw)
+	}
+	status, body = studioRequest(t, http.MethodDelete, f.url+"/api/sessions/"+id+"/queue/"+ids[0][1], "")
+	requireStudioStatus(t, status, http.StatusOK, body)
+	status, body = studioRequest(t, http.MethodDelete, f.url+"/api/sessions/"+id+"/queue/"+ids[0][1], "")
+	requireStudioStatus(t, status, http.StatusConflict, body)
+	t.Setenv("FAKE_SLEEP", "")
+	status, body = studioRequest(t, http.MethodPost, f.url+"/api/sessions/"+id+"/queue/"+ids[1][1]+"/steer", "")
+	requireStudioStatus(t, status, http.StatusOK, body)
+	deadline := time.Now().Add(10 * time.Second)
+	var turns []any
+	for time.Now().Before(deadline) {
+		detail := f.waitIdle(t, id)
+		if turns = studioList(t, detail["turns"]); len(turns) == 2 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if len(turns) != 2 || turns[0].(map[string]any)["status"] != "cancelled" || turns[1].(map[string]any)["message"] != "先做这个" {
+		t.Fatalf("turns=%#v", turns)
+	}
+	if _, raw = rawStudioGet(t, f.url+"/api/sessions/"+id+"/events?follow=0"); !strings.Contains(raw, "event: unqueued") {
+		t.Fatalf("移除要留下 unqueued 事件：%s", raw)
 	}
 }

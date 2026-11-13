@@ -334,6 +334,7 @@ export function App() {
             run={run}
           />
           <Chat
+            projectPath={project?.path ?? ''}
             agents={agents}
             choice={choice}
             onChoice={changeChoice}

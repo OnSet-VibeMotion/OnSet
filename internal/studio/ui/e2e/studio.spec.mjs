@@ -37,7 +37,10 @@ test('asks for a change, reviews the diff, and reverts the turn', async ({ page 
   await page.locator('#prompt').fill('把镜头提示词改成 after');
   await page.locator('#send').click();
   await expect(page.locator('#messages')).toContainText('已把镜头提示词改好');
-  await expect(page.locator('.tool', { hasText: 'Write' })).toBeVisible();
+  // 一轮结束后过程折叠起来；展开能看到工具行。
+  await expect(page.locator('.shell.done')).toBeVisible();
+  await page.locator('.shell.done > summary').click();
+  await expect(page.locator('.tool', { hasText: '创建' })).toBeVisible();
   const card = page.locator('.turn-card');
   await expect(card).toContainText('scenes/scene-001/prompt.md');
   await expect.poll(() => fs.readFile(promptFile, 'utf8')).toBe('after\n');
@@ -61,14 +64,14 @@ test('starts production and can stop a running turn', async ({ page }) => {
   await openProject(page);
   await page.locator('#start-production').click();
   await expect(page.locator('#messages')).toContainText('开始整片制作');
-  await expect(page.locator('.turn-card')).toContainText('本轮完成');
-  await expect(page.locator('#session-select option:checked')).toContainText('整片制作');
+  await expect(page.locator('.done-line').last()).toContainText('已完成');
+  await expect(page.locator('#session-title')).toContainText('整片制作');
 
   await page.locator('#prompt').fill('慢慢来，先别动');
   await page.locator('#send').click();
   await expect(page.locator('#cancel-turn')).toBeVisible();
   await page.locator('#cancel-turn').click();
-  await expect(page.locator('.turn-card').last()).toContainText('本轮已停止');
+  await expect(page.locator('.pause-line')).toContainText('已停止');
   await expect(page.locator('#send')).toBeVisible();
 });
 
@@ -87,7 +90,7 @@ test('picks the orchestrator and renderer per session', async ({ page }) => {
   await page.locator('#agent-renderer').selectOption('codex');
   await page.locator('#prompt').fill('把镜头提示词改成 after');
   await page.locator('#send').click();
-  await expect(page.locator('.turn-card')).toContainText('本轮完成');
+  await expect(page.locator('.done-line').last()).toContainText('已完成');
   const sessions = await (await page.request.get('/api/sessions')).json();
   expect(sessions.sessions[0]).toMatchObject({ tool: 'claude', renderer: 'codex' });
 
@@ -99,7 +102,7 @@ test('picks the orchestrator and renderer per session', async ({ page }) => {
 
 test('uploads a file, answers with a choice button, and queues a message mid-turn', async ({ page }) => {
   await openProject(page);
-  await page.locator('#upload + input, input[type="file"]').first().setInputFiles({
+  await page.locator('.composer input[type="file"]').setInputFiles({
     name: '文章.md',
     mimeType: 'text/markdown',
     buffer: Buffer.from('# 标题\n正文'),
@@ -108,8 +111,8 @@ test('uploads a file, answers with a choice button, and queues a message mid-tur
 
   await page.locator('#prompt').fill('给我选项');
   await page.locator('#send').click();
-  await expect(page.locator('.progress')).toContainText('进度 1/2');
-  await expect(page.locator('.progress')).toContainText('正在定风格');
+  // 待办清单进了这一轮的过程：进行中的那一步插一行小标题。
+  await expect(page.locator('.step-row')).toContainText('正在定风格');
   const choice = page.locator('.choice', { hasText: '白板手绘风' });
   await expect(choice).toBeVisible();
   await expect(page.locator('.message.assistant').last()).not.toContainText('```');
@@ -117,23 +120,30 @@ test('uploads a file, answers with a choice button, and queues a message mid-tur
   // 点选项就是把这一行发出去；之后选项消失。
   await choice.click();
   await expect(page.locator('.message.user').last()).toContainText('白板手绘风');
-  await expect(page.locator('.turn-card').last()).toContainText('本轮完成');
-  await expect(page.locator('.choice')).toHaveCount(0);
+  await expect(page.locator('.done-line').last()).toContainText('已完成');
+  await expect(page.locator('.choice').first()).toBeDisabled();
 
   // 进行中再发一条：先显示排队中，这一轮结束后自动发出。
   await page.locator('#prompt').fill('稍等，先改提示词');
   await page.locator('#send').click();
   await expect(page.locator('#cancel-turn')).toBeVisible();
+  await page.locator('#prompt').fill('这条不要了');
+  await page.locator('#send').click();
   await page.locator('#prompt').fill('顺便检查一下');
   await page.locator('#send').click();
-  await expect(page.locator('.message.queued')).toContainText('顺便检查一下');
-  await expect(page.locator('.message.user', { hasText: '顺便检查一下' }).last()).not.toHaveClass(/queued/, { timeout: 15_000 });
-  await expect(page.locator('.message.queued')).toHaveCount(0);
+  await expect(page.locator('.queue-card')).toHaveCount(2);
+  // 移除一条：只剩一条排队。
+  await page.locator('.queue-stack').hover();
+  await page.locator('.queue-card', { hasText: '这条不要了' }).getByRole('button', { name: '移除' }).click();
+  await expect(page.locator('.queue-card')).toHaveCount(1);
+  await expect(page.locator('.message.user', { hasText: '顺便检查一下' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.queue-card')).toHaveCount(0);
+  await expect(page.locator('.message.user', { hasText: '这条不要了' })).toHaveCount(0);
 });
 
 test('sends a scene quick action to the orchestrator', async ({ page }) => {
   await openProject(page);
   await page.locator('.quick-actions button', { hasText: '重做这个镜头' }).click();
   await expect(page.locator('.message.user').last()).toContainText('重做镜头 scene-001');
-  await expect(page.locator('.turn-card').last()).toContainText('本轮完成');
+  await expect(page.locator('.done-line').last()).toContainText('已完成');
 });

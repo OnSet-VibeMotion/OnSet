@@ -1,9 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { api, ApiError, errorText, post, rawURL } from '../api';
-import type { AgentChoice, AgentsResponse, Attachment, EventKind, FileChange, PlanItem, Scene, SessionEvent, SessionMeta, Usage } from '../types';
+import type { AgentChoice, AgentsResponse, Attachment, EventKind, PlanItem, Scene, SessionEvent, SessionMeta } from '../types';
 import { AgentPicker } from './AgentPicker';
 import { DiffDialog } from './DiffDialog';
 import { Icon } from './Icon';
+import { Markdown } from './chat/Markdown';
+import {
+  buildBlocks,
+  describeTool,
+  formatElapsed,
+  parseChoices,
+  queuedMessages,
+  seconds,
+  splitAttachmentText,
+  stripChoices,
+  type Block,
+  type ProcessItem,
+  type QueuedMessage,
+  type TurnBlock,
+} from './chat/model';
+import '../chat.css';
 
 // SSE 的 event 字段就是事件种类，EventSource 只把具名事件派给对应监听器，所以要逐个注册。
 const kinds: EventKind[] = [
@@ -22,6 +38,7 @@ const kinds: EventKind[] = [
   'notice',
   'turn-reverted',
   'queued',
+  'unqueued',
   'plan',
 ];
 
@@ -42,6 +59,7 @@ interface Props {
   sessionId: string;
   busy: string;
   attachments: Attachment[];
+  projectPath: string;
   onSession: (id: string) => void;
   onSessionsChanged: () => void;
   onRemoveAttachment: (index: number) => void;
@@ -54,34 +72,64 @@ interface Props {
   outbox: Outbox | null;
 }
 
+/** 视为「在底部」的容差：比这近就继续跟随新消息。 */
+const BOTTOM_TOLERANCE = 8;
+
 export function Chat(props: Props) {
   const events = useSessionEvents(props.sessionId, props.onFilesChanged, props.onTurnEnd);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const scroller = useRef<HTMLDivElement>(null);
-  const pinned = useRef(true);
-
-  const running = useMemo(() => {
-    let open = false;
-    for (const event of events) {
-      if (event.kind === 'turn-start') open = true;
-      if (event.kind === 'turn-end') open = false;
-    }
-    return open;
-  }, [events]);
-
-  useEffect(() => {
-    const el = scroller.current;
-    if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [events]);
-
-  // 这一轮进行中照样能发：消息排到这一轮之后，或「打断并发送」。别的写任务占着项目时不能发。
-  const blocked = sending || (props.busy !== '' && !running);
   const [uploading, setUploading] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
+  const [scrolled, setScrolled] = useState(false);
+  const [menu, setMenu] = useState<'' | 'history' | 'plus'>('');
+  const scroller = useRef<HTMLDivElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const following = useRef(true);
+
+  const blocks = useMemo(() => buildBlocks(events), [events]);
+  const queue = useMemo(() => queuedMessages(events), [events]);
+  const lastTurn = [...blocks].reverse().find((b): b is TurnBlock => b.kind === 'turn');
+  const running = !!lastTurn && !lastTurn.end;
+  const plan = running ? lastTurn?.plan ?? null : null;
+  const now = useNow(running);
+
+  // 这一轮进行中照样能发：消息排到这一轮之后。别的写任务占着项目时不能发。
+  const blocked = sending || (props.busy !== '' && !running);
+  const session = props.sessions.find((s) => s.session_id === props.sessionId);
+
+  // 跟随到底：只有用户在底部（8px 内）时才跟；展开折叠项时不跳。
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el && following.current && el.scrollHeight - el.scrollTop - el.clientHeight > 1) el.scrollTop = el.scrollHeight;
+  }, [blocks, queue.length]);
+
+  const onScroll = () => {
+    const el = scroller.current;
+    if (!el) return;
+    const bottom = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_TOLERANCE;
+    following.current = bottom;
+    setAtBottom(bottom);
+    setScrolled(el.scrollTop > 1);
+  };
+
+  const jumpToLatest = () => {
+    const el = scroller.current;
+    if (!el) return;
+    following.current = true;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  };
+
+  // 输入框随内容长高，最高 min(184px, 34vh)，再多就滚动。
+  useLayoutEffect(() => {
+    const el = textarea.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, Math.min(184, window.innerHeight * 0.34))}px`;
+  }, [draft]);
 
   const deliver = async (message: string, attachments: Attachment[], interrupt = false) => {
     if (!message || blocked) return false;
@@ -95,6 +143,7 @@ export function Chat(props: Props) {
         props.onSession(id);
       }
       await post(`/api/sessions/${id}/turns`, { message, attachments, interrupt });
+      following.current = true;
       props.onSessionsChanged();
       return true;
     } catch (err) {
@@ -105,10 +154,36 @@ export function Chat(props: Props) {
     }
   };
 
-  const send = async (interrupt = false) => {
-    if (await deliver(draft.trim(), props.attachments, interrupt)) {
-      setDraft('');
+  const send = async () => {
+    const message = draft.trim();
+    if (await deliver(message, props.attachments)) {
+      // 发送途中用户可能已经接着打了下一条，只清掉发出去的那段。
+      setDraft((current) => (current.trim() === message ? '' : current));
       props.onClearAttachments();
+    }
+  };
+
+  const startProduction = async () => {
+    setSending(true);
+    setError('');
+    try {
+      const result = await post<{ session_id: string }>('/api/production/start', { message: draft.trim(), ...props.choice });
+      setDraft('');
+      following.current = true;
+      props.onSession(result.session_id);
+      props.onSessionsChanged();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const cancel = async () => {
+    try {
+      await post(`/api/sessions/${props.sessionId}/cancel`);
+    } catch (err) {
+      setError(errorText(err));
     }
   };
 
@@ -129,6 +204,23 @@ export function Chat(props: Props) {
     }
   };
 
+  const queueAction = async (item: QueuedMessage, action: 'steer' | 'remove' | 'edit') => {
+    setError('');
+    try {
+      if (action === 'steer') {
+        await post(`/api/sessions/${props.sessionId}/queue/${item.id}/steer`);
+        return;
+      }
+      await api(`/api/sessions/${props.sessionId}/queue/${item.id}`, { method: 'DELETE' });
+      if (action === 'edit') {
+        setDraft(splitAttachmentText(item.text).body);
+        textarea.current?.focus();
+      }
+    } catch (err) {
+      setError(errorText(err));
+    }
+  };
+
   // 镜头页快捷动作：直接发，或填进输入框等用户补充。
   const lastOutbox = useRef(0);
   useEffect(() => {
@@ -144,97 +236,98 @@ export function Chat(props: Props) {
     void deliver(out.text, out.attachments);
   }, [props.outbox]);
 
-  const plan = useMemo(() => latestPlan(events), [events]);
-  const choices = useMemo(() => (running ? null : pendingChoices(events)), [events, running]);
-
-  const startProduction = async () => {
-    setSending(true);
-    setError('');
-    try {
-      const result = await post<{ session_id: string }>('/api/production/start', { message: draft.trim(), ...props.choice });
-      setDraft('');
-      props.onSession(result.session_id);
-      props.onSessionsChanged();
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const cancel = async () => {
-    try {
-      await post(`/api/sessions/${props.sessionId}/cancel`);
-    } catch (err) {
-      setError(errorText(err));
-    }
-  };
+  // 只有最后一条回复、之后用户还没说话时，选项才可点。
+  const choiceTurn = !running && queue.length === 0 && blocks[blocks.length - 1]?.kind === 'turn' ? lastTurn?.id : undefined;
+  const canSend = !blocked && draft.trim() !== '';
+  // 刚发出的一刻不换成停止键：按钮就在指针底下，连点两下会把这一轮停掉。
+  const showStop = running && !draft.trim() && !sending;
 
   return (
     <aside class="pane right chat">
-      <header class="chat-head">
-        <select
-          id="session-select"
-          value={props.sessionId}
-          onChange={(e) => props.onSession(e.currentTarget.value)}
-          aria-label="会话"
-        >
-          <option value="">新对话</option>
-          {props.sessions.map((s) => (
-            <option key={s.session_id} value={s.session_id}>
-              {s.title}
-              {s.kind === 'production' ? ' · 制作' : ''}
-              {s.turns.length ? ` · ${s.turns.length} 轮` : ''}
-            </option>
-          ))}
-        </select>
-        <button class="quiet" onClick={() => props.onSession('')} title="新开一个对话">
-          新对话
-        </button>
-        <button id="start-production" class="primary" disabled={blocked} onClick={startProduction} title="与 am run 相同的整片制作">
+      <header class="chat-header">
+        <div class="history">
+          <button
+            class="icon-button"
+            id="history"
+            aria-label="会话记录"
+            title="会话记录"
+            aria-expanded={menu === 'history'}
+            onClick={() => setMenu(menu === 'history' ? '' : 'history')}
+          >
+            <Icon name="history" size={14} />
+          </button>
+          {menu === 'history' && (
+            <HistoryMenu
+              sessions={props.sessions}
+              current={props.sessionId}
+              onPick={(id) => {
+                setMenu('');
+                following.current = true;
+                props.onSession(id);
+              }}
+              onClose={() => setMenu('')}
+            />
+          )}
+        </div>
+        <span class="chat-title ellipsis" id="session-title" title={session?.title}>
+          {session ? `${session.title}${session.kind === 'production' ? ' · 整片制作' : ''}` : '新对话'}
+        </span>
+        <span class="spacer" />
+        {props.sessionId && (
+          <button class="icon-button" onClick={() => props.onSession('')} aria-label="新对话" title="新对话">
+            <Icon name="plus" size={13} />
+          </button>
+        )}
+        <button id="start-production" class="primary pill" disabled={blocked || running} onClick={startProduction} title="与 am run 相同的整片制作">
           开始制作
         </button>
       </header>
 
-      <div
-        class="messages"
-        id="messages"
-        ref={scroller}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-        }}
-      >
-        {events.length === 0 && (
-          <div class="intro">
-            <p>在这里说要改什么，编排工具会直接改项目文件；每一轮的改动都能查看和回退。</p>
-            <p class="muted">新项目先点「开始制作」：还没有定稿字幕时照 PROMPT-PRODUCTION.md 从文章开始做到成片，已有 transcription.srt 时照 PROMPT.md 从字幕开始。之后在同一个会话里继续改。</p>
-          </div>
-        )}
-        <Transcript events={events} onOpenFile={props.onOpenFile} onReverted={props.onTurnEnd} />
-        {choices && (
-          <div class="choices" role="group" aria-label="选一个回复">
-            {choices.map((choice) => (
-              <button key={choice} class="choice" disabled={blocked} onClick={() => void deliver(choice, [])}>
-                {choice}
-              </button>
-            ))}
-          </div>
-        )}
-        {running && (
-          <div class="typing">
-            <span class="dot busy" />
-            正在处理…
-          </div>
-        )}
+      <div class={'chat-log-wrap' + (scrolled ? ' edge' : '')}>
+        <div class={'chat-log' + (plan ? ' has-plan' : '')} id="messages" ref={scroller} onScroll={onScroll}>
+          {events.length === 0 && (
+            <div class="intro">
+              <h3>说说要做什么</h3>
+              <p>编排工具会直接改项目文件，每一轮的改动都能查看和回退。</p>
+              <p class="muted">
+                新项目先点「开始制作」：还没有定稿字幕时照 PROMPT-PRODUCTION.md 从文章开始做到成片，已有 transcription.srt 时照 PROMPT.md
+                从字幕开始。之后在同一个会话里继续改。文章、图片和音频可以直接拖进输入框。
+              </p>
+            </div>
+          )}
+          {blocks.map((block, index) => (
+            <BlockView
+              key={blockKey(block)}
+              block={block}
+              latest={index === blocks.length - 1 || (block.kind === 'turn' && block === lastTurn)}
+              now={now}
+              projectPath={props.projectPath}
+              choicesEnabled={block.kind === 'turn' && block.id === choiceTurn && !blocked}
+              onChoice={(text) => void deliver(text, [])}
+              onRetry={(text) => void deliver(text, [])}
+              onOpenFile={props.onOpenFile}
+              onReverted={props.onTurnEnd}
+              onToggle={() => (following.current = false)}
+            />
+          ))}
+        </div>
+        <div class="chat-float">
+          {!atBottom ? (
+            <button class="float-pill jump" onClick={jumpToLatest}>
+              <Icon name="down" size={12} />
+              回到最新
+            </button>
+          ) : (
+            plan && <PlanPill plan={plan} scenes={props.scenes} />
+          )}
+        </div>
       </div>
 
-      {(running || plan) && <Progress plan={plan} scenes={props.scenes} running={running} />}
+      {queue.length > 0 && <QueuedStack queue={queue} onAction={queueAction} />}
 
       <footer class="composer">
-        {props.busy && !running && <p class="busy-line">项目正忙：{props.busy}</p>}
         <div
-          class={'composer-box' + (dragging ? ' dragging' : '')}
+          class={'composer-shell' + (dragging ? ' dragging' : '')}
           onDragOver={(e) => {
             if (!e.dataTransfer?.types.includes('Files')) return;
             e.preventDefault();
@@ -248,25 +341,7 @@ export function Chat(props: Props) {
             void upload(e.dataTransfer.files);
           }}
         >
-          {props.attachments.length > 0 && (
-            <ul class="chips" id="attachments">
-              {props.attachments.map((a, index) => (
-                <li key={index} title={a.upload ? `${a.name}（${formatSize(a.size ?? 0)}）` : undefined}>
-                  {a.path && (!a.upload || /\.(png|jpe?g|webp|gif)$/i.test(a.path)) && <img src={rawURL(a.path)} alt="" />}
-                  <span>
-                    {a.upload && a.name}
-                    {a.scene_id}
-                    {a.seconds !== undefined && a.path ? ` · 帧 ${Math.round(a.seconds * 30)}` : ''}
-                    {a.region ? ' · 区域' : ''}
-                    {a.selector ? ` · ${a.selector}` : ''}
-                  </span>
-                  <button class="ghost" onClick={() => props.onRemoveAttachment(index)} aria-label="移除附件">
-                    <Icon name="close" size={10} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          {props.attachments.length > 0 && <AttachmentTray attachments={props.attachments} onRemove={props.onRemoveAttachment} />}
           <label for="prompt" class="sr-only">
             消息
           </label>
@@ -275,7 +350,7 @@ export function Chat(props: Props) {
             ref={textarea}
             rows={2}
             value={draft}
-            placeholder={running ? '这一轮还在进行：现在发的消息会排在它之后，或点「打断并发送」' : '说说要改什么……可以拖入或粘贴文章、图片、音频（⌘/Ctrl + Enter 发送）'}
+            placeholder={running ? '补充要求会排在这一轮之后…' : '说说要改什么，可以拖入或粘贴文章、图片、音频'}
             onInput={(e) => setDraft(e.currentTarget.value)}
             onPaste={(e) => {
               const files = e.clipboardData?.files;
@@ -285,68 +360,95 @@ export function Chat(props: Props) {
               }
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              // Enter 发送，Shift+Enter 换行；输入法组字时的 Enter 不算。
+              if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
                 e.preventDefault();
-                void send();
+                if (canSend) void send();
               }
             }}
           />
-          <div class="composer-actions">
-            <input
-              ref={fileInput}
-              type="file"
-              multiple
-              hidden
-              onChange={(e) => {
-                const files = e.currentTarget.files;
-                if (files) void upload(files);
-                e.currentTarget.value = '';
-              }}
-            />
-            <button
-              class="quiet"
-              id="upload"
-              disabled={uploading}
-              onClick={() => fileInput.current?.click()}
-              aria-label="上传文件"
-              title="上传文章、图片、音频或视频（也可以拖进来或粘贴）"
-            >
-              <Icon name="attach" size={14} />
-              {uploading ? '上传中…' : ''}
-            </button>
+          <div class="composer-toolbar">
+            <div class="plus">
+              <button
+                class="icon-button"
+                id="plus"
+                aria-label="添加"
+                title="添加文件"
+                aria-expanded={menu === 'plus'}
+                onClick={() => setMenu(menu === 'plus' ? '' : 'plus')}
+              >
+                <Icon name="plus" size={13} />
+              </button>
+              {menu === 'plus' && (
+                <div class="popover menu up" role="menu">
+                  <button
+                    role="menuitem"
+                    id="upload"
+                    onClick={() => {
+                      setMenu('');
+                      fileInput.current?.click();
+                    }}
+                  >
+                    <Icon name="attach" size={13} />
+                    上传文件或图片
+                    <span class="muted small">也可以拖进来或粘贴</span>
+                  </button>
+                </div>
+              )}
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                hidden
+                onChange={(e) => {
+                  const files = e.currentTarget.files;
+                  if (files) void upload(files);
+                  e.currentTarget.value = '';
+                }}
+              />
+            </div>
             <AgentPicker agents={props.agents} value={props.choice} disabled={running || sending} onChange={props.onChoice} />
             <span class="spacer" />
-            {running && (
-              <>
-                <button id="cancel-turn" onClick={cancel} aria-label="停止本轮" title="停止本轮（排队的消息一并作废）">
-                  <Icon name="stop" />
-                </button>
-                <button
-                  id="interrupt"
-                  disabled={blocked || !draft.trim()}
-                  onClick={() => void send(true)}
-                  title="停掉这一轮，马上发这条"
-                >
-                  打断并发送
-                </button>
-              </>
+            {showStop ? (
+              <button id="cancel-turn" class="primary-slot stop" onClick={cancel} aria-label="停止本轮" title="停止本轮（排队的消息一并作废）">
+                <span class="stop-glyph" />
+              </button>
+            ) : (
+              <button
+                id="send"
+                class="primary-slot"
+                disabled={!canSend}
+                onClick={() => void send()}
+                aria-label={running ? '排队发送' : '发送'}
+                title={running ? '排到这一轮之后发送（Enter）' : '发送（Enter，Shift+Enter 换行）'}
+              >
+                <Icon name="up" size={13} />
+              </button>
             )}
-            <button
-              id="send"
-              class="primary"
-              disabled={blocked || !draft.trim()}
-              onClick={() => void send()}
-              aria-label={running ? '排队发送' : '发送'}
-              title={running ? '排到这一轮之后发送' : '发送'}
-            >
-              <Icon name="send" size={14} />
-            </button>
           </div>
         </div>
-        {error && <p class="error-line">{error}</p>}
+        {(error || uploading || (props.busy && !running)) && (
+          <p class={'composer-hint' + (error ? ' error' : '')}>{error || (uploading ? '上传中…' : `项目正忙：${props.busy}`)}</p>
+        )}
       </footer>
     </aside>
   );
+}
+
+function blockKey(block: Block): string {
+  if (block.kind === 'turn') return 't' + block.id;
+  return 'e' + block.event.seq;
+}
+
+/** 进行中的一轮每秒刷新一次计时。 */
+function useNow(active: boolean): number {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [active]);
+  return now;
 }
 
 /** 订阅一个会话的事件流。EventSource 断线后自带 Last-Event-ID 重连，后端按 seq 补发，这里再按 seq 去重。 */
@@ -388,183 +490,285 @@ function useSessionEvents(sessionId: string, onFilesChanged: (files: string[]) =
   return events;
 }
 
-type Item =
-  | { type: 'event'; event: SessionEvent }
-  | { type: 'tool'; call: SessionEvent; result?: SessionEvent }
-  | { type: 'turn-end'; event: SessionEvent; usage?: Usage; reverted: boolean }
-  | { type: 'skip' };
-
-function group(events: SessionEvent[]): Item[] {
-  const items: Item[] = [];
-  const calls = new Map<string, { type: 'tool'; call: SessionEvent; result?: SessionEvent }>();
-  const usage = new Map<string, Usage>();
-  const reverted = new Set(events.filter((e) => e.kind === 'turn-reverted').map((e) => e.turn_id));
-  const pendingQueued: number[] = [];
-  for (const event of events) {
-    switch (event.kind) {
-      case 'session':
-      case 'done':
-      case 'turn-start':
-      case 'turn-reverted':
-      case 'plan':
-        break;
-      case 'queued':
-        pendingQueued.push(items.length);
-        items.push({ type: 'event', event });
-        break;
-      case 'user':
-        // 排队的消息发出时会以合并后的 user 消息出现，之前的「排队中」气泡不再显示。
-        for (const index of pendingQueued) items[index] = { type: 'skip' };
-        pendingQueued.length = 0;
-        items.push({ type: 'event', event });
-        break;
-      case 'usage':
-        if (event.turn_id && event.usage) usage.set(event.turn_id, event.usage);
-        break;
-      case 'tool-call': {
-        const item = { type: 'tool' as const, call: event };
-        if (event.call_id) calls.set(event.call_id, item);
-        items.push(item);
-        break;
-      }
-      case 'tool-result': {
-        const owner = event.call_id ? calls.get(event.call_id) : undefined;
-        if (owner) owner.result = event;
-        else items.push({ type: 'event', event });
-        break;
-      }
-      case 'turn-end':
-        items.push({ type: 'turn-end', event, usage: usage.get(event.turn_id ?? ''), reverted: reverted.has(event.turn_id) });
-        break;
-      default:
-        items.push({ type: 'event', event });
-    }
-  }
-  return items;
+interface BlockProps {
+  block: Block;
+  latest: boolean;
+  now: number;
+  projectPath: string;
+  choicesEnabled: boolean;
+  onChoice: (text: string) => void;
+  onRetry: (text: string) => void;
+  onOpenFile: (path: string) => void;
+  onReverted: () => void;
+  onToggle: () => void;
 }
 
-function Transcript(props: { events: SessionEvent[]; onOpenFile: (path: string) => void; onReverted: () => void }) {
-  const items = useMemo(() => group(props.events), [props.events]);
+function BlockView(props: BlockProps) {
+  const { block } = props;
+  if (block.kind === 'user') return <UserMessage event={block.event} />;
+  if (block.kind === 'note')
+    return <div class={'chat-note' + (block.event.kind === 'error' ? ' error' : '')}>{block.event.text}</div>;
+  return <TurnView {...props} turn={block} />;
+}
+
+function UserMessage({ event }: { event: SessionEvent }) {
+  const { body, extra } = splitAttachmentText(event.text ?? '');
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const long = body.split('\n').length > 6 || body.length > 280;
   return (
-    <>
-      {items.map((item) => {
-        if (item.type === 'skip') return null;
-        if (item.type === 'tool') return <ToolCard key={item.call.seq} call={item.call} result={item.result} />;
-        if (item.type === 'turn-end')
-          return (
-            <TurnCard
-              key={item.event.seq}
-              event={item.event}
-              usage={item.usage}
-              reverted={item.reverted}
-              onOpenFile={props.onOpenFile}
-              onReverted={props.onReverted}
-            />
-          );
-        const { event } = item;
-        switch (event.kind) {
-          case 'user':
-            return (
-              <div key={event.seq} class="message user">
-                {event.text}
-              </div>
-            );
-          case 'queued':
-            return (
-              <div key={event.seq} class="message user queued">
-                <span class="queued-tag">排队中 · 这一轮结束后发送</span>
-                {event.text}
-              </div>
-            );
-          case 'text':
-            return (
-              <div key={event.seq} class="message assistant">
-                {stripChoices(event.text ?? '')}
-              </div>
-            );
-          case 'thinking':
-            return (
-              <details key={event.seq} class="thinking">
-                <summary>思考</summary>
-                <p>{event.text}</p>
-              </details>
-            );
-          case 'files-changed':
-            return (
-              <div key={event.seq} class="files-line" title={event.files?.join('\n')}>
-                改动了 {event.files?.length ?? 0} 个文件
-              </div>
-            );
-          case 'error':
-            return (
-              <div key={event.seq} class="notice error">
-                {event.text}
-              </div>
-            );
-          default:
-            return (
-              <div key={event.seq} class="notice">
-                {event.text}
-              </div>
-            );
-        }
-      })}
-    </>
+    <div class="user-stack msg-enter">
+      <div class={'message user' + (long && !expanded ? ' clamped' : '')}>
+        {body}
+        {long && !expanded && (
+          <button class="link expand" onClick={() => setExpanded(true)}>
+            展开
+          </button>
+        )}
+      </div>
+      {extra && <p class="user-extra">{extra}</p>}
+      <div class="message-actions">
+        <span>{clockOf(event.time)}</span>
+        <button
+          class="icon-button"
+          aria-label="复制"
+          title="复制"
+          onClick={() => {
+            void navigator.clipboard?.writeText(body);
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1200);
+          }}
+        >
+          {copied ? '✓' : <Icon name="copy" size={12} />}
+        </button>
+      </div>
+    </div>
   );
 }
 
-function summarizeInput(input: unknown): string {
-  if (!input || typeof input !== 'object') return '';
-  const record = input as Record<string, unknown>;
-  for (const key of ['command', 'file_path', 'path', 'pattern', 'url', 'description']) {
-    if (typeof record[key] === 'string') return record[key] as string;
-  }
-  const text = JSON.stringify(input);
-  return text.length > 120 ? text.slice(0, 120) + '…' : text;
+function clockOf(time?: string): string {
+  if (!time) return '';
+  const date = new Date(time);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
-function ToolCard({ call, result }: { call: SessionEvent; result?: SessionEvent }) {
-  const state = !result ? 'running' : result.is_error ? 'failed' : 'done';
+const stateLabels: Record<TurnBlock['state'], string> = {
+  running: '进行中',
+  thinking: '思考中',
+  done: '已完成',
+  failed: '运行失败',
+  stopped: '已停止',
+  interrupted: '被中断',
+};
+
+function TurnView(props: BlockProps & { turn: TurnBlock }) {
+  const { turn } = props;
+  const live = turn.state === 'running' || turn.state === 'thinking';
+  const elapsed = seconds(turn.start, turn.end?.time ?? props.now);
+  const proseText = turn.prose.map((event) => event.text ?? '').join('\n\n');
+  const choices = parseChoices(proseText);
   return (
-    <details class={'tool ' + state}>
+    <div class="assistant-flow msg-enter">
+      {(turn.process.length > 0 || live) && (
+        <ExecutionShell turn={turn} live={live} elapsed={elapsed} projectPath={props.projectPath} onOpenFile={props.onOpenFile} onToggle={props.onToggle} />
+      )}
+      {proseText.trim() && (
+        <div class="message assistant">
+          <Markdown text={stripChoices(proseText)} />
+        </div>
+      )}
+      {choices.length > 0 && (
+        <div class="choices" role="group" aria-label="选一个回复">
+          {choices.map((choice, index) => (
+            <button
+              key={choice}
+              class={'choice pill' + (index === 0 ? ' primary-pill' : '')}
+              disabled={!props.choicesEnabled}
+              onClick={() => props.onChoice(choice)}
+            >
+              {choice}
+            </button>
+          ))}
+        </div>
+      )}
+      {turn.end && <TurnEnd {...props} elapsed={elapsed} />}
+    </div>
+  );
+}
+
+function ExecutionShell(props: {
+  turn: TurnBlock;
+  live: boolean;
+  elapsed: number;
+  projectPath: string;
+  onOpenFile: (path: string) => void;
+  onToggle: () => void;
+}) {
+  const { turn, live } = props;
+  // 跟随这一轮的状态（进行中展开、结束收起），直到用户自己点过。
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const lifecycleOpen = live || turn.state === 'stopped';
+  const open = userOpen ?? lifecycleOpen;
+  const label = stateLabels[turn.state];
+  return (
+    <details
+      class={'shell ' + turn.state}
+      open={open}
+      onToggle={(e) => {
+        const next = (e.currentTarget as HTMLDetailsElement).open;
+        if (next !== open) {
+          props.onToggle();
+          setUserOpen(next);
+        }
+      }}
+    >
       <summary>
-        <span class={'dot ' + (state === 'running' ? 'busy' : state === 'failed' ? 'bad' : 'ok')} />
-        <span class="tool-name">{call.tool}</span>
-        <span class="tool-input ellipsis">{summarizeInput(call.input)}</span>
-        <span class="tool-state">{state === 'running' ? '运行中' : state === 'failed' ? '失败' : '完成'}</span>
+        {live && <span class="orb" aria-hidden="true" />}
+        <span class={live ? 'shimmer' : 'shell-label'}>{label}</span>
+        {turn.state === 'thinking' && (
+          <span class="dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+        )}
+        {!live && <span class="shell-meta">· {formatElapsed(props.elapsed)}</span>}
+        <span class="spacer" />
+        {live && <span class="shell-time">{formatElapsed(props.elapsed)}</span>}
+        <Icon name="chevron" size={11} />
       </summary>
-      {call.input !== undefined && <pre>{JSON.stringify(call.input, null, 2)}</pre>}
-      {result?.text && <pre class="tool-output">{result.text}</pre>}
+      <div class="shell-body">
+        {turn.process.length === 0 && <p class="muted small">正在启动编排工具…</p>}
+        {turn.process.map((item, index) => (
+          <ProcessRow key={index} item={item} projectPath={props.projectPath} onOpenFile={props.onOpenFile} />
+        ))}
+      </div>
     </details>
   );
 }
 
-const statusLabels: Record<string, string> = {
-  succeeded: '本轮完成',
-  failed: '本轮失败',
-  cancelled: '本轮已停止',
-  interrupted: '本轮被中断',
-};
+function ProcessRow({ item, projectPath, onOpenFile }: { item: ProcessItem; projectPath: string; onOpenFile: (path: string) => void }) {
+  switch (item.type) {
+    case 'step':
+      return (
+        <div class="step-row">
+          <span class="step-index">
+            {item.index}/{item.total}
+          </span>
+          {item.text}
+        </div>
+      );
+    case 'thinking':
+      return <ThinkingRow text={item.event.text ?? ''} live={!item.until} duration={seconds(item.event.time, item.until)} />;
+    case 'text':
+      return (
+        <div class="process-text">
+          <Markdown text={item.event.text ?? ''} />
+        </div>
+      );
+    case 'note':
+      return <div class={'chat-note' + (item.event.kind === 'error' ? ' error' : '')}>{item.event.text}</div>;
+    case 'tool':
+      return <ToolRow call={item.call} result={item.result} projectPath={projectPath} onOpenFile={onOpenFile} />;
+  }
+}
 
-const changeLabels: Record<FileChange['change'], string> = { added: '新增', modified: '修改', deleted: '删除' };
+function ThinkingRow({ text, live, duration }: { text: string; live: boolean; duration: number }) {
+  return (
+    <details class="tool thinking-row" open={live}>
+      <summary>
+        {live ? <span class="orb small" aria-hidden="true" /> : <Icon name="brain" size={14} />}
+        <span class={live ? 'shimmer' : ''}>{live ? '思考中…' : '思考过程'}</span>
+        <span class="spacer" />
+        {!live && <span class="tool-meta">{formatElapsed(duration)}</span>}
+      </summary>
+      <div class="thinking-body">
+        <Markdown text={text} />
+      </div>
+    </details>
+  );
+}
 
-function TurnCard(props: {
-  event: SessionEvent;
-  usage?: Usage;
-  reverted: boolean;
-  onOpenFile: (path: string) => void;
-  onReverted: () => void;
-}) {
-  const { event } = props;
-  const changes = event.changes ?? [];
+function ToolRow(props: { call: SessionEvent; result?: SessionEvent; projectPath: string; onOpenFile: (path: string) => void }) {
+  const { call, result } = props;
+  const state = !result ? 'running' : result.is_error ? 'failed' : 'done';
+  const info = describeTool(call.tool ?? '', call.input ?? result?.input);
+  const path = info.path ? relativePath(info.path, props.projectPath) : '';
+  const output = result?.text ?? '';
+  const foldable = info.command || output !== '';
+  const head = (
+    <>
+      <StatusMark state={state} />
+      <span class="tool-verb">{info.verb}</span>
+      {path && !path.startsWith('/') ? (
+        <button
+          class="tool-target link mono ellipsis"
+          onClick={(e) => {
+            e.preventDefault();
+            props.onOpenFile(path);
+          }}
+        >
+          {path}
+        </button>
+      ) : (
+        <span class="tool-target mono ellipsis">{path || info.target}</span>
+      )}
+      <span class="spacer" />
+      {state === 'failed' && <span class="tool-failed">失败</span>}
+      {result && <span class="tool-meta">{formatElapsed(seconds(call.time, result.time))}</span>}
+    </>
+  );
+  if (!foldable) return <div class={'tool ' + state}>{head}</div>;
+  return (
+    <details class={'tool ' + state} open={state === 'failed'}>
+      <summary>{head}</summary>
+      <pre class="terminal">
+        {info.command && <span class="prompt-sign">$ </span>}
+        {info.command && info.target + (output ? '\n' : '')}
+        {output}
+      </pre>
+    </details>
+  );
+}
+
+function relativePath(path: string, project: string): string {
+  if (project && path.startsWith(project + '/')) return path.slice(project.length + 1);
+  return path;
+}
+
+function StatusMark({ state }: { state: 'running' | 'done' | 'failed' | 'pending' | 'in_progress' | 'completed' }) {
+  if (state === 'running' || state === 'in_progress') return <span class="mark running" aria-label="进行中" />;
+  if (state === 'failed')
+    return (
+      <span class="mark fail" aria-label="失败">
+        ×
+      </span>
+    );
+  if (state === 'done' || state === 'completed')
+    return (
+      <span class="mark ok" aria-label="完成">
+        ✓
+      </span>
+    );
+  return <span class="mark pending" aria-label="未开始" />;
+}
+
+const changeLabels = { added: '新增', modified: '修改', deleted: '删除' } as const;
+
+function TurnEnd(props: BlockProps & { turn: TurnBlock; elapsed: number }) {
+  const { turn } = props;
+  const end = turn.end!;
+  const changes = end.changes ?? [];
+  const [expanded, setExpanded] = useState(false);
   const [diffPath, setDiffPath] = useState('');
   const [error, setError] = useState('');
   const [working, setWorking] = useState(false);
+  const tokens = turn.usage ? (turn.usage.input_tokens ?? 0) + (turn.usage.output_tokens ?? 0) : 0;
   const revert = async () => {
     setWorking(true);
     setError('');
     try {
-      await post(`/api/turns/${event.turn_id}/revert`);
+      await post(`/api/turns/${end.turn_id}/revert`);
       props.onReverted();
     } catch (err) {
       const paths = err instanceof ApiError && Array.isArray(err.body.paths) ? `：${(err.body.paths as string[]).join('、')}` : '';
@@ -573,93 +777,173 @@ function TurnCard(props: {
       setWorking(false);
     }
   };
-  const tokens = props.usage ? (props.usage.input_tokens ?? 0) + (props.usage.output_tokens ?? 0) : 0;
+  const shown = expanded ? changes : changes.slice(0, 4);
+  const retryText = turn.user ? splitAttachmentText(turn.user.text ?? '').body : '';
   return (
-    <section class={'turn-card ' + (event.status ?? '')} id={'turn-' + event.turn_id}>
-      <header>
-        <strong>{props.reverted ? '已回退这一轮' : statusLabels[event.status ?? ''] ?? event.status}</strong>
-        {changes.length > 0 && <span class="small muted">本轮改动 {changes.length} 个文件</span>}
-        {tokens > 0 && <span class="muted small mono">{tokens.toLocaleString()} tokens</span>}
-      </header>
-      {event.text && <p class="error-line">{event.text}</p>}
-      {changes.length === 0 ? (
-        <p class="muted">这一轮没有改动项目文件。</p>
-      ) : (
-        <ul class="changes">
-          {changes.map((change) => (
-            <li key={change.path}>
-              <span class={'change ' + change.change}>{changeLabels[change.change]}</span>
-              <button
-                class="link ellipsis"
-                onClick={() => (change.revertable ? setDiffPath(change.path) : props.onOpenFile(change.path))}
-                title={change.revertable ? '查看改动' : '媒体或大文件：只列出，不回退'}
-              >
-                {change.path}
+    <div class="turn-end">
+      {(turn.state === 'failed' || turn.state === 'interrupted') && (
+        <section class="error-card" role="alert">
+          <h4>
+            <Icon name="alert" size={14} />
+            {turn.state === 'failed' ? '运行失败' : '这一轮被中断了'}
+          </h4>
+          {end.text && <p>{end.text}</p>}
+          {turn.state === 'interrupted' && !end.text && <p>Studio 重启时这一轮还在进行，编排工具的进程已经不在了。</p>}
+          {retryText && (
+            <div class="actions">
+              <button class="pill primary-pill" onClick={() => props.onRetry(retryText)}>
+                重试
               </button>
-              {!change.revertable && <span class="muted small">不回退</span>}
-            </li>
-          ))}
-        </ul>
+            </div>
+          )}
+        </section>
       )}
-      {changes.length > 0 && !props.reverted && (
-        <footer>
-          <button class="quiet revert" id="revert-turn" disabled={working} onClick={revert}>
-            回退本轮
-          </button>
+      {turn.state === 'stopped' && (
+        <p class="pause-line">
+          <Icon name="pause" size={12} />
+          已停止这一轮
+        </p>
+      )}
+      {changes.length > 0 && (
+        <section class={'files-card turn-card' + (turn.reverted ? ' reverted' : '')} id={'turn-' + end.turn_id}>
+          <header>
+            <Icon name="file" size={12} />
+            <span class="files-label">{turn.reverted ? '已回退这一轮' : '本轮改动'}</span>
+            <span class="count">{changes.length}</span>
+            <span class="files-summary ellipsis">{changes.map((c) => c.path.split('/').pop()).join('、')}</span>
+            {!turn.reverted && (
+              <button class="pill revert" id="revert-turn" disabled={working} onClick={revert}>
+                回退本轮
+              </button>
+            )}
+          </header>
+          <ul>
+            {shown.map((change) => (
+              <li key={change.path}>
+                <span class={'change ' + change.change}>{changeLabels[change.change]}</span>
+                <button
+                  class="link mono ellipsis"
+                  onClick={() => (change.revertable ? setDiffPath(change.path) : props.onOpenFile(change.path))}
+                  title={change.revertable ? '查看改动' : '媒体或大文件：只列出，不回退'}
+                >
+                  {change.path}
+                </button>
+                {!change.revertable && <span class="muted small">不回退</span>}
+              </li>
+            ))}
+          </ul>
+          {changes.length > 4 && (
+            <button class="link small more" onClick={() => setExpanded(!expanded)}>
+              {expanded ? '收起' : `还有 ${changes.length - 4} 个文件`}
+            </button>
+          )}
+          {error && <p class="error-line">{error}</p>}
+          {diffPath && <DiffDialog turnId={end.turn_id ?? ''} path={diffPath} onClose={() => setDiffPath('')} />}
+        </section>
+      )}
+      {turn.state === 'done' && (
+        <footer class={'done-line' + (props.latest ? ' latest' : '')}>
+          <span>✓ 已完成</span>
+          <span>{formatElapsed(props.elapsed)}</span>
+          {tokens > 0 && <span class="mono">{tokens.toLocaleString()} tokens</span>}
+          {changes.length === 0 && <span>没有改动项目文件</span>}
+          <span>{clockOf(end.time)}</span>
         </footer>
       )}
-      {error && <p class="error-line">{error}</p>}
-      {diffPath && <DiffDialog turnId={event.turn_id ?? ''} path={diffPath} onClose={() => setDiffPath('')} />}
+    </div>
+  );
+}
+
+function PlanPill({ plan, scenes }: { plan: PlanItem[]; scenes: Scene[] }) {
+  const current = plan.findIndex((item) => item.status === 'in_progress');
+  const done = plan.filter((item) => item.status === 'completed').length;
+  const step = current >= 0 ? current + 1 : Math.min(done + 1, plan.length);
+  const rendered = scenes.filter((scene) => scene.exists && !scene.stale).length;
+  const rendering = scenes.filter((scene) => scene.rendering);
+  return (
+    <div class="plan-pill-wrap">
+      <button class="float-pill plan-pill" aria-label={`进度：第 ${step}/${plan.length} 步`}>
+        <span class="orb tiny" aria-hidden="true" />第 {step}/{plan.length} 步
+        {current >= 0 && <span class="plan-current ellipsis">{plan[current].text}</span>}
+      </button>
+      <div class="popover plan-popover" role="tooltip">
+        <ol>
+          {plan.map((item, index) => (
+            <li key={index} class={item.status}>
+              <StatusMark state={item.status} />
+              <span>{item.text}</span>
+            </li>
+          ))}
+        </ol>
+        {scenes.length > 0 && (
+          <p class="plan-scenes">
+            镜头已出片 {rendered}/{scenes.length}
+            {rendering.length > 0 && ` · 渲染中：${rendering.map((scene) => scene.id).join('、')}`}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function QueuedStack({ queue, onAction }: { queue: QueuedMessage[]; onAction: (item: QueuedMessage, action: 'steer' | 'remove' | 'edit') => void }) {
+  return (
+    <section class="queue-stack" aria-label={`排队中的消息 ${queue.length} 条`}>
+      {queue.map((item, index) => (
+        <div key={item.id} class="queue-card" data-depth={Math.min(queue.length - 1 - index, 3)} style={{ '--depth': String(Math.min(queue.length - 1 - index, 3)) }}>
+          <span class="queue-badge">排队</span>
+          <span class="queue-text ellipsis">{splitAttachmentText(item.text).body}</span>
+          <button class="queue-action steer" onClick={() => onAction(item, 'steer')} title="停掉这一轮，马上发出排队的消息">
+            <Icon name="up" size={11} />
+            引导对话
+          </button>
+          <button class="icon-button" onClick={() => onAction(item, 'edit')} aria-label="编辑" title="拿回输入框修改">
+            <Icon name="edit" size={12} />
+          </button>
+          <button class="icon-button" onClick={() => onAction(item, 'remove')} aria-label="移除" title="不发这条了">
+            <Icon name="trash" size={12} />
+          </button>
+        </div>
+      ))}
     </section>
   );
 }
 
-const choicesBlock = /```choices\s*\n([\s\S]*?)```/;
-
-/** 去掉回复里的 choices 代码块：选项另外显示成按钮。 */
-export function stripChoices(text: string): string {
-  return text.replace(choicesBlock, '').trimEnd();
-}
-
-/** 解析 choices 代码块里的选项：每行一个，去掉列表符号。 */
-export function parseChoices(text: string): string[] {
-  const match = choicesBlock.exec(text);
-  if (!match) return [];
-  return match[1]
-    .split('\n')
-    .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)、])\s*/, '').trim())
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
-/** 最后一条回复里的选项；用户之后已经说过话（或有排队的消息）就不再显示。 */
-function pendingChoices(events: SessionEvent[]): string[] | null {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const event = events[i];
-    if (event.kind === 'user' || event.kind === 'queued') return null;
-    if (event.kind === 'text') {
-      const choices = parseChoices(event.text ?? '');
-      return choices.length ? choices : null;
-    }
-  }
-  return null;
-}
-
-/** 最近一轮的待办清单：每条 plan 事件都是完整的最新清单。 */
-function latestPlan(events: SessionEvent[]): PlanItem[] | null {
-  let turn = '';
-  for (let i = events.length - 1; i >= 0; i--) {
-    const event = events[i];
-    if (event.kind === 'turn-start') {
-      turn = event.turn_id ?? '';
-      break;
-    }
-  }
-  for (let i = events.length - 1; i >= 0; i--) {
-    const event = events[i];
-    if (event.kind === 'plan' && event.plan?.length) return event.turn_id === turn ? event.plan : null;
-  }
-  return null;
+function AttachmentTray({ attachments, onRemove }: { attachments: Attachment[]; onRemove: (index: number) => void }) {
+  return (
+    <ul class="tray" id="attachments">
+      {attachments.map((a, index) => {
+        const image = a.path && (!a.upload || /\.(png|jpe?g|webp|gif)$/i.test(a.path));
+        const title = a.upload ? a.name ?? '文件' : a.scene_id ?? '画面';
+        const meta = a.upload
+          ? formatSize(a.size ?? 0)
+          : [a.seconds !== undefined && a.path ? `帧 ${Math.round(a.seconds * 30)}` : '', a.region ? '圈选区域' : '', a.selector ?? '']
+              .filter(Boolean)
+              .join(' · ');
+        return (
+          <li key={index} class={image ? 'image-card' : 'doc-card'} title={`${title}${meta ? ' · ' + meta : ''}`}>
+            {image ? (
+              <>
+                <img src={rawURL(a.path!)} alt="" />
+                {!a.upload && <span class="image-label">{[title, meta].filter(Boolean).join(' · ')}</span>}
+              </>
+            ) : (
+              <>
+                <Icon name="file" size={15} />
+                <span class="doc-text">
+                  <span class="doc-name">{title}</span>
+                  <span class="doc-meta">{meta}</span>
+                </span>
+              </>
+            )}
+            <button class="remove" onClick={() => onRemove(index)} aria-label="移除附件">
+              <Icon name="close" size={9} />
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 function formatSize(bytes: number): string {
@@ -668,38 +952,40 @@ function formatSize(bytes: number): string {
   return `${bytes} B`;
 }
 
-/** 对话顶部的进度：编排工具的待办清单，加上镜头出片情况（渲染中的镜头由日志判断）。 */
-function Progress({ plan, scenes, running }: { plan: PlanItem[] | null; scenes: Scene[]; running: boolean }) {
-  const [open, setOpen] = useState(true);
-  const done = plan?.filter((item) => item.status === 'completed').length ?? 0;
-  const current = plan?.find((item) => item.status === 'in_progress');
-  const rendered = scenes.filter((scene) => scene.exists && !scene.stale).length;
-  const rendering = scenes.filter((scene) => scene.rendering);
-  const showScenes = scenes.length > 0 && (running || rendering.length > 0);
-  if (!plan && !showScenes) return null;
+function HistoryMenu(props: { sessions: SessionMeta[]; current: string; onPick: (id: string) => void; onClose: () => void }) {
+  const [query, setQuery] = useState('');
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const away = (e: MouseEvent) => {
+      if (box.current && !box.current.parentElement?.contains(e.target as Node)) props.onClose();
+    };
+    const escape = (e: KeyboardEvent) => e.key === 'Escape' && props.onClose();
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      document.removeEventListener('keydown', escape);
+    };
+  }, []);
+  const list = props.sessions.filter((s) => !query || s.title.includes(query));
   return (
-    <section class="progress" aria-label="进度">
-      <button class="progress-head" onClick={() => setOpen(!open)} aria-expanded={open}>
-        {running && <span class="dot busy" />}
-        <strong>{plan ? `进度 ${done}/${plan.length}` : '进度'}</strong>
-        <span class="ellipsis muted">{current?.text ?? (running ? '正在处理…' : plan && done === plan.length ? '全部完成' : '')}</span>
-      </button>
-      {open && plan && (
-        <ol class="plan">
-          {plan.map((item, index) => (
-            <li key={index} class={item.status}>
-              <span aria-hidden="true">{item.status === 'completed' ? '✓' : item.status === 'in_progress' ? '→' : '·'}</span>
-              {item.text}
-            </li>
-          ))}
-        </ol>
-      )}
-      {showScenes && (
-        <p class="small muted scene-progress">
-          镜头已出片 {rendered}/{scenes.length}
-          {rendering.length > 0 && ` · 渲染中 ${rendering.length} 个：${rendering.map((scene) => scene.id).join('、')}`}
-        </p>
-      )}
-    </section>
+    <div class="popover menu history-menu" ref={box} role="menu">
+      <div class="history-search">
+        <input autoFocus value={query} placeholder="搜索会话" aria-label="搜索会话" onInput={(e) => setQuery(e.currentTarget.value)} />
+        <button class="icon-button" onClick={() => props.onPick('')} aria-label="新对话" title="新对话">
+          <Icon name="plus" size={12} />
+        </button>
+      </div>
+      {list.length === 0 && <p class="muted small empty">没有会话</p>}
+      {list.map((s) => (
+        <button key={s.session_id} role="menuitem" class={'history-row' + (s.session_id === props.current ? ' on' : '')} onClick={() => props.onPick(s.session_id)}>
+          <span class="ellipsis">{s.title}</span>
+          <span class="muted small">
+            {s.kind === 'production' ? '整片制作 · ' : ''}
+            {s.turns.length} 轮 · {new Date(s.updated_at).toLocaleString()}
+          </span>
+        </button>
+      ))}
+    </div>
   );
 }
