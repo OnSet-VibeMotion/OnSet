@@ -19,6 +19,7 @@
 // 风格来源的数据是前置资源：只由 am setup 经 Source.prepare 下载，其余路径只检查。
 import os from 'node:os';
 import path from 'node:path';
+import { dataDir } from '../envutil';
 import { compareBytes } from '../gojson';
 import { goQuote, goTrimSpace } from '../gofmt';
 import type { Writer } from '../hyperframes';
@@ -194,19 +195,13 @@ export function lookup(name: string): Style {
 export const RootEnv = 'AM_FILM_STYLES_DIR';
 
 /**
- * 风格来源数据的根目录：RootEnv，否则 XDG_DATA_HOME 或 HOME 下的
- * .local/share/am/film-styles。各来源在它下面以自己的 ID 分目录。
+ * 风格来源数据的根目录：RootEnv，否则 <数据目录>/film-styles（envutil.dataDir；环境里什么都没有时按家目录推）。
+ * 各来源在它下面以自己的 ID 分目录。
  */
 export function rootDir(env: Record<string, string | undefined>): string {
   const dir = env[RootEnv];
   if (dir) return dir;
-  let base = env.XDG_DATA_HOME ?? '';
-  if (base === '') {
-    let home = env.HOME ?? '';
-    if (home === '') home = os.homedir();
-    base = path.join(home, '.local', 'share');
-  }
-  return path.join(base, 'am', 'film-styles');
+  return path.join(dataDir(env) || dataDir({ HOME: os.homedir() }), 'film-styles');
 }
 
 /** 某个来源的数据目录：<根目录>/<来源 ID>。 */

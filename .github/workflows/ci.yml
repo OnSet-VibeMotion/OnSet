@@ -34,6 +34,42 @@ jobs:
       - run: npm run build -w @am/cli
       - run: npm run build -w am-desktop
 
+  windows:
+    # 客户端还没移植到 Windows（见 AGENTS.md「Windows」）。这一项先让问题暴露出来：类型检查与构建必须通过，
+    # 两包的单元测试照跑、失败不挡合并，等移植完再去掉 continue-on-error。
+    name: Windows (typecheck, build; tests report only)
+    runs-on: windows-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc --noEmit -p packages/engine
+      - run: npx tsc --noEmit -p packages/cli
+      - run: npm run typecheck -w am-desktop
+      - run: npm run build -w @am/cli
+      - run: npm run build -w am-desktop
+      - name: Engine unit tests (not yet expected to pass)
+        continue-on-error: true
+        run: npx vitest run --root packages/engine --reporter=default --reporter=junit --outputFile.junit=engine-junit.xml
+      - name: CLI unit tests (not yet expected to pass)
+        continue-on-error: true
+        run: npx vitest run --root packages/cli --reporter=default --reporter=junit --outputFile.junit=cli-junit.xml
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-test-reports
+          path: |
+            packages/engine/engine-junit.xml
+            packages/cli/cli-junit.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
   generated-assets:
     name: Generator reproduces the committed assets
     runs-on: ubuntu-latest

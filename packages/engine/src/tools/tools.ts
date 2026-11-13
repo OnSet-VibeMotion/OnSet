@@ -1,6 +1,7 @@
 // 移植自 internal/tools/tools.go。
 import fs from 'node:fs';
 import { marshal } from '../gojson';
+import { amCommand, WindowsBaseEnvKeys } from '../envutil';
 
 export const UserMessageMarker = '[[USER_MESSAGE]]';
 
@@ -52,9 +53,11 @@ export function amToolsServer(executable: string, profile: 'orchestrator' | 'ren
   const picked: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
     if (value === undefined) continue;
-    if (/^(AM_|HYPERFRAMES_|MEMORY|ORCHESTRATOR$|RENDERER$|TTS_|ALIGN_|SCENE_JOBS$|PATH$|HOME$|USER$|LANG$|TMPDIR$|XDG_DATA_HOME$)/.test(key)) picked[key] = value;
+    if (/^(AM_|HYPERFRAMES_|MEMORY|ORCHESTRATOR$|RENDERER$|TTS_|ALIGN_|SCENE_JOBS$|PATH$|HOME$|USER$|LANG$|TMPDIR$|XDG_DATA_HOME$)/.test(key) || WindowsBaseEnvKeys.includes(key)) picked[key] = value;
   }
-  return { name: ToolsServerName, command: executable, args: ['studio', 'tools-mcp', '--profile', profile, '--workdir', workdir], env: picked };
+  // Windows 上 executable 是 am.cjs，要用 Electron / Node 来跑（envutil.amCommand）。
+  const am = amCommand(executable);
+  return { name: ToolsServerName, command: am.command, args: [...am.args, 'studio', 'tools-mcp', '--profile', profile, '--workdir', workdir], env: { ...picked, ...am.env } };
 }
 
 /** claude / qoder / codebuddy 的 --mcp-config：几个服务合在一份 JSON 里。 */
@@ -206,6 +209,8 @@ export interface OrchestratorOptions {
 export interface PermissionPrompt {
   command: string;
   args: string[];
+  /** 启动它要的环境变量（Windows 上用 Electron 跑 am.cjs 时的 ELECTRON_RUN_AS_NODE 等，见 envutil.amCommand）。 */
+  env?: Record<string, string>;
   /** MCP 配置里的服务名；工具名是 mcp__<server>__ask。 */
   server: string;
 }
@@ -216,7 +221,7 @@ export interface PermissionPrompt {
  */
 function mcpArgs(p: PermissionPrompt | undefined, tools: McpServer | undefined): string[] {
   const servers: McpServer[] = [];
-  if (p) servers.push({ name: p.server, command: p.command, args: p.args });
+  if (p) servers.push({ name: p.server, command: p.command, args: p.args, ...(p.env && Object.keys(p.env).length > 0 ? { env: p.env } : {}) });
   if (tools) servers.push(tools);
   if (servers.length === 0) return [];
   const out = ['--mcp-config', mcpConfigJSON(servers)];

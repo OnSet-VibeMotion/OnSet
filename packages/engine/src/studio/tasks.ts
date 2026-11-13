@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as config from '../config';
-import { envMap, parsePassthrough } from '../envutil';
+import { amCommand, envMap, parsePassthrough } from '../envutil';
 import { marshal, marshalIndent } from '../gojson';
 import { parseWorkerOutput, workerArgs } from '../opworker';
 import { ExitError, start } from '../procgroup';
@@ -206,11 +206,12 @@ export function runStudioOp(s: Server, signal: AbortSignal, p: Project, name: st
  * scene_run 因此用网页选的渲染工具。参数按名字给，不拼命令行。
  */
 export async function runStudioOpWith(s: Server, signal: AbortSignal, p: Project, choice: AgentChoice, name: string, params: Record<string, unknown>): Promise<OpOutcome> {
-  const self = s.executable();
+  // Windows 上 executable 是 am.cjs，用 Electron / Node 来跑（envutil.amCommand）。
+  const am = amCommand(s.executable());
   const projectConfig = overrideAgents(config.load(p.path, null), choice);
-  const args = [...(s.config.unsafe ? ['--unsafe'] : []), ...workerArgs(name, params)];
-  const env = config.childEnvironment(projectConfig, envMap(), s.config.unsafe, parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? ''));
-  const started = await start(self, args, { cwd: p.path, env, stdio: ['ignore', 'pipe', 'pipe'], signal });
+  const args = [...am.args, ...(s.config.unsafe ? ['--unsafe'] : []), ...workerArgs(name, params)];
+  const env = { ...config.childEnvironment(projectConfig, envMap(), s.config.unsafe, parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? '')), ...am.env };
+  const started = await start(am.command, args, { cwd: p.path, env, stdio: ['ignore', 'pipe', 'pipe'], signal });
   const chunks: Buffer[] = [];
   started.child.stdout!.on('data', (chunk: Buffer) => chunks.push(chunk));
   started.child.stderr!.on('data', (chunk: Buffer) => chunks.push(chunk));

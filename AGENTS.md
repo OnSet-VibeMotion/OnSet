@@ -489,6 +489,24 @@ AM_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run --root 
 | Breeze 的非商用许可与「只克隆本人或已授权的声音」只写在 README 里；界面、提示词、配置注释与工具说明都不另行提示，也不让编排工具找用户确认 | 软件开源，怎么用是用户自己的事；反复提示只是打断（用户要求） |
 | mlx-audio 0.6.1 的命令行没有 `--seed`：同一段重生成结果会变，不能靠种子复现 | 上游 PyTorch 版与 API 有 seed，换到它们时再接 |
 
+## Windows
+
+客户端还没移植完：类型检查与构建在 CI 的 `windows` 任务（`windows-latest`）里必须通过，两包单元测试照跑但失败不挡合并（`continue-on-error`），全部通过后去掉。已经定下的约定：
+
+| 约定 | 原因 |
+|---|---|
+| 仓库一律以 LF 检出（`.gitattributes`） | Windows 上 git 默认转 CRLF，内置资产按字节下发、指纹按字节算、生成器幂等门逐字节比，全会错 |
+| 找可执行文件只用 `envutil.lookPath`：Windows 上按 `PATHEXT` 补扩展名、不看执行权限位；`toolpath.bundled` 同样试 `.exe` / `.cmd` | Windows 的 stat 没有执行位，原先的判断在那里什么都找不到 |
+| 环境拷进普通对象一律经 `envMap`（`normalizeWindowsEnv` 把 `Path` 改名 `PATH`） | Windows 上 PATH 通常叫 `Path`；`process.env` 不分大小写，拷出来的对象却分，引擎到处读 `env.PATH` |
+| 要整组结束的子进程用 `procgroup` 的 `start` / `groupSpawnOptions` / `killTree`，不要自己写 `detached: true` 与 `process.kill(-pid)` | Windows 没有进程组信号，要 `taskkill /T /F`；`detached` 在那里会弹出新的控制台窗口 |
+| `.cmd` / `.bat` 不直接 spawn：`procgroup/windows.ts` 把 npm 的 cmd-shim 改成用 node 跑它的 JS 入口，其余经 `cmd.exe` 转义，多行参数直接报错 | Node 不让直接 spawn 批处理；`cmd.exe` 传不了多行参数，而提示词、MCP 配置正是多行的 |
+| 启动 am 一律经 `envutil.amCommand`：Windows 上客户端不写 shim，`AM_SELF` 就是 `am.cjs`，用 Electron（`ELECTRON_RUN_AS_NODE=1`）跑；MCP 服务（`amToolsServer`、审批服务）与写任务都这样起 | 同上：交给各家 CLI 的 MCP 命令若是 `.cmd`，Node 写的 CLI 起不来 |
+| Windows 上写出的批处理（agent 的 `am.cmd` 只用 ASCII；`node.cmd` 先 `chcp 65001`） | 批处理按系统代码页解析，中文 Windows 是 GBK，UTF-8 的中文与中文路径会读错 |
+| 数据目录只经 `envutil.dataDir`：Windows 上是 `%LOCALAPPDATA%\am`，项目登记在 `%APPDATA%\am\studio`；`LOCALAPPDATA` 等系统变量在 `envutil.WindowsBaseEnvKeys` 里，进安全模式白名单与工具服务的环境 | Windows 上通常没有 `HOME`；子进程拿不到同一组变量就会算出另一个目录。缺 `SystemRoot` 时 Node、Python 的网络与加密直接失败 |
+| Windows 上不借用客户端的 Chromium 渲染（不设 `AM_BROWSER`） | 浏览器模式接管 puppeteer 在 fd 3/4 上的管道，Windows 的管道句柄传法不同；改用 HyperFrames 自己的 chrome-headless-shell |
+
+还没做：工具准备页的 Windows 下载表（ffmpeg、uv、无头浏览器）与 `toolinstall` 写出的 sh 包装、测试里的 sh 假工具、Windows 打包与真实 CLI 实测。
+
 ## 子进程环境
 
 `config.childEnvironment`（`packages/engine/src/config/config.ts`）在安全模式下只透传白名单变量。`USER` / `LOGNAME` / `SHELL` 不是凭据但必须保留——macOS 上 claude CLI 缺 `USER` 就读不到 Keychain 登录态，报错却是「Not logged in」，与权限隔离毫无关联，极难排查。

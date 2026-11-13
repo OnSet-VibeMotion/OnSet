@@ -12,6 +12,7 @@
  */
 import { type ChildProcess, spawn } from 'node:child_process';
 import { parseWorkerOutput, visibleText, workerArgs } from '@am/engine/opworker';
+import { groupSpawnOptions, killTree } from '@am/engine/procgroup';
 import { nodeCommand } from '@am/engine/toolpath';
 import './cli';
 import { allOps, normalizeParams, type Op, opScopes, type ParamSpec, type ParamValues } from './ops/op';
@@ -197,7 +198,8 @@ export const spawnOp: Spawner = (name, params) => {
     cwd: process.cwd(),
     env: command.env,
     stdio: ['ignore', 'pipe', 'pipe'],
-    detached: true,
+    // 各成进程组，取消时整组结束（Windows 上按进程树，见 procgroup）。
+    ...groupSpawnOptions(),
   });
 };
 
@@ -293,11 +295,7 @@ export class Jobs {
 
 function killGroup(child: ChildProcess): void {
   if (child.pid === undefined) return;
-  try {
-    process.kill(-child.pid, 'SIGTERM');
-  } catch {
-    child.kill('SIGTERM');
-  }
+  if (!killTree(child.pid, 'SIGTERM')) child.kill('SIGTERM');
 }
 
 function clip(text: string): string {

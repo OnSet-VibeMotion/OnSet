@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { envMap } from '../envutil';
+import { dataDir, envMap, WindowsBaseEnvKeys } from '../envutil';
 import { RootEnv, childEnvKeys, rootDir } from '../filmstyle';
 import { formatG, goPathError, goTrimSpace } from '../gofmt';
 import { BrowserEnv, CLIDirEnv, HyperFramesBrowserEnv, PinnedVersion, cliDir } from '../hyperframes';
@@ -118,15 +118,11 @@ export const DefaultMemoryExplore = 0.1;
 export const MaxMemoryExplore = 0.5;
 
 /**
- * 默认记忆库目录：用户级，可跨项目复用。
- * XDG_DATA_HOME 有值时用它，否则落在 HOME 下的 .local/share。
+ * 默认记忆库目录：用户级，可跨项目复用。<数据目录>/memory（envutil.dataDir）；
+ * 环境里什么都没有时按家目录推。
  */
 export function defaultMemoryDir(environ: Record<string, string | undefined>): string {
-  const dir = environ.XDG_DATA_HOME;
-  if (dir) return path.join(dir, 'am', 'memory');
-  let home = environ.HOME ?? '';
-  if (home === '') home = os.homedir();
-  return path.join(home, '.local', 'share', 'am', 'memory');
+  return path.join(dataDir(environ) || dataDir({ HOME: os.homedir() }), 'memory');
 }
 
 /** 读 KEY=VALUE 格式的配置文件（article-to-motion.conf、.env、全局设置）；不存在时为空。 */
@@ -311,6 +307,8 @@ export function childEnvironment(
     const allowed = [
       'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'LANG', 'LC_ALL',
       'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'CODEX_HOME',
+      // Windows 的系统变量（缺了 SystemRoot 等子进程直接出错，见 envutil.WindowsBaseEnvKeys）；别的系统上没有它们。
+      ...WindowsBaseEnvKeys,
       ...passthrough,
     ];
     for (const key of allowed) {

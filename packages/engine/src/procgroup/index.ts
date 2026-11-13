@@ -5,8 +5,9 @@
 // AI CLI 会再拉起 node、npx、ffmpeg 这类子进程。只杀直接子进程的话，孙进程会被
 // 托管给 init 继续跑，渲染器在后台接着写文件、占 CPU，下一次尝试和它抢同一个目录。
 // 所以统一开新进程组（Node 的 detached: true 在 Unix 上是 setsid，进程组号即 pid），
-// 取消时对 -pid 发信号。
+// 取消时对 -pid 发信号。Windows 上没有进程组信号，改为结束整棵进程树（windows.ts）。
 import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
+import { killWindowsTree, windowsCommand } from './windows';
 
 /** SIGTERM 之后等进程自行退出的时间（毫秒），超时改发 SIGKILL。 */
 export const DefaultGrace = 500;
@@ -52,12 +53,29 @@ export function abortReason(signal: AbortSignal): Error {
   return err;
 }
 
-function killGroup(pid: number, sig: NodeJS.Signals): void {
+/**
+ * 结束 pid 所在的进程组（由 start / groupSpawnOptions 启动的子进程，进程组号即 pid）。
+ * Windows 没有进程组信号，改用 taskkill 结束整棵进程树，sig 不起作用。返回是否结束成功，失败时调用方可以退回 child.kill。
+ */
+export function killTree(pid: number, sig: NodeJS.Signals = 'SIGTERM'): boolean {
+  if (process.platform === 'win32') return killWindowsTree(pid);
   try {
     process.kill(-pid, sig);
+    return true;
   } catch {
-    // 进程组已经不在了。
+    // 进程组已经不在了（或子进程不是组长）。
+    return false;
   }
+}
+
+const killGroup = killTree;
+
+/**
+ * 要整组结束的子进程的 spawn 选项：Unix 上开新进程组（setsid）；Windows 上 detached 会给子进程一个新的控制台
+ * （弹黑窗口），所以不用它，结束时由 killTree 按进程树结束，并隐藏子进程的窗口。
+ */
+export function groupSpawnOptions(): Pick<SpawnOptions, 'detached' | 'windowsHide'> {
+  return process.platform === 'win32' ? { detached: false, windowsHide: true } : { detached: true };
 }
 
 /**
@@ -69,7 +87,19 @@ export function start(file: string, args: string[], options: StartOptions = {}, 
   return new Promise((resolve, reject) => {
     let child: ChildProcess;
     try {
-      child = spawn(file, args, { ...spawnOptions, detached: true });
+      if (process.platform === 'win32') {
+        // npm 装的 CLI 是 .cmd 包装，不能直接 spawn（见 windows.ts）。
+        const env = (spawnOptions.env ?? process.env) as Record<string, string | undefined>;
+        const resolved = windowsCommand(file, args, env);
+        child = spawn(resolved.file, resolved.args, {
+          ...spawnOptions,
+          env: Object.keys(resolved.env).length > 0 ? { ...env, ...resolved.env } : spawnOptions.env,
+          windowsVerbatimArguments: resolved.verbatim ?? spawnOptions.windowsVerbatimArguments,
+          ...groupSpawnOptions(),
+        });
+      } else {
+        child = spawn(file, args, { ...spawnOptions, ...groupSpawnOptions() });
+      }
     } catch (err) {
       reject(err);
       return;

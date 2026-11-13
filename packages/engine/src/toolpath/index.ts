@@ -67,8 +67,9 @@ export function nodeDir(): string {
   if (!onElectron()) return path.dirname(process.execPath);
   const digest = crypto.createHash('sha256').update(process.execPath).digest('hex').slice(0, 12);
   const dir = path.join(os.tmpdir(), `am-node-${digest}`);
-  const file = path.join(dir, 'node');
-  const body = `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec '${process.execPath.replace(/'/g, `'\\''`)}' "$@"\n`;
+  const windows = process.platform === 'win32';
+  const file = path.join(dir, windows ? 'node.cmd' : 'node');
+  const body = windows ? windowsNodeScript(process.execPath) : `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec '${process.execPath.replace(/'/g, `'\\''`)}' "$@"\n`;
   let existing = '';
   try {
     existing = fs.readFileSync(file, 'utf8');
@@ -84,6 +85,14 @@ export function nodeDir(): string {
   return dir;
 }
 
+/**
+ * Windows 上的 node.cmd。批处理按系统代码页解析（中文 Windows 是 GBK），运行时路径里有中文（用户名是中文时
+ * 很常见）就会读错，所以先切到 UTF-8：cmd 逐行读批处理，chcp 之后的行按 UTF-8 解析。
+ */
+export function windowsNodeScript(execPath: string): string {
+  return ['@echo off', 'chcp 65001 >nul', 'set ELECTRON_RUN_AS_NODE=1', `"${execPath}" %*`, ''].join('\r\n');
+}
+
 /** env 的副本，PATH 前面加上 nodeDir()：只给 npm install 这类要跑安装脚本的子进程用。 */
 export function withNode(env: Record<string, string>): Record<string, string> {
   const dir = nodeDir();
@@ -93,10 +102,14 @@ export function withNode(env: Record<string, string>): Record<string, string> {
 
 /** 随客户端下发的、或 am setup 下载的 name；都没有时为空。 */
 export function bundled(name: string, env: Record<string, string | undefined>): string {
+  // Windows 上可执行文件带扩展名（ffmpeg.exe、uv.exe，npm 类工具是 .cmd）。
+  const names = process.platform === 'win32' && path.extname(name) === '' ? [name + '.exe', name + '.cmd'] : [name];
   for (const dir of [env[BundledBinEnv] ?? '', binDir(env)]) {
     if (dir === '') continue;
-    const file = path.join(dir, name);
-    if (isExecutable(file)) return file;
+    for (const n of names) {
+      const file = path.join(dir, n);
+      if (isExecutable(file)) return file;
+    }
   }
   return '';
 }

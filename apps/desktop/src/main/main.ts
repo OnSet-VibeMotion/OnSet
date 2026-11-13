@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, shell } fr
 import fs from 'node:fs';
 import path from 'node:path';
 import { newServer, type Server } from '@am/engine/studio';
-import { assetsDir, browserPath, browserScript, npmCLI, shimScript, writeScript } from './clishim';
+import { assetsDir, browserPath, browserScript, cliEntry, npmCLI, shimScript, writeScript } from './clishim';
 import { installMenu } from './menu';
 import { loginShellPath } from './shellpath';
 
@@ -70,6 +70,9 @@ async function serveStatic(pathname: string): Promise<Response> {
  * 不依赖用户有没有在菜单里「安装命令行工具」，也不会用到 ~/.local/bin 里可能是别的版本的 am。
  */
 function privateCLI(): string {
+  // Windows 上不写 shim：.cmd 不能直接 spawn，经 cmd.exe 又要转义多行参数。am 就是 am.cjs，
+  // 由 envutil.amCommand 用本应用的 Electron（ELECTRON_RUN_AS_NODE=1）来跑；渲染也不借用本应用的浏览器（见 browser.ts）。
+  if (process.platform === 'win32') return cliEntry();
   const file = path.join(app.getPath('userData'), 'bin', 'am');
   writeScript(file, shimScript());
   // 渲染用的浏览器包装脚本与 am 放在一起；shim 经 AM_BROWSER 把它的位置告诉 am。
@@ -150,7 +153,8 @@ if (!app.requestSingleInstanceLock()) {
       // 引擎里经 envutil.amExecutable() 找 am 的地方（子进程环境的 AM_EXECUTABLE、PATH）也认这一份。
       process.env.AM_SELF = executable;
       // 进程内的后端直接调 HyperFrames 时（预览截图等）同样用客户端自带的浏览器。
-      process.env.AM_BROWSER = browserPath();
+      // Windows 上浏览器模式接不上 puppeteer 的管道（fd 3/4），交给 HyperFrames 自己的 chrome-headless-shell。
+      if (process.platform !== 'win32') process.env.AM_BROWSER = browserPath();
       // 进程内的后端（客户端的安装页、新建项目）装 HyperFrames CLI 与 npm 类工具时用客户端自带的 npm。
       const npm = npmCLI();
       if (npm !== '') process.env.AM_NPM_CLI = npm;

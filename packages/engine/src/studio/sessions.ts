@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as agentrun from '../agentrun';
 import * as config from '../config';
-import { addToolsLocation, envMap, lookPath, parsePassthrough } from '../envutil';
+import { addToolsLocation, amCommand, envMap, lookPath, parsePassthrough } from '../envutil';
 import { atomicWrite } from '../fsutil';
 import { formatFixed, goClean, goTrimSpace } from '../gofmt';
 import { marshal, marshalIndent } from '../gojson';
@@ -660,7 +660,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
       prompt,
       unsafe: s.config.unsafe,
       access,
-      permissionPrompt: { command: s.executable(), args: ['studio', 'permission-mcp'], server: PermissionServerName },
+      permissionPrompt: permissionPrompt(s.executable()),
       toolsServer: tools.amToolsServer(s.executable(), 'orchestrator', p.path, env),
       // codebuddy、opencode、codex 走双向协议，审批请求由 agentrun 直接交到这里：写进同一个收件目录，
       // 与审批 MCP 走同一条路（轮询、卡片、以后都允许），等用户回答。
@@ -905,4 +905,10 @@ function recordUsage(signal: AbortSignal, p: Project, sess: Session, tool: strin
   } catch (err) {
     emit(sess, turnID, { kind: kindNotice, text: '编排用量没能记进账本：' + (err as Error).message });
   }
+}
+
+/** 审批服务（am studio permission-mcp）的启动方式；Windows 上用 Electron / Node 跑 am.cjs（envutil.amCommand）。 */
+function permissionPrompt(executable: string): tools.PermissionPrompt {
+  const am = amCommand(executable);
+  return { command: am.command, args: [...am.args, 'studio', 'permission-mcp'], server: PermissionServerName, env: am.env };
 }

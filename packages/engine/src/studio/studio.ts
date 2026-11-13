@@ -100,6 +100,7 @@ const summaryLimit = 15;
 function userConfigDir(): string {
   const home = process.env.HOME || os.homedir();
   if (process.platform === 'darwin') return path.join(home, 'Library', 'Application Support');
+  if (process.platform === 'win32') return process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
   return process.env.XDG_CONFIG_HOME || path.join(home, '.config');
 }
 
