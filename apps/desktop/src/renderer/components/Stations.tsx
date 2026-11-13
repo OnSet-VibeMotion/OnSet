@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, errorText, post } from '../api';
-import type { ProgressState, ProjectState, Scene, StationInfo, StationOp, StationPageInfo, StationParam, StationSetting, StationsResponse } from '../types';
+import type { ProgressState, ProjectState, Scene, StationInfo, StationOp, StationPageInfo, StationParam, StationRun, StationSetting, StationsResponse } from '../types';
 import { setPluginCommands } from './chat/complete';
 import type { RunAction } from './Preview';
 import '../stations.css';
@@ -72,14 +72,27 @@ function placement(s: StationInfo): string {
   return s.replaces ? `${where}，替换自带的这一站` : where;
 }
 
-/** 插件要了哪些权限，用用户的话列出来。 */
-function permissionLines(s: StationInfo): [string, string][] {
+/**
+ * 插件的操作是电脑上的普通程序，清单管不住它：添加前、详情里都照实说（与 station_add 的输出同一句话，
+ * 引擎里是 flow.OpsTrustNotice）。页面的权限另列，不混成一张表，免得让人以为操作也受限。
+ */
+const opsTrust =
+  '它的操作是在你电脑上运行的程序，能读写你的文件、能联网；ArticleToMotion 只限制它拿不到项目 .env 与 ArticleToMotion 的凭据，并在它写了声明范围之外的项目文件时告诉你。';
+
+/** 页面申请的权限：页面在沙箱里，只能做这些。 */
+function pagePermissionLines(s: StationInfo): [string, string][] {
   const out: [string, string][] = [];
   const reads = [...new Set(s.pages.flatMap((p) => p.reads))];
   if (s.permissions.project) out.push(['看项目', '镜头、制作进度、发布信息的概况']);
   if (reads.length > 0) out.push(['读文件', reads.join('、')]);
   if (s.permissions.network.length > 0) out.push(['联网', s.permissions.network.map((o) => o.replace(/^https?:\/\//, '')).join('、')]);
   if (s.permissions.uses.length > 0) out.push(['请你确认后执行', s.permissions.uses.map((u) => opNames[u] ?? u).join('、')]);
+  return out;
+}
+
+/** 插件接进来的地方（自动执行、提供配音、给渲染器的技能……），用用户的话列出来。 */
+function permissionLines(s: StationInfo): [string, string][] {
+  const out: [string, string][] = [];
   for (const h of s.hooks) {
     const op = s.ops.find((o) => o.name === h.op);
     out.push(['自动执行', `${eventNames[h.on] ?? h.on}：${op?.summary ?? h.op}`]);
@@ -176,11 +189,14 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
   const [data, error, reload] = useStations(version);
   const [source, setSource] = useState('');
   const [open, setOpen] = useState<string>('');
+  // 添加前先说实话：插件带的操作不在沙箱里。
+  const [confirming, setConfirming] = useState(false);
   const add = () => {
     const value = source.trim();
     if (value === '') return;
     run('/api/stations', { source: value });
     setSource('');
+    setConfirming(false);
   };
   const builtins = (data?.stations ?? []).filter((s) => s.builtin);
   const thirdParty = (data?.stations ?? []).filter((s) => !s.builtin);
@@ -236,6 +252,7 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
         <ul className="stations-list">
           {thirdParty.map((s) => {
             const perms = permissionLines(s);
+            const pagePerms = pagePermissionLines(s);
             const needsSetup = s.settings.some((st) => st.type === 'secret' && !st.set);
             return (
               <li key={s.id} className="station-card" data-station={s.id}>
@@ -285,9 +302,29 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
                         </>
                       )}
                     </dl>
+                    {s.ops.length > 0 && (
+                      <>
+                        <div className="station-prompt-label">它的操作</div>
+                        <p className="station-trust">{opsTrust}</p>
+                      </>
+                    )}
+                    {pagePerms.length > 0 && (
+                      <>
+                        <div className="station-prompt-label">它的页面能做的</div>
+                        <dl className="station-perms station-page-perms">
+                          {pagePerms.map(([k, v]) => (
+                            <div key={k + v}>
+                              <dt>{k}</dt>
+                              <dd>{v}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                        <span className="station-perms-note">页面在沙箱里运行，只能做上面这些；读文件、执行操作都要经过 ArticleToMotion。</span>
+                      </>
+                    )}
                     {perms.length > 0 && (
                       <>
-                        <div className="station-prompt-label">它要的权限</div>
+                        <div className="station-prompt-label">它接进来的地方</div>
                         <dl className="station-perms">
                           {perms.map(([k, v]) => (
                             <div key={k + v}>
@@ -332,15 +369,31 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
           aria-label="插件来源"
           placeholder="github:作者/仓库#版本，或本机目录的绝对路径"
           value={source}
-          onChange={(e) => setSource(e.target.value)}
+          onChange={(e) => {
+            setSource(e.target.value);
+            setConfirming(false);
+          }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') add();
+            if (e.key === 'Enter' && source.trim() !== '') setConfirming(true);
           }}
         />
-        <button className="primary" disabled={source.trim() === ''} onClick={add}>
+        <button className="primary" disabled={source.trim() === '' || confirming} onClick={() => setConfirming(true)}>
           添加
         </button>
       </div>
+      {confirming && (
+        <div className="stations-confirm" role="alertdialog" aria-label="确认添加插件">
+          <p>
+            插件是别人写的。它的页面在沙箱里运行，只能做它申请过的事；要是它带操作（给你点的按钮、给 AI 用的工具），{opsTrust}
+          </p>
+          <div>
+            <button className="primary" onClick={add}>
+              确认添加
+            </button>
+            <button onClick={() => setConfirming(false)}>取消</button>
+          </div>
+        </div>
+      )}
     </section>
     </>
   );
@@ -406,7 +459,33 @@ function OpAction({ station, op, run }: { station: StationInfo; op: StationOp; r
         </button>
         {last && <span className={last.ok ? 'station-last ok' : 'station-last bad'}>{last.ok ? '上次执行成功' : '上次执行失败'}</span>}
       </div>
+      <ScopeWarning run={last} />
       {last && last.text.trim() !== '' && <pre className="station-output">{last.text.trim()}</pre>}
+    </div>
+  );
+}
+
+/** 插件写了它没声明会写的项目文件：照实列出来。文件已经写了，客户端撤销不了，只能告诉用户怎么恢复。 */
+function ScopeWarning({ run, label }: { run?: StationRun; label?: string }) {
+  const files = run?.out_of_scope ?? [];
+  if (files.length === 0) return null;
+  const more = run?.out_of_scope_more ?? 0;
+  const reserved = new Set(run?.reserved ?? []);
+  return (
+    <div className="station-scope" role="alert">
+      <strong>
+        {label ? `${label}：` : ''}
+        {reserved.size > 0 ? '它写了 ArticleToMotion 自己的文件，这次按失败处理' : `它改了 ${files.length + more} 个没声明会写的文件`}
+      </strong>
+      <ul>
+        {files.map((f) => (
+          <li key={f} className={reserved.has(f) ? 'reserved' : undefined}>
+            {f}
+          </li>
+        ))}
+        {more > 0 && <li className="more">……另有 {more} 个</li>}
+      </ul>
+      <span>文件已经写了。不该改的话，可以回退那一轮对话，或者用 git 恢复。</span>
     </div>
   );
 }
@@ -580,6 +659,8 @@ interface FrameProps {
 function StationFrame({ station, page, context, version, run, onQuick, onOpen, projectName, height }: FrameProps) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [pending, setPending] = useState<PendingRun | null>(null);
+  // 这个页面经 am.run() 请用户确认后执行过的操作（操作名 → 点「执行」的时间）：之后的执行结果越界了，回执处要标出来。
+  const [ran, setRan] = useState<Record<string, string>>({});
   const pendingRef = useRef<PendingRun | null>(null);
 
   const reply = (id: number, ok: boolean, result?: unknown, error?: string) => {
@@ -682,6 +763,7 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
     } else if (allow) {
       const base = `/api/stations/${encodeURIComponent(station.id)}`;
       run(req.kind === 'run' ? `${base}/ops/${encodeURIComponent(req.op)}` : `${base}/call/${encodeURIComponent(req.op)}`, { params: req.params });
+      if (req.kind === 'run') setRan((r) => ({ ...r, [req.op]: new Date().toISOString() }));
       reply(req.id, true, { started: true });
     } else {
       reply(req.id, false, undefined, '用户没有同意');
@@ -709,6 +791,11 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
           <button onClick={() => decide(false)}>不执行</button>
         </div>
       )}
+      {station.ops
+        .filter((o) => ran[o.name] && o.last_run && o.last_run.at >= ran[o.name])
+        .map((o) => (
+          <ScopeWarning key={o.name} run={o.last_run} label={`「${station.name}」执行「${o.summary.replace(/（.*?）/g, '')}」`} />
+        ))}
       <iframe
         ref={frame}
         className="station-frame"

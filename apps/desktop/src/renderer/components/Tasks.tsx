@@ -34,6 +34,7 @@ export function Tasks({ tasks, onCancel }: { tasks: Task[]; onCancel: (id: strin
                 </div>
               )}
               {task.error && <pre className="task-error">{forUser(task.error)}</pre>}
+              {task.warning && <p className="task-warning">{task.warning}</p>}
               {(task.status === 'running' || task.status === 'queued') && (
                 <button className="ghost" onClick={() => onCancel(task.task_id)}>
                   取消
