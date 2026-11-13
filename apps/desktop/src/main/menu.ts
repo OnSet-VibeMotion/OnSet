@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, Menu, type MenuItemConstructorOptions } from 'electron';
+import { installCLIShim } from './clishim';
 
 /**
  * 原生菜单。菜单项只发「做什么」给当前窗口的界面（am:menu），界面用它已有的状态与接口去做：
@@ -21,7 +22,24 @@ async function openFolder(): Promise<void> {
 export function installMenu(): void {
   const steps = ['口播稿', '镜头', '成片', '发布'];
   const template: MenuItemConstructorOptions[] = [
-    ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
+    ...(process.platform === 'darwin'
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: 'about', label: '关于 ArticleToMotion' },
+              { type: 'separator' },
+              { label: '安装命令行工具…', click: () => void installCLIShim() },
+              { type: 'separator' },
+              { role: 'hide', label: '隐藏' },
+              { role: 'hideOthers', label: '隐藏其他' },
+              { role: 'unhide', label: '全部显示' },
+              { type: 'separator' },
+              { role: 'quit', label: '退出 ArticleToMotion' },
+            ] as MenuItemConstructorOptions[],
+          },
+        ]
+      : []),
     {
       label: '文件',
       submenu: [

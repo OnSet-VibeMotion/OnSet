@@ -16,10 +16,14 @@ export interface GoBackend {
   stop: () => void;
 }
 
-/** 找 am 可执行文件：AM_GO_BINARY 优先，其次 ~/.local/bin/am，再交给 PATH。 */
+/** 找 Go 版 am：AM_GO_BINARY 优先，其次应用自带的一份，再是 ~/.local/bin/am，最后交给 PATH。 */
 function amBinary(): string {
   const explicit = process.env.AM_GO_BINARY;
   if (explicit) return explicit;
+  // 打包的应用自带一份 Go 版 am（resources/go/am）：不依赖用户机器上的 ~/.local/bin/am，
+  // 那里装了客户端的命令行 shim 之后就不再是 Go 版。切换到 TS 引擎后连同本文件一起删掉。
+  const bundled = path.join(process.resourcesPath ?? '', 'go', 'am');
+  if (process.resourcesPath && fs.existsSync(bundled)) return bundled;
   const local = path.join(os.homedir(), '.local/bin/am');
   return fs.existsSync(local) ? local : 'am';
 }

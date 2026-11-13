@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { assetsDir } from './clishim';
 import { startGoBackend, type GoBackend } from './gobackend';
 import { installMenu } from './menu';
 import { loginShellPath } from './shellpath';
@@ -123,6 +124,8 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     process.env.PATH = loginShellPath();
+    // 引擎从这里读内置资产（Go 版是 go:embed 进二进制的）。
+    process.env.AM_ASSETS_DIR ??= assetsDir();
     const logFile = path.join(app.getPath('logs'), 'am-studio.log');
     fs.mkdirSync(path.dirname(logFile), { recursive: true });
     const log = (line: string) => fs.appendFile(logFile, line, () => {});
