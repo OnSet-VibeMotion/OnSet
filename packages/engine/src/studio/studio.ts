@@ -132,6 +132,15 @@ export class Server {
     this.routes = this.routeTable();
   }
 
+  /**
+   * 退出前停掉进行中的每一轮对话与每个写任务。Go 版是独立进程，被整组结束时子进程跟着结束；
+   * 在客户端主进程里，编排工具与 am 子命令各自成进程组，不显式取消就会在客户端退出后继续跑。
+   */
+  shutdown(): void {
+    for (const session of this.sessions.values()) session.cancel?.abort();
+    for (const controller of this.tasks.cancel.values()) controller.abort();
+  }
+
   /** am 命令行入口（Go 版的 os.Executable()）。 */
   executable(): string {
     return this.config.executable || amExecutable();

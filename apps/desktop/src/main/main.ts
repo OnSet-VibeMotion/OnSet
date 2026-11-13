@@ -1,8 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { assetsDir } from './clishim';
-import { startGoBackend, type GoBackend } from './gobackend';
+import { newServer, type Server } from '@am/engine/studio';
+import { assetsDir, shimScript } from './clishim';
 import { installMenu } from './menu';
 import { loginShellPath } from './shellpath';
 
@@ -11,8 +11,8 @@ import { loginShellPath } from './shellpath';
  *
  * 界面从自定义协议 am://app/ 加载，于是界面里所有相对地址——fetch('/api/…')、EventSource、
  * <video src="/api/…">、合成预览的 <iframe src="/preview/…">、上传的 FormData——都落到
- * 下面同一个 handleRequest 里，界面代码不用为客户端改一行。过渡期 /api 与 /preview 转给后台的
- * Go 版 am studio（gobackend.ts），其余路径返回界面的静态文件。
+ * 下面同一个 handleRequest 里，界面代码不用为客户端改一行。/api 与 /preview 交给进程内的
+ * Studio 后端（@am/engine/studio 的 handle），其余路径返回界面的静态文件。
  */
 
 const SCHEME = 'am';
@@ -26,7 +26,7 @@ protocol.registerSchemesAsPrivileged([
 app.setName('ArticleToMotion');
 
 const rendererDir = path.join(__dirname, 'renderer');
-let backend: GoBackend | null = null;
+let backend: Server | null = null;
 
 const mime: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -54,26 +54,34 @@ async function serveStatic(pathname: string): Promise<Response> {
   }
 }
 
-/** 转给后台 Go 版 am studio。请求体与响应体都按流转发：上传不进内存，SSE 与视频边到边给。 */
-async function proxy(request: Request, url: URL): Promise<Response> {
-  if (!backend) return new Response(JSON.stringify({ code: 'backend_down', message: '后台服务没有启动' }), { status: 503 });
-  const target = `${backend.origin}${url.pathname}${url.search}`;
-  const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
-  const init: RequestInit & { duplex?: 'half' } = {
-    method: request.method,
-    headers: request.headers,
-    body: hasBody ? request.body : undefined,
-    redirect: 'manual',
-  };
-  if (hasBody) init.duplex = 'half';
-  const response = await fetch(target, init);
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers: response.headers });
+/**
+ * Studio 后端写任务与编排工具调用的 am：一段私有 shim，用本应用的 Electron 当 Node 跑自带的命令行。
+ * 不依赖用户有没有在菜单里「安装命令行工具」，也不会用到 ~/.local/bin 里可能是别的版本的 am。
+ */
+function privateCLI(): string {
+  const file = path.join(app.getPath('userData'), 'bin', 'am');
+  const body = shimScript();
+  let existing = '';
+  try {
+    existing = fs.readFileSync(file, 'utf8');
+  } catch {
+    existing = '';
+  }
+  if (existing !== body) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file + '.tmp', body, { mode: 0o755 });
+    fs.renameSync(file + '.tmp', file);
+  }
+  return file;
 }
 
 async function handleRequest(request: Request): Promise<Response> {
   const url = new URL(request.url);
   if (url.host !== 'app') return new Response('not found', { status: 404 });
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/preview/')) return proxy(request, url);
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/preview/')) {
+    if (!backend) return new Response(JSON.stringify({ code: 'backend_down', message: '后台服务没有启动' }), { status: 503 });
+    return backend.handle(request);
+  }
   return serveStatic(url.pathname);
 }
 
@@ -126,13 +134,13 @@ if (!app.requestSingleInstanceLock()) {
     process.env.PATH = loginShellPath();
     // 引擎从这里读内置资产（Go 版是 go:embed 进二进制的）。
     process.env.AM_ASSETS_DIR ??= assetsDir();
-    const logFile = path.join(app.getPath('logs'), 'am-studio.log');
-    fs.mkdirSync(path.dirname(logFile), { recursive: true });
-    const log = (line: string) => fs.appendFile(logFile, line, () => {});
     try {
-      backend = await startGoBackend(process.env, log);
+      const executable = privateCLI();
+      // 引擎里经 envutil.amExecutable() 找 am 的地方（子进程环境的 AM_EXECUTABLE、PATH）也认这一份。
+      process.env.AM_SELF = executable;
+      backend = newServer({ executable });
     } catch (err) {
-      dialog.showErrorBox('后台服务起不来', `${err instanceof Error ? err.message : String(err)}\n\n日志：${logFile}`);
+      dialog.showErrorBox('后台服务起不来', err instanceof Error ? err.message : String(err));
       app.quit();
       return;
     }
@@ -164,5 +172,5 @@ if (!app.requestSingleInstanceLock()) {
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
   });
-  app.on('will-quit', () => backend?.stop());
+  app.on('will-quit', () => backend?.shutdown());
 }

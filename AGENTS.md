@@ -330,7 +330,7 @@ lemo 来源（`internal/filmstyle/lemo`）自己的约定：
 |---|---|
 | 客户端在 `apps/desktop`（npm workspaces，根目录 `package.json`）：`src/main` 是 Electron 主进程，`src/renderer` 是 React 19 界面（从 `internal/studio/ui` 复制后改写，那份 Preact 源码只给 Go 版 `am studio` 用，冻结不再改） | 用户要求客户端用 React；Go 版界面不动，改写期间照常出片 |
 | 界面从自定义协议 `am://app/` 加载，界面里的 `/api/…`、`EventSource`、媒体 `src`、预览 iframe、上传都落到主进程的 `handleRequest` | 界面不用为客户端改请求代码；接口名沿用 Go 版，移植时逐条把路由从「转发」换成「本地实现」 |
-| 过渡期 `/api`、`/preview` 转给后台的 Go 版 `am studio`（`gobackend.ts`：自选空闲端口、等 `/api/health`、退出时杀整个进程组） | 客户端第一天就能完整使用；TS 引擎全部移植完再删这一层 |
+| `/api`、`/preview` 由进程内的 Studio 后端处理（`@am/engine/studio` 的 `handle(Request)`）；它的写任务与编排工具调用的 `am` 是 `userData/bin/am` 这份私有 shim（`AM_SELF` 同指它）；退出前 `Server.shutdown()` 取消进行中的轮次与任务 | 不依赖用户是否安装了命令行、也不会调到 `~/.local/bin` 里别的版本；编排工具与子命令各成进程组，不显式取消会在客户端退出后继续跑 |
 | 主进程启动时从登录 shell 读 PATH（`shellpath.ts`） | 从 Finder 启动的应用只有系统 PATH，编排工具、ffmpeg、asdf 的 node 全都找不到 |
 | 顶栏就是标题栏：`.desktop .topbar` 可拖动窗口，按钮 `no-drag`；macOS 左侧留 88px 给红绿灯 | `titleBarStyle: hiddenInset` 去掉了系统标题栏 |
 | 根目录 `package-lock.json` 的 `resolved` 必须是 `registry.npmjs.org` | 同界面那条：用镜像装完要换回官方源，CI 访问不到国内镜像 |

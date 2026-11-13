@@ -10,8 +10,7 @@
     "build": "npm run build:main && npm run build:renderer",
     "start": "npm run build && electron .",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.main.json",
-    "build:go": "mkdir -p out/go && cd ../.. && go build -o apps/desktop/out/go/am ./cmd/am",
-    "dist": "npm run build && npm run build -w @am/cli && npm run build:go && electron-builder --mac --dir"
+    "dist": "npm run build && npm run build -w @am/cli && electron-builder --mac --dir"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
@@ -54,10 +53,6 @@
       {
         "from": "../../packages/cli/dist",
         "to": "cli"
-      },
-      {
-        "from": "out/go",
-        "to": "go"
       }
     ],
     "mac": {
