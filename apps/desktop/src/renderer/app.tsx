@@ -8,7 +8,7 @@ import { SkillsPill, type SkillsStatus } from './components/SkillsPill';
 import { SetupGuide, useSetup } from './components/SetupGuide';
 import { Settings } from './components/Settings';
 import { Icon } from './components/Icon';
-import { Preview, stepTabsFor, tabs, visibleTabs, type Tab } from './components/Preview';
+import { Preview, stepTabs, tabs, visibleTabs, type Tab } from './components/Preview';
 import { scriptFinalPath } from './components/Script';
 import { storyboardFiles } from './components/Storyboard';
 import { currentSummary } from './components/Progress';
@@ -126,21 +126,23 @@ export function App() {
   const [route, setRoute] = useState<ProgressState | null>(null);
   // 从制作路线跳到对话里的某一轮：nonce 让同一轮能再跳一次。
   const [jump, setJump] = useState<{ turn: string; nonce: number } | null>(null);
-  const beatMode = !!beat?.enabled;
-  /** 项目选用了第三方站带来的流程：顶栏第一步换成它指定的页面。 */
-  const [flowFirstTab, setFlowFirstTab] = useState<Tab | ''>('');
+  /**
+   * 项目的流程（片型）声明：第一步是哪一页、有哪些步骤、哪些页用不上、没有镜头时落在哪一页。
+   * 第三方流程的第一步页也在里面。还没读到时按口播。
+   */
+  const flowDecl = state?.flow;
+  const flowHidden = useMemo(() => flowDecl?.hidden_pages ?? ['beat'], [flowDecl]);
+  const landPage = (flowDecl?.land_page ?? '') as Tab | '';
   /**
    * 内置插件的页面里这个项目用不上的（后端 /api/stations 的 hidden_pages：插件关了、也没有别的站接手），
    * 顶栏不显示这一页与同名的步骤（例如关掉「发布」时没有发布这一步）。
    */
   const [hiddenPages, setHiddenPages] = useState<string[]>([]);
-  const steps = useMemo(() => {
-    const base = stepTabsFor(beatMode).filter((t) => !hiddenPages.includes(t));
-    return flowFirstTab ? [flowFirstTab, ...base.slice(1)] : base;
-  }, [beatMode, flowFirstTab, hiddenPages]);
+  const steps = useMemo(() => ((flowDecl?.steps ?? stepTabs) as Tab[]).filter((t, i) => i === 0 || !hiddenPages.includes(t)), [flowDecl, hiddenPages]);
   // 整片制作现在在哪一步（编排工具每轮结束前用 studio_step 标的，没标过时按产物推），顶栏据此标出进度。
-  // 第一步可能换成了第三方流程的页面：口播稿、节拍这一步的进度都算在第一步上。
-  const progress = state?.step ? (['script', 'beat'].includes(state.step) ? 0 : steps.indexOf(state.step as Tab)) : -1;
+  // 第一步可能换成了第三方流程的页面：流程声明里算第一步的标记（口播稿、节拍）都落在第一步上。
+  const firstSteps = flowDecl?.first_steps ?? ['script', 'beat'];
+  const progress = state?.step ? (firstSteps.includes(state.step) ? 0 : steps.indexOf(state.step as Tab)) : -1;
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [busy, setBusy] = useState('');
   const [sessionId, setSessionId] = useState('');
@@ -273,7 +275,6 @@ export function App() {
         api<StationsResponse>('/api/stations').catch(() => ({ stations: [], problems: [] }) as StationsResponse),
       ]);
       setStationPages(sts.stations);
-      setFlowFirstTab((sts.active_flow?.first_tab as Tab | undefined) ?? '');
       setHiddenPages(sts.hidden_pages ?? []);
       // 只用来嵌进别的页面的小窗不单独列。
       setPluginTabs(
@@ -550,16 +551,16 @@ export function App() {
       setScriptSeen(0);
     }
   }, [seenKey]);
-  // 卡点项目：口播稿页换成节拍页；还没有镜头时（节拍、分镜阶段）打开项目先到节拍页。
-  const autoBeat = useRef('');
+  // 流程声明了落脚页（卡点是节拍页）：用不上的页换成它；还没有镜头时（节拍、分镜阶段）打开项目先到它。
+  const autoLand = useRef('');
   useEffect(() => {
-    if (!beatMode) return;
-    if (tab === 'script') setTab('beat');
-    else if (tab === 'scene' && scenes.length === 0 && autoBeat.current !== seenKey) {
-      autoBeat.current = seenKey;
-      setTab('beat');
+    if (!landPage) return;
+    if (flowHidden.includes(tab)) setTab(landPage);
+    else if (tab === 'scene' && scenes.length === 0 && autoLand.current !== seenKey) {
+      autoLand.current = seenKey;
+      setTab(landPage);
     }
-  }, [beatMode, tab, scenes.length, seenKey]);
+  }, [landPage, flowHidden, tab, scenes.length, seenKey]);
   const autoScript = useRef('');
   useEffect(() => {
     if (!scriptMtime || scenes.length > 0 || tab !== 'scene' || autoScript.current === seenKey) return;
@@ -725,7 +726,7 @@ export function App() {
         <span className="spacer" />
         {currentId && !homeOpen && (
           <nav className="more-pages" aria-label="更多页面">
-            {visibleTabs(beatMode)
+            {visibleTabs(flowHidden)
               .filter(([id]) => !hiddenPages.includes(id))
               .filter(([id]) => !steps.includes(id))
               .map(([id, label]) => (

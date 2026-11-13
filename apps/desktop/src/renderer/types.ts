@@ -18,6 +18,25 @@ export interface ProjectState {
   step?: string;
   /** step 是编排工具用 studio_step 标的；否则是按产物推的。 */
   step_marked?: boolean;
+  /** 项目的流程（片型）：顶栏的步骤、第一步、用不上的页面都按它（studio/progress.ts 的 flowView）。 */
+  flow?: FlowView;
+}
+
+export interface FlowView {
+  /** speech、beat、song，或第三方流程 x:<站>。 */
+  id: string;
+  name: string;
+  first_page: string;
+  /** 顶栏的步骤（页面 id），第一步是 first_page。 */
+  steps: string[];
+  /** 这个项目用不上的别的流程的第一步页。 */
+  hidden_pages: string[];
+  /** 编排工具标的这几个步骤都算第一步。 */
+  first_steps: string[];
+  /** 还没有镜头时打开项目先落在这一页；空是不落。 */
+  land_page: string;
+  /** 制作说明用的是项目里改过的那份文件。 */
+  custom_prompt: boolean;
 }
 
 export interface Scene {
@@ -787,11 +806,14 @@ export interface ProgressStation {
 }
 
 export interface ProgressState {
-  mode: 'speech' | 'beat';
+  /** 流程 id（speech、beat、song 或 x:<站>）。 */
+  mode: string;
   stations: ProgressStation[];
   current: string;
   waiting_on: '' | 'user' | 'ai';
   turns: Record<string, string[]>;
+  /** 制作说明用的是项目里改过的那份文件。 */
+  custom_prompt?: boolean;
 }
 
 /** /api/stations：这个项目加的第三方站（studio/stations.ts）。 */

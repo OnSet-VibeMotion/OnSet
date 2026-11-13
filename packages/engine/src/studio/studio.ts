@@ -18,6 +18,7 @@ import * as filmstyle from '../filmstyle';
 import { goClean, goPathError, goTrimSpace } from '../gofmt';
 import { marshalIndent } from '../gojson';
 import * as preset from '../preset';
+import { promptSource } from '../project/runprompt';
 import * as projectinit from '../projectinit';
 import { agentKeysAPI } from './agentkeys';
 import { agentModelsAPI, agentsAPI } from './agents';
@@ -41,7 +42,7 @@ import {
 import { memoryAPI, memoryActionAPI, memoryRecallAPI } from './memory';
 import { discoverScenes, fileExists, type SceneSummary } from './scenes';
 import { scriptAPI } from './script';
-import { computeStations, latestOutput, progressAPI } from './progress';
+import { computeStations, flowView, latestOutput, progressAPI } from './progress';
 import { stationMediaAPI, stationsAPI, stationUIAPI, tickStationSchedules } from './stations';
 import { storyboardAPI } from './storyboard';
 import { readStepMark } from './view';
@@ -836,6 +837,8 @@ export function inspectProject(p: Project): Record<string, unknown> {
     project: projectJSON(p),
     stage: stageFor(p.path, scenes),
     ...stepOf(p.path, scenes),
+    // 项目的流程：顶栏的步骤、第一步与用不上的页面都按它（界面不按片型写死）。
+    flow: flowView(p.path, promptSource(p.path) === 'custom'),
     metadata: goMap(meta),
     media: goMap({
       audio: exists('production', 'audio', 'candidate.mp4'),

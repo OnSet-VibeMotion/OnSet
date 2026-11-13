@@ -135,6 +135,11 @@ export function ProgressTab(props: Props) {
             <strong>{text}</strong>
           )}
         </p>
+        {progress.custom_prompt && (
+          <p className="pg-custom" id="progress-custom-prompt" title="项目里的 PROMPT-PRODUCTION.md（或 PROMPT-SONG.md）改过：开始制作时照它来，不用这一版自带的制作说明">
+            这个项目用的是自己改过的制作说明
+          </p>
+        )}
       </header>
       <ol className="pg-groups">
         {groups.map((group, gi) => (

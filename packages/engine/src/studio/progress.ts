@@ -14,6 +14,8 @@ import * as flow from '../flow';
 import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
 import * as plugin from '../plugin';
+import * as studioview from '../studioview';
+import { promptSource } from '../project/runprompt';
 import { sameDownbeats } from './api_ui';
 import { writeError, writeJSON } from './http';
 import { discoverScenes, fileExists, type SceneSummary } from './scenes';
@@ -69,6 +71,8 @@ export interface ProgressResponse {
   waiting_on: '' | 'user' | 'ai';
   /** 每一轮推进到了哪几站（对话里每轮结尾的标签用），值是站的 label。 */
   turns: Record<string, string[]>;
+  /** 制作说明用的是项目里改过的那份文件（只在是的时候出现）：路线页提示用户。 */
+  custom_prompt?: true;
 }
 
 /** 关卡确认记录。 */
@@ -564,7 +568,9 @@ export function readProgress(root: string): ProgressResponse {
       });
     }
   }
-  return { ...base, turns: labels };
+  const out: ProgressResponse = { ...base, turns: labels };
+  if (promptSource(root) === 'custom') out.custom_prompt = true;
+  return out;
 }
 
 export async function progressAPI(s: Server, request: Request, rest: string): Promise<Response> {
@@ -589,4 +595,59 @@ export async function progressAPI(s: Server, request: Request, rest: string): Pr
   } catch (err) {
     return writeError(400, 'invalid_request', (err as Error).message);
   }
+}
+
+// ---------------------------------------------------------------------------
+// 流程声明：界面按它排顶栏，不按片型写死
+
+/** /api/state 的 flow：这个项目用的流程，以及顶栏据此怎么排。 */
+export interface FlowView {
+  /** 流程 id：speech、beat、song，或第三方的 x:<站>。 */
+  id: string;
+  name: string;
+  /** 顶栏第一步打开哪一页。 */
+  first_page: string;
+  /** 顶栏的步骤（页面 id），第一步是 first_page，其余是宿主的骨架（studioview.StepIDs 里不是「第一步页」的那几个）。 */
+  steps: string[];
+  /** 别的流程的第一步页（这个项目用不上）：不在顶栏与更多页面里列（编排工具仍能切过去）。 */
+  hidden_pages: string[];
+  /** 这几个步骤标记都算第一步（编排工具 studio_step 标的 script / beat 落在第一步上）。 */
+  first_steps: string[];
+  /** 还没有镜头时打开项目先落在这一页；用不上的页（hidden_pages）也改切到它。空是不落。 */
+  land_page: string;
+  /** 制作说明用的是项目里改过的那份文件（有流程记录的项目才可能）。 */
+  custom_prompt: boolean;
+}
+
+/** 内置流程（含内置插件的）各自的第一步页：script、beat。 */
+function builtinFirstPages(): string[] {
+  const out: string[] = [];
+  for (const f of flow.allFlows()) if (f.first_page && !f.first_page.startsWith('x:') && !out.includes(f.first_page)) out.push(f.first_page);
+  return out;
+}
+
+export function flowView(root: string, customPrompt: boolean): FlowView {
+  const extras = flow.projectExtras(root);
+  const id = flow.detectFlow(root, extras);
+  const def = flow.flow(id, extras);
+  // 第三方流程叠在项目自己的片型上：用不上的页、落在哪一页仍按项目自己的片型（新建时记的或标记文件）。
+  const base = id.startsWith('x:') ? flow.flow(flow.detectFlow(root), []) : def;
+  const firstPages = builtinFirstPages();
+  const baseFirst = base.first_page ?? 'script';
+  const first = def.first_page ?? baseFirst;
+  return {
+    id,
+    name: def.name,
+    first_page: first,
+    steps: [first, ...stepsAfterFirst(firstPages)],
+    hidden_pages: firstPages.filter((p) => p !== baseFirst),
+    first_steps: [...new Set([first, ...firstPages])],
+    land_page: base.land_first ? baseFirst : '',
+    custom_prompt: customPrompt,
+  };
+}
+
+/** 宿主骨架里第一步之后的步骤。 */
+function stepsAfterFirst(firstPages: readonly string[]): string[] {
+  return studioview.StepIDs.filter((s) => !firstPages.includes(s));
 }

@@ -42,18 +42,16 @@ export const tabs: [Tab, string][] = [
   ['file', '文件'],
 ];
 
-/** 顶栏中间的五个步骤，按制作顺序编号；其余页面（合成、复查、风格、音色、记忆、文件）在顶栏右侧用小字列出。 */
+/**
+ * 顶栏中间的五个步骤，按制作顺序编号；其余页面（合成、复查、风格、音色、记忆、文件）在顶栏右侧用小字列出。
+ * 项目的步骤来自它的流程声明（/api/state 的 flow.steps），这里只是还没读到时的缺省（口播）。
+ */
 export const stepTabs: Tab[] = ['script', 'storyboard', 'scene', 'final', 'publish'];
 
-/** 卡点项目没有口播稿：第一步换成节拍。 */
-export function stepTabsFor(beatMode: boolean): Tab[] {
-  return beatMode ? ['beat', ...stepTabs.slice(1)] : stepTabs;
-}
-
-/** 顶栏列出的页面：卡点项目不列口播稿，其他项目不列节拍（编排工具仍可以 am studio show 切过去）。 */
-export function visibleTabs(beatMode: boolean): [Tab, string][] {
+/** 顶栏列出的页面：不列这个项目的流程用不上的页（flow.hidden_pages；编排工具仍可以 studio_show 切过去）。 */
+export function visibleTabs(hidden: readonly string[]): [Tab, string][] {
   // 制作路线在顶栏步骤条左边有自己的按钮。
-  return tabs.filter(([id]) => id !== 'progress' && (beatMode ? id !== 'script' : id !== 'beat'));
+  return tabs.filter(([id]) => id !== 'progress' && !hidden.includes(id));
 }
 
 /** 按钮触发的写任务：返回 task_id 的接口。App 负责发请求、提示与刷新任务列表。 */
