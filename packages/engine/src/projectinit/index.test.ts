@@ -3,7 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as preset from '../preset';
-import { create, DeliveryBeat, DeliverySong, DeliverySpeech, narrations, NarrationSolo, skillsInstalled, validate } from './index';
+import { BeatFlow as DeliveryBeat } from '../plugins/beat';
+import { create, DeliverySong, DeliverySpeech, narrations, NarrationSolo, skillsInstalled, validate } from './index';
 
 // 多角色对话插件登记的叙事模式。
 const NarrationCast = 'cast';

@@ -4,7 +4,6 @@
  */
 import fs from 'node:fs';
 import os from 'node:os';
-import * as beat from '@am/engine/beat';
 import * as config from '@am/engine/config';
 import * as envutil from '@am/engine/envutil';
 import * as scene from '@am/engine/scene';
@@ -12,7 +11,6 @@ import * as schedule from '@am/engine/schedule';
 import * as plugin from '@am/engine/plugin';
 import * as srt from '@am/engine/srt';
 import { newUsage, usageAdd, type Usage } from '@am/engine/tools';
-import { beatCoverage } from './beat_cmd';
 import { currentEnvironment, validateTolerance } from './cli';
 import { ExitError } from './cobra';
 import { attachMemory, newRunID } from './memory_cmd';
@@ -176,7 +174,6 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
       scene.verifyBlockInputs(s);
       scene.verifyTimingInputs(s);
     }
-    if (beat.enabled('.')) beatCoverage('.', scenes);
     // 召回在判定复用之前做：召回的记忆是输入指纹的一项，记忆变了镜头要能被判成 Stale。
     const run = newRunID();
     for (let i = 0; i < scenes.length; i++) {

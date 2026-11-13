@@ -18,10 +18,14 @@ import type {
   PluginOp,
   PluginOpGroup,
   PluginPage,
+  PluginChildEnv,
+  PluginCommand,
   PluginPreset,
+  PluginPrereq,
   PluginRenderCheck,
   PluginRoute,
   PluginStation,
+  PluginStep,
   PluginValidator,
 } from './types';
 
@@ -41,6 +45,10 @@ interface Applied {
   inUse: ((root: string) => string)[];
   renderChecks: PluginRenderCheck[];
   opGroups: PluginOpGroup[];
+  prereqs: PluginPrereq[];
+  childEnvs: PluginChildEnv[];
+  steps: PluginStep[];
+  commands: PluginCommand[];
 }
 
 /** 按登记顺序。 */
@@ -83,7 +91,7 @@ export function registerBuiltin(plugin: BuiltinPlugin): () => void {
   flush();
   if (!/^[a-z][a-z0-9-]*$/.test(plugin.id)) throw new Error(`内置插件 id ${plugin.id} 要是小写字母、数字与连字符`);
   if (applied.some((a) => a.id === plugin.id)) throw new Error(`内置插件 ${plugin.id} 登记了两次`);
-  const entry: Applied = { id: plugin.id, dir: () => plugin.dir ?? defaultDir(plugin.id), stations: [], flows: [], ops: [], pages: [], routes: [], validators: [], skills: [], blocks: [], narrations: [], presets: [], inUse: [], renderChecks: [], opGroups: [] };
+  const entry: Applied = { id: plugin.id, dir: () => plugin.dir ?? defaultDir(plugin.id), stations: [], flows: [], ops: [], pages: [], routes: [], validators: [], skills: [], blocks: [], narrations: [], presets: [], inUse: [], renderChecks: [], opGroups: [], prereqs: [], childEnvs: [], steps: [], commands: [] };
   const where = `内置插件 ${plugin.id}`;
   const ctx: PluginContext = {
     id: plugin.id,
@@ -148,6 +156,22 @@ export function registerBuiltin(plugin: BuiltinPlugin): () => void {
     opGroup(g) {
       entry.opGroups.push(g);
     },
+    prereq(p) {
+      if (allApplied(entry).some((a) => a.prereqs.some((x) => x.id === p.id))) throw new Error(`${where}：前置资源 ${p.id} 已经有了`);
+      entry.prereqs.push(p);
+    },
+    childEnv(e) {
+      if (allApplied(entry).some((a) => a.childEnvs.some((x) => x.key === e.key))) throw new Error(`${where}：环境变量 ${e.key} 已经有了`);
+      entry.childEnvs.push(e);
+    },
+    step(st) {
+      if (allApplied(entry).some((a) => a.steps.some((x) => x.id === st.id))) throw new Error(`${where}：步骤 ${st.id} 已经有了`);
+      entry.steps.push(st);
+    },
+    command(c) {
+      if (allApplied(entry).some((a) => a.commands.some((x) => x.id === c.id))) throw new Error(`${where}：命令 ${c.id} 已经有了`);
+      entry.commands.push(c);
+    },
   };
   plugin.apply(ctx);
   applied.push(entry);
@@ -200,6 +224,10 @@ export const pluginNarrations = (): Owned<PluginNarration>[] => collect((a) => a
 export const pluginPresets = (): Owned<PluginPreset>[] => collect((a) => a.presets);
 export const pluginRenderChecks = (): Owned<PluginRenderCheck>[] => collect((a) => a.renderChecks);
 export const pluginOpGroups = (): Owned<PluginOpGroup>[] => collect((a) => a.opGroups);
+export const pluginPrereqs = (): Owned<PluginPrereq>[] => collect((a) => a.prereqs);
+export const pluginChildEnvs = (): Owned<PluginChildEnv>[] => collect((a) => a.childEnvs);
+export const pluginSteps = (): Owned<PluginStep>[] => collect((a) => a.steps);
+export const pluginCommands = (): Owned<PluginCommand>[] => collect((a) => a.commands);
 
 /** 项目在用这个内置插件的凭据（第一个给出非空的判断）；插件没登记判断或没在用时为空串。 */
 export function pluginInUse(id: string, root: string): string {
@@ -212,10 +240,10 @@ export function pluginInUse(id: string, root: string): string {
 }
 
 /** 这个插件登记了什么（设置页「详情」照实列出）。 */
-export function pluginContents(id: string): { stations: string[]; ops: string[]; skills: string[]; blocks: string[]; pages: string[]; flows: string[] } {
+export function pluginContents(id: string): { stations: string[]; ops: string[]; skills: string[]; blocks: string[]; pages: string[]; flows: string[]; prereqs: string[] } {
   flush();
   const a = applied.find((x) => x.id === id);
-  if (!a) return { stations: [], ops: [], skills: [], blocks: [], pages: [], flows: [] };
+  if (!a) return { stations: [], ops: [], skills: [], blocks: [], pages: [], flows: [], prereqs: [] };
   return {
     stations: a.stations.map((s) => s.id),
     ops: a.ops.map((o) => o.name),
@@ -223,6 +251,7 @@ export function pluginContents(id: string): { stations: string[]; ops: string[];
     blocks: a.blocks.map((b) => b.key),
     pages: a.pages.map((p) => p.id),
     flows: a.flows.map((f) => f.id),
+    prereqs: a.prereqs.map((p) => p.name),
   };
 }
 

@@ -65,7 +65,8 @@ describe('studio', () => {
       ['口播终稿', ['production/script-final.md'], [], 'plan'],
       ['配音时间轴', ['production/audio/voice.srt'], [], 'plan'],
       ['分镜计划', ['production/scene-plan.json'], [], 'plan'],
-      ['卡点网格', ['production/beat/grid.json'], [], 'plan'],
+      // 处理方案是各流程（口播、卡点）分镜之前都要写的。
+      ['处理方案', ['production/treatment.md'], [], 'plan'],
       ['旧版脚本', ['script.md'], [], 'plan'],
       ['镜头未出齐', [], pending, 'render'],
       ['镜头出齐', [], rendered, 'assemble'],

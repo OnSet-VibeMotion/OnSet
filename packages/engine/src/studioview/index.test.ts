@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { describeView, drainViewInbox, StepIDs, validateViewRequest, ViewInboxEnv, ViewProjectEnv, type ViewRequest, writeViewRequest } from './index';
+import { describeView, drainViewInbox, stepIDs, validateViewRequest, ViewInboxEnv, ViewProjectEnv, type ViewRequest, writeViewRequest } from './index';
 
 const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-studioview-'));
 
@@ -86,7 +86,7 @@ describe('studio view requests', () => {
   });
 
   it('marks the production step without switching pages', () => {
-    expect(StepIDs).toEqual(['beat', 'script', 'storyboard', 'scene', 'final', 'publish']);
+    expect(stepIDs()).toEqual(['beat', 'script', 'storyboard', 'scene', 'final', 'publish']);
     expect(validateViewRequest('', { page: '', step: 'storyboard' })).toEqual({ page: '', step: 'storyboard' });
     expect(validateViewRequest('', { page: 'final', step: 'final' })).toEqual({ page: 'final', step: 'final' });
     expect(() => validateViewRequest('', { page: '', step: 'nope' })).toThrow('没有步骤');

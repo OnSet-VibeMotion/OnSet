@@ -132,7 +132,7 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
 
 function toFirstTab(m: flow.Manifest): string {
   if (!m.flow) return '';
-  return m.flow.first_page === 'script' || m.flow.first_page === 'beat' ? m.flow.first_page : flow.pageTab(m.id, m.flow.first_page);
+  return flow.builtinFirstPages().includes(m.flow.first_page) ? m.flow.first_page : flow.pageTab(m.id, m.flow.first_page);
 }
 
 export function listStations(root: string): Record<string, unknown> {

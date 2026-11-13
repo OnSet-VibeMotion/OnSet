@@ -9,15 +9,13 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import * as beat from '../beat';
 import * as flow from '../flow';
 import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
 import * as plugin from '../plugin';
 import * as studioview from '../studioview';
-import { sameDownbeats } from './api_ui';
 import { writeError, writeJSON } from './http';
-import { discoverScenes, fileExists, type SceneSummary } from './scenes';
+import { discoverScenes, type SceneSummary } from './scenes';
 import { readStoryboard } from './storyboard';
 import { localRFC3339 } from './script';
 import type { Server } from './studio';
@@ -47,7 +45,7 @@ export interface Station {
   /** 动过这一站的几轮对话，新的在前。 */
   turns: StationTurn[];
   /** 内置插件给这一站写的「接下来」说法（NodeJudge.guide）。 */
-  guide?: { ai?: string; user?: string; page?: string; page_label?: string };
+  guide?: { ai?: string; user?: string; page?: string; page_label?: string; actions?: plugin.PluginGuideAction[]; confirm?: string };
 }
 
 export interface StationTurn {
@@ -231,16 +229,7 @@ function storyboardDetail(c: Ctx): string | undefined {
   }
 }
 
-function readGrid(root: string, rel: string): beat.Grid | null {
-  if (!fileExists(path.join(root, rel))) return null;
-  try {
-    return beat.readDraft(path.join(root, rel));
-  } catch {
-    return null;
-  }
-}
-
-/** 宿主自带的站的判断，键是「站:站点」：口播与卡点的「拆分镜头」同叫 plan，判断不同。内置插件的判断随它登记（pluginJudges）。 */
+/** 宿主自带的站的判断，键是「站:站点」。内置插件的判断随它登记（pluginJudges，例如卡点的 beat-plan:plan）。 */
 const judges: Record<string, Judge> = {
   'intake:intake': { output: (c) => anyOf(c, 'production/input-inventory.md', 'production/production-config.json') },
   'script:script': {
@@ -346,25 +335,6 @@ const judges: Record<string, Judge> = {
       }
       return { status: f(c, 'production/audio/candidate.mp4') > approved ? 'changed' : 'confirmed', at };
     },
-  },
-  'beat-story:story': { output: (c) => f(c, beat.Store + '/story.md') },
-  'beat-music:music': { output: (c) => f(c, beat.TrackFile) },
-  'beat-music:grid': {
-    output: (c) => anyOf(c, beat.DraftFile, beat.GridFile),
-    stale: (c, out) => f(c, beat.TrackFile) > out,
-  },
-  'beat-music:gate-grid': {
-    gateState: (c) => {
-      const grid = readGrid(c.root, beat.GridFile);
-      if (!grid) return { status: 'todo' };
-      const draft = readGrid(c.root, beat.DraftFile);
-      const pending = draft !== null && !sameDownbeats(draft, grid);
-      return { status: pending ? 'changed' : 'confirmed', at: f(c, beat.GridFile) };
-    },
-  },
-  'beat-plan:plan': {
-    output: (c) => f(c, beat.PlanFile),
-    stale: (c, out) => f(c, beat.GridFile) > out,
   },
 };
 
@@ -490,7 +460,7 @@ export function computeStations(root: string, scenes: SceneSummary[]): { mode: f
     if (d.optional) station.optional = true;
     if (d.page) station.page = d.page;
     if (d.file) station.file = d.file;
-    if (d.guide) station.guide = { ai: d.guide.ai, user: d.guide.user, page: d.guide.page, page_label: d.guide.pageLabel };
+    if (d.guide) station.guide = { ai: d.guide.ai, user: d.guide.user, page: d.guide.page, page_label: d.guide.pageLabel, actions: d.guide.actions, confirm: d.guide.confirm };
     // 第三方站的产物不算「后面已经做了」：宿主不凭插件写的文件推断自带流程走到了哪（插件一发布，前面全成了跳过）。
     const laterDone = outputs.some((t, j) => j > i && t > 0 && !defs[j].optional && !defs[j].declared);
     if (d.gate) {
@@ -611,7 +581,7 @@ export interface FlowView {
   name: string;
   /** 顶栏第一步打开哪一页。 */
   first_page: string;
-  /** 顶栏的步骤（页面 id），第一步是 first_page，其余是宿主的骨架（studioview.StepIDs 里不是「第一步页」的那几个）。 */
+  /** 顶栏的步骤（页面 id），第一步是 first_page，其余是宿主的骨架（studioview.stepIDs() 里不是「第一步页」的那几个）。 */
   steps: string[];
   /** 别的流程的第一步页（这个项目用不上）：不在顶栏与更多页面里列（编排工具仍能切过去）。 */
   hidden_pages: string[];
@@ -621,20 +591,13 @@ export interface FlowView {
   land_page: string;
 }
 
-/** 内置流程（含内置插件的）各自的第一步页：script、beat。 */
-function builtinFirstPages(): string[] {
-  const out: string[] = [];
-  for (const f of flow.allFlows()) if (f.first_page && !f.first_page.startsWith('x:') && !out.includes(f.first_page)) out.push(f.first_page);
-  return out;
-}
-
 export function flowView(root: string): FlowView {
   const extras = flow.projectExtras(root);
   const id = flow.detectFlow(root, extras);
   const def = flow.flow(id, extras);
   // 第三方流程叠在项目自己的片型上：用不上的页、落在哪一页仍按项目自己的片型（新建时记的）。
   const base = id.startsWith('x:') ? flow.flow(flow.detectFlow(root), []) : def;
-  const firstPages = builtinFirstPages();
+  const firstPages = flow.builtinFirstPages();
   const baseFirst = base.first_page ?? 'script';
   const first = def.first_page ?? baseFirst;
   return {
@@ -650,5 +613,5 @@ export function flowView(root: string): FlowView {
 
 /** 宿主骨架里第一步之后的步骤。 */
 function stepsAfterFirst(firstPages: readonly string[]): string[] {
-  return studioview.StepIDs.filter((s) => !firstPages.includes(s));
+  return studioview.stepIDs().filter((s) => !firstPages.includes(s));
 }

@@ -13,8 +13,13 @@
  * | 页面 | studioview（studio_show 能切的页面、专门页面）与客户端后端（这个项目用不上的页面） |
  * | 接口 | studio.ts 的路由表 |
  * | 校验器 | 客户端后端的「检查」命令（/api/commands/<id>.check） |
+ * | 网页命令 | 客户端后端的 /api/commands/<id>（界面按钮直接触发的写任务） |
+ * | 前置资源 | prereqs.items（am setup、客户端安装页） |
+ * | 子进程环境变量 | config.childEnvironment 与工具服务（tools.amToolsServer）的放行表 |
+ * | 顶栏步骤 | studioview.stepIDs（studio_step 能标的步骤、顶栏的步骤） |
  */
 import type { FlowExcludes, FlowMarker, RouteNode } from '../flow/types';
+import type { Item as PrereqItem } from '../prereqs';
 import type { SceneBlock } from '../scene/block';
 import type { Scene } from '../scene/scene';
 import type { SkillDescriptor } from '../scene/skills';
@@ -41,7 +46,25 @@ export interface NodeJudge<C extends JudgeContext = JudgeContext> {
    * 客户端「接下来」卡片的说法（界面 guide.ts 先查自己的表，再用这里的）：ai 是 AI 在做时，user 是等你时；
    * page 给一个「去看」按钮（页面 id）。
    */
-  guide?: { ai?: string; user?: string; page?: string; pageLabel?: string };
+  guide?: PluginGuide;
+}
+
+/** 「接下来」卡片上的一个按钮：开一页、把一句话发给 AI、填进输入框、确认关卡（同界面 guide.ts 的 GuideAction）。 */
+export type PluginGuideAction =
+  | { kind: 'page'; label: string; page: string }
+  | { kind: 'say'; label: string; text: string }
+  | { kind: 'draft'; label: string; text: string }
+  | { kind: 'gate'; label: string; gate: string };
+
+export interface PluginGuide {
+  ai?: string;
+  user?: string;
+  page?: string;
+  pageLabel?: string;
+  /** 等你时的按钮；不写时按 page 给一个「去看」。 */
+  actions?: PluginGuideAction[];
+  /** 关卡：用户在界面上点「确认」时发给 AI 的那句话（不写就没有确认按钮）。 */
+  confirm?: string;
 }
 
 /**
@@ -124,6 +147,8 @@ export interface PluginOp {
   scopes?: ('orchestrator' | 'renderer' | 'cli')[];
   /** 对话里显示这次调用时的说法（一个动词短语，例如「校验发布信息」）；不写按工具名显示。 */
   verb?: string;
+  /** 插件页面不能申请调它（flow.pageCallableOp）：要用户本人确认的动作，例如节拍网格的确认。 */
+  noPageCall?: boolean;
   run(params: Record<string, unknown>, ctx: PluginOpContext): void | { data?: unknown } | Promise<void | { data?: unknown }>;
 }
 
@@ -205,6 +230,47 @@ export interface PluginOpGroup {
   description?: string;
 }
 
+/**
+ * 一项前置资源（要联网准备的东西，见 prereqs）。字段与 prereqs.Item 相同；later 是客户端安装页「以后可能用到」里
+ * 的一组（体积大、用到才装）：同一 group 的几项合成一张卡片，icon 是界面图标名（不认识时用缺省图标）。
+ * 项目关掉这个插件时，这个项目的安装页与 am setup 不列它。
+ */
+export interface PluginPrereq extends PrereqItem {
+  later?: { title: string; desc: string; icon?: string };
+}
+
+/**
+ * 要显式传给子进程（编排工具、渲染器、工具服务）的环境变量：默认值由 value 从当前环境算出，子进程环境的白名单里
+ * 没有它所依赖的变量（例如 XDG_DATA_HOME）时，子进程会算出另一个目录。取值顺序同其他配置：环境变量 > 项目 .env > 默认值。
+ */
+export interface PluginChildEnv {
+  key: string;
+  value: (env: Record<string, string>) => string;
+}
+
+/**
+ * 顶栏的一个步骤（studio_step 能标的步骤）。before 是排在宿主哪一步前面（不写或找不到时接在最后）；
+ * hint 是写给编排工具的一句说明（「节拍：故事、音乐、节拍网格、分镜计划」），flow 是只有哪个流程用得上（说明里注明）。
+ */
+export interface PluginStep {
+  id: string;
+  label: string;
+  hint: string;
+  before?: string;
+  flow?: string;
+}
+
+/**
+ * 网页上直接触发的一条确定性命令（/api/commands/<id>）：跑一条 am 操作，作为写任务。params 从请求体与项目根算出
+ * 操作参数，请求不合格时返回 { error }（回 400，code 是 error.code）。
+ */
+export interface PluginCommand {
+  id: string;
+  label: string;
+  op: string;
+  params(body: Record<string, unknown>, root: string): { params: Record<string, unknown>; label?: string } | { error: { code: string; message: string } };
+}
+
 export interface PluginContext {
   /** 插件 id，与 assets/plugins/<id>/am-station.json 的 id 相同（开关、名字、说明都在那份清单里）。 */
   readonly id: string;
@@ -227,6 +293,10 @@ export interface PluginContext {
   inUse(judge: (root: string) => string): void;
   renderCheck(c: PluginRenderCheck): void;
   opGroup(g: PluginOpGroup): void;
+  prereq(p: PluginPrereq): void;
+  childEnv(e: PluginChildEnv): void;
+  step(s: PluginStep): void;
+  command(c: PluginCommand): void;
 }
 
 export interface BuiltinPlugin {

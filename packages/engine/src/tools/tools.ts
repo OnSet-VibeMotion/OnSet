@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { marshal } from '../gojson';
 import { defaultDir as directorDir, Tool as DirectorToolName } from '../director';
 import { amCommand, WindowsBaseEnvKeys } from '../envutil';
+import { pluginChildEnvs } from '../plugin/registry';
 
 export const UserMessageMarker = '[[USER_MESSAGE]]';
 
@@ -65,9 +66,11 @@ export const ToolsServerName = 'am';
  */
 export function amToolsServer(executable: string, profile: 'orchestrator' | 'renderer', workdir: string, env: Record<string, string | undefined> = {}): McpServer {
   const picked: Record<string, string> = {};
+  // 内置插件登记的子进程变量（plugin.PluginChildEnv）同样放行。
+  const pluginKeys = new Set(pluginChildEnvs().map((e) => e.value.key));
   for (const [key, value] of Object.entries(env)) {
     if (value === undefined) continue;
-    if (/^(AM_|HYPERFRAMES_|MEMORY|ORCHESTRATOR$|RENDERER$|ORCHESTRATOR_MODEL$|RENDERER_MODEL$|TTS_|ALIGN_|SCENE_JOBS$|PATH$|HOME$|USER$|LANG$|TMPDIR$|XDG_DATA_HOME$)/.test(key) || WindowsBaseEnvKeys.includes(key)) picked[key] = value;
+    if (/^(AM_|HYPERFRAMES_|MEMORY|ORCHESTRATOR$|RENDERER$|ORCHESTRATOR_MODEL$|RENDERER_MODEL$|TTS_|ALIGN_|SCENE_JOBS$|PATH$|HOME$|USER$|LANG$|TMPDIR$|XDG_DATA_HOME$)/.test(key) || WindowsBaseEnvKeys.includes(key) || pluginKeys.has(key)) picked[key] = value;
   }
   // Windows 上 executable 是 am.cjs，要用 Electron / Node 来跑（envutil.amCommand）。
   const am = amCommand(executable);

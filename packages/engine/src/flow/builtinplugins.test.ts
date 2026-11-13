@@ -31,11 +31,11 @@ describe('builtin plugins', () => {
 
   it('is on by default, can be turned off per project, and not while the project uses it', () => {
     const root = project();
-    expect(loadProjectStations(root).stations.map((s) => s.manifest.id)).toEqual(['algorithmic-art', 'cast', 'publishing', 'song', 'text-to-lottie']);
+    expect(loadProjectStations(root).stations.map((s) => s.manifest.id)).toEqual(['algorithmic-art', 'beat', 'cast', 'publishing', 'song', 'text-to-lottie']);
     expect(disabledPluginOps(root).size).toBe(0);
     setBuiltinEnabled(root, 'song', false);
     expect(readLock(root).disabled).toEqual(['song']);
-    expect(loadProjectStations(root).stations.map((s) => s.manifest.id)).toEqual(['algorithmic-art', 'cast', 'publishing', 'text-to-lottie']);
+    expect(loadProjectStations(root).stations.map((s) => s.manifest.id)).toEqual(['algorithmic-art', 'beat', 'cast', 'publishing', 'text-to-lottie']);
     expect(disabledPluginOps(root).has('song_generate')).toBe(true);
     // 锁文件里的其他记录不受影响。
     addToProject(root, fetchStation(`link:${path.join(__dirname, 'testdata', 'fake-publisher')}`, process.env).entry);

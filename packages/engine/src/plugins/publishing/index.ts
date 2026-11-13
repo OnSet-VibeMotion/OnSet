@@ -52,11 +52,11 @@ export const publishing: BuiltinPlugin = {
       flows: ['speech', 'beat'],
       after: 'review',
       sections: [
-        // 口播与卡点各接在自己那一版的段落后面；卡点的「刷新发布配置」另有一版（合同值从网格与分镜计划推导）。
+        // 口播与卡点各接在自己那一版的段落后面（卡点那一版由卡点插件登记在 beat-common 站下）；卡点的「刷新发布配置」另有一版（合同值从网格与分镜计划推导）。
         { id: 'config-lifecycle', file: 'sections/config-lifecycle.md', after: 'style/film-style-mix', flows: ['speech'] },
-        { id: 'config-lifecycle-beat', file: 'sections/config-lifecycle-beat.md', after: 'style/film-style-mix-beat', flows: ['beat'] },
+        { id: 'config-lifecycle-beat', file: 'sections/config-lifecycle-beat.md', after: 'beat-common/film-style-mix', flows: ['beat'] },
         { id: 'stage', file: 'sections/stage.md', after: 'review/stage', stage: 'publish', title: '刷新发布配置', flows: ['speech'] },
-        { id: 'stage-beat', file: 'sections/stage-beat.md', after: 'review/stage-beat', stage: 'publish', title: '刷新发布配置', flows: ['beat'] },
+        { id: 'stage-beat', file: 'sections/stage-beat.md', after: 'beat-common/review', stage: 'publish', title: '刷新发布配置', flows: ['beat'] },
         { id: 'deliverables', file: 'sections/deliverables.md', after: 'host/deliverables' },
       ],
       judges: {

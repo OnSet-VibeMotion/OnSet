@@ -30,6 +30,7 @@ describe('stations API', () => {
     expect(body.problems).toEqual([]);
     expect(body.stations.map((x: { id: string; builtin: boolean; enabled: boolean }) => [x.id, x.builtin, x.enabled])).toEqual([
       ['algorithmic-art', true, true],
+      ['beat', true, true],
       ['cast', true, true],
       ['publishing', true, true],
       ['song', true, true],

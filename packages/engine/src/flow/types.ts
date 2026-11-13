@@ -22,7 +22,7 @@ export interface PathRule {
 export interface RouteNode {
   id: string;
   label: string;
-  /** 归在顶栏哪一步下（studioview.StepIDs 之一）。 */
+  /** 归在顶栏哪一步下（studioview.stepIDs() 之一）。 */
   step: string;
   gate?: boolean;
   /** 可选的站：不做也不挡路，不会成为「现在在这」。 */

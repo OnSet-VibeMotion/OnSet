@@ -1,14 +1,14 @@
-// 卡点的镜头块：scene.json 的 beat 字段。移植自 internal/scene/scene.go 的 beat 部分。
+// 卡点的镜头块：scene.json 的 beat 字段，由卡点插件登记（index.ts）。
 import path from 'node:path';
 import * as beat from '../../beat';
-import { registerBlock, verifyBlock, type SceneBlock } from '../block';
-import { fromGoStruct } from '../jsondecode';
-import { sceneCanvas, type Canvas, type Scene } from '../scene';
-import { VerificationError } from '../verification';
+import { verifyBlock, type SceneBlock } from '../../scene/block';
+import { fromGoStruct } from '../../scene/jsondecode';
+import { sceneCanvas, type Canvas, type Scene } from '../../scene/scene';
+import { VerificationError } from '../../scene/verification';
 
-declare module '../scene' {
+declare module '../../scene/scene' {
   interface Scene {
-    /** 卡点镜头绑定的节拍网格区间，由 am beat cues 写入。 */
+    /** 卡点镜头绑定的节拍网格区间，由 beat_cues 写入。 */
     beat: beat.Cue | null;
   }
 }
@@ -42,7 +42,7 @@ function verifyBeat(s: Scene): void {
   }
 }
 
-const beatBlock: SceneBlock<beat.Cue> = {
+export const beatBlock: SceneBlock<beat.Cue> = {
   key: 'beat',
   order: 30,
   type: fromGoStruct(beat.cueType),
@@ -52,7 +52,6 @@ const beatBlock: SceneBlock<beat.Cue> = {
   timeline: { label: '卡点' },
   feature: { name: 'beat', description: '卡点模式' },
 };
-registerBlock(beatBlock);
 
 /**
  * 核对卡点镜头的 beat 块；渲染前与复用已有产物前都要过一遍。

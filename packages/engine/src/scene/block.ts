@@ -2,7 +2,7 @@
 //
 // scene.json 除了镜头本身的字段，还可以带功能自己的块（多角色对话的 cast、歌曲讲解的 song、
 // 卡点的 beat）。功能由内置插件在 apply 里登记它的块（ctx.sceneBlock），内核只遍历注册表，
-// 不按名字认识任何一个块。宿主自己的块（还没做成插件的卡点）经 registerBlock 登记。
+// 不按名字认识任何一个块。registerBlock 只给测试登记假块用。
 //
 // 块的先后由 order 决定，不由登记顺序决定：scene.json 写回、提示词段、校验与指纹项的先后都按它排。
 // timing 是 scene 自己的块，不在表里，固定排在所有扩展块之后。
@@ -45,7 +45,7 @@ export interface SceneBlock<T = unknown> {
 const registry: SceneBlock[] = [];
 
 /**
- * 登记一个镜头扩展块，返回撤销登记的函数（只给测试用）。
+ * 登记一个镜头扩展块（不经内置插件），返回撤销登记的函数（只给测试用）。
  * 键与已有块重名时直接报错；与 scene.json 内核字段重名由 scene 在用到注册表时报错。
  */
 export function registerBlock<T>(block: SceneBlock<T>): () => void {
@@ -59,7 +59,7 @@ export function registerBlock<T>(block: SceneBlock<T>): () => void {
   };
 }
 
-/** 已登记的块（宿主的与内置插件登记的），按 order 排好。 */
+/** 已登记的块（内置插件登记的与测试登记的），按 order 排好。 */
 export function sceneBlocks(): readonly SceneBlock[] {
   const plugins = pluginSceneBlocks();
   if (plugins.length === 0) return registry;

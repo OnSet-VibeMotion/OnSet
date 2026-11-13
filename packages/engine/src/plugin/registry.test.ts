@@ -8,9 +8,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import * as config from '../config';
 import * as flow from '../flow';
 import * as memory from '../memory';
 import * as preset from '../preset';
+import * as prereqs from '../prereqs';
 import * as projectinit from '../projectinit';
 import * as scene from '../scene';
 import { computeStations } from '../studio/progress';
@@ -78,7 +80,7 @@ function register(): void {
 
 describe('builtin plugin apply', () => {
   it('registers the shipped plugins once', () => {
-    expect(appliedPluginIDs()).toEqual(['publishing', 'song', 'algorithmic-art', 'text-to-lottie', 'cast']);
+    expect(appliedPluginIDs()).toEqual(['publishing', 'beat', 'song', 'algorithmic-art', 'text-to-lottie', 'cast']);
     expect(() => registerBuiltin({ id: 'publishing', apply: () => {} })).toThrow('登记了两次');
   });
 
@@ -161,19 +163,24 @@ describe('builtin plugin apply', () => {
     } finally {
       undo();
     }
-    expect(appliedPluginIDs()).toEqual(['publishing', 'song', 'algorithmic-art', 'text-to-lottie', 'cast']);
+    expect(appliedPluginIDs()).toEqual(['publishing', 'beat', 'song', 'algorithmic-art', 'text-to-lottie', 'cast']);
   });
 });
 
 describe('the shipped prompt sections of builtin plugins', () => {
   it('exist, carry their stage title and no hard-coded stage numbers, and leave no orphan files', () => {
-    for (const { owner, value: s } of pluginStations()) {
+    // 一个插件可以登记几个站：段落文件按插件合起来核对。
+    const owners = [...new Set(pluginStations().map((x) => x.owner))];
+    for (const owner of owners) {
       const dir = path.join(flow.builtinPluginsDir(), owner);
+      const sections = pluginStations()
+        .filter((x) => x.owner === owner)
+        .flatMap((x) => x.value.sections ?? []);
       // 段落文件都放在 sections/ 里。
-      const declared = [...new Set((s.sections ?? []).map((sec) => sec.file).filter((f) => f.startsWith('sections/')))].sort();
+      const declared = [...new Set(sections.map((sec) => sec.file).filter((f) => f.startsWith('sections/')))].sort();
       const files = fs.existsSync(path.join(dir, 'sections')) ? fs.readdirSync(path.join(dir, 'sections')).map((f) => 'sections/' + f).sort() : [];
       expect(files, owner).toEqual(declared);
-      for (const sec of s.sections ?? []) {
+      for (const sec of sections) {
         const body = fs.readFileSync(path.join(dir, sec.file), 'utf8');
         expect(body, sec.file).not.toMatch(/第[一二三四五六七八九十]+阶段/);
         if (sec.stage) expect(body.split('\n')[0], sec.file).toBe(`## {{STAGE:${sec.stage}}}：${sec.title}`);
@@ -250,5 +257,41 @@ describe('a builtin plugin with a skill, a scene block and a narration', () => {
     const offPrompt = scene.buildPrompt(s, off);
     expect(offPrompt).not.toContain('合唱技能');
     expect(offPrompt).not.toContain('合唱（强制）');
+  });
+});
+
+/**
+ * 假插件「节拍器」：一项前置资源、一个要传给子进程的变量、一个顶栏步骤与一条网页命令（卡点就是这样登记的）。
+ * 证明它们经登记表进宿主的 prereqs、config、studioview 与客户端后端，撤销登记就都不在。
+ */
+describe('a builtin plugin with a prerequisite, a child variable, a step and a page command', () => {
+  it('reaches setup, child processes, the top bar and the command API, and goes away with its registration', async () => {
+    const undo = registerBuiltin({
+      id: 'fake-metronome',
+      apply(ctx) {
+        ctx.prereq({ group: 'metronome', id: 'metronome', name: '节拍器', version: '1', required: false, later: { title: '节拍器', desc: '测试用' }, ready: () => [false, '/nowhere'], prepare: async () => {} });
+        ctx.childEnv({ key: 'METRONOME_DIR', value: (env) => (env.HOME ?? '') + '/metronome' });
+        ctx.step({ id: 'tick', label: '节拍器', hint: '节拍器：数拍子', before: 'storyboard', flow: '节拍器' });
+        ctx.command({ id: 'metronome.tick', label: '数一拍', op: 'studio_step', params: () => ({ error: { code: 'not_now', message: '现在不数' } }) });
+      },
+    });
+    cleanups.push(undo);
+    const f = newSessionFixture();
+    const env = { HOME: '/home/u' };
+    expect(prereqs.check(env, { tts: '', align: '' }).find((x) => x.id === 'metronome')).toMatchObject({ group: 'metronome', ready: false, later: { title: '节拍器' } });
+    const cfg = config.load(f.root, env);
+    expect(config.childEnvironment(cfg, env).METRONOME_DIR).toBe('/home/u/metronome');
+    expect(studioview.stepIDs()).toContain('tick');
+    expect(studioview.stepIDs().indexOf('tick')).toBe(studioview.stepIDs().indexOf('storyboard') - 1);
+    expect(studioview.viewInteraction()).toContain('节拍器项目的第一步是 tick（节拍器：数拍子）');
+    const r = await studioRequest(f.s, 'POST', '/api/commands/metronome.tick', '{}');
+    expect(r.status).toBe(400);
+    expect(r.body.code).toBe('not_now');
+
+    undo();
+    expect(prereqs.check(env, { tts: '', align: '' }).some((x) => x.id === 'metronome')).toBe(false);
+    expect(config.childEnvironment(config.load(f.root, env), env).METRONOME_DIR).toBeUndefined();
+    expect(studioview.stepIDs()).not.toContain('tick');
+    expect((await studioRequest(f.s, 'POST', '/api/commands/metronome.tick', '{}')).body.code).toBe('unknown_command');
   });
 });

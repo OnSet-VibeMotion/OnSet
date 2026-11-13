@@ -8,12 +8,15 @@
  */
 import { deferBuiltin } from '../plugin/registry';
 import { algorithmicArt } from './algorithmic-art';
+import { beatPlugin } from './beat';
 import { castPlugin } from './cast';
 import { publishing } from './publishing';
 import { songPlugin } from './song';
 import { textToLottie } from './text-to-lottie';
 
 deferBuiltin(publishing);
+// 卡点排在歌曲讲解前面：新建选项与流程的先后（口播、卡点、歌曲讲解）跟着登记顺序。
+deferBuiltin(beatPlugin);
 deferBuiltin(songPlugin);
 deferBuiltin(algorithmicArt);
 deferBuiltin(textToLottie);

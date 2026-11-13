@@ -448,14 +448,12 @@ export function turnAPI(s: Server, request: Request, rest: string): Response {
 
 /**
  * studioCommands 是可以从网页直接触发的确定性步骤。它们不经过编排工具，
- * 参数只有镜头 id（beat.regrid 另收两个整数：拍号与起始拍），不接受任意命令行。
- * 内置插件登记的校验器另有 `<id>.check`（例如发布的 publish.check），见 pluginCheck。
+ * 参数只有镜头 id，不接受任意命令行。内置插件登记的命令（ctx.command，例如卡点的 beat.regrid 收拍号与起始拍）
+ * 由插件从请求体算出操作参数；登记的校验器另有 `<id>.check`（例如发布的 publish.check）。
  */
 export const studioCommands: Readonly<Record<string, string>> = {
   'scene.validate': '校验镜头',
   'project.concat': '拼接无声母版',
-  'beat.confirm': '确认卡点网格',
-  'beat.regrid': '重排重拍',
 };
 
 export async function commandAPI(s: Server, request: Request, rest: string): Promise<Response> {
@@ -464,8 +462,9 @@ export async function commandAPI(s: Server, request: Request, rest: string): Pro
   if (p instanceof Response) return p;
   const name = rest.replace(/^\/+|\/+$/g, '');
   const validator = plugin.pluginValidators().find((v) => `${v.value.id}.check` === name)?.value;
-  if (!Object.hasOwn(studioCommands, name) && !validator) return writeError(404, 'unknown_command', '不支持的命令：' + name);
-  let label = validator ? validator.label : studioCommands[name];
+  const command = plugin.pluginCommands().find((c) => c.value.id === name)?.value;
+  if (!Object.hasOwn(studioCommands, name) && !validator && !command) return writeError(404, 'unknown_command', '不支持的命令：' + name);
+  let label = validator ? validator.label : command ? command.label : studioCommands[name];
   let sceneID: string;
   let body: Record<string, unknown>;
   try {
@@ -485,19 +484,13 @@ export async function commandAPI(s: Server, request: Request, rest: string): Pro
     case 'project.concat':
       op = { name: 'concat', params: { scenes: path.join(p.path, 'scenes'), out: path.join(p.path, 'production', 'silent-master.mp4') } };
       break;
-    case 'beat.confirm':
-      op = { name: 'beat_confirm', params: { project_root: p.path } };
-      break;
-    case 'beat.regrid': {
-      const meter = body.meter;
-      const anchor = body.anchor;
-      if (!Number.isInteger(meter) || !Number.isInteger(anchor) || (meter as number) < 1 || (meter as number) > 16 || (anchor as number) < 0 || (anchor as number) >= (meter as number)) {
-        return writeError(400, 'invalid_regrid', '拍号要在 1..16 之间，起始拍要在 0..拍号-1 之间');
-      }
-      op = { name: 'beat_regrid', params: { meter, anchor, project_root: p.path } };
-      label += `（${meter} 拍，从第 ${(anchor as number) + 1} 拍起）`;
-      break;
-    }
+  }
+  if (command) {
+    // 内置插件登记的命令：插件从请求体算出操作参数，请求不合格时照它说的回 400。
+    const r = command.params(body, p.path);
+    if ('error' in r) return writeError(400, r.error.code, r.error.message);
+    op = { name: command.op, params: r.params };
+    if (r.label) label += r.label;
   }
   if (validator) {
     // 内置插件登记的校验器：校验项目里的一个文件。

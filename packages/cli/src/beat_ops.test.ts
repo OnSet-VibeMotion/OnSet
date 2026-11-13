@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { Buffer, hasFfmpeg, makeClip, run, tempDir } from './testutil';
 import * as beat from '@am/engine/beat';
 import * as scene from '@am/engine/scene';
+import { verifyBeatInputs } from '@am/engine/plugins/beat';
 
 /** media_test.go 的 makeSceneDir：建一个可被 scene.load 读取的镜头目录。 */
 function makeSceneDir(root: string, id: string, duration: number, filter: string): string {
@@ -131,13 +132,13 @@ describe.skipIf(!hasFfmpeg)('beat (needs ffmpeg)', () => {
     expect(await run(['beat', 'cues', scenes, '--project-root', root], out, errOut), errOut.text).toBe(0);
     const first = scene.load(path.join(scenes, 'scene-001'));
     const second = scene.load(path.join(scenes, 'scene-002'));
-    expect(() => scene.verifyBeatInputs(first)).not.toThrow();
+    expect(() => verifyBeatInputs(first)).not.toThrow();
 
     const borrowed = { ...second, beat: first.beat, duration_seconds: first.duration_seconds };
-    expect(() => scene.verifyBeatInputs(borrowed)).toThrow('属于镜头');
+    expect(() => verifyBeatInputs(borrowed)).toThrow('属于镜头');
 
     const foreign = { ...first, beat: { ...first.beat!, grid: '../../../other/' + beat.GridFile } };
-    expect(() => scene.verifyBeatInputs(foreign)).toThrow('beat.grid');
+    expect(() => verifyBeatInputs(foreign)).toThrow('beat.grid');
   });
 });
 

@@ -1,6 +1,6 @@
 export * from './types';
-export { beatPrompt, builtinFlows, builtinStations, speechPrompt, stageTitles } from './builtin';
-export { allFlows, allStageTitles, allStations, appendedSections, flowPrompt, sectionsDir } from './registered';
+export { builtinFlows, builtinStations, planRules, speechPrompt, stageTitles, tailStations } from './builtin';
+export { allFlows, allStageTitles, allStations, appendedSections, builtinFirstPages, flowPrompt, sectionsDir } from './registered';
 export { detectFlow, flow, gateFiles, MissingFlowRecordError, recordedFlow, route, station, stationOfPath, type RouteStop } from './flow';
 export { chineseNumber, composeFlowPrompt, composeParts, composePrompt, readSection, type ComposeOptions, type FlowComposeInput, type PromptPart, type SectionReader } from './compose';
 export {

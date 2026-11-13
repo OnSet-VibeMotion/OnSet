@@ -77,7 +77,17 @@ note 的一句话显示在对话里，说明为什么要看这一页。
   },
 });
 
-const stepLabels: Record<string, string> = { beat: '节拍', script: '口播稿', storyboard: '分镜', scene: '镜头', final: '成片', publish: '发布' };
+/** 步骤说明（宿主的与内置插件登记的）：「  script      口播稿：整理、审稿、配音、对齐」。 */
+function stepHelp(): string {
+  return studioview
+    .steps()
+    .map((st) => {
+      const colon = st.hint.indexOf('：');
+      const hint = st.flow && colon >= 0 ? `${st.hint.slice(0, colon)}（只有${st.flow}项目）${st.hint.slice(colon)}` : st.hint;
+      return `  ${st.id.padEnd(11)} ${hint}`;
+    })
+    .join('\n');
+}
 
 /** 让客户端里的编排工具标出整片制作现在到了哪一步。 */
 defineOp({
@@ -90,15 +100,10 @@ defineOp({
 不在客户端的对话里调用时什么都不做，也不算失败。
 
 步骤：
-  script      口播稿：整理稿子、审稿、配音、对齐
-  storyboard  分镜：处理方案、分镜计划、每个镜头的画面描述、等用户确认分镜
-  scene       镜头：渲染与修改镜头
-  final       成片：拼接、配乐混音、复查、试听
-  publish     发布：平台封面与发布信息
-  beat        节拍（只有卡点项目）：故事、音乐、节拍网格、分镜计划`,
+` + stepHelp(),
   examples: ['studio_step({"step": "storyboard"})', 'studio_step({"step": "final", "note": "成片拼好了，等你试听"})'],
   params: {
-    step: { type: 'string', description: '步骤：script、storyboard、scene、final、publish 或 beat', required: true, positional: 0 },
+    step: { type: 'string', description: '步骤：' + studioview.stepIDs().join('、'), required: true, positional: 0 },
     note: { type: 'string', description: '显示在对话里的一句说明' },
   },
   run: (p, { out }) => {
@@ -108,7 +113,7 @@ defineOp({
       out.write('当前不在客户端的对话里，没有界面可标，已跳过。\n');
       return { data: { marked: false } };
     }
-    out.write('已在客户端顶栏标出：现在在「' + (stepLabels[req.step!] ?? req.step) + '」这一步。\n');
+    out.write('已在客户端顶栏标出：现在在「' + (studioview.steps().find((st) => st.id === req.step)?.label ?? req.step) + '」这一步。\n');
     return { data: { marked: true, step: req.step } };
   },
 });

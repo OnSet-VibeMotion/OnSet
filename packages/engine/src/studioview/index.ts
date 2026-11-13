@@ -38,7 +38,6 @@ export interface ViewPage {
  */
 export const ViewPages: readonly ViewPage[] = [
   { id: 'progress', slot: true, label: '制作路线', target: '' },
-  { id: 'beat', label: '节拍', target: '' },
   { id: 'script', slot: true, label: '口播稿', target: '' },
   { id: 'storyboard', slot: true, label: '分镜', target: '' },
   { id: 'scene', slot: true, label: '镜头', target: 'scene' },
@@ -83,8 +82,37 @@ export interface ViewRequest {
   step?: string;
 }
 
-/** 顶栏的制作步骤（界面 Preview.tsx 的 stepTabs，卡点项目第一步是 beat）。 */
-export const StepIDs: readonly string[] = ['beat', 'script', 'storyboard', 'scene', 'final', 'publish'];
+/** 顶栏的一个步骤：id、名字、写给编排工具的一句说明；flow 是只有哪个流程用得上（内置插件登记的）。 */
+export interface Step {
+  id: string;
+  label: string;
+  hint: string;
+  flow?: string;
+}
+
+/** 宿主自己的顶栏步骤（界面 Preview.tsx 的 stepTabs）。内置插件登记的步骤（ctx.step）见 steps。 */
+const hostSteps: readonly Step[] = [
+  { id: 'script', label: '口播稿', hint: '口播稿：整理、审稿、配音、对齐' },
+  { id: 'storyboard', label: '分镜', hint: '分镜：处理方案、分镜计划、镜头画面描述、等用户确认分镜' },
+  { id: 'scene', label: '镜头', hint: '镜头：渲染与修改镜头' },
+  { id: 'final', label: '成片', hint: '成片：拼接、配乐混音、复查、试听' },
+  { id: 'publish', label: '发布', hint: '发布：封面与发布信息' },
+];
+
+/** 全部步骤：宿主的加上内置插件登记的（插在 before 那一步前面，找不到时接在最后）。 */
+export function steps(): Step[] {
+  const out: Step[] = [...hostSteps];
+  for (const { value: st } of plugin.pluginSteps()) {
+    const at = st.before ? out.findIndex((x) => x.id === st.before) : -1;
+    out.splice(at < 0 ? out.length : at, 0, { id: st.id, label: st.label, hint: st.hint, ...(st.flow ? { flow: st.flow } : {}) });
+  }
+  return out;
+}
+
+/** 顶栏的制作步骤（studio_step 能标的）：宿主的加上内置插件登记的（例如卡点项目的第一步 beat）。 */
+export function stepIDs(): string[] {
+  return steps().map((x) => x.id);
+}
 
 /**
  * 有专门页面的项目文件：编排工具要用户看它们时，切到那一页，不切到文件页显示原文。
@@ -176,7 +204,7 @@ export function sceneIDs(root: string): string[] {
 export function validateViewRequest(project: string, req: ViewRequest): ViewRequest {
   const out: ViewRequest = { ...req };
   const step = (req.step ?? '').trim();
-  if (step !== '' && !StepIDs.includes(step)) throw new Error(`没有步骤 ${goQuote(step)}（可选：${StepIDs.join('、')}）`);
+  if (step !== '' && !stepIDs().includes(step)) throw new Error(`没有步骤 ${goQuote(step)}（可选：${stepIDs().join('、')}）`);
   if (step === '') delete out.step;
   else out.step = step;
   // 只标步骤、不切页。
@@ -290,13 +318,21 @@ export function drainViewInbox(dir: string): ViewRequest[] {
     fs.rmSync(file, { force: true });
     try {
       const req = JSON.parse(body ?? '') as ViewRequest;
-      const stepOnly = req.page === '' && typeof req.step === 'string' && StepIDs.includes(req.step);
+      const stepOnly = req.page === '' && typeof req.step === 'string' && stepIDs().includes(req.step);
       if (typeof req.page === 'string' && (viewPage(req.page) || stepOnly)) out.push(req);
     } catch {
       // 读不懂的丢掉。
     }
   }
   return out;
+}
+
+/** 步骤说明：宿主的逐个列出，只有某个流程用得上的（插件登记的）注明是那个流程的第一步。 */
+function stepHints(): string {
+  const all = steps();
+  const general = all.filter((x) => !x.flow).map((x) => `${x.id}（${x.hint}）`);
+  const own = all.filter((x) => x.flow).map((x) => `${x.flow}项目的第一步是 ${x.id}（${x.hint}）`);
+  return general.join('、') + own.map((x) => '；' + x).join('');
 }
 
 /** 写进对话约定（studioInteraction）的一条：怎样把用户带到某一页。 */
@@ -312,7 +348,9 @@ export function viewInteraction(): string {
     '- 要用户看某样东西时，调用 studio_show({"page": "<页面>", "target": "<对象>", "note": "一句说明"})（对象与说明可省），网页会直接切到那一页，比在回复里贴大段内容或让用户自己去找好。页面：' +
     pages.join('、') +
     '。例如口播稿写好、请用户审稿时调用 studio_show({"page": "script", "note": "口播稿写好了，请看一遍"})；某个镜头渲染完请用户看效果时调用 studio_show({"page": "scene", "target": "scene-003"})。不要连续切来切去，一次只把用户带到眼下最该看的那一页。口播稿、分镜计划与处理方案、镜头、成片与配音合成版、发布信息都有自己的页面，用那一页，不要用 file 页打开它们的原文。\n' +
-    '- 每一轮结束前（汇报、停下来等用户之前）调用 studio_step({"step": "<步骤>"})，标出整片制作现在处在哪一步，网页顶栏会标出来：script（口播稿：整理、审稿、配音、对齐）、storyboard（分镜：处理方案、分镜计划、镜头画面描述、等用户确认分镜）、scene（镜头：渲染与修改镜头）、final（成片：拼接、配乐混音、复查、试听）、publish（发布：封面与发布信息）；卡点项目的第一步是 beat（节拍：故事、音乐、节拍网格、分镜计划）。它只做标记，不切页。\n' +
+    '- 每一轮结束前（汇报、停下来等用户之前）调用 studio_step({"step": "<步骤>"})，标出整片制作现在处在哪一步，网页顶栏会标出来：' +
+    stepHints() +
+    '。它只做标记，不切页。\n' +
     '- 用户的消息后面可能附一句「用户发这条消息时，Studio 网页上开着……」，说的是用户正在看的页面；用户说「这个镜头」「这段」时指的就是那里。'
   );
 }

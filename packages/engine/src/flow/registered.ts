@@ -102,6 +102,13 @@ export function flowPrompt(id: string): string[] {
   return [...insertAfter(f.prompt, (s, sec) => sectionFlows(s, sec).includes(id), `流程 ${id} 的提示词`), ...appendedSections(id)];
 }
 
+/** 内置流程（含内置插件登记的）各自的第一步页，按流程先后去重：script、beat……第三方流程的 first_page 可以写其中之一。 */
+export function builtinFirstPages(): string[] {
+  const out: string[] = [];
+  for (const f of allFlows()) if (f.first_page && !f.first_page.startsWith('x:') && !out.includes(f.first_page)) out.push(f.first_page);
+  return out;
+}
+
 /** 自带的站归哪个内置插件（插件 apply 里登记的站）。 */
 export function pluginStationOwners(): Map<string, string> {
   return new Map(plugin.pluginStations().map(({ owner, value }) => [value.id, owner]));

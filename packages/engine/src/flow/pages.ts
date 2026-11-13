@@ -2,14 +2,20 @@
  * 清单到客户端与路线的映射：路线用的站、插件页面的 id 与可读文件、工具名、页面能申请的 am 操作。
  */
 import { opPattern, projectPath } from './fields';
+import { pluginOps } from '../plugin/registry';
+import { builtinFirstPages } from './registered';
 import type { Manifest } from './manifest';
 import type { ExtraStation, RouteNode, Station } from './types';
 
-/** 插件页面不能调的 am 操作：不可逆的（归档、记忆回滚与导入）、要用户本人确认的（节拍网格）、只在一轮对话里有意义的（切页、标步骤）。 */
-const pageDenied = new Set(['archive', 'memory_rollback', 'memory_import', 'memory_retire', 'memory_reject', 'memory_promote', 'beat_confirm', 'film_style_remove', 'studio_show', 'studio_step']);
+/**
+ * 插件页面不能调的 am 操作：不可逆的（归档、记忆回滚与导入）、只在一轮对话里有意义的（切页、标步骤）。
+ * 内置插件的操作标了 noPageCall 的（要用户本人确认的，例如节拍网格的确认）同样不能调。
+ */
+const pageDenied = new Set(['archive', 'memory_rollback', 'memory_import', 'memory_retire', 'memory_reject', 'memory_promote', 'film_style_remove', 'studio_show', 'studio_step']);
 
 /** 插件页面能不能申请调这条操作。编排工具能用的（scope 含 orchestrator）由执行进程再查一遍（AM_OP_SCOPE）。 */
 export function pageCallableOp(name: string): boolean {
+  if (pluginOps().some(({ value }) => value.name === name && value.noPageCall)) return false;
   return opPattern.test(name) && !pageDenied.has(name) && !name.startsWith('station_') && name !== 'config_set';
 }
 
@@ -29,7 +35,7 @@ export function toExtra(m: Manifest): ExtraStation {
   const station: Station = { id: m.id, name: m.name, nodes, prompt: [] };
   const extra: ExtraStation = { station, after: m.after, replaces: m.replaces };
   if (m.flow) {
-    const first = m.flow.first_page === 'script' || m.flow.first_page === 'beat' ? m.flow.first_page : pageTab(m.id, m.flow.first_page);
+    const first = builtinFirstPages().includes(m.flow.first_page) ? m.flow.first_page : pageTab(m.id, m.flow.first_page);
     extra.flow = { id: `x:${m.id}`, name: m.flow.name, stations: m.flow.stations, first_page: first };
   }
   return extra;

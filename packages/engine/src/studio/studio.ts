@@ -21,7 +21,7 @@ import * as preset from '../preset';
 import * as projectinit from '../projectinit';
 import { agentKeysAPI } from './agentkeys';
 import { agentModelsAPI, agentsAPI } from './agents';
-import { beatAPI, rawAPI, styleExampleAPI, stylesAPI, treeAPI } from './api_ui';
+import { rawAPI, styleExampleAPI, stylesAPI, treeAPI } from './api_ui';
 import { commandAPI, filesAPI, productionStartAPI, sessionAPI, sessionsAPI, turnAPI } from './api_sessions';
 import { previewAPI, renderAllAPI, sceneFeatureAPI, scenesAPI } from './features';
 import { filmStylePosterAPI, filmStylesAPI, projectFilmStyleAPI, startFilmStyleTask } from './filmstyle';
@@ -44,7 +44,7 @@ import { scriptAPI } from './script';
 import { computeStations, flowView, latestOutput, progressAPI } from './progress';
 import { stationMediaAPI, stationsAPI, stationUIAPI, tickStationSchedules } from './stations';
 import { storyboardAPI } from './storyboard';
-import { readStepMark } from './view';
+import { readStepMark, viewPages } from './view';
 import { BusyError, type Session } from './sessions';
 import { cancelSetup, setupAPI, setupCancelAPI, setupRunAPI } from './setup';
 import { voiceAPI, voiceDesignAPI, voiceDraftAPI, voiceRecordAPI, voicesAPI } from './voices';
@@ -355,7 +355,6 @@ export class Server {
       ['/api/styles/', (_r, rest) => styleExampleAPI(rest)],
       ['/api/tree', (r) => treeAPI(this, r)],
       ['/api/raw', (r) => rawAPI(this, r)],
-      ['/api/beat', () => beatAPI(this)],
       ['/api/memory', (r) => memoryAPI(this, r)],
       ['/api/memory/recall', (r) => memoryRecallAPI(this, r)],
       ['/api/memory/actions/', (r, rest) => memoryActionAPI(this, r, rest)],
@@ -844,6 +843,8 @@ export function inspectProject(p: Project): Record<string, unknown> {
     project: projectJSON(p),
     stage: stageFor(p.path, scenes),
     ...flowState,
+    // 客户端有哪些页（宿主的加上内置插件登记的）：界面只列这里有的，组件仍在界面里按 id 对上。
+    pages: viewPages().map((pg) => goMap({ id: pg.id, label: pg.label })),
     metadata: goMap(meta),
     scenes: goMap({ total: scenes.length, completed: done, stale }),
   });
@@ -907,7 +908,7 @@ export function stepOf(root: string, scenes: SceneSummary[]): { step?: string; s
 }
 
 /**
- * stageFor 按项目里已有的产物推断制作进度，口播与卡点两种模式都适用。只看文件是否存在，
+ * stageFor 按项目里已有的产物推断制作进度，不分流程（处理方案 treatment.md 是各流程分镜之前都要写的）。只看文件是否存在，
  * 不读内容：它是网页上的一行提示，判断错了也不影响任何流程。
  */
 export function stageFor(root: string, scenes: SceneSummary[]): string {
@@ -923,8 +924,7 @@ export function stageFor(root: string, scenes: SceneSummary[]): string {
     exists('production', 'script-final.md') ||
     exists('production', 'audio', 'voice.srt') ||
     exists('production', 'scene-plan.json') ||
-    exists('production', 'beat', 'grid.json') ||
-    exists('production', 'beat', 'plan.json') ||
+    exists('production', 'treatment.md') ||
     exists('script.md') ||
     exists('SCRIPT.md') ||
     exists('transcription.srt')

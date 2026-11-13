@@ -8,7 +8,7 @@ import { RootEnv, childEnvKeys, rootDir } from '../filmstyle';
 import { formatG, goPathError, goTrimSpace } from '../gofmt';
 import { BrowserEnv, CLIDirEnv, HyperFramesBrowserEnv, PinnedVersion, cliDir } from '../hyperframes';
 import { childEnvKeys as toolpathEnvKeys } from '../toolpath';
-import { EnvDirEnv as BeatEnvDirEnv, envDir as beatEnvDir } from '../beat/env';
+import { pluginChildEnvs } from '../plugin/registry';
 import { DirEnv as VoicesDirEnv, defaultDir as defaultVoicesDir } from '../voice/dir';
 import { GlobalDefaults, GlobalKeys, ModelToolKey, SettingsFileEnv, isGlobalKey, settingsFile, validModel, type GlobalKey } from './global';
 import { ValidRenderers, ValidTools } from '../tools';
@@ -80,8 +80,8 @@ export interface Config {
   filmStyleRoot: string;
   /** am 管理的固定版本 HyperFrames CLI 的安装目录，见 hyperframes.requireCLI（am setup 用 ensureCLI 安装）。 */
   hyperFramesCLI: string;
-  /** 节拍分析环境目录（beat/env.ts），理由同 hyperFramesCLI。 */
-  beatEnv: string;
+  /** 内置插件登记的、要显式传给子进程的环境变量（plugin.PluginChildEnv），理由同 hyperFramesCLI。 */
+  pluginEnv: Record<string, string>;
   /** 音色库目录（voice 包），所有项目共用；理由同 memory.dir，要显式传给子进程。 */
   voicesDir: string;
   /** 全局设置文件（config/global.ts），理由同 voicesDir，要显式传给子进程。 */
@@ -105,7 +105,7 @@ export function newConfig(fields: Partial<Omit<Config, 'memory'>> & { memory?: P
     overlay: {},
     filmStyleRoot: '',
     hyperFramesCLI: '',
-    beatEnv: '',
+    pluginEnv: {},
     voicesDir: '',
     settingsFile: '',
     autoApprove: false,
@@ -289,7 +289,12 @@ export function load(root: string, environ?: Record<string, string> | null): Con
   cfg.memory.dir = resolve('AM_MEMORY_DIR', defaultMemoryDir(env));
   cfg.filmStyleRoot = resolve(RootEnv, rootDir(env));
   cfg.hyperFramesCLI = resolve(CLIDirEnv, cliDir(env, PinnedVersion));
-  cfg.beatEnv = resolve(BeatEnvDirEnv, beatEnvDir(env));
+  // 内置插件的目录类变量（例如卡点的节拍分析环境）同理：编排工具调用的操作要找到 am setup 装好的那一套。
+  cfg.pluginEnv = {};
+  for (const { value: spec } of pluginChildEnvs()) {
+    const v = resolve(spec.key, spec.value(env));
+    if (v !== '') cfg.pluginEnv[spec.key] = v;
+  }
   cfg.voicesDir = resolve(VoicesDirEnv, defaultVoicesDir(env));
   const snapshotText = resolve('MEMORY_SNAPSHOT', '');
   if (snapshotText !== '') {
@@ -376,8 +381,9 @@ export function childEnvironment(
   // CLI 目录同理：子进程里的 am hyperframes 要找到同一份已装好的 CLI，否则会按 HOME
   // 另算一个目录，在渲染途中重新 npm install。
   if (config.hyperFramesCLI !== '') out[CLIDirEnv] = config.hyperFramesCLI;
-  // 节拍分析环境同理：编排工具调用的 am beat analyze 要找到 am setup 装好的那一套，找不到就会想自己去建。
-  if (config.beatEnv !== '') out[BeatEnvDirEnv] = config.beatEnv;
+  // 内置插件登记的变量同理（例如卡点的节拍分析环境：编排工具调用的 beat_analyze 要找到 am setup 装好的那一套，
+  // 找不到就会想自己去建）。
+  Object.assign(out, config.pluginEnv);
   // 音色库同理：编排工具调用的 voice_save、voice_get 与客户端的音色页要是同一个库，
   // 默认目录由 XDG_DATA_HOME 推出而它不在白名单里。
   if (config.voicesDir !== '') out[VoicesDirEnv] = config.voicesDir;

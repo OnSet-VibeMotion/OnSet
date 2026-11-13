@@ -16,7 +16,6 @@ import * as project from '../project';
 // 讲解形式（am init --delivery）：就是项目的流程（片型），可选值是内置流程与内置插件登记的流程（deliveryFlows）。
 export const DeliverySpeech = 'speech';
 export const DeliverySong = 'song';
-export const DeliveryBeat = 'beat';
 
 // 叙事模式（am init --narration）。solo 是单口播，宿主自己的缺省；其余由内置插件登记（ctx.narration），
 // 选中时写出那个插件的初始文件（多角色对话是 cast.yaml 与 cast/）。
@@ -60,19 +59,8 @@ export interface Preset {
   example?: string;
 }
 
-/** 宿主自己的做法：口播与（还没做成插件的）卡点。 */
-const hostPresets: Preset[] = [
-  { id: 'speech', label: '口播讲解', hint: '配音 + 动画，最常用', delivery: DeliverySpeech, narration: NarrationSolo },
-  {
-    id: 'beat',
-    label: '音乐卡点',
-    hint: '没有配音，画面踩着节拍切',
-    delivery: DeliveryBeat,
-    narration: NarrationSolo,
-    canvas: 'vertical-9x16',
-    example: '用一首轻快的曲子做卡点短片，每个重拍切一个画面',
-  },
-];
+/** 宿主自己的做法：口播。其余（卡点、歌曲讲解……）由内置插件登记。 */
+const hostPresets: Preset[] = [{ id: 'speech', label: '口播讲解', hint: '配音 + 动画，最常用', delivery: DeliverySpeech, narration: NarrationSolo }];
 
 /** 新建对话框的全部做法：宿主的在前，其后是内置插件登记的（ctx.preset）。 */
 export function presets(): Preset[] {

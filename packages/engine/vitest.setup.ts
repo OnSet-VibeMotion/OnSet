@@ -3,9 +3,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-// 镜头扩展块（宿主的 beat 在 scene/blocks/，cast、song 由内置插件登记）经 scene 的包入口 index.ts 加载。
+// 镜头扩展块（beat、cast、song）由内置插件登记，经 scene 的包入口 index.ts 加载。
 // scene/ 自己的测试直接 import './scene'，绕过了包入口，这里替它们登记一次。
-import './src/scene/blocks';
 import './src/plugin';
 
 process.env.AM_SETTINGS_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'am-settings-test-')), 'settings.conf');

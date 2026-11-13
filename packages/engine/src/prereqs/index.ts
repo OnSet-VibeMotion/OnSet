@@ -6,13 +6,14 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import * as beat from '../beat';
 import * as config from '../config';
 import { AlignAuto, Aligners, defaultTTSProvider, resolveAligner, TTSProviders, validAligner, validTTSProvider } from '../config/providers';
 import { envMap } from '../envutil';
 import type { ModelSpec, ToolSpec } from '../toolinstall';
 import * as filmstyle from '../filmstyle';
 import '../filmstyle/sources';
+import { readLock } from '../flow/lock';
+import * as plugin from '../plugin';
 import * as hyperframes from '../hyperframes';
 import * as toolinstall from '../toolinstall';
 
@@ -61,20 +62,22 @@ export interface Item {
   /** 不联网地判断是否已就绪；where 是给人看的位置。 */
   ready: (env: Record<string, string>) => [ok: boolean, where: string];
   prepare: (run: Run, signal?: AbortSignal) => Promise<void>;
+  /** 内置插件登记的项：客户端安装页「以后可能用到」里的那一组（见 plugin.PluginPrereq）。 */
+  later?: { title: string; desc: string; icon?: string };
 }
 
 /**
  * 走 --proxy 的下载（GitHub release、Google 存储上的浏览器）用的环境：curl 与 HyperFrames 都认 https_proxy。
  * npm 与 pip 不给代理（它们用用户自己配置的国内镜像，经代理反而连不上，实测）。
  */
-function withProxy(run: Run, base: Record<string, string> = run.base): Record<string, string> {
+export function withProxy(run: Run, base: Record<string, string> = run.base): Record<string, string> {
   const env = { ...base };
   if (run.proxy) env.HTTPS_PROXY = env.https_proxy = run.proxy;
   return env;
 }
 
 /** 把 HyperFrames 的进度译成一行说明。 */
-function hyperframesStage(p: hyperframes.Progress): string {
+export function hyperframesStage(p: hyperframes.Progress): string {
   if (p.indeterminate || p.percent <= 0 || p.percent >= 100) return p.stage;
   return `${p.stage} ${Math.trunc(p.percent)}%`;
 }
@@ -83,6 +86,8 @@ function hyperframesStage(p: hyperframes.Progress): string {
 export interface Selection {
   tts: string;
   align: string;
+  /** 项目目录：这个项目关掉的内置插件登记的前置资源不列。空是不在项目里（全部列出）。 */
+  root?: string;
 }
 
 /**
@@ -93,7 +98,7 @@ export function selection(env: Record<string, string>, root = ''): Selection {
   if (root !== '' && fs.existsSync(path.join(root, 'article-to-motion.conf'))) {
     try {
       const cfg = config.load(root, env);
-      return { tts: cfg.ttsProvider, align: cfg.alignProvider };
+      return { tts: cfg.ttsProvider, align: cfg.alignProvider, root };
     } catch {
       // 配置写错了：退回缺省，错误留给 am config / am run 去报。
     }
@@ -111,7 +116,17 @@ export function selection(env: Record<string, string>, root = ''): Selection {
   const alignValue = pick('ALIGN_PROVIDER');
   const tts = validTTSProvider(ttsValue) ? ttsValue : defaultTTSProvider();
   const align = resolveAligner(validAligner(alignValue) ? alignValue : AlignAuto, process.platform, process.arch);
-  return { tts, align };
+  return root !== '' ? { tts, align, root } : { tts, align };
+}
+
+/** 项目关掉的内置插件（锁文件的 disabled）；不在项目里或读不了锁文件时为空。 */
+function disabledPlugins(root: string): Set<string> {
+  if (root === '') return new Set();
+  try {
+    return new Set(readLock(root).disabled ?? []);
+  } catch {
+    return new Set();
+  }
 }
 
 /** 配音或对齐工具的一项：装进 am 自己的目录，不碰全局；版本钉死。有 model 时连模型一起下好。 */
@@ -205,29 +220,10 @@ export function items(pick?: Selection): Item[] {
         await toolinstall.ensureFFmpeg({ env: withProxy(run), output: run.log, progress: (p) => run.stage(hyperframesStage(p)), signal });
       },
     },
-    {
-      group: 'beat',
-      id: 'beat',
-      // 只有卡点项目要：不选卡点就用不到这一套近 1 GB 的 Python 环境。
-      required: false,
-      name: '节拍分析环境 beat-this',
-      version: beat.AnalyzerVersion,
-      ready: (env) => {
-        const dir = beat.envDir(env);
-        return [beat.envReady(dir), dir];
-      },
-      prepare: async (run, signal) => {
-        // pip 用用户自己的 pip.conf（国内镜像），不套代理，理由同 npm；权重在境外服务器上，--proxy 只给它。
-        const weightsEnv = { ...run.base };
-        if (run.proxy) weightsEnv.HTTPS_PROXY = weightsEnv.https_proxy = run.proxy;
-        // 系统里没有能装 torch 的 Python 时，先下载 uv，由它带一份独立的 Python（不要求用户装 Python）。
-        if (!(await beat.hasBasePython(run.base, signal))) {
-          await toolinstall.ensureUV({ env: withProxy(run), output: run.log, progress: (p) => run.stage(hyperframesStage(p)), signal });
-        }
-        await beat.ensureEnv({ env: run.base, weightsEnv, output: run.log, progress: (p) => run.stage(hyperframesStage(p)) }, signal);
-      },
-    },
   ];
+  // 内置插件登记的前置资源（例如卡点的节拍分析环境）；这个项目关掉了那个插件就不列。
+  const off = disabledPlugins(chosen.root ?? '');
+  for (const { owner, value } of plugin.pluginPrereqs()) if (!off.has(owner)) out.push(value);
   const tts = TTSProviders.find((p) => p.id === chosen.tts);
   if (tts) out.push(toolItem('tts', tts.id, '配音 ' + tts.name, tts.install, tts.model));
   // 音色页的「按描述设计」用本机的 Breeze，与项目选的配音工具无关；项目配音本来就是 Breeze 时上面那一项就是它。
@@ -269,12 +265,13 @@ export interface Status {
   required: boolean;
   ready: boolean;
   location: string;
+  later?: { title: string; desc: string; icon?: string };
 }
 
 /** 不联网地返回全部项的状态。 */
 export function check(env: Record<string, string>, pick?: Selection): Status[] {
   return items(pick ?? selection(env)).map((item) => {
     const [ok, where] = item.ready(env);
-    return { id: item.id, group: item.group, name: item.name, version: item.version || undefined, required: item.required, ready: ok, location: where };
+    return { id: item.id, group: item.group, name: item.name, version: item.version || undefined, required: item.required, ready: ok, location: where, later: item.later };
   });
 }

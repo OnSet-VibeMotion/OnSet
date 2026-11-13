@@ -1,8 +1,8 @@
 /**
  * 解析并校验 am-station.json（清单的类型与字段分级见 manifest.ts）。错误一律带上字段位置。
  */
-import { StepIDs } from '../studioview';
-import { allStageTitles, allStations } from './registered';
+import { stepIDs } from '../studioview';
+import { allStageTitles, allStations, builtinFirstPages } from './registered';
 import { builtinPluginIDs } from './builtinplugins';
 import { pageCallableOp } from './pages';
 import { idPattern, isObject, knownFields, opPattern, projectPath, relativeInside, str, strings } from './fields';
@@ -81,7 +81,7 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
     if (!isObject(n)) throw new Error(`${where} 要是对象`);
     knownFields(n, ['id', 'label', 'step', 'gate', 'page', 'outputs', 'stale_after', 'gate_files'], where);
     const step = str(n, 'step', where);
-    if (!StepIDs.includes(step)) throw new Error(`${where}.step 要是 ${StepIDs.join(' / ')} 之一`);
+    if (!stepIDs().includes(step)) throw new Error(`${where}.step 要是 ${stepIDs().join(' / ')} 之一`);
     const gate = n.gate === true;
     const node: ManifestNode = {
       id: str(n, 'id', where),
@@ -224,7 +224,8 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
     }
     if (new Set(stations).size !== stations.length) throw new Error('flow.stations 里有重复的站');
     const first = str(f, 'first_page', 'flow');
-    if (first !== 'script' && first !== 'beat' && !pageIDs.includes(first)) throw new Error(`flow.first_page 要是 script、beat 或本站页面的 id`);
+    const firstPages = builtinFirstPages();
+    if (!firstPages.includes(first) && !pageIDs.includes(first)) throw new Error(`flow.first_page 要是 ${firstPages.join('、')} 或本站页面的 id`);
     const fp = str(f, 'prompt', 'flow');
     relativeInside(fp, 'flow.prompt');
     flowDef = { name: str(f, 'name', 'flow'), stations, first_page: first, prompt: fp };
