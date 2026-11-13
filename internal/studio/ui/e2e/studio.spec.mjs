@@ -160,6 +160,11 @@ test('starts a new video from the home page', async ({ page }) => {
   await page.locator('#home-prompt').fill('首页端到端测试，讲讲复利');
   await page.locator('#home-send').click();
 
+  // 开机画面：场记板写着片名，时间线上四段片段依次完成，最后打板进项目。
+  await expect(page.locator('.creation .slate')).toContainText('首页端到端测试');
+  await expect(page.locator('.creation .clip')).toHaveCount(4);
+  await expect(page.locator('.creation')).toHaveCount(0, { timeout: 15_000 });
+
   // 建好项目、开始制作后直接进到新项目，对话里是整片制作这一轮。
   await expect(page.locator('#title')).toContainText('首页端到端测试');
   await expect(page.locator('#session-title')).toContainText('整片制作');

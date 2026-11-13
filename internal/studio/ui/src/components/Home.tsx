@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { api, errorText, post } from '../api';
-import type { AgentsResponse, Attachment, CanvasOption, DirectoryEntry, Project, StylesResponse } from '../types';
+import { api, errorText } from '../api';
+import type { AgentsResponse, CanvasOption, DirectoryEntry, Project, StylesResponse } from '../types';
+import { Creation, type CreationJob } from './Creation';
 import { Icon } from './Icon';
 import '../home.css';
 
@@ -87,7 +88,8 @@ export function Home(props: Props) {
   });
   const [template, setTemplate] = useState('');
   const [menu, setMenu] = useState('');
-  const [phase, setPhase] = useState('');
+  // 正在新建时的任务：交给开机画面（Creation）一步步做完。
+  const [job, setJob] = useState<CreationJob | null>(null);
   const [error, setError] = useState('');
   const [dragging, setDragging] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -119,7 +121,7 @@ export function Home(props: Props) {
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
   }, [text]);
 
-  const working = phase !== '';
+  const working = job !== null;
   const canSend = !working && (text.trim() !== '' || files.length > 0) && !!tool && !!parent;
   const current = templates.find((t) => t.id === template);
   const canvasInfo = styles?.canvases.find((c) => c.id === canvas);
@@ -137,61 +139,49 @@ export function Home(props: Props) {
     textarea.current?.focus();
   };
 
-  const submit = async () => {
+  const submit = () => {
     if (!canSend) return;
     setError('');
     try {
-      try {
-        localStorage.setItem(LAST_TOOL, tool);
-      } catch {
-        // 记不住上次选的工具不影响建项目。
-      }
-      const message = text.trim();
-      const base = projectName(message, files);
-      const m = modes.find((item) => item.id === mode)!;
-      setPhase('正在建项目…');
-      let project: Project | null = null;
-      for (let attempt = 1; attempt <= 20 && !project; attempt++) {
-        try {
-          const result = await post<{ project: Project }>('/api/projects/create', {
-            parent,
-            name: attempt === 1 ? base : `${base}-${attempt}`,
-            canvas,
-            style,
-            delivery: m.delivery,
-            narration: m.narration,
-          });
-          project = result.project;
-        } catch (err) {
-          if (!(err instanceof Error) || !/已经存在/.test(err.message)) throw err;
-        }
-      }
-      if (!project) throw new Error('同名的项目太多了，换个说法再试');
-      let attachments: Attachment[] = [];
-      if (files.length) {
-        setPhase(`正在上传 ${files.length} 个文件…`);
-        const form = new FormData();
-        for (const file of files) form.append('file', file, file.name);
-        attachments = (await api<{ attachments: Attachment[] }>('/api/uploads', { method: 'POST', body: form })).attachments;
-      }
-      setPhase('正在启动编排工具…');
-      const started = await post<{ session_id: string }>('/api/production/start', {
-        message: message || '用上传的文件做这条视频。',
-        attachments,
-        tool,
-      });
-      setText('');
-      setFiles([]);
-      await props.onStarted(project.id, started.session_id);
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setPhase('');
+      localStorage.setItem(LAST_TOOL, tool);
+    } catch {
+      // 记不住上次选的工具不影响建项目。
     }
+    const m = modes.find((item) => item.id === mode)!;
+    const message = text.trim();
+    setJob({
+      parent,
+      name: projectName(message, files),
+      canvas,
+      canvasInfo,
+      style,
+      delivery: m.delivery,
+      narration: m.narration,
+      modeLabel: m.label,
+      tool,
+      toolLabel: props.agents?.agents.find((a) => a.id === tool)?.label ?? tool,
+      message,
+      files,
+    });
   };
 
   return (
     <div class="home">
+      {job && (
+        <Creation
+          job={job}
+          onDone={(projectId, sessionId) => {
+            setText('');
+            setFiles([]);
+            setJob(null);
+            void props.onStarted(projectId, sessionId);
+          }}
+          onClose={(message) => {
+            setJob(null);
+            setError(message);
+          }}
+        />
+      )}
       <HomeRail
         projects={props.projects}
         summaries={props.summaries}
@@ -386,7 +376,7 @@ export function Home(props: Props) {
               <FolderPicker value={parent} open={menu === 'folder'} onOpen={(open) => setMenu(open ? 'folder' : '')} onChange={setParent} />
             </div>
           </div>
-          {(phase || error) && <p class={'home-status' + (error ? ' error' : '')}>{error || phase}</p>}
+          {error && <p class="home-status error">{error}</p>}
 
           <h3 class="templates-title">从模板开始…</h3>
           <div class="templates">
