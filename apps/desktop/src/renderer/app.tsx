@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, errorText, forUser, post } from './api';
 import { Chat, type Outbox } from './components/Chat';
 import { Home, type ProjectSummary } from './components/Home';
+import { rendererState } from './components/agentReady';
 import { Onboarding, shouldOnboard } from './components/Onboarding';
 import { SkillsPill, type SkillsStatus } from './components/SkillsPill';
 import { SetupGuide, useSetup } from './components/SetupGuide';
@@ -331,7 +332,7 @@ export function App() {
   useEffect(() => {
     if (guideChecked.current || !loaded || !setup.status || !homeAgents) return;
     guideChecked.current = true;
-    const missing = !setup.status.ready || !homeAgents.agents.some((a) => a.installed);
+    const missing = !setup.status.ready || !homeAgents.agents.some((a) => a.installed) || !rendererState(homeAgents, homeAgents.global_renderer).ok;
     if (missing && shouldOnboard(projects.length)) setGuideOpen(true);
   }, [loaded, setup.status, homeAgents, projects.length]);
 

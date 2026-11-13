@@ -30,6 +30,9 @@ describe('agents', () => {
     expect(claude.path.endsWith('/claude')).toBe(true);
     expect(body.orchestrator).toBe('claude');
     expect(body.renderer).toBe('claude');
+    expect(body.global_renderer, '没有全局设置时是默认的渲染工具').toBe(config.GlobalDefaults.RENDERER);
+    expect(claude.install_url).toMatch(/^https:\/\//);
+    for (const a of body.agents) expect(a.id === 'director' || /^https:\/\//.test(a.install_url), `${a.id} 没有安装入口`).toBe(true);
     for (const a of body.agents) expect(a.command, '命令名为空').not.toBe('');
     expect((await studioRequest(f.s, 'POST', '/api/agents', '{}')).status).toBe(405);
   });

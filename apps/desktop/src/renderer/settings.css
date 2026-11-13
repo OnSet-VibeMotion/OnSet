@@ -172,3 +172,55 @@
     margin-bottom: 6px;
   }
 }
+.settings .agent-key-name .agent-key-vision {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--stale);
+}
+
+/* 导演的模型看不了画面：设置页、首次引导与开工前的对话里共用。 */
+.vision-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  text-align: left;
+}
+.vision-note span.vision-note-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--accent-line);
+  color: var(--accent-text);
+}
+.vision-note span.vision-note-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.vision-note .vision-note-text strong {
+  font: 600 13px var(--serif);
+  color: var(--accent-text);
+}
+.vision-note .vision-note-text span {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.vision-note.compact {
+  margin-top: 6px;
+  padding: 8px 10px;
+  gap: 8px;
+}
+.vision-note.compact span.vision-note-icon {
+  width: 22px;
+  height: 22px;
+}

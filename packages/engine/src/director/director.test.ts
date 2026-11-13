@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { authFile, configuredProviders, defaultDir, keyStorage, loadKeys, pickModel, providerOf, Providers, setProviderKey, useKeyCodec, useKeys, type KeyCodec } from './index';
+import { authFile, configuredProviders, defaultDir, keyStorage, loadKeys, modelVision, pickModel, providerOf, Providers, setProviderKey, useKeyCodec, useKeys, type KeyCodec } from './index';
 
 let dir: string;
 beforeEach(() => {
@@ -48,9 +48,19 @@ describe('director credentials', () => {
     expect(() => setProviderKey(agent, 'deepseek', 'a b')).toThrow(/空白/);
   });
 
-  it('picks the written model, else the first configured provider’s default', () => {
+  it('picks the written model, else a configured provider whose default can read images, else the first one', () => {
+    const model = (id: string) => Providers.find((p) => p.id === id)!.defaultModel;
     expect(pickModel('a/b', [])).toBe('a/b');
-    expect(pickModel('', ['moonshotai-cn', 'deepseek'])).toBe(Providers.find((p) => p.id === 'deepseek')!.defaultModel);
+    // 写了模型就用写的，哪怕它看不了图。
+    expect(pickModel('deepseek/deepseek-v4-pro', ['moonshotai-cn'])).toBe('deepseek/deepseek-v4-pro');
+    // DeepSeek 排第一但推荐模型看不了图：有能读图的就挑它，按 Providers 的顺序。
+    expect(pickModel('', ['moonshotai-cn', 'deepseek'])).toBe(model('moonshotai-cn'));
+    expect(pickModel('', ['openai', 'deepseek', 'anthropic'])).toBe(model('anthropic'));
+    // 都看不了图：退回第一家。
+    expect(pickModel('', ['zai-coding-cn', 'deepseek'])).toBe(model('deepseek'));
+    expect(pickModel('', ['zai-coding-cn'])).toBe(model('zai-coding-cn'));
+    // 不在表里的服务商不参与。
+    expect(pickModel('', ['x-unknown'])).toBe('');
     expect(pickModel('', [])).toBe('');
     expect(providerOf('openrouter/anthropic/x')).toBe('openrouter');
     for (const p of Providers) expect(p.defaultModel === '' || providerOf(p.defaultModel) === p.id, p.id).toBe(true);
@@ -101,5 +111,17 @@ describe('director credentials', () => {
     expect(loadKeys(agent)).toEqual({ openai: 'sk-handed' });
     useKeys(null);
     expect(loadKeys(agent)).toEqual({ deepseek: 'sk-file' });
+  });
+
+  it('knows which models cannot read images, and nothing about the rest', () => {
+    expect(modelVision('deepseek/deepseek-v4-pro')).toBe(false);
+    expect(modelVision('zai-coding-cn/glm-5.3')).toBe(false);
+    expect(modelVision('moonshotai-cn/kimi-k3')).toBeUndefined();
+    // 目录里查不到、服务商不在表里、没写服务商：都按不知道，不提示。
+    expect(modelVision('deepseek/deepseek-v9')).toBeUndefined();
+    expect(modelVision('x-other/deepseek-v4-pro')).toBeUndefined();
+    expect(modelVision('deepseek-v4-pro')).toBeUndefined();
+    // 推荐模型的标记与表一致。
+    for (const p of Providers) expect(modelVision(p.defaultModel) !== false, p.id).toBe(p.vision);
   });
 });

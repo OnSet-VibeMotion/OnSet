@@ -23,6 +23,7 @@ import { writeStepMark } from './view';
 import { changedPaths, diffTrees, loadTurn, revertTurn, saveTurn, scanTree, statTree, studioRoot, validID, type FileChange, type Turn } from './turns';
 import { emitStudioEvent } from './events';
 import { preferenceBrief, recordUtterance } from './memory';
+import { noVisionNote, orchestratorCannotSee } from './vision';
 import { uploadDir, uploadKind } from './uploads';
 import { allowedCommands, expirePermissions, permissionEventJSON, pollPermissions, type PendingPermission, type PermissionEventData } from './permissions';
 
@@ -624,6 +625,8 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
   } else {
     prompt = message;
   }
+  // 导演用的模型看不了图：每一轮都提醒，续接的会话里它也可能走到画面验收、复查。
+  if (orchestratorCannotSee(cfg)) prompt += '\n\n---\n\n' + noVisionNote;
   const [brief, digest] = preferenceBrief(p, cfg);
   const resend = brief !== '' && (digest !== (sess.meta.preference_digest ?? '') || !sess.meta.cli_session_id || (sess.meta.turns ?? []).length === 0);
   if (resend) prompt = brief + '\n---\n\n' + prompt;

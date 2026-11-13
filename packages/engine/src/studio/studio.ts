@@ -19,7 +19,7 @@ import { goClean, goPathError, goTrimSpace } from '../gofmt';
 import { marshalIndent } from '../gojson';
 import * as preset from '../preset';
 import * as projectinit from '../projectinit';
-import { agentKeysAPI } from './agentkeys';
+import { agentKeysAPI, agentVisionAPI } from './agentkeys';
 import { agentModelsAPI, agentsAPI } from './agents';
 import { rawAPI, stylesAPI, treeAPI } from './api_ui';
 import { commandAPI, filesAPI, productionStartAPI, sessionAPI, sessionsAPI, turnAPI } from './api_sessions';
@@ -366,6 +366,7 @@ export class Server {
       ['/api/film-style', (r) => projectFilmStyleAPI(this, r)],
       ['/api/settings', (r) => settingsAPI(this, r)],
       ['/api/agent-keys', (r) => agentKeysAPI(r)],
+      ['/api/agent-keys/vision', (r) => agentVisionAPI(r)],
       ['/api/settings/global', (r) => settingsGlobalAPI(r)],
       ['/api/settings/project', (r) => settingsProjectAPI(this, r)],
       ['/api/voices', (r) => voicesAPI(this, r)],

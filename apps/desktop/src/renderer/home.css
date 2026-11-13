@@ -854,3 +854,43 @@
   max-width: 820px;
   margin: 0 auto 16px;
 }
+
+/* 全局设置里的渲染工具没装：与前置资源卡片同宽，放在输入框上方。 */
+.home .home-renderer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  text-align: left;
+}
+.home .home-renderer-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--accent-line);
+  color: var(--accent-text);
+}
+.home .home-renderer-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+.home .home-renderer-text strong {
+  font: 600 14px var(--serif);
+  color: var(--accent-text);
+}
+.home .home-renderer-text span {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}

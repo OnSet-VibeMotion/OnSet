@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, errorText, post } from '../api';
-import type { AgentKeysResponse, SettingRow, SettingsResponse } from '../types';
+import type { AgentKeysResponse, AgentVision, SettingRow, SettingsResponse } from '../types';
+import { Icon } from './Icon';
 import { ModelSelect } from './ModelSelect';
 import type { RunAction } from './Preview';
 import '../settings.css';
@@ -84,6 +85,7 @@ export function Settings({ version, run, onPluginsChanged }: { version: number; 
                 <strong>{row.label}</strong>
                 <span>{row.hint}</span>
                 {note && <em>{note}</em>}
+                {row.model_of && globalTool(row) === 'director' && <DirectorVisionNote model={row.global} version={version} compact />}
               </div>
               {row.model_of ? modelCells(row, data.has_project) : toolCells(row, data.has_project)}
             </div>
@@ -194,6 +196,12 @@ export function AgentKeys({ version, onChange }: { version: number; onChange?: (
             <span className="agent-key-name">
               {p.label}
               {p.default_model && <small>推荐 {p.default_model.slice(p.id.length + 1)}</small>}
+              {!p.vision && (
+                <span className="agent-key-vision" title="画面验收、整片复查要看截图；这家的推荐模型只读得了文字">
+                  <Icon name="eye-off" size={11} />
+                  看不了画面，画面验收要靠你自己看
+                </span>
+              )}
             </span>
             {editing === p.id ? (
               <form
@@ -239,5 +247,36 @@ export function AgentKeys({ version, onChange }: { version: number; onChange?: (
       {data.storage && !data.storage.encrypted && data.storage.note && <p className="agent-keys-note">{data.storage.note}</p>}
       {error && <div className="settings-error">{error}</div>}
     </section>
+  );
+}
+
+/**
+ * 导演这次会用的模型看不了画面时的提示（设置页编排模型一栏、开工前的对话里）。model 为空时由后端按填了 key 的服务商挑，
+ * 与真正开工时同一个规则；目录里查不到的模型不提示。看不了时，导演会在画面验收与复查里把要看的图切给你，等你说结论。
+ */
+export function DirectorVisionNote({ model, version = 0, compact }: { model: string; version?: number; compact?: boolean }) {
+  const [info, setInfo] = useState<AgentVision | null>(null);
+  useEffect(() => {
+    let live = true;
+    api<AgentVision>('/api/agent-keys/vision?model=' + encodeURIComponent(model)).then(
+      (v) => live && setInfo(v),
+      () => live && setInfo(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [model, version]);
+  if (!info || info.vision !== false) return null;
+  const name = info.model.slice(info.model.indexOf('/') + 1);
+  return (
+    <div className={'vision-note' + (compact ? ' compact' : '')} role="note" id="director-vision-note">
+      <span className="vision-note-icon">
+        <Icon name="eye-off" size={compact ? 12 : 14} />
+      </span>
+      <span className="vision-note-text">
+        <strong>导演现在用的 {name} 看不了画面</strong>
+        <span>画面验收和整片复查要看截图的地方，它会把图切给你、等你说看得怎么样。想让它自己看，在设置里换一家能看画面的模型服务。</span>
+      </span>
+    </div>
   );
 }

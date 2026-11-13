@@ -12,6 +12,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { dataDir } from '../envutil';
+import { TextOnlyModels } from './textonly';
+
+export { TextOnlyModels } from './textonly';
 
 /** 工具名：ORCHESTRATOR=director。 */
 export const Tool = 'director';
@@ -51,17 +54,22 @@ export interface Provider {
   keyURL: string;
   /** 推荐的模型（「服务商/模型」），选了服务商又没选模型时用它。 */
   defaultModel: string;
+  /**
+   * 推荐模型能不能读图。画面验收与整片复查要打开 PNG 看图判断，看不了图的模型只会拿到 pi 的一句「图片已省略」，
+   * 验收等于没做。packages/cli/src/agent/catalog.test.ts 对着 pi 的模型目录核对这一项。
+   */
+  vision: boolean;
 }
 
 export const Providers: readonly Provider[] = [
-  { id: 'deepseek', label: 'DeepSeek', keyURL: 'https://platform.deepseek.com/api_keys', defaultModel: 'deepseek/deepseek-v4-pro' },
-  { id: 'moonshotai-cn', label: 'Kimi（月之暗面）', keyURL: 'https://platform.moonshot.cn/console/api-keys', defaultModel: 'moonshotai-cn/kimi-k3' },
-  { id: 'zai-coding-cn', label: '智谱 GLM（Coding Plan）', keyURL: 'https://bigmodel.cn/usercenter/proj-mgmt/apikeys', defaultModel: 'zai-coding-cn/glm-5.3' },
-  { id: 'qwen-token-plan-cn', label: '阿里云百炼（Token Plan）', keyURL: 'https://bailian.console.aliyun.com/?apiKey=1', defaultModel: 'qwen-token-plan-cn/qwen3.8-max' },
-  { id: 'minimax-cn', label: 'MiniMax', keyURL: 'https://platform.minimaxi.com/user-center/basic-information/interface-key', defaultModel: 'minimax-cn/MiniMax-M3' },
-  { id: 'anthropic', label: 'Anthropic（Claude）', keyURL: 'https://console.anthropic.com/settings/keys', defaultModel: 'anthropic/claude-sonnet-5-5' },
-  { id: 'openai', label: 'OpenAI', keyURL: 'https://platform.openai.com/api-keys', defaultModel: 'openai/gpt-5.5' },
-  { id: 'openrouter', label: 'OpenRouter', keyURL: 'https://openrouter.ai/keys', defaultModel: 'openrouter/anthropic/claude-sonnet-5.5' },
+  { id: 'deepseek', label: 'DeepSeek', keyURL: 'https://platform.deepseek.com/api_keys', defaultModel: 'deepseek/deepseek-v4-pro', vision: false },
+  { id: 'moonshotai-cn', label: 'Kimi（月之暗面）', keyURL: 'https://platform.moonshot.cn/console/api-keys', defaultModel: 'moonshotai-cn/kimi-k3', vision: true },
+  { id: 'zai-coding-cn', label: '智谱 GLM（Coding Plan）', keyURL: 'https://bigmodel.cn/usercenter/proj-mgmt/apikeys', defaultModel: 'zai-coding-cn/glm-5.3', vision: false },
+  { id: 'qwen-token-plan-cn', label: '阿里云百炼（Token Plan）', keyURL: 'https://bailian.console.aliyun.com/?apiKey=1', defaultModel: 'qwen-token-plan-cn/qwen3.8-max', vision: true },
+  { id: 'minimax-cn', label: 'MiniMax', keyURL: 'https://platform.minimaxi.com/user-center/basic-information/interface-key', defaultModel: 'minimax-cn/MiniMax-M3', vision: true },
+  { id: 'anthropic', label: 'Anthropic（Claude）', keyURL: 'https://console.anthropic.com/settings/keys', defaultModel: 'anthropic/claude-sonnet-5-5', vision: true },
+  { id: 'openai', label: 'OpenAI', keyURL: 'https://platform.openai.com/api-keys', defaultModel: 'openai/gpt-5.5', vision: true },
+  { id: 'openrouter', label: 'OpenRouter', keyURL: 'https://openrouter.ai/keys', defaultModel: 'openrouter/anthropic/claude-sonnet-5.5', vision: true },
 ];
 
 /**
@@ -229,9 +237,23 @@ export interface Request {
 /** 选不出模型时的报错：界面据此引导用户去设置里填 key。 */
 export const NoModelMessage = '导演还没有可用的模型：请在设置里填一个模型服务的 API key';
 
-/** 按请求挑模型：写了就用写的；没写就用第一家填了 key、且有推荐模型的服务商。 */
+/**
+ * 按请求挑模型：写了就用写的；没写就在填了 key 的服务商里先挑推荐模型能读图的（按 Providers 的顺序），
+ * 都不能读图时才用第一家。画面验收、整片复查都要看图，能读图的模型才做得了。
+ */
 export function pickModel(model: string, configured: readonly string[]): string {
   if (model !== '') return model;
-  for (const p of Providers) if (configured.includes(p.id) && p.defaultModel !== '') return p.defaultModel;
-  return '';
+  const usable = Providers.filter((p) => configured.includes(p.id) && p.defaultModel !== '');
+  return (usable.find((p) => p.vision) ?? usable[0])?.defaultModel ?? '';
+}
+
+/**
+ * 模型能不能读图：pi 的模型目录里标着只收文字的是 false，其余（能读图的、不在表里的服务商、目录里查不到的模型）
+ * 都是 undefined——查不到按不知道处理，不提示用户。
+ */
+export function modelVision(model: string): false | undefined {
+  const provider = providerOf(model);
+  if (provider === '') return undefined;
+  const list = TextOnlyModels[provider];
+  return list && list.includes(model.slice(provider.length + 1)) ? false : undefined;
 }
