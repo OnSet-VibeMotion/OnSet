@@ -42,5 +42,10 @@ export function rawURL(path: string, version?: number): string {
 }
 
 export function errorText(err: unknown): string {
+  // fetch 连不上服务时浏览器只给一句英文（Chrome「Failed to fetch」、Firefox「NetworkError…」、
+  // Safari「Load failed」），用户看不出是什么；多半是 am studio 停了或正在重启。
+  if (err instanceof TypeError && /failed to fetch|networkerror|load failed|network request failed/i.test(err.message)) {
+    return '连不上 Studio 服务：am studio 可能停了或正在重启';
+  }
   return err instanceof Error ? err.message : String(err);
 }

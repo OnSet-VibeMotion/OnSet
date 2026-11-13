@@ -16,7 +16,10 @@ export function styleKey(style: { source: string; slug: string }): string {
   return `${style.source}/${style.slug}`;
 }
 
-/** 读风格目录；有来源没准备好时隔一会儿再看（用户可能正在终端里跑 am setup）。 */
+/**
+ * 读风格目录；有来源没准备好时隔一会儿再看（用户可能正在终端里跑 am setup）。
+ * 读失败（多半是 Studio 在重启）时退避重试，已经读到的目录照常显示，不让一次失败一直挂在菜单上。
+ */
 export function useFilmStyles(active: boolean): { data: FilmStylesResponse | null; error: string; posterVersion: number } {
   const [data, setData] = useState<FilmStylesResponse | null>(null);
   const [error, setError] = useState('');
@@ -26,18 +29,23 @@ export function useFilmStyles(active: boolean): { data: FilmStylesResponse | nul
     let timer = 0;
     let cancelled = false;
     let lastReady = -1;
+    let failures = 0;
     const load = async () => {
       try {
         const result = await api<FilmStylesResponse>('/api/film-styles');
         if (cancelled) return;
         setData(result);
         setError('');
+        failures = 0;
         const ready = result.sources.filter((s) => s.ready).length;
         if (lastReady >= 0 && ready !== lastReady) setPosterVersion((v) => v + 1);
         lastReady = ready;
         if (ready < result.sources.length) timer = window.setTimeout(load, 10000);
       } catch (err) {
-        if (!cancelled) setError(errorText(err));
+        if (cancelled) return;
+        failures++;
+        setError(`${errorText(err)}，正在重试…`);
+        timer = window.setTimeout(load, Math.min(3000 * failures, 15000));
       }
     };
     void load();
@@ -126,7 +134,7 @@ export function FilmStylePicker(props: PickerProps) {
           aria-label="搜索整片风格"
         />
       </div>
-      {props.error && <p class="fs-note bad">{props.error}</p>}
+      {props.error && !props.data && <p class="fs-note bad">{props.error}</p>}
       {props.none && !query.trim() && (
         <button role="menuitemradio" aria-checked={props.selected === ''} class={'fs-item none' + (props.selected === '' ? ' selected' : '')} onClick={() => props.onPick('')}>
           <span class="fs-poster fs-poster-none">
