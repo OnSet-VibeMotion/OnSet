@@ -5,7 +5,6 @@ import { Buffer, run, tempDir } from './testutil';
 import * as assets from '@am/engine/assets';
 import * as flow from '@am/engine/flow';
 import { sortedKeys } from '@am/engine/gojson';
-import * as preset from '@am/engine/preset';
 import * as scene from '@am/engine/scene';
 import * as schedule from '@am/engine/schedule';
 import * as song from '@am/engine/song';
@@ -29,7 +28,7 @@ describe('song cues and validation', () => {
     it(canvas, async () => {
       const root = tempDir();
       const out = new Buffer();
-      expect(await run(['init', root, '--canvas', canvas, '--style', preset.defaultStyle().id, '--skip-hyperframes', '--delivery', 'song'], out, out), out.text).toBe(0);
+      expect(await run(['init', root, '--canvas', canvas, '--skip-hyperframes', '--delivery', 'song'], out, out), out.text).toBe(0);
       const dir = path.join(root, song.Store, 'candidates', 'chosen');
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, 'audio.mp3'), 'audio');
@@ -57,7 +56,7 @@ describe('song cues and validation', () => {
         fs.mkdirSync(sd, { recursive: true });
         fs.writeFileSync(path.join(sd, 'transcript.srt'), '');
         fs.writeFileSync(path.join(sd, 'frame.md'), fs.readFileSync(path.join(root, 'frame.md')));
-        song.writeJSON(path.join(sd, 'scene.json'), sortedKeys({ id, duration_seconds: duration, text: '歌词', output: 'out.mp4', transcript: 'transcript.srt', style_guide: 'frame.md' }));
+        song.writeJSON(path.join(sd, 'scene.json'), sortedKeys({ id, duration_seconds: duration, text: '歌词', output: 'out.mp4', transcript: 'transcript.srt' }));
       });
       applySongCues(root, scenesRoot, out);
       expect(await run(['validate', 'song', '--project-root', root], out, out), out.text).toBe(0);

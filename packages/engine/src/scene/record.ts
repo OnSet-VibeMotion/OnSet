@@ -123,14 +123,13 @@ function toSlash(p: string): string {
 export function inputFiles(s: Scene): string[] {
   const files = ['scene.json', s.transcript];
   if (fs.existsSync(path.join(s.directory, 'prompt.md'))) files.push('prompt.md');
-  if (s.style_guide !== '') files.push(s.style_guide);
   return [...files, ...timingInputFiles(s)];
 }
 
 /**
  * 时间合同引用的镜头内文件，供输入指纹使用。
  *
- * 镜头局部数据 am-scene.js 不算：它由 scene.json、字幕、视觉规范与这里的
+ * 镜头局部数据 am-scene.js 不算：它由 scene.json、字幕、frame.md 与这里的
  * 短语时间轴推出，每次渲染前重写，算进去只会重复计数。
  */
 function timingInputFiles(s: Scene): string[] {

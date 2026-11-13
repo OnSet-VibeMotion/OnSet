@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { isMap, isScalar, isSeq, LineCounter, parseDocument, type Node } from 'yaml';
-import { unmarshal as yamlUnmarshal, YamlTypeError, type Schema as YamlSchema } from '../cast/yamldecode';
+import { parseDocument } from 'yaml';
+import { unmarshal as yamlUnmarshal, type Schema as YamlSchema } from '../cast/yamldecode';
 import * as filmstyle from '../filmstyle';
 import { goPathError, goQuote, goRound, goTrimSpace } from '../gofmt';
 import { ValidRenderers } from '../tools';
@@ -42,7 +42,7 @@ export const delimiterMatchAll = new RegExp(delimiterSource, 'g');
  * 都从这里派生，不再各写一份、彼此漂移。扩展块排在 plugin_skills 之后、timing 之前。
  */
 const requiredSceneFields = ['id', 'duration_seconds', 'output', 'transcript', 'text'];
-const optionalSceneFields = ['style_guide', 'renderer', 'film_style', 'plugin_skills'];
+const optionalSceneFields = ['renderer', 'film_style', 'plugin_skills'];
 /** scene 自己的 timing 块，固定排在所有扩展块之后。 */
 const timingField = 'timing';
 
@@ -82,7 +82,6 @@ export interface Scene {
   output: string;
   transcript: string;
   text: string;
-  style_guide: string;
   renderer: string;
   /**
    * 本镜头的整片风格：空表示项目的默认风格，「来源/目录名」表示项目里装的另一种风格，
@@ -172,7 +171,6 @@ function sceneType(): StructType {
       ['output', 'string'],
       ['transcript', 'string'],
       ['text', 'string'],
-      ['style_guide', 'string'],
       ['renderer', 'string'],
       ['film_style', 'string'],
       ['plugin_skills', sliceOf('string')],
@@ -191,7 +189,6 @@ export function newScene(fields: Partial<Scene> = {}): Scene {
     output: '',
     transcript: '',
     text: '',
-    style_guide: '',
     renderer: '',
     film_style: '',
     plugin_skills: [],
@@ -216,7 +213,6 @@ export function sceneToJSON(s: Scene): unknown {
     output: s.output,
     transcript: s.transcript,
     text: s.text,
-    style_guide: s.style_guide || undefined,
     renderer: s.renderer || undefined,
     film_style: s.film_style || undefined,
     plugin_skills: s.plugin_skills.length > 0 ? s.plugin_skills : undefined,
@@ -353,10 +349,6 @@ export function load(directory: string): Scene {
   contained(result.directory, result.output, 'output');
   const transcript = contained(result.directory, result.transcript, 'transcript');
   if (!isRegularFile(transcript)) throw new Error(`transcript 指向的文件不存在：${result.transcript}`);
-  if (result.style_guide !== '') {
-    const style = contained(result.directory, result.style_guide, 'style_guide');
-    if (!isRegularFile(style)) throw new Error(`style_guide 指向的文件不存在：${result.style_guide}`);
-  }
   if (result.renderer !== '' && !ValidRenderers.has(result.renderer)) throw new Error(`无效的 renderer：${result.renderer}`);
   verifyFilmStyleValue(result.film_style);
   result.plugin_skills = result.plugin_skills ?? [];
@@ -382,12 +374,8 @@ export function canvasLabel(c: Canvas): string {
   return `${c.widthPx}x${c.heightPx}、${c.fps}fps`;
 }
 
-/** 没有旧版 frame 元数据时的画幅，与本项目引入画幅预设之前的行为一致。 */
-const defaultCanvas: Canvas = { widthPx: 1080, heightPx: 1440, fps: 30 };
-
-/** 镜头层要从视觉规范里读的那几项。 */
-interface StyleTokens {
-  styleID: string;
+/** frame.md 里镜头层要读的那几项。 */
+interface FrameTokens {
   canvas: { widthPx: number; heightPx: number; fps: number };
   audio: { finalLUFS: number | null; lufsTolerance: number | null; truePeakMax: number | null };
 }
@@ -415,61 +403,27 @@ const audioSchema: YamlSchema = {
   zero: () => ({ finalLUFS: null, lufsTolerance: null, truePeakMax: null }),
 };
 
-const styleTokensSchema: YamlSchema & { kind: 'struct' } = {
+const frameTokensSchema: YamlSchema & { kind: 'struct' } = {
   kind: 'struct',
-  type: 'scene.styleTokens',
+  type: 'scene.frameTokens',
   fields: [
-    ['style_id', 'styleID', { kind: 'string' }],
     ['canvas', 'canvas', canvasSchema],
     ['audio', 'audio', audioSchema],
   ],
-  zero: () => ({ styleID: '', canvas: { widthPx: 0, heightPx: 0, fps: 0 }, audio: { finalLUFS: null, lufsTolerance: null, truePeakMax: null } }),
+  zero: () => ({ canvas: { widthPx: 0, heightPx: 0, fps: 0 }, audio: { finalLUFS: null, lufsTolerance: null, truePeakMax: null } }),
 };
 
-/**
- * mood_refs 在 Go 里是 []any：元素写成什么都收（元素类型交给 am validate style 去报），
- * 只有整个值不是列表时 yaml.v3 才报「cannot unmarshal … into []interface {}」。
- * cast 的 YAML 解码器没有 any，这一项单独查。
- * 写成 []string 的话，一个写错的条目会让整份 frontmatter 解析失败，
- * 连画幅都读不出来，报错里还看不出问题在 mood_refs。
- */
-function moodRefsErrors(text: string): Array<{ line: number; message: string }> {
-  const lines = new LineCounter();
-  const doc = parseDocument(text, { lineCounter: lines, uniqueKeys: true });
-  if (doc.errors.length > 0 || !isMap(doc.contents)) return [];
-  const out: Array<{ line: number; message: string }> = [];
-  for (const pair of doc.contents.items) {
-    const key = pair.key as Node | null;
-    if (!key || !isScalar(key) || String(key.value) !== 'mood_refs') continue;
-    const value = pair.value as Node | null;
-    if (!value || isSeq(value)) continue;
-    const line = lines.linePos(value.range?.[0] ?? 0).line;
-    if (isMap(value)) {
-      out.push({ line, message: `line ${line}: cannot unmarshal !!map into []interface {}` });
-    } else if (isScalar(value) && value.value !== null && value.value !== undefined) {
-      const raw = typeof value.source === 'string' ? value.source : String(value.value);
-      let tag = '!!str';
-      if (typeof value.value === 'boolean') tag = '!!bool';
-      else if (typeof value.value === 'number') tag = Number.isInteger(value.value) && !/[.eEnN]/.test(raw) ? '!!int' : '!!float';
-      const bytes = Buffer.from(raw, 'utf8');
-      const shown = bytes.length > 10 ? bytes.subarray(0, 7).toString('utf8') + '...' : raw;
-      out.push({ line, message: `line ${line}: cannot unmarshal ${tag} \`${shown}\` into []interface {}` });
-    }
-  }
-  return out;
-}
-
-/** 读出视觉规范的 frontmatter 原文（--- 与 --- 之间）。 */
-function styleFrontmatter(directory: string, styleGuide: string): string {
-  const file = contained(directory, styleGuide, 'style_guide');
+/** 读出 frame.md 的 frontmatter 原文（--- 与 --- 之间）。 */
+function frameFrontmatter(directory: string, file: string): string {
+  const full = contained(directory, file, 'frame.md');
   let body: string;
   try {
-    body = fs.readFileSync(file, 'utf8');
+    body = fs.readFileSync(full, 'utf8');
   } catch (err) {
-    throw new Error(`读取视觉规范失败：${goPathError('open', file, err)}`, { cause: err });
+    throw new Error(`读取画幅文件失败：${goPathError('open', full, err)}`, { cause: err });
   }
   const parts = splitN(body, '---', 3);
-  if (parts.length !== 3) throw new Error(`视觉规范 ${styleGuide} 缺少 YAML frontmatter，无法确定画幅`);
+  if (parts.length !== 3) throw new Error(`画幅文件 ${file} 缺少 YAML frontmatter，无法确定画幅`);
   return parts[1];
 }
 
@@ -488,74 +442,51 @@ function splitN(s: string, sep: string, n: number): string[] {
 }
 
 /**
- * 解析镜头目录里视觉规范文件的 frontmatter。
+ * 解析 frame.md 的 frontmatter。
  *
- * 这里刻意不依赖 preset：镜头目录可以脱离项目独立运行
- * （am scene run <目录>），能拿到的只有目录内的文件。
+ * 这里刻意不依赖 preset：镜头目录可以脱离项目独立运行（am scene run <目录>），
+ * 能拿到的只有文件里写的数字。
  */
-function readStyleTokens(directory: string, styleGuide: string): StyleTokens {
-  const text = styleFrontmatter(directory, styleGuide);
-  let tokens: StyleTokens | undefined;
-  let errors: Array<{ line: number; message: string }> = [];
+function readFrameTokens(directory: string, file: string): FrameTokens {
+  const text = frameFrontmatter(directory, file);
   try {
-    tokens = yamlUnmarshal<StyleTokens>(text, styleTokensSchema);
+    return yamlUnmarshal<FrameTokens>(text, frameTokensSchema);
   } catch (err) {
-    if (!(err instanceof YamlTypeError)) {
-      throw new Error(`视觉规范 ${styleGuide} 的 frontmatter 解析失败：${(err as Error).message}`, { cause: err });
-    }
-    errors = err.errors.map((message) => ({ line: Number(/^line (\d+):/.exec(message)?.[1] ?? 0), message }));
+    throw new Error(`画幅文件 ${file} 的 frontmatter 解析失败：${(err as Error).message}`, { cause: err });
   }
-  const all = [...errors, ...moodRefsErrors(text)];
-  if (all.length > 0) {
-    all.sort((a, b) => a.line - b.line);
-    const err = new YamlTypeError(all.map((e) => e.message));
-    throw new Error(`视觉规范 ${styleGuide} 的 frontmatter 解析失败：${err.message}`, { cause: err });
-  }
-  return tokens!;
 }
 
-/** 视觉规范 frontmatter 的任意值（yaml.v3 解码进 any 的结果）。 */
-export function readStyleFrontmatterAny(directory: string, styleGuide: string): Record<string, unknown> {
-  const text = styleFrontmatter(directory, styleGuide);
+/** frame.md frontmatter 的任意值（yaml.v3 解码进 any 的结果）。 */
+export function readFrameFrontmatter(directory: string, file: string): Record<string, unknown> {
+  const text = frameFrontmatter(directory, file);
   const doc = parseDocument(text, { uniqueKeys: true, merge: true });
   if (doc.errors.length > 0) {
-    throw new Error(`视觉规范 ${styleGuide} 的 frontmatter 解析失败：yaml: ${doc.errors[0].message.split('\n')[0]}`);
+    throw new Error(`画幅文件 ${file} 的 frontmatter 解析失败：yaml: ${doc.errors[0].message.split('\n')[0]}`);
   }
   const value = doc.toJS() as unknown;
   if (value === null || value === undefined) return {};
   if (typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`视觉规范 ${styleGuide} 的 frontmatter 解析失败：yaml: unmarshal errors`);
+    throw new Error(`画幅文件 ${file} 的 frontmatter 解析失败：yaml: unmarshal errors`);
   }
   return value as Record<string, unknown>;
 }
 
-/**
- * 从镜头目录里的视觉规范文件读出画布规格。
- *
- * 声明了 style_guide 却读不出 canvas 时报错而不是回退默认：静默按 1080x1440
- * 渲染正是这次改造要消除的故障——校验层和执行层各说各的，成片才暴露。
- */
-/** 视觉规范在哪：镜头目录（或它的某个上级）加相对它的文件名。 */
-export interface StyleSource {
+/** frame.md 在哪：镜头目录（或它的某个上级）加文件名。 */
+export interface FrameSource {
   directory: string;
   file: string;
 }
 
 /** 项目根的标志：项目配置文件。 */
 const projectMarker = 'article-to-motion.conf';
-/** 画幅预设下发到项目根的视觉规范。 */
-const frameFile = 'frame.md';
+/** 新建项目时按画幅下发到项目根的画幅文件。 */
+export const FrameFile = 'frame.md';
 
 /**
- * 镜头的画幅从哪份视觉规范读。
- *
- * scene.json 写了 style_guide 就用它（旧项目）。没写时就近找 frame.md：先看镜头目录，再逐级向上到项目根
- * （有 article-to-motion.conf 的那一层）。2026-10-20 起提示词与项目规则都说「画幅取自 frame.md」、
- * style_guide 是旧字段不用再写，而这里以前只认 style_guide，没写就静默按 1080x1440 渲染、
- * 校验，选了 9:16 的项目整片出成 3:4（实测）。找不到项目根时只看镜头目录本身，不去翻项目外的 frame.md。
+ * 镜头的画幅从哪份 frame.md 读：先看镜头目录，再逐级向上到项目根（有 article-to-motion.conf 的那一层）。
+ * 找不到项目根时只看镜头目录本身，不去翻项目外的 frame.md。都没有时为 null。
  */
-export function styleSource(s: Pick<Scene, 'directory' | 'style_guide'>): StyleSource | null {
-  if (s.style_guide !== '') return { directory: s.directory, file: s.style_guide };
+export function frameSource(s: Pick<Scene, 'directory'>): FrameSource | null {
   const sceneDir = path.resolve(s.directory);
   const candidates: string[] = [];
   let projectFound = false;
@@ -570,27 +501,31 @@ export function styleSource(s: Pick<Scene, 'directory' | 'style_guide'>): StyleS
     dir = parent;
   }
   for (const dir of projectFound ? candidates : [sceneDir]) {
-    if (isRegularFile(path.join(dir, frameFile))) return { directory: dir, file: frameFile };
+    if (isRegularFile(path.join(dir, FrameFile))) return { directory: dir, file: FrameFile };
   }
   return null;
 }
 
-/** 镜头的画幅：见 styleSource；哪儿都没有视觉规范时用默认画幅。 */
-export function sceneCanvas(s: Pick<Scene, 'directory' | 'style_guide'>): Canvas {
-  const source = styleSource(s);
-  return source ? canvasOf(source.directory, source.file) : { ...defaultCanvas };
+/**
+ * 镜头的画幅，见 frameSource。找不到 frame.md 时报错，不静默按某个默认画幅渲染：
+ * 那样提示词、am-scene.js 与产物校验会一起按错的画幅走，成片画幅错了也照样「通过」。
+ */
+export function sceneCanvas(s: Pick<Scene, 'directory'>): Canvas {
+  const source = frameSource(s);
+  if (!source) throw new Error(`找不到画幅：镜头目录 ${s.directory} 与它的上级直到项目根都没有 ${FrameFile}`);
+  return canvasOf(source.directory, source.file);
 }
 
-export function canvasOf(directory: string, styleGuide: string): Canvas {
-  if (styleGuide === '') return { ...defaultCanvas };
-  const c = readStyleTokens(directory, styleGuide).canvas;
+/** 从 frame.md 读出画布；缺 width_px / height_px / fps 时报错。 */
+export function canvasOf(directory: string, file: string): Canvas {
+  const c = readFrameTokens(directory, file).canvas;
   if (c.widthPx <= 0 || c.heightPx <= 0 || c.fps <= 0) {
-    throw new Error(`视觉规范 ${styleGuide} 的 canvas 缺少 width_px / height_px / fps`);
+    throw new Error(`画幅文件 ${file} 的 canvas 缺少 width_px / height_px / fps`);
   }
   return { widthPx: c.widthPx, heightPx: c.heightPx, fps: c.fps };
 }
 
-/** 成片混音的响度目标，取自视觉规范的 audio 块。 */
+/** 成片混音的响度目标，取自 frame.md 的 audio 块。 */
 export interface AudioTargets {
   integratedLUFS: number;
   tolerance: number;
@@ -598,13 +533,13 @@ export interface AudioTargets {
 }
 
 /**
- * 读出视觉规范里的成片响度目标。三个字段缺一即报错：
+ * 读出 frame.md 里的成片响度目标。三个字段缺一即报错：
  * 给半套目标做比对，结论会比不比更误导。
  */
-export function audioTargetsOf(directory: string, styleGuide: string): AudioTargets {
-  const a = readStyleTokens(directory, styleGuide).audio;
+export function audioTargetsOf(directory: string, file: string): AudioTargets {
+  const a = readFrameTokens(directory, file).audio;
   if (a.finalLUFS === null || a.lufsTolerance === null || a.truePeakMax === null) {
-    throw new Error(`视觉规范 ${styleGuide} 的 audio 缺少 final_integrated_lufs / final_lufs_tolerance / true_peak_max_dbtp`);
+    throw new Error(`画幅文件 ${file} 的 audio 缺少 final_integrated_lufs / final_lufs_tolerance / true_peak_max_dbtp`);
   }
   return { integratedLUFS: a.finalLUFS, tolerance: a.lufsTolerance, truePeakMax: a.truePeakMax };
 }
@@ -628,16 +563,15 @@ export function buildPrompt(s: Scene, resolvedSkills: Record<string, string> | n
   const canvas = sceneCanvas(s);
   const frames = goRound(s.duration_seconds * canvas.fps);
   const hasLook = s.timing !== null && !lookIsZero(s.timing.look);
-  // 风格由渲染器根据本镜头文案自主决定。style_guide 仅作为旧项目的
-  // 技术画布来源读取，不再把配色、字体、版式、示例图或动效写成强制要求。
+  // 风格由渲染器根据本镜头文案自主决定；frame.md 只给画布、安全区与字幕的技术信息。
   let style =
     '\n视觉自由度（强制）：本镜头的配色、字体、版式、材质与动效由你根据文案和素材自主决定；\n' +
-    '不得把项目中的 frame.md、style_id、style_name、示例图或其他旧风格资料当作视觉命令。\n';
+    '项目里的 frame.md 只提供画布、安全区、字幕缺省样式与响度目标，不是视觉命令。\n';
   if (hasLook) {
     // 配色由分镜计划统一，只放开其余维度；配色本身在时间合同后的「全片配色」段。
     style =
       '\n视觉自由度（强制）：本镜头的字体、版式、材质与动效由你根据文案和素材自主决定，配色遵守下面的「全片配色」；\n' +
-      '不得把项目中的 frame.md、style_id、style_name、示例图或其他旧风格资料当作视觉命令。\n';
+      '项目里的 frame.md 只提供画布、安全区、字幕缺省样式与响度目标，不是视觉命令。\n';
   }
   // 不写 film_style 的镜头用默认风格，段落与只有一种风格时逐字相同；点名另一种风格时换成镜头级的说法。
   const filmStyleDir = resolved[filmstyle.SkillName] ?? '';

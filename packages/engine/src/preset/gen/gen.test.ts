@@ -3,42 +3,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as preset from '../index';
-import {
-  canvasAndSafeArea,
-  canvasMarker,
-  generate,
-  generatedStyles,
-  loadTemplates,
-  renderExamples,
-  renderStyle,
-  repoRoot,
-  selectStyles,
-  selectTargets,
-  substituteCanvas,
-} from './gen';
+import { canvasAndSafeArea, canvasMarker, frameAssetPath, generate, loadTemplate, renderFrame, repoRoot, selectTargets, substituteCanvas } from './gen';
 
 const repo = repoRoot(__dirname);
 const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-gen-'));
 const discard = { write: () => {} };
 const byID = (id: string) => preset.byID(id)!;
-const renderStyleOf = (p: preset.Preset, style: preset.Style) => renderStyle(p, style, loadTemplates(repo, style.id));
-const frontmatterOf = (body: string) => {
-  const parts = body.split('---');
-  expect(parts.length).toBeGreaterThanOrEqual(3);
-  return parts[1];
-};
-
-/** generate 应写出的全部文本产物（相对 assets/）。 */
-function outputs(): string[] {
-  const out: string[] = [];
-  for (const p of preset.all()) {
-    for (const style of generatedStyles()) {
-      const dir = `styles/${style.id}/${p.id}`;
-      out.push(`${dir}/frame.md`, `${dir}/${preset.guideDoc(style)}`);
-    }
-  }
-  return out;
-}
+const frameOf = (p: preset.Preset) => renderFrame(p, loadTemplate(repo));
 
 describe('preset generator', () => {
   it('renders the canvas and safe-area block', () => {
@@ -59,41 +30,8 @@ describe('preset generator', () => {
     );
   });
 
-  // frame.md 与说明书的 frontmatter 必须逐字节相同，validate.Style 会做 DeepEqual。
-  it('keeps frontmatter identical across frame.md and the guide', () => {
-    const p = byID('vertical-9x16');
-    for (const style of preset.allStyles()) {
-      const files = renderStyleOf(p, style);
-      const frame = frontmatterOf(files.get('frame.md')!);
-      expect(frontmatterOf(files.get(preset.guideDoc(style))!), style.id).toBe(frame);
-      expect(frame).toContain('height_px: 1920');
-    }
-  });
-
-  it('rejects a mismatched style identity', () => {
-    const style = preset.defaultStyle();
-    const tpl = loadTemplates(repo, style.id);
-    tpl.frontmatter = tpl.frontmatter.replace('style_id: ' + style.id, 'style_id: other-v1');
-    expect(() => renderStyle(byID('vertical-3x4'), style, tpl)).toThrow('与风格表不一致');
-  });
-
-  it('has templates for every style', () => {
-    for (const style of preset.allStyles()) expect(() => loadTemplates(repo, style.id)).not.toThrow();
-  });
-
-  it('renders the custom draft for every canvas', () => {
-    const tpl = loadTemplates(repo, preset.CustomStyle.id);
-    for (const p of preset.all()) {
-      const files = renderStyle(p, preset.CustomStyle, tpl);
-      expect(frontmatterOf(files.get('frame.md')!)).toContain(`style_id: ${preset.DraftStyleID}\n`);
-      expect(files.has(preset.guideDoc(preset.CustomStyle))).toBe(true);
-    }
-  });
-
   it('rejects a template without the marker', () => {
-    const tpl = loadTemplates(repo, preset.defaultStyle().id);
-    tpl.frontmatter = 'schema_version: 1\n';
-    expect(() => renderStyle(byID('vertical-3x4'), preset.defaultStyle(), tpl)).toThrow(canvasMarker);
+    expect(() => renderFrame(byID('vertical-3x4'), '---\nschema_version: 1\n---\n')).toThrow(canvasMarker);
   });
 
   it('finds the repo root by walking up', () => {
@@ -104,11 +42,6 @@ describe('preset generator', () => {
     fs.mkdirSync(deep, { recursive: true });
     expect(fs.realpathSync(repoRoot(deep))).toBe(fs.realpathSync(root));
     expect(() => repoRoot(temp())).toThrow('找不到仓库根目录');
-  });
-
-  // 缺手写 SVG 时必须报错并点名文件，而不是产出一套残缺示例。
-  it('names the missing SVG', () => {
-    expect(() => renderExamples(repo, temp(), byID('vertical-3x4'), preset.defaultStyle(), discard)).toThrow('proposition.svg');
   });
 
   it('rejects a broken anchor', () => {
@@ -123,51 +56,49 @@ describe('preset generator', () => {
     expect(() => canvasAndSafeArea(p)).toThrow();
   });
 
-  it('produces parseable frontmatter', () => {
+  // frame.md 只有技术信息：画布、安全区、字幕缺省样式与响度目标，没有任何视觉风格字段。
+  it('writes only canvas facts into frame.md', () => {
     for (const p of preset.all()) {
-      const body = renderStyleOf(p, preset.defaultStyle()).get('frame.md')!;
+      const body = frameOf(p);
       expect(body.startsWith('---\n')).toBe(true);
-      expect(body.split('\n---').length).toBeGreaterThan(1);
       expect(body).not.toContain(canvasMarker);
+      const front = body.split('\n---\n')[0];
+      const keys = front.split('\n').filter((line) => /^[a-z_]+:/.test(line)).map((line) => line.slice(0, line.indexOf(':')));
+      expect(keys, p.id).toEqual(['schema_version', 'canvas', 'safe_area', 'subtitles', 'audio']);
     }
   });
 
-  it('writes every preset into the root and logs sorted paths', () => {
+  it('writes every preset into the root', () => {
     const root = temp();
     let log = '';
-    generate(repo, root, preset.all(), generatedStyles(), false, { write: (t) => (log += t) });
-    for (const name of outputs()) expect(fs.existsSync(path.join(root, 'assets', name)), name).toBe(true);
-    // 制作提示词不经生成器（按流程在开工时组合），不再写 assets/presets。
-    expect(fs.existsSync(path.join(root, 'assets', 'presets'))).toBe(false);
-    expect(log).toContain(`generated assets/styles/${preset.defaultStyle().id}/vertical-9x16/frame.md`);
+    generate(repo, root, preset.all(), { write: (t) => (log += t) });
+    for (const p of preset.all()) expect(fs.existsSync(path.join(root, ...frameAssetPath(p).split('/'))), p.id).toBe(true);
+    expect(log).toContain('generated assets/presets/vertical-9x16/frame.md');
   });
 
-  // 产物必须与仓库里签入的一致——这正是 CI 幂等门要保证的事，也证明 TS 生成器与 Go 版逐字节相同。
+  // 产物必须与仓库里签入的一致——这正是 CI 幂等门要保证的事。
   it('matches the committed assets byte-for-byte', () => {
     const root = temp();
-    generate(repo, root, preset.all(), generatedStyles(), false, discard);
-    for (const name of outputs()) {
-      const fresh = fs.readFileSync(path.join(root, 'assets', name));
-      const committed = fs.readFileSync(path.join(repo, 'assets', name));
-      expect(fresh.equals(committed), `${name} 与签入产物不一致，需重跑生成器`).toBe(true);
+    generate(repo, root, preset.all(), discard);
+    for (const p of preset.all()) {
+      const rel = frameAssetPath(p);
+      const fresh = fs.readFileSync(path.join(root, ...rel.split('/')));
+      const committed = fs.readFileSync(path.join(repo, ...rel.split('/')));
+      expect(fresh.equals(committed), `${rel} 与签入产物不一致，需重跑生成器`).toBe(true);
     }
   });
 
-  it('selects styles and targets', () => {
-    expect(selectStyles('')).toHaveLength(preset.allStyles().length + 1);
-    expect(selectStyles(preset.DraftStyleID).map((s) => s.id)).toEqual([preset.DraftStyleID]);
-    expect(() => selectStyles('no-such-style')).toThrow();
+  it('selects targets', () => {
     expect(selectTargets('')).toHaveLength(preset.all().length);
     expect(selectTargets('vertical-9x16').map((p) => p.id)).toEqual(['vertical-9x16']);
     expect(() => selectTargets('square-1x1')).toThrow();
   });
 
   it('fills canvas placeholders per orientation', () => {
-    const style = preset.defaultStyle();
-    const v = renderStyleOf(byID('vertical-3x4'), style).get('frame.md')!;
-    const l = renderStyleOf(byID('landscape-16x9'), style).get('frame.md')!;
-    for (const want of ['content_width_px: 904', '竖屏', '抖音右侧互动栏']) expect(v).toContain(want);
-    for (const want of ['content_width_px: 1680', '横屏', '播放器底部控制栏', '## 横屏构图要点']) expect(l).toContain(want);
+    const v = frameOf(byID('vertical-3x4'));
+    const l = frameOf(byID('landscape-16x9'));
+    for (const want of ['max_width_px: 812', '竖屏', '抖音右侧互动栏']) expect(v).toContain(want);
+    for (const want of ['max_width_px: 1440', '横屏', '播放器底部控制栏', '## 横屏构图要点']) expect(l).toContain(want);
     for (const leaked of ['{{', '抖音']) expect(l).not.toContain(leaked);
   });
 

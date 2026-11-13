@@ -12,7 +12,7 @@ import { marshalIndent, sortedKeys } from '../gojson';
 import { goRound } from '../gofmt';
 import * as reads from '../reads';
 import * as srt from '../srt';
-import { contained, sceneCanvas, styleSource, delimiterMatchAll, readStyleFrontmatterAny, type Scene } from './scene';
+import { contained, sceneCanvas, frameSource, delimiterMatchAll, readFrameFrontmatter, type Scene } from './scene';
 import { handoffGuide, handoffIsZero, loadPhraseTimelineIn, lookIsZero, lookToJSON, type Handoff, type Look, type Timing } from './timing';
 
 /** 写进镜头目录的局部数据文件名。 */
@@ -83,10 +83,10 @@ export function buildSceneData(s: Scene): SceneData {
     phrases: [],
     look: null,
   };
-  const source = styleSource(s);
+  const source = frameSource(s);
   if (source) {
-    // 视觉规范里的这两块原样搬运。用 any 接收，写错类型也不会让整份 frontmatter 解析失败。
-    const extras = readStyleFrontmatterAny(source.directory, source.file);
+    // frame.md 里的这两块原样搬运。用 any 接收，写错类型也不会让整份 frontmatter 解析失败。
+    const extras = readFrameFrontmatter(source.directory, source.file);
     const area = extras.safe_area;
     if (area !== null && typeof area === 'object' && !Array.isArray(area)) data.safe_area = area as Record<string, unknown>;
     data.subtitles = extras.subtitles ?? null;

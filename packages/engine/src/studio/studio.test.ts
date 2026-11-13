@@ -88,7 +88,7 @@ describe('studio', () => {
     // 节选自真实项目：colors.canvas 是颜色值，按行扫描会把它当成画幅。
     writeStudioFile(
       frame,
-      '---\nschema_version: 1\nstyle_id: custom-cine-layered\nstyle_name: 分层电影\ncanvas:\n  width_px: 1920\n  height_px: 1080\n  fps: 30\n  orientation: landscape\ncolors:\n  canvas: "#05060A"\n---\n正文 canvas: nope\n',
+      '---\nschema_version: 1\ncanvas:\n  width_px: 1920\n  height_px: 1080\n  fps: 30\n  orientation: landscape\ncolors:\n  canvas: "#05060A"\n---\n正文 canvas: nope\n',
     );
     expect(projectMetadata(root)).toEqual({
       canvas: '1920×1080',
@@ -97,11 +97,11 @@ describe('studio', () => {
       canvas_id: 'landscape-16x9',
     });
     // 不在预设表里的画幅照样显示尺寸，只是没有 canvas_id。
-    writeStudioFile(frame, '---\nstyle_id: x\ncanvas: {width_px: 1000, height_px: 1000, fps: 24, orientation: square}\n---\n');
+    writeStudioFile(frame, '---\ncanvas: {width_px: 1000, height_px: 1000, fps: 24, orientation: square}\n---\n');
     const custom = projectMetadata(root);
     expect(custom.canvas).toBe('1000×1000');
     expect(custom.canvas_id).toBeUndefined();
-    for (const broken of ['no front matter', '---\nstyle_id: x\n', '---\n: [bad\n---\n']) {
+    for (const broken of ['no front matter', '---\ncanvas: {width_px: 1}\n', '---\n: [bad\n---\n']) {
       writeStudioFile(frame, broken);
       expect(projectMetadata(root), broken).toEqual({});
     }
@@ -123,7 +123,7 @@ describe('studio', () => {
 
     const alpha = path.join(home, 'alpha');
     const beta = path.join(home, 'beta');
-    writeStudioFile(path.join(alpha, 'frame.md'), '---\nstyle_id: editorial\n---\n');
+    writeStudioFile(path.join(alpha, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
     fs.mkdirSync(path.join(beta, 'data'), { recursive: true });
     fs.mkdirSync(path.join(home, '.hidden'), { recursive: true });
     writeStudioFile(path.join(home, 'note.txt'), 'not a directory');
@@ -187,7 +187,6 @@ describe('studio', () => {
       { parent: other, name: 'x' },
       { parent: path.join(home, 'missing'), name: 'x' },
       { parent: home, name: 'bad-canvas', canvas: 'missing' },
-      { parent: home, name: 'bad-style', style: 'missing' },
       { parent: home, name: 'bad-mode', delivery: 'opera' },
       { parent: home, name: 'beat-cast', delivery: 'beat', narration: 'cast' },
     ]) {
@@ -200,7 +199,8 @@ describe('studio', () => {
     const projectID = body.project.id as string;
     const target = body.project.path as string;
     expect(body.project.name).toBe('my-project');
-    for (const name of ['frame.md', 'docs/style-brief.md']) expect(fs.existsSync(path.join(target, name)), `created project missing ${name}`).toBe(true);
+    expect(fs.existsSync(path.join(target, 'frame.md')), 'created project missing frame.md').toBe(true);
+    expect(fs.existsSync(path.join(target, 'docs', 'style-brief.md')), '不再写旧版风格描述').toBe(false);
 
     ({ status, body } = await studioRequest(s, 'GET', '/api/workspaces/current'));
     expect(status).toBe(200);
@@ -244,7 +244,7 @@ describe('studio', () => {
 
   it('content and task endpoints', async () => {
     const root = tempDir();
-    writeStudioFile(path.join(root, 'frame.md'), '---\nstyle_id: editorial\nstyle_name: "编辑"\n---\n');
+    writeStudioFile(path.join(root, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
     const sceneOne = path.join(root, 'scenes', 'scene-001');
     writeStudioFile(path.join(sceneOne, 'scene.json'), '{"id":"scene-001","duration_seconds":2,"output":"out.mp4","text":"before"}');
     writeStudioFile(path.join(sceneOne, 'out.mp4'), 'video-bytes');

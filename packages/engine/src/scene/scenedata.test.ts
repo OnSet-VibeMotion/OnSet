@@ -88,6 +88,7 @@ describe('timing contract in the prompt', () => {
 
   it('caps table rows and sanitizes text', () => {
     const dir = tempDir();
+    fs.writeFileSync(path.join(dir, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
     let b = '';
     for (let i = 0; i < 50; i++) {
       const sec = String(Math.trunc(i / 5)).padStart(2, '0');

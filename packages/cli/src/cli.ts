@@ -21,7 +21,6 @@ import './review_cmd';
 import './scene_cmd';
 import './scene_cues';
 import './station_cmd';
-import './style_cmd';
 import './usage_cmd';
 import './validate_cmd';
 // 内置插件登记的操作（例如发布的 validate_publish）。

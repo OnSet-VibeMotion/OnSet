@@ -38,7 +38,7 @@ describe('load', () => {
       'short-duration': '{"id":"scene-001","duration_seconds":0.001,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}',
       'empty-text': '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":" "}',
       'bad-renderer': '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello","renderer":"bad"}',
-      'missing-style': '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello","style_guide":"missing.md"}',
+      'old-style-guide': '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello","style_guide":"frame.md"}',
     };
     for (const [name, payload] of Object.entries(cases)) {
       const dir = writeScene(payload);
@@ -83,7 +83,7 @@ describe('buildPrompt basics', () => {
   });
 
   it('uses the creative body and style guide', () => {
-    const dir = writeScene('{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello","style_guide":"frame.md"}');
+    const dir = writeScene('{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
     fs.writeFileSync(path.join(dir, 'frame.md'), frameWithCanvas(1080, 1440));
     fs.writeFileSync(path.join(dir, 'prompt.md'), 'CUSTOM CREATIVE');
     const prompt = buildPrompt(load(dir), null);
@@ -296,23 +296,24 @@ describe('cast', () => {
 });
 
 describe('canvas', () => {
-  it('uses the canvas from the style guide', () => {
-    const dir = writeScene('{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello","style_guide":"frame.md"}');
+  it('uses the canvas from frame.md', () => {
+    const dir = writeScene('{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
     fs.writeFileSync(path.join(dir, 'frame.md'), frameWithCanvas(1080, 1920));
     const prompt = buildPrompt(load(dir), null);
-    expect(prompt, '提示词未使用 style_guide 声明的画幅').toContain('1080x1920');
+    expect(prompt, '提示词未使用 frame.md 声明的画幅').toContain('1080x1920');
     expect(prompt, '提示词仍含硬编码的 1080x1440').not.toContain('1080x1440');
   });
 
-  // 哪儿都没有视觉规范时才回退默认画幅。
-  it('falls back without any style guide', () => {
+  // 哪儿都没有 frame.md 时报错，不静默落到某个默认画幅：那样提示词、am-scene.js 与产物校验会一起按错的画幅走。
+  it('fails without any frame.md', () => {
     const dir = writeScene('{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
-    expect(buildPrompt(load(dir), null), '没有任何 frame.md 时应回退到 1080x1440').toContain('1080x1440');
+    fs.rmSync(path.join(dir, 'frame.md'));
+    expect(() => buildPrompt(load(dir), null)).toThrow('找不到画幅');
+    expect(() => sceneCanvas(load(dir))).toThrow('frame.md');
   });
 
-  // 新项目的 scene.json 不写 style_guide（旧字段），画幅取自项目的 frame.md。以前这里静默按 1080x1440，
-  // 选了 9:16 的项目整片出成 3:4，产物校验也按 1440 放行。
-  it('reads the project frame.md when scene.json has no style guide', () => {
+  // 画幅取自项目根的 frame.md；镜头目录里自己有一份时用离镜头最近的那份。
+  it('reads the project frame.md', () => {
     const project = tempDir();
     fs.writeFileSync(path.join(project, 'article-to-motion.conf'), '');
     fs.writeFileSync(path.join(project, 'frame.md'), frameWithCanvas(1080, 1920));
@@ -338,18 +339,18 @@ describe('canvas', () => {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\ntest\n');
     fs.writeFileSync(path.join(dir, 'scene.json'), '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
-    expect(sceneCanvas(load(dir)).heightPx).toBe(1440);
+    expect(() => sceneCanvas(load(dir))).toThrow('找不到画幅');
   });
 
-  // 声明了 style_guide 却读不出 canvas，说明规范文件是坏的：报错而不是回退默认。
-  it('rejects a style guide without a canvas', () => {
+  // frame.md 读不出 canvas，说明它是坏的：报错而不是回退默认。
+  it('rejects a frame.md without a canvas', () => {
     const bodies: Record<string, string> = {
       '无 frontmatter': 'style',
       '缺 canvas': '---\nschema_version: 1\n---\n正文\n',
       'canvas 不完整': '---\ncanvas:\n  width_px: 1080\n---\n正文\n',
     };
     for (const [name, body] of Object.entries(bodies)) {
-      const dir = writeScene('{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello","style_guide":"frame.md"}');
+      const dir = writeScene('{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
       fs.writeFileSync(path.join(dir, 'frame.md'), body);
       const s = load(dir);
       expect(() => buildPrompt(s, null), name).toThrow();

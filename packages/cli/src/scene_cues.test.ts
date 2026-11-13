@@ -46,6 +46,8 @@ function cuesProject(): string {
     }
     fs.writeFileSync(path.join(dir, 'scene.json'), body);
   }
+  fs.writeFileSync(path.join(root, 'article-to-motion.conf'), '');
+  fs.writeFileSync(path.join(root, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
   fs.mkdirSync(path.join(root, 'production'), { recursive: true });
   fs.writeFileSync(path.join(root, 'transcription-production.srt'), cuesSRT);
   fs.writeFileSync(path.join(root, 'production', 'phrase-timeline.json'), cuesPhrases);
