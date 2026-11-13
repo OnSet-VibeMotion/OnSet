@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"runtime"
 	"strings"
 
@@ -112,9 +113,12 @@ func hostAligner(value string) string { return resolveAligner(value, runtime.GOO
 //
 // 早先只放行 am、ffmpeg、ffprobe、ls、mkdir，编排工具连 cat、head、echo、shasum 都被拦，
 // 一轮对话里大半工具调用是「需要批准」，而 -p 模式下没人批准（实测）。这里补上只读查看、
-// 校验哈希、只读 git 与下载（制作提示词要求从 Google Fonts 下载字体），仍然不放：
-//   - 解释器（python3、node、sh、bash）：能执行任意代码，放了等于没有白名单；
-//   - 删除与改权限（rm、chmod、chown）、安装（brew、pip、npm）、提权（sudo）。
+// 校验哈希、只读 git 与下载（制作提示词要求从 Google Fonts 下载字体）。之后又放了
+// python3 / python / node：编排工具常要写小脚本处理数据，拦掉只会逼用户改用 --unsafe
+// （用户反馈）。代价是脚本能做任何事，包括读 .env——这里防的是误操作与越界命令，
+// 不是对抗性的编排工具。仍然不放：shell 本身（sh、bash，等于任意命令行）、删除与改权限
+// （rm、chmod、chown）、安装（brew、pip、npm）、提权（sudo）。用户要补别的命令写进
+// ORCHESTRATOR_ALLOW_COMMANDS。
 // claude 的 acceptEdits 自己会放行工作区内的 touch、mkdir、rm、mv、cp 这类文件命令；
 // .env 的读取由 Read 禁令拦着，cat .env 照样会被拒（实测）。
 var orchestratorBaseCommands = []string{
@@ -132,6 +136,26 @@ var orchestratorBaseCommands = []string{
 	"git status", "git diff", "git log", "git show",
 	// 下载字体、授权素材
 	"curl",
+	// 跑小脚本处理数据（解析对齐结果、批量改 JSON、算时长……），编排工具经常要用
+	"python3", "python", "node",
+}
+
+// parseAllowCommands 解析 ORCHESTRATOR_ALLOW_COMMANDS：逗号分隔的命令前缀，例如
+// "uv run, pnpm, magick"。前缀按原样放行（claude 写成 Bash(<前缀>:*)），不能带 shell
+// 控制符：带了的话一条「前缀」就能拼出任意命令。
+func parseAllowCommands(value string) ([]string, error) {
+	var out []string
+	for _, item := range strings.Split(value, ",") {
+		item = strings.Join(strings.Fields(item), " ")
+		if item == "" {
+			continue
+		}
+		if strings.ContainsAny(item, ";&|`$<>()\\\"'*\n") {
+			return nil, fmt.Errorf("ORCHESTRATOR_ALLOW_COMMANDS 里的 %q 带了 shell 控制符；只写命令前缀，例如 \"uv run\"、\"pnpm\"，多个用逗号分隔", item)
+		}
+		out = append(out, item)
+	}
+	return out, nil
 }
 
 // OrchestratorAccess 返回安全模式下编排工具要放行的命令：基础命令、当前 TTS 与对齐
@@ -151,7 +175,7 @@ func (c Config) OrchestratorAccess(extra ...string) tools.OrchestratorAccess {
 	}
 	seen := map[string]bool{}
 	out := commands[:0]
-	for _, command := range append(commands, extra...) {
+	for _, command := range append(append(commands, c.ExtraCommands...), extra...) {
 		if command != "" && !seen[command] {
 			seen[command] = true
 			out = append(out, command)

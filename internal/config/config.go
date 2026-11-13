@@ -37,6 +37,8 @@ type Config struct {
 	FilmStyleRoot string
 	// HyperFramesCLI 是 am 管理的固定版本 HyperFrames CLI 的安装目录，见 hyperframes.RequireCLI（am setup 用 EnsureCLI 安装）。
 	HyperFramesCLI string
+	// ExtraCommands 是用户在 ORCHESTRATOR_ALLOW_COMMANDS 里补充放行的命令前缀，见 OrchestratorAccess。
+	ExtraCommands []string
 }
 
 // MemorySettings 是渲染记忆的项目侧设置。
@@ -163,6 +165,10 @@ func Load(root string, environ map[string]string) (Config, error) {
 	case "off":
 	default:
 		return Config{}, fmt.Errorf("无效的 MEMORY: %s（可选：on off）", value)
+	}
+	cfg.ExtraCommands, err = parseAllowCommands(resolve("ORCHESTRATOR_ALLOW_COMMANDS", ""))
+	if err != nil {
+		return Config{}, err
 	}
 	cfg.Memory.Dir = resolve("AM_MEMORY_DIR", DefaultMemoryDir(environ))
 	cfg.FilmStyleRoot = resolve(filmstyle.RootEnv, filmstyle.RootDir(environ))

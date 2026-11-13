@@ -1,7 +1,10 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -30,10 +33,9 @@ func TestOrchestratorAccessFollowsConfig(t *testing.T) {
 	}
 }
 
-// 基础清单是给编排工具的「常用且不危险」命令：能执行任意代码或删改权限的一律不进，
-// 否则安全模式的白名单形同虚设。要用解释器的工具（funasr 对应 python3）只按配置单独放行。
+// 基础清单是给编排工具的常用命令：shell 本身、删除与改权限、安装与提权一律不进。
 func TestOrchestratorBaseCommandsStayHarmless(t *testing.T) {
-	forbidden := []string{"python", "python3", "node", "sh", "bash", "zsh", "rm", "chmod", "chown", "sudo", "brew", "pip", "pip3", "npm", "npx", "uv", "git", "eval", "env", "xargs"}
+	forbidden := []string{"sh", "bash", "zsh", "rm", "chmod", "chown", "sudo", "brew", "pip", "pip3", "npm", "npx", "uv", "git", "eval", "env", "xargs"}
 	for _, command := range orchestratorBaseCommands {
 		for _, bad := range forbidden {
 			if command == bad {
@@ -41,13 +43,44 @@ func TestOrchestratorBaseCommandsStayHarmless(t *testing.T) {
 			}
 		}
 	}
-	for _, need := range []string{"cat", "head", "echo", "shasum", "curl", "git status"} {
+	for _, need := range []string{"cat", "head", "echo", "shasum", "curl", "git status", "python3", "node"} {
 		found := false
 		for _, command := range orchestratorBaseCommands {
 			found = found || command == need
 		}
 		if !found {
 			t.Errorf("基础清单缺 %s：编排工具会被拦下（实测）", need)
+		}
+	}
+}
+
+func TestOrchestratorAllowCommandsExtendTheAllowlist(t *testing.T) {
+	root := t.TempDir()
+	writeConf := func(body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(root, "article-to-motion.conf"), []byte("ORCHESTRATOR=claude\nRENDERER=claude\n"+body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeConf("ORCHESTRATOR_ALLOW_COMMANDS=uv run,  pnpm ,magick\n")
+	cfg, err := Load(root, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commands := cfg.OrchestratorAccess().Commands
+	for _, want := range []string{"uv run", "pnpm", "magick"} {
+		found := false
+		for _, command := range commands {
+			found = found || command == want
+		}
+		if !found {
+			t.Errorf("补充的命令 %q 没有放行：%v", want, commands)
+		}
+	}
+	for _, bad := range []string{"rm -rf /; ls", "a && b", "$(evil)", "x | y"} {
+		writeConf("ORCHESTRATOR_ALLOW_COMMANDS=" + bad + "\n")
+		if _, err := Load(root, map[string]string{}); err == nil || !strings.Contains(err.Error(), "ORCHESTRATOR_ALLOW_COMMANDS") {
+			t.Errorf("%q 应当被拒绝：%v", bad, err)
 		}
 	}
 }
