@@ -14,14 +14,17 @@ interface Props {
  */
 export function AgentPicker({ agents, value, disabled, onChange }: Props) {
   if (!agents) return null;
-  const options = (current: string, fallback: string) =>
-    agents.agents.map((agent) => (
-      <option key={agent.id} value={agent.id} disabled={!agent.installed && agent.id !== current} title={agent.path ?? `找不到 ${agent.command}`}>
-        {agent.label}
-        {agent.installed ? '' : '（未安装）'}
-        {agent.id === fallback ? ' · 默认' : ''}
-      </option>
-    ));
+  // 渲染一栏只列能当渲染工具的（导演暂时只做编排）；已经选着的照样显示，免得下拉框空着。
+  const options = (current: string, fallback: string, seat: 'orchestrator' | 'renderer') =>
+    agents.agents
+      .filter((agent) => seat === 'orchestrator' || agent.renderer || agent.id === current)
+      .map((agent) => (
+        <option key={agent.id} value={agent.id} disabled={!agent.installed && agent.id !== current} title={agent.hint ?? agent.path ?? `找不到 ${agent.command}`}>
+          {agent.label}
+          {agent.installed ? '' : agent.hint ? '（未设置）' : '（未安装）'}
+          {agent.id === fallback ? ' · 默认' : ''}
+        </option>
+      ));
   // 「默认」一项：工具与设置里的相同时跟随设置里的模型，不同时是那家工具自己的默认。
   const defaultLabel = (tool: string, configured: string, configuredModel: string) =>
     tool === configured && configuredModel ? `跟随设置（${configuredModel}）` : '默认模型';
@@ -30,7 +33,7 @@ export function AgentPicker({ agents, value, disabled, onChange }: Props) {
       <label className="agent-select" title="在项目目录里对话、改文件的工具">
         <span>编排</span>
         <select id="agent-tool" value={value.tool} disabled={disabled} onChange={(e) => onChange({ ...value, tool: e.currentTarget.value, model: '' })}>
-          {options(value.tool, agents.orchestrator)}
+          {options(value.tool, agents.orchestrator, 'orchestrator')}
         </select>
         {value.tool && (
           <ModelSelect
@@ -52,7 +55,7 @@ export function AgentPicker({ agents, value, disabled, onChange }: Props) {
           disabled={disabled}
           onChange={(e) => onChange({ ...value, renderer: e.currentTarget.value, renderer_model: '' })}
         >
-          {options(value.renderer, agents.renderer)}
+          {options(value.renderer, agents.renderer, 'renderer')}
         </select>
         {value.renderer && (
           <ModelSelect

@@ -5,8 +5,12 @@
   "description": "am 命令行：internal/cli 的 TypeScript 移植",
   "type": "module",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --loader:.tmpl=text --platform=node --format=cjs --target=node22 --outfile=dist/am.cjs",
+    "build": "node build.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "typebox": "1.3.27"
   }
 }

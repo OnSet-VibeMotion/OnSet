@@ -31,3 +31,32 @@ test('settings pick what to use for every project, and one project can differ', 
   await expect.poll(() => fs.readFileSync(conf, 'utf8')).toMatch(/^SCENE_JOBS=$/m);
   await expect(row('SCENE_JOBS').getByLabel('这个项目的同时渲染')).not.toHaveClass(/overridden/);
 });
+
+test('the Director takes a model service key that never comes back to the page', async ({ page, project, sandbox }) => {
+  await openProject(page, project);
+  await page.locator('#settings-trigger').click();
+  const keys = page.locator('#settings-dialog section.agent-keys');
+  const deepseek = keys.locator('li[data-provider="deepseek"]');
+  await expect(deepseek).toContainText('未填写');
+
+  await deepseek.getByRole('button', { name: '填写' }).click();
+  await deepseek.getByLabel('DeepSeek 的 API key').fill('sk-e2e-secret');
+  await deepseek.getByRole('button', { name: '保存' }).click();
+  await expect(deepseek).toContainText('已填写');
+  await keys.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: test.info().outputPath('agent-keys.png') });
+  const auth = path.join(sandbox.agent, 'auth.json');
+  expect(JSON.parse(fs.readFileSync(auth, 'utf8')).deepseek.key).toBe('sk-e2e-secret');
+  expect(fs.statSync(auth).mode & 0o777).toBe(0o600);
+  // key 只写进那个文件，页面与接口都不回传。
+  expect(await page.content()).not.toContain('sk-e2e-secret');
+
+  // 编排可以选导演，渲染不行（暂时只做编排）。
+  const row = (key) => page.locator(`#settings-dialog .settings-row[data-key="${key}"]`);
+  await expect(row('ORCHESTRATOR').getByLabel('全局编排').locator('option[value="director"]')).toHaveCount(1);
+  await expect(row('RENDERER').getByLabel('全局渲染').locator('option[value="director"]')).toHaveCount(0);
+
+  await deepseek.getByRole('button', { name: '删除' }).click();
+  await expect(deepseek).toContainText('未填写');
+  expect(JSON.parse(fs.readFileSync(auth, 'utf8')).deepseek).toBeUndefined();
+});

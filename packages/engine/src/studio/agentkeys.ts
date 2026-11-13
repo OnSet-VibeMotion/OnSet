@@ -1,0 +1,49 @@
+/**
+ * 导演的模型服务密钥：/api/agent-keys。
+ *
+ *   GET  /api/agent-keys   每家服务商：名字、申请 key 的页面、推荐模型、填没填（不回传 key 本身）
+ *   POST /api/agent-keys   {provider, key}：填写或替换；key 为空即删除
+ *
+ * 与音色库、安装页一样写的是用户级目录（director.defaultDir），在进程里直接写，不占项目写锁、
+ * 不进轮次快照。key 只落在那个 0600 的文件里：不进 settings.conf、项目文件与任何子进程的环境。
+ */
+import * as director from '../director';
+import { envMap } from '../envutil';
+import { DecodeError, decodeJSON, fieldString, goMap, methodNotAllowed, writeError, writeJSON } from './http';
+
+function dir(): string {
+  return director.defaultDir(envMap());
+}
+
+function listing(): Response {
+  const d = dir();
+  const configured = director.configuredProviders(d);
+  return writeJSON(
+    200,
+    goMap({
+      providers: director.Providers.map((p) => goMap({ id: p.id, label: p.label, key_url: p.keyURL, default_model: p.defaultModel, configured: configured.includes(p.id) })),
+      // 不在上表里、但用户手动填过的服务商（模型名照样能用）。
+      others: configured.filter((id) => !director.Providers.some((p) => p.id === id)),
+    }),
+  );
+}
+
+export async function agentKeysAPI(request: Request): Promise<Response> {
+  if (request.method === 'GET') return listing();
+  if (request.method !== 'POST') return methodNotAllowed('GET, POST');
+  let body: Record<string, unknown>;
+  try {
+    body = await decodeJSON(request);
+  } catch (err) {
+    if (err instanceof DecodeError) return writeError(400, 'invalid_json', '请求不是合法 JSON');
+    throw err;
+  }
+  const d = dir();
+  if (d === '') return writeError(500, 'no_data_dir', '找不到用户数据目录（没有 HOME）');
+  try {
+    director.setProviderKey(d, fieldString(body, 'provider'), fieldString(body, 'key'));
+  } catch (err) {
+    return writeError(400, 'invalid_key', (err as Error).message);
+  }
+  return listing();
+}

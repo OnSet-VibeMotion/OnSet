@@ -564,7 +564,7 @@ export function sessionConfig(projectPath: string, meta: SessionMeta): config.Co
 
 export function validateChoice(choice: AgentChoice): void {
   if (choice.tool !== '' && !tools.ValidTools.has(choice.tool)) throw new Error(`未知的编排工具：${choice.tool}`);
-  if (choice.renderer !== '' && !tools.ValidTools.has(choice.renderer)) throw new Error(`未知的渲染工具：${choice.renderer}`);
+  if (choice.renderer !== '' && !tools.ValidRenderers.has(choice.renderer)) throw new Error(`未知的渲染工具：${choice.renderer}`);
   for (const value of [choice.model, choice.rendererModel]) {
     if (value && !config.validModel(value)) throw new Error(`不认识的模型名 ${value}：只能用字母、数字与 . _ - : / @ # [ ] +`);
   }

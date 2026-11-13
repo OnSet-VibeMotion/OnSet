@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { dataDir } from '../envutil';
 import { atomicWrite } from '../fsutil';
-import { ValidTools } from '../tools';
+import { ValidRenderers, ValidTools } from '../tools';
 import { AlignAuto, defaultTTSProvider, validAligner, validTTSProvider } from './providers';
 
 export const SettingsFileEnv = 'AM_SETTINGS_FILE';
@@ -74,8 +74,9 @@ export function validateSetting(key: string, value: string): string {
   if (value === '') return '';
   switch (key) {
     case 'ORCHESTRATOR':
-    case 'RENDERER':
       return ValidTools.has(value) ? '' : `${key} 只能是 ${[...ValidTools].join(' ')}`;
+    case 'RENDERER':
+      return ValidRenderers.has(value) ? '' : `${key} 只能是 ${[...ValidRenderers].join(' ')}`;
     case 'ORCHESTRATOR_MODEL':
     case 'RENDERER_MODEL':
       return validModel(value) ? '' : `不认识的模型名 ${value}：只能用字母、数字与 . _ - : / @ # [ ] +`;

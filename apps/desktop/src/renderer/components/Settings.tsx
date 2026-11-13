@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, errorText, post } from '../api';
-import type { SettingRow, SettingsResponse } from '../types';
+import type { AgentKeysResponse, SettingRow, SettingsResponse } from '../types';
 import { ModelSelect } from './ModelSelect';
 import type { RunAction } from './Preview';
 import '../settings.css';
@@ -90,6 +90,7 @@ export function Settings({ version, run }: { version: number; run: RunAction }) 
         })}
       </div>
       {error && <div className="settings-error">{error}</div>}
+      <AgentKeys version={version} />
       <p className="settings-file">全局设置保存在 {data.file}</p>
     </div>
   );
@@ -149,4 +150,89 @@ export function Settings({ version, run }: { version: number; run: RunAction }) 
       </>
     );
   }
+}
+
+/**
+ * 导演用哪家模型服务：每家一行，填了 key 就能在「编排模型」里选它的模型。key 只写进用户目录里一个
+ * 只有自己能读的文件，界面上不回显。
+ */
+function AgentKeys({ version }: { version: number }) {
+  const [data, setData] = useState<AgentKeysResponse | null>(null);
+  const [editing, setEditing] = useState('');
+  const [draft, setDraft] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api<AgentKeysResponse>('/api/agent-keys').then(setData, (err) => setError(errorText(err)));
+  }, [version]);
+
+  const save = async (provider: string, key: string) => {
+    try {
+      setData(await post<AgentKeysResponse>('/api/agent-keys', { provider, key }));
+      setEditing('');
+      setDraft('');
+      setError('');
+    } catch (err) {
+      setError(errorText(err));
+    }
+  };
+
+  if (!data) return error ? <div className="settings-error">{error}</div> : null;
+  return (
+    <section className="agent-keys" aria-label="导演的模型服务">
+      <div className="agent-keys-head">
+        <strong>导演的模型服务</strong>
+        <span>编排选「导演」时用。填一家的 API key 就能开工，没选编排模型时用推荐的那个。</span>
+      </div>
+      <ul>
+        {data.providers.map((p) => (
+          <li key={p.id} data-provider={p.id} className={p.configured ? 'configured' : ''}>
+            <span className="agent-key-name">
+              {p.label}
+              {p.default_model && <small>推荐 {p.default_model.slice(p.id.length + 1)}</small>}
+            </span>
+            {editing === p.id ? (
+              <form
+                className="agent-key-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (draft.trim() !== '') void save(p.id, draft);
+                }}
+              >
+                <input type="password" autoFocus aria-label={`${p.label} 的 API key`} placeholder="粘贴 API key" value={draft} onChange={(e) => setDraft(e.target.value)} />
+                <button type="submit" disabled={draft.trim() === ''}>
+                  保存
+                </button>
+                <button type="button" className="link" onClick={() => setEditing('')}>
+                  取消
+                </button>
+              </form>
+            ) : (
+              <span className="agent-key-actions">
+                <span className="agent-key-state">{p.configured ? '已填写' : '未填写'}</span>
+                <button
+                  className="link"
+                  onClick={() => {
+                    setEditing(p.id);
+                    setDraft('');
+                  }}
+                >
+                  {p.configured ? '更换' : '填写'}
+                </button>
+                {p.configured && (
+                  <button className="link" onClick={() => void save(p.id, '')}>
+                    删除
+                  </button>
+                )}
+                <a href={p.key_url} target="_blank" rel="noreferrer">
+                  去申请
+                </a>
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+      {error && <div className="settings-error">{error}</div>}
+    </section>
+  );
 }

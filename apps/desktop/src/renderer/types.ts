@@ -302,6 +302,10 @@ export interface AgentInfo {
   command: string;
   installed: boolean;
   path?: string;
+  /** 能不能当渲染工具；导演暂时只做编排。 */
+  renderer: boolean;
+  /** 不能用时的一句说明（导演还没填模型服务密钥）。 */
+  hint?: string;
 }
 
 export interface AgentsResponse {
@@ -703,6 +707,20 @@ export interface SettingsResponse {
   file: string;
   has_project: boolean;
   rows: SettingRow[];
+}
+
+/** GET /api/agent-keys（后端 studio/agentkeys.ts）：导演的模型服务密钥，只说填没填、不回传 key。 */
+export interface AgentKeyProvider {
+  id: string;
+  label: string;
+  key_url: string;
+  default_model: string;
+  configured: boolean;
+}
+
+export interface AgentKeysResponse {
+  providers: AgentKeyProvider[];
+  others: string[];
 }
 
 /** GET /api/storyboard（后端 studio/storyboard.ts）：分镜页。 */

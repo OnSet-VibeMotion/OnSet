@@ -221,7 +221,7 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
     case 'exam':
       if (req.renderers.length === 0) return writeError(400, 'invalid_renderers', '至少选一个渲染工具');
       for (const renderer of req.renderers) {
-        if (!tools.ValidTools.has(renderer)) return writeError(400, 'invalid_renderers', '无效的渲染工具：' + renderer);
+        if (!tools.ValidRenderers.has(renderer)) return writeError(400, 'invalid_renderers', '无效的渲染工具：' + renderer);
       }
       name = 'memory_exam';
       params = { renderers: req.renderers.join(',') };

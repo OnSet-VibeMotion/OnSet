@@ -12,7 +12,7 @@ import { childEnvKeys as toolpathEnvKeys } from '../toolpath';
 import { EnvDirEnv as BeatEnvDirEnv, envDir as beatEnvDir } from '../beat/env';
 import { DirEnv as VoicesDirEnv, defaultDir as defaultVoicesDir } from '../voice/dir';
 import { GlobalDefaults, GlobalKeys, ModelToolKey, SettingsFileEnv, isGlobalKey, settingsFile, validModel, type GlobalKey } from './global';
-import { ValidTools } from '../tools';
+import { ValidRenderers, ValidTools } from '../tools';
 import { AlignAuto, alignerIDs, hostAligner, parseAllowCommands, ttsProviderIDs, validAligner, validTTSProvider } from './providers';
 
 export const DefaultSceneJobs = 3;
@@ -264,9 +264,9 @@ export function load(root: string, environ?: Record<string, string> | null): Con
   if (autoApprove !== 'on' && autoApprove !== 'off') throw new Error(`无效的 AUTO_APPROVE: ${autoApprove}（可选：on off）`);
   cfg.autoApprove = autoApprove === 'on';
   if (!ValidTools.has(cfg.orchestrator)) {
-    throw new Error(`无效的 ORCHESTRATOR: ${cfg.orchestrator}（可选：codex claude qoder codebuddy opencode）`);
+    throw new Error(`无效的 ORCHESTRATOR: ${cfg.orchestrator}（可选：codex claude qoder codebuddy opencode director）`);
   }
-  if (!ValidTools.has(cfg.renderer)) {
+  if (!ValidRenderers.has(cfg.renderer)) {
     throw new Error(`无效的 RENDERER: ${cfg.renderer}（可选：codex claude qoder codebuddy opencode）`);
   }
   for (const [key, value] of [['ORCHESTRATOR_MODEL', cfg.orchestratorModel], ['RENDERER_MODEL', cfg.rendererModel]] as const) {

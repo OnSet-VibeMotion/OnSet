@@ -2,3 +2,4 @@
 export * from './parse';
 export * from './run';
 export type { AskPermission, PermissionAnswer } from './interactive';
+export { commandAllowed, unwrapShell } from './interactive';

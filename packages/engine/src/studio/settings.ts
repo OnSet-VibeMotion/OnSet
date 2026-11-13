@@ -12,6 +12,7 @@
  */
 import * as config from '../config';
 import { envMap } from '../envutil';
+import * as tools from '../tools';
 import { agentOrder } from './agents';
 import { DecodeError, decodeJSON, fieldString, goMap, methodNotAllowed, writeError, writeJSON } from './http';
 import type { Server } from './studio';
@@ -39,12 +40,13 @@ function describe(key: config.GlobalKey): { label: string; hint: string; options
   const agents = agentOrder.map((a) => ({ value: a.id, label: a.label }));
   switch (key) {
     case 'ORCHESTRATOR':
-      return { label: '编排', hint: '和你对话、写稿、定分镜、调度渲染的工具', options: agents };
+      return { label: '编排', hint: '和你对话、写稿、定分镜、调度渲染的工具；导演不用另装，填下面的模型服务密钥就能用', options: agents };
     case 'ORCHESTRATOR_MODEL':
       // 可选的模型跟着工具变，由界面按工具去 /api/agents/{工具}/models 取，这里不列。
       return { label: '编排模型', hint: '留空用这家工具自己的默认模型；换了工具会回到默认', options: [], modelOf: 'ORCHESTRATOR' };
     case 'RENDERER':
-      return { label: '渲染', hint: '把每个镜头画出来的工具', options: agents };
+      // 导演暂时只做编排（tools.ValidRenderers）。
+      return { label: '渲染', hint: '把每个镜头画出来的工具', options: agents.filter((a) => tools.ValidRenderers.has(a.value)) };
     case 'RENDERER_MODEL':
       return { label: '渲染模型', hint: '留空用这家工具自己的默认模型；换了渲染工具会回到默认', options: [], modelOf: 'RENDERER' };
     case 'TTS_PROVIDER':

@@ -312,6 +312,8 @@ drafts 跳过整理者，直接收录一个目录里现成的草稿（lessons/*.
         const { result, error } = await agentrun.run(
           {
             tool: cfg.orchestrator,
+            // 用设置里给编排选的模型：导演（director）靠它挑服务商，其他几家空着就用自己的默认。
+            model: cfg.orchestratorModel,
             workdir,
             prompt,
             unsafe: isUnsafe,
@@ -394,7 +396,7 @@ defineOp({
     const { cfg, store } = loadMemoryConfig();
     let list = splitList(str(p.renderers));
     if (list.length === 0) list = [cfg.renderer];
-    for (const r of list) if (!tools.ValidTools.has(r)) throw new Error(`无效的渲染工具：${r}`);
+    for (const r of list) if (!tools.ValidRenderers.has(r)) throw new Error(`无效的渲染工具：${r}`);
     let jobs = num(p.jobs);
     if (jobs === 0) jobs = cfg.sceneJobs;
     const root = process.cwd();

@@ -83,6 +83,77 @@
   color: var(--bad);
   font-size: 13px;
 }
+.settings .agent-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.settings .agent-keys-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings .agent-keys-head strong {
+  font: 600 15px var(--serif);
+  color: var(--text);
+}
+.settings .agent-keys-head span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.settings .agent-keys ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.settings .agent-keys li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  border-top: 1px solid var(--line);
+}
+.settings .agent-key-name {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text);
+}
+.settings .agent-key-name small {
+  font: 11px var(--mono);
+  color: var(--faint);
+}
+.settings .agent-key-actions,
+.settings .agent-key-form {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+.settings .agent-key-state {
+  font: 11px var(--mono);
+  color: var(--faint);
+}
+.settings li.configured .agent-key-state {
+  color: var(--accent-text);
+}
+.settings .agent-keys a {
+  color: var(--muted);
+}
+.settings .agent-key-form input {
+  width: 220px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--well);
+  color: var(--text);
+  font: 12px var(--mono);
+  padding: 0 8px;
+}
 @media (max-width: 720px) {
   .settings .settings-grid,
   .settings .settings-grid.with-project {

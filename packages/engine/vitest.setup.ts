@@ -7,3 +7,5 @@ import path from 'node:path';
 process.env.AM_SETTINGS_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'am-settings-test-')), 'settings.conf');
 // 编排工具与渲染器 PATH 最前面那个只有 am 的目录（envutil.agentBinDir）默认写在 <数据目录>/am 下，测试里指到临时目录。
 process.env.AM_AGENT_BIN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-agent-bin-test-'));
+// 导演的模型服务密钥（director.defaultDir）也是用户级的：测试不能读到、更不能改开发者自己填的 key。
+process.env.AM_AGENT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-agent-dir-test-'));

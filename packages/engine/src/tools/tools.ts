@@ -1,6 +1,7 @@
 // 移植自 internal/tools/tools.go。
 import fs from 'node:fs';
 import { marshal } from '../gojson';
+import { defaultDir as directorDir, Tool as DirectorToolName } from '../director';
 import { amCommand, WindowsBaseEnvKeys } from '../envutil';
 
 export const UserMessageMarker = '[[USER_MESSAGE]]';
@@ -11,7 +12,21 @@ export const UserMessageMarker = '[[USER_MESSAGE]]';
  * rendererInvocation、orchestratorInvocation、projectRulesFilename 的 switch）。
  * Go 里是 map[string]bool，这里用 Set：普通对象会让 "constructor" 之类的键查出真值。
  */
-export const ValidTools: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'codebuddy', 'opencode']);
+export const ValidTools: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'codebuddy', 'opencode', 'director']);
+
+/**
+ * 能当渲染工具的那几家。导演（director）暂时只做编排：渲染要写出复杂的 HyperFrames 合成、自己检查再改，
+ * 最依赖成熟的编码工具，先用外部 CLI；RENDERER、scene.json 的 renderer、记忆的 applies_when.renderers 按这张表校验。
+ */
+export const ValidRenderers: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'codebuddy', 'opencode']);
+
+/** 导演的工具名（director.Tool）。 */
+export const DirectorTool = DirectorToolName;
+
+/** 按 claude 系 stream-json 解析的工具：导演照这个格式输出，见 director。 */
+export function claudeLikeStream(tool: string): boolean {
+  return tool === 'claude' || tool === 'qoder' || tool === 'codebuddy' || tool === DirectorTool;
+}
 
 /**
  * 安全模式下渲染器需要、而默认权限模式不给的最小权限。
@@ -113,6 +128,9 @@ function claudeSettings(a: RendererAccess & { mcp?: string[] }): string {
 export function modelArgs(tool: string, model: string): string[] {
   if (model === '') return [];
   switch (tool) {
+    case 'director':
+      // 模型在 stdin 的请求里给（director.Request.model）。
+      return [];
     case 'codex':
       return ['-c', 'model=' + JSON.stringify(model)];
     case 'qoder':
@@ -159,6 +177,8 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
       if (unsafe) args.push('--auto');
       return [...args, '--format', 'json', prompt];
     }
+    case 'director':
+      throw new Error('导演暂时只能做编排，渲染工具请选 claude、codex、qoder、codebuddy 或 opencode');
     default:
       throw new Error(`未知工具：${tool}`);
   }
@@ -223,6 +243,8 @@ export interface OrchestratorOptions {
   toolsServer?: McpServer;
   /** 模型（config 的 orchestratorModel）；空用那家工具自己的默认，见 modelArgs。 */
   model?: string;
+  /** 导演的数据目录（凭据）；只有 director 用，空时按环境算（director.defaultDir）。 */
+  agentDir?: string;
 }
 
 /** 审批服务的启动命令（MCP stdio）与工具名。 */
@@ -384,6 +406,23 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
       else if (sessionID !== '') args.push('--session-id', sessionID);
       return { argv: args, stdin: '' };
     }
+    case 'director': {
+      // 导演是 am 自己（am studio agent），请求经 stdin 给，见 director.Request。
+      // 不能按名字找 am：编排工具的 PATH 最前面是只会报错的那个 am（envutil.addToolsLocation）。
+      const am = amCommand();
+      const request = {
+        workdir,
+        prompt: o.prompt,
+        session_id: sessionID || undefined,
+        resume: o.resume || undefined,
+        model: o.model || undefined,
+        unsafe: o.unsafe || undefined,
+        commands: access.commands && access.commands.length > 0 ? access.commands : undefined,
+        writable_dirs: access.writableDirs && access.writableDirs.length > 0 ? access.writableDirs : undefined,
+        agent_dir: o.agentDir || directorDir({ ...process.env, ...env }),
+      };
+      return { argv: [am.command, ...am.args, 'studio', 'agent'], stdin: JSON.stringify(request) + '\n', env: am.env };
+    }
     case 'opencode': {
       // opencode 只认项目目录里的 opencode.json，规则集写法实测拦不住命令，
       // 全拒时无头运行直接挂起；安全模式下因此不加限制，见 README。
@@ -411,6 +450,7 @@ export function projectRulesFilename(tool: string): string {
     case 'codex':
     case 'qoder':
     case 'opencode':
+    case 'director':
       return 'AGENTS.md';
     case 'claude':
       return 'CLAUDE.md';
@@ -443,7 +483,8 @@ export function extractUserMessages(tool: string, line: string): string[] {
     }
     case 'claude':
     case 'qoder':
-    case 'codebuddy': {
+    case 'codebuddy':
+    case 'director': {
       const content = asObject(event.message)?.content;
       if (event.type === 'assistant' && Array.isArray(content)) {
         for (const raw of content) {

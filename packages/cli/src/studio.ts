@@ -10,6 +10,7 @@ import { Command, type Out, ref } from './cobra';
 import { str } from './ops/common';
 import { defineOp } from './ops/op';
 import { type Profile, serveToolsMCP } from './toolsmcp';
+import { newAgentCommand } from './agent/command';
 
 export function newStudioCommand(_stdout?: Out): Command {
   const cmd = new Command({
@@ -21,6 +22,7 @@ export function newStudioCommand(_stdout?: Out): Command {
   });
   cmd.addCommand(newPermissionMCPCommand());
   cmd.addCommand(newToolsMCPCommand());
+  cmd.addCommand(newAgentCommand());
   return cmd;
 }
 

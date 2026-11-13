@@ -432,7 +432,7 @@ opencode 默认模型不可用时加 `AM_TEST_OPENCODE_MODEL`。
 
 ## 新增一个 AI CLI
 
-工具矩阵散落在六个文件，加一个工具必须九处同步改，漏一处会在运行期才炸：
+工具矩阵散落在六个文件，加一个工具必须九处同步改，漏一处会在运行期才炸（导演 `director` 不是外部 CLI，它的约定见「导演（自带的编排工具）」）：
 
 | 位置 | 作用 |
 |---|---|
@@ -461,6 +461,24 @@ AM_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run --root 
 ```
 
 它对每家跑两轮，第二轮续接后要答出第一轮让它记住的词。每次都是真实模型调用，CI 不跑。
+
+## 导演（自带的编排工具）
+
+`ORCHESTRATOR=director`（界面上叫「导演」）是客户端自带的编排工具：不要求用户另装 claude、codex 这类 CLI，在设置页填一家模型服务的 API key 就能做片。agent 循环用 pi（`@earendil-works/pi-coding-agent`，MIT，**钉死 1.4.0**，升级前对照它的 CHANGELOG 重跑 `packages/cli/src/agent/agent.test.ts`，并重新核对 `director.Providers` 里的推荐模型还在 pi 自带的模型目录里）。
+
+| 约定 | 原因 |
+|---|---|
+| 引擎只有 `packages/engine/src/director`（工具名、请求格式、凭据文件、服务商表），pi 只在 `packages/cli/src/agent/pi.ts`，打成单独的 `dist/am-agent.cjs`；`am studio agent`（`agent/command.ts`）打包后 `require` 同目录的它，开发时 `import('./pi')`。构建在 `packages/cli/build.mjs`，发布流程用 `AM_VERSION=… npm run build -w @am/cli` | pi 连依赖十几 MB，打进 am.cjs 的话每次 `__op`、每个工具服务进程都要多解析一遍 |
+| 子进程输出 claude 系的 stream-json（`agent/stream.ts`：system/init、assistant、user、result），`tools.claudeLikeStream` 与 agentrun 的解析、用量、模型识别都把 `director` 当 claude 系处理；会话 id 由子进程在 system/init 里报（`presetSessionID` 为 false） | 不再为它写一份解析器；用量口径与 claude 相同（input 不含缓存，命中与写入分开） |
+| 请求经 stdin 一行 JSON（`director.Request`），模型、会话、白名单、凭据目录都在里面，不进命令行；凭据目录由父进程算好放进请求（`agent_dir`） | 命令行在 ps 里谁都看得见；子进程环境按安全模式白名单裁过，`XDG_DATA_HOME` 不在里面，自己算会算出另一个目录 |
+| API key 只在 `<数据目录>/am/agent/auth.json`（`AM_AGENT_DIR` 覆盖，0600），由设置页经 `/api/agent-keys`（`studio/agentkeys.ts`）写，接口只回「填没填」；不进 settings.conf、项目文件与任何子进程的环境。vitest setup 与 e2e fixtures 都把 `AM_AGENT_DIR` 指到临时目录 | 编排工具能跑的命令里拿不到 key；测试不能读改开发者自己的 key |
+| pi 会到处找东西，`pi.ts` 逐项关掉：设置用 `SettingsManager.inMemory`；`noExtensions` 只留权限闸门；技能只要项目根 `.agents/skills`；上下文文件只要项目根 `AGENTS.md`（`projectRulesFilename('director')`）；不读 `~/.pi/agent/models.json`、不联网刷新模型目录；会话放应用数据目录 `<数据目录>/am/agent/sessions/<按项目路径编码>/`（`agent/pi.ts` 的 `projectSessionDir`，编码与 pi 自己的默认目录相同），不写进项目，续接时项目挪过位置就按 id 全局找。`agent.test.ts` 用上级目录的 `CLAUDE.md` 钉着「不读进来」、并查项目里没有留下会话文件 | 用户机器上可能装了 pi、留着别的工具的 CLAUDE.md，读进来就会照着别人的规矩做片；项目里的 `.pi/extensions` 是会被执行的代码；国内网络下刷新模型目录可能卡住 |
+| am 的制作工具不经 MCP：`agent/command.ts` 用工具服务同一份 `describeTools` / `prepareCall` / `Jobs` 在进程内做成 agent 的工具，去掉 `wait_seconds` / `job_wait`，直接等到跑完。pi 的 `tools` 选项是「启用的全部工具名」，am 的工具名必须列进去，否则只登记不启用 | job 那一套是给 codex 60 秒 MCP 超时准备的；漏列工具名实测模型调用时报「Tool not found」 |
+| 权限闸门（`agent/gate.ts`，pi 的 `tool_call`）：bash 走 `agentrun.commandAllowed` 与同一份白名单，文件工具只在项目与可写目录里直接放行，`.env` 一律拒绝，am 的工具放行，其余经收件目录问用户（与审批 MCP 同一条路，「以后都允许」这一轮里也生效）；不在客户端里一律拒绝，`--unsafe` 全放行 | 与其他几家的安全模式同一套规矩 |
+| 导演暂时只做编排：`tools.ValidRenderers` 不含它，`RENDERER`、`scene.json` 的 `renderer`、记忆的 `applies_when.renderers` 都按这张表校验，`rendererInvocation('director')` 直接报错，设置页与输入框的渲染下拉框不列它 | 渲染要写复杂的 HyperFrames 合成、自己检查再改，最依赖成熟的编码工具；以后要接，先用记忆的「运行对比」比一次通过率 |
+| 模型写成「服务商/模型」（pi 的服务商 id），留空用第一家填了 key 的服务商的推荐模型（`director.pickModel`）；`/api/agents/director/models` 跑 `am studio agent --list-models` | 与 opencode 的写法一致；pi 自带的模型目录随版本走，不另维护一份 |
+
+改了这条链要在本机用真实 key 跑一轮（设置页填 key、编排选导演、发一句话）；CI 只跑 `agent.test.ts` 里的假模型（pi 的 `fauxProvider`）。
 
 ## 新增一个 TTS 或对齐工具
 

@@ -40,7 +40,7 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 叙事模式也在新建时选：默认单口播；「多角色对话」额外写出班底与角色包目录，见下方「多角色叙事」；还有单人歌曲讲解与无配音卡点两种可选形式。
 
-编排工具、渲染工具（各自用哪个模型）、配音与对齐工具、并发数与记忆在客户端的「设置」（顶栏右侧的齿轮，或 ⌘,）里选。全局设置对所有项目生效；某个项目要用不一样的，在「这个项目」一栏单独选，写进项目的 `article-to-motion.conf`，选「跟随全局」就回去。取值顺序是：环境变量 > 项目 `.env` > 项目 `article-to-motion.conf` > 全局设置 > 内置默认。对话输入框底部还可以为每个会话临时另选编排与渲染工具及其模型，不改任何文件。模型列表来自各家工具自己（codex、qoder、codebuddy、opencode 按你的账号与服务商列出，claude 给 fable / opus / sonnet / haiku 这几个别名），列表里没有的可以选「其他…」手填；留「默认」就用那家工具自己的默认模型。
+编排工具、渲染工具（各自用哪个模型）、配音与对齐工具、并发数与记忆在客户端的「设置」（顶栏右侧的齿轮，或 ⌘,）里选。全局设置对所有项目生效；某个项目要用不一样的，在「这个项目」一栏单独选，写进项目的 `article-to-motion.conf`，选「跟随全局」就回去。取值顺序是：环境变量 > 项目 `.env` > 项目 `article-to-motion.conf` > 全局设置 > 内置默认。不想另装 AI CLI 时，编排工具选「导演」：在设置页下方「导演的模型服务」填一家的 API key（DeepSeek、Kimi、智谱、阿里云百炼、MiniMax、Anthropic、OpenAI、OpenRouter），模型写成「服务商/模型」，留空用推荐的那个；key 只存在用户目录里一个仅自己可读的文件里。导演暂时只做编排，渲染仍要选一家外部工具。对话输入框底部还可以为每个会话临时另选编排与渲染工具及其模型，不改任何文件。模型列表来自各家工具自己（codex、qoder、codebuddy、opencode 按你的账号与服务商列出，claude 给 fable / opus / sonnet / haiku 这几个别名），列表里没有的可以选「其他…」手填；留「默认」就用那家工具自己的默认模型。
 
 配音可选 MiniMax、阿里云百炼、Edge 朗读（免鉴权，适合预览）、ElevenLabs、腾讯云、MLX（本机离线，仅 Apple Silicon）、Breeze TTS 2（本机离线，仅 Apple Silicon；模型与生成的配音仅限研究与非商业用途，商用需 RESONIA, Inc. 书面授权）；凭据一律走各工具自己的登录，项目 `.env` 不允许保存 API Key、Token、Secret 或 Password。字幕时间轴由已知文本强制对齐生成：Apple Silicon 上用 mlx-audio 的 Qwen3-ForcedAligner，其余平台用 FunASR。
 

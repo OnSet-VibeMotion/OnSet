@@ -8,7 +8,7 @@ import { unmarshal as yamlUnmarshal, YamlTypeError, type Schema as YamlSchema } 
 import * as filmstyle from '../filmstyle';
 import { formatFixed, formatG, goPathError, goQuote, goRound, goTrimSpace } from '../gofmt';
 import * as song from '../song';
-import { ValidTools } from '../tools';
+import { ValidRenderers } from '../tools';
 import { formatGPrecision, formatStrings } from './gofmt';
 import { fromBeat, ptrTo, sliceOf, topLevelKeys, unmarshal, type StructType } from './jsondecode';
 import {
@@ -457,7 +457,7 @@ export function load(directory: string): Scene {
     const style = contained(result.directory, result.style_guide, 'style_guide');
     if (!isRegularFile(style)) throw new Error(`style_guide 指向的文件不存在：${result.style_guide}`);
   }
-  if (result.renderer !== '' && !ValidTools.has(result.renderer)) throw new Error(`无效的 renderer：${result.renderer}`);
+  if (result.renderer !== '' && !ValidRenderers.has(result.renderer)) throw new Error(`无效的 renderer：${result.renderer}`);
   verifyFilmStyleValue(result.film_style);
   validateCast(result);
   return result;

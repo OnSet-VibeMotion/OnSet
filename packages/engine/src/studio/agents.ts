@@ -3,6 +3,7 @@
  * agentChoice 的校验、sessionConfig 与 overrideAgents 在 sessions.ts（会话与任务都要用，放一处免得循环导入）。
  */
 import * as agentrun from '../agentrun';
+import * as director from '../director';
 import * as config from '../config';
 import { envMap, lookPath } from '../envutil';
 import * as procgroup from '../procgroup';
@@ -21,6 +22,7 @@ export const agentOrder: readonly { id: string; label: string }[] = [
   { id: 'qoder', label: 'Qoder' },
   { id: 'codebuddy', label: 'CodeBuddy' },
   { id: 'opencode', label: 'OpenCode' },
+  { id: 'director', label: '导演' },
 ];
 
 /**
@@ -45,6 +47,10 @@ interface AgentInfo {
   command: string;
   installed: boolean;
   path?: string;
+  /** 能不能当渲染工具（tools.ValidRenderers）；导演暂时只做编排。 */
+  renderer: boolean;
+  /** 没法用时给界面的一句说明（导演还没填模型服务密钥）。 */
+  hint?: string;
 }
 
 /** executable 从调用矩阵取工具的命令名，不在这里另写一份。 */
@@ -62,7 +68,13 @@ export function agentsAPI(s: Server, request: Request): Response {
   if (request.method !== 'GET') return methodNotAllowed('GET');
   const pathValue = envMap().PATH ?? '';
   const agents: AgentInfo[] = agentOrder.map((a) => {
-    const info: AgentInfo = { id: a.id, label: a.label, command: executable(a.id), installed: false };
+    const renderer = tools.ValidRenderers.has(a.id);
+    if (a.id === director.Tool) {
+      // 导演随客户端下发，不用装；「装好」指填了至少一家模型服务的密钥。
+      const ready = director.configuredProviders(director.defaultDir(envMap())).length > 0;
+      return { id: a.id, label: a.label, command: 'am studio agent', installed: ready, renderer, ...(ready ? {} : { hint: '先在设置里填一个模型服务的 API key' }) };
+    }
+    const info: AgentInfo = { id: a.id, label: a.label, command: executable(a.id), installed: false, renderer };
     try {
       info.path = lookPath(info.command, pathValue);
       info.installed = true;
@@ -162,7 +174,7 @@ export async function agentModelsAPI(request: Request, rest: string): Promise<Re
   if (argv === null) {
     models = tools.parseModelList(tool, '');
   } else {
-    const env = envMap() as Record<string, string>;
+    const env = { ...(envMap() as Record<string, string>), ...tools.modelListEnv(tool) };
     let binary: string;
     try {
       binary = lookPath(argv[0]!, env.PATH ?? '');
