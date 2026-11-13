@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as filmstyle from '@am/engine/filmstyle';
-import '@am/engine/filmstyle/sources';
+import '@am/engine/plugin';
 import { goQuote } from '@am/engine/gofmt';
 import { encodeLine } from '@am/engine/gojson';
 import { currentEnvironment } from './cli';

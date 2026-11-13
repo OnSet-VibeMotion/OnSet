@@ -78,17 +78,18 @@ styles:<来源>。--check 只报告哪些已就绪、哪些缺，不下载；有
   return cmd;
 }
 
-/** --only 认的大类：宿主的几类，内置插件登记的前置资源的类（例如卡点的 beat），最后是 styles。 */
+/** --only 认的大类：宿主的几类，然后是内置插件登记的前置资源的类（例如卡点的 beat、风格库插件的 styles）。 */
 function onlyGroups(): string[] {
   const groups = ['skills', 'cli', 'browser', 'ffmpeg', 'tts', 'align'];
   for (const { value } of plugin.pluginPrereqs()) if (!groups.includes(value.group)) groups.push(value.group);
-  return [...groups, 'styles'];
+  return groups;
 }
 
-/** 帮助里内置插件登记的前置资源，每类一行（例如卡点的节拍分析环境）。 */
+/** 帮助里内置插件登记的前置资源，每类一行（例如卡点的节拍分析环境）。风格来源另有一段（styles）。 */
 function pluginPrereqSummary(): string {
   return plugin
     .pluginPrereqs()
+    .filter(({ value }) => value.group !== 'styles')
     .map(({ value }) => `  ${value.group.padEnd(8)} ${value.name}${value.version ? ' ' + value.version : ''}${value.later ? '：' + value.later.title + '用，' + value.later.desc : ''}\n`)
     .join('');
 }

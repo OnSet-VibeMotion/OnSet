@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as filmstyle from '@am/engine/filmstyle';
+import { registerBuiltin } from '@am/engine/plugin';
 import './filmstyle';
 import { Command, ref } from './cobra';
 import { opCommand } from './ops/cli';
@@ -20,22 +21,27 @@ const style = (slug: string, cn: string): filmstyle.Style => ({
   uses: null,
   summary: '',
 });
-filmstyle.register({
-  id: () => 'fake',
-  name: () => '测试来源',
-  gallery: () => '',
-  location: () => '/dev/null',
-  check: () => {},
-  prepare: async () => {},
-  poster: () => {
-    throw Object.assign(new Error('file does not exist'), { code: 'ENOENT' });
-  },
-  envKeys: () => [],
-  catalog: () => [style('ink', '水墨'), style('oil', '油画'), style('pixel', '像素')],
-  fill: (dir, s) => {
-    fs.writeFileSync(path.join(dir, filmstyle.StyleFile), '# ' + filmstyle.styleKey(s));
-    fs.writeFileSync(path.join(dir, filmstyle.GuideFile), 'guide');
-    return 'v1';
+// 假来源经测试里登记的内置插件进来源表。
+registerBuiltin({
+  id: 'test-cli-styles',
+  apply(ctx) {
+    ctx.filmStyleSource({
+      id: () => 'fake',
+      name: () => '测试来源',
+      gallery: () => '',
+      location: () => '/dev/null',
+      check: () => {},
+      prepare: async () => {},
+      poster: () => {
+        throw Object.assign(new Error('file does not exist'), { code: 'ENOENT' });
+      },
+      catalog: () => [style('ink', '水墨'), style('oil', '油画'), style('pixel', '像素')],
+      fill: (dir, s) => {
+        fs.writeFileSync(path.join(dir, filmstyle.StyleFile), '# ' + filmstyle.styleKey(s));
+        fs.writeFileSync(path.join(dir, filmstyle.GuideFile), 'guide');
+        return 'v1';
+      },
+    });
   },
 });
 

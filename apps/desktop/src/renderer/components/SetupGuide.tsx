@@ -190,14 +190,12 @@ function coreCrews(items: PrereqStatus[]): Crew[] {
 /** 以后可能用到、要单独点的：体积大，用到才装。 */
 function laterCrews(items: PrereqStatus[]): Crew[] {
   const out: Crew[] = [];
-  // 内置插件登记的（例如卡点的节拍分析环境）：同一 group 合成一张卡片，名字、说明与图标由插件登记。
+  // 内置插件登记的（例如卡点的节拍分析环境、LemoLab 风格库）：同一 group 合成一张卡片，名字、说明与图标由插件登记。
   for (const group of [...new Set(items.filter((i) => i.later).map((i) => i.group))]) {
     const own = items.filter((i) => i.group === group && i.later);
     const later = own[0].later!;
     out.push({ key: group, icon: later.icon, title: later.title, desc: later.desc, items: own });
   }
-  const styles = items.filter((i) => i.group === 'styles');
-  if (styles.length) out.push({ key: 'styles', title: '整片风格库', desc: '给整部片子套一种现成画风', items: styles });
   const design = items.filter((i) => i.group === 'voice');
   if (design.length) out.push({ key: 'design', title: '音色设计', desc: '在音色页按描述做一个新声音 · 约 4.6 GB', items: design });
   return out;

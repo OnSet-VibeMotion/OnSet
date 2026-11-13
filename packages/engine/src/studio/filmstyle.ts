@@ -11,8 +11,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { envMap } from '../envutil';
 import * as filmstyle from '../filmstyle';
-// 全部风格来源经 sources 登记进 filmstyle；新增来源只改 sources 模块。
-import '../filmstyle/sources';
+// 风格来源由内置插件登记（filmstyle 的来源表取插件登记表），导入 plugin 包保证内置插件都登记了。
+import '../plugin';
 import { newToolchain } from '../mediaprobe';
 import { DecodeError, decodeJSON, fieldBool, fieldString, goMap, methodNotAllowed, serveFile, writeError, writeJSON } from './http';
 import type { Project, Server } from './studio';

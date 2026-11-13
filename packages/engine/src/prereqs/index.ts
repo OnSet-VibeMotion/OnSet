@@ -10,8 +10,7 @@ import * as config from '../config';
 import { AlignAuto, Aligners, defaultTTSProvider, resolveAligner, TTSProviders, validAligner, validTTSProvider } from '../config/providers';
 import { envMap } from '../envutil';
 import type { ModelSpec, ToolSpec } from '../toolinstall';
-import * as filmstyle from '../filmstyle';
-import '../filmstyle/sources';
+import type * as filmstyle from '../filmstyle';
 import { readLock } from '../flow/lock';
 import * as plugin from '../plugin';
 import * as hyperframes from '../hyperframes';
@@ -231,29 +230,32 @@ export function items(pick?: Selection): Item[] {
   if (breeze && chosen.tts !== 'breeze') out.push(toolItem('voice', breeze.id, '音色设计 ' + breeze.name, breeze.install, breeze.model));
   const aligner = Aligners.find((a) => a.id === chosen.align);
   if (aligner) out.push(toolItem('align', aligner.id, '对齐 ' + aligner.name, aligner.install, aligner.model));
-  // 第三方插件带来的风格库随插件下来，不是前置资源。
-  for (const source of filmstyle.sources().filter((x) => !x.id().startsWith(filmstyle.PluginSourcePrefix))) {
-    out.push({
-      group: 'styles',
-      id: 'styles:' + source.id(),
-      name: '整片风格 ' + source.id(),
-      version: '',
-      required: false,
-      ready: (env) => {
-        let ok = true;
-        try {
-          source.check(env);
-        } catch {
-          ok = false;
-        }
-        return [ok, source.location(env)];
-      },
-      // 来源可能既用 git 又用 npm：git 的代理与 npm 的源合在一份环境里。
-      prepare: (run, signal) =>
-        source.prepare({ env: run.mixed, output: run.log, progress: (p) => run.stage(`(${p.step}/${p.steps}) ${p.stage}`) }, signal),
-    });
-  }
   return out;
+}
+
+/**
+ * 一个整片风格来源的数据（来源 id 为 styles:<来源>）：登记风格来源的内置插件拿它登记前置资源（ctx.prereq）。
+ * 第三方插件带来的风格库随插件下来，不是前置资源。
+ */
+export function filmStyleSourceItem(source: filmstyle.Source): Item {
+  return {
+    group: 'styles',
+    id: 'styles:' + source.id(),
+    name: '整片风格 ' + source.id(),
+    version: '',
+    required: false,
+    ready: (env) => {
+      let ok = true;
+      try {
+        source.check(env);
+      } catch {
+        ok = false;
+      }
+      return [ok, source.location(env)];
+    },
+    // 来源可能既用 git 又用 npm：git 的代理与 npm 的源合在一份环境里。
+    prepare: (run, signal) => source.prepare({ env: run.mixed, output: run.log, progress: (p) => run.stage(`(${p.step}/${p.steps}) ${p.stage}`) }, signal),
+  };
 }
 
 /** 一项的就绪状态（给客户端与 --check 用）。字段顺序与 Go 的 JSON tag 一致。 */

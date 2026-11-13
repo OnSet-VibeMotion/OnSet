@@ -14,9 +14,9 @@ import { repoRoot } from '../../../preset/gen/gen';
 import { PinnedCommit, type Entry } from '../lemo';
 import { sortedEntries } from '../library';
 
-/** 默认输出：仓库里 lemo 目录下的 catalog.json（Go 版是 internal/filmstyle/lemo/catalog.json）。只在开发时运行。 */
+/** 默认输出：仓库里 lemo-styles 插件目录下的 catalog.json。只在开发时运行。 */
 export function defaultCatalogPath(): string {
-  return path.join(repoRoot(), 'packages', 'engine', 'src', 'filmstyle', 'lemo', 'catalog.json');
+  return path.join(repoRoot(), 'packages', 'engine', 'src', 'plugins', 'lemo-styles', 'catalog.json');
 }
 
 /** 取字段：encoding/json 先找同名键，再不区分大小写地找。 */

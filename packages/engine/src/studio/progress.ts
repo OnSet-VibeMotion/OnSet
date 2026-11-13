@@ -264,7 +264,7 @@ const judges: Record<string, Judge> = {
     },
   },
   'style:style': {
-    output: (c) => f(c, '.agents/skills/am-film-style/am-film-style.json') || f(c, '.agents/skills/lemo-film-style/lemo-upstream.json'),
+    output: (c) => f(c, '.agents/skills/am-film-style/am-film-style.json'),
     detail: (c) => {
       try {
         const raw = JSON.parse(fs.readFileSync(path.join(c.root, '.agents/skills/am-film-style/am-film-style.json'), 'utf8')) as Record<string, unknown>;

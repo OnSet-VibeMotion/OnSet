@@ -6,7 +6,7 @@ import { compareBytes } from '../../gojson';
 import { goExt, goPathError } from '../../gofmt';
 import type { Writer } from '../../hyperframes';
 import { ExitError, abortReason } from '../../procgroup';
-import { sourceDir } from '../filmstyle';
+import { sourceDir } from '../../filmstyle';
 import { LibraryEnv, PinnedCommit, RepoURL, SourceID } from './lemo';
 
 /** 一份风格库检出。 */
