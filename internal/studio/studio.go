@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chouheiwa/articale-to-motion/internal/scene"
+	"github.com/chouheiwa/articale-to-motion/internal/tools"
 	"io/fs"
 	"mime"
 	"net"
@@ -565,6 +567,9 @@ type SceneSummary struct {
 	Output          string  `json:"output,omitempty"`
 	Exists          bool    `json:"exists"`
 	Stale           bool    `json:"stale"`
+	// Attempts 与 Usage 是这个镜头全部渲染尝试（含归档）的次数与用量合计。
+	Attempts int          `json:"attempts"`
+	Usage    *tools.Usage `json:"usage,omitempty"`
 }
 
 func discoverScenes(root string) []SceneSummary {
@@ -600,7 +605,19 @@ func discoverScenes(root string) []SceneSummary {
 			outputInfo, outputErr := os.Stat(output)
 			stale = sceneErr == nil && outputErr == nil && sceneInfo.ModTime().After(outputInfo.ModTime())
 		}
-		out = append(out, SceneSummary{ID: v.ID, Directory: filepath.Dir(path), DurationSeconds: v.Duration, Output: v.Output, Exists: exists, Stale: stale})
+		summary := SceneSummary{ID: v.ID, Directory: filepath.Dir(path), DurationSeconds: v.Duration, Output: v.Output, Exists: exists, Stale: stale}
+		if history := scene.AttemptHistory(summary.Directory, v.ID); len(history) > 0 {
+			var total tools.Usage
+			for _, attempt := range history {
+				if attempt.Usage != nil {
+					total.Add(*attempt.Usage)
+				} else {
+					total.Add(tools.Usage{})
+				}
+			}
+			summary.Attempts, summary.Usage = len(history), &total
+		}
+		out = append(out, summary)
 		return nil
 	})
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })

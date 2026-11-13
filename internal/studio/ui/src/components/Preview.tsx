@@ -142,7 +142,7 @@ function Timeline({ scenes, sceneId, onScene }: { scenes: Scene[]; sceneId: stri
               key={scene.id}
               class={`scene ${status}${scene.id === sceneId ? ' on' : ''}`}
               style={{ flex: `${scene.duration_seconds || 1} 1 0` }}
-              title={`${scene.id}${scene.duration_seconds ? ` · ${scene.duration_seconds.toFixed(1)} 秒` : ''} · ${statusText[status]}`}
+              title={`${scene.id}${scene.duration_seconds ? ` · ${scene.duration_seconds.toFixed(1)} 秒` : ''} · ${statusText[status]}${scene.attempts ? ` · ${usageLabel(scene)}` : ''}`}
               aria-pressed={scene.id === sceneId}
               onClick={() => onScene(scene.id)}
             >
@@ -264,6 +264,11 @@ function SceneTab(props: Props & { scene: Scene | null }) {
         <span class="scene-title">{scene.id}</span>
         {scene.duration_seconds ? <span class="mono small muted">{scene.duration_seconds.toFixed(2)}s</span> : null}
         <span class={'status-' + status}>{statusText[status]}</span>
+        {scene.attempts > 0 && (
+          <span class="chip mono" title={usageTitle(scene)}>
+            {usageLabel(scene)}
+          </span>
+        )}
         <span class="spacer" />
         {scene.exists && (
           <>
@@ -642,4 +647,27 @@ export function FileView({ path, version }: { path: string; version: number }) {
       {file && (file.binary ? <Empty>二进制文件或超过 2 MB，不显示内容。</Empty> : <pre class="text" id="file-content">{file.content}</pre>)}
     </div>
   );
+}
+
+/** 紧凑写法：12.3M token · $4.17 · 2 次渲染。 */
+function usageLabel(scene: Scene): string {
+  const u = scene.usage;
+  const total = (u?.input_tokens ?? 0) + (u?.output_tokens ?? 0);
+  if (!u || !u.source) return `${scene.attempts} 次渲染 · 未读到用量`;
+  const parts = [`${compact(total)} token${u.partial ? '+' : ''}`];
+  if (u.cost_usd != null) parts.push(`$${u.cost_usd.toFixed(2)}`);
+  parts.push(`${scene.attempts} 次渲染`);
+  return parts.join(' · ');
+}
+
+function usageTitle(scene: Scene): string {
+  const u = scene.usage;
+  if (!u || !u.source) return '渲染工具没有报用量';
+  return `全部 ${scene.attempts} 次渲染合计：输入 ${(u.input_tokens ?? 0).toLocaleString()}（其中缓存 ${(u.cached_input_tokens ?? 0).toLocaleString()}）· 输出 ${(u.output_tokens ?? 0).toLocaleString()}${u.partial ? '；有的尝试没读到用量，这是下限' : ''}`;
+}
+
+function compact(n: number): string {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
+  return String(n);
 }

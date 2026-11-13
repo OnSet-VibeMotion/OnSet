@@ -118,13 +118,20 @@ func scanTree(project string) (fileTree, error) {
 	return tree, err
 }
 
+// renderRecord 报告文件是不是渲染的尝试记录。它记的是已经发生的事（花了多少
+// token、为什么失败），回退一轮不能把它删掉，所以和媒体一样只记 stat、不回退。
+func renderRecord(path string) bool {
+	name := filepath.Base(path)
+	return strings.HasPrefix(name, "render-") && strings.HasSuffix(name, ".attempt.json")
+}
+
 func statState(info fs.FileInfo) string {
 	return fmt.Sprintf("%s%d:%d", statPrefix, info.Size(), info.ModTime().UnixNano())
 }
 
 // fileState 计算一个文件的状态；文本文件顺带存进 blob。
 func fileState(project, path string, info fs.FileInfo) (string, error) {
-	if info.Size() > maxSnapshotBytes || mediaExtensions[strings.ToLower(filepath.Ext(path))] {
+	if info.Size() > maxSnapshotBytes || mediaExtensions[strings.ToLower(filepath.Ext(path))] || renderRecord(path) {
 		return statState(info), nil
 	}
 	body, err := os.ReadFile(path)

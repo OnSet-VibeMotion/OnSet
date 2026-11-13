@@ -234,6 +234,16 @@ Different models make different mistakes. Every render records the model actuall
 
 Each exam cell is a real render: renders = questions × renderers × 2 × `--repeat`, with at most 4 failed-episode questions by default.
 
+## Render usage
+
+Every `am scene run` prints the tokens and cost (when the tool reports it) of that render, and the `am scene run-all` summary and `--report-json` carry each scene's total for the run. For the whole project:
+
+```bash
+am scene usage scenes/          # every attempt per scene, including failures, retries and archives, split by renderer/model
+```
+
+Usage is normalized across tools: input includes cache hits, output includes reasoning tokens. Studio shows each scene's running total in the scene timeline and toolbar.
+
 ## Inspect frames and concatenate
 
 A successful render is not a correct picture: text can be unreadable against the artwork, CJK glyphs can silently fall back to boxes, an animation can freeze halfway — all of that still exits 0. Extracting frames and looking at them is the only way to catch it early.

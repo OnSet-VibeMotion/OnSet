@@ -23,6 +23,20 @@ export interface Scene {
   output?: string;
   exists: boolean;
   stale: boolean;
+  /** 全部渲染尝试（含归档）的次数与用量合计。 */
+  attempts: number;
+  usage?: Usage;
+}
+
+/** 渲染用量，口径见 internal/tools.Usage：输入含缓存，输出含推理。 */
+export interface Usage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cached_input_tokens?: number;
+  cost_usd?: number;
+  turns?: number;
+  partial?: boolean;
+  source?: string;
 }
 
 export interface TreeFile {

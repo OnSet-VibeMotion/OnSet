@@ -104,6 +104,8 @@ func Run(ctx context.Context, s Scene, cfg config.Config, unsafe bool, baseEnv m
 		if writeErr := writeAttempt(s, attempt); writeErr != nil && err == nil {
 			err = writeErr
 		}
+		// 每次渲染都报一行用量：失败的尝试一样花了 token。
+		fmt.Fprintf(userOutput, "[%s] 用量：%s\n", s.ID, tools.FormatUsage(usage))
 		if s.AfterAttempt != nil {
 			s.AfterAttempt(attempt)
 		}

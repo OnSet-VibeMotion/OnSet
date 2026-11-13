@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/chouheiwa/articale-to-motion/internal/fsutil"
@@ -93,4 +94,27 @@ func ArchiveAttempt(s Scene) string {
 		_ = os.Rename(path, filepath.Join(destination, filepath.Base(path)))
 	}
 	return destination
+}
+
+// AttemptHistory 读出镜头目录里全部尝试记录：attempts/attempt-NN/ 下归档的，
+// 加上当前这一份，按开始时间排序。读不了的跳过。
+//
+// 用量统计以它为准：重渲染前上一次的记录会被挪进 attempts/，不读归档的话，
+// 失败重试烧掉的 token 就从账上消失了。
+func AttemptHistory(dir, id string) []Attempt {
+	paths, _ := filepath.Glob(filepath.Join(dir, "attempts", "attempt-*", "render-"+id+".attempt.json"))
+	paths = append(paths, filepath.Join(dir, "render-"+id+".attempt.json"))
+	var out []Attempt
+	for _, path := range paths {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var attempt Attempt
+		if json.Unmarshal(body, &attempt) == nil && attempt.Outcome != "" {
+			out = append(out, attempt)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].StartedAt < out[j].StartedAt })
+	return out
 }

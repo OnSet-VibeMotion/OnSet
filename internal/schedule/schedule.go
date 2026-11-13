@@ -9,11 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/chouheiwa/articale-to-motion/internal/fsutil"
 	"github.com/chouheiwa/articale-to-motion/internal/scene"
+	"github.com/chouheiwa/articale-to-motion/internal/tools"
 )
 
 type Status string
@@ -31,6 +33,8 @@ type SceneResult struct {
 	Attempts int     `json:"attempts"`
 	Seconds  float64 `json:"seconds"`
 	Reason   string  `json:"reason"`
+	// Usage 是这个镜头在这一批里全部尝试（含重试）的用量合计；跳过的镜头没有。
+	Usage *tools.Usage `json:"usage,omitempty"`
 }
 
 type Report struct {
@@ -40,6 +44,25 @@ type Report struct {
 	Code          int            `json:"exit_code"`
 	CountValues   map[Status]int `json:"counts"`
 	Scenes        []SceneResult  `json:"scenes"`
+	// Usage 是这一批全部渲染的用量合计。
+	Usage *tools.Usage `json:"usage,omitempty"`
+}
+
+// AttachUsage 把各镜头的用量填进报告并算出合计。由调用方收集（调度层不读输出流）。
+func (r *Report) AttachUsage(byScene map[string]tools.Usage) {
+	var total tools.Usage
+	for i := range r.Scenes {
+		usage, ok := byScene[r.Scenes[i].SceneID]
+		if !ok {
+			continue
+		}
+		u := usage
+		r.Scenes[i].Usage = &u
+		total.Add(usage)
+	}
+	if !total.Empty() || len(byScene) > 0 {
+		r.Usage = &total
+	}
 }
 
 func (r Report) ExitCode() int {
@@ -62,7 +85,17 @@ func (r Report) WriteJSON(path string) error {
 }
 
 func (r Report) Render() string {
-	return fmt.Sprintf("镜头汇总（%d 个）\n  成功 %d  跳过 %d  过期 %d  失败 %d\n\n耗时 %.1f 秒", len(r.Scenes), r.CountValues[Succeeded], r.CountValues[Skipped], r.CountValues[Stale], r.CountValues[Failed], r.Seconds)
+	text := fmt.Sprintf("镜头汇总（%d 个）\n  成功 %d  跳过 %d  过期 %d  失败 %d\n\n耗时 %.1f 秒", len(r.Scenes), r.CountValues[Succeeded], r.CountValues[Skipped], r.CountValues[Stale], r.CountValues[Failed], r.Seconds)
+	if r.Usage == nil {
+		return text
+	}
+	var lines []string
+	for _, scene := range r.Scenes {
+		if scene.Usage != nil {
+			lines = append(lines, fmt.Sprintf("  %s：%s", scene.SceneID, tools.FormatUsage(*scene.Usage)))
+		}
+	}
+	return text + "\n用量合计：" + tools.FormatUsage(*r.Usage) + "\n" + strings.Join(lines, "\n")
 }
 
 // SceneDirs 列出 root 下所有含 scene.json 的子目录，按目录名升序返回——

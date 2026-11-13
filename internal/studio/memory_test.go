@@ -112,3 +112,27 @@ func TestChatTurnsAndRevertsBecomeConversationEpisodes(t *testing.T) {
 		t.Fatalf("应当记下说的话与回退：%+v", episodes)
 	}
 }
+
+// TestScenesReportRenderUsageAndKeepAttemptRecordsOnRevert：镜头列表带全部尝试的
+// 用量合计；尝试记录只记 stat，回退一轮不会把已经花掉的 token 从账上抹掉。
+func TestScenesReportRenderUsageAndKeepAttemptRecordsOnRevert(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "scenes", "scene-001")
+	writeStudioFile(t, filepath.Join(dir, "scene.json"), `{"id":"scene-001","duration_seconds":1,"output":"out.mp4"}`)
+	writeStudioFile(t, filepath.Join(dir, "attempts", "attempt-01", "render-scene-001.attempt.json"),
+		`{"renderer":"claude","outcome":"failed","started_at":"1","usage":{"input_tokens":4,"cached_input_tokens":40,"output_tokens":1,"source":"claude result"}}`)
+	writeStudioFile(t, filepath.Join(dir, "render-scene-001.attempt.json"),
+		`{"renderer":"codex","outcome":"succeeded","started_at":"2","usage":{"input_tokens":100,"cached_input_tokens":60,"output_tokens":5,"source":"codex turn.completed","basis":"total-input"}}`)
+	_, ts := startStudio(t, Config{ProjectPath: root, ConfigPath: filepath.Join(t.TempDir(), "projects.json")})
+	status, body := studioRequest(t, http.MethodGet, ts.URL+"/api/scenes", "")
+	requireStudioStatus(t, status, http.StatusOK, body)
+	first := studioList(t, body["scenes"])[0].(map[string]any)
+	usage := first["usage"].(map[string]any)
+	// 老 claude 记录的输入要加回缓存：44 + 100。
+	if first["attempts"].(float64) != 2 || usage["input_tokens"].(float64) != 144 || usage["output_tokens"].(float64) != 6 {
+		t.Fatalf("用量合计不对：%#v", first)
+	}
+	if !renderRecord(filepath.Join(dir, "render-scene-001.attempt.json")) || renderRecord(filepath.Join(dir, "scene.json")) {
+		t.Error("只有尝试记录按 stat 处理")
+	}
+}

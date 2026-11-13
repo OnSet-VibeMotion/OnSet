@@ -163,6 +163,10 @@ SVG 转 PNG 必须走 `rsvg-convert`（`internal/styleimage`），**不能用 Im
 
 每次渲染写 `render-<id>.attempt.json`，重渲染前 `scene.ArchiveAttempt` 先把上一次的产物、日志与尝试记录挪进 `attempts/`。调度层的重试与单镜头重跑走同一个归档函数，不要各写一份编号逻辑。token 用量按各工具流式事件尽力读取（`tools.AccumulateUsage`），读不到就留空，不做估算。
 
+用量口径统一（`tools.Usage`）：输入含缓存命中与写入，缓存是输入里命中的部分，输出含推理。codex 原样就是这个口径，claude 系与 opencode 要把缓存加回输入——不统一的话 claude 显示「输入 4、缓存 40437」，跨工具既不能比也不能相加。新记录带 `basis: total-input`，没有它的老记录读时经 `Usage.Normalized` 换算；新增一家工具时要按这个口径填，并在 `TestUsageIsComparableAcrossTools` 里加一行真实流。汇总一律用 `Usage.Add`：有一次没读到用量就标 `partial`，数字只是下限。
+
+用量账以尝试记录为准：`scene.AttemptHistory` 读当前记录加 `attempts/` 归档，失败与重试照样计入（`am scene usage`、Studio 镜头列表）。Studio 把 `render-*.attempt.json` 当媒体只记 stat，回退一轮不会删掉它——那是已经花掉的钱。
+
 ## 渲染记忆
 
 `internal/memory` 实现 `docs/superpowers/specs/2026-11-02-渲染记忆-design.md`：经历 → 整理成试用经验 → 回放考试 → 生效并按镜头召回。记忆库在用户级目录（`config.MemorySettings.Dir`），不在项目里。

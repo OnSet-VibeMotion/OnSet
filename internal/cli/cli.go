@@ -612,6 +612,26 @@ AI CLI 调用。这类失败要先改提示词或时长声明再重跑。
 					return err
 				}
 			}
+			// 每个镜头这一批里全部尝试（含重试）的用量，渲染结束后填进报告。
+			var usageMu sync.Mutex
+			usage := map[string]tools.Usage{}
+			for i := range scenes {
+				id, next := scenes[i].ID, scenes[i].AfterAttempt
+				scenes[i].AfterAttempt = func(attempt scene.Attempt) {
+					usageMu.Lock()
+					total := usage[id]
+					if attempt.Usage != nil {
+						total.Add(*attempt.Usage)
+					} else {
+						total.Add(tools.Usage{})
+					}
+					usage[id] = total
+					usageMu.Unlock()
+					if next != nil {
+						next(attempt)
+					}
+				}
+			}
 			initial := make(map[string]error)
 			if !force {
 				env := currentEnvironment()
@@ -646,6 +666,7 @@ AI CLI 调用。这类失败要先改提示词或时长声明再重跑。
 				}
 				return err
 			})
+			report.AttachUsage(usage)
 			fmt.Fprintln(stdout, report.Render())
 			if reportPath != "" {
 				if err := report.WriteJSON(reportPath); err != nil {
@@ -671,6 +692,7 @@ AI CLI 调用。这类失败要先改提示词或时长声明再重跑。
 	sceneCmd.AddCommand(newSceneFramesCommand(stdout))
 	sceneCmd.AddCommand(newSceneCuesCommand(stdout))
 	sceneCmd.AddCommand(newSceneLintCommand(stdout))
+	sceneCmd.AddCommand(newSceneUsageCommand(stdout))
 	root.AddCommand(sceneCmd)
 
 	var workdir string

@@ -47,8 +47,9 @@ type runAccumulator struct {
 
 func (a *runAccumulator) add(e Episode, failed map[string]bool) {
 	if e.Usage != nil {
-		a.stats.InputTokens += e.Usage.InputTokens
-		a.stats.OutputTokens += e.Usage.OutputTokens
+		usage := e.Usage.Normalized()
+		a.stats.InputTokens += usage.InputTokens
+		a.stats.OutputTokens += usage.OutputTokens
 	}
 	a.stats.Seconds += e.Seconds
 	if !e.FirstTry() {
