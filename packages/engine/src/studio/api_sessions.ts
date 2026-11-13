@@ -21,6 +21,7 @@ import {
   cancelSession,
   containedPath,
   createSession,
+  emit,
   enqueueTurn,
   eventsAfter,
   getSession,
@@ -36,6 +37,7 @@ import {
   type Session,
 } from './sessions';
 import type { Server } from './studio';
+import { answerPermission } from './permissions';
 import { runStudioCLI, runWriteTask, writeTaskError } from './tasks';
 import { ConflictError, isContentState, loadTurn, readBlob, turnJSON, validID } from './turns';
 
@@ -209,6 +211,30 @@ export async function sessionAPI(s: Server, request: Request, rest: string): Pro
       else if (request.method === 'POST' && parts.length === 4 && parts[3] === 'steer') ok = steer(sess, parts[2]);
       else return methodNotAllowed('DELETE, POST');
       if (!ok) return writeError(409, 'not_queued', '这条消息已经发出，或这一轮已经结束');
+      return writeJSON(200, goMap({ ok: true }));
+    }
+    case 'permissions': {
+      // /api/sessions/{id}/permissions/{request_id}：POST {"decision":"allow"|"always"|"deny","message"}。
+      if (request.method !== 'POST') return methodNotAllowed('POST');
+      if (parts.length !== 3 || !/^[a-z0-9-]{1,64}$/.test(parts[2])) return writeError(404, 'not_found', '审批请求不存在');
+      let decision = '';
+      let message = '';
+      try {
+        const body = await decodeJSON(request);
+        decision = fieldString(body, 'decision');
+        message = fieldString(body, 'message');
+      } catch (err) {
+        if (err instanceof DecodeError) return writeError(400, 'invalid_json', '请求不是合法 JSON');
+        throw err;
+      }
+      if (decision !== 'allow' && decision !== 'always' && decision !== 'deny') return writeError(400, 'invalid_decision', 'decision 只能是 allow、always 或 deny');
+      let ok: boolean;
+      try {
+        ok = answerPermission(p.path, sess.permissions, parts[2], decision, message.trim(), (turn, event) => emit(sess, turn, event));
+      } catch (err) {
+        return writeError(400, 'invalid_decision', (err as Error).message);
+      }
+      if (!ok) return writeError(409, 'not_pending', '这条请求已经答过，或这一轮已经结束');
       return writeJSON(200, goMap({ ok: true }));
     }
     case 'cancel': {

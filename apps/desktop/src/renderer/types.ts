@@ -129,7 +129,9 @@ export type EventKind =
   | 'turn-reverted'
   | 'queued'
   | 'unqueued'
-  | 'plan';
+  | 'plan'
+  | 'permission'
+  | 'permission-resolved';
 
 /** 编排工具的待办清单一项。 */
 export interface PlanItem {
@@ -156,6 +158,20 @@ export interface SessionEvent {
   queue_id?: string;
   /** view 事件：编排工具请网页切到的页面。 */
   view?: ViewRequest;
+  /** permission 事件：编排工具在等用户批准的调用；permission-resolved 带结果。 */
+  permission?: PermissionAsk;
+}
+
+/** 编排工具请用户批准的一次调用（后端 studio/permissions.ts 的 PermissionEventData）。 */
+export interface PermissionAsk {
+  id: string;
+  tool_name?: string;
+  command?: string;
+  description?: string;
+  /** 「以后都允许」会记下的命令前缀；没有时只能允许这一次。 */
+  suggestion?: string;
+  input?: unknown;
+  decision?: 'allow' | 'always' | 'deny' | 'expired';
 }
 
 export interface Turn {

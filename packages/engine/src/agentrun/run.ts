@@ -2,7 +2,7 @@
 import crypto from 'node:crypto';
 import { MissingToolError, lookPath as envLookPath } from '../envutil';
 import { DefaultGrace, ExitError as ProcessExitError, abortReason, start } from '../procgroup';
-import { detectModel, newUsage, orchestratorInvocation, presetSessionID, usageEmpty, type OrchestratorAccess, type Usage } from '../tools';
+import { detectModel, newUsage, orchestratorInvocation, presetSessionID, usageEmpty, type OrchestratorAccess, type PermissionPrompt, type Usage } from '../tools';
 import { KindDone, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, KindUsage, newParser, type Event } from './parse';
 
 /** 一次编排调用。 */
@@ -15,6 +15,8 @@ export interface Spec {
   sessionID?: string;
   resume?: boolean;
   access?: OrchestratorAccess;
+  /** 见 tools.OrchestratorOptions.permissionPrompt。 */
+  permissionPrompt?: PermissionPrompt;
   /**
    * 子进程的完整环境，由调用方按安全模式白名单算好。Go 里是 KEY=VALUE 列表，
    * 这里是 map；不给时继承当前进程环境（与 Go 的 nil Env 相同）。
@@ -160,6 +162,7 @@ export async function run(spec: Spec, emit: (event: Event) => void, signal?: Abo
       sessionID: spec.sessionID,
       resume: spec.resume,
       access: spec.access,
+      permissionPrompt: spec.permissionPrompt,
     }));
   } catch (err) {
     return { result: emptyResult(), error: asError(err) };

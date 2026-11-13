@@ -3,6 +3,7 @@
  *
  * 浏览器版 Studio 已经去掉，客户端是唯一的界面；这里只留编排工具在客户端对话里调用的 show。
  */
+import readline from 'node:readline';
 import * as studioview from '@am/engine/studioview';
 import { currentEnvironment, rangeArgs } from './cli';
 import { Command, type Out, ref } from './cobra';
@@ -16,6 +17,7 @@ export function newStudioCommand(stdout: Out): Command {
 这里只有编排工具在客户端对话里使用的 show：把用户的界面切到要看的那一页。`,
   });
   cmd.addCommand(newStudioShowCommand(stdout));
+  cmd.addCommand(newPermissionMCPCommand());
   return cmd;
 }
 
@@ -61,4 +63,28 @@ function newStudioShowCommand(stdout: Out): Command {
   });
   cmd.flags().stringVar(note, 'note', '', '显示在对话里的一句说明');
   return cmd;
+}
+
+/**
+ * 客户端给 claude 挂的权限审批服务（--permission-prompt-tool），claude 自己启动它，人不直接用。
+ * 读写的是进程的 stdin / stdout（MCP 的 stdio 传输），所以不走 Out。
+ */
+function newPermissionMCPCommand(): Command {
+  return new Command({
+    use: 'permission-mcp',
+    hidden: true,
+    short: '客户端内部用：编排工具的权限审批服务（MCP，stdio）',
+    long: `客户端给 claude 编排工具挂的权限审批服务，由 claude 按 --mcp-config 自己启动，人不直接运行。
+
+claude 遇到白名单外的工具调用时调它的 ask 工具：请求写进这一轮收件目录（AM_STUDIO_INBOX）的
+permissions/ 子目录，客户端在输入框上方弹卡片问用户，答复写回后这里把结果交还 claude。
+不在客户端里（没有 AM_STUDIO_INBOX）时一律拒绝。stdin / stdout 是 MCP 的 JSON-RPC，每行一条。`,
+    example: `  # 客户端写给 claude 的 --mcp-config 里就是这一条，由 claude 启动：
+  am studio permission-mcp`,
+    runE: async (cmd) => {
+      const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+      const inbox = currentEnvironment()[studioview.ViewInboxEnv] ?? '';
+      await studioview.servePermissionMCP(rl, (line) => process.stdout.write(line), inbox, cmd.context());
+    },
+  });
 }

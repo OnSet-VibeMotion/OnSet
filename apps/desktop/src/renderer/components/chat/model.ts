@@ -1,4 +1,4 @@
-import type { PlanItem, SessionEvent, Usage, ViewRequest } from '../../types';
+import type { PermissionAsk, PlanItem, SessionEvent, Usage, ViewRequest } from '../../types';
 
 /** 一轮里「过程」的一项：思考、工具调用、中间的话、报错与提示。 */
 export type ProcessItem =
@@ -58,6 +58,8 @@ export function buildBlocks(events: SessionEvent[]): Block[] {
       case 'queued':
       case 'unqueued':
       case 'turn-reverted':
+      case 'permission':
+      case 'permission-resolved':
         continue;
       case 'user':
         blocks.push({ kind: 'user', event });
@@ -157,6 +159,23 @@ function timeOf(item: ProcessItem): string | undefined {
       return item.call.time;
   }
   return undefined;
+}
+
+/**
+ * 编排工具还在等用户批准的调用：发过 permission、还没有对应的 permission-resolved。
+ * 这一轮结束时后端会把没答的都答成 expired，所以重开客户端、读回历史事件时不会留下过期的卡片。
+ */
+export function pendingPermissions(events: SessionEvent[]): PermissionAsk[] {
+  const open = new Map<string, PermissionAsk & { turn?: string }>();
+  for (const event of events) {
+    if (event.kind === 'permission' && event.permission) open.set(event.permission.id, { ...event.permission, turn: event.turn_id });
+    else if (event.kind === 'permission-resolved' && event.permission) open.delete(event.permission.id);
+    else if (event.kind === 'turn-end') {
+      // 一轮结束了，它的请求不会再有人等（客户端中途退出时没来得及发 resolved）。
+      for (const [id, item] of open) if (item.turn === event.turn_id) open.delete(id);
+    }
+  }
+  return [...open.values()];
 }
 
 /** 还在排队的消息：发过 queued、没被移除、之后也还没出现用户消息（出现即已合并发出）。 */

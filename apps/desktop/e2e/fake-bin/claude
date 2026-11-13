@@ -36,6 +36,19 @@ case "$prompt" in *排版测试*)
   printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
   exit 0 ;;
 esac
+# 「要批准」：经客户端挂的审批服务（--mcp-config 里的 am studio permission-mcp）请用户批准一条命令，
+# 把结果写进回复。没有 --mcp-config（安全模式外或不在客户端里）时如实说明。
+case "$prompt" in *要批准*)
+  mcp=""; prev=""
+  for a in "$@"; do
+    if [ "$prev" = "--mcp-config" ]; then mcp="$a"; fi
+    prev="$a"
+  done
+  if [ -z "$mcp" ]; then answer="没有审批服务"; else answer=$(node "$(dirname "$0")/../fake-permission.mjs" "$mcp" | tr -d '"{}\\'); fi
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"审批结果：%s"}]}}\n' "$answer"
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
+  exit 0 ;;
+esac
 # 「稍等」：先停 3 秒再照常改，供排队测试使用。
 case "$prompt" in *稍等*) sleep 3 ;; esac
 printf 'after\n' > scenes/scene-001/prompt.md

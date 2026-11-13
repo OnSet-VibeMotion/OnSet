@@ -107,6 +107,11 @@ export function hostAligner(value: string): string {
  * ORCHESTRATOR_ALLOW_COMMANDS。
  * claude 的 acceptEdits 自己会放行工作区内的 touch、mkdir、rm、mv、cp 这类文件命令；
  * .env 的读取由 Read 禁令拦着，cat .env 照样会被拒（实测）。
+ *
+ * 2026-11 再放宽一轮（用户反馈「安全方向的限制还可以放宽」）：文本处理（sed、awk、tr……）、
+ * 压缩解压、macOS 自带的看图与放音命令，都是编排工具整理素材时顺手要用、又碰不到项目外的。
+ * 仍然不放 xargs、env、sh 这类「能代为执行任意命令」的。白名单外的命令，编排工具是 claude 且在
+ * 客户端里时会弹卡片问用户（studio/permissions.ts），其余工具照旧直接拒绝。
  */
 export const orchestratorBaseCommands: readonly string[] = [
   'am', 'ffmpeg', 'ffprobe',
@@ -125,6 +130,14 @@ export const orchestratorBaseCommands: readonly string[] = [
   'curl',
   // 跑小脚本处理数据（解析对齐结果、批量改 JSON、算时长……），编排工具经常要用
   'python3', 'python', 'node',
+  // 文本处理
+  'sed', 'awk', 'tr', 'tee', 'column', 'paste', 'nl', 'fold', 'iconv', 'base64', 'xxd', 'od', 'comm', 'join', 'rev',
+  // 压缩解压（下载的字体包、素材包）
+  'tar', 'unzip', 'zip', 'gzip', 'gunzip',
+  // 链接、等待与条件判断
+  'ln', 'sleep', 'test', 'true', 'false',
+  // macOS 自带的看图、读元数据、放音（检查封面尺寸、试听配音）
+  'sips', 'mdls', 'afplay', 'open',
 ];
 
 /** strings.Fields：按 unicode.IsSpace 认的空白切开，丢掉空段。 */

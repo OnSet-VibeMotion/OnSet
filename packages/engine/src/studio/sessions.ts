@@ -15,13 +15,14 @@ import { formatFixed, goClean, goTrimSpace } from '../gofmt';
 import { marshal, marshalIndent } from '../gojson';
 import * as ledger from '../ledger';
 import * as project from '../project';
-import { KindView, ViewInboxEnv, ViewPollInterval, ViewProjectEnv, describeView, drainViewInbox, viewInbox, viewInteraction, type ViewRequest, type ViewState } from '../studioview';
+import { KindView, PermissionServerName, ViewInboxEnv, ViewPollInterval, ViewProjectEnv, describeView, drainViewInbox, viewInbox, viewInteraction, type ViewRequest, type ViewState } from '../studioview';
 import * as tools from '../tools';
 import { compareTimes, nowTime } from './http';
 import type { Project, Server } from './studio';
 import { changedPaths, diffTrees, loadTurn, revertTurn, saveTurn, scanTree, statTree, studioRoot, validID, type FileChange, type Turn } from './turns';
 import { preferenceBrief, recordUtterance } from './memory';
 import { uploadDir, uploadKind } from './uploads';
+import { allowedCommands, expirePermissions, permissionEventJSON, pollPermissions, type PendingPermission, type PermissionEventData } from './permissions';
 
 // Studio 在 agentrun 事件之外自己发的几种事件。
 export const kindUser = 'user';
@@ -87,6 +88,8 @@ export interface SessionEvent extends agentrun.Event {
   queue_id?: string;
   /** 编排工具经 am studio show 请网页切到的页面（view 事件）。 */
   view?: ViewRequest;
+  /** 等用户批准的调用（permission 事件）与它的结果（permission-resolved 事件）。 */
+  permission?: PermissionEventData;
 }
 
 export function sessionEventJSON(e: SessionEvent): Record<string, unknown> {
@@ -100,6 +103,7 @@ export function sessionEventJSON(e: SessionEvent): Record<string, unknown> {
     changes: e.changes && e.changes.length > 0 ? e.changes.map((c) => ({ path: c.path, change: c.change, revertable: c.revertable })) : undefined,
     queue_id: e.queue_id || undefined,
     view: e.view ? { page: e.view.page, target: e.view.target || undefined, note: e.view.note || undefined } : undefined,
+    permission: e.permission ? permissionEventJSON(e.permission) : undefined,
   };
 }
 
@@ -168,6 +172,8 @@ export interface Session {
    * Studio 重启时进行中的轮次本来就会被标成 interrupted，排队的消息随之作废。
    */
   queue: TurnRequest[];
+  /** 编排工具在等用户批准的调用，按请求编号。只在内存里，理由同 queue。 */
+  permissions: Map<string, PendingPermission>;
 }
 
 /** BusyError 表示项目正被另一轮对话或一个写任务占用。 */
@@ -276,7 +282,7 @@ export function loadSessions(s: Server, projectPath: string): void {
     }
     const meta = decodeMeta(body);
     if (!meta || !validID(meta.session_id)) continue;
-    const sess: Session = { project: projectPath, meta, events: [], waiters: new Set(), cancel: null, queue: [] };
+    const sess: Session = { project: projectPath, meta, events: [], waiters: new Set(), cancel: null, queue: [], permissions: new Map() };
     sess.events = readEvents(path.join(sessionsDir(projectPath), meta.session_id + '.events.jsonl'));
     if (meta.running_turn) {
       try {
@@ -351,6 +357,7 @@ export function createSession(s: Server, projectPath: string, kind: string, titl
     waiters: new Set(),
     cancel: null,
     queue: [],
+    permissions: new Map(),
   };
   writeMeta(sess);
   s.sessions.set(sessionKey(projectPath, sess.meta.session_id), sess);
@@ -625,7 +632,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
     const inbox = viewInbox(studioRoot(p.path), turn.turn_id);
     env[ViewInboxEnv] = inbox;
     env[ViewProjectEnv] = p.path;
-    stopViews = watchViews(sess, turn.turn_id, inbox);
+    stopViews = watchViews(sess, turn.turn_id, inbox, p.path);
     let lastStat = statTree(p.path);
     let lastCheck = Date.now();
     const checkFiles = (force: boolean): void => {
@@ -646,12 +653,16 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
     const earlierTurns = (sess.meta.turns ?? []).length > 1;
     // 末尾两条是本轮刚发的 user 与 turn-start，不算进历史。
     const history = transcript(sess.events.slice(0, Math.max(sess.events.length - 2, 0)));
+    // 「以后都允许」的前缀并进白名单；claude 遇到白名单外的调用时经 am studio permission-mcp 问界面上的用户。
+    const access = config.orchestratorAccess(cfg);
+    access.commands = [...(access.commands ?? []), ...allowedCommands(p.path)];
     const spec: agentrun.Spec = {
       tool: cfg.orchestrator,
       workdir: p.path,
       prompt,
       unsafe: s.config.unsafe,
-      access: config.orchestratorAccess(cfg),
+      access,
+      permissionPrompt: { command: s.executable(), args: ['studio', 'permission-mcp'], server: PermissionServerName },
       env,
       lookPath: (name) => lookPath(name, env.PATH ?? ''),
     };
@@ -687,9 +698,12 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
  * watchViews 在这一轮进行中轮询收件目录，把 am studio show 的请求译成 view 事件。
  * 返回的函数停止轮询、把剩下的请求处理完并删掉收件目录；可以调用多次。
  */
-function watchViews(sess: Session, turnID: string, inbox: string): () => void {
+function watchViews(sess: Session, turnID: string, inbox: string, projectPath: string): () => void {
+  const seen = new Set<string>();
+  const emitPermission = (turn: string, event: NewEvent): void => emit(sess, turn, event);
   const deliver = (): void => {
     for (const req of drainViewInbox(inbox)) emit(sess, turnID, { kind: KindView, text: req.note || undefined, view: req });
+    pollPermissions(projectPath, inbox, turnID, sess.permissions, seen, emitPermission);
   };
   const timer = setInterval(deliver, ViewPollInterval);
   let stopped = false;
@@ -698,6 +712,7 @@ function watchViews(sess: Session, turnID: string, inbox: string): () => void {
     stopped = true;
     clearInterval(timer);
     deliver();
+    expirePermissions(sess.permissions, turnID, emitPermission);
     fs.rmSync(inbox, { recursive: true, force: true });
   };
 }

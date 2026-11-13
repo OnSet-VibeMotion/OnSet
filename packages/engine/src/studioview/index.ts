@@ -221,3 +221,4 @@ export function viewInteraction(): string {
     '- 用户的消息后面可能附一句「用户发这条消息时，Studio 网页上开着……」，说的是用户正在看的页面；用户说「这个镜头」「这段」时指的就是那里。'
   );
 }
+export * from './permissions';

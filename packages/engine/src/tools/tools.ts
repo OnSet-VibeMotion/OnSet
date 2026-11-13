@@ -109,6 +109,20 @@ export interface OrchestratorOptions {
   sessionID?: string;
   resume?: boolean;
   access?: OrchestratorAccess;
+  /**
+   * 安全模式下需要批准的调用交给谁问。给了就让 claude 把审批交给这个 MCP 服务（客户端里是
+   * am studio permission-mcp，问界面上的用户）；不给（am run）时照旧，白名单外的一律拒绝。
+   * 只有 claude 支持，其他工具忽略它。
+   */
+  permissionPrompt?: PermissionPrompt;
+}
+
+/** 审批服务的启动命令（MCP stdio）与工具名。 */
+export interface PermissionPrompt {
+  command: string;
+  args: string[];
+  /** MCP 配置里的服务名；工具名是 mcp__<server>__ask。 */
+  server: string;
 }
 
 /**
@@ -175,6 +189,11 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions): In
       if (o.unsafe && tool === 'claude') args.push('--dangerously-skip-permissions');
       else if (o.unsafe) args.push('-y');
       else args.push('--permission-mode', 'acceptEdits', '--settings', claudeSettings({ commands: access.commands }));
+      if (!o.unsafe && tool === 'claude' && o.permissionPrompt) {
+        // --mcp-config 吃多个值，后面紧跟一个选项才不会把提示词也吞进去。
+        const mcp = { mcpServers: { [o.permissionPrompt.server]: { command: o.permissionPrompt.command, args: o.permissionPrompt.args } } };
+        args.push('--mcp-config', JSON.stringify(mcp), '--permission-prompts', 'host', '--permission-prompt-tool', 'mcp__' + o.permissionPrompt.server + '__ask');
+      }
       args.push(...claudeSession());
       args.push(o.prompt);
       return { argv: args, stdin: '' };

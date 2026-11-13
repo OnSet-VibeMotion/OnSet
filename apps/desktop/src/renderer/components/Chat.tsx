@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, errorText, post, rawURL } from '../api';
-import type { AgentChoice, AgentsResponse, Attachment, EventKind, PlanItem, Scene, SessionEvent, SessionMeta, ViewRequest, ViewState } from '../types';
+import type { AgentChoice, AgentsResponse, Attachment, EventKind, PermissionAsk, PlanItem, Scene, SessionEvent, SessionMeta, ViewRequest, ViewState } from '../types';
 import { tabs } from './Preview';
 import { Poster, styleKey, useFilmStyles } from './FilmStyles';
 import type { FilmStyle, TreeFile } from '../types';
@@ -18,6 +18,7 @@ import {
   findMedia,
   type MediaRef,
   type StylePick,
+  pendingPermissions,
   queuedMessages,
   seconds,
   splitAttachmentText,
@@ -50,6 +51,8 @@ const kinds: EventKind[] = [
   'queued',
   'unqueued',
   'plan',
+  'permission',
+  'permission-resolved',
 ];
 
 /** 镜头页的快捷动作发来的消息：nonce 变了就发一次。 */
@@ -120,6 +123,7 @@ export function Chat(props: Props) {
   const mtimes = useMemo(() => new Map(props.tree.map((f) => [f.path, f.mtime])), [props.tree]);
   const styleIndex = useMemo(() => new Map((filmStyles.data?.styles ?? []).map((style) => [styleKey(style), style])), [filmStyles.data]);
   const queue = useMemo(() => queuedMessages(events), [events]);
+  const asks = useMemo(() => pendingPermissions(events), [events]);
   const lastTurn = [...blocks].reverse().find((b): b is TurnBlock => b.kind === 'turn');
   const running = !!lastTurn && !lastTurn.end;
   const plan = running ? lastTurn?.plan ?? null : null;
@@ -334,6 +338,15 @@ export function Chat(props: Props) {
     }
   };
 
+  const answer = async (ask: PermissionAsk, decision: 'allow' | 'always' | 'deny') => {
+    setError('');
+    try {
+      await post(`/api/sessions/${props.sessionId}/permissions/${ask.id}`, { decision });
+    } catch (err) {
+      setError(errorText(err));
+    }
+  };
+
   const queueAction = async (item: QueuedMessage, action: 'steer' | 'remove' | 'edit') => {
     setError('');
     try {
@@ -458,6 +471,7 @@ export function Chat(props: Props) {
         </div>
       </div>
 
+      {asks.length > 0 && <PermissionStack asks={asks} onAnswer={answer} />}
       {queue.length > 0 && <QueuedStack queue={queue} onAction={queueAction} />}
 
       <footer className="composer">
@@ -1190,6 +1204,43 @@ function PlanPill({ plan, scenes }: { plan: PlanItem[]; scenes: Scene[] }) {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * 编排工具在等你批准的调用。claude 在客户端里遇到白名单外的命令时会停在这里，直到你回答；
+ * 「以后都允许」把命令前缀记进这个项目，之后同样的命令不再问。
+ */
+function PermissionStack({ asks, onAnswer }: { asks: PermissionAsk[]; onAnswer: (ask: PermissionAsk, decision: 'allow' | 'always' | 'deny') => void }) {
+  return (
+    <section className="permission-stack" aria-label={`等你批准的操作 ${asks.length} 条`}>
+      {asks.map((ask) => (
+        <div key={ask.id} className="permission-card" data-permission={ask.id}>
+          <div className="permission-head">
+            <span className="permission-badge">要你批准</span>
+            <span className="permission-what">{ask.description || (ask.command ? '运行一条命令' : `使用 ${ask.tool_name ?? '工具'}`)}</span>
+          </div>
+          {ask.command ? (
+            <code className="permission-command">{ask.command}</code>
+          ) : (
+            <code className="permission-command">{JSON.stringify(ask.input ?? {}).slice(0, 400)}</code>
+          )}
+          <div className="permission-actions">
+            <button className="primary" onClick={() => onAnswer(ask, 'allow')}>
+              允许
+            </button>
+            {ask.suggestion && (
+              <button onClick={() => onAnswer(ask, 'always')} title="记进这个项目，以后不再问">
+                以后都允许 <code>{ask.suggestion}</code>
+              </button>
+            )}
+            <button className="ghost" onClick={() => onAnswer(ask, 'deny')}>
+              拒绝
+            </button>
+          </div>
+        </div>
+      ))}
+    </section>
   );
 }
 

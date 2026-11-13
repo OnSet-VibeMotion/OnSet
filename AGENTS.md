@@ -379,6 +379,8 @@ AM_TEST_BEAT_PYTHON=/path/to/venv/bin/python npx vitest run --root packages/engi
 
 安全模式的权限模式必须实测能跑通渲染命令。claude 的 `acceptEdits` 只自动批准文件编辑、拦下所有 Bash，而 `-p` 下没人批准，渲染器会执行不了 `am hyperframes render`；`scene.rendererAccess` 列出要放行的最小命令集（`am hyperframes`、`ls`、`ffprobe`）与技能目录读取，`.env` 始终禁读。
 
+客户端里的 claude 编排工具遇到白名单外的调用时不直接拒绝，而是问界面上的用户：`orchestratorInvocation` 给它加 `--mcp-config`（`am studio permission-mcp`，`OrchestratorOptions.permissionPrompt`）与 `--permission-prompts host --permission-prompt-tool mcp__am_studio__ask`；审批服务把请求写进这一轮收件目录的 `permissions/` 子目录（`studioview/permissions.ts`），后端轮询到就发 `permission` 事件、界面在输入框上方弹卡片，答复经 `POST /api/sessions/{id}/permissions/{请求}` 写回（`studio/permissions.ts`），这一轮结束时没答的一律答成 `expired`。「以后都允许」把命令前缀记进项目的 `production/studio/permissions.json`，下一轮并进白名单。只有 claude 有这个口子（codebuddy、qoder 没有 `--permission-prompt-tool`，codex exec 不能中途审批）；`--mcp-config` 吃多个值，后面必须紧跟一个选项，不然会把提示词吞掉。改了这条链要用真实 claude 跑一遍：fake claude（e2e 的「要批准」）只模拟协议。
+
 编排工具同理，`orchestratorAccess`（`config/providers.ts`）列出它要放行的命令：基础命令（`orchestratorBaseCommands`）加当前 TTS 与对齐工具各自的那一个命令（`TTSProviders` / `Aligners` 的 `command` 字段）。各家的权限模式实测结果不同，改之前先读 `orchestratorInvocation` 的注释：qoder 的 `dont_ask` 连写文件都拒；codex 没有命令白名单，靠沙箱，而沙箱默认断网会让 TTS 失败；opencode 2.x 只读项目目录里的 `opencode.json`，规则集拦不住命令，写成全拒时无头运行会直接挂起，所以安全模式下不加限制，README 里写明了。
 
 改了任何一家的调用参数或解析器，都要在本机跑一遍真实 CLI 集成测试（`packages/engine/src/agentrun/integration.test.ts`）：

@@ -183,4 +183,20 @@ describe('tools', () => {
   it('claude renderer unsafe mode skips settings', () => {
     expect(rendererInvocation('claude', 'prompt', true, { commands: ['ls'] })).not.toContain('--settings');
   });
+
+  // 客户端里 claude 遇到白名单外的调用时交给 am studio permission-mcp 去问用户；--mcp-config 后面紧跟选项，
+  // 不会把提示词当成第二份配置吞进去。不安全模式、其他工具、没给审批服务时都不加。
+  it('routes claude permission prompts to the studio approver', () => {
+    const permissionPrompt = { command: '/app/am', args: ['studio', 'permission-mcp'], server: 'am_studio' };
+    const { argv } = orchestratorInvocation('claude', { prompt: 'hello', workdir: '/p', permissionPrompt });
+    const at = argv.indexOf('--mcp-config');
+    expect(at).toBeGreaterThan(0);
+    expect(JSON.parse(argv[at + 1])).toEqual({ mcpServers: { am_studio: { command: '/app/am', args: ['studio', 'permission-mcp'] } } });
+    expect(argv[at + 2]).toBe('--permission-prompts');
+    expect(argv.slice(at + 2, at + 6)).toEqual(['--permission-prompts', 'host', '--permission-prompt-tool', 'mcp__am_studio__ask']);
+    expect(argv[argv.length - 1]).toBe('hello');
+    expect(orchestratorInvocation('claude', { prompt: 'hello', unsafe: true, permissionPrompt }).argv).not.toContain('--mcp-config');
+    expect(orchestratorInvocation('codebuddy', { prompt: 'hello', permissionPrompt }).argv).not.toContain('--mcp-config');
+    expect(orchestratorInvocation('claude', { prompt: 'hello' }).argv).not.toContain('--permission-prompts');
+  });
 });
