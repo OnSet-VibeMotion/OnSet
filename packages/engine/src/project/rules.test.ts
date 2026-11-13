@@ -46,9 +46,8 @@ describe('writeRules', () => {
     expect(fs.readFileSync(path.join(root, 'CLAUDE.md'), 'utf8')).toBe('我自己写的规则\n');
   });
 
-  // 老版本 am init 出来的项目没有这份模板。缺规则不该阻断整条制作流程。
-  it('skips when template missing', () => {
-    expect(writeRules(tempDir(), 'AGENTS.md')).toBe('');
+  it('fails when template missing', () => {
+    expect(() => writeRules(tempDir(), 'AGENTS.md')).toThrow(RulesTemplate);
   });
 
   it('rejects symlinked target', () => {

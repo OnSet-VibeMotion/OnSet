@@ -214,6 +214,7 @@ export function newSessionFixture(): SessionFixture {
   writeTree(root, {
     'article-to-motion.conf': 'ORCHESTRATOR=claude\nRENDERER=claude\n',
     'PROMPT.md': '整片制作提示词',
+    'templates/project-rules.md': '# 项目规则\n',
     'scenes/scene-001/scene.json': '{"id":"scene-001","duration_seconds":1,"output":"out.mp4"}',
     'scenes/scene-001/prompt.md': 'original',
     'scenes/scene-001/index.html': '<html>composition</html>',

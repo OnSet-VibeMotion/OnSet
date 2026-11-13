@@ -17,9 +17,6 @@ export const RulesTemplate = 'templates/project-rules.md';
  * 各家 AI CLI 都从工作目录向上递归读取这类文件，但文件名互不相同，且写错时
  * 不报错只静默失效，所以文件名由 tools.projectRulesFilename 解析后传进来。
  *
- * 模板缺失时返回空路径且不报错：老版本 am init 出来的项目没有这份模板，
- * 缺规则不该阻断整条制作流程，由调用方降级告警。
- *
  * 目标已存在且内容不同时报错而不是覆盖：那多半是用户自己写的指令文件，
  * 静默覆盖会连人带规则一起丢。这与 initialize 拒绝覆盖异内容文件的行为一致。
  */
@@ -31,7 +28,6 @@ export function writeRules(root: string, filename: string): string {
     body = fs.readFileSync(source);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT') return '';
     throw new Error(`读取 ${RulesTemplate}: ${goPathError(code === 'EISDIR' ? 'read' : 'open', source, err)}`, { cause: err });
   }
 

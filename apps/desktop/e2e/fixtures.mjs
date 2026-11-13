@@ -44,6 +44,8 @@ export const test = base.extend({
     fs.mkdirSync(scene, { recursive: true });
     fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\n');
     fs.writeFileSync(path.join(project, 'PROMPT.md'), '整片制作提示词\n');
+    fs.mkdirSync(path.join(project, 'templates'));
+    fs.writeFileSync(path.join(project, 'templates', 'project-rules.md'), '# 项目规则\n');
     fs.writeFileSync(path.join(scene, 'voice.srt'), '1\n00:00:00,000 --> 00:00:01,000\nhello\n');
     fs.writeFileSync(path.join(scene, 'prompt.md'), 'before\n');
     fs.writeFileSync(
