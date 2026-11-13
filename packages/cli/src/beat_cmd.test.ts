@@ -1,4 +1,3 @@
-// 移植自 internal/cli/beat_test.go。
 import { Buffer as NodeBuffer } from 'node:buffer';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';

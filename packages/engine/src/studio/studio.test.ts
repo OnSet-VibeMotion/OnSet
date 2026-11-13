@@ -1,4 +1,3 @@
-// 移植自 internal/studio/studio_test.go 与 api_test.go。
 //
 // 不移植：
 // - TestListenAndServeStopsWithContext：TS 版后端不监听端口，Electron 主进程经 am://app/ 协议直接调 handle。
@@ -23,7 +22,7 @@ function scene(id: string, exists = false): SceneSummary {
 describe('studio', () => {
   it('project and state API', async () => {
     const root = tempDir();
-    fs.writeFileSync(path.join(root, 'frame.md'), '---\ncanvas: vertical-9x16\nstyle_id: editorial\n---\n');
+    fs.writeFileSync(path.join(root, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1920, fps: 30, orientation: vertical}\n---\n');
     writeStudioFile(path.join(root, 'scenes', 'scene-001', 'scene.json'), '{"id":"scene-001","duration_seconds":2,"output":"out.mp4"}');
     const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
     let { status, body } = await studioRequest(s, 'GET', '/api/health');
@@ -32,7 +31,6 @@ describe('studio', () => {
     ({ body } = await studioRequest(s, 'GET', '/api/state'));
     expect(body.stage).toBe('render');
     expect(body.metadata.canvas_id).toBe('vertical-9x16');
-    expect(body.metadata.style_id).toBe('editorial');
   });
 
   it('tasks persist in project', () => {
@@ -93,8 +91,6 @@ describe('studio', () => {
       '---\nschema_version: 1\nstyle_id: custom-cine-layered\nstyle_name: 分层电影\ncanvas:\n  width_px: 1920\n  height_px: 1080\n  fps: 30\n  orientation: landscape\ncolors:\n  canvas: "#05060A"\n---\n正文 canvas: nope\n',
     );
     expect(projectMetadata(root)).toEqual({
-      style_id: 'custom-cine-layered',
-      style_name: '分层电影',
       canvas: '1920×1080',
       fps: '30',
       orientation: 'landscape',
@@ -109,8 +105,8 @@ describe('studio', () => {
       writeStudioFile(frame, broken);
       expect(projectMetadata(root), broken).toEqual({});
     }
-    writeStudioFile(frame, '---\r\nstyle_id: crlf\r\n---\r\n');
-    expect(projectMetadata(root).style_id).toBe('crlf');
+    writeStudioFile(frame, '---\r\ncanvas: {width_px: 1000, height_px: 1000, fps: 24}\r\n---\r\n');
+    expect(projectMetadata(root).canvas).toBe('1000×1000');
   });
 
   it('directory and project lifecycle', async () => {
@@ -218,8 +214,7 @@ describe('studio', () => {
     ({ status, body } = await studioRequest(s, 'GET', '/api/state'));
     expect(status).toBe(200);
     expect(body.stage).toBe('setup');
-    expect(body.metadata.style_id).toBe('custom-draft');
-    expect(body.metadata.style_name).not.toBe('');
+    expect(body.metadata.canvas).not.toBe('');
     ({ status, body } = await studioRequest(s, 'GET', '/api/script'));
     expect(status).toBe(200);
     expect(body.path).toBe('');
@@ -343,12 +338,10 @@ describe('studio', () => {
     ({ status, body } = await studioRequest(s, 'GET', '/api/state'));
     expect(status).toBe(200);
     expect(body.stage).toBe('render');
-    expect(body.metadata.style_id).toBe('editorial');
-    expect(body.metadata.style_name).toBe('编辑');
+    expect(body.metadata.style_id).toBeUndefined();
     expect(body.scenes.total).toBe(2);
     expect(body.scenes.completed).toBe(1);
-    expect(body.media).toEqual({ audio: false, final: false, publish: true });
-    expect(body.issues).toEqual([]);
+    expect(body.media).toBeUndefined();
 
     // 有了成片才进复查；只跑过 run-all、还有镜头没出片时仍在渲染阶段。
     writeStudioFile(path.join(root, 'production', 'run-report.json'), '{}');

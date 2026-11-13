@@ -1,4 +1,4 @@
-// 移植自仓库根的 assets_style_test.go 与 fontpool_test.go：资产树与预设表、字体表必须一致。
+// 资产树与预设表、字体表必须一致。
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import * as presetMod from '../preset';

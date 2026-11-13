@@ -1,4 +1,3 @@
-// 移植自 internal/filmstyle/lemo/select.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import { compareBytes } from '../../gojson';

@@ -1,5 +1,5 @@
 /**
- * 编排工具与渲染工具的选择。移植自 internal/studio/agents.go。
+ * 编排工具与渲染工具的选择。
  * agentChoice 的校验、sessionConfig 与 overrideAgents 在 sessions.ts（会话与任务都要用，放一处免得循环导入）。
  */
 import * as agentrun from '../agentrun';

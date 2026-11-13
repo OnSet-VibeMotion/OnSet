@@ -100,7 +100,6 @@ describe('field tiers', () => {
     const tier = (t: string) => ManifestFields.filter((f) => f.tier === t).map((f) => f.name).sort();
     expect(tier('stable')).toEqual(['after', 'description', 'id', 'manifest_version', 'name', 'nodes', 'ops', 'pages', 'permissions', 'produces', 'prompt', 'replaces', 'requires', 'settings', 'version']);
     expect(tier('experimental')).toEqual(['commands', 'film_styles', 'flow', 'hooks', 'inserts', 'provides', 'renderer_skills', 'schedules', 'slots']);
-    expect(tier('builtin')).toEqual(['am_ops', 'am_skills', 'am_stations', 'in_use']);
     for (const f of ManifestFields) expect(f.tier === 'experimental').toBe(f.used !== undefined);
   });
 
@@ -200,8 +199,8 @@ describe('authoring doc', () => {
     const doc = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'docs', 'plugin-authoring.md'), 'utf8');
     // 「顶层字段」表：每行 | `字段` | 分级 | …
     const section = doc.slice(doc.indexOf('## 顶层字段'), doc.indexOf('\n## ', doc.indexOf('## 顶层字段') + 1));
-    const rows = [...section.matchAll(/^\| `([a-z_]+)` \| (稳定|实验性|内置专用) \|/gm)].map((m) => [m[1], m[2]]);
-    const tierName = { stable: '稳定', experimental: '实验性', builtin: '内置专用' } as const;
+    const rows = [...section.matchAll(/^\| `([a-z_]+)` \| (稳定|实验性) \|/gm)].map((m) => [m[1], m[2]]);
+    const tierName = { stable: '稳定', experimental: '实验性' } as const;
     expect(rows.map((r) => r[0]).sort()).toEqual(manifestFieldNames().sort());
     for (const [name, tier] of rows) expect(tier).toBe(tierName[ManifestFields.find((f) => f.name === name)!.tier]);
   });

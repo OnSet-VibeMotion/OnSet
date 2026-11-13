@@ -1,4 +1,3 @@
-// 移植自 internal/song/phrases.go。
 import { goRound } from '../gofmt';
 import { localPath, Store, writeJSON } from './store';
 import { frames, loadTimeline } from './timeline';

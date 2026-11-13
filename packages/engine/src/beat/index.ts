@@ -1,4 +1,4 @@
-// Package beat：无配音卡点的时间契约。移植自 internal/beat。
+// Package beat：无配音卡点的时间契约。
 export {
   AnalysisFile,
   AnalyzerVersion,

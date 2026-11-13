@@ -1,4 +1,3 @@
-// 移植自 internal/align/timing.go。
 import type { Item } from './evidence';
 import { alignCharacters, type Group } from './match';
 import type { ScriptToken } from './script';

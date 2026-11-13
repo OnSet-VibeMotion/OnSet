@@ -1,4 +1,3 @@
-// 移植自 internal/align/evidence.go。
 import fs from 'node:fs';
 import { compareBytes } from '../gojson';
 import { formatG, goPathError, goQuote } from '../gofmt';

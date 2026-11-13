@@ -1,4 +1,4 @@
-// 画幅与风格的选择。移植自 internal/cli/canvas.go 与 style.go。
+// 画幅与风格的选择。
 import fs from 'node:fs';
 import * as preset from '@am/engine/preset';
 import { goPathError } from '@am/engine/fsutil';
@@ -143,7 +143,7 @@ export function canvasPicker(): Picker<preset.Preset> {
   return { title: '选择画幅', choices: preset.all(), label: (p) => p.label };
 }
 
-// ---------------------------------------------------------------- style（移植自 style.go）
+// ---------------------------------------------------------------- style
 
 /** 旧版自定义风格描述的位置，供存量项目读取。 */
 export const styleBriefPath = preset.CustomStyleBriefPath;

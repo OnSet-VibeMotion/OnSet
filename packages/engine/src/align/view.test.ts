@@ -1,4 +1,3 @@
-// 移植自 internal/align/view_test.go。
 import { expect, it } from 'vitest';
 import { marshal } from '../gojson';
 import { parseScript } from './script';

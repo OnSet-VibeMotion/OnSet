@@ -1,4 +1,3 @@
-// 移植自 internal/cli/help_test.go。
 // am memory 整组命令推迟到 memory 那一轮移植，这里遍历的命令树暂时不含它。
 import { describe, expect, it } from 'vitest';
 import { Buffer, run } from './testutil';

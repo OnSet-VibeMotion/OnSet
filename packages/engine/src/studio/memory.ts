@@ -1,5 +1,5 @@
 /**
- * 记忆面板。移植自 internal/studio/memory.go。
+ * 记忆面板。
  *
  * 读接口直接读记忆库（只读，不记快照）；面板上的操作都经 am memory 子命令。
  * 唯一的例外是对话信号（recordUtterance）：每轮结束、每次回退各追加一段经历，
@@ -115,7 +115,7 @@ export function memoryAPI(s: Server, request: Request): Response {
         runs: runs.map(memory.runSummaryToJSON),
         pending: pendingProblems(episodes, status.last_consolidated),
         // 面板显示的大白话：校验器、事件类型与镜头特征都不直接露出 ID。
-        labels: goMap({ checks: labels(memory.CheckerLabels), events: labels(memory.EventLabels), features: labels(memory.FeatureDescriptions) }),
+        labels: goMap({ checks: labels(memory.CheckerLabels), events: labels(memory.EventLabels), features: labels(memory.featureDescriptions()) }),
       }),
     );
   } catch (err) {

@@ -1,13 +1,13 @@
-// 歌曲讲解的镜头块：scene.json 的 song 字段。移植自 internal/scene/scene.go 的 song 部分。
+// 歌曲讲解的镜头块：scene.json 的 song 字段，由歌曲讲解插件登记（index.ts）。
 import path from 'node:path';
 import * as song from '../../song';
-import { registerBlock, verifyBlock, type SceneBlock } from '../block';
-import type { StructType } from '../jsondecode';
-import { sceneCanvas, type Canvas, type Scene } from '../scene';
-import { songExplainerPrompt, SongExplainerSkillName } from '../skills';
-import { VerificationError } from '../verification';
+import { verifyBlock, type SceneBlock } from '../../scene/block';
+import type { StructType } from '../../scene/jsondecode';
+import { sceneCanvas, type Canvas, type Scene } from '../../scene/scene';
+import { VerificationError } from '../../scene/verification';
+import { songExplainerPrompt, SongExplainerSkillName } from './skill';
 
-declare module '../scene' {
+declare module '../../scene/scene' {
   interface Scene {
     song: song.Cue | null;
   }
@@ -64,7 +64,7 @@ function verifySong(s: Scene): void {
   }
 }
 
-const songBlock: SceneBlock<song.Cue> = {
+export const songBlock: SceneBlock<song.Cue> = {
   key: 'song',
   order: 20,
   type: songCueType,
@@ -73,8 +73,8 @@ const songBlock: SceneBlock<song.Cue> = {
   verifyInputs: verifySong,
   timeline: { label: '歌曲' },
   promptSection: songSection,
+  feature: { name: 'song', description: '歌曲模式' },
 };
-registerBlock(songBlock);
 
 /** 核对歌曲镜头的 song 块。复用已有产物前同样要检查。 */
 export function verifySongInputs(s: Scene): void {

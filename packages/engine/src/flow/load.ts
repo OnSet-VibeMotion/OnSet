@@ -2,7 +2,7 @@
  * 读出项目加的站（第三方站加上没关掉的内置插件）、路线用的站、项目选用的流程。
  */
 import fs from 'node:fs';
-import { builtinPlugins, disabledAmStations } from './builtinplugins';
+import { builtinPlugins, disabledPluginStations } from './builtinplugins';
 import { treeDigest } from './digest';
 import { checkFiles, readManifest, sourceDir } from './fetch';
 import { readLock, writeLock, type LoadedStation, type Lock } from './lock';
@@ -44,8 +44,8 @@ export function loadProjectStations(root: string, env: Record<string, string | u
 /** 项目路线用的第三方站。 */
 export function projectExtras(root: string, env: Record<string, string | undefined> = process.env): ExtraStation[] {
   const extras = loadProjectStations(root, env).stations.map((s) => toExtra(s.manifest));
-  // 关掉的内置插件认领的站：用一个没有站点的站顶替，路线上就没有它了。排在最后：第三方站顶替了同一个站时以第三方为准。
-  for (const sid of disabledAmStations(root)) {
+  // 关掉的内置插件登记的站：用一个没有站点的站顶替，路线上就没有它了。排在最后：第三方站顶替了同一个站时以第三方为准。
+  for (const sid of disabledPluginStations(root)) {
     extras.push({ station: { id: `off:${sid}`, name: '', nodes: [], prompt: [] }, after: '', replaces: sid });
   }
   return extras;

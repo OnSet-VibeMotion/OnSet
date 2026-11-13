@@ -1,4 +1,4 @@
-// 角色包（character pack）规范的唯一真相源。移植自 internal/cast。
+// 角色包（character pack）规范的唯一真相源。
 //
 // am 不内置任何角色：这个包只定义格式、解析它、并拦住那些会在渲染阶段
 // 静默坏掉的写法。角色包由 am cast add 从外部拷进项目。

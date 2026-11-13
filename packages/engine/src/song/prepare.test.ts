@@ -1,4 +1,3 @@
-// 移植自 internal/song/prepare_test.go。
 import { describe, expect, it } from 'vitest';
 import { convertAlignment } from './prepare';
 import { candidate } from './types';

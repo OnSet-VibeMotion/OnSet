@@ -104,6 +104,14 @@ describe('new projects compose the prompt of their own flow', () => {
     }
   });
 
+  // song.yaml 由歌曲讲解插件经 Flow.check 核对：写坏了在开工组合提示词时就报。
+  it('lets the song plugin check song.yaml before composing', () => {
+    const root = created('song');
+    expect(() => runPrompt(root, '')).not.toThrow();
+    fs.writeFileSync(path.join(root, 'song.yaml'), 'provider: [\n');
+    expect(() => runPrompt(root, '')).toThrow();
+  });
+
   it('keeps the route of song projects on the speech route', () => {
     const root = created('song');
     const extras = flow.projectExtras(root);
@@ -348,6 +356,12 @@ describe('prompt content', () => {
   });
 
   // 多角色对话的作业规程是口播流程的附录（项目根有 cast.yaml 时生效），不再是项目里的一份文件。
+  it('drops the cast rules when the multi-role plugin is off', () => {
+    const off = composeFor('speech', 'vertical-9x16', ['cast-rules']);
+    expect(off).not.toContain('多角色叙事作业规程');
+    expect(off).not.toContain('cast.yaml');
+  });
+
   it('carries the cast rules as an appendix of the speech flow', () => {
     has(speech, ['必须同时遵守文末的「附：多角色叙事作业规程」', '## 附：多角色叙事作业规程（cast 模式）', 'dialogue_assemble()'], '口播·多角色');
     lacks(speech, ['PROMPT-CAST-ADDENDUM.md', 'PROMPT-PRODUCTION.md'], '口播');

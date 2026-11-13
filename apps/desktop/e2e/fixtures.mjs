@@ -49,6 +49,8 @@ export const test = base.extend({
       JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' }, stations: [] }, null, 2) + '\n',
     );
     fs.writeFileSync(path.join(project, 'notes.md'), '项目笔记\n');
+    fs.mkdirSync(path.join(project, 'templates'));
+    fs.writeFileSync(path.join(project, 'templates', 'project-rules.md'), '# 项目规则\n');
     fs.writeFileSync(path.join(scene, 'voice.srt'), '1\n00:00:00,000 --> 00:00:01,000\nhello\n');
     fs.writeFileSync(path.join(scene, 'prompt.md'), 'before\n');
     fs.writeFileSync(

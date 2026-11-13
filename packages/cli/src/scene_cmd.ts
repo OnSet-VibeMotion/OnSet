@@ -4,13 +4,12 @@
  */
 import fs from 'node:fs';
 import os from 'node:os';
-import path from 'node:path';
 import * as beat from '@am/engine/beat';
 import * as config from '@am/engine/config';
 import * as envutil from '@am/engine/envutil';
 import * as scene from '@am/engine/scene';
 import * as schedule from '@am/engine/schedule';
-import * as song from '@am/engine/song';
+import * as plugin from '@am/engine/plugin';
 import * as srt from '@am/engine/srt';
 import { newUsage, usageAdd, type Usage } from '@am/engine/tools';
 import { beatCoverage } from './beat_cmd';
@@ -21,7 +20,6 @@ import { defineGroup } from './ops/cli';
 import { bool, num, str } from './ops/common';
 import { defineOp } from './ops/op';
 import { reuseDecision } from './reuse';
-import { songCoverage } from './song_cmd';
 // 镜头组里的其余操作（frames、cues、lint、usage）在各自的模块里登记。
 import './media';
 import './review_cmd';
@@ -99,7 +97,7 @@ defineOp({
 
 输入指纹覆盖组好的渲染提示词、scene.json、prompt.md、字幕、角色包、
 渲染工具、技能内容与 am 版本，产物通过校验时记在镜头目录的 .am-render.json。
-没有渲染记录的老产物退回旧判定：scene.json 或 prompt.md 的修改时间晚于产物即 Stale。
+没有渲染记录的产物同样标 Stale。
 
 force 跳过全部上述判定，无条件重渲染每个镜头。
 
@@ -135,20 +133,19 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     duration_tolerance: durationTolerance,
     force: { type: 'boolean', description: '跳过「已有合格产物」与 Stale 判定，无条件重渲染每个镜头' },
     report_json: { type: 'string', description: '把逐镜头结果写成 JSON 报告到该路径；镜头失败时应读它' },
-    song_timeline: { type: 'string', description: '歌曲覆盖基准，与 srt 互斥；包含前奏至尾奏' },
+    // 内置插件的整批检查要的参数（例如歌曲讲解的 song_timeline）。
+    ...Object.fromEntries(plugin.pluginRenderChecks().flatMap((c) => Object.entries(c.value.params ?? {}))),
     srt: { type: 'string', description: '定稿字幕路径；给了就核对镜头总时长是否等于字幕跨度' },
     coverage_tolerance: { type: 'number', description: '镜头总时长与字幕跨度的允许偏差（秒）', default: 0.1 },
     strict_coverage: { type: 'boolean', description: '覆盖校验不通过时直接失败，而不是只打印警告' },
   },
   run: async (p, { out, err, signal, unsafe }) => {
-    const songTimelinePath = str(p.song_timeline);
     const srtPath = str(p.srt);
     const tolerance = num(p.duration_tolerance);
     let jobs = num(p.jobs);
     const retries = num(p.retries);
     const force = bool(p.force);
     const reportPath = str(p.report_json);
-    if (songTimelinePath !== '' && srtPath !== '') throw new Error('song_timeline 与 srt 互斥');
     validateTolerance(tolerance);
     const cfg = config.load('.', null);
     if (jobs === 0) jobs = cfg.sceneJobs;
@@ -157,15 +154,7 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     // 覆盖校验在渲染之前跑：漏掉一镜或某镜时长写错，等全部渲染完
     // 拼接时才发现的话，每一镜都已经烧掉一次完整的 AI CLI 调用。
     let span = 0;
-    if (songTimelinePath !== '') {
-      const file = path.resolve(songTimelinePath);
-      const songRoot = path.dirname(path.dirname(path.dirname(file)));
-      if (file !== path.join(songRoot, song.Store, 'timeline.json')) throw new Error('song_timeline 必须指向 production/song/timeline.json');
-      const t = song.loadTimeline(songRoot);
-      songCoverage(songRoot, scenes, t, true);
-    } else if (song.enabled('.')) {
-      throw new Error('歌曲项目必须提供 song_timeline：production/song/timeline.json');
-    }
+    for (const check of plugin.pluginRenderChecks()) check.value.beforeRender?.('.', scenes, p);
     if (srtPath !== '') span = srt.readSpan(srtPath).seconds();
     const problems = schedule.coverageProblems(scenes, span, num(p.coverage_tolerance));
     if (problems.length > 0) {
@@ -184,9 +173,7 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     }
     if (misaligned.length > 0) throw new Error(`镜头时长未对齐整数帧：\n  - ${misaligned.join('\n  - ')}`);
     for (const s of scenes) {
-      if (s.song != null && songTimelinePath === '') throw new Error('歌曲镜头必须提供 song_timeline：production/song/timeline.json');
-      scene.verifySongInputs(s);
-      scene.verifyBeatInputs(s);
+      scene.verifyBlockInputs(s);
       scene.verifyTimingInputs(s);
     }
     if (beat.enabled('.')) beatCoverage('.', scenes);

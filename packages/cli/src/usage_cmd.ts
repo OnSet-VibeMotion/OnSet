@@ -168,7 +168,6 @@ export function recordOrchestratorUsage(
 }
 
 const usageSourceNames: Record<string, string> = {
-  [ledger.SourceRun]: '命令行（旧）',
   [ledger.SourceStudio]: 'Studio 对话',
   [ledger.SourceConsolidate]: '整理记忆',
 };
@@ -180,7 +179,7 @@ defineOp({
   description: `在项目根运行，合计两本账：
 
   渲染   scenes/ 下每个镜头的全部渲染尝试（同 scene_usage()）
-  编排   production/usage/orchestrator.jsonl：客户端每一轮对话各一行（早先命令行版本记下的旧账照样统计），
+  编排   production/usage/orchestrator.jsonl：客户端每一轮对话各一行，
          失败与取消的调用同样记入
 
 记忆打开时另列「整理记忆」的用量：它不属于哪个项目，记在记忆库的

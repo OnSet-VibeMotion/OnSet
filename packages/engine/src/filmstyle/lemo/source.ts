@@ -1,4 +1,4 @@
-// 移植自 internal/filmstyle/lemo/lemo.go 的 source 类型：实现 filmstyle.Source 并登记。
+// lemo 的 source 类型：实现 filmstyle.Source 并登记。
 import fs from 'node:fs';
 import { goQuote } from '../../gofmt';
 import { missing } from '../../prereq';

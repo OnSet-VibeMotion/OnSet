@@ -21,10 +21,12 @@ export function composeProjectPrompt(root: string): { text: string; flow: flow.F
   const extras = flow.loadProjectStations(root);
   if (extras.problems.length > 0) throw new Error(extras.problems.join('\n'));
   const id = flow.detectFlow(root, flow.projectExtras(root));
+  // 流程自己的配置（例如歌曲讲解的 song.yaml）由登记它的插件核对：宿主不 import 任何功能包。
+  flow.flow(id, flow.projectExtras(root)).check?.(root);
   // detectFlow 没报错就一定有记录；画幅不认得时说清楚是哪一段写错了。
   const p = preset.byID(rec?.canvas ?? '');
   if (!p) throw new flow.MissingFlowRecordError(`${flow.LockFile} 的 production.canvas 不是认得的画幅：${rec?.canvas ?? ''}（可选：${preset.ids().join('、')}）`);
-  const text = flow.composeFlowPrompt({ flow: id, stations: extras.stations, disabled: new Set(flow.disabledAmStations(root)), canvas: (t) => substituteCanvas(p, t) });
+  const text = flow.composeFlowPrompt({ flow: id, stations: extras.stations, disabled: new Set(flow.disabledPluginStations(root)), canvas: (t) => substituteCanvas(p, t) });
   return { text, flow: id, name: flow.flow(id, flow.projectExtras(root)).name };
 }
 

@@ -323,7 +323,6 @@ const amVerbs: Record<string, string> = {
   align_text: '整理朗读文本',
   audio_check: '校验字幕时间轴',
   validate_reads: '检查阅读时长',
-  validate_publish: '校验发布信息',
   validate_video: '校验成片',
   beat_cues: '计算镜头时长',
   film_style_use: '换整片风格',
@@ -334,6 +333,19 @@ const amVerbs: Record<string, string> = {
   config_get: '读取配置',
 };
 
+/** 内置插件给自己的工具写的说法（/api/stations 的 contents.ops[].verb），由 app.tsx 在读到插件列表后填。 */
+const pluginVerbs = new Map<string, string>();
+
+/** 内置插件工具的说法；没登记时为 undefined。 */
+export function pluginVerb(name: string): string | undefined {
+  return pluginVerbs.get(name);
+}
+
+export function setPluginVerbs(entries: { name: string; verb: string }[]): void {
+  pluginVerbs.clear();
+  for (const e of entries) if (e.verb) pluginVerbs.set(e.name, e.verb);
+}
+
 function amTool(name: string, record: Record<string, unknown>): { verb: string; target: string; command: boolean } | null {
   const text = (key: string) => (typeof record[key] === 'string' ? (record[key] as string) : '');
   const args = Array.isArray(record.args) ? (record.args as unknown[]).map(String).join(' ') : '';
@@ -343,7 +355,7 @@ function amTool(name: string, record: Record<string, unknown>): { verb: string; 
   }
   if (name === 'job_wait' || name === 'job_cancel') return { verb: amVerbs[name], target: text('job'), command: false };
   const target = text('scene') || text('scene_id') || text('tool') || text('page') || text('key') || text('name') || args;
-  return { verb: amVerbs[name] ?? name.replace(/_/g, ' '), target, command: false };
+  return { verb: amVerbs[name] ?? pluginVerbs.get(name) ?? name.replace(/_/g, ' '), target, command: false };
 }
 
 /** 回复里提到的媒体文件：试听、封面、预览视频。 */

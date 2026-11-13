@@ -1,5 +1,5 @@
 /**
- * init（命令行专用）、config_get、archive。移植自 internal/cli/cli.go 里内联定义的这三个命令。
+ * init（命令行专用）、config_get、archive。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,7 +20,6 @@ import { bool, str } from './ops/common';
 import { defineOp } from './ops/op';
 
 const narrationSolo = projectinit.NarrationSolo;
-const narrationCast = projectinit.NarrationCast;
 
 export function newInitCommand(stdout: Out, stderr: Out): Command {
   const skipHyperframes = ref(false);
@@ -117,9 +116,8 @@ am setup 把它下载进缓存；缓存里没有时 am init 写完项目文件�
   am init my-video --canvas landscape-16x9 --film-style lemo-opuscar/impasto`,
     args: maxArgs(1, 'DIR'),
     runE: async (cmd, args) => {
-      if (narration.value !== narrationSolo && narration.value !== narrationCast) {
-        throw new Error(`无效的 --narration: ${narration.value}（可选：${narrationSolo} ${narrationCast}）`);
-      }
+      const modes = projectinit.narrations().map((n) => n.id);
+      if (!modes.includes(narration.value)) throw new Error(`无效的 --narration: ${narration.value}（可选：${modes.join(' ')}）`);
       const target = path.resolve(args.length === 1 ? args[0] : '.');
       // 讲解形式就是项目的流程：可选值来自内置流程与内置插件登记的流程。
       const ids = projectinit.deliveryFlows().map((f) => f.id);
@@ -168,9 +166,27 @@ am setup 把它下载进缓存；缓存里没有时 am init 写完项目文件�
   flags.stringVar(styleID, 'style', '', '旧版视觉风格参数（仅兼容，不作为渲染要求）：' + [...preset.styleIDs(), preset.CustomStyleFlag].join(' | '));
   flags.stringVar(styleBrief, 'style-brief', '', '旧版自定义风格描述（仅兼容），只能与 --style ' + preset.CustomStyleFlag + ' 一起使用');
   flags.stringVar(styleBriefFile, 'style-brief-file', '', '从文件读取旧版自定义风格描述，与 --style-brief 二选一');
-  flags.stringVar(narration, 'narration', narrationSolo, '叙事模式：' + narrationSolo + '（单口播，默认） | ' + narrationCast + '（多角色对话，额外写出 cast.yaml 与 cast/）');
+  flags.stringVar(
+    narration,
+    'narration',
+    narrationSolo,
+    '叙事模式：' +
+      projectinit
+        .narrations()
+        .map((n) => `${n.id}（${n.name}${n.id === narrationSolo ? '，默认' : ''}）`)
+        .join(' | '),
+  );
   flags.stringVar(filmStyleName, 'film-style', '', '整片风格：来源/目录名，或唯一的目录名、中文名、英文名（am film-style list）；不传则各镜头自主定视觉');
-  flags.stringVar(delivery, 'delivery', 'speech', '讲解形式：speech（默认）、song（单人整曲）或 beat（无配音卡点）');
+  flags.stringVar(
+    delivery,
+    'delivery',
+    'speech',
+    '讲解形式：' +
+      projectinit
+        .deliveryFlows()
+        .map((f) => `${f.id}（${f.name}${f.id === 'speech' ? '，默认' : ''}）`)
+        .join('、'),
+  );
   return initCmd;
 }
 

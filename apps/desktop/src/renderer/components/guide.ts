@@ -7,6 +7,7 @@ import { gateMessages } from './Progress';
  * 确认关卡——不绕过对话改项目文件。
  *
  * 站的 id 与 packages/engine/src/studio/progress.ts 的站表一一对应；新加一站时在这里补一条，没补的落到通用说法。
+ * 内置插件的站不在这张表里：说法由插件登记（判断函数的 guide），经 /api/progress 的 station.guide 带过来。
  */
 
 export type GuideAction =
@@ -99,11 +100,6 @@ const stations: Record<string, StationGuide> = {
     user: '成片出来了，完整看一遍。满意就确认，去做封面和发布信息；不满意说哪里要改。',
     actions: () => [{ kind: 'page', label: '看成片', page: 'final' }, { kind: 'say', label: '满意，去发布', text: '成片我看过了，可以，去做封面和发布信息。' }, change('成片')],
   },
-  publish: {
-    ai: 'AI 在按各平台的规格做封面、写标题和简介。',
-    user: '最后一步：封面、标题和简介。',
-    actions: () => [{ kind: 'page', label: '看发布页', page: 'publish' }],
-  },
   // 卡点项目
   story: {
     ai: 'AI 在写这条片子的故事和文案。',
@@ -130,6 +126,17 @@ const stations: Record<string, StationGuide> = {
   },
 };
 
+/** 内置插件登记的说法（station.guide）。 */
+function fromPlugin(s: ProgressStation): StationGuide {
+  const g = s.guide;
+  if (!g) return {};
+  return {
+    ai: g.ai,
+    user: g.user,
+    actions: g.page ? () => [{ kind: 'page', label: g.page_label ?? '去看看', page: g.page! }] : undefined,
+  };
+}
+
 /** 这一站对应的页面（确认后又改过、上游改过时「去看」用）。 */
 function pageAction(s: ProgressStation): GuideAction[] {
   if (s.page) return [{ kind: 'page', label: '去看看', page: s.page }];
@@ -145,7 +152,9 @@ export function guideFor(progress: ProgressState | null, started: boolean): Guid
   if (!progress) return null;
   const s = progress.stations.find((x) => x.id === progress.current) ?? null;
   if (!s) {
-    return { title: '全部做完了', text: '片子做好了。去发布页复制标题和简介，按平台上传封面。', waiting: false, actions: [{ kind: 'page', label: '看发布页', page: 'publish' }] };
+    // 最后一站有页面（例如发布页）就给一个去看的按钮。
+    const last = [...progress.stations].reverse().find((x) => x.page);
+    return { title: '全部做完了', text: '片子做好了。', waiting: false, actions: last ? [{ kind: 'page', label: last.guide?.page_label ?? `看${last.label}`, page: last.page! }] : [] };
   }
   // 没有对话、路线上也一站都没做过，才是还没开工（项目里已经有稿子、配音的不算）。
   if (!started && progress.stations.every((x) => x.status === 'todo')) {
@@ -156,7 +165,7 @@ export function guideFor(progress: ProgressState | null, started: boolean): Guid
       actions: [{ kind: 'start', label: '开始制作' }],
     };
   }
-  const g = stations[s.id] ?? {};
+  const g = stations[s.id] ?? fromPlugin(s);
   if (s.status === 'changed') {
     const gate = gateMessages[s.id] ? [{ kind: 'gate', label: '没问题', gate: s.id } as GuideAction] : [];
     return { title: s.label, text: '你确认过之后它又改过了，再看一遍。', waiting: true, actions: [...pageAction(s), ...gate] };

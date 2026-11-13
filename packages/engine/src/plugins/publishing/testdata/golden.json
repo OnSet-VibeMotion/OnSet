@@ -2394,7 +2394,8 @@
   "viewPage": {
     "id": "publish",
     "label": "发布",
-    "target": ""
+    "target": "",
+    "slot": true
   },
   "viewPages": [
     "progress",

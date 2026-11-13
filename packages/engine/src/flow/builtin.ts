@@ -248,13 +248,6 @@ export const builtinStations: readonly Station[] = [
     ],
     prompt: [{ id: 'stage', stage: 'beat-plan' }, { id: 'plan' }, { id: 'budget' }, { id: 'storyboard-gate' }],
   },
-  {
-    // 多角色对话（项目根有 cast.yaml）的作业规程：口播流程的附录，覆盖配音与对齐两个阶段里与单一说话人有关的条款。
-    id: 'cast-rules',
-    name: '多角色叙事作业规程',
-    nodes: [],
-    prompt: [{ id: 'addendum' }],
-  },
 ];
 
 /** 口播与卡点共用的后半程（发布由内置插件 publishing 排在 review 后面）。 */
@@ -288,7 +281,6 @@ export const speechPrompt: readonly string[] = [
   'host/deliverables',
   'host/deliverables-tail',
   'wrapup/stage',
-  'cast-rules/addendum',
 ];
 
 /**

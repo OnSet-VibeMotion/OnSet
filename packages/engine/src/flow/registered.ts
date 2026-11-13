@@ -56,6 +56,7 @@ export function allFlows(): Flow[] {
     if (f.stage_aliases) out.stage_aliases = { ...f.stage_aliases };
     if (f.marker) out.marker = f.marker;
     if (f.excludes) out.excludes = f.excludes;
+    if (f.check) out.check = f.check;
     return out;
   });
   return [...host, ...extra];

@@ -1,5 +1,5 @@
 /**
- * 会话、轮次、命令、只读文件与技能的接口。移植自 internal/studio/api_sessions.go。
+ * 会话、轮次、命令、只读文件与技能的接口。
  *
  * /preview/scenes/ 与 sceneAttachment（镜头抽帧附件）在 features.ts。
  */

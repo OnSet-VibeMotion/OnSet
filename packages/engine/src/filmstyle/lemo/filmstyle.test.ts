@@ -1,4 +1,3 @@
-// 移植自 internal/filmstyle/lemo/filmstyle_test.go。
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';

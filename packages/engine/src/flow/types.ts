@@ -96,6 +96,11 @@ export interface Flow {
   marker?: FlowMarker;
   /** 新建项目时不能与它同时用的东西。 */
   excludes?: FlowExcludes;
+  /**
+   * 开工组合提示词前核对项目里这个流程自己的配置（例如歌曲讲解的 song.yaml）；有问题直接抛错。
+   * 由登记这个流程的内置插件提供，宿主不按名字认识任何片型的配置文件。
+   */
+  check?: (root: string) => void;
 }
 
 export interface FlowMarker {
@@ -104,7 +109,7 @@ export interface FlowMarker {
 }
 
 /**
- * plugins：内置插件（新建时选了它——叙事模式 cast 就是多角色对话插件——或项目里已有它的 in_use 文件）；
+ * plugins：内置插件（新建时选了它——叙事模式 cast 就是多角色对话插件——或项目里已经在用它：插件登记的在用判断）；
  * flows：别的片型（项目里已有它们的标记文件）。命中任一项就以 message 拒绝。
  */
 export interface FlowExcludes {

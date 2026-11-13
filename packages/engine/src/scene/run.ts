@@ -1,4 +1,3 @@
-// 移植自 internal/scene/run_unix.go（Go 版只在 darwin / linux 上编译）。
 import fs from 'node:fs';
 import path from 'node:path';
 import { childEnvironment, rendererModelFor, type Config } from '../config';

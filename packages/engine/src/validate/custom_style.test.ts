@@ -1,4 +1,3 @@
-// 移植自 internal/validate/custom_style_test.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';

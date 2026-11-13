@@ -1,4 +1,3 @@
-// 移植自 internal/filmstyle/lemo/lemo.go。
 import catalogData from './catalog.json';
 //
 // 风格来源 lemo-opuscar（LemoLab 的风格库，MIT + demo CC BY 4.0）。

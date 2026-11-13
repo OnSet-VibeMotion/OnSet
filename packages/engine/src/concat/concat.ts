@@ -1,4 +1,4 @@
-// Package concat 把一组镜头产物按顺序拼成静音母版。移植自 internal/concat。
+// Package concat 把一组镜头产物按顺序拼成静音母版。
 //
 // 对应制作提示词「规范化和拼接静音母版」那一阶段。放进二进制而不是留给渲染 agent 现场拼
 // ffmpeg 命令，图的是这一句：

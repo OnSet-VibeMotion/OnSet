@@ -1,4 +1,3 @@
-// 移植自 internal/cli/reuse_test.go。
 import { tempDir } from './testutil';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -40,13 +39,12 @@ describe('reuseDecision', () => {
     expect(reason).toContain('file:transcript.srt');
   });
 
-  it('falls back to mod time without a record', () => {
+  it('marks an output without a record stale', () => {
     const s = reuseScene();
     const cfg = config.newConfig({ renderer: 'codex' });
     const env = { HOME: tempDir() };
-    for (const name of ['scene.json', 'transcript.srt']) shift(path.join(s.directory, name), -3600);
-    expect(reuseDecision(s, cfg, env)[0]).toBe(schedule.Skipped);
-    shift(path.join(s.directory, 'scene.json'), 3600);
-    expect(reuseDecision(s, cfg, env)[0]).toBe(schedule.Stale);
+    const [status, reason] = reuseDecision(s, cfg, env);
+    expect(status).toBe(schedule.Stale);
+    expect(reason).toContain('渲染记录');
   });
 });

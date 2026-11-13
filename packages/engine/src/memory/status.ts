@@ -1,4 +1,3 @@
-// 移植自 internal/memory/status.go。
 import { sortedKeys } from '../gojson';
 import { failure, SourceExam } from './episode';
 import { EventManualEdit } from './events';

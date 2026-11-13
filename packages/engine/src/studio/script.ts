@@ -1,5 +1,5 @@
 /**
- * 口播稿页。移植自 internal/studio/script.go。
+ * 口播稿页。
  */
 import fs from 'node:fs';
 import path from 'node:path';

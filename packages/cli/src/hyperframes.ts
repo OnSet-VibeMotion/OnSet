@@ -1,5 +1,5 @@
 /**
- * hyperframes：am 管理的固定版本 HyperFrames CLI 的入口，参数原样转给它。移植自 internal/cli/hyperframes_cmd.go。
+ * hyperframes：am 管理的固定版本 HyperFrames CLI 的入口，参数原样转给它。
  */
 import { spawn } from 'node:child_process';
 import * as hyperframes from '@am/engine/hyperframes';

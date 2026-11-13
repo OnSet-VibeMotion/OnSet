@@ -1,4 +1,3 @@
-// 移植自 internal/tools/tools.go。
 import fs from 'node:fs';
 import { marshal } from '../gojson';
 import { defaultDir as directorDir, Tool as DirectorToolName } from '../director';

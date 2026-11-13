@@ -1,5 +1,5 @@
 /**
- * am studio：与 ArticleToMotion 客户端打交道的命令。移植自 internal/cli/studio.go。
+ * am studio：与 ArticleToMotion 客户端打交道的命令。
  *
  * 浏览器版 Studio 已经去掉，客户端是唯一的界面；这里只留编排工具在客户端对话里调用的 show。
  */

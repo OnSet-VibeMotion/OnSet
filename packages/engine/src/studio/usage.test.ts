@@ -1,10 +1,9 @@
-// 移植自 internal/studio/usage_test.go。
 import './testsupport';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as ledger from '../ledger';
-import { renderingWindow, sceneRendering } from './scenes';
+import { sceneRendering } from './scenes';
 import { lastTurn, newSessionFixture, studioRequest, tempDir, waitIdle } from './testsupport';
 
 describe('usage', () => {
@@ -40,22 +39,10 @@ describe('usage', () => {
     expect(total.cost_usd).toBe(0.01);
   });
 
-  // 日志在写、比尝试记录新才算渲染中。
-  it('scene rendering follows log activity', () => {
+  // 只认进行中标记：没有标记时日志再新也不算渲染中。
+  it('scene rendering needs the live marker', () => {
     const dir = tempDir();
-    const now = new Date();
-    expect(sceneRendering(dir, 's1', now), '没有日志不是渲染中').toBe(false);
-    const log = path.join(dir, 'render-s1.stream.jsonl');
-    fs.writeFileSync(log, '{}');
-    // 文件的修改时间可能比 now 晚一点（同一秒内），与 Go 版一样不影响判断。
-    expect(sceneRendering(dir, 's1', now), '刚写的日志、还没有尝试记录：渲染中').toBe(true);
-    const attempt = path.join(dir, 'render-s1.attempt.json');
-    fs.writeFileSync(attempt, '{}');
-    const earlier = new Date(now.getTime() - 1000);
-    fs.utimesSync(log, earlier, earlier);
-    expect(sceneRendering(dir, 's1', now), '尝试记录比日志新：已经结束').toBe(false);
-    const hourAgo = new Date(now.getTime() - 3600_000);
-    fs.utimesSync(attempt, hourAgo, hourAgo);
-    expect(sceneRendering(dir, 's1', new Date(now.getTime() + renderingWindow + 60_000)), '日志太久没动：不算渲染中').toBe(false);
+    fs.writeFileSync(path.join(dir, 'render-s1.stream.jsonl'), '{}');
+    expect(sceneRendering(dir, 's1'), '刚写的日志、没有标记：不算渲染中').toBe(false);
   });
 });

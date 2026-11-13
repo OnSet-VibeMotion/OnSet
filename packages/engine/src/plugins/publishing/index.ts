@@ -70,6 +70,7 @@ export const publishing: BuiltinPlugin = {
           },
           // 发布信息只差人工检查（上传前的几项手动核对）时，是在等你。
           waiting: (c: JudgeContext) => (publishStatus(c.root) === 'pending_manual_checks' ? 'user' : undefined),
+          guide: { ai: 'AI 在按各平台的规格做封面、写标题和简介。', user: '最后一步：封面、标题和简介。', page: 'publish', pageLabel: '看发布页' },
         },
       },
     });
@@ -78,6 +79,7 @@ export const publishing: BuiltinPlugin = {
       name: 'validate_publish',
       cli: ['validate', 'publish'],
       summary: '校验 publish.md',
+      verb: '校验发布信息',
       description: `校验 file 指向的发布配置。
 
 publish.md 必须以安全 YAML frontmatter 提供机器字段，并以固定 Markdown 章节
@@ -98,7 +100,7 @@ publish.md 必须以安全 YAML frontmatter 提供机器字段，并以固定 Ma
       },
     });
 
-    ctx.page({ id: 'publish', label: '发布', target: '', after: 'review', files: ['publish.md'] });
+    ctx.page({ id: 'publish', label: '发布', target: '', after: 'review', files: ['publish.md'], slot: true });
     ctx.route({ pattern: '/api/publish', handle: (host) => publishAPI(host) });
     ctx.validator({ id: 'publish', label: '检查发布信息', file: 'publish.md', op: 'validate_publish' });
   },

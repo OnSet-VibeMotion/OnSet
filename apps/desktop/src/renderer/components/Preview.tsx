@@ -15,8 +15,6 @@ import { BeatTab } from './Beat';
 import { PublishTab } from './Publish';
 import { isStationTab, StationPage, StationSlots } from './Stations';
 
-/** 第三方插件能嵌小窗的自带页面（与后端 flow.SlotPages 一致）。 */
-const slotPages: string[] = ['script', 'storyboard', 'scene', 'final', 'publish', 'progress'];
 import { SceneBrief, StoryboardTab } from './Storyboard';
 import { ProgressTab } from './Progress';
 import { FileTree } from './Sidebar';
@@ -128,7 +126,8 @@ export function Preview(props: Props) {
             projectName={props.state?.project.name ?? ''}
           />
         )}
-        {slotPages.includes(props.tab) && (
+        {/* 第三方插件嵌进这一页的小窗：能嵌在哪几页由后端的页面表定（studioview.slotPages），清单校验时已经拦过。 */}
+        {!isStationTab(props.tab) && (
           <StationSlots
             at={props.tab}
             context={props.tab === 'scene' && scene ? { scene: scene.id } : {}}
@@ -1170,13 +1169,12 @@ function StyleTab({ version, run, scenes, onScene }: { version: number; run: Run
   );
 }
 
-/** production/review/review.json（review.Report）。问题字段是 problems；issues 是早期写法，照样认。 */
+/** production/review/review.json（review.Report）。 */
 interface ReviewResponse {
   available: boolean;
   report?: {
     ok?: boolean;
     problems?: string[];
-    issues?: unknown[];
     hints?: unknown[];
     expected_frames?: number;
     counted_frames?: number;
@@ -1185,7 +1183,7 @@ interface ReviewResponse {
   } & Record<string, unknown>;
 }
 
-const reviewProblems = (r?: ReviewResponse['report']) => [...(r?.problems ?? []), ...(r?.issues ?? [])];
+const reviewProblems = (r?: ReviewResponse['report']) => r?.problems ?? [];
 
 function ReviewTab({ tree, version, run }: { tree: TreeFile[]; version: number; run: RunAction }) {
   const [review, setReview] = useState<ReviewResponse | null>(null);
@@ -1332,8 +1330,7 @@ function tokenLabel(u: Usage): string {
   return parts.join(' · ');
 }
 
-// run 是早先命令行 am run 记下的账，命令行不对外后不再产生，旧账照样显示。
-const usageSources: Record<string, string> = { run: '命令行（旧）', studio: 'Studio 对话', consolidate: '整理记忆' };
+const usageSources: Record<string, string> = { studio: 'Studio 对话', consolidate: '整理记忆' };
 
 function projectUsageTitle(u: ProjectUsage): string {
   const lines = [`渲染：${u.attempts} 次尝试 · ${tokenLabel(u.renders)}`, `编排：${u.orchestrator.calls} 次调用 · ${tokenLabel(u.orchestrator.total)}`];

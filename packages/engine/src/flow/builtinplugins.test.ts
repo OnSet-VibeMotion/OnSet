@@ -2,9 +2,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildPrompt, fingerprint, load, registeredSkills, resolveAllSkills } from '../scene';
+import { buildPrompt, fingerprint, load, resolveAllSkills } from '../scene';
 import { runPrompt } from '../project/runprompt';
-import { projectExtras, recordFlow, route, stationOwners, builtinPlugins, disabledAmOps, loadProjectStations, parseManifest, readLock, setBuiltinEnabled, addToProject, fetchStation } from './index';
+import { projectExtras, recordFlow, route, stationOwners, builtinPlugins, disabledPluginOps, loadProjectStations, parseManifest, readLock, setBuiltinEnabled, addToProject, fetchStation } from './index';
 
 const temps: string[] = [];
 afterEach(() => {
@@ -17,30 +17,26 @@ const project = () => {
 };
 
 describe('builtin plugins', () => {
-  it('ships the song explainer as a builtin plugin that claims the song ops', () => {
+  it('ships the song explainer as a builtin plugin', () => {
     const song = builtinPlugins().find((p) => p.manifest.id === 'song');
     expect(song?.builtin).toBe(true);
     expect(song?.entry.source).toBe('builtin');
-    expect(song?.manifest.in_use).toEqual(['song.yaml']);
-    expect(song?.manifest.am_ops).toContain('song_init');
-    expect(song?.manifest.am_ops).toContain('validate_song');
   });
 
-  it('does not let a third party claim am ops or take a builtin id', () => {
+  it('does not let a third party take a builtin id', () => {
     const base = { id: 'mine', version: '1', name: 'x' };
-    expect(() => parseManifest(JSON.stringify({ ...base, am_ops: ['scene_run'] }))).toThrow('只有随 ArticleToMotion 下发的内置插件');
     expect(() => parseManifest(JSON.stringify({ ...base, id: 'song' }))).toThrow('与内置插件重名');
-    expect(parseManifest(JSON.stringify({ ...base, am_ops: ['scene_run'] }), { builtin: true }).am_ops).toEqual(['scene_run']);
+    expect(parseManifest(JSON.stringify({ ...base, id: 'song' }), { builtin: true }).id).toBe('song');
   });
 
   it('is on by default, can be turned off per project, and not while the project uses it', () => {
     const root = project();
     expect(loadProjectStations(root).stations.map((s) => s.manifest.id)).toEqual(['algorithmic-art', 'cast', 'publishing', 'song', 'text-to-lottie']);
-    expect(disabledAmOps(root).size).toBe(0);
+    expect(disabledPluginOps(root).size).toBe(0);
     setBuiltinEnabled(root, 'song', false);
     expect(readLock(root).disabled).toEqual(['song']);
     expect(loadProjectStations(root).stations.map((s) => s.manifest.id)).toEqual(['algorithmic-art', 'cast', 'publishing', 'text-to-lottie']);
-    expect(disabledAmOps(root).has('song_generate')).toBe(true);
+    expect(disabledPluginOps(root).has('song_generate')).toBe(true);
     // 锁文件里的其他记录不受影响。
     addToProject(root, fetchStation(`link:${path.join(__dirname, 'testdata', 'fake-publisher')}`, process.env).entry);
     expect(readLock(root).disabled).toEqual(['song']);
@@ -52,23 +48,7 @@ describe('builtin plugins', () => {
   });
 });
 
-describe('builtin plugins that claim renderer skills', () => {
-  it('claim only registered skills, each by one plugin at most', () => {
-    const owner = new Map<string, string>();
-    const registered = new Set(registeredSkills.map((d) => d.name));
-    for (const p of builtinPlugins()) {
-      for (const skill of p.manifest.am_skills) {
-        expect(registered.has(skill), `${p.manifest.id} 认领了没注册的技能 ${skill}`).toBe(true);
-        expect(owner.get(skill), `${skill} 被两个内置插件认领`).toBeUndefined();
-        owner.set(skill, p.manifest.id);
-      }
-    }
-    expect(owner.get('character-rig')).toBe('cast');
-    expect(owner.get('algorithmic-art')).toBe('algorithmic-art');
-    expect(owner.get('text-to-lottie')).toBe('text-to-lottie');
-    expect(() => parseManifest(JSON.stringify({ id: 'mine', version: '1', name: 'x', am_skills: ['algorithmic-art'] }))).toThrow('只有随 ArticleToMotion 下发的内置插件');
-  });
-
+describe('builtin plugins that register renderer skills', () => {
   it('leave the renderer prompt and fingerprint alone unless the project turns them off', () => {
     const root = project();
     const sceneDir = path.join(root, 'scenes', 'scene-001');
@@ -87,7 +67,7 @@ describe('builtin plugins that claim renderer skills', () => {
     // 关掉生成式艺术：提示词里没有那一段，指纹变了（渲染输入确实变了）。
     setBuiltinEnabled(root, 'algorithmic-art', false);
     const off = resolveAllSkills('claude', sceneDir, {}, s);
-    expect(off['off:algorithmic-art']).toBe('');
+    expect(Object.keys(off).some((k) => k.includes('algorithmic-art'))).toBe(false);
     expect(prompt).toContain('生成式艺术参考');
     expect(buildPrompt(s, off)).not.toContain('生成式艺术参考');
     expect(buildPrompt(s, off)).toContain('Lottie 图层');
@@ -95,10 +75,8 @@ describe('builtin plugins that claim renderer skills', () => {
   });
 });
 
-describe('builtin plugins that claim stations of the built-in flow', () => {
-  it('only builtin plugins may claim built-in stations', () => {
-    expect(() => parseManifest(JSON.stringify({ id: 'mine', version: '1', name: 'x', am_stations: ['publish'] }))).toThrow('只有随 ArticleToMotion 下发的内置插件');
-    expect(() => parseManifest(JSON.stringify({ id: 'mine', version: '1', name: 'x', am_stations: ['nope'] }), { builtin: true })).toThrow('没有自带的站 nope');
+describe('builtin plugins that register stations', () => {
+  it('own the stations they register', () => {
     expect(stationOwners().get('publish')).toBe('publishing');
   });
 
@@ -112,6 +90,6 @@ describe('builtin plugins that claim stations of the built-in flow', () => {
     const off = runPrompt(root, '').prompt.toString('utf8');
     expect(off).not.toContain('发布配置生命周期');
     expect(off).not.toContain('刷新发布配置');
-    expect(disabledAmOps(root).has('validate_publish')).toBe(true);
+    expect(disabledPluginOps(root).has('validate_publish')).toBe(true);
   });
 });

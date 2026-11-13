@@ -1,4 +1,3 @@
-// 移植自 internal/hyperframes/hyperframes.go。
 //
 // 把上游官方技能按固定 commit 装进用户项目。
 //

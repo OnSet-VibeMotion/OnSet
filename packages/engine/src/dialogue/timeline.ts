@@ -1,4 +1,3 @@
-// 移植自 internal/dialogue/timeline.go。
 import { atomicWrite } from '../fsutil';
 import { formatG, goQuote, goRound } from '../gofmt';
 import { marshalIndent } from '../gojson';

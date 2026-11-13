@@ -1,5 +1,5 @@
 /**
- * 新建项目的画幅与风格选项、文件树、原样读文件、卡点状态。移植自 internal/studio/api_ui.go。
+ * 新建项目的画幅与风格选项、文件树、原样读文件、卡点状态。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,6 +9,7 @@ import { compareBytes } from '../gojson';
 import { envMap } from '../envutil';
 import { SetupCommand } from '../prereq';
 import * as preset from '../preset';
+import * as projectinit from '../projectinit';
 import * as scene from '../scene';
 import { goMap, methodNotAllowed, notFound, serveFile, writeJSON } from './http';
 import { containedPath } from './sessions';
@@ -22,7 +23,7 @@ import { skipDir, walkDir } from './turns';
  */
 export const maxTreeEntries = 5000;
 
-/** stylesAPI 列出新建项目可选的画幅与风格，示例图经 /api/styles/{风格}/{画幅}/{骨架}.png 取。 */
+/** stylesAPI 列出新建项目可选的画幅、风格与做法，示例图经 /api/styles/{风格}/{画幅}/{骨架}.png 取。 */
 export function stylesAPI(request: Request): Response {
   if (request.method !== 'GET') return methodNotAllowed('GET');
   const canvases = preset.all().map((p) => ({ id: p.id, label: p.label, width: p.canvas.widthPx, height: p.canvas.heightPx, orientation: p.canvas.orientation }));
@@ -35,6 +36,8 @@ export function stylesAPI(request: Request): Response {
       custom: { id: preset.CustomStyle.id, name: preset.CustomStyle.name, label: '由模型按描述自主定风格' },
       archetypes: preset.ArchetypeIDs,
       default_canvas: preset.defaultPreset().id,
+      // 新建对话框的做法（讲解形式 + 叙事模式），宿主的与内置插件登记的。
+      modes: projectinit.presets(),
     }),
   );
 }

@@ -1,4 +1,3 @@
-// 移植自 internal/studio/memory_test.go。
 import './testsupport';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -121,7 +120,7 @@ describe('studio memory', () => {
     writeStudioFile(path.join(dir, 'scene.json'), '{"id":"scene-001","duration_seconds":1,"output":"out.mp4"}');
     writeStudioFile(
       path.join(dir, 'attempts', 'attempt-01', 'render-scene-001.attempt.json'),
-      '{"renderer":"claude","outcome":"failed","started_at":"1","usage":{"input_tokens":4,"cached_input_tokens":40,"output_tokens":1,"source":"claude result"}}',
+      '{"renderer":"claude","outcome":"failed","started_at":"1","usage":{"input_tokens":44,"cached_input_tokens":40,"output_tokens":1,"source":"claude result","basis":"total-input"}}',
     );
     writeStudioFile(
       path.join(dir, 'render-scene-001.attempt.json'),
@@ -131,7 +130,7 @@ describe('studio memory', () => {
     const { status, body } = await studioRequest(s, 'GET', '/api/scenes');
     expect(status).toBe(200);
     const first = body.scenes[0];
-    // 老 claude 记录的输入要加回缓存：44 + 100。
+    // 两次尝试的用量相加：44 + 100。
     expect(first.attempts).toBe(2);
     expect(first.usage.input_tokens).toBe(144);
     expect(first.usage.output_tokens).toBe(6);

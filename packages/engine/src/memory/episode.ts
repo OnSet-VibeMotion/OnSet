@@ -1,10 +1,9 @@
-// 移植自 internal/memory/episode.go。
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { compareBytes } from '../gojson';
 import { goQuote } from '../gofmt';
-import { OutcomeSucceeded, OutcomeVerificationFailed, inputFiles, type Attempt, type Scene } from '../scene';
+import { blockExtraInputDirs, OutcomeSucceeded, OutcomeVerificationFailed, inputFiles, type Attempt, type Scene } from '../scene';
 import { usageJSON, type Usage } from '../tools';
 import { features as sceneFeatures } from './features';
 import { compactStamp, monthStamp, rfc3339Nano } from './gostr';
@@ -475,12 +474,12 @@ function episodeOutcome(e: Episode): string {
 
 /**
  * 把镜头声明过的输入原样拷进 target，供考试重放。
- * 清单与输入指纹同源（scene.inputFiles），另加角色包目录。
+ * 清单与输入指纹同源（scene.inputFiles），另加镜头扩展块要带的目录（例如角色包）。
  */
 export function freezeInput(sc: Scene, target: string): void {
   for (const rel of inputFiles(sc)) copyFile(path.join(sc.directory, rel), path.join(target, rel));
-  if (sc.cast !== null && sc.cast.pack_dir !== '') {
-    const root = path.join(sc.directory, sc.cast.pack_dir);
+  for (const rel of blockExtraInputDirs(sc)) {
+    const root = path.join(sc.directory, rel);
     walkDir(root, (file, entry, _isDir, err) => {
       if (err) throw err;
       if (entry === null || !entry.isFile()) return;

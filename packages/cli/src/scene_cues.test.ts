@@ -1,4 +1,3 @@
-// 移植自 internal/cli/scene_cues_test.go。
 import { Buffer, tempDir } from './testutil';
 import fs from 'node:fs';
 import path from 'node:path';

@@ -1,4 +1,3 @@
-// 移植自 internal/cli/song_test.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -10,7 +9,7 @@ import * as preset from '@am/engine/preset';
 import * as scene from '@am/engine/scene';
 import * as schedule from '@am/engine/schedule';
 import * as song from '@am/engine/song';
-import { applySongCues, songOutputsCurrent, songScaffold } from './song_cmd';
+import { applySongCues, SongExplainerSkillName, songOutputsCurrent, songScaffold, verifySongInputs } from '@am/engine/plugins/song';
 
 it('song init modes', async () => {
   for (const delivery of ['speech', 'song']) {
@@ -63,7 +62,7 @@ describe('song cues and validation', () => {
       applySongCues(root, scenesRoot, out);
       expect(await run(['validate', 'song', '--project-root', root], out, out), out.text).toBe(0);
       const scenes = schedule.plan(scenesRoot);
-      const p = scene.buildPrompt(scenes[0], { [scene.SongExplainerSkillName]: path.join(root, '.agents', 'skills') });
+      const p = scene.buildPrompt(scenes[0], { [SongExplainerSkillName]: path.join(root, '.agents', 'skills') });
       expect(p).toContain('song-explainer');
       expect(p).toContain('不得生成或替换歌曲');
       const local = song.readTimeline(path.join(scenes[1].directory, 'song-cues.json'));
@@ -77,7 +76,7 @@ describe('song cues and validation', () => {
       expect(() => songOutputsCurrent(scenes, '')).not.toThrow();
       tl.lines![0].start = 0.4;
       song.saveTimeline(root, tl);
-      expect(() => scene.verifySongInputs(scenes[0]), 'stale song allowed').toThrow();
+      expect(() => verifySongInputs(scenes[0]), 'stale song allowed').toThrow();
       expect(await run(['validate', 'song', '--project-root', root], out, out), 'stale validate').not.toBe(0);
       applySongCues(root, scenesRoot, out);
       const updated = schedule.plan(scenesRoot);

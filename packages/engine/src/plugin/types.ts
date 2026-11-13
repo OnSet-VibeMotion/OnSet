@@ -15,6 +15,9 @@
  * | 校验器 | 客户端后端的「检查」命令（/api/commands/<id>.check） |
  */
 import type { FlowExcludes, FlowMarker, RouteNode } from '../flow/types';
+import type { SceneBlock } from '../scene/block';
+import type { Scene } from '../scene/scene';
+import type { SkillDescriptor } from '../scene/skills';
 
 /** 判断函数拿到的项目状态。字段是 studio/progress.ts 的 Ctx 的子集，那边的 Ctx 可以直接传进来。 */
 export interface JudgeContext {
@@ -34,6 +37,11 @@ export interface NodeJudge<C extends JudgeContext = JudgeContext> {
   gateState?: (c: C) => { status: 'confirmed' | 'changed' | 'todo'; at?: number | string };
   /** 这一站是「现在在这」时在等谁；不写（或返回 undefined）就按缺省：关卡等用户，其余等 AI。 */
   waiting?: (c: C) => 'user' | 'ai' | undefined;
+  /**
+   * 客户端「接下来」卡片的说法（界面 guide.ts 先查自己的表，再用这里的）：ai 是 AI 在做时，user 是等你时；
+   * page 给一个「去看」按钮（页面 id）。
+   */
+  guide?: { ai?: string; user?: string; page?: string; pageLabel?: string };
 }
 
 /**
@@ -70,6 +78,8 @@ export interface PluginFlow {
   stage_aliases?: Record<string, string>;
   marker?: FlowMarker;
   excludes?: FlowExcludes;
+  /** 开工组合提示词前核对项目里这个流程自己的配置；有问题直接抛错（flow.Flow.check）。 */
+  check?: (root: string) => void;
 }
 
 /** 插件带来的站。flows 是它出现在哪些内置流程里，after 是在这些流程里跟在哪个站后面（找不到时接在最后）。 */
@@ -112,6 +122,8 @@ export interface PluginOp {
   examples?: string[];
   params: Record<string, PluginParamSpec>;
   scopes?: ('orchestrator' | 'renderer' | 'cli')[];
+  /** 对话里显示这次调用时的说法（一个动词短语，例如「校验发布信息」）；不写按工具名显示。 */
+  verb?: string;
   run(params: Record<string, unknown>, ctx: PluginOpContext): void | { data?: unknown } | Promise<void | { data?: unknown }>;
 }
 
@@ -125,6 +137,8 @@ export interface PluginPage {
   target: '' | 'scene' | 'scene?' | 'file';
   after: string;
   files?: string[];
+  /** 第三方插件能把页面嵌进这一页（清单 slots 的 at）。 */
+  slot?: boolean;
 }
 
 /** 客户端后端交给插件接口的宿主（studio 的 Server 满足它）。 */
@@ -149,6 +163,48 @@ export interface PluginValidator {
   op: string;
 }
 
+/**
+ * 叙事模式（am init --narration、新建对话框）。单口播（solo）是宿主自己的缺省，不登记；
+ * 插件登记的模式选中时由 init 写出它的初始文件（目标目录里已有同名文件且内容不同时要报错，不静默覆盖）。
+ * 选了这个模式就算在用登记它的插件（流程的 excludes.plugins 据此判断）。
+ */
+export interface PluginNarration {
+  id: string;
+  name: string;
+  /** 新建对话框里的一句话说明。 */
+  hint: string;
+  init(target: string): void;
+}
+
+/** 新建对话框里的一张卡片：讲解形式（流程）加叙事模式的一种组合，id 唯一。 */
+export interface PluginPreset {
+  id: string;
+  label: string;
+  hint: string;
+  delivery: string;
+  narration: string;
+  /** 首页「从例子开始」：缺省画幅与一句示例。 */
+  canvas?: string;
+  example?: string;
+}
+
+/**
+ * 整批检查：scene_run_all 渲染之前、concat 拼接之前，按项目做插件自己的核对（例如歌曲时间轴是否覆盖全部镜头）。
+ * params 是 scene_run_all 多收的参数（插件自己的输入），值原样交给 beforeRender。
+ */
+export interface PluginRenderCheck {
+  params?: Record<string, PluginParamSpec>;
+  beforeRender?(root: string, scenes: readonly Scene[], params: Record<string, unknown>): void;
+  beforeConcat?(root: string, scenes: readonly Scene[]): void;
+}
+
+/** 开发用命令行的命令组（`am song` 这一层）的说明。 */
+export interface PluginOpGroup {
+  path: string[];
+  summary: string;
+  description?: string;
+}
+
 export interface PluginContext {
   /** 插件 id，与 assets/plugins/<id>/am-station.json 的 id 相同（开关、名字、说明都在那份清单里）。 */
   readonly id: string;
@@ -160,6 +216,17 @@ export interface PluginContext {
   page(p: PluginPage): void;
   route(r: PluginRoute): void;
   validator(v: PluginValidator): void;
+  /** 渲染技能：技能目录要在内置资产树里（skilltree 门禁查）。项目关掉插件时不给渲染器、提示词里也没有它。 */
+  skill(desc: SkillDescriptor): void;
+  /** 镜头扩展块（scene.json 里功能自己的字段）。 */
+  sceneBlock<T>(block: SceneBlock<T>): void;
+  narration(n: PluginNarration): void;
+  /** 新建对话框的选项卡片。 */
+  preset(p: PluginPreset): void;
+  /** 项目在用这个插件的凭据（项目里的相对路径）；没在用为空串。设了它，项目在用时不许关掉。 */
+  inUse(judge: (root: string) => string): void;
+  renderCheck(c: PluginRenderCheck): void;
+  opGroup(g: PluginOpGroup): void;
 }
 
 export interface BuiltinPlugin {

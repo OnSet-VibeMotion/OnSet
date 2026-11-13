@@ -1,6 +1,6 @@
 /**
- * Studio 后端的服务骨架：项目登记、路由表、写锁、当前项目、项目状态。移植自 internal/studio/studio.go
- * （以及 features.go 里不依赖 scene / validate 的 /api/assets、/api/review、/api/review/run）。
+ * Studio 后端的服务骨架：项目登记、路由表、写锁、当前项目、项目状态，
+ * 以及 /api/assets、/api/review、/api/review/run。
  *
  * Go 版是 net/http 服务；TS 版是 fetch 风格的 handle(request)：Electron 主进程用 am://app/ 协议
  * 承接界面的 /api/…、EventSource 与上传请求后直接调它。路由、JSON 字段、状态码与错误文案与 Go 版一致。
@@ -824,14 +824,13 @@ export function inspectProject(p: Project): Record<string, unknown> {
     if (sc.stale) stale++;
   }
   const meta = projectMetadata(p.path);
-  // 整片风格的名字给顶栏用；旧版 frame.md 的 style_name 不再显示，它已不影响渲染。
+  // 整片风格的名字给顶栏用。
   try {
     const { manifest, ok } = filmstyle.installed(p.path);
     if (ok) meta.film_style = manifest.cn;
   } catch {
     // 读不了就不显示。
   }
-  const exists = (...parts: string[]) => fileExists(path.join(p.path, ...parts));
   // 项目的流程：顶栏的步骤、第一步与用不上的页面都按它（界面不按片型写死）。没有流程记录的目录排不出路线：
   // 不给 flow 与 step，flow_error 照实说缺什么（界面据此提示，「开始制作」也会报同一句）。
   let flowState: Record<string, unknown>;
@@ -846,30 +845,12 @@ export function inspectProject(p: Project): Record<string, unknown> {
     stage: stageFor(p.path, scenes),
     ...flowState,
     metadata: goMap(meta),
-    media: goMap({
-      audio: exists('production', 'audio', 'candidate.mp4'),
-      final: exists('final.mp4') || exists('production', 'final.mp4'),
-      publish: exists('publish.md'),
-    }),
     scenes: goMap({ total: scenes.length, completed: done, stale }),
-    issues: projectIssues(p.path),
   });
 }
 
-function projectIssues(root: string): unknown {
-  let report: unknown;
-  try {
-    report = JSON.parse(fs.readFileSync(path.join(root, 'production', 'review', 'review.json'), 'utf8'));
-  } catch {
-    return [];
-  }
-  if (report === null || typeof report !== 'object' || Array.isArray(report)) return [];
-  const r = report as Record<string, unknown>;
-  return Object.hasOwn(r, 'issues') ? goValue(r.issues) : [];
-}
-
 /**
- * projectMetadata 从 frame.md 的 front matter 取风格与画幅。Studio 只是观察者，项目改到一半、
+ * projectMetadata 从 frame.md 的 front matter 取画幅。Studio 只是观察者，项目改到一半、
  * front matter 写坏了也照样返回能读到的部分，不报错。
  *
  * 只看顶层键：front matter 里 colors.canvas 这类同名的嵌套键是颜色值，按行扫描会读错。
@@ -894,15 +875,8 @@ export function projectMetadata(root: string): Record<string, string> {
   if (front === null || front === undefined) return result;
   if (typeof front !== 'object' || Array.isArray(front)) return result;
   const f = front as Record<string, unknown>;
-  for (const key of ['style_id', 'style_name']) {
-    const value = f[key];
-    if (typeof value === 'string' && value !== '') result[key] = value;
-  }
   const canvas = f.canvas;
-  if (typeof canvas === 'string') {
-    // 旧项目把画幅预设 id 直接写成标量。
-    if (canvas !== '') result.canvas_id = canvas;
-  } else if (canvas !== null && typeof canvas === 'object' && !Array.isArray(canvas)) {
+  if (canvas !== null && typeof canvas === 'object' && !Array.isArray(canvas)) {
     const c = canvas as Record<string, unknown>;
     const int = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) ? v : 0);
     const width = int(c.width_px);

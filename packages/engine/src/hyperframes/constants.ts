@@ -1,4 +1,4 @@
-// 移植自 internal/hyperframes/hyperframes.go 的常量部分（单独成文件，免得 manifest 与安装逻辑循环导入）。
+// hyperframes 的常量（单独成文件，免得 manifest 与安装逻辑循环导入）。
 
 /** 技能在项目里的落点，与 scene.portableSkillsDir 一致。 */
 export const SkillsSubdir = '.agents/skills';

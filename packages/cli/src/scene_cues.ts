@@ -1,6 +1,5 @@
 /**
  * scene_cues：由字幕或短语锚点推导口播镜头的帧区间，写入各镜头的 duration_seconds 与 timing 块。
- * 移植自 internal/cli/scene_cues.go（commitWrites 与 pendingWrite 移植自 internal/cli/beat.go）。
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -82,7 +81,7 @@ timing 块：{"fps", "start_frame", "end_frame_exclusive", "plan", "phrases",
 
 check 只重算并核对，不写文件：时长、timing 块或短语副本与重算结果不符
 （例如有人手改了 duration_seconds）时逐条列出并失败。
-镜头带 song 或 beat 块时拒绝：歌曲、卡点的时长由 song_cues() / beat_cues() 决定。`,
+镜头带自己时间轴的块（歌曲、卡点镜头）时拒绝：它们的时长由各自的 cues 操作决定。`,
   examples: [
     'scene_cues({"scenes": "scenes/", "plan": "production/scene-plan.json", "srt": "transcription-production.srt", "total_frames": 5400})',
     'scene_cues({"scenes": "scenes/", "plan": "production/scene-plan.json", "srt": "transcription-production.srt", "phrases": "production/phrase-timeline.json", "total_frames": 5400})',
@@ -171,8 +170,9 @@ function runSceneCues(opts: SceneCuesOptions, stdout: Out): unknown {
   const look = plan.look ?? scene.zeroLook();
   const planScenes = plan.scenes ?? [];
   const results: SceneCue[] = scenes.map((s, i) => {
-    if (s.song !== null || s.beat !== null) {
-      throw new Error(`镜头 ${s.id} 带 song 或 beat 块：歌曲与卡点镜头的时长不由 scene_cues() 决定`);
+    const own = scene.sceneTimelineBlocks(s);
+    if (own.length > 0) {
+      throw new Error(`镜头 ${s.id} 带 ${own.map((b) => b.key).join('、')} 块：${own.map((b) => b.timeline!.label).join('、')}镜头的时长不由 scene_cues() 决定`);
     }
     const timing = scene.newTiming({
       fps,
@@ -393,7 +393,7 @@ function printSceneCues(out: Out, results: readonly SceneCue[]): void {
   }
 }
 
-// ---------------------------------------------------------------- 落盘（移植自 beat.go）
+// ---------------------------------------------------------------- 落盘
 
 export interface PendingWrite {
   path: string;
@@ -406,7 +406,7 @@ export interface PendingWrite {
  * 都还没动；第二轮只剩同文件系统内的 rename。rename 本身仍可能中途失败，
  * 那时 am validate beat 会按网格摘要把没换上的镜头报出来。
  *
- * 内容不变的文件不重写：run-all 靠 scene.json 的修改时间判断产物是否过期，
+ * 内容不变的文件不重写：客户端的镜头列表靠 scene.json 的修改时间判断产物是否过期，
  * 无变化的重跑不能把所有镜头都标成需要重渲染。
  */
 export function commitWrites(writes: readonly PendingWrite[]): void {

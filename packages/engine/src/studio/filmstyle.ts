@@ -1,6 +1,6 @@
 /**
  * 整片风格（../filmstyle）在 Studio 里的入口：各风格来源的目录与海报、本项目的
- * 整片风格、装 / 换 / 去掉。移植自 internal/studio/filmstyle.go。
+ * 整片风格、装 / 换 / 去掉。
  *
  * 来源数据是前置资源（am setup 准备），这里只读不下载。装与去掉经 am film-style 子命令完成，
  * 占项目写锁，与渲染、拼接同一条路：Studio 自己不写项目文件。这里不点名任何来源，
@@ -45,7 +45,7 @@ export function styleJSON(style: filmstyle.Style): Record<string, unknown> {
   };
 }
 
-/** Manifest 按 Go struct 的字段顺序写出（legacy 是 json:"-"）。 */
+/** Manifest 按字段顺序写出。 */
 function manifestJSON(manifest: filmstyle.Manifest): Record<string, unknown> {
   return {
     source: manifest.source,

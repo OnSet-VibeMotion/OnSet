@@ -1,4 +1,3 @@
-// 移植自 internal/filmstyle/lemo/prepare.go 与 setup.go。
 //
 // 风格库是前置资源：只由 am setup 经 prepareLibrary 一次下全（全部风格的说明、
 // demo 源码、海报、core/assets 模型，以及 three.js 风格要的 Node 依赖），其余地方只用

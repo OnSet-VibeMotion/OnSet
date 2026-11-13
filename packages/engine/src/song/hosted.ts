@@ -1,4 +1,3 @@
-// 移植自 internal/song/hosted.go、mureka.go、lyria.go。
 import { formatFixed, goRound, goTrimSpace } from '../gofmt';
 import { marshal } from '../gojson';
 import { saveStream } from './download';

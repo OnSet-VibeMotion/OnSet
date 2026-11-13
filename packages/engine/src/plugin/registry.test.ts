@@ -9,6 +9,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as flow from '../flow';
+import * as memory from '../memory';
+import * as preset from '../preset';
+import * as projectinit from '../projectinit';
+import * as scene from '../scene';
 import { computeStations } from '../studio/progress';
 import { discoverScenes } from '../studio/scenes';
 import { newSessionFixture, studioRequest } from '../studio/testsupport';
@@ -74,7 +78,7 @@ function register(): void {
 
 describe('builtin plugin apply', () => {
   it('registers the shipped plugins once', () => {
-    expect(appliedPluginIDs()).toEqual(['publishing', 'song']);
+    expect(appliedPluginIDs()).toEqual(['publishing', 'song', 'algorithmic-art', 'text-to-lottie', 'cast']);
     expect(() => registerBuiltin({ id: 'publishing', apply: () => {} })).toThrow('登记了两次');
   });
 
@@ -157,7 +161,7 @@ describe('builtin plugin apply', () => {
     } finally {
       undo();
     }
-    expect(appliedPluginIDs()).toEqual(['publishing', 'song']);
+    expect(appliedPluginIDs()).toEqual(['publishing', 'song', 'algorithmic-art', 'text-to-lottie', 'cast']);
   });
 });
 
@@ -175,5 +179,76 @@ describe('the shipped prompt sections of builtin plugins', () => {
         if (sec.stage) expect(body.split('\n')[0], sec.file).toBe(`## {{STAGE:${sec.stage}}}：${sec.title}`);
       }
     }
+  });
+});
+
+/**
+ * 假插件「合唱」：一条渲染技能、一个镜头扩展块、一种叙事模式（新建时写 chorus.yaml）、一个新建选项与在用判断。
+ * 证明新增这样一个内置功能不用改 scene/、projectinit/、studio/ 的任何文件（工具那一侧见 cli 的 plugin_ops.test.ts）。
+ */
+function chorusPlugin(): BuiltinPlugin {
+  return {
+    id: 'fake-chorus',
+    apply(ctx) {
+      ctx.skill({
+        name: 'chorus-kit',
+        source: scene.SourceEmbedded,
+        requiredFiles: ['SKILL.md'],
+        promptSection: (dir) => `合唱技能：${dir === '' ? 'chorus-kit' : path.join(dir, 'chorus-kit')}\n`,
+      });
+      ctx.sceneBlock<{ voices: number }>({
+        key: 'chorus',
+        order: 40,
+        type: { kind: 'struct', goName: 'scene.Chorus', name: 'Chorus', fields: [['voices', 'int']] },
+        toJSON: (v) => ({ voices: v.voices }),
+        promptSection: (s) => `\n合唱（强制）：${(s as unknown as { chorus: { voices: number } }).chorus.voices} 个声部。\n`,
+        fingerprintParts: (_s, v) => ({ 'chorus:voices': String(v.voices) }),
+        feature: { name: 'chorus', description: '合唱镜头' },
+      });
+      ctx.narration({ id: 'chorus', name: '合唱', hint: '大家一起唱', init: (target) => fs.writeFileSync(path.join(target, 'chorus.yaml'), 'voices: 4\n') });
+      ctx.preset({ id: 'chorus', label: '合唱', hint: '大家一起唱', delivery: 'speech', narration: 'chorus' });
+      ctx.inUse((root) => (fs.existsSync(path.join(root, 'chorus.yaml')) ? 'chorus.yaml' : ''));
+    },
+  };
+}
+
+describe('a builtin plugin with a skill, a scene block and a narration', () => {
+  it('reaches the renderer, the scene, project creation and the switch without kernel changes', async () => {
+    cleanups.push(registerBuiltin(chorusPlugin()));
+    const root = tempDir();
+    fs.mkdirSync(path.join(root, '.agents', 'skills', 'chorus-kit'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.agents', 'skills', 'chorus-kit', 'SKILL.md'), 'x');
+    const dir = path.join(root, 'scenes', 'scene-001');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'voice.srt'), '1\n00:00:00,000 --> 00:00:01,000\nhello\n');
+    fs.writeFileSync(path.join(dir, 'scene.json'), JSON.stringify({ id: 'scene-001', duration_seconds: 1, output: 'out.mp4', transcript: 'voice.srt', text: 'hello', chorus: { voices: 4 } }));
+    const s = scene.load(dir);
+    const resolved = scene.resolveAllSkills('claude', dir, {}, s);
+    expect(resolved['chorus-kit']).toBe(path.join(root, '.agents', 'skills'));
+    const prompt = scene.buildPrompt(s, resolved);
+    expect(prompt).toContain('合唱技能：' + path.join(root, '.agents', 'skills', 'chorus-kit'));
+    expect(prompt).toContain('合唱（强制）：4 个声部。');
+    expect(scene.fingerprint(s, 'claude', resolved).parts?.['chorus:voices']).toBe('4');
+    expect(scene.sceneToJSON(s)).toMatchObject({ chorus: { voices: 4 } });
+    expect(memory.features(s)).toContain('chorus');
+
+    // 新建项目：叙事模式与新建选项来自登记表，选中时写出它的初始文件；项目在用时不许关。
+    expect(projectinit.narrations().some((n) => n.id === 'chorus' && n.owner === 'fake-chorus')).toBe(true);
+    expect(projectinit.presets().some((p) => p.id === 'chorus')).toBe(true);
+    const created = path.join(tempDir(), 'p');
+    projectinit.create({ target: created, canvas: preset.defaultPreset().id, style: preset.CustomStyle, delivery: 'speech', narration: 'chorus' });
+    expect(fs.readFileSync(path.join(created, 'chorus.yaml'), 'utf8')).toBe('voices: 4\n');
+    expect(flow.inUse(created, 'fake-chorus')).toBe('chorus.yaml');
+    const f = newSessionFixture();
+    const styles = await studioRequest(f.s, 'GET', '/api/styles');
+    expect((styles.body.modes as { id: string }[]).map((m) => m.id)).toContain('chorus');
+
+    // 项目关掉它：技能不给渲染器、提示词里没有技能段与块的那一段。
+    fs.writeFileSync(path.join(root, flow.LockFile), JSON.stringify({ version: 1, stations: [], disabled: ['fake-chorus'] }));
+    const off = scene.resolveAllSkills('claude', dir, {}, s);
+    expect(off['chorus-kit']).toBeUndefined();
+    const offPrompt = scene.buildPrompt(s, off);
+    expect(offPrompt).not.toContain('合唱技能');
+    expect(offPrompt).not.toContain('合唱（强制）');
   });
 });

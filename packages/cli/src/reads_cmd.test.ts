@@ -1,4 +1,3 @@
-// 移植自 internal/cli/reads_test.go。
 // memory_test.go 的 TestValidateReadsRecordsFindingsPerScene（断言问题按镜头写进记忆库）移植在 memory_cmd.test.ts。
 import { Buffer, run, tempDir } from './testutil';
 import fs from 'node:fs';

@@ -1,4 +1,3 @@
-// 移植自 internal/memory/recall.go。
 import crypto from 'node:crypto';
 import { goTrimSpace } from '../gofmt';
 import { compareBytes } from '../gojson';

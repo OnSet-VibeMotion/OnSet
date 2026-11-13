@@ -1,5 +1,3 @@
-// 移植自 internal/tools/usage.go。
-
 /**
  * 从渲染工具输出流里读到的用量。字段缺失就保持零值（undefined 视同 0）或 null，
  * 不做估算：报出一个编出来的数比不报更误导。
@@ -23,10 +21,7 @@ export interface Usage {
   turns?: number;
   /** 汇总里有的部分没读到用量或费用，数字只是下限。 */
   partial?: boolean;
-  /**
-   * 标明口径。新记录都是 BasisTotalInput；没有这个字段的是统一口径之前
-   * 写下的老记录，读的时候用 usageNormalized 换算。
-   */
+  /** 标明口径：都是 BasisTotalInput（输入含缓存）。 */
   basis?: string;
   /** 记下数字来自哪种事件，方便日后核对格式是否变了。 */
   source?: string;
@@ -68,24 +63,6 @@ export function newUsage(): Usage {
   return copyUsage({});
 }
 
-/**
- * 把老记录换成统一口径。claude 系与 opencode 的老记录输入里不含缓存
- * 命中，加回去；opencode 老记录没记缓存写入与推理 token，补不回来，只能偏低。
- */
-export function usageNormalized(u: Usage): Usage {
-  const out = copyUsage(u);
-  if (out.basis !== '' || usageEmpty(out)) return out;
-  switch (out.source) {
-    case 'claude result':
-    case 'qoder result':
-    case 'codebuddy result':
-    case 'opencode step_finish':
-      out.input_tokens = out.input_tokens! + out.cached_input_tokens!;
-  }
-  out.basis = BasisTotalInput;
-  return out;
-}
-
 /** 一个用量事件都没读到。 */
 export function usageEmpty(u: Usage): boolean {
   return !u.source;
@@ -101,7 +78,7 @@ export function usageTotal(u: Usage): number {
  * 一方缺失时保留已知部分并标出不完整（partial）。
  */
 export function usageAdd(u: Usage, other: Usage): void {
-  other = usageNormalized(other);
+  other = copyUsage(other);
   if (usageEmpty(other)) {
     // 没读到用量的一次也要留下痕迹：之后读到的数字就只是下限了。
     u.partial = true;
@@ -273,7 +250,7 @@ function accumulateOpencodeUsage(line: string, u: Usage): void {
 
 /** 把用量写成一行给人看的文字；没读到时如实说没读到。 */
 export function formatUsage(u: Usage): string {
-  u = usageNormalized(u);
+  u = copyUsage(u);
   if (usageEmpty(u)) return '未读到用量';
   let text = `输入 ${groupDigits(u.input_tokens!)}（其中缓存 ${groupDigits(u.cached_input_tokens!)}）· 输出 ${groupDigits(u.output_tokens!)} · 合计 ${groupDigits(usageTotal(u))} token`;
   if (u.cost_usd != null) text += ` · $${u.cost_usd.toFixed(4)}`;

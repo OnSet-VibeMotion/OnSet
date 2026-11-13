@@ -1,4 +1,3 @@
-// 移植自 internal/studio/skills_test.go。
 import './testsupport';
 import fs from 'node:fs';
 import path from 'node:path';

@@ -1,4 +1,3 @@
-// 移植自 internal/beat/grid.go。
 import fs from 'node:fs';
 import { formatFixed, goRound } from '../gofmt';
 import { sliceOf, type StructType } from './jsondecode';

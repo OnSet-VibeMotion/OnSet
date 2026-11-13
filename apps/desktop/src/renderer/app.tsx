@@ -32,6 +32,7 @@ const pageForFile = (path: string): 'script' | 'storyboard' | 'publish' | null =
   path === scriptFinalPath ? 'script' : storyboardFiles.includes(path) ? 'storyboard' : path === 'publish.md' ? 'publish' : null;
 import { ContextMenu } from './components/ContextMenu';
 import { MarkdownContext } from './components/chat/Markdown';
+import { setPluginVerbs } from './components/chat/model';
 import { ProjectDialog } from './components/ProjectDialog';
 import { Tasks } from './components/Tasks';
 import { BrandMark } from './components/BrandMark';
@@ -275,6 +276,7 @@ export function App() {
         api<StationsResponse>('/api/stations').catch(() => ({ stations: [], problems: [] }) as StationsResponse),
       ]);
       setStationPages(sts.stations);
+      setPluginVerbs(sts.stations.flatMap((x) => x.contents?.ops ?? []));
       setHiddenPages(sts.hidden_pages ?? []);
       // 只用来嵌进别的页面的小窗不单独列。
       setPluginTabs(

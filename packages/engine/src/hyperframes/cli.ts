@@ -1,4 +1,3 @@
-// 移植自 internal/hyperframes/cli.go。
 //
 // CLI 是 am 管理的 HyperFrames CLI：按固定版本装在用户级目录里，所有项目、所有镜头共用。
 //

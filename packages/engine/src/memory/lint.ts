@@ -1,4 +1,3 @@
-// 移植自 internal/memory/lint.go。
 import { goQuote, goTrimSpace } from '../gofmt';
 import { compareBytes } from '../gojson';
 import { ValidRenderers } from '../tools';

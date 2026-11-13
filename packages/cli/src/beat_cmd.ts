@@ -14,18 +14,14 @@ import * as scene from '@am/engine/scene';
 import type { Scene } from '@am/engine/scene';
 import * as schedule from '@am/engine/schedule';
 import { currentEnvironment } from './cli';
-import { type Duration, type Out } from './cobra';
+import { type Out } from './cobra';
 import { defineGroup } from './ops/cli';
 import { bool, num, positiveDuration, projectRoot, str, timeout } from './ops/common';
 import { defineOp, type ParamValues } from './ops/op';
-import { decodeRawMap, encodeRawMapIndent } from './rawjson';
+import { decodeRawMap, encodeRawMapIndent } from '@am/engine/rawjson';
 
-/** context.WithTimeout：父信号与超时任一触发即取消。setTimeout 只认 2^31-1 毫秒以内，更长的超时等于不设。 */
-export function withTimeoutSignal(parent: AbortSignal, timeout: Duration): AbortSignal {
-  const ms = timeout / 1e6;
-  if (ms > 2 ** 31 - 1) return parent;
-  return AbortSignal.any([parent, AbortSignal.timeout(Math.max(1, Math.ceil(ms)))]);
-}
+export { withTimeoutSignal } from './ops/common';
+import { withTimeoutSignal } from './ops/common';
 
 defineGroup({
   path: ['beat'],
@@ -262,7 +258,8 @@ function beatLayout(root: string, scenes: readonly Scene[]): { grid: beat.Grid; 
   const mismatched: string[] = [];
   scenes.forEach((s, i) => {
     if (s.id !== segments[i].id) mismatched.push(`第 ${i + 1} 个：计划 ${segments[i].id}，目录 ${s.id}`);
-    if (s.song !== null || s.cast !== null) throw new Error(`卡点镜头 ${s.id} 不能带 song 或 cast 块`);
+    const others = scene.sceneBlocks().filter((b) => b.key !== 'beat' && scene.blockValue(s, b.key) !== null);
+    if (others.length > 0) throw new Error(`卡点镜头 ${s.id} 不能带 ${others.map((b) => b.key).join('、')} 块`);
   });
   if (mismatched.length > 0) throw new Error(`镜头顺序与 ${beat.PlanFile} 不一致（目录按字典序）：${mismatched.join('；')}`);
   return { grid, segments, fps: canvas.fps };

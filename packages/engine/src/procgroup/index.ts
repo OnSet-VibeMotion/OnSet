@@ -1,4 +1,3 @@
-// 移植自 internal/procgroup（Go 版只在 darwin / linux 上编译）。
 //
 // 以独立进程组启动外部 AI CLI，并在取消时整组终止。
 //

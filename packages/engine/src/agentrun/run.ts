@@ -1,4 +1,3 @@
-// 移植自 internal/agentrun/run.go。
 import crypto from 'node:crypto';
 import { MissingToolError, lookPath as envLookPath } from '../envutil';
 import { DefaultGrace, ExitError as ProcessExitError, abortReason, start } from '../procgroup';

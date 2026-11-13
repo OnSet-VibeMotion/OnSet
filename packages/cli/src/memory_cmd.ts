@@ -893,8 +893,6 @@ defineOp({
   summary: '把已有项目的渲染历史导入为种子经历',
   description: `从已有项目里导入渲染历史，作为记忆的种子：
   - 镜头目录里的尝试记录（render-<id>.attempt.json）与 attempts/ 下归档的尝试；
-  - 只有产物没有尝试记录的归档（含 production/failed-attempts/<镜头>-attempt-NN-*），
-    用现在的产物校验重判一遍，只记失败；
   - production/review/review.json 里没接上的交接；
   - production/visible-event-inventory.json（schema 1）的阅读时间问题。
 
@@ -905,16 +903,13 @@ memory_report({"all_projects": true}) 能看到这些项目当时的一次通过
   params: {
     projects: { type: 'strings', description: '要导入的项目目录', required: true, positional: 'rest' },
     json: jsonParam,
-    duration_tolerance: { type: 'number', description: '重新校验归档产物时的时长容差（秒）', default: 0.15 },
   },
   run: (p, { out }) => {
-    const tolerance = num(p.duration_tolerance);
-    validateTolerance(tolerance);
     const { cfg, store } = loadMemoryConfig();
     const results: memory.ImportResult[] = [];
     for (const project of strs(p.projects)) {
       try {
-        results.push(store.importProject(project, { env: currentEnvironment(), tolerance, renderer: cfg.renderer }));
+        results.push(store.importProject(project, { renderer: cfg.renderer }));
       } catch (err) {
         throw new Error(`导入 ${project}：${errorText(err)}`, { cause: err });
       }
@@ -926,7 +921,6 @@ memory_report({"all_projects": true}) 能看到这些项目当时的一次通过
     }
     for (const r of results) {
       out.write(`${r.project}：${r.scenes} 个镜头，导入 ${r.attempts} 次尝试（${r.failures} 次校验失败）、${r.checks} 条事后检查问题，跳过 ${r.skipped}\n`);
-      for (const note of r.notes ?? []) out.write(`  提示：${note}\n`);
     }
     return { data };
   },

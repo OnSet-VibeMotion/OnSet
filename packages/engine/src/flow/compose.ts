@@ -118,7 +118,7 @@ export interface FlowComposeInput {
   flow: FlowID;
   /** 项目加的站（loadProjectStations：没关掉的内置插件与第三方站）。 */
   stations: readonly LoadedStation[];
-  /** 这个项目关掉的内置插件的站（disabledAmStations）：它们的段落不参与。 */
+  /** 这个项目关掉的内置插件的站（disabledPluginStations）：它们的段落不参与。 */
   disabled: ReadonlySet<string>;
   /** 宿主与内置插件段落的画幅占位符替换（第三方站的文字不经过它）。 */
   canvas: (text: string) => string;

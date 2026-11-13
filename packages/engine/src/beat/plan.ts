@@ -1,4 +1,3 @@
-// 移植自 internal/beat/plan.go。
 import fs from 'node:fs';
 import { goQuote, goTrimSpace } from '../gofmt';
 import { sliceOf, type StructType } from './jsondecode';

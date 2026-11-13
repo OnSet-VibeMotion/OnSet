@@ -1,4 +1,3 @@
-// 移植自 internal/scene/record_test.go。
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
