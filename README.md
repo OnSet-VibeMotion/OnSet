@@ -253,15 +253,18 @@ codebuddy 的这套参数没有经过完整实测。
 
 `am run` 的终端输出是整理过的事件：开头打印会话 id，正文原样打印，每次工具调用一行摘要，失败的工具结果用 `✗` 标出，结尾打印用量。
 
-## 渲染用量
+## 用量
 
-每次 `am scene run` 结束都会打印这一次的 token 用量与费用（工具报了才有），`am scene run-all` 的汇总与 `--report-json` 里有每个镜头这一批的合计。查整个项目花了多少：
+每次 `am scene run` 结束都会打印这一次的 token 用量与费用（工具报了才有），`am scene run-all` 的汇总与 `--report-json` 里有每个镜头这一批的合计。编排工具的用量也记账：每次 `am run`、Studio 每一轮对话各记一行到项目的 `production/usage/orchestrator.jsonl`，失败与取消的调用照样记入。查整个项目花了多少：
 
 ```bash
+am usage                        # 本项目合计：渲染 + 编排，分别按渲染工具/模型、按来源列出
 am scene usage scenes/          # 每个镜头全部尝试（含失败、重试与归档）的合计，按渲染工具/模型分开
 ```
 
-各工具的口径统一为：输入含缓存命中，输出含推理 token。Studio 的镜头时间线与镜头工具栏也显示每个镜头的累计用量。
+`am memory consolidate` 的整理者不属于哪个项目，用量记在记忆库的 `orchestrator-usage.jsonl` 里，`am usage` 单列、不计入项目合计。
+
+各工具的口径统一为：输入含缓存命中，输出含推理 token。Studio 的镜头时间线显示本项目累计用量（悬停看渲染与编排的分项），镜头工具栏显示每个镜头的累计用量。
 
 ## 视觉检查与拼接
 

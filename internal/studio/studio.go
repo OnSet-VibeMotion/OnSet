@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chouheiwa/articale-to-motion/internal/ledger"
 	"github.com/chouheiwa/articale-to-motion/internal/scene"
 	"github.com/chouheiwa/articale-to-motion/internal/tools"
 	"io/fs"
@@ -543,7 +544,36 @@ func (s *Server) scenesAPI(w http.ResponseWriter, r *http.Request) {
 		s.sceneAPI(w, p, id)
 		return
 	}
-	s.write(w, 200, map[string]any{"scenes": discoverScenes(p.Path)})
+	scenes := discoverScenes(p.Path)
+	s.write(w, 200, map[string]any{"scenes": scenes, "usage": projectUsage(p.Path, scenes)})
+}
+
+// ProjectUsage 是整个项目花掉的 token：渲染（各镜头全部尝试）加编排（用量账本）。
+type ProjectUsage struct {
+	Renders      tools.Usage    `json:"renders"`
+	Attempts     int            `json:"attempts"`
+	Orchestrator ledger.Summary `json:"orchestrator"`
+	Total        tools.Usage    `json:"total"`
+}
+
+func projectUsage(project string, scenes []SceneSummary) ProjectUsage {
+	out := ProjectUsage{}
+	for _, scene := range scenes {
+		if scene.Attempts == 0 || scene.Usage == nil {
+			continue
+		}
+		out.Attempts += scene.Attempts
+		out.Renders.Add(*scene.Usage)
+	}
+	entries, _ := ledger.Read(ledger.ProjectFile(project))
+	out.Orchestrator = ledger.Summarize(entries)
+	if out.Attempts > 0 {
+		out.Total.Add(out.Renders)
+	}
+	if out.Orchestrator.Calls > 0 {
+		out.Total.Add(out.Orchestrator.Total)
+	}
+	return out
 }
 func (s *Server) sceneAPI(w http.ResponseWriter, p Project, id string) {
 	for _, scene := range discoverScenes(p.Path) {

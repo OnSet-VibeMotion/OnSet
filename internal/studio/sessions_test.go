@@ -26,7 +26,7 @@ for a in "$@"; do
   prev="$a"
 done
 if [ -n "$resume" ] && [ -n "$FAKE_FAIL_RESUME" ]; then echo "No conversation found with session ID: $sid" >&2; exit 1; fi
-printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "$sid"
+printf '{"type":"system","subtype":"init","session_id":"%s","model":"claude-fake"}\n' "$sid"
 if [ -n "$FAKE_SLEEP" ]; then sleep "$FAKE_SLEEP"; fi
 printf '%s\n' "${FAKE_CONTENT:-edited}" > scenes/scene-001/prompt.md
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"scenes/scene-001/prompt.md"}}]}}\n'

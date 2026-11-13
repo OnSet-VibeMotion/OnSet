@@ -167,6 +167,8 @@ SVG 转 PNG 必须走 `rsvg-convert`（`internal/styleimage`），**不能用 Im
 
 用量账以尝试记录为准：`scene.AttemptHistory` 读当前记录加 `attempts/` 归档，失败与重试照样计入（`am scene usage`、Studio 镜头列表）。Studio 把 `render-*.attempt.json` 当媒体只记 stat，回退一轮不会删掉它——那是已经花掉的钱。
 
+编排工具的用量记在账本里（`internal/ledger`，只追加的 JSONL）：`am run` 与 Studio 每一轮记进项目的 `production/usage/orchestrator.jsonl`，整理记忆记进记忆库的 `orchestrator-usage.jsonl`。每次调用一行，失败、取消、续接失败后重开的会话都各记一行；进程没起来（`agentrun.Result.Started` 为 false）的不记。模型名取 `agentrun.Result.Model`（流里的 `system/init`），读不到再按 `tools.ConfiguredModel` 补。Studio 的 `scanTree` / `statTree` 跳过 `production/usage/`：账在一轮结束前写下，不跳过的话会算成这一轮的改动，回退时连账一起抹掉。`am usage` 合计渲染与编排两本账。
+
 ## 渲染记忆
 
 `internal/memory` 实现 `docs/superpowers/specs/2026-11-02-渲染记忆-design.md`：经历 → 整理成试用经验 → 回放考试 → 生效并按镜头召回。记忆库在用户级目录（`config.MemorySettings.Dir`），不在项目里。

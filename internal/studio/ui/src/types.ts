@@ -39,6 +39,14 @@ export interface Usage {
   source?: string;
 }
 
+/** 整个项目花掉的 token：渲染（各镜头全部尝试）加编排（am run 与 Studio 对话的账本）。 */
+export interface ProjectUsage {
+  renders: Usage;
+  attempts: number;
+  orchestrator: { calls: number; total: Usage; by_source: Record<string, Usage>; by_model: Record<string, Usage> };
+  total: Usage;
+}
+
 export interface TreeFile {
   path: string;
   size: number;
@@ -90,13 +98,6 @@ export interface FileChange {
   path: string;
   change: 'added' | 'modified' | 'deleted';
   revertable: boolean;
-}
-
-export interface Usage {
-  input_tokens?: number;
-  output_tokens?: number;
-  cache_read_input_tokens?: number;
-  cache_creation_input_tokens?: number;
 }
 
 export type EventKind =

@@ -18,6 +18,7 @@ import (
 	"github.com/chouheiwa/articale-to-motion/internal/config"
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
 	"github.com/chouheiwa/articale-to-motion/internal/fsutil"
+	"github.com/chouheiwa/articale-to-motion/internal/ledger"
 	"github.com/chouheiwa/articale-to-motion/internal/mediaprobe"
 	"github.com/chouheiwa/articale-to-motion/internal/memory"
 	"github.com/chouheiwa/articale-to-motion/internal/scene"
@@ -135,7 +136,9 @@ func loadMemoryConfig() (config.Config, *memory.Store, error) {
 			return config.Config{}, nil, err
 		}
 		env := currentEnvironment()
-		cfg = config.Config{Memory: config.MemorySettings{Enabled: true, Dir: env["AM_MEMORY_DIR"], RecallBudget: config.DefaultMemoryRecallBudget}}
+		// 编排与渲染工具照项目配置的写法取环境变量，整理与考试在项目外也能跑。
+		cfg = config.Config{Orchestrator: env["ORCHESTRATOR"], Renderer: env["RENDERER"],
+			Memory: config.MemorySettings{Enabled: true, Dir: env["AM_MEMORY_DIR"], RecallBudget: config.DefaultMemoryRecallBudget}}
 		if cfg.Memory.Dir == "" {
 			cfg.Memory.Dir = config.DefaultMemoryDir(env)
 		}
@@ -327,11 +330,14 @@ func newMemoryConsolidateCommand(stdout, stderr io.Writer, unsafe *bool) *cobra.
 			opts := memory.ConsolidateOptions{MinCount: minCount, All: all, DraftsDir: drafts}
 			if drafts == "" {
 				opts.Drafter = func(ctx context.Context, workdir, prompt string) error {
+					if cfg.Orchestrator == "" {
+						return fmt.Errorf("没有配置整理者：在项目里运行，或用环境变量 ORCHESTRATOR 指定编排工具；也可以用 --drafts 直接收录现成草稿")
+					}
 					isUnsafe := envutil.IsUnsafe(*unsafe)
 					env := cfg.ChildEnvironment(currentEnvironment(), isUnsafe, envutil.ParsePassthrough(os.Getenv("AM_PASSTHROUGH_ENV")))
 					fmt.Fprintf(stdout, "整理者: %s\n工作目录: %s\n---\n", cfg.Orchestrator, workdir)
 					printer := &eventPrinter{stdout: stdout, stderr: stderr}
-					_, err := agentrun.Run(ctx, agentrun.Spec{
+					result, err := agentrun.Run(ctx, agentrun.Spec{
 						Tool: cfg.Orchestrator, Workdir: workdir, Prompt: prompt, Unsafe: isUnsafe,
 						SessionID: agentrun.NewSessionID(cfg.Orchestrator),
 						// 整理者只写草稿文件，不需要任何命令。
@@ -339,6 +345,9 @@ func newMemoryConsolidateCommand(stdout, stderr io.Writer, unsafe *bool) *cobra.
 						Env:      envList(env),
 						LookPath: func(name string) (string, error) { return envutil.LookPath(name, env["PATH"]) },
 					}, printer.print)
+					if result.Started {
+						recordOrchestratorUsage(ctx, ledger.MemoryFile(store.Dir), ledger.SourceConsolidate, cfg.Orchestrator, env, result, err, stderr)
+					}
 					return err
 				}
 			}

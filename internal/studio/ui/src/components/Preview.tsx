@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api, errorText, post, rawURL } from '../api';
-import type { Attachment, BeatState, Box, ProjectState, Scene, TreeFile } from '../types';
+import type { Attachment, BeatState, Box, ProjectState, ProjectUsage, Scene, TreeFile, Usage } from '../types';
 import { cssSelector } from '../selector';
 import { Icon } from './Icon';
 import { MemoryTab } from './Memory';
@@ -26,6 +26,7 @@ interface Props {
   onTab: (tab: Tab) => void;
   state: ProjectState | null;
   scenes: Scene[];
+  usage: ProjectUsage | null;
   sceneId: string;
   filePath: string;
   tree: TreeFile[];
@@ -67,7 +68,7 @@ export function Preview(props: Props) {
         {props.tab === 'memory' && <MemoryTab scene={scene} version={props.version} run={props.run} />}
         {props.tab === 'file' && <FileView path={props.filePath} version={props.version} />}
       </div>
-      <Timeline scenes={props.scenes} sceneId={props.sceneId} onScene={props.onScene} />
+      <Timeline scenes={props.scenes} usage={props.usage} sceneId={props.sceneId} onScene={props.onScene} />
     </main>
   );
 }
@@ -107,7 +108,7 @@ function clock(seconds: number): string {
 }
 
 /** 镜头时间线：宽度按时长比例，底部色条是出片状态。点哪个镜头就预览哪个。 */
-function Timeline({ scenes, sceneId, onScene }: { scenes: Scene[]; sceneId: string; onScene: (id: string) => void }) {
+function Timeline({ scenes, usage, sceneId, onScene }: { scenes: Scene[]; usage: ProjectUsage | null; sceneId: string; onScene: (id: string) => void }) {
   if (scenes.length === 0) return null;
   const total = scenes.reduce((sum, s) => sum + (s.duration_seconds ?? 0), 0);
   return (
@@ -117,6 +118,11 @@ function Timeline({ scenes, sceneId, onScene }: { scenes: Scene[]; sceneId: stri
         <span class="small muted">
           {scenes.length} 个镜头{total > 0 ? ` · 共 ${clock(total).replace(/\.\d+$/, '')}` : ''}
         </span>
+        {usage && (usage.attempts > 0 || usage.orchestrator.calls > 0) && (
+          <span class="small muted mono" title={projectUsageTitle(usage)}>
+            本项目 {tokenLabel(usage.total)}
+          </span>
+        )}
         <span class="spacer" />
         <span class="legend" aria-hidden="true">
           <span>
@@ -664,6 +670,25 @@ function usageTitle(scene: Scene): string {
   const u = scene.usage;
   if (!u || !u.source) return '渲染工具没有报用量';
   return `全部 ${scene.attempts} 次渲染合计：输入 ${(u.input_tokens ?? 0).toLocaleString()}（其中缓存 ${(u.cached_input_tokens ?? 0).toLocaleString()}）· 输出 ${(u.output_tokens ?? 0).toLocaleString()}${u.partial ? '；有的尝试没读到用量，这是下限' : ''}`;
+}
+
+/** 紧凑写法：12.3M token · $4.17；没读到用量时如实说。 */
+function tokenLabel(u: Usage): string {
+  if (!u.source) return u.partial ? '未读到用量' : '0 token';
+  const parts = [`${compact((u.input_tokens ?? 0) + (u.output_tokens ?? 0))} token${u.partial ? '+' : ''}`];
+  if (u.cost_usd != null) parts.push(`$${u.cost_usd.toFixed(2)}`);
+  return parts.join(' · ');
+}
+
+const usageSources: Record<string, string> = { run: 'am run', studio: 'Studio 对话', consolidate: '整理记忆' };
+
+function projectUsageTitle(u: ProjectUsage): string {
+  const lines = [`渲染：${u.attempts} 次尝试 · ${tokenLabel(u.renders)}`, `编排：${u.orchestrator.calls} 次调用 · ${tokenLabel(u.orchestrator.total)}`];
+  for (const [source, value] of Object.entries(u.orchestrator.by_source ?? {})) {
+    lines.push(`  ${usageSources[source] ?? source}：${tokenLabel(value)}`);
+  }
+  if (u.total.partial) lines.push('有的调用没读到用量或费用，这是下限');
+  return lines.join('\n');
 }
 
 function compact(n: number): string {

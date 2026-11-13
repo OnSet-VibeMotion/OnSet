@@ -234,15 +234,18 @@ Different models make different mistakes. Every render records the model actuall
 
 Each exam cell is a real render: renders = questions × renderers × 2 × `--repeat`, with at most 4 failed-episode questions by default.
 
-## Render usage
+## Usage
 
-Every `am scene run` prints the tokens and cost (when the tool reports it) of that render, and the `am scene run-all` summary and `--report-json` carry each scene's total for the run. For the whole project:
+Every `am scene run` prints the tokens and cost (when the tool reports it) of that render, and the `am scene run-all` summary and `--report-json` carry each scene's total for the run. Orchestrator calls are on the books too: every `am run` and every Studio turn appends one line to the project's `production/usage/orchestrator.jsonl`, failed and cancelled calls included. For the whole project:
 
 ```bash
+am usage                        # project total: renders + orchestration, split by renderer/model and by source
 am scene usage scenes/          # every attempt per scene, including failures, retries and archives, split by renderer/model
 ```
 
-Usage is normalized across tools: input includes cache hits, output includes reasoning tokens. Studio shows each scene's running total in the scene timeline and toolbar.
+The `am memory consolidate` drafter does not belong to any project; its usage goes to `orchestrator-usage.jsonl` in the memory store, and `am usage` lists it separately, outside the project total.
+
+Usage is normalized across tools: input includes cache hits, output includes reasoning tokens. Studio's scene timeline shows the project total (hover for renders vs. orchestration), and the scene toolbar shows each scene's running total.
 
 ## Inspect frames and concatenate
 

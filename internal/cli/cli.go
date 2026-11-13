@@ -25,6 +25,7 @@ import (
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
 	"github.com/chouheiwa/articale-to-motion/internal/fsutil"
 	"github.com/chouheiwa/articale-to-motion/internal/hyperframes"
+	"github.com/chouheiwa/articale-to-motion/internal/ledger"
 	"github.com/chouheiwa/articale-to-motion/internal/memory"
 	"github.com/chouheiwa/articale-to-motion/internal/preset"
 	"github.com/chouheiwa/articale-to-motion/internal/project"
@@ -774,13 +775,16 @@ opencode 没有可用的白名单机制，安全模式下仍能执行任何命�
 			}
 			fmt.Fprintf(stdout, "编排工具: %s\n渲染工具: %s\nPrompt: %s\n项目规则: %s\n---\n", cfg.Orchestrator, cfg.Renderer, promptPath, rulesDisplay(rulesPath))
 			printer := &eventPrinter{stdout: stdout, stderr: stderr}
-			_, err = agentrun.Run(cmd.Context(), agentrun.Spec{
+			result, err := agentrun.Run(cmd.Context(), agentrun.Spec{
 				Tool: cfg.Orchestrator, Workdir: workdir, Prompt: string(prompt), Unsafe: isUnsafe,
 				SessionID: agentrun.NewSessionID(cfg.Orchestrator),
 				Access:    cfg.OrchestratorAccess(hyperframesCommand()),
 				Env:       envList(childEnvironment),
 				LookPath:  func(name string) (string, error) { return envutil.LookPath(name, childEnvironment["PATH"]) },
 			}, printer.print)
+			if result.Started {
+				recordOrchestratorUsage(cmd.Context(), ledger.ProjectFile(rootDir), ledger.SourceRun, cfg.Orchestrator, childEnvironment, result, err, stderr)
+			}
 			if err != nil {
 				var exit *agentrun.ExitError
 				if errors.As(err, &exit) {
@@ -792,6 +796,7 @@ opencode 没有可用的白名单机制，安全模式下仍能执行任何命�
 		}}
 	runCmd.Flags().StringVar(&workdir, "workdir", "", "编排工具的工作目录，缺省为当前项目根")
 	root.AddCommand(runCmd)
+	root.AddCommand(newUsageCommand(stdout))
 
 	var mainRef, archiveRoot, archiveName string
 	var yes, dryRun bool

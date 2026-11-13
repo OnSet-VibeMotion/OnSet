@@ -13,6 +13,7 @@ import type {
   BeatState,
   Project,
   ProjectState,
+  ProjectUsage,
   Scene,
   SessionMeta,
   Task,
@@ -45,6 +46,7 @@ export function App() {
   const [loaded, setLoaded] = useState(false);
   const [state, setState] = useState<ProjectState | null>(null);
   const [scenes, setScenes] = useState<Scene[]>([]);
+  const [usage, setUsage] = useState<ProjectUsage | null>(null);
   const [tree, setTree] = useState<TreeFile[]>([]);
   const [beat, setBeat] = useState<BeatState | null>(null);
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
@@ -97,12 +99,13 @@ export function App() {
     try {
       const [st, sc, tr, bt] = await Promise.all([
         api<ProjectState>('/api/state'),
-        api<{ scenes: Scene[] }>('/api/scenes'),
+        api<{ scenes: Scene[]; usage?: ProjectUsage }>('/api/scenes'),
         api<{ files: TreeFile[] }>('/api/tree'),
         api<BeatState>('/api/beat'),
       ]);
       setState(st);
       setScenes(sc.scenes ?? []);
+      setUsage(sc.usage ?? null);
       setTree(tr.files ?? []);
       setBeat(bt);
       setVersion((v) => v + 1);
@@ -129,6 +132,7 @@ export function App() {
   useEffect(() => {
     setState(null);
     setScenes([]);
+    setUsage(null);
     setTree([]);
     setSceneId('');
     setFilePath('');
@@ -288,6 +292,7 @@ export function App() {
             onTab={setTab}
             state={state}
             scenes={scenes}
+            usage={usage}
             sceneId={sceneId}
             filePath={filePath}
             tree={tree}

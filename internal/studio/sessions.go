@@ -20,6 +20,7 @@ import (
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
 	"github.com/chouheiwa/articale-to-motion/internal/fsutil"
 	"github.com/chouheiwa/articale-to-motion/internal/hyperframes"
+	"github.com/chouheiwa/articale-to-motion/internal/ledger"
 	"github.com/chouheiwa/articale-to-motion/internal/project"
 	"github.com/chouheiwa/articale-to-motion/internal/tools"
 )
@@ -515,11 +516,13 @@ func (s *Server) runTurn(ctx context.Context, p Project, sess *session, cfg conf
 		}
 	}
 	result, err := agentrun.Run(ctx, spec, emit)
+	s.recordUsage(ctx, p, sess, cfg.Orchestrator, env, turn.ID, result, err)
 	if err != nil && resumed && !result.Produced && ctx.Err() == nil {
 		s.emit(sess, turn.ID, SessionEvent{Event: agentrun.Event{Kind: kindNotice, Text: "原会话无法续接（" + err.Error() + "），已带上之前的对话记录开新会话"}})
 		spec.SessionID, spec.Resume = agentrun.NewSessionID(cfg.Orchestrator), false
 		spec.Prompt = reseedPrompt(history, prompt)
-		_, err = agentrun.Run(ctx, spec, emit)
+		result, err = agentrun.Run(ctx, spec, emit)
+		s.recordUsage(ctx, p, sess, cfg.Orchestrator, env, turn.ID, result, err)
 	}
 	checkFiles(true)
 	s.finishTurn(ctx, p, sess, turn, err)
@@ -622,4 +625,22 @@ func containedPath(projectPath, rel string) (string, error) {
 		return "", fmt.Errorf("路径逃出了项目：%s", rel)
 	}
 	return full, nil
+}
+
+// recordUsage 把一次编排调用记进项目的用量账本。续接失败后重开的会话是两次调用，
+// 各记一行：第一次哪怕只打了一行错误，也可能已经读了一遍上下文。
+func (s *Server) recordUsage(ctx context.Context, p Project, sess *session, tool string, env map[string]string, turnID string, result agentrun.Result, runErr error) {
+	if !result.Started {
+		return
+	}
+	model := result.Model
+	if model == "" {
+		model = tools.ConfiguredModel(tool, env)
+	}
+	cancelled := ctx.Err() != nil || errors.Is(runErr, context.Canceled)
+	entry := ledger.FromResult(ledger.SourceStudio, tool, model, result.SessionID, result.Usage, runErr, cancelled)
+	entry.Turn = turnID
+	if err := ledger.Append(ledger.ProjectFile(p.Path), entry); err != nil {
+		s.emit(sess, turnID, SessionEvent{Event: agentrun.Event{Kind: kindNotice, Text: "编排用量没能记进账本：" + err.Error()}})
+	}
 }

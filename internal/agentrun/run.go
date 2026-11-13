@@ -38,7 +38,12 @@ type Spec struct {
 type Result struct {
 	SessionID string
 	Usage     tools.Usage
-	ExitCode  int
+	// Model 是输出流里报出的模型名（claude / qoder / codebuddy 的 system/init），
+	// 读不到时为空，由调用方按工具配置补。
+	Model    string
+	ExitCode int
+	// Started 表示进程起来了。没起来（找不到工具、参数不合法）的调用不花钱，不记账。
+	Started bool
 	// Produced 表示流里出现过正文、思考或工具事件。续接失败时 CLI 往往只打一行
 	// 错误就退出，调用方据此决定要不要开新会话重试。
 	Produced bool
@@ -141,13 +146,16 @@ func Run(ctx context.Context, spec Spec, emit func(Event)) (Result, error) {
 		parser.session = spec.SessionID
 		emit(Event{Kind: KindSession, SessionID: spec.SessionID})
 	}
-	result := Result{}
+	result := Result{Started: true}
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 64*1024), 16*1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if spec.Raw != nil {
 			fmt.Fprintln(spec.Raw, line)
+		}
+		if result.Model == "" {
+			result.Model = tools.DetectModel(spec.Tool, line)
 		}
 		for _, event := range parser.Parse(line) {
 			switch event.Kind {

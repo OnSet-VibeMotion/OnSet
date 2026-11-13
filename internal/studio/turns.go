@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/chouheiwa/articale-to-motion/internal/ledger"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -31,6 +32,8 @@ const (
 )
 
 // skippedDirs 是快照不进入的目录。production/studio 是 Studio 自己的状态，
+// production/usage 是编排用量的账本（在一轮结束前写下，不跳过的话会算成这一轮的改动，
+// 回退时把账一起抹掉），
 // attempts 与 .studio-frames 是渲染与抽帧的副产物，其余是依赖与工具缓存。
 var skippedDirs = map[string]bool{
 	".git": true, "node_modules": true, "attempts": true, ".studio-frames": true,
@@ -83,7 +86,7 @@ func blobPath(project, state string) string {
 // scanTree 扫描项目，必要时把文本内容写进 blob 存储。
 func scanTree(project string) (fileTree, error) {
 	tree := fileTree{}
-	studioDir := studioRoot(project)
+	studioDir, ledgerDir := studioRoot(project), ledger.ProjectDir(project)
 	err := filepath.WalkDir(project, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			if path == project {
@@ -92,7 +95,7 @@ func scanTree(project string) (fileTree, error) {
 			return nil
 		}
 		if d.IsDir() {
-			if path != project && (skippedDirs[d.Name()] || path == studioDir) {
+			if path != project && (skippedDirs[d.Name()] || path == studioDir || path == ledgerDir) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -300,13 +303,13 @@ func loadTurn(project, id string) (*Turn, error) {
 // statTree 只取 stat，不读内容，供对话进行中频繁检查「有没有文件变了」。
 func statTree(project string) map[string]string {
 	out := map[string]string{}
-	studioDir := studioRoot(project)
+	studioDir, ledgerDir := studioRoot(project), ledger.ProjectDir(project)
 	_ = filepath.WalkDir(project, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if d.IsDir() {
-			if path != project && (skippedDirs[d.Name()] || path == studioDir) {
+			if path != project && (skippedDirs[d.Name()] || path == studioDir || path == ledgerDir) {
 				return filepath.SkipDir
 			}
 			return nil
