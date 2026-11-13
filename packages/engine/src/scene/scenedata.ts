@@ -7,7 +7,7 @@
 // window.AM_SCENE 交给 composition 直接读，提示词里的表格与它同源。
 import fs from 'node:fs';
 import path from 'node:path';
-import * as beat from '../beat';
+import { frameOf } from '../beat/grid';
 import { atomicWrite } from '../fsutil';
 import { marshalIndent, sortedKeys } from '../gojson';
 import { goRound } from '../gofmt';
@@ -105,7 +105,7 @@ export function buildSceneData(s: Scene): SceneData {
     throw new Error(`transcript ${s.transcript}：${(err as Error).message}`, { cause: err });
   }
   for (const c of cues) {
-    const clipped = clipLocal(beat.frameOf(c.start_seconds, canvas.fps), beat.frameOf(c.end_seconds, canvas.fps), start, data.frames);
+    const clipped = clipLocal(frameOf(c.start_seconds, canvas.fps), frameOf(c.end_seconds, canvas.fps), start, data.frames);
     if (!clipped) continue;
     data.cues.push({ index: c.index, text: c.text, start_frame: clipped[0], end_frame_exclusive: clipped[1] });
   }

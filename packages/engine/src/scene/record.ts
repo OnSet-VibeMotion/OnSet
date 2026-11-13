@@ -5,6 +5,7 @@ import path from 'node:path';
 import { atomicWrite } from '../fsutil';
 import { compareBytes, marshalIndent, sortedKeys } from '../gojson';
 import { goPathError } from '../gofmt';
+import { blockValue, sceneBlocks } from './block';
 import { mapOf, unmarshal, type StructType } from './jsondecode';
 import { buildPrompt, memoryActive, outputPath, type Scene } from './scene';
 
@@ -111,16 +112,11 @@ export function fingerprint(s: Scene, renderer: string, resolvedSkills: Record<s
   for (const rel of inputFiles(s)) {
     parts['file:' + toSlash(rel)] = digestFile(path.join(s.directory, rel));
   }
-  // 角色包是一棵目录：换了姿势图或 dna.md，画出来的角色就不一样了。
-  // song / beat 的数据文件不单独算：它们的 sha256 已写在 scene.json 的 cue 里。
-  if (s.cast !== null) {
-    let digest: string;
-    try {
-      digest = digestTree(path.join(s.directory, s.cast.pack_dir));
-    } catch (err) {
-      throw new Error(`计算角色包摘要：${(err as Error).message}`, { cause: err });
-    }
-    parts['cast:' + toSlash(s.cast.pack_dir)] = digest;
+  // 扩展块自己的输入（例如角色包目录）由块给出。歌曲、卡点的数据文件不单独算：
+  // 它们的 sha256 已写在 scene.json 的块里。
+  for (const block of sceneBlocks()) {
+    const value = blockValue(s, block.key);
+    if (value !== null && block.fingerprintParts) Object.assign(parts, block.fingerprintParts(s, value));
   }
   return { fingerprint: combine(parts), parts };
 }
@@ -132,7 +128,7 @@ function toSlash(p: string): string {
 /**
  * 列出镜头声明过的输入文件（相对镜头目录），即输入指纹覆盖的文件。
  * 渲染记忆冻结经历时按这份清单拷贝，与指纹同源，不会一边多一边少。
- * 角色包是目录，见 Scene.cast.pack_dir，不在这份清单里。
+ * 扩展块的目录类输入（例如角色包）见各块的 fingerprintParts，不在这份清单里。
  */
 export function inputFiles(s: Scene): string[] {
   const files = ['scene.json', s.transcript];
