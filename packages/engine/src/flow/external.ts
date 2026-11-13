@@ -21,7 +21,6 @@ export {
   ManifestFields,
   ManifestVersion,
   HookEvents,
-  SlotPages,
   amVersion,
   checkCompatible,
   compareSemver,

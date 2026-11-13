@@ -37,6 +37,11 @@ export interface NodeJudge<C extends JudgeContext = JudgeContext> {
   gateState?: (c: C) => { status: 'confirmed' | 'changed' | 'todo'; at?: number | string };
   /** 这一站是「现在在这」时在等谁；不写（或返回 undefined）就按缺省：关卡等用户，其余等 AI。 */
   waiting?: (c: C) => 'user' | 'ai' | undefined;
+  /**
+   * 客户端「接下来」卡片的说法（界面 guide.ts 先查自己的表，再用这里的）：ai 是 AI 在做时，user 是等你时；
+   * page 给一个「去看」按钮（页面 id）。
+   */
+  guide?: { ai?: string; user?: string; page?: string; pageLabel?: string };
 }
 
 /**
@@ -117,6 +122,8 @@ export interface PluginOp {
   examples?: string[];
   params: Record<string, PluginParamSpec>;
   scopes?: ('orchestrator' | 'renderer' | 'cli')[];
+  /** 对话里显示这次调用时的说法（一个动词短语，例如「校验发布信息」）；不写按工具名显示。 */
+  verb?: string;
   run(params: Record<string, unknown>, ctx: PluginOpContext): void | { data?: unknown } | Promise<void | { data?: unknown }>;
 }
 
@@ -130,6 +137,8 @@ export interface PluginPage {
   target: '' | 'scene' | 'scene?' | 'file';
   after: string;
   files?: string[];
+  /** 第三方插件能把页面嵌进这一页（清单 slots 的 at）。 */
+  slot?: boolean;
 }
 
 /** 客户端后端交给插件接口的宿主（studio 的 Server 满足它）。 */

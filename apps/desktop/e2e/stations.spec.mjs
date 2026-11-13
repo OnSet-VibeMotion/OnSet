@@ -251,11 +251,18 @@ test('builtin features are plugins too: on by default, off per project, locked w
   await expect.poll(() => fs.existsSync(lock)).toBe(false);
   await expect(toggle).toBeChecked();
 
-  // 认领了渲染技能的内置功能提醒开关会让镜头重渲染；歌曲讲解不认领，不提醒。
+  // 登记了渲染技能或镜头扩展块的内置功能提醒开关会让镜头重渲染；发布只有站、操作与页面，不提醒。
   await expect(builtin.locator('li[data-builtin]')).toHaveCount(5);
   await expect(builtin.locator('li[data-builtin="algorithmic-art"]')).toContainText('已经渲染的镜头要重新渲染');
   await expect(builtin.locator('li[data-builtin="cast"]')).toContainText('多角色对话');
-  await expect(song).not.toContainText('重新渲染');
+  await expect(song).toContainText('重新渲染');
+  await expect(builtin.locator('li[data-builtin="publishing"]')).not.toContainText('重新渲染');
+  // 「详情」照实列出这个功能在 ArticleToMotion 里登记了什么。
+  const cast = builtin.locator('li[data-builtin="cast"]');
+  await cast.getByRole('button', { name: '详情' }).click();
+  await expect(cast.locator('.builtin-detail')).toContainText('character-rig');
+  await expect(cast.locator('.builtin-detail')).toContainText('校验多角色项目');
+  await cast.getByRole('button', { name: '收起' }).click();
 
   // 关掉「发布」：顶栏没有发布这一步；打开又回来。
   await expect(page.locator('.steps [data-tab="publish"]')).toBeAttached();

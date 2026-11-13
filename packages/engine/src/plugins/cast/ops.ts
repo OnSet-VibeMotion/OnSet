@@ -592,6 +592,7 @@ expect_total 是可选的第三道校验：外部（通常是编排工具）期�
     name: 'validate_cast',
     cli: ['validate', 'cast'],
     summary: '校验多角色项目的项目级一致性',
+    verb: '校验多角色项目',
     description: `校验班底、对白时间线与镜头节拍三者是否互相吻合：
 
   - cast.yaml 登记的角色包能否加载，班底是否为空

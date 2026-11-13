@@ -83,8 +83,8 @@ export const HookEvents = ['turn.finished', 'task.finished', 'gate.confirmed', '
 export type HookEvent = (typeof HookEvents)[number];
 
 /** 插件页面能嵌进的自带页面。 */
-export const SlotPages = ['script', 'storyboard', 'scene', 'final', 'publish', 'progress'] as const;
-export type SlotPage = (typeof SlotPages)[number];
+/** 嵌小窗的页面 id：取值见 studioview.slotPages()（页面表里标了 slot 的页）。 */
+export type SlotPage = string;
 
 export interface ManifestSlot {
   at: SlotPage;

@@ -8,7 +8,7 @@ import { atomicWrite } from '../fsutil';
 import { formatFixed, formatG, goPathError, goQuote } from '../gofmt';
 import { marshal } from '../gojson';
 import { BeatOverlapToleranceSeconds, type Beat } from '../plugins/cast/block';
-import { decodeObject, encodeObject, findField, indent, setField } from './jsonedit';
+import { decodeObject, encodeObject, findField, indent, setField } from '../rawjson/jsonedit';
 import { readSceneHeads } from './scenes';
 import { slice } from './slice';
 

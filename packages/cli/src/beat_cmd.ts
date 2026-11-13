@@ -258,7 +258,8 @@ function beatLayout(root: string, scenes: readonly Scene[]): { grid: beat.Grid; 
   const mismatched: string[] = [];
   scenes.forEach((s, i) => {
     if (s.id !== segments[i].id) mismatched.push(`第 ${i + 1} 个：计划 ${segments[i].id}，目录 ${s.id}`);
-    if (s.song !== null || s.cast !== null) throw new Error(`卡点镜头 ${s.id} 不能带 song 或 cast 块`);
+    const others = scene.sceneBlocks().filter((b) => b.key !== 'beat' && scene.blockValue(s, b.key) !== null);
+    if (others.length > 0) throw new Error(`卡点镜头 ${s.id} 不能带 ${others.map((b) => b.key).join('、')} 块`);
   });
   if (mismatched.length > 0) throw new Error(`镜头顺序与 ${beat.PlanFile} 不一致（目录按字典序）：${mismatched.join('；')}`);
   return { grid, segments, fps: canvas.fps };

@@ -422,6 +422,7 @@ export function songOps(ctx: PluginContext): void {
     name: 'validate_song',
     cli: ['validate', 'song'],
     summary: '校验歌曲选择、歌词、时间轴和镜头覆盖',
+    verb: '校验歌曲时间轴',
     description:
       '检查已选歌曲和歌词摘要、已人工复核的统一时间轴，以及所有镜头从零至尾奏的整数帧覆盖。检查每镜头局部歌词和全局摘要；发现过期依赖时必须重跑 song_cues() 并重渲染。不通过时报错。',
     examples: ['validate_song()'],

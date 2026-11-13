@@ -21,11 +21,15 @@ export const KindView = 'view';
 /** 一轮进行中查看收件目录的间隔（毫秒）。 */
 export const ViewPollInterval = 300;
 
-/** 界面上能被切到的一页。target：scene 要镜头编号，scene? 可以给，file 要项目里的相对路径。 */
+/**
+ * 界面上能被切到的一页。target：scene 要镜头编号，scene? 可以给，file 要项目里的相对路径。
+ * slot：第三方插件能把页面嵌进这一页（清单 slots 的 at）。
+ */
 export interface ViewPage {
   id: string;
   label: string;
   target: '' | 'scene' | 'scene?' | 'file';
+  slot?: boolean;
 }
 
 /**
@@ -33,13 +37,13 @@ export interface ViewPage {
  * 合起来与界面 Preview.tsx 的标签一一对应。
  */
 export const ViewPages: readonly ViewPage[] = [
-  { id: 'progress', label: '制作路线', target: '' },
+  { id: 'progress', slot: true, label: '制作路线', target: '' },
   { id: 'beat', label: '节拍', target: '' },
-  { id: 'script', label: '口播稿', target: '' },
-  { id: 'storyboard', label: '分镜', target: '' },
-  { id: 'scene', label: '镜头', target: 'scene' },
+  { id: 'script', slot: true, label: '口播稿', target: '' },
+  { id: 'storyboard', slot: true, label: '分镜', target: '' },
+  { id: 'scene', slot: true, label: '镜头', target: 'scene' },
   { id: 'compose', label: '合成', target: 'scene?' },
-  { id: 'final', label: '成片', target: '' },
+  { id: 'final', slot: true, label: '成片', target: '' },
   { id: 'style', label: '风格', target: '' },
   { id: 'voice', label: '音色', target: '' },
   { id: 'review', label: '复查', target: '' },
@@ -52,9 +56,16 @@ export function viewPages(): ViewPage[] {
   const out: ViewPage[] = [...ViewPages];
   for (const { value: p } of plugin.pluginPages()) {
     const at = out.findIndex((x) => x.id === p.after);
-    out.splice(at < 0 ? out.length : at + 1, 0, { id: p.id, label: p.label, target: p.target });
+    out.splice(at < 0 ? out.length : at + 1, 0, { id: p.id, label: p.label, target: p.target, ...(p.slot ? { slot: true } : {}) });
   }
   return out;
+}
+
+/** 第三方插件能嵌小窗的页面（清单 slots 的 at 取值）：页面表里标了 slot 的，宿主的与内置插件登记的。 */
+export function slotPages(): string[] {
+  return viewPages()
+    .filter((p) => p.slot)
+    .map((p) => p.id);
 }
 
 export function viewPage(id: string): ViewPage | undefined {

@@ -50,7 +50,6 @@ export {
   type ManifestOp,
   HookEvents,
   pageCallableOp,
-  SlotPages,
   type HookEvent,
   type ManifestCommand,
   type ManifestPage,

@@ -5,6 +5,8 @@ import { ruleIDs as determinismRuleIDs } from '../determinism';
 import { compareBytes } from '../gojson';
 import { ruleIDs as readsRuleIDs } from '../reads';
 import {
+  blockFeatures,
+  sceneBlocks,
   sceneCanvas,
   CheckFramesBlank,
   CheckReviewHandoff,
@@ -19,11 +21,10 @@ import { goToLower, isDigit, isHan, isLetter } from './gostr';
 import type { Memory } from './memory';
 
 /**
- * 镜头特征词表：召回按它匹配，整理时交给整理者，
- * 格式校验要求经验的 applies_when.features 只能取这里的值。
- * 新增特征要同时改 features 的抽取逻辑。
+ * 宿主自己的镜头特征。功能插件的镜头扩展块带来的特征（多角色、歌曲、卡点）由块的 feature 声明，
+ * 见 featureDescriptions。新增宿主特征要同时改 features 的抽取逻辑。
  */
-export const FeatureDescriptions: Readonly<Record<string, string>> = {
+const hostFeatures: Readonly<Record<string, string>> = {
   cjk_text: '镜头文本含中文',
   numbers: '镜头文本含数字',
   dense_text: '文本密度高（每秒超过 6.5 个阅读单位）',
@@ -32,9 +33,6 @@ export const FeatureDescriptions: Readonly<Record<string, string>> = {
   portrait: '竖屏画布',
   landscape: '横屏画布',
   square: '方形画布',
-  cast: '有角色（cast 块）',
-  song: '歌曲模式',
-  beat: '卡点模式',
   timing: '有口播时间合同（timing 块）',
   handoff: '与相邻镜头有交接约定',
   cross_chapter: '交接跨章节',
@@ -43,12 +41,22 @@ export const FeatureDescriptions: Readonly<Record<string, string>> = {
   three_d: '创意方向提到 3D / three.js / WebGL',
 };
 
+/**
+ * 镜头特征词表：召回按它匹配，整理时交给整理者，格式校验要求经验的 applies_when.features 只能取这里的值。
+ * 宿主的特征加上已登记的镜头扩展块声明的特征。
+ */
+export function featureDescriptions(): Readonly<Record<string, string>> {
+  const out: Record<string, string> = { ...hostFeatures };
+  for (const b of sceneBlocks()) if (b.feature) out[b.feature.name] = b.feature.description;
+  return out;
+}
+
 /** 接交接手法名，如 handoff:carry。 */
 const handoffFeaturePrefix = 'handoff:';
 
 /** 报告 name 是不是词表里的特征（含 handoff:<手法>）。 */
 export function knownFeature(name: string): boolean {
-  if (Object.hasOwn(FeatureDescriptions, name)) return true;
+  if (Object.hasOwn(featureDescriptions(), name)) return true;
   if (name.startsWith(handoffFeaturePrefix)) return handoffGuide(name.slice(handoffFeaturePrefix.length)) !== '';
   return false;
 }
@@ -81,9 +89,7 @@ export function features(s: Scene): string[] {
   if (canvas.heightPx > canvas.widthPx) set.add('portrait');
   else if (canvas.widthPx > canvas.heightPx) set.add('landscape');
   else set.add('square');
-  if (s.cast !== null) set.add('cast');
-  if (s.song !== null) set.add('song');
-  if (s.beat !== null) set.add('beat');
+  for (const name of blockFeatures(s)) set.add(name);
   if (s.timing !== null) {
     set.add('timing');
     for (const side of [s.timing.enter, s.timing.exit]) {

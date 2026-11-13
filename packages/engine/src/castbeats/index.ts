@@ -5,5 +5,5 @@ export type { Report, SceneBeats } from './apply';
 export { readSceneHeads } from './scenes';
 export type { SceneHead } from './scenes';
 export { minBeatSeconds, slice } from './slice';
-export { compact, decodeObject, encodeObject, findField, indent, setField } from './jsonedit';
-export type { Field } from './jsonedit';
+export { compact, decodeObject, encodeObject, findField, indent, setField } from '../rawjson/jsonedit';
+export type { Field } from '../rawjson/jsonedit';

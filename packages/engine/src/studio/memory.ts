@@ -115,7 +115,7 @@ export function memoryAPI(s: Server, request: Request): Response {
         runs: runs.map(memory.runSummaryToJSON),
         pending: pendingProblems(episodes, status.last_consolidated),
         // 面板显示的大白话：校验器、事件类型与镜头特征都不直接露出 ID。
-        labels: goMap({ checks: labels(memory.CheckerLabels), events: labels(memory.EventLabels), features: labels(memory.FeatureDescriptions) }),
+        labels: goMap({ checks: labels(memory.CheckerLabels), events: labels(memory.EventLabels), features: labels(memory.featureDescriptions()) }),
       }),
     );
   } catch (err) {

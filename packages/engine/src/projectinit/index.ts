@@ -50,6 +50,36 @@ export interface Options {
   extra?: Record<string, Uint8Array | string>;
 }
 
+/** 新建对话框里的一种做法：讲解形式（流程）加叙事模式。canvas、example 给首页「从模板开始」。 */
+export interface Preset {
+  id: string;
+  label: string;
+  hint: string;
+  delivery: string;
+  narration: string;
+  canvas?: string;
+  example?: string;
+}
+
+/** 宿主自己的做法：口播与（还没做成插件的）卡点。 */
+const hostPresets: Preset[] = [
+  { id: 'speech', label: '口播讲解', hint: '配音 + 动画，最常用', delivery: DeliverySpeech, narration: NarrationSolo },
+  {
+    id: 'beat',
+    label: '音乐卡点',
+    hint: '没有配音，画面踩着节拍切',
+    delivery: DeliveryBeat,
+    narration: NarrationSolo,
+    canvas: 'vertical-9x16',
+    example: '用一首轻快的曲子做卡点短片，每个重拍切一个画面',
+  },
+];
+
+/** 新建对话框的全部做法：宿主的在前，其后是内置插件登记的（ctx.preset）。 */
+export function presets(): Preset[] {
+  return [...hostPresets, ...plugin.pluginPresets().map((p) => ({ ...p.value }))];
+}
+
 /** 可选的讲解形式：内置流程与内置插件登记的流程（有提示词段落顺序的），口播在前。 */
 export function deliveryFlows(): flow.Flow[] {
   return flow.allFlows().filter((f) => f.prompt);

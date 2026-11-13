@@ -104,7 +104,7 @@ export interface FlowMarker {
 }
 
 /**
- * plugins：内置插件（新建时选了它——叙事模式 cast 就是多角色对话插件——或项目里已有它的 in_use 文件）；
+ * plugins：内置插件（新建时选了它——叙事模式 cast 就是多角色对话插件——或项目里已经在用它：插件登记的在用判断）；
  * flows：别的片型（项目里已有它们的标记文件）。命中任一项就以 message 拒绝。
  */
 export interface FlowExcludes {

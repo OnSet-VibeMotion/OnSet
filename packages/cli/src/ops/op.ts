@@ -69,6 +69,8 @@ export interface Op {
   params: Record<string, ParamSpec>;
   /** 缺省 ['orchestrator']。 */
   scopes?: OpScope[];
+  /** 客户端对话里显示这次调用时的说法（内置插件的操作经 /api/stations 交给界面）。 */
+  verb?: string;
   /** 命令行适配：不解析参数，原样交给 rawArgs（hyperframes 透传用）。 */
   passthrough?: boolean;
   run(params: ParamValues, ctx: OpContext): void | OpResult | Promise<void | OpResult>;

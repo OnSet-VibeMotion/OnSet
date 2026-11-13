@@ -265,12 +265,24 @@ export interface StyleOption {
   label: string;
 }
 
+/** 新建对话框的一种做法（projectinit.presets）：讲解形式加叙事模式。canvas、example 给首页模板。 */
+export interface ModeOption {
+  id: string;
+  label: string;
+  hint: string;
+  delivery: string;
+  narration: string;
+  canvas?: string;
+  example?: string;
+}
+
 export interface StylesResponse {
   canvases: CanvasOption[];
   styles: StyleOption[];
   custom: StyleOption;
   archetypes: string[];
   default_canvas: string;
+  modes: ModeOption[];
 }
 
 export interface DirectoryEntry {
@@ -803,6 +815,8 @@ export interface ProgressStation {
   page?: string;
   file?: string;
   turns: ProgressTurn[];
+  /** 内置插件给这一站写的「接下来」说法。 */
+  guide?: { ai?: string; user?: string; page?: string; page_label?: string };
 }
 
 export interface ProgressState {
@@ -838,6 +852,19 @@ export interface StationRun {
   reserved?: string[];
 }
 
+export interface BuiltinContents {
+  /** 制作路线上的站点（名字）。 */
+  nodes: string[];
+  /** AI 能用的工具；verb 是对话里显示的说法。 */
+  ops: { name: string; summary: string; verb: string }[];
+  /** 给渲染器的技能。 */
+  skills: string[];
+  /** scene.json 里它的块。 */
+  blocks: string[];
+  pages: string[];
+  flows: string[];
+}
+
 export interface StationOp {
   name: string;
   /** 编排工具用的工具名；只能由用户触发的操作为空。 */
@@ -860,6 +887,8 @@ export interface StationInfo {
   enabled: boolean;
   /** 内置插件：项目在用它的凭据文件（例如 song.yaml），有就不能关。 */
   busy: string;
+  /** 内置插件在 apply 里登记的东西（第三方站为 null）：设置页「详情」照实列出。 */
+  contents: BuiltinContents | null;
   /** 内置插件认领了渲染技能：开关会让已渲染的镜头要重渲染。 */
   affects_render: boolean;
   source: string;

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, errorText } from '../api';
-import type { AgentsResponse, CanvasOption, DirectoryEntry, Project, StylesResponse } from '../types';
+import type { AgentsResponse, CanvasOption, DirectoryEntry, ModeOption, Project, StylesResponse } from '../types';
 import { FilmStyleDialog, styleKey, useFilmStyles } from './FilmStyles';
 import { SetupGuide, useSetup } from './SetupGuide';
 import { Creation, type CreationJob } from './Creation';
@@ -39,24 +39,37 @@ interface Props {
   onGuide?: () => void;
 }
 
-/** 制作方式：映射到 am init 的 --delivery 与 --narration。 */
-const modes = [
-  { id: 'speech', label: '口播讲解', hint: '配音 + 动画，最常用', delivery: 'speech', narration: 'solo' },
-  { id: 'cast', label: '角色对白', hint: '多个角色你一言我一语', delivery: 'speech', narration: 'cast' },
-  { id: 'beat', label: '音乐卡点', hint: '没有配音，画面踩着节拍切', delivery: 'beat', narration: 'solo' },
-  { id: 'song', label: '歌曲 MV', hint: '把内容写成一首歌来讲', delivery: 'song', narration: 'solo' },
-] as const;
-type ModeID = (typeof modes)[number]['id'];
+/**
+ * 制作方式：映射到 am init 的 --delivery 与 --narration。选项来自后端（/api/styles 的 modes：
+ * 宿主的口播、卡点与内置插件登记的做法）；还没取到时只有口播。
+ */
+const fallbackModes: ModeOption[] = [{ id: 'speech', label: '口播讲解', hint: '配音 + 动画，最常用', delivery: 'speech', narration: 'solo' }];
 
-/** 模板就是几种常见的视频形式：点一下把画幅、制作方式和示例填好。 */
-const templates: { id: string; title: string; desc: string; canvas: string; mode: ModeID; example: string }[] = [
+interface Template {
+  id: string;
+  title: string;
+  desc: string;
+  canvas: string;
+  mode: string;
+  example: string;
+}
+
+/** 口播的几种常见形式（画幅不同）。别的做法的模板来自后端给的做法里带了 example 的那几种。 */
+const speechTemplates: Template[] = [
   { id: 'explainer', title: '口播科普', desc: '3:4 竖屏，讲清一个概念', canvas: 'vertical-3x4', mode: 'speech', example: '把这篇文章做成 3 分钟的口播科普，讲清楚核心概念' },
   { id: 'short', title: '竖屏快讲', desc: '9:16，一分钟抓住注意力', canvas: 'vertical-9x16', mode: 'speech', example: '做一条 60 秒的竖屏快讲，开头三秒就抛出反常识的结论' },
   { id: 'landscape', title: '横屏讲解', desc: '16:9，适合 B 站长视频', canvas: 'landscape-16x9', mode: 'speech', example: '做成 5 分钟的横屏讲解视频，分三个小节，配图表' },
-  { id: 'beat', title: '音乐卡点', desc: '没有配音，节奏驱动', canvas: 'vertical-9x16', mode: 'beat', example: '用一首轻快的曲子做卡点短片，每个重拍切一个画面' },
-  { id: 'song', title: '歌曲 MV', desc: '把知识写成一首歌', canvas: 'vertical-9x16', mode: 'song', example: '把这篇文章写成一首歌，做成带歌词的 MV' },
-  { id: 'cast', title: '角色对白', desc: '两个角色对话讲道理', canvas: 'vertical-3x4', mode: 'cast', example: '用两个角色一问一答的方式讲这件事，一个好奇一个专业' },
 ];
+
+/** 模板就是几种常见的视频形式：点一下把画幅、制作方式和示例填好。 */
+function templatesOf(modes: readonly ModeOption[]): Template[] {
+  return [
+    ...speechTemplates,
+    ...modes
+      .filter((m) => m.example && m.canvas)
+      .map((m) => ({ id: m.id, title: m.label, desc: m.hint, canvas: m.canvas!, mode: m.id, example: m.example! })),
+  ];
+}
 
 const rotatingWords = ['科普视频', '竖屏快讲', '卡点短片', '歌曲 MV', '对白短剧'];
 const placeholders = [
@@ -82,7 +95,7 @@ export function Home(props: Props) {
   const [files, setFiles] = useState<File[]>([]);
   const [styles, setStyles] = useState<StylesResponse | null>(null);
   const [canvas, setCanvas] = useState('');
-  const [mode, setMode] = useState<ModeID>('speech');
+  const [mode, setMode] = useState('speech');
   const [filmStyle, setFilmStyle] = useState('');
   const [parent, setParent] = useState('');
   const [tool, setTool] = useState(() => {
@@ -132,9 +145,11 @@ export function Home(props: Props) {
   // 技能与 CLI 没准备好时建了项目也装不上技能、渲染不了：先引导去跑 am setup。
   const prereqsReady = setup.status?.ready !== false;
   const canSend = !working && prereqsReady && (text.trim() !== '' || files.length > 0) && !!tool && !!parent;
+  const modes = styles?.modes?.length ? styles.modes : fallbackModes;
+  const templates = templatesOf(modes);
   const current = templates.find((t) => t.id === template);
   const canvasInfo = styles?.canvases.find((c) => c.id === canvas);
-  const modeInfo = modes.find((m) => m.id === mode)!;
+  const modeInfo = modes.find((m) => m.id === mode) ?? modes[0];
   const films = useFilmStyles(menu === 'style' || filmStyle !== '');
   const styleLabel = filmStyle ? films.data?.styles.find((s) => styleKey(s) === filmStyle)?.cn ?? filmStyle : '不用整片风格';
 
@@ -157,7 +172,7 @@ export function Home(props: Props) {
     } catch {
       // 记不住上次选的工具不影响建项目。
     }
-    const m = modes.find((item) => item.id === mode)!;
+    const m = modes.find((item) => item.id === mode) ?? modes[0];
     const message = text.trim();
     setJob({
       parent,

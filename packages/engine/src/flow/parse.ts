@@ -12,7 +12,6 @@ import {
   ManifestFile,
   manifestFieldNames,
   ManifestVersion,
-  SlotPages,
   validSemver,
   type HookEvent,
   type Manifest,
@@ -28,6 +27,7 @@ import {
   type ParamType,
   type SlotPage,
 } from './manifest';
+import * as studioview from '../studioview';
 import type { PathRule } from './types';
 
 const paramTypes: readonly ParamType[] = ['string', 'boolean', 'integer', 'number', 'strings'];
@@ -278,7 +278,8 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
     const where = `slots[${i}]`;
     knownFields(sl, ['at', 'page', 'height'], where);
     const at = str(sl, 'at', where) as SlotPage;
-    if (!SlotPages.includes(at)) throw new Error(`${where}.at 要是 ${SlotPages.join(' / ')} 之一`);
+    const slotPages = studioview.slotPages();
+    if (!slotPages.includes(at)) throw new Error(`${where}.at 要是 ${slotPages.join(' / ')} 之一`);
     const page = str(sl, 'page', where);
     if (!pageIDs.includes(page)) throw new Error(`${where}.page：没有页面 ${page}`);
     const height = sl.height === undefined ? 240 : sl.height;

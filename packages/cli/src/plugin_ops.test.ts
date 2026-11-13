@@ -51,4 +51,17 @@ describe('ops registered by builtin plugins', () => {
     }
     expect(findOp('fake_echo')).toBeUndefined();
   });
+
+  it('the tool list drops a builtin plugin\'s tools when the project turns it off', () => {
+    for (const id of ['song', 'cast', 'publishing']) {
+      const names = plugin.pluginOps().filter((o) => o.owner === id).map((o) => o.value.name);
+      expect(names.length, id).toBeGreaterThan(0);
+      const root = tempDir();
+      const listed = describeTools('orchestrator', root).map((t) => t.name);
+      for (const name of names) expect(listed, name).toContain(name);
+      fs.writeFileSync(path.join(root, 'article-to-motion.flow.json'), JSON.stringify({ version: 1, stations: [], disabled: [id] }));
+      const off = describeTools('orchestrator', root).map((t) => t.name);
+      for (const name of names) expect(off, name).not.toContain(name);
+    }
+  });
 });

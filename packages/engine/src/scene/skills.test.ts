@@ -317,7 +317,7 @@ describe('skill prompts', () => {
 
   // 解析不到目录时必须退回按技能名引用。
   it('upstream skill prompts degrade gracefully', () => {
-    for (const desc of registeredSkills) {
+    for (const desc of allSkills()) {
       if (desc.source !== SourceUpstream || !desc.promptSection) continue;
       const fallback = desc.promptSection('');
       expect(fallback, `${desc.name} 的兜底片段没有点名技能`).toContain(desc.name);

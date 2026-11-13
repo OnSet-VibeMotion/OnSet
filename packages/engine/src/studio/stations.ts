@@ -59,21 +59,21 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
   const m = s.manifest;
   const pageInfo = (id: string) => m.pages.find((pg) => pg.id === id)!;
   const settings = flow.publicSettings(envMap(), m);
-  // 内置插件的站、操作、渲染技能、页面在 apply 里登记，不在清单里：并进来，「详情」才照实列出这个功能带了什么。
+  // 内置插件的站、操作、渲染技能、页面在 apply 里登记，不在清单里：另列在 contents 里，设置页「详情」照实显示
+  // 这个功能带了什么（不并进 nodes、pages：那两样给第三方站的页面与路线用）。
   const owned = <T>(list: plugin.Owned<T>[]) => (s.builtin ? list.filter((x) => x.owner === m.id).map((x) => x.value) : []);
-  const appliedNodes = owned(plugin.pluginStations()).flatMap((st) => st.nodes.map((n) => ({ id: n.id, label: n.label, step: n.step, gate: n.gate === true })));
-  const appliedOps = owned(plugin.pluginOps()).map((o) => ({
-    name: o.name,
-    tool: (o.scopes ?? ['orchestrator']).includes('orchestrator') ? o.name : '',
-    summary: o.summary,
-    description: o.description ?? '',
-    trigger: 'agent',
-    params: Object.entries(o.params)
-      .filter(([, p]) => !p.cliOnly)
-      .map(([key, p]) => ({ key, type: p.type, description: p.description, required: p.required === true, default: p.default })),
-  }));
-  const appliedSkills = owned(plugin.pluginSkills()).map((sk) => ({ name: sk.name, summary: '', scenes: 'all' }));
-  const appliedPages = owned(plugin.pluginPages()).map((pg) => ({ id: pg.id, label: pg.label, tab: pg.id, url: '', reads: [] as string[] }));
+  const contents = s.builtin
+    ? {
+        nodes: owned(plugin.pluginStations()).flatMap((st) => st.nodes.map((n) => n.label)),
+        ops: owned(plugin.pluginOps())
+          .filter((o) => (o.scopes ?? ['orchestrator']).includes('orchestrator'))
+          .map((o) => ({ name: o.name, summary: o.summary, verb: o.verb ?? '' })),
+        skills: owned(plugin.pluginSkills()).map((sk) => sk.name),
+        blocks: owned(plugin.pluginSceneBlocks()).map((b) => b.key),
+        pages: owned(plugin.pluginPages()).map((pg) => pg.label),
+        flows: owned(plugin.pluginFlows()).map((f) => f.name),
+      }
+    : null;
   return {
     id: m.id,
     name: m.name,
@@ -84,7 +84,8 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
     /** 项目在用这个内置插件的凭据（插件登记的在用判断）：有它就不许关。 */
     busy: s.builtin ? flow.inUse(root, m.id) : '',
     /** 登记了渲染技能或镜头扩展块：开关会改变渲染输入，已渲染的镜头要重渲染。 */
-    affects_render: s.builtin && (owned(plugin.pluginSkills()).length > 0 || owned(plugin.pluginSceneBlocks()).length > 0),
+    affects_render: contents !== null && (contents.skills.length > 0 || contents.blocks.length > 0),
+    contents,
     source: s.entry.source,
     commit: s.entry.commit,
     linked: s.entry.commit === '',
@@ -93,10 +94,9 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
     replaces: m.replaces,
     after: m.after,
     prompt,
-    nodes: [...m.nodes.map((n) => ({ id: n.id, label: n.label, step: n.step, gate: n.gate === true })), ...appliedNodes],
-    pages: [...m.pages.map((pg) => ({ id: pg.id, label: pg.label, tab: flow.pageTab(m.id, pg.id), url: pageURL(m.id, pg.entry), reads: pg.reads })), ...appliedPages],
-    ops: [
-      ...m.ops.map((o) => {
+    nodes: m.nodes.map((n) => ({ id: n.id, label: n.label, step: n.step, gate: n.gate === true })),
+    pages: m.pages.map((pg) => ({ id: pg.id, label: pg.label, tab: flow.pageTab(m.id, pg.id), url: pageURL(m.id, pg.entry), reads: pg.reads })),
+    ops: m.ops.map((o) => {
       const last = lastRuns.get(`${root}\n${m.id}\n${o.name}`);
       return {
         name: o.name,
@@ -107,9 +107,7 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
         params: Object.entries(o.params).map(([key, p]) => ({ key, type: p.type, description: p.description, required: p.required === true, default: p.default })),
         last_run: last,
       };
-      }),
-      ...appliedOps,
-    ],
+    }),
     settings: m.settings.map((x) => ({
       key: x.key,
       label: x.label,
@@ -124,7 +122,7 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
     schedules: m.schedules,
     inserts: m.inserts.map((ins) => ins.stage),
     provides: { tts: m.provides.tts?.name ?? '', align: m.provides.align?.name ?? '' },
-    renderer_skills: [...m.renderer_skills.map((r) => ({ name: r.name, summary: r.summary, scenes: r.scenes })), ...appliedSkills],
+    renderer_skills: m.renderer_skills.map((r) => ({ name: r.name, summary: r.summary, scenes: r.scenes })),
     film_styles: m.film_styles?.name ?? '',
     flow: m.flow ? { name: m.flow.name, stations: m.flow.stations, first_tab: toFirstTab(m) } : null,
     slots: m.slots.map((sl) => ({ at: sl.at, page: sl.page, height: sl.height, tab: flow.pageTab(m.id, sl.page), url: pageURL(m.id, pageInfo(sl.page).entry) })),

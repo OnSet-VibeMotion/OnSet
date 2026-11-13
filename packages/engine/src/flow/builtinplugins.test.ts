@@ -23,12 +23,10 @@ describe('builtin plugins', () => {
     expect(song?.entry.source).toBe('builtin');
   });
 
-  it('accepts no claim fields in any manifest and no builtin id from a third party', () => {
+  it('does not let a third party take a builtin id', () => {
     const base = { id: 'mine', version: '1', name: 'x' };
-    for (const field of ['am_ops', 'am_skills', 'am_stations', 'in_use']) {
-      expect(() => parseManifest(JSON.stringify({ ...base, [field]: ['x'] }), { builtin: true })).toThrow(field);
-    }
     expect(() => parseManifest(JSON.stringify({ ...base, id: 'song' }))).toThrow('与内置插件重名');
+    expect(parseManifest(JSON.stringify({ ...base, id: 'song' }), { builtin: true }).id).toBe('song');
   });
 
   it('is on by default, can be turned off per project, and not while the project uses it', () => {
