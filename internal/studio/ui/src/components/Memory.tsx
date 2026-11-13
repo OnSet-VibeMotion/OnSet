@@ -59,10 +59,11 @@ export function MemoryTab({ scene, version, run }: Props) {
     <div class="memory-tab">
       <header class="memory-intro">
         <div>
-          <strong>{state.enabled ? '记忆已打开' : '记忆已关闭'}</strong>
+          <span class="eyebrow">记忆 · {state.enabled ? '已打开' : '已关闭'} · 所有项目共用</span>
+          <strong>am 记得什么</strong>
           <p class="small muted">
             {state.enabled
-              ? 'am 会记住你说过的偏好，并把渲染失败总结成经验；下次渲染类似的镜头时，自动把相关的几条交给渲染工具。记忆在所有项目之间共用。'
+              ? '你说过的偏好，和从渲染失败里总结的经验。下次渲染类似的镜头时，相关的几条会自动交给渲染工具。'
               : '项目配置里 MEMORY=off，渲染时不会想起任何记忆，也不记录新的经历。'}
           </p>
         </div>

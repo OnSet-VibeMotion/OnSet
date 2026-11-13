@@ -32,6 +32,8 @@ export type RunAction = (path: string, payload?: Record<string, unknown>) => voi
 
 interface Props {
   tab: Tab;
+  /** 页面里的「去发布」这类按钮切页用。 */
+  onTab?: (tab: Tab) => void;
   state: ProjectState | null;
   scenes: Scene[];
   usage: ProjectUsage | null;
@@ -62,14 +64,17 @@ export function Preview(props: Props) {
         )}
         {props.tab === 'scene' && <SceneTab {...props} scene={scene} />}
         {props.tab === 'compose' && <ComposeTab {...props} scene={scene} />}
-        {props.tab === 'final' && <FinalTab tree={props.tree} version={props.version} run={props.run} />}
+        {props.tab === 'final' && <FinalTab tree={props.tree} version={props.version} run={props.run} onTab={props.onTab} />}
         {props.tab === 'style' && <StyleTab version={props.version} run={props.run} scenes={props.scenes} />}
         {props.tab === 'review' && <ReviewTab tree={props.tree} version={props.version} run={props.run} />}
         {props.tab === 'publish' && <PublishTab version={props.version} run={props.run} />}
         {props.tab === 'memory' && <MemoryTab scene={scene} version={props.version} run={props.run} />}
         {props.tab === 'file' && <FilesTab tree={props.tree} recent={props.recent} path={props.filePath} version={props.version} onFile={props.onFile} />}
       </div>
-      <Timeline scenes={props.scenes} usage={props.usage} sceneId={props.sceneId} version={props.version} onScene={props.onScene} />
+      {/* 镜头条只在跟镜头有关的页面出现：口播稿、发布这些页面不需要它。 */}
+      {(props.tab === 'scene' || props.tab === 'compose' || props.tab === 'final') && (
+        <Timeline scenes={props.scenes} usage={props.usage} sceneId={props.sceneId} version={props.version} onScene={props.onScene} />
+      )}
     </main>
   );
 }
@@ -545,33 +550,100 @@ function relativeScene(state: ProjectState | null, scene: Scene): string {
 
 const finalCandidates = ['final.mp4', 'production/final.mp4', 'production/audio/candidate.mp4', 'production/silent-master.mp4'];
 
-function FinalTab({ tree, version, run }: { tree: TreeFile[]; version: number; run: RunAction }) {
+const finalLabels: Record<string, string> = {
+  'final.mp4': '成片',
+  'production/final.mp4': '成片',
+  'production/audio/candidate.mp4': '配音合成版',
+  'production/silent-master.mp4': '无声母版',
+};
+
+/** 成片页：左边是片子，右边是复查摘要与下一步。复查的细节（交界帧、联系表）在「复查」页。 */
+function FinalTab({ tree, version, run, onTab }: { tree: TreeFile[]; version: number; run: RunAction; onTab?: (tab: Tab) => void }) {
   const present = finalCandidates.filter((path) => tree.some((f) => f.path === path));
   const [chosen, setChosen] = useState('');
+  const [review, setReview] = useState<ReviewResponse | null>(null);
+  useEffect(() => {
+    api<ReviewResponse>('/api/review').then(setReview, () => setReview({ available: false }));
+  }, [version]);
   const current = present.includes(chosen) ? chosen : present[0];
+  const report = review?.available ? review.report : undefined;
+  const problems = reviewProblems(report);
+  const seconds = report?.media?.duration_seconds;
+  const num = (v?: number, digits = 1) => (v == null ? '—' : v.toFixed(digits).replace('-', '−'));
   return (
     <div class="final-tab">
-      <div class="toolbar">
-        {present.map((path) => (
-          <button key={path} class={'mono' + (path === current ? ' armed' : '')} onClick={() => setChosen(path)}>
-            {path}
-          </button>
-        ))}
-        <span class="spacer" />
-        <button onClick={() => run('/api/commands/project.concat')}>
-          拼接无声母版
-        </button>
-        <button onClick={() => run('/api/render/all')}>
-          渲染全部镜头
-        </button>
-      </div>
-      {current ? (
-        <div class="stage-frame">
-          <video controls preload="metadata" src={rawURL(current, version)} />
+      <div class="scene-layout">
+        <div class="scene-stage">
+          {current ? (
+            <div class="stage-frame">
+              <video controls preload="metadata" src={rawURL(current, version)} />
+            </div>
+          ) : (
+            <Empty>还没有成片。镜头都出片后，可以先拼接无声母版。</Empty>
+          )}
         </div>
-      ) : (
-        <Empty>还没有成片。镜头都出片后，可以先拼接无声母版。</Empty>
-      )}
+        <aside class="scene-info">
+          <span class="eyebrow">成片{seconds ? ` · ${clock(seconds).replace(/\.\d+$/, '')}` : ''}</span>
+          <h1 class="scene-title">{current ? finalLabels[current] ?? current : '还没有成片'}</h1>
+          {present.length > 1 && (
+            <div class="final-versions" role="group" aria-label="版本">
+              {present.map((path) => (
+                <button key={path} class={path === current ? 'on' : ''} aria-pressed={path === current} title={path} onClick={() => setChosen(path)}>
+                  {finalLabels[path] ?? path}
+                </button>
+              ))}
+            </div>
+          )}
+          {report ? (
+            <dl class="final-review">
+              <dt>复查</dt>
+              <dd class={problems.length ? 'bad' : 'ok'}>
+                {problems.length ? (
+                  <button class="link" onClick={() => onTab?.('review')}>
+                    {problems.length} 个问题，去看
+                  </button>
+                ) : (
+                  '没有问题'
+                )}
+              </dd>
+              {report.expected_frames != null && (
+                <>
+                  <dt>帧数</dt>
+                  <dd class="mono">
+                    {report.counted_frames ?? '—'} / {report.expected_frames}
+                  </dd>
+                </>
+              )}
+              {report.loudness && (
+                <>
+                  <dt>响度</dt>
+                  <dd class="mono">{num(report.loudness.integrated_lufs)} LUFS</dd>
+                  <dt>真峰</dt>
+                  <dd class="mono">{num(report.loudness.true_peak_dbtp)} dBTP</dd>
+                </>
+              )}
+            </dl>
+          ) : (
+            <p class="scene-meta">还没有复查。</p>
+          )}
+          <div class="scene-actions">
+            {current && problems.length === 0 && report && (
+              <button class="primary" onClick={() => onTab?.('publish')}>
+                去发布
+              </button>
+            )}
+            <button onClick={() => run('/api/review/run')}>{report ? '重新复查' : '复查'}</button>
+          </div>
+          <div class="final-more">
+            <button class="link" onClick={() => run('/api/commands/project.concat')}>
+              拼接无声母版
+            </button>
+            <button class="link" onClick={() => run('/api/render/all')}>
+              渲染全部镜头
+            </button>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
@@ -692,10 +764,22 @@ function StyleTab({ version, run, scenes }: { version: number; run: RunAction; s
   );
 }
 
+/** production/review/review.json（review.Report）。问题字段是 problems；issues 是早期写法，照样认。 */
 interface ReviewResponse {
   available: boolean;
-  report?: { issues?: unknown[]; hints?: unknown[] } & Record<string, unknown>;
+  report?: {
+    ok?: boolean;
+    problems?: string[];
+    issues?: unknown[];
+    hints?: unknown[];
+    expected_frames?: number;
+    counted_frames?: number;
+    media?: { duration_seconds?: number };
+    loudness?: { integrated_lufs?: number; true_peak_dbtp?: number };
+  } & Record<string, unknown>;
 }
+
+const reviewProblems = (r?: ReviewResponse['report']) => [...(r?.problems ?? []), ...(r?.issues ?? [])];
 
 function ReviewTab({ tree, version, run }: { tree: TreeFile[]; version: number; run: RunAction }) {
   const [review, setReview] = useState<ReviewResponse | null>(null);
@@ -727,9 +811,9 @@ function ReviewTab({ tree, version, run }: { tree: TreeFile[]; version: number; 
         <Empty>还没有复查报告。</Empty>
       ) : (
         <>
-          {list('问题', review.report?.issues)}
+          {list('问题', reviewProblems(review.report))}
           {list('提示', review.report?.hints)}
-          {!review.report?.issues?.length && !review.report?.hints?.length && <p class="ok-line">没有发现问题。</p>}
+          {!reviewProblems(review.report).length && !review.report?.hints?.length && <p class="ok-line">没有发现问题。</p>}
         </>
       )}
       <div class="gallery wide">

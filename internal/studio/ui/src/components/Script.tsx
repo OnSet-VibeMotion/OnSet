@@ -140,21 +140,36 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
     writeBool('am-studio.script-marks', !marks);
   };
 
+  // 第一个标题当文稿的大标题，正文里不再重复它。
+  const titleIndex = script.blocks?.findIndex((block) => block.kind === 'heading') ?? -1;
+  const title = titleIndex >= 0 ? script.blocks![titleIndex].text : '';
+  const blocks = script.blocks?.filter((_, index) => index !== titleIndex);
+
   return (
     <div class="script-tab">
-      <div class="toolbar">
-        <span class="script-name">{script.final ? '口播终稿' : '原稿'}</span>
-        <button class="link mono small" onClick={() => onFile(script.path)} title="在文件页查看原文">
-          {script.path}
-        </button>
-        <span class="spacer" />
-        {script.final && script.blocks && (
-          <button class={marks ? 'on' : ''} aria-pressed={marks} onClick={toggleMarks} title="标出读法与受保护短语">
-            标记
-          </button>
+      <header class="script-head">
+        <span class="eyebrow">
+          {script.final ? '口播稿' : '原稿'}
+          {script.final && (voiced ? ' · 已配音' : ' · 待确认')}
+        </span>
+        {title && <h1 class="script-title">{title}</h1>}
+        {script.final && (
+          <div class="script-stats">
+            {script.stats && <span>{script.stats.units} 字</span>}
+            {script.estimate_seconds ? <span title="按每秒 4.5 字估算">预计 {duration(script.estimate_seconds)}</span> : null}
+            {script.voice && <span class="voiced">配音 {duration(script.voice.seconds)}</span>}
+            <button class="link" onClick={() => onFile(script.path)} title={`在文件页查看原文：${script.path}`}>
+              原文
+            </button>
+          </div>
         )}
         {script.final && (
-          <>
+          <div class="script-actions">
+            {script.blocks && (
+              <button class={marks ? 'on' : ''} aria-pressed={marks} onClick={toggleMarks} title="标出读法与受保护短语">
+                标记
+              </button>
+            )}
             <button
               disabled={!selection}
               title={selection ? '把选中的文字加进对话的引用（也可以右键）' : '先在稿子里选中一段文字，或在段落上右键'}
@@ -176,34 +191,26 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
                 确认，开始配音
               </button>
             )}
-          </>
+          </div>
         )}
-      </div>
-
-      {script.final && (
-        <div class="script-stats small muted">
-          {script.stats && <span>{script.stats.units} 字</span>}
-          {script.stats && <span>{script.stats.paragraphs} 段</span>}
-          {script.estimate_seconds ? <span title="按每秒 4.5 字估算">预计 {duration(script.estimate_seconds)}</span> : null}
-          {script.voice && <span class="voiced">已配音 {duration(script.voice.seconds)}</span>}
-          {script.stats && script.stats.phrases > 0 && <span>{script.stats.phrases} 个受保护短语</span>}
-          {script.updated_at && <span>更新于 {new Date(script.updated_at).toLocaleString()}</span>}
-        </div>
-      )}
-      {voiced && script.final && <div class="script-note">已按这版配音。改稿之后要重新配音、对齐，已渲染的镜头可能要跟着改。</div>}
-      {script.parse_error && (
-        <div class="script-note bad">终稿的标记写错了：{script.parse_error}。下面是原文；让编排工具修好标记再配音。</div>
-      )}
+        {voiced && script.final && <p class="script-note">已按这版配音。改稿之后要重新配音、对齐，已渲染的镜头可能要跟着改。</p>}
+        {script.parse_error && (
+          <p class="script-note bad">终稿的标记写错了：{script.parse_error}。下面是原文；让编排工具修好标记再配音。</p>
+        )}
+      </header>
 
       {script.blocks ? (
         <article ref={body} class={`script-body${marks ? ' marks' : ''}`} data-ctx-source={script.path} data-ctx-label="口播稿">
-          {numberParagraphs(script.blocks).map(({ block, para }, index) =>
+          {numberParagraphs(blocks ?? []).map(({ block, para }, index) =>
             block.kind === 'heading' ? (
               <h3 key={index} class={`level-${Math.min(block.level ?? 1, 3)}`}>
                 {block.text}
               </h3>
             ) : (
               <p key={index} data-ctx-para={para}>
+                <span class="para-no" aria-hidden="true">
+                  {String(para).padStart(2, '0')}
+                </span>
                 <Nodes nodes={block.nodes ?? []} />
               </p>
             ),

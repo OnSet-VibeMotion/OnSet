@@ -118,9 +118,15 @@ export function PublishTab({ version, run }: { version: number; run: RunAction }
 
   // 登记过的封面带平台与比例；covers/ 下其余图片（如源文件）不在这里列。
   const registered: { platform?: string; ratio?: string; path: string; width_px?: number; height_px?: number }[] = Array.isArray(cover.images)
-    ? cover.images
+    ? [...cover.images]
     : [];
   const measured = new Map(publish.covers.map((c) => [c.path, c]));
+  // 竖版封面排在最前、画得最大：发布页的主角是封面，竖版又是短视频平台的主封面。
+  const tall = (r: { ratio?: string }) => {
+    const [w, h] = (r.ratio ?? '').split(':').map(Number);
+    return w && h ? h / w : 0;
+  };
+  registered.sort((a, b) => tall(b) - tall(a));
   const unregistered = publish.covers.filter((c) => !registered.some((r) => r.path === c.path) && !c.path.includes('/src/'));
 
   const spec = [
@@ -133,99 +139,103 @@ export function PublishTab({ version, run }: { version: number; run: RunAction }
 
   return (
     <div class="publish-tab">
-      <header class="publish-head">
-        <span class={'publish-status ' + status.tone}>{status.label}</span>
-        <strong>{publish.platform_name || d.platform}</strong>
-        {spec && <span class="small muted">{spec}</span>}
-        <span class="spacer" />
-        {check}
-      </header>
-      {status.hint && <p class="small muted publish-hint">{status.hint}</p>}
-
-      <section class="publish-section" data-ctx-source="publish.md" data-ctx-label="发布文案">
-        <h4>发布文案</h4>
-        <CopyField label="标题" value={copy.primary_title} count />
-        {platformTitles.map(([platform, title]) => (
-          <CopyField key={platform} label={`${platform} 标题`} value={title} count />
-        ))}
-        <CopyField label="简介" value={copy.introduction} multiline />
-        <CopyField label="话题" value={hashtags.join(' ')} />
-        {credits.required && <CopyField label="署名" value={credits.text} multiline />}
-      </section>
-
-      <section class="publish-section">
-        <h4>封面{cover.title_lines?.length ? `：${cover.title_lines.join(' / ')}` : ''}</h4>
-        {registered.length === 0 && unregistered.length === 0 ? (
-          <p class="small muted">还没有封面。</p>
-        ) : (
-          <div class="publish-covers">
-            {[...registered.map((r) => ({ ...r, measured: measured.get(r.path) })), ...unregistered.map((c) => ({ path: c.path, measured: c }))].map(
-              (c: any) => (
-                <figure key={c.path}>
-                  <a href={rawURL(c.path, version)} target="_blank" rel="noreferrer">
-                    <img src={rawURL(c.path, version)} alt="" loading="lazy" />
-                  </a>
-                  <figcaption>
-                    <span>{c.ratio ? `${c.ratio} ${Number(c.ratio.split(':')[0]) > Number(c.ratio.split(':')[1]) ? '横版' : Number(c.ratio.split(':')[0]) < Number(c.ratio.split(':')[1]) ? '竖版' : '方形'}` : '未登记'}</span>
-                    <span class="small muted">
-                      {c.measured?.width ? `${c.measured.width}×${c.measured.height}` : c.measured?.error ?? ''}
-                    </span>
-                  </figcaption>
-                </figure>
-              ),
-            )}
-          </div>
-        )}
-      </section>
-
-      {open.length > 0 && (
-        <section class="publish-section">
-          <h4>发布前你要确认{remaining.length ? ` · 还剩 ${remaining.length} 项` : ' · 都完成了'}</h4>
-          <ul class="publish-checks">
-            {open.map(([key, c]) => {
-              const s = checkStatus[c?.status ?? ''] ?? { label: c?.status ?? '', tone: 'todo' };
-              return (
-                <li key={key} class={s.tone}>
-                  <span class="publish-check-mark" />
-                  <span class="publish-check-name">{checkNames[key] ?? key}</span>
-                  <span class="publish-check-state">{s.label}</span>
-                  {c?.note && <span class="small muted publish-check-note">{c.note}</span>}
-                </li>
-              );
-            })}
-          </ul>
-          <p class="small muted">做完后在对话里告诉编排工具，例如「耳机和外放都听过了，没问题」，它会更新状态。</p>
+      <div class="publish-layout">
+        <section class="publish-section publish-cover-col">
+          <span class="eyebrow">封面{cover.title_lines?.length ? ` · ${cover.title_lines.join(' / ')}` : ''}</span>
+          {registered.length === 0 && unregistered.length === 0 ? (
+            <p class="small muted">还没有封面。</p>
+          ) : (
+            <div class="publish-covers">
+              {[...registered.map((r) => ({ ...r, measured: measured.get(r.path) })), ...unregistered.map((c) => ({ path: c.path, measured: c }))].map(
+                (c: any) => (
+                  <figure key={c.path}>
+                    <a href={rawURL(c.path, version)} target="_blank" rel="noreferrer">
+                      <img src={rawURL(c.path, version)} alt="" loading="lazy" />
+                    </a>
+                    <figcaption>
+                      <span>{c.ratio ? `${c.ratio} ${Number(c.ratio.split(':')[0]) > Number(c.ratio.split(':')[1]) ? '横版' : Number(c.ratio.split(':')[0]) < Number(c.ratio.split(':')[1]) ? '竖版' : '方形'}` : '未登记'}</span>
+                      <span class="small muted">
+                        {c.measured?.width ? `${c.measured.width}×${c.measured.height}` : c.measured?.error ?? ''}
+                      </span>
+                    </figcaption>
+                  </figure>
+                ),
+              )}
+            </div>
+          )}
         </section>
-      )}
+        <div class="publish-main">
+        <header class="publish-head">
+          <span class="eyebrow">
+            {publish.platform_name || d.platform}
+            {spec ? ` · ${spec}` : ''}
+          </span>
+          <div class="publish-status-row">
+            <span class={'publish-status ' + status.tone}>{status.label}</span>
+            {status.hint && <span class="small muted">{status.hint}</span>}
+            <span class="spacer" />
+            {check}
+          </div>
+        </header>
+        <section class="publish-section" data-ctx-source="publish.md" data-ctx-label="发布文案">
+          <CopyField label="标题" value={copy.primary_title} count display />
+          {platformTitles.map(([platform, title]) => (
+            <CopyField key={platform} label={`${platform} 标题`} value={title} count />
+          ))}
+          <CopyField label="简介" value={copy.introduction} multiline />
+          <CopyField label="话题" value={hashtags.join(' ')} />
+          {credits.required && <CopyField label="署名" value={credits.text} multiline />}
+        </section>
 
-      <details class="publish-section publish-more">
-        <summary>成片规格与证据</summary>
-        <table class="publish-table">
-          <tbody>
-            {videoFields
-              .filter(([k]) => video[k] !== undefined && video[k] !== null && video[k] !== '')
-              .map(([k, name]) => (
-                <tr key={k}>
-                  <th>{name}</th>
-                  <td class="mono">{String(video[k])}</td>
-                </tr>
-              ))}
-            {Object.entries((d.evidence ?? {}) as Record<string, unknown>)
-              .filter(([, v]) => (Array.isArray(v) ? v.length : v))
-              .map(([k, v]) => (
-                <tr key={k}>
-                  <th>{evidenceNames[k] ?? k}</th>
-                  <td class="mono">{Array.isArray(v) ? v.join('、') : String(v)}</td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </details>
+        {open.length > 0 && (
+          <section class="publish-section">
+            <h4>发布前你要确认{remaining.length ? ` · 还剩 ${remaining.length} 项` : ' · 都完成了'}</h4>
+            <ul class="publish-checks">
+              {open.map(([key, c]) => {
+                const s = checkStatus[c?.status ?? ''] ?? { label: c?.status ?? '', tone: 'todo' };
+                return (
+                  <li key={key} class={s.tone} title={c?.note || undefined}>
+                    <span class="publish-check-mark" />
+                    <span class="publish-check-name">{checkNames[key] ?? key}</span>
+                    <span class="publish-check-state">{s.label}</span>
+                  </li>
+                );
+              })}
+            </ul>
+            <p class="small muted">做完后在对话里告诉编排工具，例如「耳机和外放都听过了，没问题」，它会更新状态。</p>
+          </section>
+        )}
+
+        <details class="publish-section publish-more">
+          <summary>成片规格与证据</summary>
+          <table class="publish-table">
+            <tbody>
+              {videoFields
+                .filter(([k]) => video[k] !== undefined && video[k] !== null && video[k] !== '')
+                .map(([k, name]) => (
+                  <tr key={k}>
+                    <th>{name}</th>
+                    <td class="mono">{String(video[k])}</td>
+                  </tr>
+                ))}
+              {Object.entries((d.evidence ?? {}) as Record<string, unknown>)
+                .filter(([, v]) => (Array.isArray(v) ? v.length : v))
+                .map(([k, v]) => (
+                  <tr key={k}>
+                    <th>{evidenceNames[k] ?? k}</th>
+                    <td class="mono">{Array.isArray(v) ? v.join('、') : String(v)}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </details>
+        </div>
+      </div>
     </div>
   );
 }
 
-function CopyField({ label, value, multiline, count }: { label: string; value?: string; multiline?: boolean; count?: boolean }) {
+function CopyField({ label, value, multiline, count, display }: { label: string; value?: string; multiline?: boolean; count?: boolean; display?: boolean }) {
   const [copied, setCopied] = useState(false);
   const text = (value ?? '').trim();
   const copy = async () => {
@@ -243,7 +253,7 @@ function CopyField({ label, value, multiline, count }: { label: string; value?: 
         <span>{label}</span>
         {count && text && <span class="small muted">{[...text].length} 字</span>}
       </div>
-      <div class={'publish-field-value' + (multiline ? ' multiline' : '')}>{text || <span class="muted">（空）</span>}</div>
+      <div class={'publish-field-value' + (multiline ? ' multiline' : '') + (display ? ' display' : '')}>{text || <span class="muted">（空）</span>}</div>
       <button disabled={!text} onClick={copy}>
         {copied ? '已复制' : '复制'}
       </button>

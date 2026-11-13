@@ -1,24 +1,41 @@
-/* 发布页：按「发布时要做什么」排。选择器都挂在 .publish-tab 下。 */
-.publish-tab {
+/* 发布页（放映室）：封面在左、文案在右；字段不加框，标题用宋体。选择器都挂在 .publish-tab 下。 */
+.publish-tab .publish-layout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 40px 64px;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 16px;
+}
+.publish-tab .publish-cover-col {
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-width: 860px;
+}
+.publish-tab .publish-main {
+  flex: 1 1 380px;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
 }
 .publish-tab .publish-head {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 12px;
 }
-.publish-tab .publish-hint {
-  margin: -8px 0 0;
+.publish-tab .publish-status-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 .publish-tab .publish-status {
   font-size: 12px;
   padding: 2px 10px;
   border-radius: 999px;
-  background: var(--chip);
+  border: 1px solid var(--line-strong);
   color: var(--stale);
 }
 .publish-tab .publish-status.ok {
@@ -30,60 +47,80 @@
 .publish-tab .publish-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
+  gap: 22px;
 }
 .publish-tab .publish-section h4 {
   margin: 0;
+  font: 600 15px var(--serif);
 }
+/* 一行文案：左边文字，右边一个「复制」字样的按钮。 */
 .publish-tab .publish-field {
   display: grid;
-  grid-template-columns: 72px 1fr auto;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 16px;
   align-items: start;
-  padding: 8px 10px;
-  background: var(--raised);
-  border: 1px solid var(--line);
-  border-radius: 8px;
 }
 .publish-tab .publish-field-label {
+  grid-column: 1 / -1;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  gap: 10px;
+  font: 11px var(--mono);
+  letter-spacing: 0.1em;
   color: var(--muted);
-  font-size: 13px;
 }
 .publish-tab .publish-field-value {
-  color: var(--text);
-  line-height: 1.6;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.9;
   user-select: text;
   word-break: break-word;
+}
+.publish-tab .publish-field-value.display {
+  color: var(--text);
+  font: 600 24px/1.45 var(--serif);
+}
+.publish-tab .publish-field > button {
+  height: 28px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+}
+.publish-tab .publish-field > button:hover {
+  color: var(--accent-hover);
 }
 .publish-tab .publish-covers {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 20px;
   align-items: flex-end;
 }
 .publish-tab .publish-covers figure {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 .publish-tab .publish-covers img {
   display: block;
-  height: 180px;
+  height: 320px;
   width: auto;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  background: var(--well);
+  border-radius: 4px;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.55);
+}
+.publish-tab .publish-covers figure:nth-child(n + 2) img {
+  height: 150px;
 }
 .publish-tab .publish-covers figcaption {
   display: flex;
   gap: 8px;
-  font-size: 12px;
+  font: 11px var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.publish-tab .publish-covers figcaption .small {
+  font: inherit;
 }
 .publish-tab .publish-checks {
   list-style: none;
@@ -91,22 +128,23 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  border-top: 1px solid var(--line);
 }
 .publish-tab .publish-checks li {
   display: grid;
   grid-template-columns: 14px 1fr auto;
-  gap: 4px 10px;
+  gap: 12px;
   align-items: center;
-  padding: 8px 10px;
-  background: var(--raised);
-  border-radius: 8px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+  color: var(--text-2);
 }
 .publish-tab .publish-check-mark {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  border: 2px solid var(--stale);
+  border: 1.5px solid var(--stale);
 }
 .publish-tab .publish-checks li.ok .publish-check-mark {
   background: var(--ok);
@@ -117,7 +155,7 @@
 }
 .publish-tab .publish-check-state {
   font-size: 12px;
-  color: var(--stale);
+  color: var(--muted);
 }
 .publish-tab .publish-checks li.ok .publish-check-state {
   color: var(--ok);
@@ -125,17 +163,15 @@
 .publish-tab .publish-checks li.bad .publish-check-state {
   color: var(--bad);
 }
-.publish-tab .publish-check-note {
-  grid-column: 2 / 4;
-}
 .publish-tab .publish-more > summary {
   cursor: pointer;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
 }
 .publish-tab .publish-table {
   border-collapse: collapse;
   font-size: 12px;
+  margin-top: 10px;
 }
 .publish-tab .publish-table th,
 .publish-tab .publish-table td {

@@ -34,10 +34,10 @@ interface MenuState {
   groups: Item[][];
 }
 
-/** 元素里给人看的文字：去掉标注出来的读法与只读不显示的部分。 */
+/** 元素里给人看的文字：去掉标注出来的读法、只读不显示的部分与口播稿的段落编号。 */
 export function readableText(node: Node): string {
   const clone = node.cloneNode(true) as Element | DocumentFragment;
-  clone.querySelectorAll?.('rt, .spoken-only').forEach((el) => el.remove());
+  clone.querySelectorAll?.('rt, .spoken-only, .para-no').forEach((el) => el.remove());
   return (clone.textContent ?? '').replace(/\n{3,}/g, '\n\n').trim();
 }
 

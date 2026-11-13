@@ -1505,3 +1505,9 @@ div.tool {
   border-radius: 6px;
   border: 1px solid var(--line);
 }
+
+/* 放映室：对话的开场标题用宋体，和各页标题一致。 */
+.chat .intro h3 {
+  font: 600 22px/1.3 var(--serif);
+  letter-spacing: 0.02em;
+}

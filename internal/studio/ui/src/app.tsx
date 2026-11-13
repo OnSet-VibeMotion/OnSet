@@ -521,6 +521,7 @@ export function App() {
             />
             <Preview
               tab={tab}
+              onTab={setTab}
               state={state}
               scenes={scenes}
               usage={usage}

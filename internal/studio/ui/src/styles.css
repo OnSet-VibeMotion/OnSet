@@ -1781,3 +1781,60 @@ button.skills-pill.bad {
 .strip .scene.stale::after {
   background: var(--stale);
 }
+
+/* ---- 成片页：与镜头页同一套左画面、右信息的版式 ---- */
+.final-tab {
+  flex: 1;
+}
+.final-versions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.final-versions button {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.final-versions button.on {
+  color: var(--text);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.final-review {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px 20px;
+  font-size: 13px;
+}
+.final-review dt {
+  color: var(--muted);
+}
+.final-review dd {
+  margin: 0;
+  color: var(--text-2);
+}
+.final-review dd.ok {
+  color: var(--ok);
+}
+.final-review dd.bad,
+.final-review dd.bad button.link {
+  color: var(--bad);
+}
+.final-review button.link,
+.final-more button.link {
+  font-family: var(--sans);
+}
+.final-more {
+  display: flex;
+  gap: 16px;
+}
+.final-more button.link {
+  font-size: 12px;
+  color: var(--muted);
+}
+.final-more button.link:hover {
+  color: var(--text);
+}
