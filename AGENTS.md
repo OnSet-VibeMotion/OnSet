@@ -125,7 +125,9 @@ SVG 转 PNG 必须走 `rsvg-convert`（`internal/styleimage`），**不能用 Im
 | `ChildEnvironment` 显式写 `AM_FILM_STYLE_LIBRARY`；`OrchestratorAccess` 总把风格库放进 `WritableDirs`，开工前 `EnsureFilmStyleLibraryDir` 先建目录 | 默认目录由 `XDG_DATA_HOME` 推出而它不在白名单；编排工具可能在这一轮里才 `am film-style use`，codex 沙箱只能放行已存在的目录 |
 | git 子进程带 `GIT_HTTP_LOW_SPEED_LIMIT/TIME`（1 KB/s 持续 60 秒即放弃） | 连接被掐断时 `--filter=blob:none` 的按需取文件不报错只挂着，实测卡过半小时 |
 | 下载可续传：克隆在固定的 `<目录>.partial` 里进行，失败保留；检出按 `libraryStages` 分段扩大稀疏规则，每段重试 3 次；demo 以 `.git/am-demos` 完成记录为准 | 按需取文件一批里断一次整批白下；分段后已取回的留在本地，国内网络下重跑几次总能下完 |
-| 技能目录不带 `demo/stills`、渲染产物与音频，不带 `core/render`；three.js 风格只带 `three` 的 `build/` 与 `examples/jsm/` | 它们不是技法，带进来只会让指纹随无关文件变化 |
+| 技能目录不带 `demo/stills`、渲染产物与音频，不带 `core/render`；three.js 只带 demo 与 `core/` 实际 import 到的模块（`threeClosure` 顺着 import 链收集），`core/assets` 只带源码里出现过名字的模型与贴图（`referencedAssets`，按名字认是因为 demo 常拼接路径） | 整棵带的话一种 three.js 风格进项目 34 MB，挑过之后几 MB；多余的文件还会让指纹随无关内容变化 |
+| am 管理的风格库里的文件硬链接进项目并设为只读，跨磁盘时退回复制；用户自己的检出只复制、不改权限 | 内容钉在 commit 上不会变，硬链接不占第二份磁盘；只读是因为在项目里改它就改了所有项目共用的那一份 |
+| `core/assets/` 不在首次检出里，`EnsureDemo` 发现 demo 引用它才取（`.git/am-core-assets` 完成记录） | 12 MB 的一批经代理常因一次握手失败整批重来，而只有少数风格用它 |
 | `SKILL.md` 由 `skill.md.tmpl` 生成，写明 lemo 页面契约（`window.render(t)`）怎么换成 HyperFrames 的 `hf-seek`、`/core/...` 路径为何拷进镜头目录后不用改、Sound palette 与胶片颗粒对镜头无效 | 上游写给它自己的渲染器，这些冲突上游不会替我们守 |
 
 制作提示词「整片风格」一节由 `TestProductionPromptCarriesFilmStyle` 钉着。升级 `PinnedCommit` 时对比新旧 `core/lib.js` 与 `core/README.md` 的页面契约。

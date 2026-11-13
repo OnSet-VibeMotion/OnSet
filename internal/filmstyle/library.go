@@ -163,8 +163,9 @@ var libraryStages = [][]string{
 	librarySparse,
 }
 
-// stageAttempts 是每一步网络操作的尝试次数。
-const stageAttempts = 3
+// stageAttempts 是每一步网络操作的尝试次数。经代理时偶尔整条 TLS 握手失败
+// （SSL_ERROR_SYSCALL），重连一次就好，所以给得宽。
+const stageAttempts = 5
 
 // downloadLibrary 把 commit 下载并检出到 partial，已有的进度直接沿用。
 func downloadLibrary(ctx context.Context, git, partial, commit string, opts LibraryOptions) error {
@@ -206,7 +207,7 @@ func downloadLibrary(ctx context.Context, git, partial, commit string, opts Libr
 		return fmt.Errorf("更新风格库的上游地址：%w", err)
 	}
 	if _, err := run("rev-parse", "--verify", "--quiet", commit+"^{commit}"); err != nil {
-		if err := retry("从 "+opts.repo()+" 下载风格库 "+commit, "fetch", "--quiet", "--depth", "1", "--filter=blob:none", "origin", commit); err != nil {
+		if err := retry("从 "+opts.repo()+" 下载风格库 "+commit+" ", "fetch", "--quiet", "--depth", "1", "--filter=blob:none", "origin", commit); err != nil {
 			return err
 		}
 	}
@@ -253,6 +254,7 @@ var librarySparse = []string{
 	"!/styles/*/poster.jpg",
 	"!/styleboard/",
 	"!/docs/",
+	"!/core/assets/",
 }
 
 func writeSparse(dir string, patterns []string) error {
@@ -290,7 +292,7 @@ func EnsureDemo(ctx context.Context, lib Library, slug string, opts LibraryOptio
 	}
 	// am 管理的风格库以完成记录为准，不以 index.html 在不在为准：上一次在取文件
 	// 中途断开时 index.html 可能已经写出、其余文件还没有。
-	if statErr == nil && demoDone(lib.Dir, slug) {
+	if statErr == nil && demoDone(lib.Dir, slug) && (!DemoUsesCoreAssets(demo) || coreAssetsReady(lib.Dir)) {
 		return nil
 	}
 	git, err := envutil.LookPath("git", opts.Env["PATH"])
@@ -314,20 +316,72 @@ func EnsureDemo(ctx context.Context, lib Library, slug string, opts LibraryOptio
 	if err := writeSparse(lib.Dir, patterns); err != nil {
 		return err
 	}
-	var readErr error
-	for attempt := 1; attempt <= stageAttempts; attempt++ {
-		if _, readErr = gitCommand(ctx, git, lib.Dir, opts.Env, opts.Output, "read-tree", "--reset", "-u", "HEAD"); readErr == nil || ctx.Err() != nil {
-			break
+	readTree := func() error {
+		var readErr error
+		for attempt := 1; attempt <= stageAttempts; attempt++ {
+			if _, readErr = gitCommand(ctx, git, lib.Dir, opts.Env, opts.Output, "read-tree", "--reset", "-u", "HEAD"); readErr == nil || ctx.Err() != nil {
+				break
+			}
 		}
+		return readErr
 	}
-	if readErr != nil {
+	if err := readTree(); err != nil {
 		// 稀疏规则已经写进去了，下次 EnsureDemo 看到 demo 不全会接着取。
-		return fmt.Errorf("下载 %s 的 demo 源码失败（再运行一次会接着下载）：%w", slug, readErr)
+		return fmt.Errorf("下载 %s 的 demo 源码失败（再运行一次会接着下载）：%w", slug, err)
 	}
 	if _, err := os.Stat(filepath.Join(demo, "index.html")); err != nil {
 		return fmt.Errorf("风格库里 %s 的 demo 没有 index.html：上游目录结构已变", slug)
 	}
+	// core/assets/（约 12 MB 的 3D 模型）只有个别风格用，不在首次检出里，用到时才取。
+	if DemoUsesCoreAssets(demo) && !coreAssetsReady(lib.Dir) {
+		if !contains(patterns, "/core/assets/") {
+			patterns = append(patterns, "/core/assets/") // 非 cone 规则后写的生效，盖过 !/core/assets/
+		}
+		if err := writeSparse(lib.Dir, patterns); err != nil {
+			return err
+		}
+		if err := readTree(); err != nil {
+			return fmt.Errorf("下载 %s 要用的 core/assets/ 失败（再运行一次会接着下载）：%w", slug, err)
+		}
+		if err := os.WriteFile(filepath.Join(lib.Dir, ".git", coreAssetsDone), []byte("ok\n"), 0o644); err != nil {
+			return err
+		}
+	}
 	return markDemoDone(lib.Dir, slug)
+}
+
+// coreAssetsDone 是 core/assets/ 完整取回的记录，理由同 demosDoneFile。
+const coreAssetsDone = "am-core-assets"
+
+func coreAssetsReady(libDir string) bool {
+	_, err := os.Stat(filepath.Join(libDir, ".git", coreAssetsDone))
+	return err == nil
+}
+
+// DemoUsesCoreAssets 判断 demo 源码是否引用风格库的 core/assets/（Poly Haven 模型与贴图）。
+func DemoUsesCoreAssets(demo string) bool {
+	found := false
+	_ = filepath.WalkDir(demo, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || found {
+			return filepath.SkipDir
+		}
+		if entry.IsDir() {
+			if skipInDemo[entry.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		switch strings.ToLower(filepath.Ext(path)) {
+		case ".js", ".mjs", ".html", ".json":
+		default:
+			return nil
+		}
+		if body, readErr := os.ReadFile(path); readErr == nil && strings.Contains(string(body), "core/assets/") {
+			found = true
+		}
+		return nil
+	})
+	return found
 }
 
 // demosDoneFile 记录已经完整取回 demo 的风格，一行一个。

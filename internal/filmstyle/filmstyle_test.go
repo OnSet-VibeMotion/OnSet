@@ -84,31 +84,40 @@ func fixtureLibrary(t *testing.T) (url, commit string) {
 	gitRun(t, repo, "config", "uploadpack.allowAnySHA1InWant", "true")
 	gitRun(t, repo, "config", "uploadpack.allowFilter", "true")
 	files := map[string]string{
-		"LICENSE":                             "MIT\n",
-		"AGENTS.md":                           "agents\n",
-		"core/lib.js":                         "export const mulberry = () => 0;\n",
-		"core/three/post.js":                  "// post\n",
-		"core/post/crt.js":                    "// crt\n",
-		"core/fonts/fonts.css":                "/* fonts */\n",
-		"core/render/video.mjs":               "// render\n",
-		"docs/cover.jpg":                      "jpg",
-		"styleboard/index.html":               "<html>",
-		"styles/_template/STYLE.md":           "# template\n",
-		"styles/impasto/STYLE.md":             "# Impasto\n## 7. Sound palette\n",
-		"styles/impasto/style.json":           `{"slug":"impasto"}`,
-		"styles/impasto/DEMO.md":              "# demo\n",
-		"styles/impasto/poster.jpg":           "poster",
-		"styles/impasto/demo/index.html":      `<script type="module" src="main.js"></script>`,
-		"styles/impasto/demo/main.js":         "import '/core/lib.js';\n",
-		"styles/impasto/demo/engine/paint.js": "// engine\n",
-		"styles/impasto/demo/stills/t_1.jpg":  "still",
-		"styles/impasto/demo/out/video.mp4":   "video",
-		"styles/impasto/demo/music/score.py":  "# score\n",
-		"styles/impasto/demo/music/score.wav": "wav",
-		"styles/swiss-motion/STYLE.md":        "# Swiss\n",
-		"styles/swiss-motion/style.json":      `{"slug":"swiss-motion"}`,
-		"styles/swiss-motion/demo/index.html": "<html>",
-		"styles/swiss-motion/demo/film.js":    "// film\n",
+		"LICENSE":                                            "MIT\n",
+		"AGENTS.md":                                          "agents\n",
+		"core/lib.js":                                        "export const mulberry = () => 0;\n",
+		"core/three/post.js":                                 "// post\n",
+		"core/post/crt.js":                                   "// crt\n",
+		"core/fonts/fonts.css":                               "/* fonts */\n",
+		"core/render/video.mjs":                              "// render\n",
+		"docs/cover.jpg":                                     "jpg",
+		"styleboard/index.html":                              "<html>",
+		"styles/_template/STYLE.md":                          "# template\n",
+		"styles/impasto/STYLE.md":                            "# Impasto\n## 7. Sound palette\n",
+		"styles/impasto/style.json":                          `{"slug":"impasto"}`,
+		"styles/impasto/DEMO.md":                             "# demo\n",
+		"styles/impasto/poster.jpg":                          "poster",
+		"styles/impasto/demo/index.html":                     `<script type="module" src="main.js"></script>`,
+		"styles/impasto/demo/main.js":                        "import '/core/lib.js';\n",
+		"styles/impasto/demo/engine/paint.js":                "// engine\n",
+		"styles/impasto/demo/stills/t_1.jpg":                 "still",
+		"styles/impasto/demo/out/video.mp4":                  "video",
+		"styles/impasto/demo/music/score.py":                 "# score\n",
+		"styles/impasto/demo/music/score.wav":                "wav",
+		"styles/swiss-motion/STYLE.md":                       "# Swiss\n",
+		"styles/swiss-motion/style.json":                     `{"slug":"swiss-motion"}`,
+		"styles/swiss-motion/demo/index.html":                "<html>",
+		"styles/swiss-motion/demo/film.js":                   "// film\n",
+		"core/assets/polyhaven/lamp.gltf":                    "{}",
+		"core/assets/polyhaven/SOURCES.md":                   "CC0\n",
+		"core/assets/polyhaven/unused.jpg":                   "jpg",
+		"core/assets/polyhaven/tea_set_01/tea_set_01.gltf":   "{}",
+		"core/assets/polyhaven/tea_set_01/textures/diff.jpg": "jpg",
+		"styles/brick-toy/STYLE.md":                          "# Brick\n",
+		"styles/brick-toy/style.json":                        `{"slug":"brick-toy"}`,
+		"styles/brick-toy/demo/index.html":                   "<html>",
+		"styles/brick-toy/demo/set.js":                       "const PH = '/core/assets/polyhaven/';\nload(PH + 'lamp.gltf'); load(PH + 'tea_set_01/tea_set_01.gltf');\n",
 	}
 	writeFiles(t, repo, files)
 	gitRun(t, repo, "add", "-A")
@@ -235,7 +244,16 @@ func TestInstallRequiresThreeForThreeStyles(t *testing.T) {
 		t.Fatalf("没有 three 时应当指向 setup：%v", err)
 	}
 	writeFiles(t, filepath.Join(lib.Dir, "node_modules", "three"), map[string]string{
-		"build/three.module.js": "// three\n", "examples/jsm/controls/x.js": "// x\n", "LICENSE": "MIT\n", "src/huge.js": "// src\n",
+		"build/three.module.js":                         "// three\n",
+		"build/three.webgpu.js":                         "// webgpu\n",
+		"examples/jsm/postprocessing/EffectComposer.js": "import { Pass } from './Pass.js';\nimport * as T from 'three';\n",
+		"examples/jsm/postprocessing/Pass.js":           "// pass\n",
+		"examples/jsm/controls/x.js":                    "// x\n",
+		"LICENSE":                                       "MIT\n",
+		"src/huge.js":                                   "// src\n",
+	})
+	writeFiles(t, filepath.Join(lib.Dir, "styles", "impasto", "demo"), map[string]string{
+		"three-scene.js": "import * as THREE from 'three';\nimport { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';\n",
 	})
 	project := t.TempDir()
 	if _, err := Install(InstallOptions{ProjectDir: project, Style: style, Library: lib}); err != nil {
@@ -245,8 +263,16 @@ func TestInstallRequiresThreeForThreeStyles(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(skill, "node_modules", "three", "build", "three.module.js")); err != nil {
 		t.Error("three.js 风格应当带上 three 的 build/")
 	}
-	if _, err := os.Stat(filepath.Join(skill, "node_modules", "three", "src")); err == nil {
-		t.Error("three 的 src/ 用不上，不该进项目")
+	for _, rel := range []string{"src", "build/three.webgpu.js", "examples/jsm/controls/x.js"} {
+		if _, err := os.Stat(filepath.Join(skill, "node_modules", "three", filepath.FromSlash(rel))); err == nil {
+			t.Errorf("demo 没用到的 %s 不该进项目", rel)
+		}
+	}
+	// import 的模块，以及它相对引用的模块，都要带上。
+	for _, rel := range []string{"examples/jsm/postprocessing/EffectComposer.js", "examples/jsm/postprocessing/Pass.js", "LICENSE"} {
+		if _, err := os.Stat(filepath.Join(skill, "node_modules", "three", filepath.FromSlash(rel))); err != nil {
+			t.Errorf("用到的 %s 应当带上", rel)
+		}
 	}
 	body, _ := os.ReadFile(filepath.Join(skill, "SKILL.md"))
 	if !strings.Contains(string(body), "node_modules/three") {
@@ -323,5 +349,79 @@ func TestEnsureDemoFinishesInterruptedDownload(t *testing.T) {
 	body, _ := os.ReadFile(filepath.Join(lib.Dir, "styles", "impasto", "demo", "index.html"))
 	if string(body) == "<partial>" {
 		t.Error("中断留下的文件应当按 HEAD 恢复")
+	}
+}
+
+// core/assets/ 只有个别风格用：首次检出不带它，装到用它的风格时才取，并拷进技能目录。
+func TestCoreAssetsAreFetchedOnlyForStylesThatUseThem(t *testing.T) {
+	url, commit := fixtureLibrary(t)
+	opts := fixtureOptions(t, url, commit)
+	lib, err := EnsureLibrary(context.Background(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(lib.Dir, "core", "assets")); err == nil {
+		t.Fatal("首次检出不该带 core/assets/")
+	}
+	impasto := Style{Slug: "impasto", CN: "油画厚涂", EN: "Impasto"}
+	project := t.TempDir()
+	if _, err := EnsureForProject(context.Background(), project, impasto, false, opts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(lib.Dir, "core", "assets")); err == nil {
+		t.Error("不用 core/assets/ 的风格不该把它取下来")
+	}
+	brick := Style{Slug: "brick-toy", CN: "积木", EN: "Brick Toy"}
+	if _, err := EnsureForProject(context.Background(), project, brick, true, opts); err != nil {
+		t.Fatal(err)
+	}
+	assets := filepath.Join(SkillDir(project), "core", "assets", "polyhaven")
+	for _, rel := range []string{"lamp.gltf", "SOURCES.md", "tea_set_01/tea_set_01.gltf", "tea_set_01/textures/diff.jpg"} {
+		if _, err := os.Stat(filepath.Join(assets, filepath.FromSlash(rel))); err != nil {
+			t.Errorf("引用到的 %s（含模型目录整体与许可说明）应当带上", rel)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(assets, "unused.jpg")); err == nil {
+		t.Error("没被引用的资源不该带进项目")
+	}
+}
+
+// am 管理的风格库：放进项目的文件是硬链接（不占第二份磁盘）且只读；生成的 SKILL.md 例外。
+// 用户自己的检出：复制，不改它文件的权限。
+func TestInstalledFilesAreReadOnlyLinksForManagedLibrary(t *testing.T) {
+	url, commit := fixtureLibrary(t)
+	opts := fixtureOptions(t, url, commit)
+	project := t.TempDir()
+	if _, err := EnsureForProject(context.Background(), project, Style{Slug: "impasto", CN: "油画厚涂", EN: "Impasto"}, false, opts); err != nil {
+		t.Fatal(err)
+	}
+	lib, _ := OpenLibrary(opts)
+	installed := filepath.Join(SkillDir(project), "STYLE.md")
+	a, err := os.Stat(installed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.Stat(filepath.Join(lib.Dir, "styles", "impasto", "STYLE.md"))
+	if !os.SameFile(a, b) {
+		t.Error("am 管理的风格库应当硬链接进项目")
+	}
+	if a.Mode().Perm()&0o222 != 0 {
+		t.Errorf("放进项目的文件应当只读：%v", a.Mode())
+	}
+
+	user := t.TempDir()
+	writeFiles(t, user, map[string]string{"core/lib.js": "//", "styles/impasto/STYLE.md": "# x", "styles/impasto/demo/index.html": "<html>"})
+	userOpts := LibraryOptions{Env: map[string]string{"PATH": os.Getenv("PATH"), LibraryEnv: user}}
+	other := t.TempDir()
+	if _, err := EnsureForProject(context.Background(), other, Style{Slug: "impasto", CN: "油画厚涂", EN: "Impasto"}, false, userOpts); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := os.Stat(filepath.Join(SkillDir(other), "STYLE.md"))
+	d, _ := os.Stat(filepath.Join(user, "styles", "impasto", "STYLE.md"))
+	if os.SameFile(c, d) {
+		t.Error("用户自己的检出应当复制，不该硬链接")
+	}
+	if d.Mode().Perm()&0o200 == 0 {
+		t.Error("不该改用户检出里文件的权限")
 	}
 }

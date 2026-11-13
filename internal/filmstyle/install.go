@@ -106,6 +106,9 @@ func Install(opts InstallOptions) (InstallResult, error) {
 	}
 	defer os.RemoveAll(staging)
 
+	// am 管理的风格库里的文件内容固定（钉在 commit 上），硬链接进项目即可，不占第二份
+	// 磁盘；用户自己的检出照旧复制，不去改它文件的权限。
+	place := func(from, to string) error { return copyPath(from, to, lib.Managed) }
 	copies := []struct{ from, to string }{
 		{filepath.Join(source, "STYLE.md"), "STYLE.md"},
 		{filepath.Join(source, "style.json"), "style.json"},
@@ -125,8 +128,29 @@ func Install(opts InstallOptions) (InstallResult, error) {
 			}
 			continue // DEMO.md、海报、demo 等在个别风格上可能没有
 		}
-		if err := copyPath(item.from, filepath.Join(staging, filepath.FromSlash(item.to))); err != nil {
+		if err := place(item.from, filepath.Join(staging, filepath.FromSlash(item.to))); err != nil {
 			return InstallResult{}, err
+		}
+	}
+	// 下面两类按 demo 实际引用挑文件，不整棵带：three 的 examples/jsm 有 14 MB，
+	// core/assets 有 12 MB 模型，一种风格只用其中几个文件。
+	sources, err := sourceTexts(staging)
+	if err != nil {
+		return InstallResult{}, err
+	}
+	if DemoUsesCoreAssets(filepath.Join(source, "demo")) {
+		assets := filepath.Join(lib.Dir, "core", "assets")
+		if _, statErr := os.Stat(assets); statErr != nil {
+			return InstallResult{}, fmt.Errorf("%s 的 demo 要用风格库的 core/assets/，风格库里还没有：重新运行 am film-style use", style.Label())
+		}
+		picked, err := referencedAssets(assets, sources)
+		if err != nil {
+			return InstallResult{}, err
+		}
+		for _, rel := range picked {
+			if err := place(filepath.Join(assets, filepath.FromSlash(rel)), filepath.Join(staging, "core", "assets", filepath.FromSlash(rel))); err != nil {
+				return InstallResult{}, err
+			}
 		}
 	}
 	if style.ThreeJS {
@@ -134,12 +158,16 @@ func Install(opts InstallOptions) (InstallResult, error) {
 		if _, statErr := os.Stat(filepath.Join(three, "build", "three.module.js")); statErr != nil {
 			return InstallResult{}, fmt.Errorf("%s 用 three.js，风格库里还没有装 Node 依赖（node_modules/three）：重新运行 am film-style use，它会在风格库里执行 npm ci", style.Label())
 		}
-		for _, rel := range []string{"LICENSE", "package.json", "build", "examples/jsm"} {
+		picked, err := threeClosure(three, sources)
+		if err != nil {
+			return InstallResult{}, err
+		}
+		for _, rel := range append([]string{"LICENSE", "package.json"}, picked...) {
 			from := filepath.Join(three, filepath.FromSlash(rel))
 			if _, statErr := os.Stat(from); statErr != nil {
 				continue
 			}
-			if err := copyPath(from, filepath.Join(staging, "node_modules", "three", filepath.FromSlash(rel))); err != nil {
+			if err := place(from, filepath.Join(staging, "node_modules", "three", filepath.FromSlash(rel))); err != nil {
 				return InstallResult{}, err
 			}
 		}
@@ -212,9 +240,13 @@ var skipInDemo = map[string]bool{"stills": true, "out": true, "chk": true, "node
 
 var skipExtensions = map[string]bool{".mp4": true, ".wav": true, ".mp3": true, ".npy": true, ".log": true}
 
-// copyPath 拷贝文件或目录。符号链接一律拒绝：指向风格库的链接搬进项目后，
-// 项目换一台机器就成了静默失效的空文件。
-func copyPath(from, to string) error {
+// copyPath 把文件或目录放进项目：link 为 true 时先试硬链接，跨磁盘等失败时退回复制。
+// 放进来的文件一律只读：硬链接与风格库共用同一份内容，在项目里改它就是改了所有
+// 项目共用的风格库；复制来的也设只读，与硬链接的行为一致，免得「有的能改有的不能」。
+//
+// 符号链接一律拒绝：指向风格库的链接搬进项目后，项目换一台机器就成了静默失效的空文件。
+// 硬链接没有这个问题——它就是文件本身，项目整体拷走时拷的是真实内容。
+func copyPath(from, to string, link bool) error {
 	return filepath.WalkDir(from, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -236,19 +268,23 @@ func copyPath(from, to string) error {
 		if !entry.Type().IsRegular() || name == ".DS_Store" || skipExtensions[strings.ToLower(filepath.Ext(name))] {
 			return nil
 		}
-		info, err := entry.Info()
-		if err != nil {
+		target := filepath.Join(to, rel)
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
+		}
+		if link {
+			if err := os.Link(path, target); err == nil {
+				return os.Chmod(target, 0o444)
+			}
 		}
 		body, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
-		target := filepath.Join(to, rel)
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		if err := os.WriteFile(target, body, 0o644); err != nil {
 			return err
 		}
-		return os.WriteFile(target, body, info.Mode().Perm()|0o200)
+		return os.Chmod(target, 0o444)
 	})
 }
 
