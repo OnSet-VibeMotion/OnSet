@@ -1,15 +1,15 @@
-// 多角色对话的镜头块：scene.json 的 cast 字段。移植自 internal/scene/scene.go 的 cast 部分。
+// 多角色对话的镜头块：scene.json 的 cast 字段，由多角色对话插件登记（index.ts）。
 import path from 'node:path';
 import * as cast from '../../cast';
 import { formatFixed, formatG, goQuote } from '../../gofmt';
-import { registerBlock } from '../block';
-import { formatStrings } from '../gofmt';
-import { sliceOf, type StructType } from '../jsondecode';
-import { digestTree } from '../record';
-import { contained, type Scene } from '../scene';
-import { CastRequiredHeading, CharacterRigSkillName, castDriverFile } from '../skills';
+import type { SceneBlock } from '../../scene/block';
+import { formatStrings } from '../../scene/gofmt';
+import { sliceOf, type StructType } from '../../scene/jsondecode';
+import { digestTree } from '../../scene/record';
+import { contained, type Scene } from '../../scene/scene';
+import { CastRequiredHeading, CharacterRigSkillName, castDriverFile } from './skill';
 
-declare module '../scene' {
+declare module '../../scene/scene' {
   interface Scene {
     /** 可选的角色配置。老镜头没有这个字段，cast 为 null，行为完全不变。 */
     cast: Cast | null;
@@ -305,7 +305,7 @@ export function castSection(s: Scene): string {
   return b;
 }
 
-registerBlock<Cast>({
+export const castBlock: SceneBlock<Cast> = {
   key: 'cast',
   order: 10,
   type: castType,
@@ -323,4 +323,7 @@ registerBlock<Cast>({
     // 项名与 record 的 file: 项一样用 / 分隔，Windows 上算出的指纹与 macOS 相同。
     return { ['cast:' + c.pack_dir.split(path.sep).join('/')]: digest };
   },
-});
+  feature: { name: 'cast', description: '有角色（cast 块）' },
+  // 考试重放要带上角色包：它不在镜头声明的输入文件里。
+  extraInputDirs: (_s, c) => (c.pack_dir !== '' ? [c.pack_dir] : []),
+};

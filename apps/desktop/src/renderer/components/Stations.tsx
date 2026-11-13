@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, errorText, post } from '../api';
-import type { ProgressState, ProjectState, Scene, StationInfo, StationOp, StationPageInfo, StationParam, StationRun, StationSetting, StationsResponse } from '../types';
+import type { BuiltinContents, ProgressState, ProjectState, Scene, StationInfo, StationOp, StationPageInfo, StationParam, StationRun, StationSetting, StationsResponse } from '../types';
 import { setPluginCommands } from './chat/complete';
+import { pluginVerb } from './chat/model';
 import type { RunAction } from './Preview';
 import '../stations.css';
 
@@ -26,7 +27,6 @@ const opNames: Record<string, string> = {
   scene_frames: '给镜头抽帧',
   concat: '拼接母版',
   review: '整片复查',
-  validate_publish: '发布校验',
   validate_video: '成片校验',
   film_style_use: '换整片风格',
   voice_save: '存一个音色',
@@ -86,7 +86,7 @@ function pagePermissionLines(s: StationInfo): [string, string][] {
   if (s.permissions.project) out.push(['看项目', '镜头、制作进度、发布信息的概况']);
   if (reads.length > 0) out.push(['读文件', reads.join('、')]);
   if (s.permissions.network.length > 0) out.push(['联网', s.permissions.network.map((o) => o.replace(/^https?:\/\//, '')).join('、')]);
-  if (s.permissions.uses.length > 0) out.push(['请你确认后执行', s.permissions.uses.map((u) => opNames[u] ?? u).join('、')]);
+  if (s.permissions.uses.length > 0) out.push(['请你确认后执行', s.permissions.uses.map((u) => opNames[u] ?? pluginVerb(u) ?? u).join('、')]);
   return out;
 }
 
@@ -110,6 +110,30 @@ function permissionLines(s: StationInfo): [string, string][] {
     out.push(['定时执行', `客户端开着时每 ${every}：${op?.summary ?? sc.op}`]);
   }
   return out;
+}
+
+/** 内置功能带了什么：它在 ArticleToMotion 里登记的站点、工具、渲染技能、页面与流程，用用户的话列出。 */
+function BuiltinDetail({ contents }: { contents: BuiltinContents }) {
+  const rows: [string, string][] = [];
+  if (contents.flows.length > 0) rows.push(['做法', contents.flows.join('、')]);
+  if (contents.nodes.length > 0) rows.push(['制作路线', contents.nodes.join('、')]);
+  if (contents.ops.length > 0) rows.push(['AI 能用的', contents.ops.map((o) => o.verb || o.summary).join('；')]);
+  if (contents.skills.length > 0) rows.push(['给渲染器的技能', contents.skills.join('、')]);
+  if (contents.blocks.length > 0) rows.push(['镜头里的设定', contents.blocks.join('、')]);
+  if (contents.pages.length > 0) rows.push(['页面', contents.pages.join('、')]);
+  if (rows.length === 0) return null;
+  return (
+    <div className="station-detail builtin-detail">
+      <dl className="station-perms">
+        {rows.map(([k, v]) => (
+          <div key={k}>
+            <dt>{k}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
 }
 
 /** 插件的设置：按清单出表单。密钥只写不读，界面上只显示「已填写」。 */
@@ -217,21 +241,27 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
                 </span>
                 <div className="station-title">
                   <strong>{s.name}</strong>
-                  <span>{s.in_use ? `${s.description} · 这个项目正在用（有 ${s.in_use}）` : s.description}</span>
-                  {s.affects_render && !s.in_use && <em className="station-needs">开关后，已经渲染的镜头要重新渲染</em>}
+                  <span>{s.busy ? `${s.description} · 这个项目正在用（有 ${s.busy}）` : s.description}</span>
+                  {s.affects_render && !s.busy && <em className="station-needs">开关后，已经渲染的镜头要重新渲染</em>}
                 </div>
-                <label className="station-switch" title={s.in_use ? '这个项目正在用，不能关' : undefined}>
+                <label className="station-switch" title={s.busy ? '这个项目正在用，不能关' : undefined}>
                   <input
                     type="checkbox"
                     role="switch"
                     aria-label={`${s.name}在这个项目里打开`}
                     checked={s.enabled}
-                    disabled={s.in_use !== ''}
+                    disabled={s.busy !== ''}
                     onChange={(e) => run(`/api/stations/${encodeURIComponent(s.id)}/enabled`, { enabled: e.target.checked })}
                   />
                   <span>{s.enabled ? '打开' : '关闭'}</span>
                 </label>
+                {s.contents && (
+                  <button className="link" onClick={() => setOpen(open === s.id ? '' : s.id)}>
+                    {open === s.id ? '收起' : '详情'}
+                  </button>
+                )}
               </div>
+              {open === s.id && s.contents && <BuiltinDetail contents={s.contents} />}
             </li>
           ))}
         </ul>

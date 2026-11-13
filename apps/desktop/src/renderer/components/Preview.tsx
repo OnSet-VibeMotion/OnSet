@@ -15,8 +15,6 @@ import { BeatTab } from './Beat';
 import { PublishTab } from './Publish';
 import { isStationTab, StationPage, StationSlots } from './Stations';
 
-/** 第三方插件能嵌小窗的自带页面（与后端 flow.SlotPages 一致）。 */
-const slotPages: string[] = ['script', 'storyboard', 'scene', 'final', 'publish', 'progress'];
 import { SceneBrief, StoryboardTab } from './Storyboard';
 import { ProgressTab } from './Progress';
 import { FileTree } from './Sidebar';
@@ -127,7 +125,8 @@ export function Preview(props: Props) {
             projectName={props.state?.project.name ?? ''}
           />
         )}
-        {slotPages.includes(props.tab) && (
+        {/* 第三方插件嵌进这一页的小窗：能嵌在哪几页由后端的页面表定（studioview.slotPages），清单校验时已经拦过。 */}
+        {!isStationTab(props.tab) && (
           <StationSlots
             at={props.tab}
             context={props.tab === 'scene' && scene ? { scene: scene.id } : {}}

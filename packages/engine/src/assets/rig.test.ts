@@ -7,7 +7,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as cast from '../cast';
 import * as hyperframes from '../hyperframes';
-import * as scene from '../scene';
+import { CastRequiredHeading } from '../plugins/cast';
 import { builtinSkills, files, shared } from './index';
 
 function castSkillPath(name: string): string {
@@ -32,7 +32,7 @@ describe('character-rig skill', () => {
   // SKILL.md 是纯文本，改错不会编译失败，只能靠这条断言把它钉在同一个字面量上。
   it('SKILL.md mentions CastRequiredHeading', () => {
     const body = shared().readText(castSkillPath('SKILL.md'));
-    expect(body, `character-rig/SKILL.md 应引用契约标题 ${scene.CastRequiredHeading}`).toContain(scene.CastRequiredHeading);
+    expect(body, `character-rig/SKILL.md 应引用契约标题 ${CastRequiredHeading}`).toContain(CastRequiredHeading);
   });
 
   // 驱动库只准读 character.json（CSP 下引不进 YAML 库），且不得出现不受那条 paused timeline 管的动画：

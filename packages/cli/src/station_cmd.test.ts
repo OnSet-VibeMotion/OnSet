@@ -101,19 +101,11 @@ describe('op worker scope', () => {
 });
 
 describe('builtin plugins', () => {
-  it('claim only ops that exist, each op by one plugin at most', async () => {
-    const flow = await import('@am/engine/flow');
+  it('register ops that land in the op table, each op by one plugin', async () => {
     const registry = await import('@am/engine/plugin');
     const names = new Set(allOps().map((o) => o.name));
     const owner = new Map<string, string>();
-    for (const plugin of flow.builtinPlugins()) {
-      for (const op of plugin.manifest.am_ops) {
-        expect(names.has(op), `${plugin.manifest.id} 认领了不存在的操作 ${op}`).toBe(true);
-        expect(owner.get(op), `${op} 被两个内置插件认领`).toBeUndefined();
-        owner.set(op, plugin.manifest.id);
-      }
-    }
-    // 内置插件在 apply 里登记的操作进了操作表，而且不再被清单认领第二次。
+    // 内置插件在 apply 里登记的操作进了操作表。
     for (const { owner: id, value } of registry.pluginOps()) {
       expect(names.has(value.name), `${id} 登记的操作 ${value.name} 不在操作表里`).toBe(true);
       expect(owner.get(value.name), `${value.name} 被两个内置插件认领`).toBeUndefined();

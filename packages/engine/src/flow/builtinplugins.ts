@@ -1,6 +1,7 @@
 /**
- * 内置插件：ArticleToMotion 自己的可选功能也写成插件，放在 assets/plugins/<id>/，用同一份 am-station.json。
- * 只有它们能写 am_ops / am_skills / am_stations（认领 am 自带的操作、渲染技能与站）和 in_use。
+ * 内置插件：ArticleToMotion 自己的可选功能也写成插件，清单（开关、名字、说明）在 assets/plugins/<id>/am-station.json，
+ * 代码在 packages/engine/src/plugins/<id>/ 的 apply 里登记（站、操作、渲染技能、镜头扩展块……）。项目关掉一个内置插件，
+ * 它登记的东西就都不在：路线上没有它的站、工具列表里没有它的操作、渲染器拿不到它的技能。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,7 +9,7 @@ import { assetsBase } from '../assets';
 import { compareBytes } from '../gojson';
 import { checkFiles } from './fetch';
 import { lockRootOf, readLock, writeLock, type LoadedStation, type Lock } from './lock';
-import { ManifestFile, type Manifest } from './manifest';
+import { ManifestFile } from './manifest';
 import { parseManifest } from './parse';
 import * as plugin from '../plugin';
 import { pluginStationOwners } from './registered';
@@ -55,47 +56,38 @@ export function builtinPluginIDs(): string[] {
   return builtinPlugins().map((p) => p.manifest.id);
 }
 
-/** 这个项目关掉的内置插件的 am 操作（清单 am_ops 认领的与 apply 登记的）：工具服务据此把它们从工具列表里拿掉。 */
-export function disabledAmOps(root: string): Set<string> {
+function disabledIn(root: string): Set<string> {
   let lock: Lock;
   try {
     lock = readLock(root);
   } catch {
     return new Set();
   }
-  const disabled = new Set(lock.disabled ?? []);
-  return new Set([
-    ...builtinPlugins().filter((p) => disabled.has(p.manifest.id)).flatMap((p) => p.manifest.am_ops),
-    ...plugin.pluginOps().filter((o) => disabled.has(o.owner)).map((o) => o.value.name),
-  ]);
+  return new Set(lock.disabled ?? []);
+}
+
+/** 这个项目关掉的内置插件的 id。dir 是项目里的任意目录（例如镜头目录）：向上找有锁文件的项目根，没有锁文件就一个都没关。 */
+export function disabledBuiltins(dir: string): Set<string> {
+  const root = lockRootOf(dir);
+  return root === '' ? new Set() : disabledIn(root);
+}
+
+/** 这个项目关掉的内置插件登记的操作：工具服务据此把它们从工具列表里拿掉。 */
+export function disabledPluginOps(root: string): Set<string> {
+  const disabled = disabledIn(root);
+  return new Set(plugin.pluginOps().filter((o) => disabled.has(o.owner)).map((o) => o.value.name));
 }
 
 /**
- * 镜头所在项目关掉的内置插件认领的渲染技能。从镜头目录向上找有锁文件的项目根；没有锁文件就一个都没关。
- */
-export function disabledAmSkills(sceneDir: string): Set<string> {
-  const root = lockRootOf(sceneDir);
-  if (root === '') return new Set();
-  let lock: Lock;
-  try {
-    lock = readLock(root);
-  } catch {
-    return new Set();
-  }
-  const disabled = new Set(lock.disabled ?? []);
-  return new Set(builtinPlugins().filter((p) => disabled.has(p.manifest.id)).flatMap((p) => p.manifest.am_skills));
-}
-
-/**
- * 打开或关掉这个项目的一个内置插件。项目正在用它（清单的 in_use 文件存在，例如歌曲讲解的 song.yaml）时不许关：
+ * 打开或关掉这个项目的一个内置插件。项目正在用它（插件登记的在用判断，例如歌曲讲解看 song.yaml）时不许关：
  * 关了它，正在做的片子就少了工具。
  */
 export function setBuiltinEnabled(root: string, id: string, enabled: boolean): Lock {
-  const plugin = builtinPlugins().find((p) => p.manifest.id === id);
-  if (!plugin) throw new Error(`没有内置插件 ${id}`);
+  const found = builtinPlugins().find((p) => p.manifest.id === id);
+  if (!found) throw new Error(`没有内置插件 ${id}`);
   if (!enabled) {
-    const busy = inUse(root, plugin.manifest);
-    if (busy !== '') throw new Error(`这个项目正在用「${plugin.manifest.name}」（有 ${busy}），不能关掉`);
+    const busy = inUse(root, id);
+    if (busy !== '') throw new Error(`这个项目正在用「${found.manifest.name}」（有 ${busy}），不能关掉`);
   }
   const lock = readLock(root);
   const disabled = new Set(lock.disabled ?? []);
@@ -108,31 +100,18 @@ export function setBuiltinEnabled(root: string, id: string, enabled: boolean): L
   return next;
 }
 
-/** 项目在用这个内置插件的凭据文件（清单 in_use 里第一个存在的）；没有为空。 */
-export function inUse(root: string, m: Manifest): string {
-  return m.in_use.find((rel) => fs.existsSync(path.join(root, rel))) ?? '';
+/** 项目在用这个内置插件的凭据（插件登记的在用判断给出的项目内路径）；没在用为空。 */
+export function inUse(root: string, id: string): string {
+  return plugin.pluginInUse(id, root);
 }
 
-/** 这个项目关掉的内置插件的站（清单 am_stations 认领的与 apply 登记的）。 */
-export function disabledAmStations(root: string): string[] {
-  let lock: Lock;
-  try {
-    lock = readLock(root);
-  } catch {
-    return [];
-  }
-  const disabled = new Set(lock.disabled ?? []);
-  return [
-    ...builtinPlugins()
-      .filter((p) => disabled.has(p.manifest.id))
-      .flatMap((p) => p.manifest.am_stations),
-    ...plugin.pluginStations().filter((s) => disabled.has(s.owner)).map((s) => s.value.id),
-  ];
+/** 这个项目关掉的内置插件登记的站：路线上用空站顶替，制作提示词里它们的段落不参与。 */
+export function disabledPluginStations(root: string): string[] {
+  const disabled = disabledIn(root);
+  return plugin.pluginStations().filter((s) => disabled.has(s.owner)).map((s) => s.value.id);
 }
 
-/** 自带的站归哪个内置插件（清单认领的与 apply 登记的；没有归属的不在表里）。生成制作提示词时据此加标记。 */
+/** 自带的站归哪个内置插件（apply 登记的；没有归属的不在表里）。生成制作提示词时据此加标记。 */
 export function stationOwners(): Map<string, string> {
-  const out = pluginStationOwners();
-  for (const p of builtinPlugins()) for (const sid of p.manifest.am_stations) out.set(sid, p.manifest.id);
-  return out;
+  return pluginStationOwners();
 }

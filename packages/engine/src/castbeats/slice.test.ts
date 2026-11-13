@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Line } from '../dialogue';
-import type { Beat } from '../scene';
+import type { Beat } from '../plugins/cast/block';
 import { slice } from './slice';
 
 /** 构造 dialogue.Line 的简写。 */

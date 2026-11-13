@@ -72,7 +72,6 @@ echo 'am-result {"url": "https://example.com/v/1"}'
 |---|---|
 | 稳定 | 承诺兼容：以后的版本不改它的意思，要改就升 `manifest_version` |
 | 实验性 | 以后的版本可能调整。用到了的插件，设置页「详情与设置」与添加时的输出会写明「用到了实验性能力：…，以后的版本可能调整」 |
-| 内置专用 | 只有随 ArticleToMotion 下发的内置插件能写，第三方插件写了直接报错 |
 
 ## 顶层字段
 
@@ -102,12 +101,8 @@ echo 'am-result {"url": "https://example.com/v/1"}'
 | `provides` | 实验性 | 提供配音或字幕对齐：`{"tts": {"name": "某配音", "op": "speak", "timestamps": "none"}, "align": {"name": "某对齐", "op": "align"}}`。`timestamps` 取 `none`、`sentence`、`word`；项目把 `TTS_PROVIDER` / `ALIGN_PROVIDER` 设成 `x:<插件 id>` 时 AI 用这条操作 |
 | `renderer_skills` | 实验性 | 给渲染镜头的技能：`[{"name": "caption-kit", "dir": "skills/caption-kit", "summary": "字幕卡片的写法", "scenes": "opt-in"}]`。`dir` 下必须有 `SKILL.md`；`scenes: all` 每个镜头都带（加上后已渲染的镜头要重渲染），`opt-in`（缺省）只给 `scene.json` 的 `plugin_skills` 点名的镜头 |
 | `film_styles` | 实验性 | 整片风格库：`{"name": "我的风格库", "dir": "styles"}`。`dir` 下每个子目录是一种风格（`STYLE.md` 必需，`SKILL.md`、`poster.jpg`、`style.json` 可选） |
-| `am_ops` | 内置专用 | 认领 ArticleToMotion 自带的操作 |
-| `am_skills` | 内置专用 | 认领 ArticleToMotion 注册的渲染技能 |
-| `am_stations` | 内置专用 | 认领自带流程里的站 |
-| `in_use` | 内置专用 | 项目里有这些文件时不许关掉这个内置插件 |
 
-「内置专用」的三个认领字段（`am_ops`、`am_skills`、`am_stations`）是 ArticleToMotion 自己的过渡做法：内置功能正逐个改成在进程内登记（见仓库 AGENTS.md「内置插件」），第三方插件用不到它们，它们的意思也不会改。
+ArticleToMotion 自己的内置功能也用这份清单（只写名字与说明，作开关用），它们带来的代码在 ArticleToMotion 进程里登记，不经清单，所以没有给内置插件专用的字段。
 
 写了不认识的字段直接报错（「有不认识的字段」）。所有路径都是相对路径：插件目录里的（`prompt`、命令、页面、技能、风格库）不能跑出插件目录；项目里的（`outputs`、`gate_files`、`produces`、`reads`）不能是绝对路径、不能有 `..`，也不能是 ArticleToMotion 自己的文件（`production/studio/`、`production/usage/`、`production/memory-exams/`、`.agents/`、`.env`）。
 

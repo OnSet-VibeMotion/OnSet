@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, onTestFinished } from 'vitest';
-import { marshalIndent } from '../gojson';
-import { castProblems, setDialogueRelPath } from './cast';
-import { tempDir } from './testsupport';
+import { marshalIndent } from '../../gojson';
+import { castProblems, setDialogueRelPath } from './validate';
+import { tempDir } from '../../validate/testsupport';
 
 /** 最小可自洽角色包清单模板：依次填 id、name、voice 映射下的行。 */
 const castPackYAML = (id: string, name: string, voice: string) => `schema: cast/v1

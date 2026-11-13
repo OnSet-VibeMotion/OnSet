@@ -29,7 +29,7 @@ export {
 } from './episode';
 export type { Feedback, Episode, AttemptSource } from './episode';
 export {
-  FeatureDescriptions,
+  featureDescriptions,
   knownFeature,
   features,
   promptText,

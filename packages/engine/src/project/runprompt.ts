@@ -54,7 +54,7 @@ function composedPrompt(root: string, rec: flow.FlowRecord): RunPromptResult {
   if (extras.problems.length > 0) throw new Error(extras.problems.join('\n'));
   const p = preset.byID(rec.canvas)!;
   const id = flow.detectFlow(root, flow.projectExtras(root));
-  const text = flow.composeFlowPrompt({ flow: id, stations: extras.stations, disabled: new Set(flow.disabledAmStations(root)), canvas: (t) => substituteCanvas(p, t) });
+  const text = flow.composeFlowPrompt({ flow: id, stations: extras.stations, disabled: new Set(flow.disabledPluginStations(root)), canvas: (t) => substituteCanvas(p, t) });
   return { prompt: Buffer.from(text), path: flowPromptFile(root, rec), composed: true };
 }
 

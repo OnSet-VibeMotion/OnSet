@@ -47,6 +47,8 @@ export interface Station {
   file?: string;
   /** 动过这一站的几轮对话，新的在前。 */
   turns: StationTurn[];
+  /** 内置插件给这一站写的「接下来」说法（NodeJudge.guide）。 */
+  guide?: { ai?: string; user?: string; page?: string; page_label?: string };
 }
 
 export interface StationTurn {
@@ -491,6 +493,7 @@ export function computeStations(root: string, scenes: SceneSummary[]): { mode: f
     if (d.optional) station.optional = true;
     if (d.page) station.page = d.page;
     if (d.file) station.file = d.file;
+    if (d.guide) station.guide = { ai: d.guide.ai, user: d.guide.user, page: d.guide.page, page_label: d.guide.pageLabel };
     // 第三方站的产物不算「后面已经做了」：宿主不凭插件写的文件推断自带流程走到了哪（插件一发布，前面全成了跳过）。
     const laterDone = outputs.some((t, j) => j > i && t > 0 && !defs[j].optional && !defs[j].declared);
     if (d.gate) {

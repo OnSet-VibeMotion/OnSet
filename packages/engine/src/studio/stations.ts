@@ -59,6 +59,21 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
   const m = s.manifest;
   const pageInfo = (id: string) => m.pages.find((pg) => pg.id === id)!;
   const settings = flow.publicSettings(envMap(), m);
+  // 内置插件的站、操作、渲染技能、页面在 apply 里登记，不在清单里：另列在 contents 里，设置页「详情」照实显示
+  // 这个功能带了什么（不并进 nodes、pages：那两样给第三方站的页面与路线用）。
+  const owned = <T>(list: plugin.Owned<T>[]) => (s.builtin ? list.filter((x) => x.owner === m.id).map((x) => x.value) : []);
+  const contents = s.builtin
+    ? {
+        nodes: owned(plugin.pluginStations()).flatMap((st) => st.nodes.map((n) => n.label)),
+        ops: owned(plugin.pluginOps())
+          .filter((o) => (o.scopes ?? ['orchestrator']).includes('orchestrator'))
+          .map((o) => ({ name: o.name, summary: o.summary, verb: o.verb ?? '' })),
+        skills: owned(plugin.pluginSkills()).map((sk) => sk.name),
+        blocks: owned(plugin.pluginSceneBlocks()).map((b) => b.key),
+        pages: owned(plugin.pluginPages()).map((pg) => pg.label),
+        flows: owned(plugin.pluginFlows()).map((f) => f.name),
+      }
+    : null;
   return {
     id: m.id,
     name: m.name,
@@ -66,9 +81,11 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
     description: m.description,
     builtin: s.builtin === true,
     enabled: true,
-    in_use: s.builtin ? flow.inUse(root, m) : '',
-    /** 认领了渲染技能：开关会改变渲染输入，已渲染的镜头要重渲染。 */
-    affects_render: m.am_skills.length > 0,
+    /** 项目在用这个内置插件的凭据（插件登记的在用判断）：有它就不许关。 */
+    busy: s.builtin ? flow.inUse(root, m.id) : '',
+    /** 登记了渲染技能或镜头扩展块：开关会改变渲染输入，已渲染的镜头要重渲染。 */
+    affects_render: contents !== null && (contents.skills.length > 0 || contents.blocks.length > 0),
+    contents,
     source: s.entry.source,
     commit: s.entry.commit,
     linked: s.entry.commit === '',
@@ -267,11 +284,11 @@ export async function stationsAPI(s: Server, request: Request, rest: string): Pr
     } catch (err) {
       return writeError(400, 'invalid_json', (err as Error).message);
     }
-    const plugin = flow.builtinPlugins().find((b) => b.manifest.id === id);
-    if (!plugin) return writeError(404, 'not_found', `没有内置插件 ${id}`);
-    if (!enabled && flow.inUse(p.path, plugin.manifest) !== '') return writeError(400, 'in_use', `这个项目正在用「${plugin.manifest.name}」，不能关掉`);
+    const builtin = flow.builtinPlugins().find((b) => b.manifest.id === id);
+    if (!builtin) return writeError(404, 'not_found', `没有内置插件 ${id}`);
+    if (!enabled && flow.inUse(p.path, id) !== '') return writeError(400, 'busy', `这个项目正在用「${builtin.manifest.name}」，不能关掉`);
     try {
-      const t = runWriteTask(s, p, 'station.builtin', `${enabled ? '打开' : '关掉'}内置功能：${plugin.manifest.name}`, async (signal) => {
+      const t = runWriteTask(s, p, 'station.builtin', `${enabled ? '打开' : '关掉'}内置功能：${builtin.manifest.name}`, async (signal) => {
         await runStudioOp(s, signal, p, 'station_builtin', { id, enabled, project_root: p.path });
       });
       return writeJSON(202, goMap({ task_id: t.task_id }));

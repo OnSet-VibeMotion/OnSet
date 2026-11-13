@@ -7,7 +7,7 @@ import * as dialogue from '@am/engine/dialogue';
 import { formatG } from '@am/engine/gofmt';
 import { marshalIndent } from '@am/engine/gojson';
 import { Buffer, hasFfmpeg, lookPath, makeClip, run, runIn, setenv, tempDir } from './testutil';
-import { copyTree } from './cast_cmd';
+import { copyTree } from '@am/engine/plugins/cast';
 
 const skip = !hasFfmpeg || process.platform === 'win32';
 

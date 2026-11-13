@@ -1,4 +1,4 @@
-// 技能树里依赖 scene 包（registeredSkills、resolveSkill）的门禁。
+// 技能树里依赖 scene 包（allSkills：宿主的与内置插件登记的技能、resolveSkill）的门禁。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,13 +8,14 @@ import { initialize } from './init';
 import { RulesTemplate } from './rules';
 import { builtinSources, skillTreeRoot } from './testsupport';
 import * as scene from '../scene';
+import { SongExplainerSkillName, songExplainerPrompt } from '../plugins/song';
 
 describe('skill tree gates that need scene', () => {
   // 防静默失败的门：漏了 .agents 入口时整棵技能树从发行物里消失，resolveSkill 找不到技能时按设计
   // 不报错、只降级——一路静默到成片动效变差才可能被发现。这个测试让它在 CI 就炸。
   it('every registered skill is embedded', () => {
     const shared = assets.shared();
-    for (const desc of scene.registeredSkills) {
+    for (const desc of scene.allSkills()) {
       if (desc.source !== scene.SourceEmbedded) continue; // 上游技能由 am init 安装，不随二进制下发
       for (const required of desc.requiredFiles) {
         const file = `${skillTreeRoot}/${desc.name}/${required}`;
@@ -26,7 +27,7 @@ describe('skill tree gates that need scene', () => {
   // 把内置技能与下发给渲染工具的项目规则绑在一起。
   it('builtin skills are documented in project rules', () => {
     const rules = assets.shared().readText(RulesTemplate);
-    for (const desc of scene.registeredSkills) {
+    for (const desc of scene.allSkills()) {
       if (desc.source !== scene.SourceEmbedded) continue;
       expect(rules.includes(desc.name), `${RulesTemplate} 没有提到内置技能 ${desc.name}：新增内置技能必须同步这份下发规则`).toBe(true);
     }
@@ -45,7 +46,7 @@ describe('skill tree gates that need scene', () => {
       // HOME 指向一个没装任何技能的空目录，确保命中的是项目级而非家目录级。
       const home = fs.mkdtempSync(path.join(os.tmpdir(), 'am-project-home-'));
       const environ = { HOME: home };
-      for (const desc of scene.registeredSkills) {
+      for (const desc of scene.allSkills()) {
         if (desc.source !== scene.SourceEmbedded) continue;
         const dir = scene.resolveSkill('claude', sceneDir, environ, desc);
         expect(dir, desc.name).toBe(path.join(target, ...skillTreeRoot.split('/')));
@@ -60,7 +61,7 @@ describe('skill tree gates that need scene', () => {
   it('upstream skills are not vendored into the embedded tree', () => {
     const shared = assets.shared();
     let checked = 0;
-    for (const desc of scene.registeredSkills) {
+    for (const desc of scene.allSkills()) {
       if (desc.source !== scene.SourceUpstream) continue;
       checked++;
       const file = `${skillTreeRoot}/${desc.name}`;
@@ -70,13 +71,15 @@ describe('skill tree gates that need scene', () => {
   });
 
   // 注册了却不注入提示词等于没注册——技能装进项目，渲染器却不知道它存在。
+  // song-explainer 不进通用技能段：它的片段由歌曲镜头的 song 块引用（songExplainerPrompt），照样要过这道门。
   it('every skill has a prompt section', () => {
-    for (const desc of scene.registeredSkills) {
-      expect(desc.promptSection, `技能 ${desc.name} 缺少 PromptSection`).not.toBeNull();
-      const resolved = desc.promptSection!('/tmp/skills');
+    for (const desc of scene.allSkills()) {
+      const section = desc.promptSection ?? (desc.name === SongExplainerSkillName ? songExplainerPrompt : undefined);
+      expect(section, `技能 ${desc.name} 缺少 PromptSection`).toBeTypeOf('function');
+      const resolved = section!('/tmp/skills');
       expect(resolved.includes(desc.name), `技能 ${desc.name} 的提示词片段没有点名自己：${resolved}`).toBe(true);
       // 解析不到目录时必须退回按名字引用，不能写死本机路径或直接空掉。
-      const fallback = desc.promptSection!('');
+      const fallback = section!('');
       expect(fallback.trim(), `技能 ${desc.name} 在未解析到目录时产出空片段`).not.toBe('');
       expect(fallback.includes('/tmp/skills'), `技能 ${desc.name} 的兜底片段里泄漏了路径`).toBe(false);
     }

@@ -2,6 +2,5 @@
   "id": "text-to-lottie",
   "version": "1",
   "name": "Lottie 图层",
-  "description": "让渲染器在合适的镜头里做 Lottie 矢量动画：logo 演绎、图标变形、描边绘制这类小动效",
-  "am_skills": ["text-to-lottie"]
+  "description": "让渲染器在合适的镜头里做 Lottie 矢量动画：logo 演绎、图标变形、描边绘制这类小动效"
 }

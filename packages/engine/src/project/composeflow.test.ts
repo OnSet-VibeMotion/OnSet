@@ -42,7 +42,7 @@ function composed(root: string, id: string, canvas: string): string {
   const p = preset.byID(canvas)!;
   const loaded = flow.loadProjectStations(root);
   expect(loaded.problems).toEqual([]);
-  return flow.composeFlowPrompt({ flow: id, stations: loaded.stations, disabled: new Set(flow.disabledAmStations(root)), canvas: (t) => substituteCanvas(p, t) });
+  return flow.composeFlowPrompt({ flow: id, stations: loaded.stations, disabled: new Set(flow.disabledPluginStations(root)), canvas: (t) => substituteCanvas(p, t) });
 }
 
 const canvases = preset.all().map((p) => p.id);

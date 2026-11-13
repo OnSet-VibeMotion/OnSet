@@ -7,13 +7,13 @@ import path from 'node:path';
 import * as concat from '@am/engine/concat';
 import { formatFixed, goQuote, goRound, goTrimSpace } from '@am/engine/gofmt';
 import * as mediaprobe from '@am/engine/mediaprobe';
+import * as plugin from '@am/engine/plugin';
 import * as scene from '@am/engine/scene';
 import * as schedule from '@am/engine/schedule';
 import { currentEnvironment } from './cli';
 import { type Finding, recordCheckFindings } from './memory_cmd';
 import { bool, num, str } from './ops/common';
 import { defineOp } from './ops/op';
-import { songOutputsCurrent } from './song_cmd';
 
 /** strconv.ParseFloat 的常用子集：十进制、科学计数法、inf / infinity / nan（不区分大小写，可带正负号）。失败返回 null。 */
 function parseGoFloat(s: string): number | null {
@@ -396,7 +396,7 @@ dry_run 只打印分析结果，不写任何文件，用于拼接前确认。
       if (fps > 0) target.fps = fps;
     }
     const scenes = schedule.plan(str(p.scenes));
-    songOutputsCurrent(scenes, '');
+    for (const check of plugin.pluginRenderChecks()) check.value.beforeConcat?.(rootDir, scenes);
     const inputs: concat.Input[] = scenes.map((s) => ({ id: s.id, path: scene.outputPath(s) }));
     const toolchain = mediaprobe.newToolchain(currentEnvironment());
     const plan = concat.analyze(toolchain, inputs, target);

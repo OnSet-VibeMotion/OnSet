@@ -6,8 +6,10 @@
  * 字符串里的 < > & 与 U+2028/U+2029 按 json.Marshal 的 compact 规则转义。这是现行的固定格式：
  * 差一个字节，渲染指纹就对不上、已渲染的镜头全被判为过期。
  */
-import { decodeObject, indent } from '@am/engine/castbeats';
-import { marshal } from '@am/engine/gojson';
+import { decodeObject, indent } from './jsonedit';
+export { compact, decodeObject, encodeObject, findField, indent, setField } from './jsonedit';
+export type { Field } from './jsonedit';
+import { marshal } from '../gojson';
 
 /** json.Unmarshal 到 map[string]json.RawMessage：重复键后者覆盖前者。顶层不是对象时给出 Go 的报错。 */
 export function decodeRawMap(text: string): Map<string, string> {
