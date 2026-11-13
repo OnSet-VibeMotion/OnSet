@@ -92,6 +92,7 @@ export function Preview(props: Props) {
         {props.tab === 'progress' && (
           <ProgressTab
             progress={props.progress}
+            flowError={props.state?.flow_error}
             busy={props.busy}
             onPage={(page) => {
               const tab = isStationTab(page) ? (page as Tab) : tabs.find(([id]) => id === page)?.[0];

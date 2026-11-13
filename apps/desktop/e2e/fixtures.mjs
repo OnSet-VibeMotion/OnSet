@@ -43,7 +43,12 @@ export const test = base.extend({
     const scene = path.join(project, 'scenes', 'scene-001');
     fs.mkdirSync(scene, { recursive: true });
     fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\n');
-    fs.writeFileSync(path.join(project, 'PROMPT.md'), '整片制作提示词\n');
+    // 新建时记下的流程：顶栏、制作路线与「开始制作」的提示词都按它。
+    fs.writeFileSync(
+      path.join(project, 'article-to-motion.flow.json'),
+      JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' }, stations: [] }, null, 2) + '\n',
+    );
+    fs.writeFileSync(path.join(project, 'notes.md'), '项目笔记\n');
     fs.writeFileSync(path.join(scene, 'voice.srt'), '1\n00:00:00,000 --> 00:00:01,000\nhello\n');
     fs.writeFileSync(path.join(scene, 'prompt.md'), 'before\n');
     fs.writeFileSync(

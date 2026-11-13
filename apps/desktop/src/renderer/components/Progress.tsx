@@ -92,6 +92,8 @@ function markOf(station: ProgressStation, current: boolean): { cls: string; text
 
 interface Props {
   progress: ProgressState | null;
+  /** 项目没有流程记录时 /api/state 给的说明（这时排不出路线）。 */
+  flowError?: string;
   busy: string;
   /** 打开某一页（口播稿、分镜……）。 */
   onPage: (page: string) => void;
@@ -103,6 +105,12 @@ interface Props {
 
 export function ProgressTab(props: Props) {
   const { progress } = props;
+  if (props.flowError)
+    return (
+      <div className="empty" id="progress-flow-error">
+        {props.flowError}
+      </div>
+    );
   if (!progress) return <div className="empty">正在读制作进度…</div>;
   const { station: now, text } = currentSummary(progress);
   const done = progress.stations.filter((s) => !s.optional && ['done', 'skipped', 'confirmed', 'passed'].includes(s.status)).length;
@@ -135,11 +143,6 @@ export function ProgressTab(props: Props) {
             <strong>{text}</strong>
           )}
         </p>
-        {progress.custom_prompt && (
-          <p className="pg-custom" id="progress-custom-prompt" title="项目里的 PROMPT-PRODUCTION.md（或 PROMPT-SONG.md）改过：开始制作时照它来，不用这一版自带的制作说明">
-            这个项目用的是自己改过的制作说明
-          </p>
-        )}
       </header>
       <ol className="pg-groups">
         {groups.map((group, gi) => (

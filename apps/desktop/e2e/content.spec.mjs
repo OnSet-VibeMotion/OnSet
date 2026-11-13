@@ -8,8 +8,8 @@ test('opens a project file from the tree', async ({ page, project }) => {
   await openProject(page, project);
   // 文件树只在「文件」页里。
   await page.locator('[data-tab="file"]').click();
-  await page.locator('.tree-file', { hasText: 'PROMPT.md' }).click();
-  await expect(page.locator('#file-content')).toContainText('整片制作提示词');
+  await page.locator('.tree-file', { hasText: 'notes.md' }).click();
+  await expect(page.locator('#file-content')).toContainText('项目笔记');
 });
 
 test('right-click quotes script text and files into the chat', async ({ page, project }) => {
@@ -26,7 +26,7 @@ test('right-click quotes script text and files into the chat', async ({ page, pr
   await expect(page.locator('#attachments .quote-card')).not.toContainText('二零二五年');
   // 文件树上右键：引用文件。
   await page.locator('[data-tab="file"]').click();
-  await page.locator('.tree-file', { hasText: 'PROMPT.md' }).click({ button: 'right' });
+  await page.locator('.tree-file', { hasText: 'notes.md' }).click({ button: 'right' });
   await page.locator('.ctx-item', { hasText: '引用这个文件到对话' }).click();
   await expect(page.locator('#attachments .quote-card')).toHaveCount(2);
   // 输入框里保留系统自己的菜单。
@@ -35,7 +35,7 @@ test('right-click quotes script text and files into the chat', async ({ page, pr
   await page.locator('#prompt').fill('这段太长');
   await page.locator('#send').click();
   await expect(page.locator('.user-extra')).toContainText('口播稿第 1 段（production/script-final.md）');
-  await expect(page.locator('.user-extra')).toContainText('文件 PROMPT.md');
+  await expect(page.locator('.user-extra')).toContainText('文件 notes.md');
 });
 
 test('completes @ mentions and / commands in the input', async ({ page, project }) => {
@@ -119,8 +119,8 @@ test('renders GitHub-flavored markdown safely', async ({ page, project }) => {
   await expect(prose.locator('a[href^="javascript"]')).toHaveCount(0);
   expect(await page.evaluate(() => window.__xss)).toBeUndefined();
   // 写成行内代码的项目文件可点，打开文件页。
-  await prose.locator('code.file-link', { hasText: 'PROMPT.md' }).click();
-  await expect(page.locator('#file-content')).toContainText('整片制作提示词');
+  await prose.locator('code.file-link', { hasText: 'notes.md' }).click();
+  await expect(page.locator('#file-content')).toContainText('项目笔记');
 });
 
 test('scene "more" menu opens as a popover inside the window, above the timeline', async ({ page, project, electronApp }) => {

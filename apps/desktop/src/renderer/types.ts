@@ -20,6 +20,8 @@ export interface ProjectState {
   step_marked?: boolean;
   /** 项目的流程（片型）：顶栏的步骤、第一步、用不上的页面都按它（studio/progress.ts 的 flowView）。 */
   flow?: FlowView;
+  /** 没有流程记录（不是这一版新建的项目）时的说明；这时没有 flow 与 step。 */
+  flow_error?: string;
 }
 
 export interface FlowView {
@@ -35,8 +37,6 @@ export interface FlowView {
   first_steps: string[];
   /** 还没有镜头时打开项目先落在这一页；空是不落。 */
   land_page: string;
-  /** 制作说明用的是项目里改过的那份文件。 */
-  custom_prompt: boolean;
 }
 
 export interface Scene {
@@ -812,8 +812,6 @@ export interface ProgressState {
   current: string;
   waiting_on: '' | 'user' | 'ai';
   turns: Record<string, string[]>;
-  /** 制作说明用的是项目里改过的那份文件。 */
-  custom_prompt?: boolean;
 }
 
 /** /api/stations：这个项目加的第三方站（studio/stations.ts）。 */

@@ -48,12 +48,6 @@
   font-size: 15px;
   color: var(--text-2);
 }
-.progress-page .pg-custom {
-  margin: 6px 0 0;
-  font: 12px var(--mono);
-  color: var(--accent);
-}
-
 .progress-page .pg-now strong {
   color: var(--text);
   font: 600 18px var(--serif);

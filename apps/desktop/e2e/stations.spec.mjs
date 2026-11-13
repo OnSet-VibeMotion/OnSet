@@ -19,9 +19,10 @@ test('a third-party station is added in settings and its publish action runs onl
   await expect(confirmAdd).toContainText('能读写你的文件、能联网');
   await expect(confirmAdd).toContainText('写了声明范围之外的项目文件时告诉你');
   const lock = path.join(project.path, 'article-to-motion.flow.json');
-  expect(fs.existsSync(lock)).toBe(false);
+  const stationIDs = () => JSON.parse(fs.readFileSync(lock, 'utf8')).stations.map((e) => e.id);
+  expect(stationIDs()).toEqual([]);
   await confirmAdd.getByRole('button', { name: '确认添加' }).click();
-  await expect.poll(() => fs.existsSync(lock)).toBe(true);
+  await expect.poll(stationIDs).toEqual(['fake-publisher']);
   const card = stations.locator('li[data-station="fake-publisher"]');
   await expect(card).toContainText('假发布');
   await expect(card).toContainText('第三方');
@@ -55,10 +56,10 @@ test('a third-party station is added in settings and its publish action runs onl
   await expect.poll(async () => (await api(page, '/api/progress')).body.stations.find((s) => s.id === 'auto-publish').status).toBe('done');
   await page.screenshot({ path: test.info().outputPath('stations-publish.png') });
 
-  // 去掉：锁文件随之删掉。
+  // 去掉：锁文件里不再有这个站（新建时记下的流程留着）。
   await page.locator('#settings-trigger').click();
   await page.locator('#settings-dialog li[data-station="fake-publisher"]').getByRole('button', { name: '去掉' }).click();
-  await expect.poll(() => fs.existsSync(lock)).toBe(false);
+  await expect.poll(stationIDs).toEqual([]);
 });
 
 test('a plugin page runs sandboxed and gets everything through the host', async ({ page, project }) => {
@@ -66,7 +67,7 @@ test('a plugin page runs sandboxed and gets everything through the host', async 
   fs.writeFileSync(path.join(project.path, '.env'), 'MINIMAX_VOICE_ID=do-not-leak\n');
   fs.writeFileSync(
     path.join(project.path, 'article-to-motion.flow.json'),
-    JSON.stringify({ version: 1, stations: [{ id: 'fake-publisher', version: '0.1.0', source: `link:${fake}`, commit: '', digest: '' }] }),
+    JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' }, stations: [{ id: 'fake-publisher', version: '0.1.0', source: `link:${fake}`, commit: '', digest: '' }] }),
   );
   await openProject(page, project);
 
@@ -117,7 +118,7 @@ test('plugins get settings, a slot in the publish page, a slash command, hooks a
   fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: draft\n---\n');
   fs.writeFileSync(
     path.join(project.path, 'article-to-motion.flow.json'),
-    JSON.stringify({ version: 1, stations: [{ id: 'fake-publisher', version: '0.1.0', source: `link:${fake}`, commit: '', digest: '' }] }),
+    JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' }, stations: [{ id: 'fake-publisher', version: '0.1.0', source: `link:${fake}`, commit: '', digest: '' }] }),
   );
   await openProject(page, project);
 
@@ -174,7 +175,7 @@ test('plugins get settings, a slot in the publish page, a slash command, hooks a
 test('a plugin can bring a whole flow, a voice, a style library, and send a message for the user', async ({ page, project }) => {
   fs.writeFileSync(
     path.join(project.path, 'article-to-motion.flow.json'),
-    JSON.stringify({ version: 1, stations: [{ id: 'fake-publisher', version: '0.1.0', source: `link:${fake}`, commit: '', digest: '' }] }),
+    JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' }, stations: [{ id: 'fake-publisher', version: '0.1.0', source: `link:${fake}`, commit: '', digest: '' }] }),
   );
   await openProject(page, project);
   await expect(page.locator('.steps [data-tab="script"]')).toBeVisible();
@@ -248,7 +249,8 @@ test('builtin features are plugins too: on by default, off per project, locked w
   await expect(song).toHaveClass(/off/);
   await expect(toggle).not.toBeChecked();
   await toggle.click();
-  await expect.poll(() => fs.existsSync(lock)).toBe(false);
+  // 打开回来：锁文件里只剩新建时记下的流程。
+  await expect.poll(() => JSON.parse(fs.readFileSync(lock, 'utf8')).disabled ?? null).toBe(null);
   await expect(toggle).toBeChecked();
 
   // 认领了渲染技能的内置功能提醒开关会让镜头重渲染；歌曲讲解不认领，不提醒。
@@ -265,7 +267,7 @@ test('builtin features are plugins too: on by default, off per project, locked w
   await expect(page.locator('.steps [data-tab="publish"]')).toHaveCount(0);
   await expect(page.locator('.more-pages [data-tab="publish"]')).toHaveCount(0);
   await publishing.getByRole('switch').click();
-  await expect.poll(() => fs.existsSync(lock)).toBe(false);
+  await expect.poll(() => JSON.parse(fs.readFileSync(lock, 'utf8')).disabled ?? null).toBe(null);
   await expect(page.locator('.steps [data-tab="publish"]')).toBeAttached();
 
   // 项目正在用歌曲讲解：开关锁住。
@@ -280,7 +282,7 @@ test('files a plugin op writes outside what it declared are shown as a warning',
   fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: draft\n---\n');
   fs.writeFileSync(
     path.join(project.path, 'article-to-motion.flow.json'),
-    JSON.stringify({ version: 1, stations: [{ id: 'fake-publisher', version: '0.1.0', source: `link:${fake}`, commit: '', digest: '' }] }),
+    JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' }, stations: [{ id: 'fake-publisher', version: '0.1.0', source: `link:${fake}`, commit: '', digest: '' }] }),
   );
   await openProject(page, project);
 

@@ -40,15 +40,15 @@ test('shows the project, a scene and files in Finder', async ({ page, project, e
 
   // 右键文件：选中那个文件。
   await page.locator('[data-tab="file"]').click();
-  const row = page.locator('[data-ctx-file="PROMPT.md"]').first();
+  const row = page.locator('[data-ctx-file="notes.md"]').first();
   await row.click({ button: 'right' });
   await page.locator('.ctx-menu button', { hasText: '在 Finder 中显示' }).click();
-  await expect.poll(() => revealed(electronApp)).toEqual([['select', path.join(project.path, 'PROMPT.md')]]);
+  await expect.poll(() => revealed(electronApp)).toEqual([['select', path.join(project.path, 'notes.md')]]);
 
   // 文件页工具栏。
   await row.click();
   await page.locator('#reveal-file').click();
-  await expect.poll(() => revealed(electronApp)).toEqual([['select', path.join(project.path, 'PROMPT.md')]]);
+  await expect.poll(() => revealed(electronApp)).toEqual([['select', path.join(project.path, 'notes.md')]]);
 });
 
 test('opens a recent project folder from home', async ({ page, project, electronApp }) => {

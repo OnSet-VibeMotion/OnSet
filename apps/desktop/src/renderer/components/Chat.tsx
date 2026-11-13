@@ -495,8 +495,7 @@ export function Chat(props: Props) {
               <h3>说说要做什么</h3>
               <p>AI 会直接改项目文件，每一轮的改动都能查看和回退。</p>
               <p className="muted">
-                新项目先点「开始制作」：还没有定稿字幕时照 PROMPT-PRODUCTION.md 从文章开始做到成片，已有 transcription.srt 时照 PROMPT.md
-                从字幕开始。之后在同一个会话里继续改。文章、图片和音频可以直接拖进输入框。
+                新项目先点「开始制作」：按新建时选的片型，从文章开始一步步做到成片。之后在同一个会话里继续改。文章、图片和音频可以直接拖进输入框。
               </p>
             </div>
           )}
