@@ -787,3 +787,10 @@ func recolorMap(embeddedFrame string, colors map[string]any) (*strings.Replacer,
 	}
 	return strings.NewReplacer(pairs...), nil
 }
+
+// ReadPublish 只解析 publish.md 的 frontmatter，不做任何校验。Studio 发布页
+// 用它把发布信息排成表单式的页面；合不合格仍以 Publish（am validate publish）为准。
+func ReadPublish(path string) (map[string]any, error) {
+	data, _, err := frontmatter(path)
+	return data, err
+}

@@ -189,3 +189,11 @@ func intField(value any) int {
 	}
 	return -1
 }
+
+// PlatformName 返回平台的中文名，不认识的原样返回。Studio 发布页用它显示平台。
+func PlatformName(id string) string {
+	if spec, ok := coverSpecs[id]; ok {
+		return spec.name
+	}
+	return id
+}

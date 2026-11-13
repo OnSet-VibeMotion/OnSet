@@ -28,6 +28,7 @@ import (
 	"github.com/chouheiwa/articale-to-motion/internal/config"
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
 	"github.com/chouheiwa/articale-to-motion/internal/mediaprobe"
+	"github.com/chouheiwa/articale-to-motion/internal/validate"
 )
 
 type Task struct {
@@ -407,6 +408,16 @@ func (s *Server) publishAPI(w http.ResponseWriter, _ *http.Request) {
 	path := filepath.Join(p.Path, "publish.md")
 	body, readErr := os.ReadFile(path)
 	result := map[string]any{"available": readErr == nil, "path": "publish.md", "content": string(body), "covers": []any{}}
+	// 结构化的发布信息供页面排版；解析失败时页面退回显示原文并给出原因。
+	if readErr == nil {
+		if data, err := validate.ReadPublish(path); err != nil {
+			result["parse_error"] = err.Error()
+		} else {
+			result["data"] = data
+			platform, _ := data["platform"].(string)
+			result["platform_name"] = validate.PlatformName(platform)
+		}
+	}
 	coverDir := filepath.Join(p.Path, "covers")
 	_ = filepath.WalkDir(coverDir, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil || d.IsDir() {

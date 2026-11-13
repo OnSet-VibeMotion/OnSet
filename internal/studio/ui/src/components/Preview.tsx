@@ -7,6 +7,7 @@ import { MemoryTab } from './Memory';
 import { FilmStylePicker, Poster, styleKey, useFilmStyles } from './FilmStyles';
 import { Markdown } from './chat/Markdown';
 import { ScriptTab } from './Script';
+import { PublishTab } from './Publish';
 
 export type Tab = 'script' | 'scene' | 'compose' | 'final' | 'style' | 'review' | 'publish' | 'memory' | 'file';
 
@@ -720,46 +721,6 @@ function ReviewTab({ tree, version, run }: { tree: TreeFile[]; version: number; 
           <figure key={sheet.path}>
             <img src={rawURL(sheet.path, version)} alt="" loading="lazy" />
             <figcaption>{sheet.path.split('/').pop()}</figcaption>
-          </figure>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-interface PublishResponse {
-  available: boolean;
-  content: string;
-  covers: { path: string; width?: number; height?: number; error?: string }[];
-}
-
-function PublishTab({ version, run }: { version: number; run: RunAction }) {
-  const [publish, setPublish] = useState<PublishResponse | null>(null);
-  useEffect(() => {
-    api<PublishResponse>('/api/publish').then(setPublish, () => setPublish(null));
-  }, [version]);
-  if (!publish) return <Empty>正在读取…</Empty>;
-  return (
-    <div class="publish-tab">
-      <div class="toolbar">
-        <span class="small muted mono">{publish.available ? 'publish.md' : '还没有 publish.md'}</span>
-        <span class="spacer" />
-        <button disabled={!publish.available} onClick={() => run('/api/commands/publish.check')}>
-          发布校验
-        </button>
-      </div>
-      {publish.available && (
-        <pre class="text" data-ctx-source="publish.md" data-ctx-label="发布文案">
-          {publish.content}
-        </pre>
-      )}
-      <div class="gallery">
-        {publish.covers.map((cover) => (
-          <figure key={cover.path}>
-            <img src={rawURL(cover.path, version)} alt="" loading="lazy" />
-            <figcaption>
-              {cover.path.split('/').pop()} {cover.width ? `${cover.width}×${cover.height}` : cover.error}
-            </figcaption>
           </figure>
         ))}
       </div>
