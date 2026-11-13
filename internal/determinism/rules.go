@@ -108,3 +108,15 @@ func isIgnoredRef(ref string) bool {
 	// 模板插值（${...}、{{...}}）在静态扫描时无法求值，不猜。
 	return strings.Contains(ref, "${") || strings.Contains(ref, "{{")
 }
+
+// RuleIDs 返回扫描可能报出的全部规则 ID，顺序固定。
+//
+// 渲染记忆（internal/memory）的经验必须写明由哪个校验器判定，校验器 ID 以
+// 这份清单为准；新增规则时在这里补上，否则引用它的经验过不了格式校验。
+func RuleIDs() []string {
+	ids := make([]string, 0, len(scriptRules)+5)
+	for _, rule := range scriptRules {
+		ids = append(ids, rule.ID)
+	}
+	return append(ids, "font-display", "font-missing", "remote-font", "unpinned-cdn", "remote-asset")
+}

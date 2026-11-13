@@ -29,6 +29,39 @@ type Config struct {
 	AlignProvider string
 	SceneJobs     int
 	Overlay       map[string]string
+	// Memory 是渲染记忆的项目侧设置，见 internal/memory。
+	Memory MemorySettings
+}
+
+// MemorySettings 是渲染记忆的项目侧设置。
+//
+// 默认打开：项目随使用积累经验与偏好。没有召回到任何记忆时提示词与输入指纹
+// 都与关闭时逐字相同，所以打开它不会让已有镜头变成 Stale。
+type MemorySettings struct {
+	// Enabled 为 false 时完全不召回、不写经历（对照组）。
+	Enabled bool
+	// Dir 是记忆库目录，AM_MEMORY_DIR 可覆盖，默认 ~/.local/share/am/memory。
+	Dir string
+	// Snapshot 为 0 表示跟随最新快照，否则钉住该快照。
+	Snapshot int
+	// RecallBudget 是每个镜头召回的记忆总字数上限。
+	RecallBudget int
+}
+
+// DefaultMemoryRecallBudget 是每个镜头召回记忆的默认总字数上限。
+const DefaultMemoryRecallBudget = 1500
+
+// DefaultMemoryDir 返回默认记忆库目录：用户级，可跨项目复用。
+// XDG_DATA_HOME 有值时用它，否则落在 HOME 下的 .local/share。
+func DefaultMemoryDir(environ map[string]string) string {
+	if dir := environ["XDG_DATA_HOME"]; dir != "" {
+		return filepath.Join(dir, "am", "memory")
+	}
+	home := environ["HOME"]
+	if home == "" {
+		home, _ = os.UserHomeDir()
+	}
+	return filepath.Join(home, ".local", "share", "am", "memory")
 }
 
 func envMap() map[string]string {
@@ -108,6 +141,24 @@ func Load(root string, environ map[string]string) (Config, error) {
 	cfg.SceneJobs, err = strconv.Atoi(resolve("SCENE_JOBS", strconv.Itoa(DefaultSceneJobs)))
 	if err != nil || cfg.SceneJobs < 1 || cfg.SceneJobs > MaxSceneJobs {
 		return Config{}, fmt.Errorf("SCENE_JOBS 必须在 1..%d 之间", MaxSceneJobs)
+	}
+	switch value := strings.ToLower(resolve("MEMORY", "on")); value {
+	case "on":
+		cfg.Memory.Enabled = true
+	case "off":
+	default:
+		return Config{}, fmt.Errorf("无效的 MEMORY: %s（可选：on off）", value)
+	}
+	cfg.Memory.Dir = resolve("AM_MEMORY_DIR", DefaultMemoryDir(environ))
+	if value := resolve("MEMORY_SNAPSHOT", ""); value != "" {
+		cfg.Memory.Snapshot, err = strconv.Atoi(value)
+		if err != nil || cfg.Memory.Snapshot < 1 {
+			return Config{}, fmt.Errorf("MEMORY_SNAPSHOT 必须是正整数快照号，留空表示跟随最新快照")
+		}
+	}
+	cfg.Memory.RecallBudget, err = strconv.Atoi(resolve("MEMORY_RECALL_BUDGET", strconv.Itoa(DefaultMemoryRecallBudget)))
+	if err != nil || cfg.Memory.RecallBudget < 0 {
+		return Config{}, fmt.Errorf("MEMORY_RECALL_BUDGET 必须是非负整数")
 	}
 	return cfg, nil
 }

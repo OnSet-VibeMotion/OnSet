@@ -29,8 +29,14 @@ func reuseDecision(item scene.Scene, cfg config.Config, env map[string]string) (
 				if current.Fingerprint == record.Fingerprint {
 					return schedule.Skipped, "已有合格产物（输入指纹一致）"
 				}
+				changed := current.Changed(record.Inputs)
+				for i, name := range changed {
+					if name == "memory" {
+						changed[i] = "召回的记忆变了"
+					}
+				}
 				return schedule.Stale, fmt.Sprintf("输入已变化（%s），需要显式 --force 重渲染",
-					strings.Join(current.Changed(record.Inputs), "、"))
+					strings.Join(changed, "、"))
 			}
 		}
 	}

@@ -99,7 +99,8 @@ func TestRunStartsConfiguredOrchestrator(t *testing.T) {
 		t.Fatalf("code=%d output=%s", code, out.String())
 	}
 	body, err := os.ReadFile(filepath.Join(root, "received.txt"))
-	if err != nil || string(body) != "hello orchestrator" {
+	// prompt 原样在前，其后是用户偏好段（记忆默认打开）。
+	if err != nil || !strings.HasPrefix(string(body), "hello orchestrator\n\n用户偏好") || !strings.Contains(string(body), "am memory remember") {
 		t.Fatalf("received=%q err=%v", body, err)
 	}
 	executable, err := os.ReadFile(filepath.Join(root, "am-executable.txt"))

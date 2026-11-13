@@ -115,6 +115,9 @@ RENDERER=claude
 TTS_PROVIDER=minimax
 ALIGN_PROVIDER=auto
 SCENE_JOBS=3
+MEMORY=on
+MEMORY_SNAPSHOT=
+MEMORY_RECALL_BUDGET=1500
 ```
 
 `TTS_PROVIDER` 可选 `minimax`、`bailian`、`edge`（免鉴权，适合预览）、`elevenlabs`、`tencent`、`mlx`（本机离线，仅 Apple Silicon）；凭据一律走各工具自己的登录命令。`ALIGN_PROVIDER` 选择已知文本强制对齐工具，缺省 `auto`：Apple Silicon 上用 mlx-audio 的 Qwen3-ForcedAligner，其余平台用 FunASR。没有自带字级时间戳的 TTS 路径，字幕时间轴由它生成。
@@ -190,6 +193,36 @@ am dialogue beats                  # 镜头拆定后，按 dialogue.json 重算�
 ```
 
 作业规程（对话体脚本怎么分段、镜头 `scene.json` 的 `cast` 块怎么写）随项目下发在 `PROMPT-CAST-ADDENDUM.md`，`cast.yaml` 存在时生效。
+
+## 渲染记忆
+
+渲染记忆让项目随使用越来越懂用户，也让下一次渲染比这一次好。默认打开，`MEMORY=off` 关闭。记忆属于 `am`，存成纯文本放在用户级目录（默认 `~/.local/share/am/memory`，`AM_MEMORY_DIR` 可改），不写进任何工具私有的记忆。
+
+| 层 | 内容 | 怎么来 |
+|---|---|---|
+| 经历 | 一次渲染尝试或一条人工反馈：冻结的镜头输入、召回了哪些记忆、各项校验结果 | 每次 `am scene run` / `run-all` 自动写入 |
+| 经验 | 一条可检验的约束，配正例、反例，写明由哪个校验器判定 | `am memory consolidate` 从反复出现的失败里提炼，考试通过才生效 |
+| 偏好 | 用户的长期取向（「以后都…」「我不喜欢…」） | 对话里亲口说的由编排工具用 `am memory remember` 当场记下并生效；👎 反馈整理出的要人确认；标注「未经机器验证」 |
+
+每个镜头开工前，`am` 按镜头特征（中文、画幅、角色、卡点、交接手法……）和关键词召回相关的几条，注入提示词里固定的「记忆」段，所有渲染工具收到逐字相同的文本；总字数受 `MEMORY_RECALL_BUDGET` 限制。召回的记忆是输入指纹的一项，记忆一变，相关镜头会被判成 Stale 并注明「召回的记忆变了」。
+
+```bash
+am memory recall scenes/scene-001        # 这个镜头会想起什么、为什么
+am memory consolidate                    # 失败经历 → 试用经验（由 ORCHESTRATOR 起草，过格式校验）
+am memory exam --renderers claude,codex  # 回放考试：错题 + 留出题 × 渲染工具 × {对照, 试用}
+am memory feedback scenes/scene-003 --down --note "字幕压住了图表"
+am memory remember --name slow-pacing "节奏慢一点，每个画面多停一秒"   # 加 --global 对所有项目成立
+am memory status                         # 现状、待沉睡候选；手改记忆文件后用它记成新快照
+am memory rollback --to 3                # 回到任意快照，不删历史
+```
+
+新经验先进入试用，只在考试里使用。考试按确定性校验评分，试用组总分要严格高于对照组，且在任何一个渲染工具上、任何一道对照组做对的题都不能做错，留出题的通过数不能下降；渲染工具自身故障使整场考试无效而不是记 0 分。生效记忆集合每变一次就生成一个快照，项目可以用 `MEMORY_SNAPSHOT` 钉住某个快照。
+
+偏好同时交给编排工具：`am run` 与 Studio 对话开工前都会读到「用户偏好」段，用户随口一句话也能按以往的取向补全意图。
+
+不同模型犯的错不一样。每次渲染都记下实际用的模型（claude、qoder、codebuddy 从输出流读，codex 读 `config.toml`，opencode 记为未知），失败按「渲染工具/模型」分布交给整理者；只在某个模型上成立的经验写 `applies_when.renderers` / `models` 限定范围，召回只给对应的渲染工具和模型。经验正文里不写工具名或模型名、不照抄镜头文案或素材名，`checked_by` 只能引用 `am` 已有的校验器 ID（`output.*` 与 `determinism.*`）。
+
+考试的每一格都是一次真实渲染，渲染次数 = 题数 × 渲染工具数 × 2 × `--repeat`，默认最多 4 道错题。
 
 ## 安全模式
 

@@ -98,3 +98,31 @@ func TestLoadRejectsInvalidChoicesAndJobs(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadMemorySettings(t *testing.T) {
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "article-to-motion.conf"), []byte("ORCHESTRATOR=codex\nRENDERER=codex\n"), 0o644)
+	cfg, err := Load(root, map[string]string{"HOME": "/home/u"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Memory.Enabled || cfg.Memory.Snapshot != 0 || cfg.Memory.RecallBudget != DefaultMemoryRecallBudget ||
+		cfg.Memory.Dir != filepath.Join("/home/u", ".local", "share", "am", "memory") {
+		t.Fatalf("缺省值不对：%+v", cfg.Memory)
+	}
+	if off, _ := Load(root, map[string]string{"MEMORY": "off"}); off.Memory.Enabled {
+		t.Error("MEMORY=off 应当关闭")
+	}
+	cfg, err = Load(root, map[string]string{"MEMORY": "on", "MEMORY_SNAPSHOT": "7", "MEMORY_RECALL_BUDGET": "800", "AM_MEMORY_DIR": "/tmp/mem"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Memory.Enabled || cfg.Memory.Snapshot != 7 || cfg.Memory.RecallBudget != 800 || cfg.Memory.Dir != "/tmp/mem" {
+		t.Fatalf("配置没生效：%+v", cfg.Memory)
+	}
+	for _, bad := range []map[string]string{{"MEMORY": "yes"}, {"MEMORY_SNAPSHOT": "0"}, {"MEMORY_SNAPSHOT": "x"}, {"MEMORY_RECALL_BUDGET": "-1"}} {
+		if _, err := Load(root, bad); err == nil {
+			t.Errorf("%v 应当报错", bad)
+		}
+	}
+}

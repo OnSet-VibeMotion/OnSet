@@ -115,6 +115,9 @@ RENDERER=claude
 TTS_PROVIDER=minimax
 ALIGN_PROVIDER=auto
 SCENE_JOBS=3
+MEMORY=on
+MEMORY_SNAPSHOT=
+MEMORY_RECALL_BUDGET=1500
 ```
 
 `TTS_PROVIDER` accepts `minimax`, `bailian`, `edge` (no credentials, good for previews), `elevenlabs`, `tencent`, and `mlx` (local and offline, Apple Silicon only); credentials always go through each tool's own login command. `ALIGN_PROVIDER` picks the known-text forced aligner and defaults to `auto`: mlx-audio's Qwen3-ForcedAligner on Apple Silicon, FunASR elsewhere. For TTS paths without built-in character-level timestamps, it produces the subtitle timeline.
@@ -196,6 +199,36 @@ am dialogue beats      # after scenes are cut, recompute each scene.json's cast.
 ```
 
 The authoring conventions (how to segment dialogue scripts, how to fill a scene's `cast` block) ship with the project as `PROMPT-CAST-ADDENDUM.md`, in effect whenever `cast.yaml` exists.
+
+## Render memory
+
+Render memory lets a project get to know its user over time and makes the next render better than this one. On by default; `MEMORY=off` turns it off. Memory belongs to `am`: plain text in a user-level directory (default `~/.local/share/am/memory`, override with `AM_MEMORY_DIR`), never in a tool's private memory.
+
+| Layer | What it is | Where it comes from |
+|---|---|---|
+| Episode | One render attempt or one piece of human feedback: frozen scene inputs, recalled memories, check results | Written automatically by `am scene run` / `run-all` |
+| Lesson | A checkable constraint with a good and a bad example and the checker that decides it | Distilled from recurring failures by `am memory consolidate`; active only after passing an exam |
+| Preference | A lasting taste of the user ("always…", "I don't like…") | Said in chat: recorded on the spot by the orchestrator via `am memory remember` and active at once; distilled from 👎 feedback: needs a person to confirm. Labelled "not machine-verified" |
+
+Before each scene, `am` recalls the few relevant memories by scene features (CJK text, canvas, cast, beat mode, handoff device…) and keywords, and injects them as a fixed "memory" section, byte-identical for every renderer and capped by `MEMORY_RECALL_BUDGET`. The recall is part of the input fingerprint, so a memory change marks affected scenes Stale with the reason spelled out.
+
+```bash
+am memory recall scenes/scene-001        # what this scene will remember, and why
+am memory consolidate                    # failed episodes → trial lessons (drafted by ORCHESTRATOR, format-checked)
+am memory exam --renderers claude,codex  # replay exam: failed + held-out scenes × renderers × {control, trial}
+am memory feedback scenes/scene-003 --down --note "captions cover the chart"
+am memory remember --name slow-pacing "slower pacing, hold each shot a second longer"   # --global for every project
+am memory status                         # overview and retirement candidates; records hand edits as a new snapshot
+am memory rollback --to 3                # go back to any snapshot without deleting history
+```
+
+New lessons start on trial and are only used in exams. Exams are scored by deterministic checks: the trial arm must strictly beat control, must not fail any question control passes on any renderer, and must not lose held-out passes; a renderer crash voids the exam instead of scoring zero. Every change to the active set creates a snapshot, and a project can pin one with `MEMORY_SNAPSHOT`.
+
+Preferences also reach the orchestrator: `am run` and every Studio chat start with a "user preferences" section, so a terse request is filled in with what the user has asked for before.
+
+Different models make different mistakes. Every render records the model actually used (read from the stream for claude, qoder and codebuddy, from `config.toml` for codex, unknown for opencode), and failure clusters show the renderer/model breakdown. A lesson that only holds for one model is scoped with `applies_when.renderers` / `models` and is recalled only there. Lesson text itself stays free of renderer and model names, copied scene text and asset names, and `checked_by` must name an existing checker ID (`output.*` or `determinism.*`).
+
+Each exam cell is a real render: renders = questions × renderers × 2 × `--repeat`, with at most 4 failed-episode questions by default.
 
 ## Inspect frames and concatenate
 

@@ -304,7 +304,7 @@ export function App() {
             }}
             onScene={(id) => {
               setSceneId(id);
-              if (tab !== 'scene' && tab !== 'compose') setTab('scene');
+              if (tab !== 'scene' && tab !== 'compose' && tab !== 'memory') setTab('scene');
             }}
             run={run}
           />

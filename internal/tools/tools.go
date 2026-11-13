@@ -3,6 +3,7 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -97,6 +98,11 @@ func RendererInvocation(tool, prompt string, unsafe bool, access RendererAccess)
 // 见 project.OrchestratorAccess。
 type OrchestratorAccess struct {
 	Commands []string
+	// WritableDirs 是工作目录之外还要可写的目录（渲染记忆库）。只有靠沙箱限制写入
+	// 的工具（codex）需要它：编排工具调用的 am memory remember 与 am scene run
+	// 要往用户级的记忆库写，workspace-write 沙箱默认只放行工作目录。
+	// 不存在的目录不传，codex 对它的处理没有实测过。
+	WritableDirs []string
 }
 
 // OrchestratorOptions 是一次编排调用的全部输入。
@@ -146,6 +152,11 @@ func OrchestratorInvocation(tool string, o OrchestratorOptions) ([]string, strin
 			// workspace-write 沙箱默认断网，TTS 要连外网；codex 没有命令白名单，靠沙箱限制写入范围。
 			args = append(args, "--ask-for-approval", "never", "-c", "sandbox_workspace_write.network_access=true",
 				"exec", "--skip-git-repo-check", "--cd", o.Workdir, "--sandbox", "workspace-write")
+			for _, dir := range o.Access.WritableDirs {
+				if info, err := os.Stat(dir); err == nil && info.IsDir() {
+					args = append(args, "--add-dir", dir)
+				}
+			}
 		}
 		args = append(args, "--json")
 		if o.Resume {

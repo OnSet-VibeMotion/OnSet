@@ -76,7 +76,7 @@ func Run(ctx context.Context, s Scene, cfg config.Config, unsafe bool, baseEnv m
 		return err
 	}
 	started := time.Now()
-	attempt := Attempt{SceneID: s.ID, Renderer: renderer, Fingerprint: inputs.Fingerprint, StartedAt: timestamp(started), Retry: s.RetryNote != ""}
+	attempt := Attempt{SceneID: s.ID, Renderer: renderer, Model: tools.ConfiguredModel(renderer, baseEnv), Fingerprint: inputs.Fingerprint, StartedAt: timestamp(started), Retry: s.RetryNote != ""}
 	var usage tools.Usage
 	defer func() {
 		ended := time.Now()
@@ -92,6 +92,7 @@ func Run(ctx context.Context, s Scene, cfg config.Config, unsafe bool, baseEnv m
 		case errors.As(err, &verification):
 			attempt.Outcome = OutcomeVerificationFailed
 			attempt.Problems = verification.Problems
+			attempt.Checks = verification.Checks
 		case ctx.Err() != nil:
 			attempt.Outcome = OutcomeInterrupted
 		default:
@@ -102,6 +103,9 @@ func Run(ctx context.Context, s Scene, cfg config.Config, unsafe bool, baseEnv m
 		}
 		if writeErr := writeAttempt(s, attempt); writeErr != nil && err == nil {
 			err = writeErr
+		}
+		if s.AfterAttempt != nil {
+			s.AfterAttempt(attempt)
 		}
 	}()
 	rawFile, err := os.Create(s.StreamLog())
@@ -140,6 +144,9 @@ func Run(ctx context.Context, s Scene, cfg config.Config, unsafe bool, baseEnv m
 		line := scanner.Text()
 		fmt.Fprintln(rawFile, line)
 		tools.AccumulateUsage(renderer, line, &usage)
+		if model := tools.DetectModel(renderer, line); model != "" {
+			attempt.Model = model
+		}
 		for _, message := range tools.ExtractUserMessages(renderer, line) {
 			fmt.Fprintln(userFile, message)
 			fmt.Fprintln(userOutput, message)
@@ -176,6 +183,9 @@ func Run(ctx context.Context, s Scene, cfg config.Config, unsafe bool, baseEnv m
 type VerificationError struct {
 	Output   string
 	Problems []string
+	// Checks 是每条问题对应的校验器 ID（与 Problems 等长、一一对应），供渲染记忆
+	// 按校验器聚类失败经历；给人看的仍是 Problems。
+	Checks []string
 }
 
 func (e *VerificationError) Error() string {
@@ -239,6 +249,10 @@ func VerifyOutput(s Scene, baseEnv map[string]string, tolerance float64) error {
 		Audio:           mediaprobe.AudioAbsent,
 	}
 	problems := spec.Check(media)
+	checks := make([]string, 0, len(problems))
+	for _, problem := range problems {
+		checks = append(checks, ClassifyOutputProblem(problem))
+	}
 	// 帧数逐帧解码实测，不靠时长容差兜：默认 0.15 秒的容差在 30fps 下能放过
 	// 差 4 帧的产物，要等拼接后整片复查才暴露，那时整批镜头都已渲染完。
 	// VerifyFrameAlignment 已保证时长是整数帧，这里的期望值没有取整歧义。
@@ -248,9 +262,11 @@ func VerifyOutput(s Scene, baseEnv map[string]string, tolerance float64) error {
 		counted, err := toolchain.CountFrames(path)
 		if err != nil {
 			problems = append(problems, err.Error())
+			checks = append(checks, CheckOutputFrames)
 		} else if counted != expected {
 			problems = append(problems, fmt.Sprintf("总帧数不符：期望 %d 帧（%.6f 秒 × %dfps），逐帧解码实测 %d 帧",
 				expected, s.DurationSeconds, canvas.FPS, counted))
+			checks = append(checks, CheckOutputFrames)
 		}
 	}
 	// 源码扫描与规格检查一起报：两类问题常同时出现，分两轮发现就要多烧一次渲染。
@@ -259,8 +275,11 @@ func VerifyOutput(s Scene, baseEnv map[string]string, tolerance float64) error {
 		return err
 	}
 	problems = append(problems, scan.Problems()...)
+	for _, finding := range scan.Findings {
+		checks = append(checks, DeterminismCheckPrefix+finding.Rule)
+	}
 	if len(problems) > 0 {
-		return &VerificationError{Output: s.Output, Problems: problems}
+		return &VerificationError{Output: s.Output, Problems: problems, Checks: checks}
 	}
 	return nil
 }

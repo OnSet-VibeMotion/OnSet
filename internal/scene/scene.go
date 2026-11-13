@@ -94,6 +94,37 @@ type Scene struct {
 	// RenderWorkers 是调度器按并发数分给本镜头的帧捕获 worker 数，不来自
 	// scene.json；0 表示沿用 HyperFrames 的 auto。
 	RenderWorkers int `json:"-"`
+	// Memory 是本次渲染从记忆库召回的条目，由调用方（internal/memory 经 cli）
+	// 在渲染前填入，不来自 scene.json；nil 或没有条目时提示词与指纹都与
+	// 引入记忆之前一致。
+	Memory *MemoryRecall `json:"-"`
+	// AfterAttempt 在每次渲染尝试写完尝试记录后调用，用来把这次尝试写成记忆
+	// 经历。它不是镜头的输入，不参与指纹。
+	AfterAttempt func(Attempt) `json:"-"`
+}
+
+// MemoryRecall 是注入本镜头提示词的记忆段。
+//
+// scene 不依赖 internal/memory：召回在那边完成，这里只认渲染好的文本与摘要，
+// 保证所有渲染工具收到逐字相同的一段。
+type MemoryRecall struct {
+	// Snapshot 是召回所依据的记忆库快照号。
+	Snapshot int
+	// Names 是召回的记忆名，按注入顺序。
+	Names []string
+	// Section 是注入提示词的完整文本。
+	Section string
+	// Digest 是召回条目内容的摘要，写进输入指纹的 memory 项。
+	Digest string
+}
+
+func (m *MemoryRecall) active() bool { return m != nil && len(m.Names) > 0 }
+
+func memorySection(s Scene) string {
+	if !s.Memory.active() {
+		return ""
+	}
+	return s.Memory.Section
 }
 
 // WithRetryNote 返回带上一次失败说明的副本，不修改原镜头。
@@ -626,7 +657,7 @@ func BuildPrompt(s Scene, resolvedSkills map[string]string) (string, error) {
 [[USER_MESSAGE]]开始联网搜索
 [[USER_MESSAGE]]代码已完成，开始渲染
 [[USER_MESSAGE]]视频已渲染完成：%s
-`, canvas.Label(), s.ID, s.DurationSeconds, frames, canvas.FPS, frames, canvas.FPS, frames, s.Output, s.Transcript, TextOpen, s.Text, TextClose, body, style, castSection(s)+songSection(s, resolvedSkills)+timing, skillPromptSections(resolvedSkills), determinismSection+workersSection(s)+selfReviewSection, retrySection(s), s.Output)
+`, canvas.Label(), s.ID, s.DurationSeconds, frames, canvas.FPS, frames, canvas.FPS, frames, s.Output, s.Transcript, TextOpen, s.Text, TextClose, body, style, castSection(s)+songSection(s, resolvedSkills)+timing, skillPromptSections(resolvedSkills), determinismSection+memorySection(s)+workersSection(s)+selfReviewSection, retrySection(s), s.Output)
 	return prompt, nil
 }
 

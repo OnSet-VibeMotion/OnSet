@@ -200,6 +200,7 @@ func (s *Server) Handler() http.Handler {
 	s.featureRoutes(mux)
 	s.sessionRoutes(mux)
 	s.uiRoutes(mux)
+	s.memoryRoutes(mux)
 	mux.HandleFunc("/", s.static)
 	return withJSONErrors(mux)
 }
@@ -568,7 +569,12 @@ type SceneSummary struct {
 
 func discoverScenes(root string) []SceneSummary {
 	var out []SceneSummary
+	exams := filepath.Join(root, "production", "memory-exams")
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		// 渲染记忆的考场里是镜头副本，不是项目的镜头。
+		if err == nil && d.IsDir() && path == exams {
+			return filepath.SkipDir
+		}
 		if err != nil || d.IsDir() || d.Name() != "scene.json" {
 			return nil
 		}

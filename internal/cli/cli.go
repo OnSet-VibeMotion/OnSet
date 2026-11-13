@@ -25,6 +25,7 @@ import (
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
 	"github.com/chouheiwa/articale-to-motion/internal/fsutil"
 	"github.com/chouheiwa/articale-to-motion/internal/hyperframes"
+	"github.com/chouheiwa/articale-to-motion/internal/memory"
 	"github.com/chouheiwa/articale-to-motion/internal/preset"
 	"github.com/chouheiwa/articale-to-motion/internal/project"
 	"github.com/chouheiwa/articale-to-motion/internal/scene"
@@ -462,6 +463,9 @@ text 不得含 [[USER_MESSAGE]] 或 <scene-text> 定界标记，含则失败。
 			if err != nil {
 				return err
 			}
+			if s, err = attachMemory(s, cfg, stderr); err != nil {
+				return err
+			}
 			return scene.Run(cmd.Context(), s, cfg, envutil.IsUnsafe(unsafe), currentEnvironment(), stdout, tolerance)
 		},
 	}
@@ -601,6 +605,12 @@ AI CLI 调用。这类失败要先改提示词或时长声明再重跑。
 					return err
 				}
 			}
+			// 召回在判定复用之前做：召回的记忆是输入指纹的一项，记忆变了镜头要能被判成 Stale。
+			for i := range scenes {
+				if scenes[i], err = attachMemory(scenes[i], cfg, stderr); err != nil {
+					return err
+				}
+			}
 			initial := make(map[string]error)
 			if !force {
 				env := currentEnvironment()
@@ -715,6 +725,15 @@ opencode 没有可用的白名单机制，安全模式下仍能执行任何命�
 			prompt, promptPath, err := project.RunPrompt(rootDir, override)
 			if err != nil {
 				return err
+			}
+			if cfg.Memory.Enabled {
+				// 先建好记忆库：codex 沙箱只能把已存在的目录加进可写范围。
+				if _, err := memory.Open(cfg.Memory.Dir); err != nil {
+					fmt.Fprintf(stderr, "警告：无法建立记忆库，本次渲染的经历可能写不进去：%v\n", err)
+				}
+			}
+			if brief := preferenceBrief(cfg, rootDir, stderr); brief != "" {
+				prompt = append(append(append([]byte{}, prompt...), "\n\n"...), brief...)
 			}
 			rulesName, err := tools.ProjectRulesFilename(cfg.Orchestrator)
 			if err != nil {
@@ -891,6 +910,7 @@ SVG 转 PNG 这一步不能用 ImageMagick 代替：多数 ImageMagick 构建自
 	root.AddCommand(newCastCmd(stdout))
 	root.AddCommand(newDialogueCmd(stdout))
 	root.AddCommand(newStudioCommand(stdout, stderr, &unsafe))
+	root.AddCommand(newMemoryCommand(stdout, stderr, &unsafe))
 	return root
 }
 

@@ -1499,3 +1499,187 @@ h4 {
   max-width: calc(100vw - 32px);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
 }
+
+/* ---- 渲染记忆 ---- */
+.memory-tab .memory-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.memory-input {
+  width: 140px;
+  background: var(--well);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 4px 8px;
+}
+.memory-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.memory-recall {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.memory-recall li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+  padding: 8px 10px;
+  background: var(--raised);
+  border-radius: 8px;
+}
+.memory-unverified {
+  font-size: 11px;
+  color: var(--stale);
+}
+.memory-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.memory-group-title {
+  font-size: 12px;
+  color: var(--muted);
+}
+.memory-card {
+  padding: 8px 10px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.memory-card p {
+  margin: 4px 0 0;
+}
+.memory-card button.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-text);
+  cursor: pointer;
+}
+.memory-body {
+  white-space: pre-wrap;
+  font: 12px/1.5 var(--mono);
+  background: var(--well);
+  padding: 8px;
+  border-radius: 6px;
+  margin: 6px 0 0;
+}
+.exam-scroll {
+  overflow-x: auto;
+}
+.exam-table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.exam-table th,
+.exam-table td {
+  border: 1px solid var(--line);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.exam-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+}
+.exam-cell video {
+  width: 72px;
+  height: 48px;
+  object-fit: cover;
+  background: var(--well);
+  border-radius: 4px;
+}
+.exam-cell.fail span {
+  color: var(--bad);
+}
+.exam-cell.invalid span {
+  color: var(--stale);
+}
+.score-curve {
+  margin: 0;
+}
+.score-curve svg {
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+}
+.score-curve .axis {
+  stroke: var(--line-strong);
+}
+.score-curve polyline {
+  fill: none;
+  stroke-width: 2;
+}
+.score-curve .control {
+  stroke: var(--muted);
+  fill: var(--muted);
+}
+.score-curve .trial {
+  stroke: var(--accent);
+  fill: var(--accent);
+}
+.score-curve polyline.control,
+.score-curve polyline.trial {
+  fill: none;
+}
+.score-curve text {
+  fill: var(--faint);
+  font: 10px var(--mono);
+}
+.legend {
+  display: inline-block;
+  width: 10px;
+  height: 2px;
+  vertical-align: middle;
+  margin: 0 4px 0 8px;
+}
+.legend.control {
+  background: var(--muted);
+}
+.legend.trial {
+  background: var(--accent);
+}
+.memory-timeline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 360px;
+  overflow: auto;
+}
+.memory-timeline li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+}
+.memory-timeline li.event-episode {
+  opacity: 0.7;
+}
+.feedback-note {
+  width: 180px;
+  background: var(--well);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 4px 8px;
+}
+.memory-preference {
+  flex: 1;
+  min-width: 200px;
+}

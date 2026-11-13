@@ -134,5 +134,9 @@ func (c Config) OrchestratorAccess(extra ...string) tools.OrchestratorAccess {
 			out = append(out, command)
 		}
 	}
-	return tools.OrchestratorAccess{Commands: out}
+	access := tools.OrchestratorAccess{Commands: out}
+	if c.Memory.Enabled && c.Memory.Dir != "" {
+		access.WritableDirs = []string{c.Memory.Dir}
+	}
+	return access
 }

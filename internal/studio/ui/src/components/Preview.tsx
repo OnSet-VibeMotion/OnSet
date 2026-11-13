@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { api, errorText, rawURL } from '../api';
+import { api, errorText, post, rawURL } from '../api';
 import type { Attachment, BeatState, Box, ProjectState, Scene, TreeFile } from '../types';
 import { cssSelector } from '../selector';
 import { Icon } from './Icon';
+import { MemoryTab } from './Memory';
 
-export type Tab = 'scene' | 'compose' | 'final' | 'style' | 'review' | 'publish' | 'file';
+export type Tab = 'scene' | 'compose' | 'final' | 'style' | 'review' | 'publish' | 'memory' | 'file';
 
 const tabs: [Tab, string][] = [
   ['scene', '镜头'],
@@ -13,6 +14,7 @@ const tabs: [Tab, string][] = [
   ['style', '风格'],
   ['review', '复查'],
   ['publish', '发布'],
+  ['memory', '记忆'],
   ['file', '文件'],
 ];
 
@@ -62,6 +64,7 @@ export function Preview(props: Props) {
         {props.tab === 'style' && <StyleTab tree={props.tree} version={props.version} onFile={props.onFile} />}
         {props.tab === 'review' && <ReviewTab tree={props.tree} version={props.version} run={props.run} />}
         {props.tab === 'publish' && <PublishTab version={props.version} run={props.run} />}
+        {props.tab === 'memory' && <MemoryTab scene={scene} version={props.version} run={props.run} />}
         {props.tab === 'file' && <FileView path={props.filePath} version={props.version} />}
       </div>
       <Timeline scenes={props.scenes} sceneId={props.sceneId} onScene={props.onScene} />
@@ -164,11 +167,15 @@ function SceneTab(props: Props & { scene: Scene | null }) {
   const [selecting, setSelecting] = useState(false);
   const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [error, setError] = useState('');
+  const [note, setNote] = useState('');
+  const [feedback, setFeedback] = useState('');
 
   useEffect(() => {
     setDrag(null);
     setSelecting(false);
     setError('');
+    setNote('');
+    setFeedback('');
     setTime(0);
     setPlaying(false);
   }, [scene?.id]);
@@ -217,6 +224,28 @@ function SceneTab(props: Props & { scene: Scene | null }) {
     }
   };
 
+  // 👍 / 👎 写成一段记忆经历：当前帧时间、圈选区域（归一化）与说明。
+  const sendFeedback = async (verdict: 'up' | 'down') => {
+    const v = video.current;
+    const box = toVideoBox();
+    setError('');
+    try {
+      await post('/api/memory/actions/feedback', {
+        scene_id: scene.id,
+        verdict,
+        note: note.trim(),
+        seconds: v ? Number(v.currentTime.toFixed(3)) : undefined,
+        region: box && v ? [box.x / v.videoWidth, box.y / v.videoHeight, box.w / v.videoWidth, box.h / v.videoHeight] : undefined,
+      });
+      setFeedback(verdict === 'down' ? '已记下 👎，下次整理时会参考。' : '已记下 👍。');
+      setNote('');
+      setDrag(null);
+      setSelecting(false);
+    } catch (err) {
+      setError(errorText(err));
+    }
+  };
+
   const point = (e: PointerEvent) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
@@ -244,6 +273,23 @@ function SceneTab(props: Props & { scene: Scene | null }) {
             </button>
             <button id="attach-frame" onClick={attach}>
               {drag ? '附上这一帧和选区' : '附当前帧'}
+            </button>
+          </>
+        )}
+        {scene.exists && (
+          <>
+            <input
+              class="feedback-note"
+              value={note}
+              placeholder="反馈说明（可选）"
+              aria-label="反馈说明"
+              onInput={(e) => setNote(e.currentTarget.value)}
+            />
+            <button title="记为好的经历" aria-label="赞" onClick={() => sendFeedback('up')}>
+              👍
+            </button>
+            <button title="记为需要改进的经历，下次整理时参考" aria-label="踩" onClick={() => sendFeedback('down')}>
+              👎
             </button>
           </>
         )}
@@ -326,6 +372,7 @@ function SceneTab(props: Props & { scene: Scene | null }) {
             </span>
           </div>
           {error && <p class="error-line">{error}</p>}
+          {feedback && <p class="ok-line">{feedback}</p>}
         </>
       ) : (
         <Empty>这个镜头还没有产物。点「渲染」，或在对话里让它处理。</Empty>

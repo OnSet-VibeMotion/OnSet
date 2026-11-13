@@ -163,6 +163,29 @@ SVG 转 PNG 必须走 `rsvg-convert`（`internal/styleimage`），**不能用 Im
 
 每次渲染写 `render-<id>.attempt.json`，重渲染前 `scene.ArchiveAttempt` 先把上一次的产物、日志与尝试记录挪进 `attempts/`。调度层的重试与单镜头重跑走同一个归档函数，不要各写一份编号逻辑。token 用量按各工具流式事件尽力读取（`tools.AccumulateUsage`），读不到就留空，不做估算。
 
+## 渲染记忆
+
+`internal/memory` 实现 `docs/superpowers/specs/2026-11-02-渲染记忆-design.md`：经历 → 整理成试用经验 → 回放考试 → 生效并按镜头召回。记忆库在用户级目录（`config.MemorySettings.Dir`），不在项目里。
+
+| 约定 | 原因 |
+|---|---|
+| `scene` 不依赖 `memory`：召回结果经 `Scene.Memory`（`MemoryRecall`，已渲染好的文本与摘要）挂进来，经历经 `Scene.AfterAttempt` 回调写出；二者都是 `json:"-"`，`AfterAttempt` 在 `Fingerprint` 里清掉 | `memory` 要读 `scene` 抽特征、冻结输入；反过来依赖会成环。回调让经历拿到的正是 `scene.Run` 写下的那份尝试记录，不靠事后读文件猜是不是本次的 |
+| 召回段放在 `determinismSection` 之后，开头声明「与上面的强制要求冲突时以上面为准」；段落里不写快照号 | 手写约束优先于学来的约束。不写快照号是为了回退到内容相同的快照时召回段逐字不变，镜头不被误判 Stale |
+| `MEMORY` 默认打开；没有召回条目时 `Fingerprint` 不加 `memory` 项、提示词逐字不变 | 项目要随使用越来越懂用户，所以默认打开；空库时与关闭逐字相同，升级 am 不会让老镜头变成 Stale |
+| 记忆打开时 `Config.OrchestratorAccess` 把记忆库放进 `WritableDirs`，codex 安全模式据此加 `--add-dir`；`am run` 与 Studio 每轮开工前先建好记忆库目录 | 编排工具调用的 `am memory remember`、`am scene run` 要写用户级记忆库，codex 的 workspace-write 沙箱默认只放行工作目录，写不进去也不报错，只是经历和偏好静默丢失 |
+| `internal/cli` 与 `internal/studio` 的 `TestMain` 把 `AM_MEMORY_DIR` 指到临时目录；只读路径（偏好段）用 `memory.OpenReadOnly`，不建目录 | 记忆默认打开，测试不设它就会往开发者真实的 `~/.local/share/am/memory` 写经历 |
+| 召回只读快照（`Snapshot.Entries` 存完整文件内容），不读记忆文件；手改文件要经 `am memory status` 记成标注「未经考试」的新快照 | 同一快照 + 同一镜头输入永远同一召回；回退只需把快照内容写回 |
+| 效果统计不写进记忆文件，由经历聚合（`ComputeStats`），生成快照时冻结进 `Snapshot.Stats` 供排序 | 并发镜头同时改一个文件会打架；统计写进文件会让规则摘要随每次渲染变化 |
+| 统计只算正式渲染的首次尝试；考试经历（`SourceExam`）不进统计、不进整理；渲染工具崩溃不算失败经历 | 重试带着失败说明、考试是人为安排的对照，混进来统计就失真；崩溃不是写法问题，记忆帮不上 |
+| 失败按校验器 ID 聚类：`VerificationError.Checks` 与 `Problems` 等长一一对应。产物校验的 ID 由 `scene.ClassifyOutputProblem` 按 `mediaprobe` 的措辞前缀归类，确定性扫描的 ID 是 `determinism.` + 规则名 | 改了 `Spec.Check` 的措辞要同步改归类，`TestVerificationChecksAlignWithProblems` 会抓住落进 `output.other` 的问题。新增确定性规则要登记进 `determinism.RuleIDs`，`TestRuleIDsCoverEveryEmittedRule` 守着——经验的 `checked_by` 只认这两处的 ID |
+| 不同模型犯的错不一样：经验可以用 `applies_when.renderers`（渲染工具 ID）/ `models`（模型名前缀）限定范围，召回按当前渲染工具与模型硬过滤，专属经验排在通用经验前；模型未知时不召回限定了模型的经验 | 只在某个模型上成立的经验注入给别的模型，只会白占预算甚至误导；没写范围的经验仍对所有渲染工具成立 |
+| 模型名只来自实测：claude / qoder / codebuddy 读输出流的 `system/init`（`tools.DetectModel`），codex 读 `$CODEX_HOME/config.toml` 顶层 `model`（`tools.ConfiguredModel`），opencode 记为未知。召回在渲染器启动前，用 `Store.CurrentModel`：配置声明的优先，否则取 `models.json` 里最近一次实测的 | 流里的模型名只有渲染开始后才有；换模型后的第一次渲染按旧模型召回，渲染完即更新 |
+| 格式校验（`memory.Lint`）拒收正文 / 描述 / 关键词里的工具名与模型名（范围只能写进 `applies_when`）、镜头编号、素材文件名、照抄镜头文案连续 8 字以上、与已有经验同校验器同特征同范围却不写 `revises` 的草稿 | 正文保持中性才能在范围放宽时直接复用；「矛盾」无法语义判定，用「同一组校验器 + 特征 + 范围」近似，只拦并列新增 |
+| 偏好也交给编排工具：`PreferenceBrief` 追加在 `am run` 的提示词后、Studio 每轮对话前（偏好摘要没变且 CLI 会话还在时不重发，见 `SessionMeta.PreferenceDigest`）。段落里总写着怎样用 `am memory remember` 记下新偏好；用户亲口说的偏好直接生效，不经人工确认或考试 | 用户随口一句话，是编排工具在理解、在定分镜和风格；渲染器只拿到展开后的镜头说明 |
+| 镜头特征词表是 `memory.FeatureDescriptions`，新增特征要同时改 `Features` 的抽取 | 整理说明与格式校验都只认这张表，抽不出来的特征写进经验永远匹配不上 |
+| 考试的作答者由调用方注入（`ExamRunner`），考场建在项目的 `production/memory-exams/` | 渲染器从镜头目录向上找 `.agents/skills`，建在记忆库里就找不到项目技能 |
+| 门槛 `memory.Judge` 是纯函数，五条门槛各有单测；渲染工具自身故障让整场无效，不按 0 分算 | 一次认证失效不能让一条好经验被拒 |
+
 ## 卡点模式
 
 `internal/beat` 是无配音卡点的时间契约，以项目根 `beat.yaml` 启用，与 `song.yaml`、`cast.yaml` 互斥。链路是「导入音乐 → 分析出草稿网格 → 试听确认 → 按小节的分镜计划 → `am beat cues` 写镜头时长」。

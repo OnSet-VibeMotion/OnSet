@@ -194,3 +194,119 @@ export interface AgentChoice {
   tool: string;
   renderer: string;
 }
+
+// ---- 渲染记忆（internal/memory 与 internal/studio/memory.go 的 JSON） ----
+
+export type MemoryStatus = 'trial' | 'active' | 'rejected' | 'dormant';
+
+export interface MemoryStat {
+  recalled: number;
+  passed_first_try: number;
+}
+
+export interface MemoryRow {
+  name: string;
+  description: string;
+  status: MemoryStatus;
+  kind: 'lesson' | 'preference';
+  applies_when: { features?: string[]; keywords?: string[]; renderers?: string[]; models?: string[] };
+  checked_by: string[];
+  scope?: string;
+  from_episodes?: string[];
+  verified_by?: string[];
+  revises?: string;
+  rejected_reason?: string;
+  body: string;
+  stats?: Record<string, MemoryStat>;
+}
+
+export interface MemoryEvent {
+  time: string;
+  type: string;
+  snapshot?: number;
+  summary: string;
+}
+
+export interface ExamCell {
+  question: string;
+  holdout: boolean;
+  renderer: string;
+  model?: string;
+  arm: 'control' | 'trial';
+  repeat: number;
+  outcome: string;
+  passed: boolean;
+  problems: number;
+  checks?: string[];
+  seconds: number;
+  invalid?: boolean;
+  error?: string;
+  recalled?: string[];
+  output?: string;
+}
+
+export interface ExamQuestion {
+  id: string;
+  episode?: string;
+  holdout: boolean;
+  scene_id: string;
+}
+
+export interface ExamResult {
+  id: string;
+  created_at: string;
+  trials: string[];
+  renderers: string[];
+  questions: ExamQuestion[];
+  cells: ExamCell[];
+  verdict: { pass: boolean; invalid: boolean; needs_human: boolean; control_score: number; trial_score: number; reasons: string[] };
+  applied: 'promoted' | 'rejected' | 'none';
+  snapshot?: number;
+}
+
+export interface MemoryWeak {
+  name: string;
+  renderer: string;
+  rate: number;
+  baseline: number;
+  recalled: number;
+}
+
+export interface MemoryState {
+  enabled: boolean;
+  dir: string;
+  pinned: number;
+  budget: number;
+  renderer: string;
+  status: {
+    snapshot: number;
+    counts: Record<string, number>;
+    drift: string[];
+    weak: MemoryWeak[];
+    episodes: number;
+    pending_failures: number;
+  };
+  memories: MemoryRow[];
+  timeline: MemoryEvent[];
+  exams: ExamResult[];
+  snapshots: number[];
+}
+
+export interface RecallItem {
+  name: string;
+  kind: 'lesson' | 'preference';
+  description: string;
+  score: number;
+  global?: boolean;
+  renderers?: string[];
+  models?: string[];
+  matched_features?: string[];
+  matched_keywords?: string[];
+  chars: number;
+}
+
+export interface RecallResponse {
+  recall: { snapshot: number; renderer: string; model?: string; features: string[]; budget: number; used: number; items: RecallItem[]; omitted?: RecallItem[] };
+  reasons: string[];
+  section: string;
+}

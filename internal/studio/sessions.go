@@ -53,6 +53,9 @@ type SessionMeta struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 	Turns        []string  `json:"turns"`
 	RunningTurn  string    `json:"running_turn,omitempty"`
+	// PreferenceDigest 是上一次交给编排工具的用户偏好段的摘要：偏好没变、
+	// CLI 会话也还在时不再重复发送，续接的会话里已经有了。
+	PreferenceDigest string `json:"preference_digest,omitempty"`
 }
 
 // SessionEvent 是会话事件流里的一条，逐行追加到 <id>.events.jsonl。
@@ -430,6 +433,11 @@ func (s *Server) prepareTurn(p Project, sess *session, cfg config.Config, req tu
 	default:
 		prompt = message
 	}
+	brief, digest := s.preferenceBrief(p, cfg)
+	resend := brief != "" && (digest != sess.meta.PreferenceDigest || sess.meta.CLISessionID == "" || len(sess.meta.Turns) == 0)
+	if resend {
+		prompt = brief + "\n---\n\n" + prompt
+	}
 	display := req.Message
 	if display == "" {
 		display = "开始整片制作"
@@ -441,6 +449,9 @@ func (s *Server) prepareTurn(p Project, sess *session, cfg config.Config, req tu
 	s.updateMeta(sess, func(meta *SessionMeta) {
 		meta.Turns = append(meta.Turns, turn.ID)
 		meta.RunningTurn = turn.ID
+		if resend {
+			meta.PreferenceDigest = digest
+		}
 		if meta.Tool == "" {
 			meta.Tool = cfg.Orchestrator
 		}

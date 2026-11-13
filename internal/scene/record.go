@@ -60,6 +60,7 @@ func Fingerprint(s Scene, renderer string, resolvedSkills map[string]string) (In
 	// 重试说明与 worker 数是调度层每次临时填的，不是镜头的输入。
 	s.RetryNote = ""
 	s.RenderWorkers = 0
+	s.AfterAttempt = nil
 	prompt, err := BuildPrompt(s, resolvedSkills)
 	if err != nil {
 		return Inputs{}, err
@@ -88,15 +89,12 @@ func Fingerprint(s Scene, renderer string, resolvedSkills map[string]string) (In
 		parts["skill:"+name] = digest
 	}
 	parts["prompt"] = digestString(prompt)
-	files := []string{"scene.json", s.Transcript}
-	if _, err := os.Stat(filepath.Join(s.Directory, "prompt.md")); err == nil {
-		files = append(files, "prompt.md")
+	// 召回的记忆单列一项：记忆一变，Stale 的原因能直接说成「召回的记忆变了」，
+	// 而不是笼统的 prompt。没有召回时不加这一项，打开记忆不会让老镜头全部 Stale。
+	if s.Memory.active() {
+		parts["memory"] = s.Memory.Digest
 	}
-	if s.StyleGuide != "" {
-		files = append(files, s.StyleGuide)
-	}
-	files = append(files, timingInputFiles(s)...)
-	for _, rel := range files {
+	for _, rel := range InputFiles(s) {
 		digest, err := digestFile(filepath.Join(s.Directory, rel))
 		if err != nil {
 			return Inputs{}, err
@@ -113,6 +111,20 @@ func Fingerprint(s Scene, renderer string, resolvedSkills map[string]string) (In
 		parts["cast:"+filepath.ToSlash(s.Cast.PackDir)] = digest
 	}
 	return Inputs{Fingerprint: combine(parts), Parts: parts}, nil
+}
+
+// InputFiles 列出镜头声明过的输入文件（相对镜头目录），即输入指纹覆盖的文件。
+// 渲染记忆冻结经历时按这份清单拷贝，与指纹同源，不会一边多一边少。
+// 角色包是目录，见 Scene.Cast.PackDir，不在这份清单里。
+func InputFiles(s Scene) []string {
+	files := []string{"scene.json", s.Transcript}
+	if _, err := os.Stat(filepath.Join(s.Directory, "prompt.md")); err == nil {
+		files = append(files, "prompt.md")
+	}
+	if s.StyleGuide != "" {
+		files = append(files, s.StyleGuide)
+	}
+	return append(files, timingInputFiles(s)...)
 }
 
 // Changed 列出与 other 相比内容不同、新增或消失的输入项，按名字排序。

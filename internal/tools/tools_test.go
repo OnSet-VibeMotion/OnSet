@@ -2,6 +2,7 @@ package tools
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -64,6 +65,22 @@ func TestOrchestratorInvocationUsesSafeWorkspaceMode(t *testing.T) {
 	want := []string{"codex", "--ask-for-approval", "never", "-c", "sandbox_workspace_write.network_access=true", "exec", "--skip-git-repo-check", "--cd", "/work", "--sandbox", "workspace-write", "--json", "-"}
 	if !reflect.DeepEqual(got, want) || stdin != "prompt" {
 		t.Fatalf("got=%#v stdin=%q", got, stdin)
+	}
+}
+
+// TestCodexSandboxAddsWritableMemoryDir：编排工具调用的 am 要写用户级记忆库，
+// codex 的 workspace-write 沙箱只放行工作目录，记忆库要用 --add-dir 加进去；
+// 不存在的目录不传。
+func TestCodexSandboxAddsWritableMemoryDir(t *testing.T) {
+	memory := t.TempDir()
+	got, _, err := OrchestratorInvocation("codex", OrchestratorOptions{Workdir: "/work", Prompt: "p",
+		Access: OrchestratorAccess{WritableDirs: []string{memory, filepath.Join(memory, "missing")}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(got, " ")
+	if !strings.Contains(joined, "--sandbox workspace-write --add-dir "+memory+" --json") || strings.Contains(joined, "missing") {
+		t.Fatalf("got=%v", got)
 	}
 }
 

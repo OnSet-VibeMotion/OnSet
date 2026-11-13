@@ -1,0 +1,92 @@
+package studio
+
+import (
+	"net/http"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/chouheiwa/articale-to-motion/internal/memory"
+)
+
+// TestMemoryPanelReadsStoreAndRecallsForScene：面板的读接口只读记忆库，
+// 「本镜头想起了什么」给出召回条目与理由；考场里的镜头副本不出现在镜头列表里。
+func TestMemoryPanelReadsStoreAndRecallsForScene(t *testing.T) {
+	root := t.TempDir()
+	memoryDir := t.TempDir()
+	t.Setenv("AM_MEMORY_DIR", memoryDir)
+	writeStudioFile(t, filepath.Join(root, "article-to-motion.conf"), "ORCHESTRATOR=codex\nRENDERER=claude\nMEMORY=on\n")
+	scene := filepath.Join(root, "scenes", "scene-001")
+	writeStudioFile(t, filepath.Join(scene, "transcript.srt"), "1\n00:00:00,000 --> 00:00:01,000\nx\n")
+	writeStudioFile(t, filepath.Join(scene, "scene.json"), `{"id":"scene-001","duration_seconds":2,"output":"out.mp4","transcript":"transcript.srt","text":"中文标题"}`)
+	exam := filepath.Join(root, "production", "memory-exams", "exam-0001", "q1", "claude-trial-1")
+	writeStudioFile(t, filepath.Join(exam, "scene.json"), `{"id":"scene-001","duration_seconds":2,"output":"out.mp4"}`)
+
+	store, err := memory.Open(memoryDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule := memory.Memory{Kind: memory.KindLesson, Meta: memory.Meta{Name: "cjk-font-local", Description: "中文字体用本地文件", Status: memory.StatusActive,
+		AppliesWhen: memory.Applies{Features: []string{"cjk_text"}}, CheckedBy: []string{"determinism.remote-font"}}, Body: "反例：x\n正例：y"}
+	store.Write(rule)
+	store.TakeSnapshot(memory.EventManualEdit, "初始", true)
+
+	_, ts := startStudio(t, Config{ProjectPath: root, ConfigPath: filepath.Join(t.TempDir(), "projects.json")})
+	status, body := studioRequest(t, http.MethodGet, ts.URL+"/api/scenes", "")
+	requireStudioStatus(t, status, http.StatusOK, body)
+	if scenes := studioList(t, body["scenes"]); len(scenes) != 1 {
+		t.Fatalf("考场里的镜头副本不该算作项目镜头：%#v", scenes)
+	}
+	status, body = studioRequest(t, http.MethodGet, ts.URL+"/api/memory", "")
+	requireStudioStatus(t, status, http.StatusOK, body)
+	if body["enabled"] != true || len(studioList(t, body["memories"])) != 1 || len(studioList(t, body["snapshots"])) != 1 {
+		t.Fatalf("记忆面板数据不对：%#v", body)
+	}
+	status, body = studioRequest(t, http.MethodGet, ts.URL+"/api/memory/recall?scene=scene-001", "")
+	requireStudioStatus(t, status, http.StatusOK, body)
+	reasons := studioList(t, body["reasons"])
+	if len(reasons) != 1 || !strings.Contains(reasons[0].(string), "cjk_text") || !strings.Contains(body["section"].(string), "cjk-font-local") {
+		t.Fatalf("召回结果不对：%#v", body)
+	}
+	status, body = studioRequest(t, http.MethodPost, ts.URL+"/api/memory/actions/promote", `{"name":"../x"}`)
+	requireStudioStatus(t, status, http.StatusBadRequest, body)
+	status, body = studioRequest(t, http.MethodPost, ts.URL+"/api/memory/actions/exam", `{"renderers":["rm -rf"]}`)
+	requireStudioStatus(t, status, http.StatusBadRequest, body)
+	status, body = studioRequest(t, http.MethodPost, ts.URL+"/api/memory/actions/shell", `{}`)
+	requireStudioStatus(t, status, http.StatusNotFound, body)
+}
+
+// TestChatTurnsCarryUserPreferences：用户偏好交给编排工具，让它能按偏好理解
+// 简短的要求；偏好没变时续接的会话不重复发送，偏好变了下一轮就带上新版本。
+func TestChatTurnsCarryUserPreferences(t *testing.T) {
+	f := newSessionFixture(t)
+	memoryDir := t.TempDir()
+	t.Setenv("AM_MEMORY_DIR", memoryDir)
+	store, err := memory.Open(memoryDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Remember(memory.RememberInput{Name: "calm-palette", Body: "配色克制，不要满屏霓虹", Global: true}); err != nil {
+		t.Fatal(err)
+	}
+	status, body := studioRequest(t, http.MethodPost, f.url+"/api/sessions", `{"title":"偏好"}`)
+	requireStudioStatus(t, status, http.StatusCreated, body)
+	id := body["session_id"].(string)
+	turn := func(message string) string {
+		status, body := studioRequest(t, http.MethodPost, f.url+"/api/sessions/"+id+"/turns", `{"message":"`+message+`"}`)
+		requireStudioStatus(t, status, http.StatusAccepted, body)
+		f.waitIdle(t, id)
+		args := f.args(t)
+		return args[len(args)-1]
+	}
+	if first := turn("来个科普的"); !strings.Contains(first, "【calm-palette】") || !strings.Contains(first, "am memory remember") {
+		t.Fatalf("第一轮应当带上用户偏好：%s", first)
+	}
+	if second := turn("再快一点"); strings.Contains(second, "用户偏好") {
+		t.Errorf("偏好没变时续接的会话不重复发送：%s", second)
+	}
+	store.Remember(memory.RememberInput{Name: "no-emoji", Body: "画面里不要 emoji", Global: true})
+	if third := turn("换个开头"); !strings.Contains(third, "【no-emoji】") {
+		t.Errorf("偏好变了下一轮要带上新版本：%s", third)
+	}
+}

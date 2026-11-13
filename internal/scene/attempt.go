@@ -22,19 +22,24 @@ func (s Scene) AttemptLog() string {
 // 失败、输入是哪一套」：跨多次运行对比镜头耗时、找出反复失败的镜头，都靠它，
 // 而这些信息过去只活在当次 run-all 的终端输出里。
 type Attempt struct {
-	Schema      int          `json:"schema"`
-	SceneID     string       `json:"scene_id"`
-	Renderer    string       `json:"renderer"`
-	Fingerprint string       `json:"fingerprint,omitempty"`
-	StartedAt   string       `json:"started_at"`
-	EndedAt     string       `json:"ended_at"`
-	Seconds     float64      `json:"seconds"`
-	Outcome     string       `json:"outcome"`
-	ExitCode    *int         `json:"exit_code,omitempty"`
-	Error       string       `json:"error,omitempty"`
-	Problems    []string     `json:"problems,omitempty"`
-	Retry       bool         `json:"retry"`
-	Usage       *tools.Usage `json:"usage,omitempty"`
+	Schema   int    `json:"schema"`
+	SceneID  string `json:"scene_id"`
+	Renderer string `json:"renderer"`
+	// Model 是渲染工具实际用的模型：优先从输出流读，读不到时取工具配置文件
+	// 声明的默认模型，都没有时为空。同一渲染工具换了模型，犯的错可能完全不同。
+	Model       string   `json:"model,omitempty"`
+	Fingerprint string   `json:"fingerprint,omitempty"`
+	StartedAt   string   `json:"started_at"`
+	EndedAt     string   `json:"ended_at"`
+	Seconds     float64  `json:"seconds"`
+	Outcome     string   `json:"outcome"`
+	ExitCode    *int     `json:"exit_code,omitempty"`
+	Error       string   `json:"error,omitempty"`
+	Problems    []string `json:"problems,omitempty"`
+	// Checks 是 Problems 对应的校验器 ID，见 VerificationError.Checks。
+	Checks []string     `json:"checks,omitempty"`
+	Retry  bool         `json:"retry"`
+	Usage  *tools.Usage `json:"usage,omitempty"`
 }
 
 // 尝试结果。verification_failed 单列：它是确定性失败，不该与渲染器崩溃混在一起统计。
