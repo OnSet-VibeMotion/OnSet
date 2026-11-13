@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"testing"
+
+	"github.com/chouheiwa/articale-to-motion/internal/hyperframes"
 )
 
 // TestMain 把记忆库指到临时目录：渲染记忆默认打开，没设 AM_MEMORY_DIR 的测试
@@ -15,7 +17,7 @@ func TestMain(m *testing.M) {
 	}
 	os.Setenv("AM_MEMORY_DIR", dir)
 	// 新建项目会在后台装 HyperFrames 官方技能，要联网；测试里换成什么都不做。
-	installOfficialSkills = func(context.Context, string) error { return nil }
+	installOfficialSkills = func(context.Context, string, func(hyperframes.Progress)) error { return nil }
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)

@@ -1438,3 +1438,55 @@ button.skills-pill.bad {
   background: color-mix(in srgb, var(--bad) 12%, transparent);
   color: var(--bad);
 }
+.skills-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+  padding: 4px 10px 5px;
+  border-radius: 10px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+}
+.skills-progress-text {
+  font-size: 11px;
+  color: var(--accent-text);
+  white-space: nowrap;
+}
+.skills-track {
+  position: relative;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  overflow: hidden;
+}
+.skills-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 600ms ease;
+}
+/* 检出技能文件这一步 git 不报进度：已走到的部分实心，后面一段光来回扫。 */
+.skills-track.indeterminate::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, var(--accent-text), transparent);
+  animation: skills-sweep 1.2s ease-in-out infinite;
+}
+@keyframes skills-sweep {
+  from {
+    left: -30%;
+  }
+  to {
+    left: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skills-track.indeterminate::after {
+    animation: none;
+  }
+}

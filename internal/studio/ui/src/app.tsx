@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { api, errorText, post } from './api';
 import { Chat, type Outbox } from './components/Chat';
 import { Home, type ProjectSummary } from './components/Home';
+import { SkillsPill, type SkillsStatus } from './components/SkillsPill';
 import { Icon } from './components/Icon';
 import { Preview, type Tab } from './components/Preview';
 import { ProjectDialog } from './components/ProjectDialog';
@@ -46,7 +47,7 @@ export function App() {
   const [summaries, setSummaries] = useState<Record<string, ProjectSummary>>({});
   const [defaultParent, setDefaultParent] = useState('');
   const [homeAgents, setHomeAgents] = useState<AgentsResponse | null>(null);
-  const [skills, setSkills] = useState<{ installed: boolean; installing: boolean; error?: string } | null>(null);
+  const [skills, setSkills] = useState<SkillsStatus | null>(null);
   // 首页：没有打开项目时总是显示；打开项目后点左上角也能回到首页。
   const [homeOpen, setHomeOpen] = useState(false);
   const [currentId, setCurrentId] = useState('');
@@ -162,7 +163,7 @@ export function App() {
   // HyperFrames 官方技能：在 Studio 里新建的项目在后台装，装好之前或装失败时提示。
   const loadSkills = useCallback(async () => {
     try {
-      const result = await api<{ status?: { installed: boolean; installing: boolean; error?: string } }>('/api/skills');
+      const result = await api<{ status?: SkillsStatus }>('/api/skills');
       setSkills(result.status ?? null);
       return result.status;
     } catch {
@@ -176,7 +177,7 @@ export function App() {
     let timer = 0;
     const poll = async () => {
       const status = await loadSkills();
-      if (status?.installing) timer = window.setTimeout(poll, 3000);
+      if (status?.installing) timer = window.setTimeout(poll, 1000);
     };
     void poll();
     return () => window.clearTimeout(timer);
@@ -186,9 +187,9 @@ export function App() {
       setSkills(await post('/api/skills/install'));
       const poll = async () => {
         const status = await loadSkills();
-        if (status?.installing) window.setTimeout(poll, 3000);
+        if (status?.installing) window.setTimeout(poll, 1000);
       };
-      window.setTimeout(poll, 3000);
+      window.setTimeout(poll, 1000);
     } catch (err) {
       notify(errorText(err));
     }
@@ -319,17 +320,7 @@ export function App() {
           </span>
         )}
         {state?.metadata.style_name && <span class="chip">{state.metadata.style_name}</span>}
-        {currentId && !homeOpen && skills && !skills.installed && (
-          <button
-            class={'skills-pill' + (skills.error ? ' bad' : '')}
-            id="install-skills"
-            disabled={skills.installing}
-            onClick={installSkills}
-            title={skills.error || '渲染要用 HyperFrames 官方技能（hyperframes 入口技能等），这个项目还没装'}
-          >
-            {skills.installing ? '正在安装 HyperFrames 技能…' : skills.error ? '技能安装失败，点此重试' : '缺少 HyperFrames 技能 · 安装'}
-          </button>
-        )}
+        {currentId && !homeOpen && skills && !skills.installed && <SkillsPill status={skills} onInstall={installSkills} />}
         <span class="spacer" />
         {busy && (
           <span class="pill busy" title="同一时间只有一个写入者">

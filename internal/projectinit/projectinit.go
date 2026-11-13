@@ -119,7 +119,8 @@ func Create(opts Options) (project.InitResult, error) {
 
 // InstallSkills 把固定版本的 HyperFrames 官方技能装进项目的 .agents/skills/，
 // 与内置技能重名的保留内置版本（返回在 Protected 里）。要联网。
-func InstallSkills(ctx context.Context, target string, env map[string]string, output io.Writer) (hyperframes.Result, error) {
+// progress 非空时汇报整体进度（见 hyperframes.Progress）。
+func InstallSkills(ctx context.Context, target string, env map[string]string, output io.Writer, progress func(hyperframes.Progress)) (hyperframes.Result, error) {
 	builtin, err := assets.BuiltinSkills()
 	if err != nil {
 		return hyperframes.Result{}, err
@@ -130,6 +131,7 @@ func InstallSkills(ctx context.Context, target string, env map[string]string, ou
 		Env:        env,
 		Protected:  builtin,
 		Output:     output,
+		Progress:   progress,
 	})
 }
 

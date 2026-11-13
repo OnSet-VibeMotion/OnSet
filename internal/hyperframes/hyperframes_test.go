@@ -43,7 +43,7 @@ func TestCopySkillsMovesWholeTree(t *testing.T) {
 	})
 	writeSkill(t, source, "hyperframes-core", nil)
 
-	result, err := copySkills([]string{source}, dest, nil)
+	result, err := copySkills([]string{source}, dest, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestCopySkillsPreservesExecutableBit(t *testing.T) {
 	if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := copySkills([]string{source}, dest, nil); err != nil {
+	if _, err := copySkills([]string{source}, dest, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(filepath.Join(dest, "hyperframes-cli", "scripts", "render.sh"))
@@ -96,7 +96,7 @@ func TestCopySkillsProtectsBuiltinSkills(t *testing.T) {
 
 	writeSkill(t, dest, "text-to-lottie", map[string]string{manifestFile: "本仓库 fork 版本\n"})
 
-	result, err := copySkills([]string{source}, dest, map[string]bool{"text-to-lottie": true})
+	result, err := copySkills([]string{source}, dest, map[string]bool{"text-to-lottie": true}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestCopySkillsReplacesRatherThanMerges(t *testing.T) {
 	writeSkill(t, source, "hyperframes-animation", map[string]string{"rules/new.md": "新版"})
 	writeSkill(t, dest, "hyperframes-animation", map[string]string{"rules/removed-upstream.md": "旧版残留"})
 
-	if _, err := copySkills([]string{source}, dest, nil); err != nil {
+	if _, err := copySkills([]string{source}, dest, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dest, "hyperframes-animation", "rules", "removed-upstream.md")); err == nil {
@@ -140,7 +140,7 @@ func TestCopySkillsIgnoresNonSkillDirectories(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(source, "README.md"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	result, err := copySkills([]string{source}, dest, nil)
+	result, err := copySkills([]string{source}, dest, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestCopySkillsFailsWhenNothingInstalled(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(source, "README.md"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := copySkills([]string{source}, dest, nil); err == nil {
+	if _, err := copySkills([]string{source}, dest, nil, nil); err == nil {
 		t.Error("产物里没有技能时应当报错，而不是静默成功")
 	}
 }
@@ -171,7 +171,7 @@ func TestCopyTreeRejectsSymlinks(t *testing.T) {
 	if err := os.Symlink("/somewhere/else", filepath.Join(source, "linked", "ref")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := copySkills([]string{source}, dest, nil); err == nil {
+	if _, err := copySkills([]string{source}, dest, nil, nil); err == nil {
 		t.Error("含符号链接的技能应当报错，而不是搬进去一个失效链接")
 	}
 }
@@ -437,5 +437,46 @@ func TestInstallRefusesUnexpectedSkillCount(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "26") {
 		t.Fatalf("技能数量对不上必须失败并报出期望值，实际：%v", err)
+	}
+}
+
+// TestInstallReportsProgress：进度只往前走，经过检出（不确定进度）和逐个拷贝，最后到 100。
+func TestInstallReportsProgress(t *testing.T) {
+	url, commit := fixtureRepo(t, "v9.9.9", []string{"hyperframes-animation"}, []string{"hyperframes-core"})
+	var reports []Progress
+	_, err := Install(context.Background(), Options{
+		ProjectDir: t.TempDir(), Version: "9.9.9", RepoURL: url, ExpectCommit: commit, ExpectSkills: 2,
+		Env:      map[string]string{"PATH": os.Getenv("PATH"), "HOME": t.TempDir()},
+		Output:   &bytes.Buffer{},
+		Progress: func(p Progress) { reports = append(reports, p) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sawCheckout, sawCopy := false, false
+	for i, p := range reports {
+		if i > 0 && p.Percent < reports[i-1].Percent {
+			t.Fatalf("进度倒退：%+v", reports)
+		}
+		sawCheckout = sawCheckout || (p.Indeterminate && p.Stage == "下载技能文件")
+		sawCopy = sawCopy || (p.Stage == "拷进项目" && p.Percent > copyStart)
+	}
+	if !sawCheckout || !sawCopy || reports[len(reports)-1].Percent != 100 {
+		t.Fatalf("reports=%+v", reports)
+	}
+}
+
+// TestGitProgressParsesStages：git 的 \r 分隔进度行换算成整体进度，原始输出照样转出。
+func TestGitProgressParsesStages(t *testing.T) {
+	var got []Progress
+	var raw bytes.Buffer
+	g := &gitProgress{report: func(p Progress) { got = append(got, p) }, next: &raw}
+	g.Write([]byte("Cloning into '.'...\nremote: Counting objects:  50% (1/2)\rReceiving obj"))
+	g.Write([]byte("ects:  50% (3/6)\rReceiving objects: 100% (6/6), done.\nResolving deltas:  10% (1/10)\rremote: Counting objects: 100% (2/2)\n"))
+	if len(got) != 4 || got[0].Stage != "连接上游仓库" || got[1].Percent != 35 || got[2].Percent != 62 || got[3].Stage != "整理下载内容" {
+		t.Fatalf("got=%+v", got)
+	}
+	if !bytes.Contains(raw.Bytes(), []byte("Cloning into")) {
+		t.Fatal("原始输出要转给 next")
 	}
 }

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/chouheiwa/articale-to-motion/internal/hyperframes"
 )
 
 // TestCreateHonoursModesAndInstallsSkills：新建项目与 am init 同一条路——卡点、多角色对话
@@ -19,8 +21,9 @@ func TestCreateHonoursModesAndInstallsSkills(t *testing.T) {
 	s, ts := startStudio(t, Config{ConfigPath: filepath.Join(t.TempDir(), "projects.json")})
 	calls := make(chan string, 4)
 	fail := true
-	s.skills.install = func(_ context.Context, dir string) error {
+	s.skills.install = func(_ context.Context, dir string, report func(hyperframes.Progress)) error {
 		failing := fail
+		report(hyperframes.Progress{Stage: "下载技能仓库", Percent: 40})
 		calls <- dir
 		if failing {
 			return errors.New("没有网络")
@@ -79,5 +82,35 @@ func TestCreateHonoursModesAndInstallsSkills(t *testing.T) {
 	requireStudioStatus(t, status, http.StatusOK, body)
 	if body["status"].(map[string]any)["installed"] != false {
 		t.Fatalf("没有来源记录就不算装过：%#v", body["status"])
+	}
+}
+
+// TestSkillsStatusCarriesProgress：安装进行中，状态里带着当前一步与整体百分比；装完就不再有进度。
+func TestSkillsStatusCarriesProgress(t *testing.T) {
+	s, err := New(Config{ConfigPath: filepath.Join(t.TempDir(), "projects.json")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reported, release := make(chan struct{}), make(chan struct{})
+	s.skills.install = func(_ context.Context, _ string, report func(hyperframes.Progress)) error {
+		report(hyperframes.Progress{Stage: "下载技能仓库", Percent: 35})
+		close(reported)
+		<-release
+		return nil
+	}
+	dir := t.TempDir()
+	s.installSkills(dir)
+	<-reported
+	status := s.skillsStatus(dir)
+	if !status.Installing || status.Progress == nil || status.Progress.Percent != 35 || status.Progress.Stage != "下载技能仓库" {
+		t.Fatalf("status=%+v", status)
+	}
+	close(release)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && s.skillsStatus(dir).Installing {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if status := s.skillsStatus(dir); status.Installing || status.Progress != nil {
+		t.Fatalf("装完不该还有进度：%+v", status)
 	}
 }

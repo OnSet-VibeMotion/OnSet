@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chouheiwa/articale-to-motion/internal/hyperframes"
 	"github.com/chouheiwa/articale-to-motion/internal/ledger"
 	"github.com/chouheiwa/articale-to-motion/internal/memory"
 	"github.com/chouheiwa/articale-to-motion/internal/scene"
@@ -195,5 +196,18 @@ func TestConsolidateRecordsDrafterUsageInMemoryStore(t *testing.T) {
 	entries, err := ledger.Read(ledger.MemoryFile(memoryDir))
 	if err != nil || len(entries) != 1 || entries[0].Source != ledger.SourceConsolidate || entries[0].Usage == nil || entries[0].Usage.InputTokens != 70 {
 		t.Fatalf("entries=%+v err=%v output=%s", entries, err, out.String())
+	}
+}
+
+func TestSkillsProgressPrinterRefreshesOneLine(t *testing.T) {
+	var out bytes.Buffer
+	print := skillsProgressPrinter(&out)
+	print(hyperframes.Progress{Stage: "下载技能仓库", Percent: 35.2})
+	print(hyperframes.Progress{Stage: "下载技能仓库", Percent: 35.4})
+	print(hyperframes.Progress{Stage: "下载技能文件", Percent: 72, Indeterminate: true})
+	print(hyperframes.Progress{Stage: "完成", Percent: 100})
+	text := out.String()
+	if strings.Count(text, "下载技能仓库") != 1 || !strings.Contains(text, " 35%") || !strings.Contains(text, "下载技能文件") || !strings.HasSuffix(text, "100%\n") {
+		t.Fatalf("out=%q", text)
 	}
 }

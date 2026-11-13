@@ -112,6 +112,9 @@ type Options struct {
 	Protected map[string]bool
 	// Output 接收安装器的进度输出。
 	Output io.Writer
+	// Progress 非空时汇报整体进度：克隆时让 git 输出 --progress 并解析百分比，
+	// 检出时报告不确定进度，拷贝时按技能逐个计数。
+	Progress func(Progress)
 }
 
 // Result 汇报安装结果。
@@ -151,7 +154,12 @@ func Install(ctx context.Context, opts Options) (Result, error) {
 	}
 	defer os.RemoveAll(tmp)
 
-	commit, err := cloneSkills(ctx, git, tmp, opts)
+	report := opts.Progress
+	if report == nil {
+		report = func(Progress) {}
+	}
+	report(Progress{Stage: "连接上游仓库", Percent: 0})
+	commit, err := cloneSkills(ctx, git, tmp, opts, report)
 	if err != nil {
 		return Result{}, err
 	}
@@ -167,7 +175,10 @@ func Install(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, fmt.Errorf("上游仓库 %s 在 %s 上没有 %v 中的任何一处，技能目录结构已变",
 			opts.RepoURL, commit, skillsSubdirsInRepo)
 	}
-	result, err := copySkills(sources, filepath.Join(opts.ProjectDir, SkillsSubdir), opts.Protected)
+	report(Progress{Stage: "拷进项目", Percent: copyStart})
+	result, err := copySkills(sources, filepath.Join(opts.ProjectDir, SkillsSubdir), opts.Protected, func(done int) {
+		report(Progress{Stage: "拷进项目", Percent: copyStart + float64(5*done)/float64(max(opts.ExpectSkills, done))})
+	})
 	if err != nil {
 		return Result{}, err
 	}
@@ -182,6 +193,7 @@ func Install(ctx context.Context, opts Options) (Result, error) {
 	if err := WriteManifest(opts.ProjectDir, opts.Version, commit, result.Installed); err != nil {
 		return Result{}, err
 	}
+	report(Progress{Stage: "完成", Percent: 100})
 	return result, nil
 }
 
@@ -197,28 +209,36 @@ func Install(ctx context.Context, opts Options) (Result, error) {
 //   - --filter=blob:none --sparse：仓库带着 packages/ 和测试产物，完整克隆几百 MB。
 //   - GIT_CONFIG_GLOBAL/SYSTEM=/dev/null：用户的 git 配置（钩子、filter、
 //     autocrlf）不能参与，否则同一个 commit 在不同人机器上检出结果不同。
-func cloneSkills(ctx context.Context, git, dir string, opts Options) (string, error) {
+func cloneSkills(ctx context.Context, git, dir string, opts Options, report func(Progress)) (string, error) {
 	env := envutil.EnvList(cloneEnv(opts.Env))
-	run := func(args ...string) (string, error) {
+	run := func(stderr io.Writer, args ...string) (string, error) {
 		cmd := exec.CommandContext(ctx, git, args...)
 		cmd.Dir = dir
 		cmd.Env = env
-		cmd.Stderr = opts.Output
+		cmd.Stderr = stderr
 		out, err := cmd.Output()
 		return strings.TrimSpace(string(out)), err
 	}
 	tag := "v" + opts.Version
 	// -c advice.detachedHead=false：按 tag 克隆必然是 detached HEAD，git 会
 	// 往 stderr 打一段给人看的忠告，而 stderr 是接到 am 输出上的。
-	if _, err := run("-c", "advice.detachedHead=false", "clone", "--quiet",
+	// 要进度时用 --progress（stderr 不是终端时 git 默认不报进度）：进度行解析成回调，
+	// 原文照样转给 Output，克隆失败时 git 的 fatal 信息还在。
+	verbosity, cloneErr := "--quiet", opts.Output
+	if opts.Progress != nil {
+		verbosity, cloneErr = "--progress", &gitProgress{report: report, next: opts.Output}
+	}
+	if _, err := run(cloneErr, "-c", "advice.detachedHead=false", "clone", verbosity,
 		"--depth", "1", "--filter=blob:none", "--sparse", "--branch", tag,
 		opts.RepoURL, "."); err != nil {
 		return "", fmt.Errorf("克隆 %s 的 %s 失败：%w", opts.RepoURL, tag, err)
 	}
-	if _, err := run(append([]string{"sparse-checkout", "set"}, skillsSubdirsInRepo...)...); err != nil {
+	// 检出时才按需下载技能目录里的文件内容（--filter=blob:none），git 不报进度。
+	report(Progress{Stage: "下载技能文件", Percent: checkoutStart, Indeterminate: true})
+	if _, err := run(opts.Output, append([]string{"sparse-checkout", "set"}, skillsSubdirsInRepo...)...); err != nil {
 		return "", fmt.Errorf("检出技能目录失败：%w", err)
 	}
-	commit, err := run("rev-parse", "HEAD")
+	commit, err := run(opts.Output, "rev-parse", "HEAD")
 	if err != nil {
 		return "", fmt.Errorf("无法解析 %s 指向的 commit：%w", tag, err)
 	}
@@ -251,7 +271,7 @@ func cloneEnv(env map[string]string) map[string]string {
 // 上游技能由 am 按固定 commit 管理，所以同名目录整体替换而不是合并：残留上
 // 一版的文件会让技能树处于两个版本混合的状态，而那正是固定版本要消除的东西。
 // 随二进制下发的技能受 protected 保护，永远不会被上游同名技能覆盖。
-func copySkills(sources []string, dest string, protected map[string]bool) (Result, error) {
+func copySkills(sources []string, dest string, protected map[string]bool, copied func(done int)) (Result, error) {
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return Result{}, err
 	}
@@ -288,6 +308,9 @@ func copySkills(sources []string, dest string, protected map[string]bool) (Resul
 				return Result{}, fmt.Errorf("拷贝技能 %s 失败：%w", name, err)
 			}
 			result.Installed = append(result.Installed, name)
+			if copied != nil {
+				copied(len(result.Installed) + len(result.Protected))
+			}
 		}
 	}
 	if len(result.Installed) == 0 {

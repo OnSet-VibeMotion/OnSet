@@ -256,7 +256,7 @@ SVG 转 PNG 必须走 `rsvg-convert`（`internal/styleimage`），**不能用 Im
 | 编排工具要用户拍板时在回复末尾写 ` ```choices ` 代码块，网页渲染成按钮（`Chat.tsx` 的 `parseChoices`），点了把那一行原样发出；约定写在 `studioInteraction`，聊天开场、整片制作第一轮、续接失败补发时都带上 | 没有结构化的「提问」事件，这是三家都能做到的最小约定；改格式要两边一起改 |
 | 待办清单统一成 `agentrun.KindPlan`（claude 的 TodoWrite、codex 的 `todo_list`、opencode 的 `todowrite`），每条是完整清单；镜头的「渲染中」由渲染日志三分钟内有写入且比尝试记录新判断（`sceneRendering`） | 整片制作要跑几个小时，只看一串工具调用不知道做到哪了。新增一家 CLI 时它的待办工具也要译成 plan 事件 |
 | 聊天面板的结构照 OpenDesign：一轮的过程（思考、工具、中间的话）收进一个折叠块，进行中展开、结束收起，结尾的话才是回复；进度是底部浮动的药丸，排队的消息叠在输入框上方。事件到界面的整理只在 `ui/src/components/chat/model.ts`（`buildBlocks`） | 一轮动辄几十次工具调用，平铺会把回复淹没；整理逻辑放一处，渲染组件只管画 |
-| 建项目只走 `internal/projectinit`：`am init` 与 Studio 的新建（`createAPI`）共用 `Create`（讲解形式、叙事模式、cast 骨架）与 `InstallSkills`（HyperFrames 官方技能）。Studio 新建后在后台装技能（`installSkills`），顶栏在缺技能时给「安装」；浏览器端到端测试用 `AM_STUDIO_SKIP_SKILL_INSTALL=1` 跳过联网 | 两边各写一份时 Studio 漏了讲解形式、多角色对话，也不装官方技能，渲染器拿不到 hyperframes 入口技能 |
+| 建项目只走 `internal/projectinit`：`am init` 与 Studio 的新建（`createAPI`）共用 `Create`（讲解形式、叙事模式、cast 骨架）与 `InstallSkills`（HyperFrames 官方技能）。Studio 新建后在后台装技能（`installSkills`），顶栏在缺技能时给「安装」，安装中显示进度条（`hyperframes.Options.Progress`：克隆时让 git `--progress` 并解析百分比，检出那一步 git 不报进度、显示不确定进度，拷贝按技能计数；`am init` 在终端里用一行回车刷新）；浏览器端到端测试用 `AM_STUDIO_SKIP_SKILL_INSTALL=1` 跳过联网 | 两边各写一份时 Studio 漏了讲解形式、多角色对话，也不装官方技能，渲染器拿不到 hyperframes 入口技能 |
 | 没有打开项目、或点左上角时显示首页（`Home.tsx`，照 OpenDesign 首页）：在输入框说要做什么、拖进文章，发送即 `projects/create` → `uploads` → `production/start`（带 `attachments`）。项目名由第一句话或文件名推出，重名加 `-2`；「保存到」默认取上次新建时的父目录（`registry.LastParent`），最近项目带阶段与出片摘要（`ProjectSummary`） | 从一句话到开始制作不该要先填一张表；已经不存在的项目不混进最近列表，给一键清理 |
 | `/api/files` 与 `/preview/scenes/` 经 `containedPath` 解析（含符号链接），`.env` 一律不读 | 默认只监听回环地址，但手机经隧道访问时这两个接口就是对外的 |
 

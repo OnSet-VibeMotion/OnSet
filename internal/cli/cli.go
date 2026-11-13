@@ -245,7 +245,7 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
 				fmt.Fprintln(stdout, "警告：已跳过 HyperFrames 技能安装")
 				return nil
 			}
-			installed, err := projectinit.InstallSkills(cmd.Context(), target, currentEnvironment(), stderr)
+			installed, err := projectinit.InstallSkills(cmd.Context(), target, currentEnvironment(), stderr, skillsProgressPrinter(stderr))
 			if err != nil {
 				return fmt.Errorf("项目文件已写入，但 HyperFrames 技能安装失败：%w", err)
 			}
@@ -916,4 +916,24 @@ func (s *syncWriter) Write(p []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.writer.Write(p)
+}
+
+// skillsProgressPrinter 在终端里用一行回车刷新的进度显示 HyperFrames 技能安装：
+// 克隆要一分钟上下，不显示的话像是卡住了。只在整数百分比或步骤变化时刷新。
+func skillsProgressPrinter(w io.Writer) func(hyperframes.Progress) {
+	last := ""
+	return func(p hyperframes.Progress) {
+		line := fmt.Sprintf("安装 HyperFrames 技能：%s", p.Stage)
+		if !p.Indeterminate {
+			line += fmt.Sprintf(" %3.0f%%", p.Percent)
+		}
+		if line == last {
+			return
+		}
+		last = line
+		fmt.Fprintf(w, "\r\033[K%s", line)
+		if p.Percent >= 100 {
+			fmt.Fprintln(w)
+		}
+	}
 }
