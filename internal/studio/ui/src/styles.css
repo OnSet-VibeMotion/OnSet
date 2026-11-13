@@ -1825,3 +1825,36 @@ h4 {
   gap: 6px;
   margin: 0 0 10px;
 }
+
+/* 输入框下的一行：上传、两个工具选择、停止 / 打断 / 发送挤在一行，工具选择先收窄。 */
+.composer-actions {
+  flex-wrap: nowrap;
+}
+.composer-actions:has(.agent-error) {
+  flex-wrap: wrap;
+}
+.composer-actions > button {
+  flex: none;
+}
+.composer #upload {
+  height: 34px;
+  min-width: 34px;
+  padding: 0 8px;
+  border-radius: 8px;
+}
+.composer #interrupt {
+  height: 34px;
+  white-space: nowrap;
+}
+.agent-select {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.agent-select span {
+  flex: none;
+}
+.agent-select select {
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
