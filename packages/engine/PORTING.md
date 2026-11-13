@@ -33,6 +33,9 @@
 - **排序**：Go 的 `sort.Strings` 按字节序；用 `../gojson` 的 `compareBytes`，不要用 `localeCompare`。
 - **map 遍历顺序**：Go 的 map 遍历是随机的，Go 代码凡是依赖顺序的地方都先排过序；TS 照搬那次排序。
 
+- **正则**：Go 的 RE2 与 JS 正则有差别：RE2 的 `\s` 只含 ASCII 空白（写成 `[\t\n\f\r ]`）；`(?i)` 会让 `s` 匹配 `ſ`、`k` 匹配开尔文符号 K；不要给 JS 正则加 `u` 标志，否则 `\b`、`\w` 会变成 Unicode 语义。determinism 包里的 `gostd.ts` 有现成的处理，可以参考。
+- **写文件时的坑**：用编辑工具写入的源码里，正则字面量中的 `\uXXXX` 转义会被改写成真实字符（曾经出现一个真的 U+2028，把正则弄坏）。需要特殊字符时用 `String.fromCodePoint` 或码点比较，写完用 `LC_ALL=C grep -rln $'\xe2\x80\xa8' src` 自查。
+
 ## 测试
 
 - 每个 `_test.go` 里的每一条用例都要移植成 Vitest 用例，用例名可以用英文概括，断言要等价。不要因为难移植就跳过；确实依赖 Go 特有机制（如 `go:embed` 校验）的，在测试文件里写明为什么不移植。
