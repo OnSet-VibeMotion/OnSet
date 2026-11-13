@@ -3,6 +3,7 @@ import { Buffer, tempDir } from './testutil';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import * as filmstyle from '@am/engine/filmstyle';
 import * as scene from '@am/engine/scene';
 import { newSceneCuesCommand } from './scene_cues';
 
@@ -214,4 +215,50 @@ describe('am scene cues', () => {
     const changed = await runCues(root, '--check');
     expect(changed.err?.message).toContain('enter=scene-002/flood');
   });
+
+  // 镜头可以换风格：film_style 抄进 scene.json，风格交界两侧都拿到 style_shift 与对方的 film_style；
+  // 风格没装、风格交界没写 style_shift 都在写文件之前报错。
+  it('writes film styles and checks style boundaries', async () => {
+    const root = cuesProject();
+    writeStyle(path.join(root, '.agents', 'skills', filmstyle.SkillName), 'alpha/ink');
+    const plan = (shift: string) => `{"schema":1,"scenes":[
+  {"id":"scene-001","dir":"scenes/scene-001"},
+  {"id":"scene-002","dir":"scenes/scene-002","first_subtitle":2,"film_style":"beta/oil",
+   "handoff":{"device":"push_in","bridge":"相框里的油画铺满画面"${shift}}},
+  {"id":"scene-003","dir":"scenes/scene-003","first_phrase":"p-4","cut":"prev_end","film_style":"beta/oil"}]}`;
+    writePlan(root, plan(',"style_shift":"window"'));
+    const missing = await runCues(root);
+    expect(missing.err?.message).toContain('am film-style add beta/oil');
+
+    writeStyle(filmstyle.extraDir(root, 'beta/oil'), 'beta/oil');
+    writePlan(root, plan(''));
+    const noShift = await runCues(root);
+    expect(noShift.err?.message).toContain('handoff 要写 style_shift');
+
+    writePlan(root, plan(',"style_shift":"window"'));
+    const r = await runCues(root);
+    expect(r.err, r.out).toBeNull();
+    const load = (id: string) => scene.load(path.join(root, 'scenes', id));
+    expect(load('scene-001').film_style).toBe('');
+    expect(load('scene-002').film_style).toBe('beta/oil');
+    expect(load('scene-001').timing!.exit).toMatchObject({ peer: 'scene-002', style_shift: 'window', peer_film_style: 'beta/oil' });
+    expect(load('scene-002').timing!.enter).toMatchObject({ peer: 'scene-001', style_shift: 'window', peer_film_style: '' });
+    expect((await runCues(root, '--check')).err).toBeNull();
+
+    // 手改了镜头的 film_style，--check 要指出来；重跑 cues 按计划改回去，计划不写时删掉这个字段。
+    const file = path.join(root, 'scenes', 'scene-003', 'scene.json');
+    fs.writeFileSync(file, mustRead(file).replace('"beta/oil"', '"none"'));
+    expect((await runCues(root, '--check')).err?.message).toContain('film_style 是 "none"');
+    writePlan(root, plan(',"style_shift":"window"').replace(',"film_style":"beta/oil"}]}', '}]}'));
+    const back = await runCues(root);
+    expect(back.err?.message, '撤掉 scene-003 的风格后 002→003 成了风格交界').toContain('风格交界必须写 handoff');
+  });
 });
+
+function writeStyle(dir: string, key: string): void {
+  const [source, slug] = key.split('/');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, filmstyle.StyleFile), '# ' + key + '\n');
+  fs.writeFileSync(path.join(dir, filmstyle.GuideFile), '# guide\n');
+  fs.writeFileSync(path.join(dir, filmstyle.ManifestFile), JSON.stringify({ source, slug, cn: slug, en: slug, version: 'v1', digest: 'x', installed_at: '' }));
+}

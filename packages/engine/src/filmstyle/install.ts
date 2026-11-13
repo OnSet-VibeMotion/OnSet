@@ -51,9 +51,36 @@ export function manifestKey(manifest: Pick<Manifest, 'source' | 'slug'>): string
   return manifest.source + '/' + manifest.slug;
 }
 
-/** 项目里整片风格技能目录的路径。 */
+/** 项目里整片风格技能目录的路径（默认风格）。 */
 export function skillDir(projectDir: string): string {
   return path.join(projectDir, SkillsSubdir, SkillName);
+}
+
+/**
+ * 默认风格之外、个别镜头用的风格装在这里：.agents/am-film-styles/<来源>/<目录名>/。
+ *
+ * 不放进 .agents/skills：镜头的输入指纹把整个 .agents/skills 算成一份摘要，
+ * 装在那里的话给项目添一种风格，所有镜头都会变成 Stale。放在这里，只有用到它的镜头
+ * 才把它算进指纹（scene.resolveAllSkills）。契约与默认风格相同（STYLE.md + SKILL.md + 来源记录）。
+ */
+export const ExtraSubdir = '.agents/am-film-styles';
+
+/** 额外风格在项目里的目录。 */
+export function extraDir(projectDir: string, key: string): string {
+  const [source, slug] = splitKey(key);
+  return path.join(projectDir, ExtraSubdir, source, slug);
+}
+
+/** 镜头 scene.json 里 film_style 写 none 表示这个镜头不用任何整片风格。 */
+export const NoFilmStyle = 'none';
+
+/** 拆开「来源/目录名」；写法不对时报错。 */
+export function splitKey(key: string): [string, string] {
+  const parts = key.split('/');
+  if (parts.length !== 2 || parts.some((p) => p === '' || p === '.' || p === '..' || /\s/.test(p) || p.includes('\\'))) {
+    throw new Error(`风格标识要写成「来源/目录名」，收到 ${goQuote(key)}`);
+  }
+  return [parts[0], parts[1]];
 }
 
 function legacyDir(projectDir: string): string {
@@ -168,6 +195,56 @@ export function installed(projectDir: string): { manifest: Manifest; ok: boolean
   }
 }
 
+function readManifest(file: string): Manifest | null {
+  const body = readOptional(file);
+  if (body === undefined) return null;
+  let raw: Record<string, unknown>;
+  try {
+    raw = decodeObject(body);
+  } catch (err) {
+    throw new Error(`${file} 损坏：${errorText(err)}`, { cause: err });
+  }
+  return {
+    source: stringField(raw, 'source'),
+    slug: stringField(raw, 'slug'),
+    cn: stringField(raw, 'cn'),
+    en: stringField(raw, 'en'),
+    version: stringField(raw, 'version'),
+    digest: stringField(raw, 'digest'),
+    installed_at: stringField(raw, 'installed_at'),
+    legacy: false,
+  };
+}
+
+/** 项目里装的额外风格（不含默认风格），按标识排序。 */
+export function installedExtras(projectDir: string): Manifest[] {
+  const root = path.join(projectDir, ExtraSubdir);
+  const out: Manifest[] = [];
+  let sources: fs.Dirent[];
+  try {
+    sources = sortedEntries(root);
+  } catch {
+    return out;
+  }
+  for (const source of sources) {
+    if (!source.isDirectory() || source.name.startsWith('.')) continue;
+    for (const slug of sortedEntries(path.join(root, source.name))) {
+      if (!slug.isDirectory() || slug.name.startsWith('.')) continue;
+      const manifest = readManifest(path.join(root, source.name, slug.name, ManifestFile));
+      if (manifest) out.push(manifest);
+    }
+  }
+  return out;
+}
+
+/** 项目里某种风格所在的目录（默认风格或额外风格）；没装时为空串。 */
+export function styleDirOf(projectDir: string, key: string): string {
+  const { manifest, ok } = installed(projectDir);
+  if (ok && manifestKey(manifest) === key) return installedDir(projectDir);
+  const dir = extraDir(projectDir, key);
+  return exists(path.join(dir, ManifestFile)) ? dir : '';
+}
+
 /** 一次整片风格安装。 */
 export interface InstallOptions {
   projectDir: string;
@@ -181,6 +258,15 @@ export interface InstallOptions {
   replace?: boolean;
   /** 用于测试；不给时取当前时间。 */
   now?: Date;
+  /**
+   * extra：装成额外风格（个别镜头用），不动默认风格。不给时装成默认风格。
+   */
+  as?: 'default' | 'extra';
+  /**
+   * 换掉默认风格时，把旧的默认风格留作额外风格而不是删掉：还有镜头点名用它时要这样，
+   * 否则那些镜头渲染时找不到风格。
+   */
+  keepReplaced?: boolean;
 }
 
 /** 安装结果。 */
@@ -202,25 +288,43 @@ function linkError(op: string, from: string, to: string, err: unknown): string {
 }
 
 /**
- * 把 opts.style 装进项目的 .agents/skills/am-film-style/。不联网：来源数据
+ * 把 opts.style 装进项目：默认装成默认风格（.agents/skills/am-film-style/），
+ * as: 'extra' 时装成额外风格（.agents/am-film-styles/<来源>/<目录名>/）。不联网：来源数据
  * 没就绪时由来源抛 prereq.MissingError。
  *
  * 先在同级临时目录让来源写好整棵技能树、校验契约，再整体换位：中途失败时项目里
- * 要么是旧风格、要么是新风格，不会半新半旧。装好后删掉旧目录（lemo-film-style）。
+ * 要么是旧风格、要么是新风格，不会半新半旧。装好默认风格后删掉旧目录（lemo-film-style）。
  */
 export function install(opts: InstallOptions): InstallResult {
   const style = opts.style;
   const source = sourceByID(style.source);
   if (!source) throw new Error(`没有风格来源 ${goQuote(style.source)}`);
-  const { manifest: previous, ok: had } = installed(opts.projectDir);
-  if (had && manifestKey(previous) !== styleKey(style) && !opts.replace) {
-    throw new Error(
-      `项目已使用整片风格 ${previous.cn} ${previous.en}（${manifestKey(previous)}）。换成 ${styleLabel(style)} 会让全部镜头需要重渲染；确认要换就加 --replace`,
-    );
+  const asExtra = opts.as === 'extra';
+  const { manifest: currentDefault, ok: hasDefault } = installed(opts.projectDir);
+  let previous: Manifest;
+  let had: boolean;
+  let target: string;
+  if (asExtra) {
+    if (hasDefault && manifestKey(currentDefault) === styleKey(style)) {
+      throw new Error(`${styleLabel(style)} 已经是本项目的默认风格，镜头不写 film_style 就会用它`);
+    }
+    target = extraDir(opts.projectDir, styleKey(style));
+    const found = readManifest(path.join(target, ManifestFile));
+    previous = found ?? currentDefault;
+    had = found !== null;
+  } else {
+    previous = currentDefault;
+    had = hasDefault;
+    target = skillDir(opts.projectDir);
+    if (had && manifestKey(previous) !== styleKey(style) && !opts.replace) {
+      throw new Error(
+        `项目已使用整片风格 ${previous.cn} ${previous.en}（${manifestKey(previous)}）。换成 ${styleLabel(style)} 会让全部镜头需要重渲染；确认要换就加 --replace`,
+      );
+    }
   }
-  const parent = path.dirname(skillDir(opts.projectDir));
+  const parent = path.dirname(target);
   fs.mkdirSync(parent, { recursive: true });
-  const staging = fs.mkdtempSync(path.join(parent, '.' + SkillName + '-'));
+  const staging = fs.mkdtempSync(path.join(parent, '.' + path.basename(target) + '-'));
   try {
     const version = source.fill(staging, style, opts.env ?? {});
     for (const required of [StyleFile, GuideFile]) {
@@ -252,7 +356,6 @@ export function install(opts: InstallOptions): InstallResult {
       installed_at: manifest.installed_at,
     });
     atomicWrite(path.join(staging, ManifestFile), body + '\n', 0o644);
-    const target = skillDir(opts.projectDir);
     let backup = '';
     if (exists(target)) {
       backup = staging + '.old';
@@ -274,22 +377,61 @@ export function install(opts: InstallOptions): InstallResult {
       }
       throw new Error(`放置整片风格：${linkError('rename', staging, target, err)}`, { cause: err });
     }
-    if (backup !== '') fs.rmSync(backup, { recursive: true, force: true });
-    // 旧目录与新目录并存的话，两份都会被当成整片风格；新的放好了就删旧的。
-    try {
-      fs.rmSync(legacyDir(opts.projectDir), { recursive: true, force: true });
-    } catch {
-      // 与 Go 版一样忽略错误。
+    const replacedKey = had && manifestKey(previous) !== styleKey(style) ? manifestKey(previous) : '';
+    if (backup !== '') {
+      // 换掉的默认风格还有镜头点名在用：留作额外风格，不删。
+      if (!asExtra && replacedKey !== '' && opts.keepReplaced && !previous.legacy) {
+        const keep = extraDir(opts.projectDir, replacedKey);
+        fs.rmSync(keep, { recursive: true, force: true });
+        fs.mkdirSync(path.dirname(keep), { recursive: true });
+        fs.renameSync(backup, keep);
+      } else {
+        fs.rmSync(backup, { recursive: true, force: true });
+      }
     }
-    const result: InstallResult = { manifest, unchanged: false, replaced: '' };
-    if (had && manifestKey(previous) !== styleKey(style)) result.replaced = manifestKey(previous);
-    return result;
+    if (!asExtra) {
+      // 旧目录与新目录并存的话，两份都会被当成整片风格；新的放好了就删旧的。
+      try {
+        fs.rmSync(legacyDir(opts.projectDir), { recursive: true, force: true });
+      } catch {
+        // 与 Go 版一样忽略错误。
+      }
+      // 新的默认风格原先是额外风格时，那份额外的就多余了：点名它的镜头现在落到默认目录上。
+      removeExtraDir(opts.projectDir, styleKey(style));
+    }
+    return { manifest, unchanged: false, replaced: asExtra ? '' : replacedKey };
   } finally {
     fs.rmSync(staging, { recursive: true, force: true });
   }
 }
 
-/** 删除项目里的整片风格（新旧目录都删），回到镜头自主定视觉。 */
+/** 删掉一份额外风格，连同空下来的来源目录。 */
+function removeExtraDir(projectDir: string, key: string): boolean {
+  const dir = extraDir(projectDir, key);
+  if (!exists(dir)) return false;
+  fs.rmSync(dir, { recursive: true, force: true });
+  try {
+    fs.rmdirSync(path.dirname(dir));
+  } catch {
+    // 来源目录里还有别的风格。
+  }
+  return true;
+}
+
+/** 删掉项目里的某种风格（默认或额外）；没装时 had 为 false。 */
+export function removeStyle(projectDir: string, key: string): { manifest: Manifest | null; had: boolean; wasDefault: boolean } {
+  const { manifest, ok } = installed(projectDir);
+  if (ok && manifestKey(manifest) === key) {
+    remove(projectDir);
+    return { manifest, had: true, wasDefault: true };
+  }
+  const extra = readManifest(path.join(extraDir(projectDir, key), ManifestFile));
+  if (!extra) return { manifest: null, had: false, wasDefault: false };
+  removeExtraDir(projectDir, key);
+  return { manifest: extra, had: true, wasDefault: false };
+}
+
+/** 删除项目的默认风格（新旧目录都删），不写 film_style 的镜头回到自主定视觉。额外风格不动。 */
 export function remove(projectDir: string): { manifest: Manifest; had: boolean } {
   const { manifest, ok } = installed(projectDir);
   if (!ok) return { manifest, had: false };
@@ -321,4 +463,53 @@ export function treeDigest(root: string): string {
     hash.update(`${rel} ${sum}\n`);
   }
   return 'sha256:' + hash.digest('hex');
+}
+
+/** 项目里一个镜头点名的风格（scene.json 的 film_style）。 */
+export interface SceneStyleUse {
+  /** 镜头目录名（scenes/ 下）。 */
+  dir: string;
+  id: string;
+  /** film_style 原值：空表示默认风格，none 表示不用整片风格。 */
+  film_style: string;
+}
+
+/**
+ * 读 <项目>/scenes/<镜头>/scene.json 的 film_style，按目录名排序。只认 id 与 film_style 两个字段、
+ * 读不了的镜头跳过：这里只用来回答「去掉 / 换掉这种风格会影响哪些镜头」，镜头本身的合法性由
+ * scene.load 负责。filmstyle 不依赖 scene，所以不调 scene.load。
+ */
+export function sceneStyles(projectDir: string): SceneStyleUse[] {
+  const root = path.join(projectDir, 'scenes');
+  let entries: fs.Dirent[];
+  try {
+    entries = sortedEntries(root);
+  } catch {
+    return [];
+  }
+  const out: SceneStyleUse[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    let raw: unknown;
+    try {
+      raw = JSON.parse(fs.readFileSync(path.join(root, entry.name, 'scene.json'), 'utf8'));
+    } catch {
+      continue;
+    }
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const obj = raw as Record<string, unknown>;
+    out.push({
+      dir: entry.name,
+      id: typeof obj.id === 'string' ? obj.id : entry.name,
+      film_style: typeof obj.film_style === 'string' ? obj.film_style : '',
+    });
+  }
+  return out;
+}
+
+/** 点名用某种风格（写了「来源/目录名」）的镜头 id。 */
+export function scenesNaming(projectDir: string, key: string): string[] {
+  return sceneStyles(projectDir)
+    .filter((s) => s.film_style === key)
+    .map((s) => s.id);
 }

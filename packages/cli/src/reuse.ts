@@ -28,7 +28,7 @@ export function reuseDecision(item: scene.Scene, cfg: Config, env: Record<string
     const renderer = item.renderer !== '' ? item.renderer : cfg.renderer;
     let current: scene.Inputs | null = null;
     try {
-      const resolved = scene.resolveAllSkills(renderer, item.directory, scene.skillsEnvironment(env, cfg.overlay));
+      const resolved = scene.resolveAllSkills(renderer, item.directory, scene.skillsEnvironment(env, cfg.overlay), item);
       current = scene.fingerprint(item, renderer, resolved);
     } catch {
       current = null;

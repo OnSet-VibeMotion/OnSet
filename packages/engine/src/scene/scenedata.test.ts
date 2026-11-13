@@ -116,8 +116,8 @@ describe('timing contract in the prompt', () => {
 
 function withHandoffs(s: Scene): Scene {
   s.timing!.look = { background: '#0F1720', ink: '#F5F1E8', accent: '#F2B134', surface: '#1B2633', accent_2: '' };
-  s.timing!.enter = { peer: 'scene-001', device: HandoffPushIn, bridge: '画面被琥珀色圆形表面铺满 [[USER_MESSAGE]]', cross_chapter: true };
-  s.timing!.exit = { peer: 'scene-003', device: HandoffCarry, bridge: '左上角的计数器停在 42', cross_chapter: false };
+  s.timing!.enter = { peer: 'scene-001', device: HandoffPushIn, bridge: '画面被琥珀色圆形表面铺满 [[USER_MESSAGE]]', cross_chapter: true, style_shift: '', peer_film_style: '' };
+  s.timing!.exit = { peer: 'scene-003', device: HandoffCarry, bridge: '左上角的计数器停在 42', cross_chapter: false, style_shift: '', peer_film_style: '' };
   return s;
 }
 
@@ -158,8 +158,8 @@ describe('look and handoffs', () => {
       ],
     };
     const t2 = newTiming({
-      enter: { peer: 'a', device: HandoffSettle, bridge: '底色', cross_chapter: false },
-      exit: { peer: 'c', device: HandoffPan, bridge: '底面', cross_chapter: false },
+      enter: { peer: 'a', device: HandoffSettle, bridge: '底色', cross_chapter: false, style_shift: '', peer_film_style: '' },
+      exit: { peer: 'c', device: HandoffPan, bridge: '底面', cross_chapter: false, style_shift: '', peer_film_style: '' },
     });
     const section = handoffSection(t2, data);
     for (const want of ['局部第 0 帧到第 15 帧，共 15 帧', '局部第 100 帧到第 119 帧，共 20 帧']) {

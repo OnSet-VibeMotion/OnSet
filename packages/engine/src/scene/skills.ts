@@ -9,6 +9,7 @@ import { compareBytes } from '../gojson';
 import * as hyperframes from '../hyperframes';
 import type { RendererAccess } from '../tools';
 import { SceneDataFile } from './scenedata';
+import { styleShiftOf, type Handoff, type Timing } from './timing';
 
 /** 逃生阀：显式指定技能目录，优先级高于一切自动探测。 */
 export const SkillsDirEnv = 'HYPERFRAMES_SKILLS_DIR';
@@ -231,19 +232,145 @@ export function resolveSkill(renderer: string, sceneDir: string, environ: Record
   return '';
 }
 
+/** resolveAllSkills 要的镜头字段：本镜头的整片风格与交接约定。 */
+export interface SceneFilmInput {
+  film_style: string;
+  timing: Pick<Timing, 'enter' | 'exit'> | null;
+}
+
+/**
+ * 镜头点名的整片风格（scene.json 的 film_style 写了「来源/目录名」）在 resolved 里的键。
+ * 不写 film_style 的镜头用默认风格，仍记在 filmstyle.SkillName 下（值是 .agents/skills），
+ * 与只有一种风格时逐字相同，老镜头的指纹不变。
+ */
+export const FilmStyleOwnKey = 'film-style:own';
+/** 风格交界另一侧镜头的风格：入场（上一镜头）与出场（下一镜头）。 */
+export const FilmStyleEnterKey = 'film-style:enter';
+export const FilmStyleExitKey = 'film-style:exit';
+
 /**
  * 解析所有注册技能，返回 name → 绝对路径的映射（Go 的 map[string]string）。
- * 未找到的技能不出现在结果中（不是报错）。
+ * 未找到的技能不出现在结果中（不是报错）。film 给出时还解析本镜头点名的整片风格与
+ * 风格交界另一侧的风格；点名的风格没装进项目时报错——那是项目配置错了，降级成
+ * 「不用风格」会一路静默到成片。
  */
-export function resolveAllSkills(renderer: string, sceneDir: string, environ: Record<string, string>): Record<string, string> {
+export function resolveAllSkills(
+  renderer: string,
+  sceneDir: string,
+  environ: Record<string, string>,
+  film: SceneFilmInput | null = null,
+): Record<string, string> {
   const result: Record<string, string> = {};
   for (const desc of registeredSkills) {
     const dir = resolveSkill(renderer, sceneDir, environ, desc);
     if (dir !== '') result[desc.name] = dir;
   }
-  const dir = resolveFilmStyle(sceneDir);
-  if (dir !== '') result[filmstyle.SkillName] = dir;
+  const own = film?.film_style ?? '';
+  if (own === '') {
+    const dir = resolveFilmStyle(sceneDir);
+    if (dir !== '') result[filmstyle.SkillName] = dir;
+  } else {
+    const dir = resolveSceneFilmStyle(sceneDir, own);
+    if (dir !== '') result[FilmStyleOwnKey] = dir;
+  }
+  const sides: Array<[Handoff | undefined, string]> = [
+    [film?.timing?.enter, FilmStyleEnterKey],
+    [film?.timing?.exit, FilmStyleExitKey],
+  ];
+  for (const [h, key] of sides) {
+    if (!h || h.style_shift === '') continue;
+    const dir = resolveSceneFilmStyle(sceneDir, h.peer_film_style);
+    if (dir !== '') result[key] = dir;
+  }
   return result;
+}
+
+/**
+ * 镜头 film_style 取值对应的风格目录（含 STYLE.md 与 SKILL.md 的那一层）：
+ * 空是默认风格，none 或项目没有默认风格时为空串，「来源/目录名」在项目里找默认或额外风格。
+ */
+export function resolveSceneFilmStyle(sceneDir: string, value: string): string {
+  if (value === filmstyle.NoFilmStyle) return '';
+  if (value === '') {
+    const root = resolveFilmStyle(sceneDir);
+    return root === '' ? '' : filmStyleDir(root);
+  }
+  for (const project of projectCandidates(sceneDir, '.')) {
+    let dir: string;
+    try {
+      dir = filmstyle.styleDirOf(project, value);
+    } catch {
+      continue;
+    }
+    if (dir !== '' && hasSkill(path.dirname(dir), path.basename(dir), [filmstyle.GuideFile, filmstyle.StyleFile])) return dir;
+  }
+  throw new Error(`镜头要用的整片风格 ${value} 没装进项目：运行 am film-style add ${value}`);
+}
+
+/** 本镜头实际用的风格目录（默认或点名），没有整片风格时为空串。 */
+function ownFilmStyleDir(s: SceneFilmInput, resolved: Record<string, string>): string {
+  if (s.film_style === '') {
+    const root = resolved[filmstyle.SkillName] ?? '';
+    return root === '' ? '' : filmStyleDir(root);
+  }
+  return resolved[FilmStyleOwnKey] ?? '';
+}
+
+/**
+ * 镜头点名的风格段：与 filmStyleSection 同一套要求，只是不再说「本片所有镜头」——
+ * 别的镜头可能是另一种风格。
+ */
+export function sceneFilmStyleSection(dir: string, hasLook: boolean): string {
+  let palette = '配色按 STYLE.md 的配色逻辑为本镜头选定';
+  if (hasLook) palette = '配色遵守下面的「全片配色」（在 STYLE.md 的配色逻辑里只用这几种颜色）';
+  return (
+    '\n整片风格（强制）：本镜头画成下面这种风格（本片不同段落可能用不同风格，本镜头只管自己这一种），本机该技能目录为：\n    ' +
+    dir +
+    '\n' +
+    '- 动手前先读该目录的 ' +
+    filmstyle.GuideFile +
+    ' 与 ' +
+    filmstyle.StyleFile +
+    ' 全文。STYLE.md 规定的外观、材质、字体、动效质感、镜头语法、标志手法与禁忌全部遵守；' +
+    palette +
+    '。\n' +
+    '- 画什么只取本镜头的说明、字幕与素材，不照搬风格自带的示例（demo 等）的故事、镜头、道具与文案；示例与引擎只用来学技法，按 SKILL.md 说的把用到的文件拷进本镜头目录再改，不得引用镜头目录之外的路径。\n' +
+    '- STYLE.md 里关于声音、配乐的内容对本镜头无效：产物静音、无音轨。\n' +
+    '- 不得把项目中的 frame.md、style_id、style_name、示例图或其他旧风格资料当作视觉命令。\n'
+  );
+}
+
+/**
+ * 风格切换段：交界两侧风格不同时，告诉本侧渲染器手法、自己负责哪一段，以及对方风格在哪。
+ *
+ * 两侧分别渲染、互相看不到，只拿到同一份约定；画法的过渡由约定指定的一侧完成
+ * （材质转化、画内揭开由下一镜头开场完成，画中画推入由上一镜头末段完成），
+ * 另一侧只要把交界帧画对。需要按对方风格画的那一侧拿到对方 STYLE.md 的路径。
+ */
+export function styleShiftSection(s: SceneFilmInput, resolved: Record<string, string>): string {
+  const own = ownFilmStyleDir(s, resolved);
+  let b = '';
+  const sides: Array<[Handoff | undefined, string, string, 'enter' | 'exit']> = [
+    [s.timing?.enter, FilmStyleEnterKey, '上一镜头', 'enter'],
+    [s.timing?.exit, FilmStyleExitKey, '下一镜头', 'exit'],
+  ];
+  for (const [h, key, role, side] of sides) {
+    if (!h || h.style_shift === '') continue;
+    const shift = styleShiftOf(h.style_shift);
+    if (!shift) continue;
+    const peer = resolved[key] ?? '';
+    if (peer === own) continue;
+    if (b === '') b = '\n风格切换（强制，由分镜计划约定；交界两侧的风格不同，画法要在画面里换过去，不能突变）：\n';
+    b += `- ${side === 'enter' ? '入场' : '出场'}：与${role} ${h.peer} 的交界用「${shift.name}」（${shift.id}）——${shift.guide}。\n`;
+    b += '  本镜头的风格：' + (own === '' ? '没有整片风格，按上面的「视觉自由度」自主决定。\n' : '见上面的「整片风格」段。\n');
+    if (peer === '') b += `  ${role}的风格：没有整片风格；要按它的画法画的部分，以「镜头交接」里写的交界帧为准。\n`;
+    else b += `  ${role}的风格：本机该技能目录为\n    ${peer}\n  要按它的画法画的部分，先读该目录的 ${filmstyle.StyleFile}，只取外观、材质、笔触、线条、配色与字体，不看它的示例、不用它的镜头语法与时间安排。\n`;
+    b += `  本镜头要做的：${side === 'enter' ? shift.enterDuty : shift.exitDuty}\n`;
+  }
+  if (b === '') return '';
+  b += '- 风格只能通过画面里的东西换过去：不得用整画面叠化、淡出淡入黑场或白场、与画面无关的擦除、故障或闪白。过渡完成后本镜头全部回到自己的风格。\n';
+  b += '- 画完用 snapshot 截取交界附近几帧（入场看第 0 帧到过渡结束，出场看过渡开始到最后一帧），确认过渡途中每一帧都像是同一件东西在变，而不是两张画面叠在一起。\n';
+  return b;
 }
 
 /**

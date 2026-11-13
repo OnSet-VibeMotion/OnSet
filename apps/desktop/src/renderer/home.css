@@ -581,11 +581,6 @@
   /* 菜单是限高的纵向 flex：不写这一行，选项会被压扁、说明文字叠到下一项上。 */
   flex: none;
 }
-.dropdown-menu.wide {
-  width: 420px;
-  max-width: min(420px, calc(100vw - 32px));
-  max-height: 440px;
-}
 .home .style-item {
   align-items: flex-start;
   gap: 12px;

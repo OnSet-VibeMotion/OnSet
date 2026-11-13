@@ -21,6 +21,7 @@ import {
   planHandoffs,
   segmentFrames,
   TimingPlanSchema,
+  verifyStyleBoundaries,
   verifyTimingInputs,
   type PlanEntry,
   type PhraseTimeline,
@@ -122,11 +123,48 @@ describe('parseTimingPlan', () => {
     const plan = parseTimingPlan(body);
     const { enter, exit } = planHandoffs(plan);
     expect(handoffIsZero(enter[0]) && handoffIsZero(exit[3]), '首镜无入场、末镜无出场').toBe(true);
-    expect(handoffEqual(enter[1], { peer: 'a', device: 'carry', bridge: '左上角的计数器', cross_chapter: false }), '章节内入场').toBe(true);
-    expect(handoffEqual(exit[2], { peer: 'd', device: 'carry', bridge: '中央的圆点', cross_chapter: true }), '章节交界出场应去掉首尾空白并标记章节').toBe(true);
+    expect(handoffEqual(enter[1], { peer: 'a', device: 'carry', bridge: '左上角的计数器', cross_chapter: false, style_shift: '', peer_film_style: '' }), '章节内入场').toBe(true);
+    expect(handoffEqual(exit[2], { peer: 'd', device: 'carry', bridge: '中央的圆点', cross_chapter: true, style_shift: '', peer_film_style: '' }), '章节交界出场应去掉首尾空白并标记章节').toBe(true);
     expect(enter[2].peer).toBe('b');
     expect(exit[1].peer).toBe('c');
     expect(enter[2].bridge, '同一交界两侧应拿到同一份约定').toBe(exit[1].bridge);
+  });
+
+  // 风格交界：style_shift 写法与搭配、film_style 写法在解析时查；风格交界要不要写由 verifyStyleBoundaries 查，
+  // 两侧的交接都带上对方 film_style 的原值。
+  it('validates style shifts', () => {
+    const head = '{"schema":1,"scenes":[{"id":"a","dir":"a"},';
+    const cases: Record<string, string> = {
+      [head + '{"id":"b","dir":"b","first_subtitle":2,"handoff":{"device":"carry","bridge":"x","style_shift":"fade"}}]}']: 'style_shift 只能是',
+      [head + '{"id":"b","dir":"b","first_subtitle":2,"handoff":{"device":"carry","bridge":"x","style_shift":"window"}}]}']: '只能配 device push_in',
+      [head + '{"id":"b","dir":"b","first_subtitle":2,"film_style":"oil"}]}']: 'film_style 只能是',
+    };
+    for (const [body, want] of Object.entries(cases)) {
+      expect(() => parseTimingPlan(body), body).toThrow(want);
+    }
+    const body =
+      '{"schema":1,"scenes":[' +
+      '{"id":"a","dir":"a"},' +
+      '{"id":"b","dir":"b","first_subtitle":2,"film_style":"beta/oil","handoff":{"device":"push_in","bridge":"相框里的油画铺满","style_shift":"window"}},' +
+      '{"id":"c","dir":"c","first_subtitle":3,"film_style":"none","handoff":{"device":"match","bridge":"圆点","style_shift":"match_cut"}},' +
+      '{"id":"d","dir":"d","first_subtitle":4,"film_style":"none"}]}';
+    const plan = parseTimingPlan(body);
+    const effective = (v: string) => (v === '' ? 'alpha/ink' : v === 'none' ? '' : v);
+    expect(() => verifyStyleBoundaries(plan, effective)).not.toThrow();
+    const { enter, exit } = planHandoffs(plan);
+    expect(exit[0]).toMatchObject({ peer: 'b', style_shift: 'window', peer_film_style: 'beta/oil' });
+    expect(enter[1]).toMatchObject({ peer: 'a', style_shift: 'window', peer_film_style: '' });
+    expect(enter[2]).toMatchObject({ style_shift: 'match_cut', peer_film_style: 'beta/oil' });
+    expect(handoffIsZero(enter[3])).toBe(true);
+
+    // 默认风格换成 beta/oil 后，a→b 不再是风格交界，b→c 仍是。
+    expect(() => verifyStyleBoundaries(plan, (v) => (v === '' ? 'beta/oil' : v === 'none' ? '' : v))).toThrow('不是风格交界，不要写 style_shift');
+    const missing = parseTimingPlan('{"schema":1,"scenes":[{"id":"a","dir":"a"},{"id":"b","dir":"b","first_subtitle":2,"film_style":"beta/oil"}]}');
+    expect(() => verifyStyleBoundaries(missing, effective)).toThrow('风格交界必须写 handoff');
+    const noShift = parseTimingPlan(
+      '{"schema":1,"scenes":[{"id":"a","dir":"a"},{"id":"b","dir":"b","first_subtitle":2,"film_style":"beta/oil","handoff":{"device":"carry","bridge":"x"}}]}',
+    );
+    expect(() => verifyStyleBoundaries(noShift, effective)).toThrow('handoff 要写 style_shift');
   });
 });
 

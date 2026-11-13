@@ -10,14 +10,18 @@ import {
   StyleFile,
   categories,
   childEnvKeys,
+  extraDir,
   install,
   installed,
   installedDir,
+  installedExtras,
   lookup,
   manifestKey,
   register,
   remove,
+  removeStyle,
   skillDir,
+  styleDirOf,
   styleKey,
   type PrepareOptions,
   type Source,
@@ -113,5 +117,46 @@ describe('filmstyle', () => {
     expect(remove(project).had).toBe(true);
     ({ ok } = installed(project));
     expect(ok).toBe(false);
+  });
+
+  // 一个项目可以装几种风格：默认风格在 .agents/skills/am-film-style，其余在 .agents/am-film-styles/<来源>/<目录名>，
+  // 不进 .agents/skills（那里整棵算进每个镜头的指纹）。
+  it('installs extra styles beside the default', () => {
+    const project = tempDir();
+    install({ projectDir: project, style: lookup('alpha/ink') });
+    const extra = install({ projectDir: project, style: lookup('beta/ink'), as: 'extra' });
+    expect(extra.replaced).toBe('');
+    expect(manifestKey(installed(project).manifest), '装额外风格不该动默认风格').toBe('alpha/ink');
+    expect(fs.existsSync(path.join(extraDir(project, 'beta/ink'), StyleFile))).toBe(true);
+    expect(extraDir(project, 'beta/ink').startsWith(path.join(project, '.agents', 'skills')), '额外风格不能进 .agents/skills').toBe(false);
+    expect(installedExtras(project).map(manifestKey)).toEqual(['beta/ink']);
+    expect(styleDirOf(project, 'alpha/ink')).toBe(skillDir(project));
+    expect(styleDirOf(project, 'beta/ink')).toBe(extraDir(project, 'beta/ink'));
+    expect(styleDirOf(project, 'alpha/pixel')).toBe('');
+    expect(install({ projectDir: project, style: lookup('beta/ink'), as: 'extra' }).unchanged, '重装同一份应当无改动').toBe(true);
+    expect(errorOf(() => install({ projectDir: project, style: lookup('alpha/ink'), as: 'extra' }))?.message, '默认风格不能再装成额外风格').toContain('默认风格');
+
+    expect(removeStyle(project, 'beta/ink')).toMatchObject({ had: true, wasDefault: false });
+    expect(installedExtras(project)).toEqual([]);
+    expect(fs.existsSync(path.join(project, '.agents', 'am-film-styles', 'beta')), '空下来的来源目录应当删掉').toBe(false);
+    expect(removeStyle(project, 'beta/ink').had).toBe(false);
+    expect(removeStyle(project, 'alpha/ink')).toMatchObject({ had: true, wasDefault: true });
+    expect(installed(project).ok).toBe(false);
+  });
+
+  // 换默认风格时还有镜头点名旧的：keepReplaced 把旧的留作额外风格；新的默认原先是额外风格时，那份额外的删掉。
+  it('keeps the replaced default as an extra and promotes an extra to default', () => {
+    const project = tempDir();
+    install({ projectDir: project, style: lookup('alpha/ink') });
+    install({ projectDir: project, style: lookup('alpha/pixel'), as: 'extra' });
+    const result = install({ projectDir: project, style: lookup('alpha/pixel'), replace: true, keepReplaced: true });
+    expect(result.replaced).toBe('alpha/ink');
+    expect(manifestKey(installed(project).manifest)).toBe('alpha/pixel');
+    expect(installedExtras(project).map(manifestKey), '旧默认应当留作额外风格，新默认不该再有额外的一份').toEqual(['alpha/ink']);
+    expect(fs.readFileSync(path.join(extraDir(project, 'alpha/ink'), StyleFile), 'utf8')).toBe('# alpha/ink');
+
+    install({ projectDir: project, style: lookup('beta/ink'), replace: true });
+    expect(installedExtras(project).map(manifestKey), '不留旧默认时直接删掉').toEqual(['alpha/ink']);
+    expect(manifestKey(installed(project).manifest)).toBe('beta/ink');
   });
 });

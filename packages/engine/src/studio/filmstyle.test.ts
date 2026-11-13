@@ -84,6 +84,39 @@ describe('filmstyle', () => {
     // 合法风格会起一个 am film-style 任务；测试里没有可运行的 am，只验到拒绝未知风格为止（同 Go 版）。
   });
 
+  // 一个项目装几种风格：GET 列出默认风格、额外风格与各自有哪些镜头在用，点名了却没装的镜头单列出来。
+  it('lists extra styles and which scenes use them', async () => {
+    const root = tempDir();
+    writeStudioFile(path.join(root, 'article-to-motion.conf'), '');
+    const [a, b] = lemo.catalog();
+    const writeStyle = (dir: string, slug: string) => {
+      writeStudioFile(path.join(dir, filmstyle.StyleFile), '# ' + slug);
+      writeStudioFile(path.join(dir, filmstyle.GuideFile), 'guide');
+      writeStudioFile(path.join(dir, filmstyle.ManifestFile), JSON.stringify({ source: lemo.SourceID, slug, cn: slug, en: slug, version: 'v', digest: 'd', installed_at: '' }));
+    };
+    writeStyle(filmstyle.skillDir(root), a.slug);
+    const bKey = lemo.SourceID + '/' + b.slug;
+    writeStyle(filmstyle.extraDir(root, bKey), b.slug);
+    const scene = (id: string, style: string) =>
+      writeStudioFile(path.join(root, 'scenes', id, 'scene.json'), JSON.stringify({ id, film_style: style || undefined }));
+    scene('scene-001', '');
+    scene('scene-002', bKey);
+    scene('scene-003', 'none');
+    scene('scene-004', 'other/missing');
+    const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
+    const { status, body } = await studioRequest(s, 'GET', '/api/film-style');
+    expect(status).toBe(200);
+    expect(body.installed).toBe(true);
+    expect(body.manifest.slug).toBe(a.slug);
+    expect(body.default_scenes).toEqual(['scene-001']);
+    expect(body.extras).toHaveLength(1);
+    expect(body.extras[0].manifest.slug).toBe(b.slug);
+    expect(body.extras[0].scenes).toEqual(['scene-002']);
+    expect(body.extras[0].style_file).toBe(`.agents/am-film-styles/${bKey}/STYLE.md`);
+    expect(body.scenes).toContainEqual({ id: 'scene-003', film_style: 'none' });
+    expect(body.missing).toEqual([{ scene: 'scene-004', style: 'other/missing' }]);
+  });
+
   // 前置资源引导：只读状态，缺技能时 ready 为 false，并给出 am setup。
   it('setup status endpoint', async () => {
     setEnv('XDG_DATA_HOME', tempDir()); // 技能缓存在这里找，必然没有

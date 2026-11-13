@@ -53,7 +53,7 @@ export async function run(
 ): Promise<void> {
   if (!Number.isFinite(tolerance) || tolerance < 0) throw new Error('tolerance 必须是有限且非负的数字');
   const renderer = s.renderer !== '' ? s.renderer : cfg.renderer;
-  const resolvedSkills = resolveAllSkills(renderer, s.directory, skillsEnvironment(baseEnv, cfg.overlay));
+  const resolvedSkills = resolveAllSkills(renderer, s.directory, skillsEnvironment(baseEnv, cfg.overlay), s);
   if ((resolvedSkills[HyperFramesSkillName] ?? '') === '') {
     userOutput.write(
       `警告：未能为渲染工具 ${renderer} 定位 ${HyperFramesSkillName} 技能目录，组合规范与动效要求改用技能名兜底；可运行 am init 安装，或用 ${SkillsDirEnv} 显式指定\n`,

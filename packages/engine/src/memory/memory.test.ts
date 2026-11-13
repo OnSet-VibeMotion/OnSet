@@ -82,7 +82,7 @@ describe('memory', () => {
     for (const want of ['cjk_text', 'numbers', 'dense_text', 'portrait', 'lottie', 'chart']) expect(list).toContain(want);
     // 抽出了词表外的特征，整理者写不出能匹配它的经验。
     for (const feature of list) expect(knownFeature(feature)).toBe(true);
-    s.timing = newTiming({ exit: { peer: 'scene-002', device: HandoffCarry, bridge: 'x', cross_chapter: true } });
+    s.timing = newTiming({ exit: { peer: 'scene-002', device: HandoffCarry, bridge: 'x', cross_chapter: true, style_shift: '', peer_film_style: '' } });
     list = features(s);
     for (const want of ['timing', 'handoff', 'handoff:carry', 'cross_chapter']) {
       expect(list).toContain(want);

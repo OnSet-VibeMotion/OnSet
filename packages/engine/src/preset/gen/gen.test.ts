@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import * as scene from '../../scene';
 import * as preset from '../index';
 import {
   canvasAndSafeArea,
@@ -210,6 +211,17 @@ describe('PROMPT-PRODUCTION template', () => {
 
   it('carries scene handoffs', () => {
     has(['### 镜头交接', '"look"', '"chapter"', '"handoff"', '`bridge`', '不要给章节交界套一个统一的擦除或闪白', '相邻两个章节交界不得用同一种手法', '`carry`', '`match`', '`push_in`', '`flood`', '`pan`', '`settle`', '前一镜末帧与后一镜首帧'], '镜头交接');
+  });
+
+  // 风格交界的手法表与 scene.StyleShifts 一一对应：每种手法连同能配的 device 都写进第五阶段的表格，
+  // 改了代码里的表忘了改提示词（或反过来），编排工具就会写出 am scene cues 拒收的计划。
+  it('carries style boundaries', () => {
+    has(['### 风格交界', '`style_shift`', '"film_style"', '段落换风格', 'am film-style add <来源/目录名>', '禁止整画面叠化'], '风格交界');
+    for (const shift of scene.StyleShifts) {
+      const row = body.split('\n').find((line) => line.startsWith(`| \`${shift.id}\` ${shift.name} |`));
+      expect(row, `风格交界表缺少 ${shift.id}`).toBeTruthy();
+      expect(row!.trimEnd().endsWith('| ' + shift.devices.map((d) => '`' + d + '`').join('、') + ' |'), `${shift.id} 那一行的 device 与 scene.StyleShifts 不一致`).toBe(true);
+    }
   });
 
   it('carries the film style without naming a source', () => {

@@ -434,11 +434,30 @@ export interface FilmStyleManifest {
 }
 
 /** 本项目的整片风格（/api/film-style）。 */
+/** 项目里装的一种风格（默认或额外）。 */
+export interface InstalledFilmStyle {
+  manifest: FilmStyleManifest;
+  style?: FilmStyle;
+  /** STYLE.md 在项目里的相对路径。 */
+  style_file: string;
+  /** 用这种风格的镜头 id。 */
+  scenes: string[];
+}
+
+/** 本项目的风格（/api/film-style）：默认风格的字段沿用只有一种风格时的写法。 */
 export interface ProjectFilmStyle {
   installed: boolean;
   manifest?: FilmStyleManifest;
   style?: FilmStyle;
   style_file?: string;
+  /** 用默认风格的镜头（不写 film_style 或点名默认风格）。 */
+  default_scenes?: string[];
+  /** 个别镜头点名用的额外风格。 */
+  extras?: InstalledFilmStyle[];
+  /** 每个镜头 scene.json 的 film_style：没有表示默认风格，none 表示不用整片风格。 */
+  scenes?: Array<{ id: string; film_style?: string }>;
+  /** 点名了却没装进项目的风格，渲染会失败。 */
+  missing?: Array<{ scene: string; style: string }>;
 }
 
 /** 一项前置资源（/api/setup）。 */

@@ -64,6 +64,8 @@ export interface Look {
 export interface PlanHandoff {
   device: string;
   bridge: string;
+  /** 交界两侧风格不同时必填：风格怎么换过去（StyleShifts）；风格相同时不能写。 */
+  style_shift: string;
 }
 
 /**
@@ -75,6 +77,13 @@ export interface Handoff {
   device: string;
   bridge: string;
   cross_chapter: boolean;
+  /** 交界两侧风格不同时的切换手法（StyleShifts 的 id）；风格相同时为空。 */
+  style_shift: string;
+  /**
+   * 交界另一侧镜头 scene.json 里的 film_style 原值（空表示默认风格，none 表示不用整片风格）。
+   * 记原值而不是解析后的风格：默认风格换了，交接两侧跟着换，不用重跑 cues。
+   */
+  peer_film_style: string;
 }
 
 export function zeroLook(): Look {
@@ -82,7 +91,7 @@ export function zeroLook(): Look {
 }
 
 export function zeroHandoff(): Handoff {
-  return { peer: '', device: '', bridge: '', cross_chapter: false };
+  return { peer: '', device: '', bridge: '', cross_chapter: false, style_shift: '', peer_film_style: '' };
 }
 
 export function lookIsZero(l: Look): boolean {
@@ -90,12 +99,19 @@ export function lookIsZero(l: Look): boolean {
 }
 
 export function handoffIsZero(h: Handoff): boolean {
-  return h.peer === '' && h.device === '' && h.bridge === '' && !h.cross_chapter;
+  return h.peer === '' && h.device === '' && h.bridge === '' && !h.cross_chapter && h.style_shift === '' && h.peer_film_style === '';
 }
 
 /** Go 的结构体 ==。 */
 export function handoffEqual(a: Handoff, b: Handoff): boolean {
-  return a.peer === b.peer && a.device === b.device && a.bridge === b.bridge && a.cross_chapter === b.cross_chapter;
+  return (
+    a.peer === b.peer &&
+    a.device === b.device &&
+    a.bridge === b.bridge &&
+    a.cross_chapter === b.cross_chapter &&
+    a.style_shift === b.style_shift &&
+    a.peer_film_style === b.peer_film_style
+  );
 }
 
 /** Go 的结构体 ==。 */
@@ -156,6 +172,8 @@ const handoffStructType: StructType = {
     ['device', 'string'],
     ['bridge', 'string'],
     ['cross_chapter', 'bool'],
+    ['style_shift', 'string'],
+    ['peer_film_style', 'string'],
   ],
 };
 
@@ -183,7 +201,14 @@ export function lookToJSON(l: Look): unknown {
 
 /** 按 Go 的字段顺序与 omitempty 构造 Handoff 的 JSON 值。 */
 export function handoffToJSON(h: Handoff): unknown {
-  return { peer: h.peer, device: h.device, bridge: h.bridge, cross_chapter: h.cross_chapter || undefined };
+  return {
+    peer: h.peer,
+    device: h.device,
+    bridge: h.bridge,
+    cross_chapter: h.cross_chapter || undefined,
+    style_shift: h.style_shift || undefined,
+    peer_film_style: h.peer_film_style || undefined,
+  };
 }
 
 /** 按 Go 的字段顺序与 omitempty / omitzero 构造 Timing 的 JSON 值（json.Marshal(timing)）。 */
@@ -386,8 +411,10 @@ export interface PlanEntry {
   summary: string;
   /** 镜头所属章节。写了就每个镜头都要写；相邻镜头章节不同即章节交界。 */
   chapter: string;
-  /** 从上一镜头进入本镜头的交接，章节交界必填。 */
+  /** 从上一镜头进入本镜头的交接，章节交界与风格交界必填。 */
   handoff: PlanHandoff | null;
+  /** 本镜头的整片风格：空表示默认风格，「来源/目录名」表示另一种，none 表示不用。由 cues 抄进 scene.json。 */
+  film_style: string;
 }
 
 /** 零值计划条目，测试与调用方构造时用。 */
@@ -402,6 +429,7 @@ export function newPlanEntry(fields: Partial<PlanEntry> = {}): PlanEntry {
     summary: '',
     chapter: '',
     handoff: null,
+    film_style: '',
     ...fields,
   };
 }
@@ -428,9 +456,11 @@ const planEntryType: StructType = {
         fields: [
           ['device', 'string'],
           ['bridge', 'string'],
+          ['style_shift', 'string'],
         ],
       }),
     ],
+    ['film_style', 'string'],
   ],
 };
 
@@ -479,6 +509,83 @@ export function handoffGuide(device: string): string {
   return HandoffDevices.find((d) => d.id === device)?.guide ?? '';
 }
 
+// 风格切换手法。镜头可以用不同的整片风格，交界两侧风格不同时，交接除了「靠画面里的东西接过去」，
+// 还要说清画法怎么从一种换成另一种。每种手法只配几种交接手法：画中画推入只能配推进穿越，
+// 靠形状切过去只能配形状匹配或接力——搭错了两侧的说明会自相矛盾。
+export const StyleShiftMorph = 'morph';
+export const StyleShiftWindow = 'window';
+export const StyleShiftSweep = 'sweep';
+export const StyleShiftMatchCut = 'match_cut';
+
+/** 风格切换手法：哪一侧负责什么，两侧的渲染器各拿到自己那一段。 */
+export interface StyleShift {
+  id: string;
+  name: string;
+  /** 能搭配的 handoff.device。 */
+  devices: readonly string[];
+  guide: string;
+  /** 交界前一侧（上一镜头末段）要做的。 */
+  exitDuty: string;
+  /** 交界后一侧（下一镜头开场）要做的。 */
+  enterDuty: string;
+}
+
+export const StyleShifts: readonly StyleShift[] = [
+  {
+    id: StyleShiftMorph,
+    name: '材质转化',
+    devices: [HandoffCarry, HandoffMatch, HandoffSettle],
+    guide:
+      '交接物件不换，换的是它的画法：交界帧两侧都按上一镜头的风格画它；下一镜头开场用 0.5–1.5 秒让它的笔触、材质、线条与配色逐步变成新风格（线稿被填上颜料、墨迹晕成油彩、像素块柔化成笔触、剪纸展开成实物），周围画面跟着它一层层换过去',
+    exitDuty: '末段与交界帧全部按本镜头的风格画，交接物件停在 bridge 写的位置与状态，不要提前换画法。',
+    enterDuty:
+      '第 0 帧按上一镜头的风格画交接物件与 bridge 写到的画面，与上一镜头的交界帧一致；随后 0.5–1.5 秒内从交接物件开始换成本镜头的风格（笔触、材质、线条、配色逐步过渡，不是整画面叠化），其余画面跟着它换；换完之后全部按本镜头的风格。',
+  },
+  {
+    id: StyleShiftWindow,
+    name: '画中画推入',
+    devices: [HandoffPushIn],
+    guide:
+      '上一镜头末段，画里某个物件（屏幕、窗、书页、画框、镜面、水面、瞳孔）里出现按下一镜头风格画的画面，镜头推进到它铺满；交界帧就是铺满的那一帧，下一镜头从这里按新风格继续',
+    exitDuty:
+      '末段 0.5–1.5 秒里，在 bridge 写的那个物件里按下一镜头的风格画出下一镜头开场的画面，镜头推进到它铺满画面；交界帧画面完全是下一镜头的风格，构图与 bridge 一致。物件以外的部分到交界帧前一直按本镜头的风格画。',
+    enterDuty: '第 0 帧就是上一镜头推进铺满后的那一帧：按本镜头的风格画，构图与 bridge 一致，然后正常展开。',
+  },
+  {
+    id: StyleShiftSweep,
+    name: '画内揭开',
+    devices: [HandoffFlood, HandoffPan],
+    guide:
+      '画里的一样东西扫过画面（翻过的书页、漫开的颜料或墨水、扫过的光带、拉过的幕布、卷过的烟雾），扫过的地方换成新风格；交界帧上它铺满或横跨整个画面',
+    exitDuty: '末段让 bridge 写的那样东西按本镜头的风格扫进画面，到交界帧铺满（或横跨）整个画面；交界帧上看不到下一镜头的风格。',
+    enterDuty:
+      '第 0 帧与上一镜头的交界帧一致：那样东西铺满（或横跨）画面，按上一镜头的风格画；随后它继续扫走，身后露出按本镜头风格画的画面，扫走途中它自己也换成本镜头的画法。',
+  },
+  {
+    id: StyleShiftMatchCut,
+    name: '形状匹配切',
+    devices: [HandoffMatch, HandoffCarry],
+    guide:
+      '交界帧两侧各按自己的风格画，靠交接物件的轮廓、位置、大小、朝向与主色完全一致把眼睛带过去；切点前后各留 0.3 秒以上让它静止或匀速，切点上不同时做别的大动作',
+    exitDuty: '交界帧上交接物件的轮廓、位置、大小、朝向与主色严格按 bridge，按本镜头的风格画；切点前 0.3 秒内它静止或匀速，其他元素不做大动作。',
+    enterDuty: '第 0 帧交接物件的轮廓、位置、大小、朝向与主色严格按 bridge，按本镜头的风格画；切点后 0.3 秒内它静止或匀速，再展开新内容。',
+  },
+];
+
+/** 风格切换手法；未知时为 undefined。 */
+export function styleShiftOf(id: string): StyleShift | undefined {
+  return StyleShifts.find((s) => s.id === id);
+}
+
+/** film_style 的写法：空、none 或「来源/目录名」。 */
+const filmStylePattern = /^[^/\s]+\/[^/\s]+$/;
+
+/** 校验镜头的 film_style 取值写法（不查有没有装）。 */
+export function verifyFilmStyleValue(value: string): void {
+  if (value === '' || value === 'none' || filmStylePattern.test(value)) return;
+  throw new Error(`film_style 只能是空（默认风格）、none（不用整片风格）或「来源/目录名」，收到 ${goQuote(value)}`);
+}
+
 const hexColorPattern = /^#[0-9a-fA-F]{6}$/;
 
 /** 限制 bridge 的长度：它描述的是一帧画面，写成段落说明分镜还没想清楚。 */
@@ -523,6 +630,11 @@ export function parseTimingPlan(body: string | Uint8Array): TimingPlan {
       throw new Error(`${where}（${entry.id}）的 visual_role 只能是 ${VisualRoles.join('、')}，收到 ${goQuote(entry.visual_role)}`);
     }
     if (i === 0 && entry.cut !== '') throw new Error(`${where}（${entry.id}）固定从第 0 帧开始，不能写 cut`);
+    try {
+      verifyFilmStyleValue(entry.film_style);
+    } catch (err) {
+      throw new Error(`${where}（${entry.id}）的${(err as Error).message}`);
+    }
   });
   verifyLook(plan.look);
   verifyHandoffs(entries);
@@ -576,6 +688,14 @@ function verifyHandoffs(entries: PlanEntry[]): void {
       const ids = HandoffDevices.map((d) => d.id);
       problems.push(`${where}的 handoff.device 只能是 ${ids.join('、')}，收到 ${goQuote(h.device)}`);
     }
+    if (h.style_shift !== '') {
+      const shift = styleShiftOf(h.style_shift);
+      if (!shift) {
+        problems.push(`${where}的 handoff.style_shift 只能是 ${StyleShifts.map((x) => x.id).join('、')}，收到 ${goQuote(h.style_shift)}`);
+      } else if (handoffDeviceValid(h.device) && !shift.devices.includes(h.device)) {
+        problems.push(`${where}的 handoff.style_shift ${shift.id} 只能配 device ${shift.devices.join('、')}，收到 ${h.device}`);
+      }
+    }
     const bridge = goTrimSpace(h.bridge);
     if (bridge === '') problems.push(where + '的 handoff.bridge 为空：要写清交界那一帧两侧共有的画面');
     else if ([...bridge].length > maxBridgeRunes) problems.push(`${where}的 handoff.bridge 超过 ${maxBridgeRunes} 字：只描述交界那一帧`);
@@ -597,10 +717,51 @@ export function planHandoffs(plan: TimingPlan): { enter: Handoff[]; exit: Handof
     if (h === null) continue;
     const cross = scenes[i].chapter !== scenes[i - 1].chapter;
     const bridge = goTrimSpace(h.bridge);
-    enter[i] = { peer: scenes[i - 1].id, device: h.device, bridge, cross_chapter: cross };
-    exit[i - 1] = { peer: scenes[i].id, device: h.device, bridge, cross_chapter: cross };
+    const shift = h.style_shift;
+    enter[i] = {
+      peer: scenes[i - 1].id,
+      device: h.device,
+      bridge,
+      cross_chapter: cross,
+      style_shift: shift,
+      peer_film_style: shift !== '' ? scenes[i - 1].film_style : '',
+    };
+    exit[i - 1] = {
+      peer: scenes[i].id,
+      device: h.device,
+      bridge,
+      cross_chapter: cross,
+      style_shift: shift,
+      peer_film_style: shift !== '' ? scenes[i].film_style : '',
+    };
   }
   return { enter, exit };
+}
+
+/**
+ * 校验风格交界：相邻镜头实际用的风格（effective 把 film_style 原值换成风格标识，不用整片风格时为空）
+ * 不同时必须写 handoff 与 style_shift，相同时不能写 style_shift。
+ *
+ * 风格不同却没有约定的话，两侧各画各的硬切在一起，画法突变比章节硬切更扎眼。
+ * 这一条要知道项目的默认风格是哪种，所以不在 parseTimingPlan 里，由 am scene cues 调用。
+ */
+export function verifyStyleBoundaries(plan: TimingPlan, effective: (filmStyle: string) => string): void {
+  const scenes = plan.scenes ?? [];
+  const problems: string[] = [];
+  for (let i = 1; i < scenes.length; i++) {
+    const prev = effective(scenes[i - 1].film_style);
+    const cur = effective(scenes[i].film_style);
+    const h = scenes[i].handoff;
+    const where = `镜头 ${scenes[i].id}`;
+    const label = (key: string) => (key === '' ? '不用整片风格' : key);
+    if (prev !== cur) {
+      if (h === null) problems.push(`${where}从 ${label(prev)} 换成 ${label(cur)}：风格交界必须写 handoff 与 handoff.style_shift，说明画法怎么换过去`);
+      else if (h.style_shift === '') problems.push(`${where}从 ${label(prev)} 换成 ${label(cur)}：handoff 要写 style_shift（${StyleShifts.map((x) => x.id).join('、')}）`);
+    } else if (h !== null && h.style_shift !== '') {
+      problems.push(`${where}与上一镜头都是 ${label(cur)}，不是风格交界，不要写 style_shift`);
+    }
+  }
+  if (problems.length > 0) throw new Error(`分镜计划的风格交界不合格：\n  - ${problems.join('\n  - ')}`);
 }
 
 /** layoutTiming 算出的一个镜头区间（全局帧，左闭右开）。 */

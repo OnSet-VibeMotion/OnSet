@@ -178,56 +178,74 @@ export async function posterThumbnail(dir: string, slug: string, source: string,
   return target;
 }
 
-/** 本项目的整片风格。style_file 是 STYLE.md 在项目里的相对路径，网页经 /api/files 读。 */
-interface ProjectFilmStyle {
-  installed: boolean;
-  manifest?: filmstyle.Manifest;
-  style?: filmstyle.Style;
-  style_file?: string;
+/** 项目里装的一种风格。style_file 是 STYLE.md 在项目里的相对路径，网页经 /api/files 读。 */
+function installedStyleJSON(projectDir: string, manifest: filmstyle.Manifest, dir: string, scenes: string[]): Record<string, unknown> {
+  const rel = path.relative(projectDir, dir);
+  const match = filmstyle.find(filmstyle.manifestKey(manifest));
+  return {
+    manifest: manifestJSON(manifest),
+    style: match.ok && match.style ? styleJSON(match.style) : undefined,
+    style_file: path.join(rel, filmstyle.StyleFile).split(path.sep).join('/'),
+    scenes,
+  };
 }
 
-/** projectFilmStyleAPI：GET 查看本项目的整片风格；POST {"style","replace"} 装或换；DELETE 去掉。 */
+/**
+ * projectFilmStyleAPI：GET 查看本项目的风格（默认风格、额外风格、每种有哪些镜头在用）；
+ * POST {"style","replace"} 装或换默认风格，{"style","as":"extra"} 添一种额外风格，
+ * {"remove":true[,"style"]} 去掉默认风格或指定的那一种；DELETE 去掉默认风格。
+ *
+ * 默认风格的字段（installed、manifest、style、style_file）沿用只有一种风格时的写法。
+ * 镜头要换风格不走这里：那要改分镜计划与镜头 scene.json，是编排工具的事。
+ */
 export async function projectFilmStyleAPI(s: Server, request: Request): Promise<Response> {
   const p = s.projectOr404();
   if (p instanceof Response) return p;
   switch (request.method) {
     case 'GET': {
       let found: { manifest: filmstyle.Manifest; ok: boolean };
+      let extras: filmstyle.Manifest[];
       try {
         found = filmstyle.installed(p.path);
+        extras = filmstyle.installedExtras(p.path);
       } catch (err) {
         return writeError(500, 'film_style_unreadable', (err as Error).message);
       }
-      const resp: ProjectFilmStyle = { installed: found.ok };
-      if (found.ok) {
-        resp.manifest = found.manifest;
-        const rel = path.relative(p.path, filmstyle.installedDir(p.path));
-        resp.style_file = path.join(rel, filmstyle.StyleFile).split(path.sep).join('/');
-        const match = filmstyle.find(filmstyle.manifestKey(found.manifest));
-        if (match.ok && match.style) resp.style = match.style;
-      }
+      const scenes = filmstyle.sceneStyles(p.path);
+      const using = (value: string) => scenes.filter((x) => x.film_style === value).map((x) => x.id);
+      const defaultKey = found.ok ? filmstyle.manifestKey(found.manifest) : '';
+      const installedKeys = new Set([defaultKey, ...extras.map(filmstyle.manifestKey)]);
+      const base = found.ok ? installedStyleJSON(p.path, found.manifest, filmstyle.installedDir(p.path), [...using(''), ...using(defaultKey)]) : {};
       return writeJSON(200, {
-        installed: resp.installed,
-        manifest: resp.manifest ? manifestJSON(resp.manifest) : undefined,
-        style: resp.style ? styleJSON(resp.style) : undefined,
-        style_file: resp.style_file || undefined,
+        installed: found.ok,
+        manifest: base.manifest,
+        style: base.style,
+        style_file: base.style_file,
+        default_scenes: found.ok ? base.scenes : undefined,
+        extras: extras.map((m) => installedStyleJSON(p.path, m, filmstyle.extraDir(p.path, filmstyle.manifestKey(m)), using(filmstyle.manifestKey(m)))),
+        scenes: scenes.map((x) => ({ id: x.id, film_style: x.film_style || undefined })),
+        missing: scenes
+          .filter((x) => x.film_style !== '' && x.film_style !== filmstyle.NoFilmStyle && !installedKeys.has(x.film_style))
+          .map((x) => ({ scene: x.id, style: x.film_style })),
       });
     }
     case 'POST': {
       let style = '';
       let replace = false;
       let remove = false;
+      let extra = false;
       try {
         const body = await decodeJSON(request);
         style = fieldString(body, 'style');
         replace = fieldBool(body, 'replace');
         // remove 为 true 时等同 DELETE：网页的按钮动作统一走 POST。
         remove = fieldBool(body, 'remove');
+        extra = fieldString(body, 'as') === 'extra';
       } catch (err) {
         if (err instanceof DecodeError) return writeError(400, 'invalid_json', '请求不是合法 JSON');
         throw err;
       }
-      if (remove) return removeFilmStyle(s, p);
+      if (remove) return removeFilmStyle(s, p, style);
       let found: filmstyle.Style;
       try {
         found = filmstyle.lookup(style);
@@ -235,14 +253,14 @@ export async function projectFilmStyleAPI(s: Server, request: Request): Promise<
         return writeError(400, 'unknown_film_style', (err as Error).message);
       }
       try {
-        const t = startFilmStyleTask(s, p, found, replace);
+        const t = extra ? startAddFilmStyleTask(s, p, found) : startFilmStyleTask(s, p, found, replace);
         return writeJSON(202, goMap({ task_id: t.task_id }));
       } catch (err) {
         return writeTaskError(err);
       }
     }
     case 'DELETE':
-      return removeFilmStyle(s, p);
+      return removeFilmStyle(s, p, '');
     default:
       return methodNotAllowed('GET, POST, DELETE');
   }
@@ -257,10 +275,19 @@ export function startFilmStyleTask(s: Server, p: Project, style: filmstyle.Style
   });
 }
 
-function removeFilmStyle(s: Server, p: Project): Response {
+/** startAddFilmStyleTask 起一个 am film-style add 写任务：添一种额外风格，给个别镜头用。 */
+export function startAddFilmStyleTask(s: Server, p: Project, style: filmstyle.Style): Task {
+  return runWriteTask(s, p, 'film-style.add', '添加风格：' + style.cn, async (signal) => {
+    await runStudioCLI(s, signal, p, 'film-style', 'add', filmstyle.styleKey(style), '--project-root', p.path);
+  });
+}
+
+/** 去掉一种风格；key 为空时去掉默认风格。还有镜头点名它时 am 会拒绝，错误进任务日志。 */
+function removeFilmStyle(s: Server, p: Project, key: string): Response {
   try {
-    const t = runWriteTask(s, p, 'film-style.remove', '去掉整片风格', async (signal) => {
-      await runStudioCLI(s, signal, p, 'film-style', 'remove', '--project-root', p.path);
+    const args = ['film-style', 'remove', ...(key !== '' ? [key] : []), '--project-root', p.path];
+    const t = runWriteTask(s, p, 'film-style.remove', key !== '' ? '去掉风格：' + key : '去掉整片风格', async (signal) => {
+      await runStudioCLI(s, signal, p, ...args);
     });
     return writeJSON(202, goMap({ task_id: t.task_id }));
   } catch (err) {

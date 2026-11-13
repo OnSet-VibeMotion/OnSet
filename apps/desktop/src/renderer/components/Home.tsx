@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, errorText } from '../api';
 import type { AgentsResponse, CanvasOption, DirectoryEntry, Project, StylesResponse } from '../types';
-import { FilmStylePicker, styleKey, useFilmStyles } from './FilmStyles';
+import { FilmStyleDialog, styleKey, useFilmStyles } from './FilmStyles';
 import { SetupGuide, useSetup } from './SetupGuide';
 import { Creation, type CreationJob } from './Creation';
 import { Icon } from './Icon';
@@ -362,20 +362,25 @@ export function Home(props: Props) {
               {focused && !working && <span className="composer-beam" aria-hidden="true" />}
             </div>
             <div className="under-row">
-              <Dropdown id="style" open={menu === 'style'} onOpen={(open) => setMenu(open ? 'style' : '')} label={<>整片风格：{styleLabel}</>} flat wide>
-                <FilmStylePicker
-                  layout="menu"
+              <div className="dropdown">
+                <button id="home-style" className="chip-button flat" aria-haspopup="dialog" aria-expanded={menu === 'style'} onClick={() => setMenu('style')}>
+                  整片风格：{styleLabel}
+                  <Icon name="chevron" size={10} />
+                </button>
+              </div>
+              {menu === 'style' && (
+                <FilmStyleDialog
+                  title="选一种整片风格"
+                  intro="全片所有镜头都画成这一种风格；内容仍来自每个镜头自己的文案。"
                   data={films.data}
                   error={films.error}
                   posterVersion={films.posterVersion}
                   selected={filmStyle}
                   none={{ title: '不用整片风格', desc: '每个镜头按文案自己定配色、字体与动效。编排工具会在稿件审核时按题材推荐几种风格，也可以之后在「风格」页里选。' }}
-                  onPick={(slug) => {
-                    setFilmStyle(slug);
-                    setMenu('');
-                  }}
+                  onPick={setFilmStyle}
+                  onClose={() => setMenu('')}
                 />
-              </Dropdown>
+              )}
               <FolderPicker value={parent} open={menu === 'folder'} onOpen={(open) => setMenu(open ? 'folder' : '')} onChange={setParent} />
             </div>
           </div>
@@ -543,7 +548,6 @@ function Dropdown(props: {
   children: ReactNode;
   align?: 'left' | 'right';
   flat?: boolean;
-  wide?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -572,7 +576,7 @@ function Dropdown(props: {
         <Icon name="chevron" size={10} />
       </button>
       {props.open && (
-        <div className={'dropdown-menu' + (props.align === 'right' ? ' right' : '') + (props.wide ? ' wide' : '')} role="menu">
+        <div className={'dropdown-menu' + (props.align === 'right' ? ' right' : '')} role="menu">
           {props.children}
         </div>
       )}

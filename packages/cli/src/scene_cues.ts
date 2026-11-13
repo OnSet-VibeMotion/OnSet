@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { formatG, goPathError, goQuote, goRound } from '@am/engine/gofmt';
 import { marshal } from '@am/engine/gojson';
+import * as filmstyle from '@am/engine/filmstyle';
 import * as scene from '@am/engine/scene';
 import * as schedule from '@am/engine/schedule';
 import * as srt from '@am/engine/srt';
@@ -61,8 +62,15 @@ export function newSceneCuesCommand(stdout: Out): Command {
       `
                     bridge  交界那一帧两侧共有的画面（物件、位置、大小、状态、底色），
                             不超过 200 字
+                    style_shift  交界两侧风格不同时必填（风格相同时不能写），画法怎么换过去：
+                            ` +
+      styleShiftList() +
+      `
                   相邻两个章节交界不得用同一种手法。交接写进两侧镜头的 timing.enter /
                   timing.exit，两个镜头的渲染提示词拿到同一份约定。
+  film_style      可选，本镜头的整片风格：不写用项目的默认风格，「来源/目录名」用项目里装的
+                  另一种（先 am film-style add），none 不用整片风格。抄进镜头 scene.json 的
+                  film_style；相邻镜头实际用的风格不同即风格交界，必须写 handoff.style_shift
 
 first_subtitle 与 first_phrase 每个镜头恰好填一个；第一个镜头固定从第 0 帧开始，
 可以不填。最后一个镜头延伸到 --total-frames。锚点必须严格递增，每个镜头至少一帧，
@@ -129,6 +137,8 @@ interface SceneCue {
   scene: scene.Scene;
   segment: scene.TimingSegment;
   timing: scene.Timing;
+  /** 分镜计划里本镜头的 film_style，写进 scene.json。 */
+  film_style: string;
 }
 
 function readFileOr(file: string, prefix: string): Buffer {
@@ -160,6 +170,7 @@ function runSceneCues(opts: SceneCuesOptions, stdout: Out): void {
       throw new Error(`${opts.phrases}：${(err as Error).message}`);
     }
   }
+  verifyPlanFilmStyles(opts.projectRoot, plan);
   const segments = scene.layoutTiming(plan, cues, phrases, fps, opts.totalFrames);
   const { enter, exit } = scene.planHandoffs(plan);
   const look = plan.look ?? scene.zeroLook();
@@ -179,7 +190,7 @@ function runSceneCues(opts: SceneCuesOptions, stdout: Out): void {
       exit: exit[i],
     });
     if (phrases !== null) timing.phrases = scene.PhraseCopyFile;
-    return { scene: s, segment: segments[i], timing };
+    return { scene: s, segment: segments[i], timing, film_style: planScenes[i].film_style };
   });
   if (opts.check) {
     const problems = checkSceneCues(results, phraseBody);
@@ -200,6 +211,7 @@ function runSceneCues(opts: SceneCuesOptions, stdout: Out): void {
       body = rewriteJSONObject(raw, [
         { key: 'duration_seconds', value: scene.durationLiteral(scene.segmentFrames(r.segment), fps) },
         { key: 'timing', value: timingJSON },
+        r.film_style === '' ? { key: 'film_style', value: '', remove: true } : { key: 'film_style', value: marshal(r.film_style) },
       ]);
     } catch (err) {
       throw new Error(`${sceneFile}：${(err as Error).message}`);
@@ -296,6 +308,7 @@ function checkSceneCues(results: readonly SceneCue[], phraseBody: Buffer | null)
     }
     if (s.timing === null) problems.push(`${s.id}：缺少 timing 块`);
     else if (!scene.timingEqual(s.timing, r.timing)) problems.push(`${s.id}：timing 块是 ${describeTiming(s.timing)}，应为 ${describeTiming(r.timing)}`);
+    if (s.film_style !== r.film_style) problems.push(`${s.id}：film_style 是 ${goQuote(s.film_style)}，分镜计划写的是 ${goQuote(r.film_style)}`);
     if (phraseBody !== null) {
       const copyPath = path.join(s.directory, scene.PhraseCopyFile);
       let have: Buffer | null = null;
@@ -322,7 +335,28 @@ function describeTiming(t: scene.Timing): string {
 
 function describeHandoff(h: scene.Handoff): string {
   if (scene.handoffIsZero(h)) return '-';
-  return h.peer + '/' + h.device;
+  return h.peer + '/' + h.device + (h.style_shift !== '' ? '/' + h.style_shift : '');
+}
+
+function styleShiftList(): string {
+  return scene.StyleShifts.map((x) => `${x.id}（${x.name}，配 ${x.devices.join('/')}）`).join('、');
+}
+
+/**
+ * 分镜计划里的风格：点名的风格要已经装进项目，相邻镜头实际用的风格不同就要写 style_shift。
+ * 实际用的风格要按项目当前的默认风格算，所以放在这里而不是 parseTimingPlan。
+ */
+function verifyPlanFilmStyles(projectRoot: string, plan: scene.TimingPlan): void {
+  const { manifest, ok } = filmstyle.installed(projectRoot);
+  const defaultKey = ok ? filmstyle.manifestKey(manifest) : '';
+  const problems: string[] = [];
+  for (const entry of plan.scenes ?? []) {
+    const value = entry.film_style;
+    if (value === '' || value === filmstyle.NoFilmStyle) continue;
+    if (filmstyle.styleDirOf(projectRoot, value) === '') problems.push(`镜头 ${entry.id} 点名的风格 ${value} 没装进项目：先运行 am film-style add ${value}`);
+  }
+  if (problems.length > 0) throw new Error(`分镜计划的风格不合格：\n  - ${problems.join('\n  - ')}`);
+  scene.verifyStyleBoundaries(plan, (value) => (value === '' ? defaultKey : value === filmstyle.NoFilmStyle ? '' : value));
 }
 
 function handoffDeviceList(): string {
@@ -404,6 +438,8 @@ export interface JSONField {
   key: string;
   /** 原样的 JSON 文本（Go 的 json.RawMessage）。 */
   value: string;
+  /** 为 true 时删掉这个字段（没有就什么也不做）。 */
+  remove?: boolean;
 }
 
 const isSpace = (c: string) => c === ' ' || c === '\t' || c === '\n' || c === '\r';
@@ -553,6 +589,11 @@ export function rewriteJSONObject(raw: string, updates: readonly JSONField[]): s
     i = valueEnd;
   }
   for (const u of updates) {
+    if (u.remove) {
+      const at = fields.findIndex((f) => f.key === u.key);
+      if (at >= 0) fields.splice(at, 1);
+      continue;
+    }
     let replaced = false;
     for (const f of fields) {
       if (f.key === u.key) {

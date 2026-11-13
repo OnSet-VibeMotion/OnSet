@@ -20,6 +20,16 @@ test('starts a new video from the home page', async ({ page, project, sandbox })
   await page.locator('.film-styles .fs-search').fill('油画');
   await expect(page.locator('.film-styles .fs-item[data-style="lemo-opuscar/impasto"]')).toBeVisible();
   await page.keyboard.press('Escape');
+  await expect(page.locator('#film-style-dialog')).toHaveCount(0);
+  await expect(page.locator('#home-style')).toContainText('不用整片风格');
+  // 弹窗里单击只是选中，确认才生效；再选回「不用整片风格」。
+  await page.locator('#home-style').click();
+  await page.locator('#film-style-dialog .fs-item[data-style="lemo-opuscar/impasto"]').click();
+  await expect(page.locator('#film-style-dialog')).toBeVisible();
+  await page.locator('#film-style-confirm').click();
+  await expect(page.locator('#home-style')).toContainText('油画');
+  await page.locator('#home-style').click();
+  await page.locator('#film-style-dialog .fs-item.none').dblclick();
   await expect(page.locator('#home-style')).toContainText('不用整片风格');
 
   await page.locator('#home-prompt').fill('首页端到端测试，讲讲复利');

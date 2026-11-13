@@ -11,9 +11,20 @@ import * as song from '../song';
 import { ValidTools } from '../tools';
 import { formatGPrecision, formatStrings } from './gofmt';
 import { fromBeat, ptrTo, sliceOf, topLevelKeys, unmarshal, type StructType } from './jsondecode';
-import { CastRequiredHeading, CharacterRigSkillName, castDriverFile, filmStyleSection, skillPromptSections, songExplainerPrompt, SongExplainerSkillName } from './skills';
+import {
+  CastRequiredHeading,
+  CharacterRigSkillName,
+  castDriverFile,
+  FilmStyleOwnKey,
+  filmStyleSection,
+  sceneFilmStyleSection,
+  skillPromptSections,
+  songExplainerPrompt,
+  SongExplainerSkillName,
+  styleShiftSection,
+} from './skills';
 import { VerificationError } from './verification';
-import { lookIsZero, timingStructType, timingToJSON, verifyTimingInputs, type Timing } from './timing';
+import { lookIsZero, timingStructType, timingToJSON, verifyFilmStyleValue, verifyTimingInputs, type Timing } from './timing';
 import { verifyFrameAlignment } from './frames';
 import { timingSection } from './scenedata';
 import type { Attempt } from './attempt';
@@ -61,7 +72,7 @@ export const delimiterMatchAll = new RegExp(delimiterSource, 'g');
  * 都从这里派生，不再各写一份、彼此漂移。改字段集时只改这两个切片。
  */
 const requiredSceneFields = ['id', 'duration_seconds', 'output', 'transcript', 'text'];
-const optionalSceneFields = ['style_guide', 'renderer', 'cast', 'song', 'beat', 'timing'];
+const optionalSceneFields = ['style_guide', 'renderer', 'film_style', 'cast', 'song', 'beat', 'timing'];
 
 /** RequiredFields 返回 scene.json 的必填字段名（副本，调用方可自由修改）。 */
 export function requiredFields(): string[] {
@@ -90,6 +101,11 @@ export interface Scene {
   text: string;
   style_guide: string;
   renderer: string;
+  /**
+   * 本镜头的整片风格：空表示项目的默认风格，「来源/目录名」表示项目里装的另一种风格，
+   * none 表示不用整片风格、自主定视觉。口播项目由 am scene cues 从分镜计划抄进来。
+   */
+  film_style: string;
   /** 可选的角色配置。老镜头没有这个字段，cast 为 null，行为完全不变。 */
   cast: Cast | null;
   song: song.Cue | null;
@@ -253,6 +269,7 @@ const sceneType: StructType = {
     ['text', 'string'],
     ['style_guide', 'string'],
     ['renderer', 'string'],
+    ['film_style', 'string'],
     ['cast', ptrTo(castType)],
     ['song', ptrTo(songCueType)],
     ['beat', ptrTo(fromBeat(beat.cueType))],
@@ -271,6 +288,7 @@ export function newScene(fields: Partial<Scene> = {}): Scene {
     text: '',
     style_guide: '',
     renderer: '',
+    film_style: '',
     cast: null,
     song: null,
     beat: null,
@@ -293,6 +311,7 @@ export function sceneToJSON(s: Scene): unknown {
     text: s.text,
     style_guide: s.style_guide || undefined,
     renderer: s.renderer || undefined,
+    film_style: s.film_style || undefined,
     cast: s.cast ? castToJSON(s.cast) : undefined,
     song: s.song ? song.cueToJSON(s.song) : undefined,
     beat: s.beat ? beat.cueToJSON(s.beat) : undefined,
@@ -439,6 +458,7 @@ export function load(directory: string): Scene {
     if (!isRegularFile(style)) throw new Error(`style_guide 指向的文件不存在：${result.style_guide}`);
   }
   if (result.renderer !== '' && !ValidTools.has(result.renderer)) throw new Error(`无效的 renderer：${result.renderer}`);
+  verifyFilmStyleValue(result.film_style);
   validateCast(result);
   return result;
 }
@@ -855,8 +875,11 @@ export function buildPrompt(s: Scene, resolvedSkills: Record<string, string> | n
       '\n视觉自由度（强制）：本镜头的字体、版式、材质与动效由你根据文案和素材自主决定，配色遵守下面的「全片配色」；\n' +
       '不得把项目中的 frame.md、style_id、style_name、示例图或其他旧风格资料当作视觉命令。\n';
   }
+  // 不写 film_style 的镜头用默认风格，段落与只有一种风格时逐字相同；点名另一种风格时换成镜头级的说法。
   const filmStyleDir = resolved[filmstyle.SkillName] ?? '';
-  if (filmStyleDir !== '') style = filmStyleSection(filmStyleDir, hasLook);
+  const ownStyleDir = resolved[FilmStyleOwnKey] ?? '';
+  if (s.film_style === '' && filmStyleDir !== '') style = filmStyleSection(filmStyleDir, hasLook);
+  else if (s.film_style !== '' && ownStyleDir !== '') style = sceneFilmStyleSection(ownStyleDir, hasLook);
   const timing = timingSection(s);
   return (
     '当前只执行一个 MG 动画镜头，不进行交互提问。\n' +
@@ -880,6 +903,7 @@ export function buildPrompt(s: Scene, resolvedSkills: Record<string, string> | n
     castSection(s) +
     songSection(s, resolved) +
     timing +
+    styleShiftSection(s, resolved) +
     '\n' +
     skillPromptSections(resolved) +
     determinismSection +

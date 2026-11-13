@@ -6,7 +6,7 @@ import type { Attachment, BeatState, Box, ProjectFilmStyle, ProjectState, Projec
 import { cssSelector } from '../selector';
 import { Icon } from './Icon';
 import { MemoryTab } from './Memory';
-import { FilmStylePicker, Poster, styleKey, useFilmStyles } from './FilmStyles';
+import { FilmStyleDialog, FilmStylePicker, Poster, styleKey, useFilmStyles } from './FilmStyles';
 import { Markdown } from './chat/Markdown';
 import { ScriptTab } from './Script';
 import { PublishTab } from './Publish';
@@ -67,7 +67,7 @@ export function Preview(props: Props) {
         {props.tab === 'scene' && <SceneTab {...props} scene={scene} />}
         {props.tab === 'compose' && <ComposeTab {...props} scene={scene} />}
         {props.tab === 'final' && <FinalTab tree={props.tree} version={props.version} run={props.run} onTab={props.onTab} />}
-        {props.tab === 'style' && <StyleTab version={props.version} run={props.run} scenes={props.scenes} />}
+        {props.tab === 'style' && <StyleTab version={props.version} run={props.run} scenes={props.scenes} onScene={props.onScene} />}
         {props.tab === 'review' && <ReviewTab tree={props.tree} version={props.version} run={props.run} />}
         {props.tab === 'publish' && <PublishTab version={props.version} run={props.run} />}
         {props.tab === 'memory' && <MemoryTab scene={scene} version={props.version} run={props.run} />}
@@ -525,6 +525,7 @@ function SceneTab(props: Props & { scene: Scene | null }) {
             {scene.duration_seconds ? `${scene.duration_seconds.toFixed(1)} 秒 · ` : ''}
             <span className={'status-' + status}>{statusText[status]}</span>
           </p>
+          <SceneStyle scene={scene} label={`镜头 ${number}`} version={props.version} onQuick={props.onQuick} />
           <div className="scene-actions">
             <button id="render-scene" className={scene.exists ? '' : 'primary'} onClick={() => props.run(`/api/scenes/${encodeURIComponent(scene.id)}/render`)}>
               {scene.exists ? '重新渲染' : '渲染'}
@@ -771,17 +772,95 @@ function FinalTab({ tree, version, run, onTab }: { tree: TreeFile[]; version: nu
 }
 
 /**
- * 风格页：本项目的整片风格（来自某个风格来源）。有就展示海报、适用题材与 STYLE.md，
- * 可以换或去掉；没有就说明各镜头自主定视觉，并直接在这里挑一种。装、换、去掉都是
- * am film-style 写任务，会占项目写锁，进度在右上角任务里。
+ * 镜头页里的风格一行：这个镜头用的是哪种风格，「换风格」打开风格弹窗。
+ * 选好后不直接改文件（客户端不写项目文件），把要求写进输入框交给编排工具：它要改分镜计划、
+ * 必要时 am film-style add，并给变成风格交界的地方挑过渡手法，再重跑 am scene cues。
  */
-function StyleTab({ version, run, scenes }: { version: number; run: RunAction; scenes: Scene[] }) {
+function SceneStyle(props: { scene: Scene; label: string; version: number; onQuick: Props['onQuick'] }) {
+  const [info, setInfo] = useState<ProjectFilmStyle | null>(null);
+  const [open, setOpen] = useState(false);
+  const films = useFilmStyles(open);
+  useEffect(() => {
+    api<ProjectFilmStyle>('/api/film-style').then(setInfo, () => setInfo(null));
+  }, [props.version]);
+  if (!info) return null;
+  const raw = info.scenes?.find((x) => x.id === props.scene.id)?.film_style ?? '';
+  const extras = info.extras ?? [];
+  const nameOf = (key: string) =>
+    extras.find((x) => styleKey(x.manifest) === key)?.manifest.cn ?? films.data?.styles.find((x) => styleKey(x) === key)?.cn ?? key;
+  let label: ReactNode;
+  if (raw === '') label = info.manifest ? <>{info.manifest.cn}<span className="muted">（默认）</span></> : <span className="muted">自主定视觉</span>;
+  else if (raw === 'none') label = <span className="muted">不用整片风格</span>;
+  else label = <>{nameOf(raw)}{info.missing?.some((m) => m.scene === props.scene.id) && <span className="bad">（没装进项目）</span>}</>;
+  const installed = new Set([...(info.manifest ? [styleKey(info.manifest)] : []), ...extras.map((x) => styleKey(x.manifest))]);
+  const pick = (value: string) => {
+    const who = `${props.label}（${props.scene.id}）`;
+    let ask: string;
+    if (value === '@default') ask = info.manifest ? `把${who}改回默认风格「${info.manifest.cn}」。` : `把${who}改回不写风格、自主定视觉。`;
+    else if (value === 'none') ask = `把${who}改成不用整片风格、自主定视觉。`;
+    else ask = `把${who}换成「${nameOf(value)}」风格（${value}）。`;
+    props.onQuick(
+      ask + '改分镜计划并重跑 am scene cues；它和相邻镜头的风格不同时，按「风格交界」挑一种过渡手法，让画法在画面里自然地换过去，不要硬切或叠化。',
+      [],
+      true,
+    );
+  };
+  return (
+    <>
+      <p className="scene-style">
+        <span className="muted">风格</span>
+        <strong>{label}</strong>
+        <button className="ghost small" id="scene-style" onClick={() => setOpen(true)}>
+          换风格
+        </button>
+      </p>
+      {open && (
+        <FilmStyleDialog
+          title={`${props.label} 换一种风格`}
+          intro="选好后写进对话，由编排工具改分镜，并给前后的风格交界设计画面里的过渡。"
+          confirm="写进对话"
+          data={films.data}
+          error={films.error}
+          posterVersion={films.posterVersion}
+          selected={raw === '' ? '@default' : raw}
+          installed={installed}
+          specials={[
+            {
+              value: '@default',
+              title: info.manifest ? `跟随默认风格：${info.manifest.cn}` : '跟随默认风格',
+              desc: info.manifest ? '和全片大多数镜头一样。' : '项目还没有默认风格，镜头自主定视觉。',
+              mark: '默',
+            },
+            { value: 'none', title: '不用整片风格', desc: '这个镜头按文案自己定配色、字体与动效。', mark: 'Aa' },
+          ]}
+          onPick={pick}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+/** 镜头 id 换成镜头页用的编号（按镜头顺序，两位数）；找不到时原样返回。 */
+function sceneNumber(scenes: Scene[], id: string): string {
+  const index = scenes.findIndex((s) => s.id === id);
+  return index < 0 ? id : '镜头 ' + String(index + 1).padStart(2, '0');
+}
+
+/**
+ * 风格页：本项目的风格。默认风格（不写 film_style 的镜头用它）展示海报、适用题材、STYLE.md，
+ * 可以换或去掉；下面是个别镜头点名用的其他风格，每种列出在用的镜头，可以添加、去掉。
+ * 装、换、添加、去掉都是 am film-style 写任务，会占项目写锁，进度在右上角任务里。
+ * 哪个镜头用哪种风格要改分镜计划与 scene.json，那是编排工具的事，这里只读。
+ */
+function StyleTab({ version, run, scenes, onScene }: { version: number; run: RunAction; scenes: Scene[]; onScene: (id: string) => void }) {
   const [info, setInfo] = useState<ProjectFilmStyle | null>(null);
   const [error, setError] = useState('');
   const [doc, setDoc] = useState('');
-  const [picking, setPicking] = useState(false);
-  const [confirmRemove, setConfirmRemove] = useState(false);
-  const films = useFilmStyles(picking || info?.installed === false);
+  const [docKey, setDocKey] = useState('');
+  const [dialog, setDialog] = useState<'' | 'default' | 'extra'>('');
+  const [confirmRemove, setConfirmRemove] = useState('');
+  const films = useFilmStyles(dialog !== '' || info?.installed === false);
   useEffect(() => {
     api<ProjectFilmStyle>('/api/film-style').then(
       (result) => {
@@ -791,41 +870,152 @@ function StyleTab({ version, run, scenes }: { version: number; run: RunAction; s
       (err) => setError(errorText(err)),
     );
   }, [version]);
+  const extras = info?.extras ?? [];
+  const shown = extras.find((x) => styleKey(x.manifest) === docKey);
+  const docFile = shown ? shown.style_file : info?.style_file;
   useEffect(() => {
     setDoc('');
-    if (info?.style_file)
-      fetch(rawURL(info.style_file, version))
+    if (docFile)
+      fetch(rawURL(docFile, version))
         .then((r) => (r.ok ? r.text() : ''))
         .then(setDoc, () => setDoc(''));
-  }, [info?.style_file, version]);
+  }, [docFile, version]);
   const rendered = scenes.some((scene) => scene.exists);
   const staleNote = rendered ? '已经渲染的镜头不会自动更新，要重渲染才会换成新风格（整批渲染时 am 会按输入指纹把它们判为过期）。' : '';
-  const pick = (slug: string) => {
+  const installedKeys = new Set([...(info?.manifest ? [styleKey(info.manifest)] : []), ...extras.map((x) => styleKey(x.manifest))]);
+  const pickDefault = (slug: string) => {
     if (!slug) return;
-    setPicking(false);
+    setDialog('');
     run('/api/film-style', { style: slug, replace: true });
   };
+  const addExtra = (slug: string) => {
+    if (!slug) return;
+    setDialog('');
+    run('/api/film-style', { style: slug, as: 'extra' });
+  };
+  const sceneLinks = (ids: string[]) =>
+    ids.length === 0 ? (
+      <span className="muted small">还没有镜头用它</span>
+    ) : (
+      <span className="style-scenes">
+        {ids.map((id) => (
+          <button key={id} className="chip" onClick={() => onScene(id)} title={id}>
+            {sceneNumber(scenes, id)}
+          </button>
+        ))}
+      </span>
+    );
+  const dialogs = (
+    <>
+      {dialog === 'default' && info?.manifest && (
+        <FilmStyleDialog
+          title="换默认风格"
+          intro={<>不写风格的镜头都会换成新风格；点名了其他风格的镜头不受影响。{staleNote}</>}
+          confirm="换成这个风格"
+          data={films.data}
+          error={films.error}
+          posterVersion={films.posterVersion}
+          selected={styleKey(info.manifest)}
+          installed={installedKeys}
+          onPick={pickDefault}
+          onClose={() => setDialog('')}
+        />
+      )}
+      {dialog === 'extra' && (
+        <FilmStyleDialog
+          title="添加一种风格"
+          intro="装进项目后，在对话里告诉编排工具哪些镜头或段落用它；它会改分镜，并给风格交界设计画面里的过渡。"
+          confirm="添加"
+          data={films.data}
+          error={films.error}
+          posterVersion={films.posterVersion}
+          selected=""
+          installed={installedKeys}
+          onPick={addExtra}
+          onClose={() => setDialog('')}
+        />
+      )}
+    </>
+  );
+  const others = (
+    <section className="style-others">
+      <header>
+        <h4>其他风格</h4>
+        <span className="muted small">个别镜头用；相邻镜头风格不同时，交界会在画面里换过去</span>
+        <span className="spacer" />
+        <button onClick={() => setDialog('extra')} id="add-film-style">
+          添加一种风格
+        </button>
+      </header>
+      {(info?.missing ?? []).map((m) => (
+        <p key={m.scene + m.style} className="bad small">
+          {sceneNumber(scenes, m.scene)} 点名的 {m.style} 没装进项目，渲染会失败：添加这种风格，或在对话里让编排工具改掉。
+        </p>
+      ))}
+      {extras.length === 0 ? (
+        <p className="muted small">还没有。想让某一段换一种画法（回忆、片中片、对照……），先在这里添加，再在对话里说哪几个镜头用它。</p>
+      ) : (
+        <div className="style-other-list film-styles">
+          {extras.map((x) => {
+            const key = styleKey(x.manifest);
+            return (
+              <article key={key} className={'style-other' + (docKey === key ? ' on' : '')} data-style={key}>
+                {x.style ? <Poster style={x.style} /> : <span className="fs-poster" />}
+                <div className="style-other-text">
+                  <strong>
+                    {x.manifest.cn} <span className="muted">{x.manifest.en}</span>
+                  </strong>
+                  {sceneLinks(x.scenes)}
+                  <div className="toolbar">
+                    <button className="ghost" onClick={() => setDocKey(docKey === key ? '' : key)}>
+                      {docKey === key ? '看默认风格' : '看说明'}
+                    </button>
+                    {confirmRemove === key ? (
+                      <>
+                        <button className="danger" onClick={() => (setConfirmRemove(''), run('/api/film-style', { remove: true, style: key }))}>
+                          确认去掉
+                        </button>
+                        <button className="ghost" onClick={() => setConfirmRemove('')}>
+                          取消
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="ghost"
+                        disabled={x.scenes.length > 0}
+                        title={x.scenes.length > 0 ? '还有镜头在用：先在对话里让编排工具把它们换掉' : ''}
+                        onClick={() => setConfirmRemove(key)}
+                      >
+                        去掉
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
   if (error) return <Empty>{error}</Empty>;
   if (!info) return <Empty>正在读整片风格…</Empty>;
-  if (!info.installed || picking) {
+  if (!info.installed) {
     return (
       <div className="style-tab">
+        {dialogs}
         <section className="style-intro">
           <div className="style-intro-head">
-            <span className="style-badge">{info.installed ? '换整片风格' : '没有整片风格'}</span>
-            <h3>{info.installed ? '换一种整片风格' : '各镜头按文案自己定视觉'}</h3>
+            <span className="style-badge">没有默认风格</span>
+            <h3>各镜头按文案自己定视觉</h3>
           </div>
           <p>
-            从风格来源里选一种，全片所有镜头都画成它：渲染器会遵守它的 STYLE.md（外观、材质、配色逻辑、字体、动效与镜头语法），内容仍来自每个镜头自己的文案。
+            从风格来源里选一种作为默认风格，镜头都画成它：渲染器会遵守它的 STYLE.md（外观、材质、配色逻辑、字体、动效与镜头语法），内容仍来自每个镜头自己的文案。个别段落之后还可以换成别的风格。
             {staleNote}
           </p>
-          {info.installed && (
-            <div className="toolbar">
-              <button onClick={() => setPicking(false)}>取消</button>
-            </div>
-          )}
         </section>
-        <FilmStylePicker layout="grid" data={films.data} error={films.error} posterVersion={films.posterVersion} selected={info.manifest ? styleKey(info.manifest) : ''} onPick={pick} />
+        {extras.length > 0 && others}
+        <FilmStylePicker layout="grid" data={films.data} error={films.error} posterVersion={films.posterVersion} selected="" onPick={pickDefault} />
       </div>
     );
   }
@@ -833,6 +1023,7 @@ function StyleTab({ version, run, scenes }: { version: number; run: RunAction; s
   const manifest = info.manifest!;
   return (
     <div className="style-tab">
+      {dialogs}
       <section className="style-intro film">
         {style && (
           <div className="film-styles">
@@ -840,7 +1031,7 @@ function StyleTab({ version, run, scenes }: { version: number; run: RunAction; s
           </div>
         )}
         <div className="style-intro-head">
-          <span className="style-badge">整片风格</span>
+          <span className="style-badge">默认风格</span>
           <h3>
             {manifest.cn} <span className="muted">{manifest.en}</span>
           </h3>
@@ -854,29 +1045,36 @@ function StyleTab({ version, run, scenes }: { version: number; run: RunAction; s
             </span>
           </p>
         )}
+        {scenes.length > 0 && <div className="style-used">{sceneLinks(info.default_scenes ?? [])}</div>}
         <div className="toolbar">
-          <button onClick={() => setPicking(true)}>换风格</button>
-          {confirmRemove ? (
+          <button onClick={() => setDialog('default')}>换默认风格</button>
+          {confirmRemove === '@default' ? (
             <>
-              <span className="muted small">去掉后各镜头回到自主定视觉。{staleNote}</span>
+              <span className="muted small">去掉后不写风格的镜头回到自主定视觉。{staleNote}</span>
               <button
                 className="danger"
                 onClick={() => {
-                  setConfirmRemove(false);
+                  setConfirmRemove('');
                   run('/api/film-style', { remove: true });
                 }}
               >
                 确认去掉
               </button>
-              <button onClick={() => setConfirmRemove(false)}>取消</button>
+              <button onClick={() => setConfirmRemove('')}>取消</button>
             </>
           ) : (
-            <button onClick={() => setConfirmRemove(true)}>去掉整片风格</button>
+            <button onClick={() => setConfirmRemove('@default')}>去掉默认风格</button>
           )}
         </div>
       </section>
+      {others}
       {doc ? (
         <section className="style-doc">
+          {shown && (
+            <p className="style-doc-head muted small">
+              {shown.manifest.cn} 的 STYLE.md
+            </p>
+          )}
           <Markdown text={doc} />
         </section>
       ) : (
