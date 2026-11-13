@@ -87,7 +87,7 @@ export function Poster(props: { style: FilmStyle; version?: number; full?: boole
 function matches(style: FilmStyle, query: string): boolean {
   if (!query) return true;
   const q = query.toLowerCase();
-  return [style.cn, style.en, style.slug, style.source, style.category_cn, style.category_en, style.summary, ...style.uses].some((field) =>
+  return [style.cn, style.en, style.slug, style.source, style.category_cn, style.category_en, style.summary, ...(style.uses ?? [])].some((field) =>
     field.toLowerCase().includes(q),
   );
 }

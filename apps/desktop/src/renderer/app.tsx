@@ -211,6 +211,8 @@ export function App() {
   const [outbox, setOutbox] = useState<Outbox | null>(null);
   const [recent, setRecent] = useState<Set<string>>(new Set());
   const [version, setVersion] = useState(1);
+  // 装、去掉插件后首页重读做法（插件可能带来新的做法）。
+  const [pluginsVersion, setPluginsVersion] = useState(0);
   /** 第三方插件自己的页面，列在顶栏右侧「更多页面」的最后。 */
   const [pluginTabs, setPluginTabs] = useState<[Tab, string][]>([]);
   const [dialog, setDialog] = useState(false);
@@ -785,6 +787,7 @@ export function App() {
           defaultParent={defaultParent}
           currentId={currentId}
           agents={homeAgents}
+          pluginsVersion={pluginsVersion}
           onOpen={async (id) => {
             try {
               await post('/api/workspaces/switch', { project_id: id });
@@ -968,7 +971,10 @@ export function App() {
               </button>
             </header>
             <div className="pad">
-              <Settings version={version} run={run} />
+              <Settings version={version} run={run} onPluginsChanged={() => {
+                setPluginsVersion((v) => v + 1);
+                if (currentId) void loadProject();
+              }} />
             </div>
           </section>
         </div>

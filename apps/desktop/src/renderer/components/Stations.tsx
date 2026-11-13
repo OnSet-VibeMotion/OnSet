@@ -1,17 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, errorText, post } from '../api';
-import type { BuiltinContents, ProgressState, ProjectState, Scene, StationInfo, StationOp, StationPageInfo, StationParam, StationRun, StationSetting, StationsResponse } from '../types';
+import type { BuiltinContents, ProgressState, ProjectState, Scene, StationInfo, StationOp, StationPageInfo, StationParam, StationRun, StationSetting, StationsResponse, Task } from '../types';
 import { setPluginCommands } from './chat/complete';
 import { pluginVerb } from './chat/model';
 import type { RunAction } from './Preview';
 import '../stations.css';
 
 /**
- * 第三方站（流程插件）。
- * - 设置页：这个项目加的站——它会做什么、要了哪些权限、它的设置（含密钥），添加与去掉；
+ * 插件。
+ * - 设置页：内置功能与「我的插件」——这台电脑上装的第三方插件，对所有项目生效：它会做什么、要了哪些权限、
+ *   它的设置（含密钥），添加、更新与去掉。没有打开项目也能管（PluginSettings）；
  * - 发布页：只能由用户触发的操作的按钮（StationActions）；
  * - 插件自己的页面（StationPage）与嵌进自带页面的小窗（StationSlots），都经 StationFrame 的沙箱桥接。
- * 加、去掉、执行都是写任务（/api/stations），客户端自己不写项目文件。
+ * 装、去掉、更新是后台任务（/api/stations），执行操作是项目的写任务；客户端自己不写项目文件。
  */
 
 const stepNames: Record<string, string> = { beat: '节拍', script: '口播稿', storyboard: '分镜', scene: '镜头', final: '成片', publish: '发布' };
@@ -100,9 +101,10 @@ function permissionLines(s: StationInfo): [string, string][] {
   if (s.provides?.tts) out.push(['提供配音', `${s.provides.tts}（在设置的「配音」里选它）`]);
   if (s.provides?.align) out.push(['提供字幕对齐', `${s.provides.align}（在设置的「字幕对齐」里选它）`]);
   for (const rs of s.renderer_skills ?? []) {
-    out.push(['给渲染器的技能', `${rs.name}：${rs.summary}（${rs.scenes === 'all' ? '每个镜头都用，加上后已渲染的镜头要重渲染' : 'AI 点名的镜头才用'}）`]);
+    out.push(['给渲染器的技能', `${rs.name}：${rs.summary}（${rs.scenes === 'all' ? '每个镜头都用，装上后所有项目里已渲染的镜头都要重渲染' : 'AI 点名的镜头才用'}）`]);
   }
-  if (s.film_styles) out.push(['整片风格库', `${s.film_styles}（在「风格」里能选到）`]);
+  if (s.film_styles) out.push(['整片风格库', `${s.film_styles}（新建项目和「风格」里都能选到）`]);
+  if (s.flow) out.push(['新的做法', `${s.flow.name}（新建项目时在「做法」里选）`]);
   if ((s.inserts ?? []).length > 0) out.push(['补充制作说明', `往这几个阶段里加了说明：${s.inserts.join('、')}`]);
   for (const sc of s.schedules ?? []) {
     const op = s.ops.find((o) => o.name === sc.op);
@@ -209,17 +211,56 @@ function StationSettingsForm({ station, onSaved }: { station: StationInfo; onSav
   );
 }
 
-/** 设置页：这个项目加的第三方站。 */
-export function ProjectStations({ version, run }: { version: number; run: RunAction }) {
+/**
+ * 装、去掉、更新插件：起一个后台任务（不要打开项目），在这里等它跑完、报结果。
+ * 跑完后重读插件列表，onChanged 让外面（顶栏的插件页面、首页的做法）跟着换。
+ */
+function usePluginTask(onDone: () => void): { busy: string; message: string; start: (path: string, label: string, payload?: Record<string, unknown>) => void } {
+  const [busy, setBusy] = useState('');
+  const [message, setMessage] = useState('');
+  const start = (path: string, label: string, payload: Record<string, unknown> = {}) => {
+    setBusy(label);
+    setMessage('');
+    void (async () => {
+      try {
+        const { task_id } = await post<{ task_id: string }>(path, payload);
+        for (;;) {
+          await new Promise((r) => window.setTimeout(r, 500));
+          const t = await api<Task>(`/api/tasks/${encodeURIComponent(task_id)}`);
+          if (t.status === 'succeeded') {
+            setMessage(`${label}：好了`);
+            break;
+          }
+          if (t.status === 'failed' || t.status === 'cancelled') {
+            setMessage(`${label}没有成功：${t.error || t.message}`);
+            break;
+          }
+        }
+      } catch (err) {
+        setMessage(`${label}没有成功：${errorText(err)}`);
+      }
+      setBusy('');
+      onDone();
+    })();
+  };
+  return { busy, message, start };
+}
+
+/** 设置页：内置功能与「我的插件」。插件装在这台电脑上，对所有项目生效；没有打开项目也能管。 */
+export function PluginSettings({ version, onChanged }: { version: number; onChanged?: () => void }) {
   const [data, error, reload] = useStations(version);
   const [source, setSource] = useState('');
   const [open, setOpen] = useState<string>('');
-  // 添加前先说实话：插件带的操作不在沙箱里。
+  // 添加前先说实话：插件带的操作不在沙箱里，而且对所有项目生效。
   const [confirming, setConfirming] = useState(false);
+  const task = usePluginTask(() => {
+    reload();
+    onChanged?.();
+  });
   const add = () => {
     const value = source.trim();
     if (value === '') return;
-    run('/api/stations', { source: value });
+    task.start('/api/stations', '添加插件', { source: value });
     setSource('');
     setConfirming(false);
   };
@@ -256,15 +297,33 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
         </ul>
       </section>
     )}
-    <section className="stations" aria-label="流程插件">
+    <section className="stations" aria-label="我的插件">
       <div className="stations-head">
-        <strong>流程插件</strong>
-        <span>给这个项目加一站别人写的制作步骤，例如自动发布。插件不是 ArticleToMotion 自带的，由它的作者维护；加之前请确认来源可信，加完看一眼它要了哪些权限。</span>
+        <strong>我的插件</strong>
+        <span>装上别人写的制作步骤，例如自动发布、新的做法或风格。装一次，这台电脑上的所有项目都能用。插件不是 ArticleToMotion 自带的，由它的作者维护；装之前请确认来源可信，装完看一眼它要了哪些权限。</span>
       </div>
       {error && <div className="settings-error">{error}</div>}
+      {task.busy && <div className="stations-busy" role="status">{task.busy}…</div>}
+      {!task.busy && task.message && (
+        <div className="stations-result" role="status">
+          {task.message}
+        </div>
+      )}
       {data?.problems.map((p) => (
-        <div className="stations-problem" key={p}>
-          {p}
+        <div className="stations-problem" key={p.id + p.message} data-problem={p.id}>
+          <span>{p.message}</span>
+          {p.id !== '' && (
+            <span className="stations-problem-actions">
+              {!p.linked && (
+                <button className="link" disabled={task.busy !== ''} onClick={() => task.start(`/api/stations/${encodeURIComponent(p.id)}/update`, '更新插件')}>
+                  更新
+                </button>
+              )}
+              <button className="link danger" disabled={task.busy !== ''} onClick={() => task.start(`/api/stations/${encodeURIComponent(p.id)}/remove`, '去掉插件')}>
+                去掉
+              </button>
+            </span>
+          )}
         </div>
       ))}
       {data && thirdParty.length > 0 && (
@@ -291,11 +350,11 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
                     {open === s.id ? '收起' : '详情与设置'}
                   </button>
                   {!s.linked && (
-                    <button className="link" onClick={() => run(`/api/stations/${encodeURIComponent(s.id)}/update`)}>
+                    <button className="link" disabled={task.busy !== ''} onClick={() => task.start(`/api/stations/${encodeURIComponent(s.id)}/update`, '更新插件')}>
                       更新
                     </button>
                   )}
-                  <button className="link danger" onClick={() => run(`/api/stations/${encodeURIComponent(s.id)}/remove`)}>
+                  <button className="link danger" disabled={task.busy !== ''} onClick={() => task.start(`/api/stations/${encodeURIComponent(s.id)}/remove`, '去掉插件')}>
                     去掉
                   </button>
                 </div>
@@ -365,21 +424,6 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
                         </dl>
                       </>
                     )}
-                    {s.flow && (
-                      <div className="station-flow">
-                        <div>
-                          <strong>它带来一套流程：{s.flow.name}</strong>
-                          <span>改用后，制作路线、顶栏第一步和交给 AI 的制作说明都换成这套流程的；ArticleToMotion 的公共约定照旧。</span>
-                        </div>
-                        {data.active_flow?.station === s.id ? (
-                          <button onClick={() => run(`/api/stations/${encodeURIComponent(s.id)}/flow`, { use: false })}>回到自带的流程</button>
-                        ) : (
-                          <button className="primary" onClick={() => run(`/api/stations/${encodeURIComponent(s.id)}/flow`, { use: true })}>
-                            这个项目改用它
-                          </button>
-                        )}
-                      </div>
-                    )}
                     <StationSettingsForm station={s} onSaved={reload} />
                     {s.prompt && (
                       <>
@@ -407,7 +451,7 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
             if (e.key === 'Enter' && source.trim() !== '') setConfirming(true);
           }}
         />
-        <button className="primary" disabled={source.trim() === '' || confirming} onClick={() => setConfirming(true)}>
+        <button className="primary" disabled={source.trim() === '' || confirming || task.busy !== ''} onClick={() => setConfirming(true)}>
           添加
         </button>
       </div>
@@ -415,6 +459,9 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
         <div className="stations-confirm" role="alertdialog" aria-label="确认添加插件">
           <p>
             插件是别人写的。它的页面在沙箱里运行，只能做它申请过的事；要是它带操作（给你点的按钮、给 AI 用的工具），{opsTrust}
+          </p>
+          <p>
+            装上后对这台电脑上的所有项目生效。要是它给每个镜头都带上渲染技能，所有项目里已经渲染好的镜头都会标成要重新渲染。装好后在「详情与设置」里能看到它具体要了什么、用到了哪些还在试验的能力。
           </p>
           <div>
             <button className="primary" onClick={add}>

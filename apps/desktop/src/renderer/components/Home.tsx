@@ -31,6 +31,8 @@ interface Props {
   defaultParent: string;
   currentId: string;
   agents: AgentsResponse | null;
+  /** 装、去掉插件后加一：重读做法（插件可能带来新的做法）。 */
+  pluginsVersion?: number;
   onOpen: (id: string) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
   onBrowse: () => void;
@@ -43,7 +45,7 @@ interface Props {
 
 /**
  * 制作方式：映射到 am init 的 --delivery 与 --narration。选项来自后端（/api/styles 的 modes：
- * 宿主的口播、卡点与内置插件登记的做法）；还没取到时只有口播。
+ * 宿主的口播、内置插件登记的做法与已装的第三方插件带来的做法）；还没取到时只有口播。
  */
 const fallbackModes: ModeOption[] = [{ id: 'speech', label: '口播讲解', hint: '配音 + 动画，最常用', delivery: 'speech', narration: 'solo' }];
 
@@ -116,7 +118,7 @@ export function Home(props: Props) {
       },
       () => setStyles(null),
     );
-  }, []);
+  }, [props.pluginsVersion]);
   useEffect(() => {
     if (!parent && props.defaultParent) setParent(props.defaultParent);
   }, [props.defaultParent]);

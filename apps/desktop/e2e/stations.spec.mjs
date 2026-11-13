@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { test, expect, openProject, api, desktopDir } from './fixtures.mjs';
+import { test, expect, openProject, api, desktopDir, installPlugin, installedPlugins } from './fixtures.mjs';
 
 // 测试用的假发布站：只写回执，不联网（packages/engine/src/flow/testdata/fake-publisher）。
 const fake = path.resolve(desktopDir, '..', '..', 'packages', 'engine', 'src', 'flow', 'testdata', 'fake-publisher');
@@ -18,24 +18,27 @@ async function clickInPage(target, reacted) {
   }).toPass({ timeout: 20_000 });
 }
 
-test('a third-party station is added in settings and its publish action runs only when the user clicks', async ({ page, project }) => {
+test('a plugin is added in settings without a project, every project gets it, and its publish action runs only when the user clicks', async ({ page, project, sandbox }) => {
   fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: draft\ncopy:\n  primary_title: 测试标题\n---\n');
-  await openProject(page, project);
+  // 还没打开任何项目：首页。
+  await expect(page.locator('.home-hero h1')).toContainText('今天想做一条');
 
-  // 设置页：加进这个项目（写任务，写项目的 article-to-motion.flow.json）。
+  // 设置页「我的插件」：装在这台电脑上，对所有项目生效（写用户级的 installed.json，不碰项目文件）。
   await page.locator('#settings-trigger').click();
-  const stations = page.locator('#settings-dialog section.stations[aria-label="流程插件"]');
+  const stations = page.locator('#settings-dialog section.stations[aria-label="我的插件"]');
   await stations.getByLabel('插件来源').fill(`link:${fake}`);
   await stations.getByRole('button', { name: '添加' }).click();
-  // 添加前先说实话：插件的操作是电脑上的普通程序，不在沙箱里。
+  // 添加前先说实话：插件的操作是电脑上的普通程序，不在沙箱里；装上对所有项目生效。
   const confirmAdd = stations.getByRole('alertdialog', { name: '确认添加插件' });
   await expect(confirmAdd).toContainText('能读写你的文件、能联网');
   await expect(confirmAdd).toContainText('写了声明范围之外的项目文件时告诉你');
-  const lock = path.join(project.path, 'article-to-motion.flow.json');
-  const stationIDs = () => JSON.parse(fs.readFileSync(lock, 'utf8')).stations.map((e) => e.id);
-  expect(stationIDs()).toEqual([]);
+  await expect(confirmAdd).toContainText('对这台电脑上的所有项目生效');
+  await expect(confirmAdd).toContainText('已经渲染好的镜头都会标成要重新渲染');
+  expect(installedPlugins(sandbox)).toEqual([]);
   await confirmAdd.getByRole('button', { name: '确认添加' }).click();
-  await expect.poll(stationIDs).toEqual(['fake-publisher']);
+  await expect.poll(() => installedPlugins(sandbox)).toEqual(['fake-publisher']);
+  const lock = path.join(project.path, 'article-to-motion.flow.json');
+  expect(JSON.parse(fs.readFileSync(lock, 'utf8'))).toEqual({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } });
   const card = stations.locator('li[data-station="fake-publisher"]');
   await expect(card).toContainText('假发布');
   await expect(card).toContainText('第三方');
@@ -44,12 +47,21 @@ test('a third-party station is added in settings and its publish action runs onl
   await expect(card).toContainText('要你点的');
   await expect(card.locator('.station-trust')).toContainText('它的操作是在你电脑上运行的程序');
   await expect(card.locator('.station-experimental')).toContainText('用到了实验性能力：hooks');
+  await expect(card.locator('.station-perms:not(.station-page-perms)')).toContainText('新建项目时在「做法」里选');
   // 本机目录的站改动立即生效，没有「更新」。
   await expect(card.getByRole('button', { name: '更新' })).toHaveCount(0);
   await stations.scrollIntoViewIfNeeded();
   await page.screenshot({ path: test.info().outputPath('stations-settings.png') });
   await page.locator('#settings-dialog').getByRole('button', { name: '关闭' }).click();
 
+  // 首页新建时能选到它带来的做法，标明来自哪个插件。
+  await page.locator('#home-mode').click();
+  const mode = page.locator('.menu-item', { hasText: '快剪' });
+  await expect(mode).toContainText('来自插件「假发布」');
+  await page.keyboard.press('Escape');
+
+  // 已有的项目不用再加，打开就有。
+  await openProject(page, project);
   // 制作路线上多了一站，排在发布后面。
   const progress = await api(page, '/api/progress');
   expect(progress.body.stations.map((s) => s.id).slice(-2)).toEqual(['publish', 'auto-publish']);
@@ -69,19 +81,18 @@ test('a third-party station is added in settings and its publish action runs onl
   await expect.poll(async () => (await api(page, '/api/progress')).body.stations.find((s) => s.id === 'auto-publish').status).toBe('done');
   await page.screenshot({ path: test.info().outputPath('stations-publish.png') });
 
-  // 去掉：锁文件里不再有这个站（新建时记下的流程留着）。
+  // 去掉：所有项目都不再有它；项目的锁文件始终只有新建时记下的流程。
   await page.locator('#settings-trigger').click();
   await page.locator('#settings-dialog li[data-station="fake-publisher"]').getByRole('button', { name: '去掉' }).click();
-  await expect.poll(stationIDs).toEqual([]);
+  await expect.poll(() => installedPlugins(sandbox)).toEqual([]);
+  await expect.poll(async () => (await api(page, '/api/progress')).body.stations.some((s) => s.id === 'auto-publish')).toBe(false);
+  expect(JSON.parse(fs.readFileSync(lock, 'utf8'))).toEqual({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } });
 });
 
-test('a plugin page runs sandboxed and gets everything through the host', async ({ page, project }) => {
+test('a plugin page runs sandboxed and gets everything through the host', async ({ page, project, sandbox }) => {
   fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: draft\n---\n');
   fs.writeFileSync(path.join(project.path, '.env'), 'MINIMAX_VOICE_ID=do-not-leak\n');
-  fs.writeFileSync(
-    path.join(project.path, 'article-to-motion.flow.json'),
-    JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' }, stations: [{ id: 'fake-publisher', version: '0.1.0', source: `link:${fake}`, commit: '', digest: '' }] }),
-  );
+  installPlugin(sandbox, fake);
   await openProject(page, project);
 
   // 插件页面收在顶栏的「插件」菜单里（只用来嵌小窗的页面不列）。
@@ -144,14 +155,11 @@ test('a plugin page runs sandboxed and gets everything through the host', async 
   await expect(frame.locator('#result')).toHaveText('没执行：用户没有同意');
 });
 
-test('plugins get settings, a slot in the publish page, a slash command, hooks and calls into am', async ({ page, project }) => {
+test('plugins get settings, a slot in the publish page, a slash command, hooks and calls into am', async ({ page, project, sandbox }) => {
   fs.mkdirSync(path.join(project.path, 'production'), { recursive: true });
   fs.writeFileSync(path.join(project.path, 'production', 'script-final.md'), '# 稿\n正文\n');
   fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: draft\n---\n');
-  fs.writeFileSync(
-    path.join(project.path, 'article-to-motion.flow.json'),
-    JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' }, stations: [{ id: 'fake-publisher', version: '0.1.0', source: `link:${fake}`, commit: '', digest: '' }] }),
-  );
+  installPlugin(sandbox, fake);
   await openProject(page, project);
 
   // 设置页：权限一目了然；密钥只写不读。
@@ -204,13 +212,10 @@ test('plugins get settings, a slot in the publish page, a slash command, hooks a
   await expect(page.locator('.station-page:not(.station-slot) .station-page-bar')).toContainText('发布看板');
 });
 
-test('a plugin can bring a whole flow, a voice, a style library, and send a message for the user', async ({ page, project }) => {
-  fs.writeFileSync(
-    path.join(project.path, 'article-to-motion.flow.json'),
-    JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' }, stations: [{ id: 'fake-publisher', version: '0.1.0', source: `link:${fake}`, commit: '', digest: '' }] }),
-  );
+test('a plugin brings a new kind of project, a voice and a style library, and sends a message for the user', async ({ page, project, sandbox }) => {
+  installPlugin(sandbox, fake);
+  // 先打开一个项目，让「保存到」默认落在测试用的临时 HOME 里。
   await openProject(page, project);
-  await expect(page.locator('.steps [data-tab="script"]')).toBeVisible();
 
   // 设置页：它带来的东西都列出来。
   await page.locator('#settings-trigger').click();
@@ -223,25 +228,38 @@ test('a plugin can bring a whole flow, a voice, a style library, and send a mess
   await expect(perms).toContainText('假风格库');
   await expect(perms).toContainText('往这几个阶段里加了说明：render');
   await expect(perms).toContainText('客户端开着时每 30 分钟');
+  await expect(perms).toContainText('快剪');
+  // 流程只在新建时定：已有项目没有「改用」的入口。
+  await expect(card.getByRole('button', { name: '这个项目改用它' })).toHaveCount(0);
   // 插件的配音出现在「配音」的可选项里。
   await expect(dialog.locator('.settings-row[data-key="TTS_PROVIDER"]').getByLabel('全局配音').locator('option[value="x:fake-publisher"]')).toHaveCount(1);
-
-  // 改用它带来的流程：顶栏第一步换成它的页面。
-  await card.getByRole('button', { name: '这个项目改用它' }).click();
-  const lock = path.join(project.path, 'article-to-motion.flow.json');
-  await expect.poll(() => JSON.parse(fs.readFileSync(lock, 'utf8')).flow).toBe('fake-publisher');
   await card.scrollIntoViewIfNeeded();
   await page.screenshot({ path: test.info().outputPath('station-flow.png') });
   await dialog.getByRole('button', { name: '关闭' }).click();
+
+  // 首页：选它带来的做法新建一个项目。
+  await page.locator('.brand').click();
+  await page.locator('#home-mode').click();
+  await page.locator('.menu-item', { hasText: '快剪' }).click();
+  await expect(page.locator('#home-mode')).toContainText('快剪');
+  // 它的风格库在首页的整片风格里就能选到（还没有项目）。
+  await page.locator('#home-style').click();
+  await page.locator('.film-styles .fs-search').fill('水墨');
+  await expect(page.locator('.film-styles .fs-item[data-style="x-fake-publisher/ink"]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.locator('#home-prompt').fill('插件做法的端到端测试');
+  await page.locator('#home-send').click();
+  await expect(page.locator('.creation')).toHaveCount(0, { timeout: 15_000 });
+  await expect(page.locator('#title')).toContainText('插件做法的端到端测试');
+  const created = (await api(page, '/api/projects')).body.projects.find((p) => p.name.startsWith('插件做法的端到端测试'));
+  expect(JSON.parse(fs.readFileSync(path.join(created.path, 'article-to-motion.flow.json'), 'utf8')).production.id).toBe('x:fake-publisher');
+
+  // 顶栏第一步是它的页面，路线是它的。
   await expect(page.locator('.steps [data-tab="x:fake-publisher:dashboard"]')).toBeVisible();
   await expect(page.locator('.steps [data-tab="script"]')).toHaveCount(0);
   const progress = await api(page, '/api/progress');
   expect(progress.body.mode).toBe('x:fake-publisher');
   expect(progress.body.stations.map((s) => s.id)).toEqual(['intake', 'render', 'assemble', 'review', 'gate-final', 'auto-publish']);
-
-  // 它的风格库出现在整片风格里。
-  const styles = await api(page, '/api/film-styles');
-  expect(JSON.stringify(styles.body)).toContain('x-fake-publisher');
 
   // 页面替用户发消息：先确认，确认后才进对话。
   await page.locator('.steps [data-tab="x:fake-publisher:dashboard"]').click();
@@ -253,12 +271,6 @@ test('a plugin can bring a whole flow, a voice, a style library, and send a mess
   await expect(confirm).toContainText('帮我把发布标题改短一点');
   await confirm.getByRole('button', { name: '执行', exact: true }).click();
   await expect(page.locator('#messages')).toContainText('帮我把发布标题改短一点');
-
-  // 回到自带的流程。
-  await page.locator('#settings-trigger').click();
-  await card.getByRole('button', { name: '详情与设置' }).click();
-  await card.getByRole('button', { name: '回到自带的流程' }).click();
-  await expect.poll(() => JSON.parse(fs.readFileSync(lock, 'utf8')).flow).toBeUndefined();
 });
 
 test('builtin features are plugins too: always on, listed with what they bring, no switch', async ({ page, project }) => {
@@ -294,12 +306,9 @@ test('builtin features are plugins too: always on, listed with what they bring, 
   await expect(page.locator('.steps [data-tab="publish"]')).toBeAttached();
 });
 
-test('files a plugin op writes outside what it declared are shown as a warning', async ({ page, project }) => {
+test('files a plugin op writes outside what it declared are shown as a warning', async ({ page, project, sandbox }) => {
   fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: draft\n---\n');
-  fs.writeFileSync(
-    path.join(project.path, 'article-to-motion.flow.json'),
-    JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' }, stations: [{ id: 'fake-publisher', version: '0.1.0', source: `link:${fake}`, commit: '', digest: '' }] }),
-  );
+  installPlugin(sandbox, fake);
   await openProject(page, project);
 
   // 发布页的按钮：假发布顺手写了 notes/scribble.txt（清单只声明了 production/publish/）。
@@ -332,7 +341,7 @@ test('files a plugin op writes outside what it declared are shown as a warning',
   await page.screenshot({ path: test.info().outputPath('station-scope-page.png') });
 });
 
-test('a third-party station that declares its state says when it waits for you, and its next-step buttons work', async ({ page, project }) => {
+test('a third-party station that declares its state says when it waits for you, and its next-step buttons work', async ({ page, project, sandbox }) => {
   // 假发布只用清单顶替内置「发布」：并进 declared-state.json（站点读 publish.md 的 publish_status）。
   const dir = test.info().outputPath('declared-publisher');
   fs.cpSync(fake, dir, { recursive: true });
@@ -348,10 +357,7 @@ test('a third-party station that declares its state says when it waits for you, 
   fs.mkdirSync(path.join(project.path, 'production'), { recursive: true });
   fs.writeFileSync(path.join(project.path, 'production', 'approval.json'), '{"approved_at":"2026-11-01T00:00:00Z"}');
   fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: pending_manual_checks\n---\n');
-  fs.writeFileSync(
-    path.join(project.path, 'article-to-motion.flow.json'),
-    JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' }, stations: [{ id: 'fake-publisher', version: '0.1.0', source: `link:${dir}`, commit: '', digest: '' }] }),
-  );
+  installPlugin(sandbox, dir);
   await openProject(page, project);
 
   const progress = await api(page, '/api/progress');

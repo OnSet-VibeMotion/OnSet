@@ -21,12 +21,36 @@
   line-height: 1.7;
 }
 .stations .stations-problem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 8px 12px;
   border: 1px solid var(--line-strong);
   border-left: 2px solid var(--bad);
   border-radius: 8px;
   color: var(--bad);
   font-size: 12px;
+}
+.stations .stations-problem > span:first-child {
+  flex: 1;
+}
+.stations .stations-problem-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+/* 装、去掉、更新插件的进度与结果。 */
+.stations .stations-busy,
+.stations .stations-result {
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.stations .stations-busy {
+  border-color: var(--accent-line);
+  color: var(--accent-text);
 }
 .stations .stations-list {
   list-style: none;
@@ -461,30 +485,6 @@
 }
 
 /* 设置页：插件带来的整套流程。 */
-.stations .station-flow {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--accent-line);
-  border-radius: var(--radius);
-  background: var(--accent-soft);
-}
-.stations .station-flow > div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-}
-.stations .station-flow strong {
-  color: var(--accent-text);
-  font-size: 13px;
-}
-.stations .station-flow span {
-  color: var(--text-3);
-  font-size: 12px;
-}
-
 /* 插件写了它没声明会写的项目文件（发布页的按钮、插件页面的回执）：警示色列出来。 */
 .station-scope {
   display: flex;

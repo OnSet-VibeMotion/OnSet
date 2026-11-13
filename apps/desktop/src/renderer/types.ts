@@ -267,6 +267,8 @@ export interface ModeOption {
   narration: string;
   canvas?: string;
   example?: string;
+  /** 第三方插件带来的做法：插件名。 */
+  plugin?: string;
 }
 
 export interface StylesResponse {
@@ -845,7 +847,7 @@ export interface ProgressState {
   turns: Record<string, string[]>;
 }
 
-/** /api/stations：这个项目加的第三方站（studio/stations.ts）。 */
+/** /api/stations 里的一个插件（studio/stations.ts）。 */
 export interface StationParam {
   key: string;
   type: 'string' | 'boolean' | 'integer' | 'number' | 'strings';
@@ -969,9 +971,16 @@ export interface StationPageInfo {
   reads: string[];
 }
 
+/** 装了却读不出来的插件（本机没有、内容被改过、清单写坏）。 */
+export interface StationProblem {
+  id: string;
+  message: string;
+  /** 来自本机目录（不能「更新」）。 */
+  linked: boolean;
+}
+
+/** /api/stations：全部插件（内置与这台电脑上装的第三方插件），对所有项目一样。 */
 export interface StationsResponse {
   stations: StationInfo[];
-  problems: string[];
-  /** 项目选用的第三方流程（顶栏第一步换成它的页面）。 */
-  active_flow?: { station: string; name: string; first_tab: string } | null;
+  problems: StationProblem[];
 }

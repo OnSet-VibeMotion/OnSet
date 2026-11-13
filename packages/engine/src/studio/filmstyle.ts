@@ -40,7 +40,8 @@ export function styleJSON(style: filmstyle.Style): Record<string, unknown> {
     en: style.en,
     category_cn: style.category_cn,
     category_en: style.category_en,
-    uses: style.uses,
+    // 目录式风格库（第三方插件）的风格没有「适合」：给空数组，界面按数组用。
+    uses: style.uses ?? [],
     summary: style.summary,
     tags: style.tags && style.tags.length > 0 ? style.tags : undefined,
   };

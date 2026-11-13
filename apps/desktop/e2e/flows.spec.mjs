@@ -9,7 +9,7 @@ import { test, expect, openProject } from './fixtures.mjs';
 function recordFlow(project, id) {
   const lock = path.join(project.path, 'article-to-motion.flow.json');
   if (id === '') fs.rmSync(lock);
-  else fs.writeFileSync(lock, JSON.stringify({ version: 1, production: { id, canvas: 'vertical-3x4' }, stations: [] }, null, 2) + '\n');
+  else fs.writeFileSync(lock, JSON.stringify({ version: 1, production: { id, canvas: 'vertical-3x4' } }, null, 2) + '\n');
 }
 
 test('the top bar follows the flow of the project', async ({ page, project }) => {
