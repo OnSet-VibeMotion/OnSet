@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('am', {
   setBadge(count: number): void {
     ipcRenderer.send('am:badge', count);
   },
+  /** 在 Finder 中显示项目里的文件或文件夹；path 空表示项目文件夹，project 空表示当前项目。返回错误文字，成功为空。 */
+  reveal(path: string, project?: string): Promise<string> {
+    return ipcRenderer.invoke('am:reveal', { path, project });
+  },
   /** 系统通知；窗口在前台时主进程不弹。 */
   notify(title: string, body: string): void {
     ipcRenderer.send('am:notify', { title, body });

@@ -368,6 +368,7 @@ opencode 默认模型不可用时加 `AM_TEST_OPENCODE_MODEL`。
 | am 是打进资源目录的 `cli/am.cjs`，由一段 shim（`src/main/clishim.ts` 的 `shimScript`，写在 `userData/bin/am`）以 `ELECTRON_RUN_AS_NODE=1` 用客户端自带的 Electron 运行，同时设 `AM_ASSETS_DIR`、`AM_BROWSER`、`AM_NPM_CLI`。**没有「安装命令行工具」**：命令行不对外，以前装到 `~/.local/bin/am` 的旧 shim 由 `envutil.addToolsLocation` 放在 PATH 最前面的 am 遮住 | 用户不必另装 Node；agent 只经工具服务调用 am，找不到也不会去翻它 |
 | 主进程启动时从登录 shell 读 PATH（`shellpath.ts`） | 从 Finder 启动的应用只有系统 PATH，编排工具、ffmpeg、asdf 的 node 全都找不到 |
 | 顶栏就是标题栏：`.desktop .topbar` 可拖动窗口，按钮 `no-drag`；macOS 左侧留 88px 给红绿灯 | `titleBarStyle: hiddenInset` 去掉了系统标题栏 |
+| 在 Finder 中显示（`renderer/reveal.ts` → preload 的 `am.reveal` → 主进程 `am:reveal`）：后端 `Server.revealPath` 只认项目里的路径（含符号链接）、`.env` 不选中、还没生成的文件退到最近一层存在的目录；项目文件夹用 `shell.openPath` 打开，其余 `showItemInFolder` 选中。入口：顶栏项目名旁的文件夹按钮、菜单「文件 → 在 Finder 中显示项目」（⌥⌘R）、镜头与文件的右键菜单、镜头「⋯」菜单、文件页、成片页、首页最近项目。e2e（`reveal.spec.mjs`）把主进程的 `shell` 两个函数换成记录 | 界面拿不到 Node 与 Electron 接口，只能经 IPC 请主进程做；不限定在项目里的话，界面里跑的合成页面就能让主进程去开任意路径。测试不能真的弹 Finder |
 | 静态文件（`serveStatic`）只把不带扩展名的路径回落到 `index.html`，带扩展名找不到直接 404；按扩展名设 MIME，一律 `no-cache` | 缺失的脚本拿到一份 HTML，浏览器只报模块 MIME 错误，看不出真正原因 |
 | 界面产物文件名固定（`assets/app.js`，见 `vite.config.mjs`），不带 hash；`apps/desktop/out/` 与 `packages/cli/dist/` 是构建产物，不提交 | 主进程按路径直接取文件；产物每次由 `npm run build` / `npm run dist` 现做，CI 与发布都从源码构建 |
 | 根目录 `package-lock.json` 的 `resolved` 必须是 `registry.npmjs.org` | 用镜像装完依赖要把 `resolved` 换回官方源再提交，CI 访问不到国内镜像 |

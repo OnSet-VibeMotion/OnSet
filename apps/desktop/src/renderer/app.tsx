@@ -30,6 +30,7 @@ import { MarkdownContext } from './components/chat/Markdown';
 import { ProjectDialog } from './components/ProjectDialog';
 import { Tasks } from './components/Tasks';
 import { BrandMark } from './components/BrandMark';
+import { canReveal, revealInFinder, revealLabel, setRevealErrorHandler } from './reveal';
 import type {
   AgentChoice,
   AgentsResponse,
@@ -195,6 +196,7 @@ export function App() {
     setToast(message);
     window.setTimeout(() => setToast((current) => (current === message ? '' : current)), 5000);
   }, []);
+  useEffect(() => setRevealErrorHandler(notify), [notify]);
 
   const loadProjects = useCallback(async () => {
     try {
@@ -529,6 +531,8 @@ export function App() {
         }
       } else if (action.type === 'panel') {
         if (currentId) setPanelOpen((open) => !open);
+      } else if (action.type === 'reveal') {
+        if (currentId) revealInFinder('');
       } else if (action.type === 'open') {
         void (async () => {
           try {
@@ -571,6 +575,11 @@ export function App() {
           </strong>
           {state?.metadata.canvas && <span className="project-meta">{canvasLabel(state.metadata.canvas)}</span>}
         </button>
+        {canReveal && currentId && !homeOpen && (
+          <button className="ghost icon reveal-project" id="reveal-project" title={`${revealLabel}（⌥⌘R）`} aria-label={`在 Finder 中打开项目文件夹`} onClick={() => revealInFinder('')}>
+            <Icon name="folder" size={13} />
+          </button>
+        )}
         {currentId && !homeOpen && (
           <nav className="steps" aria-label="制作步骤">
             {steps.map((id, index) => (
@@ -690,6 +699,15 @@ export function App() {
                 setFilePath(path);
                 showTab('file');
               }}
+              onReveal={
+                canReveal
+                  ? (target) => {
+                      const sc = target.scene ? scenes.find((s) => s.id === target.scene) : undefined;
+                      if (target.scene && !sc) return;
+                      revealInFinder(sc ? (sc.exists && sc.output ? sc.directory + '/' + sc.output : sc.directory) : (target.file ?? ''));
+                    }
+                  : undefined
+              }
             />
             <Chat
               projectPath={project?.path ?? ''}

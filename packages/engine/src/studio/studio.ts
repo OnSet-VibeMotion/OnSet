@@ -267,6 +267,26 @@ export class Server {
     throw new Error('尚未打开项目');
   }
 
+  /**
+   * 「在 Finder 中显示」要选中的路径。`projectID` 为空时用当前项目；`target` 是项目内的相对路径或绝对路径，
+   * 空表示项目文件夹本身。解析后（含符号链接）必须在项目里，`.env` 不显示；文件还不存在（镜头还没渲染）时
+   * 退到最近一层存在的上级目录。返回 `{ path, folder }`：`folder` 为 true 时直接打开它，否则在 Finder 里选中它。
+   */
+  revealPath(projectID: string, target: string): { path: string; folder: boolean } {
+    const p = projectID === '' ? this.currentProject() : (this.registry.projects ?? []).find((x) => x.id === projectID);
+    if (!p) throw new Error('项目没有登记');
+    const root = fs.realpathSync(p.path);
+    if (target === '') return { path: root, folder: true };
+    let full = path.resolve(root, target);
+    const rel = path.relative(root, full);
+    if (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) throw new Error('路径不在项目里');
+    if (path.basename(full) === '.env') full = path.dirname(full);
+    while (!fs.existsSync(full) && full !== root) full = path.dirname(full);
+    const real = fs.realpathSync(full);
+    if (real !== root && !real.startsWith(root + path.sep)) throw new Error('路径不在项目里');
+    return { path: real, folder: real === root };
+  }
+
   /** 当前项目，或一个 404 no_project 响应。 */
   projectOr404(): Project | Response {
     try {

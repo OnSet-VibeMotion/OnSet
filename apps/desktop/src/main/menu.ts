@@ -4,7 +4,7 @@ import { app, BrowserWindow, dialog, Menu, type MenuItemConstructorOptions } fro
  * 原生菜单。菜单项只发「做什么」给当前窗口的界面（am:menu），界面用它已有的状态与接口去做：
  * 新建、切页这些逻辑只在界面里有一份，菜单不另写。选目录用系统对话框，选好后把路径一并发过去。
  */
-export type MenuAction = { type: 'new' } | { type: 'home' } | { type: 'open'; path: string } | { type: 'step'; index: number } | { type: 'settings' } | { type: 'panel' };
+export type MenuAction = { type: 'new' } | { type: 'home' } | { type: 'open'; path: string } | { type: 'step'; index: number } | { type: 'settings' } | { type: 'panel' } | { type: 'reveal' };
 
 function send(action: MenuAction): void {
   const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
@@ -44,6 +44,7 @@ export function installMenu(): void {
       submenu: [
         { label: '新建项目', accelerator: 'CmdOrCtrl+N', click: () => send({ type: 'new' }) },
         { label: '打开项目文件夹…', accelerator: 'CmdOrCtrl+O', click: () => void openFolder() },
+        { label: '在 Finder 中显示项目', accelerator: 'Alt+CmdOrCtrl+R', click: () => send({ type: 'reveal' }) },
         { type: 'separator' },
         process.platform === 'darwin' ? { role: 'close', label: '关闭窗口' } : { role: 'quit', label: '退出' },
       ],

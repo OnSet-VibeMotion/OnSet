@@ -19,6 +19,8 @@ export interface ContextActions {
   onQuick: (text: string, attachments: Attachment[], draftOnly?: boolean) => void;
   onScene: (id: string) => void;
   onFile: (path: string) => void;
+  /** 在 Finder 中显示镜头或文件；浏览器里没有（undefined），菜单就不列这一项。 */
+  onReveal?: (target: { scene?: string; file?: string }) => void;
 }
 
 interface Item {
@@ -137,6 +139,7 @@ function buildMenu(target: Element, actions: ContextActions): Omit<MenuState, 'x
       { label: '说说这个镜头哪里不满意…', run: () => (actions.onQuick(`镜头 ${sceneId} 我不满意：`, [ref], true), focusChatInput()) },
       { label: '打开这个镜头', run: () => actions.onScene(sceneId) },
       { label: '复制镜头编号', run: () => copy(sceneId) },
+      ...(actions.onReveal ? [{ label: '在 Finder 中显示', run: () => actions.onReveal?.({ scene: sceneId }) }] : []),
     ]);
   }
 
@@ -153,6 +156,7 @@ function buildMenu(target: Element, actions: ContextActions): Omit<MenuState, 'x
       },
       { label: '打开', run: () => actions.onFile(file) },
       { label: '复制路径', run: () => copy(file) },
+      ...(actions.onReveal ? [{ label: '在 Finder 中显示', run: () => actions.onReveal?.({ file }) }] : []),
     ]);
   }
 

@@ -156,6 +156,9 @@
 .rail-more:focus-visible {
   opacity: 1;
 }
+.home .rail-reveal {
+  right: 32px;
+}
 .home .rail-more:hover {
   background: var(--hover);
   color: var(--text);

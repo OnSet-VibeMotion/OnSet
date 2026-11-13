@@ -14,6 +14,7 @@ import { ScriptTab } from './Script';
 import { BeatTab } from './Beat';
 import { PublishTab } from './Publish';
 import { FileTree } from './Sidebar';
+import { canReveal, revealInFinder, revealLabel } from '../reveal';
 
 export type Tab = 'beat' | 'script' | 'scene' | 'compose' | 'final' | 'style' | 'voice' | 'review' | 'publish' | 'memory' | 'file';
 
@@ -600,6 +601,11 @@ function SceneTab(props: Props & { scene: Scene | null }) {
                 )}
                 <div className="menu-group">
                   <button onClick={() => props.run('/api/commands/scene.validate', { scene_id: scene.id })}>校验</button>
+                  {canReveal && (
+                    <button id="reveal-scene" onClick={() => revealInFinder(scene.exists && scene.output ? scene.directory + '/' + scene.output : scene.directory)}>
+                      {revealLabel}
+                    </button>
+                  )}
                   {scene.attempts > 0 && (
                     <span className="menu-note" title={usageTitle(scene)}>
                       {usageLabel(scene)}
@@ -787,6 +793,11 @@ function FinalTab({ tree, version, run, onTab }: { tree: TreeFile[]; version: nu
             <button className="link" onClick={() => run('/api/render/all')}>
               渲染全部镜头
             </button>
+            {canReveal && current && (
+              <button className="link" id="reveal-final" onClick={() => revealInFinder(current)}>
+                {revealLabel}
+              </button>
+            )}
           </div>
         </aside>
       </div>
@@ -1199,6 +1210,11 @@ export function FileView({ path, version }: { path: string; version: number }) {
       <div className="toolbar">
         <code className="path">{path}</code>
         <span className="spacer" />
+        {canReveal && (
+          <button id="reveal-file" onClick={() => revealInFinder(path)}>
+            {revealLabel}
+          </button>
+        )}
         <a className="button" href={rawURL(path, version)} target="_blank" rel="noreferrer">
           新窗口打开
         </a>

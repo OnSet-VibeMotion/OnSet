@@ -6,6 +6,7 @@ import { FilmStyleDialog, styleKey, useFilmStyles } from './FilmStyles';
 import { SetupGuide, useSetup } from './SetupGuide';
 import { Creation, type CreationJob } from './Creation';
 import { Icon } from './Icon';
+import { canReveal, revealInFinder } from '../reveal';
 import '../home.css';
 
 /**
@@ -467,6 +468,11 @@ function HomeRail(props: {
                     <span className="rail-meta ellipsis">{summaryText(summary)}</span>
                   </span>
                 </button>
+                {canReveal && !summary?.missing && (
+                  <button className="rail-more rail-reveal" aria-label={`在 Finder 中打开 ${p.name}`} title="在 Finder 中打开" onClick={() => revealInFinder('', p.id)}>
+                    <Icon name="folder" size={11} />
+                  </button>
+                )}
                 <button className="rail-more" aria-label={`从最近项目移除 ${p.name}`} title="从列表移除（不删文件）" onClick={() => void props.onRemove(p.id)}>
                   <Icon name="close" size={10} />
                 </button>

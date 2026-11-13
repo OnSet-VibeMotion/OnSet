@@ -166,6 +166,23 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.on('am:badge', (_event, count: number) => {
       app.setBadgeCount(Math.max(0, Math.trunc(Number(count) || 0)));
     });
+    // 在 Finder 中显示：只认项目里的路径（后端 revealPath 校验），项目文件夹直接打开，其余在 Finder 里选中。
+    ipcMain.handle('am:reveal', async (_event, request: { project?: unknown; path?: unknown }) => {
+      if (!backend) return '后台服务没起来';
+      try {
+        const project = typeof request?.project === 'string' ? request.project : '';
+        const target = typeof request?.path === 'string' ? request.path : '';
+        const found = backend.revealPath(project, target);
+        if (found.folder) {
+          const error = await shell.openPath(found.path);
+          return error || '';
+        }
+        shell.showItemInFolder(found.path);
+        return '';
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    });
     ipcMain.on('am:notify', (_event, message: { title?: string; body?: string }) => {
       if (BrowserWindow.getFocusedWindow() || !Notification.isSupported()) return;
       const note = new Notification({ title: String(message?.title ?? 'ArticleToMotion'), body: String(message?.body ?? '') });
