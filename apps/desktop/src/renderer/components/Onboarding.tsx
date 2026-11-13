@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { api, errorText, post } from '../api';
 import type { AgentsResponse, SettingRow, SettingsResponse } from '../types';
-import { AgentKeys } from './Settings';
+import { AgentKeys, DirectorVisionNote } from './Settings';
+import { rendererState } from './agentReady';
 import { SetupGuide, type SetupHandle } from './SetupGuide';
 import { Icon } from './Icon';
 import '../onboarding.css';
@@ -11,7 +12,8 @@ import '../onboarding.css';
  *
  * 四步，每一步做没做都看真实状态，不靠用户打勾：
  * 1. 摄制组就位：做片必需的工具装好了（/api/setup 的 ready，就是安装页）
- * 2. 请 AI 来编排：全局设置里的编排工具能用（装好了，或导演填了 key）
+ * 2. 请 AI 来编排：全局设置里的编排工具能用（装好了，或导演填了 key），并且全局设置里的渲染工具装在这台电脑上
+ *    （镜头由 Claude Code、Codex 这类工具来画，导演只做编排；没装的话要到第一次渲染才报错）
  * 3. 配音方式：全局选过配音，或者说过「用默认的」（可跳过）
  * 4. 开拍：有了第一个项目
  * 全局设置写的是 /api/settings/global，与设置页同一份；key 写的是 /api/agent-keys。
@@ -76,10 +78,14 @@ export function Onboarding(props: Props) {
   const orchestrator = orchRow ? orchRow.global || effective(orchRow) : '';
   const orchestratorInfo = agents?.agents.find((a) => a.id === orchestrator);
   const tts = row('TTS_PROVIDER');
+  const rendererRow = row('RENDERER');
+  const renderer = rendererRow ? rendererRow.global || effective(rendererRow) : '';
+  const drawing = rendererState(agents, renderer);
+  const [installKey, setInstallKey] = useState(0);
 
   const done: Record<StepID, boolean> = {
     crew: props.setup.status?.ready ?? false,
-    ai: !!orchestratorInfo?.installed,
+    ai: !!orchestratorInfo?.installed && !!agents && drawing.ok,
     voice: ttsAck || (tts?.global ?? '') !== '',
     shoot: props.projectCount > 0,
   };
@@ -119,7 +125,7 @@ export function Onboarding(props: Props) {
       sub: '和你商量、写稿、定分镜、安排渲染的那一位',
       body: (
         <>
-          <p className="ob-lead">选一位来编排整片。电脑上装过 Claude Code、Codex 这类工具就直接用；没装的话选「导演」，填一个模型服务的 API key 就能开工。</p>
+          <p className="ob-lead">选一位来编排整片。电脑上装过 Claude Code、Codex 这类工具就直接用；没装的话选「导演」，填一个模型服务的 API key 就能编排。镜头还要一家装在这台电脑上的工具来画，下面一并确认。</p>
           <div className="ob-agents" role="radiogroup" aria-label="编排工具">
             {agents?.agents.map((a) => {
               const chosen = a.id === orchestrator;
@@ -144,8 +150,63 @@ export function Onboarding(props: Props) {
           </div>
           {orchestrator === 'director' && (
             <div className="ob-keys settings">
-              <AgentKeys version={0} onChange={() => void reload()} />
+              <AgentKeys version={0} onChange={() => {
+                setInstallKey((k) => k + 1);
+                void reload();
+              }} />
+              <DirectorVisionNote model={row('ORCHESTRATOR_MODEL')?.global ?? ''} version={installKey} />
             </div>
+          )}
+          {orchestrator !== '' && agents && (
+            <section className="ob-renderer" aria-label="画镜头的工具" id="ob-renderer">
+              <h3>
+                <span className={'ob-renderer-icon' + (drawing.ok ? ' ok' : '')}>
+                  <Icon name="brush" size={14} />
+                </span>
+                谁来画镜头
+              </h3>
+              {drawing.ok ? (
+                <p className="ob-lead">
+                  每个镜头交给 <strong>{drawing.info?.label ?? renderer}</strong> 来画{orchestrator === 'director' ? '：导演只管编排，画面要靠它' : ''}。想换一家，点下面已经装好的。
+                </p>
+              ) : (
+                <p className="ob-renderer-alert" role="alert">
+                  <Icon name="alert" size={13} />
+                  {drawing.installed.length > 0 ? drawing.reason + '。' : '画面要靠 Claude Code、Codex 这类工具来画，这台电脑上还需要装一个。装好后点「装好了，再查一次」。'}
+                </p>
+              )}
+              {drawing.installed.length > 0 ? (
+                <div className="ob-agents" role="radiogroup" aria-label="渲染工具">
+                  {drawing.installed.map((a) => {
+                    const chosen = a.id === renderer;
+                    return (
+                      <button key={a.id} role="radio" aria-checked={chosen} data-renderer={a.id} className={'ob-agent' + (chosen ? ' on' : '')} onClick={() => void setGlobal('RENDERER', a.id)}>
+                        <strong>{a.label}</strong>
+                        <span>已经装在这台电脑上</span>
+                        <em>{chosen ? '在用' : '用它来画'}</em>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <>
+                  <div className="ob-agents">
+                    {agents.agents
+                      .filter((a) => a.renderer && a.install_url)
+                      .map((a) => (
+                        <a key={a.id} className="ob-agent ob-install" data-install={a.id} href={a.install_url} target="_blank" rel="noreferrer">
+                          <strong>{a.label}</strong>
+                          <span>照官方说明装好，再回到这里</span>
+                          <em>去安装 ↗</em>
+                        </a>
+                      ))}
+                  </div>
+                  <button className="link ob-skip" onClick={() => void reload()}>
+                    装好了，再查一次
+                  </button>
+                </>
+              )}
+            </section>
           )}
         </>
       ),

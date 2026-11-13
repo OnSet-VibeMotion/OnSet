@@ -1760,3 +1760,25 @@ div.tool {
   padding: 0 14px;
   font-size: 12px;
 }
+
+/* 渲染工具没装在这台电脑上：开始制作不可点，顶上说清原因。 */
+.chat .chat-renderer-missing {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 var(--gutter, 24px);
+  padding: 10px 14px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--accent-text);
+}
+.chat .chat-renderer-missing svg {
+  flex: none;
+  margin-top: 3px;
+}
+.chat .intro .vision-note {
+  margin-top: 14px;
+}

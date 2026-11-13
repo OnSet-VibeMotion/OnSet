@@ -18,6 +18,12 @@ export const desktopDir = path.resolve(here, '..');
 const fakeBin = path.join(here, 'fake-bin');
 
 export const test = base.extend({
+  /**
+   * 个别用例要换掉的启动环境（test.use({ appEnv: {...} })）：值为 null 的删掉。
+   * 例如测「渲染工具没装」时去掉固定的 RENDERER，并把 PATH 收窄到假工具与系统目录——开发机上真装着的 qoder、codebuddy 不能算进来。
+   */
+  appEnv: [{}, { option: true }],
+
   sandbox: async ({}, use) => {
     // realpath：macOS 的临时目录在 /var 下，而 /var 是 /private/var 的链接，Studio 按解析后的路径认项目。
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-desktop-e2e-')));
@@ -60,7 +66,7 @@ export const test = base.extend({
     await use({ path: project, name: path.basename(project), promptFile: path.join(scene, 'prompt.md') });
   },
 
-  electronApp: async ({ sandbox }, use) => {
+  electronApp: async ({ sandbox, appEnv }, use) => {
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
     delete env.AM_STUDIO_E2E_CONFIG;
@@ -83,6 +89,10 @@ export const test = base.extend({
       RENDERER: 'claude',
       PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ''}`,
     });
+    for (const [key, value] of Object.entries(appEnv)) {
+      if (value === null) delete env[key];
+      else env[key] = value.replaceAll('{fakeBin}', fakeBin);
+    }
     // 假麦克风：音色页「录我的声音」的用例不碰真麦克风，也不弹系统的麦克风授权。
     const app = await electron.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '.'], cwd: desktopDir, env });
     await use(app);

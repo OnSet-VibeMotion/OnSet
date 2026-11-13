@@ -244,3 +244,61 @@
     padding: 24px 16px;
   }
 }
+.onboarding .ob-keys .vision-note {
+  margin-top: 12px;
+}
+/* 谁来画镜头：编排选好之后确认渲染工具装在这台电脑上。 */
+.onboarding .ob-renderer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.onboarding .ob-renderer h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font: 600 16px var(--serif);
+  color: var(--text);
+}
+.onboarding .ob-renderer-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  color: var(--stale);
+}
+.onboarding .ob-renderer-icon.ok {
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
+.onboarding .ob-renderer .ob-lead strong {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+.onboarding .ob-renderer-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--stale);
+}
+.onboarding .ob-renderer-alert svg {
+  flex: none;
+  margin-top: 4px;
+}
+.onboarding a.ob-agent {
+  text-decoration: none;
+}
+.onboarding a.ob-agent:hover {
+  border-color: var(--accent-line);
+}
+.onboarding a.ob-agent em {
+  color: var(--accent-text);
+}

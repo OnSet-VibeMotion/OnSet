@@ -13,16 +13,16 @@ import { emit, kindNotice, sessionMetaJSON, updateMeta, validateChoice, type Age
 import type { Server } from './studio';
 
 /**
- * agentOrder 是网页上编排工具的展示顺序与名称。取值必须都在 tools.ValidTools 里，
- * 「agentOrder 覆盖全部工具」的测试守着两边一致。
+ * agentOrder 是网页上编排工具的展示顺序、名称与安装入口（各家官方的安装说明页；首次引导在一家能渲染的都没装时
+ * 列出来）。取值必须都在 tools.ValidTools 里，「agentOrder 覆盖全部工具」的测试守着两边一致。
  */
-export const agentOrder: readonly { id: string; label: string }[] = [
-  { id: 'claude', label: 'Claude Code' },
-  { id: 'codex', label: 'Codex' },
-  { id: 'qoder', label: 'Qoder' },
-  { id: 'codebuddy', label: 'CodeBuddy' },
-  { id: 'opencode', label: 'OpenCode' },
-  { id: 'director', label: '导演' },
+export const agentOrder: readonly { id: string; label: string; installURL: string }[] = [
+  { id: 'claude', label: 'Claude Code', installURL: 'https://docs.claude.com/en/docs/claude-code/setup' },
+  { id: 'codex', label: 'Codex', installURL: 'https://developers.openai.com/codex/cli' },
+  { id: 'qoder', label: 'Qoder', installURL: 'https://qoder.com/cli' },
+  { id: 'codebuddy', label: 'CodeBuddy', installURL: 'https://www.codebuddy.ai/cli' },
+  { id: 'opencode', label: 'OpenCode', installURL: 'https://opencode.ai/docs/' },
+  { id: 'director', label: '导演', installURL: '' },
 ];
 
 /**
@@ -51,6 +51,8 @@ interface AgentInfo {
   renderer: boolean;
   /** 没法用时给界面的一句说明（导演还没填模型服务密钥）。 */
   hint?: string;
+  /** 官方安装说明页；导演随客户端下发，没有。 */
+  install_url?: string;
 }
 
 /** executable 从调用矩阵取工具的命令名，不在这里另写一份。 */
@@ -74,7 +76,7 @@ export function agentsAPI(s: Server, request: Request): Response {
       const ready = director.configuredProviders(director.defaultDir(envMap())).length > 0;
       return { id: a.id, label: a.label, command: 'am studio agent', installed: ready, renderer, ...(ready ? {} : { hint: '先在设置里填一个模型服务的 API key' }) };
     }
-    const info: AgentInfo = { id: a.id, label: a.label, command: executable(a.id), installed: false, renderer };
+    const info: AgentInfo = { id: a.id, label: a.label, command: executable(a.id), installed: false, renderer, install_url: a.installURL };
     try {
       info.path = lookPath(info.command, pathValue);
       info.installed = true;
@@ -83,7 +85,9 @@ export function agentsAPI(s: Server, request: Request): Response {
     }
     return info;
   });
-  const result: Record<string, unknown> = { agents, orchestrator: '', renderer: '', orchestrator_model: '', renderer_model: '' };
+  // 不看项目时的渲染工具（环境变量 > 全局设置 > 默认）：新建的项目跟着它，首页与首次引导据此判断渲染工具装没装。
+  const globalRenderer = config.describeSettings('', envMap()).find((r) => r.key === 'RENDERER')?.effective ?? '';
+  const result: Record<string, unknown> = { agents, orchestrator: '', renderer: '', orchestrator_model: '', renderer_model: '', global_renderer: globalRenderer };
   try {
     const p = s.currentProject();
     try {

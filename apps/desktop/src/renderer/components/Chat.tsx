@@ -9,6 +9,8 @@ import type { FilmStyle, ProgressState, TreeFile } from '../types';
 import { confirmGate, currentSummary } from './Progress';
 import { guideFor, type Guide, type GuideAction } from './guide';
 import { AgentPicker } from './AgentPicker';
+import { rendererState } from './agentReady';
+import { DirectorVisionNote } from './Settings';
 import { DiffDialog } from './DiffDialog';
 import { Icon } from './Icon';
 import { Markdown } from './chat/Markdown';
@@ -159,6 +161,10 @@ export function Chat(props: Props) {
   // 这一轮进行中照样能发：消息排到这一轮之后。别的写任务占着项目时不能发。
   const blocked = sending || (props.busy !== '' && !running);
   const session = props.sessions.find((s) => s.session_id === props.sessionId);
+  // 镜头由渲染工具来画（导演只做编排）：这台电脑上没装它时，整片制作会做到第一次渲染才报错，开工前就拦下。
+  const drawing = rendererState(props.agents, props.choice.renderer || props.agents?.renderer || '');
+  // 导演这次会用的模型：会话选的，否则项目设置里给导演选的；都空时后端按填了 key 的服务商挑。
+  const directorModel = props.choice.model || (props.agents?.orchestrator === 'director' ? props.agents.orchestrator_model : '');
 
   // 跟随到底：只有用户在底部（8px 内）时才跟；展开折叠项时不跳。
   useLayoutEffect(() => {
@@ -250,6 +256,10 @@ export function Chat(props: Props) {
         void confirmGate(action.gate, (text) => void deliver(text, []), action.text);
         return;
       case 'start':
+        if (!drawing.ok) {
+          setError(drawing.reason);
+          return;
+        }
         void startProduction();
         return;
       case 'op':
@@ -273,6 +283,10 @@ export function Chat(props: Props) {
         return;
       case 'start':
         fill('');
+        if (!drawing.ok) {
+          setError(drawing.reason);
+          return;
+        }
         void startProduction('');
         return;
       case 'script':
@@ -486,10 +500,22 @@ export function Chat(props: Props) {
             <Icon name="plus" size={13} />
           </button>
         )}
-        <button id="start-production" className="primary pill" disabled={blocked || running} onClick={() => void startProduction()} title="从头开始整片制作">
+        <button
+          id="start-production"
+          className="primary pill"
+          disabled={blocked || running || !drawing.ok}
+          onClick={() => void startProduction()}
+          title={drawing.ok ? '从头开始整片制作' : drawing.reason}
+        >
           开始制作
         </button>
       </header>
+      {!drawing.ok && (
+        <div className="chat-renderer-missing" role="alert" id="renderer-missing">
+          <Icon name="alert" size={13} />
+          <span>{drawing.reason}：在输入框下方「渲染」里换一家，或去设置里改。</span>
+        </div>
+      )}
       <ProgressStrip progress={props.progress} onOpen={props.onProgress} />
       <NextStep guide={guide} disabled={blocked || running || sending} onAction={runGuide} />
 
@@ -502,6 +528,7 @@ export function Chat(props: Props) {
               <p className="muted">
                 新项目先点「开始制作」：按新建时选的片型，从文章开始一步步做到成片。之后在同一个会话里继续改。文章、图片和音频可以直接拖进输入框。
               </p>
+              {props.choice.tool === 'director' && <DirectorVisionNote model={directorModel} />}
             </div>
           )}
           {blocks.map((block, index) => (

@@ -333,6 +333,8 @@ export interface AgentInfo {
   renderer: boolean;
   /** 不能用时的一句说明（导演还没填模型服务密钥）。 */
   hint?: string;
+  /** 官方安装说明页（导演没有）。 */
+  install_url?: string;
 }
 
 export interface AgentsResponse {
@@ -342,6 +344,8 @@ export interface AgentsResponse {
   /** 设置里给上面两家选的模型；空是那家工具自己的默认。 */
   orchestrator_model: string;
   renderer_model: string;
+  /** 不看项目时的渲染工具（环境变量 > 全局设置 > 默认）：新建的项目跟着它。 */
+  global_renderer: string;
   config_error?: string;
 }
 
@@ -753,7 +757,15 @@ export interface AgentKeyProvider {
   label: string;
   key_url: string;
   default_model: string;
+  /** 推荐模型能不能读图（看画面）。 */
+  vision: boolean;
   configured: boolean;
+}
+
+/** GET /api/agent-keys/vision：导演实际会用的模型与它能不能读图（false 看不了，null 不知道）。 */
+export interface AgentVision {
+  model: string;
+  vision: boolean | null;
 }
 
 export interface AgentKeysResponse {

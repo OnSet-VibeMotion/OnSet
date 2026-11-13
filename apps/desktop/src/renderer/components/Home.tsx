@@ -6,6 +6,7 @@ import { FilmStyleDialog, styleKey, useFilmStyles } from './FilmStyles';
 import { SetupGuide, useSetup } from './SetupGuide';
 import { Creation, type CreationJob } from './Creation';
 import { Icon } from './Icon';
+import { rendererState } from './agentReady';
 import { canReveal, revealInFinder } from '../reveal';
 import '../home.css';
 
@@ -139,7 +140,9 @@ export function Home(props: Props) {
   const setup = useSetup();
   // 技能与 CLI 没准备好时建了项目也装不上技能、渲染不了：先引导去跑 am setup。
   const prereqsReady = setup.status?.ready !== false;
-  const canSend = !working && prereqsReady && (text.trim() !== '' || files.length > 0) && !!tool && !!parent;
+  // 新建的项目用全局设置里的渲染工具：没装的话整片会一路做到第一次渲染才报错，先说清楚。
+  const drawing = rendererState(props.agents, props.agents?.global_renderer ?? '');
+  const canSend = !working && prereqsReady && drawing.ok && (text.trim() !== '' || files.length > 0) && !!tool && !!parent;
   const modes = styles?.modes?.length ? styles.modes : fallbackModes;
   const templates = templatesOf(modes);
   const current = templates.find((t) => t.id === template);
@@ -222,6 +225,23 @@ export function Home(props: Props) {
           {setup.status && setup.status.items.some((item) => !item.ready) && (
             <div className="home-setup">
               <SetupGuide setup={setup} />
+            </div>
+          )}
+
+          {!drawing.ok && (
+            <div className="home-renderer" role="alert" id="home-renderer">
+              <span className="home-renderer-icon">
+                <Icon name="brush" size={14} />
+              </span>
+              <span className="home-renderer-text">
+                <strong>还差一家画镜头的工具</strong>
+                <span>{drawing.reason}。</span>
+              </span>
+              {props.onGuide && (
+                <button className="pill" onClick={props.onGuide}>
+                  去选一个
+                </button>
+              )}
             </div>
           )}
 
@@ -368,7 +388,7 @@ export function Home(props: Props) {
                       />
                     ))}
                   </Dropdown>
-                  <button id="home-send" className="send" disabled={!canSend} onClick={() => void submit()} aria-label="开始制作" title={prereqsReady ? '建项目并开始制作（Enter）' : '先在终端运行 am setup 准备前置资源'}>
+                  <button id="home-send" className="send" disabled={!canSend} onClick={() => void submit()} aria-label="开始制作" title={!prereqsReady ? '先在工具准备页把必需的工具装好' : !drawing.ok ? drawing.reason : '建项目并开始制作（Enter）'}>
                     {working ? <span className="spinner" /> : <Icon name="up" size={15} />}
                   </button>
                 </div>
