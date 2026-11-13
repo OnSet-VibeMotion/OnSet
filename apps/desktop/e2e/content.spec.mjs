@@ -240,3 +240,40 @@ test('approving the final film starts consolidating memory and goes to publish',
   const tasks = await page.evaluate(async () => (await (await fetch('/api/tasks')).json()).tasks);
   expect(tasks.some((t) => t.type === 'memory.consolidate')).toBe(true);
 });
+
+test('storyboard lists the plan and each scene’s description before rendering', async ({ page, project }) => {
+  await fs.mkdir(path.join(project.path, 'production'), { recursive: true });
+  await fs.writeFile(
+    path.join(project.path, 'production', 'scene-plan.json'),
+    JSON.stringify({
+      schema: 1,
+      look: { background: '#0F1720', ink: '#F5F1E8', accent: '#F2B134' },
+      scenes: [{ id: 'scene-001', dir: 'scenes/scene-001', chapter: '开场', visual_role: '语境', summary: '一只猫推开门' }],
+    }),
+  );
+  await fs.writeFile(path.join(project.path, 'production', 'treatment.md'), '# 处理方案\n\n主旨：猫也想看世界。\n');
+  await fs.writeFile(project.promptFile, '# 开场\n\n门缝里透出一道光。\n');
+  await openProject(page, project);
+  // 分镜步骤排在口播稿与镜头之间。
+  await expect(page.locator('.steps .step')).toHaveText([/口播稿/, /分镜/, /镜头/, /成片/, /发布/]);
+  await page.locator('[data-tab="storyboard"]').click();
+  await expect(page.locator('#storyboard .sb-title')).toHaveText('1 个镜头');
+  await expect(page.locator('#storyboard .sb-chapter')).toHaveText('开场');
+  await expect(page.locator('#storyboard .sb-summary')).toHaveText('一只猫推开门');
+  await expect(page.locator('#storyboard .sb-text')).toHaveText('hello');
+  await page.locator('#storyboard .sb-treatment summary').click();
+  await expect(page.locator('#storyboard .sb-treatment')).toContainText('猫也想看世界');
+  await page.locator('#storyboard .sb-prompt summary').click();
+  await expect(page.locator('#storyboard .sb-prompt')).toContainText('门缝里透出一道光');
+  // 右键镜头卡：引用镜头。
+  await page.locator('#storyboard .sb-summary').click({ button: 'right' });
+  await expect(page.locator('.ctx-menu')).toContainText('引用镜头 scene-001 到对话');
+  await page.locator('#storyboard .sb-title').click();
+  await expect(page.locator('.ctx-menu')).toHaveCount(0);
+  // 确认交给对话。
+  await page.locator('#storyboard-confirm').click();
+  await expect(page.locator('#messages')).toContainText('分镜我看过了，没问题，开始渲染。');
+  // 镜头页旁边有这个镜头的说明。
+  await page.locator('[data-tab="scene"]').click();
+  await expect(page.locator('#scene-brief')).toContainText('一只猫推开门');
+});

@@ -563,6 +563,16 @@ scene_cues({"scenes": "scenes/", "plan": "production/scene-plan.json", "srt": "t
 
 它把全片切成首尾相接的整数帧区间，写入每个镜头的 `duration_seconds`（帧数 ÷ 帧率，6 位小数）与 `timing` 块，并把短语时间轴复制进镜头目录；合计不等于总帧数、锚点不递增或有镜头不足一帧时整体失败、不写任何文件。之后不得手改 `duration_seconds`：改分镜就改 `scene-plan.json` 再重跑本命令。渲染前用同样的参数加 `"check": true` 复核一次，有人手改过时长会被逐条列出。
 
+### 分镜审核关卡
+
+分镜计划、`scene-plan.md`、每个镜头的 `scene.json` 与 `prompt.md` 都写好、`scene_cues()` 跑通之后，任何渲染之前（包括代表性镜头的试渲染），运行 `studio_show({"page": "storyboard", "note": "分镜写好了，请看一遍"})`，并停下来等用户确认或修改。客户端的分镜页按镜头列出章节、口播、时长、视觉角色、一句话说明、交接手法和完整的 `prompt.md`。汇报：
+
+- 镜头数与总时长。
+- 每章讲什么、靠什么接到下一章。
+- 需要用户拍板的地方：没把握的画面方案、要用的素材、和稿子理解可能不一致的镜头。
+
+用户提出修改时改 `treatment.md`、`scene-plan.json` 或对应镜头的 `prompt.md`，锚点变了就重跑 `scene_cues()`，再请用户看一遍。用户没有点头之前不渲染。确认之后单独重做某个镜头时不必再过这道关。
+
 阶段性汇报和日志规则必须保留：
 
 - 只向外放行以 `[[USER_MESSAGE]]` 开头的消息。
@@ -890,3 +900,4 @@ dry-run 无阻断时，向用户展示归档计划，用户确认后运行 `arch
 1. 网格确认后，把 story.md 的段落表改成小节范围，按小节写 `production/beat/plan.json`（每个镜头 {"id", "bars"}，小节合计必须等于网格的小节数），运行 `studio_show({"page": "beat"})` 让用户在节拍页看切点。
 2. 建好镜头目录后运行 `beat_cues({"scenes": "scenes/"})` 写入镜头时长与拍点，再 `validate_beat()`。镜头时长只能由这条命令写，不得手改 duration_seconds。
 3. 镜头说明里写清楚哪一拍发生什么、画面里的字与字幕逐字照 story.md。成片音轨就是导入的音乐，可另加音效，不加配音。
+4. 每个镜头的 `prompt.md` 写好后，同样过第六阶段的「分镜审核关卡」：`studio_show({"page": "storyboard", "note": "分镜写好了，请看一遍"})`，用户确认之前不渲染。

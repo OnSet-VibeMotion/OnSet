@@ -9,6 +9,7 @@ import { Settings } from './components/Settings';
 import { Icon } from './components/Icon';
 import { Preview, stepTabsFor, tabs, visibleTabs, type Tab } from './components/Preview';
 import { scriptFinalPath } from './components/Script';
+import { storyboardFiles } from './components/Storyboard';
 
 const tabLabel = (id: Tab) => tabs.find(([t]) => t === id)?.[1] ?? id;
 
@@ -22,9 +23,9 @@ function canvasLabel(canvas: string): string {
   return `${w / g}:${h / g}`;
 }
 
-/** 有专门页面的项目文件：口播稿开口播稿页，publish.md 开发布页，不在文件页里显示原文。 */
-const pageForFile = (path: string): 'script' | 'publish' | null =>
-  path === scriptFinalPath ? 'script' : path === 'publish.md' ? 'publish' : null;
+/** 有专门页面的项目文件：口播稿开口播稿页，分镜计划与处理方案开分镜页，publish.md 开发布页，不在文件页里显示原文。 */
+const pageForFile = (path: string): 'script' | 'storyboard' | 'publish' | null =>
+  path === scriptFinalPath ? 'script' : storyboardFiles.includes(path) ? 'storyboard' : path === 'publish.md' ? 'publish' : null;
 import { ContextMenu } from './components/ContextMenu';
 import { MarkdownContext } from './components/chat/Markdown';
 import { ProjectDialog } from './components/ProjectDialog';
@@ -118,6 +119,8 @@ export function App() {
   const [beat, setBeat] = useState<BeatState | null>(null);
   const beatMode = !!beat?.enabled;
   const steps = useMemo(() => stepTabsFor(beatMode), [beatMode]);
+  // 整片制作现在在哪一步（编排工具每轮结束前用 studio_step 标的，没标过时按产物推），顶栏据此标出进度。
+  const progress = state?.step ? steps.indexOf(state.step as Tab) : -1;
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [busy, setBusy] = useState('');
   const [sessionId, setSessionId] = useState('');
@@ -430,7 +433,7 @@ export function App() {
   };
   const quick = (text: string, quickAttachments: Attachment[], draftOnly?: boolean) => {
     setOutbox({ text, attachments: quickAttachments, nonce: Date.now(), draftOnly });
-    if (!draftOnly) notify('已发给编排工具，进度看对话。');
+    if (!draftOnly) notify('已发给 AI，进度看对话。');
   };
 
   // Markdown 里写到的项目文件可点：口播稿开口播稿页，其余开文件页。
@@ -453,6 +456,8 @@ export function App() {
 
   // 编排工具经 am studio show 请用户看某一页：切过去，镜头与文件页带上对象。
   const openView = (view: ViewRequest) => {
+    // 标了制作步骤：重新读项目状态，顶栏的进度跟着变。只标步骤的请求不切页。
+    if (view.step) void loadProject();
     const page = tabs.find(([id]) => id === view.page)?.[0];
     if (!page) return;
     if (page === 'file') {
@@ -505,6 +510,39 @@ export function App() {
     }
   }, [tab, scriptMtime, scriptSeen, seenKey]);
 
+  // 分镜：有了分镜计划、镜头一个都还没渲染、分镜又有没看过的改动时（分镜审核阶段）自动切到分镜页；
+  // 分镜或画面描述改过而没看过时标签打点。
+  const storyboardMtime = tree.reduce(
+    (latest, f) => (storyboardFiles.includes(f.path) || /^scenes\/[^/]+\/prompt\.md$/.test(f.path) ? Math.max(latest, f.mtime ?? 0) : latest),
+    0,
+  );
+  const boardSeenKey = `am-studio.storyboard-seen:${project?.path ?? ''}`;
+  const [boardSeen, setBoardSeen] = useState(0);
+  useEffect(() => {
+    try {
+      setBoardSeen(Number(window.localStorage.getItem(boardSeenKey) ?? 0) || 0);
+    } catch {
+      setBoardSeen(0);
+    }
+  }, [boardSeenKey]);
+  const hasPlan = tree.some((f) => f.path === storyboardFiles[0]);
+  const unrendered = hasPlan && scenes.length > 0 && scenes.every((s) => !s.exists && !s.rendering);
+  const autoBoard = useRef('');
+  useEffect(() => {
+    if (!unrendered || storyboardMtime <= boardSeen || tab !== 'scene' || autoBoard.current === boardSeenKey) return;
+    autoBoard.current = boardSeenKey;
+    setTab('storyboard');
+  }, [unrendered, storyboardMtime, boardSeen, tab, boardSeenKey]);
+  useEffect(() => {
+    if (tab !== 'storyboard' || !storyboardMtime || storyboardMtime <= boardSeen) return;
+    setBoardSeen(storyboardMtime);
+    try {
+      window.localStorage.setItem(boardSeenKey, String(storyboardMtime));
+    } catch {
+      // 记不住只是下次还会打点。
+    }
+  }, [tab, storyboardMtime, boardSeen, boardSeenKey]);
+
   // Dock 角标与完成通知（客户端里才有）：一轮对话、一次渲染要跑很久，人多半去做别的事了。
   const taskStatus = useRef(new Map<string, Task['status']>());
   useEffect(() => {
@@ -519,7 +557,7 @@ export function App() {
     }
   }, [tasks]);
 
-  // 原生菜单（客户端里才有）：新建回首页，打开文件夹走与「打开项目」同一个接口，⌘1–⌘4 切四个步骤。
+  // 原生菜单（客户端里才有）：新建回首页，打开文件夹走与「打开项目」同一个接口，⌘1–⌘5 切五个步骤。
   useEffect(() => {
     return window.am?.onMenu?.((action) => {
       if (action.type === 'new' || action.type === 'home') setHomeOpen(true);
@@ -587,11 +625,12 @@ export function App() {
               <button
                 key={id}
                 data-tab={id}
-                className={'step' + (tab === id && panelOpen ? ' on' : '')}
-                aria-current={tab === id && panelOpen ? 'page' : undefined}
+                className={'step' + (tab === id && panelOpen ? ' on' : '') + (index < progress ? ' done' : index === progress ? ' current' : '')}
+                aria-current={tab === id && panelOpen ? 'page' : index === progress ? 'step' : undefined}
+                title={index === progress ? (state?.step_marked ? 'AI 标记：现在在这一步' : '现在在这一步') : index < progress ? '已经做过' : undefined}
                 onClick={() => showTab(id)}
               >
-                <span className="step-no">{String(index + 1).padStart(2, '0')}</span>
+                <span className="step-no">{index < progress ? '✓' : String(index + 1).padStart(2, '0')}</span>
                 {tabLabel(id)}
                 {id === 'scene' && state && state.scenes.total > 0 && (
                   <span className={'step-count' + (state.scenes.stale > 0 ? ' warn' : '')} title={state.scenes.stale > 0 ? `${state.scenes.stale} 个镜头过期` : '已出片 / 全部镜头'}>
@@ -599,6 +638,7 @@ export function App() {
                   </span>
                 )}
                 {id === 'script' && scriptMtime > scriptSeen && tab !== 'script' && <i className="tab-dot" aria-label="有更新" />}
+                {id === 'storyboard' && storyboardMtime > boardSeen && tab !== 'storyboard' && <i className="tab-dot" aria-label="有更新" />}
               </button>
             ))}
           </nav>

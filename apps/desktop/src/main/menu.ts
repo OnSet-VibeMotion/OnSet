@@ -19,7 +19,7 @@ async function openFolder(): Promise<void> {
 }
 
 export function installMenu(): void {
-  const steps = ['口播稿', '镜头', '成片', '发布'];
+  const steps = ['口播稿', '分镜', '镜头', '成片', '发布'];
   const template: MenuItemConstructorOptions[] = [
     ...(process.platform === 'darwin'
       ? [

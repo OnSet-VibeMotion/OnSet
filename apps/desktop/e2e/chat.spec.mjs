@@ -68,7 +68,7 @@ test('picks the orchestrator and renderer per session', async ({ page, project }
 
   // 已有会话：换编排工具从下一轮起生效，并在对话里留一条提示。
   await page.locator('#agent-tool').selectOption('codex');
-  await expect(page.locator('#messages')).toContainText('编排工具改为 codex');
+  await expect(page.locator('#messages')).toContainText('对话改用 codex');
   await expect(page.locator('#agent-tool')).toHaveValue('codex');
 });
 
@@ -125,4 +125,24 @@ test('sends a scene quick action to the orchestrator', async ({ page, project })
   await page.locator('.quick-actions button', { hasText: '重做这个镜头' }).click();
   await expect(page.locator('.message.user').last()).toContainText('重做镜头 scene-001');
   await expect(page.locator('.done-line').last()).toContainText('已完成');
+});
+
+test('the orchestrator marks which production step the project is at', async ({ page, project }) => {
+  await openProject(page, project);
+  // 没标过时按产物推：只有一个没渲染的镜头，算在分镜这一步。
+  await expect(page.locator('[data-tab="storyboard"]')).toHaveClass(/current/);
+  await expect(page.locator('[data-tab="script"]')).toHaveClass(/done/);
+  await page.locator('#prompt').fill('标步骤');
+  await page.locator('#send').click();
+  await expect(page.locator('#messages')).toContainText('成片拼好了');
+  await expect(page.locator('[data-tab="final"]')).toHaveClass(/current/);
+  await expect(page.locator('[data-tab="final"]')).toHaveAttribute('title', 'AI 标记：现在在这一步');
+  await expect(page.locator('[data-tab="scene"]')).toHaveClass(/done/);
+  await expect(page.locator('[data-tab="scene"] .step-no')).toHaveText('✓');
+  // 只标步骤不切页，回复下面也不留「↗ 页面」链接；面板仍是收起的。
+  await expect(page.locator('#panel')).toHaveCount(0);
+  await expect(page.locator('.view-links')).toHaveCount(0);
+  // 标记跟着项目走：重新加载后还在。
+  await page.reload();
+  await expect(page.locator('[data-tab="final"]')).toHaveClass(/current/);
 });

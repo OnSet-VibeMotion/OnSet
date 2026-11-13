@@ -121,7 +121,7 @@ export async function switchSessionAgents(request: Request, sess: Session): Prom
     else if (rendererSwitched) meta.renderer_model = undefined;
     if (switched) meta.cli_session_id = undefined;
   });
-  if (switched) emit(sess, '', { kind: kindNotice, text: '编排工具改为 ' + choice.tool + '，下一轮会带上之前的对话记录开新会话' });
+  if (switched) emit(sess, '', { kind: kindNotice, text: '对话改用 ' + choice.tool + '，下一轮会带上之前的对话记录开新会话' });
   // 同一家工具换模型：CLI 会话照样续接，续接时带上新模型（各家的 --model / -c model 对 resume 同样生效）。
   else if (modelChanged) emit(sess, '', { kind: kindNotice, text: choice.model ? '编排模型改为 ' + choice.model + '，下一轮起生效' : '编排模型改为跟随设置，下一轮起生效' });
   return writeJSON(200, sessionMetaJSON(sess.meta));

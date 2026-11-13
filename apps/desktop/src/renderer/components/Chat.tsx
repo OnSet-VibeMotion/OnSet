@@ -438,7 +438,7 @@ export function Chat(props: Props) {
           {events.length === 0 && (
             <div className="intro">
               <h3>说说要做什么</h3>
-              <p>编排工具会直接改项目文件，每一轮的改动都能查看和回退。</p>
+              <p>AI 会直接改项目文件，每一轮的改动都能查看和回退。</p>
               <p className="muted">
                 新项目先点「开始制作」：还没有定稿字幕时照 PROMPT-PRODUCTION.md 从文章开始做到成片，已有 transcription.srt 时照 PROMPT.md
                 从字幕开始。之后在同一个会话里继续改。文章、图片和音频可以直接拖进输入框。
@@ -503,7 +503,7 @@ export function Chat(props: Props) {
           {suggestions.length > 0 && token && (
             <ul className="completions" id="completions" role="listbox" aria-label={token.trigger === '@' ? '引用镜头或文件' : '命令'}>
               <li className="completions-head" aria-hidden="true">
-                {token.trigger === '@' ? '引用镜头或文件，发送时一起交给编排工具' : token.command ? `/${token.command.name} 的参数` : '命令'}
+                {token.trigger === '@' ? '引用镜头或文件，发送时一起交给 AI' : token.command ? `/${token.command.name} 的参数` : '命令'}
               </li>
               {suggestions.map((item, index) => (
                 <li
@@ -857,7 +857,7 @@ function StylePicks(props: { picks: StylePick[]; styles: Map<string, FilmStyle>;
               <button
                 className="pill"
                 disabled={!props.enabled}
-                title={props.enabled ? '把这个选择发给编排工具' : '只有最新一条回复的推荐可以点'}
+                title={props.enabled ? '把这个选择发给 AI' : '只有最新一条回复的推荐可以点'}
                 onClick={() => props.onPick(stylePickMessage(name, pick.key))}
               >
                 用这个风格
@@ -969,9 +969,9 @@ function TurnView(props: BlockProps & { turn: TurnBlock }) {
           <Markdown text={stripChoices(proseText)} />
         </div>
       )}
-      {turn.views.length > 0 && (
+      {turn.views.some((view) => view.page) && (
         <div className="view-links" aria-label="请你看的页面">
-          {turn.views.map((view, index) => (
+          {turn.views.filter((view) => view.page).map((view, index) => (
             <button key={index} className="view-link" onClick={() => props.onView(view)} title="打开这一页">
               <span className="view-arrow" aria-hidden="true">↗</span>
               <span className="view-page">{viewLabel(view)}</span>
@@ -1035,7 +1035,7 @@ function ExecutionShell(props: {
         <Icon name="chevron" size={11} />
       </summary>
       <div className="shell-body">
-        {turn.process.length === 0 && <p className="muted small">正在启动编排工具…</p>}
+        {turn.process.length === 0 && <p className="muted small">正在启动 AI…</p>}
         {turn.process.map((item, index) => (
           <ProcessRow key={index} item={item} projectPath={props.projectPath} onOpenFile={props.onOpenFile} />
         ))}
@@ -1185,7 +1185,7 @@ function TurnEnd(props: BlockProps & { turn: TurnBlock; elapsed: number }) {
             {turn.state === 'failed' ? '运行失败' : '这一轮被中断了'}
           </h4>
           {end.text && <p>{end.text}</p>}
-          {turn.state === 'interrupted' && !end.text && <p>Studio 重启时这一轮还在进行，编排工具的进程已经不在了。</p>}
+          {turn.state === 'interrupted' && !end.text && <p>Studio 重启时这一轮还在进行，AI 的进程已经不在了。</p>}
           {retryText && (
             <div className="actions">
               <button className="pill primary-pill" onClick={() => props.onRetry(retryText)}>

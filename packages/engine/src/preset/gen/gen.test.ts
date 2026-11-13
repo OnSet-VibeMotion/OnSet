@@ -239,6 +239,13 @@ describe('PROMPT-PRODUCTION template', () => {
     expect(body.indexOf('### 故事与文案')).toBeLessThan(body.indexOf('### 音乐与节拍网格'));
   });
 
+  // 分镜和每个镜头的画面描述在渲染前就写好了；不停下来的话，用户第一次看到画面时每个镜头都已经渲染过一遍。
+  it('stops for storyboard review before rendering', () => {
+    has(['### 分镜审核关卡', 'studio_show({"page": "storyboard"', '用户没有点头之前不渲染', '包括代表性镜头的试渲染'], '分镜审核');
+    expect(body.indexOf('### 分镜审核关卡')).toBeLessThan(body.indexOf('用 `scene_run_all({"scenes": "scenes/", "srt"'));
+    expect(body.indexOf('## 卡点分支')).toBeLessThan(body.lastIndexOf('studio_show({"page": "storyboard"'));
+  });
+
   // 配音与对齐工具是前置资源（toolinstall，由 am setup 装进用户级目录）：提示词里写安装命令的话，编排工具会在对话里
   // 自己装一份全局的，版本不受控，客户端用户的机器上还常常没有 npm、pip、brew。
   // 编排工具缺了信息时会 strings / grep 已装的 am 程序反推格式（实测：反推 story.md 的格式），每次都弹权限确认打断用户。

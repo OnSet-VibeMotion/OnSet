@@ -42,7 +42,7 @@ function describe(key: config.GlobalKey): { label: string; hint: string; options
       return { label: '编排', hint: '和你对话、写稿、定分镜、调度渲染的工具', options: agents };
     case 'ORCHESTRATOR_MODEL':
       // 可选的模型跟着工具变，由界面按工具去 /api/agents/{工具}/models 取，这里不列。
-      return { label: '编排模型', hint: '留空用这家工具自己的默认模型；换了编排工具会回到默认', options: [], modelOf: 'ORCHESTRATOR' };
+      return { label: '编排模型', hint: '留空用这家工具自己的默认模型；换了工具会回到默认', options: [], modelOf: 'ORCHESTRATOR' };
     case 'RENDERER':
       return { label: '渲染', hint: '把每个镜头画出来的工具', options: agents };
     case 'RENDERER_MODEL':
@@ -69,7 +69,7 @@ function describe(key: config.GlobalKey): { label: string; hint: string; options
     case 'AUTO_APPROVE':
       return {
         label: '自动批准',
-        hint: '编排工具要跑白名单外的命令时，不再弹卡片问你、直接允许；对话里照样记下它跑了什么',
+        hint: 'AI 要跑白名单外的命令时，不再弹卡片问你、直接允许；对话里照样记下它跑了什么',
         options: [
           { value: 'off', label: '每次问我' },
           { value: 'on', label: '直接允许' },

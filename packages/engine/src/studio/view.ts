@@ -5,10 +5,12 @@
  * Go 版 studio 包里的同名入口：ValidateViewRequest、WriteViewRequest、drainViewInbox、viewInbox、
  * ViewState.Describe，免得两份实现漂移。
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import * as studioview from '../studioview';
 import { studioRoot } from './turns';
 
-export { KindView as kindView, ViewInboxEnv, ViewPages, ViewPollInterval, ViewProjectEnv, viewInteraction, viewPage } from '../studioview';
+export { KindView as kindView, StepIDs, ViewInboxEnv, ViewPages, ViewPollInterval, ViewProjectEnv, viewInteraction, viewPage } from '../studioview';
 export type { ViewPage, ViewRequest, ViewState } from '../studioview';
 
 /** ViewState.Describe：把用户在看的位置写成一句话，附在发给编排工具的消息后面。 */
@@ -26,4 +28,31 @@ export const drainViewInbox = studioview.drainViewInbox;
 /** viewInbox 是一轮对话的收件目录，在 Studio 状态目录里（不进快照）。 */
 export function viewInbox(project: string, turnID: string): string {
   return studioview.viewInbox(studioRoot(project), turnID);
+}
+
+/** 编排工具最近一次标出的制作步骤（studio_step），记在 Studio 状态目录里，跟着项目走。 */
+export interface StepMark {
+  step: string;
+  at: string;
+}
+
+function stepMarkPath(project: string): string {
+  return path.join(studioRoot(project), 'step.json');
+}
+
+export function writeStepMark(project: string, step: string, now = new Date()): void {
+  if (!studioview.StepIDs.includes(step)) return;
+  const file = stepMarkPath(project);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ step, at: now.toISOString() }) + '\n');
+}
+
+export function readStepMark(project: string): StepMark | null {
+  try {
+    const v = JSON.parse(fs.readFileSync(stepMarkPath(project), 'utf8')) as Partial<StepMark>;
+    if (typeof v.step === 'string' && studioview.StepIDs.includes(v.step)) return { step: v.step, at: typeof v.at === 'string' ? v.at : '' };
+  } catch {
+    // 还没标过。
+  }
+  return null;
 }

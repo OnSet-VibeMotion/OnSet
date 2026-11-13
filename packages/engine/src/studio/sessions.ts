@@ -19,6 +19,7 @@ import { KindView, PermissionPollInterval, PermissionServerName, ViewInboxEnv, w
 import * as tools from '../tools';
 import { compareTimes, nowTime } from './http';
 import type { Project, Server } from './studio';
+import { writeStepMark } from './view';
 import { changedPaths, diffTrees, loadTurn, revertTurn, saveTurn, scanTree, statTree, studioRoot, validID, type FileChange, type Turn } from './turns';
 import { preferenceBrief, recordUtterance } from './memory';
 import { uploadDir, uploadKind } from './uploads';
@@ -107,7 +108,7 @@ export function sessionEventJSON(e: SessionEvent): Record<string, unknown> {
     files: e.files && e.files.length > 0 ? e.files : undefined,
     changes: e.changes && e.changes.length > 0 ? e.changes.map((c) => ({ path: c.path, change: c.change, revertable: c.revertable })) : undefined,
     queue_id: e.queue_id || undefined,
-    view: e.view ? { page: e.view.page, target: e.view.target || undefined, note: e.view.note || undefined } : undefined,
+    view: e.view ? { page: e.view.page, target: e.view.target || undefined, note: e.view.note || undefined, step: e.view.step || undefined } : undefined,
     permission: e.permission ? permissionEventJSON(e.permission) : undefined,
   };
 }
@@ -493,7 +494,7 @@ export function validateAttachments(projectPath: string, attachments: Attachment
     }
     if (a.source) containedPath(projectPath, a.source);
     const n = [...(a.quote ?? '')].length;
-    if (n > maxQuoteRunes) throw new Error(`引用太长（${n} 字，上限 ${maxQuoteRunes}）：长内容请直接说文件名，让编排工具自己读`);
+    if (n > maxQuoteRunes) throw new Error(`引用太长（${n} 字，上限 ${maxQuoteRunes}）：长内容请直接说文件名，让 AI 自己读`);
     if (a.ref && !a.scene_id && !a.source) throw new Error('引用要指明镜头或文件');
   }
 }
@@ -740,7 +741,10 @@ function watchViews(sess: Session, turnID: string, inbox: string, projectPath: s
   const seen = new Set<string>();
   const emitPermission = (turn: string, event: NewEvent): void => emit(sess, turn, event);
   const deliver = (): void => {
-    for (const req of drainViewInbox(inbox)) emit(sess, turnID, { kind: KindView, text: req.note || undefined, view: req });
+    for (const req of drainViewInbox(inbox)) {
+      if (req.step) writeStepMark(projectPath, req.step);
+      emit(sess, turnID, { kind: KindView, text: req.note || undefined, view: req });
+    }
     pollPermissions(projectPath, inbox, turnID, sess.permissions, seen, emitPermission);
   };
   const timer = setInterval(deliver, ViewPollInterval);

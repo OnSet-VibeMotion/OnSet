@@ -425,7 +425,7 @@ export function Creation(props: { job: CreationJob; onDone: (projectId: string, 
             </>
           ) : (
             running && (
-              <button className="pill ghost-pill" onClick={() => skipSkills.current()} title="技能转到后台继续装，编排工具先从写稿、配音开始">
+              <button className="pill ghost-pill" onClick={() => skipSkills.current()} title="技能转到后台继续装，AI 先从写稿、配音开始">
                 不等了，先开始制作
               </button>
             )

@@ -31,6 +31,7 @@ export interface ViewPage {
 export const ViewPages: readonly ViewPage[] = [
   { id: 'beat', label: '节拍', target: '' },
   { id: 'script', label: '口播稿', target: '' },
+  { id: 'storyboard', label: '分镜', target: '' },
   { id: 'scene', label: '镜头', target: 'scene' },
   { id: 'compose', label: '合成', target: 'scene?' },
   { id: 'final', label: '成片', target: '' },
@@ -48,10 +49,53 @@ export function viewPage(id: string): ViewPage | undefined {
 
 /** 一次切页请求：编排工具写，界面执行。字段顺序与 Go 的 JSON tag 一致。 */
 export interface ViewRequest {
+  /** 要切到的页面；只标步骤（studio_step）时为空。 */
   page: string;
   target?: string;
   /** 给用户的一句话，显示在对话里，说明为什么要看这一页。 */
   note?: string;
+  /** 整片制作现在到了哪一步（StepIDs），顶栏的步骤上标出来；不切页。 */
+  step?: string;
+}
+
+/** 顶栏的制作步骤（界面 Preview.tsx 的 stepTabs，卡点项目第一步是 beat）。 */
+export const StepIDs: readonly string[] = ['beat', 'script', 'storyboard', 'scene', 'final', 'publish'];
+
+/**
+ * 有专门页面的项目文件：编排工具要用户看它们时，切到那一页，不切到文件页显示原文。
+ * 镜头目录里的文件切到那个镜头（合成代码 index.html 切到合成页）。返回 null 时照常开文件页。
+ */
+export function dedicatedPage(project: string, rel: string): { page: string; target?: string } | null {
+  switch (rel) {
+    case 'production/script-final.md':
+      return { page: 'script' };
+    case 'production/scene-plan.json':
+    case 'production/scene-plan.md':
+    case 'production/treatment.md':
+      return { page: 'storyboard' };
+    case 'publish.md':
+      return { page: 'publish' };
+    case 'final.mp4':
+    case 'production/final.mp4':
+    case 'production/audio/candidate.mp4':
+    case 'production/silent-master.mp4':
+      return { page: 'final' };
+  }
+  if (project === '') return null;
+  // 从文件所在目录往上找最近的 scene.json，到项目根为止。
+  let dir = path.posix.dirname(rel);
+  while (dir !== '.' && dir !== '/' && dir !== '') {
+    try {
+      const v = JSON.parse(fs.readFileSync(path.join(project, dir, 'scene.json'), 'utf8')) as { id?: unknown };
+      if (typeof v.id === 'string' && v.id !== '') {
+        return path.posix.basename(rel) === 'index.html' ? { page: 'compose', target: v.id } : { page: 'scene', target: v.id };
+      }
+    } catch {
+      // 这一层不是镜头目录。
+    }
+    dir = path.posix.dirname(dir);
+  }
+  return null;
 }
 
 /** 用户此刻在界面上看的位置，随消息发来。 */
@@ -105,6 +149,15 @@ export function sceneIDs(root: string): string[] {
 /** 检查页面与对象：镜头要存在，文件要在项目里且不是 .env。返回规范化后的请求。 */
 export function validateViewRequest(project: string, req: ViewRequest): ViewRequest {
   const out: ViewRequest = { ...req };
+  const step = (req.step ?? '').trim();
+  if (step !== '' && !StepIDs.includes(step)) throw new Error(`没有步骤 ${goQuote(step)}（可选：${StepIDs.join('、')}）`);
+  if (step === '') delete out.step;
+  else out.step = step;
+  // 只标步骤、不切页。
+  if ((req.page ?? '') === '' && step !== '') {
+    delete out.target;
+    return { ...out, page: '' };
+  }
   const page = viewPage(req.page);
   if (!page) throw new Error(`没有页面 ${goQuote(req.page)}（可选：${ViewPages.map((p) => p.id).join('、')}）`);
   out.target = (req.target ?? '').trim();
@@ -129,6 +182,13 @@ export function validateViewRequest(project: string, req: ViewRequest): ViewRequ
         if (rel === '..' || rel.startsWith('../') || path.posix.basename(rel) === '.env') throw new Error(`只能打开项目里的文件：${out.target}`);
         if (!fs.existsSync(path.join(project, rel))) throw new Error(`项目里没有文件 ${rel}`);
         out.target = rel;
+        const special = dedicatedPage(project, rel);
+        if (special) {
+          out.page = special.page;
+          if (special.target) out.target = special.target;
+          else delete out.target;
+          return out;
+        }
       }
       break;
     }
@@ -161,7 +221,7 @@ export function writeViewRequest(env: Record<string, string | undefined>, req: V
   const valid = validateViewRequest(env[ViewProjectEnv] ?? '', req);
   if (inbox === '') return false;
   fs.mkdirSync(inbox, { recursive: true, mode: 0o755 });
-  const body = marshal({ page: valid.page, target: valid.target || undefined, note: valid.note || undefined });
+  const body = marshal({ page: valid.page, target: valid.target || undefined, note: valid.note || undefined, step: valid.step || undefined });
   // 先写临时名再改名，轮询时不会读到写了一半的文件。文件名是纳秒时间戳，补零到 20 位以便按名字排序。
   const name = String(nextStamp()).padStart(20, '0');
   const tmp = path.join(inbox, '.' + name + '.tmp');
@@ -199,7 +259,8 @@ export function drainViewInbox(dir: string): ViewRequest[] {
     fs.rmSync(file, { force: true });
     try {
       const req = JSON.parse(body ?? '') as ViewRequest;
-      if (typeof req.page === 'string' && viewPage(req.page)) out.push(req);
+      const stepOnly = req.page === '' && typeof req.step === 'string' && StepIDs.includes(req.step);
+      if (typeof req.page === 'string' && (viewPage(req.page) || stepOnly)) out.push(req);
     } catch {
       // 读不懂的丢掉。
     }
@@ -219,7 +280,8 @@ export function viewInteraction(): string {
   return (
     '- 要用户看某样东西时，调用 studio_show({"page": "<页面>", "target": "<对象>", "note": "一句说明"})（对象与说明可省），网页会直接切到那一页，比在回复里贴大段内容或让用户自己去找好。页面：' +
     pages.join('、') +
-    '。例如口播稿写好、请用户审稿时调用 studio_show({"page": "script", "note": "口播稿写好了，请看一遍"})；某个镜头渲染完请用户看效果时调用 studio_show({"page": "scene", "target": "scene-003"})。不要连续切来切去，一次只把用户带到眼下最该看的那一页。\n' +
+    '。例如口播稿写好、请用户审稿时调用 studio_show({"page": "script", "note": "口播稿写好了，请看一遍"})；某个镜头渲染完请用户看效果时调用 studio_show({"page": "scene", "target": "scene-003"})。不要连续切来切去，一次只把用户带到眼下最该看的那一页。口播稿、分镜计划与处理方案、镜头、成片与配音合成版、发布信息都有自己的页面，用那一页，不要用 file 页打开它们的原文。\n' +
+    '- 每一轮结束前（汇报、停下来等用户之前）调用 studio_step({"step": "<步骤>"})，标出整片制作现在处在哪一步，网页顶栏会标出来：script（口播稿：整理、审稿、配音、对齐）、storyboard（分镜：处理方案、分镜计划、镜头画面描述、等用户确认分镜）、scene（镜头：渲染与修改镜头）、final（成片：拼接、配乐混音、复查、试听）、publish（发布：封面与发布信息）；卡点项目的第一步是 beat（节拍：故事、音乐、节拍网格、分镜计划）。它只做标记，不切页。\n' +
     '- 用户的消息后面可能附一句「用户发这条消息时，Studio 网页上开着……」，说的是用户正在看的页面；用户说「这个镜头」「这段」时指的就是那里。'
   );
 }

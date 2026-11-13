@@ -49,6 +49,16 @@ case "$prompt" in *要批准*)
   printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
   exit 0 ;;
 esac
+# 「标步骤」：照 studio_step 的写法往这一轮的收件目录写一份请求（只标步骤、不切页），再照常回复。
+case "$prompt" in *标步骤*)
+  if [ -n "$AM_STUDIO_INBOX" ]; then
+    mkdir -p "$AM_STUDIO_INBOX"
+    printf '{"page":"","step":"final","note":"成片拼好了，等你试听"}' > "$AM_STUDIO_INBOX/00000000000000000001.json"
+  fi
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"成片拼好了"}]}}\n'
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
+  exit 0 ;;
+esac
 # 「稍等」：先停 3 秒再照常改，供排队测试使用。
 case "$prompt" in *稍等*) sleep 3 ;; esac
 printf 'after\n' > scenes/scene-001/prompt.md

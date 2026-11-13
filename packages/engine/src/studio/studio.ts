@@ -40,6 +40,8 @@ import {
 import { memoryAPI, memoryActionAPI, memoryRecallAPI } from './memory';
 import { discoverScenes, fileExists, type SceneSummary } from './scenes';
 import { scriptAPI } from './script';
+import { storyboardAPI } from './storyboard';
+import { readStepMark } from './view';
 import { BusyError, type Session } from './sessions';
 import { cancelSetup, setupAPI, setupCancelAPI, setupRunAPI } from './setup';
 import { voiceAPI, voiceDesignAPI, voiceDraftAPI, voiceRecordAPI, voicesAPI } from './voices';
@@ -312,6 +314,7 @@ export class Server {
       ['/api/state', () => this.stateAPI()],
       ['/api/scenes', () => scenesAPI(this)],
       ['/api/script', (r) => scriptAPI(this, r)],
+      ['/api/storyboard', (r) => storyboardAPI(this, r)],
       ['/api/assets', () => this.assetsAPI()],
       ['/api/publish', () => publishAPI(this)],
       ['/api/scenes/', (r, rest) => sceneFeatureAPI(this, r, rest)],
@@ -807,6 +810,7 @@ export function inspectProject(p: Project): Record<string, unknown> {
   return goMap({
     project: projectJSON(p),
     stage: stageFor(p.path, scenes),
+    ...stepOf(p.path, scenes),
     metadata: goMap(meta),
     media: goMap({
       audio: exists('production', 'audio', 'candidate.mp4'),
@@ -878,6 +882,30 @@ export function projectMetadata(root: string): Record<string, string> {
     if (p) result.canvas_id = p.id;
   }
   return result;
+}
+
+/**
+ * 顶栏标出的「现在在哪一步」：编排工具每轮结束前用 studio_step 标的为准（step_marked）；
+ * 还没标过（老项目、没在客户端里做过）时按产物推一个。
+ */
+export function stepOf(root: string, scenes: SceneSummary[]): { step?: string; step_marked?: boolean } {
+  const mark = readStepMark(root);
+  if (mark) return { step: mark.step, step_marked: true };
+  const exists = (...parts: string[]) => fileExists(path.join(root, ...parts));
+  switch (stageFor(root, scenes)) {
+    case 'publish':
+      return { step: 'publish' };
+    case 'review':
+    case 'assemble':
+      return { step: 'final' };
+    case 'render':
+      return { step: scenes.some((sc) => sc.exists) ? 'scene' : 'storyboard' };
+    case 'plan':
+      if (exists('production', 'scene-plan.json')) return { step: 'storyboard' };
+      return { step: exists('beat.yaml') ? 'beat' : 'script' };
+    default:
+      return {};
+  }
 }
 
 /**

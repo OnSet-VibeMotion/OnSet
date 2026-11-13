@@ -205,7 +205,7 @@ export function Home(props: Props) {
             今天想做一条
             <RotatingWord words={rotatingWords} />？
           </h1>
-          <p className="home-sub">粘贴一篇文章、拖进讲稿，或者说说你想要的视频。剩下的交给编排工具。</p>
+          <p className="home-sub">粘贴一篇文章、拖进讲稿，或者说说你想要的视频。剩下的交给 AI。</p>
           {setup.status && setup.status.items.some((item) => !item.ready) && (
             <div className="home-setup">
               <SetupGuide setup={setup} />
@@ -339,7 +339,7 @@ export function Home(props: Props) {
                     align="right"
                     open={menu === 'tool'}
                     onOpen={(open) => setMenu(open ? 'tool' : '')}
-                    label={props.agents?.agents.find((a) => a.id === tool)?.label ?? '编排工具'}
+                    label={props.agents?.agents.find((a) => a.id === tool)?.label ?? 'AI'}
                   >
                     {props.agents?.agents.map((agent) => (
                       <MenuItem
@@ -377,7 +377,7 @@ export function Home(props: Props) {
                   error={films.error}
                   posterVersion={films.posterVersion}
                   selected={filmStyle}
-                  none={{ title: '不用整片风格', desc: '每个镜头按文案自己定配色、字体与动效。编排工具会在稿件审核时按题材推荐几种风格，也可以之后在「风格」页里选。' }}
+                  none={{ title: '不用整片风格', desc: '每个镜头按文案自己定配色、字体与动效。AI 会在稿件审核时按题材推荐几种风格，也可以之后在「风格」页里选。' }}
                   onPick={setFilmStyle}
                   onClose={() => setMenu('')}
                 />

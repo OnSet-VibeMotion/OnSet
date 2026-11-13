@@ -39,18 +39,19 @@ export const slashCommands: SlashCommand[] = [
   { name: 'start', label: '开始整片制作' },
   { name: 'script', label: '打开口播稿' },
   { name: 'show', label: '切到某一页', arg: 'page' },
-  { name: 'confirm-script', label: '告诉编排工具：口播稿没问题，开始配音' },
-  { name: 'redo', label: '让编排工具重做一个镜头', arg: 'scene' },
+  { name: 'confirm-script', label: '告诉 AI：口播稿没问题，开始配音' },
+  { name: 'redo', label: '让 AI 重做一个镜头', arg: 'scene' },
   { name: 'render', label: '渲染一个镜头', arg: 'scene' },
   { name: 'render-all', label: '渲染全部镜头' },
   { name: 'validate', label: '校验一个镜头', arg: 'scene' },
   { name: 'concat', label: '拼接无声母版' },
   { name: 'review', label: '整片复查' },
-  { name: 'remember', label: '记下一条偏好（编排工具用 am memory remember 记住）' },
+  { name: 'remember', label: '记下一条偏好，以后每次制作都照着做' },
 ];
 
 export const pageNames: [string, string][] = [
   ['script', '口播稿'],
+  ['storyboard', '分镜'],
   ['scene', '镜头'],
   ['compose', '合成'],
   ['final', '成片'],

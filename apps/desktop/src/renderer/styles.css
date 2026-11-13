@@ -286,7 +286,8 @@ svg {
   letter-spacing: 0.14em;
   color: var(--muted);
 }
-/* 四个制作步骤，编号是等宽字；当前一步下面一条黄铜色细线。 */
+/* 五个制作步骤，编号是等宽字；正在看的一页下面一条黄铜色细线。
+   制作进度另外标：做过的步骤编号换成 ✓，现在在做的那一步编号是一枚黄铜色小章。 */
 .steps {
   display: flex;
   gap: 28px;
@@ -316,6 +317,18 @@ svg {
 }
 .steps .step.on .step-no {
   color: var(--accent);
+}
+.steps .step.done .step-no {
+  color: var(--ok);
+}
+.steps .step.current {
+  color: var(--text);
+}
+.steps .step.current .step-no {
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 .step-count {
   font: 11px var(--mono);

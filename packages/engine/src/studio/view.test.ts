@@ -41,19 +41,19 @@ describe('view', () => {
     const root = tempDir();
     writeTree(root, {
       'scenes/scene-001/scene.json': '{"id":"scene-001","duration_seconds":1,"output":"out.mp4"}',
-      'production/treatment.md': 'x',
+      'production/notes.md': 'x',
       '.env': 'A=1',
     });
     const ok: ViewRequest[] = [
       { page: 'script' },
       { page: 'scene', target: 'scene-001' },
       { page: 'compose' },
-      { page: 'file', target: 'production/treatment.md' },
-      { page: 'file', target: path.join(root, 'production', 'treatment.md') },
+      { page: 'file', target: 'production/notes.md' },
+      { page: 'file', target: path.join(root, 'production', 'notes.md') },
     ];
     for (const req of ok) {
       const got = validateViewRequest(root, req);
-      if (req.page === 'file') expect(got.target, '文件路径应当规范成相对路径').toBe('production/treatment.md');
+      if (req.page === 'file') expect(got.target, '文件路径应当规范成相对路径').toBe('production/notes.md');
     }
     const bad: ViewRequest[] = [
       { page: 'nope' },

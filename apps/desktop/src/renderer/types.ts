@@ -14,6 +14,10 @@ export interface ProjectState {
   media: { audio: boolean; final: boolean; publish: boolean };
   scenes: { total: number; completed: number; stale: number };
   issues: unknown[];
+  /** 整片制作现在在哪一步（beat / script / storyboard / scene / final / publish）。 */
+  step?: string;
+  /** step 是编排工具用 studio_step 标的；否则是按产物推的。 */
+  step_marked?: boolean;
 }
 
 export interface Scene {
@@ -628,9 +632,11 @@ export interface ScriptResponse {
 
 /** 编排工具经 am studio show 请网页切到的页面。 */
 export interface ViewRequest {
+  /** 只标制作步骤时为空。 */
   page: string;
   target?: string;
   note?: string;
+  step?: string;
 }
 
 /** 用户此刻在看的页面，随消息发给编排工具。 */
@@ -697,4 +703,39 @@ export interface SettingsResponse {
   file: string;
   has_project: boolean;
   rows: SettingRow[];
+}
+
+/** GET /api/storyboard（后端 studio/storyboard.ts）：分镜页。 */
+export interface StoryboardHandoff {
+  device: string;
+  device_label: string;
+  bridge: string;
+  style_shift?: string;
+  style_shift_label?: string;
+}
+
+export interface StoryboardScene {
+  id: string;
+  dir: string;
+  chapter?: string;
+  visual_role?: string;
+  summary?: string;
+  film_style?: string;
+  anchor?: string;
+  handoff?: StoryboardHandoff;
+  text?: string;
+  seconds?: number;
+  prompt?: { path: string; content: string };
+  created: boolean;
+  rendered: boolean;
+}
+
+export interface StoryboardResponse {
+  plan_path: string;
+  updated_at?: string;
+  parse_error?: string;
+  look?: { background?: string; surface?: string; ink?: string; accent?: string; accent_2?: string };
+  treatment?: { path: string; content: string };
+  doc_path?: string;
+  scenes: StoryboardScene[];
 }

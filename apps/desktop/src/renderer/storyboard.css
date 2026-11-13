@@ -1,0 +1,259 @@
+/* 分镜页：与口播稿同一种居中文稿版式；每个镜头一张卡，章节是页边的小标题，交接是卡与卡之间的一条细线。 */
+.storyboard-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.storyboard-tab > * {
+  width: min(680px, 100%);
+}
+.storyboard-tab .sb-head {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 16px;
+}
+.storyboard-tab .sb-title {
+  margin: 0;
+  font: 600 38px/1.25 var(--serif);
+  letter-spacing: 0.02em;
+}
+.storyboard-tab .sb-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  font: 12px var(--mono);
+  color: var(--muted);
+}
+.storyboard-tab .sb-look {
+  display: inline-flex;
+  gap: 4px;
+}
+.storyboard-tab .sb-look i {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+}
+.storyboard-tab button.link {
+  background: transparent;
+  border: 0;
+  height: auto;
+  padding: 0;
+  font: 12px var(--sans);
+  color: var(--muted);
+  cursor: pointer;
+}
+.storyboard-tab button.link:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.storyboard-tab .sb-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.storyboard-tab .sb-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.storyboard-tab .sb-note.bad {
+  color: var(--bad);
+}
+
+.storyboard-tab .sb-treatment {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
+  color: var(--text-2);
+}
+.storyboard-tab .sb-treatment > summary,
+.storyboard-tab .sb-prompt > summary {
+  cursor: pointer;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.storyboard-tab .sb-treatment[open] > summary {
+  margin-bottom: 8px;
+}
+
+.storyboard-tab .sb-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 24px;
+  display: flex;
+  flex-direction: column;
+}
+.storyboard-tab .sb-chapter {
+  margin: 22px 0 10px;
+  font: 600 13px var(--serif);
+  color: var(--accent-text);
+  letter-spacing: 0.08em;
+}
+.storyboard-tab .sb-chapter:first-child {
+  margin-top: 0;
+}
+
+.storyboard-tab .sb-scene {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+  margin: 6px 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.storyboard-tab .sb-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.storyboard-tab .sb-no {
+  font: 22px/1 var(--mono);
+  color: var(--faint);
+}
+.storyboard-tab .sb-scene.rendered .sb-no {
+  color: var(--accent);
+}
+.storyboard-tab .sb-thumb {
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--well);
+  height: auto;
+  cursor: pointer;
+}
+.storyboard-tab .sb-thumb video {
+  display: block;
+  width: 100%;
+  max-height: 128px;
+  object-fit: contain;
+}
+.storyboard-tab .sb-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.storyboard-tab .sb-summary {
+  margin: 0;
+  font: 600 17px/1.55 var(--serif);
+  color: var(--text);
+}
+.storyboard-tab .sb-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  font: 12px var(--mono);
+  color: var(--muted);
+}
+.storyboard-tab .sb-chip {
+  font-family: var(--sans);
+  padding: 1px 8px;
+  border: 1px solid var(--accent-line);
+  border-radius: 999px;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+.storyboard-tab .sb-id {
+  color: var(--faint);
+}
+.storyboard-tab .sb-todo {
+  margin: 0;
+  font: 12px var(--sans);
+  color: var(--stale);
+}
+.storyboard-tab .sb-text {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--line-strong);
+  font: 14px/1.9 var(--serif);
+  color: var(--text-3);
+  white-space: pre-wrap;
+}
+.storyboard-tab .sb-prompt {
+  color: var(--text-2);
+  font-size: 13px;
+}
+.storyboard-tab .sb-prompt[open] > summary {
+  margin-bottom: 6px;
+}
+
+/* 交接：卡与卡之间缩进的一条说明，像分镜本上的箭头。 */
+.storyboard-tab .sb-handoff {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 2px 48px;
+  padding: 6px 0 6px 14px;
+  border-left: 1px dashed var(--accent-line);
+  font-size: 12px;
+  color: var(--muted);
+}
+.storyboard-tab .sb-handoff-device {
+  color: var(--accent-text);
+}
+
+@media (max-width: 720px) {
+  .storyboard-tab .sb-scene {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .storyboard-tab .sb-side {
+    flex-direction: row;
+    align-items: center;
+  }
+  .storyboard-tab .sb-thumb {
+    width: 96px;
+  }
+  .storyboard-tab .sb-handoff {
+    margin-left: 16px;
+  }
+}
+
+/* 镜头页右栏里的分镜摘要。 */
+.scene-info .scene-brief {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.scene-info .scene-brief-summary {
+  margin: 0;
+  font: 15px/1.6 var(--serif);
+  color: var(--text-2);
+}
+.scene-info .scene-brief-links {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.scene-info .scene-brief-prompt {
+  width: 100%;
+  max-height: 40vh;
+  overflow: auto;
+  color: var(--text-2);
+}
+.scene-info .scene-brief-prompt > summary {
+  cursor: pointer;
+}
+.scene-info .scene-brief button.link {
+  background: transparent;
+  border: 0;
+  height: auto;
+  padding: 0;
+  font: 12px var(--sans);
+  color: var(--muted);
+  cursor: pointer;
+}
+.scene-info .scene-brief button.link:hover {
+  color: var(--text);
+  text-decoration: underline;
+}

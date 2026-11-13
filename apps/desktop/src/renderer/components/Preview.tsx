@@ -13,14 +13,16 @@ import { SceneActivityPanel } from './RenderActivity';
 import { ScriptTab } from './Script';
 import { BeatTab } from './Beat';
 import { PublishTab } from './Publish';
+import { SceneBrief, StoryboardTab } from './Storyboard';
 import { FileTree } from './Sidebar';
 import { canReveal, revealInFinder, revealLabel } from '../reveal';
 
-export type Tab = 'beat' | 'script' | 'scene' | 'compose' | 'final' | 'style' | 'voice' | 'review' | 'publish' | 'memory' | 'file';
+export type Tab = 'beat' | 'script' | 'storyboard' | 'scene' | 'compose' | 'final' | 'style' | 'voice' | 'review' | 'publish' | 'memory' | 'file';
 
 export const tabs: [Tab, string][] = [
   ['beat', '节拍'],
   ['script', '口播稿'],
+  ['storyboard', '分镜'],
   ['scene', '镜头'],
   ['compose', '合成'],
   ['final', '成片'],
@@ -32,8 +34,8 @@ export const tabs: [Tab, string][] = [
   ['file', '文件'],
 ];
 
-/** 顶栏中间的四个步骤，按制作顺序编号；其余页面（合成、复查、风格、音色、记忆、文件）在顶栏右侧用小字列出。 */
-export const stepTabs: Tab[] = ['script', 'scene', 'final', 'publish'];
+/** 顶栏中间的五个步骤，按制作顺序编号；其余页面（合成、复查、风格、音色、记忆、文件）在顶栏右侧用小字列出。 */
+export const stepTabs: Tab[] = ['script', 'storyboard', 'scene', 'final', 'publish'];
 
 /** 卡点项目没有口播稿：第一步换成节拍。 */
 export function stepTabsFor(beatMode: boolean): Tab[] {
@@ -80,6 +82,9 @@ export function Preview(props: Props) {
         {props.tab === 'beat' && <BeatTab beat={props.beat} version={props.version} busy={props.busy} run={props.run} onQuick={props.onQuick} onScene={props.onScene} />}
         {props.tab === 'script' && (
           <ScriptTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} onAttach={props.onAttach} />
+        )}
+        {props.tab === 'storyboard' && (
+          <StoryboardTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} onScene={props.onScene} />
         )}
         {props.tab === 'scene' && <SceneTab {...props} scene={scene} />}
         {props.tab === 'compose' && <ComposeTab {...props} scene={scene} />}
@@ -548,6 +553,7 @@ function SceneTab(props: Props & { scene: Scene | null }) {
             {scene.duration_seconds ? `${scene.duration_seconds.toFixed(1)} 秒 · ` : ''}
             <span className={'status-' + status}>{statusText[status]}</span>
           </p>
+          <SceneBrief sceneId={scene.id} version={props.version} onStoryboard={props.onTab ? () => props.onTab!('storyboard') : undefined} />
           <SceneStyle scene={scene} label={`镜头 ${number}`} version={props.version} onQuick={props.onQuick} />
           <SceneActivityPanel scene={scene} />
           <div className="scene-actions">
@@ -569,8 +575,8 @@ function SceneTab(props: Props & { scene: Scene | null }) {
                     </button>
                   </div>
                 )}
-                <div className="menu-group quick-actions" role="group" aria-label="让编排工具">
-                  <span className="menu-label">让编排工具</span>
+                <div className="menu-group quick-actions" role="group" aria-label="让 AI">
+                  <span className="menu-label">让 AI</span>
                   {quickActions
                     .filter((action) => scene.exists || !action.needsOutput)
                     .map((action) => (
@@ -851,7 +857,7 @@ function SceneStyle(props: { scene: Scene; label: string; version: number; onQui
       {open && (
         <FilmStyleDialog
           title={`${props.label} 换一种风格`}
-          intro="选好后写进对话，由编排工具改分镜，并给前后的风格交界设计画面里的过渡。"
+          intro="选好后写进对话，由 AI 改分镜，并给前后的风格交界设计画面里的过渡。"
           confirm="写进对话"
           data={films.data}
           error={films.error}
@@ -958,7 +964,7 @@ function StyleTab({ version, run, scenes, onScene }: { version: number; run: Run
       {dialog === 'extra' && (
         <FilmStyleDialog
           title="添加一种风格"
-          intro="装进项目后，在对话里告诉编排工具哪些镜头或段落用它；它会改分镜，并给风格交界设计画面里的过渡。"
+          intro="装进项目后，在对话里告诉 AI 哪些镜头或段落用它；它会改分镜，并给风格交界设计画面里的过渡。"
           confirm="添加"
           data={films.data}
           error={films.error}
@@ -983,7 +989,7 @@ function StyleTab({ version, run, scenes, onScene }: { version: number; run: Run
       </header>
       {(info?.missing ?? []).map((m) => (
         <p key={m.scene + m.style} className="bad small">
-          {sceneNumber(scenes, m.scene)} 点名的 {m.style} 没装进项目，渲染会失败：添加这种风格，或在对话里让编排工具改掉。
+          {sceneNumber(scenes, m.scene)} 点名的 {m.style} 没装进项目，渲染会失败：添加这种风格，或在对话里让 AI 改掉。
         </p>
       ))}
       {extras.length === 0 ? (
@@ -1017,7 +1023,7 @@ function StyleTab({ version, run, scenes, onScene }: { version: number; run: Run
                       <button
                         className="ghost"
                         disabled={x.scenes.length > 0}
-                        title={x.scenes.length > 0 ? '还有镜头在用：先在对话里让编排工具把它们换掉' : ''}
+                        title={x.scenes.length > 0 ? '还有镜头在用：先在对话里让 AI 把它们换掉' : ''}
                         onClick={() => setConfirmRemove(key)}
                       >
                         去掉
