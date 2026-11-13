@@ -1211,11 +1211,6 @@ h4 {
   color: var(--text);
   padding: 4px 8px;
 }
-.memory-features {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
 .memory-recall {
   margin: 0;
   padding: 0;
@@ -1233,19 +1228,6 @@ h4 {
   background: var(--raised);
   border-radius: 8px;
 }
-.memory-unverified {
-  font-size: 11px;
-  color: var(--stale);
-}
-.memory-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.memory-group-title {
-  font-size: 12px;
-  color: var(--muted);
-}
 .memory-card {
   padding: 8px 10px;
   background: var(--raised);
@@ -1254,13 +1236,6 @@ h4 {
 }
 .memory-card p {
   margin: 4px 0 0;
-}
-.memory-card button.link {
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--accent-text);
-  cursor: pointer;
 }
 .memory-body {
   white-space: pre-wrap;
@@ -1347,25 +1322,6 @@ h4 {
 }
 .curve-key.trial {
   background: var(--accent);
-}
-.memory-timeline {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 360px;
-  overflow: auto;
-}
-.memory-timeline li {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  font-size: 12px;
-}
-.memory-timeline li.event-episode {
-  opacity: 0.7;
 }
 .feedback-note {
   width: 180px;

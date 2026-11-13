@@ -236,6 +236,7 @@ lemo 来源（`internal/filmstyle/lemo`）自己的约定：
 | 记忆探索（`MEMORY_EXPLORE`，默认 0.1）是一批渲染的决定，不是镜头的属性：`attachMemory` 按「批次编号 + 镜头目录」抽签，抽中就把注入的最后一条经验换成排在上限外、字数换得进去的第一条，倾向分数记进经历的 `explored`。`RecallResult.Digest` 仍返回不探索时的摘要，输入指纹不变；考试与 `am memory recall` 不探索 | 召回排序只统计「当时被召回」的经验，排在上限外的永远攒不到样本，排序会固化（日志 bandit 的选择偏差，Kiyohara et al. 2025）。探索要放在 agent 的运行里而不是镜头里：指纹带上探索结果的话，抽中的镜头下次会被判 Stale，没抽中的又永远不会被探索 |
 | 镜头特征词表是 `memory.FeatureDescriptions`，新增特征要同时改 `Features` 的抽取 | 整理说明与格式校验都只认这张表，抽不出来的特征写进经验永远匹配不上 |
 | 考试的作答者由调用方注入（`ExamRunner`），考场建在项目的 `production/memory-exams/` | 渲染器从镜头目录向上找 `.agents/skills`，建在记忆库里就找不到项目技能 |
+| 记忆面板（`Memory.tsx`）先讲「你的偏好 / 学到的经验 / 这个镜头会用上 / 最近」，效果对比、考试、存档回退收进「高级」；校验器 ID、事件类型、镜头特征一律经 `/api/memory` 的 `labels` 换成大白话（`memory.CheckerLabels` / `EventLabels` / `FeatureDescriptions`），`TestEveryCheckerHasLabel` 守着说法表与 `KnownCheckers` 一致 | 旧版把快照号、`reads.binding`、`episode` 和考试控件平铺在第一屏，用户看不懂记忆学到了什么 |
 | 门槛 `memory.Judge` 是纯函数，五条门槛各有单测；渲染工具自身故障让整场无效，不按 0 分算 | 一次认证失效不能让一条好经验被拒 |
 
 ## 卡点模式
@@ -312,6 +313,7 @@ lemo 来源（`internal/filmstyle/lemo`）自己的约定：
 | 构建产物提交进仓库，改了 `ui/src` 必须重新构建并一起提交 | 只改 Go 的人和 `go install` 的用户不需要 Node。CI 的 `studio-ui` job 重新构建后 `git diff internal/studio/web` 必须为空 |
 | 产物文件名固定（`assets/app.js`、`assets/index.css`），不带 hash | 带 hash 的话每次改动都换文件名，产物 diff 难读；`index.html` 发 `no-cache`，不靠文件名破缓存 |
 | `static` 只把不带扩展名的路径回落到 `index.html`，带扩展名找不到直接 404；JS 按扩展名设 MIME | 缺失的脚本拿到一份 HTML，浏览器只报模块 MIME 错误，看不出真正原因 |
+| `playwright.config.mjs` 给 Studio 进程设临时的 `AM_MEMORY_DIR` | 记忆默认打开，不设的话每次跑 e2e 都往用户真实记忆库写经历，记忆面板曾被几百条 `am-studio-e2e-*` 淹没 |
 | `package-lock.json` 里的地址是 `registry.npmjs.org` | 用镜像装完依赖要把 `resolved` 换回官方源再提交，CI 访问不到国内镜像 |
 | 新组件的样式放进各自的 css（`chat.css`、`home.css`、`creation.css`），选择器挂在组件根类下（`.chat …`、`.home …`） | 全局 `styles.css` 里已有 `.legend`、`.style-thumb` 这类通用名，同名类后写的覆盖先写的，撞过两次：时间线图例被挤成一条、风格缩略图撑满整个菜单 |
 | `ui/src/types.ts` 与后端 JSON 字段一一对应 | 前后端之间没有生成代码，改字段两边一起改 |

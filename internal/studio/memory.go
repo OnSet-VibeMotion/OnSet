@@ -149,6 +149,8 @@ func (s *Server) memoryAPI(w http.ResponseWriter, r *http.Request) {
 	s.write(w, http.StatusOK, map[string]any{
 		"enabled": cfg.Memory.Enabled, "dir": store.Dir, "project": project, "pinned": cfg.Memory.Snapshot, "budget": cfg.Memory.RecallBudget,
 		"renderer": cfg.Renderer, "status": status, "memories": rows, "timeline": timeline, "exams": views, "snapshots": snapshots, "runs": runs,
+		// 面板显示的大白话：校验器、事件类型与镜头特征都不直接露出 ID。
+		"labels": map[string]any{"checks": memory.CheckerLabels, "events": memory.EventLabels, "features": memory.FeatureDescriptions},
 	})
 }
 

@@ -368,6 +368,8 @@ export interface MemoryState {
   exams: ExamResult[];
   snapshots: number[];
   runs: RunSummary[];
+  /** 校验器、事件类型、镜头特征的大白话说法（internal/memory/labels.go）。 */
+  labels?: { checks: Record<string, string>; events: Record<string, string>; features: Record<string, string> };
 }
 
 export interface RecallItem {
