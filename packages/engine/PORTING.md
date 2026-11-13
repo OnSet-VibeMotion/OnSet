@@ -24,6 +24,7 @@
 - **子进程**：Go 里等结果的短命令（`cmd.Output()`、`cmd.Run()`）用 `spawnSync` / `execFileSync`；要流式读输出、要能取消（Go 用 `context`）的用 `spawn` 返回 Promise，取消用 `AbortSignal`。外部命令一律先经 `envutil.lookPath(name, env.PATH)` 解析，缺失时抛 `MissingToolError`（前缀是退出码 127 的契约）。
 - **ffprobe / ffmpeg 只经 `mediaprobe` 调用**，与 Go 版的规则相同。
 - **JSON 写出必须用 `../gojson`**（`marshal` / `marshalIndent` / `encodeLine`），不要用 `JSON.stringify`：Go 默认转义 `< > &`，用 `SetEscapeHTML(false)` 的地方传 `escapeHTML: false`；Go 里是 `map` 的字段用 `sortedKeys()` 排序。`omitempty` 的零值判断在构造对象时自己做（字段设成 `undefined` 即被省略）。
+- **Go 的文件错误文案**：Go 常把 `*fs.PathError` 原样拼进中文提示（如「读取…失败：open x: no such file or directory」），用 `../fsutil` 的 `goPathError(err, 'open', path)` 生成同样的文字。
 - **JSON 读入**：`JSON.parse` 即可；Go 用了 `DisallowUnknownFields` 的地方要显式检查多余字段并给出同样的错误。
 - **YAML** 用 `yaml` 包（已安装）；Go 侧的校验逻辑照搬。
 - **时间**：Go 的 `time.Time` 用 `Date`；写出格式要与 Go 一致（RFC3339 带纳秒时用 `toISOString()` 不够，要按 Go 的格式手写）。
