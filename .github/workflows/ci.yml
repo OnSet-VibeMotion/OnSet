@@ -11,6 +11,69 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ---- TypeScript + Electron（改写中；切换后取代下面的 Go 任务） ----
+  typescript:
+    name: TypeScript engine, CLI and desktop client
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      # engine 的集成测试要真实的 ffmpeg / ffprobe / rsvg-convert；缺了会跳过，覆盖就成了假的。
+      - name: Install media tools
+        run: brew install ffmpeg librsvg
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc --noEmit -p packages/engine
+      - run: npx tsc --noEmit -p packages/cli
+      - run: npm run typecheck -w am-desktop
+      - run: npx vitest run --root packages/engine
+      - run: npx vitest run --root packages/cli
+      - run: npm run build -w @am/cli
+      - run: npm run build -w am-desktop
+
+  ts-generated-assets:
+    name: TS generator reproduces the committed assets
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run generate -w @am/engine
+      - name: assets/presets 与 assets/styles 必须与画幅表、风格表一致
+        run: git diff --exit-code
+
+  parity:
+    name: TS am matches the Go am byte-for-byte
+    runs-on: macos-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.10'
+          cache: true
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install media tools
+        run: brew install ffmpeg librsvg
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build -w @am/cli
+      - run: go build -o "$RUNNER_TEMP/am" ./cmd/am
+      - name: Dual-run comparison
+        env:
+          AM_GO: ${{ runner.temp }}/am
+        run: node scripts/parity/run.mjs
+
   studio-ui:
     name: Studio UI build is committed
     runs-on: ubuntu-latest

@@ -15,12 +15,12 @@ import os from 'node:os';
 import path from 'node:path';
 
 const goAm = process.env.AM_GO || path.join(os.homedir(), '.local/bin/am');
-const realProject = '/Users/chouheiwa/Desktop/项目/video/讲讲复利是怎么回事-1105';
+const fixtures = path.join(import.meta.dirname, 'fixtures');
 
-/** 用真实项目的终稿造一份逐字对齐结果：每字 0.2 秒，故意漏两个字、多一个字，覆盖漏读、多读与插值。 */
+/** 用 fixtures 里的合成终稿（标记写法与真实项目相同）造一份逐字对齐结果：每字 0.2 秒，故意漏两个字、多一个字，覆盖漏读、多读与插值。 */
 function alignFixture(base) {
   fs.mkdirSync(path.join(base, 'production', 'audio'), { recursive: true });
-  fs.copyFileSync(path.join(realProject, 'production', 'script-final.md'), path.join(base, 'production', 'script-final.md'));
+  fs.copyFileSync(path.join(fixtures, 'script-final.md'), path.join(base, 'production', 'script-final.md'));
   spawnSync(goAm, ['align', 'text'], { cwd: base });
   const chars = [...fs.readFileSync(path.join(base, 'production', 'audio', 'tts-text.txt'), 'utf8')].filter((c) => !/[\s，。：、；！？,.!?]/.test(c));
   const items = [];
