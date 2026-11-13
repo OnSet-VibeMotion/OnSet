@@ -38,5 +38,7 @@ export { CueDataFile, cueToJSON, cueType, encodeLocal, findRoot, gridRef, gridSH
 export type { Cue, Local, LocalHit } from './cue';
 export { importTrack, loadTrack, trackAudioPath, trackToJSON } from './track';
 export type { MediaChecker, Track } from './track';
-export { analyze, doctor, writeClick, writeDraftAndClick } from './analyze';
+export { analyze, doctor, pythonFor, writeClick, writeDraftAndClick } from './analyze';
+export { BasePythonEnv, DefaultCheckpoint, EnvDirEnv, ensureEnv, envDir, envPython, envReady, hasBasePython, requireEnv, UVPythonVersion, uvPythonDir } from './env';
+export type { EnvOptions } from './env';
 export type { Media, Writer } from './analyze';

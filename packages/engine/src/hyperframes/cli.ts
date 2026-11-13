@@ -9,9 +9,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { lookPath } from '../envutil';
 import { abortReason } from '../procgroup';
 import { missing } from '../prereq';
+import { bundled, nodeCommand, npmCommand, withNode } from '../toolpath';
 import { PinnedVersion } from './constants';
 import { defaultCacheDir } from './hyperframes';
 import type { Progress, Writer } from './progress';
@@ -97,11 +97,11 @@ export async function ensureCLI(opts: CLIOptions, signal?: AbortSignal): Promise
   if (dir === '') throw new Error(`无法确定 HyperFrames CLI 的安装目录：环境里没有 HOME，可用 ${CLIDirEnv} 指定`);
   if (cliReady(dir, version)) return dir;
   const report = opts.progress ?? (() => {});
-  let npm: string;
+  // 自带的 npm 优先（客户端随 .app 下发，用户不必装 Node），其次 PATH 里的。
   try {
-    npm = lookPath('npm', env.PATH ?? '');
+    npmCommand(env, []);
   } catch (err) {
-    throw new Error(`找不到 npm（需要 Node 20+），无法安装 HyperFrames CLI：${errorText(err)}`, { cause: err });
+    throw new Error(`找不到 npm（客户端自带一份；单独用命令行时需要 Node 22+），无法安装 HyperFrames CLI：${errorText(err)}`, { cause: err });
   }
   fs.mkdirSync(path.dirname(dir), { recursive: true });
   const unlock = await lockFile(dir + '.lock', signal);
@@ -114,7 +114,7 @@ export async function ensureCLI(opts: CLIOptions, signal?: AbortSignal): Promise
       if (attempt > 1) stage = `安装 HyperFrames CLI ${version}（重试 ${attempt}/${cliAttempts}）`;
       report({ stage, percent: 0, indeterminate: true });
       try {
-        await installCLI(npm, dir, pkg, version, env, opts.output, signal);
+        await installCLI(dir, pkg, version, env, opts.output, signal);
         report({ stage: 'HyperFrames CLI 已就绪', percent: 100 });
         return dir;
       } catch (err) {
@@ -134,7 +134,6 @@ export async function ensureCLI(opts: CLIOptions, signal?: AbortSignal): Promise
 }
 
 async function installCLI(
-  npm: string,
   dir: string,
   pkg: string,
   version: string,
@@ -148,9 +147,11 @@ async function installCLI(
     fs.writeFileSync(path.join(staging, 'package.json'), '{"private":true}\n', { mode: 0o644 });
     const sink: Writer = output ?? { write: () => true };
     try {
-      await runCommand(npm, ['install', '--no-audit', '--no-fund', '--loglevel=error', '--save-exact', pkg], {
+      const npm = npmCommand(env, ['install', '--no-audit', '--no-fund', '--loglevel=error', '--save-exact', pkg]);
+      // 依赖的安装脚本（esbuild 的 postinstall）写的是 `node …`：给这一个子进程的 PATH 补上 node。
+      await runCommand(npm.file, npm.args, {
         cwd: staging,
-        env,
+        env: withNode({ ...env, ...npm.env }),
         stdout: sink,
         stderr: sink,
         signal,
@@ -163,7 +164,8 @@ async function installCLI(
     // 自检：能跑起来、报出的版本对得上，才算装好。
     let out: string;
     try {
-      out = await runCommand(binary, ['--version'], { cwd: staging, env, signal });
+      const self = cliCommandFor(staging, env, ['--version']);
+      out = await runCommand(self.file, self.args, { cwd: staging, env: self.env, signal });
     } catch (err) {
       throw new Error(`装好的 HyperFrames CLI 跑不起来：${errorText(err)}`, { cause: err });
     }
@@ -185,15 +187,179 @@ export interface CLICommandSpec {
   env: Record<string, string>;
 }
 
-/** 构造运行缓存里 CLI 的命令；args 原样传给它。 */
-export function cliCommandFor(dir: string, env: Record<string, string>, args: string[]): CLICommandSpec {
-  return { file: cliBinary(dir), args: [...args], env: { ...env } };
+/**
+ * 客户端自带的浏览器（客户端写出的包装脚本，见 apps/desktop/src/main/browser.ts）。客户端的 am shim 设它，
+ * am 据此把 HyperFrames 指到客户端里的 Chromium，用户不必再下载 chrome-headless-shell。
+ */
+export const BrowserEnv = 'AM_BROWSER';
+
+/** HyperFrames 自己认的浏览器位置。用户显式设了它就尊重用户的。 */
+export const HyperFramesBrowserEnv = 'HYPERFRAMES_BROWSER_PATH';
+
+/** 本次调用 HyperFrames 该用的浏览器：用户显式指定的优先，其次是客户端自带的；都没有时为空，由 HyperFrames 自己找。 */
+export function browserFor(env: Record<string, string | undefined>): string {
+  const explicit = env[HyperFramesBrowserEnv];
+  if (explicit) return explicit;
+  const bundled = env[BrowserEnv];
+  if (bundled && isExecutable(bundled)) return bundled;
+  return '';
 }
 
-/** 超过这个时长（毫秒）的锁视为上一个进程崩溃留下的；npm 安装最长也就十几分钟。 */
+function isExecutable(file: string): boolean {
+  try {
+    fs.accessSync(file, fs.constants.X_OK);
+    return fs.statSync(file).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * HyperFrames 自己下载的 chrome-headless-shell（`hyperframes browser ensure`）放在哪里。路径是上游写死的
+ * `~/.cache/hyperframes/chrome/chrome-headless-shell/<版本>/<平台目录>/chrome-headless-shell`，上游用 os.homedir()，
+ * 所以跟着 HOME 走。只在没有客户端自带浏览器时（单独使用命令行）才需要它。
+ */
+export function headlessShellRoot(env: Record<string, string | undefined>): string {
+  const home = env.HOME ?? '';
+  if (home === '') return '';
+  return path.join(home, '.cache', 'hyperframes', 'chrome', 'chrome-headless-shell');
+}
+
+const headlessShellDirs: Record<string, string> = {
+  'darwin/arm64': 'chrome-headless-shell-mac-arm64',
+  'darwin/x64': 'chrome-headless-shell-mac-x64',
+  'linux/x64': 'chrome-headless-shell-linux64',
+};
+
+/** 已下载的任一版本 headless-shell；没有时为空。 */
+export function cachedHeadlessShell(env: Record<string, string | undefined>): string {
+  const root = headlessShellRoot(env);
+  const platformDir = headlessShellDirs[`${process.platform}/${process.arch}`];
+  if (root === '' || platformDir === undefined) return '';
+  let versions: string[];
+  try {
+    versions = fs.readdirSync(root).sort().reverse();
+  } catch {
+    return '';
+  }
+  for (const version of versions) {
+    const binary = path.join(root, version, platformDir, 'chrome-headless-shell');
+    try {
+      if (fs.statSync(binary).size > 0) return binary;
+    } catch {
+      // 这个版本没下完
+    }
+  }
+  return '';
+}
+
+/**
+ * 渲染要用的浏览器在哪：显式指定的、客户端自带的、或已下载的 headless-shell；都没有时 ok 为假。
+ * 不联网，给前置资源清单与渲染前检查用。
+ */
+export function browserStatus(env: Record<string, string | undefined>): { ok: boolean; where: string } {
+  const chosen = browserFor(env);
+  if (chosen !== '') return { ok: true, where: chosen };
+  const cached = cachedHeadlessShell(env);
+  if (cached !== '') return { ok: true, where: cached };
+  return { ok: false, where: headlessShellRoot(env) };
+}
+
+/**
+ * 没有可用的浏览器就抛 prereq.MissingError。渲染前调用：不检查的话 HyperFrames 会在第一次渲染时自己去下载
+ * 约 390 MB 的 chrome-headless-shell，网络一差渲染器就空等。
+ */
+export function requireBrowser(env: Record<string, string | undefined>): string {
+  const status = browserStatus(env);
+  if (status.ok) return status.where;
+  throw missing('HyperFrames 渲染用的浏览器', status.where === '' ? '环境里没有 HOME' : '没有下载到 ' + status.where);
+}
+
+/** 一次浏览器准备。 */
+export interface BrowserOptions {
+  env?: Record<string, string>;
+  output?: Writer;
+  progress?: (p: Progress) => void;
+}
+
+/**
+ * 准备渲染用的浏览器：已有（客户端自带或已下载）就直接返回，否则用固定版本的 CLI 运行
+ * `hyperframes browser ensure` 下载 headless-shell。只有 am setup 调用；CLI 要先装好。
+ */
+export async function ensureBrowser(opts: BrowserOptions, signal?: AbortSignal): Promise<string> {
+  const env = opts.env ?? {};
+  const report = opts.progress ?? (() => {});
+  const status = browserStatus(env);
+  if (status.ok) {
+    report({ stage: '浏览器已就绪', percent: 100 });
+    return status.where;
+  }
+  const dir = requireCLI(env);
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= cliAttempts; attempt++) {
+    report({ stage: attempt > 1 ? `下载 chrome-headless-shell（重试 ${attempt}/${cliAttempts}）` : '下载 chrome-headless-shell', percent: 0, indeterminate: true });
+    try {
+      const spec = cliCommandFor(dir, env, ['browser', 'ensure']);
+      const out = await runCommand(spec.file, spec.args, { env: spec.env, signal });
+      opts.output?.write(out);
+      const after = browserStatus(env);
+      if (after.ok) {
+        report({ stage: '浏览器已就绪', percent: 100 });
+        return after.where;
+      }
+      lastErr = new Error('hyperframes browser ensure 跑完了，但没有找到下载好的浏览器');
+    } catch (err) {
+      lastErr = err;
+    }
+    if (signal?.aborted) throw abortReason(signal);
+    if (opts.output && attempt < cliAttempts) opts.output.write(`下载浏览器失败，重试（${attempt + 1}/${cliAttempts}）：${errorText(lastErr)}\n`);
+  }
+  throw new Error(`下载 HyperFrames 渲染用的浏览器失败（可以加 --proxy 走代理，网络好转后重新运行即可）：${errorText(lastErr)}`, { cause: lastErr });
+}
+
+/**
+ * CLI 的 JS 入口（包的 package.json 里 bin 指向的文件）。读不到时为空：测试里的假 CLI 只有一个 shell 脚本。
+ */
+export function cliEntry(dir: string): string {
+  const pkgDir = path.join(dir, 'node_modules', 'hyperframes');
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8')) as { bin?: string | Record<string, string> };
+    const bin = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.hyperframes;
+    if (!bin) return '';
+    const entry = path.join(pkgDir, bin);
+    return fs.existsSync(entry) ? entry : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * 构造运行缓存里 CLI 的命令；args 原样传给它。
+ *
+ * CLI 用 am 自己的运行时启动（toolpath.nodeCommand），不经它的 `#!/usr/bin/env node`：客户端用户的机器上
+ * 未必有 Node，有的话版本也未必够。浏览器、ffmpeg、ffprobe 也在这里指给它：客户端自带的优先。
+ */
+export function cliCommandFor(dir: string, env: Record<string, string>, args: string[]): CLICommandSpec {
+  const out = { ...env };
+  const browser = browserFor(env);
+  if (browser !== '') out[HyperFramesBrowserEnv] = browser;
+  for (const [tool, key] of [
+    ['ffmpeg', 'HYPERFRAMES_FFMPEG_PATH'],
+    ['ffprobe', 'HYPERFRAMES_FFPROBE_PATH'],
+  ] as const) {
+    const file = bundled(tool, env);
+    if (file !== '' && !out[key]) out[key] = file;
+  }
+  const entry = cliEntry(dir);
+  if (entry === '') return { file: cliBinary(dir), args: [...args], env: out };
+  const command = nodeCommand(entry, args);
+  return { file: command.file, args: command.args, env: { ...out, ...command.env } };
+}
+
+/** 超过这个时长（毫秒）的锁视为上一个进程崩溃留下的；npm 安装最长也就十几分钟。lockFile 也给节拍分析环境的安装用。 */
 const lockStale = 30 * 60 * 1000;
 
-async function lockFile(file: string, signal?: AbortSignal): Promise<() => void> {
+export async function lockFile(file: string, signal?: AbortSignal): Promise<() => void> {
   for (;;) {
     try {
       const fd = fs.openSync(file, 'wx', 0o644);

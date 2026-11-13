@@ -6,7 +6,7 @@ import path from 'node:path';
 import { onTestFinished } from 'vitest';
 import { goRound } from '../gofmt';
 import * as hyperframes from '../hyperframes';
-import { fakeCLI } from '../hyperframes/hftest';
+import { fakeBrowser, fakeCLI } from '../hyperframes/hftest';
 import { load, type Scene } from './scene';
 import { PhraseCopyFile } from './timing';
 
@@ -14,6 +14,9 @@ import { PhraseCopyFile } from './timing';
 // 免得真的去 npm install。导入本文件即生效。
 const fakeCLIDir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-hyperframes-cli-test-'));
 fakeCLI(fakeCLIDir);
+process.env.AM_BROWSER = fakeBrowser(fakeCLIDir);
+// am setup 下载的工具目录指到空目录：开发机上 ~/.local/share/am/bin 里真实的 ffmpeg、mmx 不能混进测试。
+process.env.AM_BIN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-bin-test-'));
 process.env[hyperframes.CLIDirEnv] = fakeCLIDir;
 
 /** t.TempDir()：测试结束时删掉。 */

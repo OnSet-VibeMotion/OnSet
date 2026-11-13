@@ -14,3 +14,14 @@ export function fakeCLI(dir: string): void {
   fs.writeFileSync(bin, script, { mode: 0o755 });
   fs.writeFileSync(path.join(dir, '.am-cli'), PinnedVersion + '\n', { mode: 0o644 });
 }
+
+/**
+ * 在 dir 里写出一个假的浏览器包装脚本并返回它的路径：渲染前的 requireBrowser 只查它可执行，
+ * 测试的 setup 把 BrowserEnv（AM_BROWSER）指向它，免得测试去找真的 headless-shell。
+ */
+export function fakeBrowser(dir: string): string {
+  const file = path.join(dir, 'am-browser');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(file, '#!/bin/sh\necho "Chromium 0.0 (fake)"\n', { mode: 0o755 });
+  return file;
+}

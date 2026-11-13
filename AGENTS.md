@@ -53,7 +53,22 @@ CI（`.github/workflows/ci.yml`）跑类型检查、两包的 Vitest、构建、
 
 更要命的是上游安装器根本给不了可复现性：它 `git clone` 仓库默认分支取技能，没有指定 ref 的口子，技能内容随上游 `main` 漂移而版本号不变（实测 0.8.1 与 0.8.14 装出来逐字节相同）。所以 `hyperframes` 包不调用它，改为自己按 tag 浅克隆并校验 commit 与技能数量，见 `packages/engine/src/hyperframes/constants.ts` 里 `PinnedSkillsCommit` / `PinnedSkillsCount` 的注释；安装后写一份 `hyperframes-upstream.json` 记录 commit 与每个技能的内容摘要，见 `manifest.ts`。校验过的技能树按 commit 缓存在用户级目录（`defaultCacheDir`）；缓存只在调用方显式传 `Options.cacheDir` 时启用，测试里传临时 `HOME` 的用例因此仍能断言 HOME 一个字节都没动。缓存按技能数判可用。
 
-**要联网的东西都是前置资源**（`packages/engine/src/prereq`）：HyperFrames 技能（`hyperframes.prepareSkills`）、HyperFrames CLI（`ensureCLI`）、各整片风格来源的数据（`Source.prepare`，lemo-opuscar 含全部 demo、海报、core/assets 与 three.js 依赖）只由 `am setup` 下载，用户自己在终端里跑，能看进度、加 `--proxy`、断了重来。其余路径只检查：`am init` / 客户端新建用 `Options.cacheOnly` 从缓存拷技能，`am hyperframes` 与 `scene.run` 用 `requireCLI`，`am film-style use` 与客户端用 `filmstyle.install` / `Source.check`，缺了一律抛 `prereq.MissingError`（文案统一指向 `am setup`）。**不要再在这些路径里加自动下载**：以前建项目、渲染、打开菜单时各自现下载，网络一差就卡在半路，用户看不到卡在哪，渲染途中卡住还白花一次模型调用。`am setup` 的界面（`packages/cli/src/setupview.ts`）每项一行、按显示宽度对齐，终端里原地重画，管道里每次状态变化打一行；git / npm 的原始输出一律写进 `<数据目录>/am/setup.log`（`packages/cli/src/setup.ts`），失败时屏幕只给错误、日志最后几行与日志路径——别再把子进程输出直接接到终端，混进进度行就乱了。`am setup --proxy` 用 `GIT_CONFIG_PARAMETERS` 只给 git 设代理：设成 `HTTPS_PROXY` 的话 npm 也走它，国内镜像经代理反而连不上（实测）。
+**要联网的东西都是前置资源**（`packages/engine/src/prereq`）：HyperFrames 技能（`hyperframes.prepareSkills`）、HyperFrames CLI（`ensureCLI`）、卡点模式的节拍分析环境（`beat.ensureEnv`）、各整片风格来源的数据（`Source.prepare`，lemo-opuscar 含全部 demo、海报、core/assets 与 three.js 依赖）以及渲染用浏览器（`hyperframes.ensureBrowser`）、ffmpeg / ffprobe 与 uv（`toolinstall`）、项目选用的配音与对齐工具（`toolinstall.ensureTool`，按 `providers.ts` 里各家的 `install` 描述）只由 `am setup` 或客户端的安装页（`studio/setup.ts`）下载——两边跑同一份清单（`prereqs.items`）、同一份日志，都能看进度、加代理、断了重来。其余路径只检查：`am init` / 客户端新建用 `Options.cacheOnly` 从缓存拷技能，`am hyperframes` 与 `scene.run` 用 `requireCLI`，`am beat analyze` / `doctor` 用 `beat.requireEnv`，`am film-style use` 与客户端用 `filmstyle.install` / `Source.check`，缺了一律抛 `prereq.MissingError`（文案统一指向 `am setup`）。`scene.run` 渲染前还要 `requireBrowser`（不然 HyperFrames 会在第一次渲染时自己下 390 MB 的 chrome-headless-shell）。**不要再在这些路径里加自动下载**：以前建项目、渲染、打开菜单时各自现下载，网络一差就卡在半路，用户看不到卡在哪，渲染途中卡住还白花一次模型调用。`am setup` 的界面（`packages/cli/src/setupview.ts`）每项一行、按显示宽度对齐，终端里原地重画，管道里每次状态变化打一行；git / npm 的原始输出一律写进 `<数据目录>/am/setup.log`（`packages/cli/src/setup.ts`），失败时屏幕只给错误、日志最后几行与日志路径——别再把子进程输出直接接到终端，混进进度行就乱了。`am setup --proxy` 用 `GIT_CONFIG_PARAMETERS` 只给 git 设代理：设成 `HTTPS_PROXY` 的话 npm 也走它，国内镜像经代理反而连不上（实测）。要从 GitHub release、Google 存储下载的（ffmpeg、uv、uv 的 Python、浏览器）经 `prereqs` 的 `withProxy` 设 `https_proxy`，curl 与 HyperFrames 都认；GitHub release 也可以设 `AM_GITHUB_MIRROR` 走镜像，文件都按钉死的 sha256 核对。
+
+**开箱即用**：客户端用户的 Mac 上可以什么都没有（没有 Node、Python、Homebrew、Xcode 命令行工具），装好 .app、点一次安装页就能做片。约定如下，改动时别打破：
+
+| 约定 | 原因 |
+|---|---|
+| 外部工具一律经 `packages/engine/src/toolpath` 找：随客户端下发的（`AM_BUNDLED_BIN`）→ `am setup` 装的（`<数据目录>/am/bin`，`AM_BIN_DIR`）→ PATH。`envutil.addExecutableLocation` 把 am 的 bin 目录加在子进程 PATH **末尾** | 编排工具按名字调 `mmx`、`edge-tts` 时能找到，又不盖过用户自己装的同名工具 |
+| 要 Node 的地方（HyperFrames CLI、npm、npm 类配音工具）用 am 自己的运行时启动（`toolpath.nodeCommand`：客户端里是 Electron 带 `ELECTRON_RUN_AS_NODE=1`），**不往 PATH 前面塞 node**；只有 `npm install` 跑依赖的安装脚本时，经 `toolpath.withNode` 给那一个子进程补一个临时的 `node` | 塞进 PATH 的话编排工具这一轮里跑的 npx、用户自己的脚本都会换成 Electron。esbuild 的 postinstall 写的是 `node install.js` |
+| 客户端自带 npm：`apps/desktop/scripts/vendor.mjs` 在打包前 `npm pack` 固定版本到 `vendor/npm`（不进版本库），`scripts/afterpack.cjs` 拷进 `.app/Contents/Resources/npm`，shim 经 `AM_NPM_CLI` 告诉 am。**不能走 extraResources** | electron-builder 复制 extraResources 时一律丢掉 node_modules（filter 写进去也不行，实测），npm 一运行就缺 graceful-fs |
+| 渲染用浏览器借客户端自带的 Chromium：`apps/desktop/src/main/browser.ts` 是浏览器模式（入口 `entry.ts` 按 `AM_BROWSER_MODE` 分流），包装脚本 `userData/bin/am-browser`（`clishim.ts` 的 `browserScript`）经 `AM_BROWSER` → `HYPERFRAMES_BROWSER_PATH` 交给 HyperFrames。浏览器模式接管 puppeteer 的管道（fd 3/4），转给 Electron 自己的调试端口，只把 `Target.createTarget` / `closeTarget` 换成开、关隐藏窗口 | Electron 不支持 `Target.createTarget`（实测 Not supported），而 HyperFrames 每次都 `newPage()`。macOS 上 HyperFrames 用截图取帧，隐藏窗口截图与 headless-shell 逐字节相同（2D 画面；WebGL 因 Chromium 版本不同有几个像素差）。管道必须用 `net.Socket` 读写：fs 流阻塞读 fd 3，退出时互等，进程永远退不掉；内部 CDP 请求的 id 必须在 32 位以内，超出 Chromium 不回复（都实测过） |
+| 没有 git 时技能改从 GitHub 逐个文件下载（`hyperframes/download.ts`），按 git blob 摘要核对；`toolpath.usableGit` 用 `xcode-select -p` 判断 `/usr/bin/git` 是不是占位程序 | 整仓 tarball 144 MB，技能只有几 MB；占位 git 一运行就弹窗要装命令行工具。lemo 风格库与 `am archive` 仍要 git，缺了提示 `xcode-select --install` |
+| ffmpeg 不打进 .app，由 `am setup` 下载 eugeneware/ffmpeg-static 的静态构建（`toolinstall.FFmpegRelease`）；系统里已有就直接就绪 | HyperFrames 与 `concat` 都写死 libx264（GPL），LGPL 构建渲染不了；随应用发布 GPL + x264 要背许可与专利义务 |
+| Python 类工具（edge-tts、tccli、mlx-audio、funasr）与没有合适 Python 时的节拍环境都用 uv，Python 装在 `<数据目录>/am/python`；uv 不读 pip.conf，`toolinstall.pipIndexURL` 把 pip.conf 的 `index-url` 转成 `UV_DEFAULT_INDEX`。节拍环境用 `uv venv --seed`，后面照旧 `python -m pip`（读 pip.conf） | 国内用户的镜像配在 pip.conf 里，不转过去 torch 会从境外直连 |
+| 工具第一次运行才下的模型也是前置资源：对齐工具的 `model`（`providers.ts` 的 `QwenForcedAligner`，文件与 sha256 钉死）由 `toolinstall.ensureModel` 下到 `<数据目录>/am/models/`，先探 Hugging Face 通不通，不通就从魔搭下同名仓库；提示词用 `am config get ALIGN_MODEL` 拿本地目录 | huggingface.co 在国内常常连不上，hf-mirror 现在也 308 跳回 huggingface.co（2026-11 实测），不预先下好就是在对齐时现下载 1.27 GB |
+| 测试的 testsupport 把 `AM_BROWSER` 指到假浏览器（`hftest.fakeBrowser`）、`AM_BIN_DIR` 指到空目录 | 开发机上 `~/.local/share/am/bin` 里真实的 ffmpeg、mmx 不能混进测试 |
+
 
 HyperFrames **CLI** 与技能分开管理但同一个版本：`hyperframes.ensureCLI`（`packages/engine/src/hyperframes/cli.ts`）用 `npm install hyperframes@<PinnedVersion>` 装进用户级 `~/.local/share/am/hyperframes/cli-<版本>`（`CLIDirEnv` 可覆盖），在临时目录里装好、跑过 `--version` 自检、写完成标记后整体改名进位，失败重试 3 次；npm 沿用用户自己的 `~/.npmrc`（国内镜像、代理、鉴权）。`am init`（经 `projectinit.installSkills`）与 `scene.run`（启动渲染器之前）都会确保它在，所有调用一律写成 `am hyperframes <子命令>`（`hyperframes.CLICommand`），提示词、锁定文件规则与安全模式放行列表用的是同一个字符串。不再让渲染器 `npx --yes hyperframes@<版本>`：版本一升级，第一次渲染就要在途中现下载，网络一差渲染器空等二十多分钟、白花一次模型调用，只留下「没有产物」（实测）。`config.childEnvironment` 显式传 `AM_HYPERFRAMES_CLI_DIR`，理由同风格库目录；`scene.run` 还把当前 `am` 放进渲染器的 `PATH`。命令行测试的 `packages/cli/src/testutil.ts` 与 Studio 后端测试的 `packages/engine/src/studio/testsupport.ts` 用 `hyperframes/hftest` 的 `fakeCLI` 造一份假的已装 CLI。
 
@@ -271,6 +286,7 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 | `am beat cues` 写 `duration_seconds`，`beat.verifyCue`（`beat/cue.ts`）对切点做**精确**比对 | 帧号只有一个来源，任何偏差都是有人手改了时长；成片里的 ±1 帧容差属于整片复查，不属于这里 |
 | 草稿网格永远不直接生效，只有 `beat.confirm` 能把 `reviewed` 置为 true | 模型最常见的错是重拍整体错位或拍号判错，只有听过试听轨才知道 |
 | 分析脚本把结果写进文件，不打印到 stdout | 首次运行下载模型权重，进度输出会污染标准输出，按 stdout 解析时结果直接丢失（实测过） |
+| 节拍分析环境是前置资源（`beat/env.ts`）：`am setup --only beat` 在 `~/.local/share/am/beat/venv-<AnalyzerVersion>`（`AM_BEAT_ENV_DIR` 可覆盖，`childEnvironment` 显式传）里建 venv、`pip install beat-this==<版本>`、预下载默认 `final0` 权重，全部成功才写完成标记，失败整个删掉重来、重试 3 次。基础 Python 按 `basePythonCandidates` 找 3.10–3.14 的（`AM_BEAT_BASE_PYTHON` 可指定）；pip 用用户自己的 pip.conf，`--proxy` 只给权重下载。`beat.yaml` 的 `python` 可选，不写用共享环境，缺了抛 `prereq.MissingError`；制作提示词「卡点分支」禁止编排工具自己建环境 | 以前 `beat.yaml` 默认 `python: python3`，系统 Python 里没有 beat-this，编排工具就在对话里自己建 venv、pip install，每个新项目都可能多一套约 800 MB 的 torch（实测两套并存，一套是客户端新建项目时现建的）。系统 `python3` 是 3.15 时 torch 装不上，所以按已知可用的版本挑 |
 | 音乐由 ffmpeg 解码成单声道 WAV，脚本用标准库 `wave` 读，再调 `Audio2Beats` | 不走 beat-this 自带的 torchaudio 读文件：它的后端随版本变化，能不能读 MP3 取决于用户机器 |
 
 节拍分析固定 `beat-this` `AnalyzerVersion`（`beat/store.ts`，代码与权重 MIT），不用 librosa（没有重拍）和 madmom（Python 3.12+ 兼容问题，DBN 后处理有专利、限非商用）。CI 不装 torch，真实分析的集成测试（`beat/analyze.test.ts`）只在设置 `AM_TEST_BEAT_PYTHON` 时运行，改动分析脚本后要在本机跑一遍：
@@ -338,7 +354,7 @@ AM_TEST_BEAT_PYTHON=/path/to/venv/bin/python npx vitest run --root packages/engi
 | 口播稿页（`studio/script.ts` 的 `/api/script`、`Script.tsx`）排在标签第一位：读 `production/script-final.md`，经 `align` 的 `view`（`align/view.ts`）排成标题、段落、读法（ruby）与受保护短语，附字数、估算时长（每秒 4.5 字）、`voice.srt` 的实际配音时长与 `script-change-log.md`；没有终稿时原样显示原稿，标记写错时给出位置并显示原文。有终稿、还没有镜头时自动切到这一页，稿子改过没看过时标签打点，聊天里点到终稿也打开这一页。「确认，开始配音」「提修改意见」「针对所选提意见」都只是往对话里发话或填输入框 | 稿件审核关卡要用户看稿，以前只能在聊天里翻；视图与 `am align` 共用一份解析器，读法与短语和配音、对齐看到的是同一份。客户端自己不改稿 |
 | 节拍页（`Beat.tsx`，`/api/beat`）在卡点项目里代替口播稿排第一步（`stepTabsFor`）。页头六步（故事与文案 → 导入音乐 → 分析节拍 → 试听确认 → 分镜计划 → 做镜头）各自判断完成与否，下面一块「接下来」用一句话说清下一步、按钮把它交给对话；故事与文案读 `production/beat/story.md`（制作提示词「卡点分支」让编排工具开工先写它，`gen.test.ts` 的「tells the beat story before the music」钉着）（`BeatStoryFile`），还在定故事时展开全文、之后收成标题加梗概。其下画波形、每拍刻度、重拍与小节号、分镜计划的镜头条，播放时大字数拍；拍数与多数小节不同的小节标黄。音乐用 WebAudio 解码播放，咔嗒按当前网格在同一个 `AudioContext` 里现合成，所以在页面上换「每小节几拍 / 重拍是第几拍」（或播放中按 T 敲重拍）立刻能听到；只有动过这两个控件才进入预览，原网格（手改、拼接过的常常不规整）照原样显示。写回只走 `beat.regrid` / `beat.confirm` 两个写任务，客户端不改网格；`/api/beat` 不哈希音乐（每次刷新都要读），网格与音乐不符由 `am beat confirm` 拦下 | 卡点项目原先跑的是口播流程的制作提示词，没有任何卡点步骤，用户在听音乐之前不知道片子讲什么、接下来要做什么；以前也只有一条横幅放 `grid-click.wav`，重拍错位要回终端跑 `am beat regrid` 再重听整条试听轨，小节、拍数与切点只能看 `am beat bars` 的文字表 |
 | 发布页（`Publish.tsx`）不贴 `publish.md` 原文：`/api/publish` 经 `validate.readPublish` 只解析 frontmatter（不校验）返回 `data`，页面按「状态 → 可复制的标题 / 简介 / 话题 → 登记的封面 → 还剩的人工检查」排，规格与证据收进折叠。客户端里任何地方都不显示它的 Markdown 原文：接口不回传正文，解析失败只给原因、让编排工具修；聊天、文件树、`am studio show file publish.md` 点到它都切到发布页（`app.tsx` 的 `pageForFile`，口播稿同理）。合格与否仍只看「发布校验」 | `publish.md` 是 `am run` 下给人看的发布助手；在客户端里发布页就是那份助手，再贴原文只是把几十行校验字段和重复的表格摆到用户面前 |
-| 前置资源引导（`studio/setup.ts` 的 `/api/setup`、`SetupGuide.tsx`）：清单来自 `packages/engine/src/prereqs`，与 `am setup` 同一份；只读不下载。缺了在首页输入框上方显示引导卡片（缺哪几项、可复制的 `am setup` 命令、重新检查，每 10 秒自动查一次），顶栏给「前置资源缺 N 项」打开同一份引导；技能或 CLI 缺时「开始制作」不可点，项目里的「安装技能」按钮也让位给引导。`AM_STUDIO_SKIP_SKILL_INSTALL=1` 时当作全部就绪 | 前置资源只由用户在终端里跑 `am setup`；没有引导的话，用户第一次建项目只会在装技能那一步看到一条报错 |
+| 前置资源的安装页（`studio/setup.ts` 的 `/api/setup`、`/api/setup/run`、`/api/setup/cancel`，`SetupGuide.tsx`）：清单与 `am setup` 同一份（`prereqs`，配音与对齐工具按当前项目配置挑）。界面把几项技术资源合成用户听得懂的「摄制组」——画面（技能 + CLI + 浏览器）、剪辑（ffmpeg）、配音、字幕——每组一张卡片、图标外一圈进度环；工具名、版本、路径只在悬停提示里，日志与终端命令收进「高级」；节拍环境、风格来源动辄上 GB，作为「以后可能用到」单独点装。安装在后台跑，同一时间一份，进度经 GET 轮询（安装中每秒一次）；暂停记成「已取消」，界面显示为暂停而不是失败。不占项目写锁（只写用户级目录）。必需项缺时「开始制作」不可点。`AM_STUDIO_SKIP_SKILL_INSTALL=1` 时当作全部就绪 | 以前只给一条要复制到终端的命令，客户端用户多半不会开终端，装好应用却用不了；列一排工具名用户看不懂在装什么 |
 
 ### 界面（`apps/desktop/src/renderer`）
 
@@ -358,7 +374,7 @@ AM_TEST_BEAT_PYTHON=/path/to/venv/bin/python npx vitest run --root packages/engi
 
 ### 端到端测试
 
-`apps/desktop/e2e/` 用 Playwright 的 Electron 模式启动构建好的客户端（`playwright.config.mjs`、`e2e/fixtures.mjs`）。每个用例一套临时目录：HOME、userData（`AM_DESKTOP_USER_DATA`）、项目登记（`AM_STUDIO_CONFIG`）、记忆库（`AM_MEMORY_DIR`），并设 `AM_STUDIO_SKIP_SKILL_INSTALL=1`——记忆默认打开，不设 `AM_MEMORY_DIR` 的话每次跑 e2e 都往用户真实记忆库写经历，记忆面板曾被几百条 `am-studio-e2e-*` 淹没。
+`apps/desktop/e2e/` 用 Playwright 的 Electron 模式启动构建好的客户端（`playwright.config.mjs`、`e2e/fixtures.mjs`）。每个用例一套临时目录：HOME、userData（`AM_DESKTOP_USER_DATA`）、项目登记（`AM_STUDIO_CONFIG`）、记忆库（`AM_MEMORY_DIR`），并设 `AM_STUDIO_SKIP_SKILL_INSTALL=1` 与 `AM_DESKTOP_BACKGROUND=1`（客户端以辅助程序运行：不进 Dock、不激活、窗口不显示、系统通知默认不弹，见 `main.ts`；测通知的用例自己把 `Notification.prototype.show` 换成记录。否则每个用例都弹到最前面抢走开发者的焦点）——记忆默认打开，不设 `AM_MEMORY_DIR` 的话每次跑 e2e 都往用户真实记忆库写经历，记忆面板曾被几百条 `am-studio-e2e-*` 淹没。
 
 `apps/desktop/e2e/fake-bin/claude` 是 e2e 用的假编排工具（同目录的 `codex` 只用来显示为「已安装」，被调用时直接失败），`fixtures.mjs` 把它放在 PATH 最前面，并设 `AM_DESKTOP_KEEP_PATH=1` 让主进程不再把登录 shell 的 PATH 并到前面（否则真实的 claude 会被先找到）；提示词里带「慢慢来」时它只回报会话然后挂起，供取消测试使用。单元测试里的假工具同理，子进程环境按安全模式白名单构造，测试开关要经 `AM_PASSTHROUGH_ENV` 透传。
 
@@ -398,8 +414,9 @@ AM_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run --root 
 
 | 位置 | 作用 |
 |---|---|
-| `packages/engine/src/config/providers.ts` | 取值、名称、自带时间戳粒度、命令名（安全模式下编排工具只被放行这一个命令） |
-| `packages/engine/src/preset/gen/templates/PROMPT-PRODUCTION.md` 第三、四阶段 | 安装、登录、合成与取时间戳的具体命令，改完跑 `npm run generate -w @am/engine` |
+| `packages/engine/src/config/providers.ts` | 取值、名称、自带时间戳粒度、命令名（安全模式下编排工具只被放行这一个命令），以及 `install`：`am setup` 怎么装它（npm 包 / uv 工具 / uv 专用环境，版本钉死，至少发布两周） |
+| `packages/engine/src/preset/gen/templates/PROMPT-PRODUCTION.md` 第三、四阶段 | 登录、合成与取时间戳的具体命令（**不写安装命令**，`gen.test.ts` 的「leaves voice tools to am setup」拦着），改完跑 `npm run generate -w @am/engine` |
+| `apps/desktop/src/renderer/components/SetupGuide.tsx` 的 `voiceNames` | 安装页配音卡片上显示的服务名 |
 | `assets/shared/article-to-motion.conf`、`.env.example`、两份 README | 可选值注释 |
 
 收录门槛是「有可非交互调用的 CLI，且凭据不必落进项目文件」。写进提示词的命令要实测过；跑不了的（没有账号）照官方文档写，并让编排工具先打印返回结构再解析。没有自带字级时间戳的路径，`voice.srt` 一律由强制对齐生成，不拿句级时间戳凑。

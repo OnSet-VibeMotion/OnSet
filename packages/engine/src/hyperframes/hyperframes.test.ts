@@ -203,8 +203,9 @@ describe.skipIf(!hasGit)('install', () => {
   it('rejects missing version and toolchain', async () => {
     // 没有版本号应当报错。
     await expect(install({ projectDir: tempDir() })).rejects.toThrow();
-    const err = await install({ projectDir: tempDir(), version: '9.9.9', env: { PATH: tempDir() }, output: new Sink() }).catch((e: Error) => e);
-    // PATH 里没有 git 应当报错；退出码 127 靠这个前缀判定。
+    // 不是 GitHub 的仓库没法逐个文件下载：PATH 里没有 git 应当报错；退出码 127 靠这个前缀判定。
+    // （GitHub 仓库没有 git 时改走 HTTP 下载，见 download.test.ts。）
+    const err = await install({ projectDir: tempDir(), version: '9.9.9', repoURL: 'file:///nonexistent', env: { PATH: tempDir() }, output: new Sink() }).catch((e: Error) => e);
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).message).toContain('缺少必需工具');
   });

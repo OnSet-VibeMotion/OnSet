@@ -7,7 +7,7 @@ import path from 'node:path';
 import { afterEach, onTestFinished } from 'vitest';
 import * as hyperframes from '@am/engine/hyperframes';
 import * as preset from '@am/engine/preset';
-import { fakeCLI } from '@am/engine/hyperframes/hftest';
+import { fakeBrowser, fakeCLI } from '@am/engine/hyperframes/hftest';
 import { execute } from './cli';
 import type { Out } from './cobra';
 
@@ -18,6 +18,9 @@ const memoryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-memory-test-'));
 process.env.AM_MEMORY_DIR = memoryDir;
 const fakeCLIDir = path.join(memoryDir, 'hyperframes-cli');
 fakeCLI(fakeCLIDir);
+process.env.AM_BROWSER = fakeBrowser(fakeCLIDir);
+// am setup 下载的工具目录指到空目录：开发机上 ~/.local/share/am/bin 里真实的 ffmpeg、mmx 不能混进测试。
+process.env.AM_BIN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-bin-test-'));
 process.env[hyperframes.CLIDirEnv] = fakeCLIDir;
 
 // 每个用例结束后恢复工作目录与环境变量（Go 的 t.Chdir / t.Setenv）。

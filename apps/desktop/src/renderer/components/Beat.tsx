@@ -887,6 +887,14 @@ function nextStep(stage: number, b: BeatState | null, busy: boolean, onQuick: Pr
         action: ask('在对话里导入音乐', '导入这首音乐并分析节拍：', true),
       };
     case 2:
+      if (b?.analyzer && !b.analyzer.ready) {
+        return {
+          text: b.analyzer.command
+            ? '音乐已导入。分析节拍要用的环境还没装：在终端里运行下面这条命令（约 1 GB，所有卡点项目共用，只装一次），装好再回来分析。'
+            : `音乐已导入，但 beat.yaml 指定的 Python 不存在（${b.analyzer.location}）。改成存在的路径，或删掉 python 这一行改用共享环境。`,
+          action: b.analyzer.command ? <code className="beat-command">{b.analyzer.command}</code> : undefined,
+        };
+      }
       return { text: '音乐已导入，还没有分析节拍。分析完会在下面画出每一拍和每个小节。', action: ask('让它分析节拍', '分析这首音乐的节拍（am beat analyze），分析完带我去节拍页试听。') };
     case 3:
       return { text: '试听下面的节拍：每拍一声，重拍更高。「1」都落在音乐的重音上，就点「听过了，确认网格」；对不上就换每小节几拍或重拍是第几拍。' };

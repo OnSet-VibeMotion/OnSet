@@ -66,12 +66,12 @@ export function newBeatCommand(stdout: Out): Command {
       long:
         '在项目根写出 ' +
         beat.ConfigFile +
-        '，启用卡点模式。已有内容不同的 beat.yaml 时整体失败、不覆盖。项目里有 song.yaml 或 cast.yaml 时拒绝：卡点与歌曲、多角色对话的时间轴来源互斥。不安装 Python 或模型。',
+        '，启用卡点模式。已有内容不同的 beat.yaml 时整体失败、不覆盖。项目里有 song.yaml 或 cast.yaml 时拒绝：卡点与歌曲、多角色对话的时间轴来源互斥。不安装 Python 或模型：节拍分析环境由 am setup --only beat 装在用户级目录，所有卡点项目共用。',
       example: '  am beat init --project-root .',
       runE: () => {
         project.initializeWithFiles(root.value, { [beat.ConfigFile]: Buffer.from(beat.DefaultConfig) });
         beat.loadConfig(root.value);
-        stdout.write(`已启用卡点模式。按 ${beat.ConfigFile} 配好 Python 环境后运行 am beat doctor\n`);
+        stdout.write(`已启用卡点模式。节拍分析环境由 am setup --only beat 准备（所有卡点项目共用，只装一次）\n`);
       },
     }),
   );
@@ -81,8 +81,14 @@ export function newBeatCommand(stdout: Out): Command {
       use: 'doctor',
       short: '检查 beat-this 环境并预先下载模型权重',
       args: NoArgs,
-      long: '用 beat.yaml 的 python 加载固定版本 beat-this ' + beat.AnalyzerVersion + ' 的模型。首次运行会联网下载权重并缓存；之后的分析不再联网。',
-      example: '  python3 -m venv ~/.venvs/beat && ~/.venvs/beat/bin/pip install beat-this==' + beat.AnalyzerVersion + '\n  am beat doctor',
+      long:
+        '加载固定版本 beat-this ' +
+        beat.AnalyzerVersion +
+        ' 的模型，确认分析能跑。beat.yaml 没写 python 时用 am setup --only beat 装好的共享环境（没装好就报错，不在这里装）。' +
+        'am setup 已预下载默认的 ' +
+        beat.DefaultCheckpoint +
+        ' 权重；beat.yaml 换成别的 checkpoint 时，第一次运行本命令会联网下载它。',
+      example: '  am setup --only beat\n  am beat doctor',
       runE: async (c) => {
         const signal = withTimeout(c.context());
         await beat.doctor(root.value, currentEnvironment(), stdout, signal);

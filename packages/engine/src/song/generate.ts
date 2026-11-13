@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { lookPath } from '../envutil';
+import { find } from '../toolpath';
 import { atomicWrite } from '../fsutil';
 import { formatFixed, goExt, goPathError } from '../gofmt';
 import { newToolchain, type Toolchain } from '../mediaprobe';
@@ -167,7 +167,7 @@ export async function generate(
       out.write(`正在处理候选 ${id}（${c.provider} / ${c.model}）\n`);
       const dest = path.join(dir, candidate.audio);
       if (c.provider === 'minimax') {
-        const binary = lookPath('mmx', environ.PATH ?? '');
+        const binary = find('mmx', environ);
         const args = [
           'music',
           'generate',

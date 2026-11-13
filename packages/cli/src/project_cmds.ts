@@ -10,6 +10,7 @@ import '@am/engine/filmstyle/sources';
 import * as hyperframes from '@am/engine/hyperframes';
 import * as preset from '@am/engine/preset';
 import * as projectinit from '@am/engine/projectinit';
+import * as toolinstall from '@am/engine/toolinstall';
 import { canvasOptions, resolveCanvas, resolveStyle, resolveStyleBrief, styleBriefDocument, styleBriefPath, styleOptions } from './canvas';
 import { currentEnvironment, exactArgs, hyperframesVersion, maxArgs, noArgs, skillsProgressPrinter } from './cli';
 import { Command, type Out, ref } from './cobra';
@@ -180,7 +181,7 @@ export function newConfigCommand(stdout: Out): Command {
   });
   configCmd.addCommand(
     new Command({
-      use: 'get ORCHESTRATOR|RENDERER|TTS_PROVIDER|ALIGN_PROVIDER',
+      use: 'get ORCHESTRATOR|RENDERER|TTS_PROVIDER|ALIGN_PROVIDER|ALIGN_MODEL',
       args: exactArgs(1, 'KEY'),
       short: '打印单个配置键',
       long:
@@ -197,6 +198,8 @@ export function newConfigCommand(stdout: Out): Command {
         `
                  auto 在 Apple Silicon 上解析为 mlx，其余平台为 funasr；
                  本命令打印的是解析后的具体工具，不会是 auto
+  ALIGN_MODEL    对齐工具用的模型：am setup 下好的本地目录；还没下好时打印模型的仓库名
+                 （此时工具会在第一次运行时自己去下，网络不好会失败，先运行 am setup --only align）
 
 在当前工作目录解析配置，因此要在项目根运行。键名未知或解析出的值非法时退出码 1。`,
       example: `  # 捕获解析后的渲染工具
@@ -207,6 +210,11 @@ export function newConfigCommand(stdout: Out): Command {
       runE: (_cmd, args) => {
         const cfg = config.load('.', null);
         const values: Record<string, string> = { ORCHESTRATOR: cfg.orchestrator, RENDERER: cfg.renderer, TTS_PROVIDER: cfg.ttsProvider, ALIGN_PROVIDER: cfg.alignProvider };
+        const model = config.Aligners.find((a) => a.id === cfg.alignProvider)?.model;
+        if (model) {
+          const env = currentEnvironment();
+          values.ALIGN_MODEL = toolinstall.modelReady(model, env) ? toolinstall.modelDir(model, env) : model.repo;
+        } else values.ALIGN_MODEL = '';
         if (!Object.hasOwn(values, args[0])) throw new Error(`未知配置键：${args[0]}`);
         stdout.write(values[args[0]] + '\n');
       },

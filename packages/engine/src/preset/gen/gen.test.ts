@@ -235,8 +235,15 @@ describe('PROMPT-PRODUCTION template', () => {
   });
 
   it('tells the beat story before the music', () => {
-    has(['## 卡点分支', 'beat.yaml', 'production/beat/story.md', '画面里的字与字幕就是这部片子的文案', 'am studio show beat', '用户没有点头之前不进入分镜计划', '不得替用户确认', 'am beat cues scenes/'], '卡点分支');
+    has(['## 卡点分支', 'beat.yaml', 'production/beat/story.md', '画面里的字与字幕就是这部片子的文案', 'am studio show beat', '用户没有点头之前不进入分镜计划', '不得替用户确认', 'am beat cues scenes/', 'am setup --only beat', '不要自己建 Python 环境、不要 pip install'], '卡点分支');
     expect(body.indexOf('### 故事与文案')).toBeLessThan(body.indexOf('### 音乐与节拍网格'));
+  });
+
+  // 配音与对齐工具是前置资源（toolinstall，由 am setup 装进用户级目录）：提示词里写安装命令的话，编排工具会在对话里
+  // 自己装一份全局的，版本不受控，客户端用户的机器上还常常没有 npm、pip、brew。
+  it('leaves voice tools to am setup', () => {
+    has(['配音与对齐工具都是前置资源', 'am setup --only tts,align', 'funasr-python', '--model "$(am config get ALIGN_MODEL)"'], '配音工具');
+    lacks(['pipx install', 'npm install -g', 'brew install', 'uv tool install', 'pip install funasr', 'pip install tccli'], '配音工具');
   });
 
   it('requires platform covers', () => {

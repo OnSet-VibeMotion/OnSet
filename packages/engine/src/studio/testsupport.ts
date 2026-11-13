@@ -16,7 +16,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { afterAll, afterEach } from 'vitest';
 import { CLIDirEnv } from '../hyperframes';
-import { fakeCLI } from '../hyperframes/hftest';
+import { fakeBrowser, fakeCLI } from '../hyperframes/hftest';
 import { setInstallOfficialSkills } from './skills';
 import { Server, type Config } from './studio';
 
@@ -24,6 +24,9 @@ const memoryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-memory-test-'));
 process.env.AM_MEMORY_DIR = memoryDir;
 const cli = path.join(memoryDir, 'hyperframes-cli');
 fakeCLI(cli);
+process.env.AM_BROWSER = fakeBrowser(cli);
+// am setup 下载的工具目录指到空目录：开发机上 ~/.local/share/am/bin 里真实的 ffmpeg、mmx 不能混进测试。
+process.env.AM_BIN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-bin-test-'));
 process.env[CLIDirEnv] = cli;
 setInstallOfficialSkills(async () => {});
 

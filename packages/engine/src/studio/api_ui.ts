@@ -6,6 +6,8 @@ import path from 'node:path';
 import * as assets from '../assets';
 import * as beat from '../beat';
 import { compareBytes } from '../gojson';
+import { envMap } from '../envutil';
+import { SetupCommand } from '../prereq';
 import * as preset from '../preset';
 import * as scene from '../scene';
 import { goMap, methodNotAllowed, notFound, serveFile, writeJSON } from './http';
@@ -123,6 +125,7 @@ export function beatAPI(s: Server): Response {
     click_path: beat.ClickFile,
   };
   if (!out.enabled) return writeJSON(200, goMap(out));
+  out.analyzer = beatAnalyzer(p.path);
   const story = readBeatStory(p.path);
   if (story) out.story = story;
   const track = readBeatTrack(p.path);
@@ -177,6 +180,32 @@ export function beatAPI(s: Server): Response {
     }
   }
   return writeJSON(200, goMap(out));
+}
+
+/**
+ * beatAnalyzer 报告节拍分析能不能跑：beat.yaml 没写 python 时看 am setup 装的共享环境，写了就看那个文件。
+ * 缺了界面给出 am setup --only beat，不让用户（或编排工具）自己去建 Python 环境。
+ */
+function beatAnalyzer(root: string): { ready: boolean; location: string; command?: string } {
+  const env = envMap();
+  let python = '';
+  try {
+    python = beat.loadConfig(root).python;
+  } catch {
+    // beat.yaml 写错时由 am beat 命令报具体原因。
+  }
+  if (python !== '') {
+    let ready = false;
+    try {
+      ready = fs.statSync(python).isFile();
+    } catch {
+      ready = false;
+    }
+    return { ready, location: python };
+  }
+  const dir = beat.envDir(env);
+  const ready = beat.envReady(dir) || process.env.AM_STUDIO_SKIP_SKILL_INSTALL === '1';
+  return ready ? { ready, location: dir } : { ready, location: dir, command: SetupCommand + ' --only beat' };
 }
 
 /** BeatStoryFile 是卡点项目的故事与文案，制作提示词「卡点分支」让编排工具开工先写它。 */

@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, shell } fr
 import fs from 'node:fs';
 import path from 'node:path';
 import { newServer, type Server } from '@am/engine/studio';
-import { assetsDir, shimScript } from './clishim';
+import { assetsDir, browserPath, browserScript, npmCLI, shimScript, writeScript } from './clishim';
 import { installMenu } from './menu';
 import { loginShellPath } from './shellpath';
 
@@ -28,6 +28,13 @@ app.setName('ArticleToMotion');
 // 端到端测试用（apps/desktop/e2e）：把 userData 指到临时目录，私有 am shim、单实例锁与浏览器存储都不碰
 // 真实的 ~/Library/Application Support/ArticleToMotion。必须在 requestSingleInstanceLock 之前设。
 if (process.env.AM_DESKTOP_USER_DATA) app.setPath('userData', process.env.AM_DESKTOP_USER_DATA);
+
+// 端到端测试用：AM_DESKTOP_BACKGROUND=1 时在后台运行——不进 Dock、不激活、窗口不显示，
+// 跑测试时不会一次次弹到最前面抢走开发者手上的焦点。Playwright 经 CDP 操作页面，窗口可见与否不影响。
+const background = process.env.AM_DESKTOP_BACKGROUND === '1';
+if (background) app.setActivationPolicy?.('accessory');
+// 窗口不显示就永远不在前台，一轮结束、任务完成都会弹系统通知；测试里一律不弹（测通知的用例自己再换成记录）。
+if (background) Notification.prototype.show = function () {};
 
 const rendererDir = path.join(__dirname, 'renderer');
 let backend: Server | null = null;
@@ -64,18 +71,9 @@ async function serveStatic(pathname: string): Promise<Response> {
  */
 function privateCLI(): string {
   const file = path.join(app.getPath('userData'), 'bin', 'am');
-  const body = shimScript();
-  let existing = '';
-  try {
-    existing = fs.readFileSync(file, 'utf8');
-  } catch {
-    existing = '';
-  }
-  if (existing !== body) {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file + '.tmp', body, { mode: 0o755 });
-    fs.renameSync(file + '.tmp', file);
-  }
+  writeScript(file, shimScript());
+  // 渲染用的浏览器包装脚本与 am 放在一起；shim 经 AM_BROWSER 把它的位置告诉 am。
+  writeScript(browserPath(), browserScript());
   return file;
 }
 
@@ -104,9 +102,11 @@ function createWindow(): BrowserWindow {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       sandbox: true,
+      // 后台运行（测试）时窗口一直隐藏，不能让 Chromium 因此降低定时器与动画的频率。
+      backgroundThrottling: !background,
     },
   });
-  win.once('ready-to-show', () => win.show());
+  if (!background) win.once('ready-to-show', () => win.show());
   // 外链交给系统浏览器；项目内的文件（封面原图、成片）开一个新的客户端窗口。
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(`${ORIGIN}/`)) return { action: 'allow', overrideBrowserWindowOptions: { backgroundColor: '#0b0a09' } };
@@ -149,6 +149,11 @@ if (!app.requestSingleInstanceLock()) {
       const executable = privateCLI();
       // 引擎里经 envutil.amExecutable() 找 am 的地方（子进程环境的 AM_EXECUTABLE、PATH）也认这一份。
       process.env.AM_SELF = executable;
+      // 进程内的后端直接调 HyperFrames 时（预览截图等）同样用客户端自带的浏览器。
+      process.env.AM_BROWSER = browserPath();
+      // 进程内的后端（客户端的安装页、新建项目）装 HyperFrames CLI 与 npm 类工具时用客户端自带的 npm。
+      const npm = npmCLI();
+      if (npm !== '') process.env.AM_NPM_CLI = npm;
       backend = newServer({ executable });
     } catch (err) {
       dialog.showErrorBox('后台服务起不来', err instanceof Error ? err.message : String(err));

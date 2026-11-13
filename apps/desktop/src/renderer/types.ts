@@ -256,6 +256,8 @@ export interface BeatState {
   plan_error?: string;
   /** 故事与文案：production/beat/story.md。 */
   story?: { path: string; content: string; mtime: number };
+  /** 节拍分析环境：没就绪时 command 是要在终端里跑的 am setup --only beat。 */
+  analyzer?: { ready: boolean; location: string; command?: string };
 }
 
 export interface AgentInfo {
@@ -510,10 +512,31 @@ export interface PrereqStatus {
   group: string;
   name: string;
   version?: string;
-  /** 做片必需（技能与 CLI）；整片风格来源只有选了风格才要。 */
+  /** 做片必需（技能、CLI、浏览器、ffmpeg）；配音与对齐工具、节拍分析环境、整片风格来源按需。 */
   required: boolean;
   ready: boolean;
   location: string;
+}
+
+/** 一项在这次安装里的进展（/api/setup 的 task.items）。 */
+export interface SetupItemProgress {
+  state: 'pending' | 'running' | 'done' | 'failed';
+  stage: string;
+  /** 0–100；没有可量的进度时省略。 */
+  percent?: number;
+  error?: string;
+}
+
+/** 客户端里的一次安装（/api/setup/run 启动）。 */
+export interface SetupTask {
+  running: boolean;
+  started: string;
+  finished?: string;
+  items: Record<string, SetupItemProgress>;
+  error?: string;
+  /** 失败时日志最后几行。 */
+  log_tail?: string[];
+  log: string;
 }
 
 export interface SetupStatus {
@@ -521,6 +544,7 @@ export interface SetupStatus {
   ready: boolean;
   items: PrereqStatus[];
   command: string;
+  task?: SetupTask;
 }
 
 /** /api/script：口播稿。final 为 false 时是原稿，只有 content。 */

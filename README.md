@@ -19,22 +19,25 @@ ArticleToMotion 是一个 macOS 桌面客户端，附带同版本的 `am` 命令
 运行需要：
 
 - macOS（Apple Silicon 或 Intel）
-- Node.js 22+（`am setup` 用 npm 安装 HyperFrames CLI，渲染时也要它）
-- Git、FFmpeg、FFprobe
 - Codex、Claude Code、Qoder、CodeBuddy、OpenCode 中至少一个已登录的 CLI
+- 配音服务的账号（默认 MiniMax；免鉴权的 Edge 朗读与本机 MLX 不需要）
 
-从 Finder 或 Dock 启动的客户端会读取登录 shell 里的 `PATH`，所以装在 Homebrew、asdf、nvm 下的这些工具不用另外配置。
+不需要另外装 Node.js、Python、FFmpeg、Git 或 Homebrew：渲染用的 Chromium 与运行时都是客户端自带的，其余工具在第一次打开时由首页的「召集你的摄制组」一键下载（画面、剪辑、配音、字幕四组，约几分钟），之后所有项目共用。机器上已经有 FFmpeg 的直接用现成的。
+
+从 Finder 或 Dock 启动的客户端会读取登录 shell 里的 `PATH`，所以装在 Homebrew、asdf、nvm 下的编排工具不用另外配置。
 
 ### 前置资源
 
-要联网下载的东西只由一条命令准备，放在用户级目录、所有项目共用；其余命令（`am init`、`am film-style use`、`am scene run`、`am hyperframes`）与客户端都不联网，缺了会提示先运行它：
+要联网下载的东西只在客户端的安装页或这一条命令里准备，放在用户级目录、所有项目共用；其余命令（`am init`、`am film-style use`、`am scene run`、`am hyperframes`）与客户端的其他地方都不联网，缺了会提示先准备：
 
 ```bash
 am setup                                    # 全部准备（已就绪的跳过，断了重跑接着下）
-am setup --proxy http://127.0.0.1:7890      # GitHub 慢时让 git 走代理（不影响 npm）
-am setup --only styles                      # 只准备其中几项：skills、cli、styles（全部风格来源）或 styles:<来源>
+am setup --proxy http://127.0.0.1:7890      # GitHub 慢时走代理（git、GitHub 下载与浏览器；不影响 npm 与 pip）
+am setup --only tts,align                   # 只准备其中几项：skills、cli、browser、ffmpeg、tts、align、beat、styles 或 styles:<来源>
 am setup --check                            # 只检查，不下载；有缺项时退出码 1
 ```
+
+单独在终端里使用（不经客户端）时，HyperFrames CLI 用你自己的 Node.js 22+ 运行，渲染用浏览器由 `am setup` 下载 chrome-headless-shell（约 390 MB）。GitHub 的下载也可以设 `AM_GITHUB_MIRROR` 走镜像，文件都核对 sha256。
 
 每项一行显示进度，git 与 npm 的原始输出写进 `~/.local/share/am/setup.log`，失败时屏幕上给出最后几行。
 
@@ -267,7 +270,7 @@ am --unsafe run
 
 `--unsafe` 会传递给嵌套镜头任务。安全模式需要额外传递的环境变量通过 `AM_PASSTHROUGH_ENV=NAME1,NAME2` 显式列出。
 
-安全模式下，编排工具（`am run` 与客户端的对话）只被放行文件编辑和一组命令：`am`（含 `am hyperframes`，am 管理的固定版本 HyperFrames CLI）、`ffmpeg`、`ffprobe`；只读查看的 `ls` `cat` `head` `tail` `wc` `grep` `rg` `find` `sort` `uniq` `cut` `diff` `cmp` `stat` `file` `du` `pwd` `basename` `dirname` `realpath` `jq` `tree` `which` `date`；`echo` `printf` `cd`；工作区内的 `mkdir` `cp` `mv` `touch`；算哈希的 `shasum` `sha256sum` `md5`；只读的 `git status` `git diff` `git log` `git show`；下载字体与授权素材的 `curl`；跑脚本的 `python3` `python` `node`；文本处理的 `sed` `awk` `tr` `tee` `column` `paste` `nl` `fold` `iconv` `base64` `xxd` `od` `comm` `join` `rev`；压缩解压的 `tar` `unzip` `zip` `gzip` `gunzip`；`ln` `sleep` `test` `true` `false`；macOS 自带的 `sips` `mdls` `afplay` `open`；以及 `TTS_PROVIDER` 与 `ALIGN_PROVIDER` 各自对应的那一个命令（如 `mmx`、`edge-tts`、`mlx_audio.stt.generate`；`funasr` 对应 `python3`）。`sh` / `bash`、`rm`、改权限与安装命令（`brew`、`pip`、`uv`、`npm`）不在其中，相关工具要先自己装好；在客户端里，白名单外的命令不会直接被拒：对话框上方弹出卡片问你，可以允许这一次、以后都允许（把命令前缀记进这个项目的 `production/studio/permissions.json`，以后不再问）或拒绝；五家编排工具都会这样问：claude、qoder 照旧一次性调用，加一个审批服务；codebuddy、opencode、codex 在客户端里改用双向协议（`codebuddy --acp`、`opencode acp`、`codex app-server`）。opencode 与 codebuddy 被拒后会直接结束这一轮，对话里会说明，可以告诉它换个做法再继续。终端里的 `am run` 没有人能回答，白名单外的命令仍直接拒绝。还要放行别的命令就写进项目配置的 `ORCHESTRATOR_ALLOW_COMMANDS`（逗号分隔的命令前缀，如 `uv run, pnpm, magick`），不必改用 `--unsafe`。放行解释器意味着脚本能做任何事（包括读 `.env`），安全模式防的是误操作和越界命令，不可信的输入仍不要交给编排工具。命令要单独执行，不用 `&&`、`;`、管道拼接，见项目规则「安全模式下怎么写命令」。各工具的实现方式不同：
+安全模式下，编排工具（`am run` 与客户端的对话）只被放行文件编辑和一组命令：`am`（含 `am hyperframes`，am 管理的固定版本 HyperFrames CLI）、`ffmpeg`、`ffprobe`；只读查看的 `ls` `cat` `head` `tail` `wc` `grep` `rg` `find` `sort` `uniq` `cut` `diff` `cmp` `stat` `file` `du` `pwd` `basename` `dirname` `realpath` `jq` `tree` `which` `date`；`echo` `printf` `cd`；工作区内的 `mkdir` `cp` `mv` `touch`；算哈希的 `shasum` `sha256sum` `md5`；只读的 `git status` `git diff` `git log` `git show`；下载字体与授权素材的 `curl`；跑脚本的 `python3` `python` `node`；文本处理的 `sed` `awk` `tr` `tee` `column` `paste` `nl` `fold` `iconv` `base64` `xxd` `od` `comm` `join` `rev`；压缩解压的 `tar` `unzip` `zip` `gzip` `gunzip`；`ln` `sleep` `test` `true` `false`；macOS 自带的 `sips` `mdls` `afplay` `open`；以及 `TTS_PROVIDER` 与 `ALIGN_PROVIDER` 各自对应的那一个命令（如 `mmx`、`edge-tts`、`mlx_audio.stt.generate`；`funasr` 对应 `funasr-python`）。`sh` / `bash`、`rm`、改权限与安装命令（`brew`、`pip`、`uv`、`npm`）不在其中，配音与对齐工具由 `am setup`（或客户端的安装页）装好；在客户端里，白名单外的命令不会直接被拒：对话框上方弹出卡片问你，可以允许这一次、以后都允许（把命令前缀记进这个项目的 `production/studio/permissions.json`，以后不再问）或拒绝；五家编排工具都会这样问：claude、qoder 照旧一次性调用，加一个审批服务；codebuddy、opencode、codex 在客户端里改用双向协议（`codebuddy --acp`、`opencode acp`、`codex app-server`）。opencode 与 codebuddy 被拒后会直接结束这一轮，对话里会说明，可以告诉它换个做法再继续。终端里的 `am run` 没有人能回答，白名单外的命令仍直接拒绝。还要放行别的命令就写进项目配置的 `ORCHESTRATOR_ALLOW_COMMANDS`（逗号分隔的命令前缀，如 `uv run, pnpm, magick`），不必改用 `--unsafe`。放行解释器意味着脚本能做任何事（包括读 `.env`），安全模式防的是误操作和越界命令，不可信的输入仍不要交给编排工具。命令要单独执行，不用 `&&`、`;`、管道拼接，见项目规则「安全模式下怎么写命令」。各工具的实现方式不同：
 
 | 工具 | 安全模式的限制方式 |
 |---|---|
@@ -505,10 +508,7 @@ librosa 缺失或分析失败会明确降级为歌词驱动，不制造节拍。
 
 ```bash
 am init my-reel --canvas vertical-9x16 --delivery beat    # 已有项目用 am beat init
-# 在独立环境安装固定版本的节拍分析，并把 beat.yaml 的 python 指向它
-python3 -m venv "$HOME/.venvs/am-beat"
-"$HOME/.venvs/am-beat/bin/pip" install 'beat-this==1.1.0'
-am beat doctor                       # 首次运行下载模型权重
+am setup --only beat                 # 节拍分析环境（beat-this + torch，约 1 GB），所有卡点项目共用，只装一次
 am beat import track.mp3             # 授权来源记进素材账本
 am beat analyze                      # 草稿网格 + 试听轨 production/beat/grid-click.wav
 am beat regrid --meter 4 --anchor 1  # 试听发现重拍整体错位时才需要

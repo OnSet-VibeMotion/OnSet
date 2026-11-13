@@ -7,7 +7,9 @@ import path from 'node:path';
 import { envMap } from '../envutil';
 import { RootEnv, childEnvKeys, rootDir } from '../filmstyle';
 import { formatG, goPathError, goTrimSpace } from '../gofmt';
-import { CLIDirEnv, PinnedVersion, cliDir } from '../hyperframes';
+import { BrowserEnv, CLIDirEnv, HyperFramesBrowserEnv, PinnedVersion, cliDir } from '../hyperframes';
+import { childEnvKeys as toolpathEnvKeys } from '../toolpath';
+import { EnvDirEnv as BeatEnvDirEnv, envDir as beatEnvDir } from '../beat/env';
 import { ValidTools } from '../tools';
 import { AlignAuto, alignerIDs, hostAligner, parseAllowCommands, ttsProviderIDs, validAligner, validTTSProvider } from './providers';
 
@@ -73,6 +75,8 @@ export interface Config {
   filmStyleRoot: string;
   /** am 管理的固定版本 HyperFrames CLI 的安装目录，见 hyperframes.requireCLI（am setup 用 ensureCLI 安装）。 */
   hyperFramesCLI: string;
+  /** 节拍分析环境目录（beat/env.ts），理由同 hyperFramesCLI。 */
+  beatEnv: string;
   /** 用户在 ORCHESTRATOR_ALLOW_COMMANDS 里补充放行的命令前缀，见 orchestratorAccess。 */
   extraCommands: string[];
 }
@@ -88,6 +92,7 @@ export function newConfig(fields: Partial<Omit<Config, 'memory'>> & { memory?: P
     overlay: {},
     filmStyleRoot: '',
     hyperFramesCLI: '',
+    beatEnv: '',
     extraCommands: [],
     ...fields,
     memory: { enabled: false, dir: '', snapshot: 0, recallBudget: 0, explore: 0, ...fields.memory },
@@ -235,6 +240,7 @@ export function load(root: string, environ?: Record<string, string> | null): Con
   cfg.memory.dir = resolve('AM_MEMORY_DIR', defaultMemoryDir(env));
   cfg.filmStyleRoot = resolve(RootEnv, rootDir(env));
   cfg.hyperFramesCLI = resolve(CLIDirEnv, cliDir(env, PinnedVersion));
+  cfg.beatEnv = resolve(BeatEnvDirEnv, beatEnvDir(env));
   const snapshotText = resolve('MEMORY_SNAPSHOT', '');
   if (snapshotText !== '') {
     const snapshot = goAtoi(snapshotText);
@@ -312,6 +318,12 @@ export function childEnvironment(
   // CLI 目录同理：子进程里的 am hyperframes 要找到同一份已装好的 CLI，否则会按 HOME
   // 另算一个目录，在渲染途中重新 npm install。
   if (config.hyperFramesCLI !== '') out[CLIDirEnv] = config.hyperFramesCLI;
+  // 节拍分析环境同理：编排工具调用的 am beat analyze 要找到 am setup 装好的那一套，找不到就会想自己去建。
+  if (config.beatEnv !== '') out[BeatEnvDirEnv] = config.beatEnv;
+  // 客户端自带的浏览器与用户显式指定的浏览器同理：子进程里的 am hyperframes 照样用它们，不去下载 headless-shell。
+  for (const key of [BrowserEnv, HyperFramesBrowserEnv]) if (source[key]) out[key] = source[key]!;
+  // 客户端自带的 npm、工具目录与 am setup 的工具目录同理：子进程里的 am 要找到同一套，而白名单里没有它们。
+  for (const key of toolpathEnvKeys) if (source[key]) out[key] = source[key]!;
   if (unsafe) out.AM_UNSAFE = '1';
   return out;
 }

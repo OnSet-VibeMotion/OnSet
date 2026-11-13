@@ -3,14 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "description": "ArticleToMotion 桌面客户端",
-  "main": "out/main.js",
+  "main": "out/entry.js",
   "scripts": {
-    "build:main": "esbuild src/main/main.ts src/main/preload.ts --bundle --loader:.tmpl=text --platform=node --format=cjs --target=node22 --external:electron --outdir=out",
+    "build:main": "esbuild src/main/entry.ts src/main/main.ts src/main/browser.ts src/main/preload.ts --bundle --loader:.tmpl=text --platform=node --format=cjs --target=node22 --external:electron --outdir=out",
     "build:renderer": "vite build --config vite.config.mjs",
     "build": "npm run build:main && npm run build:renderer",
+    "vendor": "node scripts/vendor.mjs",
     "start": "npm run build && electron .",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.main.json",
-    "dist": "npm run build && npm run build -w @am/cli && electron-builder --mac --dir",
+    "dist": "npm run vendor && npm run build && npm run build -w @am/cli && electron-builder --mac --dir",
     "test:e2e": "npm run build -w @am/cli && npm run build && playwright test"
   },
   "devDependencies": {
@@ -32,12 +33,15 @@
   "build": {
     "appId": "com.chouheiwa.articletomotion",
     "productName": "ArticleToMotion",
+    "afterPack": "scripts/afterpack.cjs",
     "directories": {
       "output": "release",
       "buildResources": "build"
     },
     "files": [
+      "out/entry.js",
       "out/main.js",
+      "out/browser.js",
       "out/preload.js",
       "out/renderer/**/*",
       "package.json"

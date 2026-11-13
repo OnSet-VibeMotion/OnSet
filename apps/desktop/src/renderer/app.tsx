@@ -69,9 +69,11 @@ export function App() {
   const [defaultParent, setDefaultParent] = useState('');
   const [homeAgents, setHomeAgents] = useState<AgentsResponse | null>(null);
   const [skills, setSkills] = useState<SkillsStatus | null>(null);
-  // 前置资源（am setup 准备）：缺了在顶栏提示，点开看怎么准备。
+  // 前置资源（安装页或 am setup 准备）：缺了在顶栏提示，点开就是安装页。
   const setup = useSetup();
   const [setupOpen, setSetupOpen] = useState(false);
+  // 顶栏只数要一起装的（必需项与配音、对齐工具）；节拍环境、风格来源这些按需的另算。
+  const setupCore = setup.status?.items.filter((item) => !item.ready && (item.required || item.group === 'tts' || item.group === 'align')).length ?? 0;
   const setupMissing = setup.status?.items.filter((item) => !item.ready).length ?? 0;
   const setupRequiredMissing = setup.status ? !setup.status.ready : false;
   // 首页：没有打开项目时总是显示；打开项目后点左上角也能回到首页。
@@ -500,8 +502,8 @@ export function App() {
           </nav>
         )}
         {setupMissing > 0 && (
-          <button className={'skills-pill' + (setupRequiredMissing ? ' bad' : '')} id="setup-pill" onClick={() => setSetupOpen(true)} title="前置资源由终端里的 am setup 准备">
-            {setupRequiredMissing ? `前置资源缺 ${setupMissing} 项 · 怎么准备` : `整片风格来源缺 ${setupMissing} 项`}
+          <button className={'skills-pill' + (setupRequiredMissing ? ' bad' : '')} id="setup-pill" onClick={() => setSetupOpen(true)} title="渲染与配音要用的工具：点开一键安装">
+            {setupCore > 0 ? `还差 ${setupCore} 项工具 · 去安装` : `可按需安装 ${setupMissing} 项`}
           </button>
         )}
         {currentId && !homeOpen && !setupRequiredMissing && skills && !skills.installed && <SkillsPill status={skills} onInstall={installSkills} />}
@@ -645,7 +647,7 @@ export function App() {
               </button>
             </header>
             <div className="pad">
-              <SetupGuide status={setup.status} onRecheck={() => void setup.recheck()} checking={setup.checking} compact />
+              <SetupGuide setup={setup} compact />
             </div>
           </section>
         </div>

@@ -41,7 +41,7 @@ import { memoryAPI, memoryActionAPI, memoryRecallAPI } from './memory';
 import { discoverScenes, fileExists, type SceneSummary } from './scenes';
 import { scriptAPI } from './script';
 import { BusyError, type Session } from './sessions';
-import { setupAPI } from './setup';
+import { cancelSetup, setupAPI, setupCancelAPI, setupRunAPI } from './setup';
 import { SkillsState, installSkills, skillsAPI, skillsInstallAPI } from './skills';
 import { TaskState, loadPersistedTasks, runStudioCLI, runWriteTask, taskFeatureAPI, tasksAPI, writeTaskError } from './tasks';
 import { uploadsAPI } from './uploads';
@@ -139,6 +139,16 @@ export class Server {
   shutdown(): void {
     for (const session of this.sessions.values()) session.cancel?.abort();
     for (const controller of this.tasks.cancel.values()) controller.abort();
+    cancelSetup();
+  }
+
+  /** 当前项目的目录；没有打开项目时为空（前置资源按项目配置挑配音与对齐工具）。 */
+  projectRoot(): string {
+    try {
+      return this.currentProject().path;
+    } catch {
+      return '';
+    }
   }
 
   /** am 命令行入口（Go 版的 os.Executable()）。 */
@@ -309,7 +319,9 @@ export class Server {
       ['/api/film-styles', (r) => filmStylesAPI(r)],
       ['/api/film-styles/', (r, rest) => filmStylePosterAPI(r, rest)],
       ['/api/film-style', (r) => projectFilmStyleAPI(this, r)],
-      ['/api/setup', (r) => setupAPI(r)],
+      ['/api/setup', (r) => setupAPI(r, this.projectRoot())],
+      ['/api/setup/run', (r) => setupRunAPI(r, this.projectRoot())],
+      ['/api/setup/cancel', (r) => setupCancelAPI(r)],
     ];
   }
 

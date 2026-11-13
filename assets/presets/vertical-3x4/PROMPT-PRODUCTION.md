@@ -153,7 +153,11 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
 | `tencent` | 腾讯云语音合成（`tccli`） | 有 | 已有腾讯云账号 |
 | `mlx` | 本机 MLX（`mlx-audio`，仅 Apple Silicon） | 无 | 离线、不产生费用 |
 
-各路径的凭据、命令和时间戳获取方式不同，但断句检查、审核关卡和产物要求完全一致。无论哪条路径，第三阶段结束时都必须得到 `production/audio/voice.wav` 与毫秒精度的 `production/audio/voice.srt`；自带时间戳为「无」的路径，`voice.srt` 由第四阶段开头的强制对齐生成。
+各路径的凭据、命令和时间戳获取方式不同，但断句检查、审核关卡和产物要求完全一致。
+
+配音与对齐工具都是前置资源，由 `am setup` 按项目配置装好（固定版本，装在用户级目录，不需要 Node、Python 或 Homebrew）。不要自己用 npm、pip、pipx、uv、brew 安装或升级它们；调用时报找不到命令，请用户在终端运行 `am setup --only tts,align`（或在客户端的前置资源引导里点安装），装好后再继续。
+
+无论哪条路径，第三阶段结束时都必须得到 `production/audio/voice.wav` 与毫秒精度的 `production/audio/voice.srt`；自带时间戳为「无」的路径，`voice.srt` 由第四阶段开头的强制对齐生成。
 
 ### 凭据与配置
 
@@ -176,23 +180,21 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
 
 **Edge 在线语音（`TTS_PROVIDER=edge`）**
 
-- 用 `pipx install edge-tts`（或 `uv tool install edge-tts`）安装，免鉴权。
+- 免鉴权。
 - 它调用的是微软 Edge 浏览器的朗读接口，不是有服务承诺的商用 API，随时可能失效或限流。只用于预览和草稿；正式交付前确认用户接受这一点，否则换其他路径。
 
 **ElevenLabs（`TTS_PROVIDER=elevenlabs`）**
 
-- 用 `brew install elevenlabs/tap/elevenlabs` 或 `npm install -g @elevenlabs/cli` 安装官方 CLI。
 - 先用 `elevenlabs auth login` 登录，凭据存进系统钥匙串，不进入项目目录。不得在项目 `.env` 写 `ELEVENLABS_API_KEY`：这个 CLI 会自动加载当前目录的 `.env`，`am` 也会拒绝在 `.env` 里出现密钥的项目。
 - 密钥不得写入脚本、Markdown、JSON、命令行参数或日志。
 
 **腾讯云（`TTS_PROVIDER=tencent`）**
 
-- 用 `pip install tccli` 或 `brew tap tencentcloud/tccli && brew install tccli` 安装官方 CLI。
 - 用 `tccli configure` 交互配置凭据，凭据保存在用户目录，不进入项目目录；不得把 SecretId / SecretKey 写进项目文件、命令行参数或日志。
 
 **本机 MLX（`TTS_PROVIDER=mlx`）**
 
-- 仅限 Apple Silicon。用 `uv tool install --prerelease=allow mlx-audio` 安装，免鉴权；首次运行会下载模型到用户缓存目录。
+- 仅限 Apple Silicon。免鉴权；首次运行会下载模型到用户缓存目录。
 
 ### 试听和正式生成
 
@@ -298,15 +300,15 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
 
 **`mlx`（Qwen3-ForcedAligner）**
 
-- 安装同 MLX 语音合成（`uv tool install --prerelease=allow mlx-audio`）。
-- 命令：`mlx_audio.stt.generate --model mlx-community/Qwen3-ForcedAligner-0.6B-8bit --audio production/audio/voice-16k.wav --text "$(cat production/audio/tts-text.txt)" --language Chinese --output-path production/audio/align --format json`，结果写到 `production/audio/align.json`（`--output-path` 是不带扩展名的文件路径，不是目录）。
+- 模型由 `am setup` 预先下好，路径用 `am config get ALIGN_MODEL` 读取；它打印的不是本地目录（而是 `mlx-community/…` 仓库名）时说明还没下好，请用户运行 `am setup --only align`，不要让工具在对齐时现下载。
+- 命令：`mlx_audio.stt.generate --model "$(am config get ALIGN_MODEL)" --audio production/audio/voice-16k.wav --text "$(cat production/audio/tts-text.txt)" --language Chinese --output-path production/audio/align --format json`，结果写到 `production/audio/align.json`（`--output-path` 是不带扩展名的文件路径，不是目录）。
 - `--language Chinese` 必须显式传，缺省是英文。
 - 输出按单字给出开始、结束秒数，粒度约 0.08 秒；标点会被丢掉。`am align build` 直接读这份 JSON。
 - 单次最多 5 分钟音频。更长的配音在句间停顿处切段分别对齐，存成 `align-01.json`、`align-02.json`……，交给 `am align build` 时写明各段起点（`--align production/audio/align-02.json@312.48`）；切点从下面 `am audio check` 报告的 `speech` 区间之间选，不要切在发声中间。
 
 **`funasr`（时间戳预测）**
 
-- 安装：`pip install funasr torch torchaudio`。没有命令行入口，用 Python 调用：
+- 没有命令行入口：`am setup` 把它装进专用的 Python 环境，用 `funasr-python` 运行下面的 Python（写成脚本文件后 `funasr-python 脚本.py`，不要用系统的 `python3`）：
 
   ```python
   from funasr import AutoModel
@@ -850,6 +852,8 @@ dry-run 无阻断时，向用户展示归档计划，然后运行 `am archive`�
 写好后运行 am studio show beat --note "故事和文案写好了，请看一遍"，并停下来等用户确认或修改。用户没有点头之前不进入分镜计划。
 
 ### 音乐与节拍网格
+
+节拍分析环境（beat-this 与 torch 的 Python 环境）是前置资源，由用户在终端里运行 am setup --only beat 安装，所有卡点项目共用。不要自己建 Python 环境、不要 pip install，也不要在 beat.yaml 里写 python 指向别的环境；am beat analyze 报缺少前置资源时，请用户运行那条命令，装好后再继续。
 
 1. am beat import <音乐文件> 导入音乐，am beat analyze 分析出草稿网格。
 2. 运行 am studio show beat --note "请试听节拍"，让用户在节拍页试听：每拍一声、重拍更高。重拍整体错位或拍号判错时用 am beat regrid 重排，零星错误按用户指出的小节修正草稿后 am beat click 重做试听轨。

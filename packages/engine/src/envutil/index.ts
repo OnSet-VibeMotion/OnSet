@@ -77,4 +77,25 @@ export function addExecutableLocation(env: Record<string, string>, executable = 
   env.AM_EXECUTABLE = executable;
   const directory = path.dirname(executable);
   env.PATH = env.PATH ? directory + path.delimiter + env.PATH : directory;
+  // am setup 下载的工具（ffmpeg、uv、配音与对齐 CLI）放在 PATH 末尾：编排工具按名字调用 mmx、edge-tts 时能找到，
+  // 又不会盖过用户自己装的同名工具。
+  const tools = binDir(env);
+  if (tools !== '' && !env.PATH.split(path.delimiter).includes(tools)) env.PATH = env.PATH + path.delimiter + tools;
+}
+
+/** am setup 下载的工具放在哪里，覆盖默认的 <数据目录>/am/bin。 */
+export const BinDirEnv = 'AM_BIN_DIR';
+
+/** am 的用户级数据目录：XDG_DATA_HOME 或 HOME 下的 .local/share/am。环境里什么都没有时为空。 */
+export function dataDir(env: Record<string, string | undefined>): string {
+  if (env.XDG_DATA_HOME) return path.join(env.XDG_DATA_HOME, 'am');
+  if (env.HOME) return path.join(env.HOME, '.local', 'share', 'am');
+  return '';
+}
+
+/** am setup 下载的工具目录（默认 <数据目录>/am/bin，BinDirEnv 覆盖）。 */
+export function binDir(env: Record<string, string | undefined>): string {
+  if (env[BinDirEnv]) return env[BinDirEnv]!;
+  const data = dataDir(env);
+  return data === '' ? '' : path.join(data, 'bin');
 }

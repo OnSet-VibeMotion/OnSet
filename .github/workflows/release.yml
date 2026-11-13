@@ -36,6 +36,7 @@ jobs:
       # 没有签名证书：dmg 只能在本机「右键打开」。有了 Apple 开发者账号后在这里接签名与公证。
       - name: Package the desktop client (arm64 + x64 dmg)
         run: |
+          npm run vendor -w am-desktop
           npm run build -w am-desktop
           cd apps/desktop
           npx electron-builder --mac dmg --arm64 --x64 --publish never

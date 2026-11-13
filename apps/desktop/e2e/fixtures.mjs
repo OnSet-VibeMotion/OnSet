@@ -57,6 +57,8 @@ export const test = base.extend({
       HOME: sandbox.home,
       AM_DESKTOP_USER_DATA: sandbox.userData,
       AM_DESKTOP_KEEP_PATH: '1',
+      // 后台运行：不弹窗口、不进 Dock，不打断开发者手上的事（main.ts）。
+      AM_DESKTOP_BACKGROUND: '1',
       AM_STUDIO_CONFIG: sandbox.registry,
       AM_MEMORY_DIR: sandbox.memory,
       AM_STUDIO_SKIP_SKILL_INSTALL: '1',

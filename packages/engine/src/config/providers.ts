@@ -1,5 +1,6 @@
 // 移植自 internal/config/providers.go。
 import { goQuote, isGoSpace } from '../gofmt';
+import type { ModelSpec, ToolSpec } from '../toolinstall';
 import type { OrchestratorAccess } from '../tools';
 import type { Config } from './config';
 
@@ -18,6 +19,8 @@ export interface TTSProvider {
   name: string;
   timestamps: string;
   command: string;
+  /** am setup 怎么装它（版本钉死）。客户端用户不必自己 npm / pipx / brew。 */
+  install: ToolSpec;
 }
 
 /**
@@ -31,30 +34,84 @@ export interface TTSProvider {
  * 这三家暂不收录。
  */
 export const TTSProviders: readonly TTSProvider[] = [
-  { id: 'minimax', name: 'MiniMax（mmx CLI）', timestamps: 'sentence', command: 'mmx' },
-  { id: 'bailian', name: '阿里云百炼（bl CLI）', timestamps: 'none', command: 'bl' },
-  { id: 'edge', name: '微软 Edge 在线语音（edge-tts，免鉴权）', timestamps: 'sentence', command: 'edge-tts' },
-  { id: 'elevenlabs', name: 'ElevenLabs（官方 CLI）', timestamps: 'char', command: 'elevenlabs' },
-  { id: 'tencent', name: '腾讯云语音合成（tccli）', timestamps: 'sentence', command: 'tccli' },
-  { id: 'mlx', name: '本机 MLX 语音合成（mlx-audio，仅 Apple Silicon）', timestamps: 'none', command: 'mlx_audio.tts.generate' },
+  { id: 'minimax', name: 'MiniMax（mmx CLI）', timestamps: 'sentence', command: 'mmx', install: { kind: 'npm', package: 'mmx-cli', version: '1.0.28', bins: ['mmx'] } },
+  { id: 'bailian', name: '阿里云百炼（bl CLI）', timestamps: 'none', command: 'bl', install: { kind: 'npm', package: 'bailian-cli', version: '2.5.1', bins: ['bl'] } },
+  {
+    id: 'edge',
+    name: '微软 Edge 在线语音（edge-tts，免鉴权）',
+    timestamps: 'sentence',
+    command: 'edge-tts',
+    install: { kind: 'uv-tool', package: 'edge-tts', version: '7.3.1', bins: ['edge-tts'] },
+  },
+  {
+    id: 'elevenlabs',
+    name: 'ElevenLabs（官方 CLI）',
+    timestamps: 'char',
+    command: 'elevenlabs',
+    install: { kind: 'npm', package: '@elevenlabs/cli', version: '1.7.0', bins: ['elevenlabs'] },
+  },
+  { id: 'tencent', name: '腾讯云语音合成（tccli）', timestamps: 'sentence', command: 'tccli', install: { kind: 'uv-tool', package: 'tccli', version: '3.1.187.1', bins: ['tccli'] } },
+  {
+    id: 'mlx',
+    name: '本机 MLX 语音合成（mlx-audio，仅 Apple Silicon）',
+    timestamps: 'none',
+    command: 'mlx_audio.tts.generate',
+    install: mlxAudio(['mlx_audio.tts.generate']),
+  },
 ];
+
+/** mlx-audio：语音合成与 Qwen3 强制对齐是同一个包；依赖里有预发布版本，要放行。 */
+function mlxAudio(bins: string[]): ToolSpec {
+  return { kind: 'uv-tool', package: 'mlx-audio', version: '0.6.1', bins, prerelease: true, platforms: ['darwin/arm64'] };
+}
 
 /**
  * 一个已知文本强制对齐工具：文稿是现成的，把它逐字对到配音上
  * 比识别更准，也不会把专有名词识别错。
  *
- * command 同 TTSProvider.command。funasr 没有命令行入口，提示词让编排工具用 Python 调用。
+ * command 同 TTSProvider.command。funasr 没有命令行入口：am setup 把它装进专用的 Python 环境，
+ * 并写一个 funasr-python 调用那份 Python；提示词让编排工具用它跑 Python 脚本。安全模式因此不必放行系统的 python3。
  */
 export interface Aligner {
   id: string;
   name: string;
   command: string;
+  install: ToolSpec;
+  /** 工具第一次运行会去下的模型：am setup 预先下好，提示词经 am config get ALIGN_MODEL 拿本地路径。 */
+  model?: ModelSpec;
 }
+
+/** MLX 强制对齐用的模型（Hugging Face 与魔搭上同名；摘要取自魔搭的文件列表，2026-11）。 */
+export const QwenForcedAligner: ModelSpec = {
+  repo: 'mlx-community/Qwen3-ForcedAligner-0.6B-8bit',
+  files: [
+    { path: 'chat_template.json', sha256: '75a8cfca24f00de72d796fbfed6858fc9614ef3dabd8696684cc3bc03a9c58ff', size: 1161 },
+    { path: 'config.json', sha256: '8dc126e1a4ac001acb02f3a9ca6277c8a20a25485fde293bc99eeab3aedc604d', size: 6940 },
+    { path: 'generation_config.json', sha256: '948d089b23bca1d214e768d59c4438365665f52ec6d33678f4062206b3fbbb8c', size: 115 },
+    { path: 'merges.txt', sha256: '8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5', size: 1671853 },
+    { path: 'model.safetensors', sha256: 'be19ef8ac4326d032e7673342930b14c2df30bd68c1632493b0f563e30829f91', size: 1271924386 },
+    { path: 'model.safetensors.index.json', sha256: '766eb50873855eeb4d95ab92def358cfd173bfc8c7aabd8635ababa1edf6db79', size: 79108 },
+    { path: 'preprocessor_config.json', sha256: '45e120a4eda2c20c5d7f2ea9354e63536bf35e27aa573fb7cdf78017b378770d', size: 330 },
+    { path: 'tokenizer_config.json', sha256: '3ab80063f8511deb9566e6ad438d17b7a6277fcffd52d92854112f19d36bd81c', size: 12666 },
+    { path: 'vocab.json', sha256: 'ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910', size: 2776833 },
+  ],
+};
 
 /** ALIGN_PROVIDER 的具体取值；另有 auto 按平台选择。 */
 export const Aligners: readonly Aligner[] = [
-  { id: 'mlx', name: 'Qwen3-ForcedAligner（mlx-audio，Apple Silicon 本机）', command: 'mlx_audio.stt.generate' },
-  { id: 'funasr', name: 'FunASR 时间戳预测（CPU，macOS 与 Linux）', command: 'python3' },
+  {
+    id: 'mlx',
+    name: 'Qwen3-ForcedAligner（mlx-audio，Apple Silicon 本机）',
+    command: 'mlx_audio.stt.generate',
+    install: mlxAudio(['mlx_audio.stt.generate']),
+    model: QwenForcedAligner,
+  },
+  {
+    id: 'funasr',
+    name: 'FunASR 时间戳预测（CPU，macOS 与 Linux）',
+    command: 'funasr-python',
+    install: { kind: 'uv-venv', name: 'funasr', packages: ['funasr==1.4.16', 'torch', 'torchaudio'], bin: 'funasr-python' },
+  },
 ];
 
 /** 让 am 按运行平台选择对齐工具。 */

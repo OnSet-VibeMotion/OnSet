@@ -2,7 +2,7 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { lookPath } from '../envutil';
+import { find } from '../toolpath';
 import { atomicWrite } from '../fsutil';
 import { formatFixed, goTrimSpace } from '../gofmt';
 import type { Toolchain } from '../mediaprobe';
@@ -130,5 +130,5 @@ export class Runner {
 
 /** newRunner 解析 ffmpeg 并返回可用的执行器。 */
 export function newRunner(env: Record<string, string>, toolchain: Toolchain): Runner {
-  return new Runner(toolchain, lookPath('ffmpeg', env.PATH ?? ''), env);
+  return new Runner(toolchain, find('ffmpeg', env), env);
 }

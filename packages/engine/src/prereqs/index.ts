@@ -4,9 +4,17 @@
  * am setup（下载）与客户端的引导（只读状态）共用这一份清单，两边说的永远是同一组东西。
  * 判断就绪不联网；准备只由 am setup 调用。错误类型与文案约定见 ../prereq。
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import * as beat from '../beat';
+import * as config from '../config';
+import { AlignAuto, Aligners, resolveAligner, TTSProviders, validAligner, validTTSProvider } from '../config/providers';
+import { envMap } from '../envutil';
+import type { ModelSpec, ToolSpec } from '../toolinstall';
 import * as filmstyle from '../filmstyle';
 import '../filmstyle/sources';
 import * as hyperframes from '../hyperframes';
+import * as toolinstall from '../toolinstall';
 
 /** 一次准备要用的环境与输出：git 走代理、npm 走自己的配置；工具的原始输出写进 log，stage 汇报进行到哪一步。 */
 export interface Run {
@@ -14,8 +22,29 @@ export interface Run {
   git: Record<string, string>;
   npm: Record<string, string>;
   mixed: Record<string, string>;
+  /** am setup --proxy 的值（可能为空）。只给明确要走代理的下载用，例如节拍模型权重。 */
+  proxy?: string;
   log: hyperframes.Writer;
   stage: (text: string) => void;
+}
+
+/** git / npm 等的原始输出日志：<数据目录>/am/setup.log，每次准备覆盖。am setup 与客户端的安装页共用。 */
+export function logPath(env: Record<string, string>): string {
+  return path.join(path.dirname(hyperframes.defaultCacheDir(env)), 'setup.log');
+}
+
+/**
+ * 一次准备的环境。git 的代理用 GIT_CONFIG_PARAMETERS（等同 git -c http.proxy=…）只给 git：
+ * 设成 HTTPS_PROXY 的话 npm 也会走它，国内镜像经代理反而连不上（实测）。要走代理的其他下载各自用 withProxy。
+ */
+export function newRun(env: Record<string, string>, proxy: string, npmRegistry: string, log: hyperframes.Writer): Run {
+  const git = { ...env };
+  const npm = { ...env };
+  if (proxy !== '') git.GIT_CONFIG_PARAMETERS = `'http.proxy'='${proxy}'`;
+  if (npmRegistry !== '') npm.npm_config_registry = npmRegistry;
+  const mixed = { ...git };
+  if (npmRegistry !== '') mixed.npm_config_registry = npmRegistry;
+  return { base: env, git, npm, mixed, proxy, log, stage: () => {} };
 }
 
 /** 一项前置资源。 */
@@ -34,14 +63,74 @@ export interface Item {
   prepare: (run: Run, signal?: AbortSignal) => Promise<void>;
 }
 
+/**
+ * 走 --proxy 的下载（GitHub release、Google 存储上的浏览器）用的环境：curl 与 HyperFrames 都认 https_proxy。
+ * npm 与 pip 不给代理（它们用用户自己配置的国内镜像，经代理反而连不上，实测）。
+ */
+function withProxy(run: Run, base: Record<string, string> = run.base): Record<string, string> {
+  const env = { ...base };
+  if (run.proxy) env.HTTPS_PROXY = env.https_proxy = run.proxy;
+  return env;
+}
+
 /** 把 HyperFrames 的进度译成一行说明。 */
 function hyperframesStage(p: hyperframes.Progress): string {
   if (p.indeterminate || p.percent <= 0 || p.percent >= 100) return p.stage;
   return `${p.stage} ${Math.trunc(p.percent)}%`;
 }
 
-/** 全部前置资源，顺序即准备顺序。 */
-export function items(): Item[] {
+/** 要准备哪一家配音与对齐工具：按项目配置（不在项目里时按环境变量与缺省值）。 */
+export interface Selection {
+  tts: string;
+  align: string;
+}
+
+/**
+ * 当前该准备的配音与对齐工具。root 是项目目录时读项目配置（article-to-motion.conf、.env、环境变量），
+ * 读不了或不在项目里时取环境变量 TTS_PROVIDER / ALIGN_PROVIDER，再不然用缺省值（MiniMax，对齐按平台选）。
+ */
+export function selection(env: Record<string, string>, root = ''): Selection {
+  if (root !== '' && fs.existsSync(path.join(root, 'article-to-motion.conf'))) {
+    try {
+      const cfg = config.load(root, env);
+      return { tts: cfg.ttsProvider, align: cfg.alignProvider };
+    } catch {
+      // 配置写错了：退回缺省，错误留给 am config / am run 去报。
+    }
+  }
+  const tts = env.TTS_PROVIDER && validTTSProvider(env.TTS_PROVIDER) ? env.TTS_PROVIDER : 'minimax';
+  const align = resolveAligner(env.ALIGN_PROVIDER && validAligner(env.ALIGN_PROVIDER) ? env.ALIGN_PROVIDER : AlignAuto, process.platform, process.arch);
+  return { tts, align };
+}
+
+/** 配音或对齐工具的一项：装进 am 自己的目录，不碰全局；版本钉死。有 model 时连模型一起下好。 */
+function toolItem(group: 'tts' | 'align', id: string, label: string, spec: ToolSpec, model?: ModelSpec): Item {
+  const version = spec.kind === 'uv-venv' ? '' : spec.version;
+  return {
+    group,
+    id: `${group}:${id}`,
+    // 卡点项目不配音，口播项目到第三阶段才用：不挡「开始制作」，但引导里照样列出来。
+    required: false,
+    name: label,
+    version,
+    ready: (env) => {
+      const status = toolinstall.toolStatus(spec, env);
+      if (status.ok && model && !toolinstall.modelReady(model, env)) return [false, toolinstall.modelDir(model, env)];
+      return [status.ok, status.where];
+    },
+    prepare: async (run, signal) => {
+      // npm 包用用户自己的 ~/.npmrc，不套代理；Python 类工具要从 GitHub 下 Python，--proxy 给它。
+      const env = spec.kind === 'npm' ? run.npm : withProxy(run);
+      const progress = (p: hyperframes.Progress) => run.stage(hyperframesStage(p));
+      await toolinstall.ensureTool(spec, { env, output: run.log, progress, signal });
+      if (model) await toolinstall.ensureModel(model, { env: withProxy(run), output: run.log, progress, signal });
+    },
+  };
+}
+
+/** 全部前置资源，顺序即准备顺序。pick 决定列哪一家配音与对齐工具（缺省按 selection 的规则）。 */
+export function items(pick?: Selection): Item[] {
+  const chosen = pick ?? selection(envMap());
   const version = hyperframes.PinnedVersion;
   const out: Item[] = [
     {
@@ -74,7 +163,64 @@ export function items(): Item[] {
         await hyperframes.ensureCLI({ env: run.npm, output: run.log, progress: (p) => run.stage(hyperframesStage(p)) }, signal);
       },
     },
+    {
+      group: 'browser',
+      id: 'browser',
+      // 客户端里用它自带的 Chromium（AM_BROWSER），这一项直接就绪；单独用命令行时才要下载 headless-shell。
+      required: true,
+      name: '渲染用浏览器',
+      version: '',
+      ready: (env) => {
+        const status = hyperframes.browserStatus(env);
+        return [status.ok, status.where];
+      },
+      prepare: async (run, signal) => {
+        // 浏览器从 Google 的存储下载，国内要走代理；--proxy 只给这种明确要出境的下载。
+        await hyperframes.ensureBrowser({ env: withProxy(run, run.npm), output: run.log, progress: (p) => run.stage(hyperframesStage(p)) }, signal);
+      },
+    },
+    {
+      group: 'ffmpeg',
+      id: 'ffmpeg',
+      // 系统里已有 ffmpeg 与 ffprobe（PATH 能找到）就直接就绪；没有时下载固定版本的静态构建，不要求装 Homebrew。
+      required: true,
+      name: 'ffmpeg / ffprobe',
+      version: '',
+      ready: (env) => {
+        const status = toolinstall.ffmpegStatus(env);
+        return [status.ok, status.where];
+      },
+      prepare: async (run, signal) => {
+        await toolinstall.ensureFFmpeg({ env: withProxy(run), output: run.log, progress: (p) => run.stage(hyperframesStage(p)), signal });
+      },
+    },
+    {
+      group: 'beat',
+      id: 'beat',
+      // 只有卡点项目要：不选卡点就用不到这一套近 1 GB 的 Python 环境。
+      required: false,
+      name: '节拍分析环境 beat-this',
+      version: beat.AnalyzerVersion,
+      ready: (env) => {
+        const dir = beat.envDir(env);
+        return [beat.envReady(dir), dir];
+      },
+      prepare: async (run, signal) => {
+        // pip 用用户自己的 pip.conf（国内镜像），不套代理，理由同 npm；权重在境外服务器上，--proxy 只给它。
+        const weightsEnv = { ...run.base };
+        if (run.proxy) weightsEnv.HTTPS_PROXY = weightsEnv.https_proxy = run.proxy;
+        // 系统里没有能装 torch 的 Python 时，先下载 uv，由它带一份独立的 Python（不要求用户装 Python）。
+        if (!(await beat.hasBasePython(run.base, signal))) {
+          await toolinstall.ensureUV({ env: withProxy(run), output: run.log, progress: (p) => run.stage(hyperframesStage(p)), signal });
+        }
+        await beat.ensureEnv({ env: run.base, weightsEnv, output: run.log, progress: (p) => run.stage(hyperframesStage(p)) }, signal);
+      },
+    },
   ];
+  const tts = TTSProviders.find((p) => p.id === chosen.tts);
+  if (tts) out.push(toolItem('tts', tts.id, '配音 ' + tts.name, tts.install));
+  const aligner = Aligners.find((a) => a.id === chosen.align);
+  if (aligner) out.push(toolItem('align', aligner.id, '对齐 ' + aligner.name, aligner.install, aligner.model));
   for (const source of filmstyle.sources()) {
     out.push({
       group: 'styles',
@@ -111,8 +257,8 @@ export interface Status {
 }
 
 /** 不联网地返回全部项的状态。 */
-export function check(env: Record<string, string>): Status[] {
-  return items().map((item) => {
+export function check(env: Record<string, string>, pick?: Selection): Status[] {
+  return items(pick ?? selection(env)).map((item) => {
     const [ok, where] = item.ready(env);
     return { id: item.id, group: item.group, name: item.name, version: item.version || undefined, required: item.required, ready: ok, location: where };
   });

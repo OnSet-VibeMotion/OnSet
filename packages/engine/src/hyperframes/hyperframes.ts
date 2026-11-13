@@ -31,8 +31,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { compareBytes } from '../gojson';
-import { lookPath } from '../envutil';
 import { missing } from '../prereq';
+import { MissingToolPrefix } from '../envutil';
+import { gitHint, usableGit } from '../toolpath';
+import { downloadTree, githubRepo } from './download';
 import { PinnedSkillsCommit, PinnedSkillsCount, PinnedVersion, SkillsRepoURL, SkillsSubdir, manifestFile, skillsSubdirsInRepo } from './constants';
 import { writeManifest } from './manifest';
 import { GitProgress, checkoutStart, copyStart, type Progress, type Writer } from './progress';
@@ -132,16 +134,10 @@ export async function prepareSkills(options: Options, signal?: AbortSignal): Pro
   if (!opts.cacheDir) throw new Error('无法确定 HyperFrames 技能的缓存目录：环境里没有 HOME');
   if (cachedTree(opts.cacheDir, opts.expectCommit, opts.expectSkills) !== '') return;
   const report = opts.progress ?? (() => {});
-  let git: string;
-  try {
-    git = lookPath('git', opts.env.PATH ?? '');
-  } catch (err) {
-    throw new Error(`找不到 git，无法下载 HyperFrames 技能：${errorText(err)}`, { cause: err });
-  }
   const tmp = makeTemp();
   try {
     report({ stage: '连接上游仓库', percent: 0 });
-    const commit = await cloneSkills(git, tmp, opts, report, signal);
+    const commit = await fetchSkills(tmp, opts, report, signal);
     report({ stage: '存进本机缓存', percent: copyStart });
     try {
       storeCache(opts.cacheDir, commit, tmp);
@@ -249,7 +245,6 @@ export async function install(options: Options, signal?: AbortSignal): Promise<R
   let tmp: string;
   let commit: string;
   let cleanup: string | undefined;
-  let git = '';
   const cached = cachedTree(opts.cacheDir, opts.expectCommit, opts.expectSkills);
   if (cached !== '') {
     // 缓存里是同一个 commit 上校验过的技能树，与重新克隆逐字节相同，不联网。
@@ -259,11 +254,6 @@ export async function install(options: Options, signal?: AbortSignal): Promise<R
   } else if (opts.cacheOnly) {
     throw missing('HyperFrames ' + opts.version + ' 技能', '本机缓存里没有');
   } else {
-    try {
-      git = lookPath('git', opts.env.PATH ?? '');
-    } catch (err) {
-      throw new Error(`找不到 git，无法获取 HyperFrames 技能：${errorText(err)}`, { cause: err });
-    }
     // 克隆目录必须在项目之外：放项目里会把 .git 和中间产物留在交付目录，
     // 而且 am archive 会连它们一起归档。
     tmp = makeTemp();
@@ -272,7 +262,7 @@ export async function install(options: Options, signal?: AbortSignal): Promise<R
   try {
     if (cleanup) {
       report({ stage: '连接上游仓库', percent: 0 });
-      commit = await cloneSkills(git, tmp, opts, report, signal);
+      commit = await fetchSkills(tmp, opts, report, signal);
       // 克隆已经过 commit 校验；技能数在下面拼装时再校验，不合格的不会被后续读到
       // （cachedTree 按技能数判可用）。缓存写不进去只是下次还要联网，照常继续。
       try {
@@ -324,6 +314,33 @@ export async function install(options: Options, signal?: AbortSignal): Promise<R
  *   - GIT_CONFIG_GLOBAL/SYSTEM=/dev/null：用户的 git 配置（钩子、filter、
  *     autocrlf）不能参与，否则同一个 commit 在不同人机器上检出结果不同。
  */
+/**
+ * 把固定 commit 的技能目录取到 dir：有能用的 git 就按 tag 浅克隆（原来的做法，带进度），
+ * 没有 git 时从 GitHub 逐个文件下载并按 blob 摘要校验（download.ts）。返回 commit。
+ */
+async function fetchSkills(dir: string, opts: Resolved, report: (p: Progress) => void, signal: AbortSignal | undefined): Promise<string> {
+  const git = usableGit(opts.env);
+  if (git !== '') return cloneSkills(git, dir, opts, report, signal);
+  const gh = githubRepo(opts.repoURL);
+  // 前缀沿用 MissingToolPrefix：cli 靠它把错误映射成退出码 127。
+  if (!gh || opts.expectCommit === '-') throw new Error(`${MissingToolPrefix}：git（无法获取 HyperFrames 技能：${gitHint()}）`);
+  report({ stage: '下载技能文件', percent: 0 });
+  try {
+    await downloadTree({
+      ...gh,
+      commit: opts.expectCommit,
+      subdirs: skillsSubdirsInRepo,
+      dir,
+      env: opts.env,
+      signal,
+      progress: (done, total) => report({ stage: `下载技能文件 ${done}/${total}`, percent: total === 0 ? 0 : (copyStart * done) / total }),
+    });
+  } catch (err) {
+    throw new Error(`从 GitHub 下载 HyperFrames 技能失败（可以加 --proxy 走代理，重跑即可）：${errorText(err)}`, { cause: err });
+  }
+  return opts.expectCommit;
+}
+
 async function cloneSkills(
   git: string,
   dir: string,

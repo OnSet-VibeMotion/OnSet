@@ -9,6 +9,7 @@ import path from 'node:path';
 import { lookPath } from '../../envutil';
 import type { Writer } from '../../hyperframes';
 import { missing } from '../../prereq';
+import { type NodeCommand, npmCommand, withNode } from '../../toolpath';
 import type { PrepareProgress } from '../filmstyle';
 
 /** prepareLibrary 的进度，与 filmstyle 的通用进度相同。 */
@@ -200,18 +201,19 @@ export async function setupNode(lib: Library, opts: SetupOptions, signal?: Abort
     // 没有标记。
   }
   if (got.trim() === want) return;
-  let npm: string;
+  // 自带的 npm 优先（客户端随 .app 下发），其次 PATH 里的。
+  let npm: NodeCommand;
   try {
-    npm = lookPath('npm', opts.env.PATH ?? '');
+    npm = npmCommand(opts.env, ['ci', '--no-audit', '--no-fund', '--loglevel=error', '--ignore-scripts']);
   } catch (err) {
-    throw new Error(`找不到 npm（需要 Node 20+），无法安装风格库的 three.js：${errorText(err)}`, { cause: err });
+    throw new Error(`找不到 npm（客户端自带一份；单独用命令行时需要 Node 22+），无法安装风格库的 three.js：${errorText(err)}`, { cause: err });
   }
   const output: Writer = opts.output ?? { write: () => true };
   output.write('安装风格库的 Node 依赖（npm ci）…\n');
   try {
-    await runCommand(npm, ['ci', '--no-audit', '--no-fund', '--loglevel=error', '--ignore-scripts'], {
+    await runCommand(npm.file, npm.args, {
       cwd: lib.dir,
-      env: opts.env,
+      env: withNode({ ...opts.env, ...npm.env }),
       stdout: output,
       stderr: output,
       signal,

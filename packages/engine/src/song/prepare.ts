@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { lookPath } from '../envutil';
+import { find } from '../toolpath';
 import { atomicWrite } from '../fsutil';
 import { goPathError, goTrimSpace } from '../gofmt';
 import { newToolchain } from '../mediaprobe';
@@ -240,13 +241,13 @@ export async function doctor(root: string, env: Record<string, string>, out: Wri
       return err;
     }
   };
-  for (const name of ['ffprobe', 'ffmpeg']) check(name, await attempt(() => lookPath(name, env.PATH ?? '')));
+  for (const name of ['ffprobe', 'ffmpeg']) check(name, await attempt(() => find(name, env)));
   check('xingyu-lyrics-aligner==' + AlignerVersion, await attempt(() => python(c, env, ['-c', versionScript], signal)));
   const librosa = await attempt(() => python(c, env, ['-c', "import importlib.metadata as m; assert m.version('librosa') == '" + LibrosaVersion + "'"], signal));
   if (librosa) out.write('WARN librosa==' + LibrosaVersion + ' 不可用；将降级为歌词驱动\n');
   if (c.provider === 'minimax') {
     const e = await attempt(async () => {
-      const binary = lookPath('mmx', env.PATH ?? '');
+      const binary = find('mmx', env);
       const b = await output(binary, ['music', 'generate', '--help'], env, signal);
       if (!b.toString('utf8').includes('--lyrics-file')) throw new Error('mmx 不支持 --lyrics-file');
     });

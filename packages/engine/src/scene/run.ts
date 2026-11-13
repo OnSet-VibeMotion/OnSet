@@ -71,6 +71,11 @@ export async function run(
     if (dir) cliEnv[hyperframes.CLIDirEnv] = dir;
   }
   hyperframes.requireCLI(cliEnv);
+  for (const key of [hyperframes.BrowserEnv, hyperframes.HyperFramesBrowserEnv]) {
+    if (!cliEnv[key] && process.env[key]) cliEnv[key] = process.env[key]!;
+  }
+  // 浏览器同理：客户端里是它自带的 Chromium，单独用命令行时是 am setup 下载的 headless-shell。
+  hyperframes.requireBrowser(cliEnv);
   const argv = rendererInvocation(renderer, prompt, unsafe, rendererAccess(resolvedSkills));
   argv[0] = lookPath(argv[0], baseEnv.PATH ?? '');
   const inputs = fingerprint(s, renderer, resolvedSkills);

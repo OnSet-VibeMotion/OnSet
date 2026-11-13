@@ -12,7 +12,7 @@ import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { lookPath } from '../envutil';
+import { find } from '../toolpath';
 import { atomicWrite } from '../fsutil';
 import { formatFixed, goTrimSpace } from '../gofmt';
 import { videoFPS, videoResolution, type Toolchain } from '../mediaprobe';
@@ -107,7 +107,7 @@ function formatFPS(value: number): string {
 
 /** NewRunner 解析 ffmpeg 并返回可用的执行器。缺失时抛 MissingToolError。 */
 export function newRunner(env: Record<string, string>, toolchain: Toolchain): Runner {
-  const ffmpeg = lookPath('ffmpeg', env.PATH ?? '');
+  const ffmpeg = find('ffmpeg', env);
   return new Runner(toolchain, ffmpeg, { ...env });
 }
 

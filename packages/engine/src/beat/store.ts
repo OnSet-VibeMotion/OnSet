@@ -38,14 +38,15 @@ export const DefaultConfig = `schema: 1
 # 节拍模型：final0（约 78 MB，默认）或 small0（约 8 MB，精度略低）；
 # 同系列还有 final1/final2、small1/small2，是不同随机种子训练的同结构模型。
 checkpoint: final0
-# 装有 beat-this==${AnalyzerVersion} 的独立 Python 环境
-python: python3
+# 不写 python 时用 am setup 装好的共享环境（beat-this==${AnalyzerVersion}）。
+# 只有要用自己的环境时才写，例如 python: /path/to/venv/bin/python
 `;
 
 /** Config 是 beat.yaml 的内容。 */
 export interface Config {
   schema: number;
   checkpoint: string;
+  /** 空：用 am setup 装好的共享环境（beat/env.ts）。 */
   python: string;
 }
 
@@ -107,9 +108,10 @@ export function loadConfig(root: string): Config {
   } catch (err) {
     throw wrapError(`${ConfigFile} 字段无效：${(err as Error).message}`, err);
   }
-  if (c.schema !== 1 || !checkpoints.has(c.checkpoint) || goTrimSpace(c.python) === '') {
-    throw new Error(`${ConfigFile}：schema 必须为 1，checkpoint 取 final0..2 或 small0..2，python 必填`);
+  if (c.schema !== 1 || !checkpoints.has(c.checkpoint)) {
+    throw new Error(`${ConfigFile}：schema 必须为 1，checkpoint 取 final0..2 或 small0..2`);
   }
+  c.python = goTrimSpace(c.python);
   return c;
 }
 

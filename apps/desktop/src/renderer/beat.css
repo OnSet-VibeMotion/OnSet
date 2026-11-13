@@ -390,3 +390,11 @@
 .beat-tab .beat-story-body table {
   font-size: 12px;
 }
+.beat-tab .beat-command {
+  font: 13px var(--mono);
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--well);
+  color: var(--text);
+  user-select: all;
+}

@@ -1,7 +1,7 @@
 // --- ffprobe / ffmpeg 调用 ---
 import fs from 'node:fs';
 import path from 'node:path';
-import { lookPath } from '../envutil';
+import { find } from '../toolpath';
 import { decodeAnalysisWAV, clickTrack } from './beat';
 import { contactSheetRegion, nonEmpty } from './contact';
 import { formatFixed } from './gofmt';
@@ -76,7 +76,8 @@ function formatSecondsShort(value: number): string {
  * 在这里一并要求会让「装了 ffprobe 没装 ffmpeg」的机器连镜头校验都跑不了。
  */
 export function newToolchain(env: Record<string, string>): Toolchain {
-  const ffprobe = lookPath('ffprobe', env.PATH ?? '');
+  // am setup 下载的、客户端自带的优先，其次 PATH（toolpath.find）。
+  const ffprobe = find('ffprobe', env);
   return new Toolchain(ffprobe, env.PATH ?? '', { ...env });
 }
 
@@ -96,7 +97,7 @@ export class Toolchain {
 
   /** 在真正需要 ffmpeg 的操作里解析它。 */
   ffmpegPath(): string {
-    return lookPath('ffmpeg', this.pathValue);
+    return find('ffmpeg', { ...this.env, PATH: this.pathValue });
   }
 
   /** 异步跑一条命令（Go 的 exec.CommandContext）。 */

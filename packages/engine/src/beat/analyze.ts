@@ -5,7 +5,8 @@ import { lookPath } from '../envutil';
 import { goTrimSpace } from '../gofmt';
 import { sliceOf, type StructType } from './jsondecode';
 import { checkTrack, normalizeGrid, saveDraft, type Grid } from './grid';
-import { AnalysisFile, AnalyzerVersion, ClickFile, Store, loadConfig, localPath, readJSON, wrapError, type Config } from './store';
+import { envDir, requireEnv } from './env';
+import { AnalysisFile, AnalyzerVersion, ClickFile, ConfigFile, Store, loadConfig, localPath, readJSON, wrapError, type Config } from './store';
 import { loadTrack, trackAudioPath, type Track } from './track';
 
 /** analysisSampleRate 是 beat-this 内部使用的采样率；按它解码可省掉一次重采样。 */
@@ -121,18 +122,13 @@ export async function writeClick(root: string, g: Grid, media: Media, signal?: A
 /** Doctor 检查 Python 环境与固定版本，并预先下载模型权重。 */
 export async function doctor(root: string, env: Record<string, string>, out: Writer, signal?: AbortSignal): Promise<void> {
   const config = loadConfig(root);
-  out.write(`检查 ${config.python} 中的 beat-this ${AnalyzerVersion}，首次运行会下载 ${config.checkpoint} 权重\n`);
+  out.write(`检查 ${pythonFor(config, env)} 中的 beat-this ${AnalyzerVersion}，首次运行会下载 ${config.checkpoint} 权重\n`);
   await runPython(config, env, ['--doctor', config.checkpoint], signal);
   out.write('节拍分析环境可用\n');
 }
 
 async function runPython(config: Config, env: Record<string, string>, args: string[], signal?: AbortSignal): Promise<void> {
-  let binary: string;
-  try {
-    binary = lookPath(config.python, env.PATH ?? '');
-  } catch {
-    throw new Error(`找不到 Python（${config.python}）：在独立环境里 pip install beat-this==${AnalyzerVersion} 后，把 beat.yaml 的 python 指向该环境`);
-  }
+  const binary = pythonFor(config, env);
   const { ok, stderr } = await new Promise<{ ok: boolean; stderr: string }>((resolve) => {
     if (signal?.aborted) {
       resolve({ ok: false, stderr: '' });
@@ -153,7 +149,25 @@ async function runPython(config: Config, env: Record<string, string>, args: stri
     });
     child.on('close', (status) => settle({ ok: status === 0, stderr: Buffer.concat(chunks).toString('utf8') }));
   });
-  if (!ok) throw new Error(`节拍分析失败：${lastLine(stderr)}；确认该环境装有 beat-this==${AnalyzerVersion}`);
+  if (!ok) {
+    const hint = config.python === '' ? `共享环境可能损坏，删掉 ${envDir(env)} 后重新运行 am setup --only beat` : `确认 ${config.python} 装有 beat-this==${AnalyzerVersion}`;
+    throw new Error(`节拍分析失败：${lastLine(stderr)}；${hint}`);
+  }
+}
+
+/**
+ * pythonFor 返回跑分析用的 Python：beat.yaml 没写 python 时用 am setup 装好的共享环境
+ * （没装好抛 prereq.MissingError），写了就用用户自己的。两种情况都不在这里建环境、装依赖。
+ */
+export function pythonFor(config: Config, env: Record<string, string>): string {
+  if (config.python === '') return requireEnv(env);
+  try {
+    const binary = lookPath(config.python, env.PATH ?? '');
+    fs.accessSync(binary, fs.constants.X_OK);
+    return binary;
+  } catch {
+    throw new Error(`找不到 ${ConfigFile} 指定的 Python（${config.python}）：改成存在的路径，或删掉 python 这一行改用 am setup 装好的共享环境`);
+  }
 }
 
 /**

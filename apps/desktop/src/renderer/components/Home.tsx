@@ -207,7 +207,7 @@ export function Home(props: Props) {
           <p className="home-sub">粘贴一篇文章、拖进讲稿，或者说说你想要的视频。剩下的交给编排工具。</p>
           {setup.status && setup.status.items.some((item) => !item.ready) && (
             <div className="home-setup">
-              <SetupGuide status={setup.status} onRecheck={() => void setup.recheck()} checking={setup.checking} />
+              <SetupGuide setup={setup} />
             </div>
           )}
 
