@@ -37,6 +37,13 @@ function alignFixture(base) {
   fs.writeFileSync(path.join(base, 'production', 'audio', 'align.json'), JSON.stringify(items));
 }
 
+/** 合成配音：0.5–1.5 秒与 2.0–3.2 秒有声，其余静音；第二条字幕故意提前 0.6 秒。 */
+function voiceFixture(base) {
+  spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', "aevalsrc='if(between(t,0.5,1.5)+between(t,2.0,3.2),0.5*sin(2*PI*440*t),0)':s=16000:d=4", path.join(base, 'voice.wav')]);
+  fs.writeFileSync(path.join(base, 'voice.srt'), '1\n00:00:00,500 --> 00:00:01,500\n第一句\n\n2\n00:00:01,400 --> 00:00:03,200\n第二句\n');
+  fs.writeFileSync(path.join(base, 'good.srt'), '1\n00:00:00,500 --> 00:00:01,500\n第一句\n\n2\n00:00:02,000 --> 00:00:03,200\n第二句\n');
+}
+
 export const cases = [
   {
     name: 'setup',
@@ -99,6 +106,19 @@ export const cases = [
       ['align', 'build'],
       ['align', 'build', '--fps', '30', '--align', 'production/audio/align.json@0.5'],
       ['align', 'build', '--fps', '30', '--align', 'missing.json'],
+    ],
+  },
+  {
+    name: 'audio check',
+    prepare: voiceFixture,
+    commands: [
+      ['audio', '--help'],
+      ['audio', 'check', '--help'],
+      ['audio', 'check', '--audio', 'voice.wav', '--srt', 'good.srt', '--report-json', 'report.json'],
+      ['audio', 'check', '--audio', 'voice.wav', '--srt', 'voice.srt', '--report-json', 'report.json'],
+      ['audio', 'check', '--audio', 'voice.wav'],
+      ['audio', 'check', '--audio', 'voice.wav', '--srt', 'good.srt', '--tolerance', '-1'],
+      ['audio', 'check', '--audio', 'voice.wav', '--srt', 'good.srt', '--tolerance', 'abc'],
     ],
   },
 ];
