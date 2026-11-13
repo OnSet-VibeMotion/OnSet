@@ -222,7 +222,7 @@ async function download(asset: Asset, dir: string, name: string, opts: InstallOp
     } finally {
       clearInterval(timer);
     }
-    const digest = crypto.createHash('sha256').update(fs.readFileSync(partial)).digest('hex');
+    const digest = await sha256File(partial);
     if (digest === asset.sha256) {
       fs.renameSync(partial, target);
       return target;
@@ -233,6 +233,20 @@ async function download(asset: Asset, dir: string, name: string, opts: InstallOp
   }
   throw new Error(`下载 ${name} 失败（可以加 --proxy 走代理，或设 ${GitHubMirrorEnv} 用镜像；断了重跑会接着下）：${(lastErr as Error)?.message ?? ''}`, {
     cause: lastErr,
+  });
+}
+
+/**
+ * 按流算文件的 sha256。不能 readFileSync 整个读进来：Node 单个 Buffer 上限 2 GiB，
+ * Breeze TTS 2 的权重 3.9 GB，读的时候直接抛「File size … is greater than 2 GiB」（实测）。
+ */
+export function sha256File(file: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    fs.createReadStream(file)
+      .on('error', reject)
+      .on('data', (chunk) => hash.update(chunk))
+      .on('end', () => resolve(hash.digest('hex')));
   });
 }
 

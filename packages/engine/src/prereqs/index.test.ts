@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { QwenForcedAligner } from '../config/providers';
+import { BreezeTTS2, QwenForcedAligner } from '../config/providers';
 import { check, items, selection } from './index';
 
 describe('prereqs', () => {
@@ -80,5 +80,29 @@ describe('prereqs', () => {
     expect(check(env, pick).find((s) => s.id === 'align:mlx')?.ready).toBe(false);
     fs.truncateSync(path.join(model, 'model.safetensors'), QwenForcedAligner.files.find((f) => f.path === 'model.safetensors')!.size);
     expect(check(env, pick).find((s) => s.id === 'align:mlx')?.ready).toBe(true);
+  });
+
+  it('counts Breeze TTS 2 as ready only once its model is downloaded too, subdirectories included', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'am-prereqs-'));
+    const data = path.join(home, '.local', 'share', 'am');
+    fs.mkdirSync(path.join(data, 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(data, 'bin', 'mlx_audio.tts.generate'), '#!/bin/sh\n', { mode: 0o755 });
+    const pick = { tts: 'breeze', align: 'funasr' };
+    const env = { HOME: home, PATH: '/usr/bin:/bin' };
+    const model = path.join(data, 'models', 'mlx-community__Breeze-TTS-2-mlx-8bit');
+    expect(check(env, pick).find((s) => s.id === 'tts:breeze')).toMatchObject({ ready: false, location: model });
+    // 只铺好顶层文件、缺 audio_tokenizer/ 下的编解码器：仍然不算就绪。
+    for (const f of BreezeTTS2.files.filter((f) => !f.path.includes('/'))) {
+      fs.mkdirSync(path.dirname(path.join(model, f.path)), { recursive: true });
+      fs.writeFileSync(path.join(model, f.path), '');
+      fs.truncateSync(path.join(model, f.path), f.size);
+    }
+    expect(check(env, pick).find((s) => s.id === 'tts:breeze')?.ready).toBe(false);
+    for (const f of BreezeTTS2.files.filter((f) => f.path.includes('/'))) {
+      fs.mkdirSync(path.dirname(path.join(model, f.path)), { recursive: true });
+      fs.writeFileSync(path.join(model, f.path), '');
+      fs.truncateSync(path.join(model, f.path), f.size);
+    }
+    expect(check(env, pick).find((s) => s.id === 'tts:breeze')?.ready).toBe(true);
   });
 });

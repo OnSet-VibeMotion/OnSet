@@ -181,7 +181,7 @@ export function newConfigCommand(stdout: Out): Command {
   });
   configCmd.addCommand(
     new Command({
-      use: 'get ORCHESTRATOR|RENDERER|TTS_PROVIDER|ALIGN_PROVIDER|ALIGN_MODEL',
+      use: 'get ORCHESTRATOR|RENDERER|TTS_PROVIDER|TTS_MODEL|ALIGN_PROVIDER|ALIGN_MODEL',
       args: exactArgs(1, 'KEY'),
       short: '打印单个配置键',
       long:
@@ -193,6 +193,8 @@ export function newConfigCommand(stdout: Out): Command {
   TTS_PROVIDER   语音合成：` +
         config.ttsProviderIDs().split(' ').join(' | ') +
         `
+  TTS_MODEL      语音合成用的本机模型（目前只有 breeze）：am setup 下好的本地目录；
+                 还没下好时打印模型的仓库名，先运行 am setup --only tts；不用本机模型时为空
   ALIGN_PROVIDER 已知文本强制对齐：` +
         config.alignerIDs().split(' ').join(' | ') +
         `
@@ -210,11 +212,11 @@ export function newConfigCommand(stdout: Out): Command {
       runE: (_cmd, args) => {
         const cfg = config.load('.', null);
         const values: Record<string, string> = { ORCHESTRATOR: cfg.orchestrator, RENDERER: cfg.renderer, TTS_PROVIDER: cfg.ttsProvider, ALIGN_PROVIDER: cfg.alignProvider };
-        const model = config.Aligners.find((a) => a.id === cfg.alignProvider)?.model;
-        if (model) {
-          const env = currentEnvironment();
-          values.ALIGN_MODEL = toolinstall.modelReady(model, env) ? toolinstall.modelDir(model, env) : model.repo;
-        } else values.ALIGN_MODEL = '';
+        const env = currentEnvironment();
+        const local = (model: toolinstall.ModelSpec | undefined) =>
+          !model ? '' : toolinstall.modelReady(model, env) ? toolinstall.modelDir(model, env) : model.repo;
+        values.TTS_MODEL = local(config.TTSProviders.find((p) => p.id === cfg.ttsProvider)?.model);
+        values.ALIGN_MODEL = local(config.Aligners.find((a) => a.id === cfg.alignProvider)?.model);
         if (!Object.hasOwn(values, args[0])) throw new Error(`未知配置键：${args[0]}`);
         stdout.write(values[args[0]] + '\n');
       },

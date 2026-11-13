@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ensureFFmpeg, ensureTool, ensureUV, ffmpegStatus, mirrored, pipIndexURL, uvStatus } from './index';
+import { ensureFFmpeg, ensureTool, ensureUV, ffmpegStatus, mirrored, pipIndexURL, sha256File, uvStatus } from './index';
 
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'am-toolinstall-'));
@@ -67,4 +67,18 @@ describe.runIf(process.env.AM_TEST_TOOL_DOWNLOAD === '1' && Boolean(process.env.
     const edge = await ensureTool({ kind: 'uv-tool', package: 'edge-tts', version: '7.3.1', bins: ['edge-tts'] }, { env });
     expect(spawnSync(edge, ['--help'], { encoding: 'utf8', env }).status).toBe(0);
   }, 900_000);
+});
+
+describe('sha256File', () => {
+  it('hashes by streaming, so files over 2 GiB (Breeze TTS 2 weights) do not hit the Buffer limit', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-sha-'));
+    const file = path.join(dir, 'big.bin');
+    // 稀疏文件：不占磁盘，readFileSync 会因超过 2 GiB 直接抛错。
+    fs.writeFileSync(file, '');
+    fs.truncateSync(file, 2 ** 31 + 1);
+    expect(() => fs.readFileSync(file)).toThrow(/2 GiB/);
+    const small = path.join(dir, 'small.txt');
+    fs.writeFileSync(small, 'abc');
+    expect(await sha256File(small)).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+  });
 });

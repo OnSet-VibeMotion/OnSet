@@ -152,6 +152,7 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
 | `elevenlabs` | ElevenLabs（官方 CLI） | 字级 | 中英混排、需要字级时间戳 |
 | `tencent` | 腾讯云语音合成（`tccli`） | 有 | 已有腾讯云账号 |
 | `mlx` | 本机 MLX（`mlx-audio`，仅 Apple Silicon） | 无 | 离线、不产生费用 |
+| `breeze` | 本机 Breeze TTS 2（`mlx-audio`，仅 Apple Silicon） | 无 | 离线；按描述设计音色、语气指导；**仅限非商用** |
 
 各路径的凭据、命令和时间戳获取方式不同，但断句检查、审核关卡和产物要求完全一致。
 
@@ -196,6 +197,11 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
 
 - 仅限 Apple Silicon。免鉴权；首次运行会下载模型到用户缓存目录。
 
+**Breeze TTS 2（`TTS_PROVIDER=breeze`）**
+
+- 仅限 Apple Silicon。免鉴权，不联网。
+- 模型由 `am setup` 预先下好（约 4.6 GB），路径用 `am config get TTS_MODEL` 读取；它打印的不是本地目录（而是 `mlx-community/…` 仓库名）时说明还没下好，请用户运行 `am setup --only tts`，不要让工具在合成时现下载。
+
 ### 试听和正式生成
 
 - 音色尚未确定时，先列出可用音色，选择中文（普通话）真诚成年男声对应的 voice ID，记录到 `production/production-config.json` 的 `ttsVoiceId`。
@@ -205,6 +211,7 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
   - ElevenLabs：`elevenlabs voices search --format json`
   - 腾讯云：CLI 没有列表命令，按官方「音色列表」文档选择 `VoiceType`
   - MLX：Qwen3-TTS 预置中文音色 `Vivian`、`Serena`、`Uncle_Fu`、`Dylan`（北京话）、`Eric`（四川话）
+  - Breeze：没有预置音色，用一句中文描述设计音色（`--instruct`），voice ID 固定写 `S0`，描述原文一并记进 `production/production-config.json` 的 `ttsInstruction`；试听时换描述而不是换 voice ID，文件名用 `try-<序号>.wav`
 - 用同一段 10–20 秒代表性文案生成 2–3 个试听版本（`--out production/audio/try-<voiceId>.wav`），文件名包含 voice ID。
 - 音色、语速确认后再生成正式配音。
 - 优先按完整语义段落调用 TTS，避免按字幕行逐条生成造成语调碎裂。
@@ -261,6 +268,14 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
 **MLX 固定参数**
 
 - 命令：`mlx_audio.tts.generate --model mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit --text "..." --voice <voiceId> --lang_code Chinese --output_path production/audio --file_prefix voice --join_audio --audio_format wav`。`--lang_code Chinese` 必须显式传，缺省按英文合成；不加 `--join_audio` 时会按文本分段输出多个文件。输出是 24kHz 单声道，用 FFmpeg 转成 48kHz 双声道再混音。
+- 不产出时间戳，`voice.srt` 由第四阶段强制对齐生成。
+- 发音控制同 Edge，只能改写送进 TTS 的文本。
+
+**Breeze 固定参数**
+
+- 命令：`mlx_audio.tts.generate --model "$(am config get TTS_MODEL)" --text "..." --voice S0 --instruct "<已确认的音色描述>" --cfg_scale 4 --lang_code Chinese --output_path production/audio --file_prefix voice --join_audio --audio_format wav`。音色描述写中文，说清性别、年龄段、音色与语气，例如「一位三十多岁的男性，声音沉稳清晰，语气平静、真诚，语速适中」；正式生成与试听用同一句描述，不要每段改写，否则同一部片子里音色会漂。
+- 语气、节奏只靠描述控制；终稿里不要加 `[笑]`、`[叹气]` 这类事件标记，它们会被读成非语音声音，字幕对不上。
+- 输出是 24kHz 单声道，用 FFmpeg 转成 48kHz 双声道再混音。
 - 不产出时间戳，`voice.srt` 由第四阶段强制对齐生成。
 - 发音控制同 Edge，只能改写送进 TTS 的文本。
 

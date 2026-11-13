@@ -150,7 +150,7 @@ MEMORY_RECALL_BUDGET=1500
 MEMORY_EXPLORE=0.1
 ```
 
-`TTS_PROVIDER` 可选 `minimax`、`bailian`、`edge`（免鉴权，适合预览）、`elevenlabs`、`tencent`、`mlx`（本机离线，仅 Apple Silicon）；凭据一律走各工具自己的登录命令。`ALIGN_PROVIDER` 选择已知文本强制对齐工具，缺省 `auto`：Apple Silicon 上用 mlx-audio 的 Qwen3-ForcedAligner，其余平台用 FunASR。没有自带字级时间戳的 TTS 路径，字幕时间轴由它生成。
+`TTS_PROVIDER` 可选 `minimax`、`bailian`、`edge`（免鉴权，适合预览）、`elevenlabs`、`tencent`、`mlx`（本机离线，仅 Apple Silicon）、`breeze`（Breeze TTS 2，本机离线，仅 Apple Silicon；模型与生成的配音仅限研究与非商业用途，商用需 RESONIA, Inc. 书面授权）；凭据一律走各工具自己的登录命令。`ALIGN_PROVIDER` 选择已知文本强制对齐工具，缺省 `auto`：Apple Silicon 上用 mlx-audio 的 Qwen3-ForcedAligner，其余平台用 FunASR。没有自带字级时间戳的 TTS 路径，字幕时间轴由它生成。
 
 优先级为环境变量、项目 `.env`、配置文件、内置默认。项目 `.env` 不允许保存 API Key、Token、Secret 或 Password。
 

@@ -162,6 +162,7 @@ const voiceNames: Record<string, string> = {
   elevenlabs: 'ElevenLabs',
   tencent: '腾讯云',
   mlx: '本机合成',
+  breeze: 'Breeze TTS 2（本机，非商用）',
 };
 
 /** 要一起就位的几个组；没有对应项（例如这台机器不配音）就不显示。 */

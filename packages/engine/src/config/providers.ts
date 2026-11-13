@@ -21,7 +21,32 @@ export interface TTSProvider {
   command: string;
   /** am setup 怎么装它（版本钉死）。客户端用户不必自己 npm / pipx / brew。 */
   install: ToolSpec;
+  /** 工具第一次运行会去下的模型：am setup 预先下好，提示词经 am config get TTS_MODEL 拿本地路径。 */
+  model?: ModelSpec;
 }
+
+/**
+ * Breeze TTS 2 的 MLX 8bit 转换（约 4.6 GB；bf16 版 7.6 GB，4bit 版音质未经验证）。
+ * mlx-audio 0.6.1 起支持（models/breeze_tts）。只列加载要用的文件，外加 LICENSE / NOTICE
+ * 随模型留在本机；魔搭特有的 configuration.json 与 README 不列。摘要取自魔搭的文件列表，2026-11。
+ */
+export const BreezeTTS2: ModelSpec = {
+  repo: 'mlx-community/Breeze-TTS-2-mlx-8bit',
+  files: [
+    { path: 'LICENSE', sha256: '2a143ae167cb0253d95bafa694e415570dcce336d712230d205c538523bbd855', size: 18856 },
+    { path: 'NOTICE', sha256: '70bc248b98e5bb527f160c86be56d60ef8c63776c43051273643db036ebee40d', size: 146 },
+    { path: 'audio_tokenizer/config.json', sha256: 'ee65bb901c876664ab8707c487157aa1a6ee57c65969b28fb5ec9dc211e68167', size: 2336 },
+    { path: 'audio_tokenizer/model.safetensors', sha256: '836b7b357f5ea43e889936a3709af68dfe3751881acefe4ecf0dbd30ba571258', size: 682293092 },
+    { path: 'audio_tokenizer/preprocessor_config.json', sha256: 'fcb3805e597e786d4067706e602f6688524640f8d3396790e2e09b5942fcbdfb', size: 234 },
+    { path: 'config.json', sha256: '91cf471c3a9bd00e61046a5e08dce22967f161e75488d21b128026154111be65', size: 12379 },
+    { path: 'generation_config.json', sha256: '2ef3f2c0ab8d9ad241059138a795433c5410fd9954efb9625674ecd2a9529434', size: 251 },
+    { path: 'model.safetensors', sha256: 'd7a82315bcc59c3057f13bb85100743c7cd40692e38145fb255d6c1f0bf447bc', size: 3885721536 },
+    { path: 'model.safetensors.index.json', sha256: '113da60084ed077d67dd99706e5619f4c40056d777225923302cb957b3677026', size: 98863 },
+    { path: 'special_tokens_map.json', sha256: '194f265bb588d142a16f27d9576104eb3dab3d7ba9961541d2d6e3d5e77e6470', size: 886 },
+    { path: 'tokenizer.json', sha256: 'd3ec9ac3eb2392389b9f5112e85d8b43316494addb587ba7b7a9d61eac23af96', size: 33386945 },
+    { path: 'tokenizer_config.json', sha256: '2c084fd6725c2284e8aa6da095a8d036d48fe79665595bfcd50371821b620e44', size: 1157960 },
+  ],
+};
 
 /**
  * TTS_PROVIDER 的全部合法取值，顺序即帮助文字里的顺序。
@@ -32,6 +57,10 @@ export interface TTSProvider {
  *   - IndexTTS2 的许可对商用与模型输出有限制，且只能从源码安装。
  *
  * 这三家暂不收录。
+ *
+ * breeze（Breeze TTS 2）与 mlx 是同一个 mlx-audio 命令，换了模型：它的权重与生成的音频受
+ * BreezeBlue Research and Non-Commercial License 约束，商用要 RESONIA, Inc. 书面授权
+ * （推理代码的 Apache 2.0 不覆盖模型与产出）。名字里写明非商用；缺省值仍是 minimax。
  */
 export const TTSProviders: readonly TTSProvider[] = [
   { id: 'minimax', name: 'MiniMax（mmx CLI）', timestamps: 'sentence', command: 'mmx', install: { kind: 'npm', package: 'mmx-cli', version: '1.0.28', bins: ['mmx'] } },
@@ -57,6 +86,14 @@ export const TTSProviders: readonly TTSProvider[] = [
     timestamps: 'none',
     command: 'mlx_audio.tts.generate',
     install: mlxAudio(['mlx_audio.tts.generate']),
+  },
+  {
+    id: 'breeze',
+    name: 'Breeze TTS 2（mlx-audio，仅 Apple Silicon，仅限非商用）',
+    timestamps: 'none',
+    command: 'mlx_audio.tts.generate',
+    install: mlxAudio(['mlx_audio.tts.generate']),
+    model: BreezeTTS2,
   },
 ];
 

@@ -31,6 +31,21 @@ describe('cli', () => {
     expect(code === 0 && out.text.trim() === 'claude', `code=${code} output=${out.text}`).toBe(true);
   });
 
+  it('config get TTS_MODEL prints the Breeze model repo until am setup downloads it, and nothing for cloud voices', async () => {
+    const root = tempDir();
+    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nTTS_PROVIDER=breeze\n');
+    process.chdir(root);
+    // 数据目录指到空的临时目录：开发机上 am setup 真下好的模型不能混进来。
+    setenv('XDG_DATA_HOME', tempDir());
+    const out = new Buffer();
+    expect(await run(['config', 'get', 'TTS_MODEL'], out), out.text).toBe(0);
+    expect(out.text.trim()).toBe('mlx-community/Breeze-TTS-2-mlx-8bit');
+    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nTTS_PROVIDER=minimax\n');
+    const empty = new Buffer();
+    expect(await run(['config', 'get', 'TTS_MODEL'], empty), empty.text).toBe(0);
+    expect(empty.text).toBe('\n');
+  });
+
   it('unknown command uses exit one', async () => {
     expect(await run(['unknown'])).toBe(1);
   });

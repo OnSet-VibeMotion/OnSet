@@ -140,7 +140,7 @@ MEMORY_RECALL_BUDGET=1500
 MEMORY_EXPLORE=0.1
 ```
 
-`TTS_PROVIDER` accepts `minimax`, `bailian`, `edge` (no credentials, good for previews), `elevenlabs`, `tencent`, and `mlx` (local and offline, Apple Silicon only); credentials always go through each tool's own login command. `ALIGN_PROVIDER` picks the known-text forced aligner and defaults to `auto`: mlx-audio's Qwen3-ForcedAligner on Apple Silicon, FunASR elsewhere. For TTS paths without built-in character-level timestamps, it produces the subtitle timeline.
+`TTS_PROVIDER` accepts `minimax`, `bailian`, `edge` (no credentials, good for previews), `elevenlabs`, `tencent`, `mlx` (local and offline, Apple Silicon only), and `breeze` (Breeze TTS 2, local and offline, Apple Silicon only; the model and the speech it generates are for research and non-commercial use only, commercial use needs written authorization from RESONIA, Inc.); credentials always go through each tool's own login command. `ALIGN_PROVIDER` picks the known-text forced aligner and defaults to `auto`: mlx-audio's Qwen3-ForcedAligner on Apple Silicon, FunASR elsewhere. For TTS paths without built-in character-level timestamps, it produces the subtitle timeline.
 
 Priority: environment variables > project `.env` > config file > built-in defaults. The project `.env` must not store API Keys, Tokens, Secrets, or Passwords.
 

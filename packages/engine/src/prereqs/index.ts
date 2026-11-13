@@ -218,7 +218,7 @@ export function items(pick?: Selection): Item[] {
     },
   ];
   const tts = TTSProviders.find((p) => p.id === chosen.tts);
-  if (tts) out.push(toolItem('tts', tts.id, '配音 ' + tts.name, tts.install));
+  if (tts) out.push(toolItem('tts', tts.id, '配音 ' + tts.name, tts.install, tts.model));
   const aligner = Aligners.find((a) => a.id === chosen.align);
   if (aligner) out.push(toolItem('align', aligner.id, '对齐 ' + aligner.name, aligner.install, aligner.model));
   for (const source of filmstyle.sources()) {

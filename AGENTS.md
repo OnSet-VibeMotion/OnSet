@@ -66,7 +66,7 @@ CI（`.github/workflows/ci.yml`）跑类型检查、两包的 Vitest、构建、
 | 没有 git 时技能改从 GitHub 逐个文件下载（`hyperframes/download.ts`），按 git blob 摘要核对；`toolpath.usableGit` 用 `xcode-select -p` 判断 `/usr/bin/git` 是不是占位程序 | 整仓 tarball 144 MB，技能只有几 MB；占位 git 一运行就弹窗要装命令行工具。lemo 风格库与 `am archive` 仍要 git，缺了提示 `xcode-select --install` |
 | ffmpeg 不打进 .app，由 `am setup` 下载 eugeneware/ffmpeg-static 的静态构建（`toolinstall.FFmpegRelease`）；系统里已有就直接就绪 | HyperFrames 与 `concat` 都写死 libx264（GPL），LGPL 构建渲染不了；随应用发布 GPL + x264 要背许可与专利义务 |
 | Python 类工具（edge-tts、tccli、mlx-audio、funasr）与没有合适 Python 时的节拍环境都用 uv，Python 装在 `<数据目录>/am/python`；uv 不读 pip.conf，`toolinstall.pipIndexURL` 把 pip.conf 的 `index-url` 转成 `UV_DEFAULT_INDEX`。节拍环境用 `uv venv --seed`，后面照旧 `python -m pip`（读 pip.conf） | 国内用户的镜像配在 pip.conf 里，不转过去 torch 会从境外直连 |
-| 工具第一次运行才下的模型也是前置资源：对齐工具的 `model`（`providers.ts` 的 `QwenForcedAligner`，文件与 sha256 钉死）由 `toolinstall.ensureModel` 下到 `<数据目录>/am/models/`，先探 Hugging Face 通不通，不通就从魔搭下同名仓库；提示词用 `am config get ALIGN_MODEL` 拿本地目录 | huggingface.co 在国内常常连不上，hf-mirror 现在也 308 跳回 huggingface.co（2026-11 实测），不预先下好就是在对齐时现下载 1.27 GB |
+| 工具第一次运行才下的模型也是前置资源：对齐工具与配音工具的 `model`（`providers.ts` 的 `QwenForcedAligner`、`BreezeTTS2`，文件与 sha256 钉死）由 `toolinstall.ensureModel` 下到 `<数据目录>/am/models/`，先探 Hugging Face 通不通，不通就从魔搭下同名仓库；提示词用 `am config get ALIGN_MODEL` / `TTS_MODEL` 拿本地目录 | huggingface.co 在国内常常连不上，hf-mirror 现在也 308 跳回 huggingface.co（2026-11 实测），不预先下好就是在对齐时现下载 1.27 GB |
 | 测试的 testsupport 把 `AM_BROWSER` 指到假浏览器（`hftest.fakeBrowser`）、`AM_BIN_DIR` 指到空目录 | 开发机上 `~/.local/share/am/bin` 里真实的 ffmpeg、mmx 不能混进测试 |
 
 
