@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { goQuote } from '../gofmt';
-import type { StructType } from './jsondecode';
+import type { StructType } from '../gojson/decode';
 import { frameOf, loadGrid, nearestBeat, totalFrames, type Grid } from './grid';
 import { cutFrames, layout, loadPlan, type Segment } from './plan';
 import { ConfigFile, GridFile, PlanFile, enabled, encodeJSON, hashBytes, hashFile, localPath, wrapError } from './store';

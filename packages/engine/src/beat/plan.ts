@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { goQuote, goTrimSpace } from '../gofmt';
-import { sliceOf, type StructType } from './jsondecode';
+import { sliceOf, type StructType } from '../gojson/decode';
 import { frameOf, totalFrames, type Grid } from './grid';
 import { PlanFile, localPath, readJSON } from './store';
 

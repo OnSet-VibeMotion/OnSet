@@ -6,7 +6,7 @@
 // 不会报错——这类会静默坏掉的机械计算一律收进 am。
 
 /** SchemaVersion 是 plan.json 与 dialogue.json 共用的 schema 标识。 */
-import { sliceOf, unmarshal, type StructType } from '../beat/jsondecode';
+import { sliceOf, unmarshal, type StructType } from '../gojson/decode';
 
 export const SchemaVersion = 'cast-dialogue/v1';
 

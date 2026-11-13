@@ -1,4 +1,4 @@
-// encoding/json 解码进结构体的最小复刻，供 beat 与 align 读手写 / 机器写的 JSON 文件。
+// encoding/json 解码进结构体的最小复刻，供卡点、对齐、镜头时间合同等读手写 / 机器写的 JSON 文件。
 //
 // JSON.parse 不查类型：fps 写成 "30" 也照收。Go 版会报「json: cannot unmarshal string into Go
 // struct field Timeline.fps of type int」，这些文案会被拼进中文报错，所以按 Go 的规则逐字段校验：

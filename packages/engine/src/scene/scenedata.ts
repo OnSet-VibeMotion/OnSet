@@ -6,7 +6,7 @@
 // window.AM_SCENE 交给 composition 直接读，提示词里的表格与它同源。
 import fs from 'node:fs';
 import path from 'node:path';
-import { frameOf } from '../beat/grid';
+import { frameOf } from '../frames';
 import { atomicWrite } from '../fsutil';
 import { marshalIndent, sortedKeys } from '../gojson';
 import { goRound } from '../gofmt';

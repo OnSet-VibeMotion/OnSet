@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isMap, isScalar, isSeq, LineCounter, parseDocument, type Node } from 'yaml';
-import { unmarshal as yamlUnmarshal, YamlTypeError, type Schema as YamlSchema } from '../cast/yamldecode';
+import { unmarshal as yamlUnmarshal, YamlTypeError, type Schema as YamlSchema } from '../goyaml/decode';
 import * as filmstyle from '../filmstyle';
 import { goPathError, goQuote, goRound, goTrimSpace } from '../gofmt';
 import { ValidRenderers } from '../tools';

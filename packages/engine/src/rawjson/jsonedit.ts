@@ -1,5 +1,5 @@
 // JSON 的原位改写，外加 Go 式的 json.Compact / json.Indent。
-import { checkValid } from '../beat/jsondecode';
+import { checkValid } from '../gojson/decode';
 import { marshal } from '../gojson';
 
 /** JSON 对象里的一个键值对，value 保留源文件里的原始文本。 */

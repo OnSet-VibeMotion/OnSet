@@ -11,7 +11,7 @@ import { isMap, isScalar, LineCounter, parseDocument } from 'yaml';
 import { atomicWrite } from '../fsutil';
 import { goClean, goPathError, goQuote, goTrimSpace } from '../gofmt';
 import { marshalIndent } from '../gojson';
-import { decodeFirst, onlySpace, type StructType } from './jsondecode';
+import { decodeFirst, onlySpace, type StructType } from '../gojson/decode';
 
 /** Store 是卡点产物目录，相对项目根。 */
 export const Store = 'production/beat';

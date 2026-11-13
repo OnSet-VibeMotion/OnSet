@@ -2,7 +2,7 @@
 import path from 'node:path';
 import * as beat from '../../beat';
 import { registerBlock, verifyBlock, type SceneBlock } from '../block';
-import { fromBeat } from '../jsondecode';
+import { fromGoStruct } from '../jsondecode';
 import { sceneCanvas, type Canvas, type Scene } from '../scene';
 import { VerificationError } from '../verification';
 
@@ -45,7 +45,7 @@ function verifyBeat(s: Scene): void {
 const beatBlock: SceneBlock<beat.Cue> = {
   key: 'beat',
   order: 30,
-  type: fromBeat(beat.cueType),
+  type: fromGoStruct(beat.cueType),
   toJSON: beat.cueToJSON,
   excludes: { keys: ['song', 'cast'], message: '卡点镜头不能同时带 song 或 cast 块' },
   verifyInputs: verifyBeat,

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { atomicWrite } from '../fsutil';
 import { goQuote } from '../gofmt';
 import type { Media } from '../mediaprobe';
-import type { StructType } from './jsondecode';
+import type { StructType } from '../gojson/decode';
 import { Store, TrackFile, hashBytes, hashFile, isLocal, isNotExist, loadConfig, localPath, pathError, readJSON, statPath, wrapError, writeJSON } from './store';
 
 /** Track 是导入项目的那首音乐。网格、镜头 cue 都绑定它的摘要。 */

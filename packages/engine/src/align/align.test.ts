@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { frameOf, totalFrames } from '../beat';
+import { frameOf, totalFrames } from '../frames';
 import { build, type Options, type Result } from './build';
 import { formatSRT } from './cue';
 import { loadEvidence, loadSegments, parseSegmentFlag, type Item } from './evidence';

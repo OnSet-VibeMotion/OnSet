@@ -1,4 +1,4 @@
-// 按 gopkg.in/yaml.v3 的 Unmarshal 规则把 YAML 解码进「Go 结构体形状」的对象。只供本包内部使用。
+// 按 gopkg.in/yaml.v3 的 Unmarshal 规则把 YAML 解码进「Go 结构体形状」的对象。角色包（cast）与 scene.json 的 YAML 都经它。
 //
 // 为什么不直接用 yaml 包的 toJS：yaml.v3 解码进 Go 结构体时有自己的一套规矩——未知键忽略、
 // 任何标量都能进 string（取原文）、浮点能进 int、类型不符时收集全部错误并写成

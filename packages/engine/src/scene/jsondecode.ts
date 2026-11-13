@@ -1,13 +1,13 @@
 // encoding/json 解码进 scene 包结构体的最小复刻。
 //
-// 与 beat/jsondecode 同一套规则（键名先精确、再不区分大小写匹配；null 保留零值；int 只收十进制整数原文；
+// 与 gojson/decode 同一套规则（键名先精确、再不区分大小写匹配；null 保留零值；int 只收十进制整数原文；
 // 报文档顺序里的第一个错误），语法检查与 Decoder 的「只读第一个值」也直接借用那边的实现。
-// 这里多出两种 beat 用不到的类型：
+// 这里多出两种 gojson/decode 没有的类型：
 //   - ptr：Go 的指针字段（*Cast、*Timing、*int……）。缺省与 null 都是 nil（TS 的 null），
 //     出现即分配——Scene.Cast 为 nil 与「cast 块存在」是两种行为，不能用零值结构体代替。
 //   - map：map[string]string（渲染记录的 parts）。
 import { goQuote } from '../gofmt';
-import { checkValid, decodeFirst as beatDecodeFirst, type FieldType as BeatFieldType } from '../beat/jsondecode';
+import { checkValid, decodeFirst as goDecodeFirst, type FieldType as GoFieldType } from '../gojson/decode';
 
 export type FieldType =
   | 'int'
@@ -33,8 +33,8 @@ export const sliceOf = (elem: FieldType): FieldType => ({ kind: 'slice', elem })
 export const ptrTo = (elem: FieldType): FieldType => ({ kind: 'ptr', elem });
 export const mapOf = (elem: FieldType): FieldType => ({ kind: 'map', elem });
 
-/** 把 beat 包的结构体描述（没有指针与 map）当作本包的描述用。 */
-export function fromBeat(t: BeatFieldType): FieldType {
+/** 把 gojson/decode 的结构体描述（没有指针与 map）当作本包的描述用。 */
+export function fromGoStruct(t: GoFieldType): FieldType {
   return t as FieldType;
 }
 
@@ -202,10 +202,10 @@ export function unmarshal<T>(body: string | Uint8Array, t: StructType): T {
 
 /** json.NewDecoder(r).Decode：只读第一个值，之后的内容不看。 */
 export function decodeFirst<T>(body: string | Uint8Array, t: StructType, disallowUnknown: boolean): T {
-  // 借 beat 的 Decoder 做语法检查并找出第一个值的结尾。给它一个没有字段的同名结构体：
+  // 借 gojson/decode 的 Decoder 做语法检查并找出第一个值的结尾。给它一个没有字段的同名结构体：
   // 不会产生字段级的类型错误，顶层不是对象时报的「Go value of type <goName>」与这里一致。
   const data = typeof body === 'string' ? Buffer.from(body, 'utf8') : body;
-  const { rest } = beatDecodeFirst<unknown>(data, { kind: 'struct', goName: t.goName, name: t.name, fields: [] }, false);
+  const { rest } = goDecodeFirst<unknown>(data, { kind: 'struct', goName: t.goName, name: t.name, fields: [] }, false);
   const first = Buffer.from(data.subarray(0, data.length - rest.length)).toString('utf8');
   return decodeText<T>(first, t, disallowUnknown);
 }

@@ -10,7 +10,7 @@ import path from 'node:path';
 import { compareBytes, marshalIndent, sortedKeys } from '../gojson';
 import { formatG, goQuote, pathError } from './gofmt';
 import { validateRig } from './rig';
-import { float, int, ptrFloat, str, unmarshal, type Schema } from './yamldecode';
+import { float, int, ptrFloat, str, unmarshal, type Schema } from '../goyaml/decode';
 
 /** 角色包与项目班底共用的 schema 标识。 */
 export const SchemaVersion = 'cast/v1';

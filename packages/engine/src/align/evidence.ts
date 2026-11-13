@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { compareBytes } from '../gojson';
 import { formatG, goPathError, goQuote } from '../gofmt';
-import { checkValid } from '../beat/jsondecode';
+import { checkValid } from '../gojson/decode';
 
 /**
  * Item 是对齐工具输出的一条带时间的文本（通常是一个字或一个词），时间单位为秒，

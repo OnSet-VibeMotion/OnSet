@@ -4,11 +4,11 @@
 //
 // 过去镜头时长由制作者手算（先定帧数，再写 duration_seconds = 帧数 ÷ 帧率），
 // 渲染器还要自己从完整字幕里减去镜头起点。两处手算各有一个取整口径，错开一帧
-// 只有拼完成片对轴时才看得出来。现在切点只由锚点和 beat.frameOf 一个公式决定，
+// 只有拼完成片对轴时才看得出来。现在切点只由锚点和 frames.frameOf 一个公式决定，
 // 局部帧号由 am 算好交给渲染器。
 import fs from 'node:fs';
-import { frameOf } from '../beat/grid';
-import { unmarshal as beatUnmarshal, type StructType as BeatStructType } from '../beat/jsondecode';
+import { frameOf } from '../frames';
+import { unmarshal as goUnmarshal, type StructType as GoStructType } from '../gojson/decode';
 import { formatFixed, formatG, goQuote, goRound, goTrimSpace } from '../gofmt';
 import type * as srt from '../srt';
 import { blockValue, timelineBlocks } from './block';
@@ -310,7 +310,7 @@ export interface PhraseTimeline {
   phrases: PhraseEntry[] | null;
 }
 
-const phraseTimelineType: BeatStructType = {
+const phraseTimelineType: GoStructType = {
   kind: 'struct',
   goName: 'scene.PhraseTimeline',
   name: 'PhraseTimeline',
@@ -343,7 +343,7 @@ const phraseTimelineType: BeatStructType = {
 export function parsePhraseTimeline(body: string | Uint8Array, wantFPS: number): PhraseTimeline {
   let t: PhraseTimeline;
   try {
-    t = beatUnmarshal<PhraseTimeline>(body, phraseTimelineType);
+    t = goUnmarshal<PhraseTimeline>(body, phraseTimelineType);
   } catch (err) {
     throw new Error(`短语时间轴不是合法 JSON 或字段类型不符：${(err as Error).message}`, { cause: err });
   }
@@ -790,7 +790,7 @@ interface AnchorUnit {
   order: number;
 }
 
-/** 把字幕换成帧区间。秒到帧只经 beat.frameOf 一个公式。 */
+/** 把字幕换成帧区间。秒到帧只经 frames.frameOf 一个公式。 */
 function unitsFromCues(cues: readonly srt.Cue[], fps: number): AnchorUnit[] {
   return cues.map((c, i) => ({ start: frameOf(c.start_seconds, fps), end: frameOf(c.end_seconds, fps), order: i }));
 }

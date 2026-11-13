@@ -1,6 +1,6 @@
 import fs from 'node:fs';
-import { formatFixed, goRound } from '../gofmt';
-import { sliceOf, type StructType } from './jsondecode';
+import { formatFixed } from '../gofmt';
+import { sliceOf, type StructType } from '../gojson/decode';
 import { GridFile, DraftFile, localPath, loadConfig, readJSON, writeJSON } from './store';
 import { loadTrack, type Track } from './track';
 
@@ -241,16 +241,7 @@ export function loadGrid(root: string): Grid {
   return g;
 }
 
-/** FrameOf 是全片唯一的「秒 → 帧」换算。切点、拍点帧号都走它。 */
-export function frameOf(seconds: number, fps: number): number {
-  // + 0 把 -0 变成 0：Go 的 int 没有负零，写进 JSON 时不能出现 -0。
-  return goRound(seconds * fps) + 0;
-}
-
-/** TotalFrames 是覆盖整首音乐所需的帧数：最后不足一帧也要占一帧，与成片封装一致。 */
-export function totalFrames(duration: number, fps: number): number {
-  return Math.ceil(duration * fps - 1e-9) + 0;
-}
+export { frameOf, totalFrames } from '../frames';
 
 export function finite(f: number): boolean {
   return Number.isFinite(f);
