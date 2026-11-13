@@ -446,13 +446,14 @@ export function turnAPI(s: Server, request: Request, rest: string): Response {
 
 /**
  * studioCommands 是可以从网页直接触发的确定性步骤。它们不经过编排工具，
- * 参数也只有镜头 id，不接受任意命令行。
+ * 参数只有镜头 id（beat.regrid 另收两个整数：拍号与起始拍），不接受任意命令行。
  */
 export const studioCommands: Readonly<Record<string, string>> = {
   'scene.validate': '校验镜头',
   'project.concat': '拼接无声母版',
   'publish.check': '检查发布信息',
   'beat.confirm': '确认卡点网格',
+  'beat.regrid': '重排重拍',
 };
 
 export async function commandAPI(s: Server, request: Request, rest: string): Promise<Response> {
@@ -463,8 +464,10 @@ export async function commandAPI(s: Server, request: Request, rest: string): Pro
   if (!Object.hasOwn(studioCommands, name)) return writeError(404, 'unknown_command', '不支持的命令：' + name);
   let label = studioCommands[name];
   let sceneID: string;
+  let body: Record<string, unknown>;
   try {
-    sceneID = fieldString(await decodeJSON(request), 'scene_id');
+    body = await decodeJSON(request);
+    sceneID = fieldString(body, 'scene_id');
   } catch (err) {
     if (err instanceof DecodeError) return writeError(400, 'invalid_json', '请求不是合法 JSON');
     throw err;
@@ -488,6 +491,16 @@ export async function commandAPI(s: Server, request: Request, rest: string): Pro
     case 'beat.confirm':
       args = ['beat', 'confirm', '--project-root', p.path];
       break;
+    case 'beat.regrid': {
+      const meter = body.meter;
+      const anchor = body.anchor;
+      if (!Number.isInteger(meter) || !Number.isInteger(anchor) || (meter as number) < 1 || (meter as number) > 16 || (anchor as number) < 0 || (anchor as number) >= (meter as number)) {
+        return writeError(400, 'invalid_regrid', '拍号要在 1..16 之间，起始拍要在 0..拍号-1 之间');
+      }
+      args = ['beat', 'regrid', '--meter', String(meter), '--anchor', String(anchor), '--project-root', p.path];
+      label += `（${meter} 拍，从第 ${(anchor as number) + 1} 拍起）`;
+      break;
+    }
   }
   const cliArgs = args!;
   try {

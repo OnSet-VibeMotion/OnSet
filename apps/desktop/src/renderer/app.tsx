@@ -5,7 +5,7 @@ import { Home, type ProjectSummary } from './components/Home';
 import { SkillsPill, type SkillsStatus } from './components/SkillsPill';
 import { SetupGuide, useSetup } from './components/SetupGuide';
 import { Icon } from './components/Icon';
-import { Preview, stepTabs, tabs, type Tab } from './components/Preview';
+import { Preview, stepTabsFor, tabs, visibleTabs, type Tab } from './components/Preview';
 import { scriptFinalPath } from './components/Script';
 
 const tabLabel = (id: Tab) => tabs.find(([t]) => t === id)?.[1] ?? id;
@@ -83,6 +83,8 @@ export function App() {
   const [usage, setUsage] = useState<ProjectUsage | null>(null);
   const [tree, setTree] = useState<TreeFile[]>([]);
   const [beat, setBeat] = useState<BeatState | null>(null);
+  const beatMode = !!beat?.enabled;
+  const steps = useMemo(() => stepTabsFor(beatMode), [beatMode]);
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [busy, setBusy] = useState('');
   const [sessionId, setSessionId] = useState('');
@@ -385,6 +387,16 @@ export function App() {
       setScriptSeen(0);
     }
   }, [seenKey]);
+  // 卡点项目：口播稿页换成节拍页；还没有镜头时（节拍、分镜阶段）打开项目先到节拍页。
+  const autoBeat = useRef('');
+  useEffect(() => {
+    if (!beatMode) return;
+    if (tab === 'script') setTab('beat');
+    else if (tab === 'scene' && scenes.length === 0 && autoBeat.current !== seenKey) {
+      autoBeat.current = seenKey;
+      setTab('beat');
+    }
+  }, [beatMode, tab, scenes.length, seenKey]);
   const autoScript = useRef('');
   useEffect(() => {
     if (!scriptMtime || scenes.length > 0 || tab !== 'scene' || autoScript.current === seenKey) return;
@@ -420,7 +432,7 @@ export function App() {
     return window.am?.onMenu?.((action) => {
       if (action.type === 'new' || action.type === 'home') setHomeOpen(true);
       else if (action.type === 'step') {
-        const id = stepTabs[action.index];
+        const id = steps[action.index];
         if (id && currentId) {
           setHomeOpen(false);
           setTab(id);
@@ -437,7 +449,7 @@ export function App() {
         })();
       }
     });
-  }, [currentId, loadProjects]);
+  }, [currentId, loadProjects, steps]);
 
   return (
     <div className="app">
@@ -455,7 +467,7 @@ export function App() {
         </button>
         {currentId && !homeOpen && (
           <nav className="steps" aria-label="制作步骤">
-            {stepTabs.map((id, index) => (
+            {steps.map((id, index) => (
               <button
                 key={id}
                 data-tab={id}
@@ -478,8 +490,8 @@ export function App() {
         <span className="spacer" />
         {currentId && !homeOpen && (
           <nav className="more-pages" aria-label="更多页面">
-            {tabs
-              .filter(([id]) => !stepTabs.includes(id))
+            {visibleTabs(beatMode)
+              .filter(([id]) => !steps.includes(id))
               .map(([id, label]) => (
                 <button key={id} data-tab={id} className={tab === id ? 'on' : ''} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>
                   {label}

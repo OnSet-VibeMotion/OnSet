@@ -222,12 +222,38 @@ export interface DirectoryEntry {
   is_project: boolean;
 }
 
+export interface BeatGrid {
+  /** draft：还没确认（或与正式网格不同）的草稿；confirmed：正式网格。 */
+  kind: 'draft' | 'confirmed';
+  source: string;
+  duration_seconds: number;
+  beats: number[];
+  downbeats: number[];
+}
+
+export interface BeatPlanSegment {
+  id: string;
+  first_bar: number;
+  bars: number;
+  start_seconds: number;
+  end_seconds: number;
+}
+
 export interface BeatState {
   enabled: boolean;
   draft: boolean;
   click: boolean;
   confirmed: boolean;
   click_path: string;
+  music_path?: string;
+  track?: { source: string; duration_seconds: number };
+  draft_pending?: boolean;
+  fps?: number;
+  grid?: BeatGrid;
+  grid_error?: string;
+  problems?: string[];
+  plan?: BeatPlanSegment[];
+  plan_error?: string;
 }
 
 export interface AgentInfo {

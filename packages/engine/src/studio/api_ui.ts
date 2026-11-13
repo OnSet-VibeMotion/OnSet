@@ -7,6 +7,7 @@ import * as assets from '../assets';
 import * as beat from '../beat';
 import { compareBytes } from '../gojson';
 import * as preset from '../preset';
+import * as scene from '../scene';
 import { goMap, methodNotAllowed, notFound, serveFile, writeJSON } from './http';
 import { containedPath } from './sessions';
 import { fileExists } from './scenes';
@@ -104,19 +105,92 @@ export function rawAPI(s: Server, request: Request): Response {
   return serveFile(request, file, { 'Cache-Control': 'no-cache' });
 }
 
-/** beatAPI 返回卡点模式的确认状态，网页据此决定是否显示试听与确认按钮。 */
+/**
+ * beatAPI 返回卡点模式的全部状态，「节拍」页据此画波形、拍点、小节与分镜计划。
+ *
+ * 展示哪一份网格：有还没确认（或与正式网格不同）的草稿时展示草稿，否则展示正式网格。
+ * 只读，不校验音乐摘要（每次刷新都哈希整首音乐太慢）；网格与音乐不符由 am beat confirm 拦下。
+ */
 export function beatAPI(s: Server): Response {
   const p = s.projectOr404();
   if (p instanceof Response) return p;
   const exists = (rel: string) => fileExists(path.join(p.path, rel));
-  return writeJSON(
-    200,
-    goMap({
-      enabled: exists(beat.ConfigFile),
-      draft: exists(beat.DraftFile),
-      click: exists(beat.ClickFile),
-      confirmed: exists(beat.GridFile),
-      click_path: beat.ClickFile,
-    }),
-  );
+  const out: Record<string, unknown> = {
+    enabled: exists(beat.ConfigFile),
+    draft: exists(beat.DraftFile),
+    click: exists(beat.ClickFile),
+    confirmed: exists(beat.GridFile),
+    click_path: beat.ClickFile,
+  };
+  if (!out.enabled) return writeJSON(200, goMap(out));
+  const track = readBeatTrack(p.path);
+  if (track) {
+    out.music_path = beat.Store + '/' + track.audio;
+    out.track = { source: track.source, duration_seconds: track.duration_seconds };
+  }
+  const read = (rel: string): beat.Grid | null => {
+    if (!exists(rel)) return null;
+    try {
+      return beat.readDraft(path.join(p.path, rel));
+    } catch (err) {
+      out.grid_error = rel + '：' + (err as Error).message;
+      return null;
+    }
+  };
+  const confirmed = read(beat.GridFile);
+  const draft = read(beat.DraftFile);
+  const draftPending = draft !== null && (confirmed === null || !sameDownbeats(draft, confirmed));
+  const shown = draftPending ? draft : confirmed;
+  out.draft_pending = draftPending;
+  let fps = 30;
+  try {
+    fps = scene.canvasOf(p.path, 'frame.md').fps;
+  } catch {
+    // 没有 frame.md 的项目按默认帧率换算，只影响显示。
+  }
+  out.fps = fps;
+  if (shown) {
+    out.grid = {
+      kind: draftPending ? 'draft' : 'confirmed',
+      source: shown.source,
+      duration_seconds: shown.duration_seconds,
+      beats: shown.beats ?? [],
+      downbeats: shown.downbeats ?? [],
+    };
+    out.problems = beat.gridProblems(shown);
+  }
+  if (exists(beat.PlanFile)) {
+    try {
+      if (!confirmed || draftPending) throw new Error('节拍网格确认之后才能按小节换算分镜计划');
+      const segments = beat.layout(confirmed, beat.loadPlan(p.path), fps);
+      out.plan = segments.map((seg) => ({
+        id: seg.id,
+        first_bar: seg.firstBar,
+        bars: seg.bars,
+        start_seconds: seg.startFrame / fps,
+        end_seconds: (seg.startFrame + seg.frames) / fps,
+      }));
+    } catch (err) {
+      out.plan_error = (err as Error).message;
+    }
+  }
+  return writeJSON(200, goMap(out));
+}
+
+/** 只读 track.json 的字段，不像 beat.loadTrack 那样核对整首音乐的摘要。 */
+function readBeatTrack(root: string): { audio: string; source: string; duration_seconds: number } | null {
+  try {
+    const t = JSON.parse(fs.readFileSync(path.join(root, beat.TrackFile), 'utf8')) as Record<string, unknown>;
+    if (typeof t.audio !== 'string' || t.audio === '' || t.audio.includes('/') || t.audio.startsWith('.')) return null;
+    return { audio: t.audio, source: String(t.source ?? ''), duration_seconds: Number(t.duration_seconds) || 0 };
+  } catch {
+    return null;
+  }
+}
+
+function sameDownbeats(a: beat.Grid, b: beat.Grid): boolean {
+  const x = a.downbeats ?? [];
+  const y = b.downbeats ?? [];
+  if (x.length !== y.length || (a.beats ?? []).length !== (b.beats ?? []).length) return false;
+  return x.every((v, i) => Math.abs(v - y[i]) <= 0.002);
 }

@@ -29,6 +29,7 @@ export interface ViewPage {
 
 /** 与界面 Preview.tsx 的标签一一对应。 */
 export const ViewPages: readonly ViewPage[] = [
+  { id: 'beat', label: '节拍', target: '' },
   { id: 'script', label: '口播稿', target: '' },
   { id: 'scene', label: '镜头', target: 'scene' },
   { id: 'compose', label: '合成', target: 'scene?' },

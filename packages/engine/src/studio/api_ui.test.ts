@@ -73,6 +73,40 @@ describe('api_ui', () => {
     expect(body.click).toBe(false);
     writeTree(f.root, { 'beat.yaml': 'x', 'production/beat/grid-click.wav': 'wav', 'production/beat/grid-draft.json': '{}' });
     ({ body } = await studioRequest(f.s, 'GET', '/api/beat'));
-    expect(body).toEqual({ enabled: true, click: true, draft: true, confirmed: false, click_path: 'production/beat/grid-click.wav' });
+    expect(body).toMatchObject({ enabled: true, click: true, draft: true, confirmed: false, click_path: 'production/beat/grid-click.wav', draft_pending: true });
+    expect(body.grid.kind).toBe('draft');
+    expect(body.problems.length).toBeGreaterThan(0);
+  });
+
+  it('beat page gets the grid, bars source and plan in seconds', async () => {
+    const f = newSessionFixture();
+    const grid = (reviewed: boolean, downbeats: number[]) =>
+      JSON.stringify({ schema: 1, audio_sha256: 'x', duration_seconds: 4, source: 'beat-this/1.1.0 final0', reviewed, beats: [0.5, 1, 1.5, 2, 2.5, 3, 3.5], downbeats });
+    writeTree(f.root, {
+      'beat.yaml': 'x',
+      'production/beat/track.json': JSON.stringify({ audio: 'music-abc.mp3', audio_sha256: 'x', duration_seconds: 4, source: 'song.mp3' }),
+      'production/beat/grid.json': grid(true, [0.5, 2.5]),
+      'production/beat/grid-draft.json': grid(false, [0.5, 2.5]),
+      'production/beat/plan.json': JSON.stringify({ schema: 1, scenes: [{ id: 'scene-001', bars: 1 }, { id: 'scene-002', bars: 1 }] }),
+    });
+    let { body } = await studioRequest(f.s, 'GET', '/api/beat');
+    expect(body.music_path).toBe('production/beat/music-abc.mp3');
+    expect(body.track).toEqual({ source: 'song.mp3', duration_seconds: 4 });
+    // 草稿与正式网格相同：展示正式网格，计划换算成秒。
+    expect(body.draft_pending).toBe(false);
+    expect(body.grid.kind).toBe('confirmed');
+    expect(body.problems).toEqual([]);
+    expect(body.plan).toEqual([
+      { id: 'scene-001', first_bar: 1, bars: 1, start_seconds: 0, end_seconds: 2.5 },
+      { id: 'scene-002', first_bar: 2, bars: 1, start_seconds: 2.5, end_seconds: 4 },
+    ]);
+    // 重排过的草稿还没确认：展示草稿，计划不按旧网格换算。
+    writeTree(f.root, { 'production/beat/grid-draft.json': grid(false, [1, 3]) });
+    ({ body } = await studioRequest(f.s, 'GET', '/api/beat'));
+    expect(body.draft_pending).toBe(true);
+    expect(body.grid.kind).toBe('draft');
+    expect(body.grid.downbeats).toEqual([1, 3]);
+    expect(body.plan).toBeUndefined();
+    expect(body.plan_error).toContain('确认');
   });
 });

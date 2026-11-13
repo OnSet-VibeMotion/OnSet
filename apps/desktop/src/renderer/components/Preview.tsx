@@ -9,12 +9,14 @@ import { MemoryTab } from './Memory';
 import { FilmStyleDialog, FilmStylePicker, Poster, styleKey, useFilmStyles } from './FilmStyles';
 import { Markdown } from './chat/Markdown';
 import { ScriptTab } from './Script';
+import { BeatTab } from './Beat';
 import { PublishTab } from './Publish';
 import { FileTree } from './Sidebar';
 
-export type Tab = 'script' | 'scene' | 'compose' | 'final' | 'style' | 'review' | 'publish' | 'memory' | 'file';
+export type Tab = 'beat' | 'script' | 'scene' | 'compose' | 'final' | 'style' | 'review' | 'publish' | 'memory' | 'file';
 
 export const tabs: [Tab, string][] = [
+  ['beat', '节拍'],
   ['script', '口播稿'],
   ['scene', '镜头'],
   ['compose', '合成'],
@@ -28,6 +30,16 @@ export const tabs: [Tab, string][] = [
 
 /** 顶栏中间的四个步骤，按制作顺序编号；其余页面（合成、复查、风格、记忆、文件）在顶栏右侧用小字列出。 */
 export const stepTabs: Tab[] = ['script', 'scene', 'final', 'publish'];
+
+/** 卡点项目没有口播稿：第一步换成节拍。 */
+export function stepTabsFor(beatMode: boolean): Tab[] {
+  return beatMode ? ['beat', ...stepTabs.slice(1)] : stepTabs;
+}
+
+/** 顶栏列出的页面：卡点项目不列口播稿，其他项目不列节拍（编排工具仍可以 am studio show 切过去）。 */
+export function visibleTabs(beatMode: boolean): [Tab, string][] {
+  return tabs.filter(([id]) => (beatMode ? id !== 'script' : id !== 'beat'));
+}
 
 /** 按钮触发的写任务：返回 task_id 的接口。App 负责发请求、提示与刷新任务列表。 */
 export type RunAction = (path: string, payload?: Record<string, unknown>) => void;
@@ -59,8 +71,9 @@ export function Preview(props: Props) {
   const scene = props.scenes.find((s) => s.id === props.sceneId) ?? null;
   return (
     <main className="pane center">
-      {props.beat?.enabled && <BeatBanner beat={props.beat} version={props.version} run={props.run} />}
+      {props.beat?.enabled && props.tab !== 'beat' && <BeatBanner beat={props.beat} onTab={props.onTab} />}
       <div className="preview-body">
+        {props.tab === 'beat' && <BeatTab beat={props.beat} version={props.version} busy={props.busy} run={props.run} onQuick={props.onQuick} onScene={props.onScene} />}
         {props.tab === 'script' && (
           <ScriptTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} onAttach={props.onAttach} />
         )}
@@ -85,16 +98,21 @@ function Empty({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
 }
 
-function BeatBanner({ beat, version, run }: { beat: BeatState; version: number; run: RunAction }) {
-  if (beat.confirmed) return <div className="banner ok">卡点网格已确认。</div>;
-  if (!beat.click) return <div className="banner">卡点模式：还没有试听轨，先在对话里让它跑 am beat analyze。</div>;
+/** 不在节拍页时的一行提示：网格还没确认、或分镜计划算不出来时才出现。 */
+function BeatBanner({ beat, onTab }: { beat: BeatState; onTab?: (tab: Tab) => void }) {
+  let text = '';
+  if (!beat.grid) text = '卡点模式：还没有节拍网格。';
+  else if (beat.grid.kind === 'draft') text = '节拍网格还没确认：试听一遍，重拍对上了再确认。';
+  else if (beat.plan_error) text = '分镜计划和节拍网格对不上：' + beat.plan_error;
+  if (!text) return null;
   return (
     <div className="banner beat" id="beat-banner">
-      <span>试听草稿网格：每拍一声，重拍更高。重拍对不上就在对话里说，确认无误再导入。</span>
-      <audio controls preload="none" src={rawURL(beat.click_path, version)} />
-      <button className="primary" onClick={() => run('/api/commands/beat.confirm')}>
-        确认网格
-      </button>
+      <span>{text}</span>
+      {onTab && (
+        <button className="primary" onClick={() => onTab('beat')}>
+          去节拍页
+        </button>
+      )}
     </div>
   );
 }
