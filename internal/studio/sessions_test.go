@@ -29,6 +29,7 @@ done
 if [ -n "$resume" ] && [ -n "$FAKE_FAIL_RESUME" ]; then echo "No conversation found with session ID: $sid" >&2; exit 1; fi
 printf '{"type":"system","subtype":"init","session_id":"%s","model":"claude-fake"}\n' "$sid"
 if [ -n "$FAKE_SLEEP" ]; then sleep "$FAKE_SLEEP"; fi
+if [ -n "$FAKE_VIEW" ] && [ -n "$AM_STUDIO_INBOX" ]; then mkdir -p "$AM_STUDIO_INBOX"; printf '%s' "$FAKE_VIEW" > "$AM_STUDIO_INBOX/1.json"; fi
 printf '%s\n' "${FAKE_CONTENT:-edited}" > scenes/scene-001/prompt.md
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"scenes/scene-001/prompt.md"}}]}}\n'
 printf '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}\n'
@@ -69,7 +70,8 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 	t.Setenv("FAKE_SLEEP", "")
 	t.Setenv("FAKE_FAIL_RESUME", "")
 	t.Setenv("FAKE_CONTENT", "")
-	t.Setenv("AM_PASSTHROUGH_ENV", "FAKE_ARGS_LOG,FAKE_SLEEP,FAKE_FAIL_RESUME,FAKE_CONTENT")
+	t.Setenv("FAKE_VIEW", "")
+	t.Setenv("AM_PASSTHROUGH_ENV", "FAKE_ARGS_LOG,FAKE_SLEEP,FAKE_FAIL_RESUME,FAKE_CONTENT,FAKE_VIEW")
 	s, ts := startStudio(t, Config{ProjectPath: root, ConfigPath: filepath.Join(t.TempDir(), "projects.json")})
 	// 服务端按 EvalSymlinks 后的路径区分项目（macOS 的 /var → /private/var），测试要用同一个。
 	p, err := s.currentProject()

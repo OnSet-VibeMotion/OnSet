@@ -911,6 +911,17 @@ func maxArgs(count int, name string) cobra.PositionalArgs {
 	}
 }
 
+// rangeArgs 同上，用于位置参数个数在 min 到 max 之间的命令。
+func rangeArgs(min, max int, name string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) >= min && len(args) <= max {
+			return nil
+		}
+		return fmt.Errorf("%s 需要 %d 到 %d 个位置参数 %s，实际收到 %d 个；用法：%s",
+			cmd.CommandPath(), min, max, name, len(args), cmd.UseLine())
+	}
+}
+
 // noArgs 同上，用于不接受位置参数的命令。
 func noArgs(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {

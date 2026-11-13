@@ -73,6 +73,8 @@ type SessionEvent struct {
 	Changes []FileChange `json:"changes,omitempty"`
 	// QueueID 标出 queued / unqueued 事件说的是哪一条排队的消息。
 	QueueID string `json:"queue_id,omitempty"`
+	// View 是编排工具经 am studio show 请网页切到的页面（view 事件）。
+	View *ViewRequest `json:"view,omitempty"`
 }
 
 // Attachment 是随消息附上的画面上下文。
@@ -390,11 +392,12 @@ func chatPreamble(rulesName string) string {
 
 // studioInteraction 告诉编排工具怎样在 Studio 里和用户来回：多步任务先列待办清单
 // （网页据此显示进度），要用户拍板时用 choices 代码块（网页渲染成按钮，见 Chat.tsx 的 parseChoices）。
-const studioInteraction = `你在 Studio 网页里和用户对话，下面两条约定让网页能把你的进度和问题显示好：
+var studioInteraction = `你在 Studio 网页里和用户对话，下面几条约定让网页能把你的进度和问题显示好：
 - 多步骤的工作先用你的待办清单工具列出步骤，做的过程中及时更新状态，用户会在对话顶部看到进度。
 - 需要用户拍板时（选风格、确认分镜、确认一条推测的偏好、几种做法里选一种），先把问题和各选项的差别写清楚，再在回复的最后单独放一个语言标成 choices 的代码块，每行一个选项，例如：
 ` + "```choices\n用方案 A：深色科技风\n用方案 B：白板手绘风\n```" + `
-  用户会看到可点的按钮，点了就把那一行原样发给你。问完就结束这一轮等用户回复，不要替用户选。用户也可能直接打字回答。`
+  用户会看到可点的按钮，点了就把那一行原样发给你。问完就结束这一轮等用户回复，不要替用户选。用户也可能直接打字回答。
+` + viewInteraction()
 
 // transcript 把会话里已有的对话整理成文字，供续接失败时补发。只保留末尾 transcriptLimit 字。
 func transcript(events []SessionEvent) string {
@@ -421,6 +424,8 @@ type turnRequest struct {
 	Message     string
 	Prompt      string // 非空时直接作为发给编排工具的提示词（整片制作的第一轮）
 	Attachments []Attachment
+	// View 是用户发消息时在看的页面。
+	View *ViewState
 }
 
 // startTurn 占用项目写权、打开始快照，然后在后台跑这一轮。返回时编排工具已经启动。
@@ -464,6 +469,9 @@ func (s *Server) prepareTurn(p Project, sess *session, cfg config.Config, req tu
 		return nil, "", fmt.Errorf("扫描项目：%w", err)
 	}
 	message := req.Message + attachmentText(req.Attachments)
+	if where := req.View.Describe(); where != "" {
+		message += "\n\n" + where
+	}
 	prompt := req.Prompt
 	switch {
 	case prompt != "":
@@ -512,6 +520,10 @@ func (s *Server) runTurn(ctx context.Context, p Project, sess *session, cfg conf
 	if err := envutil.AddExecutableLocation(env); err != nil {
 		s.emit(sess, turn.ID, SessionEvent{Event: agentrun.Event{Kind: kindNotice, Text: err.Error()}})
 	}
+	inbox := viewInbox(p.Path, turn.ID)
+	env[ViewInboxEnv], env[ViewProjectEnv] = inbox, p.Path
+	stopViews := s.watchViews(sess, turn.ID, inbox)
+	defer stopViews()
 	lastStat := statTree(p.Path)
 	lastCheck := time.Now()
 	checkFiles := func(force bool) {
@@ -568,7 +580,42 @@ func (s *Server) runTurn(ctx context.Context, p Project, sess *session, cfg conf
 		s.recordUsage(ctx, p, sess, cfg.Orchestrator, env, turn.ID, result, err)
 	}
 	checkFiles(true)
+	stopViews()
 	s.finishTurn(ctx, p, sess, turn, err)
+}
+
+// watchViews 在这一轮进行中轮询收件目录，把 am studio show 的请求译成 view 事件。
+// 返回的函数停止轮询、把剩下的请求处理完并删掉收件目录；可以调用多次。
+func (s *Server) watchViews(sess *session, turnID, inbox string) func() {
+	deliver := func() {
+		for _, req := range drainViewInbox(inbox) {
+			req := req
+			s.emit(sess, turnID, SessionEvent{Event: agentrun.Event{Kind: kindView, Text: req.Note}, View: &req})
+		}
+	}
+	stop, done := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(viewPollInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				deliver()
+			}
+		}
+	}()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			close(stop)
+			<-done
+			deliver()
+			_ = os.RemoveAll(inbox)
+		})
+	}
 }
 
 func reseedPrompt(history, prompt string) string {
@@ -703,6 +750,9 @@ func (s *Server) drainQueue(p Project, sess *session) {
 	for _, req := range queue {
 		messages = append(messages, req.Message)
 		merged.Attachments = append(merged.Attachments, req.Attachments...)
+		if req.View != nil {
+			merged.View = req.View
+		}
 	}
 	merged.Message = strings.Join(messages, "\n\n")
 	if len(queue) > 1 {

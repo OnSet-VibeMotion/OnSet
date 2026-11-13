@@ -1191,3 +1191,34 @@ div.tool {
     transition: none !important;
   }
 }
+
+/* 编排工具请用户看的页面：回复下面一排可点的链接。 */
+.chat .view-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.chat .view-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  height: auto;
+  max-width: 100%;
+  padding: 7px 12px;
+  text-align: left;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  color: var(--accent-text);
+}
+.chat .view-link:hover {
+  border-color: var(--accent);
+}
+.chat .view-link .view-page {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.chat .view-link .view-note {
+  color: var(--text-2);
+}

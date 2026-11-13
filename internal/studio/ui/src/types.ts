@@ -107,6 +107,7 @@ export interface FileChange {
 }
 
 export type EventKind =
+  | 'view'
   | 'session'
   | 'text'
   | 'thinking'
@@ -148,6 +149,8 @@ export interface SessionEvent {
   changes?: FileChange[];
   plan?: PlanItem[];
   queue_id?: string;
+  /** view 事件：编排工具请网页切到的页面。 */
+  view?: ViewRequest;
 }
 
 export interface Turn {
@@ -475,4 +478,18 @@ export interface ScriptResponse {
   estimate_seconds?: number;
   voice?: { path: string; seconds: number };
   change_log?: { path: string; content: string };
+}
+
+/** 编排工具经 am studio show 请网页切到的页面。 */
+export interface ViewRequest {
+  page: string;
+  target?: string;
+  note?: string;
+}
+
+/** 用户此刻在看的页面，随消息发给编排工具。 */
+export interface ViewState {
+  page: string;
+  scene?: string;
+  file?: string;
 }

@@ -5,7 +5,7 @@ import { Home, type ProjectSummary } from './components/Home';
 import { SkillsPill, type SkillsStatus } from './components/SkillsPill';
 import { SetupGuide, useSetup } from './components/SetupGuide';
 import { Icon } from './components/Icon';
-import { Preview, type Tab } from './components/Preview';
+import { Preview, tabs, type Tab } from './components/Preview';
 import { scriptFinalPath } from './components/Script';
 import { ProjectDialog } from './components/ProjectDialog';
 import { Sidebar } from './components/Sidebar';
@@ -22,6 +22,7 @@ import type {
   SessionMeta,
   Task,
   TreeFile,
+  ViewRequest,
 } from './types';
 
 const SESSION_KEY = 'am-studio-session:';
@@ -303,6 +304,22 @@ export function App() {
 
   const project = projects.find((p) => p.id === currentId);
 
+  // 编排工具经 am studio show 请用户看某一页：切过去，镜头与文件页带上对象。
+  const openView = (view: ViewRequest) => {
+    const page = tabs.find(([id]) => id === view.page)?.[0];
+    if (!page) return;
+    if (page === 'file') {
+      if (!view.target) return;
+      if (view.target === scriptFinalPath) {
+        setTab('script');
+        return;
+      }
+      setFilePath(view.target);
+    }
+    if ((page === 'scene' || page === 'compose') && view.target) setSceneId(view.target);
+    setTab(page);
+  };
+
   // 口播稿：有了终稿却还没有镜头时（稿件审核阶段）自动切到口播稿页；稿子改过而没看过时标签打点。
   const scriptMtime = tree.find((f) => f.path === scriptFinalPath)?.mtime ?? 0;
   const seenKey = `am-studio.script-seen:${project?.path ?? ''}`;
@@ -479,6 +496,8 @@ export function App() {
             onAddAttachments={(list) => setAttachments((current) => [...current, ...list])}
             scenes={scenes}
             outbox={outbox}
+            view={{ page: tab, scene: sceneId || undefined, file: tab === 'file' ? filePath : undefined }}
+            onView={openView}
           />
         </div>
       )}

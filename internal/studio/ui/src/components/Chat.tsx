@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { api, ApiError, errorText, post, rawURL } from '../api';
-import type { AgentChoice, AgentsResponse, Attachment, EventKind, PlanItem, Scene, SessionEvent, SessionMeta } from '../types';
+import type { AgentChoice, AgentsResponse, Attachment, EventKind, PlanItem, Scene, SessionEvent, SessionMeta, ViewRequest, ViewState } from '../types';
+import { tabs } from './Preview';
 import { AgentPicker } from './AgentPicker';
 import { DiffDialog } from './DiffDialog';
 import { Icon } from './Icon';
@@ -23,6 +24,7 @@ import '../chat.css';
 
 // SSE 的 event 字段就是事件种类，EventSource 只把具名事件派给对应监听器，所以要逐个注册。
 const kinds: EventKind[] = [
+  'view',
   'session',
   'text',
   'thinking',
@@ -70,13 +72,17 @@ interface Props {
   onAddAttachments: (attachments: Attachment[]) => void;
   scenes: Scene[];
   outbox: Outbox | null;
+  /** 用户此刻在看的页面，随消息发出。 */
+  view: ViewState;
+  /** 打开编排工具请用户看的页面。 */
+  onView: (view: ViewRequest) => void;
 }
 
 /** 视为「在底部」的容差：比这近就继续跟随新消息。 */
 const BOTTOM_TOLERANCE = 8;
 
 export function Chat(props: Props) {
-  const events = useSessionEvents(props.sessionId, props.onFilesChanged, props.onTurnEnd);
+  const events = useSessionEvents(props.sessionId, props.onFilesChanged, props.onTurnEnd, props.onView);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
@@ -142,7 +148,7 @@ export function Chat(props: Props) {
         id = created.session_id;
         props.onSession(id);
       }
-      await post(`/api/sessions/${id}/turns`, { message, attachments, interrupt });
+      await post(`/api/sessions/${id}/turns`, { message, attachments, interrupt, view: props.view });
       following.current = true;
       props.onSessionsChanged();
       return true;
@@ -306,6 +312,7 @@ export function Chat(props: Props) {
               onChoice={(text) => void deliver(text, [])}
               onRetry={(text) => void deliver(text, [])}
               onOpenFile={props.onOpenFile}
+              onView={props.onView}
               onReverted={props.onTurnEnd}
               onToggle={() => (following.current = false)}
             />
@@ -451,11 +458,19 @@ function useNow(active: boolean): number {
   return now;
 }
 
+/** 切页请求在多久之内算刚发生（毫秒）。 */
+const viewFreshMs = 15000;
+
 /** 订阅一个会话的事件流。EventSource 断线后自带 Last-Event-ID 重连，后端按 seq 补发，这里再按 seq 去重。 */
-function useSessionEvents(sessionId: string, onFilesChanged: (files: string[]) => void, onTurnEnd: () => void) {
+function useSessionEvents(
+  sessionId: string,
+  onFilesChanged: (files: string[]) => void,
+  onTurnEnd: () => void,
+  onView: (view: ViewRequest) => void,
+) {
   const [events, setEvents] = useState<SessionEvent[]>([]);
-  const callbacks = useRef({ onFilesChanged, onTurnEnd });
-  callbacks.current = { onFilesChanged, onTurnEnd };
+  const callbacks = useRef({ onFilesChanged, onTurnEnd, onView });
+  callbacks.current = { onFilesChanged, onTurnEnd, onView };
 
   useEffect(() => {
     setEvents([]);
@@ -479,6 +494,8 @@ function useSessionEvents(sessionId: string, onFilesChanged: (files: string[]) =
       if (!frame) frame = requestAnimationFrame(flush);
       if (event.kind === 'files-changed' && event.files) callbacks.current.onFilesChanged(event.files);
       if (event.kind === 'turn-end') callbacks.current.onTurnEnd();
+      // 只执行刚发生的切页请求：打开会话时重放的历史不该把页面切来切去。
+      if (event.kind === 'view' && event.view && Date.now() - Date.parse(event.time) < viewFreshMs) callbacks.current.onView(event.view);
     };
     for (const kind of kinds) source.addEventListener(kind, handle as EventListener);
     return () => {
@@ -499,6 +516,7 @@ interface BlockProps {
   onChoice: (text: string) => void;
   onRetry: (text: string) => void;
   onOpenFile: (path: string) => void;
+  onView: (view: ViewRequest) => void;
   onReverted: () => void;
   onToggle: () => void;
 }
@@ -561,6 +579,12 @@ const stateLabels: Record<TurnBlock['state'], string> = {
   interrupted: '被中断',
 };
 
+/** 切页请求的说法：「口播稿」「镜头 scene-003」「文件 production/treatment.md」。 */
+function viewLabel(view: ViewRequest): string {
+  const label = tabs.find(([id]) => id === view.page)?.[1] ?? view.page;
+  return view.target ? `${label} ${view.target}` : label;
+}
+
 function TurnView(props: BlockProps & { turn: TurnBlock }) {
   const { turn } = props;
   const live = turn.state === 'running' || turn.state === 'thinking';
@@ -575,6 +599,17 @@ function TurnView(props: BlockProps & { turn: TurnBlock }) {
       {proseText.trim() && (
         <div class="message assistant">
           <Markdown text={stripChoices(proseText)} />
+        </div>
+      )}
+      {turn.views.length > 0 && (
+        <div class="view-links" aria-label="请你看的页面">
+          {turn.views.map((view, index) => (
+            <button key={index} class="view-link" onClick={() => props.onView(view)} title="打开这一页">
+              <span class="view-arrow" aria-hidden="true">↗</span>
+              <span class="view-page">{viewLabel(view)}</span>
+              {view.note && <span class="view-note">{view.note}</span>}
+            </button>
+          ))}
         </div>
       )}
       {choices.length > 0 && (

@@ -155,12 +155,14 @@ func (s *Server) sessionAPI(w http.ResponseWriter, r *http.Request) {
 			Attachments []Attachment `json:"attachments"`
 			// Interrupt 为 true 时停掉进行中的一轮，马上发这条；否则排到这一轮之后。
 			Interrupt bool `json:"interrupt"`
+			// View 是用户发消息时在看的页面，写进提示词，不显示在对话里。
+			View *ViewState `json:"view"`
 		}
 		if err := decodeJSON(r, &req); err != nil || strings.TrimSpace(req.Message) == "" {
 			s.error(w, http.StatusBadRequest, "invalid_request", "消息不能为空")
 			return
 		}
-		next := turnRequest{Message: strings.TrimSpace(req.Message), Attachments: req.Attachments}
+		next := turnRequest{Message: strings.TrimSpace(req.Message), Attachments: req.Attachments, View: req.View}
 		queued, err := s.enqueueTurn(p, sess, next)
 		if err != nil {
 			s.writeStartError(w, err)

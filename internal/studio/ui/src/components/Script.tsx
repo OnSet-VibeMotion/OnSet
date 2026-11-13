@@ -29,6 +29,11 @@ function duration(seconds: number): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
+/** 稿子里有没有读法或短语标记：没有就不显示图例。 */
+function hasMarks(nodes: ScriptNode[]): boolean {
+  return nodes.some((node) => node.kind !== 'text' || hasMarks(node.children ?? []));
+}
+
 function Nodes({ nodes }: { nodes: ScriptNode[] }) {
   return (
     <>
@@ -203,7 +208,7 @@ export function ScriptTab({ version, busy, onQuick, onFile }: Props) {
         </div>
       )}
 
-      {script.final && script.blocks && marks && (
+      {script.final && script.blocks && marks && script.blocks.some((block) => hasMarks(block.nodes ?? [])) && (
         <p class="script-legend small muted">
           <ruby class="alt">
             2025年<rt>二零二五年</rt>

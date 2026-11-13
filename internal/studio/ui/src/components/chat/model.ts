@@ -1,4 +1,4 @@
-import type { PlanItem, SessionEvent, Usage } from '../../types';
+import type { PlanItem, SessionEvent, Usage, ViewRequest } from '../../types';
 
 /** 一轮里「过程」的一项：思考、工具调用、中间的话、报错与提示。 */
 export type ProcessItem =
@@ -24,6 +24,8 @@ export interface TurnBlock {
   plan: PlanItem[] | null;
   usage?: Usage;
   reverted: boolean;
+  /** 这一轮里编排工具请用户看的页面，显示在回复下面。 */
+  views: ViewRequest[];
 }
 
 export type Block = { kind: 'user'; event: SessionEvent } | TurnBlock | { kind: 'note'; event: SessionEvent };
@@ -42,7 +44,7 @@ export function buildBlocks(events: SessionEvent[]): Block[] {
   const turnOf = (id: string) => {
     let turn = turns.get(id);
     if (!turn) {
-      const block: TurnBlock = { kind: 'turn', id, state: 'running', process: [], prose: [], plan: null, reverted: reverted.has(id) };
+      const block: TurnBlock = { kind: 'turn', id, state: 'running', process: [], prose: [], plan: null, reverted: reverted.has(id), views: [] };
       turn = { block, raw: [] };
       turns.set(id, turn);
       blocks.push(block);
@@ -70,6 +72,7 @@ export function buildBlocks(events: SessionEvent[]): Block[] {
     if (event.kind === 'turn-start') turn.block.start = event.time;
     else if (event.kind === 'turn-end') turn.block.end = event;
     else if (event.kind === 'usage') turn.block.usage = event.usage;
+    else if (event.kind === 'view' && event.view) turn.block.views.push(event.view);
     else turn.raw.push(event);
   }
   for (const { block, raw } of turns.values()) shapeTurn(block, raw);

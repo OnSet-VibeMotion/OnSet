@@ -10,7 +10,7 @@ import { ScriptTab } from './Script';
 
 export type Tab = 'script' | 'scene' | 'compose' | 'final' | 'style' | 'review' | 'publish' | 'memory' | 'file';
 
-const tabs: [Tab, string][] = [
+export const tabs: [Tab, string][] = [
   ['script', '口播稿'],
   ['scene', '镜头'],
   ['compose', '合成'],
