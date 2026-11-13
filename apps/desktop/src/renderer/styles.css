@@ -387,29 +387,198 @@ svg {
 }
 
 .workspace {
+  position: relative;
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 400px);
+  display: flex;
 }
 .pane {
   min-height: 0;
   overflow: auto;
 }
 .pane.center {
+  flex: 1;
   background: var(--bg);
   display: flex;
   flex-direction: column;
 }
-.pane.right {
-  background: var(--panel);
-  border-left: 1px solid var(--line);
+/* 对话是主栏：占满面板以外的宽度，正文在 .chat 里居中限宽。 */
+.pane.chat-main {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
 }
 
-@media (max-width: 1180px) {
-  .workspace {
-    grid-template-columns: minmax(0, 1fr);
+/* 画面面板：有东西要看时从右侧打开，宽度可拖动（--panel-w 由界面按页面类型给）。 */
+.panel {
+  flex: none;
+  width: var(--panel-w, 50%);
+  max-width: calc(100% - 420px);
+  min-width: 360px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  animation: panel-in 220ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
   }
+}
+.panel-head {
+  flex: none;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 18px;
+  border-bottom: 1px solid var(--line);
+}
+.panel-title {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--serif);
+  font-size: 15px;
+  color: var(--text);
+}
+.panel-sub {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+.panel > .pane.center {
+  background: var(--panel);
+}
+.panel-resize {
+  flex: none;
+  width: 9px;
+  margin: 0 -4px;
+  position: relative;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+}
+.panel-resize::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+}
+.panel-resize::after {
+  content: '';
+  position: absolute;
+  left: 2.5px;
+  top: 50%;
+  width: 4px;
+  height: 36px;
+  margin-top: -18px;
+  border-radius: 2px;
+  background: var(--line-strong);
+  transition: background 120ms ease;
+}
+.panel-resize:hover::after,
+body.resizing .panel-resize::after {
+  background: var(--accent);
+}
+body.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+body.resizing iframe,
+body.resizing video {
+  pointer-events: none;
+}
+.panel-scrim {
+  display: none;
+}
+
+/* 面板收起时的细栏：每个镜头一个小方块。 */
+.panel-rail {
+  flex: none;
+  width: 56px;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  min-height: 0;
+}
+.rail-scenes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 2px;
+  min-height: 0;
+}
+.rail-scene {
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  flex: none;
+  border-radius: 3px;
+  border: 1px solid var(--line-strong);
+  background: var(--raised);
+}
+.rail-scene.ok {
+  background: color-mix(in srgb, var(--ok) 22%, var(--raised));
+}
+.rail-scene.stale {
+  background: color-mix(in srgb, var(--stale) 22%, var(--raised));
+}
+.rail-scene.rendering {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+.rail-scene.todo {
+  border-style: dashed;
+  background: transparent;
+}
+.rail-scene.on {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1px;
+}
+.rail-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* 顶栏的「画面」开关。 */
+button.panel-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+}
+button.panel-toggle:hover {
+  background: var(--chip);
+  color: var(--text);
+}
+button.panel-toggle.on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+/* 窄窗口：面板变成盖在对话上的抽屉，对话不让位、输入框一直在。 */
+@media (max-width: 1180px) {
   .topbar {
     height: auto;
     min-height: 60px;
@@ -420,21 +589,40 @@ svg {
   .steps {
     margin-left: 0;
   }
-  .pane.right {
-    grid-column: 1 / -1;
-    height: 70vh;
-    border-left: 0;
-    border-top: 1px solid var(--line);
-  }
-  .app {
-    height: auto;
-    min-height: 100vh;
-  }
   .chip {
     display: none;
   }
+  .panel-rail,
+  .panel-resize {
+    display: none;
+  }
+  .panel-scrim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    background: rgba(5, 4, 3, 0.55);
+    animation: fade-in 160ms ease;
+  }
+  .panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 6;
+    width: min(680px, calc(100% - 48px));
+    max-width: none;
+    min-width: 0;
+    border-left: 1px solid var(--line-strong);
+    box-shadow: -24px 0 48px rgba(0, 0, 0, 0.45);
+  }
 }
-/* 手机：预览在上、对话在下。 */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+/* 手机宽度：抽屉占满。 */
 @media (max-width: 720px) {
   .topbar {
     padding: 0 12px;
@@ -450,19 +638,12 @@ svg {
     max-width: none;
     flex: 1;
   }
-  .workspace {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .pane.center {
-    order: 1;
-  }
-  .pane.right {
-    order: 2;
-    height: 80vh;
-  }
   .steps {
     gap: 18px;
     overflow-x: auto;
+  }
+  .panel {
+    width: 100%;
   }
   .preview-body {
     padding: 12px;

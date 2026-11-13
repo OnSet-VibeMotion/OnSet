@@ -29,7 +29,7 @@ test('native menu opens a folder, switches steps and goes home', async ({ electr
   }, project.path);
   await clickMenu(electronApp, '文件', '打开项目文件夹…');
   await expect(page.locator('#title')).toHaveText(project.name);
-  await expect(page.locator('.scene', { hasText: 'scene-001' })).toBeVisible();
+  await expect(page.locator('.rail-scene[title="scene-001"]')).toBeVisible();
   // 打开的项目登记进了临时的项目登记，而不是用户真实的那份。
   await expect.poll(() => fs.existsSync(sandbox.registry) && fs.readFileSync(sandbox.registry, 'utf8').includes(project.path)).toBe(true);
 
@@ -124,7 +124,8 @@ test('does not notify when the window is in front', async ({ electronApp, page, 
 test('shows running tasks on the Dock badge and notifies when they finish', async ({ electronApp, page, project }) => {
   await openProject(page, project);
   await recordNativeCalls(electronApp, false);
-  // 镜头页「⋯」里的「校验」：一个经私有 am shim 运行的写任务。
+  // 镜头页「⋯」里的「校验」：一个经私有 am shim 运行的写任务。点步骤打开画面面板。
+  await page.locator('[data-tab="scene"]').click();
   await page.locator('.scene-menu summary').click();
   await page.locator('.scene-menu button', { hasText: '校验' }).first().click();
   await expect.poll(async () => (await nativeCalls(electronApp)).badges.some((n) => n >= 1)).toBe(true);

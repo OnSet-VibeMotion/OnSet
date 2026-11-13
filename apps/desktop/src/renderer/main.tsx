@@ -3,7 +3,7 @@ import { App } from './app';
 import './styles.css';
 
 /** 原生菜单发给界面的动作，与主进程 menu.ts 的 MenuAction 一致。 */
-export type MenuAction = { type: 'new' } | { type: 'home' } | { type: 'open'; path: string } | { type: 'step'; index: number } | { type: 'settings' };
+export type MenuAction = { type: 'new' } | { type: 'home' } | { type: 'open'; path: string } | { type: 'step'; index: number } | { type: 'settings' } | { type: 'panel' };
 
 declare global {
   interface Window {

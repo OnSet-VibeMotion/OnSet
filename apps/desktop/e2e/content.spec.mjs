@@ -84,6 +84,9 @@ test('shows posters for film styles the orchestrator recommends', async ({ page,
   // 点「用这个风格」：把选择作为下一条消息发出。
   await picks.first().locator('button', { hasText: '用这个风格' }).click();
   await expect(page.locator('.message.user').last()).toContainText('整片风格用「油画厚涂」（lemo-opuscar/impasto）');
+  // 选过之后海报与其他选项收起，只留选中的风格名。
+  await expect(page.locator('.choice-picked')).toContainText('油画厚涂');
+  await expect(page.locator('.style-picks')).toHaveCount(0);
 });
 
 test('plays audio files a reply mentions', async ({ page, project }) => {

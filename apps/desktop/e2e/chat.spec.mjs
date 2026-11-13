@@ -87,6 +87,10 @@ test('uploads a file, answers with a choice button, and queues a message mid-tur
   await choice.click();
   await expect(page.locator('.message.user').last()).toContainText('白板手绘风');
   await expect(page.locator('.done-line').last()).toContainText('已完成');
+  // 答过之后只留选中的那个，其余收起；点开还能看，但不能再点。
+  await expect(page.locator('.choice-picked')).toContainText('白板手绘风');
+  await expect(page.locator('.choice')).toHaveCount(0);
+  await page.locator('.answered-toggle').click();
   await expect(page.locator('.choice').first()).toBeDisabled();
 
   // 进行中再发一条：先显示排队中，这一轮结束后自动发出。
@@ -109,7 +113,8 @@ test('uploads a file, answers with a choice button, and queues a message mid-tur
 
 test('sends a scene quick action to the orchestrator', async ({ page, project }) => {
   await openProject(page, project);
-  // 快捷指令收在镜头页的「⋯」菜单里。
+  // 快捷指令收在镜头页的「⋯」菜单里；点步骤打开画面面板。
+  await page.locator('[data-tab="scene"]').click();
   await page.locator('.scene-menu summary').click();
   await page.locator('.quick-actions button', { hasText: '重做这个镜头' }).click();
   await expect(page.locator('.message.user').last()).toContainText('重做镜头 scene-001');

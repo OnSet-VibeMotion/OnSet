@@ -8,6 +8,8 @@ const paths = {
   stop: <rect x="2.5" y="2.5" width="7" height="7" rx="1.2" fill="currentColor" stroke="none" />,
   send: <path d="M6 10V2.5M2.5 6L6 2.5 9.5 6" />,
   close: <path d="M3 3l6 6M9 3L3 9" />,
+  check: <path d="M2.5 6.2l2.3 2.3 4.7-5" />,
+  panel: <path d="M1.5 2.5h9v7h-9zM7 2.5v7" />,
   plus: <path d="M6 2v8M2 6h8" />,
   search: <path d="M5.2 9a3.8 3.8 0 1 0 0-7.6 3.8 3.8 0 0 0 0 7.6zM8 8l2.5 2.5" />,
   history: <path d="M2 6a4 4 0 1 0 1.2-2.85M2 1.8v1.7h1.7M6 3.8V6l1.6 1" />,

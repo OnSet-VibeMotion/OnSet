@@ -1,3 +1,4 @@
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, errorText, forUser, post } from './api';
 import { Chat, type Outbox } from './components/Chat';
@@ -45,6 +46,33 @@ import type {
 } from './types';
 
 const SESSION_KEY = 'am-studio-session:';
+const PANEL_OPEN_KEY = 'am-studio.panel-open';
+const PANEL_WIDTH_KEY = 'am-studio.panel-width:';
+
+/** 看画面的页面面板默认宽一些，读文字的页面窄一些；宽度按这两类分别记住。 */
+type PanelKind = 'media' | 'doc';
+const panelKind = (tab: Tab): PanelKind => (['scene', 'compose', 'final', 'review', 'style', 'beat'].includes(tab) ? 'media' : 'doc');
+const panelDefault: Record<PanelKind, number> = { media: 0.58, doc: 0.45 };
+/** 对话栏最窄 420px，面板最窄 360px：拖动时两边都夹住。 */
+const minChat = 420;
+const minPanel = 360;
+
+function readNumber(key: string, fallback: number): number {
+  try {
+    const value = Number(localStorage.getItem(key));
+    return value > 0 && value < 1 ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function store(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // 记不住只是下次回到默认值。
+  }
+}
 
 function remember(projectId: string, sessionId: string) {
   try {
@@ -94,6 +122,63 @@ export function App() {
   const [sessionId, setSessionId] = useState('');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tab, setTab] = useState<Tab>('scene');
+  // 对话是主栏；画面面板只在有东西要看时打开（步骤、studio_show、回复里的镜头与文件）。
+  const [panelOpen, setPanelOpenState] = useState(() => {
+    try {
+      return localStorage.getItem(PANEL_OPEN_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setPanelOpen = useCallback((open: boolean | ((current: boolean) => boolean)) => {
+    setPanelOpenState((current) => {
+      const next = typeof open === 'function' ? open(current) : open;
+      store(PANEL_OPEN_KEY, next ? '1' : '0');
+      return next;
+    });
+  }, []);
+  /** 切到某一页并打开面板：用户或编排工具要看什么时都走这里；自动切页（稿件审核、卡点）只换页不开面板。 */
+  const showTab = useCallback(
+    (next: Tab) => {
+      setTab(next);
+      setPanelOpen(true);
+    },
+    [setPanelOpen],
+  );
+  const kind = panelKind(tab);
+  const [panelWidths, setPanelWidths] = useState<Record<PanelKind, number>>(() => ({
+    media: readNumber(PANEL_WIDTH_KEY + 'media', panelDefault.media),
+    doc: readNumber(PANEL_WIDTH_KEY + 'doc', panelDefault.doc),
+  }));
+  const workspace = useRef<HTMLDivElement>(null);
+  const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const box = workspace.current?.getBoundingClientRect();
+    if (!box) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    handle.setPointerCapture(event.pointerId);
+    let latest = panelWidths[kind];
+    const move = (e: PointerEvent) => {
+      const width = Math.min(Math.max(box.right - e.clientX, minPanel), box.width - minChat);
+      latest = Math.min(Math.max(width / box.width, 0.2), 0.8);
+      setPanelWidths((current) => ({ ...current, [kind]: latest }));
+    };
+    const up = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', up);
+      document.body.classList.remove('resizing');
+      store(PANEL_WIDTH_KEY + kind, String(latest));
+    };
+    document.body.classList.add('resizing');
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
+  };
+  const resetWidth = () => {
+    setPanelWidths((current) => ({ ...current, [kind]: panelDefault[kind] }));
+    store(PANEL_WIDTH_KEY + kind, String(panelDefault[kind]));
+  };
   const [sceneId, setSceneId] = useState('');
   const [filePath, setFilePath] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -342,7 +427,7 @@ export function App() {
   };
   const quick = (text: string, quickAttachments: Attachment[], draftOnly?: boolean) => {
     setOutbox({ text, attachments: quickAttachments, nonce: Date.now(), draftOnly });
-    if (!draftOnly) notify('已发给编排工具，进度看右侧对话。');
+    if (!draftOnly) notify('已发给编排工具，进度看对话。');
   };
 
   // Markdown 里写到的项目文件可点：口播稿开口播稿页，其余开文件页。
@@ -353,14 +438,14 @@ export function App() {
       onOpenFile: (path: string) => {
         const page = pageForFile(path);
         if (page) {
-          setTab(page);
+          showTab(page);
           return;
         }
         setFilePath(path);
-        setTab('file');
+        showTab('file');
       },
     }),
-    [treePaths],
+    [treePaths, showTab],
   );
 
   // 编排工具经 am studio show 请用户看某一页：切过去，镜头与文件页带上对象。
@@ -371,13 +456,13 @@ export function App() {
       if (!view.target) return;
       const special = pageForFile(view.target);
       if (special) {
-        setTab(special);
+        showTab(special);
         return;
       }
       setFilePath(view.target);
     }
     if ((page === 'scene' || page === 'compose') && view.target) setSceneId(view.target);
-    setTab(page);
+    showTab(page);
   };
 
   // 口播稿：有了终稿却还没有镜头时（稿件审核阶段）自动切到口播稿页；稿子改过而没看过时标签打点。
@@ -440,8 +525,10 @@ export function App() {
         const id = steps[action.index];
         if (id && currentId) {
           setHomeOpen(false);
-          setTab(id);
+          showTab(id);
         }
+      } else if (action.type === 'panel') {
+        if (currentId) setPanelOpen((open) => !open);
       } else if (action.type === 'open') {
         void (async () => {
           try {
@@ -454,7 +541,21 @@ export function App() {
         })();
       }
     });
-  }, [currentId, loadProjects, steps]);
+  }, [currentId, loadProjects, steps, showTab, setPanelOpen]);
+
+  // Esc 收起面板；圈选、菜单、弹窗开着时 Esc 归它们，输入框里的 Esc 也不管。
+  useEffect(() => {
+    if (!panelOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (document.querySelector('.selection-bar, [role="menu"], [role="dialog"], .modal-backdrop')) return;
+      setPanelOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [panelOpen, setPanelOpen]);
 
   return (
     <div className="app">
@@ -476,9 +577,9 @@ export function App() {
               <button
                 key={id}
                 data-tab={id}
-                className={'step' + (tab === id ? ' on' : '')}
-                aria-current={tab === id ? 'page' : undefined}
-                onClick={() => setTab(id)}
+                className={'step' + (tab === id && panelOpen ? ' on' : '')}
+                aria-current={tab === id && panelOpen ? 'page' : undefined}
+                onClick={() => showTab(id)}
               >
                 <span className="step-no">{String(index + 1).padStart(2, '0')}</span>
                 {tabLabel(id)}
@@ -498,7 +599,7 @@ export function App() {
             {visibleTabs(beatMode)
               .filter(([id]) => !steps.includes(id))
               .map(([id, label]) => (
-                <button key={id} data-tab={id} className={tab === id ? 'on' : ''} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>
+                <button key={id} data-tab={id} className={tab === id && panelOpen ? 'on' : ''} aria-current={tab === id && panelOpen ? 'page' : undefined} onClick={() => showTab(id)}>
                   {label}
                 </button>
               ))}
@@ -515,6 +616,18 @@ export function App() {
             <span className="dot busy" />
             {busy}
           </span>
+        )}
+        {currentId && !homeOpen && (
+          <button
+            className={'panel-toggle' + (panelOpen ? ' on' : '')}
+            id="panel-toggle"
+            aria-pressed={panelOpen}
+            title={panelOpen ? '收起画面（⌘\\）' : '显示画面（⌘\\）'}
+            onClick={() => setPanelOpen(!panelOpen)}
+          >
+            <Icon name="panel" size={13} />
+            画面
+          </button>
         )}
         <Tasks tasks={tasks} onCancel={(id) => run(`/api/tasks/${id}/cancel`)} />
         <button className="ghost icon settings-trigger" id="settings-trigger" title="设置（⌘,）" aria-label="设置" onClick={() => setSettingsOpen(true)}>
@@ -560,48 +673,23 @@ export function App() {
         />
       ) : (
         <MarkdownContext.Provider value={markdownLinks}>
-          <div className="workspace">
+          <div className={'workspace' + (panelOpen ? ' panel-open' : '')} ref={workspace} style={{ '--panel-w': `${panelWidths[kind] * 100}%` } as CSSProperties}>
             <ContextMenu
               onAttach={addAttachment}
               onQuick={quick}
               onScene={(id) => {
                 setSceneId(id);
-                setTab('scene');
+                showTab('scene');
               }}
               onFile={(path) => {
                 const page = pageForFile(path);
                 if (page) {
-                  setTab(page);
+                  showTab(page);
                   return;
                 }
                 setFilePath(path);
-                setTab('file');
+                showTab('file');
               }}
-            />
-            <Preview
-              tab={tab}
-              onTab={setTab}
-              state={state}
-              scenes={scenes}
-              usage={usage}
-              sceneId={sceneId}
-              filePath={filePath}
-              tree={tree}
-              recent={recent}
-              version={version}
-              beat={beat}
-              busy={busy}
-              onAttach={addAttachment}
-              onQuick={quick}
-              onFile={(path) => {
-                setFilePath(path);
-                setTab('file');
-              }}
-              onScene={(id) => {
-                setSceneId(id);
-                if (tab !== 'scene' && tab !== 'compose' && tab !== 'memory') setTab('scene');
-              }}
-              run={run}
             />
             <Chat
               projectPath={project?.path ?? ''}
@@ -624,20 +712,77 @@ export function App() {
               onOpenFile={(path) => {
                 const page = pageForFile(path);
                 if (page) {
-                  setTab(page);
+                  showTab(page);
                   return;
                 }
                 setFilePath(path);
-                setTab('file');
+                showTab('file');
               }}
               onAddAttachments={(list) => setAttachments((current) => [...current, ...list])}
               scenes={scenes}
               outbox={outbox}
-              view={{ page: tab, scene: sceneId || undefined, file: tab === 'file' ? filePath : undefined }}
+              view={{ page: panelOpen ? tab : '', scene: sceneId || undefined, file: tab === 'file' ? filePath : undefined }}
               tree={tree}
               run={run}
               onView={openView}
             />
+            {panelOpen ? (
+              <>
+                <div className="panel-scrim" aria-hidden="true" onClick={() => setPanelOpen(false)} />
+                <div
+                  className="panel-resize"
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="拖动调整画面宽度，双击恢复默认"
+                  title="拖动调整宽度，双击恢复默认"
+                  onPointerDown={startResize}
+                  onDoubleClick={resetWidth}
+                />
+                <section className="panel" id="panel" aria-label="画面">
+                  <header className="panel-head">
+                    <span className="panel-title">
+                      {tabLabel(tab)}
+                      {(tab === 'scene' || tab === 'compose') && sceneId && <span className="panel-sub">{sceneId}</span>}
+                      {tab === 'file' && filePath && <span className="panel-sub ellipsis">{filePath}</span>}
+                    </span>
+                    <span className="spacer" />
+                    <button className="ghost icon" id="panel-close" aria-label="收起画面" title="收起画面（Esc）" onClick={() => setPanelOpen(false)}>
+                      <Icon name="close" />
+                    </button>
+                  </header>
+                  <Preview
+                    tab={tab}
+                    onTab={setTab}
+                    state={state}
+                    scenes={scenes}
+                    usage={usage}
+                    sceneId={sceneId}
+                    filePath={filePath}
+                    tree={tree}
+                    recent={recent}
+                    version={version}
+                    beat={beat}
+                    busy={busy}
+                    onAttach={addAttachment}
+                    onQuick={quick}
+                    onFile={(path) => {
+                      setFilePath(path);
+                      setTab('file');
+                    }}
+                    onScene={(id) => {
+                      setSceneId(id);
+                      if (tab !== 'scene' && tab !== 'compose' && tab !== 'memory') setTab('scene');
+                    }}
+                    run={run}
+                  />
+                </section>
+              </>
+            ) : (
+              <PanelRail scenes={scenes} sceneId={sceneId} onOpen={() => setPanelOpen(true)} onScene={(id) => {
+                setSceneId(id);
+                showTab('scene');
+              }} />
+            )}
           </div>
         </MarkdownContext.Provider>
       )}
@@ -692,5 +837,38 @@ export function App() {
         </div>
       )}
     </div>
+  );
+}
+
+/** 面板收起时右边的一条细栏：每个镜头一个小方块（已出片、过期、渲染中、未出片），点开回到画面。 */
+function PanelRail(props: { scenes: Scene[]; sceneId: string; onOpen: () => void; onScene: (id: string) => void }) {
+  const done = props.scenes.filter((s) => s.exists && !s.stale).length;
+  return (
+    <aside className="panel-rail" aria-label="画面（已收起）">
+      <button className="ghost icon rail-open" id="panel-open" aria-label="显示画面" title="显示画面（⌘\\）" onClick={props.onOpen}>
+        <Icon name="prev" />
+      </button>
+      {props.scenes.length > 0 && (
+        <>
+          <div className="rail-scenes">
+            {props.scenes.map((scene) => {
+              const status = scene.rendering ? 'rendering' : !scene.exists ? 'todo' : scene.stale ? 'stale' : 'ok';
+              return (
+                <button
+                  key={scene.id}
+                  className={'rail-scene ' + status + (scene.id === props.sceneId ? ' on' : '')}
+                  aria-label={`镜头 ${scene.id}`}
+                  title={scene.id}
+                  onClick={() => props.onScene(scene.id)}
+                />
+              );
+            })}
+          </div>
+          <span className="rail-count">
+            {done}/{props.scenes.length}
+          </span>
+        </>
+      )}
+    </aside>
   );
 }

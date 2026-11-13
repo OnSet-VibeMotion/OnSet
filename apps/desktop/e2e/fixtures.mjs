@@ -92,7 +92,14 @@ export async function openProject(page, project) {
   await page.locator('.directory-row.project-row', { hasText: project.name }).click();
   await page.locator('#open-project').click();
   await expect(page.locator('#title')).toHaveText(project.name);
-  await expect(page.locator('.scene', { hasText: 'scene-001' })).toBeVisible();
+  // 对话是主栏，画面面板默认收起：收起栏里有了镜头就说明项目加载好了（窄窗口里收起栏不显示，只看在不在）。
+  await expect(page.locator('.rail-scene[title="scene-001"]')).toBeAttached();
+}
+
+/** 打开画面面板（默认收起）。 */
+export async function openPanel(page) {
+  await page.locator('#panel-toggle').click();
+  await expect(page.locator('#panel')).toBeVisible();
 }
 
 /** 在窗口里请求后台接口：界面从 am://app/ 加载，/api 与它同源。 */

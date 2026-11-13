@@ -1,5 +1,5 @@
 /*
- * 右栏对话。结构与交互照 OpenDesign 的聊天面板（ChatPane / ChatComposer / ExecutionShell），
+ * 对话主栏。结构与交互照 OpenDesign 的聊天面板（ChatPane / ChatComposer / ExecutionShell），
  * 颜色沿用 Studio 的深石墨 + 琥珀。
  *   一轮的过程（思考、工具、中间的话）收进一个平铺的折叠块，进行中展开、完成收起；
  *   回复正文不加气泡、全宽；用户消息是靠右的反色气泡；
@@ -11,6 +11,8 @@
   --exit: 140ms;
   --line-soft: color-mix(in srgb, var(--line-strong) 70%, transparent);
   --row-hover: color-mix(in srgb, var(--text) 4%, transparent);
+  /* 对话是主栏：正文最宽 760px 居中，两侧留白随窗口变化；窄的时候退回 18px。 */
+  --gutter: max(18px, calc((100% - 760px) / 2));
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -73,7 +75,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 12px;
+  padding: 8px calc(var(--gutter) - 6px);
 }
 .chat-title {
   min-width: 0;
@@ -168,7 +170,7 @@
 .chat-log {
   overflow-y: auto;
   scrollbar-width: none;
-  padding: 18px 18px 20px;
+  padding: 18px var(--gutter) 20px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -869,6 +871,43 @@ div.tool {
   white-space: normal;
   text-align: left;
 }
+/* 已经答过的选项：只留选中的一个，其余收进「另外 n 个选项」。 */
+.chat .answered-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.chat .choice-picked {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 12px;
+}
+.chat .answered-toggle {
+  font-size: 12px;
+  color: var(--muted);
+}
+.chat .answered-toggle:hover {
+  color: var(--text-2);
+}
+.chat .answered-all {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  opacity: 0.72;
+}
+.chat .choice.picked {
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
 
 .chat-note {
   align-self: center;
@@ -884,8 +923,8 @@ div.tool {
 /* ---- 底部浮层：回到最新 / 进度药丸 ---- */
 .chat-float {
   position: absolute;
-  left: 16px;
-  right: 16px;
+  left: var(--gutter);
+  right: var(--gutter);
   bottom: 12px;
   display: flex;
   justify-content: center;
@@ -979,7 +1018,7 @@ div.tool {
 /* ---- 排队的消息：叠在输入框上方，悬停展开 ---- */
 .queue-stack {
   flex: none;
-  margin: 4px 12px 0;
+  margin: 4px calc(var(--gutter) - 6px) 0;
   display: grid;
 }
 .queue-card {
@@ -1053,7 +1092,7 @@ div.tool {
 /* ---- 输入框：一层圆角 16 的壳 ---- */
 .composer {
   flex: none;
-  padding: 10px 16px 12px;
+  padding: 10px calc(var(--gutter) - 2px) 16px;
 }
 .composer-shell {
   position: relative;
@@ -1515,7 +1554,7 @@ div.tool {
 /* ---- 编排工具在等你批准的调用（PermissionStack）：叠在输入框上方，比排队卡片更显眼 ---- */
 .chat .permission-stack {
   flex: none;
-  margin: 6px 12px 0;
+  margin: 6px calc(var(--gutter) - 6px) 0;
   display: flex;
   flex-direction: column;
   gap: 8px;

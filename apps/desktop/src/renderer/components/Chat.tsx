@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, errorText, post, rawURL } from '../api';
 import type { AgentChoice, AgentsResponse, Attachment, EventKind, PermissionAsk, PlanItem, Scene, SessionEvent, SessionMeta, ViewRequest, ViewState } from '../types';
@@ -392,7 +392,7 @@ export function Chat(props: Props) {
   const showStop = running && !draft.trim() && !sending;
 
   return (
-    <aside className="pane right chat">
+    <section className="pane chat-main chat" aria-label="对话">
       <header className="chat-header">
         <div className="history">
           <button
@@ -452,6 +452,7 @@ export function Chat(props: Props) {
               now={now}
               projectPath={props.projectPath}
               choicesEnabled={block.kind === 'turn' && block.id === choiceTurn && !blocked}
+              answer={block.kind === 'turn' ? answerAfter(blocks, index) : undefined}
               onChoice={(text) => void deliver(text, [])}
               onRetry={(text) => void deliver(text, [])}
               onOpenFile={props.onOpenFile}
@@ -648,7 +649,7 @@ export function Chat(props: Props) {
           <p className={'composer-hint' + (error ? ' error' : '')}>{error || (uploading ? '上传中…' : `项目正忙：${props.busy}`)}</p>
         )}
       </footer>
-    </aside>
+    </section>
   );
 }
 
@@ -723,6 +724,8 @@ interface BlockProps {
   now: number;
   projectPath: string;
   choicesEnabled: boolean;
+  /** 这一轮之后用户说的第一句话：有它说明选项已经答过，收起没选的。 */
+  answer?: string;
   onChoice: (text: string) => void;
   onRetry: (text: string) => void;
   onOpenFile: (path: string) => void;
@@ -853,7 +856,7 @@ function StylePicks(props: { picks: StylePick[]; styles: Map<string, FilmStyle>;
                 className="pill"
                 disabled={!props.enabled}
                 title={props.enabled ? '把这个选择发给编排工具' : '只有最新一条回复的推荐可以点'}
-                onClick={() => props.onPick(`整片风格用「${name}」（${pick.key}）`)}
+                onClick={() => props.onPick(stylePickMessage(name, pick.key))}
               >
                 用这个风格
               </button>
@@ -865,10 +868,62 @@ function StylePicks(props: { picks: StylePick[]; styles: Map<string, FilmStyle>;
   );
 }
 
+/** 点「用这个风格」发出的那句话；收起已答的选项时按它认出选的是哪个。 */
+function stylePickMessage(name: string, key: string): string {
+  return `整片风格用「${name}」（${key}）`;
+}
+
+/** blocks[index] 这一轮之后用户发的第一条消息（去掉引用、附件说明）。 */
+function answerAfter(blocks: Block[], index: number): string | undefined {
+  for (let i = index + 1; i < blocks.length; i++) {
+    const block = blocks[i];
+    if (block.kind === 'user') return splitAttachmentText(block.event.text ?? '').body.trim();
+  }
+  return undefined;
+}
+
+/**
+ * 已经答过的选项：只留选中的那一个，其余收起，点开还能看（不能再点）。
+ * 用户没点选项、自己打字回复时，整组收成一行。
+ */
+function AnsweredOptions(props: { picked?: string; count: number; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const others = props.picked ? props.count - 1 : props.count;
+  return (
+    <div className="answered-options">
+      <div className="answered-line">
+        {props.picked && (
+          <span className="choice-picked" title="你选的">
+            <Icon name="check" size={12} />
+            {props.picked}
+          </span>
+        )}
+        {others > 0 && (
+          <button className="link answered-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {open ? '收起' : props.picked ? `另外 ${others} 个选项` : `${others} 个选项（你另外回复了）`}
+          </button>
+        )}
+      </div>
+      {open && <div className="answered-all">{props.children}</div>}
+    </div>
+  );
+}
+
 /** 切页请求的说法：「口播稿」「镜头 scene-003」「文件 production/treatment.md」。 */
 function viewLabel(view: ViewRequest): string {
   const label = tabs.find(([id]) => id === view.page)?.[1] ?? view.page;
   return view.target ? `${label} ${view.target}` : label;
+}
+
+/** 用户的回复是哪个选项：选项原样发出，风格推荐发的是 stylePickMessage。认不出返回 undefined。 */
+function pickedOption(answer: string, choices: string[], picks: StylePick[], styles: Map<string, FilmStyle>): string | undefined {
+  const choice = choices.find((c) => c.trim() === answer);
+  if (choice) return choice;
+  for (const pick of picks) {
+    const name = styles.get(pick.key)?.cn ?? pick.key;
+    if (stylePickMessage(name, pick.key) === answer) return name;
+  }
+  return undefined;
 }
 
 function TurnView(props: BlockProps & { turn: TurnBlock }) {
@@ -879,6 +934,29 @@ function TurnView(props: BlockProps & { turn: TurnBlock }) {
   const choices = parseChoices(proseText);
   const picks = useMemo(() => parseStylePicks(proseText, new Set(props.styles.keys())), [proseText, props.styles]);
   const media = useMemo(() => findMedia(proseText, props.files), [proseText, props.files]);
+  const answered = props.answer !== undefined && !props.choicesEnabled && choices.length + picks.length > 0;
+  const picked = answered ? pickedOption(props.answer ?? '', choices, picks, props.styles) : undefined;
+  const options = (
+    <>
+      {picks.length > 0 && (
+        <StylePicks picks={picks} styles={props.styles} version={props.posterVersion} enabled={props.choicesEnabled} onPick={props.onChoice} />
+      )}
+      {choices.length > 0 && (
+        <div className="choices" role="group" aria-label="选一个回复">
+          {choices.map((choice, index) => (
+            <button
+              key={choice}
+              className={'choice pill' + (index === 0 ? ' primary-pill' : '') + (choice === picked ? ' picked' : '')}
+              disabled={!props.choicesEnabled}
+              onClick={() => props.onChoice(choice)}
+            >
+              {choice}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
   return (
     <div className="assistant-flow msg-enter">
       {(turn.process.length > 0 || live) && (
@@ -901,22 +979,12 @@ function TurnView(props: BlockProps & { turn: TurnBlock }) {
         </div>
       )}
       {media.length > 0 && <MediaStrip media={media} mtimes={props.mtimes} onOpenFile={props.onOpenFile} />}
-      {picks.length > 0 && (
-        <StylePicks picks={picks} styles={props.styles} version={props.posterVersion} enabled={props.choicesEnabled} onPick={props.onChoice} />
-      )}
-      {choices.length > 0 && (
-        <div className="choices" role="group" aria-label="选一个回复">
-          {choices.map((choice, index) => (
-            <button
-              key={choice}
-              className={'choice pill' + (index === 0 ? ' primary-pill' : '')}
-              disabled={!props.choicesEnabled}
-              onClick={() => props.onChoice(choice)}
-            >
-              {choice}
-            </button>
-          ))}
-        </div>
+      {answered ? (
+        <AnsweredOptions picked={picked} count={choices.length + picks.length}>
+          {options}
+        </AnsweredOptions>
+      ) : (
+        options
       )}
       {turn.end && <TurnEnd {...props} elapsed={elapsed} />}
     </div>
