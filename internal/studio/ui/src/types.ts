@@ -309,6 +309,14 @@ export interface MemoryWeak {
   recalled: number;
 }
 
+export interface MemorySuspect {
+  name: string;
+  renderer: string;
+  recalled: number;
+  harmful: number;
+  checks: string[];
+}
+
 export interface MemoryState {
   enabled: boolean;
   dir: string;
@@ -320,6 +328,7 @@ export interface MemoryState {
     counts: Record<string, number>;
     drift: string[];
     weak: MemoryWeak[];
+    suspect?: MemorySuspect[];
     retest: { name: string; renderer: string; examined_models: string[]; current_model: string }[];
     episodes: number;
     pending_failures: number;
@@ -342,10 +351,11 @@ export interface RecallItem {
   matched_features?: string[];
   matched_keywords?: string[];
   chars: number;
+  omit_reason?: 'budget' | 'limit';
 }
 
 export interface RecallResponse {
-  recall: { snapshot: number; renderer: string; model?: string; features: string[]; budget: number; used: number; items: RecallItem[]; omitted?: RecallItem[] };
+  recall: { snapshot: number; renderer: string; model?: string; features: string[]; budget: number; used: number; max_lessons: number; items: RecallItem[]; omitted?: RecallItem[] };
   reasons: string[];
   section: string;
 }

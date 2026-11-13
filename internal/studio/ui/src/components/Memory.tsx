@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { api, errorText, post, rawURL } from '../api';
-import type { ExamResult, MemoryRow, MemoryState, MemoryStatus, RecallResponse, RunStats, RunSummary, Scene } from '../types';
+import type { ExamResult, MemoryRow, MemoryState, MemoryStatus, MemorySuspect, RecallResponse, RunStats, RunSummary, Scene } from '../types';
 import type { RunAction } from './Preview';
 
 const statusLabel: Record<MemoryStatus, string> = { active: '生效', trial: '试用', rejected: '被拒', dormant: '沉睡' };
@@ -135,6 +135,7 @@ export function MemoryTab({ scene, version, run }: Props) {
                   memory={m}
                   weak={state.status.weak.some((w) => w.name === m.name)}
                   retest={state.status.retest.filter((r) => r.name === m.name)}
+                  suspect={(state.status.suspect ?? []).filter((x) => x.name === m.name)}
                   run={run}
                 />
               ))}
@@ -241,7 +242,7 @@ function RecallSection({ scene, version }: { scene: Scene | null; version: numbe
           )}
           <p class="small muted">
             用去 {recall.recall.used} / {recall.recall.budget} 字
-            {recall.recall.omitted?.length ? `，${recall.recall.omitted.length} 条超出预算未注入` : ''}
+            {recall.recall.omitted?.length ? `，${recall.recall.omitted.length} 条超出预算或条数上限（${recall.recall.max_lessons} 条经验）未注入` : ''}
           </p>
         </>
       )}
@@ -253,11 +254,13 @@ function MemoryCard({
   memory,
   weak,
   retest,
+  suspect,
   run,
 }: {
   memory: MemoryRow;
   weak: boolean;
   retest: MemoryState['status']['retest'];
+  suspect: MemorySuspect[];
   run: RunAction;
 }) {
   const [open, setOpen] = useState(false);
@@ -270,6 +273,14 @@ function MemoryCard({
         </button>
         {memory.kind === 'preference' && <span class="memory-unverified">偏好 · 未经机器验证</span>}
         {weak && <span class="status-stale">待沉睡</span>}
+        {suspect.length > 0 && (
+          <span
+            class="status-stale"
+            title={suspect.map((x) => `${x.renderer}：召回 ${x.recalled} 次，其中 ${x.harmful} 次它要防的 ${x.checks.join('、')} 照样失败`).join('\n')}
+          >
+            可疑
+          </span>
+        )}
         <span class="spacer" />
         {memory.status === 'trial' && memory.kind === 'lesson' && !memory.examinable && <span class="memory-unverified">整片检查判定 · 考不了，需人工确认</span>}
         {memory.status === 'trial' && (
@@ -281,6 +292,14 @@ function MemoryCard({
           </>
         )}
         {memory.status === 'active' && weak && <button onClick={() => run('/api/memory/actions/retire', { name: memory.name })}>沉睡</button>}
+        {memory.status === 'active' &&
+          suspect
+            .filter((x) => !retest.some((r) => x.renderer.split('/')[0] === r.renderer))
+            .map((x) => (
+              <button key={'s' + x.renderer} onClick={() => run('/api/memory/actions/exam', { renderers: [x.renderer.split('/')[0]], name: memory.name })}>
+                重考（{x.renderer.split('/')[0]}）
+              </button>
+            ))}
         {retest.map((r) => (
           <button
             key={r.renderer}

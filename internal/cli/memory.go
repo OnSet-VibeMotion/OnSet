@@ -294,6 +294,10 @@ func newMemoryRecallCommand(stdout io.Writer) *cobra.Command {
 				fmt.Fprintf(stdout, "  ✓ %s（%s，得分 %.2f）— %s\n", item.Name, item.Reason(), item.Score, item.Description)
 			}
 			for _, item := range result.Omitted {
+				if item.OmitReason == "limit" {
+					fmt.Fprintf(stdout, "  ✗ %s 经验已满 %d 条，排在后面没注入（得分 %.2f）\n", item.Name, result.MaxLessons, item.Score)
+					continue
+				}
 				fmt.Fprintf(stdout, "  ✗ %s 超出字数预算（%d 字）\n", item.Name, item.Chars)
 			}
 			if section := result.Section(); section != "" {
@@ -695,6 +699,11 @@ func newMemoryStatusCommand(stdout io.Writer) *cobra.Command {
 				fmt.Fprintf(stdout, "需要重考：%s 当初在 %s 上用 %s 考过，现在是 %s（am memory exam --renderers %s --retest %s）\n",
 					r.Name, r.Renderer, strings.Join(r.Examined, "、"), r.Current, r.Renderer, r.Name)
 			}
+			for _, x := range report.Suspect {
+				renderer := strings.SplitN(x.Renderer, "/", 2)[0]
+				fmt.Fprintf(stdout, "可疑：%s 在 %s 上召回 %d 次，其中 %d 次它要防的 %s 照样判了失败（am memory exam --renderers %s --retest %s）\n",
+					x.Name, x.Renderer, x.Recalled, x.Harmful, strings.Join(x.Checks, "、"), renderer, x.Name)
+			}
 			for _, w := range report.Weak {
 				fmt.Fprintf(stdout, "待沉睡：%s 在 %s 上召回 %d 次，一次通过率 %.0f%%，不高于基线 %.0f%%\n", w.Name, w.Renderer, w.Recalled, w.Rate*100, w.Baseline*100)
 			}
@@ -815,7 +824,7 @@ func preferenceBrief(cfg config.Config, root string, warn io.Writer) string {
 
 func newMemoryRememberCommand(stdout io.Writer) *cobra.Command {
 	var name, description, revises string
-	var global bool
+	var global, inferred bool
 	cmd := &cobra.Command{
 		Use: "remember TEXT", Args: exactArgs(1, "TEXT"), Short: "记住用户亲口说的一条偏好",
 		Long: `把用户表达的长期取向直接记为生效的偏好，并生成快照。用户自己说出来的就是确认，
@@ -823,10 +832,14 @@ func newMemoryRememberCommand(stdout io.Writer) *cobra.Command {
 
 偏好会进入两处：编排工具每次开工前读到的「用户偏好」段（am run 与 Studio 对话），
 以及每个镜头渲染时的记忆召回。默认只对当前项目成立，--global 对所有项目成立。
-用户收回一条偏好时用 am memory retire NAME。`,
+用户收回一条偏好时用 am memory retire NAME。
+
+--inferred 用于用户没有明说、由编排工具推测出来的取向：它进入试用，出现在偏好段的
+「待确认」里，用户认可（am memory promote NAME）后才生效。`,
 		Example: `  am memory remember --name calm-palette --description "配色克制" "主色不超过两种高饱和色，背景用深色"
   am memory remember --global --name no-emoji "画面里不要出现 emoji"
-  am memory remember --name calm-palette-v2 --revises calm-palette "配色只用品牌色加一个强调色"`,
+  am memory remember --name calm-palette-v2 --revises calm-palette "配色只用品牌色加一个强调色"
+  am memory remember --inferred --name slower-pacing "用户几次把节奏改慢，倾向每屏停留更久"`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, store, err := loadMemoryConfig()
 			if err != nil {
@@ -837,13 +850,17 @@ func newMemoryRememberCommand(stdout io.Writer) *cobra.Command {
 				return err
 			}
 			m, snapshot, err := store.Remember(memory.RememberInput{Name: name, Description: description, Body: args[0],
-				Project: memory.ProjectName(root), Global: global, Revises: revises})
+				Project: memory.ProjectName(root), Global: global, Revises: revises, Inferred: inferred})
 			if err != nil {
 				return err
 			}
 			scope := "本项目（" + m.Scope + "）"
 			if m.Scope == "" {
 				scope = "所有项目"
+			}
+			if inferred {
+				fmt.Fprintf(stdout, "推测的偏好 %s（%s）进入试用：%s；用户确认后运行 am memory promote %s\n", m.Name, scope, m.Description, m.Name)
+				return nil
 			}
 			fmt.Fprintf(stdout, "已记住偏好 %s（%s）：%s，快照 #%d\n", m.Name, scope, m.Description, snapshot.ID)
 			return nil
@@ -853,6 +870,7 @@ func newMemoryRememberCommand(stdout io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&description, "description", "", "一句话概括；缺省取正文第一句")
 	cmd.Flags().BoolVar(&global, "global", false, "对用户所有项目都成立")
 	cmd.Flags().StringVar(&revises, "revises", "", "替换的旧偏好名，旧偏好转为沉睡")
+	cmd.Flags().BoolVar(&inferred, "inferred", false, "用户没有明说、由编排工具推测的取向：先进入试用，用户确认后才生效")
 	return cmd
 }
 

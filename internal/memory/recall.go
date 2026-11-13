@@ -27,8 +27,10 @@ type RecallItem struct {
 	Rate  float64 `json:"rate"`
 	Chars int     `json:"chars"`
 	// Text 是这条记忆注入提示词的原文。
-	Text   string `json:"text"`
-	digest string
+	Text string `json:"text"`
+	// OmitReason 只对 Omitted 里的条目有值：budget（字数预算用完）或 limit（经验条数到顶）。
+	OmitReason string `json:"omit_reason,omitempty"`
+	digest     string
 }
 
 // Reason 用一句话说明为什么想起这条记忆。
@@ -54,14 +56,16 @@ func (i RecallItem) Reason() string {
 
 // RecallResult 是一个镜头的召回结果。
 type RecallResult struct {
-	Snapshot int          `json:"snapshot"`
-	Renderer string       `json:"renderer"`
-	Model    string       `json:"model,omitempty"`
-	Features []string     `json:"features"`
-	Budget   int          `json:"budget"`
-	Used     int          `json:"used"`
-	Items    []RecallItem `json:"items"`
-	// Omitted 是匹配上但超出字数预算的记忆。
+	Snapshot int      `json:"snapshot"`
+	Renderer string   `json:"renderer"`
+	Model    string   `json:"model,omitempty"`
+	Features []string `json:"features"`
+	Budget   int      `json:"budget"`
+	Used     int      `json:"used"`
+	// MaxLessons 是本次召回的经验条数上限。
+	MaxLessons int          `json:"max_lessons"`
+	Items      []RecallItem `json:"items"`
+	// Omitted 是匹配上但超出字数预算或条数上限的记忆。
 	Omitted []RecallItem `json:"omitted,omitempty"`
 }
 
@@ -121,14 +125,29 @@ type RecallInput struct {
 	Text    string
 	Project string
 	Budget  int
+	// MaxLessons 是经验条数上限，0 表示 DefaultMaxLessons。
+	MaxLessons int
 }
 
-// Recall 选出要注入的记忆：按适用条件匹配，按匹配度 × 效果排序，取到字数预算用完。
+// DefaultMaxLessons 是每个镜头最多注入的经验条数。
+//
+// SkillsBench（2026，87 个任务、18 种模型与 harness 组合）里，给 1 到 3 条技能时
+// 通过率提升 18 到 19 个百分点，4 条及以上只剩 10 个百分点：条数多了，指导之间互相
+// 冲突、分散注意力。字数预算拦不住「很多条短经验」，所以单独设上限。
+// 偏好不计入：那是用户亲口说的取向，只受字数预算约束。
+const DefaultMaxLessons = 3
+
+// Recall 选出要注入的记忆：按适用条件匹配，按匹配度 × 效果排序，取到字数预算用完，
+// 经验最多取 MaxLessons 条。
 //
 // 只用特征加关键词，不用向量检索：召回要可解释（能说出为什么想起它）、
 // 可复现（同一快照同一结果）、零依赖。
 func Recall(in RecallInput) RecallResult {
-	result := RecallResult{Renderer: in.Renderer, Model: in.Model, Features: append([]string{}, in.Features...), Budget: in.Budget, Items: []RecallItem{}}
+	if in.MaxLessons <= 0 {
+		in.MaxLessons = DefaultMaxLessons
+	}
+	result := RecallResult{Renderer: in.Renderer, Model: in.Model, Features: append([]string{}, in.Features...), Budget: in.Budget,
+		MaxLessons: in.MaxLessons, Items: []RecallItem{}}
 	features := map[string]bool{}
 	for _, feature := range in.Features {
 		features[feature] = true
@@ -184,10 +203,20 @@ func Recall(in RecallInput) RecallResult {
 		}
 		return candidates[i].Name < candidates[j].Name
 	})
+	lessons := 0
 	for _, item := range candidates {
-		if result.Used+item.Chars > in.Budget {
+		switch {
+		case item.Kind == KindLesson && lessons >= in.MaxLessons:
+			item.OmitReason = "limit"
+		case result.Used+item.Chars > in.Budget:
+			item.OmitReason = "budget"
+		}
+		if item.OmitReason != "" {
 			result.Omitted = append(result.Omitted, item)
 			continue
+		}
+		if item.Kind == KindLesson {
+			lessons++
 		}
 		result.Used += item.Chars
 		result.Items = append(result.Items, item)
@@ -217,7 +246,9 @@ type RecallOptions struct {
 	// Snapshot 为 0 时跟随最新快照。
 	Snapshot int
 	Budget   int
-	Renderer string
+	// MaxLessons 是经验条数上限，0 表示 DefaultMaxLessons。
+	MaxLessons int
+	Renderer   string
 	// Model 是当前渲染工具的模型，见 Store.CurrentModel；未知时为空。
 	Model string
 	// Extra 是额外参与召回的记忆（考试里的试用记忆）。
@@ -260,7 +291,7 @@ func (s *Store) RecallScene(sc scene.Scene, opts RecallOptions) (RecallResult, e
 		memories = kept
 	}
 	result := Recall(RecallInput{Memories: memories, Stats: stats, Renderer: opts.Renderer, Model: opts.Model, Features: features,
-		Text: sc.Text + "\n" + promptText(sc), Project: projectOf(sc.Directory), Budget: opts.Budget})
+		Text: sc.Text + "\n" + promptText(sc), Project: projectOf(sc.Directory), Budget: opts.Budget, MaxLessons: opts.MaxLessons})
 	result.Snapshot = snapshotID
 	return result, nil
 }

@@ -60,7 +60,7 @@ func (s *Store) PreferenceBrief(project string, pinned int) (string, string, err
 		}
 	}
 	if len(pending) > 0 {
-		b.WriteString("\n待确认的偏好（从用户以往的回退、反复提的要求和 👍 / 👎 里归纳的，还没生效）：\n")
+		b.WriteString("\n待确认的偏好（从用户以往的回退、反复提的要求和 👍 / 👎 里归纳的，或从对话里推测的，还没生效）：\n")
 		for _, m := range pending {
 			fmt.Fprintf(&b, "- 【%s】%s\n", m.Name, m.Description)
 		}
@@ -71,6 +71,7 @@ func (s *Store) PreferenceBrief(project string, pinned int) (string, string, err
 记住新偏好：用户表达了以后也适用的取向（如「以后都…」「我不喜欢…」「默认用…」「每次都要…」）时，当场运行
   am memory remember --name <小写英文短名> --description "<一句话概括>" "<完整说明>"
 只对这个项目成立时照此写；对用户所有项目都成立时加 --global；替换一条旧偏好时加 --revises <旧名>。
+用户没有明说、是你从他的话或反复修改里推测出来的取向，加 --inferred：它先进入试用，下次由你找时机问用户，认可后才生效。
 用户收回一条偏好时运行 am memory retire <名字>。只记长期取向，不记这一次的具体修改要求。
 `)
 	text := b.String()
@@ -87,11 +88,17 @@ type RememberInput struct {
 	Project string
 	Global  bool
 	Revises string
+	// Inferred 表示这条偏好是编排工具从用户的话里推测的，用户没有明说。
+	// 推测的偏好进入试用，等用户确认后才生效。
+	Inferred bool
 }
 
 // Remember 直接把用户亲口说的偏好记为生效并生成快照。
 //
 // 经人工 👎 整理出来的偏好要人确认才生效；这里不用——用户自己说出来的就是确认。
+// 编排工具推测出来的（Inferred）不一样：没经确认就写进记忆的内容会被照着做、
+// 错了还会被放大（Xiong et al. 2025 的「经验跟随」），所以它进入试用，
+// 偏好段会让编排工具找时机问用户，确认了才生效。
 func (s *Store) Remember(in RememberInput) (Memory, Snapshot, error) {
 	body := strings.TrimSpace(in.Body)
 	if body == "" {
@@ -108,7 +115,11 @@ func (s *Store) Remember(in RememberInput) (Memory, Snapshot, error) {
 	if description == "" {
 		description = firstSentence(body)
 	}
-	m := Memory{Kind: KindPreference, Body: body, Meta: Meta{Name: name, Description: description, Status: StatusActive,
+	status := StatusActive
+	if in.Inferred {
+		status = StatusTrial
+	}
+	m := Memory{Kind: KindPreference, Body: body, Meta: Meta{Name: name, Description: description, Status: status,
 		CheckedBy: []string{CheckerHuman}, Revises: in.Revises}}
 	if !in.Global {
 		m.Scope = in.Project
@@ -127,6 +138,12 @@ func (s *Store) Remember(in RememberInput) (Memory, Snapshot, error) {
 	}
 	if err := s.Write(m); err != nil {
 		return Memory{}, Snapshot{}, err
+	}
+	if in.Inferred {
+		// 试用偏好不进召回，不需要快照；被修订的旧偏好等它确认生效时才沉睡。
+		summary := fmt.Sprintf("推测的偏好 %s 进入试用，待用户确认：%s", name, description)
+		return m, Snapshot{}, s.Log(Event{Type: EventTrial, Summary: summary,
+			Detail: map[string]any{"memory": name, "kind": m.Kind, "scope": m.Scope, "revises": in.Revises, "inferred": true}})
 	}
 	if in.Revises != "" {
 		if old, ok, err := s.Find(in.Revises); err != nil {

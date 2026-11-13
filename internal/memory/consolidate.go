@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/chouheiwa/articale-to-motion/internal/scene"
 )
 
 // Cluster 是一组同类失败：同一个校验器（或人工 👎）下的经历。
@@ -27,7 +29,32 @@ type Cluster struct {
 	Recalled []string `json:"recalled,omitempty"`
 	// Signals 只对人工组（ClusterKeyHuman）有值：回退、反复提的要求与带说明的 👍 / 👎。
 	Signals []Signal `json:"signals,omitempty"`
+	// Contrasts 是成败对照：这组里的一次失败，配上一次没犯这个错的通过渲染。
+	Contrasts []Contrast `json:"contrasts,omitempty"`
 }
+
+// Contrast 是一组成败对照。
+//
+// 只看失败，整理者只能猜「怎样才对」；ExpeL、ReasoningBank 都从成败对比里提炼经验。
+// 最好的对照是同一个镜头后来改对了（SameScene），其次是同一渲染工具、特征最接近的
+// 另一个通过的镜头。
+type Contrast struct {
+	Failed    string `json:"failed"`
+	FailedDir string `json:"failed_dir"`
+	Passed    string `json:"passed"`
+	PassedDir string `json:"passed_dir"`
+	// PassedFingerprint 是通过那次的输入指纹：镜头目录里 .am-render.json 的指纹与它相同时，
+	// 目录里的合成代码就是那次通过的版本。
+	PassedFingerprint string   `json:"passed_fingerprint,omitempty"`
+	SameScene         bool     `json:"same_scene,omitempty"`
+	Shared            []string `json:"shared_features,omitempty"`
+	// PassedCode 是整理工作目录里通过那一版合成代码的副本（相对工作目录）；镜头目录里的
+	// 代码已被后来的渲染覆盖、或读不到时为空。整理者可能只被允许读工作目录，所以要拷进来。
+	PassedCode string `json:"passed_code,omitempty"`
+}
+
+// MaxContrasts 是每组最多附上的成败对照数。
+const MaxContrasts = 2
 
 // ClusterKeyHuman 是人工 👎 的聚类键。
 const ClusterKeyHuman = "human"
@@ -89,6 +116,14 @@ func clusterSince(fresh, all []Episode, since string) []Cluster {
 		sort.Strings(c.Recalled)
 		out = append(out, *c)
 	}
+	byID := map[string]Episode{}
+	for _, e := range episodes {
+		byID[e.ID] = e
+	}
+	failedChecks := checkFailures(all)
+	for i := range out {
+		out[i].Contrasts = contrasts(out[i], byID, all, failedChecks)
+	}
 	if human, ok := humanCluster(all, since); ok {
 		out = append(out, human)
 	}
@@ -98,6 +133,137 @@ func clusterSince(fresh, all []Episode, since string) []Cluster {
 		}
 		return out[i].Key < out[j].Key
 	})
+	return out
+}
+
+// contrasts 为一组失败找成败对照：通过的正式渲染、事后检查也没查出问题、
+// 没有被这个校验器判过失败。同一镜头后来改对的优先，其次同渲染工具、共同特征多的。
+func contrasts(c Cluster, byID map[string]Episode, all []Episode, failedChecks map[string]bool) []Contrast {
+	var out []Contrast
+	used := map[string]bool{}
+	for _, id := range c.Episodes {
+		if len(out) >= MaxContrasts {
+			break
+		}
+		failed, ok := byID[id]
+		if !ok {
+			continue
+		}
+		var best *Episode
+		bestScore := 0.0
+		for i := range all {
+			e := all[i]
+			if e.Source != SourceRender || !effectivelyPassed(e, failedChecks) || used[e.ID] || contains(e.Checks, c.Key) {
+				continue
+			}
+			shared := intersect(failed.Features, e.Features)
+			score := float64(len(shared))
+			if e.SceneDir != "" && e.SceneDir == failed.SceneDir {
+				score += 100
+			}
+			if e.Renderer == failed.Renderer {
+				score += 0.5
+			}
+			if score == 0 {
+				continue
+			}
+			if best == nil || score > bestScore || (score == bestScore && e.CreatedAt > best.CreatedAt) {
+				best, bestScore = &all[i], score
+			}
+		}
+		if best == nil {
+			continue
+		}
+		used[best.ID] = true
+		out = append(out, Contrast{Failed: failed.ID, FailedDir: failed.SceneDir, Passed: best.ID, PassedDir: best.SceneDir,
+			PassedFingerprint: best.Fingerprint, SameScene: best.SceneDir != "" && best.SceneDir == failed.SceneDir,
+			Shared: intersect(failed.Features, best.Features)})
+	}
+	return out
+}
+
+// 拷进整理工作目录的合成代码：只拷文本源码，单个文件与总量都有上限。
+const (
+	contrastFileLimit  = 256 << 10
+	contrastTotalLimit = 1 << 20
+)
+
+var contrastExtensions = map[string]bool{".html": true, ".htm": true, ".js": true, ".mjs": true, ".css": true, ".json": true}
+
+// copyContrastCode 把每组对照里通过那一版的合成代码拷进 workdir/contrasts/。
+// 只在镜头目录现在的产物记录与那次的指纹相同时拷：否则目录里已经是别的版本。
+func copyContrastCode(workdir string, clusters []Cluster) {
+	n := 0
+	for ci := range clusters {
+		for pi := range clusters[ci].Contrasts {
+			pair := &clusters[ci].Contrasts[pi]
+			if pair.PassedDir == "" || pair.PassedFingerprint == "" {
+				continue
+			}
+			sc, err := scene.Load(pair.PassedDir)
+			if err != nil {
+				continue
+			}
+			if record, ok := scene.LoadRecord(sc); !ok || record.Fingerprint != pair.PassedFingerprint {
+				continue
+			}
+			n++
+			rel := filepath.Join("contrasts", fmt.Sprintf("%02d-%s", n, pair.Passed))
+			if copySourceTree(pair.PassedDir, filepath.Join(workdir, rel)) > 0 {
+				pair.PassedCode = filepath.ToSlash(rel)
+			}
+		}
+	}
+}
+
+func copySourceTree(src, dst string) int {
+	copied, total := 0, 0
+	_ = filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case "attempts", "node_modules", ".studio-frames", ".git", "fonts":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		name := d.Name()
+		if !contrastExtensions[strings.ToLower(filepath.Ext(name))] || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".attempt.json") {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil || info.Size() > contrastFileLimit || total+int(info.Size()) > contrastTotalLimit {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return nil
+		}
+		target := filepath.Join(dst, rel)
+		if os.MkdirAll(filepath.Dir(target), 0o755) != nil || os.WriteFile(target, body, 0o644) != nil {
+			return nil
+		}
+		copied++
+		total += len(body)
+		return nil
+	})
+	return copied
+}
+
+func intersect(a, b []string) []string {
+	var out []string
+	for _, x := range a {
+		if contains(b, x) && !contains(out, x) {
+			out = append(out, x)
+		}
+	}
+	sort.Strings(out)
 	return out
 }
 
@@ -192,6 +358,7 @@ func (s *Store) Consolidate(ctx context.Context, opts ConsolidateOptions) (Conso
 		if err != nil {
 			return result, err
 		}
+		copyContrastCode(workdir, clusters)
 		brief := consolidationBrief(clusters, existing)
 		if err := os.WriteFile(filepath.Join(workdir, "brief.md"), []byte(brief), 0o644); err != nil {
 			return result, err
@@ -360,7 +527,12 @@ from_episodes: [ep-20261102-101500-a1b2c3]
   （模型名，按前缀匹配，如 gpt-6 匹配 gpt-6-astra）限定，只对它们召回。只有一个样本时不要凭它下结论说是通病。
 - 不得包含具体镜头的文案、镜头编号或素材文件名：经验要能迁移到别的文章。
 - 已有记忆说的是同一件事时，写成修订：换一个新名字，加 revises: <旧名>，正文写完整的新版本。不要并列新增。
+  修订必须保留旧版的全部 checked_by，正文不得短于旧版的一半：只改错的地方、补漏掉的情况，
+  不要为了简洁删掉旧版里仍然成立的细节、数值和反例正例。
+- 每个镜头最多注入 3 条经验：宁可一条写准，不要拆成几条泛泛的。
 - 只为确有共性的失败写经验；拿不准的组宁可不写。
+- 有「成败对照」的组，先读 contrasts/ 下通过那一版的合成代码：失败的一次犯了这个错，通过的一次没犯。
+  经验写成「通过的那一边是怎么做的」，正例尽量取自通过的写法，不要只是把报错改写成禁令。
 - 「用户的反应」一组写成偏好：从回退、反复提的要求与 👍 / 👎 里归纳用户长期的取向（节奏、配色、
   信息密度、语气……），不是复述某一次的修改要求。只在一个项目里出现的写 scope: <项目名>，
   几个项目都出现的不写 scope。偏好要用户确认后才生效，宁可少写。
@@ -419,9 +591,29 @@ from_episodes: [ep-20261102-101500-a1b2c3]
 		for _, note := range c.Notes {
 			fmt.Fprintf(&b, "- %s\n", note)
 		}
+		for _, pair := range c.Contrasts {
+			b.WriteString(contrastLine(pair))
+		}
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+func contrastLine(pair Contrast) string {
+	kind := "特征相近的另一个镜头通过了"
+	if pair.SameScene {
+		kind = "同一个镜头后来改对了"
+	}
+	line := fmt.Sprintf("- 成败对照（%s）：失败 %s，通过 %s", kind, pair.Failed, pair.Passed)
+	if pair.PassedCode != "" {
+		line += "；通过那一版的合成代码拷在当前目录的 " + pair.PassedCode + "/"
+	} else {
+		line += "；通过那一版的代码已被后来的渲染覆盖，只能对照报错与特征"
+	}
+	if len(pair.Shared) > 0 {
+		line += "；共同特征 " + strings.Join(pair.Shared, ", ")
+	}
+	return line + "\n"
 }
 
 func rendererModel(renderer, model string) string {

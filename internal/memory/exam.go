@@ -547,7 +547,7 @@ func (s *Store) recallForExam(sc scene.Scene, opts RecallOptions) (RecallResult,
 		return RecallResult{}, err
 	}
 	return Recall(RecallInput{Memories: opts.Extra, Stats: map[string]map[string]Stat{}, Renderer: opts.Renderer, Model: opts.Model, Features: features,
-		Text: sc.Text + "\n" + promptText(sc), Project: projectOf(sc.Directory), Budget: opts.Budget}), nil
+		Text: sc.Text + "\n" + promptText(sc), Project: projectOf(sc.Directory), Budget: opts.Budget, MaxLessons: opts.MaxLessons}), nil
 }
 
 // promote 把试用记忆转为生效并生成快照；修订生效时被修订的旧记忆转为沉睡。

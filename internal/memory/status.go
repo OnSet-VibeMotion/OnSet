@@ -15,6 +15,8 @@ type StatusReport struct {
 	Broken map[string]string `json:"broken,omitempty"`
 	// Weak 是待沉睡候选。
 	Weak []Weak `json:"weak"`
+	// Suspect 是召回后它要防的错照样发生的生效经验，建议重考。
+	Suspect []Suspect `json:"suspect"`
 	// Retest 是模型换过、需要重考的生效经验。
 	Retest           []Retest `json:"retest"`
 	Episodes         int      `json:"episodes"`
@@ -26,7 +28,7 @@ type StatusReport struct {
 // （标为「人工编辑，未经考试」）。currentModel 给出各渲染工具现在的模型，
 // 用来找出需要重考的经验；为 nil 时不判定。
 func (s *Store) Status(record bool, currentModel func(renderer string) string) (StatusReport, error) {
-	report := StatusReport{Dir: s.Dir, Counts: map[string]int{}, Broken: map[string]string{}, Weak: []Weak{}, Drift: []string{}, Retest: []Retest{}}
+	report := StatusReport{Dir: s.Dir, Counts: map[string]int{}, Broken: map[string]string{}, Weak: []Weak{}, Suspect: []Suspect{}, Drift: []string{}, Retest: []Retest{}}
 	all, broken, err := s.Memories()
 	if err != nil {
 		return report, err
@@ -35,10 +37,12 @@ func (s *Store) Status(record bool, currentModel func(renderer string) string) (
 		report.Broken[path] = problem.Error()
 	}
 	var active []string
+	var activeMemories []Memory
 	for _, m := range all {
 		report.Counts[fmt.Sprintf("%s/%s", m.Kind, m.Status)]++
 		if m.Status == StatusActive {
 			active = append(active, m.Name)
+			activeMemories = append(activeMemories, m)
 		}
 	}
 	drift, err := s.Drift()
@@ -79,6 +83,9 @@ func (s *Store) Status(record bool, currentModel func(renderer string) string) (
 	}
 	if weak := WeakMemories(episodes, active); weak != nil {
 		report.Weak = weak
+	}
+	if suspect := SuspectMemories(episodes, activeMemories); suspect != nil {
+		report.Suspect = suspect
 	}
 	retest, err := s.RetestNeeded(currentModel)
 	if err != nil {

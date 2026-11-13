@@ -121,8 +121,10 @@ func lintAgainstExisting(m Memory, existing []Memory) []string {
 	if m.Revises != "" {
 		if m.Revises == m.Name {
 			problems = append(problems, "revises 不能指向自己")
-		} else if !slices.ContainsFunc(existing, func(e Memory) bool { return e.Name == m.Revises }) {
+		} else if i := slices.IndexFunc(existing, func(e Memory) bool { return e.Name == m.Revises }); i < 0 {
 			problems = append(problems, fmt.Sprintf("revises 指向不存在的记忆：%s", m.Revises))
+		} else {
+			problems = append(problems, lintRevision(m, existing[i])...)
 		}
 	}
 	for _, other := range existing {
@@ -178,4 +180,31 @@ func normalizeRunes(text string) []rune {
 		}
 	}
 	return out
+}
+
+// MinRevisionRatio 是经验修订后正文至少要保留的篇幅（相对旧版）。
+const MinRevisionRatio = 0.5
+
+// lintRevision 防止修订把经验越改越短、越改越空。
+//
+// ACE（ICLR 2026）记录过整体重写的「上下文坍缩」：一次重写把 18,282 token 的上下文
+// 压成 122 token，准确率跌到比不做自适应还低；LLM 改写还有为求简洁丢掉领域细节的
+// 倾向（brevity bias）。修订是整理者重写一条经验的全文，同样会发生：旧版里由哪个
+// 校验器判定、具体的数值和写法，改写后悄悄没了，而格式校验看不出来。
+// 偏好不查：用户换一种说法替换旧偏好，短一点是正常的。
+func lintRevision(m, old Memory) []string {
+	if m.Kind != KindLesson || old.Kind != KindLesson {
+		return nil
+	}
+	var problems []string
+	for _, id := range old.CheckedBy {
+		if !contains(m.CheckedBy, id) {
+			problems = append(problems, fmt.Sprintf("修订丢掉了旧版 %s 的校验器 %s：修订要覆盖旧版判定的问题；确实不再适用的，请另写一条经验并让旧版沉睡", old.Name, id))
+		}
+	}
+	before, after := utf8.RuneCountInString(strings.TrimSpace(old.Body)), utf8.RuneCountInString(strings.TrimSpace(m.Body))
+	if before > 0 && float64(after) < float64(before)*MinRevisionRatio {
+		problems = append(problems, fmt.Sprintf("修订把正文从 %d 字缩到 %d 字（不到旧版的一半）：修订要写完整的新版本，保留旧版里仍然成立的细节、数值与反例正例", before, after))
+	}
+	return problems
 }
