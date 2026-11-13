@@ -1,0 +1,22 @@
+{
+  "name": "@am/engine",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ArticleToMotion 引擎：internal/* 的 TypeScript 移植，目录与 Go 包一一对应",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.0"
+  }
+}
