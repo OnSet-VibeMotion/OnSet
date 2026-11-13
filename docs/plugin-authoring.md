@@ -98,7 +98,7 @@ echo 'am-result {"url": "https://example.com/v/1"}'
 | `slots` | 实验性 | 把页面嵌进自带页面：`[{"at": "publish", "page": "mini", "height": 140}]`。`at` 取 `script`、`storyboard`、`scene`、`final`、`publish`、`progress`；`height` 80–1200，缺省 240 |
 | `commands` | 实验性 | 对话框的斜杠命令：`[{"name": "publish", "description": "打开发布面板", "page": "dashboard"}]`，`page`（打开本插件的页面）与 `prompt`（填进输入框的一段话）二选一 |
 | `inserts` | 实验性 | 插进制作说明某个阶段末尾的补充：`[{"stage": "render", "file": "prompts/render.md"}]`。`stage` 取 `intake`、`script`、`voice`、`timeline`、`plan`、`render`、`visual-qc`、`assemble`、`sound`、`mix`、`review`、`publish`、`wrapup` |
-| `flow` | 实验性 | 整套流程（新片型）：`{"name": "快剪", "stations": ["intake", "render", "my-publisher"], "first_page": "script", "prompt": "prompts/flow.md"}`。`stations` 写自带站的 id 与本插件的 id；`first_page` 取 `script`、`beat` 或本插件页面的 id；用户在设置页选用后，制作路线、顶栏第一步与各阶段说明都换成它的，公共约定照旧 |
+| `flow` | 实验性 | 整套流程（新片型）：`{"name": "快剪", "stations": ["intake", "render", "my-publisher"], "first_page": "script", "prompt": "prompts/flow.md"}`。`stations` 写自带站的 id 与本插件的 id；`first_page` 取 `script`、`beat` 或本插件页面的 id；用户在设置页选用后，制作路线、顶栏第一步与各阶段说明都换成它的，公共约定照旧。新建时记了流程的项目，`stations` 里写的自带站会带上自带站的那几段说明（引用了你的流程里没有的阶段时写成那一步的标题），你的 `prompt` 只需要写你自己那几站 |
 | `provides` | 实验性 | 提供配音或字幕对齐：`{"tts": {"name": "某配音", "op": "speak", "timestamps": "none"}, "align": {"name": "某对齐", "op": "align"}}`。`timestamps` 取 `none`、`sentence`、`word`；项目把 `TTS_PROVIDER` / `ALIGN_PROVIDER` 设成 `x:<插件 id>` 时 AI 用这条操作 |
 | `renderer_skills` | 实验性 | 给渲染镜头的技能：`[{"name": "caption-kit", "dir": "skills/caption-kit", "summary": "字幕卡片的写法", "scenes": "opt-in"}]`。`dir` 下必须有 `SKILL.md`；`scenes: all` 每个镜头都带（加上后已渲染的镜头要重渲染），`opt-in`（缺省）只给 `scene.json` 的 `plugin_skills` 点名的镜头 |
 | `film_styles` | 实验性 | 整片风格库：`{"name": "我的风格库", "dir": "styles"}`。`dir` 下每个子目录是一种风格（`STYLE.md` 必需，`SKILL.md`、`poster.jpg`、`style.json` 可选） |
@@ -226,7 +226,7 @@ echo 'am-result {"url": "https://example.com/v/1"}'
 }
 ```
 
-另有 `flow`（项目选用了哪个插件带来的流程）与 `disabled`（关掉的内置插件）。
+另有 `flow`（项目选用了哪个插件带来的流程）、`disabled`（关掉的内置插件）与 `production`（新建项目时记下的片型、提示词组合版本、画幅与制作说明的摘要；有它的项目，制作说明在运行期按流程组合，你的 `inserts` 插在那个阶段末尾、`prompt` 接在最后）。
 
 来源有三种写法：
 
