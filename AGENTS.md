@@ -280,6 +280,15 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 
 镜头交接（`scene/timing.ts` 的 `PlanHandoff` / `Handoff`）是分镜计划里唯一跨镜头的约定。渲染器互相看不到，交界能接上只靠两侧拿到**同一份**约定，所以它由 `am scene cues` 从计划抄进两侧的 `timing.enter` / `timing.exit`，不让编排工具在两份 `prompt.md` 里各写一遍。手法表 `HandoffDevices` 刻意只收「靠画面里的东西接过去」的写法，不收通用擦除——章节交界套固定转场正是要消除的生硬；「相邻章节交界不得同手法」也是同一个理由。`am review` 用 `Toolchain.frameDifference`（32×32 RGB 均值绝对差）比对声明过交接的交界，阈值取得宽，只拦「两张不同的画面」：物件挪几像素就报的话，这道门很快没人信。改手法表要同步改制作提示词第五阶段「镜头交接」的表格，`gen.test.ts` 的「carries scene handoffs」钉着。
 
+scene.json 里功能自己的块（多角色对话的 `cast`、歌曲讲解的 `song`、卡点的 `beat`）是**镜头扩展块**：`scene/block.ts` 是注册表（`SceneBlock`：字段名 `key`、先后 `order`、解码描述 `type`、`toJSON`、load 时的 `validate`、互斥 `excludes`、渲染前与复用前的 `verifyInputs`、与 timing 互斥的 `timeline`、提示词段 `promptSection`、指纹项 `fingerprintParts`），每个块在 `scene/blocks/<名字>.ts` 里 `registerBlock`，并用 `declare module '../scene'` 把自己的字段并进 `Scene`。`scene.ts`、`record.ts`、`timing.ts` 只遍历注册表，不 import cast / song / beat。
+
+| 约定 | 原因 |
+|---|---|
+| 块的实现放在 `scene/blocks/`，不放进 cast / song / beat 包 | 块要用 scene 的 `contained`、`sceneCanvas`、`VerificationError` 与技能常量；放进功能包，功能包就反过来依赖 scene，而登记又要由 scene 的包入口 import，成环 |
+| 登记靠 import 副作用，集中在 `scene/blocks/index.ts`，由 scene 的包入口 `index.ts` 导入；engine 的 `vitest.setup.ts` 另导入一次，因为 scene/ 自己的测试直接 import `./scene` | 理由同 `filmstyle/sources`：散在各处 import 就会漏。漏了不静默——含这个块的 scene.json 报「未知字段」 |
+| 字段、提示词段、校验、指纹项的先后都按 `order`（cast 10、song 20、beat 30），扩展块排在 `plugin_skills` 之后、`timing` 之前；timing 是 scene 自己的块，不进注册表 | scene.json 写回、提示词与指纹要与引入注册表之前逐字节相同，`scene/blocks.golden.test.ts` 用 `testdata/blocks-golden/` 钉着；`block.test.ts` 用只在测试里登记的假块证明加一种块不用改内核 |
+| 内核仍用到 `beat/grid` 的 `frameOf`、`beat/jsondecode` 与 `cast/yamldecode`，只取这几个模块，不 import 功能包入口 | 它们是全片唯一的秒换帧公式与 Go 编码的复刻，不属于任何一个块 |
+
 镜头复用按输入指纹判定（`scene.fingerprint`，`scene/record.ts`，记录在镜头目录的 `.am-render.json`）。指纹只算**声明过的输入**，不扫整个镜头目录——渲染器自己会往目录里写合成代码，算进去的话渲染一结束指纹就变了。镜头新增一类输入文件时，要把它加进 `fingerprint` 的文件清单，否则改了它也不会触发 Stale。指纹一致只表示「这份已验收产物出自当前输入」，不表示可复现；指纹不一致仍只标 Stale、要 `--force` 才覆盖，不要改成自动重渲染。指纹的摘要按字节算，所以写进 `.am-render.json` 与提示词的文字要逐字稳定，见 `packages/engine/CONVENTIONS.md`。
 
 每次渲染写 `render-<id>.attempt.json`，重渲染前 `scene.archiveAttempt`（`scene/attempt.ts`）先把上一次的产物、日志与尝试记录挪进 `attempts/`。调度层的重试与单镜头重跑走同一个归档函数，不要各写一份编号逻辑。token 用量按各工具流式事件尽力读取（`tools.accumulateUsage`），读不到就留空，不做估算。
