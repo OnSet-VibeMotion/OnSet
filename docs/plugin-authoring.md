@@ -86,7 +86,7 @@ echo 'am-result {"url": "https://example.com/v/1"}'
 | `after` | 稳定 | 站点排在制作路线上哪个站点之后（站点 id，例如 `publish`）；不写或找不到排在最后 |
 | `replaces` | 稳定 | 整站顶替一个自带的站（站 id，例如 `sound`）。顶替后那一站的站点换成本插件的 |
 | `prompt` | 稳定 | 插件目录里的 Markdown 文件，接在制作说明最后，自带一节标题和来源说明；与上面的约定冲突时以上面为准 |
-| `nodes` | 稳定 | 制作路线上的站点，见「站点」 |
+| `nodes` | 稳定 | 制作路线上的站点，见「站点」（站点里的 `state`、`guide` 两项是实验性的） |
 | `produces` | 稳定 | 插件会写的项目文件，见「会写的文件」 |
 | `ops` | 稳定 | 操作，见「操作」 |
 | `pages` | 稳定 | 页面，见「页面」 |
@@ -104,20 +104,72 @@ echo 'am-result {"url": "https://example.com/v/1"}'
 
 ArticleToMotion 自己的内置功能（音乐卡点、歌曲讲解、多角色对话、发布……）也用这份清单（只写名字与说明，作开关用），它们带来的代码在 ArticleToMotion 进程里登记，不经清单，所以没有给内置插件专用的字段。音乐卡点也是这样一个内置插件：项目里没有 `beat.yaml` 时可以在设置页关掉，关掉后它的操作、节拍页与安装页的「音乐卡点」都不在。
 
-写了不认识的字段直接报错（「有不认识的字段」）。所有路径都是相对路径：插件目录里的（`prompt`、命令、页面、技能、风格库）不能跑出插件目录；项目里的（`outputs`、`gate_files`、`produces`、`reads`）不能是绝对路径、不能有 `..`，也不能是 ArticleToMotion 自己的文件（`production/studio/`、`production/usage/`、`production/memory-exams/`、`.agents/`、`.env`）。
+写了不认识的字段直接报错（「有不认识的字段」）。所有路径都是相对路径：插件目录里的（`prompt`、命令、页面、技能、风格库）不能跑出插件目录；项目里的（`outputs`、`gate_files`、`state.file`、`produces`、`reads`）不能是绝对路径、不能有 `..`，也不能是 ArticleToMotion 自己的文件（`production/studio/`、`production/usage/`、`production/memory-exams/`、`.agents/`、`.env`）。
 
 ### 站点（`nodes`）
 
+| 字段 | 分级 | 说明 |
+|---|---|---|
+| `id` | 稳定 | 必填，小写字母、数字与连字符；同一条路线里不能与别的站点重名 |
+| `label` | 稳定 | 必填，路线上显示的名字 |
+| `step` | 稳定 | 必填，属于顶栏哪一步：`script`、`storyboard`、`scene`、`final`、`publish`，以及内置插件登记的步骤（音乐卡点的 `beat`） |
+| `gate` | 稳定 | `true` 是审核关卡（等用户确认），缺省 `false` |
+| `page` | 稳定 | 点这个站点时打开的页面：本插件页面的 id，或客户端自带的页面 |
+| `outputs` | 稳定 | 这些文件里有一个存在就算做完（取最新的修改时间）。普通站点 `outputs` 与 `state` 至少写一个 |
+| `stale_after` | 稳定 | 站点 id：那些站点的产物比本站新时，标「上游改过」 |
+| `gate_files` | 稳定 | 关卡必填：用户确认的是哪些文件，之后这些文件变了就是「确认后又改过」 |
+| `state` | 实验性 | 按项目文件里一个字段的值定这一站的状态、说明与在等谁，见下面「按文件内容定状态」；关卡不能写 |
+| `guide` | 实验性 | 这一站是「现在在这」时，对话顶上「接下来」卡片的说法与按钮，见下面「接下来」 |
+
+#### 按文件内容定状态（`state`）
+
+`outputs` 只能说「文件在不在」。发布这类站点做没做看的是文件里的一个字段（例如 `publish.md` frontmatter 的 `publish_status`），用 `state` 声明：
+
+```json
+"state": {
+  "file": "publish.md",
+  "frontmatter": "publish_status",
+  "cases": [
+    { "is": "ready", "status": "done", "detail": "可以发布" },
+    { "is": "pending_manual_checks", "status": "doing", "detail": "还剩人工检查", "waiting": "user" },
+    { "is": ["draft", "blocked"], "status": "doing", "detail": "还在写" }
+  ],
+  "otherwise": { "status": "doing", "detail": "状态：{value}" },
+  "missing": { "status": "todo" },
+  "invalid": { "status": "doing", "detail": "写坏了" },
+  "no_field": { "status": "doing", "detail": "还没有状态" }
+}
+```
+
 | 字段 | 说明 |
 |---|---|
-| `id` | 必填，小写字母、数字与连字符；同一条路线里不能与别的站点重名 |
-| `label` | 必填，路线上显示的名字 |
-| `step` | 必填，属于顶栏哪一步：`script`、`storyboard`、`scene`、`final`、`publish`，以及内置插件登记的步骤（音乐卡点的 `beat`） |
-| `gate` | `true` 是审核关卡（等用户确认），缺省 `false` |
-| `page` | 点这个站点时打开的页面：本插件页面的 id，或客户端自带的页面 |
-| `outputs` | 普通站点必填：这些文件存在就算做了 |
-| `stale_after` | 站点 id：那些站点的产物比本站新时，标「上游改过」 |
-| `gate_files` | 关卡必填：用户确认的是哪些文件，之后这些文件变了就是「确认后又改过」 |
+| `file` | 必填，项目里的相对路径；只能是本插件 `produces`、站点 `outputs` 或页面 `reads` 里的文件，不能是 ArticleToMotion 自己的文件。超过 256 KB、或真实路径（符号链接）跑出项目的，按读不了处理 |
+| `json` / `frontmatter` | 二选一：读 JSON 文件，或 Markdown 开头 `---` 之间的 YAML；值是用 `.` 分隔的键路径（`publish.status`） |
+| `cases` | 必填，按顺序比较，第一个 `is` 命中的那项生效。`is` 是一个值或几个值的数组（字符串、数字、布尔），只做相等比较，类型也要相同（`3` 与 `"3"` 不相等） |
+| `otherwise` | 字段有值、但不在任何 `cases` 里 |
+| `missing` | 文件不在 |
+| `invalid` | 文件太大、读不了、解析不了，或顶层不是对象 |
+| `no_field` | 字段不在，或值不是字符串、数字、布尔 |
+
+每一项（`cases` 里的每条与后面四个）可写：`status`（`todo` 没做、`doing` 进行中、`done` 做完，缺省 `todo`）、`detail`（路线上那一站下面的一句话；`cases` 与 `otherwise` 里的 `{value}` 换成读到的值）、`waiting`（这一站是「现在在这」时在等谁：`user` 等你、`ai` AI 在做，缺省 AI）、`guide`（停在这一项时换用的「接下来」，写法同下）。没写的那几项一律是「没做」、没有说明。
+
+规则：站点的 `outputs` 里有文件时直接算做完，不再看 `state`（产物是最硬的证据）；没有时按 `state` 落到的那一项。`done` 的完成时间取状态文件的修改时间（`stale_after` 拿它比）。`doing` 与 `todo` 在路线上都显示为没做完，区别是后面的站都做了时，`todo` 显示为「跳过」，`doing` 不会。ArticleToMotion 不运行插件的任何代码来判断状态，判断只看这份声明。
+
+#### 「接下来」（`guide`）
+
+```json
+"guide": {
+  "ai": "AI 在做封面和发布信息。",
+  "user": "发布前还剩几项人工检查。",
+  "actions": [
+    { "label": "核对完了", "draft": "发布前的人工检查我核对完了：" },
+    { "label": "发出去", "op": "send_now" },
+    { "label": "看发布看板", "page": "dashboard" }
+  ]
+}
+```
+
+`ai` 是 AI 在做时的说法，`user` 是等你时的说法；`actions` 是等你时卡片上的按钮，每个按钮写 `label` 加下面四个之一：`say`（直接发给 AI 的一句话）、`draft`（填进输入框，让用户接着写）、`page`（本插件页面的 id，或客户端自带的页面）、`op`（本插件一条 `trigger: user`、没有必填参数的操作；点了先在卡片上问一次，用户点「执行」才跑）。`state` 落到的那一项写了 `guide` 时用那一份，否则用站点的。
 
 ### 会写的文件（`produces`）
 
