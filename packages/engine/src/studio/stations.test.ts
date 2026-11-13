@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { addToProject, fetchStation } from '../flow';
 import { onStudioEvent } from './events';
-import { pageCSP, tickStationSchedules } from './stations';
+import { emitStationHook, pageCSP, tickStationSchedules } from './stations';
 import { newSessionFixture, send, studioRequest } from './testsupport';
 
 const fake = path.join(__dirname, '..', 'flow', 'testdata', 'fake-publisher');
@@ -38,6 +38,7 @@ describe('stations API', () => {
       ['status', 'agent', 'x_fake_publisher_status'],
       ['on_event', 'agent', 'x_fake_publisher_on_event'],
       ['speak', 'agent', 'x_fake_publisher_speak'],
+      ['scribble', 'user', ''],
     ]);
   });
 
@@ -74,7 +75,7 @@ describe('stations API', () => {
     expect((await send(f.s, 'GET', '/station-ui/fake-publisher/ui/slot.html')).status).toBe(200);
     expect((await send(f.s, 'GET', '/station-ui/_sdk.js')).headers.get('Content-Type')).toContain('javascript');
     // 只给页面所在目录：清单、命令、站目录外的文件都不给。
-    for (const bad of ['/station-ui/fake-publisher/am-station.json', '/station-ui/fake-publisher/bin/publish', '/station-ui/fake-publisher/prompt.md', '/station-ui/nope/ui/index.html']) {
+    for (const bad of ['/station-ui/fake-publisher/am-station.json', '/station-ui/fake-publisher/bin/publish.cjs', '/station-ui/fake-publisher/prompt.md', '/station-ui/nope/ui/index.html']) {
       expect((await send(f.s, 'GET', bad)).status, bad).not.toBe(200);
     }
   });
@@ -143,6 +144,40 @@ describe('stations API', () => {
     for (let i = 0; i < 50 && [...f.s.tasks.tasks.values()].some((t) => t.status === 'running' || t.status === 'queued'); i++) await new Promise((r) => setTimeout(r, 20));
     expect(tickStationSchedules(f.s, t0 + 10 * 60_000)).toEqual([]);
     expect(tickStationSchedules(f.s, t0 + 31 * 60_000)).toEqual(['fake-publisher/on_event']);
+    f.s.shutdown();
+  });
+
+  it('shows files an op wrote outside its declared scope, and posts a notice when a hook ran it', async () => {
+    const f = newSessionFixture();
+    addToProject(f.root, fetchStation(`link:${fake}`, process.env).entry);
+    // 测试里没有真的执行进程：换一个假的 am，像插件那样在项目里顺手写一个没声明的文件。
+    const bin = fs.mkdtempSync(path.join(f.root, '..', 'am-fake-'));
+    const fakeAm = path.join(bin, 'am');
+    fs.writeFileSync(fakeAm, '#!/bin/sh\nmkdir -p notes\necho x > notes/stray.txt\nmkdir -p production/publish\necho y > production/publish/ok.json\nprintf \'写好了\\n\\000am-result {"ok":true,"exit_code":0}\\n\'\n', { mode: 0o755 });
+    f.s.config.executable = fakeAm;
+    const done = async () => {
+      for (let i = 0; i < 250 && [...f.s.tasks.tasks.values()].some((t) => t.status === 'running' || t.status === 'queued'); i++) await new Promise((r) => setTimeout(r, 20));
+    };
+
+    expect((await studioRequest(f.s, 'POST', '/api/stations/fake-publisher/ops/scribble', '{"params":{}}')).status).toBe(202);
+    await done();
+    const task = [...f.s.tasks.tasks.values()].find((t) => t.type === 'station.run')!;
+    expect(task.status).toBe('succeeded');
+    expect(task.warning).toBe('插件「假发布」改了它没有声明会写的项目文件：notes/stray.txt。');
+    const { body } = await studioRequest(f.s, 'GET', '/api/stations');
+    const op = body.stations.find((x: { id: string }) => x.id === 'fake-publisher').ops.find((o: { name: string }) => o.name === 'scribble');
+    expect(op.last_run).toMatchObject({ ok: true, out_of_scope: ['notes/stray.txt'], out_of_scope_more: 0 });
+    expect(op.last_run.reserved).toBeUndefined();
+
+    // 钩子触发：没人在看，另在最近的对话里发一条 notice。
+    const created = await studioRequest(f.s, 'POST', '/api/sessions', '{}');
+    fs.rmSync(path.join(f.root, 'notes'), { recursive: true });
+    emitStationHook(f.s, f.s.currentProject(), 'film.approved');
+    await done();
+    const hook = [...f.s.tasks.tasks.values()].find((t) => t.type === 'station.hook')!;
+    expect(hook.warning).toContain('notes/stray.txt');
+    const events = (await send(f.s, 'GET', `/api/sessions/${created.body.session_id}/events?follow=0`)).text();
+    expect(await events).toContain('自动执行的插件「假发布」改了它没有声明会写的项目文件：notes/stray.txt。');
     f.s.shutdown();
   });
 

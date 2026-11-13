@@ -66,6 +66,7 @@ describe('parseManifest', () => {
       ['status', 'agent'],
       ['on_event', 'agent'],
       ['speak', 'agent'],
+      ['scribble', 'user'],
     ]);
     expect(m.permissions).toEqual({ project: true, network: [], uses: ['review'] });
     expect(m.hooks.map((h) => h.on)).toEqual(['gate.confirmed', 'film.approved']);

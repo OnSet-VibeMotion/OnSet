@@ -5,14 +5,26 @@
  * 以 `am-result ` 开头的最后一行是结构化结果（JSON），没有就当成没有结构化结果；退出码 0 是成功。
  *
  * 环境只给最少的几样：PATH、HOME、语言、代理、证书，加上 AM_STATION_DATA（插件自己的数据目录，凭据放这里）。
- * 项目 .env、am 与编排工具的设置一概不传。
+ * 项目 .env、am 与编排工具的设置一概不传。HOME 照给：很多工具（git、npm、各家 SDK）离了它不工作。
+ *
+ * 这不是沙箱：操作是用户电脑上的普通程序，能读写用户的文件、能联网。am 只做两件事：不把凭据交给它，
+ * 以及前后各扫一遍项目树，它写了声明范围（produces、站点 outputs）之外的项目文件时照实列出来（scope.ts）；
+ * 写到 am 自己的文件时这次操作按失败处理（文件已经写了，撤销不了）。
+ *
+ * 运行时：command 的第一个元素可以写 `{node}`（am 自己的运行时，客户端里是 Electron 带 ELECTRON_RUN_AS_NODE=1，
+ * 用户机器上不必装 Node）或 `{python}`（am setup 用 uv 装进 <数据目录>/am/python 的 Python，没有时报缺前置资源，
+ * 不现下载）。占位符后面第一个参数是脚本：相对路径按站目录解析。裸写 `node` / `python3` 照旧按 PATH 找。
  */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { lookPath, WindowsBaseEnvKeys } from '../envutil';
+import { MissingError } from '../prereq';
 import { groupSpawnOptions, killTree } from '../procgroup';
+import { pythonInstallDir, ToolPythonVersion } from '../toolinstall';
+import { nodeCommand } from '../toolpath';
 import { loadProjectStations, stationsDir, type LoadedStation, type ManifestOp } from './external';
+import { scopeReport, scopeText, statProject, type ScopeReport } from './scope';
 import { stationSettings } from './settings';
 
 export const ResultPrefix = 'am-result ';
@@ -47,6 +59,80 @@ export interface StationResult {
   data?: unknown;
   error?: string;
   exit_code: number;
+  /** 写了声明范围之外的项目文件（相对路径，最多 MaxListedPaths 条）；没有越界时不出现。 */
+  out_of_scope?: string[];
+  /** 没列出来的越界文件还有几个。 */
+  out_of_scope_more?: number;
+  /** 越界文件里属于 am 自己的（有它时 ok 为 false）。 */
+  reserved?: string[];
+}
+
+/** command 的第一个元素写它：用 am 自己的运行时跑脚本。 */
+export const NodePlaceholder = '{node}';
+/** command 的第一个元素写它：用 am setup 装的 Python 跑脚本。 */
+export const PythonPlaceholder = '{python}';
+
+/**
+ * am setup 用 uv 装进 <数据目录>/am/python 的 Python（uv 的目录名形如 cpython-3.12.12-macos-aarch64-none）。
+ * 优先工具用的那个小版本，其余按版本从新到旧；没有就抛 MissingError，指向工具准备页——不现下载。
+ */
+export function managedPython(env: Record<string, string | undefined>): string {
+  const dir = pythonInstallDir(env);
+  let names: string[] = [];
+  try {
+    names = dir === '' ? [] : fs.readdirSync(dir).filter((n) => /^cpython-3\.\d+\.\d+-/.test(n) && !n.includes('+'));
+  } catch {
+    names = [];
+  }
+  const version = (n: string) => n.split('-')[1].split('.').map(Number);
+  const preferred = Number(ToolPythonVersion.split('.')[1]);
+  const rank = (n: string) => {
+    const [, minor, patch] = version(n);
+    return [minor === preferred ? 1 : 0, minor, patch];
+  };
+  names.sort((a, b) => {
+    const [x, y] = [rank(a), rank(b)];
+    return y[0] - x[0] || y[1] - x[1] || y[2] - x[2];
+  });
+  for (const name of names) {
+    const file = process.platform === 'win32' ? path.join(dir, name, 'python.exe') : path.join(dir, name, 'bin', 'python3');
+    try {
+      if (fs.statSync(file).isFile()) return file;
+    } catch {
+      // 装了一半：看下一个。
+    }
+  }
+  throw new MissingError('插件用的 Python', dir === '' ? '' : `${dir} 里没有；在工具准备页装一项用到 Python 的工具时会带上它`);
+}
+
+/** 解析 command：占位符、站目录里的相对路径、PATH 里的命令。返回要起的程序、参数与额外的环境变量。 */
+export function resolveCommand(
+  command: readonly string[],
+  stationDir: string,
+  env: Record<string, string | undefined>,
+  pathValue: string,
+): { file: string; args: string[]; env: Record<string, string> } {
+  const [head, ...rest] = command;
+  const args = rest.map((a) => a.replaceAll('{station_dir}', stationDir));
+  if (head === NodePlaceholder || head === PythonPlaceholder) {
+    // 第一个参数是脚本：相对路径按站目录解析（`-m 模块`、`-c 代码` 这类选项不动）。
+    const [script, ...more] = args;
+    if (script === undefined) throw new Error(`command 写了 ${head} 就要接着写脚本，例如 ["${head}", "bin/run.${head === NodePlaceholder ? 'js' : 'py'}"]`);
+    const resolved = script.startsWith('-') || path.isAbsolute(script) ? script : path.join(stationDir, script);
+    if (head === PythonPlaceholder) return { file: managedPython(env), args: [resolved, ...more], env: {} };
+    const node = nodeCommand(resolved, more);
+    return { file: node.file, args: node.args, env: node.env };
+  }
+  if (head.includes('/') || head.includes('\\')) return { file: path.join(stationDir, head), args, env: {} };
+  try {
+    return { file: lookPath(head, pathValue), args, env: {} };
+  } catch (err) {
+    if (/^(node|python(3(\.\d+)?)?)$/.test(head)) {
+      const placeholder = head === 'node' ? NodePlaceholder : PythonPlaceholder;
+      throw new Error(`${(err as Error).message}。用户的电脑上不一定装了 ${head}：插件作者可以把 command 的 "${head}" 改成 "${placeholder}"，由 ArticleToMotion 提供运行时`, { cause: err });
+    }
+    throw err;
+  }
 }
 
 /** 找到项目里某个站的某条操作。 */
@@ -116,11 +202,10 @@ export async function runStationOp(
   const dataDir = path.join(stationsDir(env), station.manifest.id, 'data');
   fs.mkdirSync(dataDir, { recursive: true });
   const childEnv = stationEnv(env, dataDir, root, station.dir);
-  const [head, ...rest] = op.command;
-  const file = head.includes('/') || head.includes('\\') ? path.join(station.dir, head) : lookPath(head, childEnv.PATH ?? '');
-  const args = rest.map((a) => a.replaceAll('{station_dir}', station.dir));
+  const cmd = resolveCommand(op.command, station.dir, env, childEnv.PATH ?? '');
   write(`第三方站 ${station.manifest.name}（${station.manifest.id} ${station.manifest.version}）：${op.summary}\n`);
-  const child = spawn(file, args, { cwd: root, env: childEnv, stdio: ['pipe', 'pipe', 'pipe'], ...groupSpawnOptions() });
+  const before = statProject(root);
+  const child = spawn(cmd.file, cmd.args, { cwd: root, env: { ...childEnv, ...cmd.env }, stdio: ['pipe', 'pipe', 'pipe'], ...groupSpawnOptions() });
   // 设置（含插件自己的密钥）只经 stdin 交给它，不进环境变量，也不进命令行。
   const input: Record<string, unknown> = { params: checked, settings: stationSettings(env, station.manifest), project_root: root, station_dir: station.dir, data_dir: dataDir };
   if (event) input.event = event;
@@ -157,11 +242,21 @@ export async function runStationOp(
   });
   signal?.removeEventListener('abort', onAbort);
   if (pending !== '' && !pending.startsWith(ResultPrefix)) write(pending + '\n');
+  const scope = scopeReport(station.manifest, before, statProject(root));
+  if (scope) write(scopeText(station.manifest.name, scope));
   const { data, bad } = parseResultLine(stdout);
   if (code !== 0) {
     const tail = stderr.trim().split('\n').slice(-3).join('\n');
-    return { ok: false, error: `第三方站 ${stationID} 的 ${opName} 失败（退出码 ${code}）${tail ? '：' + tail : ''}`, exit_code: code };
+    return withScope({ ok: false, error: `第三方站 ${stationID} 的 ${opName} 失败（退出码 ${code}）${tail ? '：' + tail : ''}`, exit_code: code }, scope);
   }
-  if (bad) return { ok: false, error: `第三方站 ${stationID} 的结果行不是合法的 JSON：${bad.slice(0, 200)}`, exit_code: 1 };
-  return data === undefined ? { ok: true, exit_code: 0 } : { ok: true, data, exit_code: 0 };
+  if (scope && scope.reserved.length > 0) {
+    return withScope({ ok: false, error: `第三方站 ${stationID} 的 ${opName} 写了 ArticleToMotion 自己的文件（${scope.reserved.join('、')}），按失败处理`, exit_code: 1 }, scope);
+  }
+  if (bad) return withScope({ ok: false, error: `第三方站 ${stationID} 的结果行不是合法的 JSON：${bad.slice(0, 200)}`, exit_code: 1 }, scope);
+  return withScope(data === undefined ? { ok: true, exit_code: 0 } : { ok: true, data, exit_code: 0 }, scope);
+}
+
+function withScope(r: StationResult, scope: ScopeReport | null): StationResult {
+  if (!scope) return r;
+  return { ...r, out_of_scope: scope.out_of_scope, out_of_scope_more: scope.out_of_scope_more, ...(scope.reserved.length > 0 ? { reserved: scope.reserved } : {}) };
 }

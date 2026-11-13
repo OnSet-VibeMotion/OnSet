@@ -1372,6 +1372,12 @@ h4 {
   max-height: 120px;
   overflow: auto;
 }
+.task-warning {
+  margin: 0;
+  color: var(--stale);
+  font-size: 12px;
+  word-break: break-all;
+}
 .task button {
   align-self: flex-start;
 }

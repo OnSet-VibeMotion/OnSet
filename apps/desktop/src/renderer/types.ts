@@ -95,6 +95,8 @@ export interface Task {
   progress: number;
   message: string;
   error?: string;
+  /** 跑完了但要用户留意的事（第三方插件写了它没声明的文件）。 */
+  warning?: string;
   created_at: string;
   updated_at: string;
 }
@@ -807,6 +809,11 @@ export interface StationRun {
   ok: boolean;
   text: string;
   data?: unknown;
+  /** 写了它没声明会写的项目文件（最多 20 条）；没有越界时不出现。 */
+  out_of_scope?: string[];
+  out_of_scope_more?: number;
+  /** 其中属于 ArticleToMotion 自己的文件（这次操作因此算失败）。 */
+  reserved?: string[];
 }
 
 export interface StationOp {

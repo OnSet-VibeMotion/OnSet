@@ -1,9 +1,0 @@
-#!/bin/sh
-# 测试用的假发布：从 stdin 读参数，只写回执，不联网。
-set -e
-input=$(cat)
-platform=$(printf '%s' "$input" | sed -n 's/.*"platform":"\([^"]*\)".*/\1/p')
-mkdir -p production/publish
-printf '{"platform":"%s","url":"https://example.invalid/%s/1"}\n' "$platform" "$platform" > production/publish/receipts.json
-echo "已发到 $platform"
-printf 'am-result {"platform":"%s","url":"https://example.invalid/%s/1"}\n' "$platform" "$platform"

@@ -39,6 +39,13 @@ git 来源按 ref 克隆、记下 commit 与内容摘要，存进用户级目录
     const m = got.manifest;
     out.write(`已加入第三方站 ${m.name}（${m.id} ${m.version}）${got.entry.commit ? `，commit ${got.entry.commit.slice(0, 12)}` : ''}\n`);
     for (const op of m.ops) out.write(`  ${op.trigger === 'user' ? '[按钮]' : '[工具]'} ${op.trigger === 'user' ? op.name : flow.toolName(m.id, op.name)}：${op.summary}\n`);
+    // 页面在沙箱里，受清单的权限约束；操作不是：两者分开说，不混成一张「权限」表。
+    if (m.ops.length > 0) out.write(`${flow.OpsTrustNotice}\n`);
+    const pageLines = flow.pagePermissionLines(m);
+    if (pageLines.length > 0) {
+      out.write('它的页面在沙箱里运行，只能做清单里申请过的事：\n');
+      for (const line of pageLines) out.write(`  ${line}\n`);
+    }
     return { data: { entry: got.entry, name: m.name } };
   },
 });
@@ -82,7 +89,8 @@ defineOp({
   name: 'station_run',
   cli: ['station', 'run'],
   summary: '执行第三方站的一条操作',
-  description: '在子进程里执行，工作目录是项目根，只拿到最少的环境变量（不含项目 .env）。参数按站的清单校验。',
+  description: `在子进程里执行，工作目录是项目根，只拿到最少的环境变量（不含项目 .env）。参数按站的清单校验。
+这不是沙箱：操作是电脑上的普通程序。执行前后各扫一遍项目，写了站声明范围之外的文件时在输出末尾列出来；写了 am 自己的文件（production/studio/、.agents/、.env 等）时按失败处理，文件已经写了，没法自动撤销。`,
   examples: ['station_run({"station": "am-publisher", "op": "send", "params": "{\\"platform\\": \\"douyin\\"}"})'],
   scopes: ['cli'],
   params: {

@@ -14,7 +14,13 @@ test('a third-party station is added in settings and its publish action runs onl
   const stations = page.locator('#settings-dialog section.stations[aria-label="流程插件"]');
   await stations.getByLabel('插件来源').fill(`link:${fake}`);
   await stations.getByRole('button', { name: '添加' }).click();
+  // 添加前先说实话：插件的操作是电脑上的普通程序，不在沙箱里。
+  const confirmAdd = stations.getByRole('alertdialog', { name: '确认添加插件' });
+  await expect(confirmAdd).toContainText('能读写你的文件、能联网');
+  await expect(confirmAdd).toContainText('写了声明范围之外的项目文件时告诉你');
   const lock = path.join(project.path, 'article-to-motion.flow.json');
+  expect(fs.existsSync(lock)).toBe(false);
+  await confirmAdd.getByRole('button', { name: '确认添加' }).click();
   await expect.poll(() => fs.existsSync(lock)).toBe(true);
   const card = stations.locator('li[data-station="fake-publisher"]');
   await expect(card).toContainText('假发布');
@@ -22,6 +28,7 @@ test('a third-party station is added in settings and its publish action runs onl
   await card.getByRole('button', { name: '详情与设置' }).click();
   await expect(card.locator('.station-prompt')).toContainText('请用户在发布页点');
   await expect(card).toContainText('要你点的');
+  await expect(card.locator('.station-trust')).toContainText('它的操作是在你电脑上运行的程序');
   await stations.scrollIntoViewIfNeeded();
   await page.screenshot({ path: test.info().outputPath('stations-settings.png') });
   await page.locator('#settings-dialog').getByRole('button', { name: '关闭' }).click();
@@ -116,9 +123,10 @@ test('plugins get settings, a slot in the publish page, a slash command, hooks a
   const card = page.locator('#settings-dialog li[data-station="fake-publisher"]');
   await expect(card).toContainText('还有设置没填');
   await card.getByRole('button', { name: '详情与设置' }).click();
-  await expect(card.locator('.station-perms')).toContainText('镜头、制作进度、发布信息的概况');
-  await expect(card.locator('.station-perms')).toContainText('整片复查');
-  await expect(card.locator('.station-perms')).toContainText('你确认一个审核关卡后');
+  // 页面的权限与插件接进来的地方分开列：页面在沙箱里，操作不在。
+  await expect(card.locator('.station-page-perms')).toContainText('镜头、制作进度、发布信息的概况');
+  await expect(card.locator('.station-page-perms')).toContainText('整片复查');
+  await expect(card.locator('.station-perms:not(.station-page-perms)')).toContainText('你确认一个审核关卡后');
   await card.getByLabel('平台令牌').fill('tok-e2e-secret');
   await card.locator('[data-setting="token"]').getByRole('button', { name: '保存' }).click();
   await expect(card.locator('[data-setting="token"]')).toContainText('已填写');
@@ -173,7 +181,7 @@ test('a plugin can bring a whole flow, a voice, a style library, and send a mess
   const dialog = page.locator('#settings-dialog');
   const card = dialog.locator('li[data-station="fake-publisher"]');
   await card.getByRole('button', { name: '详情与设置' }).click();
-  const perms = card.locator('.station-perms');
+  const perms = card.locator('.station-perms:not(.station-page-perms)');
   await expect(perms).toContainText('假配音');
   await expect(perms).toContainText('caption-kit');
   await expect(perms).toContainText('假风格库');
@@ -263,4 +271,42 @@ test('builtin features are plugins too: on by default, off per project, locked w
   await page.locator('#settings-trigger').click();
   await expect(page.locator('#settings-dialog li[data-builtin="song"]').getByRole('switch')).toBeDisabled();
   await expect(page.locator('#settings-dialog li[data-builtin="song"]')).toContainText('这个项目正在用（有 song.yaml）');
+});
+
+test('files a plugin op writes outside what it declared are shown as a warning', async ({ page, project }) => {
+  fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: draft\n---\n');
+  fs.writeFileSync(
+    path.join(project.path, 'article-to-motion.flow.json'),
+    JSON.stringify({ version: 1, stations: [{ id: 'fake-publisher', version: '0.1.0', source: `link:${fake}`, commit: '', digest: '' }] }),
+  );
+  await openProject(page, project);
+
+  // 发布页的按钮：假发布顺手写了 notes/scribble.txt（清单只声明了 production/publish/）。
+  await page.locator('[data-tab="publish"]').click();
+  const action = page.locator('.stations-actions .station-op[data-op="scribble"]');
+  await action.getByRole('button', { name: '顺手记一笔' }).click();
+  const warning = action.locator('.station-scope');
+  await expect(warning).toContainText('它改了 1 个没声明会写的文件');
+  await expect(warning).toContainText('notes/scribble.txt');
+  await expect(warning).not.toContainText('production/publish/scribble.json');
+  await expect(action.locator('.station-last')).toHaveText('上次执行成功');
+  // 任务列表里同样标出来。
+  await page.locator('#tasks-toggle').click();
+  await expect(page.locator('#tasks .task-warning').first()).toContainText('插件「假发布」改了它没有声明会写的项目文件：notes/scribble.txt');
+  await page.locator('#tasks-toggle').click();
+  await page.screenshot({ path: test.info().outputPath('station-scope-publish.png') });
+
+  // 插件页面的 am.run()：用户点「执行」后，回执处（宿主那一侧）标出越界的文件。
+  fs.rmSync(path.join(project.path, 'notes'), { recursive: true, force: true });
+  await page.locator('#plugin-menu-trigger').click();
+  await page.locator('.plugin-menu-list [data-tab="x:fake-publisher:dashboard"]').click();
+  const host = page.locator('.station-page');
+  const frame = page.frameLocator('.station-frame');
+  await expect(frame.locator('#title')).toHaveText(`假发布 · ${project.name}`);
+  await expect(host.locator('.station-scope')).toHaveCount(0);
+  await frame.locator('#scribble').click();
+  await host.locator('.station-confirm').getByRole('button', { name: '执行', exact: true }).click();
+  await expect(host.locator('.station-scope')).toContainText('「假发布」执行「顺手记一笔」');
+  await expect(host.locator('.station-scope')).toContainText('notes/scribble.txt');
+  await page.screenshot({ path: test.info().outputPath('station-scope-page.png') });
 });

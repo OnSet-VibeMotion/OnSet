@@ -23,3 +23,4 @@ export function atomicWrite(file: string, data: string | Uint8Array, mode = 0o64
 }
 
 export { goPathError } from '../gofmt';
+export { ProjectSkippedDirs, walkDir } from './walk';
