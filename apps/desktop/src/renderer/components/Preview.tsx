@@ -1,3 +1,4 @@
+import { playerProps } from '../media';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -745,7 +746,7 @@ function FinalTab({ tree, version, run, onTab }: { tree: TreeFile[]; version: nu
         <div className="scene-stage">
           {current ? (
             <div className="stage-frame">
-              <video controls preload="metadata" src={rawURL(current, version)} />
+              <video {...playerProps} preload="metadata" src={rawURL(current, version)} />
             </div>
           ) : (
             <Empty>还没有成片。镜头都出片后，可以先拼接无声母版。</Empty>
@@ -1246,11 +1247,11 @@ export function FileView({ path, version }: { path: string; version: number }) {
       </div>
       {videoExt.test(path) && (
         <div className="stage-frame">
-          <video controls preload="metadata" src={rawURL(path, version)} />
+          <video {...playerProps} preload="metadata" src={rawURL(path, version)} />
         </div>
       )}
       {imageExt.test(path) && <img className="file-image" src={rawURL(path, version)} alt="" />}
-      {audioExt.test(path) && <audio controls src={rawURL(path, version)} />}
+      {audioExt.test(path) && <audio {...playerProps} src={rawURL(path, version)} />}
       {error && <p className="error-line">{error}</p>}
       {file && (file.binary ? <Empty>二进制文件或超过 2 MB，不显示内容。</Empty> : <pre className="text" id="file-content" data-ctx-source={path} data-ctx-label={path.split('/').pop()}>
             {file.content}

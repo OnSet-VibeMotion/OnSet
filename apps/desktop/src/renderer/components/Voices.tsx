@@ -1,3 +1,4 @@
+import { playerProps } from '../media';
 import { useEffect, useRef, useState } from 'react';
 import { api, errorText, post } from '../api';
 import type { Attachment, SetupStatus, VoiceDraft, VoiceEntry, VoiceLibrary } from '../types';
@@ -273,7 +274,7 @@ function RecordVoice({ sample, first, onSaved }: { sample: string; first: boolea
             {phase === 'done' ? '重录' : '开始录音'}
           </button>
         )}
-        {take && phase === 'done' && <audio src={take.url} controls />}
+        {take && phase === 'done' && <audio src={take.url} {...playerProps} />}
       </div>
       {take && phase === 'done' && (
         <>

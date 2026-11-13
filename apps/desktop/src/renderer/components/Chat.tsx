@@ -1,3 +1,4 @@
+import { playerProps } from '../media';
 import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, errorText, post, rawURL } from '../api';
@@ -864,7 +865,7 @@ function MediaStrip(props: { media: MediaRef[]; mtimes: Map<string, number>; onO
             <button className="link media-name" title={m.path} onClick={() => props.onOpenFile(m.path)}>
               {name}
             </button>
-            {m.kind === 'audio' ? <audio controls preload="metadata" src={src} /> : <video controls preload="metadata" src={src} />}
+            {m.kind === 'audio' ? <audio {...playerProps} preload="metadata" src={src} /> : <video {...playerProps} preload="metadata" src={src} />}
           </div>
         );
       })}

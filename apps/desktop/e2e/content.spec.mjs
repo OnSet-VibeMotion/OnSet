@@ -97,6 +97,8 @@ test('plays audio files a reply mentions', async ({ page, project }) => {
   await expect(item).toHaveCount(1);
   await expect(item).toContainText('try-A.wav');
   await expect(item.locator('audio')).toHaveAttribute('src', /production%2Faudio%2Fauditions%2Ftry-A\.wav/);
+  // 原生播放控件的「⋮」菜单里不出现「下载」与「投放」。
+  expect(await item.locator('audio').evaluate((el) => [el.controls, el.controlsList.contains('nodownload'), el.controlsList.contains('noremoteplayback')])).toEqual([true, true, true]);
 });
 
 test('renders GitHub-flavored markdown safely', async ({ page, project }) => {
@@ -235,6 +237,10 @@ test('approving the final film starts consolidating memory and goes to publish',
   await fs.writeFile(path.join(project.path, 'production', 'review', 'review.json'), JSON.stringify({ ok: true, problems: [] }));
   await openProject(page, project);
   await page.locator('[data-tab="final"]').click();
+  // 成片的播放器没有「下载」。
+  const film = page.locator('#panel video[controls]');
+  await expect(film).toHaveCount(1);
+  expect(await film.evaluate((el) => el.controlsList.contains('nodownload'))).toBe(true);
   await page.locator('#final-approve').click();
   await expect(page.locator('[data-tab="publish"]')).toHaveClass(/on/);
   const tasks = await page.evaluate(async () => (await (await fetch('/api/tasks')).json()).tasks);

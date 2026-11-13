@@ -45,7 +45,8 @@ test('shows what the renderer is doing while a scene renders', async ({ page, pr
     const [p, t] = await Promise.all([panel.boundingBox(), page.locator('#panel .scene-title').boundingBox()]);
     return { x: p.x, y: p.y, width: p.width, height: p.height, titleY: t.y };
   };
-  // 面板刚打开还在滑入：等位置稳定下来再量。
+  // 面板刚打开还在滑入：先等它的滑入动画跑完（转圈这类循环动画除外；隐藏窗口里动画时快时慢，只比两次位置会在半路停顿时误判稳定），再等位置稳定下来量。
+  await page.locator('#panel').evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished)));
   let before = await box();
   await expect
     .poll(async () => {
