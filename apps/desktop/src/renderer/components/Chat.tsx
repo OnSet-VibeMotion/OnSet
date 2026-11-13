@@ -5,7 +5,8 @@ import type { AgentChoice, AgentsResponse, Attachment, EventKind, PermissionAsk,
 import { tabs } from './Preview';
 import { Poster, styleKey, useFilmStyles } from './FilmStyles';
 import type { FilmStyle, ProgressState, TreeFile } from '../types';
-import { currentSummary } from './Progress';
+import { confirmGate, currentSummary } from './Progress';
+import { guideFor, type Guide, type GuideAction } from './guide';
 import { AgentPicker } from './AgentPicker';
 import { DiffDialog } from './DiffDialog';
 import { Icon } from './Icon';
@@ -227,6 +228,29 @@ export function Chat(props: Props) {
     setDraft(text);
     pendingCaret.current = text.length;
     textarea.current?.focus();
+  };
+
+  // 「接下来」卡片：按制作路线现在这一站说清该做什么（guide.ts），按钮只做界面本来就能做的事。
+  const started = props.sessions.length > 0 || Object.keys(props.progress?.turns ?? {}).length > 0;
+  const guide = guideFor(props.progress, started);
+  const runGuide = (action: GuideAction) => {
+    switch (action.kind) {
+      case 'page':
+        props.onView({ page: action.page, target: action.target });
+        return;
+      case 'say':
+        void deliver(action.text, []);
+        return;
+      case 'draft':
+        fill(action.text);
+        return;
+      case 'gate':
+        void confirmGate(action.gate, (text) => void deliver(text, []));
+        return;
+      case 'start':
+        void startProduction();
+        return;
+    }
   };
 
   /** 执行一条 / 命令：网页里直接做的清空输入框，交给编排工具的换成一句模板。 */
@@ -456,6 +480,7 @@ export function Chat(props: Props) {
         </button>
       </header>
       <ProgressStrip progress={props.progress} onOpen={props.onProgress} />
+      <NextStep guide={guide} disabled={blocked || running || sending} onAction={runGuide} />
 
       <div className={'chat-log-wrap' + (scrolled ? ' edge' : '')}>
         <div className={'chat-log' + (plan ? ' has-plan' : '')} id="messages" ref={scroller} onScroll={onScroll}>
@@ -1472,6 +1497,44 @@ function HistoryMenu(props: { sessions: SessionMeta[]; current: string; onPick: 
         </button>
       ))}
     </div>
+  );
+}
+
+/**
+ * 「接下来」：在等你的时候，对话顶上那一行下面展开一张卡片，说清现在该做什么，带几个按钮。
+ * AI 在做时不展开（那一行已经写着「AI 在做」）。点 × 收起这一次，换到下一站或下一种状态时再出现。
+ */
+function NextStep({ guide, disabled, onAction }: { guide: Guide | null; disabled: boolean; onAction: (action: GuideAction) => void }) {
+  const key = guide ? guide.title + '|' + guide.text : '';
+  const [hidden, setHidden] = useState('');
+  if (!guide || !guide.waiting || hidden === key) return null;
+  return (
+    <section className="next-step" id="next-step" aria-label="接下来">
+      <div className="ns-head">
+        <span className="ns-kicker">接下来</span>
+        <strong>{guide.title}</strong>
+        <span className="spacer" />
+        <button className="icon-button" aria-label="收起" title="收起" onClick={() => setHidden(key)}>
+          <Icon name="close" size={10} />
+        </button>
+      </div>
+      <p>{guide.text}</p>
+      {guide.actions.length > 0 && (
+        <div className="ns-actions">
+          {guide.actions.map((action) => (
+            <button
+              key={action.label}
+              // 推进制作的（确认、开工、发话）是主按钮；开页面、填输入框是次要的。
+              className={action.kind === 'page' || action.kind === 'draft' ? '' : 'primary'}
+              disabled={disabled && action.kind !== 'page' && action.kind !== 'draft'}
+              onClick={() => onAction(action)}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

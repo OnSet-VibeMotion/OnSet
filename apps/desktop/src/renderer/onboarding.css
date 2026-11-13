@@ -1,0 +1,246 @@
+/*
+ * 首次使用引导（components/Onboarding.tsx）。左边一列是四步，像场记板上的镜次：编号、做完换成对勾；
+ * 右边是当前这一步。沿用放映室的色板：暖黑底、象牙白字、只有黄铜一种强调色。选择器挂在 .onboarding 下。
+ */
+.onboarding {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  background: var(--bg);
+}
+
+/* ---- 左列：四步 ---- */
+.onboarding .ob-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 48px 28px 24px 36px;
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+.onboarding .ob-kicker {
+  margin: 0;
+  font: 11px var(--mono);
+  letter-spacing: 0.14em;
+  color: var(--accent-text);
+}
+.onboarding .ob-rail h1 {
+  margin: 4px 0 0;
+  font: 600 28px var(--serif);
+  color: var(--text);
+}
+.onboarding .ob-count {
+  margin: 4px 0 22px;
+  font: 12px var(--mono);
+  color: var(--muted);
+}
+.onboarding .ob-rail ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.onboarding .ob-step {
+  width: 100%;
+  height: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 14px;
+  padding: 12px 12px;
+  white-space: normal;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  text-align: left;
+  color: var(--text-2);
+}
+.onboarding .ob-step:hover {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.onboarding .ob-step.on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.onboarding .ob-num {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  font: 12px var(--mono);
+  color: var(--muted);
+}
+.onboarding .ob-step.on .ob-num {
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.onboarding .ob-step.done .ob-num {
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  color: var(--ok);
+}
+.onboarding .ob-step-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.onboarding .ob-step-text strong {
+  font: 600 15px var(--serif);
+  color: var(--text);
+}
+.onboarding .ob-step-text span {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.onboarding .ob-later {
+  margin-top: auto;
+  align-self: flex-start;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ---- 右边：当前这一步 ---- */
+.onboarding .ob-main {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 48px 56px 28px;
+  overflow-y: auto;
+}
+.onboarding .ob-main > * {
+  width: 100%;
+  max-width: 760px;
+}
+.onboarding .ob-main header {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.onboarding .ob-index {
+  font: 11px var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--accent-text);
+}
+.onboarding .ob-main h2 {
+  margin: 0;
+  font: 600 24px var(--serif);
+  color: var(--text);
+}
+.onboarding .ob-done {
+  font: 11px var(--mono);
+  color: var(--ok);
+}
+.onboarding .ob-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.onboarding .ob-lead {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.8;
+}
+.onboarding .ob-agents {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+.onboarding .ob-agent {
+  height: auto;
+  white-space: normal;
+  justify-content: flex-start;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--raised);
+  text-align: left;
+}
+.onboarding .ob-agent strong {
+  font: 600 15px var(--serif);
+  color: var(--text);
+}
+.onboarding .ob-agent span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.onboarding .ob-agent em {
+  font: normal 11px var(--mono);
+  color: var(--faint);
+}
+.onboarding .ob-agent.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.onboarding .ob-agent.on em {
+  color: var(--accent-text);
+}
+.onboarding .ob-agent.missing:disabled {
+  opacity: 0.5;
+}
+.onboarding .ob-keys.settings {
+  max-width: none;
+}
+.onboarding .ob-keys .settings-error {
+  color: var(--bad);
+  font-size: 13px;
+}
+.onboarding .ob-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.onboarding .ob-option.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.onboarding .ob-skip {
+  align-self: flex-start;
+  font-size: 12px;
+  color: var(--muted);
+}
+.onboarding .ob-go {
+  align-self: flex-start;
+  height: 38px;
+  padding: 0 26px;
+}
+.onboarding .ob-error {
+  color: var(--bad);
+  font-size: 13px;
+}
+.onboarding .ob-main footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 32px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 900px) {
+  .onboarding {
+    grid-template-columns: 1fr;
+  }
+  .onboarding .ob-rail {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 24px 16px 12px;
+  }
+  .onboarding .ob-main {
+    padding: 24px 16px;
+  }
+}

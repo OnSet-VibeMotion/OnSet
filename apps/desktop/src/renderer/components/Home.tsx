@@ -35,6 +35,8 @@ interface Props {
   /** 新项目建好、制作已经开始：切到项目，打开这个会话。 */
   onStarted: (projectId: string, sessionId: string) => Promise<void>;
   onBack?: () => void;
+  /** 打开新手引导。 */
+  onGuide?: () => void;
 }
 
 /** 制作方式：映射到 am init 的 --delivery 与 --narration。 */
@@ -198,6 +200,7 @@ export function Home(props: Props) {
         onRemove={props.onRemove}
         onBrowse={props.onBrowse}
         onBack={props.onBack}
+        onGuide={props.onGuide}
       />
       <main className="home-main">
         <section className={'home-hero' + (props.projects.length === 0 ? ' centered' : '')}>
@@ -347,7 +350,7 @@ export function Home(props: Props) {
                         selected={agent.id === tool}
                         disabled={!agent.installed}
                         title={agent.label}
-                        desc={agent.installed ? '编排整片制作' : `没有找到 ${agent.command}`}
+                        desc={agent.installed ? '编排整片制作' : (agent.hint ?? `没有找到 ${agent.command}`)}
                         onClick={() => {
                           setTool(agent.id);
                           setMenu('');
@@ -418,6 +421,7 @@ function HomeRail(props: {
   onRemove: (id: string) => Promise<void>;
   onBrowse: () => void;
   onBack?: () => void;
+  onGuide?: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(true);
@@ -450,6 +454,12 @@ function HomeRail(props: {
         <Icon name="folder" size={14} />
         打开文件夹…
       </button>
+      {props.onGuide && (
+        <button className="rail-btn" id="open-guide" onClick={props.onGuide}>
+          <Icon name="route" size={14} />
+          新手引导
+        </button>
+      )}
       <button className="rail-head" aria-expanded={open} onClick={() => setOpen(!open)}>
         最近项目
         <Icon name="chevron" size={11} />

@@ -156,7 +156,7 @@ export function Settings({ version, run }: { version: number; run: RunAction }) 
  * 导演用哪家模型服务：每家一行，填了 key 就能在「编排模型」里选它的模型。key 只写进用户目录里一个
  * 只有自己能读的文件，界面上不回显。
  */
-function AgentKeys({ version }: { version: number }) {
+export function AgentKeys({ version, onChange }: { version: number; onChange?: (data: AgentKeysResponse) => void }) {
   const [data, setData] = useState<AgentKeysResponse | null>(null);
   const [editing, setEditing] = useState('');
   const [draft, setDraft] = useState('');
@@ -168,7 +168,9 @@ function AgentKeys({ version }: { version: number }) {
 
   const save = async (provider: string, key: string) => {
     try {
-      setData(await post<AgentKeysResponse>('/api/agent-keys', { provider, key }));
+      const next = await post<AgentKeysResponse>('/api/agent-keys', { provider, key });
+      setData(next);
+      onChange?.(next);
       setEditing('');
       setDraft('');
       setError('');

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, errorText, forUser, post } from './api';
 import { Chat, type Outbox } from './components/Chat';
 import { Home, type ProjectSummary } from './components/Home';
+import { Onboarding, shouldOnboard } from './components/Onboarding';
 import { SkillsPill, type SkillsStatus } from './components/SkillsPill';
 import { SetupGuide, useSetup } from './components/SetupGuide';
 import { Settings } from './components/Settings';
@@ -295,6 +296,17 @@ export function App() {
     void loadProjects();
     api<AgentsResponse>('/api/agents').then(setHomeAgents, () => setHomeAgents(null));
   }, []);
+
+  // 首次使用引导：还没有项目、又确实缺东西（工具没装好，或者没有一家编排工具能用）时自动打开一次；
+  // 都齐了就直接是首页。首页左栏「新手引导」随时能再打开。
+  const [guideOpen, setGuideOpen] = useState(false);
+  const guideChecked = useRef(false);
+  useEffect(() => {
+    if (guideChecked.current || !loaded || !setup.status || !homeAgents) return;
+    guideChecked.current = true;
+    const missing = !setup.status.ready || !homeAgents.agents.some((a) => a.installed);
+    if (missing && shouldOnboard(projects.length)) setGuideOpen(true);
+  }, [loaded, setup.status, homeAgents, projects.length]);
 
   // HyperFrames 官方技能：在 Studio 里新建的项目在后台装，装好之前或装失败时提示。
   const loadSkills = useCallback(async () => {
@@ -725,7 +737,17 @@ export function App() {
         </span>
       </header>
 
-      {loaded && (!currentId || homeOpen) ? (
+      {loaded && (!currentId || homeOpen) && guideOpen ? (
+        <Onboarding
+          setup={setup}
+          projectCount={projects.length}
+          onClose={() => {
+            setGuideOpen(false);
+            // 引导里可能填了 key、换了编排工具：首页的工具菜单要按新的显示。
+            api<AgentsResponse>('/api/agents').then(setHomeAgents, () => {});
+          }}
+        />
+      ) : loaded && (!currentId || homeOpen) ? (
         <Home
           projects={projects}
           summaries={summaries}
@@ -756,6 +778,7 @@ export function App() {
             setHomeOpen(false);
           }}
           onBack={currentId ? () => setHomeOpen(false) : undefined}
+          onGuide={() => setGuideOpen(true)}
         />
       ) : (
         <MarkdownContext.Provider value={markdownLinks}>

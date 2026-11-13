@@ -19,7 +19,7 @@ export function AgentPicker({ agents, value, disabled, onChange }: Props) {
     agents.agents
       .filter((agent) => seat === 'orchestrator' || agent.renderer || agent.id === current)
       .map((agent) => (
-        <option key={agent.id} value={agent.id} disabled={!agent.installed && agent.id !== current} title={agent.hint ?? agent.path ?? `找不到 ${agent.command}`}>
+        <option key={agent.id} value={agent.id} disabled={!agent.installed && agent.id !== current} title={agent.hint ?? agent.path ?? (agent.installed ? agent.label : `找不到 ${agent.command}`)}>
           {agent.label}
           {agent.installed ? '' : agent.hint ? '（未设置）' : '（未安装）'}
           {agent.id === fallback ? ' · 默认' : ''}
