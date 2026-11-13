@@ -9,7 +9,6 @@ export interface Project {
 
 export interface ProjectState {
   project: Project;
-  stage: 'setup' | 'plan' | 'render' | 'assemble' | 'review' | 'publish' | string;
   metadata: Record<string, string>;
   scenes: { total: number; completed: number; stale: number };
   /** 整片制作现在在哪一步（beat / script / storyboard / scene / final / publish）。 */
@@ -647,7 +646,16 @@ export interface ScriptBlock {
   nodes?: ScriptNode[];
 }
 
+/** 一页上的「确认」按钮记到哪个关卡（后端按当前流程路线上这一页的审核关卡给出）。 */
+export interface PageGate {
+  id: string;
+  /** 内置插件登记的确认时发给 AI 的话；宿主的关卡为空，查 gateMessages。 */
+  confirm?: string;
+}
+
 export interface ScriptResponse {
+  /** 这一页的确认按钮记到的关卡；这个流程的路线上没有为 null。 */
+  gate?: PageGate | null;
   path: string;
   content: string;
   final: boolean;
@@ -775,6 +783,8 @@ export interface StoryboardScene {
 }
 
 export interface StoryboardResponse {
+  /** 这一页的确认按钮记到的关卡（口播 gate-storyboard，卡点 gate-beat-storyboard）；路线上没有为 null。 */
+  gate?: PageGate | null;
   plan_path: string;
   updated_at?: string;
   parse_error?: string;

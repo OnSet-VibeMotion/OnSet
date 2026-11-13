@@ -182,12 +182,12 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
               引用所选
             </button>
             <button onClick={() => onQuick('口播稿要改：', [], true)}>提修改意见</button>
-            {!voiced && (
+            {!voiced && script.gate && (
               <button
                 className="primary"
                 disabled={!!busy}
                 title={busy ? 'AI 正在工作，等这一轮结束' : '确认终稿，开始正式配音'}
-                onClick={() => void confirmGate('gate-script', onQuick)}
+                onClick={() => script.gate && void confirmGate(script.gate.id, onQuick, script.gate.confirm)}
               >
                 确认，开始配音
               </button>

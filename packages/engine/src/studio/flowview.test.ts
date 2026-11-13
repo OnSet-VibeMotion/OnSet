@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as flow from '../flow';
 import * as preset from '../preset';
 import * as projectinit from '../projectinit';
-import { flowView } from './progress';
+import { flowView, pageGate } from './progress';
 
 const temps: string[] = [];
 afterEach(() => {
@@ -73,5 +73,15 @@ describe('directories without a flow record', () => {
     fs.writeFileSync(path.join(dir, 'beat.yaml'), 'schema: 1\n');
     expect(() => flowView(dir)).toThrow(flow.MissingFlowRecordError);
     expect(() => readProgress(dir)).toThrow('不是用这一版 ArticleToMotion 新建的项目');
+  });
+});
+
+describe('pageGate', () => {
+  it('names the review gate of a page on the route of the project\'s own flow', () => {
+    expect(pageGate(root(), 'storyboard')).toEqual({ id: 'gate-storyboard' });
+    expect(pageGate(root(), 'script')).toEqual({ id: 'gate-script' });
+    expect(pageGate(root('beat'), 'storyboard')).toEqual({ id: 'gate-beat-storyboard', confirm: '分镜我看过了，没问题，开始渲染。' });
+    expect(pageGate(root('beat'), 'script')).toBeNull();
+    expect(pageGate(root(''), 'storyboard')).toBeNull();
   });
 });

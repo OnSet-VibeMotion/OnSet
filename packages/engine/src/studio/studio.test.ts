@@ -10,14 +10,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { sceneFeatureAPI } from './features';
-import type { SceneSummary } from './scenes';
-import { projectMetadata, stageFor } from './studio';
+import * as flow from '../flow';
+import * as studioview from '../studioview';
+import { computeStations } from './progress';
+import { projectMetadata, stageFor, stepOf } from './studio';
+import { writeStepMark } from './view';
 import { addTask, runTask, updateTask } from './tasks';
 import { rawGet, setEnv, sleep, startStudio, studioRequest, tempDir, waitStudioTask, writeStudioFile, writeStudioPNG } from './testsupport';
-
-function scene(id: string, exists = false): SceneSummary {
-  return { id, directory: '', exists, stale: false, attempts: 0 };
-}
 
 describe('studio', () => {
   it('project and state API', async () => {
@@ -29,7 +28,7 @@ describe('studio', () => {
     expect(status).toBe(200);
     expect(body.ok).toBe(true);
     ({ body } = await studioRequest(s, 'GET', '/api/state'));
-    expect(body.stage).toBe('render');
+    expect(body.stage).toBeUndefined();
     expect(body.metadata.canvas_id).toBe('vertical-9x16');
   });
 
@@ -57,30 +56,31 @@ describe('studio', () => {
     expect(s.tasks.tasks.get(task.task_id)?.status).toBe('cancelled');
   });
 
-  it('stage follows production artifacts', () => {
-    const pending = [scene('a', true), scene('b')];
-    const rendered = [scene('a', true), scene('b', true)];
-    const cases: [string, string[], SceneSummary[], string][] = [
-      ['空项目', [], [], 'setup'],
-      ['口播终稿', ['production/script-final.md'], [], 'plan'],
-      ['配音时间轴', ['production/audio/voice.srt'], [], 'plan'],
-      ['分镜计划', ['production/scene-plan.json'], [], 'plan'],
-      // 处理方案是各流程（口播、卡点）分镜之前都要写的。
-      ['处理方案', ['production/treatment.md'], [], 'plan'],
-      ['旧版脚本', ['script.md'], [], 'plan'],
-      ['镜头未出齐', [], pending, 'render'],
-      ['镜头出齐', [], rendered, 'assemble'],
-      ['有成片', ['final.mp4'], rendered, 'review'],
-      ['成片在 production 下', ['production/final.mp4'], rendered, 'review'],
-      ['成片加发布信息', ['final.mp4', 'publish.md'], rendered, 'publish'],
-      // 卡点项目没有脚本，但做完了就该显示发布阶段（choice-paralysis 实测）。
-      ['卡点成片', ['beat.yaml', 'production/beat/grid.json', 'final.mp4', 'publish.md'], rendered.slice(0, 1), 'publish'],
-    ];
-    for (const [name, files, scenes, want] of cases) {
-      const root = tempDir();
-      for (const f of files) writeStudioFile(path.join(root, f), 'x');
-      expect(stageFor(root, scenes), name).toBe(want);
-    }
+  it('stage is the step of the top bar, from the production route', () => {
+    // 没有流程记录：排不出路线，也就没有阶段。
+    expect(stageFor(tempDir(), [])).toEqual({ stage: '', label: '' });
+    const speech = tempDir();
+    flow.recordFlow(speech, { id: 'speech', canvas: 'vertical-3x4' });
+    expect(stageFor(speech, [])).toEqual({ stage: 'script', label: '口播稿' });
+    // 卡点项目确认了网格、还没写分镜计划与处理方案：顶栏在哪一步，首页就写哪一步，不再落成「准备中」。
+    const beat = tempDir();
+    flow.recordFlow(beat, { id: 'beat', canvas: 'vertical-9x16' });
+    const grid = JSON.stringify({ schema: 1, audio_sha256: 'x', duration_seconds: 4, source: 'test', reviewed: true, beats: [0, 0.5, 1, 1.5], downbeats: [0] });
+    for (const [rel, body] of Object.entries({
+      'beat.yaml': 'schema: 1\n',
+      'production/beat/story.md': '# 故事\n',
+      'production/beat/track.json': '{}',
+      'production/beat/grid-draft.json': grid,
+      'production/beat/grid.json': grid,
+    })) writeStudioFile(path.join(beat, rel), body);
+    const { stations, current } = computeStations(beat, []);
+    expect(current).toBe('plan');
+    const step = stations.find((x) => x.id === current)!.step;
+    expect(stageFor(beat, [])).toEqual({ stage: step, label: studioview.steps().find((x) => x.id === step)!.label });
+    expect(stageFor(beat, []).stage).toBe(stepOf(beat, []).step);
+    // 编排标了步骤（比最新的产物新）：跟着标记走，与顶栏一致。
+    writeStepMark(beat, 'storyboard', new Date(Date.now() + 60_000));
+    expect(stageFor(beat, [])).toEqual({ stage: 'storyboard', label: '分镜' });
   });
 
   it('project metadata reads top-level front matter only', () => {
@@ -210,11 +210,12 @@ describe('studio', () => {
     expect(status).toBe(200);
     expect(body.current_project_id).toBe(projectID);
     expect(body.projects).toHaveLength(1);
-    expect(body.summaries[projectID].stage).toBe('setup');
+    // 新建的口播项目停在顶栏第一步。
+    expect(body.summaries[projectID]).toMatchObject({ stage: 'script', stage_label: '口播稿' });
     expect(body.default_parent, '上次新建时选的父目录').toBe(home);
     ({ status, body } = await studioRequest(s, 'GET', '/api/state'));
     expect(status).toBe(200);
-    expect(body.stage).toBe('setup');
+    expect(body.step).toBe('script');
     expect(body.metadata.canvas).not.toBe('');
     ({ status, body } = await studioRequest(s, 'GET', '/api/script'));
     expect(status).toBe(200);
@@ -338,16 +339,11 @@ describe('studio', () => {
 
     ({ status, body } = await studioRequest(s, 'GET', '/api/state'));
     expect(status).toBe(200);
-    expect(body.stage).toBe('render');
     expect(body.metadata.style_id).toBeUndefined();
     expect(body.scenes.total).toBe(2);
     expect(body.scenes.completed).toBe(1);
     expect(body.media).toBeUndefined();
 
-    // 有了成片才进复查；只跑过 run-all、还有镜头没出片时仍在渲染阶段。
-    writeStudioFile(path.join(root, 'production', 'run-report.json'), '{}');
-    ({ body } = await studioRequest(s, 'GET', '/api/state'));
-    expect(body.stage).toBe('render');
 
     const future = new Date(Date.now() + 3600_000);
     fs.utimesSync(path.join(sceneOne, 'scene.json'), future, future);
