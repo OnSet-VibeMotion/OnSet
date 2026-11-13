@@ -241,10 +241,21 @@ test('builtin features are plugins too: on by default, off per project, locked w
   await expect(toggle).toBeChecked();
 
   // 认领了渲染技能的内置功能提醒开关会让镜头重渲染；歌曲讲解不认领，不提醒。
-  await expect(builtin.locator('li[data-builtin]')).toHaveCount(4);
+  await expect(builtin.locator('li[data-builtin]')).toHaveCount(5);
   await expect(builtin.locator('li[data-builtin="algorithmic-art"]')).toContainText('已经渲染的镜头要重新渲染');
   await expect(builtin.locator('li[data-builtin="cast"]')).toContainText('多角色对话');
   await expect(song).not.toContainText('重新渲染');
+
+  // 关掉「发布」：顶栏没有发布这一步；打开又回来。
+  await expect(page.locator('.steps [data-tab="publish"]')).toBeAttached();
+  const publishing = builtin.locator('li[data-builtin="publishing"]');
+  await publishing.getByRole('switch').click();
+  await expect.poll(() => (fs.existsSync(lock) ? JSON.parse(fs.readFileSync(lock, 'utf8')).disabled : null)).toEqual(['publishing']);
+  await expect(page.locator('.steps [data-tab="publish"]')).toHaveCount(0);
+  await expect(page.locator('.more-pages [data-tab="publish"]')).toHaveCount(0);
+  await publishing.getByRole('switch').click();
+  await expect.poll(() => fs.existsSync(lock)).toBe(false);
+  await expect(page.locator('.steps [data-tab="publish"]')).toBeAttached();
 
   // 项目正在用歌曲讲解：开关锁住。
   fs.writeFileSync(path.join(project.path, 'song.yaml'), 'provider: none\n');

@@ -21,7 +21,7 @@ export const builtinStations: readonly Station[] = [
     id: 'host',
     name: '公共约定',
     nodes: [],
-    prompt: [{ id: 'head' }, { id: 'deliverables' }],
+    prompt: [{ id: 'head' }, { id: 'deliverables' }, { id: 'deliverables-tail' }],
   },
   {
     id: 'intake',
@@ -187,7 +187,7 @@ export const builtinStations: readonly Station[] = [
     id: 'publish',
     name: '发布',
     nodes: [{ id: 'publish', label: '封面与发布信息', step: 'publish', page: 'publish', produces: [{ path: 'publish.md' }, { prefix: 'covers/' }] }],
-    prompt: [{ id: 'config-lifecycle' }, { id: 'stage', stage: 'publish' }],
+    prompt: [{ id: 'config-lifecycle' }, { id: 'stage', stage: 'publish' }, { id: 'deliverables' }],
   },
   {
     id: 'wrapup',
@@ -280,6 +280,8 @@ export const productionPrompt: readonly string[] = [
   'review/stage',
   'publish/stage',
   'host/deliverables',
+  'publish/deliverables',
+  'host/deliverables-tail',
   'wrapup/stage',
   'beat-story/branch-intro',
   'beat-story/story',

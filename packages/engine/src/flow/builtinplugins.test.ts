@@ -3,7 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildPrompt, fingerprint, load, registeredSkills, resolveAllSkills } from '../scene';
-import { builtinPlugins, disabledAmOps, loadProjectStations, parseManifest, readLock, setBuiltinEnabled, addToProject, fetchStation } from './index';
+import { runPrompt } from '../project/runprompt';
+import { applyPluginMarkers, composeProduction, markPluginSection, projectExtras, route, stationOwners, builtinPlugins, disabledAmOps, loadProjectStations, parseManifest, readLock, setBuiltinEnabled, addToProject, fetchStation } from './index';
 
 const temps: string[] = [];
 afterEach(() => {
@@ -34,11 +35,11 @@ describe('builtin plugins', () => {
 
   it('is on by default, can be turned off per project, and not while the project uses it', () => {
     const root = project();
-    expect(loadProjectStations(root).stations.map((s) => s.manifest.id)).toEqual(['algorithmic-art', 'cast', 'song', 'text-to-lottie']);
+    expect(loadProjectStations(root).stations.map((s) => s.manifest.id)).toEqual(['algorithmic-art', 'cast', 'publishing', 'song', 'text-to-lottie']);
     expect(disabledAmOps(root).size).toBe(0);
     setBuiltinEnabled(root, 'song', false);
     expect(readLock(root).disabled).toEqual(['song']);
-    expect(loadProjectStations(root).stations.map((s) => s.manifest.id)).toEqual(['algorithmic-art', 'cast', 'text-to-lottie']);
+    expect(loadProjectStations(root).stations.map((s) => s.manifest.id)).toEqual(['algorithmic-art', 'cast', 'publishing', 'text-to-lottie']);
     expect(disabledAmOps(root).has('song_generate')).toBe(true);
     // 锁文件里的其他记录不受影响。
     addToProject(root, fetchStation(`link:${path.join(__dirname, 'testdata', 'fake-publisher')}`, process.env).entry);
@@ -91,5 +92,38 @@ describe('builtin plugins that claim renderer skills', () => {
     expect(buildPrompt(s, off)).not.toContain('生成式艺术参考');
     expect(buildPrompt(s, off)).toContain('Lottie 图层');
     expect(fingerprint(s, 'claude', off).fingerprint).not.toBe(print);
+  });
+});
+
+describe('builtin plugins that claim stations of the built-in flow', () => {
+  it('only builtin plugins may claim built-in stations', () => {
+    expect(() => parseManifest(JSON.stringify({ id: 'mine', version: '1', name: 'x', am_stations: ['publish'] }))).toThrow('只有随 ArticleToMotion 下发的内置插件');
+    expect(() => parseManifest(JSON.stringify({ id: 'mine', version: '1', name: 'x', am_stations: ['nope'] }), { builtin: true })).toThrow('没有自带的站 nope');
+    expect(stationOwners().get('publish')).toBe('publishing');
+  });
+
+  it('marks their prompt sections when composing, and the markers vanish at run time', () => {
+    const composed = composeProduction(path.join(__dirname, '..', 'preset', 'gen', 'templates', 'production'));
+    expect(composed).toContain('<!-- am-plugin:publishing -->\n### 发布配置生命周期');
+    const on = applyPluginMarkers(composed, new Set());
+    expect(on).not.toContain('am-plugin');
+    expect(on).toContain('## {{STAGE:publish}}'.replace('{{STAGE:publish}}', '第十二阶段') + '：刷新发布配置');
+    const off = applyPluginMarkers(composed, new Set(['publishing']));
+    expect(off).not.toContain('am-plugin');
+    expect(off).not.toContain('刷新发布配置');
+    expect(off).not.toContain('发布配置生命周期');
+    expect(off).not.toContain('按发布平台规格出的封面图');
+    expect(off).toContain('## 最终交付清单\n\n- 根目录 `final.mp4`。\n- 最终配音对应的');
+  });
+
+  it('take the station off the production map and out of the prompt when the project turns them off', () => {
+    const root = project();
+    fs.writeFileSync(path.join(root, 'PROMPT-PRODUCTION.md'), markPluginSection('publishing', '### 发布配置生命周期\n\n写 publish.md。\n') + '## 第二阶段：整理口播稿和开场\n');
+    expect(route('speech', projectExtras(root)).some((r) => r.node.id === 'publish')).toBe(true);
+    expect(runPrompt(root, '').prompt.toString('utf8').startsWith('### 发布配置生命周期\n\n写 publish.md。\n## 第二阶段')).toBe(true);
+    setBuiltinEnabled(root, 'publishing', false);
+    expect(route('speech', projectExtras(root)).some((r) => r.node.id === 'publish')).toBe(false);
+    expect(runPrompt(root, '').prompt.toString('utf8').startsWith('## 第二阶段')).toBe(true);
+    expect(disabledAmOps(root).has('validate_publish')).toBe(true);
   });
 });

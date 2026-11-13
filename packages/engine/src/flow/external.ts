@@ -165,6 +165,11 @@ export interface Manifest {
    * 渲染器拿不到这些技能，提示词里也没有它们那一段——已渲染的镜头因此要重渲染。
    */
   am_skills: string[];
+  /**
+   * 只有内置插件能写：认领自带流程里的站（flow/builtin.ts 的站 id）。项目关掉这个插件时，这些站从制作路线上
+   * 拿掉，它们在制作提示词里的段落也去掉（生成时用 am-plugin 标记包住，见 markPluginSection）。
+   */
+  am_stations: string[];
   /** 项目在用这个插件的凭据文件（例如 song.yaml）：存在时不许在这个项目里关掉它。 */
   in_use: string[];
   slots: ManifestSlot[];
@@ -249,7 +254,7 @@ export function parseManifest(text: string, opts: { builtin?: boolean } = {}): M
     throw new Error(`${ManifestFile} 不是合法的 JSON：${(err as Error).message}`);
   }
   if (!isObject(raw)) throw new Error(`${ManifestFile} 要是一个对象`);
-  knownFields(raw, ['id', 'version', 'name', 'description', 'after', 'replaces', 'prompt', 'nodes', 'produces', 'ops', 'pages', 'settings', 'permissions', 'hooks', 'schedules', 'inserts', 'flow', 'provides', 'renderer_skills', 'film_styles', 'am_ops', 'am_skills', 'in_use', 'slots', 'commands'], ManifestFile);
+  knownFields(raw, ['id', 'version', 'name', 'description', 'after', 'replaces', 'prompt', 'nodes', 'produces', 'ops', 'pages', 'settings', 'permissions', 'hooks', 'schedules', 'inserts', 'flow', 'provides', 'renderer_skills', 'film_styles', 'am_ops', 'am_skills', 'am_stations', 'in_use', 'slots', 'commands'], ManifestFile);
   const id = str(raw, 'id', 'station');
   if (!idPattern.test(id)) throw new Error(`station.id ${id} 要是小写字母开头的小写字母、数字与连字符（2–40 个字符）`);
   if (builtinStations.some((s) => s.id === id)) throw new Error(`station.id ${id} 与内置站重名`);
@@ -462,6 +467,11 @@ export function parseManifest(text: string, opts: { builtin?: boolean } = {}): M
   for (const name of amOps) if (!/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/.test(name)) throw new Error(`station.am_ops：${name} 不是操作名`);
   const amSkills = strings(raw, 'am_skills', 'station');
   if (amSkills.length > 0 && !opts.builtin) throw new Error('station.am_skills：只有随 ArticleToMotion 下发的内置插件能认领 am 的渲染技能');
+  const amStations = strings(raw, 'am_stations', 'station');
+  if (amStations.length > 0 && !opts.builtin) throw new Error('station.am_stations：只有随 ArticleToMotion 下发的内置插件能认领自带流程里的站');
+  for (const sid of amStations) {
+    if (sid === 'host' || !builtinStations.some((b) => b.id === sid)) throw new Error(`station.am_stations：没有自带的站 ${sid}`);
+  }
   const slots = list('slots').map((sl, i): ManifestSlot => {
     const where = `slots[${i}]`;
     knownFields(sl, ['at', 'page', 'height'], where);
@@ -509,6 +519,7 @@ export function parseManifest(text: string, opts: { builtin?: boolean } = {}): M
     film_styles: filmStyles,
     am_ops: amOps,
     am_skills: amSkills,
+    am_stations: amStations,
     in_use: inUseFiles,
     slots,
     commands,
@@ -942,7 +953,61 @@ export function inUse(root: string, m: Manifest): string {
 
 /** 项目路线用的第三方站。 */
 export function projectExtras(root: string, env: Record<string, string | undefined> = process.env): ExtraStation[] {
-  return loadProjectStations(root, env).stations.map((s) => toExtra(s.manifest));
+  const extras = loadProjectStations(root, env).stations.map((s) => toExtra(s.manifest));
+  // 关掉的内置插件认领的站：用一个没有站点的站顶替，路线上就没有它了。排在最后：第三方站顶替了同一个站时以第三方为准。
+  for (const sid of disabledAmStations(root)) {
+    extras.push({ station: { id: `off:${sid}`, name: '', nodes: [], prompt: [] }, after: '', replaces: sid });
+  }
+  return extras;
+}
+
+/** 这个项目关掉的内置插件认领的自带站。 */
+export function disabledAmStations(root: string): string[] {
+  let lock: Lock;
+  try {
+    lock = readLock(root);
+  } catch {
+    return [];
+  }
+  const disabled = new Set(lock.disabled ?? []);
+  return builtinPlugins()
+    .filter((p) => disabled.has(p.manifest.id))
+    .flatMap((p) => p.manifest.am_stations);
+}
+
+/** 自带的站归哪个内置插件（没有归属的不在表里）。生成制作提示词时据此加标记。 */
+export function stationOwners(): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const p of builtinPlugins()) for (const sid of p.manifest.am_stations) out.set(sid, p.manifest.id);
+  return out;
+}
+
+const markerOpen = (id: string) => `<!-- am-plugin:${id} -->\n`;
+const markerClose = (id: string) => `<!-- /am-plugin:${id} -->\n`;
+
+/** 生成制作提示词时，用标记包住内置插件认领的一段。 */
+export function markPluginSection(pluginID: string, text: string): string {
+  return markerOpen(pluginID) + (text.endsWith('\n') ? text : text + '\n') + markerClose(pluginID);
+}
+
+/**
+ * 运行时处理制作提示词里的插件标记：关掉的内置插件那几段整段去掉，其余只去掉标记行。
+ * 编排工具看到的提示词里没有标记；老项目的提示词没有标记，原样不动。
+ */
+export function applyPluginMarkers(text: string, disabled: ReadonlySet<string>): string {
+  let out = text;
+  for (const id of disabled) {
+    const open = markerOpen(id);
+    const close = markerClose(id);
+    for (;;) {
+      const start = out.indexOf(open);
+      if (start < 0) break;
+      const end = out.indexOf(close, start);
+      if (end < 0) break;
+      out = out.slice(0, start) + out.slice(end + close.length);
+    }
+  }
+  return out.replace(/^<!-- \/?am-plugin:[a-z][a-z0-9-]* -->\n/gm, '');
 }
 
 /** 把站加进项目（同 id 的换成新的），返回新锁文件。 */

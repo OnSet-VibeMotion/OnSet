@@ -222,7 +222,7 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 | 渲染技能（`renderer_skills`）：`resolveAllSkills` 经 `flow.pluginSkillsFor` 加入 `plugin:<站>/<技能>`，于是指纹（`skill:` 摘要）、读取放行与 `pluginSkillSection` 提示词都自动覆盖；`scenes: all` 的每个镜头都带，`opt-in` 的只给 `scene.json` 的 `plugin_skills` 点名的镜头。点名了却没有直接报错。项目没加插件时提示词与指纹逐字不变（`scene/pluginskills.test.ts`） | 加一个对所有镜头生效的技能，已渲染的镜头标成 Stale 是对的：渲染输入确实变了；不想全变就用 opt-in |
 | 整片风格库（`film_styles`）：`flow.PluginStyleSource` 实现 `filmstyle.Source`，来源 id `x-<站 id>`；用到风格来源的地方先 `flow.syncStyleSources(项目根)`（`film_style_*` 操作、`/api/film-styles`、项目风格接口），`filmstyle.replacePluginSources` 整组换掉；装进项目走同一份 `filmstyle.install` 契约，缺 SKILL.md 时补通用的。前置资源清单跳过插件来源 | 插件来源只对加了它的项目可见；风格库随插件钉在 commit 上，不联网 |
 
-内置插件：ArticleToMotion 自己的可选功能也写成插件，放在 `assets/plugins/<id>/`（随 `extraResources` 进 .app），用同一份 `am-station.json`。现在有歌曲讲解（`song`）、多角色对话（`cast`）、生成式艺术（`algorithmic-art`）与 Lottie 图层（`text-to-lottie`）。
+内置插件：ArticleToMotion 自己的可选功能也写成插件，放在 `assets/plugins/<id>/`（随 `extraResources` 进 .app），用同一份 `am-station.json`。现在有歌曲讲解（`song`）、多角色对话（`cast`）、发布（`publishing`）、生成式艺术（`algorithmic-art`）与 Lottie 图层（`text-to-lottie`）。
 
 | 约定 | 原因 |
 |---|---|
@@ -232,6 +232,8 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 | 只有内置插件能写 `am_skills`：认领 `scene.registeredSkills` 里的渲染技能。项目关掉插件时 `resolveAllSkills` 不解析它们，记成 `off:<名字>`（值为空，指纹与读取放行跳过空值），`skillPromptSections` 也不写那一段；没关时逐字不变（`flow/builtinplugins.test.ts`）。技能仍是注册的内置技能，内置资产树与技能门禁都不变。设置页的开关对这类插件提醒「已渲染的镜头要重新渲染」 | 这些段落进每个镜头的渲染提示词，关掉就是渲染输入变了，标 Stale 是对的；歌曲讲解不认领 song-explainer，因为它的提示词只在歌曲镜头出现，关掉却会让所有镜头 Stale |
 | 内置插件的 `prompt` 原样接在制作提示词（`PROMPT-PRODUCTION.md`）后面，不接 `PROMPT.md`、歌曲模式与 override；项目提示词里已有同一个标题（老项目）时不重复。「歌曲讲解分支」因此从 `templates/production/` 移到 `assets/plugins/song/prompt.md`，新生成的制作提示词里不再有这一节 | 原来那一节只在制作提示词里；老项目手里的提示词本来就有它 |
 | 歌曲讲解的引擎代码、`PROMPT-SONG.md` 与 song-explainer 技能都没动（`song_init` 照旧从 `assets/shared` 拷，技能仍是注册的内置技能） | 它们进项目文件与渲染指纹，搬动会让已有的歌曲项目失效 |
+| 只有内置插件能写 `am_stations`：认领自带流程里的站（`flow/builtin.ts` 的站 id；插件 id 不能与站 id 相同，所以发布插件叫 `publishing`）。生成制作提示词时，被认领的站的每一段用 `<!-- am-plugin:<id> -->` / `<!-- /am-plugin:<id> -->` 包住（`flow.markPluginSection`）；`runPrompt` 经 `flow.applyPluginMarkers` 把关掉的插件那几段整段去掉、其余只去掉标记行，编排工具看到的提示词与加标记之前逐字相同（老项目没有标记，原样不动）。关掉时 `projectExtras` 用一个没有站点的站顶替它（排在第三方站后面，第三方顶替同一个站时以第三方为准），制作路线上就没有它 | 发布的说明散在第一阶段、第十二阶段与交付清单里，搬到末尾会打乱顺序；标记让说明留在原位又能整段关掉。关掉后阶段编号会跳一格（第十一阶段之后是第十三阶段），编号是生成时写死的 |
+| 发布插件不设 `in_use`：首版 `publish.md` 在第一阶段就生成了，设了就再也关不掉。关掉后客户端顶栏不显示发布这一步与发布页，除非有第三方站在发布这一步放了站点（`app.tsx` 的 `publishOff`）。交付清单里发布的两行拆成 `publish/deliverables.md` 归发布站 | 只做内部用的片子不必做封面与发布信息 |
 | 测试用的假发布站在 `flow/testdata/fake-publisher`（只写回执、不联网）；vitest setup 与 e2e fixtures 把 `AM_STATIONS_DIR` 指到临时目录 | 测试不能往开发者真实的站目录写 |
 
 - 要像直接写给人类操作者的任务说明，不暴露执行者是 agent、Codex 或 AI，也不使用「主控 agent」这类身份设定；但可以明确说明他需要操作其他 AI。

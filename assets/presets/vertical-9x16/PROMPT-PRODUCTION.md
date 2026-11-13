@@ -91,12 +91,14 @@
 - 改镜头的风格只影响那个镜头和它两侧的交界：只有用到那种风格的镜头会被判为 Stale。给项目添一种风格不影响别的镜头。
 - 不再用的额外风格用 `film_style_remove({"style": "<来源/目录名>"})` 去掉；还有镜头点名用它时会被拒绝，先改分镜。
 
+<!-- am-plugin:publishing -->
 ### 发布配置生命周期
 
 平台、终稿和封面方向冻结后，立即参考 `templates/publish.md` 在根目录生成首版 `publish.md`，状态通常为 `draft`。文档必须以安全 YAML frontmatter 提供机器字段，并以固定 Markdown 章节提供人工可复制内容；不得把通用模板或其他作品的发布文案直接当成项目结果。
 
 如果将替换已有 `final.mp4`，必须先保留旧视频哈希并把 `video.replacement_in_progress: true`，以 `video_replacement_in_progress` 将现有发布配置原子刷新为 `blocked`。该保护状态优先于封面未确认或人工检查待完成。
 
+<!-- /am-plugin:publishing -->
 ## 第二阶段：整理口播稿和开场
 
 根据原文整理适合朗读的 `production/script-final.md`：
@@ -789,6 +791,7 @@ review({"video": "<候选成片>", "scenes": "scenes/", "out": "production/revie
 - 用户审阅的是明确绑定哈希的候选。预览通过后才能执行高质量渲染；高质量渲染不得改变已批准的时间轴、文字或布局。
 - 只修复受影响镜头，其他已冻结镜头必须按帧数和哈希复用。拼接后仍要重新执行全片语义和机器 QC。
 
+<!-- am-plugin:publishing -->
 ## 第十二阶段：刷新发布配置
 
 ### 平台封面
@@ -825,11 +828,14 @@ review({"video": "<候选成片>", "scenes": "scenes/", "out": "production/revie
 - YAML 必须使用支持安全模式的 YAML 库序列化。先在与目标文件同一文件系统写临时文件，执行 `validate_publish({"file": "<临时文件>", "project_root": "."})`，验证通过后才原子重命名为 `publish.md`。
 - 不得用无效临时文档覆盖最后一个有效 `publish.md`。如果无法构造合同有效的状态文档，保留旧文件并在最终汇报中明确刷新失败，绝不声称 `ready`。
 
+<!-- /am-plugin:publishing -->
 ## 最终交付清单
 
 - 根目录 `final.mp4`。
+<!-- am-plugin:publishing -->
 - 根目录 `publish.md`，包含最终发布文案、成片 SHA-256、证据索引、署名和人工待办。
 - `covers/` 下按发布平台规格出的封面图（抖音横 4:3 + 竖 3:4、小红书与视频号竖 3:4、B 站与知乎横 16:10）及其 `covers/src/` 源文件，已登记进 `publish.md` 的 `cover.images`。
+<!-- /am-plugin:publishing -->
 - 最终配音对应的 `transcription-production.srt`。
 - `production/script-final.md` 和修改记录。
 - `production/treatment.md` 整片处理方案，以及从它推出的 `production/scene-plan.json` 与 `production/scene-plan.md`。

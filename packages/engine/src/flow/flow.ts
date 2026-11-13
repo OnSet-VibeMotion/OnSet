@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as beat from '../beat';
 import { builtinFlows, builtinStations, productionPrompt } from './builtin';
+import { markPluginSection, stationOwners } from './external';
 import type { ExtraStation, Flow, FlowID, PathRule, RouteNode, Station } from './types';
 
 export function station(id: string, extra: readonly ExtraStation[] = []): Station {
@@ -174,5 +175,11 @@ export function composePrompt(order: readonly string[], read: SectionReader): st
 
 /** 内置的制作提示词（未替换画幅占位符）。正文目录是 preset/gen/templates/production。 */
 export function composeProduction(dir: string): string {
-  return composePrompt(productionPrompt, (sid, sec) => fs.readFileSync(path.join(dir, sid, sec + '.md'), 'utf8'));
+  // 内置插件认领的站，它们的段落用标记包住：项目关掉那个插件时运行时整段去掉（flow.applyPluginMarkers）。
+  const owners = stationOwners();
+  return composePrompt(productionPrompt, (sid, sec) => {
+    const text = fs.readFileSync(path.join(dir, sid, sec + '.md'), 'utf8');
+    const owner = owners.get(sid);
+    return owner ? markPluginSection(owner, text) : text;
+  });
 }

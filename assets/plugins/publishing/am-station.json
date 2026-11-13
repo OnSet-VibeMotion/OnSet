@@ -1,0 +1,8 @@
+{
+  "id": "publishing",
+  "version": "1",
+  "name": "发布",
+  "description": "按发布平台出封面、写标题简介话题、整理发布信息并校验；只做内部用的片子可以关掉，AI 就不再做封面和发布信息",
+  "am_ops": ["validate_publish"],
+  "am_stations": ["publish"]
+}

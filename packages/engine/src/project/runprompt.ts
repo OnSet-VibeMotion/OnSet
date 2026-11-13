@@ -53,6 +53,14 @@ export function runPrompt(root: string, override: string): RunPromptResult {
   // 项目加的第三方站各自带一节说明，接在最后。读不出来的站直接报错：用户加了它，悄悄少一步更糟。
   const extras = flow.loadProjectStations(root);
   if (extras.problems.length > 0) throw new Error(extras.problems.join('\n'));
+  // 制作提示词里内置插件认领的段落带着标记：关掉的插件整段去掉，其余只去掉标记。
+  let disabledBuiltins: Set<string>;
+  try {
+    disabledBuiltins = new Set(flow.readLock(root).disabled ?? []);
+  } catch {
+    disabledBuiltins = new Set();
+  }
+  prompt = Buffer.from(flow.applyPluginMarkers(prompt.toString('utf8'), disabledBuiltins));
   // 选用了第三方站的流程：am 的公共约定（第一个「## 第…阶段」之前的部分）照旧在前，各阶段换成那套流程的。
   const flowStation = flow.activeFlowStation(root, extras.stations);
   if (flowStation && override === '' && !songMode) {

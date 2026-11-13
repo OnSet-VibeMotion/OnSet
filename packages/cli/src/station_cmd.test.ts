@@ -102,6 +102,7 @@ describe('builtin plugins', () => {
     for (const name of names) if (name.startsWith('song_')) expect(owner.get(name), name).toBe('song');
     for (const name of names) if (name.startsWith('cast_') || name.startsWith('dialogue_')) expect(owner.get(name), name).toBe('cast');
     expect(owner.get('validate_cast')).toBe('cast');
+    expect(owner.get('validate_publish')).toBe('publishing');
   });
 
   it('hide the ops of a plugin the project turned off', async () => {
