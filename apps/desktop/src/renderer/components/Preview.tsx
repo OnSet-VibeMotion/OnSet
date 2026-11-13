@@ -187,14 +187,57 @@ function Timeline({ scenes, usage, sceneId, version, onScene }: { scenes: Scene[
   );
 }
 
+/** 选区旁的小工具条：贴在选区下沿，放不下就放到上沿，左右不出画面。 */
+function SelectionBar(props: {
+  drag: { x0: number; y0: number; x1: number; y1: number };
+  frame: HTMLDivElement | null;
+  onFix: () => void;
+  onAttach: () => void;
+  onClear: () => void;
+}) {
+  const { drag, frame } = props;
+  const width = frame?.clientWidth ?? 0;
+  const height = frame?.clientHeight ?? 0;
+  const barW = 236;
+  const barH = 36;
+  const left = Math.max(8, Math.min(Math.min(drag.x0, drag.x1), width - barW - 8));
+  const bottom = Math.max(drag.y0, drag.y1);
+  const top = bottom + 8 + barH <= height - 8 ? bottom + 8 : Math.max(8, Math.min(drag.y0, drag.y1) - barH - 8);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') props.onClear();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [props.onClear]);
+
+  return (
+    <div className="selection-bar" style={{ left, top }}>
+      <button id="fix-region" className="primary" onClick={props.onFix} title="带上这一帧和圈出的区域，在对话里说哪里不对">
+        说说这里…
+      </button>
+      <button id="attach-region" onClick={props.onAttach} title="把这一帧和圈出的区域附到对话">
+        附到对话
+      </button>
+      <button className="icon" onClick={props.onClear} aria-label="取消圈选" title="取消圈选（Esc）">
+        <Icon name="close" size={12} />
+      </button>
+    </div>
+  );
+}
+
 function SceneTab(props: Props & { scene: Scene | null }) {
   const { scene } = props;
   const video = useRef<HTMLVideoElement>(null);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [selecting, setSelecting] = useState(false);
   const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  // 拖动中（还没松手）。按下没移动就松开算一次点击：有选区时清掉选区，没有就播放 / 暂停。
+  const [dragging, setDragging] = useState(false);
+  const press = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const frame = useRef<HTMLDivElement>(null);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -241,7 +284,7 @@ function SceneTab(props: Props & { scene: Scene | null }) {
   useEffect(() => {
     if (menu.current) menu.current.open = false;
     setDrag(null);
-    setSelecting(false);
+    setDragging(false);
     setError('');
     setNote('');
     setFeedback('');
@@ -286,7 +329,6 @@ function SceneTab(props: Props & { scene: Scene | null }) {
         body: JSON.stringify({ seconds: Number(v.currentTime.toFixed(3)), region: toVideoBox() }),
       });
       setDrag(null);
-      setSelecting(false);
       return attachment;
     } catch (err) {
       setError(errorText(err));
@@ -301,8 +343,9 @@ function SceneTab(props: Props & { scene: Scene | null }) {
 
   // 「修这一帧」：带上当前帧（和圈选）填进输入框，用户说清楚哪里不对再发。
   const fixFrame = async () => {
+    const region = !!drag;
     const attachment = await capture();
-    if (attachment) props.onQuick(`镜头 ${scene.id} 这一帧的问题：`, [attachment], true);
+    if (attachment) props.onQuick(region ? `镜头 ${scene.id} 圈出的这块：` : `镜头 ${scene.id} 这一帧的问题：`, [attachment], true);
   };
 
   // 👍 / 👎 写成一段记忆经历：当前帧时间、圈选区域（归一化）与说明。
@@ -321,7 +364,6 @@ function SceneTab(props: Props & { scene: Scene | null }) {
       setFeedback(verdict === 'down' ? '已记下 👎，下次整理时会参考。' : '已记下 👍。');
       setNote('');
       setDrag(null);
-      setSelecting(false);
     } catch (err) {
       setError(errorText(err));
     }
@@ -342,52 +384,75 @@ function SceneTab(props: Props & { scene: Scene | null }) {
   const index = props.scenes.findIndex((s) => s.id === scene.id);
   const number = String(index + 1).padStart(2, '0');
 
-  // 镜头页只留画面、名字和「重新渲染」；圈选、附帧、快捷指令、反馈、校验与用量都收进「⋯」菜单。
+  // 镜头页只留画面、名字和「重新渲染」；圈选直接在画面上拖。附帧、快捷指令、反馈、校验与用量都收进「⋯」菜单。
   return (
     <div className="scene-tab" data-ctx-scene={scene?.id}>
       <div className="scene-layout">
         {scene.exists ? (
           <div className="scene-stage">
-              <div className="stage-frame">
+              <div className="stage-frame" ref={frame}>
                 <video
                   ref={video}
                   preload="metadata"
                   src={`/api/scenes/${encodeURIComponent(scene.id)}/asset?v=${props.version}`}
-                  onClick={selecting ? undefined : toggle}
                   onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
                   onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
                   onSeeked={(e) => setTime(e.currentTarget.currentTime)}
                   onPlay={() => setPlaying(true)}
                   onPause={() => setPlaying(false)}
                 />
-                {selecting && (
-                  <div
-                    className="select-layer"
-                    onPointerDown={(e) => {
-                      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                      const p = point(e);
-                      setDrag({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
-                    }}
-                    onPointerMove={(e) => {
-                      if (!drag || !(e.buttons & 1)) return;
-                      const p = point(e);
-                      setDrag({ ...drag, x1: p.x, y1: p.y });
-                    }}
-                  >
-                    {!drag && <span className="select-hint">拖出一个区域</span>}
-                    {drag && (
-                      <i
-                        className="select-box"
-                        style={{
-                          left: Math.min(drag.x0, drag.x1),
-                          top: Math.min(drag.y0, drag.y1),
-                          width: Math.abs(drag.x1 - drag.x0),
-                          height: Math.abs(drag.y1 - drag.y0),
-                        }}
-                      />
-                    )}
-                  </div>
-                )}
+                {/* 画面上直接拖就是圈选（会先暂停），点一下是播放 / 暂停。 */}
+                <div
+                  className="select-layer"
+                  title={drag ? '' : '点一下播放 / 暂停，拖动圈出一块'}
+                  onPointerDown={(e) => {
+                    if (e.button !== 0) return;
+                    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                    const p = point(e);
+                    press.current = { x: p.x, y: p.y, moved: false };
+                  }}
+                  onPointerMove={(e) => {
+                    const start = press.current;
+                    if (!start || !(e.buttons & 1)) return;
+                    const p = point(e);
+                    if (!start.moved && Math.hypot(p.x - start.x, p.y - start.y) < 5) return;
+                    if (!start.moved) {
+                      start.moved = true;
+                      video.current?.pause();
+                      setDragging(true);
+                    }
+                    setDrag({ x0: start.x, y0: start.y, x1: p.x, y1: p.y });
+                  }}
+                  onPointerUp={() => {
+                    const start = press.current;
+                    press.current = null;
+                    setDragging(false);
+                    if (!start) return;
+                    if (start.moved) {
+                      if (!toVideoBox()) setDrag(null);
+                      return;
+                    }
+                    if (drag) setDrag(null);
+                    else toggle();
+                  }}
+                  onPointerCancel={() => {
+                    press.current = null;
+                    setDragging(false);
+                  }}
+                >
+                  {drag && (
+                    <i
+                      className="select-box"
+                      style={{
+                        left: Math.min(drag.x0, drag.x1),
+                        top: Math.min(drag.y0, drag.y1),
+                        width: Math.abs(drag.x1 - drag.x0),
+                        height: Math.abs(drag.y1 - drag.y0),
+                      }}
+                    />
+                  )}
+                </div>
+                {drag && !dragging && <SelectionBar drag={drag} frame={frame.current} onFix={fixFrame} onAttach={attach} onClear={() => setDrag(null)} />}
               </div>
               <div className="transport">
                 <button className="step" onClick={() => step(-1)} aria-label="后退一帧" title="后退一帧">
@@ -447,12 +512,8 @@ function SceneTab(props: Props & { scene: Scene | null }) {
               <div className="scene-menu-body" style={menuPos ?? undefined}>
                 {scene.exists && (
                   <div className="menu-group">
-                    <button className={selecting ? 'armed' : ''} aria-pressed={selecting} onClick={() => setSelecting(!selecting)}>
-                      <Icon name="region" />
-                      {selecting ? '取消圈选' : '圈选区域'}
-                    </button>
                     <button id="attach-frame" onClick={attach}>
-                      {drag ? '附上这一帧和选区' : '附当前帧到对话'}
+                      附当前帧到对话
                     </button>
                     <button onClick={fixFrame} title="带上当前帧（和圈选的区域），在对话里说哪里不对">
                       修这一帧…
@@ -502,7 +563,6 @@ function SceneTab(props: Props & { scene: Scene | null }) {
           </div>
           {error && <p className="error-line">{error}</p>}
           {feedback && <p className="ok-line">{feedback}</p>}
-          {selecting && <p className="menu-note">在画面上拖出一个区域，再从「⋯」里附上这一帧。</p>}
         </aside>
       </div>
     </div>

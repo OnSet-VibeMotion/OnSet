@@ -146,3 +146,41 @@ test('scene "more" menu opens as a popover inside the window, above the timeline
   await page.locator('.scene-title').click();
   await expect(body).toBeHidden();
 });
+
+test('drags a region straight on the scene frame and asks about it', async ({ page, project }) => {
+  const { execFileSync } = await import('node:child_process');
+  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=1', '-pix_fmt', 'yuv420p', path.join(project.path, 'scenes', 'scene-001', 'out.mp4')]);
+  await openProject(page, project);
+  await page.locator('[data-tab="scene"]').click();
+  const layer = page.locator('.select-layer');
+  await expect(layer).toBeVisible();
+  const box = await layer.boundingBox();
+  // 不用先进「圈选模式」：按下、拖动、松手就是一块选区，旁边出工具条。
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.45, { steps: 5 });
+  await expect(page.locator('.selection-bar')).toHaveCount(0);
+  await page.mouse.up();
+  await expect(page.locator('.select-box')).toBeVisible();
+  await expect(page.locator('.selection-bar')).toBeVisible();
+  // 点一下画面：清掉选区，不播放。
+  await page.mouse.click(box.x + 20, box.y + 20);
+  await expect(page.locator('.select-box')).toHaveCount(0);
+  // 再圈一次，Esc 取消。
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.45, { steps: 5 });
+  await page.mouse.up();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.selection-bar')).toHaveCount(0);
+  // 再圈，「说说这里…」把这一帧和选区带进输入框，等用户说哪里不对。
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.45, { steps: 5 });
+  await page.mouse.up();
+  await page.screenshot({ path: test.info().outputPath('scene-region.png') });
+  await page.locator('#fix-region').click();
+  await expect(page.locator('.selection-bar')).toHaveCount(0);
+  await expect(page.locator('#prompt')).toHaveValue(/圈出的这块/);
+  await expect(page.locator('#attachments')).toContainText('圈选区域');
+});
