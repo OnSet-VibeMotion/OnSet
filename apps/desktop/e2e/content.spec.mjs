@@ -119,3 +119,30 @@ test('renders GitHub-flavored markdown safely', async ({ page, project }) => {
   await prose.locator('code.file-link', { hasText: 'PROMPT.md' }).click();
   await expect(page.locator('#file-content')).toContainText('整片制作提示词');
 });
+
+test('scene "more" menu opens as a popover inside the window, above the timeline', async ({ page, project, electronApp }) => {
+  // 镜头有产物时菜单最长；窗口压矮，菜单不能被外层裁掉、也不能被时间线盖住。
+  const { execFileSync } = await import('node:child_process');
+  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=1', '-pix_fmt', 'yuv420p', path.join(project.path, 'scenes', 'scene-001', 'out.mp4')]);
+  await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1100, 640));
+  await openProject(page, project);
+  await page.locator('[data-tab="scene"]').click();
+  await page.locator('.scene-menu > summary').click();
+  const body = page.locator('.scene-menu-body');
+  await expect(body).toBeVisible();
+  const box = await body.boundingBox();
+  const viewport = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.h);
+  expect(box.x + box.width).toBeLessThanOrEqual(viewport.w);
+  // 菜单底边一带点到的是菜单自己，不是时间线。
+  const onTop = await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('.scene-menu-body'), {
+    x: box.x + box.width / 2,
+    y: box.y + box.height - 6,
+  });
+  expect(onTop).toBe(true);
+  await page.screenshot({ path: test.info().outputPath('scene-menu.png') });
+  // 点外面收起。
+  await page.locator('.scene-title').click();
+  await expect(body).toBeHidden();
+});

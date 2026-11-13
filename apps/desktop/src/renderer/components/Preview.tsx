@@ -199,6 +199,34 @@ function SceneTab(props: Props & { scene: Scene | null }) {
   const [note, setNote] = useState('');
   const [feedback, setFeedback] = useState('');
   const menu = useRef<HTMLDetailsElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right: number; maxHeight: number } | null>(null);
+
+  // 菜单按视口定位（fixed）：外层容器会裁剪、时间线会盖住绝对定位的弹出层。
+  // 下方放得下就往下开，否则往上开，高度不够时菜单内部滚动。
+  const placeMenu = () => {
+    const el = menu.current;
+    const summary = el?.querySelector('summary');
+    if (!el?.open || !summary) return setMenuPos(null);
+    const r = summary.getBoundingClientRect();
+    const gap = 8;
+    const margin = 12;
+    const below = window.innerHeight - r.bottom - gap - margin;
+    const above = r.top - gap - margin;
+    const right = Math.max(margin, window.innerWidth - r.right);
+    if (below >= 360 || below >= above) setMenuPos({ top: r.bottom + gap, right, maxHeight: below });
+    else setMenuPos({ bottom: window.innerHeight - r.top + gap, right, maxHeight: above });
+  };
+
+  useEffect(() => {
+    if (!menuPos) return;
+    const update = () => placeMenu();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [menuPos !== null]);
 
   // 「⋯」菜单点外面就收起；菜单里的输入框与按钮不收。
   useEffect(() => {
@@ -412,11 +440,11 @@ function SceneTab(props: Props & { scene: Scene | null }) {
             <button id="render-scene" className={scene.exists ? '' : 'primary'} onClick={() => props.run(`/api/scenes/${encodeURIComponent(scene.id)}/render`)}>
               {scene.exists ? '重新渲染' : '渲染'}
             </button>
-            <details className="scene-menu" ref={menu}>
+            <details className="scene-menu" ref={menu} onToggle={placeMenu}>
               <summary aria-label="更多操作" title="更多操作">
                 <Icon name="more" size={16} />
               </summary>
-              <div className="scene-menu-body">
+              <div className="scene-menu-body" style={menuPos ?? undefined}>
                 {scene.exists && (
                   <div className="menu-group">
                     <button className={selecting ? 'armed' : ''} aria-pressed={selecting} onClick={() => setSelecting(!selecting)}>

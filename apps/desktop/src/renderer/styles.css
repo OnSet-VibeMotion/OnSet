@@ -1625,11 +1625,11 @@ button.skills-pill.bad {
   border-color: var(--muted);
 }
 .scene-menu-body {
-  position: absolute;
-  z-index: 20;
-  top: 46px;
-  right: 0;
+  position: fixed;
+  z-index: 100;
   width: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -1640,6 +1640,7 @@ button.skills-pill.bad {
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
 }
 .menu-group {
+  flex: none;
   display: flex;
   flex-direction: column;
   gap: 2px;
