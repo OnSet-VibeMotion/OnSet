@@ -17,7 +17,7 @@ jobs:
           node-version: 22
           cache: npm
       - name: Install media tools
-        run: brew install ffmpeg librsvg
+        run: brew install ffmpeg
       - run: npm ci --no-audit --no-fund
       - name: Test
         run: |
