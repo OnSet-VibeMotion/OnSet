@@ -107,6 +107,8 @@ echo 'am-result {"url": "https://example.com/v/1"}'
 | `am_stations` | 内置专用 | 认领自带流程里的站 |
 | `in_use` | 内置专用 | 项目里有这些文件时不许关掉这个内置插件 |
 
+「内置专用」的三个认领字段（`am_ops`、`am_skills`、`am_stations`）是 ArticleToMotion 自己的过渡做法：内置功能正逐个改成在进程内登记（见仓库 AGENTS.md「内置插件」），第三方插件用不到它们，它们的意思也不会改。
+
 写了不认识的字段直接报错（「有不认识的字段」）。所有路径都是相对路径：插件目录里的（`prompt`、命令、页面、技能、风格库）不能跑出插件目录；项目里的（`outputs`、`gate_files`、`produces`、`reads`）不能是绝对路径、不能有 `..`，也不能是 ArticleToMotion 自己的文件（`production/studio/`、`production/usage/`、`production/memory-exams/`、`.agents/`、`.env`）。
 
 ### 站点（`nodes`）

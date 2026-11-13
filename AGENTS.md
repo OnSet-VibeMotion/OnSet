@@ -184,7 +184,7 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 
 ## Prompt 文件
 
-`assets/shared/PROMPT.md` 和 `assets/presets/<画幅>/PROMPT-PRODUCTION.md` 是内置资产，不是本仓库的文档。它们随新建项目下发到项目根，被客户端的「开始制作」直接喂给编排工具。`PROMPT-PRODUCTION.md` 是生成产物，改它要改 `packages/engine/src/preset/gen/templates/production/` 下对应站的段落再跑生成器。
+`assets/shared/PROMPT.md` 和 `assets/presets/<画幅>/PROMPT-PRODUCTION.md` 是内置资产，不是本仓库的文档。它们随新建项目下发到项目根，被客户端的「开始制作」直接喂给编排工具。`PROMPT-PRODUCTION.md` 是生成产物，改它要改 `packages/engine/src/preset/gen/templates/production/` 下对应站的段落（内置插件登记的段落在 `assets/plugins/<id>/sections/`，例如发布）再跑生成器。
 
 ### 流程与站
 
@@ -196,7 +196,8 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 | 制作提示词现在仍是一份（`flow.productionPrompt`），口播、卡点、歌曲讲解共用，后两者是文末分支；拼出的结果与拆分前逐字节相同 | 先证明切得对，再让各流程拼自己的提示词 |
 | 改过的文件归哪一站由各站 `produces` 决定（`flow.stationOfPath`）：整条路径 > 前缀加文件名 > 只有前缀，同级比前缀长短；只算当前流程里的站 | 不再维护一张按顺序匹配的手写表，新站声明自己的文件即可 |
 | 站点做没做的判断函数留在 `studio/progress.ts` 的 `judges`，键是「站:站点」；普通站漏了判断函数，`stationDefs` 直接报错（`progress.test.ts` 的「judges every station of every builtin flow」） | 引擎的 `flow` 只有声明，不依赖 `studio`；口播与卡点的「拆分镜头」都叫 `plan`，判断不同 |
-| 新增一站：在 `flow/builtin.ts` 加站与段落、写模板、在 `productionPrompt` 里排位置、在 `judges` 里加判断，跑生成器 | `flow.test.ts` 的「has a template for every section and no orphan templates」查模板与声明一一对应 |
+| 新增一个宿主自己的站：在 `flow/builtin.ts` 加站与段落、写模板、在 `productionPrompt` 里排位置、在 `judges` 里加判断，跑生成器。可选功能不走这条路，写成内置插件在 `apply` 里登记（见下面「内置插件」） | `flow.test.ts` 的「has a template for every section and no orphan templates」查模板与声明一一对应 |
+| `flow/builtin.ts` 的 `builtinStations` / `builtinFlows` / `stageTitles` / `productionPrompt` 只有宿主自己的部分；要「全部」时用 `flow/registered.ts` 的 `allStations` / `allFlows` / `allStageTitles` / `productionOrder`，它们把内置插件登记的站按 `after` 并进来。路线、关卡、文件归站、清单校验、阶段补充都经它们 | 插件的站不写进宿主的表，新增内置功能不用改 `flow/builtin.ts` |
 
 第三方站（`flow/` 下按职责分文件：`manifest.ts` 清单类型与字段分级、`parse.ts` 解析、`lock.ts` 锁文件、`fetch.ts` 来源与下载、`load.ts` 读出项目的站、`update.ts` 升级、`builtinplugins.ts` 内置插件、`promptparts.ts` 提示词标记与插入、`skills.ts` 渲染技能；`external.ts` 只做转出，执行在 `run.ts`）是用户自己加的站，am 不分发、不维护，第一个用例是自动发布。写给插件作者的说明是 `docs/plugin-authoring.md`：
 
@@ -230,7 +231,18 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 
 内置插件：ArticleToMotion 自己的可选功能也写成插件，放在 `assets/plugins/<id>/`（随 `extraResources` 进 .app），用同一份 `am-station.json`。现在有歌曲讲解（`song`）、多角色对话（`cast`）、发布（`publishing`）、生成式艺术（`algorithmic-art`）与 Lottie 图层（`text-to-lottie`）。
 
-| 约定 | 原因 |
+内置插件分两种做法。**新功能一律走进程内登记（`apply(ctx)`）**：代码放在 `packages/engine/src/plugins/<id>/`，在 `apply` 里登记站（站点、判断函数、提示词段落）、操作、页面、后端接口与校验器，宿主各层从登记表里取。清单里的 `am_ops` / `am_skills` / `am_stations` 是**过渡做法**：只是给仍留在引擎各处的代码挂一个开关，歌曲讲解、多角色对话、生成式艺术与 Lottie 图层还这样，以后逐个搬成 `apply`，不要再给新功能用。发布（`publishing`）是第一个搬完的，它的清单里只剩名字与说明。
+
+| 约定（进程内登记） | 原因 |
+|---|---|
+| 登记表在 `packages/engine/src/plugin`（类型 `types.ts`、登记 `registry.ts`），只 import flow 的**类型**，不依赖 studio 与 cli；全部内置插件在 `packages/engine/src/plugins/index.ts` 一处 `registerBuiltin`，`plugin` 包的入口 `index.ts` 导入它。凡是经 `../plugin` / `@am/engine/plugin` 取登记表的地方都拿得到 | 理由同 `filmstyle/sources`：登记靠 import 副作用，散在各处就会漏。flow 不依赖 studio，所以登记表要放在两者之下 |
+| 谁用登记的东西：站 → `flow/registered.ts`（路线、关卡、文件归站、制作提示词顺序与段落正文、阶段标题）；判断函数 → `studio/progress.ts` 的 `stationDefs`（键「站:站点」，与宿主 `judges` 同一种 `plugin.NodeJudge`，另有 `waiting` 说「现在在这」时等谁）；操作 → cli 的 `plugin_ops.ts` 订阅（`plugin.onPluginOps`）后 `defineOp`，工具服务、`tool_help`、`runStudioOp` 与开发用命令行随之都有；页面 → `studioview.viewPages()`（`studio_show` 能切的页、`dedicatedPage` 的专门文件）；接口 → `studio.ts` 路由表末尾；校验器 → `/api/commands/<id>.check`（`api_sessions.ts` 的 `commandAPI`） | 新增内置功能不用改 `flow/builtin.ts`、`studio/progress.ts`、`toolsmcp.ts`：`plugin/registry.test.ts` 与 `packages/cli/src/plugin_ops.test.ts` 用只在测试里登记的假插件钉着 |
+| 项目关掉插件时，它登记的站与操作和认领的走同一条路：`flow.disabledAmStations` / `disabledAmOps` 并进去（路线上用空站顶替、工具列表拿掉、制作提示词里它的段落整段去掉）。`/api/stations` 的 `hidden_pages` 列出这个项目用不上的插件页面（插件关了、也没有第三方站在这一页或同名步骤上放站点），界面据此不显示那一页与顶栏同名的步骤。宿主（含 `app.tsx`）不再按名字判断「发布」 | 有没有一页、一步由插件登记的东西决定，不是特判 |
+| 插件的提示词段落放在 `assets/plugins/<id>/sections/`，`PluginSection.after` 指定接在哪一段（`站/段`）后面，开阶段的段落写 `stage` 与 `title`；生成器经 `productionOrder` 排进去，标记照旧按 `stationOwners` 包。`plugin/registry.test.ts` 的「the shipped prompt sections of builtin plugins」查文件与声明一一对应、标题与正文第一行一致、不写死阶段编号 | 段落随插件下发在资产树里，下一步运行期按流程组合时可以直接读 |
+| 每个登记的内置插件在 `assets/plugins/<id>/` 都有清单（开关、名字、说明来自它）；`registerBuiltin` 拒收重复的插件、站、操作、页面、接口与校验器，普通站点没有判断函数直接报错 | 开关只认清单与锁文件；漏一个判断函数，那一站就永远显示「没做」 |
+| 「发布」（`plugins/publishing`）：站 `publish`（排在 `review` 后、段落三段）、判断函数、`validate_publish`、发布页（排在复查后，`publish.md` 是它的专门文件）、`/api/publish` 与 `publish.check`；`publish.md` 的校验（原 `validate.publish` / `readPublish`）、平台封面规格与标题字数都在这个目录里。`plugins/publishing/golden.test.ts` 用搬家前记下的金样核对提示词、路线、制作路线、页面与接口逐字节不变 | 发布是第一个真搬的功能；金样证明搬家没有改变任何行为 |
+
+| 约定（清单与认领） | 原因 |
 |---|---|
 | `flow.builtinPlugins()` 读 `assets/plugins/`，`loadProjectStations` 把它们排在第三方站前面，`LoadedStation.builtin` 为真；默认打开，项目在锁文件的 `disabled` 里关掉（`station_builtin` / `POST /api/stations/{id}/enabled`，设置页「内置功能」的开关）。清单坏了直接报错，不静默少一个功能 | 内置功能也能关：用不到的不占编排工具的工具列表和提示词 |
 | 只有内置插件能写 `am_ops`：认领 am 自带的操作，关掉插件时 `toolsmcp.describeTools` 把它们拿掉（导演同理）；代码仍在引擎里。`station_cmd.test.ts` 的门禁：认领的操作必须存在、一个操作只归一个插件、`song_*` 全归歌曲讲解。第三方站不能写 `am_ops`，也不能与内置插件重名 | 归属与开关跟着插件走，实现不动 |
@@ -238,8 +250,8 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 | 只有内置插件能写 `am_skills`：认领 `scene.registeredSkills` 里的渲染技能。项目关掉插件时 `resolveAllSkills` 不解析它们，记成 `off:<名字>`（值为空，指纹与读取放行跳过空值），`skillPromptSections` 也不写那一段；没关时逐字不变（`flow/builtinplugins.test.ts`）。技能仍是注册的内置技能，内置资产树与技能门禁都不变。设置页的开关对这类插件提醒「已渲染的镜头要重新渲染」 | 这些段落进每个镜头的渲染提示词，关掉就是渲染输入变了，标 Stale 是对的；歌曲讲解不认领 song-explainer，因为它的提示词只在歌曲镜头出现，关掉却会让所有镜头 Stale |
 | 内置插件的 `prompt` 原样接在制作提示词（`PROMPT-PRODUCTION.md`）后面，不接 `PROMPT.md`、歌曲模式与 override；项目提示词里已有同一个标题（老项目）时不重复。「歌曲讲解分支」因此从 `templates/production/` 移到 `assets/plugins/song/prompt.md`，新生成的制作提示词里不再有这一节 | 原来那一节只在制作提示词里；老项目手里的提示词本来就有它 |
 | 歌曲讲解的引擎代码、`PROMPT-SONG.md` 与 song-explainer 技能都没动（`song_init` 照旧从 `assets/shared` 拷，技能仍是注册的内置技能） | 它们进项目文件与渲染指纹，搬动会让已有的歌曲项目失效 |
-| 只有内置插件能写 `am_stations`：认领自带流程里的站（`flow/builtin.ts` 的站 id；插件 id 不能与站 id 相同，所以发布插件叫 `publishing`）。生成制作提示词时，被认领的站的每一段用 `<!-- am-plugin:<id> -->` / `<!-- /am-plugin:<id> -->` 包住（`flow.markPluginSection`）；`runPrompt` 经 `flow.applyPluginMarkers` 把关掉的插件那几段整段去掉、其余只去掉标记行，编排工具看到的提示词与加标记之前逐字相同（老项目没有标记，原样不动）。关掉时 `projectExtras` 用一个没有站点的站顶替它（排在第三方站后面，第三方顶替同一个站时以第三方为准），制作路线上就没有它 | 发布的说明散在第一阶段、第十二阶段与交付清单里，搬到末尾会打乱顺序；标记让说明留在原位又能整段关掉。关掉后阶段编号会跳一格（第十一阶段之后是第十三阶段），编号是生成时写死的 |
-| 发布插件不设 `in_use`：首版 `publish.md` 在第一阶段就生成了，设了就再也关不掉。关掉后客户端顶栏不显示发布这一步与发布页，除非有第三方站在发布这一步放了站点（`app.tsx` 的 `publishOff`）。交付清单里发布的两行拆成 `publish/deliverables.md` 归发布站 | 只做内部用的片子不必做封面与发布信息 |
+| 只有内置插件能写 `am_stations`：认领自带流程里的站（`flow/builtin.ts` 的站 id；插件 id 不能与站 id 相同，所以发布插件叫 `publishing`）。现在没有插件用它（发布改成在 `apply` 里登记自己的站），标记机制照旧：生成制作提示词时，内置插件的站（认领的与登记的）的每一段用 `<!-- am-plugin:<id> -->` / `<!-- /am-plugin:<id> -->` 包住（`flow.markPluginSection`）；`runPrompt` 经 `flow.applyPluginMarkers` 把关掉的插件那几段整段去掉、其余只去掉标记行，编排工具看到的提示词与加标记之前逐字相同（老项目没有标记，原样不动）。关掉时 `projectExtras` 用一个没有站点的站顶替它（排在第三方站后面，第三方顶替同一个站时以第三方为准），制作路线上就没有它 | 发布的说明散在第一阶段、第十二阶段与交付清单里，搬到末尾会打乱顺序；标记让说明留在原位又能整段关掉。关掉后阶段编号会跳一格（第十一阶段之后是第十三阶段），编号是生成时写死的 |
+| 发布插件不设 `in_use`：首版 `publish.md` 在第一阶段就生成了，设了就再也关不掉。关掉后客户端顶栏不显示发布这一步与发布页，除非有第三方站在发布这一步放了站点（`/api/stations` 的 `hidden_pages`）。交付清单里发布的两行拆成 `assets/plugins/publishing/sections/deliverables.md` 归发布站 | 只做内部用的片子不必做封面与发布信息 |
 | 测试用的假发布站在 `flow/testdata/fake-publisher`（只写回执、不联网）；vitest setup 与 e2e fixtures 把 `AM_STATIONS_DIR` 指到临时目录 | 测试不能往开发者真实的站目录写 |
 
 - 要像直接写给人类操作者的任务说明，不暴露执行者是 agent、Codex 或 AI，也不使用「主控 agent」这类身份设定；但可以明确说明他需要操作其他 AI。
@@ -367,7 +379,7 @@ AM_TEST_BEAT_PYTHON=/path/to/venv/bin/python npx vitest run --root packages/engi
 
 ## 平台封面
 
-`publish.md` 的 `cover.images` 登记上传用的平台封面，校验在 `packages/engine/src/validate/cover_images.ts`，平台规格只有一个来源：`coverSpecs`（抖音 4:3 + 3:4、小红书 3:4 / 1:1 / 4:3、视频号 3:4 / 16:9、B 站与知乎 16:10，以及各平台 `ready` 前必须备齐的比例）。平台规则变了改这张表，制作提示词第十二阶段「平台封面」的表格要同步改，`gen.test.ts` 的「requires platform covers」钉着那一节。
+`publish.md` 的 `cover.images` 登记上传用的平台封面，校验在 `packages/engine/src/plugins/publishing/cover_images.ts`（随「发布」搬进内置插件），平台规格只有一个来源：`coverSpecs`（抖音 4:3 + 3:4、小红书 3:4 / 1:1 / 4:3、视频号 3:4 / 16:9、B 站与知乎 16:10，以及各平台 `ready` 前必须备齐的比例）。平台规则变了改这张表，制作提示词第十二阶段「平台封面」的表格要同步改，`gen.test.ts` 的「requires platform covers」钉着那一节。
 
 尺寸以文件实测为准、声明值只用来对账：手填宽高与实际不符，说明封面改过却没回填，发布时上传的就不是记录里那张。短边下限 1080，所以 B 站常见的 1146×717 不合格（它本身也不是精确的 16:10），用 1920×1200。模板里写封面尺寸时用「宽 1440、高 1080」，不要写成 `1440×1080` 这类乘号形式——`gen.test.ts` 的「substitutes the canvas label」会把它当成写死的画幅拦下。
 
@@ -392,7 +404,7 @@ am 的每一条制作步骤是一条操作（`packages/cli/src/ops/op.ts`）：
 | `scopes` | 缺省只给编排工具；`hyperframes` 另给渲染器 |
 | `run(params, ctx)` | 文字写进 `ctx.out`（工具输出、命令行屏幕都是它），结构化结果 `return { data }`；取消看 `ctx.signal`，`ctx.unsafe` 是根命令的 `--unsafe` |
 
-新增一步制作：在对应模块里 `defineOp` 一条（模块要在 `cli.ts` 里 import，登记靠加载时的副作用），写好说明、参数与至少一个例子；工具、`tool_help`、客户端后端（`runStudioOp`）与开发用命令行自动都有。多条操作共用的参数（`project_root`、`timeout`）用 `ops/common.ts`。
+新增一步制作：在对应模块里 `defineOp` 一条（模块要在 `cli.ts` 里 import，登记靠加载时的副作用），写好说明、参数与至少一个例子；工具、`tool_help`、客户端后端（`runStudioOp`）与开发用命令行自动都有。内置插件的操作在它的 `apply` 里 `ctx.op(...)`（字段与 `Op` 相同），由 `plugin_ops.ts` 照旧 `defineOp`。多条操作共用的参数（`project_root`、`timeout`）用 `ops/common.ts`。
 
 ## am 的工具服务（MCP）
 
@@ -466,7 +478,7 @@ opencode 默认模型不可用时加 `AM_TEST_OPENCODE_MODEL`。
 | 制作路线（`studio/progress.ts` 的 `/api/progress`，`Progress.tsx`）：把制作拆成十几站（口播：盘点素材 → 口播稿 → 稿件审核 → 配音 → 配音审核 → 字幕时间轴 → 整片风格（可选）→ 拆分镜头 → 分镜审核 → 渲染 → 画面验收 → 拼接 → 配乐混音 → 复查 → 试听确认 → 发布；卡点项目换成故事、音乐、节拍那几站），按顶栏五步分组。每站做没做只看产物，上游产物比下游新时下游标「上游改过」（只用在由工具从上游生成的产物上：稿子比配音新不算，编排常在配音后改读法标记）；没留产物但后面已经做了的算跳过。审核关卡另记用户确认：界面的确认按钮（口播稿页、分镜页、路线页）先 `POST /api/progress/gates/{关卡}` 写 `production/studio/gates.json`（记下绑定文件的摘要，大文件记 stat），文件之后变了就是「确认后又改过」；没有记录但下游已做的算「已经过了」；试听确认读 `approval.json`，节拍读确认过的网格。「做了什么」读轮次记录（按修改时间缓存摘要），改过的文件经 `stationOfPath` 归站；同一份归站结果给对话里每轮结尾的「→ 站名」。入口：顶栏步骤左边的「路线」、对话顶上一行「现在 · 某站 · 等你确认 / AI 在做」，点轮次跳回对话那一轮。`studio_show progress` 也能打开 | 顶栏五步太粗，看不出做过什么、现在卡在哪、在等谁；不让编排汇报进度，是因为它会忘、会标错 |
 | 分镜页（`studio/storyboard.ts` 的 `/api/storyboard`、`Storyboard.tsx`）是第二步，排在口播稿与镜头之间：读 `production/scene-plan.json`（经 `scene.parseTimingPlan`）、`treatment.md` 与每个镜头目录的 `scene.json`（口播 `text`、跑过 cues 才有的时长）和 `prompt.md`，按章节列出镜头的一句话说明、视觉角色、交接手法（`device_label` 取 `handoffGuide` 冒号前的中文名）与完整画面描述；计划缺失或写坏时按已有镜头目录列。计划里的 `dir` 跑出项目的一律不读。镜头页右栏的 `SceneBrief` 显示同一份说明。制作提示词第六阶段的「分镜审核关卡」让编排在 `scene_cues()` 之后、任何渲染之前 `studio_show storyboard` 并停下等确认（`gen.test.ts` 的「stops for storyboard review before rendering」）；「确认，开始渲染」只是往对话里发话。有分镜计划、镜头都没渲染、分镜有没看过的改动时，点镜头步骤会先落到分镜页 | 分镜和每个镜头的画面描述在渲染前就写好了，以前界面上看不到、编排也不停：用户第一次看到画面时每个镜头都已经渲染过一遍，发现想法不对只能整批重做 |
 | 节拍页（`Beat.tsx`，`/api/beat`）在卡点项目里代替口播稿排第一步（`stepTabsFor`）。页头六步（故事与文案 → 导入音乐 → 分析节拍 → 试听确认 → 分镜计划 → 做镜头）各自判断完成与否，下面一块「接下来」用一句话说清下一步、按钮把它交给对话；故事与文案读 `production/beat/story.md`（制作提示词「卡点分支」让编排工具开工先写它，`gen.test.ts` 的「tells the beat story before the music」钉着）（`BeatStoryFile`），还在定故事时展开全文、之后收成标题加梗概。其下画波形、每拍刻度、重拍与小节号、分镜计划的镜头条，播放时大字数拍；拍数与多数小节不同的小节标黄。音乐用 WebAudio 解码播放，咔嗒按当前网格在同一个 `AudioContext` 里现合成，所以在页面上换「每小节几拍 / 重拍是第几拍」（或播放中按 T 敲重拍）立刻能听到；只有动过这两个控件才进入预览，原网格（手改、拼接过的常常不规整）照原样显示。写回只走 `beat.regrid` / `beat.confirm` 两个写任务，客户端不改网格；`/api/beat` 不哈希音乐（每次刷新都要读），网格与音乐不符由 `am beat confirm` 拦下 | 卡点项目原先跑的是口播流程的制作提示词，没有任何卡点步骤，用户在听音乐之前不知道片子讲什么、接下来要做什么；以前也只有一条横幅放 `grid-click.wav`，重拍错位要回终端跑 `am beat regrid` 再重听整条试听轨，小节、拍数与切点只能看 `am beat bars` 的文字表 |
-| 发布页（`Publish.tsx`）不贴 `publish.md` 原文：`/api/publish` 经 `validate.readPublish` 只解析 frontmatter（不校验）返回 `data`，页面按「状态 → 可复制的标题 / 简介 / 话题 → 登记的封面 → 还剩的人工检查」排，规格与证据收进折叠。客户端里任何地方都不显示它的 Markdown 原文：接口不回传正文，解析失败只给原因、让编排工具修；聊天、文件树、`am studio show file publish.md` 点到它都切到发布页（`app.tsx` 的 `pageForFile`，口播稿同理）。合格与否仍只看「发布校验」 | `publish.md` 是 `am run` 下给人看的发布助手；在客户端里发布页就是那份助手，再贴原文只是把几十行校验字段和重复的表格摆到用户面前 |
+| 发布页（`Publish.tsx`）不贴 `publish.md` 原文：`/api/publish`（发布插件登记的接口，`plugins/publishing/api.ts`）经 `readPublish` 只解析 frontmatter（不校验）返回 `data`，页面按「状态 → 可复制的标题 / 简介 / 话题 → 登记的封面 → 还剩的人工检查」排，规格与证据收进折叠。客户端里任何地方都不显示它的 Markdown 原文：接口不回传正文，解析失败只给原因、让编排工具修；聊天、文件树、`am studio show file publish.md` 点到它都切到发布页（`app.tsx` 的 `pageForFile`，口播稿同理）。合格与否仍只看「发布校验」 | `publish.md` 是 `am run` 下给人看的发布助手；在客户端里发布页就是那份助手，再贴原文只是把几十行校验字段和重复的表格摆到用户面前 |
 | 模型（`ORCHESTRATOR_MODEL` / `RENDERER_MODEL`，`Config.orchestratorModel` / `rendererModel`）：空是那家工具自己的默认。`config.load` 只在「写模型的那一层往下看，工具就是现在这一家」时用它（`modelFor`）；在同一层换工具时 `writeGlobal` 与 `config_set` 把那一层的模型一起清掉；`childEnvironment` 有模型才写、没有就删，`amToolsServer` 放行这两个键。会话也能选（`SessionMeta.model` / `renderer_model`，空串是跟随设置，换工具不给模型时回到跟随设置；同一家换模型不清 CLI 会话 id）。各家的参数在 `tools.modelArgs`（codex 用 `-c model=…`，exec 与 resume 都认；app-server 走 `thread/start` / `thread/resume` 的 `model`；opencode acp 没有参数，经 `OPENCODE_CONFIG_CONTENT` 的 `model`，`acp.ts` 的 `ensureModel` 开会话后按 `configOptions` / `models` 再核对一次）。下拉框的选项来自工具自己（`tools.modelListCommand` / `parseModelList`，`/api/agents/{工具}/models` 缓存 10 分钟），claude 没有列模型的命令，给帮助里写的别名；列不出时仍能手填。镜头 `scene.json` 换了渲染工具时不用设置里的渲染模型（`config.rendererModelFor`），记忆召回同样按它取模型 | 模型名只对一家工具有意义，opus 交给 codex 会让整轮失败；不跟着工具走的话，在设置里换一次工具就会撞上。各家能用的模型随登录账号与服务商变，am 维护一份表只会过期 |
 | 设置页（`Settings.tsx`，后端 `studio/settings.ts`，顶栏齿轮或 ⌘,）管「什么用什么」：`config.GlobalKeys`（编排、渲染及各自的模型、配音、对齐、并发、记忆、自动批准）。全局值写用户级的 `settings.conf`（`config/global.ts`，`AM_SETTINGS_FILE` 覆盖，`childEnvironment` 显式传下去），在进程里直接写；「这个项目」一栏经 `config_set` 写任务改项目的 `article-to-motion.conf`（`config_set` 的 scopes 只有 cli，编排工具没有这个工具）。取值顺序：环境变量 > 项目 `.env` > 项目 conf > 全局设置 > `GlobalDefaults`；新项目模板里这几项留空，所以跟随全局。测试的 vitest setup 与 e2e fixtures 都把 `AM_SETTINGS_FILE` 指到临时文件 | 以前这几项只能手改每个项目的 conf，客户端里改不了配音、对齐与并发；全局为准、项目可单独改是用户选的方案。设置项被环境变量或 `.env` 盖住时页面照实说，不假装改了有用 |
 | 前置资源的安装页（`studio/setup.ts` 的 `/api/setup`、`/api/setup/run`、`/api/setup/cancel`，`SetupGuide.tsx`）：清单与 `am setup` 同一份（`prereqs`，配音与对齐工具按当前项目配置挑）。界面把几项技术资源合成用户听得懂的「摄制组」——画面（技能 + CLI + 浏览器）、剪辑（ffmpeg）、配音、字幕——每组一张卡片、图标外一圈进度环；工具名、版本、路径只在悬停提示里，日志与终端命令收进「高级」；节拍环境、风格来源动辄上 GB，作为「以后可能用到」单独点装。安装在后台跑，同一时间一份，进度经 GET 轮询（安装中每秒一次）；暂停记成「已取消」，界面显示为暂停而不是失败。不占项目写锁（只写用户级目录）。必需项缺时「开始制作」不可点。`AM_STUDIO_SKIP_SKILL_INSTALL=1` 时当作全部就绪 | 以前只给一条要复制到终端的命令，客户端用户多半不会开终端，装好应用却用不了；列一排工具名用户看不懂在装什么 |
