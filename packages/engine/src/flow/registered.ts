@@ -5,10 +5,10 @@
 import path from 'node:path';
 import { assetsBase } from '../assets';
 import * as plugin from '../plugin';
-import { builtinFlows, builtinStations, productionPrompt, stageTitles } from './builtin';
+import { builtinFlows, builtinStations, stageTitles } from './builtin';
 import type { Flow, Station } from './types';
 
-/** 宿主段落的正文目录：assets/prompts/<站>/<段>.md（随客户端下发，运行期组合与生成器读同一份）。 */
+/** 宿主段落的正文目录：assets/prompts/<站>/<段>.md（随客户端下发，运行期组合时读）。 */
 export function sectionsDir(): string {
   return path.join(assetsBase(), 'assets', 'prompts');
 }
@@ -106,14 +106,6 @@ export function pluginStationOwners(): Map<string, string> {
   return new Map(plugin.pluginStations().map(({ owner, value }) => [value.id, owner]));
 }
 
-/**
- * 生成的 PROMPT-PRODUCTION.md 的段落顺序（「站/段」）：口播流程的宿主顺序，插件进口播流程、写了 after 的段落插进去。
- * append 的段落不在里面（老项目由清单的 prompt 在运行时接上）。
- */
-export function productionOrder(): string[] {
-  return insertAfter(productionPrompt, (s, sec) => sectionFlows(s, sec).includes('speech'), '制作提示词');
-}
-
 /** 插件段落的正文文件；宿主自己的段落（正文在 assets/prompts）为 null。 */
 export function pluginSectionFile(station: string, section: string): string | null {
   for (const { owner, value: s } of plugin.pluginStations()) {
@@ -125,8 +117,8 @@ export function pluginSectionFile(station: string, section: string): string | nu
 }
 
 /**
- * 各阶段的标题（「## 第六阶段：<标题>」冒号后面那段），宿主的加上插件段落声明的；按阶段在制作提示词里的先后排。
- * 第三方站往某个阶段里插说明时按标题找。
+ * 各阶段的标题（「## 第六阶段：<标题>」冒号后面那段），宿主的加上插件段落声明的；按阶段在各流程提示词里的先后排。
+ * 第三方站的阶段补充找不到那个阶段、第三方流程引用了它没有的阶段时，用标题说明是哪一步。
  */
 export function allStageTitles(): Record<string, string> {
   const titles: Record<string, string> = { ...stageTitles };
@@ -139,7 +131,7 @@ export function allStageTitles(): Record<string, string> {
   }
   const stations = allStations();
   const out: Record<string, string> = {};
-  const refs = [...productionOrder(), ...allFlows().flatMap((f) => (f.prompt ? flowPrompt(f.id) : []))];
+  const refs = allFlows().flatMap((f) => (f.prompt ? flowPrompt(f.id) : []));
   for (const ref of refs) {
     const [sid, secID] = ref.split('/');
     const stage = stations.find((x) => x.id === sid)?.prompt.find((x) => x.id === secID)?.stage;

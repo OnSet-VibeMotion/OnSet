@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildPrompt, fingerprint, load, registeredSkills, resolveAllSkills } from '../scene';
 import { runPrompt } from '../project/runprompt';
-import { applyPluginMarkers, composeProduction, markPluginSection, projectExtras, route, stationOwners, builtinPlugins, disabledAmOps, loadProjectStations, parseManifest, readLock, setBuiltinEnabled, addToProject, fetchStation } from './index';
+import { projectExtras, recordFlow, route, stationOwners, builtinPlugins, disabledAmOps, loadProjectStations, parseManifest, readLock, setBuiltinEnabled, addToProject, fetchStation } from './index';
 
 const temps: string[] = [];
 afterEach(() => {
@@ -102,28 +102,16 @@ describe('builtin plugins that claim stations of the built-in flow', () => {
     expect(stationOwners().get('publish')).toBe('publishing');
   });
 
-  it('marks their prompt sections when composing, and the markers vanish at run time', () => {
-    const composed = composeProduction(path.join(__dirname, '..', '..', '..', '..', 'assets', 'prompts'));
-    expect(composed).toContain('<!-- am-plugin:publishing -->\n### 发布配置生命周期');
-    const on = applyPluginMarkers(composed, new Set());
-    expect(on).not.toContain('am-plugin');
-    expect(on).toContain('## {{STAGE:publish}}'.replace('{{STAGE:publish}}', '第十二阶段') + '：刷新发布配置');
-    const off = applyPluginMarkers(composed, new Set(['publishing']));
-    expect(off).not.toContain('am-plugin');
-    expect(off).not.toContain('刷新发布配置');
-    expect(off).not.toContain('发布配置生命周期');
-    expect(off).not.toContain('按发布平台规格出的封面图');
-    expect(off).toContain('## 最终交付清单\n\n- 根目录 `final.mp4`。\n- 最终配音对应的');
-  });
-
   it('take the station off the production map and out of the prompt when the project turns them off', () => {
     const root = project();
-    fs.writeFileSync(path.join(root, 'PROMPT-PRODUCTION.md'), markPluginSection('publishing', '### 发布配置生命周期\n\n写 publish.md。\n') + '## 第二阶段：整理口播稿和开场\n');
+    recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
     expect(route('speech', projectExtras(root)).some((r) => r.node.id === 'publish')).toBe(true);
-    expect(runPrompt(root, '').prompt.toString('utf8').startsWith('### 发布配置生命周期\n\n写 publish.md。\n## 第二阶段')).toBe(true);
+    expect(runPrompt(root, '').prompt.toString('utf8')).toContain('### 发布配置生命周期');
     setBuiltinEnabled(root, 'publishing', false);
     expect(route('speech', projectExtras(root)).some((r) => r.node.id === 'publish')).toBe(false);
-    expect(runPrompt(root, '').prompt.toString('utf8').startsWith('## 第二阶段')).toBe(true);
+    const off = runPrompt(root, '').prompt.toString('utf8');
+    expect(off).not.toContain('发布配置生命周期');
+    expect(off).not.toContain('刷新发布配置');
     expect(disabledAmOps(root).has('validate_publish')).toBe(true);
   });
 });

@@ -2,18 +2,18 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import * as presetMod from '../preset';
-import { files, fontFiles, FontsDir, preset, style, styleFonts } from './index';
+import { files, fontFiles, FontsDir, style, styleFonts } from './index';
 
-describe('preset and style trees', () => {
+describe('style trees', () => {
+  // 画幅不再有自己的源树：制作提示词按流程组合，assets/presets 已经不存在。
   it('resolve for every combination', () => {
+    expect(files().exists('presets')).toBe(false);
     for (const canvas of presetMod.all()) {
-      expect(preset(canvas.id).exists('PROMPT-PRODUCTION.md'), canvas.id).toBe(true);
       for (const s of presetMod.allStyles()) expect(style(s.id, canvas.id).exists(presetMod.guideDoc(s)), `${s.id}/${canvas.id}`).toBe(true);
     }
   });
 
   it('reject unknown ids', () => {
-    expect(() => preset('no-such-canvas')).toThrow();
     expect(() => style('no-such-style', presetMod.defaultPreset().id)).toThrow();
     expect(() => style(presetMod.defaultStyle().id, 'no-such-canvas')).toThrow();
   });

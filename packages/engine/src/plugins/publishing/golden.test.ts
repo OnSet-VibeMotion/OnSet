@@ -3,13 +3,11 @@
  * 金样（testdata/golden.json）是搬家之前的代码写下的；AM_UPDATE_GOLDEN=1 时重写（只在确实要改行为时用）。
  */
 import '../../studio/testsupport';
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as flow from '../../flow';
-import { runPrompt } from '../../project/runprompt';
 import { computeStations, readProgress } from '../../studio/progress';
 import { discoverScenes } from '../../studio/scenes';
 import { newSessionFixture, studioRequest, writeStudioPNG } from '../../studio/testsupport';
@@ -25,6 +23,7 @@ afterEach(() => {
 function project(files: Record<string, string> = {}): string {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-publishing-golden-')));
   temps.push(root);
+  flow.recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
   for (const [rel, body] of Object.entries(files)) {
     fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
     fs.writeFileSync(path.join(root, rel), body);
@@ -32,7 +31,6 @@ function project(files: Record<string, string> = {}): string {
   return root;
 }
 
-const sha = (s: string | Buffer) => crypto.createHash('sha256').update(s).digest('hex');
 const rule = (r: flow.PathRule) => ({ path: r.path, prefix: r.prefix, base: r.base?.source });
 const routeJSON = (stops: flow.RouteStop[]) => stops.map(({ station, node }) => ({ station, ...node, produces: node.produces?.map(rule) }));
 
@@ -42,17 +40,7 @@ function setDisabled(root: string, off: boolean): void {
 
 async function collect(): Promise<Record<string, unknown>> {
   const out: Record<string, unknown> = {};
-  // 制作提示词：三种画幅、开与关。
-  for (const canvas of ['vertical-3x4', 'vertical-9x16', 'landscape-16x9']) {
-    const text = fs.readFileSync(path.join(assets.assetsBase(), 'assets', 'presets', canvas, 'PROMPT-PRODUCTION.md'));
-    for (const off of [false, true]) {
-      const root = project();
-      fs.writeFileSync(path.join(root, 'PROMPT-PRODUCTION.md'), text);
-      setDisabled(root, off);
-      const prompt = runPrompt(root, '').prompt;
-      out[`prompt:${canvas}:${off ? 'off' : 'on'}`] = { sha256: sha(prompt), bytes: prompt.length };
-    }
-  }
+  // 制作提示词不在这里钉：它按流程组合，门禁与金样在 project/flowprompts.test.ts。
   // 路线、文件归站、关卡、阶段标题。
   for (const off of [false, true]) {
     const root = project();

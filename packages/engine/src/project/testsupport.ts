@@ -1,7 +1,9 @@
 // 本包测试共用的常量与辅助，对应 Go 测试文件里的包级辅助（skilltree_test.go、init_test.go）。
 // 不从 index.ts 导出。
 import * as assets from '../assets';
-import { defaultPreset, defaultStyle } from '../preset';
+import * as flow from '../flow';
+import * as preset from '../preset';
+import { substituteCanvas } from '../preset/gen/gen';
 import { compareBytes } from '../gojson';
 import type { SourceTree } from './init';
 
@@ -14,12 +16,9 @@ export const skillManifest = 'SKILL.md';
  */
 export const skillTreeRoot = '.agents/skills';
 
-/** builtinSources 返回一次真实 am init 会用到的三棵源树。 */
+/** builtinSources 返回一次真实 am init 会用到的两棵源树。 */
 export function builtinSources(): SourceTree[] {
-  const shared = assets.shared();
-  const chosen = assets.preset(defaultPreset().id);
-  const style = assets.style(defaultStyle().id, defaultPreset().id);
-  return [shared, chosen, style];
+  return [assets.shared(), assets.style(preset.defaultStyle().id, preset.defaultPreset().id)];
 }
 
 /** mapTree 对应 testing/fstest.MapFS：键是 / 分隔的相对路径。 */
@@ -31,4 +30,32 @@ export function mapTree(files: Record<string, string>): SourceTree {
       return Buffer.from(files[rel]);
     },
   };
+}
+
+/** 有自己提示词段落顺序的内置流程（口播、卡点、歌曲讲解）。 */
+export function builtinFlowIDs(): string[] {
+  return flow
+    .allFlows()
+    .filter((f) => f.prompt)
+    .map((f) => f.id);
+}
+
+/** 按流程组合出的制作提示词（不加任何项目里的站）；disabled 是关掉的内置插件的站。 */
+export function composeFor(id: string, canvas: string, disabled: readonly string[] = []): string {
+  const p = preset.byID(canvas);
+  if (!p) throw new Error(`没有画幅 ${canvas}`);
+  return flow.composeFlowPrompt({ flow: id, stations: [], disabled: new Set(disabled), canvas: (t) => substituteCanvas(p, t) });
+}
+
+/** 每个内置流程 × 每个画幅 × 发布开与关的组合结果，给对全部提示词成立的门禁用。 */
+export function everyBuiltinPrompt(): { name: string; flow: string; canvas: string; text: string }[] {
+  const out: { name: string; flow: string; canvas: string; text: string }[] = [];
+  for (const id of builtinFlowIDs()) {
+    for (const p of preset.all()) {
+      for (const disabled of [[], ['publish']]) {
+        out.push({ name: `${id}/${p.id}${disabled.length ? '（关掉发布）' : ''}`, flow: id, canvas: p.id, text: composeFor(id, p.id, disabled) });
+      }
+    }
+  }
+  return out;
 }

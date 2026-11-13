@@ -9,7 +9,7 @@
 只有一个镜头时同样用这条命令。母版生成后跑：
 
 ```bash
-validate_video({"video": "的总帧数>", "silent": true, "decode": true, "expect_frames": "<timing-report.json", "report_json": "production/silent-master-check.json"})
+validate_video({"video": "production/silent-master.mp4", "silent": true, "decode": true, "expect_frames": "<timing-report.json 的总帧数>", "report_json": "production/silent-master-check.json"})
 ```
 
 `expect_frames` 会完整解码精确统计帧数，容器声明的 `nb_frames` 可能缺失或不准，不能用来断言时间轴。`decode` 发现截断和损坏：`moov` 在文件头时，截断一半的文件照样能读出正确规格。判断结果读 `report_json` 落盘的文件，不要解析终端输出。

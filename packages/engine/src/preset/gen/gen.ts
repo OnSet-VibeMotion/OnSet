@@ -1,7 +1,6 @@
 /**
- * 预设生成器：把 preset 的画幅表与风格表渲染成两棵项目模板源树。移植自 internal/preset/gen。
+ * 预设生成器：把 preset 的画幅表与风格表渲染成风格 × 画幅的项目模板源树。移植自 internal/preset/gen。
  *
- *   assets/presets/<画幅>/              只随画幅变化（PROMPT-PRODUCTION.md）
  *   assets/styles/<风格>/<画幅>/        风格 × 画幅（frame.md、风格说明书、示例图）
  *   assets/styles/custom-draft/<画幅>/  自定义风格的草稿骨架（无示例图）
  *
@@ -9,13 +8,13 @@
  * 重新序列化一律还原不出来，会让「产物与签入版本逐字节相同」这条红线失守。这里只整体替换 canvas 与 safe_area
  * 两个块和占位符，其余原样透传。
  *
- * 模板的真相源：制作提示词段落在 assets/prompts/<站>/（运行期也读），风格模板在本目录 templates/styles/<风格>/。
+ * 模板的真相源是本目录 templates/styles/<风格>/。制作提示词不经生成器：段落在 assets/prompts/<站>/，开工时按流程组合
+ * （flow.composeFlowPrompt）；这里的 substituteCanvas 也给它换画幅占位符。
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { goQuote } from '../../gofmt';
 import { PinnedVersion } from '../../hyperframes/constants';
-import * as flow from '../../flow';
 import * as styleimage from '../../styleimage';
 import * as preset from '../index';
 
@@ -34,14 +33,6 @@ export interface Templates {
 /** 模板目录：仓库里的 packages/engine/src/preset/gen/templates。 */
 export function templatesDir(repo: string): string {
   return path.join(repo, 'packages', 'engine', 'src', 'preset', 'gen', 'templates');
-}
-
-/**
- * 与风格无关的编排提示词模板：按口播流程的段落顺序，从 assets/prompts/<站>/<段>.md 拼出来
- * （flow.composeProduction），阶段编号在这里定下。段落正文放在资产树里，有流程记录的项目运行期按流程现组合时读同一份。
- */
-export function loadProduction(repo: string): string {
-  return flow.composeProduction(path.join(repo, 'assets', 'prompts'));
 }
 
 /** 一套风格的模板，目录名即风格 id。 */
@@ -112,11 +103,6 @@ export function substituteCanvas(p: preset.Preset, s: string): string {
   return substitute(p, out);
 }
 
-/** 画幅源树的文件：只有编排提示词随画幅变化而与风格无关。 */
-export function renderCanvas(p: preset.Preset, production: string): Map<string, string> {
-  return new Map([['PROMPT-PRODUCTION.md', substituteCanvas(p, production)]]);
-}
-
 /** 模板里的 style_id / style_name 必须与风格表一致：validate 靠 style_id 反查说明书文件名。 */
 function checkIdentity(style: preset.Style, frontmatter: string): void {
   for (const line of [`style_id: ${style.id}\n`, `style_name: ${style.name}\n`]) {
@@ -179,14 +165,10 @@ function writeFiles(root: string, dir: string, files: Map<string, string>, out: 
 }
 
 /**
- * 把画幅源树与风格 × 画幅源树的文本产物写进 root/assets/。examples 为真时另用 rsvg-convert 重渲染示例 PNG
+ * 把风格 × 画幅源树的文本产物写进 root/assets/。examples 为真时另用 rsvg-convert 重渲染示例 PNG
  * （默认关闭：不同版本的 rsvg-convert 输出字节不同，纳进幂等门会让门随机失败）。
  */
 export function generate(repo: string, root: string, targets: preset.Preset[], styles: preset.Style[], examples: boolean, out: Log): void {
-  const production = loadProduction(repo);
-  for (const p of targets) {
-    writeFiles(root, path.join('assets', 'presets', p.id), renderCanvas(p, production), out);
-  }
   for (const style of styles) {
     const tpl = loadTemplates(repo, style.id);
     for (const p of targets) {

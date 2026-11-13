@@ -11,7 +11,8 @@ import {
   detectFlow,
   extraPrompt,
   fetchStation,
-  insertStageSections,
+  composeFlowPrompt,
+  recordFlow,
   loadProjectStations,
   parseManifest,
   pluginSkillsFor,
@@ -31,11 +32,11 @@ afterEach(() => {
   syncStyleSources('');
 });
 
-/** 一个加了假发布插件的项目，制作提示词里有两个阶段。 */
-function project(prompt = '# 制作\n\n## 一次性项目边界\n\n- 公共约定\n\n## 第一阶段：盘点输入和制作规格\n\n盘点。\n\n## 第六阶段：建立镜头目录、并发调度渲染工具\n\n渲染。\n\n## 第七阶段：首帧封面和视觉验收\n\n验收。\n'): string {
+/** 一个加了假发布插件的口播项目（新建时记下流程与画幅）。 */
+function project(): string {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-ext-')));
   temps.push(root);
-  fs.writeFileSync(path.join(root, 'PROMPT-PRODUCTION.md'), prompt);
+  recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
   fs.writeFileSync(path.join(root, 'article-to-motion.conf'), '');
   addToProject(root, fetchStation(`link:${fake}`, process.env).entry);
   return root;
@@ -92,9 +93,14 @@ describe('stage inserts', () => {
     expect(text.slice(insert, next)).toContain('字幕卡片没有越过安全区');
   });
 
-  it('appends notes for stages the project prompt does not have', () => {
-    const out = insertStageSections('# 只有标题\n', loadProjectStations(project()).stations);
-    expect(out).toContain('对「建立镜头目录、并发调度渲染工具」阶段的补充');
+  it('appends notes for stages the flow does not have', () => {
+    // 卡点流程没有配音阶段：插进配音阶段的补充接在最后，并注明原本要插在哪。
+    const stations = loadProjectStations(project()).stations.map((st) =>
+      st.builtin ? st : { ...st, manifest: { ...st.manifest, inserts: st.manifest.inserts.map((ins) => ({ ...ins, stage: 'voice' })) } },
+    );
+    const out = composeFlowPrompt({ flow: 'beat', stations, disabled: new Set(), canvas: (t) => t.replaceAll('{{CANVAS}}', '1080×1440').replaceAll('{{ORIENTATION}}', '竖屏') });
+    expect(out).toContain('对「TTS 和断句校对」阶段的补充');
+    expect(out.indexOf('对「TTS 和断句校对」阶段的补充')).toBeGreaterThan(out.indexOf('## 第十阶段'));
   });
 });
 
@@ -109,7 +115,9 @@ describe('plugin flows', () => {
     expect(extras.find((x) => x.station.id === 'fake-publisher')?.flow?.first_page).toBe('x:fake-publisher:dashboard');
     const text = runPrompt(root, '').prompt.toString('utf8');
     // am 的公共约定照旧在前，各阶段换成这套流程的。
-    expect(text.startsWith('# 制作\n\n## 一次性项目边界\n\n- 公共约定\n')).toBe(true);
+    expect(text.startsWith('# 完成一次从稿件到成片的')).toBe(true);
+    expect(text).toContain('## 工作边界');
+    expect(text).toContain('### 渲染器配置');
     expect(text).toContain('## 这部片子的流程：快剪');
     expect(text).toContain('## 第二步：直接出镜头');
     expect(text).not.toContain('## 第六阶段');

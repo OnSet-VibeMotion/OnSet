@@ -13,16 +13,17 @@ const temps: string[] = [];
 afterEach(() => {
   for (const dir of temps.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
-function root(files: Record<string, string> = {}): string {
+/** 一个记下了流程的项目目录（id 为空时不写记录）。 */
+function root(id = 'speech'): string {
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-flowview-')));
   temps.push(dir);
-  for (const [rel, body] of Object.entries(files)) fs.writeFileSync(path.join(dir, rel), body);
+  if (id !== '') flow.recordFlow(dir, { id, canvas: preset.defaultPreset().id });
   return dir;
 }
 
 describe('flowView', () => {
   it('declares the steps and pages of the speech and beat flows as the top bar had them', () => {
-    expect(flowView(root(), false)).toEqual({
+    expect(flowView(root())).toEqual({
       id: 'speech',
       name: '口播',
       first_page: 'script',
@@ -30,9 +31,8 @@ describe('flowView', () => {
       hidden_pages: ['beat'],
       first_steps: ['script', 'beat'],
       land_page: '',
-      custom_prompt: false,
     });
-    expect(flowView(root({ 'beat.yaml': 'x' }), false)).toEqual({
+    expect(flowView(root('beat'))).toEqual({
       id: 'beat',
       name: '卡点',
       first_page: 'beat',
@@ -40,24 +40,23 @@ describe('flowView', () => {
       hidden_pages: ['script'],
       first_steps: ['beat', 'script'],
       land_page: 'beat',
-      custom_prompt: false,
     });
   });
 
   it('follows the recorded flow of a new song project', () => {
-    const dir = root();
+    const dir = root('');
     projectinit.create({ target: dir, canvas: preset.defaultPreset().id, style: preset.defaultStyle(), delivery: 'song', narration: 'solo' });
-    const v = flowView(dir, false);
+    const v = flowView(dir);
     expect(v.id).toBe('song');
     expect(v.steps).toEqual(['script', 'storyboard', 'scene', 'final', 'publish']);
     expect(v.hidden_pages).toEqual(['beat']);
   });
 
   it('puts the first page of a third-party flow first and keeps the base flow pages', () => {
-    const dir = root({ 'beat.yaml': 'x' });
+    const dir = root('beat');
     flow.addToProject(dir, flow.fetchStation(`link:${path.join(__dirname, '..', 'flow', 'testdata', 'fake-publisher')}`, process.env).entry);
     flow.setProjectFlow(dir, 'fake-publisher');
-    const v = flowView(dir, false);
+    const v = flowView(dir);
     expect(v.id).toBe('x:fake-publisher');
     expect(v.steps[0]).toBe('x:fake-publisher:dashboard');
     expect(v.hidden_pages).toEqual(['script']);
@@ -66,13 +65,13 @@ describe('flowView', () => {
   });
 });
 
-describe('custom production prompt', () => {
-  it('says so on the progress route only when the project changed its prompt file', async () => {
+describe('directories without a flow record', () => {
+  it('have no flow view, no progress route and say why', async () => {
     const { readProgress } = await import('./progress');
-    const dir = root();
-    projectinit.create({ target: dir, canvas: preset.defaultPreset().id, style: preset.defaultStyle(), delivery: 'speech', narration: 'solo' });
-    expect(readProgress(dir).custom_prompt).toBeUndefined();
-    fs.appendFileSync(path.join(dir, 'PROMPT-PRODUCTION.md'), '\n改过。\n');
-    expect(readProgress(dir).custom_prompt).toBe(true);
+    const dir = root('');
+    // 标记文件不再决定流程。
+    fs.writeFileSync(path.join(dir, 'beat.yaml'), 'schema: 1\n');
+    expect(() => flowView(dir)).toThrow(flow.MissingFlowRecordError);
+    expect(() => readProgress(dir)).toThrow('不是用这一版 ArticleToMotion 新建的项目');
   });
 });

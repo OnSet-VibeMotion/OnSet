@@ -95,6 +95,7 @@ describe('builtin plugin apply', () => {
   it('judges the station with the registered function', () => {
     register();
     const root = tempDir();
+    flow.recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
     fs.mkdirSync(path.join(root, 'production', 'translate'), { recursive: true });
     fs.writeFileSync(path.join(root, 'production', 'translate', 'en.srt'), '1\n');
     const got = computeStations(root, discoverScenes(root));
@@ -111,11 +112,11 @@ describe('builtin plugin apply', () => {
 
   it('composes its prompt section after its anchor and numbers the stages', () => {
     register();
-    const order = flow.productionOrder();
+    const order = flow.flowPrompt('speech');
     expect(order.slice(order.indexOf('review/stage'), order.indexOf('review/stage') + 3)).toEqual(['review/stage', 'translate/stage', 'publish/stage']);
     expect(flow.allStageTitles().translate).toBe('翻译字幕');
-    const composed = flow.composeProduction(path.join(__dirname, '..', '..', '..', '..', 'assets', 'prompts'));
-    expect(composed).toContain('<!-- am-plugin:fake-translate -->\n## 第十二阶段：翻译字幕\n\n在第十一阶段之后把字幕译成英文。');
+    const composed = flow.composeFlowPrompt({ flow: 'speech', stations: [], disabled: new Set(), canvas: (t) => t });
+    expect(composed).toContain('## 第十二阶段：翻译字幕\n\n在第十一阶段之后把字幕译成英文。');
     expect(composed).toContain('## 第十三阶段：刷新发布配置');
   });
 
@@ -152,7 +153,7 @@ describe('builtin plugin apply', () => {
     expect(() => registerBuiltin({ id: 'bad-dup', apply: (ctx) => ctx.station({ ...base, id: 'publish', nodes: [] }) })).toThrow('站 publish 已经有了');
     const undo = registerBuiltin({ id: 'bad-anchor', apply: (ctx) => ctx.station({ ...base, nodes: [], sections: [{ id: 's', file: 's.md', after: 'nope/stage' }] }) });
     try {
-      expect(() => flow.productionOrder()).toThrow('要接在 nope/stage 后面');
+      expect(() => flow.flowPrompt('speech')).toThrow('要接在 nope/stage 后面');
     } finally {
       undo();
     }
@@ -164,7 +165,7 @@ describe('the shipped prompt sections of builtin plugins', () => {
   it('exist, carry their stage title and no hard-coded stage numbers, and leave no orphan files', () => {
     for (const { owner, value: s } of pluginStations()) {
       const dir = path.join(flow.builtinPluginsDir(), owner);
-      // 段落文件放在 sections/ 里；歌曲讲解的几段直接读已有的内置文件（清单的 prompt.md、assets/shared/PROMPT-SONG.md），不另放一份。
+      // 段落文件都放在 sections/ 里。
       const declared = [...new Set((s.sections ?? []).map((sec) => sec.file).filter((f) => f.startsWith('sections/')))].sort();
       const files = fs.existsSync(path.join(dir, 'sections')) ? fs.readdirSync(path.join(dir, 'sections')).map((f) => 'sections/' + f).sort() : [];
       expect(files, owner).toEqual(declared);

@@ -10,9 +10,8 @@ import {
   fetchStation,
   builtinPluginIDs,
   coerceSetting,
-  setBuiltinEnabled,
+  recordFlow,
   loadProjectStations,
-  LockFile,
   parseProgressLine,
   publicSettings,
   stationSettings,
@@ -41,10 +40,10 @@ const temp = (prefix: string) => {
   return dir;
 };
 
-/** 一个最小的项目：只有制作提示词。 */
+/** 一个最小的项目：只记了流程（口播）与画幅。 */
 function project(): string {
   const root = temp('am-flow-project-');
-  fs.writeFileSync(path.join(root, 'PROMPT-PRODUCTION.md'), '# 制作\n');
+  recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
   return root;
 }
 
@@ -214,7 +213,8 @@ describe('project lock', () => {
     expect(loaded.problems).toEqual([]);
     expect(projectExtras(root).filter((x) => !builtinPluginIDs().includes(x.station.id)).map((x) => x.after)).toEqual(['publish']);
     removeFromProject(root, 'fake-publisher');
-    expect(fs.existsSync(path.join(root, LockFile))).toBe(false);
+    // 站去掉了，新建时记下的流程留着。
+    expect(readLock(root)).toEqual({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' }, stations: [] });
     expect(() => removeFromProject(root, 'fake-publisher')).toThrow('没有加第三方站 fake-publisher');
   });
 
@@ -256,8 +256,8 @@ describe('prompt', () => {
     const root = project();
     addToProject(root, fetchStation(`link:${fake}`, process.env).entry);
     const text = runPrompt(root, '').prompt.toString('utf8');
-    expect(text.startsWith('# 制作\n')).toBe(true);
-    expect(text).toContain('## 第三方站：假发布');
+    // 第三方站的说明接在组合出的提示词最后。
+    expect(text.indexOf('## 第三方站：假发布')).toBeGreaterThan(text.indexOf('## 附：多角色叙事作业规程'));
     expect(text).toContain('与上面的约定冲突时以上面为准');
     expect(text).toContain('`x_fake_publisher_status`');
     expect(text).toContain('只能由用户在客户端里点按钮执行');
@@ -270,19 +270,10 @@ describe('prompt', () => {
     expect(() => runPrompt(root, '')).toThrow('第三方站 gone');
   });
 
-  it('is empty without stations, and appends a builtin section only once', () => {
+  it('is empty without stations', () => {
     expect(extraPrompt([])).toBe('');
-    // 新项目的制作提示词里没有歌曲讲解那一节：由内置插件接上。
-    const fresh = runPrompt(project(), '').prompt.toString('utf8');
-    expect(fresh).toBe('# 制作\n\n## 歌曲讲解分支\n\n若项目根存在 song.yaml，音频制作、时间轴与合成改按 PROMPT-SONG.md 执行；\n其余画幅、MG 渲染、视觉验收与发布要求继续适用。\n');
-    // 老项目的提示词里本来就有：不重复。
-    const old = project();
-    fs.writeFileSync(path.join(old, 'PROMPT-PRODUCTION.md'), '# 制作\n\n## 歌曲讲解分支\n\n老的一节。\n');
-    expect(runPrompt(old, '').prompt.toString('utf8')).toBe('# 制作\n\n## 歌曲讲解分支\n\n老的一节。\n');
-    // 关掉歌曲讲解：不接。
-    const off = project();
-    setBuiltinEnabled(off, 'song', false);
-    expect(runPrompt(off, '').prompt.toString('utf8')).toBe('# 制作\n');
+    // 没加第三方站：组合出的提示词里没有第三方站那一节。
+    expect(runPrompt(project(), '').prompt.toString('utf8')).not.toContain('## 第三方站');
   });
 });
 

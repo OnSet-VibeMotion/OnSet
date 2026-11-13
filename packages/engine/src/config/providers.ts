@@ -6,7 +6,7 @@ import type { Config } from './config';
 
 /**
  * 一个可选的配音服务。合成本身由编排工具按
- * PROMPT-PRODUCTION.md 第三阶段对应小节执行，这里只登记取值与校验所需信息。
+ * 口播流程制作提示词的配音阶段（assets/prompts/voice/stage.md）对应小节执行，这里只登记取值与校验所需信息。
  *
  * timestamps 是该服务自带时间戳的粒度，决定第四阶段要不要另做强制对齐：
  * sentence 只能用于粗排，char 可以直接用作短语级时间轴的依据。

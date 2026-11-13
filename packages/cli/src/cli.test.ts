@@ -19,7 +19,12 @@ describe('cli', () => {
     const target = path.join(tempDir(), 'project');
     const out = new Buffer();
     expect(await run(['init', target, '--canvas', 'vertical-3x4', '--skip-hyperframes'], out), out.text).toBe(0);
-    expect(fs.existsSync(path.join(target, 'PROMPT.md'))).toBe(true);
+    // 不写提示词文件，只记下流程与画幅；提示词开工时组合，prompt show 能看全文。
+    expect(fs.existsSync(path.join(target, 'PROMPT.md'))).toBe(false);
+    expect(JSON.parse(fs.readFileSync(path.join(target, 'article-to-motion.flow.json'), 'utf8')).production).toEqual({ id: 'speech', canvas: 'vertical-3x4' });
+    const shown = new Buffer();
+    expect(await run(['prompt', 'show', '--project-root', target], shown), shown.text).toBe(0);
+    expect(shown.text).toContain('## 第一阶段：盘点输入和制作规格');
   });
 
   it('config get uses the project root', async () => {
@@ -72,7 +77,7 @@ describe('cli', () => {
 
   it('init conflict, and same-tool config succeeds', async () => {
     const target = tempDir();
-    fs.writeFileSync(path.join(target, 'PROMPT.md'), 'custom');
+    fs.writeFileSync(path.join(target, 'frame.md'), 'custom');
     expect(await run(['init', target, '--canvas', 'vertical-3x4', '--skip-hyperframes'])).toBe(1);
     const root = tempDir();
     fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
@@ -161,8 +166,8 @@ describe('cli', () => {
     const body = fs.readFileSync(path.join(target, 'cast.yaml'), 'utf8');
     // packs: [] 是明确裁定过的设计：am init 刚建的项目本来就还没有角色包。
     for (const want of ['schema: cast/v1', 'packs: []', 'ground_y: 0.78', 'turn: 240', 'interject: 100']) expect(body).toContain(want);
-    // 附录随 shared 树无条件下发，两种模式都在。
-    expect(fs.existsSync(path.join(target, 'PROMPT-CAST-ADDENDUM.md'))).toBe(true);
+    // 多角色的作业规程是口播制作提示词的附录，不再是项目里的一份文件。
+    expect(fs.existsSync(path.join(target, 'PROMPT-CAST-ADDENDUM.md'))).toBe(false);
   });
 
   it('init rejects an unknown narration', async () => {

@@ -2,5 +2,5 @@
 export { initialize, initializeWithFiles, rejectSymlinkPath, validPath } from './init';
 export type { InitResult, SourceTree } from './init';
 export { RulesTemplate, writeRules } from './rules';
-export { flowPromptFile, legacyRunPrompt, ProductionPrompt, promptSource, runPrompt } from './runprompt';
+export { composeProjectPrompt, runPrompt } from './runprompt';
 export type { RunPromptResult } from './runprompt';

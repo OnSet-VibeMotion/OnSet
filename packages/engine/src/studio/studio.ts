@@ -18,7 +18,6 @@ import * as filmstyle from '../filmstyle';
 import { goClean, goPathError, goTrimSpace } from '../gofmt';
 import { marshalIndent } from '../gojson';
 import * as preset from '../preset';
-import { promptSource } from '../project/runprompt';
 import * as projectinit from '../projectinit';
 import { agentKeysAPI } from './agentkeys';
 import { agentModelsAPI, agentsAPI } from './agents';
@@ -833,12 +832,19 @@ export function inspectProject(p: Project): Record<string, unknown> {
     // 读不了就不显示。
   }
   const exists = (...parts: string[]) => fileExists(path.join(p.path, ...parts));
+  // 项目的流程：顶栏的步骤、第一步与用不上的页面都按它（界面不按片型写死）。没有流程记录的目录排不出路线：
+  // 不给 flow 与 step，flow_error 照实说缺什么（界面据此提示，「开始制作」也会报同一句）。
+  let flowState: Record<string, unknown>;
+  try {
+    flowState = { ...stepOf(p.path, scenes), flow: flowView(p.path) };
+  } catch (err) {
+    if (!(err instanceof flow.MissingFlowRecordError)) throw err;
+    flowState = { flow_error: err.message };
+  }
   return goMap({
     project: projectJSON(p),
     stage: stageFor(p.path, scenes),
-    ...stepOf(p.path, scenes),
-    // 项目的流程：顶栏的步骤、第一步与用不上的页面都按它（界面不按片型写死）。
-    flow: flowView(p.path, promptSource(p.path) === 'custom'),
+    ...flowState,
     metadata: goMap(meta),
     media: goMap({
       audio: exists('production', 'audio', 'candidate.mp4'),

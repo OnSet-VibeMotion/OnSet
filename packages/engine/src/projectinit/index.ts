@@ -4,7 +4,6 @@
  * 两边曾经各写一份：Studio 那份漏了讲解形式（歌曲 / 卡点）、多角色对话，也不装 HyperFrames 官方技能——
  * 新建的项目渲染时拿不到 hyperframes 入口技能。放在一处，两个入口建出的项目逐字节相同。
  */
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as assets from '../assets';
@@ -87,19 +86,19 @@ export function validate(opts: Options): void {
 const bytes = (body: Uint8Array | string): Uint8Array => (typeof body === 'string' ? Buffer.from(body) : body);
 
 /**
- * 写出项目文件：三棵内置资产树、风格字体、模式文件与调用方的额外文件，多角色对话再写 cast.yaml 与 cast/。
+ * 写出项目文件：两棵内置资产树（共用的与风格 × 画幅的）、风格字体、模式文件与调用方的额外文件，并在锁文件里记下流程与画幅；
+ * 多角色对话再写 cast.yaml 与 cast/。项目里不放制作提示词，开工时按记下的流程组合（project.runPrompt）。
  * 不装 HyperFrames 技能，见 installSkills。
  */
 export function create(opts: Options): project.InitResult {
   validate(opts);
   const shared = assets.shared();
-  const presetFiles = assets.preset(opts.canvas);
   const styleFiles = assets.style(opts.style.id, opts.canvas);
   const extra = new Map<string, Uint8Array>(assets.styleFonts(opts.style));
   for (const [file, body] of Object.entries(opts.extra ?? {})) extra.set(file, bytes(body));
   const chosen = deliveryFlows().find((f) => f.id === opts.delivery)!;
   if (chosen.marker) extra.set(chosen.marker.file, Buffer.from(chosen.marker.body));
-  const result = project.initializeWithFiles(opts.target, extra, shared, presetFiles, styleFiles);
+  const result = project.initializeWithFiles(opts.target, extra, shared, styleFiles);
   recordProjectFlow(opts.target, chosen.id, opts.canvas);
   if (opts.narration === NarrationCast) {
     try {
@@ -111,19 +110,9 @@ export function create(opts: Options): project.InitResult {
   return result;
 }
 
-/**
- * 在锁文件里记下项目的流程、提示词组合版本、画幅与那份可选制作说明的摘要（flow.FlowRecord）。
- * 有了它，制作提示词由运行期按流程组合；那份文件之后被用户改了，就以文件为准。
- */
+/** 在锁文件里记下项目的流程与画幅（flow.FlowRecord）：项目用哪个流程、提示词怎么组合都只看它。 */
 export function recordProjectFlow(target: string, id: string, canvas: string): void {
-  const file = project.flowPromptFile(target, { id, compose: flow.ComposeVersion, canvas, prompt_sha256: '' });
-  let digest = '';
-  try {
-    digest = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-  } catch {
-    digest = '';
-  }
-  flow.recordFlow(target, { id, compose: flow.ComposeVersion, canvas, prompt_sha256: digest });
+  flow.recordFlow(target, { id, canvas });
 }
 
 /**

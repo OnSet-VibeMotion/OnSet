@@ -6,9 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as cast from '../cast';
-import * as hyperframes from '../hyperframes';
 import * as scene from '../scene';
-import { builtinSkills, files, shared } from './index';
+import { builtinSkills, shared } from './index';
 
 function castSkillPath(name: string): string {
   return '.agents/skills/character-rig/' + name;
@@ -185,27 +184,6 @@ it('stripJSComments handles regex literals', () => {
   // 再单独钉两条最要命的：注释里的禁令词必须消失，代码里的必须留下。
   expect(got.includes('这条注释必须被剥掉') || got.includes('这行注释里的'), '正则/字符串之后的行注释没有被剥掉：假红回来了').toBe(false);
   expect(got, '代码里的 setTimeout( 被吃掉了：假绿——禁令断言从此形同虚设').toContain('setTimeout(fn, 0)');
-});
-
-// 下发提示词与固定版本之间的一致性：锁定文件规则写明的版本等于 PinnedVersion，
-// 且产物里出现的 hyperframes@ 版本全部等于它（而不是「包含」：新旧两个版本号同时留着也会通过）。
-it('presets pin the same HyperFrames version as the binary', () => {
-  const tree = files();
-  const prompts = tree
-    .readDir('presets')
-    .filter((entry) => entry.isDir)
-    .map((entry) => `presets/${entry.name}/PROMPT-PRODUCTION.md`)
-    .filter((rel) => tree.exists(rel));
-  expect(prompts.length, '资产树里没有任何 PROMPT-PRODUCTION.md').toBeGreaterThan(0);
-  const want = 'hyperframes@' + hyperframes.PinnedVersion;
-  for (const rel of prompts) {
-    const body = tree.readText(rel);
-    // CLI 改由 am hyperframes 调用后，版本号以「版本固定为 `x`」写进锁定文件规则。两种写法都要求等于 PinnedVersion。
-    expect(body, `${rel} 没有写明 HyperFrames 版本固定为 ${hyperframes.PinnedVersion}`).toContain('版本固定为 `' + hyperframes.PinnedVersion + '`');
-    for (const got of body.match(/hyperframes@[0-9][0-9A-Za-z.-]*/g) ?? []) {
-      expect(got, `${rel} 固定的是 ${got}，与二进制的 ${want} 不一致`).toBe(want);
-    }
-  }
 });
 
 /**

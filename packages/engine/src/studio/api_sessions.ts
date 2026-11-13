@@ -360,8 +360,9 @@ export async function productionStartAPI(s: Server, request: Request): Promise<R
   }
   let prompt: Buffer;
   let promptPath: string;
+  let promptLabel: string;
   try {
-    ({ prompt, path: promptPath } = project.runPrompt(p.path, override));
+    ({ prompt, path: promptPath, label: promptLabel } = project.runPrompt(p.path, override));
   } catch (err) {
     return writeError(400, 'prompt_missing', (err as Error).message);
   }
@@ -373,7 +374,7 @@ export async function productionStartAPI(s: Server, request: Request): Promise<R
   }
   const holder = s.busyHolder(p.path);
   if (holder !== '') return writeError(409, 'project_busy', new BusyError(holder).message);
-  const rel = path.relative(p.path, promptPath).split(path.sep).join('/');
+  const rel = promptPath === '' ? promptLabel : path.relative(p.path, promptPath).split(path.sep).join('/');
   let sess: Session;
   try {
     sess = createSession(s, p.path, 'production', '整片制作（' + rel + '）', withDefaults(choice, cfg));

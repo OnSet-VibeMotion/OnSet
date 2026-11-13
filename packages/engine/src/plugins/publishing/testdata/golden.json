@@ -1,28 +1,4 @@
 {
-  "prompt:vertical-3x4:on": {
-    "sha256": "89961c29fc6c9e92171e86a9cf2e2e0b01816060669744946577f639c24d07da",
-    "bytes": 93775
-  },
-  "prompt:vertical-3x4:off": {
-    "sha256": "1d44e0fd6d6583d8fe6ce9349a9438528d1446d49ebada806a7c1dbdb9d6ebc1",
-    "bytes": 87801
-  },
-  "prompt:vertical-9x16:on": {
-    "sha256": "6c1df58dd7791fd94929ffae8c3d5a0119bc93456a625bcca20beda3591ecd5f",
-    "bytes": 93775
-  },
-  "prompt:vertical-9x16:off": {
-    "sha256": "10be4301aa5fb460b25418250f3bdfa00f32718892eb33d155a6720c580f87cc",
-    "bytes": 87801
-  },
-  "prompt:landscape-16x9:on": {
-    "sha256": "f4a23f022a35fd3d4b6b1fc144e5f84ef51937a758dd60a0986ae4808386988e",
-    "bytes": 93775
-  },
-  "prompt:landscape-16x9:off": {
-    "sha256": "20c399dabbe213f7af7ed9f6f074cf6ecc5e9f23b24524b6c0c95a73d5dc67bb",
-    "bytes": 87801
-  },
   "route:speech:on": [
     {
       "station": "intake",

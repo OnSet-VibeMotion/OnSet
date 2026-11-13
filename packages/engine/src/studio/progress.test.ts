@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { addToProject, builtinFlows, fetchStation } from '../flow';
+import { addToProject, builtinFlows, fetchStation, recordFlow } from '../flow';
 import { computeStations, readProgress, recordGate, stationDefs, stationOfPath } from './progress';
 import { discoverScenes } from './scenes';
 
@@ -11,8 +11,10 @@ afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
-function project(files: Record<string, string>): string {
+/** 一个记下了流程（缺省口播）的项目，带着给定的文件。 */
+function project(files: Record<string, string>, flowID = 'speech'): string {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-progress-')));
+  recordFlow(root, { id: flowID, canvas: 'vertical-3x4' });
   roots.push(root);
   for (const [name, body] of Object.entries(files)) write(root, name, body);
   return root;
@@ -103,7 +105,7 @@ describe('production map', () => {
   });
 
   it('uses the beat stations for beat projects', () => {
-    const root = project({ 'beat.yaml': 'x', 'production/beat/story.md': '# 片名' });
+    const root = project({ 'beat.yaml': 'x', 'production/beat/story.md': '# 片名' }, 'beat');
     const p = stations(root);
     expect(p.mode).toBe('beat');
     expect(p.current).toBe('gate-story');

@@ -55,7 +55,8 @@ export function newInitCommand(stdout: Out, stderr: Out): Command {
 frame.md 仅为旧项目保留，供画幅等技术信息读取；它不再规定镜头的视觉风格。
 
 写入内容：
-  PROMPT.md、PROMPT-PRODUCTION.md、article-to-motion.conf、.env.example
+  article-to-motion.conf、.env.example、article-to-motion.flow.json（记下讲解形式对应的流程与画幅；
+  制作提示词不写进项目，开工时按这份记录组合）
   frame.md（画幅技术信息；旧版风格参数会带出兼容文件）、assets/fonts/ 中文字体、assets/style-guide/ 示例
   templates/project-rules.md（am run 据此派生 AGENTS.md / CLAUDE.md 等）
   .agents/skills/ 内置技能树（text-to-lottie、algorithmic-art），随二进制下发
@@ -87,8 +88,7 @@ am setup 把它下载进缓存；缓存里没有时 am init 写完项目文件�
 
 叙事模式由 --narration 一次性选定，默认 solo（单口播）。传 cast 会额外在
 项目根写 cast.yaml 并建出空的 cast/ 目录，进入多角色对话叙事模式；此时
-production 阶段的 TTS 与时间线装配规程改为遵守随项目下发的
-PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 packs 为空
+配音与时间线装配改为遵守制作提示词末尾的「附：多角色叙事作业规程」。cast.yaml 刚建出时 packs 为空
 列表，这是预期状态：项目在第一次 am cast add / am cast new 之前本来就还
 没有可用角色。
 

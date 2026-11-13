@@ -13,7 +13,7 @@
  * | load.ts | 读出项目加的站、路线用的站、选用的流程 |
  * | update.ts | 升级一个第三方站 |
  * | builtinplugins.ts | 内置插件与 am_* 认领 |
- * | promptparts.ts | 插件标记、阶段插入、接在最后的说明 |
+ * | promptparts.ts | 第三方站的阶段补充与接在最后的说明 |
  * | skills.ts | 第三方渲染技能 |
  */
 export {
@@ -51,5 +51,5 @@ export { fetchStation, parseSource, StationsDirEnv, stationsDir, writeStationFor
 export { activeFlowStation, loadProjectStations, projectExtras, setProjectFlow } from './load';
 export { permissionLines, updateStation, type StationUpdate } from './update';
 export { builtinPluginIDs, builtinPlugins, builtinPluginsDir, disabledAmOps, disabledAmSkills, disabledAmStations, inUse, setBuiltinEnabled, stationOwners } from './builtinplugins';
-export { applyPluginMarkers, extraPrompt, insertStageSections, markPluginSection } from './promptparts';
+export { extraPrompt } from './promptparts';
 export { pluginSkillsFor } from './skills';

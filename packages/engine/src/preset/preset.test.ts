@@ -174,7 +174,7 @@ describe('fonts', () => {
 });
 
 describe('shipped specs', () => {
-  // frame.md 与风格说明书曾要求「每个镜头至少两个视觉焦点」，PROMPT-PRODUCTION.md 却要求「一拍一个焦点」，
+  // frame.md 与风格说明书曾要求「每个镜头至少两个视觉焦点」，制作提示词却要求「一拍一个焦点」，
   // 统一为「同一时刻一个主焦点，整镜最多两个依次登场」。
   it('agree on focus', () => {
     const stylesDir = path.join(files().dir, 'styles');

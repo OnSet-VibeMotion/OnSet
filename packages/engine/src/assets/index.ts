@@ -4,10 +4,10 @@
  * Go 版用 //go:embed 把 assets/ 打进二进制；TS 版从磁盘读：开发时是仓库里的 assets/，
  * 打包后是应用资源目录里的 assets/（客户端与命令行的启动方经 AM_ASSETS_DIR 告知）。
  *
- * 三棵源树：
+ * 两棵源树：
  *   assets/shared/                 与画幅、风格都无关，所有项目共用
- *   assets/presets/<画幅>/          只随画幅变化（由预设生成器产出）
  *   assets/styles/<风格>/<画幅>/    风格 × 画幅（文本由生成器产出，示例图手绘）
+ * 制作提示词不拷进项目：段落在 assets/prompts/ 与 assets/plugins/<id>/sections/，开工时按流程组合（flow.composeFlowPrompt）。
  * 每棵树的内部路径就是它在项目根下的目标路径，project.initialize 直接叠加拷贝，不做路径改写。
  *
  * 遍历规则照搬 go:embed：目录里名字以 . 或 _ 开头的条目一律跳过（macOS 的 .DS_Store 就靠这条挡住），
@@ -34,7 +34,7 @@ export function assetsBase(): string {
   for (const start of starts) {
     let dir = path.resolve(start);
     for (;;) {
-      if (fs.existsSync(path.join(dir, 'assets', 'shared', 'PROMPT.md'))) {
+      if (fs.existsSync(path.join(dir, 'assets', 'shared', 'article-to-motion.conf'))) {
         cachedRoot = dir;
         return dir;
       }
@@ -125,14 +125,6 @@ export function files(): AssetTree {
 /** 与画幅无关的那棵源树。 */
 export function shared(): AssetTree {
   return tree('assets/shared');
-}
-
-/** 指定画幅预设的素材树。 */
-export function preset(id: string): AssetTree {
-  const sub = tree(`assets/presets/${id}`);
-  if (!fs.existsSync(sub.dir)) throw new Error(`找不到预设素材 ${id}: open assets/presets/${id}: file does not exist`);
-  if (!sub.exists('PROMPT-PRODUCTION.md')) throw new Error(`预设素材 ${id} 不完整，缺少 PROMPT-PRODUCTION.md`);
-  return sub;
 }
 
 /** 指定风格在指定画幅下的素材树（frame.md、风格说明书、示例图）。 */

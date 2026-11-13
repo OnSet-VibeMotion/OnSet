@@ -69,7 +69,7 @@
 
 ## 歌曲讲解（仅 song.yaml 存在时）
 
-遵守 PROMPT-SONG.md 与内置 song-explainer 技能。先生成候选并停下来让用户试听
+遵守歌曲讲解流程的制作说明与内置 song-explainer 技能。先生成候选并停下来让用户试听
 选定；禁止代选。网页模式用 `song_handoff()` 给出完整歌词和曲风并暂停，等待用户
 提供音频后用 `song_receive()` 接收，不能把交接命令退出当成音频已生成。
 歌曲相关计算交给 `song_prepare()` 与 `song_cues()`，原始对齐报告保留。

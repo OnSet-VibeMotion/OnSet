@@ -39,7 +39,7 @@ describe('projectinit', () => {
       beat: [DeliveryBeat, NarrationSolo, ['beat.yaml']],
       song: [DeliverySong, NarrationSolo, ['song.yaml']],
       cast: [DeliverySpeech, NarrationCast, ['cast.yaml', 'cast']],
-      speech: [DeliverySpeech, NarrationSolo, ['PROMPT-PRODUCTION.md', 'frame.md']],
+      speech: [DeliverySpeech, NarrationSolo, ['article-to-motion.flow.json', 'frame.md']],
     };
     for (const [name, [delivery, narration, want]] of Object.entries(cases)) {
       const dir = path.join(temp(), name);

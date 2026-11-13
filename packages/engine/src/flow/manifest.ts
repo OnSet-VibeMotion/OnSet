@@ -99,7 +99,7 @@ export interface ManifestFlow {
   stations: string[];
   /** 顶栏第一步：script、beat，或本站页面的 id。 */
   first_page: string;
-  /** 这套流程的制作提示词（替换项目里 PROMPT-PRODUCTION.md 的各阶段，am 的公共约定照旧在前）。 */
+  /** 这套流程的制作提示词（替换内置流程的各阶段，am 的公共约定照旧在前）。 */
   prompt: string;
 }
 
@@ -158,7 +158,7 @@ export interface Manifest {
   am_skills: string[];
   /**
    * 只有内置插件能写：认领自带流程里的站（flow/builtin.ts 的站 id）。项目关掉这个插件时，这些站从制作路线上
-   * 拿掉，它们在制作提示词里的段落也去掉（生成时用 am-plugin 标记包住，见 markPluginSection）。
+   * 拿掉，组合制作提示词时它们的段落也不参与。
    */
   am_stations: string[];
   /** 项目在用这个插件的凭据文件（例如 song.yaml）：存在时不许在这个项目里关掉它。 */

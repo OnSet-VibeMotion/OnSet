@@ -42,7 +42,7 @@ describe('api_ui', () => {
     const { status, body } = await studioRequest(f.s, 'GET', '/api/tree');
     expect(status).toBe(200);
     const paths = new Set((body.files as { path: string }[]).map((entry) => entry.path));
-    for (const want of ['PROMPT.md', 'scenes/scene-001/prompt.md', 'production/review/sheet-01.png']) expect(paths.has(want), `缺少 ${want}`).toBe(true);
+    for (const want of ['article-to-motion.flow.json', 'scenes/scene-001/prompt.md', 'production/review/sheet-01.png']) expect(paths.has(want), `缺少 ${want}`).toBe(true);
     for (const skipped of ['.env', 'scenes/scene-001/.env', 'node_modules/x/index.js', 'production/studio/tasks.json', '.agents/skills/scene-kit/SKILL.md']) {
       expect(paths.has(skipped), `${skipped} 不应列出`).toBe(false);
     }

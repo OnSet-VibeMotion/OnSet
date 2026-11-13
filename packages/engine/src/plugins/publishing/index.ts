@@ -1,6 +1,6 @@
 /**
  * 内置插件「发布」（publishing）：按发布平台出封面、写标题简介话题、整理发布信息并校验。
- * 开关、名字与说明在 assets/plugins/publishing/am-station.json；制作提示词的三段在同目录的 sections/。
+ * 开关、名字与说明在 assets/plugins/publishing/am-station.json；制作提示词的段落在同目录的 sections/（口播与卡点各有一版的带 -beat）。
  * 这里登记它的全部代码：站（路线上的「封面与发布信息」、判断函数、提示词段落）、validate_publish 操作、
  * 发布页、/api/publish 接口与「检查发布信息」命令。宿主里没有按名字写的「发布」特判。
  */
@@ -52,8 +52,11 @@ export const publishing: BuiltinPlugin = {
       flows: ['speech', 'beat'],
       after: 'review',
       sections: [
-        { id: 'config-lifecycle', file: 'sections/config-lifecycle.md', after: 'style/film-style' },
-        { id: 'stage', file: 'sections/stage.md', after: 'review/stage', stage: 'publish', title: '刷新发布配置' },
+        // 口播与卡点各接在自己那一版的段落后面；卡点的「刷新发布配置」另有一版（合同值从网格与分镜计划推导）。
+        { id: 'config-lifecycle', file: 'sections/config-lifecycle.md', after: 'style/film-style-mix', flows: ['speech'] },
+        { id: 'config-lifecycle-beat', file: 'sections/config-lifecycle-beat.md', after: 'style/film-style-mix-beat', flows: ['beat'] },
+        { id: 'stage', file: 'sections/stage.md', after: 'review/stage', stage: 'publish', title: '刷新发布配置', flows: ['speech'] },
+        { id: 'stage-beat', file: 'sections/stage-beat.md', after: 'review/stage-beat', stage: 'publish', title: '刷新发布配置', flows: ['beat'] },
         { id: 'deliverables', file: 'sections/deliverables.md', after: 'host/deliverables' },
       ],
       judges: {

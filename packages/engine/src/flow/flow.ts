@@ -1,10 +1,5 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import * as beat from '../beat';
-import { composePrompt } from './compose';
-import { markPluginSection, stationOwners } from './external';
-import { allFlows, allStations, pluginSectionFile, productionOrder } from './registered';
-import { chosenFlow, flowRecord } from './lock';
+import { allFlows, allStations } from './registered';
+import { chosenFlow, LockFile, readLock } from './lock';
 import type { ExtraStation, Flow, FlowID, PathRule, RouteNode, Station } from './types';
 
 export function station(id: string, extra: readonly ExtraStation[] = []): Station {
@@ -19,24 +14,47 @@ export function flow(id: FlowID, extra: readonly ExtraStation[] = []): Flow {
   return found;
 }
 
+/** 目录里没有流程记录（不是这一版新建的项目），或记录写坏了。 */
+export class MissingFlowRecordError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MissingFlowRecordError';
+  }
+}
+
 /**
- * 项目用的是哪个流程：锁文件里选了第三方站的流程（article-to-motion.flow.json 的 flow）且那个站读得到时用它；
- * 再看新建时记下的流程（production.id，这个 am 认得时）；都没有（老项目）就按标记文件推断：
- * 有 beat.yaml 是卡点，其余（含歌曲讲解）走口播的路线。
+ * 新建时记下的流程（article-to-motion.flow.json 的 production.id）。没有记录、读不了锁文件、
+ * 或记的流程这一版不认得，一律抛 MissingFlowRecordError：项目用哪个流程只看记录，不按 beat.yaml、song.yaml 这类文件推断。
+ */
+export function recordedFlow(root: string): FlowID {
+  let rec;
+  try {
+    rec = readLock(root).production;
+  } catch (err) {
+    throw new MissingFlowRecordError(`读不了 ${LockFile}：${(err as Error).message}`);
+  }
+  const ids = allFlows()
+    .filter((f) => f.prompt)
+    .map((f) => f.id);
+  if (!rec) {
+    throw new MissingFlowRecordError(
+      `这个目录没有流程记录：${LockFile} 里要有 "production": {"id": "<${ids.join(' | ')}>", "canvas": "<画幅>"}。` +
+        '它不是用这一版 ArticleToMotion 新建的项目（旧版建的项目没有这一段）：请新建一个项目，再把文章与素材拷进去。',
+    );
+  }
+  if (!ids.includes(rec.id)) throw new MissingFlowRecordError(`${LockFile} 记的流程 ${rec.id} 不是这一版认得的流程（可选：${ids.join('、')}）`);
+  return rec.id;
+}
+
+/**
+ * 项目用的是哪个流程：锁文件里选了第三方站的流程（article-to-motion.flow.json 的 flow）且那个站读得到时用它，
+ * 否则是新建时记下的流程（recordedFlow，没有记录直接报错）。
  */
 export function detectFlow(root: string, extra: readonly ExtraStation[] = []): FlowID {
   const chosen = chosenFlow(root);
   if (chosen !== '' && extra.some((x) => x.flow?.id === chosen)) return chosen;
-  const rec = flowRecord(root);
-  if (rec && allFlows().some((f) => f.id === rec.id)) return rec.id;
-  try {
-    fs.statSync(path.join(root, beat.ConfigFile));
-    return 'beat';
-  } catch {
-    return 'speech';
-  }
+  return recordedFlow(root);
 }
-
 
 /** 路线上的一站，连同它属于哪个站。 */
 export interface RouteStop {
@@ -120,21 +138,4 @@ export function stationOfPath(rel: string, id: FlowID, extra: readonly ExtraStat
     }
   }
   return best;
-}
-
-// ---------------------------------------------------------------------------
-// 制作提示词
-
-/**
- * 生成器用的制作提示词（未替换画幅占位符）：口播流程写进 PROMPT-PRODUCTION.md 的段落顺序。宿主段落的正文目录是 dir
- * （assets/prompts），内置插件登记的段落读插件目录里的文件。
- */
-export function composeProduction(dir: string): string {
-  // 内置插件的站，它们的段落用标记包住：老项目关掉那个插件时运行时整段去掉（flow.applyPluginMarkers）。
-  const owners = stationOwners();
-  return composePrompt(productionOrder(), (sid, sec) => {
-    const text = fs.readFileSync(pluginSectionFile(sid, sec) ?? path.join(dir, sid, sec + '.md'), 'utf8');
-    const owner = owners.get(sid);
-    return owner ? markPluginSection(owner, text) : text;
-  });
 }

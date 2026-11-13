@@ -1,16 +1,12 @@
 /**
  * 按流程组合制作提示词：段落按流程的顺序拼起来，`{{STAGE:…}}` 按这个流程自己的阶段先后编号。
- *
- * 两处用它：生成器（口播流程的顺序，写成 assets/presets/<画幅>/PROMPT-PRODUCTION.md，flow.composeProduction）
- * 与运行期（有流程记录的项目，project.runPrompt 经 composeFlowPrompt）。运行期组合时：
+ * 这是制作提示词唯一的来源（project.runPrompt 经 composeFlowPrompt），项目里不放提示词文件。组合时：
  *
  * - 关掉的内置插件的站整个不参与，阶段编号自然连续；
  * - 第三方站的 inserts 作为段落插在那个阶段的末尾（找不到这个阶段时接在最后并注明），prompt 接在最后；
- * - 第三方站带来的流程（x:<站>）：公共约定（host/head）在前，stations 里写的内置站复用内置站的段落，
- *   本站自己那一节是它清单里的 flow.prompt。内置站的段落引用了这个流程没有的阶段时写成「<标题>」那一步。
- *
- * 口播流程的组合结果与「生成的 PROMPT-PRODUCTION.md 经老路径（标记、正则插入、末尾追加）处理后」逐字节相同，
- * compose.test.ts 守着。
+ * - 第三方站带来的流程（x:<站>）：公共约定（口播流程第一个阶段之前的那几段）在前，stations 里写的内置站复用内置站的段落，
+ *   本站自己那一节是它清单里的 flow.prompt。内置站的段落引用了这个流程没有的阶段时写成「<标题>」那一步
+ *   （内置流程不许这样：引用了没有的阶段直接报错）。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,9 +14,6 @@ import type { LoadedStation } from './lock';
 import { extraPrompt, insertBlock, orphanBlock } from './promptparts';
 import { allFlows, allStageTitles, allStations, appendedSections, flowPrompt, pluginSectionFile, sectionsDir } from './registered';
 import type { FlowID } from './types';
-
-/** 提示词组合的版本，记进锁文件（FlowRecord.compose）。组合方式有不兼容的变化时加一。 */
-export const ComposeVersion = 1;
 
 const numerals = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
 
@@ -41,9 +34,9 @@ export interface PromptPart {
   stage?: string;
   /** 第三方站的文字：不换阶段占位符。 */
   raw?: boolean;
-  /** 接在最后的一段：与前文空一行，正文去掉首尾空白，以换行结尾（老路径「末尾追加」的写法）。 */
+  /** 接在最后的一段：与前文空一行，正文去掉首尾空白，以换行结尾。 */
   append?: boolean;
-  /** 插进某个阶段末尾的一段：与前文空一行；后面接着别的段落时再空一行（老路径「按标题插入」的写法）。 */
+  /** 插进某个阶段末尾的一段：与前文空一行；后面接着别的段落时再空一行。 */
   insert?: boolean;
 }
 
@@ -139,6 +132,13 @@ function stationSections(sid: string): string[] {
   return home ? flowPrompt(home.id).filter((r) => r.startsWith(sid + '/')) : [];
 }
 
+/** 公共约定：口播流程里第一个开阶段的段落之前的那几段（工作边界、工具写法、渲染器配置）。第三方流程照样带上。 */
+function preambleSections(): string[] {
+  const refs = flowPrompt('speech');
+  const first = refs.findIndex((ref) => declared(ref).stage !== undefined);
+  return first < 0 ? [] : refs.slice(0, first);
+}
+
 /** 运行期按流程组合项目的制作提示词（不含画幅以外的任何项目文件）。 */
 export function composeFlowPrompt(input: FlowComposeInput): string {
   const read = input.read ?? readSection;
@@ -154,7 +154,8 @@ export function composeFlowPrompt(input: FlowComposeInput): string {
     const own = input.stations.find((s) => s.manifest.id === id && s.manifest.flow);
     if (!own) throw new Error(`这个项目选用的流程 ${input.flow} 读不到`);
     const def = own.manifest.flow!;
-    parts.push(builtinPart('host/head'));
+    const preamble = preambleSections();
+    for (const ref of preamble) parts.push(builtinPart(ref));
     for (const sid of def.stations) {
       if (sid === id) {
         const body = fs.readFileSync(path.join(own.dir, def.prompt), 'utf8').trim();
@@ -166,7 +167,7 @@ export function composeFlowPrompt(input: FlowComposeInput): string {
         continue;
       }
       if (input.disabled.has(sid)) continue;
-      for (const ref of stationSections(sid)) if (ref !== 'host/head') parts.push(builtinPart(ref));
+      for (const ref of stationSections(sid)) if (!preamble.includes(ref)) parts.push(builtinPart(ref));
     }
     const titles = allStageTitles();
     opts.missing = (stage) => `「${titles[stage] ?? stage}」那一步`;

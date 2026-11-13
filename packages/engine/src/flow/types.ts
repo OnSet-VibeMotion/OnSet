@@ -92,7 +92,7 @@ export interface Flow {
   first_page?: string;
   /** 还没有镜头时打开项目先落在第一步那一页（卡点：节拍、分镜都在节拍页上做）。 */
   land_first?: boolean;
-  /** 片型的标记文件：新建项目时写出（body 是缺省内容）；没有流程记录的老项目据它推断片型。 */
+  /** 片型自己的配置文件：新建项目时写出（body 是缺省内容）。它不决定流程，流程只看锁文件里的记录。 */
   marker?: FlowMarker;
   /** 新建项目时不能与它同时用的东西。 */
   excludes?: FlowExcludes;

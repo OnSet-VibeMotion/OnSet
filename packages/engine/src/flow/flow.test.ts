@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as beat from '../beat';
-import { builtinFlows, builtinStations, chineseNumber, composePrompt, detectFlow, gateFiles, route, stationOfPath } from './index';
+import { builtinFlows, builtinStations, chineseNumber, composePrompt, detectFlow, gateFiles, MissingFlowRecordError, recordFlow, route, stationOfPath } from './index';
 
 const templates = path.join(__dirname, '..', '..', '..', '..', 'assets', 'prompts');
 
@@ -30,10 +30,14 @@ describe('stations and flows', () => {
     expect(Object.keys(gateFiles()).sort()).toEqual(['gate-beat-storyboard', 'gate-script', 'gate-story', 'gate-storyboard', 'gate-voice']);
   });
 
-  it('detects the beat flow by its marker file', () => {
+  // 流程只看锁文件里新建时记下的那一段；beat.yaml 这类功能自己的配置文件不再决定流程。
+  it('reads the flow only from the record', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'am-flow-'));
-    expect(detectFlow(root)).toBe('speech');
     fs.writeFileSync(path.join(root, beat.ConfigFile), 'bpm: 120\n');
+    expect(() => detectFlow(root)).toThrow(MissingFlowRecordError);
+    recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
+    expect(detectFlow(root)).toBe('speech');
+    recordFlow(root, { id: 'beat', canvas: 'vertical-3x4' });
     expect(detectFlow(root)).toBe('beat');
   });
 });

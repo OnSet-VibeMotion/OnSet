@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as assets from '@am/engine/assets';
+import * as flow from '@am/engine/flow';
 import { atomicWrite } from '@am/engine/fsutil';
 import { goPathError } from '@am/engine/gofmt';
 import { marshal, marshalIndent } from '@am/engine/gojson';
@@ -27,12 +28,15 @@ export function songScaffold(root: string): void {
   const extra: Record<string, Uint8Array> = { 'song.yaml': Buffer.from(song.DefaultConfig) };
   const shared = assets.shared();
   const files = shared.walkFiles();
-  for (const prefix of ['PROMPT-SONG.md', '.agents/skills/song-explainer']) {
+  for (const prefix of ['.agents/skills/song-explainer']) {
     const matched = files.filter((file) => file === prefix || file.startsWith(prefix + '/'));
     if (matched.length === 0) throw new Error(`open ${prefix}: file does not exist`);
     for (const file of matched) extra[file] = shared.readFile(file);
   }
   project.initializeWithFiles(root, extra);
+  // 项目用哪个流程只看锁文件的记录：补了歌曲资产就把记录换成歌曲讲解（画幅不变），制作提示词随之按歌曲讲解组合。
+  const rec = flow.flowRecord(root);
+  if (rec && rec.id !== 'song') flow.recordFlow(root, { id: 'song', canvas: rec.canvas });
 }
 
 /** Go 的 %v 打印 []string：[a b c]。 */
@@ -115,7 +119,7 @@ songOp({
   name: 'song_init',
   cli: 'init',
   summary: '为已有项目补充歌曲资产，不覆盖已有内容',
-  help: '在当前项目补充 song.yaml、PROMPT-SONG.md 和 song-explainer 技能；已有文件内容不同则整体失败，不改用户提示词，不安装 Python 或模型。cast.yaml 存在时拒绝。',
+  help: '在当前项目补充 song.yaml 和 song-explainer 技能，并把项目的流程记录换成歌曲讲解（制作提示词随之按歌曲讲解组合）；已有文件内容不同则整体失败，不安装 Python 或模型。cast.yaml 存在时拒绝。',
   examples: ['song_init()'],
   run: (_p, { out }, _signal, root) => {
     songScaffold(root);

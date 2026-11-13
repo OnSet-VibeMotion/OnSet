@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Buffer, run, tempDir } from './testutil';
 import * as assets from '@am/engine/assets';
+import * as flow from '@am/engine/flow';
 import { sortedKeys } from '@am/engine/gojson';
 import * as preset from '@am/engine/preset';
 import * as scene from '@am/engine/scene';
@@ -92,15 +93,20 @@ describe('song cues and validation', () => {
   }
 });
 
-it('song scaffold conflict does not overwrite', () => {
+it('song scaffold conflict does not overwrite, and switches the recorded flow', () => {
   const root = tempDir();
-  fs.writeFileSync(path.join(root, 'PROMPT.md'), 'my prompt');
-  fs.writeFileSync(path.join(root, 'PROMPT-SONG.md'), 'custom song');
+  flow.recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
+  const skill = path.join(root, '.agents', 'skills', 'song-explainer', 'SKILL.md');
+  fs.mkdirSync(path.dirname(skill), { recursive: true });
+  fs.writeFileSync(skill, 'custom skill');
   expect(() => songScaffold(root), 'must reject conflict').toThrow();
   expect(fs.existsSync(path.join(root, 'song.yaml')), 'partial config').toBe(false);
-  fs.rmSync(path.join(root, 'PROMPT-SONG.md'));
+  expect(flow.flowRecord(root)?.id).toBe('speech');
+  fs.rmSync(skill);
   songScaffold(root);
-  expect(fs.readFileSync(path.join(root, 'PROMPT.md'), 'utf8'), 'user prompt overwritten').toBe('my prompt');
+  // 流程只看记录：补了歌曲资产，记录换成歌曲讲解，画幅不变。
+  expect(flow.flowRecord(root)).toEqual({ id: 'song', canvas: 'vertical-3x4' });
+  expect(fs.existsSync(path.join(root, 'PROMPT-SONG.md')), '不再往项目里拷提示词').toBe(false);
   expect(() => songScaffold(root), 'idempotent').not.toThrow();
 });
 
@@ -115,7 +121,7 @@ it('scene run-all: --song-timeline and --srt are mutually exclusive', async () =
 });
 
 it('song prompt requires the web handoff pause', () => {
-  const b = assets.shared().readText('PROMPT-SONG.md');
+  const b = assets.files().readText('plugins/song/sections/main.md');
   for (const want of ['song_handoff()', 'song_receive(', 'waiting_for_audio', '此处必须暂停等待用户回复', '不轮询目录', '完整歌词和曲风', 'FINAL_LYRICS']) {
     expect(b, `song prompt missing ${want}`).toContain(want);
   }

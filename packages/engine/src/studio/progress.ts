@@ -15,7 +15,6 @@ import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
 import * as plugin from '../plugin';
 import * as studioview from '../studioview';
-import { promptSource } from '../project/runprompt';
 import { sameDownbeats } from './api_ui';
 import { writeError, writeJSON } from './http';
 import { discoverScenes, fileExists, type SceneSummary } from './scenes';
@@ -71,8 +70,6 @@ export interface ProgressResponse {
   waiting_on: '' | 'user' | 'ai';
   /** 每一轮推进到了哪几站（对话里每轮结尾的标签用），值是站的 label。 */
   turns: Record<string, string[]>;
-  /** 制作说明用的是项目里改过的那份文件（只在是的时候出现）：路线页提示用户。 */
-  custom_prompt?: true;
 }
 
 /** 关卡确认记录。 */
@@ -568,9 +565,7 @@ export function readProgress(root: string): ProgressResponse {
       });
     }
   }
-  const out: ProgressResponse = { ...base, turns: labels };
-  if (promptSource(root) === 'custom') out.custom_prompt = true;
-  return out;
+  return { ...base, turns: labels };
 }
 
 export async function progressAPI(s: Server, request: Request, rest: string): Promise<Response> {
@@ -582,7 +577,13 @@ export async function progressAPI(s: Server, request: Request, rest: string): Pr
   }
   if (rest === '') {
     if (request.method !== 'GET') return writeError(405, 'method_not_allowed', '只支持 GET');
-    return writeJSON(200, readProgress(root));
+    try {
+      return writeJSON(200, readProgress(root));
+    } catch (err) {
+      // 没有流程记录的目录（不是这一版新建的项目）：路线无从排起，照实说缺什么。
+      if (err instanceof flow.MissingFlowRecordError) return writeError(409, 'no_flow_record', err.message);
+      throw err;
+    }
   }
   const match = /^gates\/([a-z-]+)$/.exec(rest);
   if (!match) return writeError(404, 'not_found', 'Studio API 路径不存在');
@@ -615,8 +616,6 @@ export interface FlowView {
   first_steps: string[];
   /** 还没有镜头时打开项目先落在这一页；用不上的页（hidden_pages）也改切到它。空是不落。 */
   land_page: string;
-  /** 制作说明用的是项目里改过的那份文件（有流程记录的项目才可能）。 */
-  custom_prompt: boolean;
 }
 
 /** 内置流程（含内置插件的）各自的第一步页：script、beat。 */
@@ -626,11 +625,11 @@ function builtinFirstPages(): string[] {
   return out;
 }
 
-export function flowView(root: string, customPrompt: boolean): FlowView {
+export function flowView(root: string): FlowView {
   const extras = flow.projectExtras(root);
   const id = flow.detectFlow(root, extras);
   const def = flow.flow(id, extras);
-  // 第三方流程叠在项目自己的片型上：用不上的页、落在哪一页仍按项目自己的片型（新建时记的或标记文件）。
+  // 第三方流程叠在项目自己的片型上：用不上的页、落在哪一页仍按项目自己的片型（新建时记的）。
   const base = id.startsWith('x:') ? flow.flow(flow.detectFlow(root), []) : def;
   const firstPages = builtinFirstPages();
   const baseFirst = base.first_page ?? 'script';
@@ -643,7 +642,6 @@ export function flowView(root: string, customPrompt: boolean): FlowView {
     hidden_pages: firstPages.filter((p) => p !== baseFirst),
     first_steps: [...new Set([first, ...firstPages])],
     land_page: base.land_first ? baseFirst : '',
-    custom_prompt: customPrompt,
   };
 }
 

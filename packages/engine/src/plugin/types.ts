@@ -40,9 +40,7 @@ export interface NodeJudge<C extends JudgeContext = JudgeContext> {
  * 一段制作提示词。正文是插件目录里的文件（相对插件目录）。它进哪些流程的提示词、排在哪：
  *
  * - after：在 flows 里每个流程的提示词中跟在哪一段后面（`站/段`，可以是宿主的段，也可以是先登记的插件段）。
- *   口播流程里的这类段落也进生成的 PROMPT-PRODUCTION.md。
- * - append：接在 flows 里每个流程的提示词最后（与上一段之间空一行，正文去掉首尾空白）。不进生成的文件：
- *   没有流程记录的老项目里，这段由清单的 prompt 在运行时接上。
+ * - append：接在 flows 里每个流程的提示词最后（与上一段之间空一行，正文去掉首尾空白）。
  * - 两样都不写：只由插件自己登记的流程（PluginFlow.prompt）点名使用。
  *
  * flows 不写时用站的 flows。开启一个阶段时写 stage 与 title（「## 第N阶段：<标题>」冒号后面那段）。

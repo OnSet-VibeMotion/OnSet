@@ -22,11 +22,8 @@ describe('initialize', () => {
     const result = initialize(target, ...builtinSources());
     expect(result.created).toBeGreaterThan(0);
     for (const name of [
-      'PROMPT.md',
-      'PROMPT-PRODUCTION.md',
       'article-to-motion.conf',
       '.env.example',
-      'PROMPT-CAST-ADDENDUM.md',
       'frame.md',
       'templates/publish.md',
       'docs/清晰系统蓝图-视频风格说明书.md',
@@ -35,6 +32,8 @@ describe('initialize', () => {
     ]) {
       expect(fs.existsSync(path.join(target, ...name.split('/'))), `missing ${name}`).toBe(true);
     }
+    // 制作提示词不拷进项目：开工时按流程组合。
+    for (const name of ['PROMPT.md', 'PROMPT-PRODUCTION.md', 'PROMPT-SONG.md', 'PROMPT-CAST-ADDENDUM.md']) expect(fs.existsSync(path.join(target, name)), name).toBe(false);
   });
 
   it('is idempotent for identical files', () => {
@@ -47,7 +46,7 @@ describe('initialize', () => {
 
   it('refuses conflicting file without partial writes', () => {
     const target = tempDir();
-    fs.writeFileSync(path.join(target, 'PROMPT.md'), 'custom');
+    fs.writeFileSync(path.join(target, 'frame.md'), 'custom');
     expect(() => initialize(target, ...builtinSources())).toThrow();
     expect(fs.existsSync(path.join(target, 'article-to-motion.conf')), 'initializer wrote files before conflict check').toBe(false);
   });
