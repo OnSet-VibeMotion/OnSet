@@ -108,8 +108,31 @@ func AlignerIDs() string {
 // hostAligner 按当前进程的平台解析 auto；测试用 resolveAligner 覆盖其他平台。
 func hostAligner(value string) string { return resolveAligner(value, runtime.GOOS, runtime.GOARCH) }
 
-// orchestratorBaseCommands 是任何配置下编排工具都要用到的命令。
-var orchestratorBaseCommands = []string{"am", "ffmpeg", "ffprobe", "ls", "mkdir"}
+// orchestratorBaseCommands 是任何配置下编排工具都要用到的命令（安全模式下按前缀放行）。
+//
+// 早先只放行 am、ffmpeg、ffprobe、ls、mkdir，编排工具连 cat、head、echo、shasum 都被拦，
+// 一轮对话里大半工具调用是「需要批准」，而 -p 模式下没人批准（实测）。这里补上只读查看、
+// 校验哈希、只读 git 与下载（制作提示词要求从 Google Fonts 下载字体），仍然不放：
+//   - 解释器（python3、node、sh、bash）：能执行任意代码，放了等于没有白名单；
+//   - 删除与改权限（rm、chmod、chown）、安装（brew、pip、npm）、提权（sudo）。
+// claude 的 acceptEdits 自己会放行工作区内的 touch、mkdir、rm、mv、cp 这类文件命令；
+// .env 的读取由 Read 禁令拦着，cat .env 照样会被拒（实测）。
+var orchestratorBaseCommands = []string{
+	"am", "ffmpeg", "ffprobe",
+	// 查看文件与目录（只读）
+	"ls", "cat", "head", "tail", "wc", "grep", "rg", "find", "sort", "uniq", "cut", "diff", "cmp",
+	"stat", "file", "du", "pwd", "basename", "dirname", "realpath", "jq", "tree", "which", "date",
+	// 输出与切换目录
+	"echo", "printf", "cd",
+	// 文件操作（工作区内）
+	"mkdir", "cp", "mv", "touch",
+	// 校验哈希（成片与发布配置要记 SHA-256）
+	"shasum", "sha256sum", "md5",
+	// 只读 git
+	"git status", "git diff", "git log", "git show",
+	// 下载字体、授权素材
+	"curl",
+}
 
 // OrchestratorAccess 返回安全模式下编排工具要放行的命令：基础命令、当前 TTS 与对齐
 // 工具各自的那一个命令，加上调用方补充的（固定版本的 hyperframes）。安装命令

@@ -277,7 +277,7 @@ am --unsafe run
 
 `--unsafe` 会传递给嵌套镜头任务。安全模式需要额外传递的环境变量通过 `AM_PASSTHROUGH_ENV=NAME1,NAME2` 显式列出。
 
-安全模式下，编排工具（`am run`）只被放行文件编辑和一组命令：`am`、`ffmpeg`、`ffprobe`、`ls`、`mkdir`、`am hyperframes`（am 管理的固定版本 HyperFrames CLI，包含在 `am` 里），以及 `TTS_PROVIDER` 与 `ALIGN_PROVIDER` 各自对应的那一个命令（如 `mmx`、`edge-tts`、`mlx_audio.stt.generate`；`funasr` 对应 `python3`）。安装命令（`brew`、`pip`、`uv`、`npm`）不在其中，相关工具要先自己装好。各工具的实现方式不同：
+安全模式下，编排工具（`am run` 与 Studio 的对话）只被放行文件编辑和一组命令：`am`（含 `am hyperframes`，am 管理的固定版本 HyperFrames CLI）、`ffmpeg`、`ffprobe`；只读查看的 `ls` `cat` `head` `tail` `wc` `grep` `rg` `find` `sort` `uniq` `cut` `diff` `cmp` `stat` `file` `du` `pwd` `basename` `dirname` `realpath` `jq` `tree` `which` `date`；`echo` `printf` `cd`；工作区内的 `mkdir` `cp` `mv` `touch`；算哈希的 `shasum` `sha256sum` `md5`；只读的 `git status` `git diff` `git log` `git show`；下载字体与授权素材的 `curl`；以及 `TTS_PROVIDER` 与 `ALIGN_PROVIDER` 各自对应的那一个命令（如 `mmx`、`edge-tts`、`mlx_audio.stt.generate`；`funasr` 对应 `python3`）。解释器（`python3`、`node`、`sh`）、`rm`、改权限与安装命令（`brew`、`pip`、`uv`、`npm`）不在其中，相关工具要先自己装好。命令要单独执行，不用 `&&`、`;`、管道拼接，见项目规则「安全模式下怎么写命令」。各工具的实现方式不同：
 
 | 工具 | 安全模式的限制方式 |
 |---|---|
