@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { HandoffCarry, load, newAttempt, newTiming, OutcomeFailed, OutcomeSucceeded, OutcomeVerificationFailed, type Attempt, type Scene } from '../scene';
-import { ClusterKeyHuman, clusterFailures, consolidationBrief, type Cluster } from './consolidate';
+import { ClusterKeyHuman, clusterFailures, consolidationBrief, consolidationDue, type Cluster } from './consolidate';
 import { similar, preferenceSignals } from './conversation';
 import { computeStats, smoothedRate, weakMemories } from './stats';
 import { EventExam, EventManualEdit, EventPromote, EventReject, EventSnapshot } from './events';
@@ -249,6 +249,22 @@ describe('memory', () => {
     });
     // 整理只看上次之后的经历。
     expect(again.clusters.length).toBe(0);
+  });
+
+  // 自动整理只在同一种问题攒到门槛时触发；整理过的失败不再计数，0 表示关闭；考试经历不算。
+  it('consolidation is due once one kind of problem reaches the threshold', async () => {
+    const store = newStore();
+    const s = writeSceneDir(tempDir(), 'scene-001', '人工智能正在改变世界', '');
+    store.recordAttempt(s, failingAttempt('claude', 'determinism.raf'), { source: SourceRender });
+    store.recordAttempt(s, failingAttempt('claude', 'output.audio'), { source: SourceRender });
+    store.recordAttempt(s, failingAttempt('claude', 'determinism.raf'), { source: SourceExam, exam: 'exam-0001' });
+    store.recordAttempt(s, failingAttempt('codex', 'determinism.raf'), { source: SourceRender });
+    expect(consolidationDue(store, 3)).toEqual([]);
+    store.recordAttempt(s, failingAttempt('codex', 'determinism.raf'), { source: SourceRender });
+    expect(consolidationDue(store, 3).map((c) => [c.key, c.count])).toEqual([['determinism.raf', 3]]);
+    expect(consolidationDue(store, 0)).toEqual([]);
+    await store.consolidate({ minCount: 2, drafter: async () => {} });
+    expect(consolidationDue(store, 3), '整理过的失败不再计数').toEqual([]);
   });
 
   it('TestJudgeGates', () => {

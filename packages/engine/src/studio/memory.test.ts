@@ -92,6 +92,43 @@ describe('studio memory', () => {
     expect(await turn(f, '换个开头'), '偏好变了下一轮要带上新版本').toContain('【no-emoji】');
   });
 
+  // 同一种问题攒到 MEMORY_AUTO_CONSOLIDATE 次，一轮对话结束后在后台起一个整理任务；已有整理任务在跑时不重复起，0 关闭。
+  it('turn end starts automatic consolidation once a problem recurs', async () => {
+    const f = newSessionFixture();
+    const memoryDir = tempDir();
+    setEnv('AM_MEMORY_DIR', memoryDir);
+    const store = memory.open(memoryDir);
+    const sceneDir = path.join(tempDir(), 'scene-001');
+    writeStudioFile(path.join(sceneDir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\nx\n');
+    writeStudioFile(path.join(sceneDir, 'scene.json'), '{"id":"scene-001","duration_seconds":2,"output":"out.mp4","transcript":"transcript.srt","text":"中文标题"}');
+    const sc = scene.load(sceneDir);
+    const fail = () =>
+      store.recordAttempt(
+        sc,
+        scene.newAttempt({ scene_id: 'scene-001', renderer: 'claude', outcome: scene.OutcomeVerificationFailed, checks: ['reads.binding'], problems: ['x'] }),
+        { source: memory.SourceRender },
+      );
+    fail();
+    fail();
+    const { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{"title":"自动整理"}');
+    const id = body.session_id as string;
+    const turn = async () => {
+      expect((await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"继续"}')).status).toBe(202);
+      await waitIdle(f, id);
+    };
+    const consolidations = () => [...f.s.tasks.tasks.values()].filter((t) => t.type === 'memory.consolidate');
+    await turn();
+    expect(consolidations(), '只出现 2 次，不到门槛').toHaveLength(0);
+    fail();
+    await turn();
+    expect(consolidations()).toHaveLength(1);
+    expect(f.s.tasks.events.get(consolidations()[0].task_id)![0].message).toContain('画面文字没对应上配音的句子');
+    setEnv('MEMORY_AUTO_CONSOLIDATE', '0');
+    for (const t of consolidations()) t.status = 'failed';
+    await turn();
+    expect(consolidations(), '0 关闭自动整理').toHaveLength(1);
+  });
+
   // 每轮说的话和回退都留下信号，整理时据此归纳偏好。
   it('chat turns and reverts become conversation episodes', async () => {
     const f = newSessionFixture();

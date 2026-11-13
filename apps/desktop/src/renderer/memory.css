@@ -285,3 +285,24 @@
 .memory-tab .memory-consolidate .small {
   line-height: 1.5;
 }
+
+/* 试用经验要考试才生效：放在经验列表顶上，带一个按钮。 */
+.memory-tab .memory-exam-call {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  border-radius: var(--radius);
+}
+.memory-tab .memory-exam-call p {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.memory-tab .memory-exam-call button {
+  flex: none;
+}

@@ -16,7 +16,7 @@ import * as tools from '../tools';
 import { DecodeError, decodeJSON, fieldBool, fieldInt, fieldNumberPtr, fieldNumbers, fieldString, fieldStrings, goMap, methodNotAllowed, writeError, writeJSON } from './http';
 import { discoverScenes, fileExists } from './scenes';
 import type { Project, Server } from './studio';
-import { addTask, runStudioCLI, runTask, runWriteTask, writeTaskError } from './tasks';
+import { addTask, runStudioCLI, runTask, runWriteTask, updateTask, writeTaskError } from './tasks';
 import type { Turn } from './turns';
 
 function memoryStore(s: Server): { p: Project; cfg: config.Config; store: memory.Store } | Response {
@@ -113,6 +113,7 @@ export function memoryAPI(s: Server, request: Request): Response {
         snapshots,
         runs: runs.map(memory.runSummaryToJSON),
         pending: pendingProblems(episodes, status.last_consolidated),
+        auto_consolidate: cfg.memory.enabled ? cfg.memory.autoConsolidate : 0,
         // 面板显示的大白话：校验器、事件类型与镜头特征都不直接露出 ID。
         labels: goMap({ checks: labels(memory.CheckerLabels), events: labels(memory.EventLabels), features: labels(memory.FeatureDescriptions) }),
       }),
@@ -281,6 +282,40 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
   const t = addTask(s, 'memory.' + action, label);
   runTask(s, t, work);
   return writeJSON(202, goMap({ task_id: t.task_id }));
+}
+
+/**
+ * 自动整理：上次整理之后同一种问题出现了 MEMORY_AUTO_CONSOLIDATE 次，就在后台起一个「整理记忆」任务
+ * （am memory consolidate，调用一次编排工具）。在一轮对话、一次渲染或检查结束后调用；已有整理任务在跑时不重复起。
+ * 只整理成试用经验，考试不自动做：每场考试都是好几次真实渲染。整理只写记忆库，不占项目写权。
+ */
+export function maybeAutoConsolidate(s: Server, p: Project): void {
+  let cfg: config.Config;
+  try {
+    cfg = config.load(p.path, null);
+  } catch {
+    return;
+  }
+  if (!cfg.memory.enabled || cfg.memory.autoConsolidate < 1) return;
+  for (const t of s.tasks.tasks.values()) {
+    if (t.type === 'memory.consolidate' && (t.status === 'queued' || t.status === 'running')) return;
+  }
+  let due: memory.Cluster[];
+  try {
+    due = memory.consolidationDue(memory.openReadOnly(cfg.memory.dir), cfg.memory.autoConsolidate);
+  } catch {
+    return;
+  }
+  if (due.length === 0) return;
+  const top = due[0];
+  const what = top.key === memory.ClusterKeyHuman ? '你回退或不满意' : memory.checkerLabel(top.key);
+  const label = `自动整理记忆：「${what}」出现了 ${top.count} 次`;
+  const t = addTask(s, 'memory.consolidate', label);
+  runTask(s, t, async (signal) => {
+    await runStudioCLI(s, signal, p, 'memory', 'consolidate');
+  });
+  // runTask 把消息改成通用的「正在处理」；任务列表里要看得出这是自动整理、为什么整理。
+  updateTask(s, t.task_id, 'running', label, 0.1, null);
 }
 
 /** preferenceBrief 是这一轮要交给编排工具的用户偏好段与摘要；记忆关闭或读不到时为空。 */

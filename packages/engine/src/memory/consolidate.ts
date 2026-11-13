@@ -313,6 +313,19 @@ export function lastConsolidation(s: Store): string {
 }
 
 /**
+ * 自动整理该不该开始：上次整理之后，有一组失败出现了 threshold 次及以上时返回那几组，否则返回空数组。
+ * threshold 为 0 表示关闭自动整理。触发条件与整理范围分开：一旦触发，整理照常按 am memory consolidate
+ * 的默认范围收进全部待整理的失败，不只是到了门槛的那几组。
+ */
+export function consolidationDue(s: Store, threshold: number): Cluster[] {
+  if (threshold < 1) return [];
+  const episodes = s.episodes();
+  const since = lastConsolidation(s);
+  const fresh = episodes.filter((e) => compareBytes(e.created_at, since) > 0);
+  return clusterSince(fresh, episodes, since).filter((c) => c.count >= threshold);
+}
+
+/**
  * 让整理者读 workdir 里的说明，把草稿写进 workdir/drafts/。
  * 由调用方接上 ORCHESTRATOR；memory 包不关心是哪个工具。抛错表示整理者执行失败。
  */

@@ -213,6 +213,9 @@ test('memory page explains the loop in three steps and records a preference', as
   await expect(flow.nth(0)).toContainText('记下的问题');
   await expect(flow.nth(1)).toContainText('整理成的提醒');
   await expect(flow.nth(2)).toContainText('scene-001 会带上 0 条');
+  // 页头照实说：问题攒够次数才自动整理，经验要考试才带进渲染。
+  await expect(page.locator('.memory-head')).toContainText('同一种问题攒到 3 次');
+  await expect(page.locator('.memory-head')).toContainText('考过了');
   // 没有失败时不出「记下的问题」一节，渲染日志收在「高级」里。
   await expect(page.locator('.memory-problems')).toHaveCount(0);
   await expect(page.locator('.memory-activity')).toBeHidden();

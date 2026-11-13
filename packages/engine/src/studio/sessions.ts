@@ -20,7 +20,7 @@ import * as tools from '../tools';
 import { compareTimes, nowTime } from './http';
 import type { Project, Server } from './studio';
 import { changedPaths, diffTrees, loadTurn, revertTurn, saveTurn, scanTree, statTree, studioRoot, validID, type FileChange, type Turn } from './turns';
-import { preferenceBrief, recordUtterance } from './memory';
+import { maybeAutoConsolidate, preferenceBrief, recordUtterance } from './memory';
 import { uploadDir, uploadKind } from './uploads';
 
 // Studio 在 agentrun 事件之外自己发的几种事件。
@@ -742,6 +742,7 @@ function finishTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, t
   // 先放写权再发 turn-end：网页收到 turn-end 就可能立刻发下一轮。
   s.release(p.path);
   emit(sess, turn.turn_id, { kind: kindTurnEnd, text: turn.error || undefined, status: turn.status, changes: turn.changes ?? undefined });
+  if (turn.status !== 'cancelled') maybeAutoConsolidate(s, p);
   drainQueue(s, p, sess);
 }
 

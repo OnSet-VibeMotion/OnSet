@@ -51,6 +51,8 @@ export function MemoryTab({ scene, version, run }: Props) {
   const pending = state.memories.filter((m) => m.status === 'trial' && (m.kind === 'preference' || !m.examinable));
   const preferences = state.memories.filter((m) => m.kind === 'preference' && m.status === 'active');
   const lessons = state.memories.filter((m) => m.kind === 'lesson' && (m.status === 'active' || (m.status === 'trial' && m.examinable)));
+  const activeLessons = lessons.filter((m) => m.status === 'active');
+  const trialLessons = lessons.filter((m) => m.status === 'trial');
   const retired = state.memories.filter((m) => m.status === 'dormant' || m.status === 'rejected');
   const card = (m: MemoryRow) => (
     <MemoryCard
@@ -68,6 +70,8 @@ export function MemoryTab({ scene, version, run }: Props) {
   const pendingProblems = state.pending ?? [];
   const pendingTotal = state.status.pending_failures;
   const recalled = recall?.recall.items ?? [];
+  const auto = state.auto_consolidate ?? 0;
+  const examRenderer = state.renderer || 'claude';
 
   if (!state.enabled) {
     return (
@@ -87,19 +91,24 @@ export function MemoryTab({ scene, version, run }: Props) {
         <span className="eyebrow">记忆 · 所有项目共用</span>
         <h2>记忆</h2>
         <p>
-          渲染里出过的问题、你提过的要求，am 都会记下来，整理成几句简短的提醒。以后渲染相似的镜头时，这些提醒跟着镜头说明一起交给渲染工具，同样的错就不容易再犯。
+          渲染和检查里出过的问题会先记下来。
+          {auto > 0
+            ? `同一种问题攒到 ${auto} 次，会在一轮对话或一次渲染结束后自动整理成经验；`
+            : '问题不会自动整理（MEMORY_AUTO_CONSOLIDATE=0），要你点「整理成经验」；'}
+          新经验先试用，你点「考试」、它考过了，以后渲染相似的镜头才会带上。你说过的要求不用整理，记下就生效。
         </p>
         <ol className="memory-flow" aria-label="记忆怎么起作用">
           <li className={pendingTotal > 0 ? 'on' : ''}>
             <strong>{pendingTotal}</strong>
             <span>记下的问题</span>
-            <small>{pendingTotal > 0 ? '等整理' : '暂时没有新的'}</small>
+            <small>{pendingTotal === 0 ? '暂时没有新的' : auto > 0 ? `同一种攒到 ${auto} 次自动整理` : '等你整理'}</small>
           </li>
           <li>
             <strong>{preferences.length + lessons.length}</strong>
             <span>整理成的提醒</span>
             <small>
-              你的要求 {preferences.length} · 经验 {lessons.length}
+              你的要求 {preferences.length} · 经验 {activeLessons.length}
+              {trialLessons.length > 0 ? ` · 待考试 ${trialLessons.length}` : ''}
             </small>
           </li>
           <li>
@@ -121,7 +130,7 @@ export function MemoryTab({ scene, version, run }: Props) {
       {pendingProblems.length > 0 && (
         <section className="memory-section">
           <h4>记下的问题</h4>
-          <p className="small muted">上次整理之后，渲染和检查里出过这些问题。</p>
+          <p className="small muted">上次整理之后，渲染和检查里出过这些问题。只出现过一次的先不整理。</p>
           <ul className="memory-problems">
             {pendingProblems.map((g) => (
               <li key={g.check}>
@@ -145,10 +154,10 @@ export function MemoryTab({ scene, version, run }: Props) {
             ))}
           </ul>
           <div className="memory-consolidate">
-            <button className="primary" onClick={() => run('/api/memory/actions/consolidate')}>
-              整理成经验
+            <button className={auto > 0 ? '' : 'primary'} onClick={() => run('/api/memory/actions/consolidate')}>
+              {auto > 0 ? '现在就整理' : '整理成经验'}
             </button>
-            <span className="small muted">会调用一次 AI 读这些问题，写成几条经验。新经验先试用，用对照渲染考过了才会生效。</span>
+            <span className="small muted">会调用一次 AI 读这些问题，写成几条试用经验。</span>
           </div>
         </section>
       )}
@@ -164,11 +173,22 @@ export function MemoryTab({ scene, version, run }: Props) {
         <h4>学到的经验 · {lessons.length}</h4>
         {lessons.length === 0 ? (
           <p className="small muted">
-            {pendingTotal > 0 ? '还没有。把上面记下的问题整理一下就会有。' : '还没有。渲染或检查出了问题会先记下来，整理后变成经验。'}
+            {pendingTotal === 0 ? '还没有。渲染或检查出了问题会先记下来，整理后变成经验。' : auto > 0 ? '还没有。上面的问题攒够次数会自动整理，也可以点「现在就整理」。' : '还没有。把上面记下的问题整理一下就会有。'}
           </p>
         ) : (
           <>
-            <p className="small muted">只在相似的镜头上用，考过试的才会生效。</p>
+            {trialLessons.length > 0 ? (
+              <div className="memory-exam-call">
+                <p>
+                  {trialLessons.length} 条新经验在试用，还没带进渲染。考试会拿已有镜头分别带上、不带它各渲染一遍做对照，比得出效果才生效——要花几次渲染的钱，所以不自动做。
+                </p>
+                <button className="primary" onClick={() => run('/api/memory/actions/exam', { renderers: [examRenderer] })}>
+                  考试（用 {examRenderer}）
+                </button>
+              </div>
+            ) : (
+              <p className="small muted">只在相似的镜头上用。</p>
+            )}
             {lessons.map(card)}
           </>
         )}

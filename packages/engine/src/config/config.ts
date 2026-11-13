@@ -55,6 +55,11 @@ export interface MemorySettings {
    * 排在上限外的第一条，给没机会被召回的经验攒样本。0 关闭。
    */
   explore: number;
+  /**
+   * 自动整理的门槛：上次整理之后同一种问题出现这么多次，就在客户端一轮对话或一次渲染结束后、
+   * am run 结束后自动整理成试用经验。0 关闭。考试不自动做：每场考试都是好几次真实渲染。
+   */
+  autoConsolidate: number;
 }
 
 /** Go 的 config.Config。没有 JSON 形式，字段用 camelCase。 */
@@ -90,7 +95,7 @@ export function newConfig(fields: Partial<Omit<Config, 'memory'>> & { memory?: P
     hyperFramesCLI: '',
     extraCommands: [],
     ...fields,
-    memory: { enabled: false, dir: '', snapshot: 0, recallBudget: 0, explore: 0, ...fields.memory },
+    memory: { enabled: false, dir: '', snapshot: 0, recallBudget: 0, explore: 0, autoConsolidate: 0, ...fields.memory },
   };
 }
 
@@ -99,6 +104,8 @@ export const DefaultMemoryRecallBudget = 1500;
 
 /** 默认的探索比例；MaxMemoryExplore 是上限。 */
 export const DefaultMemoryExplore = 0.1;
+/** 自动整理的默认门槛，见 MemorySettings.autoConsolidate。 */
+export const DefaultMemoryAutoConsolidate = 3;
 export const MaxMemoryExplore = 0.5;
 
 /**
@@ -250,6 +257,9 @@ export function load(root: string, environ?: Record<string, string> | null): Con
     throw new Error(`MEMORY_EXPLORE 必须是 0 到 ${formatG(MaxMemoryExplore)} 之间的小数（0 关闭探索）`);
   }
   cfg.memory.explore = explore;
+  const auto = goAtoi(resolve('MEMORY_AUTO_CONSOLIDATE', String(DefaultMemoryAutoConsolidate)));
+  if (auto === undefined || auto < 0) throw new Error('MEMORY_AUTO_CONSOLIDATE 必须是非负整数（0 关闭自动整理）');
+  cfg.memory.autoConsolidate = auto;
   return cfg;
 }
 
