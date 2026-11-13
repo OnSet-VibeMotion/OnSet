@@ -204,6 +204,21 @@ describe('two-step add and update', () => {
     expect(() => installStaged(staged.token)).toThrow('没有这个待装的插件');
   });
 
+  it('sweeps staged plugins that were never confirmed or cancelled', () => {
+    const env = { ...process.env, AM_STATIONS_DIR: temp('am-stations-') };
+    const old = stageStation(`link:${fake}`, env);
+    const fresh = stageStation(`link:${fake}`, env);
+    const dirOf = (token: string) => path.join(stationsDir(env), StagingDir, token);
+    const longAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    fs.utimesSync(dirOf(old.token), longAgo, longAgo);
+    // 下一次取插件时清掉放了一天以上的，刚取的留着。
+    const next = stageStation(`link:${fake}`, env);
+    expect(fs.existsSync(dirOf(old.token))).toBe(false);
+    expect(fs.existsSync(dirOf(fresh.token))).toBe(true);
+    expect(fs.existsSync(dirOf(next.token))).toBe(true);
+    expect(() => installStaged(old.token, env)).toThrow('没有这个待装的插件');
+  });
+
   it('refuses a staged plugin changed after it was shown', () => {
     if (!hasGit) return;
     const { repo } = gitRepo();

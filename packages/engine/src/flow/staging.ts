@@ -132,7 +132,32 @@ function writeStaged(token: string, rec: StagedRecord, env: Env): void {
   atomicWrite(path.join(stagingDir(token, env), stagedFile), marshalIndent(rec) + '\n', 0o644);
 }
 
+/** 取回后既没装也没取消的暂存目录留这么久（毫秒）；超过了下次取插件时清掉。 */
+export const StagingMaxAgeMs = 24 * 60 * 60 * 1000;
+
+/** 清掉放了太久的暂存目录：用户关掉确认框、客户端中途退出都会留下它们。清不掉的不算错。 */
+function sweepStaging(env: Env): void {
+  const root = stagingRoot(env);
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  const cutoff = Date.now() - StagingMaxAgeMs;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !tokenPattern.test(entry.name)) continue;
+    const dir = path.join(root, entry.name);
+    try {
+      if (fs.statSync(dir).mtimeMs < cutoff) fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // 别的进程正在用或已经删了。
+    }
+  }
+}
+
 function newStaging(env: Env): { token: string; dir: string } {
+  sweepStaging(env);
   const token = crypto.randomBytes(8).toString('hex');
   const dir = path.join(stagingRoot(env), token);
   fs.mkdirSync(dir, { recursive: true });
