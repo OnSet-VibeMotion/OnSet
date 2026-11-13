@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { ResultMarker } from '@am/engine/opworker';
 import { describe, expect, it } from 'vitest';
 import { allOps, opScopes } from './ops/op';
-import { describeTools, prepareCall, serveToolsMCP, type Spawner } from './toolsmcp';
+import { describeTools, opCommand, prepareCall, serveToolsMCP, type Spawner } from './toolsmcp';
 
 /** 把一串 JSON-RPC 请求喂给服务，收齐回复（按 id）。 */
 async function call(requests: Record<string, unknown>[], spawner: Spawner, profile: 'orchestrator' | 'renderer' = 'orchestrator'): Promise<Map<unknown, any>> {
@@ -161,5 +161,27 @@ describe('am tools MCP', () => {
     const help = text(replies.get(1));
     expect(help).toContain('meter（整数）');
     expect(help).toContain('beat_regrid({"meter": 4, "anchor": 1})');
+  });
+});
+
+// 客户端里 am 由 Electron 当 Node 运行，main.ts 一启动就删掉 ELECTRON_RUN_AS_NODE（不能漏给 agent）。
+// 执行进程要是照抄 process.env，起来的会是一个完整的 Electron 应用：操作跑完了进程也不退出，
+// 工具服务每次都报「还在运行」（2026-11 实测）。CI 跑在普通 Node 下复现不了，所以在这里钉住。
+describe('op worker command', () => {
+  it('puts ELECTRON_RUN_AS_NODE back when am runs inside Electron', () => {
+    const saved = process.env.ELECTRON_RUN_AS_NODE;
+    delete process.env.ELECTRON_RUN_AS_NODE;
+    Object.defineProperty(process.versions, 'electron', { value: '45.0.0', configurable: true });
+    try {
+      const command = opCommand('align_text', {});
+      expect(command.file).toBe(process.execPath);
+      expect(command.args.slice(1)).toEqual(['__op', 'align_text', '{}']);
+      expect(command.env.ELECTRON_RUN_AS_NODE).toBe('1');
+    } finally {
+      delete (process.versions as Record<string, string | undefined>).electron;
+      if (saved !== undefined) process.env.ELECTRON_RUN_AS_NODE = saved;
+    }
+    // 普通 Node 下不加。
+    expect(opCommand('align_text', {}).env.ELECTRON_RUN_AS_NODE).toBeUndefined();
   });
 });

@@ -114,7 +114,7 @@ it('cast validate is silent on voices when the provider is unresolvable', async 
   expect(out).not.toContain('voiceId');
 });
 
-// 不传 --provider 时按 am config get TTS_PROVIDER 的规则解析（默认 minimax）。
+// 不传 --provider 时按 config_get TTS_PROVIDER 的规则解析（缺省按平台：Apple Silicon 是 breeze，其余 minimax；骨架两家都有空的 voiceId）。
 it('cast validate resolves the default provider from config', async () => {
   const root = tempDir();
   await runCLI(root, 'cast', 'new', 'heiwa');

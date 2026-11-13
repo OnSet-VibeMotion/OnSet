@@ -18,7 +18,7 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 - macOS（Apple Silicon 或 Intel）
 - Codex、Claude Code、Qoder、CodeBuddy、OpenCode 中至少一个已登录的 CLI
-- 配音服务的账号（默认 MiniMax；免鉴权的 Edge 朗读与本机 MLX 不需要）
+- 配音默认用本机的 Breeze TTS 2（Apple Silicon，离线、不用账号，第一次在安装页下载约 4.6 GB 的模型）；Intel Mac 默认 MiniMax，要它的账号。都能在「设置」里换
 
 不需要另外装 Node.js、Python、FFmpeg、Git 或 Homebrew：渲染用的 Chromium 与运行时都是客户端自带的，其余工具在第一次打开时由首页的「召集你的摄制组」一键下载（画面、剪辑、配音、字幕四组，约几分钟），之后所有项目共用。机器上已经有 FFmpeg 的直接用现成的。GitHub 下载慢时在安装页的「网络」里填代理，断了重试会接着下。节拍分析环境、整片风格库这类动辄上 GB 的资源放在「以后可能用到」里，用到时再装。
 
@@ -40,9 +40,11 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 叙事模式也在新建时选：默认单口播；「多角色对话」额外写出班底与角色包目录，见下方「多角色叙事」；还有单人歌曲讲解与无配音卡点两种可选形式。
 
-项目里的 `article-to-motion.conf` 记着编排工具、渲染工具、配音与对齐工具、并发数与记忆设置，客户端在对话栏顶部可以为每个会话另选编排与渲染工具，不改这份文件。
+编排工具、渲染工具、配音与对齐工具、并发数与记忆在客户端的「设置」（顶栏右侧的齿轮，或 ⌘,）里选。全局设置对所有项目生效；某个项目要用不一样的，在「这个项目」一栏单独选，写进项目的 `article-to-motion.conf`，选「跟随全局」就回去。取值顺序是：环境变量 > 项目 `.env` > 项目 `article-to-motion.conf` > 全局设置 > 内置默认。对话栏顶部还可以为每个会话临时另选编排与渲染工具，不改任何文件。
 
 配音可选 MiniMax、阿里云百炼、Edge 朗读（免鉴权，适合预览）、ElevenLabs、腾讯云、MLX（本机离线，仅 Apple Silicon）、Breeze TTS 2（本机离线，仅 Apple Silicon；模型与生成的配音仅限研究与非商业用途，商用需 RESONIA, Inc. 书面授权）；凭据一律走各工具自己的登录，项目 `.env` 不允许保存 API Key、Token、Secret 或 Password。字幕时间轴由已知文本强制对齐生成：Apple Silicon 上用 mlx-audio 的 Qwen3-ForcedAligner，其余平台用 FunASR。
+
+用 Breeze 配音时，声音来自工作台「音色」页里的音色库：一段参考音频加逐字一致的文字稿，放在用户级目录、所有项目共用，配音时从它克隆，同一个账号的每部片子都是同一个声音。新声音可以对着麦克风念一段录下来、按一句描述让本机 Breeze 生成几段挑一个，或上传录好的音频。Breeze 还能按段落指导语气（同一个声音，讲到转折处沉下来），以及在口播稿里写 `<|[笑]>`、`<|[叹气]>` 这样的声音事件。克隆的声音请只用你本人或已取得授权的；Breeze 的模型与生成的配音受 BreezeBlue Research and Non-Commercial License 约束，见上。
 
 ## 工作台
 
@@ -103,7 +105,7 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 编排工具与渲染器限制在项目工作区：只被放行文件编辑、制作工具和一组常用命令（只读查看、文本处理、工作区内的复制移动、下载字体与授权素材的 `curl`、跑脚本的 `python3` / `node`，以及当前配音与对齐工具的那一个命令），`.env` 禁读。`sh` / `bash`、`rm`、改权限与安装命令不在其中。
 
-白名单外的命令不会直接被拒：对话框上方弹出卡片问你，可以允许这一次、以后都允许（记进这个项目的 `production/studio/permissions.json`）或拒绝。五家编排工具都会这样问：claude、qoder 经一个审批服务；codebuddy、opencode、codex 改用双向协议（`codebuddy --acp`、`opencode acp`、`codex app-server`）。opencode 与 codebuddy 被拒后会直接结束这一轮，对话里会说明，可以告诉它换个做法再继续。还要固定放行别的命令就写进项目配置的 `ORCHESTRATOR_ALLOW_COMMANDS`（逗号分隔的命令前缀，如 `uv run, pnpm, magick`）。放行解释器意味着脚本能做任何事，安全模式防的是误操作和越界命令，不可信的输入仍不要交给编排工具。
+白名单外的命令不会直接被拒：对话框上方弹出卡片问你，可以允许这一次、以后都允许（记进这个项目的 `production/studio/permissions.json`）、以后都不用问，或拒绝。「以后都不用问」打开设置里的「自动批准」：之后不再弹卡片、直接允许，对话里留一行「已自动允许」记下跑了什么；自动批准可以全局开，也可以只给某个项目开，在设置里随时关掉。工具自己的沙箱（例如 codex 的 workspace-write）照旧生效。五家编排工具都会这样问：claude、qoder 经一个审批服务；codebuddy、opencode、codex 改用双向协议（`codebuddy --acp`、`opencode acp`、`codex app-server`）。opencode 与 codebuddy 被拒后会直接结束这一轮，对话里会说明，可以告诉它换个做法再继续。还要固定放行别的命令就写进项目配置的 `ORCHESTRATOR_ALLOW_COMMANDS`（逗号分隔的命令前缀，如 `uv run, pnpm, magick`）。放行解释器意味着脚本能做任何事，安全模式防的是误操作和越界命令，不可信的输入仍不要交给编排工具。
 
 ## 用量
 

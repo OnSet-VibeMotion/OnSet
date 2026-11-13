@@ -18,7 +18,7 @@ Requirements:
 
 - macOS (Apple Silicon or Intel)
 - At least one logged-in CLI among Codex, Claude Code, Qoder, CodeBuddy, and OpenCode
-- An account with a voice service (MiniMax by default; Edge read-aloud and local MLX need none)
+- Voice defaults to the local Breeze TTS 2 on Apple Silicon (offline, no account; the setup page downloads its ~4.6 GB model once). Intel Macs default to MiniMax, which needs an account. Either can be changed in Settings
 
 You do not need to install Node.js, Python, FFmpeg, Git, or Homebrew. The Chromium used for rendering and the runtime both ship with the client. Everything else is downloaded with one click on the first launch, from "Assemble your crew" on the home page. It comes in four groups (picture, editing, voice, subtitles), takes a few minutes, and is shared by every project afterwards. An existing FFmpeg on the machine is used as is.
 
@@ -48,14 +48,9 @@ The narration mode is also chosen at creation:
 - Multi-role dialogue: also writes a cast roster and a character-pack directory. See "Multi-role narration" below.
 - Two optional formats: solo song explainers and beat-synced reels without narration.
 
-The project's `article-to-motion.conf` records:
+The orchestrator, renderer, voice and alignment tools, concurrency and memory are chosen in the client's Settings (the gear at the top right, or ⌘,). Global settings apply to every project; a project that needs something different sets it in the "This project" column, which writes the project's `article-to-motion.conf`, and "Follow global" undoes that. Values resolve in this order: environment variables > project `.env` > project `article-to-motion.conf` > global settings > built-in defaults.
 
-- the orchestrator and renderer
-- the voice and alignment tools
-- concurrency
-- memory settings
-
-The bar at the top of the chat can pick a different orchestrator and renderer per session without touching this file.
+The bar at the top of the chat can also pick a different orchestrator and renderer for one session without touching any file.
 
 Voice options:
 
@@ -68,6 +63,8 @@ Voice options:
 Credentials always go through each tool's own login. The project `.env` may not store an API key, token, secret, or password.
 
 The subtitle timeline comes from known-text forced alignment. On Apple Silicon this uses mlx-audio's Qwen3-ForcedAligner; elsewhere it uses FunASR.
+
+With Breeze, the voice comes from the voice library on the workbench's Voice page: a reference clip plus its exact transcript, stored in a user-level folder and shared by all projects. Every film is cloned from it, so an account keeps one voice across films. A new voice can be recorded from the microphone, designed from a one-line description (the local Breeze generates takes to pick from), or uploaded. Breeze can also direct the tone paragraph by paragraph while keeping the same voice, and the script can carry vocal events such as `<|[笑]>` and `<|[叹气]>`. Only clone your own voice or one you are authorized to use; the Breeze model and the speech it generates fall under the BreezeBlue Research and Non-Commercial License noted above.
 
 ## The workspace
 
@@ -194,7 +191,10 @@ A command outside the allowlist is not simply refused. A card appears above the 
 
 - allow it once
 - always allow it (recorded in this project's `production/studio/permissions.json`)
+- never ask again
 - deny it
+
+"Never ask again" turns on Auto-approve in Settings: later requests are allowed without a card, and the chat keeps a line saying what was auto-approved. Auto-approve can be on globally or for one project, and can be turned off in Settings at any time. Tool sandboxes (such as codex's workspace-write) still apply.
 
 All five orchestrators ask this way:
 

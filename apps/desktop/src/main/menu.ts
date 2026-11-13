@@ -4,7 +4,7 @@ import { app, BrowserWindow, dialog, Menu, type MenuItemConstructorOptions } fro
  * 原生菜单。菜单项只发「做什么」给当前窗口的界面（am:menu），界面用它已有的状态与接口去做：
  * 新建、切页这些逻辑只在界面里有一份，菜单不另写。选目录用系统对话框，选好后把路径一并发过去。
  */
-export type MenuAction = { type: 'new' } | { type: 'home' } | { type: 'open'; path: string } | { type: 'step'; index: number };
+export type MenuAction = { type: 'new' } | { type: 'home' } | { type: 'open'; path: string } | { type: 'step'; index: number } | { type: 'settings' };
 
 function send(action: MenuAction): void {
   const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
@@ -27,6 +27,8 @@ export function installMenu(): void {
             label: app.name,
             submenu: [
               { role: 'about', label: '关于 ArticleToMotion' },
+              { type: 'separator' },
+              { label: '设置…', accelerator: 'CmdOrCtrl+,', click: () => send({ type: 'settings' }) },
               { type: 'separator' },
               { role: 'hide', label: '隐藏' },
               { role: 'hideOthers', label: '隐藏其他' },

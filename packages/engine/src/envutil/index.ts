@@ -77,37 +77,67 @@ export function addExecutableLocation(env: Record<string, string>, executable = 
   env.AM_EXECUTABLE = executable;
   const directory = path.dirname(executable);
   env.PATH = env.PATH ? directory + path.delimiter + env.PATH : directory;
-  addToolsLocation(env);
+  appendToolsDir(env);
 }
 
-/**
- * 只把 am setup 下载的工具（ffmpeg、uv、配音与对齐 CLI）加在 PATH 末尾：编排工具按名字调用 mmx、edge-tts 时能找到，
- * 又不会盖过用户自己装的同名工具。客户端里的编排工具与渲染器用这个——am 本身不在它们的 PATH 里，只经工具服务调用。
- */
-export function addToolsLocation(env: Record<string, string>): void {
-  // 用户以前在菜单里装过的 ~/.local/bin/am（或客户端的私有 shim 所在目录）可能就在登录 shell 的 PATH 里：
-  // 有客户端写出的 am 启动脚本的目录一律拿掉，agent 只能经工具服务调用 am。
-  const kept = (env.PATH ?? '').split(path.delimiter).filter((dir) => dir !== '' && !hasClientShim(dir));
+/** 把 am setup 下载的工具目录加在 PATH 末尾：按名字调用 mmx、edge-tts 时能找到，又不盖过用户自己装的同名工具。 */
+function appendToolsDir(env: Record<string, string>): void {
+  const kept = (env.PATH ?? '').split(path.delimiter).filter((dir) => dir !== '');
   const tools = binDir(env);
   if (tools !== '' && !kept.includes(tools)) kept.push(tools);
   env.PATH = kept.join(path.delimiter);
 }
 
+/**
+ * 客户端里的编排工具与渲染器用的 PATH：am setup 的工具目录加在末尾，最前面放一个只有 `am` 的目录（agentBinDir），
+ * 遮住 PATH 里别处的 am（例如以前装在 ~/.local/bin 的启动脚本）。agent 只能经工具服务调用 am，在终端里跑 am
+ * 只会得到一句说明。
+ *
+ * 不能把有 am 的目录整个拿掉：~/.local/bin 这类目录里还有 claude 等编排工具本身，拿掉后报「缺少必需工具：claude」（实测）。
+ */
+export function addToolsLocation(env: Record<string, string>): void {
+  appendToolsDir(env);
+  const blocker = agentBinDir(env);
+  if (blocker === '') return;
+  const kept = env.PATH.split(path.delimiter).filter((dir) => dir !== '' && dir !== blocker);
+  env.PATH = [blocker, ...kept].join(path.delimiter);
+}
+
 /** 客户端写出的 am 启动脚本里都有这句话（apps/desktop/src/main/clishim.ts 的 shimScript）。 */
 export const ClientShimMarker = '由 ArticleToMotion 客户端写出';
 
-function hasClientShim(dir: string): boolean {
+/** agent 的 PATH 里那个 am 的内容：说明 am 不在终端里，退出码 127（与「找不到命令」相同）。 */
+export const AgentAmStub = `#!/bin/sh
+# 由 ArticleToMotion 写出：编排工具与渲染器的 PATH 最前面的 am，遮住别处的 am。
+echo "am 不在终端里使用：制作步骤请调用 am 工具服务（MCP）里的同名工具，参数怎么填用 tool_help 查。" >&2
+exit 127
+`;
+
+/** 覆盖 agentBinDir 的位置。测试的 vitest setup 指到临时目录：子进程环境按白名单构造，所以也看本进程的环境。 */
+export const AgentBinDirEnv = 'AM_AGENT_BIN_DIR';
+
+/** 放那个 am 的目录（<数据目录>/am/agent-bin），按需写好；写不了时返回空串，PATH 照旧。 */
+export function agentBinDir(env: Record<string, string | undefined>): string {
+  const override = env[AgentBinDirEnv] || process.env[AgentBinDirEnv] || '';
+  const data = dataDir(env);
+  if (override === '' && data === '') return '';
+  const dir = override !== '' ? override : path.join(data, 'agent-bin');
+  const file = path.join(dir, 'am');
   try {
-    const fd = fs.openSync(path.join(dir, 'am'), 'r');
+    let current = '';
     try {
-      const head = Buffer.alloc(512);
-      const n = fs.readSync(fd, head, 0, head.length, 0);
-      return head.subarray(0, n).toString('utf8').includes(ClientShimMarker);
-    } finally {
-      fs.closeSync(fd);
+      current = fs.readFileSync(file, 'utf8');
+    } catch {
+      // 还没写过。
     }
+    if (current !== AgentAmStub) {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(file + '.tmp', AgentAmStub, { mode: 0o755 });
+      fs.renameSync(file + '.tmp', file);
+    }
+    return dir;
   } catch {
-    return false;
+    return '';
   }
 }
 

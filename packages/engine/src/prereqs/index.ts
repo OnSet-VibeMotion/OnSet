@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as beat from '../beat';
 import * as config from '../config';
-import { AlignAuto, Aligners, resolveAligner, TTSProviders, validAligner, validTTSProvider } from '../config/providers';
+import { AlignAuto, Aligners, defaultTTSProvider, resolveAligner, TTSProviders, validAligner, validTTSProvider } from '../config/providers';
 import { envMap } from '../envutil';
 import type { ModelSpec, ToolSpec } from '../toolinstall';
 import * as filmstyle from '../filmstyle';
@@ -87,7 +87,7 @@ export interface Selection {
 
 /**
  * 当前该准备的配音与对齐工具。root 是项目目录时读项目配置（article-to-motion.conf、.env、环境变量），
- * 读不了或不在项目里时取环境变量 TTS_PROVIDER / ALIGN_PROVIDER，再不然用缺省值（MiniMax，对齐按平台选）。
+ * 读不了或不在项目里时取环境变量 TTS_PROVIDER / ALIGN_PROVIDER，其次全局设置，再不然用缺省值（配音与对齐都按平台选）。
  */
 export function selection(env: Record<string, string>, root = ''): Selection {
   if (root !== '' && fs.existsSync(path.join(root, 'article-to-motion.conf'))) {
@@ -98,13 +98,24 @@ export function selection(env: Record<string, string>, root = ''): Selection {
       // 配置写错了：退回缺省，错误留给 am config / am run 去报。
     }
   }
-  const tts = env.TTS_PROVIDER && validTTSProvider(env.TTS_PROVIDER) ? env.TTS_PROVIDER : 'minimax';
-  const align = resolveAligner(env.ALIGN_PROVIDER && validAligner(env.ALIGN_PROVIDER) ? env.ALIGN_PROVIDER : AlignAuto, process.platform, process.arch);
+  // 没有项目时：环境变量，其次客户端设置页的全局设置，再不然内置默认（Apple Silicon 上是本机 Breeze）。
+  let global: Record<string, string> = {};
+  try {
+    const file = config.settingsFile(env);
+    if (file !== '') global = config.parseConfFile(file);
+  } catch {
+    // 全局设置读不了：当作没有。
+  }
+  const pick = (key: string) => [env[key], global[key]].find((v) => v !== undefined && v !== '') ?? '';
+  const ttsValue = pick('TTS_PROVIDER');
+  const alignValue = pick('ALIGN_PROVIDER');
+  const tts = validTTSProvider(ttsValue) ? ttsValue : defaultTTSProvider();
+  const align = resolveAligner(validAligner(alignValue) ? alignValue : AlignAuto, process.platform, process.arch);
   return { tts, align };
 }
 
 /** 配音或对齐工具的一项：装进 am 自己的目录，不碰全局；版本钉死。有 model 时连模型一起下好。 */
-function toolItem(group: 'tts' | 'align', id: string, label: string, spec: ToolSpec, model?: ModelSpec): Item {
+function toolItem(group: 'tts' | 'align' | 'voice', id: string, label: string, spec: ToolSpec, model?: ModelSpec): Item {
   const version = spec.kind === 'uv-venv' ? '' : spec.version;
   return {
     group,
@@ -219,6 +230,9 @@ export function items(pick?: Selection): Item[] {
   ];
   const tts = TTSProviders.find((p) => p.id === chosen.tts);
   if (tts) out.push(toolItem('tts', tts.id, '配音 ' + tts.name, tts.install, tts.model));
+  // 音色页的「按描述设计」用本机的 Breeze，与项目选的配音工具无关；项目配音本来就是 Breeze 时上面那一项就是它。
+  const breeze = TTSProviders.find((p) => p.id === 'breeze');
+  if (breeze && chosen.tts !== 'breeze') out.push(toolItem('voice', breeze.id, '音色设计 ' + breeze.name, breeze.install, breeze.model));
   const aligner = Aligners.find((a) => a.id === chosen.align);
   if (aligner) out.push(toolItem('align', aligner.id, '对齐 ' + aligner.name, aligner.install, aligner.model));
   for (const source of filmstyle.sources()) {

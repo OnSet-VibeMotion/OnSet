@@ -177,9 +177,42 @@ defineGroup({
   summary: '读取解析后的配置',
   description: `读取 am 解析后的配置值。
 
-不要自己去读 article-to-motion.conf 或 .env——解析涉及四层优先级
-（环境变量 > 项目 .env > article-to-motion.conf > 内置默认），只有 config_get 的
+不要自己去读 article-to-motion.conf 或 .env——解析涉及五层优先级
+（环境变量 > 项目 .env > article-to-motion.conf > 客户端设置页的全局设置 > 内置默认），只有 config_get 的
 结果等于 am 实际会用的值。`,
+});
+
+/**
+ * config_set：改项目 article-to-motion.conf 里设置页管的那几项（客户端「设置」页的「这个项目」一栏）。
+ * 只给命令行与客户端后端（scopes 只有 cli）：用哪个工具是用户的选择，不让编排工具自己改。
+ * 原地改那一行、保留注释；值为空写成 KEY=，表示跟随全局设置。
+ */
+defineOp({
+  name: 'config_set',
+  cli: ['config', 'set'],
+  summary: '改这个项目的一项设置；值为空表示跟随全局设置',
+  description: `只改设置页管的几项：${config.GlobalKeys.join('、')}。
+写进项目的 article-to-motion.conf，只对这个项目生效；值为空时写成 KEY=，这个项目改为跟随全局设置。`,
+  examples: ['config_set({"key": "TTS_PROVIDER", "value": "breeze"})', 'config_set({"key": "TTS_PROVIDER", "value": ""})'],
+  scopes: ['cli'],
+  params: {
+    key: { type: 'string', description: '设置项', required: true, positional: 0 },
+    value: { type: 'string', description: '值；留空表示跟随全局设置', positional: 1 },
+    project_root: { type: 'string', description: '项目根目录', default: '.' },
+  },
+  run: (p, { out }) => {
+    const key = str(p.key);
+    const value = str(p.value).trim();
+    const problem = config.validateSetting(key, value);
+    if (problem !== '') throw new Error(problem);
+    const file = path.join(str(p.project_root), 'article-to-motion.conf');
+    const body = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+    const line = new RegExp(`^(\\s*(?:export\\s+)?)${key}\\s*=.*$`, 'm');
+    const next = line.test(body) ? body.replace(line, `$1${key}=${value}`) : body + (body === '' || body.endsWith('\n') ? '' : '\n') + `${key}=${value}\n`;
+    fs.writeFileSync(file, next);
+    out.write(value === '' ? `${key} 改为跟随全局设置\n` : `这个项目的 ${key} 改为 ${value}\n`);
+    return { data: { key, value } };
+  },
 });
 
 defineOp({

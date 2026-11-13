@@ -146,6 +146,7 @@ id: ${id}
 name: ${id}
 summary: "TODO：一句话概括这个角色的核心行为"
 voice:
+  breeze: { voiceId: "" }
   minimax: { voiceId: "", speed: 1.0 }
   bailian: { voiceId: "", rate: 1.0 }
 rig:
@@ -363,6 +364,9 @@ character.yaml 后如果没调这个工具，character.json 就是旧的且不�
  */
 function resolveCastValidateProvider(explicit: string): string {
   if (explicit !== '') return explicit;
+  // 有了全局设置之后，没有项目配置也能解析出配音工具（全局或内置默认）；
+  // 这里要的是「项目还没配置就不查」，所以没有 article-to-motion.conf 时照旧跳过。
+  if (!fs.existsSync('article-to-motion.conf')) return '';
   try {
     return config.load('.', null).ttsProvider;
   } catch {

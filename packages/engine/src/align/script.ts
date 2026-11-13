@@ -9,9 +9,9 @@ import { isWordRune, normRune, normalizeRunes, runeString, runes, tokenizeRunes,
 //	<|嗯>               只朗读、不显示
 //	<显示|>             只显示、不朗读（没有时间，随所在字幕）
 //	@{id}……@{/id}       受保护短语，进 phrase-timeline.json；可以嵌套，不能交叉
-//	# 开头的行          标题，忽略
+//	# 开头的行          标题，忽略；正文要以 # 开头（话题 #OiiOii）时写 \#
 //	空行                分段
-//	\< \> \@ \| \\      转义
+//	\< \> \@ \| \\ \#   转义
 //
 // 同一段内的换行不产生文字；两侧都是字母数字时补一个空格，免得两个英文词粘成一个。
 
@@ -29,6 +29,25 @@ export interface Piece {
   plain: boolean;
   /** softBreak 是段内换行留下的占位，解析结束后决定是否变成空格。 */
   softBreak: boolean;
+  /** event 是声音事件（<|[笑]>）：送进 TTS，但不显示、不是朗读单元、不交给对齐工具。 */
+  event?: boolean;
+}
+
+/**
+ * 声音事件：Breeze TTS 2 读到这些写法时发出笑声、叹气这类非语音的声音（中文用方括号，英文用圆括号）。
+ * 官方列出的是下面几个，写法上「如」字开头，所以 <|…> 里任何方括号或圆括号括起来的一小段都按事件处理；
+ * 正文里直接写这几个则报错，免得它们出现在字幕里。
+ *
+ * 事件不交给对齐工具：2026-11 实测把「[叹气]」「[笑]」留在对齐文本里，对齐器会把「叹」「气」「笑」
+ * 塞进几十毫秒、产生零长度的字；去掉之后每个字的位置一样准（笑声、叹气落在前后两个字之间的空档里）。
+ */
+export const VocalEvents: readonly string[] = ['[笑]', '[叹气]', '[咳嗽]', '[清嗓子]', '(laugh)', '(sigh)', '(cough)', '(clears throat)'];
+
+const vocalEventPattern = /^(\[[^\[\]\s]{1,10}\]|\([a-z][a-z ]{0,30}\))$/;
+
+/** 朗读侧整段是一个声音事件。 */
+export function isVocalEvent(spoken: string): boolean {
+  return vocalEventPattern.test(spoken);
 }
 
 /** ScriptToken 是终稿朗读侧的一个匹配单元，记着它落在哪几个 piece 上。 */
@@ -68,7 +87,7 @@ export class ParseError extends Error {
   }
 }
 
-const badEscape = '无效转义：只能转义 \\< \\> \\@ \\| \\\\';
+const badEscape = '无效转义：只能转义 \\< \\> \\@ \\| \\\\ \\#';
 
 /**
  * Script 是解析后的终稿。Go 里的 SpokenText / View 是它的方法；pieces、pieceToken、
@@ -97,6 +116,30 @@ export class Script {
     }
     if (out.length === 0) return '';
     return out.join('\n') + '\n';
+  }
+
+  /**
+   * alignText 返回交给强制对齐工具的文本：与 spokenText 相同，只是去掉声音事件——
+   * 事件发出的是笑声、叹气，不是字，留着会让对齐工具把它们当字硬塞进去。
+   */
+  alignText(): string {
+    let b = '';
+    this.pieces.forEach((p, i) => {
+      if (i > 0 && p.para !== this.pieces[i - 1].para) b += '\n';
+      if (!p.event) b += p.spoken;
+    });
+    const out: string[] = [];
+    for (const para of b.split('\n')) {
+      const t = goTrimSpace(para.replace(/ {2,}/g, ' '));
+      if (t !== '') out.push(t);
+    }
+    if (out.length === 0) return '';
+    return out.join('\n') + '\n';
+  }
+
+  /** hasVocalEvents 表示终稿里写了声音事件。 */
+  hasVocalEvents(): boolean {
+    return this.pieces.some((p) => p.event);
   }
 
   /** displayText 拼出 piece 区间 [from, to) 的显示文本。 */
@@ -206,7 +249,8 @@ export function parseScript(text: string): Script {
         i += 2;
       } else if (r === 0x3c) {
         const [display, spoken, next] = parseAlternative(rs, i, lineNo);
-        add({ display, spoken, line: lineNo, col, plain: false });
+        const event = display === '' && isVocalEvent(spoken);
+        add({ display, spoken, line: lineNo, col, plain: false, ...(event ? { event } : {}) });
         i = next;
       } else if (r === 0x40 && i + 1 < rs.length && rs[i + 1] === 0x7b) {
         const end = indexRune(rs, i + 2, 0x7d);
@@ -232,6 +276,11 @@ export function parseScript(text: string): Script {
         }
         i = end + 1;
       } else {
+        if (r === 0x5b || r === 0x28) {
+          const rest = runeString(rs.slice(i));
+          const bare = VocalEvents.find((e) => rest.startsWith(e));
+          if (bare) throw new ParseError(lineNo, col, `声音事件 ${bare} 要写成 <|${bare}>：直接写会原样出现在字幕里`);
+        }
         const ch = String.fromCodePoint(r);
         add({ display: ch, spoken: ch, line: lineNo, col, plain: true });
         i++;
@@ -248,8 +297,9 @@ export function parseScript(text: string): Script {
   return s;
 }
 
+/** \# 也能转义：行首的 # 会被当成标题整行丢掉，话题 #OiiOii 写在行首时要写成 \#OiiOii。 */
 function isEscapable(r: number): boolean {
-  return r === 0x3c || r === 0x3e || r === 0x40 || r === 0x7c || r === 0x5c;
+  return r === 0x3c || r === 0x3e || r === 0x40 || r === 0x7c || r === 0x5c || r === 0x23;
 }
 
 function indexRune(rs: number[], from: number, target: number): number {
@@ -330,6 +380,8 @@ function tokenizeScript(s: Script): void {
     const rs: number[] = [];
     const owner: number[] = [];
     for (let p = start; p < end; p++) {
+      // 声音事件不是朗读单元：配音里那一段是笑声、叹气，对齐结果里也没有它。
+      if (s.pieces[p].event) continue;
       for (const r of runes(s.pieces[p].spoken)) {
         rs.push(r);
         owner.push(p);

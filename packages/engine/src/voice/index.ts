@@ -15,3 +15,5 @@ export {
   validName,
 } from './library';
 export type { SaveOptions, Source, Voice, VoiceEntry } from './library';
+export { SampleText, design, designStatus, getDraft } from './design';
+export type { DesignOptions, DesignStatus, Draft } from './design';

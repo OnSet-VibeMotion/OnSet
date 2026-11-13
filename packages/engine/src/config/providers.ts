@@ -60,7 +60,7 @@ export const BreezeTTS2: ModelSpec = {
  *
  * breeze（Breeze TTS 2）与 mlx 是同一个 mlx-audio 命令，换了模型：它的权重与生成的音频受
  * BreezeBlue Research and Non-Commercial License 约束，商用要 RESONIA, Inc. 书面授权
- * （推理代码的 Apache 2.0 不覆盖模型与产出）。名字里写明非商用；缺省值仍是 minimax。
+ * （推理代码的 Apache 2.0 不覆盖模型与产出）。许可只写在 README 里，界面与提示词不另行提示；缺省值仍是 minimax。
  */
 export const TTSProviders: readonly TTSProvider[] = [
   { id: 'minimax', name: 'MiniMax（mmx CLI）', timestamps: 'sentence', command: 'mmx', install: { kind: 'npm', package: 'mmx-cli', version: '1.0.28', bins: ['mmx'] } },
@@ -89,7 +89,7 @@ export const TTSProviders: readonly TTSProvider[] = [
   },
   {
     id: 'breeze',
-    name: 'Breeze TTS 2（mlx-audio，仅 Apple Silicon，仅限非商用）',
+    name: 'Breeze TTS 2（mlx-audio，仅 Apple Silicon）',
     timestamps: 'none',
     command: 'mlx_audio.tts.generate',
     install: mlxAudio(['mlx_audio.tts.generate']),
@@ -163,6 +163,15 @@ export function resolveAligner(value: string, goos: string, goarch: string): str
   if (value !== AlignAuto) return value;
   if (goos === 'darwin' && goarch === 'arm64') return 'mlx';
   return 'funasr';
+}
+
+/**
+ * 内置的默认配音：Apple Silicon 上用本机的 Breeze TTS 2（离线、不花钱，能从音色库克隆同一个声音），
+ * 其余平台 Breeze 跑不了（只有 MLX 版），用 MiniMax。goos / goarch 的写法同 resolveAligner。
+ * 只是没人设过时的缺省：全局设置或项目里写了就用写的。
+ */
+export function defaultTTSProvider(goos: string = process.platform, goarch: string = process.arch): string {
+  return goos === 'darwin' && goarch === 'arm64' ? 'breeze' : 'minimax';
 }
 
 export function validTTSProvider(id: string): boolean {

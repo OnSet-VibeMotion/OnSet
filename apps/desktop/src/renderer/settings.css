@@ -1,0 +1,95 @@
+/* 设置页（放映室）：一张三栏的表，左边说明、中间全局、右边这个项目。选择器挂在 .settings 下。 */
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 760px;
+}
+.settings .settings-intro,
+.settings .settings-file {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.settings .settings-file {
+  font: 11px var(--mono);
+  color: var(--faint);
+  word-break: break-all;
+}
+.settings .settings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 230px;
+  gap: 0 16px;
+  align-items: center;
+}
+.settings .settings-grid.with-project {
+  grid-template-columns: minmax(0, 1fr) 230px 230px;
+}
+.settings .settings-col {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 8px;
+  font: 11px var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+.settings .settings-row {
+  display: contents;
+}
+.settings .settings-label,
+.settings .settings-row > select {
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.settings .settings-row > select {
+  padding: 0;
+  margin: 0;
+  height: 34px;
+  align-self: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--well);
+  color: var(--text);
+  font: 13px var(--sans);
+  padding: 0 8px;
+}
+.settings .settings-row > select.overridden {
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
+.settings .settings-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings .settings-label strong {
+  font: 600 15px var(--serif);
+  color: var(--text);
+}
+.settings .settings-label span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.settings .settings-label em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--stale);
+}
+.settings .settings-error {
+  color: var(--bad);
+  font-size: 13px;
+}
+@media (max-width: 720px) {
+  .settings .settings-grid,
+  .settings .settings-grid.with-project {
+    grid-template-columns: 1fr;
+  }
+  .settings .settings-col {
+    display: none;
+  }
+  .settings .settings-row > select {
+    margin-bottom: 6px;
+  }
+}

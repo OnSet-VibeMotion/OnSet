@@ -4,6 +4,7 @@ import { Chat, type Outbox } from './components/Chat';
 import { Home, type ProjectSummary } from './components/Home';
 import { SkillsPill, type SkillsStatus } from './components/SkillsPill';
 import { SetupGuide, useSetup } from './components/SetupGuide';
+import { Settings } from './components/Settings';
 import { Icon } from './components/Icon';
 import { Preview, stepTabsFor, tabs, visibleTabs, type Tab } from './components/Preview';
 import { scriptFinalPath } from './components/Script';
@@ -72,6 +73,7 @@ export function App() {
   // 前置资源（安装页或 am setup 准备）：缺了在顶栏提示，点开就是安装页。
   const setup = useSetup();
   const [setupOpen, setSetupOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   // 顶栏只数要一起装的（必需项与配音、对齐工具）；节拍环境、风格来源这些按需的另算。
   const setupCore = setup.status?.items.filter((item) => !item.ready && (item.required || item.group === 'tts' || item.group === 'align')).length ?? 0;
   const setupMissing = setup.status?.items.filter((item) => !item.ready).length ?? 0;
@@ -433,6 +435,7 @@ export function App() {
   useEffect(() => {
     return window.am?.onMenu?.((action) => {
       if (action.type === 'new' || action.type === 'home') setHomeOpen(true);
+      else if (action.type === 'settings') setSettingsOpen(true);
       else if (action.type === 'step') {
         const id = steps[action.index];
         if (id && currentId) {
@@ -514,6 +517,9 @@ export function App() {
           </span>
         )}
         <Tasks tasks={tasks} onCancel={(id) => run(`/api/tasks/${id}/cancel`)} />
+        <button className="ghost icon settings-trigger" id="settings-trigger" title="设置（⌘,）" aria-label="设置" onClick={() => setSettingsOpen(true)}>
+          <Icon name="settings" size={14} />
+        </button>
         <span className={'pill conn' + (connected ? '' : ' down')} title={connected ? '已连接' : '连接断开'} aria-label={connected ? '已连接' : '连接断开'}>
           <span className={'dot ' + (connected ? 'ok' : 'bad')} />
           {!connected && <span>连接断开</span>}
@@ -648,6 +654,22 @@ export function App() {
             </header>
             <div className="pad">
               <SetupGuide setup={setup} compact />
+            </div>
+          </section>
+        </div>
+      )}
+      {settingsOpen && (
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setSettingsOpen(false)}>
+          <section className="modal" role="dialog" aria-label="设置" id="settings-dialog">
+            <header className="modal-head">
+              <h2>设置</h2>
+              <span className="spacer" />
+              <button className="ghost icon" onClick={() => setSettingsOpen(false)} aria-label="关闭">
+                <Icon name="close" />
+              </button>
+            </header>
+            <div className="pad">
+              <Settings version={version} run={run} />
             </div>
           </section>
         </div>

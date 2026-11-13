@@ -1,8 +1,9 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { addToolsLocation, ClientShimMarker, envList, envMap, lookPath, MissingToolPrefix, parsePassthrough } from './index';
+import { addToolsLocation, agentBinDir, ClientShimMarker, envList, envMap, lookPath, MissingToolPrefix, parsePassthrough } from './index';
 
 const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-envutil-'));
 const saved = process.env.PATH;
@@ -52,17 +53,25 @@ describe('envutil', () => {
 });
 
 describe('addToolsLocation', () => {
-  // agent 只能经工具服务调用 am：PATH 里有客户端 am 启动脚本的目录要拿掉，am setup 的工具目录加在末尾。
-  it('hides the client am shim and appends am setup tools', () => {
+  // agent 只能经工具服务调用 am：最前面放一个只有 am 的目录遮住别处的 am，但不拿掉任何目录——
+  // 以前装 am 启动脚本的 ~/.local/bin 里还有 claude，整个拿掉就报「缺少必需工具：claude」。
+  it('shadows am without dropping the directories that hold the agents', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'am-envutil-'));
     const shimDir = path.join(root, 'local-bin');
-    const userDir = path.join(root, 'user-bin');
     fs.mkdirSync(shimDir);
-    fs.mkdirSync(userDir);
     fs.writeFileSync(path.join(shimDir, 'am'), `#!/bin/sh\n# ${ClientShimMarker}：用客户端自带的运行时执行 am 命令行。\n`, { mode: 0o755 });
-    fs.writeFileSync(path.join(userDir, 'am'), '#!/bin/sh\necho someone else\n', { mode: 0o755 });
-    const env: Record<string, string> = { PATH: [shimDir, userDir, '/usr/bin'].join(path.delimiter), AM_BIN_DIR: path.join(root, 'tools') };
+    fs.writeFileSync(path.join(shimDir, 'claude'), '#!/bin/sh\necho claude\n', { mode: 0o755 });
+    const env: Record<string, string> = { PATH: [shimDir, '/usr/bin'].join(path.delimiter), HOME: path.join(root, 'home'), AM_BIN_DIR: path.join(root, 'tools') };
     addToolsLocation(env);
-    expect(env.PATH.split(path.delimiter)).toEqual([userDir, '/usr/bin', path.join(root, 'tools')]);
+    const blocker = agentBinDir(env);
+    expect(env.PATH.split(path.delimiter)).toEqual([blocker, shimDir, '/usr/bin', path.join(root, 'tools')]);
+    expect(lookPath('claude', env.PATH)).toBe(path.join(shimDir, 'claude'));
+    expect(lookPath('am', env.PATH)).toBe(path.join(blocker, 'am'));
+    const ran = spawnSync(path.join(blocker, 'am'), ['scene', 'run'], { encoding: 'utf8' });
+    expect(ran.status).toBe(127);
+    expect(ran.stderr).toContain('工具服务');
+    // 再调一次不会重复加。
+    addToolsLocation(env);
+    expect(env.PATH.split(path.delimiter).filter((d) => d === blocker)).toHaveLength(1);
   });
 });

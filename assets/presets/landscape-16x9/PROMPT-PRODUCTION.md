@@ -109,8 +109,9 @@
 - 如果原稿缺少“这条视频要讲什么”的开场，补充约 12–15 秒的开场：先提出问题或冲突，再说明本视频将完成的实验、演示或验证。
 - 开场不能重复正文，也不能提前泄露全部结论。
 - 显示与朗读不同的地方直接在稿件里标出，写成 `<显示|朗读>`：四位年份 `<2025年|二零二五年>`、需要按字母念的缩写 `<API|A P I>`、改写成能读对的英文。只读不显示写 `<|朗读>`，只显示不读写 `<显示|>`。字幕显示左边，配音和对齐用右边，两边由 `align_build()` 对回，不再另记替换清单。
+- 用 Breeze 配音（`TTS_PROVIDER=breeze`）时可以写声音事件：`<|[笑]>`、`<|[叹气]>`、`<|[咳嗽]>`、`<|[清嗓子]>`（英文句子里用 `<|(laugh)>`、`<|(sigh)>`、`<|(cough)>`、`<|(clears throat)>`），配音里会在那个位置发出笑声、叹气，字幕里不出现。只放在真有情绪的地方，一段口播一两处，放在句首或句间；其他配音工具不认这种写法，不要写。不加标记直接写 `[笑]` 会被 `align_text()` 拒绝，因为它会原样出现在字幕里。
 - 会分别出现在画面上的概念、条件、结论和专有名词标成受保护短语：`@{短语编号}原文@{/短语编号}`，编号用小写字母、数字、`-` 或 `_`。第四阶段的短语时间轴只从这些标记生成。
-- 以 `#` 开头的行是标题，不进配音。字面上的 `<`、`@`、`|`、`\` 前面加 `\` 转义。
+- 以 `#` 开头的行是标题，不进配音。字面上的 `<`、`@`、`|`、`\` 前面加 `\` 转义；正文要以 `#` 开头时（例如结尾单独一行的话题 `#OiiOii`）写成 `\#OiiOii`，不然整行会被当成标题丢掉。行中间的 `#` 照常写，不用转义。
 
 同时生成 `production/script-change-log.md`，说明删改、重排和新增开场的位置。涉及观点改变或新增事实时必须等待确认；仅做口语化、标点和明显断句修复时可以继续。
 
@@ -148,13 +149,13 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
 
 | 取值 | 服务 | 自带时间戳 | 适合 |
 |---|---|---|---|
-| `minimax` | MiniMax（`mmx`） | 句级 | 默认，中文自然度与发音控制最完整 |
+| `minimax` | MiniMax（`mmx`） | 句级 | 非 Apple Silicon 上的默认；中文自然度与发音控制最完整 |
 | `bailian` | 阿里云百炼（`bl`） | 无，需识别 | 已有百炼额度 |
 | `edge` | 微软 Edge 在线语音（`edge-tts`） | 句级，偏粗 | 免鉴权的预览与草稿 |
 | `elevenlabs` | ElevenLabs（官方 CLI） | 字级 | 中英混排、需要字级时间戳 |
 | `tencent` | 腾讯云语音合成（`tccli`） | 有 | 已有腾讯云账号 |
 | `mlx` | 本机 MLX（`mlx-audio`，仅 Apple Silicon） | 无 | 离线、不产生费用 |
-| `breeze` | 本机 Breeze TTS 2（`mlx-audio`，仅 Apple Silicon） | 无 | 离线；按描述设计音色、语气指导；**仅限非商用** |
+| `breeze` | 本机 Breeze TTS 2（`mlx-audio`，仅 Apple Silicon） | 无 | Apple Silicon 上的默认；离线；从音色库克隆同一个声音，按段落指导语气，可以笑、叹气 |
 
 各路径的凭据、命令和时间戳获取方式不同，但断句检查、审核关卡和产物要求完全一致。
 
@@ -214,13 +215,13 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
   - ElevenLabs：`elevenlabs voices search --format json`
   - 腾讯云：CLI 没有列表命令，按官方「音色列表」文档选择 `VoiceType`
   - MLX：Qwen3-TTS 预置中文音色 `Vivian`、`Serena`、`Uncle_Fu`、`Dylan`（北京话）、`Eric`（四川话）
-  - Breeze：先看音色库。有默认音色时直接用它，不再试听选音色：`voice_get()` 返回参考音频路径与文字稿，音色名记进 `production/production-config.json` 的 `ttsVoice`；用户想换别的就用 `voice_get({"name": "<音色名>"})`，库里的音色也可以在客户端的「音色」页试听（`studio_show({"page": "voice"})`）。库是空的、或用户想要一个新声音时，用一句中文描述设计音色（`--instruct`），试听时换描述而不是换 voice ID，文件名用 `try-<序号>.wav`，试听文案存进 `production/audio/try-text.txt`；用户选定后，把选中的那段试听连同这份文案存进音色库：`voice_save({"name": "<给它起的名字>", "audio": "production/audio/try-<序号>.wav", "text_file": "production/audio/try-text.txt", "source": "designed", "instruction": "<当时的描述>"})`，问用户要不要设成以后的默认音色（要就加 `"make_default": true`），之后的正式配音也从它克隆。用户想用自己的声音时，请用户在「音色」页上传一段录音，或把录音发到对话里后用 `voice_save` 存（`"source": "recorded"`）；只存用户本人或已经取得授权的声音
+  - Breeze：先看音色库。有默认音色时直接用它，不再试听选音色：`voice_get()` 返回参考音频路径与文字稿，音色名记进 `production/production-config.json` 的 `ttsVoice`；用户想换别的就用 `voice_get({"name": "<音色名>"})`，库里的音色也可以在客户端的「音色」页试听（`studio_show({"page": "voice"})`）。库是空的、或用户想要一个新声音时，用一句中文描述设计音色（`--instruct`），试听时换描述而不是换 voice ID，文件名用 `try-<序号>.wav`，试听文案存进 `production/audio/try-text.txt`；用户选定后，把选中的那段试听连同这份文案存进音色库：`voice_save({"name": "<给它起的名字>", "audio": "production/audio/try-<序号>.wav", "text_file": "production/audio/try-text.txt", "source": "designed", "instruction": "<当时的描述>"})`，问用户要不要设成以后的默认音色（要就加 `"make_default": true`），之后的正式配音也从它克隆。用户想用自己的声音、或想自己挑一个新声音时，请用户打开「音色」页（`studio_show({"page": "voice"})`）：那里能直接对着麦克风录、按描述生成几段试听挑一个、或上传录音，存好后再用 `voice_get` 取；用户把录音发到对话里的，用 `voice_save` 存（`"source": "recorded"`）
 - 用同一段 10–20 秒代表性文案生成 2–3 个试听版本（`--out production/audio/try-<voiceId>.wav`），文件名包含 voice ID。
 - 音色、语速确认后再生成正式配音。
 - 优先按完整语义段落调用 TTS，避免按字幕行逐条生成造成语调碎裂。
 - 正式生成前，先扫描终稿全文，把容易误读的英文单词、英文缩写、产品名、模型名、专有名词和数字逐一列出并确定预期读音，再写入对应 TTS 的发音控制；同一词出现多次也要统一。不要靠生成后试听再补。
 - 四位数年份一律逐位读：`1972 年` 读「一九七二年」，`2025 年` 读「二零二五年」，`2026 年 2 月` 读「二零二六年二月」，`1970 年代` 读「一九七零年代」；不得读成「一千九百七十二年」「两千零二十五年」。扫描时把全文每一个四位年份都列入发音控制，不要交给 TTS 自行判断：同一音色对不同年份、不同上下文的处理并不一致。其余数量数字（`16 个`、`815 字`、`64KB`）仍按数值读。
-- 用 `align_text()` 从终稿生成 `production/audio/tts-text.txt`：标记已换成朗读写法，`#` 标题行已去掉。送进 TTS 的就是这份文本，第四阶段强制对齐也用它；各路径的发音控制（`--pronunciation`、SSML）只处理文本改写也读不准的词。语法写错时它会报出行号和列号。
+- 用 `align_text()` 从终稿生成 `production/audio/tts-text.txt` 与 `production/audio/align-text.txt`：标记已换成朗读写法，`#` 标题行已去掉。送进 TTS 的是 `tts-text.txt`，第四阶段强制对齐用 `align-text.txt`（去掉了声音事件，没有事件时两份相同）；各路径的发音控制（`--pronunciation`、SSML）只处理文本改写也读不准的词。语法写错时它会报出行号和列号。
 - 保留原始请求命令（去掉密钥）、CLI 返回的元数据（时长、采样率、大小）、原始音频和时间戳文件，写入生成报告。
 - 不得手工伪造服务返回的时间戳。
 
@@ -276,9 +277,20 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
 
 **Breeze 固定参数**
 
-- 正式配音一律从音色库克隆：`mlx_audio.tts.generate --model <TTS_MODEL 的本地目录> --text "..." --voice S0 --ref_audio <voice_get 返回的参考音频> --ref_text "<voice_get 返回的文字稿>" --lang_code Chinese --output_path production/audio --file_prefix voice --join_audio --audio_format wav`。`--ref_text` 原样照抄，一个字都不改；克隆时不加 `--instruct`。
-- 只有设计新声音的试听才用描述：`mlx_audio.tts.generate --model <TTS_MODEL 的本地目录> --text "$(cat production/audio/try-text.txt)" --voice S0 --instruct "<音色描述>" --cfg_scale 4 --lang_code Chinese --output_path production/audio --file_prefix try-<序号> --join_audio --audio_format wav`。音色描述写中文，说清性别、年龄段、音色与语气，例如「一位三十多岁的男性，声音沉稳清晰，语气平静、真诚，语速适中」。试听文案控制在 5 到 25 秒（存进音色库的参考音频要 3 到 30 秒）。
-- 终稿里不要加 `[笑]`、`[叹气]` 这类事件标记，它们会被读成非语音声音，字幕对不上。
+Breeze 有四种用法，同一部片子里可以组合：
+
+| 用法 | 参数 | 用在哪 |
+|---|---|---|
+| 克隆 | `--ref_audio` + `--ref_text` | 正式配音的默认做法：音色库里的声音，原样的语气 |
+| 语气指导 | 克隆的参数 + `--instruct "<语气>"` + `--cfg_scale 4` | 同一个声音，按段落指挥语气、情绪、语速：讲到转折处沉下来、讲到好消息时轻快 |
+| 音色设计 | `--instruct "<音色描述>"` + `--cfg_scale 4`，不给参考音频 | 只用来试听、挑新声音，挑中后存进音色库 |
+| 声音事件 | 终稿里的 `<\|[笑]>`、`<\|[叹气]>` 等 | 在某个位置笑一声、叹口气；与上面三种都能叠加 |
+
+- 克隆：`mlx_audio.tts.generate --model <TTS_MODEL 的本地目录> --text "$(cat production/audio/tts-text.txt)" --voice S0 --ref_audio <voice_get 返回的参考音频> --ref_text "<voice_get 返回的文字稿>" --output_path production/audio --file_prefix voice --join_audio --audio_format wav`。`--ref_text` 原样照抄，一个字都不改。
+- 语气指导：先读终稿，按情绪把段落分组（大多数段落不需要指导，用纯克隆），在 `production/audio/directions.md` 里列出每组的段落范围与一句中文语气说明，例如「语速放慢，语气沉重、克制」「语气亲切温和，像在和朋友聊天」。每组单独合成一次（克隆参数不变，加 `--instruct` 与 `--cfg_scale 4`，`--file_prefix voice-<组号>`），再按顺序用 FFmpeg 拼成 `voice.wav`，组与组之间按原文的段落停顿留出间隔。语气说明只写语气、情绪、语速，不写音色（音色由参考音频决定，写了反而会拉偏）；也不要写到极端，「兴奋、激动」这类说明会把音高抬得很高（实测抬高七成），先试听再用。正式生成前把有指导的几组各挑一段试听，和纯克隆放在一起让用户比较，用户认可再整篇生成。
+- 声音事件写在终稿里（见第二阶段的标记），`align_text()` 已经把它们放进 `tts-text.txt`、从 `align-text.txt` 里去掉，合成时什么都不用另加。
+- 中英混排直接写，不用 `--lang_code`（Breeze 不看它）；产品名、缩写照样按「发音控制」处理。语气说明与音色描述用中文写，和正文的语言一致。
+- 设计新声音的试听：`mlx_audio.tts.generate --model <TTS_MODEL 的本地目录> --text "$(cat production/audio/try-text.txt)" --voice S0 --instruct "<音色描述>" --cfg_scale 4 --output_path production/audio --file_prefix try-<序号> --join_audio --audio_format wav`。音色描述写中文，说清性别、年龄段、音色与语气，例如「一位三十多岁的男性，声音沉稳清晰，语气平静、真诚，语速适中」。试听文案控制在 5 到 25 秒（存进音色库的参考音频要 3 到 30 秒）。只靠描述的声音每次生成都会变，所以它只用来挑声音，不用来做正式配音。
 - 输出是 24kHz 单声道，用 FFmpeg 转成 48kHz 双声道再混音。
 - 不产出时间戳，`voice.srt` 由第四阶段强制对齐生成。
 - 发音控制同 Edge，只能改写送进 TTS 的文本。
@@ -315,12 +327,12 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
 
 文稿是现成的，把它逐字对到配音上比语音识别更准，也不会把专有名词识别错。对齐工具由 `ALIGN_PROVIDER` 决定，用 `config_get({"key": "ALIGN_PROVIDER"})` 读取：缺省在 Apple Silicon 上是 `mlx`，其余平台是 `funasr`。
 
-送进对齐的文本必须是 `align_text()` 生成的 `production/audio/tts-text.txt`。对齐结果不手工映射回原文：由 `align_build()` 逐字匹配回终稿，生成 `voice.srt` 和短语时间轴（见下文）。先用 FFmpeg 把 `voice.wav` 转成 16kHz 单声道的 `production/audio/voice-16k.wav`。
+送进对齐的文本必须是 `align_text()` 生成的 `production/audio/align-text.txt`（声音事件发出的是笑声、叹气，不是字，所以对齐文本里没有它们）。对齐结果不手工映射回原文：由 `align_build()` 逐字匹配回终稿，生成 `voice.srt` 和短语时间轴（见下文）。先用 FFmpeg 把 `voice.wav` 转成 16kHz 单声道的 `production/audio/voice-16k.wav`。
 
 **`mlx`（Qwen3-ForcedAligner）**
 
 - 模型由客户端预先下好，本地目录用 `config_get({"key": "ALIGN_MODEL"})` 读取；它返回的不是本地目录（而是 `mlx-community/…` 仓库名）时说明还没下好，请用户在客户端的工具准备页（首页的「召集你的摄制组」，或顶栏的「还差几项工具」）里安装，不要让工具在对齐时现下载。
-- 命令：`mlx_audio.stt.generate --model <ALIGN_MODEL 的本地目录> --audio production/audio/voice-16k.wav --text "$(cat production/audio/tts-text.txt)" --language Chinese --output-path production/audio/align --format json`，结果写到 `production/audio/align.json`（`--output-path` 是不带扩展名的文件路径，不是目录）。
+- 命令：`mlx_audio.stt.generate --model <ALIGN_MODEL 的本地目录> --audio production/audio/voice-16k.wav --text "$(cat production/audio/align-text.txt)" --language Chinese --output-path production/audio/align --format json`，结果写到 `production/audio/align.json`（`--output-path` 是不带扩展名的文件路径，不是目录）。
 - `--language Chinese` 必须显式传，缺省是英文。
 - 输出按单字给出开始、结束秒数，粒度约 0.08 秒；标点会被丢掉。`align_build()` 直接读这份 JSON。
 - 单次最多 5 分钟音频。更长的配音在句间停顿处切段分别对齐，存成 `align-01.json`、`align-02.json`……，交给 `align_build()` 时写明各段起点（`"align": ["production/audio/align.json", "production/audio/align-02.json@312.48"]`）；切点从下面 `audio_check()` 报告的 `speech` 区间之间选，不要切在发声中间。
@@ -332,7 +344,7 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
   ```python
   from funasr import AutoModel
   model = AutoModel(model="iic/speech_timestamp_prediction-v1-16k-offline")
-  result = model.generate(input=("production/audio/voice-16k.wav", "实际送进 TTS 的文本"), data_type=("sound", "text"))
+  result = model.generate(input=("production/audio/voice-16k.wav", open("production/audio/align-text.txt").read()), data_type=("sound", "text"))
   print(result)
   ```
 

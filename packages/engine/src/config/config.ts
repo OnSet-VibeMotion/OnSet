@@ -11,6 +11,7 @@ import { BrowserEnv, CLIDirEnv, HyperFramesBrowserEnv, PinnedVersion, cliDir } f
 import { childEnvKeys as toolpathEnvKeys } from '../toolpath';
 import { EnvDirEnv as BeatEnvDirEnv, envDir as beatEnvDir } from '../beat/env';
 import { DirEnv as VoicesDirEnv, defaultDir as defaultVoicesDir } from '../voice/dir';
+import { GlobalDefaults, GlobalKeys, SettingsFileEnv, isGlobalKey, settingsFile, type GlobalKey } from './global';
 import { ValidTools } from '../tools';
 import { AlignAuto, alignerIDs, hostAligner, parseAllowCommands, ttsProviderIDs, validAligner, validTTSProvider } from './providers';
 
@@ -80,6 +81,10 @@ export interface Config {
   beatEnv: string;
   /** 音色库目录（voice 包），所有项目共用；理由同 memory.dir，要显式传给子进程。 */
   voicesDir: string;
+  /** 全局设置文件（config/global.ts），理由同 voicesDir，要显式传给子进程。 */
+  settingsFile: string;
+  /** 客户端里编排工具请求批准时直接允许，不弹卡片（AUTO_APPROVE，studio/permissions.ts）。 */
+  autoApprove: boolean;
   /** 用户在 ORCHESTRATOR_ALLOW_COMMANDS 里补充放行的命令前缀，见 orchestratorAccess。 */
   extraCommands: string[];
 }
@@ -97,6 +102,8 @@ export function newConfig(fields: Partial<Omit<Config, 'memory'>> & { memory?: P
     hyperFramesCLI: '',
     beatEnv: '',
     voicesDir: '',
+    settingsFile: '',
+    autoApprove: false,
     extraCommands: [],
     ...fields,
     memory: { enabled: false, dir: '', snapshot: 0, recallBudget: 0, explore: 0, ...fields.memory },
@@ -122,7 +129,8 @@ export function defaultMemoryDir(environ: Record<string, string | undefined>): s
   return path.join(home, '.local', 'share', 'am', 'memory');
 }
 
-function parseFile(file: string): Record<string, string> {
+/** 读 KEY=VALUE 格式的配置文件（article-to-motion.conf、.env、全局设置）；不存在时为空。 */
+export function parseConfFile(file: string): Record<string, string> {
   const out: Record<string, string> = {};
   let body: string;
   try {
@@ -194,7 +202,7 @@ export function load(root: string, environ?: Record<string, string> | null): Con
   const env = environ ?? envMap();
   let dotenv: Record<string, string>;
   try {
-    dotenv = parseFile(path.join(root, '.env'));
+    dotenv = parseConfFile(path.join(root, '.env'));
   } catch (err) {
     throw new Error(`读取 .env: ${(err as Error).message}`, { cause: err });
   }
@@ -203,23 +211,37 @@ export function load(root: string, environ?: Record<string, string> | null): Con
   }
   let conf: Record<string, string>;
   try {
-    conf = parseFile(path.join(root, 'article-to-motion.conf'));
+    conf = parseConfFile(path.join(root, 'article-to-motion.conf'));
   } catch (err) {
     throw new Error(`读取 article-to-motion.conf: ${(err as Error).message}`, { cause: err });
   }
+  const globalFile = settingsFile(env);
+  let global: Record<string, string> = {};
+  if (globalFile !== '') {
+    try {
+      global = parseConfFile(globalFile);
+    } catch (err) {
+      throw new Error(`读取全局设置 ${globalFile}: ${(err as Error).message}`, { cause: err });
+    }
+  }
+  // 全局设置只管设置页的那几项（GlobalKeys）；其余键照旧只看环境变量、.env 与项目配置。
   const resolve = (key: string, fallback: string): string => {
-    for (const source of [env, dotenv, conf]) {
+    for (const source of [env, dotenv, conf, isGlobalKey(key) ? global : {}]) {
       const value = source[key];
       if (value) return value;
     }
-    return fallback;
+    return isGlobalKey(key) ? GlobalDefaults[key] : fallback;
   };
   const cfg = newConfig({
     orchestrator: resolve('ORCHESTRATOR', ''),
     renderer: resolve('RENDERER', ''),
-    ttsProvider: resolve('TTS_PROVIDER', 'minimax'),
+    ttsProvider: resolve('TTS_PROVIDER', ''),
     overlay: dotenv,
   });
+  cfg.settingsFile = globalFile;
+  const autoApprove = resolve('AUTO_APPROVE', 'off').toLowerCase();
+  if (autoApprove !== 'on' && autoApprove !== 'off') throw new Error(`无效的 AUTO_APPROVE: ${autoApprove}（可选：on off）`);
+  cfg.autoApprove = autoApprove === 'on';
   if (!ValidTools.has(cfg.orchestrator)) {
     throw new Error(`无效的 ORCHESTRATOR: ${cfg.orchestrator}（可选：codex claude qoder codebuddy opencode）`);
   }
@@ -328,10 +350,48 @@ export function childEnvironment(
   // 音色库同理：编排工具调用的 voice_save、voice_get 与客户端的音色页要是同一个库，
   // 默认目录由 XDG_DATA_HOME 推出而它不在白名单里。
   if (config.voicesDir !== '') out[VoicesDirEnv] = config.voicesDir;
+  // 全局设置同理：子进程（编排工具调用的 am、渲染）按同一份全局设置解析项目配置。
+  if (config.settingsFile !== '') out[SettingsFileEnv] = config.settingsFile;
   // 客户端自带的浏览器与用户显式指定的浏览器同理：子进程里的 am hyperframes 照样用它们，不去下载 headless-shell。
   for (const key of [BrowserEnv, HyperFramesBrowserEnv]) if (source[key]) out[key] = source[key]!;
   // 客户端自带的 npm、工具目录与 am setup 的工具目录同理：子进程里的 am 要找到同一套，而白名单里没有它们。
   for (const key of toolpathEnvKeys) if (source[key]) out[key] = source[key]!;
   if (unsafe) out.AM_UNSAFE = '1';
   return out;
+}
+
+/** 设置页上的一项：它现在的值、值从哪来、全局与这个项目各自写的是什么。 */
+export interface SettingRow {
+  key: GlobalKey;
+  effective: string;
+  /** env：环境变量；dotenv：项目 .env；project：项目配置；global：全局设置；default：内置默认。 */
+  source: 'env' | 'dotenv' | 'project' | 'global' | 'default';
+  global: string;
+  /** 项目配置里写的值；没写（跟随全局）为空。没有项目时为空。 */
+  project: string;
+}
+
+/** 列出设置页那几项的来历。root 为空时只看全局。 */
+export function describeSettings(root: string, environ?: Record<string, string> | null): SettingRow[] {
+  const env = environ ?? envMap();
+  const file = settingsFile(env);
+  const global = file === '' ? {} : parseConfFile(file);
+  const dotenv = root === '' ? {} : parseConfFile(path.join(root, '.env'));
+  const conf = root === '' ? {} : parseConfFile(path.join(root, 'article-to-motion.conf'));
+  return GlobalKeys.map((key) => {
+    const layers: [SettingRow['source'], string | undefined][] = [
+      ['env', env[key]],
+      ['dotenv', dotenv[key]],
+      ['project', conf[key]],
+      ['global', global[key]],
+    ];
+    const hit = layers.find(([, v]) => v);
+    return {
+      key,
+      effective: hit ? hit[1]! : GlobalDefaults[key],
+      source: hit ? hit[0] : 'default',
+      global: global[key] ?? '',
+      project: conf[key] ?? '',
+    };
+  });
 }

@@ -46,14 +46,21 @@ function inProject(root: string, value: unknown, fallback: string): string {
 defineOp({
   name: 'align_text',
   cli: ['align', 'text'],
-  summary: '从终稿导出送进 TTS 与对齐工具的朗读文本',
+  summary: '从终稿导出送进 TTS 的朗读文本与交给对齐工具的对齐文本',
   description: `解析终稿标记，取朗读侧文本：<显示|朗读> 取朗读，# 开头的行丢掉，段与段之间换行，
-标点保留（TTS 靠它断句）。TTS 与强制对齐都必须用这份文本，align_build() 才能
+标点保留（TTS 靠它断句）。写出两份：
+
+  tts-text.txt     送进 TTS
+  align-text.txt   交给强制对齐工具：与 tts-text.txt 相同，只是去掉了声音事件（<|[笑]> 这类）
+
+声音事件发出的是笑声、叹气，不是字，留在对齐文本里会让对齐工具把它们当字硬塞进去。
+没有声音事件时两份内容相同。TTS 与强制对齐都必须用这两份文本，align_build() 才能
 逐字对回终稿。标记写错时报出行号与列号。`,
   examples: ['align_text()', 'align_text({"script": "production/script-final.md", "out": "production/audio/tts-text.txt"})'],
   params: {
     script: { type: 'string', description: '终稿，缺省为 <project_root>/production/script-final.md' },
     out: { type: 'string', description: '朗读文本输出，缺省为 <project_root>/production/audio/tts-text.txt' },
+    align_out: { type: 'string', description: '对齐文本输出，缺省为朗读文本同目录的 align-text.txt' },
     project_root: alignRoot,
   },
   run: (p, { out: w }) => {
@@ -63,8 +70,11 @@ defineOp({
     if (spoken === '') throw new Error('终稿没有任何朗读内容');
     const out = inProject(root, p.out, 'production/audio/tts-text.txt');
     atomicWrite(out, spoken, 0o644);
-    w.write(`已写出朗读文本：${out}（${script.tokens.length} 个朗读单元，${script.phrases.length} 个受保护短语）\n`);
-    return { data: { out, tokens: script.tokens.length, phrases: script.phrases.length } };
+    const alignOut = str(p.align_out) !== '' ? inProject(root, p.align_out, '') : path.join(path.dirname(out), 'align-text.txt');
+    atomicWrite(alignOut, script.alignText(), 0o644);
+    const events = script.hasVocalEvents() ? '，声音事件已从对齐文本里去掉' : '';
+    w.write(`已写出朗读文本：${out}（${script.tokens.length} 个朗读单元，${script.phrases.length} 个受保护短语）\n已写出对齐文本：${alignOut}${events}\n`);
+    return { data: { out, align_out: alignOut, tokens: script.tokens.length, phrases: script.phrases.length, vocal_events: script.hasVocalEvents() } };
   },
 });
 

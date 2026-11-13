@@ -98,7 +98,7 @@ defineOp({
 克隆时它就是 --ref_text，对不上会让克隆出来的声音含糊、吞字。音频转成 24kHz 单声道 WAV 存进
 用户级的音色库，时长要在 ${voice.MinReferenceSeconds} 到 ${voice.MaxReferenceSeconds} 秒之间（一两句话）。
 
-只存用户本人或已经取得授权的声音。同名音色已存在时报错，确实要替换加 overwrite。
+同名音色已存在时报错，确实要替换加 overwrite。
 库里还没有默认音色时，存进来的就是默认音色；make_default 让它成为默认。`,
   examples: [
     '# 用户试听后说「就这个声音，以后都用它」',

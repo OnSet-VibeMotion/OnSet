@@ -9,7 +9,7 @@ import { formatSRT } from './cue';
 import { loadEvidence, loadSegments, parseSegmentFlag, type Item } from './evidence';
 import { LabelExact, LabelInsertion, LabelMerge, LabelOmission, LabelReplace } from './match';
 import { SourceAdjusted, SourceForced, SourceInterpolated, loadAdjust, loadExistingTimeline, type Adjustment, type Timeline } from './phrase';
-import { parseScript, type Script } from './script';
+import { VocalEvents, parseScript, type Script } from './script';
 import { tokenize } from './token';
 
 const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-align-'));
@@ -69,6 +69,14 @@ describe('parse', () => {
       expect(p.id).toBe(want[i]);
       expect(p.order).toBe(i + 1);
     });
+  });
+
+  // 行首的 # 是标题、整行丢掉；正文的话题要写成 \#，在 <显示|朗读> 里也一样。行中间的 # 不用转义。
+  it('escapes a leading hash so a topic line is not dropped as a heading', () => {
+    const s = parseScript('大家好。\n\n\\#OiiOii\n\n带上 <\\#OiiOii|话题 OiiOii>，或者 #OiiOii 也行。\n\n#OiiOii\n');
+    expect(s.spokenText()).toBe('大家好。\n#OiiOii\n带上 话题 OiiOii，或者 #OiiOii 也行。\n');
+    expect(s.headings.map((h) => h.text)).toEqual(['OiiOii']);
+    expect(() => parseScript('\\x')).toThrow('只能转义');
   });
 
   it('errors carry position', () => {
@@ -375,5 +383,39 @@ describe('cues', () => {
       expect(t.start).toBe(second.tokens[i].start);
       expect(t.label).toBe(second.tokens[i].label);
     });
+  });
+});
+
+describe('vocal events', () => {
+  const script = '<|[叹气]>很多人以为，学会一门技术最难的是开始。<|[笑]>其实用 GPT 写个 demo 很容易，难的是坚持下去。\n';
+
+  it('go to TTS but not to the aligner, the subtitles or the token list', () => {
+    const s = parseScript(script);
+    expect(s.hasVocalEvents()).toBe(true);
+    expect(s.spokenText()).toBe('[叹气]很多人以为，学会一门技术最难的是开始。[笑]其实用 GPT 写个 demo 很容易，难的是坚持下去。\n');
+    expect(s.alignText()).toBe('很多人以为，学会一门技术最难的是开始。其实用 GPT 写个 demo 很容易，难的是坚持下去。\n');
+    expect(s.tokens.map((t) => t.text)).not.toContain('笑');
+    expect(s.tokens.map((t) => t.text)).not.toContain('叹');
+    // <|嗯> 这种只读不显示的口头语仍是朗读单元：它是字，不是事件。
+    expect(parseScript('<|嗯>好的。').tokens.map((t) => t.text)).toEqual(['嗯', '好', '的']);
+  });
+
+  it('written bare they would show up in subtitles, so parsing refuses them', () => {
+    for (const e of VocalEvents) expect(() => parseScript(`好的${e}，我们开始。`)).toThrow(`<|${e}>`);
+    // 方括号、圆括号本身照常可以写。
+    expect(() => parseScript('见附录[1]（详见第二章）。')).not.toThrow();
+  });
+
+  // 2026-11 实测：Breeze 合成的这一句（开头叹气、句中笑），对齐文本去掉事件后用 Qwen3-ForcedAligner 对齐的原始结果。
+  it('builds subtitles from a real Breeze take, the laugh falling in the gap between sentences', () => {
+    const items = loadEvidence(path.join(__dirname, 'testdata', 'breeze-events-align.json'));
+    const r = mustBuild(parseScript(script), items);
+    expect(r.report.ok, JSON.stringify(r.report)).toBe(true);
+    expect(r.report.match_rate).toBe(1);
+    const text = r.cues.map((c) => c.text).join('');
+    expect(text).not.toContain('[');
+    expect(text).not.toContain('笑]');
+    // 叹气在 0–0.75 秒，第一条字幕从叹气之后的「很」开始。
+    expect(r.cues[0].startMs).toBe(1040);
   });
 });

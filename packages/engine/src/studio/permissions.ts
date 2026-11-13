@@ -5,6 +5,10 @@
  * 「以后都允许」记在项目的 Studio 状态目录（production/studio/permissions.json），不写
  * article-to-motion.conf：客户端不改项目文件；状态目录跟着项目走，又不进回退快照。
  * 下一轮开始时这些前缀并进编排工具的白名单；这一轮里同一前缀的后续请求直接放行，不再问。
+ *
+ * 设置页的「自动批准」（AUTO_APPROVE=on，全局或这个项目）打开时，所有请求都直接放行、不弹卡片，
+ * 对话里留一行「已自动允许：…」。五家编排工具的审批（审批 MCP、ACP、codex app-server）都落到同一个收件目录，
+ * 所以只在这里放行一处就够；工具自己的沙箱（例如 codex 的 workspace-write）照旧生效，这里只回答「要不要问」。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -81,16 +85,33 @@ export function permissionEventJSON(p: PermissionEventData): Record<string, unkn
   };
 }
 
-type Emit = (turnID: string, event: { kind: string; permission: PermissionEventData; text?: string }) => void;
+type Emit = (turnID: string, event: { kind: string; permission?: PermissionEventData; text?: string }) => void;
+
+/** 这个项目现在是不是自动批准。配置读不了时按不自动处理：宁可多问一次。 */
+export function autoApprove(project: string): boolean {
+  try {
+    return config.load(project, null).autoApprove;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * 看一遍收件目录：新请求里命令落在「以后都允许」前缀下的直接放行，其余发 permission 事件、记进 pending。
  */
 export function pollPermissions(project: string, inbox: string, turnID: string, pending: Map<string, PendingPermission>, seen: Set<string>, emit: Emit): void {
   let allowed: string[] | null = null;
+  let auto: boolean | null = null;
   for (const { request, answered } of listPermissionRequests(inbox)) {
     if (answered || seen.has(request.id)) continue;
     seen.add(request.id);
+    // 每次有新请求才读一次配置：一轮进行中在设置页打开自动批准，下一条请求就不再问。
+    auto ??= autoApprove(project);
+    if (auto) {
+      writePermissionResponse(inbox, request.id, { decision: 'allow' });
+      emit(turnID, { kind: 'notice', text: `已自动允许：${request.command || request.description || request.tool_name || '一次调用'}` });
+      continue;
+    }
     allowed ??= allowedCommands(project);
     if (request.command && matchesPrefix(request.command, allowed)) {
       writePermissionResponse(inbox, request.id, { decision: 'allow' });

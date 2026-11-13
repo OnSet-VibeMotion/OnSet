@@ -32,8 +32,8 @@ describe('studio permissions', () => {
     const inbox = path.join(project, 'inbox');
     const pending = new Map<string, PendingPermission>();
     const seen = new Set<string>();
-    const events: Array<{ turn: string; kind: string; permission: any }> = [];
-    const emit = (turn: string, e: { kind: string; permission: any }) => events.push({ turn, ...e });
+    const events: Array<{ turn: string; kind: string; permission?: any }> = [];
+    const emit = (turn: string, e: { kind: string; permission?: any }) => events.push({ turn, ...e });
 
     const a = writePermissionRequest(inbox, 'Bash', { command: 'npm install three' });
     const b = writePermissionRequest(inbox, 'Bash', { command: 'npm install gsap' });
@@ -65,6 +65,39 @@ describe('studio permissions', () => {
     expect(events[events.length - 1]).toMatchObject({ kind: 'permission-resolved', permission: { id: c.id, decision: 'expired' } });
     expect(pending.size).toBe(0);
     expect(listPermissionRequests(inbox).every((x) => x.answered)).toBe(true);
+  });
+
+  // 设置页打开「自动批准」：请求直接放行、不发 permission 事件，对话里留一行说明；关掉之后照常问。
+  it('auto-approves every request when the project or the global settings say so', () => {
+    const project = tempDir();
+    const settings = path.join(tempDir(), 'settings.conf');
+    const before = process.env.AM_SETTINGS_FILE;
+    process.env.AM_SETTINGS_FILE = settings;
+    try {
+      fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'AUTO_APPROVE=\n');
+      fs.writeFileSync(settings, 'AUTO_APPROVE=on\n');
+      const inbox = path.join(project, 'inbox');
+      const pending = new Map<string, PendingPermission>();
+      const seen = new Set<string>();
+      const events: Array<{ turn: string; kind: string; text?: string; permission?: any }> = [];
+      const emit = (turn: string, e: { kind: string; text?: string; permission?: any }) => events.push({ turn, ...e });
+
+      const a = writePermissionRequest(inbox, 'Bash', { command: 'brew install ffmpeg' });
+      pollPermissions(project, inbox, 't1', pending, seen, emit);
+      expect(responseOf(inbox, a.id).decision).toBe('allow');
+      expect(pending.size).toBe(0);
+      expect(events).toEqual([{ turn: 't1', kind: 'notice', text: '已自动允许：brew install ffmpeg' }]);
+
+      // 这个项目单独关掉：照常问。
+      fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'AUTO_APPROVE=off\n');
+      const b = writePermissionRequest(inbox, 'Bash', { command: 'brew install uv' });
+      pollPermissions(project, inbox, 't1', pending, seen, emit);
+      expect(responseOf(inbox, b.id)).toBeNull();
+      expect(events[events.length - 1]).toMatchObject({ kind: 'permission', permission: { id: b.id } });
+    } finally {
+      if (before === undefined) delete process.env.AM_SETTINGS_FILE;
+      else process.env.AM_SETTINGS_FILE = before;
+    }
   });
 
   it('refuses unsafe prefixes and always for unprefixable commands', () => {

@@ -24,6 +24,12 @@ const paths = {
   pointer: <path d="M2 1.5l3.4 8.5 1.3-3.4 3.4-1.3z" />,
   up: <path d="M6 9.5V2.5M2.5 6L6 2.5 9.5 6" />,
   folder: <path d="M1.5 3.5h3l1 1.2h5v5.3h-9z" />,
+  settings: (
+    <>
+      <circle cx="6" cy="6" r="1.6" />
+      <path d="M6 1.2v1.4M6 9.4v1.4M1.2 6h1.4M9.4 6h1.4M2.6 2.6l1 1M8.4 8.4l1 1M2.6 9.4l1-1M8.4 3.6l1-1" />
+    </>
+  ),
   film: (
     <>
       <rect x="1.5" y="2" width="9" height="8" rx="1" />

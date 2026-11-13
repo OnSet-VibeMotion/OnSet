@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { BreezeTTS2, QwenForcedAligner } from '../config/providers';
+import { BreezeTTS2, QwenForcedAligner, defaultTTSProvider } from '../config/providers';
 import { check, items, selection } from './index';
 
 describe('prereqs', () => {
@@ -52,7 +52,7 @@ describe('prereqs', () => {
     fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\nTTS_PROVIDER=tencent\nALIGN_PROVIDER=funasr\n');
     expect(selection({ HOME: project }, project)).toEqual({ tts: 'tencent', align: 'funasr' });
     expect(selection({ TTS_PROVIDER: 'edge', ALIGN_PROVIDER: 'mlx' })).toEqual({ tts: 'edge', align: 'mlx' });
-    expect(selection({ TTS_PROVIDER: 'nope' }).tts).toBe('minimax');
+    expect(selection({ TTS_PROVIDER: 'nope' }).tts).toBe(defaultTTSProvider());
   });
 
   it('counts a voice tool installed by am in its own bin directory', () => {

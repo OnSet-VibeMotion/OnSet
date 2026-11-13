@@ -34,7 +34,7 @@ export function newSetupCommand(stdout: Out, _stderr?: Out): Command {
            下载 chrome-headless-shell（约 390 MB，在 ~/.cache/hyperframes/chrome）
   ffmpeg   ffmpeg 与 ffprobe。系统里已有（PATH 能找到）就直接就绪；没有时下载固定版本的静态构建
            （约 40 MB，装在 ~/.local/share/am/bin），不需要 Homebrew
-  tts      配音工具（按项目的 TTS_PROVIDER，缺省 MiniMax 的 mmx）；align  对齐工具（按 ALIGN_PROVIDER）。
+  tts      配音工具（按项目的 TTS_PROVIDER，缺省在 Apple Silicon 上是本机 Breeze TTS 2，其余平台是 MiniMax 的 mmx）；align  对齐工具（按 ALIGN_PROVIDER）。
            固定版本，装在 ~/.local/share/am/tools，命令放进 ~/.local/share/am/bin；npm 包用客户端
            自带的运行时，Python 包由 uv 带一份独立的 Python，都不需要你装 Node 或 Python
   beat     卡点模式的节拍分析环境：beat-this ` +

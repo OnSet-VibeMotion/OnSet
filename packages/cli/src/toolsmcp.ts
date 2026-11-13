@@ -12,6 +12,7 @@
  */
 import { type ChildProcess, spawn } from 'node:child_process';
 import { parseWorkerOutput, visibleText, workerArgs } from '@am/engine/opworker';
+import { nodeCommand } from '@am/engine/toolpath';
 import './cli';
 import { allOps, normalizeParams, type Op, opScopes, type ParamSpec, type ParamValues } from './ops/op';
 
@@ -177,12 +178,24 @@ export function prepareCall(tool: ToolDef, input: ParamValues): ParamValues {
 /** 起一个执行进程跑一条操作；由调用方注入，测试换成假的。 */
 export type Spawner = (name: string, params: ParamValues) => ChildProcess;
 
-/** 用 am 自己的运行时、自己的入口文件执行：客户端里是 Electron 当 Node，不经 PATH 找 am。 */
+/** 执行进程的命令行与环境（spawnOp 用；单独拿出来是为了测「客户端里要带 ELECTRON_RUN_AS_NODE」）。 */
+export function opCommand(name: string, params: ParamValues): { file: string; args: string[]; env: NodeJS.ProcessEnv } {
+  const command = nodeCommand(process.argv[1] ?? '', workerArgs(name, params));
+  return { file: command.file, args: command.args, env: { ...process.env, ...command.env } };
+}
+
+/**
+ * 用 am 自己的运行时、自己的入口文件执行：客户端里是 Electron 当 Node，不经 PATH 找 am。
+ *
+ * 必须经 nodeCommand 补回 ELECTRON_RUN_AS_NODE=1：main.ts 一启动就把它从 process.env 里删掉了（不能漏给 agent），
+ * 直接用 process.env 起的执行进程会是一个完整的 Electron 应用——操作照样跑完、结果照样打印，但进程永远不退出，
+ * 工具服务一直等不到 close，每次调用都报「还在运行」直到超时（2026-11 实测，只在客户端里出现，终端的 Node 下没事）。
+ */
 export const spawnOp: Spawner = (name, params) => {
-  const entry = process.argv[1] ?? '';
-  return spawn(process.execPath, [entry, ...workerArgs(name, params)], {
+  const command = opCommand(name, params);
+  return spawn(command.file, command.args, {
     cwd: process.cwd(),
-    env: process.env,
+    env: command.env,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
   });

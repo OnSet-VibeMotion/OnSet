@@ -27,6 +27,7 @@ export const test = base.extend({
       userData: path.join(root, 'user-data'),
       memory: path.join(root, 'memory'),
       voices: path.join(root, 'voices'),
+      settings: path.join(root, 'settings.conf'),
       registry: path.join(root, 'config', 'projects.json'),
     };
     for (const dir of [dirs.home, dirs.userData, dirs.memory, path.dirname(dirs.registry)]) fs.mkdirSync(dir, { recursive: true });
@@ -63,12 +64,14 @@ export const test = base.extend({
       AM_STUDIO_CONFIG: sandbox.registry,
       AM_MEMORY_DIR: sandbox.memory,
       AM_VOICES_DIR: sandbox.voices,
+      AM_SETTINGS_FILE: sandbox.settings,
       AM_STUDIO_SKIP_SKILL_INSTALL: '1',
       ORCHESTRATOR: 'claude',
       RENDERER: 'claude',
       PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ''}`,
     });
-    const app = await electron.launch({ args: ['.'], cwd: desktopDir, env });
+    // 假麦克风：音色页「录我的声音」的用例不碰真麦克风，也不弹系统的麦克风授权。
+    const app = await electron.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '.'], cwd: desktopDir, env });
     await use(app);
     await app.close();
   },

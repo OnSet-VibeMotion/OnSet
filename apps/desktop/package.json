@@ -64,6 +64,9 @@
     ],
     "mac": {
       "category": "public.app-category.video",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "在音色页录下你自己的声音，用来给视频配音。"
+      },
       "target": [
         "dir",
         "dmg"

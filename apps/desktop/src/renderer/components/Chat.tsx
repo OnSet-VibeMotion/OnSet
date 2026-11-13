@@ -338,9 +338,15 @@ export function Chat(props: Props) {
     }
   };
 
-  const answer = async (ask: PermissionAsk, decision: 'allow' | 'always' | 'deny') => {
+  const answer = async (ask: PermissionAsk, decision: 'allow' | 'always' | 'deny' | 'auto') => {
     setError('');
     try {
+      if (decision === 'auto') {
+        // 「以后都不用问」：打开全局的自动批准（设置页里能关），再把眼前在等的一并放行。
+        await post('/api/settings/global', { key: 'AUTO_APPROVE', value: 'on' });
+        for (const other of asks) await post(`/api/sessions/${props.sessionId}/permissions/${other.id}`, { decision: 'allow' });
+        return;
+      }
       await post(`/api/sessions/${props.sessionId}/permissions/${ask.id}`, { decision });
     } catch (err) {
       setError(errorText(err));
@@ -1209,9 +1215,9 @@ function PlanPill({ plan, scenes }: { plan: PlanItem[]; scenes: Scene[] }) {
 
 /**
  * 编排工具在等你批准的调用。claude 在客户端里遇到白名单外的命令时会停在这里，直到你回答；
- * 「以后都允许」把命令前缀记进这个项目，之后同样的命令不再问。
+ * 「以后都允许」把命令前缀记进这个项目，之后同样的命令不再问；「以后都不用问」打开设置里的自动批准，什么命令都不再问。
  */
-function PermissionStack({ asks, onAnswer }: { asks: PermissionAsk[]; onAnswer: (ask: PermissionAsk, decision: 'allow' | 'always' | 'deny') => void }) {
+function PermissionStack({ asks, onAnswer }: { asks: PermissionAsk[]; onAnswer: (ask: PermissionAsk, decision: 'allow' | 'always' | 'deny' | 'auto') => void }) {
   return (
     <section className="permission-stack" aria-label={`等你批准的操作 ${asks.length} 条`}>
       {asks.map((ask) => (
@@ -1234,6 +1240,9 @@ function PermissionStack({ asks, onAnswer }: { asks: PermissionAsk[]; onAnswer: 
                 以后都允许 <code>{ask.suggestion}</code>
               </button>
             )}
+            <button onClick={() => onAnswer(ask, 'auto')} title="打开设置里的「自动批准」：以后所有项目都不再问，直接允许；可以在设置里关掉">
+              以后都不用问
+            </button>
             <button className="ghost" onClick={() => onAnswer(ask, 'deny')}>
               拒绝
             </button>

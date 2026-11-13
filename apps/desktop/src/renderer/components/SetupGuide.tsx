@@ -138,6 +138,12 @@ const icons: Record<string, ReactNode> = {
       <circle cx="16.5" cy="15.5" r="2.5" />
     </Icon>
   ),
+  design: (
+    <Icon>
+      <path d="M12 3v12M8 7v6M16 7v6M4 10v2M20 10v2" />
+      <path d="M8.5 21h7M12 18v3" />
+    </Icon>
+  ),
   styles: (
     <Icon>
       <path d="M12 3l9 5-9 5-9-5 9-5z" />
@@ -162,7 +168,7 @@ const voiceNames: Record<string, string> = {
   elevenlabs: 'ElevenLabs',
   tencent: '腾讯云',
   mlx: '本机合成',
-  breeze: 'Breeze TTS 2（本机，非商用）',
+  breeze: 'Breeze TTS 2（本机）',
 };
 
 /** 要一起就位的几个组；没有对应项（例如这台机器不配音）就不显示。 */
@@ -186,6 +192,8 @@ function laterCrews(items: PrereqStatus[]): Crew[] {
   if (beat.length) out.push({ key: 'beat', title: '音乐卡点', desc: '跟着节奏切镜头的片子用 · 约 1 GB', items: beat });
   const styles = items.filter((i) => i.group === 'styles');
   if (styles.length) out.push({ key: 'styles', title: '整片风格库', desc: '给整部片子套一种现成画风', items: styles });
+  const design = items.filter((i) => i.group === 'voice');
+  if (design.length) out.push({ key: 'design', title: '音色设计', desc: '在音色页按描述做一个新声音 · 约 4.6 GB', items: design });
   return out;
 }
 

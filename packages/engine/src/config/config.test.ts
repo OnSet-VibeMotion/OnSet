@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { DefaultMemoryExplore, DefaultMemoryRecallBudget, childEnvironment, load, newConfig } from './config';
+import { DefaultMemoryExplore, DefaultMemoryRecallBudget, childEnvironment, describeSettings, load, newConfig, parseConfFile } from './config';
+import { GlobalDefaults, SettingsFileEnv, writeGlobal } from './global';
+import { defaultTTSProvider } from './providers';
 
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'am-config-'));
@@ -18,7 +20,7 @@ describe('config', () => {
     expect(cfg.orchestrator).toBe('opencode');
     expect(cfg.renderer).toBe('qoder');
     expect(cfg.sceneJobs).toBe(4);
-    expect(cfg.ttsProvider).toBe('minimax');
+    expect(cfg.ttsProvider).toBe(defaultTTSProvider());
   });
 
   it('allows the same tool for both roles', () => {
@@ -70,7 +72,7 @@ describe('config', () => {
   });
 
   it.each([
-    ['missing', 'RENDERER=claude\n'],
+    ['orchestrator', 'ORCHESTRATOR=gpt\nRENDERER=claude\n'],
     ['tts', 'ORCHESTRATOR=codex\nRENDERER=claude\nTTS_PROVIDER=bad\n'],
     ['align', 'ORCHESTRATOR=codex\nRENDERER=claude\nALIGN_PROVIDER=whisper\n'],
     ['jobs', 'ORCHESTRATOR=codex\nRENDERER=claude\nSCENE_JOBS=99\n'],
@@ -120,5 +122,48 @@ describe('config', () => {
     expect(env.MEMORY_RECALL_BUDGET).toBe('800');
     expect(env.MEMORY_SNAPSHOT).toBe('3');
     expect(env.MEMORY_EXPLORE).toBe('0.2');
+  });
+
+  it('fills unset keys from the global settings, then the built-in defaults', () => {
+    const root = tempDir();
+    const file = path.join(tempDir(), 'settings.conf');
+    const env = { [SettingsFileEnv]: file };
+    // 项目这几项留空：没有全局设置时用内置默认，与以前模板里写死的值相同。
+    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=\nRENDERER=\nTTS_PROVIDER=\n');
+    let cfg = load(root, env);
+    expect([cfg.orchestrator, cfg.renderer, cfg.ttsProvider, cfg.sceneJobs]).toEqual([GlobalDefaults.ORCHESTRATOR, GlobalDefaults.RENDERER, GlobalDefaults.TTS_PROVIDER, 3]);
+    writeGlobal(env, { ORCHESTRATOR: 'claude', TTS_PROVIDER: 'breeze', SCENE_JOBS: '5', MEMORY: 'off' }, parseConfFile);
+    cfg = load(root, env);
+    expect([cfg.orchestrator, cfg.ttsProvider, cfg.sceneJobs, cfg.memory.enabled]).toEqual(['claude', 'breeze', 5, false]);
+    // 项目写了的项只对这个项目生效，压过全局；环境变量压过项目。
+    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=qoder\n');
+    expect(load(root, env).orchestrator).toBe('qoder');
+    expect(load(root, { ...env, ORCHESTRATOR: 'opencode' }).orchestrator).toBe('opencode');
+    // 子进程拿到同一份全局设置。
+    expect(childEnvironment(load(root, env), {}, false, [])[SettingsFileEnv]).toBe(file);
+  });
+
+  it('describes where each setting comes from, and rejects bad global values', () => {
+    const root = tempDir();
+    const file = path.join(tempDir(), 'settings.conf');
+    const env = { [SettingsFileEnv]: file };
+    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'RENDERER=codex\n');
+    writeGlobal(env, { ORCHESTRATOR: 'claude' }, parseConfFile);
+    const rows = Object.fromEntries(describeSettings(root, env).map((r) => [r.key, r]));
+    expect(rows.ORCHESTRATOR).toMatchObject({ effective: 'claude', source: 'global', global: 'claude', project: '' });
+    expect(rows.RENDERER).toMatchObject({ effective: 'codex', source: 'project', project: 'codex' });
+    expect(rows.TTS_PROVIDER).toMatchObject({ effective: GlobalDefaults.TTS_PROVIDER, source: 'default' });
+    expect(() => writeGlobal(env, { RENDERER: 'gpt' }, parseConfFile)).toThrow('RENDERER');
+    expect(() => writeGlobal(env, { SCENE_JOBS: '99' }, parseConfFile)).toThrow('1 到 16');
+    // 空值删掉这一项，回到内置默认。
+    writeGlobal(env, { ORCHESTRATOR: '' }, parseConfFile);
+    expect(fs.readFileSync(file, 'utf8')).not.toContain('ORCHESTRATOR=');
+  });
+
+  it('defaults the voice to the local Breeze on Apple Silicon and MiniMax elsewhere', () => {
+    expect(defaultTTSProvider('darwin', 'arm64')).toBe('breeze');
+    expect(defaultTTSProvider('darwin', 'x64')).toBe('minimax');
+    expect(defaultTTSProvider('linux', 'arm64')).toBe('minimax');
+    expect(GlobalDefaults.TTS_PROVIDER).toBe(defaultTTSProvider());
   });
 });

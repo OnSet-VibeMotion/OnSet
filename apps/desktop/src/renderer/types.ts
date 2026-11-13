@@ -606,4 +606,43 @@ export interface VoiceLibrary {
   dir: string;
   default: string;
   voices: VoiceEntry[];
+  /** 录音与设计试听默认念的那段文字。 */
+  sample_text: string;
+  /** 这台机器能不能按描述设计音色（本机 Breeze TTS 2）。 */
+  design: {
+    ready: boolean;
+    supported: boolean;
+    problem: string;
+    /** 安装页里 Breeze 那一项的 id：/api/setup/run 的 only。 */
+    install_id: string;
+  };
+}
+
+/** /api/voice-design 生成的一段试听。 */
+export interface VoiceDraft {
+  id: string;
+  instruction: string;
+  text: string;
+}
+
+/** /api/settings 的一项：全局值、这个项目的值、现在实际用的值与它的来历。 */
+export interface SettingRow {
+  key: string;
+  label: string;
+  hint: string;
+  options: { value: string; label: string }[];
+  /** 全局也没设时用的内置默认。 */
+  default: string;
+  /** 全局设置里写的值；没写为空。 */
+  global: string;
+  /** 这个项目单独设的值；跟随全局为空。 */
+  project: string;
+  effective: string;
+  source: 'env' | 'dotenv' | 'project' | 'global' | 'default';
+}
+
+export interface SettingsResponse {
+  file: string;
+  has_project: boolean;
+  rows: SettingRow[];
 }

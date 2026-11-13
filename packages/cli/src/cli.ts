@@ -63,7 +63,7 @@ export const rootLong = `ArticleToMotion 竖屏 MG 视频制作工具。
 am 只随 ArticleToMotion 客户端使用：后台任务直接调用，编排工具与渲染器经
 am studio tools-mcp（MCP）调用，不对外提供命令行。
 
-配置解析优先级（高到低）：环境变量 > 项目 .env > article-to-motion.conf > 内置默认。
+配置解析优先级（高到低）：环境变量 > 项目 .env > article-to-motion.conf > 客户端设置页的全局设置 > 内置默认。
 用 am config get 读取解析结果，不要自己解析配置文件。
 项目 .env 不允许出现以 API_KEY / TOKEN / SECRET / PASSWORD 结尾的键，出现则拒绝启动。
 
