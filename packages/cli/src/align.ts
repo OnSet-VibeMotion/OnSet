@@ -1,6 +1,5 @@
 /**
  * 强制对齐映射的操作：从终稿导出朗读文本，再把对齐结果映射回终稿，写出 voice.srt 与 phrase-timeline.json。
- * 移植自 internal/cli/align.go。
  */
 import fs from 'node:fs';
 import path from 'node:path';

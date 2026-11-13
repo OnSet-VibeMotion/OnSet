@@ -7,7 +7,8 @@
 import * as envutil from '@am/engine/envutil';
 import { ExitError, type Out } from '../cobra';
 import { ResultMarker, type WorkerResult } from '@am/engine/opworker';
-import { findOp, normalizeParams, ParamError, type ParamValues } from './op';
+import { findOp, normalizeParams, opScopes, ParamError, type OpScope, type ParamValues } from './op';
+import { OpScopeEnv } from '@am/engine/opworker';
 
 /** 失败的退出码：与命令行相同，127 缺外部命令，130 被中断，ExitError 透传子进程的。 */
 export function exitCodeOf(err: unknown, signal: AbortSignal): number {
@@ -24,6 +25,9 @@ export async function runOpWorker(name: string, paramsJSON: string, out: Out, si
   };
   const op = findOp(name);
   if (!op) return finish({ ok: false, error: `没有这个操作：${name}`, param_error: true, exit_code: 1 });
+  // 调用方要求的权限范围（客户端替第三方插件调 am 操作时给 orchestrator）：不在范围里的操作一律拒绝。
+  const scope = process.env[OpScopeEnv];
+  if (scope && !opScopes(op).includes(scope as OpScope)) return finish({ ok: false, error: `${name} 不在 ${scope} 能调用的范围里`, param_error: true, exit_code: 1 });
   let params: ParamValues;
   try {
     const parsed: unknown = paramsJSON.trim() === '' ? {} : JSON.parse(paramsJSON);

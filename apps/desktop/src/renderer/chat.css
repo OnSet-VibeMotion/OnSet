@@ -1747,3 +1747,16 @@ div.tool {
   padding: 0 14px;
   font-size: 12px;
 }
+.chat .next-step .ns-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+.chat .next-step .ns-confirm button {
+  height: 30px;
+  padding: 0 14px;
+  font-size: 12px;
+}

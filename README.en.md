@@ -2,7 +2,7 @@
 
 # ArticleToMotion
 
-ArticleToMotion is a macOS desktop client for producing vertical and landscape motion-graphics videos. Starting from an article or a narration script, it covers the script, voice-over, subtitles, storyboard, concurrent scene rendering, concatenation, covers, and publishing. If you already have a final subtitle file, it can split that straight into scenes and render them.
+ArticleToMotion is a macOS desktop client for producing vertical and landscape motion-graphics videos. Starting from an article or a narration script, it covers the script, voice-over, subtitles, storyboard, concurrent scene rendering, concatenation, covers, and publishing. It can also make beat-synced films with no voice-over, where the picture follows the music.
 
 ▶ [Watch the ArticleToMotion promo video (MP4, 4m 47s)](https://github.com/chouheiwa/articale-to-motion/blob/main/docs/article-to-motion-tutorial.mp4)
 
@@ -116,7 +116,7 @@ A scene whose inputs changed is marked Stale, with the changed items named, and 
 
 ### Visual direction
 
-Projects no longer preset or lock a visual style. The tools guarantee the canvas, frame rate, and render determinism. Palette, typography, layout, materials, and motion are decided by the model from the film's content and each scene, so scenes may use different visual languages. The older built-in style packs remain only for compatibility with existing projects and no longer enter render prompts.
+Projects no longer preset or lock a visual style. The tools guarantee the canvas, frame rate, and render determinism. Palette, typography, layout, materials, and motion are decided by the model from the film's content and each scene, so scenes may use different visual languages. The project's `frame.md` records only technical facts about the canvas: size and frame rate, safe areas, default burned-in caption styling, and loudness targets.
 
 ### Film style (optional)
 
@@ -156,7 +156,7 @@ A character pack is a directory under `cast/<id>/`:
 - One `rig.svg` skeleton, or one per view.
 - `dna.md` holds the persona for the orchestrator and does not affect rendering.
 
-Per-speaker voice-overs are rebuilt into one timeline by the tools and then cut into beats per scene. The working rules ship with the project in `PROMPT-CAST-ADDENDUM.md`.
+Per-speaker voice-overs are rebuilt into one timeline by the tools and then cut into beats per scene. The working rules are the appendix at the end of the production prompt ("附：多角色叙事作业规程").
 
 ## Render memory
 
@@ -295,6 +295,10 @@ A draft grid never takes effect directly; you move on only after listening and c
 
 Beat analysis uses [beat-this](https://github.com/CPJKU/beat_this) (ISMIR 2024; code and weights are MIT). It gives both beats and downbeats and runs on a CPU, with no dependency on madmom.
 
+## Writing a plugin
+
+To add a step to the production flow (for example, automatic publishing), write an `am-station.json` as described in [docs/plugin-authoring.md](docs/plugin-authoring.md) (Chinese) and install it under "我的插件" in the client's settings. A plugin is installed once for this computer and applies to every project; the kinds of video and styles it brings can be picked when creating a project.
+
 ## Development
 
 Building from source needs Node.js 22+:
@@ -314,7 +318,7 @@ npm run dist -w am-desktop                   # build the .app (apps/desktop/rele
 
 `am` (`packages/cli`) is a program the client uses internally. Background jobs call it directly, and the orchestrator and renderers call it through its tool service (MCP). It is not offered to users as a command line. During development you can run it with `node packages/cli/dist/am.cjs <command>`.
 
-After changing the canvas table, the style table, or the prompt templates, run `npm run generate -w @am/engine` and commit the generated `assets/presets` and `assets/styles`. Development conventions are in `AGENTS.md` and `packages/engine/CONVENTIONS.md`.
+After changing the canvas table or the `frame.md` template, run `npm run generate -w @am/engine` and commit the generated `assets/presets`. Development conventions are in `AGENTS.md` and `packages/engine/CONVENTIONS.md`.
 
 ArticleToMotion is licensed under the [Apache License 2.0](./LICENSE). HyperFrames is an independent Apache-2.0 project, used at a pinned release when a project is created.
 

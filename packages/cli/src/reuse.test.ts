@@ -1,4 +1,3 @@
-// 移植自 internal/cli/reuse_test.go。
 import { tempDir } from './testutil';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,6 +11,7 @@ function reuseScene(): scene.Scene {
   const dir = tempDir();
   fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\n一句\n');
   fs.writeFileSync(path.join(dir, 'scene.json'), '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"一句"}');
+  fs.writeFileSync(path.join(dir, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
   fs.writeFileSync(path.join(dir, 'out.mp4'), 'video');
   return scene.load(dir);
 }
@@ -40,13 +40,12 @@ describe('reuseDecision', () => {
     expect(reason).toContain('file:transcript.srt');
   });
 
-  it('falls back to mod time without a record', () => {
+  it('marks an output without a record stale', () => {
     const s = reuseScene();
     const cfg = config.newConfig({ renderer: 'codex' });
     const env = { HOME: tempDir() };
-    for (const name of ['scene.json', 'transcript.srt']) shift(path.join(s.directory, name), -3600);
-    expect(reuseDecision(s, cfg, env)[0]).toBe(schedule.Skipped);
-    shift(path.join(s.directory, 'scene.json'), 3600);
-    expect(reuseDecision(s, cfg, env)[0]).toBe(schedule.Stale);
+    const [status, reason] = reuseDecision(s, cfg, env);
+    expect(status).toBe(schedule.Stale);
+    expect(reason).toContain('渲染记录');
   });
 });

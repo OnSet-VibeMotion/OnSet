@@ -1,15 +1,14 @@
-// 移植自 internal/cli/song_test.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Buffer, run, tempDir } from './testutil';
 import * as assets from '@am/engine/assets';
+import * as flow from '@am/engine/flow';
 import { sortedKeys } from '@am/engine/gojson';
-import * as preset from '@am/engine/preset';
 import * as scene from '@am/engine/scene';
 import * as schedule from '@am/engine/schedule';
 import * as song from '@am/engine/song';
-import { applySongCues, songOutputsCurrent, songScaffold } from './song_cmd';
+import { applySongCues, SongExplainerSkillName, songOutputsCurrent, songScaffold, verifySongInputs } from '@am/engine/plugins/song';
 
 it('song init modes', async () => {
   for (const delivery of ['speech', 'song']) {
@@ -29,7 +28,7 @@ describe('song cues and validation', () => {
     it(canvas, async () => {
       const root = tempDir();
       const out = new Buffer();
-      expect(await run(['init', root, '--canvas', canvas, '--style', preset.defaultStyle().id, '--skip-hyperframes', '--delivery', 'song'], out, out), out.text).toBe(0);
+      expect(await run(['init', root, '--canvas', canvas, '--skip-hyperframes', '--delivery', 'song'], out, out), out.text).toBe(0);
       const dir = path.join(root, song.Store, 'candidates', 'chosen');
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, 'audio.mp3'), 'audio');
@@ -57,12 +56,12 @@ describe('song cues and validation', () => {
         fs.mkdirSync(sd, { recursive: true });
         fs.writeFileSync(path.join(sd, 'transcript.srt'), '');
         fs.writeFileSync(path.join(sd, 'frame.md'), fs.readFileSync(path.join(root, 'frame.md')));
-        song.writeJSON(path.join(sd, 'scene.json'), sortedKeys({ id, duration_seconds: duration, text: '歌词', output: 'out.mp4', transcript: 'transcript.srt', style_guide: 'frame.md' }));
+        song.writeJSON(path.join(sd, 'scene.json'), sortedKeys({ id, duration_seconds: duration, text: '歌词', output: 'out.mp4', transcript: 'transcript.srt' }));
       });
       applySongCues(root, scenesRoot, out);
       expect(await run(['validate', 'song', '--project-root', root], out, out), out.text).toBe(0);
       const scenes = schedule.plan(scenesRoot);
-      const p = scene.buildPrompt(scenes[0], { [scene.SongExplainerSkillName]: path.join(root, '.agents', 'skills') });
+      const p = scene.buildPrompt(scenes[0], { [SongExplainerSkillName]: path.join(root, '.agents', 'skills') });
       expect(p).toContain('song-explainer');
       expect(p).toContain('不得生成或替换歌曲');
       const local = song.readTimeline(path.join(scenes[1].directory, 'song-cues.json'));
@@ -76,7 +75,7 @@ describe('song cues and validation', () => {
       expect(() => songOutputsCurrent(scenes, '')).not.toThrow();
       tl.lines![0].start = 0.4;
       song.saveTimeline(root, tl);
-      expect(() => scene.verifySongInputs(scenes[0]), 'stale song allowed').toThrow();
+      expect(() => verifySongInputs(scenes[0]), 'stale song allowed').toThrow();
       expect(await run(['validate', 'song', '--project-root', root], out, out), 'stale validate').not.toBe(0);
       applySongCues(root, scenesRoot, out);
       const updated = schedule.plan(scenesRoot);
@@ -92,15 +91,20 @@ describe('song cues and validation', () => {
   }
 });
 
-it('song scaffold conflict does not overwrite', () => {
+it('song scaffold conflict does not overwrite, and switches the recorded flow', () => {
   const root = tempDir();
-  fs.writeFileSync(path.join(root, 'PROMPT.md'), 'my prompt');
-  fs.writeFileSync(path.join(root, 'PROMPT-SONG.md'), 'custom song');
+  flow.recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
+  const skill = path.join(root, '.agents', 'skills', 'song-explainer', 'SKILL.md');
+  fs.mkdirSync(path.dirname(skill), { recursive: true });
+  fs.writeFileSync(skill, 'custom skill');
   expect(() => songScaffold(root), 'must reject conflict').toThrow();
   expect(fs.existsSync(path.join(root, 'song.yaml')), 'partial config').toBe(false);
-  fs.rmSync(path.join(root, 'PROMPT-SONG.md'));
+  expect(flow.flowRecord(root)?.id).toBe('speech');
+  fs.rmSync(skill);
   songScaffold(root);
-  expect(fs.readFileSync(path.join(root, 'PROMPT.md'), 'utf8'), 'user prompt overwritten').toBe('my prompt');
+  // 流程只看记录：补了歌曲资产，记录换成歌曲讲解，画幅不变。
+  expect(flow.flowRecord(root)).toEqual({ id: 'song', canvas: 'vertical-3x4' });
+  expect(fs.existsSync(path.join(root, 'PROMPT-SONG.md')), '不再往项目里拷提示词').toBe(false);
   expect(() => songScaffold(root), 'idempotent').not.toThrow();
 });
 
@@ -115,7 +119,7 @@ it('scene run-all: --song-timeline and --srt are mutually exclusive', async () =
 });
 
 it('song prompt requires the web handoff pause', () => {
-  const b = assets.shared().readText('PROMPT-SONG.md');
+  const b = assets.files().readText('plugins/song/sections/main.md');
   for (const want of ['song_handoff()', 'song_receive(', 'waiting_for_audio', '此处必须暂停等待用户回复', '不轮询目录', '完整歌词和曲风', 'FINAL_LYRICS']) {
     expect(b, `song prompt missing ${want}`).toContain(want);
   }

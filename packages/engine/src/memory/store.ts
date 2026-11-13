@@ -1,4 +1,4 @@
-// 移植自 internal/memory/store.go。Store 的其余方法分散在各自的文件里实现（与 Go 版的文件划分一致），
+// Store 的其余方法分散在各自的文件里实现，
 // 这里只做转发，免得一个类写成几千行。
 import fs from 'node:fs';
 import path from 'node:path';

@@ -28,6 +28,7 @@ export const test = base.extend({
       memory: path.join(root, 'memory'),
       voices: path.join(root, 'voices'),
       agent: path.join(root, 'agent'),
+      stations: path.join(root, 'stations'),
       settings: path.join(root, 'settings.conf'),
       registry: path.join(root, 'config', 'projects.json'),
     };
@@ -42,7 +43,14 @@ export const test = base.extend({
     const scene = path.join(project, 'scenes', 'scene-001');
     fs.mkdirSync(scene, { recursive: true });
     fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\n');
-    fs.writeFileSync(path.join(project, 'PROMPT.md'), '整片制作提示词\n');
+    // 新建时记下的流程：顶栏、制作路线与「开始制作」的提示词都按它。
+    fs.writeFileSync(
+      path.join(project, 'article-to-motion.flow.json'),
+      JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } }, null, 2) + '\n',
+    );
+    fs.writeFileSync(path.join(project, 'notes.md'), '项目笔记\n');
+    fs.mkdirSync(path.join(project, 'templates'));
+    fs.writeFileSync(path.join(project, 'templates', 'project-rules.md'), '# 项目规则\n');
     fs.writeFileSync(path.join(scene, 'voice.srt'), '1\n00:00:00,000 --> 00:00:01,000\nhello\n');
     fs.writeFileSync(path.join(scene, 'prompt.md'), 'before\n');
     fs.writeFileSync(
@@ -67,6 +75,8 @@ export const test = base.extend({
       AM_VOICES_DIR: sandbox.voices,
       // 导演的模型服务密钥：不碰开发者自己填的。
       AM_AGENT_DIR: sandbox.agent,
+      // 第三方插件（已装插件清单与插件的数据目录）：不碰开发者自己装的。
+      AM_STATIONS_DIR: sandbox.stations,
       AM_SETTINGS_FILE: sandbox.settings,
       AM_STUDIO_SKIP_SKILL_INSTALL: '1',
       ORCHESTRATOR: 'claude',
@@ -97,6 +107,25 @@ export async function openProject(page, project) {
   await expect(page.locator('#title')).toHaveText(project.name);
   // 对话是主栏，画面面板默认收起：收起栏里有了镜头就说明项目加载好了（窄窗口里收起栏不显示，只看在不在）。
   await expect(page.locator('.rail-scene[title="scene-001"]')).toBeAttached();
+}
+
+/**
+ * 在测试的插件目录里装上一个本机目录的插件（写用户级的 installed.json，与 station_add 写的同一种格式）。
+ * 插件对所有项目生效；客户端每次请求现读，开着也能装。
+ */
+export function installPlugin(sandbox, dir, id = 'fake-publisher') {
+  fs.mkdirSync(sandbox.stations, { recursive: true });
+  const role = { flow: false, replaces: '', after: '', nodes: true };
+  fs.writeFileSync(
+    path.join(sandbox.stations, 'installed.json'),
+    JSON.stringify({ version: 1, plugins: [{ id, version: '0.1.0', source: `link:${dir}`, commit: '', digest: '', role }] }, null, 2) + '\n',
+  );
+}
+
+/** 已装插件的 id（用户级的 installed.json）。 */
+export function installedPlugins(sandbox) {
+  const file = path.join(sandbox.stations, 'installed.json');
+  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')).plugins.map((p) => p.id) : [];
 }
 
 /** 打开画面面板（默认收起）。 */

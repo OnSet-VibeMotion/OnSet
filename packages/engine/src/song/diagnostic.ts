@@ -1,4 +1,3 @@
-// 移植自 internal/song/diagnostic.go。
 import { compareBytes } from '../gojson';
 import { decodeValue } from './jsondecode';
 

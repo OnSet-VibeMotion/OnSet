@@ -1,4 +1,4 @@
-// 移植自 internal/cli/e2e_test.go（Go 版只在 darwin / linux 上编译，这里同样只在非 Windows 上跑）。
+// 只在非 Windows 上跑。
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -7,7 +7,7 @@ import * as dialogue from '@am/engine/dialogue';
 import { formatG } from '@am/engine/gofmt';
 import { marshalIndent } from '@am/engine/gojson';
 import { Buffer, hasFfmpeg, lookPath, makeClip, run, runIn, setenv, tempDir } from './testutil';
-import { copyTree } from './cast_cmd';
+import { copyTree } from '@am/engine/plugins/cast';
 
 const skip = !hasFfmpeg || process.platform === 'win32';
 
@@ -57,7 +57,7 @@ describe.skipIf(skip)('end to end', () => {
       for (const name of ['transcription.srt', 'frame.md']) fs.copyFileSync(path.join(project, name), path.join(dir, name));
       fs.writeFileSync(
         path.join(dir, 'scene.json'),
-        `{"id":"${id}","duration_seconds":1.0,"output":"out.mp4","transcript":"transcription.srt","text":"内容","style_guide":"frame.md"}`,
+        `{"id":"${id}","duration_seconds":1.0,"output":"out.mp4","transcript":"transcription.srt","text":"内容"}`,
       );
     }
     process.chdir(project);
@@ -100,6 +100,7 @@ describe.skipIf(skip)('end to end', () => {
     const marker = path.join(project, 'renderer-was-called');
     fs.writeFileSync(path.join(binDir, 'codex'), `#!/bin/sh\nset -eu\n: > '${marker}'\n`, { mode: 0o755 });
     fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
+    fs.writeFileSync(path.join(project, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
     // 字幕跨度 10 秒，镜头只声明了 1 秒——少了 9 秒。
     fs.writeFileSync(path.join(project, 'transcription.srt'), '1\n00:00:00,000 --> 00:00:10,000\n很长的一句\n');
     const dir = path.join(project, 'scenes', 'scene-001');
@@ -264,9 +265,9 @@ describe.skipIf(skip)('end to end', () => {
       const dir = path.join(scenes, id);
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, 'transcription.srt'), '1\n00:00:00,000 --> 00:00:01,000\nx\n');
-      // 必须带 style_guide：不声明就按默认画幅 1080x1440 校验，素材是 320x240 会被正确拦下。
+      // 每个镜头目录放一份 320x240 的 frame.md：素材是 320x240。
       fs.copyFileSync(path.join(project, 'frame.md'), path.join(dir, 'frame.md'));
-      fs.writeFileSync(path.join(dir, 'scene.json'), `{"id":"${id}","duration_seconds":1.0,"output":"out.mp4","transcript":"transcription.srt","text":"内容","style_guide":"frame.md"}`);
+      fs.writeFileSync(path.join(dir, 'scene.json'), `{"id":"${id}","duration_seconds":1.0,"output":"out.mp4","transcript":"transcription.srt","text":"内容"}`);
     }
     process.chdir(project);
     const ffmpegDir = path.dirname(lookPath('ffmpeg'));

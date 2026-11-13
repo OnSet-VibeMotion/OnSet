@@ -1,4 +1,3 @@
-// 移植自 internal/align/cue.go。
 import { atomicWrite } from '../fsutil';
 import { goRound } from '../gofmt';
 import { units } from '../reads';

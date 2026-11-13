@@ -1,4 +1,3 @@
-// 移植自 internal/filmstyle/filmstyle.go。
 //
 // 整片风格的通用部分：风格来源的接口与登记、风格目录的查找，以及把一种风格装进项目的契约。
 //
@@ -13,8 +12,9 @@
 //	am-film-style.json  来源、风格、版本与内容摘要（ManifestFile）
 //
 // 其余文件（demo 源码、引擎、模型）由各来源自己决定。镜头渲染与制作提示词只依赖
-// 这份契约，不点名任何来源。具体来源在子目录里实现 Source 并在模块加载时 register，
-// 例如 ./lemo（lemo-opuscar 风格库）。新增来源不需要改这里。
+// 这份契约，不点名任何来源。具体来源由内置插件在 apply 里 ctx.filmStyleSource 登记
+// （例如 plugins/lemo-styles），已装的第三方插件清单的 film_styles 由 flow 经 usePluginSources 交进来。
+// 新增来源不需要改这里。
 //
 // 风格来源的数据是前置资源：只由 am setup 经 Source.prepare 下载，其余路径只检查。
 import os from 'node:os';
@@ -23,6 +23,7 @@ import { dataDir } from '../envutil';
 import { compareBytes } from '../gojson';
 import { goQuote, goTrimSpace } from '../gofmt';
 import type { Writer } from '../hyperframes';
+import { pluginFilmStyleSources } from '../plugin/registry';
 
 /** 某个来源风格目录里的一种风格。字段名照抄 Go 的 JSON tag。 */
 export interface Style {
@@ -90,36 +91,50 @@ export interface Source {
    * （例如上游 commit）。不联网；数据没就绪抛 prereq.MissingError。
    */
   fill(dir: string, style: Style, env: Record<string, string>): string;
-  /** 这个来源读的环境变量（例如数据目录的覆盖），要显式传给子进程。 */
-  envKeys(): string[];
 }
 
-const registry: Source[] = [];
+/** 第三方插件带来的风格来源的 ID 前缀（x-<插件 id>）。 */
+export const PluginSourcePrefix = 'x-';
 
-/** 登记一个风格来源，由来源模块在加载时调用。ID 重复抛错（Go 版 panic）。 */
-export function register(source: Source): void {
-  for (const existing of registry) {
-    if (existing.id() === source.id()) throw new Error('filmstyle: 风格来源重复登记：' + source.id());
-  }
-  registry.push(source);
-  // Array.prototype.sort 是稳定排序，对应 sort.SliceStable。
-  registry.sort((a, b) => compareBytes(a.id(), b.id()));
+/** 读已装的第三方插件带来的来源（flow/styles.ts 加载时交进来）。内置来源不在这里，在插件登记表里。 */
+let pluginSources: () => Source[] = () => [];
+
+/**
+ * 交进读第三方插件来源的函数。插件装在用户级，对所有项目与首页都一样；每次 sources() 现读，
+ * 装上、去掉插件立即生效。ID 必须以 x- 开头，与内置来源分开。
+ */
+export function usePluginSources(load: () => Source[]): void {
+  pluginSources = load;
 }
 
-/** 全部已登记的来源，按 ID 排序。 */
+/**
+ * 全部来源，按 ID 排序：内置插件登记的（plugin.PluginContext.filmStyleSource）加已装的第三方插件带来的。
+ * ID 重复直接报错。
+ */
 export function sources(): Source[] {
-  return [...registry];
+  const extra = pluginSources();
+  for (const source of extra) {
+    if (!source.id().startsWith(PluginSourcePrefix)) throw new Error('filmstyle: 插件来源的 ID 要以 x- 开头：' + source.id());
+  }
+  const all = [...pluginFilmStyleSources().map((o) => o.value), ...extra];
+  const seen = new Set<string>();
+  for (const source of all) {
+    if (seen.has(source.id())) throw new Error('filmstyle: 风格来源重复登记：' + source.id());
+    seen.add(source.id());
+  }
+  // Array.prototype.sort 是稳定排序，对应 sort.SliceStable。
+  return all.sort((a, b) => compareBytes(a.id(), b.id()));
 }
 
 /** 按 ID 找来源；没有时返回 undefined。 */
 export function sourceByID(id: string): Source | undefined {
-  return registry.find((source) => source.id() === id);
+  return sources().find((source) => source.id() === id);
 }
 
 /** 全部来源的风格，按来源、来源内顺序排列。 */
 export function catalog(): Style[] {
   const out: Style[] = [];
-  for (const source of registry) out.push(...source.catalog());
+  for (const source of sources()) out.push(...source.catalog());
   return out;
 }
 
@@ -207,14 +222,4 @@ export function rootDir(env: Record<string, string | undefined>): string {
 /** 某个来源的数据目录：<根目录>/<来源 ID>。 */
 export function sourceDir(env: Record<string, string | undefined>, sourceID: string): string {
   return path.join(rootDir(env), sourceID);
-}
-
-/**
- * 要显式传给子进程的环境变量：根目录与各来源自己的覆盖。
- * 安全模式的白名单里没有它们，不传的话子进程算出另一个目录，找不到已准备好的数据。
- */
-export function childEnvKeys(): string[] {
-  const keys = [RootEnv];
-  for (const source of registry) keys.push(...source.envKeys());
-  return keys;
 }

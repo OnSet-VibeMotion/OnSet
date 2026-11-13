@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { recordFlow } from '../flow';
 import { discoverScenes } from './scenes';
 import { stepOf } from './studio';
 import { readStepMark, writeStepMark } from './view';
@@ -11,8 +12,10 @@ afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
-function project(files: Record<string, string>): string {
+/** 一个记下了流程（缺省口播）的项目，带着给定的文件。 */
+function project(files: Record<string, string>, flowID = 'speech'): string {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-step-')));
+  recordFlow(root, { id: flowID, canvas: 'vertical-3x4' });
   roots.push(root);
   for (const [name, body] of Object.entries(files)) {
     fs.mkdirSync(path.dirname(path.join(root, name)), { recursive: true });
@@ -29,7 +32,7 @@ describe('production step', () => {
     // 新项目：第一步。
     expect(step(project({}))).toEqual({ step: 'script' });
     expect(step(project({ 'production/script-final.md': 'x' }))).toEqual({ step: 'script' });
-    expect(step(project({ 'beat.yaml': 'x', 'production/beat/grid.json': '{}' }))).toEqual({ step: 'beat' });
+    expect(step(project({ 'beat.yaml': 'x', 'production/beat/grid.json': '{}' }, 'beat'))).toEqual({ step: 'beat' });
     expect(step(project({ 'production/scene-plan.json': '{}' }))).toEqual({ step: 'storyboard' });
     expect(step(project({ 'production/scene-plan.json': '{}', 'scenes/scene-001/scene.json': scene }))).toEqual({ step: 'storyboard' });
     // 镜头都出片了，下一站是画面验收，仍在「镜头」这一步。

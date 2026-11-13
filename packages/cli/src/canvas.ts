@@ -1,7 +1,5 @@
-// 画幅与风格的选择。移植自 internal/cli/canvas.go 与 style.go。
-import fs from 'node:fs';
+// 画幅的选择。
 import * as preset from '@am/engine/preset';
-import { goPathError } from '@am/engine/fsutil';
 import type { Out } from './cobra';
 
 /** Go 的 %-Ns：按码点数在右侧补空格。 */
@@ -133,73 +131,7 @@ export function runPicker<T>(picker: Picker<T>, name: string, stdout: Out): Prom
   });
 }
 
-/** init 的风格选择框：自定义风格排第一。 */
-export function stylePicker(): Picker<preset.Style> {
-  return { title: '选择风格', choices: [preset.CustomStyle, ...preset.allStyles()], label: (s) => s.label };
-}
-
 /** init 的画幅选择框。 */
 export function canvasPicker(): Picker<preset.Preset> {
   return { title: '选择画幅', choices: preset.all(), label: (p) => p.label };
-}
-
-// ---------------------------------------------------------------- style（移植自 style.go）
-
-/** 旧版自定义风格描述的位置，供存量项目读取。 */
-export const styleBriefPath = preset.CustomStyleBriefPath;
-
-/** 描述会原样进入编排提示词，过长的粘贴多半是贴错了文件。 */
-export const maxStyleBriefRunes = 4000;
-
-/** 供错误信息与帮助文字共用的可读清单。自定义风格排在第一项：内置风格只作为旧版参数保留。 */
-export function styleOptions(): string {
-  const lines = [`  ${padRight(preset.CustomStyleFlag, 32)}${preset.CustomStyle.label}`];
-  for (const s of preset.allStyles()) lines.push(`  ${padRight(s.id, 32)}${s.label}`);
-  return lines.join('\n');
-}
-
-/** 决定本次 init 使用哪套风格。风格参数只为兼容旧版初始化流程；渲染提示词不会把它当作视觉要求。 */
-export function resolveStyle(flag: string): preset.Style {
-  if (flag === '' || flag === preset.CustomStyleFlag) return preset.CustomStyle;
-  const s = preset.styleByID(flag);
-  if (!s) throw new Error(`未知风格 ${JSON.stringify(flag)}，可选：\n${styleOptions()}`);
-  return s;
-}
-
-export const defaultStyleBrief = preset.AutomaticStyleBrief;
-
-/**
- * 取得自定义风格的文字描述；内置风格不接受描述。内置风格带描述直接报错而不是忽略：
- * 用户以为描述生效了，成片却还是原样的内置风格，这比一条报错更难发现。
- */
-export function resolveStyleBrief(style: preset.Style, flag: string, file: string): string {
-  if (style.id !== preset.CustomStyle.id) {
-    if (flag !== '' || file !== '') throw new Error(`--style-brief / --style-brief-file 只能与 --style ${preset.CustomStyleFlag} 一起使用`);
-    return '';
-  }
-  let raw: string;
-  if (flag !== '' && file !== '') throw new Error('--style-brief 与 --style-brief-file 只能二选一');
-  else if (flag !== '') raw = flag;
-  else if (file !== '') {
-    try {
-      raw = fs.readFileSync(file, 'utf8');
-    } catch (err) {
-      throw new Error(`读取风格描述文件失败：${goPathError('open', file, err)}`);
-    }
-  } else return defaultStyleBrief;
-  const brief = raw.trim();
-  if (brief === '') throw new Error('风格描述不能为空');
-  const n = [...brief].length;
-  if (n > maxStyleBriefRunes) throw new Error(`风格描述过长（${n} 字，上限 ${maxStyleBriefRunes}）`);
-  return brief;
-}
-
-/** 写进项目的描述文件内容。 */
-export function styleBriefDocument(brief: string): string {
-  return (
-    '# 旧版风格描述（兼容文件）\n\n' +
-    '> 由旧版 `am init` 写入，仅供存量项目参考。新镜头的配色、字体、版式、材质与动效由镜头自行决定；改动本文件不会形成渲染要求。\n\n' +
-    brief +
-    '\n'
-  );
 }

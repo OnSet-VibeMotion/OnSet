@@ -11,6 +11,9 @@ export const ResultMarker = '\u0000am-result ';
 /** 执行进程的入口参数：`<am> __op <名字> <参数 JSON>`。 */
 export const WorkerArg = '__op';
 
+/** 执行进程只跑这个权限范围里的操作（如 orchestrator）；不设不限。客户端替第三方插件调 am 操作时设它。 */
+export const OpScopeEnv = 'AM_OP_SCOPE';
+
 export interface WorkerResult {
   ok: boolean;
   /** 结构化结果（操作返回的 data）。 */

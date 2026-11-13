@@ -1,4 +1,4 @@
-// 时间线事件（移植自 internal/memory/store.go 的 Event 部分）。单独成文件，免得各文件互相引用 store.ts 时在模块初始化阶段成环。
+// 时间线事件。单独成文件，免得各文件互相引用 store.ts 时在模块初始化阶段成环。
 import { sortedKeys } from '../gojson';
 
 /** 时间线上的一条事件。 */

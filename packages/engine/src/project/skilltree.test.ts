@@ -1,4 +1,4 @@
-// 移植自 internal/project/skilltree_test.go 中不依赖 scene 包的门禁。
+// 技能树里不依赖 scene 包的门禁。
 // 依赖 scene.RegisteredSkills / scene.ResolveSkill 的几条在 skilltree.scene.test.ts（scene 移植前跳过）。
 import fs from 'node:fs';
 import os from 'node:os';

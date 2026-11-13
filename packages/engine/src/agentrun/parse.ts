@@ -1,4 +1,3 @@
-// 移植自 internal/agentrun/parse.go。
 //
 // agentrun 运行编排工具，并把各家 CLI 的结构化输出统一成同一套事件。
 //

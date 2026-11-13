@@ -1,4 +1,4 @@
-// 移植自 internal/hyperframes/hftest：给测试造一份「已装好」的 HyperFrames CLI，免得测试真的去 npm install。
+// 给测试造一份「已装好」的 HyperFrames CLI，免得测试真的去 npm install。
 import fs from 'node:fs';
 import path from 'node:path';
 import { PinnedVersion, cliBinary } from '../index';

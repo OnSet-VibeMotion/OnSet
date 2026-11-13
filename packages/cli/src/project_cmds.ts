@@ -1,17 +1,17 @@
 /**
- * init（命令行专用）、config_get、archive。移植自 internal/cli/cli.go 里内联定义的这三个命令。
+ * init（命令行专用）、config_get、archive。
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import * as archive from '@am/engine/archive';
 import * as config from '@am/engine/config';
 import * as filmstyle from '@am/engine/filmstyle';
-import '@am/engine/filmstyle/sources';
+import '@am/engine/plugin';
 import * as hyperframes from '@am/engine/hyperframes';
 import * as preset from '@am/engine/preset';
 import * as projectinit from '@am/engine/projectinit';
 import * as toolinstall from '@am/engine/toolinstall';
-import { canvasOptions, resolveCanvas, resolveStyle, resolveStyleBrief, styleBriefDocument, styleBriefPath, styleOptions } from './canvas';
+import { canvasOptions, resolveCanvas } from './canvas';
 import { currentEnvironment, hyperframesVersion, maxArgs, skillsProgressPrinter } from './cli';
 import { Command, type Out, ref } from './cobra';
 import { reportFilmStyle } from './filmstyle';
@@ -20,14 +20,10 @@ import { bool, str } from './ops/common';
 import { defineOp } from './ops/op';
 
 const narrationSolo = projectinit.NarrationSolo;
-const narrationCast = projectinit.NarrationCast;
 
 export function newInitCommand(stdout: Out, stderr: Out): Command {
   const skipHyperframes = ref(false);
   const canvasID = ref('');
-  const styleID = ref('');
-  const styleBrief = ref('');
-  const styleBriefFile = ref('');
   const narration = ref('');
   const delivery = ref('');
   const filmStyleName = ref('');
@@ -45,18 +41,14 @@ export function newInitCommand(stdout: Out, stderr: Out): Command {
 非交互环境（CI、管道）必须显式传 --canvas，不会静默取默认值；不传且无法交互时报错退出。
 
 视觉风格不属于初始化契约：画幅决定画布与安全区，配色、字体、版式、材质和动效
-由模型根据本片内容与各镜头文案自由决定。旧版风格参数仍接受，但只为兼容旧脚本，
-不会成为渲染提示词或渲染前置校验。
-旧版 --style 可选值（仅用于兼容旧脚本）：
-` +
-      styleOptions() +
-      `
+由模型根据本片内容与各镜头文案自由决定，或用 --film-style 选一种整片风格。
 
-frame.md 仅为旧项目保留，供画幅等技术信息读取；它不再规定镜头的视觉风格。
+frame.md 只记画幅的技术信息：画布与帧率、安全区、烧录字幕的缺省样式与混音响度目标。
 
 写入内容：
-  PROMPT.md、PROMPT-PRODUCTION.md、article-to-motion.conf、.env.example
-  frame.md（画幅技术信息；旧版风格参数会带出兼容文件）、assets/fonts/ 中文字体、assets/style-guide/ 示例
+  article-to-motion.conf、.env.example、article-to-motion.flow.json（记下讲解形式对应的流程与画幅；
+  制作提示词不写进项目，开工时按这份记录组合）
+  frame.md（画幅技术信息）、assets/fonts/ 中文正文字体
   templates/project-rules.md（am run 据此派生 AGENTS.md / CLAUDE.md 等）
   .agents/skills/ 内置技能树（text-to-lottie、algorithmic-art），随二进制下发
 
@@ -87,8 +79,7 @@ am setup 把它下载进缓存；缓存里没有时 am init 写完项目文件�
 
 叙事模式由 --narration 一次性选定，默认 solo（单口播）。传 cast 会额外在
 项目根写 cast.yaml 并建出空的 cast/ 目录，进入多角色对话叙事模式；此时
-production 阶段的 TTS 与时间线装配规程改为遵守随项目下发的
-PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 packs 为空
+配音与时间线装配改为遵守制作提示词末尾的「附：多角色叙事作业规程」。cast.yaml 刚建出时 packs 为空
 列表，这是预期状态：项目在第一次 am cast add / am cast new 之前本来就还
 没有可用角色。
 
@@ -117,21 +108,17 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
   am init my-video --canvas landscape-16x9 --film-style lemo-opuscar/impasto`,
     args: maxArgs(1, 'DIR'),
     runE: async (cmd, args) => {
-      if (narration.value !== narrationSolo && narration.value !== narrationCast) {
-        throw new Error(`无效的 --narration: ${narration.value}（可选：${narrationSolo} ${narrationCast}）`);
-      }
+      const modes = projectinit.narrations().map((n) => n.id);
+      if (!modes.includes(narration.value)) throw new Error(`无效的 --narration: ${narration.value}（可选：${modes.join(' ')}）`);
       const target = path.resolve(args.length === 1 ? args[0] : '.');
-      if (!['speech', 'song', 'beat'].includes(delivery.value)) throw new Error('--delivery 必须为 speech、song 或 beat');
-      projectinit.validate({ target, canvas: '', style: preset.CustomStyle, delivery: delivery.value, narration: narration.value });
+      // 讲解形式就是项目的流程：可选值来自内置流程与内置插件登记的流程。
+      const ids = projectinit.deliveryFlows().map((f) => f.id);
+      if (!ids.includes(delivery.value)) throw new Error(`--delivery 必须为 ${ids.slice(0, -1).join('、')} 或 ${ids[ids.length - 1]}`);
+      projectinit.validate({ target, canvas: '', delivery: delivery.value, narration: narration.value });
       const filmStyle = filmStyleName.value !== '' ? filmstyle.lookup(filmStyleName.value) : undefined;
       const chosen = await resolveCanvas(canvasID.value, process.stdin, stdout);
-      const style = resolveStyle(styleID.value);
-      const brief = resolveStyleBrief(style, styleBrief.value, styleBriefFile.value);
-      const extra: Record<string, string> = {};
-      if (brief !== '') extra[styleBriefPath] = styleBriefDocument(brief);
-      const result = projectinit.create({ target, canvas: chosen.id, style, delivery: delivery.value, narration: narration.value, extra });
+      const result = projectinit.create({ target, canvas: chosen.id, delivery: delivery.value, narration: narration.value });
       stdout.write(`项目已初始化：${target}（画幅 ${chosen.label}，新增 ${result.created}，未变 ${result.unchanged}）\n`);
-      // 风格文件只为旧项目和画幅读取保留，不再作为渲染前的定稿门禁。
       if (filmStyle) {
         let installed: filmstyle.InstallResult;
         try {
@@ -163,12 +150,27 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
   const flags = initCmd.flags();
   flags.boolVar(skipHyperframes, 'skip-hyperframes', false, '跳过从本机缓存拷入 HyperFrames 官方技能；不影响随二进制下发的内置技能树');
   flags.stringVar(canvasID, 'canvas', '', '画幅预设：' + preset.ids().join(' | ') + '；不传则在终端里交互选择');
-  flags.stringVar(styleID, 'style', '', '旧版视觉风格参数（仅兼容，不作为渲染要求）：' + [...preset.styleIDs(), preset.CustomStyleFlag].join(' | '));
-  flags.stringVar(styleBrief, 'style-brief', '', '旧版自定义风格描述（仅兼容），只能与 --style ' + preset.CustomStyleFlag + ' 一起使用');
-  flags.stringVar(styleBriefFile, 'style-brief-file', '', '从文件读取旧版自定义风格描述，与 --style-brief 二选一');
-  flags.stringVar(narration, 'narration', narrationSolo, '叙事模式：' + narrationSolo + '（单口播，默认） | ' + narrationCast + '（多角色对话，额外写出 cast.yaml 与 cast/）');
+  flags.stringVar(
+    narration,
+    'narration',
+    narrationSolo,
+    '叙事模式：' +
+      projectinit
+        .narrations()
+        .map((n) => `${n.id}（${n.name}${n.id === narrationSolo ? '，默认' : ''}）`)
+        .join(' | '),
+  );
   flags.stringVar(filmStyleName, 'film-style', '', '整片风格：来源/目录名，或唯一的目录名、中文名、英文名（am film-style list）；不传则各镜头自主定视觉');
-  flags.stringVar(delivery, 'delivery', 'speech', '讲解形式：speech（默认）、song（单人整曲）或 beat（无配音卡点）');
+  flags.stringVar(
+    delivery,
+    'delivery',
+    'speech',
+    '讲解形式：' +
+      projectinit
+        .deliveryFlows()
+        .map((f) => `${f.id}（${f.name}${f.id === 'speech' ? '，默认' : ''}）`)
+        .join('、'),
+  );
   return initCmd;
 }
 

@@ -1,4 +1,3 @@
-// 移植自 internal/memory/consolidate.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import { goQuote } from '../gofmt';
@@ -7,7 +6,7 @@ import { load as loadScene, loadRecord } from '../scene';
 import { preferenceSignals, signalToJSON, type Signal } from './conversation';
 import { failure, SourceConversation, SourceExam, SourceFeedback, SourceRender, type Episode } from './episode';
 import { EventConsolidate, EventDraftReject, EventTrial } from './events';
-import { FeatureDescriptions, knownCheckers } from './features';
+import { featureDescriptions, knownCheckers } from './features';
 import { compactStamp } from './gostr';
 import { readDirSorted, walkDir, writeJSON } from './io';
 import { lint } from './lint';
@@ -524,7 +523,8 @@ from_episodes: [ep-20261102-101500-a1b2c3]
 
 `;
   b += '## 镜头特征\n\n';
-  for (const name of Object.keys(FeatureDescriptions).sort(compareBytes)) b += `- \`${name}\`：${FeatureDescriptions[name]}\n`;
+  const features = featureDescriptions();
+  for (const name of Object.keys(features).sort(compareBytes)) b += `- \`${name}\`：${features[name]}\n`;
   b += '- `handoff:<手法>`：交接用了某种手法（carry、match、push_in、flood、pan、settle）\n\n## 校验器\n\n';
   for (const id of knownCheckers()) b += `- \`${id}\`\n`;
   b += '\n## 已有记忆\n\n';

@@ -1,6 +1,6 @@
 /**
  * 整片风格（../filmstyle）在 Studio 里的入口：各风格来源的目录与海报、本项目的
- * 整片风格、装 / 换 / 去掉。移植自 internal/studio/filmstyle.go。
+ * 整片风格、装 / 换 / 去掉。
  *
  * 来源数据是前置资源（am setup 准备），这里只读不下载。装与去掉经 am film-style 子命令完成，
  * 占项目写锁，与渲染、拼接同一条路：Studio 自己不写项目文件。这里不点名任何来源，
@@ -11,12 +11,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { envMap } from '../envutil';
 import * as filmstyle from '../filmstyle';
-// 全部风格来源经 sources 登记进 filmstyle；新增来源只改 sources 模块。
-import '../filmstyle/sources';
+// 风格来源由内置插件登记（filmstyle 的来源表取插件登记表），导入 plugin 包保证内置插件都登记了。
+import '../plugin';
 import { newToolchain } from '../mediaprobe';
 import { DecodeError, decodeJSON, fieldBool, fieldString, goMap, methodNotAllowed, serveFile, writeError, writeJSON } from './http';
 import type { Project, Server } from './studio';
 import { runStudioOp, runWriteTask, writeTaskError, type Task } from './tasks';
+// 已装的第三方插件带来的风格来源由 flow 加载时交给 filmstyle（flow/styles.ts）。
+import '../flow';
 
 /** /api/film-styles 里的一个来源。ready 为 false 时来源数据还没由 am setup 准备好（附 problem）。 */
 export interface FilmStyleSource {
@@ -38,13 +40,14 @@ export function styleJSON(style: filmstyle.Style): Record<string, unknown> {
     en: style.en,
     category_cn: style.category_cn,
     category_en: style.category_en,
-    uses: style.uses,
+    // 目录式风格库（第三方插件）的风格没有「适合」：给空数组，界面按数组用。
+    uses: style.uses ?? [],
     summary: style.summary,
     tags: style.tags && style.tags.length > 0 ? style.tags : undefined,
   };
 }
 
-/** Manifest 按 Go struct 的字段顺序写出（legacy 是 json:"-"）。 */
+/** Manifest 按字段顺序写出。 */
 function manifestJSON(manifest: filmstyle.Manifest): Record<string, unknown> {
   return {
     source: manifest.source,

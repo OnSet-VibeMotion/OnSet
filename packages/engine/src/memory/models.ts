@@ -1,4 +1,3 @@
-// 移植自 internal/memory/models.go。
 import path from 'node:path';
 import { sortedKeys } from '../gojson';
 import { configuredModel } from '../tools';

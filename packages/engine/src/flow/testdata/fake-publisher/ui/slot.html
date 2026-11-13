@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>发布小窗</title><script src="/station-ui/_sdk.js"></script></head>
+<body>
+  <p id="where">…</p>
+  <button id="open">打开发布看板</button>
+  <script>
+    am.info().then((info) => {
+      document.getElementById('where').textContent = '嵌在 ' + info.context.slot + ' · 默认平台 ' + info.settings.platform;
+    });
+    document.getElementById('open').onclick = () => am.open('dashboard');
+  </script>
+</body>
+</html>

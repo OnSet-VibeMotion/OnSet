@@ -1,7 +1,6 @@
 /**
  * am setup 的终端界面：每项前置资源一行，状态图标、名字、版本、进展对齐成列。终端里原地重画（转圈图标与计时）；
  * 不是终端（管道、CI）时每次状态或阶段变化打一行，不重画。git / npm 的原始输出不上屏，写进日志文件。
- * 移植自 internal/cli/setupview.go。
  */
 import os from 'node:os';
 import type { Out } from './cobra';

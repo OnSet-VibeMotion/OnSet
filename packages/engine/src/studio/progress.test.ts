@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { computeStations, readProgress, recordGate, stationOfPath } from './progress';
+import { builtinFlows, installStation, recordFlow } from '../flow';
+import { computeStations, readProgress, recordGate, stationDefs, stationOfPath } from './progress';
 import { discoverScenes } from './scenes';
 
 const roots: string[] = [];
@@ -10,8 +11,10 @@ afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
-function project(files: Record<string, string>): string {
+/** 一个记下了流程（缺省口播）的项目，带着给定的文件。 */
+function project(files: Record<string, string>, flowID = 'speech'): string {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-progress-')));
+  recordFlow(root, { id: flowID, canvas: 'vertical-3x4' });
   roots.push(root);
   for (const [name, body] of Object.entries(files)) write(root, name, body);
   return root;
@@ -102,7 +105,7 @@ describe('production map', () => {
   });
 
   it('uses the beat stations for beat projects', () => {
-    const root = project({ 'beat.yaml': 'x', 'production/beat/story.md': '# 片名' });
+    const root = project({ 'beat.yaml': 'x', 'production/beat/story.md': '# 片名' }, 'beat');
     const p = stations(root);
     expect(p.mode).toBe('beat');
     expect(p.current).toBe('gate-story');
@@ -144,5 +147,26 @@ describe('production map', () => {
     expect(stationOfPath('covers/douyin.png', 'speech')).toBe('publish');
     expect(stationOfPath('production/beat/plan.json', 'beat')).toBe('plan');
     expect(stationOfPath('production/studio/step.json', 'speech')).toBe('');
+  });
+
+  it('places and judges a third-party station from its declaration', () => {
+    const root = project({});
+    write(root, 'production/review/review.json', '{"problems":[]}', 120);
+    installStation(`link:${path.join(__dirname, '..', 'flow', 'testdata', 'fake-publisher')}`);
+    const ids = stations(root).stations.map((s) => s.id);
+    expect(ids.slice(-2)).toEqual(['publish', 'auto-publish']);
+    expect(status(root)['auto-publish']).toBe('todo');
+    write(root, 'production/publish/receipts.json', '{}', 60);
+    expect(status(root)['auto-publish']).toBe('done');
+    // 插件的产物不让自带的站变成「跳过」。
+    expect(status(root)['publish']).toBe('todo');
+    // 复查比回执新：要重新发。
+    write(root, 'production/review/review.json', '{"problems":[]}');
+    expect(status(root)['auto-publish']).toBe('stale');
+    expect(stationOfPath('production/publish/receipts.json', 'speech')).toBe('');
+  });
+
+  it('judges every station of every builtin flow', () => {
+    for (const f of builtinFlows) expect(() => stationDefs(f.id), f.id).not.toThrow();
   });
 });

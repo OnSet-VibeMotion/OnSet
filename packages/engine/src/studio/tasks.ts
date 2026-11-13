@@ -1,6 +1,5 @@
 /**
- * 后台任务（渲染、拼接、复查、装整片风格……）与它们的事件流。移植自 internal/studio/features.go 里
- * 与 scene / validate 无关的部分：Task、addTask / updateTask / runTask / runWriteTask、/api/tasks、
+ * 后台任务（渲染、拼接、复查、装整片风格……）与它们的事件流：Task、addTask / updateTask / runTask / runWriteTask、/api/tasks、
  * 任务 SSE、runStudioOp。
  */
 import fs from 'node:fs';
@@ -13,6 +12,8 @@ import { ExitError, start } from '../procgroup';
 import { goMap, methodNotAllowed, nowTime, writeError, writeJSON } from './http';
 import { BusyError, overrideAgents, type AgentChoice } from './sessions';
 import type { Project, Server } from './studio';
+import { emitStudioEvent } from './events';
+import { stationsDir } from '../flow/fetch';
 
 export interface Task {
   task_id: string;
@@ -21,6 +22,10 @@ export interface Task {
   progress: number;
   message: string;
   error?: string;
+  /** 任务跑完了，但有要用户留意的事（第三方站的操作写了声明范围之外的文件）。 */
+  warning?: string;
+  /** 跑完后给界面的结构化结果（取回插件时是给用户看的实情与待装编号）。不落盘。 */
+  result?: unknown;
   created_at: string;
   updated_at: string;
 }
@@ -33,6 +38,8 @@ export function taskJSON(t: Task): Record<string, unknown> {
     progress: t.progress,
     message: t.message,
     error: t.error || undefined,
+    warning: t.warning || undefined,
+    result: t.result,
     created_at: t.created_at,
     updated_at: t.updated_at,
   };
@@ -87,6 +94,7 @@ export function loadPersistedTasks(s: Server): void {
       progress: typeof r.progress === 'number' ? r.progress : 0,
       message: str('message'),
       error: str('error') || undefined,
+      warning: str('warning') || undefined,
       created_at: str('created_at') || '0001-01-01T00:00:00Z',
       updated_at: str('updated_at') || '0001-01-01T00:00:00Z',
     };
@@ -146,6 +154,14 @@ export function updateTask(s: Server, id: string, status: string, message: strin
   persistTasks(s);
 }
 
+/** 给任务记一条提醒（与成败无关，界面用警示样式显示）。 */
+export function warnTask(s: Server, id: string, warning: string): void {
+  const t = s.tasks.tasks.get(id);
+  if (!t) return;
+  t.warning = warning;
+  persistTasks(s);
+}
+
 export function runTask(s: Server, t: Task, work: (signal: AbortSignal) => Promise<void>): void {
   updateTask(s, t.task_id, 'running', '正在处理', 0.1, null);
   const controller = new AbortController();
@@ -164,6 +180,14 @@ export function runTask(s: Server, t: Task, work: (signal: AbortSignal) => Promi
       return;
     }
     updateTask(s, t.task_id, 'succeeded', '任务完成', 1, null);
+    // 第三方站自己的任务不发：免得钩子互相触发、没完没了。
+    if (!t.type.startsWith('station.')) {
+      try {
+        emitStudioEvent(s, s.currentProject(), 'task.finished', { task: t.type, message: t.message });
+      } catch {
+        // 没有打开的项目：不发。
+      }
+    }
   })();
 }
 
@@ -196,8 +220,15 @@ export interface OpOutcome {
   data?: unknown;
 }
 
-export function runStudioOp(s: Server, signal: AbortSignal, p: Project, name: string, params: Record<string, unknown>): Promise<OpOutcome> {
-  return runStudioOpWith(s, signal, p, { tool: '', renderer: '' }, name, params);
+export function runStudioOp(s: Server, signal: AbortSignal, p: Project, name: string, params: Record<string, unknown>, opts: OpRunOptions = {}): Promise<OpOutcome> {
+  return runStudioOpWith(s, signal, p, { tool: '', renderer: '' }, name, params, opts);
+}
+
+export interface OpRunOptions {
+  /** 额外的环境变量（如 opworker.OpScopeEnv）。 */
+  env?: Record<string, string>;
+  /** 边跑边收到的文字（第三方站的进度行由调用方解析）。 */
+  onText?: (text: string) => void;
 }
 
 /**
@@ -205,15 +236,39 @@ export function runStudioOp(s: Server, signal: AbortSignal, p: Project, name: st
  * 用网页选的工具覆盖项目配置：子进程环境里的 RENDERER 优先于 article-to-motion.conf，
  * scene_run 因此用网页选的渲染工具。参数按名字给，不拼命令行。
  */
-export async function runStudioOpWith(s: Server, signal: AbortSignal, p: Project, choice: AgentChoice, name: string, params: Record<string, unknown>): Promise<OpOutcome> {
+export async function runStudioOpWith(
+  s: Server,
+  signal: AbortSignal,
+  p: Project,
+  choice: AgentChoice,
+  name: string,
+  params: Record<string, unknown>,
+  opts: OpRunOptions = {},
+): Promise<OpOutcome> {
+  return runOpIn(s, signal, p.path, overrideAgents(config.load(p.path, null), choice), name, params, opts);
+}
+
+/**
+ * 跑一条与项目无关的操作（装、去掉、更新插件）：工作目录是插件的存放目录，配置只有全局设置，
+ * 不占项目写锁，没有打开项目也能跑。
+ */
+export function runUserOp(s: Server, signal: AbortSignal, name: string, params: Record<string, unknown>): Promise<OpOutcome> {
+  const dir = stationsDir(envMap());
+  fs.mkdirSync(dir, { recursive: true });
+  return runOpIn(s, signal, dir, config.load(dir, null), name, params);
+}
+
+async function runOpIn(s: Server, signal: AbortSignal, cwd: string, cfg: config.Config, name: string, params: Record<string, unknown>, opts: OpRunOptions = {}): Promise<OpOutcome> {
   // Windows 上 executable 是 am.cjs，用 Electron / Node 来跑（envutil.amCommand）。
   const am = amCommand(s.executable());
-  const projectConfig = overrideAgents(config.load(p.path, null), choice);
   const args = [...am.args, ...(s.config.unsafe ? ['--unsafe'] : []), ...workerArgs(name, params)];
-  const env = { ...config.childEnvironment(projectConfig, envMap(), s.config.unsafe, parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? '')), ...am.env };
-  const started = await start(am.command, args, { cwd: p.path, env, stdio: ['ignore', 'pipe', 'pipe'], signal });
+  const env = { ...config.childEnvironment(cfg, envMap(), s.config.unsafe, parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? '')), ...am.env, ...(opts.env ?? {}) };
+  const started = await start(am.command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], signal });
   const chunks: Buffer[] = [];
-  started.child.stdout!.on('data', (chunk: Buffer) => chunks.push(chunk));
+  started.child.stdout!.on('data', (chunk: Buffer) => {
+    chunks.push(chunk);
+    opts.onText?.(chunk.toString('utf8'));
+  });
   started.child.stderr!.on('data', (chunk: Buffer) => chunks.push(chunk));
   let waitErr: unknown = null;
   try {

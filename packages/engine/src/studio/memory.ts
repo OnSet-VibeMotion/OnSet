@@ -1,5 +1,5 @@
 /**
- * 记忆面板。移植自 internal/studio/memory.go。
+ * 记忆面板。
  *
  * 读接口直接读记忆库（只读，不记快照）；面板上的操作都经 am memory 子命令。
  * 唯一的例外是对话信号（recordUtterance）：每轮结束、每次回退各追加一段经历，
@@ -18,6 +18,7 @@ import { discoverScenes, fileExists } from './scenes';
 import type { Project, Server } from './studio';
 import { addTask, runStudioOp, runTask, runWriteTask, writeTaskError } from './tasks';
 import type { Turn } from './turns';
+import { emitStudioEvent } from './events';
 
 function memoryStore(s: Server): { p: Project; cfg: config.Config; store: memory.Store } | Response {
   const p = s.projectOr404();
@@ -114,7 +115,7 @@ export function memoryAPI(s: Server, request: Request): Response {
         runs: runs.map(memory.runSummaryToJSON),
         pending: pendingProblems(episodes, status.last_consolidated),
         // 面板显示的大白话：校验器、事件类型与镜头特征都不直接露出 ID。
-        labels: goMap({ checks: labels(memory.CheckerLabels), events: labels(memory.EventLabels), features: labels(memory.FeatureDescriptions) }),
+        labels: goMap({ checks: labels(memory.CheckerLabels), events: labels(memory.EventLabels), features: labels(memory.featureDescriptions()) }),
       }),
     );
   } catch (err) {
@@ -217,6 +218,8 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
       }
       name = 'memory_consolidate';
       label = req.final ? '成片已确认：整理这次制作的记忆' : '整理记忆';
+      // 用户在成片页确认这一版可用：第三方站可以挂在这上面（例如自动发布、通知）。
+      if (req.final) emitStudioEvent(s, p, 'film.approved', {});
       break;
     case 'exam':
       if (req.renderers.length === 0) return writeError(400, 'invalid_renderers', '至少选一个渲染工具');

@@ -1,4 +1,3 @@
-// 移植自 internal/scene/attempt.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import { atomicWrite } from '../fsutil';

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { describeView, drainViewInbox, StepIDs, validateViewRequest, ViewInboxEnv, ViewProjectEnv, type ViewRequest, writeViewRequest } from './index';
+import { describeView, drainViewInbox, stepIDs, validateViewRequest, ViewInboxEnv, ViewProjectEnv, type ViewRequest, writeViewRequest } from './index';
 
 const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-studioview-'));
 
@@ -86,11 +86,14 @@ describe('studio view requests', () => {
   });
 
   it('marks the production step without switching pages', () => {
-    expect(StepIDs).toEqual(['beat', 'script', 'storyboard', 'scene', 'final', 'publish']);
+    expect(stepIDs()).toEqual(['beat', 'script', 'storyboard', 'scene', 'final', 'publish']);
     expect(validateViewRequest('', { page: '', step: 'storyboard' })).toEqual({ page: '', step: 'storyboard' });
     expect(validateViewRequest('', { page: 'final', step: 'final' })).toEqual({ page: 'final', step: 'final' });
     expect(() => validateViewRequest('', { page: '', step: 'nope' })).toThrow('没有步骤');
     expect(() => validateViewRequest('', { page: '' })).toThrow();
+    // 第三方插件的页面：只查写法。
+    expect(validateViewRequest('', { page: 'x:fake-publisher:dashboard', target: 'ignored' })).toEqual({ page: 'x:fake-publisher:dashboard' });
+    expect(() => validateViewRequest('', { page: 'x:Bad:page' })).toThrow('没有页面');
     const inbox = path.join(temp(), 'inbox');
     expect(writeViewRequest({ [ViewInboxEnv]: inbox }, { page: '', step: 'scene', note: '开始渲染' })).toBe(true);
     expect(drainViewInbox(inbox)).toEqual([{ page: '', step: 'scene', note: '开始渲染' }]);

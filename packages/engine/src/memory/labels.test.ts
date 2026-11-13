@@ -1,4 +1,3 @@
-// 移植自 internal/memory/labels_test.go。
 import { describe, expect, it } from 'vitest';
 import { CheckerHuman, knownCheckers } from './features';
 import { CheckerLabels } from './labels';

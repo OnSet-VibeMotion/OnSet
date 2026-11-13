@@ -1,17 +1,17 @@
-// 移植自 internal/scene/timing.go。
 //
 // 本文件是口播镜头的时间合同：由 am scene cues 从字幕或短语锚点推导每个镜头的
 // 全局帧区间，写进 scene.json 的 timing 块。
 //
 // 过去镜头时长由制作者手算（先定帧数，再写 duration_seconds = 帧数 ÷ 帧率），
 // 渲染器还要自己从完整字幕里减去镜头起点。两处手算各有一个取整口径，错开一帧
-// 只有拼完成片对轴时才看得出来。现在切点只由锚点和 beat.frameOf 一个公式决定，
+// 只有拼完成片对轴时才看得出来。现在切点只由锚点和 frames.frameOf 一个公式决定，
 // 局部帧号由 am 算好交给渲染器。
 import fs from 'node:fs';
-import * as beat from '../beat';
-import { unmarshal as beatUnmarshal, type StructType as BeatStructType } from '../beat/jsondecode';
+import { frameOf } from '../frames';
+import { unmarshal as goUnmarshal, type StructType as GoStructType } from '../gojson/decode';
 import { formatFixed, formatG, goQuote, goRound, goTrimSpace } from '../gofmt';
 import type * as srt from '../srt';
+import { blockValue, timelineBlocks } from './block';
 import { decodeFirst, ptrTo, sliceOf, type StructType } from './jsondecode';
 import { sceneCanvas, contained, type Canvas, type Scene } from './scene';
 import { verifyFrameAlignment } from './frames';
@@ -231,7 +231,7 @@ const sha256Pattern = /^[0-9a-f]{64}$/;
 /**
  * 核对镜头的 timing 块；渲染前与复用已有产物前都要过一遍。
  *
- * 与 verifyBeatInputs 不同，没有 timing 块的镜头直接放行：老项目的镜头时长
+ * 与卡点块的输入校验不同，没有 timing 块的镜头直接放行：老项目的镜头时长
  * 是手写的，强制要求这一块会让它们全部渲染不了。帧数比对是精确的，
  * 任何偏差都说明有人手改了 duration_seconds。全部问题一次报出。
  */
@@ -239,7 +239,13 @@ export function verifyTimingInputs(s: Scene): void {
   const t = s.timing;
   if (t === null) return;
   const fail = (...problems: string[]) => new VerificationError(s.output, problems);
-  if (s.song !== null || s.beat !== null) throw fail('timing 块不能与 song 或 beat 块同时出现：口播、歌曲、卡点的时间轴来源互斥');
+  // 自带时间轴的扩展块（歌曲、卡点）与 timing 互斥；报错按 order 列出它们。
+  const owners = timelineBlocks();
+  if (owners.some((b) => blockValue(s, b.key) !== null)) {
+    throw fail(
+      `timing 块不能与 ${owners.map((b) => b.key).join(' 或 ')} 块同时出现：口播、${owners.map((b) => b.timeline!.label).join('、')}的时间轴来源互斥`,
+    );
+  }
   let canvas: Canvas;
   try {
     canvas = sceneCanvas(s);
@@ -304,7 +310,7 @@ export interface PhraseTimeline {
   phrases: PhraseEntry[] | null;
 }
 
-const phraseTimelineType: BeatStructType = {
+const phraseTimelineType: GoStructType = {
   kind: 'struct',
   goName: 'scene.PhraseTimeline',
   name: 'PhraseTimeline',
@@ -337,7 +343,7 @@ const phraseTimelineType: BeatStructType = {
 export function parsePhraseTimeline(body: string | Uint8Array, wantFPS: number): PhraseTimeline {
   let t: PhraseTimeline;
   try {
-    t = beatUnmarshal<PhraseTimeline>(body, phraseTimelineType);
+    t = goUnmarshal<PhraseTimeline>(body, phraseTimelineType);
   } catch (err) {
     throw new Error(`短语时间轴不是合法 JSON 或字段类型不符：${(err as Error).message}`, { cause: err });
   }
@@ -784,9 +790,9 @@ interface AnchorUnit {
   order: number;
 }
 
-/** 把字幕换成帧区间。秒到帧只经 beat.frameOf 一个公式。 */
+/** 把字幕换成帧区间。秒到帧只经 frames.frameOf 一个公式。 */
 function unitsFromCues(cues: readonly srt.Cue[], fps: number): AnchorUnit[] {
-  return cues.map((c, i) => ({ start: beat.frameOf(c.start_seconds, fps), end: beat.frameOf(c.end_seconds, fps), order: i }));
+  return cues.map((c, i) => ({ start: frameOf(c.start_seconds, fps), end: frameOf(c.end_seconds, fps), order: i }));
 }
 
 /**

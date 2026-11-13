@@ -1,4 +1,3 @@
-// 移植自 internal/determinism/rules.go。
 //
 // 正则与 Go RE2 的差异在这里统一处理：\s 一律展开成 ASCII 空白类（见 gostd.ts 的 S），
 // \b、\w、\d 在不带 u 标志的 JS 正则里本来就只认 ASCII，与 RE2 相同。

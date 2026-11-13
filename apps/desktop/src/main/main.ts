@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, shell } fr
 import fs from 'node:fs';
 import path from 'node:path';
 import { newServer, type Server } from '@am/engine/studio';
+import { setHostVersion } from '@am/engine/version';
 import { assetsDir, browserPath, browserScript, cliEntry, npmCLI, shimScript, writeScript } from './clishim';
 import { installMenu } from './menu';
 import { loginShellPath } from './shellpath';
@@ -83,7 +84,7 @@ function privateCLI(): string {
 async function handleRequest(request: Request): Promise<Response> {
   const url = new URL(request.url);
   if (url.host !== 'app') return new Response('not found', { status: 404 });
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/preview/')) {
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/preview/') || url.pathname.startsWith('/station-ui/') || url.pathname.startsWith('/station-media/')) {
     if (!backend) return new Response(JSON.stringify({ code: 'backend_down', message: '后台服务没有启动' }), { status: 503 });
     return backend.handle(request);
   }
@@ -137,6 +138,8 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
+  // 插件清单的 requires.am 按客户端的版本号查（发布时取 tag）。只设宿主版本：工具版本进渲染指纹，客户端不改它。
+  setHostVersion(app.getVersion());
   app.whenReady().then(async () => {
     // 打包后的 .app 用 build/icon.icns；开发时跑的是裸 Electron，Dock 里会是 Electron 的图标。
     if (!app.isPackaged) {

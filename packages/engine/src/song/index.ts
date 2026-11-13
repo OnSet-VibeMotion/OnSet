@@ -1,4 +1,4 @@
-// Package song owns immutable song candidates and their derived timing contract. 移植自 internal/song。
+// Package song owns immutable song candidates and their derived timing contract.
 export { Platforms, checkCredential, configure, knownProvider, platformGuide, providerInfo, validateHostedConfig } from './platforms';
 export type { Platform, Writer } from './platforms';
 export {

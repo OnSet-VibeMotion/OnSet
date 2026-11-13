@@ -1,4 +1,3 @@
-// 移植自 internal/schedule/schedule.go 与 memory_{darwin,linux,other}.go。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

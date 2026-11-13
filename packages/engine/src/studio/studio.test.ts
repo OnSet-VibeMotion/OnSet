@@ -1,4 +1,3 @@
-// 移植自 internal/studio/studio_test.go 与 api_test.go。
 //
 // 不移植：
 // - TestListenAndServeStopsWithContext：TS 版后端不监听端口，Electron 主进程经 am://app/ 协议直接调 handle。
@@ -11,28 +10,26 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { sceneFeatureAPI } from './features';
-import type { SceneSummary } from './scenes';
-import { projectMetadata, stageFor } from './studio';
+import * as flow from '../flow';
+import * as studioview from '../studioview';
+import { computeStations } from './progress';
+import { projectMetadata, stageFor, stepOf } from './studio';
+import { writeStepMark } from './view';
 import { addTask, runTask, updateTask } from './tasks';
 import { rawGet, setEnv, sleep, startStudio, studioRequest, tempDir, waitStudioTask, writeStudioFile, writeStudioPNG } from './testsupport';
-
-function scene(id: string, exists = false): SceneSummary {
-  return { id, directory: '', exists, stale: false, attempts: 0 };
-}
 
 describe('studio', () => {
   it('project and state API', async () => {
     const root = tempDir();
-    fs.writeFileSync(path.join(root, 'frame.md'), '---\ncanvas: vertical-9x16\nstyle_id: editorial\n---\n');
+    fs.writeFileSync(path.join(root, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1920, fps: 30, orientation: vertical}\n---\n');
     writeStudioFile(path.join(root, 'scenes', 'scene-001', 'scene.json'), '{"id":"scene-001","duration_seconds":2,"output":"out.mp4"}');
     const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
     let { status, body } = await studioRequest(s, 'GET', '/api/health');
     expect(status).toBe(200);
     expect(body.ok).toBe(true);
     ({ body } = await studioRequest(s, 'GET', '/api/state'));
-    expect(body.stage).toBe('render');
+    expect(body.stage).toBeUndefined();
     expect(body.metadata.canvas_id).toBe('vertical-9x16');
-    expect(body.metadata.style_id).toBe('editorial');
   });
 
   it('tasks persist in project', () => {
@@ -59,29 +56,31 @@ describe('studio', () => {
     expect(s.tasks.tasks.get(task.task_id)?.status).toBe('cancelled');
   });
 
-  it('stage follows production artifacts', () => {
-    const pending = [scene('a', true), scene('b')];
-    const rendered = [scene('a', true), scene('b', true)];
-    const cases: [string, string[], SceneSummary[], string][] = [
-      ['空项目', [], [], 'setup'],
-      ['口播终稿', ['production/script-final.md'], [], 'plan'],
-      ['配音时间轴', ['production/audio/voice.srt'], [], 'plan'],
-      ['分镜计划', ['production/scene-plan.json'], [], 'plan'],
-      ['卡点网格', ['production/beat/grid.json'], [], 'plan'],
-      ['旧版脚本', ['script.md'], [], 'plan'],
-      ['镜头未出齐', [], pending, 'render'],
-      ['镜头出齐', [], rendered, 'assemble'],
-      ['有成片', ['final.mp4'], rendered, 'review'],
-      ['成片在 production 下', ['production/final.mp4'], rendered, 'review'],
-      ['成片加发布信息', ['final.mp4', 'publish.md'], rendered, 'publish'],
-      // 卡点项目没有脚本，但做完了就该显示发布阶段（choice-paralysis 实测）。
-      ['卡点成片', ['beat.yaml', 'production/beat/grid.json', 'final.mp4', 'publish.md'], rendered.slice(0, 1), 'publish'],
-    ];
-    for (const [name, files, scenes, want] of cases) {
-      const root = tempDir();
-      for (const f of files) writeStudioFile(path.join(root, f), 'x');
-      expect(stageFor(root, scenes), name).toBe(want);
-    }
+  it('stage is the step of the top bar, from the production route', () => {
+    // 没有流程记录：排不出路线，也就没有阶段。
+    expect(stageFor(tempDir(), [])).toEqual({ stage: '', label: '' });
+    const speech = tempDir();
+    flow.recordFlow(speech, { id: 'speech', canvas: 'vertical-3x4' });
+    expect(stageFor(speech, [])).toEqual({ stage: 'script', label: '口播稿' });
+    // 卡点项目确认了网格、还没写分镜计划与处理方案：顶栏在哪一步，首页就写哪一步，不再落成「准备中」。
+    const beat = tempDir();
+    flow.recordFlow(beat, { id: 'beat', canvas: 'vertical-9x16' });
+    const grid = JSON.stringify({ schema: 1, audio_sha256: 'x', duration_seconds: 4, source: 'test', reviewed: true, beats: [0, 0.5, 1, 1.5], downbeats: [0] });
+    for (const [rel, body] of Object.entries({
+      'beat.yaml': 'schema: 1\n',
+      'production/beat/story.md': '# 故事\n',
+      'production/beat/track.json': '{}',
+      'production/beat/grid-draft.json': grid,
+      'production/beat/grid.json': grid,
+    })) writeStudioFile(path.join(beat, rel), body);
+    const { stations, current } = computeStations(beat, []);
+    expect(current).toBe('plan');
+    const step = stations.find((x) => x.id === current)!.step;
+    expect(stageFor(beat, [])).toEqual({ stage: step, label: studioview.steps().find((x) => x.id === step)!.label });
+    expect(stageFor(beat, []).stage).toBe(stepOf(beat, []).step);
+    // 编排标了步骤（比最新的产物新）：跟着标记走，与顶栏一致。
+    writeStepMark(beat, 'storyboard', new Date(Date.now() + 60_000));
+    expect(stageFor(beat, [])).toEqual({ stage: 'storyboard', label: '分镜' });
   });
 
   it('project metadata reads top-level front matter only', () => {
@@ -90,27 +89,25 @@ describe('studio', () => {
     // 节选自真实项目：colors.canvas 是颜色值，按行扫描会把它当成画幅。
     writeStudioFile(
       frame,
-      '---\nschema_version: 1\nstyle_id: custom-cine-layered\nstyle_name: 分层电影\ncanvas:\n  width_px: 1920\n  height_px: 1080\n  fps: 30\n  orientation: landscape\ncolors:\n  canvas: "#05060A"\n---\n正文 canvas: nope\n',
+      '---\nschema_version: 1\ncanvas:\n  width_px: 1920\n  height_px: 1080\n  fps: 30\n  orientation: landscape\ncolors:\n  canvas: "#05060A"\n---\n正文 canvas: nope\n',
     );
     expect(projectMetadata(root)).toEqual({
-      style_id: 'custom-cine-layered',
-      style_name: '分层电影',
       canvas: '1920×1080',
       fps: '30',
       orientation: 'landscape',
       canvas_id: 'landscape-16x9',
     });
     // 不在预设表里的画幅照样显示尺寸，只是没有 canvas_id。
-    writeStudioFile(frame, '---\nstyle_id: x\ncanvas: {width_px: 1000, height_px: 1000, fps: 24, orientation: square}\n---\n');
+    writeStudioFile(frame, '---\ncanvas: {width_px: 1000, height_px: 1000, fps: 24, orientation: square}\n---\n');
     const custom = projectMetadata(root);
     expect(custom.canvas).toBe('1000×1000');
     expect(custom.canvas_id).toBeUndefined();
-    for (const broken of ['no front matter', '---\nstyle_id: x\n', '---\n: [bad\n---\n']) {
+    for (const broken of ['no front matter', '---\ncanvas: {width_px: 1}\n', '---\n: [bad\n---\n']) {
       writeStudioFile(frame, broken);
       expect(projectMetadata(root), broken).toEqual({});
     }
-    writeStudioFile(frame, '---\r\nstyle_id: crlf\r\n---\r\n');
-    expect(projectMetadata(root).style_id).toBe('crlf');
+    writeStudioFile(frame, '---\r\ncanvas: {width_px: 1000, height_px: 1000, fps: 24}\r\n---\r\n');
+    expect(projectMetadata(root).canvas).toBe('1000×1000');
   });
 
   it('directory and project lifecycle', async () => {
@@ -127,7 +124,7 @@ describe('studio', () => {
 
     const alpha = path.join(home, 'alpha');
     const beta = path.join(home, 'beta');
-    writeStudioFile(path.join(alpha, 'frame.md'), '---\nstyle_id: editorial\n---\n');
+    writeStudioFile(path.join(alpha, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
     fs.mkdirSync(path.join(beta, 'data'), { recursive: true });
     fs.mkdirSync(path.join(home, '.hidden'), { recursive: true });
     writeStudioFile(path.join(home, 'note.txt'), 'not a directory');
@@ -191,7 +188,6 @@ describe('studio', () => {
       { parent: other, name: 'x' },
       { parent: path.join(home, 'missing'), name: 'x' },
       { parent: home, name: 'bad-canvas', canvas: 'missing' },
-      { parent: home, name: 'bad-style', style: 'missing' },
       { parent: home, name: 'bad-mode', delivery: 'opera' },
       { parent: home, name: 'beat-cast', delivery: 'beat', narration: 'cast' },
     ]) {
@@ -204,7 +200,8 @@ describe('studio', () => {
     const projectID = body.project.id as string;
     const target = body.project.path as string;
     expect(body.project.name).toBe('my-project');
-    for (const name of ['frame.md', 'docs/style-brief.md']) expect(fs.existsSync(path.join(target, name)), `created project missing ${name}`).toBe(true);
+    expect(fs.existsSync(path.join(target, 'frame.md')), 'created project missing frame.md').toBe(true);
+    expect(fs.existsSync(path.join(target, 'docs', 'style-brief.md')), '不再写旧版风格描述').toBe(false);
 
     ({ status, body } = await studioRequest(s, 'GET', '/api/workspaces/current'));
     expect(status).toBe(200);
@@ -213,13 +210,13 @@ describe('studio', () => {
     expect(status).toBe(200);
     expect(body.current_project_id).toBe(projectID);
     expect(body.projects).toHaveLength(1);
-    expect(body.summaries[projectID].stage).toBe('setup');
+    // 新建的口播项目停在顶栏第一步。
+    expect(body.summaries[projectID]).toMatchObject({ stage: 'script', stage_label: '口播稿' });
     expect(body.default_parent, '上次新建时选的父目录').toBe(home);
     ({ status, body } = await studioRequest(s, 'GET', '/api/state'));
     expect(status).toBe(200);
-    expect(body.stage).toBe('setup');
-    expect(body.metadata.style_id).toBe('custom-draft');
-    expect(body.metadata.style_name).not.toBe('');
+    expect(body.step).toBe('script');
+    expect(body.metadata.canvas).not.toBe('');
     ({ status, body } = await studioRequest(s, 'GET', '/api/script'));
     expect(status).toBe(200);
     expect(body.path).toBe('');
@@ -249,7 +246,7 @@ describe('studio', () => {
 
   it('content and task endpoints', async () => {
     const root = tempDir();
-    writeStudioFile(path.join(root, 'frame.md'), '---\nstyle_id: editorial\nstyle_name: "编辑"\n---\n');
+    writeStudioFile(path.join(root, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
     const sceneOne = path.join(root, 'scenes', 'scene-001');
     writeStudioFile(path.join(sceneOne, 'scene.json'), '{"id":"scene-001","duration_seconds":2,"output":"out.mp4","text":"before"}');
     writeStudioFile(path.join(sceneOne, 'out.mp4'), 'video-bytes');
@@ -342,18 +339,11 @@ describe('studio', () => {
 
     ({ status, body } = await studioRequest(s, 'GET', '/api/state'));
     expect(status).toBe(200);
-    expect(body.stage).toBe('render');
-    expect(body.metadata.style_id).toBe('editorial');
-    expect(body.metadata.style_name).toBe('编辑');
+    expect(body.metadata.style_id).toBeUndefined();
     expect(body.scenes.total).toBe(2);
     expect(body.scenes.completed).toBe(1);
-    expect(body.media).toEqual({ audio: false, final: false, publish: true });
-    expect(body.issues).toEqual([]);
+    expect(body.media).toBeUndefined();
 
-    // 有了成片才进复查；只跑过 run-all、还有镜头没出片时仍在渲染阶段。
-    writeStudioFile(path.join(root, 'production', 'run-report.json'), '{}');
-    ({ body } = await studioRequest(s, 'GET', '/api/state'));
-    expect(body.stage).toBe('render');
 
     const future = new Date(Date.now() + 3600_000);
     fs.utimesSync(path.join(sceneOne, 'scene.json'), future, future);

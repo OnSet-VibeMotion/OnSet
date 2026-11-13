@@ -13,7 +13,7 @@ import * as director from '@am/engine/director';
 import * as studioview from '@am/engine/studioview';
 import { currentEnvironment } from '../cli';
 import { Command, ref } from '../cobra';
-import { describeTools, Jobs, prepareCall, spawnOp, type Spawner } from '../toolsmcp';
+import { callTarget, describeTools, Jobs, prepareCall, spawnOp, type Spawner } from '../toolsmcp';
 import type { ParamValues } from '../ops/op';
 import { newGate } from './gate';
 import type { AgentModule, AgentTool, Gate } from './types';
@@ -34,9 +34,9 @@ export async function loadAgentModule(): Promise<AgentModule> {
 const maxToolSeconds = 24 * 3600;
 
 /** 把编排档位的操作做成 agent 的工具；job_wait、job_cancel 不要（这里直接等到跑完）。 */
-export function amTools(spawner: Spawner = spawnOp): { tools: AgentTool[]; jobs: Jobs } {
+export function amTools(spawner: Spawner = spawnOp, root = ''): { tools: AgentTool[]; jobs: Jobs } {
   const jobs = new Jobs(spawner);
-  const defs = describeTools('orchestrator').filter((t) => t.name !== 'job_wait' && t.name !== 'job_cancel');
+  const defs = describeTools('orchestrator', root).filter((t) => t.name !== 'job_wait' && t.name !== 'job_cancel');
   const byName = new Map(defs.map((t) => [t.name, t]));
   const tools: AgentTool[] = defs.map((def) => {
     const schema = JSON.parse(JSON.stringify(def.inputSchema)) as { properties?: Record<string, unknown> };
@@ -58,7 +58,8 @@ export function amTools(spawner: Spawner = spawnOp): { tools: AgentTool[]; jobs:
         } catch (err) {
           return { text: (err as Error).message, isError: true };
         }
-        const job = jobs.start(def.op!.name, params);
+        const target = callTarget(def, params);
+        const job = jobs.start(target.name, target.params);
         const reply = await jobs.wait(job, maxToolSeconds, signal);
         if (signal?.aborted) jobs.cancel(job.id);
         return { text: reply.text, isError: reply.isError };
@@ -107,7 +108,7 @@ export async function runBuiltinAgent(
   options: { spawner?: Spawner; gate?: Gate; setupModels?: (runtime: unknown) => Promise<string> | string; env?: Record<string, string | undefined> } = {},
 ): Promise<{ ok: boolean; error?: string }> {
   const env = options.env ?? currentEnvironment();
-  const { tools, jobs } = amTools(options.spawner);
+  const { tools, jobs } = amTools(options.spawner, req.workdir);
   const gate =
     options.gate ??
     newGate({

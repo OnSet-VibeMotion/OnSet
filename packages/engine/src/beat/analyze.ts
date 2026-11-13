@@ -1,9 +1,8 @@
-// 移植自 internal/beat/analyze.go。
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { lookPath } from '../envutil';
 import { goTrimSpace } from '../gofmt';
-import { sliceOf, type StructType } from './jsondecode';
+import { sliceOf, type StructType } from '../gojson/decode';
 import { checkTrack, normalizeGrid, saveDraft, type Grid } from './grid';
 import { envDir, requireEnv } from './env';
 import { AnalysisFile, AnalyzerVersion, ClickFile, ConfigFile, Store, loadConfig, localPath, readJSON, wrapError, type Config } from './store';

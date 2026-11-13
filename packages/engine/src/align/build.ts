@@ -1,5 +1,4 @@
-// 移植自 internal/align/build.go。
-import { totalFrames } from '../beat';
+import { totalFrames } from '../frames';
 import { atomicWrite } from '../fsutil';
 import { formatFixed } from '../gofmt';
 import { compareBytes, marshalIndent, sortedKeys } from '../gojson';

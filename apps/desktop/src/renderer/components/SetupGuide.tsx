@@ -131,7 +131,7 @@ const icons: Record<string, ReactNode> = {
       <path d="M6.5 11h6M14.5 11h3M6.5 15h3M11.5 15h6" />
     </Icon>
   ),
-  beat: (
+  music: (
     <Icon>
       <path d="M9 18V6l10-2.5v12" />
       <circle cx="6.5" cy="18" r="2.5" />
@@ -156,6 +156,8 @@ const icons: Record<string, ReactNode> = {
 
 interface Crew {
   key: string;
+  /** 图标名（icons 的键）；不写用 key。 */
+  icon?: string;
   title: string;
   desc: string;
   items: PrereqStatus[];
@@ -188,10 +190,12 @@ function coreCrews(items: PrereqStatus[]): Crew[] {
 /** 以后可能用到、要单独点的：体积大，用到才装。 */
 function laterCrews(items: PrereqStatus[]): Crew[] {
   const out: Crew[] = [];
-  const beat = items.filter((i) => i.group === 'beat');
-  if (beat.length) out.push({ key: 'beat', title: '音乐卡点', desc: '跟着节奏切镜头的片子用 · 约 1 GB', items: beat });
-  const styles = items.filter((i) => i.group === 'styles');
-  if (styles.length) out.push({ key: 'styles', title: '整片风格库', desc: '给整部片子套一种现成画风', items: styles });
+  // 内置插件登记的（例如卡点的节拍分析环境、LemoLab 风格库）：同一 group 合成一张卡片，名字、说明与图标由插件登记。
+  for (const group of [...new Set(items.filter((i) => i.later).map((i) => i.group))]) {
+    const own = items.filter((i) => i.group === group && i.later);
+    const later = own[0].later!;
+    out.push({ key: group, icon: later.icon, title: later.title, desc: later.desc, items: own });
+  }
   const design = items.filter((i) => i.group === 'voice');
   if (design.length) out.push({ key: 'design', title: '音色设计', desc: '在音色页按描述做一个新声音 · 约 4.6 GB', items: design });
   return out;
@@ -253,7 +257,7 @@ function CrewCard(props: { crew: Crew; task: SetupStatus['task'] }) {
   return (
     <li className={'crew-card ' + state} title={technical(props.crew)}>
       <Ring percent={percent} state={state}>
-        {icons[props.crew.key]}
+        {icons[props.crew.icon ?? props.crew.key] ?? icons.styles}
       </Ring>
       <span className="crew-title">{props.crew.title}</span>
       <span className="crew-desc">{props.crew.desc}</span>
@@ -364,7 +368,7 @@ export function SetupGuide(props: { setup: SetupHandle; compact?: boolean }) {
                 disabled={running || state === 'ready'}
                 onClick={() => void setup.start(c.items.filter((i) => !i.ready).map((i) => i.id))}
               >
-                <span className="later-icon">{icons[c.key]}</span>
+                <span className="later-icon">{icons[c.icon ?? c.key] ?? icons.styles}</span>
                 <span>{c.title}</span>
                 <span className="later-state">{state === 'ready' ? '已就位' : state === 'working' ? `${percent}%` : state === 'waiting' ? '排队中' : '安装'}</span>
               </button>

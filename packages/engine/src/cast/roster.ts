@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { formatG, goQuote, pathError } from './gofmt';
 import { load, SchemaVersion, type Pack } from './pack';
-import { float, int, str, unmarshal, type Schema } from './yamldecode';
+import { float, int, str, unmarshal, type Schema } from '../goyaml/decode';
 
 /**
  * 项目级班底文件名。它存在与否就是叙事模式本身：

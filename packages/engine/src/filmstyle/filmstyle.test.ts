@@ -1,15 +1,12 @@
-// 移植自 internal/filmstyle/filmstyle_test.go。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
+import { registerBuiltin } from '../plugin/registry';
 import {
   GuideFile,
-  LegacySkillName,
-  RootEnv,
   StyleFile,
   categories,
-  childEnvKeys,
   extraDir,
   install,
   installed,
@@ -17,7 +14,6 @@ import {
   installedExtras,
   lookup,
   manifestKey,
-  register,
   remove,
   removeStyle,
   skillDir,
@@ -40,7 +36,6 @@ function fakeSource(id: string, styles: Style[], noGuide = false): Source {
     poster: () => {
       throw Object.assign(new Error('file does not exist'), { code: 'ENOENT' });
     },
-    envKeys: () => ['AM_TEST_' + id.replaceAll('-', '_').toUpperCase()],
     catalog: () => styles,
     fill: (dir: string, style: Style) => {
       fs.writeFileSync(path.join(dir, StyleFile), '# ' + styleKey(style));
@@ -54,9 +49,16 @@ function st(source: string, slug: string, cn: string, en: string, category_cn = 
   return { source, slug, order: '', cn, en, category_cn, category_en: '', uses: null, summary: '' };
 }
 
-register(fakeSource('alpha', [st('alpha', 'ink', '水墨', 'Ink', '绘画'), st('alpha', 'pixel', '像素', 'Pixel', '游戏')]));
-register(fakeSource('beta', [st('beta', 'ink', '墨线', 'Ink Line', '线描')]));
-register(fakeSource('broken', [st('broken', 'nope', '坏', 'Broken')], true));
+// 假来源经测试里登记的内置插件进来源表：通用部分只认登记表，不认识任何具体来源。
+const unregister = registerBuiltin({
+  id: 'test-fake-styles',
+  apply(ctx) {
+    ctx.filmStyleSource(fakeSource('alpha', [st('alpha', 'ink', '水墨', 'Ink', '绘画'), st('alpha', 'pixel', '像素', 'Pixel', '游戏')]));
+    ctx.filmStyleSource(fakeSource('beta', [st('beta', 'ink', '墨线', 'Ink Line', '线描')]));
+    ctx.filmStyleSource(fakeSource('broken', [st('broken', 'nope', '坏', 'Broken')], true));
+  },
+});
+afterAll(unregister);
 
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'am-filmstyle-'));
@@ -80,34 +82,25 @@ describe('filmstyle', () => {
     const got = categories('alpha');
     expect(got.length).toBe(2);
     expect(got[0]).toBe('绘画');
-    const keys = childEnvKeys().join(',');
-    expect(keys).toContain(RootEnv);
-    expect(keys).toContain('AM_TEST_ALPHA');
   });
 
-  it('enforces the contract and replaces the legacy directory', () => {
+  it('enforces the contract and replaces the default style', () => {
     const project = tempDir();
     const broken = lookup('broken/nope');
     const err = errorOf(() => install({ projectDir: project, style: broken }));
     expect(err?.message).toContain(GuideFile);
     expect(fs.existsSync(skillDir(project))).toBe(false);
 
-    // 旧版只有 lemo-opuscar 时装出的目录：照样认得，装新风格时被换掉。
-    const legacy = path.join(project, '.agents', 'skills', LegacySkillName);
-    fs.mkdirSync(legacy, { recursive: true });
-    fs.writeFileSync(path.join(legacy, 'lemo-upstream.json'), '{"commit":"abc","slug":"impasto","cn":"油画厚涂","en":"Impasto"}');
+    install({ projectDir: project, style: lookup('beta/ink') });
     let { manifest, ok } = installed(project);
     expect(ok).toBe(true);
-    expect(manifest.legacy).toBe(true);
-    expect(manifestKey(manifest)).toBe('lemo-opuscar/impasto');
-    expect(manifest.version).toBe('abc');
-    expect(installedDir(project)).toBe(legacy);
+    expect(manifestKey(manifest)).toBe('beta/ink');
+    expect(installedDir(project)).toBe(skillDir(project));
 
     const ink = lookup('alpha/ink');
     expect(errorOf(() => install({ projectDir: project, style: ink }))?.message).toContain('--replace');
     const result = install({ projectDir: project, style: ink, replace: true });
-    expect(result.replaced).toBe('lemo-opuscar/impasto');
-    expect(fs.existsSync(legacy)).toBe(false);
+    expect(result.replaced).toBe('beta/ink');
     ({ manifest } = installed(project));
     expect(manifest.source).toBe('alpha');
     expect(manifest.version).toBe('v1');

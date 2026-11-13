@@ -1,4 +1,3 @@
-// 移植自 internal/align/view.go。
 import { trimLeftSet, trimRightSet, type PhraseSpan, type Script } from './script';
 
 /**

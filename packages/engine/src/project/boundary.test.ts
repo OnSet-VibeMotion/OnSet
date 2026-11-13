@@ -1,10 +1,7 @@
-// 移植自 internal/project/boundary_test.go。
 import { spawnSync } from 'node:child_process';
-import fs from 'node:fs';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { assetsBase } from '../assets';
-import { skillTreeRoot } from './testsupport';
+import { everyBuiltinPrompt, skillTreeRoot } from './testsupport';
 
 /** 仓库根：Go 版是 internal/project 的 ../..；TS 版按资产目录定位，与测试文件所在层级无关。 */
 const repoRoot = assetsBase();
@@ -41,21 +38,10 @@ describe('boundary', () => {
     expect(hits).toEqual([]);
   });
 
+  // 制作提示词不再是签入的文件，而是按流程组合的：对每个内置流程、每个画幅、发布开与关的组合结果都查一遍。
   it('prompts use installed CLI and do not expose executor identity', () => {
-    // 提示词已按「是否含画幅数字」拆进两棵源树：与画幅无关的进 shared，
-    // 含画幅的每套预设一份。用 glob 而非写死清单，新增画幅预设自动纳入。
-    const names = [path.join(repoRoot, 'assets', 'shared', 'PROMPT.md')];
-    const presetsDir = path.join(repoRoot, 'assets', 'presets');
-    const production = fs
-      .readdirSync(presetsDir)
-      .sort()
-      .map((dir) => path.join(presetsDir, dir, 'PROMPT-PRODUCTION.md'))
-      .filter((file) => fs.existsSync(file));
-    if (production.length === 0) throw new Error('assets/presets 下没有任何 PROMPT-PRODUCTION.md，检查素材路径');
-    names.push(...production);
     const problems: string[] = [];
-    for (const name of names) {
-      const text = fs.readFileSync(name, 'utf8');
+    for (const { name, text } of everyBuiltinPrompt()) {
       if (text.includes('./am')) problems.push(`${name} 引用了 ./am：用户项目里没有这个二进制`);
       // 内置技能树的路径字面含 "agent"，但它是文件系统路径，不是执行者身份声明，
       // 而提示词必须能点名它——锁定文件要靠这条路径写读取例外。先摘掉这个字面量

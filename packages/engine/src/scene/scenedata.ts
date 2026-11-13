@@ -1,4 +1,3 @@
-// 移植自 internal/scene/scenedata.go。
 //
 // 本文件生成镜头局部数据文件 am-scene.js，并据此拼装提示词里的时间合同段。
 //
@@ -7,13 +6,13 @@
 // window.AM_SCENE 交给 composition 直接读，提示词里的表格与它同源。
 import fs from 'node:fs';
 import path from 'node:path';
-import * as beat from '../beat';
+import { frameOf } from '../frames';
 import { atomicWrite } from '../fsutil';
 import { marshalIndent, sortedKeys } from '../gojson';
 import { goRound } from '../gofmt';
 import * as reads from '../reads';
 import * as srt from '../srt';
-import { contained, sceneCanvas, styleSource, delimiterMatchAll, readStyleFrontmatterAny, type Scene } from './scene';
+import { contained, sceneCanvas, frameSource, delimiterMatchAll, readFrameFrontmatter, type Scene } from './scene';
 import { handoffGuide, handoffIsZero, loadPhraseTimelineIn, lookIsZero, lookToJSON, type Handoff, type Look, type Timing } from './timing';
 
 /** 写进镜头目录的局部数据文件名。 */
@@ -36,6 +35,7 @@ export interface SceneData {
   duration_seconds: number;
   start_frame: number | null;
   safe_area: Record<string, unknown>;
+  /** frame.md 的字幕版式约束（字号范围、最大宽度、行数、每行字数、行高、断句规则），原样搬运；没有配色，配色由镜头定。 */
   subtitles: unknown;
   cues: LocalCue[];
   phrases: LocalPhrase[];
@@ -84,10 +84,10 @@ export function buildSceneData(s: Scene): SceneData {
     phrases: [],
     look: null,
   };
-  const source = styleSource(s);
+  const source = frameSource(s);
   if (source) {
-    // 视觉规范里的这两块原样搬运。用 any 接收，写错类型也不会让整份 frontmatter 解析失败。
-    const extras = readStyleFrontmatterAny(source.directory, source.file);
+    // frame.md 里的这两块原样搬运。用 any 接收，写错类型也不会让整份 frontmatter 解析失败。
+    const extras = readFrameFrontmatter(source.directory, source.file);
     const area = extras.safe_area;
     if (area !== null && typeof area === 'object' && !Array.isArray(area)) data.safe_area = area as Record<string, unknown>;
     data.subtitles = extras.subtitles ?? null;
@@ -105,7 +105,7 @@ export function buildSceneData(s: Scene): SceneData {
     throw new Error(`transcript ${s.transcript}：${(err as Error).message}`, { cause: err });
   }
   for (const c of cues) {
-    const clipped = clipLocal(beat.frameOf(c.start_seconds, canvas.fps), beat.frameOf(c.end_seconds, canvas.fps), start, data.frames);
+    const clipped = clipLocal(frameOf(c.start_seconds, canvas.fps), frameOf(c.end_seconds, canvas.fps), start, data.frames);
     if (!clipped) continue;
     data.cues.push({ index: c.index, text: c.text, start_frame: clipped[0], end_frame_exclusive: clipped[1] });
   }

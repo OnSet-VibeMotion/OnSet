@@ -1,4 +1,3 @@
-// 移植自 internal/tools/model.go。
 import fs from 'node:fs';
 import path from 'node:path';
 

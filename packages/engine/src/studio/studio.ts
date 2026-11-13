@@ -1,6 +1,6 @@
 /**
- * Studio 后端的服务骨架：项目登记、路由表、写锁、当前项目、项目状态。移植自 internal/studio/studio.go
- * （以及 features.go 里不依赖 scene / validate 的 /api/assets、/api/review、/api/review/run）。
+ * Studio 后端的服务骨架：项目登记、路由表、写锁、当前项目、项目状态，
+ * 以及 /api/assets、/api/review、/api/review/run。
  *
  * Go 版是 net/http 服务；TS 版是 fetch 风格的 handle(request)：Electron 主进程用 am://app/ 协议
  * 承接界面的 /api/…、EventSource 与上传请求后直接调它。路由、JSON 字段、状态码与错误文案与 Go 版一致。
@@ -21,9 +21,9 @@ import * as preset from '../preset';
 import * as projectinit from '../projectinit';
 import { agentKeysAPI } from './agentkeys';
 import { agentModelsAPI, agentsAPI } from './agents';
-import { beatAPI, rawAPI, styleExampleAPI, stylesAPI, treeAPI } from './api_ui';
+import { rawAPI, stylesAPI, treeAPI } from './api_ui';
 import { commandAPI, filesAPI, productionStartAPI, sessionAPI, sessionsAPI, turnAPI } from './api_sessions';
-import { previewAPI, publishAPI, renderAllAPI, sceneFeatureAPI, scenesAPI } from './features';
+import { previewAPI, renderAllAPI, sceneFeatureAPI, scenesAPI } from './features';
 import { filmStylePosterAPI, filmStylesAPI, projectFilmStyleAPI, startFilmStyleTask } from './filmstyle';
 import {
   DecodeError,
@@ -41,9 +41,10 @@ import {
 import { memoryAPI, memoryActionAPI, memoryRecallAPI } from './memory';
 import { discoverScenes, fileExists, type SceneSummary } from './scenes';
 import { scriptAPI } from './script';
-import { computeStations, latestOutput, progressAPI } from './progress';
+import { computeStations, flowView, latestOutput, progressAPI } from './progress';
+import { stationMediaAPI, stationsAPI, stationUIAPI, tickStationSchedules } from './stations';
 import { storyboardAPI } from './storyboard';
-import { readStepMark } from './view';
+import { readStepMark, viewPages } from './view';
 import { BusyError, type Session } from './sessions';
 import { cancelSetup, setupAPI, setupCancelAPI, setupRunAPI } from './setup';
 import { voiceAPI, voiceDesignAPI, voiceDraftAPI, voiceRecordAPI, voicesAPI } from './voices';
@@ -51,6 +52,9 @@ import { settingsAPI, settingsGlobalAPI, settingsProjectAPI } from './settings';
 import { SkillsState, installSkills, skillsAPI, skillsInstallAPI } from './skills';
 import { TaskState, loadPersistedTasks, runStudioOp, runWriteTask, taskFeatureAPI, tasksAPI, writeTaskError } from './tasks';
 import { uploadsAPI } from './uploads';
+import * as flow from '../flow';
+import * as plugin from '../plugin';
+import * as studioview from '../studioview';
 
 export interface Config {
   projectPath?: string;
@@ -86,7 +90,9 @@ interface Registry {
 
 /** 最近项目列表里每个项目的一行状态：做到哪一步、出了几个镜头、是否正忙。 */
 export interface ProjectSummary {
+  /** 制作走到了顶栏的哪一步（步骤 id）与它的名字。 */
   stage: string;
+  stage_label: string;
   completed: number;
   total: number;
   busy?: string;
@@ -94,7 +100,7 @@ export interface ProjectSummary {
 }
 
 function summaryJSON(s: ProjectSummary): Record<string, unknown> {
-  return { stage: s.stage, completed: s.completed, total: s.total, busy: s.busy || undefined, missing: s.missing || undefined };
+  return { stage: s.stage, stage_label: s.stage_label, completed: s.completed, total: s.total, busy: s.busy || undefined, missing: s.missing || undefined };
 }
 
 /** summaryLimit 是首页侧栏要摘要的最近项目数：每个摘要要扫一遍项目目录。 */
@@ -137,13 +143,19 @@ export class Server {
     if (cfg.projectPath) this.current = this.openProject(cfg.projectPath).id;
     loadPersistedTasks(this);
     this.routes = this.routeTable();
+    // 第三方站的定时任务：每分钟看一次。unref：不让这个定时器拖住进程退出（测试里会建很多个 Server）。
+    this.scheduleTimer = setInterval(() => tickStationSchedules(this), 60_000);
+    this.scheduleTimer.unref?.();
   }
+
+  private readonly scheduleTimer: ReturnType<typeof setInterval>;
 
   /**
    * 退出前停掉进行中的每一轮对话与每个写任务。Go 版是独立进程，被整组结束时子进程跟着结束；
    * 在客户端主进程里，编排工具与 am 子命令各自成进程组，不显式取消就会在客户端退出后继续跑。
    */
   shutdown(): void {
+    clearInterval(this.scheduleTimer);
     for (const session of this.sessions.values()) session.cancel?.abort();
     for (const controller of this.tasks.cancel.values()) controller.abort();
     cancelSetup();
@@ -319,8 +331,11 @@ export class Server {
       ['/api/storyboard', (r) => storyboardAPI(this, r)],
       ['/api/progress', (r) => progressAPI(this, r, '')],
       ['/api/progress/', (r, rest) => progressAPI(this, r, rest)],
+      ['/api/stations', (r) => stationsAPI(this, r, '')],
+      ['/api/stations/', (r, rest) => stationsAPI(this, r, rest)],
+      ['/station-ui/', (r, rest) => stationUIAPI(this, r, rest)],
+      ['/station-media/', (r, rest) => stationMediaAPI(this, r, rest)],
       ['/api/assets', () => this.assetsAPI()],
-      ['/api/publish', () => publishAPI(this)],
       ['/api/scenes/', (r, rest) => sceneFeatureAPI(this, r, rest)],
       ['/api/tasks', (r) => tasksAPI(this, r)],
       ['/api/tasks/', (r, rest) => taskFeatureAPI(this, r, rest)],
@@ -340,13 +355,12 @@ export class Server {
       ['/api/agents/', (r, rest) => agentModelsAPI(r, rest)],
       ['/preview/scenes/', (r, rest) => previewAPI(this, r, rest)],
       ['/api/styles', (r) => stylesAPI(r)],
-      ['/api/styles/', (_r, rest) => styleExampleAPI(rest)],
       ['/api/tree', (r) => treeAPI(this, r)],
       ['/api/raw', (r) => rawAPI(this, r)],
-      ['/api/beat', () => beatAPI(this)],
       ['/api/memory', (r) => memoryAPI(this, r)],
       ['/api/memory/recall', (r) => memoryRecallAPI(this, r)],
       ['/api/memory/actions/', (r, rest) => memoryActionAPI(this, r, rest)],
+      // 先按当前项目换上第三方插件带来的风格库。
       ['/api/film-styles', (r) => filmStylesAPI(r)],
       ['/api/film-styles/', (r, rest) => filmStylePosterAPI(r, rest)],
       ['/api/film-style', (r) => projectFilmStyleAPI(this, r)],
@@ -362,6 +376,8 @@ export class Server {
       ['/api/setup', (r) => setupAPI(r, this.projectRoot())],
       ['/api/setup/run', (r) => setupRunAPI(r, this.projectRoot())],
       ['/api/setup/cancel', (r) => setupCancelAPI(r)],
+      // 内置插件在 apply 里登记的接口（例如发布页的 /api/publish）。
+      ...plugin.pluginRoutes().map(({ value: route }): [string, Handler] => [route.pattern, (r, rest) => route.handle(this, r, rest)]),
     ];
   }
 
@@ -371,6 +387,11 @@ export class Server {
    */
   async handle(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    // 插件页面在沙箱 iframe 里（不透明源，Origin 是 "null"），只能经宿主转交，不能直接调接口：
+    // CSP 已经拦下它的请求，这里再兜一层，免得哪天 CSP 写漏了。
+    if (url.pathname.startsWith('/api/') && request.headers.get('Origin') === 'null') {
+      return writeError(403, 'forbidden', '插件页面不能直接调用 Studio 接口');
+    }
     let pathname: string;
     try {
       pathname = decodeURIComponent(url.pathname);
@@ -463,7 +484,7 @@ export class Server {
     recent.forEach((p, i) => {
       if (i < summaryLimit) summaries[p.id] = summaryJSON(this.summarize(p));
       // 只查目录还在不在，便宜；完整摘要只给最近的几个。
-      else if (!dirExists(p.path)) summaries[p.id] = summaryJSON({ stage: '', completed: 0, total: 0, missing: true });
+      else if (!dirExists(p.path)) summaries[p.id] = summaryJSON({ stage: '', stage_label: '', completed: 0, total: 0, missing: true });
     });
     return writeJSON(
       200,
@@ -477,23 +498,23 @@ export class Server {
   }
 
   private summarize(p: Project): ProjectSummary {
-    if (!dirExists(p.path)) return { stage: '', completed: 0, total: 0, missing: true };
+    if (!dirExists(p.path)) return { stage: '', stage_label: '', completed: 0, total: 0, missing: true };
     const scenes = discoverScenes(p.path);
-    const summary: ProjectSummary = { stage: stageFor(p.path, scenes), completed: 0, total: scenes.length, busy: this.busyHolder(p.path) || undefined };
+    const at = stageFor(p.path, scenes);
+    const summary: ProjectSummary = { stage: at.stage, stage_label: at.label, completed: 0, total: scenes.length, busy: this.busyHolder(p.path) || undefined };
     for (const sc of scenes) if (sc.exists && !sc.stale) summary.completed++;
     return summary;
   }
 
   private async createAPI(request: Request): Promise<Response> {
     if (request.method !== 'POST') return methodNotAllowed('POST');
-    let req: { parent: string; name: string; canvas: string; style: string; delivery: string; narration: string; film_style: string };
+    let req: { parent: string; name: string; canvas: string; delivery: string; narration: string; film_style: string };
     try {
       const body = await decodeJSONStrict(request);
       req = {
         parent: fieldString(body, 'parent'),
         name: fieldString(body, 'name'),
         canvas: fieldString(body, 'canvas'),
-        style: fieldString(body, 'style'),
         // delivery 与 narration 同 am init --delivery / --narration，缺省为 speech / solo。
         delivery: fieldString(body, 'delivery'),
         narration: fieldString(body, 'narration'),
@@ -506,9 +527,6 @@ export class Server {
     }
     if (goTrimSpace(req.name) === '') return writeError(400, 'invalid_request', '请填写项目名称');
     if (req.canvas === '') req.canvas = preset.defaultPreset().id;
-    // 工作台与 CLI 保持一致：内置风格是可选风格包，默认进入模型自主
-    // 定风格流程，避免新项目被清晰系统蓝图预先定向。
-    if (req.style === '') req.style = preset.CustomStyle.id;
     const parent = path.resolve(req.parent);
     if (!isWithinStudioBrowseRoot(parent)) return writeError(403, 'directory_outside_root', '只能在服务器用户目录下创建项目');
     if (!dirExists(parent)) return writeError(400, 'directory_unavailable', '父目录不存在');
@@ -518,12 +536,6 @@ export class Server {
     }
     const target = path.join(parent, name);
     if (fileExists(target)) return writeError(409, 'project_exists', '这个目录已经存在');
-    let styleMeta: preset.Style = preset.CustomStyle;
-    if (req.style !== preset.CustomStyle.id) {
-      const found = preset.styleByID(req.style);
-      if (!found) return writeError(400, 'invalid_style', '未知风格');
-      styleMeta = found;
-    }
     let filmStyle: filmstyle.Style | undefined;
     if (req.film_style !== '') {
       try {
@@ -534,18 +546,7 @@ export class Server {
     }
     if (req.delivery === '') req.delivery = projectinit.DeliverySpeech;
     if (req.narration === '') req.narration = projectinit.NarrationSolo;
-    const extra: Record<string, string> = {};
-    if (req.style === preset.CustomStyle.id) {
-      extra[preset.CustomStyleBriefPath] =
-        '# 风格描述\n\n' +
-        '> 由工作台的自主定风格流程写入。制作开始前按这里的描述生成 frame.md、' +
-        '`' +
-        preset.guideDoc(preset.CustomStyle) +
-        '` 与四张示例图。\n\n' +
-        preset.AutomaticStyleBrief +
-        '\n';
-    }
-    const opts: projectinit.Options = { target, canvas: req.canvas, style: styleMeta, delivery: req.delivery, narration: req.narration, extra };
+    const opts: projectinit.Options = { target, canvas: req.canvas, delivery: req.delivery, narration: req.narration };
     try {
       projectinit.validate(opts);
     } catch (err) {
@@ -804,43 +805,34 @@ export function inspectProject(p: Project): Record<string, unknown> {
     if (sc.stale) stale++;
   }
   const meta = projectMetadata(p.path);
-  // 整片风格的名字给顶栏用；旧版 frame.md 的 style_name 不再显示，它已不影响渲染。
+  // 整片风格的名字给顶栏用。
   try {
     const { manifest, ok } = filmstyle.installed(p.path);
     if (ok) meta.film_style = manifest.cn;
   } catch {
     // 读不了就不显示。
   }
-  const exists = (...parts: string[]) => fileExists(path.join(p.path, ...parts));
+  // 项目的流程：顶栏的步骤、第一步与用不上的页面都按它（界面不按片型写死）。没有流程记录的目录排不出路线：
+  // 不给 flow 与 step，flow_error 照实说缺什么（界面据此提示，「开始制作」也会报同一句）。
+  let flowState: Record<string, unknown>;
+  try {
+    flowState = { ...stepOf(p.path, scenes), flow: flowView(p.path) };
+  } catch (err) {
+    if (!(err instanceof flow.MissingFlowRecordError)) throw err;
+    flowState = { flow_error: err.message };
+  }
   return goMap({
     project: projectJSON(p),
-    stage: stageFor(p.path, scenes),
-    ...stepOf(p.path, scenes),
+    ...flowState,
+    // 客户端有哪些页（宿主的加上内置插件登记的）：界面只列这里有的，组件仍在界面里按 id 对上。
+    pages: viewPages().map((pg) => goMap({ id: pg.id, label: pg.label })),
     metadata: goMap(meta),
-    media: goMap({
-      audio: exists('production', 'audio', 'candidate.mp4'),
-      final: exists('final.mp4') || exists('production', 'final.mp4'),
-      publish: exists('publish.md'),
-    }),
     scenes: goMap({ total: scenes.length, completed: done, stale }),
-    issues: projectIssues(p.path),
   });
 }
 
-function projectIssues(root: string): unknown {
-  let report: unknown;
-  try {
-    report = JSON.parse(fs.readFileSync(path.join(root, 'production', 'review', 'review.json'), 'utf8'));
-  } catch {
-    return [];
-  }
-  if (report === null || typeof report !== 'object' || Array.isArray(report)) return [];
-  const r = report as Record<string, unknown>;
-  return Object.hasOwn(r, 'issues') ? goValue(r.issues) : [];
-}
-
 /**
- * projectMetadata 从 frame.md 的 front matter 取风格与画幅。Studio 只是观察者，项目改到一半、
+ * projectMetadata 从 frame.md 的 front matter 取画幅。Studio 只是观察者，项目改到一半、
  * front matter 写坏了也照样返回能读到的部分，不报错。
  *
  * 只看顶层键：front matter 里 colors.canvas 这类同名的嵌套键是颜色值，按行扫描会读错。
@@ -865,15 +857,8 @@ export function projectMetadata(root: string): Record<string, string> {
   if (front === null || front === undefined) return result;
   if (typeof front !== 'object' || Array.isArray(front)) return result;
   const f = front as Record<string, unknown>;
-  for (const key of ['style_id', 'style_name']) {
-    const value = f[key];
-    if (typeof value === 'string' && value !== '') result[key] = value;
-  }
   const canvas = f.canvas;
-  if (typeof canvas === 'string') {
-    // 旧项目把画幅预设 id 直接写成标量。
-    if (canvas !== '') result.canvas_id = canvas;
-  } else if (canvas !== null && typeof canvas === 'object' && !Array.isArray(canvas)) {
+  if (canvas !== null && typeof canvas === 'object' && !Array.isArray(canvas)) {
     const c = canvas as Record<string, unknown>;
     const int = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) ? v : 0);
     const width = int(c.width_px);
@@ -904,29 +889,16 @@ export function stepOf(root: string, scenes: SceneSummary[]): { step?: string; s
 }
 
 /**
- * stageFor 按项目里已有的产物推断制作进度，口播与卡点两种模式都适用。只看文件是否存在，
- * 不读内容：它是网页上的一行提示，判断错了也不影响任何流程。
+ * stageFor 是首页最近项目那一行的阶段：与顶栏同一个来源（stepOf：编排标的步骤，否则制作路线当前一站所在的步骤），
+ * 不另看文件。没有流程记录的目录排不出路线，为空。
  */
-export function stageFor(root: string, scenes: SceneSummary[]): string {
-  const exists = (...parts: string[]) => fileExists(path.join(root, ...parts));
-  const final = exists('final.mp4') || exists('production', 'final.mp4');
-  let rendered = scenes.length > 0;
-  for (const sc of scenes) rendered = rendered && sc.exists;
-  if (final && exists('publish.md')) return 'publish';
-  if (final) return 'review';
-  if (rendered) return 'assemble';
-  if (scenes.length > 0) return 'render';
-  if (
-    exists('production', 'script-final.md') ||
-    exists('production', 'audio', 'voice.srt') ||
-    exists('production', 'scene-plan.json') ||
-    exists('production', 'beat', 'grid.json') ||
-    exists('production', 'beat', 'plan.json') ||
-    exists('script.md') ||
-    exists('SCRIPT.md') ||
-    exists('transcription.srt')
-  ) {
-    return 'plan';
+export function stageFor(root: string, scenes: SceneSummary[]): { stage: string; label: string } {
+  let step: string;
+  try {
+    step = stepOf(root, scenes).step ?? '';
+  } catch (err) {
+    if (err instanceof flow.MissingFlowRecordError) return { stage: '', label: '' };
+    throw err;
   }
-  return 'setup';
+  return { stage: step, label: studioview.steps().find((x) => x.id === step)?.label ?? step };
 }

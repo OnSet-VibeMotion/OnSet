@@ -1,18 +1,17 @@
 /**
- * 前置资源清单：要联网准备的每一项、怎么判断就绪、怎么准备。移植自 internal/prereqs。
+ * 前置资源清单：要联网准备的每一项、怎么判断就绪、怎么准备。
  *
  * am setup（下载）与客户端的引导（只读状态）共用这一份清单，两边说的永远是同一组东西。
  * 判断就绪不联网；准备只由 am setup 调用。错误类型与文案约定见 ../prereq。
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import * as beat from '../beat';
 import * as config from '../config';
 import { AlignAuto, Aligners, defaultTTSProvider, resolveAligner, TTSProviders, validAligner, validTTSProvider } from '../config/providers';
 import { envMap } from '../envutil';
 import type { ModelSpec, ToolSpec } from '../toolinstall';
-import * as filmstyle from '../filmstyle';
-import '../filmstyle/sources';
+import type * as filmstyle from '../filmstyle';
+import * as plugin from '../plugin';
 import * as hyperframes from '../hyperframes';
 import * as toolinstall from '../toolinstall';
 
@@ -61,20 +60,22 @@ export interface Item {
   /** 不联网地判断是否已就绪；where 是给人看的位置。 */
   ready: (env: Record<string, string>) => [ok: boolean, where: string];
   prepare: (run: Run, signal?: AbortSignal) => Promise<void>;
+  /** 内置插件登记的项：客户端安装页「以后可能用到」里的那一组（见 plugin.PluginPrereq）。 */
+  later?: { title: string; desc: string; icon?: string };
 }
 
 /**
  * 走 --proxy 的下载（GitHub release、Google 存储上的浏览器）用的环境：curl 与 HyperFrames 都认 https_proxy。
  * npm 与 pip 不给代理（它们用用户自己配置的国内镜像，经代理反而连不上，实测）。
  */
-function withProxy(run: Run, base: Record<string, string> = run.base): Record<string, string> {
+export function withProxy(run: Run, base: Record<string, string> = run.base): Record<string, string> {
   const env = { ...base };
   if (run.proxy) env.HTTPS_PROXY = env.https_proxy = run.proxy;
   return env;
 }
 
 /** 把 HyperFrames 的进度译成一行说明。 */
-function hyperframesStage(p: hyperframes.Progress): string {
+export function hyperframesStage(p: hyperframes.Progress): string {
   if (p.indeterminate || p.percent <= 0 || p.percent >= 100) return p.stage;
   return `${p.stage} ${Math.trunc(p.percent)}%`;
 }
@@ -205,29 +206,9 @@ export function items(pick?: Selection): Item[] {
         await toolinstall.ensureFFmpeg({ env: withProxy(run), output: run.log, progress: (p) => run.stage(hyperframesStage(p)), signal });
       },
     },
-    {
-      group: 'beat',
-      id: 'beat',
-      // 只有卡点项目要：不选卡点就用不到这一套近 1 GB 的 Python 环境。
-      required: false,
-      name: '节拍分析环境 beat-this',
-      version: beat.AnalyzerVersion,
-      ready: (env) => {
-        const dir = beat.envDir(env);
-        return [beat.envReady(dir), dir];
-      },
-      prepare: async (run, signal) => {
-        // pip 用用户自己的 pip.conf（国内镜像），不套代理，理由同 npm；权重在境外服务器上，--proxy 只给它。
-        const weightsEnv = { ...run.base };
-        if (run.proxy) weightsEnv.HTTPS_PROXY = weightsEnv.https_proxy = run.proxy;
-        // 系统里没有能装 torch 的 Python 时，先下载 uv，由它带一份独立的 Python（不要求用户装 Python）。
-        if (!(await beat.hasBasePython(run.base, signal))) {
-          await toolinstall.ensureUV({ env: withProxy(run), output: run.log, progress: (p) => run.stage(hyperframesStage(p)), signal });
-        }
-        await beat.ensureEnv({ env: run.base, weightsEnv, output: run.log, progress: (p) => run.stage(hyperframesStage(p)) }, signal);
-      },
-    },
   ];
+  // 内置插件登记的前置资源（例如卡点的节拍分析环境）。
+  for (const { value } of plugin.pluginPrereqs()) out.push(value);
   const tts = TTSProviders.find((p) => p.id === chosen.tts);
   if (tts) out.push(toolItem('tts', tts.id, '配音 ' + tts.name, tts.install, tts.model));
   // 音色页的「按描述设计」用本机的 Breeze，与项目选的配音工具无关；项目配音本来就是 Breeze 时上面那一项就是它。
@@ -235,28 +216,32 @@ export function items(pick?: Selection): Item[] {
   if (breeze && chosen.tts !== 'breeze') out.push(toolItem('voice', breeze.id, '音色设计 ' + breeze.name, breeze.install, breeze.model));
   const aligner = Aligners.find((a) => a.id === chosen.align);
   if (aligner) out.push(toolItem('align', aligner.id, '对齐 ' + aligner.name, aligner.install, aligner.model));
-  for (const source of filmstyle.sources()) {
-    out.push({
-      group: 'styles',
-      id: 'styles:' + source.id(),
-      name: '整片风格 ' + source.id(),
-      version: '',
-      required: false,
-      ready: (env) => {
-        let ok = true;
-        try {
-          source.check(env);
-        } catch {
-          ok = false;
-        }
-        return [ok, source.location(env)];
-      },
-      // 来源可能既用 git 又用 npm：git 的代理与 npm 的源合在一份环境里。
-      prepare: (run, signal) =>
-        source.prepare({ env: run.mixed, output: run.log, progress: (p) => run.stage(`(${p.step}/${p.steps}) ${p.stage}`) }, signal),
-    });
-  }
   return out;
+}
+
+/**
+ * 一个整片风格来源的数据（来源 id 为 styles:<来源>）：登记风格来源的内置插件拿它登记前置资源（ctx.prereq）。
+ * 第三方插件带来的风格库随插件下来，不是前置资源。
+ */
+export function filmStyleSourceItem(source: filmstyle.Source): Item {
+  return {
+    group: 'styles',
+    id: 'styles:' + source.id(),
+    name: '整片风格 ' + source.id(),
+    version: '',
+    required: false,
+    ready: (env) => {
+      let ok = true;
+      try {
+        source.check(env);
+      } catch {
+        ok = false;
+      }
+      return [ok, source.location(env)];
+    },
+    // 来源可能既用 git 又用 npm：git 的代理与 npm 的源合在一份环境里。
+    prepare: (run, signal) => source.prepare({ env: run.mixed, output: run.log, progress: (p) => run.stage(`(${p.step}/${p.steps}) ${p.stage}`) }, signal),
+  };
 }
 
 /** 一项的就绪状态（给客户端与 --check 用）。字段顺序与 Go 的 JSON tag 一致。 */
@@ -268,12 +253,13 @@ export interface Status {
   required: boolean;
   ready: boolean;
   location: string;
+  later?: { title: string; desc: string; icon?: string };
 }
 
 /** 不联网地返回全部项的状态。 */
 export function check(env: Record<string, string>, pick?: Selection): Status[] {
   return items(pick ?? selection(env)).map((item) => {
     const [ok, where] = item.ready(env);
-    return { id: item.id, group: item.group, name: item.name, version: item.version || undefined, required: item.required, ready: ok, location: where };
+    return { id: item.id, group: item.group, name: item.name, version: item.version || undefined, required: item.required, ready: ok, location: where, later: item.later };
   });
 }

@@ -34,6 +34,7 @@ import {
 import { applySuggestion, findToken, mentionAttachments, parseCommand, slashCommands, suggest, type SlashCommand, type Suggestion } from './chat/complete';
 import '../chat.css';
 import { RenderWatch } from './RenderActivity';
+import { stationPageLabel } from './Stations';
 
 // SSE 的 event 字段就是事件种类，EventSource 只把具名事件派给对应监听器，所以要逐个注册。
 const kinds: EventKind[] = [
@@ -246,10 +247,14 @@ export function Chat(props: Props) {
         fill(action.text);
         return;
       case 'gate':
-        void confirmGate(action.gate, (text) => void deliver(text, []));
+        void confirmGate(action.gate, (text) => void deliver(text, []), action.text);
         return;
       case 'start':
         void startProduction();
+        return;
+      case 'op':
+        // NextStep 已经让用户确认过；执行是写任务，进度在任务列表里。
+        props.run(`/api/stations/${encodeURIComponent(action.station)}/ops/${encodeURIComponent(action.op)}`, { params: {} });
         return;
     }
   };
@@ -309,6 +314,11 @@ export function Chat(props: Props) {
       case 'remember':
         fill('记住这个偏好，以后都这样做：');
         return;
+      default:
+        if (command.plugin?.tab) {
+          fill('');
+          props.onView({ page: command.plugin.tab });
+        } else if (command.plugin) fill(command.plugin.prompt);
     }
   };
 
@@ -490,8 +500,7 @@ export function Chat(props: Props) {
               <h3>说说要做什么</h3>
               <p>AI 会直接改项目文件，每一轮的改动都能查看和回退。</p>
               <p className="muted">
-                新项目先点「开始制作」：还没有定稿字幕时照 PROMPT-PRODUCTION.md 从文章开始做到成片，已有 transcription.srt 时照 PROMPT.md
-                从字幕开始。之后在同一个会话里继续改。文章、图片和音频可以直接拖进输入框。
+                新项目先点「开始制作」：按新建时选的片型，从文章开始一步步做到成片。之后在同一个会话里继续改。文章、图片和音频可以直接拖进输入框。
               </p>
             </div>
           )}
@@ -966,7 +975,7 @@ function AnsweredOptions(props: { picked?: string; count: number; children: Reac
 
 /** 切页请求的说法：「口播稿」「镜头 scene-003」「文件 production/treatment.md」。 */
 function viewLabel(view: ViewRequest): string {
-  const label = tabs.find(([id]) => id === view.page)?.[1] ?? view.page;
+  const label = tabs.find(([id]) => id === view.page)?.[1] ?? stationPageLabel(view.page) ?? view.page;
   return view.target ? `${label} ${view.target}` : label;
 }
 
@@ -1508,6 +1517,8 @@ function HistoryMenu(props: { sessions: SessionMeta[]; current: string; onPick: 
 function NextStep({ guide, disabled, onAction }: { guide: Guide | null; disabled: boolean; onAction: (action: GuideAction) => void }) {
   const key = guide ? guide.title + '|' + guide.text : '';
   const [hidden, setHidden] = useState('');
+  // 插件的操作对外、不能撤回：点了先在卡片上问一次，用户点「执行」才跑。
+  const [confirming, setConfirming] = useState<Extract<GuideAction, { kind: 'op' }> | null>(null);
   if (!guide || !guide.waiting || hidden === key) return null;
   return (
     <section className="next-step" id="next-step" aria-label="接下来">
@@ -1520,7 +1531,23 @@ function NextStep({ guide, disabled, onAction }: { guide: Guide | null; disabled
         </button>
       </div>
       <p>{guide.text}</p>
-      {guide.actions.length > 0 && (
+      {confirming && (
+        <div className="ns-confirm" role="alertdialog" aria-label="确认执行">
+          <span>执行插件操作「{confirming.summary}」？</span>
+          <button
+            className="primary"
+            disabled={disabled}
+            onClick={() => {
+              onAction(confirming);
+              setConfirming(null);
+            }}
+          >
+            执行
+          </button>
+          <button onClick={() => setConfirming(null)}>取消</button>
+        </div>
+      )}
+      {guide.actions.length > 0 && !confirming && (
         <div className="ns-actions">
           {guide.actions.map((action) => (
             <button
@@ -1528,7 +1555,7 @@ function NextStep({ guide, disabled, onAction }: { guide: Guide | null; disabled
               // 推进制作的（确认、开工、发话）是主按钮；开页面、填输入框是次要的。
               className={action.kind === 'page' || action.kind === 'draft' ? '' : 'primary'}
               disabled={disabled && action.kind !== 'page' && action.kind !== 'draft'}
-              onClick={() => onAction(action)}
+              onClick={() => (action.kind === 'op' ? setConfirming(action) : onAction(action))}
             >
               {action.label}
             </button>

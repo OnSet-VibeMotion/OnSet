@@ -1,4 +1,3 @@
-// 移植自 internal/studio/script_test.go。
 import './testsupport';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';

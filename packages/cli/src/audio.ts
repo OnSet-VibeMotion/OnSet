@@ -1,5 +1,5 @@
 /**
- * 配音相关的操作。移植自 internal/cli/audio.go。
+ * 配音相关的操作。
  */
 import { formatFixed, formatG } from '@am/engine/gofmt';
 import * as mediaprobe from '@am/engine/mediaprobe';

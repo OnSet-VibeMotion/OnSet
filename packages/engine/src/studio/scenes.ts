@@ -38,32 +38,12 @@ export function sceneSummaryJSON(sc: SceneSummary): Record<string, unknown> {
 }
 
 /**
- * renderingWindow 是判定「还在渲染」的日志静默上限（毫秒）。渲染工具一直往流日志里写事件，
- * 超过这么久没动静，多半是进程已经没了（被杀、机器睡眠），不再显示成渲染中。
+ * 镜头是否正在渲染：以 scene.run 写的进行中标记（render-<id>.live.json）为准，看标记里的进程还在不在。
+ * 渲染器跑 hyperframes render 的几分钟里日志不动，所以不看日志静默。
  */
-export const renderingWindow = 3 * 60 * 1000;
-
-function mtime(file: string): number | null {
-  try {
-    return fs.statSync(file).mtimeMs;
-  } catch {
-    return null;
-  }
-}
-
-export function sceneRendering(dir: string, id: string, now: Date): boolean {
-  // 有进行中标记时以它为准：渲染器跑 hyperframes render 的几分钟里日志不动，静默判断会误判成结束。
+export function sceneRendering(dir: string, id: string): boolean {
   const live = scene.readLive(dir, id);
-  if (live) return scene.processAlive(live.pid);
-  // 没有标记的是旧版 am 起的渲染，退回看日志。
-  let latest: number | null = null;
-  for (const name of ['render-' + id + '.stream.jsonl', 'render-' + id + '.user.log', 'render-' + id + '.stderr.log']) {
-    const t = mtime(path.join(dir, name));
-    if (t !== null && (latest === null || t > latest)) latest = t;
-  }
-  if (latest === null || now.getTime() - latest > renderingWindow) return false;
-  const attempt = mtime(path.join(dir, 'render-' + id + '.attempt.json'));
-  return attempt === null || attempt < latest;
+  return live ? scene.processAlive(live.pid) : false;
 }
 
 export function fileExists(file: string): boolean {
@@ -116,7 +96,7 @@ export function discoverScenes(root: string): SceneSummary[] {
       exists,
       stale,
       attempts: 0,
-      rendering: sceneRendering(dir, id, new Date()) || undefined,
+      rendering: sceneRendering(dir, id) || undefined,
     };
     const history = scene.attemptHistory(dir, id);
     if (history.length > 0) {

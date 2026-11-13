@@ -4,6 +4,7 @@ import type { AgentKeysResponse, SettingRow, SettingsResponse } from '../types';
 import { ModelSelect } from './ModelSelect';
 import type { RunAction } from './Preview';
 import '../settings.css';
+import { PluginSettings } from './Stations';
 
 /**
  * 设置页：每一项「什么用什么」都有一个全局值，所有项目默认跟着它；某个项目要不一样，在「这个项目」一栏单独设，
@@ -18,7 +19,7 @@ const sourceNote: Record<SettingRow['source'], string> = {
   default: '',
 };
 
-export function Settings({ version, run }: { version: number; run: RunAction }) {
+export function Settings({ version, run, onPluginsChanged }: { version: number; run: RunAction; onPluginsChanged?: () => void }) {
   const [data, setData] = useState<SettingsResponse | null>(null);
   const [error, setError] = useState('');
 
@@ -91,6 +92,7 @@ export function Settings({ version, run }: { version: number; run: RunAction }) 
       </div>
       {error && <div className="settings-error">{error}</div>}
       <AgentKeys version={version} />
+      <PluginSettings version={version} onChanged={onPluginsChanged} />
       <p className="settings-file">全局设置保存在 {data.file}</p>
     </div>
   );

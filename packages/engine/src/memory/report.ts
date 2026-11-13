@@ -1,7 +1,5 @@
-// 移植自 internal/memory/report.go。
 import { compareBytes, sortedKeys } from '../gojson';
 import { OutcomeInterrupted } from '../scene';
-import { usageNormalized } from '../tools';
 import { firstTry, SourceCheck, SourceRender, type Episode } from './episode';
 import { checkFailures, effectivelyPassed, statKey } from './stats';
 
@@ -103,7 +101,7 @@ class RunAccumulator {
 
   add(e: Episode, failed: Set<string>): void {
     if (e.usage !== null) {
-      const usage = usageNormalized(e.usage);
+      const usage = e.usage;
       this.stats.input_tokens += usage.input_tokens ?? 0;
       this.stats.output_tokens += usage.output_tokens ?? 0;
     }

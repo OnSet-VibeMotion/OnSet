@@ -22,9 +22,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      # 引擎的集成测试要真实的 ffmpeg / ffprobe / rsvg-convert；缺了会跳过，覆盖就成了假的。
+      # 引擎的集成测试要真实的 ffmpeg / ffprobe；缺了会跳过，覆盖就成了假的。
       - name: Install media tools
-        run: brew install ffmpeg librsvg
+        run: brew install ffmpeg
       - run: npm ci --no-audit --no-fund
       - run: npx tsc --noEmit -p packages/engine
       - run: npx tsc --noEmit -p packages/cli
@@ -83,10 +83,10 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run generate -w @am/engine
-      - name: assets/presets 与 assets/styles 必须与画幅表、风格表、模板一致
+      - name: assets/presets 必须与画幅表、模板一致
         run: |
           if ! git diff --exit-code; then
-            echo "::error::生成产物与提交的不一致：改了画幅表、风格表或模板后要跑 npm run generate -w @am/engine 并提交产物" >&2
+            echo "::error::生成产物与提交的不一致：改了画幅表或 frame.md 模板后要跑 npm run generate -w @am/engine 并提交产物" >&2
             exit 1
           fi
 

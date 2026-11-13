@@ -1,4 +1,4 @@
-// 角色包（character pack）规范的唯一真相源。移植自 internal/cast。
+// 角色包（character pack）规范的唯一真相源。
 //
 // am 不内置任何角色：这个包只定义格式、解析它、并拦住那些会在渲染阶段
 // 静默坏掉的写法。角色包由 am cast add 从外部拷进项目。
@@ -10,7 +10,7 @@ import path from 'node:path';
 import { compareBytes, marshalIndent, sortedKeys } from '../gojson';
 import { formatG, goQuote, pathError } from './gofmt';
 import { validateRig } from './rig';
-import { float, int, ptrFloat, str, unmarshal, type Schema } from './yamldecode';
+import { float, int, ptrFloat, str, unmarshal, type Schema } from '../goyaml/decode';
 
 /** 角色包与项目班底共用的 schema 标识。 */
 export const SchemaVersion = 'cast/v1';

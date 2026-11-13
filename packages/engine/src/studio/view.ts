@@ -1,5 +1,5 @@
 /**
- * 编排工具与 Studio 网页之间的两条通道。移植自 internal/studio/view.go。
+ * 编排工具与 Studio 网页之间的两条通道。
  *
  * 与 am studio show 共用的部分（页面表、请求校验、收件目录）已在 ../studioview，这里只做
  * Go 版 studio 包里的同名入口：ValidateViewRequest、WriteViewRequest、drainViewInbox、viewInbox、
@@ -10,7 +10,7 @@ import path from 'node:path';
 import * as studioview from '../studioview';
 import { studioRoot } from './turns';
 
-export { KindView as kindView, StepIDs, ViewInboxEnv, ViewPages, ViewPollInterval, ViewProjectEnv, viewInteraction, viewPage } from '../studioview';
+export { KindView as kindView, stepIDs, ViewInboxEnv, ViewPages, viewPages, ViewPollInterval, ViewProjectEnv, viewInteraction, viewPage } from '../studioview';
 export type { ViewPage, ViewRequest, ViewState } from '../studioview';
 
 /** ViewState.Describe：把用户在看的位置写成一句话，附在发给编排工具的消息后面。 */
@@ -41,7 +41,7 @@ function stepMarkPath(project: string): string {
 }
 
 export function writeStepMark(project: string, step: string, now = new Date()): void {
-  if (!studioview.StepIDs.includes(step)) return;
+  if (!studioview.stepIDs().includes(step)) return;
   const file = stepMarkPath(project);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify({ step, at: now.toISOString() }) + '\n');
@@ -50,7 +50,7 @@ export function writeStepMark(project: string, step: string, now = new Date()): 
 export function readStepMark(project: string): StepMark | null {
   try {
     const v = JSON.parse(fs.readFileSync(stepMarkPath(project), 'utf8')) as Partial<StepMark>;
-    if (typeof v.step === 'string' && studioview.StepIDs.includes(v.step)) return { step: v.step, at: typeof v.at === 'string' ? v.at : '' };
+    if (typeof v.step === 'string' && studioview.stepIDs().includes(v.step)) return { step: v.step, at: typeof v.at === 'string' ? v.at : '' };
   } catch {
     // 还没标过。
   }

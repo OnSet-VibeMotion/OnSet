@@ -2,7 +2,7 @@
 
 # ArticleToMotion
 
-ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的 MG 动画视频：从文章或口播稿出发，完成写稿、配音、字幕、分镜、并发渲染动画镜头、拼接、封面与发布交付；已有定稿字幕时也可以直接拆成镜头渲染。
+ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的 MG 动画视频：从文章或口播稿出发，完成写稿、配音、字幕、分镜、并发渲染动画镜头、拼接、封面与发布交付；也可以做没有配音、画面踩着音乐节拍走的卡点片。
 
 ▶ [观看 ArticleToMotion 宣传视频（MP4，4 分 47 秒）](https://github.com/chouheiwa/articale-to-motion/blob/main/docs/article-to-motion-tutorial.mp4)
 
@@ -71,7 +71,7 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 ### 视觉方向
 
-项目不预设或锁定视觉风格。画幅、帧率和渲染确定性由工具保证；配色、字体、版式、材质和动效由模型根据本片内容与每个镜头自主决定，镜头之间可以使用不同的视觉语言。早先版本的内置风格包只为兼容已有项目保留，不再进入渲染提示词。
+项目不预设或锁定视觉风格。画幅、帧率和渲染确定性由工具保证；配色、字体、版式、材质和动效由模型根据本片内容与每个镜头自主决定，镜头之间可以使用不同的视觉语言。项目根的 `frame.md` 只记画幅的技术信息：画布与帧率、安全区、烧录字幕的缺省样式与混音响度目标。
 
 ### 整片风格（可选）
 
@@ -87,7 +87,7 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 ## 多角色叙事
 
-「多角色对话」项目里，`cast.yaml`（登记班底）与 `cast/` 目录的存在本身就是模式开关。一个角色包是 `cast/<id>/` 下的一个目录：`character.yaml` 是唯一真相源（音色、rig 关节、姿势、可选的多视图与转身路径），配一份（或每个视图各一份）`rig.svg` 骨架图，`dna.md` 写人设供编排工具读、不参与渲染。分说话人合成的配音由工具重建成一条时间线，再按拆定的镜头切成节拍；作业规程随项目下发在 `PROMPT-CAST-ADDENDUM.md`。
+「多角色对话」项目里，`cast.yaml`（登记班底）与 `cast/` 目录的存在本身就是模式开关。一个角色包是 `cast/<id>/` 下的一个目录：`character.yaml` 是唯一真相源（音色、rig 关节、姿势、可选的多视图与转身路径），配一份（或每个视图各一份）`rig.svg` 骨架图，`dna.md` 写人设供编排工具读、不参与渲染。分说话人合成的配音由工具重建成一条时间线，再按拆定的镜头切成节拍；作业规程是制作提示词末尾的「附：多角色叙事作业规程」。
 
 ## 渲染记忆
 
@@ -162,6 +162,10 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 节拍分析用 [beat-this](https://github.com/CPJKU/beat_this)（ISMIR 2024，代码与权重均为 MIT），同时给出普通拍与重拍，CPU 可跑；不依赖 madmom。
 
+## 写插件
+
+想给制作流程加一站（例如自动发布），按 [docs/plugin-authoring.md](docs/plugin-authoring.md) 写一份 `am-station.json`，在客户端设置页的「我的插件」里装上：装一次，这台电脑上的所有项目都能用，它带来的做法与风格在新建项目时就能选。
+
 ## 开发
 
 从源码构建需要 Node.js 22+：
@@ -179,7 +183,7 @@ npm run test:e2e -w am-desktop               # 客户端端到端测试（Playwr
 npm run dist -w am-desktop                   # 打出 .app（apps/desktop/release/）
 ```
 
-`am`（`packages/cli`）是客户端内部用的程序：后台任务直接调它，编排工具与渲染器经它的工具服务（MCP）调用，不对用户提供命令行。开发时可以用 `node packages/cli/dist/am.cjs <命令>` 直接跑。改了画幅表、风格表或提示词模板后要跑 `npm run generate -w @am/engine` 并提交生成的 `assets/presets`、`assets/styles`。开发约定见 `AGENTS.md` 与 `packages/engine/CONVENTIONS.md`。
+`am`（`packages/cli`）是客户端内部用的程序：后台任务直接调它，编排工具与渲染器经它的工具服务（MCP）调用，不对用户提供命令行。开发时可以用 `node packages/cli/dist/am.cjs <命令>` 直接跑。改了画幅表或 `frame.md` 模板后要跑 `npm run generate -w @am/engine` 并提交生成的 `assets/presets`。开发约定见 `AGENTS.md` 与 `packages/engine/CONVENTIONS.md`。
 
 项目采用 [Apache License 2.0](./LICENSE)。HyperFrames 是独立的 Apache-2.0 项目，ArticleToMotion 初始化时使用固定版本，不在本仓库复制本机技能目录。
 
