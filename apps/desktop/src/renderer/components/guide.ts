@@ -18,6 +18,8 @@ export type GuideAction =
   | { kind: 'draft'; label: string; text: string }
   /** 确认审核关卡（先记下确认，再把那一关的话发给 AI：宿主的在 gateMessages，内置插件的是 text）。 */
   | { kind: 'gate'; label: string; gate: string; text?: string }
+  /** 第三方站的一条只能由用户触发的操作：先在卡片上确认，再执行。 */
+  | { kind: 'op'; label: string; station: string; op: string; summary: string }
   | { kind: 'start'; label: string };
 
 export interface Guide {
@@ -102,7 +104,7 @@ const stations: Record<string, StationGuide> = {
   },
 };
 
-/** 内置插件登记的说法（station.guide）。 */
+/** 内置插件登记的、第三方站清单里声明的说法（station.guide）。 */
 function fromPlugin(s: ProgressStation): StationGuide {
   const g = s.guide;
   if (!g) return {};

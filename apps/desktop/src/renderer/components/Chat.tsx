@@ -251,6 +251,10 @@ export function Chat(props: Props) {
       case 'start':
         void startProduction();
         return;
+      case 'op':
+        // NextStep 已经让用户确认过；执行是写任务，进度在任务列表里。
+        props.run(`/api/stations/${encodeURIComponent(action.station)}/ops/${encodeURIComponent(action.op)}`, { params: {} });
+        return;
     }
   };
 
@@ -1512,6 +1516,8 @@ function HistoryMenu(props: { sessions: SessionMeta[]; current: string; onPick: 
 function NextStep({ guide, disabled, onAction }: { guide: Guide | null; disabled: boolean; onAction: (action: GuideAction) => void }) {
   const key = guide ? guide.title + '|' + guide.text : '';
   const [hidden, setHidden] = useState('');
+  // 插件的操作对外、不能撤回：点了先在卡片上问一次，用户点「执行」才跑。
+  const [confirming, setConfirming] = useState<Extract<GuideAction, { kind: 'op' }> | null>(null);
   if (!guide || !guide.waiting || hidden === key) return null;
   return (
     <section className="next-step" id="next-step" aria-label="接下来">
@@ -1524,7 +1530,23 @@ function NextStep({ guide, disabled, onAction }: { guide: Guide | null; disabled
         </button>
       </div>
       <p>{guide.text}</p>
-      {guide.actions.length > 0 && (
+      {confirming && (
+        <div className="ns-confirm" role="alertdialog" aria-label="确认执行">
+          <span>执行插件操作「{confirming.summary}」？</span>
+          <button
+            className="primary"
+            disabled={disabled}
+            onClick={() => {
+              onAction(confirming);
+              setConfirming(null);
+            }}
+          >
+            执行
+          </button>
+          <button onClick={() => setConfirming(null)}>取消</button>
+        </div>
+      )}
+      {guide.actions.length > 0 && !confirming && (
         <div className="ns-actions">
           {guide.actions.map((action) => (
             <button
@@ -1532,7 +1554,7 @@ function NextStep({ guide, disabled, onAction }: { guide: Guide | null; disabled
               // 推进制作的（确认、开工、发话）是主按钮；开页面、填输入框是次要的。
               className={action.kind === 'page' || action.kind === 'draft' ? '' : 'primary'}
               disabled={disabled && action.kind !== 'page' && action.kind !== 'draft'}
-              onClick={() => onAction(action)}
+              onClick={() => (action.kind === 'op' ? setConfirming(action) : onAction(action))}
             >
               {action.label}
             </button>

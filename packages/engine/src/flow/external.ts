@@ -26,6 +26,7 @@ export {
   compareSemver,
   experimentalFields,
   manifestFieldNames,
+  nodeFieldNames,
   validSemver,
   type FieldTier,
   type HookEvent,

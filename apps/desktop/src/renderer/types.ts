@@ -808,14 +808,19 @@ export interface ProgressStation {
   page?: string;
   file?: string;
   turns: ProgressTurn[];
-  /** 内置插件给这一站写的「接下来」说法。 */
+  /** 内置插件给这一站写的「接下来」说法，第三方站清单里声明的（nodes[].guide、state 里落到的那一项）也在这里。 */
   guide?: {
     ai?: string;
     user?: string;
     page?: string;
     page_label?: string;
     /** 等你时的按钮（内置插件登记的）。 */
-    actions?: ({ kind: 'page'; label: string; page: string } | { kind: 'say' | 'draft'; label: string; text: string } | { kind: 'gate'; label: string; gate: string })[];
+    actions?: (
+      | { kind: 'page'; label: string; page: string }
+      | { kind: 'say' | 'draft'; label: string; text: string }
+      | { kind: 'gate'; label: string; gate: string }
+      | { kind: 'op'; label: string; station: string; op: string; summary: string }
+    )[];
     /** 关卡：点「确认」时发给 AI 的话。 */
     confirm?: string;
   };

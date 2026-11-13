@@ -37,7 +37,51 @@ export interface RouteNode {
    * 第三方站的声明式判断（内置站的判断函数在 studio/progress.ts）：outputs 里最新的修改时间就是这一站的产物时间，
    * stale_after 里的站点产物比它新时要重做。
    */
-  declared?: { outputs: string[]; stale_after: string[] };
+  declared?: { outputs: string[]; stale_after: string[]; state?: DeclaredState; guide?: DeclaredGuide };
+}
+
+/** 声明式判断里一个状态：没做 / 进行中 / 做完，一句说明，停在这里时等谁，「接下来」怎么说。 */
+export interface DeclaredOutcome {
+  status: 'todo' | 'doing' | 'done';
+  /** 给用户看的一句话；cases 与 otherwise 里的 `{value}` 换成读到的值。 */
+  detail?: string;
+  waiting?: 'user' | 'ai';
+  guide?: DeclaredGuide;
+}
+
+/** 一个字段值的取值：只做相等比较（类型也要相同）。 */
+export type DeclaredValue = string | number | boolean;
+
+/**
+ * 按项目文件里的一个字段定站点状态（第三方站清单 nodes[].state）。file 是项目里的相对路径（只能是本站
+ * produces、outputs 或页面 reads 里的），json 与 frontmatter 二选一，是用 `.` 分隔的键路径。
+ * 站点的 outputs 有产物时直接算做完，不看 state；没有时依次：文件不在 → missing；太大或解析不了 → invalid；字段没有或不是字符串、数字、布尔 → no_field；
+ * 值落在某个 cases 的 is 里 → 那一项；都不是 → otherwise。没写的一律是「没做」。
+ */
+export interface DeclaredState {
+  file: string;
+  format: 'json' | 'frontmatter';
+  key: string[];
+  cases: (DeclaredOutcome & { is: DeclaredValue[] })[];
+  otherwise?: DeclaredOutcome;
+  missing?: DeclaredOutcome;
+  invalid?: DeclaredOutcome;
+  no_field?: DeclaredOutcome;
+}
+
+/** 「接下来」卡片上的按钮：发一句话给 AI、填进输入框、开一页、请用户确认后执行本站的一条操作。 */
+export type DeclaredGuideAction =
+  | { kind: 'say'; label: string; text: string }
+  | { kind: 'draft'; label: string; text: string }
+  | { kind: 'page'; label: string; page: string }
+  | { kind: 'op'; label: string; station: string; op: string; summary: string };
+
+export interface DeclaredGuide {
+  /** AI 在做时的说法。 */
+  ai?: string;
+  /** 等你时的说法。 */
+  user?: string;
+  actions?: DeclaredGuideAction[];
 }
 
 /** 站的一段制作提示词。宿主的段落正文在 assets/prompts/<站>/<id>.md（运行期也读得到），内置插件的在它的目录里。 */

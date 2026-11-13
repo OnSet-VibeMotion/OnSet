@@ -1,0 +1,38 @@
+{
+  "_comment": "假发布顶替内置「发布」时的清单补丁（测试把它并进 am-station.json）：只用清单表达发布这一站的状态、说明与在等谁，对照 plugins/publishing 的判断函数。",
+  "replaces": "publish",
+  "after": "",
+  "node": {
+    "state": {
+      "file": "publish.md",
+      "frontmatter": "publish_status",
+      "cases": [
+        { "is": "ready", "status": "done", "detail": "可以发布" },
+        {
+          "is": "pending_manual_checks",
+          "status": "doing",
+          "detail": "还剩人工检查",
+          "waiting": "user",
+          "guide": {
+            "user": "发布前还剩几项人工检查：核对完告诉 AI，或者先记一笔。",
+            "actions": [
+              { "label": "核对完了", "draft": "发布前的人工检查我核对完了：" },
+              { "label": "先记一笔", "op": "scribble" },
+              { "label": "看发布看板", "page": "dashboard" }
+            ]
+          }
+        },
+        { "is": "blocked", "status": "doing", "detail": "有问题挡着" },
+        { "is": "draft", "status": "doing", "detail": "草稿" }
+      ],
+      "otherwise": { "status": "doing", "detail": "{value}" },
+      "invalid": { "status": "doing", "detail": "草稿" },
+      "no_field": { "status": "doing", "detail": "草稿" }
+    },
+    "guide": {
+      "ai": "AI 在按各平台的规格做封面、写标题和简介。",
+      "user": "最后一步：封面、标题和简介。",
+      "actions": [{ "label": "看发布看板", "page": "dashboard" }]
+    }
+  }
+}
