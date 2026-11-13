@@ -15,6 +15,16 @@ import { newArchiveCommand, newConfigCommand, newInitCommand } from './project_c
 import { newSetupCommand } from './setup';
 import { newStudioCommand } from './studio';
 import { newStyleCommand } from './style_cmd';
+import { newBeatCommand } from './beat_cmd';
+import { newCastCmd, newDialogueCmd } from './cast_cmd';
+import { newConcatCommand } from './media';
+import { newReviewCommand } from './review_cmd';
+import { newRunCommand } from './run_cmd';
+import { newSceneCommand } from './scene_cmd';
+import { newSongCmd } from './song_cmd';
+import { newUsageCommand } from './usage_cmd';
+import { newValidateCommand } from './validate_cmd';
+import { setToolVersion } from '@am/engine/scene';
 
 /**
  * `am --version` 的版本号。由发布流程在构建时注入（esbuild --define:AM_VERSION），本地构建是 dev。
@@ -72,6 +82,7 @@ export interface RootFlags {
 
 export function newRoot(stdout: Out, stderr: Out): { root: Command; flags: RootFlags } {
   const unsafe = ref(false);
+  setToolVersion(Version);
   const root = new Command({ use: 'am', short: 'ArticleToMotion 竖屏 MG 视频制作工具', long: rootLong, version: Version });
   root.setOut(stdout);
   root.setErr(stderr);
@@ -84,6 +95,12 @@ export function newRoot(stdout: Out, stderr: Out): { root: Command; flags: RootF
   const flags: RootFlags = { unsafe };
   root.addCommand(newSetupCommand(stdout, stderr), newHyperframesCommand(stdout, stderr), newFilmStyleCommand(stdout, stderr));
   root.addCommand(newInitCommand(stdout, stderr), newConfigCommand(stdout), newArchiveCommand(stdout), newAlignCommand(stdout), newAudioCommand(stdout), newStyleCommand(stdout), newStudioCommand(stdout));
+  // validate、concat、review 在 Go 版里共用同一个 --project-root 变量。
+  const projectRoot = ref('');
+  root.addCommand(newSceneCommand(stdout, stderr, unsafe), newRunCommand(stdout, stderr, unsafe), newUsageCommand(stdout));
+  root.addCommand(newValidateCommand(stdout, projectRoot), newConcatCommand(stdout, projectRoot), newReviewCommand(stdout, projectRoot));
+  root.addCommand(newSongCmd(stdout), newBeatCommand(stdout), newCastCmd(stdout), newDialogueCmd(stdout));
+  // TODO(memory): root.addCommand(newMemoryCommand(stdout, stderr, unsafe))——am memory 整组命令下一轮移植。
   return { root, flags };
 }
 

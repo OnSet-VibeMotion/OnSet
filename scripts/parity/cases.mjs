@@ -13,6 +13,10 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { cases as beatSongCast } from './cases-beat-song-cast.mjs';
+import { cases as cuesUsage } from './cases-cues-usage.mjs';
+import { cases as mediaReviewReads } from './cases-media-review-reads.mjs';
+import { cases as sceneRunValidate } from './cases-scene-run-validate.mjs';
 
 const goAm = process.env.AM_GO || path.join(os.homedir(), '.local/bin/am');
 const fixtures = path.join(import.meta.dirname, 'fixtures');
@@ -146,4 +150,8 @@ export const cases = [
       ['studio', 'show'],
     ],
   },
+  ...sceneRunValidate,
+  ...beatSongCast,
+  ...mediaReviewReads,
+  ...cuesUsage,
 ];
