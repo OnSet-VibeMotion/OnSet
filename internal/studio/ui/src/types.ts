@@ -402,7 +402,8 @@ export interface FilmStylesResponse {
   styles: FilmStyle[];
   categories: string[];
   gallery: string;
-  posters: 'ready' | 'downloading' | 'error';
+  /** missing：风格库还没由 am setup 准备好，海报显示占位。 */
+  posters: 'ready' | 'missing';
   posters_error?: string;
 }
 

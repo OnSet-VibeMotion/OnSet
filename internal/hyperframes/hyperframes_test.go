@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/chouheiwa/articale-to-motion/internal/prereq"
 )
 
 func writeSkill(t *testing.T, root, name string, files map[string]string) {
@@ -539,5 +541,42 @@ func TestInstallIgnoresDamagedCache(t *testing.T) {
 	}
 	if cachedTree(cache, commit, 2) == "" {
 		t.Error("重新下载后缓存应当恢复完整")
+	}
+}
+
+// 技能是前置资源：只拷缓存（CacheOnly）时缓存里没有就报缺前置资源、不联网；
+// am setup 用 PrepareSkills 下进缓存后，同样的安装就能从缓存装上。
+func TestCacheOnlyInstallNeedsPrepareSkills(t *testing.T) {
+	url, commit := fixtureRepo(t, "v9.9.9", []string{"hyperframes-animation"}, []string{"hyperframes-core"})
+	cache := t.TempDir()
+	opts := Options{
+		ProjectDir: t.TempDir(), Version: "9.9.9", RepoURL: url, ExpectCommit: commit, ExpectSkills: 2,
+		Env: map[string]string{"PATH": os.Getenv("PATH")}, Output: &bytes.Buffer{}, CacheDir: cache, CacheOnly: true,
+	}
+	if _, err := Install(context.Background(), opts); !prereq.IsMissing(err) {
+		t.Fatalf("缓存里没有时应当报缺前置资源：%v", err)
+	}
+	prep := opts
+	prep.CacheOnly = false
+	if err := PrepareSkills(context.Background(), prep); err != nil {
+		t.Fatal(err)
+	}
+	if entries, _ := os.ReadDir(opts.ProjectDir); len(entries) != 0 {
+		t.Error("PrepareSkills 只下进缓存，不该往项目里写")
+	}
+	opts.Env = map[string]string{"PATH": t.TempDir()} // 连 git 都没有也能装：只拷缓存
+	result, err := Install(context.Background(), opts)
+	if err != nil || len(result.Installed) != 2 {
+		t.Fatalf("准备好之后应当从缓存装上：%v %v", result.Installed, err)
+	}
+}
+
+func TestRequireCLIOnlyChecks(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "cli")
+	if _, err := RequireCLI(map[string]string{CLIDirEnv: dir}); !prereq.IsMissing(err) {
+		t.Fatalf("没装时应当报缺前置资源：%v", err)
+	}
+	if _, err := os.Stat(dir); err == nil {
+		t.Error("RequireCLI 只检查，不该建目录或安装")
 	}
 }

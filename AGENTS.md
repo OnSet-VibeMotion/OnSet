@@ -35,7 +35,9 @@ go vet ./...
 
 官方技能不能直接跑 `npx hyperframes skills` 装——上游安装器只认 `homedir()`，没有任何选项能改落点（`skills update --dir` 的帮助原文写着 "scopes the prune, not the install"）。装在机器级会让项目之间互相覆盖：一台机器只有一份技能，项目 A 与项目 B 固定不同版本时谁后初始化谁说了算。
 
-更要命的是上游安装器根本给不了可复现性：它 `git clone` 仓库默认分支取技能，没有指定 ref 的口子，技能内容随上游 `main` 漂移而版本号不变（实测 0.8.1 与 0.8.14 装出来逐字节相同）。所以 `internal/hyperframes` 不调用它，改为自己按 tag 浅克隆并校验 commit 与技能数量，见 `PinnedSkillsCommit` / `PinnedSkillsCount` 的注释；安装后写一份 `hyperframes-upstream.json` 记录 commit 与每个技能的内容摘要，见 `manifest.go`。校验过的技能树按 commit 缓存在用户级目录（`DefaultCacheDir`），第二个项目起不联网；缓存只在调用方显式传 `Options.CacheDir` 时启用（`projectinit.InstallSkills` 传），测试里传临时 `HOME` 的用例因此仍能断言 HOME 一个字节都没动。缓存按技能数判可用，残缺就重新下载覆盖。
+更要命的是上游安装器根本给不了可复现性：它 `git clone` 仓库默认分支取技能，没有指定 ref 的口子，技能内容随上游 `main` 漂移而版本号不变（实测 0.8.1 与 0.8.14 装出来逐字节相同）。所以 `internal/hyperframes` 不调用它，改为自己按 tag 浅克隆并校验 commit 与技能数量，见 `PinnedSkillsCommit` / `PinnedSkillsCount` 的注释；安装后写一份 `hyperframes-upstream.json` 记录 commit 与每个技能的内容摘要，见 `manifest.go`。校验过的技能树按 commit 缓存在用户级目录（`DefaultCacheDir`）；缓存只在调用方显式传 `Options.CacheDir` 时启用，测试里传临时 `HOME` 的用例因此仍能断言 HOME 一个字节都没动。缓存按技能数判可用。
+
+**要联网的东西都是前置资源**（`internal/prereq`）：HyperFrames 技能（`hyperframes.PrepareSkills`）、HyperFrames CLI（`EnsureCLI`）、lemo-opuscar 风格库（`filmstyle.PrepareLibrary`，含全部 demo、海报、core/assets 与 three.js 依赖）只由 `am setup` 下载，用户自己在终端里跑，能看进度、加 `--proxy`、断了重来。其余路径只检查：`am init` / Studio 新建用 `Options.CacheOnly` 从缓存拷技能，`am hyperframes` 与 `scene.Run` 用 `RequireCLI`，`am film-style use` 与 Studio 用 `filmstyle.InstallForProject` / `RequireLibrary`，缺了一律返回 `prereq.MissingError`（文案统一指向 `am setup`）。**不要再在这些路径里加自动下载**：以前建项目、渲染、打开菜单时各自现下载，网络一差就卡在半路，用户看不到卡在哪，渲染途中卡住还白花一次模型调用。`am setup --proxy` 用 `GIT_CONFIG_PARAMETERS` 只给 git 设代理：设成 `HTTPS_PROXY` 的话 npm 也走它，国内镜像经代理反而连不上（实测）。
 
 HyperFrames **CLI** 与技能分开管理但同一个版本：`hyperframes.EnsureCLI` 用 `npm install hyperframes@<PinnedVersion>` 装进用户级 `~/.local/share/am/hyperframes/cli-<版本>`（`CLIDirEnv` 可覆盖），在临时目录里装好、跑过 `--version` 自检、写完成标记后整体改名进位，失败重试 3 次；npm 沿用用户自己的 `~/.npmrc`（国内镜像、代理、鉴权）。`am init`（经 `projectinit.InstallSkills`）与 `scene.Run`（启动渲染器之前）都会确保它在，所有调用一律写成 `am hyperframes <子命令>`（`hyperframes.CLICommand`），提示词、锁定文件规则与安全模式放行列表用的是同一个字符串。不再让渲染器 `npx --yes hyperframes@<版本>`：版本一升级，第一次渲染就要在途中现下载，网络一差渲染器空等二十多分钟、白花一次模型调用，只留下「没有产物」（实测）。`ChildEnvironment` 显式传 `AM_HYPERFRAMES_CLI_DIR`，理由同风格库目录；`scene.Run` 还把当前 `am` 放进渲染器的 `PATH`。测试的 `TestMain` 用 `hftest.FakeCLI` 造一份假的已装 CLI。
 
@@ -123,13 +125,13 @@ SVG 转 PNG 必须走 `rsvg-convert`（`internal/styleimage`），**不能用 Im
 | `filmstyle.PinnedCommit` 固定 commit，`catalog.json` 由 `go run ./internal/filmstyle/gen -src <检出>` 从同一 commit 生成（生成器校验 HEAD），`PinnedStyleCount` 守条数 | STYLE.md 与 demo 引擎直接决定画面；跟随 main 的话同一项目两次安装得到不同风格 |
 | 风格库本体在用户级目录（`DefaultLibraryDir`，按 commit 分目录），项目里只装选中的一种 | 所有项目共用一份检出；项目里的那份让项目可以整体拷走 |
 | 只接画面，不接风格库的 Python 配乐工具（`core/audio/`） | 要一套 Python 环境加约 1.4 GB 采样库，国内网络装不上时整条链路卡住；配乐仍走第九阶段的授权素材，Sound palette 只作参考 |
-| am 克隆的风格库带 `.am-library` 标记，只有它的稀疏规则可以由 am 改（`EnsureDemo`）；用户经 `AM_FILM_STYLE_LIBRARY` 指向的检出只读 | 子进程总是经环境变量拿到风格库目录，不能用「是不是默认目录」判断归属 |
+| am 克隆的风格库带 `.am-library` 标记，只有它的稀疏规则可以由 am 改（`PrepareLibrary`）；用户经 `AM_FILM_STYLE_LIBRARY` 指向的检出只读 | 子进程总是经环境变量拿到风格库目录，不能用「是不是默认目录」判断归属 |
 | `ChildEnvironment` 显式写 `AM_FILM_STYLE_LIBRARY`；`OrchestratorAccess` 总把风格库放进 `WritableDirs`，开工前 `EnsureFilmStyleLibraryDir` 先建目录 | 默认目录由 `XDG_DATA_HOME` 推出而它不在白名单；编排工具可能在这一轮里才 `am film-style use`，codex 沙箱只能放行已存在的目录 |
 | git 子进程带 `GIT_HTTP_LOW_SPEED_LIMIT/TIME`（1 KB/s 持续 60 秒即放弃） | 连接被掐断时 `--filter=blob:none` 的按需取文件不报错只挂着，实测卡过半小时 |
-| 下载可续传：克隆在固定的 `<目录>.partial` 里进行，失败保留；检出按 `libraryStages` 分段扩大稀疏规则，每段重试 3 次；demo 以 `.git/am-demos` 完成记录为准 | 按需取文件一批里断一次整批白下；分段后已取回的留在本地，国内网络下重跑几次总能下完 |
+| 下载可续传：克隆在固定的 `<目录>.partial` 里进行，失败保留；`PrepareLibrary` 先按 `libraryStages` 取基础部分，再取海报、按 `demoBatch` 分批取 demo、取 core/assets，每段重试 5 次，全部完成写 `.git/am-complete` | 按需取文件一批里断一次整批白下；分段后已取回的留在本地，国内网络下重跑几次总能下完 |
 | 技能目录不带 `demo/stills`、渲染产物与音频，不带 `core/render`；three.js 只带 demo 与 `core/` 实际 import 到的模块（`threeClosure` 顺着 import 链收集），`core/assets` 只带源码里出现过名字的模型与贴图（`referencedAssets`，按名字认是因为 demo 常拼接路径） | 整棵带的话一种 three.js 风格进项目 34 MB，挑过之后几 MB；多余的文件还会让指纹随无关内容变化 |
 | am 管理的风格库里的文件硬链接进项目，跨磁盘时退回复制；用户自己的检出只复制、不改权限。**不设只读** | 内容钉在 commit 上不会变，硬链接不占第二份磁盘。只读试过：渲染器 cp 出的副本继承只读，安全模式又不放行 chmod，真实渲染在这上面绕了好几轮 |
-| `core/assets/` 不在首次检出里，`EnsureDemo` 发现 demo 引用它才取（`.git/am-core-assets` 完成记录） | 12 MB 的一批经代理常因一次握手失败整批重来，而只有少数风格用它 |
+| `core/assets/` 放在 `PrepareLibrary` 的最后一段单独取 | 12 MB 的一批经代理常因一次握手失败整批重来，单独一段失败时前面的不受影响 |
 | `SKILL.md` 由 `skill.md.tmpl` 生成，写明 lemo 页面契约（`window.render(t)`）怎么换成 HyperFrames 的 `hf-seek`、`/core/...` 路径为何拷进镜头目录后不用改、Sound palette 与胶片颗粒对镜头无效 | 上游写给它自己的渲染器，这些冲突上游不会替我们守 |
 
 制作提示词「整片风格」一节由 `TestProductionPromptCarriesFilmStyle` 钉着。升级 `PinnedCommit` 时对比新旧 `core/lib.js` 与 `core/README.md` 的页面契约。
@@ -278,11 +280,11 @@ SVG 转 PNG 必须走 `rsvg-convert`（`internal/styleimage`），**不能用 Im
 | 编排工具要用户拍板时在回复末尾写 ` ```choices ` 代码块，网页渲染成按钮（`Chat.tsx` 的 `parseChoices`），点了把那一行原样发出；约定写在 `studioInteraction`，聊天开场、整片制作第一轮、续接失败补发时都带上 | 没有结构化的「提问」事件，这是三家都能做到的最小约定；改格式要两边一起改 |
 | 待办清单统一成 `agentrun.KindPlan`（claude 的 TodoWrite、codex 的 `todo_list`、opencode 的 `todowrite`），每条是完整清单；镜头的「渲染中」由渲染日志三分钟内有写入且比尝试记录新判断（`sceneRendering`） | 整片制作要跑几个小时，只看一串工具调用不知道做到哪了。新增一家 CLI 时它的待办工具也要译成 plan 事件 |
 | 聊天面板的结构照 OpenDesign：一轮的过程（思考、工具、中间的话）收进一个折叠块，进行中展开、结束收起，结尾的话才是回复；进度是底部浮动的药丸，排队的消息叠在输入框上方。事件到界面的整理只在 `ui/src/components/chat/model.ts`（`buildBlocks`） | 一轮动辄几十次工具调用，平铺会把回复淹没；整理逻辑放一处，渲染组件只管画 |
-| 建项目只走 `internal/projectinit`：`am init` 与 Studio 的新建（`createAPI`）共用 `Create`（讲解形式、叙事模式、cast 骨架）与 `InstallSkills`（HyperFrames 官方技能）。Studio 新建后在后台装技能（`installSkills`），顶栏在缺技能时给「安装」，安装中显示进度条（`hyperframes.Options.Progress`：克隆时让 git `--progress` 并解析百分比，检出那一步 git 不报进度、显示不确定进度，拷贝按技能计数；`am init` 在终端里用一行回车刷新）；浏览器端到端测试用 `AM_STUDIO_SKIP_SKILL_INSTALL=1` 跳过联网 | 两边各写一份时 Studio 漏了讲解形式、多角色对话，也不装官方技能，渲染器拿不到 hyperframes 入口技能 |
+| 建项目只走 `internal/projectinit`：`am init` 与 Studio 的新建（`createAPI`）共用 `Create`（讲解形式、叙事模式、cast 骨架）与 `InstallSkills`（HyperFrames 官方技能）。Studio 新建后在后台从本机缓存拷技能（`installSkills`，不联网；缓存是 `am setup` 准备的前置资源，缺了显示指向 `am setup` 的错误），顶栏在缺技能时给「安装」，安装中显示进度条（`hyperframes.Options.Progress`，拷贝按技能计数；`am setup` 下载时克隆让 git `--progress` 并解析百分比，在终端里用一行回车刷新）；浏览器端到端测试用 `AM_STUDIO_SKIP_SKILL_INSTALL=1` 跳过联网 | 两边各写一份时 Studio 漏了讲解形式、多角色对话，也不装官方技能，渲染器拿不到 hyperframes 入口技能 |
 | 没有打开项目、或点左上角时显示首页（`Home.tsx`，照 OpenDesign 首页）：在输入框说要做什么、拖进文章，发送后进入「开机」画面（`Creation.tsx`）：场记板、按画幅的监视器、四段片段的时间线，依次 `projects/create` → `uploads` → 等 `/api/skills` 装完 → `production/start`（带 `attachments`），播放头按真实进度走，装技能可以「不等了」转后台，最后打板推进到项目。先装技能再开工，编排工具一开工就有 hyperframes 技能。项目名由第一句话或文件名推出，重名加 `-2`；「保存到」默认取上次新建时的父目录（`registry.LastParent`），最近项目带阶段与出片摘要（`ProjectSummary`） | 从一句话到开始制作不该要先填一张表；已经不存在的项目不混进最近列表，给一键清理 |
 | `/api/files` 与 `/preview/scenes/` 经 `containedPath` 解析（含符号链接），`.env` 一律不读 | 默认只监听回环地址，但手机经隧道访问时这两个接口就是对外的 |
 | 风格只展示整片风格（`filmstyle.go`）：首页菜单、新建对话框与「风格」页共用 `FilmStyles.tsx`；旧版内置风格不再出现在 Studio 里（`/api/styles` 只剩画幅还在用）。装、换、去掉都经 `am film-style` 写任务（`startFilmStyleTask`），新建时 `/api/projects/create` 收 `film_style` 并返回 `film_style_task`，开机画面跟这个任务；顶栏显示的是 `metadata.film_style` | 旧风格 10 月 20 日起已不影响渲染，留在选择器里只会让人选一个不起作用的东西。风格改的是项目文件，走写任务才不会和一轮对话的快照打架 |
-| 海报在打开风格菜单时后台一次取全（`EnsurePosters`，约 23 MB，可续传），`/api/film-styles/{slug}/poster.jpg` 默认给 480 宽的缩略图（缓存在 `<风格库>.thumbs/`），`?size=full` 给原图；`AM_STUDIO_SKIP_SKILL_INSTALL=1` 时不下载 | 原图一张 1920×1080，菜单一屏几十张会卡；没下完的显示分类色占位块 |
+| Studio 不下载风格库与海报（前置资源，`am setup` 准备）：没准备好时 `/api/film-styles` 报 `posters: missing` 并附指向 `am setup` 的说明，网页显示分类色占位块；`/api/film-styles/{slug}/poster.jpg` 默认给 480 宽的缩略图（缓存在 `<风格库>.thumbs/`），`?size=full` 给原图 | 原图一张 1920×1080，菜单一屏几十张会卡 |
 
 ### 前端
 

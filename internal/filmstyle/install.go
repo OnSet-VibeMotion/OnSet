@@ -2,7 +2,6 @@ package filmstyle
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
@@ -18,6 +17,7 @@ import (
 	"time"
 
 	"github.com/chouheiwa/articale-to-motion/internal/fsutil"
+	"github.com/chouheiwa/articale-to-motion/internal/prereq"
 )
 
 // SkillsSubdir 是技能在项目里的落点，与 hyperframes.SkillsSubdir 一致。
@@ -141,7 +141,7 @@ func Install(opts InstallOptions) (InstallResult, error) {
 	if DemoUsesCoreAssets(filepath.Join(source, "demo")) {
 		assets := filepath.Join(lib.Dir, "core", "assets")
 		if _, statErr := os.Stat(assets); statErr != nil {
-			return InstallResult{}, fmt.Errorf("%s 的 demo 要用风格库的 core/assets/，风格库里还没有：重新运行 am film-style use", style.Label())
+			return InstallResult{}, prereq.Missing("风格库的 core/assets", style.Label()+" 的 demo 要用")
 		}
 		picked, err := referencedAssets(assets, sources)
 		if err != nil {
@@ -156,7 +156,7 @@ func Install(opts InstallOptions) (InstallResult, error) {
 	if style.ThreeJS {
 		three := filepath.Join(lib.Dir, "node_modules", "three")
 		if _, statErr := os.Stat(filepath.Join(three, "build", "three.module.js")); statErr != nil {
-			return InstallResult{}, fmt.Errorf("%s 用 three.js，风格库里还没有装 Node 依赖（node_modules/three）：重新运行 am film-style use，它会在风格库里执行 npm ci", style.Label())
+			return InstallResult{}, prereq.Missing("风格库的 three.js 依赖", style.Label()+" 要用")
 		}
 		picked, err := threeClosure(three, sources)
 		if err != nil {
@@ -354,22 +354,4 @@ func renderSkill(dir string, style Style, commit string) error {
 		}
 	}
 	return nil
-}
-
-// EnsureForProject 是 am init / am film-style use 的完整流程：准备风格库、补 demo、
-// 用到 three.js 时装 Node 依赖，再装进项目。
-func EnsureForProject(ctx context.Context, projectDir string, style Style, replace bool, opts LibraryOptions) (InstallResult, error) {
-	lib, err := EnsureLibrary(ctx, opts)
-	if err != nil {
-		return InstallResult{}, err
-	}
-	if err := EnsureDemo(ctx, lib, style.Slug, opts); err != nil {
-		return InstallResult{}, err
-	}
-	if style.ThreeJS {
-		if err := SetupNode(ctx, lib, SetupOptions{Env: opts.Env, Output: opts.Output}); err != nil {
-			return InstallResult{}, err
-		}
-	}
-	return Install(InstallOptions{ProjectDir: projectDir, Style: style, Library: lib, Replace: replace})
 }

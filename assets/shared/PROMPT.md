@@ -31,7 +31,7 @@
 - 用户需要的图片、字体和脚本：由本镜头自行选择并复制到镜头目录，不能依赖镜头目录之外的路径。
 - 渲染器锁定文件：固定 HyperFrames 版本、CLI 一律用 `am hyperframes <子命令>` 调用（不用 `npx`，每条命令单独执行）、禁止升级或改动已装技能、禁止读取 `.env`、禁止改动 `scene.json` 的执行契约。文件名取决于该镜头所用渲染工具会自动读取的项目级指令文件（例如 `claude` 读 `CLAUDE.md`），按所选工具各自的约定命名。
 
-全部技能都在项目根的 `.agents/skills/` 下，由 `am init` 一次装齐：HyperFrames 官方技能按固定版本安装，`text-to-lottie` 与 `algorithmic-art` 随 `am` 二进制下发。技能缺失时重跑 `am init` 补齐，不要自己跑 `npx hyperframes skills`——那会装到本机 HOME 而不是项目里，绕过版本固定。也不得从其他项目或本机目录复制。
+全部技能都在项目根的 `.agents/skills/` 下，由 `am init` 一次装齐：HyperFrames 官方技能按固定版本安装，`text-to-lottie` 与 `algorithmic-art` 随 `am` 二进制下发。技能缺失时先确认 `am setup --check` 全部就绪（缺了请用户在终端运行 `am setup`），再重跑 `am init` 补齐，不要自己跑 `npx hyperframes skills`——那会装到本机 HOME 而不是项目里，绕过版本固定。也不得从其他项目或本机目录复制。
 
 锁定文件如果限制「只在本镜头目录内工作」，必须给项目根的 `.agents/skills/` 留读取例外——它在项目内，但在镜头目录之外，由 `am` 写进渲染提示词。少了这条例外，渲染工具会拒读组合契约与动效手法，动画退化成只有淡入和位移。
 

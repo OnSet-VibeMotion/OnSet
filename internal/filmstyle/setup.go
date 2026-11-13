@@ -31,7 +31,7 @@ func (o SetupOptions) output() io.Writer {
 const nodeMarker = ".am-ok"
 
 // SetupNode 在风格库里按 package-lock.json 装 Node 依赖（three.js）。只有用 three.js 的
-// 风格要它，由 EnsureForProject 在安装那种风格时调用。
+// 风格要它，由 PrepareLibrary（am setup）在最后一步调用。
 // 用 npm ci 而不是 npm install：后者会改写锁文件，同一个 commit 装出不同版本。
 // --ignore-scripts：只要 three 的源文件，不跑任何安装脚本，也不下载浏览器。
 func SetupNode(ctx context.Context, lib Library, opts SetupOptions) error {
@@ -54,6 +54,10 @@ func SetupNode(ctx context.Context, lib Library, opts SetupOptions) error {
 	cmd.Stdout, cmd.Stderr = opts.output(), opts.output()
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("npm ci 失败：%w", err)
+	}
+	// 没有依赖时 npm ci 不建 node_modules，标记要自己建目录。
+	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+		return err
 	}
 	return os.WriteFile(marker, []byte(want+"\n"), 0o644)
 }

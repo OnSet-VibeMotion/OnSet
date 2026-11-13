@@ -279,85 +279,6 @@ func readSparse(dir string) ([]string, error) {
 	return out, nil
 }
 
-// EnsureDemo 让风格库里有 slug 的 demo 源码与海报。用户指定的检出（不归 am 管）
-// 原样使用：没有就报错，不去改它的稀疏规则。
-func EnsureDemo(ctx context.Context, lib Library, slug string, opts LibraryOptions) error {
-	demo := filepath.Join(lib.Dir, "styles", slug, "demo")
-	_, statErr := os.Stat(filepath.Join(demo, "index.html"))
-	if !lib.Managed {
-		if statErr != nil {
-			return fmt.Errorf("风格库 %s 里没有 %s 的 demo 源码（styles/%s/demo/）", lib.Dir, slug, slug)
-		}
-		return nil
-	}
-	// am 管理的风格库以完成记录为准，不以 index.html 在不在为准：上一次在取文件
-	// 中途断开时 index.html 可能已经写出、其余文件还没有。
-	if statErr == nil && demoDone(lib.Dir, slug) && (!DemoUsesCoreAssets(demo) || coreAssetsReady(lib.Dir)) {
-		return nil
-	}
-	git, err := envutil.LookPath("git", opts.Env["PATH"])
-	if err != nil {
-		return fmt.Errorf("找不到 git，无法下载 demo 源码：%w", err)
-	}
-	unlock, err := lock(ctx, lib.Dir+".lock")
-	if err != nil {
-		return err
-	}
-	defer unlock()
-	patterns, err := readSparse(lib.Dir)
-	if err != nil {
-		return fmt.Errorf("读取风格库稀疏规则：%w", err)
-	}
-	for _, add := range []string{"/styles/" + slug + "/demo/", "/styles/" + slug + "/poster.jpg"} {
-		if !contains(patterns, add) {
-			patterns = append(patterns, add)
-		}
-	}
-	if err := writeSparse(lib.Dir, patterns); err != nil {
-		return err
-	}
-	readTree := func() error {
-		var readErr error
-		for attempt := 1; attempt <= stageAttempts; attempt++ {
-			if _, readErr = gitCommand(ctx, git, lib.Dir, opts.Env, opts.Output, "read-tree", "--reset", "-u", "HEAD"); readErr == nil || ctx.Err() != nil {
-				break
-			}
-		}
-		return readErr
-	}
-	if err := readTree(); err != nil {
-		// 稀疏规则已经写进去了，下次 EnsureDemo 看到 demo 不全会接着取。
-		return fmt.Errorf("下载 %s 的 demo 源码失败（再运行一次会接着下载）：%w", slug, err)
-	}
-	if _, err := os.Stat(filepath.Join(demo, "index.html")); err != nil {
-		return fmt.Errorf("风格库里 %s 的 demo 没有 index.html：上游目录结构已变", slug)
-	}
-	// core/assets/（约 12 MB 的 3D 模型）只有个别风格用，不在首次检出里，用到时才取。
-	if DemoUsesCoreAssets(demo) && !coreAssetsReady(lib.Dir) {
-		if !contains(patterns, "/core/assets/") {
-			patterns = append(patterns, "/core/assets/") // 非 cone 规则后写的生效，盖过 !/core/assets/
-		}
-		if err := writeSparse(lib.Dir, patterns); err != nil {
-			return err
-		}
-		if err := readTree(); err != nil {
-			return fmt.Errorf("下载 %s 要用的 core/assets/ 失败（再运行一次会接着下载）：%w", slug, err)
-		}
-		if err := os.WriteFile(filepath.Join(lib.Dir, ".git", coreAssetsDone), []byte("ok\n"), 0o644); err != nil {
-			return err
-		}
-	}
-	return markDemoDone(lib.Dir, slug)
-}
-
-// coreAssetsDone 是 core/assets/ 完整取回的记录，理由同 demosDoneFile。
-const coreAssetsDone = "am-core-assets"
-
-func coreAssetsReady(libDir string) bool {
-	_, err := os.Stat(filepath.Join(libDir, ".git", coreAssetsDone))
-	return err == nil
-}
-
 // DemoUsesCoreAssets 判断 demo 源码是否引用风格库的 core/assets/（Poly Haven 模型与贴图）。
 func DemoUsesCoreAssets(demo string) bool {
 	found := false
@@ -382,30 +303,6 @@ func DemoUsesCoreAssets(demo string) bool {
 		return nil
 	})
 	return found
-}
-
-// demosDoneFile 记录已经完整取回 demo 的风格，一行一个。
-const demosDoneFile = "am-demos"
-
-func demoDone(libDir, slug string) bool {
-	body, err := os.ReadFile(filepath.Join(libDir, ".git", demosDoneFile))
-	if err != nil {
-		return false
-	}
-	return contains(strings.Fields(string(body)), slug)
-}
-
-func markDemoDone(libDir, slug string) error {
-	if demoDone(libDir, slug) {
-		return nil
-	}
-	file, err := os.OpenFile(filepath.Join(libDir, ".git", demosDoneFile), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	_, err = fmt.Fprintln(file, slug)
-	return err
 }
 
 func contains(list []string, value string) bool {
@@ -477,64 +374,7 @@ func lock(ctx context.Context, path string) (func(), error) {
 	}
 }
 
-// postersDone 是全部风格海报已取回的记录，理由同 demosDoneFile。
-const postersDone = "am-posters"
-
 // PosterPath 返回风格库里某种风格海报的路径（不保证存在）。
 func PosterPath(lib Library, slug string) string {
 	return filepath.Join(lib.Dir, "styles", slug, "poster.jpg")
-}
-
-// PostersReady 表示风格库里已有全部风格的海报。用户自己的检出看第一种风格有没有海报。
-func PostersReady(lib Library) bool {
-	if !lib.Managed {
-		catalog := Catalog()
-		if len(catalog) == 0 {
-			return false
-		}
-		_, err := os.Stat(PosterPath(lib, catalog[0].Slug))
-		return err == nil
-	}
-	_, err := os.Stat(filepath.Join(lib.Dir, ".git", postersDone))
-	return err == nil
-}
-
-// EnsurePosters 把全部风格的海报（styles/*/poster.jpg，合计约 10 MB）取进风格库，
-// 给 Studio 的风格选择器用。首次检出不带海报；这里一批取完，断了再调用会接着取。
-func EnsurePosters(ctx context.Context, lib Library, opts LibraryOptions) error {
-	if PostersReady(lib) {
-		return nil
-	}
-	if !lib.Managed {
-		return fmt.Errorf("风格库 %s 里没有海报（styles/*/poster.jpg）", lib.Dir)
-	}
-	git, err := envutil.LookPath("git", opts.Env["PATH"])
-	if err != nil {
-		return fmt.Errorf("找不到 git，无法下载风格海报：%w", err)
-	}
-	unlock, err := lock(ctx, lib.Dir+".lock")
-	if err != nil {
-		return err
-	}
-	defer unlock()
-	patterns, err := readSparse(lib.Dir)
-	if err != nil {
-		return fmt.Errorf("读取风格库稀疏规则：%w", err)
-	}
-	if !contains(patterns, "/styles/*/poster.jpg") {
-		patterns = append(patterns, "/styles/*/poster.jpg") // 非 cone 规则后写的生效，盖过前面的排除
-	}
-	if err := writeSparse(lib.Dir, patterns); err != nil {
-		return err
-	}
-	var readErr error
-	for attempt := 1; attempt <= stageAttempts; attempt++ {
-		if _, readErr = gitCommand(ctx, git, lib.Dir, opts.Env, opts.Output, "read-tree", "--reset", "-u", "HEAD"); readErr == nil || ctx.Err() != nil {
-			break
-		}
-	}
-	if readErr != nil {
-		return fmt.Errorf("下载风格海报失败（再试一次会接着下载）：%w", readErr)
-	}
-	return os.WriteFile(filepath.Join(lib.Dir, ".git", postersDone), []byte("ok\n"), 0o644)
 }

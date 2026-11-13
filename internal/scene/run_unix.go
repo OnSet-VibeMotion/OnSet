@@ -53,8 +53,8 @@ func Run(ctx context.Context, s Scene, cfg config.Config, unsafe bool, baseEnv m
 	if err != nil {
 		return err
 	}
-	// 渲染器要用的 CLI 先由 am 装好：在渲染途中现下载的话，网络一差渲染器就空等、
-	// 白花一次模型调用，最后只剩「没有产物」。装不上就在这里停，不启动渲染器。
+	// 渲染器要用的 CLI 是前置资源（am setup 装）：在渲染途中现下载的话，网络一差渲染器
+	// 就空等、白花一次模型调用，最后只剩「没有产物」。没装好就在这里停，不启动渲染器。
 	cliEnv := map[string]string{}
 	for key, value := range baseEnv {
 		cliEnv[key] = value
@@ -67,8 +67,8 @@ func Run(ctx context.Context, s Scene, cfg config.Config, unsafe bool, baseEnv m
 			cliEnv[hyperframes.CLIDirEnv] = dir
 		}
 	}
-	if _, err := hyperframes.EnsureCLI(ctx, hyperframes.CLIOptions{Env: cliEnv, Output: userOutput}); err != nil {
-		return fmt.Errorf("渲染前准备 HyperFrames CLI：%w", err)
+	if _, err := hyperframes.RequireCLI(cliEnv); err != nil {
+		return err
 	}
 	argv, err := tools.RendererInvocation(renderer, prompt, unsafe, RendererAccess(resolvedSkills))
 	if err != nil {

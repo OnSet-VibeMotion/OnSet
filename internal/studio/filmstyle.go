@@ -11,8 +11,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
 	"github.com/chouheiwa/articale-to-motion/internal/filmstyle"
@@ -20,21 +18,11 @@ import (
 )
 
 // 整片风格（internal/filmstyle）在 Studio 里的入口：风格目录与海报、本项目的整片风格、
-// 装 / 换 / 去掉。装与去掉经 am film-style 子命令完成，占项目写锁，与渲染、拼接同一条路：
+// 装 / 换 / 去掉。风格库是前置资源（am setup 准备），这里只读不下载。装与去掉经 am film-style 子命令完成，占项目写锁，与渲染、拼接同一条路：
 // Studio 自己不写项目文件。
 
 // filmStyleGallery 是上游图鉴，每种风格都有 demo 片可看。
 const filmStyleGallery = "https://lemomo-ai.github.io/lemo-opuscar/"
-
-// posterPrepTimeout 是准备海报（必要时连风格库一起下载）的上限。
-const posterPrepTimeout = 30 * time.Minute
-
-// filmStyleState 记录后台准备风格库与海报的进展，整个 Studio 一份（风格库是用户级的）。
-type filmStyleState struct {
-	mu      sync.Mutex
-	running bool
-	err     string
-}
 
 func (s *Server) filmStyleRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/film-styles", s.filmStylesAPI)
@@ -46,69 +34,26 @@ func filmStyleOptions() filmstyle.LibraryOptions {
 	return filmstyle.LibraryOptions{Env: envutil.EnvMap()}
 }
 
-// prepareFilmStylePosters 在后台下载风格库（若还没有）与全部海报。已在进行或已就绪时不做事；
-// 上一次失败了，再打开风格菜单就会重试（下载可续传）。
-func (s *Server) prepareFilmStylePosters() {
-	// 浏览器端到端测试不联网，与跳过技能安装用同一个开关。
-	if os.Getenv("AM_STUDIO_SKIP_SKILL_INSTALL") == "1" {
-		return
-	}
-	s.filmStyles.mu.Lock()
-	defer s.filmStyles.mu.Unlock()
-	if s.filmStyles.running {
-		return
-	}
-	if lib, err := filmstyle.OpenLibrary(filmStyleOptions()); err == nil && filmstyle.PostersReady(lib) {
-		return
-	}
-	s.filmStyles.running = true
-	s.filmStyles.err = ""
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), posterPrepTimeout)
-		defer cancel()
-		opts := filmStyleOptions()
-		lib, err := filmstyle.EnsureLibrary(ctx, opts)
-		if err == nil {
-			err = filmstyle.EnsurePosters(ctx, lib, opts)
-		}
-		s.filmStyles.mu.Lock()
-		s.filmStyles.running = false
-		if err != nil {
-			s.filmStyles.err = err.Error()
-		}
-		s.filmStyles.mu.Unlock()
-	}()
-}
-
 // FilmStylesResponse 是 /api/film-styles 的结果。
 type FilmStylesResponse struct {
 	Styles     []filmstyle.Style `json:"styles"`
 	Categories []string          `json:"categories"`
 	Gallery    string            `json:"gallery"`
-	// Posters 是海报的准备状态：ready、downloading 或 error（附 PostersError）。
+	// Posters 是海报是否可用：ready，或 missing（风格库还没由 am setup 准备好，附 PostersError）。
 	Posters      string `json:"posters"`
 	PostersError string `json:"posters_error,omitempty"`
 }
 
-// filmStylesAPI 列出风格目录（随二进制下发，不联网），并在后台准备海报。
+// filmStylesAPI 列出风格目录（随二进制下发，不联网）。风格库是前置资源，Studio 不下载它：
+// 没准备好时海报显示占位，并提示在终端运行 am setup。
 func (s *Server) filmStylesAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		s.method(w, http.MethodGet)
 		return
 	}
-	s.prepareFilmStylePosters()
-	resp := FilmStylesResponse{Styles: filmstyle.Catalog(), Categories: filmstyle.Categories(), Gallery: filmStyleGallery, Posters: "downloading"}
-	s.filmStyles.mu.Lock()
-	running, errText := s.filmStyles.running, s.filmStyles.err
-	s.filmStyles.mu.Unlock()
-	switch {
-	case running:
-	case errText != "":
-		resp.Posters, resp.PostersError = "error", errText
-	default:
-		if lib, err := filmstyle.OpenLibrary(filmStyleOptions()); err == nil && filmstyle.PostersReady(lib) {
-			resp.Posters = "ready"
-		}
+	resp := FilmStylesResponse{Styles: filmstyle.Catalog(), Categories: filmstyle.Categories(), Gallery: filmStyleGallery, Posters: "ready"}
+	if _, err := filmstyle.RequireLibrary(filmStyleOptions()); err != nil {
+		resp.Posters, resp.PostersError = "missing", err.Error()
 	}
 	s.write(w, http.StatusOK, resp)
 }

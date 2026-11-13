@@ -117,52 +117,25 @@ func Create(opts Options) (project.InitResult, error) {
 	return result, nil
 }
 
-// InstallSkills 把固定版本的 HyperFrames 官方技能装进项目的 .agents/skills/，
-// 与内置技能重名的保留内置版本（返回在 Protected 里），再确保 am 管理的同版本
-// HyperFrames CLI 已装好（用户级，所有项目共用，见 hyperframes.EnsureCLI）。要联网。
-// progress 非空时汇报整体进度（见 hyperframes.Progress）：技能占前 80%，CLI 占后 20%。
+// InstallSkills 把固定版本的 HyperFrames 官方技能从本机缓存拷进项目的 .agents/skills/，
+// 与内置技能重名的保留内置版本（返回在 Protected 里）。不联网：技能是前置资源，由
+// am setup 下载进缓存（hyperframes.PrepareSkills）；缓存里没有时返回 prereq.MissingError。
+// 同版本的 HyperFrames CLI 同样由 am setup 装，这里不管。
 func InstallSkills(ctx context.Context, target string, env map[string]string, output io.Writer, progress func(hyperframes.Progress)) (hyperframes.Result, error) {
 	builtin, err := assets.BuiltinSkills()
 	if err != nil {
 		return hyperframes.Result{}, err
 	}
-	report := progress
-	if report == nil {
-		report = func(hyperframes.Progress) {}
-	}
-	result, err := hyperframes.Install(ctx, hyperframes.Options{
+	return hyperframes.Install(ctx, hyperframes.Options{
 		ProjectDir: target,
 		Version:    hyperframes.PinnedVersion,
 		Env:        env,
 		Protected:  builtin,
 		Output:     output,
-		Progress: func(p hyperframes.Progress) {
-			if p.Percent >= 100 {
-				p = hyperframes.Progress{Stage: "技能已装好", Percent: 80}
-			} else {
-				p.Percent *= 0.8
-			}
-			report(p)
-		},
-		// 同一台机器上只联网下载一次：第二个项目起从本机缓存拷贝。
-		CacheDir: hyperframes.DefaultCacheDir(env),
+		Progress:   progress,
+		CacheDir:   hyperframes.DefaultCacheDir(env),
+		CacheOnly:  true,
 	})
-	if err != nil {
-		return result, err
-	}
-	if _, err := hyperframes.EnsureCLI(ctx, hyperframes.CLIOptions{
-		Env: env, Output: output,
-		Progress: func(p hyperframes.Progress) {
-			if !p.Indeterminate {
-				p.Percent = 80 + p.Percent*0.2
-			}
-			report(p)
-		},
-	}); err != nil {
-		return result, fmt.Errorf("技能已装好，但 %w", err)
-	}
-	report(hyperframes.Progress{Stage: "完成", Percent: 100})
-	return result, nil
 }
 
 // SkillsInstalled 表示项目里装过 HyperFrames 官方技能（有来源记录）。

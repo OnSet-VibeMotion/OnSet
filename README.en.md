@@ -19,6 +19,17 @@ Download the appropriate archive from GitHub Releases, verify it with `checksums
 - Git, FFmpeg, FFprobe
 - At least one authenticated CLI: Codex, Claude Code, Qoder, CodeBuddy, or OpenCode
 
+Everything that needs the network is prepared by one command and kept in per-user directories shared by all projects; every other command (`am init`, `am film-style use`, `am scene run`, `am hyperframes`, `am studio`) works offline and tells you to run it when something is missing:
+
+```bash
+am setup                                    # prepare everything (skips what is ready, resumes after interruptions)
+am setup --proxy http://127.0.0.1:7890      # route git (GitHub) through a proxy; npm is unaffected
+am setup --only styles                      # only some items: skills, cli, styles
+am setup --check                            # report only; exit code 1 if anything is missing
+```
+
+The items are the pinned HyperFrames skills (git, `~/.local/share/am/hyperframes/<commit>`), the same-version HyperFrames CLI (npm with your `~/.npmrc`, `~/.local/share/am/hyperframes/cli-<version>`), and the lemo-opuscar style library with every demo, poster, model and the three.js dependency (about 100 MB, `~/.local/share/am/lemo-opuscar/<commit>`).
+
 ```bash
 am init my-video                          # interactive canvas picker
 am init my-video --canvas vertical-9x16   # or specify explicitly
@@ -95,9 +106,9 @@ Without one, the orchestrator suggests two or three at the script review gate, a
 
 The chosen style is installed from a pinned commit into `.agents/skills/lemo-film-style/`: `STYLE.md` (the invariants), the demo source (techniques), shared `core/` tools, and licence notes. Scene prompts then replace "visual freedom" with "film style": the renderer must follow `STYLE.md`, while content still comes from each scene. Switching or removing the style (`am film-style remove`) makes every rendered scene stale.
 
-The library itself lives in a per-user directory (default `~/.local/share/am/lemo-opuscar/<commit>`, override with `AM_FILM_STYLE_LIBRARY`) shared by all projects. Only the picture side is used: music still comes from licensed assets in the production flow, with the Sound palette in `STYLE.md` as a reference. Styles that use three.js need Node 20+ (one `npm ci` in the library at install time).
+The library is a prerequisite downloaded by `am setup` into a per-user directory (default `~/.local/share/am/lemo-opuscar/<commit>`, override with `AM_FILM_STYLE_LIBRARY`) shared by all projects; `am film-style` and Studio never download it. Only the picture side is used: music still comes from licensed assets in the production flow, with the Sound palette in `STYLE.md` as a reference.
 
-`am init` refuses to overwrite existing files with different content. By default it installs the pinned HyperFrames 0.8.225 skills into the project's `.agents/skills/`, alongside the binary-delivered `text-to-lottie` and `algorithmic-art`; use `--skip-hyperframes` for offline or CI environments. The verified skill tree is cached per commit under `~/.local/share/am/hyperframes/`, so later projects on the same machine install without network access.
+`am init` refuses to overwrite existing files with different content. By default it copies the pinned HyperFrames 0.8.225 skills from the local cache (prepared by `am setup`) into the project's `.agents/skills/`, alongside the binary-delivered `text-to-lottie` and `algorithmic-art`; it never downloads, and tells you to run `am setup` if the cache is missing.
 
 Skills go into the project rather than `$HOME` because that is the only way projects stop clobbering each other: the upstream installer only honours `homedir`, so a machine has exactly one copy — with two projects pinned to different versions, whichever was initialized last wins. The install never writes to your HOME; the upstream installer runs in a temporary directory outside the project and its output is moved in.
 
@@ -113,7 +124,7 @@ So `am init` does not call it. It shallow-clones the tag `v<version>` itself and
 
 The result is recorded in `.agents/skills/hyperframes-upstream.json`: version, upstream commit, and a content digest per skill directory. To move the pin, change `PinnedVersion` / `PinnedSkillsCommit` / `PinnedSkillsCount` in `internal/hyperframes`.
 
-Installing skills requires `git`; it also uses `npm` to install the same HyperFrames CLI version into `~/.local/share/am/hyperframes/cli-<version>` (honouring your `~/.npmrc`), shared by all projects and always invoked as `am hyperframes …`, so nothing is downloaded mid-render; use `--skip-hyperframes` for offline or CI environments.
+`am init` copies the pinned skills from the local cache prepared by `am setup` and does not use the network; `--skip-hyperframes` skips that step. The same-version HyperFrames CLI is installed by `am setup` and always invoked as `am hyperframes …`, so nothing is downloaded mid-render; `am scene run` stops before starting the renderer if it is missing.
 
 Initialization also writes the binary's built-in skill tree to the project's `.agents/skills/`, where the renderer discovers it automatically:
 

@@ -35,7 +35,7 @@ type Config struct {
 	Memory MemorySettings
 	// FilmStyleLibrary 是整片风格的用户级风格库目录，见 internal/filmstyle。
 	FilmStyleLibrary string
-	// HyperFramesCLI 是 am 管理的固定版本 HyperFrames CLI 的安装目录，见 hyperframes.EnsureCLI。
+	// HyperFramesCLI 是 am 管理的固定版本 HyperFrames CLI 的安装目录，见 hyperframes.RequireCLI（am setup 用 EnsureCLI 安装）。
 	HyperFramesCLI string
 }
 

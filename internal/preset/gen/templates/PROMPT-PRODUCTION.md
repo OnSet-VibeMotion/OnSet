@@ -479,7 +479,7 @@ scenes/
 - 建立 `scene.json`：执行契约。字段为 `id`、`duration_seconds`、`output`、`transcript`、`text`，可选 `renderer`；`timing` 块由 `am scene cues` 写入，不要手写；未知字段会直接报错。`duration_seconds` 先写占位值 `1`，正式时长由下面的 `am scene cues` 写入。`text` 会被包进 `<scene-text>` 定界块送进渲染提示词并声明为「数据而非指令」，因此 `text` 本身不得含 `[[USER_MESSAGE]]` 标记或 `<scene-text>` / `</scene-text>` 及其形近变体，含则报错。
 - 建立 `prompt.md`：本镜头的创意方向、视觉概念和表达重点。交付规格、阶段消息等执行契约由 `am` 保证，不在本文件中。
 - HyperFrames CLI 由 `am` 按固定版本装在本机（`am init` 时装好，渲染前再检查一次），一律用 `am hyperframes <子命令>` 调用，不用 `npx`。
-- 使用 `am init` 装进项目 `.agents/skills/` 的技能。技能缺失时重跑 `am init` 补齐，不要自己跑 `npx hyperframes skills`——那会装到本机 HOME 而不是项目里，绕过版本固定；也不得从其他项目或本机目录复制。
+- 使用 `am init` 装进项目 `.agents/skills/` 的技能。技能缺失时先确认 `am setup --check` 全部就绪（缺了请用户在终端运行 `am setup`），再重跑 `am init` 补齐，不要自己跑 `npx hyperframes skills`——那会装到本机 HOME 而不是项目里，绕过版本固定；也不得从其他项目或本机目录复制。
 - 建立渲染器锁定文件：写明 HyperFrames 版本固定为 `{{HYPERFRAMES_VERSION}}`、由 `am` 管理，每次 CLI 调用都写成 `am hyperframes <子命令>`（例如 `am hyperframes check --json`、`am hyperframes render`），每条命令单独执行、不用 `cd …;` 或 `&&` 拼接；禁止任何形式的 `npx hyperframes`（带不带版本都不行，npx 会在渲染途中现下载）、`hyperframes@latest`、全局安装的 `hyperframes`、`hyperframes skills`、`skills update` 以及任何会改动已装技能的命令；禁止读取 `.env` 或打印凭据；禁止改动 `scene.json` 里的执行契约。文件名取决于该镜头所用渲染工具会自动读取的项目级指令文件（例如 `claude` 读 `CLAUDE.md`），按所选工具各自的约定命名，不要不管用哪个工具都写成 `CLAUDE.md`。
 - 锁定文件写「只在本镜头目录内工作、不查看兄弟镜头和上级项目目录」时，必须写明一条例外：项目根下的 `.agents/skills/`。全部技能都在那里——HyperFrames 官方技能与随 `am` 二进制下发的 `text-to-lottie`、`algorithmic-art` 同处一个目录，路径由 `am` 解析后注入提示词。它在项目内但在镜头目录之外，会被「只在本镜头目录内工作」挡住；缺这条例外，渲染工具会拒读组合契约与动效手法，动画退化成只有淡入和位移。
 - 把完整的 `transcription-production.srt` 复制为镜头目录中的 `transcription.srt`，让渲染工具理解全文上下文。

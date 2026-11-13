@@ -30,6 +30,7 @@ am 固定在 commit ` + filmstyle.PinnedCommit[:12] + `，共 ` + fmt.Sprint(fil
 风格库本体放在用户级目录（默认 ~/.local/share/am/lemo-opuscar/<commit>，
 可用 ` + filmstyle.LibraryEnv + ` 指向已有检出），所有项目共用；项目里只装选中的那一种，
 落在 .agents/skills/` + filmstyle.SkillName + `/，项目整体拷走也能渲染。
+风格库是前置资源，由 am setup 下载；本组命令都不联网。
 
 只接画面风格：STYLE.md 的 Sound palette 只作为配乐方向的参考，配乐仍按制作流程
 选用授权素材。`,
@@ -108,8 +109,8 @@ am 固定在 commit ` + filmstyle.PinnedCommit[:12] + `，共 ` + fmt.Sprint(fil
 		Use:   "use STYLE",
 		Args:  exactArgs(1, "STYLE"),
 		Short: "把一种风格装成本项目的整片风格",
-		Long: `STYLE 可以是目录名、中文名或英文名。第一次使用会下载风格库（要联网、要 git），
-用到 three.js 的风格还会在风格库里运行一次 npm ci（要 Node 20+）。
+		Long: `STYLE 可以是目录名、中文名或英文名。不联网：风格库是前置资源，先运行 am setup
+把它完整下载好（全部 demo、海报与 three.js 依赖），这里只从风格库装进项目。
 
 项目已有另一种整片风格时默认拒绝：换风格会让全部镜头的输入指纹变化，
 已渲染的镜头都要重渲染。确认要换就加 --replace。同一种风格重复执行是幂等的。`,
@@ -125,7 +126,7 @@ am 固定在 commit ` + filmstyle.PinnedCommit[:12] + `，共 ` + fmt.Sprint(fil
 			if err != nil {
 				return err
 			}
-			result, err := filmstyle.EnsureForProject(cmd.Context(), dir, style, replace, libraryOptions())
+			result, err := filmstyle.InstallForProject(dir, style, replace, libraryOptions())
 			if err != nil {
 				return err
 			}

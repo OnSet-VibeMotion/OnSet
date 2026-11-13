@@ -12,14 +12,15 @@ import (
 	"time"
 
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
+	"github.com/chouheiwa/articale-to-motion/internal/prereq"
 )
 
 // CLI 是 am 管理的 HyperFrames CLI：按固定版本装在用户级目录里，所有项目、所有镜头共用。
 //
 // 以前由渲染器在渲染途中 `npx --yes hyperframes@<版本>` 现下载：版本一升级，第一次渲染
 // 就要先下几十 MB 的 npm 包，网络不好时渲染器空等二十多分钟、花一次模型调用，最后只
-// 留下「没有产物」（实测）。现在由 am 在 init 与渲染前装好，所有调用都走 `am hyperframes`，
-// 下载失败在开工前就报出来，而且不再依赖 npx 自己那份缓存是否还在。
+// 留下「没有产物」（实测）。现在它是前置资源：由 am setup 装好，所有调用都走
+// `am hyperframes`，没装好在开工前就报出来，而且不再依赖 npx 自己那份缓存是否还在。
 
 // CLICommand 是渲染器与编排工具调用 CLI 的写法。提示词、锁定文件与安全模式的放行列表
 // 都用它，版本号只在 am 里出现一次。
@@ -82,10 +83,24 @@ func CLIReady(dir, version string) bool {
 	return err == nil && !info.IsDir()
 }
 
+// RequireCLI 返回已装好的 CLI 目录，没装好返回 prereq.MissingError，不联网。
+// 除 am setup 以外的地方都用它：CLI 是前置资源。
+func RequireCLI(env map[string]string) (string, error) {
+	dir := CLIDir(env, PinnedVersion)
+	if CLIReady(dir, PinnedVersion) {
+		return dir, nil
+	}
+	if dir == "" {
+		return "", prereq.Missing("HyperFrames CLI "+PinnedVersion, "环境里没有 HOME，也没有 "+CLIDirEnv)
+	}
+	return "", prereq.Missing("HyperFrames CLI "+PinnedVersion, "没有装在 "+dir)
+}
+
 // cliAttempts 是 npm install 的尝试次数：国内网络下单次安装被掐断是常态。
 const cliAttempts = 3
 
-// EnsureCLI 返回装好的 CLI 安装目录，没有时用 npm 安装。
+// EnsureCLI 返回装好的 CLI 安装目录，没有时用 npm 安装。只有 am setup 调用它，
+// 其余地方用 RequireCLI：CLI 是前置资源，不在建项目、渲染途中现装。
 //
 // npm install 在同级临时目录里进行，装好、跑过 `--version` 自检后整体改名进位，
 // 中途失败不会留下一份看起来能用的残缺安装；同一时间只有一个进程在装（锁文件）。

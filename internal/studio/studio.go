@@ -75,8 +75,6 @@ type Server struct {
 	features featureState
 	sessions sessionState
 	skills   skillsState
-	// filmStyles 是后台准备风格库与海报的状态，见 filmstyle.go。
-	filmStyles filmStyleState
 }
 
 func New(cfg Config) (*Server, error) {
@@ -491,7 +489,7 @@ func (s *Server) createAPI(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusInternalServerError, "project_register_failed", err.Error())
 		return
 	}
-	// 官方技能要联网装，放到后台：项目先打开，制作早期（定风格、写稿、配音）用不到技能。
+	// 官方技能从本机缓存拷进项目（前置资源由 am setup 准备，这里不联网），放到后台：项目先打开。
 	// 用登记后的路径（已 EvalSymlinks），与 currentProject() 返回的一致。
 	s.installSkills(p.Path)
 	s.mu.Lock()

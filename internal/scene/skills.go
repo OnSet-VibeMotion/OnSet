@@ -325,7 +325,7 @@ func skillPromptSections(resolved map[string]string) string {
 }
 
 // HyperFramesCommand 是渲染器调用 CLI 的写法（am 管理的固定版本 CLI，见
-// hyperframes.EnsureCLI）。提示词里教的写法与安全模式放行的命令必须是同一个字符串：
+// hyperframes.RequireCLI，由 am setup 装好）。提示词里教的写法与安全模式放行的命令必须是同一个字符串：
 // 以前只有放行列表里有前缀，提示词不提，渲染器写成不带版本的 `npx hyperframes`，
 // 整场渲染的 lint、check、render 全被拦下（实测，无产物）。
 func HyperFramesCommand() string {

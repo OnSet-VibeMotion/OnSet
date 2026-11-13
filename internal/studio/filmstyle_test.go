@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/chouheiwa/articale-to-motion/internal/filmstyle"
@@ -40,8 +41,18 @@ func TestFilmStyleEndpoints(t *testing.T) {
 	library := t.TempDir()
 	writeStudioFile(t, filepath.Join(library, "core", "lib.js"), "//")
 	first := filmstyle.Catalog()[0].Slug
+	// 风格库是前置资源：先看没准备好时海报报 missing、提示 am setup。
+	t.Setenv(filmstyle.LibraryEnv, filepath.Join(t.TempDir(), "absent"))
+	_, empty := startStudio(t, Config{ProjectPath: t.TempDir(), ConfigPath: filepath.Join(t.TempDir(), "projects.json")})
+	status, body := studioRequest(t, http.MethodGet, empty.URL+"/api/film-styles", "")
+	requireStudioStatus(t, status, http.StatusOK, body)
+	if body["posters"] != "missing" || !strings.Contains(body["posters_error"].(string), "am setup") {
+		t.Fatalf("风格库没准备好时应当报 missing 并指向 am setup：%v %v", body["posters"], body["posters_error"])
+	}
+
 	for _, slug := range []string{first, "impasto"} {
 		writeStudioFile(t, filepath.Join(library, "styles", slug, "STYLE.md"), "# "+slug)
+		writeStudioFile(t, filepath.Join(library, "styles", slug, "demo", "index.html"), "<html>")
 		writeStudioJPEG(t, filepath.Join(library, "styles", slug, "poster.jpg"), 960, 540)
 	}
 	t.Setenv(filmstyle.LibraryEnv, library)
@@ -50,7 +61,7 @@ func TestFilmStyleEndpoints(t *testing.T) {
 	writeStudioFile(t, filepath.Join(root, "article-to-motion.conf"), "")
 	_, ts := startStudio(t, Config{ProjectPath: root, ConfigPath: filepath.Join(t.TempDir(), "projects.json")})
 
-	status, body := studioRequest(t, http.MethodGet, ts.URL+"/api/film-styles", "")
+	status, body = studioRequest(t, http.MethodGet, ts.URL+"/api/film-styles", "")
 	requireStudioStatus(t, status, http.StatusOK, body)
 	if styles := studioList(t, body["styles"]); len(styles) != filmstyle.PinnedStyleCount {
 		t.Fatalf("应当列出全部 %d 种风格：%d", filmstyle.PinnedStyleCount, len(styles))

@@ -165,21 +165,21 @@ frame.md 仅为旧项目保留，供画幅等技术信息读取；它不再规�
 不覆盖内容不同的已有文件：目标已存在且字节不同就整体失败并回滚，不做合并。
 字节相同则视为已存在并跳过，因此对同一画幅重复执行是幂等的，可安全用于补齐缺失文件。
 
-默认联网安装固定版本 ` + hyperframesVersion + ` 的 HyperFrames 官方技能，
-装进项目的 .agents/skills/，与内置技能树同一个目录。离线或 CI 用
---skip-hyperframes 跳过；该开关不影响内置技能树，它随二进制下发。
+默认把固定版本 ` + hyperframesVersion + ` 的 HyperFrames 官方技能从本机缓存拷进项目的
+.agents/skills/，与内置技能树同一个目录。am init 不联网：技能是前置资源，先运行一次
+am setup 把它下载进缓存；缓存里没有时 am init 写完项目文件后报错，提示先 am setup
+再重跑 am init 补齐。--skip-hyperframes 跳过这一步；它不影响内置技能树，那随二进制下发。
 
 技能装进项目而不是装进 HOME，是因为项目之间互不覆盖只有这样才成立：上游
 安装器只认 homedir，一台机器上只有一份技能，两个项目固定不同版本时谁后
 初始化谁说了算。装进项目还让项目自包含——整个目录拷到另一台机器就能渲染。
-安装不写任何 agent 的技能目录：克隆在项目外的临时目录里进行，产物再搬进项目。
-校验过的技能树按 commit 缓存在 ~/.local/share/am/hyperframes/（遵循 XDG_DATA_HOME），
-同一台机器上第二个项目起直接从缓存拷贝，不再联网。
+安装不写任何 agent 的技能目录。校验过的技能树按 commit 缓存在
+~/.local/share/am/hyperframes/（遵循 XDG_DATA_HOME），所有项目从这里拷贝。
 
 技能不走上游安装器：它只克隆仓库默认分支，没有指定 tag 的口子，同一个版本号
 隔几天装出来的技能可以不同。am 自己按 tag 浅克隆并校验 commit 与技能数量，
 两次初始化的技能树逐字节一致。安装后在 .agents/skills/` + hyperframes.ManifestFile + `
-里记下版本、上游 commit 与每个技能的内容摘要。安装技能需要 git。
+里记下版本、上游 commit 与每个技能的内容摘要。
 
 上游技能与内置技能重名时保留内置版本并告警，不会覆盖本仓库 fork 过的技能。
 
@@ -192,7 +192,7 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
 
 --film-style 给全片选一种整片风格（lemo-opuscar 风格库，am film-style list 查看），
 等同于初始化后运行 am film-style use；不传时各镜头自主定视觉，之后也可以再选。
-它要联网下载风格库，不受 --skip-hyperframes 影响。`,
+风格库同样是前置资源（am setup 下载），这里不联网，不受 --skip-hyperframes 影响。`,
 		Example: `  # 交互选择画幅
   am init my-video
 
@@ -261,7 +261,7 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
 			fmt.Fprintf(stdout, "项目已初始化：%s（画幅 %s，新增 %d，未变 %d）\n", target, chosen.Label, result.Created, result.Unchanged)
 			// 风格文件只为旧项目和画幅读取保留，不再作为渲染前的定稿门禁。
 			if filmStyle != nil {
-				installed, err := filmstyle.EnsureForProject(cmd.Context(), target, *filmStyle, false,
+				installed, err := filmstyle.InstallForProject(target, *filmStyle, false,
 					filmstyle.LibraryOptions{Env: currentEnvironment(), Output: stderr})
 				if err != nil {
 					return fmt.Errorf("项目文件已写入，但整片风格安装失败（之后可用 am film-style use %s 重试）：%w", filmStyle.Slug, err)
@@ -274,17 +274,20 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
 			}
 			installed, err := projectinit.InstallSkills(cmd.Context(), target, currentEnvironment(), stderr, skillsProgressPrinter(stderr))
 			if err != nil {
-				return fmt.Errorf("项目文件已写入，但 HyperFrames 技能安装失败：%w", err)
+				return fmt.Errorf("项目文件已写入，但 HyperFrames 技能没装进项目（准备好后重跑 am init 补齐）：%w", err)
 			}
-			fmt.Fprintf(stdout, "HyperFrames %s 技能已装入 %s（%d 个），CLI 已就绪（%s）\n",
-				hyperframesVersion, hyperframes.SkillsSubdir, len(installed.Installed), hyperframes.CLICommand)
+			fmt.Fprintf(stdout, "HyperFrames %s 技能已装入 %s（%d 个）\n",
+				hyperframesVersion, hyperframes.SkillsSubdir, len(installed.Installed))
+			if _, cliErr := hyperframes.RequireCLI(currentEnvironment()); cliErr != nil {
+				fmt.Fprintf(stderr, "警告：%v\n", cliErr)
+			}
 			for _, name := range installed.Protected {
 				fmt.Fprintf(stderr, "警告：上游技能 %s 与内置技能重名，已保留内置版本\n", name)
 			}
 			return nil
 		},
 	}
-	initCmd.Flags().BoolVar(&skipHyperframes, "skip-hyperframes", false, "跳过联网安装 HyperFrames 官方技能；不影响随二进制下发的内置技能树")
+	initCmd.Flags().BoolVar(&skipHyperframes, "skip-hyperframes", false, "跳过从本机缓存拷入 HyperFrames 官方技能；不影响随二进制下发的内置技能树")
 	initCmd.Flags().StringVar(&canvasID, "canvas", "", "画幅预设："+strings.Join(preset.IDs(), " | ")+"；不传则在终端里交互选择")
 	initCmd.Flags().StringVar(&styleID, "style", "", "旧版视觉风格参数（仅兼容，不作为渲染要求）："+strings.Join(append(preset.StyleIDs(), preset.CustomStyleFlag), " | "))
 	initCmd.Flags().StringVar(&styleBrief, "style-brief", "", "旧版自定义风格描述（仅兼容），只能与 --style "+preset.CustomStyleFlag+" 一起使用")
@@ -862,6 +865,7 @@ SVG 转 PNG 这一步不能用 ImageMagick 代替：多数 ImageMagick 构建自
 	root.AddCommand(newStyleCommand(stdout))
 	root.AddCommand(newFilmStyleCommand(stdout, stderr))
 	root.AddCommand(newHyperframesCommand(stdout, stderr))
+	root.AddCommand(newSetupCommand(stdout, stderr))
 	root.AddCommand(newConcatCommand(stdout, &projectRoot))
 	root.AddCommand(newReviewCommand(stdout, &projectRoot))
 	root.AddCommand(newAudioCmd(stdout))

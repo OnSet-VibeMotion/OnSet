@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/chouheiwa/articale-to-motion/internal/prereq"
 )
 
 // 目录清单是从固定 commit 生成的；条数对不上说明升级时只改了 PinnedCommit 没重跑生成器。
@@ -85,6 +87,8 @@ func fixtureLibrary(t *testing.T) (url, commit string) {
 	gitRun(t, repo, "config", "uploadpack.allowFilter", "true")
 	files := map[string]string{
 		"LICENSE":                                            "MIT\n",
+		"package.json":                                       `{"name":"fixture","version":"1.0.0","private":true}`,
+		"package-lock.json":                                  `{"name":"fixture","version":"1.0.0","lockfileVersion":3,"requires":true,"packages":{"":{"name":"fixture","version":"1.0.0"}}}`,
 		"AGENTS.md":                                          "agents\n",
 		"core/lib.js":                                        "export const mulberry = () => 0;\n",
 		"core/three/post.js":                                 "// post\n",
@@ -127,10 +131,31 @@ func fixtureLibrary(t *testing.T) (url, commit string) {
 
 func fixtureOptions(t *testing.T, url, commit string) LibraryOptions {
 	return LibraryOptions{
-		Env:     map[string]string{"PATH": os.Getenv("PATH"), "XDG_DATA_HOME": t.TempDir(), "HOME": t.TempDir()},
+		// HOME 用真实的：asdf / nvm / volta 的 npm shim 靠 HOME 找 node，换成临时目录就报
+		// unknown command。风格库落在 XDG_DATA_HOME（临时目录），不写真实家目录。
+		Env:     map[string]string{"PATH": os.Getenv("PATH"), "XDG_DATA_HOME": t.TempDir(), "HOME": os.Getenv("HOME")},
 		RepoURL: url,
 		Commit:  commit,
 	}
+}
+
+// prepared 用 am setup 的路径把夹具风格库完整准备好（含 npm ci，要 npm）。
+func prepared(t *testing.T, opts LibraryOptions) Library {
+	t.Helper()
+	if _, err := exec.LookPath("npm"); err != nil {
+		t.Skip("没有 npm")
+	}
+	lib, err := PrepareLibrary(context.Background(), PrepareOptions{LibraryOptions: opts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return lib
+}
+
+func installWith(t *testing.T, project string, style Style, replace bool, opts LibraryOptions) (InstallResult, error) {
+	t.Helper()
+	prepared(t, opts)
+	return InstallForProject(project, style, replace, opts)
 }
 
 func TestEnsureLibraryClonesPinnedCommitSparsely(t *testing.T) {
@@ -168,7 +193,7 @@ func TestInstallBuildsProjectSkillAndIsIdempotent(t *testing.T) {
 	opts := fixtureOptions(t, url, commit)
 	project := t.TempDir()
 	impasto := Style{Slug: "impasto", CN: "油画厚涂", EN: "Impasto Oil Painting"}
-	result, err := EnsureForProject(context.Background(), project, impasto, false, opts)
+	result, err := installWith(t, project, impasto, false, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,19 +227,19 @@ func TestInstallBuildsProjectSkillAndIsIdempotent(t *testing.T) {
 		t.Error("不用 three.js 的风格不该在 SKILL.md 里提 three")
 	}
 
-	again, err := EnsureForProject(context.Background(), project, impasto, false, opts)
+	again, err := installWith(t, project, impasto, false, opts)
 	if err != nil || !again.Unchanged {
 		t.Fatalf("同一种风格重装应当不改动：%+v %v", again, err)
 	}
 
 	swiss := Style{Slug: "swiss-motion", CN: "瑞士动态排版", EN: "Swiss Motion Graphics"}
-	if _, err := EnsureForProject(context.Background(), project, swiss, false, opts); err == nil || !strings.Contains(err.Error(), "--replace") {
+	if _, err := installWith(t, project, swiss, false, opts); err == nil || !strings.Contains(err.Error(), "--replace") {
 		t.Fatalf("换风格不加 --replace 应当拒绝：%v", err)
 	}
 	if _, err := os.Stat(filepath.Join(skill, "STYLE.md")); err != nil {
 		t.Fatal("拒绝换风格时不得动原来的技能目录")
 	}
-	replaced, err := EnsureForProject(context.Background(), project, swiss, true, opts)
+	replaced, err := installWith(t, project, swiss, true, opts)
 	if err != nil || replaced.Replaced != "impasto" {
 		t.Fatalf("加 --replace 应当换掉：%+v %v", replaced, err)
 	}
@@ -232,16 +257,10 @@ func TestInstallBuildsProjectSkillAndIsIdempotent(t *testing.T) {
 func TestInstallRequiresThreeForThreeStyles(t *testing.T) {
 	url, commit := fixtureLibrary(t)
 	opts := fixtureOptions(t, url, commit)
-	lib, err := EnsureLibrary(context.Background(), opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := EnsureDemo(context.Background(), lib, "impasto", opts); err != nil {
-		t.Fatal(err)
-	}
+	lib := prepared(t, opts)
 	style := Style{Slug: "impasto", CN: "油画厚涂", EN: "Impasto", ThreeJS: true}
-	if _, err := Install(InstallOptions{ProjectDir: t.TempDir(), Style: style, Library: lib}); err == nil || !strings.Contains(err.Error(), "npm ci") {
-		t.Fatalf("没有 three 时应当指向 setup：%v", err)
+	if _, err := InstallForProject(t.TempDir(), style, false, opts); !prereq.IsMissing(err) {
+		t.Fatalf("没有 three 时应当报缺前置资源：%v", err)
 	}
 	writeFiles(t, filepath.Join(lib.Dir, "node_modules", "three"), map[string]string{
 		"build/three.module.js":                         "// three\n",
@@ -292,8 +311,11 @@ func TestUserLibraryIsNotModified(t *testing.T) {
 	if lib.Managed {
 		t.Fatal("用户的检出不该被当成 am 管理的")
 	}
-	if err := EnsureDemo(context.Background(), lib, "impasto", opts); err == nil {
-		t.Fatal("用户的检出缺 demo 时应当报错")
+	if err := RequireStyle(lib, Style{Slug: "impasto", CN: "油画厚涂", EN: "Impasto"}); !prereq.IsMissing(err) {
+		t.Fatalf("用户的检出缺 demo 时应当报缺前置资源：%v", err)
+	}
+	if _, err := PrepareLibrary(context.Background(), PrepareOptions{LibraryOptions: opts}); err == nil {
+		t.Fatal("用户的检出不完整时 am setup 应当报错，而不是去改它")
 	}
 	bad := t.TempDir()
 	writeFiles(t, bad, map[string]string{"README.md": "not a library"})
@@ -331,28 +353,49 @@ func TestEnsureLibraryResumesPartialDownload(t *testing.T) {
 	}
 }
 
-// demo 取到一半（index.html 在、完成记录不在）时要接着取完。
-func TestEnsureDemoFinishesInterruptedDownload(t *testing.T) {
+// am setup 一次下全：基础部分之外的 demo、海报、core/assets 都在，写完成记录；
+// 只有基础部分时算不完整，其余命令报缺前置资源。再跑一次不重下。
+func TestPrepareLibraryDownloadsEverything(t *testing.T) {
 	url, commit := fixtureLibrary(t)
 	opts := fixtureOptions(t, url, commit)
-	lib, err := EnsureLibrary(context.Background(), opts)
+	if _, err := EnsureLibrary(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RequireLibrary(opts); !prereq.IsMissing(err) {
+		t.Fatalf("只有基础部分时应当报缺前置资源：%v", err)
+	}
+	if _, err := InstallForProject(t.TempDir(), Style{Slug: "impasto", CN: "油画厚涂", EN: "Impasto"}, false, opts); !prereq.IsMissing(err) {
+		t.Fatalf("风格库不完整时装风格应当报缺前置资源，而不是去下载：%v", err)
+	}
+	if _, err := exec.LookPath("npm"); err != nil {
+		t.Skip("没有 npm")
+	}
+	var steps []PrepareProgress
+	lib, err := PrepareLibrary(context.Background(), PrepareOptions{LibraryOptions: opts, Progress: func(p PrepareProgress) { steps = append(steps, p) }})
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFiles(t, lib.Dir, map[string]string{"styles/impasto/demo/index.html": "<partial>"})
-	if err := EnsureDemo(context.Background(), lib, "impasto", opts); err != nil {
-		t.Fatal(err)
+	for _, rel := range []string{"styles/impasto/demo/engine/paint.js", "styles/swiss-motion/demo/film.js", "styles/impasto/poster.jpg", "core/assets/polyhaven/lamp.gltf"} {
+		if _, err := os.Stat(filepath.Join(lib.Dir, filepath.FromSlash(rel))); err != nil {
+			t.Errorf("完整准备后应当有 %s", rel)
+		}
 	}
-	if _, err := os.Stat(filepath.Join(lib.Dir, "styles", "impasto", "demo", "engine", "paint.js")); err != nil {
-		t.Fatal("只有 index.html 时应当把 demo 其余文件取完")
+	if _, err := os.Stat(filepath.Join(lib.Dir, "styleboard")); err == nil {
+		t.Error("图鉴页不是前置资源，不该下载")
 	}
-	body, _ := os.ReadFile(filepath.Join(lib.Dir, "styles", "impasto", "demo", "index.html"))
-	if string(body) == "<partial>" {
-		t.Error("中断留下的文件应当按 HEAD 恢复")
+	if _, err := RequireLibrary(opts); err != nil {
+		t.Fatalf("完整准备后应当可用：%v", err)
+	}
+	if len(steps) == 0 || steps[len(steps)-1].Step != steps[len(steps)-1].Steps {
+		t.Errorf("进度应当走到最后一步：%+v", steps)
+	}
+	steps = nil
+	if _, err := PrepareLibrary(context.Background(), PrepareOptions{LibraryOptions: opts, Progress: func(p PrepareProgress) { steps = append(steps, p) }}); err != nil || len(steps) != 0 {
+		t.Fatalf("已完整时不该再下载：%v %+v", err, steps)
 	}
 }
 
-// core/assets/ 只有个别风格用：首次检出不带它，装到用它的风格时才取，并拷进技能目录。
+// core/assets/ 只有个别风格用：基础检出不带它，am setup 才取；装风格时只带被引用的文件。
 func TestCoreAssetsAreFetchedOnlyForStylesThatUseThem(t *testing.T) {
 	url, commit := fixtureLibrary(t)
 	opts := fixtureOptions(t, url, commit)
@@ -365,14 +408,14 @@ func TestCoreAssetsAreFetchedOnlyForStylesThatUseThem(t *testing.T) {
 	}
 	impasto := Style{Slug: "impasto", CN: "油画厚涂", EN: "Impasto"}
 	project := t.TempDir()
-	if _, err := EnsureForProject(context.Background(), project, impasto, false, opts); err != nil {
+	if _, err := installWith(t, project, impasto, false, opts); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(lib.Dir, "core", "assets")); err == nil {
-		t.Error("不用 core/assets/ 的风格不该把它取下来")
+	if _, err := os.Stat(filepath.Join(SkillDir(project), "core", "assets")); err == nil {
+		t.Error("不用 core/assets/ 的风格不该把它带进项目")
 	}
 	brick := Style{Slug: "brick-toy", CN: "积木", EN: "Brick Toy"}
-	if _, err := EnsureForProject(context.Background(), project, brick, true, opts); err != nil {
+	if _, err := installWith(t, project, brick, true, opts); err != nil {
 		t.Fatal(err)
 	}
 	assets := filepath.Join(SkillDir(project), "core", "assets", "polyhaven")
@@ -392,7 +435,7 @@ func TestInstalledFilesAreReadOnlyLinksForManagedLibrary(t *testing.T) {
 	url, commit := fixtureLibrary(t)
 	opts := fixtureOptions(t, url, commit)
 	project := t.TempDir()
-	if _, err := EnsureForProject(context.Background(), project, Style{Slug: "impasto", CN: "油画厚涂", EN: "Impasto"}, false, opts); err != nil {
+	if _, err := installWith(t, project, Style{Slug: "impasto", CN: "油画厚涂", EN: "Impasto"}, false, opts); err != nil {
 		t.Fatal(err)
 	}
 	lib, _ := OpenLibrary(opts)
@@ -411,10 +454,15 @@ func TestInstalledFilesAreReadOnlyLinksForManagedLibrary(t *testing.T) {
 	}
 
 	user := t.TempDir()
-	writeFiles(t, user, map[string]string{"core/lib.js": "//", "styles/impasto/STYLE.md": "# x", "styles/impasto/demo/index.html": "<html>"})
+	// 用户自己的检出看第一种风格的 demo 与海报判断完整，这里补上它们。
+	first := Catalog()[0].Slug
+	writeFiles(t, user, map[string]string{
+		"core/lib.js": "//", "styles/impasto/STYLE.md": "# x", "styles/impasto/demo/index.html": "<html>",
+		"styles/" + first + "/demo/index.html": "<html>", "styles/" + first + "/poster.jpg": "jpg",
+	})
 	userOpts := LibraryOptions{Env: map[string]string{"PATH": os.Getenv("PATH"), LibraryEnv: user}}
 	other := t.TempDir()
-	if _, err := EnsureForProject(context.Background(), other, Style{Slug: "impasto", CN: "油画厚涂", EN: "Impasto"}, false, userOpts); err != nil {
+	if _, err := InstallForProject(other, Style{Slug: "impasto", CN: "油画厚涂", EN: "Impasto"}, false, userOpts); err != nil {
 		t.Fatal(err)
 	}
 	c, _ := os.Stat(filepath.Join(SkillDir(other), "STYLE.md"))

@@ -17,6 +17,23 @@ Go 版本以单个 `am` 二进制发布，不依赖 Python。项目 Prompt、发
 - Git、FFmpeg、FFprobe
 - Codex、Claude Code、Qoder、CodeBuddy、OpenCode 中至少一个已登录的 CLI
 
+### 前置资源
+
+要联网下载的东西只由一条命令准备，放在用户级目录、所有项目共用；其余命令（`am init`、`am film-style use`、`am scene run`、`am hyperframes`、`am studio`）都不联网，缺了会提示先运行它：
+
+```bash
+am setup                                    # 全部准备（已就绪的跳过，断了重跑接着下）
+am setup --proxy http://127.0.0.1:7890      # GitHub 慢时让 git 走代理（不影响 npm）
+am setup --only styles                      # 只准备其中几项：skills、cli、styles
+am setup --check                            # 只检查，不下载；有缺项时退出码 1
+```
+
+| 项 | 内容 | 位置 |
+|---|---|---|
+| `skills` | HyperFrames 官方技能（固定版本，git） | `~/.local/share/am/hyperframes/<commit>` |
+| `cli` | 同版本 HyperFrames CLI（npm，沿用你的 `~/.npmrc`） | `~/.local/share/am/hyperframes/cli-<版本>` |
+| `styles` | lemo-opuscar 风格库：全部风格说明、demo、海报、模型与 three.js 依赖（约 100 MB） | `~/.local/share/am/lemo-opuscar/<commit>` |
+
 ## 创建项目
 
 ```bash
@@ -95,9 +112,9 @@ am film-style show                      # 本项目的整片风格与风格库�
 
 选中的风格按固定 commit 装进项目的 `.agents/skills/lemo-film-style/`：`STYLE.md`（风格的不变量）、demo 源码（技法参考）、`core/` 共用工具与许可说明。镜头提示词随之把「视觉自由度」换成「整片风格」，渲染器必须遵守 `STYLE.md`，内容仍来自每个镜头自己的文案。换风格或去掉风格（`am film-style remove`）会让已渲染的镜头全部 Stale。
 
-风格库本体放在用户级目录（默认 `~/.local/share/am/lemo-opuscar/<commit>`，可用 `AM_FILM_STYLE_LIBRARY` 指向已有检出），所有项目共用。只接画面：配乐仍按制作流程选授权素材，`STYLE.md` 的 Sound palette 只作为方向参考。用到 three.js 的风格需要 Node 20+（安装时在风格库里跑一次 `npm ci`）。
+风格库是前置资源，由 `am setup` 下载到用户级目录（默认 `~/.local/share/am/lemo-opuscar/<commit>`，可用 `AM_FILM_STYLE_LIBRARY` 指向已有检出），所有项目共用；`am film-style` 各命令与 Studio 都不联网。只接画面：配乐仍按制作流程选授权素材，`STYLE.md` 的 Sound palette 只作为方向参考。
 
-`am init` 不覆盖内容不同的已有文件。默认联网安装固定版本 0.8.225 的 HyperFrames 官方技能到项目的 `.agents/skills/`，与随二进制下发的 `text-to-lottie`、`algorithmic-art` 同处一个目录；安装依赖 `git`，离线或 CI 环境可使用 `--skip-hyperframes`。校验过的技能树按 commit 缓存在 `~/.local/share/am/hyperframes/`，同一台机器上第二个项目起不再联网。
+`am init` 不覆盖内容不同的已有文件。默认把固定版本 0.8.225 的 HyperFrames 官方技能从本机缓存（`am setup` 下载）拷进项目的 `.agents/skills/`，与随二进制下发的 `text-to-lottie`、`algorithmic-art` 同处一个目录；`am init` 不联网，缓存里没有时会提示先运行 `am setup`。`--skip-hyperframes` 跳过这一步。
 
 技能装进项目而不是 HOME，是因为项目之间互不覆盖只有这样才成立：上游安装器只认 `homedir`，一台机器上只有一份技能，项目 A 与项目 B 固定不同版本时谁后初始化谁说了算。安装全程不写用户 HOME——上游安装器在项目外的临时目录里运行，产物再搬进项目。
 
@@ -113,7 +130,7 @@ am film-style show                      # 本项目的整片风格与风格库�
 
 `am init` 还会把结果写进 `.agents/skills/hyperframes-upstream.json`：版本、上游 commit，以及每个技能目录的内容摘要。升级固定版本时改 `internal/hyperframes` 里的 `PinnedVersion` / `PinnedSkillsCommit` / `PinnedSkillsCount` 三个常量。
 
-技能安装依赖 `git`；同时会用 `npm` 把同版本的 HyperFrames CLI 装进 `~/.local/share/am/hyperframes/cli-<版本>`（沿用你的 `~/.npmrc`），所有项目共用，渲染器与编排工具一律经 `am hyperframes …` 调用它，不在渲染途中现下载；离线或 CI 用 `--skip-hyperframes` 跳过。
+同版本的 HyperFrames CLI 由 `am setup` 装进 `~/.local/share/am/hyperframes/cli-<版本>`，渲染器与编排工具一律经 `am hyperframes …` 调用它，不在渲染途中现下载；没装好时 `am scene run` 在启动渲染器之前就报错。
 
 初始化还会把二进制内置的技能树写到项目的 `.agents/skills/`，渲染工具会自动发现：
 

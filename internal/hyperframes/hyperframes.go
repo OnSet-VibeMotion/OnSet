@@ -39,6 +39,7 @@ import (
 	"strings"
 
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
+	"github.com/chouheiwa/articale-to-motion/internal/prereq"
 )
 
 // SkillsSubdir 是技能在项目里的落点，与 scene.portableSkillsDir 一致。
@@ -118,6 +119,9 @@ type Options struct {
 	// CacheDir 是本机缓存的根目录（见 DefaultCacheDir），留空不用缓存。
 	// 缓存按 commit 分目录存放校验过的技能树，同一台机器上第二个项目起不再联网。
 	CacheDir string
+	// CacheOnly 为 true 时只从缓存拷贝，缓存里没有就返回 prereq.MissingError，不联网。
+	// am init 与 Studio 新建项目都这样装：技能是前置资源，由 am setup 下载（见 PrepareSkills）。
+	CacheOnly bool
 }
 
 // DefaultCacheDir 返回用户级缓存根目录：XDG_DATA_HOME 或 HOME 下的
@@ -130,6 +134,63 @@ func DefaultCacheDir(env map[string]string) string {
 		return filepath.Join(home, ".local", "share", "am", "hyperframes")
 	}
 	return ""
+}
+
+// SkillsReady 表示本机缓存里已有校验过的固定版本技能树。
+func SkillsReady(cacheDir string) bool {
+	return cachedTree(cacheDir, PinnedSkillsCommit, PinnedSkillsCount) != ""
+}
+
+// PrepareSkills 把固定版本的技能树下载进本机缓存（am setup 用）。已有就不动。
+// 与 Install 走同一套克隆与校验，只是不往项目里拷。
+func PrepareSkills(ctx context.Context, opts Options) error {
+	if opts.Version == "" {
+		opts.Version = PinnedVersion
+	}
+	if opts.RepoURL == "" {
+		opts.RepoURL = SkillsRepoURL
+	}
+	if opts.ExpectCommit == "" {
+		opts.ExpectCommit = PinnedSkillsCommit
+	}
+	if opts.ExpectSkills == 0 {
+		opts.ExpectSkills = PinnedSkillsCount
+	}
+	if opts.CacheDir == "" {
+		return fmt.Errorf("无法确定 HyperFrames 技能的缓存目录：环境里没有 HOME")
+	}
+	if cachedTree(opts.CacheDir, opts.ExpectCommit, opts.ExpectSkills) != "" {
+		return nil
+	}
+	report := opts.Progress
+	if report == nil {
+		report = func(Progress) {}
+	}
+	git, err := envutil.LookPath("git", opts.Env["PATH"])
+	if err != nil {
+		return fmt.Errorf("找不到 git，无法下载 HyperFrames 技能：%w", err)
+	}
+	tmp, err := os.MkdirTemp("", "am-hyperframes-")
+	if err != nil {
+		return fmt.Errorf("无法创建临时目录：%w", err)
+	}
+	defer os.RemoveAll(tmp)
+	report(Progress{Stage: "连接上游仓库", Percent: 0})
+	commit, err := cloneSkills(ctx, git, tmp, opts, report)
+	if err != nil {
+		return err
+	}
+	report(Progress{Stage: "存进本机缓存", Percent: copyStart})
+	if err := storeCache(opts.CacheDir, commit, tmp); err != nil {
+		return fmt.Errorf("存进本机缓存：%w", err)
+	}
+	if cachedTree(opts.CacheDir, opts.ExpectCommit, opts.ExpectSkills) == "" {
+		_ = os.RemoveAll(filepath.Join(opts.CacheDir, commit))
+		return fmt.Errorf("上游 %s 拼装出的技能数不是 %d：技能目录结构可能已变，核对 %v 两处后同步 PinnedSkillsCount",
+			commit, opts.ExpectSkills, skillsSubdirsInRepo)
+	}
+	report(Progress{Stage: "完成", Percent: 100})
+	return nil
 }
 
 // cacheMarker 写在缓存目录里，内容是 commit：只有完整搬进去、校验过的技能树才有它。
@@ -237,6 +298,8 @@ func Install(ctx context.Context, opts Options) (Result, error) {
 		// 缓存里是同一个 commit 上校验过的技能树，与重新克隆逐字节相同，不联网。
 		tmp, commit = cached, opts.ExpectCommit
 		report(Progress{Stage: "从本机缓存读取", Percent: checkoutStart})
+	} else if opts.CacheOnly {
+		return Result{}, prereq.Missing("HyperFrames "+opts.Version+" 技能", "本机缓存里没有")
 	} else {
 		git, err := envutil.LookPath("git", opts.Env["PATH"])
 		if err != nil {

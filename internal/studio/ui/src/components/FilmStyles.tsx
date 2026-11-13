@@ -6,11 +6,11 @@ import '../film-styles.css';
 /**
  * 整片风格（lemo-opuscar 风格库）的选择器，首页菜单与预览区「风格」页共用。
  *
- * 风格目录随 am 下发，打开就有；海报要从风格库下载（第一次约 23 MB，后台进行），
- * 没下完的显示带分类色的占位块，下完自动换上。
+ * 风格目录随 am 下发，打开就有；海报在风格库里。风格库是前置资源，由用户在终端里
+ * 运行 am setup 准备，Studio 不下载：没准备好时显示带分类色的占位块和提示。
  */
 
-/** 读风格目录；海报还在下载时每 3 秒再问一次，下完给图片换一个版本号绕过缓存。 */
+/** 读风格目录。posterVersion 留给图片换版本号绕过缓存（重新读目录时海报从缺到有）。 */
 export function useFilmStyles(active: boolean): { data: FilmStylesResponse | null; error: string; posterVersion: number } {
   const [data, setData] = useState<FilmStylesResponse | null>(null);
   const [error, setError] = useState('');
@@ -28,7 +28,8 @@ export function useFilmStyles(active: boolean): { data: FilmStylesResponse | nul
         setError('');
         if (last && last !== result.posters) setPosterVersion((v) => v + 1);
         last = result.posters;
-        if (result.posters === 'downloading') timer = window.setTimeout(load, 3000);
+        // 风格库没准备好时隔一会儿再看：用户可能正在终端里跑 am setup。
+        if (result.posters === 'missing') timer = window.setTimeout(load, 10000);
       } catch (err) {
         if (!cancelled) setError(errorText(err));
       }
@@ -111,10 +112,9 @@ export function FilmStylePicker(props: PickerProps) {
           </a>
         )}
       </div>
-      {props.data?.posters === 'downloading' && <p class="fs-note">海报下载中（第一次约 23 MB），先显示占位…</p>}
-      {props.data?.posters === 'error' && (
+      {props.data?.posters === 'missing' && (
         <p class="fs-note bad" title={props.data.posters_error}>
-          海报没下载下来，先显示占位；风格照样可以选。
+          风格库还没准备好，海报先显示占位，选了风格也装不上。在终端运行 <code>am setup</code> 准备好再来。
         </p>
       )}
       {props.error && <p class="fs-note bad">{props.error}</p>}
