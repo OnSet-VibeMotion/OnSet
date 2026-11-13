@@ -1422,3 +1422,19 @@ h4 {
   margin: 0 0 10px;
 }
 
+
+/* 项目缺 HyperFrames 官方技能时顶栏的提示。 */
+button.skills-pill {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 12px;
+}
+button.skills-pill.bad {
+  border-color: color-mix(in srgb, var(--bad) 50%, transparent);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+  color: var(--bad);
+}

@@ -147,3 +147,26 @@ test('sends a scene quick action to the orchestrator', async ({ page }) => {
   await expect(page.locator('.message.user').last()).toContainText('重做镜头 scene-001');
   await expect(page.locator('.done-line').last()).toContainText('已完成');
 });
+
+test('starts a new video from the home page', async ({ page }) => {
+  // 先打开一个项目，让「保存到」默认落在测试用的临时目录旁边，再回到首页。
+  await openProject(page);
+  await page.locator('.brand').click();
+  await expect(page.locator('.home-hero h1')).toContainText('今天想做一条');
+  await expect(page.locator('.rail-row', { hasText: path.basename(project) })).toBeVisible();
+
+  await page.locator('.template-card', { hasText: '横屏讲解' }).click();
+  await expect(page.locator('#home-canvas')).toContainText('16:9');
+  await page.locator('#home-prompt').fill('首页端到端测试，讲讲复利');
+  await page.locator('#home-send').click();
+
+  // 建好项目、开始制作后直接进到新项目，对话里是整片制作这一轮。
+  await expect(page.locator('#title')).toContainText('首页端到端测试');
+  await expect(page.locator('#session-title')).toContainText('整片制作');
+  await expect(page.locator('.message.user').first()).toContainText('首页端到端测试，讲讲复利');
+  const projects = await (await page.request.get('/api/projects')).json();
+  const created = projects.projects.find((p) => p.name.startsWith('首页端到端测试'));
+  expect(created).toBeTruthy();
+  await expect.poll(async () => (await fs.readFile(path.join(created.path, 'frame.md'), 'utf8')).includes('1920')).toBe(true);
+  await fs.rm(created.path, { recursive: true, force: true });
+});

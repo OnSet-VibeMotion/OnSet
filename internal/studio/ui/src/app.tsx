@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { api, errorText, post } from './api';
 import { Chat, type Outbox } from './components/Chat';
+import { Home, type ProjectSummary } from './components/Home';
 import { Icon } from './components/Icon';
 import { Preview, type Tab } from './components/Preview';
 import { ProjectDialog } from './components/ProjectDialog';
@@ -42,6 +43,12 @@ function recall(projectId: string): string {
 export function App() {
   const [connected, setConnected] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [summaries, setSummaries] = useState<Record<string, ProjectSummary>>({});
+  const [defaultParent, setDefaultParent] = useState('');
+  const [homeAgents, setHomeAgents] = useState<AgentsResponse | null>(null);
+  const [skills, setSkills] = useState<{ installed: boolean; installing: boolean; error?: string } | null>(null);
+  // 首页：没有打开项目时总是显示；打开项目后点左上角也能回到首页。
+  const [homeOpen, setHomeOpen] = useState(false);
   const [currentId, setCurrentId] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [state, setState] = useState<ProjectState | null>(null);
@@ -73,8 +80,15 @@ export function App() {
 
   const loadProjects = useCallback(async () => {
     try {
-      const result = await api<{ projects: Project[]; current_project_id: string }>('/api/projects');
+      const result = await api<{
+        projects: Project[];
+        current_project_id: string;
+        summaries?: Record<string, ProjectSummary>;
+        default_parent?: string;
+      }>('/api/projects');
       setProjects(result.projects ?? []);
+      setSummaries(result.summaries ?? {});
+      setDefaultParent(result.default_parent ?? '');
       setCurrentId(result.current_project_id);
       setConnected(true);
       return result.current_project_id;
@@ -142,7 +156,43 @@ export function App() {
 
   useEffect(() => {
     void loadProjects();
+    api<AgentsResponse>('/api/agents').then(setHomeAgents, () => setHomeAgents(null));
   }, []);
+
+  // HyperFrames 官方技能：在 Studio 里新建的项目在后台装，装好之前或装失败时提示。
+  const loadSkills = useCallback(async () => {
+    try {
+      const result = await api<{ status?: { installed: boolean; installing: boolean; error?: string } }>('/api/skills');
+      setSkills(result.status ?? null);
+      return result.status;
+    } catch {
+      setSkills(null);
+      return undefined;
+    }
+  }, []);
+  useEffect(() => {
+    setSkills(null);
+    if (!currentId) return;
+    let timer = 0;
+    const poll = async () => {
+      const status = await loadSkills();
+      if (status?.installing) timer = window.setTimeout(poll, 3000);
+    };
+    void poll();
+    return () => window.clearTimeout(timer);
+  }, [currentId]);
+  const installSkills = async () => {
+    try {
+      setSkills(await post('/api/skills/install'));
+      const poll = async () => {
+        const status = await loadSkills();
+        if (status?.installing) window.setTimeout(poll, 3000);
+      };
+      window.setTimeout(poll, 3000);
+    } catch (err) {
+      notify(errorText(err));
+    }
+  };
 
   // 切换项目：清掉上一个项目的选择，恢复这个项目上次打开的会话。
   useEffect(() => {
@@ -248,7 +298,7 @@ export function App() {
   return (
     <div class="app">
       <header class="topbar">
-        <div class="brand" title="ArticleToMotion Studio">
+        <div class="brand" title="回到首页" role="button" tabIndex={0} onClick={() => setHomeOpen(true)} onKeyDown={(e) => e.key === 'Enter' && setHomeOpen(true)}>
           <span class="brand-mark" aria-hidden="true">
             AM
           </span>
@@ -269,6 +319,17 @@ export function App() {
           </span>
         )}
         {state?.metadata.style_name && <span class="chip">{state.metadata.style_name}</span>}
+        {currentId && !homeOpen && skills && !skills.installed && (
+          <button
+            class={'skills-pill' + (skills.error ? ' bad' : '')}
+            id="install-skills"
+            disabled={skills.installing}
+            onClick={installSkills}
+            title={skills.error || '渲染要用 HyperFrames 官方技能（hyperframes 入口技能等），这个项目还没装'}
+          >
+            {skills.installing ? '正在安装 HyperFrames 技能…' : skills.error ? '技能安装失败，点此重试' : '缺少 HyperFrames 技能 · 安装'}
+          </button>
+        )}
         <span class="spacer" />
         {busy && (
           <span class="pill busy" title="同一时间只有一个写入者">
@@ -283,14 +344,38 @@ export function App() {
         </span>
       </header>
 
-      {loaded && !currentId ? (
-        <div class="welcome">
-          <h1>先打开或新建一个项目</h1>
-          <p class="muted">Studio 在项目目录里启动编排工具，你在对话里说要改什么，它直接改项目文件。</p>
-          <button class="primary" onClick={() => setDialog(true)}>
-            选择项目
-          </button>
-        </div>
+      {loaded && (!currentId || homeOpen) ? (
+        <Home
+          projects={projects}
+          summaries={summaries}
+          defaultParent={defaultParent}
+          currentId={currentId}
+          agents={homeAgents}
+          onOpen={async (id) => {
+            try {
+              await post('/api/workspaces/switch', { project_id: id });
+              await loadProjects();
+              setHomeOpen(false);
+            } catch (err) {
+              notify(errorText(err));
+            }
+          }}
+          onRemove={async (id) => {
+            try {
+              await post('/api/projects/recent/remove', { project_id: id });
+              await loadProjects();
+            } catch (err) {
+              notify(errorText(err));
+            }
+          }}
+          onBrowse={() => setDialog(true)}
+          onStarted={async (projectId, startedSession) => {
+            remember(projectId, startedSession);
+            await loadProjects();
+            setHomeOpen(false);
+          }}
+          onBack={currentId ? () => setHomeOpen(false) : undefined}
+        />
       ) : (
         <div class="workspace">
           <Sidebar
@@ -366,6 +451,7 @@ export function App() {
           onClose={() => setDialog(false)}
           onOpened={async () => {
             setDialog(false);
+            setHomeOpen(false);
             await loadProjects();
           }}
         />

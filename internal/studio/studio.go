@@ -8,9 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chouheiwa/articale-to-motion/internal/ledger"
-	"github.com/chouheiwa/articale-to-motion/internal/scene"
-	"github.com/chouheiwa/articale-to-motion/internal/tools"
 	"io/fs"
 	"mime"
 	"net"
@@ -22,9 +19,12 @@ import (
 	"sync"
 	"time"
 
-	assets "github.com/chouheiwa/articale-to-motion"
+	"github.com/chouheiwa/articale-to-motion/internal/ledger"
+	"github.com/chouheiwa/articale-to-motion/internal/projectinit"
+	"github.com/chouheiwa/articale-to-motion/internal/scene"
+	"github.com/chouheiwa/articale-to-motion/internal/tools"
+
 	"github.com/chouheiwa/articale-to-motion/internal/preset"
-	"github.com/chouheiwa/articale-to-motion/internal/project"
 	"gopkg.in/yaml.v3"
 )
 
@@ -49,7 +49,21 @@ type Project struct {
 type registry struct {
 	Schema   int       `json:"schema"`
 	Projects []Project `json:"projects"`
+	// LastParent 是上次新建项目时选的父目录，首页的「保存到」默认用它。
+	LastParent string `json:"last_parent,omitempty"`
 }
+
+// ProjectSummary 是最近项目列表里每个项目的一行状态：做到哪一步、出了几个镜头、是否正忙。
+type ProjectSummary struct {
+	Stage     string `json:"stage"`
+	Completed int    `json:"completed"`
+	Total     int    `json:"total"`
+	Busy      string `json:"busy,omitempty"`
+	Missing   bool   `json:"missing,omitempty"`
+}
+
+// summaryLimit 是首页侧栏要摘要的最近项目数：每个摘要要扫一遍项目目录。
+const summaryLimit = 15
 
 type Server struct {
 	config   Config
@@ -59,6 +73,7 @@ type Server struct {
 	started  time.Time
 	features featureState
 	sessions sessionState
+	skills   skillsState
 }
 
 func New(cfg Config) (*Server, error) {
@@ -306,13 +321,56 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 }
 func (s *Server) projectsAPI(w http.ResponseWriter, _ *http.Request) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	projects := s.projects.Projects
-	if projects == nil {
-		// 前端按数组读；没有登记过项目时发 null 会让项目对话框直接崩掉。
-		projects = []Project{}
+	projects := append([]Project{}, s.projects.Projects...)
+	current, lastParent := s.current, s.projects.LastParent
+	s.mu.RUnlock()
+	// 摘要要扫目录，放在锁外。
+	recent := append([]Project{}, projects...)
+	sort.SliceStable(recent, func(i, j int) bool { return recent[i].LastOpenedAt > recent[j].LastOpenedAt })
+	summaries := map[string]ProjectSummary{}
+	for i, p := range recent {
+		if i >= summaryLimit {
+			break
+		}
+		summaries[p.ID] = s.summarize(p)
 	}
-	s.write(w, http.StatusOK, map[string]any{"projects": projects, "current_project_id": s.current})
+	s.write(w, http.StatusOK, map[string]any{"projects": projects, "current_project_id": current, "summaries": summaries,
+		"default_parent": defaultParent(lastParent, recent)})
+}
+
+func (s *Server) summarize(p Project) ProjectSummary {
+	if info, err := os.Stat(p.Path); err != nil || !info.IsDir() {
+		return ProjectSummary{Missing: true}
+	}
+	scenes := discoverScenes(p.Path)
+	summary := ProjectSummary{Stage: stageFor(p.Path, scenes), Total: len(scenes), Busy: s.busyHolder(p.Path)}
+	for _, sc := range scenes {
+		if sc.Exists && !sc.Stale {
+			summary.Completed++
+		}
+	}
+	return summary
+}
+
+// defaultParent 是新建项目的默认父目录：上次选的，否则最近一个项目所在的目录，否则家目录。
+func defaultParent(last string, recent []Project) string {
+	for _, candidate := range append([]string{last}, parentsOf(recent)...) {
+		if candidate == "" || !isWithinStudioBrowseRoot(candidate) {
+			continue
+		}
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			return candidate
+		}
+	}
+	return studioBrowseRoot()
+}
+
+func parentsOf(projects []Project) []string {
+	var out []string
+	for _, p := range projects {
+		out = append(out, filepath.Dir(p.Path))
+	}
+	return out
 }
 
 type pathRequest struct {
@@ -324,6 +382,9 @@ type createProjectRequest struct {
 	Name   string `json:"name"`
 	Canvas string `json:"canvas"`
 	Style  string `json:"style"`
+	// Delivery 与 Narration 同 am init --delivery / --narration，缺省为 speech / solo。
+	Delivery  string `json:"delivery"`
+	Narration string `json:"narration"`
 }
 
 func (s *Server) createAPI(w http.ResponseWriter, r *http.Request) {
@@ -367,16 +428,6 @@ func (s *Server) createAPI(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusConflict, "project_exists", "这个目录已经存在")
 		return
 	}
-	shared, err := assets.Shared()
-	if err != nil {
-		s.error(w, http.StatusInternalServerError, "template_unavailable", err.Error())
-		return
-	}
-	presetFiles, err := assets.Preset(req.Canvas)
-	if err != nil {
-		s.error(w, http.StatusBadRequest, "invalid_canvas", err.Error())
-		return
-	}
 	styleMeta := preset.CustomStyle
 	if req.Style != preset.CustomStyle.ID {
 		var ok bool
@@ -386,23 +437,29 @@ func (s *Server) createAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	styleFiles, err := assets.Style(req.Style, req.Canvas)
-	if err != nil {
-		s.error(w, http.StatusBadRequest, "invalid_style", err.Error())
-		return
+	if req.Delivery == "" {
+		req.Delivery = projectinit.DeliverySpeech
 	}
-	extra, err := assets.StyleFonts(styleMeta)
-	if err != nil {
-		s.error(w, http.StatusInternalServerError, "template_unavailable", err.Error())
-		return
+	if req.Narration == "" {
+		req.Narration = projectinit.NarrationSolo
 	}
+	extra := map[string][]byte{}
 	if req.Style == preset.CustomStyle.ID {
 		extra[preset.CustomStyleBriefPath] = []byte("# 风格描述\n\n" +
 			"> 由工作台的自主定风格流程写入。制作开始前按这里的描述生成 frame.md、" +
 			"`" + preset.CustomStyle.GuideDoc() + "` 与四张示例图。\n\n" +
 			preset.AutomaticStyleBrief + "\n")
 	}
-	if _, err := project.InitializeWithFiles(target, extra, shared, presetFiles, styleFiles); err != nil {
+	opts := projectinit.Options{Target: target, Canvas: req.Canvas, Style: styleMeta, Delivery: req.Delivery, Narration: req.Narration, Extra: extra}
+	if err := projectinit.Validate(opts); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid_mode", err.Error())
+		return
+	}
+	if _, ok := preset.ByID(req.Canvas); !ok {
+		s.error(w, http.StatusBadRequest, "invalid_canvas", "未知画幅："+req.Canvas)
+		return
+	}
+	if _, err := projectinit.Create(opts); err != nil {
 		s.error(w, http.StatusBadRequest, "project_create_failed", err.Error())
 		return
 	}
@@ -411,8 +468,12 @@ func (s *Server) createAPI(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusInternalServerError, "project_register_failed", err.Error())
 		return
 	}
+	// 官方技能要联网装，放到后台：项目先打开，制作早期（定风格、写稿、配音）用不到技能。
+	// 用登记后的路径（已 EvalSymlinks），与 currentProject() 返回的一致。
+	s.installSkills(p.Path)
 	s.mu.Lock()
 	s.current = p.ID
+	s.projects.LastParent = parent
 	_ = s.saveRegistry()
 	s.mu.Unlock()
 	s.write(w, http.StatusCreated, map[string]any{"project": p})

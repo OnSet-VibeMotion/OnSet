@@ -1,6 +1,7 @@
 package studio
 
 import (
+	"context"
 	"os"
 	"testing"
 )
@@ -13,6 +14,8 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	os.Setenv("AM_MEMORY_DIR", dir)
+	// 新建项目会在后台装 HyperFrames 官方技能，要联网；测试里换成什么都不做。
+	installOfficialSkills = func(context.Context, string) error { return nil }
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)

@@ -9,6 +9,7 @@ const paths = {
   send: <path d="M6 10V2.5M2.5 6L6 2.5 9.5 6" />,
   close: <path d="M3 3l6 6M9 3L3 9" />,
   plus: <path d="M6 2v8M2 6h8" />,
+  search: <path d="M5.2 9a3.8 3.8 0 1 0 0-7.6 3.8 3.8 0 0 0 0 7.6zM8 8l2.5 2.5" />,
   history: <path d="M2 6a4 4 0 1 0 1.2-2.85M2 1.8v1.7h1.7M6 3.8V6l1.6 1" />,
   down: <path d="M6 2.5v7M2.5 6L6 9.5 9.5 6" />,
   copy: <path d="M4 4V2.5h5.5V8H8M2.5 4h5.5v5.5H2.5z" />,

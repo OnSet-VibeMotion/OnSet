@@ -469,8 +469,9 @@ func (s *Server) prepareTurn(p Project, sess *session, cfg config.Config, req tu
 	switch {
 	case prompt != "":
 		prompt += "\n\n---\n\n" + studioInteraction
-		if req.Message != "" {
-			prompt += "\n\n用户补充：" + message
+		// 只上传了文章、没写话时也要把附件交过去。
+		if strings.TrimSpace(message) != "" {
+			prompt += "\n\n用户补充：" + strings.TrimSpace(message)
 		}
 	case len(sess.meta.Turns) == 0 && sess.meta.Kind == "chat":
 		prompt = chatPreamble(rulesName) + message

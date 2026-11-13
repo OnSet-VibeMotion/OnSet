@@ -35,6 +35,7 @@ func (s *Server) sessionRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/files", s.filesAPI)
 	mux.HandleFunc("/api/uploads", s.uploadsAPI)
 	mux.HandleFunc("/api/skills", s.skillsAPI)
+	mux.HandleFunc("/api/skills/install", s.skillsInstallAPI)
 	mux.HandleFunc("/api/agents", s.agentsAPI)
 	mux.HandleFunc("/preview/scenes/", s.previewAPI)
 }
@@ -273,6 +274,8 @@ func (s *Server) productionStartAPI(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Message string `json:"message"`
 		Prompt  string `json:"prompt"`
+		// Attachments 是首页一起交上来的文章、素材（已经上传到 production/studio/uploads/）。
+		Attachments []Attachment `json:"attachments"`
 		agentChoice
 	}
 	if err := decodeJSON(r, &req); err != nil {
@@ -312,7 +315,7 @@ func (s *Server) productionStartAPI(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusInternalServerError, "session_failed", err.Error())
 		return
 	}
-	turn, err := s.startTurn(p, sess, turnRequest{Message: strings.TrimSpace(req.Message), Prompt: string(prompt)})
+	turn, err := s.startTurn(p, sess, turnRequest{Message: strings.TrimSpace(req.Message), Prompt: string(prompt), Attachments: req.Attachments})
 	if err != nil {
 		s.writeStartError(w, err)
 		return
@@ -558,7 +561,7 @@ func (s *Server) skillsAPI(w http.ResponseWriter, r *http.Request) {
 	if body, err := os.ReadFile(filepath.Join(dir, hyperframes.ManifestFile)); err == nil {
 		_ = json.Unmarshal(body, &upstream)
 	}
-	s.write(w, http.StatusOK, map[string]any{"skills": skills, "upstream": upstream, "pinned_hyperframes": hyperframes.PinnedVersion})
+	s.write(w, http.StatusOK, map[string]any{"skills": skills, "upstream": upstream, "pinned_hyperframes": hyperframes.PinnedVersion, "status": s.skillsStatus(p.Path)})
 }
 
 // sceneAttachment 在镜头产物的某一秒抽一帧存成附件，供下一条消息引用。

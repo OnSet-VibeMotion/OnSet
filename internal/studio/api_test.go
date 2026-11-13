@@ -260,6 +260,8 @@ func TestStudioDirectoryAndProjectLifecycle(t *testing.T) {
 		fmt.Sprintf(`{"parent":%q,"name":"x"}`, filepath.Join(home, "missing")),
 		fmt.Sprintf(`{"parent":%q,"name":"bad-canvas","canvas":"missing"}`, home),
 		fmt.Sprintf(`{"parent":%q,"name":"bad-style","style":"missing"}`, home),
+		fmt.Sprintf(`{"parent":%q,"name":"bad-mode","delivery":"opera"}`, home),
+		fmt.Sprintf(`{"parent":%q,"name":"beat-cast","delivery":"beat","narration":"cast"}`, home),
 	} {
 		status, body = studioRequest(t, http.MethodPost, ts.URL+"/api/projects/create", payload)
 		if status != http.StatusBadRequest && status != http.StatusForbidden {

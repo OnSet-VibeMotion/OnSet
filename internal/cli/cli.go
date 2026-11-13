@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -16,19 +15,17 @@ import (
 	"sync"
 	"time"
 
-	assets "github.com/chouheiwa/articale-to-motion"
 	"github.com/chouheiwa/articale-to-motion/internal/agentrun"
 	"github.com/chouheiwa/articale-to-motion/internal/archive"
 	"github.com/chouheiwa/articale-to-motion/internal/beat"
-	"github.com/chouheiwa/articale-to-motion/internal/cast"
 	"github.com/chouheiwa/articale-to-motion/internal/config"
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
-	"github.com/chouheiwa/articale-to-motion/internal/fsutil"
 	"github.com/chouheiwa/articale-to-motion/internal/hyperframes"
 	"github.com/chouheiwa/articale-to-motion/internal/ledger"
 	"github.com/chouheiwa/articale-to-motion/internal/memory"
 	"github.com/chouheiwa/articale-to-motion/internal/preset"
 	"github.com/chouheiwa/articale-to-motion/internal/project"
+	"github.com/chouheiwa/articale-to-motion/internal/projectinit"
 	"github.com/chouheiwa/articale-to-motion/internal/scene"
 	"github.com/chouheiwa/articale-to-motion/internal/schedule"
 	"github.com/chouheiwa/articale-to-motion/internal/song"
@@ -36,7 +33,6 @@ import (
 	"github.com/chouheiwa/articale-to-motion/internal/tools"
 	"github.com/chouheiwa/articale-to-motion/internal/validate"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 // Version 是 `am --version` 输出的版本号。
@@ -50,67 +46,11 @@ var Version = "dev"
 // ——那里同时是下发提示词里锁定指令的取值来源，避免两处字面量各自漂移。
 const hyperframesVersion = hyperframes.PinnedVersion
 
-// narrationSolo、narrationCast 是 am init --narration 的两个合法取值。
-//
-// solo 是默认的单口播模式，不写任何 cast 相关文件；cast 是多角色对话模式，
-// 会额外写出 cast.yaml 与 cast/，见 writeCastScaffold。
+// narrationSolo、narrationCast 是 am init --narration 的两个合法取值，定义在 projectinit。
 const (
-	narrationSolo = "solo"
-	narrationCast = "cast"
+	narrationSolo = projectinit.NarrationSolo
+	narrationCast = projectinit.NarrationCast
 )
-
-// castInitYAML 构造 am init --narration cast 要写出的 cast.yaml 内容。
-//
-// 走 cast.Roster{} + yaml.Marshal，而不是手写字符串拼 YAML：与 am cast add
-// 的 registerCastPack 共用同一条构造路径，Roster/Defaults 以后加字段时两条
-// 命令会一起跟上，不会因为这里是手写模板而悄悄漂移出一份过时的默认值。
-// defaults 取值与 registerCastPack 新建 cast.yaml 时完全一致（见 cast.go 的
-// castDefaultGroundY、castDefaultGapMs）；Packs 留空（零值 nil），
-// yaml.Marshal 序列化为 `packs: []`。
-func castInitYAML() ([]byte, error) {
-	roster := cast.Roster{
-		Schema:   cast.SchemaVersion,
-		Defaults: cast.Defaults{GroundY: castDefaultGroundY, GapMs: castDefaultGapMs},
-	}
-	body, err := yaml.Marshal(roster)
-	if err != nil {
-		return nil, fmt.Errorf("序列化 %s 失败：%w", cast.RosterFile, err)
-	}
-	return body, nil
-}
-
-// writeCastScaffold 在 target 下写出 cast.yaml 并建出空的 cast/ 目录。
-//
-// packs 刻意留空：am init 刚建出的项目本来就还没有引入任何角色包，班底为空
-// 由 internal/cast.LoadRoster（允许空 packs）和后续的项目级发布前校验负责
-// 报告，不在这里塞占位角色，也不在这里判空报错——那会让「init 就是要建一个
-// 还没有角色的项目」这个正常状态被误判成错误。
-//
-// 与 project.Initialize 的幂等语义保持一致：cast.yaml 已存在且内容相同就
-// 跳过，内容不同就报错，不做静默覆盖或合并。
-func writeCastScaffold(target string) error {
-	castDir := filepath.Join(target, "cast")
-	if err := os.MkdirAll(castDir, 0o755); err != nil {
-		return fmt.Errorf("创建 %s 目录失败：%w", cast.RosterFile, err)
-	}
-	rosterPath := filepath.Join(target, cast.RosterFile)
-	body, err := castInitYAML()
-	if err != nil {
-		return err
-	}
-	if existing, err := os.ReadFile(rosterPath); err == nil {
-		if !bytes.Equal(existing, body) {
-			return fmt.Errorf("目标文件已存在且内容不同：%s", rosterPath)
-		}
-		return nil
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("检查 %s 失败：%w", rosterPath, err)
-	}
-	if err := fsutil.AtomicWrite(rosterPath, body, 0o644); err != nil {
-		return fmt.Errorf("写入 %s 失败：%w", rosterPath, err)
-	}
-	return nil
-}
 
 func currentEnvironment() map[string]string {
 	return envutil.EnvMap()
@@ -275,11 +215,8 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
 			if delivery != "speech" && delivery != "song" && delivery != "beat" {
 				return fmt.Errorf("--delivery 必须为 speech、song 或 beat")
 			}
-			if delivery == "beat" && (narration == narrationCast || cast.HasRoster(target) || song.Enabled(target)) {
-				return fmt.Errorf("卡点模式不能与歌曲讲解或多角色对话同时启用")
-			}
-			if (delivery == "song" && (narration == narrationCast || cast.HasRoster(target))) || (narration == narrationCast && song.Enabled(target)) {
-				return fmt.Errorf("首版不支持 song + cast")
+			if err := projectinit.Validate(projectinit.Options{Target: target, Delivery: delivery, Narration: narration}); err != nil {
+				return err
 			}
 			chosen, err := resolveCanvas(canvasID, os.Stdin, stdout)
 			if err != nil {
@@ -293,39 +230,14 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
 			if err != nil {
 				return err
 			}
-			shared, err := assets.Shared()
-			if err != nil {
-				return err
-			}
-			presetFiles, err := assets.Preset(chosen.ID)
-			if err != nil {
-				return err
-			}
-			styleFiles, err := assets.Style(style.ID, chosen.ID)
-			if err != nil {
-				return err
-			}
-			extra, err := assets.StyleFonts(style)
-			if err != nil {
-				return err
-			}
+			extra := map[string][]byte{}
 			if brief != "" {
 				extra[styleBriefPath] = styleBriefDocument(brief)
 			}
-			if delivery == "song" {
-				extra["song.yaml"] = []byte(song.DefaultConfig)
-			}
-			if delivery == "beat" {
-				extra[beat.ConfigFile] = []byte(beat.DefaultConfig)
-			}
-			result, err := project.InitializeWithFiles(target, extra, shared, presetFiles, styleFiles)
+			result, err := projectinit.Create(projectinit.Options{Target: target, Canvas: chosen.ID, Style: style,
+				Delivery: delivery, Narration: narration, Extra: extra})
 			if err != nil {
 				return err
-			}
-			if narration == narrationCast {
-				if err := writeCastScaffold(target); err != nil {
-					return fmt.Errorf("项目文件已写入，但写出 %s 失败：%w", cast.RosterFile, err)
-				}
 			}
 			fmt.Fprintf(stdout, "项目已初始化：%s（画幅 %s，新增 %d，未变 %d）\n", target, chosen.Label, result.Created, result.Unchanged)
 			// 风格文件只为旧项目和画幅读取保留，不再作为渲染前的定稿门禁。
@@ -333,17 +245,7 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
 				fmt.Fprintln(stdout, "警告：已跳过 HyperFrames 技能安装")
 				return nil
 			}
-			builtin, err := assets.BuiltinSkills()
-			if err != nil {
-				return err
-			}
-			installed, err := hyperframes.Install(cmd.Context(), hyperframes.Options{
-				ProjectDir: target,
-				Version:    hyperframesVersion,
-				Env:        currentEnvironment(),
-				Protected:  builtin,
-				Output:     stderr,
-			})
+			installed, err := projectinit.InstallSkills(cmd.Context(), target, currentEnvironment(), stderr)
 			if err != nil {
 				return fmt.Errorf("项目文件已写入，但 HyperFrames 技能安装失败：%w", err)
 			}

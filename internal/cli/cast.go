@@ -18,14 +18,15 @@ import (
 	"github.com/chouheiwa/articale-to-motion/internal/config"
 	"github.com/chouheiwa/articale-to-motion/internal/dialogue"
 	"github.com/chouheiwa/articale-to-motion/internal/fsutil"
+	"github.com/chouheiwa/articale-to-motion/internal/projectinit"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
 
 // castDefaultGroundY、castDefaultGapMs 是新建 cast.yaml 时写入的默认班底参数。
-const castDefaultGroundY = 0.78
+const castDefaultGroundY = projectinit.CastDefaultGroundY
 
-var castDefaultGapMs = cast.GapMs{Turn: 240, Interject: 100}
+var castDefaultGapMs = projectinit.CastDefaultGapMs
 
 func newCastCmd(stdout io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
