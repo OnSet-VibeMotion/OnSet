@@ -2,24 +2,32 @@
 
 # ArticleToMotion
 
-ArticleToMotion 是面向 macOS 和 Linux 的竖屏 MG 视频生产 CLI。它可以把定稿 SRT 拆成并发渲染的动画镜头，也可以从文章或口播稿完成 TTS、字幕、封面、声音制作和发布交付。
+ArticleToMotion 是一个 macOS 桌面客户端，附带同版本的 `am` 命令行，用来生产竖屏与横屏的 MG 动画视频。它可以把定稿 SRT 拆成并发渲染的动画镜头，也可以从文章或口播稿完成 TTS、字幕、封面、声音制作和发布交付。
 
 ▶ [观看 ArticleToMotion 宣传视频（MP4，4 分 47 秒）](https://github.com/chouheiwa/articale-to-motion/blob/main/docs/article-to-motion-tutorial.mp4)
 
-Go 版本以单个 `am` 二进制发布，不依赖 Python。项目 Prompt、发布模板和视觉规范由二进制内置；HyperFrames 技能在初始化时按固定官方版本装进项目，项目因此自包含——整个目录拷到另一台机器就能渲染。
+客户端与 `am` 共用一份 TypeScript 引擎，`am` 由客户端自带的运行时执行，不依赖 Python。项目 Prompt、发布模板和视觉规范随客户端内置；HyperFrames 技能在初始化时按固定官方版本装进项目，项目因此自包含——整个目录拷到另一台机器就能渲染。
 
 ## 安装
 
-从 GitHub Releases 下载适合平台的压缩包，校验 `checksums.txt` 后把 `am` 放入 `PATH`。运行需要：
+从 GitHub Releases 下载对应芯片的 dmg（Apple Silicon 选 arm64，Intel 选 x64），可用同页的 `checksums.txt` 校验，打开后把 ArticleToMotion 拖进「应用程序」。
 
-- macOS 或 Linux（amd64/arm64）
-- Node.js 22+
+安装包没有签名：第一次打开时在「应用程序」里**右键（或按住 Control 点按）ArticleToMotion →「打开」**，在弹出的对话框里再点「打开」；之后正常双击即可。直接双击被拦下时，也可以到「系统设置 → 隐私与安全性」里点「仍要打开」。
+
+要在终端里用 `am`：在客户端菜单 **ArticleToMotion →「安装命令行工具…」**，它把一段启动脚本写到 `~/.local/bin/am`（已有别的 `am` 时会先问你），用客户端自带的运行时执行同版本的命令行。确认 `~/.local/bin` 在你的 `PATH` 里。客户端更新或挪了位置后，在菜单里再装一次。客户端自己调用的 `am` 是另一份私有副本，不依赖这一步。
+
+运行需要：
+
+- macOS（Apple Silicon 或 Intel）
+- Node.js 22+（`am setup` 用 npm 安装 HyperFrames CLI，渲染时也要它）
 - Git、FFmpeg、FFprobe
 - Codex、Claude Code、Qoder、CodeBuddy、OpenCode 中至少一个已登录的 CLI
 
+从 Finder 或 Dock 启动的客户端会读取登录 shell 里的 `PATH`，所以装在 Homebrew、asdf、nvm 下的这些工具不用另外配置。
+
 ### 前置资源
 
-要联网下载的东西只由一条命令准备，放在用户级目录、所有项目共用；其余命令（`am init`、`am film-style use`、`am scene run`、`am hyperframes`、`am studio`）都不联网，缺了会提示先运行它：
+要联网下载的东西只由一条命令准备，放在用户级目录、所有项目共用；其余命令（`am init`、`am film-style use`、`am scene run`、`am hyperframes`）与客户端都不联网，缺了会提示先运行它：
 
 ```bash
 am setup                                    # 全部准备（已就绪的跳过，断了重跑接着下）
@@ -56,40 +64,21 @@ cd my-video
 
 非交互环境（CI、管道）必须显式传入 `--canvas`，不会静默取默认值。
 
-### 本地 Studio 工作台
+### 桌面客户端
 
-可以启动一个本地网页工作台，在浏览器里用对话驱动制作并预览镜头：
+打开 ArticleToMotion 后，在首页的输入框里说要做什么、或把文章拖进来，就会新建项目并开始制作；也可以从菜单「文件 → 打开项目文件夹…」打开已有项目。
 
-```bash
-am studio                         # 浏览器打开后选择项目
-am studio /path/to/my-video       # 登记并直接打开项目
-am studio --listen 127.0.0.1:4317
-```
+客户端的主入口是对话：它在项目目录里启动配置的编排工具（`ORCHESTRATOR`），把它的输出实时显示出来，多轮对话续接同一个 CLI 会话。「开始制作」等于跑 `am run`，之后在同一个会话里继续改；也可以开新的对话只做局部修改。
 
-默认只监听本机。需要手机访问时，请使用自己的 Tailscale、VPN 或 SSH 隧道，并显式指定监听地址；Studio 不提供公网账户或 HTTPS。
-
-工作台的主入口是对话：它在项目目录里启动配置的编排工具（`ORCHESTRATOR`），把它的输出实时推到网页上，多轮对话续接同一个 CLI 会话。「开始制作」等于在网页里跑 `am run`，之后在同一个会话里继续改；也可以开新的对话只做局部修改。
-
-- **Studio 自己不改项目文件。** 改动只来自编排工具的一轮对话，或者渲染、拼接、校验、复查、确认卡点网格这类直接调用 `am` 子命令的按钮。
+- **客户端自己不改项目文件。** 改动只来自编排工具的一轮对话，或者渲染、拼接、校验、复查、确认卡点网格这类直接调用 `am` 子命令的按钮。
 - **每轮可以回退。** 每轮开始和结束各给项目拍一次快照，结束后列出这一轮改了哪些文件，可以逐个看改动前后的内容，也可以整轮回退。某个文件在这一轮之后又被改过时，回退会整体拒绝，不做部分回退。媒体文件和 2 MB 以上的文件只列出变化，不回退，需要时重渲染。
 - **每个会话自选工具。** 对话栏顶部可以为这个会话选编排工具和渲染工具，默认取项目配置，没装的工具不能选。选择只对这个会话生效，不改 `article-to-motion.conf`。会话中途换编排工具时，下一轮会带上之前的对话记录开新的 CLI 会话。
 - **同一时间只有一个写入者。** 一轮对话进行中，渲染、拼接等按钮返回「项目正忙」；反过来也一样。
-- **会话可以恢复。** 会话、事件和快照存在项目的 `production/studio/` 下，关掉浏览器或重启 Studio 后都还在。CLI 会话续接失败时（例如会话过期），会带上之前的对话记录开新会话。
+- **会话可以恢复。** 会话、事件和快照存在项目的 `production/studio/` 下，关掉客户端再打开都还在。CLI 会话续接失败时（例如会话过期），会带上之前的对话记录开新会话。
 
-`am --unsafe studio` 与 `am --unsafe run` 一样关闭权限隔离，见下文「安全模式」。
+客户端里的编排工具始终在安全模式下运行，见下文「安全模式」；确需关闭权限隔离时，在终端里用 `am --unsafe run`。
 
-界面分三栏：左边是制作阶段、镜头列表和项目文件树；中间预览镜头产物（可逐帧步进、圈选区域）、镜头的合成页面（可点选元素）、成片、风格示例、复查联系表和发布信息；右边是对话。镜头截帧、圈出的区域和点选的元素都能附到下一条消息里。卡点项目在确认网格前，中间栏顶部会出现试听轨和「确认网格」按钮。
-
-前端源码在 `internal/studio/ui/`（Vite + TypeScript + Preact），构建产物提交在 `internal/studio/web/`，由 `go:embed` 打进二进制，所以只改 Go 代码不需要 Node。改了前端需要 Node.js 22+：
-
-```bash
-cd internal/studio/ui
-npm ci
-npm run dev        # 开发服务器，接口转给本机 127.0.0.1:4321 上的 am studio
-npm run build      # 写入 ../web，连同源码一起提交
-npx playwright install chromium
-AM_STUDIO_E2E_CONFIG=/tmp/am-studio-projects.json npm run test:e2e
-```
+界面左边是预览，右边是对话。顶栏中间是按制作顺序编号的四步——口播稿、镜头、成片、发布（菜单「视图」里可用 ⌘1–⌘4 切换），合成、风格、复查、记忆、文件这些页面以小字列在右侧。编排工具需要你看某一页时会直接把界面切过去；页面上的文字、口播稿段落、镜头和文件都能右键「引用到对话」，输入框里 `@` 补全文件与镜头、`/` 补全常用命令。卡点项目在确认网格前，预览顶部会出现试听轨和确认入口。窗口在后台时，一轮对话或渲染任务结束会发系统通知，进行中的任务数显示在 Dock 图标上。
 
 ### 视觉方向
 
@@ -110,15 +99,15 @@ am film-style use 油画厚涂                # 已有项目；换风格要加 -
 am film-style show                      # 本项目的整片风格与各风格来源的状态
 ```
 
-没选时，编排工具会在稿件审核关卡按题材推荐两三种，也可以选「不用整片风格」。`am studio` 里首页、新建对话框和预览区的「风格」页都能直接挑（按来源分组，带海报，可搜索），也能换或去掉。
+没选时，编排工具会在稿件审核关卡按题材推荐两三种，也可以选「不用整片风格」。客户端的首页、新建对话框和「风格」页都能直接挑（按来源分组，带海报，可搜索），也能换或去掉。
 
 选中的风格装进项目的 `.agents/skills/am-film-style/`，契约只有三个文件：`STYLE.md`（风格的不变量）、`SKILL.md`（怎么用、技法参考在哪）与 `am-film-style.json`（来源与版本）；示例、引擎等其余文件由来源决定。镜头提示词随之把「视觉自由度」换成「整片风格」，渲染器必须遵守 `STYLE.md`，内容仍来自每个镜头自己的文案。换风格或去掉风格（`am film-style remove`）会让已渲染的镜头全部 Stale。早先装在 `.agents/skills/lemo-film-style/` 的项目照样能用，下次 `am film-style use` 时换成新目录。
 
-各来源的数据是前置资源，由 `am setup` 下载到 `~/.local/share/am/film-styles/<来源>/`（可用 `AM_FILM_STYLES_DIR` 换根目录），所有项目共用；`am film-style` 各命令与 Studio 都不联网。只接画面：配乐仍按制作流程选授权素材，`STYLE.md` 里关于声音的内容只作为方向参考。
+各来源的数据是前置资源，由 `am setup` 下载到 `~/.local/share/am/film-styles/<来源>/`（可用 `AM_FILM_STYLES_DIR` 换根目录），所有项目共用；`am film-style` 各命令与客户端都不联网。只接画面：配乐仍按制作流程选授权素材，`STYLE.md` 里关于声音的内容只作为方向参考。
 
-`am init` 不覆盖内容不同的已有文件。默认把固定版本 0.8.225 的 HyperFrames 官方技能从本机缓存（`am setup` 下载）拷进项目的 `.agents/skills/`，与随二进制下发的 `text-to-lottie`、`algorithmic-art` 同处一个目录；`am init` 不联网，缓存里没有时会提示先运行 `am setup`。`--skip-hyperframes` 跳过这一步。
+`am init` 不覆盖内容不同的已有文件。默认把固定版本 0.8.225 的 HyperFrames 官方技能从本机缓存（`am setup` 下载）拷进项目的 `.agents/skills/`，与随客户端内置的 `text-to-lottie`、`algorithmic-art` 同处一个目录；`am init` 不联网，缓存里没有时会提示先运行 `am setup`。`--skip-hyperframes` 跳过这一步。
 
-技能装进项目而不是 HOME，是因为项目之间互不覆盖只有这样才成立：上游安装器只认 `homedir`，一台机器上只有一份技能，项目 A 与项目 B 固定不同版本时谁后初始化谁说了算。安装全程不写用户 HOME——上游安装器在项目外的临时目录里运行，产物再搬进项目。
+技能装进项目而不是 HOME，是因为项目之间互不覆盖只有这样才成立：上游安装器只认 `homedir`，一台机器上只有一份技能，项目 A 与项目 B 固定不同版本时谁后初始化谁说了算。安装全程不写用户 HOME——克隆与筛选在项目外的临时目录里进行，结果再整体搬进项目。
 
 #### 技能安装为什么不走上游安装器
 
@@ -130,18 +119,18 @@ am film-style show                      # 本项目的整片风格与各风格�
 - **数量校验**：上游哪天挪动目录，按目录拼装会静默少装一批技能，而渲染 agent 找不到技能不会报错、只会自己发明写法。数量与 `PinnedSkillsCount` 不符就拒装。
 - **环境隔离**：`GIT_LFS_SKIP_SMUDGE=1`（仓库里有 LFS 媒体文件，装了 git-lfs 的机器会还原成真文件、没装的留下指针，同一 commit 在两台机器上得到不同的树）、`GIT_CONFIG_GLOBAL/SYSTEM=/dev/null`（用户的 filter、autocrlf 不能参与检出）。
 
-`am init` 还会把结果写进 `.agents/skills/hyperframes-upstream.json`：版本、上游 commit，以及每个技能目录的内容摘要。升级固定版本时改 `internal/hyperframes` 里的 `PinnedVersion` / `PinnedSkillsCommit` / `PinnedSkillsCount` 三个常量。
+`am init` 还会把结果写进 `.agents/skills/hyperframes-upstream.json`：版本、上游 commit，以及每个技能目录的内容摘要。升级固定版本时改 `packages/engine/src/hyperframes/constants.ts` 里的 `PinnedVersion` / `PinnedSkillsCommit` / `PinnedSkillsCount` 三个常量。
 
 同版本的 HyperFrames CLI 由 `am setup` 装进 `~/.local/share/am/hyperframes/cli-<版本>`，渲染器与编排工具一律经 `am hyperframes …` 调用它，不在渲染途中现下载；没装好时 `am scene run` 在启动渲染器之前就报错。
 
-初始化还会把二进制内置的技能树写到项目的 `.agents/skills/`，渲染工具会自动发现：
+初始化还会把客户端内置的技能树写到项目的 `.agents/skills/`，渲染工具会自动发现：
 
 | 技能 | 用途 |
 |---|---|
 | `text-to-lottie` | 镜头里的 Lottie 图层：logo 演绎、图标、loader、SVG 描边、矢量特效 |
 | `algorithmic-art` | 算法与生成式视觉效果 |
 
-这两个随二进制下发，不需要联网安装，`--skip-hyperframes` 也不影响它们。
+这两个随客户端内置，不需要联网安装，`--skip-hyperframes` 也不影响它们。
 
 编辑 `article-to-motion.conf` 选择编排工具与渲染工具；两者可以相同：
 
@@ -172,13 +161,13 @@ MEMORY_EXPLORE=0.1
 am run
 ```
 
-从文章、口播稿或参考字幕开始完整制作（项目里还没有 `transcription.srt` 时，不带参数的 `am run` 与 Studio 的「开始制作」也会自动走这条）：
+从文章、口播稿或参考字幕开始完整制作（项目里还没有 `transcription.srt` 时，不带参数的 `am run` 与客户端的「开始制作」也会自动走这条）：
 
 ```bash
 am run PROMPT-PRODUCTION.md
 ```
 
-`am run` 会自动将当前 `am` 可执行文件所在目录放到编排子进程的 `PATH` 首位，并注入其绝对路径为 `AM_EXECUTABLE`。因此 Prompt 中的 `am scene ...` 会继续使用启动本次流程的同一个 CLI，无需把二进制复制进项目。
+`am run` 会自动将当前 `am` 可执行文件所在目录放到编排子进程的 `PATH` 首位，并注入其绝对路径为 `AM_EXECUTABLE`。因此 Prompt 中的 `am scene ...` 会继续使用启动本次流程的同一个 CLI，无需把它复制进项目。
 
 镜头命令也可独立使用：
 
@@ -223,7 +212,7 @@ am cast preview cast/heiwa         # 每个命名姿势渲一张 contact sheet�
 
 手改 `character.yaml` 后不会自动同步：`character.json` 只在 `new`/`add`/`validate` 成功时重新生成，渲染机读取的是后者，改完一律先跑一次 `am cast validate`。这条命令还会顺带提醒当前 `TTS_PROVIDER` 是否缺音色（不影响退出码，供作者在做完角色包的第一时间就看到）；发布前的硬校验在 `am validate cast`，见下方「校验与归档」。
 
-分说话人合成的配音需要重建成一条时间线，再按拆定的镜头切成节拍——这两步都是"算错了不会报错，只会让成片嘴和字对不上"的机械计算，因此收进 Go：
+分说话人合成的配音需要重建成一条时间线，再按拆定的镜头切成节拍——这两步都是"算错了不会报错，只会让成片嘴和字对不上"的机械计算，因此收进 `am`，不交给编排工具：
 
 ```bash
 am dialogue assemble               # 读 production/audio/plan.json，拼出 voice.wav / SRT / dialogue.json
@@ -258,9 +247,9 @@ am memory rollback --to 3                # 回到任意快照，不删历史
 
 新经验先进入试用，只在考试里使用。考试按确定性校验评分，试用组总分要严格高于对照组，且在任何一个渲染工具上、任何一道对照组做对的题都不能做错，留出题的通过数不能下降；渲染工具自身故障使整场考试无效而不是记 0 分。生效记忆集合每变一次就生成一个快照，项目可以用 `MEMORY_SNAPSHOT` 钉住某个快照。
 
-除了产物校验与确定性扫描，`am validate reads`（阅读时间）、`am review`（交接）、`am scene frames --check-blank`（空白帧）查出的问题也记到对应镜头上，参与整理。只由阅读时间或交接判定的经验要看整片，考试考不了，由人确认后生效。Studio 里每轮对话说的话和回退也会记下：反复提的同一个要求、被回退的改动会被整理成待确认的偏好，编排工具会在对话里找机会问你。
+除了产物校验与确定性扫描，`am validate reads`（阅读时间）、`am review`（交接）、`am scene frames --check-blank`（空白帧）查出的问题也记到对应镜头上，参与整理。只由阅读时间或交接判定的经验要看整片，考试考不了，由人确认后生效。客户端里每轮对话说的话和回退也会记下：反复提的同一个要求、被回退的改动会被整理成待确认的偏好，编排工具会在对话里找机会问你。
 
-偏好同时交给编排工具：`am run` 与 Studio 对话开工前都会读到「用户偏好」段，用户随口一句话也能按以往的取向补全意图。
+偏好同时交给编排工具：`am run` 与客户端的每轮对话开工前都会读到「用户偏好」段，用户随口一句话也能按以往的取向补全意图。
 
 不同模型犯的错不一样。每次渲染都记下实际用的模型（claude、qoder、codebuddy 从输出流读，codex 读 `config.toml`，opencode 记为未知），失败按「渲染工具/模型」分布交给整理者；只在某个模型上成立的经验写 `applies_when.renderers` / `models` 限定范围，召回只给对应的渲染工具和模型。效果统计也按「渲染工具/模型」分开；模型换了以后 `am memory status` 会提示重考，`am memory exam --retest <名字>` 对照组去掉它重考。经验正文里不写工具名或模型名、不照抄镜头文案或素材名，`checked_by` 只能引用 `am` 已有的校验器 ID（`output.*` 与 `determinism.*`）。
 
@@ -278,7 +267,7 @@ am --unsafe run
 
 `--unsafe` 会传递给嵌套镜头任务。安全模式需要额外传递的环境变量通过 `AM_PASSTHROUGH_ENV=NAME1,NAME2` 显式列出。
 
-安全模式下，编排工具（`am run` 与 Studio 的对话）只被放行文件编辑和一组命令：`am`（含 `am hyperframes`，am 管理的固定版本 HyperFrames CLI）、`ffmpeg`、`ffprobe`；只读查看的 `ls` `cat` `head` `tail` `wc` `grep` `rg` `find` `sort` `uniq` `cut` `diff` `cmp` `stat` `file` `du` `pwd` `basename` `dirname` `realpath` `jq` `tree` `which` `date`；`echo` `printf` `cd`；工作区内的 `mkdir` `cp` `mv` `touch`；算哈希的 `shasum` `sha256sum` `md5`；只读的 `git status` `git diff` `git log` `git show`；下载字体与授权素材的 `curl`；跑脚本的 `python3` `python` `node`；以及 `TTS_PROVIDER` 与 `ALIGN_PROVIDER` 各自对应的那一个命令（如 `mmx`、`edge-tts`、`mlx_audio.stt.generate`；`funasr` 对应 `python3`）。`sh` / `bash`、`rm`、改权限与安装命令（`brew`、`pip`、`uv`、`npm`）不在其中，相关工具要先自己装好；还要放行别的命令就写进项目配置的 `ORCHESTRATOR_ALLOW_COMMANDS`（逗号分隔的命令前缀，如 `uv run, pnpm, magick`），不必改用 `--unsafe`。放行解释器意味着脚本能做任何事（包括读 `.env`），安全模式防的是误操作和越界命令，不可信的输入仍不要交给编排工具。命令要单独执行，不用 `&&`、`;`、管道拼接，见项目规则「安全模式下怎么写命令」。各工具的实现方式不同：
+安全模式下，编排工具（`am run` 与客户端的对话）只被放行文件编辑和一组命令：`am`（含 `am hyperframes`，am 管理的固定版本 HyperFrames CLI）、`ffmpeg`、`ffprobe`；只读查看的 `ls` `cat` `head` `tail` `wc` `grep` `rg` `find` `sort` `uniq` `cut` `diff` `cmp` `stat` `file` `du` `pwd` `basename` `dirname` `realpath` `jq` `tree` `which` `date`；`echo` `printf` `cd`；工作区内的 `mkdir` `cp` `mv` `touch`；算哈希的 `shasum` `sha256sum` `md5`；只读的 `git status` `git diff` `git log` `git show`；下载字体与授权素材的 `curl`；跑脚本的 `python3` `python` `node`；以及 `TTS_PROVIDER` 与 `ALIGN_PROVIDER` 各自对应的那一个命令（如 `mmx`、`edge-tts`、`mlx_audio.stt.generate`；`funasr` 对应 `python3`）。`sh` / `bash`、`rm`、改权限与安装命令（`brew`、`pip`、`uv`、`npm`）不在其中，相关工具要先自己装好；还要放行别的命令就写进项目配置的 `ORCHESTRATOR_ALLOW_COMMANDS`（逗号分隔的命令前缀，如 `uv run, pnpm, magick`），不必改用 `--unsafe`。放行解释器意味着脚本能做任何事（包括读 `.env`），安全模式防的是误操作和越界命令，不可信的输入仍不要交给编排工具。命令要单独执行，不用 `&&`、`;`、管道拼接，见项目规则「安全模式下怎么写命令」。各工具的实现方式不同：
 
 | 工具 | 安全模式的限制方式 |
 |---|---|
@@ -293,7 +282,7 @@ codebuddy 的这套参数没有经过完整实测。
 
 ## 用量
 
-每次 `am scene run` 结束都会打印这一次的 token 用量与费用（工具报了才有），`am scene run-all` 的汇总与 `--report-json` 里有每个镜头这一批的合计。编排工具的用量也记账：每次 `am run`、Studio 每一轮对话各记一行到项目的 `production/usage/orchestrator.jsonl`，失败与取消的调用照样记入。查整个项目花了多少：
+每次 `am scene run` 结束都会打印这一次的 token 用量与费用（工具报了才有），`am scene run-all` 的汇总与 `--report-json` 里有每个镜头这一批的合计。编排工具的用量也记账：每次 `am run`、客户端每一轮对话各记一行到项目的 `production/usage/orchestrator.jsonl`，失败与取消的调用照样记入。查整个项目花了多少：
 
 ```bash
 am usage                        # 本项目合计：渲染 + 编排，分别按渲染工具/模型、按来源列出
@@ -302,7 +291,7 @@ am scene usage scenes/          # 每个镜头全部尝试（含失败、重试�
 
 `am memory consolidate` 的整理者不属于哪个项目，用量记在记忆库的 `orchestrator-usage.jsonl` 里，`am usage` 单列、不计入项目合计。
 
-各工具的口径统一为：输入含缓存命中，输出含推理 token。Studio 的镜头时间线显示本项目累计用量（悬停看渲染与编排的分项），镜头工具栏显示每个镜头的累计用量。
+各工具的口径统一为：输入含缓存命中，输出含推理 token。客户端的镜头时间线显示本项目累计用量（悬停看渲染与编排的分项），镜头工具栏显示每个镜头的累计用量。
 
 ## 视觉检查与拼接
 
@@ -379,12 +368,22 @@ am archive
 
 ## 开发
 
+从源码构建需要 Node.js 22+：
+
 ```bash
-go test ./...
-go test -race ./...
-go vet ./...
-go build ./cmd/am
+npm ci
+npx tsc --noEmit -p packages/engine          # 引擎、命令行、客户端分别做类型检查
+npx tsc --noEmit -p packages/cli
+npm run typecheck -w am-desktop
+npx vitest run --root packages/engine        # 单元与集成测试（缺 ffmpeg、rsvg-convert 的用例会跳过）
+npx vitest run --root packages/cli
+npm run build -w @am/cli                     # 命令行 → packages/cli/dist/am.cjs
+npm run desktop                              # 构建并启动客户端
+npm run test:e2e -w am-desktop               # 客户端端到端测试（Playwright，Electron 模式）
+npm run dist -w am-desktop                   # 打出 .app（apps/desktop/release/）
 ```
+
+不装客户端也可以直接运行命令行：`node packages/cli/dist/am.cjs <命令>`。改了画幅表、风格表或提示词模板后要跑 `npm run generate -w @am/engine` 并提交生成的 `assets/presets`、`assets/styles`。开发约定见 `AGENTS.md` 与 `packages/engine/CONVENTIONS.md`。
 
 项目采用 [Apache License 2.0](./LICENSE)。HyperFrames 是独立的 Apache-2.0 项目，ArticleToMotion 初始化时使用固定版本，不在本仓库复制本机技能目录。
 
@@ -393,7 +392,7 @@ go build ./cmd/am
 ## 可选：单人歌曲讲解
 
 默认口播和多角色流程不变。歌曲模式先生成候选，用户试听选定后再对齐、分镜；
-首版不支持歌曲与 cast、口播混排。`am` 仍是单个 Go 二进制。
+首版不支持歌曲与 cast、口播混排。
 
 ```bash
 am init my-song --canvas vertical-3x4 --delivery song

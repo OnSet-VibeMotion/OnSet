@@ -2,24 +2,32 @@
 
 # ArticleToMotion
 
-ArticleToMotion is a macOS and Linux CLI for producing vertical and landscape motion-graphics videos.
+ArticleToMotion is a macOS desktop client, with a same-version `am` command line, for producing vertical and landscape motion-graphics videos.
 
 The canvas is chosen once at `am init` — interactively, or with `--canvas vertical-3x4` / `--canvas vertical-9x16` / `--canvas landscape-16x9` (1080×1440, 1080×1920 and 1920×1080, all 30fps). Non-interactive environments must pass `--canvas` explicitly; there is no silent default. It can split a final SRT into concurrently rendered scenes or drive a complete script, TTS, subtitle, cover, audio, and publishing workflow.
 
 ▶ [Watch the ArticleToMotion promo video (MP4, 4m 47s)](https://github.com/chouheiwa/articale-to-motion/blob/main/docs/article-to-motion-tutorial.mp4)
 
-The Go release ships as one `am` binary with embedded project templates. It does not require Python. `am init` installs a pinned official HyperFrames skill release instead of redistributing local skill files.
+The client and `am` share one TypeScript engine; `am` runs on the runtime bundled with the client and does not require Python. Project prompts, publishing templates and visual specs ship inside the client. `am init` installs a pinned official HyperFrames skill release instead of redistributing local skill files, so a project is self-contained: copy the directory to another machine and it renders.
 
 ## Install and initialize
 
-Download the appropriate archive from GitHub Releases, verify it with `checksums.txt`, and place `am` on `PATH`. Requirements:
+Download the dmg for your chip from GitHub Releases (arm64 for Apple Silicon, x64 for Intel), optionally verify it with the `checksums.txt` on the same page, open it and drag ArticleToMotion into Applications.
 
-- macOS or Linux (amd64/arm64)
-- Node.js 22+
+The package is not signed. The first time, **right-click (or Control-click) ArticleToMotion in Applications → Open**, then click Open again in the dialog; after that a normal double-click works. If a double-click was already blocked, you can also click "Open Anyway" in System Settings → Privacy & Security.
+
+To use `am` in a terminal, choose **安装命令行工具…** (Install Command Line Tool) under the **ArticleToMotion** menu of the client (the menus are in Chinese). It writes a small launcher to `~/.local/bin/am` (asking first if a different `am` is already there) that runs the same-version command line on the client's bundled runtime. Make sure `~/.local/bin` is on your `PATH`, and install it again after updating or moving the client. The `am` the client calls itself is a separate private copy and does not depend on this step.
+
+Requirements:
+
+- macOS (Apple Silicon or Intel)
+- Node.js 22+ (`am setup` installs the HyperFrames CLI with npm, and rendering needs it)
 - Git, FFmpeg, FFprobe
 - At least one authenticated CLI: Codex, Claude Code, Qoder, CodeBuddy, or OpenCode
 
-Everything that needs the network is prepared by one command and kept in per-user directories shared by all projects; every other command (`am init`, `am film-style use`, `am scene run`, `am hyperframes`, `am studio`) works offline and tells you to run it when something is missing:
+When launched from Finder or the Dock, the client reads `PATH` from your login shell, so tools installed through Homebrew, asdf or nvm need no extra setup.
+
+Everything that needs the network is prepared by one command and kept in per-user directories shared by all projects; every other command (`am init`, `am film-style use`, `am scene run`, `am hyperframes`) and the client work offline and tells you to run it when something is missing:
 
 ```bash
 am setup                                    # prepare everything (skips what is ready, resumes after interruptions)
@@ -48,40 +56,21 @@ Landscape safe areas avoid the player's bottom controls and progress bar instead
 
 Non-interactive environments (CI, pipes) must pass `--canvas` explicitly; there is no silent default.
 
-### Local Studio workspace
+### Desktop client
 
-Launch the local web workspace to drive production through chat and preview scenes in the browser:
+Open ArticleToMotion, describe what you want to make in the home page's input box (or drop an article on it), and it creates a project and starts production; existing projects open from 文件 → 打开项目文件夹… (File → Open Project Folder).
 
-```bash
-am studio
-am studio /path/to/my-video
-am studio --listen 127.0.0.1:4317
-```
+Chat is the main entry point. The client starts the configured orchestrator (`ORCHESTRATOR`) in the project directory, streams its output live, and resumes the same CLI session across turns. "Start production" runs the same prompt as `am run`; you can keep refining in that session or open a new chat for local edits.
 
-Studio listens on loopback by default. For phone access, use your own Tailscale, VPN, or SSH tunnel and explicitly choose a listen address; Studio does not provide public accounts or HTTPS.
-
-Chat is the main entry point. Studio starts the configured orchestrator (`ORCHESTRATOR`) in the project directory, streams its output to the page, and resumes the same CLI session across turns. "Start production" runs the same prompt as `am run`; you can keep refining in that session or open a new chat for local edits.
-
-- **Studio never edits project files itself.** Changes come only from an orchestrator turn or from buttons that call `am` subcommands directly (render, concat, validate, review, confirm the beat grid).
-- **Every turn can be reverted.** Studio snapshots the project before and after each turn, lists the files the turn changed, shows each file before and after, and can revert the whole turn. If any of those files changed again later, the revert is refused as a whole rather than applied partially. Media files and files over 2 MB are listed but not reverted; re-render instead.
+- **The client never edits project files itself.** Changes come only from an orchestrator turn or from buttons that call `am` subcommands directly (render, concat, validate, review, confirm the beat grid).
+- **Every turn can be reverted.** The client snapshots the project before and after each turn, lists the files the turn changed, shows each file before and after, and can revert the whole turn. If any of those files changed again later, the revert is refused as a whole rather than applied partially. Media files and files over 2 MB are listed but not reverted; re-render instead.
 - **Tools per session.** The chat header picks the orchestrator and renderer for the session, defaulting to the project config; tools that are not installed cannot be picked. The choice applies to that session only and does not edit `article-to-motion.conf`. Switching the orchestrator mid-session starts a new CLI session on the next turn, seeded with the earlier transcript.
 - **One writer at a time.** While a turn runs, render and concat buttons report that the project is busy, and vice versa.
-- **Sessions survive restarts.** Sessions, events, and snapshots live under the project's `production/studio/`. If the CLI session cannot be resumed (for example it expired), Studio starts a new one seeded with the earlier transcript.
+- **Sessions survive restarts.** Sessions, events, and snapshots live under the project's `production/studio/`, so they are still there after you quit and reopen the client. If the CLI session cannot be resumed (for example it expired), a new one is started, seeded with the earlier transcript.
 
-`am --unsafe studio` disables permission isolation just like `am --unsafe run`; see safe mode below.
+The orchestrator inside the client always runs in safe mode (see below); when you really need to disable permission isolation, use `am --unsafe run` in a terminal.
 
-The page has three panes: production stage, scenes, and the project file tree on the left; previews in the middle (scene output with frame stepping and region selection, the live scene composition with element picking, the final video, style examples, review contact sheets, and publish info); the chat on the right. A captured frame, a selected region, or a picked element can be attached to the next message. Beat-mode projects show the click track and a "confirm grid" button until the grid is confirmed.
-
-The frontend source lives in `internal/studio/ui/` (Vite + TypeScript + Preact). The build output is committed to `internal/studio/web/` and embedded with `go:embed`, so Go-only changes need no Node. Frontend changes need Node.js 22+:
-
-```bash
-cd internal/studio/ui
-npm ci
-npm run dev        # dev server; API calls go to am studio on 127.0.0.1:4321
-npm run build      # writes ../web; commit it together with the source
-npx playwright install chromium
-AM_STUDIO_E2E_CONFIG=/tmp/am-studio-projects.json npm run test:e2e
-```
+The preview is on the left and the chat on the right. The middle of the top bar holds the four numbered steps in production order — script, scenes, final cut, publish (⌘1–⌘4 under the View menu) — and the other pages (composition, style, review, memory, files) are listed in small type on the right. When the orchestrator wants you to look at a page it switches the view for you; text, script paragraphs, scenes and files can be quoted into the chat from the right-click menu, and in the input box `@` completes files and scenes while `/` completes common commands. Beat-mode projects show the click track and a way to confirm the grid at the top of the preview until it is confirmed. While the window is in the background, the client sends a system notification when a turn or render task finishes, and shows the number of running tasks on its Dock icon.
 
 ### Visual direction
 
@@ -102,15 +91,15 @@ am film-style use impasto               # existing project; add --replace to swi
 am film-style show                      # this project's film style and the state of each source
 ```
 
-Without one, the orchestrator suggests two or three at the script review gate, alongside "no film style". In `am studio` you can pick one (grouped by source, with posters and search) from the home page, the new-project dialog, or the Style tab, and switch or remove it there.
+Without one, the orchestrator suggests two or three at the script review gate, alongside "no film style". In the client you can pick one (grouped by source, with posters and search) from the home page, the new-project dialog, or the Style page, and switch or remove it there.
 
 The chosen style is installed into `.agents/skills/am-film-style/`. The contract is three files: `STYLE.md` (the invariants), `SKILL.md` (how to use it and where its technique references are) and `am-film-style.json` (source and version); anything else (examples, engines) is up to the source. Scene prompts then replace "visual freedom" with "film style": the renderer must follow `STYLE.md`, while content still comes from each scene. Switching or removing the style (`am film-style remove`) makes every rendered scene stale. Projects installed under the earlier `.agents/skills/lemo-film-style/` keep working and move to the new directory on the next `am film-style use`.
 
-Each source's data is a prerequisite downloaded by `am setup` into `~/.local/share/am/film-styles/<source>/` (override the root with `AM_FILM_STYLES_DIR`), shared by all projects; `am film-style` and Studio never download it. Only the picture side is used: music still comes from licensed assets in the production flow, with what `STYLE.md` says about sound as a reference.
+Each source's data is a prerequisite downloaded by `am setup` into `~/.local/share/am/film-styles/<source>/` (override the root with `AM_FILM_STYLES_DIR`), shared by all projects; `am film-style` and the client never download it. Only the picture side is used: music still comes from licensed assets in the production flow, with what `STYLE.md` says about sound as a reference.
 
-`am init` refuses to overwrite existing files with different content. By default it copies the pinned HyperFrames 0.8.225 skills from the local cache (prepared by `am setup`) into the project's `.agents/skills/`, alongside the binary-delivered `text-to-lottie` and `algorithmic-art`; it never downloads, and tells you to run `am setup` if the cache is missing.
+`am init` refuses to overwrite existing files with different content. By default it copies the pinned HyperFrames 0.8.225 skills from the local cache (prepared by `am setup`) into the project's `.agents/skills/`, alongside the built-in `text-to-lottie` and `algorithmic-art` that ship with the client; it never downloads, and tells you to run `am setup` if the cache is missing.
 
-Skills go into the project rather than `$HOME` because that is the only way projects stop clobbering each other: the upstream installer only honours `homedir`, so a machine has exactly one copy — with two projects pinned to different versions, whichever was initialized last wins. The install never writes to your HOME; the upstream installer runs in a temporary directory outside the project and its output is moved in.
+Skills go into the project rather than `$HOME` because that is the only way projects stop clobbering each other: the upstream installer only honours `homedir`, so a machine has exactly one copy — with two projects pinned to different versions, whichever was initialized last wins. The install never writes to your HOME: cloning and filtering happen in a temporary directory outside the project, and the result is moved in.
 
 #### Why the skill install bypasses the upstream installer
 
@@ -122,18 +111,18 @@ So `am init` does not call it. It shallow-clones the tag `v<version>` itself and
 - **Count check** — if upstream relocates a directory, directory-based assembly would silently install a partial set, and a renderer that cannot find a skill does not fail, it invents its own approach. A count other than `PinnedSkillsCount` is refused.
 - **Environment isolation** — `GIT_LFS_SKIP_SMUDGE=1` (the repo has LFS media; machines with git-lfs would materialize real files while others keep pointers, so the same commit would yield different trees) and `GIT_CONFIG_GLOBAL/SYSTEM=/dev/null` (user filters and autocrlf must not affect the checkout).
 
-The result is recorded in `.agents/skills/hyperframes-upstream.json`: version, upstream commit, and a content digest per skill directory. To move the pin, change `PinnedVersion` / `PinnedSkillsCommit` / `PinnedSkillsCount` in `internal/hyperframes`.
+The result is recorded in `.agents/skills/hyperframes-upstream.json`: version, upstream commit, and a content digest per skill directory. To move the pin, change `PinnedVersion` / `PinnedSkillsCommit` / `PinnedSkillsCount` in `packages/engine/src/hyperframes/constants.ts`.
 
 `am init` copies the pinned skills from the local cache prepared by `am setup` and does not use the network; `--skip-hyperframes` skips that step. The same-version HyperFrames CLI is installed by `am setup` and always invoked as `am hyperframes …`, so nothing is downloaded mid-render; `am scene run` stops before starting the renderer if it is missing.
 
-Initialization also writes the binary's built-in skill tree to the project's `.agents/skills/`, where the renderer discovers it automatically:
+Initialization also writes the client's built-in skill tree to the project's `.agents/skills/`, where the renderer discovers it automatically:
 
 | Skill | Purpose |
 |---|---|
 | `text-to-lottie` | Lottie layers inside a scene: logo reveals, icons, loaders, SVG stroke-on, vector effects |
 | `algorithmic-art` | Algorithmic and generative visuals |
 
-Both ship inside the binary. They need no network install, and `--skip-hyperframes` does not affect them.
+Both ship inside the client. They need no network install, and `--skip-hyperframes` does not affect them.
 
 Edit `article-to-motion.conf` to choose the orchestrator and renderer (they may be the same CLI):
 
@@ -164,13 +153,13 @@ For an existing final `transcription.srt`:
 am run
 ```
 
-For complete production from an article or spoken script (with no `transcription.srt` in the project yet, a bare `am run` and Studio's "Start production" take this path automatically):
+For complete production from an article or spoken script (with no `transcription.srt` in the project yet, a bare `am run` and the client's "Start production" take this path automatically):
 
 ```bash
 am run PROMPT-PRODUCTION.md
 ```
 
-`am run` prepends the directory of the current `am` executable to the orchestrator process's `PATH` and exposes its absolute path as `AM_EXECUTABLE`. Commands such as `am scene ...` in the prompt therefore resolve to the same CLI that started the workflow, without copying the binary into each project.
+`am run` prepends the directory of the current `am` executable to the orchestrator process's `PATH` and exposes its absolute path as `AM_EXECUTABLE`. Commands such as `am scene ...` in the prompt therefore resolve to the same CLI that started the workflow, without copying it into each project.
 
 Scene operations are available directly:
 
@@ -202,7 +191,7 @@ Scenes with an accepted output and unchanged inputs are skipped. When an output 
 
 AI CLIs run in project-scoped safe mode by default. `am --unsafe run` explicitly restores bypass/auto-approval behavior and should only be used for trusted projects. Extra environment variables in safe mode must be named in `AM_PASSTHROUGH_ENV`.
 
-In safe mode the orchestrator (`am run` and Studio chats) may edit files and run only an allowlist: `am` (including `am hyperframes`, the pinned HyperFrames CLI managed by am), `ffmpeg`, `ffprobe`; read-only inspection (`ls`, `cat`, `head`, `tail`, `wc`, `grep`, `rg`, `find`, `sort`, `uniq`, `cut`, `diff`, `cmp`, `stat`, `file`, `du`, `pwd`, `basename`, `dirname`, `realpath`, `jq`, `tree`, `which`, `date`); `echo`, `printf`, `cd`; `mkdir`, `cp`, `mv`, `touch` inside the workspace; hashing (`shasum`, `sha256sum`, `md5`); read-only git (`git status`, `git diff`, `git log`, `git show`); `curl` for fonts and licensed assets; `python3`, `python` and `node` for scripts; and the single command of the configured `TTS_PROVIDER` and `ALIGN_PROVIDER` (for example `mmx`, `edge-tts`, `mlx_audio.stt.generate`; `funasr` maps to `python3`). `sh`/`bash`, `rm`, permission changes and installers (`brew`, `pip`, `uv`, `npm`) are not allowed, so install those tools yourself first. To allow more commands, list their prefixes in the project's `ORCHESTRATOR_ALLOW_COMMANDS` (comma-separated, e.g. `uv run, pnpm, magick`) instead of switching to `--unsafe`. Allowing interpreters means a script can do anything, including reading `.env`: safe mode guards against mistakes and out-of-bounds commands, not against untrusted input. Run each command on its own, without chaining via `&&`, `;` or pipes (see the project rules). Enforcement differs per tool: claude and codebuddy use `acceptEdits` plus a `--settings` allowlist with `.env` reads denied (Claude Code's `acceptEdits` also auto-approves filesystem commands such as `touch`, `mkdir`, and `rm` inside the workspace); qoder uses `accept_edits` plus one `--allowed-tools` per command; codex has no command allowlist and relies on its `workspace-write` sandbox, with sandbox networking enabled for TTS; opencode has no working allowlist mechanism and can run any command even in safe mode. The codebuddy arguments have not been fully tested.
+In safe mode the orchestrator (`am run` and client chats) may edit files and run only an allowlist: `am` (including `am hyperframes`, the pinned HyperFrames CLI managed by am), `ffmpeg`, `ffprobe`; read-only inspection (`ls`, `cat`, `head`, `tail`, `wc`, `grep`, `rg`, `find`, `sort`, `uniq`, `cut`, `diff`, `cmp`, `stat`, `file`, `du`, `pwd`, `basename`, `dirname`, `realpath`, `jq`, `tree`, `which`, `date`); `echo`, `printf`, `cd`; `mkdir`, `cp`, `mv`, `touch` inside the workspace; hashing (`shasum`, `sha256sum`, `md5`); read-only git (`git status`, `git diff`, `git log`, `git show`); `curl` for fonts and licensed assets; `python3`, `python` and `node` for scripts; and the single command of the configured `TTS_PROVIDER` and `ALIGN_PROVIDER` (for example `mmx`, `edge-tts`, `mlx_audio.stt.generate`; `funasr` maps to `python3`). `sh`/`bash`, `rm`, permission changes and installers (`brew`, `pip`, `uv`, `npm`) are not allowed, so install those tools yourself first. To allow more commands, list their prefixes in the project's `ORCHESTRATOR_ALLOW_COMMANDS` (comma-separated, e.g. `uv run, pnpm, magick`) instead of switching to `--unsafe`. Allowing interpreters means a script can do anything, including reading `.env`: safe mode guards against mistakes and out-of-bounds commands, not against untrusted input. Run each command on its own, without chaining via `&&`, `;` or pipes (see the project rules). Enforcement differs per tool: claude and codebuddy use `acceptEdits` plus a `--settings` allowlist with `.env` reads denied (Claude Code's `acceptEdits` also auto-approves filesystem commands such as `touch`, `mkdir`, and `rm` inside the workspace); qoder uses `accept_edits` plus one `--allowed-tools` per command; codex has no command allowlist and relies on its `workspace-write` sandbox, with sandbox networking enabled for TTS; opencode has no working allowlist mechanism and can run any command even in safe mode. The codebuddy arguments have not been fully tested.
 
 `am run` prints a readable digest of the orchestrator's event stream: the session id first, assistant text as-is, one line per tool call, failed tool results marked with `✗`, and token usage at the end.
 
@@ -221,7 +210,7 @@ am cast preview cast/heiwa               # render a contact sheet per named pose
 
 Editing `character.yaml` by hand does not auto-sync: `character.json` — what the renderer actually reads — is only regenerated when `new`/`add`/`validate` succeeds, so always re-run `am cast validate` after a manual edit. That command also flags a missing voice entry for the current `TTS_PROVIDER` (without affecting the exit code, so it surfaces right after you build the pack); the hard gate before publishing is `am validate cast` (see "Validate, archive, and develop" below).
 
-Per-speaker synthesized audio needs to be rebuilt into one timeline and then sliced into per-scene beats once scenes are cut — both are "silently wrong if miscalculated" arithmetic, so they live in Go rather than in the orchestrating agent:
+Per-speaker synthesized audio needs to be rebuilt into one timeline and then sliced into per-scene beats once scenes are cut — both are "silently wrong if miscalculated" arithmetic, so they live in `am` rather than in the orchestrating agent:
 
 ```bash
 am dialogue assemble   # read production/audio/plan.json, produce voice.wav / SRT / dialogue.json
@@ -256,9 +245,9 @@ am memory rollback --to 3                # go back to any snapshot without delet
 
 New lessons start on trial and are only used in exams. Exams are scored by deterministic checks: the trial arm must strictly beat control, must not fail any question control passes on any renderer, and must not lose held-out passes; a renderer crash voids the exam instead of scoring zero. Every change to the active set creates a snapshot, and a project can pin one with `MEMORY_SNAPSHOT`.
 
-Besides output checks and the determinism scan, problems found by `am validate reads` (reading time), `am review` (handoffs) and `am scene frames --check-blank` (blank frames) are recorded on the scene and feed consolidation. Lessons decided only by reading time or handoffs need the whole film, so they cannot be examined and need a person to confirm them. Studio chats are recorded too: a request repeated across turns or a reverted turn becomes a pending preference, which the orchestrator asks you to confirm in conversation.
+Besides output checks and the determinism scan, problems found by `am validate reads` (reading time), `am review` (handoffs) and `am scene frames --check-blank` (blank frames) are recorded on the scene and feed consolidation. Lessons decided only by reading time or handoffs need the whole film, so they cannot be examined and need a person to confirm them. Client chats are recorded too: a request repeated across turns or a reverted turn becomes a pending preference, which the orchestrator asks you to confirm in conversation.
 
-Preferences also reach the orchestrator: `am run` and every Studio chat start with a "user preferences" section, so a terse request is filled in with what the user has asked for before.
+Preferences also reach the orchestrator: `am run` and every client chat turn start with a "user preferences" section, so a terse request is filled in with what the user has asked for before.
 
 Different models make different mistakes. Every render records the model actually used (read from the stream for claude, qoder and codebuddy, from `config.toml` for codex, unknown for opencode), and failure clusters show the renderer/model breakdown. A lesson that only holds for one model is scoped with `applies_when.renderers` / `models` and is recalled only there. Effect stats are also kept per renderer/model; after a model change `am memory status` asks for a retest, and `am memory exam --retest <name>` re-examines it with the lesson removed from the control arm. Lesson text itself stays free of renderer and model names, copied scene text and asset names, and `checked_by` must name an existing checker ID (`output.*` or `determinism.*`).
 
@@ -266,7 +255,7 @@ Each exam cell is a real render: renders = questions × renderers × 2 × `--rep
 
 ## Usage
 
-Every `am scene run` prints the tokens and cost (when the tool reports it) of that render, and the `am scene run-all` summary and `--report-json` carry each scene's total for the run. Orchestrator calls are on the books too: every `am run` and every Studio turn appends one line to the project's `production/usage/orchestrator.jsonl`, failed and cancelled calls included. For the whole project:
+Every `am scene run` prints the tokens and cost (when the tool reports it) of that render, and the `am scene run-all` summary and `--report-json` carry each scene's total for the run. Orchestrator calls are on the books too: every `am run` and every client chat turn appends one line to the project's `production/usage/orchestrator.jsonl`, failed and cancelled calls included. For the whole project:
 
 ```bash
 am usage                        # project total: renders + orchestration, split by renderer/model and by source
@@ -275,7 +264,7 @@ am scene usage scenes/          # every attempt per scene, including failures, r
 
 The `am memory consolidate` drafter does not belong to any project; its usage goes to `orchestrator-usage.jsonl` in the memory store, and `am usage` lists it separately, outside the project total.
 
-Usage is normalized across tools: input includes cache hits, output includes reasoning tokens. Studio's scene timeline shows the project total (hover for renders vs. orchestration), and the scene toolbar shows each scene's running total.
+Usage is normalized across tools: input includes cache hits, output includes reasoning tokens. The client's scene timeline shows the project total (hover for renders vs. orchestration), and the scene toolbar shows each scene's running total.
 
 ## Inspect frames and concatenate
 
@@ -355,12 +344,22 @@ am archive
 
 ## Development
 
+Building from source needs Node.js 22+:
+
 ```bash
-go build ./cmd/am
-go test ./...
-go test -race ./...
-go vet ./...
+npm ci
+npx tsc --noEmit -p packages/engine          # type-check the engine, the CLI and the client
+npx tsc --noEmit -p packages/cli
+npm run typecheck -w am-desktop
+npx vitest run --root packages/engine        # unit and integration tests (cases needing ffmpeg or rsvg-convert skip without them)
+npx vitest run --root packages/cli
+npm run build -w @am/cli                     # command line → packages/cli/dist/am.cjs
+npm run desktop                              # build and launch the client
+npm run test:e2e -w am-desktop               # client end-to-end tests (Playwright, Electron mode)
+npm run dist -w am-desktop                   # package an .app (apps/desktop/release/)
 ```
+
+The command line also runs without the client: `node packages/cli/dist/am.cjs <command>`. After changing the canvas table, the style table or a prompt template, run `npm run generate -w @am/engine` and commit the regenerated `assets/presets` and `assets/styles`. Development rules are in `AGENTS.md` and `packages/engine/CONVENTIONS.md`.
 
 ArticleToMotion is licensed under the [Apache License 2.0](./LICENSE). HyperFrames is an independent Apache-2.0 project installed at its pinned release by `am init`.
 
