@@ -83,7 +83,7 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run generate -w @am/engine
-      - name: assets/presets 与 assets/styles 必须与画幅表、风格表、模板一致
+      - name: assets/styles 必须与画幅表、风格表、模板一致
         run: |
           if ! git diff --exit-code; then
             echo "::error::生成产物与提交的不一致：改了画幅表、风格表或模板后要跑 npm run generate -w @am/engine 并提交产物" >&2

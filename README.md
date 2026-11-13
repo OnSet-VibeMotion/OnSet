@@ -2,7 +2,7 @@
 
 # ArticleToMotion
 
-ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的 MG 动画视频：从文章或口播稿出发，完成写稿、配音、字幕、分镜、并发渲染动画镜头、拼接、封面与发布交付；已有定稿字幕时也可以直接拆成镜头渲染。
+ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的 MG 动画视频：从文章或口播稿出发，完成写稿、配音、字幕、分镜、并发渲染动画镜头、拼接、封面与发布交付；也可以做没有配音、画面踩着音乐节拍走的卡点片。
 
 ▶ [观看 ArticleToMotion 宣传视频（MP4，4 分 47 秒）](https://github.com/chouheiwa/articale-to-motion/blob/main/docs/article-to-motion-tutorial.mp4)
 
@@ -87,7 +87,7 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 ## 多角色叙事
 
-「多角色对话」项目里，`cast.yaml`（登记班底）与 `cast/` 目录的存在本身就是模式开关。一个角色包是 `cast/<id>/` 下的一个目录：`character.yaml` 是唯一真相源（音色、rig 关节、姿势、可选的多视图与转身路径），配一份（或每个视图各一份）`rig.svg` 骨架图，`dna.md` 写人设供编排工具读、不参与渲染。分说话人合成的配音由工具重建成一条时间线，再按拆定的镜头切成节拍；作业规程随项目下发在 `PROMPT-CAST-ADDENDUM.md`。
+「多角色对话」项目里，`cast.yaml`（登记班底）与 `cast/` 目录的存在本身就是模式开关。一个角色包是 `cast/<id>/` 下的一个目录：`character.yaml` 是唯一真相源（音色、rig 关节、姿势、可选的多视图与转身路径），配一份（或每个视图各一份）`rig.svg` 骨架图，`dna.md` 写人设供编排工具读、不参与渲染。分说话人合成的配音由工具重建成一条时间线，再按拆定的镜头切成节拍；作业规程是制作提示词末尾的「附：多角色叙事作业规程」。
 
 ## 渲染记忆
 

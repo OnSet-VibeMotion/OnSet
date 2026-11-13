@@ -2,7 +2,7 @@
 
 # ArticleToMotion
 
-ArticleToMotion is a macOS desktop client for producing vertical and landscape motion-graphics videos. Starting from an article or a narration script, it covers the script, voice-over, subtitles, storyboard, concurrent scene rendering, concatenation, covers, and publishing. If you already have a final subtitle file, it can split that straight into scenes and render them.
+ArticleToMotion is a macOS desktop client for producing vertical and landscape motion-graphics videos. Starting from an article or a narration script, it covers the script, voice-over, subtitles, storyboard, concurrent scene rendering, concatenation, covers, and publishing. It can also make beat-synced films with no voice-over, where the picture follows the music.
 
 ▶ [Watch the ArticleToMotion promo video (MP4, 4m 47s)](https://github.com/chouheiwa/articale-to-motion/blob/main/docs/article-to-motion-tutorial.mp4)
 
@@ -156,7 +156,7 @@ A character pack is a directory under `cast/<id>/`:
 - One `rig.svg` skeleton, or one per view.
 - `dna.md` holds the persona for the orchestrator and does not affect rendering.
 
-Per-speaker voice-overs are rebuilt into one timeline by the tools and then cut into beats per scene. The working rules ship with the project in `PROMPT-CAST-ADDENDUM.md`.
+Per-speaker voice-overs are rebuilt into one timeline by the tools and then cut into beats per scene. The working rules are the appendix at the end of the production prompt ("附：多角色叙事作业规程").
 
 ## Render memory
 
