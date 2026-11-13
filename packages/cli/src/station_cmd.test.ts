@@ -19,7 +19,7 @@ async function projectWithFake(): Promise<string> {
 
 describe('station ops', () => {
   it('are not tools the orchestrator can call', () => {
-    for (const name of ['station_add', 'station_remove', 'station_list', 'station_run', 'station_flow']) {
+    for (const name of ['station_add', 'station_remove', 'station_list', 'station_run', 'station_flow', 'station_builtin']) {
       expect(allOps().find((op) => op.name === name)?.scopes, name).toEqual(['cli']);
     }
     expect(describeTools('orchestrator').some((t) => t.name.startsWith('station_'))).toBe(false);
@@ -83,5 +83,33 @@ describe('op worker scope', () => {
       if (before === undefined) delete process.env[OpScopeEnv];
       else process.env[OpScopeEnv] = before;
     }
+  });
+});
+
+describe('builtin plugins', () => {
+  it('claim only ops that exist, each op by one plugin at most', async () => {
+    const flow = await import('@am/engine/flow');
+    const names = new Set(allOps().map((o) => o.name));
+    const owner = new Map<string, string>();
+    for (const plugin of flow.builtinPlugins()) {
+      for (const op of plugin.manifest.am_ops) {
+        expect(names.has(op), `${plugin.manifest.id} 认领了不存在的操作 ${op}`).toBe(true);
+        expect(owner.get(op), `${op} 被两个内置插件认领`).toBeUndefined();
+        owner.set(op, plugin.manifest.id);
+      }
+    }
+    // 歌曲讲解认领了全部 song_* 操作，一个都不漏。
+    for (const name of names) if (name.startsWith('song_')) expect(owner.get(name), name).toBe('song');
+  });
+
+  it('hide the ops of a plugin the project turned off', async () => {
+    const root = tempDir();
+    expect(describeTools('orchestrator', root).some((t) => t.name === 'song_generate')).toBe(true);
+    const out = new Buffer();
+    expect(await run(['station', 'builtin', 'song', '--enabled=false', '--project-root', root], out), out.text).toBe(0);
+    const names = describeTools('orchestrator', root).map((t) => t.name);
+    expect(names.some((n) => n.startsWith('song_'))).toBe(false);
+    expect(names).not.toContain('validate_song');
+    expect(names).toContain('scene_run');
   });
 });

@@ -104,7 +104,7 @@ describe('plugin flows', () => {
     setProjectFlow(root, 'fake-publisher');
     expect(detectFlow(root, extras)).toBe('x:fake-publisher');
     expect(route('x:fake-publisher', extras).map((r) => r.node.id)).toEqual(['intake', 'render', 'assemble', 'review', 'gate-final', 'auto-publish']);
-    expect(extras[0].flow?.first_page).toBe('x:fake-publisher:dashboard');
+    expect(extras.find((x) => x.station.id === 'fake-publisher')?.flow?.first_page).toBe('x:fake-publisher:dashboard');
     const text = runPrompt(root, '').prompt.toString('utf8');
     // am 的公共约定照旧在前，各阶段换成这套流程的。
     expect(text.startsWith('# 制作\n\n## 一次性项目边界\n\n- 公共约定\n')).toBe(true);

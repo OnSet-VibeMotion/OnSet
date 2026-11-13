@@ -12,6 +12,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { assetsBase } from '../assets';
 import { dataDir } from '../envutil';
 import { atomicWrite } from '../fsutil';
 import { compareBytes, marshalIndent } from '../gojson';
@@ -127,6 +128,8 @@ export interface Manifest {
   id: string;
   version: string;
   name: string;
+  /** 一句话说明它做什么（设置页显示）。 */
+  description: string;
   after: string;
   replaces: string;
   prompt: string;
@@ -152,6 +155,13 @@ export interface Manifest {
   renderer_skills: { name: string; dir: string; summary: string; scenes: 'all' | 'opt-in' }[];
   /** 整片风格库：dir 下每个子目录是一种风格（STYLE.md 必需，SKILL.md、poster.jpg、style.json 可选）。 */
   film_styles: { name: string; dir: string } | null;
+  /**
+   * 只有内置插件（assets/plugins/）能写：认领的 am 自带操作。项目关掉这个插件时，这些操作不再出现在
+   * 编排工具的工具列表里。代码仍在引擎里，认领的只是归属与开关。
+   */
+  am_ops: string[];
+  /** 项目在用这个插件的凭据文件（例如 song.yaml）：存在时不许在这个项目里关掉它。 */
+  in_use: string[];
   slots: ManifestSlot[];
   commands: ManifestCommand[];
 }
@@ -171,6 +181,8 @@ export interface Lock {
   version: 1;
   /** 选用了哪个站带来的流程（站 id）；空是内置流程。 */
   flow?: string;
+  /** 这个项目关掉的内置插件。 */
+  disabled?: string[];
   stations: LockEntry[];
 }
 
@@ -179,6 +191,8 @@ export interface LoadedStation {
   entry: LockEntry;
   dir: string;
   manifest: Manifest;
+  /** 随 ArticleToMotion 下发的内置插件（assets/plugins/），不是用户加的。 */
+  builtin?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -222,7 +236,7 @@ function knownFields(raw: Record<string, unknown>, allowed: string[], where: str
 }
 
 /** 解析并校验 am-station.json。错误一律带上字段位置。 */
-export function parseManifest(text: string): Manifest {
+export function parseManifest(text: string, opts: { builtin?: boolean } = {}): Manifest {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -230,10 +244,11 @@ export function parseManifest(text: string): Manifest {
     throw new Error(`${ManifestFile} 不是合法的 JSON：${(err as Error).message}`);
   }
   if (!isObject(raw)) throw new Error(`${ManifestFile} 要是一个对象`);
-  knownFields(raw, ['id', 'version', 'name', 'after', 'replaces', 'prompt', 'nodes', 'produces', 'ops', 'pages', 'settings', 'permissions', 'hooks', 'schedules', 'inserts', 'flow', 'provides', 'renderer_skills', 'film_styles', 'slots', 'commands'], ManifestFile);
+  knownFields(raw, ['id', 'version', 'name', 'description', 'after', 'replaces', 'prompt', 'nodes', 'produces', 'ops', 'pages', 'settings', 'permissions', 'hooks', 'schedules', 'inserts', 'flow', 'provides', 'renderer_skills', 'film_styles', 'am_ops', 'in_use', 'slots', 'commands'], ManifestFile);
   const id = str(raw, 'id', 'station');
   if (!idPattern.test(id)) throw new Error(`station.id ${id} 要是小写字母开头的小写字母、数字与连字符（2–40 个字符）`);
   if (builtinStations.some((s) => s.id === id)) throw new Error(`station.id ${id} 与内置站重名`);
+  if (!opts.builtin && builtinPluginIDs().includes(id)) throw new Error(`station.id ${id} 与内置插件重名`);
   const replaces = str(raw, 'replaces', 'station', false);
   if (replaces !== '' && (replaces === 'host' || !builtinStations.some((s) => s.id === replaces))) throw new Error(`station.replaces：没有内置站 ${replaces}`);
 
@@ -428,6 +443,7 @@ export function parseManifest(text: string): Manifest {
     return { name, dir, summary: str(rs, 'summary', where), scenes: scenes as 'all' | 'opt-in' };
   });
   if (new Set(rendererSkills.map((r) => r.name)).size !== rendererSkills.length) throw new Error('station.renderer_skills 里有重名的技能');
+  const inUseFiles = strings(raw, 'in_use', 'station').map((p) => projectPath(p, 'station.in_use'));
   let filmStyles: Manifest['film_styles'] = null;
   if (raw.film_styles !== undefined) {
     if (!isObject(raw.film_styles)) throw new Error('station.film_styles 要是对象');
@@ -436,6 +452,9 @@ export function parseManifest(text: string): Manifest {
     relativeInside(dir, 'film_styles.dir');
     filmStyles = { name: str(raw.film_styles, 'name', 'film_styles'), dir };
   }
+  const amOps = strings(raw, 'am_ops', 'station');
+  if (amOps.length > 0 && !opts.builtin) throw new Error('station.am_ops：只有随 ArticleToMotion 下发的内置插件能认领 am 自带的操作');
+  for (const name of amOps) if (!/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/.test(name)) throw new Error(`station.am_ops：${name} 不是操作名`);
   const slots = list('slots').map((sl, i): ManifestSlot => {
     const where = `slots[${i}]`;
     knownFields(sl, ['at', 'page', 'height'], where);
@@ -464,6 +483,7 @@ export function parseManifest(text: string): Manifest {
     id,
     version: str(raw, 'version', 'station'),
     name: str(raw, 'name', 'station'),
+    description: str(raw, 'description', 'station', false),
     after: str(raw, 'after', 'station', false),
     replaces,
     prompt,
@@ -480,6 +500,8 @@ export function parseManifest(text: string): Manifest {
     provides,
     renderer_skills: rendererSkills,
     film_styles: filmStyles,
+    am_ops: amOps,
+    in_use: inUseFiles,
     slots,
     commands,
   };
@@ -653,12 +675,16 @@ export function readLock(root: string): Lock {
   });
   const out: Lock = { version: 1, stations };
   if (typeof raw.flow === 'string' && raw.flow !== '') out.flow = raw.flow;
+  if (Array.isArray(raw.disabled)) {
+    const disabled = raw.disabled.filter((x): x is string => typeof x === 'string').sort(compareBytes);
+    if (disabled.length > 0) out.disabled = disabled;
+  }
   return out;
 }
 
 function writeLock(root: string, lock: Lock): void {
   const file = path.join(root, LockFile);
-  if (lock.stations.length === 0) {
+  if (lock.stations.length === 0 && !lock.flow && !(lock.disabled ?? []).length) {
     fs.rmSync(file, { force: true });
     return;
   }
@@ -793,7 +819,94 @@ export function loadProjectStations(root: string, env: Record<string, string | u
       problems.push(`第三方站 ${entry.id}：${(err as Error).message}`);
     }
   }
-  return { stations: out, problems };
+  // 内置插件：默认启用，项目关掉的（锁文件 disabled）不算。排在第三方站前面，按 id 排序。
+  const disabled = new Set(lock.disabled ?? []);
+  const builtins = builtinPlugins().filter((b) => !disabled.has(b.manifest.id));
+  return { stations: [...builtins, ...out], problems };
+}
+
+// ---------------------------------------------------------------------------
+// 内置插件
+
+/** 内置插件的目录：assets/plugins/<id>/am-station.json，随客户端下发（extraResources 带着整棵 assets）。 */
+export function builtinPluginsDir(): string {
+  return path.join(assetsBase(), 'assets', 'plugins');
+}
+
+let builtinCache: { dir: string; plugins: LoadedStation[] } | null = null;
+
+/** 全部内置插件（按 id 排序）。清单坏了直接报错：那是 ArticleToMotion 自己的 bug，不能静默少一个功能。 */
+export function builtinPlugins(): LoadedStation[] {
+  let dir: string;
+  try {
+    dir = builtinPluginsDir();
+  } catch {
+    return [];
+  }
+  if (builtinCache && builtinCache.dir === dir) return builtinCache.plugins;
+  let names: string[] = [];
+  try {
+    names = fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !e.name.startsWith('_'))
+      .map((e) => e.name)
+      .sort(compareBytes);
+  } catch {
+    names = [];
+  }
+  const plugins = names.map((name): LoadedStation => {
+    const pluginDir = path.join(dir, name);
+    const manifest = parseManifest(fs.readFileSync(path.join(pluginDir, ManifestFile), 'utf8'), { builtin: true });
+    if (manifest.id !== name) throw new Error(`内置插件 ${name} 的 id 写成了 ${manifest.id}`);
+    checkFiles(pluginDir, manifest);
+    return { entry: { id: manifest.id, version: manifest.version, source: 'builtin', commit: '', digest: '' }, dir: pluginDir, manifest, builtin: true };
+  });
+  builtinCache = { dir, plugins };
+  return plugins;
+}
+
+/** 内置插件的 id（第三方站不能重名）。 */
+export function builtinPluginIDs(): string[] {
+  return builtinPlugins().map((p) => p.manifest.id);
+}
+
+/** 这个项目关掉的内置插件认领的 am 操作：工具服务据此把它们从工具列表里拿掉。 */
+export function disabledAmOps(root: string): Set<string> {
+  let lock: Lock;
+  try {
+    lock = readLock(root);
+  } catch {
+    return new Set();
+  }
+  const disabled = new Set(lock.disabled ?? []);
+  return new Set(builtinPlugins().filter((p) => disabled.has(p.manifest.id)).flatMap((p) => p.manifest.am_ops));
+}
+
+/**
+ * 打开或关掉这个项目的一个内置插件。项目正在用它（清单的 in_use 文件存在，例如歌曲讲解的 song.yaml）时不许关：
+ * 关了它，正在做的片子就少了工具。
+ */
+export function setBuiltinEnabled(root: string, id: string, enabled: boolean): Lock {
+  const plugin = builtinPlugins().find((p) => p.manifest.id === id);
+  if (!plugin) throw new Error(`没有内置插件 ${id}`);
+  if (!enabled) {
+    const busy = inUse(root, plugin.manifest);
+    if (busy !== '') throw new Error(`这个项目正在用「${plugin.manifest.name}」（有 ${busy}），不能关掉`);
+  }
+  const lock = readLock(root);
+  const disabled = new Set(lock.disabled ?? []);
+  if (enabled) disabled.delete(id);
+  else disabled.add(id);
+  const next: Lock = { ...lock };
+  if (disabled.size > 0) next.disabled = [...disabled].sort(compareBytes);
+  else delete next.disabled;
+  writeLock(root, next);
+  return next;
+}
+
+/** 项目在用这个内置插件的凭据文件（清单 in_use 里第一个存在的）；没有为空。 */
+export function inUse(root: string, m: Manifest): string {
+  return m.in_use.find((rel) => fs.existsSync(path.join(root, rel))) ?? '';
 }
 
 /** 项目路线用的第三方站。 */
@@ -805,7 +918,7 @@ export function projectExtras(root: string, env: Record<string, string | undefin
 export function addToProject(root: string, entry: LockEntry): Lock {
   const lock = readLock(root);
   const others = lock.stations.filter((e) => e.id !== entry.id);
-  const next: Lock = { version: 1, ...(lock.flow ? { flow: lock.flow } : {}), stations: [...others, entry].sort((a, b) => compareBytes(a.id, b.id)) };
+  const next: Lock = { ...lock, stations: [...others, entry].sort((a, b) => compareBytes(a.id, b.id)) };
   writeLock(root, next);
   return next;
 }
@@ -814,7 +927,8 @@ export function removeFromProject(root: string, id: string): Lock {
   const lock = readLock(root);
   if (!lock.stations.some((e) => e.id === id)) throw new Error(`这个项目没有加第三方站 ${id}`);
   // 去掉的站带着项目选用的流程：回到内置流程。
-  const next: Lock = { version: 1, ...(lock.flow && lock.flow !== id ? { flow: lock.flow } : {}), stations: lock.stations.filter((e) => e.id !== id) };
+  const next: Lock = { ...lock, stations: lock.stations.filter((e) => e.id !== id) };
+  if (next.flow === id) delete next.flow;
   writeLock(root, next);
   return next;
 }
@@ -827,7 +941,9 @@ export function setProjectFlow(root: string, id: string, env: Record<string, str
     if (!s) throw new Error(`这个项目没有加第三方站 ${id}`);
     if (!s.manifest.flow) throw new Error(`第三方站 ${s.manifest.name} 没有带流程`);
   }
-  const next: Lock = { version: 1, ...(id !== '' ? { flow: id } : {}), stations: lock.stations };
+  const next: Lock = { ...lock };
+  if (id !== '') next.flow = id;
+  else delete next.flow;
   writeLock(root, next);
   return next;
 }
@@ -878,11 +994,18 @@ export function insertStageSections(prompt: string, stations: readonly LoadedSta
 /**
  * 第三方站的提示词，接在项目制作提示词后面。每一站一节，开头说明来源，并声明冲突时以上面为准。
  */
-export function extraPrompt(stations: readonly LoadedStation[]): string {
+export function extraPrompt(stations: readonly LoadedStation[], existing = ''): string {
   const parts: string[] = [];
   for (const s of stations) {
     if (s.manifest.prompt === '') continue;
     const body = fs.readFileSync(path.join(s.dir, s.manifest.prompt), 'utf8').trim();
+    if (s.builtin) {
+      // 内置插件的说明原样接上（它本来就是制作说明的一部分，自带标题）。老项目的提示词里已经有这一节时不重复。
+      const heading = body.split('\n')[0];
+      if (heading !== '' && existing.includes(heading)) continue;
+      parts.push(body);
+      continue;
+    }
     const tools = s.manifest.ops.filter((o) => o.trigger === 'agent').map((o) => '`' + toolName(s.manifest.id, o.name) + '`');
     const userOps = s.manifest.ops.filter((o) => o.trigger === 'user').map((o) => o.summary);
     const lines = [

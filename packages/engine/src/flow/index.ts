@@ -4,6 +4,12 @@ export { chineseNumber, composeProduction, composePrompt, detectFlow, flow, gate
 export {
   addToProject,
   activeFlowStation,
+  builtinPluginIDs,
+  builtinPlugins,
+  builtinPluginsDir,
+  disabledAmOps,
+  inUse,
+  setBuiltinEnabled,
   pluginSkillsFor,
   extraPrompt,
   setProjectFlow,

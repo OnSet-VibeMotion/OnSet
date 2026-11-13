@@ -221,6 +221,16 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 | 配音、对齐（`provides`）：取值 `x:<站 id>` 在 `validTTSProvider` / `validAligner` 里只查写法；插件的配音是它的 agent 工具，不进编排工具命令白名单、不是前置资源（安装页不列）。制作提示词第三、四阶段各有一句指向末尾的插件说明 | 插件工具经 MCP 调用，本来就不需要命令白名单 |
 | 渲染技能（`renderer_skills`）：`resolveAllSkills` 经 `flow.pluginSkillsFor` 加入 `plugin:<站>/<技能>`，于是指纹（`skill:` 摘要）、读取放行与 `pluginSkillSection` 提示词都自动覆盖；`scenes: all` 的每个镜头都带，`opt-in` 的只给 `scene.json` 的 `plugin_skills` 点名的镜头。点名了却没有直接报错。项目没加插件时提示词与指纹逐字不变（`scene/pluginskills.test.ts`） | 加一个对所有镜头生效的技能，已渲染的镜头标成 Stale 是对的：渲染输入确实变了；不想全变就用 opt-in |
 | 整片风格库（`film_styles`）：`flow.PluginStyleSource` 实现 `filmstyle.Source`，来源 id `x-<站 id>`；用到风格来源的地方先 `flow.syncStyleSources(项目根)`（`film_style_*` 操作、`/api/film-styles`、项目风格接口），`filmstyle.replacePluginSources` 整组换掉；装进项目走同一份 `filmstyle.install` 契约，缺 SKILL.md 时补通用的。前置资源清单跳过插件来源 | 插件来源只对加了它的项目可见；风格库随插件钉在 commit 上，不联网 |
+
+内置插件：ArticleToMotion 自己的可选功能也写成插件，放在 `assets/plugins/<id>/`（随 `extraResources` 进 .app），用同一份 `am-station.json`。第一个是歌曲讲解（`assets/plugins/song`）。
+
+| 约定 | 原因 |
+|---|---|
+| `flow.builtinPlugins()` 读 `assets/plugins/`，`loadProjectStations` 把它们排在第三方站前面，`LoadedStation.builtin` 为真；默认打开，项目在锁文件的 `disabled` 里关掉（`station_builtin` / `POST /api/stations/{id}/enabled`，设置页「内置功能」的开关）。清单坏了直接报错，不静默少一个功能 | 内置功能也能关：用不到的不占编排工具的工具列表和提示词 |
+| 只有内置插件能写 `am_ops`：认领 am 自带的操作，关掉插件时 `toolsmcp.describeTools` 把它们拿掉（导演同理）；代码仍在引擎里。`station_cmd.test.ts` 的门禁：认领的操作必须存在、一个操作只归一个插件、`song_*` 全归歌曲讲解。第三方站不能写 `am_ops`，也不能与内置插件重名 | 归属与开关跟着插件走，实现不动 |
+| `in_use`：项目里有这些文件（歌曲讲解是 `song.yaml`）时不许关 | 关了正在做的片子就少了工具 |
+| 内置插件的 `prompt` 原样接在制作提示词（`PROMPT-PRODUCTION.md`）后面，不接 `PROMPT.md`、歌曲模式与 override；项目提示词里已有同一个标题（老项目）时不重复。「歌曲讲解分支」因此从 `templates/production/` 移到 `assets/plugins/song/prompt.md`，新生成的制作提示词里不再有这一节 | 原来那一节只在制作提示词里；老项目手里的提示词本来就有它 |
+| 歌曲讲解的引擎代码、`PROMPT-SONG.md` 与 song-explainer 技能都没动（`song_init` 照旧从 `assets/shared` 拷，技能仍是注册的内置技能） | 它们进项目文件与渲染指纹，搬动会让已有的歌曲项目失效 |
 | 测试用的假发布站在 `flow/testdata/fake-publisher`（只写回执、不联网）；vitest setup 与 e2e fixtures 把 `AM_STATIONS_DIR` 指到临时目录 | 测试不能往开发者真实的站目录写 |
 
 - 要像直接写给人类操作者的任务说明，不暴露执行者是 agent、Codex 或 AI，也不使用「主控 agent」这类身份设定；但可以明确说明他需要操作其他 AI。

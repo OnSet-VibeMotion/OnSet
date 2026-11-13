@@ -11,7 +11,7 @@ test('a third-party station is added in settings and its publish action runs onl
 
   // 设置页：加进这个项目（写任务，写项目的 article-to-motion.flow.json）。
   await page.locator('#settings-trigger').click();
-  const stations = page.locator('#settings-dialog section.stations');
+  const stations = page.locator('#settings-dialog section.stations[aria-label="流程插件"]');
   await stations.getByLabel('插件来源').fill(`link:${fake}`);
   await stations.getByRole('button', { name: '添加' }).click();
   const lock = path.join(project.path, 'article-to-motion.flow.json');
@@ -41,7 +41,7 @@ test('a third-party station is added in settings and its publish action runs onl
   const receipt = path.join(project.path, 'production', 'publish', 'receipts.json');
   await expect.poll(() => fs.existsSync(receipt)).toBe(true);
   expect(JSON.parse(fs.readFileSync(receipt, 'utf8')).platform).toBe('douyin');
-  await expect.poll(async () => (await api(page, '/api/stations')).body.stations[0].ops[0].last_run?.ok).toBe(true);
+  await expect.poll(async () => (await api(page, '/api/stations')).body.stations.find((x) => x.id === 'fake-publisher').ops[0].last_run?.ok).toBe(true);
   await expect.poll(async () => (await api(page, '/api/progress')).body.stations.find((s) => s.id === 'auto-publish').status).toBe('done');
   await page.screenshot({ path: test.info().outputPath('stations-publish.png') });
 
@@ -214,4 +214,36 @@ test('a plugin can bring a whole flow, a voice, a style library, and send a mess
   await card.getByRole('button', { name: '详情与设置' }).click();
   await card.getByRole('button', { name: '回到自带的流程' }).click();
   await expect.poll(() => JSON.parse(fs.readFileSync(lock, 'utf8')).flow).toBeUndefined();
+});
+
+test('builtin features are plugins too: on by default, off per project, locked while in use', async ({ page, project }) => {
+  await openProject(page, project);
+  await page.locator('#settings-trigger').click();
+  const builtin = page.locator('#settings-dialog section[aria-label="内置功能"]');
+  const song = builtin.locator('li[data-builtin="song"]');
+  await expect(song).toContainText('歌曲讲解');
+  const toggle = song.getByRole('switch');
+  await expect(toggle).toBeChecked();
+  // 内置的不算第三方，也不能去掉。
+  await expect(song).not.toContainText('第三方');
+  await expect(song.getByRole('button', { name: '去掉' })).toHaveCount(0);
+  await builtin.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: test.info().outputPath('builtin-features.png') });
+
+  const lock = path.join(project.path, 'article-to-motion.flow.json');
+  // 开关是写任务：点了之后等它写完、界面刷新再看。
+  await toggle.click();
+  await expect.poll(() => (fs.existsSync(lock) ? JSON.parse(fs.readFileSync(lock, 'utf8')).disabled : null)).toEqual(['song']);
+  await expect(song).toHaveClass(/off/);
+  await expect(toggle).not.toBeChecked();
+  await toggle.click();
+  await expect.poll(() => fs.existsSync(lock)).toBe(false);
+  await expect(toggle).toBeChecked();
+
+  // 项目正在用歌曲讲解：开关锁住。
+  fs.writeFileSync(path.join(project.path, 'song.yaml'), 'provider: none\n');
+  await page.locator('#settings-dialog').getByRole('button', { name: '关闭' }).click();
+  await page.locator('#settings-trigger').click();
+  await expect(page.locator('#settings-dialog li[data-builtin="song"]').getByRole('switch')).toBeDisabled();
+  await expect(page.locator('#settings-dialog li[data-builtin="song"]')).toContainText('这个项目正在用（有 song.yaml）');
 });

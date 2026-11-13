@@ -14,7 +14,8 @@ describe('stations API', () => {
     const f = newSessionFixture();
     let { status, body } = await studioRequest(f.s, 'GET', '/api/stations');
     expect(status).toBe(200);
-    expect(body).toEqual({ active_flow: null, problems: [], stations: [] });
+    expect(body.problems).toEqual([]);
+    expect(body.stations.map((x: { id: string; builtin: boolean; enabled: boolean }) => [x.id, x.builtin, x.enabled])).toEqual([['song', true, true]]);
 
     addToProject(f.root, fetchStation(`link:${fake}`, process.env).entry);
     addToProject(f.root, { id: 'gone', version: '1', source: 'link:/nonexistent/station', commit: '', digest: '' });
@@ -22,7 +23,7 @@ describe('stations API', () => {
     expect(status).toBe(200);
     expect(body.problems).toHaveLength(1);
     expect(body.problems[0]).toContain('第三方站 gone');
-    const [station] = body.stations;
+    const station = body.stations.find((x: { id: string }) => x.id === 'fake-publisher');
     expect(station).toMatchObject({ id: 'fake-publisher', name: '假发布', linked: true, after: 'publish' });
     expect(station.prompt).toContain('请用户在发布页点');
     expect(station.nodes).toEqual([{ id: 'auto-publish', label: '自动发布', step: 'publish', gate: false }]);
@@ -51,12 +52,12 @@ describe('stations API', () => {
     const f = newSessionFixture();
     addToProject(f.root, fetchStation(`link:${fake}`, process.env).entry);
     const { body } = await studioRequest(f.s, 'GET', '/api/stations');
-    expect(body.stations[0].pages).toEqual([
+    expect(body.stations.find((x: { id: string }) => x.id === 'fake-publisher').pages).toEqual([
       { id: 'dashboard', label: '发布看板', tab: 'x:fake-publisher:dashboard', url: '/station-ui/fake-publisher/ui/index.html', reads: ['publish.md'] },
       { id: 'mini', label: '发布小窗', tab: 'x:fake-publisher:mini', url: '/station-ui/fake-publisher/ui/slot.html', reads: ['publish.md'] },
     ]);
-    expect(body.stations[0].slots).toEqual([{ at: 'publish', page: 'mini', height: 140, tab: 'x:fake-publisher:mini', url: '/station-ui/fake-publisher/ui/slot.html' }]);
-    expect(body.stations[0].commands).toEqual([{ name: 'fabu', description: '打开发布看板', page: 'dashboard', prompt: '', tab: 'x:fake-publisher:dashboard' }]);
+    expect(body.stations.find((x: { id: string }) => x.id === 'fake-publisher').slots).toEqual([{ at: 'publish', page: 'mini', height: 140, tab: 'x:fake-publisher:mini', url: '/station-ui/fake-publisher/ui/slot.html' }]);
+    expect(body.stations.find((x: { id: string }) => x.id === 'fake-publisher').commands).toEqual([{ name: 'fabu', description: '打开发布看板', page: 'dashboard', prompt: '', tab: 'x:fake-publisher:dashboard' }]);
     const page = await send(f.s, 'GET', '/station-ui/fake-publisher/ui/index.html');
     expect(page.status).toBe(200);
     const csp = page.headers.get('Content-Security-Policy')!;

@@ -55,6 +55,10 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
     id: m.id,
     name: m.name,
     version: m.version,
+    description: m.description,
+    builtin: s.builtin === true,
+    enabled: true,
+    in_use: s.builtin ? flow.inUse(root, m) : '',
     source: s.entry.source,
     commit: s.entry.commit,
     linked: s.entry.commit === '',
@@ -105,8 +109,10 @@ function toFirstTab(m: flow.Manifest): string {
 export function listStations(root: string): Record<string, unknown> {
   const { stations, problems } = flow.loadProjectStations(root);
   const active = flow.activeFlowStation(root, stations);
+  // 这个项目关掉的内置插件也列出来（enabled: false），设置页才能把它打开。
+  const off = flow.builtinPlugins().filter((b) => !stations.some((s) => s.manifest.id === b.manifest.id));
   return {
-    stations: stations.map((s) => stationJSON(root, s)),
+    stations: [...stations.map((s) => stationJSON(root, s)), ...off.map((s) => ({ ...stationJSON(root, s), enabled: false }))],
     problems,
     // 项目选用的第三方流程：顶栏第一步换成它的页面。
     active_flow: active ? { station: active.manifest.id, name: active.manifest.flow!.name, first_tab: toFirstTab(active.manifest) } : null,
@@ -189,6 +195,27 @@ export async function stationsAPI(s: Server, request: Request, rest: string): Pr
   }
 
   const id = decodeURIComponent(parts[0]);
+  if (parts.length === 2 && parts[1] === 'enabled') {
+    if (request.method !== 'POST') return methodNotAllowed('POST');
+    let enabled: boolean;
+    try {
+      enabled = (await decodeJSON(request)).enabled === true;
+    } catch (err) {
+      return writeError(400, 'invalid_json', (err as Error).message);
+    }
+    const plugin = flow.builtinPlugins().find((b) => b.manifest.id === id);
+    if (!plugin) return writeError(404, 'not_found', `没有内置插件 ${id}`);
+    if (!enabled && flow.inUse(p.path, plugin.manifest) !== '') return writeError(400, 'in_use', `这个项目正在用「${plugin.manifest.name}」，不能关掉`);
+    try {
+      const t = runWriteTask(s, p, 'station.builtin', `${enabled ? '打开' : '关掉'}内置功能：${plugin.manifest.name}`, async (signal) => {
+        await runStudioOp(s, signal, p, 'station_builtin', { id, enabled, project_root: p.path });
+      });
+      return writeJSON(202, goMap({ task_id: t.task_id }));
+    } catch (err) {
+      return writeTaskError(err);
+    }
+  }
+
   if (parts.length === 2 && parts[1] === 'remove') {
     if (request.method !== 'POST') return methodNotAllowed('POST');
     if (!flow.readLock(p.path).stations.some((e) => e.id === id)) return writeError(404, 'not_found', `这个项目没有加第三方站 ${id}`);

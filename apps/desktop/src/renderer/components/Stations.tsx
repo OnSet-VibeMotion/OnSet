@@ -182,7 +182,44 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
     run('/api/stations', { source: value });
     setSource('');
   };
+  const builtins = (data?.stations ?? []).filter((s) => s.builtin);
+  const thirdParty = (data?.stations ?? []).filter((s) => !s.builtin);
   return (
+    <>
+    {builtins.length > 0 && (
+      <section className="stations builtin-stations" aria-label="内置功能">
+        <div className="stations-head">
+          <strong>内置功能</strong>
+          <span>ArticleToMotion 自带、默认打开的功能。这个项目用不到的可以关掉，AI 就不会再看到它的工具和说明。</span>
+        </div>
+        <ul className="stations-list">
+          {builtins.map((s) => (
+            <li key={s.id} className={'station-card' + (s.enabled ? '' : ' off')} data-builtin={s.id}>
+              <div className="station-row">
+                <span className="station-icon">
+                  <PluginGlyph />
+                </span>
+                <div className="station-title">
+                  <strong>{s.name}</strong>
+                  <span>{s.in_use ? `${s.description} · 这个项目正在用（有 ${s.in_use}）` : s.description}</span>
+                </div>
+                <label className="station-switch" title={s.in_use ? '这个项目正在用，不能关' : undefined}>
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    aria-label={`${s.name}在这个项目里打开`}
+                    checked={s.enabled}
+                    disabled={s.in_use !== ''}
+                    onChange={(e) => run(`/api/stations/${encodeURIComponent(s.id)}/enabled`, { enabled: e.target.checked })}
+                  />
+                  <span>{s.enabled ? '打开' : '关闭'}</span>
+                </label>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
     <section className="stations" aria-label="流程插件">
       <div className="stations-head">
         <strong>流程插件</strong>
@@ -194,9 +231,9 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
           {p}
         </div>
       ))}
-      {data && data.stations.length > 0 && (
+      {data && thirdParty.length > 0 && (
         <ul className="stations-list">
-          {data.stations.map((s) => {
+          {thirdParty.map((s) => {
             const perms = permissionLines(s);
             const needsSetup = s.settings.some((st) => st.type === 'secret' && !st.set);
             return (
@@ -304,6 +341,7 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
         </button>
       </div>
     </section>
+    </>
   );
 }
 

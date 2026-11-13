@@ -196,12 +196,6 @@ export const builtinStations: readonly Station[] = [
     prompt: [{ id: 'stage', stage: 'wrapup' }],
   },
   {
-    id: 'song-branch',
-    name: '歌曲讲解',
-    nodes: [],
-    prompt: [{ id: 'branch' }],
-  },
-  {
     id: 'beat-story',
     name: '故事与文案',
     nodes: [
@@ -287,7 +281,6 @@ export const productionPrompt: readonly string[] = [
   'publish/stage',
   'host/deliverables',
   'wrapup/stage',
-  'song-branch/branch',
   'beat-story/branch-intro',
   'beat-story/story',
   'beat-music/grid',

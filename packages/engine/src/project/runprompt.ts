@@ -66,8 +66,14 @@ export function runPrompt(root: string, override: string): RunPromptResult {
     );
   }
   if (extras.stations.some((s) => s.manifest.inserts.length > 0)) prompt = Buffer.from(flow.insertStageSections(prompt.toString('utf8'), extras.stations));
-  const extra = flow.extraPrompt(extras.stations);
-  if (extra !== '') prompt = Buffer.concat([prompt, Buffer.from('\n\n' + extra + '\n')]);
+  // 内置插件的说明本来是制作提示词（PROMPT-PRODUCTION.md）的一节，只接在它后面；第三方站的说明哪份提示词都接。
+  const isProduction = override === '' && !songMode && path.basename(file) === ProductionPrompt;
+  const extra = flow.extraPrompt(
+    extras.stations.filter((st) => !st.builtin || isProduction),
+    prompt.toString('utf8'),
+  );
+  // 末尾只留一个空行再接：提示词文件本身以换行结尾。
+  if (extra !== '') prompt = Buffer.from(prompt.toString('utf8').replace(/\n*$/, '\n\n') + extra + '\n');
   return { prompt, path: file };
 }
 
