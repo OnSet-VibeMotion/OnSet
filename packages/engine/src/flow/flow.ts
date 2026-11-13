@@ -3,6 +3,7 @@ import path from 'node:path';
 import * as beat from '../beat';
 import { builtinFlows, builtinStations, productionPrompt } from './builtin';
 import { markPluginSection, stationOwners } from './external';
+import { chosenFlow } from './lock';
 import type { ExtraStation, Flow, FlowID, PathRule, RouteNode, Station } from './types';
 
 export function station(id: string, extra: readonly ExtraStation[] = []): Station {
@@ -32,15 +33,6 @@ export function detectFlow(root: string, extra: readonly ExtraStation[] = []): F
   }
 }
 
-/** 锁文件里选的流程（x:<站 id>），没选为空。读不了锁文件也当没选。 */
-function chosenFlow(root: string): string {
-  try {
-    const raw = JSON.parse(fs.readFileSync(path.join(root, 'article-to-motion.flow.json'), 'utf8')) as { flow?: unknown };
-    return typeof raw.flow === 'string' && raw.flow !== '' ? `x:${raw.flow}` : '';
-  } catch {
-    return '';
-  }
-}
 
 /** 路线上的一站，连同它属于哪个站。 */
 export interface RouteStop {

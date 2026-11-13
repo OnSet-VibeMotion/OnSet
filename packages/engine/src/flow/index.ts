@@ -54,6 +54,20 @@ export {
   type ManifestSlot,
   type SlotPage,
   type ManifestParam,
+  ManifestFields,
+  ManifestVersion,
+  amVersion,
+  checkCompatible,
+  compareSemver,
+  experimentalFields,
+  manifestFieldNames,
+  permissionLines,
+  updateStation,
+  validSemver,
+  type FieldTier,
+  type ParamType,
+  type ParseOptions,
+  type StationUpdate,
 } from './external';
 export { checkParams, findStationOp, parseProgressLine, parseResultLine, ProgressPrefix, ResultPrefix, runStationOp, StationDataEnv, stationEnv, type StationResult } from './run';
 export { PluginStyleSource, syncStyleSources } from './styles';

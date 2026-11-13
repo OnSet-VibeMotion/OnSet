@@ -162,6 +162,10 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 节拍分析用 [beat-this](https://github.com/CPJKU/beat_this)（ISMIR 2024，代码与权重均为 MIT），同时给出普通拍与重拍，CPU 可跑；不依赖 madmom。
 
+## 写插件
+
+想给制作流程加一站（例如自动发布），按 [docs/plugin-authoring.md](docs/plugin-authoring.md) 写一份 `am-station.json`，在客户端设置页的「流程插件」里加进项目。
+
 ## 开发
 
 从源码构建需要 Node.js 22+：
