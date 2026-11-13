@@ -3,16 +3,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /*
- * 桌宠：一个透明、无边框、置顶的小窗口，里面是像素小工作室，场记小人按编排工具在做的事走到对应的位置。
+ * 桌宠：一个透明、无边框、置顶的小窗口，里面是一间 2.5D 像素工作室：导演（编排工具）、摄影（渲染器）、剪辑、配音各在各的位置，
+ * 谁在干活谁就动起来。
  *
  * 状态不在这里算：主窗口的界面从会话事件推出（components/chat/crew.ts 的 crewState），经 am:crew 发来，
  * 这里只记下最新的一份转给桌宠窗口；桌宠窗口刚载入时也补发一次。不装 hooks、不读 CLI 的记录文件。
  * 显示与否、位置记在 userData/pet.json，菜单「窗口 → 场记桌宠」开关。
  */
 
-/** 窗口大小：工作室 288×144（96×48 格，每格 3 像素）加上头顶的气泡与四周的阴影。 */
-const width = 320;
-const height = 236;
+/** 窗口大小：工作室 384×264（128×88 格，每格 3 像素）加上卡片的边、底下一行小字与四周的阴影。 */
+const width = 408;
+const height = 308;
 
 interface PetPrefs {
   visible: boolean;

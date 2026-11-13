@@ -1,6 +1,6 @@
 /*
- * 桌宠窗口（Pet.tsx）：透明无边框的小窗，里面一张放映室色的卡片是工作室，头顶是气泡。
- * 窗口本身透明，卡片以外的地方能点穿到桌面上——卡片与气泡之外不画任何东西。
+ * 桌宠窗口（Pet.tsx）：透明无边框的小窗，里面一张放映室色的卡片是 2.5D 工作室。
+ * 窗口本身透明，卡片以外不画任何东西。
  */
 html.pet-window,
 html.pet-window body {
@@ -10,22 +10,29 @@ html.pet-window body {
 }
 
 .pet {
-  /* 小人与工作室的色板：象牙白、暖灰、木色与一种黄铜色，「在录」那一点红是唯一的例外。 */
-  --px-coat: #d9d1c3;
-  --px-coat-shade: #9d9485;
+  /* 工作室的色板：象牙白、暖灰、木色与一种黄铜色；「在录」的红点与一点盆栽的灰绿是仅有的例外。 */
   --px-skin: #e4c4a2;
   --px-skin-shade: #bf9a78;
-  --px-hair: #5a4330;
-  --px-trousers: #5a5148;
-  --px-shoe: #3f3832;
+  --px-shoe: #2f2a25;
   --px-frame: #6f6557;
   --px-frame-deep: #2a2520;
   --px-metal: #3a342d;
   --px-wood: #5c4632;
   --px-wood-deep: #3b2d21;
-  --px-shelf-back: #15120f;
-  --px-floor: #16130f;
-  --px-floor-edge: #2a241d;
+  --px-wood-top: #7a5e43;
+  --px-floor: #241f19;
+  --px-floor-seam: #1a1612;
+  --px-wall: #2b261f;
+  --px-wall-top: #3a332b;
+  --px-baseboard: #2f2922;
+  --px-backdrop: #5a5247;
+  --px-backdrop-shade: #3d372f;
+  --px-sofa: #4a3a24;
+  --px-sofa-top: #5d4a30;
+  --px-foam: #2a2520;
+  --px-foam-deep: #1f1b17;
+  --px-leaf: #5f6a55;
+  --px-leaf-deep: #444d3d;
   position: relative;
   height: 100vh;
   display: flex;
@@ -35,6 +42,66 @@ html.pet-window body {
   font-family: var(--sans);
 }
 
+/* 人：每个人一套衣帽颜色。 */
+.pet .who-director {
+  --px-hat: var(--accent);
+  --px-hat-shade: color-mix(in srgb, var(--accent) 62%, var(--bg));
+  --px-hair: #5a4330;
+  --px-coat: #d9d1c3;
+  --px-coat-shade: #9d9485;
+  --px-accent: var(--accent);
+  --px-trousers: #5a5148;
+}
+.pet .who-op1 {
+  --px-hat: #4a4239;
+  --px-hat-shade: #2f2a25;
+  --px-hair: #3a2c20;
+  --px-coat: #7d7262;
+  --px-coat-shade: #5a5147;
+  --px-accent: #a39886;
+  --px-trousers: #34302b;
+}
+.pet .who-op2 {
+  --px-hat: #6b5038;
+  --px-hat-shade: #4a3726;
+  --px-hair: #2a2018;
+  --px-coat: #a59a88;
+  --px-coat-shade: #7a705f;
+  --px-accent: #d9d1c3;
+  --px-trousers: #3f3a33;
+}
+.pet .who-op3 {
+  --px-hat: #3a342d;
+  --px-hat-shade: #24201b;
+  --px-hair: #6b4a30;
+  --px-coat: #5a5148;
+  --px-coat-shade: #3f3832;
+  --px-accent: color-mix(in srgb, var(--accent) 70%, #5a5148);
+  --px-trousers: #2a2520;
+  --px-skin: #c9a07c;
+  --px-skin-shade: #a37e5e;
+}
+.pet .who-editor {
+  --px-hat: #2d241c;
+  --px-hat-shade: #1f1914;
+  --px-hair: #2d241c;
+  --px-coat: #3e3832;
+  --px-coat-shade: #2c2823;
+  --px-accent: #d9d1c3;
+  --px-trousers: #2a2520;
+  --px-phones: color-mix(in srgb, var(--accent) 62%, var(--bg));
+}
+.pet .who-voice {
+  --px-hat: #7a5a3c;
+  --px-hat-shade: #5c432c;
+  --px-hair: #7a5a3c;
+  --px-coat: #cfc6b6;
+  --px-coat-shade: #9d9485;
+  --px-accent: var(--accent);
+  --px-trousers: #4a4239;
+  --px-phones: var(--px-frame);
+}
+
 /* 卡片：整张都能拖动窗口，按钮除外。 */
 .pet .pet-card {
   -webkit-app-region: drag;
@@ -42,9 +109,7 @@ html.pet-window body {
   padding: 6px 6px 0;
   border-radius: 14px;
   border: 1px solid var(--line-strong);
-  background:
-    radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 60%),
-    linear-gradient(180deg, var(--raised), var(--bg));
+  background: linear-gradient(180deg, var(--raised), var(--bg));
   box-shadow:
     0 10px 24px rgba(0, 0, 0, 0.45),
     inset 0 1px 0 color-mix(in srgb, var(--text) 6%, transparent);
@@ -58,18 +123,23 @@ html.pet-window body {
 .pet .pet-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
   height: 22px;
   padding: 0 4px 0 6px;
-}
-.pet .pet-project {
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 0.04em;
   color: var(--faint);
+}
+.pet .pet-project {
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.pet .pet-legend {
+  color: var(--accent-text);
 }
 .pet .pet-close {
   -webkit-app-region: no-drag;
@@ -92,26 +162,28 @@ html.pet-window body {
   color: var(--text);
 }
 
-/* 气泡：浮在卡片上方，尾巴指着小人，跟着小人走。 */
+/* 导演的气泡：跟着导演，尾巴指着他。 */
 .pet .pet-bubble {
-  -webkit-app-region: drag;
   position: absolute;
-  bottom: 186px;
-  max-width: 260px;
+  max-width: 300px;
+  pointer-events: none;
+  transition:
+    left 120ms linear,
+    top 120ms linear;
 }
 .pet .pet-line {
   position: relative;
   display: block;
-  padding: 5px 11px;
-  border-radius: 10px;
+  padding: 4px 10px;
+  border-radius: 9px;
   border: 1px solid var(--line-strong);
-  background: var(--panel);
-  font-size: 12px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  font-size: 11.5px;
   color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
 }
 .pet .pet-bubble::after {
   content: '';
@@ -140,17 +212,45 @@ html.pet-window body {
   color: var(--bad);
 }
 
-.pet .px-brass { fill: var(--accent); }
-.pet .px-brass-deep { fill: color-mix(in srgb, var(--accent) 62%, var(--bg)); }
-.pet .px-brass-light { fill: var(--accent-text); }
+/* 头上的小标签：镜头编号、部门名。 */
+.pet .pet-tag {
+  position: absolute;
+  transform: translateX(-50%);
+  padding: 0 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border: 1px solid var(--accent-line);
+  font-family: var(--mono);
+  font-size: 9px;
+  line-height: 13px;
+  color: var(--accent-text);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.pet .pet-shadow {
+  fill: rgba(0, 0, 0, 0.35);
+}
+.pet .pet-light polygon {
+  fill: var(--text);
+  opacity: 0.05;
+}
+
+.pet .px-hat { fill: var(--px-hat); }
+.pet .px-hat-shade { fill: var(--px-hat-shade); }
+.pet .px-hair { fill: var(--px-hair); }
 .pet .px-skin { fill: var(--px-skin); }
 .pet .px-skin-shade { fill: var(--px-skin-shade); }
 .pet .px-eye { fill: var(--accent-ink); }
-.pet .px-hair { fill: var(--px-hair); }
 .pet .px-coat { fill: var(--px-coat); }
 .pet .px-coat-shade { fill: var(--px-coat-shade); }
+.pet .px-accent { fill: var(--px-accent); }
 .pet .px-trousers { fill: var(--px-trousers); }
 .pet .px-shoe { fill: var(--px-shoe); }
+.pet .px-phones { fill: var(--px-phones, var(--px-frame)); }
+.pet .px-brass { fill: var(--accent); }
+.pet .px-brass-deep { fill: color-mix(in srgb, var(--accent) 62%, var(--bg)); }
+.pet .px-brass-light { fill: var(--accent-text); }
 .pet .px-frame { fill: var(--px-frame); }
 .pet .px-frame-deep { fill: var(--px-frame-deep); }
 .pet .px-metal { fill: var(--px-metal); }
@@ -160,7 +260,24 @@ html.pet-window body {
 .pet .px-rec { fill: var(--bad); }
 .pet .px-wood { fill: var(--px-wood); }
 .pet .px-wood-deep { fill: var(--px-wood-deep); }
-.pet .px-shelf-back { fill: var(--px-shelf-back); }
+.pet .px-wood-top { fill: var(--px-wood-top); }
 .pet .px-floor { fill: var(--px-floor); }
-.pet .px-floor-edge { fill: var(--px-floor-edge); }
+.pet .px-floor-seam { fill: var(--px-floor-seam); }
+.pet .px-wall { fill: var(--px-wall); }
+.pet .px-wall-top { fill: var(--px-wall-top); }
+.pet .px-baseboard { fill: var(--px-baseboard); }
+.pet .px-backdrop { fill: var(--px-backdrop); }
+.pet .px-backdrop-shade { fill: var(--px-backdrop-shade); }
+.pet .px-sofa { fill: var(--px-sofa); }
+.pet .px-sofa-top { fill: var(--px-sofa-top); }
+.pet .px-foam { fill: var(--px-foam); }
+.pet .px-foam-deep { fill: var(--px-foam-deep); }
+.pet .px-leaf { fill: var(--px-leaf); }
+.pet .px-leaf-deep { fill: var(--px-leaf-deep); }
+.pet .px-soft-on { fill: var(--text); }
+.pet .px-soft-off { fill: var(--px-metal); }
+.pet .px-glass { fill: var(--text); opacity: 0.06; }
+.pet .px-clip-1 { fill: var(--accent); }
+.pet .px-clip-2 { fill: var(--px-frame); }
+.pet .px-clip-3 { fill: var(--text-3); }
 .pet .px-glow { stop-color: var(--accent); }

@@ -248,9 +248,11 @@ export function App() {
     await loadSessions();
   }, [loadSessions, notify]);
 
-  // 项目被占用（对话或渲染任务在跑）时定时刷新镜头列表，对话顶部的进度靠它看到出片与渲染中的镜头。
+  // 项目被占用（对话或渲染任务在跑）、或者还有镜头在渲染时定时刷新镜头列表：对话顶部的进度与桌宠的摄影
+  // 靠它看到出片与渲染中的镜头。一轮结束后渲染还在跑的话，不接着刷就一直停在「渲染中」。
+  const anyRendering = scenes.some((scene) => scene.rendering);
   useEffect(() => {
-    if (!busy || !currentId) return;
+    if ((!busy && !anyRendering) || !currentId) return;
     const timer = window.setInterval(async () => {
       try {
         const result = await api<{ scenes: Scene[]; usage?: ProjectUsage }>('/api/scenes');
@@ -261,7 +263,7 @@ export function App() {
       }
     }, 8000);
     return () => window.clearInterval(timer);
-  }, [busy, currentId]);
+  }, [busy, anyRendering, currentId]);
 
   const loadTasks = useCallback(async () => {
     try {

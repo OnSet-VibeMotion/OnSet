@@ -30,11 +30,43 @@ test('the desktop pet mirrors what the orchestrator is doing', async ({ page, pr
   await expect(crew.locator('.pet-line')).toHaveText('渲染镜头 scene-001');
   await page.locator('#cancel-turn').click();
 
+  // 拼接：交给剪辑师，导演站到他身后。
+  await page.locator('#prompt').fill('拼一下');
+  await page.locator('#send').click();
+  await expect(crew).toHaveAttribute('data-mood', 'editing');
+  await expect(pet.locator('[data-who="editor"]')).toHaveAttribute('data-active', 'true');
+  await expect(pet.locator('[data-tag="editor"]')).toHaveText('剪辑');
+  await page.locator('#cancel-turn').click();
+  await expect(pet.locator('[data-who="editor"]')).toHaveAttribute('data-active', 'false');
+
   // 正常做完：收工，过一会儿回到待命。
   await page.locator('#prompt').fill('把镜头提示词改成 after');
   await page.locator('#send').click();
   await expect(crew).toHaveAttribute('data-mood', 'done');
   await expect(crew).toHaveAttribute('data-mood', 'idle', { timeout: 10_000 });
+});
+
+test('a camera operator goes to work for each scene that is rendering', async ({ page, project, electronApp }) => {
+  // 进行中标记指向一个活着的进程（测试进程自己）：scene-001 在渲染。
+  const sceneDir = path.join(project.path, 'scenes', 'scene-001');
+  fs.writeFileSync(path.join(sceneDir, 'render-scene-001.stream.jsonl'), '');
+  fs.writeFileSync(
+    path.join(sceneDir, 'render-scene-001.live.json'),
+    JSON.stringify({ pid: process.pid, renderer: 'claude', started_at: new Date().toISOString() }),
+  );
+  const pet = await petPage(electronApp);
+  await openProject(page, project);
+  // 没有对话在跑，导演仍在待命；摄影从沙发走到机位，脚下挂着镜头号。
+  await expect(pet.locator('#crew')).toHaveAttribute('data-mood', 'idle');
+  await expect(pet.locator('[data-who="op1"]')).toHaveAttribute('data-active', 'true');
+  await expect(pet.locator('[data-who="op2"]')).toHaveAttribute('data-active', 'false');
+  await expect(pet.locator('[data-tag="op1"]')).toHaveText('001');
+  await expect(pet.locator('.pet-legend')).toHaveText('1 个镜头在拍');
+
+  // 渲染结束：回沙发。（只删标记不行：没有标记时按渲染日志三分钟内有没有写入判断，日志也一并拿掉。）
+  fs.rmSync(path.join(sceneDir, 'render-scene-001.live.json'));
+  fs.rmSync(path.join(sceneDir, 'render-scene-001.stream.jsonl'));
+  await expect(pet.locator('[data-who="op1"]')).toHaveAttribute('data-active', 'false', { timeout: 15_000 });
 });
 
 test('the pet can be put away and remembers it', async ({ electronApp, sandbox }) => {
