@@ -9,34 +9,40 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-node@v6
         with:
-          go-version: '1.26.10'
-          cache: true
-      - name: Vet
-        run: go vet ./...
+          node-version: 22
+          cache: npm
+      - name: Install media tools
+        run: brew install ffmpeg librsvg
+      - run: npm ci --no-audit --no-fund
       - name: Test
-        run: go test -race ./...
-      - name: Build archives
         run: |
-          mkdir -p dist
-          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
-            os="${target%/*}"
-            arch="${target#*/}"
-            dir="article-to-motion-${GITHUB_REF_NAME}-${os}-${arch}"
-            mkdir "$dir"
-            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
-              -ldflags="-s -w -X github.com/chouheiwa/articale-to-motion/internal/cli.Version=${GITHUB_REF_NAME#v}" \
-              -o "$dir/am" ./cmd/am
-            cp LICENSE README.md README.en.md "$dir/"
-            tar -czf "dist/${dir}.tar.gz" "$dir"
-          done
-          cd dist
-          sha256sum *.tar.gz > checksums.txt
+          npx tsc --noEmit -p packages/engine
+          npx tsc --noEmit -p packages/cli
+          npm run typecheck -w am-desktop
+          npx vitest run --root packages/engine
+          npx vitest run --root packages/cli
+      # 版本号经 esbuild --define 写进命令行（am --version），客户端的版本号取同一个 tag。
+      - name: Build the CLI with the release version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          npx esbuild packages/cli/src/main.ts --bundle --loader:.tmpl=text --platform=node --format=cjs --target=node22 \
+            --define:AM_VERSION="\"$version\"" --outfile=packages/cli/dist/am.cjs
+          npm version "$version" --no-git-tag-version -w am-desktop
+      # 没有签名证书：dmg 只能在本机「右键打开」。有了 Apple 开发者账号后在这里接签名与公证。
+      - name: Package the desktop client (arm64 + x64 dmg)
+        run: |
+          npm run build -w am-desktop
+          cd apps/desktop
+          npx electron-builder --mac dmg --arm64 --x64 --publish never
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --title "ArticleToMotion $GITHUB_REF_NAME"
+        run: |
+          cd apps/desktop/release
+          shasum -a 256 *.dmg > checksums.txt
+          gh release create "$GITHUB_REF_NAME" *.dmg checksums.txt --verify-tag --generate-notes --title "ArticleToMotion $GITHUB_REF_NAME"
