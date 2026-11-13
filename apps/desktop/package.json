@@ -33,7 +33,8 @@
     "appId": "com.chouheiwa.articletomotion",
     "productName": "ArticleToMotion",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "out/main.js",
@@ -63,7 +64,8 @@
         "dir",
         "dmg"
       ],
-      "identity": null
+      "identity": null,
+      "icon": "build/icon.icns"
     },
     "asar": true,
     "electronVersion": "45.2.3"

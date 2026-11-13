@@ -27,6 +27,7 @@ import { ContextMenu } from './components/ContextMenu';
 import { MarkdownContext } from './components/chat/Markdown';
 import { ProjectDialog } from './components/ProjectDialog';
 import { Tasks } from './components/Tasks';
+import { BrandMark } from './components/BrandMark';
 import type {
   AgentChoice,
   AgentsResponse,
@@ -443,7 +444,7 @@ export function App() {
       <header className="topbar">
         <button className="brand" title="回到首页" aria-label="回到首页" onClick={() => setHomeOpen(true)}>
           <span className="brand-mark" aria-hidden="true">
-            AM
+            <BrandMark />
           </span>
         </button>
         <button className="project-switch" id="open-project-trigger" title={project ? `${project.path}\n切换项目` : '选择项目'} onClick={() => setDialog(true)}>

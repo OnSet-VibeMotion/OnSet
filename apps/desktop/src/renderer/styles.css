@@ -257,13 +257,7 @@ svg {
 .brand-mark {
   width: 26px;
   height: 26px;
-  border-radius: 6px;
-  background: var(--accent);
-  color: var(--accent-ink);
   display: flex;
-  align-items: center;
-  justify-content: center;
-  font: 700 11px var(--mono);
 }
 /* 项目名用宋体，像片名；路径只在悬停提示里。 */
 .project-switch {

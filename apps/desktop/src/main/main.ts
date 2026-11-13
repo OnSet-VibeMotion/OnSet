@@ -135,6 +135,11 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(async () => {
+    // 打包后的 .app 用 build/icon.icns；开发时跑的是裸 Electron，Dock 里会是 Electron 的图标。
+    if (!app.isPackaged) {
+      const devIcon = path.join(__dirname, '..', 'build', 'icon.png');
+      if (fs.existsSync(devIcon)) app.dock?.setIcon(devIcon);
+    }
     // 端到端测试用：AM_DESKTOP_KEEP_PATH=1 时不并入登录 shell 的 PATH，否则测试放在 PATH 最前面的
     // 假编排工具（e2e/fake-bin/claude）会被登录 shell 里真实的 claude 挤到后面。
     if (process.env.AM_DESKTOP_KEEP_PATH !== '1') process.env.PATH = loginShellPath();
