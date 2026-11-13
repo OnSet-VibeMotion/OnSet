@@ -18,7 +18,7 @@ export interface SceneSummary {
   /** 这个镜头全部渲染尝试（含归档）的次数与用量合计。 */
   attempts: number;
   usage?: Usage;
-  /** 这个镜头此刻正在渲染：渲染日志最近还在写，且比上一次尝试记录新。 */
+  /** 这个镜头此刻正在渲染：进行中标记里的进程还在（没有标记时看渲染日志最近还在写，且比上一次尝试记录新）。 */
   rendering?: boolean;
 }
 
@@ -52,6 +52,10 @@ function mtime(file: string): number | null {
 }
 
 export function sceneRendering(dir: string, id: string, now: Date): boolean {
+  // 有进行中标记时以它为准：渲染器跑 hyperframes render 的几分钟里日志不动，静默判断会误判成结束。
+  const live = scene.readLive(dir, id);
+  if (live) return scene.processAlive(live.pid);
+  // 没有标记的是旧版 am 起的渲染，退回看日志。
   let latest: number | null = null;
   for (const name of ['render-' + id + '.stream.jsonl', 'render-' + id + '.user.log', 'render-' + id + '.stderr.log']) {
     const t = mtime(path.join(dir, name));

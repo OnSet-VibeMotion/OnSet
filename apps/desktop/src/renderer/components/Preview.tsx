@@ -9,6 +9,7 @@ import { MemoryTab } from './Memory';
 import { VoicesTab } from './Voices';
 import { FilmStyleDialog, FilmStylePicker, Poster, styleKey, useFilmStyles } from './FilmStyles';
 import { Markdown } from './chat/Markdown';
+import { SceneActivityPanel } from './RenderActivity';
 import { ScriptTab } from './Script';
 import { BeatTab } from './Beat';
 import { PublishTab } from './Publish';
@@ -547,6 +548,7 @@ function SceneTab(props: Props & { scene: Scene | null }) {
             <span className={'status-' + status}>{statusText[status]}</span>
           </p>
           <SceneStyle scene={scene} label={`镜头 ${number}`} version={props.version} onQuick={props.onQuick} />
+          <SceneActivityPanel scene={scene} />
           <div className="scene-actions">
             <button id="render-scene" className={scene.exists ? '' : 'primary'} onClick={() => props.run(`/api/scenes/${encodeURIComponent(scene.id)}/render`)}>
               {scene.exists ? '重新渲染' : '渲染'}

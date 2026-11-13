@@ -11,6 +11,7 @@ import * as ledger from '../ledger';
 import * as mediaprobe from '../mediaprobe';
 import { newUsage, usageAdd, usageJSON, type Usage } from '../tools';
 import * as validate from '../validate';
+import { sceneActivity } from './activity';
 import { decodeChoice } from './agents';
 import { isEnvFile } from './api_ui';
 import { DecodeError, decodeJSON, fieldInt, fieldNumber, fieldObject, goMap, goValue, methodNotAllowed, notFound, serveFile, writeError, writeJSON } from './http';
@@ -128,7 +129,7 @@ export async function renderAllAPI(s: Server, request: Request): Promise<Respons
   }
 }
 
-/** /api/scenes/{id}[/{action}[/…]]：镜头详情、渲染、附件、产物与抽帧。 */
+/** /api/scenes/{id}[/{action}[/…]]：镜头详情、渲染过程、渲染、附件、产物与抽帧。 */
 export async function sceneFeatureAPI(s: Server, request: Request, rest: string): Promise<Response> {
   const p = s.projectOr404();
   if (p instanceof Response) return p;
@@ -152,6 +153,8 @@ export async function sceneFeatureAPI(s: Server, request: Request, rest: string)
           return writeTaskError(err);
         }
       }
+      case 'activity':
+        return writeJSON(200, sceneActivity(sc, new Date()));
       case 'attachment':
         if (request.method !== 'POST') return methodNotAllowed('POST');
         return sceneAttachment(request, p, sc);

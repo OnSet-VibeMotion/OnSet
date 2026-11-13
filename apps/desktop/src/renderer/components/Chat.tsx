@@ -30,6 +30,7 @@ import {
 } from './chat/model';
 import { applySuggestion, findToken, mentionAttachments, parseCommand, slashCommands, suggest, type SlashCommand, type Suggestion } from './chat/complete';
 import '../chat.css';
+import { RenderWatch } from './RenderActivity';
 
 // SSE 的 event 字段就是事件种类，EventSource 只把具名事件派给对应监听器，所以要逐个注册。
 const kinds: EventKind[] = [
@@ -478,6 +479,7 @@ export function Chat(props: Props) {
         </div>
       </div>
 
+      <RenderWatch scenes={props.scenes} onView={props.onView} />
       {asks.length > 0 && <PermissionStack asks={asks} onAnswer={answer} />}
       {queue.length > 0 && <QueuedStack queue={queue} onAction={queueAction} />}
 

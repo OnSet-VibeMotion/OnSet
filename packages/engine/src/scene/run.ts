@@ -25,6 +25,7 @@ import { newAttempt, OutcomeFailed, OutcomeInterrupted, OutcomeSucceeded, Outcom
 import { CheckOutputFrames, classifyOutputProblem, DeterminismCheckPrefix } from './checks';
 import { fingerprint, removeRecord, writeRecord } from './record';
 import { buildPrompt, sceneCanvas, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
+import { removeLive, writeLive } from './live';
 import { writeSceneData } from './scenedata';
 import { HyperFramesSkillName, rendererAccess, resolveAllSkills, skillsEnvironment, SkillsDirEnv } from './skills';
 import { VerificationError } from './verification';
@@ -106,10 +107,14 @@ export async function run(
   });
   const usage: Usage = newUsage();
   let err: unknown = null;
+  // 客户端据此显示「渲染中」与渲染器此刻在做什么，见 live.ts。
+  writeLive(s.directory, s.id, { pid: process.pid, renderer, started_at: attempt.started_at });
   try {
     await render();
   } catch (e) {
     err = e;
+  } finally {
+    removeLive(s.directory, s.id);
   }
   // Go 版的 defer：无论成败都写尝试记录、报一行用量、回调记忆经历。
   attempt.ended_at = timestamp(new Date());

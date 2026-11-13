@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { newConfig } from '../config';
+import { liveFile } from './live';
 import { run, verifyOutput } from './run';
 import { load, outputPath, stderrLog, streamLog, userLog } from './scene';
 import { executable, fakeFfprobe, Sink, tempDir, writeScene } from './testsupport';
@@ -30,6 +31,7 @@ describe('run', () => {
       `
 printf '%s\\n' '{"type":"item.completed","item":{"type":"agent_message","text":"[[USER_MESSAGE]]代码已完成，开始渲染"}}'
 printf video > out.mp4
+test -f render-scene-001.live.json && printf seen > live-seen
 `,
     );
     fakeFfprobe(bin, {});
@@ -37,6 +39,9 @@ printf video > out.mp4
     await run(s, cfg, false, { PATH: bin, HOME: tempDir() }, user, 0.15);
     expect(user.text).toContain('代码已完成');
     for (const file of [streamLog(s), stderrLog(s), userLog(s)]) expect(fs.existsSync(file), `missing log ${file}`).toBe(true);
+    // 渲染器跑的时候有进行中标记（客户端据此显示渲染中），结束就删。
+    expect(fs.existsSync(path.join(s.directory, 'live-seen')), '渲染器运行时应能看到进行中标记').toBe(true);
+    expect(fs.existsSync(liveFile(s.directory, s.id)), '渲染结束后标记应已删除').toBe(false);
   });
 
   it('cancellation terminates the process group', async () => {
@@ -47,6 +52,7 @@ printf video > out.mp4
     const signal = AbortSignal.timeout(150);
     await expect(run(s, cfg, false, { PATH: bin, HOME: tempDir() }, new Sink(), 0.15, signal)).rejects.toThrow('中断');
     expect(Date.now() - started, 'cancellation took too long').toBeLessThan(5000);
+    expect(fs.existsSync(liveFile(s.directory, s.id)), '取消后标记应已删除').toBe(false);
   });
 
   it('reports a renderer failure', async () => {

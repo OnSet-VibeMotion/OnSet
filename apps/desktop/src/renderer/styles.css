@@ -1757,6 +1757,8 @@ button.skills-pill.bad {
 }
 .scene-info {
   flex: 0 1 260px;
+  /* 默认的 min-width:auto 让内容的最小宽度把这一栏撑宽；渲染过程里的长命令会让它随每一步变宽变窄，居中的画面跟着横跳。 */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;

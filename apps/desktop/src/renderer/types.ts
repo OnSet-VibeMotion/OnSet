@@ -26,8 +26,37 @@ export interface Scene {
   /** 全部渲染尝试（含归档）的次数与用量合计。 */
   attempts: number;
   usage?: Usage;
-  /** 此刻正在渲染（渲染日志最近还在写）。 */
+  /** 此刻正在渲染（进行中标记里的进程还在）。 */
   rendering?: boolean;
+}
+
+/** 渲染器的一步（后端 studio/activity.ts 的 ActivityStep）。 */
+export interface ActivityStep {
+  kind: 'tool' | 'text' | 'error';
+  tool?: string;
+  input?: unknown;
+  /** running / done / failed，只有工具调用有。 */
+  state?: string;
+  output?: string;
+  text?: string;
+}
+
+/** GET /api/scenes/{id}/activity：渲染器此刻在做什么，或最近一次渲染做了什么。 */
+export interface SceneActivity {
+  scene_id: string;
+  rendering: boolean;
+  renderer?: string;
+  model?: string;
+  started_at?: string;
+  updated_at?: string;
+  /** 全部步数；steps 只带最近的一段。 */
+  step_count: number;
+  steps: ActivityStep[];
+  plan?: PlanItem[];
+  /** 不在渲染时：最近一次的结果。 */
+  outcome?: string;
+  error?: string;
+  ended_at?: string;
 }
 
 /** 渲染用量，口径见 internal/tools.Usage：输入含缓存，输出含推理。 */

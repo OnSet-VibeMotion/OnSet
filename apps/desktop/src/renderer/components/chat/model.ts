@@ -286,8 +286,64 @@ export function describeTool(tool: string, input: unknown): { verb: string; targ
   if (name === 'webfetch') return { verb: '访问', target: text('url'), command: false };
   if (name === 'websearch' || name === 'web_search') return { verb: '搜索网页', target: text('query'), command: false };
   if (name === 'task' || name === 'agent') return { verb: '子任务', target: text('description'), command: false };
+  const am = amTool(name.replace(/^mcp__am__/, '').replace(/^am[._]/, ''), record);
+  if (am && /^(mcp__am__|am[._])/.test(name)) return am;
   const fallback = text('description') || text('url') || text('pattern') || '';
   return { verb: tool, target: fallback, command: false };
+}
+
+/** HyperFrames 子命令说成人话：渲染器大半时间在跑它们。 */
+const hyperframesVerbs: Record<string, string> = {
+  lint: '检查合成代码',
+  check: '检查画面',
+  validate: '校验合成',
+  snapshot: '截取画面',
+  render: '渲染视频',
+  inspect: '检查布局',
+  timeline: '读取时间线',
+  compositions: '列出合成',
+  info: '查看合成信息',
+  init: '建合成骨架',
+};
+
+/** am 工具服务里常用工具的说法；其余按工具名把下划线换成空格。 */
+const amVerbs: Record<string, string> = {
+  scene_run: '渲染镜头',
+  scene_run_all: '渲染全部镜头',
+  scene_lint: '检查镜头',
+  scene_frames: '抽帧查看',
+  scene_cues: '计算镜头时长',
+  scene_usage: '查看渲染用量',
+  job_wait: '等任务跑完',
+  job_cancel: '取消任务',
+  tool_help: '查工具说明',
+  concat: '拼接成片',
+  review: '复查成片',
+  align_build: '生成配音时间轴',
+  align_text: '整理朗读文本',
+  audio_check: '校验字幕时间轴',
+  validate_reads: '检查阅读时长',
+  validate_publish: '校验发布信息',
+  validate_video: '校验成片',
+  beat_cues: '计算镜头时长',
+  film_style_use: '换整片风格',
+  voice_list: '查看音色',
+  voice_save: '存音色',
+  studio_show: '打开页面',
+  memory_remember: '记下偏好',
+  config_get: '读取配置',
+};
+
+function amTool(name: string, record: Record<string, unknown>): { verb: string; target: string; command: boolean } | null {
+  const text = (key: string) => (typeof record[key] === 'string' ? (record[key] as string) : '');
+  const args = Array.isArray(record.args) ? (record.args as unknown[]).map(String).join(' ') : '';
+  if (name === 'hyperframes') {
+    const sub = text('subcommand');
+    return { verb: hyperframesVerbs[sub] ?? `HyperFrames ${sub}`.trim(), target: args, command: false };
+  }
+  if (name === 'job_wait' || name === 'job_cancel') return { verb: amVerbs[name], target: text('job'), command: false };
+  const target = text('scene') || text('scene_id') || text('tool') || text('page') || text('key') || text('name') || args;
+  return { verb: amVerbs[name] ?? name.replace(/_/g, ' '), target, command: false };
 }
 
 /** 回复里提到的媒体文件：试听、封面、预览视频。 */
