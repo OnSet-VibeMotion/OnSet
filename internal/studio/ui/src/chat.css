@@ -1241,3 +1241,71 @@ div.tool {
   overflow: hidden;
   white-space: normal;
 }
+
+/* @ 与 / 补全：贴在输入框上方。 */
+.chat .composer-shell {
+  position: relative;
+}
+.chat .completions {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.chat .completions-head,
+.chat .completions-foot {
+  padding: 5px 10px;
+  color: var(--faint);
+  font-size: 11px;
+}
+.chat .completions-foot {
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+}
+.chat .completion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  min-width: 0;
+}
+.chat .completion.on {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.chat .completion-kind {
+  flex: none;
+  width: 16px;
+  text-align: center;
+  color: var(--accent);
+  font: 600 12px var(--mono);
+}
+.chat .completion-label {
+  flex: none;
+  max-width: 50%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--mono);
+}
+.chat .completion-hint {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

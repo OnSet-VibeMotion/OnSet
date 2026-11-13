@@ -106,6 +106,38 @@ test('right-click quotes script text and files into the chat', async ({ page }) 
   await expect(page.locator('.user-extra')).toContainText('文件 PROMPT.md');
 });
 
+test('completes @ mentions and / commands in the input', async ({ page }) => {
+  await openProject(page);
+  const prompt = page.locator('#prompt');
+  // @：列出镜头与文件，选中后留在文字里，发送时变成引用。
+  await prompt.fill('看看 @sce');
+  await expect(page.locator('#completions')).toContainText('scene-001');
+  await prompt.press('Enter');
+  await expect(prompt).toHaveValue('看看 @scene-001 ');
+  await prompt.pressSequentially('太快了');
+  await prompt.press('Enter');
+  await expect(page.locator('.user-extra')).toContainText('镜头 scene-001');
+  // /：命令在网页里执行，不发给编排工具。
+  await prompt.fill('/scr');
+  await expect(page.locator('#completions .completion').first()).toContainText('/script');
+  await prompt.press('Enter');
+  await expect(page.locator('[data-tab="script"]')).toHaveClass(/on/);
+  await expect(prompt).toHaveValue('');
+  // 带参数的命令：先选命令，再选参数。
+  await prompt.fill('/sho');
+  await prompt.press('Enter');
+  await expect(prompt).toHaveValue('/show ');
+  await expect(page.locator('#completions')).toContainText('记忆');
+  await prompt.pressSequentially('记忆');
+  await prompt.press('Enter');
+  await expect(page.locator('[data-tab="memory"]')).toHaveClass(/on/);
+  // Esc 收起补全；认不出的 /xxx 照常发出。
+  await prompt.fill('@');
+  await expect(page.locator('#completions')).toBeVisible();
+  await prompt.press('Escape');
+  await expect(page.locator('#completions')).toHaveCount(0);
+});
+
 test('picks the orchestrator and renderer per session', async ({ page }) => {
   await openProject(page);
   await expect(page.locator('#agent-tool')).toHaveValue('claude');

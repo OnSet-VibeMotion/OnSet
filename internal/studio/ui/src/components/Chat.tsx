@@ -20,6 +20,7 @@ import {
   type QueuedMessage,
   type TurnBlock,
 } from './chat/model';
+import { applySuggestion, findToken, mentionAttachments, parseCommand, slashCommands, suggest, type SlashCommand, type Suggestion } from './chat/complete';
 import '../chat.css';
 
 // SSE 的 event 字段就是事件种类，EventSource 只把具名事件派给对应监听器，所以要逐个注册。
@@ -76,6 +77,10 @@ interface Props {
   view: ViewState;
   /** 打开编排工具请用户看的页面。 */
   onView: (view: ViewRequest) => void;
+  /** 项目里的文件（@ 补全用）。 */
+  files: string[];
+  /** 触发一个写任务（/render 这类命令用）。 */
+  run: (path: string, payload?: Record<string, unknown>) => void;
 }
 
 /** 视为「在底部」的容差：比这近就继续跟随新消息。 */
@@ -95,6 +100,11 @@ export function Chat(props: Props) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const following = useRef(true);
+  // @ 与 / 补全：光标位置决定正在补全哪一段；按 Esc 收起，直到再输入。
+  const [caret, setCaret] = useState(0);
+  const [picked, setPicked] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
+  const pendingCaret = useRef<number | null>(null);
 
   const blocks = useMemo(() => buildBlocks(events), [events]);
   const queue = useMemo(() => queuedMessages(events), [events]);
@@ -160,20 +170,122 @@ export function Chat(props: Props) {
     }
   };
 
+  const completion = { scenes: props.scenes.map((s) => s.id), files: props.files };
+  const token = dismissed ? null : findToken(draft, caret);
+  const suggestions = token ? suggest(token, completion, running) : [];
+  useEffect(() => setPicked(0), [token?.trigger, token?.query, token?.command?.name]);
+  useLayoutEffect(() => {
+    const el = textarea.current;
+    if (el && pendingCaret.current !== null) {
+      el.setSelectionRange(pendingCaret.current, pendingCaret.current);
+      setCaret(pendingCaret.current);
+      pendingCaret.current = null;
+    }
+  }, [draft]);
+
+  const fill = (text: string) => {
+    setDraft(text);
+    pendingCaret.current = text.length;
+    textarea.current?.focus();
+  };
+
+  /** 执行一条 / 命令：网页里直接做的清空输入框，交给编排工具的换成一句模板。 */
+  const runCommand = (command: SlashCommand, arg: string) => {
+    setDismissed(false);
+    switch (command.name) {
+      case 'new':
+        fill('');
+        props.onSession('');
+        return;
+      case 'stop':
+        fill('');
+        void cancel();
+        return;
+      case 'start':
+        fill('');
+        void startProduction('');
+        return;
+      case 'script':
+        fill('');
+        props.onView({ page: 'script' });
+        return;
+      case 'show':
+        fill('');
+        props.onView({ page: arg });
+        return;
+      case 'confirm-script':
+        fill('');
+        void deliver('口播稿我看过了，没问题，按这版继续配音。', props.attachments).then((ok) => ok && props.onClearAttachments());
+        return;
+      case 'redo':
+        props.onAddAttachments([{ ref: true, scene_id: arg }]);
+        fill(`重做镜头 ${arg}：保留文案、时长和与相邻镜头的交接约定，`);
+        return;
+      case 'render':
+        fill('');
+        props.run(`/api/scenes/${encodeURIComponent(arg)}/render`);
+        return;
+      case 'render-all':
+        fill('');
+        props.run('/api/render/all');
+        return;
+      case 'validate':
+        fill('');
+        props.run('/api/commands/scene.validate', { scene_id: arg });
+        return;
+      case 'concat':
+        fill('');
+        props.run('/api/commands/project.concat');
+        return;
+      case 'review':
+        fill('');
+        props.run('/api/review/run');
+        return;
+      case 'remember':
+        fill('记住这个偏好，以后都这样做：');
+        return;
+    }
+  };
+
+  const pick = (item: Suggestion) => {
+    if (!token) return;
+    if (token.trigger === '/' && token.command) {
+      runCommand(token.command, item.value);
+      return;
+    }
+    if (token.trigger === '/') {
+      const command = slashCommands.find((c) => c.name === item.value);
+      if (command && !command.arg) {
+        runCommand(command, '');
+        return;
+      }
+    }
+    const next = applySuggestion(draft, token, item);
+    setDraft(next.text);
+    pendingCaret.current = next.caret;
+    textarea.current?.focus();
+  };
+
   const send = async () => {
     const message = draft.trim();
-    if (await deliver(message, props.attachments)) {
+    const command = parseCommand(message);
+    if (command) {
+      runCommand(command.command, command.arg);
+      return;
+    }
+    const attachments = [...props.attachments, ...mentionAttachments(message, completion, props.attachments)];
+    if (await deliver(message, attachments)) {
       // 发送途中用户可能已经接着打了下一条，只清掉发出去的那段。
       setDraft((current) => (current.trim() === message ? '' : current));
       props.onClearAttachments();
     }
   };
 
-  const startProduction = async () => {
+  const startProduction = async (message = draft.trim()) => {
     setSending(true);
     setError('');
     try {
-      const result = await post<{ session_id: string }>('/api/production/start', { message: draft.trim(), ...props.choice });
+      const result = await post<{ session_id: string }>('/api/production/start', { message, ...props.choice });
       setDraft('');
       following.current = true;
       props.onSession(result.session_id);
@@ -284,7 +396,7 @@ export function Chat(props: Props) {
             <Icon name="plus" size={13} />
           </button>
         )}
-        <button id="start-production" class="primary pill" disabled={blocked || running} onClick={startProduction} title="与 am run 相同的整片制作">
+        <button id="start-production" class="primary pill" disabled={blocked || running} onClick={() => void startProduction()} title="与 am run 相同的整片制作">
           开始制作
         </button>
       </header>
@@ -349,6 +461,35 @@ export function Chat(props: Props) {
           }}
         >
           {props.attachments.length > 0 && <AttachmentTray attachments={props.attachments} onRemove={props.onRemoveAttachment} />}
+          {suggestions.length > 0 && token && (
+            <ul class="completions" id="completions" role="listbox" aria-label={token.trigger === '@' ? '引用镜头或文件' : '命令'}>
+              <li class="completions-head" aria-hidden="true">
+                {token.trigger === '@' ? '引用镜头或文件，发送时一起交给编排工具' : token.command ? `/${token.command.name} 的参数` : '命令'}
+              </li>
+              {suggestions.map((item, index) => (
+                <li
+                  key={item.kind + item.value}
+                  role="option"
+                  aria-selected={index === picked}
+                  class={'completion' + (index === picked ? ' on' : '')}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    pick(item);
+                  }}
+                  onMouseEnter={() => setPicked(index)}
+                >
+                  <span class={'completion-kind ' + item.kind} aria-hidden="true">
+                    {item.kind === 'command' ? '/' : item.kind === 'scene' ? <Icon name="film" size={12} /> : item.kind === 'page' ? '↗' : <Icon name="file" size={12} />}
+                  </span>
+                  <span class="completion-label">{item.label}</span>
+                  {item.hint && <span class="completion-hint">{item.hint}</span>}
+                </li>
+              ))}
+              <li class="completions-foot" aria-hidden="true">
+                ↑↓ 选择 · Enter / Tab 确定 · Esc 收起
+              </li>
+            </ul>
+          )}
           <label for="prompt" class="sr-only">
             消息
           </label>
@@ -358,7 +499,21 @@ export function Chat(props: Props) {
             rows={2}
             value={draft}
             placeholder={running ? '补充要求会排在这一轮之后…' : '说说要改什么，可以拖入或粘贴文章、图片、音频'}
-            onInput={(e) => setDraft(e.currentTarget.value)}
+            onInput={(e) => {
+              setDraft(e.currentTarget.value);
+              setCaret(e.currentTarget.selectionStart ?? 0);
+              setDismissed(false);
+            }}
+            onKeyUp={(e) => {
+              if (!['ArrowUp', 'ArrowDown', 'Enter', 'Tab', 'Escape'].includes(e.key)) setCaret(e.currentTarget.selectionStart ?? 0);
+            }}
+            onClick={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+            onBlur={() => window.setTimeout(() => setDismissed(true), 150)}
+            onFocus={() => setDismissed(false)}
+            role="combobox"
+            aria-expanded={suggestions.length > 0}
+            aria-controls="completions"
+            aria-autocomplete="list"
             onPaste={(e) => {
               const files = e.clipboardData?.files;
               if (files && files.length > 0) {
@@ -367,6 +522,25 @@ export function Chat(props: Props) {
               }
             }}
             onKeyDown={(e) => {
+              const composing = e.isComposing || e.keyCode === 229;
+              if (suggestions.length > 0 && !composing) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  const step = e.key === 'ArrowDown' ? 1 : -1;
+                  setPicked((index) => (index + step + suggestions.length) % suggestions.length);
+                  return;
+                }
+                if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
+                  e.preventDefault();
+                  pick(suggestions[Math.min(picked, suggestions.length - 1)]);
+                  return;
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setDismissed(true);
+                  return;
+                }
+              }
               // Enter 发送，Shift+Enter 换行；输入法组字时的 Enter 不算。
               if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
                 e.preventDefault();
