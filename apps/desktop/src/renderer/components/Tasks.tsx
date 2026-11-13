@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { forUser } from '../api';
 import type { Task } from '../types';
 
 const statusLabels: Record<Task['status'], string> = {
@@ -24,7 +25,7 @@ export function Tasks({ tasks, onCancel }: { tasks: Task[]; onCancel: (id: strin
           {tasks.slice(0, 20).map((task) => (
             <div key={task.task_id} className={'task ' + task.status}>
               <div className="task-head">
-                <strong>{task.message.split('\n')[0]}</strong>
+                <strong>{forUser(task.message.split('\n')[0] ?? '')}</strong>
                 <span className="muted small">{statusLabels[task.status]}</span>
               </div>
               {task.status === 'running' && (
@@ -32,7 +33,7 @@ export function Tasks({ tasks, onCancel }: { tasks: Task[]; onCancel: (id: strin
                   <i style={{ width: `${Math.round(task.progress * 100)}%` }} />
                 </div>
               )}
-              {task.error && <pre className="task-error">{task.error}</pre>}
+              {task.error && <pre className="task-error">{forUser(task.error)}</pre>}
               {(task.status === 'running' || task.status === 'queued') && (
                 <button className="ghost" onClick={() => onCancel(task.task_id)}>
                   取消

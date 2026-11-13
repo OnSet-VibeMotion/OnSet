@@ -20,8 +20,8 @@ describe('view', () => {
     const detail = await waitIdle(f, id);
     expect(lastTurn(detail).status).toBe('succeeded');
     const a = args(f);
-    for (const want of ['Studio 网页上开着「镜头」页，镜头 scene-001', 'am studio show', 'film-styles']) {
-      expect(a[0], '提示词应当带上用户在看的页面与 am studio show 的约定').toContain(want);
+    for (const want of ['Studio 网页上开着「镜头」页，镜头 scene-001', 'studio_show(', 'film-styles']) {
+      expect(a[0], '提示词应当带上用户在看的页面与 studio_show 的约定').toContain(want);
     }
     const { text } = await rawGet(f.s, `/api/sessions/${id}/events?follow=0`);
     expect(text).toContain('event: view');

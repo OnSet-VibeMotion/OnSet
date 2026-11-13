@@ -62,7 +62,7 @@ export function apply(root: string): Report {
     throw new Error(
       `本项目不是多角色项目：项目根没有 ${cast.RosterFile}，cast.beats 只在多角色模式下存在。` +
         '单口播项目不需要执行本命令；如果这本该是多角色项目，' +
-        '请确认当前目录就是项目根，并用 am init --narration cast 初始化',
+        '请确认当前目录就是项目根，并在客户端新建项目时选「多角色对话」',
     );
   }
 
@@ -136,7 +136,7 @@ export function loadDialogueLines(file: string): Line[] {
   } catch (err) {
     throw new Error(
       `找不到或无法读取 ${DialogueRelPath}：${goPathError('open', file, err)}` +
-        '（多角色项目的对白时间线由 am dialogue assemble 产出，请先执行它）',
+        '（多角色项目的对白时间线由 dialogue_assemble() 产出，请先执行它）',
       { cause: err },
     );
   }

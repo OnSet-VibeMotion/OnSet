@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { extractUserMessages, orchestratorInvocation, presetSessionID, projectRulesFilename, rendererInvocation } from './index';
+import { amToolsServer, extractUserMessages, orchestratorInvocation, presetSessionID, projectRulesFilename, rendererEnv, rendererInvocation } from './index';
 
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'am-tools-'));
@@ -12,10 +12,10 @@ describe('tools', () => {
   describe('renderer invocation safe by default', () => {
     const tests: [string, string[]][] = [
       ['codex', ['codex', '--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', 'prompt']],
-      ['claude', ['claude', '-p', '--permission-mode', 'acceptEdits', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Read(**/.env)","Read(**/.env.*)"]}}`, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', 'prompt']],
+      ['claude', ['claude', '-p', '--permission-mode', 'acceptEdits', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(am:*)","Read(**/.env)","Read(**/.env.*)"]}}`, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', 'prompt']],
       ['qoder', ['qoderclicn', '-p', 'prompt', '--permission-mode', 'dont_ask', '--output-format', 'stream-json']],
       ['codebuddy', ['codebuddy', '-p', '--verbose', '--output-format', 'stream-json', '--permission-mode', 'acceptEdits', 'prompt']],
-      ['opencode', ['opencode', 'run', '--format', 'json', 'prompt']],
+      ['opencode', ['opencode', 'run', '--standalone', '--format', 'json', 'prompt']],
     ];
     for (const [tool, want] of tests) {
       it(tool, () => {
@@ -176,7 +176,56 @@ describe('tools', () => {
     const settings = JSON.parse(got[index + 1]) as { permissions: { allow: string[]; deny: string[]; additionalDirectories: string[] } };
     expect(settings.permissions.allow).toEqual(['Bash(npx --yes hyperframes@0.8.14:*)', 'Bash(ffprobe:*)', 'Read(//proj/.agents/skills/**)']);
     expect(settings.permissions.additionalDirectories).toEqual(['/proj/.agents/skills']);
-    expect(settings.permissions.deny).toEqual(['Read(**/.env)', 'Read(**/.env.*)']);
+    expect(settings.permissions.deny).toEqual(['Bash(am:*)', 'Read(**/.env)', 'Read(**/.env.*)']);
+  });
+
+  // am 只经工具服务调用：渲染器与编排工具在每家都挂上 am 的 MCP 服务，claude 系放行整个服务。
+  describe('am tools server', () => {
+    const server = amToolsServer('/app/bin/am', 'renderer', '/proj/scenes/s1', { AM_BROWSER: '/b', OPENAI_API_KEY: 'secret', PATH: '/usr/bin' });
+
+    it('passes only am settings to the server, never credentials', () => {
+      expect(server).toEqual({
+        name: 'am',
+        command: '/app/bin/am',
+        args: ['studio', 'tools-mcp', '--profile', 'renderer', '--workdir', '/proj/scenes/s1'],
+        env: { AM_BROWSER: '/b', PATH: '/usr/bin' },
+      });
+    });
+
+    it('attaches to the claude renderer without swallowing the prompt', () => {
+      const got = rendererInvocation('claude', 'prompt', false, { commands: ['ls'], toolsServer: server });
+      expect(got.at(-1)).toBe('prompt');
+      const at = got.indexOf('--mcp-config');
+      expect(JSON.parse(got[at + 1]).mcpServers.am.args).toContain('renderer');
+      expect(got[at + 2].startsWith('--')).toBe(true);
+      const settings = JSON.parse(got[got.indexOf('--settings') + 1]);
+      expect(settings.permissions.allow).toContain('mcp__am');
+    });
+
+    it('attaches to codex, qoder, codebuddy and opencode renderers', () => {
+      const codex = rendererInvocation('codex', 'prompt', false, { toolsServer: server });
+      expect(codex).toContain('mcp_servers.am.command="/app/bin/am"');
+      expect(codex.at(-1)).toBe('prompt');
+      const qoder = rendererInvocation('qoder', 'prompt', false, { toolsServer: server });
+      expect(qoder.slice(qoder.indexOf('--allowed-tools'), qoder.indexOf('--allowed-tools') + 2)).toEqual(['--allowed-tools', 'mcp__am']);
+      expect(rendererInvocation('codebuddy', 'prompt', false, { toolsServer: server })).toContain('--mcp-config');
+      const env = rendererEnv('opencode', { toolsServer: server }, { OPENCODE_CONFIG_CONTENT: '{"model":"x"}' });
+      expect(JSON.parse(env.OPENCODE_CONFIG_CONTENT)).toEqual({ model: 'x', mcp: { am: { type: 'local', command: ['/app/bin/am', 'studio', 'tools-mcp', '--profile', 'renderer', '--workdir', '/proj/scenes/s1'], enabled: true, environment: server.env } } });
+    });
+
+    it('sits next to the approval server for the claude orchestrator', () => {
+      const permissionPrompt = { command: '/app/am', args: ['studio', 'permission-mcp'], server: 'am_studio' };
+      const { argv } = orchestratorInvocation('claude', { prompt: 'hello', workdir: '/p', permissionPrompt, toolsServer: server });
+      const config = JSON.parse(argv[argv.indexOf('--mcp-config') + 1]);
+      expect(Object.keys(config.mcpServers)).toEqual(['am_studio', 'am']);
+      expect(JSON.parse(argv[argv.indexOf('--settings') + 1]).permissions.allow).toContain('mcp__am');
+      expect(argv.at(-1)).toBe('hello');
+      // 没有审批服务（不安全模式）也挂上工具服务，提示词照样是最后一个。
+      const unsafe = orchestratorInvocation('claude', { prompt: 'hello', unsafe: true, toolsServer: server }).argv;
+      expect(unsafe).toContain('--mcp-config');
+      expect(unsafe.at(-1)).toBe('hello');
+      expect(orchestratorInvocation('codex', { prompt: 'p', workdir: '/p', toolsServer: server }).argv).toContain('mcp_servers.am.command="/app/bin/am"');
+    });
   });
 
   // 不安全模式已经跳过全部权限检查，不需要也不应该再叠一层 settings。

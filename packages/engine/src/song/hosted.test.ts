@@ -150,7 +150,7 @@ describe('hosted providers', () => {
     platformGuide(out, '', { FAL_KEY: 'super-secret' });
     expect(out.text.includes('super-secret')).toBe(false);
     expect(out.text).toContain('已设置');
-    expect(() => checkCredential(c, null)).toThrow('am song providers fal');
+    expect(() => checkCredential(c, null)).toThrow('song_providers({"args": ["fal"]})');
   });
 
   it('lyrics limits', () => {

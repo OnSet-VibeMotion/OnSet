@@ -2,7 +2,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import * as hyperframes from '../hyperframes';
 import { buildPrompt, load } from './scene';
 import {
   hyperFramesCLIPrompt,
@@ -319,14 +318,14 @@ describe('skill prompts', () => {
     }
   });
 
-  // 放行的 CLI 必须是 am 管理的那一个写法；技能目录去重排序，argv 才稳定可比。
-  it('renderer access pins the CLI and opens skill dirs', () => {
+  // am 不进渲染器的白名单（HyperFrames 经工具服务调用）；技能目录去重排序，argv 才稳定可比。
+  it('renderer access keeps am out and opens skill dirs', () => {
     const access = rendererAccess({
       [HyperFramesSkillName]: '/proj/.agents/skills',
       [HyperFramesCLISkillName]: '/proj/.agents/skills',
       [CharacterRigSkillName]: '/home/.claude/skills',
     });
-    expect(access.commands![0]).toBe(hyperframes.CLICommand);
+    expect(access.commands).toEqual(['ls', 'ffprobe']);
     expect(access.readDirs).toEqual(['/home/.claude/skills', '/proj/.agents/skills']);
   });
 
@@ -348,15 +347,15 @@ describe('skill prompts', () => {
     }
   });
 
-  // 提示词教的 CLI 写法必须就是安全模式放行的那一个前缀，并且要求单条执行。
-  it('CLI prompt teaches the allowed command prefix', () => {
-    const prefix = hyperFramesCommand();
-    expect(containsString(rendererAccess(null).commands, prefix), `安全模式放行的命令里没有 ${prefix}`).toBe(true);
+  // 渲染器只经 am 工具服务的 hyperframes 工具调用 CLI：提示词要教会工具写法、长任务怎么等，并且不再教 am / npx 的命令行。
+  it('CLI prompt teaches the hyperframes tool instead of a command line', () => {
+    expect(containsString(rendererAccess(null).commands, hyperFramesCommand())).toBe(false);
     for (const dir of ['', '/tmp/skills']) {
       const section = hyperFramesCLIPrompt(dir);
-      for (const want of [prefix + ' render', prefix + ' check', '不用 `npx hyperframes`', '每条命令单独执行']) {
+      for (const want of ['`hyperframes` 工具', '"subcommand": "render"', 'job_wait', '不在 Bash 里跑 hyperframes、npx hyperframes 或 am', '--describe false']) {
         expect(section, `skillsDir=${dir}`).toContain(want);
       }
+      expect(section).not.toContain(hyperFramesCommand() + ' ');
     }
   });
 });

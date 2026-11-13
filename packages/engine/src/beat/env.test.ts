@@ -52,7 +52,7 @@ describe('beat analysis environment', () => {
       err = e;
     }
     expect(isMissing(err)).toBe(true);
-    expect((err as Error).message).toContain('am setup');
+    expect((err as Error).message).toContain('工具准备页');
     expect(fs.existsSync(path.join(home, '.local'))).toBe(false);
   });
 
@@ -103,7 +103,7 @@ describe('beat analysis environment', () => {
 
   it('asks for am setup when there is neither a suitable Python nor uv', async () => {
     const root = tempDir();
-    await expect(ensureEnv({ env: { HOME: root, PATH: '/nonexistent' } })).rejects.toThrow(/am setup --only beat/);
+    await expect(ensureEnv({ env: { HOME: root, PATH: '/nonexistent' } })).rejects.toThrow(/工具准备页安装「音乐卡点」/);
   });
 
   it('beat.yaml without python uses the shared environment; with python uses the given one', () => {

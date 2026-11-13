@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { Buffer, run, setenv, tempDir } from './testutil';
+import { Buffer, run, tempDir } from './testutil';
 import * as assets from '@am/engine/assets';
 import { sortedKeys } from '@am/engine/gojson';
 import * as preset from '@am/engine/preset';
@@ -104,27 +104,6 @@ it('song scaffold conflict does not overwrite', () => {
   expect(() => songScaffold(root), 'idempotent').not.toThrow();
 });
 
-it('am run always adds the song contract', async () => {
-  const root = tempDir();
-  songScaffold(root);
-  fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
-  fs.writeFileSync(path.join(root, 'custom.md'), 'CUSTOM-PROMPT');
-  const bin = tempDir();
-  const received = path.join(tempDir(), 'received.txt');
-  fs.writeFileSync(path.join(bin, 'codex'), "#!/bin/sh\n/bin/cat > '" + received + "'\n", { mode: 0o755 });
-  setenv('PATH', bin + path.delimiter + (process.env.PATH ?? ''));
-  setenv('ORCHESTRATOR', 'codex');
-  process.chdir(root);
-  for (const args of [['run'], ['run', 'custom.md']]) {
-    const out = new Buffer();
-    const err = new Buffer();
-    expect(await run(args, out, err), err.text).toBe(0);
-    const body = fs.readFileSync(received, 'utf8');
-    expect(body).toContain('歌曲模式必要契约');
-    expect(body).toContain('不得代替用户选择');
-    if (args.length > 1) expect(body, 'lost explicit prompt').toContain('CUSTOM-PROMPT');
-  }
-});
 
 it('scene run-all: --song-timeline and --srt are mutually exclusive', async () => {
   const root = tempDir();
@@ -137,7 +116,7 @@ it('scene run-all: --song-timeline and --srt are mutually exclusive', async () =
 
 it('song prompt requires the web handoff pause', () => {
   const b = assets.shared().readText('PROMPT-SONG.md');
-  for (const want of ['am song handoff', 'am song receive', 'waiting_for_audio', '此处必须暂停等待用户回复', '不轮询目录', '完整歌词和曲风', 'FINAL_LYRICS']) {
+  for (const want of ['song_handoff()', 'song_receive(', 'waiting_for_audio', '此处必须暂停等待用户回复', '不轮询目录', '完整歌词和曲风', 'FINAL_LYRICS']) {
     expect(b, `song prompt missing ${want}`).toContain(want);
   }
 });

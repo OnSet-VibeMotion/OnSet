@@ -27,7 +27,7 @@ describe('filmstyle', () => {
     expect(status).toBe(200);
     let source = lemoSource(body);
     expect(source.ready, '来源没准备好时应当报 ready=false').toBe(false);
-    expect(source.problem).toContain('am setup');
+    expect(source.problem).toContain('工具准备页');
 
     for (const slug of [first, 'impasto']) {
       writeStudioFile(path.join(library, 'styles', slug, 'STYLE.md'), '# ' + slug);

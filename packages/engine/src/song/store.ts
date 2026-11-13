@@ -19,8 +19,8 @@ style: "Mandarin educational solo rap, clear diction"
 language: zh
 target_seconds: 120
 bpm: 100
-# Run am song providers for platform access and API key setup.
-# Run am song configure --provider bailian|elevenlabs|fal|minimax|acestep|mureka|lyria|manual.
+# Use the song_providers tool for platform access and API key setup.
+# Use song_configure (provider: bailian|elevenlabs|fal|minimax|acestep|mureka|lyria|manual) to switch.
 # endpoint: https://your-acestep-server.example
 python: python3
 `;
@@ -346,7 +346,7 @@ export function selected(root: string): Candidate {
   try {
     c = readCandidate(p);
   } catch (err) {
-    throw new Error(`尚未选定歌曲，请试听后运行 am song select <id>：${err instanceof Error ? err.message : String(err)}`, { cause: err });
+    throw new Error(`尚未选定歌曲，请试听后运行 song_select({"args": ["<id>"]})：${err instanceof Error ? err.message : String(err)}`, { cause: err });
   }
   const actual = loadCandidate(root, c.id);
   if (digest(candidateToJSON(actual)) !== digest(candidateToJSON(c))) throw new Error('选定记录与候选不一致，请重新选择');

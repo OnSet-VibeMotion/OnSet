@@ -192,7 +192,7 @@ export function build(script: Script, items: Item[] | null, opts: Options): Resu
   }
   if (report.match_rate < MinMatchRate) {
     report.problems.push(
-      `精确匹配率 ${formatFixed(report.match_rate * 100, 1)}% 低于 ${formatFixed(MinMatchRate * 100, 0)}%：送进对齐的文本可能不是 am align text 产出的那份，或配音与终稿差异过大`,
+      `精确匹配率 ${formatFixed(report.match_rate * 100, 1)}% 低于 ${formatFixed(MinMatchRate * 100, 0)}%：送进对齐的文本可能不是 align_text() 产出的那份，或配音与终稿差异过大`,
     );
   }
 

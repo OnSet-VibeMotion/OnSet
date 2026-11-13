@@ -177,7 +177,7 @@ function runSceneCues(opts: SceneCuesOptions, stdout: Out): void {
   const planScenes = plan.scenes ?? [];
   const results: SceneCue[] = scenes.map((s, i) => {
     if (s.song !== null || s.beat !== null) {
-      throw new Error(`镜头 ${s.id} 带 song 或 beat 块：歌曲与卡点镜头的时长不由 am scene cues 决定`);
+      throw new Error(`镜头 ${s.id} 带 song 或 beat 块：歌曲与卡点镜头的时长不由 scene_cues() 决定`);
     }
     const timing = scene.newTiming({
       fps,
@@ -195,7 +195,7 @@ function runSceneCues(opts: SceneCuesOptions, stdout: Out): void {
   if (opts.check) {
     const problems = checkSceneCues(results, phraseBody);
     if (problems.length > 0) {
-      throw new Error(`镜头时间合同与重算结果不符，请重新运行 am scene cues（不要手改时长）：\n  - ${problems.join('\n  - ')}`);
+      throw new Error(`镜头时间合同与重算结果不符，请重新运行 scene_cues()（不要手改时长）：\n  - ${problems.join('\n  - ')}`);
     }
     printSceneCues(stdout, results);
     stdout.write(`核对通过：${results.length} 个镜头，合计 ${opts.totalFrames} 帧\n`);
@@ -353,7 +353,7 @@ function verifyPlanFilmStyles(projectRoot: string, plan: scene.TimingPlan): void
   for (const entry of plan.scenes ?? []) {
     const value = entry.film_style;
     if (value === '' || value === filmstyle.NoFilmStyle) continue;
-    if (filmstyle.styleDirOf(projectRoot, value) === '') problems.push(`镜头 ${entry.id} 点名的风格 ${value} 没装进项目：先运行 am film-style add ${value}`);
+    if (filmstyle.styleDirOf(projectRoot, value) === '') problems.push(`镜头 ${entry.id} 点名的风格 ${value} 没装进项目：先运行 film_style_add({"args": ["${value}"]})`);
   }
   if (problems.length > 0) throw new Error(`分镜计划的风格不合格：\n  - ${problems.join('\n  - ')}`);
   scene.verifyStyleBoundaries(plan, (value) => (value === '' ? defaultKey : value === filmstyle.NoFilmStyle ? '' : value));
@@ -427,7 +427,7 @@ export function commitWrites(writes: readonly PendingWrite[]): void {
       fs.renameSync(s.temp, s.path);
     } catch (err) {
       for (const rest of ready.slice(i)) fs.rmSync(rest.temp, { force: true });
-      throw new Error(`写入 ${s.path} 失败，部分镜头可能仍是旧网格，请重跑 am beat cues：${(err as Error).message}`);
+      throw new Error(`写入 ${s.path} 失败，部分镜头可能仍是旧网格，请重跑 beat_cues()：${(err as Error).message}`);
     }
   }
 }

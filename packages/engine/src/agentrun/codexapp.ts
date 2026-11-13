@@ -62,7 +62,9 @@ export function codexItemEvents(phase: 'started' | 'completed', item: Obj): Even
     case 'fileChange':
     case 'mcpToolCall':
     case 'webSearch': {
-      const tool = ({ fileChange: 'file_change', mcpToolCall: 'mcp_tool_call', webSearch: 'web_search' } as Record<string, string>)[str(item.type)];
+      let tool = ({ fileChange: 'file_change', mcpToolCall: 'mcp_tool_call', webSearch: 'web_search' } as Record<string, string>)[str(item.type)];
+      // MCP 调用按 claude 的写法记成 mcp__<服务>__<工具>：界面与测试要认出调用的是哪个工具。
+      if (str(item.type) === 'mcpToolCall' && str(item.server) !== '' && str(item.tool) !== '') tool = `mcp__${str(item.server)}__${str(item.tool)}`;
       if (phase === 'started') return [{ kind: KindToolCall, tool, call_id: id, input: item }];
       return [{ kind: KindToolResult, tool, call_id: id, input: item, is_error: str(item.status) === 'failed' || undefined }];
     }
@@ -128,6 +130,15 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
     const answer = await ctx.decide('Bash', { command: unwrapShell(str(p.command)), description: str(p.reason) || undefined });
     return { decision: codexDecision(answer) };
   });
+  // MCP 工具调用的审批：codex 在 untrusted 策略下给每次 MCP 调用发一个 elicitation（2026-11，0.163 实测）。
+  // am 的工具服务是客户端自己挂的，直接同意；别的服务照常问用户。
+  peer.onRequest('mcpServer/elicitation/request', async (params) => {
+    const p = obj(params);
+    const server = str(p.serverName);
+    if (spec.toolsServer && server === spec.toolsServer.name) return { action: 'accept', content: {} };
+    const answer = await ctx.decide('mcp__' + server, { message: str(p.message) });
+    return { action: answer.decision === 'allow' || answer.decision === 'always' ? 'accept' : 'decline', content: answer.decision === 'allow' || answer.decision === 'always' ? {} : null };
+  });
   peer.onRequest('item/fileChange/requestApproval', async (params) => {
     const p = obj(params);
     const answer = await ctx.decide('Edit', { path: str(p.grantRoot) || undefined, reason: str(p.reason) || '修改工作区之外的文件' });
@@ -143,7 +154,14 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
     cwd,
     approvalPolicy: 'untrusted',
     sandbox: 'workspace-write',
-    config: { 'sandbox_workspace_write.network_access': true, ...(writable.length > 0 ? { 'sandbox_workspace_write.writable_roots': writable } : {}) },
+    config: {
+      'sandbox_workspace_write.network_access': true,
+      ...(writable.length > 0 ? { 'sandbox_workspace_write.writable_roots': writable } : {}),
+      // am 的工具服务：编排工具只经它调用 am（codex 的 config 键用点号路径，值按 TOML 的结构给）。
+      ...(spec.toolsServer
+        ? { [`mcp_servers.${spec.toolsServer.name}`]: { command: spec.toolsServer.command, args: spec.toolsServer.args, env: spec.toolsServer.env ?? {} } }
+        : {}),
+    },
   };
   let opened: Obj;
   if (spec.resume && spec.sessionID) opened = obj(await race(peer.request('thread/resume', { threadId: spec.sessionID, excludeTurns: true, ...settings })));

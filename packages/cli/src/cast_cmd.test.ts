@@ -103,7 +103,7 @@ it('cast validate warns about a missing voice with an explicit provider', async 
   await runCLI(root, 'cast', 'new', 'heiwa');
   const out = await runCLI(root, 'cast', 'validate', '--provider', 'minimax');
   expect(out).toContain('缺少 voiceId');
-  expect(out).toContain('am validate cast');
+  expect(out).toContain('validate_cast()');
 });
 
 // 解析不出完整项目配置时安静跳过音色检查。

@@ -195,7 +195,7 @@ export function regrid(g: Grid, meter: number, anchor: number): Grid {
 /** checkTrack 确认网格属于当前导入的音乐。 */
 export function checkTrack(g: Grid, track: Track): void {
   if (g.audio_sha256 !== track.audio_sha256 || Math.abs(g.duration_seconds - track.duration_seconds) > 1e-6) {
-    throw new Error('节拍网格属于另一首音乐或另一个版本，请重新 am beat analyze');
+    throw new Error('节拍网格属于另一首音乐或另一个版本，请重新 beat_analyze()');
   }
 }
 
@@ -233,9 +233,9 @@ export function loadGrid(root: string): Grid {
   loadConfig(root);
   const track = loadTrack(root);
   const file = localPath(root, GridFile);
-  if (!fs.existsSync(file)) throw new Error('还没有已确认的节拍网格：先 am beat analyze，试听后 am beat confirm');
+  if (!fs.existsSync(file)) throw new Error('还没有已确认的节拍网格：先 beat_analyze()，试听后 beat_confirm()');
   const g = readJSON<Grid>(file, gridType);
-  if (!g.reviewed) throw new Error(`${GridFile} 未经人工确认，请用 am beat confirm 导入`);
+  if (!g.reviewed) throw new Error(`${GridFile} 未经人工确认，请用 beat_confirm() 导入`);
   checkTrack(g, track);
   const problems = gridProblems(g);
   if (problems.length > 0) throw new Error(`网格不合格：${problems.join('；')}`);

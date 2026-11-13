@@ -143,13 +143,13 @@ export function verifyCue(sceneDir: string, sceneID: string, cue: Cue, durationS
   const gridPath = path.join(root, GridFile);
   const want = gridRef(sceneDir, root);
   if (cue.grid !== want) throw new Error(`beat.grid 必须是指向本项目 ${GridFile} 的相对路径 ${goQuote(want)}`);
-  if (cue.scene !== sceneID) throw new Error(`beat 块属于镜头 ${goQuote(cue.scene)}，不是 ${goQuote(sceneID)}：请重新运行 am beat cues`);
+  if (cue.scene !== sceneID) throw new Error(`beat 块属于镜头 ${goQuote(cue.scene)}，不是 ${goQuote(sceneID)}：请重新运行 beat_cues()`);
   const grid = loadGrid(root);
   const sum = hashFile(gridPath);
-  if (sum !== cue.sha256) throw new Error('节拍网格已变化，请重新运行 am beat cues 并重渲染');
+  if (sum !== cue.sha256) throw new Error('节拍网格已变化，请重新运行 beat_cues() 并重渲染');
   if (cue.fps <= 0 || cue.frames <= 0 || cue.start_frame < 0) throw new Error('beat 块的帧率或帧区间无效');
   if (Math.abs(durationSeconds * cue.fps - cue.frames) > 1e-6) {
-    throw new Error(`duration_seconds 与 beat 块的 ${cue.frames} 帧不符：镜头时长由 am beat cues 写入，不要手改`);
+    throw new Error(`duration_seconds 与 beat 块的 ${cue.frames} 帧不符：镜头时长由 beat_cues() 写入，不要手改`);
   }
   const cuts = cutFrames(grid, cue.fps);
   const end = cue.start_frame + cue.frames;
@@ -166,7 +166,7 @@ export function verifyCue(sceneDir: string, sceneID: string, cue: Cue, durationS
   } catch (err) {
     throw wrapError(`找不到局部节拍文件：${(err as Error).message}`, err);
   }
-  if (have !== cue.data_sha256 || have !== expected) throw new Error(`${cue.data} 与全局网格不一致，请重新运行 am beat cues`);
+  if (have !== cue.data_sha256 || have !== expected) throw new Error(`${cue.data} 与全局网格不一致，请重新运行 beat_cues()`);
 }
 
 /** segmentOf 从分镜计划里找回这个 cue 对应的镜头区间。 */
@@ -183,7 +183,7 @@ function segmentOf(root: string, grid: Grid, cue: Cue): Segment {
       return s;
     }
   }
-  throw new Error(`镜头 ${cue.scene} 不在 ${PlanFile} 里，请重新运行 am beat cues`);
+  throw new Error(`镜头 ${cue.scene} 不在 ${PlanFile} 里，请重新运行 beat_cues()`);
 }
 
 /** FindRoot 从 dir 向上找到含 beat.yaml 的项目根。 */

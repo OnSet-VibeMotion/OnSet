@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { api, post } from '../api';
+import { api, errorText, forUser, post } from '../api';
 import type { PrereqStatus, SetupStatus } from '../types';
 import '../setup.css';
 
@@ -34,7 +34,7 @@ function loadProxy(): string {
   }
 }
 
-/** 读前置资源状态：安装中每秒取一次进度；有缺项时每 10 秒再看一次（用户可能在终端里跑 am setup）。 */
+/** 读前置资源状态：安装中每秒取一次进度；有缺项时每 10 秒再看一次（节拍页、风格页也可能在后台装）。 */
 export function useSetup(): SetupHandle {
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [checking, setChecking] = useState(false);
@@ -66,7 +66,7 @@ export function useSetup(): SetupHandle {
       try {
         await post('/api/setup/run', { only: only ?? [], proxy: proxy.trim() });
       } catch (err) {
-        setStartError(err instanceof Error ? err.message : String(err));
+        setStartError(errorText(err));
       }
       await recheck();
     },
@@ -254,27 +254,6 @@ function CrewCard(props: { crew: Crew; task: SetupStatus['task'] }) {
   );
 }
 
-function CopyLine(props: { command: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(props.command);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // 浏览器不让写剪贴板时，命令本身仍可手动选中复制。
-    }
-  };
-  return (
-    <span className="setup-command">
-      <code>{props.command}</code>
-      <button className="setup-link" onClick={() => void copy()}>
-        {copied ? '已复制' : '复制'}
-      </button>
-    </span>
-  );
-}
-
 export function SetupGuide(props: { setup: SetupHandle; compact?: boolean }) {
   const { setup } = props;
   const status = setup.status;
@@ -407,14 +386,12 @@ export function SetupGuide(props: { setup: SetupHandle; compact?: boolean }) {
         <div className="setup-drawer">
           {failed && (
             <>
-              <p className="setup-fine strong">{failed.error}</p>
+              <p className="setup-fine strong">{forUser(failed.error ?? '')}</p>
               {failed.log_tail && failed.log_tail.length > 0 && <pre className="setup-log">{failed.log_tail.join('\n')}</pre>}
               <p className="setup-fine">完整记录在 {shortPath(failed.log)}</p>
             </>
           )}
-          <p className="setup-fine">熟悉终端的话，也可以运行下面这条命令，跑完回来点「重新检查」。</p>
           <div className="setup-row-inline">
-            <CopyLine command={status.command} />
             {!running && (
               <button className="setup-link" onClick={() => void setup.recheck()} disabled={setup.checking}>
                 {setup.checking ? '检查中…' : '重新检查'}

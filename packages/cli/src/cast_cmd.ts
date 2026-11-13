@@ -57,7 +57,7 @@ function newCastNewCommand(stdout: Out): Command {
 
 骨架里的 voiceId 留空：真实音色由人工在 character.yaml 里补上，dna.md 会
 提示这一点。写完立即用 cast.Load 自检，一旦不自洽就删除已写文件并报错——
-不会在项目里留下半成品。自检通过后额外写出 character.json（见 am cast --help）。
+不会在项目里留下半成品。自检通过后额外写出 character.json（见 cast 命令组的说明）。
 
 目标目录已存在且非空时拒绝执行，不会覆盖已有内容。`,
     example: '  am cast new heiwa',
@@ -193,7 +193,7 @@ function newCastAddCommand(stdout: Out): Command {
 项目根的 cast.yaml。
 
 先校验后拷贝，不是拷贝后回滚：SOURCE-DIR 校验不通过时，项目里不会留下任何
-新文件。拷贝会拒绝源目录里出现的任何符号链接——理由与 am init 拒绝模板里的
+新文件。拷贝会拒绝源目录里出现的任何符号链接——理由与新建项目时拒绝模板里的
 符号链接一样：链接可能指向项目外，拷进项目后会被当成普通文件静默读取，是
 一个隐蔽的路径逃逸口子。
 
@@ -201,7 +201,7 @@ cast.yaml 不存在时会新建，defaults 取 ground_y: 0.78、
 gap_ms: {turn: 240, interject: 100}；已存在则在其 packs 列表里追加一条，
 已登记过的角色包不会重复追加。
 
-成功后会在 cast/<id>/ 里写出 character.json（见 am cast --help）。`,
+成功后会在 cast/<id>/ 里写出 character.json（见 cast 命令组的说明）。`,
     example: '  am cast add ../shared-characters/heiwa',
     runE: (_c, args) => runCastAdd(stdout, args[0]),
   });
@@ -344,7 +344,7 @@ character.yaml 后如果没跑这条命令，character.json 就是旧的且不�
 提醒）：这是作者做完角色包后第一个会跑的命令，音色缺口应当在这时就被看到，
 而不是等到 am validate cast 在发布前才拦下——那条硬校验仍然存在，不受这里
 影响。--provider 缺省取 am config get TTS_PROVIDER，解析不到完整项目配置
-（比如还没跑过 am init、ORCHESTRATOR/RENDERER 尚未配置）就跳过这项提醒，
+（比如还不是完整的项目、ORCHESTRATOR/RENDERER 尚未配置）就跳过这项提醒，
 不连带让 rig 校验也失败——这里的音色检查是附带诊断，不是本命令的主职责。`,
     example: `  am cast validate
   am cast validate cast/heiwa cast/xiaoming
@@ -444,7 +444,7 @@ function validateCastTargets(targets: readonly CastTarget[], provider: string): 
       try {
         cast.voiceFor(pack, provider);
       } catch (voiceErr) {
-        report += `[${target.name}] 通过（提醒：${errText(voiceErr)}；发布前 am validate cast 会把这个问题拦成失败）\n`;
+        report += `[${target.name}] 通过（提醒：${errText(voiceErr)}；发布前 validate_cast() 会把这个问题拦成失败）\n`;
         continue;
       }
     }

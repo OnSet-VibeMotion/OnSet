@@ -134,7 +134,7 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
         try {
           installed = filmstyle.install({ projectDir: target, style: filmStyle, env: currentEnvironment() });
         } catch (err) {
-          throw new Error(`项目文件已写入，但整片风格安装失败（之后可用 am film-style use ${filmstyle.styleKey(filmStyle)} 重试）：${(err as Error).message}`);
+          throw new Error(`项目文件已写入，但整片风格安装失败（之后可用 film_style_use({"args": ["${filmstyle.styleKey(filmStyle)}"]}) 重试）：${(err as Error).message}`);
         }
         reportFilmStyle(stdout, filmStyle, installed);
       }
@@ -193,15 +193,15 @@ export function newConfigCommand(stdout: Out): Command {
   TTS_PROVIDER   语音合成：` +
         config.ttsProviderIDs().split(' ').join(' | ') +
         `
-  TTS_MODEL      语音合成用的本机模型（目前只有 breeze）：am setup 下好的本地目录；
-                 还没下好时打印模型的仓库名，先运行 am setup --only tts；不用本机模型时为空
+  TTS_MODEL      语音合成用的本机模型（目前只有 breeze）：客户端工具准备页下好的本地目录；
+                 还没下好时打印模型的仓库名，先在工具准备页安装配音；不用本机模型时为空
   ALIGN_PROVIDER 已知文本强制对齐：` +
         config.alignerIDs().split(' ').join(' | ') +
         `
                  auto 在 Apple Silicon 上解析为 mlx，其余平台为 funasr；
                  本命令打印的是解析后的具体工具，不会是 auto
-  ALIGN_MODEL    对齐工具用的模型：am setup 下好的本地目录；还没下好时打印模型的仓库名
-                 （此时工具会在第一次运行时自己去下，网络不好会失败，先运行 am setup --only align）
+  ALIGN_MODEL    对齐工具用的模型：客户端工具准备页下好的本地目录；还没下好时打印模型的仓库名
+                 （此时工具会在第一次运行时自己去下，网络不好会失败，先在工具准备页安装字幕）
 
 在当前工作目录解析配置，因此要在项目根运行。键名未知或解析出的值非法时退出码 1。`,
       example: `  # 捕获解析后的渲染工具

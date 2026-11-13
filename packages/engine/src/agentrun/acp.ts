@@ -6,7 +6,7 @@
  * 实测：请求里的 toolCall 带 rawInput.command；拒绝后 opencode 直接结束这一轮（stopReason cancelled），
  * 不像 claude 那样接着换做法。codebuddy 2.168 本机未登录，只实测到握手与建会话。
  */
-import { BasisTotalInput, newUsage } from '../tools';
+import { BasisTotalInput, type McpServer, newUsage } from '../tools';
 import { runInteractive, type DriveContext, type PermissionAnswer } from './interactive';
 import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, clip, type Event, type PlanItem } from './parse';
 import type { Outcome, Spec } from './run';
@@ -93,7 +93,9 @@ export class ACPTranslator {
         this.flush();
         const id = str(u.toolCallId);
         const raw = obj(u.rawInput);
-        const name = str(u.name) || (str(raw.command) !== '' || u.kind === 'execute' ? 'shell' : str(u.kind) || str(u.title) || 'tool');
+        // kind 只是粗分类（read、edit、execute……），MCP 调用一律是 other：那时标题才说明调的是哪个工具。
+        const kind = str(u.kind) === 'other' ? '' : str(u.kind);
+        const name = str(u.name) || (str(raw.command) !== '' || u.kind === 'execute' ? 'shell' : kind || str(u.title) || 'tool');
         this.tools.set(id, name);
         this.emit({ kind: KindToolCall, tool: name, call_id: id, input: u.rawInput ?? { title: str(u.title) } });
         this.toolDone(id, u);
@@ -219,13 +221,13 @@ async function driveACP(ctx: DriveContext): Promise<void> {
     if (!canLoad) throw new Error('这个编排工具不支持续接会话（ACP loadSession）');
     loading = true;
     try {
-      await race(peer.request('session/load', { sessionId: spec.sessionID, cwd, mcpServers: [] }));
+      await race(peer.request('session/load', { sessionId: spec.sessionID, cwd, mcpServers: acpMcpServers(spec.toolsServer) }));
     } finally {
       loading = false;
     }
     sessionID = spec.sessionID;
   } else {
-    const created = obj(await race(peer.request('session/new', { cwd, mcpServers: [] })));
+    const created = obj(await race(peer.request('session/new', { cwd, mcpServers: acpMcpServers(spec.toolsServer) })));
     sessionID = str(created.sessionId);
     if (sessionID === '') throw new Error('session/new 没有返回 sessionId');
     ctx.result.model = acpModel(created);
@@ -274,3 +276,9 @@ export function acpModel(created: Obj): string {
   return model ? str(model.currentValue) : '';
 }
 
+
+/** ACP 的 mcpServers：stdio 服务的 env 是 {name, value} 列表。 */
+function acpMcpServers(server: McpServer | undefined): Array<Record<string, unknown>> {
+  if (!server) return [];
+  return [{ name: server.name, command: server.command, args: server.args, env: Object.entries(server.env ?? {}).map(([name, value]) => ({ name, value })) }];
+}

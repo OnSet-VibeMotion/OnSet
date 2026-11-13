@@ -7,6 +7,7 @@ import readline from 'node:readline';
 import * as studioview from '@am/engine/studioview';
 import { currentEnvironment, rangeArgs } from './cli';
 import { Command, type Out, ref } from './cobra';
+import { type Profile, serveToolsMCP } from './toolsmcp';
 
 export function newStudioCommand(stdout: Out): Command {
   const cmd = new Command({
@@ -18,6 +19,7 @@ export function newStudioCommand(stdout: Out): Command {
   });
   cmd.addCommand(newStudioShowCommand(stdout));
   cmd.addCommand(newPermissionMCPCommand());
+  cmd.addCommand(newToolsMCPCommand());
   return cmd;
 }
 
@@ -43,7 +45,7 @@ function newStudioShowCommand(stdout: Out): Command {
       `给 Studio 里的编排工具用：把用户的网页切到要用户看的那一页，例如口播稿写好请用户审、
 某个镜头渲染完请用户看效果。--note 的一句话显示在对话里，说明为什么要看这一页。
 
-不在 Studio 的对话里运行（例如 am run、终端里手动执行）时什么都不做，退出码为 0。
+不在 Studio 的对话里运行（例如终端里手动执行）时什么都不做，退出码为 0。
 
 页面：
 ` + pages.join('\n'),
@@ -87,4 +89,33 @@ permissions/ 子目录，客户端在输入框上方弹卡片问用户，答复�
       await studioview.servePermissionMCP(rl, (line) => process.stdout.write(line), inbox, cmd.context());
     },
   });
+}
+
+/**
+ * 客户端给编排工具与渲染器挂的 am 工具服务（MCP，stdio），由它们按 MCP 配置自己启动，人不直接用。
+ * 应用里的 agent 只经它调用 am 的能力；am 不在它们的 PATH 里。
+ */
+function newToolsMCPCommand(): Command {
+  const profile = ref('orchestrator');
+  const workdir = ref('');
+  const cmd = new Command({
+    use: 'tools-mcp',
+    hidden: true,
+    short: '客户端内部用：am 的工具服务（MCP，stdio）',
+    long: `把 am 的每条命令做成一个 MCP 工具，给客户端里的编排工具（--profile orchestrator，全部工具）与
+镜头渲染器（--profile renderer，只有 hyperframes）用。每次调用起一个 am 子进程执行，最多等 wait_seconds，
+没跑完返回任务号，用 job_wait 接着等。stdin / stdout 是 MCP 的 JSON-RPC，每行一条。`,
+    example: `  # 客户端写进编排工具 MCP 配置里的就是这一条，由编排工具启动：
+  am studio tools-mcp --profile orchestrator --workdir /path/to/project`,
+    runE: async (c) => {
+      if (profile.value !== 'orchestrator' && profile.value !== 'renderer') throw new Error(`--profile 只认 orchestrator 或 renderer，收到 ${profile.value}`);
+      // 工作目录显式给：各家 agent 启动 MCP 服务时用哪个目录不一，相对路径（scenes/…）要对着项目或镜头目录解析。
+      if (workdir.value !== '') process.chdir(workdir.value);
+      const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+      await serveToolsMCP(rl, (line) => process.stdout.write(line), profile.value as Profile, undefined, c.context());
+    },
+  });
+  cmd.flags().stringVar(profile, 'profile', 'orchestrator', '工具档位：orchestrator（全部）或 renderer（只有 hyperframes）');
+  cmd.flags().stringVar(workdir, 'workdir', '', '工具在哪个目录里执行（编排工具是项目根，渲染器是镜头目录）');
+  return cmd;
 }

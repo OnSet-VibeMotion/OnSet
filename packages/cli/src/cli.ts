@@ -20,7 +20,6 @@ import { newCastCmd, newDialogueCmd } from './cast_cmd';
 import { newConcatCommand } from './media';
 import { newMemoryCommand } from './memory_cmd';
 import { newReviewCommand } from './review_cmd';
-import { newRunCommand } from './run_cmd';
 import { newSceneCommand } from './scene_cmd';
 import { newSongCmd } from './song_cmd';
 import { newUsageCommand } from './usage_cmd';
@@ -54,10 +53,8 @@ export const rootLong = `ArticleToMotion 竖屏 MG 视频制作工具。
 把定稿 SRT 拆成并发渲染的动画镜头，或从文章/口播稿走完 TTS、字幕、封面、
 声音与发布交付的全流程。渲染由外部 AI CLI 完成，am 负责契约、调度与校验。
 
-两种入口：
-  am run                          有定稿 transcription.srt 读 PROMPT.md，否则读 PROMPT-PRODUCTION.md
-  am run PROMPT-PRODUCTION.md     从文章或口播稿开始完整制作
-  am scene run / run-all          只跑镜头渲染，可脱离 am run 单独使用
+am 只随 ArticleToMotion 客户端使用：后台任务直接调用，编排工具与渲染器经
+am studio tools-mcp（MCP）调用，不对外提供命令行。
 
 配置解析优先级（高到低）：环境变量 > 项目 .env > article-to-motion.conf > 内置默认。
 用 am config get 读取解析结果，不要自己解析配置文件。
@@ -72,7 +69,7 @@ export const rootLong = `ArticleToMotion 竖屏 MG 视频制作工具。
   1    一般失败（参数、校验、配置、IO）
   127  缺少必需的外部命令
   130  被中断（SIGINT / 上下文取消）
-  其他 透传子进程退出码：am run 用编排工具的退出码，am scene run-all 用镜头汇总退出码
+  其他 透传子进程退出码：am scene run-all 用镜头汇总退出码
 
 所有错误写 stderr，正常输出写 stdout；失败时不打印 usage，只打印一行错误。`;
 
@@ -98,7 +95,7 @@ export function newRoot(stdout: Out, stderr: Out): { root: Command; flags: RootF
   root.addCommand(newInitCommand(stdout, stderr), newConfigCommand(stdout), newArchiveCommand(stdout), newAlignCommand(stdout), newAudioCommand(stdout), newStyleCommand(stdout), newStudioCommand(stdout));
   // validate、concat、review 在 Go 版里共用同一个 --project-root 变量。
   const projectRoot = ref('');
-  root.addCommand(newSceneCommand(stdout, stderr, unsafe), newRunCommand(stdout, stderr, unsafe), newUsageCommand(stdout));
+  root.addCommand(newSceneCommand(stdout, stderr, unsafe), newUsageCommand(stdout));
   root.addCommand(newValidateCommand(stdout, projectRoot), newConcatCommand(stdout, projectRoot), newReviewCommand(stdout, projectRoot));
   root.addCommand(newSongCmd(stdout), newBeatCommand(stdout), newCastCmd(stdout), newDialogueCmd(stdout));
   root.addCommand(newMemoryCommand(stdout, stderr, unsafe));

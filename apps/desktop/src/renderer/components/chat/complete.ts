@@ -36,7 +36,7 @@ export interface SlashCommand {
 export const slashCommands: SlashCommand[] = [
   { name: 'new', label: '开一个新对话' },
   { name: 'stop', label: '停止这一轮', whileRunning: true },
-  { name: 'start', label: '开始整片制作（与 am run 相同）' },
+  { name: 'start', label: '开始整片制作' },
   { name: 'script', label: '打开口播稿' },
   { name: 'show', label: '切到某一页', arg: 'page' },
   { name: 'confirm-script', label: '告诉编排工具：口播稿没问题，开始配音' },

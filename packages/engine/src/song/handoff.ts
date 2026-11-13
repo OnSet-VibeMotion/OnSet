@@ -37,7 +37,7 @@ export function loadHandoff(root: string): LoadedHandoff {
   try {
     h = readJSON<WebHandoff>(p, webHandoffSchema);
   } catch (err) {
-    throw new Error(`尚无网页交接，请先运行 am song handoff：${errText(err)}`, { cause: err });
+    throw new Error(`尚无网页交接，请先运行 song_handoff()：${errText(err)}`, { cause: err });
   }
   if (h.schema !== 1 || (h.state !== 'waiting_for_audio' && h.state !== 'imported')) throw new Error('网页交接状态无效');
   if ((h.state === 'imported' && !idPattern.test(h.candidate_id)) || (h.state === 'waiting_for_audio' && h.candidate_id !== '')) {
@@ -73,7 +73,7 @@ export function handoffWithRefresh(root: string, refresh: boolean, out: Writer):
     } catch (err) {
       throw new Error(goPathError('open', p, err), { cause: err });
     }
-    if (lyricLines(lyrics.toString('utf8')).length === 0) throw new Error(`请先根据文章写好歌词文件 ${c.lyrics}，再运行 am song handoff`);
+    if (lyricLines(lyrics.toString('utf8')).length === 0) throw new Error(`请先根据文章写好歌词文件 ${c.lyrics}，再运行 song_handoff()`);
     const style = Buffer.from(handoffStyle(c));
     let h: WebHandoff = { schema: 1, id: '', state: 'waiting_for_audio', lyrics_sha256: bytesHash(lyrics), style_sha256: bytesHash(style), candidate_id: '' };
     h.id = digest([h.lyrics_sha256, h.style_sha256]);
@@ -91,7 +91,7 @@ export function handoffWithRefresh(root: string, refresh: boolean, out: Writer):
       if (old.id === h.id) h = old;
       else if (old.state === 'waiting_for_audio' && !refresh) {
         throw new Error(
-          '仍在等待上一版歌词的音频；不能替换已交给用户的材料。确需重做时运行 am song handoff --refresh，并告知用户使用新版歌词重新生成',
+          '仍在等待上一版歌词的音频；不能替换已交给用户的材料。确需重做时运行 song_handoff({"refresh": true})，并告知用户使用新版歌词重新生成',
         );
       }
     }
@@ -119,7 +119,7 @@ export function handoffWithRefresh(root: string, refresh: boolean, out: Writer):
       out.write(`已收到候选 ${candidate.id}；请先核对用户试听选择，不重复索要或生成音频。\n`);
     } else {
       out.write(
-        '等待用户提供音频：请在所选网页的自定义歌词模式粘贴以上内容，生成并试听后下载 MP3/WAV。将文件上传到当前会话，或提供本机文件路径。若网页改了歌词，请同时提供最终歌词。\n此处暂停，不生成时间轴、不分镜、不渲染；收到文件后运行 am song receive AUDIO。CLI 已正常退出，不代表歌曲已生成。\n',
+        '等待用户提供音频：请在所选网页的自定义歌词模式粘贴以上内容，生成并试听后下载 MP3/WAV。将文件上传到当前会话，或提供本机文件路径。若网页改了歌词，请同时提供最终歌词。\n此处暂停，不生成时间轴、不分镜、不渲染；收到文件后运行 song_receive({"args": ["<音频文件>"]})。工具已正常结束，不代表歌曲已生成。\n',
       );
     }
   });

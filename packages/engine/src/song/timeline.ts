@@ -157,7 +157,7 @@ export function verifyCue(dir: string, c: Cue, duration: number): void {
   if (p !== path.join(root, Store, 'timeline.json')) throw new Error('song.timeline 必须引用 production/song/timeline.json');
   const t = loadTimeline(root);
   if (!t.reviewed) throw new Error('歌曲时间轴尚未人工复核');
-  if (hashFile(p) !== c.sha256) throw new Error('歌曲时间轴变化，请重新运行 am song cues');
+  if (hashFile(p) !== c.sha256) throw new Error('歌曲时间轴变化，请重新运行 song_cues()');
   const fps = c.fps;
   if (
     fps <= 0 ||

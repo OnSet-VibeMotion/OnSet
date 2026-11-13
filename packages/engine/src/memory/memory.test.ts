@@ -508,7 +508,7 @@ describe('memory', () => {
     const empty = store.preferenceBrief('demo', 0);
     // 空库也要告诉编排工具怎样记偏好。
     expect(empty.text).toContain('还没有记下任何偏好');
-    expect(empty.text).toContain('am memory remember');
+    expect(empty.text).toContain('memory_remember(');
     // 不在项目里又没加 --global 时应当报错。
     expect(() => store.remember({ body: '字幕用黄色' })).toThrow();
     const { memory: m, snapshot: snap } = store.remember({ name: 'yellow-captions', body: '字幕一律用黄色。底色深一些。', project: 'demo' });
@@ -693,7 +693,7 @@ describe('memory', () => {
     // 待确认的偏好要交给编排工具去问。
     expect(brief).toContain('待确认的偏好');
     expect(brief).toContain('【slow-pacing】');
-    expect(brief).toContain('am memory promote');
+    expect(brief).toContain('memory_promote(');
     store.promote('slow-pacing');
     brief = store.preferenceBrief('demo', 0).text;
     // 确认后转入生效偏好。

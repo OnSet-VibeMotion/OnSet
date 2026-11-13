@@ -1019,7 +1019,7 @@ export function verifySongInputs(s: Scene): void {
   }
   let dir = path.resolve(s.directory);
   for (;;) {
-    if (song.enabled(dir)) throw verification(s, '歌曲镜头缺少 song 块，请运行 am song cues');
+    if (song.enabled(dir)) throw verification(s, '歌曲镜头缺少 song 块，请运行 song_cues()');
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -1041,7 +1041,7 @@ export function verifyBeatInputs(s: Scene): void {
     } catch (err) {
       throw verification(s, (err as Error).message);
     }
-    if (s.beat.fps !== canvas.fps) throw verification(s, '卡点镜头帧率与画幅不符，请重新 am beat cues');
+    if (s.beat.fps !== canvas.fps) throw verification(s, '卡点镜头帧率与画幅不符，请重新 beat_cues()');
     try {
       beat.verifyCue(s.directory, s.id, s.beat, s.duration_seconds);
     } catch (err) {
@@ -1051,7 +1051,7 @@ export function verifyBeatInputs(s: Scene): void {
   }
   let dir = path.resolve(s.directory);
   for (;;) {
-    if (beat.enabled(dir)) throw verification(s, '卡点镜头缺少 beat 块，请运行 am beat cues');
+    if (beat.enabled(dir)) throw verification(s, '卡点镜头缺少 beat 块，请运行 beat_cues()');
     const parent = path.dirname(dir);
     if (parent === dir) return;
     dir = parent;

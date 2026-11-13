@@ -96,7 +96,7 @@ export async function filmStylePosterAPI(request: Request, rest: string): Promis
   try {
     file = source.poster(env, style.slug);
   } catch {
-    return writeError(404, 'poster_unavailable', '风格海报还没有准备好（am setup）');
+    return writeError(404, 'poster_unavailable', '风格海报还没有准备好：在工具准备页装「整片风格库」');
   }
   // 原图常是 1920×1080，菜单里一屏几十张会很卡：缩成 480 宽的缩略图，缓存在
   // <风格根目录>/.thumbs/<来源>/ 下，原图比缩略图新时重做。缩不了就退回原图。

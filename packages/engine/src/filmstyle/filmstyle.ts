@@ -187,7 +187,7 @@ export function lookup(name: string): Style {
   let message = `风格目录里没有 ${goQuote(name)}`;
   const candidates = suggest(name);
   if (candidates.length > 0) message += '，相近的有：' + labels(candidates);
-  throw new Error(`${message}。用 am film-style list 查看全部风格`);
+  throw new Error(`${message}。用 film_style_list() 查看全部风格`);
 }
 
 /** 覆盖全部风格来源数据的根目录。 */

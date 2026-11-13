@@ -7,9 +7,9 @@
 ## 适用范围与生效条件
 
 - 触发条件只有一个：项目根存在 `cast.yaml`。不存在则本附录不适用。
-- 出场角色必须先通过 `am cast add <外部角色包目录>` 或 `am cast new <id>` 登记进 `cast.yaml` 的 `packs` 列表，才能出现在对话体脚本和 `scene.json` 的 `cast` 块里。
-- `am init --narration cast` 建出的 `cast.yaml` 里 `packs` 是空列表——这是预期状态，不是错误。项目在第一次 `am cast add` / `am cast new` 之前本来就还没有可用角色，此时若强行渲染角色相关镜头会在角色装载阶段清楚报错，好过带着不存在的角色渲到一半才发现。
-- `am init --narration cast` 同时会建出空的 `cast/` 目录。Git 不跟踪空目录，`git status` 在第一次 `am cast add` / `am cast new` 之前不会显示它——这是正常现象，不代表目录没建成功；目录一旦被写入第一个角色包（即目录不再为空），Git 就会正常跟踪其内容。
+- 出场角色必须先通过 `cast_add({"args": ["<外部角色包目录>"]})` 或 `cast_new({"args": ["<id>"]})` 登记进 `cast.yaml` 的 `packs` 列表，才能出现在对话体脚本和 `scene.json` 的 `cast` 块里。
+- 选「多角色对话」新建的项目，`cast.yaml` 里 `packs` 是空列表——这是预期状态，不是错误。项目在第一次 `cast_add()` / `cast_new()` 之前本来就还没有可用角色，此时若强行渲染角色相关镜头会在角色装载阶段清楚报错，好过带着不存在的角色渲到一半才发现。
+- 这样新建的项目同时会有空的 `cast/` 目录。Git 不跟踪空目录，`git status` 在第一次 `cast_add()` / `cast_new()` 之前不会显示它——这是正常现象，不代表目录没建成功；目录一旦被写入第一个角色包（即目录不再为空），Git 就会正常跟踪其内容。
 
 ## 一、对话体脚本格式
 
@@ -27,7 +27,7 @@ zhaocai: 喵，这个我熟，说来听听。
 heiwa: 你先别急，我们从背景讲起。
 ```
 
-- 出现未登记的角色 id 是脚本错误，必须先 `am cast add` / `am cast new` 引入角色再继续，不得先写脚本再补角色。
+- 出现未登记的角色 id 是脚本错误，必须先 `cast_add()` / `cast_new()` 引入角色再继续，不得先写脚本再补角色。
 - 稿件审核关卡的检查项与单口播一致（预计朗读时长、开场全文、与原稿的主要变化、需要保护的专有名词和不可拆分短语），额外增加：各说话人的台词量是否严重失衡、每个角色的用词和语气是否符合人设。
 - 稿件未确认时，不进入正式分段 TTS。
 
@@ -45,7 +45,7 @@ heiwa: 你先别急，我们从背景讲起。
 TTS 服务提供方仍由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定，各路径的凭据、鉴权方式、密钥保管规则与 `PROMPT-PRODUCTION.md` 第三阶段完全一致，此处不重复；音色、语速试听确认，以及易误读词发音控制（`mmx` 的 `--pronunciation`、百炼 SSML `<phoneme>`，不支持自定义发音的路径改写送进 TTS 的文本）的要求也一致，只是作用范围从"整篇口播"缩小到"每一段"。
 
 - 每个说话人使用其 `cast/<id>/character.yaml` 里 `voice.<TTS_PROVIDER>.voiceId`（例如 `voice.minimax.voiceId`、`voice.edge.voiceId`，取决于当前 `TTS_PROVIDER`）对应的音色；同一说话人从头到尾使用同一个 voiceId，不得中途切换。
-- 逐段合成时依旧按第三阶段的方式取真实时间戳：MiniMax 用 `--subtitles` 直接产出，百炼走合成 + `bl speech recognize` 两步识别。这里拿到的时间戳是相对本段音频起点的段内时间，不是全局时间轴——全局时间轴由 `am dialogue assemble` 统一计算，不要在这一步手工换算或累加偏移。
+- 逐段合成时依旧按第三阶段的方式取真实时间戳：MiniMax 用 `--subtitles` 直接产出，百炼走合成 + `bl speech recognize` 两步识别。这里拿到的时间戳是相对本段音频起点的段内时间，不是全局时间轴——全局时间轴由 `dialogue_assemble()` 统一计算，不要在这一步手工换算或累加偏移。
 - 每段落盘为独立音频文件，建议命名 `production/audio/segments/<index>-<speaker>.wav`，`index` 从 0 开始，与后面 `plan.json` 里 `segments[].index` 一一对应。
 - 断句检查、发音控制覆盖范围的要求与单口播一致，只是逐段各自核对：产品名/模型名是否被拆开、数字和英文缩写是否读对、长句是否留出呼吸、段尾是否留出画面展示时间。
 
@@ -86,10 +86,10 @@ TTS 服务提供方仍由 `article-to-motion.conf`（或环境变量 `TTS_PROVID
 - `lines[].startSeconds` / `endSeconds` 是本段音频内部的相对时间（来自上一步的段内时间戳），不是全局时间。
 - `gapAfterMs` 是这一段结束到下一段开始之间要插入的静音时长，单位毫秒：常规轮换取 `cast.yaml` 的 `defaults.gap_ms.turn`，抢话/打断式的衔接取 `defaults.gap_ms.interject`。最后一段没有下一段，字段仍要填写，装配时会被忽略。
 
-## 五、调用 `am dialogue assemble`
+## 五、调用 `dialogue_assemble()`
 
 ```
-am dialogue assemble
+dialogue_assemble()
 ```
 
 - 默认读取 `production/audio/plan.json`，可用 `--plan` 指定别的路径。
@@ -114,25 +114,25 @@ am dialogue assemble
 }
 ```
 
-- `pack_dir` 是相对本镜头目录的路径，**不得指向镜头目录之外**（例如 `../../cast` 这种写法会被 `am validate cast` 与渲染前的镜头级校验一律拒绝：渲染只服务镜头目录内的文件，外部路径静默 404、角色不出现且不报错）；正确做法是把项目根 `cast/<id>/` 拷贝一份进本镜头目录（例如 `<镜头目录>/cast/<id>/`），`pack_dir` 填这份拷贝相对本镜头目录的路径（上例是 `cast`）。`on_stage` 列出本镜头台上的全部角色及初始站位（`x`，画面归一化比例）、初始姿势（`pose`）和朝向（`facing`）；`ground_y` 默认沿用 `cast.yaml` 的 `defaults.ground_y`，除非本镜头有特殊构图需要单独覆盖。
-- **不要手写 `beats`，一律执行 `am dialogue beats` 生成。** 上面的例子里没有 `beats` 字段，这是对的：把全部镜头的 `duration_seconds`、`pack_dir`、`ground_y`、`on_stage` 都填好之后，在项目根执行一次
+- `pack_dir` 是相对本镜头目录的路径，**不得指向镜头目录之外**（例如 `../../cast` 这种写法会被 `validate_cast()` 与渲染前的镜头级校验一律拒绝：渲染只服务镜头目录内的文件，外部路径静默 404、角色不出现且不报错）；正确做法是把项目根 `cast/<id>/` 拷贝一份进本镜头目录（例如 `<镜头目录>/cast/<id>/`），`pack_dir` 填这份拷贝相对本镜头目录的路径（上例是 `cast`）。`on_stage` 列出本镜头台上的全部角色及初始站位（`x`，画面归一化比例）、初始姿势（`pose`）和朝向（`facing`）；`ground_y` 默认沿用 `cast.yaml` 的 `defaults.ground_y`，除非本镜头有特殊构图需要单独覆盖。
+- **不要手写 `beats`，一律执行 `dialogue_beats()` 生成。** 上面的例子里没有 `beats` 字段，这是对的：把全部镜头的 `duration_seconds`、`pack_dir`、`ground_y`、`on_stage` 都填好之后，在项目根执行一次
 
   ```bash
-  am dialogue beats
+  dialogue_beats()
   ```
 
   它读 `production/dialogue.json` 与全部 `scenes/*/scene.json`，按镜头顺序累加时长得到每个镜头的全局起点，把每一行台词切进对应镜头并减去该镜头起点，写回各镜头的 `cast.beats`。**这个减法不给你做**：算错了不会报错，成片画面正常，只是角色在不该说话的时候动嘴。**没有执行过这条命令不得开始渲染。**
-- 改过任何镜头的 `duration_seconds`、增删过镜头、或重跑过 `am dialogue assemble` 之后，**都要重新执行一次 `am dialogue beats`**。命令是幂等的，重复执行结果一致，内容没变的文件不会被重新落盘。**既有的 `beats` 一律被忽略并整体重写**——它是这条命令的输出，不是它的输入，所以「把某镜头时长改小、旧节拍越界」这种中间状态不需要你先手工清理，直接重跑即可（这期间 `scene.json` 确实是不合法的，`am validate cast` 与渲染都会拒绝，重跑一次就恢复）。
-- 命令会替你处理这些情况，不需要自己判断：一句台词横跨镜头切点时按切点拆成多拍分别落进各自镜头（换算回全局时间后首尾相接，`am validate cast` 认得出这是完整的一行，不需要把台词本身拆开）；有 `cast` 块但整段没人说话的镜头写出空数组 `"beats": []`；`beats` 按 `start` 递增排列、互不重叠；`pack_dir` / `ground_y` / `on_stage` 与 `cast` 块之外的一切字段原样保留。
+- 改过任何镜头的 `duration_seconds`、增删过镜头、或重跑过 `dialogue_assemble()` 之后，**都要重新执行一次 `dialogue_beats()`**。命令是幂等的，重复执行结果一致，内容没变的文件不会被重新落盘。**既有的 `beats` 一律被忽略并整体重写**——它是这条命令的输出，不是它的输入，所以「把某镜头时长改小、旧节拍越界」这种中间状态不需要你先手工清理，直接重跑即可（这期间 `scene.json` 确实是不合法的，`validate_cast()` 与渲染都会拒绝，重跑一次就恢复）。
+- 命令会替你处理这些情况，不需要自己判断：一句台词横跨镜头切点时按切点拆成多拍分别落进各自镜头（换算回全局时间后首尾相接，`validate_cast()` 认得出这是完整的一行，不需要把台词本身拆开）；有 `cast` 块但整段没人说话的镜头写出空数组 `"beats": []`；`beats` 按 `start` 递增排列、互不重叠；`pack_dir` / `ground_y` / `on_stage` 与 `cast` 块之外的一切字段原样保留。
 - 命令报错的两种情况都要你去改镜头，别绕过去：**某个镜头有台词盖过却没写 `cast` 块**——补上 `cast` 块（`beats` 不用写）再重跑，命令不会替你决定角色站位；**某一行台词落在所有镜头覆盖的时间范围之外**——那是镜头 `duration_seconds` 之和与配音对不上，先对齐镜头时长再重跑。任一检查不通过，命令一个文件都不会写。
 - **一条 beat 的含义是「这段时间这个人在说话」，不蕴含「他出现在画面里」。** `speaker` 不必出现在 `on_stage` 里：不在台上就是画外音，渲染提示词会把这几拍明确标成「（画外音）」并要求渲染 agent 不得把这个角色画进画面。画外音说话人的台词同样会被写进 `beats`，不会因为他不在台上就被跳过。`speaker` 唯一的硬性要求是能在本镜头 `pack_dir` 下找到对应角色包（与 `on_stage` 角色同一条校验路径），否则拼错的名字会一路滑到渲染。
-- **有台词盖过、但没有角色出场的镜头（纯转场、纯 B-roll、纯图表）照样要写 `cast` 块**：`on_stage` 填空列表 `[]`，说话人不在台上即画外音；`pack_dir` 仍要指向本镜头目录内的角色包副本，画外音说话人那一份也要拷进来（校验按它确认说话人 id 没拼错）；`ground_y` 照常填（台上没人时它不进渲染提示词，但仍是必填字段，省掉会报 `cast.ground_y 必须在 (0,1) 区间内，收到 0`）。不写 `cast` 块会让 `am dialogue beats` 直接报错点名这个镜头；而为了糊弄校验把角色摆进 `on_stage`，渲染提示词就会声明「本镜头有角色出场」，角色被画到图表镜头上——两种都是错的。
-- 整个时间段里一句台词都没有的镜头（例如纯音乐转场）不写 `cast` 块，与老镜头完全一样；`am dialogue beats` 不会碰这类镜头的 `scene.json`。
-- 拆完全部镜头、跑完 `am dialogue beats` 之后执行 `am validate cast`：它校验班底与角色包是否自洽、每个角色是否声明了当前 `TTS_PROVIDER` 的音色、`production/dialogue.json` 是否完整覆盖字幕、以及全部镜头的 `cast.beats` 换算回全局时间后是否合并覆盖了 `dialogue.json` 的每一行——不通过不得开始渲染。
+- **有台词盖过、但没有角色出场的镜头（纯转场、纯 B-roll、纯图表）照样要写 `cast` 块**：`on_stage` 填空列表 `[]`，说话人不在台上即画外音；`pack_dir` 仍要指向本镜头目录内的角色包副本，画外音说话人那一份也要拷进来（校验按它确认说话人 id 没拼错）；`ground_y` 照常填（台上没人时它不进渲染提示词，但仍是必填字段，省掉会报 `cast.ground_y 必须在 (0,1) 区间内，收到 0`）。不写 `cast` 块会让 `dialogue_beats()` 直接报错点名这个镜头；而为了糊弄校验把角色摆进 `on_stage`，渲染提示词就会声明「本镜头有角色出场」，角色被画到图表镜头上——两种都是错的。
+- 整个时间段里一句台词都没有的镜头（例如纯音乐转场）不写 `cast` 块，与老镜头完全一样；`dialogue_beats()` 不会碰这类镜头的 `scene.json`。
+- 拆完全部镜头、跑完 `dialogue_beats()` 之后执行 `validate_cast()`：它校验班底与角色包是否自洽、每个角色是否声明了当前 `TTS_PROVIDER` 的音色、`production/dialogue.json` 是否完整覆盖字幕、以及全部镜头的 `cast.beats` 换算回全局时间后是否合并覆盖了 `dialogue.json` 的每一行——不通过不得开始渲染。
 
 ## 七、角色包的引入
 
-- 角色包通过 `am cast add <外部角色包目录>` 引入一个已存在的角色，或 `am cast new <id>` 现场生成一个新角色骨架（`character.yaml` + `rig.svg` + `dna.md`）后手工补全真实 `voiceId`、外观与人设。两条命令都会自动把角色登记进项目根 `cast.yaml` 的 `packs` 列表，不需要手工编辑 `cast.yaml`。
+- 角色包通过 `cast_add({"args": ["<外部角色包目录>"]})` 引入一个已存在的角色，或 `cast_new({"args": ["<id>"]})` 现场生成一个新角色骨架（`character.yaml` + `rig.svg` + `dna.md`）后手工补全真实 `voiceId`、外观与人设。两条命令都会自动把角色登记进项目根 `cast.yaml` 的 `packs` 列表，不需要手工编辑 `cast.yaml`。
 - 登记是幂等的：重复引入同一路径不会在 `packs` 里留下重复项，`cast.yaml` 已有的 `defaults` 也原样保留。
-- 写对话体脚本之前，先确认脚本里会用到的每一个说话人 id 都已经登记；未登记的说话人既过不了 `am cast validate`，也过不了渲染前的镜头级校验。
-- 手改 `cast/<id>/character.yaml` 之后要重新跑一次 `am cast validate` 才会同步 `character.json`；渲染机实际读取的是 `character.json`，不会因为 yaml 改过就自动感知。
+- 写对话体脚本之前，先确认脚本里会用到的每一个说话人 id 都已经登记；未登记的说话人既过不了 `cast_validate()`，也过不了渲染前的镜头级校验。
+- 手改 `cast/<id>/character.yaml` 之后要重新跑一次 `cast_validate()` 才会同步 `character.json`；渲染机实际读取的是 `character.json`，不会因为 yaml 改过就自动感知。

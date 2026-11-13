@@ -20,10 +20,62 @@ export const ValidTools: ReadonlySet<string> = new Set(['codex', 'claude', 'qode
  * `npx hyperframes render` / `snapshot`，镜头直接渲染失败。
  */
 export interface RendererAccess {
-  /** 放行的命令前缀，例如 "am hyperframes"。 */
+  /** 放行的命令前缀，例如 "ls"。 */
   commands?: string[];
   /** 镜头目录之外需要读取的目录（技能树），绝对路径。 */
   readDirs?: string[];
+  /** am 的工具服务（--profile renderer）：渲染器只经它调用 HyperFrames，不在 Bash 里跑 am。 */
+  toolsServer?: McpServer;
+}
+
+/**
+ * 一个 stdio MCP 服务。客户端里的编排工具与渲染器经 am 的工具服务（am studio tools-mcp）调用 am 的能力，
+ * am 不在它们的 PATH 里：以前它们会 which am、strings am 反推格式，每次都撞白名单打断用户。
+ */
+export interface McpServer {
+  /** 配置里的服务名；claude 系的工具全名是 mcp__<名字>__<工具>。 */
+  name: string;
+  command: string;
+  args: string[];
+  /** 服务要的环境变量（am 的设置、收件目录等）。各家把多少环境传给 MCP 服务不一，显式给最稳。 */
+  env?: Record<string, string>;
+}
+
+/** am 工具服务在配置里的名字。 */
+export const ToolsServerName = 'am';
+
+/**
+ * am 的工具服务：executable 是 am 的启动脚本（客户端的私有 shim，或终端里的 am），workdir 是工具执行的目录。
+ * env 只挑 am 自己要的变量：整个子进程环境写进 MCP 配置会出现在命令行里，不安全模式下里面还有凭据。
+ */
+export function amToolsServer(executable: string, profile: 'orchestrator' | 'renderer', workdir: string, env: Record<string, string | undefined> = {}): McpServer {
+  const picked: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined) continue;
+    if (/^(AM_|HYPERFRAMES_|MEMORY|ORCHESTRATOR$|RENDERER$|TTS_|ALIGN_|SCENE_JOBS$|PATH$|HOME$|USER$|LANG$|TMPDIR$|XDG_DATA_HOME$)/.test(key)) picked[key] = value;
+  }
+  return { name: ToolsServerName, command: executable, args: ['studio', 'tools-mcp', '--profile', profile, '--workdir', workdir], env: picked };
+}
+
+/** claude / qoder / codebuddy 的 --mcp-config：几个服务合在一份 JSON 里。 */
+function mcpConfigJSON(servers: McpServer[]): string {
+  const mcpServers: Record<string, unknown> = {};
+  for (const s of servers) mcpServers[s.name] = { command: s.command, args: s.args, ...(s.env && Object.keys(s.env).length > 0 ? { env: s.env } : {}) };
+  return JSON.stringify({ mcpServers });
+}
+
+/** codex 的 -c 覆盖项（TOML 值）：mcp_servers.<名字>.command / args / env。 */
+export function codexMcpOverrides(server: McpServer): string[] {
+  const toml = (v: string) => JSON.stringify(v);
+  const out = ['-c', `mcp_servers.${server.name}.command=${toml(server.command)}`, '-c', `mcp_servers.${server.name}.args=[${server.args.map(toml).join(',')}]`];
+  const env = server.env ?? {};
+  if (Object.keys(env).length > 0) out.push('-c', `mcp_servers.${server.name}.env={${Object.entries(env).map(([k, v]) => `${k}=${toml(v)}`).join(',')}}`);
+  return out;
+}
+
+/** opencode 的 mcp 配置项（OPENCODE_CONFIG_CONTENT 里）。 */
+export function opencodeMcpConfig(server: McpServer): Record<string, unknown> {
+  return { [server.name]: { type: 'local', command: [server.command, ...server.args], enabled: true, ...(server.env ? { environment: server.env } : {}) } };
 }
 
 /**
@@ -31,9 +83,11 @@ export interface RendererAccess {
  * .env 的读取禁令与执行契约一致：渲染器不得读取或打印凭据。
  * Go 里是 map[string]any，json.Marshal 按键排序，这里照那个顺序写。
  */
-function claudeSettings(a: RendererAccess): string {
+function claudeSettings(a: RendererAccess & { mcp?: string[] }): string {
   const allow: string[] = [];
   for (const command of a.commands ?? []) allow.push('Bash(' + command + ':*)');
+  // 整个服务放行：mcp__<名字> 匹配它的全部工具。
+  for (const server of a.mcp ?? []) allow.push('mcp__' + server);
   for (const dir of a.readDirs ?? []) {
     // claude 的路径规则里，绝对路径要写成 // 开头。
     allow.push('Read(/' + dir + '/**)');
@@ -43,39 +97,68 @@ function claudeSettings(a: RendererAccess): string {
     permissions: {
       additionalDirectories: dirs,
       allow,
-      deny: ['Read(**/.env)', 'Read(**/.env.*)'],
+      // am 只经工具服务调用；它不在 PATH 里，这里再明确拒绝一次，免得弹审批卡片。
+      deny: ['Bash(am:*)', 'Read(**/.env)', 'Read(**/.env.*)'],
     },
   });
 }
 
 export function rendererInvocation(tool: string, prompt: string, unsafe: boolean, access: RendererAccess): string[] {
+  const server = access.toolsServer;
   switch (tool) {
-    case 'codex':
-      if (unsafe) return ['codex', 'exec', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '--json', prompt];
-      return ['codex', '--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', prompt];
+    case 'codex': {
+      const mcp = server ? codexMcpOverrides(server) : [];
+      if (unsafe) return ['codex', 'exec', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', ...mcp, '--json', prompt];
+      return ['codex', '--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...mcp, '--json', prompt];
+    }
     case 'claude': {
       let mode = ['--dangerously-skip-permissions'];
-      if (!unsafe) mode = ['--permission-mode', 'acceptEdits', '--settings', claudeSettings(access)];
-      return ['claude', '-p', ...mode, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', prompt];
+      if (!unsafe) mode = ['--permission-mode', 'acceptEdits', '--settings', claudeSettings({ ...access, mcp: server ? [server.name] : [] })];
+      // --mcp-config 吃多个值，后面必须紧跟一个选项（这里是 --verbose），不然会把提示词吞掉。
+      const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
+      return ['claude', '-p', ...mode, ...mcp, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', prompt];
     }
     case 'qoder': {
       let mode = ['--permission-mode', 'dont_ask'];
       if (unsafe) mode = ['--dangerously-skip-permissions'];
-      return ['qoderclicn', '-p', prompt, ...mode, '--output-format', 'stream-json'];
+      const mcp = server ? ['--mcp-config', mcpConfigJSON([server]), ...(unsafe ? [] : ['--allowed-tools', 'mcp__' + server.name])] : [];
+      return ['qoderclicn', '-p', prompt, ...mode, ...mcp, '--output-format', 'stream-json'];
     }
     case 'codebuddy': {
       let mode = ['--permission-mode', 'acceptEdits'];
+      if (!unsafe && server) mode.push('--settings', claudeSettings({ ...access, commands: [], readDirs: access.readDirs, mcp: [server.name] }));
       if (unsafe) mode = ['-y'];
-      return ['codebuddy', '-p', '--verbose', '--output-format', 'stream-json', ...mode, prompt];
+      const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
+      return ['codebuddy', '-p', ...mcp, '--verbose', '--output-format', 'stream-json', ...mode, prompt];
     }
     case 'opencode': {
-      const args = ['opencode', 'run'];
+      // --standalone：opencode run 默认连到后台常驻的服务，配置（包括 OPENCODE_CONFIG_CONTENT 里的 MCP 与模型）
+      // 取的是那个服务启动时的，这一次给的全被忽略（2.1.0 实测）。私有服务才读这一次的环境。
+      const args = ['opencode', 'run', '--standalone'];
       if (unsafe) args.push('--auto');
       return [...args, '--format', 'json', prompt];
     }
     default:
       throw new Error(`未知工具：${tool}`);
   }
+}
+
+/** opencode 渲染器的工具服务经环境变量 OPENCODE_CONFIG_CONTENT 给（opencode run 没有 MCP 参数），合并用户自己的这个变量。 */
+export function rendererEnv(tool: string, access: RendererAccess, env: Record<string, string | undefined>): Record<string, string> {
+  if (tool !== 'opencode' || !access.toolsServer) return {};
+  const own = parseConfig(env.OPENCODE_CONFIG_CONTENT);
+  const mcp = own.mcp && typeof own.mcp === 'object' ? (own.mcp as Record<string, unknown>) : {};
+  return { OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...own, mcp: { ...mcp, ...opencodeMcpConfig(access.toolsServer) } }) };
+}
+
+function parseConfig(text: string | undefined): Record<string, unknown> {
+  try {
+    const value = JSON.parse(text ?? '{}');
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+  } catch {
+    // 用户自己的配置不是 JSON：不合并。
+  }
+  return {};
 }
 
 /**
@@ -115,6 +198,8 @@ export interface OrchestratorOptions {
    * claude 与 qoder 支持（qoder 的帮助里没列，实测可用），其他工具忽略它。
    */
   permissionPrompt?: PermissionPrompt;
+  /** am 的工具服务（--profile orchestrator）：客户端里给，编排工具只经它调用 am。 */
+  toolsServer?: McpServer;
 }
 
 /** 审批服务的启动命令（MCP stdio）与工具名。 */
@@ -129,9 +214,14 @@ export interface PermissionPrompt {
  * 让工具把需要批准的调用交给审批服务（MCP）去问：claude 与 qoder 同一套参数。
  * --mcp-config 吃多个值，后面紧跟 --permission-prompt-tool 这个选项，才不会把提示词也吞进去。
  */
-function permissionPromptArgs(p: PermissionPrompt): string[] {
-  const mcp = { mcpServers: { [p.server]: { command: p.command, args: p.args } } };
-  return ['--mcp-config', JSON.stringify(mcp), '--permission-prompt-tool', 'mcp__' + p.server + '__ask'];
+function mcpArgs(p: PermissionPrompt | undefined, tools: McpServer | undefined): string[] {
+  const servers: McpServer[] = [];
+  if (p) servers.push({ name: p.server, command: p.command, args: p.args });
+  if (tools) servers.push(tools);
+  if (servers.length === 0) return [];
+  const out = ['--mcp-config', mcpConfigJSON(servers)];
+  if (p) out.push('--permission-prompt-tool', 'mcp__' + p.server + '__ask');
+  return out;
 }
 
 /** 双向协议的调用：ACP（opencode、codebuddy）或 codex app-server。 */
@@ -153,13 +243,13 @@ export interface InteractiveInvocation {
  *   用 2.1.0 实测会来问）；白名单由 agentrun 在收到请求时先过一遍，不写进 opencode 的规则。
  * - codex app-server：审批策略与沙箱在 thread/start 里给，见 agentrun/codexapp.ts。
  */
-export function interactiveInvocation(tool: string, o: Pick<OrchestratorOptions, 'unsafe' | 'access'>, env: Record<string, string | undefined> = {}): InteractiveInvocation | null {
+export function interactiveInvocation(tool: string, o: Pick<OrchestratorOptions, 'unsafe' | 'access' | 'toolsServer'>, env: Record<string, string | undefined> = {}): InteractiveInvocation | null {
   if (o.unsafe) return null;
   switch (tool) {
     case 'codebuddy':
       return {
         protocol: 'acp',
-        argv: ['codebuddy', '--acp', '--permission-mode', 'acceptEdits', '--settings', claudeSettings({ commands: o.access?.commands })],
+        argv: ['codebuddy', '--acp', '--permission-mode', 'acceptEdits', '--settings', claudeSettings({ commands: o.access?.commands, mcp: o.toolsServer ? [o.toolsServer.name] : [] })],
         env: {},
       };
     case 'opencode': {
@@ -191,6 +281,8 @@ export interface Invocation {
   argv: string[];
   /** 要写进 stdin 的内容；空串表示不写。 */
   stdin: string;
+  /** 要加进子进程环境的变量（opencode 的工具服务经 OPENCODE_CONFIG_CONTENT 给）。 */
+  env?: Record<string, string>;
 }
 
 function isDir(dir: string): boolean {
@@ -207,7 +299,7 @@ function isDir(dir: string): boolean {
  * 所有工具都输出结构化流（stream-json / JSONL），由 agentrun 解析。
  * 调用方负责把进程的工作目录设为 o.workdir：opencode 2.x 的 run 已经没有 --dir。
  */
-export function orchestratorInvocation(tool: string, o: OrchestratorOptions): Invocation {
+export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env: Record<string, string | undefined> = {}): Invocation {
   const sessionID = o.sessionID ?? '';
   const workdir = o.workdir ?? '';
   const access = o.access ?? {};
@@ -220,7 +312,7 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions): In
   };
   switch (tool) {
     case 'codex': {
-      const args = ['codex'];
+      const args = ['codex', ...(o.toolsServer ? codexMcpOverrides(o.toolsServer) : [])];
       if (o.unsafe) {
         args.push('exec', '--skip-git-repo-check', '--cd', workdir, '--dangerously-bypass-approvals-and-sandbox');
       } else {
@@ -238,14 +330,13 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions): In
     }
     case 'claude':
     case 'codebuddy': {
-      const args = [tool, '-p', '--verbose', '--output-format', 'stream-json'];
+      const permission = !o.unsafe && tool === 'claude' ? o.permissionPrompt : undefined;
+      // --mcp-config 吃多个值，后面必须紧跟一个选项，不然会把提示词吞掉：放在 --verbose 前面。
+      const args = [tool, '-p', ...mcpArgs(permission, o.toolsServer), ...(permission ? ['--permission-prompts', 'host'] : []), '--verbose', '--output-format', 'stream-json'];
       if (tool === 'claude') args.push('--prompt-suggestions', 'false');
       if (o.unsafe && tool === 'claude') args.push('--dangerously-skip-permissions');
       else if (o.unsafe) args.push('-y');
-      else args.push('--permission-mode', 'acceptEdits', '--settings', claudeSettings({ commands: access.commands }));
-      if (!o.unsafe && tool === 'claude' && o.permissionPrompt) {
-        args.push(...permissionPromptArgs(o.permissionPrompt), '--permission-prompts', 'host');
-      }
+      else args.push('--permission-mode', 'acceptEdits', '--settings', claudeSettings({ commands: access.commands, mcp: o.toolsServer ? [o.toolsServer.name] : [] }));
       args.push(...claudeSession());
       args.push(o.prompt);
       return { argv: args, stdin: '' };
@@ -257,7 +348,8 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions): In
       } else {
         args.push('--permission-mode', 'accept_edits');
         for (const command of access.commands ?? []) args.push('--allowed-tools', 'Bash(' + command + ':*)');
-        if (o.permissionPrompt) args.push(...permissionPromptArgs(o.permissionPrompt));
+        if (o.toolsServer) args.push('--allowed-tools', 'mcp__' + o.toolsServer.name);
+        args.push(...mcpArgs(o.permissionPrompt, o.toolsServer));
       }
       if (o.resume) args.push('-r', sessionID);
       else if (sessionID !== '') args.push('--session-id', sessionID);
@@ -266,11 +358,12 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions): In
     case 'opencode': {
       // opencode 只认项目目录里的 opencode.json，规则集写法实测拦不住命令，
       // 全拒时无头运行直接挂起；安全模式下因此不加限制，见 README。
-      const args = ['opencode', 'run', '--format', 'json'];
+      // --standalone 的理由同渲染器：不然工具服务的配置被后台常驻服务忽略。
+      const args = ['opencode', 'run', '--standalone', '--format', 'json'];
       if (o.unsafe) args.push('--auto');
       if (o.resume) args.push('-s', sessionID);
       args.push(o.prompt);
-      return { argv: args, stdin: '' };
+      return { argv: args, stdin: '', env: rendererEnv('opencode', { toolsServer: o.toolsServer }, env) };
     }
     default:
       throw new Error(`未知工具：${tool}`);

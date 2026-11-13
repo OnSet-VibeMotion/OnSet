@@ -86,7 +86,7 @@ describe('style fonts / add-font', () => {
     const root = projectDir();
     let { code, out } = await exec(['style', 'add-font', 'Comic Sans', '--project-root', root]);
     expect(code, out).not.toBe(0);
-    expect(out, '未知字体应失败并指向 am style fonts').toContain('am style fonts');
+    expect(out, '未知字体应失败并指向 style_fonts').toContain('style_fonts()');
     ({ code, out } = await exec(['style', 'add-font', 'Fredoka', '--weight', '900', '--project-root', root]));
     expect(code, `字体池里没有的字重应失败：${out}`).not.toBe(0);
     const dir = path.join(root, 'assets', 'fonts');

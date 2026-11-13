@@ -132,7 +132,7 @@ const quickActions: { label: string; needsOutput?: boolean; text: (id: string) =
   {
     label: '重做这个镜头',
     text: (id) =>
-      `重做镜头 ${id}：保留文案、时长和与相邻镜头的交接约定，换一个更贴合文案的视觉方案。改好这个镜头的 prompt.md 后用 am scene run 重渲染它，渲染完用几句话说明新方案。`,
+      `重做镜头 ${id}：保留文案、时长和与相邻镜头的交接约定，换一个更贴合文案的视觉方案。改好这个镜头的 prompt.md 后用 scene_run 工具重渲染它，渲染完用几句话说明新方案。`,
   },
   {
     label: '节奏放慢',
@@ -1259,7 +1259,8 @@ function tokenLabel(u: Usage): string {
   return parts.join(' · ');
 }
 
-const usageSources: Record<string, string> = { run: 'am run', studio: 'Studio 对话', consolidate: '整理记忆' };
+// run 是早先命令行 am run 记下的账，命令行不对外后不再产生，旧账照样显示。
+const usageSources: Record<string, string> = { run: '命令行（旧）', studio: 'Studio 对话', consolidate: '整理记忆' };
 
 function projectUsageTitle(u: ProjectUsage): string {
   const lines = [`渲染：${u.attempts} 次尝试 · ${tokenLabel(u.renders)}`, `编排：${u.orchestrator.calls} 次调用 · ${tokenLabel(u.orchestrator.total)}`];

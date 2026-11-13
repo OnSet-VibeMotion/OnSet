@@ -1,12 +1,12 @@
-import { app, BrowserWindow, dialog } from 'electron';
+import { app } from 'electron';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 /**
- * am 命令行。客户端自带 Node（Electron 以 ELECTRON_RUN_AS_NODE=1 运行即是 Node），所以命令行是打包进资源目录的
- * 一个 JS 文件（resources/cli/am.cjs），由一段 shim 脚本调起。编排工具在提示词里调用的 am 就是这个 shim：
- * AM_SELF 指向它，am 据此把自己所在目录放进子进程的 PATH、写进 AM_EXECUTABLE。
+ * am 程序。客户端自带 Node（Electron 以 ELECTRON_RUN_AS_NODE=1 运行即是 Node），所以 am 是打包进资源目录的
+ * 一个 JS 文件（resources/cli/am.cjs），由一段 shim 脚本调起。命令行不对外提供：这份 shim 只给客户端自己用——
+ * 后台任务直接调它，编排工具与渲染器经它启动的工具服务（am studio tools-mcp）调用 am，am 不在它们的 PATH 里。
+ * AM_SELF 指向它，am 起子进程时据此找到自己。
  */
 
 /** 资源目录：打包后是 .app/Contents/Resources，开发时是仓库根。 */
@@ -46,7 +46,7 @@ export function shimScript(): string {
   const npmVar = npm === '' ? '' : ` AM_NPM_CLI=${q(npm)}`;
   return [
     '#!/bin/sh',
-    '# 由 ArticleToMotion 客户端写出：用客户端自带的运行时执行 am 命令行。重装客户端后在菜单里重新安装即可。',
+    '# 由 ArticleToMotion 客户端写出：用客户端自带的运行时执行 am，只供客户端内部使用。',
     `ELECTRON_RUN_AS_NODE=1 AM_ASSETS_DIR=${q(assetsDir())} AM_BROWSER=${q(browserPath())}${npmVar} AM_SELF="$0" exec ${q(process.execPath)} ${q(cliEntry())} "$@"`,
     '',
   ].join('\n');
@@ -92,36 +92,3 @@ export function writeScript(file: string, body: string): void {
   fs.renameSync(file + '.tmp', file);
 }
 
-export const shimPath = path.join(os.homedir(), '.local', 'bin', 'am');
-
-/** 菜单「安装命令行工具…」：写 ~/.local/bin/am。已有不是本应用写的 am 时先确认，不静默覆盖。 */
-export async function installCLIShim(): Promise<void> {
-  const win = BrowserWindow.getFocusedWindow() ?? undefined;
-  const body = shimScript();
-  let existing = '';
-  try {
-    existing = fs.readFileSync(shimPath, 'utf8');
-  } catch {
-    existing = '';
-  }
-  if (existing === body) {
-    await dialog.showMessageBox({ ...(win ? {} : {}), type: 'info', message: '命令行工具已安装', detail: shimPath });
-    return;
-  }
-  if (existing !== '' && !existing.includes('由 ArticleToMotion 客户端写出')) {
-    const { response } = await dialog.showMessageBox({
-      type: 'warning',
-      buttons: ['替换', '取消'],
-      defaultId: 1,
-      cancelId: 1,
-      message: `${shimPath} 已经有一个 am`,
-      detail: '多半是之前装的 Go 版 am。替换后，终端里与编排工具调用的 am 都会换成客户端自带的这一版。',
-    });
-    if (response !== 0) return;
-  }
-  fs.mkdirSync(path.dirname(shimPath), { recursive: true });
-  const tmp = shimPath + '.tmp';
-  fs.writeFileSync(tmp, body, { mode: 0o755 });
-  fs.renameSync(tmp, shimPath);
-  await dialog.showMessageBox({ type: 'info', message: '命令行工具已安装', detail: `${shimPath}\n确认 ~/.local/bin 在终端的 PATH 里。` });
-}

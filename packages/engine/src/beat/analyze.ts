@@ -71,7 +71,7 @@ export async function analyze(root: string, env: Record<string, string>, media: 
   try {
     track = loadTrack(root);
   } catch (err) {
-    throw wrapError(`先用 am beat import 导入音乐：${(err as Error).message}`, err);
+    throw wrapError(`先用 beat_import() 导入音乐：${(err as Error).message}`, err);
   }
   const music = trackAudioPath(track, root);
   const wav = localPath(root, AnalysisFile);
@@ -150,7 +150,7 @@ async function runPython(config: Config, env: Record<string, string>, args: stri
     child.on('close', (status) => settle({ ok: status === 0, stderr: Buffer.concat(chunks).toString('utf8') }));
   });
   if (!ok) {
-    const hint = config.python === '' ? `共享环境可能损坏，删掉 ${envDir(env)} 后重新运行 am setup --only beat` : `确认 ${config.python} 装有 beat-this==${AnalyzerVersion}`;
+    const hint = config.python === '' ? `共享环境可能损坏，删掉 ${envDir(env)} 后在工具准备页重新安装「音乐卡点」` : `确认 ${config.python} 装有 beat-this==${AnalyzerVersion}`;
     throw new Error(`节拍分析失败：${lastLine(stderr)}；${hint}`);
   }
 }
@@ -166,7 +166,7 @@ export function pythonFor(config: Config, env: Record<string, string>): string {
     fs.accessSync(binary, fs.constants.X_OK);
     return binary;
   } catch {
-    throw new Error(`找不到 ${ConfigFile} 指定的 Python（${config.python}）：改成存在的路径，或删掉 python 这一行改用 am setup 装好的共享环境`);
+    throw new Error(`找不到 ${ConfigFile} 指定的 Python（${config.python}）：改成存在的路径，或删掉 python 这一行改用客户端装好的共享环境`);
   }
 }
 

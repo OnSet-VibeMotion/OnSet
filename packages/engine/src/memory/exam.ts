@@ -421,7 +421,7 @@ export async function exam(s: Store, opts: ExamOptions): Promise<ExamResult> {
       if (trialNames.length > 0 && !trialNames.includes(m.name)) continue;
       if (!examinableLesson(m)) {
         if (trialNames.length > 0) {
-          throw new Error(`${m.name} 只由整片检查（${(m.checked_by ?? []).join('、')}）判定，单镜头回放考不了；确认有效后用 am memory promote 生效`);
+          throw new Error(`${m.name} 只由整片检查（${(m.checked_by ?? []).join('、')}）判定，单镜头回放考不了；确认有效后用 memory_promote() 生效`);
         }
         continue;
       }
@@ -432,7 +432,7 @@ export async function exam(s: Store, opts: ExamOptions): Promise<ExamResult> {
     if (!trials.some((m) => m.name === name)) throw new Error(`${name} 不是试用中的经验（偏好不参加考试，由人工确认）`);
   }
   if (trials.length === 0) {
-    throw new Error('没有能考的试用经验；先运行 am memory consolidate。只由阅读时间、交接这类整片检查判定的经验考不了，用 am memory promote 人工确认');
+    throw new Error('没有能考的试用经验；先运行 memory_consolidate()。只由阅读时间、交接这类整片检查判定的经验考不了，用 memory_promote() 人工确认');
   }
   const questions = examQuestions(s, trials, opts.episodes ?? [], opts.holdout ?? [], maxQuestions);
   if (questions.length === 0) throw new Error('没有考题：试用记忆的来源经历都没有冻结输入，也没有给 --holdout');

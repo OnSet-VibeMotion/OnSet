@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { childEnvironment, type Config } from '../config';
 import * as determinism from '../determinism';
-import { addExecutableLocation, lookPath, parsePassthrough } from '../envutil';
+import { addToolsLocation, amExecutable, lookPath, parsePassthrough } from '../envutil';
 import * as hyperframes from '../hyperframes';
 import * as mediaprobe from '../mediaprobe';
 import { ExitError, start, type Started } from '../procgroup';
@@ -14,6 +14,8 @@ import {
   extractUserMessages,
   formatUsage,
   newUsage,
+  amToolsServer,
+  rendererEnv,
   rendererInvocation,
   usageEmpty,
   type Usage,
@@ -56,7 +58,7 @@ export async function run(
   const resolvedSkills = resolveAllSkills(renderer, s.directory, skillsEnvironment(baseEnv, cfg.overlay), s);
   if ((resolvedSkills[HyperFramesSkillName] ?? '') === '') {
     userOutput.write(
-      `警告：未能为渲染工具 ${renderer} 定位 ${HyperFramesSkillName} 技能目录，组合规范与动效要求改用技能名兜底；可运行 am init 安装，或用 ${SkillsDirEnv} 显式指定\n`,
+      `警告：未能为渲染工具 ${renderer} 定位 ${HyperFramesSkillName} 技能目录，组合规范与动效要求改用技能名兜底；请在客户端顶栏点「缺少 HyperFrames 技能 · 安装」，或用 ${SkillsDirEnv} 显式指定\n`,
     );
   }
   const prompt = buildPrompt(s, resolvedSkills);
@@ -76,7 +78,13 @@ export async function run(
   }
   // 浏览器同理：客户端里是它自带的 Chromium，单独用命令行时是 am setup 下载的 headless-shell。
   hyperframes.requireBrowser(cliEnv);
-  const argv = rendererInvocation(renderer, prompt, unsafe, rendererAccess(resolvedSkills));
+  // 渲染器的环境：am 不在它的 PATH 里，HyperFrames 经 am 的工具服务（--profile renderer）调用。
+  const childEnv = childEnvironment(cfg, baseEnv, unsafe, parsePassthrough(baseEnv.AM_PASSTHROUGH_ENV ?? ''));
+  addToolsLocation(childEnv);
+  const access = rendererAccess(resolvedSkills);
+  access.toolsServer = amToolsServer(amExecutable(), 'renderer', s.directory, childEnv);
+  Object.assign(childEnv, rendererEnv(renderer, access, childEnv));
+  const argv = rendererInvocation(renderer, prompt, unsafe, access);
   argv[0] = lookPath(argv[0], baseEnv.PATH ?? '');
   const inputs = fingerprint(s, renderer, resolvedSkills);
   // 先挪走上一次的现场再截断日志；旧记录随即作废，本次通过校验后再写新的。
@@ -153,10 +161,6 @@ export async function run(
   }
 
   async function spawnRenderer(rawFile: number, stderrFile: number, userFile: number): Promise<void> {
-    const passthrough = parsePassthrough(baseEnv.AM_PASSTHROUGH_ENV ?? '');
-    const childEnv = childEnvironment(cfg, baseEnv, unsafe, passthrough);
-    // 提示词让渲染器调用 am hyperframes：把当前 am 放进它的 PATH。
-    addExecutableLocation(childEnv);
     let started: Started;
     try {
       started = await start(argv[0], argv.slice(1), { cwd: s.directory, env: childEnv, stdio: ['ignore', 'pipe', stderrFile], signal }, terminateGrace);

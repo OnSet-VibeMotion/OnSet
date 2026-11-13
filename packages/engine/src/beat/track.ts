@@ -128,7 +128,7 @@ export function loadTrack(root: string): Track {
   } catch (err) {
     throw wrapError(`找不到已导入的音乐：${(err as Error).message}`, err);
   }
-  if (sum !== track.audio_sha256) throw new Error(`音乐文件已被改动，与 ${TrackFile} 记录的摘要不符；请重新 am beat import`);
+  if (sum !== track.audio_sha256) throw new Error(`音乐文件已被改动，与 ${TrackFile} 记录的摘要不符；请重新 beat_import()`);
   return track;
 }
 

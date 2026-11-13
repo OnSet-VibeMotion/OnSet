@@ -52,7 +52,7 @@ publish.md 必须以安全 YAML frontmatter 提供机器字段，并以固定 Ma
 
 --regenerate-examples 会重新渲染 assets/style-guide/examples/ 下的示例 PNG，
 这是本命令唯一会写文件的路径，出图在校验之前执行。内置风格以内置 SVG 为模板并
-按项目配色重着色；自定义风格（am init --style custom）直接渲染项目里的四张
+按项目配色重着色；自定义风格（旧版以 --style custom 新建的项目）直接渲染项目里的四张
 SVG，草稿阶段也可以出图。它需要两个外部命令，缺任意一个都会失败：
   rsvg-convert   来自 librsvg，负责 SVG 转 PNG
   magick         来自 ImageMagick，负责把多张 PNG 拼成概览图

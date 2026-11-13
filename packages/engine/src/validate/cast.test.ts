@@ -305,7 +305,7 @@ describe('castProblems', () => {
     const text = joined(castProblems(castProject(sceneDurationDrift()), 'minimax'));
     expect(text).toContain('第 3 行');
     expect(text).toContain('第 4 行');
-    expect(text).toContain('am dialogue beats');
+    expect(text).toContain('dialogue_beats()');
   });
 
   // 某个镜头压根没写 beats 时，不得给出"时长累计漂移"的结论。
@@ -314,11 +314,11 @@ describe('castProblems', () => {
     expect(text).toContain('第 3 行');
     expect(text).toContain('第 4 行');
     expect(text).not.toContain('时长累计漂移');
-    expect(text).toContain('am dialogue beats');
+    expect(text).toContain('dialogue_beats()');
   });
 
   it('has no beats hint for a clean project', () => {
-    expect(joined(castProblems(castProject(), 'minimax'))).not.toContain('am dialogue beats');
+    expect(joined(castProblems(castProject(), 'minimax'))).not.toContain('dialogue_beats()');
   });
 
   it('reports an empty roster', () => {

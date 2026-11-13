@@ -1,3 +1,4 @@
+import { forUser } from '../api';
 /** HyperFrames 官方技能的安装状态：没装时给「安装」，安装中显示进度条，失败给原因和重试。 */
 export interface SkillsStatus {
   installed: boolean;
@@ -36,7 +37,7 @@ export function SkillsPill({ status, onInstall }: { status: SkillsStatus; onInst
       className={'skills-pill' + (status.error ? ' bad' : '')}
       id="install-skills"
       onClick={onInstall}
-      title={status.error || '渲染要用 HyperFrames 官方技能（hyperframes 入口技能等），这个项目还没装'}
+      title={(status.error && forUser(status.error)) || '渲染要用 HyperFrames 官方技能（hyperframes 入口技能等），这个项目还没装'}
     >
       {status.error ? '技能安装失败，点此重试' : '缺少 HyperFrames 技能 · 安装'}
     </button>

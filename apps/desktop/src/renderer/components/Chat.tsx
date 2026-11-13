@@ -421,7 +421,7 @@ export function Chat(props: Props) {
             <Icon name="plus" size={13} />
           </button>
         )}
-        <button id="start-production" className="primary pill" disabled={blocked || running} onClick={() => void startProduction()} title="与 am run 相同的整片制作">
+        <button id="start-production" className="primary pill" disabled={blocked || running} onClick={() => void startProduction()} title="从头开始整片制作">
           开始制作
         </button>
       </header>

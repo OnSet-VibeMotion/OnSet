@@ -263,7 +263,7 @@ function sceneCastProblems(root: string, lines: readonly Line[]): string[] {
 export const beatsRecomputeHint =
   '以上未被覆盖的台词行不要逐行手改 beats：' +
   '确认各镜头的 duration_seconds 与配音一致、且有台词盖过的镜头都写了 cast 块之后，' +
-  '执行 am dialogue beats——它会按 ' +
+  '运行 dialogue_beats()——它会按 ' +
   dialogue.DialogueRelPath +
   ' 重算全部镜头的 cast.beats';
 

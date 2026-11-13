@@ -76,7 +76,7 @@ describe('filmstyle', () => {
     expect(lookup('alpha/ink').cn).toBe('水墨');
     expect(styleKey(lookup('像素'))).toBe('alpha/pixel');
     expect(errorOf(() => lookup('ink'))?.message).toContain('来源/目录名');
-    expect(errorOf(() => lookup('nothing'))?.message).toContain('am film-style list');
+    expect(errorOf(() => lookup('nothing'))?.message).toContain('film_style_list()');
     const got = categories('alpha');
     expect(got.length).toBe(2);
     expect(got[0]).toBe('绘画');

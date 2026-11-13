@@ -38,7 +38,7 @@ add-font 把字体池里的字体连同许可证拷进项目的 assets/fonts/；
       runE: () => {
         stdout.write('随项目下发（无需拷入，可直接声明）：\n');
         for (const font of preset.SharedFonts) stdout.write(fontLine(font));
-        stdout.write('字体池（用 am style add-font FAMILY [--weight N] 拷入）：\n');
+        stdout.write('字体池（用 style_add_font({"args": ["<字体族>"]}) 拷入，可加 "weight"）：\n');
         for (const font of preset.allFontsCopy()) stdout.write(fontLine(font));
       },
     }),
@@ -87,7 +87,7 @@ export function poolFonts(family: string, weight: number): preset.Font[] {
     weights.push(String(font.weight));
     if (weight === 0 || font.weight === weight) matched.push(font);
   }
-  if (weights.length === 0) throw new Error(`字体池里没有字体族 ${goQuote(family)}，用 am style fonts 查看可选字体`);
+  if (weights.length === 0) throw new Error(`字体池里没有字体族 ${goQuote(family)}，用 style_fonts() 查看可选字体`);
   if (matched.length === 0) throw new Error(`字体族 ${goQuote(family)} 没有字重 ${weight}，可选：${weights.join(' ')}`);
   return matched;
 }

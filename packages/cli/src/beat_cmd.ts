@@ -66,12 +66,12 @@ export function newBeatCommand(stdout: Out): Command {
       long:
         '在项目根写出 ' +
         beat.ConfigFile +
-        '，启用卡点模式。已有内容不同的 beat.yaml 时整体失败、不覆盖。项目里有 song.yaml 或 cast.yaml 时拒绝：卡点与歌曲、多角色对话的时间轴来源互斥。不安装 Python 或模型：节拍分析环境由 am setup --only beat 装在用户级目录，所有卡点项目共用。',
+        '，启用卡点模式。已有内容不同的 beat.yaml 时整体失败、不覆盖。项目里有 song.yaml 或 cast.yaml 时拒绝：卡点与歌曲、多角色对话的时间轴来源互斥。不安装 Python 或模型：节拍分析环境在客户端工具准备页的「音乐卡点」里安装，装在用户级目录，所有卡点项目共用。',
       example: '  am beat init --project-root .',
       runE: () => {
         project.initializeWithFiles(root.value, { [beat.ConfigFile]: Buffer.from(beat.DefaultConfig) });
         beat.loadConfig(root.value);
-        stdout.write(`已启用卡点模式。节拍分析环境由 am setup --only beat 准备（所有卡点项目共用，只装一次）\n`);
+        stdout.write(`已启用卡点模式。节拍分析环境在客户端工具准备页的「音乐卡点」里安装（所有卡点项目共用，只装一次）\n`);
       },
     }),
   );
@@ -84,11 +84,11 @@ export function newBeatCommand(stdout: Out): Command {
       long:
         '加载固定版本 beat-this ' +
         beat.AnalyzerVersion +
-        ' 的模型，确认分析能跑。beat.yaml 没写 python 时用 am setup --only beat 装好的共享环境（没装好就报错，不在这里装）。' +
-        'am setup 已预下载默认的 ' +
+        ' 的模型，确认分析能跑。beat.yaml 没写 python 时用客户端工具准备页（「音乐卡点」）装好的共享环境（没装好就报错，不在这里装）。' +
+        '安装时已预下载默认的 ' +
         beat.DefaultCheckpoint +
         ' 权重；beat.yaml 换成别的 checkpoint 时，第一次运行本命令会联网下载它。',
-      example: '  am setup --only beat\n  am beat doctor',
+      example: '  am beat doctor',
       runE: async (c) => {
         const signal = withTimeout(c.context());
         await beat.doctor(root.value, currentEnvironment(), stdout, signal);
@@ -106,7 +106,7 @@ export function newBeatCommand(stdout: Out): Command {
     runE: (_c, args) => {
       const media = newToolchain(currentEnvironment());
       const track = beat.importTrack(root.value, args[0], media, replace.value);
-      stdout.write(`已导入 ${track.source}（${formatFixed(track.duration_seconds, 3)} 秒）。下一步：am beat analyze\n`);
+      stdout.write(`已导入 ${track.source}（${formatFixed(track.duration_seconds, 3)} 秒）。下一步：beat_analyze()\n`);
     },
   });
   importCmd.flags().boolVar(replace, 'replace', false, '替换已导入的另一首音乐');
@@ -183,7 +183,7 @@ export function newBeatCommand(stdout: Out): Command {
       const grid = beat.confirm(root.value, draft);
       stdout.write(`节拍网格已确认：${beat.summaryString(beat.summarize(grid))}\n`);
       printBars(stdout, grid);
-      stdout.write(`下一步：按小节写 ${beat.PlanFile}，再 am beat cues scenes/\n`);
+      stdout.write(`下一步：按小节写 ${beat.PlanFile}，再 beat_cues({"args": ["scenes/"]})\n`);
     },
   });
   confirm.flags().stringVar(confirmFrom, 'grid', '', '网格文件，缺省为 ' + beat.DraftFile);
@@ -237,7 +237,7 @@ function readGridFile(root: string, file: string): beat.Grid {
 function reportDraft(out: Out, grid: beat.Grid): void {
   out.write(`草稿网格：${beat.summaryString(beat.summarize(grid))}\n`);
   for (const problem of beat.gridProblems(grid)) out.write(`问题：${problem}\n`);
-  out.write(`请试听 ${beat.ClickFile}：每拍一声，重拍更高。重拍错位用 am beat regrid，确认无误后 am beat confirm\n`);
+  out.write(`请试听 ${beat.ClickFile}：每拍一声，重拍更高。重拍错位用 beat_regrid()，确认无误后 beat_confirm()\n`);
 }
 
 function printBars(out: Out, grid: beat.Grid): void {
@@ -359,7 +359,7 @@ function commitWrites(writes: readonly PendingWrite[]): void {
       fs.renameSync(ready[i].temp, ready[i].path);
     } catch (err) {
       for (const rest of ready.slice(i)) fs.rmSync(rest.temp, { force: true });
-      throw new Error(`写入 ${ready[i].path} 失败，部分镜头可能仍是旧网格，请重跑 am beat cues：${(err as Error).message}`, { cause: err });
+      throw new Error(`写入 ${ready[i].path} 失败，部分镜头可能仍是旧网格，请重跑 beat_cues()：${(err as Error).message}`, { cause: err });
     }
   }
 }
@@ -384,7 +384,7 @@ export function beatCoverage(root: string, scenes: readonly Scene[]): void {
       problems.push(`${s.id}：${(err as Error).message}`);
     }
   });
-  if (problems.length > 0) throw new Error(`卡点镜头校验未通过，改过网格或计划后请重新 am beat cues：\n  - ${problems.join('\n  - ')}`);
+  if (problems.length > 0) throw new Error(`卡点镜头校验未通过，改过网格或计划后请重新 beat_cues()：\n  - ${problems.join('\n  - ')}`);
 }
 
 export function newValidateBeatCommand(stdout: Out): Command {

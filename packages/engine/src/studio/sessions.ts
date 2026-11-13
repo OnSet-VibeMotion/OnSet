@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as agentrun from '../agentrun';
 import * as config from '../config';
-import { addExecutableLocation, envMap, lookPath, parsePassthrough } from '../envutil';
+import { addToolsLocation, envMap, lookPath, parsePassthrough } from '../envutil';
 import { atomicWrite } from '../fsutil';
 import { formatFixed, goClean, goTrimSpace } from '../gofmt';
 import { marshal, marshalIndent } from '../gojson';
@@ -479,7 +479,7 @@ export function chatPreamble(rulesName: string): string {
   return (
     '你正在协助用户修改当前目录下的 ArticleToMotion 视频项目。动手前先读项目规则 ' +
     rulesName +
-    '。需要渲染、校验、复查时直接运行 am 的子命令。改完用几句话说明改了哪些文件、为什么，以及接下来要不要重渲染哪些镜头。\n\n' +
+    '。需要渲染、校验、复查时直接调用 am 工具服务里的工具。改完用几句话说明改了哪些文件、为什么，以及接下来要不要重渲染哪些镜头。\n\n' +
     studioInteraction +
     '\n\n用户的请求：'
   );
@@ -491,17 +491,18 @@ export function chatPreamble(rulesName: string): string {
  */
 export const studioInteraction =
   `你在 Studio 网页里和用户对话，下面几条约定让网页能把你的进度和问题显示好：
+- 工具都由你来调用。回复里用用户听得懂的话说做了什么、接下来做什么，不要写工具名、参数或命令让用户去运行；工具报错里「请重新运行 beat_cues()」这类话是给你的下一步，能做就直接做掉，要用户点头的先用一句话说明要做什么、为什么。
 - 多步骤的工作先用你的待办清单工具列出步骤，做的过程中及时更新状态，用户会在对话顶部看到进度。
 - 需要用户拍板时（选风格、确认分镜、确认一条推测的偏好、几种做法里选一种），先把问题和各选项的差别写清楚，再在回复的最后单独放一个语言标成 choices 的代码块，每行一个选项，例如：
 ` +
   '```choices\n用方案 A：深色科技风\n用方案 B：白板手绘风\n```' +
   `
   用户会看到可点的按钮，点了就把那一行原样发给你。问完就结束这一轮等用户回复，不要替用户选。用户也可能直接打字回答。
-- 推荐整片风格时（用户没指定画风、或要换风格），先用 am film-style list --json 挑出两三种贴合的，在回复里放一个语言标成 film-styles 的代码块，每行一种，写「来源/目录名」加一句为什么合适，例如：
+- 推荐整片风格时（用户没指定画风、或要换风格），先用 film_style_list({"json": true}) 挑出两三种贴合的，在回复里放一个语言标成 film-styles 的代码块，每行一种，写「来源/目录名」加一句为什么合适，例如：
 ` +
   '```film-styles\nlemo-opuscar/impasto 厚涂笔触适合讲历史人物的分量\n```' +
   `
-  网页会显示每种风格的海报，用户点「用这个风格」就把选择发给你，你再运行 am film-style use。「不用整片风格，各镜头自主定视觉」写进同一条回复的 choices 代码块。
+  网页会显示每种风格的海报，用户点「用这个风格」就把选择发给你，你再运行 film_style_use()。「不用整片风格，各镜头自主定视觉」写进同一条回复的 choices 代码块。
 - 要用户试听音频、看图片或视频时（音色试听、配音片段、封面候选、预览帧），在回复里写出每个文件在项目里的相对路径，例如 production/audio/auditions/try-A.wav，网页会在回复下面直接放播放器和缩略图；只写文件名、目录另说的话网页未必找得到。
 ` +
   viewInteraction();
@@ -624,11 +625,8 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
   let stopViews: () => void = () => {};
   try {
     const env = config.childEnvironment(cfg, envMap(), s.config.unsafe, parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? ''));
-    try {
-      addExecutableLocation(env, s.executable());
-    } catch (err) {
-      emit(sess, turn.turn_id, { kind: kindNotice, text: (err as Error).message });
-    }
+    // am 不进编排工具的 PATH：它只经 am 的工具服务（MCP）调用 am，下面的 spec.toolsServer。
+    addToolsLocation(env);
     const inbox = viewInbox(studioRoot(p.path), turn.turn_id);
     env[ViewInboxEnv] = inbox;
     env[ViewProjectEnv] = p.path;
@@ -663,6 +661,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
       unsafe: s.config.unsafe,
       access,
       permissionPrompt: { command: s.executable(), args: ['studio', 'permission-mcp'], server: PermissionServerName },
+      toolsServer: tools.amToolsServer(s.executable(), 'orchestrator', p.path, env),
       // codebuddy、opencode、codex 走双向协议，审批请求由 agentrun 直接交到这里：写进同一个收件目录，
       // 与审批 MCP 走同一条路（轮询、卡片、以后都允许），等用户回答。
       ask: async (toolName, input) => {

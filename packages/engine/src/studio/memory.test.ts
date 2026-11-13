@@ -86,7 +86,7 @@ describe('studio memory', () => {
     };
     const first = await turn(f, '来个科普的');
     expect(first, '第一轮应当带上用户偏好').toContain('【calm-palette】');
-    expect(first).toContain('am memory remember');
+    expect(first).toContain('memory_remember(');
     expect(await turn(f, '再快一点'), '偏好没变时续接的会话不重复发送').not.toContain('用户偏好');
     store.remember({ name: 'no-emoji', body: '画面里不要 emoji', global: true });
     expect(await turn(f, '换个开头'), '偏好变了下一轮要带上新版本').toContain('【no-emoji】');

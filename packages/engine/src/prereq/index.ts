@@ -8,8 +8,11 @@
 // MissingError，统一指向 am setup。以前这些东西在渲染途中、建项目途中、打开菜单时
 // 各自现下载，网络一差就卡在半路，用户还看不到卡在哪。
 
-/** 准备前置资源的命令。 */
+/** 准备前置资源的命令（开发与 CI 用；客户端用户在安装页里装）。 */
 export const SetupCommand = 'am setup';
+
+/** 缺前置资源时给用户与编排工具的说明：命令行不对外，一律指向客户端的安装页。 */
+export const SetupHint = '请在客户端的工具准备页安装（首页的「召集你的摄制组」，或顶栏的「还差几项工具 · 去安装」；网络慢可以在「网络」里填代理，断了重试会接着下），装好后再重试';
 
 /** 表示某项前置资源还没准备好。 */
 export class MissingError extends Error {
@@ -22,7 +25,7 @@ export class MissingError extends Error {
     readonly detail = '',
   ) {
     super(
-      `缺少前置资源：${what}${detail !== '' ? '（' + detail + '）' : ''}。先在终端运行 ${SetupCommand} 准备好（可以加 --proxy 走代理，断了重跑会接着下），再重试`,
+      `缺少前置资源：${what}${detail !== '' ? '（' + detail + '）' : ''}。${SetupHint}`,
     );
     this.name = 'MissingError';
   }

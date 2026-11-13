@@ -34,7 +34,7 @@ export function songScaffold(root: string): void {
 
 const songHelp: Record<string, string> = {
   handoff:
-    '读取已创作的歌词及 song.yaml 曲风，输出可复制文本，并保存不可变快照及 production/song/web-handoff.json 等待记录。不调用 API，不需要 API Key、Python 或媒体工具。正常退出后必须暂停等待用户提供音频，不能将命令成功当成歌曲生成成功；同一会话或再次 am run 可继续。',
+    '读取已创作的歌词及 song.yaml 曲风，输出可复制文本，并保存不可变快照及 production/song/web-handoff.json 等待记录。不调用 API，不需要 API Key、Python 或媒体工具。正常退出后必须暂停等待用户提供音频，不能将命令成功当成歌曲生成成功；同一会话或新的一轮对话都可以接着做。',
   'receive AUDIO':
     '根据当前网页交接记录导入用户提供的本机音频，使用交接时的歌词快照，更新接收状态；不自动选择、对齐或渲染。同一音频重跑复用候选，不同音频创建新候选。必须先询问网页是否改词；改词时请用 song import AUDIO --lyrics FINAL_LYRICS 显式导入核对后的最终歌词。',
   init: '在当前项目补充 song.yaml、PROMPT-SONG.md 和 song-explainer 技能；已有文件内容不同则整体失败，不改用户提示词，不安装 Python 或模型。cast.yaml 存在时拒绝。',
@@ -127,7 +127,7 @@ export function newSongCmd(out: Out): Command {
   cmd.addCommand(configure);
   add('init', '为已有项目补充歌曲资产，不覆盖已有内容', 0, () => {
     songScaffold(root.value);
-    out.write('歌曲资产已初始化。运行 am song providers 查看平台，再用 am song configure --provider PLATFORM 配置。\n');
+    out.write('歌曲资产已初始化。运行 song_providers() 查看平台，再用 song_configure({"provider": "PLATFORM"}) 配置。\n');
   });
   const refreshHandoff = ref(false);
   const handoff = add('handoff', '输出网页生成用的歌词和风格，记录等待用户音频', 0, () => song.handoffWithRefresh(root.value, refreshHandoff.value, out));
@@ -135,7 +135,7 @@ export function newSongCmd(out: Out): Command {
   add('receive AUDIO', '接收网页生成音频，绑定交接时的歌词快照', 1, (_s, a) => {
     const m = newToolchain(currentEnvironment());
     const c = song.receive(root.value, a[0], m);
-    out.write(`已接收候选 ${c.id}；请核对唱词并由用户确认后运行 am song select ${c.id}。尚未选定或对齐。\n`);
+    out.write(`已接收候选 ${c.id}；请核对唱词并由用户确认后运行 song_select({"args": ["${c.id}"]})。尚未选定或对齐。\n`);
   });
   add('doctor', '检查服务、对齐环境与媒体工具', 0, (signal) => song.doctor(root.value, currentEnvironment(), out, signal));
   const count = ref(0);
@@ -202,7 +202,7 @@ export function songCoverage(root: string, scenes: readonly Scene[], t: song.Tim
     scene.verifyFrameAlignment(s);
     if (requireCues) {
       if (s.song === null || s.song.fps !== canvas.fps || Math.abs(s.song.start_seconds - cursor) > 1e-6) {
-        throw new Error(`镜头 ${s.id} 歌曲起点不一致，请运行 am song cues`);
+        throw new Error(`镜头 ${s.id} 歌曲起点不一致，请运行 song_cues()`);
       }
       const targetPath = path.resolve(path.join(root, song.Store, 'timeline.json'));
       const cuePath = path.resolve(path.join(s.directory, s.song.timeline));

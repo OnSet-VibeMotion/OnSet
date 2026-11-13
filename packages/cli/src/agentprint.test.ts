@@ -4,28 +4,21 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as agentrun from '@am/engine/agentrun';
 import { EventPrinter, summaryLimit, truncate } from './agentprint';
-import { Buffer, run, setenv, tempDir, writeExecutable } from './testutil';
 
 describe('event printer', () => {
-  it('am run prints readable events', async () => {
+  // 记录下来的真实 codex 输出经解析器译成事件后，打印出来应当是人能读的（整理记忆 am memory consolidate 用它）。
+  it('prints a recorded stream readably', () => {
     const fixture = path.resolve(__dirname, '..', '..', 'engine', 'src', 'agentrun', 'testdata', 'codex-1.jsonl');
-    expect(fs.existsSync(fixture)).toBe(true);
-    const root = tempDir();
-    const bin = tempDir();
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
-    fs.writeFileSync(path.join(root, 'PROMPT.md'), 'p');
-    writeExecutable(path.join(bin, 'codex'), `#!/bin/sh\ncat >/dev/null\ncat '${fixture}'\n`);
-    setenv('PATH', bin + path.delimiter + (process.env.PATH ?? ''));
-    setenv('ORCHESTRATOR', 'codex');
-    setenv('RENDERER', 'claude');
-    process.chdir(root);
-    const out = new Buffer();
-    const errOut = new Buffer();
-    expect(await run(['run'], out, errOut), errOut.text).toBe(0);
+    const parser = agentrun.newParser('codex');
+    let out = '';
+    const p = new EventPrinter({ write: (t) => (out += t) }, { write: () => true });
+    for (const line of fs.readFileSync(fixture, 'utf8').split('\n')) for (const event of parser.parse(line)) p.print(event);
+    p.print({ kind: agentrun.KindSession, session_id: parser.sessionID() });
+    p.print({ kind: agentrun.KindUsage, usage: parser.usage() });
     for (const want of ['会话: 01a19706-15cc-7c23-92b3-d0008785ee57', '→ shell /bin/zsh -lc', '\nOK\n', '用量: 输入 41579']) {
-      expect(out.text).toContain(want);
+      expect(out).toContain(want);
     }
-    expect(out.text, '不应再透传原始 JSON').not.toContain('"type"');
+    expect(out, '不应再透传原始 JSON').not.toContain('"type"');
   });
 
   it('formats every kind', () => {

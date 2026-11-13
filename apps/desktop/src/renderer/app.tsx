@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, errorText, post } from './api';
+import { api, errorText, forUser, post } from './api';
 import { Chat, type Outbox } from './components/Chat';
 import { Home, type ProjectSummary } from './components/Home';
 import { SkillsPill, type SkillsStatus } from './components/SkillsPill';
@@ -423,7 +423,7 @@ export function App() {
     for (const task of tasks) {
       const before = taskStatus.current.get(task.task_id);
       if ((before === 'running' || before === 'queued') && (task.status === 'succeeded' || task.status === 'failed')) {
-        window.am?.notify?.(task.status === 'succeeded' ? '任务完成' : '任务失败', task.message || task.error || task.type);
+        window.am?.notify?.(task.status === 'succeeded' ? '任务完成' : '任务失败', forUser(task.message || task.error || task.type));
       }
       taskStatus.current.set(task.task_id, task.status);
     }

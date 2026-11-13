@@ -56,29 +56,27 @@ describe('usage', () => {
     expect(out.text).toContain('合计：输入 3,000');
   });
 
-  it('am run records orchestrator usage and am usage totals it', async () => {
+  it('am usage totals orchestrator and render usage', async () => {
     const root = tempDir();
-    const bin = tempDir();
-    const codexHome = tempDir();
-    fs.writeFileSync(path.join(codexHome, 'config.toml'), 'model = "gpt-test"\n');
     fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
-    fs.writeFileSync(path.join(root, 'PROMPT.md'), 'hello');
-    const script =
-      '#!/bin/sh\ncat > /dev/null\n' +
-      `echo '{"type":"thread.started","thread_id":"th-1"}'\n` +
-      `echo '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":600,"output_tokens":50}}'\n`;
-    fs.writeFileSync(path.join(bin, 'codex'), script, { mode: 0o755 });
     process.chdir(root);
-    setenv('PATH', bin + path.delimiter + (process.env.PATH ?? ''));
-    setenv('ORCHESTRATOR', 'codex');
-    setenv('RENDERER', 'claude');
-    setenv('CODEX_HOME', codexHome);
+    // 客户端每一轮对话记一行账（studio/sessions.ts 的 recordUsage）；这里直接写两行同样的账。
+    for (let i = 0; i < 2; i++) {
+      ledger.append(ledger.projectFile(root), {
+        time: '2026-11-09T00:00:00Z',
+        source: ledger.SourceStudio,
+        tool: 'codex',
+        model: 'gpt-test',
+        session: 'th-1',
+        status: 'succeeded',
+        usage: { input_tokens: 1000, cached_input_tokens: 600, output_tokens: 50, basis: 'total-input', source: 'codex turn.completed' },
+      });
+    }
     let out = new Buffer();
-    for (let i = 0; i < 2; i++) expect(await run(['run'], out, out), out.text).toBe(0);
     const entries = ledger.read(ledger.projectFile(root));
     expect(entries?.length).toBe(2);
     const e = entries![0];
-    expect([e.source, e.tool, e.model, e.session, e.status]).toEqual([ledger.SourceRun, 'codex', 'gpt-test', 'th-1', 'succeeded']);
+    expect([e.source, e.tool, e.model, e.session, e.status]).toEqual([ledger.SourceStudio, 'codex', 'gpt-test', 'th-1', 'succeeded']);
     expect(e.usage?.input_tokens).toBe(1000);
 
     // 一个镜头有一次渲染尝试，也计入合计。
@@ -102,20 +100,9 @@ describe('usage', () => {
     expect(Object.keys(report.orchestrator.by_model)).toContain('codex/gpt-test');
     out = new Buffer();
     expect(await run(['usage'], out, out), out.text).toBe(0);
-    for (const want of ['渲染：1 个镜头、1 次尝试', '编排：2 次调用', 'am run：', '本项目合计：输入 2,300']) expect(out.text).toContain(want);
+    for (const want of ['渲染：1 个镜头、1 次尝试', '编排：2 次调用', 'Studio', '本项目合计：输入 2,300']) expect(out.text).toContain(want);
   });
 
-  it('am run does not record usage when the orchestrator never started', async () => {
-    const root = tempDir();
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
-    fs.writeFileSync(path.join(root, 'PROMPT.md'), 'hello');
-    process.chdir(root);
-    setenv('PATH', tempDir());
-    setenv('ORCHESTRATOR', 'codex');
-    const out = new Buffer();
-    expect(await run(['run'], out, out), out.text).not.toBe(0);
-    expect(fs.existsSync(ledger.projectFile(root))).toBe(false);
-  });
 
   it('skills progress printer refreshes one line', () => {
     const out = new Buffer();

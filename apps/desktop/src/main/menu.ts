@@ -1,5 +1,4 @@
 import { app, BrowserWindow, dialog, Menu, type MenuItemConstructorOptions } from 'electron';
-import { installCLIShim } from './clishim';
 
 /**
  * 原生菜单。菜单项只发「做什么」给当前窗口的界面（am:menu），界面用它已有的状态与接口去做：
@@ -28,8 +27,6 @@ export function installMenu(): void {
             label: app.name,
             submenu: [
               { role: 'about', label: '关于 ArticleToMotion' },
-              { type: 'separator' },
-              { label: '安装命令行工具…', click: () => void installCLIShim() },
               { type: 'separator' },
               { role: 'hide', label: '隐藏' },
               { role: 'hideOthers', label: '隐藏其他' },

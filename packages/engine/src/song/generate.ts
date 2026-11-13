@@ -243,6 +243,6 @@ export async function generate(
       finish(root, candidate, media);
       out.write(`候选 ${id}：${dest}\n`);
     }
-    out.write('请试听后由用户运行 am song select <candidate-id>。未自动选歌。\n');
+    out.write('请试听后由用户运行 song_select({"args": ["<candidate-id>"]})。未自动选歌。\n');
   });
 }

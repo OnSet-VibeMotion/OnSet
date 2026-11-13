@@ -38,7 +38,7 @@ export const DefaultConfig = `schema: 1
 # 节拍模型：final0（约 78 MB，默认）或 small0（约 8 MB，精度略低）；
 # 同系列还有 final1/final2、small1/small2，是不同随机种子训练的同结构模型。
 checkpoint: final0
-# 不写 python 时用 am setup 装好的共享环境（beat-this==${AnalyzerVersion}）。
+# 不写 python 时用客户端工具准备页装好的共享环境（beat-this==${AnalyzerVersion}）。
 # 只有要用自己的环境时才写，例如 python: /path/to/venv/bin/python
 `;
 

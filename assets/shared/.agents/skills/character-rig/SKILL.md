@@ -7,7 +7,7 @@ description: 在 HyperFrames 镜头里驱动角色包（character pack）——�
 
 在 HyperFrames 镜头里驱动角色。交付物是**镜头里的角色元素与它挂在时间线上的那些 tween**，不是一套独立的动画系统。
 
-角色包本身不由你创作：它由 `am cast new/add` 生成并校验，人工验收过。你的工作只有一件——把它正确地挂进镜头，并在那条 paused timeline 上编排它的动作。
+角色包本身不由你创作：它由编排阶段的 `cast_new` / `cast_add` 工具生成并校验，人工验收过。你的工作只有一件——把它正确地挂进镜头，并在那条 paused timeline 上编排它的动作。
 
 ## 四条硬规则
 
@@ -18,7 +18,7 @@ description: 在 HyperFrames 镜头里驱动角色包（character pack）——�
 HyperFrames 是单条 paused timeline + 逐帧 seek 出帧。不受那条 timeline 管的动画在出帧时压根不推进（或按墙钟时间乱推进），成片要么完全静止，要么每帧随机。
 
 - `cast.js` 自己不建 timeline、不调 `requestAnimationFrame`、不用定时器。
-- 你也不许。不要给 rig 写 CSS `@keyframes`/`transition`，不要在 rig.svg 里放 `<animate>`（`am cast validate` 会拦，但拼进 HTML 的那部分没人拦你）。
+- 你也不许。不要给 rig 写 CSS `@keyframes`/`transition`，不要在 rig.svg 里放 `<animate>`（`cast_validate()` 会拦，但拼进 HTML 的那部分没人拦你）。
 - `to`/`turn`/`flip`/`speak`/`listen` 的第一个参数都是那条 timeline，传错会立刻抛错——这是故意的。
 
 **推进时间线只能用 `tl.time(t)` 或 `tl.seek(t, false)`，不要用 `tl.seek(t)`。** GSAP 的
@@ -76,7 +76,7 @@ cast/
     dna.md            角色设定，供台词与音色参考
 ```
 
-**`cast.js` 只读 `character.json`，绝不在浏览器里解析 YAML。** 渲染机是干净的无头 Chrome，CSP 下引不进 YAML 库，手写 YAML 子集解析器纯属埋雷。`character.json` 由 `am cast new/add/validate` 每次从 `character.yaml` 重新生成，键名是小驼峰：
+**`cast.js` 只读 `character.json`，绝不在浏览器里解析 YAML。** 渲染机是干净的无头 Chrome，CSP 下引不进 YAML 库，手写 YAML 子集解析器纯属埋雷。`character.json` 由 `cast_new` / `cast_add` / `cast_validate` 工具每次从 `character.yaml` 重新生成，键名是小驼峰：
 
 ```json
 {
@@ -150,7 +150,7 @@ heiwa.listen(tl, { from: 4.52, to: 5.60 });
 | 参数 | 合法区间 | 为什么 |
 |---|---|---|
 | `x` / `ground` | 闭区间 `[0, 1]` | 0 和 1 就是画面边缘，把角色贴边是合法构图 |
-| `heightRatio` | 开区间 `(0, 1)` | 与 `character.yaml` 的 `scale.heightRatio` 同口径（`am cast validate` 要求 `0 < lo < hi < 1`）；0 是没有高度，1 是顶天立地 |
+| `heightRatio` | 开区间 `(0, 1)` | 与 `character.yaml` 的 `scale.heightRatio` 同口径（`cast_validate()` 要求 `0 < lo < hi < 1`）；0 是没有高度，1 是顶天立地 |
 
 `facing` 不是 `'left'` / `'right'`、姿势或视图名没声明过，同样立刻抛错。
 
@@ -178,7 +178,7 @@ heiwa.listen(tl, { from: 4.52, to: 5.60 });
 
 - `facing: 'left'` 用 `scaleX(-1)` 实现。
 - 带 `data-no-mirror` 的元素会被自动二次翻转（`scaleX(-1)` + `transform-box: fill-box`），否则角色举牌镜头会出反字。牌子、字幕板、任何带文字或方向语义的元素都要在 rig.svg 里打上 `data-no-mirror`（标在元素自己或它的任一祖先上都算）。
-  **`<text>` / `<tspan>` 漏标 `am cast validate` 会拦**（与 `<animate>` 同一道校验，直接判角色包不合格）。但它只认这两个标签：箭头、指向性图标这类**没有文字的方向语义元素查不出来**，漏标不会有任何提示，只会在 `facing: left` 的镜头里反过来——这类元素只能靠你自己标。
+  **`<text>` / `<tspan>` 漏标 `cast_validate()` 会拦**（与 `<animate>` 同一道校验，直接判角色包不合格）。但它只认这两个标签：箭头、指向性图标这类**没有文字的方向语义元素查不出来**，漏标不会有任何提示，只会在 `facing: left` 的镜头里反过来——这类元素只能靠你自己标。
 - 需要在时间线上改朝向用 `flip(tl, { at, dur })`，它和 `turn` 一样是压扁过零、绝不是把 `scaleX` 直接 tween 到 -1 后就完事。
 
 ## 转身
@@ -206,7 +206,7 @@ turns:
 
 - 键必须写成 `<from>-><to>`，`from`/`to`/`via` 引用的视图都得先声明过。
 - **未声明的转身组合直接抛错，不做自动寻路。** 哪条路径好看是创作判断，不是图论问题：`front->back` 是从左边转还是右边转，画面观感完全不同，只能由人写死。
-- 想双向转身就写两条，`am cast validate` 不会替你补。
+- 想双向转身就写两条，`cast_validate()` 不会替你补。
 
 **`turn()` 与 `flip()` 必须按时间先后声明，且区间不得重叠**，否则会抛错。两条理由：
 
@@ -224,7 +224,7 @@ turns:
 
 `views` 和 `turns` 都是**可选**的。只画了默认视图的角色包完全合法，`turn()` 在这种包上会退化成**镜像翻转**（等价于 `flip()`）：同样是压扁过零，但换的是朝向而不是视图。对大多数角色，这就够了。
 
-画全三视图的准入成本是**三倍**：三张 rig.svg、三套关节支点、每个姿势都要在三个视图里都落在各自的 `rotate` 区间内（`am cast validate` 会逐视图检查，一处不合就整包不过）。
+画全三视图的准入成本是**三倍**：三张 rig.svg、三套关节支点、每个姿势都要在三个视图里都落在各自的 `rotate` 区间内（`cast_validate()` 会逐视图检查，一处不合就整包不过）。
 
 所以：**只有真的有转身戏份的主角才值得画全三视图。** 配角、只出现一两个镜头的角色、全程面向镜头的角色，画一个 `front` 就够了；需要它「转过去」的时候用退化的镜像翻转，观众读得懂。
 

@@ -57,33 +57,6 @@ describe('cli', () => {
     expect(await run(['validate', 'publish', file, '--project-root', root], out), out.text).toBe(0);
   });
 
-  it('run starts the configured orchestrator', async () => {
-    const root = tempDir();
-    const bin = tempDir();
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
-    fs.writeFileSync(path.join(root, 'PROMPT.md'), 'hello orchestrator');
-    const script =
-      '#!/bin/sh\n' +
-      `printf '%s\\n' "$AM_EXECUTABLE" > "${path.join(root, 'am-executable.txt')}"\n` +
-      `printf '%s\\n' "$PATH" > "${path.join(root, 'child-path.txt')}"\n` +
-      `cat > "${path.join(root, 'received.txt')}"\n`;
-    fs.writeFileSync(path.join(bin, 'codex'), script, { mode: 0o755 });
-    process.chdir(root);
-    setenv('PATH', bin + path.delimiter + process.env.PATH);
-    setenv('ORCHESTRATOR', 'codex');
-    setenv('RENDERER', 'claude');
-    const out = new Buffer();
-    expect(await run(['run'], out), out.text).toBe(0);
-    const body = fs.readFileSync(path.join(root, 'received.txt'), 'utf8');
-    // prompt 原样在前，其后是用户偏好段（记忆默认打开）。
-    expect(body.startsWith('hello orchestrator\n\n用户偏好'), body).toBe(true);
-    expect(body, body).toContain('am memory remember');
-    const executablePath = fs.readFileSync(path.join(root, 'am-executable.txt'), 'utf8').trim();
-    expect(executablePath !== '' && path.isAbsolute(executablePath), executablePath).toBe(true);
-    const childPath = fs.readFileSync(path.join(root, 'child-path.txt'), 'utf8').trim();
-    const entries = childPath.split(path.delimiter);
-    expect(entries[0], `executable=${executablePath} PATH=${childPath}`).toBe(path.dirname(executablePath));
-  });
 
   it('style and empty run-all commands', async () => {
     const root = await initProject();
@@ -145,26 +118,6 @@ describe('cli', () => {
     expect(stderr.text).toContain('ImageMagick');
   });
 
-  it('run cancellation returns 130 and terminates the process group', async () => {
-    const root = tempDir();
-    const bin = tempDir();
-    const marker = path.join(root, 'started');
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
-    fs.writeFileSync(path.join(root, 'PROMPT.md'), 'cancel me');
-    fs.writeFileSync(path.join(bin, 'codex'), `#!/bin/sh\ntouch "${marker}"\nsleep 30 &\nwait\n`, { mode: 0o755 });
-    process.chdir(root);
-    setenv('PATH', bin + path.delimiter + process.env.PATH);
-    const controller = new AbortController();
-    const done = run(['run'], new Buffer(), new Buffer(), controller.signal);
-    const deadline = Date.now() + 3000;
-    while (!fs.existsSync(marker)) {
-      if (Date.now() > deadline) throw new Error('orchestrator did not start');
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    controller.abort();
-    const code = await Promise.race([done, new Promise<string>((resolve) => setTimeout(() => resolve('timeout'), 3000))]);
-    expect(code, 'orchestrator process group was not terminated').toBe(130);
-  });
 
   it('init rejects an unknown canvas', async () => {
     const out = new Buffer();

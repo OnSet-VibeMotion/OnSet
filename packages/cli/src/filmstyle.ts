@@ -63,7 +63,7 @@ style_shift，说明画法怎么在画面里换过去。
 技法参考在哪）与 ` +
       filmstyle.ManifestFile +
       `（来源与版本），项目整体拷走也能渲染。
-各来源的数据是前置资源，由 am setup 下载；本组命令都不联网。`,
+各来源的数据是前置资源，在客户端工具准备页下载；本组命令都不联网。`,
   });
   filmCmd.persistentFlags().stringVar(projectRoot, 'project-root', '', '项目根目录，缺省为当前目录');
   const root = (): string => {
@@ -138,7 +138,7 @@ style_shift，说明画法怎么在画面里换过去。
     args: exactArgs(1, 'STYLE'),
     short: '把一种风格装成本项目的默认风格',
     long: `STYLE 写成「来源/目录名」，或者在各来源里唯一的目录名、中文名、英文名。不联网：
-来源数据是前置资源，先运行 am setup 准备好，这里只装进项目。
+来源数据是前置资源，先在客户端工具准备页（「整片风格库」）准备好，这里只装进项目。
 
 项目已有另一种默认风格时默认拒绝：换默认风格会让不写 film_style 的镜头输入指纹变化，
 已渲染的都要重渲染。确认要换就加 --replace；还有镜头点名用旧的默认风格时，旧的会留作
@@ -179,7 +179,7 @@ style_shift，说明画法怎么在画面里换过去。
         const key = filmstyle.styleKey(style);
         if (result.unchanged) stdout.write(`${filmstyle.styleLabel(style)} 已装在项目里，未改动\n`);
         else stdout.write(`已装上 ${filmstyle.styleLabel(style)}（版本 ${shortCommit(result.manifest.version)}）\n`);
-        stdout.write(`要用它的镜头在 scene.json 写 "film_style": "${key}"（口播项目写在分镜计划里，再运行 am scene cues）\n`);
+        stdout.write(`要用它的镜头在 scene.json 写 "film_style": "${key}"（口播项目写在分镜计划里，再运行 scene_cues()）\n`);
       },
     }),
   );
@@ -190,7 +190,7 @@ style_shift，说明画法怎么在画面里换过去。
     args: noArgs,
     short: '显示本项目的整片风格、哪些镜头在用，以及各风格来源的状态',
     long: `显示本项目装的默认风格与额外风格（来源、名字、版本、目录）、每种风格有哪些镜头在用，
-以及各风格来源的数据是否已由 am setup 准备好。不联网、不改任何文件。--json 输出机器可读的同一份信息。`,
+以及各风格来源的数据是否已在客户端工具准备页准备好。不联网、不改任何文件。--json 输出机器可读的同一份信息。`,
     example: `  am film-style show
   am film-style show --json`,
     runE: () => {
@@ -232,10 +232,10 @@ style_shift，说明画法怎么在画面里换过去。
       const users = (ids: string[]) => (ids.length === 0 ? '没有镜头' : ids.join('、'));
       if (isInstalled) {
         stdout.write(`默认风格：${manifest.cn} ${manifest.en}（${defaultKey}），版本 ${shortCommit(manifest.version)}\n技能目录：${skillDirPath}\n`);
-        if (manifest.legacy) stdout.write('（旧版目录；再运行一次 am film-style use 会换成新目录）\n');
+        if (manifest.legacy) stdout.write('（旧版目录；再运行一次 film_style_use() 会换成新目录）\n');
         if (scenes.length > 0) stdout.write(`  使用：${users([...usedBy(''), ...usedBy(defaultKey)])}\n`);
       } else {
-        stdout.write('默认风格：无（不写 film_style 的镜头自主定视觉）。用 am film-style list 查看可选风格\n');
+        stdout.write('默认风格：无（不写 film_style 的镜头自主定视觉）。用 film_style_list() 查看可选风格\n');
       }
       for (const m of extras) {
         const key = filmstyle.manifestKey(m);
@@ -246,11 +246,11 @@ style_shift，说明画法怎么在画面里换过去。
       const installedKeys = new Set([defaultKey, ...extras.map(filmstyle.manifestKey)]);
       for (const s of scenes) {
         if (s.film_style !== '' && s.film_style !== filmstyle.NoFilmStyle && !installedKeys.has(s.film_style)) {
-          stdout.write(`注意：镜头 ${s.id} 点名的 ${s.film_style} 没装进项目，渲染会失败；运行 am film-style add ${s.film_style}\n`);
+          stdout.write(`注意：镜头 ${s.id} 点名的 ${s.film_style} 没装进项目，渲染会失败；运行 film_style_add({"args": ["${s.film_style}"]})\n`);
         }
       }
       for (const item of sources) {
-        const state = item.ready ? '已就绪' : '未准备（运行 am setup）';
+        const state = item.ready ? '已就绪' : '未准备（在客户端的工具准备页安装）';
         stdout.write(`风格来源 ${item.id}：${state}，${item.location}\n`);
       }
     },

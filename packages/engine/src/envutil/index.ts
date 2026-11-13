@@ -77,10 +77,38 @@ export function addExecutableLocation(env: Record<string, string>, executable = 
   env.AM_EXECUTABLE = executable;
   const directory = path.dirname(executable);
   env.PATH = env.PATH ? directory + path.delimiter + env.PATH : directory;
-  // am setup 下载的工具（ffmpeg、uv、配音与对齐 CLI）放在 PATH 末尾：编排工具按名字调用 mmx、edge-tts 时能找到，
-  // 又不会盖过用户自己装的同名工具。
+  addToolsLocation(env);
+}
+
+/**
+ * 只把 am setup 下载的工具（ffmpeg、uv、配音与对齐 CLI）加在 PATH 末尾：编排工具按名字调用 mmx、edge-tts 时能找到，
+ * 又不会盖过用户自己装的同名工具。客户端里的编排工具与渲染器用这个——am 本身不在它们的 PATH 里，只经工具服务调用。
+ */
+export function addToolsLocation(env: Record<string, string>): void {
+  // 用户以前在菜单里装过的 ~/.local/bin/am（或客户端的私有 shim 所在目录）可能就在登录 shell 的 PATH 里：
+  // 有客户端写出的 am 启动脚本的目录一律拿掉，agent 只能经工具服务调用 am。
+  const kept = (env.PATH ?? '').split(path.delimiter).filter((dir) => dir !== '' && !hasClientShim(dir));
   const tools = binDir(env);
-  if (tools !== '' && !env.PATH.split(path.delimiter).includes(tools)) env.PATH = env.PATH + path.delimiter + tools;
+  if (tools !== '' && !kept.includes(tools)) kept.push(tools);
+  env.PATH = kept.join(path.delimiter);
+}
+
+/** 客户端写出的 am 启动脚本里都有这句话（apps/desktop/src/main/clishim.ts 的 shimScript）。 */
+export const ClientShimMarker = '由 ArticleToMotion 客户端写出';
+
+function hasClientShim(dir: string): boolean {
+  try {
+    const fd = fs.openSync(path.join(dir, 'am'), 'r');
+    try {
+      const head = Buffer.alloc(512);
+      const n = fs.readSync(fd, head, 0, head.length, 0);
+      return head.subarray(0, n).toString('utf8').includes(ClientShimMarker);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
 }
 
 /** am setup 下载的工具放在哪里，覆盖默认的 <数据目录>/am/bin。 */

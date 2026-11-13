@@ -2,7 +2,7 @@
 import crypto from 'node:crypto';
 import { MissingToolError, lookPath as envLookPath } from '../envutil';
 import { DefaultGrace, ExitError as ProcessExitError, abortReason, start } from '../procgroup';
-import { detectModel, interactiveInvocation, newUsage, orchestratorInvocation, presetSessionID, usageEmpty, type OrchestratorAccess, type PermissionPrompt, type Usage } from '../tools';
+import { detectModel, interactiveInvocation, type McpServer, newUsage, orchestratorInvocation, presetSessionID, usageEmpty, type OrchestratorAccess, type PermissionPrompt, type Usage } from '../tools';
 import { runACP } from './acp';
 import { runCodexApp } from './codexapp';
 import type { AskPermission } from './interactive';
@@ -20,6 +20,8 @@ export interface Spec {
   access?: OrchestratorAccess;
   /** 见 tools.OrchestratorOptions.permissionPrompt。 */
   permissionPrompt?: PermissionPrompt;
+  /** am 的工具服务（客户端里给）：五家都挂上，编排工具只经它调用 am。 */
+  toolsServer?: McpServer;
   /**
    * 请用户批准一次调用（客户端里给）。给了且是安全模式时，codebuddy、opencode、codex 改用双向协议
    * （tools.interactiveInvocation），白名单外的调用经它问用户；claude、qoder 经 permissionPrompt 的审批 MCP。
@@ -160,7 +162,7 @@ function asError(err: unknown): Error {
 export async function run(spec: Spec, emit: (event: Event) => void, signal?: AbortSignal): Promise<Outcome> {
   if (spec.ask) {
     const base = spec.env ?? (process.env as Record<string, string>);
-    const inter = interactiveInvocation(spec.tool, { unsafe: spec.unsafe, access: spec.access }, base);
+    const inter = interactiveInvocation(spec.tool, { unsafe: spec.unsafe, access: spec.access, toolsServer: spec.toolsServer }, base);
     if (inter) {
       const env = { ...base, ...inter.env };
       return inter.protocol === 'acp' ? runACP(spec, emit, signal, inter.argv, env) : runCodexApp(spec, emit, signal, inter.argv, env);
@@ -169,9 +171,10 @@ export async function run(spec: Spec, emit: (event: Event) => void, signal?: Abo
   let parser;
   let argv: string[];
   let stdin: string;
+  let extraEnv: Record<string, string> = {};
   try {
     parser = newParser(spec.tool);
-    ({ argv, stdin } = orchestratorInvocation(spec.tool, {
+    ({ argv, stdin, env: extraEnv = {} } = orchestratorInvocation(spec.tool, {
       workdir: spec.workdir,
       prompt: spec.prompt,
       unsafe: spec.unsafe,
@@ -179,7 +182,8 @@ export async function run(spec: Spec, emit: (event: Event) => void, signal?: Abo
       resume: spec.resume,
       access: spec.access,
       permissionPrompt: spec.permissionPrompt,
-    }));
+      toolsServer: spec.toolsServer,
+    }, spec.env ?? (process.env as Record<string, string>)));
   } catch (err) {
     return { result: emptyResult(), error: asError(err) };
   }
@@ -197,7 +201,7 @@ export async function run(spec: Spec, emit: (event: Event) => void, signal?: Abo
       argv.slice(1),
       {
         cwd: spec.workdir || undefined,
-        env: spec.env,
+        env: Object.keys(extraEnv).length > 0 ? { ...(spec.env ?? (process.env as Record<string, string>)), ...extraEnv } : spec.env,
         stdio: [stdin !== '' ? 'pipe' : 'ignore', 'pipe', 'pipe'],
         signal,
       },

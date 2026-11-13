@@ -358,7 +358,7 @@ function newMemoryConsolidateCommand(stdout: Out, stderr: Out, unsafe: Ref<boole
       for (const name of Object.keys(result.rejected).sort(compareBytes)) {
         stdout.write(`被拒草稿 ${name}：\n  - ${result.rejected[name].join('\n  - ')}\n`);
       }
-      if (result.accepted.length > 0) stdout.write('下一步：am memory exam --renderers <工具1>,<工具2>\n');
+      if (result.accepted.length > 0) stdout.write('下一步：memory_exam({"renderers": "<工具1>,<工具2>"})\n');
     },
   });
   cmd.flags().intVar(minCount, 'min-count', 2, '一组失败至少出现几次才提炼');
@@ -501,11 +501,11 @@ export function renderExam(r: memory.ExamResult): string {
       b += '重考通过：在当前模型上仍有提升，已补记考试编号\n';
       break;
     case 'retest-failed':
-      b += '重考未通过：在当前模型上没有提升。状态不变——可用 am memory retire 让它沉睡，或给它加 applies_when.models 限定到旧模型\n';
+      b += '重考未通过：在当前模型上没有提升。状态不变——可用 memory_retire() 让它沉睡，或给它加 applies_when.models 限定到旧模型\n';
       break;
     default:
       if (r.verdict.invalid) b += '考试无效：记忆状态不变\n';
-      else if (r.verdict.needs_human) b += '待人工确认：用 am memory promote / reject 决定\n';
+      else if (r.verdict.needs_human) b += '待人工确认：用 memory_promote() / memory_reject() 决定\n';
       else b += '未改动记忆状态（--dry-run）\n';
   }
   return b;
@@ -608,13 +608,13 @@ function newMemoryStatusCommand(stdout: Out): Command {
       }
       for (const r of report.retest ?? []) {
         stdout.write(
-          `需要重考：${r.name} 当初在 ${r.renderer} 上用 ${r.examined_models.join('、')} 考过，现在是 ${r.current_model}（am memory exam --renderers ${r.renderer} --retest ${r.name}）\n`,
+          `需要重考：${r.name} 当初在 ${r.renderer} 上用 ${r.examined_models.join('、')} 考过，现在是 ${r.current_model}（memory_exam({"renderers": "${r.renderer}", "retest": "${r.name}"})）\n`,
         );
       }
       for (const x of report.suspect ?? []) {
         const renderer = x.renderer.split('/')[0];
         stdout.write(
-          `可疑：${x.name} 在 ${x.renderer} 上召回 ${x.recalled} 次，其中 ${x.harmful} 次它要防的 ${(x.checks ?? []).join('、')} 照样判了失败（am memory exam --renderers ${renderer} --retest ${x.name}）\n`,
+          `可疑：${x.name} 在 ${x.renderer} 上召回 ${x.recalled} 次，其中 ${x.harmful} 次它要防的 ${(x.checks ?? []).join('、')} 照样判了失败（memory_exam({"renderers": "${renderer}", "retest": "${x.name}"})）\n`,
         );
       }
       for (const w of report.weak ?? []) {
@@ -733,7 +733,7 @@ function newMemoryRememberCommand(stdout: Out): Command {
     long: `把用户表达的长期取向直接记为生效的偏好，并生成快照。用户自己说出来的就是确认，
 不需要再经人工确认或考试。
 
-偏好会进入两处：编排工具每次开工前读到的「用户偏好」段（am run 与 Studio 对话），
+偏好会进入两处：编排工具每次开工前读到的「用户偏好」段（客户端的每一轮对话），
 以及每个镜头渲染时的记忆召回。默认只对当前项目成立，--global 对所有项目成立。
 用户收回一条偏好时用 am memory retire NAME。
 
@@ -757,7 +757,7 @@ function newMemoryRememberCommand(stdout: Out): Command {
       });
       const scope = m.scope === '' ? '所有项目' : '本项目（' + m.scope + '）';
       if (inferred.value) {
-        stdout.write(`推测的偏好 ${m.name}（${scope}）进入试用：${m.description}；用户确认后运行 am memory promote ${m.name}\n`);
+        stdout.write(`推测的偏好 ${m.name}（${scope}）进入试用：${m.description}；用户确认后运行 memory_promote({"args": ["${m.name}"]})\n`);
         return;
       }
       stdout.write(`已记住偏好 ${m.name}（${scope}）：${m.description}，快照 #${snapshot?.id ?? 0}\n`);

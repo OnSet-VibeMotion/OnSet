@@ -1,6 +1,6 @@
 # 仓库规则
 
-本仓库是 ArticleToMotion 的工具本体，交付物是 macOS 桌面客户端（`apps/desktop`，Electron）与随客户端附带的 `am` 命令行（`packages/cli`，打成一个 JS 文件，由客户端自带的 Electron 当 Node 运行）。两者共用一份 TypeScript 引擎 `packages/engine`。它**不是**视频项目：这里不制作视频，也不存放任何单片内容。给视频项目用的规则是 `assets/shared/templates/project-rules.md`，那份文件随项目骨架下发到用户项目的 `templates/project-rules.md`，不约束本仓库的开发。
+本仓库是 ArticleToMotion 的工具本体，交付物是 macOS 桌面客户端（`apps/desktop`，Electron）。`am`（`packages/cli`，打成一个 JS 文件，由客户端自带的 Electron 当 Node 运行）只随客户端留在 .app 里给客户端自己用——后台任务直接调它，编排工具与渲染器经它的工具服务（MCP，见「am 的工具服务」）调用——**命令行不对外提供**：没有安装到终端的入口，README 不教终端用法，提示词不教 `am <命令>`。开发与 CI 照常在终端里用它。客户端与 am 共用一份 TypeScript 引擎 `packages/engine`。它**不是**视频项目：这里不制作视频，也不存放任何单片内容。给视频项目用的规则是 `assets/shared/templates/project-rules.md`，那份文件随项目骨架下发到用户项目的 `templates/project-rules.md`，不约束本仓库的开发。
 
 | 目录 | 内容 |
 |---|---|
@@ -182,10 +182,11 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 
 ## Prompt 文件
 
-`assets/shared/PROMPT.md` 和 `assets/presets/<画幅>/PROMPT-PRODUCTION.md` 是内置资产，不是本仓库的文档。它们随 `am init` 下发到项目根，被 `am run` 与客户端的「开始制作」直接喂给编排工具。`PROMPT-PRODUCTION.md` 是生成产物，改它要改 `packages/engine/src/preset/gen/templates/PROMPT-PRODUCTION.md` 再跑生成器。
+`assets/shared/PROMPT.md` 和 `assets/presets/<画幅>/PROMPT-PRODUCTION.md` 是内置资产，不是本仓库的文档。它们随新建项目下发到项目根，被客户端的「开始制作」直接喂给编排工具。`PROMPT-PRODUCTION.md` 是生成产物，改它要改 `packages/engine/src/preset/gen/templates/PROMPT-PRODUCTION.md` 再跑生成器。
 
 - 要像直接写给人类操作者的任务说明，不暴露执行者是 agent、Codex 或 AI，也不使用「主控 agent」这类身份设定；但可以明确说明他需要操作其他 AI。
-- 不得出现 `./am` —— 用户项目里没有这个可执行文件，`am run` 通过 `PATH` 和 `AM_EXECUTABLE` 注入当前的 `am`。
+- 不得出现 `./am` —— 用户项目里没有这个可执行文件。
+- 制作步骤写成 am 工具服务里的工具调用：`工具名({参数})`（例如 `scene_run({"args": ["scenes/scene-001"]})`、`align_build({"fps": 30})`），位置参数放进 `args`，`--a-b` 写成参数 `a_b`。不教 `am <命令>`，更不写 `$(am …)` 这样的命令替换——am 不在编排工具与渲染器的 PATH 里。前置资源缺了一律指向客户端的工具准备页，不写「在终端运行 am setup」。`gen.test.ts` 的「keeps the orchestrator out of am internals」「leaves voice tools to am setup」钉着。
 - 这两条由 `packages/engine/src/project/boundary.test.ts` 的「prompts use installed CLI and do not expose executor identity」强制执行，违反会让测试失败。
 
 ## 媒体校验与拼接
@@ -235,7 +236,7 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 
 用量账以尝试记录为准：`scene.attemptHistory` 读当前记录加 `attempts/` 归档，失败与重试照样计入（`am scene usage`、客户端镜头列表）。客户端后端把 `render-*.attempt.json` 当媒体只记 stat，回退一轮不会删掉它——那是已经花掉的钱。
 
-编排工具的用量记在账本里（`packages/engine/src/ledger`，只追加的 JSONL）：`am run` 与客户端每一轮记进项目的 `production/usage/orchestrator.jsonl`，整理记忆记进记忆库的 `orchestrator-usage.jsonl`。每次调用一行，失败、取消、续接失败后重开的会话都各记一行；进程没起来（`agentrun` 的 `Result.started` 为 false）的不记。模型名取 `Result.model`（流里的 `system/init`），读不到再按 `tools.configuredModel` 补。客户端后端的 `scanTree` / `statTree` 跳过 `production/usage/`：账在一轮结束前写下，不跳过的话会算成这一轮的改动，回退时连账一起抹掉。`am usage` 合计渲染与编排两本账。
+编排工具的用量记在账本里（`packages/engine/src/ledger`，只追加的 JSONL）：客户端每一轮（以前还有命令行 `am run`，旧账照样统计）记进项目的 `production/usage/orchestrator.jsonl`，整理记忆记进记忆库的 `orchestrator-usage.jsonl`。每次调用一行，失败、取消、续接失败后重开的会话都各记一行；进程没起来（`agentrun` 的 `Result.started` 为 false）的不记。模型名取 `Result.model`（流里的 `system/init`），读不到再按 `tools.configuredModel` 补。客户端后端的 `scanTree` / `statTree` 跳过 `production/usage/`：账在一轮结束前写下，不跳过的话会算成这一轮的改动，回退时连账一起抹掉。`am usage` 合计渲染与编排两本账。
 
 ## 渲染记忆
 
@@ -311,6 +312,30 @@ AM_TEST_BEAT_PYTHON=/path/to/venv/bin/python npx vitest run --root packages/engi
 
 调试产生的单片内容留在仓库外，不要靠 `.gitignore` 遮掩——未跟踪文件同样会被这个测试扫到。
 
+## am 的工具服务（MCP）
+
+客户端里的编排工具与渲染器**只经 MCP 调用 am**：`am studio tools-mcp --profile orchestrator|renderer --workdir <目录>`（`packages/cli/src/toolsmcp.ts`，隐藏命令）。以前 am 在它们的 PATH 里，缺信息时它们会 `which am`、`strings "$(which am)"` 反推格式（实测两次），每次都撞白名单、弹审批卡片打断用户。
+
+| 约定 | 原因 |
+|---|---|
+| 工具由命令树自动生成，每个叶子命令一个（`scene run-all` → `scene_run_all`），参数与说明来自命令本身；flag 的连字符换成下划线，位置参数放 `args`。不出现的：`setup`、`run`、`init`、两个 `*-mcp`、隐藏命令、`--unsafe` | 以后加命令自动有工具，不会漏；前置资源只在安装页装，建项目由客户端做 |
+| 工具列表里只放一句话说明（工具 74 个，带完整帮助有 7.5 万字），完整说明与例子由 `tool_help` 按需取；参数说明只留第一句 | 每次请求都要把工具定义塞进上下文。claude、codebuddy 会按需加载（ToolSearch / DeferExecuteTool），opencode 经它的代码执行工具调 |
+| `hyperframes` 单独一个工具（子命令枚举 + `args`），只放行本机渲染与只读检查；`snapshot` 自动加 `--describe false`，`timeline` 只放行 `--json`。renderer 档位只有它加 `job_wait` / `job_cancel` / `tool_help` | 与渲染提示词的禁令同一份：远端渲染、改动已装技能、交互与遥测命令一律不给 |
+| 每次调用起一个 am 子进程（同一个运行时、同一个 am.cjs），最多等 `wait_seconds`（缺省 50）；没跑完返回任务号，`job_wait` 接着等，MCP 进程退出时整组结束子进程 | codex 的 MCP 调用默认 60 秒超时，而渲染、拼接动辄几分钟到几小时 |
+| 挂法（`tools.ts`）：claude / qoder / codebuddy 用 `--mcp-config`（claude 与审批服务合在一份，放在 `--verbose` 前面免得吞掉提示词），claude 系 `--settings` 放行 `mcp__am`、拒绝 `Bash(am:*)`，qoder 加 `--allowed-tools mcp__am`；ACP（codebuddy、opencode 在客户端里）走 `session/new` 的 `mcpServers`；codex app-server 走 `thread/start` 的 `config.mcp_servers`，exec 走 `-c mcp_servers.am.*`；opencode run 走 `OPENCODE_CONFIG_CONTENT` 的 `mcp`，并且**必须** `--standalone` | opencode run 默认连后台常驻服务，这一次给的配置（MCP、模型）全被忽略（2.1.0 实测）。codex 在 untrusted 策略下给每次 MCP 调用发 `mcpServer/elicitation/request`，`codexapp.ts` 对 am 服务直接同意，别的服务照常问用户 |
+| 服务的环境只挑 am 自己要的变量（`tools.amToolsServer`：`AM_*`、`HYPERFRAMES_*`、记忆与配置键、PATH、HOME……），不整份传 | MCP 配置会出现在命令行里，不安全模式下子进程环境里还有凭据 |
+| agent 的 PATH 不含 am：`envutil.addToolsLocation` 只把 am setup 的工具目录加在末尾，并拿掉含客户端 am shim 的目录；`orchestratorBaseCommands` 与 `rendererAccess` 都不含 am | 两边都靠白名单的话，换一家 CLI 就漏 |
+| 提示词写工具调用（见「Prompt 文件」）；引擎报错与 am 输出里的提示也写成工具调用（`请重新运行 beat_cues()`）。命令行帮助（`long` / `example`）仍按命令行写，`tool_help` 与每次工具输出交给 agent 前经 `toolNotation` 把「am 命令 …」换成工具调用（`toolsmcp.test.ts` 的「rewrites am command lines as tool calls」）；没有对应工具的 `am setup`、`am init`、`am run` 不写进帮助与提示，改说工具准备页、新建项目 | agent 拿到什么就照着调什么：报错里写 `am beat cues`，它就会去终端里找 am。帮助文本几百处，在出口统一换比逐处改稳，开发时终端里的帮助也照样能用 |
+
+改了任何一家挂 MCP 的方式，在本机用真实 CLI 跑一遍（答案放在 agent 读不到的 `.env` 里，答对说明真的调了工具）：
+
+```bash
+npm run build -w @am/cli
+AM_TEST_TOOLS_MCP=claude,codex,qoder,codebuddy,opencode npx vitest run --root packages/engine src/agentrun -t RealToolsMCP
+```
+
+opencode 默认模型不可用时加 `AM_TEST_OPENCODE_MODEL`。
+
 ## 桌面客户端
 
 `apps/desktop` 是唯一的界面：对话驱动的本地工作台，仿 OpenDesign。主进程（`src/main/`）在项目目录里启动编排工具，把 `packages/engine/src/agentrun` 的统一事件经 SSE 推给界面（`src/renderer/`，React 19），多轮续接同一个 CLI 会话。「开始制作」与 `am run` 共用 `project.runPrompt`。界面与文档里仍把这套工作台叫 Studio，后端在 `packages/engine/src/studio`。
@@ -322,7 +347,7 @@ AM_TEST_BEAT_PYTHON=/path/to/venv/bin/python npx vitest run --root packages/engi
 | 客户端在 `apps/desktop`（npm workspaces，根目录 `package.json`）：`src/main` 是 Electron 主进程，`src/renderer` 是 React 19 界面 | 一个 workspace 一个交付物，引擎与命令行各自独立构建 |
 | 界面从自定义协议 `am://app/` 加载，界面里的 `/api/…`、`EventSource`、媒体 `src`、预览 iframe、上传都落到主进程的 `handleRequest`（`src/main/main.ts`） | 界面代码按普通网页写请求，不用为 Electron 改一行；接口名就是后端路由名 |
 | `/api`、`/preview` 由进程内的后端处理（`@am/engine/studio` 的 `Server.handle(Request)`）；它的写任务与编排工具调用的 `am` 是 `userData/bin/am` 这份私有 shim（`AM_SELF` 同指它）；退出前 `Server.shutdown()` 取消进行中的轮次与任务 | 不依赖用户是否安装了命令行、也不会调到 `~/.local/bin` 里别的版本；编排工具与子命令各成进程组，不显式取消会在客户端退出后继续跑 |
-| 命令行是打进资源目录的 `cli/am.cjs`，由一段 shim（`src/main/clishim.ts` 的 `shimScript`）以 `ELECTRON_RUN_AS_NODE=1` 用客户端自带的 Electron 运行，同时设 `AM_ASSETS_DIR`。菜单「安装命令行工具…」把同一段 shim 写到 `~/.local/bin/am`，已有别人写的 `am` 时先确认、不静默覆盖 | 用户不必另装 Node；终端里的 `am` 与客户端里的永远是同一个版本。重装客户端后路径可能变，在菜单里重新安装即可 |
+| am 是打进资源目录的 `cli/am.cjs`，由一段 shim（`src/main/clishim.ts` 的 `shimScript`，写在 `userData/bin/am`）以 `ELECTRON_RUN_AS_NODE=1` 用客户端自带的 Electron 运行，同时设 `AM_ASSETS_DIR`、`AM_BROWSER`、`AM_NPM_CLI`。**没有「安装命令行工具」**：命令行不对外，以前装到 `~/.local/bin/am` 的旧 shim 由 `envutil.addToolsLocation` 从 agent 的 PATH 里拿掉（认 shim 里的 `ClientShimMarker`） | 用户不必另装 Node；agent 只经工具服务调用 am，找不到也不会去翻它 |
 | 主进程启动时从登录 shell 读 PATH（`shellpath.ts`） | 从 Finder 启动的应用只有系统 PATH，编排工具、ffmpeg、asdf 的 node 全都找不到 |
 | 顶栏就是标题栏：`.desktop .topbar` 可拖动窗口，按钮 `no-drag`；macOS 左侧留 88px 给红绿灯 | `titleBarStyle: hiddenInset` 去掉了系统标题栏 |
 | 静态文件（`serveStatic`）只把不带扩展名的路径回落到 `index.html`，带扩展名找不到直接 404；按扩展名设 MIME，一律 `no-cache` | 缺失的脚本拿到一份 HTML，浏览器只报模块 MIME 错误，看不出真正原因 |
@@ -350,7 +375,7 @@ AM_TEST_BEAT_PYTHON=/path/to/venv/bin/python npx vitest run --root packages/engi
 | `/api/files` 与 `/preview/scenes/` 经 `containedPath`（`sessions.ts`）解析（含符号链接），`.env` 一律不读 | 这两个接口按路径读文件，而预览 iframe 里跑的是渲染器写出的合成页面、与界面同在 `am://app/` 下；不限定在项目内的话，一段生成的 HTML 就能读到项目外的文件与 `.env` |
 | 风格只展示整片风格（`studio/filmstyle.ts`）：首页、新建对话框、「风格」页与镜头页共用 `FilmStyles.tsx`（首页、换风格、添加风格用整体弹窗 `FilmStyleDialog`）；旧版内置风格不再出现在界面里（`/api/styles` 只剩画幅还在用）。装、换、添加、去掉都经 `am film-style` 写任务（`startFilmStyleTask` / `startAddFilmStyleTask`）；「风格」页列出默认风格与其他风格及各自在用的镜头，镜头页显示本镜头的风格，新建时 `/api/projects/create` 收 `film_style` 并返回 `film_style_task`，开机画面跟这个任务；顶栏显示的是 `metadata.film_style` | 旧风格 10 月 20 日起已不影响渲染，留在选择器里只会让人选一个不起作用的东西。风格改的是项目文件，走写任务才不会和一轮对话的快照打架 |
 | 客户端不下载风格来源与海报（前置资源，`am setup` 准备）：来源没准备好时 `/api/film-styles` 的那个来源报 `ready: false` 并附指向 `am setup` 的说明，界面显示分类色占位块；`/api/film-styles/{来源}/{目录名}/poster.jpg` 默认给 480 宽的缩略图（`posterThumbWidth`，缓存在 `<风格根目录>/.thumbs/<来源>/`），`?size=full` 给原图 | 原图一张 1920×1080，菜单一屏几十张会卡 |
-| 编排工具与界面互通（`studio/view.ts`、`packages/engine/src/studioview`）：编排工具运行 `am studio show <页面> [对象] [--note …]` 把界面切到要用户看的那一页——请求写进这一轮的收件目录（`AM_STUDIO_INBOX`，在 `production/studio/inbox/<轮次>/`，`runTurn` 经子进程环境传下去），后端每 300 毫秒取一次、译成 `view` 事件，界面只执行刚发生的（15 秒内，重放历史不切页），回复下面留一个可点的「↗ 页面」。反方向，界面每条消息带 `view`（当前页、镜头、文件），`describeView` 把它写进这一轮的提示词，不进对话显示。约定写在 `studioInteraction`（`viewInteraction`），页面表 `ViewPages` 与 `Preview.tsx` 的 `tabs` 一一对应 | 走文件不走 HTTP：codex 沙箱默认断网，项目目录总是可写，编排工具也不必知道客户端的任何地址。不在客户端里（`am run`）时 `am studio show` 静默跳过、页面写错照样报错，编排工具照提示词调用不会失败。实测 claude 在安全模式下能直接调用并切页 |
+| 编排工具与界面互通（`studio/view.ts`、`packages/engine/src/studioview`）：编排工具调用 `studio_show` 工具（`am studio show <页面> [对象] [--note …]`）把界面切到要用户看的那一页——请求写进这一轮的收件目录（`AM_STUDIO_INBOX`，在 `production/studio/inbox/<轮次>/`，`runTurn` 经子进程环境传下去），后端每 300 毫秒取一次、译成 `view` 事件，界面只执行刚发生的（15 秒内，重放历史不切页），回复下面留一个可点的「↗ 页面」。反方向，界面每条消息带 `view`（当前页、镜头、文件），`describeView` 把它写进这一轮的提示词，不进对话显示。约定写在 `studioInteraction`（`viewInteraction`），页面表 `ViewPages` 与 `Preview.tsx` 的 `tabs` 一一对应 | 走文件不走 HTTP：codex 沙箱默认断网，项目目录总是可写，编排工具也不必知道客户端的任何地址。不在客户端里（`am run`）时 `am studio show` 静默跳过、页面写错照样报错，编排工具照提示词调用不会失败。实测 claude 在安全模式下能直接调用并切页 |
 | 口播稿页（`studio/script.ts` 的 `/api/script`、`Script.tsx`）排在标签第一位：读 `production/script-final.md`，经 `align` 的 `view`（`align/view.ts`）排成标题、段落、读法（ruby）与受保护短语，附字数、估算时长（每秒 4.5 字）、`voice.srt` 的实际配音时长与 `script-change-log.md`；没有终稿时原样显示原稿，标记写错时给出位置并显示原文。有终稿、还没有镜头时自动切到这一页，稿子改过没看过时标签打点，聊天里点到终稿也打开这一页。「确认，开始配音」「提修改意见」「针对所选提意见」都只是往对话里发话或填输入框 | 稿件审核关卡要用户看稿，以前只能在聊天里翻；视图与 `am align` 共用一份解析器，读法与短语和配音、对齐看到的是同一份。客户端自己不改稿 |
 | 节拍页（`Beat.tsx`，`/api/beat`）在卡点项目里代替口播稿排第一步（`stepTabsFor`）。页头六步（故事与文案 → 导入音乐 → 分析节拍 → 试听确认 → 分镜计划 → 做镜头）各自判断完成与否，下面一块「接下来」用一句话说清下一步、按钮把它交给对话；故事与文案读 `production/beat/story.md`（制作提示词「卡点分支」让编排工具开工先写它，`gen.test.ts` 的「tells the beat story before the music」钉着）（`BeatStoryFile`），还在定故事时展开全文、之后收成标题加梗概。其下画波形、每拍刻度、重拍与小节号、分镜计划的镜头条，播放时大字数拍；拍数与多数小节不同的小节标黄。音乐用 WebAudio 解码播放，咔嗒按当前网格在同一个 `AudioContext` 里现合成，所以在页面上换「每小节几拍 / 重拍是第几拍」（或播放中按 T 敲重拍）立刻能听到；只有动过这两个控件才进入预览，原网格（手改、拼接过的常常不规整）照原样显示。写回只走 `beat.regrid` / `beat.confirm` 两个写任务，客户端不改网格；`/api/beat` 不哈希音乐（每次刷新都要读），网格与音乐不符由 `am beat confirm` 拦下 | 卡点项目原先跑的是口播流程的制作提示词，没有任何卡点步骤，用户在听音乐之前不知道片子讲什么、接下来要做什么；以前也只有一条横幅放 `grid-click.wav`，重拍错位要回终端跑 `am beat regrid` 再重听整条试听轨，小节、拍数与切点只能看 `am beat bars` 的文字表 |
 | 发布页（`Publish.tsx`）不贴 `publish.md` 原文：`/api/publish` 经 `validate.readPublish` 只解析 frontmatter（不校验）返回 `data`，页面按「状态 → 可复制的标题 / 简介 / 话题 → 登记的封面 → 还剩的人工检查」排，规格与证据收进折叠。客户端里任何地方都不显示它的 Markdown 原文：接口不回传正文，解析失败只给原因、让编排工具修；聊天、文件树、`am studio show file publish.md` 点到它都切到发布页（`app.tsx` 的 `pageForFile`，口播稿同理）。合格与否仍只看「发布校验」 | `publish.md` 是 `am run` 下给人看的发布助手；在客户端里发布页就是那份助手，再贴原文只是把几十行校验字段和重复的表格摆到用户面前 |
@@ -391,6 +416,7 @@ AM_TEST_BEAT_PYTHON=/path/to/venv/bin/python npx vitest run --root packages/engi
 | `packages/engine/src/agentrun/parse.ts` | 把该工具的结构化流译成统一事件；先录一份真实的两轮输出放进 `packages/engine/src/agentrun/testdata/`，`parse.test.ts` 的「recorded streams」加一行 |
 | `packages/engine/src/scene/skills.ts` `rendererSkillDirs` | 该工具的技能目录约定（家目录级与项目级） |
 | `packages/engine/src/studio/agents.ts` `agentOrder` | 客户端工具选择里的展示名与顺序，`agents.test.ts` 的「agentOrder covers valid tools」守着与 `ValidTools` 一致 |
+| `tools.ts` 的 `rendererInvocation` / `orchestratorInvocation`（或 `acp.ts`、`codexapp.ts`） | 挂上 am 的工具服务（见「am 的工具服务」），并放行它的工具；`toolsmcp.integration.test.ts` 的 RealToolsMCP 加上这一家 |
 
 同时更新 `assets/shared/article-to-motion.conf`、`assets/shared/.env.example`、`README.md`、`README.en.md` 里的可选值注释。
 
@@ -398,7 +424,7 @@ AM_TEST_BEAT_PYTHON=/path/to/venv/bin/python npx vitest run --root packages/engi
 
 客户端里的 claude 与 qoder 编排工具遇到白名单外的调用时不直接拒绝，而是问界面上的用户：`orchestratorInvocation` 给它们加 `--mcp-config`（`am studio permission-mcp`，`OrchestratorOptions.permissionPrompt`）与 `--permission-prompt-tool mcp__am_studio__ask`（claude 还要 `--permission-prompts host`；qoder 的这个参数帮助里没列，实测可用）；审批服务把请求写进这一轮收件目录的 `permissions/` 子目录（`studioview/permissions.ts`），后端轮询到就发 `permission` 事件、界面在输入框上方弹卡片，答复经 `POST /api/sessions/{id}/permissions/{请求}` 写回（`studio/permissions.ts`），这一轮结束时没答的一律答成 `expired`。「以后都允许」把命令前缀记进项目的 `production/studio/permissions.json`，下一轮并进白名单。codebuddy 不认 `--permission-prompt-tool`、codex exec 不能中途审批、opencode 的 `run` 根本不拦命令，所以客户端里（`agentrun.Spec.ask` 给了、安全模式）它们改用双向协议：`tools.interactiveInvocation` 选 ACP（`codebuddy --acp` 沿用 acceptEdits 与白名单 `--settings`；`opencode acp` 经 `OPENCODE_CONFIG_CONTENT` 把 bash 设成 ask，合并用户自己的这个变量）或 `codex app-server`（`thread/start` 给 `approvalPolicy: untrusted`、workspace-write 沙箱、网络与可写目录），由 `agentrun/acp.ts`、`codexapp.ts` 在 `interactive.ts` 的进程外壳上跑。对方的审批请求先过白名单（`commandAllowed`，去掉 codex 的 `zsh -lc` 包装），白名单外的经 `spec.ask` 写进同一个收件目录，后面与审批 MCP 一模一样。约定：ACP 的「总是允许」只答 `allow_once`、codex 拒绝答 `decline`（不打断整轮），「以后都允许」只由客户端记；续接用 `session/load` / `thread/resume`，ACP 续接时对方重放的历史不当成这一轮的事件；opencode、codebuddy 被拒后会直接结束这一轮，`acp.ts` 在对话里补一句说明。三家用旧的一次性模式建的会话都能在新协议下续接（2026-11 实测），所以升级不会让已有会话断掉。`am run` 与 `--unsafe` 仍走一次性模式。离线测试用 `agentrun/testdata/fake-acp.mjs` 与 `fake-codex-app.mjs`，e2e 的 `fake-bin/opencode` 复用前者；`--mcp-config` 吃多个值，后面必须紧跟一个选项，不然会把提示词吞掉。改了这条链要用真实 CLI 跑一遍：claude 与 qoder 照下面的 RealCLI，三家双向协议用 `AM_TEST_INTERACTIVE_TOOLS=codex,opencode,codebuddy npx vitest run --root packages/engine src/agentrun -t RealInteractive`（opencode 默认模型不可用时加 `AM_TEST_OPENCODE_MODEL`）；fake 只模拟协议。
 
-编排工具同理，`orchestratorAccess`（`config/providers.ts`）列出它要放行的命令：基础命令（`orchestratorBaseCommands`）加当前 TTS 与对齐工具各自的那一个命令（`TTSProviders` / `Aligners` 的 `command` 字段）。各家的权限模式实测结果不同，改之前先读 `orchestratorInvocation` 的注释：qoder 的 `dont_ask` 连写文件都拒；codex 没有命令白名单，靠沙箱，而沙箱默认断网会让 TTS 失败；opencode 2.x 只读项目目录里的 `opencode.json`，规则集拦不住命令，写成全拒时无头运行会直接挂起，所以 `opencode run`（`am run`）在安全模式下不加限制，README 里写明了；客户端里的 `opencode acp` 经 `OPENCODE_CONFIG_CONTENT` 把 bash 设成 ask，白名单外的命令照样会问（实测 2.1.0 有效）。
+编排工具同理，`orchestratorAccess`（`config/providers.ts`）列出它要放行的命令：基础命令（`orchestratorBaseCommands`，**不含 `am`**——am 只经工具服务调用）加当前 TTS 与对齐工具各自的那一个命令（`TTSProviders` / `Aligners` 的 `command` 字段）。各家的权限模式实测结果不同，改之前先读 `orchestratorInvocation` 的注释：qoder 的 `dont_ask` 连写文件都拒；codex 没有命令白名单，靠沙箱，而沙箱默认断网会让 TTS 失败；opencode 2.x 只读项目目录里的 `opencode.json`，规则集拦不住命令，写成全拒时无头运行会直接挂起，所以 `opencode run`（`am run`）在安全模式下不加限制，README 里写明了；客户端里的 `opencode acp` 经 `OPENCODE_CONFIG_CONTENT` 把 bash 设成 ask，白名单外的命令照样会问（实测 2.1.0 有效）。
 
 改了任何一家的调用参数或解析器，都要在本机跑一遍真实 CLI 集成测试（`packages/engine/src/agentrun/integration.test.ts`）：
 

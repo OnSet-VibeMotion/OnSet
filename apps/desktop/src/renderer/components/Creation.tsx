@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api, errorText, post } from '../api';
+import { api, errorText, forUser, post } from '../api';
 import type { Attachment, CanvasOption, Project, Task } from '../types';
 import '../creation.css';
 
@@ -172,7 +172,7 @@ export function Creation(props: { job: CreationJob; onDone: (projectId: string, 
                   setCaption(`装备技能 · ${p.stage}${p.indeterminate ? '' : ` ${Math.round(p.percent)}%`}`);
                 }
               } else if (status?.error) {
-                setSkillsError(status.error);
+                setSkillsError(forUser(status.error));
                 setCaption('技能没装上');
                 return; // 等用户选重试或跳过
               } else {
@@ -231,7 +231,7 @@ export function Creation(props: { job: CreationJob; onDone: (projectId: string, 
                   return;
                 }
                 if (task.status === 'failed' || task.status === 'cancelled') {
-                  setStyleError(task.error || task.message || '整片风格没装上');
+                  setStyleError(forUser(task.error || task.message || '整片风格没装上'));
                   setCaption('整片风格没装上');
                   return; // 等用户选重试或跳过
                 }

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import * as song from '../song';
 import { ProductionPrompt, runPrompt } from './runprompt';
 
 const temps: string[] = [];
@@ -40,5 +41,20 @@ describe('runPrompt', () => {
     expect(path.basename(got.path)).toBe(ProductionPrompt);
     fs.writeFileSync(path.join(root, 'transcription.srt'), '1\n');
     expect(runPrompt(root, '').prompt.toString()).toBe('from-srt');
+  });
+
+  // 歌曲项目不论用哪份提示词开工，都要带上歌曲模式的必要契约（客户端的「开始制作」走这里）。
+  it('always adds the song contract in song projects', () => {
+    const root = tempDir();
+    fs.writeFileSync(path.join(root, 'song.yaml'), song.DefaultConfig);
+    fs.writeFileSync(path.join(root, 'PROMPT-SONG.md'), 'SONG-PROMPT');
+    const custom = path.join(root, 'custom.md');
+    fs.writeFileSync(custom, 'CUSTOM-PROMPT');
+    for (const override of ['', custom]) {
+      const body = runPrompt(root, override).prompt.toString();
+      expect(body).toContain('歌曲模式必要契约');
+      expect(body).toContain('不得代替用户选择');
+      expect(body).toContain(override === '' ? 'SONG-PROMPT' : 'CUSTOM-PROMPT');
+    }
   });
 });

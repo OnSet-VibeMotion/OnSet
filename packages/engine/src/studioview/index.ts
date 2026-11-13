@@ -111,7 +111,7 @@ export function validateViewRequest(project: string, req: ViewRequest): ViewRequ
     case 'scene':
     case 'scene?': {
       if (out.target === '') {
-        if (page.target === 'scene') throw new Error(`${page.label} 页要给镜头编号：am studio show ${page.id} <镜头编号>`);
+        if (page.target === 'scene') throw new Error(`${page.label} 页要给镜头编号：studio_show({"args": ["${page.id}", "<镜头编号>"]})`);
         break;
       }
       if (project === '') break;
@@ -120,7 +120,7 @@ export function validateViewRequest(project: string, req: ViewRequest): ViewRequ
       break;
     }
     case 'file': {
-      if (out.target === '') throw new Error('文件页要给项目里的相对路径：am studio show file <路径>');
+      if (out.target === '') throw new Error('文件页要给项目里的相对路径：studio_show({"args": ["file", "<路径>"]})');
       if (project !== '') {
         let rel = out.target;
         if (path.isAbsolute(rel)) rel = path.relative(project, rel);
@@ -216,9 +216,9 @@ export function viewInteraction(): string {
     return item + '）';
   });
   return (
-    '- 要用户看某样东西时，运行 am studio show <页面> [对象] [--note "一句说明"]，网页会直接切到那一页，比在回复里贴大段内容或让用户自己去找好。页面：' +
+    '- 要用户看某样东西时，调用 studio_show({"args": ["<页面>", "<对象>"], "note": "一句说明"})（对象与说明可省），网页会直接切到那一页，比在回复里贴大段内容或让用户自己去找好。页面：' +
     pages.join('、') +
-    '。例如口播稿写好、请用户审稿时运行 am studio show script --note "口播稿写好了，请看一遍"；某个镜头渲染完请用户看效果时运行 am studio show scene scene-003。不要连续切来切去，一次只把用户带到眼下最该看的那一页。\n' +
+    '。例如口播稿写好、请用户审稿时调用 studio_show({"args": ["script"], "note": "口播稿写好了，请看一遍"})；某个镜头渲染完请用户看效果时调用 studio_show({"args": ["scene", "scene-003"]})。不要连续切来切去，一次只把用户带到眼下最该看的那一页。\n' +
     '- 用户的消息后面可能附一句「用户发这条消息时，Studio 网页上开着……」，说的是用户正在看的页面；用户说「这个镜头」「这段」时指的就是那里。'
   );
 }

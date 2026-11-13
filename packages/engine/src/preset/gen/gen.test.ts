@@ -216,7 +216,7 @@ describe('PROMPT-PRODUCTION template', () => {
   // 风格交界的手法表与 scene.StyleShifts 一一对应：每种手法连同能配的 device 都写进第五阶段的表格，
   // 改了代码里的表忘了改提示词（或反过来），编排工具就会写出 am scene cues 拒收的计划。
   it('carries style boundaries', () => {
-    has(['### 风格交界', '`style_shift`', '"film_style"', '段落换风格', 'am film-style add <来源/目录名>', '禁止整画面叠化'], '风格交界');
+    has(['### 风格交界', '`style_shift`', '"film_style"', '段落换风格', 'film_style_add({"args": ["<来源/目录名>"]})', '禁止整画面叠化'], '风格交界');
     for (const shift of scene.StyleShifts) {
       const row = body.split('\n').find((line) => line.startsWith(`| \`${shift.id}\` ${shift.name} |`));
       expect(row, `风格交界表缺少 ${shift.id}`).toBeTruthy();
@@ -225,17 +225,17 @@ describe('PROMPT-PRODUCTION template', () => {
   });
 
   it('carries the film style without naming a source', () => {
-    has(['### 整片风格', 'am film-style list', 'am film-style use <来源/目录名>', 'am film-style show', '--replace', '.agents/skills/am-film-style/', 'SKILL.md', 'STYLE.md', '稿件审核关卡', '不用整片风格', '第六阶段渲染镜头之前', 'am setup', 'STYLE.md 里关于声音的内容只作为选曲和音效方向的参考'], '整片风格');
+    has(['### 整片风格', 'film_style_list()', 'film_style_use({"args": ["<来源/目录名>"]})', 'film_style_show()', '--replace', '.agents/skills/am-film-style/', 'SKILL.md', 'STYLE.md', '稿件审核关卡', '不用整片风格', '第六阶段渲染镜头之前', '工具准备页', 'STYLE.md 里关于声音的内容只作为选曲和音效方向的参考'], '整片风格');
     lacks(['lemo', 'DEMO.md', 'core/fonts'], '制作提示词');
   });
 
   // 记忆在用户确认成片可用之后整理：那时这部片子的问题才记全；客户端成片页的「确认可用」走同一个命令。
   it('consolidates memory after the user approves the film', () => {
-    has(['### 整理这次制作的经验', '用户明确确认这一版成片可用之后', 'am memory consolidate', '不要在用户确认之前整理'], '整理经验');
+    has(['### 整理这次制作的经验', '用户明确确认这一版成片可用之后', 'memory_consolidate()', '不要在用户确认之前整理'], '整理经验');
   });
 
   it('tells the beat story before the music', () => {
-    has(['## 卡点分支', 'beat.yaml', 'production/beat/story.md', '画面里的字与字幕就是这部片子的文案', 'am studio show beat', '用户没有点头之前不进入分镜计划', '不得替用户确认', 'am beat cues scenes/', 'am setup --only beat', '不要自己建 Python 环境、不要 pip install'], '卡点分支');
+    has(['## 卡点分支', 'beat.yaml', 'production/beat/story.md', '画面里的字与字幕就是这部片子的文案', 'studio_show({"args": ["beat"]', '用户没有点头之前不进入分镜计划', '不得替用户确认', 'beat_cues({"args": ["scenes/"]})', '「音乐卡点」', '不要自己建 Python 环境、不要 pip install'], '卡点分支');
     expect(body.indexOf('### 故事与文案')).toBeLessThan(body.indexOf('### 音乐与节拍网格'));
   });
 
@@ -243,11 +243,13 @@ describe('PROMPT-PRODUCTION template', () => {
   // 自己装一份全局的，版本不受控，客户端用户的机器上还常常没有 npm、pip、brew。
   // 编排工具缺了信息时会 strings / grep 已装的 am 程序反推格式（实测：反推 story.md 的格式），每次都弹权限确认打断用户。
   it('keeps the orchestrator out of am internals', () => {
-    has(['不要用 `which`、`strings`、`grep` 去读 `am` 程序本身', '节拍页把这个文件当普通 Markdown 原样显示'], '格式约定');
+    has(['不要用 `which`、`strings`、`grep` 去找、去读 `am` 程序本身', '节拍页把这个文件当普通 Markdown 原样显示', 'am 工具服务（MCP）里的工具', '`job_wait`', '`am` 不在终端里'], '格式约定');
   });
 
   it('leaves voice tools to am setup', () => {
-    has(['配音与对齐工具都是前置资源', 'am setup --only tts,align', 'funasr-python', '--model "$(am config get ALIGN_MODEL)"'], '配音工具');
+    has(['配音与对齐工具都是前置资源', '工具准备页', 'funasr-python', '--model <ALIGN_MODEL 的本地目录>', 'config_get({"args": ["ALIGN_MODEL"]})'], '配音工具');
+    // am 不在编排工具的 PATH 里：$(am …) 这样的命令替换跑不起来。
+    lacks(['$(am ', '在终端运行', '在终端里运行'], '配音工具');
     lacks(['pipx install', 'npm install -g', 'brew install', 'uv tool install', 'pip install funasr', 'pip install tccli'], '配音工具');
   });
 
@@ -269,12 +271,12 @@ describe('PROMPT-PRODUCTION template', () => {
   });
 
   it('aligns with code', () => {
-    has(['`am align text`', 'am align build', '`<显示|朗读>`', '`@{短语编号}', 'phrase-adjust.json'], '对齐流程');
+    has(['`align_text()`', 'align_build(', '`<显示|朗读>`', '`@{短语编号}', 'phrase-adjust.json'], '对齐流程');
     lacks(['按替换清单映射回终稿原文', '按顺序与原文逐字对回'], '对齐流程');
   });
 
   it('derives scene durations', () => {
-    has(['am scene cues --plan production/scene-plan.json', '`first_subtitle`', '`first_phrase`', '--check', 'am-scene.js', '`scene-kit`'], '镜头时长流程');
+    has(['scene_cues({"args": ["scenes/"], "plan": "production/scene-plan.json"', '`first_subtitle`', '`first_phrase`', '--check', 'am-scene.js', '`scene-kit`'], '镜头时长流程');
     lacks(['每个镜头先定帧数，再写 `duration_seconds = 帧数 ÷ 帧率`'], '镜头时长流程');
   });
 });

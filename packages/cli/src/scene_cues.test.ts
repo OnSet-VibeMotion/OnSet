@@ -228,7 +228,7 @@ describe('am scene cues', () => {
   {"id":"scene-003","dir":"scenes/scene-003","first_phrase":"p-4","cut":"prev_end","film_style":"beta/oil"}]}`;
     writePlan(root, plan(',"style_shift":"window"'));
     const missing = await runCues(root);
-    expect(missing.err?.message).toContain('am film-style add beta/oil');
+    expect(missing.err?.message).toContain('film_style_add({"args": ["beta/oil"]})');
 
     writeStyle(filmstyle.extraDir(root, 'beta/oil'), 'beta/oil');
     writePlan(root, plan(''));

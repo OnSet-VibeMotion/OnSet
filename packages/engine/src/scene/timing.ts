@@ -247,7 +247,7 @@ export function verifyTimingInputs(s: Scene): void {
     throw fail((err as Error).message);
   }
   const problems: string[] = [];
-  if (t.fps !== canvas.fps) problems.push(`timing.fps 是 ${t.fps}，画幅是 ${canvas.fps}fps，请重新运行 am scene cues`);
+  if (t.fps !== canvas.fps) problems.push(`timing.fps 是 ${t.fps}，画幅是 ${canvas.fps}fps，请重新运行 scene_cues()`);
   if (t.start_frame < 0 || t.end_frame_exclusive <= t.start_frame) {
     problems.push(`timing 的帧区间无效：[${t.start_frame}, ${t.end_frame_exclusive})`);
   }
@@ -256,7 +256,7 @@ export function verifyTimingInputs(s: Scene): void {
     const got = goRound(s.duration_seconds * t.fps);
     if (got !== timingFrames(t)) {
       problems.push(
-        `duration_seconds ${formatG(s.duration_seconds)} 秒是 ${got} 帧，timing 块是 ${timingFrames(t)} 帧：镜头时长由 am scene cues 写入，不要手改`,
+        `duration_seconds ${formatG(s.duration_seconds)} 秒是 ${got} 帧，timing 块是 ${timingFrames(t)} 帧：镜头时长由 scene_cues() 写入，不要手改`,
       );
     }
   }
@@ -277,7 +277,7 @@ export function verifyTimingInputs(s: Scene): void {
     ['exit', t.exit],
   ] as const) {
     if (!handoffIsZero(h) && (!handoffDeviceValid(h.device) || h.peer === '' || goTrimSpace(h.bridge) === '')) {
-      problems.push(`timing.${name} 不完整或手法未知：交接约定由 am scene cues 写入，不要手改`);
+      problems.push(`timing.${name} 不完整或手法未知：交接约定由 scene_cues() 写入，不要手改`);
     }
   }
   if (t.phrases !== '') {

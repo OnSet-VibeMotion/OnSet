@@ -188,7 +188,7 @@ async function chooseBase(env: Record<string, string>, signal?: AbortSignal): Pr
     if (env[BasePythonEnv]) throw err;
     const uv = findOptional('uv', env);
     if (uv !== '') return { kind: 'uv', path: uv, version: '' };
-    throw new Error(`${errorText(err)}；或者运行 am setup --only beat，让 am 下载 uv 并带一份独立的 Python`, { cause: err });
+    throw new Error(`${errorText(err)}；或者在客户端的工具准备页安装「音乐卡点」，它会带一份独立的 Python`, { cause: err });
   }
 }
 

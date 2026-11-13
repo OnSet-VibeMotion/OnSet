@@ -208,7 +208,8 @@ export function hostAligner(value: string): string {
  * 客户端里时会弹卡片问用户（studio/permissions.ts），其余工具照旧直接拒绝。
  */
 export const orchestratorBaseCommands: readonly string[] = [
-  'am', 'ffmpeg', 'ffprobe',
+  // am 不在这里：编排工具只经 am 的工具服务（MCP）调用它，见 tools.amToolsServer。
+  'ffmpeg', 'ffprobe',
   // 查看文件与目录（只读）
   'ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'sort', 'uniq', 'cut', 'diff', 'cmp',
   'stat', 'file', 'du', 'pwd', 'basename', 'dirname', 'realpath', 'jq', 'tree', 'which', 'date',

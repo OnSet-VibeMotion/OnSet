@@ -304,7 +304,7 @@ export function resolveSceneFilmStyle(sceneDir: string, value: string): string {
     }
     if (dir !== '' && hasSkill(path.dirname(dir), path.basename(dir), [filmstyle.GuideFile, filmstyle.StyleFile])) return dir;
   }
-  throw new Error(`镜头要用的整片风格 ${value} 没装进项目：运行 am film-style add ${value}`);
+  throw new Error(`镜头要用的整片风格 ${value} 没装进项目：运行 film_style_add({"args": ["${value}"]})`);
 }
 
 /** 本镜头实际用的风格目录（默认或点名），没有整片风格时为空串。 */
@@ -525,28 +525,20 @@ export function hyperFramesCLIPrompt(skillsDir: string): string {
   if (skillsDir !== '') {
     reference = `- CLI 的命令与排错方式见 ${HyperFramesCLISkillName} 技能。本机该技能目录为：\n    ${path.join(skillsDir, HyperFramesCLISkillName)}\n`;
   }
-  const prefix = hyperFramesCommand();
   return (
     '渲染命令（强制）：\n' +
     reference +
-    '- 每次调用 CLI 都写成 `' +
-    prefix +
-    ' <子命令>`，例如 `' +
-    prefix +
-    ' lint`、`' +
-    prefix +
-    ' check --json`、`' +
-    prefix +
-    ' render`。' +
-    '不用 `npx hyperframes`（无论带不带版本）、`hyperframes@latest` 或全局安装的 `hyperframes`：am 已装好固定版本 ' +
+    '- HyperFrames CLI 只经 am 工具服务里的 `hyperframes` 工具调用：`subcommand` 填子命令，其余参数照命令行写法放进 `args`。' +
+    '例如检查是 `{"subcommand": "lint"}`、`{"subcommand": "check", "args": ["--json"]}`，渲染是 `{"subcommand": "render"}`。' +
+    '技能里写成 `npx hyperframes <子命令>` 或 `hyperframes <子命令>` 的命令，一律照此换成工具调用。\n' +
+    '- 不在 Bash 里跑 hyperframes、npx hyperframes 或 am：它们不在本环境里，也不被放行。固定版本 ' +
     hyperframes.PinnedVersion +
-    ' 的 CLI，npx 会在渲染途中现下载；安全模式也只放行这个写法（另有 ls、ffprobe）。\n' +
-    '- 每条命令单独执行，不用 `cd …;`、`&&`、`;` 或管道把几条拼在一起：拼接的命令会被权限检查整体拦下。工作目录已经是本镜头目录，不需要 cd。\n' +
-    '- 只用本地渲染与检查相关的命令：lint、check、snapshot、keyframes、render，以及只读的 timeline --json（不用它的 move、trim、split 等改写子命令）。\n' +
-    '- snapshot 一律带 --describe false：它默认会把画面发给外部视觉服务，本镜头的自查由你自己看图完成。\n' +
-    '- 禁止 cloud、cloudrun、lambda、publish 等远端渲染路径：本镜头必须在本机渲染。\n' +
-    '- 禁止 skills、upgrade 以及任何会改动已装技能的命令：版本已固定，改动会影响其他镜头。\n' +
-    '- 不用 preview、present、open、catch-up、history、feedback、usage：本环境是无头的，没有人审批预览，也不向外发送反馈或遥测。\n'
+    ' 的 CLI 已经装好，工具就在本镜头目录里执行，不需要 cd。\n' +
+    '- 渲染要几分钟：工具最多等 `wait_seconds` 秒（缺省 50），没跑完会返回任务号，用 `job_wait` 接着等到完成；不要重复发起同一次渲染。\n' +
+    '- 只放行本机渲染与检查：lint、check、validate、inspect、snapshot、keyframes、render、只读的 timeline --json、compositions、info、docs。' +
+    'snapshot 会自动带上 --describe false（不把画面发给外部视觉服务），本镜头的自查由你自己看图完成。\n' +
+    '- 远端渲染（cloud、cloudrun、lambda、publish）、改动已装技能（skills、upgrade）、交互与遥测（preview、present、open、catch-up、history、feedback、usage）都不放行：' +
+    '本镜头必须在本机无头渲染，版本已固定，也没有人审批预览。\n'
   );
 }
 
@@ -685,5 +677,6 @@ export function rendererAccess(resolved: Record<string, string> | null): Rendere
     }
   }
   dirs.sort(compareBytes);
-  return { commands: [hyperFramesCommand(), 'ls', 'ffprobe'], readDirs: dirs };
+  // HyperFrames 经 am 的工具服务调用（scene.run 挂上 toolsServer），不在 Bash 里跑 am。
+  return { commands: ['ls', 'ffprobe'], readDirs: dirs };
 }

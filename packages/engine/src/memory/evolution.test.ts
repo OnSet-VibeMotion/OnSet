@@ -108,7 +108,7 @@ describe('evolution', () => {
     const brief = store.preferenceBrief('demo', 0).text;
     expect(brief).toContain('待确认的偏好');
     expect(brief).toContain('【slower-pacing】');
-    expect(brief).toContain('--inferred');
+    expect(brief).toContain('"inferred": true');
     store.promote('slower-pacing');
     // 确认后生效。
     expect(store.find('slower-pacing')!.status).toBe(StatusActive);

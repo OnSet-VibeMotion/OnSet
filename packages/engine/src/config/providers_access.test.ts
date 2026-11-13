@@ -14,11 +14,13 @@ describe('orchestrator access', () => {
 
   it('follows the config', () => {
     const cfg = newConfig({ ttsProvider: 'edge', alignProvider: 'mlx' });
-    const got = orchestratorAccess(cfg, 'npx --yes hyperframes@1.0.0', 'am').commands;
+    const got = orchestratorAccess(cfg, 'npx --yes hyperframes@1.0.0', 'ffmpeg').commands;
     expect(got).toEqual([...orchestratorBaseCommands, 'edge-tts', 'mlx_audio.stt.generate', 'npx --yes hyperframes@1.0.0']);
     const again = orchestratorAccess(cfg).commands!;
     expect(again.length, '基础清单被上一次调用改写了').toBe(orchestratorBaseCommands.length + 2);
-    expect(again[0]).toBe('am');
+    // am 不在白名单里：编排工具只经 am 的工具服务（MCP）调用它。
+    expect(again).not.toContain('am');
+    expect(again[0]).toBe('ffmpeg');
   });
 
   // 基础清单是给编排工具的常用命令：shell 本身、删除与改权限、安装与提权一律不进。
