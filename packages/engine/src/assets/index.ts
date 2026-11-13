@@ -1,5 +1,5 @@
 /**
- * am 自带的项目骨架。移植自仓库根的 assets.go。
+ * am 自带的项目骨架。
  *
  * Go 版用 //go:embed 把 assets/ 打进二进制；TS 版从磁盘读：开发时是仓库里的 assets/，
  * 打包后是应用资源目录里的 assets/（客户端与命令行的启动方经 AM_ASSETS_DIR 告知）。

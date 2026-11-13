@@ -1,4 +1,3 @@
-// 移植自 internal/scene/frames.go。
 import { formatFixed, formatG, goRound } from '../gofmt';
 import { sceneCanvas, type Scene } from './scene';
 import { VerificationError } from './verification';

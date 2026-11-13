@@ -1,5 +1,5 @@
 // Package memory：渲染记忆——把每次渲染写成经历，整理成可检验的经验，渲染前按镜头特征召回，
-// 经回放考试才转为长期记忆。移植自 internal/memory，设计见 docs/superpowers/specs/2026-11-02-渲染记忆-design.md。
+// 经回放考试才转为长期记忆。设计见 docs/superpowers/specs/2026-11-02-渲染记忆-design.md。
 export * from './memory';
 export { Store, open, openReadOnly } from './store';
 export * from './events';

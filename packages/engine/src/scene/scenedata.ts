@@ -1,4 +1,3 @@
-// 移植自 internal/scene/scenedata.go。
 //
 // 本文件生成镜头局部数据文件 am-scene.js，并据此拼装提示词里的时间合同段。
 //

@@ -1,5 +1,5 @@
 /**
- * 本文件收拢与媒体产物相关的操作：抽帧（scene_frames）、视频规格校验（validate_video）与拼接（concat）。移植自 internal/cli/media.go。
+ * 本文件收拢与媒体产物相关的操作：抽帧（scene_frames）、视频规格校验（validate_video）与拼接（concat）。
  *
  * 这里的操作共用一组辅助函数（时间点与画幅解析），放在一起也更好找。
  */

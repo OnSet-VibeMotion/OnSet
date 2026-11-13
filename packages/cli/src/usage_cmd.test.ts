@@ -1,4 +1,3 @@
-// 移植自 internal/cli/usage_test.go。
 //
 // TestConsolidateRecordsDrafterUsageInMemoryStore（整理者的用量记在记忆库的账本里）移植在 memory_cmd.test.ts，
 // 与 am memory 的其余用例放在一起。

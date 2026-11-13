@@ -1,4 +1,4 @@
-// 把风格示例 SVG 渲染成 PNG。移植自 internal/styleimage。
+// 把风格示例 SVG 渲染成 PNG。
 //
 // 独立成包是因为渲染器的选择有个不显眼的坑，两处调用点（生成器
 // 与 am validate style --regenerate-examples）必须共用同一份判断，否则修一处

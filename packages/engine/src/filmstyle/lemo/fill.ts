@@ -1,4 +1,3 @@
-// 移植自 internal/filmstyle/lemo/fill.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import { goExt } from '../../gofmt';

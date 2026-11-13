@@ -1,4 +1,3 @@
-// 移植自 internal/castbeats/apply_test.go。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

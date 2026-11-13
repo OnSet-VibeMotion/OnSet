@@ -1,4 +1,4 @@
-// 移植自仓库根的 assets_test.go：角色驱动库（character-rig/cast.js）的下发与静态检查、
+// 角色驱动库（character-rig/cast.js）的下发与静态检查、
 // cast.js 纯函数的 node 求值、预设提示词固定的 HyperFrames 版本，以及这些静态检查的地基 stripJSComments。
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';

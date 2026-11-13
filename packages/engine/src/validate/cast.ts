@@ -1,4 +1,3 @@
-// 移植自 internal/validate/cast.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import * as cast from '../cast';

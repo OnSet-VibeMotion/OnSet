@@ -1,4 +1,4 @@
-// 移植自 internal/cli/style_test.go 里 canvas.test.ts 没有覆盖的 init 用例
+// canvas.test.ts 没有覆盖的 init 用例
 // （resolveStyle / stylePicker / resolveStyleBrief 的纯函数用例在 canvas.test.ts）。
 import fs from 'node:fs';
 import path from 'node:path';

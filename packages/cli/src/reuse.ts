@@ -1,5 +1,5 @@
 /**
- * run-all 复用已有产物的判定。移植自 internal/cli/reuse.go。
+ * run-all 复用已有产物的判定。
  */
 import type { Config } from '@am/engine/config';
 import * as scene from '@am/engine/scene';

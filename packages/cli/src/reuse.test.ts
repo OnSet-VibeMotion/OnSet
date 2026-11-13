@@ -1,4 +1,3 @@
-// 移植自 internal/cli/reuse_test.go。
 import { tempDir } from './testutil';
 import fs from 'node:fs';
 import path from 'node:path';

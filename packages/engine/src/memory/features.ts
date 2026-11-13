@@ -1,4 +1,3 @@
-// 移植自 internal/memory/features.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import { ruleIDs as determinismRuleIDs } from '../determinism';

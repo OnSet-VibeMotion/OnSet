@@ -1,4 +1,3 @@
-// 移植自 internal/studio/api_ui_test.go。
 //
 // 不移植 TestStaticServesBuiltAssetsWithMIME：TS 版后端不服务界面文件（Go 版 go:embed 的 web/），
 // 界面由 Electron 从 am://app/ 自己加载。

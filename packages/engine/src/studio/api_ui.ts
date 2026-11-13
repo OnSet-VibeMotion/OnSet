@@ -1,5 +1,5 @@
 /**
- * 新建项目的画幅与风格选项、文件树、原样读文件、卡点状态。移植自 internal/studio/api_ui.go。
+ * 新建项目的画幅与风格选项、文件树、原样读文件、卡点状态。
  */
 import fs from 'node:fs';
 import path from 'node:path';

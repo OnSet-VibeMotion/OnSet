@@ -1,4 +1,3 @@
-// 移植自 internal/config/config.go。
 //
 // 配置的解析顺序：环境变量 > 项目 .env > article-to-motion.conf > 缺省值。
 import fs from 'node:fs';

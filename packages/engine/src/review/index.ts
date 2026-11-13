@@ -1,4 +1,4 @@
-// Package review：成片整片复查。移植自 internal/review。
+// Package review：成片整片复查。
 export {
   DefaultEvery,
   DefaultSyncTolerance,

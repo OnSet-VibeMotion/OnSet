@@ -1,6 +1,6 @@
 /**
  * 整片风格（film_style_*）：从风格来源里挑画面风格装进项目。一个默认风格（不写 film_style 的镜头用它），
- * 外加个别镜头点名用的额外风格。移植自 internal/cli/filmstyle.go。
+ * 外加个别镜头点名用的额外风格。
  */
 import fs from 'node:fs';
 import path from 'node:path';

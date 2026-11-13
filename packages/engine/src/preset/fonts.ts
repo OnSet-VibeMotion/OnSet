@@ -1,5 +1,5 @@
 /**
- * 字体池 assets/fontpool/ 里的字体。移植自 internal/preset/fonts.go。
+ * 字体池 assets/fontpool/ 里的字体。
  *
  * 风格独有的字体不放进每个「风格 × 画幅」目录：同一个字体会被多套风格、两种画幅引用，
  * 字体池每个文件只存一份，am init 按所选风格声明的字体把用到的那几个拷进项目的 assets/fonts/。

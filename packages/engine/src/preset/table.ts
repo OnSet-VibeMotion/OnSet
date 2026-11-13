@@ -1,4 +1,4 @@
-// 画幅表。移植自 internal/preset/table.go。
+// 画幅表。
 import { AnchorBottom, AnchorFill, AnchorTop, type Box, type Platform, type Preset, type ResolvedBox } from './preset';
 
 /**

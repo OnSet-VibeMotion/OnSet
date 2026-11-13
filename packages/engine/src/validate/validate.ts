@@ -1,4 +1,3 @@
-// 移植自 internal/validate/validate.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import * as assets from '../assets';

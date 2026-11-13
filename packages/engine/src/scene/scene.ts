@@ -1,4 +1,3 @@
-// 移植自 internal/scene/scene.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import { isMap, isScalar, isSeq, LineCounter, parseDocument, type Node } from 'yaml';

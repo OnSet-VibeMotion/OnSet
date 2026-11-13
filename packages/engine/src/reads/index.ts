@@ -1,4 +1,4 @@
-// Package reads：检查画面上每个可读元素是否给了观众足够的阅读时间。移植自 internal/reads。
+// Package reads：检查画面上每个可读元素是否给了观众足够的阅读时间。
 export {
   Defaults,
   DecorativeRole,

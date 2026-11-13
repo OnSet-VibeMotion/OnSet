@@ -1,4 +1,3 @@
-// 移植自 internal/project/rules.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import { atomicWrite } from '../fsutil';

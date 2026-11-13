@@ -1,4 +1,3 @@
-// 移植自 internal/memory/snapshot.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import { compareBytes } from '../gojson';

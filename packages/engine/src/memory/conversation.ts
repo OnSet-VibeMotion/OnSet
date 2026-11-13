@@ -1,4 +1,3 @@
-// 移植自 internal/memory/conversation.go。
 import { goTrimSpace } from '../gofmt';
 import { newScene } from '../scene';
 import { newEpisode, OutcomeFeedback, saveEpisode, SourceConversation, SourceFeedback, type Episode } from './episode';

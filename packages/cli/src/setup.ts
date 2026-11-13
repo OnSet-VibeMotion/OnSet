@@ -1,5 +1,5 @@
 /**
- * am setup：下载并准备全部前置资源。移植自 internal/cli/setup.go。
+ * am setup：下载并准备全部前置资源。
  */
 import fs from 'node:fs';
 import path from 'node:path';

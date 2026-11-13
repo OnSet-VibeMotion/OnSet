@@ -1,6 +1,6 @@
 /**
- * Studio 后端的服务骨架：项目登记、路由表、写锁、当前项目、项目状态。移植自 internal/studio/studio.go
- * （以及 features.go 里不依赖 scene / validate 的 /api/assets、/api/review、/api/review/run）。
+ * Studio 后端的服务骨架：项目登记、路由表、写锁、当前项目、项目状态，
+ * 以及 /api/assets、/api/review、/api/review/run。
  *
  * Go 版是 net/http 服务；TS 版是 fetch 风格的 handle(request)：Electron 主进程用 am://app/ 协议
  * 承接界面的 /api/…、EventSource 与上传请求后直接调它。路由、JSON 字段、状态码与错误文案与 Go 版一致。

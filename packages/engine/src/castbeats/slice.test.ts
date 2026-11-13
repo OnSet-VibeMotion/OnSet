@@ -1,4 +1,3 @@
-// 移植自 internal/castbeats/slice_test.go。
 import { describe, expect, it } from 'vitest';
 import type { Line } from '../dialogue';
 import type { Beat } from '../scene';

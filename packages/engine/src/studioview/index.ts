@@ -1,5 +1,5 @@
 /**
- * 编排工具与客户端界面之间的两条通道。移植自 internal/studio/view.go（am studio show 与客户端后端共用）。
+ * 编排工具与客户端界面之间的两条通道（am studio show 与客户端后端共用）。
  *
  * - 编排工具 → 界面：一轮对话里编排工具运行 am studio show <页面> [对象]，把一份请求写进这一轮的收件目录
  *   （ViewInboxEnv）；客户端在这一轮进行中轮询收件目录，译成 view 事件，界面切到那一页。写文件而不是发 HTTP：

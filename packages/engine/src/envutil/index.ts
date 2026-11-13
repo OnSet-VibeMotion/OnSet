@@ -1,4 +1,4 @@
-// 环境变量相关的共享工具。移植自 internal/envutil。
+// 环境变量相关的共享工具。
 import fs from 'node:fs';
 import path from 'node:path';
 

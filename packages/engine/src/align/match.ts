@@ -1,4 +1,3 @@
-// 移植自 internal/align/match.go。
 import { runes } from './token';
 
 // 匹配标签。一个分组把 0–4 个终稿朗读单元与 0–4 个对齐单元配在一起，标签说明它们是什么关系。

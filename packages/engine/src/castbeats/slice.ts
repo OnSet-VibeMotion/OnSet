@@ -1,4 +1,3 @@
-// 移植自 internal/castbeats/slice.go。
 //
 // Package castbeats 把 production/dialogue.json 的全局台词时间线切成各镜头
 // 的 cast.beats（镜头本地时间）。

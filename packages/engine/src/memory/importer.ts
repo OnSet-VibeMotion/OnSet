@@ -1,4 +1,3 @@
-// 移植自 internal/memory/importer.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import { formatFixed } from '../gofmt';

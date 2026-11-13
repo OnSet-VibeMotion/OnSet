@@ -1,4 +1,3 @@
-// 移植自 internal/align/phrase.go。
 import fs from 'node:fs';
 import { frameOf } from '../beat';
 import { decodeFirst, sliceOf, unmarshal, type StructType } from '../beat/jsondecode';

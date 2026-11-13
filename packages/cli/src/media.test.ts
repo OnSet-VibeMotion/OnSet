@@ -1,4 +1,3 @@
-// 移植自 internal/cli/media_test.go。
 import { Buffer, hasFfmpeg, makeClip, makeSceneDir, run, tempDir } from './testutil';
 import fs from 'node:fs';
 import path from 'node:path';

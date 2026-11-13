@@ -1,6 +1,5 @@
 /**
  * scene_cues：由字幕或短语锚点推导口播镜头的帧区间，写入各镜头的 duration_seconds 与 timing 块。
- * 移植自 internal/cli/scene_cues.go（commitWrites 与 pendingWrite 移植自 internal/cli/beat.go）。
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -393,7 +392,7 @@ function printSceneCues(out: Out, results: readonly SceneCue[]): void {
   }
 }
 
-// ---------------------------------------------------------------- 落盘（移植自 beat.go）
+// ---------------------------------------------------------------- 落盘
 
 export interface PendingWrite {
   path: string;

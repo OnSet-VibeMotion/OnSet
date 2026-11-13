@@ -1,4 +1,3 @@
-// 移植自 internal/config/providers.go。
 import { goQuote, isGoSpace } from '../gofmt';
 import type { ModelSpec, ToolSpec } from '../toolinstall';
 import type { OrchestratorAccess } from '../tools';

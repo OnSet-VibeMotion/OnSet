@@ -1,4 +1,4 @@
-// 风格表。移植自 internal/preset/style.go。
+// 风格表。
 import {
   type Font,
   FontBebasNeue400,

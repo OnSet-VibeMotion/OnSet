@@ -1,6 +1,5 @@
 /**
- * 后台任务（渲染、拼接、复查、装整片风格……）与它们的事件流。移植自 internal/studio/features.go 里
- * 与 scene / validate 无关的部分：Task、addTask / updateTask / runTask / runWriteTask、/api/tasks、
+ * 后台任务（渲染、拼接、复查、装整片风格……）与它们的事件流：Task、addTask / updateTask / runTask / runWriteTask、/api/tasks、
  * 任务 SSE、runStudioOp。
  */
 import fs from 'node:fs';

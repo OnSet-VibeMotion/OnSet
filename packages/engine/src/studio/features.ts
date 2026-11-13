@@ -1,8 +1,6 @@
 /**
  * 镜头相关的接口：镜头列表与详情、镜头渲染 / 抽帧 / 附件 / 产物、渲染全部镜头、合成实时预览。
  * （发布页的接口随「发布」搬进了内置插件 plugins/publishing。）
- * 移植自 internal/studio/studio.go（scenesAPI、projectUsage、sceneAPI）、features.go（renderAllAPI、
- * sceneFeatureAPI、captureSceneFrames）与 api_sessions.go（previewAPI、sceneAttachment）。
  */
 import fs from 'node:fs';
 import path from 'node:path';

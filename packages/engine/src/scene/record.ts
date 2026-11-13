@@ -1,4 +1,3 @@
-// 移植自 internal/scene/record.go 与 record_timing.go。
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';

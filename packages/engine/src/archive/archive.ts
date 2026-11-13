@@ -1,4 +1,3 @@
-// 移植自 internal/archive/archive.go。
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';

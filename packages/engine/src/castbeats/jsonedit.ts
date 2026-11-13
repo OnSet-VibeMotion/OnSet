@@ -1,4 +1,4 @@
-// 移植自 internal/castbeats/jsonedit.go，外加 Go 的 json.Compact / json.Indent。
+// JSON 的原位改写，外加 Go 式的 json.Compact / json.Indent。
 import { checkValid } from '../beat/jsondecode';
 import { marshal } from '../gojson';
 

@@ -1,4 +1,3 @@
-// 移植自 internal/align/script.go。
 import fs from 'node:fs';
 import { goPathError, goQuote, goTrimSpace } from '../gofmt';
 import { isWordRune, normRune, normalizeRunes, runeString, runes, tokenizeRunes, type Token } from './token';

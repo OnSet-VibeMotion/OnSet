@@ -1,4 +1,3 @@
-// 移植自 internal/scene/timing.go。
 //
 // 本文件是口播镜头的时间合同：由 am scene cues 从字幕或短语锚点推导每个镜头的
 // 全局帧区间，写进 scene.json 的 timing 块。

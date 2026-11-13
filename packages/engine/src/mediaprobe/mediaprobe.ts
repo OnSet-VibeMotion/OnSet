@@ -1,4 +1,4 @@
-// 把 ffprobe / ffmpeg 的实测结果解析成结构体，并按期望规格断言。移植自 internal/mediaprobe。
+// 把 ffprobe / ffmpeg 的实测结果解析成结构体，并按期望规格断言。
 //
 // 存在的理由：PROMPT-PRODUCTION.md 的第八、十一阶段列出了一整张成片机器检查表
 // （画幅、30fps、H.264、yuv420p、帧数、音轨、采样率、可完整解码），但这些检查过去

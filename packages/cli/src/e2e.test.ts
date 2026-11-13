@@ -1,4 +1,4 @@
-// 移植自 internal/cli/e2e_test.go（Go 版只在 darwin / linux 上编译，这里同样只在非 Windows 上跑）。
+// 只在非 Windows 上跑。
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';

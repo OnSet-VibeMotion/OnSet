@@ -1,4 +1,4 @@
-// 移植自 internal/cli/memory_test.go，外加 usage_test.go 的 TestConsolidateRecordsDrafterUsageInMemoryStore
+// memory 操作的测试，外加整理者用量记进记忆库的用例
 // （整理者的用量记在记忆库的账本里，要 am memory consolidate）。
 // 记忆库与 HOME 一律指到临时目录：绝不写开发者真实的 ~/.local/share/am/memory。
 import fs from 'node:fs';
@@ -182,7 +182,7 @@ describe('memory', () => {
     expect(episodes[0].checks?.[0]).toBe('reads.duration');
   });
 
-  // 整理者不属于哪个项目，用量记在记忆库的账本里（移植自 usage_test.go）。
+  // 整理者不属于哪个项目，用量记在记忆库的账本里。
   it('consolidate records drafter usage in memory store', async () => {
     const memoryDir = tempDir();
     const store = memory.open(memoryDir);

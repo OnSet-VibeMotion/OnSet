@@ -1,4 +1,3 @@
-// 移植自 internal/studio/studio_test.go 与 api_test.go。
 //
 // 不移植：
 // - TestListenAndServeStopsWithContext：TS 版后端不监听端口，Electron 主进程经 am://app/ 协议直接调 handle。

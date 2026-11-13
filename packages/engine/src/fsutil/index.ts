@@ -1,4 +1,4 @@
-// 文件系统相关的共享工具。移植自 internal/fsutil。
+// 文件系统相关的共享工具。
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';

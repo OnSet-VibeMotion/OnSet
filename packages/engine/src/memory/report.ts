@@ -1,4 +1,3 @@
-// 移植自 internal/memory/report.go。
 import { compareBytes, sortedKeys } from '../gojson';
 import { OutcomeInterrupted } from '../scene';
 import { firstTry, SourceCheck, SourceRender, type Episode } from './episode';

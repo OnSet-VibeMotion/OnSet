@@ -1,5 +1,5 @@
 /**
- * 把 validate.castProblems 接成操作 validate_cast，移植自 internal/cli/validate_cast.go。
+ * 把 validate.castProblems 接成操作 validate_cast。
  * internal/validate 只定义项目级一致性规则，这里是唯一把它接出来的地方。
  */
 import * as config from '@am/engine/config';

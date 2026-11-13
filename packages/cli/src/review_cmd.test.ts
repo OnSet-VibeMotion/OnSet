@@ -1,4 +1,3 @@
-// 移植自 internal/cli/review_test.go。
 import { Buffer, hasFfmpeg, makeFilm, makeSceneDir, run, tempDir } from './testutil';
 import fs from 'node:fs';
 import path from 'node:path';

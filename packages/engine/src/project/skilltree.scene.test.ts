@@ -1,4 +1,4 @@
-// 移植自 internal/project/skilltree_test.go 中依赖 scene 包（registeredSkills、resolveSkill）的门禁。
+// 技能树里依赖 scene 包（registeredSkills、resolveSkill）的门禁。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

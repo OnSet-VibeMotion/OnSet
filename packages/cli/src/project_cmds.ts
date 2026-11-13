@@ -1,5 +1,5 @@
 /**
- * init（命令行专用）、config_get、archive。移植自 internal/cli/cli.go 里内联定义的这三个命令。
+ * init（命令行专用）、config_get、archive。
  */
 import fs from 'node:fs';
 import path from 'node:path';

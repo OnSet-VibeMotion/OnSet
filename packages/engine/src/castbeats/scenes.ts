@@ -1,4 +1,3 @@
-// 移植自 internal/castbeats/scenes.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import { checkValid } from '../beat/jsondecode';

@@ -1,4 +1,3 @@
-// 移植自 internal/align/build.go。
 import { totalFrames } from '../beat';
 import { atomicWrite } from '../fsutil';
 import { formatFixed } from '../gofmt';

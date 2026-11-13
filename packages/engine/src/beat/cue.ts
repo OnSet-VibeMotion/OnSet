@@ -1,4 +1,3 @@
-// 移植自 internal/beat/cue.go。
 import path from 'node:path';
 import { goQuote } from '../gofmt';
 import type { StructType } from './jsondecode';

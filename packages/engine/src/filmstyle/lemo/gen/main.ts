@@ -1,4 +1,3 @@
-// 移植自 internal/filmstyle/lemo/gen/main.go。
 //
 // 从固定 commit 的 lemo-opuscar 检出生成 catalog.json：generateCatalog(<检出目录>)。
 //

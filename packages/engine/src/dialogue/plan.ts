@@ -1,4 +1,3 @@
-// 移植自 internal/dialogue/plan.go。
 //
 // Package dialogue 把分说话人合成的音频段装配成一条时间线。
 //

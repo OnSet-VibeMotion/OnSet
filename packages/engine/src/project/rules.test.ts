@@ -1,4 +1,3 @@
-// 移植自 internal/project/rules_test.go。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
