@@ -1,8 +1,4 @@
-// 移植自 internal/project/skilltree_test.go 中依赖 scene 包（RegisteredSkills、ResolveSkill）的门禁。
-// TODO(scene): enable when src/scene is ported
-//
-// 启用时：把下面的 `scene` 换成 `import * as scene from '../scene'`，去掉 describe.skip。
-// 断言照 Go 版写好了，只差 scene 的 API（registeredSkills、SourceEmbedded、SourceUpstream、resolveSkill）。
+// 移植自 internal/project/skilltree_test.go 中依赖 scene 包（registeredSkills、resolveSkill）的门禁。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -11,25 +7,9 @@ import * as assets from '../assets';
 import { initialize } from './init';
 import { RulesTemplate } from './rules';
 import { builtinSources, skillTreeRoot } from './testsupport';
+import * as scene from '../scene';
 
-interface SkillDescriptor {
-  name: string;
-  source: string;
-  requiredFiles: string[];
-  promptSection: ((dir: string) => string) | null;
-}
-
-// scene 尚未移植：占位，describe.skip 下不会被调用。
-const scene = {
-  registeredSkills: [] as SkillDescriptor[],
-  SourceEmbedded: 'embedded',
-  SourceUpstream: 'upstream',
-  resolveSkill(_tool: string, _sceneDir: string, _env: Record<string, string>, _desc: SkillDescriptor): string {
-    throw new Error('scene 尚未移植');
-  },
-};
-
-describe.skip('skill tree gates that need scene', () => {
+describe('skill tree gates that need scene', () => {
   // 防静默失败的门：漏了 .agents 入口时整棵技能树从发行物里消失，resolveSkill 找不到技能时按设计
   // 不报错、只降级——一路静默到成片动效变差才可能被发现。这个测试让它在 CI 就炸。
   it('every registered skill is embedded', () => {

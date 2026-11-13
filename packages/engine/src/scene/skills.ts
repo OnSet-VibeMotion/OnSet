@@ -1,0 +1,562 @@
+// 移植自 internal/scene/skills.go。
+//
+// 渲染工具各自把技能装在不同目录，提示词里不得写死任何一条路径。
+// 这里解析出本机真实位置，解析不到时由 buildPrompt 退回按技能名引用。
+import fs from 'node:fs';
+import path from 'node:path';
+import * as filmstyle from '../filmstyle';
+import { compareBytes } from '../gojson';
+import * as hyperframes from '../hyperframes';
+import type { RendererAccess } from '../tools';
+import { SceneDataFile } from './scenedata';
+
+/** 逃生阀：显式指定技能目录，优先级高于一切自动探测。 */
+export const SkillsDirEnv = 'HYPERFRAMES_SKILLS_DIR';
+
+const skillManifestFile = 'SKILL.md';
+
+/** 不绑定具体工具的通用约定，作为兜底候选。 */
+const portableSkillsDir = '.agents/skills';
+
+/** 限制向上查找项目级技能目录的层数，避免病态路径下空转。 */
+const maxWalkUpLevels = 40;
+
+/**
+ * 上游入口技能的目录名，承载组合契约与动效手法。
+ *
+ * 0.8.185 之前这两部分分属 hyperframes-core 与 hyperframes-animation，入口技能
+ * 只负责「选择并安装 owning workflow」，所以当时刻意不注册它；上游合并之后它成了
+ * 唯一的契约来源，只能注册并在提示词里收窄范围，见 hyperFramesPrompt。
+ */
+export const HyperFramesSkillName = 'hyperframes';
+
+// 入口技能里渲染器必须读的参考文件，同时是判定「完整安装」的必需文件：
+// 只有 SKILL.md 的目录说明上游又挪了结构，提示词里点名的文件全都不存在。
+export const hyperFramesFormatFile = path.join('references', 'format.md');
+export const hyperFramesMotionFile = path.join('references', 'motion.md');
+export const hyperFramesRuntimesFile = path.join('references', 'runtimes.md');
+
+/** HyperFrames CLI 用法技能目录名。 */
+export const HyperFramesCLISkillName = 'hyperframes-cli';
+
+/** 生成式艺术技能目录名。 */
+export const AlgorithmicArtSkillName = 'algorithmic-art';
+
+/** Lottie 图层制作技能目录名。 */
+export const TextToLottieSkillName = 'text-to-lottie';
+
+/** 角色驱动技能目录名。 */
+export const CharacterRigSkillName = 'character-rig';
+
+/** 按帧驱动工具库（缓动、安全区、字幕）技能目录名。 */
+export const SceneKitSkillName = 'scene-kit';
+
+/** scene-kit 技能里的库文件名。它同时出现在 requiredFiles 与提示词的复制契约里，所以取一个常量。 */
+export const sceneKitLibraryFile = 'scene-kit.js';
+
+/**
+ * castSection 在"本镜头有角色出场"时输出的段标题（不含前导换行与冒号），三处共同的契约锚点：
+ * castSection 产出它、characterRigPrompt 的角色驱动门控靠"下方是否出现这个标题"决定要不要让
+ * 渲染 agent 加载 character-rig 技能、character-rig/SKILL.md 里的复制义务说明也引用同一个标题
+ * 告诉读者去哪找这条硬要求。前两处共享这一个常量，保证不会各自改动后措辞漂移；SKILL.md
+ * 是纯文本，改动后不会编译失败，只能靠 assets 的测试把它钉在这个字面量上
+ * （见 rig.test.ts 的 character-rig skill mentions CastRequiredHeading）。
+ */
+export const CastRequiredHeading = '角色（强制）';
+
+/**
+ * SkillSource 说明技能是怎么进到用户项目里的。
+ *
+ * 这不是元数据而是契约：两类技能的缺失补救方式、升级方式和守护测试都不同。
+ * 过去只有动效技能一个例外，靠在测试里按名字特判绕过；再加第二个上游技能时
+ * 那种写法就会崩，所以把来源直接写进描述符。
+ */
+export type SkillSource = 0 | 1;
+
+/**
+ * 随 am 下发，由 project.initialize 写进项目。
+ * 这类技能必须存在于 assets/shared/.agents/skills/ 里。
+ */
+export const SourceEmbedded: SkillSource = 0;
+/**
+ * 由 am init 按固定版本从上游安装进项目。
+ * 这类技能不得进嵌入树——那会留下一份永远追不上上游的陈旧副本。
+ */
+export const SourceUpstream: SkillSource = 1;
+
+/** 一个可自动发现的技能。 */
+export interface SkillDescriptor {
+  /** 技能目录名。 */
+  name: string;
+  /** 技能来自嵌入树还是上游安装。 */
+  source: SkillSource;
+  /**
+   * 技能被视为「完整安装」所必须存在的文件列表。
+   * 至少包含 SKILL.md；入口技能额外要求提示词里点名的参考文件。
+   */
+  requiredFiles: string[];
+  /**
+   * 该技能注入镜头提示词的片段。
+   * skillsDir 为空时应退回按技能名引用，不写死本机路径。
+   */
+  promptSection: (skillsDir: string) => string;
+}
+
+export const SongExplainerSkillName = 'song-explainer';
+
+/** character-rig 技能里的驱动库文件名。它同时出现在 requiredFiles 与 castSection 的复制契约里，所以取一个常量。 */
+export const castDriverFile = 'cast.js';
+
+/**
+ * 所有自动发现的技能注册表。
+ * 新增技能只需在此追加一条，resolveAllSkills 和 buildPrompt 自动覆盖。
+ */
+export const registeredSkills: readonly SkillDescriptor[] = [
+  { name: SongExplainerSkillName, source: SourceEmbedded, requiredFiles: [skillManifestFile], promptSection: songExplainerPrompt },
+  {
+    name: HyperFramesSkillName,
+    source: SourceUpstream,
+    requiredFiles: [skillManifestFile, hyperFramesFormatFile, hyperFramesMotionFile, hyperFramesRuntimesFile],
+    promptSection: hyperFramesPrompt,
+  },
+  { name: HyperFramesCLISkillName, source: SourceUpstream, requiredFiles: [skillManifestFile], promptSection: hyperFramesCLIPrompt },
+  { name: AlgorithmicArtSkillName, source: SourceEmbedded, requiredFiles: [skillManifestFile], promptSection: algorithmicArtPrompt },
+  { name: TextToLottieSkillName, source: SourceEmbedded, requiredFiles: [skillManifestFile], promptSection: textToLottiePrompt },
+  {
+    name: CharacterRigSkillName,
+    source: SourceEmbedded,
+    // 驱动库本身也是必需文件：只有 SKILL.md 而没有 cast.js 的技能目录，
+    // 提示词里那条「把驱动库复制进镜头目录」的契约就无从执行。
+    requiredFiles: [skillManifestFile, castDriverFile],
+    promptSection: characterRigPrompt,
+  },
+  {
+    name: SceneKitSkillName,
+    source: SourceEmbedded,
+    // 库文件本身也是必需文件：只有 SKILL.md 的技能目录，提示词里那条
+    // 「把库复制进镜头目录」的契约就无从执行。
+    requiredFiles: [skillManifestFile, sceneKitLibraryFile],
+    promptSection: sceneKitPrompt,
+  },
+];
+
+/** 一个渲染工具的技能目录：家目录级与项目级的相对路径可能不同。 */
+interface SkillLocations {
+  home: string;
+  project: string;
+}
+
+export const rendererSkillDirs: ReadonlyMap<string, SkillLocations> = new Map([
+  ['claude', { home: '.claude/skills', project: '.claude/skills' }],
+  ['codex', { home: '.codex/skills', project: '.codex/skills' }],
+  ['qoder', { home: '.qoder/skills', project: '.qoder/skills' }],
+  ['codebuddy', { home: '.codebuddy/skills', project: '.codebuddy/skills' }],
+  ['opencode', { home: '.config/opencode/skills', project: '.opencode/skills' }],
+]);
+
+/** 校验候选目录里确实装了指定技能，并且必需文件全部存在。 */
+function hasSkill(dir: string, skillName: string, requiredFiles: readonly string[]): boolean {
+  if (dir === '') return false;
+  const skill = path.join(dir, skillName);
+  for (const name of requiredFiles) {
+    try {
+      if (!fs.statSync(path.join(skill, name)).isFile()) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * 从镜头目录逐级向上，收集每一层的项目级技能目录候选。
+ * 项目级安装会覆盖全局安装，因此必须先于家目录被检查。
+ */
+function projectCandidates(sceneDir: string, relative: string): string[] {
+  let current = path.resolve(sceneDir);
+  const out: string[] = [];
+  for (let level = 0; level < maxWalkUpLevels; level++) {
+    out.push(path.join(current, relative));
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return out;
+}
+
+/**
+ * 把 .env 覆盖层里的 SkillsDirEnv 并入查找用的环境。
+ * 优先级与 config.load 一致：真实环境变量 > .env；不修改传入的任何一个对象。
+ */
+export function skillsEnvironment(baseEnv: Record<string, string>, overlay: Record<string, string> | null): Record<string, string> {
+  if (baseEnv[SkillsDirEnv] || !overlay?.[SkillsDirEnv]) return baseEnv;
+  return { ...baseEnv, [SkillsDirEnv]: overlay[SkillsDirEnv] };
+}
+
+/**
+ * 在渲染器的技能目录树中查找指定技能。
+ *
+ * 查找顺序：SkillsDirEnv → 渲染器专属目录（项目级自镜头目录逐级向上，再家目录级）
+ * → 通用 .agents/skills（同样先项目级再家目录级）。
+ * 未找到时返回空字符串且不报错，由调用方降级为按技能名引用；
+ * 只有 SkillsDirEnv 被显式设置却指向无效目录时才报错——配置写错了必须响。
+ */
+export function resolveSkill(renderer: string, sceneDir: string, environ: Record<string, string>, desc: SkillDescriptor): string {
+  const explicit = environ[SkillsDirEnv] ?? '';
+  if (explicit !== '') {
+    const absolute = path.resolve(explicit);
+    if (!hasSkill(absolute, desc.name, desc.requiredFiles)) {
+      throw new Error(`${SkillsDirEnv} 指向的目录缺少 ${desc.name}/${desc.requiredFiles[0]}：${absolute}`);
+    }
+    return absolute;
+  }
+
+  const home = environ.HOME ?? '';
+  const homeCandidate = (relative: string): string => (home === '' ? '' : path.join(home, relative));
+
+  // 先把渲染器专属目录找完再考虑通用目录，否则项目根位于 $HOME 之下时，
+  // 向上遍历会在 $HOME 那一层先命中 .agents/skills，抢在专属目录前面。
+  const ordered: string[] = [];
+  const locations = rendererSkillDirs.get(renderer);
+  if (locations) {
+    ordered.push(...projectCandidates(sceneDir, locations.project));
+    ordered.push(homeCandidate(locations.home));
+  }
+  ordered.push(...projectCandidates(sceneDir, portableSkillsDir));
+  ordered.push(homeCandidate(portableSkillsDir));
+
+  for (const candidate of ordered) {
+    if (hasSkill(candidate, desc.name, desc.requiredFiles)) return candidate;
+  }
+  return '';
+}
+
+/**
+ * 解析所有注册技能，返回 name → 绝对路径的映射（Go 的 map[string]string）。
+ * 未找到的技能不出现在结果中（不是报错）。
+ */
+export function resolveAllSkills(renderer: string, sceneDir: string, environ: Record<string, string>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const desc of registeredSkills) {
+    const dir = resolveSkill(renderer, sceneDir, environ, desc);
+    if (dir !== '') result[desc.name] = dir;
+  }
+  const dir = resolveFilmStyle(sceneDir);
+  if (dir !== '') result[filmstyle.SkillName] = dir;
+  return result;
+}
+
+/**
+ * 从镜头目录逐级向上找项目里的整片风格，返回它所在的技能目录
+ * （.agents/skills 的绝对路径）；没有时返回空串。认新目录（filmstyle.SkillName）与
+ * 只有一个来源时的旧目录（filmstyle.LegacySkillName）。
+ *
+ * 只找项目级，不找家目录：整片风格是一个项目的选择，家目录里的一份会悄悄套到
+ * 本机所有项目上。它不进 registeredSkills——那张表的契约是「解析不到时退回按
+ * 名字引用」，而整片风格解析不到的意思是本片没有整片风格，镜头照旧自主定视觉。
+ * 解析到时它和注册技能一样进 resolved：输入指纹记它的内容摘要，安全模式放行读取。
+ * 这里只认契约（STYLE.md + SKILL.md），不关心风格来自哪个来源。
+ */
+export function resolveFilmStyle(sceneDir: string): string {
+  for (const candidate of projectCandidates(sceneDir, portableSkillsDir)) {
+    if (filmStyleDir(candidate) !== '') return candidate;
+  }
+  return '';
+}
+
+/** 技能目录里的整片风格目录（新目录优先）；没有时为空。 */
+function filmStyleDir(skillsDir: string): string {
+  for (const name of [filmstyle.SkillName, filmstyle.LegacySkillName]) {
+    if (hasSkill(skillsDir, name, [filmstyle.GuideFile, filmstyle.StyleFile])) return path.join(skillsDir, name);
+  }
+  return '';
+}
+
+/**
+ * 整片风格段，替换掉「视觉自由度」。不点名任何风格来源：
+ * 来源特有的用法（引擎、页面契约、技法参考在哪）写在各自的 SKILL.md 里。
+ */
+export function filmStyleSection(skillsDir: string, hasLook: boolean): string {
+  const dir = filmStyleDir(skillsDir);
+  let palette = '配色按 STYLE.md 的配色逻辑为本镜头选定';
+  if (hasLook) palette = '配色遵守下面的「全片配色」（它是在 STYLE.md 的配色逻辑里为本片选定的）';
+  return (
+    '\n整片风格（强制）：本片所有镜头画成同一种风格，本机该技能目录为：\n    ' +
+    dir +
+    '\n' +
+    '- 动手前先读该目录的 ' +
+    filmstyle.GuideFile +
+    ' 与 ' +
+    filmstyle.StyleFile +
+    ' 全文。STYLE.md 规定的外观、材质、字体、动效质感、镜头语法、标志手法与禁忌全部遵守；' +
+    palette +
+    '。\n' +
+    '- 画什么只取本镜头的说明、字幕与素材，不照搬风格自带的示例（demo 等）的故事、镜头、道具与文案；示例与引擎只用来学技法，按 SKILL.md 说的把用到的文件拷进本镜头目录再改，不得引用镜头目录之外的路径。\n' +
+    '- STYLE.md 里关于声音、配乐的内容对本镜头无效：产物静音、无音轨。\n' +
+    '- 不得把项目中的 frame.md、style_id、style_name、示例图或其他旧风格资料当作视觉命令。\n'
+  );
+}
+
+/**
+ * 为所有已注册技能生成提示词片段。
+ * 已解析的技能注入本机路径；未解析的退回按技能名引用。
+ */
+export function skillPromptSections(resolved: Record<string, string>): string {
+  let sections = '';
+  for (const desc of registeredSkills) {
+    if (desc.name === SongExplainerSkillName) continue;
+    sections += desc.promptSection(resolved[desc.name] ?? '');
+  }
+  return sections;
+}
+
+/**
+ * 渲染器调用 CLI 的写法（am 管理的固定版本 CLI，见 hyperframes.requireCLI，由 am setup 装好）。
+ * 提示词里教的写法与安全模式放行的命令必须是同一个字符串：
+ * 以前只有放行列表里有前缀，提示词不提，渲染器写成不带版本的 `npx hyperframes`，
+ * 整场渲染的 lint、check、render 全被拦下（实测，无产物）。
+ */
+export function hyperFramesCommand(): string {
+  return hyperframes.CLICommand;
+}
+
+/**
+ * 上游入口技能的提示词片段：组合契约加动效手法。
+ *
+ * 0.8.185 起上游把 hyperframes-animation / hyperframes-core / hyperframes-creative
+ * 并进了入口技能 hyperframes，原子 rule 索引（rules-index.md）与蓝图索引随之消失，
+ * 组合契约落在 SKILL.md 的 Contract 一节与 references/format.md，动效手法落在
+ * references/motion.md。所以这里只点名那几份文件，而不是让渲染器「加载技能」。
+ *
+ * 收窄范围是这一段的主要工作。入口技能的职责是整片制作：故事线三选一、SPEC.md、
+ * 分镜、配乐音效、预览审批、桌面应用交接与 REVIEW.md。分镜、旁白和节拍由上层决定
+ * 并已写进 scene.json，渲染器照那套走会产出计划文件、给镜头配乐（产物必须无音轨），
+ * 还会停在「等人审批预览」。references/look.md 要求把项目根的 frame.md 当成配色与
+ * 字体规范，与「视觉自由度」一段正面冲突，必须点名覆盖；format.md 允许用
+ * local() 引用本机字体，换一台机器结果就不同，也要点名禁止。这些禁令上游不会替我们守，
+ * skills.test.ts 有对应的门禁。
+ *
+ * 动效部分刻意不设数量配额（几种手法、几个属性）。配额是可以逐项打勾的指标，
+ * 渲染器会为了达标加一个与文案无关的 rotation 或 clip-path；动效数量由文案决定，
+ * 这里只要求每个动效说得出理由。环境动效不设项目级配额；只要不影响阅读和确定性，
+ * 就由镜头根据文案决定，语义元素仍应在到位后稳定停留。
+ */
+export function hyperFramesPrompt(skillsDir: string): string {
+  const files = `SKILL.md 的 Contract 一节、${hyperFramesFormatFile} 与 ${hyperFramesMotionFile}；用到 GSAP 以外的运行时（Lottie、Three.js、canvas 等）再读 ${hyperFramesRuntimesFile}`;
+  let reference = `- 写组合 HTML 前必须读 ${HyperFramesSkillName} 技能的 ${files}。\n` + '  （本机未能定位该技能目录，请使用你自身的技能加载机制载入。）\n';
+  if (skillsDir !== '') {
+    reference = `- 写组合 HTML 前必须读 ${HyperFramesSkillName} 技能的 ${files}。本机该技能目录为：\n    ${path.join(skillsDir, HyperFramesSkillName)}\n`;
+  }
+  return (
+    '组合规范（强制）：\n' +
+    reference +
+    '  重点是 data-* 时间属性、class="clip"、子组合结构与确定性渲染规则。\n' +
+    '- 该技能是整片制作的入口，本镜头只取其中的组合契约与动效手法。本镜头只产出一个 composition：' +
+    '不建子项目，不写 STORYBOARD.md / SCRIPT.md / SPEC.md / REVIEW.md 这类计划或复查文件，' +
+    '不走它的 Work loop、故事线选择、预览审批与桌面应用交接——分镜、旁白与节拍已由上层决定并写进 scene.json，你只负责这一镜。\n' +
+    '- 不读也不照做 references/story.md、spec.md、storyboard.md、storyboard-format.md、sound.md、captions.md、overlays.md、review.md 与 types/ 下的片型文件：' +
+    '配乐与音效由上层统一处理，镜头里不放 <audio>；画内字幕按下方的镜头工具库执行；复查按本提示词的画面自查执行。\n' +
+    '- 画幅、帧率与时长以本提示词为准，不用该技能默认的 1920×1080、30fps。' +
+    '不搜索、不安装 registry 组件（catalog、add），不调用 media-use 或任何生成媒体的服务。\n' +
+    '- 该技能 references/look.md 要求把项目根的 frame.md 当作配色与字体规范，本项目不适用：' +
+    '配色与字体按本提示词的「视觉自由度」（有整片风格时是「整片风格」）一段执行；look.md 只读「Video facts」一节，不另立 LOOK 行，不套用 frame-presets。\n' +
+    '- 非内置字体一律用 @font-face 指向镜头目录里的字体文件，不得只写 local() 依赖本机安装的字体：换一台机器渲染结果就不同。\n' +
+    '\n动效要求（强制）：\n' +
+    '- 动效手法以 ' +
+    hyperFramesMotionFile +
+    ' 为参考：缓动按角色选、快动作带动态模糊、退场短于入场、错峰重叠；' +
+    '其中「Defaults that look generated」列出的写法一律不用。它给的停留秒数只是参考，可读停留以本提示词的其他要求为准。\n' +
+    '- 导演的是状态变化，不只是入场：每个动画先想清楚它最终停在什么状态、那个状态是否说明了这句台词的论点；' +
+    '入场再漂亮，也补不了落定状态说不清的问题。\n' +
+    '- 跟随关系要成立：指针落在它要按的控件上，标签跟着它标注的对象走。\n' +
+    '- 按文案选手法，不设数量下限：每个动效都要说得出它在表达哪句话、哪层关系或哪个转折，' +
+    '说不出理由的不加。宁可少而准，不要为了显得丰富堆叠属性。\n' +
+    '- 环境动效可选，整镜最多 1 条，振幅小到不干扰阅读；不得持续漂浮或晃动语义元素。\n' +
+    '- 语义元素到位后应当稳定停留供阅读，这段停留允许画面静止；' +
+    '镜头结尾停在可读的终态，不得停在入场中间态。\n' +
+    '- 但整个画面不得完全冻结超过 3 秒（含结尾）：长停留期间用那条环境动效或极缓的镜头推移维持画面活性，' +
+    '语义元素本身保持不动。\n' +
+    '- 装饰性动效只能落在装饰层（显式标记 decorative）或语义元素的入场 / 退场窗口内，' +
+    '不得侵占任何元素的可读稳定区间，也不得改变已约定的短语帧。\n'
+  );
+}
+
+/**
+ * 指向 CLI 用法，并把可用命令收窄到本地渲染与检查。
+ *
+ * 上游该技能按「工作」列出全部命令，其中三类必须挡掉：
+ *   - cloud / cloudrun / lambda / publish 把镜头送去远端，绕开本机的确定性前提；
+ *   - skills / upgrade 会顶掉 am 固定的技能与 CLI 版本，影响同项目其他镜头；
+ *   - preview / open / catch-up / history / feedback / usage 是交互、桌面应用、
+ *     遥测与额度查询，无头单镜头渲染里要么卡住等人，要么往外发数据。
+ *
+ * timeline 只放行读取：它的 move / trim / split 等子命令会改写组合文件，
+ * 与「时长由 scene.json 决定」的契约冲突。
+ */
+export function hyperFramesCLIPrompt(skillsDir: string): string {
+  let reference = `- CLI 的命令与排错方式见 ${HyperFramesCLISkillName} 技能。\n` + '  （本机未能定位该技能目录，请使用你自身的技能加载机制载入。）\n';
+  if (skillsDir !== '') {
+    reference = `- CLI 的命令与排错方式见 ${HyperFramesCLISkillName} 技能。本机该技能目录为：\n    ${path.join(skillsDir, HyperFramesCLISkillName)}\n`;
+  }
+  const prefix = hyperFramesCommand();
+  return (
+    '渲染命令（强制）：\n' +
+    reference +
+    '- 每次调用 CLI 都写成 `' +
+    prefix +
+    ' <子命令>`，例如 `' +
+    prefix +
+    ' lint`、`' +
+    prefix +
+    ' check --json`、`' +
+    prefix +
+    ' render`。' +
+    '不用 `npx hyperframes`（无论带不带版本）、`hyperframes@latest` 或全局安装的 `hyperframes`：am 已装好固定版本 ' +
+    hyperframes.PinnedVersion +
+    ' 的 CLI，npx 会在渲染途中现下载；安全模式也只放行这个写法（另有 ls、ffprobe）。\n' +
+    '- 每条命令单独执行，不用 `cd …;`、`&&`、`;` 或管道把几条拼在一起：拼接的命令会被权限检查整体拦下。工作目录已经是本镜头目录，不需要 cd。\n' +
+    '- 只用本地渲染与检查相关的命令：lint、check、snapshot、keyframes、render，以及只读的 timeline --json（不用它的 move、trim、split 等改写子命令）。\n' +
+    '- snapshot 一律带 --describe false：它默认会把画面发给外部视觉服务，本镜头的自查由你自己看图完成。\n' +
+    '- 禁止 cloud、cloudrun、lambda、publish 等远端渲染路径：本镜头必须在本机渲染。\n' +
+    '- 禁止 skills、upgrade 以及任何会改动已装技能的命令：版本已固定，改动会影响其他镜头。\n' +
+    '- 不用 preview、present、open、catch-up、history、feedback、usage：本环境是无头的，没有人审批预览，也不向外发送反馈或遥测。\n'
+  );
+}
+
+/** 生成式艺术技能的提示词片段。 */
+export function algorithmicArtPrompt(skillsDir: string): string {
+  if (skillsDir !== '') {
+    const skill = path.join(skillsDir, AlgorithmicArtSkillName);
+    return (
+      '生成式艺术参考：\n' +
+      `- 如需使用算法艺术/生成式视觉效果，加载 ${AlgorithmicArtSkillName} 技能。本机该技能目录为：\n    ${skill}\n` +
+      '  读取其中的 SKILL.md（工作流与不变量）和 references/ 目录（技术目录、配色规则、动画配方）。\n' +
+      '- 该技能提供 50+ 算法技术（10 个分类）、OKLab 配色插值、完美循环动画模板。\n' +
+      '- 使用时遵守反默认规则：禁止单独使用 Perlin 流场/粒子轨迹/圆填充/递归树/Voronoi 作为唯一想法，\n' +
+      '  必须组合两个正交技术或使用目录中更冷门的算法。\n'
+    );
+  }
+  return (
+    '生成式艺术参考：\n' +
+    `- 如需使用算法艺术/生成式视觉效果，加载 ${AlgorithmicArtSkillName} 技能。\n` +
+    '  （本机未能定位该技能目录，请使用你自身的技能加载机制载入。）\n' +
+    '- 该技能提供 50+ 算法技术、OKLab 配色、完美循环动画。使用时遵守反默认规则。\n'
+  );
+}
+
+/**
+ * Lottie 图层技能的提示词片段。
+ *
+ * Lottie 是可选项而非默认项：烘进 JSON 的东西后期改不动，且文字与数据类动画
+ * 交给 Lottie 会与 HTML 动效要求给出互相冲突的指令。因此这里的措辞必须把
+ * 「默认不用」和「不计入动效预算」两条写死，否则渲染器会拿一个 Lottie 顶替
+ * 整镜头的动效工作量。
+ */
+export function textToLottiePrompt(skillsDir: string): string {
+  let reference = `- 需要时加载 ${TextToLottieSkillName} 技能。\n` + '  （本机未能定位该技能目录，请使用你自身的技能加载机制载入。）\n';
+  if (skillsDir !== '') {
+    const skill = path.join(skillsDir, TextToLottieSkillName);
+    reference =
+      `- 需要时加载 ${TextToLottieSkillName} 技能。本机该技能目录为：\n    ${skill}\n` +
+      `  读取其中的 ${skillManifestFile} 判断该不该用，再按其路由表只读匹配的 references/ 文件；\n` +
+      `  若该路径不存在，改用你自身的技能加载机制载入 ${TextToLottieSkillName}。\n`;
+  }
+  return (
+    'Lottie 图层（可选）：\n' +
+    reference +
+    '- 默认不用 Lottie。只有矢量图形、时间线自成一体、且用 CSS/GSAP 表达明显更笨重时才考虑，' +
+    '典型是 logo 演绎、图标变形、loader、状态反馈、SVG 描边绘制、矢量质感特效。\n' +
+    '- 文字排版、逐字动画、数字滚动、图表、转场与运镜一律不得交给 Lottie，' +
+    '这些归 HTML 与上面的动效要求。任何时候都不得产出铺满画幅、承担镜头全部内容的 Lottie。\n' +
+    '- Lottie 图层不计入上述动效要求的任何一条，持续性环境动效也不得用 Lottie 循环顶替；' +
+    'HTML 侧必须独立满足全部动效要求。\n' +
+    '- Lottie 由渲染框架逐帧 seek：播放器实例 autoplay 与 loop 均为 false 并注册到框架约定的全局数组，' +
+    'JSON 内不得使用表达式、时钟或未播种随机，粒子与物理一类系统必须烘成关键帧。\n'
+  );
+}
+
+/**
+ * 角色驱动技能的提示词片段。
+ *
+ * 这里刻意不写驱动库的文件名，也不写任何角色契约的细节：那些属于
+ * castSection，只在 scene.cast 不为 null 时才出现。没有角色的镜头必须拿不到
+ * 任何角色相关的强制要求——老镜头（单口播）的提示词不能因为新增了这个技能
+ * 就多出一段它永远用不上的契约，scene 的测试守着这一点。
+ *
+ * 本段只做一件事：把技能目录的本机绝对路径交出去。castSection 里那条
+ * 「把驱动库复制进镜头目录」的契约需要一个源目录，而它就在这里。
+ */
+export function characterRigPrompt(skillsDir: string): string {
+  if (skillsDir !== '') {
+    return (
+      '角色驱动（按需）：\n' +
+      `- 本镜头如有角色出场（下方出现「${CastRequiredHeading}」段），必须加载 ${CharacterRigSkillName} 技能。本机该技能目录为：\n    ${path.join(skillsDir, CharacterRigSkillName)}\n` +
+      `  实现前必须读其中的 ${skillManifestFile}：它定义角色包目录结构、驱动库的挂载与转身/说话接口，以及四条硬规则。\n` +
+      '- 没有角色的镜头忽略本段，不要自行引入角色。\n'
+    );
+  }
+  return (
+    '角色驱动（按需）：\n' +
+    `- 本镜头如有角色出场（下方出现「${CastRequiredHeading}」段），必须加载 ${CharacterRigSkillName} 技能。\n` +
+    '  （本机未能定位该技能目录，请使用你自身的技能加载机制载入。）\n' +
+    '- 没有角色的镜头忽略本段，不要自行引入角色。\n'
+  );
+}
+
+/**
+ * 按帧驱动工具库的提示词片段，解析到就总是注入。
+ *
+ * 这个库存在的理由是让各镜头不再各写各的：字幕位置、字号、断行每镜不同，
+ * frame.md 的字幕规范没有任何共用代码去执行。所以措辞必须把「烧录字幕一律
+ * 用 SceneKit.captions」「版式用 safeRect 而不是手抄像素」写成要求而不是建议，
+ * 否则渲染器照旧手写一套，库就白装了。
+ *
+ * 复制义务与 character-rig 同理：渲染只服务镜头目录内的文件，引用镜头目录外的
+ * 路径会静默 404，字幕不出现、渲染照样退出码 0。
+ */
+export function sceneKitPrompt(skillsDir: string): string {
+  let reference =
+    `- 加载 ${SceneKitSkillName} 技能，用法以其中的 ${skillManifestFile} 为准。\n` + '  （本机未能定位该技能目录，请使用你自身的技能加载机制载入。）\n';
+  if (skillsDir !== '') {
+    reference = `- 加载 ${SceneKitSkillName} 技能，用法以其中的 ${skillManifestFile} 为准。本机该技能目录为：\n    ${path.join(skillsDir, SceneKitSkillName)}\n`;
+  }
+  return (
+    '镜头工具库（强制）：\n' +
+    reference +
+    '- 用到它时把技能目录里的 ' +
+    sceneKitLibraryFile +
+    ' 复制进本镜头目录，用相对路径引入；不得引用镜头目录之外的文件。\n' +
+    '- 先加载镜头目录里的 ' +
+    SceneDataFile +
+    '（由上层在渲染前写好，不要自己写或改），再加载 ' +
+    sceneKitLibraryFile +
+    '。\n' +
+    '- 画面内烧录的字幕一律用 SceneKit.captions，不得手写字幕代码；位置、字号、断行与样式由本镜头决定，但必须保持可读。\n' +
+    '- 版式按安全区取值用 SceneKit.safeRect，不要把安全区像素手抄进合成；短语时间窗用 SceneKit.phrase。\n'
+  );
+}
+
+export function songExplainerPrompt(dir: string): string {
+  if (dir === '') return '读取 song-explainer 技能，仅执行单镜头歌词驱动动画规则。\n';
+  return `读取 ${path.join(dir, SongExplainerSkillName, skillManifestFile)}，仅执行单镜头歌词驱动动画规则。\n`;
+}
+
+/**
+ * 渲染器在安全模式下必须被放行的最小权限。
+ *
+ * 命令与提示词、镜头锁定文件要求的完全一致：CLI 必须带固定版本前缀，
+ * ls / ffprobe 用来查素材与产物。技能树在项目根的 .agents/skills，位于镜头
+ * 目录之外，不开放读取的话渲染器读不到组合契约与动效手法，只能凭空写动画。
+ */
+export function rendererAccess(resolved: Record<string, string> | null): RendererAccess {
+  const seen = new Set<string>();
+  const dirs: string[] = [];
+  for (const dir of Object.values(resolved ?? {})) {
+    if (dir !== '' && !seen.has(dir)) {
+      seen.add(dir);
+      dirs.push(dir);
+    }
+  }
+  dirs.sort(compareBytes);
+  return { commands: [hyperFramesCommand(), 'ls', 'ffprobe'], readDirs: dirs };
+}
