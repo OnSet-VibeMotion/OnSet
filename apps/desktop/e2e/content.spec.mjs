@@ -184,3 +184,23 @@ test('drags a region straight on the scene frame and asks about it', async ({ pa
   await expect(page.locator('#prompt')).toHaveValue(/圈出的这块/);
   await expect(page.locator('#attachments')).toContainText('圈选区域');
 });
+
+test('steps scene frames with the arrow keys', async ({ page, project }) => {
+  const { execFileSync } = await import('node:child_process');
+  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=1', '-pix_fmt', 'yuv420p', path.join(project.path, 'scenes', 'scene-001', 'out.mp4')]);
+  await openProject(page, project);
+  await page.locator('[data-tab="scene"]').click();
+  const frame = page.locator('.transport', { hasText: '帧' });
+  await expect(frame).toContainText('帧 0 / 30');
+  await page.locator('.scene-title').click();
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
+  await expect(frame).toContainText('帧 3 / 30');
+  await page.keyboard.press('Shift+ArrowRight');
+  await expect(frame).toContainText('帧 13 / 30');
+  await page.keyboard.press('ArrowLeft');
+  await expect(frame).toContainText('帧 12 / 30');
+  // 输入框里的方向键照常移光标，不动画面。
+  await page.locator('#prompt').fill('abc');
+  await page.keyboard.press('ArrowLeft');
+  await expect(frame).toContainText('帧 12 / 30');
+});

@@ -292,6 +292,30 @@ function SceneTab(props: Props & { scene: Scene | null }) {
     setPlaying(false);
   }, [scene?.id]);
 
+  // 键盘：← / → 逐帧（按住 Shift 一次 10 帧），空格播放 / 暂停。焦点在输入框、下拉框里时不拦截；
+  // 空格落在按钮上时交给按钮自己。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+      const v = video.current;
+      if (!v) return;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        const frames = (e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 10 : 1);
+        v.pause();
+        v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + frames / FPS));
+      } else if (e.key === ' ' && !target?.closest('button, summary, a')) {
+        e.preventDefault();
+        if (v.paused) void v.play();
+        else v.pause();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   if (!scene) return <Empty>{noSceneText(props.scenes)}</Empty>;
   const status = sceneStatus(scene);
 
@@ -455,13 +479,13 @@ function SceneTab(props: Props & { scene: Scene | null }) {
                 {drag && !dragging && <SelectionBar drag={drag} frame={frame.current} onFix={fixFrame} onAttach={attach} onClear={() => setDrag(null)} />}
               </div>
               <div className="transport">
-                <button className="step" onClick={() => step(-1)} aria-label="后退一帧" title="后退一帧">
+                <button className="step" onClick={() => step(-1)} aria-label="后退一帧" title="后退一帧（←，Shift+← 10 帧）">
                   <Icon name="prev" size={14} />
                 </button>
-                <button className="play" onClick={toggle} aria-label={playing ? '暂停' : '播放'}>
+                <button className="play" onClick={toggle} aria-label={playing ? '暂停' : '播放'} title="播放 / 暂停（空格）">
                   <Icon name={playing ? 'pause' : 'play'} size={14} />
                 </button>
-                <button className="step" onClick={() => step(1)} aria-label="前进一帧" title="前进一帧">
+                <button className="step" onClick={() => step(1)} aria-label="前进一帧" title="前进一帧（→，Shift+→ 10 帧）">
                   <Icon name="next" size={14} />
                 </button>
                 <span className="timecode">{clock(time)}</span>
