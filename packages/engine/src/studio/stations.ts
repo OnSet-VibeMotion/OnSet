@@ -16,6 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { envMap } from '../envutil';
 import * as flow from '../flow';
+import * as plugin from '../plugin';
 import { OpScopeEnv } from '../opworker';
 import { isEnvFile } from './api_ui';
 import { decodeJSON, DecodeError, fieldString, goMap, methodNotAllowed, notFound, serveFile, writeError, writeJSON } from './http';
@@ -125,9 +126,28 @@ export function listStations(root: string): Record<string, unknown> {
   return {
     stations: [...stations.map((s) => stationJSON(root, s)), ...off.map((s) => ({ ...stationJSON(root, s), enabled: false }))],
     problems,
+    hidden_pages: hiddenPages(root, stations),
     // 项目选用的第三方流程：顶栏第一步换成它的页面。
     active_flow: active ? { station: active.manifest.id, name: active.manifest.flow!.name, first_tab: toFirstTab(active.manifest) } : null,
   };
+}
+
+/**
+ * 内置插件登记的页面里，这个项目用不上的：插件关掉了，也没有第三方站在这一页（或同名的那一步）放站点。
+ * 界面据此不显示这一页与顶栏上同名的步骤（关掉「发布」时没有发布这一步）。
+ */
+function hiddenPages(root: string, loaded: readonly flow.LoadedStation[]): string[] {
+  let disabled: Set<string>;
+  try {
+    disabled = new Set(flow.readLock(root).disabled ?? []);
+  } catch {
+    return [];
+  }
+  const used = new Set(loaded.filter((s) => !s.builtin).flatMap((s) => s.manifest.nodes.flatMap((n) => [n.step, n.page ?? ''])));
+  return plugin
+    .pluginPages()
+    .filter(({ owner, value }) => disabled.has(owner) && !used.has(value.id))
+    .map(({ value }) => value.id);
 }
 
 async function readParams(request: Request): Promise<Record<string, unknown>> {

@@ -912,4 +912,6 @@ export interface StationsResponse {
   problems: string[];
   /** 项目选用的第三方流程（顶栏第一步换成它的页面）。 */
   active_flow?: { station: string; name: string; first_tab: string } | null;
+  /** 内置插件的页面里这个项目用不上的（插件关了、也没有别的站接手）：不显示这一页与同名的步骤。 */
+  hidden_pages?: string[];
 }

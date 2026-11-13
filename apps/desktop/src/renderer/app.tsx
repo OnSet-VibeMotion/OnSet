@@ -129,12 +129,15 @@ export function App() {
   const beatMode = !!beat?.enabled;
   /** 项目选用了第三方站带来的流程：顶栏第一步换成它指定的页面。 */
   const [flowFirstTab, setFlowFirstTab] = useState<Tab | ''>('');
-  /** 项目关掉了内置的「发布」，也没有别的插件在发布这一步放站点：顶栏不显示发布这一步与发布页。 */
-  const [publishOff, setPublishOff] = useState(false);
+  /**
+   * 内置插件的页面里这个项目用不上的（后端 /api/stations 的 hidden_pages：插件关了、也没有别的站接手），
+   * 顶栏不显示这一页与同名的步骤（例如关掉「发布」时没有发布这一步）。
+   */
+  const [hiddenPages, setHiddenPages] = useState<string[]>([]);
   const steps = useMemo(() => {
-    const base = stepTabsFor(beatMode).filter((t) => !(publishOff && t === 'publish'));
+    const base = stepTabsFor(beatMode).filter((t) => !hiddenPages.includes(t));
     return flowFirstTab ? [flowFirstTab, ...base.slice(1)] : base;
-  }, [beatMode, flowFirstTab, publishOff]);
+  }, [beatMode, flowFirstTab, hiddenPages]);
   // 整片制作现在在哪一步（编排工具每轮结束前用 studio_step 标的，没标过时按产物推），顶栏据此标出进度。
   // 第一步可能换成了第三方流程的页面：口播稿、节拍这一步的进度都算在第一步上。
   const progress = state?.step ? (['script', 'beat'].includes(state.step) ? 0 : steps.indexOf(state.step as Tab)) : -1;
@@ -271,10 +274,7 @@ export function App() {
       ]);
       setStationPages(sts.stations);
       setFlowFirstTab((sts.active_flow?.first_tab as Tab | undefined) ?? '');
-      setPublishOff(
-        sts.stations.some((x) => x.builtin && x.id === 'publishing' && !x.enabled) &&
-          !sts.stations.some((x) => !x.builtin && x.enabled && x.nodes.some((n) => n.step === 'publish')),
-      );
+      setHiddenPages(sts.hidden_pages ?? []);
       // 只用来嵌进别的页面的小窗不单独列。
       setPluginTabs(
         sts.stations.flatMap((x) =>
@@ -726,7 +726,7 @@ export function App() {
         {currentId && !homeOpen && (
           <nav className="more-pages" aria-label="更多页面">
             {visibleTabs(beatMode)
-              .filter(([id]) => !(publishOff && id === 'publish'))
+              .filter(([id]) => !hiddenPages.includes(id))
               .filter(([id]) => !steps.includes(id))
               .map(([id, label]) => (
                 <button key={id} data-tab={id} className={tab === id && panelOpen ? 'on' : ''} aria-current={tab === id && panelOpen ? 'page' : undefined} onClick={() => showTab(id)}>

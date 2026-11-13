@@ -2,7 +2,7 @@ import './testsupport';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { addToProject, fetchStation } from '../flow';
+import { addToProject, fetchStation, setBuiltinEnabled } from '../flow';
 import { onStudioEvent } from './events';
 import { emitStationHook, pageCSP, tickStationSchedules } from './stations';
 import { newSessionFixture, send, studioRequest } from './testsupport';
@@ -10,6 +10,19 @@ import { newSessionFixture, send, studioRequest } from './testsupport';
 const fake = path.join(__dirname, '..', 'flow', 'testdata', 'fake-publisher');
 
 describe('stations API', () => {
+  it('hides the pages of a builtin plugin the project turned off, unless another station takes its step', async () => {
+    const f = newSessionFixture();
+    let { body } = await studioRequest(f.s, 'GET', '/api/stations');
+    expect(body.hidden_pages).toEqual([]);
+    setBuiltinEnabled(f.root, 'publishing', false);
+    ({ body } = await studioRequest(f.s, 'GET', '/api/stations'));
+    expect(body.hidden_pages).toEqual(['publish']);
+    // 假发布在发布这一步放了站点：发布页照样要有。
+    addToProject(f.root, fetchStation(`link:${fake}`, process.env).entry);
+    ({ body } = await studioRequest(f.s, 'GET', '/api/stations'));
+    expect(body.hidden_pages).toEqual([]);
+  });
+
   it('lists the stations of the project with their prompt, stops and ops', async () => {
     const f = newSessionFixture();
     let { status, body } = await studioRequest(f.s, 'GET', '/api/stations');
