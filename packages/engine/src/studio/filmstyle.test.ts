@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as filmstyle from '../filmstyle';
-import * as lemo from '../filmstyle/lemo';
+import * as lemo from '../plugins/lemo-styles';
 import { jpegSize, posterThumbWidth } from './filmstyle';
 import { hasFfmpeg, setEnv, startStudio, studioRequest, tempDir, writeStudioFile, writeStudioJPEG } from './testsupport';
 

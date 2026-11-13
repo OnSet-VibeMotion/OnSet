@@ -68,5 +68,5 @@ export {
 export { checkParams, findStationOp, managedPython, NodePlaceholder, parseProgressLine, parseResultLine, ProgressPrefix, PythonPlaceholder, resolveCommand, ResultPrefix, runStationOp, StationDataEnv, stationEnv, type StationResult } from './run';
 export { changedFiles, declaredPath, isReservedPath, MaxListedPaths, ReservedPrefixes, scopeReport, scopeText, statProject, type ScopeReport, type StatSnapshot } from './scope';
 export { OpsTrustNotice, pagePermissionLines } from './trust';
-export { PluginStyleSource, syncStyleSources } from './styles';
+export { pluginStyleSource, syncStyleSources } from './styles';
 export { coerceSetting, publicSettings, stationSettings, writeStationSetting, type SettingValue } from './settings';

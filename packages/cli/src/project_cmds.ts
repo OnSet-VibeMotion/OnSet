@@ -6,7 +6,7 @@ import path from 'node:path';
 import * as archive from '@am/engine/archive';
 import * as config from '@am/engine/config';
 import * as filmstyle from '@am/engine/filmstyle';
-import '@am/engine/filmstyle/sources';
+import '@am/engine/plugin';
 import * as hyperframes from '@am/engine/hyperframes';
 import * as preset from '@am/engine/preset';
 import * as projectinit from '@am/engine/projectinit';

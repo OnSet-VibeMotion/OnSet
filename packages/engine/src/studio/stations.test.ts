@@ -19,6 +19,7 @@ describe('stations API', () => {
       ['algorithmic-art', true],
       ['beat', true],
       ['cast', true],
+      ['lemo-styles', true],
       ['publishing', true],
       ['song', true],
       ['text-to-lottie', true],

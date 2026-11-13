@@ -276,7 +276,8 @@ test('builtin features are plugins too: always on, listed with what they bring, 
   await builtin.scrollIntoViewIfNeeded();
   await page.screenshot({ path: test.info().outputPath('builtin-features.png') });
 
-  await expect(builtin.locator('li[data-builtin]')).toHaveCount(6);
+  await expect(builtin.locator('li[data-builtin]')).toHaveCount(7);
+  await expect(builtin.locator('li[data-builtin="lemo-styles"]')).toContainText('LemoLab 风格库');
   await expect(builtin.locator('li[data-builtin="cast"]')).toContainText('多角色对话');
   // 「详情」照实列出这个功能在 ArticleToMotion 里登记了什么。
   const cast = builtin.locator('li[data-builtin="cast"]');

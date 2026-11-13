@@ -1,10 +1,10 @@
-// lemo 的 source 类型：实现 filmstyle.Source 并登记。
+// lemo 的 source 类型：实现 filmstyle.Source，由插件的 apply 登记（index.ts）。
 import fs from 'node:fs';
 import { goQuote } from '../../gofmt';
 import { missing } from '../../prereq';
-import { register, type PrepareOptions, type Source, type Style } from '../filmstyle';
+import { type PrepareOptions, type Source, type Style } from '../../filmstyle';
 import { fill } from './fill';
-import { Gallery, LibraryEnv, PinnedStyleCount, SourceID, catalog, entryStyle, find } from './lemo';
+import { Gallery, PinnedStyleCount, SourceID, catalog, entryStyle, find } from './lemo';
 import { libraryDir, openLibrary, posterPath } from './library';
 import { prepareLibrary, requireLibrary, requireStyle } from './prepare';
 
@@ -13,7 +13,6 @@ export const lemoSource: Source = {
   id: () => SourceID,
   name: () => `lemo-opuscar 风格库（LemoLab，${PinnedStyleCount} 种）`,
   gallery: () => Gallery,
-  envKeys: () => [LibraryEnv],
   catalog: (): Style[] => catalog().map(entryStyle),
   location: (env) => libraryDir({ env }),
   check: (env) => {
@@ -42,4 +41,3 @@ export const lemoSource: Source = {
   },
 };
 
-register(lemoSource);

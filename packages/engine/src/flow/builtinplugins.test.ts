@@ -31,7 +31,7 @@ describe('builtin plugins', () => {
 
   it('is always on: an old lock file\'s disabled field is ignored and not written back', () => {
     const root = project();
-    const all = ['algorithmic-art', 'beat', 'cast', 'publishing', 'song', 'text-to-lottie'];
+    const all = ['algorithmic-art', 'beat', 'cast', 'lemo-styles', 'publishing', 'song', 'text-to-lottie'];
     expect(loadProjectStations(root).stations.map((s) => s.manifest.id)).toEqual(all);
     fs.writeFileSync(path.join(root, 'article-to-motion.flow.json'), JSON.stringify({ version: 1, stations: [], disabled: ['song'] }));
     expect(loadProjectStations(root).stations.map((s) => s.manifest.id)).toEqual(all);

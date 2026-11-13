@@ -1,13 +1,12 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
+import { registerBuiltin } from '../plugin/registry';
 import {
   GuideFile,
-  RootEnv,
   StyleFile,
   categories,
-  childEnvKeys,
   extraDir,
   install,
   installed,
@@ -15,7 +14,6 @@ import {
   installedExtras,
   lookup,
   manifestKey,
-  register,
   remove,
   removeStyle,
   skillDir,
@@ -38,7 +36,6 @@ function fakeSource(id: string, styles: Style[], noGuide = false): Source {
     poster: () => {
       throw Object.assign(new Error('file does not exist'), { code: 'ENOENT' });
     },
-    envKeys: () => ['AM_TEST_' + id.replaceAll('-', '_').toUpperCase()],
     catalog: () => styles,
     fill: (dir: string, style: Style) => {
       fs.writeFileSync(path.join(dir, StyleFile), '# ' + styleKey(style));
@@ -52,9 +49,16 @@ function st(source: string, slug: string, cn: string, en: string, category_cn = 
   return { source, slug, order: '', cn, en, category_cn, category_en: '', uses: null, summary: '' };
 }
 
-register(fakeSource('alpha', [st('alpha', 'ink', '水墨', 'Ink', '绘画'), st('alpha', 'pixel', '像素', 'Pixel', '游戏')]));
-register(fakeSource('beta', [st('beta', 'ink', '墨线', 'Ink Line', '线描')]));
-register(fakeSource('broken', [st('broken', 'nope', '坏', 'Broken')], true));
+// 假来源经测试里登记的内置插件进来源表：通用部分只认登记表，不认识任何具体来源。
+const unregister = registerBuiltin({
+  id: 'test-fake-styles',
+  apply(ctx) {
+    ctx.filmStyleSource(fakeSource('alpha', [st('alpha', 'ink', '水墨', 'Ink', '绘画'), st('alpha', 'pixel', '像素', 'Pixel', '游戏')]));
+    ctx.filmStyleSource(fakeSource('beta', [st('beta', 'ink', '墨线', 'Ink Line', '线描')]));
+    ctx.filmStyleSource(fakeSource('broken', [st('broken', 'nope', '坏', 'Broken')], true));
+  },
+});
+afterAll(unregister);
 
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'am-filmstyle-'));
@@ -78,9 +82,6 @@ describe('filmstyle', () => {
     const got = categories('alpha');
     expect(got.length).toBe(2);
     expect(got[0]).toBe('绘画');
-    const keys = childEnvKeys().join(',');
-    expect(keys).toContain(RootEnv);
-    expect(keys).toContain('AM_TEST_ALPHA');
   });
 
   it('enforces the contract and replaces the default style', () => {

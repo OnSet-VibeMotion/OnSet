@@ -10,7 +10,7 @@ import catalogData from './catalog.json';
 // 只接画面。风格库的配乐工具（core/audio/ 的采样乐器、拨弦建模）是 Python 写的，
 // 要一套 Python 环境和约 1.4 GB 采样库，刻意没有接：配乐仍按制作流程选授权素材，
 // STYLE.md 的 Sound palette 只作为配乐方向的参考。
-import type { Style } from '../filmstyle';
+import type { Style } from '../../filmstyle';
 
 /** 这个来源的标识。 */
 export const SourceID = 'lemo-opuscar';

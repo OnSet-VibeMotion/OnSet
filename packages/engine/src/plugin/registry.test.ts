@@ -81,7 +81,7 @@ function register(): void {
 
 describe('builtin plugin apply', () => {
   it('registers the shipped plugins once', () => {
-    expect(appliedPluginIDs()).toEqual(['publishing', 'beat', 'song', 'algorithmic-art', 'text-to-lottie', 'cast']);
+    expect(appliedPluginIDs()).toEqual(['publishing', 'beat', 'song', 'algorithmic-art', 'text-to-lottie', 'cast', 'lemo-styles']);
     expect(() => registerBuiltin({ id: 'publishing', apply: () => {} })).toThrow('登记了两次');
   });
 
@@ -163,7 +163,7 @@ describe('builtin plugin apply', () => {
     } finally {
       undo();
     }
-    expect(appliedPluginIDs()).toEqual(['publishing', 'beat', 'song', 'algorithmic-art', 'text-to-lottie', 'cast']);
+    expect(appliedPluginIDs()).toEqual(['publishing', 'beat', 'song', 'algorithmic-art', 'text-to-lottie', 'cast', 'lemo-styles']);
   });
 });
 

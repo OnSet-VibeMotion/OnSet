@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { isMissing } from '../../prereq';
-import * as filmstyle from '../index';
+import * as filmstyle from '../../filmstyle';
 import {
   LibraryEnv,
   PinnedStyleCount,

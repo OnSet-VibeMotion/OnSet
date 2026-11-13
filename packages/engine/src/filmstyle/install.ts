@@ -255,7 +255,7 @@ function linkError(op: string, from: string, to: string, err: unknown): string {
  * 没就绪时由来源抛 prereq.MissingError。
  *
  * 先在同级临时目录让来源写好整棵技能树、校验契约，再整体换位：中途失败时项目里
- * 要么是旧风格、要么是新风格，不会半新半旧。装好默认风格后删掉旧目录（lemo-film-style）。
+ * 要么是旧风格、要么是新风格，不会半新半旧。
  */
 export function install(opts: InstallOptions): InstallResult {
   const style = opts.style;

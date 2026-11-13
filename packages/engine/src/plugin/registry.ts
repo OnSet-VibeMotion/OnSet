@@ -1,13 +1,14 @@
 /**
  * 内置插件的登记表。apply(ctx) 在登记时立刻执行，登记的东西按插件记下；各层按需来取。
  *
- * 全部内置插件集中在 plugins/index.ts 登记（理由同 filmstyle/sources：散在各处 import 就会漏），
+ * 全部内置插件集中在 plugins/index.ts 登记（登记靠 import 副作用，散在各处 import 就会漏），
  * 本包的入口 index.ts 导入它，所以凡是经 `../plugin` 取登记表的地方都拿得到。测试可以另登记假插件，
  * registerBuiltin 返回的函数把它撤掉。
  */
 import path from 'node:path';
 import { assetsBase } from '../assets';
 import { builtinFlows, builtinStations } from '../flow/builtin';
+import type { Source as FilmStyleSource } from '../filmstyle/filmstyle';
 import type { SceneBlock } from '../scene/block';
 import type { SkillDescriptor } from '../scene/skills';
 import type {
@@ -49,6 +50,7 @@ interface Applied {
   childEnvs: PluginChildEnv[];
   steps: PluginStep[];
   commands: PluginCommand[];
+  filmStyleSources: FilmStyleSource[];
 }
 
 /** 按登记顺序。 */
@@ -91,7 +93,7 @@ export function registerBuiltin(plugin: BuiltinPlugin): () => void {
   flush();
   if (!/^[a-z][a-z0-9-]*$/.test(plugin.id)) throw new Error(`内置插件 id ${plugin.id} 要是小写字母、数字与连字符`);
   if (applied.some((a) => a.id === plugin.id)) throw new Error(`内置插件 ${plugin.id} 登记了两次`);
-  const entry: Applied = { id: plugin.id, dir: () => plugin.dir ?? defaultDir(plugin.id), stations: [], flows: [], ops: [], pages: [], routes: [], validators: [], skills: [], blocks: [], narrations: [], presets: [], inUse: [], renderChecks: [], opGroups: [], prereqs: [], childEnvs: [], steps: [], commands: [] };
+  const entry: Applied = { id: plugin.id, dir: () => plugin.dir ?? defaultDir(plugin.id), stations: [], flows: [], ops: [], pages: [], routes: [], validators: [], skills: [], blocks: [], narrations: [], presets: [], inUse: [], renderChecks: [], opGroups: [], prereqs: [], childEnvs: [], steps: [], commands: [], filmStyleSources: [] };
   const where = `内置插件 ${plugin.id}`;
   const ctx: PluginContext = {
     id: plugin.id,
@@ -172,6 +174,12 @@ export function registerBuiltin(plugin: BuiltinPlugin): () => void {
       if (allApplied(entry).some((a) => a.commands.some((x) => x.id === c.id))) throw new Error(`${where}：命令 ${c.id} 已经有了`);
       entry.commands.push(c);
     },
+    filmStyleSource(source) {
+      const id = source.id();
+      if (!/^[a-z0-9][a-z0-9-]*$/.test(id) || id.startsWith('x-')) throw new Error(`${where}：风格来源 id ${id} 要是小写字母、数字与连字符，且不以 x- 开头`);
+      if (allApplied(entry).some((a) => a.filmStyleSources.some((x) => x.id() === id))) throw new Error(`${where}：风格来源 ${id} 已经有了`);
+      entry.filmStyleSources.push(source);
+    },
   };
   plugin.apply(ctx);
   applied.push(entry);
@@ -228,6 +236,7 @@ export const pluginPrereqs = (): Owned<PluginPrereq>[] => collect((a) => a.prere
 export const pluginChildEnvs = (): Owned<PluginChildEnv>[] => collect((a) => a.childEnvs);
 export const pluginSteps = (): Owned<PluginStep>[] => collect((a) => a.steps);
 export const pluginCommands = (): Owned<PluginCommand>[] => collect((a) => a.commands);
+export const pluginFilmStyleSources = (): Owned<FilmStyleSource>[] => collect((a) => a.filmStyleSources);
 
 /** 项目在用这个内置插件的凭据（第一个给出非空的判断）；插件没登记判断或没在用时为空串。 */
 export function pluginInUse(id: string, root: string): string {
@@ -240,10 +249,10 @@ export function pluginInUse(id: string, root: string): string {
 }
 
 /** 这个插件登记了什么（设置页「详情」照实列出）。 */
-export function pluginContents(id: string): { stations: string[]; ops: string[]; skills: string[]; blocks: string[]; pages: string[]; flows: string[]; prereqs: string[] } {
+export function pluginContents(id: string): { stations: string[]; ops: string[]; skills: string[]; blocks: string[]; pages: string[]; flows: string[]; prereqs: string[]; film_styles: string[] } {
   flush();
   const a = applied.find((x) => x.id === id);
-  if (!a) return { stations: [], ops: [], skills: [], blocks: [], pages: [], flows: [], prereqs: [] };
+  if (!a) return { stations: [], ops: [], skills: [], blocks: [], pages: [], flows: [], prereqs: [], film_styles: [] };
   return {
     stations: a.stations.map((s) => s.id),
     ops: a.ops.map((o) => o.name),
@@ -252,6 +261,7 @@ export function pluginContents(id: string): { stations: string[]; ops: string[];
     pages: a.pages.map((p) => p.id),
     flows: a.flows.map((f) => f.id),
     prereqs: a.prereqs.map((p) => p.name),
+    film_styles: a.filmStyleSources.map((s) => s.name()),
   };
 }
 

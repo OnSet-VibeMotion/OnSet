@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { allOps, findOp } from './ops/op';
+import { allOps } from './ops/op';
 import { Buffer, run, tempDir } from './testutil';
 import { callTarget, describeTools, prepareCall } from './toolsmcp';
 

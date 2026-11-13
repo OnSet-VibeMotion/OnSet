@@ -1,7 +1,7 @@
 //
 // 「前置资源」的共同约定。
 //
-// 要联网下载的东西（HyperFrames 技能与 CLI、lemo-opuscar 风格库）只由 am setup 准备，
+// 要联网下载的东西（HyperFrames 技能与 CLI、整片风格库）只由 am setup 准备，
 // 由用户自己在终端里跑：网络慢时能看着进度、换代理、断了重来。其余命令（am init、
 // am film-style use、am scene run、am hyperframes、Studio）只检查不下载，缺了就返回
 // MissingError，统一指向 am setup。以前这些东西在渲染途中、建项目途中、打开菜单时

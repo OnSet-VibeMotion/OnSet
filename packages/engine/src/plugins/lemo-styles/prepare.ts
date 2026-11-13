@@ -9,7 +9,7 @@ import { lookPath } from '../../envutil';
 import type { Writer } from '../../hyperframes';
 import { missing } from '../../prereq';
 import { type NodeCommand, npmCommand, withNode } from '../../toolpath';
-import type { PrepareProgress } from '../filmstyle';
+import type { PrepareProgress } from '../../filmstyle';
 
 /** prepareLibrary 的进度，与 filmstyle 的通用进度相同。 */
 export type { PrepareProgress };
