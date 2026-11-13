@@ -22,21 +22,4 @@ export function atomicWrite(file: string, data: string | Uint8Array, mode = 0o64
   }
 }
 
-/**
- * Go 的 *fs.PathError 文案：「open /a/b: no such file or directory」。Go 版把这类错误原样拼进中文提示里
- * （例如「读取风格描述文件失败：open x: no such file or directory」），TS 版照样拼，用户与测试看到的文字才一致。
- */
-export function goPathError(err: unknown, op: string, file: string): string {
-  const code = (err as NodeJS.ErrnoException | undefined)?.code;
-  const reasons: Record<string, string> = {
-    ENOENT: 'no such file or directory',
-    EACCES: 'permission denied',
-    EPERM: 'operation not permitted',
-    EISDIR: 'is a directory',
-    ENOTDIR: 'not a directory',
-    EEXIST: 'file exists',
-    ENOTEMPTY: 'directory not empty',
-  };
-  const reason = (code && reasons[code]) ?? (err instanceof Error ? err.message : String(err));
-  return `${op} ${file}: ${reason}`;
-}
+export { goPathError } from '../gofmt';

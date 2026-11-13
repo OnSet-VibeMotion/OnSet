@@ -184,7 +184,7 @@ export function resolveStyleBrief(style: preset.Style, flag: string, file: strin
     try {
       raw = fs.readFileSync(file, 'utf8');
     } catch (err) {
-      throw new Error(`读取风格描述文件失败：${goPathError(err, 'open', file)}`);
+      throw new Error(`读取风格描述文件失败：${goPathError('open', file, err)}`);
     }
   } else return defaultStyleBrief;
   const brief = raw.trim();
