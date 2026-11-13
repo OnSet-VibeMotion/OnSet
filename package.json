@@ -1,0 +1,14 @@
+{
+  "name": "article-to-motion",
+  "private": true,
+  "description": "ArticleToMotion：TypeScript 引擎、am 命令行与 Electron 桌面客户端",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "desktop": "npm run start -w am-desktop",
+    "build": "npm run build -w am-desktop",
+    "typecheck": "npm run typecheck -w am-desktop"
+  }
+}

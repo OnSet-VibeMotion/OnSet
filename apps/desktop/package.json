@@ -1,0 +1,30 @@
+{
+  "name": "am-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ArticleToMotion 桌面客户端",
+  "main": "out/main.js",
+  "scripts": {
+    "build:main": "esbuild src/main/main.ts src/main/preload.ts --bundle --platform=node --format=cjs --target=node22 --external:electron --outdir=out",
+    "build:renderer": "vite build --config vite.config.mjs",
+    "build": "npm run build:main && npm run build:renderer",
+    "start": "npm run build && electron .",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.main.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "electron": "^45.2.3",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.6"
+  },
+  "dependencies": {
+    "dompurify": "3.4.15",
+    "marked": "18.1.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  }
+}

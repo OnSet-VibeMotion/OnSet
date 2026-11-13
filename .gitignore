@@ -9,3 +9,7 @@
 /dist/
 /coverage.out
 docs/superpowers/
+# 桌面客户端（TypeScript + Electron）的依赖与构建产物。
+node_modules/
+/apps/desktop/out/
+/apps/desktop/release/

@@ -1,0 +1,171 @@
+/* 记忆页：先讲记住了什么，维护用的东西收进「高级」。选择器都挂在 .memory-tab 下。 */
+.memory-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 860px;
+}
+.memory-tab .memory-intro p {
+  margin: 4px 0 0;
+  line-height: 1.6;
+}
+.memory-tab .memory-section h4 {
+  margin: 0;
+}
+.memory-tab .memory-pending {
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+.memory-tab .memory-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+}
+.memory-tab .memory-card-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.memory-tab .memory-desc {
+  flex: 1;
+  margin: 0;
+  line-height: 1.6;
+  color: var(--text);
+}
+.memory-tab .memory-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+.memory-tab .memory-card p.small {
+  margin: 0;
+}
+.memory-tab .memory-badge {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.memory-tab .memory-badge.warn {
+  color: var(--stale);
+}
+.memory-tab button.link {
+  font-family: var(--sans);
+  color: var(--muted);
+  align-self: flex-start;
+}
+.memory-tab button.link:hover {
+  color: var(--accent-text);
+}
+.memory-tab .memory-kind {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.memory-tab .memory-recall li {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+.memory-tab .memory-activity {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.memory-tab .memory-activity li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  color: var(--text-2);
+}
+.memory-tab .memory-activity li::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--faint);
+  transform: translateY(-1px);
+}
+.memory-tab .memory-activity li.ok::before {
+  background: var(--ok);
+}
+.memory-tab .memory-activity li.bad::before {
+  background: var(--bad);
+}
+.memory-tab .memory-time {
+  flex: none;
+  font: 12px var(--mono);
+  color: var(--faint);
+}
+.memory-tab details > summary {
+  cursor: pointer;
+}
+.memory-tab .memory-retired {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.memory-tab .memory-retired[open] > summary {
+  margin-bottom: 6px;
+}
+.memory-tab .memory-advanced {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.memory-tab .memory-advanced > summary {
+  color: var(--muted);
+  font-size: 13px;
+}
+.memory-tab .memory-advanced-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+/* 放映室：标题用宋体，卡片去掉底色，只用细线分隔。 */
+.memory-tab .memory-intro strong {
+  font: 600 30px/1.3 var(--serif);
+  letter-spacing: 0.02em;
+}
+.memory-tab .memory-section h4 {
+  font: 600 18px var(--serif);
+}
+.memory-tab .memory-section {
+  gap: 12px;
+  padding-top: 24px;
+}
+.memory-tab .memory-card {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 12px 0;
+}
+.memory-tab .memory-pending {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 24px 0 0;
+}
+.memory-tab .memory-pending h4 {
+  color: var(--accent-text);
+}
+.memory-tab .memory-intro > div {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}

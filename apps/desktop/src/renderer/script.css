@@ -1,0 +1,149 @@
+/* 口播稿页：像一份排好的文稿。居中一栏、宋体正文、段落编号在页边；标记只在打开「标记」时出现。 */
+.script-tab {
+  align-items: center;
+}
+.script-tab > * {
+  width: min(640px, 100%);
+}
+.script-tab .script-head {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 16px;
+}
+.script-tab .script-title {
+  margin: 0;
+  font: 600 38px/1.25 var(--serif);
+  letter-spacing: 0.02em;
+}
+.script-tab .script-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  font: 12px var(--mono);
+  color: var(--muted);
+}
+.script-tab .script-stats .voiced {
+  color: var(--ok);
+}
+.script-tab button.link {
+  background: transparent;
+  border: 0;
+  height: auto;
+  padding: 0;
+  font: 12px var(--sans);
+  color: var(--muted);
+}
+.script-tab button.link:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.script-tab .script-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.script-tab .script-actions button.on {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
+.script-tab .script-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.script-tab .script-note.bad {
+  color: var(--bad);
+}
+.script-tab .script-body {
+  display: block;
+  padding: 16px 0 8px;
+  color: #e3dccf;
+  font: 19px/2 var(--serif);
+}
+.script-tab .script-body h3 {
+  margin: 28px 0 6px;
+  font: 600 15px var(--serif);
+  color: var(--accent-text);
+  letter-spacing: 0.04em;
+}
+.script-tab .script-body p {
+  position: relative;
+  margin: 0 0 22px;
+}
+.script-tab .script-body p:last-child {
+  margin-bottom: 0;
+}
+/* 段落编号挂在页边，不占正文的位置；窄屏时收进行首。 */
+.script-tab .para-no {
+  position: absolute;
+  left: -44px;
+  font: 11px/38px var(--mono);
+  color: var(--faint);
+  user-select: none;
+}
+@media (max-width: 900px) {
+  .script-tab .para-no {
+    position: static;
+    margin-right: 10px;
+  }
+}
+
+/* 读法：关掉标记时只看字幕文字，读法与「只读不显示」都隐藏。 */
+.script-tab rt {
+  display: none;
+}
+.script-tab .marks rt,
+.script-tab .script-legend rt {
+  display: ruby-text;
+  font-size: 10px;
+  color: var(--accent);
+  letter-spacing: 0;
+}
+.script-tab .spoken-only {
+  display: none;
+}
+.script-tab .marks .spoken-only,
+.script-tab .script-legend .spoken-only {
+  display: inline;
+  font-size: 0.8em;
+  color: var(--accent);
+}
+.script-tab .marks .spoken-only::before,
+.script-tab .script-legend .spoken-only::before {
+  content: '（读：';
+}
+.script-tab .marks .spoken-only::after,
+.script-tab .script-legend .spoken-only::after {
+  content: '）';
+}
+.script-tab .marks .display-only,
+.script-tab .script-legend .display-only {
+  color: var(--muted);
+  text-decoration: underline dotted;
+  text-underline-offset: 4px;
+}
+
+/* 受保护短语：底色淡、嵌套时叠深。 */
+.script-tab mark.phrase {
+  background: transparent;
+  color: inherit;
+}
+.script-tab .marks mark.phrase,
+.script-tab .script-legend mark.phrase {
+  background: transparent;
+  border-bottom: 1px dotted var(--accent);
+}
+.script-tab .script-legend {
+  line-height: 2.2;
+}
+.script-tab .script-changes {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.script-tab .script-changes summary {
+  cursor: pointer;
+  color: var(--text-2);
+}

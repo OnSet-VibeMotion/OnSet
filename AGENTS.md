@@ -322,6 +322,19 @@ lemo 来源（`internal/filmstyle/lemo`）自己的约定：
 
 `internal/studio/ui/e2e/fake-bin/claude` 是 e2e 用的假编排工具（同目录的 `codex` 只用来显示为「已安装」，被调用时直接失败），`ui/playwright.config.mjs` 只给 Studio 服务进程的 PATH 加上它；提示词里带「慢慢来」时它只回报会话然后挂起，供取消测试使用。单元测试里的假工具同理，子进程环境按安全模式白名单构造，测试开关要经 `AM_PASSTHROUGH_ENV` 透传。
 
+## 桌面客户端（改写中）
+
+整个项目正在改写成 TypeScript + Electron 纯客户端（计划见分支 `feat/desktop-client`），Go 版在切换前一直保持可用。
+
+| 约定 | 原因 |
+|---|---|
+| 客户端在 `apps/desktop`（npm workspaces，根目录 `package.json`）：`src/main` 是 Electron 主进程，`src/renderer` 是 React 19 界面（从 `internal/studio/ui` 复制后改写，那份 Preact 源码只给 Go 版 `am studio` 用，冻结不再改） | 用户要求客户端用 React；Go 版界面不动，改写期间照常出片 |
+| 界面从自定义协议 `am://app/` 加载，界面里的 `/api/…`、`EventSource`、媒体 `src`、预览 iframe、上传都落到主进程的 `handleRequest` | 界面不用为客户端改请求代码；接口名沿用 Go 版，移植时逐条把路由从「转发」换成「本地实现」 |
+| 过渡期 `/api`、`/preview` 转给后台的 Go 版 `am studio`（`gobackend.ts`：自选空闲端口、等 `/api/health`、退出时杀整个进程组） | 客户端第一天就能完整使用；TS 引擎全部移植完再删这一层 |
+| 主进程启动时从登录 shell 读 PATH（`shellpath.ts`） | 从 Finder 启动的应用只有系统 PATH，编排工具、ffmpeg、asdf 的 node 全都找不到 |
+| 顶栏就是标题栏：`.desktop .topbar` 可拖动窗口，按钮 `no-drag`；macOS 左侧留 88px 给红绿灯 | `titleBarStyle: hiddenInset` 去掉了系统标题栏 |
+| 根目录 `package-lock.json` 的 `resolved` 必须是 `registry.npmjs.org` | 同界面那条：用镜像装完要换回官方源，CI 访问不到国内镜像 |
+
 ## 新增一个 AI CLI
 
 工具矩阵散落在六个文件，加一个工具必须八处同步改，漏一处会在运行期才炸：
