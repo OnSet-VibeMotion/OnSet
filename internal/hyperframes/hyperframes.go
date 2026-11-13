@@ -115,6 +115,92 @@ type Options struct {
 	// Progress 非空时汇报整体进度：克隆时让 git 输出 --progress 并解析百分比，
 	// 检出时报告不确定进度，拷贝时按技能逐个计数。
 	Progress func(Progress)
+	// CacheDir 是本机缓存的根目录（见 DefaultCacheDir），留空不用缓存。
+	// 缓存按 commit 分目录存放校验过的技能树，同一台机器上第二个项目起不再联网。
+	CacheDir string
+}
+
+// DefaultCacheDir 返回用户级缓存根目录：XDG_DATA_HOME 或 HOME 下的
+// .local/share/am/hyperframes。两者都没有时返回空串（不用缓存），不去猜家目录。
+func DefaultCacheDir(env map[string]string) string {
+	if dir := env["XDG_DATA_HOME"]; dir != "" {
+		return filepath.Join(dir, "am", "hyperframes")
+	}
+	if home := env["HOME"]; home != "" {
+		return filepath.Join(home, ".local", "share", "am", "hyperframes")
+	}
+	return ""
+}
+
+// cacheMarker 写在缓存目录里，内容是 commit：只有完整搬进去、校验过的技能树才有它。
+const cacheMarker = ".am-commit"
+
+// cachedTree 返回 commit 的缓存目录；没有可用缓存时返回空串。
+//
+// 可用的标准与刚克隆下来的一样：标记里的 commit 对得上、拼装出的技能数等于期望。
+// 缓存被人动过（少了目录）就当作没有，重新下载并覆盖。
+func cachedTree(cacheRoot, commit string, expectSkills int) string {
+	if cacheRoot == "" || commit == "" || commit == "-" {
+		return ""
+	}
+	dir := filepath.Join(cacheRoot, commit)
+	body, err := os.ReadFile(filepath.Join(dir, cacheMarker))
+	if err != nil || strings.TrimSpace(string(body)) != commit {
+		return ""
+	}
+	count := 0
+	for _, sub := range skillsSubdirsInRepo {
+		entries, err := os.ReadDir(filepath.Join(dir, filepath.FromSlash(sub)))
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(sub), entry.Name(), manifestFile)); err == nil {
+				count++
+			}
+		}
+	}
+	if count != expectSkills {
+		return ""
+	}
+	return dir
+}
+
+// storeCache 把刚克隆、校验过的技能树搬进缓存。先拷进同级临时目录再改名，
+// 别的进程读到的缓存要么没有、要么完整。失败只影响下次要不要联网，不让安装失败。
+func storeCache(cacheRoot, commit, clone string) error {
+	if cacheRoot == "" || commit == "" {
+		return nil
+	}
+	if err := os.MkdirAll(cacheRoot, 0o755); err != nil {
+		return err
+	}
+	staging, err := os.MkdirTemp(cacheRoot, ".staging-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staging)
+	for _, sub := range skillsSubdirsInRepo {
+		source := filepath.Join(clone, filepath.FromSlash(sub))
+		if _, err := os.Stat(source); err != nil {
+			continue
+		}
+		if err := copyTree(source, filepath.Join(staging, filepath.FromSlash(sub))); err != nil {
+			return err
+		}
+	}
+	if err := os.WriteFile(filepath.Join(staging, cacheMarker), []byte(commit+"\n"), 0o644); err != nil {
+		return err
+	}
+	target := filepath.Join(cacheRoot, commit)
+	_ = os.RemoveAll(target) // 被判为不可用的旧缓存
+	if err := os.Rename(staging, target); err != nil {
+		if _, statErr := os.Stat(filepath.Join(target, cacheMarker)); statErr == nil {
+			return nil // 另一个进程刚放好同一份
+		}
+		return err
+	}
+	return nil
 }
 
 // Result 汇报安装结果。
@@ -142,26 +228,37 @@ func Install(ctx context.Context, opts Options) (Result, error) {
 	if opts.ExpectSkills == 0 {
 		opts.ExpectSkills = PinnedSkillsCount
 	}
-	git, err := envutil.LookPath("git", opts.Env["PATH"])
-	if err != nil {
-		return Result{}, fmt.Errorf("找不到 git，无法获取 HyperFrames 技能：%w", err)
-	}
-	// 克隆目录必须在项目之外：放项目里会把 .git 和中间产物留在交付目录，
-	// 而且 am archive 会连它们一起归档。
-	tmp, err := os.MkdirTemp("", "am-hyperframes-")
-	if err != nil {
-		return Result{}, fmt.Errorf("无法创建临时目录：%w", err)
-	}
-	defer os.RemoveAll(tmp)
-
 	report := opts.Progress
 	if report == nil {
 		report = func(Progress) {}
 	}
-	report(Progress{Stage: "连接上游仓库", Percent: 0})
-	commit, err := cloneSkills(ctx, git, tmp, opts, report)
-	if err != nil {
-		return Result{}, err
+	var tmp, commit string
+	if cached := cachedTree(opts.CacheDir, opts.ExpectCommit, opts.ExpectSkills); cached != "" {
+		// 缓存里是同一个 commit 上校验过的技能树，与重新克隆逐字节相同，不联网。
+		tmp, commit = cached, opts.ExpectCommit
+		report(Progress{Stage: "从本机缓存读取", Percent: checkoutStart})
+	} else {
+		git, err := envutil.LookPath("git", opts.Env["PATH"])
+		if err != nil {
+			return Result{}, fmt.Errorf("找不到 git，无法获取 HyperFrames 技能：%w", err)
+		}
+		// 克隆目录必须在项目之外：放项目里会把 .git 和中间产物留在交付目录，
+		// 而且 am archive 会连它们一起归档。
+		tmp, err = os.MkdirTemp("", "am-hyperframes-")
+		if err != nil {
+			return Result{}, fmt.Errorf("无法创建临时目录：%w", err)
+		}
+		defer os.RemoveAll(tmp)
+		report(Progress{Stage: "连接上游仓库", Percent: 0})
+		commit, err = cloneSkills(ctx, git, tmp, opts, report)
+		if err != nil {
+			return Result{}, err
+		}
+		// 克隆已经过 commit 校验；技能数在下面拼装时再校验，不合格的不会被后续读到
+		// （cachedTree 按技能数判可用）。缓存写不进去只是下次还要联网，照常继续。
+		if err := storeCache(opts.CacheDir, commit, tmp); err != nil && opts.Output != nil {
+			fmt.Fprintf(opts.Output, "警告：HyperFrames 技能没能存进本机缓存（%v），下次安装仍会联网\n", err)
+		}
 	}
 
 	sources := make([]string, 0, len(skillsSubdirsInRepo))

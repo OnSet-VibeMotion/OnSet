@@ -332,6 +332,8 @@ func (s *Server) memoryActionAPI(w http.ResponseWriter, r *http.Request) {
 
 // preferenceBrief 是这一轮要交给编排工具的用户偏好段与摘要；记忆关闭或读不到时为空。
 func (s *Server) preferenceBrief(p Project, cfg config.Config) (string, string) {
+	// 每轮开工前都会走到这里：顺带建好风格库目录，理由同记忆库。
+	cfg.EnsureFilmStyleLibraryDir()
 	if !cfg.Memory.Enabled {
 		return "", ""
 	}

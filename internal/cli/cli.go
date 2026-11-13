@@ -20,6 +20,7 @@ import (
 	"github.com/chouheiwa/articale-to-motion/internal/beat"
 	"github.com/chouheiwa/articale-to-motion/internal/config"
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
+	"github.com/chouheiwa/articale-to-motion/internal/filmstyle"
 	"github.com/chouheiwa/articale-to-motion/internal/hyperframes"
 	"github.com/chouheiwa/articale-to-motion/internal/ledger"
 	"github.com/chouheiwa/articale-to-motion/internal/memory"
@@ -136,6 +137,7 @@ func newRoot(stdout, stderr io.Writer) *cobra.Command {
 	var styleBriefFile string
 	var narration string
 	var delivery string
+	var filmStyleName string
 	initCmd := &cobra.Command{
 		Use:   "init [DIR]",
 		Short: "初始化一个可复现的视频项目",
@@ -170,7 +172,9 @@ frame.md 仅为旧项目保留，供画幅等技术信息读取；它不再规�
 技能装进项目而不是装进 HOME，是因为项目之间互不覆盖只有这样才成立：上游
 安装器只认 homedir，一台机器上只有一份技能，两个项目固定不同版本时谁后
 初始化谁说了算。装进项目还让项目自包含——整个目录拷到另一台机器就能渲染。
-安装全程不写用户 HOME：上游安装器在项目外的临时目录里运行，产物再搬进项目。
+安装不写任何 agent 的技能目录：克隆在项目外的临时目录里进行，产物再搬进项目。
+校验过的技能树按 commit 缓存在 ~/.local/share/am/hyperframes/（遵循 XDG_DATA_HOME），
+同一台机器上第二个项目起直接从缓存拷贝，不再联网。
 
 技能不走上游安装器：它只克隆仓库默认分支，没有指定 tag 的口子，同一个版本号
 隔几天装出来的技能可以不同。am 自己按 tag 浅克隆并校验 commit 与技能数量，
@@ -184,7 +188,11 @@ frame.md 仅为旧项目保留，供画幅等技术信息读取；它不再规�
 production 阶段的 TTS 与时间线装配规程改为遵守随项目下发的
 PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 packs 为空
 列表，这是预期状态：项目在第一次 am cast add / am cast new 之前本来就还
-没有可用角色。`,
+没有可用角色。
+
+--film-style 给全片选一种整片风格（lemo-opuscar 风格库，am film-style list 查看），
+等同于初始化后运行 am film-style use；不传时各镜头自主定视觉，之后也可以再选。
+它要联网下载风格库，不受 --skip-hyperframes 影响。`,
 		Example: `  # 交互选择画幅
   am init my-video
 
@@ -201,7 +209,10 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
   am init --canvas vertical-3x4
 
   # 多角色对话叙事：额外写出 cast.yaml 与 cast/
-  am init my-story --canvas vertical-3x4 --narration cast`,
+  am init my-story --canvas vertical-3x4 --narration cast
+
+  # 全片用同一种风格（油画厚涂）
+  am init my-video --canvas landscape-16x9 --film-style impasto`,
 		Args: maxArgs(1, "DIR"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if narration != narrationSolo && narration != narrationCast {
@@ -217,6 +228,14 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
 			}
 			if err := projectinit.Validate(projectinit.Options{Target: target, Delivery: delivery, Narration: narration}); err != nil {
 				return err
+			}
+			var filmStyle *filmstyle.Style
+			if filmStyleName != "" {
+				found, err := filmstyle.Lookup(filmStyleName)
+				if err != nil {
+					return err
+				}
+				filmStyle = &found
 			}
 			chosen, err := resolveCanvas(canvasID, os.Stdin, stdout)
 			if err != nil {
@@ -241,6 +260,14 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
 			}
 			fmt.Fprintf(stdout, "项目已初始化：%s（画幅 %s，新增 %d，未变 %d）\n", target, chosen.Label, result.Created, result.Unchanged)
 			// 风格文件只为旧项目和画幅读取保留，不再作为渲染前的定稿门禁。
+			if filmStyle != nil {
+				installed, err := filmstyle.EnsureForProject(cmd.Context(), target, *filmStyle, false,
+					filmstyle.LibraryOptions{Env: currentEnvironment(), Output: stderr})
+				if err != nil {
+					return fmt.Errorf("项目文件已写入，但整片风格安装失败（之后可用 am film-style use %s 重试）：%w", filmStyle.Slug, err)
+				}
+				reportFilmStyle(stdout, *filmStyle, installed)
+			}
 			if skipHyperframes {
 				fmt.Fprintln(stdout, "警告：已跳过 HyperFrames 技能安装")
 				return nil
@@ -264,6 +291,7 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
 	initCmd.Flags().StringVar(&styleBriefFile, "style-brief-file", "", "从文件读取旧版自定义风格描述，与 --style-brief 二选一")
 	initCmd.Flags().StringVar(&narration, "narration", narrationSolo,
 		"叙事模式："+narrationSolo+"（单口播，默认） | "+narrationCast+"（多角色对话，额外写出 cast.yaml 与 cast/）")
+	initCmd.Flags().StringVar(&filmStyleName, "film-style", "", "整片风格：lemo-opuscar 风格库里的目录名、中文名或英文名（am film-style list）；不传则各镜头自主定视觉")
 	initCmd.Flags().StringVar(&delivery, "delivery", "speech", "讲解形式：speech（默认）、song（单人整曲）或 beat（无配音卡点）")
 	root.AddCommand(initCmd)
 
@@ -658,6 +686,7 @@ opencode 没有可用的白名单机制，安全模式下仍能执行任何命�
 					fmt.Fprintf(stderr, "警告：无法建立记忆库，本次渲染的经历可能写不进去：%v\n", err)
 				}
 			}
+			cfg.EnsureFilmStyleLibraryDir()
 			if brief := preferenceBrief(cfg, rootDir, stderr); brief != "" {
 				prompt = append(append(append([]byte{}, prompt...), "\n\n"...), brief...)
 			}
@@ -831,6 +860,7 @@ SVG 转 PNG 这一步不能用 ImageMagick 代替：多数 ImageMagick 构建自
 	validateCmd.AddCommand(newValidateReadsCommand(stdout))
 	root.AddCommand(validateCmd)
 	root.AddCommand(newStyleCommand(stdout))
+	root.AddCommand(newFilmStyleCommand(stdout, stderr))
 	root.AddCommand(newConcatCommand(stdout, &projectRoot))
 	root.AddCommand(newReviewCommand(stdout, &projectRoot))
 	root.AddCommand(newAudioCmd(stdout))

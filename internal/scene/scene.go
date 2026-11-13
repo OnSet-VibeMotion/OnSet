@@ -11,6 +11,7 @@ import (
 
 	"github.com/chouheiwa/articale-to-motion/internal/beat"
 	"github.com/chouheiwa/articale-to-motion/internal/cast"
+	"github.com/chouheiwa/articale-to-motion/internal/filmstyle"
 	"github.com/chouheiwa/articale-to-motion/internal/song"
 	"github.com/chouheiwa/articale-to-motion/internal/tools"
 	"gopkg.in/yaml.v3"
@@ -629,6 +630,9 @@ func BuildPrompt(s Scene, resolvedSkills map[string]string) (string, error) {
 		// 配色由分镜计划统一，只放开其余维度；配色本身在时间合同后的「全片配色」段。
 		style = "\n视觉自由度（强制）：本镜头的字体、版式、材质与动效由你根据文案和素材自主决定，配色遵守下面的「全片配色」；\n" +
 			"不得把项目中的 frame.md、style_id、style_name、示例图或其他旧风格资料当作视觉命令。\n"
+	}
+	if dir := resolvedSkills[filmstyle.SkillName]; dir != "" {
+		style = filmStyleSection(dir, s.Timing != nil && s.Timing.Look != (Look{}))
 	}
 	timing, err := timingSection(s)
 	if err != nil {

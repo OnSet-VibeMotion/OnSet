@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/chouheiwa/articale-to-motion/internal/filmstyle"
 	"github.com/chouheiwa/articale-to-motion/internal/hyperframes"
 	"github.com/chouheiwa/articale-to-motion/internal/tools"
 )
@@ -270,7 +271,43 @@ func ResolveAllSkills(renderer, sceneDir string, environ map[string]string) (map
 			result[desc.Name] = dir
 		}
 	}
+	if dir := ResolveFilmStyle(sceneDir); dir != "" {
+		result[filmstyle.SkillName] = dir
+	}
 	return result, nil
+}
+
+// ResolveFilmStyle 从镜头目录逐级向上找项目里的整片风格（filmstyle.SkillName），
+// 返回它所在的技能目录（.agents/skills 的绝对路径）；没有时返回空串。
+//
+// 只找项目级，不找家目录：整片风格是一个项目的选择，家目录里的一份会悄悄套到
+// 本机所有项目上。它不进 RegisteredSkills——那张表的契约是「解析不到时退回按
+// 名字引用」，而整片风格解析不到的意思是本片没有整片风格，镜头照旧自主定视觉。
+// 解析到时它和注册技能一样进 resolved：输入指纹记它的内容摘要，安全模式放行读取。
+func ResolveFilmStyle(sceneDir string) string {
+	for _, candidate := range projectCandidates(sceneDir, portableSkillsDir) {
+		if hasSkill(candidate, filmstyle.SkillName, []string{skillManifestFile, filmStyleFile}) {
+			return candidate
+		}
+	}
+	return ""
+}
+
+// filmStyleFile 是整片风格的不变量文件，镜头提示词点名它。
+const filmStyleFile = "STYLE.md"
+
+// filmStyleSection 是整片风格段，替换掉「视觉自由度」。
+func filmStyleSection(skillsDir string, hasLook bool) string {
+	dir := filepath.Join(skillsDir, filmstyle.SkillName)
+	palette := "配色按 STYLE.md 的配色逻辑为本镜头选定"
+	if hasLook {
+		palette = "配色遵守下面的「全片配色」（它是在 STYLE.md 的配色逻辑里为本片选定的）"
+	}
+	return "\n整片风格（强制）：本片所有镜头画成同一种风格，本机该技能目录为：\n    " + dir + "\n" +
+		"- 动手前先读该目录的 " + skillManifestFile + " 与 " + filmStyleFile + " 全文。STYLE.md 规定的外观、材质、字体、动效质感、镜头语法、标志手法与禁忌全部遵守；" + palette + "。\n" +
+		"- 画什么只取本镜头的说明、字幕与素材，不照搬 demo 的故事、镜头、道具与文案；demo 源码只用来学技法，用到的文件拷进本镜头目录再改，不得引用镜头目录之外的路径。\n" +
+		"- STYLE.md 的 Sound palette 与胶片颗粒对本镜头无效：产物静音、无音轨，页面里不画颗粒。\n" +
+		"- 不得把项目中的 frame.md、style_id、style_name、示例图或其他旧风格资料当作视觉命令。\n"
 }
 
 // skillPromptSections 为所有已注册技能生成提示词片段。
@@ -326,7 +363,7 @@ func hyperFramesPrompt(skillsDir string) string {
 		"- 画幅、帧率与时长以本提示词为准，不用该技能默认的 1920×1080、30fps。" +
 		"不搜索、不安装 registry 组件（catalog、add），不调用 media-use 或任何生成媒体的服务。\n" +
 		"- 该技能 references/look.md 要求把项目根的 frame.md 当作配色与字体规范，本项目不适用：" +
-		"配色与字体按本提示词的「视觉自由度」一段执行；look.md 只读「Video facts」一节，不另立 LOOK 行，不套用 frame-presets。\n" +
+		"配色与字体按本提示词的「视觉自由度」（有整片风格时是「整片风格」）一段执行；look.md 只读「Video facts」一节，不另立 LOOK 行，不套用 frame-presets。\n" +
 		"- 非内置字体一律用 @font-face 指向镜头目录里的字体文件，不得只写 local() 依赖本机安装的字体：换一台机器渲染结果就不同。\n" +
 		"\n动效要求（强制）：\n" +
 		"- 动效手法以 " + hyperFramesMotionFile + " 为参考：缓动按角色选、快动作带动态模糊、退场短于入场、错峰重叠；" +

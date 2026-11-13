@@ -392,6 +392,22 @@ func TestProductionPromptCarriesSceneHandoffs(t *testing.T) {
 	}
 }
 
+// 整片风格是可选的：没有时编排工具在稿件审核关卡给出推荐，有时 treatment 与配色
+// 服从 STYLE.md，demo 只在 treatment 之后用来学技法。只接画面：配乐仍走授权素材。
+func TestProductionPromptCarriesFilmStyle(t *testing.T) {
+	body := loadProduction()
+	for _, want := range []string{
+		"### 整片风格", "am film-style list", "am film-style use", "am film-style show", "--replace",
+		".agents/skills/lemo-film-style/STYLE.md", "稿件审核关卡", "不用整片风格",
+		"`treatment.md` 写完以后才读 `DEMO.md`", "第六阶段渲染镜头之前",
+		"Sound palette 只作为选曲和音效方向的参考",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("PROMPT-PRODUCTION.md 的整片风格缺少 %q", want)
+		}
+	}
+}
+
 func TestProductionPromptRequiresPlatformCovers(t *testing.T) {
 	body := loadProduction()
 	for _, want := range []string{"douyin", "xiaohongshu", "channels", "bilibili", "zhihu", "16:10", "安全区", "covers/src/", "cover.images", "designed_image"} {

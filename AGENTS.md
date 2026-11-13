@@ -35,7 +35,7 @@ go vet ./...
 
 官方技能不能直接跑 `npx hyperframes skills` 装——上游安装器只认 `homedir()`，没有任何选项能改落点（`skills update --dir` 的帮助原文写着 "scopes the prune, not the install"）。装在机器级会让项目之间互相覆盖：一台机器只有一份技能，项目 A 与项目 B 固定不同版本时谁后初始化谁说了算。
 
-更要命的是上游安装器根本给不了可复现性：它 `git clone` 仓库默认分支取技能，没有指定 ref 的口子，技能内容随上游 `main` 漂移而版本号不变（实测 0.8.1 与 0.8.14 装出来逐字节相同）。所以 `internal/hyperframes` 不调用它，改为自己按 tag 浅克隆并校验 commit 与技能数量，见 `PinnedSkillsCommit` / `PinnedSkillsCount` 的注释；安装后写一份 `hyperframes-upstream.json` 记录 commit 与每个技能的内容摘要，见 `manifest.go`。
+更要命的是上游安装器根本给不了可复现性：它 `git clone` 仓库默认分支取技能，没有指定 ref 的口子，技能内容随上游 `main` 漂移而版本号不变（实测 0.8.1 与 0.8.14 装出来逐字节相同）。所以 `internal/hyperframes` 不调用它，改为自己按 tag 浅克隆并校验 commit 与技能数量，见 `PinnedSkillsCommit` / `PinnedSkillsCount` 的注释；安装后写一份 `hyperframes-upstream.json` 记录 commit 与每个技能的内容摘要，见 `manifest.go`。校验过的技能树按 commit 缓存在用户级目录（`DefaultCacheDir`），第二个项目起不联网；缓存只在调用方显式传 `Options.CacheDir` 时启用（`projectinit.InstallSkills` 传），测试里传临时 `HOME` 的用例因此仍能断言 HOME 一个字节都没动。缓存按技能数判可用，残缺就重新下载覆盖。
 
 `internal/hyperframes` 的做法是在项目外开一个临时 HOME 让上游安装器照常工作，再把产出搬进项目。三个细节是承重的，改动前先读那里的注释：
 
@@ -111,6 +111,24 @@ SVG 转 PNG 必须走 `rsvg-convert`（`internal/styleimage`），**不能用 Im
 | `am style fonts` / `add-font` | 字体只能来自 `preset.AllFonts`（与 `assets/fontpool/` 双向一致，`TestFontPoolMatchesAllFonts` 守着）或用户自带 woff2 |
 
 可选键 `mood_refs` 列氛围参照图，通常来自编排工具的内置生图（官方 Codex 的 `$imagegen`）。它**不查尺寸**——生图工具不能指定像素——也不当版式基准；`BuildPrompt` 会写明配色、字体、版式以 `frame.md` 为准。生图只在 ChatGPT 登录的官方 Codex 下才可能可用（API key 与第三方 provider 会被上游过滤），所以提示词把它写成可跳过的一步，不能变成定风格的前提。`CODEX_HOME` 为此进了安全模式白名单。
+
+## 整片风格
+
+`internal/filmstyle` 把 lemo-opuscar 风格库（LemoLab，MIT + demo CC BY 4.0）里的一种风格装成项目的整片风格。am 本身不锁定视觉；整片风格是可选的第三种技能来源，与 `SourceEmbedded` / `SourceUpstream` 并列但**不进 `RegisteredSkills`**：那张表要求解析不到时退回按名字引用，而整片风格解析不到的意思是「本片没有整片风格」。`scene.ResolveFilmStyle` 只找项目级 `.agents/skills/lemo-film-style/`（不找家目录），解析到就并进 `ResolveAllSkills` 的结果，指纹与安全模式读取因此自动覆盖；`BuildPrompt` 据此把「视觉自由度」段换成 `filmStyleSection`。
+
+| 约定 | 原因 |
+|---|---|
+| `filmstyle.PinnedCommit` 固定 commit，`catalog.json` 由 `go run ./internal/filmstyle/gen -src <检出>` 从同一 commit 生成（生成器校验 HEAD），`PinnedStyleCount` 守条数 | STYLE.md 与 demo 引擎直接决定画面；跟随 main 的话同一项目两次安装得到不同风格 |
+| 风格库本体在用户级目录（`DefaultLibraryDir`，按 commit 分目录），项目里只装选中的一种 | 所有项目共用一份检出；项目里的那份让项目可以整体拷走 |
+| 只接画面，不接风格库的 Python 配乐工具（`core/audio/`） | 要一套 Python 环境加约 1.4 GB 采样库，国内网络装不上时整条链路卡住；配乐仍走第九阶段的授权素材，Sound palette 只作参考 |
+| am 克隆的风格库带 `.am-library` 标记，只有它的稀疏规则可以由 am 改（`EnsureDemo`）；用户经 `AM_FILM_STYLE_LIBRARY` 指向的检出只读 | 子进程总是经环境变量拿到风格库目录，不能用「是不是默认目录」判断归属 |
+| `ChildEnvironment` 显式写 `AM_FILM_STYLE_LIBRARY`；`OrchestratorAccess` 总把风格库放进 `WritableDirs`，开工前 `EnsureFilmStyleLibraryDir` 先建目录 | 默认目录由 `XDG_DATA_HOME` 推出而它不在白名单；编排工具可能在这一轮里才 `am film-style use`，codex 沙箱只能放行已存在的目录 |
+| git 子进程带 `GIT_HTTP_LOW_SPEED_LIMIT/TIME`（1 KB/s 持续 60 秒即放弃） | 连接被掐断时 `--filter=blob:none` 的按需取文件不报错只挂着，实测卡过半小时 |
+| 下载可续传：克隆在固定的 `<目录>.partial` 里进行，失败保留；检出按 `libraryStages` 分段扩大稀疏规则，每段重试 3 次；demo 以 `.git/am-demos` 完成记录为准 | 按需取文件一批里断一次整批白下；分段后已取回的留在本地，国内网络下重跑几次总能下完 |
+| 技能目录不带 `demo/stills`、渲染产物与音频，不带 `core/render`；three.js 风格只带 `three` 的 `build/` 与 `examples/jsm/` | 它们不是技法，带进来只会让指纹随无关文件变化 |
+| `SKILL.md` 由 `skill.md.tmpl` 生成，写明 lemo 页面契约（`window.render(t)`）怎么换成 HyperFrames 的 `hf-seek`、`/core/...` 路径为何拷进镜头目录后不用改、Sound palette 与胶片颗粒对镜头无效 | 上游写给它自己的渲染器，这些冲突上游不会替我们守 |
+
+制作提示词「整片风格」一节由 `TestProductionPromptCarriesFilmStyle` 钉着。升级 `PinnedCommit` 时对比新旧 `core/lib.js` 与 `core/README.md` 的页面契约。
 
 ## Prompt 文件
 

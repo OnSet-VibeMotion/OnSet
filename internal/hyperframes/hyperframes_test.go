@@ -480,3 +480,64 @@ func TestGitProgressParsesStages(t *testing.T) {
 		t.Fatal("原始输出要转给 next")
 	}
 }
+
+// 第一次安装把校验过的技能树存进本机缓存，第二次从缓存拷贝、不再联网：
+// 这里第二次把仓库地址换成不存在的路径，能装上就说明没有去克隆。
+func TestInstallUsesLocalCacheOnSecondRun(t *testing.T) {
+	url, commit := fixtureRepo(t, "v9.9.9", []string{"hyperframes-animation"}, []string{"hyperframes-core"})
+	cache := t.TempDir()
+	opts := Options{
+		Version: "9.9.9", RepoURL: url, ExpectCommit: commit, ExpectSkills: 2,
+		Env: map[string]string{"PATH": os.Getenv("PATH")}, Output: &bytes.Buffer{}, CacheDir: cache,
+	}
+	opts.ProjectDir = t.TempDir()
+	if _, err := Install(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(cache, commit, cacheMarker)); err != nil {
+		t.Fatalf("第一次安装后应当有缓存：%v", err)
+	}
+	var reports []Progress
+	opts.ProjectDir = t.TempDir()
+	opts.RepoURL = "file:///nonexistent/hyperframes"
+	opts.Env = map[string]string{"PATH": t.TempDir()} // 连 git 都找不到
+	opts.Progress = func(p Progress) { reports = append(reports, p) }
+	result, err := Install(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("有缓存时不该联网：%v", err)
+	}
+	if len(result.Installed) != 2 {
+		t.Fatalf("从缓存应当装入 2 个技能：%v", result.Installed)
+	}
+	if reports[0].Stage != "从本机缓存读取" || reports[len(reports)-1].Percent != 100 {
+		t.Errorf("进度应当说明来自缓存：%+v", reports)
+	}
+	manifest, err := os.ReadFile(filepath.Join(opts.ProjectDir, SkillsSubdir, ManifestFile))
+	if err != nil || !strings.Contains(string(manifest), commit) {
+		t.Errorf("来源记录仍要写上游 commit：%s %v", manifest, err)
+	}
+}
+
+// 缓存被动过（少了技能）时当作没有，重新下载并覆盖，而不是装出一棵残缺的技能树。
+func TestInstallIgnoresDamagedCache(t *testing.T) {
+	url, commit := fixtureRepo(t, "v9.9.9", []string{"hyperframes-animation"}, []string{"hyperframes-core"})
+	cache := t.TempDir()
+	opts := Options{
+		ProjectDir: t.TempDir(), Version: "9.9.9", RepoURL: url, ExpectCommit: commit, ExpectSkills: 2,
+		Env: map[string]string{"PATH": os.Getenv("PATH")}, Output: &bytes.Buffer{}, CacheDir: cache,
+	}
+	if _, err := Install(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(cache, commit, "skills", "hyperframes-animation")); err != nil {
+		t.Fatal(err)
+	}
+	opts.ProjectDir = t.TempDir()
+	result, err := Install(context.Background(), opts)
+	if err != nil || len(result.Installed) != 2 {
+		t.Fatalf("残缺缓存应当被重新下载替换：%v %v", result.Installed, err)
+	}
+	if cachedTree(cache, commit, 2) == "" {
+		t.Error("重新下载后缓存应当恢复完整")
+	}
+}

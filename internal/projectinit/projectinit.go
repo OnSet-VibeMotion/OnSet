@@ -132,6 +132,8 @@ func InstallSkills(ctx context.Context, target string, env map[string]string, ou
 		Protected:  builtin,
 		Output:     output,
 		Progress:   progress,
+		// 同一台机器上只联网下载一次：第二个项目起从本机缓存拷贝。
+		CacheDir: hyperframes.DefaultCacheDir(env),
 	})
 }
 

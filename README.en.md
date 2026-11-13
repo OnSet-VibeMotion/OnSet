@@ -80,7 +80,24 @@ The project no longer presets or locks a visual style. Canvas, frame rate, and d
 
 The legacy `--style` flag is still accepted for old scripts, but it no longer imposes a visual requirement.
 
-`am init` refuses to overwrite existing files with different content. By default it installs the pinned HyperFrames 0.8.225 skills into the project's `.agents/skills/`, alongside the binary-delivered `text-to-lottie` and `algorithmic-art`; use `--skip-hyperframes` for offline or CI environments.
+### Film style (optional)
+
+To draw the whole film in one style, pick one of the 66 styles from the [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar) library by LemoLab ([gallery](https://lemomo-ai.github.io/lemo-opuscar/)):
+
+```bash
+am film-style list                      # every style, by category
+am init my-video --canvas landscape-16x9 --film-style impasto
+am film-style use impasto               # existing project; add --replace to switch
+am film-style show                      # this project's film style and library status
+```
+
+Without one, the orchestrator suggests two or three at the script review gate, alongside "no film style".
+
+The chosen style is installed from a pinned commit into `.agents/skills/lemo-film-style/`: `STYLE.md` (the invariants), the demo source (techniques), shared `core/` tools, and licence notes. Scene prompts then replace "visual freedom" with "film style": the renderer must follow `STYLE.md`, while content still comes from each scene. Switching or removing the style (`am film-style remove`) makes every rendered scene stale.
+
+The library itself lives in a per-user directory (default `~/.local/share/am/lemo-opuscar/<commit>`, override with `AM_FILM_STYLE_LIBRARY`) shared by all projects. Only the picture side is used: music still comes from licensed assets in the production flow, with the Sound palette in `STYLE.md` as a reference. Styles that use three.js need Node 20+ (one `npm ci` in the library at install time).
+
+`am init` refuses to overwrite existing files with different content. By default it installs the pinned HyperFrames 0.8.225 skills into the project's `.agents/skills/`, alongside the binary-delivered `text-to-lottie` and `algorithmic-art`; use `--skip-hyperframes` for offline or CI environments. The verified skill tree is cached per commit under `~/.local/share/am/hyperframes/`, so later projects on the same machine install without network access.
 
 Skills go into the project rather than `$HOME` because that is the only way projects stop clobbering each other: the upstream installer only honours `homedir`, so a machine has exactly one copy — with two projects pinned to different versions, whichever was initialized last wins. The install never writes to your HOME; the upstream installer runs in a temporary directory outside the project and its output is moved in.
 

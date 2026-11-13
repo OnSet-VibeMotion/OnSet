@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
+	"github.com/chouheiwa/articale-to-motion/internal/filmstyle"
 	"github.com/chouheiwa/articale-to-motion/internal/tools"
 )
 
@@ -31,6 +32,8 @@ type Config struct {
 	Overlay       map[string]string
 	// Memory 是渲染记忆的项目侧设置，见 internal/memory。
 	Memory MemorySettings
+	// FilmStyleLibrary 是整片风格的用户级风格库目录，见 internal/filmstyle。
+	FilmStyleLibrary string
 }
 
 // MemorySettings 是渲染记忆的项目侧设置。
@@ -159,6 +162,7 @@ func Load(root string, environ map[string]string) (Config, error) {
 		return Config{}, fmt.Errorf("无效的 MEMORY: %s（可选：on off）", value)
 	}
 	cfg.Memory.Dir = resolve("AM_MEMORY_DIR", DefaultMemoryDir(environ))
+	cfg.FilmStyleLibrary = resolve(filmstyle.LibraryEnv, filmstyle.DefaultLibraryDir(environ, filmstyle.PinnedCommit))
 	if value := resolve("MEMORY_SNAPSHOT", ""); value != "" {
 		cfg.Memory.Snapshot, err = strconv.Atoi(value)
 		if err != nil || cfg.Memory.Snapshot < 1 {
@@ -225,6 +229,11 @@ func (c Config) ChildEnvironment(base map[string]string, unsafe bool, passthroug
 		if c.Memory.Snapshot > 0 {
 			out["MEMORY_SNAPSHOT"] = strconv.Itoa(c.Memory.Snapshot)
 		}
+	}
+	// 风格库目录同理显式写进去：默认目录由 XDG_DATA_HOME 推出，而它不在白名单里，
+	// 编排工具调用的 am film-style 会算出另一个目录，找不到已下载的风格库与采样库。
+	if c.FilmStyleLibrary != "" {
+		out[filmstyle.LibraryEnv] = c.FilmStyleLibrary
 	}
 	if unsafe {
 		out["AM_UNSAFE"] = "1"

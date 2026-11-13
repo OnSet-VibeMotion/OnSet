@@ -80,7 +80,24 @@ AM_STUDIO_E2E_CONFIG=/tmp/am-studio-projects.json npm run test:e2e
 
 `am init` 仍接受旧版 `--style` 参数以兼容已有脚本，但它不再构成视觉要求。
 
-`am init` 不覆盖内容不同的已有文件。默认联网安装固定版本 0.8.225 的 HyperFrames 官方技能到项目的 `.agents/skills/`，与随二进制下发的 `text-to-lottie`、`algorithmic-art` 同处一个目录；安装依赖 `git`，离线或 CI 环境可使用 `--skip-hyperframes`。
+### 整片风格（可选）
+
+想让全片统一画成一种风格时，可以从 [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar) 风格库（作者 LemoLab，66 种，[图鉴](https://lemomo-ai.github.io/lemo-opuscar/)）里选一种：
+
+```bash
+am film-style list                      # 按分类列出全部风格
+am init my-video --canvas landscape-16x9 --film-style impasto
+am film-style use 油画厚涂                # 已有项目；换风格要加 --replace
+am film-style show                      # 本项目的整片风格与风格库状态
+```
+
+没选时，编排工具会在稿件审核关卡按题材推荐两三种，也可以选「不用整片风格」。
+
+选中的风格按固定 commit 装进项目的 `.agents/skills/lemo-film-style/`：`STYLE.md`（风格的不变量）、demo 源码（技法参考）、`core/` 共用工具与许可说明。镜头提示词随之把「视觉自由度」换成「整片风格」，渲染器必须遵守 `STYLE.md`，内容仍来自每个镜头自己的文案。换风格或去掉风格（`am film-style remove`）会让已渲染的镜头全部 Stale。
+
+风格库本体放在用户级目录（默认 `~/.local/share/am/lemo-opuscar/<commit>`，可用 `AM_FILM_STYLE_LIBRARY` 指向已有检出），所有项目共用。只接画面：配乐仍按制作流程选授权素材，`STYLE.md` 的 Sound palette 只作为方向参考。用到 three.js 的风格需要 Node 20+（安装时在风格库里跑一次 `npm ci`）。
+
+`am init` 不覆盖内容不同的已有文件。默认联网安装固定版本 0.8.225 的 HyperFrames 官方技能到项目的 `.agents/skills/`，与随二进制下发的 `text-to-lottie`、`algorithmic-art` 同处一个目录；安装依赖 `git`，离线或 CI 环境可使用 `--skip-hyperframes`。校验过的技能树按 commit 缓存在 `~/.local/share/am/hyperframes/`，同一台机器上第二个项目起不再联网。
 
 技能装进项目而不是 HOME，是因为项目之间互不覆盖只有这样才成立：上游安装器只认 `homedir`，一台机器上只有一份技能，项目 A 与项目 B 固定不同版本时谁后初始化谁说了算。安装全程不写用户 HOME——上游安装器在项目外的临时目录里运行，产物再搬进项目。
 
