@@ -1,4 +1,4 @@
-package filmstyle
+package lemo
 
 import (
 	"context"
@@ -7,10 +7,11 @@ import (
 	"path/filepath"
 
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
+	"github.com/chouheiwa/articale-to-motion/internal/filmstyle"
 	"github.com/chouheiwa/articale-to-motion/internal/prereq"
 )
 
-// 风格库是前置资源：只由 am setup 经 PrepareLibrary 一次下全（全部 66 种风格的说明、
+// 风格库是前置资源：只由 am setup 经 PrepareLibrary 一次下全（全部风格的说明、
 // demo 源码、海报、core/assets 模型，以及 three.js 风格要的 Node 依赖），其余地方只用
 // RequireLibrary / RequireStyle 检查，缺了返回 prereq.MissingError，不联网。
 
@@ -24,11 +25,8 @@ var fullSparse = []string{"/*", "!/styleboard/", "!/docs/"}
 // 分批后已取回的留在本地。
 const demoBatch = 10
 
-// PrepareProgress 是 PrepareLibrary 的进度：第 Step 步（共 Steps 步）在做 Stage。
-type PrepareProgress struct {
-	Step, Steps int
-	Stage       string
-}
+// PrepareProgress 是 PrepareLibrary 的进度，与 filmstyle 的通用进度相同。
+type PrepareProgress = filmstyle.PrepareProgress
 
 // PrepareOptions 描述一次完整准备。
 type PrepareOptions struct {
@@ -66,7 +64,7 @@ func RequireLibrary(opts LibraryOptions) (Library, error) {
 }
 
 // RequireStyle 检查装 style 要用的东西都在风格库里：demo 源码，以及 three.js 风格的 three。
-func RequireStyle(lib Library, style Style) error {
+func RequireStyle(lib Library, style Entry) error {
 	if _, err := os.Stat(filepath.Join(lib.Dir, "styles", style.Slug, "demo", "index.html")); err != nil {
 		return prereq.Missing("风格 "+style.Label()+" 的 demo 源码", "风格库 "+lib.Dir+" 里没有")
 	}
@@ -176,17 +174,4 @@ func PrepareLibrary(ctx context.Context, opts PrepareOptions) (Library, error) {
 		return Library{}, err
 	}
 	return lib, nil
-}
-
-// InstallForProject 是 am init --film-style / am film-style use 的流程：风格库与这种风格
-// 要用的东西都已由 am setup 备好，这里只装进项目，不联网。
-func InstallForProject(projectDir string, style Style, replace bool, opts LibraryOptions) (InstallResult, error) {
-	lib, err := RequireLibrary(opts)
-	if err != nil {
-		return InstallResult{}, err
-	}
-	if err := RequireStyle(lib, style); err != nil {
-		return InstallResult{}, err
-	}
-	return Install(InstallOptions{ProjectDir: projectDir, Style: style, Library: lib, Replace: replace})
 }

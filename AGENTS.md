@@ -37,7 +37,7 @@ go vet ./...
 
 更要命的是上游安装器根本给不了可复现性：它 `git clone` 仓库默认分支取技能，没有指定 ref 的口子，技能内容随上游 `main` 漂移而版本号不变（实测 0.8.1 与 0.8.14 装出来逐字节相同）。所以 `internal/hyperframes` 不调用它，改为自己按 tag 浅克隆并校验 commit 与技能数量，见 `PinnedSkillsCommit` / `PinnedSkillsCount` 的注释；安装后写一份 `hyperframes-upstream.json` 记录 commit 与每个技能的内容摘要，见 `manifest.go`。校验过的技能树按 commit 缓存在用户级目录（`DefaultCacheDir`）；缓存只在调用方显式传 `Options.CacheDir` 时启用，测试里传临时 `HOME` 的用例因此仍能断言 HOME 一个字节都没动。缓存按技能数判可用。
 
-**要联网的东西都是前置资源**（`internal/prereq`）：HyperFrames 技能（`hyperframes.PrepareSkills`）、HyperFrames CLI（`EnsureCLI`）、lemo-opuscar 风格库（`filmstyle.PrepareLibrary`，含全部 demo、海报、core/assets 与 three.js 依赖）只由 `am setup` 下载，用户自己在终端里跑，能看进度、加 `--proxy`、断了重来。其余路径只检查：`am init` / Studio 新建用 `Options.CacheOnly` 从缓存拷技能，`am hyperframes` 与 `scene.Run` 用 `RequireCLI`，`am film-style use` 与 Studio 用 `filmstyle.InstallForProject` / `RequireLibrary`，缺了一律返回 `prereq.MissingError`（文案统一指向 `am setup`）。**不要再在这些路径里加自动下载**：以前建项目、渲染、打开菜单时各自现下载，网络一差就卡在半路，用户看不到卡在哪，渲染途中卡住还白花一次模型调用。`am setup --proxy` 用 `GIT_CONFIG_PARAMETERS` 只给 git 设代理：设成 `HTTPS_PROXY` 的话 npm 也走它，国内镜像经代理反而连不上（实测）。
+**要联网的东西都是前置资源**（`internal/prereq`）：HyperFrames 技能（`hyperframes.PrepareSkills`）、HyperFrames CLI（`EnsureCLI`）、各整片风格来源的数据（`filmstyle.Source.Prepare`，lemo-opuscar 含全部 demo、海报、core/assets 与 three.js 依赖）只由 `am setup` 下载，用户自己在终端里跑，能看进度、加 `--proxy`、断了重来。其余路径只检查：`am init` / Studio 新建用 `Options.CacheOnly` 从缓存拷技能，`am hyperframes` 与 `scene.Run` 用 `RequireCLI`，`am film-style use` 与 Studio 用 `filmstyle.Install` / `Source.Check`，缺了一律返回 `prereq.MissingError`（文案统一指向 `am setup`）。**不要再在这些路径里加自动下载**：以前建项目、渲染、打开菜单时各自现下载，网络一差就卡在半路，用户看不到卡在哪，渲染途中卡住还白花一次模型调用。`am setup --proxy` 用 `GIT_CONFIG_PARAMETERS` 只给 git 设代理：设成 `HTTPS_PROXY` 的话 npm 也走它，国内镜像经代理反而连不上（实测）。
 
 HyperFrames **CLI** 与技能分开管理但同一个版本：`hyperframes.EnsureCLI` 用 `npm install hyperframes@<PinnedVersion>` 装进用户级 `~/.local/share/am/hyperframes/cli-<版本>`（`CLIDirEnv` 可覆盖），在临时目录里装好、跑过 `--version` 自检、写完成标记后整体改名进位，失败重试 3 次；npm 沿用用户自己的 `~/.npmrc`（国内镜像、代理、鉴权）。`am init`（经 `projectinit.InstallSkills`）与 `scene.Run`（启动渲染器之前）都会确保它在，所有调用一律写成 `am hyperframes <子命令>`（`hyperframes.CLICommand`），提示词、锁定文件规则与安全模式放行列表用的是同一个字符串。不再让渲染器 `npx --yes hyperframes@<版本>`：版本一升级，第一次渲染就要在途中现下载，网络一差渲染器空等二十多分钟、白花一次模型调用，只留下「没有产物」（实测）。`ChildEnvironment` 显式传 `AM_HYPERFRAMES_CLI_DIR`，理由同风格库目录；`scene.Run` 还把当前 `am` 放进渲染器的 `PATH`。测试的 `TestMain` 用 `hftest.FakeCLI` 造一份假的已装 CLI。
 
@@ -118,23 +118,32 @@ SVG 转 PNG 必须走 `rsvg-convert`（`internal/styleimage`），**不能用 Im
 
 ## 整片风格
 
-`internal/filmstyle` 把 lemo-opuscar 风格库（LemoLab，MIT + demo CC BY 4.0）里的一种风格装成项目的整片风格。am 本身不锁定视觉；整片风格是可选的第三种技能来源，与 `SourceEmbedded` / `SourceUpstream` 并列但**不进 `RegisteredSkills`**：那张表要求解析不到时退回按名字引用，而整片风格解析不到的意思是「本片没有整片风格」。`scene.ResolveFilmStyle` 只找项目级 `.agents/skills/lemo-film-style/`（不找家目录），解析到就并进 `ResolveAllSkills` 的结果，指纹与安全模式读取因此自动覆盖；`BuildPrompt` 据此把「视觉自由度」段换成 `filmStyleSection`。
+整片风格分两层：`internal/filmstyle` 是**与来源无关的通用部分**（`Source` 接口与登记、风格目录查找、装进项目的契约），具体风格来源在子包里实现 `Source` 并在 `init` 里 `filmstyle.Register`。目前只有 `internal/filmstyle/lemo`（lemo-opuscar，LemoLab，MIT + demo CC BY 4.0）。am 本身不锁定视觉；整片风格是可选的第三种技能来源，与 `SourceEmbedded` / `SourceUpstream` 并列但**不进 `RegisteredSkills`**：那张表要求解析不到时退回按名字引用，而整片风格解析不到的意思是「本片没有整片风格」。`scene.ResolveFilmStyle` 只找项目级（不找家目录），只认契约，解析到就并进 `ResolveAllSkills` 的结果，指纹与安全模式读取因此自动覆盖；`BuildPrompt` 据此把「视觉自由度」段换成 `filmStyleSection`。
 
 | 约定 | 原因 |
 |---|---|
-| `filmstyle.PinnedCommit` 固定 commit，`catalog.json` 由 `go run ./internal/filmstyle/gen -src <检出>` 从同一 commit 生成（生成器校验 HEAD），`PinnedStyleCount` 守条数 | STYLE.md 与 demo 引擎直接决定画面；跟随 main 的话同一项目两次安装得到不同风格 |
-| 风格库本体在用户级目录（`DefaultLibraryDir`，按 commit 分目录），项目里只装选中的一种 | 所有项目共用一份检出；项目里的那份让项目可以整体拷走 |
-| 只接画面，不接风格库的 Python 配乐工具（`core/audio/`） | 要一套 Python 环境加约 1.4 GB 采样库，国内网络装不上时整条链路卡住；配乐仍走第九阶段的授权素材，Sound palette 只作参考 |
-| am 克隆的风格库带 `.am-library` 标记，只有它的稀疏规则可以由 am 改（`PrepareLibrary`）；用户经 `AM_FILM_STYLE_LIBRARY` 指向的检出只读 | 子进程总是经环境变量拿到风格库目录，不能用「是不是默认目录」判断归属 |
-| `ChildEnvironment` 显式写 `AM_FILM_STYLE_LIBRARY`；`OrchestratorAccess` 总把风格库放进 `WritableDirs`，开工前 `EnsureFilmStyleLibraryDir` 先建目录 | 默认目录由 `XDG_DATA_HOME` 推出而它不在白名单；编排工具可能在这一轮里才 `am film-style use`，codex 沙箱只能放行已存在的目录 |
-| git 子进程带 `GIT_HTTP_LOW_SPEED_LIMIT/TIME`（1 KB/s 持续 60 秒即放弃） | 连接被掐断时 `--filter=blob:none` 的按需取文件不报错只挂着，实测卡过半小时 |
-| 下载可续传：克隆在固定的 `<目录>.partial` 里进行，失败保留；`PrepareLibrary` 先按 `libraryStages` 取基础部分，再取海报、按 `demoBatch` 分批取 demo、取 core/assets，每段重试 5 次，全部完成写 `.git/am-complete` | 按需取文件一批里断一次整批白下；分段后已取回的留在本地，国内网络下重跑几次总能下完 |
-| 技能目录不带 `demo/stills`、渲染产物与音频，不带 `core/render`；three.js 只带 demo 与 `core/` 实际 import 到的模块（`threeClosure` 顺着 import 链收集），`core/assets` 只带源码里出现过名字的模型与贴图（`referencedAssets`，按名字认是因为 demo 常拼接路径） | 整棵带的话一种 three.js 风格进项目 34 MB，挑过之后几 MB；多余的文件还会让指纹随无关内容变化 |
-| am 管理的风格库里的文件硬链接进项目，跨磁盘时退回复制；用户自己的检出只复制、不改权限。**不设只读** | 内容钉在 commit 上不会变，硬链接不占第二份磁盘。只读试过：渲染器 cp 出的副本继承只读，安全模式又不放行 chmod，真实渲染在这上面绕了好几轮 |
-| `core/assets/` 放在 `PrepareLibrary` 的最后一段单独取 | 12 MB 的一批经代理常因一次握手失败整批重来，单独一段失败时前面的不受影响 |
-| `SKILL.md` 由 `skill.md.tmpl` 生成，写明 lemo 页面契约（`window.render(t)`）怎么换成 HyperFrames 的 `hf-seek`、`/core/...` 路径为何拷进镜头目录后不用改、Sound palette 与胶片颗粒对镜头无效 | 上游写给它自己的渲染器，这些冲突上游不会替我们守 |
+| 项目里的契约：`.agents/skills/am-film-style/` 下必须有 `STYLE.md`（不变量）与 `SKILL.md`（用法、技法参考在哪、来源特有的注意事项），`am-film-style.json` 记来源、风格、版本与内容摘要；其余文件由来源决定。`filmstyle.Install` 校验契约、负责换位与新旧目录，来源只实现 `Fill` | 镜头提示词、制作提示词与 Studio 只依赖契约，接新来源不用改它们。目录名带 `am-` 前缀，免得撞上用户自己装的技能 |
+| **镜头提示词与制作提示词不点名任何来源**：lemo 的页面契约、demo、`core/fonts`、真实素材类风格的先后顺序都写在 lemo 自己的 `SKILL.md` 模板里；`TestProductionPromptCarriesFilmStyle` 拦 `lemo`、`DEMO.md`、`core/fonts` 回流到制作提示词 | 来源特有的话写进通用提示词，下一个来源就得到一份错的说明 |
+| 风格标识是「来源/目录名」（`Style.Key`）；`filmstyle.Lookup` 也认唯一的目录名、中文名、英文名，多个来源重名时要求写全 | 来源之间目录名会撞 |
+| 各来源的数据放在 `filmstyle.RootDir`（`~/.local/share/am/film-styles`，`AM_FILM_STYLES_DIR` 覆盖）下以来源 ID 分目录；`ChildEnvironment` 显式传根目录与各来源 `EnvKeys()` 里设了的变量 | 默认目录由 `XDG_DATA_HOME` 推出而它不在白名单，子进程会算出另一个目录 |
+| 来源数据是前置资源：只由 `am setup` 经 `Source.Prepare` 下载（每个来源一项 `styles:<来源>`），其余路径用 `Source.Check` / `Fill` 只读，缺了返回 `prereq.MissingError`。编排工具的可写范围里**没有**来源数据 | 见「技能树」一节前置资源的理由 |
+| 新增来源：子包实现 `Source`、`init` 里 `Register`，在 `internal/cli/filmstyle.go` 与 `internal/studio/filmstyle.go` 各加一行空白 import。`filmstyle_test.go` 的假来源证明通用部分不依赖任何具体来源 | 登记靠 import 副作用，漏 import 的话那个二进制里没有这个来源 |
+| 早先只有一个来源时装在 `.agents/skills/lemo-film-style/`（`lemo-upstream.json`）：`Installed`、`ResolveFilmStyle` 照样认，`Install` 装好新目录后删掉旧目录 | 两份并存会被当成两套整片风格 |
 
-制作提示词「整片风格」一节由 `TestProductionPromptCarriesFilmStyle` 钉着。升级 `PinnedCommit` 时对比新旧 `core/lib.js` 与 `core/README.md` 的页面契约。
+lemo 来源（`internal/filmstyle/lemo`）自己的约定：
+
+| 约定 | 原因 |
+|---|---|
+| `lemo.PinnedCommit` 固定 commit，`catalog.json` 由 `go run ./internal/filmstyle/lemo/gen -src <检出>` 从同一 commit 生成（生成器校验 HEAD），`PinnedStyleCount` 守条数 | STYLE.md 与 demo 引擎直接决定画面；跟随 main 的话同一项目两次安装得到不同风格 |
+| 风格库在 `<风格根目录>/lemo-opuscar/<commit>`，`AM_LEMO_OPUSCAR_LIBRARY` 指向用户自己的检出；am 克隆的带 `.am-library` 标记，只有它的稀疏规则可以由 am 改 | 子进程总是经环境变量拿到风格库目录，不能用「是不是默认目录」判断归属 |
+| 只接画面，不接风格库的 Python 配乐工具（`core/audio/`） | 要一套 Python 环境加约 1.4 GB 采样库，国内网络装不上时整条链路卡住；配乐仍走第九阶段的授权素材，Sound palette 只作参考 |
+| git 子进程带 `GIT_HTTP_LOW_SPEED_LIMIT/TIME`（1 KB/s 持续 60 秒即放弃） | 连接被掐断时 `--filter=blob:none` 的按需取文件不报错只挂着，实测卡过半小时 |
+| 下载可续传：克隆在固定的 `<目录>.partial` 里进行，失败保留；`PrepareLibrary` 先按 `libraryStages` 取基础部分，再取海报、按 `demoBatch` 分批取 demo、取 core/assets，每段重试 5 次，最后 `npm ci` 装 three.js，全部完成写 `.git/am-complete` | 按需取文件一批里断一次整批白下；分段后已取回的留在本地，国内网络下重跑几次总能下完 |
+| 技能目录不带 `demo/stills`、渲染产物与音频，不带 `core/render`；three.js 只带 demo 与 `core/` 实际 import 到的模块（`threeClosure`），`core/assets` 只带源码里出现过名字的模型与贴图（`referencedAssets`，按名字认是因为 demo 常拼接路径） | 整棵带的话一种 three.js 风格进项目 34 MB，挑过之后几 MB；多余的文件还会让指纹随无关内容变化 |
+| 风格库里的文件硬链接进项目，跨磁盘时退回复制；用户自己的检出只复制、不改权限。**不设只读** | 内容钉在 commit 上不会变，硬链接不占第二份磁盘。只读试过：渲染器 cp 出的副本继承只读，安全模式又不放行 chmod，真实渲染在这上面绕了好几轮 |
+| `SKILL.md` 由 `skill.md.tmpl` 生成：给制作的说明（先 treatment 再看 demo、字体从 Google Fonts 取、`core/fonts` 中文只有约 200 字）与渲染规则（`window.render(t)` 怎么换成 HyperFrames 的 `hf-seek`、`/core/...` 路径为何拷进镜头目录后不用改、Sound palette 与胶片颗粒对镜头无效） | 上游写给它自己的渲染器，这些冲突上游不会替我们守 |
+
+制作提示词「整片风格」一节由 `TestProductionPromptCarriesFilmStyle` 钉着。升级 `lemo.PinnedCommit` 时对比新旧 `core/lib.js` 与 `core/README.md` 的页面契约。
 
 ## Prompt 文件
 

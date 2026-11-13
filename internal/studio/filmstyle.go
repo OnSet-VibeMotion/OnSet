@@ -14,15 +14,15 @@ import (
 
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
 	"github.com/chouheiwa/articale-to-motion/internal/filmstyle"
+	// 风格来源在 init 里登记进 filmstyle；新增来源在这里加一行（cli 里同样一行）。
+	_ "github.com/chouheiwa/articale-to-motion/internal/filmstyle/lemo"
 	"github.com/chouheiwa/articale-to-motion/internal/fsutil"
 )
 
-// 整片风格（internal/filmstyle）在 Studio 里的入口：风格目录与海报、本项目的整片风格、
-// 装 / 换 / 去掉。风格库是前置资源（am setup 准备），这里只读不下载。装与去掉经 am film-style 子命令完成，占项目写锁，与渲染、拼接同一条路：
-// Studio 自己不写项目文件。
-
-// filmStyleGallery 是上游图鉴，每种风格都有 demo 片可看。
-const filmStyleGallery = "https://lemomo-ai.github.io/lemo-opuscar/"
+// 整片风格（internal/filmstyle）在 Studio 里的入口：各风格来源的目录与海报、本项目的
+// 整片风格、装 / 换 / 去掉。来源数据是前置资源（am setup 准备），这里只读不下载。
+// 装与去掉经 am film-style 子命令完成，占项目写锁，与渲染、拼接同一条路：Studio 自己
+// 不写项目文件。这里不点名任何来源，全部经 filmstyle.Sources() 取。
 
 func (s *Server) filmStyleRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/film-styles", s.filmStylesAPI)
@@ -30,69 +30,74 @@ func (s *Server) filmStyleRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/film-style", s.projectFilmStyleAPI)
 }
 
-func filmStyleOptions() filmstyle.LibraryOptions {
-	return filmstyle.LibraryOptions{Env: envutil.EnvMap()}
+// FilmStyleSource 是 /api/film-styles 里的一个来源。
+type FilmStyleSource struct {
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Gallery    string   `json:"gallery,omitempty"`
+	Categories []string `json:"categories"`
+	// Ready 为 false 时来源数据还没由 am setup 准备好：海报显示占位，选了也装不上（附 Problem）。
+	Ready   bool   `json:"ready"`
+	Problem string `json:"problem,omitempty"`
 }
 
 // FilmStylesResponse 是 /api/film-styles 的结果。
 type FilmStylesResponse struct {
-	Styles     []filmstyle.Style `json:"styles"`
-	Categories []string          `json:"categories"`
-	Gallery    string            `json:"gallery"`
-	// Posters 是海报是否可用：ready，或 missing（风格库还没由 am setup 准备好，附 PostersError）。
-	Posters      string `json:"posters"`
-	PostersError string `json:"posters_error,omitempty"`
+	Sources []FilmStyleSource `json:"sources"`
+	Styles  []filmstyle.Style `json:"styles"`
 }
 
-// filmStylesAPI 列出风格目录（随二进制下发，不联网）。风格库是前置资源，Studio 不下载它：
-// 没准备好时海报显示占位，并提示在终端运行 am setup。
+// filmStylesAPI 列出各来源的风格目录（随二进制下发，不联网）与来源数据是否就绪。
 func (s *Server) filmStylesAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		s.method(w, http.MethodGet)
 		return
 	}
-	resp := FilmStylesResponse{Styles: filmstyle.Catalog(), Categories: filmstyle.Categories(), Gallery: filmStyleGallery, Posters: "ready"}
-	if _, err := filmstyle.RequireLibrary(filmStyleOptions()); err != nil {
-		resp.Posters, resp.PostersError = "missing", err.Error()
+	env := envutil.EnvMap()
+	resp := FilmStylesResponse{Styles: filmstyle.Catalog()}
+	for _, source := range filmstyle.Sources() {
+		item := FilmStyleSource{ID: source.ID(), Name: source.Name(), Gallery: source.Gallery(), Categories: filmstyle.Categories(source.ID()), Ready: true}
+		if err := source.Check(env); err != nil {
+			item.Ready, item.Problem = false, err.Error()
+		}
+		resp.Sources = append(resp.Sources, item)
 	}
 	s.write(w, http.StatusOK, resp)
 }
 
-// filmStylePosterAPI 返回 /api/film-styles/{slug}/poster.jpg：风格库里有就给，没有 404，
-// 网页显示占位块。
+// filmStylePosterAPI 返回 /api/film-styles/{来源}/{目录名}/poster.jpg：来源数据里有就给，
+// 没有 404，网页显示占位块。
 func (s *Server) filmStylePosterAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		s.method(w, http.MethodGet)
 		return
 	}
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/film-styles/"), "/"), "/")
-	if len(parts) != 2 || parts[1] != "poster.jpg" {
+	if len(parts) != 3 || parts[2] != "poster.jpg" {
 		s.error(w, http.StatusNotFound, "not_found", "没有这个资源")
 		return
 	}
-	style, ok := filmstyle.Find(parts[0])
-	if !ok || style.Slug != parts[0] {
-		s.error(w, http.StatusNotFound, "unknown_film_style", "风格库里没有这种风格")
+	style, ok, _ := filmstyle.Find(parts[0] + "/" + parts[1])
+	if !ok || style.Source != parts[0] || style.Slug != parts[1] {
+		s.error(w, http.StatusNotFound, "unknown_film_style", "没有这种风格")
 		return
 	}
-	lib, err := filmstyle.OpenLibrary(filmStyleOptions())
+	source, _ := filmstyle.SourceByID(style.Source)
+	env := envutil.EnvMap()
+	path, err := source.Poster(env, style.Slug)
 	if err != nil {
-		s.error(w, http.StatusNotFound, "poster_unavailable", "风格海报还没有下载")
+		s.error(w, http.StatusNotFound, "poster_unavailable", "风格海报还没有准备好（am setup）")
 		return
 	}
-	path := filmstyle.PosterPath(lib, style.Slug)
-	if _, err := os.Stat(path); err != nil {
-		s.error(w, http.StatusNotFound, "poster_unavailable", "风格海报还没有下载")
-		return
-	}
-	// 原图 1920×1080、合计 23 MB，菜单里一屏几十张会很卡：缩成 480 宽的缩略图，
-	// 缓存在风格库旁边（与 commit 绑定，内容不会变）。缩不了就退回原图。
+	// 原图常是 1920×1080，菜单里一屏几十张会很卡：缩成 480 宽的缩略图，缓存在
+	// <风格根目录>/.thumbs/<来源>/ 下，原图比缩略图新时重做。缩不了就退回原图。
 	if r.URL.Query().Get("size") != "full" {
-		if thumb, err := posterThumbnail(lib.Dir, style.Slug, path); err == nil {
+		cache := filepath.Join(filmstyle.RootDir(env), ".thumbs", style.Source, strconv.Itoa(posterThumbWidth))
+		if thumb, err := posterThumbnail(cache, style.Slug, path); err == nil {
 			path = thumb
 		}
 	}
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
 	w.Header().Set("Content-Type", "image/jpeg")
 	http.ServeFile(w, r, path)
 }
@@ -101,11 +106,12 @@ func (s *Server) filmStylePosterAPI(w http.ResponseWriter, r *http.Request) {
 const posterThumbWidth = 480
 
 // posterThumbnail 返回海报缩略图路径，没有就生成：按面积平均缩小（box filter），只用标准库。
-func posterThumbnail(libDir, slug, source string) (string, error) {
-	dir := filepath.Join(libDir+".thumbs", strconv.Itoa(posterThumbWidth))
+func posterThumbnail(dir, slug, source string) (string, error) {
 	target := filepath.Join(dir, slug+".jpg")
-	if _, err := os.Stat(target); err == nil {
-		return target, nil
+	if thumb, err := os.Stat(target); err == nil {
+		if original, err := os.Stat(source); err == nil && !original.ModTime().After(thumb.ModTime()) {
+			return target, nil
+		}
 	}
 	file, err := os.Open(source)
 	if err != nil {
@@ -178,8 +184,10 @@ func (s *Server) projectFilmStyleAPI(w http.ResponseWriter, r *http.Request) {
 		resp := ProjectFilmStyle{Installed: installed}
 		if installed {
 			resp.Manifest = &manifest
-			resp.StyleFile = filmstyle.SkillsSubdir + "/" + filmstyle.SkillName + "/STYLE.md"
-			if style, found := filmstyle.Find(manifest.Slug); found {
+			if rel, err := filepath.Rel(p.Path, filmstyle.InstalledDir(p.Path)); err == nil {
+				resp.StyleFile = filepath.ToSlash(filepath.Join(rel, filmstyle.StyleFile))
+			}
+			if style, found, _ := filmstyle.Find(manifest.Key()); found {
 				resp.Style = &style
 			}
 		}
@@ -219,7 +227,7 @@ func (s *Server) projectFilmStyleAPI(w http.ResponseWriter, r *http.Request) {
 
 // startFilmStyleTask 起一个 am film-style use 写任务。
 func (s *Server) startFilmStyleTask(p Project, style filmstyle.Style, replace bool) (*Task, error) {
-	args := []string{"film-style", "use", style.Slug, "--project-root", p.Path}
+	args := []string{"film-style", "use", style.Key(), "--project-root", p.Path}
 	if replace {
 		args = append(args, "--replace")
 	}

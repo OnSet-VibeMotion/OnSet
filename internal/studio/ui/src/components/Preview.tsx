@@ -4,7 +4,7 @@ import type { Attachment, BeatState, Box, ProjectFilmStyle, ProjectState, Projec
 import { cssSelector } from '../selector';
 import { Icon } from './Icon';
 import { MemoryTab } from './Memory';
-import { FilmStylePicker, Poster, useFilmStyles } from './FilmStyles';
+import { FilmStylePicker, Poster, styleKey, useFilmStyles } from './FilmStyles';
 import { Markdown } from './chat/Markdown';
 
 export type Tab = 'scene' | 'compose' | 'final' | 'style' | 'review' | 'publish' | 'memory' | 'file';
@@ -551,7 +551,7 @@ function FinalTab({ tree, version, run }: { tree: TreeFile[]; version: number; r
 }
 
 /**
- * 风格页：本项目的整片风格（lemo-opuscar 风格库）。有就展示海报、适用题材与 STYLE.md，
+ * 风格页：本项目的整片风格（来自某个风格来源）。有就展示海报、适用题材与 STYLE.md，
  * 可以换或去掉；没有就说明各镜头自主定视觉，并直接在这里挑一种。装、换、去掉都是
  * am film-style 写任务，会占项目写锁，进度在右上角任务里。
  */
@@ -593,10 +593,10 @@ function StyleTab({ version, run, scenes }: { version: number; run: RunAction; s
         <section class="style-intro">
           <div class="style-intro-head">
             <span class="style-badge">{info.installed ? '换整片风格' : '没有整片风格'}</span>
-            <h3>{info.installed ? '从风格库换一种' : '各镜头按文案自己定视觉'}</h3>
+            <h3>{info.installed ? '换一种整片风格' : '各镜头按文案自己定视觉'}</h3>
           </div>
           <p>
-            从 lemo-opuscar 风格库里选一种，全片所有镜头都画成它：渲染器会遵守它的 STYLE.md（外观、材质、配色逻辑、字体、动效与镜头语法），内容仍来自每个镜头自己的文案。
+            从风格来源里选一种，全片所有镜头都画成它：渲染器会遵守它的 STYLE.md（外观、材质、配色逻辑、字体、动效与镜头语法），内容仍来自每个镜头自己的文案。
             {staleNote}
           </p>
           {info.installed && (
@@ -605,7 +605,7 @@ function StyleTab({ version, run, scenes }: { version: number; run: RunAction; s
             </div>
           )}
         </section>
-        <FilmStylePicker layout="grid" data={films.data} error={films.error} posterVersion={films.posterVersion} selected={info.manifest?.slug ?? ''} onPick={pick} />
+        <FilmStylePicker layout="grid" data={films.data} error={films.error} posterVersion={films.posterVersion} selected={info.manifest ? styleKey(info.manifest) : ''} onPick={pick} />
       </div>
     );
   }
@@ -630,7 +630,7 @@ function StyleTab({ version, run, scenes }: { version: number; run: RunAction; s
             {style.category_cn} · 适合 {style.uses.join('、')}
             <br />
             <span class="muted small">
-              demo：{style.line_cn}（风格库 commit {manifest.commit.slice(0, 12)}）
+              {style.summary}（来源 {manifest.source}，版本 {manifest.version.slice(0, 12)}）
             </span>
           </p>
         )}

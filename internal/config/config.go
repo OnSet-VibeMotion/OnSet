@@ -33,8 +33,8 @@ type Config struct {
 	Overlay       map[string]string
 	// Memory 是渲染记忆的项目侧设置，见 internal/memory。
 	Memory MemorySettings
-	// FilmStyleLibrary 是整片风格的用户级风格库目录，见 internal/filmstyle。
-	FilmStyleLibrary string
+	// FilmStyleRoot 是整片风格来源数据的根目录，见 filmstyle.RootDir。
+	FilmStyleRoot string
 	// HyperFramesCLI 是 am 管理的固定版本 HyperFrames CLI 的安装目录，见 hyperframes.RequireCLI（am setup 用 EnsureCLI 安装）。
 	HyperFramesCLI string
 }
@@ -165,7 +165,7 @@ func Load(root string, environ map[string]string) (Config, error) {
 		return Config{}, fmt.Errorf("无效的 MEMORY: %s（可选：on off）", value)
 	}
 	cfg.Memory.Dir = resolve("AM_MEMORY_DIR", DefaultMemoryDir(environ))
-	cfg.FilmStyleLibrary = resolve(filmstyle.LibraryEnv, filmstyle.DefaultLibraryDir(environ, filmstyle.PinnedCommit))
+	cfg.FilmStyleRoot = resolve(filmstyle.RootEnv, filmstyle.RootDir(environ))
 	cfg.HyperFramesCLI = resolve(hyperframes.CLIDirEnv, hyperframes.CLIDir(environ, hyperframes.PinnedVersion))
 	if value := resolve("MEMORY_SNAPSHOT", ""); value != "" {
 		cfg.Memory.Snapshot, err = strconv.Atoi(value)
@@ -234,10 +234,22 @@ func (c Config) ChildEnvironment(base map[string]string, unsafe bool, passthroug
 			out["MEMORY_SNAPSHOT"] = strconv.Itoa(c.Memory.Snapshot)
 		}
 	}
-	// 风格库目录同理显式写进去：默认目录由 XDG_DATA_HOME 推出，而它不在白名单里，
-	// 编排工具调用的 am film-style 会算出另一个目录，找不到已下载的风格库与采样库。
-	if c.FilmStyleLibrary != "" {
-		out[filmstyle.LibraryEnv] = c.FilmStyleLibrary
+	// 风格来源的数据目录同理显式写进去：默认根目录由 XDG_DATA_HOME 推出，而它不在白名单里，
+	// 编排工具调用的 am film-style 会算出另一个目录，找不到 am setup 准备好的数据。
+	// 各来源自己的覆盖变量（filmstyle.ChildEnvKeys）设了才传。
+	if c.FilmStyleRoot != "" {
+		out[filmstyle.RootEnv] = c.FilmStyleRoot
+	}
+	for _, key := range filmstyle.ChildEnvKeys() {
+		if key == filmstyle.RootEnv {
+			continue
+		}
+		if value := base[key]; value != "" {
+			out[key] = value
+		}
+		if value := c.Overlay[key]; value != "" {
+			out[key] = value
+		}
 	}
 	// CLI 目录同理：子进程里的 am hyperframes 要找到同一份已装好的 CLI，否则会按 HOME
 	// 另算一个目录，在渲染途中重新 npm install。

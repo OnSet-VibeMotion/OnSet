@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { api, errorText, post } from '../api';
 import type { CanvasOption, DirectoryEntry, Project, StylesResponse } from '../types';
 import { Icon } from './Icon';
-import { FilmStylePicker, useFilmStyles } from './FilmStyles';
+import { FilmStylePicker, styleKey, useFilmStyles } from './FilmStyles';
 
 interface Props {
   projects: Project[];
@@ -208,7 +208,7 @@ function CreateForm(props: {
 
   if (!styles) return <p class="muted pad">正在读取画幅…</p>;
   const chosenCanvas = styles.canvases.find((c) => c.id === canvas);
-  const chosenStyle = films.data?.styles.find((s) => s.slug === filmStyle);
+  const chosenStyle = films.data?.styles.find((s) => styleKey(s) === filmStyle);
   return (
     <div class="create">
       <div class="create-body">

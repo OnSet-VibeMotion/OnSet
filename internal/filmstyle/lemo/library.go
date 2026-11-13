@@ -1,4 +1,4 @@
-package filmstyle
+package lemo
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
+	"github.com/chouheiwa/articale-to-motion/internal/filmstyle"
 )
 
 // Library 是一份风格库检出。
@@ -51,21 +52,13 @@ func (o LibraryOptions) commit() string {
 	return PinnedCommit
 }
 
-// DefaultLibraryDir 返回默认的用户级风格库目录：按 commit 分目录，升级 am 换了
-// 固定版本时新旧两份并存，老项目引用的那份不会被改写。
+// DefaultLibraryDir 返回默认的风格库目录：<风格根目录>/lemo-opuscar/<commit 前 12 位>。
+// 按 commit 分目录，升级 am 换了固定版本时新旧两份并存，老项目引用的那份不会被改写。
 func DefaultLibraryDir(env map[string]string, commit string) string {
-	base := env["XDG_DATA_HOME"]
-	if base == "" {
-		home := env["HOME"]
-		if home == "" {
-			home, _ = os.UserHomeDir()
-		}
-		base = filepath.Join(home, ".local", "share")
-	}
 	if len(commit) > 12 {
 		commit = commit[:12]
 	}
-	return filepath.Join(base, "am", "lemo-opuscar", commit)
+	return filepath.Join(filmstyle.SourceDir(env, SourceID), commit)
 }
 
 // LibraryDir 返回本次要用的风格库目录：LibraryEnv 优先，否则默认目录。

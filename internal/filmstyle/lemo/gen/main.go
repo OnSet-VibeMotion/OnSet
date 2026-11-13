@@ -1,8 +1,8 @@
-// gen 从固定 commit 的 lemo-opuscar 检出生成 internal/filmstyle/catalog.json。
+// gen 从固定 commit 的 lemo-opuscar 检出生成 internal/filmstyle/lemo/catalog.json。
 //
-//	go run ./internal/filmstyle/gen -src <lemo-opuscar 检出目录>
+//	go run ./internal/filmstyle/lemo/gen -src <lemo-opuscar 检出目录>
 //
-// 检出的 HEAD 必须等于 filmstyle.PinnedCommit：目录清单与 commit 不一致的话，
+// 检出的 HEAD 必须等于 lemo.PinnedCommit：目录清单与 commit 不一致的话，
 // am film-style list 列出的风格与 am film-style use 实际装到的会对不上。
 package main
 
@@ -16,7 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/chouheiwa/articale-to-motion/internal/filmstyle"
+	"github.com/chouheiwa/articale-to-motion/internal/filmstyle/lemo"
 	"github.com/chouheiwa/articale-to-motion/internal/fsutil"
 )
 
@@ -36,7 +36,7 @@ type rawStyle struct {
 
 func main() {
 	src := flag.String("src", "", "lemo-opuscar 检出目录")
-	out := flag.String("out", filepath.Join("internal", "filmstyle", "catalog.json"), "输出文件")
+	out := flag.String("out", filepath.Join("internal", "filmstyle", "lemo", "catalog.json"), "输出文件")
 	flag.Parse()
 	if err := run(*src, *out); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -52,14 +52,14 @@ func run(src, out string) error {
 	if err != nil {
 		return fmt.Errorf("读取 %s 的 HEAD：%w", src, err)
 	}
-	if got := strings.TrimSpace(string(head)); got != filmstyle.PinnedCommit {
-		return fmt.Errorf("%s 的 HEAD 是 %s，与 filmstyle.PinnedCommit %s 不符", src, got, filmstyle.PinnedCommit)
+	if got := strings.TrimSpace(string(head)); got != lemo.PinnedCommit {
+		return fmt.Errorf("%s 的 HEAD 是 %s，与 lemo.PinnedCommit %s 不符", src, got, lemo.PinnedCommit)
 	}
 	matches, err := filepath.Glob(filepath.Join(src, "styles", "*", "style.json"))
 	if err != nil {
 		return err
 	}
-	var catalog []filmstyle.Style
+	var catalog []lemo.Entry
 	for _, path := range matches {
 		slug := filepath.Base(filepath.Dir(path))
 		if strings.HasPrefix(slug, "_") {
@@ -79,7 +79,7 @@ func run(src, out string) error {
 		if _, err := os.Stat(filepath.Join(src, "styles", slug, "STYLE.md")); err != nil {
 			return fmt.Errorf("风格 %s 缺少 STYLE.md", slug)
 		}
-		catalog = append(catalog, filmstyle.Style{
+		catalog = append(catalog, lemo.Entry{
 			Slug: raw.Slug, Num: raw.Num, EN: raw.EN, CN: raw.CN,
 			CategoryEN: raw.CategoryEN, CategoryCN: raw.CategoryCN,
 			Film: raw.Film, Line: raw.Line, LineCN: raw.LineCN, Uses: raw.Uses,

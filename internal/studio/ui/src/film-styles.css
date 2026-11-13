@@ -214,3 +214,29 @@
   border-color: color-mix(in srgb, var(--bad) 50%, transparent);
   color: var(--bad);
 }
+
+.film-styles .fs-source {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.film-styles .fs-source + .fs-source {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.film-styles .fs-source-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.film-styles .fs-source-head h3 {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}

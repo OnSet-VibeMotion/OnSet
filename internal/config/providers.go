@@ -1,7 +1,6 @@
 package config
 
 import (
-	"os"
 	"runtime"
 	"strings"
 
@@ -139,20 +138,7 @@ func (c Config) OrchestratorAccess(extra ...string) tools.OrchestratorAccess {
 	if c.Memory.Enabled && c.Memory.Dir != "" {
 		access.WritableDirs = []string{c.Memory.Dir}
 	}
-	// 编排工具经 am film-style use 下载风格库、补 demo 源码、为 three.js 风格跑 npm ci，
-	// 都要写风格库目录。与记忆库同一个理由：codex 的 workspace-write 沙箱默认只放行
-	// 工作目录，写不进去也不报错。不按「项目装没装整片风格」区分：编排工具可能在
-	// 这一轮里才选风格。目录由 EnsureFilmStyleLibraryDir 在开工前建好。
-	if c.FilmStyleLibrary != "" {
-		access.WritableDirs = append(access.WritableDirs, c.FilmStyleLibrary)
-	}
+	// 风格来源的数据不放进可写范围：它是前置资源，只由用户在终端里跑的 am setup 下载，
+	// 编排工具调用的 am film-style use 只读它、写项目。
 	return access
-}
-
-// EnsureFilmStyleLibraryDir 建好风格库目录（可以是空目录，第一次 am film-style use
-// 时才下载）。codex 沙箱只能把已存在的目录加进可写范围，所以要在编排工具开工前建。
-func (c Config) EnsureFilmStyleLibraryDir() {
-	if c.FilmStyleLibrary != "" {
-		_ = os.MkdirAll(c.FilmStyleLibrary, 0o755)
-	}
 }

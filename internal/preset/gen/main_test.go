@@ -393,17 +393,22 @@ func TestProductionPromptCarriesSceneHandoffs(t *testing.T) {
 }
 
 // 整片风格是可选的：没有时编排工具在稿件审核关卡给出推荐，有时 treatment 与配色
-// 服从 STYLE.md，demo 只在 treatment 之后用来学技法。只接画面：配乐仍走授权素材。
+// 服从 STYLE.md、用法照 SKILL.md。只接画面：配乐仍走授权素材。
 func TestProductionPromptCarriesFilmStyle(t *testing.T) {
 	body := loadProduction()
 	for _, want := range []string{
-		"### 整片风格", "am film-style list", "am film-style use", "am film-style show", "--replace",
-		".agents/skills/lemo-film-style/STYLE.md", "稿件审核关卡", "不用整片风格",
-		"`treatment.md` 写完以后才读 `DEMO.md`", "第六阶段渲染镜头之前",
-		"Sound palette 只作为选曲和音效方向的参考",
+		"### 整片风格", "am film-style list", "am film-style use <来源/目录名>", "am film-style show", "--replace",
+		".agents/skills/am-film-style/", "SKILL.md", "STYLE.md", "稿件审核关卡", "不用整片风格",
+		"第六阶段渲染镜头之前", "am setup", "STYLE.md 里关于声音的内容只作为选曲和音效方向的参考",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("PROMPT-PRODUCTION.md 的整片风格缺少 %q", want)
+		}
+	}
+	// 制作提示词不点名任何风格来源：来源特有的说明写在各自的 SKILL.md 里。
+	for _, banned := range []string{"lemo", "DEMO.md", "core/fonts"} {
+		if strings.Contains(body, banned) {
+			t.Errorf("PROMPT-PRODUCTION.md 不该点名风格来源的细节 %q", banned)
 		}
 	}
 }

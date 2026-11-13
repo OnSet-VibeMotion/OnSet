@@ -24,7 +24,7 @@ Go 版本以单个 `am` 二进制发布，不依赖 Python。项目 Prompt、发
 ```bash
 am setup                                    # 全部准备（已就绪的跳过，断了重跑接着下）
 am setup --proxy http://127.0.0.1:7890      # GitHub 慢时让 git 走代理（不影响 npm）
-am setup --only styles                      # 只准备其中几项：skills、cli、styles
+am setup --only styles                      # 只准备其中几项：skills、cli、styles（全部风格来源）或 styles:<来源>
 am setup --check                            # 只检查，不下载；有缺项时退出码 1
 ```
 
@@ -32,7 +32,7 @@ am setup --check                            # 只检查，不下载；有缺项�
 |---|---|---|
 | `skills` | HyperFrames 官方技能（固定版本，git） | `~/.local/share/am/hyperframes/<commit>` |
 | `cli` | 同版本 HyperFrames CLI（npm，沿用你的 `~/.npmrc`） | `~/.local/share/am/hyperframes/cli-<版本>` |
-| `styles` | lemo-opuscar 风格库：全部风格说明、demo、海报、模型与 three.js 依赖（约 100 MB） | `~/.local/share/am/lemo-opuscar/<commit>` |
+| `styles:<来源>` | 每个整片风格来源一项。lemo-opuscar：全部风格说明、demo、海报、模型与 three.js 依赖（约 100 MB） | `~/.local/share/am/film-styles/<来源>/` |
 
 ## 创建项目
 
@@ -99,20 +99,20 @@ AM_STUDIO_E2E_CONFIG=/tmp/am-studio-projects.json npm run test:e2e
 
 ### 整片风格（可选）
 
-想让全片统一画成一种风格时，可以从 [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar) 风格库（作者 LemoLab，66 种，[图鉴](https://lemomo-ai.github.io/lemo-opuscar/)）里选一种：
+想让全片统一画成一种风格时，从风格来源里选一种。每种风格的标识是「来源/目录名」，名字在各来源里唯一时也可以只写目录名、中文名或英文名。目前登记的来源是 [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar)（作者 LemoLab，66 种，[图鉴](https://lemomo-ai.github.io/lemo-opuscar/)），之后可以接入更多来源。
 
 ```bash
-am film-style list                      # 按分类列出全部风格
-am init my-video --canvas landscape-16x9 --film-style impasto
+am film-style list                      # 按来源、分类列出全部风格（--source 只看一个来源）
+am init my-video --canvas landscape-16x9 --film-style lemo-opuscar/impasto
 am film-style use 油画厚涂                # 已有项目；换风格要加 --replace
-am film-style show                      # 本项目的整片风格与风格库状态
+am film-style show                      # 本项目的整片风格与各风格来源的状态
 ```
 
-没选时，编排工具会在稿件审核关卡按题材推荐两三种，也可以选「不用整片风格」。`am studio` 里首页、新建对话框和预览区的「风格」页都能直接挑（带海报，可搜索），也能换或去掉。
+没选时，编排工具会在稿件审核关卡按题材推荐两三种，也可以选「不用整片风格」。`am studio` 里首页、新建对话框和预览区的「风格」页都能直接挑（按来源分组，带海报，可搜索），也能换或去掉。
 
-选中的风格按固定 commit 装进项目的 `.agents/skills/lemo-film-style/`：`STYLE.md`（风格的不变量）、demo 源码（技法参考）、`core/` 共用工具与许可说明。镜头提示词随之把「视觉自由度」换成「整片风格」，渲染器必须遵守 `STYLE.md`，内容仍来自每个镜头自己的文案。换风格或去掉风格（`am film-style remove`）会让已渲染的镜头全部 Stale。
+选中的风格装进项目的 `.agents/skills/am-film-style/`，契约只有三个文件：`STYLE.md`（风格的不变量）、`SKILL.md`（怎么用、技法参考在哪）与 `am-film-style.json`（来源与版本）；示例、引擎等其余文件由来源决定。镜头提示词随之把「视觉自由度」换成「整片风格」，渲染器必须遵守 `STYLE.md`，内容仍来自每个镜头自己的文案。换风格或去掉风格（`am film-style remove`）会让已渲染的镜头全部 Stale。早先装在 `.agents/skills/lemo-film-style/` 的项目照样能用，下次 `am film-style use` 时换成新目录。
 
-风格库是前置资源，由 `am setup` 下载到用户级目录（默认 `~/.local/share/am/lemo-opuscar/<commit>`，可用 `AM_FILM_STYLE_LIBRARY` 指向已有检出），所有项目共用；`am film-style` 各命令与 Studio 都不联网。只接画面：配乐仍按制作流程选授权素材，`STYLE.md` 的 Sound palette 只作为方向参考。
+各来源的数据是前置资源，由 `am setup` 下载到 `~/.local/share/am/film-styles/<来源>/`（可用 `AM_FILM_STYLES_DIR` 换根目录），所有项目共用；`am film-style` 各命令与 Studio 都不联网。只接画面：配乐仍按制作流程选授权素材，`STYLE.md` 里关于声音的内容只作为方向参考。
 
 `am init` 不覆盖内容不同的已有文件。默认把固定版本 0.8.225 的 HyperFrames 官方技能从本机缓存（`am setup` 下载）拷进项目的 `.agents/skills/`，与随二进制下发的 `text-to-lottie`、`algorithmic-art` 同处一个目录；`am init` 不联网，缓存里没有时会提示先运行 `am setup`。`--skip-hyperframes` 跳过这一步。
 

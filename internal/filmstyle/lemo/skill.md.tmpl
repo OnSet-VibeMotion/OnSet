@@ -1,5 +1,5 @@
 ---
-name: lemo-film-style
+name: am-film-style
 description: 本片的整片风格「{{.Style.CN}} {{.Style.EN}}」，来自 lemo-opuscar 风格库（{{.Short}}）。每个镜头都必须遵守 STYLE.md 的不变量；demo 只用来学技法。
 ---
 
@@ -17,7 +17,13 @@ description: 本片的整片风格「{{.Style.CN}} {{.Style.EN}}」，来自 lem
 {{- end}}
 | `ATTRIBUTION.md`、`LICENSE` | 来源与许可 |
 
-## 规则
+## 给制作的说明（定方案、备素材时读）
+
+- 先写 `treatment.md`，再看 `DEMO.md` 与 `demo/`：demo 只用来学技法（引擎、笔触、rig、shader），不借它的故事、结构、镜头、道具和时间线。以真实素材为本的风格（剪辑与纪实、实证影像）例外：先按 STYLE.md 收集并登记素材，再写 treatment。
+- STYLE.md 点名的字体不随风格库下发，按制作提示词「整片风格」一节的办法从 Google Fonts 取。`core/fonts/` 里的中文展示字体只有约 200 个字，不能用于中文正文。
+- STYLE.md 的 Sound palette 只作为选曲方向的参考；风格库自带的配乐工具没有接入。
+
+## 规则（渲染镜头时）
 
 1. **先读 `STYLE.md` 全文再动手。** 它规定的外观、材质、配色逻辑、字体、动效质感、镜头语法、标志手法与禁忌全部遵守。本镜头提示词里的「全片配色」若与 STYLE.md 的配色逻辑冲突，以全片配色为准——它是在 STYLE.md 的配色逻辑里为本片选定的。
 2. **内容来自本镜头，不来自 demo。** 画什么、讲什么、出现哪些物件，只取本镜头的 prompt.md、字幕与素材。不照搬 demo 的故事、镜头、道具、文案、时间线和角色，不把题材往 demo 上靠。

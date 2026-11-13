@@ -162,7 +162,7 @@ test('starts a new video from the home page', async ({ page }) => {
   await page.locator('#home-style').click();
   await expect(page.locator('.film-styles .fs-item.none')).toBeVisible();
   await page.locator('.film-styles .fs-search').fill('油画');
-  await expect(page.locator('.film-styles .fs-item[data-style="impasto"]')).toBeVisible();
+  await expect(page.locator('.film-styles .fs-item[data-style="lemo-opuscar/impasto"]')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('#home-style')).toContainText('不用整片风格');
 

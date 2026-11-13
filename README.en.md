@@ -24,11 +24,11 @@ Everything that needs the network is prepared by one command and kept in per-use
 ```bash
 am setup                                    # prepare everything (skips what is ready, resumes after interruptions)
 am setup --proxy http://127.0.0.1:7890      # route git (GitHub) through a proxy; npm is unaffected
-am setup --only styles                      # only some items: skills, cli, styles
+am setup --only styles                      # only some items: skills, cli, styles (all sources) or styles:<source>
 am setup --check                            # report only; exit code 1 if anything is missing
 ```
 
-The items are the pinned HyperFrames skills (git, `~/.local/share/am/hyperframes/<commit>`), the same-version HyperFrames CLI (npm with your `~/.npmrc`, `~/.local/share/am/hyperframes/cli-<version>`), and the lemo-opuscar style library with every demo, poster, model and the three.js dependency (about 100 MB, `~/.local/share/am/lemo-opuscar/<commit>`).
+The items are the pinned HyperFrames skills (git, `~/.local/share/am/hyperframes/<commit>`), the same-version HyperFrames CLI (npm with your `~/.npmrc`, `~/.local/share/am/hyperframes/cli-<version>`), and one item per film-style source (`styles:<source>`, under `~/.local/share/am/film-styles/<source>/`; for lemo-opuscar that is every demo, poster, model and the three.js dependency, about 100 MB).
 
 ```bash
 am init my-video                          # interactive canvas picker
@@ -93,20 +93,20 @@ The legacy `--style` flag is still accepted for old scripts, but it no longer im
 
 ### Film style (optional)
 
-To draw the whole film in one style, pick one of the 66 styles from the [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar) library by LemoLab ([gallery](https://lemomo-ai.github.io/lemo-opuscar/)):
+To draw the whole film in one style, pick one from a film-style source. Each style is identified as `source/slug`; a slug, Chinese or English name that is unique across sources works too. The registered source today is [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar) by LemoLab (66 styles, [gallery](https://lemomo-ai.github.io/lemo-opuscar/)); more sources can be added later.
 
 ```bash
-am film-style list                      # every style, by category
-am init my-video --canvas landscape-16x9 --film-style impasto
+am film-style list                      # every style by source and category (--source for one)
+am init my-video --canvas landscape-16x9 --film-style lemo-opuscar/impasto
 am film-style use impasto               # existing project; add --replace to switch
-am film-style show                      # this project's film style and library status
+am film-style show                      # this project's film style and the state of each source
 ```
 
-Without one, the orchestrator suggests two or three at the script review gate, alongside "no film style". In `am studio` you can pick one (with posters and search) from the home page, the new-project dialog, or the Style tab, and switch or remove it there.
+Without one, the orchestrator suggests two or three at the script review gate, alongside "no film style". In `am studio` you can pick one (grouped by source, with posters and search) from the home page, the new-project dialog, or the Style tab, and switch or remove it there.
 
-The chosen style is installed from a pinned commit into `.agents/skills/lemo-film-style/`: `STYLE.md` (the invariants), the demo source (techniques), shared `core/` tools, and licence notes. Scene prompts then replace "visual freedom" with "film style": the renderer must follow `STYLE.md`, while content still comes from each scene. Switching or removing the style (`am film-style remove`) makes every rendered scene stale.
+The chosen style is installed into `.agents/skills/am-film-style/`. The contract is three files: `STYLE.md` (the invariants), `SKILL.md` (how to use it and where its technique references are) and `am-film-style.json` (source and version); anything else (examples, engines) is up to the source. Scene prompts then replace "visual freedom" with "film style": the renderer must follow `STYLE.md`, while content still comes from each scene. Switching or removing the style (`am film-style remove`) makes every rendered scene stale. Projects installed under the earlier `.agents/skills/lemo-film-style/` keep working and move to the new directory on the next `am film-style use`.
 
-The library is a prerequisite downloaded by `am setup` into a per-user directory (default `~/.local/share/am/lemo-opuscar/<commit>`, override with `AM_FILM_STYLE_LIBRARY`) shared by all projects; `am film-style` and Studio never download it. Only the picture side is used: music still comes from licensed assets in the production flow, with the Sound palette in `STYLE.md` as a reference.
+Each source's data is a prerequisite downloaded by `am setup` into `~/.local/share/am/film-styles/<source>/` (override the root with `AM_FILM_STYLES_DIR`), shared by all projects; `am film-style` and Studio never download it. Only the picture side is used: music still comes from licensed assets in the production flow, with what `STYLE.md` says about sound as a reference.
 
 `am init` refuses to overwrite existing files with different content. By default it copies the pinned HyperFrames 0.8.225 skills from the local cache (prepared by `am setup`) into the project's `.agents/skills/`, alongside the binary-delivered `text-to-lottie` and `algorithmic-art`; it never downloads, and tells you to run `am setup` if the cache is missing.
 

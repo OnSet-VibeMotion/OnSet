@@ -68,7 +68,7 @@ func TestFilmStyleReplacesVisualFreedom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"整片风格（强制）", skill, "STYLE.md", "不照搬 demo", "无音轨"} {
+	for _, want := range []string{"整片风格（强制）", skill, "STYLE.md", "SKILL.md", "不照搬风格自带的示例", "无音轨"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("整片风格段缺少 %q", want)
 		}
@@ -108,4 +108,22 @@ func resetDigestCache() {
 		treeDigests.Delete(key)
 		return true
 	})
+}
+
+// 只有一个来源时装出的旧目录（lemo-film-style）照样认，提示词指向它。
+func TestFilmStyleResolvesLegacyDirectory(t *testing.T) {
+	root := t.TempDir()
+	sceneDir := filepath.Join(root, "scenes", "scene-001")
+	os.MkdirAll(sceneDir, 0o755)
+	legacy := filepath.Join(root, ".agents", "skills", filmstyle.LegacySkillName)
+	os.MkdirAll(legacy, 0o755)
+	os.WriteFile(filepath.Join(legacy, "SKILL.md"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(legacy, "STYLE.md"), []byte("x"), 0o644)
+	skills := ResolveFilmStyle(sceneDir)
+	if skills != filepath.Join(root, ".agents", "skills") {
+		t.Fatalf("应当认得旧目录：%q", skills)
+	}
+	if section := filmStyleSection(skills, false); !strings.Contains(section, legacy) {
+		t.Errorf("提示词应当指向旧目录：%s", section)
+	}
 }

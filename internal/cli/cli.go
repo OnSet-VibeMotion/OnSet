@@ -190,7 +190,7 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
 列表，这是预期状态：项目在第一次 am cast add / am cast new 之前本来就还
 没有可用角色。
 
---film-style 给全片选一种整片风格（lemo-opuscar 风格库，am film-style list 查看），
+--film-style 给全片选一种整片风格（各风格来源的风格，am film-style list 查看），
 等同于初始化后运行 am film-style use；不传时各镜头自主定视觉，之后也可以再选。
 风格库同样是前置资源（am setup 下载），这里不联网，不受 --skip-hyperframes 影响。`,
 		Example: `  # 交互选择画幅
@@ -212,7 +212,7 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
   am init my-story --canvas vertical-3x4 --narration cast
 
   # 全片用同一种风格（油画厚涂）
-  am init my-video --canvas landscape-16x9 --film-style impasto`,
+  am init my-video --canvas landscape-16x9 --film-style lemo-opuscar/impasto`,
 		Args: maxArgs(1, "DIR"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if narration != narrationSolo && narration != narrationCast {
@@ -261,10 +261,9 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
 			fmt.Fprintf(stdout, "项目已初始化：%s（画幅 %s，新增 %d，未变 %d）\n", target, chosen.Label, result.Created, result.Unchanged)
 			// 风格文件只为旧项目和画幅读取保留，不再作为渲染前的定稿门禁。
 			if filmStyle != nil {
-				installed, err := filmstyle.InstallForProject(target, *filmStyle, false,
-					filmstyle.LibraryOptions{Env: currentEnvironment(), Output: stderr})
+				installed, err := filmstyle.Install(filmstyle.InstallOptions{ProjectDir: target, Style: *filmStyle, Env: currentEnvironment()})
 				if err != nil {
-					return fmt.Errorf("项目文件已写入，但整片风格安装失败（之后可用 am film-style use %s 重试）：%w", filmStyle.Slug, err)
+					return fmt.Errorf("项目文件已写入，但整片风格安装失败（之后可用 am film-style use %s 重试）：%w", filmStyle.Key(), err)
 				}
 				reportFilmStyle(stdout, *filmStyle, installed)
 			}
@@ -294,7 +293,7 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
 	initCmd.Flags().StringVar(&styleBriefFile, "style-brief-file", "", "从文件读取旧版自定义风格描述，与 --style-brief 二选一")
 	initCmd.Flags().StringVar(&narration, "narration", narrationSolo,
 		"叙事模式："+narrationSolo+"（单口播，默认） | "+narrationCast+"（多角色对话，额外写出 cast.yaml 与 cast/）")
-	initCmd.Flags().StringVar(&filmStyleName, "film-style", "", "整片风格：lemo-opuscar 风格库里的目录名、中文名或英文名（am film-style list）；不传则各镜头自主定视觉")
+	initCmd.Flags().StringVar(&filmStyleName, "film-style", "", "整片风格：来源/目录名，或唯一的目录名、中文名、英文名（am film-style list）；不传则各镜头自主定视觉")
 	initCmd.Flags().StringVar(&delivery, "delivery", "speech", "讲解形式：speech（默认）、song（单人整曲）或 beat（无配音卡点）")
 	root.AddCommand(initCmd)
 
@@ -689,7 +688,6 @@ opencode 没有可用的白名单机制，安全模式下仍能执行任何命�
 					fmt.Fprintf(stderr, "警告：无法建立记忆库，本次渲染的经历可能写不进去：%v\n", err)
 				}
 			}
-			cfg.EnsureFilmStyleLibraryDir()
 			if brief := preferenceBrief(cfg, rootDir, stderr); brief != "" {
 				prompt = append(append(append([]byte{}, prompt...), "\n\n"...), brief...)
 			}
@@ -863,7 +861,7 @@ SVG 转 PNG 这一步不能用 ImageMagick 代替：多数 ImageMagick 构建自
 	validateCmd.AddCommand(newValidateReadsCommand(stdout))
 	root.AddCommand(validateCmd)
 	root.AddCommand(newStyleCommand(stdout))
-	root.AddCommand(newFilmStyleCommand(stdout, stderr))
+	root.AddCommand(newFilmStyleCommand(stdout))
 	root.AddCommand(newHyperframesCommand(stdout, stderr))
 	root.AddCommand(newSetupCommand(stdout, stderr))
 	root.AddCommand(newConcatCommand(stdout, &projectRoot))

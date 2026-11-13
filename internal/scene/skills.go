@@ -277,36 +277,46 @@ func ResolveAllSkills(renderer, sceneDir string, environ map[string]string) (map
 	return result, nil
 }
 
-// ResolveFilmStyle 从镜头目录逐级向上找项目里的整片风格（filmstyle.SkillName），
-// 返回它所在的技能目录（.agents/skills 的绝对路径）；没有时返回空串。
+// ResolveFilmStyle 从镜头目录逐级向上找项目里的整片风格，返回它所在的技能目录
+// （.agents/skills 的绝对路径）；没有时返回空串。认新目录（filmstyle.SkillName）与
+// 只有一个来源时的旧目录（filmstyle.LegacySkillName）。
 //
 // 只找项目级，不找家目录：整片风格是一个项目的选择，家目录里的一份会悄悄套到
 // 本机所有项目上。它不进 RegisteredSkills——那张表的契约是「解析不到时退回按
 // 名字引用」，而整片风格解析不到的意思是本片没有整片风格，镜头照旧自主定视觉。
 // 解析到时它和注册技能一样进 resolved：输入指纹记它的内容摘要，安全模式放行读取。
+// 这里只认契约（STYLE.md + SKILL.md），不关心风格来自哪个来源。
 func ResolveFilmStyle(sceneDir string) string {
 	for _, candidate := range projectCandidates(sceneDir, portableSkillsDir) {
-		if hasSkill(candidate, filmstyle.SkillName, []string{skillManifestFile, filmStyleFile}) {
+		if filmStyleDir(candidate) != "" {
 			return candidate
 		}
 	}
 	return ""
 }
 
-// filmStyleFile 是整片风格的不变量文件，镜头提示词点名它。
-const filmStyleFile = "STYLE.md"
+// filmStyleDir 返回技能目录里的整片风格目录（新目录优先）；没有时为空。
+func filmStyleDir(skillsDir string) string {
+	for _, name := range []string{filmstyle.SkillName, filmstyle.LegacySkillName} {
+		if hasSkill(skillsDir, name, []string{filmstyle.GuideFile, filmstyle.StyleFile}) {
+			return filepath.Join(skillsDir, name)
+		}
+	}
+	return ""
+}
 
-// filmStyleSection 是整片风格段，替换掉「视觉自由度」。
+// filmStyleSection 是整片风格段，替换掉「视觉自由度」。不点名任何风格来源：
+// 来源特有的用法（引擎、页面契约、技法参考在哪）写在各自的 SKILL.md 里。
 func filmStyleSection(skillsDir string, hasLook bool) string {
-	dir := filepath.Join(skillsDir, filmstyle.SkillName)
+	dir := filmStyleDir(skillsDir)
 	palette := "配色按 STYLE.md 的配色逻辑为本镜头选定"
 	if hasLook {
 		palette = "配色遵守下面的「全片配色」（它是在 STYLE.md 的配色逻辑里为本片选定的）"
 	}
 	return "\n整片风格（强制）：本片所有镜头画成同一种风格，本机该技能目录为：\n    " + dir + "\n" +
-		"- 动手前先读该目录的 " + skillManifestFile + " 与 " + filmStyleFile + " 全文。STYLE.md 规定的外观、材质、字体、动效质感、镜头语法、标志手法与禁忌全部遵守；" + palette + "。\n" +
-		"- 画什么只取本镜头的说明、字幕与素材，不照搬 demo 的故事、镜头、道具与文案；demo 源码只用来学技法，用到的文件拷进本镜头目录再改，不得引用镜头目录之外的路径。\n" +
-		"- STYLE.md 的 Sound palette 与胶片颗粒对本镜头无效：产物静音、无音轨，页面里不画颗粒。\n" +
+		"- 动手前先读该目录的 " + filmstyle.GuideFile + " 与 " + filmstyle.StyleFile + " 全文。STYLE.md 规定的外观、材质、字体、动效质感、镜头语法、标志手法与禁忌全部遵守；" + palette + "。\n" +
+		"- 画什么只取本镜头的说明、字幕与素材，不照搬风格自带的示例（demo 等）的故事、镜头、道具与文案；示例与引擎只用来学技法，按 SKILL.md 说的把用到的文件拷进本镜头目录再改，不得引用镜头目录之外的路径。\n" +
+		"- STYLE.md 里关于声音、配乐的内容对本镜头无效：产物静音、无音轨。\n" +
 		"- 不得把项目中的 frame.md、style_id、style_name、示例图或其他旧风格资料当作视觉命令。\n"
 }
 

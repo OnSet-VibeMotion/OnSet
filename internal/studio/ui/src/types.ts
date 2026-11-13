@@ -382,37 +382,41 @@ export interface RecallResponse {
   section: string;
 }
 
-/** lemo-opuscar 风格库里的一种风格（/api/film-styles）。 */
+/** 某个风格来源里的一种风格（/api/film-styles）。key 是「来源/目录名」。 */
 export interface FilmStyle {
+  source: string;
   slug: string;
-  num: string;
-  en: string;
+  order: string;
   cn: string;
-  category_en: string;
+  en: string;
   category_cn: string;
-  film: string;
-  line: string;
-  line_cn: string;
+  category_en: string;
   uses: string[];
-  demo_seconds: number;
-  three_js: boolean;
+  summary: string;
+  tags?: string[];
+}
+
+/** 一个风格来源。ready 为 false 时来源数据还没由 am setup 准备好。 */
+export interface FilmStyleSource {
+  id: string;
+  name: string;
+  gallery?: string;
+  categories: string[];
+  ready: boolean;
+  problem?: string;
 }
 
 export interface FilmStylesResponse {
+  sources: FilmStyleSource[];
   styles: FilmStyle[];
-  categories: string[];
-  gallery: string;
-  /** missing：风格库还没由 am setup 准备好，海报显示占位。 */
-  posters: 'ready' | 'missing';
-  posters_error?: string;
 }
 
 export interface FilmStyleManifest {
-  repo: string;
-  commit: string;
+  source: string;
   slug: string;
   cn: string;
   en: string;
+  version: string;
   digest: string;
   installed_at: string;
 }

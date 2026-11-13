@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { api, errorText } from '../api';
 import type { AgentsResponse, CanvasOption, DirectoryEntry, Project, StylesResponse } from '../types';
-import { FilmStylePicker, useFilmStyles } from './FilmStyles';
+import { FilmStylePicker, styleKey, useFilmStyles } from './FilmStyles';
 import { Creation, type CreationJob } from './Creation';
 import { Icon } from './Icon';
 import '../home.css';
@@ -128,7 +128,7 @@ export function Home(props: Props) {
   const canvasInfo = styles?.canvases.find((c) => c.id === canvas);
   const modeInfo = modes.find((m) => m.id === mode)!;
   const films = useFilmStyles(menu === 'style' || filmStyle !== '');
-  const styleLabel = filmStyle ? films.data?.styles.find((s) => s.slug === filmStyle)?.cn ?? filmStyle : '不用整片风格';
+  const styleLabel = filmStyle ? films.data?.styles.find((s) => styleKey(s) === filmStyle)?.cn ?? filmStyle : '不用整片风格';
 
   const addFiles = (list: FileList | File[]) => setFiles((current) => [...current, ...Array.from(list)].slice(0, 10));
 

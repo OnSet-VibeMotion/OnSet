@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/chouheiwa/articale-to-motion/internal/filmstyle"
+	"github.com/chouheiwa/articale-to-motion/internal/filmstyle/lemo"
 )
 
 func writeStudioJPEG(t *testing.T, path string, width, height int) {
@@ -40,14 +41,23 @@ func writeStudioJPEG(t *testing.T, path string, width, height int) {
 func TestFilmStyleEndpoints(t *testing.T) {
 	library := t.TempDir()
 	writeStudioFile(t, filepath.Join(library, "core", "lib.js"), "//")
-	first := filmstyle.Catalog()[0].Slug
-	// 风格库是前置资源：先看没准备好时海报报 missing、提示 am setup。
-	t.Setenv(filmstyle.LibraryEnv, filepath.Join(t.TempDir(), "absent"))
+	first := lemo.Catalog()[0].Slug
+	lemoSource := func(body map[string]any) map[string]any {
+		for _, item := range studioList(t, body["sources"]) {
+			if source := item.(map[string]any); source["id"] == lemo.SourceID {
+				return source
+			}
+		}
+		t.Fatalf("风格来源里没有 %s：%v", lemo.SourceID, body["sources"])
+		return nil
+	}
+	// 来源数据是前置资源：先看没准备好时报 ready=false、提示 am setup。
+	t.Setenv(lemo.LibraryEnv, filepath.Join(t.TempDir(), "absent"))
 	_, empty := startStudio(t, Config{ProjectPath: t.TempDir(), ConfigPath: filepath.Join(t.TempDir(), "projects.json")})
 	status, body := studioRequest(t, http.MethodGet, empty.URL+"/api/film-styles", "")
 	requireStudioStatus(t, status, http.StatusOK, body)
-	if body["posters"] != "missing" || !strings.Contains(body["posters_error"].(string), "am setup") {
-		t.Fatalf("风格库没准备好时应当报 missing 并指向 am setup：%v %v", body["posters"], body["posters_error"])
+	if source := lemoSource(body); source["ready"] != false || !strings.Contains(source["problem"].(string), "am setup") {
+		t.Fatalf("来源没准备好时应当报 ready=false 并指向 am setup：%v", source)
 	}
 
 	for _, slug := range []string{first, "impasto"} {
@@ -55,7 +65,7 @@ func TestFilmStyleEndpoints(t *testing.T) {
 		writeStudioFile(t, filepath.Join(library, "styles", slug, "demo", "index.html"), "<html>")
 		writeStudioJPEG(t, filepath.Join(library, "styles", slug, "poster.jpg"), 960, 540)
 	}
-	t.Setenv(filmstyle.LibraryEnv, library)
+	t.Setenv(lemo.LibraryEnv, library)
 
 	root := t.TempDir()
 	writeStudioFile(t, filepath.Join(root, "article-to-motion.conf"), "")
@@ -63,14 +73,14 @@ func TestFilmStyleEndpoints(t *testing.T) {
 
 	status, body = studioRequest(t, http.MethodGet, ts.URL+"/api/film-styles", "")
 	requireStudioStatus(t, status, http.StatusOK, body)
-	if styles := studioList(t, body["styles"]); len(styles) != filmstyle.PinnedStyleCount {
-		t.Fatalf("应当列出全部 %d 种风格：%d", filmstyle.PinnedStyleCount, len(styles))
+	if styles := studioList(t, body["styles"]); len(styles) != len(filmstyle.Catalog()) {
+		t.Fatalf("应当列出全部 %d 种风格：%d", len(filmstyle.Catalog()), len(styles))
 	}
-	if body["posters"] != "ready" || body["gallery"] == "" {
-		t.Fatalf("海报应当已就绪并附图鉴链接：%v %v", body["posters"], body["gallery"])
+	if source := lemoSource(body); source["ready"] != true || source["gallery"] == "" || len(studioList(t, source["categories"])) < 2 {
+		t.Fatalf("来源应当已就绪并附图鉴链接与分类：%v", source)
 	}
 
-	res, err := http.Get(ts.URL + "/api/film-styles/impasto/poster.jpg")
+	res, err := http.Get(ts.URL + "/api/film-styles/lemo-opuscar/impasto/poster.jpg")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +92,7 @@ func TestFilmStyleEndpoints(t *testing.T) {
 	if cfg, err := jpeg.DecodeConfig(bytes.NewReader(raw)); err != nil || cfg.Width != posterThumbWidth {
 		t.Fatalf("菜单里应当给缩略图（宽 %d）：%+v %v", posterThumbWidth, cfg, err)
 	}
-	for _, path := range []string{"/api/film-styles/no-such/poster.jpg", "/api/film-styles/watercolor/poster.jpg", "/api/film-styles/impasto/STYLE.md"} {
+	for _, path := range []string{"/api/film-styles/lemo-opuscar/no-such/poster.jpg", "/api/film-styles/lemo-opuscar/watercolor/poster.jpg", "/api/film-styles/lemo-opuscar/impasto/STYLE.md", "/api/film-styles/impasto/poster.jpg", "/api/film-styles/other/impasto/poster.jpg"} {
 		res, err := http.Get(ts.URL + path)
 		if err != nil {
 			t.Fatal(err)
