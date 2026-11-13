@@ -64,6 +64,20 @@ export function detectFlow(root: string, extra: readonly ExtraStation[] = []): F
   return recordedFlow(root, extra);
 }
 
+/**
+ * 插件的站进不进这个流程：带了整套流程（清单 flow）的插件，站点只属于它自己的流程，除非显式写了 replaces 或 after；
+ * 没带流程的插件照旧进每个流程（after 为空就接在最后——「给所有片子加一步」）。路线、提示词、读不出来时的判断都按它。
+ */
+export function joinsFlow(plugin: { id: string; hasFlow: boolean; replaces: string; after: string }, id: FlowID): boolean {
+  if (!plugin.hasFlow || id === `x:${plugin.id}`) return true;
+  return plugin.replaces !== '' || plugin.after !== '';
+}
+
+/** ExtraStation 进不进这个流程（joinsFlow）。 */
+export function extraJoins(x: ExtraStation, id: FlowID): boolean {
+  return joinsFlow({ id: x.station.id, hasFlow: !!x.flow, replaces: x.replaces, after: x.after }, id);
+}
+
 /** 路线上的一站，连同它属于哪个站。 */
 export interface RouteStop {
   station: string;
@@ -71,11 +85,12 @@ export interface RouteStop {
 }
 
 /**
- * 流程的路线：按站的先后展开站点，再放进插件的站（ExtraStation：内置插件与已装的第三方插件）。同一条路线里站点 id 重复直接报错。
+ * 流程的路线：按站的先后展开站点，再放进插件的站（ExtraStation：内置插件与已装的第三方插件；只放进这个流程的，见 joinsFlow）。同一条路线里站点 id 重复直接报错。
  */
 export function route(id: FlowID, extra: readonly ExtraStation[] = []): RouteStop[] {
   const out: RouteStop[] = [];
   const def = flow(id, extra);
+  extra = extra.filter((x) => extraJoins(x, id));
   for (const sid of def.stations) {
     const replacement = extra.find((x) => x.replaces === sid);
     const s = replacement ? replacement.station : station(sid, extra);

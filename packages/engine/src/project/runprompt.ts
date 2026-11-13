@@ -18,7 +18,7 @@ export interface RunPromptResult {
  * 按项目的流程组合出整片制作的提示词（flow.composeFlowPrompt）：流程只来自锁文件里的记录（没有记录直接报错），
  * 画幅取记录里的，第三方插件的阶段补充与说明按组合规则插进去。项目里不放提示词文件。
  *
- * 插件装在用户级：读不出来的插件只在它参与这个项目的制作时（流程是它带来的、它顶替或接进了这条路线）让开工报错，
+ * 插件装在用户级：读不出来的插件只在它参与这个项目的制作时（流程是它带来的、它顶替或接进了这条路线，flow.brokenParticipants）让开工报错，
  * 其余的放进 warnings，由调用方让用户看见。
  */
 export function composeProjectPrompt(root: string): { text: string; flow: flow.FlowID; name: string; warnings: string[] } {
@@ -29,12 +29,7 @@ export function composeProjectPrompt(root: string): { text: string; flow: flow.F
   if (own) throw new flow.MissingFlowRecordError(`这个项目用的是插件「${own.id}」带来的做法，但它现在读不出来：${own.message}`);
   const id = flow.detectFlow(root, extras);
   const def = flow.flow(id, extras);
-  const blocking = flow.brokenParticipants(
-    id,
-    loaded.problems,
-    def.stations,
-    flow.route(id, extras).map((r) => r.node),
-  );
+  const blocking = flow.brokenParticipants(id, loaded.problems, def.stations);
   if (blocking.length > 0) throw new Error(blocking.map((p) => p.message).join('\n'));
   const warnings = loaded.problems.map((p) => `${p.message}（这个项目用不到它的站，照常开工；它带的说明、技能与风格这次不在）`);
   // 流程自己的配置（例如歌曲讲解的 song.yaml）由登记它的插件核对：宿主不 import 任何功能包。

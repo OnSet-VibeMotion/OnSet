@@ -13,6 +13,7 @@ import path from 'node:path';
 import type { LoadedStation } from './installed';
 import { extraPrompt, insertBlock, orphanBlock } from './promptparts';
 import { allFlows, allStageTitles, allStations, appendedSections, flowPrompt, pluginSectionFile, sectionsDir } from './registered';
+import { joinsFlow } from './flow';
 import type { FlowID } from './types';
 
 const numerals = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
@@ -182,8 +183,9 @@ export function composeFlowPrompt(input: FlowComposeInput): string {
   // 第三方站的阶段补充：插在那个阶段的末尾（下一个「## 」开头的段落之前）。
   const orphans: string[] = [];
   const titles = allStageTitles();
-  for (const s of input.stations) {
-    if (s.builtin) continue;
+  // 带整套流程的插件只给自己的流程补说明（joinsFlow）。
+  const joined = input.stations.filter((s) => !s.builtin && joinsFlow({ id: s.manifest.id, hasFlow: !!s.manifest.flow, replaces: s.manifest.replaces, after: s.manifest.after }, input.flow));
+  for (const s of joined) {
     for (const ins of s.manifest.inserts) {
       const body = fs.readFileSync(path.join(s.dir, ins.file), 'utf8').trim();
       const start = parts.findIndex((p) => !p.raw && p.stage === ins.stage);
@@ -199,7 +201,7 @@ export function composeFlowPrompt(input: FlowComposeInput): string {
   if (orphans.length > 0) parts.push({ ref: '', raw: true, append: true, text: orphans.join('\n\n') });
   for (const ref of appended) parts.push({ ...builtinPart(ref), append: true });
   // 第三方站各自的说明接在最后。
-  const extra = extraPrompt(input.stations.filter((s) => !s.builtin));
+  const extra = extraPrompt(joined);
   if (extra !== '') parts.push({ ref: '', raw: true, append: true, text: extra });
   return composeParts(parts, opts);
 }

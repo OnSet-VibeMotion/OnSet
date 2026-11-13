@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -137,6 +138,57 @@ describe('plugin flows', () => {
     expect(detectFlow(root, stationExtras())).toBe('x:fake-publisher');
     removeStation('fake-publisher');
     expect(() => runPrompt(root, '')).toThrow('没有装这个插件');
+  });
+});
+
+describe('a plugin flow stays in its own flow', () => {
+  /** 假发布的一份拷贝，只带整套流程：不写 after、不顶替。 */
+  function flowOnly(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-ext-flow-only-'));
+    temps.push(dir);
+    fs.cpSync(fake, dir, { recursive: true });
+    const m = JSON.parse(fs.readFileSync(path.join(dir, 'am-station.json'), 'utf8')) as Record<string, unknown>;
+    delete m.after;
+    fs.writeFileSync(path.join(dir, 'am-station.json'), JSON.stringify(m));
+    return dir;
+  }
+  const sha = (t: string) => crypto.createHash('sha256').update(t).digest('hex');
+
+  it('leaves the routes and prompts of other flows exactly as without it', () => {
+    const speech = bare();
+    const beat = bare('beat');
+    const before = [speech, beat].map((root) => {
+      const id = detectFlow(root, stationExtras());
+      return { route: route(id, stationExtras()).map((r) => r.node.id), prompt: sha(runPrompt(root, '').prompt.toString('utf8')) };
+    });
+    installStation(`link:${flowOnly()}`);
+    const after = [speech, beat].map((root) => {
+      const id = detectFlow(root, stationExtras());
+      return { route: route(id, stationExtras()).map((r) => r.node.id), prompt: sha(runPrompt(root, '').prompt.toString('utf8')) };
+    });
+    expect(after).toEqual(before);
+    // 它自己的流程照常有它的站点、说明与阶段补充。
+    const own = bare('x:fake-publisher');
+    expect(route('x:fake-publisher', stationExtras()).map((r) => r.node.id)).toContain('auto-publish');
+    const text = runPrompt(own, '').prompt.toString('utf8');
+    expect(text).toContain('## 第三方站：假发布');
+    expect(text).toContain('### 第三方站「假发布」的补充');
+  });
+
+  it('when it cannot be read, only stops projects of its own flow', () => {
+    const dir = flowOnly();
+    installStation(`link:${dir}`);
+    const own = bare('x:fake-publisher');
+    const speech = bare();
+    fs.rmSync(dir, { recursive: true, force: true });
+    expect(() => runPrompt(own, '')).toThrow('它现在读不出来');
+    expect(runPrompt(speech, '').warnings).toHaveLength(1);
+  });
+
+  it('still joins other flows when it says where (after or replaces)', () => {
+    // 假发布本身写了 after: publish。
+    installStation(`link:${fake}`);
+    expect(route('speech', stationExtras()).some((r) => r.node.id === 'auto-publish')).toBe(true);
   });
 });
 

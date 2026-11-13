@@ -1,7 +1,7 @@
 export * from './types';
 export { builtinFlows, builtinStations, planRules, speechPrompt, stageTitles, tailStations } from './builtin';
 export { allFlows, allStageTitles, allStations, appendedSections, builtinFirstPages, flowPrompt, sectionsDir } from './registered';
-export { detectFlow, flow, gateFiles, MissingFlowRecordError, MissingPluginFlowError, recordedFlow, route, station, stationOfPath, type RouteStop } from './flow';
+export { detectFlow, extraJoins, flow, gateFiles, joinsFlow, MissingFlowRecordError, MissingPluginFlowError, recordedFlow, route, station, stationOfPath, type RouteStop } from './flow';
 export { chineseNumber, composeFlowPrompt, composeParts, composePrompt, readSection, type ComposeOptions, type FlowComposeInput, type PromptPart, type SectionReader } from './compose';
 export {
   brokenParticipants,

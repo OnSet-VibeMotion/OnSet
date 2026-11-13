@@ -7,7 +7,7 @@ import { treeDigest } from './digest';
 import { checkFiles, readManifest, sourceDir, stationsDir } from './fetch';
 import { readInstalled, type InstalledEntry, type LoadedStation } from './installed';
 import { toExtra } from './pages';
-import type { ExtraStation, FlowID, RouteNode } from './types';
+import type { ExtraStation, FlowID } from './types';
 
 /** 一个装了却读不出来的插件：本机没有、内容被改过、清单写坏了。 */
 export interface StationProblem {
@@ -60,16 +60,15 @@ export function stationExtras(env: Record<string, string | undefined> = process.
 
 /**
  * 读不出来的插件里，哪些参与了这个流程的制作：流程就是它带来的、它顶替了流程里的站、它的站点接进了这条路线
- * （接在路线里某个站点后面，或没写 after 接在最后）。凭的是装上时记下的 InstalledRole，不读坏掉的插件目录。
- * 参与的要让开工报错；其余只是看得见的提示。
+ * （写了 after，或没带流程的插件——它们接在每条路线最后；带流程又没写 after / replaces 的只属于自己的流程，见 joinsFlow）。
+ * 凭的是装上时记下的 InstalledRole，不读坏掉的插件目录。参与的要让开工报错；其余只是看得见的提示。
  */
-export function brokenParticipants(id: FlowID, problems: readonly StationProblem[], flowStations: readonly string[], routeNodes: readonly RouteNode[]): StationProblem[] {
+export function brokenParticipants(id: FlowID, problems: readonly StationProblem[], flowStations: readonly string[]): StationProblem[] {
   return problems.filter((p) => {
     if (!p.entry) return false;
     if (id === `x:${p.id}`) return true;
     const r = p.entry.role;
-    if (r.replaces !== '' && flowStations.includes(r.replaces)) return true;
-    if (r.replaces === '' && r.nodes && (r.after === '' || routeNodes.some((n) => n.id === r.after))) return true;
-    return false;
+    if (r.replaces !== '') return flowStations.includes(r.replaces);
+    return r.nodes && (r.after !== '' || !r.flow);
   });
 }
