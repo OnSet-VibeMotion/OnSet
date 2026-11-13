@@ -120,31 +120,3 @@ test('sends a scene quick action to the orchestrator', async ({ page, project })
   await expect(page.locator('.message.user').last()).toContainText('重做镜头 scene-001');
   await expect(page.locator('.done-line').last()).toContainText('已完成');
 });
-
-test('the crew mirrors what the orchestrator is doing', async ({ page, project }) => {
-  await openProject(page, project);
-  const crew = page.locator('#crew');
-  await expect(crew).toHaveCount(0);
-
-  // 读文件的调用还没有结果：小人在读，气泡只写文件名。
-  await page.locator('#prompt').fill('看看稿子');
-  await page.locator('#send').click();
-  await expect(crew).toHaveAttribute('data-mood', 'reading');
-  await expect(crew.locator('.crew-line')).toHaveText('读取 script-final.md');
-  await page.locator('#cancel-turn').click();
-  await expect(crew).toHaveAttribute('data-mood', 'stopped');
-
-  // 调 am 渲染镜头：在拍。假编排工具不真的起渲染，没有镜头在渲染时气泡写工具在做什么。
-  await page.locator('#prompt').fill('拍一下');
-  await page.locator('#send').click();
-  await expect(crew).toHaveAttribute('data-mood', 'filming');
-  await expect(crew.locator('.crew-line')).toHaveText('渲染镜头 scene-001');
-  await page.locator('#cancel-turn').click();
-  await expect(crew).toHaveAttribute('data-mood', 'stopped');
-
-  // 正常做完：收工，过一会儿退场。
-  await page.locator('#prompt').fill('把镜头提示词改成 after');
-  await page.locator('#send').click();
-  await expect(crew).toHaveAttribute('data-mood', 'done');
-  await expect(crew).toHaveCount(0, { timeout: 10_000 });
-});

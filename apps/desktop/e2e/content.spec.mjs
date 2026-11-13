@@ -127,7 +127,7 @@ test('scene "more" menu opens as a popover inside the window, above the timeline
   // 镜头有产物时菜单最长；窗口压矮，菜单不能被外层裁掉、也不能被时间线盖住。
   const { execFileSync } = await import('node:child_process');
   execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=1', '-pix_fmt', 'yuv420p', path.join(project.path, 'scenes', 'scene-001', 'out.mp4')]);
-  await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1100, 640));
+  await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.isResizable()).setSize(1100, 640));
   await openProject(page, project);
   await page.locator('[data-tab="scene"]').click();
   await page.locator('.scene-menu > summary').click();

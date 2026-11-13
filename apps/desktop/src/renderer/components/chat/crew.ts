@@ -1,13 +1,15 @@
+import { useEffect, useRef, useState } from 'react';
 import type { PermissionAsk, Scene } from '../../types';
 import { describeTool, type TurnBlock } from './model';
 
 /**
- * 对话底部的小人此刻在做什么。只由会话事件推出来（`buildBlocks` 整理好的最后一轮），
+ * 桌宠（场记小人）此刻在做什么。只由会话事件推出来（`buildBlocks` 整理好的最后一轮），
  * 不另装 hooks、不读 transcript：五家编排工具的流早已统一成同一套事件。
  *
  * 事件里没有「思考中」这一项：没有进行中的工具调用、也没有新的思考片段时，按「在想下一步」处理。
  */
 export type CrewMood =
+  | 'idle'
   | 'thinking'
   | 'reading'
   | 'writing'
@@ -24,7 +26,12 @@ export interface CrewState {
   line: string;
 }
 
-/** 一轮结束后小人还留多久（毫秒），让用户看到收工。 */
+/** 发给桌宠窗口的一份：状态加上是哪个项目。没有进行中的一轮时发 null，桌宠回到待命。 */
+export interface CrewSignal extends CrewState {
+  project: string;
+}
+
+/** 一轮结束后小人还留多久（毫秒）显示收工，再回到待命。 */
 export const crewLinger = 6000;
 
 /** 读、写、跑命令之外，这些 am 工具是在「拍」：渲染、拼接、复查、等渲染任务，以及 HyperFrames 的 render 子命令。 */
@@ -82,4 +89,29 @@ function shorten(target: string): string {
 function trimVerb(text: string): string {
   const short = text.replace(/^(正在|开始)/, '');
   return short.length > 16 ? short.slice(0, 15) + '…' : short;
+}
+
+/**
+ * 主窗口把小人的状态报给主进程，主进程转给桌宠窗口（main/pet.ts）。只在内容变了时发；
+ * 一轮结束后的收工要按时退场，所以那段时间里到点再算一次。离开对话（换项目、回首页）时发 null。
+ */
+export function useCrewBroadcast(turn: TurnBlock | undefined, asks: PermissionAsk[], scenes: Scene[], project: string): void {
+  const [, setTick] = useState(0);
+  const sent = useRef<string | null>(null);
+  const state = crewState(turn, asks, scenes, Date.now());
+  const signal: CrewSignal | null = state ? { ...state, project } : null;
+  const key = JSON.stringify(signal);
+  const ending = turn?.end && state ? turn.end.time : '';
+  useEffect(() => {
+    if (!ending) return;
+    const left = Date.parse(ending) + crewLinger - Date.now();
+    const timer = window.setTimeout(() => setTick((t) => t + 1), Math.max(0, left) + 100);
+    return () => window.clearTimeout(timer);
+  }, [ending]);
+  useEffect(() => {
+    if (key === sent.current) return;
+    sent.current = key;
+    window.am?.setCrew?.(JSON.parse(key));
+  }, [key]);
+  useEffect(() => () => window.am?.setCrew?.(null), []);
 }

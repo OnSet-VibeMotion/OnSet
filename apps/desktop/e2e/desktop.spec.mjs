@@ -16,7 +16,7 @@ async function clickMenu(electronApp, top, label) {
 
 /** 直接向窗口发 am:menu，与菜单项发的是同一条消息。 */
 async function sendMenu(electronApp, action) {
-  await electronApp.evaluate(({ BrowserWindow }, action) => BrowserWindow.getAllWindows()[0].webContents.send('am:menu', action), action);
+  await electronApp.evaluate(({ BrowserWindow }, action) => BrowserWindow.getAllWindows().find((w) => w.isResizable()).webContents.send('am:menu', action), action);
 }
 
 test('native menu opens a folder, switches steps and goes home', async ({ electronApp, page, project, sandbox }) => {
@@ -86,7 +86,7 @@ test('dropping a file on the composer attaches it', async ({ page, project }) =>
 async function recordNativeCalls(electronApp, focused) {
   await electronApp.evaluate(({ app, BrowserWindow, Notification }, focused) => {
     const record = (globalThis.__amE2E = { notes: [], badges: [] });
-    const win = BrowserWindow.getAllWindows()[0];
+    const win = BrowserWindow.getAllWindows().find((w) => w.isResizable());
     BrowserWindow.getFocusedWindow = () => (focused ? win : null);
     Notification.prototype.show = function () {
       record.notes.push({ title: this.title, body: this.body });

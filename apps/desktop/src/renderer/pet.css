@@ -1,0 +1,166 @@
+/*
+ * 桌宠窗口（Pet.tsx）：透明无边框的小窗，里面一张放映室色的卡片是工作室，头顶是气泡。
+ * 窗口本身透明，卡片以外的地方能点穿到桌面上——卡片与气泡之外不画任何东西。
+ */
+html.pet-window,
+html.pet-window body {
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}
+
+.pet {
+  /* 小人与工作室的色板：象牙白、暖灰、木色与一种黄铜色，「在录」那一点红是唯一的例外。 */
+  --px-coat: #d9d1c3;
+  --px-coat-shade: #9d9485;
+  --px-skin: #e4c4a2;
+  --px-skin-shade: #bf9a78;
+  --px-hair: #5a4330;
+  --px-trousers: #5a5148;
+  --px-shoe: #3f3832;
+  --px-frame: #6f6557;
+  --px-frame-deep: #2a2520;
+  --px-metal: #3a342d;
+  --px-wood: #5c4632;
+  --px-wood-deep: #3b2d21;
+  --px-shelf-back: #15120f;
+  --px-floor: #16130f;
+  --px-floor-edge: #2a241d;
+  position: relative;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 4px 6px;
+  font-family: var(--sans);
+}
+
+/* 卡片：整张都能拖动窗口，按钮除外。 */
+.pet .pet-card {
+  -webkit-app-region: drag;
+  position: relative;
+  padding: 6px 6px 0;
+  border-radius: 14px;
+  border: 1px solid var(--line-strong);
+  background:
+    radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 60%),
+    linear-gradient(180deg, var(--raised), var(--bg));
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 color-mix(in srgb, var(--text) 6%, transparent);
+  overflow: hidden;
+}
+.pet .pet-room {
+  display: block;
+  image-rendering: pixelated;
+  border-radius: 8px;
+}
+.pet .pet-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 22px;
+  padding: 0 4px 0 6px;
+}
+.pet .pet-project {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pet .pet-close {
+  -webkit-app-region: no-drag;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 160ms;
+}
+.pet .pet-card:hover .pet-close {
+  opacity: 1;
+}
+.pet .pet-close:hover {
+  background: var(--chip);
+  color: var(--text);
+}
+
+/* 气泡：浮在卡片上方，尾巴指着小人，跟着小人走。 */
+.pet .pet-bubble {
+  -webkit-app-region: drag;
+  position: absolute;
+  bottom: 186px;
+  max-width: 260px;
+}
+.pet .pet-line {
+  position: relative;
+  display: block;
+  padding: 5px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+.pet .pet-bubble::after {
+  content: '';
+  position: absolute;
+  left: var(--tail, 50%);
+  bottom: -4px;
+  width: 7px;
+  height: 7px;
+  margin-left: -4px;
+  background: var(--panel);
+  border-right: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+  transform: rotate(45deg);
+}
+.pet[data-mood='idle'] .pet-line {
+  color: var(--faint);
+}
+.pet[data-mood='waiting'] .pet-line,
+.pet[data-mood='waiting'] .pet-bubble::after {
+  border-color: var(--accent-line);
+}
+.pet[data-mood='waiting'] .pet-line {
+  color: var(--accent-text);
+}
+.pet[data-mood='failed'] .pet-line {
+  color: var(--bad);
+}
+
+.pet .px-brass { fill: var(--accent); }
+.pet .px-brass-deep { fill: color-mix(in srgb, var(--accent) 62%, var(--bg)); }
+.pet .px-brass-light { fill: var(--accent-text); }
+.pet .px-skin { fill: var(--px-skin); }
+.pet .px-skin-shade { fill: var(--px-skin-shade); }
+.pet .px-eye { fill: var(--accent-ink); }
+.pet .px-hair { fill: var(--px-hair); }
+.pet .px-coat { fill: var(--px-coat); }
+.pet .px-coat-shade { fill: var(--px-coat-shade); }
+.pet .px-trousers { fill: var(--px-trousers); }
+.pet .px-shoe { fill: var(--px-shoe); }
+.pet .px-frame { fill: var(--px-frame); }
+.pet .px-frame-deep { fill: var(--px-frame-deep); }
+.pet .px-metal { fill: var(--px-metal); }
+.pet .px-screen { fill: var(--well); }
+.pet .px-paper { fill: var(--text); }
+.pet .px-ink { fill: var(--muted); }
+.pet .px-rec { fill: var(--bad); }
+.pet .px-wood { fill: var(--px-wood); }
+.pet .px-wood-deep { fill: var(--px-wood-deep); }
+.pet .px-shelf-back { fill: var(--px-shelf-back); }
+.pet .px-floor { fill: var(--px-floor); }
+.pet .px-floor-edge { fill: var(--px-floor-edge); }
+.pet .px-glow { stop-color: var(--accent); }

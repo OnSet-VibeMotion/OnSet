@@ -4,6 +4,7 @@ import path from 'node:path';
 import { newServer, type Server } from '@am/engine/studio';
 import { assetsDir, browserPath, browserScript, npmCLI, shimScript, writeScript } from './clishim';
 import { installMenu } from './menu';
+import { createPet, installPetIPC, mainWindow, petPreferred, setPetVisible } from './pet';
 import { loginShellPath } from './shellpath';
 
 /*
@@ -127,7 +128,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    const win = BrowserWindow.getAllWindows()[0];
+    const win = mainWindow();
     if (win) {
       if (win.isMinimized()) win.restore();
       win.focus();
@@ -161,16 +162,19 @@ if (!app.requestSingleInstanceLock()) {
       return;
     }
     protocol.handle(SCHEME, handleRequest);
-    installMenu();
+    const menu = (visible: boolean) => installMenu({ visible, toggle: setPetVisible });
+    installPetIPC();
     // 界面报来的任务数与完成通知。通知只在没有窗口在前台时弹：人就在看着的时候不打扰。
     ipcMain.on('am:badge', (_event, count: number) => {
       app.setBadgeCount(Math.max(0, Math.trunc(Number(count) || 0)));
     });
     ipcMain.on('am:notify', (_event, message: { title?: string; body?: string }) => {
-      if (BrowserWindow.getFocusedWindow() || !Notification.isSupported()) return;
+      // 桌宠窗口点了也会成为焦点窗口，但那不等于人在看客户端。
+    const focused = BrowserWindow.getFocusedWindow();
+    if ((focused && focused === mainWindow()) || !Notification.isSupported()) return;
       const note = new Notification({ title: String(message?.title ?? 'ArticleToMotion'), body: String(message?.body ?? '') });
       note.on('click', () => {
-        const win = BrowserWindow.getAllWindows()[0];
+        const win = mainWindow();
         if (win) {
           if (win.isMinimized()) win.restore();
           win.show();
@@ -180,13 +184,23 @@ if (!app.requestSingleInstanceLock()) {
       note.show();
     });
     createWindow();
+    // 桌宠在主窗口之后建：端到端测试的 firstWindow() 拿到的仍是主窗口。
+    createPet({ url: `${ORIGIN}/pet`, preload: path.join(__dirname, 'preload.js'), background, onVisibility: menu });
+    menu(petPreferred());
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      // 桌宠窗口一直在，不能按「还有没有窗口」判断。
+      if (!mainWindow()) createWindow();
     });
   });
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
+  });
+  // 桌宠窗口不算：主窗口关掉时，非 macOS 照常退出。
+  app.on('browser-window-created', (_event, win) => {
+    win.on('closed', () => {
+      if (process.platform !== 'darwin' && !mainWindow()) app.quit();
+    });
   });
   app.on('will-quit', () => backend?.shutdown());
 }

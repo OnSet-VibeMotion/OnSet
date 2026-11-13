@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, Menu, type MenuItemConstructorOptions } from 'electron';
+import { mainWindow } from './pet';
 
 /**
  * 原生菜单。菜单项只发「做什么」给当前窗口的界面（am:menu），界面用它已有的状态与接口去做：
@@ -6,19 +7,31 @@ import { app, BrowserWindow, dialog, Menu, type MenuItemConstructorOptions } fro
  */
 export type MenuAction = { type: 'new' } | { type: 'home' } | { type: 'open'; path: string } | { type: 'step'; index: number } | { type: 'settings' } | { type: 'panel' };
 
+/** 菜单动作发给客户端窗口；焦点在桌宠上时也发给主窗口。 */
+function target(): BrowserWindow | undefined {
+  const focused = BrowserWindow.getFocusedWindow();
+  return focused && focused === mainWindow() ? focused : mainWindow();
+}
+
 function send(action: MenuAction): void {
-  const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  const win = target();
   win?.webContents.send('am:menu', action);
 }
 
 async function openFolder(): Promise<void> {
-  const win = BrowserWindow.getFocusedWindow() ?? undefined;
+  const win = target();
   const options = { title: '打开项目文件夹', properties: ['openDirectory', 'createDirectory'] as ('openDirectory' | 'createDirectory')[] };
   const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
   if (!result.canceled && result.filePaths[0]) send({ type: 'open', path: result.filePaths[0] });
 }
 
-export function installMenu(): void {
+/** 桌宠的开关：菜单「窗口 → 场记桌宠」，勾选状态随显示与否重建菜单。 */
+export interface PetMenu {
+  visible: boolean;
+  toggle: (visible: boolean) => void;
+}
+
+export function installMenu(pet?: PetMenu): void {
   const steps = ['口播稿', '镜头', '成片', '发布'];
   const template: MenuItemConstructorOptions[] = [
     ...(process.platform === 'darwin'
@@ -62,7 +75,21 @@ export function installMenu(): void {
         { role: 'togglefullscreen', label: '全屏' },
       ],
     },
-    { role: 'windowMenu', label: '窗口' },
+    {
+      label: '窗口',
+      submenu: [
+        { role: 'minimize', label: '最小化' },
+        { role: 'zoom', label: '缩放' },
+        ...(pet
+          ? ([
+              { type: 'separator' },
+              { label: '场记桌宠', type: 'checkbox', checked: pet.visible, click: (item) => pet.toggle(item.checked) },
+            ] as MenuItemConstructorOptions[])
+          : []),
+        { type: 'separator' },
+        { role: 'front', label: '前置全部窗口' },
+      ],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   app.setAboutPanelOptions({ applicationName: 'ArticleToMotion', copyright: '把文章做成竖屏动画视频' });

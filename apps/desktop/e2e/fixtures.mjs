@@ -85,6 +85,17 @@ export const test = base.extend({
 
 export { expect };
 
+/**
+ * 桌宠窗口（main/pet.ts）：后台运行时不显示，但照样建、照样收状态。
+ * 主进程里要找主窗口时用 `BrowserWindow.getAllWindows().find((w) => w.isResizable())`：桌宠窗口不能调大小，
+ * 而它刚建好、还没载入时 URL 是空的，按 URL 认不出来。
+ */
+export async function petPage(electronApp) {
+  const find = () => electronApp.windows().find((win) => win.url().endsWith('/pet'));
+  await expect.poll(() => !!find()).toBe(true);
+  return find();
+}
+
 /** 经「切换项目」对话框打开 fixture 里的项目。 */
 export async function openProject(page, project) {
   await page.locator('#open-project-trigger').click();

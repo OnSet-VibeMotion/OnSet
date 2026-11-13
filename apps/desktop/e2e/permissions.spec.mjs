@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { test, expect, openProject } from './fixtures.mjs';
+import { test, expect, openProject, petPage } from './fixtures.mjs';
 
 // 编排工具（claude）在客户端里遇到白名单外的命令时，经 am studio permission-mcp 在输入框上方弹卡片问用户。
 // 假 claude 的「要批准」真的启动 --mcp-config 里的审批服务，请求 npm install three。
 
-test('asks before running a command outside the allowlist and remembers "always"', async ({ page, project }) => {
+test('asks before running a command outside the allowlist and remembers "always"', async ({ page, project, electronApp }) => {
   await openProject(page, project);
 
   await page.locator('#prompt').fill('要批准：装一下 three');
@@ -14,9 +14,10 @@ test('asks before running a command outside the allowlist and remembers "always"
   await expect(card).toBeVisible();
   await expect(card.locator('.permission-command')).toHaveText('npm install three');
   await expect(card).toContainText('安装 three.js');
-  // 场记小人举着场记板等你：气泡与卡片说的是同一件事。
-  await expect(page.locator('#crew')).toHaveAttribute('data-mood', 'waiting');
-  await expect(page.locator('#crew .crew-line')).toHaveText('等你批准');
+  // 桌宠里的场记小人走到台前举着场记板等你：气泡与卡片说的是同一件事。
+  const pet = await petPage(electronApp);
+  await expect(pet.locator('#crew')).toHaveAttribute('data-mood', 'waiting');
+  await expect(pet.locator('#crew .pet-line')).toHaveText('等你批准');
   await card.locator('button', { hasText: '以后都允许' }).click();
   await expect(card).toHaveCount(0);
   await expect(page.locator('.message.assistant').last()).toContainText('behavior:allow');

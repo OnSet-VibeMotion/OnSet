@@ -31,8 +31,7 @@ import {
 import { applySuggestion, findToken, mentionAttachments, parseCommand, slashCommands, suggest, type SlashCommand, type Suggestion } from './chat/complete';
 import '../chat.css';
 import { RenderWatch } from './RenderActivity';
-import { Crew } from './Crew';
-import { crewState } from './chat/crew';
+import { useCrewBroadcast } from './chat/crew';
 
 // SSE 的 event 字段就是事件种类，EventSource 只把具名事件派给对应监听器，所以要逐个注册。
 const kinds: EventKind[] = [
@@ -130,8 +129,8 @@ export function Chat(props: Props) {
   const lastTurn = [...blocks].reverse().find((b): b is TurnBlock => b.kind === 'turn');
   const running = !!lastTurn && !lastTurn.end;
   const plan = running ? lastTurn?.plan ?? null : null;
-  // 小人退场后不会再触发重绘，留着的空白要等下一次重绘才收回，无妨。
-  const crewShown = crewState(lastTurn, asks, props.scenes, Date.now()) !== null;
+  // 桌宠的场记小人跟着这一轮走（main/pet.ts）。
+  useCrewBroadcast(lastTurn, asks, props.scenes, props.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? '');
   const now = useNow(running);
 
   // 这一轮进行中照样能发：消息排到这一轮之后。别的写任务占着项目时不能发。
@@ -438,7 +437,7 @@ export function Chat(props: Props) {
       </header>
 
       <div className={'chat-log-wrap' + (scrolled ? ' edge' : '')}>
-        <div className={'chat-log' + (plan ? ' has-plan' : '') + (crewShown ? ' has-crew' : '')} id="messages" ref={scroller} onScroll={onScroll}>
+        <div className={'chat-log' + (plan ? ' has-plan' : '')} id="messages" ref={scroller} onScroll={onScroll}>
           {events.length === 0 && (
             <div className="intro">
               <h3>说说要做什么</h3>
@@ -472,7 +471,6 @@ export function Chat(props: Props) {
           ))}
         </div>
         <div className="chat-float">
-          <Crew turn={lastTurn} asks={asks} scenes={props.scenes} />
           {!atBottom ? (
             <button className="float-pill jump" onClick={jumpToLatest}>
               <Icon name="down" size={12} />

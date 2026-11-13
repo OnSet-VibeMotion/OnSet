@@ -18,4 +18,17 @@ contextBridge.exposeInMainWorld('am', {
   notify(title: string, body: string): void {
     ipcRenderer.send('am:notify', { title, body });
   },
+  /** 场记小人此刻的状态（主窗口发，桌宠窗口收；见 main/pet.ts）。 */
+  setCrew(state: unknown): void {
+    ipcRenderer.send('am:crew', state);
+  },
+  onCrew(callback: (state: unknown) => void): () => void {
+    const listener = (_event: unknown, state: unknown) => callback(state);
+    ipcRenderer.on('am:crew', listener);
+    return () => ipcRenderer.removeListener('am:crew', listener);
+  },
+  /** 桌宠窗口的动作：focus 回到客户端，hide 收起桌宠。 */
+  pet(action: 'focus' | 'hide'): void {
+    ipcRenderer.send('am:pet', action);
+  },
 });
