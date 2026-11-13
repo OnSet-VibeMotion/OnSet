@@ -355,3 +355,56 @@ test('files a plugin op writes outside what it declared are shown as a warning',
   await expect(host.locator('.station-scope')).toContainText('notes/scribble.txt');
   await page.screenshot({ path: test.info().outputPath('station-scope-page.png') });
 });
+
+test('a third-party station that declares its state says when it waits for you, and its next-step buttons work', async ({ page, project }) => {
+  // 假发布只用清单顶替内置「发布」：并进 declared-state.json（站点读 publish.md 的 publish_status）。
+  const dir = test.info().outputPath('declared-publisher');
+  fs.cpSync(fake, dir, { recursive: true });
+  const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'am-station.json'), 'utf8'));
+  const patch = JSON.parse(fs.readFileSync(path.join(dir, 'declared-state.json'), 'utf8'));
+  manifest.replaces = patch.replaces;
+  delete manifest.after;
+  delete manifest.flow;
+  Object.assign(manifest.nodes[0], patch.node);
+  fs.writeFileSync(path.join(dir, 'am-station.json'), JSON.stringify(manifest, null, 2));
+
+  // 试听确认过（前面的站都算过了），发布信息只差人工检查。
+  fs.mkdirSync(path.join(project.path, 'production'), { recursive: true });
+  fs.writeFileSync(path.join(project.path, 'production', 'approval.json'), '{"approved_at":"2026-11-01T00:00:00Z"}');
+  fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: pending_manual_checks\n---\n');
+  fs.writeFileSync(
+    path.join(project.path, 'article-to-motion.flow.json'),
+    JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' }, stations: [{ id: 'fake-publisher', version: '0.1.0', source: `link:${dir}`, commit: '', digest: '' }] }),
+  );
+  await openProject(page, project);
+
+  const progress = await api(page, '/api/progress');
+  expect(progress.body.current).toBe('auto-publish');
+  expect(progress.body.waiting_on).toBe('user');
+  const strip = page.locator('#progress-strip');
+  await expect(strip).toContainText('现在 · 自动发布');
+  await expect(strip).toContainText('还剩人工检查，等你处理');
+  await expect(strip).toHaveClass(/waiting/);
+
+  const card = page.locator('#next-step');
+  await expect(card).toContainText('发布前还剩几项人工检查');
+  await page.screenshot({ path: test.info().outputPath('declared-next-step.png') });
+  // 填进输入框。
+  await card.getByRole('button', { name: '核对完了' }).click();
+  await expect(page.locator('#prompt')).toHaveValue('发布前的人工检查我核对完了：');
+  // 插件的操作：先在卡片上问一次，点「执行」才跑。
+  await card.getByRole('button', { name: '先记一笔' }).click();
+  const confirm = card.getByRole('alertdialog', { name: '确认执行' });
+  await expect(confirm).toContainText('执行插件操作「顺手记一笔（测试用：会写一个没声明的文件）」？');
+  await confirm.getByRole('button', { name: '取消' }).click();
+  await expect(confirm).toHaveCount(0);
+  const note = path.join(project.path, 'notes', 'scribble.txt');
+  expect(fs.existsSync(note)).toBe(false);
+  await card.getByRole('button', { name: '先记一笔' }).click();
+  await confirm.getByRole('button', { name: '执行' }).click();
+  await expect.poll(() => fs.existsSync(note)).toBe(true);
+
+  // 发布信息改成 ready：这一站做完，路线走完。
+  fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: ready\n---\n');
+  await expect.poll(async () => (await api(page, '/api/progress')).body.stations.find((s) => s.id === 'auto-publish').status).toBe('done');
+});
