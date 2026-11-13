@@ -5,7 +5,6 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   GuideFile,
-  LegacySkillName,
   RootEnv,
   StyleFile,
   categories,
@@ -85,29 +84,23 @@ describe('filmstyle', () => {
     expect(keys).toContain('AM_TEST_ALPHA');
   });
 
-  it('enforces the contract and replaces the legacy directory', () => {
+  it('enforces the contract and replaces the default style', () => {
     const project = tempDir();
     const broken = lookup('broken/nope');
     const err = errorOf(() => install({ projectDir: project, style: broken }));
     expect(err?.message).toContain(GuideFile);
     expect(fs.existsSync(skillDir(project))).toBe(false);
 
-    // 旧版只有 lemo-opuscar 时装出的目录：照样认得，装新风格时被换掉。
-    const legacy = path.join(project, '.agents', 'skills', LegacySkillName);
-    fs.mkdirSync(legacy, { recursive: true });
-    fs.writeFileSync(path.join(legacy, 'lemo-upstream.json'), '{"commit":"abc","slug":"impasto","cn":"油画厚涂","en":"Impasto"}');
+    install({ projectDir: project, style: lookup('beta/ink') });
     let { manifest, ok } = installed(project);
     expect(ok).toBe(true);
-    expect(manifest.legacy).toBe(true);
-    expect(manifestKey(manifest)).toBe('lemo-opuscar/impasto');
-    expect(manifest.version).toBe('abc');
-    expect(installedDir(project)).toBe(legacy);
+    expect(manifestKey(manifest)).toBe('beta/ink');
+    expect(installedDir(project)).toBe(skillDir(project));
 
     const ink = lookup('alpha/ink');
     expect(errorOf(() => install({ projectDir: project, style: ink }))?.message).toContain('--replace');
     const result = install({ projectDir: project, style: ink, replace: true });
-    expect(result.replaced).toBe('lemo-opuscar/impasto');
-    expect(fs.existsSync(legacy)).toBe(false);
+    expect(result.replaced).toBe('beta/ink');
     ({ manifest } = installed(project));
     expect(manifest.source).toBe('alpha');
     expect(manifest.version).toBe('v1');

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import * as filmstyle from '../filmstyle';
 import { fingerprint, resetDigestCache } from './record';
 import { buildPrompt, load } from './scene';
-import { FilmStyleEnterKey, FilmStyleExitKey, FilmStyleOwnKey, filmStyleSection, rendererAccess, resolveAllSkills, resolveFilmStyle } from './skills';
+import { FilmStyleEnterKey, FilmStyleExitKey, FilmStyleOwnKey, rendererAccess, resolveAllSkills } from './skills';
 import { newTiming, zeroHandoff, type Handoff } from './timing';
 import { containsString, tempDir } from './testsupport';
 
@@ -53,20 +53,6 @@ describe('film style', () => {
     resetDigestCache();
     const changed = fingerprint(s, 'claude', resolved);
     expect(changed.parts!['skill:' + filmstyle.SkillName], 'STYLE.md 变了，整片风格那一项应当跟着变').not.toBe(withStyle.parts!['skill:' + filmstyle.SkillName]);
-  });
-
-  // 只有一个来源时装出的旧目录（lemo-film-style）照样认，提示词指向它。
-  it('resolves the legacy directory', () => {
-    const root = tempDir();
-    const sceneDir = path.join(root, 'scenes', 'scene-001');
-    fs.mkdirSync(sceneDir, { recursive: true });
-    const legacy = path.join(root, '.agents', 'skills', filmstyle.LegacySkillName);
-    fs.mkdirSync(legacy, { recursive: true });
-    fs.writeFileSync(path.join(legacy, 'SKILL.md'), 'x');
-    fs.writeFileSync(path.join(legacy, 'STYLE.md'), 'x');
-    const skills = resolveFilmStyle(sceneDir);
-    expect(skills, '应当认得旧目录').toBe(path.join(root, '.agents', 'skills'));
-    expect(filmStyleSection(skills, false), '提示词应当指向旧目录').toContain(legacy);
   });
 
   // 一个项目装几种风格时：不写 film_style 的镜头照旧用默认风格（提示词与指纹逐字不变），

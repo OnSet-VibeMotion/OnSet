@@ -407,8 +407,7 @@ export function styleShiftSection(s: SceneFilmInput, resolved: Record<string, st
 
 /**
  * 从镜头目录逐级向上找项目里的整片风格，返回它所在的技能目录
- * （.agents/skills 的绝对路径）；没有时返回空串。认新目录（filmstyle.SkillName）与
- * 只有一个来源时的旧目录（filmstyle.LegacySkillName）。
+ * （.agents/skills 的绝对路径）；没有时返回空串。
  *
  * 只找项目级，不找家目录：整片风格是一个项目的选择，家目录里的一份会悄悄套到
  * 本机所有项目上。它不进 registeredSkills——那张表的契约是「解析不到时退回按
@@ -423,12 +422,10 @@ export function resolveFilmStyle(sceneDir: string): string {
   return '';
 }
 
-/** 技能目录里的整片风格目录（新目录优先）；没有时为空。 */
+/** 技能目录里的整片风格目录；没有时为空。 */
 function filmStyleDir(skillsDir: string): string {
-  for (const name of [filmstyle.SkillName, filmstyle.LegacySkillName]) {
-    if (hasSkill(skillsDir, name, [filmstyle.GuideFile, filmstyle.StyleFile])) return path.join(skillsDir, name);
-  }
-  return '';
+  const name = filmstyle.SkillName;
+  return hasSkill(skillsDir, name, [filmstyle.GuideFile, filmstyle.StyleFile]) ? path.join(skillsDir, name) : '';
 }
 
 /**

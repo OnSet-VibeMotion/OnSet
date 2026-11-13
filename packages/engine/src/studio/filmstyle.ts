@@ -45,7 +45,7 @@ export function styleJSON(style: filmstyle.Style): Record<string, unknown> {
   };
 }
 
-/** Manifest 按 Go struct 的字段顺序写出（legacy 是 json:"-"）。 */
+/** Manifest 按字段顺序写出。 */
 function manifestJSON(manifest: filmstyle.Manifest): Record<string, unknown> {
   return {
     source: manifest.source,
