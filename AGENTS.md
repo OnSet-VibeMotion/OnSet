@@ -462,6 +462,17 @@ AM_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run --root 
 
 收录门槛是「有可非交互调用的 CLI，且凭据不必落进项目文件」。写进提示词的命令要实测过；跑不了的（没有账号）照官方文档写，并让编排工具先打印返回结构再解析。没有自带字级时间戳的路径，`voice.srt` 一律由强制对齐生成，不拿句级时间戳凑。
 
+## 音色库
+
+`packages/engine/src/voice` 是用户级的音色库（`<数据目录>/am/voices`，`AM_VOICES_DIR` 覆盖），所有项目共用：每个音色是 `reference.wav`（经 mediaprobe 转成 24kHz 单声道，3–30 秒）加逐字一致的文字稿，`library.json` 记默认音色。Breeze 配音时从它克隆（`--ref_audio` / `--ref_text`），项目里只记音色名（`production-config.json` 的 `ttsVoice`、角色包的 `voice.breeze.voiceId`）。
+
+| 约定 | 原因 |
+|---|---|
+| 正式配音一律克隆，描述（`--instruct`）只用来设计新声音的试听 | 2026-11 实测（Resemblyzer 余弦）：同一句描述三次生成只有 0.69 / 0.69 / 0.82，听起来像换了人；从参考音频克隆新文案 0.93 / 0.89 |
+| 编排工具只有 `voice_list` / `voice_get` / `voice_save` / `voice_default`（`packages/cli/src/voice_cmd.ts`），删除只在客户端的音色页（`DELETE /api/voices/{名字}`）；`voice_save` 同名不覆盖，要 `overwrite` | 音色是用户长期积累的声音，一句话删掉或顶掉就找不回来。`voice_cmd.test.ts` 的「no way to delete a voice」钉着 |
+| 音色页（`Voices.tsx`，后端 `studio/voices.ts`）在进程里直接读写音色库，不占项目写锁、不进轮次快照；上传录音先走 `/api/uploads` 再转存 | 与安装页、记忆面板相同：写的是用户级目录，不是项目文件 |
+| `AM_VOICES_DIR` 经 `childEnvironment` 显式传下去，并进 `orchestratorAccess` 的 `writableDirs`；测试的 testutil / testsupport / e2e fixtures 都指到临时目录 | 理由同记忆库：子进程会算出另一个目录，codex 沙箱写不进去；测试不能动开发者真实积累的声音 |
+
 ## 子进程环境
 
 `config.childEnvironment`（`packages/engine/src/config/config.ts`）在安全模式下只透传白名单变量。`USER` / `LOGNAME` / `SHELL` 不是凭据但必须保留——macOS 上 claude CLI 缺 `USER` 就读不到 Keychain 登录态，报错却是「Not logged in」，与权限隔离毫无关联，极难排查。

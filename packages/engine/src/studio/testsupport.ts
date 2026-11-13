@@ -28,6 +28,8 @@ process.env.AM_BROWSER = fakeBrowser(cli);
 // am setup 下载的工具目录指到空目录：开发机上 ~/.local/share/am/bin 里真实的 ffmpeg、mmx 不能混进测试。
 process.env.AM_BIN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-bin-test-'));
 process.env[CLIDirEnv] = cli;
+// 音色库同理：用户积累的声音不能被测试写进或删掉。
+process.env.AM_VOICES_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-voices-test-'));
 setInstallOfficialSkills(async () => {});
 
 const temps: string[] = [];

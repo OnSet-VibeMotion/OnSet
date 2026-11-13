@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 /*
  * 客户端端到端测试的公共部分。
  *
- * 每个用例一套临时目录：HOME、userData（AM_DESKTOP_USER_DATA）、项目登记（AM_STUDIO_CONFIG）、记忆库（AM_MEMORY_DIR），
+ * 每个用例一套临时目录：HOME、userData（AM_DESKTOP_USER_DATA）、项目登记（AM_STUDIO_CONFIG）、记忆库（AM_MEMORY_DIR）、音色库（AM_VOICES_DIR），
  * 测试不碰 ~/.local/share/am、~/Library/Application Support/ArticleToMotion 与真实的项目登记。
  * PATH 最前面是 e2e/fake-bin（假 claude 与只用来显示「已安装」的 codex），AM_DESKTOP_KEEP_PATH=1 让主进程不再把登录 shell 的
  * PATH 并到前面——否则真实的 claude 会被先找到。
@@ -26,6 +26,7 @@ export const test = base.extend({
       home: path.join(root, 'home'),
       userData: path.join(root, 'user-data'),
       memory: path.join(root, 'memory'),
+      voices: path.join(root, 'voices'),
       registry: path.join(root, 'config', 'projects.json'),
     };
     for (const dir of [dirs.home, dirs.userData, dirs.memory, path.dirname(dirs.registry)]) fs.mkdirSync(dir, { recursive: true });
@@ -61,6 +62,7 @@ export const test = base.extend({
       AM_DESKTOP_BACKGROUND: '1',
       AM_STUDIO_CONFIG: sandbox.registry,
       AM_MEMORY_DIR: sandbox.memory,
+      AM_VOICES_DIR: sandbox.voices,
       AM_STUDIO_SKIP_SKILL_INSTALL: '1',
       ORCHESTRATOR: 'claude',
       RENDERER: 'claude',

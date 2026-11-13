@@ -294,7 +294,11 @@ export function orchestratorAccess(config: Config, ...extra: string[]): Orchestr
     }
   }
   const access: OrchestratorAccess = { commands: out };
-  if (config.memory.enabled && config.memory.dir !== '') access.writableDirs = [config.memory.dir];
+  const writable: string[] = [];
+  if (config.memory.enabled && config.memory.dir !== '') writable.push(config.memory.dir);
+  // 音色库同理：voice_save 写的是用户级目录，codex 的 workspace-write 沙箱默认只放行工作目录。
+  if (config.voicesDir !== '') writable.push(config.voicesDir);
+  if (writable.length > 0) access.writableDirs = writable;
   // 风格来源的数据不放进可写范围：它是前置资源，只由用户在终端里跑的 am setup 下载，
   // 编排工具调用的 am film-style use 只读它、写项目。
   return access;

@@ -10,6 +10,7 @@ import { formatG, goPathError, goTrimSpace } from '../gofmt';
 import { BrowserEnv, CLIDirEnv, HyperFramesBrowserEnv, PinnedVersion, cliDir } from '../hyperframes';
 import { childEnvKeys as toolpathEnvKeys } from '../toolpath';
 import { EnvDirEnv as BeatEnvDirEnv, envDir as beatEnvDir } from '../beat/env';
+import { DirEnv as VoicesDirEnv, defaultDir as defaultVoicesDir } from '../voice/dir';
 import { ValidTools } from '../tools';
 import { AlignAuto, alignerIDs, hostAligner, parseAllowCommands, ttsProviderIDs, validAligner, validTTSProvider } from './providers';
 
@@ -77,6 +78,8 @@ export interface Config {
   hyperFramesCLI: string;
   /** 节拍分析环境目录（beat/env.ts），理由同 hyperFramesCLI。 */
   beatEnv: string;
+  /** 音色库目录（voice 包），所有项目共用；理由同 memory.dir，要显式传给子进程。 */
+  voicesDir: string;
   /** 用户在 ORCHESTRATOR_ALLOW_COMMANDS 里补充放行的命令前缀，见 orchestratorAccess。 */
   extraCommands: string[];
 }
@@ -93,6 +96,7 @@ export function newConfig(fields: Partial<Omit<Config, 'memory'>> & { memory?: P
     filmStyleRoot: '',
     hyperFramesCLI: '',
     beatEnv: '',
+    voicesDir: '',
     extraCommands: [],
     ...fields,
     memory: { enabled: false, dir: '', snapshot: 0, recallBudget: 0, explore: 0, ...fields.memory },
@@ -241,6 +245,7 @@ export function load(root: string, environ?: Record<string, string> | null): Con
   cfg.filmStyleRoot = resolve(RootEnv, rootDir(env));
   cfg.hyperFramesCLI = resolve(CLIDirEnv, cliDir(env, PinnedVersion));
   cfg.beatEnv = resolve(BeatEnvDirEnv, beatEnvDir(env));
+  cfg.voicesDir = resolve(VoicesDirEnv, defaultVoicesDir(env));
   const snapshotText = resolve('MEMORY_SNAPSHOT', '');
   if (snapshotText !== '') {
     const snapshot = goAtoi(snapshotText);
@@ -320,6 +325,9 @@ export function childEnvironment(
   if (config.hyperFramesCLI !== '') out[CLIDirEnv] = config.hyperFramesCLI;
   // 节拍分析环境同理：编排工具调用的 am beat analyze 要找到 am setup 装好的那一套，找不到就会想自己去建。
   if (config.beatEnv !== '') out[BeatEnvDirEnv] = config.beatEnv;
+  // 音色库同理：编排工具调用的 voice_save、voice_get 与客户端的音色页要是同一个库，
+  // 默认目录由 XDG_DATA_HOME 推出而它不在白名单里。
+  if (config.voicesDir !== '') out[VoicesDirEnv] = config.voicesDir;
   // 客户端自带的浏览器与用户显式指定的浏览器同理：子进程里的 am hyperframes 照样用它们，不去下载 headless-shell。
   for (const key of [BrowserEnv, HyperFramesBrowserEnv]) if (source[key]) out[key] = source[key]!;
   // 客户端自带的 npm、工具目录与 am setup 的工具目录同理：子进程里的 am 要找到同一套，而白名单里没有它们。

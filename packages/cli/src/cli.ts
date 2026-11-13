@@ -26,6 +26,7 @@ import './style_cmd';
 import './usage_cmd';
 import './validate_cast';
 import './validate_cmd';
+import './voice_cmd';
 import { mountOps } from './ops/cli';
 import { newInitCommand } from './project_cmds';
 import { newSetupCommand } from './setup';

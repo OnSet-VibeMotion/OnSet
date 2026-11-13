@@ -6,6 +6,7 @@ import type { Attachment, BeatState, Box, ProjectFilmStyle, ProjectState, Projec
 import { cssSelector } from '../selector';
 import { Icon } from './Icon';
 import { MemoryTab } from './Memory';
+import { VoicesTab } from './Voices';
 import { FilmStyleDialog, FilmStylePicker, Poster, styleKey, useFilmStyles } from './FilmStyles';
 import { Markdown } from './chat/Markdown';
 import { ScriptTab } from './Script';
@@ -13,7 +14,7 @@ import { BeatTab } from './Beat';
 import { PublishTab } from './Publish';
 import { FileTree } from './Sidebar';
 
-export type Tab = 'beat' | 'script' | 'scene' | 'compose' | 'final' | 'style' | 'review' | 'publish' | 'memory' | 'file';
+export type Tab = 'beat' | 'script' | 'scene' | 'compose' | 'final' | 'style' | 'voice' | 'review' | 'publish' | 'memory' | 'file';
 
 export const tabs: [Tab, string][] = [
   ['beat', '节拍'],
@@ -22,13 +23,14 @@ export const tabs: [Tab, string][] = [
   ['compose', '合成'],
   ['final', '成片'],
   ['style', '风格'],
+  ['voice', '音色'],
   ['review', '复查'],
   ['publish', '发布'],
   ['memory', '记忆'],
   ['file', '文件'],
 ];
 
-/** 顶栏中间的四个步骤，按制作顺序编号；其余页面（合成、复查、风格、记忆、文件）在顶栏右侧用小字列出。 */
+/** 顶栏中间的四个步骤，按制作顺序编号；其余页面（合成、复查、风格、音色、记忆、文件）在顶栏右侧用小字列出。 */
 export const stepTabs: Tab[] = ['script', 'scene', 'final', 'publish'];
 
 /** 卡点项目没有口播稿：第一步换成节拍。 */
@@ -81,6 +83,7 @@ export function Preview(props: Props) {
         {props.tab === 'compose' && <ComposeTab {...props} scene={scene} />}
         {props.tab === 'final' && <FinalTab tree={props.tree} version={props.version} run={props.run} onTab={props.onTab} />}
         {props.tab === 'style' && <StyleTab version={props.version} run={props.run} scenes={props.scenes} onScene={props.onScene} />}
+        {props.tab === 'voice' && <VoicesTab version={props.version} />}
         {props.tab === 'review' && <ReviewTab tree={props.tree} version={props.version} run={props.run} />}
         {props.tab === 'publish' && <PublishTab version={props.version} run={props.run} />}
         {props.tab === 'memory' && <MemoryTab scene={scene} version={props.version} run={props.run} />}

@@ -22,6 +22,8 @@ process.env.AM_BROWSER = fakeBrowser(fakeCLIDir);
 // am setup 下载的工具目录指到空目录：开发机上 ~/.local/share/am/bin 里真实的 ffmpeg、mmx 不能混进测试。
 process.env.AM_BIN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-bin-test-'));
 process.env[hyperframes.CLIDirEnv] = fakeCLIDir;
+// 音色库同理：用户积累的声音不能被测试写进或删掉。
+process.env.AM_VOICES_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-voices-test-'));
 
 // 每个用例结束后恢复工作目录与环境变量（Go 的 t.Chdir / t.Setenv）。
 const startDir = process.cwd();

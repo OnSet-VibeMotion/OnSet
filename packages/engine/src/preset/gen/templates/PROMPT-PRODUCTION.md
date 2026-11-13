@@ -203,6 +203,7 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
 
 - 仅限 Apple Silicon。免鉴权，不联网。
 - 模型由客户端预先下好（约 4.6 GB），本地目录用 `config_get({"key": "TTS_MODEL"})` 读取；它返回的不是本地目录（而是 `mlx-community/…` 仓库名）时说明还没下好，请用户在客户端的工具准备页（首页的「召集你的摄制组」，或顶栏的「还差几项工具」）里安装，不要让工具在合成时现下载。
+- 声音来自音色库：用户确认过的声音存成「参考音频 + 逐字一致的文字稿」，放在用户级目录、所有项目共用，配音时从它克隆。只靠一句描述设计的声音每次生成都会变，同一个账号的片子之间、甚至同一部片子的几段之间听起来像换了人；克隆出来的始终是同一个声音。开工先运行 `voice_list()` 看库里有什么。
 
 ### 试听和正式生成
 
@@ -213,7 +214,7 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
   - ElevenLabs：`elevenlabs voices search --format json`
   - 腾讯云：CLI 没有列表命令，按官方「音色列表」文档选择 `VoiceType`
   - MLX：Qwen3-TTS 预置中文音色 `Vivian`、`Serena`、`Uncle_Fu`、`Dylan`（北京话）、`Eric`（四川话）
-  - Breeze：没有预置音色，用一句中文描述设计音色（`--instruct`），voice ID 固定写 `S0`，描述原文一并记进 `production/production-config.json` 的 `ttsInstruction`；试听时换描述而不是换 voice ID，文件名用 `try-<序号>.wav`
+  - Breeze：先看音色库。有默认音色时直接用它，不再试听选音色：`voice_get()` 返回参考音频路径与文字稿，音色名记进 `production/production-config.json` 的 `ttsVoice`；用户想换别的就用 `voice_get({"name": "<音色名>"})`，库里的音色也可以在客户端的「音色」页试听（`studio_show({"page": "voice"})`）。库是空的、或用户想要一个新声音时，用一句中文描述设计音色（`--instruct`），试听时换描述而不是换 voice ID，文件名用 `try-<序号>.wav`，试听文案存进 `production/audio/try-text.txt`；用户选定后，把选中的那段试听连同这份文案存进音色库：`voice_save({"name": "<给它起的名字>", "audio": "production/audio/try-<序号>.wav", "text_file": "production/audio/try-text.txt", "source": "designed", "instruction": "<当时的描述>"})`，问用户要不要设成以后的默认音色（要就加 `"make_default": true`），之后的正式配音也从它克隆。用户想用自己的声音时，请用户在「音色」页上传一段录音，或把录音发到对话里后用 `voice_save` 存（`"source": "recorded"`）；只存用户本人或已经取得授权的声音
 - 用同一段 10–20 秒代表性文案生成 2–3 个试听版本（`--out production/audio/try-<voiceId>.wav`），文件名包含 voice ID。
 - 音色、语速确认后再生成正式配音。
 - 优先按完整语义段落调用 TTS，避免按字幕行逐条生成造成语调碎裂。
@@ -275,8 +276,9 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
 
 **Breeze 固定参数**
 
-- 命令：`mlx_audio.tts.generate --model <TTS_MODEL 的本地目录> --text "..." --voice S0 --instruct "<已确认的音色描述>" --cfg_scale 4 --lang_code Chinese --output_path production/audio --file_prefix voice --join_audio --audio_format wav`。音色描述写中文，说清性别、年龄段、音色与语气，例如「一位三十多岁的男性，声音沉稳清晰，语气平静、真诚，语速适中」；正式生成与试听用同一句描述，不要每段改写，否则同一部片子里音色会漂。
-- 语气、节奏只靠描述控制；终稿里不要加 `[笑]`、`[叹气]` 这类事件标记，它们会被读成非语音声音，字幕对不上。
+- 正式配音一律从音色库克隆：`mlx_audio.tts.generate --model <TTS_MODEL 的本地目录> --text "..." --voice S0 --ref_audio <voice_get 返回的参考音频> --ref_text "<voice_get 返回的文字稿>" --lang_code Chinese --output_path production/audio --file_prefix voice --join_audio --audio_format wav`。`--ref_text` 原样照抄，一个字都不改；克隆时不加 `--instruct`。
+- 只有设计新声音的试听才用描述：`mlx_audio.tts.generate --model <TTS_MODEL 的本地目录> --text "$(cat production/audio/try-text.txt)" --voice S0 --instruct "<音色描述>" --cfg_scale 4 --lang_code Chinese --output_path production/audio --file_prefix try-<序号> --join_audio --audio_format wav`。音色描述写中文，说清性别、年龄段、音色与语气，例如「一位三十多岁的男性，声音沉稳清晰，语气平静、真诚，语速适中」。试听文案控制在 5 到 25 秒（存进音色库的参考音频要 3 到 30 秒）。
+- 终稿里不要加 `[笑]`、`[叹气]` 这类事件标记，它们会被读成非语音声音，字幕对不上。
 - 输出是 24kHz 单声道，用 FFmpeg 转成 48kHz 双声道再混音。
 - 不产出时间戳，`voice.srt` 由第四阶段强制对齐生成。
 - 发音控制同 Edge，只能改写送进 TTS 的文本。

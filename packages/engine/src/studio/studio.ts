@@ -42,6 +42,7 @@ import { discoverScenes, fileExists, type SceneSummary } from './scenes';
 import { scriptAPI } from './script';
 import { BusyError, type Session } from './sessions';
 import { cancelSetup, setupAPI, setupCancelAPI, setupRunAPI } from './setup';
+import { voiceAPI, voicesAPI } from './voices';
 import { SkillsState, installSkills, skillsAPI, skillsInstallAPI } from './skills';
 import { TaskState, loadPersistedTasks, runStudioOp, runWriteTask, taskFeatureAPI, tasksAPI, writeTaskError } from './tasks';
 import { uploadsAPI } from './uploads';
@@ -319,6 +320,8 @@ export class Server {
       ['/api/film-styles', (r) => filmStylesAPI(r)],
       ['/api/film-styles/', (r, rest) => filmStylePosterAPI(r, rest)],
       ['/api/film-style', (r) => projectFilmStyleAPI(this, r)],
+      ['/api/voices', (r) => voicesAPI(this, r)],
+      ['/api/voices/', (r, rest) => voiceAPI(r, rest)],
       ['/api/setup', (r) => setupAPI(r, this.projectRoot())],
       ['/api/setup/run', (r) => setupRunAPI(r, this.projectRoot())],
       ['/api/setup/cancel', (r) => setupCancelAPI(r)],

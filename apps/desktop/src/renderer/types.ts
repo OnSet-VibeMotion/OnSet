@@ -589,3 +589,21 @@ export interface ViewState {
   scene?: string;
   file?: string;
 }
+
+/** /api/voices 里的一个音色（音色库在用户级目录，所有项目共用）。 */
+export interface VoiceEntry {
+  name: string;
+  /** 参考音频里说的话，逐字一致。 */
+  text: string;
+  source: 'designed' | 'recorded' | 'uploaded';
+  instruction: string;
+  duration_seconds: number;
+  created: string;
+  is_default: boolean;
+}
+
+export interface VoiceLibrary {
+  dir: string;
+  default: string;
+  voices: VoiceEntry[];
+}

@@ -1,0 +1,180 @@
+/* 音色页（放映室）：一栏居中，名字用宋体，只用一种强调色。选择器都挂在 .voices-tab 下。 */
+.voices-tab {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.voices-tab .voices-head h2 {
+  margin: 0 0 8px;
+  font: 600 22px var(--serif);
+  color: var(--text);
+}
+.voices-tab .voices-head p,
+.voices-tab .voices-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.voices-tab .voices-error {
+  color: var(--bad);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+.voices-tab .voices-empty {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.8;
+}
+.voices-tab .voices-empty p {
+  margin: 0 0 4px;
+}
+.voices-tab .voices-empty ol {
+  margin: 0;
+  padding-left: 20px;
+}
+.voices-tab .voices-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+.voices-tab .voice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  padding: 18px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.voices-tab .voice-play {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  justify-content: center;
+}
+.voices-tab .voice.is-default .voice-play {
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
+.voices-tab .voice-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.voices-tab .voice-name {
+  font: 600 17px var(--serif);
+  color: var(--text);
+}
+.voices-tab .voice-badge {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-line);
+  color: var(--accent-text);
+}
+.voices-tab .voice-meta {
+  font: 12px var(--mono);
+  color: var(--faint);
+}
+.voices-tab .voice-text {
+  margin: 8px 0 0;
+  font: 15px/1.7 var(--serif);
+  color: var(--text-2);
+}
+.voices-tab .voice-instruction {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.voices-tab .voice-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.voices-tab .voices-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 8px;
+}
+.voices-tab .voices-upload h3 {
+  margin: 0;
+  font: 600 15px var(--serif);
+  color: var(--text);
+}
+.voices-tab .voices-upload label {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.voices-tab .voices-upload label > span {
+  padding-top: 7px;
+}
+.voices-tab .voices-upload input:not([type='checkbox']),
+.voices-tab .voices-upload textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--well);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 7px 10px;
+  font: 14px var(--sans);
+}
+.voices-tab .voices-upload textarea {
+  font-family: var(--serif);
+  line-height: 1.6;
+  resize: vertical;
+}
+.voices-tab .voices-upload label.voices-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 84px;
+}
+.voices-tab .voices-upload label.voices-check > span {
+  padding-top: 0;
+}
+.voices-tab .voices-submit {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-left: 84px;
+}
+@media (max-width: 560px) {
+  .voices-tab .voices-upload label {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .voices-tab .voices-upload label.voices-check,
+  .voices-tab .voices-submit {
+    padding-left: 0;
+  }
+}
+.voices-tab .voices-upload .voices-file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding-top: 0;
+}
+.voices-tab .voices-upload .voices-file .voice-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
