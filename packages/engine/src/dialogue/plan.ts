@@ -7,6 +7,8 @@
 // 不会报错——这类会静默坏掉的机械计算一律收进 am。
 
 /** SchemaVersion 是 plan.json 与 dialogue.json 共用的 schema 标识。 */
+import { sliceOf, unmarshal, type StructType } from '../beat/jsondecode';
+
 export const SchemaVersion = 'cast-dialogue/v1';
 
 /** PlanLine 是一条字幕行，时间是相对本段起点的。 */
@@ -104,4 +106,52 @@ export function resultToJSON(r: Result): unknown {
         ? null
         : r.lines.map((l) => ({ srtIndex: l.srtIndex, speaker: l.speaker, startSeconds: l.startSeconds, endSeconds: l.endSeconds })),
   };
+}
+
+const segmentType: StructType = {
+  kind: 'struct',
+  goName: 'dialogue.Segment',
+  name: 'Segment',
+  fields: [
+    ['index', 'int'],
+    ['speaker', 'string'],
+    ['voiceId', 'string'],
+    ['audio', 'string'],
+    ['startSeconds', 'float'],
+    ['endSeconds', 'float'],
+    ['gapAfterMs', 'int'],
+  ],
+};
+
+const lineType: StructType = {
+  kind: 'struct',
+  goName: 'dialogue.Line',
+  name: 'Line',
+  fields: [
+    ['srtIndex', 'int'],
+    ['speaker', 'string'],
+    ['startSeconds', 'float'],
+    ['endSeconds', 'float'],
+  ],
+};
+
+const resultType: StructType = {
+  kind: 'struct',
+  goName: 'dialogue.Result',
+  name: 'Result',
+  fields: [
+    ['schema', 'string'],
+    ['segments', sliceOf(segmentType)],
+    ['lines', sliceOf(lineType)],
+  ],
+};
+
+/**
+ * json.Unmarshal(body, &dialogue.Result)：读 dialogue.json。语法错误与类型错误的文案与 Go 一致；
+ * Line.text 是 json:"-"，不从 JSON 读，恒为空串。
+ */
+export function unmarshalResult(body: string | Uint8Array): Result {
+  const r = unmarshal<Result>(body, resultType);
+  if (r.lines !== null) r.lines = r.lines.map((l) => ({ ...l, text: '' }));
+  return r;
 }
