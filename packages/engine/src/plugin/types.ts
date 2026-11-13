@@ -14,7 +14,7 @@
  * | 接口 | studio.ts 的路由表 |
  * | 校验器 | 客户端后端的「检查」命令（/api/commands/<id>.check） |
  */
-import type { RouteNode } from '../flow/types';
+import type { FlowExcludes, FlowMarker, RouteNode } from '../flow/types';
 
 /** 判断函数拿到的项目状态。字段是 studio/progress.ts 的 Ctx 的子集，那边的 Ctx 可以直接传进来。 */
 export interface JudgeContext {
@@ -70,6 +70,8 @@ export interface PluginFlow {
   first_page: string;
   land_first?: boolean;
   stage_aliases?: Record<string, string>;
+  marker?: FlowMarker;
+  excludes?: FlowExcludes;
 }
 
 /** 插件带来的站。flows 是它出现在哪些内置流程里，after 是在这些流程里跟在哪个站后面（找不到时接在最后）。 */

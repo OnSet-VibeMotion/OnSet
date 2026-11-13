@@ -121,7 +121,9 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
         throw new Error(`无效的 --narration: ${narration.value}（可选：${narrationSolo} ${narrationCast}）`);
       }
       const target = path.resolve(args.length === 1 ? args[0] : '.');
-      if (!['speech', 'song', 'beat'].includes(delivery.value)) throw new Error('--delivery 必须为 speech、song 或 beat');
+      // 讲解形式就是项目的流程：可选值来自内置流程与内置插件登记的流程。
+      const ids = projectinit.deliveryFlows().map((f) => f.id);
+      if (!ids.includes(delivery.value)) throw new Error(`--delivery 必须为 ${ids.slice(0, -1).join('、')} 或 ${ids[ids.length - 1]}`);
       projectinit.validate({ target, canvas: '', style: preset.CustomStyle, delivery: delivery.value, narration: narration.value });
       const filmStyle = filmStyleName.value !== '' ? filmstyle.lookup(filmStyleName.value) : undefined;
       const chosen = await resolveCanvas(canvasID.value, process.stdin, stdout);

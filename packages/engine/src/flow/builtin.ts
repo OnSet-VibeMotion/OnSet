@@ -298,6 +298,8 @@ export const builtinFlows: readonly Flow[] = [
     stage_aliases: { script: 'beat' },
     first_page: 'beat',
     land_first: true,
+    marker: { file: beat.ConfigFile, body: beat.DefaultConfig },
+    excludes: { plugins: ['cast'], flows: ['song'], message: '卡点模式不能与歌曲讲解或多角色对话同时启用' },
   },
 ];
 

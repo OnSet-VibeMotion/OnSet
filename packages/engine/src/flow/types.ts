@@ -92,4 +92,23 @@ export interface Flow {
   first_page?: string;
   /** 还没有镜头时打开项目先落在第一步那一页（卡点：节拍、分镜都在节拍页上做）。 */
   land_first?: boolean;
+  /** 片型的标记文件：新建项目时写出（body 是缺省内容）；没有流程记录的老项目据它推断片型。 */
+  marker?: FlowMarker;
+  /** 新建项目时不能与它同时用的东西。 */
+  excludes?: FlowExcludes;
+}
+
+export interface FlowMarker {
+  file: string;
+  body: string;
+}
+
+/**
+ * plugins：内置插件（新建时选了它——叙事模式 cast 就是多角色对话插件——或项目里已有它的 in_use 文件）；
+ * flows：别的片型（项目里已有它们的标记文件）。命中任一项就以 message 拒绝。
+ */
+export interface FlowExcludes {
+  plugins?: string[];
+  flows?: string[];
+  message: string;
 }

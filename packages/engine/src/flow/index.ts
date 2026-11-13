@@ -2,7 +2,7 @@ export * from './types';
 export { beatPrompt, builtinFlows, builtinStations, productionPrompt, stageTitles } from './builtin';
 export { allFlows, allStageTitles, allStations, appendedSections, flowPrompt, productionOrder, sectionsDir } from './registered';
 export { composeProduction, detectFlow, flow, gateFiles, route, station, stationOfPath, type RouteStop } from './flow';
-export { chineseNumber, composeFlowPrompt, composeParts, composePrompt, readSection, type ComposeOptions, type FlowComposeInput, type PromptPart, type SectionReader } from './compose';
+export { chineseNumber, ComposeVersion, composeFlowPrompt, composeParts, composePrompt, readSection, type ComposeOptions, type FlowComposeInput, type PromptPart, type SectionReader } from './compose';
 export {
   addToProject,
   activeFlowStation,
@@ -24,6 +24,9 @@ export {
   insertStageSections,
   fetchStation,
   LockFile,
+  flowRecord,
+  recordFlow,
+  type FlowRecord,
   ManifestFile,
   loadProjectStations,
   pageMayRead,

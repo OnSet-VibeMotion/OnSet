@@ -4,7 +4,7 @@ import * as beat from '../beat';
 import { composePrompt } from './compose';
 import { markPluginSection, stationOwners } from './external';
 import { allFlows, allStations, pluginSectionFile, productionOrder } from './registered';
-import { chosenFlow } from './lock';
+import { chosenFlow, flowRecord } from './lock';
 import type { ExtraStation, Flow, FlowID, PathRule, RouteNode, Station } from './types';
 
 export function station(id: string, extra: readonly ExtraStation[] = []): Station {
@@ -21,11 +21,14 @@ export function flow(id: FlowID, extra: readonly ExtraStation[] = []): Flow {
 
 /**
  * 项目用的是哪个流程：锁文件里选了第三方站的流程（article-to-motion.flow.json 的 flow）且那个站读得到时用它；
- * 否则按标记文件推断：有 beat.yaml 是卡点，其余（含歌曲讲解）走口播的路线。
+ * 再看新建时记下的流程（production.id，这个 am 认得时）；都没有（老项目）就按标记文件推断：
+ * 有 beat.yaml 是卡点，其余（含歌曲讲解）走口播的路线。
  */
 export function detectFlow(root: string, extra: readonly ExtraStation[] = []): FlowID {
   const chosen = chosenFlow(root);
   if (chosen !== '' && extra.some((x) => x.flow?.id === chosen)) return chosen;
+  const rec = flowRecord(root);
+  if (rec && allFlows().some((f) => f.id === rec.id)) return rec.id;
   try {
     fs.statSync(path.join(root, beat.ConfigFile));
     return 'beat';

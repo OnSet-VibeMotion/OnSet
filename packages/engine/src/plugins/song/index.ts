@@ -12,6 +12,7 @@
  * PROMPT-SONG.md 仍在 assets/shared/（随新建项目下发到项目根，song_init 也从那里拷），段落直接读它，不另放一份。
  */
 import type { BuiltinPlugin } from '../../plugin/types';
+import { DefaultConfig } from '../../song/store';
 
 /** 歌曲讲解流程的 id（锁文件记的就是它）。 */
 export const SongFlow = 'song';
@@ -40,6 +41,8 @@ export const songPlugin: BuiltinPlugin = {
       base: 'speech',
       prompt: ['song-prompt/main', 'song-prompt/contract-head', 'song-prompt/contract'],
       first_page: 'script',
+      marker: { file: 'song.yaml', body: DefaultConfig },
+      excludes: { plugins: ['cast'], message: '首版不支持 song + cast' },
     });
   },
 };

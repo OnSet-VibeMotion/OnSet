@@ -4,19 +4,19 @@
  * 两边曾经各写一份：Studio 那份漏了讲解形式（歌曲 / 卡点）、多角色对话，也不装 HyperFrames 官方技能——
  * 新建的项目渲染时拿不到 hyperframes 入口技能。放在一处，两个入口建出的项目逐字节相同。
  */
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as assets from '../assets';
-import * as beat from '../beat';
 import * as cast from '../cast';
+import * as flow from '../flow';
 import { atomicWrite } from '../fsutil';
 import { formatG, goPathError } from '../gofmt';
 import * as hyperframes from '../hyperframes';
 import type { Style } from '../preset';
 import * as project from '../project';
-import * as song from '../song';
 
-// 讲解形式（am init --delivery）。
+// 讲解形式（am init --delivery）：就是项目的流程（片型），可选值是内置流程与内置插件登记的流程（deliveryFlows）。
 export const DeliverySpeech = 'speech';
 export const DeliverySong = 'song';
 export const DeliveryBeat = 'beat';
@@ -40,20 +40,47 @@ export interface Options {
   extra?: Record<string, Uint8Array | string>;
 }
 
-/** 检查讲解形式与叙事模式的组合，以及目标目录里已有的模式文件。 */
+/** 可选的讲解形式：内置流程与内置插件登记的流程（有提示词段落顺序的），口播在前。 */
+export function deliveryFlows(): flow.Flow[] {
+  return flow.allFlows().filter((f) => f.prompt);
+}
+
+function fileThere(file: string): boolean {
+  try {
+    return !fs.statSync(file).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 检查讲解形式与叙事模式的组合，以及目标目录里已有的模式文件。谁与谁不能同时用由流程声明（Flow.excludes），
+ * 这里不写死片型：先看选的流程，再看目标目录里已有标记文件的别的流程。
+ */
 export function validate(opts: Options): void {
   if (opts.narration !== NarrationSolo && opts.narration !== NarrationCast) {
     throw new Error(`无效的叙事模式：${opts.narration}（可选：${NarrationSolo} ${NarrationCast}）`);
   }
-  if (![DeliverySpeech, DeliverySong, DeliveryBeat].includes(opts.delivery)) {
-    throw new Error(`讲解形式必须为 ${DeliverySpeech}、${DeliverySong} 或 ${DeliveryBeat}`);
+  const flows = deliveryFlows();
+  const chosen = flows.find((f) => f.id === opts.delivery);
+  if (!chosen) {
+    const ids = flows.map((f) => f.id);
+    throw new Error(`讲解形式必须为 ${ids.slice(0, -1).join('、')} 或 ${ids[ids.length - 1]}`);
   }
   const target = opts.target;
-  if (opts.delivery === DeliveryBeat && (opts.narration === NarrationCast || cast.hasRoster(target) || song.enabled(target))) {
-    throw new Error('卡点模式不能与歌曲讲解或多角色对话同时启用');
-  }
-  if ((opts.delivery === DeliverySong && (opts.narration === NarrationCast || cast.hasRoster(target))) || (opts.narration === NarrationCast && song.enabled(target))) {
-    throw new Error('首版不支持 song + cast');
+  // 叙事模式 cast 就是多角色对话插件；项目里已有某个内置插件的 in_use 文件也算在用它。
+  const pluginUsed = (id: string) =>
+    (id === NarrationCast && opts.narration === NarrationCast) || (flow.builtinPlugins().find((p) => p.manifest.id === id)?.manifest.in_use ?? []).some((rel) => fileThere(path.join(target, rel)));
+  const markerThere = (id: string) => {
+    const m = flows.find((f) => f.id === id)?.marker;
+    return !!m && fileThere(path.join(target, m.file));
+  };
+  const ex = chosen.excludes;
+  if (ex && ((ex.plugins ?? []).some(pluginUsed) || (ex.flows ?? []).some(markerThere))) throw new Error(ex.message);
+  // 目标目录里已有别的片型的标记文件：那个片型不许的叙事模式同样不许。
+  for (const other of flows) {
+    if (other.id === chosen.id || !other.excludes || !markerThere(other.id)) continue;
+    if (opts.narration === NarrationCast && (other.excludes.plugins ?? []).includes(NarrationCast)) throw new Error(other.excludes.message);
   }
 }
 
@@ -70,9 +97,10 @@ export function create(opts: Options): project.InitResult {
   const styleFiles = assets.style(opts.style.id, opts.canvas);
   const extra = new Map<string, Uint8Array>(assets.styleFonts(opts.style));
   for (const [file, body] of Object.entries(opts.extra ?? {})) extra.set(file, bytes(body));
-  if (opts.delivery === DeliverySong) extra.set('song.yaml', Buffer.from(song.DefaultConfig));
-  else if (opts.delivery === DeliveryBeat) extra.set(beat.ConfigFile, Buffer.from(beat.DefaultConfig));
+  const chosen = deliveryFlows().find((f) => f.id === opts.delivery)!;
+  if (chosen.marker) extra.set(chosen.marker.file, Buffer.from(chosen.marker.body));
   const result = project.initializeWithFiles(opts.target, extra, shared, presetFiles, styleFiles);
+  recordProjectFlow(opts.target, chosen.id, opts.canvas);
   if (opts.narration === NarrationCast) {
     try {
       writeCastScaffold(opts.target);
@@ -81,6 +109,21 @@ export function create(opts: Options): project.InitResult {
     }
   }
   return result;
+}
+
+/**
+ * 在锁文件里记下项目的流程、提示词组合版本、画幅与那份可选制作说明的摘要（flow.FlowRecord）。
+ * 有了它，制作提示词由运行期按流程组合；那份文件之后被用户改了，就以文件为准。
+ */
+export function recordProjectFlow(target: string, id: string, canvas: string): void {
+  const file = project.flowPromptFile(target, { id, compose: flow.ComposeVersion, canvas, prompt_sha256: '' });
+  let digest = '';
+  try {
+    digest = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  } catch {
+    digest = '';
+  }
+  flow.recordFlow(target, { id, compose: flow.ComposeVersion, canvas, prompt_sha256: digest });
 }
 
 /**

@@ -5,6 +5,7 @@
  * 经老路径 runPrompt（插件标记、正则插入、末尾追加）处理后的结果逐字节相同——每个画幅、内置插件开与关、
  * 加了第三方站（阶段补充与说明）都各断言一次。
  */
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,10 +13,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as assets from '../assets';
 import * as flow from '../flow';
 import * as preset from '../preset';
+import * as projectinit from '../projectinit';
+import * as scene from '../scene';
 import { substituteCanvas } from '../preset/gen/gen';
 import * as song from '../song';
 import { skillTreeRoot } from './testsupport';
-import { runPrompt } from './runprompt';
+import { legacyRunPrompt, promptSource, runPrompt } from './runprompt';
 
 const fake = path.join(__dirname, '..', 'flow', 'testdata', 'fake-publisher');
 const temps: string[] = [];
@@ -189,5 +192,97 @@ describe('third-party flow reuses builtin station sections', () => {
     expect(insert).toBeGreaterThan(body.indexOf('## 第二阶段：建立镜头目录'));
     expect(insert).toBeLessThan(body.indexOf('## 第三阶段'));
     expect(body.includes('{{')).toBe(false);
+  });
+});
+
+describe('projects that record their flow', () => {
+  function created(delivery: string, canvas = 'vertical-3x4'): string {
+    const root = tempProject();
+    projectinit.create({ target: root, canvas, style: preset.defaultStyle(), delivery, narration: projectinit.NarrationSolo });
+    return root;
+  }
+
+  it('records the flow, compose version, canvas and the digest of the shipped prompt file', () => {
+    for (const [delivery, file] of [
+      ['speech', 'PROMPT-PRODUCTION.md'],
+      ['beat', 'PROMPT-PRODUCTION.md'],
+      ['song', 'PROMPT-SONG.md'],
+    ]) {
+      const root = created(delivery, 'vertical-9x16');
+      const rec = flow.flowRecord(root)!;
+      expect(rec.id).toBe(delivery);
+      expect(rec.compose).toBe(flow.ComposeVersion);
+      expect(rec.canvas).toBe('vertical-9x16');
+      expect(rec.prompt_sha256).toBe(crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex'));
+      expect(flow.detectFlow(root, flow.projectExtras(root))).toBe(delivery);
+      expect(promptSource(root)).toBe('composed');
+    }
+  });
+
+  it('composes the prompt of its own flow', () => {
+    for (const canvas of canvases) {
+      const speech = created('speech', canvas);
+      const got = runPrompt(speech, '');
+      expect(got.composed).toBe(true);
+      expect(path.basename(got.path)).toBe('PROMPT-PRODUCTION.md');
+      // 新建的口播项目：与同一份文件走老路径的结果逐字节相同。
+      expect(got.prompt.toString('utf8')).toBe(legacyRunPrompt(speech, '').prompt.toString('utf8'));
+    }
+    const beat = runPrompt(created('beat'), '');
+    expect(beat.composed).toBe(true);
+    expect(beat.prompt.toString('utf8')).toContain('## 第二阶段：故事、音乐与节拍');
+    expect(beat.prompt.toString('utf8')).not.toContain('## 卡点分支');
+    const songRoot = created('song');
+    const sung = runPrompt(songRoot, '');
+    expect(sung.composed).toBe(true);
+    expect(path.basename(sung.path)).toBe('PROMPT-SONG.md');
+    expect(sung.prompt.toString('utf8')).toBe(legacyRunPrompt(songRoot, '').prompt.toString('utf8'));
+  });
+
+  it('uses the project file when the user changed it, and tells so', () => {
+    const root = created('beat');
+    fs.appendFileSync(path.join(root, 'PROMPT-PRODUCTION.md'), '\n我自己加的一条。\n');
+    expect(promptSource(root)).toBe('custom');
+    const got = runPrompt(root, '');
+    expect(got.composed).toBeFalsy();
+    expect(got.prompt.toString('utf8')).toContain('我自己加的一条。');
+    expect(got.prompt.toString('utf8')).toBe(legacyRunPrompt(root, '').prompt.toString('utf8'));
+  });
+
+  it('composes even without the optional prompt file, and keeps the old rules for overrides and finished transcripts', () => {
+    const root = created('speech');
+    const before = runPrompt(root, '').prompt.toString('utf8');
+    fs.rmSync(path.join(root, 'PROMPT-PRODUCTION.md'));
+    expect(runPrompt(root, '').prompt.toString('utf8')).toBe(before);
+    const custom = path.join(root, 'custom.md');
+    fs.writeFileSync(custom, 'CUSTOM');
+    expect(runPrompt(root, custom).prompt.toString('utf8')).toBe('CUSTOM');
+    fs.writeFileSync(path.join(root, 'transcription.srt'), '1\n');
+    expect(promptSource(root)).toBe('legacy');
+    expect(runPrompt(root, '').path).toBe(path.join(root, 'PROMPT.md'));
+  });
+
+  it('keeps the route of song projects on the speech route', () => {
+    const root = created('song');
+    const extras = flow.projectExtras(root);
+    expect(flow.route('song', extras)).toEqual(flow.route('speech', extras));
+  });
+
+  it('leaves scene fingerprints exactly as in projects without the record', () => {
+    const fingerprint = (root: string) => {
+      const dir = path.join(root, 'scenes', 'scene-001');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'scene.json'), '{"id":"scene-001","duration_seconds":3.000000,"output":"out.mp4","transcript":"transcription.srt","text":"你好"}\n');
+      fs.writeFileSync(path.join(dir, 'transcription.srt'), '1\n00:00:00,000 --> 00:00:01,000\n你好\n');
+      const s = scene.load(dir);
+      return scene.fingerprint(s, 'claude', scene.resolveAllSkills('claude', dir, {}));
+    };
+    const withRecord = created('speech');
+    const without = created('speech');
+    fs.rmSync(path.join(without, flow.LockFile));
+    const a = fingerprint(withRecord);
+    const b = fingerprint(without);
+    expect(a.fingerprint).toBe(b.fingerprint);
+    expect(a.parts).toEqual(b.parts);
   });
 });

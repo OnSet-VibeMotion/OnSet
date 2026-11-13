@@ -45,7 +45,7 @@ export {
 } from './manifest';
 export { parseManifest, type ParseOptions } from './parse';
 export { pageCallableOp, pageMayRead, pageTab, toExtra, toolName } from './pages';
-export { addToProject, LockFile, readLock, removeFromProject, type LoadedStation, type Lock, type LockEntry } from './lock';
+export { addToProject, flowRecord, LockFile, readLock, recordFlow, removeFromProject, type FlowRecord, type LoadedStation, type Lock, type LockEntry } from './lock';
 export { treeDigest } from './digest';
 export { fetchStation, parseSource, StationsDirEnv, stationsDir, writeStationForTest } from './fetch';
 export { activeFlowStation, loadProjectStations, projectExtras, setProjectFlow } from './load';

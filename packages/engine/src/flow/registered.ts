@@ -54,6 +54,8 @@ export function allFlows(): Flow[] {
     const out: Flow = { id: f.id, name: f.name, stations: base ? [...base.stations] : withPluginStations(f.id, f.stations ?? []), prompt: [...f.prompt], first_page: f.first_page };
     if (f.land_first) out.land_first = true;
     if (f.stage_aliases) out.stage_aliases = { ...f.stage_aliases };
+    if (f.marker) out.marker = f.marker;
+    if (f.excludes) out.excludes = f.excludes;
     return out;
   });
   return [...host, ...extra];

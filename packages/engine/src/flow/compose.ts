@@ -19,6 +19,9 @@ import { extraPrompt, insertBlock, orphanBlock } from './promptparts';
 import { allFlows, allStageTitles, allStations, appendedSections, flowPrompt, pluginSectionFile, sectionsDir } from './registered';
 import type { FlowID } from './types';
 
+/** 提示词组合的版本，记进锁文件（FlowRecord.compose）。组合方式有不兼容的变化时加一。 */
+export const ComposeVersion = 1;
+
 const numerals = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
 
 /** 1–99 的中文数字：十、十一、二十三。 */
