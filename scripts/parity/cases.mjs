@@ -9,6 +9,34 @@
  * 只收确定性的命令：输出里不带当前时间、随机数，不调用外部 AI CLI。
  * 随移植进度逐步补充；每移植一组命令就在这里加上它们的用例。
  */
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+const goAm = process.env.AM_GO || path.join(os.homedir(), '.local/bin/am');
+const realProject = '/Users/chouheiwa/Desktop/项目/video/讲讲复利是怎么回事-1105';
+
+/** 用真实项目的终稿造一份逐字对齐结果：每字 0.2 秒，故意漏两个字、多一个字，覆盖漏读、多读与插值。 */
+function alignFixture(base) {
+  fs.mkdirSync(path.join(base, 'production', 'audio'), { recursive: true });
+  fs.copyFileSync(path.join(realProject, 'production', 'script-final.md'), path.join(base, 'production', 'script-final.md'));
+  spawnSync(goAm, ['align', 'text'], { cwd: base });
+  const chars = [...fs.readFileSync(path.join(base, 'production', 'audio', 'tts-text.txt'), 'utf8')].filter((c) => !/[\s，。：、；！？,.!?]/.test(c));
+  const items = [];
+  let t = 0.3;
+  chars.forEach((c, i) => {
+    if (i === 10 || i === 57) return;
+    if (i === 30) {
+      items.push({ text: '嗯', start: Number(t.toFixed(3)), end: Number((t + 0.15).toFixed(3)) });
+      t += 0.15;
+    }
+    items.push({ text: c, start: Number(t.toFixed(3)), end: Number((t + 0.2).toFixed(3)) });
+    t += 0.2;
+  });
+  fs.writeFileSync(path.join(base, 'production', 'audio', 'align.json'), JSON.stringify(items));
+}
+
 export const cases = [
   {
     name: 'setup',
@@ -57,5 +85,20 @@ export const cases = [
   {
     name: 'archive',
     commands: [['archive', '--help'], ['archive', '--dry-run'], ['archive', 'x']],
+  },
+  {
+    name: 'align',
+    setup: [['init', '--canvas', 'vertical-3x4', '--skip-hyperframes']],
+    prepare: alignFixture,
+    commands: [
+      ['align', '--help'],
+      ['align', 'build', '--help'],
+      ['align', 'text'],
+      ['align', 'build', '--fps', '30'],
+      ['align', 'build', '--fps', '25'],
+      ['align', 'build'],
+      ['align', 'build', '--fps', '30', '--align', 'production/audio/align.json@0.5'],
+      ['align', 'build', '--fps', '30', '--align', 'missing.json'],
+    ],
   },
 ];

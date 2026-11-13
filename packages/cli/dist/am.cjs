@@ -106,17 +106,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path22) {
-      const ctrl = callVisitor(key, node, visitor, path22);
+    function visit_(key, node, visitor, path23) {
+      const ctrl = callVisitor(key, node, visitor, path23);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path22, ctrl);
-        return visit_(key, ctrl, visitor, path22);
+        replaceNode(key, path23, ctrl);
+        return visit_(key, ctrl, visitor, path23);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path22 = Object.freeze(path22.concat(node));
+          path23 = Object.freeze(path23.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci2 = visit_(i, node.items[i], visitor, path22);
+            const ci2 = visit_(i, node.items[i], visitor, path23);
             if (typeof ci2 === "number")
               i = ci2 - 1;
             else if (ci2 === BREAK)
@@ -127,13 +127,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path22 = Object.freeze(path22.concat(node));
-          const ck = visit_("key", node.key, visitor, path22);
+          path23 = Object.freeze(path23.concat(node));
+          const ck = visit_("key", node.key, visitor, path23);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path22);
+          const cv = visit_("value", node.value, visitor, path23);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -154,17 +154,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path22) {
-      const ctrl = await callVisitor(key, node, visitor, path22);
+    async function visitAsync_(key, node, visitor, path23) {
+      const ctrl = await callVisitor(key, node, visitor, path23);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path22, ctrl);
-        return visitAsync_(key, ctrl, visitor, path22);
+        replaceNode(key, path23, ctrl);
+        return visitAsync_(key, ctrl, visitor, path23);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path22 = Object.freeze(path22.concat(node));
+          path23 = Object.freeze(path23.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci2 = await visitAsync_(i, node.items[i], visitor, path22);
+            const ci2 = await visitAsync_(i, node.items[i], visitor, path23);
             if (typeof ci2 === "number")
               i = ci2 - 1;
             else if (ci2 === BREAK)
@@ -175,13 +175,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path22 = Object.freeze(path22.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path22);
+          path23 = Object.freeze(path23.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path23);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path22);
+          const cv = await visitAsync_("value", node.value, visitor, path23);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -208,23 +208,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path22) {
+    function callVisitor(key, node, visitor, path23) {
       if (typeof visitor === "function")
-        return visitor(key, node, path22);
+        return visitor(key, node, path23);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path22);
+        return visitor.Map?.(key, node, path23);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path22);
+        return visitor.Seq?.(key, node, path23);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path22);
+        return visitor.Pair?.(key, node, path23);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path22);
+        return visitor.Scalar?.(key, node, path23);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path22);
+        return visitor.Alias?.(key, node, path23);
       return void 0;
     }
-    function replaceNode(key, path22, node) {
-      const parent = path22[path22.length - 1];
+    function replaceNode(key, path23, node) {
+      const parent = path23[path23.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -836,10 +836,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path22, value) {
+    function collectionFromPath(schema, path23, value) {
       let v = value;
-      for (let i = path22.length - 1; i >= 0; --i) {
-        const k = path22[i];
+      for (let i = path23.length - 1; i >= 0; --i) {
+        const k = path23[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -858,7 +858,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path22) => path22 == null || typeof path22 === "object" && !!path22[Symbol.iterator]().next().done;
+    var isEmptyPath = (path23) => path23 == null || typeof path23 === "object" && !!path23[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -888,11 +888,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path22, value) {
-        if (isEmptyPath(path22))
+      addIn(path23, value) {
+        if (isEmptyPath(path23))
           this.add(value);
         else {
-          const [key, ...rest] = path22;
+          const [key, ...rest] = path23;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -906,8 +906,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path22) {
-        const [key, ...rest] = path22;
+      deleteIn(path23) {
+        const [key, ...rest] = path23;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -921,8 +921,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path22, keepScalar) {
-        const [key, ...rest] = path22;
+      getIn(path23, keepScalar) {
+        const [key, ...rest] = path23;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -940,8 +940,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path22) {
-        const [key, ...rest] = path22;
+      hasIn(path23) {
+        const [key, ...rest] = path23;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -951,8 +951,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path22, value) {
-        const [key, ...rest] = path22;
+      setIn(path23, value) {
+        const [key, ...rest] = path23;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -3467,9 +3467,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path22, value) {
+      addIn(path23, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path22, value);
+          this.contents.addIn(path23, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3544,14 +3544,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path22) {
-        if (Collection.isEmptyPath(path22)) {
+      deleteIn(path23) {
+        if (Collection.isEmptyPath(path23)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path22) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path23) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3566,10 +3566,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path22, keepScalar) {
-        if (Collection.isEmptyPath(path22))
+      getIn(path23, keepScalar) {
+        if (Collection.isEmptyPath(path23))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path22, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path23, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3580,10 +3580,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path22) {
-        if (Collection.isEmptyPath(path22))
+      hasIn(path23) {
+        if (Collection.isEmptyPath(path23))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path22) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path23) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3600,13 +3600,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path22, value) {
-        if (Collection.isEmptyPath(path22)) {
+      setIn(path23, value) {
+        if (Collection.isEmptyPath(path23)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path22), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path23), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path22, value);
+          this.contents.setIn(path23, value);
         }
       }
       /**
@@ -3962,12 +3962,12 @@ var require_util_map_includes = __commonJS({
   "../../node_modules/yaml/dist/compose/util-map-includes.js"(exports2) {
     "use strict";
     var identity = require_identity();
-    function mapIncludes(ctx, items2, search) {
+    function mapIncludes(ctx, items2, search2) {
       const { uniqueKeys } = ctx.options;
       if (uniqueKeys === false)
         return false;
       const isEqual = typeof uniqueKeys === "function" ? uniqueKeys : (a, b) => a === b || identity.isScalar(a) && identity.isScalar(b) && a.value === b.value;
-      return items2.some((pair) => isEqual(pair.key, search));
+      return items2.some((pair) => isEqual(pair.key, search2));
     }
     exports2.mapIncludes = mapIncludes;
   }
@@ -5567,9 +5567,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path22) => {
+    visit.itemAtPath = (cst, path23) => {
       let item = cst;
-      for (const [field, index] of path22) {
+      for (const [field, index] of path23) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5578,23 +5578,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path22) => {
-      const parent = visit.itemAtPath(cst, path22.slice(0, -1));
-      const field = path22[path22.length - 1][0];
+    visit.parentCollection = (cst, path23) => {
+      const parent = visit.itemAtPath(cst, path23.slice(0, -1));
+      const field = path23[path23.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path22, item, visitor) {
-      let ctrl = visitor(item, path22);
+    function _visit(path23, item, visitor) {
+      let ctrl = visitor(item, path23);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci2 = _visit(Object.freeze(path22.concat([[field, i]])), token.items[i], visitor);
+            const ci2 = _visit(Object.freeze(path23.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci2 === "number")
               i = ci2 - 1;
             else if (ci2 === BREAK)
@@ -5605,10 +5605,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path22);
+            ctrl = ctrl(item, path23);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path22) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path23) : ctrl;
     }
     exports2.visit = visit;
   }
@@ -6910,14 +6910,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs23 = this.flowScalar(this.type);
+              const fs27 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs23, sep: [] });
+                map.items.push({ start, key: fs27, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs23);
+                this.stack.push(fs27);
               } else {
-                Object.assign(it, { key: fs23, sep: [] });
+                Object.assign(it, { key: fs27, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -7045,13 +7045,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs23 = this.flowScalar(this.type);
+              const fs27 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs23, sep: [] });
+                fc.items.push({ start: [], key: fs27, sep: [] });
               else if (it.sep)
-                this.stack.push(fs23);
+                this.stack.push(fs27);
               else
-                Object.assign(it, { key: fs23, sep: [] });
+                Object.assign(it, { key: fs27, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -7403,6 +7403,9 @@ function formatFixed(value, digits) {
     if (Number(down[down.length - 1]) % 2 === 0) text = down;
   }
   return negative ? "-" + text : text;
+}
+function goRound(value) {
+  return value < 0 ? -Math.round(-value) : Math.round(value);
 }
 function formatG(value) {
   if (Number.isNaN(value)) return "NaN";
@@ -11519,9 +11522,9 @@ function runPicker(picker, name, stdout) {
     let lines = 0;
     const draw = () => {
       if (lines) stdout.write(`\x1B[${lines}F\x1B[J`);
-      const view2 = pickerView(picker, state.cursor);
-      stdout.write(view2);
-      lines = view2.split("\n").length - 1;
+      const view3 = pickerView(picker, state.cursor);
+      stdout.write(view3);
+      lines = view3.split("\n").length - 1;
     };
     const finish = () => {
       stdin.off("data", onData);
@@ -11834,15 +11837,2110 @@ CLI \u662F\u524D\u7F6E\u8D44\u6E90\uFF0C\u7531 am setup \u88C5\u5728\u7528\u6237
   });
 }
 
+// src/align.ts
+var import_node_fs17 = __toESM(require("node:fs"), 1);
+var import_node_path13 = __toESM(require("node:path"), 1);
+
+// ../engine/src/align/script.ts
+var import_node_fs14 = __toESM(require("node:fs"), 1);
+
+// ../engine/src/align/token.ts
+function runes(s) {
+  const out = [];
+  for (const ch of s) out.push(ch.codePointAt(0));
+  return out;
+}
+function runeString(rs) {
+  let out = "";
+  for (const r of rs) out += String.fromCodePoint(r);
+  return out;
+}
+var cjkPattern = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u;
+var letterPattern = new RegExp("^\\p{L}$", "u");
+var digitPattern = new RegExp("^\\p{Nd}$", "u");
+var markPattern = new RegExp("^\\p{Mn}$", "u");
+function isLetter(r) {
+  if (r < 128) return r >= 65 && r <= 90 || r >= 97 && r <= 122;
+  return letterPattern.test(String.fromCodePoint(r));
+}
+function isDigit(r) {
+  if (r < 128) return r >= 48 && r <= 57;
+  return digitPattern.test(String.fromCodePoint(r));
+}
+function isMark(r) {
+  return r >= 768 && markPattern.test(String.fromCodePoint(r));
+}
+function isCJK(r) {
+  return r >= 4352 && cjkPattern.test(String.fromCodePoint(r));
+}
+function toLower(r) {
+  if (r < 128) return r >= 65 && r <= 90 ? r + 32 : r;
+  if (r === 304) return 105;
+  const lower = String.fromCodePoint(r).toLowerCase();
+  const cps = runes(lower);
+  return cps.length === 1 ? cps[0] : r;
+}
+function normRune(r) {
+  if (r >= 65281 && r <= 65374) r -= 65248;
+  else if (r === 12288) r = 32;
+  return toLower(r);
+}
+function isWordRune(r) {
+  return !isCJK(r) && (isLetter(r) || isDigit(r));
+}
+function isJoiner(r) {
+  return r === 39 || r === 46 || r === 45 || r === 8217;
+}
+function tokenizeRunes(rs) {
+  const spans = [];
+  for (let i = 0; i < rs.length; ) {
+    const r = normRune(rs[i]);
+    if (isCJK(r)) {
+      spans.push({ start: i, end: i + 1 });
+      i++;
+    } else if (isWordRune(r)) {
+      let j = i + 1;
+      while (j < rs.length) {
+        const next = normRune(rs[j]);
+        if (isWordRune(next)) {
+          j++;
+          continue;
+        }
+        if (isJoiner(next) && j + 1 < rs.length && isWordRune(normRune(rs[j + 1]))) {
+          j += 2;
+          continue;
+        }
+        break;
+      }
+      spans.push({ start: i, end: j });
+      i = j;
+    } else {
+      i++;
+    }
+  }
+  return spans;
+}
+function normalizeRunes(rs) {
+  const out = [];
+  for (let r of rs) {
+    r = normRune(r);
+    if (isLetter(r) || isDigit(r) || isMark(r)) out.push(r);
+  }
+  return runeString(out);
+}
+function tokenize2(text) {
+  const rs = runes(text);
+  return tokenizeRunes(rs).map((s) => ({ text: runeString(rs.slice(s.start, s.end)), norm: normalizeRunes(rs.slice(s.start, s.end)) }));
+}
+
+// ../engine/src/align/script.ts
+var phraseIDPattern = /^[a-z0-9][a-z0-9_-]*$/;
+var ParseError = class extends Error {
+  constructor(line2, col, msg) {
+    super(`\u7B2C ${line2} \u884C\u7B2C ${col} \u5217\uFF1A${msg}`);
+    this.line = line2;
+    this.col = col;
+    this.msg = msg;
+  }
+  line;
+  col;
+  msg;
+};
+var badEscape = "\u65E0\u6548\u8F6C\u4E49\uFF1A\u53EA\u80FD\u8F6C\u4E49 \\< \\> \\@ \\| \\\\";
+var Script = class {
+  pieces = [];
+  tokens = [];
+  phrases = [];
+  /** pieceToken 是每个 piece 上第一个开始的朗读单元下标，没有时为 -1。 */
+  pieceToken = [];
+  /** headings 是标题行，只给 view 用：不进配音、不进字幕。 */
+  headings = [];
+  /** SpokenText 返回送进 TTS 与对齐工具的文本：标记取朗读侧，标题行丢掉，段与段之间换行，标点保留。 */
+  spokenText() {
+    let b = "";
+    this.pieces.forEach((p, i) => {
+      if (i > 0 && p.para !== this.pieces[i - 1].para) b += "\n";
+      b += p.spoken;
+    });
+    const out = [];
+    for (const para of b.split("\n")) {
+      const t = goTrimSpace(para);
+      if (t !== "") out.push(t);
+    }
+    if (out.length === 0) return "";
+    return out.join("\n") + "\n";
+  }
+  /** displayText 拼出 piece 区间 [from, to) 的显示文本。 */
+  displayText(from, to) {
+    let b = "";
+    for (const p of this.pieces.slice(from, to)) b += p.display;
+    return goTrimSpace(b);
+  }
+  /**
+   * tokenRange 返回首 piece 落在 [from, to) 内的朗读单元下标区间，左闭右开。
+   * 区间里没有朗读单元时返回空区间 (k, k)，k 是其后第一个单元的下标。
+   */
+  tokenRange(from, to) {
+    const first = search(this.tokens.length, (i) => this.tokens[i].firstPiece >= from);
+    const end = search(this.tokens.length, (i) => this.tokens[i].firstPiece >= to);
+    return [first, Math.max(first, end)];
+  }
+};
+function search(n, f) {
+  let lo = 0;
+  let hi = n;
+  while (lo < hi) {
+    const mid = lo + hi >>> 1;
+    if (!f(mid)) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+function loadScript(file) {
+  let body;
+  try {
+    body = import_node_fs14.default.readFileSync(file, "utf8");
+  } catch (err) {
+    throw new Error(`\u65E0\u6CD5\u8BFB\u53D6\u7EC8\u7A3F\uFF1A${goPathError("open", file, err)}`, { cause: err });
+  }
+  try {
+    return parseScript(body);
+  } catch (err) {
+    throw new Error(`${file} ${err.message}`, { cause: err });
+  }
+}
+function trimLeftSet(s, cutset) {
+  const set = new Set(cutset);
+  const cs = [...s];
+  let i = 0;
+  while (i < cs.length && set.has(cs[i])) i++;
+  return cs.slice(i).join("");
+}
+function trimRightSet(s, cutset) {
+  const set = new Set(cutset);
+  const cs = [...s];
+  let end = cs.length;
+  while (end > 0 && set.has(cs[end - 1])) end--;
+  return cs.slice(0, end).join("");
+}
+function parseScript(text) {
+  const s = new Script();
+  if (text.startsWith("\uFEFF")) text = text.slice(1);
+  const lines = text.replaceAll("\r\n", "\n").split("\n");
+  const stack = [];
+  const seen = /* @__PURE__ */ new Set();
+  let para = 0;
+  let paraHasContent = false;
+  lines.forEach((raw, index) => {
+    const lineNo = index + 1;
+    const line2 = trimRightSet(raw, "\r");
+    const trimmed = trimLeftSet(line2, " 	\u3000");
+    if (goTrimSpace(trimmed) === "" || trimmed.startsWith("#")) {
+      if (trimmed.startsWith("#")) {
+        const body = trimLeftSet(trimmed, "#");
+        s.headings.push({ atPiece: s.pieces.length, level: trimmed.length - body.length, text: goTrimSpace(body) });
+      }
+      if (paraHasContent) {
+        para++;
+        paraHasContent = false;
+      }
+      return;
+    }
+    if (paraHasContent) s.pieces.push({ display: "", spoken: "", line: lineNo, col: 1, para, plain: false, softBreak: true });
+    paraHasContent = true;
+    const rs = runes(line2);
+    const add = (p) => s.pieces.push({ ...p, para, softBreak: false });
+    for (let i = 0; i < rs.length; ) {
+      const col = i + 1;
+      const r = rs[i];
+      if (r === 92) {
+        if (i + 1 >= rs.length || !isEscapable(rs[i + 1])) throw new ParseError(lineNo, col, badEscape);
+        const ch = String.fromCodePoint(rs[i + 1]);
+        add({ display: ch, spoken: ch, line: lineNo, col, plain: true });
+        i += 2;
+      } else if (r === 60) {
+        const [display, spoken, next] = parseAlternative(rs, i, lineNo);
+        add({ display, spoken, line: lineNo, col, plain: false });
+        i = next;
+      } else if (r === 64 && i + 1 < rs.length && rs[i + 1] === 123) {
+        const end = indexRune(rs, i + 2, 125);
+        if (end < 0) throw new ParseError(lineNo, col, "\u77ED\u8BED\u6807\u8BB0\u7F3A\u5C11 }");
+        const body = runeString(rs.slice(i + 2, end));
+        if (body.startsWith("/")) {
+          const id = body.slice(1);
+          if (stack.length === 0) throw new ParseError(lineNo, col, `@{/${id}} \u6CA1\u6709\u5BF9\u5E94\u7684 @{${id}}`);
+          const top = stack[stack.length - 1];
+          if (top.id !== id) {
+            throw new ParseError(lineNo, col, `@{/${id}} \u4E0E\u672A\u95ED\u5408\u7684 @{${top.id}}\uFF08\u7B2C ${top.line} \u884C\u7B2C ${top.col} \u5217\uFF09\u4EA4\u53C9\uFF1A\u77ED\u8BED\u53EA\u80FD\u5D4C\u5957\uFF0C\u4E0D\u80FD\u4EA4\u53C9`);
+          }
+          stack.pop();
+          if (top.startPiece === s.pieces.length) throw new ParseError(top.line, top.col, `\u77ED\u8BED ${id} \u662F\u7A7A\u7684`);
+          s.phrases.push({ id, startPiece: top.startPiece, endPiece: s.pieces.length, line: top.line, col: top.col, order: 0 });
+        } else {
+          if (!phraseIDPattern.test(body)) {
+            throw new ParseError(lineNo, col, `\u77ED\u8BED id ${goQuote(body)} \u4E0D\u5408\u6CD5\uFF1A\u53EA\u80FD\u7528\u5C0F\u5199\u5B57\u6BCD\u3001\u6570\u5B57\u3001_ \u548C -\uFF0C\u4E14\u4EE5\u5B57\u6BCD\u6216\u6570\u5B57\u5F00\u5934`);
+          }
+          if (seen.has(body)) throw new ParseError(lineNo, col, `\u77ED\u8BED id ${body} \u91CD\u590D`);
+          seen.add(body);
+          stack.push({ id: body, startPiece: s.pieces.length, line: lineNo, col });
+        }
+        i = end + 1;
+      } else {
+        const ch = String.fromCodePoint(r);
+        add({ display: ch, spoken: ch, line: lineNo, col, plain: true });
+        i++;
+      }
+    }
+  });
+  if (stack.length > 0) {
+    const top = stack[stack.length - 1];
+    throw new ParseError(top.line, top.col, `\u77ED\u8BED @{${top.id}} \u6CA1\u6709\u95ED\u5408`);
+  }
+  resolveSoftBreaks(s);
+  sortPhrases(s);
+  tokenizeScript(s);
+  return s;
+}
+function isEscapable(r) {
+  return r === 60 || r === 62 || r === 64 || r === 124 || r === 92;
+}
+function indexRune(rs, from, target) {
+  for (let i = from; i < rs.length; i++) if (rs[i] === target) return i;
+  return -1;
+}
+function parseAlternative(rs, start, lineNo) {
+  const parts = [[], []];
+  let part = 0;
+  for (let i = start + 1; i < rs.length; i++) {
+    const r = rs[i];
+    switch (r) {
+      case 92:
+        if (i + 1 >= rs.length || !isEscapable(rs[i + 1])) throw new ParseError(lineNo, i + 1, badEscape);
+        parts[part].push(rs[i + 1]);
+        i++;
+        break;
+      case 124:
+        if (part === 1) throw new ParseError(lineNo, i + 1, "<\u663E\u793A|\u6717\u8BFB> \u91CC\u53EA\u80FD\u6709\u4E00\u4E2A |\uFF0C\u5B57\u9762\u7684 | \u5199\u6210 \\|");
+        part = 1;
+        break;
+      case 60:
+        throw new ParseError(lineNo, i + 1, "<\u663E\u793A|\u6717\u8BFB> \u4E0D\u80FD\u5D4C\u5957\uFF0C\u5B57\u9762\u7684 < \u5199\u6210 \\<");
+      case 62: {
+        if (part === 0) throw new ParseError(lineNo, start + 1, "<\u663E\u793A|\u6717\u8BFB> \u7F3A\u5C11 |\uFF1B\u5B57\u9762\u7684 < \u5199\u6210 \\<");
+        const display = runeString(parts[0]);
+        const spoken = runeString(parts[1]);
+        if (display === "" && spoken === "") throw new ParseError(lineNo, start + 1, "<|> \u4E24\u4FA7\u90FD\u662F\u7A7A\u7684");
+        return [display, spoken, i + 1];
+      }
+      default:
+        parts[part].push(r);
+    }
+  }
+  throw new ParseError(lineNo, start + 1, "<\u663E\u793A|\u6717\u8BFB> \u6CA1\u6709\u5728\u672C\u884C\u95ED\u5408");
+}
+function resolveSoftBreaks(s) {
+  for (let i = 0; i < s.pieces.length; i++) {
+    if (!s.pieces[i].softBreak || i === 0 || i + 1 >= s.pieces.length) continue;
+    const before = runes(s.pieces[i - 1].spoken);
+    const after = runes(s.pieces[i + 1].spoken);
+    if (before.length > 0 && after.length > 0 && isWordRune(normRune(before[before.length - 1])) && isWordRune(normRune(after[0]))) {
+      s.pieces[i].display = " ";
+      s.pieces[i].spoken = " ";
+    }
+  }
+}
+function sortPhrases(s) {
+  const phrases = s.phrases;
+  for (let i = 1; i < phrases.length; i++) {
+    for (let j = i; j > 0 && phraseBefore(phrases[j], phrases[j - 1]); j--) {
+      [phrases[j], phrases[j - 1]] = [phrases[j - 1], phrases[j]];
+    }
+  }
+  phrases.forEach((p, i) => p.order = i + 1);
+}
+function phraseBefore(a, b) {
+  if (a.startPiece !== b.startPiece) return a.startPiece < b.startPiece;
+  if (a.line !== b.line) return a.line < b.line;
+  return a.col < b.col;
+}
+function tokenizeScript(s) {
+  s.pieceToken = new Array(s.pieces.length).fill(-1);
+  for (let start = 0; start < s.pieces.length; ) {
+    let end = start;
+    while (end < s.pieces.length && s.pieces[end].para === s.pieces[start].para) end++;
+    const rs = [];
+    const owner = [];
+    for (let p = start; p < end; p++) {
+      for (const r of runes(s.pieces[p].spoken)) {
+        rs.push(r);
+        owner.push(p);
+      }
+    }
+    for (const sp of tokenizeRunes(rs)) {
+      const first = owner[sp.start];
+      const last = owner[sp.end - 1];
+      if (s.pieceToken[first] < 0) s.pieceToken[first] = s.tokens.length;
+      s.tokens.push({
+        text: runeString(rs.slice(sp.start, sp.end)),
+        norm: normalizeRunes(rs.slice(sp.start, sp.end)),
+        firstPiece: first,
+        lastPiece: last,
+        line: s.pieces[first].line,
+        col: s.pieces[first].col
+      });
+    }
+    start = end;
+  }
+}
+
+// ../engine/src/align/match.ts
+var LabelExact = "exact";
+var LabelSplit = "split";
+var LabelMerge = "merge";
+var LabelReplace = "replacement";
+var LabelOmission = "source-omission";
+var LabelInsertion = "evidence-insertion";
+var omissionCost = 0.5;
+var insertionCost = 0.35;
+var regroupCost = 0.055;
+var maxGroup = 4;
+var costEpsilon = 1e-9;
+var evidenceTrust = 0.8;
+var boundaryCost = 0.06;
+var minBandHalfWidth = 128;
+var beamWidth = 15;
+var Band = class {
+  lo;
+  hi;
+  offset;
+  cost;
+  exact;
+  omissions;
+  insertions;
+  complexity;
+  prevS;
+  prevE;
+  ok;
+  constructor(n, m) {
+    const half = minBandHalfWidth + Math.abs(n - m);
+    this.lo = new Int32Array(n + 1);
+    this.hi = new Int32Array(n + 1);
+    this.offset = new Int32Array(n + 1);
+    let total = 0;
+    for (let i = 0; i <= n; i++) {
+      const center = n > 0 ? Math.floor(i * m / n) : m;
+      this.lo[i] = Math.max(0, center - half);
+      this.hi[i] = Math.min(m, center + half);
+      this.offset[i] = total - this.lo[i];
+      total += this.hi[i] - this.lo[i] + 1;
+    }
+    this.cost = new Float64Array(total);
+    this.exact = new Int32Array(total);
+    this.omissions = new Int32Array(total);
+    this.insertions = new Int32Array(total);
+    this.complexity = new Int32Array(total);
+    this.prevS = new Int32Array(total);
+    this.prevE = new Int32Array(total);
+    this.ok = new Uint8Array(total);
+  }
+  /** 格子的下标，不在带内时返回 -1（Go 的 at 返回 nil）。 */
+  at(i, j) {
+    if (j < this.lo[i] || j > this.hi[i]) return -1;
+    return this.offset[i] + j;
+  }
+};
+function better(candidate2, b, current) {
+  if (!b.ok[current]) return true;
+  const cost = b.cost[current];
+  if (candidate2.cost < cost - costEpsilon) return true;
+  if (candidate2.cost > cost + costEpsilon) return false;
+  if (candidate2.exact !== b.exact[current]) return candidate2.exact > b.exact[current];
+  if (candidate2.omissions !== b.omissions[current]) return candidate2.omissions < b.omissions[current];
+  if (candidate2.insertions !== b.insertions[current]) return candidate2.insertions < b.insertions[current];
+  return candidate2.complexity < b.complexity[current];
+}
+function byteLength(s) {
+  return Buffer.byteLength(s, "utf8");
+}
+function matchTokens(source, evidence) {
+  const n = source.length;
+  const m = evidence.length;
+  const b = new Band(n, m);
+  const origin = b.at(0, 0);
+  b.ok[origin] = 1;
+  b.prevS[origin] = -1;
+  b.prevE[origin] = -1;
+  const [sourceBytes, sourceRunes] = prefixLengths(source);
+  const [evidenceBytes, evidenceRunes] = prefixLengths(evidence);
+  const sourceLen = source.map(byteLength);
+  const evidenceLen = evidence.map(byteLength);
+  const update = (i, j, ni, nj, cost, exact) => {
+    const target = b.at(ni, nj);
+    if (target < 0) return;
+    const prev = b.at(i, j);
+    const sc = ni - i;
+    const ec = nj - j;
+    const candidate2 = {
+      cost: b.cost[prev] + cost,
+      exact: b.exact[prev] + exact,
+      omissions: b.omissions[prev],
+      insertions: b.insertions[prev],
+      complexity: b.complexity[prev] + Math.max(0, sc + ec - 2)
+    };
+    if (ec === 0) candidate2.omissions += sc;
+    if (sc === 0) candidate2.insertions += ec;
+    if (better(candidate2, b, target)) {
+      b.cost[target] = candidate2.cost;
+      b.exact[target] = candidate2.exact;
+      b.omissions[target] = candidate2.omissions;
+      b.insertions[target] = candidate2.insertions;
+      b.complexity[target] = candidate2.complexity;
+      b.prevS[target] = i;
+      b.prevE[target] = j;
+      b.ok[target] = 1;
+    }
+  };
+  const pair = (i, j, sc, ec) => {
+    let exact = 0;
+    if (sc === 1 && ec === 1) {
+      if (source[i] === evidence[j]) exact = 1;
+    } else if (source[i] === evidence[j] || source[i + sc - 1] === evidence[j + ec - 1]) {
+      return;
+    } else if (sourceBytes[i + sc] - sourceBytes[i] !== evidenceBytes[j + ec] - evidenceBytes[j] || sourceLen[i] === evidenceLen[j]) {
+      const target = b.at(i + sc, j + ec);
+      if (target < 0) return;
+      if (b.ok[target] && b.cost[b.at(i, j)] + fuzzyLowerBound(sc, ec, sourceRunes[i + sc] - sourceRunes[i], evidenceRunes[j + ec] - evidenceRunes[j]) > b.cost[target] + costEpsilon) {
+        return;
+      }
+    }
+    update(i, j, i + sc, j + ec, pairedCost(source.slice(i, i + sc), evidence.slice(j, j + ec)), exact);
+  };
+  const reachable = (i, j) => {
+    if (i < 0 || j < 0) return false;
+    const c = b.at(i, j);
+    return c >= 0 && b.ok[c] === 1;
+  };
+  const rowBest = new Float64Array(n + 1);
+  const rowSeen = new Uint8Array(n + 1);
+  for (let ni = 0; ni <= n; ni++) {
+    for (let nj = b.lo[ni]; nj <= b.hi[ni]; nj++) {
+      if (ni > 0 || nj > 0) {
+        if (reachable(ni - 1, nj - 1)) pair(ni - 1, nj - 1, 1, 1);
+        if (reachable(ni - 1, nj)) update(ni - 1, nj, ni, nj, omissionCost, 0);
+        if (reachable(ni, nj - 1)) update(ni, nj - 1, ni, nj, insertionCost, 0);
+        const here = b.at(ni, nj);
+        const far = ni > 0 && rowSeen[ni - 1] === 1 && b.ok[here] === 1 && b.cost[here] > rowBest[ni - 1] + beamWidth;
+        for (let sc = 1; !far && sc <= maxGroup && sc <= ni; sc++) {
+          for (let ec = 1; ec <= maxGroup && ec <= nj; ec++) {
+            if ((sc > 1 || ec > 1) && reachable(ni - sc, nj - ec)) pair(ni - sc, nj - ec, sc, ec);
+          }
+        }
+      }
+      const c = b.at(ni, nj);
+      if (!b.ok[c]) continue;
+      if (!rowSeen[ni] || b.cost[c] < rowBest[ni]) {
+        rowBest[ni] = b.cost[c];
+        rowSeen[ni] = 1;
+      }
+      if (ni < n) {
+        const run2 = exactRunLength(source[ni], evidence, nj);
+        if (run2 > maxGroup) pair(ni, nj, 1, run2);
+      }
+      if (nj < m) {
+        const run2 = exactRunLength(evidence[nj], source, ni);
+        if (run2 > maxGroup) pair(ni, nj, run2, 1);
+      }
+    }
+  }
+  const groups = [];
+  for (let i = n, j = m; i > 0 || j > 0; ) {
+    const c = b.at(i, j);
+    const pi = b.prevS[c];
+    const pj = b.prevE[c];
+    groups.push({ s0: pi, s1: i, e0: pj, e1: j, label: labelOf(source.slice(pi, i), evidence.slice(pj, j)) });
+    i = pi;
+    j = pj;
+  }
+  groups.reverse();
+  return groups;
+}
+function labelOf(source, evidence) {
+  if (source.length === 0) return LabelInsertion;
+  if (evidence.length === 0) return LabelOmission;
+  if (source.join("") !== evidence.join("")) return LabelReplace;
+  if (source.length === 1 && evidence.length === 1) return LabelExact;
+  if (source.length === 1) return LabelSplit;
+  return LabelMerge;
+}
+function prefixLengths(values) {
+  const bytes2 = new Array(values.length + 1).fill(0);
+  const counts = new Array(values.length + 1).fill(0);
+  values.forEach((v, i) => {
+    bytes2[i + 1] = bytes2[i] + byteLength(v);
+    counts[i + 1] = counts[i] + runes(v).length;
+  });
+  return [bytes2, counts];
+}
+function fuzzyLowerBound(sc, ec, sourceLen, evidenceLen) {
+  const width = Math.max(sourceLen, evidenceLen, 1);
+  const distance = Math.abs(sourceLen - evidenceLen) / width;
+  return distance * evidenceTrust * Math.max(sc, ec) + regroupCost * (sc + ec - 2) + boundaryCost * Math.abs(sc - ec);
+}
+function pairedCost(source, evidence) {
+  const sourceText = source.join("");
+  const evidenceText = evidence.join("");
+  if (sourceText === evidenceText) {
+    if (source.length === 1 && evidence.length === 1) return 0;
+    return regroupCost;
+  }
+  const sr = runes(sourceText);
+  const er = runes(evidenceText);
+  const width = Math.max(sr.length, er.length, 1);
+  const distance = editDistance(sr, er) / width;
+  if (source.length === 1 && evidence.length === 1) return distance * evidenceTrust;
+  const grouping = regroupCost * Math.max(0, source.length + evidence.length - 2);
+  const exactWords = exactWordLCS(source, evidence);
+  const unmatched = source.length + evidence.length - 2 * exactWords;
+  return distance * evidenceTrust * Math.max(source.length, evidence.length) + grouping + boundaryCost * unmatched;
+}
+function exactWordLCS(source, evidence) {
+  const rows = Array.from({ length: maxGroup + 1 }, () => new Array(maxGroup + 1).fill(0));
+  for (let i = source.length - 1; i >= 0; i--) {
+    for (let j = evidence.length - 1; j >= 0; j--) {
+      rows[i][j] = source[i] === evidence[j] ? rows[i + 1][j + 1] + 1 : Math.max(rows[i + 1][j], rows[i][j + 1]);
+    }
+  }
+  return rows[0][0];
+}
+function exactRunLength(target, parts, start) {
+  if (target === "") return 0;
+  let joined = "";
+  for (let i = start; i < parts.length; i++) {
+    joined += parts[i];
+    if (joined === target) return i - start + 1;
+    if (joined.length >= target.length || !target.startsWith(joined)) return 0;
+  }
+  return 0;
+}
+function editDistance(left, right) {
+  let previous = new Array(right.length + 1);
+  let current = new Array(right.length + 1).fill(0);
+  for (let j = 0; j <= right.length; j++) previous[j] = j;
+  for (let i = 1; i <= left.length; i++) {
+    current[0] = i;
+    for (let j = 1; j <= right.length; j++) {
+      let substitute = previous[j - 1];
+      if (left[i - 1] !== right[j - 1]) substitute++;
+      current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, substitute);
+    }
+    [previous, current] = [current, previous];
+  }
+  return previous[right.length];
+}
+function alignCharacters(source, evidence) {
+  const rows = [];
+  for (let i = 0; i <= source.length; i++) {
+    rows.push(new Array(evidence.length + 1).fill(0));
+    rows[i][0] = i;
+  }
+  for (let j = 0; j <= evidence.length; j++) rows[0][j] = j;
+  for (let i = 1; i <= source.length; i++) {
+    for (let j = 1; j <= evidence.length; j++) {
+      let substitute = rows[i - 1][j - 1];
+      if (source[i - 1] !== evidence[j - 1]) substitute++;
+      rows[i][j] = Math.min(rows[i - 1][j] + 1, rows[i][j - 1] + 1, substitute);
+    }
+  }
+  const pairs = [];
+  for (let i = source.length, j = evidence.length; i > 0 || j > 0; ) {
+    if (i > 0 && j > 0) {
+      let substitute = rows[i - 1][j - 1];
+      if (source[i - 1] !== evidence[j - 1]) substitute++;
+      if (rows[i][j] === substitute) {
+        pairs.push({ source: i - 1, evidence: j - 1 });
+        i--;
+        j--;
+        continue;
+      }
+    }
+    if (i > 0 && rows[i][j] === rows[i - 1][j] + 1) {
+      i--;
+      continue;
+    }
+    j--;
+  }
+  pairs.reverse();
+  return pairs;
+}
+
+// ../engine/src/align/evidence.ts
+var import_node_fs15 = __toESM(require("node:fs"), 1);
+
+// ../engine/src/beat/jsondecode.ts
+var sliceOf = (elem) => ({ kind: "slice", elem });
+var NumberLiteral = class {
+  constructor(source) {
+    this.source = source;
+  }
+  source;
+};
+function goTypeName(t) {
+  switch (t) {
+    case "int":
+      return "int";
+    case "int64":
+      return "int64";
+    case "float":
+      return "float64";
+    case "string":
+      return "string";
+    case "bool":
+      return "bool";
+  }
+  if (t.kind === "slice") return "[]" + goTypeName(t.elem);
+  return t.goName;
+}
+function zeroOf(t) {
+  switch (t) {
+    case "int":
+    case "int64":
+    case "float":
+      return 0;
+    case "string":
+      return "";
+    case "bool":
+      return false;
+  }
+  if (t.kind === "slice") return null;
+  const out = {};
+  for (const [json, type] of t.fields) out[json] = zeroOf(type);
+  return out;
+}
+function kindOf(value) {
+  if (value instanceof NumberLiteral) return "number";
+  if (typeof value === "string") return "string";
+  if (typeof value === "boolean") return "bool";
+  if (Array.isArray(value)) return "array";
+  return "object";
+}
+function typeError(ctx, where, value, t) {
+  if (ctx.error !== void 0) return;
+  if (where.struct === void 0) {
+    ctx.error = `json: cannot unmarshal ${value} into Go value of type ${goTypeName(t)}`;
+    return;
+  }
+  ctx.error = `json: cannot unmarshal ${value} into Go struct field ${where.struct.name}.${where.path.join(".")} of type ${goTypeName(t)}`;
+}
+var intLiteral = /^-?(?:0|[1-9][0-9]*)$/;
+var maxInt64 = 9223372036854775807n;
+var minInt64 = -9223372036854775808n;
+function decodeValue(value, t, ctx, where) {
+  if (value === null) return zeroOf(t);
+  switch (t) {
+    case "int":
+    case "int64":
+      if (!(value instanceof NumberLiteral)) {
+        typeError(ctx, where, kindOf(value), t);
+        return 0;
+      }
+      if (!intLiteral.test(value.source) || BigInt(value.source) > maxInt64 || BigInt(value.source) < minInt64) {
+        typeError(ctx, where, "number " + value.source, t);
+        return 0;
+      }
+      return Number(value.source);
+    case "float": {
+      if (!(value instanceof NumberLiteral)) {
+        typeError(ctx, where, kindOf(value), t);
+        return 0;
+      }
+      const n = Number(value.source);
+      if (!Number.isFinite(n)) {
+        typeError(ctx, where, "number " + value.source, t);
+        return 0;
+      }
+      return n;
+    }
+    case "string":
+      if (typeof value !== "string") {
+        typeError(ctx, where, kindOf(value), t);
+        return "";
+      }
+      return value;
+    case "bool":
+      if (typeof value !== "boolean") {
+        typeError(ctx, where, kindOf(value), t);
+        return false;
+      }
+      return value;
+  }
+  if (t.kind === "slice") {
+    if (!Array.isArray(value)) {
+      typeError(ctx, where, kindOf(value), t);
+      return null;
+    }
+    return value.map((item) => decodeValue(item, t.elem, ctx, where));
+  }
+  if (typeof value !== "object" || Array.isArray(value) || value instanceof NumberLiteral) {
+    typeError(ctx, where, kindOf(value), t);
+    return zeroOf(t);
+  }
+  const out = zeroOf(t);
+  for (const [key, item] of Object.entries(value)) {
+    const field = t.fields.find(([json]) => json === key) ?? t.fields.find(([json]) => json.toLowerCase() === key.toLowerCase());
+    if (!field) {
+      if (ctx.disallowUnknown && ctx.error === void 0) ctx.error = `json: unknown field ${goQuote(key)}`;
+      continue;
+    }
+    out[field[0]] = decodeValue(item, field[1], ctx, { struct: t, path: [...where.path, field[0]] });
+  }
+  return out;
+}
+function parseLiteral(text) {
+  return JSON.parse(
+    text,
+    (_key, value, context) => typeof value === "number" ? new NumberLiteral(context?.source ?? String(value)) : value
+  );
+}
+function decodeText(text, t, disallowUnknown) {
+  const ctx = { disallowUnknown };
+  const decoded = decodeValue(parseLiteral(text), t, ctx, { path: [] });
+  if (ctx.error !== void 0) throw new Error(ctx.error);
+  return decoded;
+}
+function unmarshal(body, t) {
+  const data = toBytes(body);
+  const syntax = scan(data, false);
+  if (syntax.error !== null) throw new Error(syntax.error);
+  return decodeText(Buffer.from(data).toString("utf8"), t, false);
+}
+function decodeFirst(body, t, disallowUnknown) {
+  const data = toBytes(body);
+  const syntax = scan(data, true);
+  if (syntax.error !== null) throw new Error(syntax.error);
+  const value = decodeText(Buffer.from(data.subarray(0, syntax.end)).toString("utf8"), t, disallowUnknown);
+  return { value, rest: data.subarray(syntax.end) };
+}
+function checkValid(body) {
+  return scan(toBytes(body), false).error;
+}
+function toBytes(body) {
+  return typeof body === "string" ? Buffer.from(body, "utf8") : body;
+}
+var isSpace = (c) => c === 32 || c === 9 || c === 10 || c === 13;
+var ScanError = class extends Error {
+};
+var endOfInput = "unexpected end of JSON input";
+function quoteChar(c) {
+  if (c === 39) return "'\\''";
+  if (c === 34) return `'"'`;
+  const short = { 7: "\\a", 8: "\\b", 12: "\\f", 10: "\\n", 13: "\\r", 9: "\\t", 11: "\\v", 92: "\\\\" };
+  if (short[c] !== void 0) return `'${short[c]}'`;
+  if (c < 32 || c === 127) return `'\\x${c.toString(16).padStart(2, "0")}'`;
+  if (c >= 128 && (c < 161 || c === 173)) return `'\\u${c.toString(16).padStart(4, "0")}'`;
+  return `'${String.fromCharCode(c)}'`;
+}
+function scan(data, firstOnly) {
+  let i = 0;
+  const at = () => i < data.length ? data[i] : -1;
+  const invalid = (context) => {
+    const c = i < data.length ? data[i] : 32;
+    throw new ScanError(`invalid character ${quoteChar(c)} ${context}`);
+  };
+  const skipSpace = () => {
+    while (i < data.length && isSpace(data[i])) i++;
+    if (i >= data.length) throw new ScanError(endOfInput);
+  };
+  const isDigit2 = (c) => c >= 48 && c <= 57;
+  const isHexByte = (c) => isDigit2(c) || c >= 97 && c <= 102 || c >= 65 && c <= 70;
+  const literal = (word2) => {
+    i++;
+    for (let k = 1; k < word2.length; k++) {
+      if (i >= data.length && firstOnly) throw new ScanError(endOfInput);
+      if (at() !== word2.charCodeAt(k)) invalid(`in literal ${word2} (expecting '${word2[k]}')`);
+      i++;
+    }
+  };
+  const string = () => {
+    i++;
+    for (; ; ) {
+      if (i >= data.length) throw new ScanError(endOfInput);
+      const c = data[i];
+      if (c === 34) {
+        i++;
+        return;
+      }
+      if (c === 92) {
+        i++;
+        const e = at();
+        if (e === 117) {
+          i++;
+          for (let k = 0; k < 4; k++) {
+            if (!isHexByte(at())) invalid("in \\u hexadecimal character escape");
+            i++;
+          }
+          continue;
+        }
+        if (e !== -1 && '"\\/bfnrt'.includes(String.fromCharCode(e))) {
+          i++;
+          continue;
+        }
+        invalid("in string escape code");
+      }
+      if (c < 32) invalid("in string literal");
+      i++;
+    }
+  };
+  const number = () => {
+    if (at() === 45) {
+      i++;
+      if (!isDigit2(at())) invalid("in numeric literal");
+    }
+    if (at() === 48) {
+      i++;
+    } else {
+      while (isDigit2(at())) i++;
+    }
+    if (at() === 46) {
+      i++;
+      if (!isDigit2(at())) invalid("after decimal point in numeric literal");
+      while (isDigit2(at())) i++;
+    }
+    if (at() === 101 || at() === 69) {
+      i++;
+      if (at() === 43 || at() === 45) i++;
+      if (!isDigit2(at())) invalid("in exponent of numeric literal");
+      while (isDigit2(at())) i++;
+    }
+  };
+  const value = () => {
+    skipSpace();
+    const c = data[i];
+    if (c === 123) {
+      i++;
+      skipSpace();
+      if (at() === 125) {
+        i++;
+        return;
+      }
+      for (; ; ) {
+        if (at() !== 34) invalid("looking for beginning of object key string");
+        string();
+        skipSpace();
+        if (at() !== 58) invalid("after object key");
+        i++;
+        value();
+        skipSpace();
+        if (at() === 44) {
+          i++;
+          skipSpace();
+          continue;
+        }
+        if (at() === 125) {
+          i++;
+          return;
+        }
+        invalid("after object key:value pair");
+      }
+    }
+    if (c === 91) {
+      i++;
+      skipSpace();
+      if (at() === 93) {
+        i++;
+        return;
+      }
+      for (; ; ) {
+        value();
+        skipSpace();
+        if (at() === 44) {
+          i++;
+          continue;
+        }
+        if (at() === 93) {
+          i++;
+          return;
+        }
+        invalid("after array element");
+      }
+    }
+    if (c === 34) return string();
+    if (c === 45 || isDigit2(c)) return number();
+    if (c === 116) return literal("true");
+    if (c === 102) return literal("false");
+    if (c === 110) return literal("null");
+    invalid("looking for beginning of value");
+  };
+  try {
+    value();
+    if (firstOnly) return { error: null, end: i };
+    while (i < data.length && isSpace(data[i])) i++;
+    if (i < data.length) invalid("after top-level value");
+    return { error: null, end: i };
+  } catch (err) {
+    if (!(err instanceof ScanError)) throw err;
+    if (firstOnly && err.message === endOfInput) {
+      let k = 0;
+      while (k < data.length && isSpace(data[k])) k++;
+      return { error: k >= data.length ? "EOF" : "unexpected EOF", end: i };
+    }
+    return { error: err.message, end: i };
+  }
+}
+
+// ../engine/src/align/evidence.ts
+var floatLiteral = /^[+-]?(?:\d[\d_]*(?:\.[\d_]*)?|\.\d[\d_]*)(?:[eE][+-]?\d+)?$/;
+function parseFloat64(raw) {
+  const lower = raw.toLowerCase();
+  if (/^[+-]?(inf|infinity)$/.test(lower)) return raw.startsWith("-") ? -Infinity : Infinity;
+  if (/^[+-]?nan$/.test(lower)) return NaN;
+  if (!floatLiteral.test(raw) || raw.includes("_")) return null;
+  return Number(raw);
+}
+function parseSegmentFlag(value) {
+  const at = value.lastIndexOf("@");
+  if (at < 0) return { path: value, offset: 0 };
+  const file = value.slice(0, at);
+  const raw = value.slice(at + 1);
+  const offset = parseFloat64(raw);
+  if (offset === null || file === "" || offset < 0 || !Number.isFinite(offset)) {
+    throw new Error(`--align ${goQuote(value)} \u4E0D\u5408\u6CD5\uFF1A\u5E94\u4E3A \u6587\u4EF6[@\u504F\u79FB\u79D2\u6570]\uFF0C\u504F\u79FB\u662F\u975E\u8D1F\u6570`);
+  }
+  return { path: file, offset };
+}
+var CanonicalShape = '[{"text":"\u5B57","start":0.12,"end":0.20}, ...]\uFF08\u79D2\uFF09';
+function loadSegments(segments) {
+  const items2 = [];
+  segments.forEach((seg, index) => {
+    for (const item of loadEvidence(seg.path)) {
+      items2.push({ text: item.text, start: item.start + seg.offset, end: item.end + seg.offset, segment: index });
+    }
+  });
+  return items2;
+}
+function loadEvidence(file) {
+  let body;
+  try {
+    body = import_node_fs15.default.readFileSync(file);
+  } catch (err) {
+    throw new Error(`\u65E0\u6CD5\u8BFB\u53D6\u5BF9\u9F50\u7ED3\u679C\uFF1A${goPathError("open", file, err)}`, { cause: err });
+  }
+  const syntax = checkValid(body);
+  if (syntax !== null) throw new Error(`${file} \u4E0D\u662F\u5408\u6CD5 JSON\uFF1A${syntax}`);
+  const root = JSON.parse(body.toString("utf8"));
+  let found;
+  try {
+    found = findItems(root);
+  } catch (err) {
+    throw new Error(`${file}\uFF1A${err.message}`, { cause: err });
+  }
+  if (found === null) throw new Error(`${file} \u7684\u7ED3\u6784\u8BA4\u4E0D\u51FA\uFF08${describe(root)}\uFF09\u3002\u8BF7\u5148\u8F6C\u6362\u6210 ${CanonicalShape}`);
+  found.forEach((item, i) => {
+    if (!Number.isFinite(item.start) || !Number.isFinite(item.end) || item.start < 0 || item.end < item.start) {
+      throw new Error(`${file} \u7B2C ${i + 1} \u6761\uFF08${goQuote(item.text)}\uFF09\u7684\u8D77\u6B62\u65F6\u95F4\u4E0D\u5408\u6CD5\uFF1A${formatG(item.start)} \u2192 ${formatG(item.end)}`);
+    }
+    if (item.end > 6 * 3600) throw new Error(`${file} \u7B2C ${i + 1} \u6761\u7684\u7ED3\u675F\u65F6\u95F4 ${formatG(item.end)} \u79D2\u8D85\u8FC7 6 \u5C0F\u65F6\uFF0C\u50CF\u662F\u6BEB\u79D2\uFF1B\u8BF7\u8F6C\u6362\u6210 ${CanonicalShape}`);
+  });
+  return found;
+}
+function isObject(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function findItems(node) {
+  if (Array.isArray(node)) {
+    const funasr = funasrItems(node);
+    if (funasr !== null) return funasr;
+    const timed = timedItems(node);
+    if (timed !== null) return timed;
+    for (const child of node) {
+      const items2 = findItems(child);
+      if (items2 !== null) return items2;
+    }
+  } else if (isObject(node)) {
+    for (const key of sortedKeys2(node)) {
+      const items2 = findItems(node[key]);
+      if (items2 !== null) return items2;
+    }
+  }
+  return null;
+}
+var textKeys = ["text", "word", "char", "token"];
+var timeKeyPairs = [
+  { start: "start", end: "end", scale: 1 },
+  { start: "start_time", end: "end_time", scale: 1 },
+  { start: "start_ms", end: "end_ms", scale: 1e-3 }
+];
+function timedItems(values) {
+  if (values.length === 0) return null;
+  const items2 = [];
+  for (const raw of values) {
+    if (!isObject(raw)) return null;
+    const text = textField(raw);
+    if (text === null) return null;
+    let matched = false;
+    for (const keys of timeKeyPairs) {
+      const start = raw[keys.start];
+      const end = raw[keys.end];
+      if (typeof start === "number" && typeof end === "number") {
+        items2.push({ text, start: start * keys.scale, end: end * keys.scale, segment: 0 });
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) return null;
+  }
+  return items2;
+}
+function textField(object) {
+  for (const key of textKeys) {
+    const text = object[key];
+    if (typeof text === "string") return text;
+  }
+  return null;
+}
+function fields(text) {
+  const out = [];
+  let current = "";
+  for (const ch of text) {
+    if (isSpaceChar(ch.codePointAt(0))) {
+      if (current !== "") out.push(current);
+      current = "";
+    } else current += ch;
+  }
+  if (current !== "") out.push(current);
+  return out;
+}
+function isSpaceChar(r) {
+  if (r === 9 || r === 10 || r === 11 || r === 12 || r === 13 || r === 32 || r === 133 || r === 160) return true;
+  return r === 5760 || r >= 8192 && r <= 8202 || r === 8232 || r === 8233 || r === 8239 || r === 8287 || r === 12288;
+}
+function funasrItems(values) {
+  if (values.length === 0) return null;
+  const items2 = [];
+  for (const raw of values) {
+    if (!isObject(raw)) return null;
+    const text = raw.text;
+    const stamps = raw.timestamp;
+    if (typeof text !== "string" || !Array.isArray(stamps)) return null;
+    const words = fields(text);
+    if (words.length !== stamps.length) {
+      throw new Error(`funasr \u7ED3\u679C\u7684 text \u6709 ${words.length} \u4E2A\u5355\u5143\uFF0Ctimestamp \u5374\u6709 ${stamps.length} \u7EC4\uFF0C\u65E0\u6CD5\u9010\u4E00\u5BF9\u5E94`);
+    }
+    stamps.forEach((stamp, i) => {
+      if (!Array.isArray(stamp) || stamp.length !== 2) throw new Error(`funasr \u7ED3\u679C\u7B2C ${i + 1} \u4E2A timestamp \u4E0D\u662F [\u8D77, \u6B62] \u4E24\u4E2A\u6570`);
+      const [start, end] = stamp;
+      if (typeof start !== "number" || typeof end !== "number") throw new Error(`funasr \u7ED3\u679C\u7B2C ${i + 1} \u4E2A timestamp \u4E0D\u662F\u6570\u503C`);
+      items2.push({ text: words[i], start: start / 1e3, end: end / 1e3, segment: 0 });
+    });
+  }
+  return items2;
+}
+function sortedKeys2(object) {
+  return Object.keys(object).sort(compareBytes);
+}
+function goTypeOf(value) {
+  if (value === null) return "<nil>";
+  if (typeof value === "string") return "string";
+  if (typeof value === "number") return "float64";
+  if (typeof value === "boolean") return "bool";
+  if (Array.isArray(value)) return "[]interface {}";
+  return "map[string]interface {}";
+}
+function describe(node) {
+  if (isObject(node)) return "\u9876\u5C42\u662F\u5BF9\u8C61\uFF0C\u952E\uFF1A" + sortedKeys2(node).join(", ");
+  if (Array.isArray(node)) {
+    if (node.length === 0) return "\u9876\u5C42\u662F\u7A7A\u6570\u7EC4";
+    const first = node[0];
+    if (isObject(first)) return `\u9876\u5C42\u662F ${node.length} \u4E2A\u5143\u7D20\u7684\u6570\u7EC4\uFF0C\u9996\u5143\u7D20\u7684\u952E\uFF1A${sortedKeys2(first).join(", ")}`;
+    return `\u9876\u5C42\u662F ${node.length} \u4E2A\u5143\u7D20\u7684\u6570\u7EC4\uFF0C\u9996\u5143\u7D20\u7C7B\u578B ${goTypeOf(first)}`;
+  }
+  return `\u9876\u5C42\u662F ${goTypeOf(node)}`;
+}
+
+// ../engine/src/reads/reads.ts
+var Defaults = { charsPerSecond: 9, minSeconds: 5 / 6, crowdSeconds: 0.3 };
+var scriptRe = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+var letterOrDigitRe = /[\p{L}\p{Nd}]/u;
+function units(text) {
+  let count = 0;
+  let inWord = false;
+  for (const r of text) {
+    if (scriptRe.test(r)) {
+      count++;
+      inWord = false;
+    } else if (letterOrDigitRe.test(r)) {
+      if (!inWord) {
+        count++;
+      }
+      inWord = true;
+    } else {
+      inWord = false;
+    }
+  }
+  return count;
+}
+
+// ../engine/src/align/cue.ts
+var MaxCueUnits = 32;
+var containsAny = (s, chars) => s !== "" && [...s].some((c) => chars.includes(c));
+var isSentenceEnd = (s) => containsAny(s, "\u3002\uFF01\uFF1F!?\uFF1B;");
+var isClauseEnd = (s) => containsAny(s, "\uFF0C\u3001,");
+var isCloser = (s) => containsAny(s, `\u201D\u2019\u300D\u300F\uFF09)\u3011\u300B"'`);
+function sentences(s) {
+  const out = [];
+  let start = 0;
+  let pending = false;
+  s.pieces.forEach((p, i) => {
+    if (i > start && p.para !== s.pieces[i - 1].para) {
+      out.push([start, i]);
+      start = i;
+      pending = false;
+    }
+    if (pending && !(p.plain && isCloser(p.display))) {
+      out.push([start, i]);
+      start = i;
+      pending = false;
+    }
+    if (p.plain && isSentenceEnd(p.display)) pending = true;
+  });
+  if (start < s.pieces.length) out.push([start, s.pieces.length]);
+  return out;
+}
+function splitLong(s, sentence) {
+  if (units(s.displayText(sentence[0], sentence[1])) <= MaxCueUnits) return [sentence];
+  const clauses = [];
+  let start = sentence[0];
+  for (let i = sentence[0]; i < sentence[1]; i++) {
+    if (s.pieces[i].plain && isClauseEnd(s.pieces[i].display)) {
+      clauses.push([start, i + 1]);
+      start = i + 1;
+    }
+  }
+  if (start < sentence[1]) clauses.push([start, sentence[1]]);
+  const out = [];
+  let current = [...clauses[0]];
+  for (const clause of clauses.slice(1)) {
+    if (units(s.displayText(current[0], clause[1])) <= MaxCueUnits) {
+      current[1] = clause[1];
+      continue;
+    }
+    out.push(current);
+    current = [...clause];
+  }
+  out.push(current);
+  return out;
+}
+function buildCues(s, timed) {
+  const ranges = [];
+  for (const sentence of sentences(s)) ranges.push(...splitLong(s, sentence));
+  let cues = [];
+  const blank = (from, to, tok0, tok1) => ({ index: 0, startMs: 0, endMs: 0, text: "", from, to, tok0, tok1 });
+  for (const r of ranges) {
+    const [tok0, tok1] = s.tokenRange(r[0], r[1]);
+    if (tok1 === tok0) {
+      if (cues.length > 0) cues[cues.length - 1].to = r[1];
+      else if (ranges.length > 1) {
+        cues.push(blank(r[0], r[1], -1, 0));
+      }
+      continue;
+    }
+    if (cues.length > 0 && cues[cues.length - 1].tok0 < 0) {
+      const last = cues[cues.length - 1];
+      last.to = r[1];
+      last.tok0 = tok0;
+      last.tok1 = tok1;
+      continue;
+    }
+    cues.push(blank(r[0], r[1], tok0, tok1));
+  }
+  if (cues.length > 0 && cues[cues.length - 1].tok0 < 0) cues = cues.slice(0, -1);
+  for (let i = 0; i < cues.length && cues.length > 1; ) {
+    if (s.displayText(cues[i].from, cues[i].to) !== "") {
+      i++;
+      continue;
+    }
+    if (i > 0) {
+      cues[i - 1].to = cues[i].to;
+      cues[i - 1].tok1 = cues[i].tok1;
+    } else {
+      cues[1].from = cues[0].from;
+      cues[1].tok0 = cues[0].tok0;
+    }
+    cues.splice(i, 1);
+  }
+  let previousEnd = 0;
+  cues.forEach((c, i) => {
+    c.index = i + 1;
+    c.text = s.displayText(c.from, c.to);
+    let start = Infinity;
+    let end = -Infinity;
+    for (const t of timed.slice(c.tok0, c.tok1)) {
+      start = Math.min(start, t.start);
+      end = Math.max(end, t.end);
+    }
+    c.startMs = toMs(start);
+    c.endMs = toMs(end);
+    if (i > 0 && c.startMs < previousEnd) c.startMs = previousEnd;
+    if (c.endMs <= c.startMs) c.endMs = c.startMs + 1;
+    previousEnd = c.endMs;
+  });
+  return cues;
+}
+function cueOfPiece(cues, piece) {
+  for (const c of cues) if (piece >= c.from && piece < c.to) return c.index;
+  return 0;
+}
+function toMs(seconds) {
+  return goRound(seconds * 1e3) + 0;
+}
+function formatSRT(cues) {
+  let b = "";
+  cues.forEach((c, i) => {
+    if (i > 0) b += "\n";
+    b += `${c.index}
+${srtClock(c.startMs)} --> ${srtClock(c.endMs)}
+${c.text}
+`;
+  });
+  return b;
+}
+function writeSRT(file, cues) {
+  atomicWrite(file, Buffer.from(formatSRT(cues), "utf8"), 420);
+}
+function pad(value, width) {
+  const negative = value < 0;
+  const digits = String(Math.abs(value)).padStart(negative ? width - 1 : width, "0");
+  return negative ? "-" + digits : digits;
+}
+function srtClock(ms) {
+  const h = Math.trunc(ms / 36e5);
+  const m = Math.trunc(ms / 6e4) % 60;
+  const sec = Math.trunc(ms / 1e3) % 60;
+  return `${pad(h, 2)}:${pad(m, 2)}:${pad(sec, 2)},${pad(ms % 1e3, 3)}`;
+}
+
+// ../engine/src/align/phrase.ts
+var import_node_fs16 = __toESM(require("node:fs"), 1);
+
+// ../engine/src/beat/store.ts
+var import_yaml = __toESM(require_dist(), 1);
+var Store = "production/beat";
+var ConfigFile = "beat.yaml";
+var TrackFile = Store + "/track.json";
+var DraftFile = Store + "/grid-draft.json";
+var GridFile = Store + "/grid.json";
+var ClickFile = Store + "/grid-click.wav";
+var PlanFile = Store + "/plan.json";
+var AnalysisFile = Store + "/analysis.wav";
+var AnalyzerVersion = "1.1.0";
+var DefaultConfig = `schema: 1
+# \u8282\u62CD\u6A21\u578B\uFF1Afinal0\uFF08\u7EA6 78 MB\uFF0C\u9ED8\u8BA4\uFF09\u6216 small0\uFF08\u7EA6 8 MB\uFF0C\u7CBE\u5EA6\u7565\u4F4E\uFF09\uFF1B
+# \u540C\u7CFB\u5217\u8FD8\u6709 final1/final2\u3001small1/small2\uFF0C\u662F\u4E0D\u540C\u968F\u673A\u79CD\u5B50\u8BAD\u7EC3\u7684\u540C\u7ED3\u6784\u6A21\u578B\u3002
+checkpoint: final0
+# \u88C5\u6709 beat-this==${AnalyzerVersion} \u7684\u72EC\u7ACB Python \u73AF\u5883
+python: python3
+`;
+
+// ../engine/src/beat/grid.ts
+var gridType = {
+  kind: "struct",
+  goName: "beat.Grid",
+  name: "Grid",
+  fields: [
+    ["schema", "int"],
+    ["audio_sha256", "string"],
+    ["duration_seconds", "float"],
+    ["source", "string"],
+    ["reviewed", "bool"],
+    ["beats", sliceOf("float")],
+    ["downbeats", sliceOf("float")]
+  ]
+};
+function frameOf(seconds, fps) {
+  return goRound(seconds * fps) + 0;
+}
+function totalFrames(duration, fps) {
+  return Math.ceil(duration * fps - 1e-9) + 0;
+}
+
+// ../engine/src/beat/plan.ts
+var plannedShotType = {
+  kind: "struct",
+  goName: "beat.PlannedShot",
+  name: "PlannedShot",
+  fields: [
+    ["id", "string"],
+    ["bars", "int"]
+  ]
+};
+var planType = {
+  kind: "struct",
+  goName: "beat.Plan",
+  name: "Plan",
+  fields: [
+    ["schema", "int"],
+    ["scenes", sliceOf(plannedShotType)]
+  ]
+};
+
+// ../engine/src/beat/analyze.ts
+var analyzeScript = `import importlib.metadata as m, json, sys, wave
+v = m.version('beat-this')
+if v != '${AnalyzerVersion}':
+    sys.exit('beat-this ' + v + ' != ${AnalyzerVersion}')
+import numpy as np
+from beat_this.inference import Audio2Beats
+if sys.argv[1] == '--doctor':
+    Audio2Beats(checkpoint_path=sys.argv[2], device='cpu', dbn=False)
+    sys.exit(0)
+with wave.open(sys.argv[1], 'rb') as w:
+    if w.getnchannels() != 1 or w.getsampwidth() != 2:
+        sys.exit('analysis wav must be mono 16-bit')
+    sr = w.getframerate()
+    signal = np.frombuffer(w.readframes(w.getnframes()), dtype='<i2').astype(np.float32) / 32768
+beats, downbeats = Audio2Beats(checkpoint_path=sys.argv[2], device='cpu', dbn=False)(signal, sr)
+with open(sys.argv[3], 'w') as f:
+    json.dump({'beats': [float(b) for b in beats], 'downbeats': [float(d) for d in downbeats]}, f)
+`;
+var rawType = {
+  kind: "struct",
+  goName: 'struct { Beats []float64 "json:\\"beats\\""; Downbeats []float64 "json:\\"downbeats\\"" }',
+  name: "",
+  fields: [
+    ["beats", sliceOf("float")],
+    ["downbeats", sliceOf("float")]
+  ]
+};
+
+// ../engine/src/align/phrase.ts
+var SourceForced = "forced-alignment";
+var SourceInterpolated = "interpolated";
+var SourceAdjusted = "adjusted";
+var TimelineSchema = 1;
+var phraseType = {
+  kind: "struct",
+  goName: "align.Phrase",
+  name: "Phrase",
+  fields: [
+    ["phrase_id", "string"],
+    ["subtitle_index", "int"],
+    ["source_text", "string"],
+    ["semantic_order", "int"],
+    ["start_ms", "int64"],
+    ["end_ms", "int64"],
+    ["start_frame", "int"],
+    ["end_frame_exclusive", "int"],
+    ["alignment_source", "string"],
+    ["confidence", "float"],
+    ["reviewed", "bool"],
+    ["visible_event_ids", sliceOf("string")]
+  ]
+};
+var timelineType = {
+  kind: "struct",
+  goName: "align.Timeline",
+  name: "Timeline",
+  fields: [
+    ["schema", "int"],
+    ["fps", "int"],
+    ["phrases", sliceOf(phraseType)]
+  ]
+};
+function timelineToJSON(t) {
+  return {
+    schema: t.schema,
+    fps: t.fps,
+    phrases: t.phrases === null ? null : t.phrases.map((p) => ({
+      phrase_id: p.phrase_id,
+      subtitle_index: p.subtitle_index,
+      source_text: p.source_text,
+      semantic_order: p.semantic_order,
+      start_ms: p.start_ms,
+      end_ms: p.end_ms,
+      start_frame: p.start_frame,
+      end_frame_exclusive: p.end_frame_exclusive,
+      alignment_source: p.alignment_source,
+      confidence: p.confidence,
+      reviewed: p.reviewed,
+      visible_event_ids: p.visible_event_ids
+    }))
+  };
+}
+function loadExistingTimeline(file) {
+  let body;
+  try {
+    body = import_node_fs16.default.readFileSync(file);
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    throw new Error(`\u65E0\u6CD5\u8BFB\u53D6\u5DF2\u6709\u77ED\u8BED\u65F6\u95F4\u8F74\uFF1A${goPathError("open", file, err)}`, { cause: err });
+  }
+  try {
+    return unmarshal(body, timelineType);
+  } catch (err) {
+    throw new Error(
+      `\u5DF2\u6709\u77ED\u8BED\u65F6\u95F4\u8F74 ${file} \u4E0D\u662F\u5408\u6CD5 JSON \u6216\u5B57\u6BB5\u7C7B\u578B\u4E0D\u7B26\uFF0C\u4E3A\u514D\u8986\u76D6\u5176\u4E2D\u624B\u586B\u7684 visible_event_ids\uFF0C\u5148\u4FEE\u597D\u6216\u79FB\u8D70\u5B83\uFF1A${err.message}`,
+      { cause: err }
+    );
+  }
+}
+var adjustmentType = {
+  kind: "struct",
+  goName: "align.Adjustment",
+  name: "Adjustment",
+  fields: [
+    ["phrase_id", "string"],
+    ["edge", "string"],
+    ["frame", "int"],
+    ["reason", "string"]
+  ]
+};
+var adjustFileType = {
+  kind: "struct",
+  goName: "align.AdjustFile",
+  name: "AdjustFile",
+  fields: [
+    ["schema", "int"],
+    ["adjustments", sliceOf(adjustmentType)]
+  ]
+};
+function loadAdjust(file) {
+  let body;
+  try {
+    body = import_node_fs16.default.readFileSync(file);
+  } catch (err) {
+    throw new Error(`\u65E0\u6CD5\u8BFB\u53D6\u4FEE\u6B63\u6587\u4EF6\uFF1A${goPathError("open", file, err)}`, { cause: err });
+  }
+  let adjust;
+  try {
+    adjust = decodeFirst(body, adjustFileType, true).value;
+  } catch (err) {
+    throw new Error(`${file} \u4E0D\u662F\u5408\u6CD5 JSON \u6216\u542B\u672A\u77E5\u5B57\u6BB5\uFF1A${err.message}`, { cause: err });
+  }
+  if (adjust.schema !== 1) throw new Error(`${file} \u7684 schema \u5E94\u4E3A 1\uFF0C\u6536\u5230 ${adjust.schema}`);
+  return adjust;
+}
+function timePhrases(s, timed, cues, fps) {
+  return s.phrases.map((span) => {
+    const [tok0, tok1] = s.tokenRange(span.startPiece, span.endPiece);
+    const p = {
+      span,
+      text: s.displayText(span.startPiece, span.endPiece),
+      tok0,
+      tok1,
+      start: 0,
+      end: 0,
+      source: "",
+      confidence: 0,
+      labels: /* @__PURE__ */ new Map(),
+      omitted: false,
+      allInterp: false,
+      subtitle: 0,
+      measuredFrom: 0,
+      measuredTo: 0
+    };
+    if (p.tok1 === p.tok0) {
+      let at = 0;
+      if (p.tok0 > 0) at = timed[p.tok0 - 1].end;
+      else if (p.tok0 < timed.length) at = timed[p.tok0].start;
+      p.start = at;
+      p.end = at;
+      p.source = SourceInterpolated;
+      p.allInterp = true;
+      p.subtitle = cueOfPiece(cues, span.startPiece);
+    } else {
+      const first = timed[p.tok0];
+      const last = timed[p.tok1 - 1];
+      p.start = first.start;
+      p.end = last.end;
+      p.source = SourceForced;
+      if (first.interpolated || last.interpolated) p.source = SourceInterpolated;
+      let score = 0;
+      p.allInterp = true;
+      for (const t of timed.slice(p.tok0, p.tok1)) {
+        p.labels.set(t.label, (p.labels.get(t.label) ?? 0) + 1);
+        switch (t.label) {
+          case LabelExact:
+          case LabelSplit:
+          case LabelMerge:
+            score++;
+            break;
+          case LabelReplace:
+            score += 0.5;
+            break;
+          case LabelOmission:
+            p.omitted = true;
+            break;
+        }
+        if (!t.interpolated) p.allInterp = false;
+      }
+      p.confidence = round3(score / (p.tok1 - p.tok0));
+      p.subtitle = cueOfPiece(cues, first.firstPiece);
+    }
+    [p.measuredFrom, p.measuredTo] = frames(toMs(p.start), toMs(p.end), fps);
+    return p;
+  });
+}
+function frames(startMs2, endMs, fps) {
+  const start = frameOf(startMs2 / 1e3, fps);
+  const end = Math.max(frameOf(endMs / 1e3, fps), start + 1);
+  return [start, end];
+}
+function round3(v) {
+  return goRound(v * 1e3) / 1e3;
+}
+function applyAdjustments(phrases, adjust, totalFrames2) {
+  const final = /* @__PURE__ */ new Map();
+  for (const p of phrases) final.set(p.span.id, [p.measuredFrom, p.measuredTo]);
+  const adjusted = /* @__PURE__ */ new Set();
+  if (!adjust) return { final, adjusted };
+  const seen = /* @__PURE__ */ new Set();
+  const problems2 = [];
+  (adjust.adjustments ?? []).forEach((a, i) => {
+    const where = `\u7B2C ${i + 1} \u6761\u4FEE\u6B63\uFF08${a.phrase_id} ${a.edge}\uFF09`;
+    const found = final.get(a.phrase_id);
+    if (!found) {
+      problems2.push(where + "\uFF1A\u7EC8\u7A3F\u91CC\u6CA1\u6709\u8FD9\u4E2A\u77ED\u8BED");
+      return;
+    }
+    if (a.edge !== "start" && a.edge !== "end") {
+      problems2.push(where + "\uFF1Aedge \u53EA\u80FD\u662F start \u6216 end");
+      return;
+    }
+    if (goTrimSpace(a.reason) === "") {
+      problems2.push(where + "\uFF1Areason \u4E0D\u80FD\u4E3A\u7A7A\uFF0C\u5199\u6E05\u695A\u4E3A\u4EC0\u4E48\u4E0D\u4FE1\u5B9E\u6D4B");
+      return;
+    }
+    if (seen.has(a.phrase_id + "\0" + a.edge)) {
+      problems2.push(where + "\uFF1A\u540C\u4E00\u77ED\u8BED\u7684\u540C\u4E00\u8FB9\u754C\u91CD\u590D\u4FEE\u6B63");
+      return;
+    }
+    seen.add(a.phrase_id + "\0" + a.edge);
+    const limit = a.edge === "end" ? totalFrames2 : totalFrames2 - 1;
+    if (a.frame < 0 || a.frame > limit) {
+      problems2.push(`${where}\uFF1A\u5E27 ${a.frame} \u8D85\u51FA [0, ${limit}]\uFF08\u5168\u7247\u5171 ${totalFrames2} \u5E27\uFF09`);
+      return;
+    }
+    const current = [found[0], found[1]];
+    if (a.edge === "start") current[0] = a.frame;
+    else current[1] = a.frame;
+    final.set(a.phrase_id, current);
+    adjusted.add(a.phrase_id);
+  });
+  for (const p of phrases) {
+    const r = final.get(p.span.id);
+    if (adjusted.has(p.span.id) && r[0] >= r[1]) problems2.push(`\u77ED\u8BED ${p.span.id} \u4FEE\u6B63\u540E\u8D77\u70B9\u5E27 ${r[0]} \u4E0D\u65E9\u4E8E\u7EC8\u70B9\u5E27 ${r[1]}`);
+  }
+  if (problems2.length > 0) throw new Error(`\u4FEE\u6B63\u6587\u4EF6\u4E0D\u5408\u683C\uFF1A
+  - ${problems2.join("\n  - ")}`);
+  return { final, adjusted };
+}
+
+// ../engine/src/align/timing.ts
+function evidenceTokens(items2) {
+  const out = [];
+  for (const item of items2) {
+    const tokens = tokenize2(item.text);
+    let total = 0;
+    for (const t of tokens) total += runes(t.norm).length;
+    let consumed = 0;
+    for (const t of tokens) {
+      const width = runes(t.norm).length;
+      const start = item.start + (item.end - item.start) * consumed / total;
+      consumed += width;
+      const end = item.start + (item.end - item.start) * consumed / total;
+      out.push({ text: t.text, norm: t.norm, start, end, segment: item.segment });
+    }
+  }
+  return out;
+}
+function locate(source, evidence, groups) {
+  const timed = source.map((t) => ({ ...t, label: "", heard: "", start: 0, end: 0, interpolated: false }));
+  const located = source.map(() => ({ start: 0, end: 0, ok: false }));
+  for (const g of groups) {
+    const heard = evidence.slice(g.e0, g.e1).map((e) => e.text);
+    for (let i = g.s0; i < g.s1; i++) timed[i] = { ...source[i], label: g.label, heard: heard.join(" "), start: 0, end: 0, interpolated: false };
+    if (g.s1 > g.s0 && g.e1 > g.e0) locateGroup(g, source, evidence, located);
+  }
+  let startBound = 0;
+  let endBound = 0;
+  if (evidence.length > 0) {
+    startBound = evidence[0].start;
+    endBound = evidence[0].end;
+    for (const e of evidence) {
+      startBound = Math.min(startBound, e.start);
+      endBound = Math.max(endBound, e.end);
+    }
+  }
+  fillMissing(located, source, startBound, endBound, timed);
+  timed.forEach((t, i) => {
+    t.start = located[i].start;
+    t.end = located[i].end;
+  });
+  return timed;
+}
+function locateGroup(g, source, evidence, located) {
+  const evChars = [];
+  const evTimes = [];
+  const win = { start: evidence[g.e0].start, end: evidence[g.e0].end, ok: true };
+  for (const e of evidence.slice(g.e0, g.e1)) {
+    win.start = Math.min(win.start, e.start);
+    win.end = Math.max(win.end, e.end);
+    const rs = runes(e.norm);
+    rs.forEach((r, k) => {
+      const step = (e.end - e.start) / rs.length;
+      evChars.push(r);
+      evTimes.push({ start: e.start + step * k, end: e.start + step * (k + 1) });
+    });
+  }
+  if (g.s1 - g.s0 === 1) {
+    located[g.s0] = win;
+    return;
+  }
+  const srcChars = [];
+  const owner = [];
+  for (let i = g.s0; i < g.s1; i++) {
+    for (const r of runes(source[i].norm)) {
+      srcChars.push(r);
+      owner.push(i);
+    }
+  }
+  for (const p of alignCharacters(srcChars, evChars)) {
+    const i = owner[p.source];
+    const t = evTimes[p.evidence];
+    if (!located[i].ok) located[i] = { start: t.start, end: t.end, ok: true };
+    else located[i].end = Math.max(located[i].end, t.end);
+  }
+  if (located[g.s0].ok) located[g.s0].start = win.start;
+  if (located[g.s1 - 1].ok) located[g.s1 - 1].end = win.end;
+}
+function fillMissing(values, source, startBound, endBound, timed) {
+  for (let cursor = 0; cursor < values.length; ) {
+    if (values[cursor].ok) {
+      cursor++;
+      continue;
+    }
+    const runStart = cursor;
+    while (cursor < values.length && !values[cursor].ok) cursor++;
+    const runEnd = cursor;
+    let left = startBound;
+    let right = endBound;
+    if (runStart > 0) left = values[runStart - 1].end;
+    if (runEnd < values.length) right = values[runEnd].start;
+    right = Math.max(left, right);
+    let total = 0;
+    for (let i = runStart; i < runEnd; i++) total += Math.max(1, runes(source[i].norm).length);
+    let consumed = 0;
+    for (let i = runStart; i < runEnd; i++) {
+      const start = left + (right - left) * consumed / total;
+      consumed += Math.max(1, runes(source[i].norm).length);
+      const end = left + (right - left) * consumed / total;
+      values[i] = { start, end, ok: true };
+      timed[i].interpolated = true;
+    }
+  }
+}
+
+// ../engine/src/align/build.ts
+var MinMatchRate = 0.85;
+var HintConfidence = 0.9;
+var segmentSlack = 0.05;
+var maxListed = 30;
+var ReportSchemaVersion2 = 1;
+function reportToJSON(r) {
+  return {
+    schema_version: r.schema_version,
+    ok: r.ok,
+    fps: r.fps,
+    tokens: r.tokens,
+    evidence_tokens: r.evidence_tokens,
+    labels: sortedKeys(r.labels),
+    match_rate: r.match_rate,
+    interpolated_tokens: r.interpolated_tokens,
+    speech_start_ms: r.speech_start_ms,
+    speech_end_ms: r.speech_end_ms,
+    total_frames: r.total_frames,
+    cues: r.cues,
+    phrases: r.phrases.map((p) => ({
+      phrase_id: p.phrase_id,
+      confidence: p.confidence,
+      alignment_source: p.alignment_source,
+      labels: sortedKeys(p.labels),
+      measured_start_frame: p.measured_start_frame,
+      measured_end_frame_exclusive: p.measured_end_frame_exclusive,
+      start_frame: p.start_frame,
+      end_frame_exclusive: p.end_frame_exclusive
+    })),
+    irregular: r.irregular.map((i) => ({
+      label: i.label,
+      script: i.script || void 0,
+      heard: i.heard || void 0,
+      line: i.line || void 0,
+      col: i.col || void 0,
+      start_ms: i.start_ms,
+      end_ms: i.end_ms
+    })),
+    problems: r.problems,
+    hints: r.hints.length > 0 ? r.hints : void 0
+  };
+}
+function build(script, items2, opts) {
+  if (opts.fps <= 0) throw new Error(`fps \u5FC5\u987B\u662F\u6B63\u6574\u6570\uFF0C\u6536\u5230 ${opts.fps}`);
+  if (script.tokens.length === 0) throw new Error("\u7EC8\u7A3F\u6CA1\u6709\u4EFB\u4F55\u6717\u8BFB\u5185\u5BB9");
+  const report = {
+    schema_version: ReportSchemaVersion2,
+    ok: false,
+    fps: opts.fps,
+    tokens: 0,
+    evidence_tokens: 0,
+    labels: {},
+    match_rate: 0,
+    interpolated_tokens: 0,
+    speech_start_ms: 0,
+    speech_end_ms: 0,
+    total_frames: 0,
+    cues: 0,
+    phrases: [],
+    irregular: [],
+    problems: [],
+    hints: []
+  };
+  items2 = items2 ?? [];
+  checkSegmentOrder(items2, report);
+  const evidence = evidenceTokens(items2);
+  const source = script.tokens.map((t) => t.norm);
+  const target = evidence.map((e) => e.norm);
+  const groups = matchTokens(source, target);
+  const timed = locate(script.tokens, evidence, groups);
+  const cues = buildCues(script, timed);
+  report.tokens = timed.length;
+  report.evidence_tokens = evidence.length;
+  report.cues = cues.length;
+  let matched = 0;
+  for (const t of timed) {
+    report.labels[t.label] = (report.labels[t.label] ?? 0) + 1;
+    if (t.label === LabelExact || t.label === LabelSplit || t.label === LabelMerge) matched++;
+    if (t.interpolated) report.interpolated_tokens++;
+  }
+  report.match_rate = round3(matched / timed.length);
+  describeGroups(groups, timed, evidence, report);
+  if (evidence.length === 0) {
+    report.problems.push("\u5BF9\u9F50\u7ED3\u679C\u91CC\u6CA1\u6709\u4EFB\u4F55\u53EF\u7528\u7684\u5B57\u6216\u8BCD\uFF1A\u786E\u8BA4\u5BF9\u9F50\u5DE5\u5177\u8DD1\u5B8C\u4E86\uFF0C\u4E14\u8F93\u5165\u662F\u5B9E\u9645\u9001\u8FDB TTS \u7684\u6587\u672C");
+  } else {
+    let first = evidence[0].start;
+    let last = evidence[0].end;
+    for (const e of evidence) {
+      first = Math.min(first, e.start);
+      last = Math.max(last, e.end);
+    }
+    report.speech_start_ms = toMs(first);
+    report.speech_end_ms = toMs(last);
+    if (report.speech_end_ms <= report.speech_start_ms) report.problems.push("\u5BF9\u9F50\u7ED3\u679C\u7684\u603B\u65F6\u95F4\u8DE8\u5EA6\u4E3A\u7A7A");
+  }
+  if (timed.length > 0) {
+    let lastEnd = timed[0].end;
+    for (const t of timed) lastEnd = Math.max(lastEnd, t.end);
+    report.total_frames = totalFrames(toMs(lastEnd) / 1e3, opts.fps);
+  }
+  if (report.match_rate < MinMatchRate) {
+    report.problems.push(
+      `\u7CBE\u786E\u5339\u914D\u7387 ${formatFixed(report.match_rate * 100, 1)}% \u4F4E\u4E8E ${formatFixed(MinMatchRate * 100, 0)}%\uFF1A\u9001\u8FDB\u5BF9\u9F50\u7684\u6587\u672C\u53EF\u80FD\u4E0D\u662F am align text \u4EA7\u51FA\u7684\u90A3\u4EFD\uFF0C\u6216\u914D\u97F3\u4E0E\u7EC8\u7A3F\u5DEE\u5F02\u8FC7\u5927`
+    );
+  }
+  const phrases = timePhrases(script, timed, cues, opts.fps);
+  const { final, adjusted } = applyAdjustments(phrases, opts.adjust, report.total_frames);
+  const timeline2 = { schema: TimelineSchema, fps: opts.fps, phrases: [] };
+  const existing = /* @__PURE__ */ new Map();
+  for (const p of opts.existing?.phrases ?? []) existing.set(p.phrase_id, p);
+  for (const p of phrases) {
+    const r = final.get(p.span.id);
+    const out = {
+      phrase_id: p.span.id,
+      subtitle_index: p.subtitle,
+      source_text: p.text,
+      semantic_order: p.span.order,
+      start_ms: toMs(p.start),
+      end_ms: toMs(p.end),
+      start_frame: r[0],
+      end_frame_exclusive: r[1],
+      alignment_source: p.source,
+      confidence: p.confidence,
+      reviewed: false,
+      visible_event_ids: []
+    };
+    const old = existing.get(p.span.id);
+    if (old) {
+      out.reviewed = old.reviewed;
+      if (old.visible_event_ids !== null) out.visible_event_ids = old.visible_event_ids;
+    }
+    if (adjusted.has(p.span.id)) {
+      out.alignment_source = SourceAdjusted;
+      out.reviewed = true;
+      out.start_ms = frameMs(r[0], opts.fps);
+      out.end_ms = frameMs(r[1], opts.fps);
+    }
+    timeline2.phrases.push(out);
+    report.phrases.push({
+      phrase_id: p.span.id,
+      confidence: p.confidence,
+      alignment_source: out.alignment_source,
+      labels: Object.fromEntries(p.labels),
+      measured_start_frame: p.measuredFrom,
+      measured_end_frame_exclusive: p.measuredTo,
+      start_frame: r[0],
+      end_frame_exclusive: r[1]
+    });
+    judgePhrase(p, report);
+  }
+  if (opts.existing) {
+    const current = new Set(phrases.map((p) => p.span.id));
+    for (const old of opts.existing.phrases ?? []) {
+      if (!current.has(old.phrase_id)) {
+        let note = "";
+        if (old.visible_event_ids !== null && old.visible_event_ids.length > 0) {
+          note = `\uFF0C\u5B83\u7ED1\u5B9A\u7684\u53EF\u89C1\u4E8B\u4EF6 [${old.visible_event_ids.join(" ")}] \u9700\u8981\u6539\u7ED1`;
+        }
+        report.hints.push(`\u77ED\u8BED ${old.phrase_id} \u5DF2\u4E0D\u5728\u7EC8\u7A3F\u91CC\uFF0C\u5DF2\u4ECE\u65F6\u95F4\u8F74\u79FB\u9664${note}`);
+      }
+    }
+  }
+  report.ok = report.problems.length === 0;
+  return { cues, timeline: timeline2, report, tokens: timed };
+}
+function frameMs(frame, fps) {
+  return toMs(frame / fps);
+}
+function judgePhrase(p, report) {
+  const where = `\u77ED\u8BED ${p.span.id}\u300C${p.text}\u300D\uFF08\u7EC8\u7A3F\u7B2C ${p.span.line} \u884C\uFF09`;
+  if (p.tok1 === p.tok0) {
+    report.problems.push(where + "\u6CA1\u6709\u6717\u8BFB\u5185\u5BB9\uFF0C\u65E0\u6CD5\u4ECE\u914D\u97F3\u5B9A\u65F6\uFF1B\u6539\u6210\u6717\u8BFB\u4FA7\u6709\u5B57\uFF0C\u6216\u53BB\u6389\u77ED\u8BED\u6807\u8BB0");
+  } else if (p.omitted) {
+    report.problems.push(where + "\u91CC\u6709\u5B57\u5728\u5BF9\u9F50\u7ED3\u679C\u4E2D\u627E\u4E0D\u5230\uFF1ATTS \u6F0F\u8BFB\u6216\u5BF9\u9F50\u4E22\u4E86\uFF0C\u91CD\u65B0\u5408\u6210\u6216\u68C0\u67E5\u9001\u8FDB\u5BF9\u9F50\u7684\u6587\u672C");
+  } else if (p.allInterp) {
+    report.problems.push(where + "\u5168\u90E8\u65F6\u95F4\u90FD\u662F\u63D2\u503C\u5F97\u6765\uFF0C\u6CA1\u6709\u4EFB\u4F55\u5B9E\u6D4B\u4F9D\u636E");
+  } else if (p.confidence < HintConfidence) {
+    report.hints.push(`${where}\u7F6E\u4FE1\u5EA6 ${formatFixed(p.confidence, 2)}\uFF0C\u4F4E\u4E8E ${formatFixed(HintConfidence, 2)}\uFF0C\u590D\u6838\u5B83\u7684\u8D77\u6B62\u5E27`);
+  }
+}
+function describeGroups(groups, timed, evidence, report) {
+  const insertions = [];
+  const replacements = [];
+  for (const g of groups) {
+    if (g.label === LabelExact) continue;
+    const item = { label: g.label, script: "", heard: "", line: 0, col: 0, start_ms: 0, end_ms: 0 };
+    item.script = timed.slice(g.s0, g.s1).map((t) => t.text).join("");
+    item.heard = evidence.slice(g.e0, g.e1).map((e) => e.text).join(" ");
+    if (g.s1 > g.s0) {
+      item.line = timed[g.s0].line;
+      item.col = timed[g.s0].col;
+      item.start_ms = toMs(timed[g.s0].start);
+      item.end_ms = toMs(timed[g.s1 - 1].end);
+    } else if (g.e1 > g.e0) {
+      item.start_ms = toMs(evidence[g.e0].start);
+      item.end_ms = toMs(evidence[g.e1 - 1].end);
+    }
+    report.irregular.push(item);
+    const at = `${formatFixed(item.start_ms / 1e3, 2)} \u79D2`;
+    if (g.label === LabelInsertion) {
+      report.labels[LabelInsertion] = (report.labels[LabelInsertion] ?? 0) + (g.e1 - g.e0);
+      insertions.push(`\u914D\u97F3\u91CC\u591A\u51FA\u300C${item.heard}\u300D\uFF08${at}\uFF09\uFF0C\u7EC8\u7A3F\u6CA1\u6709`);
+    } else if (g.label === LabelReplace) {
+      replacements.push(`\u7EC8\u7A3F\u300C${item.script}\u300D\uFF08\u7B2C ${item.line} \u884C\u7B2C ${item.col} \u5217\uFF09\u5BF9\u4E0A\u7684\u662F\u300C${item.heard}\u300D\uFF08${at}\uFF09`);
+    }
+  }
+  report.hints.push(...capList(insertions, "\u5904\u591A\u8BFB"));
+  report.hints.push(...capList(replacements, "\u5904\u8BFB\u6CD5\u4E0D\u540C"));
+}
+function capList(items2, kind) {
+  if (items2.length <= maxListed) return items2;
+  return [...items2.slice(0, maxListed), `\u53E6\u6709 ${items2.length - maxListed} ${kind}\uFF0C\u89C1\u62A5\u544A irregular`];
+}
+function checkSegmentOrder(items2, report) {
+  const segs = [];
+  for (const item of items2) {
+    while (segs.length <= item.segment) segs.push({ first: 0, last: 0, seen: false });
+    const b = segs[item.segment];
+    if (!b.seen) {
+      b.first = item.start;
+      b.last = item.end;
+      b.seen = true;
+    }
+    b.first = Math.min(b.first, item.start);
+    b.last = Math.max(b.last, item.end);
+  }
+  for (let i = 1; i < segs.length; i++) {
+    if (segs[i].seen && segs[i - 1].seen && segs[i].first < segs[i - 1].last - segmentSlack) {
+      report.problems.push(
+        `\u7B2C ${i + 1} \u6BB5\u5BF9\u9F50\u7ED3\u679C\u5E73\u79FB\u540E\u8D77\u70B9 ${formatFixed(segs[i].first, 3)} \u79D2\u65E9\u4E8E\u7B2C ${i} \u6BB5\u7EC8\u70B9 ${formatFixed(segs[i - 1].last, 3)} \u79D2\uFF1A--align \u7684\u504F\u79FB\u5199\u9519\u4E86\uFF0C\u504F\u79FB\u5E94\u662F\u8BE5\u6BB5\u97F3\u9891\u5728\u6574\u6761\u914D\u97F3\u91CC\u7684\u8D77\u70B9`
+      );
+    }
+  }
+}
+function writeJSON3(file, value) {
+  atomicWrite(file, Buffer.from(marshalIndent(value) + "\n", "utf8"), 420);
+}
+function sortedLabels(r) {
+  return Object.keys(r.labels).sort(compareBytes);
+}
+
+// src/align.ts
+function newAlignCommand(stdout) {
+  const root = ref(".");
+  const cmd = new Command({
+    use: "align",
+    short: "\u7531\u4EE3\u7801\u628A\u5F3A\u5236\u5BF9\u9F50\u7ED3\u679C\u6620\u5C04\u56DE\u7EC8\u7A3F\uFF0C\u4EA7\u51FA\u5B57\u5E55\u4E0E\u77ED\u8BED\u65F6\u95F4\u8F74",
+    long: `\u5BF9\u9F50\u5DE5\u5177\u53EA\u8BA4\u9001\u8FDB TTS \u7684\u6587\u672C\uFF08\u5E74\u4EFD\u5199\u6210\u9010\u4F4D\u6C49\u5B57\u3001\u7F29\u5199\u62C6\u6210\u5B57\u6BCD\uFF09\uFF0C\u8F93\u51FA\u7684\u53C8\u662F
+\u4E22\u4E86\u6807\u70B9\u7684\u9010\u5B57\u65F6\u95F4\u3002\u628A\u5B83\u5BF9\u56DE\u7EC8\u7A3F\u539F\u6587\u3001\u518D\u5207\u5B57\u5E55\u3001\u7ED9\u6BCF\u4E2A\u53D7\u4FDD\u62A4\u77ED\u8BED\u7B97\u5E27\u53F7\uFF0C
+\u51E0\u5343\u4E2A\u5B57\u9760\u4EBA\u773C\u505A\u4E0D\u53EF\u9760\uFF1A\u9519\u4E00\u4E2A\u5B57\u540E\u9762\u6574\u4E32\u9519\u4F4D\uFF0C\u800C\u4E14\u9519\u5F97\u6084\u65E0\u58F0\u606F\u3002\u8FD9\u7EC4\u547D\u4EE4
+\u628A\u8FD9\u4E00\u6B65\u4EA4\u7ED9\u4EE3\u7801\u3002
+
+\u6D41\u7A0B\uFF1A
+  am align text                 \u4ECE\u7EC8\u7A3F\u5BFC\u51FA\u6717\u8BFB\u6587\u672C tts-text.txt\uFF0C\u9001 TTS \u4E0E\u5BF9\u9F50\u5DE5\u5177
+  \uFF08\u8DD1 TTS \u4E0E\u5F3A\u5236\u5BF9\u9F50\uFF0C\u7ED3\u679C\u5B58\u4E3A production/audio/align.json\uFF09
+  am align build --fps 30       \u6620\u5C04\u56DE\u7EC8\u7A3F\uFF0C\u5199\u51FA voice.srt\u3001phrase-timeline.json \u4E0E\u62A5\u544A
+
+\u7EC8\u7A3F production/script-final.md \u7684\u6807\u8BB0\uFF1A
+  <\u663E\u793A|\u6717\u8BFB>       \u663E\u793A\u4E0E\u6717\u8BFB\u4E0D\u540C\uFF1A<2024\u5E74|\u4E8C\u96F6\u4E8C\u56DB\u5E74>\u3001<API|A P I>
+  <|\u55EF>             \u53EA\u6717\u8BFB\u3001\u4E0D\u663E\u793A
+  <\u663E\u793A|>           \u53EA\u663E\u793A\u3001\u4E0D\u6717\u8BFB\uFF08\u6CA1\u6709\u81EA\u5DF1\u7684\u65F6\u95F4\uFF0C\u968F\u6240\u5728\u5B57\u5E55\uFF09
+  @{id}\u2026@{/id}      \u53D7\u4FDD\u62A4\u77ED\u8BED\uFF0C\u5199\u8FDB phrase-timeline.json\uFF1Bid \u7528\u5C0F\u5199\u5B57\u6BCD\u3001\u6570\u5B57\u3001_\u3001-\uFF0C
+                    \u53EF\u4EE5\u5D4C\u5957\uFF0C\u4E0D\u80FD\u4EA4\u53C9
+  # \u5F00\u5934\u7684\u884C        \u6807\u9898\uFF0C\u5FFD\u7565
+  \u7A7A\u884C              \u5206\u6BB5
+  \\< \\> \\@ \\| \\\\    \u8F6C\u4E49`
+  });
+  cmd.persistentFlags().stringVar(root, "project-root", ".", "\u9879\u76EE\u6839\u76EE\u5F55\uFF0C\u7528\u4E8E\u5B9A\u4F4D production/ \u4E0B\u7684\u9ED8\u8BA4\u6587\u4EF6");
+  const inProject = (value, fallback) => value !== "" ? value : import_node_path13.default.join(root.value, fallback);
+  const textScript = ref("");
+  const textOut = ref("");
+  const text = new Command({
+    use: "text",
+    args: noArgs,
+    short: "\u4ECE\u7EC8\u7A3F\u5BFC\u51FA\u9001\u8FDB TTS \u4E0E\u5BF9\u9F50\u5DE5\u5177\u7684\u6717\u8BFB\u6587\u672C",
+    long: `\u89E3\u6790\u7EC8\u7A3F\u6807\u8BB0\uFF0C\u53D6\u6717\u8BFB\u4FA7\u6587\u672C\uFF1A<\u663E\u793A|\u6717\u8BFB> \u53D6\u6717\u8BFB\uFF0C# \u5F00\u5934\u7684\u884C\u4E22\u6389\uFF0C\u6BB5\u4E0E\u6BB5\u4E4B\u95F4\u6362\u884C\uFF0C
+\u6807\u70B9\u4FDD\u7559\uFF08TTS \u9760\u5B83\u65AD\u53E5\uFF09\u3002TTS \u4E0E\u5F3A\u5236\u5BF9\u9F50\u90FD\u5FC5\u987B\u7528\u8FD9\u4EFD\u6587\u672C\uFF0Cam align build \u624D\u80FD
+\u9010\u5B57\u5BF9\u56DE\u7EC8\u7A3F\u3002\u6807\u8BB0\u5199\u9519\u65F6\u62A5\u51FA\u884C\u53F7\u4E0E\u5217\u53F7\u3002`,
+    example: `  am align text
+  am align text --script production/script-final.md --out production/audio/tts-text.txt`,
+    runE: () => {
+      const script = loadScript(inProject(textScript.value, "production/script-final.md"));
+      const spoken = script.spokenText();
+      if (spoken === "") throw new Error("\u7EC8\u7A3F\u6CA1\u6709\u4EFB\u4F55\u6717\u8BFB\u5185\u5BB9");
+      const out = inProject(textOut.value, "production/audio/tts-text.txt");
+      atomicWrite(out, spoken, 420);
+      stdout.write(`\u5DF2\u5199\u51FA\u6717\u8BFB\u6587\u672C\uFF1A${out}\uFF08${script.tokens.length} \u4E2A\u6717\u8BFB\u5355\u5143\uFF0C${script.phrases.length} \u4E2A\u53D7\u4FDD\u62A4\u77ED\u8BED\uFF09
+`);
+    }
+  });
+  text.flags().stringVar(textScript, "script", "", "\u7EC8\u7A3F\uFF0C\u7F3A\u7701\u4E3A <project-root>/production/script-final.md");
+  text.flags().stringVar(textOut, "out", "", "\u6717\u8BFB\u6587\u672C\u8F93\u51FA\uFF0C\u7F3A\u7701\u4E3A <project-root>/production/audio/tts-text.txt");
+  cmd.addCommand(text);
+  const buildScript = ref("");
+  const adjustPath = ref("");
+  const srtOut = ref("");
+  const phrasesOut = ref("");
+  const reportOut = ref("");
+  const alignFlags = ref([]);
+  const fps = ref(0);
+  const build2 = new Command({
+    use: "build",
+    args: noArgs,
+    short: "\u628A\u5BF9\u9F50\u7ED3\u679C\u6620\u5C04\u56DE\u7EC8\u7A3F\uFF0C\u5199\u51FA voice.srt \u4E0E phrase-timeline.json",
+    long: `\u7528\u52A8\u6001\u89C4\u5212\u628A\u7EC8\u7A3F\u6717\u8BFB\u5355\u5143\u4E0E\u5BF9\u9F50\u7ED3\u679C\u9010\u4E2A\u914D\u5BF9\uFF08\u4E00\u4E2A\u6C49\u5B57\u3001\u4E00\u4E2A\u82F1\u6587\u8BCD\u6216\u4E00\u4E2A\u6570\u662F\u4E00\u4E2A
+\u5355\u5143\uFF09\uFF0C\u914D\u5BF9\u5206\u7EC4\u6700\u591A 4 \u5BF9 4\uFF0C\u6BCF\u4E2A\u5355\u5143\u5E26\u4E00\u4E2A\u6807\u7B7E\uFF1A
+  exact               \u4E00\u5BF9\u4E00\uFF0C\u6587\u672C\u76F8\u540C
+  split / merge       \u5206\u6BB5\u4E0D\u540C\u4F46\u62FC\u8D77\u6765\u6587\u672C\u76F8\u540C\uFF08\u4F8B\u5982 API \u88AB\u5BF9\u6210 A\u3001P\u3001I\uFF09
+  replacement         \u6587\u672C\u4E0D\u540C\uFF08\u8BFB\u9519\u3001\u591A\u97F3\u5B57\u3001\u5BF9\u9F50\u5DE5\u5177\u8BA4\u9519\uFF09
+  source-omission     \u7EC8\u7A3F\u6709\u3001\u914D\u97F3\u91CC\u627E\u4E0D\u5230\uFF08TTS \u6F0F\u8BFB\u6216\u5BF9\u9F50\u4E22\u4E86\uFF09\uFF0C\u65F6\u95F4\u6309\u524D\u540E\u63D2\u503C
+  evidence-insertion  \u914D\u97F3\u91CC\u6709\u3001\u7EC8\u7A3F\u6CA1\u6709\uFF08\u591A\u8BFB\uFF09
+
+\u5BF9\u9F50\u7ED3\u679C\uFF08--align\uFF0C\u53EF\u91CD\u590D\uFF09\uFF1A
+  \u683C\u5F0F\u6CA1\u6709\u9010\u4E00\u5B9E\u6D4B\uFF0C\u8BFB\u53D6\u662F\u5BBD\u5BB9\u7684\u3002\u8BA4\u5F97\u7684\u5F62\u72B6\uFF1A
+    \u89C4\u8303\u5F62\u72B6  ` + CanonicalShape + `
+    funasr    [{"text":"\u7A7A\u683C \u5206\u9694 \u7684 \u5B57","timestamp":[[\u8D77\u6BEB\u79D2,\u6B62\u6BEB\u79D2],...]}]
+    \u5176\u4ED6      JSON \u4E2D\u7B2C\u4E00\u4E2A\u300C\u6BCF\u4E2A\u5143\u7D20\u90FD\u6709 text/word/char/token \u4E0E\u6570\u503C\u8D77\u6B62\u300D\u7684\u5BF9\u8C61\u6570\u7EC4\uFF0C
+              \u8D77\u6B62\u5B57\u6BB5 start/end\u3001start_time/end_time \u6309\u79D2\uFF0Cstart_ms/end_ms \u6309\u6BEB\u79D2
+  \u8BA4\u4E0D\u51FA\u65F6\u62A5\u51FA\u9876\u5C42\u7ED3\u6784\uFF0C\u8BF7\u8F6C\u6362\u6210\u89C4\u8303\u5F62\u72B6\u3002
+  \u5206\u6BB5\u5BF9\u9F50\u65F6\u5199 \u6587\u4EF6@\u504F\u79FB\u79D2\u6570\uFF0C\u504F\u79FB\u662F\u8BE5\u6BB5\u5728\u6574\u6761\u914D\u97F3\u91CC\u7684\u8D77\u70B9\uFF0C\u5404\u6BB5\u6309\u7ED9\u51FA\u987A\u5E8F\u9996\u5C3E\u76F8\u63A5\u3002
+
+\u4EA7\u7269\uFF1A
+  voice.srt             \u663E\u793A\u6587\u672C\u7684\u53E5\u7EA7\u5B57\u5E55\uFF0C\u6309 \u3002\uFF01\uFF1F!?\uFF1B; \u4E0E\u5206\u6BB5\u65AD\u53E5\uFF0C\u8D85\u8FC7 32 \u4E2A\u9605\u8BFB\u5355\u4F4D
+                        \u518D\u5728 \uFF0C\u3001, \u5904\u5207\uFF1B\u8D77\u6B62\u53D6\u5176\u4E2D\u6717\u8BFB\u5355\u5143\u7684\u8D77\u6B62\uFF0C\u6BEB\u79D2\u7CBE\u5EA6\uFF0C\u4E92\u4E0D\u91CD\u53E0
+  phrase-timeline.json  {"schema":1,"fps":30,"phrases":[{"phrase_id","subtitle_index",
+                        "source_text","semantic_order","start_ms","end_ms","start_frame",
+                        "end_frame_exclusive","alignment_source","confidence","reviewed",
+                        "visible_event_ids"}]}
+                        \u5E27\u53F7\u7528\u4E0E\u5361\u70B9\u540C\u4E00\u4E2A\u6362\u7B97\uFF08\u79D2 \xD7 fps \u56DB\u820D\u4E94\u5165\uFF09\uFF0C\u7EC8\u70B9\u81F3\u5C11\u6BD4\u8D77\u70B9\u591A\u4E00\u5E27\u3002
+                        \u5DF2\u6709\u6587\u4EF6\u91CC\u7684 visible_event_ids \u4E0E reviewed \u6309 phrase_id \u4FDD\u7559\uFF1B
+                        \u7EC8\u7A3F\u91CC\u5DF2\u5220\u6389\u7684\u77ED\u8BED\u79FB\u9664\u5E76\u5217\u8FDB\u63D0\u793A\u3002
+  align-report.json     \u6807\u7B7E\u7EDF\u8BA1\u3001\u5339\u914D\u7387\u3001\u9010\u77ED\u8BED\u7F6E\u4FE1\u5EA6\u3001\u5168\u90E8\u975E\u7CBE\u786E\u5339\u914D\u7684\u4F4D\u7F6E\uFF0C\u4EE5\u53CA
+                        problems / hints
+
+\u4FEE\u6B63\u5C42\uFF08--adjust\uFF0C\u7F3A\u7701\u8BFB production/phrase-adjust.json\uFF0C\u4E0D\u5B58\u5728\u5219\u8DF3\u8FC7\uFF09\uFF1A
+  {"schema":1,"adjustments":[{"phrase_id","edge":"start"|"end","frame":N,"reason":"\u2026"}]}
+  \u5B9E\u6D4B\u786E\u5B9E\u4E0D\u5BF9\u65F6\u7528\u5B83\u6539\u77ED\u8BED\u8FB9\u754C\uFF0C\u4E0D\u8981\u624B\u6539 phrase-timeline.json\u2014\u2014\u4E0B\u6B21\u6784\u5EFA\u4F1A\u88AB\u8986\u76D6\u3002
+  \u672A\u77E5\u77ED\u8BED\u3001\u540C\u4E00\u8FB9\u754C\u91CD\u590D\u3001\u5E27\u53F7\u8D8A\u754C\u3001\u6539\u5B8C\u8D77\u70B9\u4E0D\u65E9\u4E8E\u7EC8\u70B9\u3001reason \u4E3A\u7A7A\u90FD\u76F4\u63A5\u62A5\u9519\u3002
+  \u88AB\u4FEE\u6B63\u7684\u77ED\u8BED alignment_source \u4E3A adjusted\uFF0Creviewed \u4E3A true\u3002
+
+\u5224\u4E3A\u95EE\u9898\uFF08\u4ECD\u5199\u51FA\u5168\u90E8\u4EA7\u7269\uFF0C\u9000\u51FA\u7801 1\uFF09\uFF1A
+  - \u53D7\u4FDD\u62A4\u77ED\u8BED\u91CC\u6709\u5B57\u88AB\u5224\u4E3A source-omission\uFF0C\u6216\u6574\u4E2A\u77ED\u8BED\u7684\u65F6\u95F4\u90FD\u662F\u63D2\u503C
+  - exact + split + merge \u5360\u5168\u90E8\u6717\u8BFB\u5355\u5143\u4E0D\u5230 85%\uFF08\u9001\u8FDB\u5BF9\u9F50\u7684\u6587\u672C\u591A\u534A\u4E0D\u662F am align text \u90A3\u4EFD\uFF09
+  - \u5BF9\u9F50\u7ED3\u679C\u4E3A\u7A7A\uFF0C\u6216\u591A\u6BB5\u5E73\u79FB\u540E\u524D\u540E\u91CD\u53E0\uFF08\u504F\u79FB\u5199\u9519\uFF09
+\u53EA\u8FDB hints\uFF1A\u591A\u8BFB\u3001\u8BFB\u6CD5\u4E0D\u540C\u3001\u7F6E\u4FE1\u5EA6\u4F4E\u4E8E 0.9 \u7684\u77ED\u8BED\u3002`,
+    example: `  am align build --fps 30
+
+  # \u957F\u914D\u97F3\u5206\u6BB5\u5BF9\u9F50\uFF0C\u7B2C\u4E8C\u6BB5\u4ECE 312.48 \u79D2\u5F00\u59CB
+  am align build --fps 30 \\
+    --align production/audio/align-01.json \\
+    --align production/audio/align-02.json@312.48`,
+    runE: () => {
+      if (fps.value <= 0) throw new Error("--fps \u5FC5\u987B\u662F\u6B63\u6574\u6570\uFF0C\u4E0E frame.md \u7684 canvas.fps \u4E00\u81F4");
+      const script = loadScript(inProject(buildScript.value, "production/script-final.md"));
+      const flags2 = alignFlags.value.length ? alignFlags.value : [import_node_path13.default.join(root.value, "production/audio/align.json")];
+      const items2 = loadSegments(flags2.map((value) => parseSegmentFlag(value)));
+      const opts = { fps: fps.value };
+      const explicitAdjust = adjustPath.value !== "";
+      const adjust = inProject(adjustPath.value, "production/phrase-adjust.json");
+      if (import_node_fs17.default.existsSync(adjust) || explicitAdjust) opts.adjust = loadAdjust(adjust);
+      const phrases = inProject(phrasesOut.value, "production/phrase-timeline.json");
+      opts.existing = loadExistingTimeline(phrases);
+      const result = build(script, items2, opts);
+      const srt = inProject(srtOut.value, "production/audio/voice.srt");
+      const report = inProject(reportOut.value, "production/audio/align-report.json");
+      writeSRT(srt, result.cues);
+      writeJSON3(phrases, timelineToJSON(result.timeline));
+      writeJSON3(report, reportToJSON(result.report));
+      const r = result.report;
+      const labels = sortedLabels(r).map((label) => `${label} ${r.labels[label]}`);
+      stdout.write(`\u5DF2\u5199\u51FA ${srt}\uFF08${result.cues.length} \u6761\u5B57\u5E55\uFF09\u3001${phrases}\uFF08${result.timeline.phrases?.length ?? 0} \u4E2A\u77ED\u8BED\uFF09\u3001${report}
+`);
+      stdout.write(`\u6717\u8BFB\u5355\u5143 ${r.tokens} \u4E2A\uFF0C\u5339\u914D\u7387 ${formatFixed(r.match_rate * 100, 1)}%\uFF08${labels.join("\uFF0C")}\uFF09\uFF0C\u5171 ${r.total_frames} \u5E27
+`);
+      for (const hint of r.hints ?? []) stdout.write(`\u63D0\u793A\uFF1A${hint}
+`);
+      if (!r.ok) throw new ExitError2(1, `\u5BF9\u9F50\u6620\u5C04\u672A\u901A\u8FC7\uFF08\u4EA7\u7269\u5DF2\u5199\u51FA\uFF0C\u8BE6\u89C1 ${report}\uFF09\uFF1A
+  - ${(r.problems ?? []).join("\n  - ")}`);
+    }
+  });
+  const flags = build2.flags();
+  flags.stringVar(buildScript, "script", "", "\u7EC8\u7A3F\uFF0C\u7F3A\u7701\u4E3A <project-root>/production/script-final.md");
+  flags.stringArrayVar(alignFlags, "align", [], "\u5BF9\u9F50\u7ED3\u679C \u6587\u4EF6[@\u504F\u79FB\u79D2\u6570]\uFF0C\u53EF\u91CD\u590D\uFF0C\u6309\u987A\u5E8F\u62FC\u63A5\uFF1B\u7F3A\u7701\u4E3A <project-root>/production/audio/align.json");
+  flags.intVar(fps, "fps", 0, "\u5E27\u7387\uFF0C\u5FC5\u987B\u4E0E frame.md \u7684 canvas.fps \u4E00\u81F4");
+  flags.stringVar(adjustPath, "adjust", "", "\u77ED\u8BED\u8FB9\u754C\u4FEE\u6B63\u5C42\uFF0C\u7F3A\u7701\u4E3A <project-root>/production/phrase-adjust.json\uFF08\u4E0D\u5B58\u5728\u5219\u8DF3\u8FC7\uFF09");
+  flags.stringVar(srtOut, "srt-out", "", "\u5B57\u5E55\u8F93\u51FA\uFF0C\u7F3A\u7701\u4E3A <project-root>/production/audio/voice.srt");
+  flags.stringVar(phrasesOut, "phrases-out", "", "\u77ED\u8BED\u65F6\u95F4\u8F74\u8F93\u51FA\uFF0C\u7F3A\u7701\u4E3A <project-root>/production/phrase-timeline.json");
+  flags.stringVar(reportOut, "report-json", "", "\u62A5\u544A\u8F93\u51FA\uFF0C\u7F3A\u7701\u4E3A <project-root>/production/audio/align-report.json");
+  cmd.addCommand(build2);
+  return cmd;
+}
+
 // src/project_cmds.ts
-var import_node_fs21 = __toESM(require("node:fs"), 1);
-var import_node_path20 = __toESM(require("node:path"), 1);
+var import_node_fs25 = __toESM(require("node:fs"), 1);
+var import_node_path21 = __toESM(require("node:path"), 1);
 
 // ../engine/src/archive/archive.ts
 var import_node_child_process4 = require("node:child_process");
 var import_node_crypto5 = __toESM(require("node:crypto"), 1);
-var import_node_fs14 = __toESM(require("node:fs"), 1);
-var import_node_path13 = __toESM(require("node:path"), 1);
+var import_node_fs18 = __toESM(require("node:fs"), 1);
+var import_node_path14 = __toESM(require("node:path"), 1);
 function trimSpace(s) {
   let start = 0;
   let end = s.length;
@@ -11867,7 +13965,7 @@ function reasonOf(err) {
   const code = err?.code;
   return code && errnoText2[code] || (err instanceof Error ? err.message : String(err));
 }
-function pathError(op, file, err) {
+function pathError2(op, file, err) {
   return new Error(`${op} ${file}: ${reasonOf(err)}`, { cause: err });
 }
 function gitPath() {
@@ -11967,13 +14065,13 @@ function buildPlan(root, mainRef, archiveRoot, name) {
   const sourceCommitRaw = gitOutput(root, "rev-parse", "--verify", "HEAD");
   const sourceRefRaw = gitOutputOrEmpty(root, "branch", "--show-current");
   if (archiveRoot === "") {
-    archiveRoot = import_node_path13.default.join(import_node_path13.default.dirname(root), "_archive");
+    archiveRoot = import_node_path14.default.join(import_node_path14.default.dirname(root), "_archive");
   }
-  if (!import_node_path13.default.isAbsolute(archiveRoot)) {
-    archiveRoot = import_node_path13.default.join(root, archiveRoot);
+  if (!import_node_path14.default.isAbsolute(archiveRoot)) {
+    archiveRoot = import_node_path14.default.join(root, archiveRoot);
   }
-  archiveRoot = import_node_path13.default.resolve(archiveRoot);
-  if (archiveRoot === root || archiveRoot.startsWith(root + import_node_path13.default.sep)) {
+  archiveRoot = import_node_path14.default.resolve(archiveRoot);
+  if (archiveRoot === root || archiveRoot.startsWith(root + import_node_path14.default.sep)) {
     throw new Error(`\u5F52\u6863\u76EE\u5F55\u4E0D\u5F97\u4F4D\u4E8E\u4ED3\u5E93\u5185\u90E8\uFF1A${archiveRoot}`);
   }
   if (name === "") {
@@ -11991,7 +14089,7 @@ function buildPlan(root, mainRef, archiveRoot, name) {
     mainCommit: trimSpace(mainCommitRaw.toString("utf8")),
     sourceRef: trimSpace(sourceRefRaw.toString("utf8")),
     sourceCommit: trimSpace(sourceCommitRaw.toString("utf8")),
-    destination: import_node_path13.default.join(archiveRoot, name),
+    destination: import_node_path14.default.join(archiveRoot, name),
     candidates: [],
     shared: [],
     ignored: []
@@ -12009,7 +14107,7 @@ function buildPlan(root, mainRef, archiveRoot, name) {
       const file = records[i];
       if (existsAt(root, plan.mainCommit, file)) {
         plan.shared.push(file);
-      } else if (lstatOrNull(import_node_path13.default.join(root, file)) !== null) {
+      } else if (lstatOrNull(import_node_path14.default.join(root, file)) !== null) {
         plan.candidates.push(file);
       }
     }
@@ -12025,7 +14123,7 @@ function buildPlan(root, mainRef, archiveRoot, name) {
 }
 function lstatOrNull(target) {
   try {
-    return import_node_fs14.default.lstatSync(target);
+    return import_node_fs18.default.lstatSync(target);
   } catch {
     return null;
   }
@@ -12042,45 +14140,45 @@ function execute2(plan) {
   }
   let exists4 = true;
   try {
-    import_node_fs14.default.statSync(plan.destination);
+    import_node_fs18.default.statSync(plan.destination);
   } catch (err) {
     if (err.code === "ENOENT") exists4 = false;
   }
   if (exists4) {
     throw new Error(`\u5F52\u6863\u76EE\u6807\u5DF2\u5B58\u5728\uFF1A${plan.destination}`);
   }
-  const payload = import_node_path13.default.join(plan.destination, "files");
+  const payload = import_node_path14.default.join(plan.destination, "files");
   mkdirAll(payload);
   const moved = [];
   const rollback = () => {
     for (let i = moved.length - 1; i >= 0; i--) {
-      const from = import_node_path13.default.join(payload, moved[i]);
-      const to = import_node_path13.default.join(plan.repository, moved[i]);
+      const from = import_node_path14.default.join(payload, moved[i]);
+      const to = import_node_path14.default.join(plan.repository, moved[i]);
       try {
-        import_node_fs14.default.mkdirSync(import_node_path13.default.dirname(to), { recursive: true, mode: 493 });
+        import_node_fs18.default.mkdirSync(import_node_path14.default.dirname(to), { recursive: true, mode: 493 });
       } catch {
       }
       try {
-        import_node_fs14.default.renameSync(from, to);
+        import_node_fs18.default.renameSync(from, to);
       } catch {
       }
     }
     try {
-      import_node_fs14.default.rmSync(plan.destination, { recursive: true, force: true });
+      import_node_fs18.default.rmSync(plan.destination, { recursive: true, force: true });
     } catch {
     }
   };
   for (const relative of plan.candidates) {
-    const from = import_node_path13.default.join(plan.repository, relative);
-    const to = import_node_path13.default.join(payload, relative);
+    const from = import_node_path14.default.join(plan.repository, relative);
+    const to = import_node_path14.default.join(payload, relative);
     try {
-      mkdirAll(import_node_path13.default.dirname(to));
+      mkdirAll(import_node_path14.default.dirname(to));
     } catch (err) {
       rollback();
       throw err;
     }
     try {
-      import_node_fs14.default.renameSync(from, to);
+      import_node_fs18.default.renameSync(from, to);
     } catch (err) {
       rollback();
       throw new Error(`\u79FB\u52A8 ${relative}: rename ${from} ${to}: ${reasonOf(err)}`, { cause: err });
@@ -12089,28 +14187,28 @@ function execute2(plan) {
   }
   const entries = [];
   for (const relative of moved) {
-    const file = import_node_path13.default.join(payload, relative);
+    const file = import_node_path14.default.join(payload, relative);
     let info;
     try {
-      info = import_node_fs14.default.lstatSync(file);
+      info = import_node_fs18.default.lstatSync(file);
     } catch (err) {
       rollback();
-      throw pathError("lstat", file, err);
+      throw pathError2("lstat", file, err);
     }
     const entry = { path: relative };
     if (info.isSymbolicLink()) {
       try {
-        const target = import_node_fs14.default.readlinkSync(file);
+        const target = import_node_fs18.default.readlinkSync(file);
         if (target !== "") entry.symlink_target = target;
       } catch {
       }
     } else {
       let body2;
       try {
-        body2 = import_node_fs14.default.readFileSync(file);
+        body2 = import_node_fs18.default.readFileSync(file);
       } catch (err) {
         rollback();
-        throw pathError(err && err.code === "EISDIR" ? "read" : "open", file, err);
+        throw pathError2(err && err.code === "EISDIR" ? "read" : "open", file, err);
       }
       entry.sha256 = import_node_crypto5.default.createHash("sha256").update(body2).digest("hex");
     }
@@ -12126,12 +14224,12 @@ function execute2(plan) {
     files: entries.map((e) => ({ path: e.path, sha256: e.sha256, symlink_target: e.symlink_target }))
   });
   const body = marshalIndent(manifest);
-  const manifestPath = import_node_path13.default.join(plan.destination, "MANIFEST.json");
+  const manifestPath = import_node_path14.default.join(plan.destination, "MANIFEST.json");
   try {
-    import_node_fs14.default.writeFileSync(manifestPath, body + "\n", { mode: 420 });
+    import_node_fs18.default.writeFileSync(manifestPath, body + "\n", { mode: 420 });
   } catch (err) {
     rollback();
-    throw pathError("open", manifestPath, err);
+    throw pathError2("open", manifestPath, err);
   }
   let git;
   try {
@@ -12152,16 +14250,16 @@ function execute2(plan) {
 }
 function mkdirAll(dir) {
   try {
-    import_node_fs14.default.mkdirSync(dir, { recursive: true, mode: 493 });
+    import_node_fs18.default.mkdirSync(dir, { recursive: true, mode: 493 });
   } catch (err) {
-    throw pathError("mkdir", dir, err);
+    throw pathError2("mkdir", dir, err);
   }
 }
 
 // ../engine/src/config/config.ts
-var import_node_fs15 = __toESM(require("node:fs"), 1);
+var import_node_fs19 = __toESM(require("node:fs"), 1);
 var import_node_os3 = __toESM(require("node:os"), 1);
-var import_node_path14 = __toESM(require("node:path"), 1);
+var import_node_path15 = __toESM(require("node:path"), 1);
 
 // ../engine/src/tools/tools.ts
 var ValidTools = /* @__PURE__ */ new Set(["codex", "claude", "qoder", "codebuddy", "opencode"]);
@@ -12244,7 +14342,7 @@ var secretKey = (() => {
   }).join("");
   return new RegExp("(" + ["API_KEY", "TOKEN", "SECRET", "PASSWORD"].map(ci2).join("|") + ")$");
 })();
-function newConfig(fields = {}) {
+function newConfig(fields2 = {}) {
   return {
     orchestrator: "",
     renderer: "",
@@ -12255,8 +14353,8 @@ function newConfig(fields = {}) {
     filmStyleRoot: "",
     hyperFramesCLI: "",
     extraCommands: [],
-    ...fields,
-    memory: { enabled: false, dir: "", snapshot: 0, recallBudget: 0, explore: 0, ...fields.memory }
+    ...fields2,
+    memory: { enabled: false, dir: "", snapshot: 0, recallBudget: 0, explore: 0, ...fields2.memory }
   };
 }
 var DefaultMemoryRecallBudget = 1500;
@@ -12264,16 +14362,16 @@ var DefaultMemoryExplore = 0.1;
 var MaxMemoryExplore = 0.5;
 function defaultMemoryDir(environ) {
   const dir = environ.XDG_DATA_HOME;
-  if (dir) return import_node_path14.default.join(dir, "am", "memory");
+  if (dir) return import_node_path15.default.join(dir, "am", "memory");
   let home = environ.HOME ?? "";
   if (home === "") home = import_node_os3.default.homedir();
-  return import_node_path14.default.join(home, ".local", "share", "am", "memory");
+  return import_node_path15.default.join(home, ".local", "share", "am", "memory");
 }
 function parseFile(file) {
   const out = {};
   let body;
   try {
-    body = import_node_fs15.default.readFileSync(file, "utf8");
+    body = import_node_fs19.default.readFileSync(file, "utf8");
   } catch (err) {
     if (err.code === "ENOENT") return out;
     throw new Error(goPathError("open", file, err), { cause: err });
@@ -12328,7 +14426,7 @@ function load(root, environ) {
   const env = environ ?? envMap();
   let dotenv;
   try {
-    dotenv = parseFile(import_node_path14.default.join(root, ".env"));
+    dotenv = parseFile(import_node_path15.default.join(root, ".env"));
   } catch (err) {
     throw new Error(`\u8BFB\u53D6 .env: ${err.message}`, { cause: err });
   }
@@ -12337,7 +14435,7 @@ function load(root, environ) {
   }
   let conf;
   try {
-    conf = parseFile(import_node_path14.default.join(root, "article-to-motion.conf"));
+    conf = parseFile(import_node_path15.default.join(root, "article-to-motion.conf"));
   } catch (err) {
     throw new Error(`\u8BFB\u53D6 article-to-motion.conf: ${err.message}`, { cause: err });
   }
@@ -12396,30 +14494,30 @@ function load(root, environ) {
 }
 
 // ../engine/src/projectinit/index.ts
-var import_node_fs20 = __toESM(require("node:fs"), 1);
-var import_node_path19 = __toESM(require("node:path"), 1);
+var import_node_fs24 = __toESM(require("node:fs"), 1);
+var import_node_path20 = __toESM(require("node:path"), 1);
 
 // ../engine/src/assets/index.ts
-var import_node_fs16 = __toESM(require("node:fs"), 1);
-var import_node_path15 = __toESM(require("node:path"), 1);
+var import_node_fs20 = __toESM(require("node:fs"), 1);
+var import_node_path16 = __toESM(require("node:path"), 1);
 var explicitDotEntries = /* @__PURE__ */ new Set(["assets/shared/.env.example", "assets/shared/.agents"]);
 var cachedRoot;
 function assetsBase() {
   if (cachedRoot) return cachedRoot;
   const explicit = process.env.AM_ASSETS_DIR;
   if (explicit) {
-    cachedRoot = import_node_path15.default.dirname(import_node_path15.default.resolve(explicit));
+    cachedRoot = import_node_path16.default.dirname(import_node_path16.default.resolve(explicit));
     return cachedRoot;
   }
   const starts = [typeof __dirname === "string" ? __dirname : "", process.cwd()].filter(Boolean);
   for (const start of starts) {
-    let dir = import_node_path15.default.resolve(start);
+    let dir = import_node_path16.default.resolve(start);
     for (; ; ) {
-      if (import_node_fs16.default.existsSync(import_node_path15.default.join(dir, "assets", "shared", "PROMPT.md"))) {
+      if (import_node_fs20.default.existsSync(import_node_path16.default.join(dir, "assets", "shared", "PROMPT.md"))) {
         cachedRoot = dir;
         return dir;
       }
-      const parent = import_node_path15.default.dirname(dir);
+      const parent = import_node_path16.default.dirname(dir);
       if (parent === dir) break;
       dir = parent;
     }
@@ -12434,27 +14532,27 @@ var AssetTree = class _AssetTree {
   dir;
   embedPath;
   abs(rel) {
-    const clean = import_node_path15.default.posix.normalize(rel).replace(/^\/+/, "");
+    const clean = import_node_path16.default.posix.normalize(rel).replace(/^\/+/, "");
     if (clean === ".." || clean.startsWith("../")) throw new Error(`\u8D44\u4EA7\u8DEF\u5F84\u8D8A\u754C\uFF1A${rel}`);
-    return import_node_path15.default.join(this.dir, clean);
+    return import_node_path16.default.join(this.dir, clean);
   }
   readFile(rel) {
-    return import_node_fs16.default.readFileSync(this.abs(rel));
+    return import_node_fs20.default.readFileSync(this.abs(rel));
   }
   readText(rel) {
-    return import_node_fs16.default.readFileSync(this.abs(rel), "utf8");
+    return import_node_fs20.default.readFileSync(this.abs(rel), "utf8");
   }
   exists(rel) {
-    return import_node_fs16.default.existsSync(this.abs(rel));
+    return import_node_fs20.default.existsSync(this.abs(rel));
   }
   /** 子树，对应 fs.Sub。 */
   sub(rel) {
-    return new _AssetTree(this.abs(rel), import_node_path15.default.posix.join(this.embedPath, rel));
+    return new _AssetTree(this.abs(rel), import_node_path16.default.posix.join(this.embedPath, rel));
   }
   /** 目录下的直接条目（已按 go:embed 规则过滤），按名字排序。 */
   readDir(rel = ".") {
-    const embedDir = import_node_path15.default.posix.join(this.embedPath, rel);
-    return import_node_fs16.default.readdirSync(this.abs(rel), { withFileTypes: true }).filter((entry) => included(embedDir, entry.name)).map((entry) => ({ name: entry.name, isDir: entry.isDirectory() })).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    const embedDir = import_node_path16.default.posix.join(this.embedPath, rel);
+    return import_node_fs20.default.readdirSync(this.abs(rel), { withFileTypes: true }).filter((entry) => included(embedDir, entry.name)).map((entry) => ({ name: entry.name, isDir: entry.isDirectory() })).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
   }
   /** 递归列出全部文件（相对树根，/ 分隔，按 fs.WalkDir 的词法顺序），对应 fs.WalkDir 只取文件。 */
   walkFiles() {
@@ -12472,23 +14570,23 @@ var AssetTree = class _AssetTree {
 };
 function included(embedDir, name) {
   if (!name.startsWith(".") && !name.startsWith("_")) return true;
-  return explicitDotEntries.has(import_node_path15.default.posix.join(embedDir, name));
+  return explicitDotEntries.has(import_node_path16.default.posix.join(embedDir, name));
 }
 function tree(rel) {
-  return new AssetTree(import_node_path15.default.join(assetsBase(), rel), rel);
+  return new AssetTree(import_node_path16.default.join(assetsBase(), rel), rel);
 }
 function shared() {
   return tree("assets/shared");
 }
 function preset(id) {
   const sub = tree(`assets/presets/${id}`);
-  if (!import_node_fs16.default.existsSync(sub.dir)) throw new Error(`\u627E\u4E0D\u5230\u9884\u8BBE\u7D20\u6750 ${id}: open assets/presets/${id}: file does not exist`);
+  if (!import_node_fs20.default.existsSync(sub.dir)) throw new Error(`\u627E\u4E0D\u5230\u9884\u8BBE\u7D20\u6750 ${id}: open assets/presets/${id}: file does not exist`);
   if (!sub.exists("PROMPT-PRODUCTION.md")) throw new Error(`\u9884\u8BBE\u7D20\u6750 ${id} \u4E0D\u5B8C\u6574\uFF0C\u7F3A\u5C11 PROMPT-PRODUCTION.md`);
   return sub;
 }
 function style2(styleID, canvasID) {
   const sub = tree(`assets/styles/${styleID}/${canvasID}`);
-  if (!import_node_fs16.default.existsSync(sub.dir)) throw new Error(`\u627E\u4E0D\u5230\u98CE\u683C\u7D20\u6750 ${styleID}/${canvasID}: open assets/styles/${styleID}/${canvasID}: file does not exist`);
+  if (!import_node_fs20.default.existsSync(sub.dir)) throw new Error(`\u627E\u4E0D\u5230\u98CE\u683C\u7D20\u6750 ${styleID}/${canvasID}: open assets/styles/${styleID}/${canvasID}: file does not exist`);
   if (!sub.exists("frame.md")) throw new Error(`\u98CE\u683C\u7D20\u6750 ${styleID}/${canvasID} \u4E0D\u5B8C\u6574\uFF0C\u7F3A\u5C11 frame.md`);
   return sub;
 }
@@ -12519,95 +14617,6 @@ function styleFonts(style3) {
   }
 }
 
-// ../engine/src/beat/store.ts
-var import_yaml = __toESM(require_dist(), 1);
-
-// ../engine/src/beat/jsondecode.ts
-var sliceOf = (elem) => ({ kind: "slice", elem });
-
-// ../engine/src/beat/store.ts
-var Store = "production/beat";
-var ConfigFile = "beat.yaml";
-var TrackFile = Store + "/track.json";
-var DraftFile = Store + "/grid-draft.json";
-var GridFile = Store + "/grid.json";
-var ClickFile = Store + "/grid-click.wav";
-var PlanFile = Store + "/plan.json";
-var AnalysisFile = Store + "/analysis.wav";
-var AnalyzerVersion = "1.1.0";
-var DefaultConfig = `schema: 1
-# \u8282\u62CD\u6A21\u578B\uFF1Afinal0\uFF08\u7EA6 78 MB\uFF0C\u9ED8\u8BA4\uFF09\u6216 small0\uFF08\u7EA6 8 MB\uFF0C\u7CBE\u5EA6\u7565\u4F4E\uFF09\uFF1B
-# \u540C\u7CFB\u5217\u8FD8\u6709 final1/final2\u3001small1/small2\uFF0C\u662F\u4E0D\u540C\u968F\u673A\u79CD\u5B50\u8BAD\u7EC3\u7684\u540C\u7ED3\u6784\u6A21\u578B\u3002
-checkpoint: final0
-# \u88C5\u6709 beat-this==${AnalyzerVersion} \u7684\u72EC\u7ACB Python \u73AF\u5883
-python: python3
-`;
-
-// ../engine/src/beat/grid.ts
-var gridType = {
-  kind: "struct",
-  goName: "beat.Grid",
-  name: "Grid",
-  fields: [
-    ["schema", "int"],
-    ["audio_sha256", "string"],
-    ["duration_seconds", "float"],
-    ["source", "string"],
-    ["reviewed", "bool"],
-    ["beats", sliceOf("float")],
-    ["downbeats", sliceOf("float")]
-  ]
-};
-
-// ../engine/src/beat/plan.ts
-var plannedShotType = {
-  kind: "struct",
-  goName: "beat.PlannedShot",
-  name: "PlannedShot",
-  fields: [
-    ["id", "string"],
-    ["bars", "int"]
-  ]
-};
-var planType = {
-  kind: "struct",
-  goName: "beat.Plan",
-  name: "Plan",
-  fields: [
-    ["schema", "int"],
-    ["scenes", sliceOf(plannedShotType)]
-  ]
-};
-
-// ../engine/src/beat/analyze.ts
-var analyzeScript = `import importlib.metadata as m, json, sys, wave
-v = m.version('beat-this')
-if v != '${AnalyzerVersion}':
-    sys.exit('beat-this ' + v + ' != ${AnalyzerVersion}')
-import numpy as np
-from beat_this.inference import Audio2Beats
-if sys.argv[1] == '--doctor':
-    Audio2Beats(checkpoint_path=sys.argv[2], device='cpu', dbn=False)
-    sys.exit(0)
-with wave.open(sys.argv[1], 'rb') as w:
-    if w.getnchannels() != 1 or w.getsampwidth() != 2:
-        sys.exit('analysis wav must be mono 16-bit')
-    sr = w.getframerate()
-    signal = np.frombuffer(w.readframes(w.getnframes()), dtype='<i2').astype(np.float32) / 32768
-beats, downbeats = Audio2Beats(checkpoint_path=sys.argv[2], device='cpu', dbn=False)(signal, sr)
-with open(sys.argv[3], 'w') as f:
-    json.dump({'beats': [float(b) for b in beats], 'downbeats': [float(d) for d in downbeats]}, f)
-`;
-var rawType = {
-  kind: "struct",
-  goName: 'struct { Beats []float64 "json:\\"beats\\""; Downbeats []float64 "json:\\"downbeats\\"" }',
-  name: "",
-  fields: [
-    ["beats", sliceOf("float")],
-    ["downbeats", sliceOf("float")]
-  ]
-};
-
 // ../engine/src/cast/yamldecode.ts
 var import_yaml2 = __toESM(require_dist(), 1);
 
@@ -12618,12 +14627,12 @@ var SchemaVersion = "cast/v1";
 var quantizeThreshold = 400 * 1024;
 
 // ../engine/src/cast/roster.ts
-var import_node_fs17 = __toESM(require("node:fs"), 1);
-var import_node_path16 = __toESM(require("node:path"), 1);
+var import_node_fs21 = __toESM(require("node:fs"), 1);
+var import_node_path17 = __toESM(require("node:path"), 1);
 var RosterFile = "cast.yaml";
 function hasRoster(root) {
   try {
-    return !import_node_fs17.default.statSync(import_node_path16.default.join(root, RosterFile)).isDirectory();
+    return !import_node_fs21.default.statSync(import_node_path17.default.join(root, RosterFile)).isDirectory();
   } catch {
     return false;
   }
@@ -12631,8 +14640,8 @@ function hasRoster(root) {
 
 // ../engine/src/project/init.ts
 var import_node_crypto6 = __toESM(require("node:crypto"), 1);
-var import_node_fs18 = __toESM(require("node:fs"), 1);
-var import_node_path17 = __toESM(require("node:path"), 1);
+var import_node_fs22 = __toESM(require("node:fs"), 1);
+var import_node_path18 = __toESM(require("node:path"), 1);
 function errText(err) {
   return err instanceof Error ? err.message : String(err);
 }
@@ -12648,9 +14657,9 @@ function validPath(name) {
   return true;
 }
 function initializeWithFiles(target, extra, ...sources2) {
-  target = import_node_path17.default.resolve(target);
+  target = import_node_path18.default.resolve(target);
   try {
-    import_node_fs18.default.mkdirSync(target, { recursive: true, mode: 493 });
+    import_node_fs22.default.mkdirSync(target, { recursive: true, mode: 493 });
   } catch (err) {
     throw new Error(`\u521B\u5EFA\u9879\u76EE\u76EE\u5F55: ${goPathError("mkdir", target, err)}`, { cause: err });
   }
@@ -12675,11 +14684,11 @@ function initializeWithFiles(target, extra, ...sources2) {
   }
   const result = { created: 0, unchanged: 0 };
   for (const item of assets) {
-    const destination = import_node_path17.default.join(target, ...item.name.split("/"));
+    const destination = import_node_path18.default.join(target, ...item.name.split("/"));
     rejectSymlinkPath(target, destination);
     let existing = null;
     try {
-      existing = import_node_fs18.default.readFileSync(destination);
+      existing = import_node_fs22.default.readFileSync(destination);
     } catch (err) {
       if (!isNotExist2(err)) {
         const op = err.code === "EISDIR" ? "read" : "open";
@@ -12695,28 +14704,28 @@ function initializeWithFiles(target, extra, ...sources2) {
   const rollback = () => {
     for (let i = created.length - 1; i >= 0; i--) {
       try {
-        import_node_fs18.default.rmSync(created[i], { force: true });
+        import_node_fs22.default.rmSync(created[i], { force: true });
       } catch {
       }
     }
   };
   for (const item of assets) {
-    const destination = import_node_path17.default.join(target, ...item.name.split("/"));
-    if (import_node_fs18.default.existsSync(destination)) continue;
+    const destination = import_node_path18.default.join(target, ...item.name.split("/"));
+    if (import_node_fs22.default.existsSync(destination)) continue;
     try {
-      import_node_fs18.default.mkdirSync(import_node_path17.default.dirname(destination), { recursive: true, mode: 493 });
+      import_node_fs22.default.mkdirSync(import_node_path18.default.dirname(destination), { recursive: true, mode: 493 });
     } catch (err) {
       rollback();
-      throw new Error(goPathError("mkdir", import_node_path17.default.dirname(destination), err), { cause: err });
+      throw new Error(goPathError("mkdir", import_node_path18.default.dirname(destination), err), { cause: err });
     }
-    const tmpName = import_node_path17.default.join(import_node_path17.default.dirname(destination), `.am-init-${import_node_crypto6.default.randomBytes(5).readUInt32BE(0)}`);
+    const tmpName = import_node_path18.default.join(import_node_path18.default.dirname(destination), `.am-init-${import_node_crypto6.default.randomBytes(5).readUInt32BE(0)}`);
     try {
-      import_node_fs18.default.writeFileSync(tmpName, item.body, { mode: 384, flag: "wx" });
-      import_node_fs18.default.chmodSync(tmpName, 420);
-      import_node_fs18.default.renameSync(tmpName, destination);
+      import_node_fs22.default.writeFileSync(tmpName, item.body, { mode: 384, flag: "wx" });
+      import_node_fs22.default.chmodSync(tmpName, 420);
+      import_node_fs22.default.renameSync(tmpName, destination);
     } catch (err) {
       try {
-        import_node_fs18.default.rmSync(tmpName, { force: true });
+        import_node_fs22.default.rmSync(tmpName, { force: true });
       } catch {
       }
       rollback();
@@ -12728,16 +14737,16 @@ function initializeWithFiles(target, extra, ...sources2) {
   return result;
 }
 function rejectSymlinkPath(root, destination) {
-  const relative = import_node_path17.default.relative(root, destination);
-  if (relative === ".." || import_node_path17.default.isAbsolute(relative)) {
+  const relative = import_node_path18.default.relative(root, destination);
+  if (relative === ".." || import_node_path18.default.isAbsolute(relative)) {
     throw new Error(`\u6A21\u677F\u8DEF\u5F84\u9003\u51FA\u9879\u76EE\u76EE\u5F55\uFF1A${destination}`);
   }
   let current = root;
-  for (const part of relative.split(import_node_path17.default.sep)) {
-    current = import_node_path17.default.join(current, part);
+  for (const part of relative.split(import_node_path18.default.sep)) {
+    current = import_node_path18.default.join(current, part);
     let info;
     try {
-      info = import_node_fs18.default.lstatSync(current);
+      info = import_node_fs22.default.lstatSync(current);
     } catch (err) {
       if (isNotExist2(err)) return;
       throw new Error(`\u68C0\u67E5\u6A21\u677F\u8DEF\u5F84 ${current}: ${goPathError("lstat", current, err)}`, { cause: err });
@@ -12751,8 +14760,8 @@ function rejectSymlinkPath(root, destination) {
 var import_yaml4 = __toESM(require_dist(), 1);
 
 // ../engine/src/song/store.ts
-var import_node_fs19 = __toESM(require("node:fs"), 1);
-var import_node_path18 = __toESM(require("node:path"), 1);
+var import_node_fs23 = __toESM(require("node:fs"), 1);
+var import_node_path19 = __toESM(require("node:path"), 1);
 var import_yaml3 = __toESM(require_dist(), 1);
 var Store2 = "production/song";
 var DefaultConfig2 = `schema: 1
@@ -12769,14 +14778,14 @@ python: python3
 `;
 function statOK(file) {
   try {
-    import_node_fs19.default.statSync(file);
+    import_node_fs23.default.statSync(file);
     return true;
   } catch {
     return false;
   }
 }
 function enabled2(root) {
-  return statOK(import_node_path18.default.join(root, "song.yaml"));
+  return statOK(import_node_path19.default.join(root, "song.yaml"));
 }
 
 // ../engine/src/song/platforms.ts
@@ -12909,15 +14918,15 @@ defaults:
 }
 function writeCastScaffold(target) {
   try {
-    import_node_fs20.default.mkdirSync(import_node_path19.default.join(target, "cast"), { recursive: true, mode: 493 });
+    import_node_fs24.default.mkdirSync(import_node_path20.default.join(target, "cast"), { recursive: true, mode: 493 });
   } catch (err) {
-    throw new Error(`\u521B\u5EFA ${RosterFile} \u76EE\u5F55\u5931\u8D25\uFF1A${goPathError("mkdir", import_node_path19.default.join(target, "cast"), err)}`);
+    throw new Error(`\u521B\u5EFA ${RosterFile} \u76EE\u5F55\u5931\u8D25\uFF1A${goPathError("mkdir", import_node_path20.default.join(target, "cast"), err)}`);
   }
-  const rosterPath = import_node_path19.default.join(target, RosterFile);
+  const rosterPath = import_node_path20.default.join(target, RosterFile);
   const body = castYAML();
   let existing;
   try {
-    existing = import_node_fs20.default.readFileSync(rosterPath, "utf8");
+    existing = import_node_fs24.default.readFileSync(rosterPath, "utf8");
   } catch (err) {
     if (err.code !== "ENOENT") throw new Error(`\u68C0\u67E5 ${rosterPath} \u5931\u8D25\uFF1A${goPathError("open", rosterPath, err)}`);
   }
@@ -13024,7 +15033,7 @@ PROMPT-CAST-ADDENDUM.md\uFF0C\u5177\u4F53\u89C4\u5219\u89C1\u8BE5\u6587\u4EF6\u3
       if (narration.value !== narrationSolo && narration.value !== narrationCast) {
         throw new Error(`\u65E0\u6548\u7684 --narration: ${narration.value}\uFF08\u53EF\u9009\uFF1A${narrationSolo} ${narrationCast}\uFF09`);
       }
-      const target = import_node_path20.default.resolve(args.length === 1 ? args[0] : ".");
+      const target = import_node_path21.default.resolve(args.length === 1 ? args[0] : ".");
       if (!["speech", "song", "beat"].includes(delivery.value)) throw new Error("--delivery \u5FC5\u987B\u4E3A speech\u3001song \u6216 beat");
       validate({ target, canvas: "", style: CustomStyle, delivery: delivery.value, narration: narration.value });
       const filmStyle = filmStyleName.value !== "" ? lookup(filmStyleName.value) : void 0;
@@ -13127,7 +15136,7 @@ function readLine() {
   const buf = Buffer.alloc(1);
   let line2 = "";
   try {
-    while (import_node_fs21.default.readSync(0, buf, 0, 1, null) === 1) {
+    while (import_node_fs25.default.readSync(0, buf, 0, 1, null) === 1) {
       const ch = buf.toString("utf8");
       line2 += ch;
       if (ch === "\n") break;
@@ -13195,8 +15204,8 @@ ignored\uFF1A${plan.ignored.length}
 }
 
 // src/setup.ts
-var import_node_fs22 = __toESM(require("node:fs"), 1);
-var import_node_path21 = __toESM(require("node:path"), 1);
+var import_node_fs26 = __toESM(require("node:fs"), 1);
+var import_node_path22 = __toESM(require("node:path"), 1);
 
 // ../engine/src/prereqs/index.ts
 function hyperframesStage(p) {
@@ -13359,9 +15368,9 @@ var SetupView = class {
         detail = this.paint("31", "\u5931\u8D25");
         break;
     }
-    let version = pad(item.version, versionWidth);
+    let version = pad2(item.version, versionWidth);
     if (versionWidth > 0) version = this.paint("2", version) + "  ";
-    return "  " + icon + " " + pad(item.name, nameWidth) + "  " + version + detail;
+    return "  " + icon + " " + pad2(item.name, nameWidth) + "  " + version + detail;
   }
   paint(code, text) {
     return this.color ? `\x1B[${code}m${text}\x1B[0m` : text;
@@ -13371,7 +15380,7 @@ function clock(ms) {
   const seconds = Math.floor(Math.abs(ms) / 1e3 + 0.5) * Math.sign(ms || 1);
   return `${Math.trunc(seconds / 60)}:${String(Math.abs(seconds % 60)).padStart(2, "0")}`;
 }
-function pad(text, width) {
+function pad2(text, width) {
   return text + " ".repeat(Math.max(0, width - displayWidth(text)));
 }
 var wide = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}＀-￯　-〿]/u;
@@ -13389,14 +15398,14 @@ function tailLines(text, n) {
   }
   return out;
 }
-function homeShort(path22) {
+function homeShort(path23) {
   const home = import_node_os4.default.homedir();
-  return home && path22.startsWith(home) ? "~" + path22.slice(home.length) : path22;
+  return home && path23.startsWith(home) ? "~" + path23.slice(home.length) : path23;
 }
 
 // src/setup.ts
 function newSetupCommand(stdout, _stderr) {
-  const check = ref(false);
+  const check2 = ref(false);
   const only = ref([]);
   const proxy = ref("");
   const npmRegistry = ref("");
@@ -13427,11 +15436,11 @@ styles:<\u6765\u6E90>\u3002--check \u53EA\u62A5\u544A\u54EA\u4E9B\u5DF2\u5C31\u7
     runE: async (c) => {
       const env = currentEnvironment();
       const selected2 = selectSetupItems(items(), only.value);
-      if (check.value) return setupCheck(stdout, env, selected2);
+      if (check2.value) return setupCheck(stdout, env, selected2);
       return setupPrepare(c.context(), stdout, env, selected2, proxy.value, npmRegistry.value);
     }
   });
-  cmd.flags().boolVar(check, "check", false, "\u53EA\u68C0\u67E5\u54EA\u4E9B\u5DF2\u5C31\u7EEA\uFF0C\u4E0D\u4E0B\u8F7D\uFF1B\u6709\u7F3A\u9879\u65F6\u9000\u51FA\u7801\u4E3A 1");
+  cmd.flags().boolVar(check2, "check", false, "\u53EA\u68C0\u67E5\u54EA\u4E9B\u5DF2\u5C31\u7EEA\uFF0C\u4E0D\u4E0B\u8F7D\uFF1B\u6709\u7F3A\u9879\u65F6\u9000\u51FA\u7801\u4E3A 1");
   cmd.flags().stringSliceVar(only, "only", [], "\u53EA\u51C6\u5907\u5176\u4E2D\u51E0\u9879\uFF1Askills\u3001cli\u3001styles \u6216 styles:<\u6765\u6E90>\uFF08\u53EF\u9017\u53F7\u5206\u9694\uFF09");
   cmd.flags().stringVar(proxy, "proxy", "", "git \u4E0B\u8F7D\uFF08GitHub\uFF09\u7528\u7684\u4EE3\u7406\uFF0C\u4F8B\u5982 http://127.0.0.1:7890\uFF1B\u4E0D\u5F71\u54CD npm");
   cmd.flags().stringVar(npmRegistry, "npm-registry", "", "npm \u7528\u7684\u6E90\uFF0C\u8986\u76D6 ~/.npmrc \u7684 registry");
@@ -13456,21 +15465,21 @@ function newItemsView(stdout, items2) {
   );
 }
 function setupCheck(stdout, env, items2) {
-  const view2 = newItemsView(stdout, items2);
-  const [nameWidth, versionWidth] = view2.widths();
+  const view3 = newItemsView(stdout, items2);
+  const [nameWidth, versionWidth] = view3.widths();
   stdout.write("\n");
   let missing2 = 0;
   for (const item of items2) {
     const [ok, where] = item.ready(env);
-    let icon = view2.paint("32", "\u2713");
+    let icon = view3.paint("32", "\u2713");
     let state = "\u5DF2\u5C31\u7EEA";
     if (!ok) {
-      icon = view2.paint("31", "\u2717");
-      state = view2.paint("31", "\u7F3A");
+      icon = view3.paint("31", "\u2717");
+      state = view3.paint("31", "\u7F3A");
       missing2++;
     }
-    const version = versionWidth > 0 ? view2.paint("2", pad(item.version, versionWidth)) + "  " : "";
-    stdout.write(`  ${icon} ${pad(item.name, nameWidth)}  ${version}${pad(state, 6)}  ${view2.paint("2", homeShort(where))}
+    const version = versionWidth > 0 ? view3.paint("2", pad2(item.version, versionWidth)) + "  " : "";
+    stdout.write(`  ${icon} ${pad2(item.name, nameWidth)}  ${version}${pad2(state, 6)}  ${view3.paint("2", homeShort(where))}
 `);
   }
   stdout.write("\n");
@@ -13482,18 +15491,18 @@ function setupCheck(stdout, env, items2) {
   stdout.write("\u524D\u7F6E\u8D44\u6E90\u90FD\u5DF2\u5C31\u7EEA\u3002\n");
 }
 function setupLogPath(env) {
-  return import_node_path21.default.join(import_node_path21.default.dirname(defaultCacheDir(env)), "setup.log");
+  return import_node_path22.default.join(import_node_path22.default.dirname(defaultCacheDir(env)), "setup.log");
 }
 async function setupPrepare(signal, stdout, env, items2, proxy, npmRegistry) {
   const logPath = setupLogPath(env);
-  import_node_fs22.default.mkdirSync(import_node_path21.default.dirname(logPath), { recursive: true });
+  import_node_fs26.default.mkdirSync(import_node_path22.default.dirname(logPath), { recursive: true });
   let logFd;
   try {
-    logFd = import_node_fs22.default.openSync(logPath, "w");
+    logFd = import_node_fs26.default.openSync(logPath, "w");
   } catch (err) {
     throw new Error(`\u521B\u5EFA\u65E5\u5FD7 ${logPath}\uFF1A${err.message}`);
   }
-  const log = { write: (chunk) => import_node_fs22.default.writeSync(logFd, chunk) };
+  const log = { write: (chunk) => import_node_fs26.default.writeSync(logFd, chunk) };
   try {
     const git = { ...env };
     const npm = { ...env };
@@ -13503,26 +15512,26 @@ async function setupPrepare(signal, stdout, env, items2, proxy, npmRegistry) {
     if (npmRegistry !== "") mixed.npm_config_registry = npmRegistry;
     const run2 = { base: env, git, npm, mixed, log, stage: () => {
     } };
-    const view2 = newItemsView(stdout, items2);
+    const view3 = newItemsView(stdout, items2);
     let header = "am setup \xB7 \u51C6\u5907\u524D\u7F6E\u8D44\u6E90";
-    if (proxy !== "") header += view2.paint("2", "\uFF08git \u4EE3\u7406 " + proxy + "\uFF09");
+    if (proxy !== "") header += view3.paint("2", "\uFF08git \u4EE3\u7406 " + proxy + "\uFF09");
     stdout.write(`
 ${header}
 
 `);
     items2.forEach((item, i) => {
-      if (item.ready(env)[0]) view2.markReady(i);
+      if (item.ready(env)[0]) view3.markReady(i);
     });
-    if (!view2.tty) items2.forEach((_, i) => view2.items[i].state === 2 /* Ready */ && view2.set(i, 2 /* Ready */, ""));
-    view2.start();
+    if (!view3.tty) items2.forEach((_, i) => view3.items[i].state === 2 /* Ready */ && view3.set(i, 2 /* Ready */, ""));
+    view3.start();
     const started = Date.now();
     for (const [i, item] of items2.entries()) {
-      if (view2.items[i].state === 2 /* Ready */) continue;
+      if (view3.items[i].state === 2 /* Ready */) continue;
       log.write(`
 ===== ${item.name} ${item.version} =====
 `);
-      view2.set(i, 1 /* Running */, "\u51C6\u5907\u4E2D");
-      run2.stage = (stage) => view2.detail(i, stage);
+      view3.set(i, 1 /* Running */, "\u51C6\u5907\u4E2D");
+      run2.stage = (stage) => view3.detail(i, stage);
       try {
         await item.prepare(run2, signal);
       } catch (err) {
@@ -13530,18 +15539,18 @@ ${header}
         log.write(`
 [am] ${message}
 `);
-        view2.set(i, 4 /* Failed */, "");
-        view2.stop();
-        import_node_fs22.default.fsyncSync(logFd);
-        const body = import_node_fs22.default.readFileSync(logPath, "utf8");
+        view3.set(i, 4 /* Failed */, "");
+        view3.stop();
+        import_node_fs26.default.fsyncSync(logFd);
+        const body = import_node_fs26.default.readFileSync(logPath, "utf8");
         stdout.write(`
-${view2.paint("31", "\u2717")} ${item.name} \u6CA1\u51C6\u5907\u597D\uFF1A${message}
+${view3.paint("31", "\u2717")} ${item.name} \u6CA1\u51C6\u5907\u597D\uFF1A${message}
 `);
         const cut = body.lastIndexOf("\n[am] ");
         const tail = tailLines(body.slice(0, Math.max(0, cut)).replace(/\n+$/, ""), 12);
         if (tail.length > 0) {
-          stdout.write(view2.paint("2", "\n  \u65E5\u5FD7\u6700\u540E\u51E0\u884C\uFF1A") + "\n");
-          for (const line2 of tail) stdout.write(view2.paint("2", "  \u2502 " + line2) + "\n");
+          stdout.write(view3.paint("2", "\n  \u65E5\u5FD7\u6700\u540E\u51E0\u884C\uFF1A") + "\n");
+          for (const line2 of tail) stdout.write(view3.paint("2", "  \u2502 " + line2) + "\n");
         }
         stdout.write(`
 \u5B8C\u6574\u65E5\u5FD7\uFF1A${homeShort(logPath)}
@@ -13549,14 +15558,14 @@ ${view2.paint("31", "\u2717")} ${item.name} \u6CA1\u51C6\u5907\u597D\uFF1A${mess
 `);
         throw new ExitError2(1, "");
       }
-      view2.set(i, 3 /* Done */, "");
+      view3.set(i, 3 /* Done */, "");
     }
-    view2.stop();
+    view3.stop();
     stdout.write(`
 \u5168\u90E8\u5C31\u7EEA\uFF0C\u7528\u65F6 ${clock(Date.now() - started)}\u3002
 `);
   } finally {
-    import_node_fs22.default.closeSync(logFd);
+    import_node_fs26.default.closeSync(logFd);
   }
 }
 
@@ -13605,7 +15614,7 @@ function newRoot(stdout, stderr) {
   );
   const flags = { unsafe };
   root.addCommand(newSetupCommand(stdout, stderr), newHyperframesCommand(stdout, stderr), newFilmStyleCommand(stdout, stderr));
-  root.addCommand(newInitCommand(stdout, stderr), newConfigCommand(stdout), newArchiveCommand(stdout));
+  root.addCommand(newInitCommand(stdout, stderr), newConfigCommand(stdout), newArchiveCommand(stdout), newAlignCommand(stdout));
   return { root, flags };
 }
 async function execute3(args, stdout, stderr, signal) {

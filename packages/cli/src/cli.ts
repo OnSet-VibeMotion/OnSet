@@ -9,6 +9,7 @@ import { PinnedVersion } from '@am/engine/hyperframes';
 import { Command, ExitError, type Out, type PositionalArgs, ref } from './cobra';
 import { newFilmStyleCommand } from './filmstyle';
 import { newHyperframesCommand } from './hyperframes';
+import { newAlignCommand } from './align';
 import { newArchiveCommand, newConfigCommand, newInitCommand } from './project_cmds';
 import { newSetupCommand } from './setup';
 
@@ -79,7 +80,7 @@ export function newRoot(stdout: Out, stderr: Out): { root: Command; flags: RootF
   );
   const flags: RootFlags = { unsafe };
   root.addCommand(newSetupCommand(stdout, stderr), newHyperframesCommand(stdout, stderr), newFilmStyleCommand(stdout, stderr));
-  root.addCommand(newInitCommand(stdout, stderr), newConfigCommand(stdout), newArchiveCommand(stdout));
+  root.addCommand(newInitCommand(stdout, stderr), newConfigCommand(stdout), newArchiveCommand(stdout), newAlignCommand(stdout));
   return { root, flags };
 }
 
