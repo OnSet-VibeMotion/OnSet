@@ -367,23 +367,6 @@ func maxFloat(a, b float64) float64 {
 	return b
 }
 
-func (s *Server) scriptAPI(w http.ResponseWriter, _ *http.Request) {
-	p, err := s.currentProject()
-	if err != nil {
-		s.error(w, 404, "no_project", err.Error())
-		return
-	}
-	for _, name := range []string{"SCRIPT.md", "script.md", "transcription.srt"} {
-		path := filepath.Join(p.Path, name)
-		body, readErr := os.ReadFile(path)
-		if readErr == nil {
-			s.write(w, 200, map[string]any{"path": name, "content": string(body)})
-			return
-		}
-	}
-	s.write(w, 200, map[string]any{"path": "", "content": ""})
-}
-
 func (s *Server) assetsAPI(w http.ResponseWriter, _ *http.Request) {
 	p, err := s.currentProject()
 	if err != nil {

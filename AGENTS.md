@@ -294,6 +294,7 @@ lemo 来源（`internal/filmstyle/lemo`）自己的约定：
 | `/api/files` 与 `/preview/scenes/` 经 `containedPath` 解析（含符号链接），`.env` 一律不读 | 默认只监听回环地址，但手机经隧道访问时这两个接口就是对外的 |
 | 风格只展示整片风格（`filmstyle.go`）：首页菜单、新建对话框与「风格」页共用 `FilmStyles.tsx`；旧版内置风格不再出现在 Studio 里（`/api/styles` 只剩画幅还在用）。装、换、去掉都经 `am film-style` 写任务（`startFilmStyleTask`），新建时 `/api/projects/create` 收 `film_style` 并返回 `film_style_task`，开机画面跟这个任务；顶栏显示的是 `metadata.film_style` | 旧风格 10 月 20 日起已不影响渲染，留在选择器里只会让人选一个不起作用的东西。风格改的是项目文件，走写任务才不会和一轮对话的快照打架 |
 | Studio 不下载风格来源与海报（前置资源，`am setup` 准备）：来源没准备好时 `/api/film-styles` 的那个来源报 `ready: false` 并附指向 `am setup` 的说明，网页显示分类色占位块；`/api/film-styles/{来源}/{目录名}/poster.jpg` 默认给 480 宽的缩略图（缓存在 `<风格根目录>/.thumbs/<来源>/`），`?size=full` 给原图 | 原图一张 1920×1080，菜单一屏几十张会卡 |
+| 口播稿页（`script.go` 的 `/api/script`、`Script.tsx`）排在标签第一位：读 `production/script-final.md`，经 `align.Script.View` 排成标题、段落、读法（ruby）与受保护短语，附字数、估算时长（每秒 4.5 字）、`voice.srt` 的实际配音时长与 `script-change-log.md`；没有终稿时原样显示原稿，标记写错时给出位置并显示原文。有终稿、还没有镜头时自动切到这一页，稿子改过没看过时标签打点，聊天里点到终稿也打开这一页。「确认，开始配音」「提修改意见」「针对所选提意见」都只是往对话里发话或填输入框 | 稿件审核关卡要用户看稿，以前只能在聊天里翻；视图与 `am align` 共用一份解析器，读法与短语和配音、对齐看到的是同一份。Studio 自己不改稿 |
 | 前置资源引导（`setup.go` 的 `/api/setup`、`SetupGuide.tsx`）：清单来自 `internal/prereqs`，与 `am setup` 同一份；只读不下载。缺了在首页输入框上方显示引导卡片（缺哪几项、可复制的 `am setup` 命令、重新检查，每 10 秒自动查一次），顶栏给「前置资源缺 N 项」打开同一份引导；技能或 CLI 缺时「开始制作」不可点，项目里的「安装技能」按钮也让位给引导。`AM_STUDIO_SKIP_SKILL_INSTALL=1` 时当作全部就绪 | 前置资源只由用户在终端里跑 `am setup`；没有引导的话，用户第一次建项目只会在装技能那一步看到一条报错 |
 
 ### 前端

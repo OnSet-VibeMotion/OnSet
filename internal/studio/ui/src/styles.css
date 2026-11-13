@@ -584,6 +584,15 @@ li.active > .row {
   background: transparent;
   color: var(--text);
 }
+.tabs .tab-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 5px;
+  vertical-align: 2px;
+  border-radius: 50%;
+  background: var(--accent);
+}
 .tabs button.on {
   color: var(--text);
   font-weight: 600;

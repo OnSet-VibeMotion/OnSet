@@ -58,6 +58,15 @@ type Script struct {
 	Phrases []PhraseSpan
 	// pieceToken 是每个 piece 上第一个开始的朗读单元下标，没有时为 -1。
 	pieceToken []int
+	// headings 是标题行，只给 View 用：不进配音、不进字幕。
+	headings []heading
+}
+
+// heading 是一行 # 标题，落在第 atPiece 个 piece 之前。
+type heading struct {
+	atPiece int
+	level   int
+	text    string
 }
 
 // ParseError 带着出错位置（行、列都从 1 开始，列按字符计）。
@@ -103,6 +112,10 @@ func ParseScript(text string) (*Script, error) {
 		line := strings.TrimRight(raw, "\r")
 		trimmed := strings.TrimLeft(line, " \t　")
 		if strings.TrimSpace(trimmed) == "" || strings.HasPrefix(trimmed, "#") {
+			if strings.HasPrefix(trimmed, "#") {
+				body := strings.TrimLeft(trimmed, "#")
+				s.headings = append(s.headings, heading{atPiece: len(s.pieces), level: len(trimmed) - len(body), text: strings.TrimSpace(body)})
+			}
 			if paraHasContent {
 				para++
 				paraHasContent = false

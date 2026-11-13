@@ -6,6 +6,7 @@ import { SkillsPill, type SkillsStatus } from './components/SkillsPill';
 import { SetupGuide, useSetup } from './components/SetupGuide';
 import { Icon } from './components/Icon';
 import { Preview, type Tab } from './components/Preview';
+import { scriptFinalPath } from './components/Script';
 import { ProjectDialog } from './components/ProjectDialog';
 import { Sidebar } from './components/Sidebar';
 import { Tasks } from './components/Tasks';
@@ -302,6 +303,33 @@ export function App() {
 
   const project = projects.find((p) => p.id === currentId);
 
+  // 口播稿：有了终稿却还没有镜头时（稿件审核阶段）自动切到口播稿页；稿子改过而没看过时标签打点。
+  const scriptMtime = tree.find((f) => f.path === scriptFinalPath)?.mtime ?? 0;
+  const seenKey = `am-studio.script-seen:${project?.path ?? ''}`;
+  const [scriptSeen, setScriptSeen] = useState(0);
+  useEffect(() => {
+    try {
+      setScriptSeen(Number(window.localStorage.getItem(seenKey) ?? 0) || 0);
+    } catch {
+      setScriptSeen(0);
+    }
+  }, [seenKey]);
+  const autoScript = useRef('');
+  useEffect(() => {
+    if (!scriptMtime || scenes.length > 0 || tab !== 'scene' || autoScript.current === seenKey) return;
+    autoScript.current = seenKey;
+    setTab('script');
+  }, [scriptMtime, scenes.length, seenKey]);
+  useEffect(() => {
+    if (tab !== 'script' || !scriptMtime || scriptMtime <= scriptSeen) return;
+    setScriptSeen(scriptMtime);
+    try {
+      window.localStorage.setItem(seenKey, String(scriptMtime));
+    } catch {
+      // 记不住只是下次还会打点。
+    }
+  }, [tab, scriptMtime, scriptSeen, seenKey]);
+
   return (
     <div class="app">
       <header class="topbar">
@@ -397,6 +425,7 @@ export function App() {
           <Preview
             tab={tab}
             onTab={setTab}
+            unseen={{ script: scriptMtime > scriptSeen }}
             state={state}
             scenes={scenes}
             usage={usage}
@@ -440,6 +469,10 @@ export function App() {
             onFilesChanged={onFilesChanged}
             onTurnEnd={() => void loadProject()}
             onOpenFile={(path) => {
+              if (path === scriptFinalPath) {
+                setTab('script');
+                return;
+              }
               setFilePath(path);
               setTab('file');
             }}

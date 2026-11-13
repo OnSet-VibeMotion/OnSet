@@ -1,0 +1,129 @@
+/* 口播稿页：读起来像一份文稿，标记只在打开「标记」时出现。 */
+.script-tab .script-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+.script-tab button.link {
+  background: transparent;
+  border: 0;
+  height: auto;
+  padding: 0;
+  color: var(--muted);
+}
+.script-tab button.link:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.script-tab .toolbar button.on {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
+.script-tab .script-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+.script-tab .script-stats .voiced {
+  color: var(--ok);
+}
+.script-tab .script-note {
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  color: var(--text-3);
+  font-size: 12px;
+}
+.script-tab .script-note.bad {
+  color: var(--bad);
+  border-color: var(--bad);
+}
+.script-tab .script-body {
+  display: block;
+  max-width: 46em;
+  padding: 24px 28px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 2.1;
+}
+.script-tab .script-body h3 {
+  margin: 18px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-text);
+  letter-spacing: 0.04em;
+}
+.script-tab .script-body h3:first-child {
+  margin-top: 0;
+}
+.script-tab .script-body p {
+  margin: 0 0 14px;
+}
+.script-tab .script-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* 读法：关掉标记时只看字幕文字，读法与「只读不显示」都隐藏。 */
+.script-tab rt {
+  display: none;
+}
+.script-tab .marks rt,
+.script-tab .script-legend rt {
+  display: ruby-text;
+  font-size: 10px;
+  color: var(--accent);
+  letter-spacing: 0;
+}
+.script-tab .spoken-only {
+  display: none;
+}
+.script-tab .marks .spoken-only,
+.script-tab .script-legend .spoken-only {
+  display: inline;
+  font-size: 0.8em;
+  color: var(--accent);
+}
+.script-tab .marks .spoken-only::before,
+.script-tab .script-legend .spoken-only::before {
+  content: '（读：';
+}
+.script-tab .marks .spoken-only::after,
+.script-tab .script-legend .spoken-only::after {
+  content: '）';
+}
+.script-tab .marks .display-only,
+.script-tab .script-legend .display-only {
+  color: var(--muted);
+  text-decoration: underline dotted;
+  text-underline-offset: 4px;
+}
+
+/* 受保护短语：底色淡、嵌套时叠深。 */
+.script-tab mark.phrase {
+  background: transparent;
+  color: inherit;
+}
+.script-tab .marks mark.phrase,
+.script-tab .script-legend mark.phrase {
+  background: rgba(255, 138, 61, 0.12);
+  box-shadow: inset 0 -2px 0 var(--accent-line);
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.script-tab .script-legend {
+  line-height: 2.2;
+}
+.script-tab .script-changes {
+  max-width: 46em;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+}
+.script-tab .script-changes summary {
+  cursor: pointer;
+  color: var(--text-2);
+}

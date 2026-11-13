@@ -6,10 +6,12 @@ import { Icon } from './Icon';
 import { MemoryTab } from './Memory';
 import { FilmStylePicker, Poster, styleKey, useFilmStyles } from './FilmStyles';
 import { Markdown } from './chat/Markdown';
+import { ScriptTab } from './Script';
 
-export type Tab = 'scene' | 'compose' | 'final' | 'style' | 'review' | 'publish' | 'memory' | 'file';
+export type Tab = 'script' | 'scene' | 'compose' | 'final' | 'style' | 'review' | 'publish' | 'memory' | 'file';
 
 const tabs: [Tab, string][] = [
+  ['script', '口播稿'],
   ['scene', '镜头'],
   ['compose', '合成'],
   ['final', '成片'],
@@ -26,6 +28,8 @@ export type RunAction = (path: string, payload?: Record<string, unknown>) => voi
 interface Props {
   tab: Tab;
   onTab: (tab: Tab) => void;
+  /** 有新内容还没看过的页，标签上打一个点。 */
+  unseen?: Partial<Record<Tab, boolean>>;
   state: ProjectState | null;
   scenes: Scene[];
   usage: ProjectUsage | null;
@@ -58,11 +62,13 @@ export function Preview(props: Props) {
             onClick={() => props.onTab(id)}
           >
             {label}
+            {props.unseen?.[id] && props.tab !== id && <i class="tab-dot" aria-label="有更新" />}
           </button>
         ))}
       </nav>
       {props.beat?.enabled && <BeatBanner beat={props.beat} version={props.version} run={props.run} />}
       <div class="preview-body">
+        {props.tab === 'script' && <ScriptTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} />}
         {props.tab === 'scene' && <SceneTab {...props} scene={scene} />}
         {props.tab === 'compose' && <ComposeTab {...props} scene={scene} />}
         {props.tab === 'final' && <FinalTab tree={props.tree} version={props.version} run={props.run} />}

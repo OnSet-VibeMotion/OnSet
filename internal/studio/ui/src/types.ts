@@ -447,3 +447,32 @@ export interface SetupStatus {
   items: PrereqStatus[];
   command: string;
 }
+
+/** /api/script：口播稿。final 为 false 时是原稿，只有 content。 */
+export interface ScriptNode {
+  kind: 'text' | 'alt' | 'phrase';
+  text?: string;
+  spoken?: string;
+  id?: string;
+  children?: ScriptNode[];
+}
+
+export interface ScriptBlock {
+  kind: 'heading' | 'para';
+  level?: number;
+  text?: string;
+  nodes?: ScriptNode[];
+}
+
+export interface ScriptResponse {
+  path: string;
+  content: string;
+  final: boolean;
+  updated_at?: string;
+  blocks?: ScriptBlock[];
+  stats?: { units: number; paragraphs: number; phrases: number };
+  parse_error?: string;
+  estimate_seconds?: number;
+  voice?: { path: string; seconds: number };
+  change_log?: { path: string; content: string };
+}
