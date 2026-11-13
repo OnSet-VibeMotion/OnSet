@@ -213,8 +213,8 @@ test('memory page explains the loop in three steps and records a preference', as
   await expect(flow.nth(0)).toContainText('记下的问题');
   await expect(flow.nth(1)).toContainText('整理成的提醒');
   await expect(flow.nth(2)).toContainText('scene-001 会带上 0 条');
-  // 页头照实说：问题攒够次数才自动整理，经验要考试才带进渲染。
-  await expect(page.locator('.memory-head')).toContainText('同一种问题攒到 3 次');
+  // 页头照实说：成片确认可用后才整理，经验要考试才带进渲染。
+  await expect(page.locator('.memory-head')).toContainText('这一版可用');
   await expect(page.locator('.memory-head')).toContainText('考过了');
   // 没有失败时不出「记下的问题」一节，渲染日志收在「高级」里。
   await expect(page.locator('.memory-problems')).toHaveCount(0);
@@ -223,4 +223,17 @@ test('memory page explains the loop in three steps and records a preference', as
   await page.getByRole('button', { name: '记住' }).click();
   await expect(page.locator('.memory-card')).toContainText('节奏慢一点');
   await expect(flow.nth(1)).toContainText('你的要求 1');
+});
+
+test('approving the final film starts consolidating memory and goes to publish', async ({ page, project }) => {
+  const { execFileSync } = await import('node:child_process');
+  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=1', '-pix_fmt', 'yuv420p', path.join(project.path, 'final.mp4')]);
+  await fs.mkdir(path.join(project.path, 'production', 'review'), { recursive: true });
+  await fs.writeFile(path.join(project.path, 'production', 'review', 'review.json'), JSON.stringify({ ok: true, problems: [] }));
+  await openProject(page, project);
+  await page.locator('[data-tab="final"]').click();
+  await page.locator('#final-approve').click();
+  await expect(page.locator('[data-tab="publish"]')).toHaveClass(/on/);
+  const tasks = await page.evaluate(async () => (await (await fetch('/api/tasks')).json()).tasks);
+  expect(tasks.some((t) => t.type === 'memory.consolidate')).toBe(true);
 });

@@ -315,7 +315,34 @@ function newMemoryConsolidateCommand(stdout: Out, stderr: Out, unsafe: Ref<boole
     runE: async (c) => {
       const { cfg, store } = loadMemoryConfig();
       const opts: memory.ConsolidateOptions = { minCount: minCount.value, all: all.value, draftsDir: drafts.value, signal: c.context() };
-      if (drafts.value === '') opts.drafter = consolidationDrafter(cfg, store, envutil.isUnsafe(unsafe.value), stdout, stderr);
+      if (drafts.value === '') {
+        opts.drafter = async (workdir, prompt, signal) => {
+          if (cfg.orchestrator === '') {
+            throw new Error('没有配置整理者：在项目里运行，或用环境变量 ORCHESTRATOR 指定编排工具；也可以用 --drafts 直接收录现成草稿');
+          }
+          const isUnsafe = envutil.isUnsafe(unsafe.value);
+          const env = config.childEnvironment(cfg, currentEnvironment(), isUnsafe, envutil.parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? ''));
+          stdout.write(`整理者: ${cfg.orchestrator}\n工作目录: ${workdir}\n---\n`);
+          const printer = new EventPrinter(stdout, stderr);
+          const { result, error } = await agentrun.run(
+            {
+              tool: cfg.orchestrator,
+              workdir,
+              prompt,
+              unsafe: isUnsafe,
+              sessionID: agentrun.newSessionID(cfg.orchestrator),
+              // 整理者只写草稿文件，不需要任何命令。
+              access: {},
+              env,
+              lookPath: (name) => envutil.lookPath(name, env.PATH ?? ''),
+            },
+            (event) => printer.print(event),
+            signal,
+          );
+          if (result.started) recordOrchestratorUsage(signal, ledger.memoryFile(store.dir), ledger.SourceConsolidate, cfg.orchestrator, env, result, error, stderr);
+          if (error) throw error;
+        };
+      }
       const result = await store.consolidate(opts);
       if (asJSON.value) {
         printJSON(stdout, memory.consolidateResultToJSON(result));
@@ -334,62 +361,12 @@ function newMemoryConsolidateCommand(stdout: Out, stderr: Out, unsafe: Ref<boole
       if (result.accepted.length > 0) stdout.write('下一步：am memory exam --renderers <工具1>,<工具2>\n');
     },
   });
-  cmd.flags().intVar(minCount, 'min-count', DefaultConsolidateMinCount, '一组失败至少出现几次才提炼');
+  cmd.flags().intVar(minCount, 'min-count', 2, '一组失败至少出现几次才提炼');
   cmd.flags().boolVar(all, 'all', false, '不看上次整理时间，把全部经历都算进来');
   cmd.flags().stringVar(drafts, 'drafts', '', '不调用整理者，直接收录该目录下现成的草稿');
   cmd.flags().boolVar(asJSON, 'json', false, '输出 JSON');
   return cmd;
 }
-
-/** 整理者：用项目配置的编排工具起草经验。am memory consolidate 与 am run 结束时的自动整理共用。 */
-export function consolidationDrafter(cfg: config.Config, store: memory.Store, isUnsafe: boolean, stdout: Out, stderr: Out): memory.Drafter {
-  return async (workdir, prompt, signal) => {
-    if (cfg.orchestrator === '') {
-      throw new Error('没有配置整理者：在项目里运行，或用环境变量 ORCHESTRATOR 指定编排工具；也可以用 --drafts 直接收录现成草稿');
-    }
-    const env = config.childEnvironment(cfg, currentEnvironment(), isUnsafe, envutil.parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? ''));
-    stdout.write(`整理者: ${cfg.orchestrator}\n工作目录: ${workdir}\n---\n`);
-    const printer = new EventPrinter(stdout, stderr);
-    const { result, error } = await agentrun.run(
-      {
-        tool: cfg.orchestrator,
-        workdir,
-        prompt,
-        unsafe: isUnsafe,
-        sessionID: agentrun.newSessionID(cfg.orchestrator),
-        // 整理者只写草稿文件，不需要任何命令。
-        access: {},
-        env,
-        lookPath: (name) => envutil.lookPath(name, env.PATH ?? ''),
-      },
-      (event) => printer.print(event),
-      signal,
-    );
-    if (result.started) recordOrchestratorUsage(signal, ledger.memoryFile(store.dir), ledger.SourceConsolidate, cfg.orchestrator, env, result, error, stderr);
-    if (error) throw error;
-  };
-}
-
-/**
- * am run 结束时的自动整理：上次整理之后同一种问题出现了 MEMORY_AUTO_CONSOLIDATE 次，就整理成试用经验。
- * 范围与 am memory consolidate 的默认值相同。出错只打警告，不改变 am run 的结果。
- */
-export async function autoConsolidate(cfg: config.Config, isUnsafe: boolean, stdout: Out, stderr: Out, signal: AbortSignal): Promise<void> {
-  if (!cfg.memory.enabled || cfg.memory.autoConsolidate < 1 || signal.aborted) return;
-  try {
-    const store = memory.open(cfg.memory.dir);
-    const due = memory.consolidationDue(store, cfg.memory.autoConsolidate);
-    if (due.length === 0) return;
-    stdout.write(`---\n自动整理记忆：${due.map((c) => `${c.key === memory.ClusterKeyHuman ? '你回退或不满意' : memory.checkerLabel(c.key)} × ${c.count}`).join('、')}\n`);
-    const result = await store.consolidate({ minCount: DefaultConsolidateMinCount, drafter: consolidationDrafter(cfg, store, isUnsafe, stdout, stderr), signal });
-    stdout.write(`进入试用：${orNone(result.accepted)}。试用经验考试通过后才会带进渲染：am memory exam --renderers ${cfg.renderer}\n`);
-  } catch (err) {
-    stderr.write(`警告：自动整理记忆失败：${(err as Error).message}\n`);
-  }
-}
-
-/** am memory consolidate 的 --min-count 默认值。 */
-const DefaultConsolidateMinCount = 2;
 
 function orNone(list: readonly string[] | null): string {
   if (list === null || list.length === 0) return '（无）';

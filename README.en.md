@@ -137,7 +137,6 @@ MEMORY=on
 MEMORY_SNAPSHOT=
 MEMORY_RECALL_BUDGET=1500
 MEMORY_EXPLORE=0.1
-MEMORY_AUTO_CONSOLIDATE=3
 ```
 
 `TTS_PROVIDER` accepts `minimax`, `bailian`, `edge` (no credentials, good for previews), `elevenlabs`, `tencent`, and `mlx` (local and offline, Apple Silicon only); credentials always go through each tool's own login command. `ALIGN_PROVIDER` picks the known-text forced aligner and defaults to `auto`: mlx-audio's Qwen3-ForcedAligner on Apple Silicon, FunASR elsewhere. For TTS paths without built-in character-level timestamps, it produces the subtitle timeline.
@@ -227,7 +226,7 @@ Render memory lets a project get to know its user over time and makes the next r
 | Layer | What it is | Where it comes from |
 |---|---|---|
 | Episode | One render attempt or one piece of human feedback: frozen scene inputs, recalled memories, check results | Written automatically by `am scene run` / `run-all` |
-| Lesson | A checkable constraint with a good and a bad example and the checker that decides it | Distilled from recurring failures by `am memory consolidate`; active only after passing an exam. Once one kind of problem has occurred `MEMORY_AUTO_CONSOLIDATE` times (3 by default), the client consolidates after a chat turn or render ends, and `am run` does so when it finishes; exams stay manual |
+| Lesson | A checkable constraint with a good and a bad example and the checker that decides it | Distilled from recurring failures by `am memory consolidate`; active only after passing an exam. Consolidation runs once the user approves the film ("确认可用" on the client's final page, or saying so in chat) |
 | Preference | A lasting taste of the user ("always…", "I don't like…") | Said in chat: recorded on the spot by the orchestrator via `am memory remember` and active at once; distilled from 👎 feedback: needs a person to confirm. Labelled "not machine-verified" |
 
 Before each scene, `am` recalls the few relevant memories by scene features (CJK text, canvas, cast, beat mode, handoff device…) and keywords, and injects them as a fixed "memory" section, byte-identical for every renderer and capped by `MEMORY_RECALL_BUDGET` and at most 3 lessons. During real renders a `MEMORY_EXPLORE` share of scenes (10% by default) swaps the last lesson for the first one beyond the cap, so lessons that never make the cut still collect evidence; this is a decision of the batch, so it never makes a scene Stale. The recall is part of the input fingerprint, so a memory change marks affected scenes Stale with the reason spelled out.

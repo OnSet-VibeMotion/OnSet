@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { DefaultMemoryAutoConsolidate, DefaultMemoryExplore, DefaultMemoryRecallBudget, childEnvironment, load, newConfig } from './config';
+import { DefaultMemoryExplore, DefaultMemoryRecallBudget, childEnvironment, load, newConfig } from './config';
 
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'am-config-'));
@@ -89,12 +89,11 @@ describe('config', () => {
       snapshot: 0,
       recallBudget: DefaultMemoryRecallBudget,
       explore: DefaultMemoryExplore,
-      autoConsolidate: DefaultMemoryAutoConsolidate,
       dir: path.join('/home/u', '.local', 'share', 'am', 'memory'),
     });
     expect(load(root, { MEMORY: 'off' }).memory.enabled, 'MEMORY=off 应当关闭').toBe(false);
-    cfg = load(root, { MEMORY: 'on', MEMORY_SNAPSHOT: '7', MEMORY_RECALL_BUDGET: '800', MEMORY_EXPLORE: '0', MEMORY_AUTO_CONSOLIDATE: '0', AM_MEMORY_DIR: '/tmp/mem' });
-    expect(cfg.memory).toEqual({ enabled: true, snapshot: 7, recallBudget: 800, explore: 0, autoConsolidate: 0, dir: '/tmp/mem' });
+    cfg = load(root, { MEMORY: 'on', MEMORY_SNAPSHOT: '7', MEMORY_RECALL_BUDGET: '800', MEMORY_EXPLORE: '0', AM_MEMORY_DIR: '/tmp/mem' });
+    expect(cfg.memory).toEqual({ enabled: true, snapshot: 7, recallBudget: 800, explore: 0, dir: '/tmp/mem' });
     for (const bad of <Record<string, string>[]>[
       { MEMORY: 'yes' },
       { MEMORY_SNAPSHOT: '0' },
@@ -102,8 +101,6 @@ describe('config', () => {
       { MEMORY_RECALL_BUDGET: '-1' },
       { MEMORY_EXPLORE: '0.9' },
       { MEMORY_EXPLORE: 'x' },
-      { MEMORY_AUTO_CONSOLIDATE: '-1' },
-      { MEMORY_AUTO_CONSOLIDATE: 'x' },
     ]) {
       expect(() => load(root, bad), JSON.stringify(bad)).toThrow();
     }

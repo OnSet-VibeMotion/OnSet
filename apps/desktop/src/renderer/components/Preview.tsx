@@ -742,8 +742,16 @@ function FinalTab({ tree, version, run, onTab }: { tree: TreeFile[]; version: nu
           )}
           <div className="scene-actions">
             {current && problems.length === 0 && report && (
-              <button className="primary" onClick={() => onTab?.('publish')}>
-                去发布
+              <button
+                className="primary"
+                id="final-approve"
+                title="确认后会把这次制作里记下的问题整理成经验（调用一次 AI），然后去发布页"
+                onClick={() => {
+                  run('/api/memory/actions/consolidate', { final: true });
+                  onTab?.('publish');
+                }}
+              >
+                确认可用，去发布
               </button>
             )}
             <button onClick={() => run('/api/review/run')}>{report ? '重新复查' : '复查'}</button>

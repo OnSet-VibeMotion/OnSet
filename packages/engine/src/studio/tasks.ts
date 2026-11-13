@@ -10,7 +10,6 @@ import { envMap, parsePassthrough } from '../envutil';
 import { marshal, marshalIndent } from '../gojson';
 import { ExitError, start } from '../procgroup';
 import { goMap, methodNotAllowed, nowTime, writeError, writeJSON } from './http';
-import { maybeAutoConsolidate } from './memory';
 import { BusyError, overrideAgents, type AgentChoice } from './sessions';
 import type { Project, Server } from './studio';
 
@@ -179,8 +178,6 @@ export function runWriteTask(s: Server, p: Project, type: string, message: strin
       await work(signal, t);
     } finally {
       s.release(p.path);
-      // 渲染、检查、复查都可能记下新问题；考试与整片风格不会。
-      if (!type.startsWith('memory.') && !type.startsWith('film-style.')) maybeAutoConsolidate(s, p);
     }
   });
   return t;

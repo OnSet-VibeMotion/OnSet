@@ -16,7 +16,7 @@ import * as tools from '../tools';
 import { DecodeError, decodeJSON, fieldBool, fieldInt, fieldNumberPtr, fieldNumbers, fieldString, fieldStrings, goMap, methodNotAllowed, writeError, writeJSON } from './http';
 import { discoverScenes, fileExists } from './scenes';
 import type { Project, Server } from './studio';
-import { addTask, runStudioCLI, runTask, runWriteTask, updateTask, writeTaskError } from './tasks';
+import { addTask, runStudioCLI, runTask, runWriteTask, writeTaskError } from './tasks';
 import type { Turn } from './turns';
 
 function memoryStore(s: Server): { p: Project; cfg: config.Config; store: memory.Store } | Response {
@@ -113,7 +113,6 @@ export function memoryAPI(s: Server, request: Request): Response {
         snapshots,
         runs: runs.map(memory.runSummaryToJSON),
         pending: pendingProblems(episodes, status.last_consolidated),
-        auto_consolidate: cfg.memory.enabled ? cfg.memory.autoConsolidate : 0,
         // 面板显示的大白话：校验器、事件类型与镜头特征都不直接露出 ID。
         labels: goMap({ checks: labels(memory.CheckerLabels), events: labels(memory.EventLabels), features: labels(memory.FeatureDescriptions) }),
       }),
@@ -187,7 +186,7 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
   const p = s.projectOr404();
   if (p instanceof Response) return p;
   const action = rest.replace(/^\/+|\/+$/g, '');
-  let req: { name: string; to: number; renderers: string[]; scene_id: string; verdict: string; note: string; seconds: number | null; region: number[]; global: boolean };
+  let req: { name: string; to: number; renderers: string[]; scene_id: string; verdict: string; note: string; seconds: number | null; region: number[]; global: boolean; final: boolean };
   try {
     const body = await decodeJSON(request);
     req = {
@@ -200,6 +199,7 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
       seconds: fieldNumberPtr(body, 'seconds'),
       region: fieldNumbers(body, 'region'),
       global: fieldBool(body, 'global'),
+      final: fieldBool(body, 'final'),
     };
   } catch (err) {
     if (err instanceof DecodeError) return writeError(400, 'invalid_json', '请求不是合法 JSON');
@@ -209,8 +209,13 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
   let label = '';
   switch (action) {
     case 'consolidate':
+      // final：用户在成片页确认这一版可用。这是整理的时机：一部片子做完，这次制作里的问题都齐了。
+      // 已有整理在跑时不重复起（对话里确认时编排工具也会整理一次，第二次只会发现没有新问题）。
+      for (const t of s.tasks.tasks.values()) {
+        if (t.type === 'memory.consolidate' && (t.status === 'queued' || t.status === 'running')) return writeJSON(202, goMap({ task_id: t.task_id }));
+      }
       args = ['memory', 'consolidate'];
-      label = '整理记忆';
+      label = req.final ? '成片已确认：整理这次制作的记忆' : '整理记忆';
       break;
     case 'exam':
       if (req.renderers.length === 0) return writeError(400, 'invalid_renderers', '至少选一个渲染工具');
@@ -282,40 +287,6 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
   const t = addTask(s, 'memory.' + action, label);
   runTask(s, t, work);
   return writeJSON(202, goMap({ task_id: t.task_id }));
-}
-
-/**
- * 自动整理：上次整理之后同一种问题出现了 MEMORY_AUTO_CONSOLIDATE 次，就在后台起一个「整理记忆」任务
- * （am memory consolidate，调用一次编排工具）。在一轮对话、一次渲染或检查结束后调用；已有整理任务在跑时不重复起。
- * 只整理成试用经验，考试不自动做：每场考试都是好几次真实渲染。整理只写记忆库，不占项目写权。
- */
-export function maybeAutoConsolidate(s: Server, p: Project): void {
-  let cfg: config.Config;
-  try {
-    cfg = config.load(p.path, null);
-  } catch {
-    return;
-  }
-  if (!cfg.memory.enabled || cfg.memory.autoConsolidate < 1) return;
-  for (const t of s.tasks.tasks.values()) {
-    if (t.type === 'memory.consolidate' && (t.status === 'queued' || t.status === 'running')) return;
-  }
-  let due: memory.Cluster[];
-  try {
-    due = memory.consolidationDue(memory.openReadOnly(cfg.memory.dir), cfg.memory.autoConsolidate);
-  } catch {
-    return;
-  }
-  if (due.length === 0) return;
-  const top = due[0];
-  const what = top.key === memory.ClusterKeyHuman ? '你回退或不满意' : memory.checkerLabel(top.key);
-  const label = `自动整理记忆：「${what}」出现了 ${top.count} 次`;
-  const t = addTask(s, 'memory.consolidate', label);
-  runTask(s, t, async (signal) => {
-    await runStudioCLI(s, signal, p, 'memory', 'consolidate');
-  });
-  // runTask 把消息改成通用的「正在处理」；任务列表里要看得出这是自动整理、为什么整理。
-  updateTask(s, t.task_id, 'running', label, 0.1, null);
 }
 
 /** preferenceBrief 是这一轮要交给编排工具的用户偏好段与摘要；记忆关闭或读不到时为空。 */

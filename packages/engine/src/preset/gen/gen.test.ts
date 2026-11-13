@@ -217,6 +217,11 @@ describe('PROMPT-PRODUCTION template', () => {
     lacks(['lemo', 'DEMO.md', 'core/fonts'], '制作提示词');
   });
 
+  // 记忆在用户确认成片可用之后整理：那时这部片子的问题才记全；客户端成片页的「确认可用」走同一个命令。
+  it('consolidates memory after the user approves the film', () => {
+    has(['### 整理这次制作的经验', '用户明确确认这一版成片可用之后', 'am memory consolidate', '不要在用户确认之前整理'], '整理经验');
+  });
+
   it('requires platform covers', () => {
     has(['douyin', 'xiaohongshu', 'channels', 'bilibili', 'zhihu', '16:10', '安全区', 'covers/src/', 'cover.images', 'designed_image'], '平台封面');
   });

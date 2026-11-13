@@ -70,7 +70,6 @@ export function MemoryTab({ scene, version, run }: Props) {
   const pendingProblems = state.pending ?? [];
   const pendingTotal = state.status.pending_failures;
   const recalled = recall?.recall.items ?? [];
-  const auto = state.auto_consolidate ?? 0;
   const examRenderer = state.renderer || 'claude';
 
   if (!state.enabled) {
@@ -92,16 +91,14 @@ export function MemoryTab({ scene, version, run }: Props) {
         <h2>记忆</h2>
         <p>
           渲染和检查里出过的问题会先记下来。
-          {auto > 0
-            ? `同一种问题攒到 ${auto} 次，会在一轮对话或一次渲染结束后自动整理成经验；`
-            : '问题不会自动整理（MEMORY_AUTO_CONSOLIDATE=0），要你点「整理成经验」；'}
+          你在成片页确认「这一版可用」（或在对话里这样说）之后，会把这次制作里的问题整理成经验；
           新经验先试用，你点「考试」、它考过了，以后渲染相似的镜头才会带上。你说过的要求不用整理，记下就生效。
         </p>
         <ol className="memory-flow" aria-label="记忆怎么起作用">
           <li className={pendingTotal > 0 ? 'on' : ''}>
             <strong>{pendingTotal}</strong>
             <span>记下的问题</span>
-            <small>{pendingTotal === 0 ? '暂时没有新的' : auto > 0 ? `同一种攒到 ${auto} 次自动整理` : '等你整理'}</small>
+            <small>{pendingTotal === 0 ? '暂时没有新的' : '成片确认可用后整理'}</small>
           </li>
           <li>
             <strong>{preferences.length + lessons.length}</strong>
@@ -130,7 +127,7 @@ export function MemoryTab({ scene, version, run }: Props) {
       {pendingProblems.length > 0 && (
         <section className="memory-section">
           <h4>记下的问题</h4>
-          <p className="small muted">上次整理之后，渲染和检查里出过这些问题。只出现过一次的先不整理。</p>
+          <p className="small muted">上次整理之后，渲染和检查里出过这些问题。成片确认可用后会整理，只出现过一次的不整理；不想等也可以现在就整理。</p>
           <ul className="memory-problems">
             {pendingProblems.map((g) => (
               <li key={g.check}>
@@ -154,9 +151,7 @@ export function MemoryTab({ scene, version, run }: Props) {
             ))}
           </ul>
           <div className="memory-consolidate">
-            <button className={auto > 0 ? '' : 'primary'} onClick={() => run('/api/memory/actions/consolidate')}>
-              {auto > 0 ? '现在就整理' : '整理成经验'}
-            </button>
+            <button onClick={() => run('/api/memory/actions/consolidate')}>现在就整理</button>
             <span className="small muted">会调用一次 AI 读这些问题，写成几条试用经验。</span>
           </div>
         </section>
@@ -173,7 +168,7 @@ export function MemoryTab({ scene, version, run }: Props) {
         <h4>学到的经验 · {lessons.length}</h4>
         {lessons.length === 0 ? (
           <p className="small muted">
-            {pendingTotal === 0 ? '还没有。渲染或检查出了问题会先记下来，整理后变成经验。' : auto > 0 ? '还没有。上面的问题攒够次数会自动整理，也可以点「现在就整理」。' : '还没有。把上面记下的问题整理一下就会有。'}
+            {pendingTotal === 0 ? '还没有。渲染或检查出了问题会先记下来，成片确认可用后整理成经验。' : '还没有。成片确认可用后，上面的问题会整理成经验。'}
           </p>
         ) : (
           <>

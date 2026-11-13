@@ -145,7 +145,6 @@ MEMORY=on
 MEMORY_SNAPSHOT=
 MEMORY_RECALL_BUDGET=1500
 MEMORY_EXPLORE=0.1
-MEMORY_AUTO_CONSOLIDATE=3
 ```
 
 `TTS_PROVIDER` 可选 `minimax`、`bailian`、`edge`（免鉴权，适合预览）、`elevenlabs`、`tencent`、`mlx`（本机离线，仅 Apple Silicon）；凭据一律走各工具自己的登录命令。`ALIGN_PROVIDER` 选择已知文本强制对齐工具，缺省 `auto`：Apple Silicon 上用 mlx-audio 的 Qwen3-ForcedAligner，其余平台用 FunASR。没有自带字级时间戳的 TTS 路径，字幕时间轴由它生成。
@@ -229,7 +228,7 @@ am dialogue beats                  # 镜头拆定后，按 dialogue.json 重算�
 | 层 | 内容 | 怎么来 |
 |---|---|---|
 | 经历 | 一次渲染尝试或一条人工反馈：冻结的镜头输入、召回了哪些记忆、各项校验结果 | 每次 `am scene run` / `run-all` 自动写入 |
-| 经验 | 一条可检验的约束，配正例、反例，写明由哪个校验器判定 | `am memory consolidate` 从反复出现的失败里提炼，考试通过才生效。同一种问题出现 `MEMORY_AUTO_CONSOLIDATE` 次（默认 3）后，客户端在一轮对话或一次渲染结束后、`am run` 在结束时自动整理；考试仍要手动 |
+| 经验 | 一条可检验的约束，配正例、反例，写明由哪个校验器判定 | `am memory consolidate` 从反复出现的失败里提炼，考试通过才生效。用户确认成片可用时（客户端成片页的「确认可用」，或在对话里确认）整理一次 |
 | 偏好 | 用户的长期取向（「以后都…」「我不喜欢…」） | 对话里亲口说的由编排工具用 `am memory remember` 当场记下并生效；👎 反馈整理出的要人确认；标注「未经机器验证」 |
 
 每个镜头开工前，`am` 按镜头特征（中文、画幅、角色、卡点、交接手法……）和关键词召回相关的几条，注入提示词里固定的「记忆」段，所有渲染工具收到逐字相同的文本；总字数受 `MEMORY_RECALL_BUDGET` 限制，经验最多 3 条。正式渲染时有 `MEMORY_EXPLORE`（默认 10%）的镜头会把排最后的一条经验换成排在上限外的一条，给它们攒效果样本；这是这一批渲染的决定，不改变镜头是否过期。召回的记忆是输入指纹的一项，记忆一变，相关镜头会被判成 Stale 并注明「召回的记忆变了」。

@@ -95,7 +95,6 @@ export {
   clusterFailures,
   copyContrastCode,
   lastConsolidation,
-  consolidationDue,
   consolidateResultToJSON,
   consolidate,
   kindLabel,

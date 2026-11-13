@@ -12,7 +12,7 @@ import { EventPrinter } from './agentprint';
 import { addExecutableLocation, currentEnvironment, maxArgs, rulesDisplay } from './cli';
 import { Command, ExitError, type Out, type Ref, ref } from './cobra';
 import * as memory from '@am/engine/memory';
-import { autoConsolidate, preferenceBrief } from './memory_cmd';
+import { preferenceBrief } from './memory_cmd';
 import { recordOrchestratorUsage } from './usage_cmd';
 
 export function newRunCommand(stdout: Out, stderr: Out, unsafe: Ref<boolean>): Command {
@@ -97,8 +97,6 @@ opencode 没有可用的白名单机制，安全模式下仍能执行任何命�
         signal,
       );
       if (result.started) recordOrchestratorUsage(signal, ledger.projectFile(rootDir), ledger.SourceRun, cfg.orchestrator, childEnvironment, result, error, stderr);
-      // 这一次制作里记下的问题够多了就整理成试用经验；编排工具失败了也照样整理，问题已经记下了。
-      if (result.started) await autoConsolidate(cfg, isUnsafe, stdout, stderr, signal);
       if (error) {
         if (error instanceof agentrun.ExitError) throw new ExitError(error.code, '编排工具执行失败');
         throw error;
