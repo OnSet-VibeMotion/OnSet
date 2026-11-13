@@ -28,6 +28,8 @@ am setup --only styles                      # 只准备其中几项：skills、c
 am setup --check                            # 只检查，不下载；有缺项时退出码 1
 ```
 
+每项一行显示进度，git 与 npm 的原始输出写进 `~/.local/share/am/setup.log`，失败时屏幕上给出最后几行。
+
 | 项 | 内容 | 位置 |
 |---|---|---|
 | `skills` | HyperFrames 官方技能（固定版本，git） | `~/.local/share/am/hyperframes/<commit>` |

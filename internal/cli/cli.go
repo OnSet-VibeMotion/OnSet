@@ -72,8 +72,12 @@ func ExecuteContext(ctx context.Context, args []string, stdout, stderr io.Writer
 	root.SetContext(ctx)
 	root.SetArgs(args)
 	if err := root.Execute(); err != nil {
-		fmt.Fprintln(stderr, err)
 		var coded *exitError
+		// 自己已经把结果完整打在屏幕上的命令（例如 am setup）返回不带消息的 exitError，
+		// 这里不再补一行「（退出码 1）」。
+		if !errors.As(err, &coded) || coded.message != "" {
+			fmt.Fprintln(stderr, err)
+		}
 		if errors.As(err, &coded) {
 			return coded.code
 		}
