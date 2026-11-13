@@ -135,7 +135,7 @@ For an existing final `transcription.srt`:
 am run
 ```
 
-For complete production from an article or spoken script:
+For complete production from an article or spoken script (with no `transcription.srt` in the project yet, a bare `am run` and Studio's "Start production" take this path automatically):
 
 ```bash
 am run PROMPT-PRODUCTION.md

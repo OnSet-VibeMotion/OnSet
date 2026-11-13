@@ -186,7 +186,7 @@ function SceneTab(props: Props & { scene: Scene | null }) {
     setPlaying(false);
   }, [scene?.id]);
 
-  if (!scene) return <Empty>在下方时间线里选一个镜头。</Empty>;
+  if (!scene) return <Empty>{noSceneText(props.scenes)}</Empty>;
   const status = sceneStatus(scene);
 
   const step = (frames: number) => {
@@ -433,7 +433,7 @@ function ComposeTab(props: Props & { scene: Scene | null }) {
     };
   }, [picking, scene?.id]);
 
-  if (!scene) return <Empty>在下方时间线里选一个镜头。</Empty>;
+  if (!scene) return <Empty>{noSceneText(props.scenes)}</Empty>;
   if (missing) return <Empty>镜头目录里还没有 index.html 合成文件。</Empty>;
   return (
     <div class="compose-tab">
@@ -653,6 +653,11 @@ export function FileView({ path, version }: { path: string; version: number }) {
       {file && (file.binary ? <Empty>二进制文件或超过 2 MB，不显示内容。</Empty> : <pre class="text" id="file-content">{file.content}</pre>)}
     </div>
   );
+}
+
+/** 没有选中镜头时的提示：新项目还没有镜头，也就没有时间线。 */
+export function noSceneText(scenes: Scene[]): string {
+  return scenes.length > 0 ? '在下方时间线里选一个镜头。' : '还没有镜头。点右上「开始制作」，分镜完成后镜头会出现在下方的时间线里。';
 }
 
 /** 紧凑写法：12.3M token · $4.17 · 2 次渲染。 */

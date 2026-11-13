@@ -148,7 +148,7 @@ export function Chat(props: Props) {
         {events.length === 0 && (
           <div class="intro">
             <p>在这里说要改什么，编排工具会直接改项目文件；每一轮的改动都能查看和回退。</p>
-            <p class="muted">新项目先点「开始制作」，它会照 PROMPT.md 从头做到成片，之后在同一个会话里继续改。</p>
+            <p class="muted">新项目先点「开始制作」：还没有定稿字幕时照 PROMPT-PRODUCTION.md 从文章开始做到成片，已有 transcription.srt 时照 PROMPT.md 从字幕开始。之后在同一个会话里继续改。</p>
           </div>
         )}
         <Transcript events={events} onOpenFile={props.onOpenFile} onReverted={props.onTurnEnd} />

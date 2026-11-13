@@ -159,7 +159,7 @@ func newRoot(stdout, stderr io.Writer) *cobra.Command {
 声音与发布交付的全流程。渲染由外部 AI CLI 完成，am 负责契约、调度与校验。
 
 两种入口：
-  am run                          项目已有定稿 transcription.srt，读项目根 PROMPT.md
+  am run                          有定稿 transcription.srt 读 PROMPT.md，否则读 PROMPT-PRODUCTION.md
   am run PROMPT-PRODUCTION.md     从文章或口播稿开始完整制作
   am scene run / run-all          只跑镜头渲染，可脱离 am run 单独使用
 
@@ -700,8 +700,8 @@ AI CLI 调用。这类失败要先改提示词或时长声明再重跑。
 	runCmd := &cobra.Command{Use: "run [PROMPT]", Short: "按配置启动编排工具",
 		Long: `把 prompt 文件交给配置的编排工具执行，由它驱动整条制作流程。
 
-PROMPT 省略时读项目根的 PROMPT.md——该入口假定项目里已有定稿 transcription.srt。
-传入 PROMPT-PRODUCTION.md 则从文章、口播稿或参考字幕开始完整制作。
+PROMPT 省略时：项目根已有定稿 transcription.srt 就读 PROMPT.md；还没有时读
+PROMPT-PRODUCTION.md，从文章、口播稿或参考字幕开始完整制作。也可以显式传入。
 两者都是随 am init 下发的内置 prompt，可按项目改写。找不到该文件时失败。
 
 启动前会做三件事：
@@ -721,10 +721,10 @@ PROMPT 省略时读项目根的 PROMPT.md——该入口假定项目里已有定
 固定版本的 hyperframes，以及 TTS_PROVIDER 与 ALIGN_PROVIDER 各自的那一个命令；
 安装命令不在其中，要先自己装好。codex 改由沙箱限制写入范围（放开网络），
 opencode 没有可用的白名单机制，安全模式下仍能执行任何命令。`,
-		Example: `  # 项目已有定稿 transcription.srt
+		Example: `  # 有定稿 transcription.srt 时读 PROMPT.md，否则从文章开始完整制作
   am run
 
-  # 从文章或口播稿开始完整制作
+  # 显式指定从文章或口播稿开始完整制作
   am run PROMPT-PRODUCTION.md
 
   # 只有确认项目与输入可信时才关闭权限隔离

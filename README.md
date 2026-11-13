@@ -135,7 +135,7 @@ MEMORY_EXPLORE=0.1
 am run
 ```
 
-从文章、口播稿或参考字幕开始完整制作：
+从文章、口播稿或参考字幕开始完整制作（项目里还没有 `transcription.srt` 时，不带参数的 `am run` 与 Studio 的「开始制作」也会自动走这条）：
 
 ```bash
 am run PROMPT-PRODUCTION.md

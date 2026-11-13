@@ -213,7 +213,7 @@ function RecallSection({ scene, version }: { scene: Scene | null; version: numbe
           渲染工具 {recall.recall.renderer} · 模型 {recall.recall.model || '未知（限定了模型的经验不召回）'}
         </p>
       )}
-      {!scene && <p class="small muted">在下方时间线里选一个镜头。</p>}
+      {!scene && <p class="small muted">还没有镜头：分镜完成后，这里会显示每个镜头渲染前想起了哪些记忆。</p>}
       {error && <p class="error-line">{error}</p>}
       {recall && (
         <>
