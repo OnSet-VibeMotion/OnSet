@@ -10,7 +10,6 @@ import * as assets from '../assets';
 import * as flow from '../flow';
 import * as hyperframes from '../hyperframes';
 import * as plugin from '../plugin';
-import type { Style } from '../preset';
 import * as project from '../project';
 
 // 讲解形式（am init --delivery）：就是项目的流程（片型），可选值是内置流程与内置插件登记的流程（deliveryFlows）。
@@ -41,10 +40,9 @@ export function narrations(): Narration[] {
 export interface Options {
   target: string;
   canvas: string;
-  style: Style;
   delivery: string;
   narration: string;
-  /** 调用方另外要写进项目的文件（如自定义风格描述）。 */
+  /** 调用方另外要写进项目的文件。 */
   extra?: Record<string, Uint8Array | string>;
 }
 
@@ -113,19 +111,19 @@ export function validate(opts: Options): void {
 const bytes = (body: Uint8Array | string): Uint8Array => (typeof body === 'string' ? Buffer.from(body) : body);
 
 /**
- * 写出项目文件：两棵内置资产树（共用的与风格 × 画幅的）、风格字体、模式文件与调用方的额外文件，并在锁文件里记下流程与画幅，
+ * 写出项目文件：两棵内置资产树（共用的与画幅的）、模式文件与调用方的额外文件，并在锁文件里记下流程与画幅，
  * 再由选中的叙事模式写它自己的初始文件。项目里不放制作提示词，开工时按记下的流程组合（project.runPrompt）。
  * 不装 HyperFrames 技能，见 installSkills。
  */
 export function create(opts: Options): project.InitResult {
   validate(opts);
   const shared = assets.shared();
-  const styleFiles = assets.style(opts.style.id, opts.canvas);
-  const extra = new Map<string, Uint8Array>(assets.styleFonts(opts.style));
+  const canvasFiles = assets.canvas(opts.canvas);
+  const extra = new Map<string, Uint8Array>();
   for (const [file, body] of Object.entries(opts.extra ?? {})) extra.set(file, bytes(body));
   const chosen = deliveryFlows().find((f) => f.id === opts.delivery)!;
   if (chosen.marker) extra.set(chosen.marker.file, Buffer.from(chosen.marker.body));
-  const result = project.initializeWithFiles(opts.target, extra, shared, styleFiles);
+  const result = project.initializeWithFiles(opts.target, extra, shared, canvasFiles);
   recordProjectFlow(opts.target, chosen.id, opts.canvas);
   const mode = plugin.pluginNarrations().find((n) => n.value.id === opts.narration);
   if (mode) {

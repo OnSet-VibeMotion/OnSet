@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { Buffer, hasFfmpeg, makeClip, run, tempDir } from './testutil';
+import { Buffer, hasFfmpeg, makeClip, run, tempDir, writeFrameFor } from './testutil';
 import * as beat from '@am/engine/beat';
 import * as scene from '@am/engine/scene';
 import { verifyBeatInputs } from '@am/engine/plugins/beat';
@@ -14,6 +14,7 @@ function makeSceneDir(root: string, id: string, duration: number, filter: string
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\nx\n');
   fs.writeFileSync(path.join(dir, 'scene.json'), `{"id":"${id}","duration_seconds":${duration},"output":"out.mp4","transcript":"transcript.srt","text":"hello"}`);
+  writeFrameFor(dir, filter);
   makeClip(path.join(dir, 'out.mp4'), filter);
   return dir;
 }
@@ -31,7 +32,7 @@ async function beatProject(): Promise<string> {
     if (code !== 0) throw new Error(`${args.join(' ')} 失败：${errOut.text}`);
   };
   await exec('beat', 'init');
-  fs.writeFileSync(path.join(root, 'frame.md'), '---\nstyle_id: x\ncanvas:\n  width_px: 320\n  height_px: 240\n  fps: 30\n---\n');
+  fs.writeFileSync(path.join(root, 'frame.md'), '---\ncanvas:\n  width_px: 320\n  height_px: 240\n  fps: 30\n---\n');
   const music = path.join(tempDir(), 'loop.wav');
   const r = spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=220:sample_rate=48000:duration=6.5', music], { encoding: 'utf8' });
   if (r.status !== 0) throw new Error(`生成音乐失败：${r.stderr}`);

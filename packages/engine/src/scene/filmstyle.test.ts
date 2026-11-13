@@ -16,6 +16,7 @@ describe('film style', () => {
     const sceneDir = path.join(root, 'scenes', 'scene-001');
     fs.mkdirSync(sceneDir, { recursive: true });
     fs.writeFileSync(path.join(sceneDir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\ntest\n');
+    fs.writeFileSync(path.join(sceneDir, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
     fs.writeFileSync(path.join(sceneDir, 'scene.json'), '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
     const s = load(sceneDir);
     const env = { HOME: tempDir() };
@@ -138,6 +139,7 @@ describe('film style', () => {
 function writeScene(root: string, id: string, filmStyle: string): string {
   const dir = path.join(root, 'scenes', id);
   fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
   fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\ntest\n');
   const scene: Record<string, unknown> = { id, duration_seconds: 1, output: 'out.mp4', transcript: 'transcript.srt', text: 'hello' };
   if (filmStyle !== '') scene.film_style = filmStyle;

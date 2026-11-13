@@ -228,6 +228,7 @@ describe('a builtin plugin with a skill, a scene block and a narration', () => {
     const dir = path.join(root, 'scenes', 'scene-001');
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'voice.srt'), '1\n00:00:00,000 --> 00:00:01,000\nhello\n');
+    fs.writeFileSync(path.join(dir, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
     fs.writeFileSync(path.join(dir, 'scene.json'), JSON.stringify({ id: 'scene-001', duration_seconds: 1, output: 'out.mp4', transcript: 'voice.srt', text: 'hello', chorus: { voices: 4 } }));
     const s = scene.load(dir);
     const resolved = scene.resolveAllSkills('claude', dir, {}, s);
@@ -243,7 +244,7 @@ describe('a builtin plugin with a skill, a scene block and a narration', () => {
     expect(projectinit.narrations().some((n) => n.id === 'chorus' && n.owner === 'fake-chorus')).toBe(true);
     expect(projectinit.presets().some((p) => p.id === 'chorus')).toBe(true);
     const created = path.join(tempDir(), 'p');
-    projectinit.create({ target: created, canvas: preset.defaultPreset().id, style: preset.CustomStyle, delivery: 'speech', narration: 'chorus' });
+    projectinit.create({ target: created, canvas: preset.defaultPreset().id, delivery: 'speech', narration: 'chorus' });
     expect(fs.readFileSync(path.join(created, 'chorus.yaml'), 'utf8')).toBe('voices: 4\n');
     expect(flow.inUse(created, 'fake-chorus')).toBe('chorus.yaml');
     const f = newSessionFixture();

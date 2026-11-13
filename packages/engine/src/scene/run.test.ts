@@ -117,14 +117,14 @@ describe('verifyOutput', () => {
     expect((err as Error).message, '错误信息没有点名产物').toContain('out.mp4');
   });
 
-  // 画幅取自 style_guide 而不是写死的默认值。
-  it('honors the style guide canvas', () => {
-    const dir = writeScene('{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello","style_guide":"frame.md"}');
+  // 画幅取自 frame.md 而不是写死的默认值。
+  it('honors the frame.md canvas', () => {
+    const dir = writeScene('{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
     fs.writeFileSync(path.join(dir, 'frame.md'), '---\ncanvas:\n  width_px: 1080\n  height_px: 1920\n  fps: 30\n---\n正文\n');
     const s = load(dir);
     fs.writeFileSync(outputPath(s), 'video');
     const bin = tempDir();
-    // 按默认画幅（1440 高）渲染，但 style_guide 要的是 1920。
+    // 按 1440 高渲染，但 frame.md 要的是 1920。
     fakeFfprobe(bin, { widthPx: 1080, heightPx: 1440 });
     expect(() => verifyOutput(s, { PATH: bin, HOME: tempDir() }, 0.15)).toThrow('1080x1920');
     const bin2 = tempDir();

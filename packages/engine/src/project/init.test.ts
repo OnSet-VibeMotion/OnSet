@@ -24,10 +24,8 @@ describe('initialize', () => {
       'article-to-motion.conf',
       '.env.example',
       'frame.md',
-      'templates/publish.md',
-      'docs/清晰系统蓝图-视频风格说明书.md',
+      'templates/project-rules.md',
       'assets/fonts/noto-sans-sc-400.woff2',
-      'assets/style-guide/examples/proposition.png',
     ]) {
       expect(fs.existsSync(path.join(target, ...name.split('/'))), `missing ${name}`).toBe(true);
     }
@@ -53,9 +51,9 @@ describe('initialize', () => {
   it('rejects symlinked template directory', () => {
     const target = tempDir();
     const outside = tempDir();
-    fs.symlinkSync(outside, path.join(target, 'docs'));
+    fs.symlinkSync(outside, path.join(target, 'templates'));
     expect(() => initialize(target, ...builtinSources())).toThrow();
-    expect(fs.existsSync(path.join(outside, '清晰系统蓝图-视频风格说明书.md')), 'initializer escaped through symlink').toBe(false);
+    expect(fs.existsSync(path.join(outside, 'project-rules.md')), 'initializer escaped through symlink').toBe(false);
   });
 
   it('merges multiple sources', () => {

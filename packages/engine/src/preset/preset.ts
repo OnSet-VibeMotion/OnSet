@@ -96,9 +96,9 @@ export interface Preset {
   label: string;
   canvas: Canvas;
   safeArea: Box[];
-  /** 这个画幅面向的平台界面，风格模板里与平台有关的措辞由它填入。 */
+  /** 这个画幅面向的平台界面，frame.md 里与平台有关的措辞由它填入。 */
   platform: Platform;
-  /** 追加在 frame.md 与风格说明书正文末尾的画幅构图要点；为空时不追加。 */
+  /** 追加在 frame.md 正文末尾的画幅构图要点；为空时不追加。 */
   layoutNotes: string;
 }
 

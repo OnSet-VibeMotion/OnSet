@@ -13,12 +13,12 @@ HyperFrames 只会自动嵌入它内置清单里的字体族。**清单中没有
 
 ## 文件
 
-| 文件 | 字重 | 对应 `frame.md` 的 `typography.weights` |
+| 文件 | 字重 | 常见用途 |
 | --- | ---: | --- |
-| `noto-sans-sc-400.woff2` | 400 | `body` |
-| `noto-sans-sc-600.woff2` | 600 | `body_emphasis` |
-| `noto-sans-sc-700.woff2` | 700 | `heading`、`metadata` |
-| `noto-sans-sc-900.woff2` | 900 | `display` |
+| `noto-sans-sc-400.woff2` | 400 | 正文 |
+| `noto-sans-sc-600.woff2` | 600 | 正文强调 |
+| `noto-sans-sc-700.woff2` | 700 | 标题、标签 |
+| `noto-sans-sc-900.woff2` | 900 | 大字封面 |
 
 来源：`@fontsource/noto-sans-sc` 5.3.0 的 `chinese-simplified` 子集。
 许可证：SIL Open Font License 1.1，见 `LICENSE-Noto-Sans-SC.txt`，允许随项目分发。
@@ -50,6 +50,3 @@ for w in 400 600 700 900; do
   cp /tmp/package/files/noto-sans-sc-chinese-simplified-$w-normal.woff2 assets/fonts/noto-sans-sc-$w.woff2
 done
 ```
-
-换字体或增删字重后必须同步改 `frame.md` 与 `docs/` 下风格说明书的
-`typography.font_files`，两份文件的 token 必须逐字节一致，`am validate style` 会校验。

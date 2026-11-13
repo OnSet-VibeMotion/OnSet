@@ -18,6 +18,7 @@ export function tempDir(): string {
 export function writeSceneDir(dir: string, id: string, text: string, prompt: string): Scene {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:03,000\n字幕\n');
+  fs.writeFileSync(path.join(dir, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
   fs.writeFileSync(
     path.join(dir, 'scene.json'),
     `{"id":"${id}","duration_seconds":3,"output":"out.mp4","transcript":"transcript.srt","text":"${text}"}`,

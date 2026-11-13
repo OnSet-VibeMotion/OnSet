@@ -11,6 +11,7 @@ function reuseScene(): scene.Scene {
   const dir = tempDir();
   fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\n一句\n');
   fs.writeFileSync(path.join(dir, 'scene.json'), '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"一句"}');
+  fs.writeFileSync(path.join(dir, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
   fs.writeFileSync(path.join(dir, 'out.mp4'), 'video');
   return scene.load(dir);
 }

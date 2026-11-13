@@ -116,7 +116,7 @@ A scene whose inputs changed is marked Stale, with the changed items named, and 
 
 ### Visual direction
 
-Projects no longer preset or lock a visual style. The tools guarantee the canvas, frame rate, and render determinism. Palette, typography, layout, materials, and motion are decided by the model from the film's content and each scene, so scenes may use different visual languages. The older built-in style packs remain only for compatibility with existing projects and no longer enter render prompts.
+Projects no longer preset or lock a visual style. The tools guarantee the canvas, frame rate, and render determinism. Palette, typography, layout, materials, and motion are decided by the model from the film's content and each scene, so scenes may use different visual languages. The project's `frame.md` records only technical facts about the canvas: size and frame rate, safe areas, default burned-in caption styling, and loudness targets.
 
 ### Film style (optional)
 
@@ -318,7 +318,7 @@ npm run dist -w am-desktop                   # build the .app (apps/desktop/rele
 
 `am` (`packages/cli`) is a program the client uses internally. Background jobs call it directly, and the orchestrator and renderers call it through its tool service (MCP). It is not offered to users as a command line. During development you can run it with `node packages/cli/dist/am.cjs <command>`.
 
-After changing the canvas table, the style table, or the prompt templates, run `npm run generate -w @am/engine` and commit the generated `assets/presets` and `assets/styles`. Development conventions are in `AGENTS.md` and `packages/engine/CONVENTIONS.md`.
+After changing the canvas table or the `frame.md` template, run `npm run generate -w @am/engine` and commit the generated `assets/presets`. Development conventions are in `AGENTS.md` and `packages/engine/CONVENTIONS.md`.
 
 ArticleToMotion is licensed under the [Apache License 2.0](./LICENSE). HyperFrames is an independent Apache-2.0 project, used at a pinned release when a project is created.
 

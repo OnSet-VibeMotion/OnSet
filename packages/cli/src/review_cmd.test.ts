@@ -102,7 +102,7 @@ describe('review', () => {
   it.skipIf(!hasFfmpeg)('review reports loudness against frame targets', async () => {
     const root = tempDir();
     const frame =
-      '---\nstyle_id: x\ncanvas:\n  width_px: 320\n  height_px: 240\n  fps: 30\naudio:\n  final_integrated_lufs: -16\n  final_lufs_tolerance: 1\n  true_peak_max_dbtp: -1\n---\n';
+      '---\ncanvas:\n  width_px: 320\n  height_px: 240\n  fps: 30\naudio:\n  final_integrated_lufs: -16\n  final_lufs_tolerance: 1\n  true_peak_max_dbtp: -1\n---\n';
     fs.writeFileSync(path.join(root, 'frame.md'), frame);
     const film = path.join(root, 'final.mp4');
     makeFilm(film, '2', '2');
@@ -114,7 +114,7 @@ describe('review', () => {
     expect(fs.readFileSync(path.join(outDir, 'review.json'), 'utf8')).toContain('"integrated_lufs"');
 
     // frame.md 读不出目标时报错，不静默跳过。
-    fs.writeFileSync(path.join(root, 'frame.md'), '---\nstyle_id: x\ncanvas:\n  width_px: 320\n  height_px: 240\n  fps: 30\n---\n');
+    fs.writeFileSync(path.join(root, 'frame.md'), '---\ncanvas:\n  width_px: 320\n  height_px: 240\n  fps: 30\n---\n');
     errOut = new Buffer();
     expect(await run(['review', film, '--project-root', root, '--out', outDir], out, errOut)).toBe(1);
     expect(errOut.text).toContain('响度目标');

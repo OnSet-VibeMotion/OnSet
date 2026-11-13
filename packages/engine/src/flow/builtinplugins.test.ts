@@ -54,6 +54,7 @@ describe('builtin plugins that register renderer skills', () => {
     const sceneDir = path.join(root, 'scenes', 'scene-001');
     fs.mkdirSync(sceneDir, { recursive: true });
     fs.writeFileSync(path.join(sceneDir, 'voice.srt'), '1\n00:00:00,000 --> 00:00:01,000\nhello\n');
+    fs.writeFileSync(path.join(sceneDir, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
     fs.writeFileSync(path.join(sceneDir, 'scene.json'), JSON.stringify({ id: 'scene-001', duration_seconds: 1, output: 'out.mp4', transcript: 'voice.srt', text: 'hello' }));
     const s = load(sceneDir);
     const before = resolveAllSkills('claude', sceneDir, {}, s);

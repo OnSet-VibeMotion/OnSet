@@ -11,7 +11,7 @@ import * as hyperframes from '@am/engine/hyperframes';
 import * as preset from '@am/engine/preset';
 import * as projectinit from '@am/engine/projectinit';
 import * as toolinstall from '@am/engine/toolinstall';
-import { canvasOptions, resolveCanvas, resolveStyle, resolveStyleBrief, styleBriefDocument, styleBriefPath, styleOptions } from './canvas';
+import { canvasOptions, resolveCanvas } from './canvas';
 import { currentEnvironment, hyperframesVersion, maxArgs, skillsProgressPrinter } from './cli';
 import { Command, type Out, ref } from './cobra';
 import { reportFilmStyle } from './filmstyle';
@@ -24,9 +24,6 @@ const narrationSolo = projectinit.NarrationSolo;
 export function newInitCommand(stdout: Out, stderr: Out): Command {
   const skipHyperframes = ref(false);
   const canvasID = ref('');
-  const styleID = ref('');
-  const styleBrief = ref('');
-  const styleBriefFile = ref('');
   const narration = ref('');
   const delivery = ref('');
   const filmStyleName = ref('');
@@ -44,19 +41,14 @@ export function newInitCommand(stdout: Out, stderr: Out): Command {
 非交互环境（CI、管道）必须显式传 --canvas，不会静默取默认值；不传且无法交互时报错退出。
 
 视觉风格不属于初始化契约：画幅决定画布与安全区，配色、字体、版式、材质和动效
-由模型根据本片内容与各镜头文案自由决定。旧版风格参数仍接受，但只为兼容旧脚本，
-不会成为渲染提示词或渲染前置校验。
-旧版 --style 可选值（仅用于兼容旧脚本）：
-` +
-      styleOptions() +
-      `
+由模型根据本片内容与各镜头文案自由决定，或用 --film-style 选一种整片风格。
 
-frame.md 仅为旧项目保留，供画幅等技术信息读取；它不再规定镜头的视觉风格。
+frame.md 只记画幅的技术信息：画布与帧率、安全区、烧录字幕的缺省样式与混音响度目标。
 
 写入内容：
   article-to-motion.conf、.env.example、article-to-motion.flow.json（记下讲解形式对应的流程与画幅；
   制作提示词不写进项目，开工时按这份记录组合）
-  frame.md（画幅技术信息；旧版风格参数会带出兼容文件）、assets/fonts/ 中文字体、assets/style-guide/ 示例
+  frame.md（画幅技术信息）、assets/fonts/ 中文正文字体
   templates/project-rules.md（am run 据此派生 AGENTS.md / CLAUDE.md 等）
   .agents/skills/ 内置技能树（text-to-lottie、algorithmic-art），随二进制下发
 
@@ -122,16 +114,11 @@ am setup 把它下载进缓存；缓存里没有时 am init 写完项目文件�
       // 讲解形式就是项目的流程：可选值来自内置流程与内置插件登记的流程。
       const ids = projectinit.deliveryFlows().map((f) => f.id);
       if (!ids.includes(delivery.value)) throw new Error(`--delivery 必须为 ${ids.slice(0, -1).join('、')} 或 ${ids[ids.length - 1]}`);
-      projectinit.validate({ target, canvas: '', style: preset.CustomStyle, delivery: delivery.value, narration: narration.value });
+      projectinit.validate({ target, canvas: '', delivery: delivery.value, narration: narration.value });
       const filmStyle = filmStyleName.value !== '' ? filmstyle.lookup(filmStyleName.value) : undefined;
       const chosen = await resolveCanvas(canvasID.value, process.stdin, stdout);
-      const style = resolveStyle(styleID.value);
-      const brief = resolveStyleBrief(style, styleBrief.value, styleBriefFile.value);
-      const extra: Record<string, string> = {};
-      if (brief !== '') extra[styleBriefPath] = styleBriefDocument(brief);
-      const result = projectinit.create({ target, canvas: chosen.id, style, delivery: delivery.value, narration: narration.value, extra });
+      const result = projectinit.create({ target, canvas: chosen.id, delivery: delivery.value, narration: narration.value });
       stdout.write(`项目已初始化：${target}（画幅 ${chosen.label}，新增 ${result.created}，未变 ${result.unchanged}）\n`);
-      // 风格文件只为旧项目和画幅读取保留，不再作为渲染前的定稿门禁。
       if (filmStyle) {
         let installed: filmstyle.InstallResult;
         try {
@@ -163,9 +150,6 @@ am setup 把它下载进缓存；缓存里没有时 am init 写完项目文件�
   const flags = initCmd.flags();
   flags.boolVar(skipHyperframes, 'skip-hyperframes', false, '跳过从本机缓存拷入 HyperFrames 官方技能；不影响随二进制下发的内置技能树');
   flags.stringVar(canvasID, 'canvas', '', '画幅预设：' + preset.ids().join(' | ') + '；不传则在终端里交互选择');
-  flags.stringVar(styleID, 'style', '', '旧版视觉风格参数（仅兼容，不作为渲染要求）：' + [...preset.styleIDs(), preset.CustomStyleFlag].join(' | '));
-  flags.stringVar(styleBrief, 'style-brief', '', '旧版自定义风格描述（仅兼容），只能与 --style ' + preset.CustomStyleFlag + ' 一起使用');
-  flags.stringVar(styleBriefFile, 'style-brief-file', '', '从文件读取旧版自定义风格描述，与 --style-brief 二选一');
   flags.stringVar(
     narration,
     'narration',

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { builtinSkills, files, fontFiles, setAssetsBaseForTest, shared, style } from './index';
+import { builtinSkills, canvas, setAssetsBaseForTest, shared } from './index';
 
 afterEach(() => setAssetsBaseForTest(null));
 
@@ -25,21 +25,8 @@ describe('assets (real tree)', () => {
     for (const name of skills) expect(shared().exists(`.agents/skills/${name}/SKILL.md`)).toBe(true);
   });
 
-  it('rejects unknown styles with Go-identical messages', () => {
-    expect(() => style('no-such-style', 'vertical-3x4')).toThrow('找不到风格素材 no-such-style/vertical-3x4');
-  });
-
-  it('reads fonts from the pool and dedupes licenses', () => {
-    const pool = files().readDir('fontpool').filter((e) => !e.isDir).map((e) => e.name);
-    const font = pool.find((n) => n.endsWith('.woff2'));
-    const license = pool.find((n) => /\.(txt|md)$/i.test(n));
-    if (!font || !license) return;
-    const out = fontFiles([
-      { file: font, license },
-      { file: font, license },
-    ]);
-    expect([...out.keys()].sort()).toEqual([`assets/fonts/${font}`, `assets/fonts/${license}`].sort());
-    expect(() => fontFiles([{ file: 'missing.woff2', license }])).toThrow('字体池里没有文件 missing.woff2');
+  it('rejects unknown canvases', () => {
+    expect(() => canvas('no-such-canvas')).toThrow('找不到画幅素材 no-such-canvas');
   });
 });
 

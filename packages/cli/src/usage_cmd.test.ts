@@ -30,7 +30,7 @@ describe('usage', () => {
       fs.writeFileSync(path.join(dir, 'frame.md'), '---\ncanvas:\n  width_px: 320\n  height_px: 240\n  fps: 30\n---\n正文\n');
       fs.writeFileSync(
         path.join(dir, 'scene.json'),
-        `{"id":"${id}","duration_seconds":1.0,"output":"out.mp4","transcript":"transcription.srt","text":"中文","style_guide":"frame.md"}`,
+        `{"id":"${id}","duration_seconds":1.0,"output":"out.mp4","transcript":"transcription.srt","text":"中文"}`,
       );
     }
     process.chdir(project);
@@ -85,7 +85,7 @@ describe('usage', () => {
     fs.writeFileSync(path.join(dir, 'frame.md'), '---\ncanvas:\n  width_px: 320\n  height_px: 240\n  fps: 30\n---\n正文\n');
     fs.writeFileSync(
       path.join(dir, 'scene.json'),
-      '{"id":"s1","duration_seconds":1.0,"output":"out.mp4","transcript":"transcription.srt","text":"中文","style_guide":"frame.md"}',
+      '{"id":"s1","duration_seconds":1.0,"output":"out.mp4","transcript":"transcription.srt","text":"中文"}',
     );
     const attempt = '{"scene_id":"s1","renderer":"claude","outcome":"succeeded","usage":{"input_tokens":300,"output_tokens":20,"basis":"total-input","source":"claude result"}}';
     fs.writeFileSync(path.join(dir, 'render-s1.attempt.json'), attempt);

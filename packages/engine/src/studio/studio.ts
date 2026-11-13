@@ -21,7 +21,7 @@ import * as preset from '../preset';
 import * as projectinit from '../projectinit';
 import { agentKeysAPI } from './agentkeys';
 import { agentModelsAPI, agentsAPI } from './agents';
-import { rawAPI, styleExampleAPI, stylesAPI, treeAPI } from './api_ui';
+import { rawAPI, stylesAPI, treeAPI } from './api_ui';
 import { commandAPI, filesAPI, productionStartAPI, sessionAPI, sessionsAPI, turnAPI } from './api_sessions';
 import { previewAPI, renderAllAPI, sceneFeatureAPI, scenesAPI } from './features';
 import { filmStylePosterAPI, filmStylesAPI, projectFilmStyleAPI, startFilmStyleTask } from './filmstyle';
@@ -352,7 +352,6 @@ export class Server {
       ['/api/agents/', (r, rest) => agentModelsAPI(r, rest)],
       ['/preview/scenes/', (r, rest) => previewAPI(this, r, rest)],
       ['/api/styles', (r) => stylesAPI(r)],
-      ['/api/styles/', (_r, rest) => styleExampleAPI(rest)],
       ['/api/tree', (r) => treeAPI(this, r)],
       ['/api/raw', (r) => rawAPI(this, r)],
       ['/api/memory', (r) => memoryAPI(this, r)],
@@ -505,14 +504,13 @@ export class Server {
 
   private async createAPI(request: Request): Promise<Response> {
     if (request.method !== 'POST') return methodNotAllowed('POST');
-    let req: { parent: string; name: string; canvas: string; style: string; delivery: string; narration: string; film_style: string };
+    let req: { parent: string; name: string; canvas: string; delivery: string; narration: string; film_style: string };
     try {
       const body = await decodeJSONStrict(request);
       req = {
         parent: fieldString(body, 'parent'),
         name: fieldString(body, 'name'),
         canvas: fieldString(body, 'canvas'),
-        style: fieldString(body, 'style'),
         // delivery 与 narration 同 am init --delivery / --narration，缺省为 speech / solo。
         delivery: fieldString(body, 'delivery'),
         narration: fieldString(body, 'narration'),
@@ -525,9 +523,6 @@ export class Server {
     }
     if (goTrimSpace(req.name) === '') return writeError(400, 'invalid_request', '请填写项目名称');
     if (req.canvas === '') req.canvas = preset.defaultPreset().id;
-    // 工作台与 CLI 保持一致：内置风格是可选风格包，默认进入模型自主
-    // 定风格流程，避免新项目被清晰系统蓝图预先定向。
-    if (req.style === '') req.style = preset.CustomStyle.id;
     const parent = path.resolve(req.parent);
     if (!isWithinStudioBrowseRoot(parent)) return writeError(403, 'directory_outside_root', '只能在服务器用户目录下创建项目');
     if (!dirExists(parent)) return writeError(400, 'directory_unavailable', '父目录不存在');
@@ -537,12 +532,6 @@ export class Server {
     }
     const target = path.join(parent, name);
     if (fileExists(target)) return writeError(409, 'project_exists', '这个目录已经存在');
-    let styleMeta: preset.Style = preset.CustomStyle;
-    if (req.style !== preset.CustomStyle.id) {
-      const found = preset.styleByID(req.style);
-      if (!found) return writeError(400, 'invalid_style', '未知风格');
-      styleMeta = found;
-    }
     let filmStyle: filmstyle.Style | undefined;
     if (req.film_style !== '') {
       try {
@@ -553,18 +542,7 @@ export class Server {
     }
     if (req.delivery === '') req.delivery = projectinit.DeliverySpeech;
     if (req.narration === '') req.narration = projectinit.NarrationSolo;
-    const extra: Record<string, string> = {};
-    if (req.style === preset.CustomStyle.id) {
-      extra[preset.CustomStyleBriefPath] =
-        '# 风格描述\n\n' +
-        '> 由工作台的自主定风格流程写入。制作开始前按这里的描述生成 frame.md、' +
-        '`' +
-        preset.guideDoc(preset.CustomStyle) +
-        '` 与四张示例图。\n\n' +
-        preset.AutomaticStyleBrief +
-        '\n';
-    }
-    const opts: projectinit.Options = { target, canvas: req.canvas, style: styleMeta, delivery: req.delivery, narration: req.narration, extra };
+    const opts: projectinit.Options = { target, canvas: req.canvas, delivery: req.delivery, narration: req.narration };
     try {
       projectinit.validate(opts);
     } catch (err) {

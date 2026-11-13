@@ -13,6 +13,7 @@ describe('studio memory', () => {
     const memoryDir = tempDir();
     setEnv('AM_MEMORY_DIR', memoryDir);
     writeStudioFile(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nMEMORY=on\n');
+    writeStudioFile(path.join(root, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
     const sceneDir = path.join(root, 'scenes', 'scene-001');
     writeStudioFile(path.join(sceneDir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\nx\n');
     writeStudioFile(
