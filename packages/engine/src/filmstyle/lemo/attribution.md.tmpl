@@ -1,0 +1,31 @@
+# 来源
+
+- 风格：{{.Style.CN}} · {{.Style.EN}}（`{{.Style.Slug}}`）
+- 风格库：lemo-opuscar，作者 LemoLab，{{.Repo}}
+- commit：`{{.Commit}}`
+- 安装方式：`am film-style use {{.Style.Slug}}`，从固定 commit 拷贝，不跟随上游 main
+
+## 保留了什么
+
+- `styles/{{.Style.Slug}}/` 下的 `STYLE.md`、`style.json`、`DEMO.md`、`poster.jpg` 与 `demo/` 源码，原样拷贝
+- 风格库的 `core/lib.js`、`core/three/`、`core/post/`、`core/fonts/`，原样拷贝
+{{- if .Style.ThreeJS}}
+- 风格库 `node_modules/three/` 的 `build/` 与 `examples/jsm/`（three.js，MIT）
+{{- end}}
+
+## 丢了什么
+
+- `demo/stills/`、`demo/out/` 等审片截图与渲染产物，以及音频文件
+- 风格库的导演流程（`AGENTS.md`、`DIRECTOR.md`）：故事、分镜、配音由 am 的制作流程负责
+- 风格库的渲染与合成工具（`core/render/`）：渲染走 HyperFrames
+
+## 改了哪几处
+
+- `SKILL.md` 与本文件由 am 生成，说明这套风格在 HyperFrames 镜头里怎么用
+
+## 许可
+
+- 代码与文档：MIT（见 `LICENSE`）
+- demo 片及其画面：CC BY 4.0，复用时署名 LemoLab 并链接上游仓库，说明改动
+- demo 里的第三方素材：各自的许可，见 `demo/CREDITS`
+- 用这套风格做出的片子归制作者所有，不需要署名

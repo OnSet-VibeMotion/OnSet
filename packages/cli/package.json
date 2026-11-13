@@ -5,7 +5,7 @@
   "description": "am 命令行：internal/cli 的 TypeScript 移植",
   "type": "module",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --platform=node --format=cjs --target=node22 --outfile=dist/am.cjs",
+    "build": "esbuild src/main.ts --bundle --loader:.tmpl=text --platform=node --format=cjs --target=node22 --outfile=dist/am.cjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p ."
   }

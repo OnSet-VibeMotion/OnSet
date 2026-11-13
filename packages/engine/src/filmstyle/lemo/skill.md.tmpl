@@ -1,0 +1,37 @@
+---
+name: am-film-style
+description: 本片的整片风格「{{.Style.CN}} {{.Style.EN}}」，来自 lemo-opuscar 风格库（{{.Short}}）。每个镜头都必须遵守 STYLE.md 的不变量；demo 只用来学技法。
+---
+
+# 整片风格：{{.Style.CN}} · {{.Style.EN}}
+
+本片的每个镜头都画成这一种风格。它来自 lemo-opuscar 风格库（`{{.Style.Slug}}`，commit `{{.Short}}`），由 `am film-style use` 装进项目，不要手改本目录。
+
+| 文件 | 用途 |
+|---|---|
+| `STYLE.md` | 风格的不变量：长什么样、配色逻辑、字体、动效质感、镜头语法、标志手法、禁忌、引擎用法。**全部遵守** |
+| `DEMO.md`、`demo/` | 上游 demo 片的说明与源码。只用来学技法（引擎、笔刷、rig、shader、后期） |
+| `core/` | 风格库的共用工具：`lib.js`（种子随机、噪声、缓动、插值）{{if .Style.ThreeJS}}、`three/post.js`（three.js 后期）{{end}}、`post/`、`fonts/` |
+{{- if .Style.ThreeJS}}
+| `node_modules/three/` | demo 用到的 three.js（随风格库锁定的版本） |
+{{- end}}
+| `ATTRIBUTION.md`、`LICENSE` | 来源与许可 |
+
+## 给制作的说明（定方案、备素材时读）
+
+- 先写 `treatment.md`，再看 `DEMO.md` 与 `demo/`：demo 只用来学技法（引擎、笔触、rig、shader），不借它的故事、结构、镜头、道具和时间线。以真实素材为本的风格（剪辑与纪实、实证影像）例外：先按 STYLE.md 收集并登记素材，再写 treatment。
+- STYLE.md 点名的字体不随风格库下发，按制作提示词「整片风格」一节的办法从 Google Fonts 取。`core/fonts/` 里的中文展示字体只有约 200 个字，不能用于中文正文。
+- STYLE.md 的 Sound palette 只作为选曲方向的参考；风格库自带的配乐工具没有接入。
+
+## 规则（渲染镜头时）
+
+1. **先读 `STYLE.md` 全文再动手。** 它规定的外观、材质、配色逻辑、字体、动效质感、镜头语法、标志手法与禁忌全部遵守。本镜头提示词里的「全片配色」若与 STYLE.md 的配色逻辑冲突，以全片配色为准——它是在 STYLE.md 的配色逻辑里为本片选定的。
+2. **内容来自本镜头，不来自 demo。** 画什么、讲什么、出现哪些物件，只取本镜头的 prompt.md、字幕与素材。不照搬 demo 的故事、镜头、道具、文案、时间线和角色，不把题材往 demo 上靠。
+3. **demo 是技法库。** 需要它的引擎时，读 `STYLE.md` 的 Engine 一节与 `DEMO.md`，再把用到的源码文件拷进本镜头目录、在拷贝上修改。不得在合成里引用本目录（镜头目录之外的路径渲染时会静默 404）。
+4. **只拷你用到的文件，保持原路径。** demo 用 `/core/lib.js`、`/core/three/post.js` 这类以 `/` 开头的路径引用共用工具；HyperFrames 以镜头目录为根提供文件，所以用到哪个就把它拷成镜头目录里的同一路径（`core/lib.js`），路径不用改。不要整目录拷贝。不要改本目录里的文件（它们与其他项目共用同一份），改动只改镜头目录里的副本。{{if .Style.ThreeJS}}three.js 同理：`node_modules/three/` 里只有 demo 用到的模块，你的代码 import 了哪些，就把它们（`build/three.module.js` 加上用到的 `examples/jsm/…`，连同它们相对引用的文件）拷进镜头目录的 `node_modules/three/` 同一路径，importmap 不用改。demo 引用的 `.hdr` 环境贴图不随风格库下发，用 three 的 `RoomEnvironment` 代替。{{end}}
+5. **页面契约换成 HyperFrames 的。** demo 页面导出 `window.render(t)`，按秒逐帧绘制、可单独渲染任意一帧。在 HyperFrames 里改由 `hf-seek` 事件驱动：在监听器里调用同一个 `render(e.detail.time)`，根元素写 `data-duration`，加载完先画一次第 0 帧；引擎初始化（解码图片、编译 shader、生成笔触）这类异步准备登记成 `window.__hf.buildReady["<key>"]` promise。写法以 hyperframes 技能 `references/runtimes.md` 的「The seek protocol」为准。不要 `window.READY`，不要 `requestAnimationFrame`，不读真实时钟；随机数一律用 `core/lib.js` 的 `mulberry` / `hash` 加固定种子，任何一帧都不能依赖上一帧留下的状态。
+6. **画幅、帧率与时长以本镜头提示词为准。** demo 默认 1920×1080、24fps。从 `innerWidth` × `innerHeight` 排版，不写死 1920×1080；竖屏要按竖屏重新构图，不是把横屏画面缩小或裁一块。STYLE.md 要求「一拍两帧」之类的步进时，只步进画面里的物件，镜头与光照保持逐帧平滑。
+7. **字体。** STYLE.md 点名的字体由上层放进镜头目录；镜头目录里没有时，用镜头目录里已有的字体并在汇报里说明，不得改用本机系统字体或 `local()`。中文要有中文字体覆盖：`core/fonts/` 里的中文展示字体只有约 200 个字，不能用于正文。字幕的字体与样式按 STYLE.md 的 Type & subtitles，烧录仍用镜头工具库的 `SceneKit.captions`。
+8. **声音一节对镜头无效。** 镜头产物必须静音、无音轨；STYLE.md 的 Sound palette 由上层配乐时使用。
+9. **胶片颗粒不画进页面。** lemo 在合成成片时用 ffmpeg 加颗粒；颗粒画进页面会让每一帧都无法压缩、渲染变慢。STYLE.md 写了颗粒时，本镜头省略它。
+10. **真实素材只用给到的。** 剪辑与纪实、实证影像这类以真实素材为本的风格，只用镜头目录里已有的素材与数据，不自行下载，不编造数字与出处。
