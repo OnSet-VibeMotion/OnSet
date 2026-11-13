@@ -476,3 +476,65 @@ func lock(ctx context.Context, path string) (func(), error) {
 		}
 	}
 }
+
+// postersDone 是全部风格海报已取回的记录，理由同 demosDoneFile。
+const postersDone = "am-posters"
+
+// PosterPath 返回风格库里某种风格海报的路径（不保证存在）。
+func PosterPath(lib Library, slug string) string {
+	return filepath.Join(lib.Dir, "styles", slug, "poster.jpg")
+}
+
+// PostersReady 表示风格库里已有全部风格的海报。用户自己的检出看第一种风格有没有海报。
+func PostersReady(lib Library) bool {
+	if !lib.Managed {
+		catalog := Catalog()
+		if len(catalog) == 0 {
+			return false
+		}
+		_, err := os.Stat(PosterPath(lib, catalog[0].Slug))
+		return err == nil
+	}
+	_, err := os.Stat(filepath.Join(lib.Dir, ".git", postersDone))
+	return err == nil
+}
+
+// EnsurePosters 把全部风格的海报（styles/*/poster.jpg，合计约 10 MB）取进风格库，
+// 给 Studio 的风格选择器用。首次检出不带海报；这里一批取完，断了再调用会接着取。
+func EnsurePosters(ctx context.Context, lib Library, opts LibraryOptions) error {
+	if PostersReady(lib) {
+		return nil
+	}
+	if !lib.Managed {
+		return fmt.Errorf("风格库 %s 里没有海报（styles/*/poster.jpg）", lib.Dir)
+	}
+	git, err := envutil.LookPath("git", opts.Env["PATH"])
+	if err != nil {
+		return fmt.Errorf("找不到 git，无法下载风格海报：%w", err)
+	}
+	unlock, err := lock(ctx, lib.Dir+".lock")
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	patterns, err := readSparse(lib.Dir)
+	if err != nil {
+		return fmt.Errorf("读取风格库稀疏规则：%w", err)
+	}
+	if !contains(patterns, "/styles/*/poster.jpg") {
+		patterns = append(patterns, "/styles/*/poster.jpg") // 非 cone 规则后写的生效，盖过前面的排除
+	}
+	if err := writeSparse(lib.Dir, patterns); err != nil {
+		return err
+	}
+	var readErr error
+	for attempt := 1; attempt <= stageAttempts; attempt++ {
+		if _, readErr = gitCommand(ctx, git, lib.Dir, opts.Env, opts.Output, "read-tree", "--reset", "-u", "HEAD"); readErr == nil || ctx.Err() != nil {
+			break
+		}
+	}
+	if readErr != nil {
+		return fmt.Errorf("下载风格海报失败（再试一次会接着下载）：%w", readErr)
+	}
+	return os.WriteFile(filepath.Join(lib.Dir, ".git", postersDone), []byte("ok\n"), 0o644)
+}

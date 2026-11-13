@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { api, errorText, post } from '../api';
-import type { Attachment, CanvasOption, Project } from '../types';
+import type { Attachment, CanvasOption, Project, Task } from '../types';
 import '../creation.css';
 
 /**
@@ -17,7 +17,8 @@ export interface CreationJob {
   name: string;
   canvas: string;
   canvasInfo?: CanvasOption;
-  style: string;
+  /** 选定的整片风格（风格库目录名），空表示不用。 */
+  filmStyle: string;
   delivery: string;
   narration: string;
   modeLabel: string;
@@ -27,7 +28,7 @@ export interface CreationJob {
   files: File[];
 }
 
-type StepID = 'create' | 'upload' | 'skills' | 'start';
+type StepID = 'create' | 'upload' | 'skills' | 'style' | 'start';
 type StepState = 'waiting' | 'running' | 'done' | 'skipped' | 'failed';
 
 interface Step {
@@ -39,7 +40,8 @@ interface Step {
 const steps: Step[] = [
   { id: 'create', label: '建立项目', weight: 10 },
   { id: 'upload', label: '放入素材', weight: 10 },
-  { id: 'skills', label: '装备技能', weight: 68 },
+  { id: 'skills', label: '装备技能', weight: 56 },
+  { id: 'style', label: '整片风格', weight: 12 },
   { id: 'start', label: '召集编排', weight: 12 },
 ];
 
@@ -54,11 +56,12 @@ const FPS = 30;
 
 export function Creation(props: { job: CreationJob; onDone: (projectId: string, sessionId: string) => void; onClose: (error: string) => void }) {
   const { job } = props;
-  const [states, setStates] = useState<Record<StepID, StepState>>({ create: 'running', upload: 'waiting', skills: 'waiting', start: 'waiting' });
-  const [fractions, setFractions] = useState<Record<StepID, number>>({ create: 0, upload: 0, skills: 0, start: 0 });
+  const [states, setStates] = useState<Record<StepID, StepState>>({ create: 'running', upload: 'waiting', skills: 'waiting', style: 'waiting', start: 'waiting' });
+  const [fractions, setFractions] = useState<Record<StepID, number>>({ create: 0, upload: 0, skills: 0, style: 0, start: 0 });
   const [caption, setCaption] = useState('正在建立项目文件夹…');
   const [error, setError] = useState('');
   const [skillsError, setSkillsError] = useState('');
+  const [styleError, setStyleError] = useState('');
   const [indeterminate, setIndeterminate] = useState(false);
   const [finale, setFinale] = useState<'' | 'clap' | 'zoom'>('');
   const [title, setTitle] = useState(job.name);
@@ -68,6 +71,11 @@ export function Creation(props: { job: CreationJob; onDone: (projectId: string, 
   const attachments = useRef<Attachment[]>([]);
   const skipSkills = useRef<() => void>(() => {});
   const retrySkills = useRef<() => void>(() => {});
+  const skipStyle = useRef<() => void>(() => {});
+  // 建项目时后端已经起了装风格的任务（film_style_task）；这里只跟进度。
+  const filmStyleTask = useRef('');
+  const filmStyleError = useRef('');
+  const retryStyle = useRef<() => void>(() => {});
 
   const mark = (id: StepID, state: StepState, fraction?: number) => {
     setStates((current) => ({ ...current, [id]: state }));
@@ -96,16 +104,17 @@ export function Creation(props: { job: CreationJob; onDone: (projectId: string, 
         for (let attempt = 1; attempt <= 20 && !created; attempt++) {
           const name = attempt === 1 ? job.name : `${job.name}-${attempt}`;
           try {
-            created = (
-              await post<{ project: Project }>('/api/projects/create', {
-                parent: job.parent,
-                name,
-                canvas: job.canvas,
-                style: job.style,
-                delivery: job.delivery,
-                narration: job.narration,
-              })
-            ).project;
+            const response = await post<{ project: Project; film_style_task?: string; film_style_error?: string }>('/api/projects/create', {
+              parent: job.parent,
+              name,
+              canvas: job.canvas,
+              delivery: job.delivery,
+              narration: job.narration,
+              film_style: job.filmStyle,
+            });
+            created = response.project;
+            filmStyleTask.current = response.film_style_task ?? '';
+            filmStyleError.current = response.film_style_error ?? '';
           } catch (err) {
             if (!(err instanceof Error) || !/已经存在/.test(err.message)) throw err;
           }
@@ -192,7 +201,66 @@ export function Creation(props: { job: CreationJob; onDone: (projectId: string, 
         if (cancelled) return;
         await sleep(300);
 
-        // 4. 召集编排：开始整片制作。
+        // 4. 整片风格：选了才装（am film-style use，第一次要下载风格库）。装不上可以重试或跳过，
+        // 跳过就由编排工具在稿件审核时再推荐。
+        if (job.filmStyle) {
+          mark('style', 'running');
+          setCaption('正在装整片风格…');
+          await new Promise<void>((resolve) => {
+            let timer = 0;
+            let done = false;
+            const finish = (state: StepState) => {
+              if (done) return;
+              done = true;
+              window.clearTimeout(timer);
+              mark('style', state, 1);
+              resolve();
+            };
+            skipStyle.current = () => {
+              setStyleError('');
+              setCaption('不装整片风格，先开始制作');
+              finish('skipped');
+            };
+            const watch = async (id: string) => {
+              if (cancelled || done) return;
+              try {
+                const task = await api<Task>('/api/tasks/' + encodeURIComponent(id));
+                if (task.status === 'succeeded') {
+                  setCaption('整片风格就绪');
+                  finish('done');
+                  return;
+                }
+                if (task.status === 'failed' || task.status === 'cancelled') {
+                  setStyleError(task.error || task.message || '整片风格没装上');
+                  setCaption('整片风格没装上');
+                  return; // 等用户选重试或跳过
+                }
+              } catch {
+                // 读状态失败就下一次再试。
+              }
+              timer = window.setTimeout(() => void watch(id), 800);
+            };
+            retryStyle.current = async () => {
+              setStyleError('');
+              setCaption('正在装整片风格…');
+              try {
+                const started = await post<{ task_id: string }>('/api/film-style', { style: job.filmStyle });
+                void watch(started.task_id);
+              } catch (err) {
+                setStyleError(errorText(err));
+              }
+            };
+            if (filmStyleTask.current) void watch(filmStyleTask.current);
+            else if (filmStyleError.current) setStyleError(filmStyleError.current);
+            else void retryStyle.current();
+          });
+          if (cancelled) return;
+          await sleep(300);
+        } else {
+          mark('style', 'skipped', 1);
+        }
+
+        // 5. 召集编排：开始整片制作。
         mark('start', 'running');
         setCaption(`正在请 ${job.toolLabel} 开工…`);
         const startedTurn = await post<{ session_id: string }>('/api/production/start', {
@@ -294,13 +362,14 @@ export function Creation(props: { job: CreationJob; onDone: (projectId: string, 
                 return (
                   <div
                     key={step.id}
-                    class={'clip ' + state + (step.id === 'skills' && indeterminate ? ' indeterminate' : '')}
+                    class={'clip ' + state + ((step.id === 'skills' && indeterminate) || (step.id === 'style' && state === 'running') ? ' indeterminate' : '')}
                     style={{ flexGrow: step.weight }}
                   >
                     <span class="clip-fill" style={{ width: `${fill * 100}%` }} />
                     <span class="clip-label">
                       {step.label}
                       {state === 'skipped' && step.id === 'skills' && <em> · 后台</em>}
+                      {state === 'skipped' && step.id === 'style' && <em> · 不用</em>}
                     </span>
                   </div>
                 );
@@ -330,6 +399,18 @@ export function Creation(props: { job: CreationJob; onDone: (projectId: string, 
             <button class="pill" onClick={() => props.onClose(error)}>
               回到首页
             </button>
+          ) : styleError ? (
+            <>
+              <span class="creation-error" title={styleError}>
+                {firstLine(styleError)}
+              </span>
+              <button class="pill" onClick={() => retryStyle.current()}>
+                重试
+              </button>
+              <button class="pill primary-pill" onClick={() => skipStyle.current()}>
+                跳过，先开始制作
+              </button>
+            </>
           ) : skillsError ? (
             <>
               <span class="creation-error" title={skillsError}>

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api, errorText, post, rawURL } from '../api';
-import type { Attachment, BeatState, Box, ProjectState, ProjectUsage, Scene, TreeFile, Usage } from '../types';
+import type { Attachment, BeatState, Box, ProjectFilmStyle, ProjectState, ProjectUsage, Scene, TreeFile, Usage } from '../types';
 import { cssSelector } from '../selector';
 import { Icon } from './Icon';
 import { MemoryTab } from './Memory';
+import { FilmStylePicker, Poster, useFilmStyles } from './FilmStyles';
+import { Markdown } from './chat/Markdown';
 
 export type Tab = 'scene' | 'compose' | 'final' | 'style' | 'review' | 'publish' | 'memory' | 'file';
 
@@ -64,7 +66,7 @@ export function Preview(props: Props) {
         {props.tab === 'scene' && <SceneTab {...props} scene={scene} />}
         {props.tab === 'compose' && <ComposeTab {...props} scene={scene} />}
         {props.tab === 'final' && <FinalTab tree={props.tree} version={props.version} run={props.run} />}
-        {props.tab === 'style' && <StyleTab tree={props.tree} version={props.version} onFile={props.onFile} state={props.state} />}
+        {props.tab === 'style' && <StyleTab version={props.version} run={props.run} scenes={props.scenes} />}
         {props.tab === 'review' && <ReviewTab tree={props.tree} version={props.version} run={props.run} />}
         {props.tab === 'publish' && <PublishTab version={props.version} run={props.run} />}
         {props.tab === 'memory' && <MemoryTab scene={scene} version={props.version} run={props.run} />}
@@ -549,111 +551,119 @@ function FinalTab({ tree, version, run }: { tree: TreeFile[]; version: number; r
 }
 
 /**
- * 风格页：先说清楚这是什么风格、现在走到哪一步，再给示例图与文件。
- * 自定义风格在定稿前是草稿（style_id: custom-draft）：frame.md 里的配色、字体只是
- * 默认风格的占位值，不展示，免得被当成定下来的风格；只展示用户写的风格描述。
+ * 风格页：本项目的整片风格（lemo-opuscar 风格库）。有就展示海报、适用题材与 STYLE.md，
+ * 可以换或去掉；没有就说明各镜头自主定视觉，并直接在这里挑一种。装、换、去掉都是
+ * am film-style 写任务，会占项目写锁，进度在右上角任务里。
  */
-function StyleTab({ tree, version, onFile, state }: { tree: TreeFile[]; version: number; onFile: (path: string) => void; state: ProjectState | null }) {
-  const images = tree.filter((f) => /assets\/style-guide\/.*\.png$/.test(f.path));
-  const docs = tree.filter((f) => f.path === 'frame.md' || /^docs\/.*说明书\.md$/.test(f.path) || f.path === 'docs/style-brief.md');
-  const styleID = state?.metadata.style_id ?? '';
-  const draft = styleID === 'custom-draft';
-  const custom = draft || styleID.startsWith('custom-');
-  const [brief, setBrief] = useState('');
-  const [frame, setFrame] = useState('');
-  const hasBrief = tree.some((f) => f.path === 'docs/style-brief.md');
+function StyleTab({ version, run, scenes }: { version: number; run: RunAction; scenes: Scene[] }) {
+  const [info, setInfo] = useState<ProjectFilmStyle | null>(null);
+  const [error, setError] = useState('');
+  const [doc, setDoc] = useState('');
+  const [picking, setPicking] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const films = useFilmStyles(picking || info?.installed === false);
   useEffect(() => {
-    setBrief('');
-    if (hasBrief)
-      fetch(rawURL('docs/style-brief.md', version))
-        .then((r) => (r.ok ? r.text() : ''))
-        .then(setBrief, () => setBrief(''));
-  }, [hasBrief, version]);
+    api<ProjectFilmStyle>('/api/film-style').then(
+      (result) => {
+        setInfo(result);
+        setError('');
+      },
+      (err) => setError(errorText(err)),
+    );
+  }, [version]);
   useEffect(() => {
-    setFrame('');
-    if (!draft)
-      fetch(rawURL('frame.md', version))
+    setDoc('');
+    if (info?.style_file)
+      fetch(rawURL(info.style_file, version))
         .then((r) => (r.ok ? r.text() : ''))
-        .then(setFrame, () => setFrame(''));
-  }, [draft, version]);
-  const palette = draft ? [] : framePalette(frame);
-  const briefText = brief
-    .replace(/^#.*$/m, '')
-    .replace(/^>.*$/gm, '')
-    .trim();
+        .then(setDoc, () => setDoc(''));
+  }, [info?.style_file, version]);
+  const rendered = scenes.some((scene) => scene.exists);
+  const staleNote = rendered ? '已经渲染的镜头不会自动更新，要重渲染才会换成新风格（整批渲染时 am 会按输入指纹把它们判为过期）。' : '';
+  const pick = (slug: string) => {
+    if (!slug) return;
+    setPicking(false);
+    run('/api/film-style', { style: slug, replace: true });
+  };
+  if (error) return <Empty>{error}</Empty>;
+  if (!info) return <Empty>正在读整片风格…</Empty>;
+  if (!info.installed || picking) {
+    return (
+      <div class="style-tab">
+        <section class="style-intro">
+          <div class="style-intro-head">
+            <span class="style-badge">{info.installed ? '换整片风格' : '没有整片风格'}</span>
+            <h3>{info.installed ? '从风格库换一种' : '各镜头按文案自己定视觉'}</h3>
+          </div>
+          <p>
+            从 lemo-opuscar 风格库里选一种，全片所有镜头都画成它：渲染器会遵守它的 STYLE.md（外观、材质、配色逻辑、字体、动效与镜头语法），内容仍来自每个镜头自己的文案。
+            {staleNote}
+          </p>
+          {info.installed && (
+            <div class="toolbar">
+              <button onClick={() => setPicking(false)}>取消</button>
+            </div>
+          )}
+        </section>
+        <FilmStylePicker layout="grid" data={films.data} error={films.error} posterVersion={films.posterVersion} selected={info.manifest?.slug ?? ''} onPick={pick} />
+      </div>
+    );
+  }
+  const style = info.style;
+  const manifest = info.manifest!;
   return (
     <div class="style-tab">
-      <section class={'style-intro' + (draft ? ' draft' : '')}>
-        <div class="style-intro-head">
-          <span class="style-badge">{draft ? '风格待定' : custom ? '自定义风格' : '内置风格'}</span>
-          <h3>{draft ? '由模型按这条片子自己定风格' : state?.metadata.style_name || '未命名风格'}</h3>
-        </div>
-        {draft ? (
-          <>
-            <p>
-              这个项目没有套用预设风格。点「开始制作」后，编排工具会先读完稿子，按主题和受众定下配色、字体、版式骨架、动效和禁用项，写出
-              <code>frame.md</code> 与风格说明书，再出四张示例图——图出来后会显示在下面。
-            </p>
-            {briefText && (
-              <blockquote class="style-brief">
-                <span>风格描述</span>
-                {briefText}
-              </blockquote>
-            )}
-            <p class="muted small">想指定方向（比如「深色科技感」「手绘」「少用红色」）就在对话里说，或者直接改 docs/style-brief.md。</p>
-          </>
-        ) : (
-          <>
-            {briefText && custom && <p>{briefText}</p>}
-            {palette.length > 0 && (
-              <div class="palette" aria-label="配色">
-                {palette.map(([name, color]) => (
-                  <span key={name} class="swatch" title={`${name} ${color}`}>
-                    <i style={{ background: color }} />
-                    <span class="mono">{name}</span>
-                  </span>
-                ))}
-              </div>
-            )}
-          </>
+      <section class="style-intro film">
+        {style && (
+          <div class="film-styles">
+            <Poster style={style} full />
+          </div>
         )}
-      </section>
-      <div class="toolbar">
-        {docs.map((doc) => (
-          <button key={doc.path} class="mono" onClick={() => onFile(doc.path)}>
-            {doc.path}
-          </button>
-        ))}
-      </div>
-      {images.length === 0 ? (
-        <Empty>{draft ? '定风格之后，四张示例图会出现在这里。' : '项目里还没有风格示例图。'}</Empty>
-      ) : (
-        <div class="gallery">
-          {images.map((image) => (
-            <figure key={image.path}>
-              <img src={rawURL(image.path, version)} alt="" loading="lazy" />
-              <figcaption>{image.path.split('/').pop()}</figcaption>
-            </figure>
-          ))}
+        <div class="style-intro-head">
+          <span class="style-badge">整片风格</span>
+          <h3>
+            {manifest.cn} <span class="muted">{manifest.en}</span>
+          </h3>
         </div>
+        {style && (
+          <p>
+            {style.category_cn} · 适合 {style.uses.join('、')}
+            <br />
+            <span class="muted small">
+              demo：{style.line_cn}（风格库 commit {manifest.commit.slice(0, 12)}）
+            </span>
+          </p>
+        )}
+        <div class="toolbar">
+          <button onClick={() => setPicking(true)}>换风格</button>
+          {confirmRemove ? (
+            <>
+              <span class="muted small">去掉后各镜头回到自主定视觉。{staleNote}</span>
+              <button
+                class="danger"
+                onClick={() => {
+                  setConfirmRemove(false);
+                  run('/api/film-style', { remove: true });
+                }}
+              >
+                确认去掉
+              </button>
+              <button onClick={() => setConfirmRemove(false)}>取消</button>
+            </>
+          ) : (
+            <button onClick={() => setConfirmRemove(true)}>去掉整片风格</button>
+          )}
+        </div>
+      </section>
+      {doc ? (
+        <section class="style-doc">
+          <Markdown text={doc} />
+        </section>
+      ) : (
+        <Empty>正在读 STYLE.md…</Empty>
       )}
     </div>
   );
-}
-
-/** 从 frame.md 的 front matter 里读出 colors 段的「名字: 色值」。 */
-function framePalette(frame: string): [string, string][] {
-  const head = /^---\n([\s\S]*?)\n---/.exec(frame)?.[1] ?? '';
-  const lines = head.split('\n');
-  const start = lines.findIndex((line) => /^colors:\s*$/.test(line));
-  if (start < 0) return [];
-  const out: [string, string][] = [];
-  for (const line of lines.slice(start + 1)) {
-    if (!/^\s+/.test(line)) break;
-    const match = /^\s+([\w-]+):\s*["']?(#[0-9a-fA-F]{3,8})["']?/.exec(line);
-    if (match) out.push([match[1], match[2]]);
-  }
-  return out.slice(0, 12);
 }
 
 interface ReviewResponse {

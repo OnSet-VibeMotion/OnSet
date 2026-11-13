@@ -281,6 +281,8 @@ SVG 转 PNG 必须走 `rsvg-convert`（`internal/styleimage`），**不能用 Im
 | 建项目只走 `internal/projectinit`：`am init` 与 Studio 的新建（`createAPI`）共用 `Create`（讲解形式、叙事模式、cast 骨架）与 `InstallSkills`（HyperFrames 官方技能）。Studio 新建后在后台装技能（`installSkills`），顶栏在缺技能时给「安装」，安装中显示进度条（`hyperframes.Options.Progress`：克隆时让 git `--progress` 并解析百分比，检出那一步 git 不报进度、显示不确定进度，拷贝按技能计数；`am init` 在终端里用一行回车刷新）；浏览器端到端测试用 `AM_STUDIO_SKIP_SKILL_INSTALL=1` 跳过联网 | 两边各写一份时 Studio 漏了讲解形式、多角色对话，也不装官方技能，渲染器拿不到 hyperframes 入口技能 |
 | 没有打开项目、或点左上角时显示首页（`Home.tsx`，照 OpenDesign 首页）：在输入框说要做什么、拖进文章，发送后进入「开机」画面（`Creation.tsx`）：场记板、按画幅的监视器、四段片段的时间线，依次 `projects/create` → `uploads` → 等 `/api/skills` 装完 → `production/start`（带 `attachments`），播放头按真实进度走，装技能可以「不等了」转后台，最后打板推进到项目。先装技能再开工，编排工具一开工就有 hyperframes 技能。项目名由第一句话或文件名推出，重名加 `-2`；「保存到」默认取上次新建时的父目录（`registry.LastParent`），最近项目带阶段与出片摘要（`ProjectSummary`） | 从一句话到开始制作不该要先填一张表；已经不存在的项目不混进最近列表，给一键清理 |
 | `/api/files` 与 `/preview/scenes/` 经 `containedPath` 解析（含符号链接），`.env` 一律不读 | 默认只监听回环地址，但手机经隧道访问时这两个接口就是对外的 |
+| 风格只展示整片风格（`filmstyle.go`）：首页菜单、新建对话框与「风格」页共用 `FilmStyles.tsx`；旧版内置风格不再出现在 Studio 里（`/api/styles` 只剩画幅还在用）。装、换、去掉都经 `am film-style` 写任务（`startFilmStyleTask`），新建时 `/api/projects/create` 收 `film_style` 并返回 `film_style_task`，开机画面跟这个任务；顶栏显示的是 `metadata.film_style` | 旧风格 10 月 20 日起已不影响渲染，留在选择器里只会让人选一个不起作用的东西。风格改的是项目文件，走写任务才不会和一轮对话的快照打架 |
+| 海报在打开风格菜单时后台一次取全（`EnsurePosters`，约 23 MB，可续传），`/api/film-styles/{slug}/poster.jpg` 默认给 480 宽的缩略图（缓存在 `<风格库>.thumbs/`），`?size=full` 给原图；`AM_STUDIO_SKIP_SKILL_INSTALL=1` 时不下载 | 原图一张 1920×1080，菜单一屏几十张会卡；没下完的显示分类色占位块 |
 
 ### 前端
 

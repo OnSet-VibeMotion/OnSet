@@ -91,7 +91,7 @@ am film-style use impasto               # existing project; add --replace to swi
 am film-style show                      # this project's film style and library status
 ```
 
-Without one, the orchestrator suggests two or three at the script review gate, alongside "no film style".
+Without one, the orchestrator suggests two or three at the script review gate, alongside "no film style". In `am studio` you can pick one (with posters and search) from the home page, the new-project dialog, or the Style tab, and switch or remove it there.
 
 The chosen style is installed from a pinned commit into `.agents/skills/lemo-film-style/`: `STYLE.md` (the invariants), the demo source (techniques), shared `core/` tools, and licence notes. Scene prompts then replace "visual freedom" with "film style": the renderer must follow `STYLE.md`, while content still comes from each scene. Switching or removing the style (`am film-style remove`) makes every rendered scene stale.
 

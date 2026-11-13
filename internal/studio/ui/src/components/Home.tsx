@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { api, errorText } from '../api';
 import type { AgentsResponse, CanvasOption, DirectoryEntry, Project, StylesResponse } from '../types';
+import { FilmStylePicker, useFilmStyles } from './FilmStyles';
 import { Creation, type CreationJob } from './Creation';
 import { Icon } from './Icon';
 import '../home.css';
@@ -77,7 +78,7 @@ export function Home(props: Props) {
   const [styles, setStyles] = useState<StylesResponse | null>(null);
   const [canvas, setCanvas] = useState('');
   const [mode, setMode] = useState<ModeID>('speech');
-  const [style, setStyle] = useState('');
+  const [filmStyle, setFilmStyle] = useState('');
   const [parent, setParent] = useState('');
   const [tool, setTool] = useState(() => {
     try {
@@ -126,7 +127,8 @@ export function Home(props: Props) {
   const current = templates.find((t) => t.id === template);
   const canvasInfo = styles?.canvases.find((c) => c.id === canvas);
   const modeInfo = modes.find((m) => m.id === mode)!;
-  const styleLabel = style ? styles?.styles.find((s) => s.id === style)?.name ?? style : '自动定风格';
+  const films = useFilmStyles(menu === 'style' || filmStyle !== '');
+  const styleLabel = filmStyle ? films.data?.styles.find((s) => s.slug === filmStyle)?.cn ?? filmStyle : '不用整片风格';
 
   const addFiles = (list: FileList | File[]) => setFiles((current) => [...current, ...Array.from(list)].slice(0, 10));
 
@@ -154,7 +156,7 @@ export function Home(props: Props) {
       name: projectName(message, files),
       canvas,
       canvasInfo,
-      style,
+      filmStyle,
       delivery: m.delivery,
       narration: m.narration,
       modeLabel: m.label,
@@ -350,30 +352,19 @@ export function Home(props: Props) {
               {focused && !working && <span class="composer-beam" aria-hidden="true" />}
             </div>
             <div class="under-row">
-              <Dropdown id="style" open={menu === 'style'} onOpen={(open) => setMenu(open ? 'style' : '')} label={<>风格：{styleLabel}</>} flat wide>
-                <StyleItem
-                  selected={style === ''}
-                  title="自动定风格"
-                  desc="不套固定风格：开工后由编排工具读完稿子，按内容定配色、字体、版式和动效，先出四张示例图给你确认。"
-                  onClick={() => {
-                    setStyle('');
+              <Dropdown id="style" open={menu === 'style'} onOpen={(open) => setMenu(open ? 'style' : '')} label={<>整片风格：{styleLabel}</>} flat wide>
+                <FilmStylePicker
+                  layout="menu"
+                  data={films.data}
+                  error={films.error}
+                  posterVersion={films.posterVersion}
+                  selected={filmStyle}
+                  none={{ title: '不用整片风格', desc: '每个镜头按文案自己定配色、字体与动效。编排工具会在稿件审核时按题材推荐几种风格，也可以之后在「风格」页里选。' }}
+                  onPick={(slug) => {
+                    setFilmStyle(slug);
                     setMenu('');
                   }}
                 />
-                {styles?.styles.map((s) => (
-                  <StyleItem
-                    key={s.id}
-                    selected={s.id === style}
-                    title={s.name}
-                    desc={styleDescription(s.name, s.label)}
-                    image={`/api/styles/${encodeURIComponent(s.id)}/${encodeURIComponent(canvas || styles.default_canvas)}/${styles.archetypes[0] ?? 'proposition'}.png`}
-                    ratio={canvasInfo ? canvasInfo.width / canvasInfo.height : 3 / 4}
-                    onClick={() => {
-                      setStyle(s.id);
-                      setMenu('');
-                    }}
-                  />
-                ))}
               </Dropdown>
               <FolderPicker value={parent} open={menu === 'folder'} onOpen={(open) => setMenu(open ? 'folder' : '')} onChange={setParent} />
             </div>
@@ -590,30 +581,6 @@ function MenuItem(props: { title: string; desc?: string; icon?: preact.Component
       {props.selected && <span class="menu-check">✓</span>}
     </button>
   );
-}
-
-/** 风格选项：左边一张该风格在当前画幅下的示例图，右边名字与适用场合。 */
-function StyleItem(props: { title: string; desc: string; image?: string; ratio?: number; selected: boolean; onClick: () => void }) {
-  return (
-    <button role="menuitemradio" aria-checked={props.selected} class={'menu-item style-item' + (props.selected ? ' selected' : '')} onClick={props.onClick}>
-      <span class="style-swatch" style={{ aspectRatio: String(props.ratio ?? 3 / 4) }}>
-        {props.image ? <img src={props.image} alt="" loading="lazy" /> : <span class="style-auto">Aa</span>}
-      </span>
-      <span class="menu-text">
-        <span class="style-name">{props.title}</span>
-        <span class="menu-desc">{props.desc}</span>
-      </span>
-      {props.selected && <span class="menu-check">✓</span>}
-    </button>
-  );
-}
-
-/** 风格表里的说明以「名字：」开头，菜单里名字已经单列，去掉重复的那段。 */
-function styleDescription(name: string, label: string): string {
-  const plain = (text: string) => text.replace(/\s+/g, '');
-  const index = label.search(/[：:]/);
-  if (index > 0 && plain(label.slice(0, index)) === plain(name)) return label.slice(index + 1).trim();
-  return label;
 }
 
 /** 保存位置：最近用过的目录加一个简单的目录浏览。 */

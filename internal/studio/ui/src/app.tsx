@@ -319,7 +319,11 @@ export function App() {
             {state.metadata.fps ? ` · ${state.metadata.fps}fps` : ''}
           </span>
         )}
-        {state?.metadata.style_name && <span class="chip">{state.metadata.style_name}</span>}
+        {state?.metadata.film_style && (
+          <span class="chip" title="整片风格">
+            {state.metadata.film_style}
+          </span>
+        )}
         {currentId && !homeOpen && skills && !skills.installed && <SkillsPill status={skills} onInstall={installSkills} />}
         <span class="spacer" />
         {busy && (

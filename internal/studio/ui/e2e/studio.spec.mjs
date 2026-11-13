@@ -157,12 +157,22 @@ test('starts a new video from the home page', async ({ page }) => {
 
   await page.locator('.template-card', { hasText: '横屏讲解' }).click();
   await expect(page.locator('#home-canvas')).toContainText('16:9');
+  // 整片风格菜单：默认不用整片风格，列出风格库的风格，可以搜索。
+  await expect(page.locator('#home-style')).toContainText('不用整片风格');
+  await page.locator('#home-style').click();
+  await expect(page.locator('.film-styles .fs-item.none')).toBeVisible();
+  await page.locator('.film-styles .fs-search').fill('油画');
+  await expect(page.locator('.film-styles .fs-item[data-style="impasto"]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#home-style')).toContainText('不用整片风格');
+
   await page.locator('#home-prompt').fill('首页端到端测试，讲讲复利');
   await page.locator('#home-send').click();
 
-  // 开机画面：场记板写着片名，时间线上四段片段依次完成，最后打板进项目。
+  // 开机画面：场记板写着片名，时间线上五段片段依次完成（没选整片风格时那一段标「不用」），最后打板进项目。
   await expect(page.locator('.creation .slate')).toContainText('首页端到端测试');
-  await expect(page.locator('.creation .clip')).toHaveCount(4);
+  await expect(page.locator('.creation .clip')).toHaveCount(5);
+  await expect(page.locator('.creation .clip', { hasText: '整片风格' })).toContainText('不用');
   await expect(page.locator('.creation')).toHaveCount(0, { timeout: 15_000 });
 
   // 建好项目、开始制作后直接进到新项目，对话里是整片制作这一轮。

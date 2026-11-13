@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chouheiwa/articale-to-motion/internal/filmstyle"
 	"github.com/chouheiwa/articale-to-motion/internal/ledger"
 	"github.com/chouheiwa/articale-to-motion/internal/projectinit"
 	"github.com/chouheiwa/articale-to-motion/internal/scene"
@@ -74,6 +75,8 @@ type Server struct {
 	features featureState
 	sessions sessionState
 	skills   skillsState
+	// filmStyles 是后台准备风格库与海报的状态，见 filmstyle.go。
+	filmStyles filmStyleState
 }
 
 func New(cfg Config) (*Server, error) {
@@ -219,6 +222,7 @@ func (s *Server) Handler() http.Handler {
 	s.sessionRoutes(mux)
 	s.uiRoutes(mux)
 	s.memoryRoutes(mux)
+	s.filmStyleRoutes(mux)
 	mux.HandleFunc("/", s.static)
 	return withJSONErrors(mux)
 }
@@ -392,6 +396,9 @@ type createProjectRequest struct {
 	// Delivery 与 Narration 同 am init --delivery / --narration，缺省为 speech / solo。
 	Delivery  string `json:"delivery"`
 	Narration string `json:"narration"`
+	// FilmStyle 是整片风格（风格库目录名、中文名或英文名），空表示不用。
+	// 建好项目后在后台起一个 am film-style use 任务，任务编号随响应返回。
+	FilmStyle string `json:"film_style"`
 }
 
 func (s *Server) createAPI(w http.ResponseWriter, r *http.Request) {
@@ -444,6 +451,15 @@ func (s *Server) createAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var filmStyle *filmstyle.Style
+	if req.FilmStyle != "" {
+		found, err := filmstyle.Lookup(req.FilmStyle)
+		if err != nil {
+			s.error(w, http.StatusBadRequest, "unknown_film_style", err.Error())
+			return
+		}
+		filmStyle = &found
+	}
 	if req.Delivery == "" {
 		req.Delivery = projectinit.DeliverySpeech
 	}
@@ -483,7 +499,16 @@ func (s *Server) createAPI(w http.ResponseWriter, r *http.Request) {
 	s.projects.LastParent = parent
 	_ = s.saveRegistry()
 	s.mu.Unlock()
-	s.write(w, http.StatusCreated, map[string]any{"project": p})
+	resp := map[string]any{"project": p}
+	if filmStyle != nil {
+		// 第一次要下载风格库，放到后台；它占项目写锁，装好之前开工会被告知项目正忙。
+		if t, err := s.startFilmStyleTask(p, *filmStyle, false); err == nil {
+			resp["film_style_task"] = t.ID
+		} else {
+			resp["film_style_error"] = err.Error()
+		}
+	}
+	s.write(w, http.StatusCreated, resp)
 }
 
 func isWithinStudioBrowseRoot(path string) bool {
@@ -756,6 +781,10 @@ func inspectProject(p Project) map[string]any {
 		}
 	}
 	meta := projectMetadata(p.Path)
+	// 整片风格的名字给顶栏用；旧版 frame.md 的 style_name 不再显示，它已不影响渲染。
+	if manifest, ok, _ := filmstyle.Installed(p.Path); ok {
+		meta["film_style"] = manifest.CN
+	}
 	return map[string]any{"project": p, "stage": stageFor(p.Path, scenes), "metadata": meta, "media": map[string]any{"audio": fileExists(filepath.Join(p.Path, "production", "audio", "candidate.mp4")), "final": fileExists(filepath.Join(p.Path, "final.mp4")) || fileExists(filepath.Join(p.Path, "production", "final.mp4")), "publish": fileExists(filepath.Join(p.Path, "publish.md"))}, "scenes": map[string]any{"total": len(scenes), "completed": done, "stale": stale}, "issues": projectIssues(p.Path)}
 }
 

@@ -381,3 +381,45 @@ export interface RecallResponse {
   reasons: string[];
   section: string;
 }
+
+/** lemo-opuscar 风格库里的一种风格（/api/film-styles）。 */
+export interface FilmStyle {
+  slug: string;
+  num: string;
+  en: string;
+  cn: string;
+  category_en: string;
+  category_cn: string;
+  film: string;
+  line: string;
+  line_cn: string;
+  uses: string[];
+  demo_seconds: number;
+  three_js: boolean;
+}
+
+export interface FilmStylesResponse {
+  styles: FilmStyle[];
+  categories: string[];
+  gallery: string;
+  posters: 'ready' | 'downloading' | 'error';
+  posters_error?: string;
+}
+
+export interface FilmStyleManifest {
+  repo: string;
+  commit: string;
+  slug: string;
+  cn: string;
+  en: string;
+  digest: string;
+  installed_at: string;
+}
+
+/** 本项目的整片风格（/api/film-style）。 */
+export interface ProjectFilmStyle {
+  installed: boolean;
+  manifest?: FilmStyleManifest;
+  style?: FilmStyle;
+  style_file?: string;
+}

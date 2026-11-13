@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { api, errorText, post } from '../api';
 import type { CanvasOption, DirectoryEntry, Project, StylesResponse } from '../types';
 import { Icon } from './Icon';
+import { FilmStylePicker, useFilmStyles } from './FilmStyles';
 
 interface Props {
   projects: Project[];
@@ -190,25 +191,24 @@ function DirectoryBrowser(props: {
 function CreateForm(props: {
   parent: string;
   working: boolean;
-  onCreate: (payload: { parent: string; name: string; canvas: string; style: string }) => void;
+  onCreate: (payload: { parent: string; name: string; canvas: string; film_style: string }) => void;
 }) {
   const [styles, setStyles] = useState<StylesResponse | null>(null);
   const [name, setName] = useState('');
   const [canvas, setCanvas] = useState('');
-  const [style, setStyle] = useState('');
+  const [filmStyle, setFilmStyle] = useState('');
+  const films = useFilmStyles(true);
 
   useEffect(() => {
     api<StylesResponse>('/api/styles').then((result) => {
       setStyles(result);
       setCanvas(result.default_canvas);
-      setStyle(result.custom.id);
     });
   }, []);
 
-  if (!styles) return <p class="muted pad">正在读取画幅与风格…</p>;
-  const options = [...styles.styles, styles.custom];
+  if (!styles) return <p class="muted pad">正在读取画幅…</p>;
   const chosenCanvas = styles.canvases.find((c) => c.id === canvas);
-  const chosenStyle = options.find((o) => o.id === style);
+  const chosenStyle = films.data?.styles.find((s) => s.slug === filmStyle);
   return (
     <div class="create">
       <div class="create-body">
@@ -247,46 +247,30 @@ function CreateForm(props: {
               </button>
             ))}
           </div>
-          <span class="small muted">画幅和风格写进项目文件，之后可以在对话里让编排工具改。</span>
+          <span class="small muted">画幅建好后不再改；整片风格之后可以在「风格」页换或去掉。</span>
         </div>
         <div class="create-main">
-          <span class="label">风格</span>
-          <div class="style-grid" role="radiogroup" aria-label="风格">
-            {options.map((option) => (
-              <button
-                key={option.id}
-                role="radio"
-                aria-checked={option.id === style}
-                class={'style-card' + (option.id === style ? ' on' : '')}
-                onClick={() => setStyle(option.id)}
-              >
-                {option.id === styles.custom.id ? (
-                  <span class="style-thumb custom">
-                    <Icon name="plus" size={16} />
-                  </span>
-                ) : (
-                  <img class="style-thumb" loading="lazy" alt="" src={`/api/styles/${option.id}/${canvas}/${styles.archetypes[0]}.png`} />
-                )}
-                <span class="style-card-text">
-                  <strong>{option.id === styles.custom.id ? '自定义风格' : option.name}</strong>
-                  <span class="muted">
-                    {option.id === styles.custom.id ? '制作第一步由编排工具定稿' : option.label.replace(/^[^：]*：/, '')}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
+          <span class="label">整片风格</span>
+          <FilmStylePicker
+            layout="grid"
+            data={films.data}
+            error={films.error}
+            posterVersion={films.posterVersion}
+            selected={filmStyle}
+            none={{ title: '不用整片风格', desc: '每个镜头按文案自己定视觉；之后也可以在「风格」页里选。' }}
+            onPick={setFilmStyle}
+          />
         </div>
       </div>
       <footer class="modal-foot">
         <span class="small muted">
-          {chosenCanvas?.label.replace(/\s+/g, ' ')} · {chosenStyle?.id === styles.custom.id ? '自定义风格' : chosenStyle?.name}
+          {chosenCanvas?.label.replace(/\s+/g, ' ')} · {chosenStyle ? chosenStyle.cn : '不用整片风格'}
         </span>
         <button
           id="create-project"
           class="primary"
           disabled={!name.trim() || props.working}
-          onClick={() => props.onCreate({ parent: props.parent, name: name.trim(), canvas, style })}
+          onClick={() => props.onCreate({ parent: props.parent, name: name.trim(), canvas, film_style: filmStyle })}
         >
           创建并打开
         </button>
