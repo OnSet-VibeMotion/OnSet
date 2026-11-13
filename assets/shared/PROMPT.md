@@ -29,7 +29,7 @@
 - `transcription.srt`：复制完整字幕文件，供渲染工具理解整体上下文。
 - `frame.md`：如果项目提供，仅作为画布、帧率和安全区等技术信息的来源，不作为创作风格命令。
 - 用户需要的图片、字体和脚本：由本镜头自行选择并复制到镜头目录，不能依赖镜头目录之外的路径。
-- 渲染器锁定文件：固定 HyperFrames 版本、禁止升级或改动已装技能、禁止读取 `.env`、禁止改动 `scene.json` 的执行契约。文件名取决于该镜头所用渲染工具会自动读取的项目级指令文件（例如 `claude` 读 `CLAUDE.md`），按所选工具各自的约定命名。
+- 渲染器锁定文件：固定 HyperFrames 版本、CLI 一律用 `am hyperframes <子命令>` 调用（不用 `npx`，每条命令单独执行）、禁止升级或改动已装技能、禁止读取 `.env`、禁止改动 `scene.json` 的执行契约。文件名取决于该镜头所用渲染工具会自动读取的项目级指令文件（例如 `claude` 读 `CLAUDE.md`），按所选工具各自的约定命名。
 
 全部技能都在项目根的 `.agents/skills/` 下，由 `am init` 一次装齐：HyperFrames 官方技能按固定版本安装，`text-to-lottie` 与 `algorithmic-art` 随 `am` 二进制下发。技能缺失时重跑 `am init` 补齐，不要自己跑 `npx hyperframes skills`——那会装到本机 HOME 而不是项目里，绕过版本固定。也不得从其他项目或本机目录复制。
 

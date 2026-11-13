@@ -19,7 +19,6 @@ import (
 	"github.com/chouheiwa/articale-to-motion/internal/config"
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
 	"github.com/chouheiwa/articale-to-motion/internal/fsutil"
-	"github.com/chouheiwa/articale-to-motion/internal/hyperframes"
 	"github.com/chouheiwa/articale-to-motion/internal/ledger"
 	"github.com/chouheiwa/articale-to-motion/internal/project"
 	"github.com/chouheiwa/articale-to-motion/internal/tools"
@@ -546,7 +545,7 @@ func (s *Server) runTurn(ctx context.Context, p Project, sess *session, cfg conf
 	s.sessions.mu.Unlock()
 	spec := agentrun.Spec{
 		Tool: cfg.Orchestrator, Workdir: p.Path, Prompt: prompt, Unsafe: s.config.Unsafe,
-		Access:   cfg.OrchestratorAccess("npx --yes hyperframes@" + hyperframes.PinnedVersion),
+		Access:   cfg.OrchestratorAccess(),
 		Env:      envutil.EnvList(env),
 		LookPath: func(name string) (string, error) { return envutil.LookPath(name, env["PATH"]) },
 	}

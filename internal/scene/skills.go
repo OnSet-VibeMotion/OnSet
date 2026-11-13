@@ -324,6 +324,14 @@ func skillPromptSections(resolved map[string]string) string {
 	return sections
 }
 
+// HyperFramesCommand 是渲染器调用 CLI 的写法（am 管理的固定版本 CLI，见
+// hyperframes.EnsureCLI）。提示词里教的写法与安全模式放行的命令必须是同一个字符串：
+// 以前只有放行列表里有前缀，提示词不提，渲染器写成不带版本的 `npx hyperframes`，
+// 整场渲染的 lint、check、render 全被拦下（实测，无产物）。
+func HyperFramesCommand() string {
+	return hyperframes.CLICommand
+}
+
 // hyperFramesPrompt 是上游入口技能的提示词片段：组合契约加动效手法。
 //
 // 0.8.185 起上游把 hyperframes-animation / hyperframes-core / hyperframes-creative
@@ -400,7 +408,11 @@ func hyperFramesCLIPrompt(skillsDir string) string {
 		reference = fmt.Sprintf("- CLI 的命令与排错方式见 %s 技能。本机该技能目录为：\n    %s\n",
 			HyperFramesCLISkillName, filepath.Join(skillsDir, HyperFramesCLISkillName))
 	}
+	prefix := HyperFramesCommand()
 	return "渲染命令（强制）：\n" + reference +
+		"- 每次调用 CLI 都写成 `" + prefix + " <子命令>`，例如 `" + prefix + " lint`、`" + prefix + " check --json`、`" + prefix + " render`。" +
+		"不用 `npx hyperframes`（无论带不带版本）、`hyperframes@latest` 或全局安装的 `hyperframes`：am 已装好固定版本 " + hyperframes.PinnedVersion + " 的 CLI，npx 会在渲染途中现下载；安全模式也只放行这个写法（另有 ls、ffprobe）。\n" +
+		"- 每条命令单独执行，不用 `cd …;`、`&&`、`;` 或管道把几条拼在一起：拼接的命令会被权限检查整体拦下。工作目录已经是本镜头目录，不需要 cd。\n" +
 		"- 只用本地渲染与检查相关的命令：lint、check、snapshot、keyframes、render，以及只读的 timeline --json（不用它的 move、trim、split 等改写子命令）。\n" +
 		"- snapshot 一律带 --describe false：它默认会把画面发给外部视觉服务，本镜头的自查由你自己看图完成。\n" +
 		"- 禁止 cloud、cloudrun、lambda、publish 等远端渲染路径：本镜头必须在本机渲染。\n" +
@@ -529,7 +541,7 @@ func RendererAccess(resolved map[string]string) tools.RendererAccess {
 	}
 	sort.Strings(dirs)
 	return tools.RendererAccess{
-		Commands: []string{"npx --yes hyperframes@" + hyperframes.PinnedVersion, "ls", "ffprobe"},
+		Commands: []string{HyperFramesCommand(), "ls", "ffprobe"},
 		ReadDirs: dirs,
 	}
 }

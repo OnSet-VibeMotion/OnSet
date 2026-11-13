@@ -37,6 +37,8 @@ go vet ./...
 
 更要命的是上游安装器根本给不了可复现性：它 `git clone` 仓库默认分支取技能，没有指定 ref 的口子，技能内容随上游 `main` 漂移而版本号不变（实测 0.8.1 与 0.8.14 装出来逐字节相同）。所以 `internal/hyperframes` 不调用它，改为自己按 tag 浅克隆并校验 commit 与技能数量，见 `PinnedSkillsCommit` / `PinnedSkillsCount` 的注释；安装后写一份 `hyperframes-upstream.json` 记录 commit 与每个技能的内容摘要，见 `manifest.go`。校验过的技能树按 commit 缓存在用户级目录（`DefaultCacheDir`），第二个项目起不联网；缓存只在调用方显式传 `Options.CacheDir` 时启用（`projectinit.InstallSkills` 传），测试里传临时 `HOME` 的用例因此仍能断言 HOME 一个字节都没动。缓存按技能数判可用，残缺就重新下载覆盖。
 
+HyperFrames **CLI** 与技能分开管理但同一个版本：`hyperframes.EnsureCLI` 用 `npm install hyperframes@<PinnedVersion>` 装进用户级 `~/.local/share/am/hyperframes/cli-<版本>`（`CLIDirEnv` 可覆盖），在临时目录里装好、跑过 `--version` 自检、写完成标记后整体改名进位，失败重试 3 次；npm 沿用用户自己的 `~/.npmrc`（国内镜像、代理、鉴权）。`am init`（经 `projectinit.InstallSkills`）与 `scene.Run`（启动渲染器之前）都会确保它在，所有调用一律写成 `am hyperframes <子命令>`（`hyperframes.CLICommand`），提示词、锁定文件规则与安全模式放行列表用的是同一个字符串。不再让渲染器 `npx --yes hyperframes@<版本>`：版本一升级，第一次渲染就要在途中现下载，网络一差渲染器空等二十多分钟、白花一次模型调用，只留下「没有产物」（实测）。`ChildEnvironment` 显式传 `AM_HYPERFRAMES_CLI_DIR`，理由同风格库目录；`scene.Run` 还把当前 `am` 放进渲染器的 `PATH`。测试的 `TestMain` 用 `hftest.FakeCLI` 造一份假的已装 CLI。
+
 `internal/hyperframes` 的做法是在项目外开一个临时 HOME 让上游安装器照常工作，再把产出搬进项目。三个细节是承重的，改动前先读那里的注释：
 
 | 细节 | 不这么做会怎样 |
@@ -71,7 +73,7 @@ go vet ./...
 注册上游技能时要收窄范围，上游技能的职责范围通常比单镜头渲染大得多：
 
 - `hyperframes` 是入口技能，0.8.185 起上游把 `hyperframes-animation`、`hyperframes-core`、`hyperframes-creative` 并进了它，组合契约（`SKILL.md` 的 Contract、`references/format.md`）与动效手法（`references/motion.md`）都只在这里。它的本职却是整片制作：故事线三选一、`SPEC.md`、分镜、配乐音效、预览审批、桌面应用交接与 `REVIEW.md`。分镜由上层决定并已写进 `scene.json`，不收窄的话渲染器会产出计划文件、给镜头配乐（产物必须无音轨），还会停下来等人审批。另有两处与本项目正面冲突，要点名覆盖：`references/look.md` 让渲染器把项目根的 `frame.md` 当作配色与字体规范，而本项目的 `frame.md` 不是视觉命令；`references/format.md` 允许 `local()` 引用本机字体，换一台机器渲染结果就不同。
-- `hyperframes-cli` 覆盖 `cloud` / `cloudrun` / `lambda` / `publish` 远端渲染路径，`skills` / `upgrade` 这类改动已装技能的命令，以及 `preview` / `open` / `catch-up` / `history` / `feedback` / `usage` 这类交互、桌面应用与遥测命令。第一类绕开本机确定性前提，第二类会顶掉固定版本、影响同项目其他镜头，第三类在无头渲染里要么卡住等人，要么往外发数据。`timeline` 只放行只读的 `--json`，它的改写子命令与「时长由 `scene.json` 决定」冲突。
+- `hyperframes-cli` 覆盖 `cloud` / `cloudrun` / `lambda` / `publish` 远端渲染路径，`skills` / `upgrade` 这类改动已装技能的命令，以及 `preview` / `open` / `catch-up` / `history` / `feedback` / `usage` 这类交互、桌面应用与遥测命令。第一类绕开本机确定性前提，第二类会顶掉固定版本、影响同项目其他镜头，第三类在无头渲染里要么卡住等人，要么往外发数据。`timeline` 只放行只读的 `--json`，它的改写子命令与「时长由 `scene.json` 决定」冲突。CLI 的写法本身也由这一段教：`scene.HyperFramesCommand()`（`npx --yes hyperframes@<固定版本>`）同时用于提示词和 `RendererAccess` 的放行列表，并要求每条命令单独执行、不拼 `cd …;` / `&&`。以前只有放行列表里有前缀，全靠编排工具写的渲染器锁定文件转告；锁定文件一缺，渲染器写成不带版本的 `npx hyperframes`，整场 lint、check、render 全被拦下，没有产物（实测）。
 
 这些禁令只存在于我们自己写的提示词片段里，上游不会替我们守，所以 `skills_test.go` 有对应的门禁盯着。`hyperframes` 的 `RequiredFiles` 包含提示词点名的 `references/*.md`：用 0.8.14 初始化的旧项目里入口技能只有一页路由说明，按缺失处理并在渲染前告警，比把渲染器指向不存在的文件强。
 
@@ -126,7 +128,7 @@ SVG 转 PNG 必须走 `rsvg-convert`（`internal/styleimage`），**不能用 Im
 | git 子进程带 `GIT_HTTP_LOW_SPEED_LIMIT/TIME`（1 KB/s 持续 60 秒即放弃） | 连接被掐断时 `--filter=blob:none` 的按需取文件不报错只挂着，实测卡过半小时 |
 | 下载可续传：克隆在固定的 `<目录>.partial` 里进行，失败保留；检出按 `libraryStages` 分段扩大稀疏规则，每段重试 3 次；demo 以 `.git/am-demos` 完成记录为准 | 按需取文件一批里断一次整批白下；分段后已取回的留在本地，国内网络下重跑几次总能下完 |
 | 技能目录不带 `demo/stills`、渲染产物与音频，不带 `core/render`；three.js 只带 demo 与 `core/` 实际 import 到的模块（`threeClosure` 顺着 import 链收集），`core/assets` 只带源码里出现过名字的模型与贴图（`referencedAssets`，按名字认是因为 demo 常拼接路径） | 整棵带的话一种 three.js 风格进项目 34 MB，挑过之后几 MB；多余的文件还会让指纹随无关内容变化 |
-| am 管理的风格库里的文件硬链接进项目并设为只读，跨磁盘时退回复制；用户自己的检出只复制、不改权限 | 内容钉在 commit 上不会变，硬链接不占第二份磁盘；只读是因为在项目里改它就改了所有项目共用的那一份 |
+| am 管理的风格库里的文件硬链接进项目，跨磁盘时退回复制；用户自己的检出只复制、不改权限。**不设只读** | 内容钉在 commit 上不会变，硬链接不占第二份磁盘。只读试过：渲染器 cp 出的副本继承只读，安全模式又不放行 chmod，真实渲染在这上面绕了好几轮 |
 | `core/assets/` 不在首次检出里，`EnsureDemo` 发现 demo 引用它才取（`.git/am-core-assets` 完成记录） | 12 MB 的一批经代理常因一次握手失败整批重来，而只有少数风格用它 |
 | `SKILL.md` 由 `skill.md.tmpl` 生成，写明 lemo 页面契约（`window.render(t)`）怎么换成 HyperFrames 的 `hf-seek`、`/core/...` 路径为何拷进镜头目录后不用改、Sound palette 与胶片颗粒对镜头无效 | 上游写给它自己的渲染器，这些冲突上游不会替我们守 |
 
@@ -312,7 +314,7 @@ SVG 转 PNG 必须走 `rsvg-convert`（`internal/styleimage`），**不能用 Im
 
 同时更新 `assets/shared/article-to-motion.conf`、`assets/shared/.env.example`、`README.md`、`README.en.md` 里的可选值注释。
 
-安全模式的权限模式必须实测能跑通渲染命令。claude 的 `acceptEdits` 只自动批准文件编辑、拦下所有 Bash，而 `-p` 下没人批准，渲染器会执行不了 `npx hyperframes render`；`scene.RendererAccess` 列出要放行的最小命令集（带固定版本的 hyperframes、`ls`、`ffprobe`）与技能目录读取，`.env` 始终禁读。
+安全模式的权限模式必须实测能跑通渲染命令。claude 的 `acceptEdits` 只自动批准文件编辑、拦下所有 Bash，而 `-p` 下没人批准，渲染器会执行不了 `am hyperframes render`；`scene.RendererAccess` 列出要放行的最小命令集（`am hyperframes`、`ls`、`ffprobe`）与技能目录读取，`.env` 始终禁读。
 
 编排工具同理，`config.Config.OrchestratorAccess` 列出它要放行的命令：基础命令加当前 TTS 与对齐工具各自的那一个命令（`providers.go` 的 `Command` 字段）。各家的权限模式实测结果不同，改之前先读 `OrchestratorInvocation` 的注释：qoder 的 `dont_ask` 连写文件都拒；codex 没有命令白名单，靠沙箱，而沙箱默认断网会让 TTS 失败；opencode 2.x 只读项目目录里的 `opencode.json`，规则集拦不住命令，写成全拒时无头运行会直接挂起，所以安全模式下不加限制，README 里写明了。
 

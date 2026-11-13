@@ -9,12 +9,6 @@ import (
 	"github.com/chouheiwa/articale-to-motion/internal/agentrun"
 )
 
-// hyperframesCommand 是安全模式下放行给编排工具的 hyperframes 命令前缀，
-// 与渲染器的放行写法（scene.RendererAccess）一致，带固定版本。
-func hyperframesCommand() string {
-	return "npx --yes hyperframes@" + hyperframesVersion
-}
-
 // eventPrinter 把统一事件整理成终端里的可读文字。
 type eventPrinter struct {
 	stdout, stderr io.Writer

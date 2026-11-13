@@ -113,7 +113,7 @@ am film-style show                      # 本项目的整片风格与风格库�
 
 `am init` 还会把结果写进 `.agents/skills/hyperframes-upstream.json`：版本、上游 commit，以及每个技能目录的内容摘要。升级固定版本时改 `internal/hyperframes` 里的 `PinnedVersion` / `PinnedSkillsCommit` / `PinnedSkillsCount` 三个常量。
 
-技能安装依赖 `git`（不再依赖 Node/npx）；离线或 CI 用 `--skip-hyperframes` 跳过。
+技能安装依赖 `git`；同时会用 `npm` 把同版本的 HyperFrames CLI 装进 `~/.local/share/am/hyperframes/cli-<版本>`（沿用你的 `~/.npmrc`），所有项目共用，渲染器与编排工具一律经 `am hyperframes …` 调用它，不在渲染途中现下载；离线或 CI 用 `--skip-hyperframes` 跳过。
 
 初始化还会把二进制内置的技能树写到项目的 `.agents/skills/`，渲染工具会自动发现：
 
@@ -258,7 +258,7 @@ am --unsafe run
 
 `--unsafe` 会传递给嵌套镜头任务。安全模式需要额外传递的环境变量通过 `AM_PASSTHROUGH_ENV=NAME1,NAME2` 显式列出。
 
-安全模式下，编排工具（`am run`）只被放行文件编辑和一组命令：`am`、`ffmpeg`、`ffprobe`、`ls`、`mkdir`、固定版本的 `npx --yes hyperframes@…`，以及 `TTS_PROVIDER` 与 `ALIGN_PROVIDER` 各自对应的那一个命令（如 `mmx`、`edge-tts`、`mlx_audio.stt.generate`；`funasr` 对应 `python3`）。安装命令（`brew`、`pip`、`uv`、`npm`）不在其中，相关工具要先自己装好。各工具的实现方式不同：
+安全模式下，编排工具（`am run`）只被放行文件编辑和一组命令：`am`、`ffmpeg`、`ffprobe`、`ls`、`mkdir`、`am hyperframes`（am 管理的固定版本 HyperFrames CLI，包含在 `am` 里），以及 `TTS_PROVIDER` 与 `ALIGN_PROVIDER` 各自对应的那一个命令（如 `mmx`、`edge-tts`、`mlx_audio.stt.generate`；`funasr` 对应 `python3`）。安装命令（`brew`、`pip`、`uv`、`npm`）不在其中，相关工具要先自己装好。各工具的实现方式不同：
 
 | 工具 | 安全模式的限制方式 |
 |---|---|

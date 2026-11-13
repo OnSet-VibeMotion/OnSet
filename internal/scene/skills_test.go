@@ -474,8 +474,8 @@ func TestRendererAccessPinsCLIAndOpensSkillDirs(t *testing.T) {
 		HyperFramesCLISkillName: "/proj/.agents/skills",
 		CharacterRigSkillName:   "/home/.claude/skills",
 	})
-	if access.Commands[0] != "npx --yes hyperframes@"+hyperframes.PinnedVersion {
-		t.Errorf("第一条放行命令应是带固定版本的 hyperframes，实际 %q", access.Commands[0])
+	if access.Commands[0] != hyperframes.CLICommand {
+		t.Errorf("第一条放行命令应是 am 管理的 hyperframes（%q），实际 %q", hyperframes.CLICommand, access.Commands[0])
 	}
 	want := []string{"/home/.claude/skills", "/proj/.agents/skills"}
 	if strings.Join(access.ReadDirs, ",") != strings.Join(want, ",") {
@@ -509,6 +509,23 @@ func TestAnimationPromptDirectsEndStatesAndFollowRelations(t *testing.T) {
 	for _, want := range []string{"状态变化", "最终停在什么状态", "论点", "跟随关系", "指针落在它要按的控件上", "标签跟着它标注的对象走"} {
 		if !strings.Contains(section, want) {
 			t.Errorf("动效片段缺少 %q：\n%s", want, section)
+		}
+	}
+}
+
+// 提示词教的 CLI 写法必须就是安全模式放行的那一个前缀，并且要求单条执行：
+// 否则渲染器写出的命令全被拦下，镜头没有产物。
+func TestCLIPromptTeachesTheAllowedCommandPrefix(t *testing.T) {
+	prefix := HyperFramesCommand()
+	if !containsString(RendererAccess(nil).Commands, prefix) {
+		t.Fatalf("安全模式放行的命令里没有 %q", prefix)
+	}
+	for _, dir := range []string{"", "/tmp/skills"} {
+		section := hyperFramesCLIPrompt(dir)
+		for _, want := range []string{prefix + " render", prefix + " check", "不用 `npx hyperframes`", "每条命令单独执行"} {
+			if !strings.Contains(section, want) {
+				t.Errorf("skillsDir=%q 时 CLI 段缺少 %q", dir, want)
+			}
 		}
 	}
 }

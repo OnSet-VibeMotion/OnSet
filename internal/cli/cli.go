@@ -276,8 +276,8 @@ PROMPT-CAST-ADDENDUM.md，具体规则见该文件。cast.yaml 刚建出时 pack
 			if err != nil {
 				return fmt.Errorf("项目文件已写入，但 HyperFrames 技能安装失败：%w", err)
 			}
-			fmt.Fprintf(stdout, "HyperFrames %s 技能已装入 %s（%d 个）\n",
-				hyperframesVersion, hyperframes.SkillsSubdir, len(installed.Installed))
+			fmt.Fprintf(stdout, "HyperFrames %s 技能已装入 %s（%d 个），CLI 已就绪（%s）\n",
+				hyperframesVersion, hyperframes.SkillsSubdir, len(installed.Installed), hyperframes.CLICommand)
 			for _, name := range installed.Protected {
 				fmt.Fprintf(stderr, "警告：上游技能 %s 与内置技能重名，已保留内置版本\n", name)
 			}
@@ -709,7 +709,7 @@ opencode 没有可用的白名单机制，安全模式下仍能执行任何命�
 			result, err := agentrun.Run(cmd.Context(), agentrun.Spec{
 				Tool: cfg.Orchestrator, Workdir: workdir, Prompt: string(prompt), Unsafe: isUnsafe,
 				SessionID: agentrun.NewSessionID(cfg.Orchestrator),
-				Access:    cfg.OrchestratorAccess(hyperframesCommand()),
+				Access:    cfg.OrchestratorAccess(),
 				Env:       envList(childEnvironment),
 				LookPath:  func(name string) (string, error) { return envutil.LookPath(name, childEnvironment["PATH"]) },
 			}, printer.print)
@@ -861,6 +861,7 @@ SVG 转 PNG 这一步不能用 ImageMagick 代替：多数 ImageMagick 构建自
 	root.AddCommand(validateCmd)
 	root.AddCommand(newStyleCommand(stdout))
 	root.AddCommand(newFilmStyleCommand(stdout, stderr))
+	root.AddCommand(newHyperframesCommand(stdout, stderr))
 	root.AddCommand(newConcatCommand(stdout, &projectRoot))
 	root.AddCommand(newReviewCommand(stdout, &projectRoot))
 	root.AddCommand(newAudioCmd(stdout))
@@ -948,12 +949,12 @@ func (s *syncWriter) Write(p []byte) (int, error) {
 	return s.writer.Write(p)
 }
 
-// skillsProgressPrinter 在终端里用一行回车刷新的进度显示 HyperFrames 技能安装：
+// skillsProgressPrinter 在终端里用一行回车刷新的进度显示 HyperFrames 技能与 CLI 的安装：
 // 克隆要一分钟上下，不显示的话像是卡住了。只在整数百分比或步骤变化时刷新。
 func skillsProgressPrinter(w io.Writer) func(hyperframes.Progress) {
 	last := ""
 	return func(p hyperframes.Progress) {
-		line := fmt.Sprintf("安装 HyperFrames 技能：%s", p.Stage)
+		line := fmt.Sprintf("HyperFrames：%s", p.Stage)
 		if !p.Indeterminate {
 			line += fmt.Sprintf(" %3.0f%%", p.Percent)
 		}

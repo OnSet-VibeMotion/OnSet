@@ -494,7 +494,7 @@ func stripJSComments(src string) string {
 // hyperframes.PinnedVersion 之间没有任何绑定——改了常量忘了模板，am init
 // 装的是新版技能、而下发给渲染 agent 的锁定指令仍指向旧版，两边悄悄错开。
 //
-// 断言的是「每份产物里出现的 hyperframes@ 版本全部等于 PinnedVersion」，
+// 断言的是「锁定文件规则写明的版本等于 PinnedVersion，且产物里出现的 hyperframes@ 版本全部等于它」，
 // 而不是「包含 PinnedVersion」：后者在模板同时留着新旧两个版本号时也会通过。
 func TestPresetsPinSameHyperFramesVersionAsBinary(t *testing.T) {
 	// 走 embed.FS 而不是磁盘路径：真正发到用户手上的是嵌进二进制的这一份，
@@ -514,9 +514,10 @@ func TestPresetsPinSameHyperFramesVersionAsBinary(t *testing.T) {
 			t.Fatal(err)
 		}
 		found := pattern.FindAllString(string(body), -1)
-		if len(found) == 0 {
-			t.Errorf("%s 没有固定 HyperFrames 版本", path)
-			continue
+		// CLI 改由 am hyperframes 调用后，提示词里不再出现 hyperframes@<版本> 这种写法，
+		// 版本号以「版本固定为 `x`」写进锁定文件规则。两种写法都要求等于 PinnedVersion。
+		if !strings.Contains(string(body), "版本固定为 `"+hyperframes.PinnedVersion+"`") {
+			t.Errorf("%s 没有写明 HyperFrames 版本固定为 %s", path, hyperframes.PinnedVersion)
 		}
 		for _, got := range found {
 			if got != want {

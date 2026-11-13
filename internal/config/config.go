@@ -12,6 +12,7 @@ import (
 
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
 	"github.com/chouheiwa/articale-to-motion/internal/filmstyle"
+	"github.com/chouheiwa/articale-to-motion/internal/hyperframes"
 	"github.com/chouheiwa/articale-to-motion/internal/tools"
 )
 
@@ -34,6 +35,8 @@ type Config struct {
 	Memory MemorySettings
 	// FilmStyleLibrary 是整片风格的用户级风格库目录，见 internal/filmstyle。
 	FilmStyleLibrary string
+	// HyperFramesCLI 是 am 管理的固定版本 HyperFrames CLI 的安装目录，见 hyperframes.EnsureCLI。
+	HyperFramesCLI string
 }
 
 // MemorySettings 是渲染记忆的项目侧设置。
@@ -163,6 +166,7 @@ func Load(root string, environ map[string]string) (Config, error) {
 	}
 	cfg.Memory.Dir = resolve("AM_MEMORY_DIR", DefaultMemoryDir(environ))
 	cfg.FilmStyleLibrary = resolve(filmstyle.LibraryEnv, filmstyle.DefaultLibraryDir(environ, filmstyle.PinnedCommit))
+	cfg.HyperFramesCLI = resolve(hyperframes.CLIDirEnv, hyperframes.CLIDir(environ, hyperframes.PinnedVersion))
 	if value := resolve("MEMORY_SNAPSHOT", ""); value != "" {
 		cfg.Memory.Snapshot, err = strconv.Atoi(value)
 		if err != nil || cfg.Memory.Snapshot < 1 {
@@ -234,6 +238,11 @@ func (c Config) ChildEnvironment(base map[string]string, unsafe bool, passthroug
 	// 编排工具调用的 am film-style 会算出另一个目录，找不到已下载的风格库与采样库。
 	if c.FilmStyleLibrary != "" {
 		out[filmstyle.LibraryEnv] = c.FilmStyleLibrary
+	}
+	// CLI 目录同理：子进程里的 am hyperframes 要找到同一份已装好的 CLI，否则会按 HOME
+	// 另算一个目录，在渲染途中重新 npm install。
+	if c.HyperFramesCLI != "" {
+		out[hyperframes.CLIDirEnv] = c.HyperFramesCLI
 	}
 	if unsafe {
 		out["AM_UNSAFE"] = "1"

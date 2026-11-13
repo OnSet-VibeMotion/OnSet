@@ -41,6 +41,7 @@
 | `hyperframes-*` 等官方技能 | `am init` 按固定版本联网安装到项目内 |
 | `text-to-lottie`、`algorithmic-art`、`character-rig`、`scene-kit` | 随 `am` 二进制下发 |
 
+- HyperFrames CLI 由 `am` 按固定版本装在本机，一律用 `am hyperframes <子命令>` 调用。不要用 `npx hyperframes`：它会在渲染途中现下载，网络一差整次渲染白跑。
 - 缺任何一个都重跑 `am init` 补齐。**不要自己跑 `npx hyperframes skills`**：上游安装器只认 HOME，会装到本机而不是项目里，绕过版本固定，而且一台机器上只有一份技能——另一个固定了不同版本的项目会被它顶掉。
 - 不得从其他项目或本机目录复制技能，也不得升级、改写或删除任何一份已安装的技能。技能改动属于工具本体，不在单片项目里做。
 - 技能装在项目内意味着整个项目可以拷到另一台机器直接渲染，不依赖那台机器装过什么。

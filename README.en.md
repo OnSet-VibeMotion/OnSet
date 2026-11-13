@@ -113,7 +113,7 @@ So `am init` does not call it. It shallow-clones the tag `v<version>` itself and
 
 The result is recorded in `.agents/skills/hyperframes-upstream.json`: version, upstream commit, and a content digest per skill directory. To move the pin, change `PinnedVersion` / `PinnedSkillsCommit` / `PinnedSkillsCount` in `internal/hyperframes`.
 
-Installing skills requires `git` (no longer Node/npx); use `--skip-hyperframes` for offline or CI environments.
+Installing skills requires `git`; it also uses `npm` to install the same HyperFrames CLI version into `~/.local/share/am/hyperframes/cli-<version>` (honouring your `~/.npmrc`), shared by all projects and always invoked as `am hyperframes …`, so nothing is downloaded mid-render; use `--skip-hyperframes` for offline or CI environments.
 
 Initialization also writes the binary's built-in skill tree to the project's `.agents/skills/`, where the renderer discovers it automatically:
 
@@ -190,7 +190,7 @@ Scenes with an accepted output and unchanged inputs are skipped. When an output 
 
 AI CLIs run in project-scoped safe mode by default. `am --unsafe run` explicitly restores bypass/auto-approval behavior and should only be used for trusted projects. Extra environment variables in safe mode must be named in `AM_PASSTHROUGH_ENV`.
 
-In safe mode the orchestrator (`am run`) may edit files and run only an allowlist: `am`, `ffmpeg`, `ffprobe`, `ls`, `mkdir`, the pinned `npx --yes hyperframes@…`, and the single command of the configured `TTS_PROVIDER` and `ALIGN_PROVIDER` (for example `mmx`, `edge-tts`, `mlx_audio.stt.generate`; `funasr` maps to `python3`). Installers (`brew`, `pip`, `uv`, `npm`) are not allowed, so install those tools yourself first. Enforcement differs per tool: claude and codebuddy use `acceptEdits` plus a `--settings` allowlist with `.env` reads denied (Claude Code's `acceptEdits` also auto-approves filesystem commands such as `touch`, `mkdir`, and `rm` inside the workspace); qoder uses `accept_edits` plus one `--allowed-tools` per command; codex has no command allowlist and relies on its `workspace-write` sandbox, with sandbox networking enabled for TTS; opencode has no working allowlist mechanism and can run any command even in safe mode. The codebuddy arguments have not been fully tested.
+In safe mode the orchestrator (`am run`) may edit files and run only an allowlist: `am`, `ffmpeg`, `ffprobe`, `ls`, `mkdir`, `am hyperframes` (the pinned HyperFrames CLI managed by am, covered by `am`), and the single command of the configured `TTS_PROVIDER` and `ALIGN_PROVIDER` (for example `mmx`, `edge-tts`, `mlx_audio.stt.generate`; `funasr` maps to `python3`). Installers (`brew`, `pip`, `uv`, `npm`) are not allowed, so install those tools yourself first. Enforcement differs per tool: claude and codebuddy use `acceptEdits` plus a `--settings` allowlist with `.env` reads denied (Claude Code's `acceptEdits` also auto-approves filesystem commands such as `touch`, `mkdir`, and `rm` inside the workspace); qoder uses `accept_edits` plus one `--allowed-tools` per command; codex has no command allowlist and relies on its `workspace-write` sandbox, with sandbox networking enabled for TTS; opencode has no working allowlist mechanism and can run any command even in safe mode. The codebuddy arguments have not been fully tested.
 
 `am run` prints a readable digest of the orchestrator's event stream: the session id first, assistant text as-is, one line per tool call, failed tool results marked with `✗`, and token usage at the end.
 

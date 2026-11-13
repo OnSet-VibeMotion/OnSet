@@ -18,6 +18,7 @@ import (
 	"github.com/chouheiwa/articale-to-motion/internal/config"
 	"github.com/chouheiwa/articale-to-motion/internal/determinism"
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
+	"github.com/chouheiwa/articale-to-motion/internal/hyperframes"
 	"github.com/chouheiwa/articale-to-motion/internal/mediaprobe"
 	"github.com/chouheiwa/articale-to-motion/internal/procgroup"
 	"github.com/chouheiwa/articale-to-motion/internal/tools"
@@ -51,6 +52,23 @@ func Run(ctx context.Context, s Scene, cfg config.Config, unsafe bool, baseEnv m
 	prompt, err := BuildPrompt(s, resolvedSkills)
 	if err != nil {
 		return err
+	}
+	// 渲染器要用的 CLI 先由 am 装好：在渲染途中现下载的话，网络一差渲染器就空等、
+	// 白花一次模型调用，最后只剩「没有产物」。装不上就在这里停，不启动渲染器。
+	cliEnv := map[string]string{}
+	for key, value := range baseEnv {
+		cliEnv[key] = value
+	}
+	if cfg.HyperFramesCLI != "" {
+		cliEnv[hyperframes.CLIDirEnv] = cfg.HyperFramesCLI
+	} else if cliEnv[hyperframes.CLIDirEnv] == "" {
+		// 调用方给的环境里没有时，取进程自己的设置（例如手工指定的 CLI 目录）。
+		if dir := os.Getenv(hyperframes.CLIDirEnv); dir != "" {
+			cliEnv[hyperframes.CLIDirEnv] = dir
+		}
+	}
+	if _, err := hyperframes.EnsureCLI(ctx, hyperframes.CLIOptions{Env: cliEnv, Output: userOutput}); err != nil {
+		return fmt.Errorf("渲染前准备 HyperFrames CLI：%w", err)
 	}
 	argv, err := tools.RendererInvocation(renderer, prompt, unsafe, RendererAccess(resolvedSkills))
 	if err != nil {
@@ -129,7 +147,12 @@ func Run(ctx context.Context, s Scene, cfg config.Config, unsafe bool, baseEnv m
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = s.Directory
 	passthrough := envutil.ParsePassthrough(baseEnv["AM_PASSTHROUGH_ENV"])
-	cmd.Env = environmentList(cfg.ChildEnvironment(baseEnv, unsafe, passthrough))
+	childEnv := cfg.ChildEnvironment(baseEnv, unsafe, passthrough)
+	// 提示词让渲染器调用 am hyperframes：把当前 am 放进它的 PATH。
+	if err := envutil.AddExecutableLocation(childEnv); err != nil {
+		return err
+	}
+	cmd.Env = environmentList(childEnv)
 	cmd.Stdin = nil
 	cmd.Stderr = stderrFile
 	stdout, err := cmd.StdoutPipe()

@@ -386,7 +386,7 @@ func TestCoreAssetsAreFetchedOnlyForStylesThatUseThem(t *testing.T) {
 	}
 }
 
-// am 管理的风格库：放进项目的文件是硬链接（不占第二份磁盘）且只读；生成的 SKILL.md 例外。
+// am 管理的风格库：放进项目的文件是硬链接（不占第二份磁盘），可写（见 copyPath）。
 // 用户自己的检出：复制，不改它文件的权限。
 func TestInstalledFilesAreReadOnlyLinksForManagedLibrary(t *testing.T) {
 	url, commit := fixtureLibrary(t)
@@ -405,8 +405,9 @@ func TestInstalledFilesAreReadOnlyLinksForManagedLibrary(t *testing.T) {
 	if !os.SameFile(a, b) {
 		t.Error("am 管理的风格库应当硬链接进项目")
 	}
-	if a.Mode().Perm()&0o222 != 0 {
-		t.Errorf("放进项目的文件应当只读：%v", a.Mode())
+	// 不设只读：渲染器 cp 出来的副本会继承只读，而安全模式不放行 chmod。
+	if a.Mode().Perm()&0o200 == 0 {
+		t.Errorf("放进项目的文件不该是只读的：%v", a.Mode())
 	}
 
 	user := t.TempDir()

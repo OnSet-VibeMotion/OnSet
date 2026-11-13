@@ -241,8 +241,10 @@ var skipInDemo = map[string]bool{"stills": true, "out": true, "chk": true, "node
 var skipExtensions = map[string]bool{".mp4": true, ".wav": true, ".mp3": true, ".npy": true, ".log": true}
 
 // copyPath 把文件或目录放进项目：link 为 true 时先试硬链接，跨磁盘等失败时退回复制。
-// 放进来的文件一律只读：硬链接与风格库共用同一份内容，在项目里改它就是改了所有
-// 项目共用的风格库；复制来的也设只读，与硬链接的行为一致，免得「有的能改有的不能」。
+//
+// 不设只读。试过：渲染器用 cp 把引擎拷进镜头目录时副本继承了只读，它要改副本就得
+// chmod，而安全模式不放行 chmod（实测一次渲染在这上面绕了好几轮）。硬链接被就地
+// 改写的风险由 SKILL.md 的「不要改本目录的文件」与项目里只有 am 写这个目录来兜。
 //
 // 符号链接一律拒绝：指向风格库的链接搬进项目后，项目换一台机器就成了静默失效的空文件。
 // 硬链接没有这个问题——它就是文件本身，项目整体拷走时拷的是真实内容。
@@ -274,17 +276,16 @@ func copyPath(from, to string, link bool) error {
 		}
 		if link {
 			if err := os.Link(path, target); err == nil {
-				return os.Chmod(target, 0o444)
+				// 0644 而不是保留原权限：早先的版本把这些文件设过只读，硬链接共用
+				// 同一个 inode，这里顺手改回来。
+				return os.Chmod(target, 0o644)
 			}
 		}
 		body, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(target, body, 0o644); err != nil {
-			return err
-		}
-		return os.Chmod(target, 0o444)
+		return os.WriteFile(target, body, 0o644)
 	})
 }
 
