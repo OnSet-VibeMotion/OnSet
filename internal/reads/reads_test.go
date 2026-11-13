@@ -130,3 +130,28 @@ func TestLoadAndWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestFindingsAlignWithProblems：渲染记忆按 Findings 把问题记到镜头上，
+// 每条 Problem 都要有一条同文的 Finding，且能归到镜头与规则。
+func TestFindingsAlignWithProblems(t *testing.T) {
+	inv := Inventory{FPS: 30, Events: []Event{
+		{ID: "e1", SceneID: "scene-001", Text: "一句很长很长很长的标题文字", PhraseID: "p2", EnterFrame: 0, ReadableStartFrame: 0, ReadableEndFrameExc: 5, ExitEndFrame: 5},
+		{ID: "e2", SceneID: "scene-002", Text: "短", PhraseID: "p1", EnterFrame: 30, ReadableStartFrame: 30, ReadableEndFrameExc: 90, ExitEndFrame: 90},
+		{ID: "e3", SceneID: "scene-002", Text: "x", EnterFrame: 9, ReadableStartFrame: 8, ReadableEndFrameExc: 20, ExitEndFrame: 20},
+	}}
+	timeline := Timeline{FPS: 30, Phrases: []Phrase{{ID: "p1", Order: 1, StartFrame: 0}, {ID: "p2", Order: 2, StartFrame: 10}}}
+	report := Check(inv, &timeline, Defaults)
+	if len(report.Findings) != len(report.Problems) {
+		t.Fatalf("Findings %d 条，Problems %d 条", len(report.Findings), len(report.Problems))
+	}
+	rules := map[string]string{}
+	for i, f := range report.Findings {
+		if f.Message != report.Problems[i] {
+			t.Errorf("第 %d 条文字不一致", i)
+		}
+		rules[f.Rule] = f.SceneID
+	}
+	if rules[RuleDuration] != "scene-001" || rules[RuleSpoiler] != "scene-001" || rules[RuleOrder] != "scene-002" || rules[RuleFrames] != "scene-002" {
+		t.Errorf("规则与镜头归属不对：%v", rules)
+	}
+}

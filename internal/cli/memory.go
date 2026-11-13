@@ -8,14 +8,17 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/chouheiwa/articale-to-motion/internal/agentrun"
 	"github.com/chouheiwa/articale-to-motion/internal/config"
 	"github.com/chouheiwa/articale-to-motion/internal/envutil"
 	"github.com/chouheiwa/articale-to-motion/internal/fsutil"
+	"github.com/chouheiwa/articale-to-motion/internal/mediaprobe"
 	"github.com/chouheiwa/articale-to-motion/internal/memory"
 	"github.com/chouheiwa/articale-to-motion/internal/scene"
 	"github.com/chouheiwa/articale-to-motion/internal/schedule"
@@ -27,9 +30,13 @@ import (
 // 逐级向上找 .agents/skills，放到记忆库里就找不到项目的技能。
 const examWorkspace = "production/memory-exams"
 
+// newRunID 是一次 am scene run / run-all 调用的批次编号，同一批次的镜头共用，
+// am memory report 按它对比「第一次」与「第二次」。
+func newRunID() string { return "run-" + time.Now().UTC().Format("20060102-150405") }
+
 // attachMemory 在渲染前为镜头召回记忆，并挂上把这次尝试写成经历的回调。
 // 记忆关闭时原样返回，不建记忆库目录。
-func attachMemory(s scene.Scene, cfg config.Config, warn io.Writer) (scene.Scene, error) {
+func attachMemory(s scene.Scene, cfg config.Config, warn io.Writer, run string) (scene.Scene, error) {
 	if !cfg.Memory.Enabled {
 		return s, nil
 	}
@@ -50,7 +57,7 @@ func attachMemory(s scene.Scene, cfg config.Config, warn io.Writer) (scene.Scene
 	s.AfterAttempt = func(attempt scene.Attempt) {
 		recorded := s
 		recorded.AfterAttempt = nil
-		if _, err := store.RecordAttempt(recorded, attempt, memory.SourceRender, ""); err != nil {
+		if _, err := store.RecordAttempt(recorded, attempt, memory.AttemptSource{Source: memory.SourceRender, Run: run}); err != nil {
 			fmt.Fprintf(warn, "警告：镜头 %s 的经历没能写进记忆库：%v\n", s.ID, err)
 		}
 	}
@@ -115,14 +122,23 @@ func newMemoryCommand(stdout, stderr io.Writer, unsafe *bool) *cobra.Command {
 		newMemoryConsolidateCommand(stdout, stderr, unsafe), newMemoryExamCommand(stdout, unsafe),
 		newMemoryPromoteCommand(stdout), newMemoryRejectCommand(stdout), newMemoryRetireCommand(stdout),
 		newMemoryRollbackCommand(stdout), newMemoryStatusCommand(stdout), newMemoryFeedbackCommand(stdout),
-		newMemoryTimelineCommand(stdout), newMemoryRememberCommand(stdout))
+		newMemoryTimelineCommand(stdout), newMemoryRememberCommand(stdout), newMemoryReportCommand(stdout), newMemoryImportCommand(stdout))
 	return cmd
 }
 
 func loadMemoryConfig() (config.Config, *memory.Store, error) {
 	cfg, err := config.Load(".", nil)
 	if err != nil {
-		return config.Config{}, nil, err
+		// 不在项目里（没有 article-to-motion.conf）时也能看记忆库：
+		// 按 AM_MEMORY_DIR 或默认位置打开。项目配置本身有错时照常报错。
+		if _, statErr := os.Stat("article-to-motion.conf"); !os.IsNotExist(statErr) {
+			return config.Config{}, nil, err
+		}
+		env := currentEnvironment()
+		cfg = config.Config{Memory: config.MemorySettings{Enabled: true, Dir: env["AM_MEMORY_DIR"], RecallBudget: config.DefaultMemoryRecallBudget}}
+		if cfg.Memory.Dir == "" {
+			cfg.Memory.Dir = config.DefaultMemoryDir(env)
+		}
 	}
 	store, err := openMemory(cfg)
 	return cfg, store, err
@@ -371,7 +387,7 @@ func orNone(list []string) string {
 }
 
 func newMemoryExamCommand(stdout io.Writer, unsafe *bool) *cobra.Command {
-	var renderers, trials, episodes string
+	var renderers, trials, episodes, retest string
 	var holdout []string
 	var maxQuestions, repeat, jobs int
 	var dryRun bool
@@ -434,10 +450,11 @@ func newMemoryExamCommand(stdout io.Writer, unsafe *bool) *cobra.Command {
 				return attempt
 			}
 			result, err := store.Exam(cmd.Context(), memory.ExamOptions{
-				Renderers: list, Trial: splitList(trials), Episodes: splitList(episodes), Holdout: holdout,
+				Renderers: list, Trial: splitList(trials), Episodes: splitList(episodes), Holdout: holdout, Retest: splitList(retest),
 				MaxQuestions: maxQuestions, Repeat: repeat, Jobs: jobs, Budget: cfg.Memory.RecallBudget,
 				Workspace: filepath.Join(root, examWorkspace), Run: run, DryRun: dryRun,
-				ModelOf: func(renderer string) string { return store.CurrentModel(renderer, currentEnvironment()) },
+				ModelOf:   func(renderer string) string { return store.CurrentModel(renderer, currentEnvironment()) },
+				PostCheck: blankPostCheck,
 			})
 			if err != nil {
 				return err
@@ -457,6 +474,7 @@ func newMemoryExamCommand(stdout io.Writer, unsafe *bool) *cobra.Command {
 	cmd.Flags().StringVar(&renderers, "renderers", "", "参加考试的渲染工具，逗号分隔；缺省为配置的 RENDERER")
 	cmd.Flags().StringVar(&trials, "trial", "", "只考这几条试用经验，逗号分隔；缺省考全部")
 	cmd.Flags().StringVar(&episodes, "episodes", "", "错题来源经历，逗号分隔；缺省取试用经验的 from_episodes")
+	cmd.Flags().StringVar(&retest, "retest", "", "重考这几条生效经验（逗号分隔）：对照组去掉它们，用于模型换了以后确认它们还有用")
 	cmd.Flags().StringArrayVar(&holdout, "holdout", nil, "留出题的镜头目录，可重复")
 	cmd.Flags().IntVar(&maxQuestions, "max-questions", 4, "错题数上限")
 	cmd.Flags().IntVar(&repeat, "repeat", 1, "每格重复次数，按多数结果计分")
@@ -508,6 +526,10 @@ func renderExam(r memory.ExamResult) string {
 		fmt.Fprintf(&b, "通过：试用经验转为生效，快照 #%d\n", r.Snapshot)
 	case "rejected":
 		b.WriteString("未通过：试用经验记为被拒\n")
+	case "retest-passed":
+		b.WriteString("重考通过：在当前模型上仍有提升，已补记考试编号\n")
+	case "retest-failed":
+		b.WriteString("重考未通过：在当前模型上没有提升。状态不变——可用 am memory retire 让它沉睡，或给它加 applies_when.models 限定到旧模型\n")
 	default:
 		if r.Verdict.Invalid {
 			b.WriteString("考试无效：记忆状态不变\n")
@@ -626,7 +648,7 @@ func newMemoryStatusCommand(stdout io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			report, err := store.Status(!noRecord)
+			report, err := store.Status(!noRecord, func(r string) string { return store.CurrentModel(r, currentEnvironment()) })
 			if err != nil {
 				return err
 			}
@@ -659,6 +681,10 @@ func newMemoryStatusCommand(stdout io.Writer) *cobra.Command {
 				} else {
 					fmt.Fprintf(stdout, "发现人工编辑：%s（未记快照，召回不会用到）\n", strings.Join(report.Drift, "、"))
 				}
+			}
+			for _, r := range report.Retest {
+				fmt.Fprintf(stdout, "需要重考：%s 当初在 %s 上用 %s 考过，现在是 %s（am memory exam --renderers %s --retest %s）\n",
+					r.Name, r.Renderer, strings.Join(r.Examined, "、"), r.Current, r.Renderer, r.Name)
 			}
 			for _, w := range report.Weak {
 				fmt.Fprintf(stdout, "待沉睡：%s 在 %s 上召回 %d 次，一次通过率 %.0f%%，不高于基线 %.0f%%\n", w.Name, w.Renderer, w.Recalled, w.Rate*100, w.Baseline*100)
@@ -818,5 +844,221 @@ func newMemoryRememberCommand(stdout io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&description, "description", "", "一句话概括；缺省取正文第一句")
 	cmd.Flags().BoolVar(&global, "global", false, "对用户所有项目都成立")
 	cmd.Flags().StringVar(&revises, "revises", "", "替换的旧偏好名，旧偏好转为沉睡")
+	return cmd
+}
+
+// recordCheckFindings 把事后检查（阅读时间、交接、空白帧）查出的问题按镜头写成经历。
+// 记忆关闭、读不到配置或写失败时只警告，不改变检查命令本身的结果。
+func recordCheckFindings(warn io.Writer, root string, scenes []scene.Scene, byScene map[string][]memory.Finding) {
+	if len(byScene) == 0 {
+		return
+	}
+	cfg, err := config.Load(root, nil)
+	if err != nil || !cfg.Memory.Enabled {
+		return
+	}
+	store, err := memory.Open(cfg.Memory.Dir)
+	if err != nil {
+		fmt.Fprintf(warn, "警告：检查结果没能写进记忆库：%v\n", err)
+		return
+	}
+	for _, s := range scenes {
+		if findings := byScene[s.ID]; len(findings) > 0 {
+			if _, _, err := store.RecordCheck(s, findings); err != nil {
+				fmt.Fprintf(warn, "警告：镜头 %s 的检查结果没能写进记忆库：%v\n", s.ID, err)
+			}
+		}
+	}
+}
+
+// blankPostCheck 是考试里空白帧的补查：只看第 0 帧。
+// 空白帧经验来自 --at 0 --check-blank（第 0 帧当封面），看末帧会把合法的淡出也算进去。
+func blankPostCheck(ctx context.Context, s scene.Scene, checks []string) []memory.Finding {
+	if !slices.Contains(checks, scene.CheckFramesBlank) {
+		return nil
+	}
+	toolchain, err := mediaprobe.New(currentEnvironment())
+	if err != nil {
+		return []memory.Finding{{Check: scene.CheckFramesBlank, Problem: "无法补查空白帧：" + err.Error()}}
+	}
+	report, err := toolchain.ExtractFramesRegion(s.OutputPath(), []float64{0}, nil, filepath.Join(s.Directory, "visual-qc"))
+	if err != nil {
+		return []memory.Finding{{Check: scene.CheckFramesBlank, Problem: "无法补查空白帧：" + err.Error()}}
+	}
+	var findings []memory.Finding
+	for _, problem := range report.Problems {
+		findings = append(findings, memory.Finding{Check: scene.CheckFramesBlank, Problem: problem})
+	}
+	return findings
+}
+
+func newMemoryReportCommand(stdout io.Writer) *cobra.Command {
+	var last int
+	var compare string
+	var allProjects, asJSON bool
+	cmd := &cobra.Command{
+		Use: "report", Args: noArgs, Short: "按渲染批次对比：一次通过率、重试、问题数、耗时与 token",
+		Long: `一次 am scene run / run-all 调用是一个批次。报告按批次汇总正式渲染：
+  镜头数、首次尝试就通过的镜头数与比例（事后检查查出问题的不算通过）、
+  重试次数、问题数（含事后检查查出的）、耗时、token、平均每镜召回的记忆条数、用到的快照，
+并按「渲染工具/模型」分开列出——换了渲染工具带来的变化不能算成记忆的功劳。
+
+缺省只看当前项目的批次，并对比最近两批；--compare 指定任意两批。`,
+		Example: "  am memory report\n  am memory report --compare run-20261113-101500,run-20261114-153000\n  am memory report --json",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, store, err := loadMemoryConfig()
+			if err != nil {
+				return err
+			}
+			episodes, err := store.Episodes()
+			if err != nil {
+				return err
+			}
+			root, _ := os.Getwd()
+			project := memory.ProjectName(root)
+			runs := []memory.RunSummary{}
+			for _, r := range memory.RunReport(episodes) {
+				if allProjects || project == "" || r.Project == project {
+					runs = append(runs, r)
+				}
+			}
+			var pair []memory.RunSummary
+			if compare != "" {
+				ids := splitList(compare)
+				if len(ids) != 2 {
+					return fmt.Errorf("--compare 要给两个批次编号，逗号分隔")
+				}
+				for _, id := range ids {
+					found := false
+					for _, r := range runs {
+						if r.Run == id {
+							pair, found = append(pair, r), true
+						}
+					}
+					if !found {
+						return fmt.Errorf("找不到批次 %s", id)
+					}
+				}
+			} else if len(runs) >= 2 {
+				pair = runs[len(runs)-2:]
+			}
+			if last > 0 && len(runs) > last {
+				runs = runs[len(runs)-last:]
+			}
+			if asJSON {
+				return printJSON(stdout, map[string]any{"runs": runs, "compare": pair})
+			}
+			if len(runs) == 0 {
+				fmt.Fprintln(stdout, "还没有带批次编号的渲染记录。")
+				return nil
+			}
+			fmt.Fprintln(stdout, "批次\t\t\t镜头\t一次通过\t重试\t问题(事后)\t耗时\ttoken(入/出)\t召回/镜\t快照")
+			for _, r := range runs {
+				fmt.Fprintf(stdout, "%s\t%d\t%d（%.0f%%）\t%d\t%d(%d)\t%.0fs\t%d/%d\t%.1f\t%v\n", r.Run, r.Scenes, r.PassedFirstTry, r.PassRate*100,
+					r.Retries, r.Problems, r.CheckProblems, r.Seconds, r.InputTokens, r.OutputTokens, r.Recalled, r.Snapshots)
+			}
+			if len(pair) == 2 {
+				fmt.Fprintf(stdout, "\n对比 %s → %s\n", pair[0].Run, pair[1].Run)
+				fmt.Fprint(stdout, compareLine("全部", pair[0].RunStats, pair[1].RunStats))
+				keys := map[string]bool{}
+				for key := range pair[0].ByModel {
+					keys[key] = true
+				}
+				for key := range pair[1].ByModel {
+					keys[key] = true
+				}
+				sorted := make([]string, 0, len(keys))
+				for key := range keys {
+					sorted = append(sorted, key)
+				}
+				sort.Strings(sorted)
+				for _, key := range sorted {
+					a, aok := pair[0].ByModel[key]
+					b, bok := pair[1].ByModel[key]
+					if aok && bok {
+						fmt.Fprint(stdout, compareLine(key, a, b))
+					} else {
+						fmt.Fprintf(stdout, "  %s：只出现在其中一批，不可比\n", key)
+					}
+				}
+			}
+			return nil
+		},
+	}
+	cmd.Flags().IntVar(&last, "last", 10, "只列最近若干批")
+	cmd.Flags().StringVar(&compare, "compare", "", "对比的两个批次编号，逗号分隔；缺省为最近两批")
+	cmd.Flags().BoolVar(&allProjects, "all-projects", false, "列出所有项目的批次")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "输出 JSON")
+	return cmd
+}
+
+func compareLine(label string, a, b memory.RunStats) string {
+	return fmt.Sprintf("  %s：一次通过率 %.0f%% → %.0f%%，重试 %d → %d，问题 %d → %d，平均耗时 %.0fs → %.0fs，平均 token %s → %s\n",
+		label, a.PassRate*100, b.PassRate*100, a.Retries, b.Retries, a.Problems, b.Problems,
+		perScene(a.Seconds, a.Scenes), perScene(b.Seconds, b.Scenes),
+		tokensPerScene(a), tokensPerScene(b))
+}
+
+func perScene(total float64, scenes int) float64 {
+	if scenes == 0 {
+		return 0
+	}
+	return total / float64(scenes)
+}
+
+func tokensPerScene(s memory.RunStats) string {
+	if s.InputTokens+s.OutputTokens == 0 {
+		return "—"
+	}
+	return strconv.FormatInt((s.InputTokens+s.OutputTokens)/int64(max(s.Scenes, 1)), 10)
+}
+
+func newMemoryImportCommand(stdout io.Writer) *cobra.Command {
+	var asJSON bool
+	var tolerance float64
+	cmd := &cobra.Command{
+		Use: "import PROJECT...", Args: cobra.MinimumNArgs(1), Short: "把已有项目的渲染历史导入为种子经历",
+		Long: `从已有项目里导入渲染历史，作为记忆的种子：
+  - 镜头目录里的尝试记录（render-<id>.attempt.json）与 attempts/ 下归档的尝试；
+  - 只有产物没有尝试记录的归档（含 production/failed-attempts/<镜头>-attempt-NN-*），
+    用现在的产物校验重判一遍，只记失败；
+  - production/review/review.json 里没接上的交接；
+  - production/visible-event-inventory.json（schema 1）的阅读时间问题。
+
+每个镜头最早的一次尝试算首次尝试，其余算重试；批次编号是 import:<项目名>，
+am memory report --all-projects 能看到这些项目当时的一次通过率。
+冻结的输入是镜头现在的输入（历史输入没有留存）。重复导入同一个来源会跳过。`,
+		Example: "  am memory import ../c-language-20260929 ../agent原理/ep01-前大模型时代",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateTolerance(tolerance); err != nil {
+				return err
+			}
+			cfg, store, err := loadMemoryConfig()
+			if err != nil {
+				return err
+			}
+			var results []memory.ImportResult
+			for _, project := range args {
+				result, err := store.ImportProject(project, memory.ImportOptions{Env: currentEnvironment(), Tolerance: tolerance, Renderer: cfg.Renderer})
+				if err != nil {
+					return fmt.Errorf("导入 %s：%w", project, err)
+				}
+				results = append(results, result)
+			}
+			if asJSON {
+				return printJSON(stdout, results)
+			}
+			for _, r := range results {
+				fmt.Fprintf(stdout, "%s：%d 个镜头，导入 %d 次尝试（%d 次校验失败）、%d 条事后检查问题，跳过 %d\n",
+					r.Project, r.Scenes, r.Attempts, r.Failures, r.Checks, r.Skipped)
+				for _, note := range r.Notes {
+					fmt.Fprintf(stdout, "  提示：%s\n", note)
+				}
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "输出 JSON")
+	cmd.Flags().Float64Var(&tolerance, "duration-tolerance", 0.15, "重新校验归档产物时的时长容差（秒）")
 	return cmd
 }

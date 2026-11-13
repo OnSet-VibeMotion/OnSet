@@ -197,6 +197,21 @@ func (c Config) ChildEnvironment(base map[string]string, unsafe bool, passthroug
 	if c.AlignProvider != "" {
 		out["ALIGN_PROVIDER"] = c.AlignProvider
 	}
+	// 记忆设置与 ORCHESTRATOR 一样显式写进去：编排工具调用的 am memory remember、
+	// am scene run 必须用同一个记忆库。安全模式的白名单里没有 AM_MEMORY_DIR，
+	// 不写的话子进程回落到默认目录——既不是这一个库，也不在 codex 沙箱放行的范围里
+	// （实测：偏好写入被拒，报「没有写入权限」）。
+	if c.Memory.Dir != "" {
+		out["AM_MEMORY_DIR"] = c.Memory.Dir
+		out["MEMORY"] = "off"
+		if c.Memory.Enabled {
+			out["MEMORY"] = "on"
+		}
+		out["MEMORY_RECALL_BUDGET"] = strconv.Itoa(c.Memory.RecallBudget)
+		if c.Memory.Snapshot > 0 {
+			out["MEMORY_SNAPSHOT"] = strconv.Itoa(c.Memory.Snapshot)
+		}
+	}
 	if unsafe {
 		out["AM_UNSAFE"] = "1"
 	}

@@ -68,9 +68,16 @@ type Episode struct {
 	// Recalled 是这次渲染召回的记忆名，Snapshot 是召回依据的快照号。
 	Recalled []string `json:"recalled,omitempty"`
 	Snapshot int      `json:"snapshot,omitempty"`
+	// Run 是这次渲染所属的批次（一次 am scene run / run-all 调用），用于按批次对比。
+	Run string `json:"run,omitempty"`
+	// Session 与 Turn 是 Studio 对话的会话与轮次，只对 SourceConversation 有值。
+	Session string `json:"session,omitempty"`
+	Turn    string `json:"turn,omitempty"`
 	// Exam 是考试编号，只对 SourceExam 有值。
 	Exam     string    `json:"exam,omitempty"`
 	Feedback *Feedback `json:"feedback,omitempty"`
+	// Imported 是导入来源（原始路径加开始时间），只对 am memory import 导入的经历有值，用于去重。
+	Imported string `json:"imported,omitempty"`
 	// Input 是冻结输入相对经历目录的路径；考试从这里原样重放。
 	Input string `json:"input,omitempty"`
 	// Dir 是经历目录，读出时填入，不落盘。
@@ -115,8 +122,19 @@ func projectOf(dir string) string {
 	}
 }
 
+// AttemptSource 说明一次渲染尝试从哪来。
+type AttemptSource struct {
+	// Source 是 SourceRender 或 SourceExam。
+	Source string
+	// Run 是批次编号，见 Episode.Run。
+	Run string
+	// Exam 是考试编号，只对 SourceExam 有值。
+	Exam string
+}
+
 // RecordAttempt 把一次渲染尝试写成经历，冻结镜头输入，并写进时间线。
-func (s *Store) RecordAttempt(sc scene.Scene, attempt scene.Attempt, source, exam string) (Episode, error) {
+func (s *Store) RecordAttempt(sc scene.Scene, attempt scene.Attempt, from AttemptSource) (Episode, error) {
+	source, exam := from.Source, from.Exam
 	features, err := Features(sc)
 	if err != nil {
 		features = nil
@@ -124,7 +142,7 @@ func (s *Store) RecordAttempt(sc scene.Scene, attempt scene.Attempt, source, exa
 	episode := Episode{
 		Source: source, SceneID: sc.ID, Text: sc.Text, Renderer: attempt.Renderer, Model: attempt.Model, Fingerprint: attempt.Fingerprint,
 		Outcome: attempt.Outcome, Retry: attempt.Retry, Seconds: attempt.Seconds, Usage: attempt.Usage,
-		Error: attempt.Error, Problems: attempt.Problems, Checks: attempt.Checks, Features: features, Exam: exam,
+		Error: attempt.Error, Problems: attempt.Problems, Checks: attempt.Checks, Features: features, Exam: exam, Run: from.Run,
 	}
 	if sc.Memory != nil {
 		episode.Recalled = append([]string(nil), sc.Memory.Names...)
@@ -160,8 +178,11 @@ func (s *Store) saveEpisode(sc scene.Scene, episode Episode) (Episode, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return Episode{}, err
 	}
-	if err := freezeInput(sc, filepath.Join(dir, "input")); err == nil {
-		episode.Input = "input"
+	// 对话信号不属于某个镜头，没有输入可冻结。
+	if sc.ID != "" {
+		if err := freezeInput(sc, filepath.Join(dir, "input")); err == nil {
+			episode.Input = "input"
+		}
 	}
 	if err := writeJSON(filepath.Join(dir, "episode.json"), episode); err != nil {
 		return Episode{}, err
@@ -182,6 +203,11 @@ func episodeSummary(e Episode) string {
 
 func episodeOutcome(e Episode) string {
 	switch {
+	case e.Source == SourceConversation:
+		if e.Feedback != nil && e.Feedback.Verdict == "down" {
+			return "用户回退了一轮对话：" + e.Text
+		}
+		return "用户说：" + e.Text
 	case e.Source == SourceFeedback:
 		verdict := "👍"
 		if e.Feedback.Verdict == "down" {

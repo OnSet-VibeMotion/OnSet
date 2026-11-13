@@ -90,3 +90,25 @@ func TestChatTurnsCarryUserPreferences(t *testing.T) {
 		t.Errorf("偏好变了下一轮要带上新版本：%s", third)
 	}
 }
+
+// TestChatTurnsAndRevertsBecomeConversationEpisodes：每轮说的话和回退都留下信号，
+// 整理时据此归纳偏好。
+func TestChatTurnsAndRevertsBecomeConversationEpisodes(t *testing.T) {
+	f := newSessionFixture(t)
+	memoryDir := t.TempDir()
+	t.Setenv("AM_MEMORY_DIR", memoryDir)
+	status, body := studioRequest(t, http.MethodPost, f.url+"/api/sessions", `{"title":"信号"}`)
+	requireStudioStatus(t, status, http.StatusCreated, body)
+	id := body["session_id"].(string)
+	status, body = studioRequest(t, http.MethodPost, f.url+"/api/sessions/"+id+"/turns", `{"message":"节奏再慢一点"}`)
+	requireStudioStatus(t, status, http.StatusAccepted, body)
+	turnID := body["turn_id"].(string)
+	f.waitIdle(t, id)
+	status, body = studioRequest(t, http.MethodPost, f.url+"/api/turns/"+turnID+"/revert", `{}`)
+	requireStudioStatus(t, status, http.StatusOK, body)
+	store, _ := memory.Open(memoryDir)
+	episodes, _ := store.Episodes()
+	if len(episodes) != 2 || episodes[0].Feedback.Verdict != "said" || episodes[1].Feedback.Verdict != "down" || episodes[1].Text != "节奏再慢一点" || episodes[0].Turn != turnID {
+		t.Fatalf("应当记下说的话与回退：%+v", episodes)
+	}
+}

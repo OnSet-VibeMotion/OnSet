@@ -5,12 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/chouheiwa/articale-to-motion/internal/scene"
+	"github.com/chouheiwa/articale-to-motion/internal/tools"
 )
 
 func writeSceneDir(t *testing.T, dir, id, text, prompt string) scene.Scene {
@@ -200,7 +202,7 @@ func TestRecallReadsSnapshotNotFilesAndRollbackRestores(t *testing.T) {
 	if result, _ := store.RecallScene(s, RecallOptions{Budget: 1500}); len(result.Items) != 0 {
 		t.Fatal("手写的记忆未记快照前不该被召回")
 	}
-	report, err := store.Status(true)
+	report, err := store.Status(true, nil)
 	if err != nil || report.Recorded != 1 || !slices.Equal(report.Drift, []string{"cjk-rule"}) {
 		t.Fatalf("status 应当把人工编辑记成快照 #1：%+v %v", report, err)
 	}
@@ -261,7 +263,7 @@ func TestEpisodesFreezeInputsAndFeedStatsAndClusters(t *testing.T) {
 	store := newStore(t)
 	s := writeSceneDir(t, t.TempDir(), "scene-001", "中文标题", "创意方向")
 	s.Memory = &scene.MemoryRecall{Snapshot: 1, Names: []string{"cjk-rule"}}
-	ep, err := store.RecordAttempt(s, failingAttempt("claude", "determinism.raf", "output.frames"), SourceRender, "")
+	ep, err := store.RecordAttempt(s, failingAttempt("claude", "determinism.raf", "output.frames"), AttemptSource{Source: SourceRender})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,11 +275,11 @@ func TestEpisodesFreezeInputsAndFeedStatsAndClusters(t *testing.T) {
 	if _, err := scene.Load(filepath.Join(ep.Dir, "input")); err != nil {
 		t.Errorf("冻结输入应当能原样加载：%v", err)
 	}
-	store.RecordAttempt(s, failingAttempt("codex", "determinism.raf"), SourceRender, "")
-	store.RecordAttempt(s, scene.Attempt{Renderer: "codex", Outcome: scene.OutcomeSucceeded}, SourceRender, "")
-	store.RecordAttempt(s, scene.Attempt{Renderer: "codex", Outcome: scene.OutcomeSucceeded, Retry: true}, SourceRender, "")
-	store.RecordAttempt(s, failingAttempt("codex", "determinism.raf"), SourceExam, "exam-0001")
-	store.RecordAttempt(s, scene.Attempt{Renderer: "codex", Outcome: scene.OutcomeFailed, Error: "退出码 1"}, SourceRender, "")
+	store.RecordAttempt(s, failingAttempt("codex", "determinism.raf"), AttemptSource{Source: SourceRender})
+	store.RecordAttempt(s, scene.Attempt{Renderer: "codex", Outcome: scene.OutcomeSucceeded}, AttemptSource{Source: SourceRender})
+	store.RecordAttempt(s, scene.Attempt{Renderer: "codex", Outcome: scene.OutcomeSucceeded, Retry: true}, AttemptSource{Source: SourceRender})
+	store.RecordAttempt(s, failingAttempt("codex", "determinism.raf"), AttemptSource{Source: SourceExam, Exam: "exam-0001"})
+	store.RecordAttempt(s, scene.Attempt{Renderer: "codex", Outcome: scene.OutcomeFailed, Error: "退出码 1"}, AttemptSource{Source: SourceRender})
 	store.RecordFeedback(s, Feedback{Verdict: "down", Note: "霓虹太多", Seconds: -1})
 	episodes, err := store.Episodes()
 	if err != nil || len(episodes) != 7 {
@@ -294,7 +296,7 @@ func TestEpisodesFreezeInputsAndFeedStatsAndClusters(t *testing.T) {
 	if clusters[0].Renderers["claude"] != 1 || clusters[0].Renderers["codex"] != 1 || !slices.Contains(clusters[0].Recalled, "cjk-rule") {
 		t.Errorf("聚类应当记下渲染工具分布与失败时已召回的记忆：%+v", clusters[0])
 	}
-	if !slices.ContainsFunc(clusters, func(c Cluster) bool { return c.Key == ClusterKeyHuman && c.Notes[0] == "霓虹太多" }) {
+	if !slices.ContainsFunc(clusters, func(c Cluster) bool { return c.Key == ClusterKeyHuman && c.Notes[0] == "（👎）霓虹太多" }) {
 		t.Errorf("人工 👎 应当单独成组：%+v", clusters)
 	}
 }
@@ -302,9 +304,9 @@ func TestEpisodesFreezeInputsAndFeedStatsAndClusters(t *testing.T) {
 func TestConsolidateIngestsOnlyValidDrafts(t *testing.T) {
 	store := newStore(t)
 	s := writeSceneDir(t, t.TempDir(), "scene-001", "人工智能正在改变世界", "")
-	a, _ := store.RecordAttempt(s, failingAttempt("claude", "determinism.raf"), SourceRender, "")
-	b, _ := store.RecordAttempt(s, failingAttempt("codex", "determinism.raf"), SourceRender, "")
-	store.RecordAttempt(s, failingAttempt("codex", "output.audio"), SourceRender, "")
+	a, _ := store.RecordAttempt(s, failingAttempt("claude", "determinism.raf"), AttemptSource{Source: SourceRender})
+	b, _ := store.RecordAttempt(s, failingAttempt("codex", "determinism.raf"), AttemptSource{Source: SourceRender})
+	store.RecordAttempt(s, failingAttempt("codex", "output.audio"), AttemptSource{Source: SourceRender})
 	var brief string
 	drafter := func(ctx context.Context, workdir, prompt string) error {
 		brief = prompt
@@ -417,7 +419,7 @@ func TestExamPromotesHelpfulAndRejectsHarmfulLessons(t *testing.T) {
 	store := newStore(t)
 	project := t.TempDir()
 	s := writeSceneDir(t, filepath.Join(project, "scenes", "scene-001"), "scene-001", "中文标题", "")
-	failed, _ := store.RecordAttempt(s, failingAttempt("claude", "determinism.raf"), SourceRender, "")
+	failed, _ := store.RecordAttempt(s, failingAttempt("claude", "determinism.raf"), AttemptSource{Source: SourceRender})
 	holdout := writeSceneDir(t, filepath.Join(project, "scenes", "scene-009"), "scene-009", "另一个镜头", "")
 
 	helpful := lesson("timeline-not-raf", StatusTrial, nil, "determinism.raf")
@@ -615,11 +617,11 @@ func TestModelIsObservedPerRendererAndClustered(t *testing.T) {
 	}
 	a := failingAttempt("claude", "determinism.raf")
 	a.Model = "claude-opus-5-5"
-	store.RecordAttempt(s, a, SourceRender, "")
+	store.RecordAttempt(s, a, AttemptSource{Source: SourceRender})
 	b := failingAttempt("codex", "determinism.raf")
 	b.Model = "gpt-6-astra"
-	store.RecordAttempt(s, b, SourceRender, "")
-	store.RecordAttempt(s, b, SourceRender, "")
+	store.RecordAttempt(s, b, AttemptSource{Source: SourceRender})
+	store.RecordAttempt(s, b, AttemptSource{Source: SourceRender})
 	if model := store.CurrentModel("claude", map[string]string{}); model != "claude-opus-5-5" {
 		t.Errorf("应当记住最近实测到的模型：%q", model)
 	}
@@ -673,5 +675,270 @@ func TestRememberFeedsPreferenceBrief(t *testing.T) {
 	result, _ := store.RecallScene(s, RecallOptions{Budget: 1500, Renderer: "claude"})
 	if !slices.Contains(result.Names(), "white-captions") || !slices.Contains(result.Names(), "no-emoji") {
 		t.Errorf("偏好也召回给渲染工具：%v", result.Names())
+	}
+}
+
+// TestCheckEpisodesInheritRenderAndDemoteStats：事后检查查出的问题记到最近一次
+// 渲染上，同一份产物重复检查不重复计数，渲染时「通过」的产物在统计里不再算通过。
+func TestCheckEpisodesInheritRenderAndDemoteStats(t *testing.T) {
+	store := newStore(t)
+	s := writeSceneDir(t, t.TempDir(), "scene-001", "中文", "")
+	s.Memory = &scene.MemoryRecall{Snapshot: 1, Names: []string{"cjk-rule"}}
+	render := scene.Attempt{Renderer: "codex", Model: "gpt-6-astra", Outcome: scene.OutcomeSucceeded, Fingerprint: "fp1"}
+	store.RecordAttempt(s, render, AttemptSource{Source: SourceRender, Run: "run-1"})
+	if stats, _ := store.Stats(); stats["cjk-rule"]["codex/gpt-6-astra"].PassedFirstTry != 1 {
+		t.Fatalf("检查前算通过：%v", stats)
+	}
+	s.Memory = nil
+	finding := []Finding{{Check: "reads.duration", Problem: "e1 可读 5 帧，还差 20 帧"}}
+	ep, recorded, err := store.RecordCheck(s, finding)
+	if err != nil || !recorded {
+		t.Fatalf("应当记下：%v", err)
+	}
+	if ep.Renderer != "codex" || ep.Model != "gpt-6-astra" || ep.Fingerprint != "fp1" || ep.Run != "run-1" || !slices.Equal(ep.Recalled, []string{"cjk-rule"}) {
+		t.Errorf("检查经历要继承最近一次渲染：%+v", ep)
+	}
+	if _, again, _ := store.RecordCheck(s, finding); again {
+		t.Error("同一份产物同一组问题不重复记录")
+	}
+	stats, _ := store.Stats()
+	if got := stats["cjk-rule"]["codex/gpt-6-astra"]; got.Recalled != 1 || got.PassedFirstTry != 0 {
+		t.Errorf("事后查出问题的产物不算一次通过：%+v", got)
+	}
+	episodes, _ := store.Episodes()
+	clusters := ClusterFailures(episodes)
+	if len(clusters) != 1 || clusters[0].Key != "reads.duration" {
+		t.Errorf("检查问题进入聚类：%+v", clusters)
+	}
+}
+
+// TestExamSkipsWholeFilmLessonsAndPostChecksBlankFrames：只由整片检查判定的经验
+// 考不了，转人工确认；引用空白帧的经验在考试里补查首帧。
+func TestExamSkipsWholeFilmLessonsAndPostChecksBlankFrames(t *testing.T) {
+	store := newStore(t)
+	project := t.TempDir()
+	s := writeSceneDir(t, filepath.Join(project, "scenes", "scene-001"), "scene-001", "中文标题", "")
+	failed, _, _ := store.RecordCheck(s, []Finding{{Check: "frames.blank", Problem: "第 0 帧是空白帧"}})
+	reads := lesson("reads-pacing", StatusTrial, nil, "reads.duration")
+	reads.AppliesWhen, reads.FromEpisodes = Applies{}, []string{failed.ID}
+	store.Write(reads)
+	run := func(ctx context.Context, sc scene.Scene, renderer string) scene.Attempt {
+		return scene.Attempt{Renderer: renderer, Outcome: scene.OutcomeSucceeded}
+	}
+	opts := ExamOptions{Renderers: []string{"codex"}, Budget: 1500, Workspace: filepath.Join(project, "production", "memory-exams"), Run: run}
+	if _, err := store.Exam(context.Background(), opts); err == nil || !strings.Contains(err.Error(), "promote") {
+		t.Fatalf("只有整片检查的经验考不了，要提示人工确认：%v", err)
+	}
+	opts.Trial = []string{"reads-pacing"}
+	if _, err := store.Exam(context.Background(), opts); err == nil || !strings.Contains(err.Error(), "单镜头回放考不了") {
+		t.Fatalf("点名考整片经验时要说明原因：%v", err)
+	}
+	cover := lesson("paint-first-frame", StatusTrial, nil, "frames.blank")
+	cover.AppliesWhen, cover.FromEpisodes = Applies{}, []string{failed.ID}
+	store.Write(cover)
+	opts.Trial = nil
+	opts.PostCheck = func(ctx context.Context, sc scene.Scene, checks []string) []Finding {
+		if !slices.Equal(checks, []string{"frames.blank"}) {
+			t.Errorf("只补查试用经验引用的校验器：%v", checks)
+		}
+		if sc.Memory != nil && slices.Contains(sc.Memory.Names, "paint-first-frame") {
+			return nil
+		}
+		return []Finding{{Check: "frames.blank", Problem: "第 0 帧是空白帧"}}
+	}
+	result, err := store.Exam(context.Background(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Verdict.Pass || !slices.Equal(result.Trials, []string{"paint-first-frame"}) {
+		t.Fatalf("补查首帧后试用组应当胜出：%+v trials=%v", result.Verdict, result.Trials)
+	}
+	for _, c := range result.Cells {
+		if c.Arm == ArmControl && (c.Passed || !slices.Contains(c.Checks, "frames.blank")) {
+			t.Errorf("对照组的空白首帧要被补查出来：%+v", c)
+		}
+	}
+	if m, _, _ := store.Find("reads-pacing"); m.Status != StatusTrial {
+		t.Errorf("考不了的经验保持试用，等人确认：%s", m.Status)
+	}
+}
+
+// TestConversationSignalsBecomePreferenceCluster：单独一句话不算信号；
+// 在不同轮次反复提的要求、被回退的一轮才交给整理者。
+func TestConversationSignalsBecomePreferenceCluster(t *testing.T) {
+	store := newStore(t)
+	project := filepath.Join(t.TempDir(), "demo")
+	os.MkdirAll(project, 0o755)
+	os.WriteFile(filepath.Join(project, "article-to-motion.conf"), nil, 0o644)
+	say := func(turn, message string, reverted bool) {
+		t.Helper()
+		if _, err := store.RecordUtterance(Utterance{ProjectDir: project, Session: "s1", Turn: turn, Message: message, Reverted: reverted}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	say("t1", "节奏再慢一点", false)
+	say("t2", "把标题换成蓝色", false)
+	say("t3", "再慢一点吧", false)
+	say("t3", "再慢一点吧", false) // 同一轮重复记录不算
+	say("t4", "开头加个爆炸特效", false)
+	say("t4", "开头加个爆炸特效", true)
+	say("t5", "慢一点，节奏慢一点", false)
+	episodes, _ := store.Episodes()
+	if len(episodes) != 6 {
+		t.Fatalf("同一轮只记一次说话、一次回退：%d", len(episodes))
+	}
+	signals := PreferenceSignals(episodes)
+	if len(signals) != 2 || signals[0].Kind != "repeated" || signals[0].Count != 3 || signals[1].Kind != "reverted" || signals[0].Project != "demo" {
+		t.Fatalf("应当认出反复 3 次的要求与 1 次回退：%+v", signals)
+	}
+	result, err := store.Consolidate(context.Background(), ConsolidateOptions{MinCount: 2, Drafter: func(ctx context.Context, workdir, brief string) error {
+		if !strings.Contains(brief, "在 3 轮对话里反复提到") || !strings.Contains(brief, "回退了这一轮") || !strings.Contains(brief, "〔项目 demo〕") {
+			t.Errorf("说明里要列出偏好信号：\n%s", brief)
+		}
+		return nil
+	}})
+	if err != nil || len(result.Clusters) != 1 || result.Clusters[0].Key != ClusterKeyHuman || result.Clusters[0].Count != 4 {
+		t.Fatalf("人的反应汇成一组：%+v %v", result.Clusters, err)
+	}
+	again, _ := store.Consolidate(context.Background(), ConsolidateOptions{MinCount: 1, Drafter: func(context.Context, string, string) error {
+		t.Error("已经整理过的信号不再交给整理者")
+		return nil
+	}})
+	if len(again.Clusters) != 0 {
+		t.Errorf("没有新信号：%+v", again.Clusters)
+	}
+	say("t6", "还是太快了，再慢一点", false)
+	fresh, _ := store.Consolidate(context.Background(), ConsolidateOptions{MinCount: 1, DraftsDir: t.TempDir()})
+	if len(fresh.Clusters) != 1 || fresh.Clusters[0].Signals[0].Count != 4 {
+		t.Errorf("新的一次提起让整组重新成为信号，次数按全部历史算：%+v", fresh.Clusters)
+	}
+}
+
+func TestSimilarRequests(t *testing.T) {
+	for _, pair := range [][2]string{{"节奏再慢一点", "慢一点，节奏慢一点"}, {"再慢一点吧", "节奏再慢一点"}, {"字幕大一点", "字幕再大一点"}} {
+		if !similar(pair[0], pair[1]) {
+			t.Errorf("%q 与 %q 应当算同一个要求", pair[0], pair[1])
+		}
+	}
+	for _, pair := range [][2]string{{"慢一点", "把背景亮一点"}, {"把标题换成蓝色", "开头加个爆炸特效"}, {"字幕大一点", "字幕小一点"}} {
+		if similar(pair[0], pair[1]) {
+			t.Errorf("%q 与 %q 不是同一个要求", pair[0], pair[1])
+		}
+	}
+}
+
+func TestPreferenceBriefAsksToConfirmDraftedPreferences(t *testing.T) {
+	store := newStore(t)
+	draft := Memory{Kind: KindPreference, Meta: Meta{Name: "slow-pacing", Description: "节奏偏慢，每个画面多停一会", Status: StatusTrial, CheckedBy: []string{"human"}}, Body: "节奏偏慢"}
+	store.Write(draft)
+	brief, _, _ := store.PreferenceBrief("demo", 0)
+	if !strings.Contains(brief, "待确认的偏好") || !strings.Contains(brief, "【slow-pacing】") || !strings.Contains(brief, "am memory promote") {
+		t.Errorf("待确认的偏好要交给编排工具去问：\n%s", brief)
+	}
+	store.Promote("slow-pacing")
+	if brief, _, _ := store.PreferenceBrief("demo", 0); strings.Contains(brief, "待确认") || !strings.Contains(brief, "【slow-pacing】（全局）") {
+		t.Errorf("确认后转入生效偏好：\n%s", brief)
+	}
+}
+
+// TestRunReportComparesBatchesPerModel：按批次汇总一次通过率、重试、问题数（含事后
+// 检查）、耗时与 token，并按渲染工具/模型分开。
+func TestRunReportComparesBatchesPerModel(t *testing.T) {
+	ep := func(run, renderer, model, outcome string, retry bool, problems int, recalled ...string) Episode {
+		e := Episode{Source: SourceRender, Run: run, Renderer: renderer, Model: model, Outcome: outcome, Retry: retry,
+			Seconds: 60, Usage: &tools.Usage{InputTokens: 100, OutputTokens: 10}, Recalled: recalled, Project: "demo",
+			SceneDir: "/p/" + run + renderer + strconv.Itoa(problems), Fingerprint: "fp", CreatedAt: run}
+		for i := 0; i < problems; i++ {
+			e.Problems = append(e.Problems, "x")
+		}
+		return e
+	}
+	episodes := []Episode{
+		ep("run-1", "codex", "gpt-6", scene.OutcomeVerificationFailed, false, 2),
+		ep("run-1", "codex", "gpt-6", scene.OutcomeSucceeded, true, 0),
+		ep("run-1", "claude", "opus", scene.OutcomeSucceeded, false, 0),
+		ep("run-2", "codex", "gpt-6", scene.OutcomeSucceeded, false, 0, "a", "b"),
+		ep("run-2", "claude", "opus", scene.OutcomeSucceeded, false, 1, "a"),
+		{Source: SourceExam, Run: "", Renderer: "codex", Outcome: scene.OutcomeSucceeded},
+	}
+	check := episodes[4]
+	check.Source, check.Problems, check.CreatedAt = SourceCheck, []string{"读不完", "剧透"}, "run-2z"
+	episodes = append(episodes, check)
+	runs := RunReport(episodes)
+	if len(runs) != 2 {
+		t.Fatalf("应当有两批：%+v", runs)
+	}
+	first, second := runs[0], runs[1]
+	if first.Scenes != 2 || first.PassedFirstTry != 1 || first.Retries != 1 || first.Problems != 2 || first.Seconds != 180 || first.InputTokens != 300 {
+		t.Errorf("第一批不对：%+v", first.RunStats)
+	}
+	if second.Scenes != 2 || second.PassedFirstTry != 1 || second.CheckProblems != 2 || second.Problems != 3 || second.Recalled != 1.5 {
+		t.Errorf("事后检查查出问题的镜头不算通过、问题计入：%+v", second.RunStats)
+	}
+	if got := second.ByModel["codex/gpt-6"]; got.Scenes != 1 || got.PassRate != 1 {
+		t.Errorf("按渲染工具/模型分开：%+v", second.ByModel)
+	}
+	if got := first.ByModel["codex/gpt-6"]; got.PassRate != 0 || got.Retries != 1 {
+		t.Errorf("第一批 codex：%+v", got)
+	}
+}
+
+// TestModelChangeDownweightsStatsAndAsksForRetest：统计按模型分开，换了模型以后
+// 旧模型的效果只当弱证据；考试时用的模型与现在不同时提示重考，重考对照组去掉它。
+func TestModelChangeDownweightsStatsAndAsksForRetest(t *testing.T) {
+	stats := map[string]Stat{"codex/gpt-6": {Recalled: 10, PassedFirstTry: 10}}
+	same := smoothedRate(stats, "codex", "gpt-6")
+	other := smoothedRate(stats, "codex", "gpt-7")
+	if !(same > other && other > 0.5) {
+		t.Errorf("同模型 %.2f 应当高于换了模型的 %.2f，后者仍略高于 0.5", same, other)
+	}
+
+	store := newStore(t)
+	project := t.TempDir()
+	s := writeSceneDir(t, filepath.Join(project, "scenes", "scene-001"), "scene-001", "中文标题", "")
+	failed, _ := store.RecordAttempt(s, failingAttempt("codex", "determinism.raf"), AttemptSource{Source: SourceRender})
+	rule := lesson("timeline-not-raf", StatusTrial, nil, "determinism.raf")
+	rule.AppliesWhen, rule.FromEpisodes = Applies{}, []string{failed.ID}
+	store.Write(rule)
+	model := "gpt-6"
+	run := func(ctx context.Context, sc scene.Scene, renderer string) scene.Attempt {
+		if sc.Memory != nil && slices.Contains(sc.Memory.Names, "timeline-not-raf") {
+			return scene.Attempt{Renderer: renderer, Model: model, Outcome: scene.OutcomeSucceeded}
+		}
+		a := failingAttempt(renderer, "determinism.raf")
+		a.Model = model
+		return a
+	}
+	opts := ExamOptions{Renderers: []string{"codex"}, Budget: 1500, Workspace: filepath.Join(project, "production", "memory-exams"), Run: run}
+	if result, err := store.Exam(context.Background(), opts); err != nil || result.Applied != "promoted" {
+		t.Fatalf("先在 gpt-6 上考过：%+v %v", result.Verdict, err)
+	}
+	current := func(string) string { return "gpt-6" }
+	if report, _ := store.Status(false, current); len(report.Retest) != 0 {
+		t.Errorf("模型没变不用重考：%+v", report.Retest)
+	}
+	model = "gpt-7"
+	current = func(string) string { return "gpt-7" }
+	report, _ := store.Status(false, current)
+	if len(report.Retest) != 1 || report.Retest[0].Current != "gpt-7" || report.Retest[0].Examined[0] != "gpt-6" {
+		t.Fatalf("换了模型要提示重考：%+v", report.Retest)
+	}
+	opts.Retest = []string{"timeline-not-raf"}
+	opts.ModelOf = current
+	result, err := store.Exam(context.Background(), opts)
+	if err != nil || result.Applied != "retest-passed" {
+		t.Fatalf("对照组去掉它后应当显出提升：%+v %v", result.Verdict, err)
+	}
+	for _, c := range result.Cells {
+		if c.Arm == ArmControl && slices.Contains(c.Recalled, "timeline-not-raf") {
+			t.Errorf("重考的对照组不该召回它：%+v", c)
+		}
+	}
+	if report, _ := store.Status(false, current); len(report.Retest) != 0 {
+		t.Errorf("在新模型上考过就不用再重考：%+v", report.Retest)
+	}
+	opts.Retest = []string{"missing"}
+	if _, err := store.Exam(context.Background(), opts); err == nil {
+		t.Error("只能重考生效经验")
 	}
 }

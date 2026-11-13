@@ -338,6 +338,11 @@ func checkCuts(p Prober, report *Report, opts Options) error {
 	return nil
 }
 
+// HandoffBroken 报告这个交界是否约定了交接却没接上（与 Problems 里的判定一致）。
+func HandoffBroken(cut Cut) bool {
+	return cut.Handoff != "" && cut.Difference != nil && *cut.Difference >= handoffBreakDifference
+}
+
 // checkHandoff 按交界帧差异判定声明过交接的交界是否真的接上了。
 func checkHandoff(report *Report, cut Cut, crossChapter bool) {
 	scope := "交界"

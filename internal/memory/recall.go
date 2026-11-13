@@ -172,7 +172,7 @@ func Recall(in RecallInput) RecallResult {
 		if len(m.AppliesWhen.Models) > 0 {
 			match++
 		}
-		item.Rate = smoothedRate(in.Stats[m.Name], in.Renderer)
+		item.Rate = smoothedRate(in.Stats[m.Name], in.Renderer, in.Model)
 		item.Score = match * (0.5 + item.Rate)
 		item.Text = renderItem(m)
 		item.Chars = utf8.RuneCountInString(item.Text)
@@ -193,19 +193,6 @@ func Recall(in RecallInput) RecallResult {
 		result.Items = append(result.Items, item)
 	}
 	return result
-}
-
-// smoothedRate 用该渲染工具的统计；它没有样本时用全部渲染工具的合计。
-func smoothedRate(stats map[string]Stat, renderer string) float64 {
-	stat, ok := stats[renderer]
-	if !ok || stat.Recalled == 0 {
-		stat = Stat{}
-		for _, s := range stats {
-			stat.Recalled += s.Recalled
-			stat.PassedFirstTry += s.PassedFirstTry
-		}
-	}
-	return float64(stat.PassedFirstTry+1) / float64(stat.Recalled+2)
 }
 
 func renderItem(m Memory) string {
@@ -235,6 +222,8 @@ type RecallOptions struct {
 	Model string
 	// Extra 是额外参与召回的记忆（考试里的试用记忆）。
 	Extra []Memory
+	// Exclude 是不参与召回的记忆名（重考生效记忆时的对照组）。
+	Exclude []string
 }
 
 // RecallScene 对一个镜头做召回。记忆库还没有快照且没有 Extra 时什么也不召回。
@@ -261,6 +250,15 @@ func (s *Store) RecallScene(sc scene.Scene, opts RecallOptions) (RecallResult, e
 		}
 	}
 	memories = withExtra(memories, opts.Extra)
+	if len(opts.Exclude) > 0 {
+		kept := memories[:0:0]
+		for _, m := range memories {
+			if !contains(opts.Exclude, m.Name) {
+				kept = append(kept, m)
+			}
+		}
+		memories = kept
+	}
 	result := Recall(RecallInput{Memories: memories, Stats: stats, Renderer: opts.Renderer, Model: opts.Model, Features: features,
 		Text: sc.Text + "\n" + promptText(sc), Project: projectOf(sc.Directory), Budget: opts.Budget})
 	result.Snapshot = snapshotID

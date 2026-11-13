@@ -182,6 +182,13 @@ SVG 转 PNG 必须走 `rsvg-convert`（`internal/styleimage`），**不能用 Im
 | 模型名只来自实测：claude / qoder / codebuddy 读输出流的 `system/init`（`tools.DetectModel`），codex 读 `$CODEX_HOME/config.toml` 顶层 `model`（`tools.ConfiguredModel`），opencode 记为未知。召回在渲染器启动前，用 `Store.CurrentModel`：配置声明的优先，否则取 `models.json` 里最近一次实测的 | 流里的模型名只有渲染开始后才有；换模型后的第一次渲染按旧模型召回，渲染完即更新 |
 | 格式校验（`memory.Lint`）拒收正文 / 描述 / 关键词里的工具名与模型名（范围只能写进 `applies_when`）、镜头编号、素材文件名、照抄镜头文案连续 8 字以上、与已有经验同校验器同特征同范围却不写 `revises` 的草稿 | 正文保持中性才能在范围放宽时直接复用；「矛盾」无法语义判定，用「同一组校验器 + 特征 + 范围」近似，只拦并列新增 |
 | 偏好也交给编排工具：`PreferenceBrief` 追加在 `am run` 的提示词后、Studio 每轮对话前（偏好摘要没变且 CLI 会话还在时不重发，见 `SessionMeta.PreferenceDigest`）。段落里总写着怎样用 `am memory remember` 记下新偏好；用户亲口说的偏好直接生效，不经人工确认或考试 | 用户随口一句话，是编排工具在理解、在定分镜和风格；渲染器只拿到展开后的镜头说明 |
+| 事后检查也是校验器：`am validate reads`（`reads.<规则>`，来自 `reads.Report.Findings`）、`am review`（`review.handoff`，`review.HandoffBroken`）、`am scene frames --check-blank`（`frames.blank`）查出的问题经 `RecordCheck` 记到镜头上，渲染工具 / 模型 / 召回继承该镜头最近一次渲染；同一份产物同一组问题不重复记。统计里，事后查出问题的产物不再算一次通过 | 产物校验与确定性扫描是渲染工具本来就很少犯的错（导入的 82 次真实渲染全部一次通过），决定观感的是阅读时间、交接与空白帧 |
+| 只由 `reads.*` / `review.handoff` 判定的经验考不了（要看整片），`memory.Examinable` 把它们排除在考试外，由人 `promote`；`frames.blank` 由考试在作答后补查第 0 帧（`ExamOptions.PostCheck`），只补查试用经验引用的校验器 | 单镜头重放没有整片清单和相邻镜头；补查只看第 0 帧，是因为空白帧经验来自「第 0 帧当封面」，看末帧会把合法的淡出算进去 |
+| 偏好信号（`memory.PreferenceSignals`）：Studio 每轮对话的话与回退经 `RecordUtterance` 记为 `conversation` 经历，在不同轮次反复提的同一要求（字二元组 Jaccard ≥ 0.5 或重合占短句 ≥ 0.6）、被回退的一轮、带说明的 👍 / 👎 汇成 `human` 组交给整理者起草偏好；起草的偏好要确认，偏好段会让编排工具在对话里问用户 | 单独一句话大多只对这一次成立，反复与回退才说明默认做法不合心意 |
+| 批次：每次 `am scene run` / `run-all` 生成一个 `run-…` 编号写进经历，`am memory report` 与 Studio「运行对比」按批次、按渲染工具/模型比一次通过率、重试、问题数、耗时与 token | 评审要看到「第二次比第一次好」，混在一起的话换了渲染工具的变化会被算成记忆的功劳 |
+| 统计键是「渲染工具/模型」（`StatKey`）；召回排序只把当前模型自己的样本当强证据，别的模型的样本向 0.5 收缩一半。`Status` 的 `Retest` 列出考试时用的模型与现在不同的生效经验，`am memory exam --retest` 对照组去掉它重考，通过补记考试编号，不通过只报告不改状态 | 换了模型，旧结论不再可信，但也不能自动作废 |
+| `am memory import` 导入已有项目：尝试记录直接读；只有产物的老归档在临时目录里铺上镜头目录现在的文件（字体、视觉规范）再覆盖归档后重判，只记失败；时长 / 帧数差出 3 帧以上视为镜头后来改过时长，不记 | 不铺镜头目录会把引用本地字体的合成全误判成 font-missing（实测 29 条）；按现在的 scene.json 重判改过时长的镜头会凭空制造失败 |
+| 记忆设置经 `ChildEnvironment` 显式传给子进程（`AM_MEMORY_DIR`、`MEMORY`……） | 安全模式白名单里没有它们，编排工具调用的 `am memory remember` 会落到默认目录，codex 沙箱里直接写失败（实测） |
 | 镜头特征词表是 `memory.FeatureDescriptions`，新增特征要同时改 `Features` 的抽取 | 整理说明与格式校验都只认这张表，抽不出来的特征写进经验永远匹配不上 |
 | 考试的作答者由调用方注入（`ExamRunner`），考场建在项目的 `production/memory-exams/` | 渲染器从镜头目录向上找 `.agents/skills`，建在记忆库里就找不到项目技能 |
 | 门槛 `memory.Judge` 是纯函数，五条门槛各有单测；渲染工具自身故障让整场无效，不按 0 分算 | 一次认证失效不能让一条好经验被拒 |

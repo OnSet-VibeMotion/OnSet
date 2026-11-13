@@ -14,6 +14,7 @@ import (
 
 	"github.com/chouheiwa/articale-to-motion/internal/concat"
 	"github.com/chouheiwa/articale-to-motion/internal/mediaprobe"
+	"github.com/chouheiwa/articale-to-motion/internal/memory"
 	"github.com/chouheiwa/articale-to-motion/internal/scene"
 	"github.com/chouheiwa/articale-to-motion/internal/schedule"
 	"github.com/spf13/cobra"
@@ -251,6 +252,11 @@ mp4」变成「可以逐张打开看的 PNG」，并把机器能判的情况标�
 				fmt.Fprintf(stdout, "提示：%s\n", hint)
 			}
 			if checkBlank && !report.OK {
+				findings := make([]memory.Finding, 0, len(report.Problems))
+				for _, problem := range report.Problems {
+					findings = append(findings, memory.Finding{Check: scene.CheckFramesBlank, Problem: problem})
+				}
+				recordCheckFindings(stdout, ".", []scene.Scene{s}, map[string][]memory.Finding{s.ID: findings})
 				return fmt.Errorf("抽帧发现空白帧：%s\n  - %s",
 					s.Output, strings.Join(report.Problems, "\n  - "))
 			}

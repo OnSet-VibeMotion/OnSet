@@ -1683,3 +1683,27 @@ h4 {
   flex: 1;
   min-width: 200px;
 }
+.run-compare {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.run-delta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 120px;
+}
+.run-delta.better strong {
+  color: var(--ok);
+}
+.run-delta.worse strong {
+  color: var(--bad);
+}
+.score-curve .run-bar {
+  fill: var(--accent);
+}

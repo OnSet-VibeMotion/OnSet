@@ -86,7 +86,43 @@ type Report struct {
 	FPS           int           `json:"fps"`
 	Events        []EventResult `json:"events"`
 	Problems      []string      `json:"problems"`
-	Hints         []string      `json:"hints,omitempty"`
+	// Findings 与 Problems 一一对应，给出问题属于哪个镜头、哪条规则；
+	// 渲染记忆按它把阅读问题记到对应镜头上。
+	Findings []Finding `json:"findings"`
+	Hints    []string  `json:"hints,omitempty"`
+}
+
+// Finding 是一条问题的结构化形式。SceneID 为空表示不属于某个镜头（例如清单级的错误）。
+type Finding struct {
+	Rule    string `json:"rule"`
+	EventID string `json:"event_id,omitempty"`
+	SceneID string `json:"scene_id,omitempty"`
+	Message string `json:"message"`
+}
+
+// 规则 ID。渲染记忆引用的是加了 reads. 前缀的形式，见 RuleIDs。
+const (
+	RuleDuration = "duration"
+	RuleSpoiler  = "spoiler"
+	RuleOrder    = "order"
+	RuleBinding  = "binding"
+	RuleFrames   = "frames"
+	RuleIdentity = "identity"
+	RuleTimeline = "timeline"
+)
+
+// RuleIDs 返回全部规则 ID，顺序固定。
+func RuleIDs() []string {
+	return []string{RuleDuration, RuleSpoiler, RuleOrder, RuleBinding, RuleFrames, RuleIdentity, RuleTimeline}
+}
+
+func (r *Report) fail(rule string, e *Event, message string) {
+	f := Finding{Rule: rule, Message: message}
+	if e != nil {
+		f.EventID, f.SceneID = e.ID, e.SceneID
+	}
+	r.Problems = append(r.Problems, message)
+	r.Findings = append(r.Findings, f)
 }
 
 // ReportSchemaVersion 是 Report 的结构版本。
@@ -170,11 +206,11 @@ func RequiredFrames(units, fps int, opts Options) int {
 
 // Check 逐个检查可读元素；timeline 为 nil 时跳过与短语相关的两项。
 func Check(inv Inventory, timeline *Timeline, opts Options) Report {
-	report := Report{SchemaVersion: ReportSchemaVersion, FPS: inv.FPS, Events: []EventResult{}, Problems: []string{}}
+	report := Report{SchemaVersion: ReportSchemaVersion, FPS: inv.FPS, Events: []EventResult{}, Problems: []string{}, Findings: []Finding{}}
 	phrases := map[string]Phrase{}
 	if timeline != nil {
 		if timeline.FPS > 0 && timeline.FPS != inv.FPS {
-			report.Problems = append(report.Problems, fmt.Sprintf(
+			report.fail(RuleTimeline, nil, fmt.Sprintf(
 				"短语时间轴 fps=%d 与可读元素清单 fps=%d 不一致，帧号无法比对", timeline.FPS, inv.FPS))
 			timeline = nil
 		} else {
@@ -187,11 +223,11 @@ func Check(inv Inventory, timeline *Timeline, opts Options) Report {
 	seen := map[string]bool{}
 	for _, event := range inv.Events {
 		if event.ID == "" {
-			report.Problems = append(report.Problems, "存在缺少 event_id 的可读元素")
+			report.fail(RuleIdentity, &event, "存在缺少 event_id 的可读元素")
 			continue
 		}
 		if seen[event.ID] {
-			report.Problems = append(report.Problems, fmt.Sprintf("event_id 重复：%s", event.ID))
+			report.fail(RuleIdentity, &event, fmt.Sprintf("event_id 重复：%s", event.ID))
 			continue
 		}
 		seen[event.ID] = true
@@ -216,7 +252,7 @@ func Check(inv Inventory, timeline *Timeline, opts Options) Report {
 // framesOrdered 要求 进入 ≤ 可读开始 < 可读结束 ≤ 退出完成。
 func framesOrdered(report *Report, e Event) bool {
 	if e.EnterFrame < 0 || e.EnterFrame > e.ReadableStartFrame || e.ReadableStartFrame >= e.ReadableEndFrameExc || e.ReadableEndFrameExc > e.ExitEndFrame {
-		report.Problems = append(report.Problems, fmt.Sprintf(
+		report.fail(RuleFrames, &e, fmt.Sprintf(
 			"%s 的帧号顺序不成立，应满足 enter ≤ readable_start < readable_end ≤ exit_end：%d / %d / %d / %d",
 			e.ID, e.EnterFrame, e.ReadableStartFrame, e.ReadableEndFrameExc, e.ExitEndFrame))
 		return false
@@ -230,7 +266,7 @@ func checkDuration(report *Report, e Event, fps int, opts Options) {
 	required := RequiredFrames(units, fps, opts)
 	report.Events = append(report.Events, EventResult{ID: e.ID, Units: units, ReadableFrames: readable, RequiredFrames: required})
 	if readable < required {
-		report.Problems = append(report.Problems, fmt.Sprintf(
+		report.fail(RuleDuration, &e, fmt.Sprintf(
 			"%s（%s）可读 %d 帧，读完 %d 个字至少要 %d 帧，还差 %d 帧：「%s」",
 			e.ID, e.SceneID, readable, units, required, required-readable, e.Text))
 	}
@@ -239,16 +275,16 @@ func checkDuration(report *Report, e Event, fps int, opts Options) {
 // checkPhrase：非装饰元素不得早于它绑定的短语开始出现，否则画面在剧透口播。
 func checkPhrase(report *Report, e Event, phrases map[string]Phrase) {
 	if e.PhraseID == "" {
-		report.Problems = append(report.Problems, fmt.Sprintf("%s 没有绑定 phrase_id", e.ID))
+		report.fail(RuleBinding, &e, fmt.Sprintf("%s 没有绑定 phrase_id", e.ID))
 		return
 	}
 	phrase, ok := phrases[e.PhraseID]
 	if !ok {
-		report.Problems = append(report.Problems, fmt.Sprintf("%s 绑定的短语 %s 不在短语时间轴里", e.ID, e.PhraseID))
+		report.fail(RuleBinding, &e, fmt.Sprintf("%s 绑定的短语 %s 不在短语时间轴里", e.ID, e.PhraseID))
 		return
 	}
 	if e.EnterFrame < phrase.StartFrame {
-		report.Problems = append(report.Problems, fmt.Sprintf(
+		report.fail(RuleSpoiler, &e, fmt.Sprintf(
 			"%s 在第 %d 帧出现，早于绑定短语 %s 的开始帧 %d：画面先于口播说出了这件事",
 			e.ID, e.EnterFrame, phrase.ID, phrase.StartFrame))
 	}
@@ -265,7 +301,7 @@ func checkOrder(report *Report, events []Event, phrases map[string]Phrase) {
 		}
 		if previous != nil {
 			if before := phrases[previous.PhraseID]; before.Order > phrase.Order {
-				report.Problems = append(report.Problems, fmt.Sprintf(
+				report.fail(RuleOrder, current, fmt.Sprintf(
 					"%s（短语顺序 %d）比 %s（短语顺序 %d）先可读：画面顺序与口播顺序相反",
 					previous.ID, before.Order, current.ID, phrase.Order))
 			}

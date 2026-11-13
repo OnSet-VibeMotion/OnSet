@@ -15,8 +15,9 @@ import (
 	"github.com/chouheiwa/articale-to-motion/internal/tools"
 )
 
-// 记忆面板。读接口直接读记忆库（只读，不记快照）；所有改动都经 am memory 子命令，
-// 与 Studio「自己不写项目文件」的原则一致——记忆库本身也只由 am memory 改。
+// 记忆面板。读接口直接读记忆库（只读，不记快照）；面板上的操作都经 am memory 子命令。
+// 唯一的例外是对话信号（recordUtterance）：每轮结束、每次回退各追加一段经历，
+// 只增不改，不碰项目文件，为它每轮起一个子进程不值得。
 func (s *Server) memoryRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/memory", s.memoryAPI)
 	mux.HandleFunc("/api/memory/recall", s.memoryRecallAPI)
@@ -26,6 +27,8 @@ func (s *Server) memoryRoutes(mux *http.ServeMux) {
 type memoryRow struct {
 	memory.Memory
 	Stats map[string]memory.Stat `json:"stats"`
+	// Examinable 为 false 的试用经验只由整片检查判定，考不了，要人确认生效。
+	Examinable bool `json:"examinable"`
 }
 
 type examCellView struct {
@@ -66,7 +69,7 @@ func (s *Server) memoryAPI(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	status, err := store.Status(false)
+	status, err := store.Status(false, func(r string) string { return store.CurrentModel(r, envutil.EnvMap()) })
 	if err != nil {
 		s.error(w, http.StatusInternalServerError, "memory_unavailable", err.Error())
 		return
@@ -83,7 +86,7 @@ func (s *Server) memoryAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	rows := make([]memoryRow, 0, len(all))
 	for _, m := range all {
-		rows = append(rows, memoryRow{Memory: m, Stats: stats[m.Name]})
+		rows = append(rows, memoryRow{Memory: m, Stats: stats[m.Name], Examinable: m.Kind == memory.KindLesson && memory.ExaminableLesson(m)})
 	}
 	events, err := store.Timeline()
 	if err != nil {
@@ -119,6 +122,18 @@ func (s *Server) memoryAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		views = append(views, view)
 	}
+	project := memory.ProjectName(p.Path)
+	runs := []memory.RunSummary{}
+	if episodes, err := store.Episodes(); err == nil {
+		for _, r := range memory.RunReport(episodes) {
+			if r.Project == project {
+				runs = append(runs, r)
+			}
+		}
+	}
+	if len(runs) > 12 {
+		runs = runs[len(runs)-12:]
+	}
 	snapshots, err := store.SnapshotIDs()
 	if err != nil {
 		s.error(w, http.StatusInternalServerError, "memory_unavailable", err.Error())
@@ -129,7 +144,7 @@ func (s *Server) memoryAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	s.write(w, http.StatusOK, map[string]any{
 		"enabled": cfg.Memory.Enabled, "dir": store.Dir, "pinned": cfg.Memory.Snapshot, "budget": cfg.Memory.RecallBudget,
-		"renderer": cfg.Renderer, "status": status, "memories": rows, "timeline": timeline, "exams": views, "snapshots": snapshots,
+		"renderer": cfg.Renderer, "status": status, "memories": rows, "timeline": timeline, "exams": views, "snapshots": snapshots, "runs": runs,
 	})
 }
 
@@ -221,6 +236,13 @@ func (s *Server) memoryActionAPI(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		args, label = []string{"memory", "exam", "--renderers", strings.Join(req.Renderers, ",")}, "记忆考试"
+		if req.Name != "" {
+			if !memory.ValidName(req.Name) {
+				s.error(w, http.StatusBadRequest, "invalid_name", "记忆名不合法")
+				return
+			}
+			args, label = append(args, "--retest", req.Name), "重考 "+req.Name
+		}
 	case "rollback":
 		if req.To < 1 {
 			s.error(w, http.StatusBadRequest, "invalid_snapshot", "要给出快照号")
@@ -316,4 +338,18 @@ func (s *Server) preferenceBrief(p Project, cfg config.Config) (string, string) 
 		return "", ""
 	}
 	return text, digest
+}
+
+// recordUtterance 把用户在这一轮说的话（或回退了这一轮）写成对话经历，
+// 整理时从反复提的要求与回退里归纳偏好。失败只是少一条信号，不影响对话。
+func (s *Server) recordUtterance(p Project, turn *Turn, reverted bool) {
+	cfg, err := config.Load(p.Path, nil)
+	if err != nil || !cfg.Memory.Enabled || strings.TrimSpace(turn.Message) == "" {
+		return
+	}
+	store, err := memory.Open(cfg.Memory.Dir)
+	if err != nil {
+		return
+	}
+	_, _ = store.RecordUtterance(memory.Utterance{ProjectDir: p.Path, Session: turn.SessionID, Turn: turn.ID, Message: turn.Message, Reverted: reverted})
 }

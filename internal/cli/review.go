@@ -13,6 +13,7 @@ import (
 
 	"github.com/chouheiwa/articale-to-motion/internal/determinism"
 	"github.com/chouheiwa/articale-to-motion/internal/mediaprobe"
+	"github.com/chouheiwa/articale-to-motion/internal/memory"
 	"github.com/chouheiwa/articale-to-motion/internal/review"
 	"github.com/chouheiwa/articale-to-motion/internal/scene"
 	"github.com/chouheiwa/articale-to-motion/internal/schedule"
@@ -76,11 +77,13 @@ func newReviewCommand(stdout io.Writer, projectRoot *string) *cobra.Command {
 				rate = canvas.FPS
 			}
 			var segments []review.Segment
+			var planned []scene.Scene
 			if scenesRoot != "" {
 				scenes, err := schedule.Plan(scenesRoot)
 				if err != nil {
 					return err
 				}
+				planned = scenes
 				for _, s := range scenes {
 					segment := review.Segment{ID: s.ID, Frames: int(math.Round(s.DurationSeconds * float64(rate)))}
 					if s.Timing != nil {
@@ -121,6 +124,17 @@ func newReviewCommand(stdout io.Writer, projectRoot *string) *cobra.Command {
 				fmt.Fprintf(stdout, "提示：%s\n", hint)
 			}
 			fmt.Fprintf(stdout, "报告：%s\n", target)
+			// 没接上的交接记到交界两侧的镜头上：哪一侧没按约定画，机器分不清。
+			broken := map[string][]memory.Finding{}
+			for _, cut := range report.Cuts {
+				if review.HandoffBroken(cut) {
+					problem := fmt.Sprintf("%s → %s 约定了 %s 交接，但交界两帧差异 %.1f，没接上", cut.From, cut.To, cut.Handoff, *cut.Difference)
+					for _, id := range []string{cut.From, cut.To} {
+						broken[id] = append(broken[id], memory.Finding{Check: scene.CheckReviewHandoff, Problem: problem})
+					}
+				}
+			}
+			recordCheckFindings(stdout, rootDir, planned, broken)
 			if !report.OK {
 				return fmt.Errorf("整片复查未通过：%s\n  - %s", args[0], strings.Join(report.Problems, "\n  - "))
 			}

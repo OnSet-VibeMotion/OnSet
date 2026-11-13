@@ -212,15 +212,19 @@ am memory consolidate                    # 失败经历 → 试用经验（由 O
 am memory exam --renderers claude,codex  # 回放考试：错题 + 留出题 × 渲染工具 × {对照, 试用}
 am memory feedback scenes/scene-003 --down --note "字幕压住了图表"
 am memory remember --name slow-pacing "节奏慢一点，每个画面多停一秒"   # 加 --global 对所有项目成立
+am memory report                         # 按批次对比一次通过率、重试、问题数、耗时与 token
+am memory import ../旧项目                # 把已有项目的渲染历史导入为种子经历
 am memory status                         # 现状、待沉睡候选；手改记忆文件后用它记成新快照
 am memory rollback --to 3                # 回到任意快照，不删历史
 ```
 
 新经验先进入试用，只在考试里使用。考试按确定性校验评分，试用组总分要严格高于对照组，且在任何一个渲染工具上、任何一道对照组做对的题都不能做错，留出题的通过数不能下降；渲染工具自身故障使整场考试无效而不是记 0 分。生效记忆集合每变一次就生成一个快照，项目可以用 `MEMORY_SNAPSHOT` 钉住某个快照。
 
+除了产物校验与确定性扫描，`am validate reads`（阅读时间）、`am review`（交接）、`am scene frames --check-blank`（空白帧）查出的问题也记到对应镜头上，参与整理。只由阅读时间或交接判定的经验要看整片，考试考不了，由人确认后生效。Studio 里每轮对话说的话和回退也会记下：反复提的同一个要求、被回退的改动会被整理成待确认的偏好，编排工具会在对话里找机会问你。
+
 偏好同时交给编排工具：`am run` 与 Studio 对话开工前都会读到「用户偏好」段，用户随口一句话也能按以往的取向补全意图。
 
-不同模型犯的错不一样。每次渲染都记下实际用的模型（claude、qoder、codebuddy 从输出流读，codex 读 `config.toml`，opencode 记为未知），失败按「渲染工具/模型」分布交给整理者；只在某个模型上成立的经验写 `applies_when.renderers` / `models` 限定范围，召回只给对应的渲染工具和模型。经验正文里不写工具名或模型名、不照抄镜头文案或素材名，`checked_by` 只能引用 `am` 已有的校验器 ID（`output.*` 与 `determinism.*`）。
+不同模型犯的错不一样。每次渲染都记下实际用的模型（claude、qoder、codebuddy 从输出流读，codex 读 `config.toml`，opencode 记为未知），失败按「渲染工具/模型」分布交给整理者；只在某个模型上成立的经验写 `applies_when.renderers` / `models` 限定范围，召回只给对应的渲染工具和模型。效果统计也按「渲染工具/模型」分开；模型换了以后 `am memory status` 会提示重考，`am memory exam --retest <名字>` 对照组去掉它重考。经验正文里不写工具名或模型名、不照抄镜头文案或素材名，`checked_by` 只能引用 `am` 已有的校验器 ID（`output.*` 与 `determinism.*`）。
 
 考试的每一格都是一次真实渲染，渲染次数 = 题数 × 渲染工具数 × 2 × `--repeat`，默认最多 4 道错题。
 

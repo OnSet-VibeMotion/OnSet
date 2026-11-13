@@ -14,16 +14,19 @@ type StatusReport struct {
 	// Broken 是解析失败的记忆文件及原因。
 	Broken map[string]string `json:"broken,omitempty"`
 	// Weak 是待沉睡候选。
-	Weak             []Weak `json:"weak"`
-	Episodes         int    `json:"episodes"`
-	PendingFailures  int    `json:"pending_failures"`
-	LastConsolidated string `json:"last_consolidated,omitempty"`
+	Weak []Weak `json:"weak"`
+	// Retest 是模型换过、需要重考的生效经验。
+	Retest           []Retest `json:"retest"`
+	Episodes         int      `json:"episodes"`
+	PendingFailures  int      `json:"pending_failures"`
+	LastConsolidated string   `json:"last_consolidated,omitempty"`
 }
 
 // Status 汇总记忆库现状。record 为 true 时，把人工编辑记成新快照
-// （标为「人工编辑，未经考试」）。
-func (s *Store) Status(record bool) (StatusReport, error) {
-	report := StatusReport{Dir: s.Dir, Counts: map[string]int{}, Broken: map[string]string{}, Weak: []Weak{}, Drift: []string{}}
+// （标为「人工编辑，未经考试」）。currentModel 给出各渲染工具现在的模型，
+// 用来找出需要重考的经验；为 nil 时不判定。
+func (s *Store) Status(record bool, currentModel func(renderer string) string) (StatusReport, error) {
+	report := StatusReport{Dir: s.Dir, Counts: map[string]int{}, Broken: map[string]string{}, Weak: []Weak{}, Drift: []string{}, Retest: []Retest{}}
 	all, broken, err := s.Memories()
 	if err != nil {
 		return report, err
@@ -76,6 +79,13 @@ func (s *Store) Status(record bool) (StatusReport, error) {
 	}
 	if weak := WeakMemories(episodes, active); weak != nil {
 		report.Weak = weak
+	}
+	retest, err := s.RetestNeeded(currentModel)
+	if err != nil {
+		return report, err
+	}
+	if retest != nil {
+		report.Retest = retest
 	}
 	return report, nil
 }

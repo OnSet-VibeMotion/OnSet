@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	"github.com/chouheiwa/articale-to-motion/internal/determinism"
+	"github.com/chouheiwa/articale-to-motion/internal/reads"
 	"github.com/chouheiwa/articale-to-motion/internal/scene"
 )
 
@@ -149,13 +150,36 @@ func promptText(s scene.Scene) string {
 // CheckerHuman 只能出现在偏好的 checked_by 里：偏好由人判定。
 const CheckerHuman = "human"
 
-// KnownCheckers 返回经验可以引用的全部校验器 ID：产物校验与确定性扫描。
+// KnownCheckers 返回经验可以引用的全部校验器 ID。
 func KnownCheckers() []string {
 	ids := scene.OutputCheckIDs()
 	for _, rule := range determinism.RuleIDs() {
 		ids = append(ids, scene.DeterminismCheckPrefix+rule)
 	}
-	return ids
+	ids = append(ids, scene.CheckFramesBlank)
+	for _, rule := range reads.RuleIDs() {
+		ids = append(ids, scene.ReadsCheckPrefix+rule)
+	}
+	return append(ids, scene.CheckReviewHandoff)
+}
+
+// Examinable 报告校验器能否在单镜头回放考试里判定。
+//
+// 产物校验、确定性扫描在渲染后自动跑；空白帧由考试在作答后补查首帧。
+// 阅读时间要读整片的可读元素清单与短语时间轴，交接要看相邻镜头，单镜头重放
+// 判不了——只靠它们判定的经验不进考试，由人确认后生效，标为未经考试。
+func Examinable(id string) bool {
+	return !strings.HasPrefix(id, scene.ReadsCheckPrefix) && id != scene.CheckReviewHandoff
+}
+
+// ExaminableLesson 报告经验是否至少有一个校验器能在考试里判定。
+func ExaminableLesson(m Memory) bool {
+	for _, id := range m.CheckedBy {
+		if Examinable(id) {
+			return true
+		}
+	}
+	return false
 }
 
 func knownChecker(id string) bool {

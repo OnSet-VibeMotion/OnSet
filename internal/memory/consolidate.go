@@ -25,14 +25,22 @@ type Cluster struct {
 	Notes    []string `json:"notes,omitempty"`
 	// Recalled 是这组经历失败时已经召回的记忆：它们没帮上忙，可能要修订。
 	Recalled []string `json:"recalled,omitempty"`
+	// Signals 只对人工组（ClusterKeyHuman）有值：回退、反复提的要求与带说明的 👍 / 👎。
+	Signals []Signal `json:"signals,omitempty"`
 }
 
 // ClusterKeyHuman 是人工 👎 的聚类键。
 const ClusterKeyHuman = "human"
 
-// ClusterFailures 把失败经历按校验器聚类，按出现次数降序。
+// ClusterFailures 把失败经历按校验器聚类，按出现次数降序；人的反应（回退、
+// 反复提的要求、带说明的 👍 / 👎）汇成一组 ClusterKeyHuman。
 // 一段经历命中几个校验器就进几组：一次渲染常常同时犯几类错。
-func ClusterFailures(episodes []Episode) []Cluster {
+func ClusterFailures(episodes []Episode) []Cluster { return clusterSince(episodes, episodes, "") }
+
+// clusterSince 用 fresh 聚类校验失败；偏好信号要看全部历史才认得出「反复」，
+// 但只保留含有 since 之后新经历的信号，已经整理过的不再交给整理者。
+func clusterSince(fresh, all []Episode, since string) []Cluster {
+	episodes := fresh
 	groups := map[string]*Cluster{}
 	featureCounts := map[string]map[string]int{}
 	get := func(key string) *Cluster {
@@ -43,13 +51,10 @@ func ClusterFailures(episodes []Episode) []Cluster {
 		return groups[key]
 	}
 	for _, e := range episodes {
-		if !e.Failure() || e.Source == SourceExam {
+		if !e.Failure() || e.Source == SourceExam || e.Source == SourceFeedback || e.Source == SourceConversation {
 			continue
 		}
 		keys := uniqueSorted(e.Checks)
-		if e.Source == SourceFeedback {
-			keys = []string{ClusterKeyHuman}
-		}
 		for _, key := range keys {
 			c := get(key)
 			c.Count++
@@ -65,9 +70,6 @@ func ClusterFailures(episodes []Episode) []Cluster {
 				if check == key && i < len(e.Problems) && len(c.Examples) < 4 && !contains(c.Examples, e.Problems[i]) {
 					c.Examples = append(c.Examples, e.Problems[i])
 				}
-			}
-			if e.Feedback != nil && e.Feedback.Note != "" && len(c.Notes) < 8 {
-				c.Notes = append(c.Notes, e.Feedback.Note)
 			}
 			for _, name := range e.Recalled {
 				if !contains(c.Recalled, name) {
@@ -86,6 +88,9 @@ func ClusterFailures(episodes []Episode) []Cluster {
 		sort.Strings(c.Features)
 		sort.Strings(c.Recalled)
 		out = append(out, *c)
+	}
+	if human, ok := humanCluster(all, since); ok {
+		out = append(out, human)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Count != out[j].Count {
@@ -158,7 +163,7 @@ func (s *Store) Consolidate(ctx context.Context, opts ConsolidateOptions) (Conso
 		}
 	}
 	var clusters []Cluster
-	for _, c := range ClusterFailures(fresh) {
+	for _, c := range clusterSince(fresh, episodes, since) {
 		if c.Count >= opts.MinCount {
 			clusters = append(clusters, c)
 		}
@@ -344,6 +349,8 @@ from_episodes: [ep-20261102-101500-a1b2c3]
 
 - name 用小写字母、数字与连字符，与文件名一致，不得与已有记忆重名。
 - 经验必须写成一条可检验的约束，正文同时给出「反例」与「正例」代码片段，正文不超过 600 字，description 不超过 80 字。
+- checked_by 优先用能在单镜头里判定的校验器（output.*、determinism.*、frames.blank）：只由 reads.* 或
+  review.handoff 判定的经验要看整片，考试考不了，只能等人确认。
 - checked_by 只能取下面「校验器」里的 ID，写明这条经验由哪个校验器判定；偏好的 checked_by 写 [human]。
 - applies_when.features 只能取下面「镜头特征」里的值；适用于所有镜头时省略 applies_when。
 - from_episodes 列出这条经验来自哪些经历编号，只能取下面各组里出现的编号。
@@ -354,6 +361,9 @@ from_episodes: [ep-20261102-101500-a1b2c3]
 - 不得包含具体镜头的文案、镜头编号或素材文件名：经验要能迁移到别的文章。
 - 已有记忆说的是同一件事时，写成修订：换一个新名字，加 revises: <旧名>，正文写完整的新版本。不要并列新增。
 - 只为确有共性的失败写经验；拿不准的组宁可不写。
+- 「用户的反应」一组写成偏好：从回退、反复提的要求与 👍 / 👎 里归纳用户长期的取向（节奏、配色、
+  信息密度、语气……），不是复述某一次的修改要求。只在一个项目里出现的写 scope: <项目名>，
+  几个项目都出现的不写 scope。偏好要用户确认后才生效，宁可少写。
 
 `)
 	b.WriteString("## 镜头特征\n\n")
@@ -390,7 +400,7 @@ from_episodes: [ep-20261102-101500-a1b2c3]
 	for _, c := range clusters {
 		title := "校验器 `" + c.Key + "`"
 		if c.Key == ClusterKeyHuman {
-			title = "人工 👎 反馈"
+			title = "用户的反应（回退、反复提的要求、👍 / 👎）"
 		}
 		fmt.Fprintf(&b, "### %s：%d 次\n\n", title, c.Count)
 		fmt.Fprintf(&b, "- 经历：%s\n", strings.Join(c.Episodes, ", "))
@@ -407,7 +417,7 @@ from_episodes: [ep-20261102-101500-a1b2c3]
 			fmt.Fprintf(&b, "- 报错示例：%s\n", example)
 		}
 		for _, note := range c.Notes {
-			fmt.Fprintf(&b, "- 人工说明：%s\n", note)
+			fmt.Fprintf(&b, "- %s\n", note)
 		}
 		b.WriteString("\n")
 	}
@@ -438,4 +448,37 @@ func distribution(counts map[string]int) string {
 		parts = append(parts, fmt.Sprintf("%s × %d", key, counts[key]))
 	}
 	return strings.Join(parts, "、")
+}
+
+var signalLabels = map[string]string{"reverted": "回退了这一轮", "repeated": "反复提到", "liked": "👍", "disliked": "👎"}
+
+func humanCluster(all []Episode, since string) (Cluster, bool) {
+	created := map[string]string{}
+	for _, e := range all {
+		created[e.ID] = e.CreatedAt
+	}
+	c := Cluster{Key: ClusterKeyHuman, Renderers: map[string]int{}, Models: map[string]int{}}
+	for _, signal := range PreferenceSignals(all) {
+		fresh := false
+		for _, id := range signal.Episodes {
+			if created[id] > since {
+				fresh = true
+			}
+		}
+		if !fresh {
+			continue
+		}
+		c.Signals = append(c.Signals, signal)
+		c.Count += signal.Count
+		c.Episodes = append(c.Episodes, signal.Episodes...)
+		note := fmt.Sprintf("（%s）%s", signalLabels[signal.Kind], signal.Text)
+		if signal.Kind == "repeated" {
+			note = fmt.Sprintf("（在 %d 轮对话里反复提到）%s", signal.Count, signal.Text)
+		}
+		if signal.Project != "" {
+			note += "　〔项目 " + signal.Project + "〕"
+		}
+		c.Notes = append(c.Notes, note)
+	}
+	return c, len(c.Signals) > 0
 }

@@ -51,6 +51,21 @@ func (s *Store) PreferenceBrief(project string, pinned int) (string, string, err
 			}
 		}
 	}
+	var pending []Memory
+	if all, _, err := s.Memories(); err == nil {
+		for _, m := range all {
+			if m.Kind == KindPreference && m.Status == StatusTrial && (m.Scope == "" || m.Scope == project) {
+				pending = append(pending, m)
+			}
+		}
+	}
+	if len(pending) > 0 {
+		b.WriteString("\n待确认的偏好（从用户以往的回退、反复提的要求和 👍 / 👎 里归纳的，还没生效）：\n")
+		for _, m := range pending {
+			fmt.Fprintf(&b, "- 【%s】%s\n", m.Name, m.Description)
+		}
+		b.WriteString("找合适的时机用一句话问用户认不认可；认可就运行 am memory promote <名字>，不认可运行 am memory reject <名字>。不要一次问完，也不要打断正在做的事。\n\n")
+	}
 	b.WriteString(`用户这次的话说得简短或含糊时，先按这些偏好补全意图再动手；这次明说的要求与偏好冲突时以这次为准，并问一句要不要更新偏好。
 
 记住新偏好：用户表达了以后也适用的取向（如「以后都…」「我不喜欢…」「默认用…」「每次都要…」）时，当场运行

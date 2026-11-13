@@ -15,6 +15,12 @@ const (
 	CheckOutputOther       = "output.other"
 	// DeterminismCheckPrefix 接 internal/determinism 的规则 ID，如 determinism.raf。
 	DeterminismCheckPrefix = "determinism."
+	// CheckFramesBlank 是 am scene frames --check-blank 发现的空白帧。
+	CheckFramesBlank = "frames.blank"
+	// ReadsCheckPrefix 接 internal/reads 的规则 ID，如 reads.duration。
+	ReadsCheckPrefix = "reads."
+	// CheckReviewHandoff 是 am review 判定的约定交接没接上。
+	CheckReviewHandoff = "review.handoff"
 )
 
 // OutputCheckIDs 返回全部产物校验器 ID，顺序固定。

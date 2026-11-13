@@ -218,6 +218,28 @@ export interface MemoryRow {
   rejected_reason?: string;
   body: string;
   stats?: Record<string, MemoryStat>;
+  examinable: boolean;
+}
+
+export interface RunStats {
+  scenes: number;
+  passed_first_try: number;
+  pass_rate: number;
+  retries: number;
+  problems: number;
+  check_problems: number;
+  seconds: number;
+  input_tokens: number;
+  output_tokens: number;
+  recalled: number;
+  snapshots: number[];
+}
+
+export interface RunSummary extends RunStats {
+  run: string;
+  started_at: string;
+  project?: string;
+  by_model: Record<string, RunStats>;
 }
 
 export interface MemoryEvent {
@@ -283,6 +305,7 @@ export interface MemoryState {
     counts: Record<string, number>;
     drift: string[];
     weak: MemoryWeak[];
+    retest: { name: string; renderer: string; examined_models: string[]; current_model: string }[];
     episodes: number;
     pending_failures: number;
   };
@@ -290,6 +313,7 @@ export interface MemoryState {
   timeline: MemoryEvent[];
   exams: ExamResult[];
   snapshots: number[];
+  runs: RunSummary[];
 }
 
 export interface RecallItem {

@@ -548,6 +548,9 @@ func (s *Server) finishTurn(ctx context.Context, p Project, sess *session, turn 
 		turn.Status = "succeeded"
 	}
 	_ = saveTurn(p.Path, turn)
+	if turn.Kind == "chat" && turn.Status != "cancelled" {
+		s.recordUtterance(p, turn, false)
+	}
 	s.sessions.mu.Lock()
 	sess.cancel = nil
 	s.sessions.mu.Unlock()
@@ -587,6 +590,9 @@ func (s *Server) revert(p Project, turnID string) (*Turn, []string, error) {
 	turn.Status = "reverted"
 	if err := saveTurn(p.Path, turn); err != nil {
 		return turn, skipped, err
+	}
+	if turn.Kind == "chat" {
+		s.recordUtterance(p, turn, true)
 	}
 	if sess := s.getSession(p.Path, turn.SessionID); sess != nil {
 		s.emit(sess, turn.ID, SessionEvent{Event: agentrun.Event{Kind: kindTurnReverted}, Status: "reverted", Files: skipped})

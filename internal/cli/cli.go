@@ -463,7 +463,7 @@ text 不得含 [[USER_MESSAGE]] 或 <scene-text> 定界标记，含则失败。
 			if err != nil {
 				return err
 			}
-			if s, err = attachMemory(s, cfg, stderr); err != nil {
+			if s, err = attachMemory(s, cfg, stderr, newRunID()); err != nil {
 				return err
 			}
 			return scene.Run(cmd.Context(), s, cfg, envutil.IsUnsafe(unsafe), currentEnvironment(), stdout, tolerance)
@@ -606,8 +606,9 @@ AI CLI 调用。这类失败要先改提示词或时长声明再重跑。
 				}
 			}
 			// 召回在判定复用之前做：召回的记忆是输入指纹的一项，记忆变了镜头要能被判成 Stale。
+			run := newRunID()
 			for i := range scenes {
-				if scenes[i], err = attachMemory(scenes[i], cfg, stderr); err != nil {
+				if scenes[i], err = attachMemory(scenes[i], cfg, stderr, run); err != nil {
 					return err
 				}
 			}

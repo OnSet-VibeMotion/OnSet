@@ -126,3 +126,14 @@ func TestLoadMemorySettings(t *testing.T) {
 		}
 	}
 }
+
+// TestChildEnvironmentCarriesMemorySettings：编排工具调用的 am 要用同一个记忆库，
+// 安全模式的白名单不放行 AM_MEMORY_DIR，必须显式写进去。
+func TestChildEnvironmentCarriesMemorySettings(t *testing.T) {
+	cfg := Config{Orchestrator: "codex", Renderer: "claude", TTSProvider: "minimax",
+		Memory: MemorySettings{Enabled: true, Dir: "/data/mem", RecallBudget: 800, Snapshot: 3}}
+	env := cfg.ChildEnvironment(map[string]string{"PATH": "/bin", "AM_MEMORY_DIR": "/elsewhere"}, false, nil)
+	if env["AM_MEMORY_DIR"] != "/data/mem" || env["MEMORY"] != "on" || env["MEMORY_RECALL_BUDGET"] != "800" || env["MEMORY_SNAPSHOT"] != "3" {
+		t.Fatalf("记忆设置没传给子进程：%v", env)
+	}
+}

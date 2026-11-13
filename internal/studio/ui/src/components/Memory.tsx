@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { api, errorText, post, rawURL } from '../api';
-import type { ExamResult, MemoryRow, MemoryState, MemoryStatus, RecallResponse, Scene } from '../types';
+import type { ExamResult, MemoryRow, MemoryState, MemoryStatus, RecallResponse, RunStats, RunSummary, Scene } from '../types';
 import type { RunAction } from './Preview';
 
 const statusLabel: Record<MemoryStatus, string> = { active: '生效', trial: '试用', rejected: '被拒', dormant: '沉睡' };
@@ -51,6 +51,8 @@ export function MemoryTab({ scene, version, run }: Props) {
   if (!state) return <div class="empty">正在读取记忆库…</div>;
 
   const exam = state.exams[examIndex] ?? null;
+  const pendingPreferences = state.memories.filter((m) => m.kind === 'preference' && m.status === 'trial');
+  const pendingLessons = state.memories.filter((m) => m.kind === 'lesson' && m.status === 'trial' && !m.examinable);
   const previous = state.snapshots.filter((id) => id !== state.status.snapshot);
   return (
     <div class="memory-tab">
@@ -83,6 +85,15 @@ export function MemoryTab({ scene, version, run }: Props) {
           考试
         </button>
       </div>
+
+      {(pendingPreferences.length > 0 || pendingLessons.length > 0) && (
+        <div class="banner">
+          有 {pendingPreferences.length + pendingLessons.length} 条记忆等你确认：
+          {[...pendingPreferences, ...pendingLessons].map((m) => m.description).join('；')}。在下方记忆库里确认或拒绝，或者直接在对话里回答。
+        </div>
+      )}
+
+      <RunsSection runs={state.runs} />
 
       <section class="memory-section">
         <h4>记住一条偏好</h4>
@@ -119,7 +130,13 @@ export function MemoryTab({ scene, version, run }: Props) {
                 {statusLabel[status]} · {rows.length}
               </div>
               {rows.map((m) => (
-                <MemoryCard key={m.name} memory={m} weak={state.status.weak.some((w) => w.name === m.name)} run={run} />
+                <MemoryCard
+                  key={m.name}
+                  memory={m}
+                  weak={state.status.weak.some((w) => w.name === m.name)}
+                  retest={state.status.retest.filter((r) => r.name === m.name)}
+                  run={run}
+                />
               ))}
             </div>
           );
@@ -232,7 +249,17 @@ function RecallSection({ scene, version }: { scene: Scene | null; version: numbe
   );
 }
 
-function MemoryCard({ memory, weak, run }: { memory: MemoryRow; weak: boolean; run: RunAction }) {
+function MemoryCard({
+  memory,
+  weak,
+  retest,
+  run,
+}: {
+  memory: MemoryRow;
+  weak: boolean;
+  retest: MemoryState['status']['retest'];
+  run: RunAction;
+}) {
   const [open, setOpen] = useState(false);
   const stats = Object.entries(memory.stats ?? {});
   return (
@@ -244,13 +271,25 @@ function MemoryCard({ memory, weak, run }: { memory: MemoryRow; weak: boolean; r
         {memory.kind === 'preference' && <span class="memory-unverified">偏好 · 未经机器验证</span>}
         {weak && <span class="status-stale">待沉睡</span>}
         <span class="spacer" />
+        {memory.status === 'trial' && memory.kind === 'lesson' && !memory.examinable && <span class="memory-unverified">整片检查判定 · 考不了，需人工确认</span>}
         {memory.status === 'trial' && (
           <>
-            {memory.kind === 'preference' && <button onClick={() => run('/api/memory/actions/promote', { name: memory.name })}>确认生效</button>}
+            {(memory.kind === 'preference' || !memory.examinable) && (
+              <button onClick={() => run('/api/memory/actions/promote', { name: memory.name })}>确认生效</button>
+            )}
             <button onClick={() => run('/api/memory/actions/reject', { name: memory.name })}>拒绝</button>
           </>
         )}
         {memory.status === 'active' && weak && <button onClick={() => run('/api/memory/actions/retire', { name: memory.name })}>沉睡</button>}
+        {retest.map((r) => (
+          <button
+            key={r.renderer}
+            title={`当初在 ${r.renderer} 上用 ${r.examined_models.join('、')} 考过，现在是 ${r.current_model}`}
+            onClick={() => run('/api/memory/actions/exam', { renderers: [r.renderer], name: memory.name })}
+          >
+            模型已换，重考（{r.renderer}）
+          </button>
+        ))}
       </div>
       <p>{memory.description}</p>
       <p class="small muted">
@@ -369,3 +408,94 @@ function ScoreCurve({ exams }: { exams: ExamResult[] }) {
     </figure>
   );
 }
+
+/** 按渲染批次对比：评审要看「第二次比第一次好」，这里是机器量出来的那张表。 */
+function RunsSection({ runs }: { runs: RunSummary[] }) {
+  if (!runs.length) {
+    return (
+      <section class="memory-section">
+        <h4>运行对比</h4>
+        <p class="small muted">还没有渲染批次。每次 am scene run / run-all 是一批。</p>
+      </section>
+    );
+  }
+  const [a, b] = runs.length >= 2 ? runs.slice(-2) : [null, runs[0]];
+  const models = b ? Object.keys(b.by_model).sort() : [];
+  const width = 480;
+  const height = 120;
+  const bar = Math.min(48, (width - 24) / runs.length - 8);
+  return (
+    <section class="memory-section">
+      <h4>运行对比</h4>
+      {a && b && (
+        <div class="run-compare">
+          <Delta label="一次通过率" from={pct(a.pass_rate)} to={pct(b.pass_rate)} better={b.pass_rate > a.pass_rate} worse={b.pass_rate < a.pass_rate} />
+          <Delta label="重试" from={String(a.retries)} to={String(b.retries)} better={b.retries < a.retries} worse={b.retries > a.retries} />
+          <Delta label="问题数" from={String(a.problems)} to={String(b.problems)} better={b.problems < a.problems} worse={b.problems > a.problems} />
+          <Delta label="平均耗时" from={secs(a)} to={secs(b)} better={per(b.seconds, b) < per(a.seconds, a)} worse={per(b.seconds, b) > per(a.seconds, a)} />
+          <Delta label="平均 token" from={tokens(a)} to={tokens(b)} better={false} worse={false} />
+        </div>
+      )}
+      <figure class="score-curve">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="每批的一次通过率">
+          <line x1={12} x2={width - 12} y1={height - 24} y2={height - 24} class="axis" />
+          {runs.map((r, i) => {
+            const x = 12 + i * ((width - 24) / runs.length) + 4;
+            const h = (height - 40) * r.pass_rate;
+            return (
+              <g key={r.run}>
+                <rect x={x} y={height - 24 - h} width={bar} height={Math.max(h, 1)} class="run-bar" />
+                <text x={x + bar / 2} y={height - 28 - h} text-anchor="middle">
+                  {pct(r.pass_rate)}
+                </text>
+                <text x={x + bar / 2} y={height - 8} text-anchor="middle">
+                  {r.run.slice(-6)}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+        <figcaption class="small muted">每批首次尝试就通过的镜头比例（事后检查查出问题的不算）</figcaption>
+      </figure>
+      {models.length > 0 && (
+        <div class="exam-scroll">
+          <table class="exam-table">
+            <thead>
+              <tr>
+                <th>渲染工具/模型</th>
+                {a && <th>上一批</th>}
+                <th>最近一批</th>
+              </tr>
+            </thead>
+            <tbody>
+              {models.map((key) => (
+                <tr key={key}>
+                  <th class="mono">{key}</th>
+                  {a && <td>{a.by_model[key] ? brief(a.by_model[key]) : '—'}</td>}
+                  <td>{brief(b!.by_model[key])}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function Delta({ label, from, to, better, worse }: { label: string; from: string; to: string; better: boolean; worse: boolean }) {
+  return (
+    <div class={'run-delta' + (better ? ' better' : worse ? ' worse' : '')}>
+      <span class="small muted">{label}</span>
+      <strong>
+        {from} → {to}
+      </strong>
+    </div>
+  );
+}
+
+const pct = (v: number) => `${Math.round(v * 100)}%`;
+const per = (total: number, s: RunStats) => (s.scenes ? total / s.scenes : 0);
+const secs = (s: RunStats) => `${Math.round(per(s.seconds, s))}s`;
+const tokens = (s: RunStats) => (s.input_tokens + s.output_tokens ? String(Math.round(per(s.input_tokens + s.output_tokens, s))) : '—');
+const brief = (s: RunStats) => `${s.passed_first_try}/${s.scenes} 一次通过 · 重试 ${s.retries} · 问题 ${s.problems}`;

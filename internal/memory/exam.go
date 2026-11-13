@@ -195,6 +195,13 @@ type ExamOptions struct {
 	Run       ExamRunner
 	// ModelOf 返回渲染工具当前的模型，召回按它筛选限定了模型的经验；为 nil 时视为未知。
 	ModelOf func(renderer string) string
+	// Retest 是要重考的生效经验名：对照组去掉它们、试用组照常带上。模型换了以后，
+	// 旧考试的结论不再可信，见 StatusReport.Retest。通过时补记考试编号，不通过时
+	// 状态不变、只在结果里写明，是否沉睡或限定范围由人决定。
+	Retest []string
+	// PostCheck 在作答通过产物校验后补跑事后检查（目前是空白帧），只跑试用经验
+	// 引用到的那几个；为 nil 时不补查。
+	PostCheck func(ctx context.Context, s scene.Scene, checks []string) []Finding
 	// DryRun 为 true 时只出结果，不改记忆状态。
 	DryRun bool
 }
@@ -269,13 +276,33 @@ func (s *Store) Exam(ctx context.Context, opts ExamOptions) (ExamResult, error) 
 		return ExamResult{}, err
 	}
 	var trials []Memory
+	for _, name := range opts.Retest {
+		m, ok := findMemory(all, name)
+		if !ok || m.Status != StatusActive || m.Kind != KindLesson {
+			return ExamResult{}, fmt.Errorf("%s 不是生效中的经验，不能重考", name)
+		}
+		if !ExaminableLesson(m) {
+			return ExamResult{}, fmt.Errorf("%s 只由整片检查判定，考不了", name)
+		}
+		trials = append(trials, m)
+	}
 	for _, m := range all {
+		if len(opts.Retest) > 0 {
+			break
+		}
 		if m.Status != StatusTrial || m.Kind != KindLesson {
 			continue
 		}
-		if len(opts.Trial) == 0 || contains(opts.Trial, m.Name) {
-			trials = append(trials, m)
+		if len(opts.Trial) > 0 && !contains(opts.Trial, m.Name) {
+			continue
 		}
+		if !ExaminableLesson(m) {
+			if len(opts.Trial) > 0 {
+				return ExamResult{}, fmt.Errorf("%s 只由整片检查（%s）判定，单镜头回放考不了；确认有效后用 am memory promote 生效", m.Name, strings.Join(m.CheckedBy, "、"))
+			}
+			continue
+		}
+		trials = append(trials, m)
 	}
 	for _, name := range opts.Trial {
 		if !slicesContainsName(trials, name) {
@@ -283,7 +310,7 @@ func (s *Store) Exam(ctx context.Context, opts ExamOptions) (ExamResult, error) 
 		}
 	}
 	if len(trials) == 0 {
-		return ExamResult{}, errors.New("没有试用中的经验可考；先运行 am memory consolidate")
+		return ExamResult{}, errors.New("没有能考的试用经验；先运行 am memory consolidate。只由阅读时间、交接这类整片检查判定的经验考不了，用 am memory promote 人工确认")
 	}
 	questions, err := s.examQuestions(trials, opts)
 	if err != nil {
@@ -350,7 +377,17 @@ func (s *Store) Exam(ctx context.Context, opts ExamOptions) (ExamResult, error) 
 	}
 	changed := after.ID != before.ID || strings.Join(driftAfter, ",") != strings.Join(driftBefore, ",")
 	result.Verdict = Judge(questions, opts.Renderers, cells, changed)
-	if !opts.DryRun && !result.Verdict.Invalid && !result.Verdict.NeedsHuman {
+	if len(opts.Retest) > 0 && !opts.DryRun && !result.Verdict.Invalid && !result.Verdict.NeedsHuman {
+		result.Applied = "retest-failed"
+		if result.Verdict.Pass {
+			result.Applied = "retest-passed"
+			for _, m := range trials {
+				if err := s.setStatus(m, StatusActive, "", id); err != nil {
+					return result, err
+				}
+			}
+		}
+	} else if !opts.DryRun && !result.Verdict.Invalid && !result.Verdict.NeedsHuman {
 		if result.Verdict.Pass {
 			snapshot, err := s.promote(trials, id)
 			if err != nil {
@@ -461,7 +498,10 @@ func (s *Store) examCell(ctx context.Context, q Question, renderer string, arm A
 	if snapshot == 0 {
 		recallOpts.Snapshot = -1
 	}
-	if arm == ArmTrial {
+	switch {
+	case len(opts.Retest) > 0 && arm == ArmControl:
+		recallOpts.Exclude = opts.Retest
+	case len(opts.Retest) == 0 && arm == ArmTrial:
 		recallOpts.Extra = trials
 	}
 	recall, err := s.recallForExam(sc, recallOpts)
@@ -471,6 +511,15 @@ func (s *Store) examCell(ctx context.Context, q Question, renderer string, arm A
 	sc = recall.Attach(sc)
 	cell.Recalled = recall.Names()
 	attempt := opts.Run(ctx, sc, renderer)
+	if post := postChecks(trials); attempt.Outcome == scene.OutcomeSucceeded && len(post) > 0 && opts.PostCheck != nil {
+		if findings := opts.PostCheck(ctx, sc, post); len(findings) > 0 {
+			attempt.Outcome = scene.OutcomeVerificationFailed
+			for _, f := range findings {
+				attempt.Checks = append(attempt.Checks, f.Check)
+				attempt.Problems = append(attempt.Problems, f.Problem)
+			}
+		}
+	}
 	cell.Outcome, cell.Seconds, cell.Usage, cell.Error, cell.Model = attempt.Outcome, attempt.Seconds, attempt.Usage, attempt.Error, attempt.Model
 	cell.Problems, cell.Checks = len(attempt.Problems), attempt.Checks
 	switch attempt.Outcome {
@@ -480,7 +529,7 @@ func (s *Store) examCell(ctx context.Context, q Question, renderer string, arm A
 	default:
 		cell.Invalid = true
 	}
-	if episode, err := s.RecordAttempt(sc, attempt, SourceExam, examID); err == nil {
+	if episode, err := s.RecordAttempt(sc, attempt, AttemptSource{Source: SourceExam, Exam: examID}); err == nil {
 		cell.Episode = episode.ID
 	}
 	return cell
@@ -492,6 +541,7 @@ func (s *Store) recallForExam(sc scene.Scene, opts RecallOptions) (RecallResult,
 	if opts.Snapshot >= 0 {
 		return s.RecallScene(sc, opts)
 	}
+	// 还没有快照：只有试用记忆参与召回，重考不会走到这里（生效记忆必然在快照里）。
 	features, err := Features(sc)
 	if err != nil {
 		return RecallResult{}, err
@@ -609,4 +659,82 @@ func (s *Store) Retire(name, reason string) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	return s.TakeSnapshot(EventDormant, name+" 转为沉睡", false)
+}
+
+// postChecks 是试用经验引用的、要在作答后补跑的校验器：能在单镜头里判定，
+// 又不在渲染时的产物校验里。
+func postChecks(trials []Memory) []string {
+	var out []string
+	for _, m := range trials {
+		for _, id := range m.CheckedBy {
+			if id == scene.CheckFramesBlank && !contains(out, id) {
+				out = append(out, id)
+			}
+		}
+	}
+	return out
+}
+
+func findMemory(list []Memory, name string) (Memory, bool) {
+	for _, m := range list {
+		if m.Name == name {
+			return m, true
+		}
+	}
+	return Memory{}, false
+}
+
+// Retest 是一条需要重考的生效经验：它通过考试时某个渲染工具用的模型，
+// 与那个渲染工具现在的模型不一样了。
+type Retest struct {
+	Name     string   `json:"name"`
+	Renderer string   `json:"renderer"`
+	Examined []string `json:"examined_models"`
+	Current  string   `json:"current_model"`
+}
+
+// RetestNeeded 找出模型换过之后需要重考的生效经验。currentModel 为 nil 或
+// 返回空串（模型未知）时不判定。考试里没记下模型的格子也不判定：说不清当时是谁。
+func (s *Store) RetestNeeded(currentModel func(renderer string) string) ([]Retest, error) {
+	if currentModel == nil {
+		return nil, nil
+	}
+	all, _, err := s.Memories()
+	if err != nil {
+		return nil, err
+	}
+	exams, err := s.Exams()
+	if err != nil {
+		return nil, err
+	}
+	byID := map[string]ExamResult{}
+	for _, exam := range exams {
+		byID[exam.ID] = exam
+	}
+	var out []Retest
+	for _, m := range all {
+		if m.Status != StatusActive || m.Kind != KindLesson || len(m.VerifiedBy) == 0 {
+			continue
+		}
+		examined := map[string][]string{}
+		for _, id := range m.VerifiedBy {
+			for _, cell := range byID[id].Cells {
+				if cell.Arm == ArmTrial && cell.Model != "" && !contains(examined[cell.Renderer], cell.Model) {
+					examined[cell.Renderer] = append(examined[cell.Renderer], cell.Model)
+				}
+			}
+		}
+		renderers := make([]string, 0, len(examined))
+		for renderer := range examined {
+			renderers = append(renderers, renderer)
+		}
+		sort.Strings(renderers)
+		for _, renderer := range renderers {
+			current := currentModel(renderer)
+			if current != "" && !contains(examined[renderer], current) && m.AppliesWhen.inScope(renderer, current) {
+				out = append(out, Retest{Name: m.Name, Renderer: renderer, Examined: examined[renderer], Current: current})
+			}
+		}
+	}
+	return out, nil
 }

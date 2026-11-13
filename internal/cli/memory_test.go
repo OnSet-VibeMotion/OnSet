@@ -86,6 +86,9 @@ func TestMemoryRecallReachesRendererAndEpisodesAreRecorded(t *testing.T) {
 		t.Errorf("召回的记忆变化应当让镜头 Stale 并说明原因：%s", body)
 	}
 
+	if text := run("memory", "report"); !strings.Contains(text, "run-") || !strings.Contains(text, "1（100%）") {
+		t.Errorf("批次报告应当列出第一批：\n%s", text)
+	}
 	if text := run("memory", "recall", "scenes/scene-001"); !strings.Contains(text, "cjk-font-local") || !strings.Contains(text, "cjk_text") {
 		t.Errorf("recall 预览应当列出记忆与匹配的特征：\n%s", text)
 	}
@@ -153,5 +156,33 @@ func TestMemoryOffLeavesStoreUntouched(t *testing.T) {
 	}
 	if _, err := os.Stat(memoryDir); !os.IsNotExist(err) {
 		t.Errorf("MEMORY=off 时不该建记忆库：%v", err)
+	}
+}
+
+// TestValidateReadsRecordsFindingsPerScene：阅读时间问题按 scene_id 记到对应镜头，
+// 不改变检查命令本身的退出码。
+func TestValidateReadsRecordsFindingsPerScene(t *testing.T) {
+	project := t.TempDir()
+	memoryDir := t.TempDir()
+	os.WriteFile(filepath.Join(project, "article-to-motion.conf"), []byte("ORCHESTRATOR=codex\nRENDERER=codex\n"), 0o644)
+	for _, id := range []string{"scene-001", "scene-002"} {
+		dir := filepath.Join(project, "scenes", id)
+		os.MkdirAll(dir, 0o755)
+		os.WriteFile(filepath.Join(dir, "transcript.srt"), []byte("1\n00:00:00,000 --> 00:00:01,000\nx\n"), 0o644)
+		os.WriteFile(filepath.Join(dir, "scene.json"), []byte(`{"id":"`+id+`","duration_seconds":2,"output":"out.mp4","transcript":"transcript.srt","text":"中文"}`), 0o644)
+	}
+	os.MkdirAll(filepath.Join(project, "production"), 0o755)
+	os.WriteFile(filepath.Join(project, "production", "visible-event-inventory.json"), []byte(`{"schema":1,"fps":30,"events":[
+		{"event_id":"e1","scene_id":"scene-002","text":"一句很长很长很长很长的标题","role":"title","enter_frame":0,"readable_start_frame":0,"readable_end_frame_exclusive":6,"exit_end_frame":6}]}`), 0o644)
+	t.Chdir(project)
+	t.Setenv("AM_MEMORY_DIR", memoryDir)
+	var out bytes.Buffer
+	if code := Execute([]string{"validate", "reads"}, &out, &out); code == 0 {
+		t.Fatalf("阅读时间不够应当失败：%s", out.String())
+	}
+	store, _ := memory.Open(memoryDir)
+	episodes, _ := store.Episodes()
+	if len(episodes) != 1 || episodes[0].SceneID != "scene-002" || episodes[0].Source != memory.SourceCheck || episodes[0].Checks[0] != "reads.duration" {
+		t.Fatalf("问题应当记到 scene-002：%+v", episodes)
 	}
 }

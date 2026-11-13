@@ -218,15 +218,19 @@ am memory consolidate                    # failed episodes → trial lessons (dr
 am memory exam --renderers claude,codex  # replay exam: failed + held-out scenes × renderers × {control, trial}
 am memory feedback scenes/scene-003 --down --note "captions cover the chart"
 am memory remember --name slow-pacing "slower pacing, hold each shot a second longer"   # --global for every project
+am memory report                         # compare runs: first-try pass rate, retries, problems, time, tokens
+am memory import ../old-project          # seed episodes from an existing project's render history
 am memory status                         # overview and retirement candidates; records hand edits as a new snapshot
 am memory rollback --to 3                # go back to any snapshot without deleting history
 ```
 
 New lessons start on trial and are only used in exams. Exams are scored by deterministic checks: the trial arm must strictly beat control, must not fail any question control passes on any renderer, and must not lose held-out passes; a renderer crash voids the exam instead of scoring zero. Every change to the active set creates a snapshot, and a project can pin one with `MEMORY_SNAPSHOT`.
 
+Besides output checks and the determinism scan, problems found by `am validate reads` (reading time), `am review` (handoffs) and `am scene frames --check-blank` (blank frames) are recorded on the scene and feed consolidation. Lessons decided only by reading time or handoffs need the whole film, so they cannot be examined and need a person to confirm them. Studio chats are recorded too: a request repeated across turns or a reverted turn becomes a pending preference, which the orchestrator asks you to confirm in conversation.
+
 Preferences also reach the orchestrator: `am run` and every Studio chat start with a "user preferences" section, so a terse request is filled in with what the user has asked for before.
 
-Different models make different mistakes. Every render records the model actually used (read from the stream for claude, qoder and codebuddy, from `config.toml` for codex, unknown for opencode), and failure clusters show the renderer/model breakdown. A lesson that only holds for one model is scoped with `applies_when.renderers` / `models` and is recalled only there. Lesson text itself stays free of renderer and model names, copied scene text and asset names, and `checked_by` must name an existing checker ID (`output.*` or `determinism.*`).
+Different models make different mistakes. Every render records the model actually used (read from the stream for claude, qoder and codebuddy, from `config.toml` for codex, unknown for opencode), and failure clusters show the renderer/model breakdown. A lesson that only holds for one model is scoped with `applies_when.renderers` / `models` and is recalled only there. Effect stats are also kept per renderer/model; after a model change `am memory status` asks for a retest, and `am memory exam --retest <name>` re-examines it with the lesson removed from the control arm. Lesson text itself stays free of renderer and model names, copied scene text and asset names, and `checked_by` must name an existing checker ID (`output.*` or `determinism.*`).
 
 Each exam cell is a real render: renders = questions × renderers × 2 × `--repeat`, with at most 4 failed-episode questions by default.
 

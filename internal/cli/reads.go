@@ -8,7 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/chouheiwa/articale-to-motion/internal/memory"
 	"github.com/chouheiwa/articale-to-motion/internal/reads"
+	"github.com/chouheiwa/articale-to-motion/internal/scene"
+	"github.com/chouheiwa/articale-to-motion/internal/schedule"
 	"github.com/spf13/cobra"
 )
 
@@ -82,6 +85,7 @@ role 为 decorative 的元素不检查阅读时间。
 				fmt.Fprintf(stdout, "提示：没有 %s，跳过短语绑定与顺序检查\n", phrasesPath)
 			}
 			report := reads.Check(inventory, timeline, opts)
+			recordReadsFindings(stdout, root, report)
 			if reportPath != "" {
 				if err := report.WriteJSON(reportPath); err != nil {
 					return err
@@ -104,4 +108,23 @@ role 为 decorative 的元素不检查阅读时间。
 	cmd.Flags().Float64Var(&opts.MinSeconds, "min-seconds", reads.Defaults.MinSeconds, "任何可读元素的最短可读时长（秒）")
 	cmd.Flags().Float64Var(&opts.CrowdSeconds, "crowd-seconds", reads.Defaults.CrowdSeconds, "可读起点相距不到这么久视为同时出现（秒）")
 	return cmd
+}
+
+// recordReadsFindings 把阅读时间问题按镜头写进记忆库。镜头从 <root>/scenes 下找；
+// 不属于任何镜头的问题（清单级错误）不记——那是编排阶段的事，与渲染写法无关。
+func recordReadsFindings(warn io.Writer, root string, report reads.Report) {
+	byScene := map[string][]memory.Finding{}
+	for _, f := range report.Findings {
+		if f.SceneID != "" {
+			byScene[f.SceneID] = append(byScene[f.SceneID], memory.Finding{Check: scene.ReadsCheckPrefix + f.Rule, Problem: f.Message})
+		}
+	}
+	if len(byScene) == 0 {
+		return
+	}
+	scenes, err := schedule.Plan(filepath.Join(root, "scenes"))
+	if err != nil {
+		return
+	}
+	recordCheckFindings(warn, root, scenes, byScene)
 }

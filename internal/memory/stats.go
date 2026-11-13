@@ -1,8 +1,11 @@
 package memory
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
-// Stat 是一条记忆在某个渲染工具上的效果统计。只计正式渲染的首次尝试：
+// Stat 是一条记忆在某个「渲染工具/模型」上的效果统计。只计正式渲染的首次尝试：
 // 调度层的重试带着上一次的失败说明，不是记忆的功劳；考试是人为安排的，也不算。
 type Stat struct {
 	Recalled       int `json:"recalled"`
@@ -21,23 +24,47 @@ func countable(e Episode) bool {
 	return e.Source == SourceRender && e.FirstTry() && e.Outcome != "interrupted"
 }
 
-// ComputeStats 由经历聚合出每条记忆按渲染工具分开的效果统计。
+// StatKey 是统计的键：渲染工具/模型，模型未知时只有渲染工具。
+// 同一渲染工具换了模型，犯的错可能完全不同，统计不能混在一起。
+func StatKey(renderer, model string) string { return rendererModel(renderer, model) }
+
+func checkKey(e Episode) string { return e.SceneDir + "|" + e.Fingerprint }
+
+// checkFailures 是事后检查（阅读时间、交接、空白帧）查出问题的产物。
+func checkFailures(episodes []Episode) map[string]bool {
+	failed := map[string]bool{}
+	for _, e := range episodes {
+		if e.Source == SourceCheck && e.Fingerprint != "" {
+			failed[checkKey(e)] = true
+		}
+	}
+	return failed
+}
+
+// effectivelyPassed：渲染时通过了校验、事后检查又查出问题的产物不算通过。
+func effectivelyPassed(e Episode, failed map[string]bool) bool {
+	return e.Passed() && !(e.Fingerprint != "" && failed[checkKey(e)])
+}
+
+// ComputeStats 由经历聚合出每条记忆按「渲染工具/模型」分开的效果统计。
 func ComputeStats(episodes []Episode) map[string]map[string]Stat {
+	failed := checkFailures(episodes)
 	out := map[string]map[string]Stat{}
 	for _, e := range episodes {
 		if !countable(e) {
 			continue
 		}
+		key := StatKey(e.Renderer, e.Model)
 		for _, name := range e.Recalled {
 			if out[name] == nil {
 				out[name] = map[string]Stat{}
 			}
-			stat := out[name][e.Renderer]
+			stat := out[name][key]
 			stat.Recalled++
-			if e.Passed() {
+			if effectivelyPassed(e, failed) {
 				stat.PassedFirstTry++
 			}
-			out[name][e.Renderer] = stat
+			out[name][key] = stat
 		}
 	}
 	return out
@@ -52,11 +79,36 @@ func (s *Store) Stats() (map[string]map[string]Stat, error) {
 	return ComputeStats(episodes), nil
 }
 
+// smoothedRate 估计一条记忆在当前渲染工具/模型上的一次通过率（拉普拉斯平滑）。
+//
+// 只用当前模型自己的样本；没有时退到同一渲染工具的其他模型，再退到全部渲染工具，
+// 这两档都向 0.5 收缩一半：别的模型上的效果只能当弱证据，模型换了就该重新攒统计。
+func smoothedRate(stats map[string]Stat, renderer, model string) float64 {
+	laplace := func(s Stat) float64 { return float64(s.PassedFirstTry+1) / float64(s.Recalled+2) }
+	if stat, ok := stats[StatKey(renderer, model)]; ok && stat.Recalled > 0 {
+		return laplace(stat)
+	}
+	var sameRenderer, all Stat
+	for key, stat := range stats {
+		all.Recalled += stat.Recalled
+		all.PassedFirstTry += stat.PassedFirstTry
+		if key == renderer || strings.HasPrefix(key, renderer+"/") {
+			sameRenderer.Recalled += stat.Recalled
+			sameRenderer.PassedFirstTry += stat.PassedFirstTry
+		}
+	}
+	pick := all
+	if sameRenderer.Recalled > 0 {
+		pick = sameRenderer
+	}
+	return 0.5 + (laplace(pick)-0.5)/2
+}
+
 // DormancyMinRecalls 是判定一条记忆「没帮上忙」前至少要有的召回次数（设计里的 K）。
 const DormancyMinRecalls = 5
 
-// Weak 是一条在某个渲染工具上没帮上忙的生效记忆：召回后的一次通过率
-// 不高于没召回它时的基线。
+// Weak 是一条在某个渲染工具/模型上没帮上忙的生效记忆：召回后的一次通过率
+// 不高于同一渲染工具/模型上没召回它时的基线。
 type Weak struct {
 	Name     string  `json:"name"`
 	Renderer string  `json:"renderer"`
@@ -69,17 +121,18 @@ type Weak struct {
 // 淘汰同样要经过考试确认，或由人决定。
 func WeakMemories(episodes []Episode, active []string) []Weak {
 	stats := ComputeStats(episodes)
+	failed := checkFailures(episodes)
 	var out []Weak
 	for _, name := range active {
-		for renderer, stat := range stats[name] {
+		for key, stat := range stats[name] {
 			if stat.Recalled < DormancyMinRecalls {
 				continue
 			}
 			var base Stat
 			for _, e := range episodes {
-				if countable(e) && e.Renderer == renderer && !contains(e.Recalled, name) {
+				if countable(e) && StatKey(e.Renderer, e.Model) == key && !contains(e.Recalled, name) {
 					base.Recalled++
-					if e.Passed() {
+					if effectivelyPassed(e, failed) {
 						base.PassedFirstTry++
 					}
 				}
@@ -87,7 +140,7 @@ func WeakMemories(episodes []Episode, active []string) []Weak {
 			if base.Recalled == 0 || stat.Rate() > base.Rate() {
 				continue
 			}
-			out = append(out, Weak{Name: name, Renderer: renderer, Rate: stat.Rate(), Baseline: base.Rate(), Recalled: stat.Recalled})
+			out = append(out, Weak{Name: name, Renderer: key, Rate: stat.Rate(), Baseline: base.Rate(), Recalled: stat.Recalled})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
