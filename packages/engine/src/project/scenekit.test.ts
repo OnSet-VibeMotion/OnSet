@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import vm from 'node:vm';
+import YAML from 'yaml';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as assets from '../assets';
 import { problems, scan } from '../determinism';
@@ -57,5 +59,36 @@ describe('scene-kit', () => {
       `扫描没有读到 scene-kit.js（可能被当成第三方库跳过）：files=${report.files} skipped=${report.skipped ?? []}`,
     ).toBe(true);
     expect(report.allowed ?? [], 'scene-kit 不应依赖逐行豁免').toEqual([]);
+  });
+
+  // frame.md 的字幕规范只有版式：配色由镜头自己定。没给配色时文字跟随整片配色的 ink，没有底框；镜头给了就用镜头的。
+  it('captions take layout from frame.md and colours from the scene', () => {
+    const frame = assets.canvas('vertical-9x16').readText('frame.md');
+    const front = YAML.parse(frame.split('\n---\n')[0].replace(/^---\n/, '')) as { safe_area: unknown; subtitles: Record<string, unknown> };
+    for (const key of ['background', 'text_color', 'padding_px', 'radius_px']) expect(front.subtitles, key).not.toHaveProperty(key);
+    const safe = { left_px: 60, top_px: 1500, right_px: 60, bottom_px: 200 };
+    const run = (look: unknown, options: Record<string, unknown> = {}) => {
+      const made: { style: Record<string, string>; className: string }[] = [];
+      const el = () => {
+        const node = { style: {} as Record<string, string>, className: '', textContent: '', appendChild: () => undefined, setAttribute: () => undefined };
+        made.push(node);
+        return node;
+      };
+      const win: Record<string, unknown> = {
+        AM_SCENE: { schema: 1, fps: 30, frames: 60, width_px: 1080, height_px: 1920, safe_area: { subtitles: safe }, subtitles: front.subtitles, cues: [{ index: 1, text: '你好', start_frame: 0, end_frame_exclusive: 30 }], phrases: [], ...(look ? { look } : {}) },
+      };
+      win.document = { createElement: el };
+      vm.runInNewContext(assets.shared().readText(`${skillTreeRoot}/scene-kit/scene-kit.js`), { window: win });
+      const kit = win.SceneKit as { captions: (root: unknown, o: unknown) => { render: (f: number) => unknown } };
+      kit.captions({ appendChild: () => undefined, ownerDocument: win.document }, options).render(0);
+      return made.find((n) => n.className === 'scene-kit-caption')!.style;
+    };
+    const plain = run(null);
+    expect(plain.background).toBe('transparent');
+    expect(plain.color).toBeUndefined();
+    expect(plain.borderRadius).toBe('0px');
+    expect(run({ background: '#000000', ink: '#F5F1E8', accent: '#F2B134' }).color).toBe('#F5F1E8');
+    const own = run({ ink: '#F5F1E8' }, { color: '#111111', background: 'rgba(255, 255, 255, 0.8)', padding: { vertical: 10, horizontal: 20 }, radius: 8 });
+    expect(own).toMatchObject({ color: '#111111', background: 'rgba(255, 255, 255, 0.8)', padding: '10px 20px', borderRadius: '8px' });
   });
 });

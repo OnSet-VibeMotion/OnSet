@@ -56,7 +56,7 @@ describe('preset generator', () => {
     expect(() => canvasAndSafeArea(p)).toThrow();
   });
 
-  // frame.md 只有技术信息：画布、安全区、字幕缺省样式与响度目标，没有任何视觉风格字段。
+  // frame.md 只有技术信息：画布、安全区、字幕版式与响度目标，没有任何视觉风格字段。
   it('writes only canvas facts into frame.md', () => {
     for (const p of preset.all()) {
       const body = frameOf(p);

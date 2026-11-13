@@ -120,7 +120,7 @@ fork 自外部项目的技能要带 `LICENSE` 和 `ATTRIBUTION.md`，后者记�
 
 画幅在 `am init` / 客户端新建时选一次（`--canvas`），之后不再改。它决定画布、帧率与安全区；配色、字体、版式、材质与动效不由项目文件规定，由各镜头自主决定或由「整片风格」统一。旧版的内置风格体系（风格表、风格说明书、示例图、自定义风格草稿、`--style` / `--style-brief`、`am validate style`、`am style fonts` / `add-font`、字体池）已整套删除。
 
-项目根的 `frame.md` 是画幅的唯一落点，只有四块技术信息：`canvas`（宽高、帧率、朝向）、`safe_area`（五个安全区的像素内缩）、`subtitles`（烧录字幕的缺省样式，`scene-kit` 的 `SceneKit.captions` 读它）与 `audio`（混音与成片响度目标，`am review` 读 `final_*` 三项）。正文说明这些是技术信息、不是视觉命令。
+项目根的 `frame.md` 是画幅的唯一落点，只有四块技术信息：`canvas`（宽高、帧率、朝向）、`safe_area`（五个安全区的像素内缩）、`subtitles`（烧录字幕的版式约束：字号范围、最大宽度、行数、每行字数、行高与断句规则，`scene-kit` 的 `SceneKit.captions` 读它；没有配色、圆角与内边距，字幕文字缺省跟随整片配色的 `look.ink`，底框与颜色由镜头经 `captions` 的选项自己定）与 `audio`（混音与成片响度目标，`am review` 读 `final_*` 三项）。正文说明这些是技术信息、不是视觉命令。
 
 镜头的画幅一律经 `scene.sceneCanvas` 取（`scene/scene.ts` 的 `frameSource`）：就近找 `frame.md`——镜头目录，再逐级向上到项目根（有 `article-to-motion.conf` 的那一层），找不到项目根时只看镜头目录。**哪儿都没有就报错，不回退任何默认画幅**：静默落到某个默认值的话，提示词、`am-scene.js` 与产物校验三处一起错，选了 9:16 的项目整片出成 3:4 还照样「通过」（2026-11 实测）。`scene.json` 没有画幅字段（旧的 `style_guide` 已删，写了会报未知字段）。`scene.test.ts` 的「reads the project frame.md」「fails without any frame.md」钉着。记忆的考试重放时，`freezeInput` 把镜头当时就近读到的 `frame.md` 一起冻结进输入，重放按当时的画幅。
 

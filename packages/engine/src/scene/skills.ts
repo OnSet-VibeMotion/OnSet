@@ -332,7 +332,7 @@ export function sceneFilmStyleSection(dir: string, hasLook: boolean): string {
     '。\n' +
     '- 画什么只取本镜头的说明、字幕与素材，不照搬风格自带的示例（demo 等）的故事、镜头、道具与文案；示例与引擎只用来学技法，按 SKILL.md 说的把用到的文件拷进本镜头目录再改，不得引用镜头目录之外的路径。\n' +
     '- STYLE.md 里关于声音、配乐的内容对本镜头无效：产物静音、无音轨。\n' +
-    '- 项目里的 frame.md 只提供画布、安全区、字幕缺省样式与响度目标，不是视觉命令。\n'
+    '- 项目里的 frame.md 只提供画布、安全区、字幕版式与响度目标，不是视觉命令。\n'
   );
 }
 
@@ -413,7 +413,7 @@ export function filmStyleSection(skillsDir: string, hasLook: boolean): string {
     '。\n' +
     '- 画什么只取本镜头的说明、字幕与素材，不照搬风格自带的示例（demo 等）的故事、镜头、道具与文案；示例与引擎只用来学技法，按 SKILL.md 说的把用到的文件拷进本镜头目录再改，不得引用镜头目录之外的路径。\n' +
     '- STYLE.md 里关于声音、配乐的内容对本镜头无效：产物静音、无音轨。\n' +
-    '- 项目里的 frame.md 只提供画布、安全区、字幕缺省样式与响度目标，不是视觉命令。\n'
+    '- 项目里的 frame.md 只提供画布、安全区、字幕版式与响度目标，不是视觉命令。\n'
   );
 }
 

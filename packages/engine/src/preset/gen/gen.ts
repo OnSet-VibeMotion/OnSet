@@ -1,7 +1,7 @@
 /**
  * 画幅生成器：把 preset 的画幅表渲染成每个画幅下发到项目根的 frame.md。
  *
- *   assets/presets/<画幅>/frame.md   画布、安全区、字幕缺省样式与响度目标
+ *   assets/presets/<画幅>/frame.md   画布、安全区、字幕版式与响度目标
  *
  * 模板是本目录的 templates/frame.md：canvas 与 safe_area 两个块整体替换，其余占位符按画幅填，
  * 不做 YAML 重序列化（flow 映射、保留尾零的浮点写法与人工排定的键序还原不出来，会让「产物与签入版本逐字节相同」失守）。

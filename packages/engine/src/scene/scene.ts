@@ -566,12 +566,12 @@ export function buildPrompt(s: Scene, resolvedSkills: Record<string, string> | n
   // 风格由渲染器根据本镜头文案自主决定；frame.md 只给画布、安全区与字幕的技术信息。
   let style =
     '\n视觉自由度（强制）：本镜头的配色、字体、版式、材质与动效由你根据文案和素材自主决定；\n' +
-    '项目里的 frame.md 只提供画布、安全区、字幕缺省样式与响度目标，不是视觉命令。\n';
+    '项目里的 frame.md 只提供画布、安全区、字幕版式与响度目标，不是视觉命令。\n';
   if (hasLook) {
     // 配色由分镜计划统一，只放开其余维度；配色本身在时间合同后的「全片配色」段。
     style =
       '\n视觉自由度（强制）：本镜头的字体、版式、材质与动效由你根据文案和素材自主决定，配色遵守下面的「全片配色」；\n' +
-      '项目里的 frame.md 只提供画布、安全区、字幕缺省样式与响度目标，不是视觉命令。\n';
+      '项目里的 frame.md 只提供画布、安全区、字幕版式与响度目标，不是视觉命令。\n';
   }
   // 不写 film_style 的镜头用默认风格，段落与只有一种风格时逐字相同；点名另一种风格时换成镜头级的说法。
   const filmStyleDir = resolved[filmstyle.SkillName] ?? '';
