@@ -123,6 +123,8 @@ export function beatAPI(s: Server): Response {
     click_path: beat.ClickFile,
   };
   if (!out.enabled) return writeJSON(200, goMap(out));
+  const story = readBeatStory(p.path);
+  if (story) out.story = story;
   const track = readBeatTrack(p.path);
   if (track) {
     out.music_path = beat.Store + '/' + track.audio;
@@ -175,6 +177,21 @@ export function beatAPI(s: Server): Response {
     }
   }
   return writeJSON(200, goMap(out));
+}
+
+/** BeatStoryFile 是卡点项目的故事与文案，制作提示词「卡点分支」让编排工具开工先写它。 */
+export const BeatStoryFile = beat.Store + '/story.md';
+const maxStoryBytes = 512 * 1024;
+
+function readBeatStory(root: string): { path: string; content: string; mtime: number } | null {
+  try {
+    const file = containedPath(root, BeatStoryFile);
+    const info = fs.statSync(file);
+    if (!info.isFile() || info.size > maxStoryBytes) return null;
+    return { path: BeatStoryFile, content: fs.readFileSync(file, 'utf8'), mtime: Math.floor(info.mtimeMs) };
+  } catch {
+    return null;
+  }
 }
 
 /** 只读 track.json 的字段，不像 beat.loadTrack 那样核对整首音乐的摘要。 */

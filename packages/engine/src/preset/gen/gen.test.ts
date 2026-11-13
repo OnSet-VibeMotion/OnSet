@@ -234,6 +234,11 @@ describe('PROMPT-PRODUCTION template', () => {
     has(['### 整理这次制作的经验', '用户明确确认这一版成片可用之后', 'am memory consolidate', '不要在用户确认之前整理'], '整理经验');
   });
 
+  it('tells the beat story before the music', () => {
+    has(['## 卡点分支', 'beat.yaml', 'production/beat/story.md', '画面里的字与字幕就是这部片子的文案', 'am studio show beat', '用户没有点头之前不进入分镜计划', '不得替用户确认', 'am beat cues scenes/'], '卡点分支');
+    expect(body.indexOf('### 故事与文案')).toBeLessThan(body.indexOf('### 音乐与节拍网格'));
+  });
+
   it('requires platform covers', () => {
     has(['douyin', 'xiaohongshu', 'channels', 'bilibili', 'zhihu', '16:10', '安全区', 'covers/src/', 'cover.images', 'designed_image'], '平台封面');
   });

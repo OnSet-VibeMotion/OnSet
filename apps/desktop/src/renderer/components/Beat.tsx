@@ -1,7 +1,9 @@
+import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { rawURL } from '../api';
 import type { Attachment, BeatGrid, BeatPlanSegment, BeatState } from '../types';
 import type { RunAction } from './Preview';
+import { Markdown } from './chat/Markdown';
 import '../beat.css';
 
 /**
@@ -567,7 +569,49 @@ function Counter({ beats, downbeats, now, playing, pausedAt, meter }: { beats: n
   );
 }
 
-const steps = ['导入音乐', '分析节拍', '试听确认', '分镜计划', '写入镜头'];
+const steps = ['故事与文案', '导入音乐', '分析节拍', '试听确认', '分镜计划', '做镜头'];
+
+/** 把故事稿的一级标题拆出来自己排版（对话里的 Markdown 会把标题降级）。 */
+function splitTitle(md: string): { title: string; body: string } {
+  const m = /^\s*#\s+(.+)\n?/.exec(md);
+  return m ? { title: m[1].trim(), body: md.slice(m[0].length) } : { title: '', body: md };
+}
+
+/** 故事与文案：片子讲什么、每段画面里出现哪些字。还在定故事时展开，之后收起成标题加梗概。 */
+function Story({ story, open, onQuick }: { story: NonNullable<BeatState['story']>; open: boolean; onQuick: Props['onQuick'] }) {
+  const { title, body } = useMemo(() => splitTitle(story.content), [story.content]);
+  const [expanded, setExpanded] = useState(open);
+  useEffect(() => setExpanded(open), [open]);
+  // 收起时只留标题下的第一段（约定里是一句话梗概），只在它是普通文字时显示。
+  const first = body.split(/\n\s*\n/).map((para) => para.trim()).find((para) => para !== '') ?? '';
+  const lead = /^([-*+]\s|\d+\.\s|#|\||>|```)/.test(first) ? '' : first;
+  return (
+    <section className="beat-story" data-ctx-source={story.path} data-ctx-label="故事与文案">
+      <div className="beat-story-head">
+        <span className="label">故事与文案</span>
+        <span className="path">{story.path}</span>
+      </div>
+      {title && <h2 className="beat-story-title">{title}</h2>}
+      {expanded ? (
+        <div className="beat-story-body">
+          <Markdown text={body} />
+        </div>
+      ) : (
+        lead && (
+          <div className="beat-story-lead">
+            <Markdown text={lead} />
+          </div>
+        )
+      )}
+      <div className="beat-actions">
+        <button className="link" onClick={() => setExpanded(!expanded)}>
+          {expanded ? '收起' : '展开全文'}
+        </button>
+        <button onClick={() => onQuick('故事和文案：', [], true)}>提修改意见</button>
+      </div>
+    </section>
+  );
+}
 
 export function BeatTab(props: Props) {
   const b = props.beat;
@@ -637,7 +681,10 @@ export function BeatTab(props: Props) {
 
   const togglePlay = () => (player.playing ? player.pause() : player.play(player.pausedAt));
 
-  const stage = !b?.track ? 0 : !grid ? 1 : grid.kind === 'draft' ? 2 : !b.plan ? 3 : 4;
+  // 每一步各自判断做没做完，「现在」是第一个没做完的。
+  const done = [!!b?.story, !!b?.track, !!grid, confirmed && !changed, !!b?.plan, false];
+  const stage = Math.max(0, done.indexOf(false));
+  const next = nextStep(stage, b, busy, props.onQuick);
 
   if (!b?.enabled) return <div className="beat-tab"><p className="beat-note">这个项目没有启用卡点模式。</p></div>;
 
@@ -650,7 +697,7 @@ export function BeatTab(props: Props) {
         </div>
         <ol className="beat-steps">
           {steps.map((label, i) => (
-            <li key={label} className={i < stage ? 'done' : i === stage ? 'now' : ''}>
+            <li key={label} className={done[i] ? 'done' : i === stage ? 'now' : ''}>
               <span>{String(i + 1).padStart(2, '0')}</span>
               {label}
             </li>
@@ -673,22 +720,15 @@ export function BeatTab(props: Props) {
         )}
       </header>
 
-      {!b.track && (
-        <section className="beat-empty">
-          <p>还没有音乐。把音乐文件拖进对话框，或者直接说要用哪首。</p>
-          <button className="primary" onClick={() => props.onQuick('导入这首音乐并分析节拍：', [], true)}>
-            在对话里导入音乐
-          </button>
+      {next && (
+        <section className="beat-next">
+          <span className="label">接下来</span>
+          <p>{next.text}</p>
+          {next.action}
         </section>
       )}
-      {b.track && !grid && (
-        <section className="beat-empty">
-          <p>音乐已导入，还没有分析节拍。{b.grid_error && <span className="bad">{b.grid_error}</span>}</p>
-          <button className="primary" disabled={busy} onClick={() => props.onQuick('分析这首音乐的节拍（am beat analyze），分析完带我去节拍页试听。', [])}>
-            让它分析节拍
-          </button>
-        </section>
-      )}
+      {b.grid_error && <p className="beat-note bad">{b.grid_error}</p>}
+      {b.story && <Story story={b.story} open={stage <= 1} onQuick={props.onQuick} />}
       {musicError && <p className="beat-note bad">波形读不出来：{musicError}</p>}
 
       {grid && (
@@ -793,16 +833,8 @@ export function BeatTab(props: Props) {
             </section>
           ) : (
             <section className="beat-fix compact">
-              <p className="beat-note">
-                网格已确认。{b.plan ? `分镜计划 ${b.plan.length} 个镜头，切点全部在重拍上。` : b.plan_error ? '' : '下一步按小节写分镜计划。'}
-              </p>
-              {b.plan_error && <p className="beat-note bad">分镜计划：{b.plan_error}</p>}
+              {b.plan_error && <p className="beat-note bad">分镜计划和节拍对不上：{b.plan_error}</p>}
               <div className="beat-actions">
-                {!b.plan && (
-                  <button className="primary" disabled={busy} onClick={() => props.onQuick('节拍网格确认了，按小节写分镜计划（production/beat/plan.json），写好带我回节拍页看切点。', [])}>
-                    按小节写分镜计划
-                  </button>
-                )}
                 <button className="link" onClick={() => setAdjusting(true)}>
                   重新调整重拍
                 </button>
@@ -834,4 +866,40 @@ export function BeatTab(props: Props) {
       )}
     </div>
   );
+}
+
+/** 「接下来」：用一句话说清楚下一步做什么、由谁做，按钮把这件事交给对话或指向页面里的控件。 */
+function nextStep(stage: number, b: BeatState | null, busy: boolean, onQuick: Props['onQuick']): { text: string; action?: ReactNode } | null {
+  const ask = (label: string, text: string, draftOnly = false) => (
+    <button className="primary" disabled={busy && !draftOnly} onClick={() => onQuick(text, [], draftOnly)}>
+      {label}
+    </button>
+  );
+  switch (stage) {
+    case 0:
+      return {
+        text: '先把故事定下来：这部片子讲什么、情绪怎么走，每一段画面里出现哪些字、配哪句字幕。故事和文案写好、你看过之后，再挑音乐、对节拍。',
+        action: ask('让它写故事和文案', '先写这部卡点片的故事和文案（production/beat/story.md），写好带我到节拍页看。'),
+      };
+    case 1:
+      return {
+        text: '故事有了，接下来选音乐。把音乐文件拖进对话框，或者说想要什么样的曲子；导入后会自动分析出节拍。',
+        action: ask('在对话里导入音乐', '导入这首音乐并分析节拍：', true),
+      };
+    case 2:
+      return { text: '音乐已导入，还没有分析节拍。分析完会在下面画出每一拍和每个小节。', action: ask('让它分析节拍', '分析这首音乐的节拍（am beat analyze），分析完带我去节拍页试听。') };
+    case 3:
+      return { text: '试听下面的节拍：每拍一声，重拍更高。「1」都落在音乐的重音上，就点「听过了，确认网格」；对不上就换每小节几拍或重拍是第几拍。' };
+    case 4:
+      return {
+        text: `节拍已确认${b?.track ? `，共 ${b.grid?.downbeats.length ?? 0} 小节` : ''}。接下来按小节把故事切成镜头：每段占几小节、切点落在哪个重拍上，写好会在波形上方显示镜头条。`,
+        action: ask('按小节写分镜计划', '节拍网格确认了，按故事稿的段落按小节写分镜计划（production/beat/plan.json），写好带我回节拍页看切点。'),
+      };
+    case 5:
+      return {
+        text: `分镜计划和节拍对上了：${b?.plan?.length ?? 0} 个镜头，切点全在重拍上。接下来建镜头、写入时长，再逐个渲染。`,
+        action: ask('开始做镜头', '分镜计划确认了。建好镜头目录，运行 am beat cues scenes/ 写入时长与拍点，然后开始渲染镜头。'),
+      };
+  }
+  return null;
 }

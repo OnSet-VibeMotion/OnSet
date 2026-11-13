@@ -254,6 +254,8 @@ export interface BeatState {
   problems?: string[];
   plan?: BeatPlanSegment[];
   plan_error?: string;
+  /** 故事与文案：production/beat/story.md。 */
+  story?: { path: string; content: string; mtime: number };
 }
 
 export interface AgentInfo {

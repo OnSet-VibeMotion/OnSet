@@ -90,6 +90,10 @@ describe('api_ui', () => {
       'production/beat/plan.json': JSON.stringify({ schema: 1, scenes: [{ id: 'scene-001', bars: 1 }, { id: 'scene-002', bars: 1 }] }),
     });
     let { body } = await studioRequest(f.s, 'GET', '/api/beat');
+    expect(body.story).toBeUndefined();
+    writeTree(f.root, { 'production/beat/story.md': '# 片名\n一句话梗概\n' });
+    ({ body } = await studioRequest(f.s, 'GET', '/api/beat'));
+    expect(body.story).toMatchObject({ path: 'production/beat/story.md', content: '# 片名\n一句话梗概\n' });
     expect(body.music_path).toBe('production/beat/music-abc.mp3');
     expect(body.track).toEqual({ source: 'song.mp3', duration_seconds: 4 });
     // 草稿与正式网格相同：展示正式网格，计划换算成秒。
