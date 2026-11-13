@@ -126,7 +126,10 @@ export interface SessionMeta {
   title: string;
   kind: 'chat' | 'production';
   tool: string;
+  /** 编排模型；没有是跟随设置。 */
+  model?: string;
   renderer?: string;
+  renderer_model?: string;
   cli_session_id?: string;
   created_at: string;
   updated_at: string;
@@ -301,13 +304,31 @@ export interface AgentsResponse {
   agents: AgentInfo[];
   orchestrator: string;
   renderer: string;
+  /** 设置里给上面两家选的模型；空是那家工具自己的默认。 */
+  orchestrator_model: string;
+  renderer_model: string;
   config_error?: string;
 }
 
-/** 一个会话用的编排工具与渲染工具。 */
+/** 一个会话用的编排工具与渲染工具，以及各自的模型（空串是跟随设置）。 */
 export interface AgentChoice {
   tool: string;
   renderer: string;
+  model?: string;
+  renderer_model?: string;
+}
+
+/** GET /api/agents/{工具}/models。 */
+export interface ModelOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface ModelsResponse {
+  tool: string;
+  models: ModelOption[];
+  error?: string;
 }
 
 // ---- 渲染记忆（internal/memory 与 internal/studio/memory.go 的 JSON） ----
@@ -660,6 +681,8 @@ export interface SettingRow {
   label: string;
   hint: string;
   options: { value: string; label: string }[];
+  /** 模型项：跟着哪一项工具（ORCHESTRATOR / RENDERER），可选值按那家工具去取。 */
+  model_of?: string;
   /** 全局也没设时用的内置默认。 */
   default: string;
   /** 全局设置里写的值；没写为空。 */

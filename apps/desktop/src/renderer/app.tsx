@@ -376,7 +376,7 @@ export function App() {
 
   const session = sessions.find((s) => s.session_id === sessionId);
   const choice: AgentChoice = session
-    ? { tool: session.tool, renderer: session.renderer || agents?.renderer || '' }
+    ? { tool: session.tool, renderer: session.renderer || agents?.renderer || '', model: session.model ?? '', renderer_model: session.renderer_model ?? '' }
     : pending;
 
   const changeChoice = async (next: AgentChoice) => {
@@ -394,10 +394,11 @@ export function App() {
 
   // 渲染按钮用当前会话（或新对话）选的渲染工具。
   const renderer = choice.renderer;
+  const rendererModel = choice.renderer_model ?? '';
   const run = useCallback(
     async (path: string, payload: Record<string, unknown> = {}) => {
       try {
-        await post(path, /\/render(\/all)?$/.test(path) ? { ...payload, renderer } : payload);
+        await post(path, /\/render(\/all)?$/.test(path) ? { ...payload, renderer, renderer_model: rendererModel } : payload);
         notify('已开始，进度见右上角任务。');
         await loadTasks();
         await loadSessions();
@@ -405,7 +406,7 @@ export function App() {
         notify(errorText(err));
       }
     },
-    [loadTasks, loadSessions, notify, renderer],
+    [loadTasks, loadSessions, notify, renderer, rendererModel],
   );
 
   const chooseSession = (id: string) => {

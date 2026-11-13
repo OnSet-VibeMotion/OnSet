@@ -185,6 +185,7 @@ export async function waitStudioTask(s: Server, id: string): Promise<Record<stri
 export const fakeClaude = `#!/bin/sh
 printf '%s' "$*" | tr '\\n' ' ' >> "$FAKE_ARGS_LOG"; echo >> "$FAKE_ARGS_LOG"
 printf '%s\\n' "$RENDERER" > "$FAKE_ARGS_LOG.renderer"
+printf '%s\\n' "$RENDERER_MODEL" > "$FAKE_ARGS_LOG.renderer_model"
 sid=""; prev=""; resume=""
 for a in "$@"; do
   if [ "$prev" = "--session-id" ]; then sid="$a"; fi

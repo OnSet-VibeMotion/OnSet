@@ -1,7 +1,7 @@
 // 移植自 internal/scene/run_unix.go（Go 版只在 darwin / linux 上编译）。
 import fs from 'node:fs';
 import path from 'node:path';
-import { childEnvironment, type Config } from '../config';
+import { childEnvironment, rendererModelFor, type Config } from '../config';
 import * as determinism from '../determinism';
 import { addToolsLocation, amExecutable, lookPath, parsePassthrough } from '../envutil';
 import * as hyperframes from '../hyperframes';
@@ -85,7 +85,8 @@ export async function run(
   const access = rendererAccess(resolvedSkills);
   access.toolsServer = amToolsServer(amExecutable(), 'renderer', s.directory, childEnv);
   Object.assign(childEnv, rendererEnv(renderer, access, childEnv));
-  const argv = rendererInvocation(renderer, prompt, unsafe, access);
+  const model = rendererModelFor(cfg, renderer);
+  const argv = rendererInvocation(renderer, prompt, unsafe, access, model);
   argv[0] = lookPath(argv[0], baseEnv.PATH ?? '');
   const inputs = fingerprint(s, renderer, resolvedSkills);
   // 先挪走上一次的现场再截断日志；旧记录随即作废，本次通过校验后再写新的。
@@ -100,7 +101,7 @@ export async function run(
   const attempt = newAttempt({
     scene_id: s.id,
     renderer,
-    model: configuredModel(renderer, baseEnv),
+    model: model || configuredModel(renderer, baseEnv),
     fingerprint: inputs.fingerprint,
     started_at: timestamp(started),
     retry: s.retryNote !== '',

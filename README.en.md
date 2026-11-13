@@ -48,9 +48,9 @@ The narration mode is also chosen at creation:
 - Multi-role dialogue: also writes a cast roster and a character-pack directory. See "Multi-role narration" below.
 - Two optional formats: solo song explainers and beat-synced reels without narration.
 
-The orchestrator, renderer, voice and alignment tools, concurrency and memory are chosen in the client's Settings (the gear at the top right, or ⌘,). Global settings apply to every project; a project that needs something different sets it in the "This project" column, which writes the project's `article-to-motion.conf`, and "Follow global" undoes that. Values resolve in this order: environment variables > project `.env` > project `article-to-motion.conf` > global settings > built-in defaults.
+The orchestrator, renderer (and the model each one uses), voice and alignment tools, concurrency and memory are chosen in the client's Settings (the gear at the top right, or ⌘,). Global settings apply to every project; a project that needs something different sets it in the "This project" column, which writes the project's `article-to-motion.conf`, and "Follow global" undoes that. Values resolve in this order: environment variables > project `.env` > project `article-to-motion.conf` > global settings > built-in defaults.
 
-The bar at the top of the chat can also pick a different orchestrator and renderer for one session without touching any file.
+The bar under the chat input can also pick a different orchestrator and renderer, and their models, for one session without touching any file. Model lists come from the tools themselves (codex, qoder, codebuddy and opencode list what your account and providers offer; claude offers the fable / opus / sonnet / haiku aliases); pick "Other…" to type a model that is not listed, or leave "Default" to use the tool's own default.
 
 Voice options:
 

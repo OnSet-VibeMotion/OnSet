@@ -1229,6 +1229,23 @@ div.tool {
   text-overflow: ellipsis;
   cursor: pointer;
 }
+.composer .agent-select select + select,
+.composer .agent-select select + .model-input {
+  /* 工具与模型在同一枚胶囊里：模型前面一道细分隔线，名字长时先收窄模型。 */
+  border-left: 1px solid var(--line-soft);
+  border-radius: 0;
+  max-width: 150px;
+  padding-left: 6px;
+}
+.composer .agent-select .model-input {
+  height: 22px;
+  width: 140px;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  color: var(--text);
+  outline: none;
+}
 .composer .agent-error {
   flex-basis: 100%;
 }

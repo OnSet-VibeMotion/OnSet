@@ -74,7 +74,7 @@ export function attachMemory(s: scene.Scene, cfg: config.Config, warn: Out, run:
       snapshot: cfg.memory.snapshot,
       budget: cfg.memory.recallBudget,
       renderer,
-      model: store.currentModel(renderer, currentEnvironment()),
+      model: store.currentModel(renderer, currentEnvironment(), config.rendererModelFor(cfg, renderer)),
       explore: cfg.memory.explore,
       exploreSeed: run,
     });
@@ -246,7 +246,7 @@ defineOp({
     if (renderer === '') renderer = s.renderer;
     if (renderer === '') renderer = cfg.renderer;
     let model = str(p.model);
-    if (model === '') model = store.currentModel(renderer, currentEnvironment());
+    if (model === '') model = store.currentModel(renderer, currentEnvironment(), config.rendererModelFor(cfg, renderer));
     const opts: memory.RecallOptions = { snapshot: cfg.memory.snapshot, budget: cfg.memory.recallBudget, renderer, model };
     if (bool(p.with_trial)) {
       const extra: memory.Memory[] = [];
@@ -429,7 +429,7 @@ defineOp({
       workspace: path.join(root, examWorkspace),
       run,
       dryRun: bool(p.dry_run),
-      modelOf: (renderer) => store.currentModel(renderer, currentEnvironment()),
+      modelOf: (renderer) => store.currentModel(renderer, currentEnvironment(), config.rendererModelFor(cfg, renderer)),
       postCheck: blankPostCheck,
       signal,
     });

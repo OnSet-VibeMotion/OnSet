@@ -50,7 +50,7 @@ export function memoryAPI(s: Server, request: Request): Response {
   const { p, cfg, store } = opened;
   try {
     const env = envMap();
-    const status = store.status(false, (r) => store.currentModel(r, env));
+    const status = store.status(false, (r) => store.currentModel(r, env, config.rendererModelFor(cfg, r)));
     const all = store.memories().memories;
     const stats = memory.statsToJSON(store.stats());
     const rows = all.map((m) => ({
@@ -165,7 +165,7 @@ export function memoryRecallAPI(s: Server, request: Request): Response {
         snapshot: cfg.memory.snapshot,
         budget: cfg.memory.recallBudget,
         renderer,
-        model: store.currentModel(renderer, envMap()),
+        model: store.currentModel(renderer, envMap(), config.rendererModelFor(cfg, renderer)),
       });
     } catch (err) {
       return writeError(400, 'recall_failed', (err as Error).message);

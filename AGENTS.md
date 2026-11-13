@@ -400,7 +400,8 @@ opencode 默认模型不可用时加 `AM_TEST_OPENCODE_MODEL`。
 | 口播稿页（`studio/script.ts` 的 `/api/script`、`Script.tsx`）排在标签第一位：读 `production/script-final.md`，经 `align` 的 `view`（`align/view.ts`）排成标题、段落、读法（ruby）与受保护短语，附字数、估算时长（每秒 4.5 字）、`voice.srt` 的实际配音时长与 `script-change-log.md`；没有终稿时原样显示原稿，标记写错时给出位置并显示原文。有终稿、还没有镜头时自动切到这一页，稿子改过没看过时标签打点，聊天里点到终稿也打开这一页。「确认，开始配音」「提修改意见」「针对所选提意见」都只是往对话里发话或填输入框 | 稿件审核关卡要用户看稿，以前只能在聊天里翻；视图与 `am align` 共用一份解析器，读法与短语和配音、对齐看到的是同一份。客户端自己不改稿 |
 | 节拍页（`Beat.tsx`，`/api/beat`）在卡点项目里代替口播稿排第一步（`stepTabsFor`）。页头六步（故事与文案 → 导入音乐 → 分析节拍 → 试听确认 → 分镜计划 → 做镜头）各自判断完成与否，下面一块「接下来」用一句话说清下一步、按钮把它交给对话；故事与文案读 `production/beat/story.md`（制作提示词「卡点分支」让编排工具开工先写它，`gen.test.ts` 的「tells the beat story before the music」钉着）（`BeatStoryFile`），还在定故事时展开全文、之后收成标题加梗概。其下画波形、每拍刻度、重拍与小节号、分镜计划的镜头条，播放时大字数拍；拍数与多数小节不同的小节标黄。音乐用 WebAudio 解码播放，咔嗒按当前网格在同一个 `AudioContext` 里现合成，所以在页面上换「每小节几拍 / 重拍是第几拍」（或播放中按 T 敲重拍）立刻能听到；只有动过这两个控件才进入预览，原网格（手改、拼接过的常常不规整）照原样显示。写回只走 `beat.regrid` / `beat.confirm` 两个写任务，客户端不改网格；`/api/beat` 不哈希音乐（每次刷新都要读），网格与音乐不符由 `am beat confirm` 拦下 | 卡点项目原先跑的是口播流程的制作提示词，没有任何卡点步骤，用户在听音乐之前不知道片子讲什么、接下来要做什么；以前也只有一条横幅放 `grid-click.wav`，重拍错位要回终端跑 `am beat regrid` 再重听整条试听轨，小节、拍数与切点只能看 `am beat bars` 的文字表 |
 | 发布页（`Publish.tsx`）不贴 `publish.md` 原文：`/api/publish` 经 `validate.readPublish` 只解析 frontmatter（不校验）返回 `data`，页面按「状态 → 可复制的标题 / 简介 / 话题 → 登记的封面 → 还剩的人工检查」排，规格与证据收进折叠。客户端里任何地方都不显示它的 Markdown 原文：接口不回传正文，解析失败只给原因、让编排工具修；聊天、文件树、`am studio show file publish.md` 点到它都切到发布页（`app.tsx` 的 `pageForFile`，口播稿同理）。合格与否仍只看「发布校验」 | `publish.md` 是 `am run` 下给人看的发布助手；在客户端里发布页就是那份助手，再贴原文只是把几十行校验字段和重复的表格摆到用户面前 |
-| 设置页（`Settings.tsx`，后端 `studio/settings.ts`，顶栏齿轮或 ⌘,）管「什么用什么」：`config.GlobalKeys`（编排、渲染、配音、对齐、并发、记忆、自动批准）。全局值写用户级的 `settings.conf`（`config/global.ts`，`AM_SETTINGS_FILE` 覆盖，`childEnvironment` 显式传下去），在进程里直接写；「这个项目」一栏经 `config_set` 写任务改项目的 `article-to-motion.conf`（`config_set` 的 scopes 只有 cli，编排工具没有这个工具）。取值顺序：环境变量 > 项目 `.env` > 项目 conf > 全局设置 > `GlobalDefaults`；新项目模板里这几项留空，所以跟随全局。测试的 vitest setup 与 e2e fixtures 都把 `AM_SETTINGS_FILE` 指到临时文件 | 以前这几项只能手改每个项目的 conf，客户端里改不了配音、对齐与并发；全局为准、项目可单独改是用户选的方案。设置项被环境变量或 `.env` 盖住时页面照实说，不假装改了有用 |
+| 模型（`ORCHESTRATOR_MODEL` / `RENDERER_MODEL`，`Config.orchestratorModel` / `rendererModel`）：空是那家工具自己的默认。`config.load` 只在「写模型的那一层往下看，工具就是现在这一家」时用它（`modelFor`）；在同一层换工具时 `writeGlobal` 与 `config_set` 把那一层的模型一起清掉；`childEnvironment` 有模型才写、没有就删，`amToolsServer` 放行这两个键。会话也能选（`SessionMeta.model` / `renderer_model`，空串是跟随设置，换工具不给模型时回到跟随设置；同一家换模型不清 CLI 会话 id）。各家的参数在 `tools.modelArgs`（codex 用 `-c model=…`，exec 与 resume 都认；app-server 走 `thread/start` / `thread/resume` 的 `model`；opencode acp 没有参数，经 `OPENCODE_CONFIG_CONTENT` 的 `model`，`acp.ts` 的 `ensureModel` 开会话后按 `configOptions` / `models` 再核对一次）。下拉框的选项来自工具自己（`tools.modelListCommand` / `parseModelList`，`/api/agents/{工具}/models` 缓存 10 分钟），claude 没有列模型的命令，给帮助里写的别名；列不出时仍能手填。镜头 `scene.json` 换了渲染工具时不用设置里的渲染模型（`config.rendererModelFor`），记忆召回同样按它取模型 | 模型名只对一家工具有意义，opus 交给 codex 会让整轮失败；不跟着工具走的话，在设置里换一次工具就会撞上。各家能用的模型随登录账号与服务商变，am 维护一份表只会过期 |
+| 设置页（`Settings.tsx`，后端 `studio/settings.ts`，顶栏齿轮或 ⌘,）管「什么用什么」：`config.GlobalKeys`（编排、渲染及各自的模型、配音、对齐、并发、记忆、自动批准）。全局值写用户级的 `settings.conf`（`config/global.ts`，`AM_SETTINGS_FILE` 覆盖，`childEnvironment` 显式传下去），在进程里直接写；「这个项目」一栏经 `config_set` 写任务改项目的 `article-to-motion.conf`（`config_set` 的 scopes 只有 cli，编排工具没有这个工具）。取值顺序：环境变量 > 项目 `.env` > 项目 conf > 全局设置 > `GlobalDefaults`；新项目模板里这几项留空，所以跟随全局。测试的 vitest setup 与 e2e fixtures 都把 `AM_SETTINGS_FILE` 指到临时文件 | 以前这几项只能手改每个项目的 conf，客户端里改不了配音、对齐与并发；全局为准、项目可单独改是用户选的方案。设置项被环境变量或 `.env` 盖住时页面照实说，不假装改了有用 |
 | 前置资源的安装页（`studio/setup.ts` 的 `/api/setup`、`/api/setup/run`、`/api/setup/cancel`，`SetupGuide.tsx`）：清单与 `am setup` 同一份（`prereqs`，配音与对齐工具按当前项目配置挑）。界面把几项技术资源合成用户听得懂的「摄制组」——画面（技能 + CLI + 浏览器）、剪辑（ffmpeg）、配音、字幕——每组一张卡片、图标外一圈进度环；工具名、版本、路径只在悬停提示里，日志与终端命令收进「高级」；节拍环境、风格来源动辄上 GB，作为「以后可能用到」单独点装。安装在后台跑，同一时间一份，进度经 GET 轮询（安装中每秒一次）；暂停记成「已取消」，界面显示为暂停而不是失败。不占项目写锁（只写用户级目录）。必需项缺时「开始制作」不可点。`AM_STUDIO_SKIP_SKILL_INSTALL=1` 时当作全部就绪 | 以前只给一条要复制到终端的命令，客户端用户多半不会开终端，装好应用却用不了；列一排工具名用户看不懂在装什么 |
 
 ### 界面（`apps/desktop/src/renderer`）
@@ -429,7 +430,7 @@ opencode 默认模型不可用时加 `AM_TEST_OPENCODE_MODEL`。
 
 ## 新增一个 AI CLI
 
-工具矩阵散落在五个文件，加一个工具必须七处同步改，漏一处会在运行期才炸：
+工具矩阵散落在六个文件，加一个工具必须九处同步改，漏一处会在运行期才炸：
 
 | 位置 | 作用 |
 |---|---|
@@ -440,6 +441,7 @@ opencode 默认模型不可用时加 `AM_TEST_OPENCODE_MODEL`。
 | `packages/engine/src/agentrun/parse.ts` | 把该工具的结构化流译成统一事件；先录一份真实的两轮输出放进 `packages/engine/src/agentrun/testdata/`，`parse.test.ts` 的「recorded streams」加一行 |
 | `packages/engine/src/scene/skills.ts` `rendererSkillDirs` | 该工具的技能目录约定（家目录级与项目级） |
 | `packages/engine/src/studio/agents.ts` `agentOrder` | 客户端工具选择里的展示名与顺序，`agents.test.ts` 的「agentOrder covers valid tools」守着与 `ValidTools` 一致 |
+| `packages/engine/src/tools/tools.ts` `modelArgs`、`packages/engine/src/tools/modellist.ts` | 指定模型的参数（双向协议另见 `interactiveInvocation`、`codexapp.ts`）与列出可选模型的命令及其输出解析，`modellist.test.ts` 加一行 |
 | `tools.ts` 的 `rendererInvocation` / `orchestratorInvocation`（或 `acp.ts`、`codexapp.ts`） | 挂上 am 的工具服务（见「am 的工具服务」），并放行它的工具；`toolsmcp.integration.test.ts` 的 RealToolsMCP 加上这一家 |
 
 同时更新 `assets/shared/article-to-motion.conf`、`assets/shared/.env.example`、`README.md`、`README.en.md` 里的可选值注释。

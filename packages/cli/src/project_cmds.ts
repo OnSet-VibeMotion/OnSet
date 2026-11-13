@@ -206,8 +206,13 @@ defineOp({
     const problem = config.validateSetting(key, value);
     if (problem !== '') throw new Error(problem);
     const file = path.join(str(p.project_root), 'article-to-motion.conf');
-    const body = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
-    const line = new RegExp(`^(\\s*(?:export\\s+)?)${key}\\s*=.*$`, 'm');
+    let body = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+    const lineOf = (k: string) => new RegExp(`^(\\s*(?:export\\s+)?)${k}\\s*=(.*)$`, 'm');
+    const line = lineOf(key);
+    // 换了工具：这个项目里给原来那家写的模型一起清掉，不然会交给新的那家（模型项本来就没写时不加行）。
+    const modelKey = config.ToolModelKey[key];
+    const previous = (line.exec(body)?.[2] ?? '').trim();
+    if (modelKey && previous !== value && lineOf(modelKey).test(body)) body = body.replace(lineOf(modelKey), `$1${modelKey}=`);
     const next = line.test(body) ? body.replace(line, `$1${key}=${value}`) : body + (body === '' || body.endsWith('\n') ? '' : '\n') + `${key}=${value}\n`;
     fs.writeFileSync(file, next);
     out.write(value === '' ? `${key} 改为跟随全局设置\n` : `这个项目的 ${key} 改为 ${value}\n`);

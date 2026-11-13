@@ -51,14 +51,20 @@ test('picks the orchestrator and renderer per session', async ({ page, project }
   await expect(page.locator('#agent-tool')).toHaveValue('claude');
   await expect(page.locator('#agent-tool option[value="claude"]')).toContainText('默认');
 
-  // 新对话：选的渲染工具在建会话时带上。
+  // 新对话：选的渲染工具与编排模型在建会话时带上。claude 的模型是内置别名，不用跑命令。
   await page.locator('#agent-renderer').selectOption('codex');
+  await expect(page.locator('#agent-model option[value="opus"]')).toHaveCount(1);
+  await page.locator('#agent-model').selectOption('opus');
   await page.locator('#prompt').fill('把镜头提示词改成 after');
   await page.locator('#send').click();
   await expect(page.locator('.done-line').last()).toContainText('已完成');
   const sessions = await api(page, '/api/sessions');
   expect(sessions.status).toBe(200);
-  expect(sessions.body.sessions[0]).toMatchObject({ tool: 'claude', renderer: 'codex' });
+  expect(sessions.body.sessions[0]).toMatchObject({ tool: 'claude', renderer: 'codex', model: 'opus' });
+
+  // 已有会话：同一家换模型从下一轮起生效。
+  await page.locator('#agent-model').selectOption('sonnet');
+  await expect(page.locator('#messages')).toContainText('编排模型改为 sonnet');
 
   // 已有会话：换编排工具从下一轮起生效，并在对话里留一条提示。
   await page.locator('#agent-tool').selectOption('codex');

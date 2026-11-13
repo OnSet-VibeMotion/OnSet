@@ -160,6 +160,30 @@ describe('config', () => {
     expect(fs.readFileSync(file, 'utf8')).not.toContain('ORCHESTRATOR=');
   });
 
+  // 模型名只对写它时的那家工具有意义：全局给 claude 选的 opus 不能交给项目里改成的 codex。
+  it('uses a model only with the tool it was chosen for', () => {
+    const root = tempDir();
+    const file = path.join(tempDir(), 'settings.conf');
+    const env = { [SettingsFileEnv]: file };
+    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=\nRENDERER=\n');
+    writeGlobal(env, { ORCHESTRATOR: 'claude', ORCHESTRATOR_MODEL: 'opus', RENDERER: 'claude', RENDERER_MODEL: 'sonnet' }, parseConfFile);
+    expect(load(root, env)).toMatchObject({ orchestratorModel: 'opus', rendererModel: 'sonnet' });
+    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
+    expect(load(root, env), '项目换了编排工具；渲染还是 claude，全局模型照用').toMatchObject({ orchestratorModel: '', rendererModel: 'sonnet' });
+    // 子进程环境里换了渲染工具、没写模型：项目里给旧工具写的模型作废。
+    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'RENDERER=claude\nRENDERER_MODEL=haiku\n');
+    expect(load(root, { ...env, RENDERER: 'codex' }).rendererModel).toBe('');
+    expect(load(root, { ...env, RENDERER: 'codex', RENDERER_MODEL: 'gpt-6-luna' }).rendererModel).toBe('gpt-6-luna');
+    const child = childEnvironment(load(root, { ...env, RENDERER: 'codex' }), { RENDERER_MODEL: 'stale' }, true);
+    expect(child.RENDERER_MODEL, '没选模型时不把旧值带给子进程').toBeUndefined();
+    expect(childEnvironment(load(root, env), {}, false).RENDERER_MODEL).toBe('haiku');
+    // 在同一层换了工具，那一层的模型一起清掉。
+    writeGlobal(env, { ORCHESTRATOR: 'qoder' }, parseConfFile);
+    expect(fs.readFileSync(file, 'utf8')).not.toContain('ORCHESTRATOR_MODEL=');
+    expect(() => writeGlobal(env, { RENDERER_MODEL: 'two words' }, parseConfFile)).toThrow('模型名');
+    expect(() => load(root, { ...env, RENDERER_MODEL: 'a;b' })).toThrow('RENDERER_MODEL');
+  });
+
   it('defaults the voice to the local Breeze on Apple Silicon and MiniMax elsewhere', () => {
     expect(defaultTTSProvider('darwin', 'arm64')).toBe('breeze');
     expect(defaultTTSProvider('darwin', 'x64')).toBe('minimax');

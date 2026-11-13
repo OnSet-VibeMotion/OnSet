@@ -35,13 +35,18 @@ interface Option {
 }
 
 /** 每一项在界面上的名字、一句说明与可选值。 */
-function describe(key: config.GlobalKey): { label: string; hint: string; options: Option[] } {
+function describe(key: config.GlobalKey): { label: string; hint: string; options: Option[]; modelOf?: string } {
   const agents = agentOrder.map((a) => ({ value: a.id, label: a.label }));
   switch (key) {
     case 'ORCHESTRATOR':
       return { label: '编排', hint: '和你对话、写稿、定分镜、调度渲染的工具', options: agents };
+    case 'ORCHESTRATOR_MODEL':
+      // 可选的模型跟着工具变，由界面按工具去 /api/agents/{工具}/models 取，这里不列。
+      return { label: '编排模型', hint: '留空用这家工具自己的默认模型；换了编排工具会回到默认', options: [], modelOf: 'ORCHESTRATOR' };
     case 'RENDERER':
       return { label: '渲染', hint: '把每个镜头画出来的工具', options: agents };
+    case 'RENDERER_MODEL':
+      return { label: '渲染模型', hint: '留空用这家工具自己的默认模型；换了渲染工具会回到默认', options: [], modelOf: 'RENDERER' };
     case 'TTS_PROVIDER':
       return { label: '配音', hint: '把口播稿读成配音', options: config.TTSProviders.map((p) => ({ value: p.id, label: ttsNames[p.id] ?? p.name })) };
     case 'ALIGN_PROVIDER':
@@ -90,7 +95,18 @@ export function settingsAPI(s: Server, request: Request): Response {
       has_project: root !== '',
       rows: rows.map((r) => {
         const d = describe(r.key);
-        return goMap({ key: r.key, label: d.label, hint: d.hint, options: d.options, default: config.GlobalDefaults[r.key], global: r.global, project: r.project, effective: r.effective, source: r.source });
+        return goMap({
+          key: r.key,
+          label: d.label,
+          hint: d.hint,
+          options: d.options,
+          model_of: d.modelOf,
+          default: config.GlobalDefaults[r.key],
+          global: r.global,
+          project: r.project,
+          effective: r.effective,
+          source: r.source,
+        });
       }),
     }),
   );

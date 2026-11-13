@@ -19,7 +19,7 @@ import { goClean, goPathError, goTrimSpace } from '../gofmt';
 import { marshalIndent } from '../gojson';
 import * as preset from '../preset';
 import * as projectinit from '../projectinit';
-import { agentsAPI } from './agents';
+import { agentModelsAPI, agentsAPI } from './agents';
 import { beatAPI, rawAPI, styleExampleAPI, stylesAPI, treeAPI } from './api_ui';
 import { commandAPI, filesAPI, productionStartAPI, sessionAPI, sessionsAPI, turnAPI } from './api_sessions';
 import { previewAPI, publishAPI, renderAllAPI, sceneFeatureAPI, scenesAPI } from './features';
@@ -330,6 +330,7 @@ export class Server {
       ['/api/skills', () => skillsAPI(this)],
       ['/api/skills/install', (r) => skillsInstallAPI(this, r)],
       ['/api/agents', (r) => agentsAPI(this, r)],
+      ['/api/agents/', (r, rest) => agentModelsAPI(r, rest)],
       ['/preview/scenes/', (r, rest) => previewAPI(this, r, rest)],
       ['/api/styles', (r) => stylesAPI(r)],
       ['/api/styles/', (_r, rest) => styleExampleAPI(rest)],

@@ -11,7 +11,7 @@ import { BrowserEnv, CLIDirEnv, HyperFramesBrowserEnv, PinnedVersion, cliDir } f
 import { childEnvKeys as toolpathEnvKeys } from '../toolpath';
 import { EnvDirEnv as BeatEnvDirEnv, envDir as beatEnvDir } from '../beat/env';
 import { DirEnv as VoicesDirEnv, defaultDir as defaultVoicesDir } from '../voice/dir';
-import { GlobalDefaults, GlobalKeys, SettingsFileEnv, isGlobalKey, settingsFile, type GlobalKey } from './global';
+import { GlobalDefaults, GlobalKeys, ModelToolKey, SettingsFileEnv, isGlobalKey, settingsFile, validModel, type GlobalKey } from './global';
 import { ValidTools } from '../tools';
 import { AlignAuto, alignerIDs, hostAligner, parseAllowCommands, ttsProviderIDs, validAligner, validTTSProvider } from './providers';
 
@@ -64,7 +64,11 @@ export interface MemorySettings {
 /** Go 的 config.Config。没有 JSON 形式，字段用 camelCase。 */
 export interface Config {
   orchestrator: string;
+  /** 编排工具用的模型；空是那家工具自己的默认。只在与 orchestrator 同一层（或更高层）写的才算，见 load。 */
+  orchestratorModel: string;
   renderer: string;
+  /** 渲染工具用的模型，规则同 orchestratorModel。镜头 scene.json 换了渲染工具时不用它（scene/run.ts）。 */
+  rendererModel: string;
   ttsProvider: string;
   /** 已解析的对齐工具，auto 已落成具体取值。 */
   alignProvider: string;
@@ -93,7 +97,9 @@ export interface Config {
 export function newConfig(fields: Partial<Omit<Config, 'memory'>> & { memory?: Partial<MemorySettings> } = {}): Config {
   return {
     orchestrator: '',
+    orchestratorModel: '',
     renderer: '',
+    rendererModel: '',
     ttsProvider: '',
     alignProvider: '',
     sceneJobs: 0,
@@ -193,6 +199,11 @@ export function formatFloatShortest(value: number): string {
   return (negative ? '-' : '') + out;
 }
 
+/** 渲染工具 renderer 该用的模型：与配置里的渲染工具是同一家时用 rendererModel，否则（镜头 scene.json 换了工具）用那家自己的默认。 */
+export function rendererModelFor(config: Config, renderer: string): string {
+  return renderer === config.renderer ? config.rendererModel : '';
+}
+
 /** 读取项目配置。environ 不给（或为 null）时用当前进程环境。 */
 export function load(root: string, environ?: Record<string, string> | null): Config {
   const env = environ ?? envMap();
@@ -221,16 +232,30 @@ export function load(root: string, environ?: Record<string, string> | null): Con
     }
   }
   // 全局设置只管设置页的那几项（GlobalKeys）；其余键照旧只看环境变量、.env 与项目配置。
-  const resolve = (key: string, fallback: string): string => {
-    for (const source of [env, dotenv, conf, isGlobalKey(key) ? global : {}]) {
+  const layers = (key: string) => [env, dotenv, conf, isGlobalKey(key) ? global : {}];
+  // 从第 from 层往下找第一个写了的值；都没写时取内置默认。
+  const resolveFrom = (key: string, fallback: string, from: number): string => {
+    for (const source of layers(key).slice(from)) {
       const value = source[key];
       if (value) return value;
     }
     return isGlobalKey(key) ? GlobalDefaults[key] : fallback;
   };
+  const resolve = (key: string, fallback: string): string => resolveFrom(key, fallback, 0);
+  // 模型只对写它时的那家工具有意义：在模型所在的那一层往下看工具，是现在这一家才用。
+  // 例如全局设了 claude + opus、项目改成 codex，opus 不能交给 codex；客户端给会话换了渲染工具、
+  // 没选模型时（子进程环境里 RENDERER 变了而 RENDERER_MODEL 没写），项目里给旧工具写的模型同样作废。
+  const modelFor = (modelKey: keyof typeof ModelToolKey): string => {
+    const toolKey = ModelToolKey[modelKey];
+    const at = layers(modelKey).findIndex((source) => !!source[modelKey]);
+    if (at < 0) return '';
+    return resolveFrom(toolKey, '', at) === resolve(toolKey, '') ? layers(modelKey)[at]![modelKey]! : '';
+  };
   const cfg = newConfig({
     orchestrator: resolve('ORCHESTRATOR', ''),
+    orchestratorModel: modelFor('ORCHESTRATOR_MODEL'),
     renderer: resolve('RENDERER', ''),
+    rendererModel: modelFor('RENDERER_MODEL'),
     ttsProvider: resolve('TTS_PROVIDER', ''),
     overlay: dotenv,
   });
@@ -243,6 +268,9 @@ export function load(root: string, environ?: Record<string, string> | null): Con
   }
   if (!ValidTools.has(cfg.renderer)) {
     throw new Error(`无效的 RENDERER: ${cfg.renderer}（可选：codex claude qoder codebuddy opencode）`);
+  }
+  for (const [key, value] of [['ORCHESTRATOR_MODEL', cfg.orchestratorModel], ['RENDERER_MODEL', cfg.rendererModel]] as const) {
+    if (value !== '' && !validModel(value)) throw new Error(`无效的 ${key}: ${value}（模型名只能用字母、数字与 . _ - : / @ # [ ] +）`);
   }
   if (!validTTSProvider(cfg.ttsProvider)) {
     throw new Error(`无效的 TTS_PROVIDER: ${cfg.ttsProvider}（可选：${ttsProviderIDs()}）`);
@@ -318,6 +346,12 @@ export function childEnvironment(
   Object.assign(out, config.overlay);
   out.ORCHESTRATOR = config.orchestrator;
   out.RENDERER = config.renderer;
+  // 模型与工具一起写进去（空就删掉 .env 里带进来的旧值）：子进程按 load 的规则，环境里只有工具、
+  // 没有模型时不会捡起项目配置里给别的工具写的模型。编排工具调用的 am scene run 因此用会话选的渲染模型。
+  for (const [key, value] of [['ORCHESTRATOR_MODEL', config.orchestratorModel], ['RENDERER_MODEL', config.rendererModel]] as const) {
+    if (value !== '') out[key] = value;
+    else delete out[key];
+  }
   out.TTS_PROVIDER = config.ttsProvider;
   if (config.alignProvider !== '') out.ALIGN_PROVIDER = config.alignProvider;
   // 记忆设置与 ORCHESTRATOR 一样显式写进去：编排工具调用的 am memory remember、

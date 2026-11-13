@@ -13,6 +13,9 @@ test('settings pick what to use for every project, and one project can differ', 
   await expect.poll(() => (fs.existsSync(sandbox.settings) ? fs.readFileSync(sandbox.settings, 'utf8') : '')).toContain('TTS_PROVIDER=breeze');
   // 测试项目没单独设配音：「这个项目」显示跟随全局，值是 Breeze。
   await expect(row('TTS_PROVIDER').getByLabel('这个项目的配音')).toContainText('跟随全局（Breeze TTS 2');
+  // 渲染模型：可选的是渲染工具（默认 claude）报的模型，写进全局设置。
+  await row('RENDERER_MODEL').getByLabel('全局渲染模型').selectOption('sonnet');
+  await expect.poll(() => fs.readFileSync(sandbox.settings, 'utf8')).toContain('RENDERER_MODEL=sonnet');
   // 编排工具被测试环境的环境变量定死了：页面照实说。
   await expect(row('ORCHESTRATOR')).toContainText('被环境变量覆盖');
 

@@ -171,8 +171,8 @@ export class Store {
   observeModel(renderer: string, model: string): void {
     observeModel(this, renderer, model);
   }
-  currentModel(renderer: string, env: Record<string, string | undefined>): string {
-    return currentModel(this, renderer, env);
+  currentModel(renderer: string, env: Record<string, string | undefined>, declared = ''): string {
+    return currentModel(this, renderer, env, declared);
   }
 
   // ---- checks.ts ----

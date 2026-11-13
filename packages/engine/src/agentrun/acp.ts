@@ -220,16 +220,20 @@ async function driveACP(ctx: DriveContext): Promise<void> {
   if (spec.resume && spec.sessionID) {
     if (!canLoad) throw new Error('这个编排工具不支持续接会话（ACP loadSession）');
     loading = true;
+    let loaded: Obj;
     try {
-      await race(peer.request('session/load', { sessionId: spec.sessionID, cwd, mcpServers: acpMcpServers(spec.toolsServer) }));
+      loaded = obj(await race(peer.request('session/load', { sessionId: spec.sessionID, cwd, mcpServers: acpMcpServers(spec.toolsServer) })));
     } finally {
       loading = false;
     }
     sessionID = spec.sessionID;
+    await race(ensureModel(peer, sessionID, loaded, spec.model ?? ''));
+    ctx.result.model = acpModel(loaded);
   } else {
     const created = obj(await race(peer.request('session/new', { cwd, mcpServers: acpMcpServers(spec.toolsServer) })));
     sessionID = str(created.sessionId);
     if (sessionID === '') throw new Error('session/new 没有返回 sessionId');
+    await race(ensureModel(peer, sessionID, created, spec.model ?? ''));
     ctx.result.model = acpModel(created);
   }
   ctx.emit({ kind: KindSession, session_id: sessionID });
@@ -276,6 +280,28 @@ export function acpModel(created: Obj): string {
   return model ? str(model.currentValue) : '';
 }
 
+
+/**
+ * 会话开出来后核对模型：启动参数（codebuddy 的 --model、opencode 配置里的 model）没生效时，按对方报的方式再切一次——
+ * opencode 报 configOptions 里的 model 项，用 session/set_config_option；codebuddy 报 models，用 session/set_model。
+ * 切完把 opened 里记的当前模型改成新的，acpModel 读到的就是这一轮实际用的。对方什么都没报时不切（不知道它认不认）。
+ */
+export async function ensureModel(peer: { request(method: string, params: unknown): Promise<unknown> }, sessionID: string, opened: Obj, model: string): Promise<void> {
+  if (model === '' || acpModel(opened) === model || acpModel(opened) === '') return;
+  const options = Array.isArray(opened.configOptions) ? opened.configOptions.map(obj) : [];
+  const option = options.find((o) => o.id === 'model' || o.category === 'model');
+  try {
+    if (option) {
+      await peer.request('session/set_config_option', { sessionId: sessionID, configId: str(option.id), value: model });
+      option.currentValue = model;
+    } else {
+      await peer.request('session/set_model', { sessionId: sessionID, modelId: model });
+      obj(opened.models).currentModelId = model;
+    }
+  } catch (err) {
+    throw new Error(`编排工具不接受模型 ${model}：${(err as Error).message}`, { cause: err });
+  }
+}
 
 /** ACP 的 mcpServers：stdio 服务的 env 是 {name, value} 列表。 */
 function acpMcpServers(server: McpServer | undefined): Array<Record<string, unknown>> {
