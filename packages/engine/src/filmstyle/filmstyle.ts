@@ -106,6 +106,18 @@ export function register(source: Source): void {
   registry.sort((a, b) => compareBytes(a.id(), b.id()));
 }
 
+/** 第三方插件带来的风格来源的 ID 前缀（x-<站 id>），由 flow.syncStyleSources 按当前项目换上。 */
+export const PluginSourcePrefix = 'x-';
+
+/** 把插件来源整组换掉（项目切换、插件加减时）：先去掉旧的插件来源，再登记新的。内置来源不动。 */
+export function replacePluginSources(next: Source[]): void {
+  for (let i = registry.length - 1; i >= 0; i--) if (registry[i].id().startsWith(PluginSourcePrefix)) registry.splice(i, 1);
+  for (const source of next) {
+    if (!source.id().startsWith(PluginSourcePrefix)) throw new Error('filmstyle: 插件来源的 ID 要以 x- 开头：' + source.id());
+    register(source);
+  }
+}
+
 /** 全部已登记的来源，按 ID 排序。 */
 export function sources(): Source[] {
   return [...registry];

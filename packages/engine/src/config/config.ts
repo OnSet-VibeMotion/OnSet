@@ -382,6 +382,11 @@ export function childEnvironment(
   // 音色库同理：编排工具调用的 voice_save、voice_get 与客户端的音色页要是同一个库，
   // 默认目录由 XDG_DATA_HOME 推出而它不在白名单里。
   if (config.voicesDir !== '') out[VoicesDirEnv] = config.voicesDir;
+  // 第三方站的存放目录同理：客户端的写任务（station_run）要找到设置页加进来的同一份站。只在子进程会算出
+  // 另一个目录时写（显式指定了，或默认目录由不在白名单里的 XDG_DATA_HOME 推出）。
+  // 名字与默认值同 flow.StationsDirEnv / flow.stationsDir；这里不 import flow，免得配置包依赖流程包。
+  if (source.AM_STATIONS_DIR) out.AM_STATIONS_DIR = source.AM_STATIONS_DIR;
+  else if (source.XDG_DATA_HOME && !unsafe) out.AM_STATIONS_DIR = path.join(dataDir(source), 'stations');
   // 全局设置同理：子进程（编排工具调用的 am、渲染）按同一份全局设置解析项目配置。
   if (config.settingsFile !== '') out[SettingsFileEnv] = config.settingsFile;
   // 客户端自带的浏览器与用户显式指定的浏览器同理：子进程里的 am hyperframes 照样用它们，不去下载 headless-shell。

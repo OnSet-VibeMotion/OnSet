@@ -1,0 +1,471 @@
+/* 第三方站（流程插件）：设置页的列表与发布页的按钮。选择器挂在 .stations / .stations-actions 下，沿用 :root 的色板。 */
+.stations {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.stations .stations-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stations .stations-head strong {
+  font: 600 15px var(--serif);
+  color: var(--text);
+}
+.stations .stations-head span {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.stations .stations-problem {
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  border-left: 2px solid var(--bad);
+  border-radius: 8px;
+  color: var(--bad);
+  font-size: 12px;
+}
+.stations .stations-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.stations .station-card {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--raised);
+}
+.stations .station-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.stations .station-icon,
+.stations-actions .station-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.stations .station-title {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+.stations .station-title strong {
+  font: 600 14px var(--serif);
+  color: var(--text);
+}
+.stations .station-title span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.stations .station-badge,
+.stations-actions .station-badge {
+  padding: 1px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font: 10px var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+.stations button.link.danger {
+  color: var(--bad);
+}
+.stations .station-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 14px 14px 58px;
+}
+.stations .station-detail dl {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+.stations .station-detail dt {
+  color: var(--faint);
+}
+.stations .station-detail dd {
+  margin: 0;
+  color: var(--text-2);
+  word-break: break-all;
+}
+.stations .station-detail dd.mono {
+  font: 11px var(--mono);
+}
+.stations .station-prompt-label {
+  font: 11px var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+.stations .station-prompt {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--well);
+  color: var(--text-2);
+  font: 12px/1.7 var(--sans);
+  white-space: pre-wrap;
+}
+.stations .stations-add {
+  display: flex;
+  gap: 8px;
+}
+.stations .stations-add input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--well);
+  color: var(--text);
+  font: 12px var(--mono);
+}
+
+/* 发布页：第三方插件的动作。 */
+.stations-actions .station-actions-group {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.stations-actions h4 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.stations-actions .station-op {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--raised);
+}
+.stations-actions .station-op-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stations-actions .station-op-head strong {
+  font-size: 13px;
+  color: var(--text);
+}
+.stations-actions .station-op-head span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.stations-actions .station-param {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.stations-actions .station-param input:not([type='checkbox']),
+.stations-actions .station-param textarea {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--well);
+  color: var(--text);
+  font: 13px var(--sans);
+}
+.stations-actions .station-param textarea {
+  height: auto;
+  padding: 6px 10px;
+}
+.stations-actions .station-op-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.stations-actions .station-last {
+  font-size: 12px;
+}
+.stations-actions .station-last.ok {
+  color: var(--ok);
+}
+.stations-actions .station-last.bad {
+  color: var(--bad);
+}
+.stations-actions .station-output {
+  margin: 0;
+  max-height: 160px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--well);
+  color: var(--text-3);
+  font: 11px/1.6 var(--mono);
+  white-space: pre-wrap;
+}
+
+/* 插件自己的页面：上面一条宿主的说明栏，下面是沙箱 iframe。 */
+.station-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: 10px;
+}
+.station-page .station-page-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.station-page .station-page-bar strong {
+  font: 600 15px var(--serif);
+  color: var(--text);
+}
+.station-page .station-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.station-page .station-badge {
+  padding: 1px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font: 10px var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+.station-page .station-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+.station-page .station-confirm > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.station-page .station-confirm strong {
+  color: var(--accent-text);
+  font-size: 13px;
+}
+.station-page .station-confirm span {
+  font-size: 12px;
+  color: var(--text-3);
+  word-break: break-all;
+}
+.station-page .station-frame {
+  flex: 1;
+  min-height: 360px;
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+/* 设置页：插件的权限与设置。 */
+/* 外层详情的 dl 是两列网格（.station-detail dl），权限列表要整行一条：选择器写得比它具体。 */
+.stations .station-detail dl.station-perms {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stations .station-detail dl.station-perms > div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 12px;
+}
+.stations .station-needs {
+  font-style: normal;
+  color: var(--stale);
+}
+.stations .station-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.stations .station-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 12px;
+  align-items: center;
+}
+.stations .station-setting-label {
+  display: flex;
+  flex-direction: column;
+}
+.stations .station-setting-label strong {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
+.stations .station-setting-label span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.stations .station-setting input:not([type='checkbox']),
+.stations .station-setting select {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--well);
+  color: var(--text);
+  font: 13px var(--sans);
+  min-width: 0;
+}
+.stations .station-secret {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.stations .station-secret input {
+  flex: 1;
+}
+.stations .station-secret .ok {
+  color: var(--ok);
+  font-size: 12px;
+}
+.stations .station-secret .muted {
+  color: var(--faint);
+  font-size: 12px;
+}
+
+/* 嵌进自带页面的插件小窗。 */
+.station-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 18px;
+}
+.station-slots .station-slot {
+  height: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+/* 顶栏的「插件」菜单。 */
+.plugin-menu {
+  position: relative;
+  flex: none;
+}
+.plugin-menu > button {
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--faint);
+  font-size: 12px;
+}
+.plugin-menu > button:hover {
+  background: transparent;
+  color: var(--text-2);
+}
+.plugin-menu > button.on {
+  color: var(--text);
+  box-shadow: inset 0 -1px 0 var(--accent);
+  border-radius: 0;
+}
+.plugin-menu .plugin-menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--raised);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.plugin-menu .plugin-menu-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 8px;
+  border-radius: 8px;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: left;
+  box-shadow: none;
+}
+.plugin-menu .plugin-menu-list button:hover,
+.plugin-menu .plugin-menu-list button.on {
+  background: var(--hover);
+  color: var(--text);
+}
+.plugin-menu .station-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.plugin-menu .station-icon svg {
+  width: 13px;
+  height: 13px;
+}
+.plugin-menu .plugin-menu-owner {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* 设置页：插件带来的整套流程。 */
+.stations .station-flow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+.stations .station-flow > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+.stations .station-flow strong {
+  color: var(--accent-text);
+  font-size: 13px;
+}
+.stations .station-flow span {
+  color: var(--text-3);
+  font-size: 12px;
+}

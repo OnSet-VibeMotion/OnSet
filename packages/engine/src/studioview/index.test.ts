@@ -91,6 +91,9 @@ describe('studio view requests', () => {
     expect(validateViewRequest('', { page: 'final', step: 'final' })).toEqual({ page: 'final', step: 'final' });
     expect(() => validateViewRequest('', { page: '', step: 'nope' })).toThrow('没有步骤');
     expect(() => validateViewRequest('', { page: '' })).toThrow();
+    // 第三方插件的页面：只查写法。
+    expect(validateViewRequest('', { page: 'x:fake-publisher:dashboard', target: 'ignored' })).toEqual({ page: 'x:fake-publisher:dashboard' });
+    expect(() => validateViewRequest('', { page: 'x:Bad:page' })).toThrow('没有页面');
     const inbox = path.join(temp(), 'inbox');
     expect(writeViewRequest({ [ViewInboxEnv]: inbox }, { page: '', step: 'scene', note: '开始渲染' })).toBe(true);
     expect(drainViewInbox(inbox)).toEqual([{ page: '', step: 'scene', note: '开始渲染' }]);

@@ -33,6 +33,7 @@ import {
 import { applySuggestion, findToken, mentionAttachments, parseCommand, slashCommands, suggest, type SlashCommand, type Suggestion } from './chat/complete';
 import '../chat.css';
 import { RenderWatch } from './RenderActivity';
+import { stationPageLabel } from './Stations';
 
 // SSE 的 event 字段就是事件种类，EventSource 只把具名事件派给对应监听器，所以要逐个注册。
 const kinds: EventKind[] = [
@@ -308,6 +309,11 @@ export function Chat(props: Props) {
       case 'remember':
         fill('记住这个偏好，以后都这样做：');
         return;
+      default:
+        if (command.plugin?.tab) {
+          fill('');
+          props.onView({ page: command.plugin.tab });
+        } else if (command.plugin) fill(command.plugin.prompt);
     }
   };
 
@@ -965,7 +971,7 @@ function AnsweredOptions(props: { picked?: string; count: number; children: Reac
 
 /** 切页请求的说法：「口播稿」「镜头 scene-003」「文件 production/treatment.md」。 */
 function viewLabel(view: ViewRequest): string {
-  const label = tabs.find(([id]) => id === view.page)?.[1] ?? view.page;
+  const label = tabs.find(([id]) => id === view.page)?.[1] ?? stationPageLabel(view.page) ?? view.page;
   return view.target ? `${label} ${view.target}` : label;
 }
 

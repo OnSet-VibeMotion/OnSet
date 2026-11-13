@@ -1,0 +1,5 @@
+#!/bin/sh
+# 测试用：报告回执与环境里能看到的东西（检查凭据没有漏进来）。
+cat > /dev/null
+if [ -f production/publish/receipts.json ]; then cat production/publish/receipts.json; else echo "还没有回执"; fi
+echo "secret=${AM_TEST_SECRET:-none} data=${AM_STATION_DATA:+set}"

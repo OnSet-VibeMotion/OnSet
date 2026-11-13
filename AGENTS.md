@@ -120,7 +120,7 @@ fork 自外部项目的技能要带 `LICENSE` 和 `ATTRIBUTION.md`，后者记�
 
 镜头的画幅一律经 `scene.sceneCanvas` 取（`scene/scene.ts` 的 `styleSource`）：`scene.json` 写了 `style_guide` 用它，没写就近找 `frame.md`——镜头目录，再逐级向上到项目根（有 `article-to-motion.conf` 的那一层），找不到项目根时只看镜头目录。**不要再写 `canvasOf(s.directory, s.style_guide)`**：新镜头不写 `style_guide`，那样会静默落到默认的 1080×1440，提示词、`am-scene.js` 与产物校验三处一起错，选了 9:16 的项目整片出成 3:4 还照样「通过」（2026-11 实测）。`scene.test.ts` 的「reads the project frame.md when scene.json has no style guide」钉着。
 
-`assets/presets/<画幅>/` 与 `assets/styles/<风格>/<画幅>/` 下的**文本产物全部由 `npm run generate -w @am/engine` 生成，不要手改**。真相源是 `packages/engine/src/preset/table.ts` 的画幅表、`packages/engine/src/preset/style.ts` 的风格表，以及 `packages/engine/src/preset/gen/templates/` 下的模板（`PROMPT-PRODUCTION.md` 与风格无关；每套风格在 `templates/styles/<风格>/` 下各有 `frontmatter.yaml`、`frame.body.md`、`style-guide.body.md`）。安全区在预设表里用 anchor 声明（贴顶 / 贴底 / 上下固定），构建期推导成绝对像素写进 `frame.md`——anchor 不进项目文件，渲染工具读到的始终是现成像素值。
+`assets/presets/<画幅>/` 与 `assets/styles/<风格>/<画幅>/` 下的**文本产物全部由 `npm run generate -w @am/engine` 生成，不要手改**。真相源是 `packages/engine/src/preset/table.ts` 的画幅表、`packages/engine/src/preset/style.ts` 的风格表，以及 `packages/engine/src/preset/gen/templates/` 下的模板（`production/<站>/<段>.md` 是与风格无关的制作提示词，按 `flow` 的段落顺序拼成 `PROMPT-PRODUCTION.md`，见「流程与站」；每套风格在 `templates/styles/<风格>/` 下各有 `frontmatter.yaml`、`frame.body.md`、`style-guide.body.md`）。安全区在预设表里用 anchor 声明（贴顶 / 贴底 / 上下固定），构建期推导成绝对像素写进 `frame.md`——anchor 不进项目文件，渲染工具读到的始终是现成像素值。
 
 改完预设表后必须重跑生成器并提交产物，CI 的 `generated-assets` job 会校验二者一致（`packages/engine/src/preset/gen/gen.test.ts` 的「matches the committed assets byte-for-byte」在本地也能先拦下）。
 
@@ -184,7 +184,44 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 
 ## Prompt 文件
 
-`assets/shared/PROMPT.md` 和 `assets/presets/<画幅>/PROMPT-PRODUCTION.md` 是内置资产，不是本仓库的文档。它们随新建项目下发到项目根，被客户端的「开始制作」直接喂给编排工具。`PROMPT-PRODUCTION.md` 是生成产物，改它要改 `packages/engine/src/preset/gen/templates/PROMPT-PRODUCTION.md` 再跑生成器。
+`assets/shared/PROMPT.md` 和 `assets/presets/<画幅>/PROMPT-PRODUCTION.md` 是内置资产，不是本仓库的文档。它们随新建项目下发到项目根，被客户端的「开始制作」直接喂给编排工具。`PROMPT-PRODUCTION.md` 是生成产物，改它要改 `packages/engine/src/preset/gen/templates/production/` 下对应站的段落再跑生成器。
+
+### 流程与站
+
+制作流程拆成「站」（`packages/engine/src/flow`）：一个站带一段或几段制作提示词（`templates/production/<站>/<段>.md`）、制作路线页上的站点（含审核关卡与绑定文件）和它会写的文件（`produces`）；流程是站的有序组合，内置口播（`speech`）与卡点（`beat`）两个，项目按 `beat.yaml` 推断（`flow.detectFlow`）。设计稿是 `docs/superpowers/specs/2026-11-11-流程插件-design.md`（本地，不进公开树），以后第三方站也挂在这里。
+
+| 约定 | 原因 |
+|---|---|
+| 段落正文里不写「第六阶段」，写 `{{STAGE:render}}`（只要数字写 `{{STAGE_N:render}}`），由 `flow.composePrompt` 按阶段在提示词里的先后编号；引用了没有的阶段直接报错。`flow.test.ts` 的「leaves no hard-coded stage numbers in the sections」拦着写死的编号 | 换了站或顺序，交叉引用跟着变，不会指错阶段 |
+| 制作提示词现在仍是一份（`flow.productionPrompt`），口播、卡点、歌曲讲解共用，后两者是文末分支；拼出的结果与拆分前逐字节相同 | 先证明切得对，再让各流程拼自己的提示词 |
+| 改过的文件归哪一站由各站 `produces` 决定（`flow.stationOfPath`）：整条路径 > 前缀加文件名 > 只有前缀，同级比前缀长短；只算当前流程里的站 | 不再维护一张按顺序匹配的手写表，新站声明自己的文件即可 |
+| 站点做没做的判断函数留在 `studio/progress.ts` 的 `judges`，键是「站:站点」；普通站漏了判断函数，`stationDefs` 直接报错（`progress.test.ts` 的「judges every station of every builtin flow」） | 引擎的 `flow` 只有声明，不依赖 `studio`；口播与卡点的「拆分镜头」都叫 `plan`，判断不同 |
+| 新增一站：在 `flow/builtin.ts` 加站与段落、写模板、在 `productionPrompt` 里排位置、在 `judges` 里加判断，跑生成器 | `flow.test.ts` 的「has a template for every section and no orphan templates」查模板与声明一一对应 |
+
+第三方站（`flow/external.ts`、`flow/run.ts`）是用户自己加的站，am 不分发、不维护，第一个用例是自动发布：
+
+| 约定 | 原因 |
+|---|---|
+| 一个站是一个目录加 `am-station.json`，只能声明：提示词文本、站点（`outputs` / `stale_after` / `gate_files` 声明式判断）、`produces`、操作。清单严格校验：路径只能是项目里的相对路径，不能声明 `production/studio/`、`.agents/`、`.env` 这类 am 自己的文件，id 不能与内置站重名 | 第三方代码不进 am 的进程，能做什么全写在清单里，添加时给用户看得见 |
+| 项目里的 `article-to-motion.flow.json`（`flow.LockFile`）记加了哪些站；git 来源按 ref 克隆、记 commit 与内容摘要，存进 `<数据目录>/am/stations/<id>/<commit>`（`AM_STATIONS_DIR` 覆盖，`childEnvironment` 在会算出另一个目录时显式传），摘要对不上就不用；`link:` 是开发用的本机目录，不核对。不接 npm | 同一项目两次制作要得到同样的说明；npm 包装一次就执行了 install 脚本 |
+| 提示词：`runPrompt` 把各站说明接在最后（`flow.extraPrompt`），每站一节，声明「与上面的约定冲突时以上面为准」；加了却读不出来的站让「开始制作」直接报错 | 用户加了它，悄悄少一步更糟 |
+| 操作在子进程里跑（`flow.runStationOp`）：工作目录是项目根，stdin 一行 JSON，最后一行 `am-result <JSON>` 是结构化结果；环境只给 PATH、HOME、语言、代理、证书与 `AM_STATION_DATA`（插件自己的数据目录，凭据放这里），项目 `.env` 一概不传 | 发布插件要读成片，但不能拿到配音、模型服务的凭据 |
+| `trigger: agent` 的操作由工具服务登记成 `x_<站>_<操作>` 工具（`toolsmcp.externalOps`，执行时落到 `station_run`）；`trigger: user` 的只在界面上出按钮（发布页的 `StationActions`，`POST /api/stations/{id}/ops/{操作}`）。`station_add` / `station_remove` / `station_list` / `station_run` 的 scopes 只有 cli | 发出去、上传这类对外且不能撤回的动作只能由用户点；加不加第三方插件是用户的决定，编排工具不能自己装 |
+| 插件自己的页面（清单 `pages`：`entry` 是站目录里的 HTML，`reads` 是页面能读的项目文件）在画面面板里以 `sandbox="allow-scripts"` 的 iframe 打开（`Stations.tsx` 的 `StationPage`，页面 id `x:<站>:<页面>`，顶栏「更多页面」与 `studio_show` 都认）。`/station-ui/<站>/…` 只给 entry 所在目录，响应带 `pageCSP`：`default-src 'none'`、`connect-src 'none'`，脚本、样式、图片只能来自本站目录与 `/station-ui/_sdk.js`；后端另拒 `Origin: null` 的 `/api` 请求 | 页面是第三方代码，又和界面同在 `am://app/` 下：不隔离的话它能调任何接口、读项目文件。不许连网是为了宿主交给它的数据传不出去 |
+| 页面要的东西都经 `postMessage` 请宿主转交（`window.am`：`info`、`read`、`run`、`ask`、`onRefresh`）：`read` 只给 `reads`、`produces` 与站点 `outputs` 里的文件（`flow.pageMayRead`，后端 `/api/stations/{id}/read` 再查一遍），图片给 data URL；`run` 先在页面上方弹确认条，用户点「执行」才跑；`ask` 只填进对话输入框，不发送 | 页面里的按钮可以被脚本自己点，不算用户同意；要对外的动作必须是用户在宿主界面上点的 |
+| 第三方站点的产物不参与「后面已经做了」的推断（`computeStations` 的 `laterDone` 跳过 `declared`） | 插件一写回执，前面所有自带的站就全成了「跳过」，顶栏全打勾 |
+| 插件的扩展点都写在清单里，设置页「详情与设置」照实列出：`settings`（设置页按类型出表单；`secret` 存 `<站目录>/<id>/config/secrets.json`，0600，只经 stdin 的 `settings` 交给插件子进程，接口与页面只知道「填没填」）、`permissions.project`（页面 `am.project()` 拿镜头、路线、发布信息的摘要）、`permissions.network`（只许 https/wss 到域名，进页面 CSP 的 `connect-src`）、`permissions.uses`（页面 `am.call()` 请用户确认后调 am 自带的操作，经 `/api/stations/{id}/call/{op}`）、`hooks`（`turn.finished` / `task.finished` / `gate.confirmed` / `film.approved` 时自动跑本站的 agent 操作）、`slots`（页面嵌进口播稿、分镜、镜头、成片、发布、路线页，`am.info().context` 带上镜头编号等）、`commands`（对话框的斜杠命令）。操作打印 `am-progress <0–1> <说明>` 会显示成任务进度 | 插件能做的事要多，但每一项都要用户看得见：权限不写进清单就没有 |
+| `am.call()` 的边界有两层：清单只能申请 `flow.pageCallableOp` 放行的操作（不含归档、记忆回滚与导入、节拍确认、`station_*`、`config_set` 等），执行时客户端给执行进程设 `AM_OP_SCOPE=orchestrator`，`ops/worker.ts` 拒绝不在这个范围里的操作 | 清单写错、宿主漏判，都越不过执行进程这一道 |
+| 事件经 `studio/events.ts` 的小总线发（对话、任务、关卡、记忆各自 `emitStudioEvent`，`stations.ts` 订阅），钩子是写任务：项目正忙就这次不跑，不排队；`station.*` 任务结束不发 `task.finished`；一轮对话结束先开排队的下一轮再发事件 | 钩子是顺手做的事，不能挡住用户的下一句话，也不能互相触发、没完没了 |
+| 插件页面收在顶栏的「插件」菜单（`PluginMenu`），只用来嵌小窗的页面不列；顶栏右侧的页面链接（`.more-pages`）挤不下时在自己里面横向滚动 | 几个插件一加，顶栏就把整个窗口撑宽（e2e 里断言了不溢出） |
+| 页面 `am.send()` 替用户发一条消息给编排工具，与 `run` / `call` 一样先在宿主上确认；`ask()` 只填输入框 | 发消息会开一轮对话、花钱，算对外动作 |
+| 定时（`schedules`，5–1440 分钟）：`Server` 构造时起一个每分钟的定时器（`unref`，`shutdown` 清掉），`tickStationSchedules` 到点起写任务，项目正忙就等下一次，不补跑；只限 agent 操作 | 客户端关着不跑，所以不是 cron；不补跑免得一开客户端连跑一串 |
+| 阶段补充（`inserts`）：`runPrompt` 按 `flow.stageTitles` 的标题在项目提示词里找「## 第N阶段：<标题>」，插在这一阶段末尾；找不到接在最后并注明原本要插在哪。`flow.test.ts` / `extensions.test.ts` 核对标题表与模板一致 | 项目里的提示词只有编号和标题，编号随流程变，标题不变 |
+| 整套流程（`flow`）：项目在设置页选用后锁文件写 `flow: <站 id>`，`detectFlow` 返回 `x:<站 id>`，路线按它的 `stations`（内置站 id 加本站 id）排，顶栏第一步换成 `first_page`；`runPrompt` 保留项目提示词第一个「## 第…阶段」之前的公共约定，各阶段换成插件的 `prompt`。去掉这个站自动回到自带流程 | 新片型不用改 am；公共约定（工作边界、凭据、工具调用写法）不让插件换掉 |
+| 配音、对齐（`provides`）：取值 `x:<站 id>` 在 `validTTSProvider` / `validAligner` 里只查写法；插件的配音是它的 agent 工具，不进编排工具命令白名单、不是前置资源（安装页不列）。制作提示词第三、四阶段各有一句指向末尾的插件说明 | 插件工具经 MCP 调用，本来就不需要命令白名单 |
+| 渲染技能（`renderer_skills`）：`resolveAllSkills` 经 `flow.pluginSkillsFor` 加入 `plugin:<站>/<技能>`，于是指纹（`skill:` 摘要）、读取放行与 `pluginSkillSection` 提示词都自动覆盖；`scenes: all` 的每个镜头都带，`opt-in` 的只给 `scene.json` 的 `plugin_skills` 点名的镜头。点名了却没有直接报错。项目没加插件时提示词与指纹逐字不变（`scene/pluginskills.test.ts`） | 加一个对所有镜头生效的技能，已渲染的镜头标成 Stale 是对的：渲染输入确实变了；不想全变就用 opt-in |
+| 整片风格库（`film_styles`）：`flow.PluginStyleSource` 实现 `filmstyle.Source`，来源 id `x-<站 id>`；用到风格来源的地方先 `flow.syncStyleSources(项目根)`（`film_style_*` 操作、`/api/film-styles`、项目风格接口），`filmstyle.replacePluginSources` 整组换掉；装进项目走同一份 `filmstyle.install` 契约，缺 SKILL.md 时补通用的。前置资源清单跳过插件来源 | 插件来源只对加了它的项目可见；风格库随插件钉在 commit 上，不联网 |
+| 测试用的假发布站在 `flow/testdata/fake-publisher`（只写回执、不联网）；vitest setup 与 e2e fixtures 把 `AM_STATIONS_DIR` 指到临时目录 | 测试不能往开发者真实的站目录写 |
 
 - 要像直接写给人类操作者的任务说明，不暴露执行者是 agent、Codex 或 AI，也不使用「主控 agent」这类身份设定；但可以明确说明他需要操作其他 AI。
 - 不得出现 `./am` —— 用户项目里没有这个可执行文件。
@@ -487,7 +524,7 @@ AM_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run --root 
 | 位置 | 作用 |
 |---|---|
 | `packages/engine/src/config/providers.ts` | 取值、名称、自带时间戳粒度、命令名（安全模式下编排工具只被放行这一个命令），以及 `install`：`am setup` 怎么装它（npm 包 / uv 工具 / uv 专用环境，版本钉死，至少发布两周） |
-| `packages/engine/src/preset/gen/templates/PROMPT-PRODUCTION.md` 第三、四阶段 | 登录、合成与取时间戳的具体命令（**不写安装命令**，`gen.test.ts` 的「leaves voice tools to am setup」拦着），改完跑 `npm run generate -w @am/engine` |
+| `packages/engine/src/preset/gen/templates/production/voice/stage.md`、`timeline/stage.md`（第三、四阶段） | 登录、合成与取时间戳的具体命令（**不写安装命令**，`gen.test.ts` 的「leaves voice tools to am setup」拦着），改完跑 `npm run generate -w @am/engine` |
 | `apps/desktop/src/renderer/components/SetupGuide.tsx` 的 `voiceNames` | 安装页配音卡片上显示的服务名 |
 | `assets/shared/article-to-motion.conf`、`.env.example`、两份 README | 可选值注释 |
 

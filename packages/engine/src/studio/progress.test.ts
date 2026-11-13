@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { computeStations, readProgress, recordGate, stationOfPath } from './progress';
+import { addToProject, builtinFlows, fetchStation } from '../flow';
+import { computeStations, readProgress, recordGate, stationDefs, stationOfPath } from './progress';
 import { discoverScenes } from './scenes';
 
 const roots: string[] = [];
@@ -144,5 +145,26 @@ describe('production map', () => {
     expect(stationOfPath('covers/douyin.png', 'speech')).toBe('publish');
     expect(stationOfPath('production/beat/plan.json', 'beat')).toBe('plan');
     expect(stationOfPath('production/studio/step.json', 'speech')).toBe('');
+  });
+
+  it('places and judges a third-party station from its declaration', () => {
+    const root = project({});
+    write(root, 'production/review/review.json', '{"problems":[]}', 120);
+    addToProject(root, fetchStation(`link:${path.join(__dirname, '..', 'flow', 'testdata', 'fake-publisher')}`, process.env).entry);
+    const ids = stations(root).stations.map((s) => s.id);
+    expect(ids.slice(-2)).toEqual(['publish', 'auto-publish']);
+    expect(status(root)['auto-publish']).toBe('todo');
+    write(root, 'production/publish/receipts.json', '{}', 60);
+    expect(status(root)['auto-publish']).toBe('done');
+    // 插件的产物不让自带的站变成「跳过」。
+    expect(status(root)['publish']).toBe('todo');
+    // 复查比回执新：要重新发。
+    write(root, 'production/review/review.json', '{"problems":[]}');
+    expect(status(root)['auto-publish']).toBe('stale');
+    expect(stationOfPath('production/publish/receipts.json', 'speech')).toBe('');
+  });
+
+  it('judges every station of every builtin flow', () => {
+    for (const f of builtinFlows) expect(() => stationDefs(f.id), f.id).not.toThrow();
   });
 });

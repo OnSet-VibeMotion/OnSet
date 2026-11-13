@@ -17,6 +17,7 @@ import { newToolchain } from '../mediaprobe';
 import { DecodeError, decodeJSON, fieldBool, fieldString, goMap, methodNotAllowed, serveFile, writeError, writeJSON } from './http';
 import type { Project, Server } from './studio';
 import { runStudioOp, runWriteTask, writeTaskError, type Task } from './tasks';
+import * as flow from '../flow';
 
 /** /api/film-styles 里的一个来源。ready 为 false 时来源数据还没由 am setup 准备好（附 problem）。 */
 export interface FilmStyleSource {
@@ -199,6 +200,7 @@ function installedStyleJSON(projectDir: string, manifest: filmstyle.Manifest, di
  * 镜头要换风格不走这里：那要改分镜计划与镜头 scene.json，是编排工具的事。
  */
 export async function projectFilmStyleAPI(s: Server, request: Request): Promise<Response> {
+  flow.syncStyleSources(s.projectRoot());
   const p = s.projectOr404();
   if (p instanceof Response) return p;
   switch (request.method) {

@@ -18,6 +18,7 @@ import { discoverScenes, fileExists } from './scenes';
 import type { Project, Server } from './studio';
 import { addTask, runStudioOp, runTask, runWriteTask, writeTaskError } from './tasks';
 import type { Turn } from './turns';
+import { emitStudioEvent } from './events';
 
 function memoryStore(s: Server): { p: Project; cfg: config.Config; store: memory.Store } | Response {
   const p = s.projectOr404();
@@ -217,6 +218,8 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
       }
       name = 'memory_consolidate';
       label = req.final ? '成片已确认：整理这次制作的记忆' : '整理记忆';
+      // 用户在成片页确认这一版可用：第三方站可以挂在这上面（例如自动发布、通知）。
+      if (req.final) emitStudioEvent(s, p, 'film.approved', {});
       break;
     case 'exam':
       if (req.renderers.length === 0) return writeError(400, 'invalid_renderers', '至少选一个渲染工具');

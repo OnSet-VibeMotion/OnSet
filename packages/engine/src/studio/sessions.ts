@@ -21,6 +21,7 @@ import { compareTimes, nowTime } from './http';
 import type { Project, Server } from './studio';
 import { writeStepMark } from './view';
 import { changedPaths, diffTrees, loadTurn, revertTurn, saveTurn, scanTree, statTree, studioRoot, validID, type FileChange, type Turn } from './turns';
+import { emitStudioEvent } from './events';
 import { preferenceBrief, recordUtterance } from './memory';
 import { uploadDir, uploadKind } from './uploads';
 import { allowedCommands, expirePermissions, permissionEventJSON, pollPermissions, type PendingPermission, type PermissionEventData } from './permissions';
@@ -800,6 +801,8 @@ function finishTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, t
   s.release(p.path);
   emit(sess, turn.turn_id, { kind: kindTurnEnd, text: turn.error || undefined, status: turn.status, changes: turn.changes ?? undefined });
   drainQueue(s, p, sess);
+  // 排队的下一轮先开（它占了写权的话，钩子这次就不跑）：钩子不能挡住用户的下一句话。
+  if (turn.status === 'succeeded') emitStudioEvent(s, p, 'turn.finished', { turn_id: turn.turn_id, session_id: turn.session_id, changed: (turn.changes ?? []).map((c) => c.path) });
 }
 
 /**

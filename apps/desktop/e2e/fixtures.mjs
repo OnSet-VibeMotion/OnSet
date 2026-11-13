@@ -28,6 +28,7 @@ export const test = base.extend({
       memory: path.join(root, 'memory'),
       voices: path.join(root, 'voices'),
       agent: path.join(root, 'agent'),
+      stations: path.join(root, 'stations'),
       settings: path.join(root, 'settings.conf'),
       registry: path.join(root, 'config', 'projects.json'),
     };
@@ -67,6 +68,8 @@ export const test = base.extend({
       AM_VOICES_DIR: sandbox.voices,
       // 导演的模型服务密钥：不碰开发者自己填的。
       AM_AGENT_DIR: sandbox.agent,
+      // 第三方站（及其数据目录）：不碰开发者自己加的。
+      AM_STATIONS_DIR: sandbox.stations,
       AM_SETTINGS_FILE: sandbox.settings,
       AM_STUDIO_SKIP_SKILL_INSTALL: '1',
       ORCHESTRATOR: 'claude',

@@ -12,8 +12,10 @@ import { Preview, stepTabsFor, tabs, visibleTabs, type Tab } from './components/
 import { scriptFinalPath } from './components/Script';
 import { storyboardFiles } from './components/Storyboard';
 import { currentSummary } from './components/Progress';
+import { isStationTab, PluginMenu, setStationPages, stationPageLabel } from './components/Stations';
+import type { StationsResponse } from './types';
 
-const tabLabel = (id: Tab) => tabs.find(([t]) => t === id)?.[1] ?? id;
+const tabLabel = (id: Tab) => tabs.find(([t]) => t === id)?.[1] ?? stationPageLabel(id) ?? id;
 
 /** 画幅写成比例（1080x1440 → 3:4），帧率不在顶栏里出现。 */
 function canvasLabel(canvas: string): string {
@@ -56,7 +58,7 @@ const PANEL_WIDTH_KEY = 'am-studio.panel-width:';
 
 /** 看画面的页面面板默认宽一些，读文字的页面窄一些；宽度按这两类分别记住。 */
 type PanelKind = 'media' | 'doc';
-const panelKind = (tab: Tab): PanelKind => (['scene', 'compose', 'final', 'review', 'style', 'beat'].includes(tab) ? 'media' : 'doc');
+const panelKind = (tab: Tab): PanelKind => (['scene', 'compose', 'final', 'review', 'style', 'beat'].includes(tab) || isStationTab(tab) ? 'media' : 'doc');
 const panelDefault: Record<PanelKind, number> = { media: 0.58, doc: 0.45 };
 /** 对话栏最窄 420px，面板最窄 360px：拖动时两边都夹住。 */
 const minChat = 420;
@@ -125,9 +127,15 @@ export function App() {
   // 从制作路线跳到对话里的某一轮：nonce 让同一轮能再跳一次。
   const [jump, setJump] = useState<{ turn: string; nonce: number } | null>(null);
   const beatMode = !!beat?.enabled;
-  const steps = useMemo(() => stepTabsFor(beatMode), [beatMode]);
+  /** 项目选用了第三方站带来的流程：顶栏第一步换成它指定的页面。 */
+  const [flowFirstTab, setFlowFirstTab] = useState<Tab | ''>('');
+  const steps = useMemo(() => {
+    const base = stepTabsFor(beatMode);
+    return flowFirstTab ? [flowFirstTab, ...base.slice(1)] : base;
+  }, [beatMode, flowFirstTab]);
   // 整片制作现在在哪一步（编排工具每轮结束前用 studio_step 标的，没标过时按产物推），顶栏据此标出进度。
-  const progress = state?.step ? steps.indexOf(state.step as Tab) : -1;
+  // 第一步可能换成了第三方流程的页面：口播稿、节拍这一步的进度都算在第一步上。
+  const progress = state?.step ? (['script', 'beat'].includes(state.step) ? 0 : steps.indexOf(state.step as Tab)) : -1;
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [busy, setBusy] = useState('');
   const [sessionId, setSessionId] = useState('');
@@ -196,6 +204,8 @@ export function App() {
   const [outbox, setOutbox] = useState<Outbox | null>(null);
   const [recent, setRecent] = useState<Set<string>>(new Set());
   const [version, setVersion] = useState(1);
+  /** 第三方插件自己的页面，列在顶栏右侧「更多页面」的最后。 */
+  const [pluginTabs, setPluginTabs] = useState<[Tab, string][]>([]);
   const [dialog, setDialog] = useState(false);
   const [toast, setToast] = useState('');
   const [agents, setAgents] = useState<AgentsResponse | null>(null);
@@ -249,12 +259,22 @@ export function App() {
   }, []);
   const loadProject = useCallback(async () => {
     try {
-      const [st, sc, tr, bt] = await Promise.all([
+      const [st, sc, tr, bt, sts] = await Promise.all([
         api<ProjectState>('/api/state'),
         api<{ scenes: Scene[]; usage?: ProjectUsage }>('/api/scenes'),
         api<{ files: TreeFile[] }>('/api/tree'),
         api<BeatState>('/api/beat'),
+        // 第三方插件的页面：读不到不影响别的（插件坏了时设置页会说明）。
+        api<StationsResponse>('/api/stations').catch(() => ({ stations: [], problems: [] }) as StationsResponse),
       ]);
+      setStationPages(sts.stations);
+      setFlowFirstTab((sts.active_flow?.first_tab as Tab | undefined) ?? '');
+      // 只用来嵌进别的页面的小窗不单独列。
+      setPluginTabs(
+        sts.stations.flatMap((x) =>
+          x.pages.filter((pg) => !x.slots.some((sl) => sl.page === pg.id) || x.commands.some((c) => c.page === pg.id)).map((pg) => [pg.tab as Tab, pg.label] as [Tab, string]),
+        ),
+      );
       setState(st);
       setScenes(sc.scenes ?? []);
       setUsage(sc.usage ?? null);
@@ -493,6 +513,11 @@ export function App() {
   const openView = (view: ViewRequest) => {
     // 标了制作步骤：重新读项目状态，顶栏的进度跟着变。只标步骤的请求不切页。
     if (view.step) void loadProject();
+    if (isStationTab(view.page)) {
+      // 插件页面：这个项目加了它才切过去。
+      if (pluginTabs.some(([id]) => id === view.page)) showTab(view.page as Tab);
+      return;
+    }
     const page = tabs.find(([id]) => id === view.page)?.[0];
     if (!page) return;
     if (page === 'file') {
@@ -703,6 +728,7 @@ export function App() {
               ))}
           </nav>
         )}
+        {currentId && !homeOpen && <PluginMenu tabs={pluginTabs} current={panelOpen ? tab : ''} onPick={showTab} />}
         {setupMissing > 0 && (
           <button className={'skills-pill' + (setupRequiredMissing ? ' bad' : '')} id="setup-pill" onClick={() => setSetupOpen(true)} title="渲染与配音要用的工具：点开一键安装">
             {setupCore > 0 ? `还差 ${setupCore} 项工具 · 去安装` : `可按需安装 ${setupMissing} 项`}

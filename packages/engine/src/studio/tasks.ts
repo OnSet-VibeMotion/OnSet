@@ -13,6 +13,7 @@ import { ExitError, start } from '../procgroup';
 import { goMap, methodNotAllowed, nowTime, writeError, writeJSON } from './http';
 import { BusyError, overrideAgents, type AgentChoice } from './sessions';
 import type { Project, Server } from './studio';
+import { emitStudioEvent } from './events';
 
 export interface Task {
   task_id: string;
@@ -164,6 +165,14 @@ export function runTask(s: Server, t: Task, work: (signal: AbortSignal) => Promi
       return;
     }
     updateTask(s, t.task_id, 'succeeded', '任务完成', 1, null);
+    // 第三方站自己的任务不发：免得钩子互相触发、没完没了。
+    if (!t.type.startsWith('station.')) {
+      try {
+        emitStudioEvent(s, s.currentProject(), 'task.finished', { task: t.type, message: t.message });
+      } catch {
+        // 没有打开的项目：不发。
+      }
+    }
   })();
 }
 
@@ -196,8 +205,15 @@ export interface OpOutcome {
   data?: unknown;
 }
 
-export function runStudioOp(s: Server, signal: AbortSignal, p: Project, name: string, params: Record<string, unknown>): Promise<OpOutcome> {
-  return runStudioOpWith(s, signal, p, { tool: '', renderer: '' }, name, params);
+export function runStudioOp(s: Server, signal: AbortSignal, p: Project, name: string, params: Record<string, unknown>, opts: OpRunOptions = {}): Promise<OpOutcome> {
+  return runStudioOpWith(s, signal, p, { tool: '', renderer: '' }, name, params, opts);
+}
+
+export interface OpRunOptions {
+  /** 额外的环境变量（如 opworker.OpScopeEnv）。 */
+  env?: Record<string, string>;
+  /** 边跑边收到的文字（第三方站的进度行由调用方解析）。 */
+  onText?: (text: string) => void;
 }
 
 /**
@@ -205,15 +221,26 @@ export function runStudioOp(s: Server, signal: AbortSignal, p: Project, name: st
  * 用网页选的工具覆盖项目配置：子进程环境里的 RENDERER 优先于 article-to-motion.conf，
  * scene_run 因此用网页选的渲染工具。参数按名字给，不拼命令行。
  */
-export async function runStudioOpWith(s: Server, signal: AbortSignal, p: Project, choice: AgentChoice, name: string, params: Record<string, unknown>): Promise<OpOutcome> {
+export async function runStudioOpWith(
+  s: Server,
+  signal: AbortSignal,
+  p: Project,
+  choice: AgentChoice,
+  name: string,
+  params: Record<string, unknown>,
+  opts: OpRunOptions = {},
+): Promise<OpOutcome> {
   // Windows 上 executable 是 am.cjs，用 Electron / Node 来跑（envutil.amCommand）。
   const am = amCommand(s.executable());
   const projectConfig = overrideAgents(config.load(p.path, null), choice);
   const args = [...am.args, ...(s.config.unsafe ? ['--unsafe'] : []), ...workerArgs(name, params)];
-  const env = { ...config.childEnvironment(projectConfig, envMap(), s.config.unsafe, parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? '')), ...am.env };
+  const env = { ...config.childEnvironment(projectConfig, envMap(), s.config.unsafe, parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? '')), ...am.env, ...(opts.env ?? {}) };
   const started = await start(am.command, args, { cwd: p.path, env, stdio: ['ignore', 'pipe', 'pipe'], signal });
   const chunks: Buffer[] = [];
-  started.child.stdout!.on('data', (chunk: Buffer) => chunks.push(chunk));
+  started.child.stdout!.on('data', (chunk: Buffer) => {
+    chunks.push(chunk);
+    opts.onText?.(chunk.toString('utf8'));
+  });
   started.child.stderr!.on('data', (chunk: Buffer) => chunks.push(chunk));
   let waitErr: unknown = null;
   try {

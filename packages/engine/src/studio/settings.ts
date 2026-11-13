@@ -17,6 +17,7 @@ import { agentOrder } from './agents';
 import { DecodeError, decodeJSON, fieldString, goMap, methodNotAllowed, writeError, writeJSON } from './http';
 import type { Server } from './studio';
 import { runStudioOp, runWriteTask, writeTaskError } from './tasks';
+import * as flow from '../flow';
 
 /** 下拉框里的短名字：providers.ts 里的名字带着命令名与平台说明，放进下拉框会被截断。 */
 const ttsNames: Record<string, string> = {
@@ -97,6 +98,8 @@ export function settingsAPI(s: Server, request: Request): Response {
       has_project: root !== '',
       rows: rows.map((r) => {
         const d = describe(r.key);
+        // 这个项目加的第三方插件提供的配音、对齐，也列进可选项。
+        if (r.key === 'TTS_PROVIDER' || r.key === 'ALIGN_PROVIDER') d.options = [...d.options, ...pluginProviders(root, r.key === 'TTS_PROVIDER' ? 'tts' : 'align')];
         return goMap({
           key: r.key,
           label: d.label,
@@ -162,4 +165,13 @@ export async function settingsProjectAPI(s: Server, request: Request): Promise<R
   } catch (err) {
     return writeTaskError(err);
   }
+}
+
+/** 项目里第三方插件提供的配音或对齐工具（设置页的可选项）。 */
+function pluginProviders(root: string, kind: 'tts' | 'align'): { value: string; label: string }[] {
+  if (root === '') return [];
+  return flow
+    .loadProjectStations(root)
+    .stations.filter((s) => s.manifest.provides[kind])
+    .map((s) => ({ value: `x:${s.manifest.id}`, label: `${s.manifest.provides[kind]!.name}（插件）` }));
 }

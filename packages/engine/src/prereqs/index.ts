@@ -235,7 +235,8 @@ export function items(pick?: Selection): Item[] {
   if (breeze && chosen.tts !== 'breeze') out.push(toolItem('voice', breeze.id, '音色设计 ' + breeze.name, breeze.install, breeze.model));
   const aligner = Aligners.find((a) => a.id === chosen.align);
   if (aligner) out.push(toolItem('align', aligner.id, '对齐 ' + aligner.name, aligner.install, aligner.model));
-  for (const source of filmstyle.sources()) {
+  // 第三方插件带来的风格库随插件下来，不是前置资源。
+  for (const source of filmstyle.sources().filter((x) => !x.id().startsWith(filmstyle.PluginSourcePrefix))) {
     out.push({
       group: 'styles',
       id: 'styles:' + source.id(),

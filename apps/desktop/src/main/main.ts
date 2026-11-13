@@ -83,7 +83,7 @@ function privateCLI(): string {
 async function handleRequest(request: Request): Promise<Response> {
   const url = new URL(request.url);
   if (url.host !== 'app') return new Response('not found', { status: 404 });
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/preview/')) {
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/preview/') || url.pathname.startsWith('/station-ui/') || url.pathname.startsWith('/station-media/')) {
     if (!backend) return new Response(JSON.stringify({ code: 'backend_down', message: '后台服务没有启动' }), { status: 503 });
     return backend.handle(request);
   }

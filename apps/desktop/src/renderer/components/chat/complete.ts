@@ -31,6 +31,8 @@ export interface SlashCommand {
   arg?: CommandArg;
   /** 只在这一轮进行中可用（停止）。 */
   whileRunning?: boolean;
+  /** 第三方插件加的命令：打开它的页面，或把一段话填进输入框。 */
+  plugin?: { tab: string; prompt: string };
 }
 
 export const slashCommands: SlashCommand[] = [
@@ -48,6 +50,17 @@ export const slashCommands: SlashCommand[] = [
   { name: 'review', label: '整片复查' },
   { name: 'remember', label: '记下一条偏好，以后每次制作都照着做' },
 ];
+
+const builtinCommandCount = slashCommands.length;
+
+/** 换上项目里第三方插件加的命令（与自带命令重名的不要）。 */
+export function setPluginCommands(commands: { name: string; description: string; tab: string; prompt: string }[]): void {
+  slashCommands.splice(builtinCommandCount);
+  for (const c of commands) {
+    if (slashCommands.some((x) => x.name === c.name)) continue;
+    slashCommands.push({ name: c.name, label: `${c.description}（插件）`, plugin: { tab: c.tab, prompt: c.prompt } });
+  }
+}
 
 export const pageNames: [string, string][] = [
   ['progress', '制作路线'],

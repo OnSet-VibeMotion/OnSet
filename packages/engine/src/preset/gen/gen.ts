@@ -9,12 +9,13 @@
  * 重新序列化一律还原不出来，会让「产物与签入版本逐字节相同」这条红线失守。这里只整体替换 canvas 与 safe_area
  * 两个块和占位符，其余原样透传。
  *
- * 模板的真相源是本目录下的 templates/（PROMPT-PRODUCTION.md 与 styles/<风格>/ 下三份模板）。
+ * 模板的真相源是本目录下的 templates/（production/<站>/ 下的制作提示词段落与 styles/<风格>/ 下三份模板）。
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { goQuote } from '../../gofmt';
 import { PinnedVersion } from '../../hyperframes/constants';
+import * as flow from '../../flow';
 import * as styleimage from '../../styleimage';
 import * as preset from '../index';
 
@@ -35,9 +36,12 @@ export function templatesDir(repo: string): string {
   return path.join(repo, 'packages', 'engine', 'src', 'preset', 'gen', 'templates');
 }
 
-/** 与风格无关的编排提示词模板。 */
+/**
+ * 与风格无关的编排提示词模板：按内置流程的段落顺序，从 templates/production/<站>/<段>.md 拼出来
+ * （flow.composeProduction），阶段编号在这里定下。
+ */
 export function loadProduction(repo: string): string {
-  return fs.readFileSync(path.join(templatesDir(repo), 'PROMPT-PRODUCTION.md'), 'utf8');
+  return flow.composeProduction(path.join(templatesDir(repo), 'production'));
 }
 
 /** 一套风格的模板，目录名即风格 id。 */

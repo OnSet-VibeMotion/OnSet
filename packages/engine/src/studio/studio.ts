@@ -42,6 +42,7 @@ import { memoryAPI, memoryActionAPI, memoryRecallAPI } from './memory';
 import { discoverScenes, fileExists, type SceneSummary } from './scenes';
 import { scriptAPI } from './script';
 import { computeStations, latestOutput, progressAPI } from './progress';
+import { stationMediaAPI, stationsAPI, stationUIAPI, tickStationSchedules } from './stations';
 import { storyboardAPI } from './storyboard';
 import { readStepMark } from './view';
 import { BusyError, type Session } from './sessions';
@@ -51,6 +52,7 @@ import { settingsAPI, settingsGlobalAPI, settingsProjectAPI } from './settings';
 import { SkillsState, installSkills, skillsAPI, skillsInstallAPI } from './skills';
 import { TaskState, loadPersistedTasks, runStudioOp, runWriteTask, taskFeatureAPI, tasksAPI, writeTaskError } from './tasks';
 import { uploadsAPI } from './uploads';
+import * as flow from '../flow';
 
 export interface Config {
   projectPath?: string;
@@ -137,13 +139,19 @@ export class Server {
     if (cfg.projectPath) this.current = this.openProject(cfg.projectPath).id;
     loadPersistedTasks(this);
     this.routes = this.routeTable();
+    // 第三方站的定时任务：每分钟看一次。unref：不让这个定时器拖住进程退出（测试里会建很多个 Server）。
+    this.scheduleTimer = setInterval(() => tickStationSchedules(this), 60_000);
+    this.scheduleTimer.unref?.();
   }
+
+  private readonly scheduleTimer: ReturnType<typeof setInterval>;
 
   /**
    * 退出前停掉进行中的每一轮对话与每个写任务。Go 版是独立进程，被整组结束时子进程跟着结束；
    * 在客户端主进程里，编排工具与 am 子命令各自成进程组，不显式取消就会在客户端退出后继续跑。
    */
   shutdown(): void {
+    clearInterval(this.scheduleTimer);
     for (const session of this.sessions.values()) session.cancel?.abort();
     for (const controller of this.tasks.cancel.values()) controller.abort();
     cancelSetup();
@@ -319,6 +327,10 @@ export class Server {
       ['/api/storyboard', (r) => storyboardAPI(this, r)],
       ['/api/progress', (r) => progressAPI(this, r, '')],
       ['/api/progress/', (r, rest) => progressAPI(this, r, rest)],
+      ['/api/stations', (r) => stationsAPI(this, r, '')],
+      ['/api/stations/', (r, rest) => stationsAPI(this, r, rest)],
+      ['/station-ui/', (r, rest) => stationUIAPI(this, r, rest)],
+      ['/station-media/', (r, rest) => stationMediaAPI(this, r, rest)],
       ['/api/assets', () => this.assetsAPI()],
       ['/api/publish', () => publishAPI(this)],
       ['/api/scenes/', (r, rest) => sceneFeatureAPI(this, r, rest)],
@@ -347,8 +359,9 @@ export class Server {
       ['/api/memory', (r) => memoryAPI(this, r)],
       ['/api/memory/recall', (r) => memoryRecallAPI(this, r)],
       ['/api/memory/actions/', (r, rest) => memoryActionAPI(this, r, rest)],
-      ['/api/film-styles', (r) => filmStylesAPI(r)],
-      ['/api/film-styles/', (r, rest) => filmStylePosterAPI(r, rest)],
+      // 先按当前项目换上第三方插件带来的风格库。
+      ['/api/film-styles', (r) => (flow.syncStyleSources(this.projectRoot()), filmStylesAPI(r))],
+      ['/api/film-styles/', (r, rest) => (flow.syncStyleSources(this.projectRoot()), filmStylePosterAPI(r, rest))],
       ['/api/film-style', (r) => projectFilmStyleAPI(this, r)],
       ['/api/settings', (r) => settingsAPI(this, r)],
       ['/api/agent-keys', (r) => agentKeysAPI(r)],
@@ -371,6 +384,11 @@ export class Server {
    */
   async handle(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    // 插件页面在沙箱 iframe 里（不透明源，Origin 是 "null"），只能经宿主转交，不能直接调接口：
+    // CSP 已经拦下它的请求，这里再兜一层，免得哪天 CSP 写漏了。
+    if (url.pathname.startsWith('/api/') && request.headers.get('Origin') === 'null') {
+      return writeError(403, 'forbidden', '插件页面不能直接调用 Studio 接口');
+    }
     let pathname: string;
     try {
       pathname = decodeURIComponent(url.pathname);

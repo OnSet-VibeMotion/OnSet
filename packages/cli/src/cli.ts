@@ -22,6 +22,7 @@ import './review_cmd';
 import './scene_cmd';
 import './scene_cues';
 import './song_cmd';
+import './station_cmd';
 import './style_cmd';
 import './usage_cmd';
 import './validate_cast';

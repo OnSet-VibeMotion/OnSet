@@ -1,0 +1,9 @@
+#!/bin/sh
+# 测试用：事件钩子跑它，把事件名与令牌填没填记下来（令牌只经 stdin 的 settings 交给插件）。
+input=$(cat)
+event=$(printf '%s' "$input" | sed -n 's/.*"event":{"name":"\([^"]*\)".*/\1/p')
+case "$input" in *'"token":"'*) token=set ;; *) token=unset ;; esac
+mkdir -p production/publish
+echo "am-progress 0.5 正在记下事件"
+echo "${event:-none} token=${token}" >> production/publish/hooks.log
+echo "记下了 ${event:-none}"

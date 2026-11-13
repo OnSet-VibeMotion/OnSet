@@ -156,6 +156,7 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
 | `tencent` | 腾讯云语音合成（`tccli`） | 有 | 已有腾讯云账号 |
 | `mlx` | 本机 MLX（`mlx-audio`，仅 Apple Silicon） | 无 | 离线、不产生费用 |
 | `breeze` | 本机 Breeze TTS 2（`mlx-audio`，仅 Apple Silicon） | 无 | Apple Silicon 上的默认；离线；从音色库克隆同一个声音，按段落指导语气，可以笑、叹气 |
+| `x:<插件>` | 用户加的第三方插件提供的配音 | 见插件说明 | 本说明末尾「第三方站」那一节写了用它的哪个工具 |
 
 各路径的凭据、命令和时间戳获取方式不同，但断句检查、审核关卡和产物要求完全一致。
 
@@ -325,7 +326,7 @@ Breeze 有四种用法，同一部片子里可以组合：
 
 ### 强制对齐与时间轴校验
 
-文稿是现成的，把它逐字对到配音上比语音识别更准，也不会把专有名词识别错。对齐工具由 `ALIGN_PROVIDER` 决定，用 `config_get({"key": "ALIGN_PROVIDER"})` 读取：缺省在 Apple Silicon 上是 `mlx`，其余平台是 `funasr`。
+文稿是现成的，把它逐字对到配音上比语音识别更准，也不会把专有名词识别错。对齐工具由 `ALIGN_PROVIDER` 决定，用 `config_get({"key": "ALIGN_PROVIDER"})` 读取：缺省在 Apple Silicon 上是 `mlx`，其余平台是 `funasr`；以 `x:` 开头时是第三方插件提供的对齐工具，用法见本说明末尾「第三方站」那一节，结果照样交给 `align_build()`。
 
 送进对齐的文本必须是 `align_text()` 生成的 `production/audio/align-text.txt`（声音事件发出的是笑声、叹气，不是字，所以对齐文本里没有它们）。对齐结果不手工映射回原文：由 `align_build()` 逐字匹配回终稿，生成 `voice.srt` 和短语时间轴（见下文）。先用 FFmpeg 把 `voice.wav` 转成 16kHz 单声道的 `production/audio/voice-16k.wav`。
 

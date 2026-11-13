@@ -13,12 +13,18 @@ import { SceneActivityPanel } from './RenderActivity';
 import { ScriptTab } from './Script';
 import { BeatTab } from './Beat';
 import { PublishTab } from './Publish';
+import { isStationTab, StationPage, StationSlots } from './Stations';
+
+/** 第三方插件能嵌小窗的自带页面（与后端 flow.SlotPages 一致）。 */
+const slotPages: string[] = ['script', 'storyboard', 'scene', 'final', 'publish', 'progress'];
 import { SceneBrief, StoryboardTab } from './Storyboard';
 import { ProgressTab } from './Progress';
 import { FileTree } from './Sidebar';
 import { canReveal, revealInFinder, revealLabel } from '../reveal';
 
-export type Tab = 'progress' | 'beat' | 'script' | 'storyboard' | 'scene' | 'compose' | 'final' | 'style' | 'voice' | 'review' | 'publish' | 'memory' | 'file';
+export type BuiltinTab = 'progress' | 'beat' | 'script' | 'storyboard' | 'scene' | 'compose' | 'final' | 'style' | 'voice' | 'review' | 'publish' | 'memory' | 'file';
+/** 第三方插件自己的页面：x:<站>:<页面>（Stations.tsx）。 */
+export type Tab = BuiltinTab | `x:${string}`;
 
 export const tabs: [Tab, string][] = [
   ['progress', '制作路线'],
@@ -90,7 +96,7 @@ export function Preview(props: Props) {
             progress={props.progress}
             busy={props.busy}
             onPage={(page) => {
-              const tab = tabs.find(([id]) => id === page)?.[0];
+              const tab = isStationTab(page) ? (page as Tab) : tabs.find(([id]) => id === page)?.[0];
               if (tab) props.onTab?.(tab);
             }}
             onFile={props.onFile}
@@ -112,6 +118,28 @@ export function Preview(props: Props) {
         {props.tab === 'voice' && <VoicesTab version={props.version} />}
         {props.tab === 'review' && <ReviewTab tree={props.tree} version={props.version} run={props.run} />}
         {props.tab === 'publish' && <PublishTab version={props.version} run={props.run} />}
+        {isStationTab(props.tab) && (
+          <StationPage
+            key={props.tab}
+            tab={props.tab}
+            version={props.version}
+            run={props.run}
+            onQuick={props.onQuick}
+            onOpen={(t) => props.onTab?.(t as Tab)}
+            projectName={props.state?.project.name ?? ''}
+          />
+        )}
+        {slotPages.includes(props.tab) && (
+          <StationSlots
+            at={props.tab}
+            context={props.tab === 'scene' && scene ? { scene: scene.id } : {}}
+            version={props.version}
+            run={props.run}
+            onQuick={props.onQuick}
+            onOpen={(t) => props.onTab?.(t as Tab)}
+            projectName={props.state?.project.name ?? ''}
+          />
+        )}
         {props.tab === 'memory' && <MemoryTab scene={scene} version={props.version} run={props.run} />}
         {props.tab === 'file' && <FilesTab tree={props.tree} recent={props.recent} path={props.filePath} version={props.version} onFile={props.onFile} />}
       </div>

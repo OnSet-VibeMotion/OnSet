@@ -1,0 +1,180 @@
+{
+  "id": "fake-publisher",
+  "version": "0.1.0",
+  "name": "假发布",
+  "after": "publish",
+  "prompt": "prompt.md",
+  "nodes": [
+    {
+      "id": "auto-publish",
+      "label": "自动发布",
+      "step": "publish",
+      "page": "dashboard",
+      "outputs": [
+        "production/publish/receipts.json"
+      ],
+      "stale_after": [
+        "review"
+      ]
+    }
+  ],
+  "produces": [
+    {
+      "prefix": "production/publish/"
+    }
+  ],
+  "ops": [
+    {
+      "name": "send",
+      "summary": "把成片发到平台（测试用：只写回执，不联网）",
+      "trigger": "user",
+      "command": [
+        "bin/publish"
+      ],
+      "params": {
+        "platform": {
+          "type": "string",
+          "description": "平台，例如 douyin",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "status",
+      "summary": "查看发布回执",
+      "command": [
+        "bin/status"
+      ],
+      "params": {},
+      "examples": [
+        "x_fake_publisher_status({})"
+      ]
+    },
+    {
+      "name": "on_event",
+      "summary": "记下发生了什么事件（测试用）",
+      "command": [
+        "bin/hook"
+      ],
+      "params": {}
+    },
+    {
+      "name": "speak",
+      "summary": "把一段文字读成配音（测试用，不出声）",
+      "command": [
+        "bin/status"
+      ],
+      "params": {}
+    }
+  ],
+  "pages": [
+    {
+      "id": "dashboard",
+      "label": "发布看板",
+      "entry": "ui/index.html",
+      "reads": [
+        "publish.md"
+      ]
+    },
+    {
+      "id": "mini",
+      "label": "发布小窗",
+      "entry": "ui/slot.html",
+      "reads": [
+        "publish.md"
+      ]
+    }
+  ],
+  "settings": [
+    {
+      "key": "platform",
+      "label": "默认平台",
+      "type": "select",
+      "options": [
+        "douyin",
+        "bilibili"
+      ],
+      "default": "douyin",
+      "description": "再发一次时发到哪"
+    },
+    {
+      "key": "token",
+      "label": "平台令牌",
+      "type": "secret",
+      "description": "测试用，只检查有没有填"
+    }
+  ],
+  "permissions": {
+    "project": true,
+    "uses": [
+      "review"
+    ]
+  },
+  "hooks": [
+    {
+      "on": "gate.confirmed",
+      "op": "on_event"
+    },
+    {
+      "on": "film.approved",
+      "op": "on_event"
+    }
+  ],
+  "slots": [
+    {
+      "at": "publish",
+      "page": "mini",
+      "height": 140
+    }
+  ],
+  "commands": [
+    {
+      "name": "fabu",
+      "description": "打开发布看板",
+      "page": "dashboard"
+    }
+  ],
+  "provides": {
+    "tts": {
+      "name": "假配音",
+      "op": "speak",
+      "timestamps": "none"
+    }
+  },
+  "renderer_skills": [
+    {
+      "name": "caption-kit",
+      "dir": "skills/caption-kit",
+      "summary": "字幕卡片的写法",
+      "scenes": "opt-in"
+    }
+  ],
+  "film_styles": {
+    "name": "假风格库",
+    "dir": "styles"
+  },
+  "inserts": [
+    {
+      "stage": "render",
+      "file": "prompts/render.md"
+    }
+  ],
+  "schedules": [
+    {
+      "every_minutes": 30,
+      "op": "on_event"
+    }
+  ],
+  "flow": {
+    "name": "快剪",
+    "stations": [
+      "intake",
+      "render",
+      "assemble",
+      "review",
+      "fake-publisher"
+    ],
+    "first_page": "dashboard",
+    "prompt": "prompts/flow.md"
+  }
+}

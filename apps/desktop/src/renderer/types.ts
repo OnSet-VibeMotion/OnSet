@@ -791,3 +791,107 @@ export interface ProgressState {
   waiting_on: '' | 'user' | 'ai';
   turns: Record<string, string[]>;
 }
+
+/** /api/stations：这个项目加的第三方站（studio/stations.ts）。 */
+export interface StationParam {
+  key: string;
+  type: 'string' | 'boolean' | 'integer' | 'number' | 'strings';
+  description: string;
+  required: boolean;
+  default?: unknown;
+}
+
+export interface StationRun {
+  task_id: string;
+  at: string;
+  ok: boolean;
+  text: string;
+  data?: unknown;
+}
+
+export interface StationOp {
+  name: string;
+  /** 编排工具用的工具名；只能由用户触发的操作为空。 */
+  tool: string;
+  summary: string;
+  description: string;
+  trigger: 'agent' | 'user';
+  params: StationParam[];
+  last_run?: StationRun;
+}
+
+export interface StationInfo {
+  id: string;
+  name: string;
+  version: string;
+  source: string;
+  commit: string;
+  linked: boolean;
+  replaces: string;
+  after: string;
+  prompt: string;
+  nodes: { id: string; label: string; step: string; gate: boolean }[];
+  pages: StationPageInfo[];
+  ops: StationOp[];
+  settings: StationSetting[];
+  permissions: { project: boolean; network: string[]; uses: string[] };
+  hooks: { on: string; op: string }[];
+  schedules: { every_minutes: number; op: string }[];
+  /** 往制作提示词哪几个阶段里插了说明。 */
+  inserts: string[];
+  /** 提供的配音、对齐工具名（没有为空）。 */
+  provides: { tts: string; align: string };
+  renderer_skills: { name: string; summary: string; scenes: 'all' | 'opt-in' }[];
+  /** 带来的整片风格库名（没有为空）。 */
+  film_styles: string;
+  /** 带来的整套流程（新片型）。 */
+  flow: { name: string; stations: string[]; first_tab: string } | null;
+  slots: StationSlot[];
+  commands: StationCommand[];
+}
+
+export interface StationSetting {
+  key: string;
+  label: string;
+  type: 'string' | 'number' | 'boolean' | 'select' | 'secret';
+  description: string;
+  options: string[];
+  default?: string | number | boolean;
+  /** 普通设置的当前值。 */
+  value?: string | number | boolean;
+  /** 密钥填没填（值从不回传）。 */
+  set?: boolean;
+}
+
+/** 插件页面嵌进自带页面的位置。 */
+export interface StationSlot {
+  at: string;
+  page: string;
+  height: number;
+  tab: string;
+  url: string;
+}
+
+export interface StationCommand {
+  name: string;
+  description: string;
+  page: string;
+  prompt: string;
+  tab: string;
+}
+
+/** 插件自己的页面：tab 是客户端里的页面 id（x:<站>:<页面>），url 是沙箱 iframe 的地址。 */
+export interface StationPageInfo {
+  id: string;
+  label: string;
+  tab: string;
+  url: string;
+  reads: string[];
+}
+
+export interface StationsResponse {
+  stations: StationInfo[];
+  problems: string[];
+  /** 项目选用的第三方流程（顶栏第一步换成它的页面）。 */
+  active_flow?: { station: string; name: string; first_tab: string } | null;
+}

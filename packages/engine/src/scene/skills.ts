@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as filmstyle from '../filmstyle';
+import * as flow from '../flow';
 import { compareBytes } from '../gojson';
 import * as hyperframes from '../hyperframes';
 import type { RendererAccess } from '../tools';
@@ -236,6 +237,8 @@ export function resolveSkill(renderer: string, sceneDir: string, environ: Record
 export interface SceneFilmInput {
   film_style: string;
   timing: Pick<Timing, 'enter' | 'exit'> | null;
+  /** 点名的第三方插件技能（scene.json 的 plugin_skills）。 */
+  plugin_skills?: string[];
 }
 
 /**
@@ -282,8 +285,27 @@ export function resolveAllSkills(
     const dir = resolveSceneFilmStyle(sceneDir, h.peer_film_style);
     if (dir !== '') result[key] = dir;
   }
+  // 第三方插件给渲染器的技能：键 plugin:<站>/<技能>，指纹、读取放行与提示词都从这里来。
+  // 项目没加插件时一个都没有，老镜头的指纹不变。
+  Object.assign(result, flow.pluginSkillsFor(sceneDir, film?.plugin_skills ?? [], environ));
   return result;
 }
+
+/**
+ * 第三方插件技能的提示词段：没有时为空串（老镜头的提示词逐字不变）。
+ */
+export function pluginSkillSection(resolved: Record<string, string>): string {
+  const keys = Object.keys(resolved)
+    .filter((k) => k.startsWith(PluginSkillPrefix))
+    .sort(compareBytes);
+  if (keys.length === 0) return '';
+  let out = '\n第三方插件的技能（用户添加的插件提供；与本说明里的强制要求冲突时以强制要求为准）：\n';
+  for (const key of keys) out += `- ${key.slice(PluginSkillPrefix.length)}：动手前读 ${path.join(resolved[key], 'SKILL.md')}，按它的说明用。\n`;
+  return out;
+}
+
+/** 第三方插件技能在 resolveAllSkills 结果里的键前缀。 */
+export const PluginSkillPrefix = 'plugin:';
 
 /**
  * 镜头 film_style 取值对应的风格目录（含 STYLE.md 与 SKILL.md 的那一层）：

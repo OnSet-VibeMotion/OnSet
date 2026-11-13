@@ -159,6 +159,11 @@ export function validateViewRequest(project: string, req: ViewRequest): ViewRequ
     delete out.target;
     return { ...out, page: '' };
   }
+  // 第三方站自己的页面：x:<站>:<页面>。这里只查写法，站加没加由客户端判断（打不开就不切）。
+  if (/^x:[a-z][a-z0-9-]{1,39}:[a-z][a-z0-9-]*$/.test(req.page ?? '')) {
+    delete out.target;
+    return { ...out, page: req.page };
+  }
   const page = viewPage(req.page);
   if (!page) throw new Error(`没有页面 ${goQuote(req.page)}（可选：${ViewPages.map((p) => p.id).join('、')}）`);
   out.target = (req.target ?? '').trim();

@@ -16,6 +16,7 @@ import {
   CharacterRigSkillName,
   castDriverFile,
   FilmStyleOwnKey,
+  pluginSkillSection,
   filmStyleSection,
   sceneFilmStyleSection,
   skillPromptSections,
@@ -72,7 +73,7 @@ export const delimiterMatchAll = new RegExp(delimiterSource, 'g');
  * 都从这里派生，不再各写一份、彼此漂移。改字段集时只改这两个切片。
  */
 const requiredSceneFields = ['id', 'duration_seconds', 'output', 'transcript', 'text'];
-const optionalSceneFields = ['style_guide', 'renderer', 'film_style', 'cast', 'song', 'beat', 'timing'];
+const optionalSceneFields = ['style_guide', 'renderer', 'film_style', 'plugin_skills', 'cast', 'song', 'beat', 'timing'];
 
 /** RequiredFields 返回 scene.json 的必填字段名（副本，调用方可自由修改）。 */
 export function requiredFields(): string[] {
@@ -106,6 +107,11 @@ export interface Scene {
    * none 表示不用整片风格、自主定视觉。口播项目由 am scene cues 从分镜计划抄进来。
    */
   film_style: string;
+  /**
+   * 本镜头点名要用的第三方插件技能（「站 id/技能名」），只对清单里 scenes 为 opt-in 的技能有意义；
+   * scenes 为 all 的技能所有镜头都带上。没有这个字段的镜头指纹不变。
+   */
+  plugin_skills: string[];
   /** 可选的角色配置。老镜头没有这个字段，cast 为 null，行为完全不变。 */
   cast: Cast | null;
   song: song.Cue | null;
@@ -270,6 +276,7 @@ const sceneType: StructType = {
     ['style_guide', 'string'],
     ['renderer', 'string'],
     ['film_style', 'string'],
+    ['plugin_skills', sliceOf('string')],
     ['cast', ptrTo(castType)],
     ['song', ptrTo(songCueType)],
     ['beat', ptrTo(fromBeat(beat.cueType))],
@@ -289,6 +296,7 @@ export function newScene(fields: Partial<Scene> = {}): Scene {
     style_guide: '',
     renderer: '',
     film_style: '',
+    plugin_skills: [],
     cast: null,
     song: null,
     beat: null,
@@ -312,6 +320,7 @@ export function sceneToJSON(s: Scene): unknown {
     style_guide: s.style_guide || undefined,
     renderer: s.renderer || undefined,
     film_style: s.film_style || undefined,
+    plugin_skills: s.plugin_skills.length > 0 ? s.plugin_skills : undefined,
     cast: s.cast ? castToJSON(s.cast) : undefined,
     song: s.song ? song.cueToJSON(s.song) : undefined,
     beat: s.beat ? beat.cueToJSON(s.beat) : undefined,
@@ -459,6 +468,10 @@ export function load(directory: string): Scene {
   }
   if (result.renderer !== '' && !ValidRenderers.has(result.renderer)) throw new Error(`无效的 renderer：${result.renderer}`);
   verifyFilmStyleValue(result.film_style);
+  result.plugin_skills = result.plugin_skills ?? [];
+  for (const ref of result.plugin_skills) {
+    if (!/^[a-z][a-z0-9-]{1,39}\/[a-z][a-z0-9-]*$/.test(ref)) throw new Error(`plugin_skills 的每一项要写成「插件 id/技能名」：${goQuote(ref)}`);
+  }
   validateCast(result);
   return result;
 }
@@ -952,6 +965,7 @@ export function buildPrompt(s: Scene, resolvedSkills: Record<string, string> | n
     styleShiftSection(s, resolved) +
     '\n' +
     skillPromptSections(resolved) +
+    pluginSkillSection(resolved) +
     determinismSection +
     memorySection(s) +
     workersSection(s) +
