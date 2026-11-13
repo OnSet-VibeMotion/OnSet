@@ -10,15 +10,22 @@
 
 export interface Out {
   write(text: string): void;
+  /** 输出是不是终端（对应 Go 里 *os.File 且 term.IsTerminal）。process.stdout 自带这个字段。 */
+  isTTY?: boolean;
 }
 
 /** 带退出码的错误。message 为空表示命令已经自己把结果打在屏幕上，Execute 不再补一行。对应 internal/cli 的 exitError。 */
 export class ExitError extends Error {
+  /** 不带退出码后缀的原始消息。 */
+  readonly bare: string;
+
   constructor(
     readonly code: number,
     message = '',
   ) {
-    super(message);
+    // Go 版 exitError.Error() 是「消息（退出码 N）」。
+    super(message + '（退出码 ' + code + '）');
+    this.bare = message;
   }
 }
 

@@ -11,7 +11,20 @@
  */
 export const cases = [
   {
-    name: 'help',
-    commands: [['--help'], ['scene', '--help'], ['memory', '--help'], ['validate', '--help']],
+    name: 'setup',
+    commands: [['setup', '--help'], ['setup', '--check'], ['setup', '--check', '--only', 'cli'], ['setup', '--only', 'nope'], ['setup', 'extra']],
+  },
+  {
+    name: 'film-style outside a project',
+    commands: [['film-style', '--help'], ['film-style', 'list'], ['film-style', 'list', '--json'], ['film-style', 'list', '--source', 'nope'], ['film-style', 'show']],
+  },
+  {
+    name: 'film-style in a project',
+    setup: [['init', '--canvas', 'vertical-3x4', '--skip-hyperframes']],
+    commands: [['film-style', 'show'], ['film-style', 'show', '--json'], ['film-style', 'remove'], ['film-style', 'use', 'no-such-style'], ['film-style', 'use']],
+  },
+  {
+    name: 'hyperframes help',
+    commands: [['hyperframes', '--version']],
   },
 ];

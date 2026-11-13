@@ -16,7 +16,7 @@ export enum ViewState {
   Failed,
 }
 
-interface ViewItem {
+export interface ViewItem {
   name: string;
   version: string;
   state: ViewState;
@@ -30,7 +30,7 @@ interface ViewItem {
 const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 export class SetupView {
-  private readonly items: ViewItem[];
+  readonly items: ViewItem[];
   private drawn = 0;
   private frame = 0;
   private timer?: NodeJS.Timeout;
@@ -81,6 +81,11 @@ export class SetupView {
     }
   }
 
+  /** 标成「本来就已就绪」，不在屏幕上打行（am setup 开头先标好已就绪的项）。 */
+  markReady(index: number): void {
+    this.items[index].state = ViewState.Ready;
+  }
+
   /** 只改进展说明（进行中的阶段）。 */
   detail(index: number, detail: string): void {
     this.set(index, this.items[index].state, detail);
@@ -94,7 +99,7 @@ export class SetupView {
   }
 
   /** 列宽：名字与版本按显示宽度（中文算两列）补齐。 */
-  private widths(): [number, number] {
+  widths(): [number, number] {
     let name = 0;
     let version = 0;
     for (const item of this.items) {
@@ -137,7 +142,7 @@ export class SetupView {
     return '  ' + icon + ' ' + pad(item.name, nameWidth) + '  ' + version + detail;
   }
 
-  private paint(code: string, text: string): string {
+  paint(code: string, text: string): string {
     return this.color ? `\x1b[${code}m${text}\x1b[0m` : text;
   }
 }
