@@ -98,8 +98,10 @@ describe('builtin plugins', () => {
         owner.set(op, plugin.manifest.id);
       }
     }
-    // 歌曲讲解认领了全部 song_* 操作，一个都不漏。
+    // 歌曲讲解认领了全部 song_* 操作，多角色对话认领了全部 cast_* / dialogue_* 操作，一个都不漏。
     for (const name of names) if (name.startsWith('song_')) expect(owner.get(name), name).toBe('song');
+    for (const name of names) if (name.startsWith('cast_') || name.startsWith('dialogue_')) expect(owner.get(name), name).toBe('cast');
+    expect(owner.get('validate_cast')).toBe('cast');
   });
 
   it('hide the ops of a plugin the project turned off', async () => {

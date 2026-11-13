@@ -8,6 +8,7 @@ export {
   builtinPlugins,
   builtinPluginsDir,
   disabledAmOps,
+  disabledAmSkills,
   inUse,
   setBuiltinEnabled,
   pluginSkillsFor,

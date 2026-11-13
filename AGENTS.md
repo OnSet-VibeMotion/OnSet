@@ -222,13 +222,14 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 | 渲染技能（`renderer_skills`）：`resolveAllSkills` 经 `flow.pluginSkillsFor` 加入 `plugin:<站>/<技能>`，于是指纹（`skill:` 摘要）、读取放行与 `pluginSkillSection` 提示词都自动覆盖；`scenes: all` 的每个镜头都带，`opt-in` 的只给 `scene.json` 的 `plugin_skills` 点名的镜头。点名了却没有直接报错。项目没加插件时提示词与指纹逐字不变（`scene/pluginskills.test.ts`） | 加一个对所有镜头生效的技能，已渲染的镜头标成 Stale 是对的：渲染输入确实变了；不想全变就用 opt-in |
 | 整片风格库（`film_styles`）：`flow.PluginStyleSource` 实现 `filmstyle.Source`，来源 id `x-<站 id>`；用到风格来源的地方先 `flow.syncStyleSources(项目根)`（`film_style_*` 操作、`/api/film-styles`、项目风格接口），`filmstyle.replacePluginSources` 整组换掉；装进项目走同一份 `filmstyle.install` 契约，缺 SKILL.md 时补通用的。前置资源清单跳过插件来源 | 插件来源只对加了它的项目可见；风格库随插件钉在 commit 上，不联网 |
 
-内置插件：ArticleToMotion 自己的可选功能也写成插件，放在 `assets/plugins/<id>/`（随 `extraResources` 进 .app），用同一份 `am-station.json`。第一个是歌曲讲解（`assets/plugins/song`）。
+内置插件：ArticleToMotion 自己的可选功能也写成插件，放在 `assets/plugins/<id>/`（随 `extraResources` 进 .app），用同一份 `am-station.json`。现在有歌曲讲解（`song`）、多角色对话（`cast`）、生成式艺术（`algorithmic-art`）与 Lottie 图层（`text-to-lottie`）。
 
 | 约定 | 原因 |
 |---|---|
 | `flow.builtinPlugins()` 读 `assets/plugins/`，`loadProjectStations` 把它们排在第三方站前面，`LoadedStation.builtin` 为真；默认打开，项目在锁文件的 `disabled` 里关掉（`station_builtin` / `POST /api/stations/{id}/enabled`，设置页「内置功能」的开关）。清单坏了直接报错，不静默少一个功能 | 内置功能也能关：用不到的不占编排工具的工具列表和提示词 |
 | 只有内置插件能写 `am_ops`：认领 am 自带的操作，关掉插件时 `toolsmcp.describeTools` 把它们拿掉（导演同理）；代码仍在引擎里。`station_cmd.test.ts` 的门禁：认领的操作必须存在、一个操作只归一个插件、`song_*` 全归歌曲讲解。第三方站不能写 `am_ops`，也不能与内置插件重名 | 归属与开关跟着插件走，实现不动 |
-| `in_use`：项目里有这些文件（歌曲讲解是 `song.yaml`）时不许关 | 关了正在做的片子就少了工具 |
+| `in_use`：项目里有这些文件（歌曲讲解是 `song.yaml`，多角色对话是 `cast.yaml`）时不许关 | 关了正在做的片子就少了工具 |
+| 只有内置插件能写 `am_skills`：认领 `scene.registeredSkills` 里的渲染技能。项目关掉插件时 `resolveAllSkills` 不解析它们，记成 `off:<名字>`（值为空，指纹与读取放行跳过空值），`skillPromptSections` 也不写那一段；没关时逐字不变（`flow/builtinplugins.test.ts`）。技能仍是注册的内置技能，内置资产树与技能门禁都不变。设置页的开关对这类插件提醒「已渲染的镜头要重新渲染」 | 这些段落进每个镜头的渲染提示词，关掉就是渲染输入变了，标 Stale 是对的；歌曲讲解不认领 song-explainer，因为它的提示词只在歌曲镜头出现，关掉却会让所有镜头 Stale |
 | 内置插件的 `prompt` 原样接在制作提示词（`PROMPT-PRODUCTION.md`）后面，不接 `PROMPT.md`、歌曲模式与 override；项目提示词里已有同一个标题（老项目）时不重复。「歌曲讲解分支」因此从 `templates/production/` 移到 `assets/plugins/song/prompt.md`，新生成的制作提示词里不再有这一节 | 原来那一节只在制作提示词里；老项目手里的提示词本来就有它 |
 | 歌曲讲解的引擎代码、`PROMPT-SONG.md` 与 song-explainer 技能都没动（`song_init` 照旧从 `assets/shared` 拷，技能仍是注册的内置技能） | 它们进项目文件与渲染指纹，搬动会让已有的歌曲项目失效 |
 | 测试用的假发布站在 `flow/testdata/fake-publisher`（只写回执、不联网）；vitest setup 与 e2e fixtures 把 `AM_STATIONS_DIR` 指到临时目录 | 测试不能往开发者真实的站目录写 |

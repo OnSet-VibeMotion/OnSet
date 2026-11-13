@@ -8,6 +8,7 @@ import {
   addToProject,
   extraPrompt,
   fetchStation,
+  builtinPluginIDs,
   coerceSetting,
   setBuiltinEnabled,
   loadProjectStations,
@@ -210,7 +211,7 @@ describe('project lock', () => {
     expect(readLock(root).stations).toEqual([{ id: 'fake-publisher', version: '0.1.0', source: `link:${fake}`, commit: '', digest: '' }]);
     const loaded = loadProjectStations(root);
     expect(loaded.problems).toEqual([]);
-    expect(projectExtras(root).filter((x) => x.station.id !== 'song').map((x) => x.after)).toEqual(['publish']);
+    expect(projectExtras(root).filter((x) => !builtinPluginIDs().includes(x.station.id)).map((x) => x.after)).toEqual(['publish']);
     removeFromProject(root, 'fake-publisher');
     expect(fs.existsSync(path.join(root, LockFile))).toBe(false);
     expect(() => removeFromProject(root, 'fake-publisher')).toThrow('没有加第三方站 fake-publisher');

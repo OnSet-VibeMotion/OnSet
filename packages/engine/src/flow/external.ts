@@ -160,6 +160,11 @@ export interface Manifest {
    * 编排工具的工具列表里。代码仍在引擎里，认领的只是归属与开关。
    */
   am_ops: string[];
+  /**
+   * 只有内置插件能写：认领 am 注册的渲染技能（scene.registeredSkills 里的名字）。项目关掉这个插件时，
+   * 渲染器拿不到这些技能，提示词里也没有它们那一段——已渲染的镜头因此要重渲染。
+   */
+  am_skills: string[];
   /** 项目在用这个插件的凭据文件（例如 song.yaml）：存在时不许在这个项目里关掉它。 */
   in_use: string[];
   slots: ManifestSlot[];
@@ -244,7 +249,7 @@ export function parseManifest(text: string, opts: { builtin?: boolean } = {}): M
     throw new Error(`${ManifestFile} 不是合法的 JSON：${(err as Error).message}`);
   }
   if (!isObject(raw)) throw new Error(`${ManifestFile} 要是一个对象`);
-  knownFields(raw, ['id', 'version', 'name', 'description', 'after', 'replaces', 'prompt', 'nodes', 'produces', 'ops', 'pages', 'settings', 'permissions', 'hooks', 'schedules', 'inserts', 'flow', 'provides', 'renderer_skills', 'film_styles', 'am_ops', 'in_use', 'slots', 'commands'], ManifestFile);
+  knownFields(raw, ['id', 'version', 'name', 'description', 'after', 'replaces', 'prompt', 'nodes', 'produces', 'ops', 'pages', 'settings', 'permissions', 'hooks', 'schedules', 'inserts', 'flow', 'provides', 'renderer_skills', 'film_styles', 'am_ops', 'am_skills', 'in_use', 'slots', 'commands'], ManifestFile);
   const id = str(raw, 'id', 'station');
   if (!idPattern.test(id)) throw new Error(`station.id ${id} 要是小写字母开头的小写字母、数字与连字符（2–40 个字符）`);
   if (builtinStations.some((s) => s.id === id)) throw new Error(`station.id ${id} 与内置站重名`);
@@ -455,6 +460,8 @@ export function parseManifest(text: string, opts: { builtin?: boolean } = {}): M
   const amOps = strings(raw, 'am_ops', 'station');
   if (amOps.length > 0 && !opts.builtin) throw new Error('station.am_ops：只有随 ArticleToMotion 下发的内置插件能认领 am 自带的操作');
   for (const name of amOps) if (!/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/.test(name)) throw new Error(`station.am_ops：${name} 不是操作名`);
+  const amSkills = strings(raw, 'am_skills', 'station');
+  if (amSkills.length > 0 && !opts.builtin) throw new Error('station.am_skills：只有随 ArticleToMotion 下发的内置插件能认领 am 的渲染技能');
   const slots = list('slots').map((sl, i): ManifestSlot => {
     const where = `slots[${i}]`;
     knownFields(sl, ['at', 'page', 'height'], where);
@@ -501,6 +508,7 @@ export function parseManifest(text: string, opts: { builtin?: boolean } = {}): M
     renderer_skills: rendererSkills,
     film_styles: filmStyles,
     am_ops: amOps,
+    am_skills: amSkills,
     in_use: inUseFiles,
     slots,
     commands,
@@ -880,6 +888,29 @@ export function disabledAmOps(root: string): Set<string> {
   }
   const disabled = new Set(lock.disabled ?? []);
   return new Set(builtinPlugins().filter((p) => disabled.has(p.manifest.id)).flatMap((p) => p.manifest.am_ops));
+}
+
+/**
+ * 镜头所在项目关掉的内置插件认领的渲染技能。从镜头目录向上找有锁文件的项目根；没有锁文件就一个都没关。
+ */
+export function disabledAmSkills(sceneDir: string): Set<string> {
+  let current = path.resolve(sceneDir);
+  for (let i = 0; i < 12; i++) {
+    if (fs.existsSync(path.join(current, LockFile))) {
+      let lock: Lock;
+      try {
+        lock = readLock(current);
+      } catch {
+        return new Set();
+      }
+      const disabled = new Set(lock.disabled ?? []);
+      return new Set(builtinPlugins().filter((p) => disabled.has(p.manifest.id)).flatMap((p) => p.manifest.am_skills));
+    }
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return new Set();
 }
 
 /**

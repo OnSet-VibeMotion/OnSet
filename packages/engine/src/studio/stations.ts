@@ -59,6 +59,8 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
     builtin: s.builtin === true,
     enabled: true,
     in_use: s.builtin ? flow.inUse(root, m) : '',
+    /** 认领了渲染技能：开关会改变渲染输入，已渲染的镜头要重渲染。 */
+    affects_render: m.am_skills.length > 0,
     source: s.entry.source,
     commit: s.entry.commit,
     linked: s.entry.commit === '',

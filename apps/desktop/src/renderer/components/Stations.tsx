@@ -202,6 +202,7 @@ export function ProjectStations({ version, run }: { version: number; run: RunAct
                 <div className="station-title">
                   <strong>{s.name}</strong>
                   <span>{s.in_use ? `${s.description} · 这个项目正在用（有 ${s.in_use}）` : s.description}</span>
+                  {s.affects_render && !s.in_use && <em className="station-needs">开关后，已经渲染的镜头要重新渲染</em>}
                 </div>
                 <label className="station-switch" title={s.in_use ? '这个项目正在用，不能关' : undefined}>
                   <input

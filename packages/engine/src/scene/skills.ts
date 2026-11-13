@@ -264,7 +264,14 @@ export function resolveAllSkills(
   film: SceneFilmInput | null = null,
 ): Record<string, string> {
   const result: Record<string, string> = {};
+  // 项目关掉的内置插件认领的技能：不给渲染器，提示词里也不写那一段（记成 off:<名字>，值为空，
+  // 指纹与读取放行都跳过空值）。没有关掉任何插件时与原来逐字相同。
+  const off = flow.disabledAmSkills(sceneDir);
   for (const desc of registeredSkills) {
+    if (off.has(desc.name)) {
+      result[SkillOffPrefix + desc.name] = '';
+      continue;
+    }
     const dir = resolveSkill(renderer, sceneDir, environ, desc);
     if (dir !== '') result[desc.name] = dir;
   }
@@ -303,6 +310,9 @@ export function pluginSkillSection(resolved: Record<string, string>): string {
   for (const key of keys) out += `- ${key.slice(PluginSkillPrefix.length)}：动手前读 ${path.join(resolved[key], 'SKILL.md')}，按它的说明用。\n`;
   return out;
 }
+
+/** 被项目关掉的内置插件认领的技能，在 resolveAllSkills 结果里记成 off:<名字>（值为空）。 */
+export const SkillOffPrefix = 'off:';
 
 /** 第三方插件技能在 resolveAllSkills 结果里的键前缀。 */
 export const PluginSkillPrefix = 'plugin:';
@@ -454,6 +464,7 @@ export function skillPromptSections(resolved: Record<string, string>): string {
   let sections = '';
   for (const desc of registeredSkills) {
     if (desc.name === SongExplainerSkillName) continue;
+    if (SkillOffPrefix + desc.name in resolved) continue;
     sections += desc.promptSection(resolved[desc.name] ?? '');
   }
   return sections;

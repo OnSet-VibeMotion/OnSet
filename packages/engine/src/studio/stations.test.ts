@@ -15,7 +15,12 @@ describe('stations API', () => {
     let { status, body } = await studioRequest(f.s, 'GET', '/api/stations');
     expect(status).toBe(200);
     expect(body.problems).toEqual([]);
-    expect(body.stations.map((x: { id: string; builtin: boolean; enabled: boolean }) => [x.id, x.builtin, x.enabled])).toEqual([['song', true, true]]);
+    expect(body.stations.map((x: { id: string; builtin: boolean; enabled: boolean }) => [x.id, x.builtin, x.enabled])).toEqual([
+      ['algorithmic-art', true, true],
+      ['cast', true, true],
+      ['song', true, true],
+      ['text-to-lottie', true, true],
+    ]);
 
     addToProject(f.root, fetchStation(`link:${fake}`, process.env).entry);
     addToProject(f.root, { id: 'gone', version: '1', source: 'link:/nonexistent/station', commit: '', digest: '' });
