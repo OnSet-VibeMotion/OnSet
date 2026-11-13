@@ -43,7 +43,7 @@ interface Applied {
   blocks: SceneBlock[];
   narrations: PluginNarration[];
   presets: PluginPreset[];
-  inUse: ((root: string) => string)[];
+  presentIn: ((root: string) => string)[];
   renderChecks: PluginRenderCheck[];
   opGroups: PluginOpGroup[];
   prereqs: PluginPrereq[];
@@ -93,7 +93,7 @@ export function registerBuiltin(plugin: BuiltinPlugin): () => void {
   flush();
   if (!/^[a-z][a-z0-9-]*$/.test(plugin.id)) throw new Error(`内置插件 id ${plugin.id} 要是小写字母、数字与连字符`);
   if (applied.some((a) => a.id === plugin.id)) throw new Error(`内置插件 ${plugin.id} 登记了两次`);
-  const entry: Applied = { id: plugin.id, dir: () => plugin.dir ?? defaultDir(plugin.id), stations: [], flows: [], ops: [], pages: [], routes: [], validators: [], skills: [], blocks: [], narrations: [], presets: [], inUse: [], renderChecks: [], opGroups: [], prereqs: [], childEnvs: [], steps: [], commands: [], filmStyleSources: [] };
+  const entry: Applied = { id: plugin.id, dir: () => plugin.dir ?? defaultDir(plugin.id), stations: [], flows: [], ops: [], pages: [], routes: [], validators: [], skills: [], blocks: [], narrations: [], presets: [], presentIn: [], renderChecks: [], opGroups: [], prereqs: [], childEnvs: [], steps: [], commands: [], filmStyleSources: [] };
   const where = `内置插件 ${plugin.id}`;
   const ctx: PluginContext = {
     id: plugin.id,
@@ -149,8 +149,8 @@ export function registerBuiltin(plugin: BuiltinPlugin): () => void {
       if (allApplied(entry).some((a) => a.presets.some((x) => x.id === p.id))) throw new Error(`${where}：新建选项 ${p.id} 已经有了`);
       entry.presets.push(p);
     },
-    inUse(judge) {
-      entry.inUse.push(judge);
+    presentIn(judge) {
+      entry.presentIn.push(judge);
     },
     renderCheck(c) {
       entry.renderChecks.push(c);
@@ -238,10 +238,10 @@ export const pluginSteps = (): Owned<PluginStep>[] => collect((a) => a.steps);
 export const pluginCommands = (): Owned<PluginCommand>[] => collect((a) => a.commands);
 export const pluginFilmStyleSources = (): Owned<FilmStyleSource>[] => collect((a) => a.filmStyleSources);
 
-/** 项目在用这个内置插件的凭据（第一个给出非空的判断）；插件没登记判断或没在用时为空串。 */
-export function pluginInUse(id: string, root: string): string {
+/** 目录里已有这个内置插件的文件时给出证据（第一个非空的判断）；插件没登记判断或目录里没有时为空串。 */
+export function pluginPresentIn(id: string, root: string): string {
   flush();
-  for (const judge of applied.find((a) => a.id === id)?.inUse ?? []) {
+  for (const judge of applied.find((a) => a.id === id)?.presentIn ?? []) {
     const evidence = judge(root);
     if (evidence !== '') return evidence;
   }

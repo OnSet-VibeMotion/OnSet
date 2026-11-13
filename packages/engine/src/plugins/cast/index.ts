@@ -61,6 +61,6 @@ export const castPlugin: BuiltinPlugin = {
         { id: 'addendum', file: 'sections/addendum.md', after: 'wrapup/stage' },
       ],
     });
-    ctx.inUse((root) => (fs.existsSync(path.join(root, cast.RosterFile)) ? cast.RosterFile : ''));
+    ctx.presentIn((root) => (fs.existsSync(path.join(root, cast.RosterFile)) ? cast.RosterFile : ''));
   },
 };

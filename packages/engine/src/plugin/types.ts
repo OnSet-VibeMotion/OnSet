@@ -296,8 +296,11 @@ export interface PluginContext {
   narration(n: PluginNarration): void;
   /** 新建对话框的选项卡片。 */
   preset(p: PluginPreset): void;
-  /** 项目在用这个插件的凭据（项目里的相对路径）；没在用为空串。新建项目时的互斥（Flow.excludes.plugins）据此判断目标目录。 */
-  inUse(judge: (root: string) => string): void;
+  /**
+   * 目录里已经有这个功能的文件：返回证据（项目里的相对路径，例如 song.yaml），没有为空串。只给新建时的互斥
+   * （Flow.excludes.plugins）判断目标目录：在已有目录里新建时，不把互斥的做法叠在一起。
+   */
+  presentIn(judge: (root: string) => string): void;
   renderCheck(c: PluginRenderCheck): void;
   opGroup(g: PluginOpGroup): void;
   prereq(p: PluginPrereq): void;

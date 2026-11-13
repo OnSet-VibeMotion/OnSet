@@ -291,6 +291,6 @@ export const beatPlugin: BuiltinPlugin = {
       canvas: 'vertical-9x16',
       example: '用一首轻快的曲子做卡点短片，每个重拍切一个画面',
     });
-    ctx.inUse((root) => (fs.existsSync(path.join(root, beat.ConfigFile)) ? beat.ConfigFile : ''));
+    ctx.presentIn((root) => (fs.existsSync(path.join(root, beat.ConfigFile)) ? beat.ConfigFile : ''));
   },
 };

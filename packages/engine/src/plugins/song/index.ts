@@ -59,7 +59,7 @@ export const songPlugin: BuiltinPlugin = {
       canvas: 'vertical-9x16',
       example: '把这篇文章写成一首歌，做成带歌词的 MV',
     });
-    ctx.inUse((root) => (fs.existsSync(path.join(root, 'song.yaml')) ? 'song.yaml' : ''));
+    ctx.presentIn((root) => (fs.existsSync(path.join(root, 'song.yaml')) ? 'song.yaml' : ''));
     ctx.renderCheck({
       params: { [songTimelineParam]: { type: 'string', description: '歌曲覆盖基准，与 srt 互斥；包含前奏至尾奏' } },
       // 覆盖校验在渲染之前跑：漏掉一镜或某镜时长写错，等全部渲染完拼接时才发现的话，每一镜都已经烧掉一次 AI CLI 调用。
