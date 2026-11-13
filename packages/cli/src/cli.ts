@@ -13,6 +13,7 @@ import { newAlignCommand } from './align';
 import { newAudioCommand } from './audio';
 import { newArchiveCommand, newConfigCommand, newInitCommand } from './project_cmds';
 import { newSetupCommand } from './setup';
+import { newStudioCommand } from './studio';
 import { newStyleCommand } from './style_cmd';
 
 /**
@@ -82,7 +83,7 @@ export function newRoot(stdout: Out, stderr: Out): { root: Command; flags: RootF
   );
   const flags: RootFlags = { unsafe };
   root.addCommand(newSetupCommand(stdout, stderr), newHyperframesCommand(stdout, stderr), newFilmStyleCommand(stdout, stderr));
-  root.addCommand(newInitCommand(stdout, stderr), newConfigCommand(stdout), newArchiveCommand(stdout), newAlignCommand(stdout), newAudioCommand(stdout), newStyleCommand(stdout));
+  root.addCommand(newInitCommand(stdout, stderr), newConfigCommand(stdout), newArchiveCommand(stdout), newAlignCommand(stdout), newAudioCommand(stdout), newStyleCommand(stdout), newStudioCommand(stdout));
   return { root, flags };
 }
 

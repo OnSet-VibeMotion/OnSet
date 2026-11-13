@@ -106,17 +106,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path27) {
-      const ctrl = callVisitor(key, node, visitor, path27);
+    function visit_(key, node, visitor, path28) {
+      const ctrl = callVisitor(key, node, visitor, path28);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path27, ctrl);
-        return visit_(key, ctrl, visitor, path27);
+        replaceNode(key, path28, ctrl);
+        return visit_(key, ctrl, visitor, path28);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path27 = Object.freeze(path27.concat(node));
+          path28 = Object.freeze(path28.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci2 = visit_(i, node.items[i], visitor, path27);
+            const ci2 = visit_(i, node.items[i], visitor, path28);
             if (typeof ci2 === "number")
               i = ci2 - 1;
             else if (ci2 === BREAK)
@@ -127,13 +127,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path27 = Object.freeze(path27.concat(node));
-          const ck = visit_("key", node.key, visitor, path27);
+          path28 = Object.freeze(path28.concat(node));
+          const ck = visit_("key", node.key, visitor, path28);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path27);
+          const cv = visit_("value", node.value, visitor, path28);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -154,17 +154,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path27) {
-      const ctrl = await callVisitor(key, node, visitor, path27);
+    async function visitAsync_(key, node, visitor, path28) {
+      const ctrl = await callVisitor(key, node, visitor, path28);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path27, ctrl);
-        return visitAsync_(key, ctrl, visitor, path27);
+        replaceNode(key, path28, ctrl);
+        return visitAsync_(key, ctrl, visitor, path28);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path27 = Object.freeze(path27.concat(node));
+          path28 = Object.freeze(path28.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci2 = await visitAsync_(i, node.items[i], visitor, path27);
+            const ci2 = await visitAsync_(i, node.items[i], visitor, path28);
             if (typeof ci2 === "number")
               i = ci2 - 1;
             else if (ci2 === BREAK)
@@ -175,13 +175,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path27 = Object.freeze(path27.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path27);
+          path28 = Object.freeze(path28.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path28);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path27);
+          const cv = await visitAsync_("value", node.value, visitor, path28);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -208,23 +208,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path27) {
+    function callVisitor(key, node, visitor, path28) {
       if (typeof visitor === "function")
-        return visitor(key, node, path27);
+        return visitor(key, node, path28);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path27);
+        return visitor.Map?.(key, node, path28);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path27);
+        return visitor.Seq?.(key, node, path28);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path27);
+        return visitor.Pair?.(key, node, path28);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path27);
+        return visitor.Scalar?.(key, node, path28);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path27);
+        return visitor.Alias?.(key, node, path28);
       return void 0;
     }
-    function replaceNode(key, path27, node) {
-      const parent = path27[path27.length - 1];
+    function replaceNode(key, path28, node) {
+      const parent = path28[path28.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -836,10 +836,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path27, value) {
+    function collectionFromPath(schema, path28, value) {
       let v = value;
-      for (let i = path27.length - 1; i >= 0; --i) {
-        const k = path27[i];
+      for (let i = path28.length - 1; i >= 0; --i) {
+        const k = path28[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -858,7 +858,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path27) => path27 == null || typeof path27 === "object" && !!path27[Symbol.iterator]().next().done;
+    var isEmptyPath = (path28) => path28 == null || typeof path28 === "object" && !!path28[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -888,11 +888,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path27, value) {
-        if (isEmptyPath(path27))
+      addIn(path28, value) {
+        if (isEmptyPath(path28))
           this.add(value);
         else {
-          const [key, ...rest] = path27;
+          const [key, ...rest] = path28;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -906,8 +906,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path27) {
-        const [key, ...rest] = path27;
+      deleteIn(path28) {
+        const [key, ...rest] = path28;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -921,8 +921,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path27, keepScalar) {
-        const [key, ...rest] = path27;
+      getIn(path28, keepScalar) {
+        const [key, ...rest] = path28;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -940,8 +940,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path27) {
-        const [key, ...rest] = path27;
+      hasIn(path28) {
+        const [key, ...rest] = path28;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -951,8 +951,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path27, value) {
-        const [key, ...rest] = path27;
+      setIn(path28, value) {
+        const [key, ...rest] = path28;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -3467,9 +3467,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path27, value) {
+      addIn(path28, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path27, value);
+          this.contents.addIn(path28, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3544,14 +3544,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path27) {
-        if (Collection.isEmptyPath(path27)) {
+      deleteIn(path28) {
+        if (Collection.isEmptyPath(path28)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path27) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path28) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3566,10 +3566,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path27, keepScalar) {
-        if (Collection.isEmptyPath(path27))
+      getIn(path28, keepScalar) {
+        if (Collection.isEmptyPath(path28))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path27, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path28, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3580,10 +3580,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path27) {
-        if (Collection.isEmptyPath(path27))
+      hasIn(path28) {
+        if (Collection.isEmptyPath(path28))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path27) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path28) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3600,13 +3600,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path27, value) {
-        if (Collection.isEmptyPath(path27)) {
+      setIn(path28, value) {
+        if (Collection.isEmptyPath(path28)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path27), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path28), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path27, value);
+          this.contents.setIn(path28, value);
         }
       }
       /**
@@ -5567,9 +5567,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path27) => {
+    visit.itemAtPath = (cst, path28) => {
       let item = cst;
-      for (const [field, index] of path27) {
+      for (const [field, index] of path28) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5578,23 +5578,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path27) => {
-      const parent = visit.itemAtPath(cst, path27.slice(0, -1));
-      const field = path27[path27.length - 1][0];
+    visit.parentCollection = (cst, path28) => {
+      const parent = visit.itemAtPath(cst, path28.slice(0, -1));
+      const field = path28[path28.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path27, item, visitor) {
-      let ctrl = visitor(item, path27);
+    function _visit(path28, item, visitor) {
+      let ctrl = visitor(item, path28);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci2 = _visit(Object.freeze(path27.concat([[field, i]])), token.items[i], visitor);
+            const ci2 = _visit(Object.freeze(path28.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci2 === "number")
               i = ci2 - 1;
             else if (ci2 === BREAK)
@@ -5605,10 +5605,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path27);
+            ctrl = ctrl(item, path28);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path27) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path28) : ctrl;
     }
     exports2.visit = visit;
   }
@@ -6910,14 +6910,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs31 = this.flowScalar(this.type);
+              const fs32 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start, key: fs31, sep: [] });
+                map.items.push({ start, key: fs32, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs31);
+                this.stack.push(fs32);
               } else {
-                Object.assign(it, { key: fs31, sep: [] });
+                Object.assign(it, { key: fs32, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -7045,13 +7045,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs31 = this.flowScalar(this.type);
+              const fs32 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs31, sep: [] });
+                fc.items.push({ start: [], key: fs32, sep: [] });
               else if (it.sep)
-                this.stack.push(fs31);
+                this.stack.push(fs32);
               else
-                Object.assign(it, { key: fs31, sep: [] });
+                Object.assign(it, { key: fs32, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -16570,9 +16570,9 @@ function tailLines(text, n) {
   }
   return out;
 }
-function homeShort(path27) {
+function homeShort(path28) {
   const home = import_node_os4.default.homedir();
-  return home && path27.startsWith(home) ? "~" + path27.slice(home.length) : path27;
+  return home && path28.startsWith(home) ? "~" + path28.slice(home.length) : path28;
 }
 
 // src/setup.ts
@@ -16741,9 +16741,156 @@ ${view3.paint("31", "\u2717")} ${item.name} \u6CA1\u51C6\u5907\u597D\uFF1A${mess
   }
 }
 
-// src/style_cmd.ts
+// ../engine/src/studioview/index.ts
 var import_node_fs30 = __toESM(require("node:fs"), 1);
 var import_node_path26 = __toESM(require("node:path"), 1);
+var ViewInboxEnv = "AM_STUDIO_INBOX";
+var ViewProjectEnv = "AM_STUDIO_PROJECT";
+var ViewPages = [
+  { id: "script", label: "\u53E3\u64AD\u7A3F", target: "" },
+  { id: "scene", label: "\u955C\u5934", target: "scene" },
+  { id: "compose", label: "\u5408\u6210", target: "scene?" },
+  { id: "final", label: "\u6210\u7247", target: "" },
+  { id: "style", label: "\u98CE\u683C", target: "" },
+  { id: "review", label: "\u590D\u67E5", target: "" },
+  { id: "publish", label: "\u53D1\u5E03", target: "" },
+  { id: "memory", label: "\u8BB0\u5FC6", target: "" },
+  { id: "file", label: "\u6587\u4EF6", target: "file" }
+];
+function viewPage(id) {
+  return ViewPages.find((page) => page.id === id);
+}
+function sceneIDs(root) {
+  const out = [];
+  const exams = import_node_path26.default.join(root, "production", "memory-exams");
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = import_node_fs30.default.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    for (const entry of entries) {
+      const full = import_node_path26.default.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (full !== exams) walk(full);
+      } else if (entry.name === "scene.json") {
+        try {
+          const v = JSON.parse(import_node_fs30.default.readFileSync(full, "utf8"));
+          if (typeof v.id === "string" && v.id !== "") out.push(v.id);
+        } catch {
+        }
+      }
+    }
+  };
+  walk(root);
+  return out;
+}
+function validateViewRequest(project, req) {
+  const out = { ...req };
+  const page = viewPage(req.page);
+  if (!page) throw new Error(`\u6CA1\u6709\u9875\u9762 ${goQuote(req.page)}\uFF08\u53EF\u9009\uFF1A${ViewPages.map((p) => p.id).join("\u3001")}\uFF09`);
+  out.target = (req.target ?? "").trim();
+  switch (page.target) {
+    case "scene":
+    case "scene?": {
+      if (out.target === "") {
+        if (page.target === "scene") throw new Error(`${page.label} \u9875\u8981\u7ED9\u955C\u5934\u7F16\u53F7\uFF1Aam studio show ${page.id} <\u955C\u5934\u7F16\u53F7>`);
+        break;
+      }
+      if (project === "") break;
+      const ids2 = sceneIDs(project);
+      if (!ids2.includes(out.target)) throw new Error(`\u9879\u76EE\u91CC\u6CA1\u6709\u955C\u5934 ${goQuote(out.target)}\uFF08\u6709\uFF1A${ids2.join("\u3001")}\uFF09`);
+      break;
+    }
+    case "file": {
+      if (out.target === "") throw new Error("\u6587\u4EF6\u9875\u8981\u7ED9\u9879\u76EE\u91CC\u7684\u76F8\u5BF9\u8DEF\u5F84\uFF1Aam studio show file <\u8DEF\u5F84>");
+      if (project !== "") {
+        let rel = out.target;
+        if (import_node_path26.default.isAbsolute(rel)) rel = import_node_path26.default.relative(project, rel);
+        rel = import_node_path26.default.normalize(rel).split(import_node_path26.default.sep).join("/");
+        if (rel === ".." || rel.startsWith("../") || import_node_path26.default.posix.basename(rel) === ".env") throw new Error(`\u53EA\u80FD\u6253\u5F00\u9879\u76EE\u91CC\u7684\u6587\u4EF6\uFF1A${out.target}`);
+        if (!import_node_fs30.default.existsSync(import_node_path26.default.join(project, rel))) throw new Error(`\u9879\u76EE\u91CC\u6CA1\u6709\u6587\u4EF6 ${rel}`);
+        out.target = rel;
+      }
+      break;
+    }
+    default:
+      if (out.target !== "") throw new Error(`${page.label} \u9875\u4E0D\u5E26\u5BF9\u8C61`);
+  }
+  if (out.target === "") delete out.target;
+  return out;
+}
+function writeViewRequest(env, req) {
+  const inbox = env[ViewInboxEnv] ?? "";
+  const valid = validateViewRequest(env[ViewProjectEnv] ?? "", req);
+  if (inbox === "") return false;
+  import_node_fs30.default.mkdirSync(inbox, { recursive: true, mode: 493 });
+  const body = marshal({ page: valid.page, target: valid.target || void 0, note: valid.note || void 0 });
+  const name = String(BigInt(Date.now()) * 1000000n + process.hrtime.bigint() % 1000000n).padStart(20, "0");
+  const tmp = import_node_path26.default.join(inbox, "." + name + ".tmp");
+  import_node_fs30.default.writeFileSync(tmp, body, { mode: 420 });
+  import_node_fs30.default.renameSync(tmp, import_node_path26.default.join(inbox, name + ".json"));
+  return true;
+}
+
+// src/studio.ts
+function newStudioCommand(stdout) {
+  const cmd = new Command({
+    use: "studio",
+    short: "\u4E0E ArticleToMotion \u5BA2\u6237\u7AEF\u6253\u4EA4\u9053",
+    long: `ArticleToMotion \u5BA2\u6237\u7AEF\u662F\u5236\u4F5C\u89C6\u9891\u7684\u754C\u9762\uFF08\u6D4F\u89C8\u5668\u7248 Studio \u5DF2\u53BB\u6389\uFF09\u3002
+
+\u8FD9\u91CC\u53EA\u6709\u7F16\u6392\u5DE5\u5177\u5728\u5BA2\u6237\u7AEF\u5BF9\u8BDD\u91CC\u4F7F\u7528\u7684 show\uFF1A\u628A\u7528\u6237\u7684\u754C\u9762\u5207\u5230\u8981\u770B\u7684\u90A3\u4E00\u9875\u3002`
+  });
+  cmd.addCommand(newStudioShowCommand(stdout));
+  return cmd;
+}
+function pageLabel(id) {
+  return viewPage(id)?.label ?? id;
+}
+function newStudioShowCommand(stdout) {
+  const note = ref("");
+  const pages = ViewPages.map((page) => {
+    let line2 = "  " + page.id + "  " + page.label;
+    if (page.target === "scene") line2 += "\uFF0C\u8981\u7ED9\u955C\u5934\u7F16\u53F7";
+    else if (page.target === "scene?") line2 += "\uFF0C\u53EF\u4EE5\u7ED9\u955C\u5934\u7F16\u53F7";
+    else if (page.target === "file") line2 += "\uFF0C\u8981\u7ED9\u9879\u76EE\u91CC\u7684\u76F8\u5BF9\u8DEF\u5F84";
+    return line2;
+  });
+  const cmd = new Command({
+    use: "show PAGE [TARGET]",
+    args: rangeArgs(1, 2, "PAGE [TARGET]"),
+    short: "\u628A Studio \u7F51\u9875\u5207\u5230\u67D0\u4E00\u9875\uFF08\u5728 Studio \u7684\u5BF9\u8BDD\u91CC\u8FD0\u884C\u65F6\u6709\u6548\uFF09",
+    long: `\u7ED9 Studio \u91CC\u7684\u7F16\u6392\u5DE5\u5177\u7528\uFF1A\u628A\u7528\u6237\u7684\u7F51\u9875\u5207\u5230\u8981\u7528\u6237\u770B\u7684\u90A3\u4E00\u9875\uFF0C\u4F8B\u5982\u53E3\u64AD\u7A3F\u5199\u597D\u8BF7\u7528\u6237\u5BA1\u3001
+\u67D0\u4E2A\u955C\u5934\u6E32\u67D3\u5B8C\u8BF7\u7528\u6237\u770B\u6548\u679C\u3002--note \u7684\u4E00\u53E5\u8BDD\u663E\u793A\u5728\u5BF9\u8BDD\u91CC\uFF0C\u8BF4\u660E\u4E3A\u4EC0\u4E48\u8981\u770B\u8FD9\u4E00\u9875\u3002
+
+\u4E0D\u5728 Studio \u7684\u5BF9\u8BDD\u91CC\u8FD0\u884C\uFF08\u4F8B\u5982 am run\u3001\u7EC8\u7AEF\u91CC\u624B\u52A8\u6267\u884C\uFF09\u65F6\u4EC0\u4E48\u90FD\u4E0D\u505A\uFF0C\u9000\u51FA\u7801\u4E3A 0\u3002
+
+\u9875\u9762\uFF1A
+` + pages.join("\n"),
+    example: `  am studio show script --note "\u53E3\u64AD\u7A3F\u5199\u597D\u4E86\uFF0C\u8BF7\u770B\u4E00\u904D"
+  am studio show scene scene-003
+  am studio show file production/treatment.md`,
+    runE: (_cmd, args) => {
+      const req = { page: args[0], note: note.value.trim() };
+      if (args.length === 2) req.target = args[1];
+      const inStudio = writeViewRequest(currentEnvironment(), req);
+      if (!inStudio) {
+        stdout.write("\u5F53\u524D\u4E0D\u5728 Studio \u7684\u5BF9\u8BDD\u91CC\uFF0C\u6CA1\u6709\u7F51\u9875\u53EF\u5207\uFF0C\u5DF2\u8DF3\u8FC7\u3002\n");
+        return;
+      }
+      stdout.write("\u5DF2\u8BF7 Studio \u7F51\u9875\u5207\u5230\u300C" + pageLabel(req.page) + "\u300D\u3002\n");
+    }
+  });
+  cmd.flags().stringVar(note, "note", "", "\u663E\u793A\u5728\u5BF9\u8BDD\u91CC\u7684\u4E00\u53E5\u8BF4\u660E");
+  return cmd;
+}
+
+// src/style_cmd.ts
+var import_node_fs31 = __toESM(require("node:fs"), 1);
+var import_node_path27 = __toESM(require("node:path"), 1);
 function newStyleCommand(stdout) {
   const styleCmd = new Command({
     use: "style",
@@ -16793,7 +16940,7 @@ add-font \u628A\u5B57\u4F53\u6C60\u91CC\u7684\u5B57\u4F53\u8FDE\u540C\u8BB8\u53E
       const rootDir2 = projectRoot.value || ".";
       let isFile = false;
       try {
-        isFile = import_node_fs30.default.statSync(import_node_path26.default.join(rootDir2, "frame.md")).isFile();
+        isFile = import_node_fs31.default.statSync(import_node_path27.default.join(rootDir2, "frame.md")).isFile();
       } catch {
         isFile = false;
       }
@@ -16868,7 +17015,7 @@ function newRoot(stdout, stderr) {
   );
   const flags = { unsafe };
   root.addCommand(newSetupCommand(stdout, stderr), newHyperframesCommand(stdout, stderr), newFilmStyleCommand(stdout, stderr));
-  root.addCommand(newInitCommand(stdout, stderr), newConfigCommand(stdout), newArchiveCommand(stdout), newAlignCommand(stdout), newAudioCommand(stdout), newStyleCommand(stdout));
+  root.addCommand(newInitCommand(stdout, stderr), newConfigCommand(stdout), newArchiveCommand(stdout), newAlignCommand(stdout), newAudioCommand(stdout), newStyleCommand(stdout), newStudioCommand(stdout));
   return { root, flags };
 }
 async function execute3(args, stdout, stderr, signal) {
@@ -16893,6 +17040,13 @@ function exactArgs(count, name) {
 function maxArgs(count, name) {
   return (cmd, args) => {
     if (args.length > count) throw new Error(`${cmd.commandPath()} \u6700\u591A\u63A5\u53D7 ${count} \u4E2A\u4F4D\u7F6E\u53C2\u6570 ${name}\uFF0C\u5B9E\u9645\u6536\u5230 ${args.length} \u4E2A\uFF1B\u7528\u6CD5\uFF1A${cmd.useLine()}`);
+  };
+}
+function rangeArgs(min, max, name) {
+  return (cmd, args) => {
+    if (args.length < min || args.length > max) {
+      throw new Error(`${cmd.commandPath()} \u9700\u8981 ${min} \u5230 ${max} \u4E2A\u4F4D\u7F6E\u53C2\u6570 ${name}\uFF0C\u5B9E\u9645\u6536\u5230 ${args.length} \u4E2A\uFF1B\u7528\u6CD5\uFF1A${cmd.useLine()}`);
+    }
   };
 }
 var noArgs = (cmd, args) => {

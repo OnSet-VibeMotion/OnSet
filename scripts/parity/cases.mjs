@@ -134,4 +134,16 @@ export const cases = [
       ['style', 'add-font', 'Fredoka', '--project-root', 'nowhere'],
     ],
   },
+  {
+    name: 'studio show',
+    setup: [['init', '--canvas', 'vertical-3x4', '--skip-hyperframes']],
+    commands: [
+      ['studio', 'show', '--help'],
+      ['studio', 'show', 'script', '--note', '看一遍'],
+      ['studio', 'show', 'nope'],
+      ['studio', 'show', 'scene'],
+      ['studio', 'show', 'file', 'PROMPT.md'],
+      ['studio', 'show'],
+    ],
+  },
 ];
