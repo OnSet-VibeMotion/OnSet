@@ -1,6 +1,6 @@
 # 写一个 ArticleToMotion 插件
 
-插件（代码里叫「第三方站」）是给 ArticleToMotion 的制作流程加的一站，例如成片做好后自动发布。ArticleToMotion 不分发、不维护第三方插件；用户在客户端设置页「流程插件」里填来源加进某个项目，只对那个项目生效。
+插件（代码里叫「第三方站」）是给 ArticleToMotion 的制作流程加的一站，例如成片做好后自动发布。ArticleToMotion 不分发、不维护第三方插件；用户在客户端设置页「我的插件」里填来源装上，装一次对这台电脑上的所有项目生效（没打开项目也能装）；它带来的片型与风格在首页新建项目时就能选。
 
 插件的代码不进 ArticleToMotion 的进程。它能做的事全写在一份清单 `am-station.json` 里，添加时与设置页里都照实列给用户看：
 
@@ -64,7 +64,7 @@ echo 'am-result {"url": "https://example.com/v/1"}'
 
 `prompt.md` 是写给 AI 的说明，例如「成片确认后，请用户在发布页点『把成片发到平台』」。
 
-开发时用 `link:/绝对路径` 加进项目，改动立即生效；发布后让用户用 `github:作者/仓库#v0.1.0` 添加。
+开发时用 `link:/绝对路径` 装上，改动立即生效；发布后让用户用 `github:作者/仓库#v0.1.0` 添加。
 
 ## 字段分级
 
@@ -93,14 +93,14 @@ echo 'am-result {"url": "https://example.com/v/1"}'
 | `settings` | 稳定 | 设置项，见「设置」 |
 | `permissions` | 稳定 | 页面要的权限，见「权限」 |
 | `hooks` | 实验性 | 事件钩子：`[{"on": "film.approved", "op": "notify"}]`。`on` 取 `turn.finished`、`task.finished`、`gate.confirmed`、`film.approved`；`op` 必须是 `trigger: agent` 且没有必填参数的操作。项目正忙时这次不跑，不排队 |
-| `schedules` | 实验性 | 定时：`[{"every_minutes": 30, "op": "sync"}]`，5–1440 分钟，只限 agent 操作。客户端开着、项目打开着才跑，不补跑 |
+| `schedules` | 实验性 | 定时：`[{"every_minutes": 30, "op": "sync"}]`，5–1440 分钟，只限 agent 操作。客户端开着时在当前打开的项目里跑，不补跑 |
 | `slots` | 实验性 | 把页面嵌进自带页面：`[{"at": "publish", "page": "mini", "height": 140}]`。`at` 取 `script`、`storyboard`、`scene`、`final`、`publish`、`progress`；`height` 80–1200，缺省 240 |
 | `commands` | 实验性 | 对话框的斜杠命令：`[{"name": "publish", "description": "打开发布面板", "page": "dashboard"}]`，`page`（打开本插件的页面）与 `prompt`（填进输入框的一段话）二选一 |
 | `inserts` | 实验性 | 插进制作说明某个阶段末尾的补充：`[{"stage": "render", "file": "prompts/render.md"}]`。`stage` 取 `intake`、`script`、`voice`、`timeline`、`plan`、`render`、`visual-qc`、`assemble`、`sound`、`mix`、`review`、`publish`、`wrapup` |
-| `flow` | 实验性 | 整套流程（新片型）：`{"name": "快剪", "stations": ["intake", "render", "my-publisher"], "first_page": "script", "prompt": "prompts/flow.md"}`。`stations` 写自带站的 id 与本插件的 id；`first_page` 取自带流程的第一步页（口播是 `script`，卡点是 `beat`）或本插件页面的 id；用户在设置页选用后，制作路线、顶栏第一步与各阶段说明都换成它的，公共约定照旧。新建时记了流程的项目，`stations` 里写的自带站会带上自带站的那几段说明（引用了你的流程里没有的阶段时写成那一步的标题），你的 `prompt` 只需要写你自己那几站 |
+| `flow` | 实验性 | 整套流程（新片型）：`{"name": "快剪", "stations": ["intake", "render", "my-publisher"], "first_page": "script", "prompt": "prompts/flow.md"}`。`stations` 写自带站的 id 与本插件的 id；`first_page` 取自带流程的第一步页（口播是 `script`，卡点是 `beat`）或本插件页面的 id；它是新建项目时的一个做法（首页的「做法」里标明来自你的插件），用它新建的项目流程记成 `x:<插件 id>`，制作路线、顶栏第一步与各阶段说明都是它的，公共约定照旧；已有项目不能中途换流程，插件去掉后用它新建的项目开不了工。`stations` 里写的自带站会带上自带站的那几段说明（引用了你的流程里没有的阶段时写成那一步的标题），你的 `prompt` 只需要写你自己那几站 |
 | `provides` | 实验性 | 提供配音或字幕对齐：`{"tts": {"name": "某配音", "op": "speak", "timestamps": "none"}, "align": {"name": "某对齐", "op": "align"}}`。`timestamps` 取 `none`、`sentence`、`word`；项目把 `TTS_PROVIDER` / `ALIGN_PROVIDER` 设成 `x:<插件 id>` 时 AI 用这条操作 |
-| `renderer_skills` | 实验性 | 给渲染镜头的技能：`[{"name": "caption-kit", "dir": "skills/caption-kit", "summary": "字幕卡片的写法", "scenes": "opt-in"}]`。`dir` 下必须有 `SKILL.md`；`scenes: all` 每个镜头都带（加上后已渲染的镜头要重渲染），`opt-in`（缺省）只给 `scene.json` 的 `plugin_skills` 点名的镜头 |
-| `film_styles` | 实验性 | 整片风格库：`{"name": "我的风格库", "dir": "styles"}`。`dir` 下每个子目录是一种风格（`STYLE.md` 必需，`SKILL.md`、`poster.jpg`、`style.json` 可选） |
+| `renderer_skills` | 实验性 | 给渲染镜头的技能：`[{"name": "caption-kit", "dir": "skills/caption-kit", "summary": "字幕卡片的写法", "scenes": "opt-in"}]`。`dir` 下必须有 `SKILL.md`；`scenes: all` 每个镜头都带（装上后所有项目里已渲染的镜头要重渲染），`opt-in`（缺省）只给 `scene.json` 的 `plugin_skills` 点名的镜头 |
+| `film_styles` | 实验性 | 整片风格库：`{"name": "我的风格库", "dir": "styles"}`。`dir` 下每个子目录是一种风格（`STYLE.md` 必需，`SKILL.md`、`poster.jpg`、`style.json` 可选），装进项目时整个子目录拷进去。加 `"only_referenced": true`（实验性）时只带用到的：风格目录与风格库根目录下的 `assets/` 只带风格的脚本与页面里出现过名字的文件（模型目录按目录名认），`node_modules/three/` 只带脚本 import 到的模块；风格库根的这两个目录给几种风格共用 |
 
 ArticleToMotion 自己的内置功能（音乐卡点、歌曲讲解、多角色对话、发布……）也用这份清单（只写名字与说明），它们带来的代码在 ArticleToMotion 进程里登记，不经清单，所以没有给内置插件专用的字段。内置功能常开、不能关：它们的工具与说明对每个项目都在，一个项目用不用得上由片型（流程）决定，例如口播项目的制作说明里没有卡点的那几段。
 
@@ -262,20 +262,23 @@ ArticleToMotion 自己的内置功能（音乐卡点、歌曲讲解、多角色�
 
 页面一加载就可以调这些方法，不用等任何「就绪」事件：宿主在插入 iframe 的同一次提交里就挂好了监听。宿主 15 秒内没有回应的请求以「ArticleToMotion 没有回应这个请求」reject，不会一直挂着；`run`、`call`、`send` 一弹出确认条宿主就先回一声「收到了」，之后等用户多久都不算超时。确认条盖在页面顶部，不会把页面往下推。
 
-## 锁文件、来源与更新
+## 装在哪、来源与更新
 
-加进项目后，项目根的 `article-to-motion.flow.json` 记下：
+插件装在用户级，不进任何项目。已装的插件记在 `<数据目录>/am/stations/installed.json`（`AM_STATIONS_DIR` 可覆盖）：
 
 ```json
 {
   "version": 1,
-  "stations": [
-    { "id": "my-publisher", "version": "0.1.0", "source": "github:someone/my-publisher#v0.1.0", "commit": "…", "digest": "sha256:…" }
+  "plugins": [
+    { "id": "my-publisher", "version": "0.1.0", "source": "github:someone/my-publisher#v0.1.0", "commit": "…", "digest": "sha256:…",
+      "role": { "flow": false, "replaces": "", "after": "publish", "nodes": true } }
   ]
 }
 ```
 
-另有 `flow`（项目选用了哪个插件带来的流程）与 `production`（新建项目时记下的片型、提示词组合版本、画幅与制作说明的摘要；有它的项目，制作说明在运行期按流程组合，你的 `inserts` 插在那个阶段末尾、`prompt` 接在最后）。
+装上之后它对所有项目生效：站点进每个项目的制作路线（`after` / `replaces`），说明接在每个项目的制作说明后面，AI 能用的操作是每个项目的工具，页面、小窗、斜杠命令处处都在；钩子与定时只在当前打开的项目里跑。`scenes: all` 的渲染技能会让所有项目里已渲染的镜头标成要重渲染，添加时会照实告诉用户。项目里只记「这个项目选了什么」：新建时选的做法（流程，`article-to-motion.flow.json` 的 `production`）、配音与对齐的取值、镜头的 `plugin_skills`、装进项目的整片风格。
+
+`role` 是装上时按清单记下的「它在制作里出现在哪」。插件后来读不出来（本机目录没了、内容被改过、清单写坏）时，只有它参与的项目（用它的流程新建的、它顶替或接进了那条路线的）开工报错，其余项目照常开工并提示一声；设置页「我的插件」列出问题，给「更新 / 去掉」。
 
 来源有三种写法：
 
@@ -285,9 +288,9 @@ ArticleToMotion 自己的内置功能（音乐卡点、歌曲讲解、多角色�
 | `github:owner/repo#ref` | 按 ref（tag、分支或 commit）克隆 |
 | git 地址`#ref` | `https://`、`git@`、`ssh://`、`file://` |
 
-git 来源克隆后记下 commit 与整个目录的内容摘要，存进用户级目录 `<数据目录>/am/stations/<插件 id>/<commit>`（`AM_STATIONS_DIR` 可覆盖）。之后内容与摘要对不上（被改过）就不再使用，设置页提示重新添加。插件目录里不能有符号链接。
+git 来源克隆后记下 commit 与整个目录的内容摘要，存进用户级目录 `<数据目录>/am/stations/<插件 id>/<commit>`（`AM_STATIONS_DIR` 可覆盖）。之后内容与摘要对不上（被改过）就不再使用，设置页提示更新或重新添加。插件目录里不能有符号链接。
 
-更新：设置页的「更新」按钮按锁文件里记的来源重新取一次——来源写的是分支时拿到它现在的 commit，写的是 tag 时 tag 被移动过才会变——列出版本、commit、新申请的权限与新用到的实验性能力，再写回锁文件。所以发布新版本时，建议让用户用分支来源，或者让用户以新 tag 重新添加。
+更新：设置页的「更新」按钮按已装插件清单里记的来源重新取一次——来源写的是分支时拿到它现在的 commit，写的是 tag 时 tag 被移动过才会变——列出版本、commit、新申请的权限与新用到的实验性能力，再写回清单。所以发布新版本时，建议让用户用分支来源，或者让用户以新 tag 重新添加。
 
 ## 兼容性
 

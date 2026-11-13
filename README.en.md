@@ -297,7 +297,7 @@ Beat analysis uses [beat-this](https://github.com/CPJKU/beat_this) (ISMIR 2024; 
 
 ## Writing a plugin
 
-To add a step to the production flow (for example, automatic publishing), write an `am-station.json` as described in [docs/plugin-authoring.md](docs/plugin-authoring.md) (Chinese) and add it to a project under "流程插件" in the client's settings.
+To add a step to the production flow (for example, automatic publishing), write an `am-station.json` as described in [docs/plugin-authoring.md](docs/plugin-authoring.md) (Chinese) and install it under "我的插件" in the client's settings. A plugin is installed once for this computer and applies to every project; the kinds of video and styles it brings can be picked when creating a project.
 
 ## Development
 

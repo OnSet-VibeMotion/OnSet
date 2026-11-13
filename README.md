@@ -164,7 +164,7 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 ## 写插件
 
-想给制作流程加一站（例如自动发布），按 [docs/plugin-authoring.md](docs/plugin-authoring.md) 写一份 `am-station.json`，在客户端设置页的「流程插件」里加进项目。
+想给制作流程加一站（例如自动发布），按 [docs/plugin-authoring.md](docs/plugin-authoring.md) 写一份 `am-station.json`，在客户端设置页的「我的插件」里装上：装一次，这台电脑上的所有项目都能用，它带来的做法与风格在新建项目时就能选。
 
 ## 开发
 

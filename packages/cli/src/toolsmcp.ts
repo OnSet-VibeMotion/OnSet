@@ -362,7 +362,7 @@ export async function serveToolsMCP(
   signal?: AbortSignal,
 ): Promise<void> {
   const send = (msg: Record<string, unknown>): void => write(JSON.stringify({ jsonrpc: '2.0', ...msg }) + '\n');
-  // 工作目录就是项目根（编排档位）：项目加的第三方站各自的工具一起登记。
+  // 工作目录就是项目根（编排档位）：已装的第三方插件各自的工具一起登记。
   const tools = describeTools(profile, process.cwd());
   const byName = new Map(tools.map((t) => [t.name, t]));
   const jobs = new Jobs(spawner);

@@ -98,7 +98,7 @@ export function settingsAPI(s: Server, request: Request): Response {
       has_project: root !== '',
       rows: rows.map((r) => {
         const d = describe(r.key);
-        // 这个项目加的第三方插件提供的配音、对齐，也列进可选项。
+        // 已装的第三方插件提供的配音、对齐，也列进可选项。
         if (r.key === 'TTS_PROVIDER' || r.key === 'ALIGN_PROVIDER') d.options = [...d.options, ...pluginProviders(r.key === 'TTS_PROVIDER' ? 'tts' : 'align')];
         return goMap({
           key: r.key,

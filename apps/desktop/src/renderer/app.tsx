@@ -521,7 +521,7 @@ export function App() {
     // 标了制作步骤：重新读项目状态，顶栏的进度跟着变。只标步骤的请求不切页。
     if (view.step) void loadProject();
     if (isStationTab(view.page)) {
-      // 插件页面：这个项目加了它才切过去。
+      // 插件页面：装了这个插件才切过去。
       if (pluginTabs.some(([id]) => id === view.page)) showTab(view.page as Tab);
       return;
     }

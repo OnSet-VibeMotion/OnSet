@@ -102,7 +102,7 @@ export interface Station {
 }
 
 /**
- * 加进项目的第三方站，放进路线的位置：replaces 顶替同 id 的内置站（站点整组换掉），
+ * 插件（内置与已装的第三方插件）的站，放进路线的位置：replaces 顶替同 id 的内置站（站点整组换掉），
  * 否则接在 after 这个站点后面；after 不在这个流程里时接在最后。
  */
 export interface ExtraStation {
