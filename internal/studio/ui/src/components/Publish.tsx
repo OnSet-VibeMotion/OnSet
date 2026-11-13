@@ -6,7 +6,8 @@ import '../publish.css';
 /**
  * 发布页。publish.md 的 frontmatter 是给校验器看的合同，正文又把同样的内容排了一遍表；
  * 原样贴出来时，发布要用的标题、简介、话题和封面埋在几十行字段中间。这里按「发布时要做什么」排：
- * 状态 → 要复制的文案 → 封面 → 还剩哪些人工检查，规格与证据收进折叠，原文放最后。
+ * 状态 → 要复制的文案 → 封面 → 还剩哪些人工检查，规格与证据收进折叠。不显示 Markdown 原文：
+ * Studio 里这一页就是发布助手，文件只是数据来源；聊天、文件树里点到 publish.md 也会切到这一页。
  * 只读：改动经对话由编排工具改 publish.md，合格与否以「发布校验」（am validate publish）为准。
  */
 
@@ -19,7 +20,6 @@ interface PublishCover {
 
 interface PublishResponse {
   available: boolean;
-  content: string;
   covers: PublishCover[];
   data?: Record<string, any>;
   platform_name?: string;
@@ -96,11 +96,11 @@ export function PublishTab({ version, run }: { version: number; run: RunAction }
     return (
       <div class="publish-tab">
         <div class="toolbar">
-          <span class="error-line">publish.md 读不懂：{publish.parse_error}</span>
           <span class="spacer" />
           {check}
         </div>
-        <Raw content={publish.content} open />
+        <p class="error-line">发布信息的格式有误，页面排不出来：{publish.parse_error}</p>
+        <p class="small muted">在对话里让编排工具修好发布信息（例如「发布信息格式坏了，修一下」），修好后这里会自动刷新。</p>
       </div>
     );
   }
@@ -221,7 +221,6 @@ export function PublishTab({ version, run }: { version: number; run: RunAction }
           </tbody>
         </table>
       </details>
-      <Raw content={publish.content} />
     </div>
   );
 }
@@ -249,16 +248,5 @@ function CopyField({ label, value, multiline, count }: { label: string; value?: 
         {copied ? '已复制' : '复制'}
       </button>
     </div>
-  );
-}
-
-function Raw({ content, open }: { content: string; open?: boolean }) {
-  return (
-    <details class="publish-section publish-more" open={open}>
-      <summary>publish.md 原文</summary>
-      <pre class="text" data-ctx-source="publish.md" data-ctx-label="发布文案">
-        {content}
-      </pre>
-    </details>
   );
 }

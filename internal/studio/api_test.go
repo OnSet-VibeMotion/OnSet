@@ -364,7 +364,7 @@ func TestStudioContentAndTaskEndpoints(t *testing.T) {
 	writeStudioFile(t, filepath.Join(root, "transcription.srt"), "1\n00:00:00,000 --> 00:00:01,000\nline\n")
 	writeStudioFile(t, filepath.Join(root, "assets", "logo.txt"), "logo")
 	writeStudioFile(t, filepath.Join(root, "cast", "char.txt"), "cast")
-	writeStudioFile(t, filepath.Join(root, "publish.md"), "# publish")
+	writeStudioFile(t, filepath.Join(root, "publish.md"), "---\nplatform: douyin\ncopy:\n  primary_title: 复利到底是什么\n---\n\n# publish\n")
 	writeStudioPNG(t, filepath.Join(root, "covers", "cover.png"))
 	writeStudioFile(t, filepath.Join(root, "covers", "broken.png"), "not an image")
 	writeStudioFile(t, filepath.Join(root, "production", "review", "review.json"), `{"issues":[{"id":"i1"}]}`)
@@ -445,6 +445,10 @@ func TestStudioContentAndTaskEndpoints(t *testing.T) {
 	requireStudioStatus(t, status, http.StatusOK, body)
 	if body["available"] != true || len(studioList(t, body["covers"])) != 2 {
 		t.Fatalf("publish = %#v", body)
+	}
+	if data, ok := body["data"].(map[string]any); !ok || body["content"] != nil || body["platform_name"] != "抖音" ||
+		data["copy"].(map[string]any)["primary_title"] != "复利到底是什么" {
+		t.Fatalf("发布页应只拿到解析后的字段，不拿 Markdown 原文：%#v", body)
 	}
 	for _, item := range studioList(t, body["covers"]) {
 		cover := item.(map[string]any)

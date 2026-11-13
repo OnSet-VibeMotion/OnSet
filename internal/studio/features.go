@@ -406,8 +406,9 @@ func (s *Server) publishAPI(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	path := filepath.Join(p.Path, "publish.md")
-	body, readErr := os.ReadFile(path)
-	result := map[string]any{"available": readErr == nil, "path": "publish.md", "content": string(body), "covers": []any{}}
+	_, readErr := os.Stat(path)
+	// 不回传 Markdown 原文：发布页只按解析出的字段排版。
+	result := map[string]any{"available": readErr == nil, "path": "publish.md", "covers": []any{}}
 	// 结构化的发布信息供页面排版；解析失败时页面退回显示原文并给出原因。
 	if readErr == nil {
 		if data, err := validate.ReadPublish(path); err != nil {

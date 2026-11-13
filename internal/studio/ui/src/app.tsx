@@ -7,6 +7,10 @@ import { SetupGuide, useSetup } from './components/SetupGuide';
 import { Icon } from './components/Icon';
 import { Preview, tabs, type Tab } from './components/Preview';
 import { scriptFinalPath } from './components/Script';
+
+/** 有专门页面的项目文件：口播稿开口播稿页，publish.md 开发布页，不在文件页里显示原文。 */
+const pageForFile = (path: string): 'script' | 'publish' | null =>
+  path === scriptFinalPath ? 'script' : path === 'publish.md' ? 'publish' : null;
 import { ContextMenu } from './components/ContextMenu';
 import { MarkdownContext } from './components/chat/Markdown';
 import { ProjectDialog } from './components/ProjectDialog';
@@ -329,8 +333,9 @@ export function App() {
     () => ({
       files: treePaths,
       onOpenFile: (path: string) => {
-        if (path === scriptFinalPath) {
-          setTab('script');
+        const page = pageForFile(path);
+        if (page) {
+          setTab(page);
           return;
         }
         setFilePath(path);
@@ -346,8 +351,9 @@ export function App() {
     if (!page) return;
     if (page === 'file') {
       if (!view.target) return;
-      if (view.target === scriptFinalPath) {
-        setTab('script');
+      const special = pageForFile(view.target);
+      if (special) {
+        setTab(special);
         return;
       }
       setFilePath(view.target);
@@ -474,8 +480,9 @@ export function App() {
                 setTab('scene');
               }}
               onFile={(path) => {
-                if (path === scriptFinalPath) {
-                  setTab('script');
+                const page = pageForFile(path);
+                if (page) {
+                  setTab(page);
                   return;
                 }
                 setFilePath(path);
@@ -533,8 +540,9 @@ export function App() {
               onFilesChanged={onFilesChanged}
               onTurnEnd={() => void loadProject()}
               onOpenFile={(path) => {
-                if (path === scriptFinalPath) {
-                  setTab('script');
+                const page = pageForFile(path);
+                if (page) {
+                  setTab(page);
                   return;
                 }
                 setFilePath(path);
