@@ -198,15 +198,19 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 | 站点做没做的判断函数留在 `studio/progress.ts` 的 `judges`，键是「站:站点」；普通站漏了判断函数，`stationDefs` 直接报错（`progress.test.ts` 的「judges every station of every builtin flow」） | 引擎的 `flow` 只有声明，不依赖 `studio`；口播与卡点的「拆分镜头」都叫 `plan`，判断不同 |
 | 新增一站：在 `flow/builtin.ts` 加站与段落、写模板、在 `productionPrompt` 里排位置、在 `judges` 里加判断，跑生成器 | `flow.test.ts` 的「has a template for every section and no orphan templates」查模板与声明一一对应 |
 
-第三方站（`flow/external.ts`、`flow/run.ts`）是用户自己加的站，am 不分发、不维护，第一个用例是自动发布：
+第三方站（`flow/` 下按职责分文件：`manifest.ts` 清单类型与字段分级、`parse.ts` 解析、`lock.ts` 锁文件、`fetch.ts` 来源与下载、`load.ts` 读出项目的站、`update.ts` 升级、`builtinplugins.ts` 内置插件、`promptparts.ts` 提示词标记与插入、`skills.ts` 渲染技能；`external.ts` 只做转出，执行在 `run.ts`）是用户自己加的站，am 不分发、不维护，第一个用例是自动发布。写给插件作者的说明是 `docs/plugin-authoring.md`：
 
 | 约定 | 原因 |
 |---|---|
 | 一个站是一个目录加 `am-station.json`，只能声明：提示词文本、站点（`outputs` / `stale_after` / `gate_files` 声明式判断）、`produces`、操作。清单严格校验：路径只能是项目里的相对路径，不能声明 `production/studio/`、`.agents/`、`.env` 这类 am 自己的文件，id 不能与内置站重名 | 第三方代码不进 am 的进程，能做什么全写在清单里，添加时给用户看得见 |
+| 清单有格式版本 `manifest_version`（缺省 1，`flow.ManifestVersion`）与可选的 `requires.am`（最低 am 版本，semver）：格式更新时先于「不认识的字段」报「要更新的 ArticleToMotion」；am 版本取 `scene.getToolVersion()`（与 `am --version`、渲染指纹同源），不是 x.y.z（本地构建 dev、客户端进程内后端没设版本）时不查最低版本 | 趁还没有第三方用户把兼容面收住；旧 am 读到新清单要说清楚该做什么，而不是列一串不认识的字段 |
+| 顶层字段分「稳定 / 实验性 / 内置专用」三档，唯一来源是 `flow.ManifestFields`：解析器的已知字段从它来，`experimentalFields` 按它报告一份清单用到了哪些实验性字段（设置页「详情与设置」与 `station_add` 输出照实写「以后的版本可能调整」，内置插件不标）。`docs/plugin-authoring.md` 的「顶层字段」表与它一一对应，`manifest.test.ts` 的「lists exactly the top-level fields the parser accepts」核对；加字段要同时改表、改文档 | 稳定字段承诺不改意思；实验性的先让作者与用户知道可能会变 |
+| 站目录摘要（`treeDigest`，`digest.ts`）按目录缓存在进程里：每次先 stat 整棵树（路径、大小、mtime、ctime、inode），概要变了才重读重算 | `loadProjectStations` 到处都在调，每次全量读 git 来源的站太浪费；缓存只省读文件，不放过任何改动（`manifest.test.ts` 的「still refuses a station whose content changed」） |
+| `station_update`（scopes 只有 cli，设置页第三方站的「更新」按钮走 `POST /api/stations/{id}/update`）按锁文件记的来源重新取，报版本、commit、新申请的权限与新用到的实验性字段，写回锁文件；`link:` 来源直接说明不需要更新 | 升级要让用户看见插件多要了什么 |
 | 项目里的 `article-to-motion.flow.json`（`flow.LockFile`）记加了哪些站；git 来源按 ref 克隆、记 commit 与内容摘要，存进 `<数据目录>/am/stations/<id>/<commit>`（`AM_STATIONS_DIR` 覆盖，`childEnvironment` 在会算出另一个目录时显式传），摘要对不上就不用；`link:` 是开发用的本机目录，不核对。不接 npm | 同一项目两次制作要得到同样的说明；npm 包装一次就执行了 install 脚本 |
 | 提示词：`runPrompt` 把各站说明接在最后（`flow.extraPrompt`），每站一节，声明「与上面的约定冲突时以上面为准」；加了却读不出来的站让「开始制作」直接报错 | 用户加了它，悄悄少一步更糟 |
 | 操作在子进程里跑（`flow.runStationOp`）：工作目录是项目根，stdin 一行 JSON，最后一行 `am-result <JSON>` 是结构化结果；环境只给 PATH、HOME、语言、代理、证书与 `AM_STATION_DATA`（插件自己的数据目录，凭据放这里），项目 `.env` 一概不传 | 发布插件要读成片，但不能拿到配音、模型服务的凭据 |
-| `trigger: agent` 的操作由工具服务登记成 `x_<站>_<操作>` 工具（`toolsmcp.externalOps`，执行时落到 `station_run`）；`trigger: user` 的只在界面上出按钮（发布页的 `StationActions`，`POST /api/stations/{id}/ops/{操作}`）。`station_add` / `station_remove` / `station_list` / `station_run` 的 scopes 只有 cli | 发出去、上传这类对外且不能撤回的动作只能由用户点；加不加第三方插件是用户的决定，编排工具不能自己装 |
+| `trigger: agent` 的操作由工具服务登记成 `x_<站>_<操作>` 工具（`toolsmcp.externalOps`，执行时落到 `station_run`）；`trigger: user` 的只在界面上出按钮（发布页的 `StationActions`，`POST /api/stations/{id}/ops/{操作}`）。`station_add` / `station_remove` / `station_list` / `station_run` / `station_update` 的 scopes 只有 cli | 发出去、上传这类对外且不能撤回的动作只能由用户点；加不加第三方插件是用户的决定，编排工具不能自己装 |
 | 插件自己的页面（清单 `pages`：`entry` 是站目录里的 HTML，`reads` 是页面能读的项目文件）在画面面板里以 `sandbox="allow-scripts"` 的 iframe 打开（`Stations.tsx` 的 `StationPage`，页面 id `x:<站>:<页面>`，顶栏「更多页面」与 `studio_show` 都认）。`/station-ui/<站>/…` 只给 entry 所在目录，响应带 `pageCSP`：`default-src 'none'`、`connect-src 'none'`，脚本、样式、图片只能来自本站目录与 `/station-ui/_sdk.js`；后端另拒 `Origin: null` 的 `/api` 请求 | 页面是第三方代码，又和界面同在 `am://app/` 下：不隔离的话它能调任何接口、读项目文件。不许连网是为了宿主交给它的数据传不出去 |
 | 页面要的东西都经 `postMessage` 请宿主转交（`window.am`：`info`、`read`、`run`、`ask`、`onRefresh`）：`read` 只给 `reads`、`produces` 与站点 `outputs` 里的文件（`flow.pageMayRead`，后端 `/api/stations/{id}/read` 再查一遍），图片给 data URL；`run` 先在页面上方弹确认条，用户点「执行」才跑；`ask` 只填进对话输入框，不发送 | 页面里的按钮可以被脚本自己点，不算用户同意；要对外的动作必须是用户在宿主界面上点的 |
 | 第三方站点的产物不参与「后面已经做了」的推断（`computeStations` 的 `laterDone` 跳过 `declared`） | 插件一写回执，前面所有自带的站就全成了「跳过」，顶栏全打勾 |
