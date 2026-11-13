@@ -5,7 +5,7 @@
  * 一个第三方站是一个目录，根上一份 am-station.json（Manifest）。它只能声明：提示词文本、路线上的站点
  * （声明式判断）、会写的文件、子进程执行的操作。代码不进 am 的进程，操作在子进程里跑（run.ts）。
  */
-import { getToolVersion } from '../scene/record';
+import { compatVersion } from '../version';
 import type { PathRule } from './types';
 
 export const ManifestFile = 'am-station.json';
@@ -224,9 +224,12 @@ export function experimentalFields(m: Manifest): string[] {
 // ---------------------------------------------------------------------------
 // 兼容性
 
-/** 当前 am 的版本：与 `am --version`、渲染指纹同一个来源（scene.setToolVersion，由 am 启动时设置）。 */
+/**
+ * 兼容检查用的 am 版本（version.compatVersion）：客户端里是客户端的版本号（主进程用 app.getVersion() 设的宿主版本），
+ * 命令行里是 `am --version` 的版本号（与渲染指纹同一个来源）。
+ */
 export function amVersion(): string {
-  return getToolVersion();
+  return compatVersion();
 }
 
 const semverPattern = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;

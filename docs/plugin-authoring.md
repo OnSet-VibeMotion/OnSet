@@ -79,7 +79,7 @@ echo 'am-result {"url": "https://example.com/v/1"}'
 | 字段 | 分级 | 说明 |
 |---|---|---|
 | `manifest_version` | 稳定 | 清单格式版本，整数，现在是 1；不写按 1 读。比这一版 ArticleToMotion 认得的新时，报「要更新的 ArticleToMotion」 |
-| `requires` | 稳定 | 对 ArticleToMotion 的要求：`{"am": "0.2.0"}` 是最低版本（x.y.z，按 semver 比较）。不满足时报错、不加载。本地开发构建（版本号是 dev）不查 |
+| `requires` | 稳定 | 对 ArticleToMotion 的要求：`{"am": "0.2.0"}` 是最低版本（x.y.z，按 semver 比较）。比的是客户端的版本号（命令行里是 am 的版本号）；不满足时报错、不加载。本地开发构建（版本号是 dev）不查 |
 | `id` | 稳定 | 必填。小写字母开头，小写字母、数字与连字符，2–40 个字符；不能与内置站、内置插件重名 |
 | `version` | 稳定 | 必填。插件自己的版本号 |
 | `name` | 稳定 | 必填。给用户看的名字 |
