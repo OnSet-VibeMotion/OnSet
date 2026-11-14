@@ -44,7 +44,7 @@ export const test = base.extend({
   },
 
   /** 一个只有 scene-001 的项目，放在临时 HOME 下（「打开项目」从 HOME 浏览）。 */
-  project: async ({ sandbox }, use) => {
+  project: async ({ sandbox, electronApp }, use) => {
     const project = fs.mkdtempSync(path.join(sandbox.home, 'onset-studio-e2e-'));
     const scene = path.join(project, 'scenes', 'scene-001');
     fs.mkdirSync(scene, { recursive: true });
@@ -63,6 +63,12 @@ export const test = base.extend({
       path.join(scene, 'scene.json'),
       JSON.stringify({ id: 'scene-001', duration_seconds: 1, output: 'out.mp4', transcript: 'voice.srt', text: 'hello' }),
     );
+    if (process.platform === 'win32') {
+      // Windows 的项目入口使用真正的 IPC，只替换系统对话框的返回值。
+      await electronApp.evaluate(({ dialog }, directory) => {
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+      }, project);
+    }
     await use({ path: project, name: path.basename(project), promptFile: path.join(scene, 'prompt.md') });
   },
 
@@ -102,7 +108,13 @@ export const test = base.extend({
   },
 
   page: async ({ electronApp }, use) => {
-    const page = await electronApp.firstWindow();
+    let page;
+    if (process.platform === 'win32') {
+      // 主窗口与桌宠异步载入，Windows 偶尔先收到桌宠的 window 事件。
+      const mainPage = () => electronApp.windows().find((window) => window.url() === 'onset://app/');
+      await expect.poll(() => !!mainPage()).toBe(true);
+      page = mainPage();
+    } else page = await electronApp.firstWindow();
     await page.waitForLoadState('domcontentloaded');
     await use(page);
   },
@@ -125,7 +137,12 @@ export async function petPage(electronApp) {
 export async function openProject(page, project) {
   await page.locator('#open-project-trigger').click();
   await page.locator('#mode-open').click();
-  await page.locator('.directory-row.project-row', { hasText: project.name }).click();
+  if (process.platform === 'win32') {
+    await page.locator('#native-open-directory').click();
+    await expect(page.locator('#project-dialog .native-directory-browser .path')).toHaveText(project.path);
+  } else {
+    await page.locator('.directory-row.project-row', { hasText: project.name }).click();
+  }
   await page.locator('#open-project').click();
   await expect(page.locator('#title')).toHaveText(project.name);
   // 对话是主栏，画面面板默认收起：收起栏里有了镜头就说明项目加载好了（窄窗口里收起栏不显示，只看在不在）。

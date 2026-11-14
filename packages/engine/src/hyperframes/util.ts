@@ -2,7 +2,7 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ExitError, abortReason } from '../procgroup';
+import { ExitError, abortReason, start } from '../procgroup';
 import type { Writer } from './progress';
 
 /** 错误的文字（对应 %v / %w 的展开）。 */
@@ -37,6 +37,17 @@ export interface CommandOptions {
  * 与 CommandContext 相同）并抛取消原因。
  */
 export function runCommand(file: string, args: string[], options: CommandOptions = {}): Promise<string> {
+  if (process.platform === 'win32') {
+    return (async () => {
+      const started = await start(file, args, { cwd: options.cwd, env: options.env, signal: options.signal, stdio: ['ignore', 'pipe', options.stderr ? 'pipe' : 'ignore'] });
+      let output = '';
+      started.child.stdout!.setEncoding('utf8');
+      started.child.stdout!.on('data', (chunk: string) => { if (options.stdout) options.stdout.write(chunk); else output += chunk; });
+      if (options.stderr) { started.child.stderr!.setEncoding('utf8'); started.child.stderr!.on('data', (chunk: string) => options.stderr!.write(chunk)); }
+      try { await started.wait(); } catch (error) { if (options.signal?.aborted) throw abortReason(options.signal); throw error; }
+      return output;
+    })();
+  }
   const { signal } = options;
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {

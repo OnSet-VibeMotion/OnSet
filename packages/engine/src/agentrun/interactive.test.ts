@@ -175,4 +175,11 @@ describe('interactive orchestrators', () => {
     expect(outcome.error?.message).toBe('模型请求失败');
     expect(events.find((e) => e.kind === KindError)?.text).toBe('模型请求失败');
   });
+
+  it.skipIf(process.platform !== 'win32')('preserves an actual Windows agent process failure', async () => {
+    const { outcome } = await fakeRun('codex', '装一下', { decision: 'deny' }, {}, undefined, { FAKE_EXIT_BEFORE_TURN: '1' });
+    expect(outcome.result.exitCode).toBe(23);
+    expect(outcome.error?.message).toContain('编排工具退出码 23：');
+    expect(outcome.error?.message).toContain('agent startup failed');
+  });
 });

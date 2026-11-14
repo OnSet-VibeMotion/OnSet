@@ -61,6 +61,7 @@ import { uploadsAPI } from './uploads';
 import * as flow from '../flow';
 import * as plugin from '../plugin';
 import * as studioview from '../studioview';
+import { directoryBrowseRoot, directoryDrives, withinDirectoryBrowseRoot } from './directories';
 
 export interface Config {
   /** 只有桌面端提供；插件逻辑仍在子进程，不加载到宿主。 */
@@ -468,11 +469,11 @@ export class Server {
 
   private directoriesAPI(request: Request): Response {
     if (request.method !== 'GET') return methodNotAllowed('GET');
-    const root = studioBrowseRoot();
+    const home = studioBrowseRoot();
     const requested = new URL(request.url).searchParams.get('path') ?? '';
-    const dir = requested !== '' ? path.resolve(requested) : root;
-    const withinRoot = path.relative(root, dir);
-    if (withinRoot === '..' || withinRoot.startsWith('..' + path.sep) || path.isAbsolute(withinRoot)) {
+    const dir = requested !== '' ? path.resolve(requested) : home;
+    const root = directoryBrowseRoot(dir, home);
+    if (!isWithinStudioBrowseRoot(dir)) {
       return writeError(403, 'directory_outside_root', '只能浏览服务器用户目录下的文件夹');
     }
     let isDir = false;
@@ -501,7 +502,8 @@ export class Server {
       return x < y ? -1 : x > y ? 1 : 0;
     });
     const parent = dir !== root ? path.dirname(dir) : '';
-    return writeJSON(200, goMap({ path: dir, parent, root, entries }));
+    const drives = directoryDrives();
+    return writeJSON(200, goMap({ path: dir, parent, root, entries, ...(drives.length ? { drives } : {}) }));
   }
 
   private projectsAPI(): Response {
@@ -772,8 +774,7 @@ function studioBrowseRoot(): string {
 }
 
 function isWithinStudioBrowseRoot(file: string): boolean {
-  const rel = path.relative(studioBrowseRoot(), path.resolve(file));
-  return rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel);
+  return withinDirectoryBrowseRoot(path.resolve(file), studioBrowseRoot());
 }
 
 function isStudioProjectDir(dir: string): boolean {

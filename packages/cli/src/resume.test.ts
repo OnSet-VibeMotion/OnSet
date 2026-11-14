@@ -1,5 +1,5 @@
 // 渲染中途异常退出后接着做（scene/resume.ts）：假的渲染工具与假的 HyperFrames CLI 代替画面从哪来，
-// 判断接哪一层、续接的命令行与提示词、尝试记录都是真的在跑。只在非 Windows 上跑。
+// 判断接哪一层、续接的命令行与提示词、尝试记录都是真的在跑。
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -7,7 +7,7 @@ import * as hyperframes from '@onset/engine/hyperframes';
 import { fakeCLI } from '@onset/engine/hyperframes/hftest';
 import { Buffer, hasFfmpeg, lookPath, makeClip, run, setenv, tempDir } from './testutil';
 
-const skip = !hasFfmpeg || process.platform === 'win32';
+const skip = !hasFfmpeg;
 
 /**
  * 假 claude：按 mode 文件决定这一次怎么跑，命令行记进 calls.log、提示词存进 prompt-N.txt。
@@ -17,6 +17,25 @@ const skip = !hasFfmpeg || process.platform === 'win32';
  *   ok               照常出片
  */
 function fakeClaude(binDir: string, modeFile: string, clip: string): void {
+  if (process.platform === 'win32') {
+    fs.writeFileSync(path.join(binDir, 'claude.cmd'), '@echo off\r\nnode "%~dp0\\claude-fake.cjs" %*\r\n');
+    fs.writeFileSync(path.join(binDir, 'claude-fake.cjs'), `
+const fs = require('node:fs');
+const args = process.argv.slice(2), resumed = args.includes('--resume');
+const sid = args[args.indexOf(resumed ? '--resume' : '--session-id') + 1] || '';
+const calls = fs.existsSync('calls.log') ? fs.readFileSync('calls.log','utf8').trim().split('\\n').filter(Boolean).length : 0;
+fs.appendFileSync('calls.log','resume=' + (resumed ? '1' : '') + ' sid=' + sid + '\\n');
+fs.writeFileSync('prompt-' + (calls + 1) + '.txt',args.at(-1));
+const mode = fs.readFileSync(${JSON.stringify(modeFile)},'utf8');
+if (mode === 'silent-on-resume' && resumed) process.exit(1);
+console.log(JSON.stringify({type:'system',subtype:'init',session_id:sid,model:'fake'}));
+const text = value => console.log(JSON.stringify({type:'assistant',message:{content:[{type:'text',text:value}]}}));
+if (mode === 'crash-after-code') { fs.writeFileSync('index.html','<html></html>'); text('[[USER_MESSAGE]]代码已完成，开始渲染'); process.exit(1); }
+if (mode === 'crash') { text('写到一半'); process.exit(1); }
+fs.copyFileSync(${JSON.stringify(clip)},'out.mp4'); text('[[USER_MESSAGE]]视频已渲染完成：out.mp4');
+`);
+    return;
+  }
   const script = `#!/bin/sh
 sid=""; resume=""; prev=""
 for a; do
@@ -45,6 +64,11 @@ text "[[USER_MESSAGE]]视频已渲染完成：out.mp4"
 function fakeRenderCLI(clip: string): string {
   const dir = tempDir();
   fakeCLI(dir);
+  if (process.platform === 'win32') {
+    const entry = path.join(dir, 'node_modules/hyperframes/cli.cjs');
+    fs.writeFileSync(entry, `const fs=require('node:fs');const args=process.argv.slice(2);if(args[0]==='--version'){console.log('${hyperframes.PinnedVersion}');process.exit(0)}fs.appendFileSync('direct.log',args.join(' ')+'\\n');fs.copyFileSync(${JSON.stringify(clip)},args[args.indexOf('--output')+1]);\n`);
+    return dir;
+  }
   const script = `#!/bin/sh
 if [ "$1" = --version ]; then echo ${hyperframes.PinnedVersion}; exit 0; fi
 out=""; prev=""
@@ -71,7 +95,7 @@ function setup(): { root: string; scene: string; mode: string } {
   fakeClaude(binDir, mode, clip);
   setenv(hyperframes.CLIDirEnv, fakeRenderCLI(clip));
   process.chdir(root);
-  setenv('PATH', binDir + path.delimiter + path.dirname(lookPath('ffmpeg')) + path.delimiter + '/usr/bin:/bin');
+  setenv('PATH', binDir + path.delimiter + path.dirname(lookPath('ffmpeg')) + path.delimiter + (process.platform === 'win32' ? process.env.PATH : '/usr/bin:/bin'));
   setenv('HOME', tempDir());
   return { root, scene, mode };
 }

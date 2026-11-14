@@ -151,7 +151,8 @@ describe('sessions', () => {
     const f = newSessionFixture();
     const { body } = await studioRequest(f.s, 'POST', '/api/production/start', '{"message":"竖屏，三分钟"}');
     const id = body.session_id as string;
-    await waitIdle(f, id);
+    const initial = await waitIdle(f, id);
+    expect(lastTurn(initial).status, JSON.stringify(lastTurn(initial))).toBe('succeeded');
     setEnv('FAKE_FAIL_RESUME', '1');
     await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"第二句"}');
     await waitIdle(f, id);
@@ -173,6 +174,8 @@ describe('sessions', () => {
     expect(status).toBe(202);
     const id = body.session_id as string;
     expect(body.prompt).toBe('口播流程');
+    const initial = await studioRequest(f.s, 'GET', `/api/sessions/${id}`);
+    expect(initial.body.session.running_turn, JSON.stringify(lastTurn(initial.body))).toBeDefined();
     // 进行中：其他写入一律 409。
     for (const p of ['/api/production/start', '/api/render/all', '/api/scenes/scene-001/render', '/api/commands/project.concat']) {
       ({ status, body } = await studioRequest(f.s, 'POST', p, '{}'));

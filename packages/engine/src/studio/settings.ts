@@ -27,7 +27,7 @@ const ttsNames: Record<string, string> = {
   elevenlabs: 'ElevenLabs',
   tencent: '腾讯云',
   mlx: '本机 MLX（Qwen3-TTS）',
-  breeze: 'Breeze TTS 2（本机）',
+  breeze: process.platform === 'win32' ? 'Breeze TTS 2（本机 CUDA）' : 'Breeze TTS 2（本机）',
 };
 const alignNames: Record<string, string> = { mlx: '本机 MLX', funasr: 'FunASR' };
 

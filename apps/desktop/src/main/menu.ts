@@ -93,5 +93,12 @@ export function installMenu(pet?: PetMenu): void {
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  if (process.platform === 'win32') {
+    for (const win of BrowserWindow.getAllWindows()) {
+      // 菜单收进顶栏的入口，Alt 也不再唤回一条系统菜单栏；快捷键仍由原菜单登记。
+      win.setAutoHideMenuBar(false);
+      win.setMenuBarVisibility(false);
+    }
+  }
   app.setAboutPanelOptions({ applicationName: '片场', copyright: '把文章做成竖屏动画视频' });
 }

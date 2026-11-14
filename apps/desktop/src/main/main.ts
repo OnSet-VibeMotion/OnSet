@@ -9,6 +9,8 @@ import { installMenu } from './menu';
 import { createPet, installPetIPC, mainWindow, petPreferred, setPetVisible } from './pet';
 import { loginShellPath } from './shellpath';
 import { StationBrowsers } from './station-browser';
+import { installDirectoryPicker } from './directory';
+import { installWindowsChrome } from './windowChrome';
 
 /*
  * 桌面客户端的主进程。
@@ -143,8 +145,13 @@ function createWindow(): BrowserWindow {
     minHeight: 640,
     title: '片场',
     backgroundColor: skinBackground(),
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 18, y: 22 },
+    ...(process.platform === 'win32'
+      ? {
+          frame: false,
+          titleBarStyle: 'hidden' as const,
+          ...(fs.existsSync(path.join(__dirname, '..', 'build', 'icon.png')) ? { icon: path.join(__dirname, '..', 'build', 'icon.png') } : {}),
+        }
+      : { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 18, y: 22 } }),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -231,6 +238,8 @@ if (!app.requestSingleInstanceLock()) {
     protocol.handle(SCHEME, handleRequest);
     const menu = (visible: boolean) => installMenu({ visible, toggle: setPetVisible });
     installPetIPC();
+    installDirectoryPicker();
+    installWindowsChrome();
     // 界面在第一次画之前同步要现在的皮肤（preload 的 skinNow）。
     ipcMain.on('onset:skin-now', (event) => {
       event.returnValue = skinNow();

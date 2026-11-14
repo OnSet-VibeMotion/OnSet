@@ -31,7 +31,11 @@ test('native menu opens a folder, switches steps and goes home', async ({ electr
   await expect(page.locator('#title')).toHaveText(project.name);
   await expect(page.locator('.rail-scene[title="scene-001"]')).toBeVisible();
   // 打开的项目登记进了临时的项目登记，而不是用户真实的那份。
-  await expect.poll(() => fs.existsSync(sandbox.registry) && fs.readFileSync(sandbox.registry, 'utf8').includes(project.path)).toBe(true);
+  await expect.poll(() => {
+    if (!fs.existsSync(sandbox.registry)) return false;
+    const registry = JSON.parse(fs.readFileSync(sandbox.registry, 'utf8'));
+    return registry.projects?.some((entry) => entry.path === project.path) ?? false;
+  }).toBe(true);
 
   // ⌘1–⌘5：五个步骤。
   await clickMenu(electronApp, '视图', '发布');

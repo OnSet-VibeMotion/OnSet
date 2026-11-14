@@ -34,6 +34,8 @@ function fixture(): { project: string; onset: string } {
   // 答案放在 .env 里：agent 读不到 .env（安全模式禁读），只有真的调了 config_get 才答得出 tencent。
   fs.writeFileSync(path.join(project, 'onset.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\nTTS_PROVIDER=edge\n');
   fs.writeFileSync(path.join(project, '.env'), 'TTS_PROVIDER=tencent\n');
+  // Windows 客户端把 cjs 入口交给 onsetCommand，不使用不可执行的 sh shim。
+  if (process.platform === 'win32') return { project, onset: onsetCjs };
   const onset = path.join(project, '.onset-test-shim');
   fs.writeFileSync(onset, `#!/bin/sh\nexec '${process.execPath}' '${onsetCjs}' "$@"\n`, { mode: 0o755 });
   return { project, onset };
@@ -85,13 +87,28 @@ describe('RealToolsMCP', () => {
       const { project, onset } = fixture();
       const env = testEnv(tool);
       const access = { commands: ['ls'], toolsServer: onsetToolsServer(onset, 'renderer', project, env) };
-      const argv = rendererInvocation(tool, '调用 onset 工具服务里的 tool_help 工具查 hyperframes（参数 tool 填 "hyperframes"），然后只回复 DONE。', false, access);
+      const callHyperFrames = process.platform === 'win32' && tool === 'codex';
+      const prompt = callHyperFrames
+        ? '调用 onset 工具服务里的 hyperframes 工具读取 GSAP 文档（参数 subcommand 填 "docs"，args 填 ["gsap"]），然后只回复 DONE。不要跑 shell。'
+        : '调用 onset 工具服务里的 tool_help 工具查 hyperframes（参数 tool 填 "hyperframes"），然后只回复 DONE。';
+      const argv = rendererInvocation(tool, prompt, false, access);
       const ran = spawnSync(argv[0], argv.slice(1), { cwd: project, env: { ...env, ...rendererEnv(tool, access, env) }, encoding: 'utf8', timeout: 10 * 60_000 });
       const out = `${ran.stdout}\n${ran.stderr}`;
       console.log(`${tool} 渲染器：退出码 ${ran.status}，调用了 tool_help：${out.includes('tool_help')}`);
       if (ran.status !== 0) console.log(`${tool} 渲染器输出：${out.slice(0, 3000)}`);
       expect(ran.status, `${tool} 渲染器退出码`).toBe(0);
-      expect(out, `${tool} 渲染器没有调用 tool_help`).toContain('tool_help');
+      if (callHyperFrames) {
+        const calls = ran.stdout.split('\n').flatMap((line) => {
+          try { return [JSON.parse(line) as { type?: string; item?: { type?: string; tool?: string; status?: string; error?: unknown; result?: { isError?: boolean } } }]; } catch { return []; }
+        });
+        const completed = calls.find((event) => event.type === 'item.completed' && event.item?.type === 'mcp_tool_call' && event.item.tool === 'hyperframes');
+        expect(completed?.item?.status, 'HyperFrames 必须实际执行成功，不能只列出帮助或在审批失败后回复 DONE').toBe('completed');
+        expect(completed?.item?.error).toBeNull();
+        expect(completed?.item?.result?.isError).not.toBe(true);
+        expect(out).not.toContain('MCP tool call requires approval');
+      } else {
+        expect(out, `${tool} 渲染器没有调用 tool_help`).toContain('tool_help');
+      }
     }
   });
 });

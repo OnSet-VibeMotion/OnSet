@@ -5,13 +5,19 @@ import { describe, expect, it } from 'vitest';
 import * as mediaprobe from '@onset/engine/mediaprobe';
 import { Buffer, hasFfmpeg, lookPath, makeClip, run, setenv, tempDir } from './testutil';
 
-const skip = !hasFfmpeg || process.platform === 'win32';
+const skip = !hasFfmpeg;
 
 /**
  * 修接缝的假渲染器。good：开头 10 帧换成 seam/plate.png，其余照搬修之前的产物（seam/before.mp4），正是修接缝要的样子；
  * 否则原样照搬修之前的产物，第 0 帧接不上，onset 应当判它没做成。另把收到的提示词存一份。
  */
 function seamRenderer(binDir: string, good: boolean): void {
+  if (process.platform === 'win32') {
+    const args = ['-v','error','-y','-f','lavfi','-i','color=c=red:s=320x240:r=30:d=0.333333','-i','seam/before.mp4','-filter_complex','[0:v]scale=320:240,format=yuv420p,trim=end_frame=10,setpts=PTS-STARTPTS[a];[1:v]trim=start_frame=10,setpts=PTS-STARTPTS[b];[a][b]concat=n=2:v=1[v]','-map','[v]','-c:v','libx264','-pix_fmt','yuv420p','-an','out.mp4'];
+    fs.writeFileSync(path.join(binDir, 'codex.cmd'), '@echo off\r\nnode "%~dp0\\codex-fake.cjs" %*\r\n');
+    fs.writeFileSync(path.join(binDir, 'codex-fake.cjs'), `const fs=require('node:fs');fs.writeFileSync('prompt.txt',process.argv.at(-1));console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'[[USER_MESSAGE]]视频已渲染完成'}}));${good ? `require('node:child_process').execFileSync(${JSON.stringify(lookPath('ffmpeg'))},${JSON.stringify(args)},{windowsHide:true});` : "fs.copyFileSync('seam/before.mp4','out.mp4');"}\n`);
+    return;
+  }
   const ffmpeg = lookPath('ffmpeg');
   const make = good
     ? `'${ffmpeg}' -v error -y -loop 1 -framerate 30 -i seam/plate.png -i seam/before.mp4 -filter_complex "[0:v]scale=320:240,format=yuv420p,trim=end_frame=10,setpts=PTS-STARTPTS[a];[1:v]trim=start_frame=10,setpts=PTS-STARTPTS[b];[a][b]concat=n=2:v=1[v]" -map "[v]" -c:v libx264 -pix_fmt yuv420p -an out.mp4`

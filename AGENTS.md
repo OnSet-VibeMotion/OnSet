@@ -662,6 +662,7 @@ ONSET_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run --ro
 | 环境拷进普通对象一律经 `envMap`（`normalizeWindowsEnv` 把 `Path` 改名 `PATH`） | Windows 上 PATH 通常叫 `Path`；`process.env` 不分大小写，拷出来的对象却分，引擎到处读 `env.PATH` |
 | 要整组结束的子进程用 `procgroup` 的 `start` / `groupSpawnOptions` / `killTree`，不要自己写 `detached: true` 与 `process.kill(-pid)` | Windows 没有进程组信号，要 `taskkill /T /F`；`detached` 在那里会弹出新的控制台窗口 |
 | `.cmd` / `.bat` 不直接 spawn：`procgroup/windows.ts` 把 npm 的 cmd-shim 改成用 node 跑它的 JS 入口，其余经 `cmd.exe` 转义，多行参数直接报错 | Node 不让直接 spawn 批处理；`cmd.exe` 传不了多行参数，而提示词、MCP 配置正是多行的 |
+| Windows 长提示词经 `tools.windowsPromptInput` 改走 CLI 标准输入：Claude 移除位置参数，Codex 用 `-`；保留会话号与其他参数 | Windows CreateProcess 命令行约 32K UTF-16 上限，制作提示词超长会报 `spawn ENAMETOOLONG`；短提示词与其他平台沿用原路径 |
 | 启动 onset 一律经 `envutil.onsetCommand`：Windows 上客户端不写 shim，`ONSET_SELF` 就是 `onset.cjs`，用 Electron（`ELECTRON_RUN_AS_NODE=1`）跑；MCP 服务（`onsetToolsServer`、审批服务）与写任务都这样起 | 同上：交给各家 CLI 的 MCP 命令若是 `.cmd`，Node 写的 CLI 起不来 |
 | Windows 上写出的批处理（agent 的 `onset.cmd` 只用 ASCII；`node.cmd` 先 `chcp 65001`） | 批处理按系统代码页解析，中文 Windows 是 GBK，UTF-8 的中文与中文路径会读错 |
 | 数据目录只经 `envutil.dataDir`：Windows 上是 `%LOCALAPPDATA%\onset`，项目登记在 `%APPDATA%\onset\studio`；`LOCALAPPDATA` 等系统变量在 `envutil.WindowsBaseEnvKeys` 里，进安全模式白名单与工具服务的环境 | Windows 上通常没有 `HOME`；子进程拿不到同一组变量就会算出另一个目录。缺 `SystemRoot` 时 Node、Python 的网络与加密直接失败 |

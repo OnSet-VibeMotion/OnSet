@@ -623,9 +623,12 @@ function stagedName(key: string): string {
 /** 要链进镜头目录的技能：名字与真实目录，按提示词里出现了目录的挑。 */
 export function stagedSkills(resolved: Record<string, string>, prompt: string): { name: string; folder: string }[] {
   const out: { name: string; folder: string }[] = [];
+  // Windows 提示词同时有 /、\ 和 JSON 转义的路径；只规范比较值，链接仍指向原目录。
+  const comparable = (text: string) => process.platform === 'win32' ? text.replace(/\\+/g, '/').toLowerCase() : text;
+  const mentioned = comparable(prompt);
   for (const [key, dir] of Object.entries(resolved)) {
     const folder = skillFolder(key, dir);
-    if (folder === '' || !prompt.includes(folder)) continue;
+    if (folder === '' || !mentioned.includes(comparable(folder))) continue;
     const name = stagedName(key);
     if (name === '' || out.some((s) => s.name === name)) continue;
     out.push({ name, folder });

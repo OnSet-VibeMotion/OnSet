@@ -11,6 +11,8 @@ import path from 'node:path';
 import { BreezeTTS2, TTSProviders } from '../config/providers';
 import { modelDir, modelReady, toolStatus } from '../toolinstall';
 import { findOptional } from '../toolpath';
+import { start } from '../procgroup';
+import { windowsBreezeStatus } from '../windowsruntime/breeze';
 
 /**
  * 默认的朗读稿：录自己的声音、设计新声音时都念它。十秒左右（参考音频要 3 到 30 秒），
@@ -26,16 +28,20 @@ const tool = TTSProviders.find((p) => p.id === 'breeze')!;
 /** 这台机器能不能用描述设计音色，不能的话原因是什么。 */
 export interface DesignStatus {
   ready: boolean;
-  /** 不是 Apple Silicon 时为 false：Breeze 的本机版只有 MLX。 */
+  /** Apple Silicon 使用 MLX；Windows x64 使用单独安装并验证的 CUDA 运行时。 */
   supported: boolean;
   problem: string;
 }
 
 export function designStatus(env: Record<string, string | undefined>, platform = process.platform, arch = process.arch): DesignStatus {
+  if (platform === 'win32' && arch === 'x64') {
+    const status = windowsBreezeStatus(env, platform);
+    return { ready: status.ok, supported: true, problem: status.ok ? '' : '还没准备好 Windows Breeze CUDA 运行时与 Q8 模型，请在工具准备页安装并完成合成自检' };
+  }
   if (platform !== 'darwin' || arch !== 'arm64') {
     return { ready: false, supported: false, problem: '按描述设计音色要用本机的 Breeze TTS 2，只能在 Apple Silicon 的 Mac 上运行' };
   }
-  if (!toolStatus(tool.install, env).ok || !modelReady(BreezeTTS2, env)) {
+  if (!toolStatus(TTSProviders.find((p) => p.id === 'mlx')!.install, env).ok || !modelReady(BreezeTTS2, env)) {
     return { ready: false, supported: true, problem: '还没装 Breeze TTS 2（约 4.6 GB）' };
   }
   return { ready: true, supported: true, problem: '' };
@@ -116,7 +122,7 @@ export async function design(root: string, opts: DesignOptions): Promise<Draft> 
   const work = fs.mkdtempSync(path.join(dir, '.work-'));
   try {
     const args = [
-      '--model', modelDir(BreezeTTS2, opts.env),
+      ...(process.platform === 'win32' ? [] : ['--model', modelDir(BreezeTTS2, opts.env)]),
       '--text', text,
       '--voice', 'S0',
       '--instruct', instruction,
@@ -140,6 +146,16 @@ export async function design(root: string, opts: DesignOptions): Promise<Draft> 
 
 /** 跑一次合成；失败时带上输出的最后几行（mlx-audio 的报错在最后）。 */
 function run(command: string, args: string[], env: Record<string, string>, signal?: AbortSignal): Promise<void> {
+  if (process.platform === 'win32') {
+    return (async () => {
+      const started = await start(command, args, { env, signal, stdio: ['ignore', 'pipe', 'pipe'] });
+      let tail = '';
+      const keep = (chunk: Buffer) => { tail = (tail + chunk.toString('utf8')).slice(-4000); };
+      started.child.stdout!.on('data', keep);
+      started.child.stderr!.on('data', keep);
+      try { await started.wait(); } catch (error) { throw new Error('Breeze 生成失败：' + tail.trim().split('\n').slice(-6).join(' '), { cause: error }); }
+    })();
+  }
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { env, stdio: ['ignore', 'pipe', 'pipe'], signal });
     let tail = '';

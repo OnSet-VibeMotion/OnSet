@@ -1,0 +1,67 @@
+:root {
+  --window-close: #ff5f57;
+  --window-minimize: #febc2e;
+  --window-maximize: #28c840;
+}
+
+.platform-win32 .topbar {
+  padding-left: 18px;
+}
+.window-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+.window-controls button {
+  position: relative;
+  width: 14px;
+  height: 28px;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent-ink);
+}
+.window-controls button:hover {
+  background: transparent;
+}
+.window-controls button::before {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-ink) 14%, transparent);
+}
+.window-controls .window-close::before {
+  background: var(--window-close);
+}
+.window-controls .window-minimize::before {
+  background: var(--window-minimize);
+}
+.window-controls .window-maximize::before {
+  background: var(--window-maximize);
+}
+.window-controls svg {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+  opacity: 0;
+}
+.window-controls:hover svg,
+.window-controls:focus-within svg {
+  opacity: 0.85;
+}
+.window-controls button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.window-application-menu {
+  flex-shrink: 0;
+}

@@ -17,8 +17,8 @@ function tone(seconds: number): string {
 
 describe('voice library', () => {
   it('lives in the user data dir, overridable by ONSET_VOICES_DIR', () => {
-    expect(defaultDir({ HOME: '/h' })).toBe('/h/.local/share/onset/voices');
-    expect(defaultDir({ HOME: '/h', XDG_DATA_HOME: '/x' })).toBe('/x/onset/voices');
+    expect(defaultDir({ HOME: '/h' })).toBe(path.join('/h', '.local/share/onset/voices'));
+    expect(defaultDir({ HOME: '/h', XDG_DATA_HOME: '/x' })).toBe(path.join('/x', 'onset/voices'));
     expect(defaultDir({ HOME: '/h', [DirEnv]: '/v' })).toBe('/v');
     expect(defaultDir({})).toBe('');
   });

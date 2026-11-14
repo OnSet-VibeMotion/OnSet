@@ -1,6 +1,8 @@
 // scene_seams：镜头都渲染好以后修没接顺的交界，见 @onset/engine/scene 的 seam.ts。
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import { windowsRenderWorkers, windowsSceneJobs } from '@onset/engine/windowsruntime';
 import * as config from '@onset/engine/config';
 import * as envutil from '@onset/engine/envutil';
 import { formatFixed } from '@onset/engine/gofmt';
@@ -74,6 +76,14 @@ defineOp({
     }
     for (const r of results) out.write(`${r.from} → ${r.to}：已经接上（差异 ${formatFixed(r.before, 1)}），不动\n`);
 
+    let workers = 0;
+    if (process.platform === 'win32') {
+      const cpus = os.availableParallelism(), total = os.totalmem(), available = os.freemem();
+      jobs = windowsSceneJobs(cpus, total, available, jobs);
+      workers = windowsRenderWorkers(cpus, total, available, Math.min(jobs, todo.length));
+      if (todo.length) out.write(`Windows 接缝渲染预算：最多 ${Math.min(jobs, todo.length)} 个镜头，每镜头 ${workers} 个浏览器 worker\n`);
+    }
+
     const fix = async (job: (typeof todo)[number]): Promise<SeamResult> => {
       const { previous, next, before } = job;
       const fps = scene.sceneCanvas(next).fps;
@@ -89,6 +99,7 @@ defineOp({
       let problems: string[] = [];
       for (let attempt = 0; attempt < 2; attempt++) {
         let s: scene.Scene = { ...next, seam: { previous: previous.id, frames } };
+        if (workers > 0) s = scene.withRenderWorkers(s, workers);
         if (problems.length > 0) s = scene.withRetryNote(s, problems.join('\n'));
         try {
           await scene.run(s, cfg, envutil.isUnsafe(unsafe), env, out, tolerance, signal);

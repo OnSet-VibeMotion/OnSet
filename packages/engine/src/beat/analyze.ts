@@ -1,10 +1,11 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { lookPath } from '../envutil';
+import { start } from '../procgroup';
 import { goTrimSpace } from '../gofmt';
 import { sliceOf, type StructType } from '../gojson/decode';
 import { checkTrack, normalizeGrid, saveDraft, type Grid } from './grid';
-import { envDir, requireEnv } from './env';
+import { beatRuntimeEnv, envDir, requireEnv } from './env';
 import { AnalysisFile, AnalyzerVersion, ClickFile, ConfigFile, Store, loadConfig, localPath, readJSON, wrapError, type Config } from './store';
 import { loadTrack, trackAudioPath, type Track } from './track';
 
@@ -36,6 +37,22 @@ beats, downbeats = Audio2Beats(checkpoint_path=sys.argv[2], device='cpu', dbn=Fa
 with open(sys.argv[3], 'w') as f:
     json.dump({'beats': [float(b) for b in beats], 'downbeats': [float(d) for d in downbeats]}, f)
 `;
+
+/** Windows 环境能用 CUDA 时使用它；其他平台保留原脚本与 CPU 行为。 */
+export function analysisScript(platform: NodeJS.Platform = process.platform): string {
+  if (platform !== 'win32') return analyzeScript;
+  return analyzeScript.replace('from beat_this.inference import Audio2Beats', `from beat_this.inference import Audio2Beats
+import os, torch, time
+requested = os.environ.get('ONSET_BEAT_DEVICE', 'auto')
+if requested not in ('auto', 'cpu', 'cuda'):
+    sys.exit('ONSET_BEAT_DEVICE must be auto, cpu or cuda')
+if requested == 'cuda' and not torch.cuda.is_available():
+    sys.exit('CUDA was requested but this Python cannot access CUDA')
+device = 'cuda' if requested != 'cpu' and torch.cuda.is_available() else 'cpu'
+torch.set_num_threads(min(8, max(1, os.cpu_count() or 1)))
+print('[onset-beat] device=' + device + (' ' + torch.cuda.get_device_name(0) if device == 'cuda' else ''), file=sys.stderr, flush=True)
+`).replaceAll("device='cpu'", 'device=device');
+}
 
 /** Media 是分析与试听用到的媒体操作；mediaprobe.Toolchain 满足它。 */
 export interface Media {
@@ -78,7 +95,7 @@ export async function analyze(root: string, env: Record<string, string>, media: 
   const result = localPath(root, Store + '/analysis.json');
   fs.rmSync(result, { force: true });
   out.write(`正在用 beat-this ${AnalyzerVersion}（${config.checkpoint}）分析节拍\n`);
-  await runPython(config, env, [wav, config.checkpoint, result], signal);
+  await runPython(config, env, [wav, config.checkpoint, result], signal, out);
   const raw = readJSON<{ beats: number[] | null; downbeats: number[] | null }>(result, rawType);
   const grid = normalizeGrid({
     schema: 1,
@@ -122,12 +139,22 @@ export async function writeClick(root: string, g: Grid, media: Media, signal?: A
 export async function doctor(root: string, env: Record<string, string>, out: Writer, signal?: AbortSignal): Promise<void> {
   const config = loadConfig(root);
   out.write(`检查 ${pythonFor(config, env)} 中的 beat-this ${AnalyzerVersion}，首次运行会下载 ${config.checkpoint} 权重\n`);
-  await runPython(config, env, ['--doctor', config.checkpoint], signal);
+  await runPython(config, env, ['--doctor', config.checkpoint], signal, out);
   out.write('节拍分析环境可用\n');
 }
 
-async function runPython(config: Config, env: Record<string, string>, args: string[], signal?: AbortSignal): Promise<void> {
+async function runPython(config: Config, env: Record<string, string>, args: string[], signal?: AbortSignal, out?: Writer): Promise<void> {
   const binary = pythonFor(config, env);
+  if (process.platform === 'win32') {
+    const started = await start(binary, ['-c', analysisScript(), ...args], { env: beatRuntimeEnv(env), signal, stdio: ['ignore', 'ignore', 'pipe'] });
+    let tail = '';
+    started.child.stderr!.on('data', (chunk: Buffer) => { const text = chunk.toString('utf8'); tail = (tail + text).slice(-8000); out?.write(text); });
+    try { await started.wait(); } catch (error) {
+      if (signal?.aborted) throw signal.reason ?? error;
+      throw new Error(`节拍分析失败：${lastLine(tail)}；确认 Windows 节拍环境与模型已在工具准备页安装`, { cause: error });
+    }
+    return;
+  }
   const { ok, stderr } = await new Promise<{ ok: boolean; stderr: string }>((resolve) => {
     if (signal?.aborted) {
       resolve({ ok: false, stderr: '' });

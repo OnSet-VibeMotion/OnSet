@@ -31,11 +31,11 @@ describe('renderer sandbox', () => {
     const h = home();
     const profile = sandboxProfile({ sceneDir: h.scene, projectRoot: h.project, env: { HOME: h.home, PATH: '/usr/bin' }, toolStateDirs: [path.join(h.home, '.qoder-cn')], readDirs: [] });
     expect(profile).toContain('(deny file-write*)');
-    expect(profile).toContain(`(subpath "${h.scene}")`);
-    expect(profile).toContain(`(deny file-read-data (subpath "${h.home}"))`);
+    expect(profile).toContain(`(subpath ${JSON.stringify(h.scene)})`);
+    expect(profile).toContain(`(deny file-read-data (subpath ${JSON.stringify(h.home)}))`);
     // 凭据的收回写成 file-read-data：写成 file-read* 会被前面放开项目目录的 allow 压过（实测）。
     expect(profile).toMatch(/\(deny file-read-data file-write\*\n {2}\(regex #"\/\\\.env\$"\)/);
-    expect(profile).toContain(`(subpath "${path.join(h.home, '.local', 'share', 'onset', 'agent')}")`);
+    expect(profile).toContain(`(subpath ${JSON.stringify(path.join(h.home, '.local', 'share', 'onset', 'agent'))})`);
   });
 
   // 用户级的技能与插件藏起来；家目录根上的状态文件（~/.claude.json 与它的临时文件）能写。

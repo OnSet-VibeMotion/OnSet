@@ -28,6 +28,7 @@ import './validate_cmd';
 import './plugin_ops';
 import './prompt_cmd';
 import './voice_cmd';
+import './windows_cmd';
 import { mountOps } from './ops/cli';
 import { newInitCommand } from './project_cmds';
 import { newSetupCommand } from './setup';

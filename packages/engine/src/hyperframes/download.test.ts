@@ -81,7 +81,9 @@ describe('download', () => {
     const n = await downloadTree({ owner: 'o', repo: 'r', commit: 'c0ffee', subdirs: ['skills', '.agents/skills'], dir, env, apiBase: base, rawBase: base, progress: (d) => seen.push(d) });
     expect(n).toBe(3);
     expect(fs.readFileSync(path.join(dir, 'skills/a/references/x.md'), 'utf8')).toBe('x\n');
-    expect(fs.statSync(path.join(dir, 'skills/a/run.sh')).mode & 0o111).not.toBe(0);
+    expect(fs.readFileSync(path.join(dir, 'skills/a/run.sh'), 'utf8')).toBe('#!/bin/sh\n');
+    // Windows 的 stat 不提供 POSIX 执行权限位；文件内容与摘要仍须完整校验。
+    if (process.platform !== 'win32') expect(fs.statSync(path.join(dir, 'skills/a/run.sh')).mode & 0o111).not.toBe(0);
     expect(seen.at(-1)).toBe(3);
   });
 

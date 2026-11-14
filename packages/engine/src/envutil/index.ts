@@ -222,6 +222,18 @@ export function agentBinDir(env: Record<string, string | undefined>): string {
       fs.writeFileSync(file + '.tmp', body, { mode: 0o755 });
       fs.renameSync(file + '.tmp', file);
     }
+    if (windows) {
+      const python = windowsPython(env);
+      if (python) {
+        const alias = path.join(dir, 'python3.cmd');
+        const script = windowsPythonScript(python);
+        if (!fs.existsSync(alias) || fs.readFileSync(alias, 'utf8') !== script) {
+          const temp = `${alias}.${process.pid}.tmp`;
+          fs.writeFileSync(temp, script);
+          fs.renameSync(temp, alias);
+        }
+      }
+    }
     return dir;
   } catch {
     return '';
@@ -248,4 +260,27 @@ export function binDir(env: Record<string, string | undefined>): string {
   if (env[BinDirEnv]) return env[BinDirEnv]!;
   const data = dataDir(env);
   return data === '' ? '' : path.join(data, 'bin');
+}
+
+/** Windows 上已安装的 Python，优先使用工具准备页的环境；只检查，不在制作中安装。 */
+export function windowsPython(env: Record<string, string | undefined>, platform: NodeJS.Platform = process.platform): string {
+  if (platform !== 'win32') return '';
+  const bin = binDir(env);
+  const roots = [...new Set([bin ? path.dirname(bin) : '', dataDir(env)].filter(Boolean))];
+  for (const root of roots) {
+    for (const relative of ['tools/venv/funasr/Scripts/python.exe', 'tools/uv/edge-tts/Scripts/python.exe']) {
+      const file = path.join(root, relative);
+      try { if (fs.statSync(file).isFile()) return file; } catch { /* 尚未准备。 */ }
+    }
+  }
+  try { return lookPath('python.exe', env.PATH ?? '', 'win32', '.EXE'); } catch { return ''; }
+}
+
+/** 让项目规则中的 python3 在 Windows 上也指向已准备好的解释器，保留 UTF-8 与退出码。 */
+export function windowsPythonScript(python: string): string {
+  return [
+    '@echo off', 'chcp 65001 >nul', 'setlocal',
+    'set "PYTHONUTF8=1"', 'set "PYTHONIOENCODING=utf-8"',
+    `"${python.replaceAll('%', '%%')}" %*`, 'exit /b %errorlevel%', '',
+  ].join('\r\n');
 }

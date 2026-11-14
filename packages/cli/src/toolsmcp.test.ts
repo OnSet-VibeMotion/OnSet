@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { ResultMarker } from '@onset/engine/opworker';
+import { groupSpawnOptions } from '@onset/engine/procgroup';
 import { describe, expect, it } from 'vitest';
 import { allOps, opScopes } from './ops/op';
 import { describeTools, opCommand, prepareCall, serveToolsMCP, type Spawner } from './toolsmcp';
@@ -18,7 +19,11 @@ async function call(requests: Record<string, unknown>[], spawner: Spawner, profi
 }
 
 /** 假的执行进程：sh 脚本里能拿到操作名（$1）与参数 JSON（$2），最后按协议写结果行。 */
-function fakeWorker(script: string, result: Record<string, unknown> = { ok: true, exit_code: 0 }): Spawner {
+function fakeWorker(script: string, result: Record<string, unknown> = { ok: true, exit_code: 0 }, windowsScript = ''): Spawner {
+  if (process.platform === 'win32') {
+    const code = `(async () => {${windowsScript};process.stdout.write(${JSON.stringify(ResultMarker + JSON.stringify(result) + '\n')});})()`;
+    return (name, params) => spawn(process.execPath, ['-e', code, name, JSON.stringify(params)], { stdio: ['ignore', 'pipe', 'pipe'], ...groupSpawnOptions() });
+  }
   const marker = ResultMarker.replace('\u0000', '\\0');
   const tail = `printf '${marker}%s\\n' '${JSON.stringify(result)}'`;
   return (name, params) => spawn('/bin/sh', ['-c', `${script}\n${tail}`, 'onset', name, JSON.stringify(params)], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
@@ -84,7 +89,7 @@ describe('onset tools MCP', () => {
   it('runs an operation and returns its text and structured result', async () => {
     const replies = await call(
       [{ id: 1, method: 'tools/call', params: { name: 'beat_bars', arguments: {} } }],
-      fakeWorker('echo "op=$1 params=$2"; echo "共 8 小节"', { ok: true, data: { bars: 8 }, exit_code: 0 }),
+      fakeWorker('echo "op=$1 params=$2"; echo "共 8 小节"', { ok: true, data: { bars: 8 }, exit_code: 0 }, 'console.log("op="+process.argv[1]+" params="+process.argv[2]);console.log("共 8 小节")'),
     );
     const r = replies.get(1).result;
     expect(r.isError).toBe(false);
@@ -113,7 +118,7 @@ describe('onset tools MCP', () => {
   });
 
   it('hands back a job for long runs and lets the agent wait for it', async () => {
-    const replies = await call([{ id: 1, method: 'tools/call', params: { name: 'beat_bars', arguments: { wait_seconds: 0 } } }], fakeWorker('sleep 0.3; echo done'));
+    const replies = await call([{ id: 1, method: 'tools/call', params: { name: 'beat_bars', arguments: { wait_seconds: 0 } } }], fakeWorker('sleep 0.3; echo done', undefined, 'await new Promise(r=>setTimeout(r,300));console.log("done")'));
     expect(text(replies.get(1))).toMatch(/还在运行：任务 job-1/);
   });
 
@@ -141,8 +146,8 @@ describe('onset tools MCP', () => {
     const served = serveToolsMCP(lines(), (line) => {
       const msg = JSON.parse(line);
       out.set(msg.id, msg);
-    }, 'orchestrator', fakeWorker('echo first; sleep 0.4; echo second', { ok: true, data: { n: 2 }, exit_code: 0 }));
-    send({ id: 1, method: 'tools/call', params: { name: 'beat_bars', arguments: { wait_seconds: 0.1 } } });
+    }, 'orchestrator', fakeWorker('echo first; sleep 0.4; echo second', { ok: true, data: { n: 2 }, exit_code: 0 }, 'console.log("first");await new Promise(r=>setTimeout(r,1000));console.log("second")'));
+    send({ id: 1, method: 'tools/call', params: { name: 'beat_bars', arguments: { wait_seconds: process.platform === 'win32' ? 0.5 : 0.1 } } });
     while (!out.has(1)) await new Promise((r) => setTimeout(r, 20));
     expect(text(out.get(1))).toContain('first');
     send({ id: 2, method: 'tools/call', params: { name: 'job_wait', arguments: { job: 'job-1', wait_seconds: 5 } } });
@@ -167,7 +172,7 @@ describe('onset tools MCP', () => {
       await ended;
     }
     let pid = 0;
-    const worker = fakeWorker('sleep 30');
+    const worker = fakeWorker('sleep 30', { ok: true, exit_code: 0 }, 'await new Promise(resolve => setTimeout(resolve,30000))');
     const spawner: Spawner = (name, params) => {
       const child = worker(name, params);
       pid = child.pid ?? 0;
@@ -182,7 +187,7 @@ describe('onset tools MCP', () => {
     expect(text(out.get(1))).toContain('还在运行');
     const alive = () => {
       try {
-        process.kill(-pid, 0);
+        process.kill(process.platform === 'win32' ? pid : -pid, 0);
         return true;
       } catch {
         return false;

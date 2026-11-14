@@ -6,6 +6,7 @@ import type { RunAction } from './Preview';
 import type { PageViewProps } from './pageViews';
 import { Markdown } from './chat/Markdown';
 import '../beat.css';
+import { claimAudioPlayback, releaseAudioPlayback } from '../media';
 
 /**
  * 「节拍」页：卡点模式下代替口播稿页排在第一步。
@@ -152,6 +153,7 @@ function useMusic(url: string | null) {
 function usePlayer(buffer: AudioBuffer | null, beats: number[], downbeats: number[], clicks: boolean) {
   const ctxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const clickNodesRef = useRef(new Set<OscillatorNode>());
   const startRef = useRef({ ctxTime: 0, offset: 0 });
   const [playing, setPlaying] = useState(false);
   const [pausedAt, setPausedAt] = useState(0);
@@ -167,6 +169,11 @@ function usePlayer(buffer: AudioBuffer | null, beats: number[], downbeats: numbe
   }, [pausedAt]);
 
   const stopSource = () => {
+    // Windows 切到其他试听时，连同提前排好的节拍声一起停掉。
+    if (window.onset?.platform === 'win32') {
+      for (const click of clickNodesRef.current) click.stop();
+      clickNodesRef.current.clear();
+    }
     if (timerRef.current != null) window.clearInterval(timerRef.current);
     timerRef.current = null;
     const src = sourceRef.current;
@@ -183,6 +190,10 @@ function usePlayer(buffer: AudioBuffer | null, beats: number[], downbeats: numbe
 
   const blip = (ctx: AudioContext, at: number, down: boolean) => {
     const osc = ctx.createOscillator();
+    if (window.onset?.platform === 'win32') {
+      clickNodesRef.current.add(osc);
+      osc.onended = () => clickNodesRef.current.delete(osc);
+    }
     const gain = ctx.createGain();
     osc.frequency.value = down ? 1760 : 1100;
     gain.gain.setValueAtTime(0, at);
@@ -199,6 +210,12 @@ function usePlayer(buffer: AudioBuffer | null, beats: number[], downbeats: numbe
       stopSource();
       const ctx = ctxRef.current ?? new AudioContext();
       ctxRef.current = ctx;
+      claimAudioPlayback(ctx, () => {
+        const t = ctx.currentTime - startRef.current.ctxTime + startRef.current.offset;
+        stopSource();
+        setPausedAt(Math.max(0, t));
+        setPlaying(false);
+      });
       void ctx.resume();
       const offset = Math.min(Math.max(0, from), buffer.duration - 0.01);
       const src = ctx.createBufferSource();
@@ -213,6 +230,7 @@ function usePlayer(buffer: AudioBuffer | null, beats: number[], downbeats: numbe
       nextRef.current = lowerBound(gridRef.current.beats, offset);
       src.onended = () => {
         if (sourceRef.current !== src) return;
+        releaseAudioPlayback(ctx);
         stopSource();
         setPausedAt(0);
         setPlaying(false);
@@ -234,6 +252,7 @@ function usePlayer(buffer: AudioBuffer | null, beats: number[], downbeats: numbe
 
   const pause = useCallback(() => {
     const t = now();
+    if (ctxRef.current) releaseAudioPlayback(ctxRef.current);
     stopSource();
     setPausedAt(t);
     setPlaying(false);
@@ -249,6 +268,7 @@ function usePlayer(buffer: AudioBuffer | null, beats: number[], downbeats: numbe
 
   useEffect(
     () => () => {
+      if (ctxRef.current) releaseAudioPlayback(ctxRef.current);
       stopSource();
       void ctxRef.current?.close();
     },

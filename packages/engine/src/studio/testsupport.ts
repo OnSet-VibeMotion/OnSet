@@ -226,6 +226,35 @@ export function newSessionFixture(): SessionFixture {
   });
   const bin = tempDir();
   fs.writeFileSync(path.join(bin, 'claude'), fakeClaude, { mode: 0o755 });
+  if (process.platform === 'win32') {
+    // 使用真正的 npm 风格入口，避免找不到无扩展名脚本后误用开发机上的 claude.cmd。
+    fs.writeFileSync(path.join(bin, 'claude.cmd'), '@echo off\r\nnode "%~dp0\\claude-fake.cjs" %*\r\n');
+    fs.writeFileSync(path.join(bin, 'claude-fake.cjs'), `
+const fs = require('node:fs'), path = require('node:path');
+(async () => {
+  const args = process.argv.slice(2), log = process.env.FAKE_ARGS_LOG;
+  let input = ''; for await (const chunk of process.stdin) input += chunk;
+  fs.appendFileSync(log, (input ? [...args, input] : args).join(' ').replace(/[\\r\\n]/g, ' ') + '\\n');
+  fs.writeFileSync(log + '.renderer', (process.env.RENDERER || '') + '\\n');
+  fs.writeFileSync(log + '.renderer_model', (process.env.RENDERER_MODEL || '') + '\\n');
+  const resume = args.includes('--resume');
+  const sid = args[args.indexOf(resume ? '--resume' : '--session-id') + 1] || '';
+  if (resume && process.env.FAKE_FAIL_RESUME) { console.error('No conversation found with session ID: ' + sid); process.exit(1); }
+  const emit = event => console.log(JSON.stringify(event));
+  emit({type:'system',subtype:'init',session_id:sid,model:'claude-fake'});
+  if (process.env.FAKE_SLEEP) await new Promise(resolve => setTimeout(resolve, Number(process.env.FAKE_SLEEP) * 1000));
+  if (process.env.FAKE_VIEW && process.env.ONSET_STUDIO_INBOX) {
+    fs.mkdirSync(process.env.ONSET_STUDIO_INBOX,{recursive:true});
+    fs.writeFileSync(path.join(process.env.ONSET_STUDIO_INBOX,'1.json'),process.env.FAKE_VIEW);
+  }
+  fs.writeFileSync('scenes/scene-001/prompt.md',(process.env.FAKE_CONTENT || 'edited') + '\\n');
+  emit({type:'assistant',message:{content:[{type:'tool_use',id:'t1',name:'Write',input:{file_path:'scenes/scene-001/prompt.md'}}]}});
+  emit({type:'user',message:{content:[{type:'tool_result',tool_use_id:'t1',content:'ok'}]}});
+  emit({type:'assistant',message:{content:[{type:'text',text:'改好了'}]}});
+  emit({type:'result',subtype:'success',is_error:false,result:'改好了',usage:{input_tokens:3,output_tokens:4},total_cost_usd:0.01,num_turns:1});
+})().catch(error => { console.error(error); process.exit(1); });
+`);
+  }
   const argsLog = path.join(tempDir(), 'args.log');
   setEnv('PATH', bin + path.delimiter + (process.env.PATH ?? ''));
   setEnv('ORCHESTRATOR', 'claude');

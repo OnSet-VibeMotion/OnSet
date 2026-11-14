@@ -88,11 +88,13 @@ export const TTSProviders: readonly TTSProvider[] = [
   },
   {
     id: 'breeze',
-    name: 'Breeze TTS 2（mlx-audio，仅 Apple Silicon）',
+    name: process.platform === 'win32' ? 'Breeze TTS 2（Windows CUDA，Q8_0）' : 'Breeze TTS 2（mlx-audio，仅 Apple Silicon）',
     timestamps: 'none',
-    command: 'mlx_audio.tts.generate',
-    install: mlxAudio(['mlx_audio.tts.generate']),
-    model: BreezeTTS2,
+    command: process.platform === 'win32' ? 'breeze-tts' : 'mlx_audio.tts.generate',
+    install: process.platform === 'win32'
+      ? { kind: 'native-breeze' as const, version: '0.9.4', bins: ['breeze-tts'], platforms: ['win32/x64'] }
+      : mlxAudio(['mlx_audio.tts.generate']),
+    model: process.platform === 'win32' ? undefined : BreezeTTS2,
   },
 ];
 
@@ -133,6 +135,19 @@ export const QwenForcedAligner: ModelSpec = {
   ],
 };
 
+/** Windows FunASR 时间戳模型；文件与摘要来自官方魔搭仓库（2026-11）。 */
+export const FunASRTimestampModel: ModelSpec = {
+  repo: 'iic/speech_timestamp_prediction-v1-16k-offline',
+  files: [
+    { path: 'am.mvn', sha256: '29b3c740a2c0cfc6b308126d31d7f265fa2be74f3bb095cd2f143ea970896ae5', size: 11203 },
+    { path: 'config.yaml', sha256: 'bf673207f2a2e2263403d64adec49666166c047dc74bc03153b0e7882f8d09b4', size: 2455 },
+    { path: 'configuration.json', sha256: 'fbb37220a629e1eb5468c8486fcd5f5650bc0817b28551530e5485db41662c73', size: 448 },
+    { path: 'model.pt', sha256: 'f34ede558af831fb504206b25f1c2f27ca2f77753c26c4dd38d03323153b6f73', size: 158469618 },
+    { path: 'seg_dict', sha256: '59a2ef803a3f1648ad03a2e1480db1c1ee0c0d7dc4ef4dbd16cea33944329022', size: 8287834 },
+    { path: 'tokens.json', sha256: '2b20c2b12572d682afff84ce1c8d560f67b8b32a4c1f21567411d141ed352127', size: 93676 },
+  ],
+};
+
 /** ALIGN_PROVIDER 的具体取值；另有 auto 按平台选择。 */
 export const Aligners: readonly Aligner[] = [
   {
@@ -144,9 +159,11 @@ export const Aligners: readonly Aligner[] = [
   },
   {
     id: 'funasr',
-    name: 'FunASR 时间戳预测（CPU，macOS 与 Linux）',
+    name: process.platform === 'win32' ? 'FunASR 时间戳预测（本机 CPU）' : 'FunASR 时间戳预测（CPU，macOS 与 Linux）',
     command: 'funasr-python',
     install: { kind: 'uv-venv', name: 'funasr', packages: ['funasr==1.4.16', 'torch', 'torchaudio'], bin: 'funasr-python' },
+    // Windows 的编排沙箱不能在首次对齐时写默认 HOME 缓存；由工具准备页先下载并返回本地目录。
+    ...(process.platform === 'win32' ? { model: FunASRTimestampModel } : {}),
   },
 ];
 

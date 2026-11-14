@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { windowsPromptInput } from './windows';
 import { marshal } from '../gojson';
 import { defaultDir as directorDir, resolveService as directorService, Tool as DirectorToolName } from '../director';
 import { onsetCommand, WindowsBaseEnvKeys } from '../envutil';
@@ -85,7 +86,7 @@ export function onsetToolsServer(executable: string, profile: 'orchestrator' | '
   const pluginKeys = new Set(pluginChildEnvs().map((e) => e.value.key));
   for (const [key, value] of Object.entries(env)) {
     if (value === undefined) continue;
-    if (/^(ONSET_|HYPERFRAMES_|MEMORY|ORCHESTRATOR$|RENDERER$|ORCHESTRATOR_MODEL$|RENDERER_MODEL$|TTS_|ALIGN_|SCENE_JOBS$|PATH$|HOME$|USER$|LANG$|TMPDIR$|XDG_DATA_HOME$)/.test(key) || WindowsBaseEnvKeys.includes(key) || pluginKeys.has(key)) picked[key] = value;
+    if (/^(ONSET_|HYPERFRAMES_|MEMORY|ORCHESTRATOR$|RENDERER$|ORCHESTRATOR_MODEL$|RENDERER_MODEL$|TTS_|ALIGN_|SCENE_JOBS$|PATH$|HOME$|USER$|LANG$|TMPDIR$|XDG_DATA_HOME$)/.test(key) || WindowsBaseEnvKeys.includes(key) || pluginKeys.has(key) || process.platform === 'win32' && ['PRODUCER_EXPERIMENTAL_FAST_CAPTURE', 'DO_NOT_TRACK'].includes(key)) picked[key] = value;
   }
   // Windows 上 executable 是 onset.cjs，要用 Electron / Node 来跑（envutil.onsetCommand）。
   const onset = onsetCommand(executable);
@@ -119,9 +120,12 @@ function mcpConfigJSON(servers: McpServer[]): string {
 /** codex 的 -c 覆盖项（TOML 值）：mcp_servers.<名字>.command / args / env。 */
 export function codexMcpOverrides(server: McpServer): string[] {
   const toml = (v: string) => JSON.stringify(v);
+  // Windows 的 ProgramFiles(x86) 不是合法的 TOML 裸键；解析失败时 Codex 会把整张 env 表当作字符串。
+  // 只修正 Windows 上的特殊键，其他平台与已有合法裸键保持原样。
+  const envKey = (key: string) => process.platform === 'win32' && !/^[A-Za-z0-9_-]+$/.test(key) ? toml(key) : key;
   const out = ['-c', `mcp_servers.${server.name}.command=${toml(server.command)}`, '-c', `mcp_servers.${server.name}.args=[${server.args.map(toml).join(',')}]`];
   const env = server.env ?? {};
-  if (Object.keys(env).length > 0) out.push('-c', `mcp_servers.${server.name}.env={${Object.entries(env).map(([k, v]) => `${k}=${toml(v)}`).join(',')}}`);
+  if (Object.keys(env).length > 0) out.push('-c', `mcp_servers.${server.name}.env={${Object.entries(env).map(([k, v]) => `${envKey(k)}=${toml(v)}`).join(',')}}`);
   return out;
 }
 
@@ -197,6 +201,11 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
   switch (tool) {
     case 'codex': {
       const mcp = server ? codexMcpOverrides(server) : [];
+      // Windows Codex 的 MCP 审批独立于 shell 策略。只逐项授权内置渲染工具，
+      // 会话续接与上游的 unfiltered 模式继续使用同一组 MCP 配置。
+      if (process.platform === 'win32' && server?.name === ToolsServerName && server.args.includes('tools-mcp') && server.args[server.args.indexOf('--profile') + 1] === 'renderer') {
+        for (const tool of ['hyperframes', 'job_wait', 'job_cancel', 'tool_help']) mcp.push('-c', `mcp_servers.${server.name}.tools.${tool}.approval_mode="approve"`);
+      }
       const resume = session?.resume ? ['resume', session.id] : [];
       // 不拦命令时也不套 codex 自己的沙箱：macOS 上它也是 sandbox-exec，套在外面那层沙箱里起不来；Windows 上用户定的是全放开。
       if (unsafe || access.unfiltered) return ['codex', 'exec', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', ...mcp, ...m, '--json', ...resume, prompt];
@@ -459,7 +468,7 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
       else args.push('--permission-mode', 'acceptEdits', '--settings', claudeSettings({ commands: access.commands, mcp: o.toolsServer ? [o.toolsServer.name] : [] }));
       args.push(...claudeSession());
       args.push(o.prompt);
-      return { argv: args, stdin: '' };
+      return windowsPromptInput(tool, args, o.prompt);
     }
     case 'qoder': {
       const args = ['qoderclicn', '-p', o.prompt, ...m, '--output-format', 'stream-json'];

@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, errorText } from '../api';
-import type { AgentsResponse, CanvasOption, DirectoryEntry, ModeOption, Project, StylesResponse } from '../types';
+import type { AgentsResponse, CanvasOption, DirectoryListing, ModeOption, Project, StylesResponse } from '../types';
 import { FilmStyleDialog, styleKey, useFilmStyles } from './FilmStyles';
 import { SetupGuide, useSetup } from './SetupGuide';
 import { Creation, type CreationJob } from './Creation';
 import { Icon } from './Icon';
+import { NativeDirectoryPicker, usesNativeDirectoryPicker } from './NativeDirectoryPicker';
 import { rendererState } from './agentReady';
 import { canReveal, revealInFinder } from '../reveal';
 import '../home.css';
@@ -649,7 +650,8 @@ function MenuItem(props: { title: string; desc?: string; icon?: ReactNode; selec
 
 /** 保存位置：最近用过的目录加一个简单的目录浏览。 */
 function FolderPicker(props: { value: string; open: boolean; onOpen: (open: boolean) => void; onChange: (path: string) => void }) {
-  const [listing, setListing] = useState<{ path: string; parent: string; root: string; entries: DirectoryEntry[] } | null>(null);
+  const native = usesNativeDirectoryPicker();
+  const [listing, setListing] = useState<DirectoryListing | null>(null);
   const [error, setError] = useState('');
   const browse = async (path: string) => {
     try {
@@ -660,9 +662,12 @@ function FolderPicker(props: { value: string; open: boolean; onOpen: (open: bool
     }
   };
   useEffect(() => {
-    if (props.open) void browse(props.value);
-  }, [props.open]);
+    if (props.open && !native) void browse(props.value);
+  }, [props.open, native]);
   const name = props.value ? props.value.split('/').filter(Boolean).pop() : '';
+  if (native) {
+    return <NativeDirectoryPicker id="home-folder" value={props.value} label={'保存到：' + (name || '选择文件夹')} className="chip-button flat" onChange={props.onChange} onBeforePick={() => props.onOpen(false)} />;
+  }
   return (
     <Dropdown id="folder" open={props.open} onOpen={props.onOpen} flat label={<>保存到：{name || '选择文件夹'}</>}>
       <div className="folder-browser">

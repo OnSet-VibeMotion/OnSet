@@ -17,6 +17,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export type SecretVerdict = { kind: 'deny'; reason: string } | { kind: 'ask' } | null;
 
@@ -85,6 +86,15 @@ function candidates(word: string): string[] {
     if (w.startsWith('@')) out.add(w.slice(1));
     const url = /^file:\/\/(?:localhost)?(\/.*)$/i.exec(w);
     if (url) out.add(decodeURIComponentSafe(url[1]!));
+    if (process.platform === 'win32' && /^file:\/\//i.test(w)) {
+      try {
+        out.add(fileURLToPath(w));
+      } catch {
+        // 也兼容旧提示词里直接把 Windows 绝对路径接在 file:// 后的写法。
+        const local = /^file:\/\/([a-z]:[\\/].*)$/i.exec(w);
+        if (local) out.add(decodeURIComponentSafe(local[1]!));
+      }
+    }
     const colon = w.lastIndexOf(':');
     if (colon > 0 && !/^[a-z][a-z0-9+.-]*:\/\//i.test(w)) out.add(w.slice(colon + 1));
     if (/^-[A-Za-z]./.test(w) && !w.startsWith('--')) out.add(w.slice(2));
@@ -222,13 +232,14 @@ function checkWords(words: string[], scope: SecretScope, depth: number): SecretV
       const abs = path.resolve(scope.workdir, expanded);
       if (globChars.test(expanded)) {
         // 通配符：能匹配到凭据（或落在导演数据目录里）就拒绝；会被整棵读的再问一次。
-        const patterns = [globRegExp(abs), globRegExp(scope.realish(abs))];
+        const globPath = (p: string) => process.platform === 'win32' ? p.replace(/\\/g, '/').toLowerCase() : p;
+        const patterns = [globRegExp(globPath(abs)), globRegExp(globPath(scope.realish(abs)))];
         const secrets = [
           ...(scope.agentDir !== '' ? [scope.agentDir, path.join(scope.agentDir, 'auth.json')] : []),
           ...listEnvFiles(scope.workdir),
           ...listEnvFiles(path.dirname(scope.realish(abs))),
         ];
-        const hit = secrets.find((secret) => patterns.some((re) => re.test(secret)));
+        const hit = secrets.find((secret) => patterns.some((re) => re.test(globPath(secret))));
         if (hit !== undefined) return deny(isEnvFile(hit) ? EnvFileReason : AgentDirReason);
         if (isEnvFile(expanded)) return deny(EnvFileReason);
         if (scope.agentDir !== '' && inside(path.dirname(scope.realish(abs)), scope.agentDir)) return deny(AgentDirReason);

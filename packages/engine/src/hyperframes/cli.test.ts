@@ -78,9 +78,9 @@ describe('hyperframes CLI', () => {
 
   it('cliDir follows environment', () => {
     // 默认目录。
-    expect(cliDir({ HOME: '/h' }, '1.2.3')).toBe('/h/.local/share/onset/hyperframes/cli-1.2.3');
+    expect(cliDir({ HOME: '/h' }, '1.2.3')).toBe(path.join('/h', '.local/share/onset/hyperframes/cli-1.2.3'));
     // 应当遵循 XDG_DATA_HOME。
-    expect(cliDir({ HOME: '/h', XDG_DATA_HOME: '/x' }, '1.2.3')).toBe('/x/onset/hyperframes/cli-1.2.3');
+    expect(cliDir({ HOME: '/h', XDG_DATA_HOME: '/x' }, '1.2.3')).toBe(path.join('/x', 'onset/hyperframes/cli-1.2.3'));
     // 显式指定的目录优先。
     expect(cliDir({ HOME: '/h', [CLIDirEnv]: '/c' }, '1.2.3')).toBe('/c');
     // 没有 HOME 时不猜家目录。

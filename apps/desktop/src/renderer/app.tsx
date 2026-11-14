@@ -39,6 +39,7 @@ import { setPluginVerbs } from './components/chat/model';
 import { ProjectDialog } from './components/ProjectDialog';
 import { Tasks } from './components/Tasks';
 import { BrandMark } from './components/BrandMark';
+import { WindowsApplicationMenu, WindowsWindowControls } from './components/WindowsChrome';
 import { canReveal, revealInFinder, revealLabel, setRevealErrorHandler } from './reveal';
 import type {
   AgentChoice,
@@ -683,6 +684,7 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
+        <WindowsWindowControls />
         <button className="brand" title="回到首页" aria-label="回到首页" onClick={() => setHomeOpen(true)}>
           <span className="brand-mark" aria-hidden="true">
             <BrandMark />
@@ -772,6 +774,7 @@ export function App() {
             <Icon name="panel" size={14} />
           </button>
         )}
+        <WindowsApplicationMenu />
         <Tasks tasks={tasks} onCancel={(id) => run(`/api/tasks/${id}/cancel`)} />
         <button className="ghost icon settings-trigger" id="settings-trigger" title="设置（⌘,）" aria-label="设置" onClick={() => setSettingsOpen(true)}>
           <Icon name="settings" size={14} />

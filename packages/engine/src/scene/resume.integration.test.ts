@@ -11,8 +11,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { KindSession, KindText, newParser } from '../agentrun';
-import { lookPath } from '../envutil';
-import { presetSessionID, rendererInvocation, type RendererSession } from '../tools';
+import { envMap, lookPath } from '../envutil';
+import { windowsCommand } from '../procgroup/windows';
+import { presetSessionID, rendererInvocation, windowsPromptInput, type RendererSession } from '../tools';
 
 const tools = (process.env.ONSET_TEST_RENDERER_RESUME ?? '')
   .split(',')
@@ -23,12 +24,14 @@ describe.skipIf(tools.length === 0)('RealRendererResume', () => {
   for (const tool of tools) {
     it(tool, () => {
       const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-resume-')));
-      const env = { ...(process.env as Record<string, string>) };
+      const env = envMap();
       const model = tool === 'opencode' ? (process.env.ONSET_TEST_OPENCODE_MODEL ?? '') : '';
       const ask = (prompt: string, session: RendererSession | null) => {
-        const argv = rendererInvocation(tool, prompt, false, {}, model, session);
+        const argv = rendererInvocation(tool, prompt, false, process.platform === 'win32' ? { unfiltered: true } : {}, model, session);
         argv[0] = lookPath(argv[0], env.PATH ?? '');
-        const r = spawnSync(argv[0], argv.slice(1), { cwd: dir, env, encoding: 'utf8', timeout: 240000, input: '' });
+        const input = windowsPromptInput(tool, argv, prompt);
+        const command = process.platform === 'win32' ? windowsCommand(input.argv[0], input.argv.slice(1), env) : { file: input.argv[0], args: input.argv.slice(1), env: {}, verbatim: false };
+        const r = spawnSync(command.file, command.args, { cwd: dir, env: { ...env, ...command.env }, windowsVerbatimArguments: command.verbatim, windowsHide: true, encoding: 'utf8', timeout: 240000, input: input.stdin });
         const parser = newParser(tool);
         let id = '';
         let text = '';
@@ -38,13 +41,13 @@ describe.skipIf(tools.length === 0)('RealRendererResume', () => {
             if (e.kind === KindText) text += e.text ?? '';
           }
         }
-        return { status: r.status, id, text };
+        return { status: r.status, id, text, error: r.error?.message || r.stderr || '' };
       };
       const first = ask('Remember the word PINEAPPLE-42 for later. Reply only OK.', presetSessionID(tool) ? { id: crypto.randomUUID(), resume: false } : null);
-      expect(first.status, tool).toBe(0);
+      expect(first.status, tool + ': ' + first.error).toBe(0);
       expect(first.id, '读不到会话号就续不上').not.toBe('');
       const again = ask('What was the word I asked you to remember? Reply with the word only.', { id: first.id, resume: true });
-      expect(again.status, tool).toBe(0);
+      expect(again.status, tool + ': ' + again.error).toBe(0);
       expect(again.id).toBe(first.id);
       expect(again.text).toContain('PINEAPPLE-42');
     }, 600000);

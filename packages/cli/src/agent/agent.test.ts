@@ -193,8 +193,11 @@ describe('gate keeps credentials away from bash', () => {
 
   it('follows symlinks and ~ to the Director data dir', async () => {
     const { workdir, agentDir, gate } = setup();
-    fs.symlinkSync(path.join(agentDir, 'auth.json'), path.join(workdir, 'k.json'));
-    expect(await run(gate, 'cat k.json')).toMatch(/导演的数据目录/);
+    // Windows 普通用户可建目录 junction，无需开启文件 symlink 权限。
+    const alias = process.platform === 'win32' ? 'agent-link/auth.json' : 'k.json';
+    if (process.platform === 'win32') fs.symlinkSync(agentDir, path.join(workdir, 'agent-link'), 'junction');
+    else fs.symlinkSync(path.join(agentDir, 'auth.json'), path.join(workdir, alias));
+    expect(await run(gate, `cat ${alias}`)).toMatch(/导演的数据目录/);
     const homeAgent = path.join(os.homedir(), '.onset-gate-test-nonexistent', 'agent');
     const homeGate = newGate({ workdir, unsafe: false, commands: ['cat', 'find'], writableDirs: [], agentDir: homeAgent, onsetTools: new Set(), inbox: '', pollInterval: 10 });
     expect(await run(homeGate, 'cat ~/.onset-gate-test-nonexistent/agent/auth.json')).toMatch(/导演的数据目录/);

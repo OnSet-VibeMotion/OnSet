@@ -5,6 +5,17 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('onset', {
   desktop: true,
   platform: process.platform,
+  /** Windows 单层顶栏的窗口按钮与应用菜单。 */
+  windowCommand(command: 'close' | 'minimize' | 'maximize'): void {
+    ipcRenderer.send('onset:window-command', command);
+  },
+  showApplicationMenu(position: { x: number; y: number }): void {
+    ipcRenderer.send('onset:application-menu', position);
+  },
+  /** Windows 系统文件夹选择器；取消时返回 null。 */
+  selectDirectory(defaultPath?: string): Promise<string | null> {
+    return ipcRenderer.invoke('onset:select-directory', defaultPath);
+  },
   onMenu(callback: (action: unknown) => void): () => void {
     const listener = (_event: unknown, action: unknown) => callback(action);
     ipcRenderer.on('onset:menu', listener);

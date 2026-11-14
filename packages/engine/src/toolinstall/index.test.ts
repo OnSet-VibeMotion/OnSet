@@ -2,12 +2,33 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { ensureFFmpeg, ensureTool, ensureUV, ffmpegStatus, mirrored, pipIndexURL, sha256File, uvStatus } from './index';
 
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-toolinstall-'));
 }
+
+const binaryName = (name: string) => process.platform === 'win32' ? name + '.cmd' : name;
+
+const largeFixtures = new Set<string>();
+function resizeFixture(file: string, size: number): void {
+  if (size >= 100 * 1024 * 1024) {
+    largeFixtures.add(file);
+    if (process.platform === 'win32') {
+      const result = spawnSync(path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'fsutil.exe'), ['sparse', 'setflag', file], { windowsHide: true });
+      if (result.status !== 0) throw new Error('不能建立 Windows 稀疏测试文件');
+    }
+  }
+  fs.truncateSync(file, size);
+}
+afterEach(() => {
+  for (const file of largeFixtures) {
+    if (!path.resolve(file).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('测试文件不在临时目录内');
+    fs.rmSync(file, { force: true });
+  }
+  largeFixtures.clear();
+});
 
 describe('toolinstall', () => {
   it('rewrites only GitHub URLs to the mirror', () => {
@@ -23,9 +44,9 @@ describe('toolinstall', () => {
     fs.mkdirSync(bin, { recursive: true });
     const env = { HOME: home, PATH: '/nonexistent' };
     expect(ffmpegStatus(env)).toEqual({ ok: false, where: bin });
-    for (const name of ['ffmpeg', 'ffprobe', 'uv']) fs.writeFileSync(path.join(bin, name), '#!/bin/sh\n', { mode: 0o755 });
-    expect(ffmpegStatus(env)).toEqual({ ok: true, where: path.join(bin, 'ffmpeg') });
-    expect(uvStatus(env)).toEqual({ ok: true, where: path.join(bin, 'uv') });
+    for (const name of ['ffmpeg', 'ffprobe', 'uv']) fs.writeFileSync(path.join(bin, binaryName(name)), '#!/bin/sh\n', { mode: 0o755 });
+    expect(ffmpegStatus(env)).toEqual({ ok: true, where: path.join(bin, binaryName('ffmpeg')) });
+    expect(uvStatus(env)).toEqual({ ok: true, where: path.join(bin, binaryName('uv')) });
   });
 
   it('takes the Python package index from pip.conf so uv uses the same mirror', () => {
@@ -39,8 +60,8 @@ describe('toolinstall', () => {
 
   it('does nothing when the tools are already on PATH', async () => {
     const dir = tempDir();
-    for (const name of ['ffmpeg', 'ffprobe']) fs.writeFileSync(path.join(dir, name), '#!/bin/sh\n', { mode: 0o755 });
-    await expect(ensureFFmpeg({ env: { HOME: tempDir(), PATH: dir } })).resolves.toBe(path.join(dir, 'ffmpeg'));
+    for (const name of ['ffmpeg', 'ffprobe']) fs.writeFileSync(path.join(dir, binaryName(name)), '#!/bin/sh\n', { mode: 0o755 });
+    await expect(ensureFFmpeg({ env: { HOME: tempDir(), PATH: dir } })).resolves.toBe(path.join(dir, binaryName('ffmpeg')));
   });
 });
 
@@ -75,7 +96,7 @@ describe('sha256File', () => {
     const file = path.join(dir, 'big.bin');
     // 稀疏文件：不占磁盘，readFileSync 会因超过 2 GiB 直接抛错。
     fs.writeFileSync(file, '');
-    fs.truncateSync(file, 2 ** 31 + 1);
+    resizeFixture(file, 2 ** 31 + 1);
     expect(() => fs.readFileSync(file)).toThrow(/2 GiB/);
     const small = path.join(dir, 'small.txt');
     fs.writeFileSync(small, 'abc');
