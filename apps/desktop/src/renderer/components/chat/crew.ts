@@ -6,9 +6,9 @@ import { describeTool, type TurnBlock } from './model';
  * 桌宠工作室里大家此刻在做什么。只由会话事件推出来（`buildBlocks` 整理好的最后一轮）与镜头列表的
  * 「渲染中」，不另装 hooks、不读 transcript：五家编排工具的流早已统一成同一套事件。
  *
- * 导演是编排工具：它此刻那一次还没有结果的工具调用决定它在哪个部门。事件里没有「思考中」这一项：
+ * 制作人是编排工具：它此刻那一次还没有结果的工具调用决定它在哪个部门。事件里没有「思考中」这一项：
  * 没有进行中的工具调用时，按「在想下一步」处理。摄影是渲染器：每个正在渲染的镜头一个人。
- * 剪辑、配音跟着导演：导演把活交给他们时（拼接、复查、配音命令……）他们才开工。
+ * 剪辑、配音跟着制作人：制作人把活交给他们时（拼接、复查、配音命令……）他们才开工。
  */
 export type CrewMood =
   | 'idle'
@@ -27,7 +27,7 @@ export type CrewMood =
 
 export interface CrewState {
   mood: CrewMood;
-  /** 导演头上气泡里的一句话。 */
+  /** 制作人头上气泡里的一句话。 */
   line: string;
 }
 
@@ -55,9 +55,9 @@ export interface CrewSignal extends CrewState {
   running: boolean;
   /** 此刻能不能发话（别的写任务占着项目、正在发送时不能）。 */
   canSend: boolean;
-  /** 这一轮（或刚结束的上一轮）的待办清单：导演的动作队列。 */
+  /** 这一轮（或刚结束的上一轮）的待办清单：制作人的动作队列。 */
   plan: PlanItem[];
-  /** 这一轮从什么时候开始（ISO，没有为空）：导演的精力按它算。 */
+  /** 这一轮从什么时候开始（ISO，没有为空）：制作人的精力按它算。 */
   turnStarted: string;
   /** 正在渲染的镜头各从什么时候开始拍（ISO，读不到为空）：摄影的面板显示已拍多久。 */
   renderSince: Record<string, string>;
@@ -103,7 +103,7 @@ function askText(ask: PermissionAsk): string {
   return text.length > 80 ? text.slice(0, 79) + '…' : text;
 }
 
-/** 一轮结束后导演还留多久（毫秒）显示收工，再回到待命。 */
+/** 一轮结束后制作人还留多久（毫秒）显示收工，再回到待命。 */
 export const crewLinger = 6000;
 
 const onset = '^(mcp__onset__|onset[._])?';

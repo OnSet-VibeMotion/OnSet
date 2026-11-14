@@ -1,5 +1,5 @@
 /**
- * 导演的 agent 循环：pi（@earendil-works/pi-coding-agent，MIT）。打成单独的 onset-agent.cjs，
+ * 制作人的 agent 循环：pi（@earendil-works/pi-coding-agent，MIT）。打成单独的 onset-agent.cjs，
  * 只由 onset studio agent 加载（见 command.ts）。
  *
  * pi 默认会到处找东西：~/.pi/agent 下的设置、技能、扩展、凭据，上级目录与家目录里的 AGENTS.md / CLAUDE.md，
@@ -54,12 +54,19 @@ const preamble = `你在一个视频项目的目录里工作，帮用户把文�
 - 要用户拍板的事（选方案、确认稿件或分镜、几种做法里选一种）停下来问，不替用户决定。
 - 回复用户时用中文，每一轮结束时说清做了什么、接下来做什么或在等用户什么。`;
 
+const rendererPreamble = `你是制作人，当前只负责一个镜头的实现与渲染。
+- 严格按本轮镜头提示词、scene.json、画幅与技能完成合成；不要规划整片、改口播稿或等待整片审批。
+- 使用 read、write、edit、bash 等工具实现镜头，用 hyperframes 工具检查、截图和渲染。参数不确定时先用 tool_help 查询。
+- 制作工具会一直等到执行完；不要重复提交，没有 job_wait。onset 不在终端里，不要在 bash 里运行 onset。
+- 只修改当前镜头目录，技能与共享素材只读；不要读取 .env 或模型服务凭据。
+- 出错先读返回原因再修复，最后核对镜头提示词要求的产物。`;
+
 type CredentialStore = NonNullable<CreateModelRuntimeOptions['credentials']>;
 type Credential = Awaited<ReturnType<CredentialStore['read']>>;
 
 /**
  * 只在内存里的凭据：不给 pi authPath（它默认读写 agent_dir/auth.json，那份文件在客户端里是加密的，
- * 也不该让导演自己去读）。key 由 setRuntimeApiKey 设进来，进程退出就没了。
+ * 也不该让制作人自己去读）。key 由 setRuntimeApiKey 设进来，进程退出就没了。
  */
 function memoryCredentials(): CredentialStore {
   const store = new Map<string, NonNullable<Credential>>();
@@ -136,7 +143,7 @@ export async function serviceModel(runtime: ModelRuntime, service: director.Reso
   // 本机的服务常常不要 key，但 pi 没有 key 就当这家没配置；随便给一个，服务不看它。
   await runtime.setRuntimeApiKey(ServiceProvider, service.key || 'none');
   const model = runtime.getModel(ServiceProvider, modelId);
-  if (!model) throw new Error(`导演没能登记模型 ${modelId}`);
+  if (!model) throw new Error(`制作人没能登记模型 ${modelId}`);
   return model;
 }
 
@@ -194,7 +201,7 @@ function sessionManager(workdir: string, agentDir: string, sessionID: string, re
       if (file !== '') break;
     }
   }
-  if (file === '') throw new Error(`找不到导演的会话 ${sessionID}`);
+  if (file === '') throw new Error(`找不到制作人的会话 ${sessionID}`);
   // 工作目录以这一次为准（项目可能挪过）；之后的新分支照样建在这个项目的目录里。
   return SessionManager.open(file, dir, workdir);
 }
@@ -202,7 +209,7 @@ function sessionManager(workdir: string, agentDir: string, sessionID: string, re
 export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
   const req = o.request;
   const workdir = path.resolve(req.workdir);
-  if (req.agent_dir === '') throw new Error('没有导演的数据目录（agent_dir）');
+  if (req.agent_dir === '') throw new Error('没有制作人的数据目录（agent_dir）');
   const runtime = await modelRuntime(req.agent_dir);
 
   const service = req.service;
@@ -221,7 +228,7 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
     if (model === '') throw new Error(director.NoServiceMessage);
     selected = await serviceModel(runtime, service, model);
   }
-  if (!selected) throw new Error(`导演不认识模型 ${model}`);
+  if (!selected) throw new Error(`制作人不认识模型 ${model}`);
 
   const gate: ExtensionFactory = (pi: ExtensionAPI) => {
     pi.on('tool_call', async (event) => {
@@ -239,10 +246,10 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
     noExtensions: true,
     noPromptTemplates: true,
     noThemes: true,
-    systemPrompt: preamble,
+    systemPrompt: req.profile === 'renderer' ? rendererPreamble : preamble,
     extensionsOverride: (base) => ({ ...base, extensions: base.extensions.filter((e) => e.path === `<inline:${GateExtension}>`) }),
-    skillsOverride: (base) => ({ ...base, skills: base.skills.filter((s) => path.resolve(s.filePath).startsWith(skillsDir + path.sep)) }),
-    agentsFilesOverride: (base) => ({ agentsFiles: base.agentsFiles.filter((f) => path.resolve(f.path) === projectRules) }),
+    skillsOverride: (base) => ({ ...base, skills: req.profile === 'renderer' ? [] : base.skills.filter((s) => path.resolve(s.filePath).startsWith(skillsDir + path.sep)) }),
+    agentsFilesOverride: (base) => ({ agentsFiles: req.profile === 'renderer' ? [] : base.agentsFiles.filter((f) => path.resolve(f.path) === projectRules) }),
     appendSystemPromptOverride: () => [],
   });
   await loader.reload();

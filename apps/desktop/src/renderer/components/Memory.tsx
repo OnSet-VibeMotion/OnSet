@@ -6,6 +6,7 @@ import type { RunAction } from './Preview';
 import { ExamProgressPanel } from './ExamProgress';
 import { ExamReview as ExamMatrix } from './ExamReview';
 import { MemoryApplications } from './MemoryApplications';
+import { HumanAcceptance } from './HumanAcceptance';
 
 type Labels = MemoryState['labels'];
 
@@ -99,6 +100,7 @@ export function MemoryTab({ scene, version, run }: Props) {
   const pendingTotal = state.status.pending_failures;
   const recalled = recall?.recall.items ?? [];
   const examRenderer = state.renderer || 'claude';
+  const acceptedExam = [...state.exams].reverse().find((e) => !!e.human_acceptance);
 
   if (!state.enabled) {
     return (
@@ -152,6 +154,7 @@ export function MemoryTab({ scene, version, run }: Props) {
       </section>}
 
       <ExamProgressPanel state={state} />
+      {acceptedExam && acceptedExam.id !== state.exams[state.exams.length - 1]?.id && <HumanAcceptance exam={acceptedExam} />}
       {state.exams.length > 0 && <section className="memory-section" aria-label="最近考试结果">
         <h3>最近考试结果</h3>
         <ExamMatrix key={state.exams[state.exams.length - 1].id} exam={state.exams[state.exams.length - 1]} version={version} state={state} />

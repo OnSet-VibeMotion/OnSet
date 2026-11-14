@@ -38,7 +38,7 @@ import {
   writeError,
   writeJSON,
 } from './http';
-import { memoryAPI, memoryActionAPI, memoryRecallAPI, memoryApplicationsAPI } from './memory';
+import { memoryAPI, memoryActionAPI, memoryRecallAPI, memoryApplicationsAPI, memoryExamAudioAPI } from './memory';
 import { auditionAPI, auditionsAPI } from './auditions';
 import { learningAPI, learningFeatureAPI } from './learning';
 import { namingAPI, recordNamingUsage } from './naming';
@@ -292,6 +292,11 @@ export class Server {
 
   // ---- 当前项目 ----
 
+  /** 已登记的项目副本；历史考试可沿明确来源读取对应项目的口播，不切换当前工作区。 */
+  registeredProjects(): Project[] {
+    return (this.registry.projects ?? []).map((p) => ({ ...p }));
+  }
+
   /** 当前项目；没有打开或目录不在时抛错。路径是登记时 realpath 过的。 */
   currentProject(): Project {
     for (const p of this.registry.projects ?? []) {
@@ -386,6 +391,7 @@ export class Server {
       ['/api/memory', (r) => memoryAPI(this, r)],
       ['/api/memory/recall', (r) => memoryRecallAPI(this, r)],
       ['/api/memory/applications', (r) => memoryApplicationsAPI(this, r)],
+      ['/api/memory/exams/', (r, rest) => memoryExamAudioAPI(this, r, rest)],
       ['/api/memory/actions/', (r, rest) => memoryActionAPI(this, r, rest)],
       ['/api/auditions', (r) => auditionsAPI(this, r)],
       ['/api/auditions/', (r, rest) => auditionAPI(this, r, rest)],

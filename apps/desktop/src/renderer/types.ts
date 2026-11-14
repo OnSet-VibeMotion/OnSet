@@ -354,11 +354,11 @@ export interface AgentInfo {
   command: string;
   installed: boolean;
   path?: string;
-  /** 能不能当渲染工具；导演暂时只做编排。 */
+  /** 能不能当渲染工具。 */
   renderer: boolean;
-  /** 不能用时的一句说明（导演还没填模型服务密钥）。 */
+  /** 不能用时的一句说明（制作人还没填模型服务密钥）。 */
   hint?: string;
-  /** 官方安装说明页（导演没有）。 */
+  /** 官方安装说明页（制作人没有）。 */
   install_url?: string;
 }
 
@@ -454,6 +454,8 @@ export interface MemoryEvent {
 }
 
 export interface ExamCell {
+  preview_audio?: { path?: string; url?: string; start_seconds: number; duration_seconds: number; label: string; source_project?: string };
+  audio_unavailable?: string;
   question: string;
   holdout: boolean;
   renderer: string;
@@ -484,6 +486,8 @@ export interface ExamQuestion {
 }
 
 export interface ExamResult {
+  human_acceptance?: { id: string; name: string; description: string; question_ids: string[]; accepted_at: string; note: string; user_statement: string };
+  original_verdict?: ExamResult['verdict'];
   id: string;
   created_at: string;
   trials: string[];
@@ -820,7 +824,7 @@ export interface SettingsResponse {
   rows: SettingRow[];
 }
 
-/** 导演的模型服务协议：OpenAI 兼容（Chat Completions）或 Anthropic（Messages）。 */
+/** 制作人的模型服务协议：OpenAI 兼容（Chat Completions）或 Anthropic（Messages）。 */
 export type AgentProtocol = 'openai' | 'anthropic';
 
 /** GET /api/agent-services 的预设：只用来预填表单。 */
@@ -857,7 +861,7 @@ export interface AgentServicesResponse {
   storage?: { encrypted: boolean; note?: string };
 }
 
-/** GET /api/agent-services/vision：导演这一轮会用的模型、哪套服务、能不能看图（没有服务时 null）。 */
+/** GET /api/agent-services/vision：制作人这一轮会用的模型、哪套服务、能不能看图（没有服务时 null）。 */
 export interface AgentVision {
   model: string;
   service: string;

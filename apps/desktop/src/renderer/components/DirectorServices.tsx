@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { api, errorText, post } from '../api';
 import type { AgentProtocol, AgentService, AgentServicePreset, AgentServicesResponse, AgentVision } from '../types';
 import { Icon } from './Icon';
+import { ServiceModelPicker } from './ServiceModelPicker';
 
 /**
- * 导演的模型服务：一套就是「协议 + base URL + API key + 模型 + 能不能看图」。可以存几套、选一套在用；
+ * 制作人的模型服务：一套就是「协议 + base URL + API key + 模型 + 能不能看图」。可以存几套、选一套在用；
  * 预设只是把表单填好，存下来与手填的没有区别。key 经系统钥匙串加密后写进用户目录里一个只有自己能读的文件，
  * 界面上不回显；钥匙串用不了时照实说一句。
  */
@@ -67,11 +68,11 @@ export function DirectorServices({ version, onChange }: { version: number; onCha
   const presetOf = (id: string) => data.presets.find((p) => p.id === id);
 
   return (
-    <section className="agent-services" aria-label="导演的模型服务">
+    <section className="agent-services" aria-label="制作人的模型服务">
       <div className="agent-services-head">
         <div>
-          <strong>导演的模型服务</strong>
-          <span>编排选「导演」时用：填 base URL 和 API key 就能开工。可以存几套，选一套在用。</span>
+          <strong>制作人的模型服务</strong>
+          <span>编排或画镜头选「制作人」时用：填 base URL 和 API key 就能开工。可以存几套，选一套在用。</span>
         </div>
         {!draft && (
           <button className="pill" onClick={() => setDraft(data.presets[0] ? fromPreset(data.presets[0], emptyDraft) : { ...emptyDraft })}>
@@ -206,7 +207,18 @@ function ServiceForm({
             {p.label}
           </button>
         ))}
-        <button type="button" data-preset="" className={'chip' + (draft.preset === '' ? ' on' : '')} onClick={() => set({ preset: '' })}>
+        <button
+          type="button"
+          data-preset=""
+          className={'chip' + (draft.preset === '' ? ' on' : '')}
+          onClick={() => {
+            if (!draft.preset) return;
+            onDraft({ ...emptyDraft, id: draft.id, key: draft.key, had_key: draft.had_key });
+            setModels([]);
+            setListing('');
+            setError('');
+          }}
+        >
           自定义
         </button>
       </div>
@@ -246,12 +258,7 @@ function ServiceForm({
       <label>
         <span>模型</span>
         <span className="agent-service-model">
-          <input aria-label="模型" list="agent-service-models" value={draft.model} placeholder="模型名" onChange={(e) => set({ model: e.target.value })} />
-          <datalist id="agent-service-models">
-            {models.map((m) => (
-              <option key={m} value={m} />
-            ))}
-          </datalist>
+          <ServiceModelPicker models={models} value={draft.model} onChange={(model) => set({ model })} />
           <button type="button" className="link" disabled={draft.base_url.trim() === ''} onClick={() => void fetchModels()}>
             读取模型列表
           </button>
@@ -260,7 +267,7 @@ function ServiceForm({
       {listing && <p className="agent-service-listing">{listing}</p>}
       <label className="agent-service-check">
         <input type="checkbox" checked={draft.vision} onChange={(e) => set({ vision: e.target.checked })} />
-        <span>这个模型能看图片（画面验收、整片复查要看截图；看不了的话导演会把图交给你看）</span>
+        <span>这个模型能看图片（画面验收、整片复查要看截图；看不了的话制作人会把图交给你看）</span>
       </label>
       <div className="agent-service-buttons">
         <button type="submit" className="pill primary" disabled={busy || draft.base_url.trim() === '' || draft.model.trim() === ''}>
@@ -278,8 +285,8 @@ function ServiceForm({
 }
 
 /**
- * 导演这次会用的模型服务看不了画面时的提示（设置页编排模型一栏、首次引导、开工前的对话里）。
- * 看不了时，导演会在画面验收与复查里把要看的图切给你，等你说结论。
+ * 制作人这次会用的模型服务看不了画面时的提示（设置页编排模型一栏、首次引导、开工前的对话里）。
+ * 看不了时，制作人会在画面验收与复查里把要看的图切给你，等你说结论。
  */
 export function DirectorVisionNote({ model, version = 0, compact }: { model: string; version?: number; compact?: boolean }) {
   const [info, setInfo] = useState<AgentVision | null>(null);
@@ -301,7 +308,7 @@ export function DirectorVisionNote({ model, version = 0, compact }: { model: str
       </span>
       <span className="vision-note-text">
         <strong>
-          导演现在用的 {info.service} · {info.model} 看不了画面
+          制作人现在用的 {info.service} · {info.model} 看不了画面
         </strong>
         <span>画面验收和整片复查要看截图的地方，它会把图切给你、等你说看得怎么样。想让它自己看，在设置里换一套能看图片的模型服务。</span>
       </span>

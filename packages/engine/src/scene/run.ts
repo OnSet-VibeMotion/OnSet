@@ -6,6 +6,7 @@ import { childEnvironment, rendererModelFor, type Config } from '../config';
 import * as determinism from '../determinism';
 import { addToolsLocation, onsetExecutable, lookPath, parsePassthrough } from '../envutil';
 import * as hyperframes from '../hyperframes';
+import * as director from '../director';
 import * as mediaprobe from '../mediaprobe';
 import { ExitError, start, type Started } from '../procgroup';
 import {
@@ -18,8 +19,8 @@ import {
   onsetToolsServer,
   rendererEnv,
   presetSessionID,
-  rendererInvocation,
-  windowsPromptInput,
+  rendererLaunch,
+  type Invocation,
   usageEmpty,
   type RendererSession,
   type Usage,
@@ -76,6 +77,7 @@ async function runScene(
 ): Promise<void> {
   if (!Number.isFinite(tolerance) || tolerance < 0) throw new Error('tolerance 必须是有限且非负的数字');
   const renderer = s.renderer !== '' ? s.renderer : cfg.renderer;
+  if (renderer === director.Tool && !director.resolveService(director.defaultDir({ ...process.env, ...baseEnv }))) throw new Error(director.NoServiceMessage);
   // 上次渲染没收拾干净的 qoder 技能链接先清掉：resolveSkill 也会找镜头目录里的 .qoder/skills。
   unstageRendererSkills(s.directory);
   const resolvedSkills = resolveAllSkills(renderer, s.directory, skillsEnvironment(baseEnv, cfg.overlay), s);
@@ -105,6 +107,8 @@ async function runScene(
   const prompt = withWindowsInstructions(buildPrompt(s, resolvedSkills), 'renderer');
   // 渲染器的环境：onset 不在它的 PATH 里，HyperFrames 经 onset 的工具服务（--profile renderer）调用。
   const childEnv = childEnvironment(cfg, baseEnv, unsafe, parsePassthrough(baseEnv.ONSET_PASSTHROUGH_ENV ?? ''));
+  // 客户端操作转发只交给编排工具。镜头渲染器已经拿到本次服务，不给它请求整片写操作的入口。
+  delete childEnv.ONSET_STUDIO_OP_PIPE;
   if (process.platform === 'win32' && s.renderWorkers > 0) childEnv.ONSET_RENDER_WORKERS = String(s.renderWorkers);
   addToolsLocation(childEnv);
   // opencode 按 PWD 而不是进程的工作目录定项目目录：不安全模式下照搬过来的 PWD 是 onset 自己的目录，渲染器会写到镜头外面（2026-11 实测）。
@@ -121,23 +125,24 @@ async function runScene(
   // 渲染器自己不拦命令：套了沙箱时由沙箱管边界；Windows 没有系统沙箱，用户定的是全放开（2026-11），安全先放下。
   access.unfiltered = rendererUnfiltered(access.osSandbox === true);
   /** 渲染器的命令行：给定提示词与会话；qoder 再套系统沙箱。 */
-  const invocation = (text: string, session: RendererSession | null): string[] => {
-    let argv = rendererInvocation(renderer, text, unsafe, access, model, session);
+  const invocation = (text: string, session: RendererSession | null): Invocation => {
+    const command = rendererLaunch(renderer, text, unsafe, access, model, session, s.directory, { ...childEnv, [director.DirEnv]: director.defaultDir({ ...process.env, ...baseEnv }) });
+    let argv = command.argv;
     argv[0] = lookPath(argv[0], baseEnv.PATH ?? '');
-    if (!access.osSandbox) return argv;
+    if (!access.osSandbox) return { ...command, argv };
     const home = childEnv.HOME ?? baseEnv.HOME ?? '';
     const own = rendererHome(renderer, home);
     const profile = sandboxProfile({
       sceneDir: s.directory,
       projectRoot,
       env: { ...baseEnv, ...childEnv },
-      toolStateDirs: home ? own.state : [],
+      toolStateDirs: [...(home ? own.state : []), ...(renderer === director.Tool ? [director.rendererDir(director.defaultDir({ ...process.env, ...baseEnv }))] : [])],
       toolStateFiles: home ? own.files : [],
       hiddenDirs: home ? own.hidden : [],
       // 渲染工具、onset 的运行时与资源、借来的浏览器所在的目录；资源目录的上一层是应用资源目录（开发时是仓库，浏览器模式从那里加载界面）。
       readDirs: [path.dirname(fs.realpathSync(argv[0])), path.dirname(process.execPath), ...(process.env.ONSET_ASSETS_DIR ? [path.dirname(process.env.ONSET_ASSETS_DIR)] : []), ...[process.env.ONSET_ASSETS_DIR, childEnv.ONSET_SELF, cliEnv[hyperframes.BrowserEnv], cliEnv[hyperframes.CLIDirEnv]].filter((v): v is string => !!v).map((v) => (fs.existsSync(v) && fs.statSync(v).isDirectory() ? v : path.dirname(v))), ...(s.exemplars?.dirs ?? [])],
     });
-    return sandboxed(argv, profile);
+    return { ...command, argv: sandboxed(argv, profile) };
   };
   const inputs = fingerprint(s, renderer, resolvedSkills);
   const resourceKeys = new Set([...Object.keys(preparedResources), ...Object.keys(inputs.parts ?? {}).filter((key) => key.startsWith('asset:'))]);
@@ -308,14 +313,13 @@ async function runScene(
   }
 
   /** 跑一次渲染器；返回它说了几句话、调了几次工具（0 表示根本没开始）。失败时抛出的错误也带着这个数（events）。 */
-  async function spawnRenderer(argv: string[], rawFile: number, stderrFile: number, userFile: number): Promise<number> {
+  async function spawnRenderer(command: Invocation, rawFile: number, stderrFile: number, userFile: number): Promise<number> {
     let events = 0;
     const parser = newParser(renderer);
     const fail = (e: Error): Error => Object.assign(e, { events });
     let started: Started;
     try {
-      const command = windowsPromptInput(renderer, argv, argv.at(-1) ?? '');
-      started = await start(command.argv[0], command.argv.slice(1), { cwd: s.directory, env: childEnv, stdio: [command.stdin ? 'pipe' : 'ignore', 'pipe', stderrFile], signal }, terminateGrace);
+      started = await start(command.argv[0], command.argv.slice(1), { cwd: s.directory, env: { ...childEnv, ...command.env }, stdio: [command.stdin ? 'pipe' : 'ignore', 'pipe', stderrFile], signal }, terminateGrace);
       if (command.stdin && started.child.stdin) {
         started.child.stdin.on('error', () => {});
         started.child.stdin.end(command.stdin);

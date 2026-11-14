@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, session, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { currentSkin, newServer, skinJSON, type Server } from '@onset/engine/studio';
+import { currentSkin, newServer, skinJSON, startOperationBroker, type Server } from '@onset/engine/studio';
 import { setHostVersion } from '@onset/engine/version';
 import { assetsDir, browserPath, browserScript, cliEntry, npmCLI, shimScript, writeScript } from './clishim';
 import { installKeyCodec } from './keycodec';
@@ -47,6 +47,7 @@ app.on('before-quit', () => stationBrowsers.close());
 
 const rendererDir = path.join(__dirname, 'renderer');
 let backend: Server | null = null;
+let stopOperationBroker: (() => void) | undefined;
 
 const mime: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -227,9 +228,10 @@ if (!app.requestSingleInstanceLock()) {
       // 进程内的后端（客户端的安装页、新建项目）装 HyperFrames CLI 与 npm 类工具时用客户端自带的 npm。
       const npm = npmCLI();
       if (npm !== '') process.env.ONSET_NPM_CLI = npm;
-      // 导演的 API key 经 safeStorage 加密落盘、解密后经 stdin 交给导演（见 keycodec.ts）。
+      // 制作人的 API key 经 safeStorage 加密落盘、解密后经 stdin 交给制作人（见 keycodec.ts）。
       installKeyCodec();
       backend = newServer({ executable, stationBrowser: request => stationBrowsers.lease(request), stationProxy: url => session.defaultSession.resolveProxy(url) });
+      stopOperationBroker = startOperationBroker(backend);
     } catch (err) {
       dialog.showErrorBox('后台服务起不来', err instanceof Error ? err.message : String(err));
       app.quit();
@@ -307,5 +309,5 @@ if (!app.requestSingleInstanceLock()) {
       if (process.platform !== 'darwin' && !mainWindow()) app.quit();
     });
   });
-  app.on('will-quit', () => backend?.shutdown());
+  app.on('will-quit', () => { stopOperationBroker?.(); backend?.shutdown(); });
 }

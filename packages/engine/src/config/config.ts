@@ -266,7 +266,7 @@ export function load(root: string, environ?: Record<string, string> | null): Con
     throw new Error(`无效的 ORCHESTRATOR: ${cfg.orchestrator}（可选：codex claude qoder codebuddy opencode director）`);
   }
   if (!ValidRenderers.has(cfg.renderer)) {
-    throw new Error(`无效的 RENDERER: ${cfg.renderer}（可选：codex claude qoder codebuddy opencode）`);
+    throw new Error(`无效的 RENDERER: ${cfg.renderer}（可选：${[...ValidRenderers].join(' ')}）`);
   }
   for (const [key, value] of [['ORCHESTRATOR_MODEL', cfg.orchestratorModel], ['RENDERER_MODEL', cfg.rendererModel]] as const) {
     if (value !== '' && !validModel(value)) throw new Error(`无效的 ${key}: ${value}（模型名只能用字母、数字与 . _ - : / @ # [ ] +）`);
@@ -389,6 +389,7 @@ export function childEnvironment(
   else if (source.XDG_DATA_HOME && !unsafe) out.ONSET_STATIONS_DIR = path.join(dataDir(source), 'stations');
   // 全局设置同理：子进程（编排工具调用的 onset、渲染）按同一份全局设置解析项目配置。
   if (config.settingsFile !== '') out[SettingsFileEnv] = config.settingsFile;
+  if (source.ONSET_STUDIO_OP_PIPE) out.ONSET_STUDIO_OP_PIPE = source.ONSET_STUDIO_OP_PIPE;
   // 客户端自带的浏览器与用户显式指定的浏览器同理：子进程里的 onset hyperframes 照样用它们，不去下载 headless-shell。
   for (const key of [BrowserEnv, HyperFramesBrowserEnv, BrowserHookEnv, BrowserAppArgEnv]) if (source[key]) out[key] = source[key]!;
   // 客户端自带的 npm、工具目录与 onset setup 的工具目录同理：子进程里的 onset 要找到同一套，而白名单里没有它们。

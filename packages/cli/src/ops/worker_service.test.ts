@@ -27,7 +27,8 @@ describe('director service handed to an op worker', () => {
     expect(director.resolveService('')).toBeNull();
   });
 
-  it('only the ops that start the Director as drafter (memory consolidation, learning from a teacher) get the service', () => {
-    expect([...director.KeyOps]).toEqual(['memory_consolidate', 'audition_learn']);
+  it('hands the service only to drafting and rendering operations, excluding ordinary file operations', () => {
+    expect([...director.KeyOps]).toEqual(['memory_consolidate', 'audition_learn', 'scene_run', 'scene_run_all', 'scene_seams', 'scene_design', 'scene_audition', 'memory_exam']);
+    for (const name of ['config_get', 'windows_inspect', 'audio_check', 'scene_list']) expect(director.KeyOps.has(name)).toBe(false);
   });
 });

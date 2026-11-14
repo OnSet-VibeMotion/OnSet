@@ -1,9 +1,9 @@
 /**
- * 导演的 bash 会不会碰到凭据：白名单只按命令前缀比对（cat、cp、find、curl 都在里面），参数里写的是哪个文件
+ * 制作人的 bash 会不会碰到凭据：白名单只按命令前缀比对（cat、cp、find、curl 都在里面），参数里写的是哪个文件
  * 它不管。这里把一条命令拆成参数，逐个按 shell 的写法还原成路径（引号、~、相对路径、--x=路径、@路径、
  * file://、git 的 rev:路径），再与凭据比对：
  *
- * - 指向导演的数据目录（agent_dir，API key 与会话在里面）或 .env / .env.*（.env.example 除外）→ deny，
+ * - 指向制作人的数据目录（agent_dir，API key 与会话在里面）或 .env / .env.*（.env.example 除外）→ deny，
  *   直接拒绝、不走审批卡片：用户在卡片上随手点「允许」就把 key 交出去了；
  * - 可能间接读到它们 → ask，改成问用户：递归读取的命令（grep -r、带 --hidden 的 rg、tar、zip、cp -r、
  *   diff -r）的起点包含凭据，find 带 -exec 一类，通配符或 ~user 这种认不准的写法。
@@ -11,8 +11,8 @@
  * 宁可多拦也不要漏：判断错的代价是问一次用户，漏掉的代价是 key 进了模型的上下文。
  * 白名单本身拦下的写法（$、反引号、重定向、管道、反斜杠）在这之前已经不会自动放行。
  *
- * 管不到的：白名单里的 python3、node 能跑导演自己写的脚本文件，脚本里读什么这里看不见。所以 key 在客户端里
- * 经 safeStorage 加密落盘，导演也只从 stdin 拿 key（director.Request.keys），磁盘上没有明文可读。
+ * 管不到的：白名单里的 python3、node 能跑制作人自己写的脚本文件，脚本里读什么这里看不见。所以 key 在客户端里
+ * 经 safeStorage 加密落盘，制作人也只从 stdin 拿 key（director.Request.keys），磁盘上没有明文可读。
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -24,14 +24,14 @@ export type SecretVerdict = { kind: 'deny'; reason: string } | { kind: 'ask' } |
 export interface SecretScope {
   /** 项目目录（相对路径按它解析，已经 realpath）。 */
   workdir: string;
-  /** 导演的数据目录（已经 realpath）；空表示没有。 */
+  /** 制作人的数据目录（已经 realpath）；空表示没有。 */
   agentDir: string;
   /** 解析成真实路径（存在的最近一层上级目录 realpath 后接回剩下的部分）。 */
   realish: (p: string) => string;
 }
 
 export const EnvFileReason = '.env 里是凭据，不能读写。要用到的配置经 config_get 工具取。';
-export const AgentDirReason = '导演的数据目录里是模型服务的 API key 与会话记录，不能读写。';
+export const AgentDirReason = '制作人的数据目录里是模型服务的 API key 与会话记录，不能读写。';
 
 /** .env 与 .env.*（.env.example 是模板，不含凭据）。 */
 export function isEnvFile(p: string): boolean {
@@ -197,7 +197,7 @@ function checkWords(words: string[], scope: SecretScope, depth: number): SecretV
       return false;
     }
   };
-  /** 这个目录被整棵读下去时会不会读到凭据：它是导演数据目录或项目（有 .env 时）的上级，或者自己顶层就有 .env。 */
+  /** 这个目录被整棵读下去时会不会读到凭据：它是制作人数据目录或项目（有 .env 时）的上级，或者自己顶层就有 .env。 */
   const containsSecrets = (dir: string): boolean =>
     (scope.agentDir !== '' && inside(scope.agentDir, dir)) || (inside(scope.workdir, dir) && envFilesIn(scope.workdir)) || envFilesIn(dir);
   const { recursive, implicitCwd } = recursiveReader(words);
@@ -231,7 +231,7 @@ function checkWords(words: string[], scope: SecretScope, depth: number): SecretV
       }
       const abs = path.resolve(scope.workdir, expanded);
       if (globChars.test(expanded)) {
-        // 通配符：能匹配到凭据（或落在导演数据目录里）就拒绝；会被整棵读的再问一次。
+        // 通配符：能匹配到凭据（或落在制作人数据目录里）就拒绝；会被整棵读的再问一次。
         const globPath = (p: string) => process.platform === 'win32' ? p.replace(/\\/g, '/').toLowerCase() : p;
         const patterns = [globRegExp(globPath(abs)), globRegExp(globPath(scope.realish(abs)))];
         const secrets = [

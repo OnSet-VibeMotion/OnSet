@@ -1,5 +1,5 @@
 /**
- * onset studio agent：导演（ORCHESTRATOR=director）。客户端与 onset run 按 tools.orchestratorInvocation 启动它，
+ * onset studio agent：制作人（ORCHESTRATOR=director）。客户端与 onset run 按 tools.orchestratorInvocation 启动它，
  * 请求经 stdin 一行 JSON（director.Request），输出 claude 系的 stream-json，由 agentrun 解析。
  *
  * onset 的制作工具不经 MCP，直接在这个进程里做成 agent 的工具：工具列表与参数校验与工具服务（toolsmcp）
@@ -38,9 +38,9 @@ const maxToolSeconds = 24 * 3600;
  * 把编排档位的操作做成 agent 的工具；job_wait、job_cancel 不要（这里直接等到跑完）。
  * 除了只读的 tool_help，都顺序执行：模型一次发出 scene_cues 与 scene_run 时，后者要等前者写完 scene.json。
  */
-export function onsetTools(spawner: Spawner = spawnOp, root = ''): { tools: AgentTool[]; jobs: Jobs } {
+export function onsetTools(spawner: Spawner = spawnOp, root = '', profile: 'orchestrator' | 'renderer' = 'orchestrator'): { tools: AgentTool[]; jobs: Jobs } {
   const jobs = new Jobs(spawner);
-  const defs = describeTools('orchestrator', root).filter((t) => t.name !== 'job_wait' && t.name !== 'job_cancel');
+  const defs = describeTools(profile, root).filter((t) => t.name !== 'job_wait' && t.name !== 'job_cancel');
   const byName = new Map(defs.map((t) => [t.name, t]));
   const tools: AgentTool[] = defs.map((def) => {
     const schema = JSON.parse(JSON.stringify(def.inputSchema)) as { properties?: Record<string, unknown> };
@@ -95,6 +95,8 @@ export function parseRequest(text: string): director.Request {
   return {
     workdir: r.workdir,
     prompt: r.prompt,
+    profile: r.profile === 'renderer' ? 'renderer' : undefined,
+    read_dirs: Array.isArray(r.read_dirs) ? r.read_dirs.filter((c): c is string => typeof c === 'string') : [],
     session_id: typeof r.session_id === 'string' ? r.session_id : undefined,
     resume: r.resume === true,
     model: typeof r.model === 'string' ? r.model : '',
@@ -114,8 +116,8 @@ export async function runBuiltinAgent(
   options: { spawner?: Spawner; gate?: Gate; setupModels?: (runtime: unknown) => Promise<string> | string; env?: Record<string, string | undefined> } = {},
 ): Promise<{ ok: boolean; error?: string }> {
   const env = options.env ?? currentEnvironment();
-  // 整理经验这类会再起导演的操作要拿到模型服务与 key：经执行进程的 stdin 交下去（spawnOpWithService），不进环境。
-  const onset = onsetTools(options.spawner ?? spawnOpWithService(req.service ?? null), req.workdir);
+  // 整理经验这类会再起制作人的操作要拿到模型服务与 key：经执行进程的 stdin 交下去（spawnOpWithService），不进环境。
+  const onset = onsetTools(options.spawner ?? spawnOpWithService(req.service ?? null), req.workdir, req.profile ?? 'orchestrator');
   const jobs = onset.jobs;
   // 待办清单与 onset 的工具一样直接放行：它只把清单写进工具调用，什么也不做。
   const tools = [...onset.tools, todoTool()];
@@ -126,9 +128,10 @@ export async function runBuiltinAgent(
       unsafe: req.unsafe === true,
       commands: req.commands ?? [],
       writableDirs: req.writable_dirs ?? [],
+      readDirs: req.profile === 'renderer' ? req.read_dirs : undefined,
       agentDir: req.agent_dir,
       onsetTools: new Set(tools.map((t) => t.name)),
-      inbox: env[studioview.ViewInboxEnv] ?? '',
+      inbox: req.profile === 'renderer' ? '' : env[studioview.ViewInboxEnv] ?? '',
     });
   const agent = await loadAgentModule();
   try {
@@ -142,10 +145,10 @@ export function newAgentCommand(): Command {
   const cmd = new Command({
     use: 'agent',
     hidden: true,
-    short: '客户端内部用：导演（编排工具 director）',
-    long: `导演：不用另装 AI CLI，配一个模型服务（base URL 与 API key）就能做编排。由客户端（或 onset run）按
+    short: '客户端内部用：制作人（编排工具 director）',
+    long: `制作人：不用另装 AI CLI，配一个模型服务（base URL 与 API key）就能做编排。由客户端（或 onset run）按
 ORCHESTRATOR=director 启动，人不直接运行。请求经 stdin 一行 JSON，输出 claude 系的 stream-json。`,
-    example: `  # 客户端里换成导演后，每一轮都这样启动：
+    example: `  # 客户端里换成制作人后，每一轮都这样启动：
   echo '{"workdir":"/path/to/project","prompt":"…","agent_dir":"…"}' | onset studio agent`,
     runE: async (c) => {
       const env = currentEnvironment();
@@ -157,7 +160,7 @@ ORCHESTRATOR=director 启动，人不直接运行。请求经 stdin 一行 JSON�
       process.once('SIGTERM', () => controller.abort());
       const result = await runBuiltinAgent(req, (line) => process.stdout.write(line + '\n'), controller.signal, { env });
       // 失败照常抛出：execute 打出原因、退出码 1，agentrun 据此判这一轮失败（原因同时在 result 事件里）。
-      if (!result.ok) throw new Error(result.error ?? '导演出错');
+      if (!result.ok) throw new Error(result.error ?? '制作人出错');
     },
   });
   return cmd;

@@ -1,5 +1,5 @@
 /**
- * 导演：客户端自带的编排工具，不要求用户另装 claude、codex 这类 CLI，配一个模型服务就能用。
+ * 制作人：客户端自带的编排工具，不要求用户另装 claude、codex 这类 CLI，配一个模型服务就能用。
  *
  * 引擎这边只放与 agent 实现无关的部分：工具名、请求格式、模型服务的存取与预设。真正的 agent 循环用的是
  * pi（@earendil-works/pi-coding-agent，MIT），由 onset studio agent（packages/cli/src/agent/）在子进程里跑，
@@ -20,10 +20,10 @@ import { dataDir } from '../envutil';
 /** 工具名：ORCHESTRATOR=director。 */
 export const Tool = 'director';
 
-/** 覆盖导演数据目录（模型服务、会话）的环境变量。 */
+/** 覆盖制作人数据目录（模型服务、会话）的环境变量。 */
 export const DirEnv = 'ONSET_AGENT_DIR';
 
-/** 导演的数据目录：ONSET_AGENT_DIR，否则 <数据目录>/onset/agent。环境里什么都没有时为空。 */
+/** 制作人的数据目录：ONSET_AGENT_DIR，否则 <数据目录>/onset/agent。环境里什么都没有时为空。 */
 export function defaultDir(env: Record<string, string | undefined>): string {
   if (env[DirEnv]) return env[DirEnv]!;
   const data = dataDir(env);
@@ -33,7 +33,7 @@ export function defaultDir(env: Record<string, string | undefined>): string {
 /**
  * 模型服务文件，权限 0600：{active, services: [{id, name, preset, protocol, base_url, model, vision, key | enc}]}。
  * key 在客户端里经 safeStorage 加密（enc），没有加密可用时是明文（key）。只有父进程读它（resolveService），
- * 导演子进程与 pi 都不读。
+ * 制作人子进程与 pi 都不读。
  */
 export function servicesFile(dir: string): string {
   return path.join(dir, 'services.json');
@@ -132,7 +132,7 @@ export interface ServiceInfo {
   has_key: boolean;
 }
 
-/** 交给导演用的一套模型服务，含明文 key（只在内存与 stdin 里）。 */
+/** 交给制作人用的一套模型服务，含明文 key（只在内存与 stdin 里）。 */
 export interface ResolvedService {
   id: string;
   name: string;
@@ -222,7 +222,7 @@ export function listServices(dir: string): { active: string; services: ServiceIn
   return { active: f.active, services: f.services.map(info) };
 }
 
-/** 有没有一套在用的模型服务（「导演能不能用」）。 */
+/** 有没有一套在用的模型服务（「制作人能不能用」）。 */
 export function hasService(dir: string): boolean {
   return readFile(dir).active !== '';
 }
@@ -335,9 +335,9 @@ function decryptKey(s: StoredService): string | null {
 }
 
 /**
- * 读出一套服务连同 key（id 为空时取在用的那套），给导演的请求、列模型用。父进程交过就用交来的；否则读文件，
+ * 读出一套服务连同 key（id 为空时取在用的那套），给制作人的请求、列模型用。父进程交过就用交来的；否则读文件，
  * 加密的 key 用 codec 解密，解不开（没有 codec，例如在终端里跑 onset run 而 key 是客户端加密写下的；换了机器）
- * 就当作没有这套服务，导演会照常报「还没有配置模型服务」。
+ * 就当作没有这套服务，制作人会照常报「还没有配置模型服务」。
  */
 export function resolveService(dir: string, id = ''): ResolvedService | null {
   if (handed && (id === '' || id === handed.id)) return { ...handed };
@@ -368,13 +368,18 @@ export function parseResolvedService(raw: unknown): ResolvedService | null {
 
 /**
  * 执行进程（onset.cjs __op）的环境里有它（值为 1）时，先从 stdin 读一行 JSON（ResolvedService）交给 useService。
- * 只给 KeyOps 里的操作这样起：它们会再起导演（整理经验的整理者），而执行进程解不开加密的文件。
+ * 只给 KeyOps 里的操作这样起：它们会再起制作人（整理经验的整理者），而执行进程解不开加密的文件。
  * key 只走 stdin，不进环境、命令行与磁盘。
  */
 export const ServiceStdinEnv = 'ONSET_AGENT_SERVICE_STDIN';
 
-/** 会起导演的操作。 */
-export const KeyOps: ReadonlySet<string> = new Set(['memory_consolidate', 'audition_learn']);
+/** 会起制作人的操作。 */
+export const KeyOps: ReadonlySet<string> = new Set(['memory_consolidate', 'audition_learn', 'scene_run', 'scene_run_all', 'scene_seams', 'scene_design', 'scene_audition', 'memory_exam']);
+
+/** 渲染会话与模型目录缓存放在凭据目录之外，macOS 渲染沙箱仍禁止读取 agent/。 */
+export function rendererDir(agentDir: string): string {
+  return path.join(path.dirname(agentDir), path.basename(agentDir) + '-renderer');
+}
 
 /**
  * 交给 onset studio agent 的一次调用（经 stdin，一行 JSON）。不走命令行参数：提示词很长，
@@ -383,6 +388,10 @@ export const KeyOps: ReadonlySet<string> = new Set(['memory_consolidate', 'audit
 export interface Request {
   workdir: string;
   prompt: string;
+  /** 不给时是整片编排；renderer 只启用单镜头渲染工具。 */
+  profile?: 'renderer';
+  /** 渲染器需要只读的技能与项目资源目录。 */
+  read_dirs?: string[];
   /** 空是新会话；resume 为 true 时续接这个会话。 */
   session_id?: string;
   resume?: boolean;
@@ -393,17 +402,17 @@ export interface Request {
   commands?: string[];
   /** 工作目录之外还能读写的目录（记忆库、音色库）。 */
   writable_dirs?: string[];
-  /** 导演的数据目录（defaultDir，会话放在这里）。由父进程算好传下来：子进程的环境按安全模式白名单裁过，算不出同一个目录。 */
+  /** 制作人的数据目录（defaultDir，会话放在这里）。由父进程算好传下来：子进程的环境按安全模式白名单裁过，算不出同一个目录。 */
   agent_dir: string;
   /**
-   * 在用的模型服务，含 key，由父进程读出（resolveService，客户端里经 safeStorage 解密）交下来。导演不读磁盘上的凭据：
+   * 在用的模型服务，含 key，由父进程读出（resolveService，客户端里经 safeStorage 解密）交下来。制作人不读磁盘上的凭据：
    * 文件可能是加密的，而且 key 只该在内存里。
    */
   service?: ResolvedService;
 }
 
 /** 没有模型服务时的报错：界面据此引导用户去设置里配置。 */
-export const NoServiceMessage = '导演还没有可用的模型服务：请在设置里配置一个（填 base URL 与 API key）';
+export const NoServiceMessage = '制作人还没有可用的模型服务：请在设置里配置一个（填 base URL 与 API key）';
 
 /** 这一轮实际用的模型名：写了就用写的，否则用服务自己的。 */
 export function effectiveModel(override: string, service: Pick<ResolvedService, 'model'> | null): string {

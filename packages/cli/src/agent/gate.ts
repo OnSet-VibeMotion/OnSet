@@ -1,10 +1,10 @@
 /**
- * 导演的权限闸门：每次工具调用之前问一遍（pi 的 tool_call 事件）。
+ * 制作人的权限闸门：每次工具调用之前问一遍（pi 的 tool_call 事件）。
  *
  * 与其他几家编排工具同一套规矩：
  * - bash 只放行白名单前缀（orchestratorAccess 加「以后都允许」的前缀），带 shell 控制符的整条不算；
- *   参数里指向凭据（.env、导演的数据目录）的直接拒绝，可能间接读到的改成问用户（secrets.ts）；
- * - 文件工具只在项目里（与记忆库、音色库这类可写目录）直接放行，.env 与导演的数据目录一律不读不写；
+ *   参数里指向凭据（.env、制作人的数据目录）的直接拒绝，可能间接读到的改成问用户（secrets.ts）；
+ * - 文件工具只在项目里（与记忆库、音色库这类可写目录）直接放行，.env 与制作人的数据目录一律不读不写；
  * - onset 自己的工具一律放行（它们本来就是给编排工具用的）；
  * - 其余的在客户端里经收件目录问用户（与审批 MCP、双向协议同一条路），不在客户端里（onset run）直接拒绝。
  *
@@ -23,7 +23,9 @@ export interface GateOptions {
   commands: readonly string[];
   /** 工作目录之外也能读写的目录。 */
   writableDirs: readonly string[];
-  /** 导演的数据目录（API key、会话）：bash 与文件工具都碰不得。空表示没有。 */
+  /** 镜头技能、共享素材只允许读取。 */
+  readDirs?: readonly string[];
+  /** 制作人的数据目录（API key、会话）：bash 与文件工具都碰不得。空表示没有。 */
   agentDir?: string;
   /** onset 的工具名：一律放行。 */
   onsetTools: ReadonlySet<string>;
@@ -67,6 +69,7 @@ function describe(toolName: string, input: Record<string, unknown>): string {
 export function newGate(o: GateOptions): Gate {
   const workdir = realish(path.resolve(o.workdir));
   const roots = [workdir, ...o.writableDirs.filter((d) => d !== '').map((d) => realish(path.resolve(d)))];
+  const readable = (o.readDirs ?? []).filter((d) => d !== '').map((d) => realish(path.resolve(d)));
   const agentDir = o.agentDir ? realish(path.resolve(o.agentDir)) : '';
   const scope = { workdir, agentDir, realish };
   const allowed = [...o.commands];
@@ -104,6 +107,7 @@ export function newGate(o: GateOptions): Gate {
       if (isEnvFile(target)) return EnvFileReason;
       if (agentDir !== '' && inside(target, agentDir)) return AgentDirReason;
       if (roots.some((root) => inside(target, root))) return null;
+      if (readTools.has(toolName) && readable.some((root) => inside(target, root))) return null;
       return ask(toolName, input, signal);
     }
     return ask(toolName, input, signal);

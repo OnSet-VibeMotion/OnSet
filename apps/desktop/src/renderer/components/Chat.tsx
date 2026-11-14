@@ -184,9 +184,9 @@ export function Chat(props: Props) {
     recent: recentResults,
   });
   const session = props.sessions.find((s) => s.session_id === props.sessionId);
-  // 镜头由渲染工具来画（导演只做编排）：这台电脑上没装它时，整片制作会做到第一次渲染才报错，开工前就拦下。
+  // 镜头由渲染工具来画；制作人需要模型服务，外部工具需要安装，开工前先检查。
   const drawing = rendererState(props.agents, props.choice.renderer || props.agents?.renderer || '');
-  // 导演这次会用的模型：会话选的，否则项目设置里给导演选的；都空时后端按填了 key 的服务商挑。
+  // 制作人这次会用的模型：会话选的，否则项目设置里给制作人选的；都空时后端按填了 key 的服务商挑。
   const directorModel = props.choice.model || (props.agents?.orchestrator === 'director' ? props.agents.orchestrator_model : '');
 
   const syncScrollState = useCallback((el: HTMLDivElement) => {

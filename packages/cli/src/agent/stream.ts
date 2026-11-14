@@ -1,6 +1,6 @@
 /**
  * 把 pi 的会话事件译成 claude 系的 stream-json。agentrun 的解析、用量累计（result 事件）与模型识别
- * （system/init）都按 claude 系处理，导演照这个格式输出就不用另写一份解析器。
+ * （system/init）都按 claude 系处理，制作人照这个格式输出就不用另写一份解析器。
  *
  * 只译消息级的事件（message_end），不译 token 增量：与其他几家一样，界面只按整条消息显示。
  * 不 import pi：事件按结构读，测试可以直接喂对象。

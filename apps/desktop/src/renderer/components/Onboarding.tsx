@@ -12,11 +12,11 @@ import '../onboarding.css';
  *
  * 四步，每一步做没做都看真实状态，不靠用户打勾：
  * 1. 摄制组就位：做片必需的工具装好了（/api/setup 的 ready，就是安装页）
- * 2. 请 AI 来编排：全局设置里的编排工具能用（装好了，或导演配了模型服务），并且全局设置里的渲染工具装在这台电脑上
- *    （镜头由 Claude Code、Codex 这类工具来画，导演只做编排；没装的话要到第一次渲染才报错）
+ * 2. 请 AI 来编排：全局设置里的编排工具能用（装好了，或制作人配了模型服务），并且全局设置里的渲染工具装在这台电脑上
+ *    （镜头由 Claude Code、Codex 这类工具来画，制作人也可使用已配置的模型服务渲染镜头；没装的话要到第一次渲染才报错）
  * 3. 配音方式：全局选过配音，或者说过「用默认的」（可跳过）
  * 4. 开拍：有了第一个项目
- * 全局设置写的是 /api/settings/global，与设置页同一份；导演的模型服务写的是 /api/agent-services。
+ * 全局设置写的是 /api/settings/global，与设置页同一份；制作人的模型服务写的是 /api/agent-services。
  */
 
 export const OnboardingDoneKey = 'onset.onboarding.done';
@@ -125,7 +125,7 @@ export function Onboarding(props: Props) {
       sub: '和你商量、写稿、定分镜、安排渲染的那一位',
       body: (
         <>
-          <p className="ob-lead">选一位来编排整片。电脑上装过 Claude Code、Codex 这类工具就直接用；没装的话选「导演」，填一个模型服务的 base URL 和 API key 就能编排。镜头还要一家装在这台电脑上的工具来画，下面一并确认。</p>
+          <p className="ob-lead">选一位来编排整片。电脑上装过 Claude Code、Codex 这类工具就直接用；没装的话选「制作人」，填一个模型服务的 base URL 和 API key 就能编排。镜头可以交给制作人使用同一套模型服务来画，也可以另选已安装的工具，下面一并确认。</p>
           <div className="ob-agents" role="radiogroup" aria-label="编排工具">
             {agents?.agents.map((a) => {
               const chosen = a.id === orchestrator;
@@ -137,7 +137,7 @@ export function Onboarding(props: Props) {
                   aria-checked={chosen}
                   data-agent={a.id}
                   className={'ob-agent' + (chosen ? ' on' : '') + (a.installed ? '' : ' missing')}
-                  // 导演还没配模型服务也能选：选了下面就出现配置的地方。
+                  // 制作人还没配模型服务也能选：选了下面就出现配置的地方。
                   disabled={!a.installed && !a.hint}
                   onClick={() => void setGlobal('ORCHESTRATOR', a.id)}
                 >
@@ -167,7 +167,7 @@ export function Onboarding(props: Props) {
               </h3>
               {drawing.ok ? (
                 <p className="ob-lead">
-                  每个镜头交给 <strong>{drawing.info?.label ?? renderer}</strong> 来画{orchestrator === 'director' ? '：导演只管编排，画面要靠它' : ''}。想换一家，点下面已经装好的。
+                  每个镜头交给 <strong>{drawing.info?.label ?? renderer}</strong> 来画。制作人使用已配置的模型服务，也可以选其他已安装的工具。
                 </p>
               ) : (
                 <p className="ob-renderer-alert" role="alert">

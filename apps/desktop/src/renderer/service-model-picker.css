@@ -1,0 +1,69 @@
+.settings .service-model-picker {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: 6px;
+}
+.settings .agent-service-form .agent-service-model {
+  align-items: flex-start;
+}
+.settings .agent-service-model > .link {
+  min-height: 32px;
+}
+.settings .service-model-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.settings .service-model-toggle {
+  flex: none;
+  width: 28px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--well);
+  color: var(--muted);
+  cursor: pointer;
+}
+.settings .service-model-count {
+  font: 11px/1.5 var(--sans);
+  color: var(--faint);
+}
+.settings .service-model-options {
+  display: block;
+  max-height: min(240px, 35vh);
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--well);
+}
+.settings .service-model-options > button {
+  display: block;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--text);
+  font: 12px/1.5 var(--mono);
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.settings .service-model-options > button:hover,
+.settings .service-model-options > button.active,
+.settings .service-model-options > button[aria-selected='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.settings .service-model-empty {
+  display: block;
+  padding: 10px;
+  color: var(--muted);
+  font: 12px/1.5 var(--sans);
+}

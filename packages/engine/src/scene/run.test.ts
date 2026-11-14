@@ -8,6 +8,7 @@ import { run, verifyOutput } from './run';
 import { load, outputPath, stderrLog, streamLog, userLog } from './scene';
 import { executable, fakeFfprobe, Sink, tempDir, writeScene } from './testsupport';
 import { VerificationError } from './verification';
+import * as director from '../director';
 
 const plainScene = '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}';
 const cfg = newConfig({ orchestrator: 'claude', renderer: 'codex', ttsProvider: 'minimax' });
@@ -22,6 +23,31 @@ function catchError(fn: () => void): unknown {
 }
 
 describe('run', () => {
+  it('starts the built-in Producer with renderer stdin, verifies output and records its model', async () => {
+    const s = load(writeScene(plainScene));
+    const bin = tempDir();
+    const agentDir = tempDir();
+    director.saveService(agentDir, { name: 'custom', protocol: 'openai', base_url: 'https://relay.invalid/v1', model: 'custom-render-model', vision: true, key: 'sk-test-render' });
+    const fake = path.join(bin, 'onset.cjs');
+    fs.writeFileSync(fake, `const fs=require('node:fs');let text='';process.stdin.on('data',c=>text+=c);process.stdin.on('end',()=>{const r=JSON.parse(text);if(r.profile!=='renderer'||r.service.key!=='sk-test-render'||!r.workdir)process.exit(4);fs.writeFileSync('out.mp4','video');console.log(JSON.stringify({type:'system',subtype:'init',session_id:'render-session',model:r.service.model}));console.log(JSON.stringify({type:'assistant',message:{content:[{type:'text',text:'完成单镜头'}]}}));});`);
+    fakeFfprobe(bin, {});
+    const previous = process.env.ONSET_SELF;
+    process.env.ONSET_SELF = fake;
+    try {
+      const out = new Sink();
+      let model = '';
+      s.afterAttempt = (attempt) => { model = attempt.model; };
+      await run(s, newConfig({ renderer: 'director' }), false, { PATH: bin, HOME: tempDir(), ONSET_AGENT_DIR: agentDir }, out, 0.15);
+      expect(model).toBe('custom-render-model');
+      expect(out.text).not.toContain('sk-test-render');
+      expect(fs.readFileSync(streamLog(s), 'utf8')).not.toContain('sk-test-render');
+      expect(fs.existsSync(outputPath(s))).toBe(true);
+    } finally {
+      if (previous === undefined) delete process.env.ONSET_SELF;
+      else process.env.ONSET_SELF = previous;
+    }
+  });
+
   it('writes logs and verifies the duration', async () => {
     const s = load(writeScene(plainScene));
     const bin = tempDir();

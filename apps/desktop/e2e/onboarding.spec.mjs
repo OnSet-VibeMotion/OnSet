@@ -17,7 +17,7 @@ test('the first-run guide walks through tools, the orchestrator, voice and the f
   // 第一个没做完的是配音。
   await expect(guide.locator('.ob-main h2')).toHaveText('配音方式');
 
-  // 选导演：写进全局设置，出现配置模型服务的表单（预设已经填好）；填了 key 保存之后导演就能用。
+  // 选制作人：写进全局设置，出现配置模型服务的表单（预设已经填好）；填了 key 保存之后制作人就能用。
   await guide.locator('[data-step="ai"]').click();
   await guide.locator('[data-agent="director"]').click();
   await expect.poll(() => (fs.existsSync(sandbox.settings) ? fs.readFileSync(sandbox.settings, 'utf8') : '')).toContain('ORCHESTRATOR=director');
@@ -52,7 +52,7 @@ test.describe('without a renderer on this computer', () => {
     await expect(guide).toBeVisible();
     await expect(guide.locator('.ob-main h2')).toHaveText('请 AI 来编排');
 
-    // 选导演、配一套只读得了文字的服务（DeepSeek 预设不勾「能看图片」）：导演能用了，但这一步仍没做完，「去开拍」不让点。
+    // 选制作人、配一套只读得了文字的服务（DeepSeek 预设不勾「能看图片」）：制作人能用了，但这一步仍没做完，「去开拍」不让点。
     await guide.locator('[data-agent="director"]').click();
     const form = guide.getByRole('form', { name: '添加模型服务' });
     await form.locator('[data-preset="deepseek"]').click();

@@ -234,7 +234,7 @@
 .settings .settings-section > .skins .skins-head {
   display: none;
 }
-/* 导演的模型服务：存下的几套 + 添加 / 编辑表单（DirectorServices.tsx）。 */
+/* 制作人的模型服务：存下的几套 + 添加 / 编辑表单（DirectorServices.tsx）。 */
 .settings .agent-services {
   display: flex;
   flex-direction: column;
@@ -460,7 +460,7 @@
     width: auto;
   }
 }
-/* 导演的模型看不了画面：设置页、首次引导与开工前的对话里共用。 */
+/* 制作人的模型看不了画面：设置页、首次引导与开工前的对话里共用。 */
 .vision-note {
   display: flex;
   align-items: flex-start;

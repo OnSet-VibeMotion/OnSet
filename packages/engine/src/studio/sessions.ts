@@ -634,7 +634,7 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
   // 不写进项目 AGENTS.md：渲染子进程也会读它，而这些限制只针对编排。
   const ownership = readSection('host', 'scene-ownership').trim();
   if (!prompt.includes(ownership)) prompt += '\n\n---\n\n' + ownership;
-  // 导演用的模型看不了图：每一轮都提醒，续接的会话里它也可能走到画面验收、复查。
+  // 制作人用的模型看不了图：每一轮都提醒，续接的会话里它也可能走到画面验收、复查。
   if (orchestratorCannotSee(cfg)) prompt += '\n\n---\n\n' + noVisionNote;
   const [brief, digest] = preferenceBrief(p, cfg);
   const resend = brief !== '' && (digest !== (sess.meta.preference_digest ?? '') || !sess.meta.cli_session_id || (sess.meta.turns ?? []).length === 0);

@@ -1,5 +1,5 @@
 /**
- * 导演用的模型看不了图片时怎么办。
+ * 制作人用的模型看不了图片时怎么办。
  *
  * 画面验收与整片复查要打开 PNG 看图判断；看不了图的模型用 pi 的 read 打开图片只拿到一句「图片已省略」，
  * 验收等于没做，而且没人知道。所以：
@@ -12,7 +12,7 @@ import * as config from '../config';
 import * as director from '../director';
 import { envMap } from '../envutil';
 
-/** 这一轮的编排是导演、且在用的模型服务标着看不了图。 */
+/** 这一轮的编排是制作人、且在用的模型服务标着看不了图。 */
 export function orchestratorCannotSee(cfg: config.Config): boolean {
   if (cfg.orchestrator !== director.Tool) return false;
   const service = director.activeServiceInfo(director.defaultDir(envMap()));

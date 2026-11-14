@@ -267,7 +267,7 @@ export const spawnOp: Spawner = (name, params) => {
 };
 
 /**
- * 导演（onset studio agent）用的执行进程：会再起导演的操作（director.KeyOps，整理经验）经 stdin 拿到导演在用的
+ * 制作人（onset studio agent）用的执行进程：会再起制作人的操作（director.KeyOps，整理经验）经 stdin 拿到制作人在用的
  * 模型服务（含 key），其余与 spawnOp 相同。执行进程解不开客户端加密的服务文件，只能由手里有它的进程往下交。
  */
 export function spawnOpWithService(service: director.ResolvedService | null): Spawner {

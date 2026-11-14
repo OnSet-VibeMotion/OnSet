@@ -1,5 +1,5 @@
 /**
- * onset studio agent（导演）两半之间的接口：
+ * onset studio agent（制作人）两半之间的接口：
  *
  * - command.ts 在 onset.cjs 里：读请求、把操作表做成工具、管权限，不 import pi；
  * - pi.ts 打成单独的 onset-agent.cjs，只在这一个命令里加载，跑 pi 的 agent 循环。

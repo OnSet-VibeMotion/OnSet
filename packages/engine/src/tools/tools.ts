@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { windowsPromptInput, windowsOrchestratorEffort } from './windows';
 import { marshal } from '../gojson';
-import { defaultDir as directorDir, resolveService as directorService, Tool as DirectorToolName } from '../director';
+import { defaultDir as directorDir, resolveService as directorService, rendererDir, NoServiceMessage, Tool as DirectorToolName, type Request as DirectorRequest } from '../director';
 import { onsetCommand, WindowsBaseEnvKeys } from '../envutil';
 import { pluginChildEnvs } from '../plugin/registry';
 
@@ -17,15 +17,14 @@ export const UserMessageMarker = '[[USER_MESSAGE]]';
 export const ValidTools: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'codebuddy', 'opencode', 'director']);
 
 /**
- * 能当渲染工具的那几家。导演（director）暂时只做编排：渲染要写出复杂的 HyperFrames 合成、自己检查再改，
- * 最依赖成熟的编码工具，先用外部 CLI；RENDERER、scene.json 的 renderer、记忆的 applies_when.renderers 按这张表校验。
+ * 能当渲染工具的工具；RENDERER、scene.json 的 renderer、记忆的 applies_when.renderers 按这张表校验。
  */
-export const ValidRenderers: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'codebuddy', 'opencode']);
+export const ValidRenderers: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'codebuddy', 'opencode', 'director']);
 
-/** 导演的工具名（director.Tool）。 */
+/** 制作人的工具名（director.Tool）。 */
 export const DirectorTool = DirectorToolName;
 
-/** 按 claude 系 stream-json 解析的工具：导演照这个格式输出，见 director。 */
+/** 按 claude 系 stream-json 解析的工具：制作人照这个格式输出，见 director。 */
 export function claudeLikeStream(tool: string): boolean {
   return tool === 'claude' || tool === 'qoder' || tool === 'codebuddy' || tool === DirectorTool;
 }
@@ -265,10 +264,29 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
       return [...args, '--format', 'json', prompt];
     }
     case 'director':
-      throw new Error('导演暂时只能做编排，渲染工具请选 claude、codex、qoder、codebuddy 或 opencode');
+      return directorCommand().argv;
     default:
       throw new Error(`未知工具：${tool}`);
   }
+}
+
+function directorCommand(): Invocation {
+  const onset = onsetCommand();
+  return { argv: [onset.command, ...onset.args, 'studio', 'agent'], stdin: '', env: onset.env };
+}
+
+/** 渲染的完整调用；自带制作人的提示词、模型和密钥只经 stdin，外部工具沿用各自的命令行。 */
+export function rendererLaunch(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model: string, session: RendererSession | null, workdir: string, env: Record<string, string | undefined>): Invocation {
+  if (tool !== DirectorTool) return windowsPromptInput(tool, rendererInvocation(tool, prompt, unsafe, access, model, session), prompt);
+  const agentDir = directorDir({ ...process.env, ...env });
+  const service = directorService(agentDir);
+  if (!service) throw new Error(NoServiceMessage);
+  const request: DirectorRequest = {
+    profile: 'renderer', workdir, prompt, agent_dir: rendererDir(agentDir), service,
+    model: model || undefined, session_id: session?.id, resume: session?.resume || undefined,
+    unsafe: unsafe || access.unfiltered || undefined, commands: access.commands, read_dirs: access.readDirs,
+  };
+  return { ...directorCommand(), stdin: JSON.stringify(request) + '\n' };
 }
 
 /** opencode 渲染器的工具服务经环境变量 OPENCODE_CONFIG_CONTENT 给（opencode run 没有 MCP 参数），合并用户自己的这个变量。 */
@@ -339,7 +357,7 @@ export interface OrchestratorOptions {
   toolsServer?: McpServer;
   /** 模型（config 的 orchestratorModel）；空用那家工具自己的默认，见 modelArgs。 */
   model?: string;
-  /** 导演的数据目录（凭据）；只有 director 用，空时按环境算（director.defaultDir）。 */
+  /** 制作人的数据目录（凭据）；只有 director 用，空时按环境算（director.defaultDir）。 */
   agentDir?: string;
 }
 
@@ -505,7 +523,7 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
       return { argv: args, stdin: '' };
     }
     case 'director': {
-      // 导演是 onset 自己（onset studio agent），请求经 stdin 给，见 director.Request。
+      // 制作人是 onset 自己（onset studio agent），请求经 stdin 给，见 director.Request。
       // 不能按名字找 onset：编排工具的 PATH 最前面是只会报错的那个 onset（envutil.addToolsLocation）。
       const onset = onsetCommand();
       const agentDir = o.agentDir || directorDir({ ...process.env, ...env });
@@ -520,7 +538,7 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
         writable_dirs: access.writableDirs && access.writableDirs.length > 0 ? access.writableDirs : undefined,
         agent_dir: agentDir,
         // 在用的模型服务连同 key 由这里（父进程）读出、经 stdin 交下去；客户端里经 safeStorage 解密（director.useKeyCodec）。
-        // 导演与它跑的命令都不读磁盘上的凭据，见 director.resolveService。
+        // 制作人与它跑的命令都不读磁盘上的凭据，见 director.resolveService。
         service: directorService(agentDir) ?? undefined,
       };
       return { argv: [onset.command, ...onset.args, 'studio', 'agent'], stdin: JSON.stringify(request) + '\n', env: onset.env };
