@@ -109,8 +109,7 @@ defineOp({
 
 force 跳过全部上述判定，无条件重渲染每个镜头。
 
-jobs 取值 1..16，缺省读配置 SCENE_JOBS（其自身默认为 3）。retries 取值 0..5。
-越界直接失败，不做截断。
+并发上限由用户配置 SCENE_JOBS 决定，工具调用不覆盖它。retries 取值 0..5，越界直接失败，不做截断。
 
 重试只针对渲染器非零退出，退避 10 秒与 30 秒。产物规格校验失败不重试：
 同样的提示词和渲染器重跑只会得到同样不合规的产物，而每次重试都是一次完整的
@@ -127,8 +126,8 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
 应当读它来判断是哪些镜头失败，而不是解析人类可读的表格。`,
   examples: [
     'scene_run_all({"scenes": "scenes/"})',
-    '# 并发 3、失败重试 2 次，并写出机器可读报告',
-    'scene_run_all({"scenes": "scenes/", "jobs": 3, "retries": 2, "report_json": "production/run-report.json"})',
+    '# 按用户配置并发、失败重试 2 次，并写出机器可读报告',
+    'scene_run_all({"scenes": "scenes/", "retries": 2, "report_json": "production/run-report.json"})',
     '# 渲染前先核对镜头拆分是否完整覆盖字幕，不通过就不开工',
     'scene_run_all({"scenes": "scenes/", "srt": "transcription.srt", "strict_coverage": true})',
     '# 输入改过、镜头被判为 Stale 时，显式重渲染',
@@ -136,7 +135,7 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
   ],
   params: {
     scenes: { type: 'string', description: '镜头目录的上级目录', required: true, positional: 0 },
-    jobs: { type: 'integer', description: '并发上限，取值 1..16；缺省读配置 SCENE_JOBS，其自身默认为 3', default: 0 },
+    jobs: { type: 'integer', description: '并发上限，取值 1..16；缺省读配置 SCENE_JOBS，其自身默认为 3', default: 0, cliOnly: true },
     retries: { type: 'integer', description: '单个镜头失败后的最大重试次数，取值 0..5', default: 2 },
     duration_tolerance: durationTolerance,
     force: { type: 'boolean', description: '跳过「已有合格产物」与 Stale 判定，无条件重渲染每个镜头' },
@@ -225,6 +224,7 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     const cpus = os.availableParallelism(), total = schedule.systemMemory(), available = os.freemem();
     const runJobs = process.platform === 'win32' ? windowsSceneJobs(cpus, total, available, jobs) : jobs;
     const activeJobs = Math.min(runJobs, scenes.length - initial.size);
+    out.write(`镜头调度：并发上限 ${runJobs}，本批待渲染 ${scenes.length - initial.size} 个，最多同时运行 ${activeJobs} 个\n`);
     const workers = process.platform === 'win32'
       ? windowsRenderWorkers(cpus, total, available, activeJobs)
       : schedule.renderWorkers(cpus, total, activeJobs);

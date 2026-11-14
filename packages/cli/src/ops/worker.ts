@@ -8,7 +8,7 @@ import * as director from '@onset/engine/director';
 import * as envutil from '@onset/engine/envutil';
 import { ExitError, type Out } from '../cobra';
 import { ResultMarker, type WorkerResult } from '@onset/engine/opworker';
-import { findOp, normalizeParams, opScopes, ParamError, type OpScope, type ParamValues } from './op';
+import { findOp, normalizeToolParams, opScopes, ParamError, type OpScope, type ParamValues } from './op';
 import { OpScopeEnv } from '@onset/engine/opworker';
 
 /** 失败的退出码：与命令行相同，127 缺外部命令，130 被中断，ExitError 透传子进程的。 */
@@ -52,7 +52,7 @@ export async function runOpWorker(name: string, paramsJSON: string, out: Out, si
   try {
     const parsed: unknown = paramsJSON.trim() === '' ? {} : JSON.parse(paramsJSON);
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new ParamError('参数要是一个 JSON 对象');
-    params = normalizeParams(op, parsed as ParamValues);
+    params = normalizeToolParams(op, parsed as ParamValues);
   } catch (err) {
     return finish({ ok: false, error: (err as Error).message, param_error: true, exit_code: 1 });
   }

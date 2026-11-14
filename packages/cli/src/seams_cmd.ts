@@ -44,7 +44,7 @@ defineOp({
     scenes: { type: 'string', description: '镜头根目录', required: true, positional: 0 },
     frames: { type: 'integer', description: '只改开头这么多帧；缺省约半秒', default: 0 },
     all: { type: 'boolean', description: '连已经接上的交界也重做开头' },
-    jobs: { type: 'integer', description: '并发上限，取值 1..16；缺省读配置 SCENE_JOBS', default: 0 },
+    jobs: { type: 'integer', description: '并发上限，取值 1..16；缺省读配置 SCENE_JOBS', default: 0, cliOnly: true },
     duration_tolerance: { type: 'number', description: '产物时长容差（秒）', default: 0.05 },
   },
   run: async (p, { out, signal, unsafe }) => {

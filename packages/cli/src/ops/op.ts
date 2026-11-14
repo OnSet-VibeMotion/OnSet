@@ -29,7 +29,7 @@ export interface ParamSpec {
   flag?: string;
   /** 命令行适配：单字母简写。 */
   shorthand?: string;
-  /** 不进工具列表（只给命令行用，例如交互确认的 --yes）。 */
+  /** 只给开发命令行用：不进工具列表，工具服务与客户端执行进程忽略调用方传来的值。 */
   cliOnly?: boolean;
 }
 
@@ -147,6 +147,13 @@ export function normalizeParams(op: Op, input: ParamValues): ParamValues {
     out[key] = coerce(op, key, spec, raw);
   }
   return out;
+}
+
+/** 工具与客户端入口：旧会话可能仍传仅命令行参数，统一丢弃并补缺省值。 */
+export function normalizeToolParams(op: Op, input: ParamValues): ParamValues {
+  const values = { ...input };
+  for (const [key, spec] of Object.entries(op.params)) if (spec.cliOnly) delete values[key];
+  return normalizeParams(op, values);
 }
 
 function coerce(op: Op, key: string, spec: ParamSpec, raw: unknown): unknown {

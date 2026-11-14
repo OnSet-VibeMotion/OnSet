@@ -17,7 +17,7 @@ import { parseWorkerOutput, visibleText, workerArgs } from '@onset/engine/opwork
 import { groupSpawnOptions, killTree } from '@onset/engine/procgroup';
 import { nodeCommand } from '@onset/engine/toolpath';
 import './cli';
-import { allOps, normalizeParams, type Op, opScopes, type ParamSpec, type ParamValues } from './ops/op';
+import { allOps, normalizeToolParams, type Op, opScopes, type ParamSpec, type ParamValues } from './ops/op';
 
 /** 档位：编排工具拿全部工具，渲染器只拿 hyperframes。 */
 export type Profile = 'orchestrator' | 'renderer';
@@ -204,8 +204,7 @@ export function describeTools(profile: Profile, root = ''): ToolDef[] {
 export function prepareCall(tool: ToolDef, input: ParamValues): ParamValues {
   const op = tool.op!;
   const { wait_seconds: _wait, ...rest } = input;
-  for (const [key, spec] of Object.entries(op.params)) if (spec.cliOnly) delete rest[key];
-  const params = normalizeParams(op, rest);
+  const params = normalizeToolParams(op, rest);
   if (op.name === 'hyperframes') {
     const sub = String(params.subcommand ?? '');
     if (!(HyperFramesSubcommands as readonly string[]).includes(sub)) throw new Error(`hyperframes 不放行子命令 ${sub || '（空）'}；只能用：${HyperFramesSubcommands.join('、')}`);
