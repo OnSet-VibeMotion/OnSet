@@ -10,6 +10,7 @@ export const ResultMarker = '\u0000am-result ';
 
 /** 执行进程的入口参数：`<onset> __op <名字> <参数 JSON>`。 */
 export const WorkerArg = '__op';
+export * from './broker';
 
 /** 执行进程只跑这个权限范围里的操作（如 orchestrator）；不设不限。客户端替第三方插件调 onset 操作时设它。 */
 export const OpScopeEnv = 'ONSET_OP_SCOPE';

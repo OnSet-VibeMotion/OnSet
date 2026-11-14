@@ -95,7 +95,7 @@ export const test = base.extend({
       ONSET_STUDIO_CONFIG: sandbox.registry,
       ONSET_MEMORY_DIR: sandbox.memory,
       ONSET_VOICES_DIR: sandbox.voices,
-      // 导演的模型服务密钥：不碰开发者自己填的。
+      // 制作人的模型服务密钥：不碰开发者自己填的。
       ONSET_AGENT_DIR: sandbox.agent,
       // 不用 safeStorage：测试不能碰开发者的钥匙串（第一次用会弹授权框），key 照旧写成 0600 的明文文件。
       ONSET_AGENT_KEYS_PLAINTEXT: '1',

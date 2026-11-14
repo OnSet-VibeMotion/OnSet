@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { ActivityStep, Scene, SceneActivity, ViewRequest } from '../types';
 import { describeTool, formatElapsed } from './chat/model';
-import {windowsRenderProgress} from './render-progress';
+import {currentActivityStep, renderPhases, renderPresentation} from './render-progress';
 import '../render-activity.css';
 
 /*
@@ -88,10 +88,16 @@ export function describeStep(step: ActivityStep, sceneDir: string): StepView {
 
 /** 卡片上那一行「现在在做什么」。 */
 function currentLine(steps: ActivityStep[], sceneDir: string): string {
-  const last = steps[steps.length - 1];
+  const last = currentActivityStep(steps);
   if (!last) return '正在启动渲染器…';
   const view = describeStep(last, sceneDir);
-  if (last.kind === 'tool' && last.state === 'running') return `正在${view.verb}${view.target ? '：' + firstLine(view.target) : ''}`;
+  if (last.kind === 'tool' && last.state === 'running') {
+    // 完整命令留在展开的过程里；标题不要被运行时路径或 --json 之类的参数占满。
+    const tool = describeTool(last.tool ?? '', last.input);
+    if (tool.command) return '正在运行制作命令';
+    const target = /^--?/.test(view.target) ? '' : view.target;
+    return `正在${view.verb}${target ? '：' + firstLine(target) : ''}`;
+  }
   if (last.kind === 'text') return firstLine(view.target);
   return `${view.verb}${view.target ? '：' + firstLine(view.target) : ''}`;
 }
@@ -164,42 +170,66 @@ function StepList({ steps, sceneDir, offset }: { steps: ActivityStep[]; sceneDir
 
 /** 对话里：有镜头在渲染时挂在输入框上方，每个在渲染的镜头一张卡片。 */
 export function RenderWatch({ scenes, onView }: { scenes: Scene[]; onView: (view: ViewRequest) => void }) {
+  const [activities, setActivities] = useState<Record<string, SceneActivity>>({});
+  const [collapsed, setCollapsed] = useState(false);
+  const report = useCallback((id: string, activity: SceneActivity) => setActivities((previous) => ({...previous, [id]: activity})), []);
   const rendering = scenes.filter((scene) => scene.rendering);
   if (rendering.length === 0) return null;
+  const active = rendering.filter((scene) => activities[scene.id]?.rendering !== false);
+  const waiting = active.filter((scene) => {
+    const activity = activities[scene.id];
+    return activity && renderPresentation(activity.steps, activity.renderer !== 'codex' || activity.tool_lifecycle === 'codex-mcp-v1').state === 'waiting';
+  }).length;
   return (
-    <section className="render-watch" aria-label={`正在渲染的镜头 ${rendering.length} 个`}>
+    <section className={'render-watch' + (active.length === 0 ? ' is-finished' : '')} aria-label={`正在渲染的镜头 ${active.length} 个`}>
+      <header className="render-watch-heading">
+        <span className="render-watch-mark" aria-hidden="true">▥</span>
+        <strong>镜头制作</strong><span className="render-watch-count">{active.length} 个进行中</span>
+        {waiting > 0 && <span className="render-watch-waiting">{waiting} 个等待回复</span>}
+        <button className="link small" aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)}>{collapsed ? '展开列表' : '收起列表'}</button>
+      </header>
+      <div className={'render-watch-list' + (collapsed ? ' collapsed' : '')}>
       {rendering.map((scene) => (
-        <WatchCard key={scene.id} scene={scene} onView={onView} />
+        <WatchCard key={scene.id + (scene.rendering_since ?? '')} scene={scene} onView={onView} onActivity={report} />
       ))}
+      </div>
     </section>
   );
 }
 
-function WatchCard({ scene, onView }: { scene: Scene; onView: (view: ViewRequest) => void }) {
+function WatchCard({ scene, onView, onActivity }: { scene: Scene; onView: (view: ViewRequest) => void; onActivity: (id: string, activity: SceneActivity) => void }) {
   const activity = useSceneActivity(scene.id, true);
   const [open, setOpen] = useState(false);
   const now = useNow(true);
+  useEffect(() => { if (activity) onActivity(scene.id, activity); }, [activity, scene.id, onActivity]);
   const steps = activity?.steps ?? [];
   // 已经结束、镜头列表还没刷新：先不显示。
   if (activity && !activity.rendering) return null;
   const elapsed = since(activity?.started_at, now);
   const quiet = since(activity?.updated_at, now);
-  const running = steps[steps.length - 1]?.state === 'running';
-  const windows=window.onset?.platform==='win32'?windowsRenderProgress(steps,activity?.renderer!=='codex'||activity?.tool_lifecycle==='codex-mcp-v1'):null;
+  const progress = renderPresentation(steps, activity?.renderer !== 'codex' || activity?.tool_lifecycle === 'codex-mcp-v1');
+  const phase = progress.phase === undefined ? steps.length > 0 ? '制作中' : '启动制作' : renderPhases[progress.phase];
+  const number = /^scene-(\d+)$/.exec(scene.id)?.[1];
+  const name = number ? `镜头 ${number.replace(/^0+(?=\d{2})/, '')}` : scene.id;
   const shown = steps.slice(-30);
   return (
-    <div className={'render-card' + (open ? ' open' : '')} data-render-scene={scene.id}>
-      <button className="ra-head" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="orb tiny" aria-hidden="true" />
-        <span className="ra-title">{scene.id} {windows?.title??'渲染中'}</span>
-        {activity?.started_at && <span className="ra-elapsed mono">{formatElapsed(elapsed)}</span>}
-        <span className="ra-current ellipsis">{windows?.line??currentLine(steps, scene.directory)}</span>
-        <span className="ra-toggle">{open ? '收起' : '看过程'}</span>
+    <div className={'render-card ' + progress.state + (open ? ' open' : '')} data-render-scene={scene.id}>
+      <button className="ra-head" aria-expanded={open} aria-label={`${name}，${phase}，${progress.label}，${open ? '收起过程' : '展开过程'}`} onClick={() => setOpen(!open)}>
+        <span className="ra-scene-number" aria-hidden="true">{number ? number.slice(-2) : '▥'}</span>
+        <span className="ra-main">
+          <span className="ra-main-heading"><span className="ra-title">{name}</span><span className="ra-phase">{phase}</span></span>
+          <span className="ra-current ellipsis">{progress.detail}</span>
+        </span>
+        <span className="ra-timing">
+          <span className={'ra-status ' + progress.state}><i aria-hidden="true" />{progress.label}</span>
+          <span className={'ra-freshness' + (quiet > 90 ? ' is-quiet' : '')}>{activity?.updated_at ? quiet < 3 ? '刚刚更新' : `${formatElapsed(quiet)} 未更新` : '读取进展中'}</span>
+        </span>
+        <span className="ra-elapsed mono" title="本次渲染累计用时">{activity?.started_at ? <>累计 {formatElapsed(elapsed)}</> : '—'}</span>
+        <span className={'ra-toggle' + (open ? ' expanded' : '')}><span className="ra-toggle-label">{open ? '收起' : '展开'}</span><span aria-hidden="true">⌄</span></span>
       </button>
-      {quiet > 90 && (
+      {quiet > 90 && open && (
         <p className="ra-quiet">
-          已经 {formatElapsed(quiet)} 没有新动静
-          {windows?'：'+windows.quiet:running ? '：这一步还在跑，渲染视频、截图检查本来就要几分钟' : ''}
+          {progress.state === 'waiting' ? '暂未收到新的模型回复，任务仍在等待；累计用时不代表等待时长。' : progress.state === 'busy' ? '工具尚未返回新结果，取帧和检查可能需要几分钟。' : '暂未收到新的进展，请展开过程查看最近记录。'}
         </p>
       )}
       {open && (

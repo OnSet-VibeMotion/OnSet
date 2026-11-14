@@ -8,7 +8,7 @@
  * - codebuddy：没有列模型的命令，`--help` 里 --model 的说明写着「Currently supported: (a, b, …)」。
  * - opencode：`opencode models` 每行一个「服务商/模型」。
  * - claude：`--model` 的说明只给别名（fable、opus、sonnet）或完整模型名。
- * - director（导演）：不跑命令，由客户端后端直接问在用的模型服务（director.listServiceModels，studio/agents.ts）。
+ * - director（制作人）：不跑命令，由客户端后端直接问在用的模型服务（director.listServiceModels，studio/agents.ts）。
  */
 
 export interface ModelOption {
@@ -18,7 +18,7 @@ export interface ModelOption {
   description?: string;
 }
 
-/** 列模型要跑的命令；null 表示不用跑（claude 用内置别名，导演直接问模型服务）。 */
+/** 列模型要跑的命令；null 表示不用跑（claude 用内置别名，制作人直接问模型服务）。 */
 export function modelListCommand(tool: string): string[] | null {
   switch (tool) {
     case 'codex':

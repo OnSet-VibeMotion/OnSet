@@ -14,7 +14,7 @@ interface Props {
  */
 export function AgentPicker({ agents, value, disabled, onChange }: Props) {
   if (!agents) return null;
-  // 渲染一栏只列能当渲染工具的（导演暂时只做编排）；已经选着的照样显示，免得下拉框空着。
+  // 渲染一栏只列能当渲染工具的；已经选着的照样显示，免得下拉框空着。
   const options = (current: string, fallback: string, seat: 'orchestrator' | 'renderer') =>
     agents.agents
       .filter((agent) => seat === 'orchestrator' || agent.renderer || agent.id === current)

@@ -26,12 +26,12 @@ describe('director vision', () => {
     expect(orchestratorCannotSee(cfg('director'))).toBe(true);
     // 能不能看图按服务上写的那一项，临时换模型名不改变它。
     expect(orchestratorCannotSee(cfg('director', 'other'))).toBe(true);
-    // 不是导演：别家工具自己的事。
+    // 不是制作人：别家工具自己的事。
     expect(orchestratorCannotSee(cfg('claude'))).toBe(false);
     // 换成一套能看图的在用。
     agentDir({ vision: false }, { vision: true, active: true });
     expect(orchestratorCannotSee(cfg('director'))).toBe(false);
-    // 没有服务：不提示（导演根本开不了工）。
+    // 没有服务：不提示（制作人根本开不了工）。
     agentDir();
     expect(orchestratorCannotSee(cfg('director'))).toBe(false);
   });
@@ -81,7 +81,7 @@ describe('director vision', () => {
   it('writes the turn note like the production prompt', () => {
     // 与 project/boundary.test.ts、flowprompts.test.ts 同样的约束：不点名执行者身份、不教 onset 命令，工具写成调用。
     expect(noVisionNote.toLowerCase()).not.toContain('agent');
-    expect(noVisionNote).not.toMatch(/\bAI\b|Codex|主控|导演|模型|\.\/onset|`onset /);
+    expect(noVisionNote).not.toMatch(/\bAI\b|Codex|主控|制作人|模型|\.\/onset|`onset /);
     expect(noVisionNote).toContain('我看不了图，请你看这几张');
     const calls = [...noVisionNote.matchAll(/studio_show\((\{.*?\})\)/g)].map((m) => JSON.parse(m[1]!) as { page: string });
     expect(calls.length).toBeGreaterThanOrEqual(2);

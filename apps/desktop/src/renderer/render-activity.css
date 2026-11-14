@@ -6,23 +6,86 @@
   flex: none;
   /* 并发镜头与展开的过程不能把对话挤到零高度，导致消息层盖住收起按钮。 */
   max-height: min(360px, 45vh);
-  overflow-y: auto;
+  overflow: hidden;
   overscroll-behavior-y: contain;
   margin: 6px calc(var(--gutter, 16px) - 6px) 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-}
-.render-watch .render-card {
-  flex-shrink: 0;
+  gap: 0;
   border: 1px solid var(--line-strong);
   border-radius: 12px;
   background: var(--raised);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  container-type: inline-size;
+}
+.render-watch.is-finished { display: none; }
+.render-watch-heading {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 9px;
+  min-height: 42px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.render-watch-heading strong { font-weight: 600; color: var(--text); }
+.render-watch-mark { color: var(--accent-text); font-size: 17px; }
+.render-watch-count { color: var(--text-3); }
+.render-watch-waiting { color: var(--muted); margin-left: auto; }
+.render-watch-heading > button { margin-left: auto; font-size: 11px; }
+.render-watch-waiting + button { margin-left: 6px; }
+.render-watch-list {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.render-watch-list.collapsed { display: none; }
+.render-watch:has(.render-watch-list.collapsed) .render-watch-heading { border-bottom: 0; }
+.render-watch .ra-main {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  flex: 1;
+}
+.render-watch .ra-main-heading { display: flex; align-items: center; gap: 10px; }
+.render-watch .ra-scene-number {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 38px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--text-3);
+  background: var(--bg);
+  font: 12px var(--mono);
+}
+.render-watch .busy .ra-scene-number { border-color: var(--accent-line); color: var(--accent-text); }
+.render-watch .ra-phase { color: var(--text-3); font-size: 11px; }
+.render-watch .ra-timing { display: flex; flex: none; flex-direction: column; align-items: flex-start; gap: 5px; width: 96px; }
+.render-watch .ra-status { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); font-size: 11px; }
+.render-watch .ra-status i { width: 5px; height: 5px; border-radius: 50%; border: 1px solid currentColor; }
+.render-watch .ra-status.busy { color: var(--accent-text); }
+.render-watch .ra-status.busy i { background: currentColor; }
+.render-watch .ra-status.warning { color: var(--accent-text); }
+.render-watch .ra-freshness { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.render-watch .ra-freshness.is-quiet { color: var(--accent-text); }
+.render-watch .ra-toggle-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.render-watch .ra-toggle > [aria-hidden] { display: block; transition: transform .15s ease; }
+.render-watch .ra-toggle.expanded > [aria-hidden] { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .render-watch .ra-toggle > [aria-hidden] { transition: none; }
+}
+.render-watch .render-card {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--line);
   overflow: hidden;
 }
+.render-watch .render-card:last-child { border-bottom: 0; }
 .render-watch .render-card.open {
-  border-color: var(--accent-line);
+  background: var(--hover);
 }
 .render-watch .ra-head {
   all: unset;
@@ -30,9 +93,9 @@
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 6px 12px;
+  gap: 12px;
+  min-height: 68px;
+  padding: 11px 14px;
   cursor: pointer;
   font-size: 13px;
 }
@@ -45,13 +108,13 @@
 }
 .render-watch .ra-toggle {
   flex: none;
-  font-size: 12px;
-  color: var(--accent-text);
+  font-size: 17px;
+  color: var(--text-3);
 }
 .render-watch .ra-quiet {
   margin: 0;
-  padding: 0 12px 8px 30px;
-  font-size: 12px;
+  padding: 0 14px 10px 60px;
+  font-size: 11px;
   color: var(--muted);
 }
 .render-watch .ra-steps {
@@ -84,6 +147,13 @@
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--accent-text);
+}
+.render-watch .ra-elapsed { min-width: 90px; color: var(--muted); font-size: 10px; text-align: right; }
+.render-watch .ra-main .ra-current { display: block; flex: none; font-size: 11px; }
+@container (max-width: 520px) {
+  .render-watch .ra-elapsed { display: none; }
+  .render-watch-waiting { display: none; }
+  .render-watch .ra-head { gap: 9px; padding-inline: 10px; }
 }
 .render-watch .ra-current,
 .scene-activity .ra-current {

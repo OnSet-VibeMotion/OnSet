@@ -10,6 +10,7 @@ import { ExitError, type Out } from '../cobra';
 import { ResultMarker, type WorkerResult } from '@onset/engine/opworker';
 import { findOp, normalizeToolParams, opScopes, ParamError, type OpScope, type ParamValues } from './op';
 import { OpScopeEnv } from '@onset/engine/opworker';
+import { OpBrokerEnv, OpBrokerRelayedEnv, relayOperation } from '@onset/engine/opworker';
 
 /** 失败的退出码：与命令行相同，127 缺外部命令，130 被中断，ExitError 透传子进程的。 */
 export function exitCodeOf(err: unknown, signal: AbortSignal): number {
@@ -20,7 +21,7 @@ export function exitCodeOf(err: unknown, signal: AbortSignal): number {
 }
 
 /**
- * 调用方把导演在用的模型服务（含 key）经 stdin 交来（director.ServiceStdinEnv）：读出来只放在这个进程的内存里
+ * 调用方把制作人在用的模型服务（含 key）经 stdin 交来（director.ServiceStdinEnv）：读出来只放在这个进程的内存里
  * （director.useService），变量随即从环境里删掉，免得这个进程再起的子进程以为 stdin 上也有。
  */
 export async function takeHandedService(input: AsyncIterable<unknown> = process.stdin, env: NodeJS.ProcessEnv = process.env): Promise<void> {
@@ -38,6 +39,7 @@ export async function takeHandedService(input: AsyncIterable<unknown> = process.
 }
 
 export async function runOpWorker(name: string, paramsJSON: string, out: Out, signal: AbortSignal, unsafe: boolean): Promise<number> {
+  const receivedKeys = process.env[director.ServiceStdinEnv] === '1';
   await takeHandedService();
   const finish = (r: WorkerResult): number => {
     out.write(ResultMarker + JSON.stringify(r) + '\n');
@@ -57,6 +59,10 @@ export async function runOpWorker(name: string, paramsJSON: string, out: Out, si
     return finish({ ok: false, error: (err as Error).message, param_error: true, exit_code: 1 });
   }
   try {
+    const broker = process.env[OpBrokerEnv];
+    if (broker && director.KeyOps.has(name) && !receivedKeys && process.env[OpBrokerRelayedEnv] !== '1') {
+      return await relayOperation(broker, { name, params, cwd: process.cwd(), renderer: process.env.RENDERER ?? '', rendererModel: process.env.RENDERER_MODEL ?? '', orchestrator: process.env.ORCHESTRATOR ?? '' }, text => out.write(text), signal);
+    }
     const result = await op.run(params, { out, err: out, signal, unsafe });
     return finish({ ok: true, data: result ? result.data : undefined, exit_code: 0 });
   } catch (err) {

@@ -22,7 +22,7 @@ export const agentOrder: readonly { id: string; label: string; installURL: strin
   { id: 'qoder', label: 'Qoder', installURL: 'https://help.aliyun.com/zh/lingma/qoder-cli-cn-get-started-quickly' },
   { id: 'codebuddy', label: 'CodeBuddy', installURL: 'https://www.codebuddy.cn/docs/cli/installation' },
   { id: 'opencode', label: 'OpenCode', installURL: 'https://opencode.ai/docs/' },
-  { id: 'director', label: '导演', installURL: '' },
+  { id: 'director', label: '制作人', installURL: '' },
 ];
 
 /**
@@ -47,11 +47,11 @@ interface AgentInfo {
   command: string;
   installed: boolean;
   path?: string;
-  /** 能不能当渲染工具（tools.ValidRenderers）；导演暂时只做编排。 */
+  /** 能不能当渲染工具（tools.ValidRenderers）。 */
   renderer: boolean;
-  /** 没法用时给界面的一句说明（导演还没填模型服务密钥）。 */
+  /** 没法用时给界面的一句说明（制作人还没填模型服务密钥）。 */
   hint?: string;
-  /** 官方安装说明页；导演随客户端下发，没有。 */
+  /** 官方安装说明页；制作人随客户端下发，没有。 */
   install_url?: string;
 }
 
@@ -72,7 +72,7 @@ export function agentsAPI(s: Server, request: Request): Response {
   const agents: AgentInfo[] = agentOrder.map((a) => {
     const renderer = tools.ValidRenderers.has(a.id);
     if (a.id === director.Tool) {
-      // 导演随客户端下发，不用装；「装好」指配了一套在用的模型服务。
+      // 制作人随客户端下发，不用装；「装好」指配了一套在用的模型服务。
       const ready = director.hasService(director.defaultDir(envMap()));
       return { id: a.id, label: a.label, command: 'onset studio agent', installed: ready, renderer, ...(ready ? {} : { hint: '先在设置里配置一个模型服务' }) };
     }
@@ -146,7 +146,7 @@ export async function switchSessionAgents(request: Request, sess: Session): Prom
 /** 列模型的结果缓存：跑一次 codex debug models 要一两秒，下拉框每次打开都跑太慢。 */
 const modelCache = new Map<string, { at: number; models: tools.ModelOption[] }>();
 const modelCacheTTL = 10 * 60 * 1000;
-/** 导演的模型列表按服务缓存（键是服务 id、base URL 与模型）。 */
+/** 制作人的模型列表按服务缓存（键是服务 id、base URL 与模型）。 */
 const directorModelCache = new Map<string, { at: number; models: tools.ModelOption[] }>();
 const modelListTimeout = 20_000;
 
@@ -178,7 +178,7 @@ export async function agentModelsAPI(request: Request, rest: string): Promise<Re
   const argv = tools.modelListCommand(tool);
   let models: tools.ModelOption[];
   if (tool === director.Tool) {
-    // 导演：直接问在用的模型服务；服务换了（id、base URL、模型不同）缓存就作废。
+    // 制作人：直接问在用的模型服务；服务换了（id、base URL、模型不同）缓存就作废。
     const service = director.resolveService(director.defaultDir(envMap()));
     if (!service) return writeJSON(200, goMap({ tool, models: [], error: '还没有配置模型服务' }));
     const key = [service.id, service.base_url, service.model].join('|');

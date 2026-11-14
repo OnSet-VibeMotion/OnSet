@@ -41,13 +41,12 @@ function describe(key: config.GlobalKey): { label: string; hint: string; options
   const agents = agentOrder.map((a) => ({ value: a.id, label: a.label }));
   switch (key) {
     case 'ORCHESTRATOR':
-      return { label: '对话助手', hint: '和你聊天、写口播稿、拆分镜、安排镜头去画的那位。选「导演」不用另装软件，在下面填一套模型服务就能用', options: agents };
+      return { label: '对话助手', hint: '和你聊天、写口播稿、拆分镜、安排镜头去画的那位。选「制作人」不用另装软件，在下面填一套模型服务就能用', options: agents };
     case 'ORCHESTRATOR_MODEL':
       // 可选的模型跟着工具变，由界面按工具去 /api/agents/{工具}/models 取，这里不列。
       return { label: '对话助手的模型', hint: '不确定就选「默认」，由上面那家工具自己决定；换了工具会自动回到默认', options: [], modelOf: 'ORCHESTRATOR' };
     case 'RENDERER':
-      // 导演暂时只做编排（tools.ValidRenderers）。
-      return { label: '画镜头的工具', hint: '把每个镜头的画面做出来的那位，要先装在这台电脑上', options: agents.filter((a) => tools.ValidRenderers.has(a.value)) };
+      return { label: '画镜头的工具', hint: '把每个镜头的画面做出来的那位；制作人使用下方配置的模型服务，其他工具要先装在这台电脑上', options: agents.filter((a) => tools.ValidRenderers.has(a.value)) };
     case 'RENDERER_MODEL':
       return { label: '画镜头的模型', hint: '不确定就选「默认」，由上面那家工具自己决定；换了工具会自动回到默认', options: [], modelOf: 'RENDERER' };
     case 'OPTIMIZER':

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { saveService } from '../director';
-import { interactiveInvocation, modelArgs, modelListCommand, orchestratorInvocation, parseModelList, rendererInvocation, ValidRenderers, ValidTools } from './index';
+import { interactiveInvocation, modelArgs, modelListCommand, orchestratorInvocation, parseModelList, rendererInvocation, rendererLaunch, ValidRenderers, ValidTools } from './index';
 
 describe('model choice', () => {
   // 每家指定模型的参数不同，写错了不报错、只是悄悄用回默认模型（2026-11 各家 --help 实测）。
@@ -15,6 +15,7 @@ describe('model choice', () => {
     expect(rendererInvocation('opencode', 'p', false, access, 'github-copilot/claude-opus-5.5')).toEqual(expect.arrayContaining(['-m', 'github-copilot/claude-opus-5.5']));
     expect(rendererInvocation('codex', 'p', false, access, 'gpt-6.1-sol')).toEqual(expect.arrayContaining(['-c', 'model="gpt-6.1-sol"']));
     for (const tool of ValidRenderers) {
+      if (tool === 'director') continue; // 自带制作人的模型经 stdin 传递。
       expect(modelArgs(tool, '')).toEqual([]);
       // 加模型只多出模型参数，其余（提示词的位置、权限参数）不变。
       const without = rendererInvocation(tool, 'p', false, access, '');
@@ -32,8 +33,8 @@ describe('model choice', () => {
     expect(interactiveInvocation('codebuddy', { model: 'glm-5.3' })!.argv).toEqual(expect.arrayContaining(['--model', 'glm-5.3']));
     const opencode = interactiveInvocation('opencode', { model: 'a/b' }, { OPENCODE_CONFIG_CONTENT: '{"theme":"x"}' })!;
     expect(JSON.parse(opencode.env.OPENCODE_CONFIG_CONTENT!)).toEqual({ theme: 'x', model: 'a/b', permission: { bash: 'ask' } });
-    // 导演的模型、会话与白名单都在 stdin 的请求里，不进命令行（ps 里谁都看得见）。
-    // 在用的模型服务连同 API key 也在请求里：父进程读出（客户端里解密）交下去，导演不读磁盘上的凭据。
+    // 制作人的模型、会话与白名单都在 stdin 的请求里，不进命令行（ps 里谁都看得见）。
+    // 在用的模型服务连同 API key 也在请求里：父进程读出（客户端里解密）交下去，制作人不读磁盘上的凭据。
     const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-director-req-'));
     try {
       const id = saveService(agentDir, { name: 'DeepSeek', protocol: 'openai', base_url: 'https://api.deepseek.com', model: 'deepseek-v4-pro', vision: false, key: 'sk-1' });
@@ -56,10 +57,21 @@ describe('model choice', () => {
     }
   });
 
-  it('keeps the Director out of the renderer seat', () => {
+  it('runs the Producer as a renderer with the service and model only on stdin', () => {
     expect(ValidTools.has('director')).toBe(true);
-    expect(ValidRenderers.has('director')).toBe(false);
-    expect(() => rendererInvocation('director', 'p', false, { commands: [] })).toThrow(/只能做编排/);
+    expect(ValidRenderers.has('director')).toBe(true);
+    const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-renderer-request-'));
+    try {
+      saveService(agentDir, { name: 'custom', protocol: 'openai', base_url: 'https://relay.invalid/v1', model: 'custom-model', vision: true, key: 'sk-renderer-secret' });
+      const launch = rendererLaunch('director', 'scene prompt', false, { commands: ['ls'], readDirs: ['/skills'], unfiltered: true }, 'other-model', { id: 'previous', resume: true }, '/scene', { ONSET_AGENT_DIR: agentDir });
+      expect(launch.argv.slice(-2)).toEqual(['studio', 'agent']);
+      expect(launch.argv.join(' ')).not.toContain('sk-renderer-secret');
+      expect(JSON.stringify(launch.env)).not.toContain('sk-renderer-secret');
+      expect(JSON.parse(launch.stdin)).toMatchObject({ profile: 'renderer', workdir: '/scene', prompt: 'scene prompt', model: 'other-model', session_id: 'previous', resume: true, unsafe: true, read_dirs: ['/skills'], service: { model: 'custom-model', key: 'sk-renderer-secret' } });
+      expect(JSON.parse(launch.stdin).agent_dir).not.toBe(agentDir);
+    } finally {
+      fs.rmSync(agentDir, { recursive: true, force: true });
+    }
   });
 
   it('reads the model lists the tools print', () => {
@@ -73,7 +85,7 @@ describe('model choice', () => {
     expect(parseModelList('codebuddy', help).map((m) => m.id)).toEqual(['hy4free', 'glm-5.3', 'kimi-k3.1-pro']);
     expect(parseModelList('opencode', 'a/b\nwarning: something\nc/d#high\n').map((m) => m.id)).toEqual(['a/b', 'c/d#high']);
     expect(parseModelList('claude', '').map((m) => m.id)).toContain('opus');
-    // 导演不跑命令：客户端后端直接问模型服务（studio/agents.ts）。
+    // 制作人不跑命令：客户端后端直接问模型服务（studio/agents.ts）。
     expect(modelListCommand('director')).toBeNull();
   });
 });

@@ -58,12 +58,12 @@ case "$prompt" in *拍一下*)
   printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"f1","name":"mcp__onset__scene_run","input":{"scene":"scenes/scene-001"}}]}}\n'
   exec sleep 60 ;;
 esac
-# 「导演开机」：像导演（pi）那样不带前缀直接调 scene_run，然后挂起。
-case "$prompt" in *导演开机*)
+# 「制作人开机」：像制作人（pi）那样不带前缀直接调 scene_run，然后挂起。
+case "$prompt" in *制作人开机*)
   printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"d1","name":"scene_run","input":{"scene":"scenes/scene-001"}}]}}\n'
   exec sleep 60 ;;
 esac
-# 「排分镜」：编辑分镜计划就挂起，桌宠的导演走到分镜板前。
+# 「排分镜」：编辑分镜计划就挂起，桌宠的制作人走到分镜板前。
 case "$prompt" in *排分镜*)
   printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"s1","name":"Edit","input":{"file_path":"production/scene-plan.json","old_string":"a","new_string":"b"}}]}}\n'
   exec sleep 60 ;;

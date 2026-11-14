@@ -1,5 +1,5 @@
 /**
- * 导演的待办清单工具。pi 自己没有待办工具，而客户端靠待办清单显示整片制作做到哪了：其他几家的待办
+ * 制作人的待办清单工具。pi 自己没有待办工具，而客户端靠待办清单显示整片制作做到哪了：其他几家的待办
  * （claude 的 TodoWrite、codex 的 todo_list……）都被 agentrun 译成 plan 事件。这里照 claude 的
  * TodoWrite 起名、照它的参数形状收（todos: [{content, status, activeForm?}]，每次是完整清单），
  * 它的 tool_use 经 StreamWriter 原样写出，agentrun 按 claude 系解析就变成 plan 事件，不用另写解析。

@@ -5,6 +5,7 @@ export { BusyError, attachmentText, studioInteraction, transcript, type Attachme
 export { ConflictError, diffTrees, revertTurn, scanTree, statTree, type FileChange, type Turn } from './turns';
 export { setInstallOfficialSkills, type SkillInstaller, type SkillsStatus } from './skills';
 export { agentOrder } from './agents';
+export { startOperationBroker } from './opbroker';
 export { currentSkin, skinJSON } from './skins';
 export { readStoryboard, type StoryboardResponse, type StoryboardScene } from './storyboard';
 export { describeView, drainViewInbox, validateViewRequest, viewInbox, writeViewRequest } from './view';

@@ -1,7 +1,7 @@
 import type { AgentInfo, AgentsResponse } from '../types';
 
 /**
- * 渲染工具能不能用：镜头由 Claude Code、Codex 这类工具来画，导演只做编排。设置里的渲染工具没装在这台电脑上时，
+ * 渲染工具能不能用：制作人需要已配置的模型服务，外部工具需要安装。不可用时，
  * 整片制作会一路做到第一次渲染才报错，所以首次引导、首页与「开始制作」都先看这里。
  */
 export interface RendererState {
@@ -21,8 +21,9 @@ export function rendererState(agents: AgentsResponse | null, renderer: string): 
   const info = agents.agents.find((a) => a.id === renderer);
   if (info?.renderer && info.installed) return { ok: true, info, installed, reason: '' };
   const name = info?.label ?? renderer;
-  const reason =
-    installed.length > 0
+  const reason = renderer === 'director'
+    ? '制作人还没有可用的模型服务：请在设置里配置一套，保存后即可画镜头'
+    : installed.length > 0
       ? `画面要靠 ${name} 来画，这台电脑上没有它；换成已经装好的 ${installed.map((a) => a.label).join('、')} 就能开工`
       : '画面要靠 Claude Code、Codex 这类工具来画，这台电脑上一个都还没装';
   return { ok: false, info, installed, reason };

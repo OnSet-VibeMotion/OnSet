@@ -46,7 +46,7 @@ const groups: Group[] = [
   { id: 'plugins', title: '功能与插件', icon: 'plug', blurb: '片场自带的功能，和你自己装的插件。', keys: [] },
 ];
 
-export function Settings({ version, run, onPluginsChanged }: { version: number; run: RunAction; onPluginsChanged?: () => void }) {
+export function Settings({ version, run, onPluginsChanged, onAgentsChanged }: { version: number; run: RunAction; onPluginsChanged?: () => void; onAgentsChanged?: () => void }) {
   const [data, setData] = useState<SettingsResponse | null>(null);
   const [error, setError] = useState('');
   const [active, setActive] = useState(groups[0].id);
@@ -74,6 +74,7 @@ export function Settings({ version, run, onPluginsChanged }: { version: number; 
     try {
       await post('/api/settings/global', { key: row.key, value });
       await reload();
+      onAgentsChanged?.();
     } catch (err) {
       setError(errorText(err));
     }
@@ -162,7 +163,7 @@ export function Settings({ version, run, onPluginsChanged }: { version: number; 
               </div>
             </header>
             {g.keys.length > 0 && <div className="settings-card">{rowsOf(g).map(renderRow)}</div>}
-            {g.id === 'ai' && <DirectorServices version={version} onChange={() => void reload()} />}
+            {g.id === 'ai' && <DirectorServices version={version} onChange={() => { void reload(); onAgentsChanged?.(); }} />}
             {g.id === 'look' && <SkinPicker version={version} />}
             {g.id === 'plugins' && <PluginSettings version={version} onChanged={onPluginsChanged} />}
           </section>

@@ -7,6 +7,7 @@ import type { RunAction, Tab } from './Preview';
 import { ExamProgressPanel } from './ExamProgress';
 import { ExamPlayer as SidePlayer } from './ExamPlayer';
 import { MemoryApplications } from './MemoryApplications';
+import { HumanAcceptance } from './HumanAcceptance';
 import '../memory.css';
 
 interface Props {
@@ -113,7 +114,10 @@ function Contrast({
   featureLabels: Record<string, string>;
 }) {
   const lessonsRef = useRef<HTMLElement>(null);
-  const [examIndex, setExamIndex] = useState(exams.length - 1);
+  const [examIndex, setExamIndex] = useState(() => {
+    const accepted = exams.reduce((index, e, i) => e.human_acceptance ? i : index, -1);
+    return accepted >= 0 ? accepted : exams.length - 1;
+  });
   const exam = exams[Math.min(examIndex, exams.length - 1)];
   const [questionID, setQuestionID] = useState(exam.questions[0]?.id ?? '');
   const question = exam.questions.find((q) => q.id === questionID) ?? exam.questions[0];
@@ -131,25 +135,25 @@ function Contrast({
   const models = [...new Set(exam.cells.map((c) => c.model).filter(Boolean))];
   const lessons = exam.trials.map((name) => memories.find((m) => m.name === name)).filter((m): m is MemoryRow => !!m);
   const bothPassed = !exam.verdict.needs_human && !exam.verdict.pass && exam.cells.length > 0 && exam.cells.every((c) => c.passed && !c.invalid);
-  const verdict = exam.cells.some((c) => c.incomplete) ? '检查依据不完整' : exam.verdict.needs_human ? '等你确认' : exam.verdict.pass ? '考试通过' : bothPassed ? '未发现额外改善' : '没有通过';
+  const verdict = exam.human_acceptance ? '进化完成' : exam.cells.some((c) => c.incomplete) ? '检查依据不完整' : exam.verdict.needs_human ? '等你确认' : exam.verdict.pass ? '考试通过' : bothPassed ? '未发现额外改善' : '没有通过';
   const examinable = lessons.filter((m) => m.kind === 'lesson' && m.examinable);
 
   return (
     <>
       <ol className="evidence-figures" aria-label="这场考试的结果">
         <li>
-          <strong>
+          <strong className={incomplete ? 'evidence-verdict' : undefined}>
             {incomplete ? '暂不能比较' : <>{before} <i>→</i> {after}</>}
           </strong>
           <span>{incomplete ? '检查依据不完整' : '查出的问题'}</span>
-          <small>同样的镜头，带上经验之前与之后</small>
+          <small>{exam.human_acceptance ? '机器检查 · 原始结果保留' : '同样的镜头，带上经验之前与之后'}</small>
         </li>
-        <li className={exam.verdict.pass ? 'on' : ''}>
-          <strong>{verdict}</strong>
+        <li className={exam.human_acceptance || exam.verdict.pass ? 'on' : ''}>
+          <strong className="evidence-verdict">{verdict}</strong>
           <span>
             {exam.questions.length} 个镜头 × 每组 {repeats} 次
           </span>
-          <small>{exam.verdict.needs_human ? '有待核实的条件，本场未改变记忆状态' : exam.applied === 'promoted' ? '待考经验已生效' : exam.applied === 'rejected' ? '待考经验未留下' : '本场未改变记忆状态'}</small>
+          <small>{exam.human_acceptance ? '人工验收通过 · 经验继续生效' : exam.verdict.needs_human ? '有待核实的条件，本场未改变记忆状态' : exam.applied === 'promoted' ? '待考经验已生效' : exam.applied === 'rejected' ? '待考经验未留下' : '本场未改变记忆状态'}</small>
         </li>
         <li>
           <strong>{tested}</strong>
@@ -157,6 +161,8 @@ function Contrast({
           <small>以后渲染相似的镜头会带上</small>
         </li>
       </ol>
+
+      <HumanAcceptance exam={exam} />
 
       {examinable.length > 0 && <section className="evidence-retest-call" aria-label="重考入口">
         <p>本场有 {examinable.length} 条经验可以重新考试。停用或未通过的经验，重考通过后才会恢复生效。</p>
@@ -192,7 +198,7 @@ function Contrast({
             >
               {exams.map((x, i) => (
                 <option key={x.id} value={i}>
-                  第 {i + 1} 场 · {day(x.created_at)}
+                  第 {i + 1} 场 · {day(x.created_at)}{x.human_acceptance ? ' · 进化完成' : ''}
                 </option>
               ))}
             </select>
@@ -210,7 +216,7 @@ function Contrast({
         )}
         {question?.text && <p className="evidence-narration">「{question.text}」</p>}
         <SidePlayer key={exam.id + question?.id + renderer + selectedRepeat} control={control} trial={trial} labels={labels} version={version} />
-        <p className="small muted">对照 {exam.verdict.control_score} 分 → 试用 {exam.verdict.trial_score} 分。{exam.verdict.reasons.join('；')}</p>
+        <p className="small muted">机器检查备注：对照 {exam.verdict.control_score} 分 → 试用 {exam.verdict.trial_score} 分。{exam.verdict.reasons.join('；')}</p>
         {exam.evaluation_note && <p role="status">{exam.evaluation_note}</p>}
         {bothPassed && <p>两组都通过了本场检查，尚未证明经验带来额外改善。先核对检查是否覆盖原问题，再加入相关新镜头或做观看对照；重复相同满分题不能增加改善证据。</p>}
         <p className="small muted evidence-note">

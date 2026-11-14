@@ -989,7 +989,12 @@ export function App() {
               </button>
             </header>
             <div className="settings-frame">
-              <Settings version={version} run={run} onPluginsChanged={() => {
+              <Settings version={version} run={run} onAgentsChanged={() => {
+                api<AgentsResponse>('/api/agents').then((result) => {
+                  setHomeAgents(result);
+                  setAgents(result);
+                }, () => {});
+              }} onPluginsChanged={() => {
                 setPluginsVersion((v) => v + 1);
                 if (currentId) void loadProject();
               }} />

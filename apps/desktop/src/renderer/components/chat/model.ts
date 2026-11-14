@@ -382,13 +382,13 @@ export function describeTool(tool: string, input: unknown): { verb: string; targ
     return { verb: '改文件', target: changes.map((c) => c.path).filter(Boolean).join('、'), command: false };
   }
   if (name === 'grep' || name === 'glob') return { verb: '搜索', target: text('pattern'), command: false };
-  // 导演（pi）自带的找文件、列目录。
+  // 制作人（pi）自带的找文件、列目录。
   if (name === 'find') return { verb: '找文件', target: text('pattern') || path, command: false };
   if (name === 'ls') return { verb: '查看目录', target: path, command: false, path };
   if (name === 'webfetch') return { verb: '访问', target: text('url'), command: false };
   if (name === 'websearch' || name === 'web_search') return { verb: '搜索网页', target: text('query'), command: false };
   if (name === 'task' || name === 'agent') return { verb: '子任务', target: text('description'), command: false };
-  // onset 的工具：claude 系经 MCP 带 mcp__onset__ 前缀，ACP 带 am_ / onset.，导演直接用操作名。
+  // onset 的工具：claude 系经 MCP 带 mcp__onset__ 前缀，ACP 带 am_ / onset.，制作人直接用操作名。
   const bare = name.replace(/^mcp__onset__/, '').replace(/^onset[._]/, '');
   if (/^(mcp__onset__|onset[._])/.test(name) || bare in onsetVerbs || bare === 'hyperframes') return onsetTool(bare, record);
   const fallback = text('description') || text('url') || text('pattern') || '';

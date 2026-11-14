@@ -107,6 +107,7 @@ export {
 export type { Cluster, Contrast, Drafter, ConsolidateOptions, ConsolidateResult } from './consolidate';
 export * from './exam';
 export * from './examreads';
+export * from './acceptance';
 export { lessonWritingGuide } from './writing';
 export { importResultToJSON, importProject } from './importer';
 export type { ImportOptions, ImportResult } from './importer';

@@ -14,7 +14,7 @@ test('the desktop pet mirrors what the orchestrator is doing', async ({ page, pr
     await expect(page.locator('#cancel-turn')).toHaveCount(0);
     await expect(crew).toHaveAttribute('data-mood', 'stopped');
   };
-  // 没有进行中的一轮：坐在导演椅上待命。
+  // 没有进行中的一轮：坐在制作人椅上待命。
   await expect(crew).toHaveAttribute('data-mood', 'idle');
   await expect(crew.locator('.pet-line')).toHaveText('待命');
   // 没打开项目时主进程不显示桌宠（main/pet.ts 的 syncVisibility），工作室也知道还没有项目。
@@ -38,21 +38,21 @@ test('the desktop pet mirrors what the orchestrator is doing', async ({ page, pr
   await expect(crew.locator('.pet-line')).toHaveText('渲染镜头 scene-001');
   await stop();
 
-  // 导演（内置编排工具）调 onset 的操作不带前缀：照样认得是在拍，气泡也写成人话。
-  await page.locator('#prompt').fill('导演开机');
+  // 制作人（内置编排工具）调 onset 的操作不带前缀：照样认得是在拍，气泡也写成人话。
+  await page.locator('#prompt').fill('制作人开机');
   await page.locator('#send').click();
   await expect(crew).toHaveAttribute('data-mood', 'filming');
   await expect(crew.locator('.pet-line')).toHaveText('渲染镜头 scene-001');
   await stop();
 
-  // 改分镜计划：导演走到左墙的分镜板前。
+  // 改分镜计划：制作人走到左墙的分镜板前。
   await page.locator('#prompt').fill('排分镜');
   await page.locator('#send').click();
   await expect(crew).toHaveAttribute('data-mood', 'storyboarding');
   await expect(crew.locator('.pet-line')).toHaveText('编辑 scene-plan.json');
   await stop();
 
-  // 拼接：交给剪辑师，导演站到他身后。
+  // 拼接：交给剪辑师，制作人站到他身后。
   await page.locator('#prompt').fill('拼一下');
   await page.locator('#send').click();
   await expect(crew).toHaveAttribute('data-mood', 'editing');
@@ -78,7 +78,7 @@ test('a camera operator goes to work for each scene that is rendering', async ({
   );
   const pet = await petPage(electronApp);
   await openProject(page, project);
-  // 没有对话在跑，导演仍在待命；摄影从沙发走到机位，脚下挂着镜头号。
+  // 没有对话在跑，制作人仍在待命；摄影从沙发走到机位，脚下挂着镜头号。
   await expect(pet.locator('#crew')).toHaveAttribute('data-mood', 'idle');
   await expect(pet.locator('[data-who="op1"]')).toHaveAttribute('data-active', 'true');
   await expect(pet.locator('[data-who="op2"]')).toHaveAttribute('data-active', 'false');
@@ -142,7 +142,7 @@ test('choices and a quick message can be sent from the pet', async ({ page, proj
 test('clicking someone selects them, shows their state and queue, and offers a ring of real actions', async ({ page, project, electronApp }) => {
   const pet = await petPage(electronApp);
   await openProject(page, project);
-  // 一轮带待办清单：导演的动作队列就是它。
+  // 一轮带待办清单：制作人的动作队列就是它。
   await page.locator('#prompt').fill('给我选项');
   await page.locator('#send').click();
   await expect(page.locator('.choice').first()).toBeVisible();
@@ -150,7 +150,7 @@ test('clicking someone selects them, shows their state and queue, and offers a r
   await pet.locator('.pet-spot[data-spot="director"]').click({ force: true });
   await expect(pet.locator('.pet-spot[data-spot="director"]')).toHaveAttribute('data-selected', 'true');
   const panel = pet.locator('.pet-panel[data-who="director"]');
-  await expect(panel.locator('strong')).toHaveText('导演');
+  await expect(panel.locator('strong')).toHaveText('制作人');
   await expect(panel.locator('.pet-queue li')).toHaveText(['读稿子', '正在定风格']);
   await expect(panel.locator('.pet-queue li').first()).toHaveAttribute('data-state', 'completed');
   await expect(panel.locator('.pet-needs')).toContainText('进度');

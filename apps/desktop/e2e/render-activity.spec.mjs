@@ -27,7 +27,10 @@ test('keeps render cards collapsible when many scenes and long commands fill the
       fs.writeFileSync(path.join(dir, 'scene.json'), JSON.stringify({ ...scene, id }));
       fs.writeFileSync(path.join(dir, 'voice.srt'), '');
     }
-    const stream = Array.from({ length: 24 }, (_, step) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id: `t-${step}`, name: 'Bash', input: { command } }] } }));
+    const stream = Array.from({ length: 24 }, (_, step) => [
+      { type: 'assistant', message: { content: [{ type: 'tool_use', id: `t-${step}`, name: 'Bash', input: { command } }] } },
+      { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `t-${step}`, content: 'done' }] } },
+    ]).flat();
     fs.writeFileSync(path.join(dir, `render-${id}.stream.jsonl`), stream.map(line => JSON.stringify(line)).join('\n') + '\n');
     fs.writeFileSync(path.join(dir, `render-${id}.live.json`), JSON.stringify({ pid: process.pid, renderer: 'claude', started_at: new Date().toISOString() }));
   }
@@ -44,14 +47,14 @@ test('keeps render cards collapsible when many scenes and long commands fill the
   await expect(page.locator('#prompt')).toBeInViewport();
   const watchBox = await watch.boundingBox();
   expect(watchBox.height).toBeLessThanOrEqual(720 / 2);
-  await header.getByText('收起', { exact: true }).click();
+  await header.click();
   await expect(header).toHaveAttribute('aria-expanded', 'false');
   await expect(card.locator('.ra-steps')).toHaveCount(0);
   await header.click();
   const stream = path.join(project.path, 'scenes/scene-001/render-scene-001.stream.jsonl');
   fs.appendFileSync(stream, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: '新步骤已完成' }] } }) + '\n');
   await expect(card.locator('.ra-step')).toHaveCount(25);
-  await header.getByText('收起', { exact: true }).click();
+  await header.click();
   await expect(header).toHaveAttribute('aria-expanded', 'false');
   fs.appendFileSync(stream, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: '收起后继续更新' }] } }) + '\n');
   await expect(header.locator('.ra-current')).toHaveText('收起后继续更新');
@@ -59,7 +62,7 @@ test('keeps render cards collapsible when many scenes and long commands fill the
   const last = watch.locator('[data-render-scene="scene-009"] .ra-head');
   await last.click();
   await expect(last).toHaveAttribute('aria-expanded', 'true');
-  await last.getByText('收起', { exact: true }).click();
+  await last.click();
   await expect(last).toHaveAttribute('aria-expanded', 'false');
   await electronApp.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows().find(window => window.isResizable()).setSize(1024, 640);
@@ -85,7 +88,7 @@ test('shows what the renderer is doing while a scene renders', async ({ page, pr
 
   const card = page.locator('.render-card[data-render-scene="scene-001"]');
   await expect(card).toBeVisible();
-  await expect(card.locator('.ra-current')).toHaveText('正在渲染视频：--output out.mp4');
+  await expect(card.locator('.ra-current')).toHaveText('正在渲染视频');
   await expect(card.locator('.ra-elapsed')).toContainText('1m');
   await card.locator('.ra-head').click();
   await expect(card.locator('.ra-step')).toHaveCount(3);
