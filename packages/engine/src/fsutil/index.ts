@@ -35,7 +35,18 @@ export function atomicWrite(file: string, data: string | Uint8Array, mode = 0o64
   try {
     fs.writeFileSync(tmp, data, { mode });
     fs.chmodSync(tmp, mode);
-    fs.renameSync(tmp, file);
+    // Windows 上文件被预览、轮询或扫描短暂占用时，替换会返回共享冲突。
+    // 保持同一个临时文件和原子替换，不先删旧文件；永久错误仍保留旧内容并报错。
+    for (let retry = 0; ; retry++) {
+      try {
+        fs.renameSync(tmp, file);
+        break;
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(code ?? '') || retry >= 6) throw err;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10 * 2 ** retry);
+      }
+    }
   } catch (err) {
     try {
       fs.rmSync(tmp, { force: true });

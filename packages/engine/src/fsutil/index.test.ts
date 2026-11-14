@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { atomicWrite, removeTree } from './index';
 
 const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'onset-fsutil-'));
@@ -45,6 +45,40 @@ describe('removeTree', () => {
 });
 
 describe('atomicWrite', () => {
+  it('retries transient Windows sharing conflicts without deleting the previous file', () => {
+    const dir = temp();
+    const file = path.join(dir, 'progress.json');
+    fs.writeFileSync(file, 'old');
+    const rename = fs.renameSync.bind(fs);
+    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    const wait = vi.spyOn(Atomics, 'wait').mockReturnValue('timed-out');
+    const call = vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+      expect(fs.readFileSync(file, 'utf8')).toBe('old');
+      throw Object.assign(new Error('sharing violation'), { code: 'EPERM' });
+    }).mockImplementation(rename);
+    try {
+      atomicWrite(file, 'new');
+      expect(call).toHaveBeenCalledTimes(2);
+      expect(fs.readFileSync(file, 'utf8')).toBe('new');
+      expect(fs.readdirSync(dir)).toEqual(['progress.json']);
+    } finally { call.mockRestore(); wait.mockRestore(); platform.mockRestore(); }
+  });
+
+  it('bounds retries and preserves old content on a permanent sharing failure', () => {
+    const dir = temp();
+    const file = path.join(dir, 'progress.json');
+    fs.writeFileSync(file, 'old');
+    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    const wait = vi.spyOn(Atomics, 'wait').mockReturnValue('timed-out');
+    const call = vi.spyOn(fs, 'renameSync').mockImplementation(() => { throw Object.assign(new Error('denied'), { code: 'EACCES' }); });
+    try {
+      expect(() => atomicWrite(file, 'new')).toThrow('denied');
+      expect(call).toHaveBeenCalledTimes(7);
+      expect(fs.readFileSync(file, 'utf8')).toBe('old');
+      expect(fs.readdirSync(dir)).toEqual(['progress.json']);
+    } finally { call.mockRestore(); wait.mockRestore(); platform.mockRestore(); }
+  });
+
   it('creates the file', () => {
     const file = path.join(temp(), 'out.txt');
     atomicWrite(file, 'hello');
