@@ -270,8 +270,8 @@ async function runOpIn(s: Server, signal: AbortSignal, cwd: string, cfg: config.
   const onset = onsetCommand(s.executable());
   const args = [...onset.args, ...(s.config.unsafe ? ['--unsafe'] : []), ...workerArgs(name, params)];
   const env = { ...config.childEnvironment(cfg, envMap(), s.config.unsafe, parsePassthrough(process.env.ONSET_PASSTHROUGH_ENV ?? '')), ...onset.env, ...(opts.env ?? {}) };
-  // 整理经验会起导演：执行进程里没有 safeStorage，解不开加密的服务文件，在用的服务连同 key 由这里解密后经 stdin 交下去（不进环境）。
-  const service = director.KeyOps.has(name) && cfg.orchestrator === director.Tool ? director.resolveService(director.defaultDir(envMap())) : null;
+  // 整理经验、检查画面描述会起导演：执行进程里没有 safeStorage，解不开加密的服务文件，在用的服务连同 key 由这里解密后经 stdin 交下去（不进环境）。
+  const service = director.KeyOps.has(name) && director.keyTool(name, cfg) === director.Tool ? director.resolveService(director.defaultDir(envMap())) : null;
   const handKeys = service !== null;
   if (handKeys) env[director.ServiceStdinEnv] = '1';
   const started = await start(onset.command, args, { cwd, env, stdio: [handKeys ? 'pipe' : 'ignore', 'pipe', 'pipe'], signal });

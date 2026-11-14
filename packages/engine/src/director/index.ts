@@ -373,8 +373,13 @@ export function parseResolvedService(raw: unknown): ResolvedService | null {
  */
 export const ServiceStdinEnv = 'ONSET_AGENT_SERVICE_STDIN';
 
-/** 会起导演的操作。 */
-export const KeyOps: ReadonlySet<string> = new Set(['memory_consolidate', 'audition_learn']);
+/** 会起导演的操作：整理经验与向老师学用编排工具，检查画面描述用优化工具（keyTool 说用的是哪一个）。 */
+export const KeyOps: ReadonlySet<string> = new Set(['memory_consolidate', 'audition_learn', 'scene_prompt_check']);
+
+/** 这个操作起的是哪一项工具：要交模型服务的条件是它是导演。检查画面描述用优化工具（OPTIMIZER，空则跟随编排）。 */
+export function keyTool(op: string, cfg: { orchestrator: string; optimizer: string }): string {
+  return op === 'scene_prompt_check' && cfg.optimizer !== '' ? cfg.optimizer : cfg.orchestrator;
+}
 
 /**
  * 交给 onset studio agent 的一次调用（经 stdin，一行 JSON）。不走命令行参数：提示词很长，

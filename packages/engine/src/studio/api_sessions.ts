@@ -82,7 +82,7 @@ export function decodeAttachments(value: unknown[] | undefined): Attachment[] | 
   });
 }
 
-function decodeView(value: Record<string, unknown> | undefined): ViewState | null {
+export function decodeView(value: Record<string, unknown> | undefined): ViewState | null {
   if (!value) return null;
   return { page: fieldString(value, 'page') || undefined, scene: fieldString(value, 'scene') || undefined, file: fieldString(value, 'file') || undefined };
 }

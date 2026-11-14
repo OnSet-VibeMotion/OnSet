@@ -27,6 +27,7 @@ import './validate_cmd';
 // 内置插件登记的操作（例如发布的 validate_publish）。
 import './plugin_ops';
 import './prompt_cmd';
+import './promptopt_cmd';
 import './voice_cmd';
 import './windows_cmd';
 import { mountOps } from './ops/cli';

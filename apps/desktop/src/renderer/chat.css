@@ -1825,3 +1825,84 @@ div.tool {
 .chat .intro .vision-note {
   margin-top: 14px;
 }
+
+/* ---- 润色（PolishCard）：叠在输入框上方，与审批卡片同一个位置；改写稿用正文字号，说明用小字 ---- */
+.chat .polish-card {
+  flex: none;
+  margin: 6px calc(var(--gutter) - 6px) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--raised);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  animation: pop-in 0.18s ease-out;
+}
+.chat .polish-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.chat .polish-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--accent-text);
+  font: 11px var(--mono);
+  letter-spacing: 0.08em;
+}
+.chat .polish-by {
+  color: var(--text-3);
+  font: 11px var(--mono);
+}
+.chat .polish-working {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+}
+.chat .polish-text {
+  margin: 0;
+  max-height: 168px;
+  overflow: auto;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+.chat .polish-notes {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.chat .polish-skip,
+.chat .polish-warn,
+.chat .polish-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.chat .polish-warn,
+.chat .polish-error {
+  color: var(--accent-text);
+}
+.chat .polish-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chat .polish-actions button {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+.chat .polish-undo {
+  font-size: 12px;
+  color: var(--text-3);
+}

@@ -19,7 +19,7 @@ import { AlignAuto, defaultTTSProvider, validAligner, validTTSProvider } from '.
 export const SettingsFileEnv = 'ONSET_SETTINGS_FILE';
 
 /** 设置页管的几项：「什么用什么」。 */
-export const GlobalKeys = ['ORCHESTRATOR', 'ORCHESTRATOR_MODEL', 'RENDERER', 'RENDERER_MODEL', 'TTS_PROVIDER', 'ALIGN_PROVIDER', 'SCENE_JOBS', 'MEMORY', 'AUTO_APPROVE'] as const;
+export const GlobalKeys = ['ORCHESTRATOR', 'ORCHESTRATOR_MODEL', 'RENDERER', 'RENDERER_MODEL', 'OPTIMIZER', 'OPTIMIZER_MODEL', 'TTS_PROVIDER', 'ALIGN_PROVIDER', 'SCENE_JOBS', 'MEMORY', 'AUTO_APPROVE'] as const;
 export type GlobalKey = (typeof GlobalKeys)[number];
 
 /**
@@ -32,6 +32,9 @@ export const GlobalDefaults: Record<GlobalKey, string> = {
   ORCHESTRATOR_MODEL: '',
   RENDERER: 'claude',
   RENDERER_MODEL: '',
+  // 润色输入框里的话、检查镜头画面描述用的工具（promptopt）；留空跟随这一轮的编排工具与模型。
+  OPTIMIZER: '',
+  OPTIMIZER_MODEL: '',
   TTS_PROVIDER: defaultTTSProvider(),
   ALIGN_PROVIDER: AlignAuto,
   SCENE_JOBS: '3',
@@ -44,10 +47,10 @@ export const GlobalDefaults: Record<GlobalKey, string> = {
  * 模型跟着哪一项工具：模型名只对那一家工具有意义（claude 的 opus 交给 codex 就是错的），
  * 所以 config.load 只在「写这个模型的那一层，工具也是现在这一家」时才用它，见 config.ts 的 modelFor。
  */
-export const ModelToolKey = { ORCHESTRATOR_MODEL: 'ORCHESTRATOR', RENDERER_MODEL: 'RENDERER' } as const;
+export const ModelToolKey = { ORCHESTRATOR_MODEL: 'ORCHESTRATOR', RENDERER_MODEL: 'RENDERER', OPTIMIZER_MODEL: 'OPTIMIZER' } as const;
 
 /** 反过来：工具项对应的模型项。在同一层换了工具，那一层的模型要一起清掉（writeGlobal、config_set）。 */
-export const ToolModelKey: Readonly<Record<string, GlobalKey>> = { ORCHESTRATOR: 'ORCHESTRATOR_MODEL', RENDERER: 'RENDERER_MODEL' };
+export const ToolModelKey: Readonly<Record<string, GlobalKey>> = { ORCHESTRATOR: 'ORCHESTRATOR_MODEL', RENDERER: 'RENDERER_MODEL', OPTIMIZER: 'OPTIMIZER_MODEL' };
 
 /**
  * 模型名的写法：各家的模型 ID 只用字母、数字与 . _ - : / @ # [ ]（claude 的 claude-opus-5-5[1m]、
@@ -74,11 +77,13 @@ export function validateSetting(key: string, value: string): string {
   if (value === '') return '';
   switch (key) {
     case 'ORCHESTRATOR':
+    case 'OPTIMIZER':
       return ValidTools.has(value) ? '' : `${key} 只能是 ${[...ValidTools].join(' ')}`;
     case 'RENDERER':
       return ValidRenderers.has(value) ? '' : `${key} 只能是 ${[...ValidRenderers].join(' ')}`;
     case 'ORCHESTRATOR_MODEL':
     case 'RENDERER_MODEL':
+    case 'OPTIMIZER_MODEL':
       return validModel(value) ? '' : `不认识的模型名 ${value}：只能用字母、数字与 . _ - : / @ # [ ] +`;
     case 'TTS_PROVIDER':
       return validTTSProvider(value) ? '' : `不认识的配音工具 ${value}`;

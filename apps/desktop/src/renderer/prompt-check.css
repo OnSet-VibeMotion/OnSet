@@ -1,0 +1,141 @@
+/* 镜头画面描述检查（PromptCheck.tsx）：分镜页的镜头卡与镜头页右栏共用，选择器都挂在 .pc-panel 下。 */
+.pc-panel {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raised);
+}
+.pc-panel.idle {
+  padding: 0;
+  border: none;
+  background: none;
+}
+.pc-panel .pc-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+}
+.pc-panel .pc-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pc-panel .pc-head .link {
+  font-size: 12px;
+}
+.pc-panel .pc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+  font: 11px var(--mono);
+  letter-spacing: 0.08em;
+}
+.pc-panel .pc-decision {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.pc-panel .pc-decision.minor,
+.pc-panel .pc-decision.rewrite {
+  color: var(--accent-text);
+}
+.pc-panel .pc-scores {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.pc-panel .pc-scores li {
+  display: grid;
+  grid-template-columns: 6.5em 1fr 2.5em;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.pc-panel .pc-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--well);
+  overflow: hidden;
+}
+.pc-panel .pc-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--text-3);
+}
+.pc-panel .pc-scores li.mid .pc-bar i {
+  background: var(--accent);
+  opacity: 0.6;
+}
+.pc-panel .pc-scores li.low .pc-bar i {
+  background: var(--accent);
+}
+.pc-panel .pc-score-value {
+  text-align: right;
+  font: 11px var(--mono);
+  color: var(--text-3);
+}
+.pc-panel .pc-issues {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.pc-panel .pc-warn,
+.pc-panel .pc-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--accent-text);
+}
+.pc-panel .pc-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.pc-panel .pc-diff-toggle {
+  align-self: flex-start;
+  font-size: 12px;
+}
+.pc-panel .pc-diff {
+  max-height: 320px;
+  overflow: auto;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.pc-panel .pc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pc-panel .pc-actions:empty {
+  display: none;
+}
+.pc-panel .pc-actions button {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+.pc-panel .icon-button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+}
+.pc-panel .icon-button:hover {
+  background: var(--chip);
+  color: var(--text);
+}

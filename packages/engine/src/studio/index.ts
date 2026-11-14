@@ -6,6 +6,7 @@ export { ConflictError, diffTrees, revertTurn, scanTree, statTree, type FileChan
 export { setInstallOfficialSkills, type SkillInstaller, type SkillsStatus } from './skills';
 export { agentOrder } from './agents';
 export { currentSkin, skinJSON } from './skins';
+export { readStoryboard, type StoryboardResponse, type StoryboardScene } from './storyboard';
 export { describeView, drainViewInbox, validateViewRequest, viewInbox, writeViewRequest } from './view';
 export type { ViewPage, ViewRequest, ViewState } from './view';
 export type { Task } from './tasks';

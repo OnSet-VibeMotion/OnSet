@@ -605,7 +605,7 @@ function SceneTab(props: Props & { scene: Scene | null }) {
             {scene.duration_seconds ? `${scene.duration_seconds.toFixed(1)} 秒 · ` : ''}
             <span className={'status-' + status}>{statusText[status]}</span>
           </p>
-          <SceneBrief sceneId={scene.id} version={props.version} onStoryboard={props.onTab ? () => props.onTab!('storyboard') : undefined} />
+          <SceneBrief sceneId={scene.id} version={props.version} onStoryboard={props.onTab ? () => props.onTab!('storyboard') : undefined} busy={props.busy} onQuick={props.onQuick} />
           <SceneStyle scene={scene} label={`镜头 ${number}`} version={props.version} onQuick={props.onQuick} />
           <SceneActivityPanel scene={scene} />
           <div className="scene-actions">

@@ -170,6 +170,8 @@ export function recordOrchestratorUsage(
 const usageSourceNames: Record<string, string> = {
   [ledger.SourceStudio]: 'Studio 对话',
   [ledger.SourceConsolidate]: '整理记忆',
+  [ledger.SourcePolish]: '润色输入',
+  [ledger.SourcePromptCheck]: '检查画面描述',
 };
 
 defineOp({

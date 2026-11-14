@@ -33,7 +33,13 @@ interface Group {
 }
 
 const groups: Group[] = [
-  { id: 'ai', title: 'AI 助手', icon: 'brain', blurb: '和你对话、写稿、定分镜、安排渲染的那位，以及它能不能不问你直接跑命令。', keys: ['ORCHESTRATOR', 'ORCHESTRATOR_MODEL', 'AUTO_APPROVE'] },
+  {
+    id: 'ai',
+    title: 'AI 助手',
+    icon: 'brain',
+    blurb: '和你对话、写稿、定分镜、安排渲染的那位，帮你润色、检查画面描述的那位，以及它能不能不问你直接跑命令。',
+    keys: ['ORCHESTRATOR', 'ORCHESTRATOR_MODEL', 'OPTIMIZER', 'OPTIMIZER_MODEL', 'AUTO_APPROVE'],
+  },
   { id: 'render', title: '画面渲染', icon: 'film', blurb: '把每个镜头画出来的工具、一次画几个，以及要不要记住画过的问题。', keys: ['RENDERER', 'RENDERER_MODEL', 'SCENE_JOBS', 'MEMORY'] },
   { id: 'voice', title: '配音与字幕', icon: 'mic', blurb: '口播稿用谁来读，字幕怎样和声音逐字对上。', keys: ['TTS_PROVIDER', 'ALIGN_PROVIDER'] },
   { id: 'look', title: '外观', icon: 'brush', blurb: '整个客户端与桌宠的配色。', keys: [] },
@@ -62,7 +68,8 @@ export function Settings({ version, run, onPluginsChanged }: { version: number; 
 
   if (!data) return <div className="empty">{error || '正在读取设置…'}</div>;
 
-  const label = (row: SettingRow, value: string) => row.options.find((o) => o.value === value)?.label ?? value;
+  // 只有「润色与检查」的默认是空：跟随对话助手。
+  const label = (row: SettingRow, value: string) => (value === '' ? '跟随对话助手' : (row.options.find((o) => o.value === value)?.label ?? value));
   const setGlobal = async (row: SettingRow, value: string) => {
     try {
       await post('/api/settings/global', { key: row.key, value });
@@ -212,7 +219,17 @@ export function Settings({ version, run, onPluginsChanged }: { version: number; 
     );
   }
 
+  // 工具跟随对话助手时模型也跟随它的模型，没有可选的。
+  function followsModel(ariaLabel: string) {
+    return (
+      <select disabled aria-label={ariaLabel}>
+        <option>跟随对话助手的模型</option>
+      </select>
+    );
+  }
+
   function globalModel(row: SettingRow) {
+    if (globalTool(row) === '') return followsModel(`全局${row.label}`);
     return (
       <ModelSelect
         ariaLabel={`全局${row.label}`}
@@ -225,6 +242,7 @@ export function Settings({ version, run, onPluginsChanged }: { version: number; 
   }
 
   function projectModel(row: SettingRow) {
+    if (projectTool(row) === '') return followsModel(`这个项目的${row.label}`);
     const inherited = projectTool(row) === globalTool(row) ? row.global : '';
     return (
       <ModelSelect

@@ -4,6 +4,7 @@ import { api, errorText } from '../api';
 import type { Attachment, FilmStyle, StoryboardResponse, StoryboardScene, StoryboardStyle } from '../types';
 import { Markdown } from './chat/Markdown';
 import { Poster, SceneStyleDialog } from './FilmStyles';
+import { CheckAllButton, PromptCheckPanel } from './PromptCheck';
 import '../storyboard.css';
 
 /** 分镜相关的文件：聊天与文件树点到它们时打开分镜页。 */
@@ -78,6 +79,9 @@ export function StoryboardTab({ version, busy, onQuick, onFile, onScene, onStyle
   const [board, setBoard] = useState<StoryboardResponse | null>(null);
   const [error, setError] = useState('');
   const [restyle, setRestyle] = useState<{ scene: StoryboardScene; no: string } | null>(null);
+  // 画面描述检查跑完、采用或丢掉之后重读一遍（检查不占项目写锁，不会触发整页刷新）。
+  const [reloads, setReloads] = useState(0);
+  const reload = () => setReloads((n) => n + 1);
 
   useEffect(() => {
     api<StoryboardResponse>('/api/storyboard').then(
@@ -87,7 +91,7 @@ export function StoryboardTab({ version, busy, onQuick, onFile, onScene, onStyle
       },
       (err) => setError(errorText(err)),
     );
-  }, [version]);
+  }, [version, reloads]);
 
   if (error) return <div className="empty">{error}</div>;
   if (!board) return <div className="empty">正在读取…</div>;
@@ -132,6 +136,7 @@ export function StoryboardTab({ version, busy, onQuick, onFile, onScene, onStyle
         </div>
         <div className="sb-actions">
           <button onClick={() => onQuick('分镜要改：', [], true)}>提修改意见</button>
+          <CheckAllButton scenes={scenes} onChanged={reload} />
           {pending && ready && board.gate && (
             <button
               className="primary"
@@ -177,6 +182,9 @@ export function StoryboardTab({ version, busy, onQuick, onFile, onScene, onStyle
                 offDefault={sc.style.kind === 'named' || (sc.style.kind === 'none' && !!board.default_style)}
                 onScene={onScene}
                 onRestyle={() => setRestyle({ scene: sc, no: sceneNo(index) })}
+                busy={busy}
+                onQuick={onQuick}
+                onChanged={reload}
               />
             </Fragment>
           );
@@ -286,6 +294,9 @@ function SceneCard(props: {
   offDefault: boolean;
   onScene: (id: string) => void;
   onRestyle: () => void;
+  busy: string;
+  onQuick: Props['onQuick'];
+  onChanged: () => void;
 }) {
   const { scene, index, version, onScene } = props;
   const no = sceneNo(index);
@@ -347,14 +358,28 @@ function SceneCard(props: {
         ) : (
           scene.created && <p className="sb-todo">画面描述还没写</p>
         )}
+        <PromptCheckPanel scene={scene} label={`镜头 ${no}`} busy={props.busy} onChanged={props.onChanged} onQuick={props.onQuick} />
       </div>
     </li>
   );
 }
 
 /** 镜头页右栏：这个镜头在分镜里想画什么，对照着看画面。 */
-export function SceneBrief({ sceneId, version, onStoryboard }: { sceneId: string; version: number; onStoryboard?: () => void }) {
+export function SceneBrief({
+  sceneId,
+  version,
+  onStoryboard,
+  busy,
+  onQuick,
+}: {
+  sceneId: string;
+  version: number;
+  onStoryboard?: () => void;
+  busy?: string;
+  onQuick?: Props['onQuick'];
+}) {
   const [item, setItem] = useState<StoryboardScene | null>(null);
+  const [reloads, setReloads] = useState(0);
   useEffect(() => {
     let live = true;
     api<StoryboardResponse>('/api/storyboard').then(
@@ -364,7 +389,7 @@ export function SceneBrief({ sceneId, version, onStoryboard }: { sceneId: string
     return () => {
       live = false;
     };
-  }, [sceneId, version]);
+  }, [sceneId, version, reloads]);
   if (!item || (!item.summary && !item.prompt)) return null;
   return (
     <div className="scene-brief" id="scene-brief">
@@ -382,6 +407,7 @@ export function SceneBrief({ sceneId, version, onStoryboard }: { sceneId: string
           </button>
         )}
       </div>
+      {onQuick && <PromptCheckPanel scene={item} label={`镜头 ${item.id}`} busy={busy ?? ''} onChanged={() => setReloads((n) => n + 1)} onQuick={onQuick} />}
     </div>
   );
 }

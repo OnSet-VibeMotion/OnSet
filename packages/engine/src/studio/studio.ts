@@ -22,7 +22,9 @@ import * as projectinit from '../projectinit';
 import { agentServiceAPI, agentServiceModelsAPI, agentServicesAPI, agentVisionAPI } from './agentservices';
 import { agentModelsAPI, agentsAPI } from './agents';
 import { rawAPI, stylesAPI, treeAPI } from './api_ui';
-import { commandAPI, filesAPI, productionStartAPI, sessionAPI, sessionsAPI, turnAPI } from './api_sessions';
+import { commandAPI, decodeAttachments, decodeView, filesAPI, productionStartAPI, sessionAPI, sessionsAPI, turnAPI } from './api_sessions';
+import { polishAPI } from './polish';
+import { promptChecksAPI } from './promptchecks';
 import { previewAPI, renderAllAPI, sceneFeatureAPI, scenesAPI } from './features';
 import { filmStylePosterAPI, filmStylesAPI, projectFilmStyleAPI, startFilmStyleTask } from './filmstyle';
 import {
@@ -355,6 +357,9 @@ export class Server {
       ['/api/scenes', () => scenesAPI(this)],
       ['/api/script', (r) => scriptAPI(this, r)],
       ['/api/storyboard', (r) => storyboardAPI(this, r)],
+      ['/api/polish', (r) => polishAPI(this, r, { view: decodeView, attachments: decodeAttachments })],
+      ['/api/prompt-checks', (r) => promptChecksAPI(this, r, '')],
+      ['/api/prompt-checks/', (r, rest) => promptChecksAPI(this, r, rest)],
       ['/api/progress', (r) => progressAPI(this, r, '')],
       ['/api/progress/', (r, rest) => progressAPI(this, r, rest)],
       ['/api/stations', (r) => stationsAPI(this, r, '')],

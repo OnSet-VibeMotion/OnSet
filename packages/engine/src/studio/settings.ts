@@ -50,6 +50,15 @@ function describe(key: config.GlobalKey): { label: string; hint: string; options
       return { label: '画镜头的工具', hint: '把每个镜头的画面做出来的那位，要先装在这台电脑上', options: agents.filter((a) => tools.ValidRenderers.has(a.value)) };
     case 'RENDERER_MODEL':
       return { label: '画镜头的模型', hint: '不确定就选「默认」，由上面那家工具自己决定；换了工具会自动回到默认', options: [], modelOf: 'RENDERER' };
+    case 'OPTIMIZER':
+      // 空是跟随对话助手（promptopt.optimizerOf），界面把空显示成「跟随对话助手」。
+      return {
+        label: '润色与检查',
+        hint: '润色你在输入框里写的话、检查镜头画面描述时用的工具；可以选一家便宜些的，留空跟随对话助手',
+        options: agents,
+      };
+    case 'OPTIMIZER_MODEL':
+      return { label: '润色与检查的模型', hint: '跟随对话助手时也跟随它的模型；换了工具会自动回到默认', options: [], modelOf: 'OPTIMIZER' };
     case 'TTS_PROVIDER':
       return { label: '配音', hint: '用谁把口播稿读出来', options: config.TTSProviders.map((p) => ({ value: p.id, label: ttsNames[p.id] ?? p.name })) };
     case 'ALIGN_PROVIDER':

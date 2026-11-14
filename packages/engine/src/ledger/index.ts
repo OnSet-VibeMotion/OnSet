@@ -12,6 +12,8 @@ import { newUsage, usageAdd, usageEmpty, usageJSON, type Usage } from '../tools'
 // 调用来源。
 export const SourceStudio = 'studio'; // Studio 的一轮对话或「开始制作」
 export const SourceConsolidate = 'consolidate'; // onset memory consolidate 的整理者
+export const SourcePolish = 'polish'; // 客户端输入框的「润色」（promptopt）
+export const SourcePromptCheck = 'prompt-check'; // 镜头画面描述检查（scene_prompt_check）
 
 /**
  * 项目里的账本路径。它在 production/usage/ 下而不是 production/studio/：Studio 扫描项目时跳过这个目录，

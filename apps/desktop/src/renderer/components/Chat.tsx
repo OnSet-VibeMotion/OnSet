@@ -14,6 +14,7 @@ import { DirectorVisionNote } from './DirectorServices';
 import { DiffDialog } from './DiffDialog';
 import { Icon } from './Icon';
 import { Markdown } from './chat/Markdown';
+import { PolishCard, type PolishResult, type PolishState } from './chat/Polish';
 import {
   buildBlocks,
   describeTool,
@@ -129,6 +130,9 @@ export function Chat(props: Props) {
   const [picked, setPicked] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const pendingCaret = useRef<number | null>(null);
+  // 润色：卡片的状态；用了改写稿之后留着原文，直到用户再动输入框，可以一键换回。
+  const [polishing, setPolishing] = useState<PolishState | null>(null);
+  const [undoPolish, setUndoPolish] = useState<string | null>(null);
 
   const blocks = useMemo(() => buildBlocks(events), [events]);
   // 从制作路线跳过来：等那一轮出现在页面上（可能要先切会话、读完事件）再滚过去闪一下。
@@ -420,6 +424,37 @@ export function Chat(props: Props) {
     }
   };
 
+  /** 把输入框里的话交去润色：不发送、不改输入框，结果显示在上方的卡片里。 */
+  const polish = async (from = draft) => {
+    if (from.trim() === '') return;
+    setPolishing({ from, status: 'working' });
+    try {
+      const result = await post<PolishResult>('/api/polish', {
+        message: from,
+        view: props.view,
+        attachments: props.attachments,
+        session_id: props.sessionId || undefined,
+        ...props.choice,
+      });
+      setPolishing((current) => (current?.from === from ? { from, status: 'done', result } : current));
+    } catch (err) {
+      // 取消（409 cancelled）时卡片已经关掉了。
+      if (err instanceof ApiError && err.code === 'cancelled') return;
+      setPolishing((current) => (current?.from === from ? { from, status: 'failed', error: errorText(err) } : current));
+    }
+  };
+
+  const closePolish = () => {
+    if (polishing?.status === 'working') void api('/api/polish', { method: 'DELETE' }).catch(() => {});
+    setPolishing(null);
+  };
+
+  const applyPolish = (text: string) => {
+    setUndoPolish(draft);
+    setPolishing(null);
+    fill(text);
+  };
+
   const startProduction = async (message = draft.trim()) => {
     setSending(true);
     setError('');
@@ -639,6 +674,7 @@ export function Chat(props: Props) {
       {running && !!lastTurn?.backgroundTasks.length && <BackgroundTaskStatus tasks={lastTurn.backgroundTasks} />}
       {asks.length > 0 && <PermissionStack asks={asks} onAnswer={answer} />}
       {queue.length > 0 && <QueuedStack queue={queue} onAction={queueAction} />}
+      {polishing && <PolishCard state={polishing} draft={draft} onUse={applyPolish} onRetry={() => void polish(polishing.from)} onClose={closePolish} />}
 
       <footer className="composer">
         <div
@@ -699,6 +735,7 @@ export function Chat(props: Props) {
               setDraft(e.currentTarget.value);
               setCaret(e.currentTarget.selectionStart ?? 0);
               setDismissed(false);
+              setUndoPolish(null);
             }}
             onKeyUp={(e) => {
               if (!['ArrowUp', 'ArrowDown', 'Enter', 'Tab', 'Escape'].includes(e.key)) setCaret(e.currentTarget.selectionStart ?? 0);
@@ -786,6 +823,21 @@ export function Chat(props: Props) {
             </div>
             <AgentPicker agents={props.agents} value={props.choice} disabled={running || sending} onChange={props.onChoice} />
             <span className="spacer" />
+            {undoPolish !== null && (
+              <button className="link polish-undo" id="polish-undo" onClick={() => (fill(undoPolish), setUndoPolish(null))} title="换回润色前的原话">
+                换回原话
+              </button>
+            )}
+            <button
+              className="icon-button polish-button"
+              id="polish"
+              disabled={draft.trim() === '' || polishing?.status === 'working' || parseCommand(draft.trim()) !== null}
+              onClick={() => void polish()}
+              aria-label="润色"
+              title="润色：把这句话改得更清楚、更好执行（不会发送）"
+            >
+              <Icon name="spark" size={13} />
+            </button>
             {showStop ? (
               <button id="cancel-turn" className="primary-slot stop" onClick={cancel} aria-label="停止本轮" title="停止本轮（排队的消息一并作废）">
                 <span className="stop-glyph" />

@@ -68,6 +68,13 @@ export interface Config {
   renderer: string;
   /** 渲染工具用的模型，规则同 orchestratorModel。镜头 scene.json 换了渲染工具时不用它（scene/run.ts）。 */
   rendererModel: string;
+  /**
+   * 润色与镜头画面描述检查用的工具（promptopt）；空是跟随 orchestrator。用 promptopt.optimizerOf 取实际的工具与模型，
+   * 不要直接读这两项。
+   */
+  optimizer: string;
+  /** 优化工具用的模型，规则同 orchestratorModel；optimizer 为空时也为空（跟随编排的模型）。 */
+  optimizerModel: string;
   ttsProvider: string;
   /** 已解析的对齐工具，auto 已落成具体取值。 */
   alignProvider: string;
@@ -99,6 +106,8 @@ export function newConfig(fields: Partial<Omit<Config, 'memory'>> & { memory?: P
     orchestratorModel: '',
     renderer: '',
     rendererModel: '',
+    optimizer: '',
+    optimizerModel: '',
     ttsProvider: '',
     alignProvider: '',
     sceneJobs: 0,
@@ -255,6 +264,9 @@ export function load(root: string, environ?: Record<string, string> | null): Con
     orchestratorModel: modelFor('ORCHESTRATOR_MODEL'),
     renderer: resolve('RENDERER', ''),
     rendererModel: modelFor('RENDERER_MODEL'),
+    optimizer: resolve('OPTIMIZER', ''),
+    // 没设优化工具时它跟随编排工具与编排模型，给它单写的模型没有对象。
+    optimizerModel: resolve('OPTIMIZER', '') === '' ? '' : modelFor('OPTIMIZER_MODEL'),
     ttsProvider: resolve('TTS_PROVIDER', ''),
     overlay: dotenv,
   });
@@ -265,10 +277,13 @@ export function load(root: string, environ?: Record<string, string> | null): Con
   if (!ValidTools.has(cfg.orchestrator)) {
     throw new Error(`无效的 ORCHESTRATOR: ${cfg.orchestrator}（可选：codex claude qoder codebuddy opencode director）`);
   }
+  if (cfg.optimizer !== '' && !ValidTools.has(cfg.optimizer)) {
+    throw new Error(`无效的 OPTIMIZER: ${cfg.optimizer}（可选：留空跟随编排，或 codex claude qoder codebuddy opencode director）`);
+  }
   if (!ValidRenderers.has(cfg.renderer)) {
     throw new Error(`无效的 RENDERER: ${cfg.renderer}（可选：codex claude qoder codebuddy opencode）`);
   }
-  for (const [key, value] of [['ORCHESTRATOR_MODEL', cfg.orchestratorModel], ['RENDERER_MODEL', cfg.rendererModel]] as const) {
+  for (const [key, value] of [['ORCHESTRATOR_MODEL', cfg.orchestratorModel], ['RENDERER_MODEL', cfg.rendererModel], ['OPTIMIZER_MODEL', cfg.optimizerModel]] as const) {
     if (value !== '' && !validModel(value)) throw new Error(`无效的 ${key}: ${value}（模型名只能用字母、数字与 . _ - : / @ # [ ] +）`);
   }
   if (!validTTSProvider(cfg.ttsProvider)) {
@@ -353,6 +368,11 @@ export function childEnvironment(
   // 模型与工具一起写进去（空就删掉 .env 里带进来的旧值）：子进程按 load 的规则，环境里只有工具、
   // 没有模型时不会捡起项目配置里给别的工具写的模型。编排工具调用的 onset scene run 因此用会话选的渲染模型。
   for (const [key, value] of [['ORCHESTRATOR_MODEL', config.orchestratorModel], ['RENDERER_MODEL', config.rendererModel]] as const) {
+    if (value !== '') out[key] = value;
+    else delete out[key];
+  }
+  // 优化工具同理：执行进程里的 scene_prompt_check 按同一份取值（空是跟随上面的编排工具）。
+  for (const [key, value] of [['OPTIMIZER', config.optimizer], ['OPTIMIZER_MODEL', config.optimizerModel]] as const) {
     if (value !== '') out[key] = value;
     else delete out[key];
   }

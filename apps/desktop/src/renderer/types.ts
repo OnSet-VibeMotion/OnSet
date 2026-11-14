@@ -899,6 +899,29 @@ export interface StoryboardScene {
   prompt?: { path: string; content: string };
   created: boolean;
   rendered: boolean;
+  /** 画面描述检查的结果（还没采用或丢掉的草稿）。 */
+  prompt_check?: PromptCheck;
+}
+
+export type PromptCheckDimension = 'intent' | 'concreteness' | 'pacing' | 'continuity' | 'ambiguity';
+
+/** 一次画面描述检查（后端 promptopt.PromptCheck 加上 outdated）。 */
+export interface PromptCheck {
+  scene: string;
+  dir: string;
+  base_sha256: string;
+  checked_at: string;
+  tool: string;
+  model: string;
+  scores: Record<PromptCheckDimension, number>;
+  issues: string[];
+  decision: 'skip' | 'minor' | 'rewrite';
+  /** 改写稿；不用改或没通过核对时没有。 */
+  prompt?: string;
+  /** 改写稿为什么没有采用。 */
+  rejected?: string[];
+  /** 检查之后 prompt.md 又改过。 */
+  outdated: boolean;
 }
 
 export interface StoryboardResponse {

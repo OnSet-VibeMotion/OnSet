@@ -9,6 +9,22 @@ for a in "$@"; do
 done
 printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "$sid"
 case "$prompt" in *慢慢来*) exec sleep 60 ;; esac
+# 润色（assets/optimizer/polish.md）：草稿里有「已经很清楚」时说不用改，否则返回一份保留了 @scene-001 的改写稿。
+# 放在前面：优化器提示词里带着用户的草稿，不能被后面按关键词认的分支接走。
+case "$prompt" in *改稿助手*)
+  case "$prompt" in
+    *已经很清楚*) printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"{\"decision\": \"skip\", \"text\": \"\", \"notes\": []}"}]}}' ;;
+    *) printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"{\"decision\": \"rewrite\", \"text\": \"@scene-001 画面元素太多、看不出重点：保留主物件，去掉次要的装饰，其余镜头不动。\", \"notes\": [\"写明了改哪一方面、不动哪里\"]}"}]}}' ;;
+  esac
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
+  exit 0 ;;
+esac
+# 镜头画面描述检查（assets/optimizer/scene-check.md）：建议小改，改写稿在原稿后面加一句。
+case "$prompt" in *分镜审稿人*)
+  printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"{\"scores\": {\"intent\": 82, \"concreteness\": 48, \"pacing\": 75, \"continuity\": 90, \"ambiguity\": 66}, \"issues\": [\"没写主体在画面里的位置：写明门在画面中央\"], \"decision\": \"minor\", \"prompt\": \"before\\n门在画面中央，缓缓推开。\\n\"}"}]}}'
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
+  exit 0 ;;
+esac
 # 后台任务的工具调用已经返回，任务仍在执行；文件信号由测试推进，避免依赖固定延时。
 case "$prompt" in *后台任务测试*)
   printf '%s\n' '{"type":"system","subtype":"task_started","task_id":"a","description":"检查素材尺寸","is_backgrounded":true}'

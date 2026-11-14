@@ -12,6 +12,7 @@ import '../plugin';
 import * as scene from '../scene';
 import { writeError, writeJSON } from './http';
 import { pageGate } from './progress';
+import { promptCheckView, type PromptCheckView } from './promptchecks';
 import { discoverScenes } from './scenes';
 import { localRFC3339 } from './script';
 import type { Server } from './studio';
@@ -65,6 +66,8 @@ export interface StoryboardScene {
   created: boolean;
   /** 已经有产物。 */
   rendered: boolean;
+  /** 画面描述检查的结果（还没采用或丢掉的草稿），见 promptchecks.ts。 */
+  prompt_check?: PromptCheckView;
 }
 
 export interface StoryboardResponse {
@@ -91,7 +94,12 @@ export function storyboardAPI(s: Server, request: Request): Response {
   } catch (err) {
     return writeError(404, 'no_project', (err as Error).message);
   }
-  return writeJSON(200, { ...readStoryboard(root), gate: pageGate(root, 'storyboard') });
+  const board = readStoryboard(root);
+  for (const item of board.scenes) {
+    const check = promptCheckView(root, item.id);
+    if (check) item.prompt_check = check;
+  }
+  return writeJSON(200, { ...board, gate: pageGate(root, 'storyboard') });
 }
 
 function readText(file: string): string | null {
