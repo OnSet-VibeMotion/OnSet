@@ -8,28 +8,33 @@ test('settings pick what to use for every project, and one project can differ', 
   const dialog = page.locator('#settings-dialog');
   const row = (key) => dialog.locator(`.settings-row[data-key="${key}"]`);
 
-  // 全局：配音改成 Breeze，写进用户级的全局设置文件。
-  await row('TTS_PROVIDER').getByLabel('全局配音').selectOption('breeze');
-  await expect.poll(() => (fs.existsSync(sandbox.settings) ? fs.readFileSync(sandbox.settings, 'utf8') : '')).toContain('TTS_PROVIDER=breeze');
-  // 测试项目没单独设配音：「这个项目」显示跟随全局，值是 Breeze。
-  await expect(row('TTS_PROVIDER').getByLabel('这个项目的配音')).toContainText('跟随全局（Breeze TTS 2');
+  // 全局：配音改成 Edge（默认那一家只以「默认」出现一次，挑一个不是默认的），写进用户级的全局设置文件。
+  await row('TTS_PROVIDER').getByLabel('全局配音').selectOption('edge');
+  await expect.poll(() => (fs.existsSync(sandbox.settings) ? fs.readFileSync(sandbox.settings, 'utf8') : '')).toContain('TTS_PROVIDER=edge');
+  // 测试项目没单独设配音：只露一个下拉框；点「只给这个项目换」才展开，默认和其他项目一样（Edge）。
+  await expect(row('TTS_PROVIDER').getByLabel('这个项目的配音')).toHaveCount(0);
+  await row('TTS_PROVIDER').getByRole('button', { name: '只给这个项目换' }).click();
+  await expect(row('TTS_PROVIDER').getByLabel('这个项目的配音')).toContainText('和其他项目一样（微软 Edge');
+  await row('TTS_PROVIDER').getByRole('button', { name: '算了' }).click();
+  await expect(row('TTS_PROVIDER').getByLabel('这个项目的配音')).toHaveCount(0);
   // 渲染模型：可选的是渲染工具（默认 claude）报的模型，写进全局设置。
-  await row('RENDERER_MODEL').getByLabel('全局渲染模型').selectOption('sonnet');
+  await row('RENDERER_MODEL').getByLabel('全局画镜头的模型').selectOption('sonnet');
   await expect.poll(() => fs.readFileSync(sandbox.settings, 'utf8')).toContain('RENDERER_MODEL=sonnet');
   // 编排工具被测试环境的环境变量定死了：页面照实说。
-  await expect(row('ORCHESTRATOR')).toContainText('被环境变量覆盖');
+  await expect(row('ORCHESTRATOR')).toContainText('被电脑上的环境变量定死了');
 
   // 这个项目单独把同时渲染改成 5 个：写进项目配置（写任务）。
   const conf = path.join(project.path, 'onset.conf');
-  await row('SCENE_JOBS').getByLabel('这个项目的同时渲染').selectOption('5');
+  await row('SCENE_JOBS').getByRole('button', { name: '只给这个项目换' }).click();
+  await row('SCENE_JOBS').getByLabel('这个项目的同时画几个镜头').selectOption('5');
   await expect.poll(() => fs.readFileSync(conf, 'utf8')).toContain('SCENE_JOBS=5');
-  await expect(row('SCENE_JOBS').getByLabel('这个项目的同时渲染')).toHaveClass(/overridden/);
+  await expect(row('SCENE_JOBS').getByLabel('这个项目的同时画几个镜头')).toHaveClass(/overridden/);
   await page.screenshot({ path: test.info().outputPath('settings.png') });
 
   // 全部跟随全局：项目里单独设的几项都清空。
-  await dialog.getByRole('button', { name: '全部跟随全局' }).click();
+  await dialog.getByRole('button', { name: /全部改回和其他项目一样/ }).click();
   await expect.poll(() => fs.readFileSync(conf, 'utf8')).toMatch(/^SCENE_JOBS=$/m);
-  await expect(row('SCENE_JOBS').getByLabel('这个项目的同时渲染')).not.toHaveClass(/overridden/);
+  await expect(row('SCENE_JOBS').getByLabel('这个项目的同时画几个镜头')).toHaveCount(0);
 });
 
 test('the Director keeps several model services, prefilled by presets, and never shows a key back', async ({ page, project, sandbox }) => {
@@ -88,8 +93,8 @@ test('the Director keeps several model services, prefilled by presets, and never
 
   // 编排可以选导演，渲染不行（暂时只做编排）。
   const row = (key) => page.locator(`#settings-dialog .settings-row[data-key="${key}"]`);
-  await expect(row('ORCHESTRATOR').getByLabel('全局编排').locator('option[value="director"]')).toHaveCount(1);
-  await expect(row('RENDERER').getByLabel('全局渲染').locator('option[value="director"]')).toHaveCount(0);
+  await expect(row('ORCHESTRATOR').getByLabel('全局对话助手').locator('option[value="director"]')).toHaveCount(1);
+  await expect(row('RENDERER').getByLabel('全局画镜头的工具').locator('option[value="director"]')).toHaveCount(0);
 
   // 删掉在用的那套：改用剩下的。
   await relay.getByRole('button', { name: '删除' }).click();

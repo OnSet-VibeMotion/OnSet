@@ -41,41 +41,41 @@ function describe(key: config.GlobalKey): { label: string; hint: string; options
   const agents = agentOrder.map((a) => ({ value: a.id, label: a.label }));
   switch (key) {
     case 'ORCHESTRATOR':
-      return { label: '编排', hint: '和你对话、写稿、定分镜、调度渲染的工具；导演不用另装，填下面的模型服务密钥就能用', options: agents };
+      return { label: '对话助手', hint: '和你聊天、写口播稿、拆分镜、安排镜头去画的那位。选「导演」不用另装软件，在下面填一套模型服务就能用', options: agents };
     case 'ORCHESTRATOR_MODEL':
       // 可选的模型跟着工具变，由界面按工具去 /api/agents/{工具}/models 取，这里不列。
-      return { label: '编排模型', hint: '留空用这家工具自己的默认模型；换了工具会回到默认', options: [], modelOf: 'ORCHESTRATOR' };
+      return { label: '对话助手的模型', hint: '不确定就选「默认」，由上面那家工具自己决定；换了工具会自动回到默认', options: [], modelOf: 'ORCHESTRATOR' };
     case 'RENDERER':
       // 导演暂时只做编排（tools.ValidRenderers）。
-      return { label: '渲染', hint: '把每个镜头画出来的工具', options: agents.filter((a) => tools.ValidRenderers.has(a.value)) };
+      return { label: '画镜头的工具', hint: '把每个镜头的画面做出来的那位，要先装在这台电脑上', options: agents.filter((a) => tools.ValidRenderers.has(a.value)) };
     case 'RENDERER_MODEL':
-      return { label: '渲染模型', hint: '留空用这家工具自己的默认模型；换了渲染工具会回到默认', options: [], modelOf: 'RENDERER' };
+      return { label: '画镜头的模型', hint: '不确定就选「默认」，由上面那家工具自己决定；换了工具会自动回到默认', options: [], modelOf: 'RENDERER' };
     case 'TTS_PROVIDER':
-      return { label: '配音', hint: '把口播稿读成配音', options: config.TTSProviders.map((p) => ({ value: p.id, label: ttsNames[p.id] ?? p.name })) };
+      return { label: '配音', hint: '用谁把口播稿读出来', options: config.TTSProviders.map((p) => ({ value: p.id, label: ttsNames[p.id] ?? p.name })) };
     case 'ALIGN_PROVIDER':
       return {
         label: '字幕对齐',
-        hint: '让字幕和配音逐字对上；自动是 Apple Silicon 用本机 MLX，其余用 FunASR',
+        hint: '让字幕和声音一个字一个字对上。不确定就选「自动」，会按这台电脑挑合适的',
         options: [{ value: config.AlignAuto, label: '自动' }, ...config.Aligners.map((a) => ({ value: a.id, label: alignNames[a.id] ?? a.name }))],
       };
     case 'SCENE_JOBS':
-      return { label: '同时渲染', hint: '一次并排渲染几个镜头；越多越快，也越吃机器和额度', options: Array.from({ length: 8 }, (_, i) => ({ value: String(i + 1), label: `${i + 1} 个镜头` })) };
+      return { label: '同时画几个镜头', hint: '越多越快，但更占电脑，也更快用完 AI 的额度', options: Array.from({ length: 8 }, (_, i) => ({ value: String(i + 1), label: `${i + 1} 个镜头` })) };
     case 'MEMORY':
       return {
-        label: '渲染记忆',
-        hint: '记下渲染里出过的问题和你的要求，下次带上',
+        label: '记住出过的问题',
+        hint: '把画镜头时出过的错和你提过的要求记下来，下次画的时候提醒它',
         options: [
-          { value: 'on', label: '打开' },
-          { value: 'off', label: '关闭' },
+          { value: 'on', label: '记住' },
+          { value: 'off', label: '不记' },
         ],
       };
     case 'AUTO_APPROVE':
       return {
-        label: '自动批准',
-        hint: 'AI 要跑白名单外的命令时，不再弹卡片问你、直接允许；对话里照样记下它跑了什么',
+        label: '执行操作前问我',
+        hint: 'AI 有时要在你的电脑上执行不常见的操作。选「每次都问我」会先弹出卡片等你同意；不管选哪个，对话里都会记下它做了什么',
         options: [
-          { value: 'off', label: '每次问我' },
-          { value: 'on', label: '直接允许' },
+          { value: 'off', label: '每次都问我' },
+          { value: 'on', label: '不用问，直接做' },
         ],
       };
   }

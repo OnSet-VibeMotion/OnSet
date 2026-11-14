@@ -980,7 +980,7 @@ export function App() {
       )}
       {settingsOpen && (
         <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setSettingsOpen(false)}>
-          <section className="modal" role="dialog" aria-label="设置" id="settings-dialog">
+          <section className="modal settings-modal" role="dialog" aria-label="设置" id="settings-dialog">
             <header className="modal-head">
               <h2>设置</h2>
               <span className="spacer" />
@@ -988,7 +988,7 @@ export function App() {
                 <Icon name="close" />
               </button>
             </header>
-            <div className="pad">
+            <div className="settings-frame">
               <Settings version={version} run={run} onPluginsChanged={() => {
                 setPluginsVersion((v) => v + 1);
                 if (currentId) void loadProject();

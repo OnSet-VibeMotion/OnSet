@@ -83,5 +83,5 @@ test('"never ask again" turns on auto-approve for every later request', async ({
 
   // 设置页里能看到、也能关掉。
   await page.locator('#settings-trigger').click();
-  await expect(page.locator('.settings-row[data-key="AUTO_APPROVE"]').getByLabel('全局自动批准')).toHaveValue('on');
+  await expect(page.locator('.settings-row[data-key="AUTO_APPROVE"]').getByLabel('全局执行操作前问我')).toHaveValue('on');
 });

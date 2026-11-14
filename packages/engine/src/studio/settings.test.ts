@@ -16,7 +16,7 @@ describe('settings API', () => {
     expect(body.has_project).toBe(true);
     const row = (key: string) => body.rows.find((r: { key: string }) => r.key === key);
     // 测试项目的 conf 写了 ORCHESTRATOR=claude，测试环境又设了 ORCHESTRATOR：环境变量压过项目，页面要说明是它在起作用。
-    expect(row('ORCHESTRATOR')).toMatchObject({ label: '编排', project: 'claude', effective: 'claude', source: 'env' });
+    expect(row('ORCHESTRATOR')).toMatchObject({ label: '对话助手', project: 'claude', effective: 'claude', source: 'env' });
     expect(row('SCENE_JOBS')).toMatchObject({ project: '5', effective: '5', source: 'project' });
     expect(row('TTS_PROVIDER')).toMatchObject({ project: '', global: '', source: 'default', effective: defaultTTSProvider() });
     expect(row('TTS_PROVIDER').options.map((o: { value: string }) => o.value)).toContain('breeze');
