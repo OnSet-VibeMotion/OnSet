@@ -1,0 +1,31 @@
+// onset-huashu-pre.js：片场写的接头（前半），在 huashu 的库之前加载。不要改它。
+//
+// 1. 全部 2D 画布走软件光栅：笔触类风格反复读写画布，GPU 光栅下同一帧两次渲染会有细微差别
+//    （实测梵高 120 帧里 73 帧不同，改成软件光栅后逐帧相同，速度不变）。
+// 2. OnsetHuashu.use(场景 id, 秒)：场景文件注册了 SCENES[id] 之后调用，把它排成引擎唯一的一段。
+//    上游用同步 XHR 加 eval 加载场景，这里改成普通的 <script src>，镜头产物的确定性扫描才扫得到场景代码。
+(() => {
+  const patch = (proto) => {
+    const get = proto.getContext;
+    proto.getContext = function (type, opts) {
+      return type === '2d' ? get.call(this, type, { ...(opts || {}), willReadFrequently: true }) : get.call(this, type, opts);
+    };
+  };
+  patch(HTMLCanvasElement.prototype);
+  if (typeof OffscreenCanvas !== 'undefined') patch(OffscreenCanvas.prototype);
+
+  window.SCENES = window.SCENES || {};
+  window.__bootErrors = window.__bootErrors || [];
+  window.OnsetHuashu = {
+    use(id, seconds) {
+      const scene = window.SCENES[id];
+      if (!scene || typeof scene.draw !== 'function') {
+        window.__bootErrors.push(`没有 SCENES['${id}'] = { draw(c, lt, t) }：场景文件没加载，或注册的名字不对`);
+        window.ERAS = [{ id, dur: seconds, draw() {} }];
+        return;
+      }
+      if (!(seconds > 0)) window.__bootErrors.push(`OnsetHuashu.use('${id}', ${seconds})：时长必须是正数（秒）`);
+      window.ERAS = [{ id, dur: seconds, draw: scene.draw, init: scene.init }];
+    },
+  };
+})();

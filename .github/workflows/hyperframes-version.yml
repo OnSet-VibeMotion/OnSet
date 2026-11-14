@@ -24,13 +24,13 @@ jobs:
         id: pinned
         run: |
           set -euo pipefail
-          # internal/hyperframes/hyperframes.go 的 PinnedVersion 是唯一来源。
+          # packages/engine/src/hyperframes/constants.ts 的 PinnedVersion 是唯一来源。
           # 解析失败要和「上游有新版」区分开：过去常量挪了位置，这一步静默失败了两个月，
           # 一直被当成版本提醒没人看。
-          version="$(grep -oE 'const PinnedVersion = "[0-9]+\.[0-9]+\.[0-9]+"' internal/hyperframes/hyperframes.go \
+          version="$(grep -oE "export const PinnedVersion = '[0-9]+\.[0-9]+\.[0-9]+'" packages/engine/src/hyperframes/constants.ts \
             | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
           if [ -z "$version" ]; then
-            echo "::error::没能从 internal/hyperframes/hyperframes.go 解析出 PinnedVersion，先修这个 workflow" >&2
+            echo "::error::没能从 packages/engine/src/hyperframes/constants.ts 解析出 PinnedVersion，先修这个 workflow" >&2
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -70,15 +70,15 @@ jobs:
 
           升级前必须人工比对，不要直接改常量：
 
-          1. 取两个版本的 \`skills/\` 树做 diff，确认 \`internal/scene/skills.go\` 注册的技能
+          1. 取两个版本的 \`skills/\` 树做 diff，确认 \`packages/engine/src/scene/skills.ts\` 注册的技能
              与提示词点名的文件（\`hyperframes\` 的 \`references/format.md\`、\`motion.md\`、
              \`runtimes.md\`、\`look.md\`）都还在，并重读入口技能的 Contract 与 Work loop，
              看有没有新的整片流程、交互命令或外发服务需要在提示词里挡掉。
           2. 比对 \`packages/core/src/fonts/deterministicFonts.ts\` 的 \`CANONICAL_FONTS\`，
-             确认自动内联字体清单没变，并同步 \`internal/validate\` 的 \`autoEmbeddedFonts\` 注释。
-          3. 改 \`internal/hyperframes/hyperframes.go\` 的 \`PinnedVersion\`（唯一来源），
+             确认自动内联字体清单没变，并同步 \`packages/engine/src/validate/validate.ts\` 的 \`autoEmbeddedFonts\` 注释。
+          3. 改 \`packages/engine/src/hyperframes/constants.ts\` 的 \`PinnedVersion\`（唯一来源），
              同时更新 \`PinnedSkillsCommit\`（新 tag 指向的 commit）与 \`PinnedSkillsCount\`，
-             再跑 \`go generate ./internal/preset/\` 更新下发提示词里的版本号。
+             再跑 \`npm run generate -w @onset/engine\` 更新下发提示词里的版本号。
           EOF
           echo "::error::HyperFrames 已发布 $latest，仓库仍固定在 $pinned"
           exit 1

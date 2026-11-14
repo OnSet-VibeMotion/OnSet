@@ -1,0 +1,178 @@
+/* 进化页「谁向谁学」。挂在 .learning 下，只用放映室的色板：学生赢用 --ok，老师赢用 --bad，强调只有黄铜色。 */
+.learning .learning-sub {
+  font: 12px var(--mono);
+  color: var(--muted);
+}
+.learning .learning-lede {
+  margin: 0;
+  max-width: 700px;
+  line-height: 1.7;
+  color: var(--text-2);
+}
+.learning .muted {
+  color: var(--muted);
+}
+.learning .learning-empty {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+}
+.learning .learning-empty p {
+  margin: 0;
+  color: var(--text-3);
+}
+.learning .learning-proposals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.learning .learning-proposal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+.learning .learning-proposal p {
+  margin: 0 0 4px;
+  line-height: 1.6;
+}
+.learning .learning-chip {
+  display: inline-block;
+  margin: 0 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--text-3);
+  vertical-align: 1px;
+}
+.learning .learning-chip:first-child {
+  margin-left: 0;
+}
+.learning .learning-chip.on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.learning .learning-chip.warn {
+  border-color: color-mix(in srgb, var(--stale) 50%, var(--bg));
+  color: var(--stale);
+}
+.learning .learning-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.learning .learning-exam {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.learning .learning-relation {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.learning .learning-relation header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.learning .learning-pair {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 15px;
+}
+.learning .learning-arrow {
+  color: var(--muted);
+  font-size: 13px;
+}
+.learning .learning-facts {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.learning .learning-curve {
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+}
+.learning .learning-curve .mid {
+  stroke: var(--line-strong);
+  stroke-dasharray: 3 4;
+}
+.learning .learning-curve .rate {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+}
+.learning .learning-curve .pt.win {
+  fill: var(--ok);
+}
+.learning .learning-curve .pt.loss {
+  fill: var(--bad);
+}
+.learning .learning-curve .pt.tie {
+  fill: var(--muted);
+}
+.learning .learning-curve .exam {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.4;
+}
+.learning .learning-curve .exam.trial {
+  fill: var(--accent);
+}
+.learning .learning-lessons {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.learning .learning-lessons li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-size: 14px;
+}
+.learning .learning-lessons details {
+  flex-basis: 100%;
+}
+.learning .learning-lessons summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+.learning .learning-lessons pre {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  font: 12px/1.6 var(--mono);
+  color: var(--text-2);
+  background: var(--well);
+  border-radius: 8px;
+}

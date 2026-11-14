@@ -1,0 +1,1155 @@
+/*
+ * 开拍前的准备（components/SetupGuide.tsx）。选择器挂在 .setup-guide 下。
+ * 与「开机」画面同一套语言：暗场、一层很淡的胶片颗粒、顶上一团琥珀色的光；
+ * 四个组是四张卡片，图标外一圈进度环，就位后整圈转绿并带一个对勾。文字只留标题和一句话。
+ */
+
+.setup-guide {
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  width: 100%;
+  padding: 26px 28px 18px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    radial-gradient(70% 90% at 12% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 60%),
+    linear-gradient(180deg, color-mix(in srgb, var(--panel) 50%, var(--raised)) 0%, var(--panel) 100%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 24px 60px -30px rgba(0, 0, 0, 0.8);
+  text-align: left;
+}
+
+.setup-guide > *:not(.setup-grain) {
+  position: relative;
+}
+
+.setup-guide .setup-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+.setup-guide.compact {
+  padding: 4px 2px 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+}
+
+.setup-guide.compact .setup-grain {
+  display: none;
+}
+
+.setup-guide.ok {
+  padding: 14px 18px;
+}
+
+/* ---- 标题 ---- */
+
+.setup-guide .setup-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.setup-guide .setup-heading {
+  min-width: 0;
+}
+
+.setup-guide .setup-eyebrow {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: var(--accent-text);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.28em;
+}
+
+.setup-guide .setup-title {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+}
+
+.setup-guide.ok .setup-title {
+  font-size: 15px;
+}
+
+.setup-guide .setup-lead {
+  max-width: 520px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.setup-guide .setup-cta {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 14px;
+}
+
+.setup-guide .setup-go {
+  height: 38px;
+  padding: 0 26px;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  box-shadow: 0 8px 24px -10px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+.setup-guide .setup-percent {
+  color: var(--accent-text);
+  font-family: var(--serif);
+  font-size: 40px;
+  font-weight: 300;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.setup-guide .setup-percent small {
+  margin-left: 2px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+/* ---- 摄制组：四张卡片 ---- */
+
+.setup-guide .crew {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup-guide .crew-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 18px 16px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.015);
+  transition:
+    border-color 0.4s var(--ease),
+    background 0.4s var(--ease),
+    transform 0.4s var(--ease);
+}
+
+.setup-guide .crew-card.working {
+  border-color: var(--accent-line);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  transform: translateY(-2px);
+}
+
+.setup-guide .crew-card.failed {
+  border-color: color-mix(in srgb, var(--bad) 40%, var(--line));
+}
+
+.setup-guide .crew-check {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--panel);
+  border-radius: 50%;
+  background: var(--ok);
+  animation: crew-pop 0.5s var(--ease);
+}
+
+.setup-guide .crew-check svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: var(--accent-ink);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@keyframes crew-pop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+}
+
+.setup-guide .crew-title {
+  color: var(--text);
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.setup-guide .crew-desc {
+  min-height: 2.9em;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.setup-guide .crew-state {
+  margin-top: 6px;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
+
+.setup-guide .crew-card.working .crew-state {
+  color: var(--accent-text);
+}
+
+.setup-guide .crew-card.ready .crew-state {
+  color: var(--ok);
+}
+
+.setup-guide .crew-card.failed .crew-state {
+  color: var(--bad);
+}
+
+.setup-guide .crew-card.paused .crew-state {
+  color: var(--text-3);
+}
+
+/* ---- 底部：以后可能用到的两颗药丸，右侧小链接 ---- */
+
+.setup-guide .setup-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.setup-guide .setup-later {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.setup-guide .later-pill {
+  height: 32px;
+  gap: 8px;
+  padding: 0 12px 0 10px;
+  border-color: var(--line);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.setup-guide .later-pill:hover:not(:disabled) {
+  border-color: var(--accent-line);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.setup-guide .later-pill:disabled {
+  cursor: default;
+}
+
+.setup-guide .later-icon {
+  display: grid;
+  color: var(--muted);
+}
+
+.setup-guide .later-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.setup-guide .later-state {
+  color: var(--accent-text);
+  font-size: 11px;
+}
+
+.setup-guide .later-pill.ready .later-state {
+  color: var(--ok);
+}
+
+.setup-guide .later-pill.ready .later-icon {
+  color: var(--ok);
+}
+
+.setup-guide .setup-links {
+  display: flex;
+  gap: 18px;
+  margin-left: auto;
+}
+
+.setup-guide .setup-link {
+  height: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--faint);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.setup-guide .setup-link:hover,
+.setup-guide .setup-link.on {
+  background: none;
+  color: var(--accent-text);
+}
+
+.setup-guide .setup-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- 展开的抽屉：网络、高级 ---- */
+
+.setup-guide .setup-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: -8px;
+  animation: drawer-in 0.35s var(--ease);
+}
+
+@keyframes drawer-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.setup-guide .setup-proxy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.setup-guide .setup-proxy input {
+  flex: 1;
+  min-width: 0;
+  max-width: 360px;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  outline: none;
+}
+
+.setup-guide .setup-proxy input:focus {
+  border-color: var(--accent-line);
+}
+
+.setup-guide .setup-fine {
+  margin: 0;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.setup-guide .setup-fine.strong {
+  color: var(--text-3);
+}
+
+.setup-guide .setup-error {
+  margin: -8px 0 0;
+  color: var(--bad);
+  font-size: 12px;
+}
+
+.setup-guide .setup-log {
+  max-height: 150px;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.setup-guide .setup-row-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+
+.setup-guide .setup-command {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.setup-guide .setup-command code {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--accent-text);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* ---- 安装进行中：放映机开着 ----
+ * 光束从左上角扫过、胶片沿顶边走、颗粒闪动；四张卡片依次入场，准备中的那张有一道光掠过、
+ * 图标里的部件动起来（镜头光圈转、片孔走、话筒出声波、字幕打字），进度环上绕一点光。
+ * 只用一种黄铜色，动作都慢而轻：是氛围，信息仍在文字和进度环里。 */
+
+.setup-guide .setup-projector {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.setup-guide .setup-beam {
+  position: absolute;
+  top: 0;
+  left: -82%;
+  width: 200%;
+  height: 220%;
+  background: conic-gradient(
+    from 150deg at 50% 0%,
+    transparent 0deg,
+    color-mix(in srgb, var(--accent) 9%, transparent) 22deg,
+    color-mix(in srgb, var(--accent) 14%, transparent) 30deg,
+    color-mix(in srgb, var(--accent) 9%, transparent) 38deg,
+    transparent 60deg
+  );
+  filter: blur(14px);
+  transform-origin: 50% 0%;
+  animation: beam-sweep 7s ease-in-out infinite alternate, beam-flicker 2.3s steps(1) infinite;
+}
+
+@keyframes beam-sweep {
+  from {
+    transform: rotate(-14deg);
+  }
+  to {
+    transform: rotate(22deg);
+  }
+}
+
+@keyframes beam-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  31% {
+    opacity: 0.86;
+  }
+  33% {
+    opacity: 1;
+  }
+  72% {
+    opacity: 0.92;
+  }
+}
+
+/* 顶边一条胶片：两排片孔一直往左走。 */
+.setup-guide .setup-reel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 9px;
+  opacity: 0.55;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 9px, color-mix(in srgb, var(--accent) 28%, transparent) 9px 15px) 0 2px / 100% 4px no-repeat,
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+  animation: reel-run 0.9s linear infinite;
+}
+
+@keyframes reel-run {
+  to {
+    background-position:
+      -15px 2px,
+      0 0;
+  }
+}
+
+/* 弹窗与首次引导里没有外框、上边紧贴标题，胶片会压在字上。 */
+.setup-guide.compact .setup-reel {
+  display: none;
+}
+
+.setup-guide.running .setup-grain {
+  animation: grain-jitter 0.24s steps(2) infinite;
+}
+
+@keyframes grain-jitter {
+  50% {
+    opacity: 0.075;
+    background-position: 37px 61px;
+  }
+}
+
+/* 标题后面三个点依次亮起。 */
+.setup-guide .setup-dots {
+  display: inline-flex;
+  gap: 5px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.setup-guide .setup-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.2;
+  animation: dot-step 1.4s ease-in-out infinite;
+}
+
+.setup-guide .setup-dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.setup-guide .setup-dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dot-step {
+  30% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+  60% {
+    opacity: 0.2;
+    transform: none;
+  }
+}
+
+/* 总进度：一根细线，前端带一点流动的光。 */
+.setup-guide .setup-progress {
+  display: block;
+  height: 2px;
+  margin-top: -10px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.setup-guide .setup-progress > span {
+  position: relative;
+  display: block;
+  height: 100%;
+  min-width: 6%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 35%, transparent), var(--accent));
+  transition: width 0.9s var(--ease);
+}
+
+.setup-guide .setup-progress > span::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 240, 215, 0.75), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: progress-glint 1.8s ease-in-out infinite;
+}
+
+@keyframes progress-glint {
+  from {
+    background-position: -60% 0;
+  }
+  to {
+    background-position: 160% 0;
+  }
+}
+
+/* 卡片依次入场。 */
+.setup-guide .crew-card {
+  position: relative;
+  overflow: hidden;
+  animation: crew-arrive 0.75s var(--ease) backwards;
+  animation-delay: calc(var(--i, 0) * 90ms + 60ms);
+}
+
+@keyframes crew-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+}
+
+/* 准备中：一道光从卡片上斜着掠过，边框微微发亮。 */
+.setup-guide .crew-card.working::before {
+  content: '';
+  position: absolute;
+  inset: -40% auto -40% -60%;
+  width: 45%;
+  background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--accent) 10%, transparent), transparent);
+  transform: skewX(-16deg);
+  pointer-events: none;
+  animation: card-sweep 2.6s var(--ease) infinite;
+}
+
+@keyframes card-sweep {
+  0% {
+    left: -60%;
+  }
+  70%,
+  100% {
+    left: 130%;
+  }
+}
+
+.setup-guide .crew-card.working {
+  animation:
+    crew-arrive 0.75s var(--ease) backwards,
+    card-glow 2.6s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * 90ms + 60ms), 0s;
+}
+
+@keyframes card-glow {
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent),
+      0 14px 34px -18px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+}
+
+.setup-guide .crew-card.waiting {
+  opacity: 0.72;
+}
+
+/* 刚就位：一道亮光扫过、对勾弹出（对勾的动画在上面）。 */
+.setup-guide .crew-card.ready::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, color-mix(in srgb, var(--ok) 16%, transparent) 50%, transparent 70%);
+  background-size: 260% 100%;
+  background-position: 120% 0;
+  pointer-events: none;
+  animation: ready-shine 1.1s var(--ease) 0.15s backwards;
+  opacity: 0;
+}
+
+@keyframes ready-shine {
+  from {
+    opacity: 1;
+    background-position: 120% 0;
+  }
+  to {
+    opacity: 1;
+    background-position: -40% 0;
+  }
+}
+
+/* 风格库：上面一层轻轻抬起又落下。 */
+.setup-guide .later-pill.working .ic-lift {
+  animation: layer-lift 1.8s ease-in-out infinite;
+}
+
+@keyframes layer-lift {
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+/* 底部按需安装的药丸：装着的时候边框呼吸。 */
+.setup-guide .later-pill.working {
+  border-color: var(--accent-line);
+  animation: card-glow 2.6s ease-in-out infinite;
+}
+
+/* ---- 组里的小景（CrewStage）：与桌宠同一套块面小人 ---- */
+
+.setup-guide .crew-stage {
+  position: relative;
+  display: block;
+  align-self: stretch;
+  height: 124px;
+  margin: -6px -6px 6px;
+}
+
+.setup-guide .crew-stage-svg {
+  display: block;
+  border-radius: 10px;
+  width: 100%;
+  height: 100%;
+  transition: opacity 0.5s var(--ease), filter 0.5s var(--ease);
+}
+
+.setup-guide .crew-stage-svg .pet-shadow,
+.setup-guide .now-stage-art .pet-shadow {
+  fill: rgba(0, 0, 0, 0.38);
+}
+
+/* 还没请来：路上空着、片场黑着，整块暗一些。 */
+.setup-guide .crew-stage-svg.missing {
+  opacity: 0.5;
+  filter: saturate(0.5);
+}
+
+/* 路中线：虚线；走过的那一段换成亮的黄铜色，就位后整段亮。 */
+.setup-guide .stage-centerline {
+  fill: none;
+  stroke: #4a4239;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.setup-guide .stage-walked {
+  fill: none;
+  stroke: #d9a35f;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, #d9a35f 70%, transparent));
+}
+
+.setup-guide .stage-lamplight {
+  fill: color-mix(in srgb, #f4e7cf 9%, transparent);
+}
+
+.setup-guide .stage-window {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, #e9cf9f 60%, transparent));
+}
+
+.setup-guide .stage-dust {
+  fill: #8a7f70;
+}
+
+/* 停住时头上的「…」：三个点依次亮。 */
+.setup-guide .stage-bubble rect {
+  fill: #efe9dd;
+  opacity: 0.92;
+}
+
+.setup-guide .stage-bubble .dot {
+  fill: #5a5247;
+  animation: bubble-dot 1.2s ease-in-out infinite;
+}
+
+.setup-guide .stage-bubble .d1 {
+  animation-delay: 0.2s;
+}
+
+.setup-guide .stage-bubble .d2 {
+  animation-delay: 0.4s;
+}
+
+@keyframes bubble-dot {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.setup-guide .crew-stage .crew-check {
+  top: 4px;
+  right: 6px;
+  bottom: auto;
+}
+
+/* 每组自己的一根细进度：准备中才看得见数。 */
+.setup-guide .crew-meter {
+  display: block;
+  align-self: stretch;
+  height: 2px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.setup-guide .crew-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.9s var(--ease), background 0.4s var(--ease);
+}
+
+.setup-guide .crew-meter.ready > span {
+  background: var(--ok);
+}
+
+.setup-guide .crew-meter.failed > span {
+  background: var(--bad);
+}
+
+.setup-guide .crew-meter.missing > span,
+.setup-guide .crew-meter.paused > span {
+  background: var(--muted);
+}
+
+/* ---- 正在下载：聚光的一条 ---- */
+
+.setup-guide .setup-now {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: -4px 0 2px;
+  padding: 16px 20px;
+  overflow: hidden;
+  border: 1px solid var(--accent-line);
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 140% at 0% 50%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%),
+    color-mix(in srgb, var(--accent) 4%, transparent);
+  animation:
+    now-in 0.6s var(--ease) backwards,
+    card-glow 2.6s ease-in-out infinite;
+}
+
+/* 一道光从左往右掠过。 */
+.setup-guide .setup-now::before {
+  content: '';
+  position: absolute;
+  inset: -40% auto -40% -40%;
+  width: 30%;
+  background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--accent) 12%, transparent), transparent);
+  transform: skewX(-16deg);
+  pointer-events: none;
+  animation: card-sweep 3.2s var(--ease) infinite;
+}
+
+@keyframes now-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+    filter: blur(3px);
+  }
+}
+
+.setup-guide .now-stage-art {
+  flex: none;
+  width: 190px;
+  height: 120px;
+  margin: -10px 0 -12px -8px;
+}
+
+.setup-guide .now-stage-art svg {
+  width: 100%;
+  height: 100%;
+}
+
+.setup-guide .now-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.setup-guide .now-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-text);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.28em;
+}
+
+/* 像录制灯一样一闪一闪的小点。 */
+.setup-guide .now-live {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
+  animation: live-pulse 1.4s ease-out infinite;
+}
+
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+
+.setup-guide .now-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--text);
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.setup-guide .now-item {
+  color: var(--muted);
+  font-family: var(--sans, inherit);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.setup-guide .now-bar {
+  position: relative;
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--line);
+}
+
+.setup-guide .now-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: 4%;
+  border-radius: inherit;
+  background:
+    repeating-linear-gradient(115deg, transparent 0 6px, rgba(255, 255, 255, 0.14) 6px 12px),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 45%, transparent), var(--accent));
+  background-size: 26px 100%, 100% 100%;
+  transition: width 0.9s var(--ease);
+  animation: bar-stripes 0.9s linear infinite;
+}
+
+@keyframes bar-stripes {
+  to {
+    background-position: 26px 0, 0 0;
+  }
+}
+
+/* 量不出进度时：一小段来回滑。 */
+.setup-guide .now-bar.unknown > span {
+  width: 28%;
+  animation:
+    bar-stripes 0.9s linear infinite,
+    bar-roam 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes bar-roam {
+  from {
+    left: 0;
+  }
+  to {
+    left: 72%;
+  }
+}
+
+.setup-guide .now-stage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.setup-guide .now-facts {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 子进程最近的一行输出：等宽、小、一行放不下就省略，给懂行的人看它具体在干什么。 */
+.setup-guide .now-activity {
+  overflow: hidden;
+  max-width: 100%;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 好一会儿没有动静：照实说一句，边框从黄铜色换成提醒色。 */
+.setup-guide .now-warn {
+  margin-top: 2px;
+  color: color-mix(in srgb, var(--bad) 70%, var(--text));
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.setup-guide .setup-now.quiet {
+  border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
+}
+
+.setup-guide .now-queue {
+  color: var(--text-3);
+}
+
+.setup-guide .now-percent {
+  flex: none;
+  color: var(--accent-text);
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 300;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.setup-guide .now-percent small {
+  margin-left: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ---- 安装进行中：没参与这次安装的往后退，正在装的那一个亮起来 ---- */
+
+.setup-guide .crew-card.idle {
+  opacity: 0.38;
+  filter: saturate(0.4);
+  transition:
+    opacity 0.5s var(--ease),
+    filter 0.5s var(--ease);
+}
+
+/* 药丸在安装时是 disabled，不走全局的变暗，由下面按状态决定亮暗。 */
+.setup-guide .later-pill:disabled {
+  opacity: 1;
+}
+
+.setup-guide .later-pill {
+  position: relative;
+  overflow: hidden;
+  transition:
+    opacity 0.5s var(--ease),
+    border-color 0.4s var(--ease),
+    color 0.4s var(--ease),
+    transform 0.4s var(--ease);
+}
+
+.setup-guide .later-pill.idle {
+  opacity: 0.35;
+}
+
+/* 药丸自己就是一根进度条：底色从左往右填上去。 */
+.setup-guide .later-pill.working::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--p, 0%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 8%, transparent), color-mix(in srgb, var(--accent) 22%, transparent));
+  transition: width 0.9s var(--ease);
+  pointer-events: none;
+}
+
+.setup-guide .later-pill.working {
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.setup-guide .later-pill.working > * {
+  position: relative;
+}
+
+.setup-guide .later-pill.working .later-icon {
+  color: var(--accent-text);
+}
+
+.setup-guide .later-pill.waiting .later-state {
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setup-guide *,
+  .setup-guide *::before,
+  .setup-guide *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ---- 试渲染一个镜头 ---- */
+
+.setup-guide .setup-ok-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.setup-guide .render-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+/* 全部就位那一行：按钮跟在标题右边，结果另起一行占满宽度。 */
+.setup-guide .setup-ok-row .render-check {
+  display: contents;
+}
+
+.setup-guide .render-check-note {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.setup-guide .render-check-result {
+  display: flex;
+  flex-basis: 100%;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+  animation: drawer-in 0.4s var(--ease);
+}
+
+.setup-guide .render-check-result.ok {
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+}
+
+.setup-guide .render-check-result.fail {
+  border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
+}
+
+.setup-guide .render-check-result img {
+  flex: none;
+  width: 160px;
+  height: 120px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.setup-guide .render-check-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.setup-guide .render-check-text strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.setup-guide .render-check-fail {
+  color: color-mix(in srgb, var(--bad) 70%, var(--text));
+  font-size: 12px;
+}

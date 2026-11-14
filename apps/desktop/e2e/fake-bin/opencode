@@ -1,0 +1,5 @@
+#!/bin/sh
+# e2e 用的假 opencode：只认 `opencode acp`，交给引擎单元测试的假 ACP 编排工具（会请求批准 npm install three）。
+if [ "$1" = "acp" ]; then exec node "$(dirname "$0")/../../../../packages/engine/src/agentrun/testdata/fake-acp.mjs"; fi
+echo "fake opencode: only acp is supported" >&2
+exit 2

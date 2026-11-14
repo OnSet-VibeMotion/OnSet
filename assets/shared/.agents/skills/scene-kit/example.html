@@ -1,9 +1,9 @@
 <!doctype html>
 <!--
   scene-kit 最小示例。用法：把本文件当作写法参考，不要整份复制成镜头入口。
-  镜头目录里需要：am 写好的 am-scene.js、从技能目录复制来的 scene-kit.js、
+  镜头目录里需要：onset 写好的 onset-scene.js、从技能目录复制来的 scene-kit.js、
   frame.md 要求的字体文件（下面的 @font-face 只是占位写法）。
-  data-width / data-height / data-duration 必须与 am-scene.js 里的
+  data-width / data-height / data-duration 必须与 onset-scene.js 里的
   width_px / height_px / duration_seconds 一致，按本镜头的实际值改写。
 -->
 <html lang="zh-CN">
@@ -12,7 +12,7 @@
     <meta name="viewport" content="width=1920, height=1080" />
     <title>scene-kit example</title>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
-    <script src="am-scene.js"></script>
+    <script src="onset-scene.js"></script>
     <script src="scene-kit.js"></script>
     <style>
       @font-face {
@@ -70,7 +70,7 @@
         var subs = K.captions(root, { tailFrames: 6 });
 
         // 注释跟着短语帧走：短语 "proof" 开始时入场，到位后保持不动供阅读。
-        // 短语 id 以本镜头 am-scene.js 的 phrases 为准，写错会直接抛错。
+        // 短语 id 以本镜头 onset-scene.js 的 phrases 为准，写错会直接抛错。
         var proof = K.phrase('proof');
 
         function render(frame) {

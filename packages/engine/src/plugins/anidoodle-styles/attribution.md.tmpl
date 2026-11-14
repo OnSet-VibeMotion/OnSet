@@ -1,0 +1,30 @@
+# 来源
+
+- 风格：{{.Style.CN}} · {{.Style.EN}}（上游 id `{{.Style.ID}}`）
+- 上游：anidoodle，作者 Alex Greenshpun，{{.Repo}}
+- commit：`{{.Commit}}`
+- 安装方式：`film_style_use({"style": "anidoodle/{{.Style.Slug}}"})`，从固定 commit 拷贝，不跟随上游 main
+
+## 保留了什么
+
+- `skills/anidoodle/references/styles/` 里这种风格的说明，原文放在 `STYLE.md` 的分隔线下面
+- 这种风格的示范画与它用到的引擎模块（`skills/anidoodle/engine/src/` 下），TypeScript 原文在 `source/`
+- `skills/anidoodle/references/` 里的 `styles.md`、`craft-bar.md`、`anatomy.md`、`realism-and-craft.md`，原样拷贝
+- 仓库根目录的 `LICENSE` 与 `NOTICE`
+
+## 丢了什么
+
+- 配乐、旁白、音效与采样包（`music/`、`narrate`、`soundfetch`）
+- 发布片模板、品牌导入、3D（`three-core`）与上游的全部工具脚本（scaffold、render、gate、ship……）
+- 上游的工作流程（`SKILL.md` 与 `references/workflows/`）：故事、分镜、审批由 onset 的制作流程负责
+
+## 改了哪几处
+
+- `anidoodle/` 里的模块是 `source/` 的 TypeScript 由 onset 转成的浏览器 ES 模块：去掉类型，相对引用补上 `.js`，逻辑不变
+- `anidoodle/onset-anidoodle.js`、`SKILL.md`、`STYLE.md` 的中文说明与本文件由 onset 生成
+- `poster.jpg` 是从上游图鉴 `skills/anidoodle/assets/styles.jpg` 裁下的这一格
+
+## 许可
+
+- 代码与文档：Apache License 2.0（见 `LICENSE`），再分发时保留 `NOTICE`
+- 用这套风格做出的片子归制作者所有

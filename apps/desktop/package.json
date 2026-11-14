@@ -1,0 +1,93 @@
+{
+  "name": "onset-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "片场桌面客户端",
+  "main": "out/entry.js",
+  "scripts": {
+    "build:main": "esbuild src/main/entry.ts src/main/main.ts src/main/browser.ts src/main/preload.ts --bundle --loader:.tmpl=text --platform=node --format=cjs --target=node22 --external:electron --outdir=out",
+    "build:renderer": "vite build --config vite.config.mjs",
+    "build": "npm run build:main && npm run build:renderer",
+    "vendor": "node scripts/vendor.mjs",
+    "start": "npm run build && electron .",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.main.json",
+    "dist": "npm run vendor && npm run build && npm run build -w @onset/cli && electron-builder --dir",
+    "test:packaging": "node --test scripts/packaging.test.mjs",
+    "test:e2e": "npm run build -w @onset/cli && npm run build && playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "dompurify": "3.4.15",
+    "electron": "45.2.3",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
+    "marked": "18.1.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.6"
+  },
+  "build": {
+    "appId": "com.chouheiwa.onset",
+    "productName": "片场",
+    "afterPack": "scripts/afterpack.cjs",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/entry.js",
+      "out/main.js",
+      "out/browser.js",
+      "out/preload.js",
+      "out/renderer/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../../assets",
+        "to": "assets",
+        "filter": [
+          "**/*",
+          "**/.*",
+          "**/.*/**/*",
+          "!**/.DS_Store"
+        ]
+      },
+      {
+        "from": "../../packages/cli/dist",
+        "to": "cli"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.video",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "在音色页录下你自己的声音，用来给视频配音。"
+      },
+      "target": [
+        "dir",
+        "dmg"
+      ],
+      "identity": null,
+      "icon": "build/icon.icns",
+      "artifactName": "OnSet-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build/icon.ico",
+      "artifactName": "OnSet-${version}-windows-${arch}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "asar": true,
+    "electronVersion": "45.2.3"
+  },
+  "author": "chouheiwa"
+}

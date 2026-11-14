@@ -11,123 +11,104 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  studio-ui:
-    name: Studio UI build is committed
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: internal/studio/ui
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: internal/studio/ui/package-lock.json
-      - run: npm ci --no-audit --no-fund
-      - run: npm run typecheck
-      - run: npm run build
-      # internal/studio/web 是 go:embed 进二进制的构建产物，必须与 ui/src 一致。
-      - name: Verify committed build output
-        run: git diff --exit-code -- ../web && test -z "$(git status --porcelain -- ../web)"
-
-  studio-e2e:
-    name: Studio browser E2E
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: internal/studio/ui
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.26.10'
-          cache: true
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: internal/studio/ui/package-lock.json
-      - name: Install Playwright
-        run: npm ci --no-audit --no-fund && npx playwright install --with-deps chromium
-      - name: Run Studio browser flow
-        env:
-          AM_STUDIO_E2E_CONFIG: ${{ runner.temp }}/am-studio-projects.json
-        run: npm run test:e2e
-
   test:
-    name: test (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    name: Typecheck and test the engine, CLI and desktop client
+    runs-on: macos-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-node@v6
         with:
-          go-version: '1.26.10'
-          cache: true
-      # mediaprobe / concat 的集成测试要真实的 ffmpeg 和 ffprobe。
-      # 不装的话它们会自行跳过——测试仍然"通过"，但覆盖率会掉到门禁线以下，
-      # 而且真正在跑外部命令的那部分代码就再没被验证过。
-      - name: Install ffmpeg
-        run: |
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            brew install ffmpeg
-          else
-            sudo apt-get update && sudo apt-get install -y ffmpeg
-          fi
-      - run: ffmpeg -version | head -1
-      - run: go test -race ./...
+          node-version: 22
+          cache: npm
+      # 引擎的集成测试要真实的 ffmpeg / ffprobe；缺了会跳过，覆盖就成了假的。
+      - name: Install media tools
+        run: brew install ffmpeg
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc --noEmit -p packages/engine
+      - run: npx tsc --noEmit -p packages/cli
+      - run: npm run typecheck -w onset-desktop
+      - run: npm run test:packaging -w onset-desktop
+      - run: npx vitest run --root packages/engine
+      - run: npx vitest run --root packages/cli
+      - run: npm run build -w @onset/cli
+      - run: npm run build -w onset-desktop
+
+  windows:
+    # 客户端还没移植到 Windows（见 AGENTS.md「Windows」）。这一项先让问题暴露出来：类型检查与构建必须通过，
+    # 两包的单元测试照跑、失败不挡合并，等移植完再去掉 continue-on-error。
+    name: Windows (typecheck, build; tests report only)
+    runs-on: windows-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc --noEmit -p packages/engine
+      - run: npx tsc --noEmit -p packages/cli
+      - run: npm run typecheck -w onset-desktop
+      - run: npm run test:packaging -w onset-desktop
+      - run: npm run build -w @onset/cli
+      - run: npm run build -w onset-desktop
+      - name: Engine unit tests (not yet expected to pass)
+        continue-on-error: true
+        run: npx vitest run --root packages/engine --reporter=default --reporter=junit --outputFile.junit=engine-junit.xml
+      - name: CLI unit tests (not yet expected to pass)
+        continue-on-error: true
+        run: npx vitest run --root packages/cli --reporter=default --reporter=junit --outputFile.junit=cli-junit.xml
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-test-reports
+          path: |
+            packages/engine/engine-junit.xml
+            packages/cli/cli-junit.xml
+          retention-days: 7
+          if-no-files-found: ignore
 
   generated-assets:
-    name: generated assets are up to date
+    name: Generator reproduces the committed assets
     runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-node@v6
         with:
-          go-version: '1.26.10'
-          cache: true
-      # 只重跑文本产物。示例 PNG 在 -examples 开关后面，不参与这道门：
-      # 不同版本的 rsvg-convert 输出字节不同，纳进来会让门随 runner 随机失败。
-      - run: go generate ./internal/preset/
-      - name: assets/presets 与 assets/styles 必须与画幅表、风格表一致
-        run: git diff --exit-code
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run generate -w @onset/engine
+      - name: assets/presets 必须与画幅表、模板一致
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::生成产物与提交的不一致：改了画幅表或 frame.md 模板后要跑 npm run generate -w @onset/engine 并提交产物" >&2
+            exit 1
+          fi
 
-  quality:
-    runs-on: ubuntu-latest
+  e2e:
+    name: Desktop client end-to-end (Playwright, Electron)
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-node@v6
         with:
-          go-version: '1.26.10'
-          cache: true
-      - name: Formatting
-        run: test -z "$(gofmt -l .)"
-      - run: go vet ./...
-      - name: Module tidiness
-        run: go mod tidy && git diff --exit-code
-      - name: Staticcheck
-        run: |
-          go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
-          staticcheck ./...
-      - name: Govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
-          govulncheck ./...
-      - name: Coverage
-        run: |
-          go test ./... -coverprofile=coverage.out
-          go tool cover -func=coverage.out
-          go tool cover -func=coverage.out | awk '/total:/ { gsub("%", "", $3); if ($3 + 0 < 80) exit 1 }'
-      - name: Cross-build release targets
-        run: |
-          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
-            os="${target%/*}"
-            arch="${target#*/}"
-            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags='-s -w' -o "dist/am-${os}-${arch}" ./cmd/am
-          done
+          node-version: 22
+          cache: npm
+      - name: Install media tools
+        run: brew install ffmpeg
+      - run: npm ci --no-audit --no-fund
+      - run: npm run test:e2e -w onset-desktop
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-results
+          path: apps/desktop/test-results
+          retention-days: 7

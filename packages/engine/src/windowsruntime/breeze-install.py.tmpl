@@ -1,0 +1,137 @@
+import concurrent.futures
+import hashlib
+import json
+import pathlib
+import re
+import time
+import sys
+import threading
+import urllib.request
+import zipfile
+
+runtime = pathlib.Path(sys.argv[1]).resolve()
+downloads = runtime / 'downloads'
+downloads.mkdir(exist_ok=True)
+model_dir = runtime / 'models' / 'Breeze-TTS-2-GGUF'
+model_dir.mkdir(parents=True, exist_ok=True)
+binary_dir = runtime / 'tools' / 'audio-cpp' / 'v0.9.4'
+binary_dir.mkdir(parents=True, exist_ok=True)
+revision = '73ce4162f6cce370dd533c6782b772135c1b2a8e'
+base_url = 'https://huggingface.co/audio-cpp/audio.cpp-gguf/resolve/' + revision + '/Breeze-TTS-2-GGUF/'
+assets = [
+    ('https://github.com/0xShug0/audio.cpp/releases/download/v0.9.4/audio-v0.9.4-bin-windows-x64-cuda12.4.zip', downloads / 'audio-v0.9.4-bin-windows-x64-cuda12.4.zip', 'e85d829e121a424a960d9ad293536b7ada74ea845b1c12fcf2991ec09a224d1e'),
+    ('https://github.com/0xShug0/audio.cpp/releases/download/v0.9.4/audio-v0.9.4-cudart-windows-x64-cuda12.4.zip', downloads / 'audio-v0.9.4-cudart-windows-x64-cuda12.4.zip', 'efb58667b95bcb32e89ddf87811664e6ffdced3fe7015ddcc077599ed5f44bb2'),
+    (base_url + 'breeze-tts-2-q8_0.gguf', model_dir / 'breeze-tts-2-q8_0.gguf', 'b17b89b1c21107c44e8d556ab0a856d7acd06bdd0c914e68e0e57f6e33f555a3'),
+]
+
+def digest(file):
+    h = hashlib.sha256()
+    with file.open('rb') as stream:
+        for chunk in iter(lambda: stream.read(4 * 1024 * 1024), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+def parallel_fetch(asset):
+    url, target, expected = asset[:3]
+    if target.exists():
+        if digest(target) != expected:
+            raise RuntimeError('Existing file hash mismatch; preserved ' + str(target))
+        return {'file': str(target), 'sha256': expected, 'reused': True}
+    sizes = {'breeze-tts-2-q8_0.gguf': 5079670336,
+             'audio-v0.9.4-bin-windows-x64-cuda12.4.zip': 467800419,
+             'audio-v0.9.4-cudart-windows-x64-cuda12.4.zip': 607273675}
+    size = asset[3] if len(asset) > 3 else sizes[target.name]
+    part = target.with_name(target.name + '.part')
+    chunks = target.with_name(target.name + '.chunks')
+    chunks.mkdir(exist_ok=True)
+    chunk_size = 16 * 1024 * 1024
+    if part.exists():
+        with part.open('rb') as stream:
+            for index in range(part.stat().st_size // chunk_size):
+                chunk = chunks / str(index)
+                data = stream.read(chunk_size)
+                if not chunk.exists():
+                    chunk.write_bytes(data)
+    progress = {'bytes': 0, 'last': time.monotonic()}
+    lock = threading.Lock()
+
+    def transfer(index):
+        first = index * chunk_size
+        last = min(size, first + chunk_size) - 1
+        chunk = chunks / str(index)
+        expected_bytes = last - first + 1
+        partial = chunks / (str(index) + '.partial')
+        if not chunk.exists() or chunk.stat().st_size != expected_bytes:
+            failures = 0
+            while not partial.exists() or partial.stat().st_size < expected_bytes:
+                offset = partial.stat().st_size if partial.exists() else 0
+                start = first + offset
+                end = min(last, start + 4 * 1024 * 1024 - 1)
+                try:
+                    request = urllib.request.Request(url, headers={'User-Agent': 'onset-local-audio-setup/1', 'Accept-Encoding': 'identity', 'Range': 'bytes=' + str(start) + '-' + str(end)})
+                    with urllib.request.urlopen(request, timeout=90) as response:
+                        if response.status != 206 or response.headers.get('Content-Range') != 'bytes ' + str(start) + '-' + str(end) + '/' + str(size):
+                            raise RuntimeError('Source did not return the exact requested byte range')
+                        remaining = end - start + 1
+                        with partial.open('ab' if offset else 'wb') as stream:
+                            while remaining:
+                                block = response.read(min(65536, remaining))
+                                if not block:
+                                    raise EOFError('Connection ended before the requested range completed')
+                                stream.write(block)
+                                remaining -= len(block)
+                    failures = 0
+                except Exception as error:
+                    failures += 1
+                    if failures >= 12:
+                        raise
+                    if failures % 3 == 0:
+                        print(json.dumps({'file': target.name, 'chunk': index, 'retry': failures, 'error_type': type(error).__name__}), flush=True)
+                    time.sleep(min(10, failures))
+            if partial.stat().st_size != expected_bytes:
+                raise RuntimeError('Invalid partial chunk size')
+            partial.replace(chunk)
+        with lock:
+            progress['bytes'] += chunk.stat().st_size
+            if time.monotonic() - progress['last'] >= 25:
+                print(json.dumps({'file': target.name, 'bytes': progress['bytes'], 'total': size, 'range_workers': 16}), flush=True)
+                progress['last'] = time.monotonic()
+
+    count = (size + chunk_size - 1) // chunk_size
+    with concurrent.futures.ThreadPoolExecutor(max_workers=16 if target.suffix == '.gguf' else 8) as pool:
+        list(pool.map(transfer, range(count)))
+    combined = target.with_name(target.name + '.verified-part')
+    with combined.open('wb') as stream:
+        for index in range(count):
+            stream.write((chunks / str(index)).read_bytes())
+    if digest(combined) != expected:
+        raise RuntimeError('SHA-256 mismatch; not installed ' + str(target))
+    combined.rename(target)
+    for index in range(count):
+        (chunks / str(index)).unlink()
+    chunks.rmdir()
+    if part.exists():
+        part.unlink()
+    print(json.dumps({'file': target.name, 'stage': 'sha256-verified', 'bytes': size}), flush=True)
+    return {'file': str(target), 'sha256': expected, 'bytes': size, 'url': url}
+
+with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+    results = list(pool.map(parallel_fetch, assets))
+for _, archive_file, _ in assets[:2]:
+    with zipfile.ZipFile(archive_file) as archive:
+        if archive.testzip() is not None:
+            raise RuntimeError('ZIP CRC failed')
+        for entry in archive.infolist():
+            dest = (binary_dir / entry.filename).resolve()
+            if not dest.is_relative_to(binary_dir) or (entry.external_attr >> 16) & 0o170000 == 0o120000:
+                raise RuntimeError('Invalid ZIP member')
+        archive.extractall(binary_dir)
+for name in ['LICENSE', 'NOTICE']:
+    target = model_dir / name
+    if not target.exists():
+        target.write_bytes(urllib.request.urlopen(base_url + name, timeout=30).read())
+    results.append({'file': str(target), 'sha256': digest(target)})
+manifest = {'source_runtime': 'https://github.com/0xShug0/audio.cpp/releases/tag/v0.9.4', 'source_model': 'audio-cpp/audio.cpp-gguf', 'revision': revision, 'files': results, 'runtime_ready': False, 'synthesis_verified': False}
+(runtime / 'tools/breeze').mkdir(parents=True, exist_ok=True)
+(runtime / 'tools/breeze/files.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+print(json.dumps({'stage': 'files-verified', 'runtime': str(binary_dir), 'model': str(model_dir)}, ensure_ascii=False), flush=True)

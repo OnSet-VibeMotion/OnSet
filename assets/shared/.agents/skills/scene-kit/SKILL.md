@@ -11,7 +11,11 @@ description: HyperFrames 镜头的按帧驱动工具库——缓动与淡入淡�
 
 ## 接进镜头
 
-### 1. 把库复制进镜头目录
+### 1. 使用镜头目录里的库
+
+片场会在渲染前把 `scene-kit.js` 以相对软链接准备到镜头目录，不支持链接时使用副本。提示词有「共享渲染资源」段且列出该文件时直接用，不要再次复制、下载或改写。要改库就另存为镜头自己的文件并改引用，不要通过链接修改共享内容。
+
+只有独立使用本技能、上层没有准备库文件时，才按下面的方式复制：
 
 渲染只服务镜头目录内的文件，`<script src>` 指到镜头目录外会静默 404——字幕根本不出现，渲染却成功、退出码为 0：
 
@@ -19,19 +23,19 @@ description: HyperFrames 镜头的按帧驱动工具库——缓动与淡入淡�
 cp <本技能目录>/scene-kit.js ./scene-kit.js
 ```
 
-`<本技能目录>` 的本机绝对路径由 `am` 写在镜头提示词的「镜头工具库」一段里，直接用那一条，不要猜路径，不要引用镜头目录之外的文件。只复制 `scene-kit.js`；`example.html` 是写法参考，不要放进镜头目录（它会被当成第二个合成入口）。
+`<本技能目录>` 的本机绝对路径由 `onset` 写在镜头提示词的「镜头工具库」一段里，直接用那一条，不要猜路径，不要引用镜头目录之外的文件。只复制 `scene-kit.js`；`example.html` 是写法参考，不要放进镜头目录（它会被当成第二个合成入口）。
 
-### 2. 先加载 am-scene.js，再加载 scene-kit.js
+### 2. 先加载 onset-scene.js，再加载 scene-kit.js
 
-`am-scene.js` 由 `am` 在渲染前写进镜头目录，定义 `window.AM_SCENE`：画布尺寸、帧率、总帧数、frame.md 的安全区与字幕规范、本镜头的字幕时间轴（`cues`）与短语时间窗（`phrases`）。分镜计划定了全片配色时还有 `look`（`background`、`ink`、`accent`，以及可选的 `surface`、`accent_2`，均为 `#RRGGBB`），颜色从这里读，不要在代码里另写一份；没定时这个键不存在。**不要自己写或改这个文件**，它每次渲染前都会被重新生成。
+`onset-scene.js` 由 `onset` 在渲染前写进镜头目录，定义 `window.ONSET_SCENE`：画布尺寸、帧率、总帧数、frame.md 的安全区与字幕规范、本镜头的字幕时间轴（`cues`）与短语时间窗（`phrases`）。分镜计划定了全片配色时还有 `look`（`background`、`ink`、`accent`，以及可选的 `surface`、`accent_2`，均为 `#RRGGBB`），颜色从这里读，不要在代码里另写一份；没定时这个键不存在。**不要自己写或改这个文件**，它每次渲染前都会被重新生成。
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
-<script src="am-scene.js"></script>
+<script src="onset-scene.js"></script>
 <script src="scene-kit.js"></script>
 ```
 
-没加载 `am-scene.js` 时，任何读数据的接口都会抛出「am-scene.js 未加载」。
+没加载 `onset-scene.js` 时，任何读数据的接口都会抛出「onset-scene.js 未加载」。
 
 ### 3. 把 render(frame) 挂到时间线上
 
@@ -56,7 +60,7 @@ window.__timelines['main'] = tl; // 键名与根节点 data-composition-id 一�
 
 所有帧号都是**镜头本地帧**：第 0 帧是本镜头第一帧，与 `cues` / `phrases` 的坐标系一致。
 
-### 数学（不读 am-scene.js）
+### 数学（不读 onset-scene.js）
 
 | 接口 | 说明 |
 |---|---|
@@ -71,7 +75,7 @@ window.__timelines['main'] = tl; // 键名与根节点 data-composition-id 一�
 
 | 接口 | 说明 |
 |---|---|
-| `scene()` | 返回 `window.AM_SCENE`；缺失或 schema 不符时抛错 |
+| `scene()` | 返回 `window.ONSET_SCENE`；缺失或 schema 不符时抛错 |
 | `frameOf(seconds)` | 时间轴秒数换本地帧号：`Math.round(秒 × fps)`。全库只有这一处换算 |
 | `phrase(id)` | 短语时间窗 `{phrase_id, text, start_frame, end_frame_exclusive, min_readable_frames}`；未知 id 抛错并列出已有 id |
 | `phraseActive(id, frame)` | `start_frame <= frame < end_frame_exclusive` |
@@ -91,7 +95,8 @@ subs.layouts;         // 每条字幕的排版结果：{cue, fontSize, lines, ov
 ```
 
 - **位置**：字幕层铺满 `safe_area.subtitles`，字幕框默认贴底居中。
-- **样式**全部来自 `AM_SCENE.subtitles`：字号取 `font_size_px.max`，行高取 `line_height.max`，`background`、`text_color`、`padding_px`、`radius_px`、`max_width_px`（再与安全区宽度取小）。字体族继承自 `rootElement`，所以根节点上要设好 frame.md 规定的正文字体。
+- **版式**来自 `ONSET_SCENE.subtitles`（frame.md 只规定这些技术约束）：字号取 `font_size_px.max`，行高取 `line_height.max`，`max_width_px`（再与安全区宽度取小）、`max_lines`、`max_fullwidth_chars_per_line`。字体族继承自 `rootElement`。
+- **配色**由镜头自己定，frame.md 不规定：文字颜色缺省取整片配色的 `ONSET_SCENE.look.ink`（分镜计划定了 `look` 时），否则继承 `rootElement`；没有底框。要底框、换颜色、加内边距或圆角，用下表的 `color`、`background`、`padding`、`radius`，跟随本镜头或整片风格的配色，并保证字幕在画面上读得清。
 - **断行**：宽度按全角字计，汉字与全角标点算 1、ASCII 算 0.5，每行不超过 `max_fullwidth_chars_per_line`。不拆英文词、不拆数字与单位（`3.5 秒`、`98%`、`GPT-4`）、不拆《》“”""「」括起来的整段；优先在 `；，、。！？：` 之后断；两行时尽量等长；逗号句号不落行首。
 - **超长**：放不进 `max_lines` 时逐像素缩小字号，最小到 `font_size_px.min`（每行可容纳字数按比例放宽，行的像素长度不变）；仍放不下才多出行数，并按字幕序号各 `console.warn` 一次。看到这条告警要回去把字幕拆短，而不是改库。
 - **交接**：同一时刻只显示一条字幕，后一条一出现就截断前一条。
@@ -102,13 +107,16 @@ subs.layouts;         // 每条字幕的排版结果：{cue, fontSize, lines, ov
 | `fontSize` | `font_size_px.max` | 首选字号；缩字号的下限仍是 `font_size_px.min` |
 | `lineHeight` | `line_height.max` | 行高倍数 |
 | `fontFamily` / `fontWeight` | 继承 | 只在字幕要用与根节点不同的字体时设 |
+| `color` | `look.ink`，没有 look 时继承 | 字幕文字颜色 |
+| `background` | 透明 | 字幕框底色（例如本镜头配色里的深色加透明度） |
+| `padding` / `radius` | 0 / 0 | 字幕框内边距 `{vertical, horizontal}`（px）与圆角（px） |
 | `leadFrames` / `tailFrames` | 0 | 让字幕提前出现 / 延后消失，但不侵入相邻字幕本来的显示区间 |
 | `align` | `bottom` | 字幕框在安全区内的竖直位置：`bottom` / `center` / `top` |
 | `safeArea` | `subtitles` | 换用别的安全区 |
-| `cues` | `AM_SCENE.cues` | 换一组字幕时间轴（本地帧） |
+| `cues` | `ONSET_SCENE.cues` | 换一组字幕时间轴（本地帧） |
 | `className` / `zIndex` | — / 50 | 追加类名 / 层级 |
 
-`AM_SCENE.subtitles` 为 `null`（frame.md 没有字幕规范）时 `captions()` 直接抛错，不凭空编一套样式。
+`ONSET_SCENE.subtitles` 为 `null`（frame.md 没有字幕规范）时 `captions()` 直接抛错，不凭空编一套样式。
 
 ### 接入时间线
 
@@ -130,4 +138,4 @@ subs.layouts;         // 每条字幕的排版结果：{cue, fontSize, lines, ov
 - 不手抄 frame.md 的像素与字号：版式用 `safeRect`，字幕用 `captions`，时间用 `phrase` / `cueAt`。frame.md 改了，手抄的那份不会跟着改。
 - 第 0 帧必须已经是完整画面：`attach` 会立即画出第 0 帧，但入场动画写成「第 0 帧透明」的话照样是空封面。
 
-`scene-kit.js` 自身通过 `am` 的确定性源码扫描；你在镜头里写的代码同样会被扫。
+`scene-kit.js` 自身通过 `onset` 的确定性源码扫描；你在镜头里写的代码同样会被扫。

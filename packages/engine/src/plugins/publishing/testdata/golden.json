@@ -1,0 +1,1369 @@
+{
+  "route:speech": [
+    {
+      "station": "intake",
+      "id": "intake",
+      "label": "盘点素材与规格",
+      "step": "script",
+      "file": "production/input-inventory.md",
+      "produces": [
+        {
+          "path": "production/input-inventory.md"
+        },
+        {
+          "path": "production/input-manifest.json"
+        },
+        {
+          "path": "production/production-config.json"
+        },
+        {
+          "path": "onset.conf"
+        }
+      ]
+    },
+    {
+      "station": "script",
+      "id": "script",
+      "label": "整理口播稿",
+      "step": "script",
+      "page": "script",
+      "produces": [
+        {
+          "path": "production/script-final.md"
+        },
+        {
+          "path": "production/script-change-log.md"
+        },
+        {
+          "path": "script.md"
+        },
+        {
+          "path": "SCRIPT.md"
+        }
+      ]
+    },
+    {
+      "station": "script",
+      "id": "gate-script",
+      "label": "稿件审核",
+      "step": "script",
+      "gate": true,
+      "page": "script",
+      "gateFiles": [
+        "production/script-final.md"
+      ]
+    },
+    {
+      "station": "voice",
+      "id": "voice",
+      "label": "配音",
+      "step": "script",
+      "file": "production/audio/voice.wav",
+      "produces": [
+        {
+          "prefix": "production/audio/"
+        }
+      ]
+    },
+    {
+      "station": "voice",
+      "id": "gate-voice",
+      "label": "配音审核",
+      "step": "script",
+      "gate": true,
+      "file": "production/audio/voice.wav",
+      "gateFiles": [
+        "production/audio/voice.wav"
+      ]
+    },
+    {
+      "station": "timeline",
+      "id": "timeline",
+      "label": "字幕时间轴",
+      "step": "script",
+      "file": "production/audio/voice.srt",
+      "produces": [
+        {
+          "prefix": "production/audio/",
+          "base": "^(align|voice-16k|production-srt)|^voice\\.srt$"
+        },
+        {
+          "path": "production/phrase-timeline.json"
+        },
+        {
+          "path": "production/phrase-adjust.json"
+        },
+        {
+          "path": "production/timing-report.json"
+        },
+        {
+          "path": "transcription-production.srt"
+        },
+        {
+          "path": "transcription.srt"
+        }
+      ]
+    },
+    {
+      "station": "style",
+      "id": "style",
+      "label": "定整片风格",
+      "step": "storyboard",
+      "optional": true,
+      "page": "style",
+      "produces": [
+        {
+          "prefix": ".agents/skills/onset-film-style/"
+        },
+        {
+          "prefix": ".agents/onset-film-styles/"
+        }
+      ]
+    },
+    {
+      "station": "plan",
+      "id": "plan",
+      "label": "拆分镜头",
+      "step": "storyboard",
+      "page": "storyboard",
+      "produces": [
+        {
+          "path": "production/treatment.md"
+        },
+        {
+          "prefix": "production/scene-plan"
+        },
+        {
+          "path": "production/visible-event-inventory.json"
+        },
+        {
+          "prefix": "scenes/",
+          "base": "^(scene\\.json|prompt\\.md)$"
+        }
+      ]
+    },
+    {
+      "station": "plan",
+      "id": "gate-storyboard",
+      "label": "分镜审核",
+      "step": "storyboard",
+      "gate": true,
+      "page": "storyboard",
+      "gateFiles": [
+        "production/scene-plan.json",
+        "production/treatment.md"
+      ]
+    },
+    {
+      "station": "render",
+      "id": "render",
+      "label": "渲染镜头",
+      "step": "scene",
+      "page": "scene",
+      "produces": [
+        {
+          "prefix": "scenes/"
+        }
+      ]
+    },
+    {
+      "station": "visual-qc",
+      "id": "visual-qc",
+      "label": "画面验收",
+      "step": "scene",
+      "produces": [
+        {
+          "prefix": "production/visual-qc/"
+        }
+      ]
+    },
+    {
+      "station": "assemble",
+      "id": "assemble",
+      "label": "拼接母版",
+      "step": "final",
+      "file": "production/silent-master.mp4",
+      "produces": [
+        {
+          "prefix": "production/silent-master"
+        },
+        {
+          "prefix": "production/review-silent"
+        }
+      ]
+    },
+    {
+      "station": "sound",
+      "id": "sound",
+      "label": "配乐、音效与混音",
+      "step": "final",
+      "file": "production/audio/candidate.mp4",
+      "produces": [
+        {
+          "prefix": "production/audio/",
+          "base": "^(music|sfx|premaster|premix|candidate|cue-sheet|asset-ledger|sound-checklist|machine-qc)"
+        }
+      ]
+    },
+    {
+      "station": "review",
+      "id": "review",
+      "label": "整片复查",
+      "step": "final",
+      "page": "review",
+      "produces": [
+        {
+          "prefix": "production/review/"
+        },
+        {
+          "path": "production/final-check.json"
+        }
+      ]
+    },
+    {
+      "station": "review",
+      "id": "gate-final",
+      "label": "试听确认",
+      "step": "final",
+      "gate": true,
+      "page": "final",
+      "produces": [
+        {
+          "path": "production/approval.json"
+        },
+        {
+          "path": "final.mp4"
+        },
+        {
+          "path": "production/final.mp4"
+        }
+      ]
+    },
+    {
+      "station": "publish",
+      "id": "publish",
+      "label": "封面与发布信息",
+      "step": "publish",
+      "page": "publish",
+      "produces": [
+        {
+          "path": "publish.md"
+        },
+        {
+          "prefix": "covers/"
+        }
+      ]
+    }
+  ],
+  "owner:speech": [
+    "publish",
+    "publish",
+    "gate-final"
+  ],
+  "route:beat": [
+    {
+      "station": "beat-story",
+      "id": "story",
+      "label": "故事与文案",
+      "step": "beat",
+      "page": "beat",
+      "produces": [
+        {
+          "path": "production/beat/story.md"
+        }
+      ]
+    },
+    {
+      "station": "beat-story",
+      "id": "gate-story",
+      "label": "故事审核",
+      "step": "beat",
+      "gate": true,
+      "page": "beat",
+      "gateFiles": [
+        "production/beat/story.md"
+      ]
+    },
+    {
+      "station": "beat-music",
+      "id": "music",
+      "label": "导入音乐",
+      "step": "beat",
+      "page": "beat",
+      "produces": [
+        {
+          "path": "production/beat/track.json"
+        },
+        {
+          "path": "beat.yaml"
+        },
+        {
+          "prefix": "production/beat/",
+          "base": "^music"
+        }
+      ]
+    },
+    {
+      "station": "beat-music",
+      "id": "grid",
+      "label": "分析节拍",
+      "step": "beat",
+      "page": "beat",
+      "produces": [
+        {
+          "prefix": "production/beat/"
+        }
+      ]
+    },
+    {
+      "station": "beat-music",
+      "id": "gate-grid",
+      "label": "试听节拍",
+      "step": "beat",
+      "gate": true,
+      "page": "beat"
+    },
+    {
+      "station": "style",
+      "id": "style",
+      "label": "定整片风格",
+      "step": "storyboard",
+      "optional": true,
+      "page": "style",
+      "produces": [
+        {
+          "prefix": ".agents/skills/onset-film-style/"
+        },
+        {
+          "prefix": ".agents/onset-film-styles/"
+        }
+      ]
+    },
+    {
+      "station": "beat-plan",
+      "id": "plan",
+      "label": "分镜计划",
+      "step": "beat",
+      "page": "beat",
+      "produces": [
+        {
+          "path": "production/beat/plan.json"
+        },
+        {
+          "path": "production/treatment.md"
+        },
+        {
+          "prefix": "production/scene-plan"
+        },
+        {
+          "path": "production/visible-event-inventory.json"
+        },
+        {
+          "prefix": "scenes/",
+          "base": "^(scene\\.json|prompt\\.md)$"
+        }
+      ]
+    },
+    {
+      "station": "beat-plan",
+      "id": "gate-beat-storyboard",
+      "label": "分镜审核",
+      "step": "storyboard",
+      "gate": true,
+      "page": "storyboard",
+      "gateFiles": [
+        "production/beat/plan.json"
+      ]
+    },
+    {
+      "station": "render",
+      "id": "render",
+      "label": "渲染镜头",
+      "step": "scene",
+      "page": "scene",
+      "produces": [
+        {
+          "prefix": "scenes/"
+        }
+      ]
+    },
+    {
+      "station": "visual-qc",
+      "id": "visual-qc",
+      "label": "画面验收",
+      "step": "scene",
+      "produces": [
+        {
+          "prefix": "production/visual-qc/"
+        }
+      ]
+    },
+    {
+      "station": "assemble",
+      "id": "assemble",
+      "label": "拼接母版",
+      "step": "final",
+      "file": "production/silent-master.mp4",
+      "produces": [
+        {
+          "prefix": "production/silent-master"
+        },
+        {
+          "prefix": "production/review-silent"
+        }
+      ]
+    },
+    {
+      "station": "sound",
+      "id": "sound",
+      "label": "配乐、音效与混音",
+      "step": "final",
+      "file": "production/audio/candidate.mp4",
+      "produces": [
+        {
+          "prefix": "production/audio/",
+          "base": "^(music|sfx|premaster|premix|candidate|cue-sheet|asset-ledger|sound-checklist|machine-qc)"
+        }
+      ]
+    },
+    {
+      "station": "review",
+      "id": "review",
+      "label": "整片复查",
+      "step": "final",
+      "page": "review",
+      "produces": [
+        {
+          "prefix": "production/review/"
+        },
+        {
+          "path": "production/final-check.json"
+        }
+      ]
+    },
+    {
+      "station": "review",
+      "id": "gate-final",
+      "label": "试听确认",
+      "step": "final",
+      "gate": true,
+      "page": "final",
+      "produces": [
+        {
+          "path": "production/approval.json"
+        },
+        {
+          "path": "final.mp4"
+        },
+        {
+          "path": "production/final.mp4"
+        }
+      ]
+    },
+    {
+      "station": "publish",
+      "id": "publish",
+      "label": "封面与发布信息",
+      "step": "publish",
+      "page": "publish",
+      "produces": [
+        {
+          "path": "publish.md"
+        },
+        {
+          "prefix": "covers/"
+        }
+      ]
+    }
+  ],
+  "owner:beat": [
+    "publish",
+    "publish",
+    "gate-final"
+  ],
+  "gateFiles": {
+    "gate-script": [
+      "production/script-final.md"
+    ],
+    "gate-voice": [
+      "production/audio/voice.wav"
+    ],
+    "gate-storyboard": [
+      "production/scene-plan.json",
+      "production/treatment.md"
+    ],
+    "gate-story": [
+      "production/beat/story.md"
+    ],
+    "gate-beat-storyboard": [
+      "production/beat/plan.json"
+    ]
+  },
+  "stationOwners": [
+    [
+      "publish",
+      "publishing"
+    ]
+  ],
+  "progress:none": {
+    "mode": "speech",
+    "current": "intake",
+    "waiting_on": "ai",
+    "stations": [
+      {
+        "id": "intake",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "script",
+        "status": "todo",
+        "detail": "",
+        "page": "script",
+        "step": "script"
+      },
+      {
+        "id": "gate-script",
+        "status": "todo",
+        "detail": "",
+        "page": "script",
+        "step": "script"
+      },
+      {
+        "id": "voice",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "gate-voice",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "timeline",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "style",
+        "status": "todo",
+        "detail": "",
+        "page": "style",
+        "step": "storyboard"
+      },
+      {
+        "id": "plan",
+        "status": "todo",
+        "detail": "",
+        "page": "storyboard",
+        "step": "storyboard"
+      },
+      {
+        "id": "gate-storyboard",
+        "status": "todo",
+        "detail": "",
+        "page": "storyboard",
+        "step": "storyboard"
+      },
+      {
+        "id": "render",
+        "status": "todo",
+        "detail": "",
+        "page": "scene",
+        "step": "scene"
+      },
+      {
+        "id": "visual-qc",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "scene"
+      },
+      {
+        "id": "assemble",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "final"
+      },
+      {
+        "id": "sound",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "final"
+      },
+      {
+        "id": "review",
+        "status": "todo",
+        "detail": "",
+        "page": "review",
+        "step": "final"
+      },
+      {
+        "id": "gate-final",
+        "status": "todo",
+        "detail": "",
+        "page": "final",
+        "step": "final"
+      },
+      {
+        "id": "publish",
+        "status": "todo",
+        "detail": "",
+        "page": "publish",
+        "step": "publish"
+      }
+    ]
+  },
+  "progress-turns:none": {},
+  "progress:draft": {
+    "mode": "speech",
+    "current": "intake",
+    "waiting_on": "ai",
+    "stations": [
+      {
+        "id": "intake",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "script",
+        "status": "todo",
+        "detail": "",
+        "page": "script",
+        "step": "script"
+      },
+      {
+        "id": "gate-script",
+        "status": "todo",
+        "detail": "",
+        "page": "script",
+        "step": "script"
+      },
+      {
+        "id": "voice",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "gate-voice",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "timeline",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "style",
+        "status": "todo",
+        "detail": "",
+        "page": "style",
+        "step": "storyboard"
+      },
+      {
+        "id": "plan",
+        "status": "todo",
+        "detail": "",
+        "page": "storyboard",
+        "step": "storyboard"
+      },
+      {
+        "id": "gate-storyboard",
+        "status": "todo",
+        "detail": "",
+        "page": "storyboard",
+        "step": "storyboard"
+      },
+      {
+        "id": "render",
+        "status": "todo",
+        "detail": "",
+        "page": "scene",
+        "step": "scene"
+      },
+      {
+        "id": "visual-qc",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "scene"
+      },
+      {
+        "id": "assemble",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "final"
+      },
+      {
+        "id": "sound",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "final"
+      },
+      {
+        "id": "review",
+        "status": "todo",
+        "detail": "",
+        "page": "review",
+        "step": "final"
+      },
+      {
+        "id": "gate-final",
+        "status": "todo",
+        "detail": "",
+        "page": "final",
+        "step": "final"
+      },
+      {
+        "id": "publish",
+        "status": "todo",
+        "detail": "草稿",
+        "page": "publish",
+        "step": "publish"
+      }
+    ]
+  },
+  "progress-turns:draft": {},
+  "progress:pending": {
+    "mode": "speech",
+    "current": "publish",
+    "waiting_on": "user",
+    "stations": [
+      {
+        "id": "intake",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "script",
+        "status": "skipped",
+        "detail": "",
+        "page": "script",
+        "step": "script"
+      },
+      {
+        "id": "gate-script",
+        "status": "passed",
+        "detail": "",
+        "page": "script",
+        "step": "script"
+      },
+      {
+        "id": "voice",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "gate-voice",
+        "status": "passed",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "timeline",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "style",
+        "status": "todo",
+        "detail": "",
+        "page": "style",
+        "step": "storyboard"
+      },
+      {
+        "id": "plan",
+        "status": "skipped",
+        "detail": "",
+        "page": "storyboard",
+        "step": "storyboard"
+      },
+      {
+        "id": "gate-storyboard",
+        "status": "passed",
+        "detail": "",
+        "page": "storyboard",
+        "step": "storyboard"
+      },
+      {
+        "id": "render",
+        "status": "skipped",
+        "detail": "",
+        "page": "scene",
+        "step": "scene"
+      },
+      {
+        "id": "visual-qc",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "scene"
+      },
+      {
+        "id": "assemble",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "final"
+      },
+      {
+        "id": "sound",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "final"
+      },
+      {
+        "id": "review",
+        "status": "skipped",
+        "detail": "",
+        "page": "review",
+        "step": "final"
+      },
+      {
+        "id": "gate-final",
+        "status": "confirmed",
+        "detail": "",
+        "page": "final",
+        "step": "final"
+      },
+      {
+        "id": "publish",
+        "status": "todo",
+        "detail": "还剩人工检查",
+        "page": "publish",
+        "step": "publish"
+      }
+    ]
+  },
+  "progress-turns:pending": {},
+  "progress:blocked": {
+    "mode": "speech",
+    "current": "publish",
+    "waiting_on": "ai",
+    "stations": [
+      {
+        "id": "intake",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "script",
+        "status": "skipped",
+        "detail": "",
+        "page": "script",
+        "step": "script"
+      },
+      {
+        "id": "gate-script",
+        "status": "passed",
+        "detail": "",
+        "page": "script",
+        "step": "script"
+      },
+      {
+        "id": "voice",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "gate-voice",
+        "status": "passed",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "timeline",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "style",
+        "status": "todo",
+        "detail": "",
+        "page": "style",
+        "step": "storyboard"
+      },
+      {
+        "id": "plan",
+        "status": "skipped",
+        "detail": "",
+        "page": "storyboard",
+        "step": "storyboard"
+      },
+      {
+        "id": "gate-storyboard",
+        "status": "passed",
+        "detail": "",
+        "page": "storyboard",
+        "step": "storyboard"
+      },
+      {
+        "id": "render",
+        "status": "skipped",
+        "detail": "",
+        "page": "scene",
+        "step": "scene"
+      },
+      {
+        "id": "visual-qc",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "scene"
+      },
+      {
+        "id": "assemble",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "final"
+      },
+      {
+        "id": "sound",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "final"
+      },
+      {
+        "id": "review",
+        "status": "skipped",
+        "detail": "",
+        "page": "review",
+        "step": "final"
+      },
+      {
+        "id": "gate-final",
+        "status": "confirmed",
+        "detail": "",
+        "page": "final",
+        "step": "final"
+      },
+      {
+        "id": "publish",
+        "status": "todo",
+        "detail": "有问题挡着",
+        "page": "publish",
+        "step": "publish"
+      }
+    ]
+  },
+  "progress-turns:blocked": {},
+  "progress:ready": {
+    "mode": "speech",
+    "current": "",
+    "waiting_on": "",
+    "stations": [
+      {
+        "id": "intake",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "script",
+        "status": "skipped",
+        "detail": "",
+        "page": "script",
+        "step": "script"
+      },
+      {
+        "id": "gate-script",
+        "status": "passed",
+        "detail": "",
+        "page": "script",
+        "step": "script"
+      },
+      {
+        "id": "voice",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "gate-voice",
+        "status": "passed",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "timeline",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "style",
+        "status": "todo",
+        "detail": "",
+        "page": "style",
+        "step": "storyboard"
+      },
+      {
+        "id": "plan",
+        "status": "skipped",
+        "detail": "",
+        "page": "storyboard",
+        "step": "storyboard"
+      },
+      {
+        "id": "gate-storyboard",
+        "status": "passed",
+        "detail": "",
+        "page": "storyboard",
+        "step": "storyboard"
+      },
+      {
+        "id": "render",
+        "status": "skipped",
+        "detail": "",
+        "page": "scene",
+        "step": "scene"
+      },
+      {
+        "id": "visual-qc",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "scene"
+      },
+      {
+        "id": "assemble",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "final"
+      },
+      {
+        "id": "sound",
+        "status": "skipped",
+        "detail": "",
+        "page": "",
+        "step": "final"
+      },
+      {
+        "id": "review",
+        "status": "skipped",
+        "detail": "",
+        "page": "review",
+        "step": "final"
+      },
+      {
+        "id": "gate-final",
+        "status": "confirmed",
+        "detail": "",
+        "page": "final",
+        "step": "final"
+      },
+      {
+        "id": "publish",
+        "status": "done",
+        "detail": "可以发布",
+        "page": "publish",
+        "step": "publish"
+      }
+    ]
+  },
+  "progress-turns:ready": {},
+  "progress:broken": {
+    "mode": "speech",
+    "current": "intake",
+    "waiting_on": "ai",
+    "stations": [
+      {
+        "id": "intake",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "script",
+        "status": "todo",
+        "detail": "",
+        "page": "script",
+        "step": "script"
+      },
+      {
+        "id": "gate-script",
+        "status": "todo",
+        "detail": "",
+        "page": "script",
+        "step": "script"
+      },
+      {
+        "id": "voice",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "gate-voice",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "timeline",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "script"
+      },
+      {
+        "id": "style",
+        "status": "todo",
+        "detail": "",
+        "page": "style",
+        "step": "storyboard"
+      },
+      {
+        "id": "plan",
+        "status": "todo",
+        "detail": "",
+        "page": "storyboard",
+        "step": "storyboard"
+      },
+      {
+        "id": "gate-storyboard",
+        "status": "todo",
+        "detail": "",
+        "page": "storyboard",
+        "step": "storyboard"
+      },
+      {
+        "id": "render",
+        "status": "todo",
+        "detail": "",
+        "page": "scene",
+        "step": "scene"
+      },
+      {
+        "id": "visual-qc",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "scene"
+      },
+      {
+        "id": "assemble",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "final"
+      },
+      {
+        "id": "sound",
+        "status": "todo",
+        "detail": "",
+        "page": "",
+        "step": "final"
+      },
+      {
+        "id": "review",
+        "status": "todo",
+        "detail": "",
+        "page": "review",
+        "step": "final"
+      },
+      {
+        "id": "gate-final",
+        "status": "todo",
+        "detail": "",
+        "page": "final",
+        "step": "final"
+      },
+      {
+        "id": "publish",
+        "status": "todo",
+        "detail": "草稿",
+        "page": "publish",
+        "step": "publish"
+      }
+    ]
+  },
+  "progress-turns:broken": {},
+  "viewPage": {
+    "id": "publish",
+    "label": "发布",
+    "target": "",
+    "slot": true
+  },
+  "viewPages": [
+    "progress",
+    "beat",
+    "script",
+    "storyboard",
+    "scene",
+    "compose",
+    "final",
+    "style",
+    "voice",
+    "review",
+    "publish",
+    "memory",
+    "evidence",
+    "audition",
+    "file"
+  ],
+  "dedicated": {
+    "page": "publish"
+  },
+  "api:publish:none": {
+    "status": 200,
+    "body": {
+      "available": false,
+      "covers": [],
+      "path": "publish.md"
+    }
+  },
+  "api:check:none": {
+    "status": 400,
+    "body": {
+      "code": "publish_missing",
+      "details": [],
+      "message": "找不到 publish.md",
+      "retryable": false
+    }
+  },
+  "api:publish:template": {
+    "status": 200,
+    "body": {
+      "available": true,
+      "covers": [
+        {
+          "height": 3,
+          "path": "covers/douyin-4x3.png",
+          "sha256": "10d0e59e9b8917b35bb2f836f2e3de79ebaebc44c1a0b6eec625a383c2ad2c89",
+          "size": 69,
+          "width": 4
+        }
+      ],
+      "data": {
+        "copy": {
+          "hashtags": [],
+          "introduction": "",
+          "primary_title": ""
+        },
+        "cover": {
+          "frame": 0,
+          "images": [],
+          "line_count": 0,
+          "source_path": "",
+          "source_type": "unconfirmed",
+          "title_lines": []
+        },
+        "credits": {
+          "required": false,
+          "text": ""
+        },
+        "evidence": {
+          "approval": "",
+          "asset_ledger": "",
+          "machine_qc": "",
+          "rights": [],
+          "sound_checklist": "",
+          "visual_checklist": ""
+        },
+        "generated_at": "1970-01-01T00:00:00Z",
+        "manual_checks": {
+          "cover_preview": {
+            "note": "",
+            "status": "pending"
+          },
+          "headphones": {
+            "note": "no_audio_track",
+            "status": "not_applicable"
+          },
+          "phone_speaker": {
+            "note": "no_audio_track",
+            "status": "not_applicable"
+          },
+          "rights_confirmed": {
+            "note": "",
+            "status": "pending"
+          }
+        },
+        "platform": "unspecified",
+        "publish_status": "draft",
+        "schema_version": 1,
+        "video": {
+          "audio_channels": null,
+          "audio_codec": "none",
+          "audio_sample_rate_hz": null,
+          "duration_seconds": null,
+          "fps": null,
+          "height_px": null,
+          "path": "final.mp4",
+          "pixel_format": "",
+          "replacement_in_progress": false,
+          "sha256": "",
+          "video_codec": "",
+          "width_px": null
+        },
+        "workflow": "basic_srt"
+      },
+      "path": "publish.md",
+      "platform_name": "unspecified"
+    }
+  },
+  "api:publish:broken": {
+    "status": 200,
+    "body": {
+      "available": true,
+      "covers": [
+        {
+          "height": 3,
+          "path": "covers/douyin-4x3.png",
+          "sha256": "10d0e59e9b8917b35bb2f836f2e3de79ebaebc44c1a0b6eec625a383c2ad2c89",
+          "size": 69,
+          "width": 4
+        }
+      ],
+      "parse_error": "yaml 解析失败：yaml: line 3: Flow sequence in block collection must be sufficiently indented and end with a ]",
+      "path": "publish.md"
+    }
+  }
+}

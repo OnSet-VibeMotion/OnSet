@@ -1,0 +1,3329 @@
+[
+ {
+  "memory": {
+   "name": "eof-00",
+   "description": "a\n",
+   "status": "trial",
+   "applies_when": {},
+   "checked_by": [
+    "output.frames"
+   ],
+   "kind": "lesson",
+   "body": "b",
+   "rejected_reason": "a\n"
+  },
+  "format": "---\nname: eof-00\ndescription: |\n  a\nstatus: trial\nchecked_by:\n  - output.frames\nrejected_reason: |\n  a\n---\n\nb\n",
+  "digest": "ae60c07d91387eb9cc2bb936238c7baa2de8e756fae13285d1bf498f64a2fe1e"
+ },
+ {
+  "memory": {
+   "name": "eof-01",
+   "description": "a\n\n",
+   "status": "trial",
+   "applies_when": {},
+   "checked_by": [
+    "output.frames"
+   ],
+   "kind": "lesson",
+   "body": "b",
+   "rejected_reason": "a\n\n"
+  },
+  "format": "---\nname: eof-01\ndescription: |+\n  a\n\nstatus: trial\nchecked_by:\n  - output.frames\nrejected_reason: |+\n  a\n\n---\n\nb\n",
+  "digest": "907d72112a0c5e20ccb2cf260d419f8c7f5fad8a4d0a2eef58612e279e1976f7"
+ },
+ {
+  "memory": {
+   "name": "eof-02",
+   "description": "a\nb",
+   "status": "trial",
+   "applies_when": {},
+   "checked_by": [
+    "output.frames"
+   ],
+   "kind": "lesson",
+   "body": "b",
+   "rejected_reason": "a\nb"
+  },
+  "format": "---\nname: eof-02\ndescription: |-\n  a\n  b\nstatus: trial\nchecked_by:\n  - output.frames\nrejected_reason: |-\n  a\n  b\n---\n\nb\n",
+  "digest": "11acb1de53c7fa58bf1d7ad1136c3717a789615bcca39c14dd081499f23b97b4"
+ },
+ {
+  "memory": {
+   "name": "eof-03",
+   "description": "a\n\nb\n",
+   "status": "trial",
+   "applies_when": {},
+   "checked_by": [
+    "output.frames"
+   ],
+   "kind": "lesson",
+   "body": "b",
+   "rejected_reason": "a\n\nb\n"
+  },
+  "format": "---\nname: eof-03\ndescription: |\n  a\n\n  b\nstatus: trial\nchecked_by:\n  - output.frames\nrejected_reason: |\n  a\n\n  b\n---\n\nb\n",
+  "digest": "a45acc9202f15ee08b793393f7bda2552e273b1c35d149e1820e2c4feeed1e96"
+ },
+ {
+  "memory": {
+   "name": "eof-04",
+   "description": "\n",
+   "status": "trial",
+   "applies_when": {},
+   "checked_by": [
+    "output.frames"
+   ],
+   "kind": "lesson",
+   "body": "b",
+   "rejected_reason": "\n"
+  },
+  "format": "---\nname: eof-04\ndescription: |2+\nstatus: trial\nchecked_by:\n  - output.frames\nrejected_reason: |2+\n---\n\nb\n",
+  "digest": "ac9490702bfad49637033123c723bd9cbb88788d10c79479596b2585dbe8c3da"
+ },
+ {
+  "memory": {
+   "name": "eof-05",
+   "description": "\n\n",
+   "status": "trial",
+   "applies_when": {},
+   "checked_by": [
+    "output.frames"
+   ],
+   "kind": "lesson",
+   "body": "b",
+   "rejected_reason": "\n\n"
+  },
+  "format": "---\nname: eof-05\ndescription: |2+\n\nstatus: trial\nchecked_by:\n  - output.frames\nrejected_reason: |2+\n\n---\n\nb\n",
+  "digest": "baa283f104a89a22f7681f47f04819d4fcb9c90ef28233edd38a93e646ec69d5"
+ },
+ {
+  "memory": {
+   "name": "eof-06",
+   "description": "x\n\n\n",
+   "status": "trial",
+   "applies_when": {},
+   "checked_by": [
+    "output.frames"
+   ],
+   "kind": "lesson",
+   "body": "b",
+   "rejected_reason": "x\n\n\n"
+  },
+  "format": "---\nname: eof-06\ndescription: |+\n  x\n\n\nstatus: trial\nchecked_by:\n  - output.frames\nrejected_reason: |+\n  x\n\n\n---\n\nb\n",
+  "digest": "0a2ba0da959548e10a09d518395546302cb085056cdbd1b251a694656b1e1a1f"
+ },
+ {
+  "memory": {
+   "name": "eof-07",
+   "description": " a\nb",
+   "status": "trial",
+   "applies_when": {},
+   "checked_by": [
+    "output.frames"
+   ],
+   "kind": "lesson",
+   "body": "b",
+   "rejected_reason": " a\nb"
+  },
+  "format": "---\nname: eof-07\ndescription: |2-\n   a\n  b\nstatus: trial\nchecked_by:\n  - output.frames\nrejected_reason: |2-\n   a\n  b\n---\n\nb\n",
+  "digest": "fe00f79b728deca14942e31d7716153a29a154cdfff07f31c7747e9a0bf32c9f"
+ },
+ {
+  "memory": {
+   "name": "eof-08",
+   "description": "a \nb",
+   "status": "trial",
+   "applies_when": {},
+   "checked_by": [
+    "output.frames"
+   ],
+   "kind": "lesson",
+   "body": "b",
+   "rejected_reason": "a \nb"
+  },
+  "format": "---\nname: eof-08\ndescription: \"a \\nb\"\nstatus: trial\nchecked_by:\n  - output.frames\nrejected_reason: \"a \\nb\"\n---\n\nb\n",
+  "digest": "55dcac2c95a6c0d3feb134ca1ad526eead071cb0dfa61754ec0cdc7cdcc24dd1"
+ },
+ {
+  "memory": {
+   "name": "eof-09",
+   "description": "a\n b\n",
+   "status": "trial",
+   "applies_when": {},
+   "checked_by": [
+    "output.frames"
+   ],
+   "kind": "lesson",
+   "body": "b",
+   "rejected_reason": "a\n b\n"
+  },
+  "format": "---\nname: eof-09\ndescription: |\n  a\n   b\nstatus: trial\nchecked_by:\n  - output.frames\nrejected_reason: |\n  a\n   b\n---\n\nb\n",
+  "digest": "70e5284d0e7c8b536ad7800d7e82db68ef912c3163964a173a253396c60f8483"
+ },
+ {
+  "memory": {
+   "name": "trick-00",
+   "description": "",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-00\ndescription: \"\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "d3795928442cd90eb38ba27733bd21c083425ee1a8b82e9d9c15d2677aeeadb7"
+ },
+ {
+  "memory": {
+   "name": "trick-01",
+   "description": "true",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "true",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-01\ndescription: \"true\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"true\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "1f2043819608d7a8279cc3f51d10f01513aec9839c610f20bf3b35314644e5a4"
+ },
+ {
+  "memory": {
+   "name": "trick-02",
+   "description": "yes",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "yes",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "yes",
+   "scope": ""
+  },
+  "format": "---\nname: trick-02\ndescription: \"yes\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"yes\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: \"yes\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "14de276245935df9005ec219cfc84b19ac14fb411dd3bf932ecf4ef79d396f3b"
+ },
+ {
+  "memory": {
+   "name": "trick-03",
+   "description": "no",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "no",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "no",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-03\ndescription: \"no\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"no\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: \"no\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "629caf338df47f8f61da725885f1877ed5b7289afa03100dee80dba812d2c64e"
+ },
+ {
+  "memory": {
+   "name": "trick-04",
+   "description": "on",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "on",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "on",
+   "scope": ""
+  },
+  "format": "---\nname: trick-04\ndescription: \"on\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"on\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: \"on\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "6d6a27eda141da7f1fb9c88c3a78a8d8f094e5537e49abdde7874dc6f240e336"
+ },
+ {
+  "memory": {
+   "name": "trick-05",
+   "description": "Off",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "Off",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": "Off"
+  },
+  "format": "---\nname: trick-05\ndescription: \"Off\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"Off\"\n    - 字体\nchecked_by:\n  - output.frames\nscope: \"Off\"\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "00e24dadeea4b5fffb8426bd6eefe590d8b22ab181bed7086b3215310c65b2ba"
+ },
+ {
+  "memory": {
+   "name": "trick-06",
+   "description": "null",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "null",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "null",
+   "rejected_reason": "null",
+   "scope": ""
+  },
+  "format": "---\nname: trick-06\ndescription: \"null\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"null\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: \"null\"\nrejected_reason: \"null\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "d7316f7b056820451772fbf89736e6babe7018f47f3fb6c251085440109a7c6c"
+ },
+ {
+  "memory": {
+   "name": "trick-07",
+   "description": "~",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "~",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-07\ndescription: \"~\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"~\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "005b829dc26d9ff0656becc9ba83007b7e387f407e553df9f6c3ce7ab771b242"
+ },
+ {
+  "memory": {
+   "name": "trick-08",
+   "description": "123",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "123",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "123",
+   "scope": ""
+  },
+  "format": "---\nname: trick-08\ndescription: \"123\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"123\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: \"123\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "4927438673087d6bc5be4afd431e1a4f1f7ed3b2a5954a9861ae39d5bd09423b"
+ },
+ {
+  "memory": {
+   "name": "trick-09",
+   "description": "0x1F",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "0x1F",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "0x1F",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-09\ndescription: \"0x1F\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"0x1F\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: \"0x1F\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "2afab83bbc26a16ef6bba58bbce681fd31c27e9b1db897c7714ee28fe4ecfd47"
+ },
+ {
+  "memory": {
+   "name": "trick-10",
+   "description": "0o17",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "0o17",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "0o17",
+   "scope": "0o17"
+  },
+  "format": "---\nname: trick-10\ndescription: \"0o17\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"0o17\"\n    - 字体\nchecked_by:\n  - output.frames\nscope: \"0o17\"\nfrom_episodes:\n  - ep-x\nrejected_reason: \"0o17\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "62c3edcc9611f4e56ba766035f40149e9d1d7a625ad31109d6846cf87b7c7c73"
+ },
+ {
+  "memory": {
+   "name": "trick-11",
+   "description": "1_000",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "1_000",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-11\ndescription: \"1_000\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"1_000\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "02e4755d72443a9eb6f5d69185bbbda9f0dc2303d06a7bb0844e64eff622814f"
+ },
+ {
+  "memory": {
+   "name": "trick-12",
+   "description": "1.5",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "1.5",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "1.5",
+   "rejected_reason": "1.5",
+   "scope": ""
+  },
+  "format": "---\nname: trick-12\ndescription: \"1.5\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"1.5\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: \"1.5\"\nrejected_reason: \"1.5\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "8f7dc74f294445273bc0625703a28db64d5bc22fbb39f057614c62768b6eeee5"
+ },
+ {
+  "memory": {
+   "name": "trick-13",
+   "description": ".5",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     ".5",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-13\ndescription: \".5\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \".5\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "c0b44a56a093d368d9b4f374f8e343c357b118890c9c44c99da5d0c3b7ad1b7b"
+ },
+ {
+  "memory": {
+   "name": "trick-14",
+   "description": "1e3",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "1e3",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "1e3",
+   "scope": ""
+  },
+  "format": "---\nname: trick-14\ndescription: \"1e3\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"1e3\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: \"1e3\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "40ba7de652fa94e8834c44ed6a0b7347d60ec8b007db990d69f9462cccd4da07"
+ },
+ {
+  "memory": {
+   "name": "trick-15",
+   "description": "-1",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "-1",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "-1",
+   "rejected_reason": "",
+   "scope": "-1"
+  },
+  "format": "---\nname: trick-15\ndescription: \"-1\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"-1\"\n    - 字体\nchecked_by:\n  - output.frames\nscope: \"-1\"\nfrom_episodes:\n  - ep-x\nrevises: \"-1\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "040c07e2dc59e8abd2d1f0c7267a07a4b6cb931f36b0da3cbc4df0105ce6ce0e"
+ },
+ {
+  "memory": {
+   "name": "trick-16",
+   "description": "+1",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "+1",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "+1",
+   "scope": ""
+  },
+  "format": "---\nname: trick-16\ndescription: \"+1\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"+1\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: \"+1\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "32d6bb982f73de9603396ffe67e5c020a2d9ab9542247cb49a6e59ef4a15a1f7"
+ },
+ {
+  "memory": {
+   "name": "trick-17",
+   "description": "2026-11-02",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "2026-11-02",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-17\ndescription: \"2026-11-02\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"2026-11-02\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "d81099249a1397def1ec83471dca8a05ed6f843715d7eddee5d1054fa853467b"
+ },
+ {
+  "memory": {
+   "name": "trick-18",
+   "description": "2026-11-02T10:00:00Z",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "2026-11-02T10:00:00Z",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "2026-11-02T10:00:00Z",
+   "rejected_reason": "2026-11-02T10:00:00Z",
+   "scope": ""
+  },
+  "format": "---\nname: trick-18\ndescription: \"2026-11-02T10:00:00Z\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"2026-11-02T10:00:00Z\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: \"2026-11-02T10:00:00Z\"\nrejected_reason: \"2026-11-02T10:00:00Z\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "05115cefd257bfd0e8bc75b1acc64a9e134e0a39026d30e473a09f729c3e9610"
+ },
+ {
+  "memory": {
+   "name": "trick-19",
+   "description": "12:30",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "12:30",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-19\ndescription: \"12:30\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"12:30\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "208a54330312e3d183d6c0685d0959af22ddc4bd1da414777eb7837e48139c1c"
+ },
+ {
+  "memory": {
+   "name": "trick-20",
+   "description": "1:2:3",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "1:2:3",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "1:2:3",
+   "scope": "1:2:3"
+  },
+  "format": "---\nname: trick-20\ndescription: \"1:2:3\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"1:2:3\"\n    - 字体\nchecked_by:\n  - output.frames\nscope: \"1:2:3\"\nfrom_episodes:\n  - ep-x\nrejected_reason: \"1:2:3\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "4e8b24cc66f69d543ebb0358c90a3a6b516021c2cc03febecc174ced0825a12d"
+ },
+ {
+  "memory": {
+   "name": "trick-21",
+   "description": "a: b",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "a: b",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "a: b",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-21\ndescription: 'a: b'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - 'a: b'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: 'a: b'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "0bf73e79e81557a1805e07e024fcf61dcc5fd1306007f4c4e1ea3e80596e5be4"
+ },
+ {
+  "memory": {
+   "name": "trick-22",
+   "description": "a:b",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "a:b",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "a:b",
+   "scope": ""
+  },
+  "format": "---\nname: trick-22\ndescription: a:b\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - a:b\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: a:b\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "ebf7abfd907e4e8b62c7bde4a2f0412639d1cd5e580d6b3c82437c064bab2baa"
+ },
+ {
+  "memory": {
+   "name": "trick-23",
+   "description": "#x",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "#x",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-23\ndescription: '#x'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '#x'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "e95f7d730da2ad575488e08dae4e13f7820409eb7dc27509c14f699da05578ee"
+ },
+ {
+  "memory": {
+   "name": "trick-24",
+   "description": "x #y",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "x #y",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "x #y",
+   "rejected_reason": "x #y",
+   "scope": ""
+  },
+  "format": "---\nname: trick-24\ndescription: 'x #y'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - 'x #y'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: 'x #y'\nrejected_reason: 'x #y'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "1c9980749e9b07a74a937937b95d1be52126cae5d7a79ac61c3d31e21b6c6634"
+ },
+ {
+  "memory": {
+   "name": "trick-25",
+   "description": "x#y",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "x#y",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": "x#y"
+  },
+  "format": "---\nname: trick-25\ndescription: x#y\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - x#y\n    - 字体\nchecked_by:\n  - output.frames\nscope: x#y\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "2bcfcd2f4ec1b15d985a493b2e1f626cf8a9cf2508d720b579bb69868c29b537"
+ },
+ {
+  "memory": {
+   "name": "trick-26",
+   "description": "- a",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "- a",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "- a",
+   "scope": ""
+  },
+  "format": "---\nname: trick-26\ndescription: '- a'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '- a'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: '- a'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "70493dfa5b7a9c2d8a2f7d9b09d0b9836aba72bd1cc0b5ae02f5413b0e953e5a"
+ },
+ {
+  "memory": {
+   "name": "trick-27",
+   "description": "-a",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "-a",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "-a",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-27\ndescription: -a\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - -a\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: -a\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "a6ff1599fc09994b769434c6c76ed4401c5bc3fa812dad1c8689e01e516bd98f"
+ },
+ {
+  "memory": {
+   "name": "trick-28",
+   "description": "? a",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "? a",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "? a",
+   "scope": ""
+  },
+  "format": "---\nname: trick-28\ndescription: '? a'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '? a'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: '? a'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "6e019b59f8158b0e57efe93b534cef1ad547908b9a5839bc2d025b2eccf17583"
+ },
+ {
+  "memory": {
+   "name": "trick-29",
+   "description": ":a",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     ":a",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-29\ndescription: :a\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - :a\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "fc83f9bcf07dfca9e29d9dee8a305ef868e2c9aeed460bc9e3fb2ad0211cae69"
+ },
+ {
+  "memory": {
+   "name": "trick-30",
+   "description": "[x]",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "[x]",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "[x]",
+   "rejected_reason": "[x]",
+   "scope": "[x]"
+  },
+  "format": "---\nname: trick-30\ndescription: '[x]'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '[x]'\n    - 字体\nchecked_by:\n  - output.frames\nscope: '[x]'\nfrom_episodes:\n  - ep-x\nrevises: '[x]'\nrejected_reason: '[x]'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "7fa15441f5e5c9852898343ca777e938db941383b48b8d55668d64aed7eb92d7"
+ },
+ {
+  "memory": {
+   "name": "trick-31",
+   "description": "{x}",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "{x}",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-31\ndescription: '{x}'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '{x}'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "01ff737a14151ee6098df1815435e13fac02d8322a3f2e4b768c12370bd441f5"
+ },
+ {
+  "memory": {
+   "name": "trick-32",
+   "description": "&a",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "&a",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "&a",
+   "scope": ""
+  },
+  "format": "---\nname: trick-32\ndescription: '&a'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '&a'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: '&a'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "8ad378e880c3cfb7a4ec99a9807f2cafad8fbdb026bfa2c49e7c3265fe6bb9cf"
+ },
+ {
+  "memory": {
+   "name": "trick-33",
+   "description": "*a",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "*a",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "*a",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-33\ndescription: '*a'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '*a'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: '*a'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "a6452bab9b84fb47809cb73fc6222137574bb48e512f4ca1838f1c50bb165194"
+ },
+ {
+  "memory": {
+   "name": "trick-34",
+   "description": "!a",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "!a",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "!a",
+   "scope": ""
+  },
+  "format": "---\nname: trick-34\ndescription: '!a'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '!a'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: '!a'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "bb8b35f9d92c78c1fcca92b15f2f90830aea76073a4078b6ca750c7bc3a8d550"
+ },
+ {
+  "memory": {
+   "name": "trick-35",
+   "description": "|a",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "|a",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": "|a"
+  },
+  "format": "---\nname: trick-35\ndescription: '|a'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '|a'\n    - 字体\nchecked_by:\n  - output.frames\nscope: '|a'\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "eafb9a510bb97cb00c5c6ccf545e3bdc774e3804912bd3341851a2e3213ab692"
+ },
+ {
+  "memory": {
+   "name": "trick-36",
+   "description": ">a",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     ">a",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": ">a",
+   "rejected_reason": ">a",
+   "scope": ""
+  },
+  "format": "---\nname: trick-36\ndescription: '>a'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '>a'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: '>a'\nrejected_reason: '>a'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "b9030400d009374b4af6034fa5e0acc0e14eb3fbc7f6d26397c84f4306550773"
+ },
+ {
+  "memory": {
+   "name": "trick-37",
+   "description": "'q'",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "'q'",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-37\ndescription: '''q'''\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '''q'''\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "129d389468475a3a50a16c7d254a00afd8482d82e170a458f338a12c21c49fb6"
+ },
+ {
+  "memory": {
+   "name": "trick-38",
+   "description": "\"q\"",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "\"q\"",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "\"q\"",
+   "scope": ""
+  },
+  "format": "---\nname: trick-38\ndescription: '\"q\"'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '\"q\"'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: '\"q\"'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "ab15f69a5552f89d497646d75f770316336645e09654858c6109b8c62ab68598"
+ },
+ {
+  "memory": {
+   "name": "trick-39",
+   "description": "%a",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "%a",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "%a",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-39\ndescription: '%a'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '%a'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: '%a'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "6be52b863bacd0e6f4620eeb8581b84762ebda87283763dd7f7c08e07cb4dd3f"
+ },
+ {
+  "memory": {
+   "name": "trick-40",
+   "description": "@a",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "@a",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "@a",
+   "scope": "@a"
+  },
+  "format": "---\nname: trick-40\ndescription: '@a'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '@a'\n    - 字体\nchecked_by:\n  - output.frames\nscope: '@a'\nfrom_episodes:\n  - ep-x\nrejected_reason: '@a'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "7752852312c7ec91e18b875cc21e9dbddc2134640e56242c90288bbdc2408548"
+ },
+ {
+  "memory": {
+   "name": "trick-41",
+   "description": "`a",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "`a",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-41\ndescription: '`a'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '`a'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "346cbacfca12aa18138c6cfa872cbf4801ce63d66c750c07ef628a65eebd8589"
+ },
+ {
+  "memory": {
+   "name": "trick-42",
+   "description": " lead",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     " lead",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": " lead",
+   "rejected_reason": " lead",
+   "scope": ""
+  },
+  "format": "---\nname: trick-42\ndescription: ' lead'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - ' lead'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: ' lead'\nrejected_reason: ' lead'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "07c1060c0ef9a9abc29876fa9cfa17d01d4c455f366f5cf87640a449a23787dc"
+ },
+ {
+  "memory": {
+   "name": "trick-43",
+   "description": "trail ",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "trail ",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-43\ndescription: 'trail '\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - 'trail '\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "5fdac03623c096935e882b6d07488258d03390b4a5963271bd0a8e0847ce5107"
+ },
+ {
+  "memory": {
+   "name": "trick-44",
+   "description": "tab\there",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "tab\there",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "tab\there",
+   "scope": ""
+  },
+  "format": "---\nname: trick-44\ndescription: \"tab\\there\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"tab\\there\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: \"tab\\there\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "5489b73204e66854f00a27e0743c3ca5aada72fcba0681aaa5a3441111c31c43"
+ },
+ {
+  "memory": {
+   "name": "trick-45",
+   "description": "line1\nline2",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "line1\nline2",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "line1\nline2",
+   "rejected_reason": "",
+   "scope": "line1\nline2"
+  },
+  "format": "---\nname: trick-45\ndescription: |-\n  line1\n  line2\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - |-\n      line1\n      line2\n    - 字体\nchecked_by:\n  - output.frames\nscope: |-\n  line1\n  line2\nfrom_episodes:\n  - ep-x\nrevises: |-\n  line1\n  line2\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "1ae51cb48deb73836045d45aea6fc84e6ea9a749d6068705dcaba045011eac7c"
+ },
+ {
+  "memory": {
+   "name": "trick-46",
+   "description": "line1\nline2\n",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "line1\nline2\n",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "line1\nline2\n",
+   "scope": ""
+  },
+  "format": "---\nname: trick-46\ndescription: |\n  line1\n  line2\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - |\n      line1\n      line2\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: |\n  line1\n  line2\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "0fca35828ca655429b93a283c951ce5730281a5b9a61716140fbdef4edd24a58"
+ },
+ {
+  "memory": {
+   "name": "trick-47",
+   "description": "\nlead",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "\nlead",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-47\ndescription: |2-\n  lead\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - |2-\n      lead\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "6955c756af795c683f73343edeedd67e163e7cd4426f0d4397dfe0df56bceddc"
+ },
+ {
+  "memory": {
+   "name": "trick-48",
+   "description": "trail\n\n",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "trail\n\n",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "trail\n\n",
+   "rejected_reason": "trail\n\n",
+   "scope": ""
+  },
+  "format": "---\nname: trick-48\ndescription: |+\n  trail\n\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - |+\n      trail\n\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: |+\n  trail\n\nrejected_reason: |+\n  trail\n\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "a59b5f03863f40788f2197c46c84cb2d9adeaec5ce95edf7a7ce0eba5eb35450"
+ },
+ {
+  "memory": {
+   "name": "trick-49",
+   "description": "emoji 👍 ok",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "emoji 👍 ok",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-49\ndescription: \"emoji \\U0001F44D ok\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"emoji \\U0001F44D ok\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "d23956709d203b2552e8405cab4465ecaae6efc5a2bb0d2610a4cb18ae53d3a1"
+ },
+ {
+  "memory": {
+   "name": "trick-50",
+   "description": "nbsp x",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "nbsp x",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "nbsp x",
+   "scope": "nbsp x"
+  },
+  "format": "---\nname: trick-50\ndescription: nbsp x\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - nbsp x\n    - 字体\nchecked_by:\n  - output.frames\nscope: nbsp x\nfrom_episodes:\n  - ep-x\nrejected_reason: nbsp x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "99914c3a07e37335d3557a601df2257678013a859b712e5a5c2b3d9cb3523e86"
+ },
+ {
+  "memory": {
+   "name": "trick-51",
+   "description": "bell\u0007",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "bell\u0007",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "bell\u0007",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-51\ndescription: \"bell\\a\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"bell\\a\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: \"bell\\a\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "43ae96b903cea8881b9da1a77303916a239c81dbd31f6cf42ee511f00d0f32c8"
+ },
+ {
+  "memory": {
+   "name": "trick-52",
+   "description": "中文：冒号",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "中文：冒号",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "中文：冒号",
+   "scope": ""
+  },
+  "format": "---\nname: trick-52\ndescription: 中文：冒号\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - 中文：冒号\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: 中文：冒号\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "7586012140590b605b0240ffcd75089917ff004520cf550c4962b857eaef966f"
+ },
+ {
+  "memory": {
+   "name": "trick-53",
+   "description": "中文: 冒号",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "中文: 冒号",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-53\ndescription: '中文: 冒号'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '中文: 冒号'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "3e343c7f61da017345bbc717606ac091d8b0004ff5aea5cafc582126aa9a1ccd"
+ },
+ {
+  "memory": {
+   "name": "trick-54",
+   "description": "---",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "---",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "---",
+   "rejected_reason": "---",
+   "scope": ""
+  },
+  "format": "---\nname: trick-54\ndescription: '---'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '---'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: '---'\nrejected_reason: '---'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "d250d7915f2f767d75a4ddc00c4ab711171d59da48f969a9202f9e09e17ec631"
+ },
+ {
+  "memory": {
+   "name": "trick-55",
+   "description": "...",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "...",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": "..."
+  },
+  "format": "---\nname: trick-55\ndescription: '...'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '...'\n    - 字体\nchecked_by:\n  - output.frames\nscope: '...'\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "431906879927e9f1c078b60cd45ec272672e33d56389ae9f06a98ab82efdb512"
+ },
+ {
+  "memory": {
+   "name": "trick-56",
+   "description": "a'b",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "a'b",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "a'b",
+   "scope": ""
+  },
+  "format": "---\nname: trick-56\ndescription: a'b\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - a'b\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: a'b\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "90fb35311e8a7ffe3882c139f45913732c7911236e54ac6e79f952011b953a7a"
+ },
+ {
+  "memory": {
+   "name": "trick-57",
+   "description": "a\"b",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "a\"b",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "a\"b",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-57\ndescription: a\"b\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - a\"b\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: a\"b\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "a0c2dc532b3dd885b11a1ecf0d51cbd1f061b959312e7a6ff00ce46d176cc68b"
+ },
+ {
+  "memory": {
+   "name": "trick-58",
+   "description": "back\\slash",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "back\\slash",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "back\\slash",
+   "scope": ""
+  },
+  "format": "---\nname: trick-58\ndescription: back\\slash\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - back\\slash\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: back\\slash\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "6f6fb262d9aca56c1afe1d3c39cba8f1ee849aeb2588fb6ba58af30ba8435ea3"
+ },
+ {
+  "memory": {
+   "name": "trick-59",
+   "description": "<<",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "<<",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-59\ndescription: <<\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - <<\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "d7fc04dc29c7867152f73cd8e6fa0a331734a67f2e665cb643c82c4138d721e0"
+ },
+ {
+  "memory": {
+   "name": "trick-60",
+   "description": ".inf",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     ".inf",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": ".inf",
+   "rejected_reason": ".inf",
+   "scope": ".inf"
+  },
+  "format": "---\nname: trick-60\ndescription: \".inf\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \".inf\"\n    - 字体\nchecked_by:\n  - output.frames\nscope: \".inf\"\nfrom_episodes:\n  - ep-x\nrevises: \".inf\"\nrejected_reason: \".inf\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "e68b49ea72ef9fd7794123b4e28500015ef47a2beec1e80cef77dca0f4ed2b5e"
+ },
+ {
+  "memory": {
+   "name": "trick-61",
+   "description": "-.inf",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "-.inf",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-61\ndescription: \"-.inf\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"-.inf\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "524e44377f722ab93b7c93f436dd4e8962fb7e71a263004c78d3f205ed8feb0c"
+ },
+ {
+  "memory": {
+   "name": "trick-62",
+   "description": ".nan",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     ".nan",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": ".nan",
+   "scope": ""
+  },
+  "format": "---\nname: trick-62\ndescription: \".nan\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \".nan\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: \".nan\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "1a8c5e8353f1d3b3c6909f9fef865a377d177de52c55767d30ebff7f813903d3"
+ },
+ {
+  "memory": {
+   "name": "trick-63",
+   "description": "0",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "0",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "0",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-63\ndescription: \"0\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"0\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: \"0\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "a88cfee96379e8233f1a6ed5d84bd7f488eb9f7c5cd53a08c53c9c54b0df1d20"
+ },
+ {
+  "memory": {
+   "name": "trick-64",
+   "description": "007",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "007",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "007",
+   "scope": ""
+  },
+  "format": "---\nname: trick-64\ndescription: \"007\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"007\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: \"007\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "fc83c2f69fd6acc90c4e9aec3fa0b833a35c3e55a4c9855c60f1a39dd2c59d41"
+ },
+ {
+  "memory": {
+   "name": "trick-65",
+   "description": "1e400",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "1e400",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": "1e400"
+  },
+  "format": "---\nname: trick-65\ndescription: 1e400\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - 1e400\n    - 字体\nchecked_by:\n  - output.frames\nscope: 1e400\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "d33d3a864a041e50515fbab798aab84f1c5f25f42f7702a66af5e1d0f4e485c4"
+ },
+ {
+  "memory": {
+   "name": "trick-66",
+   "description": "99999999999999999999",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "99999999999999999999",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "99999999999999999999",
+   "rejected_reason": "99999999999999999999",
+   "scope": ""
+  },
+  "format": "---\nname: trick-66\ndescription: \"99999999999999999999\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"99999999999999999999\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: \"99999999999999999999\"\nrejected_reason: \"99999999999999999999\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "b6b2b72c740fd841ae981143344dc5cf3891f31bbf680d4f7469c8dc71fd53c7"
+ },
+ {
+  "memory": {
+   "name": "trick-67",
+   "description": "0xFFFFFFFFFFFFFFFFFF",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "0xFFFFFFFFFFFFFFFFFF",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-67\ndescription: 0xFFFFFFFFFFFFFFFFFF\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - 0xFFFFFFFFFFFFFFFFFF\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "8fbe333ec1ecbadf6df44f5e21068156e95376c9d66e597600da33da92032d22"
+ },
+ {
+  "memory": {
+   "name": "trick-68",
+   "description": "y",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "y",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "y",
+   "scope": ""
+  },
+  "format": "---\nname: trick-68\ndescription: \"y\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"y\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: \"y\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "2f83adddb2741b944240092b04e726b552da0ada12be423e2b6cae30dbbe2df6"
+ },
+ {
+  "memory": {
+   "name": "trick-69",
+   "description": "N",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "N",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "N",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-69\ndescription: \"N\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"N\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: \"N\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "3781ae579735c1b8b9feeae406671ac857e3409f0527a70b847353b678e694e9"
+ },
+ {
+  "memory": {
+   "name": "trick-70",
+   "description": "a, b",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "a, b",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "a, b",
+   "scope": "a, b"
+  },
+  "format": "---\nname: trick-70\ndescription: a, b\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - a, b\n    - 字体\nchecked_by:\n  - output.frames\nscope: a, b\nfrom_episodes:\n  - ep-x\nrejected_reason: a, b\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "2ceb0d9521344e3f025d4f020e2e8e5a28b6f8f2bd9a5767f7b5a00de7c8ab4a"
+ },
+ {
+  "memory": {
+   "name": "trick-71",
+   "description": "a,b",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "a,b",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-71\ndescription: a,b\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - a,b\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "bf06c496e7c7b1c8427653089a27f36f8fce859967d1ccc7bdef518187d3a385"
+ },
+ {
+  "memory": {
+   "name": "trick-72",
+   "description": "café",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "café",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "café",
+   "rejected_reason": "café",
+   "scope": ""
+  },
+  "format": "---\nname: trick-72\ndescription: café\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - café\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: café\nrejected_reason: café\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "e18f3e6a9218aab551eccca6df9c54dd69717f7ac3db347f7215810d51ab4a73"
+ },
+ {
+  "memory": {
+   "name": "trick-73",
+   "description": "\u2028ls",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "\u2028ls",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-73\ndescription: '\u2028  ls'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '\u2028      ls'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "574eea268d6450fb0b2b1254f0be42b080dbb3d2c160cc913e5e696b51b063cd"
+ },
+ {
+  "memory": {
+   "name": "trick-74",
+   "description": "x\u0085y",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "x\u0085y",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "x\u0085y",
+   "scope": ""
+  },
+  "format": "---\nname: trick-74\ndescription: \"x\\Ny\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"x\\Ny\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: \"x\\Ny\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "1d762aebddb93b31c57de0109768dcc1ff5fbacfce65ff823ae8e18b83833d43"
+ },
+ {
+  "memory": {
+   "name": "trick-75",
+   "description": "﻿bom",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "﻿bom",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "﻿bom",
+   "rejected_reason": "",
+   "scope": "﻿bom"
+  },
+  "format": "---\nname: trick-75\ndescription: \"\\uFEFF\\x62\\x6F\\x6D\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"\\uFEFF\\x62\\x6F\\x6D\"\n    - 字体\nchecked_by:\n  - output.frames\nscope: \"\\uFEFF\\x62\\x6F\\x6D\"\nfrom_episodes:\n  - ep-x\nrevises: \"\\uFEFF\\x62\\x6F\\x6D\"\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "e4ae5b541d438d18ce60fd09844c688c9a6f41f69b21651e8e741664bd576604"
+ },
+ {
+  "memory": {
+   "name": "trick-76",
+   "description": "ok-name",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "ok-name",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "ok-name",
+   "scope": ""
+  },
+  "format": "---\nname: trick-76\ndescription: ok-name\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - ok-name\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: ok-name\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "5f99e28625df0178be6a05065125cedd7ce4b602dd3172f80d1194b340818644"
+ },
+ {
+  "memory": {
+   "name": "trick-77",
+   "description": "- ",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "- ",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-77\ndescription: '- '\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '- '\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "fb5452f1fc013f63aea1f71628cd8997ff51d58c10c56550fc6dda5b84209a4e"
+ },
+ {
+  "memory": {
+   "name": "trick-78",
+   "description": "-",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "-",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "-",
+   "rejected_reason": "-",
+   "scope": ""
+  },
+  "format": "---\nname: trick-78\ndescription: '-'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '-'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: '-'\nrejected_reason: '-'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "fbd61a79d9e9255bd1008c2b9e50f3a66126dfd663ce11520c7b3ee7da729a67"
+ },
+ {
+  "memory": {
+   "name": "trick-79",
+   "description": ":",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     ":",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-79\ndescription: ':'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - ':'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "b02508f292562bfa390d3faa98a4a34471a159ecbf34fd611907d5d802ecf09c"
+ },
+ {
+  "memory": {
+   "name": "trick-80",
+   "description": "?",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "?",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "?",
+   "scope": "?"
+  },
+  "format": "---\nname: trick-80\ndescription: '?'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '?'\n    - 字体\nchecked_by:\n  - output.frames\nscope: '?'\nfrom_episodes:\n  - ep-x\nrejected_reason: '?'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "5c33cb545cadf579cf33ef1104db01855e8c926bd9e7950e8aae97f239ac5393"
+ },
+ {
+  "memory": {
+   "name": "trick-81",
+   "description": "x:",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "x:",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "x:",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-81\ndescription: 'x:'\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - 'x:'\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: 'x:'\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "33f6c0070de8c1fe74d283a91d97af373de0fdc6eda5deb03a849c0563d032eb"
+ },
+ {
+  "memory": {
+   "name": "trick-82",
+   "description": "x: ",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "x: ",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "x: ",
+   "scope": ""
+  },
+  "format": "---\nname: trick-82\ndescription: 'x: '\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - 'x: '\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: 'x: '\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "b832c22129278e553354a47b87e16b0858886ed051a76b42cd1d8ed2e23b2141"
+ },
+ {
+  "memory": {
+   "name": "trick-83",
+   "description": "\t",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "\t",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": ""
+  },
+  "format": "---\nname: trick-83\ndescription: \"\\t\"\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - \"\\t\"\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "45030275d577891d1c1baa66eb2f82cf13cd3372b4209a0f1c7cb9d8fd7ca448"
+ },
+ {
+  "memory": {
+   "name": "trick-84",
+   "description": "  ",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "  ",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "  ",
+   "rejected_reason": "  ",
+   "scope": ""
+  },
+  "format": "---\nname: trick-84\ndescription: '  '\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - '  '\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrevises: '  '\nrejected_reason: '  '\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "2817f9c3d4150ff72ee7bb1f52e5ab8e82fecfc007d96d0ea3a2c3c94bff8776"
+ },
+ {
+  "memory": {
+   "name": "trick-85",
+   "description": "a  b",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "a  b",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "",
+   "scope": "a  b"
+  },
+  "format": "---\nname: trick-85\ndescription: a  b\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - a  b\n    - 字体\nchecked_by:\n  - output.frames\nscope: a  b\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "32457e9bb42f37a46064c405e07a8f88f72b3d8abb15bf16acbeab7736b35ca9"
+ },
+ {
+  "memory": {
+   "name": "trick-86",
+   "description": "多行\n  缩进\n结尾",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ],
+    "keywords": [
+     "多行\n  缩进\n结尾",
+     "字体"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "",
+   "rejected_reason": "多行\n  缩进\n结尾",
+   "scope": ""
+  },
+  "format": "---\nname: trick-86\ndescription: |-\n  多行\n    缩进\n  结尾\nstatus: trial\napplies_when:\n  features:\n    - cjk_text\n  keywords:\n    - |-\n      多行\n        缩进\n      结尾\n    - 字体\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nrejected_reason: |-\n  多行\n    缩进\n  结尾\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "94a92c004c9b51bd6c7ad48c2f71507bbc104ce4ea913926130d1c67ae88d457"
+ },
+ {
+  "memory": {
+   "name": "empty-checks",
+   "description": "描述 empty-checks",
+   "status": "trial",
+   "applies_when": {},
+   "checked_by": [],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法"
+  },
+  "format": "---\nname: empty-checks\ndescription: 描述 empty-checks\nstatus: trial\nchecked_by: []\nfrom_episodes:\n  - ep-x\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "16f8875eefe2103c4496472b01b9449435d0b6f4096b7d5e42024fb944e32afa"
+ },
+ {
+  "memory": {
+   "name": "scoped",
+   "description": "描述 scoped",
+   "status": "trial",
+   "applies_when": {
+    "renderers": [
+     "codex"
+    ],
+    "models": [
+     "gpt-6"
+    ]
+   },
+   "checked_by": [
+    "output.frames"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "verified_by": [
+    "exam-0001"
+   ]
+  },
+  "format": "---\nname: scoped\ndescription: 描述 scoped\nstatus: trial\napplies_when:\n  renderers:\n    - codex\n  models:\n    - gpt-6\nchecked_by:\n  - output.frames\nfrom_episodes:\n  - ep-x\nverified_by:\n  - exam-0001\n---\n\n规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n",
+  "digest": "02fd351cd562df9573e8da0bbe91e773896b680aeb28435925f28aeac9bded76"
+ },
+ {
+  "memory": {
+   "name": "pref-x",
+   "description": "偏好",
+   "status": "active",
+   "applies_when": {},
+   "checked_by": [
+    "human"
+   ],
+   "kind": "preference",
+   "body": "  正文  \n\n第二段 "
+  },
+  "format": "---\nname: pref-x\ndescription: 偏好\nstatus: active\nchecked_by:\n  - human\n---\n\n正文  \n\n第二段\n",
+  "digest": "ac12eee382c98a73b9ed2ec6489242717d13c3fce6a4ca713c8468d224ed74b1"
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "描述 font-local-block",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "determinism.font-display"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\nClaude 渲染时要这样写"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "正文里出现了渲染工具名或模型名「Claude」：只对某个渲染工具或模型成立时，写进 applies_when.renderers / models，正文保持中性"
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "适用于 GPT-5 的写法",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "determinism.font-display"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "正文里出现了渲染工具名或模型名「GPT-5」：只对某个渲染工具或模型成立时，写进 applies_when.renderers / models，正文保持中性"
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "描述 font-local-block",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "determinism.nope"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "checked_by 引用了不存在的校验器：determinism.nope"
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "描述 font-local-block",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "checked_by 为空：说不清由哪个校验器判定的经验不能进入试用"
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "描述 font-local-block",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "human"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "经验的 checked_by 不能是 human；只能由人判定的取向请写成偏好"
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "描述 font-local-block",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "determinism.font-display"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "只有规则，正例：好写法"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "经验正文必须同时给出「反例」与「正例」"
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "描述 font-local-block",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "neon"
+    ]
+   },
+   "checked_by": [
+    "determinism.font-display"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "applies_when.features 含未知特征：neon"
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "描述 font-local-block",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "determinism.font-display"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n像 scene-003 那样"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "出现了具体镜头编号「scene-003」"
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "描述 font-local-block",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "determinism.font-display"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n用 hero-shot.png 当背景"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "出现了具体素材文件名「hero-shot.png」"
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "描述 font-local-block",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "determinism.font-display"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\n标题写成：人工智能正在改变世界"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "照抄了镜头文案「人工智能正在改变」：经验要写成可迁移的约束，不能背题"
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "描述 font-local-block",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "determinism.font-display"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "正文有 631 字，上限 600"
+  ]
+ },
+ {
+  "lint": {
+   "name": "Font_Block",
+   "description": "描述 font-local-block",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "determinism.font-display"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "name 不合法：\"Font_Block\"（小写字母、数字与连字符，3–64 字符）"
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "描述 font-local-block",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "determinism.font-display"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法\nDeepSeek ſonnet SCENE-12 x.JPEG"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "正文里出现了渲染工具名或模型名「DeepSeek」：只对某个渲染工具或模型成立时，写进 applies_when.renderers / models，正文保持中性",
+   "出现了具体镜头编号「SCENE-12」",
+   "出现了具体素材文件名「x.JPEG」"
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "描述 font-local-block",
+   "status": "trial",
+   "applies_when": {
+    "renderers": [
+     "vim"
+    ],
+    "models": [
+     "a b",
+     ""
+    ]
+   },
+   "checked_by": [
+    "determinism.font-display"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "applies_when.renderers 含未知渲染工具：vim",
+   "applies_when.models 含不合法的模型名：\"a b\"",
+   "applies_when.models 含不合法的模型名：\"\""
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "描述 font-local-block",
+   "status": "bogus",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "determinism.font-display"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "status 不合法：\"bogus\""
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "描述 font-local-block",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "determinism.font-display"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "weird",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "未知的记忆层：\"weird\""
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "描述 font-local-block",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "determinism.font-display"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "scope": "p"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "scope 只对偏好有意义"
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-block",
+   "description": "",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "determinism.font-display"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法"
+  },
+  "existing": null,
+  "scene_texts": [
+   "人工智能正在改变世界的每一个角落"
+  ],
+  "problems": [
+   "description 为空"
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-local-v2",
+   "description": "描述 font-local-v2",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "determinism.remote-font"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法",
+   "revises": "font-local"
+  },
+  "existing": [
+   {
+    "name": "font-local",
+    "description": "描述 font-local",
+    "status": "active",
+    "applies_when": {
+     "features": [
+      "cjk_text"
+     ]
+    },
+    "checked_by": [
+     "determinism.remote-font",
+     "determinism.font-display"
+    ],
+    "from_episodes": [
+     "ep-x"
+    ],
+    "kind": "lesson",
+    "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法"
+   }
+  ],
+  "scene_texts": null,
+  "problems": [
+   "修订丢掉了旧版 font-local 的校验器 determinism.font-display：修订要覆盖旧版判定的问题；确实不再适用的，请另写一条经验并让旧版沉睡"
+  ]
+ },
+ {
+  "lint": {
+   "name": "font-dup",
+   "description": "描述 font-dup",
+   "status": "trial",
+   "applies_when": {
+    "features": [
+     "cjk_text"
+    ]
+   },
+   "checked_by": [
+    "determinism.font-display",
+    "determinism.remote-font"
+   ],
+   "from_episodes": [
+    "ep-x"
+   ],
+   "kind": "lesson",
+   "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法"
+  },
+  "existing": [
+   {
+    "name": "font-local",
+    "description": "描述 font-local",
+    "status": "active",
+    "applies_when": {
+     "features": [
+      "cjk_text"
+     ]
+    },
+    "checked_by": [
+     "determinism.remote-font",
+     "determinism.font-display"
+    ],
+    "from_episodes": [
+     "ep-x"
+    ],
+    "kind": "lesson",
+    "body": "规则正文。\n\n反例：\n    坏写法\n\n正例：\n    好写法"
+   }
+  ],
+  "scene_texts": null,
+  "problems": [
+   "与已有记忆 font-local 由同一组校验器判定、适用特征与渲染工具/模型范围相同：请写成对它的修订（revises: font-local），不要并列新增"
+  ]
+ }
+]

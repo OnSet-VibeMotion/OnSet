@@ -1,0 +1,401 @@
+/* 节拍页：波形是主角。重拍用唯一的强调色，拍数不对的小节用过期黄，其余都是灰阶。 */
+.beat-tab {
+  gap: 18px !important;
+}
+.beat-tab .beat-head {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+}
+.beat-tab .beat-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+.beat-tab .beat-title {
+  margin: 0;
+  font: 600 34px/1.2 var(--serif);
+  letter-spacing: 0.04em;
+}
+.beat-tab .beat-status {
+  font: 12px var(--mono);
+  color: var(--accent-text);
+}
+.beat-tab .beat-status.ok {
+  color: var(--ok);
+}
+.beat-tab .beat-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--faint);
+}
+.beat-tab .beat-steps li span {
+  font-family: var(--mono);
+  margin-right: 6px;
+}
+.beat-tab .beat-steps li.done {
+  color: var(--muted);
+}
+.beat-tab .beat-steps li.done span {
+  color: var(--ok);
+}
+.beat-tab .beat-steps li.now {
+  color: var(--text);
+}
+.beat-tab .beat-steps li.now span {
+  color: var(--accent);
+}
+.beat-tab .beat-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font: 12px var(--mono);
+  color: var(--text-3);
+}
+.beat-tab .beat-stats .faint {
+  color: var(--faint);
+}
+.beat-tab .beat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 28px 0;
+  color: var(--text-2);
+}
+.beat-tab .beat-empty p {
+  margin: 0;
+}
+.beat-tab .bad {
+  color: var(--bad);
+}
+.beat-tab .beat-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  max-width: 720px;
+}
+.beat-tab .beat-note.bad {
+  color: var(--bad);
+}
+
+/* 播放与数拍 */
+.beat-tab .beat-player {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.beat-tab .beat-transport {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.beat-tab .beat-transport .play {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  font-size: 14px;
+  padding: 0;
+}
+.beat-tab .beat-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.beat-tab .beat-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+.beat-tab button.link {
+  background: transparent;
+  border: 0;
+  height: auto;
+  padding: 0;
+  font: 12px var(--sans);
+  color: var(--muted);
+}
+.beat-tab button.link:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.beat-tab .beat-counter {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.beat-tab .beat-counter-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 56px;
+}
+.beat-tab .beat-counter-bar .label {
+  font-size: 11px;
+  color: var(--faint);
+}
+.beat-tab .beat-counter-bar strong {
+  font: 600 26px/1 var(--mono);
+  color: var(--text);
+}
+.beat-tab .beat-cells {
+  display: flex;
+  gap: 6px;
+}
+.beat-tab .beat-cell {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: 13px var(--mono);
+  color: var(--faint);
+}
+.beat-tab .beat-cell.down {
+  width: 44px;
+  height: 44px;
+  font-size: 16px;
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
+.beat-tab .beat-cell.extra {
+  border-style: dashed;
+  border-color: var(--stale);
+  color: var(--stale);
+}
+.beat-tab .beat-cell.on {
+  background: var(--text-2);
+  border-color: var(--text-2);
+  color: var(--accent-ink);
+}
+.beat-tab .beat-cell.down.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* 波形与拍点 */
+.beat-tab .beat-lane {
+  position: relative;
+}
+.beat-tab .beat-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--well);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: text;
+}
+.beat-tab .beat-track {
+  position: relative;
+}
+.beat-tab .beat-canvas {
+  position: sticky;
+  left: 0;
+  display: block;
+}
+.beat-tab .beat-zoom {
+  position: absolute;
+  right: 10px;
+  top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.beat-tab .beat-zoom .icon-btn {
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  font: 13px var(--mono);
+  background: var(--panel);
+}
+.beat-tab .beat-problems {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--bad);
+  font-size: 12px;
+}
+
+/* 调整重拍 */
+.beat-tab .beat-fix {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.beat-tab .beat-fix.compact {
+  border: 0;
+  padding: 0;
+}
+.beat-tab .beat-fix-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.beat-tab .beat-fix-row .label {
+  width: 48px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.beat-tab .seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.beat-tab .seg button {
+  height: 26px;
+  padding: 0 10px;
+}
+.beat-tab .seg button.on {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
+.beat-tab .beat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 小节表 */
+.beat-tab .beat-bars {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 4px;
+}
+.beat-tab .beat-bar {
+  height: auto;
+  min-height: 44px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  justify-items: start;
+  gap: 0 6px;
+  text-align: left;
+}
+.beat-tab .beat-bar .no {
+  font: 600 13px var(--mono);
+  color: var(--text);
+}
+.beat-tab .beat-bar .t {
+  font: 11px var(--mono);
+  color: var(--faint);
+  justify-self: end;
+}
+.beat-tab .beat-bar .n,
+.beat-tab .beat-bar .scene {
+  grid-column: 1 / -1;
+  font: 11px var(--mono);
+}
+.beat-tab .beat-bar .n {
+  color: var(--stale);
+}
+.beat-tab .beat-bar .scene {
+  color: var(--accent-text);
+}
+.beat-tab .beat-bar.odd {
+  border-color: var(--stale);
+  border-style: dashed;
+}
+.beat-tab .beat-bar.cut {
+  border-left: 2px solid var(--accent);
+}
+@media (max-width: 720px) {
+  .beat-tab .beat-counter {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* 接下来：一句话说清下一步，页面上最显眼的一块。 */
+.beat-tab .beat-next {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+.beat-tab .beat-next .label,
+.beat-tab .beat-story .label {
+  font: 11px var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--accent-text);
+}
+.beat-tab .beat-next p {
+  margin: 0;
+  max-width: 760px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+/* 故事与文案：像一份文稿，宋体标题、正文限宽。 */
+.beat-tab .beat-story {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+.beat-tab .beat-story-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.beat-tab .beat-story-head .path {
+  font: 11px var(--mono);
+  color: var(--faint);
+}
+.beat-tab .beat-story-title {
+  margin: 0;
+  font: 600 26px/1.3 var(--serif);
+  letter-spacing: 0.02em;
+}
+.beat-tab .beat-story-lead,
+.beat-tab .beat-story-lead p {
+  margin: 0;
+  max-width: 760px;
+  font: 15px/1.8 var(--serif);
+  color: var(--text-2);
+}
+.beat-tab .beat-story-body {
+  max-width: 900px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--text-2);
+}
+.beat-tab .beat-story-body table {
+  font-size: 12px;
+}
+.beat-tab .beat-installing {
+  color: var(--accent-text);
+  font-size: 13px;
+}
+.beat-tab .beat-install-error {
+  margin-left: 10px;
+  color: var(--bad);
+  font-size: 12px;
+}

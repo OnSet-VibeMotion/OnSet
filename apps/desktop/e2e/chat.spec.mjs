@@ -1,0 +1,195 @@
+import fs from 'node:fs/promises';
+import { test, expect, openProject, api } from './fixtures.mjs';
+
+// 从 internal/studio/ui/e2e/studio.spec.mjs 迁来：对话、回退、停止、选项、排队、工具选择、镜头快捷指令。
+
+test('asks for a change, reviews the diff, and reverts the turn', async ({ page, project }) => {
+  await openProject(page, project);
+  await page.locator('#prompt').fill('把镜头提示词改成 after');
+  await page.locator('#send').click();
+  await expect(page.locator('#messages')).toContainText('已把镜头提示词改好');
+  // 一轮结束后过程折叠起来；展开能看到工具行。
+  await expect(page.locator('.shell.done')).toBeVisible();
+  await page.locator('.shell.done > summary').click();
+  await expect(page.locator('.tool', { hasText: '创建' })).toBeVisible();
+  const card = page.locator('.turn-card');
+  await expect(card).toContainText('scenes/scene-001/prompt.md');
+  await expect.poll(() => fs.readFile(project.promptFile, 'utf8')).toBe('after\n');
+
+  await card.locator('button', { hasText: 'scenes/scene-001/prompt.md' }).click();
+  await expect(page.locator('#diff .del')).toContainText('before');
+  await expect(page.locator('#diff .add')).toContainText('after');
+  await page.locator('[aria-label="关闭"]').last().click();
+
+  await page.locator('#revert-turn').click();
+  await expect(card).toContainText('已回退这一轮');
+  await expect.poll(() => fs.readFile(project.promptFile, 'utf8')).toBe('before\n');
+
+  // 重新载入后会话从项目里的事件记录恢复。
+  await page.reload();
+  await expect(page.locator('#messages')).toContainText('已把镜头提示词改好');
+  await expect(page.locator('.turn-card')).toContainText('已回退这一轮');
+});
+
+test('starts production and can stop a running turn', async ({ page, project }) => {
+  await openProject(page, project);
+  await page.locator('#start-production').click();
+  await expect(page.locator('#messages')).toContainText('开始整片制作');
+  await expect(page.locator('.done-line').last()).toContainText('已完成');
+  await expect(page.locator('#session-title')).toContainText('整片制作');
+
+  await page.locator('#prompt').fill('慢慢来，先别动');
+  await page.locator('#send').click();
+  await expect(page.locator('#cancel-turn')).toBeVisible();
+  await page.locator('#cancel-turn').click();
+  await expect(page.locator('.pause-line')).toContainText('已停止');
+  await expect(page.locator('#send')).toBeVisible();
+});
+
+test('picks the orchestrator and renderer per session', async ({ page, project }) => {
+  await openProject(page, project);
+  await expect(page.locator('#agent-tool')).toHaveValue('claude');
+  await expect(page.locator('#agent-tool option[value="claude"]')).toContainText('默认');
+
+  // 新对话：选的渲染工具与编排模型在建会话时带上。claude 的模型是内置别名，不用跑命令。
+  await page.locator('#agent-renderer').selectOption('codex');
+  await expect(page.locator('#agent-model option[value="opus"]')).toHaveCount(1);
+  await page.locator('#agent-model').selectOption('opus');
+  await page.locator('#prompt').fill('把镜头提示词改成 after');
+  await page.locator('#send').click();
+  await expect(page.locator('.done-line').last()).toContainText('已完成');
+  const sessions = await api(page, '/api/sessions');
+  expect(sessions.status).toBe(200);
+  expect(sessions.body.sessions[0]).toMatchObject({ tool: 'claude', renderer: 'codex', model: 'opus' });
+
+  // 已有会话：同一家换模型从下一轮起生效。
+  await page.locator('#agent-model').selectOption('sonnet');
+  await expect(page.locator('#messages')).toContainText('编排模型改为 sonnet');
+
+  // 已有会话：换编排工具从下一轮起生效，并在对话里留一条提示。
+  await page.locator('#agent-tool').selectOption('codex');
+  await expect(page.locator('#messages')).toContainText('对话改用 codex');
+  await expect(page.locator('#agent-tool')).toHaveValue('codex');
+});
+
+test('uploads a file, answers with a choice button, and queues a message mid-turn', async ({ page, project }) => {
+  await openProject(page, project);
+  await page.locator('.composer input[type="file"]').setInputFiles({
+    name: '文章.md',
+    mimeType: 'text/markdown',
+    buffer: Buffer.from('# 标题\n正文'),
+  });
+  await expect(page.locator('#attachments')).toContainText('文章.md');
+
+  await page.locator('#prompt').fill('给我选项');
+  await page.locator('#send').click();
+  // 待办清单进了这一轮的过程：进行中的那一步插一行小标题。
+  await expect(page.locator('.step-row')).toContainText('正在定风格');
+  const choice = page.locator('.choice', { hasText: '白板手绘风' });
+  await expect(choice).toBeVisible();
+  await expect(page.locator('.message.assistant').last()).not.toContainText('```');
+
+  // 点选项就是把这一行发出去；之后选项消失。
+  await choice.click();
+  await expect(page.locator('.message.user').last()).toContainText('白板手绘风');
+  await expect(page.locator('.done-line').last()).toContainText('已完成');
+  // 答过之后只留选中的那个，其余收起；点开还能看，但不能再点。
+  await expect(page.locator('.choice-picked')).toContainText('白板手绘风');
+  await expect(page.locator('.choice')).toHaveCount(0);
+  await page.locator('.answered-toggle').click();
+  await expect(page.locator('.choice').first()).toBeDisabled();
+
+  // 进行中再发一条：先显示排队中，这一轮结束后自动发出。
+  await page.locator('#prompt').fill('稍等，先改提示词');
+  await page.locator('#send').click();
+  await expect(page.locator('#cancel-turn')).toBeVisible();
+  await page.locator('#prompt').fill('这条不要了');
+  await page.locator('#send').click();
+  await page.locator('#prompt').fill('顺便检查一下');
+  await page.locator('#send').click();
+  await expect(page.locator('.queue-card')).toHaveCount(2);
+  // 移除一条：只剩一条排队。
+  await page.locator('.queue-stack').hover();
+  await page.locator('.queue-card', { hasText: '这条不要了' }).getByRole('button', { name: '移除' }).click();
+  await expect(page.locator('.queue-card')).toHaveCount(1);
+  await expect(page.locator('.message.user', { hasText: '顺便检查一下' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.queue-card')).toHaveCount(0);
+  await expect(page.locator('.message.user', { hasText: '这条不要了' })).toHaveCount(0);
+});
+
+test('sends a scene quick action to the orchestrator', async ({ page, project }) => {
+  await openProject(page, project);
+  // 快捷指令收在镜头页的「⋯」菜单里；点步骤打开画面面板。
+  await page.locator('[data-tab="scene"]').click();
+  await page.locator('.scene-menu summary').click();
+  await page.locator('.quick-actions button', { hasText: '重做这个镜头' }).click();
+  await expect(page.locator('.message.user').last()).toContainText('重做镜头 scene-001');
+  await expect(page.locator('.done-line').last()).toContainText('已完成');
+});
+
+test('the orchestrator marks which production step the project is at', async ({ page, project }) => {
+  await openProject(page, project);
+  // 没标过时按产物推：项目里还没有任何制作产物，算在第一步。
+  await expect(page.locator('[data-tab="script"]')).toHaveClass(/current/);
+  await page.locator('#prompt').fill('标步骤');
+  await page.locator('#send').click();
+  await expect(page.locator('#messages')).toContainText('成片拼好了');
+  await expect(page.locator('[data-tab="final"]')).toHaveClass(/current/);
+  await expect(page.locator('[data-tab="final"]')).toHaveAttribute('title', 'AI 标记：现在在这一步');
+  await expect(page.locator('[data-tab="scene"]')).toHaveClass(/done/);
+  await expect(page.locator('[data-tab="scene"] .step-no')).toHaveText('✓');
+  // 只标步骤不切页，回复下面也不留「↗ 页面」链接；面板仍是收起的。
+  await expect(page.locator('#panel')).toHaveCount(0);
+  await expect(page.locator('.view-links')).toHaveCount(0);
+  // 标记跟着项目走：重新加载后还在。
+  await page.reload();
+  await expect(page.locator('[data-tab="final"]')).toHaveClass(/current/);
+});
+
+// 重新打开一段长对话：历史一次画完、直接落在最新一轮，不是从第一条起一帧帧往下长、往下滚。
+test('reopening a long conversation lands on the latest turn at once', async ({ page, project }) => {
+  await openProject(page, project);
+  const turns = 8;
+  for (let i = 1; i <= turns; i++) {
+    await page.locator('#prompt').fill(`第 ${i} 句话`);
+    await page.locator('#send').click();
+    await expect(page.locator('.assistant-flow')).toHaveCount(i);
+    await expect(page.locator('.done-line').last()).toBeVisible();
+  }
+  // 记下每一帧里对话有几轮：一帧帧补出来的话，这串数会从 1 慢慢涨到 8。
+  await page.addInitScript(() => {
+    const seen = [];
+    window.__turnCounts = seen;
+    const tick = () => {
+      const n = document.querySelectorAll('.assistant-flow').length;
+      if (n > 0 && seen[seen.length - 1] !== n) seen.push(n);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await page.reload();
+  await expect(page.locator('.assistant-flow')).toHaveCount(turns);
+  expect(await page.evaluate(() => window.__turnCounts)).toEqual([turns]);
+  const gap = await page.locator('#messages').evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  expect(gap).toBeLessThanOrEqual(8);
+  await expect(page.locator('.intro')).toHaveCount(0);
+
+  // 翻历史后，按钮与手动滚动都必须能回到最后一轮。
+  const messages = page.locator('#messages');
+  const jump = page.getByRole('button', { name: '回到最新' });
+  const bottomGap = () => messages.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  await messages.evaluate((el) => { el.scrollTop = 0; });
+  await expect(jump).toBeVisible();
+  await jump.click();
+  await expect.poll(bottomGap).toBeLessThanOrEqual(8);
+  await expect(jump).toBeHidden();
+  await expect(page.locator('.done-line').last()).toBeInViewport();
+
+  await messages.evaluate((el) => { el.scrollTop = 0; });
+  await expect(jump).toBeVisible();
+  await messages.hover();
+  await page.mouse.wheel(0, 10000);
+  await expect.poll(bottomGap).toBeLessThanOrEqual(8);
+  await expect(jump).toBeHidden();
+  await expect(page.locator('.done-line').last()).toBeInViewport();
+});

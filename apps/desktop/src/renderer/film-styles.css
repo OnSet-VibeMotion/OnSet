@@ -1,0 +1,658 @@
+/* 整片风格选择器（components/FilmStyles.tsx）。选择器都挂在 .film-styles 下，
+   不与全局 styles.css 里的 .style-item、.style-thumb 等旧风格菜单的类名相撞。 */
+
+.film-styles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.film-styles .fs-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.film-styles .fs-search {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--well);
+  color: var(--text);
+  font: inherit;
+}
+
+.film-styles .fs-search:focus {
+  outline: none;
+  border-color: var(--accent-line);
+}
+
+.film-styles .fs-gallery {
+  flex: none;
+  color: var(--accent-text);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.film-styles .fs-gallery:hover {
+  text-decoration: underline;
+}
+
+.film-styles .fs-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.film-styles .fs-note.bad {
+  color: var(--bad);
+}
+
+.film-styles .fs-group h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 6px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.film-styles .fs-group h4::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: hsl(var(--fs-hue, 30) 55% 55%);
+}
+
+.film-styles .fs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.film-styles.grid .fs-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.film-styles .fs-item {
+  position: relative;
+  display: flex;
+  /* 全局 button 规则把按钮钉成 30px 高、居中排列；风格项要按内容撑开。 */
+  height: auto;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.film-styles .fs-item:hover {
+  background: var(--hover);
+}
+
+.film-styles .fs-item.selected {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.film-styles.grid .fs-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  border-color: var(--line);
+}
+
+.film-styles .fs-poster {
+  position: relative;
+  flex: none;
+  width: 96px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 5px;
+  background: linear-gradient(135deg, hsl(var(--fs-hue, 30) 35% 26%), hsl(calc(var(--fs-hue, 30) + 40) 30% 16%));
+}
+
+.film-styles.grid .fs-poster {
+  width: 100%;
+}
+
+.film-styles .fs-poster img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.film-styles .fs-poster-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.film-styles .fs-poster-none {
+  background: var(--chip);
+}
+
+.film-styles .fs-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.film-styles .fs-name {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.film-styles .fs-en {
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 400;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.film-styles .fs-desc {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.film-styles .fs-item.none .fs-desc {
+  white-space: normal;
+}
+
+.film-styles .fs-check {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* 预览区「风格」页里的整片风格：海报铺满介绍区宽度，STYLE.md 限宽便于阅读。 */
+.style-tab .style-intro.film .fs-poster {
+  width: 100%;
+  max-width: 720px;
+  margin-bottom: 10px;
+}
+
+.style-tab .style-doc {
+  max-width: 760px;
+  padding: 4px 2px 24px;
+}
+
+.style-tab .toolbar button.danger {
+  border-color: color-mix(in srgb, var(--bad) 50%, transparent);
+  color: var(--bad);
+}
+
+.film-styles .fs-source {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.film-styles .fs-source + .fs-source {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.film-styles .fs-source-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.film-styles .fs-source-head h3 {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 风格页（放映室）：海报在左占大半，名字与说明在右；去掉外面那层卡片。 */
+.style-tab .style-intro.film {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
+  column-gap: 48px;
+  row-gap: 16px;
+  align-content: center;
+  padding: 16px 0 0;
+  background: transparent;
+  border: 0;
+}
+.style-tab .style-intro.film .film-styles {
+  grid-row: 1 / span 4;
+}
+.style-tab .style-intro.film .fs-poster {
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.55);
+}
+.style-tab .style-intro.film .style-intro-head {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+.style-tab .style-intro.film .style-badge {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: 11px var(--mono);
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+.style-tab .style-intro.film h3 {
+  margin: 0;
+  font: 600 30px/1.3 var(--serif);
+  letter-spacing: 0.02em;
+}
+.style-tab .style-intro.film h3 .muted {
+  display: block;
+  margin-top: 6px;
+  font: 12px var(--mono);
+  letter-spacing: 0;
+}
+.style-tab .style-intro.film p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--text-2);
+}
+@media (max-width: 900px) {
+  .style-tab .style-intro.film {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .style-tab .style-intro.film .film-styles {
+    grid-row: auto;
+  }
+}
+
+/* ---- 整片风格弹窗（FilmStyleDialog）：放映室里的一面海报墙 ---- */
+.fs-backdrop {
+  background: rgba(4, 4, 3, 0.78);
+  backdrop-filter: blur(6px);
+  padding: 28px;
+}
+.fs-dialog {
+  width: min(1200px, 100%);
+  height: min(820px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6);
+  animation: fs-in 0.18s ease-out;
+}
+@keyframes fs-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+}
+.fs-dialog .fs-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 22px 28px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.fs-dialog .fs-dialog-title {
+  flex: 1;
+  min-width: 0;
+}
+.fs-dialog .fs-dialog-title h2 {
+  margin: 0;
+  font: 600 22px/1.3 var(--serif);
+  letter-spacing: 0.04em;
+}
+.fs-dialog .fs-dialog-title p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.fs-dialog .fs-search {
+  flex: none;
+  width: 300px;
+  height: 36px;
+  border-radius: 999px;
+  padding: 0 16px;
+}
+.fs-dialog .fs-close {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.fs-dialog .fs-dialog-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+}
+
+/* 左栏分类 */
+.fs-dialog .fs-rail {
+  overflow: auto;
+  padding: 16px 12px 24px 20px;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fs-dialog .fs-rail-source h3 {
+  margin: 14px 8px 6px;
+  color: var(--faint);
+  font: 11px var(--mono);
+  letter-spacing: 0.1em;
+}
+.fs-dialog .fs-rail-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: left;
+}
+.fs-dialog .fs-rail-item:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+.fs-dialog .fs-rail-item.on {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.fs-dialog .fs-rail-item:disabled {
+  opacity: 0.35;
+}
+.fs-dialog .fs-rail-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.fs-dialog .fs-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: hsl(var(--fs-hue, 30) 55% 55%);
+}
+.fs-dialog .fs-count {
+  margin-left: auto;
+  color: var(--faint);
+  font: 11px var(--mono);
+}
+
+/* 中间海报墙 */
+.fs-dialog .fs-gallery-pane {
+  overflow: auto;
+  padding: 20px 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.fs-dialog .fs-group h4 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.fs-dialog .fs-group-source {
+  margin-left: 6px;
+  color: var(--faint);
+  font: 11px var(--mono);
+  font-weight: 400;
+}
+.fs-dialog .fs-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 18px 16px;
+}
+.fs-dialog .fs-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+}
+.fs-dialog .fs-item:hover {
+  background: none;
+}
+.fs-dialog .fs-item .fs-poster {
+  width: 100%;
+  border-radius: 8px;
+  outline: 1px solid var(--line);
+  outline-offset: -1px;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.fs-dialog .fs-item:hover .fs-poster {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.5);
+}
+.fs-dialog .fs-item.selected .fs-poster {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
+}
+.fs-dialog .fs-item .fs-text {
+  padding: 0 2px;
+}
+.fs-dialog .fs-item .fs-name {
+  font: 600 14px/1.4 var(--serif);
+}
+.fs-dialog .fs-item.selected .fs-name {
+  color: var(--accent-text);
+}
+.fs-dialog .fs-current {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(10, 9, 8, 0.78);
+  color: var(--accent-text);
+  font: 11px var(--mono);
+}
+/* 「不用整片风格」这类特殊选项：横向宽卡，多张时并排 */
+.fs-dialog .fs-specials {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+.fs-dialog .fs-current.installed {
+  color: var(--text-2);
+}
+.fs-dialog .fs-item.none {
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.fs-dialog .fs-item.none:hover {
+  background: var(--hover);
+}
+.fs-dialog .fs-item.none.selected {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.fs-dialog .fs-item.none .fs-poster {
+  width: 140px;
+  outline: 0;
+  transform: none;
+  box-shadow: none;
+}
+.fs-dialog .fs-item.none .fs-poster-fallback {
+  font: 600 22px var(--serif);
+}
+
+/* 底部：选中的那种风格 + 确认 */
+.fs-dialog .fs-dialog-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 28px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+.fs-dialog .fs-detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fs-dialog .fs-detail strong {
+  font: 600 15px/1.4 var(--serif);
+}
+.fs-dialog .fs-detail .fs-en {
+  margin-left: 6px;
+  font-family: var(--mono);
+}
+.fs-dialog .fs-summary {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.fs-dialog .fs-dialog-foot button {
+  height: 38px;
+  padding: 0 20px;
+}
+
+/* ---- 风格页：默认风格之外的「其他风格」与在用的镜头 ---- */
+.style-tab .style-used {
+  grid-column: 2;
+}
+.style-tab .style-scenes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.style-tab .style-scenes .chip {
+  height: 24px;
+  padding: 0 10px;
+  font: 11px var(--mono);
+}
+.style-tab .style-others {
+  max-width: 1100px;
+  margin-top: 36px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.style-tab .style-others > header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.style-tab .style-others h4 {
+  margin: 0;
+  font: 600 16px var(--serif);
+}
+.style-tab .style-others .spacer {
+  flex: 1;
+}
+.style-tab .style-other-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+.style-tab .style-other {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 14px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.style-tab .style-other.on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.style-tab .style-other .fs-poster {
+  width: 150px;
+}
+.style-tab .style-other-text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.style-tab .style-other-text strong {
+  font: 600 15px var(--serif);
+}
+.style-tab .style-other-text strong .muted {
+  font: 11px var(--mono);
+}
+.style-tab .style-other .toolbar {
+  margin-top: auto;
+}
+.style-tab .style-doc-head {
+  margin: 0 0 8px;
+}
+
+/* 镜头页的风格一行 */
+.scene-info .scene-style {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 13px;
+}
+.scene-info .scene-style strong {
+  font: 600 14px var(--serif);
+}
+.scene-info .scene-style button {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+}

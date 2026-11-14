@@ -5,7 +5,16 @@
 # AGENTS.md 在很多机器的全局 gitignore 里（通常是当成 agent 生成的临时文件）。
 # 本仓库的 AGENTS.md 是仓库自己的开发规则文档，必须版本化，所以显式反向排除。
 !AGENTS.md
-/am
-/dist/
-/coverage.out
 docs/superpowers/
+# 依赖与构建产物。
+node_modules/
+/apps/desktop/out/
+/apps/desktop/release/
+# 随客户端下发的第三方文件（npm），由 apps/desktop/scripts/vendor.mjs 在打包前现取。
+/apps/desktop/vendor/
+/packages/cli/dist/
+/packages/engine/node_modules/
+
+# Local Windows runtime, downloaded tools, logs and verification output.
+/.onset-local/
+/apps/desktop/test-results/

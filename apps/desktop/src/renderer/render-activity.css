@@ -1,0 +1,258 @@
+/* 渲染器此刻在做什么：对话里的卡片（.render-watch）与镜头页的过程（.scene-activity）。组件见 components/RenderActivity.tsx。 */
+
+.render-watch {
+  flex: none;
+  margin: 6px calc(var(--gutter, 16px) - 6px) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.render-watch .render-card {
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--raised);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+.render-watch .render-card.open {
+  border-color: var(--accent-line);
+}
+.render-watch .ra-head {
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.render-watch .ra-head:hover {
+  background: var(--hover);
+}
+.render-watch .ra-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.render-watch .ra-toggle {
+  flex: none;
+  font-size: 12px;
+  color: var(--accent-text);
+}
+.render-watch .ra-quiet {
+  margin: 0;
+  padding: 0 12px 8px 30px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.render-watch .ra-steps {
+  /* 固定高度而不是 max-height：步数一多一少，卡片和上面的对话就跟着上下跳。 */
+  height: 260px;
+  border-top: 1px solid var(--line);
+}
+.render-watch .ra-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 8px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 两处共用：标题行与步骤列表。 */
+.render-watch .ra-title,
+.scene-activity .ra-title {
+  flex: none;
+  color: var(--text);
+  font-weight: 500;
+}
+.render-watch .ra-elapsed,
+.scene-activity .ra-elapsed {
+  flex: none;
+  /* 59s → 1m00s 宽度会变，后面那行字跟着挪：留够宽度。 */
+  min-width: 6ch;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--accent-text);
+}
+.render-watch .ra-current,
+.scene-activity .ra-current {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.render-watch .ra-plan,
+.scene-activity .ra-plan {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.render-watch .ra-steps,
+.scene-activity .ra-steps {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+  overflow-y: auto;
+}
+.render-watch .ra-step,
+.scene-activity .ra-step {
+  display: grid;
+  /* minmax(0, …)：1fr 的下限是内容宽度，一条不换行的长命令会把整个面板撑宽，镜头页又是居中排版，画面跟着横跳。 */
+  grid-template-columns: 26px 10px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 12px 3px 4px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.render-watch .ra-num,
+.scene-activity .ra-num {
+  text-align: right;
+  font-size: 10px;
+  color: var(--faint);
+}
+.render-watch .ra-dot,
+.scene-activity .ra-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  transform: translateY(-1px);
+}
+.render-watch .ra-dot.done,
+.scene-activity .ra-dot.done {
+  background: var(--accent);
+}
+.render-watch .ra-dot.failed,
+.scene-activity .ra-dot.failed {
+  background: var(--bad);
+}
+.render-watch .ra-dot.said,
+.scene-activity .ra-dot.said {
+  background: transparent;
+  border: 1px solid var(--text-3);
+}
+.render-watch .ra-dot.running,
+.scene-activity .ra-dot.running {
+  background: conic-gradient(from var(--orb-angle, 0deg), var(--accent), var(--accent-soft), var(--accent-text), var(--accent));
+  animation: orb-spin 1.6s linear infinite;
+}
+.render-watch .ra-body,
+.scene-activity .ra-body {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+}
+.render-watch .ra-verb,
+.scene-activity .ra-verb {
+  flex: none;
+  color: var(--text-2);
+}
+.render-watch .ra-step.running .ra-verb,
+.scene-activity .ra-step.running .ra-verb {
+  color: var(--accent-text);
+}
+.render-watch .ra-step.failed .ra-verb,
+.scene-activity .ra-step.failed .ra-verb {
+  color: var(--bad);
+}
+.render-watch .ra-target,
+.scene-activity .ra-target {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+.render-watch .ra-output,
+.scene-activity .ra-output {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  max-height: 72px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font: 11px/1.45 var(--mono);
+  color: var(--bad);
+}
+.render-watch .ra-said,
+.scene-activity .ra-said {
+  margin: 0;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.render-watch .ra-step.to-user .ra-said,
+.scene-activity .ra-step.to-user .ra-said {
+  color: var(--accent-text);
+}
+
+/* 镜头页：信息栏里的一块。 */
+.scene-activity {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--raised);
+}
+.scene-activity.live {
+  border-color: var(--accent-line);
+}
+.scene-activity > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  list-style: none;
+}
+.scene-activity > summary::-webkit-details-marker {
+  display: none;
+}
+.scene-activity .ra-outcome {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.scene-activity .ra-outcome.succeeded {
+  color: var(--ok);
+}
+.scene-activity .ra-outcome.failed,
+.scene-activity .ra-outcome.verification_failed {
+  color: var(--bad);
+}
+.scene-activity > .ra-plan {
+  display: block;
+  min-height: 1.5em;
+  padding: 0 10px 6px;
+}
+.scene-activity .ra-error {
+  margin: 0;
+  padding: 0 10px 6px;
+  font-size: 12px;
+  color: var(--bad);
+  word-break: break-word;
+}
+.scene-activity .ra-steps {
+  max-height: 340px;
+  border-top: 1px solid var(--line);
+}
+/* 渲染中固定高度：镜头页是居中排版，面板一长一短，标题、按钮和画面都会跟着上下移。 */
+.scene-activity.live .ra-steps {
+  height: 340px;
+}

@@ -6,11 +6,11 @@
 //    不保证只走一遍；本库不读时钟、不用未播种随机数、不建定时器、不发网络请求，
 //    也不在两次 render 之间携带任何影响画面的状态。
 //
-// 2) 帧号一律是镜头本地帧（第 0 帧是本镜头第一帧），与 am-scene.js 里 cues /
+// 2) 帧号一律是镜头本地帧（第 0 帧是本镜头第一帧），与 onset-scene.js 里 cues /
 //    phrases 的坐标系一致。时间换帧号只有 frameOf 一处：Math.round(秒 × fps)。
 //    取整方式在两处不一致时，字幕会与配音慢慢错开，而且看半天说不出哪里不对。
 //
-// 3) 数据只从 window.AM_SCENE 读。它由 am 在渲染前写进镜头目录的 am-scene.js，
+// 3) 数据只从 window.ONSET_SCENE 读。它由 onset 在渲染前写进镜头目录的 onset-scene.js，
 //    来源是 frame.md 与本镜头的字幕时间轴。不要把安全区像素、字号、字幕时间
 //    手抄进合成——frame.md 改了，手抄的那份不会跟着改。
 //
@@ -114,15 +114,15 @@
   // ======================= 数据 =======================
 
   function scene() {
-    var data = global.AM_SCENE;
+    var data = global.ONSET_SCENE;
     if (!data || typeof data !== 'object') {
       throw new Error(
-        'am-scene.js 未加载：window.AM_SCENE 不存在。am-scene.js 由 am 写在镜头目录里，' +
-          '必须在 scene-kit.js 之前用 <script src="am-scene.js"></script> 引入'
+        'onset-scene.js 未加载：window.ONSET_SCENE 不存在。onset-scene.js 由 onset 写在镜头目录里，' +
+          '必须在 scene-kit.js 之前用 <script src="onset-scene.js"></script> 引入'
       );
     }
     if (data.schema !== SCHEMA) {
-      throw new Error('am-scene.js 的 schema 是 ' + data.schema + '，本版 scene-kit 只认 ' + SCHEMA + '：重新从技能目录复制 scene-kit.js');
+      throw new Error('onset-scene.js 的 schema 是 ' + data.schema + '，本版 scene-kit 只认 ' + SCHEMA + '：重新从技能目录复制 scene-kit.js');
     }
     return data;
   }
@@ -433,7 +433,7 @@
     var s = scene();
     var tokens = s.subtitles;
     if (!tokens) {
-      throw new Error('SceneKit.captions：am-scene.js 里 subtitles 为 null（frame.md 没有字幕规范），不能按规范排字幕');
+      throw new Error('SceneKit.captions：onset-scene.js 里 subtitles 为 null（frame.md 没有字幕规范），不能按规范排字幕');
     }
     var area = safeRect(opts.safeArea || 'subtitles');
     var fontRange = tokens.font_size_px || {};
@@ -441,9 +441,12 @@
     var minFont = Math.min(fontRange.min || maxFont, maxFont);
     var lhRange = tokens.line_height || {};
     var lineHeight = opts.lineHeight || lhRange.max || lhRange.min || 1.4;
-    var pad = tokens.padding_px || {};
+    // frame.md 的字幕规范只有版式上的技术约束；配色、内边距、圆角由镜头自己定（options），
+    // 不给时文字跟随整片配色的 ink（分镜计划定了 look 时），否则继承根节点，没有底框。
+    var pad = opts.padding || {};
     var padV = pad.vertical || 0;
     var padH = pad.horizontal || 0;
+    var look = s.look || null;
     var boxWidth = Math.min(tokens.max_width_px || area.width, area.width);
     var cfg = {
       fontSize: maxFont,
@@ -511,9 +514,10 @@
     bs.boxSizing = 'border-box';
     bs.maxWidth = px(boxWidth);
     bs.padding = px(padV) + ' ' + px(padH);
-    bs.borderRadius = px(tokens.radius_px || 0);
-    bs.background = tokens.background || 'transparent';
-    bs.color = tokens.text_color || '#FFFFFF';
+    bs.borderRadius = px(opts.radius || 0);
+    bs.background = opts.background || 'transparent';
+    var color = opts.color || (look && look.ink) || '';
+    if (color) bs.color = color;
     bs.lineHeight = String(lineHeight);
     bs.textAlign = 'center';
     if (opts.fontFamily) bs.fontFamily = opts.fontFamily;
@@ -619,7 +623,9 @@
   // 返回一个无参的 draw()，调用它会按时间线当前位置补出一帧。
   function attach(timeline, render) {
     if (!timeline || typeof timeline.to !== 'function' || typeof timeline.time !== 'function') {
-      throw new Error('SceneKit.attach：第一个参数必须是 gsap.timeline({ paused: true }) 建出的时间线');
+      // 措辞里不能出现「gsap」紧跟「.timeline」：HyperFrames lint 的 gsap_timeline_not_registered 逐个脚本按正则查，
+      // 见到它又没有 window.__timelines 赋值就报错，整个文件被当成「建了时间线却没注册」，用 scene-kit 的镜头全部报错。
+      throw new Error('SceneKit.attach：第一个参数必须是 GSAP 建出的暂停时间线（timeline，paused: true）');
     }
     if (typeof render !== 'function') {
       throw new Error('SceneKit.attach：第二个参数必须是 render(frame) 函数');

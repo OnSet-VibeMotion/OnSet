@@ -1,0 +1,353 @@
+/* 音色页（放映室）：一栏居中，名字用宋体，只用一种强调色。选择器都挂在 .voices-tab 下。 */
+.voices-tab {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.voices-tab .voices-head h2 {
+  margin: 0 0 8px;
+  font: 600 22px var(--serif);
+  color: var(--text);
+}
+.voices-tab .voices-head p,
+.voices-tab .voices-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.voices-tab .voices-error {
+  color: var(--bad);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+.voices-tab .voices-empty {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.8;
+}
+.voices-tab .voices-empty p {
+  margin: 0 0 4px;
+}
+.voices-tab .voices-empty ol {
+  margin: 0;
+  padding-left: 20px;
+}
+.voices-tab .voices-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+.voices-tab .voice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  padding: 18px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.voices-tab .voice-play {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  justify-content: center;
+}
+.voices-tab .voice.is-default .voice-play {
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
+.voices-tab .voice-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.voices-tab .voice-name {
+  font: 600 17px var(--serif);
+  color: var(--text);
+}
+.voices-tab .voice-badge {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-line);
+  color: var(--accent-text);
+}
+.voices-tab .voice-meta {
+  font: 12px var(--mono);
+  color: var(--faint);
+}
+.voices-tab .voice-text {
+  margin: 8px 0 0;
+  font: 15px/1.7 var(--serif);
+  color: var(--text-2);
+}
+.voices-tab .voice-instruction {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.voices-tab .voice-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.voices-tab .voices-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 8px;
+}
+.voices-tab .voices-upload h3 {
+  margin: 0;
+  font: 600 15px var(--serif);
+  color: var(--text);
+}
+.voices-tab .voices-upload label {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.voices-tab .voices-upload label > span {
+  padding-top: 7px;
+}
+.voices-tab .voices-upload input:not([type='checkbox']),
+.voices-tab .voices-upload textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--well);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 7px 10px;
+  font: 14px var(--sans);
+}
+.voices-tab .voices-upload textarea {
+  font-family: var(--serif);
+  line-height: 1.6;
+  resize: vertical;
+}
+.voices-tab .voices-upload label.voices-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 84px;
+}
+.voices-tab .voices-upload label.voices-check > span {
+  padding-top: 0;
+}
+.voices-tab .voices-submit {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-left: 84px;
+}
+@media (max-width: 560px) {
+  .voices-tab .voices-upload label {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .voices-tab .voices-upload label.voices-check,
+  .voices-tab .voices-submit {
+    padding-left: 0;
+  }
+}
+.voices-tab .voices-upload .voices-file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding-top: 0;
+}
+.voices-tab .voices-upload .voices-file .voice-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 新的声音：三种办法放在一组胶囊页签下。 */
+.voices-tab .voices-new {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 8px;
+}
+.voices-tab .voices-new h3 {
+  margin: 0;
+  font: 600 15px var(--serif);
+  color: var(--text);
+}
+.voices-tab .voices-ways {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.voices-tab .voices-way-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.voices-tab .voices-sample {
+  margin: 0;
+  padding: 18px 22px;
+  border-left: 2px solid var(--accent-line);
+  background: var(--well);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font: 18px/1.9 var(--serif);
+  color: var(--text);
+}
+.voices-tab .voices-recorder {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.voices-tab .voices-recorder audio {
+  height: 32px;
+  max-width: 100%;
+}
+.voices-tab .voices-rec {
+  gap: 8px;
+}
+.voices-tab .rec-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--bad);
+  animation: voices-rec-pulse 1.2s ease-in-out infinite;
+}
+.voices-tab .rec-dot.idle {
+  background: currentColor;
+  animation: none;
+}
+@keyframes voices-rec-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+.voices-tab .voices-field {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.voices-tab .voices-field > span {
+  padding-top: 7px;
+}
+.voices-tab .voices-field textarea,
+.voices-tab .voices-save input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--well);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 7px 10px;
+  font: 14px/1.6 var(--serif);
+  resize: vertical;
+}
+.voices-tab .voices-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-left: 84px;
+}
+.voices-tab .voices-preset {
+  height: 26px;
+  font-size: 12px;
+}
+.voices-tab .voices-save {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.voices-tab .voices-save input {
+  flex: 1 1 220px;
+  font-family: var(--sans);
+}
+.voices-tab .voices-save .voices-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.voices-tab .voices-drafts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.voices-tab .draft {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.voices-tab .draft-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+}
+.voices-tab .draft.is-picked .voice-play {
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
+.voices-tab .draft .voice-name {
+  font-size: 15px;
+}
+.voices-tab .voices-install p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.8;
+}
+.voices-tab .voices-install > button {
+  align-self: flex-start;
+}
+.voices-tab .voices-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.voices-tab .voices-progress .bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line-strong);
+  overflow: hidden;
+}
+.voices-tab .voices-progress .bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+@media (max-width: 560px) {
+  .voices-tab .voices-field {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .voices-tab .voices-presets {
+    padding-left: 0;
+  }
+}

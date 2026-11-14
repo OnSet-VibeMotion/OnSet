@@ -1,0 +1,111 @@
+=== ["--help"]
+长说明第一行
+
+第二段。
+
+Usage:
+  onset [command]
+
+Available Commands:
+  config      读取配置
+  help        Help about any command
+  scene       镜头相关操作
+
+Flags:
+  -h, --help      help for onset
+      --unsafe    关闭隔离（危险）
+  -v, --version   version for onset
+
+Use "onset [command] --help" for more information about a command.
+
+=== end
+=== ["scene" "--help"]
+镜头相关操作
+
+Usage:
+  onset scene [command]
+
+Available Commands:
+  cues        推导镜头
+  run         执行单个镜头
+  run-all     并行执行多个镜头
+
+Flags:
+  -h, --help   help for scene
+
+Global Flags:
+      --unsafe   关闭隔离（危险）
+
+Use "onset scene [command] --help" for more information about a command.
+
+=== end
+=== ["scene" "run" "--help"]
+执行单个镜头
+
+Usage:
+  onset scene run <scene-dir> [flags]
+
+Flags:
+      --attach stringArray   附件
+      --force                强制
+  -h, --help                 help for run
+      --out path             输出 path，多行
+                             第二行
+      --renderer string      渲染工具 (default "claude")
+      --retries int          重试次数 (default 2)
+      --tags strings         标签 (default [a,b])
+      --timeout duration     超时 (default 1m30s)
+
+Global Flags:
+      --unsafe   关闭隔离（危险）
+
+=== end
+=== ["help" "scene"]
+镜头相关操作
+
+Usage:
+  onset scene [command]
+
+Available Commands:
+  cues        推导镜头
+  run         执行单个镜头
+  run-all     并行执行多个镜头
+
+Flags:
+  -h, --help   help for scene
+
+Global Flags:
+      --unsafe   关闭隔离（危险）
+
+Use "onset scene [command] --help" for more information about a command.
+
+=== end
+=== ["--version"]
+onset version dev
+
+=== end
+=== ["scen"]
+ERR: unknown command "scen" for "onset"
+
+Did you mean this?
+	scene
+
+=== end
+=== ["scene" "run"]
+ERR: accepts 1 arg(s), received 0
+=== end
+=== ["scene" "run-all" "x"]
+ERR: unknown command "x" for "onset scene run-all"
+=== end
+=== ["scene" "run" "a" "--retries" "abc"]
+ERR: invalid argument "abc" for "--retries" flag: strconv.ParseInt: parsing "abc": invalid syntax
+=== end
+=== ["scene" "run" "a" "--nope"]
+ERR: unknown flag: --nope
+=== end
+=== ["scene" "run" "a" "--renderer"]
+ERR: flag needs an argument: --renderer
+=== end
+=== ["scene" "run" "dir" "--renderer=codex" "--retries" "0x10" "--force" "--timeout" "1m30s" "--attach" "x,y" "--attach" "z" "--tags" "c,d" "--unsafe"]
+ran [dir] "codex" 16 true 1m30s [x,y z] [c d]
+=== end

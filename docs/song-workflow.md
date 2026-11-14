@@ -9,11 +9,11 @@ All user production state lives outside this CLI repository.
 `song.yaml` accepts only `schema`, `provider`, `model`, `endpoint`, `workspace`, `lyrics`,
 `style`, `language`, `target_seconds`, `bpm`, and `python`. Unknown fields are an
 error, including credential fields. Providers are `minimax`, `acestep`, `bailian`, `elevenlabs`, `fal`, `mureka`, `lyria`, and `manual`.
-Use `am song providers [PLATFORM]` for signup links and key setup, and
-`am song configure --provider PLATFORM` to update only platform fields.
+Use `onset song providers [PLATFORM]` for signup links and key setup, and
+`onset song configure --provider PLATFORM` to update only platform fields.
 Hosted endpoints are fixed; only native ACE-Step accepts `endpoint`.
 Bailian requires a Beijing `workspace`. Keys are environment-only and nested calls
-require explicit `AM_PASSTHROUGH_ENV`; no global whitelist expansion.
+require explicit `ONSET_PASSTHROUGH_ENV`; no global whitelist expansion.
 Endpoints cannot include URL credentials or query strings. Lyric paths must be
 relative to the project without traversal or symlinks. Target duration is 10–600
 seconds and BPM is 30–300; neither overrides measured audio timing.
@@ -62,7 +62,7 @@ remaining word timings also block publication. Sentence timing alone remains usa
 To correct a draft, preserve the selected candidate and digest fields, keep one
 line per sung lyric in original order, and adjust timing. Remove unreliable words
 rather than inventing exact timestamps. Import it using
-`am song prepare --timeline FILE --reviewed` only after reviewing the actual sung
+`onset song prepare --timeline FILE --reviewed` only after reviewing the actual sung
 facts, pronunciation and timing. Instrumental ranges are recomputed on import.
 Changing the selection or candidate bytes invalidates the timeline. A successful
 forced alignment does not establish content accuracy or the ≤200 ms onset target.
@@ -76,7 +76,7 @@ when constructing the existing visible-event inventory.
 
 ## Scene and media boundary
 
-`am song cues SCENES` uses the same directory order as `scene run-all`. Every scene
+`onset song cues SCENES` uses the same directory order as `scene run-all`. Every scene
 must last an integer number of project frames; total duration is exactly
 `ceil(audio_duration * fps) / fps`. It clips intersecting lyric lines and words at
 scene boundaries, preserving IDs, and assigns boundary beats to the next scene.
@@ -110,7 +110,7 @@ interrupted downloads, redirect/credential protection, repeated lyrics, partial
 alignment, selection invalidation, both canvas presets, stale rendering, and real
 ffmpeg tail-padding. They do not establish singing quality or visual acceptance.
 Real samples, alignment models and service credentials are maintained outside this
-repository. No Python dependencies or model weights are installed by `am init`.
+repository. No Python dependencies or model weights are installed by `onset init`.
 
 ## Hosted API references (checked 2026-09-18)
 

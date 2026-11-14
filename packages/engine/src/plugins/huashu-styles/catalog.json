@@ -1,0 +1,850 @@
+{
+  "commit": "1468196505a51728686db118d52561aa27a25124",
+  "sheet": {
+    "path": "assets/全风格总览.jpg",
+    "sha256": "99512979c3ffd709ace498647cca95b4a31e45ebe435c0ce77f9522470f93f7e",
+    "cols": 6,
+    "x0": 8,
+    "y0": 102,
+    "pitch_x": 488,
+    "pitch_y": 312,
+    "w": 480,
+    "h": 270
+  },
+  "libs": [
+    "lib/util.js",
+    "lib/paint.js",
+    "lib/brush.js",
+    "lib/render.js",
+    "lib/post.js",
+    "lib/rig.js",
+    "lib/kit.js",
+    "lib/medium.js",
+    "lib/motion.js",
+    "lib/camera.js",
+    "lib/diagram.js",
+    "lib/typo.js",
+    "lib/chart.js",
+    "lib/ui.js",
+    "lib/collage.js",
+    "lib/media.js",
+    "lib/toon.js"
+  ],
+  "references": [
+    "references/04-纯代码绘制.md",
+    "references/07-正面经验.md",
+    "references/15-跨场景风格提炼.md"
+  ],
+  "styles": [
+    {
+      "slug": "cave-painting",
+      "id": "01_cave",
+      "num": "01",
+      "en": "Cave painting",
+      "cn": "洞穴岩画",
+      "category_cn": "古代",
+      "category_en": "Ancient",
+      "uses": [
+        "人类起源",
+        "远古与考古",
+        "狩猎与自然"
+      ],
+      "layer": "时代标本",
+      "quality": "★★★",
+      "weakness": "人形太卡通，不够原始",
+      "technique": "噪声浮雕岩壁＋炭点毛边＋赭石吃进岩面",
+      "motifs": "动物两姿态交替奔跑、火光摇曳、余烬",
+      "scene": "scripts/engine/scenes/01_cave.js",
+      "card": "references/风格配方/01_cave.md",
+      "fonts": [
+        {
+          "family": "Kalam-700",
+          "file": "Kalam-700.woff"
+        },
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 0
+    },
+    {
+      "slug": "egyptian-tomb",
+      "id": "02_egypt",
+      "num": "02",
+      "en": "Egyptian tomb painting",
+      "cn": "古埃及墓室壁画",
+      "category_cn": "古代",
+      "category_en": "Ancient",
+      "uses": [
+        "古埃及与古文明",
+        "农业与手工业起源",
+        "神话与信仰"
+      ],
+      "layer": "时代标本",
+      "quality": "★★★",
+      "weakness": "端杯肘偏僵",
+      "technique": "侧脸正面眼程式、平涂细勾线、24 个手写象形字",
+      "motifs": "圣甲虫推日、阿顿光线小手开合、象形字逐笔重写",
+      "scene": "scripts/engine/scenes/02_egypt.js",
+      "card": "references/风格配方/02_egypt.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 1
+    },
+    {
+      "slug": "greek-black-figure",
+      "id": "03_greek",
+      "num": "03",
+      "en": "Attic black-figure pottery",
+      "cn": "古希腊黑绘陶",
+      "category_cn": "古代",
+      "category_en": "Ancient",
+      "uses": [
+        "古希腊与西方源头",
+        "神话与史诗",
+        "哲学与体育"
+      ],
+      "layer": "时代标本",
+      "quality": "★★★",
+      "weakness": "裙摆偏厚",
+      "technique": "黑剪影＋陶土色刻线＋紫红带白点",
+      "motifs": "回纹带反向滚动、船起伏海豚跃、里拉琴摆",
+      "scene": "scripts/engine/scenes/03_greek.js",
+      "card": "references/风格配方/03_greek.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 2
+    },
+    {
+      "slug": "roman-mosaic",
+      "id": "04_roman",
+      "num": "04",
+      "en": "Pompeii mosaic",
+      "cn": "庞贝马赛克",
+      "category_cn": "古代",
+      "category_en": "Ancient",
+      "uses": [
+        "罗马与地中海",
+        "城市与建筑史",
+        "考古"
+      ],
+      "layer": "材料层",
+      "quality": "★★★",
+      "weakness": "小尺度下脸部细节少",
+      "technique": "距离场沿轮廓排石块、加权 L∞ Voronoi 灰浆、布局一次算颜色每帧流过",
+      "motifs": "波浪纹边框顺时针流、维苏威冒烟溅火星",
+      "scene": "scripts/engine/scenes/04_roman.js",
+      "card": "references/风格配方/04_roman.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 3
+    },
+    {
+      "slug": "dunhuang-mural",
+      "id": "20_dunhuang",
+      "num": "05",
+      "en": "Dunhuang mural",
+      "cn": "敦煌壁画",
+      "category_cn": "古代",
+      "category_en": "Ancient",
+      "uses": [
+        "丝绸之路",
+        "佛教与传统文化",
+        "中国艺术史"
+      ],
+      "layer": "时代标本",
+      "quality": "★★",
+      "weakness": "飞天造型粗",
+      "technique": "土红底矿物色、剥落斑（只在背景）、saturation 褪色",
+      "motifs": "飞天飘带、天花飘、灯焰",
+      "scene": "scripts/engine/scenes/20_dunhuang.js",
+      "card": "references/风格配方/20_dunhuang.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 4
+    },
+    {
+      "slug": "gothic-illumination",
+      "id": "05_gothic",
+      "num": "06",
+      "en": "Gothic illuminated manuscript",
+      "cn": "哥特泥金手抄本",
+      "category_cn": "中世纪与文艺复兴",
+      "category_en": "Medieval and Renaissance",
+      "uses": [
+        "中世纪",
+        "书籍与知识史",
+        "宗教与传说"
+      ],
+      "layer": "时代标本",
+      "quality": "★★★",
+      "weakness": "金发像兜帽",
+      "technique": "逐像素金箔（拉丝＋压花错 1px 亮线）、金色度遮罩高光",
+      "motifs": "金箔斜向高光扫过、藤蔓摇、蜗牛爬、老鼠跑",
+      "scene": "scripts/engine/scenes/05_gothic.js",
+      "card": "references/风格配方/05_gothic.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        },
+        {
+          "family": "UnifrakturMaguntia-400",
+          "file": "UnifrakturMaguntia-400.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 6
+    },
+    {
+      "slug": "renaissance-sfumato",
+      "id": "06_renaissance",
+      "num": "07",
+      "en": "Renaissance sfumato",
+      "cn": "文艺复兴晕涂",
+      "category_cn": "中世纪与文艺复兴",
+      "category_en": "Medieval and Renaissance",
+      "uses": [
+        "文艺复兴",
+        "发明与科学史",
+        "人物传记"
+      ],
+      "layer": "时代标本",
+      "quality": "★★",
+      "weakness": "猫偏卡通；整体偏静",
+      "technique": "整层轻模糊＋高不透明清晰层、龟裂纹/画布纹/黄釉",
+      "motifs": "达芬奇扑翼机飞过、河面碎光、浮尘",
+      "scene": "scripts/engine/scenes/06_renaissance.js",
+      "card": "references/风格配方/06_renaissance.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 7
+    },
+    {
+      "slug": "impressionism",
+      "id": "08_impressionism",
+      "num": "08",
+      "en": "Impressionism",
+      "cn": "印象派外光",
+      "category_cn": "印象派与后印象派",
+      "category_en": "Impressionism",
+      "uses": [
+        "城市与生活",
+        "光与色彩",
+        "抒情"
+      ],
+      "layer": "材料层",
+      "quality": "★★",
+      "weakness": "脸和手被笔触打碎",
+      "technique": "区域粉彩色板短笔触（位置固定）、窗景细笔",
+      "motifs": "光斑漂移明灭、罂粟摇、云走、丝带飘",
+      "scene": "scripts/engine/scenes/08_impressionism.js",
+      "card": "references/风格配方/08_impressionism.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 10
+    },
+    {
+      "slug": "seurat-pointillism",
+      "id": "29_seurat",
+      "num": "09",
+      "en": "Seurat pointillism",
+      "cn": "修拉点彩",
+      "category_cn": "印象派与后印象派",
+      "category_en": "Impressionism",
+      "uses": [
+        "色彩与视觉科学",
+        "公园与日常",
+        "安静叙事"
+      ],
+      "layer": "材料层",
+      "quality": "★★",
+      "weakness": "偏静；网格规整",
+      "technique": "视觉混色：21 色纯色板按比例并置、补色点、等大点",
+      "motifs": "光渗、点在呼吸",
+      "scene": "scripts/engine/scenes/29_seurat.js",
+      "card": "references/风格配方/29_seurat.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 11
+    },
+    {
+      "slug": "van-gogh",
+      "id": "09_postimp",
+      "num": "10",
+      "en": "Van Gogh post-impressionism",
+      "cn": "梵高旋涡笔触",
+      "category_cn": "印象派与后印象派",
+      "category_en": "Impressionism",
+      "uses": [
+        "夜空与天文",
+        "艺术家传记",
+        "情绪与内心"
+      ],
+      "layer": "材料层",
+      "quality": "★★★（标杆）",
+      "weakness": "每帧 120ms 最重",
+      "technique": "流场笔触三遍（墙竖长/地透视/其余）＋区域色板＋描边；道具层；visibleLines 补线",
+      "motifs": "星空漩涡、灯晕环外扩、方向场火苗般摇曳、漩涡猫",
+      "scene": "scripts/engine/scenes/09_postimp.js",
+      "card": "references/风格配方/09_postimp.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 12
+    },
+    {
+      "slug": "munch-expressionism",
+      "id": "19_munch",
+      "num": "11",
+      "en": "Munch expressionism",
+      "cn": "蒙克表现主义",
+      "category_cn": "现代艺术",
+      "category_en": "Modern art",
+      "uses": [
+        "焦虑与心理",
+        "社会情绪",
+        "压迫感叙事"
+      ],
+      "layer": "时代标本",
+      "quality": "★★",
+      "weakness": "墙面曾被读成梵高",
+      "technique": "长弯流线笔（沿流场走 20–30 步）、按行正弦 warp 整个世界",
+      "motifs": "整幅画扭动、血色天空流",
+      "scene": "scripts/engine/scenes/19_munch.js",
+      "card": "references/风格配方/19_munch.md",
+      "fonts": [
+        {
+          "family": "IMFellEnglish-400",
+          "file": "IMFellEnglish-400.woff"
+        },
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 13
+    },
+    {
+      "slug": "art-nouveau",
+      "id": "10_nouveau",
+      "num": "12",
+      "en": "Art Nouveau poster",
+      "cn": "慕夏新艺术海报",
+      "category_cn": "现代艺术",
+      "category_en": "Modern art",
+      "uses": [
+        "广告与品牌史",
+        "自然与装饰",
+        "优雅叙事"
+      ],
+      "layer": "时代标本",
+      "quality": "★★★",
+      "weakness": "猫姿势僵",
+      "technique": "可变线宽路径（外粗内细）、剪影错位垫底",
+      "motifs": "太阳升起、光环转、花摇、S 形热气、卷发波",
+      "scene": "scripts/engine/scenes/10_nouveau.js",
+      "card": "references/风格配方/10_nouveau.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        },
+        {
+          "family": "Marcellus-400",
+          "file": "Marcellus-400.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 14
+    },
+    {
+      "slug": "monet-water-lilies",
+      "id": "28_monet",
+      "num": "13",
+      "en": "Monet water lilies",
+      "cn": "莫奈睡莲",
+      "category_cn": "印象派与后印象派",
+      "category_en": "Impressionism",
+      "uses": [
+        "自然与园林",
+        "季节与时间",
+        "抒情"
+      ],
+      "layer": "时代标本",
+      "quality": "★★",
+      "weakness": "墙是池水、地是木头的空间别扭",
+      "technique": "短笔触水面倒影、光在水面颤动",
+      "motifs": "睡莲漂、柳影晃、涟漪扩散",
+      "scene": "scripts/engine/scenes/28_monet.js",
+      "card": "references/风格配方/28_monet.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 15
+    },
+    {
+      "slug": "picasso-blue-period",
+      "id": "36_picasso_blue",
+      "num": "14",
+      "en": "Picasso Blue Period",
+      "cn": "毕加索蓝色时期",
+      "category_cn": "现代艺术",
+      "category_en": "Modern art",
+      "uses": [
+        "孤独与贫困",
+        "人物命运",
+        "忧郁叙事"
+      ],
+      "layer": "时代标本",
+      "quality": "★★",
+      "weakness": "造型不够忧郁",
+      "technique": "单色蓝调、宽笔触、普鲁士蓝粗轮廓、人体拉长",
+      "motifs": "缓慢呼吸",
+      "scene": "scripts/engine/scenes/36_picasso_blue.js",
+      "card": "references/风格配方/36_picasso_blue.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 16
+    },
+    {
+      "slug": "klimt-golden",
+      "id": "18_klimt",
+      "num": "15",
+      "en": "Klimt golden phase",
+      "cn": "克里姆特金箔",
+      "category_cn": "现代艺术",
+      "category_en": "Modern art",
+      "uses": [
+        "爱情与人物",
+        "奢华与装饰",
+        "维也纳与世纪末"
+      ],
+      "layer": "时代标本",
+      "quality": "★★★",
+      "weakness": "桌上的手没接袖子",
+      "technique": "复用哥特金箔、螺旋/眼形纹样、写实脸配平面金袍",
+      "motifs": "袍上眼形纹轮流眨、金屑飘",
+      "scene": "scripts/engine/scenes/18_klimt.js",
+      "card": "references/风格配方/18_klimt.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        },
+        {
+          "family": "Marcellus-400",
+          "file": "Marcellus-400.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 17
+    },
+    {
+      "slug": "analytic-cubism",
+      "id": "11_cubism",
+      "num": "16",
+      "en": "Analytic Cubism",
+      "cn": "分析立体主义",
+      "category_cn": "现代艺术",
+      "category_en": "Modern art",
+      "uses": [
+        "多视角与认知",
+        "城市与咖啡馆",
+        "现代艺术史"
+      ],
+      "layer": "材料层",
+      "quality": "★★",
+      "weakness": "偏亮，深褐大面不够",
+      "technique": "半透明渐变面叠空间、切面器（三角不裁剪）、毕加索式双视角脸",
+      "motifs": "CAFÉ 字母跳换、窗格碎面滑、报纸颤",
+      "scene": "scripts/engine/scenes/11_cubism.js",
+      "card": "references/风格配方/11_cubism.md",
+      "fonts": [
+        {
+          "family": "AlfaSlabOne-400",
+          "file": "AlfaSlabOne-400.woff"
+        },
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        },
+        {
+          "family": "LibreBaskerville-700",
+          "file": "LibreBaskerville-700.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 18
+    },
+    {
+      "slug": "bauhaus",
+      "id": "12_bauhaus",
+      "num": "17",
+      "en": "Bauhaus",
+      "cn": "包豪斯构成",
+      "category_cn": "现代艺术",
+      "category_en": "Modern art",
+      "uses": [
+        "设计史",
+        "工业与产品",
+        "几何与秩序"
+      ],
+      "layer": "材料层",
+      "quality": "★★★",
+      "weakness": "猫头偏离骨架位",
+      "technique": "纯几何构成、施莱默人偶关节盘",
+      "motifs": "指针杆转陡、蒙德里安格换色、猫拨球",
+      "scene": "scripts/engine/scenes/12_bauhaus.js",
+      "card": "references/风格配方/12_bauhaus.md",
+      "fonts": [
+        {
+          "family": "Poppins-600",
+          "file": "Poppins-600.woff"
+        },
+        {
+          "family": "Poppins-800",
+          "file": "Poppins-800.woff"
+        },
+        {
+          "family": "PuHui-Bold",
+          "file": "NotoSansSC-700.woff"
+        }
+      ],
+      "cjk": "PuHui-Bold",
+      "cell": 19
+    },
+    {
+      "slug": "constructivism",
+      "id": "22_constructivism",
+      "num": "18",
+      "en": "Russian Constructivism",
+      "cn": "俄国构成主义",
+      "category_cn": "现代艺术",
+      "category_en": "Modern art",
+      "uses": [
+        "宣传与口号",
+        "工业与革命",
+        "强节奏标语"
+      ],
+      "layer": "材料层",
+      "quality": "★★★",
+      "weakness": "缺喇叭形文字锥",
+      "technique": "灰度照片网点（可变点径 45°）、红楔黑圆、路径画西里尔方块字",
+      "motifs": "标语逐字盖章再波浪跳",
+      "scene": "scripts/engine/scenes/22_constructivism.js",
+      "card": "references/风格配方/22_constructivism.md",
+      "fonts": [
+        {
+          "family": "PuHui-Bold",
+          "file": "NotoSansSC-700.woff"
+        }
+      ],
+      "cjk": "PuHui-Bold",
+      "cell": 20
+    },
+    {
+      "slug": "dali-surrealism",
+      "id": "23_dali",
+      "num": "19",
+      "en": "Dalí surrealism",
+      "cn": "达利超现实",
+      "category_cn": "现代艺术",
+      "category_en": "Modern art",
+      "uses": [
+        "时间与记忆",
+        "梦境与心理",
+        "荒诞"
+      ],
+      "layer": "时代标本",
+      "quality": "★★",
+      "weakness": "人物偏矢量插画",
+      "technique": "软钟变形、长影子剪切仿射",
+      "motifs": "钟往下流、长腿象走、蚂蚁绕表、影子变长",
+      "scene": "scripts/engine/scenes/23_dali.js",
+      "card": "references/风格配方/23_dali.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 22
+    },
+    {
+      "slug": "hopper-realism",
+      "id": "24_hopper",
+      "num": "20",
+      "en": "Hopper American realism",
+      "cn": "霍珀光影",
+      "category_cn": "现代艺术",
+      "category_en": "Modern art",
+      "uses": [
+        "都市孤独",
+        "城市与日常",
+        "安静叙事"
+      ],
+      "layer": "时代标本",
+      "quality": "★★★",
+      "weakness": "猫全程在阴影里",
+      "technique": "双版本光影裁切（亮版/暗版按光块 clip）、硬边光斑",
+      "motifs": "光斑缓移扫过脸、墙上人影同步喝茶",
+      "scene": "scripts/engine/scenes/24_hopper.js",
+      "card": "references/风格配方/24_hopper.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 23
+    },
+    {
+      "slug": "matisse-cutouts",
+      "id": "30_matisse",
+      "num": "21",
+      "en": "Matisse cut-outs",
+      "cn": "马蒂斯剪纸",
+      "category_cn": "现代艺术",
+      "category_en": "Modern art",
+      "uses": [
+        "海洋与自然",
+        "轻快艺术",
+        "儿童与创造力"
+      ],
+      "layer": "材料层",
+      "quality": "★★★",
+      "weakness": "水粉刷痕偏重",
+      "technique": "剪刀边不规则、钉纸投影、饱和平涂",
+      "motifs": "纸片飘动、海藻摆",
+      "scene": "scripts/engine/scenes/30_matisse.js",
+      "card": "references/风格配方/30_matisse.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 24
+    },
+    {
+      "slug": "pop-art",
+      "id": "13_pop",
+      "num": "22",
+      "en": "Lichtenstein pop art",
+      "cn": "利希滕斯坦波普",
+      "category_cn": "现代艺术",
+      "category_en": "Modern art",
+      "uses": [
+        "消费与广告",
+        "流行文化",
+        "戏剧化转折"
+      ],
+      "layer": "材料层",
+      "quality": "★★★",
+      "weakness": "",
+      "technique": "本戴点 createPattern、粗黑描边",
+      "motifs": "沃霍尔四格换色、思考点闪、猫扭臀、拟声框抖",
+      "scene": "scripts/engine/scenes/13_pop.js",
+      "card": "references/风格配方/13_pop.md",
+      "fonts": [
+        {
+          "family": "Bangers-400",
+          "file": "Bangers-400.woff"
+        },
+        {
+          "family": "PuHui-Bold",
+          "file": "NotoSansSC-700.woff"
+        }
+      ],
+      "cjk": "PuHui-Bold",
+      "cell": 25
+    },
+    {
+      "slug": "kusama-dots",
+      "id": "21_kusama",
+      "num": "23",
+      "en": "Kusama polka dots",
+      "cn": "草间弥生波点",
+      "category_cn": "现代艺术",
+      "category_en": "Modern art",
+      "uses": [
+        "重复与无限",
+        "心理与执念",
+        "当代艺术"
+      ],
+      "layer": "时代标本",
+      "quality": "★★★",
+      "weakness": "人物与墙同色靠轮廓撑",
+      "technique": "手绘不规则圆、六角网格按真实周期取模",
+      "motifs": "波点从猫处一圈圈胀缩、南瓜、无限镜屋",
+      "scene": "scripts/engine/scenes/21_kusama.js",
+      "card": "references/风格配方/21_kusama.md",
+      "fonts": [
+        {
+          "family": "LXGWWenKai-500",
+          "file": "LXGWWenKai-500.woff"
+        },
+        {
+          "family": "Poppins-800",
+          "file": "Poppins-800.woff"
+        }
+      ],
+      "cjk": "LXGWWenKai-500",
+      "cell": 26
+    },
+    {
+      "slug": "keith-haring",
+      "id": "31_haring",
+      "num": "24",
+      "en": "Keith Haring",
+      "cn": "凯斯·哈林街头涂鸦",
+      "category_cn": "现代艺术",
+      "category_en": "Modern art",
+      "uses": [
+        "街头与音乐",
+        "社会议题",
+        "节奏感讲解"
+      ],
+      "layer": "时代标本",
+      "quality": "★★★",
+      "weakness": "少女不够哈林",
+      "technique": "粗黑等宽线、放射动作线",
+      "motifs": "小人按 8fps 硬切跳舞、一切跟 BPM 弹跳",
+      "scene": "scripts/engine/scenes/31_haring.js",
+      "card": "references/风格配方/31_haring.md",
+      "fonts": [
+        {
+          "family": "PuHui-Bold",
+          "file": "NotoSansSC-700.woff"
+        }
+      ],
+      "cjk": "PuHui-Bold",
+      "cell": 28
+    },
+    {
+      "slug": "raytrace-cgi",
+      "id": "15_raytrace",
+      "num": "25",
+      "en": "Early ray-traced CGI",
+      "cn": "早期光追CGI",
+      "category_cn": "数字",
+      "category_en": "Digital",
+      "uses": [
+        "计算机图形史",
+        "科技怀旧",
+        "90 年代"
+      ],
+      "layer": "材料层",
+      "quality": "★★",
+      "weakness": "猫腿直柱、脸像面具",
+      "technique": "统一塑料着色、逐像素棋盘倒影、铬球环境映射",
+      "motifs": "紫环旋转、镜头光晕、猫眼绿光",
+      "scene": "scripts/engine/scenes/15_raytrace.js",
+      "card": "references/风格配方/15_raytrace.md",
+      "fonts": [
+        {
+          "family": "PuHui-Bold",
+          "file": "NotoSansSC-700.woff"
+        }
+      ],
+      "cjk": "PuHui-Bold",
+      "cell": 31
+    },
+    {
+      "slug": "vaporwave",
+      "id": "26_vaporwave",
+      "num": "26",
+      "en": "Vaporwave",
+      "cn": "蒸汽波霓虹",
+      "category_cn": "数字",
+      "category_en": "Digital",
+      "uses": [
+        "互联网怀旧",
+        "消费与都市",
+        "赛博与霓虹"
+      ],
+      "layer": "材料层",
+      "quality": "★★★",
+      "weakness": "部件交界也发光",
+      "technique": "霓虹双色辉光、透视网格、VHS 通道分离后期、路径画灯管假名",
+      "motifs": "落日横条上移、网格前滚、招牌闪、跟踪噪声带",
+      "scene": "scripts/engine/scenes/26_vaporwave.js",
+      "card": "references/风格配方/26_vaporwave.md",
+      "fonts": [
+        {
+          "family": "Poppins-600",
+          "file": "Poppins-600.woff"
+        },
+        {
+          "family": "Poppins-700",
+          "file": "Poppins-700.woff"
+        },
+        {
+          "family": "PuHui-Bold",
+          "file": "NotoSansSC-700.woff"
+        },
+        {
+          "family": "Righteous-400",
+          "file": "Righteous-400.woff"
+        }
+      ],
+      "cjk": "PuHui-Bold",
+      "cell": 32
+    }
+  ]
+}

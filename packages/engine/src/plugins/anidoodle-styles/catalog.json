@@ -1,0 +1,920 @@
+{
+  "commit": "4ae27d2c281fcfd01bce87ab13dc5ad4df81a795",
+  "sheet": {
+    "path": "skills/anidoodle/assets/styles.jpg",
+    "sha256": "5a7d4eb6c50c46f2b06e73a6de3aa72c2a498da265bdff9557840800a9d69d6c",
+    "cols": 8,
+    "pitch_x": 400,
+    "pitch_y": 444,
+    "inset": 6,
+    "size": 388
+  },
+  "references": [
+    "skills/anidoodle/references/styles.md",
+    "skills/anidoodle/references/craft-bar.md",
+    "skills/anidoodle/references/anatomy.md",
+    "skills/anidoodle/references/realism-and-craft.md"
+  ],
+  "styles": [
+    {
+      "slug": "balloon",
+      "id": "balloon",
+      "num": "01",
+      "en": "Crayon",
+      "cn": "蜡笔",
+      "family": "dry media",
+      "category_cn": "干性画材",
+      "medium": "wax crayon on toothed paper: back-and-forth scribble fills that skip the valleys, a darker crayon on the shade side, a white one burnishing the highlight, a fat contour gone over twice",
+      "hero": "a hot-air balloon",
+      "hero_cn": "一只热气球",
+      "uses": [
+        "儿童内容",
+        "童趣故事",
+        "温暖日常"
+      ],
+      "doc": "",
+      "module": "canvas-core/balloon.ts",
+      "draw_film": "canvas-core/balloonDraw.ts",
+      "modules": [
+        "canvas-core/balloon.ts",
+        "canvas-core/balloonDraw.ts",
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts"
+      ],
+      "cell": 12
+    },
+    {
+      "slug": "blueprint",
+      "id": "blueprint",
+      "num": "02",
+      "en": "Cyanotype blueprint",
+      "cn": "蓝图晒印",
+      "family": "technical drawing",
+      "category_cn": "技术制图",
+      "medium": "ruling pen and spring-bow compass in white ink on Prussian-blue cyanotype stock",
+      "hero": "a watch movement's going train, plan and section A-A",
+      "hero_cn": "怀表传动轮系的平面与剖面",
+      "uses": [
+        "机械原理",
+        "工程",
+        "发明史"
+      ],
+      "doc": "skills/anidoodle/references/styles/blueprint.md",
+      "module": "canvas-core/blueprint.ts",
+      "draw_film": "canvas-core/blueprint.ts",
+      "modules": [
+        "canvas-core/blueprint.ts",
+        "canvas-core/blueprintKit.ts",
+        "canvas-core/core.ts",
+        "canvas-core/drafting.ts",
+        "canvas-core/film.ts",
+        "canvas-core/riso.ts"
+      ],
+      "cell": 27
+    },
+    {
+      "slug": "broken-colour",
+      "id": "brokenColour",
+      "num": "03",
+      "en": "Broken colour",
+      "cn": "碎色油画",
+      "family": "oil",
+      "category_cn": "油画",
+      "medium": "opaque oil dabs from a loaded flat hog brush on primed linen, unmixed colours side by side for the eye to mix",
+      "hero": "a small harbour at sunrise",
+      "hero_cn": "日出时的小港口",
+      "uses": [
+        "风景与城市",
+        "艺术史",
+        "抒情"
+      ],
+      "doc": "skills/anidoodle/references/styles/brokenColour.md",
+      "module": "canvas-core/brokenColour.ts",
+      "draw_film": "canvas-core/brokenColour.ts",
+      "modules": [
+        "canvas-core/brokenColour.ts",
+        "canvas-core/brokenColourKit.ts",
+        "canvas-core/core.ts",
+        "canvas-core/film.ts"
+      ],
+      "cell": 9
+    },
+    {
+      "slug": "charcoal-erasure",
+      "id": "charcoalErasure",
+      "num": "04",
+      "en": "Charcoal, erased and redrawn",
+      "cn": "炭笔擦改",
+      "family": "dry media",
+      "category_cn": "干性画材",
+      "medium": "vine and compressed charcoal on heavy rag paper, stumped, lifted with a kneaded eraser, redrawn over its own residue",
+      "hero": "one oak through four seasons on one sheet",
+      "hero_cn": "一张纸上的一棵橡树走过四季",
+      "uses": [
+        "时间流逝",
+        "记忆与变化",
+        "沉重叙事"
+      ],
+      "doc": "skills/anidoodle/references/styles/charcoalErasure.md",
+      "module": "canvas-core/charcoalErasure.ts",
+      "draw_film": "canvas-core/charcoalErasure.ts",
+      "modules": [
+        "canvas-core/charcoalErasure.ts",
+        "canvas-core/charcoalErasureKit.ts",
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts"
+      ],
+      "cell": 21
+    },
+    {
+      "slug": "coloured-pencil",
+      "id": "colouredPencil",
+      "num": "05",
+      "en": "Coloured pencil",
+      "cn": "彩色铅笔",
+      "family": "dry media",
+      "category_cn": "干性画材",
+      "medium": "wax coloured pencils hatched in one diagonal on toothy cream cartridge paper, hues layered, darks cross-hatched",
+      "hero": "a wind-up tin robot mending a music box while a crow steals a screw",
+      "hero_cn": "修八音盒的铁皮机器人与偷螺丝的乌鸦",
+      "uses": [
+        "童趣故事",
+        "手作与日常",
+        "科普小品"
+      ],
+      "doc": "skills/anidoodle/references/styles/colouredPencil.md",
+      "module": "canvas-core/colouredPencil.ts",
+      "draw_film": "canvas-core/colouredPencil.ts",
+      "modules": [
+        "canvas-core/colouredPencil.ts",
+        "canvas-core/colouredPencilCrow.ts",
+        "canvas-core/colouredPencilKit.ts",
+        "canvas-core/core.ts",
+        "canvas-core/film.ts"
+      ],
+      "cell": 1
+    },
+    {
+      "slug": "dream-glaze",
+      "id": "dreamGlaze",
+      "num": "06",
+      "en": "Dream glaze",
+      "cn": "梦境罩染",
+      "family": "paint",
+      "category_cn": "绘画",
+      "medium": "resin-thinned oil glazes laid with a very small soft brush on a smooth white ground: no visible stroke, every form turned pixel by pixel under one low sun, every edge hard",
+      "hero": "a hollow mask of a calm face held up by question marks in an empty desert, its cheek running out into a scroll of handwriting",
+      "hero_cn": "沙漠里被问号托起的空心面具",
+      "uses": [
+        "超现实",
+        "心理与哲思",
+        "梦境"
+      ],
+      "doc": "skills/anidoodle/references/styles/dreamGlaze.md",
+      "module": "canvas-core/dreamGlaze.ts",
+      "draw_film": "canvas-core/dreamGlazeDraw.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/dreamGlaze.ts",
+        "canvas-core/dreamGlazeDraw.ts",
+        "canvas-core/dreamGlazeKit.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts",
+        "canvas-core/paintedOilKit.ts"
+      ],
+      "cell": 31
+    },
+    {
+      "slug": "embroidery",
+      "id": "embroidery",
+      "num": "07",
+      "en": "Hand embroidery",
+      "cn": "手工刺绣",
+      "family": "textile",
+      "category_cn": "织物",
+      "medium": "stranded cotton floss stitched through natural plain-weave linen in a beech hoop",
+      "hero": "a botanical wreath with a honeybee",
+      "hero_cn": "带蜜蜂的植物花环",
+      "uses": [
+        "手作与生活",
+        "节日",
+        "温柔叙事"
+      ],
+      "doc": "skills/anidoodle/references/styles/embroidery.md",
+      "module": "canvas-core/embroidery.ts",
+      "draw_film": "canvas-core/embroidery.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/embroidery.ts",
+        "canvas-core/embroideryKit.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts"
+      ],
+      "cell": 14
+    },
+    {
+      "slug": "flat-vector",
+      "id": "flatVector",
+      "num": "08",
+      "en": "Flat vector",
+      "cn": "扁平矢量",
+      "family": "modern flat illustration",
+      "category_cn": "扁平插画",
+      "medium": "pen-tool paths in a vector app, flat fills that land when a path closes, long-shadow shapes with a transparency ramp, a raster grain brush over the shade sides",
+      "hero": "a regatta of small sailboats on a bay under hills, the leader rounding the mark",
+      "hero_cn": "海湾里绕标的小帆船队",
+      "uses": [
+        "商业与产品",
+        "数据解说",
+        "轻快科普"
+      ],
+      "doc": "skills/anidoodle/references/styles/flatVector.md",
+      "module": "canvas-core/flatVector.ts",
+      "draw_film": "canvas-core/flatVector.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/flatVector.ts",
+        "canvas-core/gallery.ts",
+        "canvas-core/koiDrawKit.ts"
+      ],
+      "cell": 23
+    },
+    {
+      "slug": "folk-tale",
+      "id": "folkTale",
+      "num": "09",
+      "en": "Folk-tale storybook",
+      "cn": "民间故事绘本",
+      "family": "paint",
+      "category_cn": "绘画",
+      "medium": "gouache and watercolour over an HB pencil drawing on cream cartridge: opaque, dry-brushed paint in the foreground thinning to a pale wash and then to bare pencil in the distance",
+      "hero": "a boy carrying a rooster through a village kitchen garden at the edge of a birch wood",
+      "hero_cn": "桦树林边菜园里抱着公鸡的男孩",
+      "uses": [
+        "民间故事",
+        "乡土",
+        "童话"
+      ],
+      "doc": "skills/anidoodle/references/styles/folkTale.md",
+      "module": "canvas-core/folkTale.ts",
+      "draw_film": "canvas-core/folkTale.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/folkTale.ts",
+        "canvas-core/folkTaleKit.ts",
+        "canvas-core/gallery.ts",
+        "canvas-core/sumiEKit.ts"
+      ],
+      "cell": 30
+    },
+    {
+      "slug": "fox",
+      "id": "fox",
+      "num": "10",
+      "en": "Cut-paper collage",
+      "cn": "撕纸拼贴",
+      "family": "collage",
+      "category_cn": "拼贴",
+      "medium": "zero drawn lines: torn pieces with a white fibrous edge, scissor pieces crisp, each lifting a soft shadow off the piece below",
+      "hero": "a fox at dusk",
+      "hero_cn": "黄昏的一只狐狸",
+      "uses": [
+        "童话",
+        "自然",
+        "温暖叙事"
+      ],
+      "doc": "skills/anidoodle/references/styles/foxDraw.md",
+      "module": "canvas-core/fox.ts",
+      "draw_film": "canvas-core/foxDraw.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/fox.ts",
+        "canvas-core/foxDraw.ts",
+        "canvas-core/gallery.ts"
+      ],
+      "cell": 24
+    },
+    {
+      "slug": "halftone",
+      "id": "halftone",
+      "num": "11",
+      "en": "Newsprint halftone",
+      "cn": "报纸网点",
+      "family": "print",
+      "category_cn": "版画与印刷",
+      "medium": "web-offset newspaper print: black on a 45 degree AM screen plus one orange spot at 15 degrees, oil ink gaining into unbleached groundwood newsprint",
+      "hero": "a steam train crossing a stone viaduct at golden hour",
+      "hero_cn": "黄昏时驶过石拱桥的蒸汽火车",
+      "uses": [
+        "新闻与时事",
+        "历史回顾",
+        "复古宣传"
+      ],
+      "doc": "skills/anidoodle/references/styles/halftone.md",
+      "module": "canvas-core/halftone.ts",
+      "draw_film": "canvas-core/halftone.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/halftone.ts",
+        "canvas-core/halftoneKit.ts",
+        "canvas-core/halftoneScene.ts"
+      ],
+      "cell": 15
+    },
+    {
+      "slug": "isometric",
+      "id": "isometric",
+      "num": "12",
+      "en": "Isometric cutaway",
+      "cn": "等轴剖面",
+      "family": "digital",
+      "category_cn": "数字",
+      "medium": "flat vector planes on a true 2:1 isometric grid, three tones per material, crisp edges, pen-tool order",
+      "hero": "a two-floor bakery cutaway at night, lit by its oven, the baker turning with a fresh loaf",
+      "hero_cn": "夜里亮着炉火的两层面包房剖面",
+      "uses": [
+        "流程与系统",
+        "商业解说",
+        "空间结构"
+      ],
+      "doc": "skills/anidoodle/references/styles/isometric.md",
+      "module": "canvas-core/isometric.ts",
+      "draw_film": "canvas-core/isometric.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/isometric.ts",
+        "canvas-core/isometricKit.ts"
+      ],
+      "cell": 11
+    },
+    {
+      "slug": "koi",
+      "id": "koi",
+      "num": "13",
+      "en": "Marker comic",
+      "cn": "马克笔漫画",
+      "family": "marker comic",
+      "category_cn": "漫画",
+      "medium": "alcohol-marker cel fills with a hard shadow edge under one heavy contour that thickens away from the light",
+      "hero": "a Sanke koi turning under lily pads",
+      "hero_cn": "荷叶下转身的锦鲤",
+      "uses": [
+        "轻松科普",
+        "角色故事",
+        "社交短片"
+      ],
+      "doc": "skills/anidoodle/references/styles/koiDraw.md",
+      "module": "canvas-core/koi.ts",
+      "draw_film": "canvas-core/koiDraw.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts",
+        "canvas-core/koi.ts",
+        "canvas-core/koiDraw.ts",
+        "canvas-core/koiDrawKit.ts"
+      ],
+      "cell": 2
+    },
+    {
+      "slug": "lighthouse",
+      "id": "lighthouse",
+      "num": "14",
+      "en": "Risograph",
+      "cn": "孔版印刷",
+      "family": "print",
+      "category_cn": "版画与印刷",
+      "medium": "soy ink, one layer per drum multiplied through its own registration offset; every other colour an overprint, tone a halftone screen per ink angle, white is bare paper",
+      "hero": "a lighthouse at sunset",
+      "hero_cn": "日落时的灯塔",
+      "uses": [
+        "海报感",
+        "文艺",
+        "独立出版"
+      ],
+      "doc": "skills/anidoodle/references/styles/lighthouseDraw.md",
+      "module": "canvas-core/lighthouse.ts",
+      "draw_film": "canvas-core/lighthouseDraw.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts",
+        "canvas-core/lighthouse.ts",
+        "canvas-core/lighthouseDraw.ts",
+        "canvas-core/riso.ts"
+      ],
+      "cell": 26
+    },
+    {
+      "slug": "low-poly",
+      "id": "lowPoly",
+      "num": "15",
+      "en": "Low-poly",
+      "cn": "低多边形",
+      "family": "3D in code",
+      "category_cn": "代码 3D",
+      "medium": "triangle meshes projected by hand through a pinhole camera, each facet flat-shaded by its normal against one low sun, painter-sorted far to near; no 3D engine",
+      "hero": "A mountain lake at dawn: pink-lit range, spruce shores, a red canoe, reflections",
+      "hero_cn": "黎明的山间湖泊与红色独木舟",
+      "uses": [
+        "地理与风景",
+        "科技",
+        "氛围"
+      ],
+      "doc": "skills/anidoodle/references/styles/lowPoly.md",
+      "module": "canvas-core/lowPoly.ts",
+      "draw_film": "canvas-core/lowPoly.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts",
+        "canvas-core/lowPoly.ts",
+        "canvas-core/scrapbookKit.ts"
+      ],
+      "cell": 19
+    },
+    {
+      "slug": "mellan",
+      "id": "mellan",
+      "num": "16",
+      "en": "Single-line engraving",
+      "cn": "单线雕刻",
+      "family": "engraving",
+      "category_cn": "雕刻",
+      "medium": "one unbroken engraved line whose width follows a procedural tone field: the whole picture is a single stroke",
+      "hero": "a moon spiralled out of one line",
+      "hero_cn": "一根线盘出的月亮",
+      "uses": [
+        "天文",
+        "肖像",
+        "极简"
+      ],
+      "doc": "",
+      "module": "canvas-core/mellan.ts",
+      "draw_film": "canvas-core/mellanUnspool.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts",
+        "canvas-core/mellan.ts",
+        "canvas-core/mellanUnspool.ts"
+      ],
+      "cell": 28
+    },
+    {
+      "slug": "mid-century",
+      "id": "midCentury",
+      "num": "17",
+      "en": "Mid-century gouache",
+      "cn": "世纪中期水粉",
+      "family": "1950s-60s storybook",
+      "category_cn": "复古绘本",
+      "medium": "opaque matte designer's gouache on warm illustration board, a dry brush dragged over the flats, a loose brush-and-ink line printed off register",
+      "hero": "a hillside village where a girl flies a kite",
+      "hero_cn": "山坡小镇上放风筝的女孩",
+      "uses": [
+        "城市与生活",
+        "复古",
+        "童趣故事"
+      ],
+      "doc": "skills/anidoodle/references/styles/midCentury.md",
+      "module": "canvas-core/midCentury.ts",
+      "draw_film": "canvas-core/midCentury.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts",
+        "canvas-core/koiDrawKit.ts",
+        "canvas-core/midCentury.ts"
+      ],
+      "cell": 17
+    },
+    {
+      "slug": "moon-phases",
+      "id": "moonPhases",
+      "num": "18",
+      "en": "Chalkboard",
+      "cn": "石板粉笔",
+      "family": "chalk",
+      "category_cn": "粉笔",
+      "medium": "side-of-the-chalk scumble on a slate board, lit limbs worked twice, every stroke broken by the board's tooth with dust either side, ghosts of old lessons",
+      "hero": "the phases of the moon",
+      "hero_cn": "月相",
+      "uses": [
+        "课堂讲解",
+        "数理推导",
+        "知识科普"
+      ],
+      "doc": "skills/anidoodle/references/styles/moonPhasesDraw.md",
+      "module": "canvas-core/moonPhases.ts",
+      "draw_film": "canvas-core/moonPhasesDraw.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/drafting.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts",
+        "canvas-core/moonPhases.ts",
+        "canvas-core/moonPhasesDraw.ts"
+      ],
+      "cell": 20
+    },
+    {
+      "slug": "painted-oil",
+      "id": "paintedOil",
+      "num": "19",
+      "en": "Oil on canvas",
+      "cn": "布面油画",
+      "family": "paint",
+      "category_cn": "油画",
+      "medium": "opaque oil paint with hog-bristle brushes on a toned linen canvas, lean block-in to fat impasto",
+      "hero": "two pears and a copper pot by a window",
+      "hero_cn": "窗边的两只梨与铜锅",
+      "uses": [
+        "人物与历史",
+        "艺术史",
+        "厚重叙事"
+      ],
+      "doc": "skills/anidoodle/references/styles/paintedOil.md",
+      "module": "canvas-core/paintedOil.ts",
+      "draw_film": "canvas-core/paintedOil.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts",
+        "canvas-core/paintedOil.ts",
+        "canvas-core/paintedOilKit.ts",
+        "canvas-core/sumiEKit.ts"
+      ],
+      "cell": 13
+    },
+    {
+      "slug": "paper-craft",
+      "id": "paperCraft",
+      "num": "20",
+      "en": "Toy-theatre paper collage",
+      "cn": "纸偶剧场拼贴",
+      "family": "collage",
+      "category_cn": "拼贴",
+      "medium": "a cardboard toy theatre: patterned and sugar papers cut and torn, gouache-painted cut-outs with a white sticker margin, every piece with a card edge and a gap to the flat behind",
+      "hero": "A seaside town on a toy-theatre stage: sea rows, harbour houses, a newspaper boat, a sun on a stick",
+      "hero_cn": "玩具剧场舞台上的海边小镇",
+      "uses": [
+        "故事讲述",
+        "童话",
+        "舞台感叙事"
+      ],
+      "doc": "skills/anidoodle/references/styles/paperCraft.md",
+      "module": "canvas-core/paperCraft.ts",
+      "draw_film": "canvas-core/paperCraft.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts",
+        "canvas-core/paperCraft.ts",
+        "canvas-core/scrapbookKit.ts"
+      ],
+      "cell": 25
+    },
+    {
+      "slug": "pixel-art",
+      "id": "pixelArt",
+      "num": "21",
+      "en": "Pixel art",
+      "cn": "像素画",
+      "family": "digital",
+      "category_cn": "数字",
+      "medium": "a 120x120 grid of cells, each one of 16 declared palette colours, laid one cell at a time and blown up by a whole number, no smoothing",
+      "hero": "a cat mid-pounce after fireflies in a moonlit garden",
+      "hero_cn": "月夜花园里扑萤火虫的猫",
+      "uses": [
+        "游戏与科技",
+        "怀旧",
+        "轻松解说"
+      ],
+      "doc": "skills/anidoodle/references/styles/pixelArt.md",
+      "module": "canvas-core/pixelArt.ts",
+      "draw_film": "canvas-core/pixelArt.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/pixelArt.ts",
+        "canvas-core/pixelArtKit.ts"
+      ],
+      "cell": 4
+    },
+    {
+      "slug": "pocket-watch",
+      "id": "pocketWatch",
+      "num": "22",
+      "en": "Ballpoint sketch",
+      "cn": "圆珠笔速写",
+      "family": "pen \u0026 ink",
+      "category_cn": "钢笔",
+      "medium": "one blue ballpoint on cream cartridge, near-constant weight; tone only from where the hatching sits, plus the blob where a firm stroke stops",
+      "hero": "a pocket watch lying on a table",
+      "hero_cn": "桌上的一只怀表",
+      "uses": [
+        "笔记感讲解",
+        "个人随笔",
+        "机械与物件"
+      ],
+      "doc": "skills/anidoodle/references/styles/pocketWatchDraw.md",
+      "module": "canvas-core/pocketWatch.ts",
+      "draw_film": "canvas-core/pocketWatchDraw.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts",
+        "canvas-core/pocketWatch.ts",
+        "canvas-core/pocketWatchDraw.ts"
+      ],
+      "cell": 8
+    },
+    {
+      "slug": "ranunculus",
+      "id": "ranunculus",
+      "num": "23",
+      "en": "Pencil \u0026 watercolour",
+      "cn": "铅笔淡彩",
+      "family": "watercolour",
+      "category_cn": "水彩",
+      "medium": "graphite and pan watercolour on cold-press: washes that never quite fill their outline, form shaded toward one light, graphite over the paint",
+      "hero": "a ranunculus in bloom",
+      "hero_cn": "一朵盛开的毛茛",
+      "uses": [
+        "花草静物",
+        "生活随笔",
+        "温柔叙事"
+      ],
+      "doc": "skills/anidoodle/references/styles/ranunculusDraw.md",
+      "module": "canvas-core/ranunculus.ts",
+      "draw_film": "canvas-core/ranunculusDraw.ts",
+      "modules": [
+        "canvas-core/brokenColourKit.ts",
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/ranunculus.ts",
+        "canvas-core/ranunculusDraw.ts"
+      ],
+      "cell": 0
+    },
+    {
+      "slug": "rubber-hose",
+      "id": "rubberHose",
+      "num": "24",
+      "en": "Rubber hose",
+      "cn": "橡皮管卡通",
+      "family": "1930s cartoon",
+      "category_cn": "老式卡通",
+      "medium": "India ink at one pressure on a clear cel over a blue-pencil rough, flat grey paint on the back, photographed and printed on black-and-white film",
+      "hero": "a coffee pot mid-dance-step on a kitchen counter, steam curling",
+      "hero_cn": "在厨房台面上跳舞的咖啡壶",
+      "uses": [
+        "幽默",
+        "复古",
+        "拟人化讲解"
+      ],
+      "doc": "skills/anidoodle/references/styles/rubberHose.md",
+      "module": "canvas-core/rubberHose.ts",
+      "draw_film": "canvas-core/rubberHose.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts",
+        "canvas-core/koiDrawKit.ts",
+        "canvas-core/rubberHose.ts",
+        "canvas-core/rubberHoseKit.ts"
+      ],
+      "cell": 22
+    },
+    {
+      "slug": "scrapbook",
+      "id": "scrapbook",
+      "num": "25",
+      "en": "Archival scrapbook",
+      "cn": "档案剪贴簿",
+      "family": "collage + print",
+      "category_cn": "拼贴",
+      "medium": "foxed rag-paper album page; torn cards, cellulose tape, a clothespin on twine; copperplate engravings hand-tinted; typewriter, ransom-note cut letters, red pen, rubber stamp",
+      "hero": "How a honeybee finds flowers: the forager, the rose, the waggle dance, the evidence",
+      "hero_cn": "蜜蜂怎样找到花：采集蜂、玫瑰、摇摆舞与证据",
+      "uses": [
+        "历史考据",
+        "调查报道",
+        "自然科普"
+      ],
+      "doc": "skills/anidoodle/references/styles/scrapbook.md",
+      "module": "canvas-core/scrapbook.ts",
+      "draw_film": "canvas-core/scrapbook.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts",
+        "canvas-core/scrapbook.ts",
+        "canvas-core/scrapbookEngraving.ts",
+        "canvas-core/scrapbookKit.ts"
+      ],
+      "cell": 3
+    },
+    {
+      "slug": "scratchboard",
+      "id": "scratchboard",
+      "num": "26",
+      "en": "Scratchboard",
+      "cn": "刮画",
+      "family": "ink",
+      "category_cn": "墨",
+      "medium": "white china clay under black India ink; every mark is ink scraped away with a knife or scratch nib",
+      "hero": "a lynx, head and shoulders, in moonlight",
+      "hero_cn": "月光下猞猁的头肩像",
+      "uses": [
+        "悬疑与夜景",
+        "动物",
+        "强对比叙事"
+      ],
+      "doc": "skills/anidoodle/references/styles/scratchboard.md",
+      "module": "canvas-core/scratchboard.ts",
+      "draw_film": "canvas-core/scratchboard.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/scratchboard.ts",
+        "canvas-core/scratchboardKit.ts"
+      ],
+      "cell": 10
+    },
+    {
+      "slug": "stipple",
+      "id": "stipple",
+      "num": "27",
+      "en": "Pen-and-ink stipple",
+      "cn": "针管点画",
+      "family": "ink",
+      "category_cn": "墨",
+      "medium": "one 0.25 mm technical pen dotted straight down onto hot-press bristol; tone is dot density only",
+      "hero": "a nautilus shell sawn in half, chambers lit from the upper left, cast shadow in dots",
+      "hero_cn": "剖开的鹦鹉螺壳",
+      "uses": [
+        "科学插图",
+        "自然科普",
+        "精细结构"
+      ],
+      "doc": "skills/anidoodle/references/styles/stipple.md",
+      "module": "canvas-core/stipple.ts",
+      "draw_film": "canvas-core/stipple.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/stipple.ts",
+        "canvas-core/stippleKit.ts"
+      ],
+      "cell": 18
+    },
+    {
+      "slug": "storybook",
+      "id": "storybook",
+      "num": "28",
+      "en": "Storybook pencil + watercolour",
+      "cn": "绘本铅笔水彩",
+      "family": "watercolour",
+      "category_cn": "水彩",
+      "medium": "storybook graphite and gentle pan watercolour, drawn for a recurring character",
+      "hero": "Bit, waving, in storybook pencil and watercolour",
+      "hero_cn": "挥手的小机器人 Bit",
+      "uses": [
+        "儿童绘本",
+        "角色故事",
+        "温柔科普"
+      ],
+      "doc": "skills/anidoodle/references/styles/storybookDraw.md",
+      "module": "canvas-core/storybook.ts",
+      "draw_film": "canvas-core/storybookDraw.ts",
+      "modules": [
+        "canvas-core/brokenColourKit.ts",
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/storybook.ts",
+        "canvas-core/storybookDraw.ts"
+      ],
+      "cell": 29
+    },
+    {
+      "slug": "sumi-e",
+      "id": "sumiE",
+      "num": "29",
+      "en": "Sumi-e ink painting",
+      "cn": "水墨画",
+      "family": "ink",
+      "category_cn": "墨",
+      "medium": "one loaded soft brush of sumi ink, five dilutions, on unsized absorbent xuan paper, with a cinnabar seal",
+      "hero": "bamboo in wind with a tree sparrow",
+      "hero_cn": "风中翠竹与麻雀",
+      "uses": [
+        "传统文化",
+        "诗词",
+        "哲思"
+      ],
+      "doc": "skills/anidoodle/references/styles/sumiE.md",
+      "module": "canvas-core/sumiE.ts",
+      "draw_film": "canvas-core/sumiE.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts",
+        "canvas-core/sumiE.ts",
+        "canvas-core/sumiEKit.ts"
+      ],
+      "cell": 5
+    },
+    {
+      "slug": "toy-brick",
+      "id": "toyBrick",
+      "num": "30",
+      "en": "Toy brick",
+      "cn": "塑料积木",
+      "family": "rendered",
+      "category_cn": "渲染",
+      "medium": "moulded ABS toy bricks, rendered flat-plastic in orthographic view: face tones by the cube rule, bevel highlights, seam hairlines, real studs, a soft ground shadow",
+      "hero": "a brick-built harbour tugboat on a baseplate",
+      "hero_cn": "底板上的积木港口拖船",
+      "uses": [
+        "儿童科普",
+        "工程与结构",
+        "轻松解说"
+      ],
+      "doc": "skills/anidoodle/references/styles/toyBrick.md",
+      "module": "canvas-core/toyBrick.ts",
+      "draw_film": "canvas-core/toyBrick.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/toyBrick.ts",
+        "canvas-core/toyBrickKit.ts"
+      ],
+      "cell": 7
+    },
+    {
+      "slug": "woodcut",
+      "id": "woodcut",
+      "num": "31",
+      "en": "Ukiyo-e colour woodblock",
+      "cn": "浮世绘木版",
+      "family": "print",
+      "category_cn": "版画与印刷",
+      "medium": "water-based pigment printed by baren from hand-carved cherry blocks onto damp kozo washi: a sumi keyblock, flat colour blocks, bokashi wipes",
+      "hero": "two grey herons in rain on a wooden drum bridge",
+      "hero_cn": "雨中太鼓桥上的两只苍鹭",
+      "uses": [
+        "日本文化",
+        "历史故事",
+        "风物"
+      ],
+      "doc": "skills/anidoodle/references/styles/woodcut.md",
+      "module": "canvas-core/woodcut.ts",
+      "draw_film": "canvas-core/woodcut.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/woodcut.ts",
+        "canvas-core/woodcutKit.ts"
+      ],
+      "cell": 6
+    },
+    {
+      "slug": "wren",
+      "id": "wren",
+      "num": "32",
+      "en": "Ink \u0026 line-wash",
+      "cn": "墨线淡彩",
+      "family": "ink",
+      "category_cn": "墨",
+      "medium": "wet washes first that flood past the line and settle along each shape's bottom edge, backruns, then a flexible nib thick on the press and hair-thin on the lift",
+      "hero": "a wren",
+      "hero_cn": "一只鹪鹩",
+      "uses": [
+        "自然笔记",
+        "旅行",
+        "随笔"
+      ],
+      "doc": "skills/anidoodle/references/styles/wrenDraw.md",
+      "module": "canvas-core/wren.ts",
+      "draw_film": "canvas-core/wrenDraw.ts",
+      "modules": [
+        "canvas-core/core.ts",
+        "canvas-core/film.ts",
+        "canvas-core/gallery.ts",
+        "canvas-core/sumiEKit.ts",
+        "canvas-core/wren.ts",
+        "canvas-core/wrenDraw.ts"
+      ],
+      "cell": 16
+    }
+  ]
+}

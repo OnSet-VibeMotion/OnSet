@@ -1,0 +1,14 @@
+{
+  "name": "onset",
+  "private": true,
+  "description": "片场：TypeScript 引擎、onset 命令行与 Electron 桌面客户端",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "desktop": "npm run start -w onset-desktop",
+    "build": "npm run build -w onset-desktop",
+    "typecheck": "npm run typecheck -w onset-desktop"
+  }
+}
