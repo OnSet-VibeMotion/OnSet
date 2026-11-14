@@ -127,7 +127,10 @@ export async function runInteractive(
   }
   // 一轮结束：这类工具是常驻服务，不会自己退出。
   child.stdin?.end();
+  let windowsStoppedForCleanup = false;
   if (!child.killed && child.exitCode === null) {
+    // Windows 的 taskkill 会把主动收尾记成退出码 1，不能因此遮住协议已返回的真实错误。
+    windowsStoppedForCleanup = process.platform === 'win32';
     if (child.pid === undefined || !killTree(child.pid, 'SIGTERM')) child.kill('SIGTERM');
   }
   await waited;
@@ -137,7 +140,7 @@ export async function runInteractive(
   emit({ kind: KindDone, session_id: result.sessionID });
   if (signal?.aborted) return { result, error: abortReason(signal) };
   if (driveErr) {
-    if (waitErr instanceof ProcessExitError && waitErr.code > 0) {
+    if (!windowsStoppedForCleanup && waitErr instanceof ProcessExitError && waitErr.code > 0) {
       result.exitCode = waitErr.code;
       return { result, error: new ExitError(result.exitCode, result.stderr || driveErr.message) };
     }

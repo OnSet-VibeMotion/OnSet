@@ -347,6 +347,8 @@ export function cliEntry(dir: string): string {
  */
 export function cliCommandFor(dir: string, env: Record<string, string>, args: string[]): CLICommandSpec {
   const out = { ...env };
+  // Windows 的 experimental drawElement 路径会校准后回退；沿用客户端已经选择的稳定截图路径。
+  if (process.platform === 'win32') out.PRODUCER_EXPERIMENTAL_FAST_CAPTURE ??= 'false';
   const browser = browserFor(env);
   if (browser !== '') out[HyperFramesBrowserEnv] = browser;
   for (const [tool, key] of [

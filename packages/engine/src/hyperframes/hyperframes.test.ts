@@ -111,7 +111,7 @@ describe('copySkills', () => {
 
   // 技能自带的脚本丢了执行位就跑不起来，而失败信息会是 permission denied，
   // 与「技能没装好」毫无关联，极难排查。
-  it('preserves executable bit', () => {
+  it.skipIf(process.platform === 'win32')('preserves executable bit', () => {
     const source = tempDir();
     const dest = tempDir();
     writeSkill(source, 'hyperframes-cli');

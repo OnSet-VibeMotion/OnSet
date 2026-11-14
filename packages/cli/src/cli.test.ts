@@ -4,6 +4,8 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Buffer, initProject, run, runCLI, setenv, tempDir } from './testutil';
 import { Version } from './cli';
+import { FunASRTimestampModel } from '@onset/engine/config';
+import { modelDir } from '@onset/engine/toolinstall';
 
 describe('cli', () => {
   it('help lists public commands', async () => {
@@ -50,6 +52,27 @@ describe('cli', () => {
 
   it('unknown command uses exit one', async () => {
     expect(await run(['unknown'])).toBe(1);
+  });
+
+  it.skipIf(process.platform !== 'win32')('config get ALIGN_MODEL exposes the prepared FunASR directory on Windows', async () => {
+    const root = tempDir();
+    const data = tempDir();
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nALIGN_PROVIDER=funasr\n');
+    process.chdir(root);
+    setenv('XDG_DATA_HOME', data);
+    const missing = new Buffer();
+    expect(await run(['config', 'get', 'ALIGN_MODEL'], missing)).toBe(0);
+    expect(missing.text.trim()).toBe(FunASRTimestampModel.repo);
+    const directory = modelDir(FunASRTimestampModel, { XDG_DATA_HOME: data });
+    fs.mkdirSync(directory, { recursive: true });
+    for (const file of FunASRTimestampModel.files) {
+      const target = path.join(directory, file.path);
+      fs.writeFileSync(target, '');
+      fs.truncateSync(target, file.size);
+    }
+    const ready = new Buffer();
+    expect(await run(['config', 'get', 'ALIGN_MODEL'], ready)).toBe(0);
+    expect(ready.text.trim()).toBe(directory);
   });
 
   it('validate publish command', async () => {

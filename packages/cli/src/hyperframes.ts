@@ -2,7 +2,11 @@
  * hyperframes：onset 管理的固定版本 HyperFrames CLI 的入口，参数原样转给它。
  */
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import * as hyperframes from '@onset/engine/hyperframes';
+import { marshal } from '@onset/engine/gojson';
+import { renderBudgetArgs, windowsRenderMetrics } from '@onset/engine/windowsruntime';
 import { currentEnvironment, hyperframesVersion } from './cli';
 import { ExitError } from './cobra';
 import { strs, str } from './ops/common';
@@ -45,15 +49,33 @@ CLI 是前置资源，在客户端工具准备页装在用户级目录（默认 
     if (sub !== '') argv = [sub, ...argv];
     if (argv.length === 0) throw new ParamError('hyperframes 要给 subcommand，例如 {"subcommand": "lint"}');
     const env = currentEnvironment();
+    argv = renderBudgetArgs(argv, env);
     const dir = hyperframes.requireCLI(env);
     const spec = hyperframes.cliCommandFor(dir, env, argv);
     return new Promise<void>((resolve, reject) => {
       const child = spawn(spec.file, spec.args, { env: spec.env, stdio: ['inherit', 'pipe', 'pipe'], signal });
-      child.stdout.on('data', (chunk) => out.write(String(chunk)));
+      let tail = '';
+      if (process.platform === 'win32') { child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8'); }
+      child.stdout.on('data', (chunk) => { const text = String(chunk); if (process.platform === 'win32') tail = (tail + text).slice(-24000); out.write(text); });
       child.stderr.on('data', (chunk) => err.write(String(chunk)));
       child.on('error', reject);
       child.on('close', (code) => {
-        if (code === 0) resolve();
+        if (code === 0) {
+          if (process.platform === 'win32' && argv[0] === 'render') {
+            const metrics = windowsRenderMetrics(tail);
+            if (metrics) {
+              out.write(`Windows 渲染：浏览器画面路径 ${metrics.browser_hardware.toUpperCase()}；取帧 ${metrics.seconds.capture ?? 0}s；编码 ${metrics.seconds.encode ?? 0}s\n`);
+              if (env.ONSET_WINDOWS_RESOURCES_DIR) {
+                try {
+                  const log = path.join(env.ONSET_WINDOWS_RESOURCES_DIR, 'logs', 'hyperframes-performance.jsonl');
+                  fs.mkdirSync(path.dirname(log), { recursive: true });
+                  fs.appendFileSync(log, marshal({ at: new Date().toISOString(), scene: path.basename(process.cwd()), ...metrics }) + '\n');
+                } catch { /* 原渲染日志已经完整写出，辅助指标写不成不能让成品判失败。 */ }
+              }
+            }
+          }
+          resolve();
+        }
         else if (code !== null) reject(new ExitError(code, `hyperframes 退出码 ${code}`));
         else reject(new Error('signal: killed'));
       });

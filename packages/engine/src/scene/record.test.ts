@@ -1,7 +1,9 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import * as mediaprobe from '../mediaprobe';
+import { parse as parseMedia } from '../mediaprobe/mediaprobe';
 import { newConfig } from '../config';
 import { attemptLog, OutcomeFailed, OutcomeSucceeded, OutcomeVerificationFailed, parseAttempt, type Attempt } from './attempt';
 import { changedInputs, fingerprint, loadRecord, writeRecord } from './record';
@@ -13,7 +15,17 @@ import { executable, fakeFfprobe, Sink, tempDir, writeScene } from './testsuppor
 /** 跑一次假渲染：吐出一条用量事件、写出产物，返回 run 的结果。 */
 async function runFakeCodex(s: Scene, exitCode: string): Promise<unknown> {
   const bin = tempDir();
-  executable(
+  let restoreProbe = () => {};
+  if (process.platform === 'win32') {
+    fs.writeFileSync(path.join(bin, 'codex.cjs'), `console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:12,cached_input_tokens:2,output_tokens:5}}));require('node:fs').writeFileSync('out.mp4','video');process.exit(${Number(exitCode)});`);
+    // 与真实 npm 包装相同，由 windowsCommand 解析为 Node + JS，支持多行提示词。
+    fs.writeFileSync(path.join(bin, 'codex.cmd'), '@echo off\r\nnode "%~dp0\\codex.cjs" %*\r\n');
+    const probe = new mediaprobe.Toolchain('fixture', bin, {});
+    probe.probe = (file) => parseMedia('{"streams":[{"codec_type":"video","codec_name":"h264","width":1080,"height":1440,"r_frame_rate":"30/1","duration":"1.000"}],"format":{"duration":"1.000"}}', file);
+    probe.countFrames = () => 30;
+    const spy = vi.spyOn(mediaprobe, 'newToolchain').mockReturnValue(probe);
+    restoreProbe = () => spy.mockRestore();
+  } else executable(
     bin,
     'codex',
     `
@@ -29,6 +41,8 @@ exit ${exitCode}
     return null;
   } catch (err) {
     return err;
+  } finally {
+    restoreProbe();
   }
 }
 

@@ -1,0 +1,48 @@
+// Windows Breeze TTS 2: audio.cpp 0.9.4 + Q8_0 GGUF; accepts the existing voice workflow arguments.
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawn } = require('node:child_process');
+const home = path.dirname(path.dirname(__filename));
+const values = {};
+const flags = new Set(['--join_audio']);
+const allowed = new Set(['--model', '--text', '--text_file', '--text-file', '--voice', '--instruct', '--instruction', '--cfg_scale', '--ref_audio', '--ref_text', '--reference_audio', '--reference_text', '--output_path', '--file_prefix', '--audio_format', '--output', '--max_tokens', '--temperature']);
+try {
+  const argv = process.argv.slice(2);
+  if (argv.includes('--help') || argv.includes('-h')) {
+    console.log('breeze-tts --text "文字" --instruct "声音描述" --output_path DIR --file_prefix take [--ref_audio WAV --ref_text "准确参考稿"] [--cfg_scale 4]');
+  } else {
+    for (let index = 0; index < argv.length; index++) {
+      const key = argv[index];
+      if (flags.has(key)) continue;
+      if (!allowed.has(key) || index + 1 >= argv.length) throw Error('Unsupported or incomplete Breeze option: ' + key);
+      values[key] = argv[++index];
+    }
+    const textFile = values['--text_file'] || values['--text-file'];
+    const text = textFile ? fs.readFileSync(textFile, 'utf8').trim() : values['--text'];
+    if (!text || !text.trim()) throw Error('Breeze requires --text or --text_file');
+    if (values['--audio_format'] && values['--audio_format'] !== 'wav') throw Error('Windows Breeze writes WAV; use the media tool to convert it');
+    const defaultModel = path.join(home, 'models', 'Breeze-TTS-2-GGUF', 'breeze-tts-2-q8_0.gguf');
+    let model = values['--model'] || defaultModel;
+    if (fs.existsSync(model) && fs.statSync(model).isDirectory()) model = path.join(model, 'breeze-tts-2-q8_0.gguf');
+    if (!model.endsWith('.gguf') || !fs.existsSync(model)) throw Error('Windows Breeze requires the installed Q8_0 GGUF model');
+    const ref = values['--ref_audio'] || values['--reference_audio'];
+    const transcript = values['--ref_text'] || values['--reference_text'];
+    if (ref && !transcript) throw Error('Voice cloning requires the exact reference transcript');
+    const output = values['--output'] || path.join(values['--output_path'] || '.', (values['--file_prefix'] || 'audio') + '.wav');
+    if (fs.existsSync(output)) throw Error('Output already exists; preserve the approved audio and choose a new output filename: ' + output);
+    fs.mkdirSync(path.dirname(path.resolve(output)), { recursive: true });
+    const args = ['--task', ref ? 'clon' : 'tts', '--family', 'breeze_tts', '--model', model, '--backend', 'cuda', '--metrics', '--text', text, '--out', output];
+    if (ref) args.push('--voice-ref', ref, '--reference-text', transcript);
+    const instruction = values['--instruct'] || values['--instruction'];
+    if (instruction) args.push('--request-option', 'instruct=' + instruction);
+    for (const [key, native] of [['--cfg_scale', 'guidance_scale'], ['--max_tokens', 'max_tokens'], ['--temperature', 'temperature']]) if (values[key]) args.push('--request-option', native + '=' + values[key]);
+    const binaryDir = path.join(home, 'tools', 'audio-cpp', 'v0.9.4');
+    console.error('[onset-breeze] backend=cuda; Breeze TTS 2 Q8_0; audio.cpp 0.9.4');
+    const child = spawn(path.join(binaryDir, 'audiocpp_cli.exe'), args, { windowsHide: true, stdio: 'inherit', env: { ...process.env, PATH: binaryDir + path.delimiter + (process.env.PATH || process.env.Path || '') } });
+    child.once('error', error => { console.error(error.message); process.exitCode = 1; });
+    child.once('exit', code => { process.exitCode = code === null ? 1 : code; });
+  }
+} catch (error) {
+  console.error(error.message);
+  process.exitCode = 1;
+}

@@ -213,6 +213,28 @@ describe('tools', () => {
       expect(JSON.parse(env.OPENCODE_CONFIG_CONTENT)).toEqual({ model: 'x', mcp: { onset: { type: 'local', command: ['/app/bin/onset', 'studio', 'tools-mcp', '--profile', 'renderer', '--workdir', '/proj/scenes/s1'], enabled: true, environment: server.env } } });
     });
 
+    it.skipIf(process.platform !== 'win32')('quotes Windows system environment names in both Codex invocation paths', () => {
+      const server = onsetToolsServer('/app/bin/onset', 'renderer', '/proj/scenes/s1', {
+        'ProgramFiles(x86)': 'C:\\Program Files (x86)',
+        ONSET_SETTINGS_FILE: 'E:\\片场\\settings.conf',
+      });
+      const expected = 'mcp_servers.onset.env={"ProgramFiles(x86)"="C:\\\\Program Files (x86)",ONSET_SETTINGS_FILE="E:\\\\片场\\\\settings.conf"}';
+      expect(rendererInvocation('codex', 'p', false, { toolsServer: server })).toContain(expected);
+      expect(orchestratorInvocation('codex', { prompt: 'p', workdir: '/p', toolsServer: server }).argv).toContain(expected);
+    });
+
+    it.skipIf(process.platform !== 'win32')('authorizes only built-in renderer MCP tools while retaining the Codex shell sandbox', () => {
+      const args = rendererInvocation('codex', 'p', false, { toolsServer: server });
+      expect(args).toContain('workspace-write');
+      expect(args).not.toContain('--dangerously-bypass-approvals-and-sandbox');
+      for (const tool of ['hyperframes', 'job_wait', 'job_cancel', 'tool_help']) expect(args).toContain(`mcp_servers.onset.tools.${tool}.approval_mode="approve"`);
+      expect(args.some((arg) => arg.includes('default_tools_approval_mode'))).toBe(false);
+      expect(orchestratorInvocation('codex', { prompt: 'p', toolsServer: server }).argv.some((arg) => arg.includes('approval_mode'))).toBe(false);
+      expect(rendererInvocation('codex', 'p', false, { toolsServer: { ...server, name: 'external' } }).some((arg) => arg.includes('approval_mode'))).toBe(false);
+      const orchestratorServer = onsetToolsServer('/app/bin/onset', 'orchestrator', '/proj');
+      expect(rendererInvocation('codex', 'p', false, { toolsServer: orchestratorServer }).some((arg) => arg.includes('approval_mode'))).toBe(false);
+    });
+
     it('sits next to the approval server for the claude orchestrator', () => {
       const permissionPrompt = { command: '/app/onset', args: ['studio', 'permission-mcp'], server: 'onset_studio' };
       const { argv } = orchestratorInvocation('claude', { prompt: 'hello', workdir: '/p', permissionPrompt, toolsServer: server });

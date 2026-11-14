@@ -20,6 +20,10 @@ rl.on('line', async (line) => {
       send({ id: m.id, result: { thread: { id: thread }, model: 'gpt-fake', approvalPolicy: m.params.approvalPolicy, sandbox: m.params.sandbox } });
       break;
     case 'turn/start': {
+      if (process.env.FAKE_EXIT_BEFORE_TURN) {
+        process.stderr.write('agent startup failed\n', () => process.exit(23));
+        break;
+      }
       const turn = 'turn_1';
       send({ id: m.id, result: { turn: { id: turn, status: 'inProgress' } } });
       note('item/completed', { threadId: thread, turnId: turn, item: { type: 'agentMessage', id: 'a1', text: '先装依赖。' } });

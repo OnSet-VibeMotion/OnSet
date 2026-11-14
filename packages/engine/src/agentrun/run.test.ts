@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { usageEmpty } from '../tools';
 import { ExitError, KindDone, KindSession, KindUsage, TailBuffer, newSessionID, run, type Event } from './index';
 
@@ -11,7 +11,14 @@ function tempDir(): string {
 }
 
 /** 写一个假的编排工具脚本，lookPath 无论要什么名字都返回它。 */
-function fakeCLI(body: string): (name: string) => string {
+function fakeCLI(body: string, windowsBody: string): (name: string) => string {
+  if (process.platform === 'win32') {
+    const dir = tempDir();
+    const file = path.join(dir, 'fake.cmd');
+    fs.writeFileSync(path.join(dir, 'fake.cjs'), windowsBody);
+    fs.writeFileSync(file, '@echo off\r\nnode "%~dp0\\fake.cjs" %*\r\n');
+    return () => file;
+  }
   const file = path.join(tempDir(), 'fake');
   fs.writeFileSync(file, '#!/bin/sh\n' + body + '\n', { mode: 0o755 });
   return () => file;
@@ -30,10 +37,11 @@ describe('agentrun run', () => {
     const workdir = tempDir();
     // 把 stdin 落盘，确认 codex 的 prompt 走 stdin。
     const script = `cat > "$PWD/stdin.txt"; cat '${fixturePath('codex-1')}'`;
+    const windowsScript = `const fs = require('node:fs'); fs.writeFileSync('stdin.txt', fs.readFileSync(0)); process.stdout.write(fs.readFileSync(${JSON.stringify(fixturePath('codex-1'))}));`;
     const events: Event[] = [];
     let raw = '';
     const { result, error } = await run(
-      { tool: 'codex', workdir, prompt: '做一件事', lookPath: fakeCLI(script), raw: { write: (s: string) => (raw += s) } },
+      { tool: 'codex', workdir, prompt: '做一件事', lookPath: fakeCLI(script, windowsScript), raw: { write: (s: string) => (raw += s) } },
       collect(events),
     );
     expect(error).toBeNull();
@@ -51,7 +59,7 @@ describe('agentrun run', () => {
   it('emits preset session first', async () => {
     const events: Event[] = [];
     const id = newSessionID('claude');
-    const { result, error } = await run({ tool: 'claude', workdir: tempDir(), prompt: 'p', sessionID: id, lookPath: fakeCLI('exit 0') }, collect(events));
+    const { result, error } = await run({ tool: 'claude', workdir: tempDir(), prompt: 'p', sessionID: id, lookPath: fakeCLI('exit 0', 'process.exitCode = 0;') }, collect(events));
     expect(error).toBeNull();
     expect(events[0].kind).toBe(KindSession);
     expect(events[0].session_id).toBe(id);
@@ -63,7 +71,7 @@ describe('agentrun run', () => {
   it('reports exit code and stderr', async () => {
     const events: Event[] = [];
     const { error } = await run(
-      { tool: 'claude', workdir: tempDir(), prompt: 'p', sessionID: 'gone', resume: true, lookPath: fakeCLI("echo 'No conversation found' >&2; exit 3") },
+      { tool: 'claude', workdir: tempDir(), prompt: 'p', sessionID: 'gone', resume: true, lookPath: fakeCLI("echo 'No conversation found' >&2; exit 3", "process.stderr.write('No conversation found\\n'); process.exitCode = 3;") },
       collect(events),
     );
     expect(error).toBeInstanceOf(ExitError);
@@ -77,10 +85,12 @@ describe('agentrun run', () => {
     const workdir = tempDir();
     // 子进程再拉起孙进程：取消后孙进程也必须被杀掉，不能继续写文件。
     const script = `(sleep 3; touch "$PWD/leaked") & echo '{"type":"thread.started","thread_id":"t"}'; wait`;
+    const windowsScript = `const { spawn } = require('node:child_process'); const child = spawn(process.execPath, ['-e', "setTimeout(() => require('node:fs').writeFileSync('leaked', 'yes'), 3000)"], { windowsHide: true, stdio: 'ignore' }); child.once('spawn', () => console.log('{"type":"thread.started","thread_id":"t"}')); setInterval(() => {}, 1000);`;
     const controller = new AbortController();
     const events: Event[] = [];
-    const done = run({ tool: 'codex', workdir, prompt: 'p', lookPath: fakeCLI(script) }, collect(events), controller.signal);
-    await sleep(300);
+    const done = run({ tool: 'codex', workdir, prompt: 'p', lookPath: fakeCLI(script, windowsScript) }, collect(events), controller.signal);
+    if (process.platform === 'win32') await vi.waitFor(() => expect(events.some((event) => event.kind === KindSession && event.session_id === 't')).toBe(true), { timeout: 2000, interval: 25 });
+    else await sleep(300);
     controller.abort();
     const outcome = await Promise.race([done, sleep(5000).then(() => undefined)]);
     expect(outcome, '取消后没有退出').toBeDefined();

@@ -1,0 +1,41 @@
+import json
+import ssl
+import sys
+import urllib.error
+import urllib.request
+import zipfile
+
+request = json.load(sys.stdin)
+try:
+    context = ssl.create_default_context()
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    if request.get('referer'):
+        headers['Referer'] = request['referer']
+    req = urllib.request.Request(request['url'], headers=headers)
+    with urllib.request.urlopen(req, timeout=request['timeout'], context=context) as response:
+        size = 0
+        with open(request['target'], 'xb') as target:
+            while True:
+                block = response.read(65536)
+                if not block:
+                    break
+                size += len(block)
+                if size > request['max_bytes']:
+                    raise ValueError('Response exceeds the configured byte limit')
+                target.write(block)
+        result = {'ok': True, 'url': response.geturl(), 'status': response.status,
+                  'content_type': response.headers.get('Content-Type', ''), 'bytes': size}
+    if request['kind'] == 'zip':
+        result['zip_valid'] = False
+        if zipfile.is_zipfile(request['target']):
+            with zipfile.ZipFile(request['target']) as archive:
+                members = archive.infolist()
+                if len(members) > 10000 or sum(member.file_size for member in members) > 268435456:
+                    raise ValueError('ZIP expanded size or member count exceeds the limit')
+                result['zip_valid'] = archive.testzip() is None
+    print(json.dumps(result, ensure_ascii=False))
+except Exception as error:
+    reason = getattr(error, 'reason', None)
+    print(json.dumps({'ok': False, 'error_type': type(error).__name__, 'error': str(error),
+                      'cause': str(reason) if reason is not None else None}, ensure_ascii=False))
+    sys.exit(1)

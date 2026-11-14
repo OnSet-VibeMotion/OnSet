@@ -4,6 +4,7 @@
  */
 import fs from 'node:fs';
 import os from 'node:os';
+import { windowsRenderWorkers, windowsSceneJobs } from '@onset/engine/windowsruntime';
 import * as config from '@onset/engine/config';
 import * as envutil from '@onset/engine/envutil';
 import * as scene from '@onset/engine/scene';
@@ -210,8 +211,14 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     }
     // 已跳过的镜头不占渲染并发，worker 按真正要渲染的镜头数分。
     // 并发镜头往同一个 out 写阶段消息：Node 单线程，每次 write 是整行，不会互相切开。
-    const workers = schedule.renderWorkers(os.availableParallelism(), schedule.systemMemory(), Math.min(jobs, scenes.length - initial.size));
-    const report = await schedule.runAll(signal, scenes, jobs, retries, async (sig, s) => {
+    const cpus = os.availableParallelism(), total = schedule.systemMemory(), available = os.freemem();
+    const runJobs = process.platform === 'win32' ? windowsSceneJobs(cpus, total, available, jobs) : jobs;
+    const activeJobs = Math.min(runJobs, scenes.length - initial.size);
+    const workers = process.platform === 'win32'
+      ? windowsRenderWorkers(cpus, total, available, activeJobs)
+      : schedule.renderWorkers(cpus, total, activeJobs);
+    if (process.platform === 'win32' && activeJobs > 0) out.write(`Windows 渲染预算：设置上限 ${jobs} 个，当前最多 ${activeJobs} 个镜头，每镜头 ${workers} 个浏览器 worker（按当前 CPU 与可用内存）\n`);
+    const report = await schedule.runAll(signal, scenes, runJobs, retries, async (sig, s) => {
       const outcome = initial.get(s.id);
       if (outcome) throw outcome;
       s = scene.withRenderWorkers(s, workers);

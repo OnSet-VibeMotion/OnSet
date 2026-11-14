@@ -12,6 +12,12 @@ export function fakeCLI(dir: string): void {
   fs.mkdirSync(path.dirname(bin), { recursive: true });
   const script = '#!/bin/sh\nif [ "$1" = --version ]; then echo ' + PinnedVersion + '; exit 0; fi\necho "fake hyperframes $*"\n';
   fs.writeFileSync(bin, script, { mode: 0o755 });
+  if (process.platform === 'win32') {
+    const pkg = path.join(dir, 'node_modules', 'hyperframes');
+    fs.mkdirSync(pkg, { recursive: true });
+    fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: 'hyperframes', version: PinnedVersion, bin: { hyperframes: 'cli.cjs' } }));
+    fs.writeFileSync(path.join(pkg, 'cli.cjs'), `console.log(process.argv[2] === '--version' ? '${PinnedVersion}' : 'fake hyperframes ' + process.argv.slice(2).join(' '));\n`);
+  }
   fs.writeFileSync(path.join(dir, '.onset-cli'), PinnedVersion + '\n', { mode: 0o644 });
 }
 

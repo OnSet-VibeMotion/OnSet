@@ -388,10 +388,10 @@ export function renderWorkers(cpus: number, memoryBytes: number, jobs: number): 
 /**
  * 返回物理内存字节数，读不到时返回 0。
  * Go 版在 darwin 读 sysctl hw.memsize、在 linux 读 /proc/meminfo 的 MemTotal，其余平台返回 0；
- * Node 的 os.totalmem() 在这两个平台上取的是同一个值。
+ * Node 的 os.totalmem() 在这两个平台上取的是同一个值，Windows 也用它，不能把已知内存容量当作未知。
  */
 export function systemMemory(): number {
-  if (process.platform !== 'darwin' && process.platform !== 'linux') return 0;
+  if (process.platform !== 'darwin' && process.platform !== 'linux' && process.platform !== 'win32') return 0;
   try {
     return os.totalmem();
   } catch {

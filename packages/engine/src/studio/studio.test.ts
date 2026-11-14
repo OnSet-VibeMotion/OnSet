@@ -119,7 +119,7 @@ describe('studio', () => {
     let { status, body } = await studioRequest(s, 'GET', '/api/directories');
     expect(status).toBe(200);
     expect(body.path).toBe(home);
-    expect(body.parent).toBe('');
+    expect(body.parent).toBe(process.platform === 'win32' ? path.dirname(home) : '');
     expect(body.entries).toEqual([]);
 
     const alpha = path.join(home, 'alpha');
@@ -139,11 +139,11 @@ describe('studio', () => {
     expect(status).toBe(200);
     expect(body.path).toBe(alpha);
     expect(body.parent).toBe(home);
-    expect(body.root).toBe(home);
+    expect(body.root).toBe(process.platform === 'win32' ? path.parse(home).root : home);
 
     ({ status, body } = await studioRequest(s, 'GET', '/api/directories?path=' + encodeURIComponent(other)));
-    expect(status).toBe(403);
-    expect(body.code).toBe('directory_outside_root');
+    expect(status).toBe(process.platform === 'win32' ? 200 : 403);
+    if (process.platform !== 'win32') expect(body.code).toBe('directory_outside_root');
 
     expect((await studioRequest(s, 'GET', '/api/directories?path=' + encodeURIComponent(path.join(home, 'missing')))).status).toBe(400);
     expect((await studioRequest(s, 'GET', '/api/directories?path=' + encodeURIComponent(path.join(home, 'note.txt')))).status).toBe(400);
@@ -185,7 +185,7 @@ describe('studio', () => {
       {},
       { parent: home },
       { parent: home, name: 'a/b' },
-      { parent: other, name: 'x' },
+      ...(process.platform === 'win32' ? [{ parent: '\\\\onset-invalid-host\\share', name: 'x' }] : [{ parent: other, name: 'x' }]),
       { parent: path.join(home, 'missing'), name: 'x' },
       { parent: home, name: 'bad-canvas', canvas: 'missing' },
       { parent: home, name: 'bad-mode', delivery: 'opera' },

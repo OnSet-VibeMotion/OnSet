@@ -14,3 +14,7 @@ node_modules/
 /apps/desktop/vendor/
 /packages/cli/dist/
 /packages/engine/node_modules/
+
+# Local Windows runtime, downloaded tools, logs and verification output.
+/.onset-local/
+/apps/desktop/test-results/

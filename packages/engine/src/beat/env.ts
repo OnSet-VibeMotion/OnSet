@@ -45,8 +45,15 @@ export function envDir(env: Record<string, string | undefined>): string {
 }
 
 /** 环境里的 Python。 */
-export function envPython(dir: string): string {
-  return path.join(dir, 'bin', 'python');
+export function envPython(dir: string, platform: NodeJS.Platform = process.platform): string {
+  return platform === 'win32' ? path.join(dir, 'Scripts', 'python.exe') : path.join(dir, 'bin', 'python');
+}
+
+/** Windows 的权重缓存随本地资源目录走，不落到系统盘或依赖用户 HOME。 */
+export function beatRuntimeEnv(env: Record<string, string>, platform: NodeJS.Platform = process.platform): Record<string, string> {
+  if (platform !== 'win32') return env;
+  const root = env.ONSET_WINDOWS_RESOURCES_DIR || dataDir(env);
+  return { ...env, ...(root ? { TORCH_HOME: env.TORCH_HOME || path.join(root, 'cache', 'torch') } : {}), PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' };
 }
 
 /** dir 是装好的节拍分析环境。 */
@@ -111,6 +118,10 @@ export async function ensureEnv(opts: EnvOptions, signal?: AbortSignal): Promise
         fs.rmSync(dir, { recursive: true, force: true });
         report({ stage: '建 Python 环境' + retry, percent: 0, indeterminate: true });
         await createVenv(base, dir, env, opts.weightsEnv ?? env, sink, signal);
+        if (process.platform === 'win32' && !opts.package) {
+          const index = env.ONSET_BEAT_TORCH_INDEX ? ['--index-url', env.ONSET_BEAT_TORCH_INDEX] : [];
+          await runCommand(envPython(dir), ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', ...index, 'torch==2.9.1', 'torchaudio==2.9.1'], { env: { ...(opts.weightsEnv ?? env), PIP_DEFAULT_TIMEOUT: '90', PIP_RETRIES: '8' }, stdout: sink, stderr: sink, signal });
+        }
         report({ stage: `安装 beat-this ${AnalyzerVersion} 与 torch${retry}`, percent: 0, indeterminate: true });
         const pkg = opts.package || 'beat-this==' + AnalyzerVersion;
         await runCommand(envPython(dir), ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', pkg], {
@@ -121,7 +132,7 @@ export async function ensureEnv(opts: EnvOptions, signal?: AbortSignal): Promise
         });
         report({ stage: `下载 ${DefaultCheckpoint} 权重${retry}`, percent: 0, indeterminate: true });
         await runCommand(envPython(dir), ['-c', opts.warmScript ?? warmScript, DefaultCheckpoint], {
-          env: opts.weightsEnv ?? env,
+          env: beatRuntimeEnv(opts.weightsEnv ?? env),
           stdout: sink,
           stderr: sink,
           signal,
@@ -216,7 +227,7 @@ async function findBasePython(env: Record<string, string>, signal?: AbortSignal)
   const pathValue = env.PATH ?? '';
   const tried: string[] = [];
   const explicit = env[BasePythonEnv];
-  const names = explicit ? [explicit] : basePythonCandidates;
+  const names = explicit ? [explicit] : process.platform === 'win32' ? [...basePythonCandidates, 'python.exe'] : basePythonCandidates;
   for (const name of names) {
     let binary: string;
     try {

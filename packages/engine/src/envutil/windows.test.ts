@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { onsetCommand, dataDir, lookPath, MissingToolError, normalizeWindowsEnv } from './index';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { onsetCommand, dataDir, lookPath, MissingToolError, normalizeWindowsEnv, windowsPython, windowsPythonScript, agentBinDir } from './index';
 
 // Windows 上的差异按 platform 参数模拟，在 macOS / Linux 上也能跑；Windows CI 上测的是真实行为。
 const dirs: string[] = [];
@@ -34,6 +34,17 @@ describe('Windows compatibility in envutil', () => {
   });
 
   it('lookPath still requires execute bits elsewhere', () => {
+    if (process.platform === 'win32') {
+      // NTFS 的 chmod 不提供 Unix 执行位；按同一平台分支验证权限判断。
+      const stat = vi.spyOn(fs, 'statSync');
+      try {
+        stat.mockReturnValue({ isFile: () => true, mode: 0o644 } as fs.Stats);
+        expect(() => lookPath('tool', '/tools', 'darwin')).toThrow(MissingToolError);
+        stat.mockReturnValue({ isFile: () => true, mode: 0o755 } as fs.Stats);
+        expect(lookPath('tool', '/tools', 'darwin')).toBe(path.join('/tools', 'tool'));
+      } finally { stat.mockRestore(); }
+      return;
+    }
     const a = temp();
     fs.writeFileSync(path.join(a, 'tool'), '', { mode: 0o644 });
     expect(() => lookPath('tool', a, 'darwin')).toThrow(MissingToolError);
@@ -60,5 +71,22 @@ describe('Windows compatibility in envutil', () => {
     expect(script.command).toBe(process.execPath);
     expect(script.args).toEqual(['C:\\app\\resources\\cli\\onset.cjs']);
     expect(script.env.ONSET_SELF).toBe('C:\\app\\resources\\cli\\onset.cjs');
+  });
+
+  it('prefers the prepared Windows Python and leaves other platforms alone', () => {
+    const root = temp();
+    const python = path.join(root, 'onset', 'tools', 'venv', 'funasr', 'Scripts', 'python.exe');
+    fs.mkdirSync(path.dirname(python), { recursive: true });
+    fs.writeFileSync(python, 'fixture');
+    const env = { XDG_DATA_HOME: root, PATH: '' };
+    expect(windowsPython(env, 'win32')).toBe(python);
+    expect(windowsPython(env, 'darwin')).toBe('');
+    expect(windowsPython(env, 'linux')).toBe('');
+    expect(windowsPythonScript('C:\\中文%用户\\python.exe')).toContain('"C:\\中文%%用户\\python.exe" %*');
+    if (process.platform === 'win32') {
+      const bin = agentBinDir({ ...env, ONSET_AGENT_BIN_DIR: path.join(root, 'agent') });
+      expect(fs.readFileSync(path.join(bin, 'python3.cmd'), 'utf8')).toContain(`"${python}" %*`);
+      expect(fs.readFileSync(path.join(bin, 'python3.cmd'), 'utf8')).toContain('exit /b %errorlevel%');
+    }
   });
 });

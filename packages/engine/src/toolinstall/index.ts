@@ -16,6 +16,7 @@ import { lookPath } from '../envutil';
 import { watchSize, type Progress, type Writer } from '../hyperframes';
 import { abortReason } from '../procgroup';
 import { binDir, bundled, dataDir, findOptional, npmCommand, withNode } from '../toolpath';
+import { ensureWindowsBreeze, windowsBreezeStatus } from '../windowsruntime/breeze';
 
 /** GitHub release 下载地址的镜像前缀，例如 https://ghfast.top/https://github.com/ 。文件都有 sha256，走镜像也安全。 */
 export const GitHubMirrorEnv = 'ONSET_GITHUB_MIRROR';
@@ -287,6 +288,7 @@ export const ToolPythonVersion = '3.12';
  * - uv-venv：没有命令行入口的 Python 包（funasr），装进专用环境，再写一个调用那份 Python 的小脚本。
  */
 export type ToolSpec =
+  | { kind: 'native-breeze'; version: string; bins: string[]; platforms: string[] }
   | { kind: 'npm'; package: string; version: string; bins: string[] }
   | { kind: 'uv-tool'; package: string; version: string; bins: string[]; prerelease?: boolean; platforms?: string[] }
   | { kind: 'uv-venv'; name: string; packages: string[]; bin: string; platforms?: string[] };
@@ -304,6 +306,7 @@ export function toolSupported(spec: ToolSpec): boolean {
 
 /** 工具的命令都能找到（onset 装的或用户自己装的）。 */
 export function toolStatus(spec: ToolSpec, env: Record<string, string | undefined>): { ok: boolean; where: string } {
+  if (spec.kind === 'native-breeze') return windowsBreezeStatus(env);
   const found = toolBins(spec).map((bin) => findOptional(bin, env));
   if (found.every((f) => f !== '')) return { ok: true, where: found[0] };
   return { ok: false, where: binDir(env) };
@@ -321,6 +324,8 @@ export async function ensureTool(spec: ToolSpec, opts: InstallOptions): Promise<
   const bin = requireBinDir(opts.env);
   const data = dataDir(opts.env);
   switch (spec.kind) {
+    case 'native-breeze':
+      return ensureWindowsBreeze(opts);
     case 'npm':
       await installNpmTool(spec, path.join(data, 'tools', 'npm'), bin, opts);
       break;
@@ -535,7 +540,7 @@ function modelURL(source: string, repo: string, file: string): string {
 async function huggingFaceReachable(opts: InstallOptions): Promise<boolean> {
   const curl = process.platform === 'darwin' && fs.existsSync('/usr/bin/curl') ? '/usr/bin/curl' : lookPath('curl', opts.env.PATH ?? '');
   try {
-    await run(curl, ['--fail', '--silent', '--show-error', '--max-time', '10', '--output', '/dev/null', 'https://huggingface.co/api/models/' + 'mlx-community'], { ...opts, output: undefined });
+    await run(curl, ['--fail', '--silent', '--show-error', '--max-time', '10', '--output', process.platform === 'win32' ? 'NUL' : '/dev/null', 'https://huggingface.co/api/models/' + 'mlx-community'], { ...opts, output: undefined });
     return true;
   } catch {
     return false;

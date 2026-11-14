@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { withWindowsInstructions } from '../windowsruntime';
 import path from 'node:path';
 import { childEnvironment, rendererModelFor, type Config } from '../config';
 import * as determinism from '../determinism';
@@ -61,7 +62,7 @@ export async function run(
       `警告：未能为渲染工具 ${renderer} 定位 ${HyperFramesSkillName} 技能目录，组合规范与动效要求改用技能名兜底；请在客户端顶栏点「缺少 HyperFrames 技能 · 安装」，或用 ${SkillsDirEnv} 显式指定\n`,
     );
   }
-  const prompt = buildPrompt(s, resolvedSkills);
+  const prompt = withWindowsInstructions(buildPrompt(s, resolvedSkills), 'renderer');
   // 渲染器要用的 CLI 是前置资源（onset setup 装）：在渲染途中现下载的话，网络一差渲染器
   // 就空等、白花一次模型调用，最后只剩「没有产物」。没装好就在这里停，不启动渲染器。
   const cliEnv: Record<string, string> = { ...baseEnv };
@@ -80,6 +81,7 @@ export async function run(
   hyperframes.requireBrowser(cliEnv);
   // 渲染器的环境：onset 不在它的 PATH 里，HyperFrames 经 onset 的工具服务（--profile renderer）调用。
   const childEnv = childEnvironment(cfg, baseEnv, unsafe, parsePassthrough(baseEnv.ONSET_PASSTHROUGH_ENV ?? ''));
+  if (process.platform === 'win32' && s.renderWorkers > 0) childEnv.ONSET_RENDER_WORKERS = String(s.renderWorkers);
   addToolsLocation(childEnv);
   const access = rendererAccess(resolvedSkills);
   access.toolsServer = onsetToolsServer(onsetExecutable(), 'renderer', s.directory, childEnv);

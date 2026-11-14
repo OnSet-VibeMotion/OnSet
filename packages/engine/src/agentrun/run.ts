@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { withWindowsInstructions } from '../windowsruntime';
 import { MissingToolError, lookPath as envLookPath } from '../envutil';
 import { DefaultGrace, ExitError as ProcessExitError, abortReason, start } from '../procgroup';
 import { detectModel, interactiveInvocation, type McpServer, newUsage, orchestratorInvocation, presetSessionID, usageEmpty, type OrchestratorAccess, type PermissionPrompt, type Usage } from '../tools';
@@ -161,6 +162,7 @@ function asError(err: unknown): Error {
  * signal 取消时整组终止，error 是取消原因（对应 ctx.Err()）。
  */
 export async function run(spec: Spec, emit: (event: Event) => void, signal?: AbortSignal): Promise<Outcome> {
+  if (process.platform === 'win32' && spec.toolsServer?.name === 'onset') spec = { ...spec, prompt: withWindowsInstructions(spec.prompt, 'orchestrator') };
   if (spec.ask) {
     const base = spec.env ?? (process.env as Record<string, string>);
     const inter = interactiveInvocation(spec.tool, { unsafe: spec.unsafe, access: spec.access, toolsServer: spec.toolsServer, model: spec.model }, base);

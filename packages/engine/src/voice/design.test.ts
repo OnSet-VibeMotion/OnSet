@@ -36,7 +36,7 @@ describe('voice design', () => {
 describe.skipIf(process.env.ONSET_TEST_BREEZE !== '1')('RealBreeze voice design', () => {
   it('designs a take that can be saved into the library as a cloneable voice', async () => {
     const env = envMap();
-    delete env.ONSET_BIN_DIR;
+    if (process.platform !== 'win32') delete env.ONSET_BIN_DIR;
     const root = tempDir();
     const draft = await design(root, { instruction: '三十多岁的男性，声音沉稳清晰，语气平静、真诚', env });
     expect(fs.statSync(draft.audio).size).toBeGreaterThan(10000);

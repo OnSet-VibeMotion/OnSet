@@ -1,9 +1,30 @@
 import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { BreezeTTS2, QwenForcedAligner, defaultTTSProvider } from '../config/providers';
 import { check, items, selection } from './index';
+
+const largeFixtures = new Set<string>();
+function resizeFixture(file: string, size: number): void {
+  if (size >= 100 * 1024 * 1024) {
+    largeFixtures.add(file);
+    if (process.platform === 'win32') {
+      // NTFS 不会像 Unix 一样自动把 truncate 出来的大文件变成稀疏文件。
+      const result = spawnSync(path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'fsutil.exe'), ['sparse', 'setflag', file], { windowsHide: true });
+      if (result.status !== 0) throw new Error('不能建立 Windows 稀疏测试文件');
+    }
+  }
+  fs.truncateSync(file, size);
+}
+afterEach(() => {
+  for (const file of largeFixtures) {
+    if (!path.resolve(file).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('测试文件不在临时目录内');
+    fs.rmSync(file, { force: true });
+  }
+  largeFixtures.clear();
+});
 
 describe('prereqs', () => {
   it('lists skills, the CLI, the beat environment and every film-style source, in preparation order', () => {
@@ -59,9 +80,10 @@ describe('prereqs', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-prereqs-'));
     const bin = path.join(home, '.local', 'share', 'onset', 'bin');
     fs.mkdirSync(bin, { recursive: true });
-    fs.writeFileSync(path.join(bin, 'mmx'), '#!/bin/sh\n', { mode: 0o755 });
+    const mmx = process.platform === 'win32' ? 'mmx.cmd' : 'mmx';
+    fs.writeFileSync(path.join(bin, mmx), '#!/bin/sh\n', { mode: 0o755 });
     const status = check({ HOME: home, PATH: '/usr/bin:/bin' }, { tts: 'minimax', align: 'funasr' });
-    expect(status.find((s) => s.id === 'tts:minimax')).toMatchObject({ ready: true, location: path.join(bin, 'mmx') });
+    expect(status.find((s) => s.id === 'tts:minimax')).toMatchObject({ ready: true, location: path.join(bin, mmx) });
     expect(status.find((s) => s.id === 'align:funasr')).toMatchObject({ ready: false, location: bin });
   });
 
@@ -78,11 +100,11 @@ describe('prereqs', () => {
     for (const f of QwenForcedAligner.files) fs.writeFileSync(path.join(model, f.path), Buffer.alloc(f.path === 'model.safetensors' ? 0 : f.size));
     // 大文件还没下完（大小不对）：仍然不算就绪。
     expect(check(env, pick).find((s) => s.id === 'align:mlx')?.ready).toBe(false);
-    fs.truncateSync(path.join(model, 'model.safetensors'), QwenForcedAligner.files.find((f) => f.path === 'model.safetensors')!.size);
+    resizeFixture(path.join(model, 'model.safetensors'), QwenForcedAligner.files.find((f) => f.path === 'model.safetensors')!.size);
     expect(check(env, pick).find((s) => s.id === 'align:mlx')?.ready).toBe(true);
   });
 
-  it('counts Breeze TTS 2 as ready only once its model is downloaded too, subdirectories included', () => {
+  it.skipIf(process.platform === 'win32')('counts Breeze TTS 2 as ready only once its model is downloaded too, subdirectories included', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-prereqs-'));
     const data = path.join(home, '.local', 'share', 'onset');
     fs.mkdirSync(path.join(data, 'bin'), { recursive: true });
@@ -95,13 +117,13 @@ describe('prereqs', () => {
     for (const f of BreezeTTS2.files.filter((f) => !f.path.includes('/'))) {
       fs.mkdirSync(path.dirname(path.join(model, f.path)), { recursive: true });
       fs.writeFileSync(path.join(model, f.path), '');
-      fs.truncateSync(path.join(model, f.path), f.size);
+      resizeFixture(path.join(model, f.path), f.size);
     }
     expect(check(env, pick).find((s) => s.id === 'tts:breeze')?.ready).toBe(false);
     for (const f of BreezeTTS2.files.filter((f) => f.path.includes('/'))) {
       fs.mkdirSync(path.dirname(path.join(model, f.path)), { recursive: true });
       fs.writeFileSync(path.join(model, f.path), '');
-      fs.truncateSync(path.join(model, f.path), f.size);
+      resizeFixture(path.join(model, f.path), f.size);
     }
     expect(check(env, pick).find((s) => s.id === 'tts:breeze')?.ready).toBe(true);
   });

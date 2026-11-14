@@ -37,8 +37,8 @@ function tempDir(): string {
 
 describe('beat analysis environment', () => {
   it('lives under the user data directory, keyed by the analyzer version', () => {
-    expect(envDir({ HOME: '/home/u' })).toBe('/home/u/.local/share/onset/beat/venv-1.1.0');
-    expect(envDir({ HOME: '/home/u', XDG_DATA_HOME: '/data' })).toBe('/data/onset/beat/venv-1.1.0');
+    expect(envDir({ HOME: '/home/u' })).toBe(path.join('/home/u', '.local/share/onset/beat/venv-1.1.0'));
+    expect(envDir({ HOME: '/home/u', XDG_DATA_HOME: '/data' })).toBe(path.join('/data', 'onset/beat/venv-1.1.0'));
     expect(envDir({ HOME: '/home/u', [EnvDirEnv]: '/opt/beat' })).toBe('/opt/beat');
     expect(envDir({})).toBe('');
   });
@@ -56,7 +56,7 @@ describe('beat analysis environment', () => {
     expect(fs.existsSync(path.join(home, '.local'))).toBe(false);
   });
 
-  it('installs into the fixed directory, warms the default weights through the proxy, and retries', async () => {
+  it.skipIf(process.platform === 'win32')('installs into the fixed directory, warms the default weights through the proxy, and retries', async () => {
     const root = tempDir();
     const bin = path.join(root, 'bin');
     fs.mkdirSync(bin);
@@ -77,7 +77,7 @@ describe('beat analysis environment', () => {
     expect(fs.readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(4);
   });
 
-  it('falls back to uv with its own Python when no suitable Python is on PATH', async () => {
+  it.skipIf(process.platform === 'win32')('falls back to uv with its own Python when no suitable Python is on PATH', async () => {
     const root = tempDir();
     const bin = path.join(root, 'bin');
     fs.mkdirSync(bin);
