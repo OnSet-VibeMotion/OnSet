@@ -40,9 +40,9 @@ describe('tools', () => {
     expect(unsafe[unsafe.indexOf('--setting-sources') + 1]).toBe('project,local');
   });
 
-  // macOS 上五家渲染器都套系统沙箱：边界按目录管，各家自己不再按命令白名单拦（拦了也没人能批准）。
+  // macOS 上五家渲染器都套系统沙箱、Windows 上全放开：各家自己不再按命令白名单拦（拦了也没人能批准）。
   it('sandboxed renderers do not filter commands themselves', () => {
-    const access = { commands: ['ls'], readDirs: ['/p/.agents/skills'], osSandbox: true };
+    const access = { commands: ['ls'], readDirs: ['/p/.agents/skills'], osSandbox: true, unfiltered: true };
     expect(rendererInvocation('claude', 'p', false, access)).toContain('--dangerously-skip-permissions');
     expect(rendererInvocation('claude', 'p', false, access)).not.toContain('acceptEdits');
     expect(rendererInvocation('codex', 'p', false, access)).toContain('--dangerously-bypass-approvals-and-sandbox');

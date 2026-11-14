@@ -29,7 +29,7 @@ import { CheckOutputFrames, classifyOutputProblem, DeterminismCheckPrefix } from
 import { fingerprint, removeRecord, writeRecord } from './record';
 import { buildPrompt, findProjectRoot, sceneCanvas, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
 import { removeLive, writeLive } from './live';
-import { rendererHome, sandboxAvailable, sandboxed, sandboxProfile } from './sandbox';
+import { rendererHome, rendererUnfiltered, sandboxAvailable, sandboxed, sandboxProfile } from './sandbox';
 import { verifySeam } from './seam';
 import { leftoverFiles, resumePrompt, resumeState } from './resume';
 import { writeSceneData } from './scenedata';
@@ -101,6 +101,8 @@ export async function run(
   // 渲染器套系统沙箱：只能写镜头目录、读本项目与工具自己的目录（见 sandbox.ts）。macOS 上五家都套，不安全模式不套。
   const projectRoot = findProjectRoot(s.directory);
   if (!unsafe && projectRoot !== '' && sandboxAvailable()) access.osSandbox = true;
+  // 渲染器自己不拦命令：套了沙箱时由沙箱管边界；Windows 没有系统沙箱，用户定的是全放开（2026-11），安全先放下。
+  access.unfiltered = rendererUnfiltered(access.osSandbox === true);
   /** 渲染器的命令行：给定提示词与会话；qoder 再套系统沙箱。 */
   const invocation = (text: string, session: RendererSession | null): string[] => {
     let argv = rendererInvocation(renderer, text, unsafe, access, model, session);

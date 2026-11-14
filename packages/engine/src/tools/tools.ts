@@ -48,6 +48,11 @@ export interface RendererAccess {
    */
   osSandbox?: boolean;
   /**
+   * 渲染器自己不按命令白名单拦：套了系统沙箱时（边界由沙箱管），以及 Windows 上（没有系统沙箱，
+   * 用户定的是全放开、先不要安全，2026-11）。拦了渲染途中也没人能批准，只是白耗几轮。
+   */
+  unfiltered?: boolean;
+  /**
    * 镜头要用的技能（已链进镜头目录，scene.stageRendererSkills）的名字。opencode 会从镜头目录往上一直找到项目根的
    * .agents/skills，用 permission.skill 只放行这几个（rendererEnv）；其余几家按目录找，链在哪看见哪。
    */
@@ -193,13 +198,13 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
     case 'codex': {
       const mcp = server ? codexMcpOverrides(server) : [];
       const resume = session?.resume ? ['resume', session.id] : [];
-      // 系统沙箱里不再套 codex 自己的沙箱：它也是 sandbox-exec，套在沙箱里起不来；边界由外面那层管。
-      if (unsafe || access.osSandbox) return ['codex', 'exec', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', ...mcp, ...m, '--json', ...resume, prompt];
+      // 不拦命令时也不套 codex 自己的沙箱：macOS 上它也是 sandbox-exec，套在外面那层沙箱里起不来；Windows 上用户定的是全放开。
+      if (unsafe || access.unfiltered) return ['codex', 'exec', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', ...mcp, ...m, '--json', ...resume, prompt];
       return ['codex', '--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...mcp, ...m, '--json', ...resume, prompt];
     }
     case 'claude': {
       let mode = ['--dangerously-skip-permissions'];
-      if (!unsafe && !access.osSandbox) mode = ['--permission-mode', 'acceptEdits', '--settings', claudeSettings({ ...access, mcp: server ? [server.name] : [] })];
+      if (!unsafe && !access.unfiltered) mode = ['--permission-mode', 'acceptEdits', '--settings', claudeSettings({ ...access, mcp: server ? [server.name] : [] })];
       // --mcp-config 吃多个值，后面必须紧跟一个选项（这里是 --verbose），不然会把提示词吞掉。
       const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
       return ['claude', '-p', ...mode, ...m, ...mcp, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', ...claudeSession, prompt];
@@ -208,8 +213,8 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
       const qoderSession = session ? (session.resume ? ['-r', session.id] : ['--session-id', session.id]) : [];
       // 与 claude 同一套放行规则（qoder 的 --settings 认 claude 的 permissions 写法），外加关掉懒加载 MCP。
       // 以前用 dont_ask：它连镜头目录里写文件都拒、技能目录读不了、ls 都跑不了，渲染器一个 index.html 都写不出来（2026-11 实测）。
-      // 系统沙箱按目录管住了读写，渲染器里不再按命令白名单拦（拦了也没人能批准，只会白耗几轮）。
-      if (unsafe || access.osSandbox) {
+      // 系统沙箱按目录管住了读写（或 Windows 上全放开），渲染器里不再按命令白名单拦（拦了也没人能批准，只会白耗几轮）。
+      if (unsafe || access.unfiltered) {
         const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
         return ['qoderclicn', '-p', prompt, ...qoderSession, '--dangerously-skip-permissions', ...m, ...qoderRendererSources, '--settings', JSON.stringify(qoderEagerSettings), ...mcp, '--output-format', 'stream-json'];
       }
@@ -220,7 +225,7 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
     case 'codebuddy': {
       let mode = ['--permission-mode', 'acceptEdits'];
       if (!unsafe && server) mode.push('--settings', claudeSettings({ ...access, commands: [], readDirs: access.readDirs, mcp: [server.name] }));
-      if (unsafe || access.osSandbox) mode = ['-y'];
+      if (unsafe || access.unfiltered) mode = ['-y'];
       const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
       return ['codebuddy', '-p', ...m, ...mcp, '--verbose', '--output-format', 'stream-json', ...mode, ...claudeSession, prompt];
     }

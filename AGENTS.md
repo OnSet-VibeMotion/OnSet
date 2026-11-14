@@ -643,6 +643,7 @@ ONSET_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run --ro
 | 启动 onset 一律经 `envutil.onsetCommand`：Windows 上客户端不写 shim，`ONSET_SELF` 就是 `onset.cjs`，用 Electron（`ELECTRON_RUN_AS_NODE=1`）跑；MCP 服务（`onsetToolsServer`、审批服务）与写任务都这样起 | 同上：交给各家 CLI 的 MCP 命令若是 `.cmd`，Node 写的 CLI 起不来 |
 | Windows 上写出的批处理（agent 的 `onset.cmd` 只用 ASCII；`node.cmd` 先 `chcp 65001`） | 批处理按系统代码页解析，中文 Windows 是 GBK，UTF-8 的中文与中文路径会读错 |
 | 数据目录只经 `envutil.dataDir`：Windows 上是 `%LOCALAPPDATA%\onset`，项目登记在 `%APPDATA%\onset\studio`；`LOCALAPPDATA` 等系统变量在 `envutil.WindowsBaseEnvKeys` 里，进安全模式白名单与工具服务的环境 | Windows 上通常没有 `HOME`；子进程拿不到同一组变量就会算出另一个目录。缺 `SystemRoot` 时 Node、Python 的网络与加密直接失败 |
+| 渲染器在 Windows 上全放开：没有系统沙箱，各家自己也不按命令白名单拦（`scene.rendererUnfiltered` → `RendererAccess.unfiltered`，与 macOS 沙箱里同一组参数：claude、qoder 跳过权限，codex 不套自己的沙箱，codebuddy `-y`），`.env` 也不再禁读。镜头技能照样链进各家的目录，用户级技能与设置照常加载（qoder 的 `--setting-sources` 与 opencode 的 `permission.skill` 仍生效） | 用户定的（2026-11）：Windows 上先不要安全，命令白名单只会让渲染器白耗几轮。以后要补目录边界，最接近 macOS 沙箱的是 AppContainer，要在 Windows 真机上验证各家 CLI、Node 与借用的浏览器能在里面跑 |
 | Windows 上借用客户端的 Chromium 渲染走引导脚本接管的路（见「开箱即用」），不用包装脚本与 fd 3/4 | 包装只能是 `.exe`；Windows 的管道句柄传法不同。隐藏窗口截图在 Windows 上是否与 macOS 一致只有真机验证得了，用安装页的「试渲染一个镜头」 |
 
 还没做：工具准备页的 Windows 下载表（ffmpeg、uv；借用浏览器之后不再需要无头浏览器）与 `toolinstall` 写出的 sh 包装、测试里的 sh 假工具、Windows 打包与真实 CLI 实测。

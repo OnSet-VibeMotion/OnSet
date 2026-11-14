@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { rendererInvocation } from '../tools';
-import { rendererHome, sandboxAvailable, sandboxed, sandboxProfile, SandboxExec } from './sandbox';
+import { rendererHome, rendererUnfiltered, sandboxAvailable, sandboxed, sandboxProfile, SandboxExec } from './sandbox';
 
 /** 假的家目录：本项目、另一个项目、~/.ssh 与 onset 的凭据目录。 */
 function home(): { home: string; project: string; scene: string; other: string } {
@@ -56,9 +56,9 @@ describe('renderer sandbox', () => {
     for (const tool of ['claude', 'codex', 'codebuddy', 'opencode', 'qoder']) {
       const own = rendererHome(tool, '/h');
       expect(own.state.length, tool).toBeGreaterThan(0);
-      expect(own.hidden, tool).toContain('/h/.agents/skills');
+      expect(own.hidden, tool).toContain(path.join('/h', '.agents', 'skills'));
     }
-    expect(rendererHome('claude', '/h').files).toEqual(['/h/.claude.json']);
+    expect(rendererHome('claude', '/h').files).toEqual([path.join('/h', '.claude.json')]);
   });
 
   it('only exists on macOS', () => {
@@ -66,9 +66,17 @@ describe('renderer sandbox', () => {
     expect(sandboxAvailable('win32')).toBe(false);
   });
 
+  // Windows 没有系统沙箱，用户定的是全放开：渲染器不按命令白名单拦。其余没有沙箱的平台照旧拦。
+  it('renderers filter commands only where there is no sandbox and it is not Windows', () => {
+    expect(rendererUnfiltered(true, 'darwin')).toBe(true);
+    expect(rendererUnfiltered(false, 'win32')).toBe(true);
+    expect(rendererUnfiltered(false, 'darwin')).toBe(false);
+    expect(rendererUnfiltered(false, 'linux')).toBe(false);
+  });
+
   // 沙箱管住了目录，渲染器里不再按命令白名单拦（拦了也没人能批准）。
   it('a sandboxed qoder renderer does not filter commands itself', () => {
-    const argv = rendererInvocation('qoder', 'prompt', false, { commands: ['ls'], readDirs: ['/p/.agents/skills'], osSandbox: true });
+    const argv = rendererInvocation('qoder', 'prompt', false, { commands: ['ls'], readDirs: ['/p/.agents/skills'], osSandbox: true, unfiltered: true });
     expect(argv).toContain('--dangerously-skip-permissions');
     expect(argv).not.toContain('accept_edits');
     expect(argv[argv.indexOf('--setting-sources') + 1]).toBe('project,local');

@@ -24,6 +24,14 @@ export function sandboxAvailable(platform: NodeJS.Platform = process.platform): 
   return platform === 'darwin' && fs.existsSync(SandboxExec);
 }
 
+/**
+ * 渲染器自己要不要按命令白名单拦：套了系统沙箱时不拦（边界由沙箱管）；Windows 没有系统沙箱，
+ * 用户定的是全放开、安全先放下（2026-11），也不拦。其余平台照旧拦。
+ */
+export function rendererUnfiltered(sandboxed: boolean, platform: NodeJS.Platform = process.platform): boolean {
+  return sandboxed || platform === 'win32';
+}
+
 export interface SandboxPaths {
   /** 镜头目录：唯一能写的项目目录。 */
   sceneDir: string;
