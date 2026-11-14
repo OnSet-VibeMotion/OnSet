@@ -86,6 +86,8 @@ export function createPet(options: { url: string; preload: string; background: b
     height,
     x: at.x,
     y: at.y,
+    // macOS 上做成不抢焦点的面板（NSPanel）：只有面板能在应用仍是普通应用（有 Dock 图标）时盖在别的应用的全屏上。
+    ...(process.platform === 'darwin' ? { type: 'panel' as const } : {}),
     frame: false,
     transparent: true,
     resizable: false,
@@ -104,9 +106,9 @@ export function createPet(options: { url: string; preload: string; background: b
       backgroundThrottling: !options.background,
     },
   });
-  // 浮在普通窗口之上，切桌面时也在。
+  // 浮在普通窗口之上，切桌面、别的应用全屏时也在（后者靠上面的面板类型）。
   // skipTransformProcessType 不能去掉：带 visibleOnFullScreen 时 Electron 默认把整个应用改成辅助程序
-  // （UIElement），Dock 图标与 ⌘Tab 里的入口一起消失（实测）。代价是别的应用全屏时桌宠不盖在上面。
+  // （UIElement），Dock 图标与 ⌘Tab 里的入口一起消失（实测）。
   pet.setAlwaysOnTop(true, 'floating');
   pet.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
   pet.webContents.on('did-finish-load', () => pet?.webContents.send('am:crew', latest));
