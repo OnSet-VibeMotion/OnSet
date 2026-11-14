@@ -105,14 +105,16 @@ export function fileExists(file: string): boolean {
   }
 }
 
-export function discoverScenes(root: string): SceneSummary[] {
+export function discoverScenes(root: string, platform: NodeJS.Platform = process.platform): SceneSummary[] {
   const out: SceneSummary[] = [];
   // 渲染记忆的考场与试镜（在 Studio 的状态目录里）是镜头副本，不是项目的镜头。
   const exams = path.join(root, 'production', 'memory-exams');
   const studioState = path.join(root, 'production', 'studio');
+  const qc = path.join(root, 'production', 'visual-qc');
+  const plannedQC = platform === 'win32' && [...plannedDirs(root)].some(dir => dir === qc || dir.startsWith(qc + path.sep));
   walkDir(root, (file, entry) => {
     if (!entry) return;
-    if (entry.isDirectory()) return file === exams || file === studioState ? 'skip' : undefined;
+    if (entry.isDirectory()) return file === exams || file === studioState || (platform === 'win32' && file === qc && !plannedQC) ? 'skip' : undefined;
     if (entry.name !== 'scene.json') return;
     let v: Record<string, unknown>;
     try {

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { QoderSkillsStage, stageRendererSkills, unstageRendererSkills } from './skills';
+import { QoderSkillsStage, resolveSkill, SourceUpstream, stageRendererSkills, unstageRendererSkills } from './skills';
 
 function project(): { skills: string; style: string; scene: string } {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-stage-')));
@@ -19,6 +19,25 @@ function project(): { skills: string; style: string; scene: string } {
 
 // qoder 渲染器用自己的 Skill 工具加载镜头的技能：只链提示词里点名的，渲染完删干净。
 describe('qoder renderer skills', () => {
+  it('repeated Windows junction cleanup preserves the source and user-owned directories', () => {
+    if (process.platform !== 'win32') return;
+    const { skills, scene } = project();
+    const source = path.join(skills, 'hyperframes', 'SKILL.md');
+    const original = fs.readFileSync(source);
+    const own = path.join(scene, '.codex', 'skills', 'mine');
+    fs.mkdirSync(own, { recursive: true });
+    fs.writeFileSync(path.join(own, 'keep.txt'), 'keep');
+    const desc = { name: 'hyperframes', source: SourceUpstream, requiredFiles: ['SKILL.md'] };
+    const originalSource = resolveSkill('codex', scene, {}, desc);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      stageRendererSkills('codex', scene, { hyperframes: skills }, `${skills}/hyperframes`);
+      expect(resolveSkill('codex', scene, {}, desc)).toBe(originalSource);
+      unstageRendererSkills(scene);
+      expect(fs.readFileSync(source)).toEqual(original);
+      expect(fs.readFileSync(path.join(own, 'keep.txt'), 'utf8')).toBe('keep');
+      expect(fs.existsSync(path.join(scene, '.codex/skills/hyperframes'))).toBe(false);
+    }
+  });
   it('links exactly the skills the prompt names, and removes them afterwards', () => {
     const { skills, style, scene } = project();
     const resolved = { hyperframes: skills, 'scene-kit': skills, 'song-explainer': skills, 'film-style:own': style };

@@ -23,6 +23,16 @@ function writeScene(root: string, rel: string, id: string): void {
 }
 
 describe('discoverScenes', () => {
+  it('Windows excludes a whole-film QA copy unless the scene plan explicitly selects it', () => {
+    const root = project();
+    writeScene(root, 'scenes/scene-001', 'scene-001');
+    writeScene(root, 'production/visual-qc/candidate-source', 'candidate-qc');
+    expect(discoverScenes(root, 'win32').map(s => s.id)).toEqual(['scene-001']);
+    // 其它平台保持原来的发现规则。
+    expect(discoverScenes(root, 'darwin').map(s => s.id)).toEqual(['candidate-qc','scene-001']);
+    fs.writeFileSync(path.join(root, 'production/scene-plan.json'), JSON.stringify({scenes:[{id:'candidate-qc',dir:'production/visual-qc/candidate-source'}]}));
+    expect(discoverScenes(root, 'win32').map(s => s.id)).toEqual(['candidate-qc','scene-001']);
+  });
   it('lists each scene once when an older plan was archived with the same ids', () => {
     const root = project();
     // 重做分镜后旧的一套挪进 production/v1/scenes/ 留底，id 与新的一套相同。

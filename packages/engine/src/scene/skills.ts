@@ -205,6 +205,13 @@ export function resolveSkill(renderer: string, sceneDir: string, environ: Record
   ordered.push(homeCandidate(portableSkillsDir));
 
   for (const candidate of ordered) {
+    if (process.platform === 'win32' && isSymlink(path.join(candidate, desc.name))) {
+      try {
+        const staged = JSON.parse(fs.readFileSync(path.join(candidate, '.onset-staged.json'), 'utf8'));
+        // 渲染临时 junction 不是新的技能来源。残留链接不能改变原技能目录与输入指纹。
+        if (Array.isArray(staged.linked) && staged.linked.includes(desc.name)) continue;
+      } catch { /* 用户自行安装的技能仍按原优先级查找。 */ }
+    }
     if (hasSkill(candidate, desc.name, desc.requiredFiles)) return candidate;
   }
   return '';
@@ -684,7 +691,12 @@ export function unstageRendererSkills(sceneDir: string): void {
     for (const name of Array.isArray(record.linked) ? record.linked : []) {
       if (typeof name !== 'string' || name.includes('/') || name.includes('\\')) continue;
       const link = path.join(stage, name);
-      if (isSymlink(link)) fs.rmSync(link, { force: true });
+      if (isSymlink(link)) {
+        // Windows junction 是目录重解析点；rm(非 recursive) 会报 EISDIR。
+        // rmdir 只移除已经由 lstat 确认的链接本身，不遍历或删除技能目标。
+        if (process.platform === 'win32') fs.rmdirSync(link);
+        else fs.rmSync(link, { force: true });
+      }
     }
     fs.rmSync(marker, { force: true });
     const removeIfEmpty = (dir: string) => {

@@ -39,6 +39,7 @@ import { prepareResources } from './resources';
 import { verify as verifyResources } from '../renderassets';
 import { HyperFramesSkillName, rendererAccess, resolveAllSkills, skillsEnvironment, SkillsDirEnv, stagedSkills, stageRendererSkills, unstageRendererSkills } from './skills';
 import { VerificationError } from './verification';
+import { acquireWindowsSceneLease } from './windowslease';
 
 /** SIGTERM 之后等渲染器进程组自行退出的时间（毫秒）。 */
 const terminateGrace = 500;
@@ -63,6 +64,15 @@ export async function run(
   userOutput: Writer,
   tolerance: number,
   signal?: AbortSignal,
+): Promise<void> {
+  const release = acquireWindowsSceneLease(s.directory, s.id);
+  try { await runScene(s, cfg, unsafe, baseEnv, userOutput, tolerance, signal); }
+  finally { release(); }
+}
+
+async function runScene(
+  s: Scene, cfg: Config, unsafe: boolean, baseEnv: Record<string, string>,
+  userOutput: Writer, tolerance: number, signal?: AbortSignal,
 ): Promise<void> {
   if (!Number.isFinite(tolerance) || tolerance < 0) throw new Error('tolerance 必须是有限且非负的数字');
   const renderer = s.renderer !== '' ? s.renderer : cfg.renderer;

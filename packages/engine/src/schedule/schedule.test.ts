@@ -71,6 +71,33 @@ describe('plan', () => {
 });
 
 describe('runAll', () => {
+  it('fills slots after 1 and 9 finish while priority scene 4 is still running', async () => {
+    const root=tempDir();
+    const scenes=Array.from({length:9},(_,i)=>testScene(root,'scene-'+String(i+1).padStart(3,'0')));
+    const release=new Map<string,()=>void>(),gates=new Map(scenes.map(s=>[s.id,new Promise<void>(resolve=>release.set(s.id,resolve))]));
+    const started:string[]=[],events:import('./schedule').QueueEvent[]=[];
+    let complete=false;
+    const done=runAll(background(),scenes,3,0,async(_signal,s)=>{started.push(s.id);await gates.get(s.id);},{priority:['scene-001','scene-004','scene-009'],onEvent:event=>events.push(event)}).then(report=>{complete=true;return report;});
+    expect(started).toEqual(['scene-001','scene-004','scene-009']);
+    release.get('scene-001')!();await new Promise(resolve=>setImmediate(resolve));
+    expect(started).toContain('scene-002');expect(complete).toBe(false);
+    release.get('scene-009')!();await new Promise(resolve=>setImmediate(resolve));
+    expect(started).toContain('scene-003');
+    for(const [id,finish]of release)if(id!=='scene-004')finish();
+    await new Promise(resolve=>setImmediate(resolve));
+    expect(started).toHaveLength(9);expect(new Set(started).size).toBe(9);expect(complete).toBe(false);
+    expect(events.filter(e=>e.kind==='finished')).toHaveLength(8);
+    expect(events.every(e=>e.active<=3)).toBe(true);
+    release.get('scene-004')!();const report=await done;
+    expect(report.scenes.map(s=>s.scene_id)).toEqual(scenes.map(s=>s.id));expect(report.counts.succeeded).toBe(9);
+    expect(events.findIndex(e=>e.kind==='started'&&e.scene_id==='scene-002')).toBeLessThan(events.findIndex(e=>e.kind==='finished'&&e.scene_id==='scene-004'));
+  });
+
+  it('finishes every worker even if optional telemetry fails', async () => {
+    const root=tempDir(),scenes=[testScene(root,'scene-001'),testScene(root,'scene-002')];
+    const report=await runAll(background(),scenes,2,0,async()=>{}, {onEvent:()=>{throw Error('fixture trace error');}});
+    expect(report.counts.succeeded).toBe(2);
+  });
   it('honors concurrency and retries', async () => {
     recordSleeps();
     const root = tempDir();

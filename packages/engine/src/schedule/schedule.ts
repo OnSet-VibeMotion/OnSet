@@ -407,17 +407,32 @@ function seconds(begin: number): number {
  * 以 jobs 个并发 worker 渲染全部镜头，失败的按 retries 次重试。
  * 报告按传入的时间轴顺序输出；signal 取消后不再派发新镜头，返回已完成部分的报告（interrupted）。
  */
+export interface QueueEvent {
+  kind: 'started' | 'finished'; scene_id: string; worker: number; elapsed_seconds: number; active: number; pending: number; slot_idle_ms: number; status?: Status;
+}
+export interface RunOptions { priority?: readonly string[]; onEvent?: (event: QueueEvent) => void }
+
 export async function runAll(
   signal: AbortSignal,
   scenes: readonly Scene[],
   jobs: number,
   retries: number,
   runner: Runner,
+  options: RunOptions = {},
 ): Promise<RunReport> {
   const started = performance.now();
   if (jobs < 1) jobs = 1;
-  const queue = dispatchOrder(scenes);
+  const ranked = dispatchOrder(scenes);
+  const priority = new Map((options.priority ?? []).map((id,index)=>[id,index]));
+  const queue = priority.size ? ranked.sort((a,b)=>{
+    const first=priority.get(a.id),second=priority.get(b.id);
+    if(first===undefined)return second===undefined?0:1;
+    return second===undefined?-1:first-second;
+  }) : ranked;
+  // 监控输出失败不能使 Promise.all 提前返回、留下仍在写文件的 worker。
+  const notify = (event: QueueEvent) => { try {options.onEvent?.(event);} catch {/* 调用方负责报告监控故障。 */} };
   let next = 0;
+  let active = 0;
   const byID = new Map<string, SceneResult>();
 
   const runOne = async (s: Scene): Promise<SceneResult> => {
@@ -459,16 +474,21 @@ export async function runAll(
     return result;
   };
 
-  const worker = async () => {
+  const worker = async (workerIndex: number) => {
+    let available = performance.now();
     while (next < queue.length && !signal.aborted) {
       const s = queue[next++];
       const begin = performance.now();
+      active++;
+      notify({kind:'started',scene_id:s.id,worker:workerIndex,elapsed_seconds:seconds(started),active,pending:queue.length-next,slot_idle_ms:begin-available});
       const result = await runOne(s);
       result.seconds = seconds(begin);
       byID.set(result.scene_id, result);
+      active--;available=performance.now();
+      notify({kind:'finished',scene_id:s.id,worker:workerIndex,elapsed_seconds:seconds(started),active,pending:queue.length-next,slot_idle_ms:0,status:result.status});
     }
   };
-  await Promise.all(Array.from({ length: jobs }, () => worker()));
+  await Promise.all(Array.from({ length: jobs }, (_,index) => worker(index)));
 
   const ordered: SceneResult[] = [];
   const counts = emptyCounts();
