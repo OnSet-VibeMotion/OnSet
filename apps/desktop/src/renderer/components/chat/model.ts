@@ -293,11 +293,15 @@ export function describeTool(tool: string, input: unknown): { verb: string; targ
     return { verb: '改文件', target: changes.map((c) => c.path).filter(Boolean).join('、'), command: false };
   }
   if (name === 'grep' || name === 'glob') return { verb: '搜索', target: text('pattern'), command: false };
+  // 导演（pi）自带的找文件、列目录。
+  if (name === 'find') return { verb: '找文件', target: text('pattern') || path, command: false };
+  if (name === 'ls') return { verb: '查看目录', target: path, command: false, path };
   if (name === 'webfetch') return { verb: '访问', target: text('url'), command: false };
   if (name === 'websearch' || name === 'web_search') return { verb: '搜索网页', target: text('query'), command: false };
   if (name === 'task' || name === 'agent') return { verb: '子任务', target: text('description'), command: false };
-  const am = amTool(name.replace(/^mcp__am__/, '').replace(/^am[._]/, ''), record);
-  if (am && /^(mcp__am__|am[._])/.test(name)) return am;
+  // am 的工具：claude 系经 MCP 带 mcp__am__ 前缀，ACP 带 am_ / am.，导演直接用操作名。
+  const bare = name.replace(/^mcp__am__/, '').replace(/^am[._]/, '');
+  if (/^(mcp__am__|am[._])/.test(name) || bare in amVerbs || bare === 'hyperframes') return amTool(bare, record);
   const fallback = text('description') || text('url') || text('pattern') || '';
   return { verb: tool, target: fallback, command: false };
 }
@@ -356,7 +360,7 @@ export function setPluginVerbs(entries: { name: string; verb: string }[]): void 
   for (const e of entries) if (e.verb) pluginVerbs.set(e.name, e.verb);
 }
 
-function amTool(name: string, record: Record<string, unknown>): { verb: string; target: string; command: boolean } | null {
+function amTool(name: string, record: Record<string, unknown>): { verb: string; target: string; command: boolean } {
   const text = (key: string) => (typeof record[key] === 'string' ? (record[key] as string) : '');
   const args = Array.isArray(record.args) ? (record.args as unknown[]).map(String).join(' ') : '';
   if (name === 'hyperframes') {

@@ -29,7 +29,7 @@ test('shows the project, a scene and files in Finder', async ({ page, project, e
   await expect.poll(() => revealed(electronApp)).toEqual([['open', project.path]]);
 
   // 菜单「在 Finder 中显示项目」（⌥⌘R）。
-  await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.send('am:menu', { type: 'reveal' }));
+  await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.isResizable()).webContents.send('am:menu', { type: 'reveal' }));
   await expect.poll(() => revealed(electronApp)).toEqual([['open', project.path]]);
 
   // 镜头还没出片：选中镜头目录。

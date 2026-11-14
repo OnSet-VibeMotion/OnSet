@@ -30,6 +30,13 @@ test('the desktop pet mirrors what the orchestrator is doing', async ({ page, pr
   await expect(crew.locator('.pet-line')).toHaveText('渲染镜头 scene-001');
   await page.locator('#cancel-turn').click();
 
+  // 导演（内置编排工具）调 am 的操作不带前缀：照样认得是在拍，气泡也写成人话。
+  await page.locator('#prompt').fill('导演开机');
+  await page.locator('#send').click();
+  await expect(crew).toHaveAttribute('data-mood', 'filming');
+  await expect(crew.locator('.pet-line')).toHaveText('渲染镜头 scene-001');
+  await page.locator('#cancel-turn').click();
+
   // 拼接：交给剪辑师，导演站到他身后。
   await page.locator('#prompt').fill('拼一下');
   await page.locator('#send').click();

@@ -28,6 +28,11 @@ case "$prompt" in *拍一下*)
   printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"f1","name":"mcp__am__scene_run","input":{"scene":"scenes/scene-001"}}]}}\n'
   exec sleep 60 ;;
 esac
+# 「导演开机」：像导演（pi）那样不带前缀直接调 scene_run，然后挂起。
+case "$prompt" in *导演开机*)
+  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"d1","name":"scene_run","input":{"scene":"scenes/scene-001"}}]}}\n'
+  exec sleep 60 ;;
+esac
 # 「拼一下」：调用 am 的 concat 就挂起，桌宠的剪辑师开工。
 case "$prompt" in *拼一下*)
   printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"c1","name":"mcp__am__concat","input":{}}]}}\n'

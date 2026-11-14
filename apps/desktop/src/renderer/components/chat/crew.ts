@@ -93,7 +93,7 @@ export function crewState(turn: TurnBlock | undefined, asks: PermissionAsk[], sc
       return { mood: 'filming', line: rendering.length > 0 ? `在拍 ${listScenes(rendering)}` : line };
     }
     if (work) return { mood: work, line };
-    if (/^(read|grep|glob|ls|webfetch|websearch|web_search)$/.test(name)) return { mood: 'reading', line };
+    if (/^(read|grep|glob|find|ls|webfetch|websearch|web_search)$/.test(name)) return { mood: 'reading', line };
     if (/^(write|edit|multiedit|notebookedit|file_change)$/.test(name)) return { mood: 'writing', line };
     return { mood: 'running', line };
   }
