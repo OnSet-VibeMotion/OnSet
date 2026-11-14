@@ -81,6 +81,11 @@ export interface ViewRequest {
   note?: string;
   /** 整片制作现在到了哪一步（StepIDs），顶栏的步骤上标出来；不切页。 */
   step?: string;
+  /**
+   * 用户在对话里确认了审核关卡（studio_confirm）：said 是用户的原话，gate 是关卡 id（空是路线上在等确认的那个）。
+   * 不切页；后端核对原话确实出自这一轮用户的话才记下。
+   */
+  confirm?: { said: string; gate?: string };
 }
 
 /** 顶栏的一个步骤：id、名字、写给编排工具的一句说明；flow 是只有哪个流程用得上（内置插件登记的）。 */
@@ -208,6 +213,13 @@ export function validateViewRequest(project: string, req: ViewRequest): ViewRequ
   if (step !== '' && !stepIDs().includes(step)) throw new Error(`没有步骤 ${goQuote(step)}（可选：${stepIDs().join('、')}）`);
   if (step === '') delete out.step;
   else out.step = step;
+  // 只记关卡确认、不切页：原话由后端对照这一轮用户的话核对。
+  if ((req.page ?? '') === '' && req.confirm) {
+    const said = (req.confirm.said ?? '').trim();
+    if (said === '') throw new Error('studio_confirm 要给 said：用户确认时的原话');
+    delete out.target;
+    return { ...out, page: '', confirm: { said, ...(req.confirm.gate ? { gate: req.confirm.gate.trim() } : {}) } };
+  }
   // 只标步骤、不切页。
   if ((req.page ?? '') === '' && step !== '') {
     delete out.target;
@@ -281,7 +293,7 @@ export function writeViewRequest(env: Record<string, string | undefined>, req: V
   const valid = validateViewRequest(env[ViewProjectEnv] ?? '', req);
   if (inbox === '') return false;
   fs.mkdirSync(inbox, { recursive: true, mode: 0o755 });
-  const body = marshal({ page: valid.page, target: valid.target || undefined, note: valid.note || undefined, step: valid.step || undefined });
+  const body = marshal({ page: valid.page, target: valid.target || undefined, note: valid.note || undefined, step: valid.step || undefined, confirm: valid.confirm });
   // 先写临时名再改名，轮询时不会读到写了一半的文件。文件名是纳秒时间戳，补零到 20 位以便按名字排序。
   const name = String(nextStamp()).padStart(20, '0');
   const tmp = path.join(inbox, '.' + name + '.tmp');
@@ -320,7 +332,8 @@ export function drainViewInbox(dir: string): ViewRequest[] {
     try {
       const req = JSON.parse(body ?? '') as ViewRequest;
       const stepOnly = req.page === '' && typeof req.step === 'string' && stepIDs().includes(req.step);
-      if (typeof req.page === 'string' && (viewPage(req.page) || stepOnly)) out.push(req);
+      const confirmOnly = req.page === '' && !!req.confirm && typeof req.confirm.said === 'string';
+      if (typeof req.page === 'string' && (viewPage(req.page) || stepOnly || confirmOnly)) out.push(req);
     } catch {
       // 读不懂的丢掉。
     }
@@ -352,6 +365,7 @@ export function viewInteraction(): string {
     '- 每一轮结束前（汇报、停下来等用户之前）调用 studio_step({"step": "<步骤>"})，标出整片制作现在处在哪一步，网页顶栏会标出来：' +
     stepHints() +
     '。它只做标记，不切页。\n' +
+    '- 审核关卡（审稿、分镜审核这类停下来等用户确认的地方）：用户在对话里明确确认了（例如「就按这个分镜，开始渲染」），接着往下做之前先调用 studio_confirm({"said": "<用户确认的原话>"})，制作路线上那一关会标成已确认；用户只是提修改意见、或还没表态时不要调用，也不要替用户确认。\n' +
     '- 用户的消息后面可能附一句「用户发这条消息时，Studio 网页上开着……」，说的是用户正在看的页面；用户说「这个镜头」「这段」时指的就是那里。'
   );
 }

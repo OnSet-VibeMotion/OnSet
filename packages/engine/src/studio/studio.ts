@@ -19,7 +19,7 @@ import { goClean, goPathError, goTrimSpace } from '../gofmt';
 import { marshalIndent } from '../gojson';
 import * as preset from '../preset';
 import * as projectinit from '../projectinit';
-import { agentKeysAPI, agentVisionAPI } from './agentkeys';
+import { agentServiceAPI, agentServiceModelsAPI, agentServicesAPI, agentVisionAPI } from './agentservices';
 import { agentModelsAPI, agentsAPI } from './agents';
 import { rawAPI, stylesAPI, treeAPI } from './api_ui';
 import { commandAPI, filesAPI, productionStartAPI, sessionAPI, sessionsAPI, turnAPI } from './api_sessions';
@@ -47,6 +47,7 @@ import { stationMediaAPI, stationsAPI, stationUIAPI, tickStationSchedules } from
 import { storyboardAPI } from './storyboard';
 import { readStepMark, viewPages } from './view';
 import { BusyError, type Session } from './sessions';
+import { renderCheckAPI } from './rendercheck';
 import { cancelSetup, setupAPI, setupCancelAPI, setupRunAPI } from './setup';
 import { currentSkinAPI, skinsAPI } from './skins';
 import * as skin from '../skin';
@@ -384,8 +385,10 @@ export class Server {
       ['/api/film-styles/', (r, rest) => filmStylePosterAPI(r, rest)],
       ['/api/film-style', (r) => projectFilmStyleAPI(this, r)],
       ['/api/settings', (r) => settingsAPI(this, r)],
-      ['/api/agent-keys', (r) => agentKeysAPI(r)],
-      ['/api/agent-keys/vision', (r) => agentVisionAPI(r)],
+      ['/api/agent-services', (r) => agentServicesAPI(r)],
+      ['/api/agent-services/', (r, rest) => agentServiceAPI(r, rest)],
+      ['/api/agent-services/models', (r) => agentServiceModelsAPI(r)],
+      ['/api/agent-services/vision', (r) => agentVisionAPI(r)],
       ['/api/settings/global', (r) => settingsGlobalAPI(r)],
       ['/api/settings/project', (r) => settingsProjectAPI(this, r)],
       ['/api/voices', (r) => voicesAPI(this, r)],
@@ -398,6 +401,7 @@ export class Server {
       ['/api/setup', (r) => setupAPI(r, this.projectRoot())],
       ['/api/setup/run', (r) => setupRunAPI(r, this.projectRoot())],
       ['/api/setup/cancel', (r) => setupCancelAPI(r)],
+      ['/api/setup/render-check', (r) => renderCheckAPI(r)],
       // 内置插件在 apply 里登记的接口（例如发布页的 /api/publish）。
       ...plugin.pluginRoutes().map(({ value: route }): [string, Handler] => [route.pattern, (r, rest) => route.handle(this, r, rest)]),
     ];

@@ -72,9 +72,9 @@ export function agentsAPI(s: Server, request: Request): Response {
   const agents: AgentInfo[] = agentOrder.map((a) => {
     const renderer = tools.ValidRenderers.has(a.id);
     if (a.id === director.Tool) {
-      // 导演随客户端下发，不用装；「装好」指填了至少一家模型服务的密钥。
-      const ready = director.configuredProviders(director.defaultDir(envMap())).length > 0;
-      return { id: a.id, label: a.label, command: 'onset studio agent', installed: ready, renderer, ...(ready ? {} : { hint: '先在设置里填一个模型服务的 API key' }) };
+      // 导演随客户端下发，不用装；「装好」指配了一套在用的模型服务。
+      const ready = director.hasService(director.defaultDir(envMap()));
+      return { id: a.id, label: a.label, command: 'onset studio agent', installed: ready, renderer, ...(ready ? {} : { hint: '先在设置里配置一个模型服务' }) };
     }
     const info: AgentInfo = { id: a.id, label: a.label, command: executable(a.id), installed: false, renderer, install_url: a.installURL };
     try {
@@ -146,6 +146,8 @@ export async function switchSessionAgents(request: Request, sess: Session): Prom
 /** 列模型的结果缓存：跑一次 codex debug models 要一两秒，下拉框每次打开都跑太慢。 */
 const modelCache = new Map<string, { at: number; models: tools.ModelOption[] }>();
 const modelCacheTTL = 10 * 60 * 1000;
+/** 导演的模型列表按服务缓存（键是服务 id、base URL 与模型）。 */
+const directorModelCache = new Map<string, { at: number; models: tools.ModelOption[] }>();
 const modelListTimeout = 20_000;
 
 /** 跑 argv 收 stdout；超时、非零退出照样返回已收到的输出（codebuddy --help 之类的命令退出码不可靠）。 */
@@ -175,10 +177,25 @@ export async function agentModelsAPI(request: Request, rest: string): Promise<Re
   if (cached && !refresh && Date.now() - cached.at < modelCacheTTL) return writeJSON(200, goMap({ tool, models: cached.models }));
   const argv = tools.modelListCommand(tool);
   let models: tools.ModelOption[];
+  if (tool === director.Tool) {
+    // 导演：直接问在用的模型服务；服务换了（id、base URL、模型不同）缓存就作废。
+    const service = director.resolveService(director.defaultDir(envMap()));
+    if (!service) return writeJSON(200, goMap({ tool, models: [], error: '还没有配置模型服务' }));
+    const key = [service.id, service.base_url, service.model].join('|');
+    const hit = directorModelCache.get(key);
+    if (hit && !refresh && Date.now() - hit.at < modelCacheTTL) return writeJSON(200, goMap({ tool, models: hit.models }));
+    try {
+      models = (await director.listServiceModels(service)).map((id) => ({ id, label: id }));
+    } catch (err) {
+      return writeJSON(200, goMap({ tool, models: [], error: '没能从模型服务读出模型列表：' + (err as Error).message + '，可以直接填模型名' }));
+    }
+    directorModelCache.set(key, { at: Date.now(), models });
+    return writeJSON(200, goMap({ tool, models }));
+  }
   if (argv === null) {
     models = tools.parseModelList(tool, '');
   } else {
-    const env = { ...(envMap() as Record<string, string>), ...tools.modelListEnv(tool) };
+    const env = envMap() as Record<string, string>;
     let binary: string;
     try {
       binary = lookPath(argv[0]!, env.PATH ?? '');

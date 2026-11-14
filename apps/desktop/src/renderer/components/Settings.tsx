@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, errorText, post } from '../api';
-import type { AgentKeysResponse, AgentVision, SettingRow, SettingsResponse } from '../types';
-import { Icon } from './Icon';
+import type { SettingRow, SettingsResponse } from '../types';
+import { DirectorServices, DirectorVisionNote } from './DirectorServices';
 import { SkinPicker } from './Skins';
 import { ModelSelect } from './ModelSelect';
 import type { RunAction } from './Preview';
@@ -95,7 +95,7 @@ export function Settings({ version, run, onPluginsChanged }: { version: number; 
       </div>
       {error && <div className="settings-error">{error}</div>}
       <SkinPicker version={version} />
-      <AgentKeys version={version} />
+      <DirectorServices version={version} onChange={() => void reload()} />
       <PluginSettings version={version} onChanged={onPluginsChanged} />
       <p className="settings-file">全局设置保存在 {data.file}</p>
     </div>
@@ -156,129 +156,4 @@ export function Settings({ version, run, onPluginsChanged }: { version: number; 
       </>
     );
   }
-}
-
-/**
- * 导演用哪家模型服务：每家一行，填了 key 就能在「编排模型」里选它的模型。key 经系统钥匙串加密后写进
- * 用户目录里一个只有自己能读的文件，界面上不回显；钥匙串用不了时照实说一句。
- */
-export function AgentKeys({ version, onChange }: { version: number; onChange?: (data: AgentKeysResponse) => void }) {
-  const [data, setData] = useState<AgentKeysResponse | null>(null);
-  const [editing, setEditing] = useState('');
-  const [draft, setDraft] = useState('');
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    api<AgentKeysResponse>('/api/agent-keys').then(setData, (err) => setError(errorText(err)));
-  }, [version]);
-
-  const save = async (provider: string, key: string) => {
-    try {
-      const next = await post<AgentKeysResponse>('/api/agent-keys', { provider, key });
-      setData(next);
-      onChange?.(next);
-      setEditing('');
-      setDraft('');
-      setError('');
-    } catch (err) {
-      setError(errorText(err));
-    }
-  };
-
-  if (!data) return error ? <div className="settings-error">{error}</div> : null;
-  return (
-    <section className="agent-keys" aria-label="导演的模型服务">
-      <div className="agent-keys-head">
-        <strong>导演的模型服务</strong>
-        <span>编排选「导演」时用。填一家的 API key 就能开工，没选编排模型时用推荐的那个。</span>
-      </div>
-      <ul>
-        {data.providers.map((p) => (
-          <li key={p.id} data-provider={p.id} className={p.configured ? 'configured' : ''}>
-            <span className="agent-key-name">
-              {p.label}
-              {p.default_model && <small>推荐 {p.default_model.slice(p.id.length + 1)}</small>}
-              {!p.vision && (
-                <span className="agent-key-vision" title="画面验收、整片复查要看截图；这家的推荐模型只读得了文字">
-                  <Icon name="eye-off" size={11} />
-                  看不了画面，画面验收要靠你自己看
-                </span>
-              )}
-            </span>
-            {editing === p.id ? (
-              <form
-                className="agent-key-form"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (draft.trim() !== '') void save(p.id, draft);
-                }}
-              >
-                <input type="password" autoFocus aria-label={`${p.label} 的 API key`} placeholder="粘贴 API key" value={draft} onChange={(e) => setDraft(e.target.value)} />
-                <button type="submit" disabled={draft.trim() === ''}>
-                  保存
-                </button>
-                <button type="button" className="link" onClick={() => setEditing('')}>
-                  取消
-                </button>
-              </form>
-            ) : (
-              <span className="agent-key-actions">
-                <span className="agent-key-state">{p.configured ? '已填写' : '未填写'}</span>
-                <button
-                  className="link"
-                  onClick={() => {
-                    setEditing(p.id);
-                    setDraft('');
-                  }}
-                >
-                  {p.configured ? '更换' : '填写'}
-                </button>
-                {p.configured && (
-                  <button className="link" onClick={() => void save(p.id, '')}>
-                    删除
-                  </button>
-                )}
-                <a href={p.key_url} target="_blank" rel="noreferrer">
-                  去申请
-                </a>
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
-      {data.storage && !data.storage.encrypted && data.storage.note && <p className="agent-keys-note">{data.storage.note}</p>}
-      {error && <div className="settings-error">{error}</div>}
-    </section>
-  );
-}
-
-/**
- * 导演这次会用的模型看不了画面时的提示（设置页编排模型一栏、开工前的对话里）。model 为空时由后端按填了 key 的服务商挑，
- * 与真正开工时同一个规则；目录里查不到的模型不提示。看不了时，导演会在画面验收与复查里把要看的图切给你，等你说结论。
- */
-export function DirectorVisionNote({ model, version = 0, compact }: { model: string; version?: number; compact?: boolean }) {
-  const [info, setInfo] = useState<AgentVision | null>(null);
-  useEffect(() => {
-    let live = true;
-    api<AgentVision>('/api/agent-keys/vision?model=' + encodeURIComponent(model)).then(
-      (v) => live && setInfo(v),
-      () => live && setInfo(null),
-    );
-    return () => {
-      live = false;
-    };
-  }, [model, version]);
-  if (!info || info.vision !== false) return null;
-  const name = info.model.slice(info.model.indexOf('/') + 1);
-  return (
-    <div className={'vision-note' + (compact ? ' compact' : '')} role="note" id="director-vision-note">
-      <span className="vision-note-icon">
-        <Icon name="eye-off" size={compact ? 12 : 14} />
-      </span>
-      <span className="vision-note-text">
-        <strong>导演现在用的 {name} 看不了画面</strong>
-        <span>画面验收和整片复查要看截图的地方，它会把图切给你、等你说看得怎么样。想让它自己看，在设置里换一家能看画面的模型服务。</span>
-      </span>
-    </div>
-  );
 }

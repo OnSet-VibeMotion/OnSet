@@ -3,23 +3,20 @@
  *
  * 画面验收与整片复查要打开 PNG 看图判断；看不了图的模型用 pi 的 read 打开图片只拿到一句「图片已省略」，
  * 验收等于没做，而且没人知道。所以：
- * - 设置页、开工前在界面上照实告诉用户（/api/agent-keys 的 vision 与 /api/agent-keys/vision）；
+ * - 设置页、开工前在界面上照实告诉用户（/api/agent-services 每套服务的 vision 与 /api/agent-services/vision）；
  * - 这一轮的提示词末尾加 noVisionNote，让它把要看的图切给用户看，而不是假装看过。
- * 模型能不能读图只按 director.modelVision 查：目录里查不到按不知道，不提示。
+ * 能不能看图按在用的模型服务上用户写的那一项（预设帮着填好），不另查模型目录：自定义的 base URL 后面是什么模型，
+ * 只有用户知道。
  */
 import * as config from '../config';
 import * as director from '../director';
 import { envMap } from '../envutil';
 
-/** 导演这一轮实际用的模型：设置或会话写了就用写的，否则按填了 key 的服务商挑（与 onset studio agent 同一个 pickModel）。 */
-export function directorModel(model: string): string {
-  return director.pickModel(model, director.configuredProviders(director.defaultDir(envMap())));
-}
-
-/** 这一轮的编排是导演、且实际用的模型确定看不了图。 */
+/** 这一轮的编排是导演、且在用的模型服务标着看不了图。 */
 export function orchestratorCannotSee(cfg: config.Config): boolean {
   if (cfg.orchestrator !== director.Tool) return false;
-  return director.modelVision(directorModel(cfg.orchestratorModel)) === false;
+  const service = director.activeServiceInfo(director.defaultDir(envMap()));
+  return service !== null && !service.vision;
 }
 
 /**

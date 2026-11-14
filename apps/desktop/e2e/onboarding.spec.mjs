@@ -17,14 +17,13 @@ test('the first-run guide walks through tools, the orchestrator, voice and the f
   // 第一个没做完的是配音。
   await expect(guide.locator('.ob-main h2')).toHaveText('配音方式');
 
-  // 选导演：写进全局设置，出现填 key 的地方；填了之后导演就能用。
+  // 选导演：写进全局设置，出现配置模型服务的表单（预设已经填好）；填了 key 保存之后导演就能用。
   await guide.locator('[data-step="ai"]').click();
   await guide.locator('[data-agent="director"]').click();
   await expect.poll(() => (fs.existsSync(sandbox.settings) ? fs.readFileSync(sandbox.settings, 'utf8') : '')).toContain('ORCHESTRATOR=director');
-  const deepseek = guide.locator('li[data-provider="deepseek"]');
-  await deepseek.getByRole('button', { name: '填写' }).click();
-  await deepseek.getByLabel('DeepSeek 的 API key').fill('sk-guide');
-  await deepseek.getByRole('button', { name: '保存' }).click();
+  const form = guide.getByRole('form', { name: '添加模型服务' });
+  await form.getByLabel('API key').fill('sk-guide');
+  await form.getByRole('button', { name: '保存' }).click();
   await expect(guide.locator('[data-agent="director"]')).toContainText('在用');
   await page.screenshot({ path: test.info().outputPath('onboarding.png') });
 
@@ -53,14 +52,14 @@ test.describe('without a renderer on this computer', () => {
     await expect(guide).toBeVisible();
     await expect(guide.locator('.ob-main h2')).toHaveText('请 AI 来编排');
 
-    // 选导演、填一家只读得了文字的服务商：导演能用了，但这一步仍没做完，「去开拍」不让点。
+    // 选导演、配一套只读得了文字的服务（DeepSeek 预设不勾「能看图片」）：导演能用了，但这一步仍没做完，「去开拍」不让点。
     await guide.locator('[data-agent="director"]').click();
-    const deepseek = guide.locator('li[data-provider="deepseek"]');
-    await expect(deepseek).toContainText('看不了画面');
-    await expect(guide.locator('li[data-provider="anthropic"]')).not.toContainText('看不了画面');
-    await deepseek.getByRole('button', { name: '填写' }).click();
-    await deepseek.getByLabel('DeepSeek 的 API key').fill('sk-guide');
-    await deepseek.getByRole('button', { name: '保存' }).click();
+    const form = guide.getByRole('form', { name: '添加模型服务' });
+    await form.locator('[data-preset="deepseek"]').click();
+    await expect(form.getByRole('checkbox')).not.toBeChecked();
+    await form.getByLabel('API key').fill('sk-guide');
+    await form.getByRole('button', { name: '保存' }).click();
+    await expect(guide.locator('.agent-service-list li').first()).toContainText('看不了画面');
     await expect(guide.locator('[data-agent="director"]')).toContainText('在用');
     await expect(guide.locator('#director-vision-note')).toContainText('看不了画面');
 

@@ -4,6 +4,7 @@ export {
   DefaultSyncTolerance,
   DefaultThumbWidth,
   DefaultTilesPerSheet,
+  HandoffLooseDifference,
   ReportSchemaVersion,
   SeamFrames,
   handoffBroken,

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { builtinFlows, installStation, recordFlow } from '../flow';
-import { computeStations, readProgress, recordGate, stationDefs, stationOfPath } from './progress';
+import { computeStations, confirmGateFromChat, readGates, readProgress, recordGate, stationDefs, stationOfPath } from './progress';
 import { discoverScenes } from './scenes';
 
 const roots: string[] = [];
@@ -60,6 +60,28 @@ describe('production map', () => {
     expect(stations(root).current).toBe('gate-script');
     expect(() => recordGate(root, 'gate-voice')).toThrow('还没写出来');
     expect(() => recordGate(root, 'gate-nope')).toThrow('没有这个审核关卡');
+  });
+
+  // 用户在对话里说「就按这个分镜，开始渲染」时，编排工具经 studio_confirm 记下关卡（2026-11：之前只认界面按钮）。
+  it('records a gate the user confirmed in the chat, only with the user\'s own words', () => {
+    const root = project({ 'production/scene-plan.json': '{}', 'scenes/scene-001/scene.json': scene });
+    expect(stations(root).current).toBe('gate-storyboard');
+    const message = '就按这七种风格，开始渲染';
+    // 原话对不上这一轮用户的话：不记。
+    expect(() => confirmGateFromChat(root, message, '分镜没问题')).toThrow('没有「分镜没问题」');
+    expect(() => confirmGateFromChat(root, message, ' ')).toThrow('原话');
+    expect(status(root)['gate-storyboard']).toBe('todo');
+    // 标点、空白不同照样认；不指定关卡时记路线上在等确认的那一关。
+    const { gate, label } = confirmGateFromChat(root, message, '就按这七种风格 开始渲染。');
+    expect(gate).toBe('gate-storyboard');
+    expect(label).toBe('分镜审核');
+    const confirmed = stations(root).stations.find((s) => s.id === 'gate-storyboard');
+    expect(confirmed?.status).toBe('confirmed');
+    expect(confirmed?.said).toBe('就按这七种风格 开始渲染。');
+    expect(readGates(root)['gate-storyboard'].said).toBe('就按这七种风格 开始渲染。');
+    // 路线上没有在等的关卡、或关卡写错，都照实拒绝。
+    expect(() => confirmGateFromChat(root, message, '开始渲染')).toThrow('没有在等用户确认的关卡');
+    expect(() => confirmGateFromChat(root, message, '开始渲染', 'gate-nope')).toThrow('没有这个审核关卡');
   });
 
   it('does not reopen the script review when only readings change', () => {

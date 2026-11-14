@@ -63,10 +63,12 @@ test('shows what the renderer is doing while a scene renders', async ({ page, pr
     .toBeGreaterThanOrEqual(4);
   const info = await page.locator('#panel .scene-info').boundingBox();
   expect(before.width).toBeLessThanOrEqual(info.width + 1);
-  const long = { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't3', name: 'Bash', input: { command: 'shasum -a 256 ' + 'scenes/scene-001/very-long-file-name-'.repeat(12) } }] }, session_id: 'r' };
+  const long = { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't3', name: 'Bash', input: { command: `cd ${sceneDir} && shasum -a 256 ` + 'scenes/scene-001/very-long-file-name-'.repeat(12) } }] }, session_id: 'r' };
   const say = { type: 'assistant', message: { content: [{ type: 'text', text: '第一行\n第二行\n第三行' }] }, session_id: 'r' };
   fs.appendFileSync(path.join(sceneDir, 'render-scene-001.stream.jsonl'), JSON.stringify(long) + '\n' + JSON.stringify(say) + '\n');
   await expect(panel.locator('.ra-step')).toHaveCount(5);
+  // 渲染器每条命令前的 cd 不占那一行：看得见真正跑的命令。
+  await expect(panel.locator('.ra-step').nth(3).locator('.ra-target')).toHaveText(/^shasum -a 256 /);
   expect(await box()).toEqual(before);
 
   // 渲染结束（标记删掉、写下尝试记录）：卡片消失，镜头页改成「上次渲染的过程」。

@@ -28,6 +28,8 @@ export const KindPlan: Kind = 'plan';
 export interface PlanItem {
   text: string;
   status: string;
+  /** 任务编号：只有逐条建、逐条改的任务工具（TaskCreate / TaskUpdate）才有，续接时靠它接上（TaskBoard）。 */
+  id?: string;
 }
 
 /**
@@ -103,6 +105,62 @@ function planFromTodos(input: unknown): PlanItem[] {
   return plan;
 }
 
+/**
+ * 逐条建、逐条改的任务工具：qoder 与新版 claude 不用 TodoWrite，而是 TaskCreate({subject, activeForm})
+ * 建一条（编号只出现在结果里：「Task #3 created successfully: …」），TaskUpdate({taskId, status}) 改一条。
+ * 把它们攒成完整清单，每变一次发一份 plan 事件，界面与 TodoWrite 走同一条路（2026-11 qoder 实测）。
+ */
+export class TaskBoard {
+  private tasks: Array<{ id: string; subject: string; active: string; status: string }> = [];
+  private readonly creating = new Map<string, { subject: string; active: string }>();
+
+  /** 续接同一个 CLI 会话时接上一轮的清单（只认带编号的项）。 */
+  seed(plan: PlanItem[]): void {
+    this.tasks = plan.filter((item) => item.id).map((item) => ({ id: item.id as string, subject: item.text, active: '', status: item.status }));
+  }
+
+  /** TaskCreate 的调用：编号要等结果。 */
+  create(callID: string, input: unknown): void {
+    const o = obj(input);
+    const subject = str(o.subject) || str(o.content) || str(o.description);
+    if (callID !== '' && subject !== '') this.creating.set(callID, { subject, active: str(o.activeForm) });
+  }
+
+  /** TaskCreate 的结果：读出编号，记下这一条。 */
+  created(callID: string, text: string, failed: boolean): Event | null {
+    const pending = this.creating.get(callID);
+    if (!pending) return null;
+    this.creating.delete(callID);
+    const id = /#\s*(\w+)/.exec(text)?.[1];
+    if (failed || !id) return null;
+    this.tasks = this.tasks.filter((task) => task.id !== id);
+    this.tasks.push({ id, ...pending, status: 'pending' });
+    return this.event();
+  }
+
+  /** TaskUpdate：改状态或标题；deleted 去掉。不认识的编号（续接前建的、没接上）不管。 */
+  update(input: unknown): Event | null {
+    const o = obj(input);
+    const id = str(o.taskId) || str(o.id) || (typeof o.taskId === 'number' ? String(o.taskId) : '');
+    const task = this.tasks.find((item) => item.id === id);
+    if (!task) return null;
+    const status = str(o.status);
+    if (status === 'deleted') this.tasks = this.tasks.filter((item) => item !== task);
+    else if (status !== '') task.status = status;
+    if (str(o.subject) !== '') task.subject = str(o.subject);
+    if (str(o.activeForm) !== '') task.active = str(o.activeForm);
+    return this.event();
+  }
+
+  private event(): Event {
+    const plan = this.tasks.map((task) => {
+      const status = task.status === 'in_progress' || task.status === 'completed' ? task.status : 'pending';
+      return { text: status === 'in_progress' && task.active !== '' ? task.active : task.subject, status, id: task.id };
+    });
+    return { kind: KindPlan, plan };
+  }
+}
+
 /** 读 codex 的 todo_list：items 为 [{text, completed}]，第一项未完成的算进行中。 */
 function planFromCodex(item: Obj): PlanItem[] {
   const plan: PlanItem[] = [];
@@ -128,6 +186,7 @@ export class Parser {
   /** 目前从流里读到的会话 id；run 预先指定会话时直接写入。 */
   session = '';
   private readonly accumulated: Usage = newUsage();
+  private readonly tasks = new TaskBoard();
 
   /** 不校验工具名；外部一律经 newParser 创建。 */
   constructor(readonly tool: string) {}
@@ -135,6 +194,11 @@ export class Parser {
   /** 目前从流里读到的会话 id。 */
   sessionID(): string {
     return this.session;
+  }
+
+  /** 续接同一个 CLI 会话时，接上上一轮的任务清单（见 TaskBoard）。 */
+  seedPlan(plan: PlanItem[]): void {
+    this.tasks.seed(plan);
   }
 
   /** 累计用量；一条用量事件都没读到时 usageEmpty() 为 true。 */
@@ -162,7 +226,7 @@ export class Parser {
         events = parseOpencode(e);
         break;
       default:
-        events = parseClaudeLike(e);
+        events = parseClaudeLike(e, this.tasks);
     }
     const out: Event[] = [];
     for (const event of events) {
@@ -209,7 +273,7 @@ export function clip(text: string): string {
 }
 
 /** 处理 claude、qoder、codebuddy 共用的 stream-json；导演（director）也照这个格式输出。 */
-function parseClaudeLike(e: Obj): Event[] {
+function parseClaudeLike(e: Obj, tasks: TaskBoard): Event[] {
   const events: Event[] = [];
   const id = str(e.session_id);
   if (id !== '') events.push({ kind: KindSession, session_id: id });
@@ -229,10 +293,22 @@ function parseClaudeLike(e: Obj): Event[] {
             break;
           }
           case 'tool_use': {
+            // qoder 不直接列 MCP 工具，一律经 mcp_call({toolName, arguments}) 调用（2026-11 实测）；
+            // 拆开成真正的工具名与参数，界面与桌宠才认得出这是 onset 的哪个工具。
+            const wrapped = str(block.name) === 'mcp_call' ? obj(block.input) : {};
+            if (str(wrapped.toolName) !== '') {
+              events.push({ kind: KindToolCall, tool: str(wrapped.toolName), call_id: str(block.id), input: rawJSON(wrapped.arguments ?? {}) });
+              break;
+            }
             events.push({ kind: KindToolCall, tool: str(block.name), call_id: str(block.id), input: rawJSON(block.input) });
             if (str(block.name) === 'TodoWrite') {
               const plan = planFromTodos(block.input);
               if (plan.length > 0) events.push({ kind: KindPlan, plan });
+            }
+            if (str(block.name) === 'TaskCreate') tasks.create(str(block.id), block.input);
+            if (str(block.name) === 'TaskUpdate') {
+              const plan = tasks.update(block.input);
+              if (plan) events.push(plan);
             }
             break;
           }
@@ -243,12 +319,15 @@ function parseClaudeLike(e: Obj): Event[] {
       for (const item of arr(obj(e.message).content)) {
         const block = obj(item);
         if (str(block.type) !== 'tool_result') continue;
+        const text = toolResultText(block.content);
         events.push({
           kind: KindToolResult,
           call_id: str(block.tool_use_id),
-          text: clip(toolResultText(block.content)),
+          text: clip(text),
           is_error: block.is_error === true,
         });
+        const plan = tasks.created(str(block.tool_use_id), text, block.is_error === true);
+        if (plan) events.push(plan);
       }
       break;
     case 'result':

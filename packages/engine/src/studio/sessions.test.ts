@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as agentrun from '../agentrun';
+import * as project from '../project';
 import {
   attachmentText,
   createSession,
@@ -14,6 +15,8 @@ import {
   listSessions,
   maxQuoteRunes,
   newID,
+  replayGuard,
+  reseedPrompt,
   transcript,
   transcriptLimit,
   updateMeta,
@@ -105,6 +108,24 @@ describe('sessions', () => {
     expect(restored[restored.length - 1].kind).toBe(kindTurnReverted);
   });
 
+  // qoder 续接前压缩长对话后会把上一轮结尾的思考与回复原样再吐一遍：开头那几段一字不差的不算这一轮说的。
+  it('drops the previous turn replayed at the start of a resumed turn', () => {
+    const events = [
+      { turn_id: 't1', kind: 'thinking', text: '总结一下' },
+      { turn_id: 't1', kind: 'text', text: '成片重出了。' },
+      { turn_id: 't2', kind: 'user', text: '分镜 5 不对' },
+    ];
+    const replay = replayGuard(events, 't2');
+    expect(replay({ kind: 'session' })).toBe(false);
+    expect(replay({ kind: 'thinking', text: '总结一下' })).toBe(true);
+    expect(replay({ kind: 'text', text: ' 成片重出了。\n' })).toBe(true);
+    expect(replay({ kind: 'text', text: '我先看一下 scene-005。' })).toBe(false);
+    // 有了新东西以后，哪怕又说了一样的话，也照常记下。
+    expect(replay({ kind: 'text', text: '成片重出了。' })).toBe(false);
+    // 第一轮没有上一轮，什么都不拦。
+    expect(replayGuard([{ turn_id: 't1', kind: 'user', text: 'x' }], 't1')({ kind: 'text', text: 'x' })).toBe(false);
+  });
+
   it('resume failure reseeds transcript', async () => {
     const f = newSessionFixture();
     const { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{}');
@@ -125,6 +146,27 @@ describe('sessions', () => {
     expect(text, '应提示续接失败').toContain('原会话无法续接');
   });
 
+  // 整片制作换了 CLI 会话时，第一轮的制作说明不在对话记录里，要重发（2026-11：qoder 换会话后只剩对话记录）。
+  it('a reseeded production session gets the production prompt again', async () => {
+    const f = newSessionFixture();
+    const { body } = await studioRequest(f.s, 'POST', '/api/production/start', '{"message":"竖屏，三分钟"}');
+    const id = body.session_id as string;
+    const initial = await waitIdle(f, id);
+    expect(lastTurn(initial).status, JSON.stringify(lastTurn(initial))).toBe('succeeded');
+    setEnv('FAKE_FAIL_RESUME', '1');
+    await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"第二句"}');
+    await waitIdle(f, id);
+    const a = args(f);
+    expect(a).toHaveLength(3);
+    // 制作提示词的标题（第一轮原样发过），重开的会话里也要有。
+    const opening = project.runPrompt(f.root, '').prompt.toString('utf8').split('\n')[0];
+    expect(a[0]).toContain(opening);
+    expect(a[2], '重开的会话没带上制作说明').toContain(opening);
+    for (const want of ['整片制作的说明', '之前的对话', '改好了', '第二句']) expect(a[2]).toContain(want);
+    // 普通对话不带制作说明。
+    expect(reseedPrompt('用户：你好', '再说一句')).not.toContain('整片制作的说明');
+  });
+
   it('production start, busy and cancel', async () => {
     const f = newSessionFixture();
     setEnv('FAKE_SLEEP', '5');
@@ -132,6 +174,8 @@ describe('sessions', () => {
     expect(status).toBe(202);
     const id = body.session_id as string;
     expect(body.prompt).toBe('口播流程');
+    const initial = await studioRequest(f.s, 'GET', `/api/sessions/${id}`);
+    expect(initial.body.session.running_turn, JSON.stringify(lastTurn(initial.body))).toBeDefined();
     // 进行中：其他写入一律 409。
     for (const p of ['/api/production/start', '/api/render/all', '/api/scenes/scene-001/render', '/api/commands/project.concat']) {
       ({ status, body } = await studioRequest(f.s, 'POST', p, '{}'));

@@ -60,9 +60,16 @@ export function currentSummary(progress: ProgressState | null): { station: Progr
   return { station, text: 'AI 在做' };
 }
 
+/** 对话里确认的原话：太长时截一截，免得挤掉一整行。 */
+function quoteOf(said: string): string {
+  const chars = [...said.replace(/\s+/g, ' ').trim()];
+  return chars.length > 24 ? chars.slice(0, 23).join('') + '…' : chars.join('');
+}
+
 function statusNote(station: ProgressStation): string {
   switch (station.status) {
     case 'confirmed':
+      if (station.said) return station.at ? `你在 ${shortTime(station.at)} 说：「${quoteOf(station.said)}」` : `你说：「${quoteOf(station.said)}」`;
       return station.at ? `你在 ${shortTime(station.at)} 确认了` : '你确认了';
     case 'passed':
       return '已经过了';

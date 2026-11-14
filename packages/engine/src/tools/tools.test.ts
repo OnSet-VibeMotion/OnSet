@@ -13,7 +13,8 @@ describe('tools', () => {
     const tests: [string, string[]][] = [
       ['codex', ['codex', '--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', 'prompt']],
       ['claude', ['claude', '-p', '--permission-mode', 'acceptEdits', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]}}`, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', 'prompt']],
-      ['qoder', ['qoderclicn', '-p', 'prompt', '--permission-mode', 'dont_ask', '--output-format', 'stream-json']],
+      // dont_ask 连镜头目录里写文件都拒（2026-11 实测渲染器一个 index.html 都写不出来）：与 claude 同一套放行规则。
+      ['qoder', ['qoderclicn', '-p', 'prompt', '--permission-mode', 'accept_edits', '--setting-sources', 'project,local', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]},"mcp":{"lazyLoad":false}}`, '--output-format', 'stream-json']],
       ['codebuddy', ['codebuddy', '-p', '--verbose', '--output-format', 'stream-json', '--permission-mode', 'acceptEdits', 'prompt']],
       ['opencode', ['opencode', 'run', '--standalone', '--format', 'json', 'prompt']],
     ];
@@ -22,6 +23,39 @@ describe('tools', () => {
         expect(rendererInvocation(tool, 'prompt', false, {})).toEqual(want);
       });
     }
+  });
+
+  // qoder 渲染器要能读技能目录、跑 ls / ffprobe、在镜头目录写文件，读不到 .env（规则写进 --settings，实测 qoder 认）。
+  it('qoder renderer gets the same access rules as claude', () => {
+    const argv = rendererInvocation('qoder', 'prompt', false, { commands: ['ls', 'ffprobe'], readDirs: ['/proj/.agents/skills'] });
+    expect(argv.slice(argv.indexOf('--permission-mode'), argv.indexOf('--permission-mode') + 2)).toEqual(['--permission-mode', 'accept_edits']);
+    const settings = JSON.parse(argv[argv.indexOf('--settings') + 1]);
+    expect(settings.permissions.allow).toEqual(['Bash(ls:*)', 'Bash(ffprobe:*)', 'Read(//proj/.agents/skills/**)']);
+    expect(settings.permissions.additionalDirectories).toEqual(['/proj/.agents/skills']);
+    expect(settings.permissions.deny).toContain('Read(**/.env)');
+    expect(argv).not.toContain('dont_ask');
+    // 不读用户级设置（用户级技能、钩子）：镜头的技能由 scene.run 链进镜头目录（安全与不安全模式都一样）。
+    expect(argv[argv.indexOf('--setting-sources') + 1]).toBe('project,local');
+    const unsafe = rendererInvocation('qoder', 'prompt', true, {});
+    expect(unsafe[unsafe.indexOf('--setting-sources') + 1]).toBe('project,local');
+  });
+
+  // macOS 上五家渲染器都套系统沙箱、Windows 上全放开：各家自己不再按命令白名单拦（拦了也没人能批准）。
+  it('sandboxed renderers do not filter commands themselves', () => {
+    const access = { commands: ['ls'], readDirs: ['/p/.agents/skills'], osSandbox: true, unfiltered: true };
+    expect(rendererInvocation('claude', 'p', false, access)).toContain('--dangerously-skip-permissions');
+    expect(rendererInvocation('claude', 'p', false, access)).not.toContain('acceptEdits');
+    expect(rendererInvocation('codex', 'p', false, access)).toContain('--dangerously-bypass-approvals-and-sandbox');
+    expect(rendererInvocation('codex', 'p', false, access)).not.toContain('workspace-write');
+    expect(rendererInvocation('codebuddy', 'p', false, access)).toContain('-y');
+    expect(rendererInvocation('qoder', 'p', false, access)).toContain('--dangerously-skip-permissions');
+  });
+
+  // opencode 会一直往上找到项目根的 .agents/skills：只放行镜头链进来的那几个技能。
+  it('opencode renderer only sees the scene skills', () => {
+    const env = rendererEnv('opencode', { skills: ['hyperframes', 'scene-kit'] }, { OPENCODE_CONFIG_CONTENT: '{"permission":{"bash":"ask"}}' });
+    expect(JSON.parse(env.OPENCODE_CONFIG_CONTENT).permission).toEqual({ bash: 'ask', skill: { '*': 'deny', hyperframes: 'allow', 'scene-kit': 'allow' } });
+    expect(rendererEnv('claude', { skills: ['x'] }, {})).toEqual({});
   });
 
   it('renderer invocation unsafe is explicit', () => {
@@ -176,7 +210,8 @@ describe('tools', () => {
     const settings = JSON.parse(got[index + 1]) as { permissions: { allow: string[]; deny: string[]; additionalDirectories: string[] } };
     expect(settings.permissions.allow).toEqual(['Bash(npx --yes hyperframes@0.8.14:*)', 'Bash(ffprobe:*)', 'Read(//proj/.agents/skills/**)']);
     expect(settings.permissions.additionalDirectories).toEqual(['/proj/.agents/skills']);
-    expect(settings.permissions.deny).toEqual(['Bash(onset:*)', 'Read(**/.env)', 'Read(**/.env.*)']);
+    // 技能目录只读：读放行、改一律拒绝。
+    expect(settings.permissions.deny).toEqual(['Bash(onset:*)', 'Read(**/.env)', 'Read(**/.env.*)', 'Edit(//proj/.agents/skills/**)', 'Write(//proj/.agents/skills/**)']);
   });
 
   // onset 只经工具服务调用：渲染器与编排工具在每家都挂上 onset 的 MCP 服务，claude 系放行整个服务。
@@ -208,6 +243,9 @@ describe('tools', () => {
       expect(codex.at(-1)).toBe('prompt');
       const qoder = rendererInvocation('qoder', 'prompt', false, { toolsServer: server });
       expect(qoder.slice(qoder.indexOf('--allowed-tools'), qoder.indexOf('--allowed-tools') + 2)).toEqual(['--allowed-tools', 'mcp__onset']);
+      const qoderSettings = JSON.parse(qoder[qoder.indexOf('--settings') + 1]);
+      expect(qoderSettings.mcp).toEqual({ lazyLoad: false });
+      expect(qoderSettings.permissions.allow).toContain('mcp__onset');
       expect(rendererInvocation('codebuddy', 'prompt', false, { toolsServer: server })).toContain('--mcp-config');
       const env = rendererEnv('opencode', { toolsServer: server }, { OPENCODE_CONFIG_CONTENT: '{"model":"x"}' });
       expect(JSON.parse(env.OPENCODE_CONFIG_CONTENT)).toEqual({ model: 'x', mcp: { onset: { type: 'local', command: ['/app/bin/onset', 'studio', 'tools-mcp', '--profile', 'renderer', '--workdir', '/proj/scenes/s1'], enabled: true, environment: server.env } } });
@@ -233,6 +271,17 @@ describe('tools', () => {
       expect(rendererInvocation('codex', 'p', false, { toolsServer: { ...server, name: 'external' } }).some((arg) => arg.includes('approval_mode'))).toBe(false);
       const orchestratorServer = onsetToolsServer('/app/bin/onset', 'orchestrator', '/proj');
       expect(rendererInvocation('codex', 'p', false, { toolsServer: orchestratorServer }).some((arg) => arg.includes('approval_mode'))).toBe(false);
+    });
+
+    // qoder 缺省懒加载 MCP，审批工具不进工具表，--permission-prompt-tool 就找不到它（2026-11 实测）。
+    it('keeps qoder from lazy-loading the approval and tools servers', () => {
+      const permissionPrompt = { command: '/app/onset', args: ['studio', 'permission-mcp'], server: 'onset_studio' };
+      const { argv } = orchestratorInvocation('qoder', { prompt: 'hello', permissionPrompt, toolsServer: server });
+      expect(JSON.parse(argv[argv.indexOf('--settings') + 1])).toEqual({ mcp: { lazyLoad: false } });
+      expect(argv.indexOf('--settings')).toBeLessThan(argv.indexOf('--mcp-config'));
+      expect(argv[argv.indexOf('--permission-prompt-tool') + 1]).toBe('mcp__onset_studio__ask');
+      // 没有任何 MCP 服务时不加。
+      expect(orchestratorInvocation('qoder', { prompt: 'hello' }).argv).not.toContain('--settings');
     });
 
     it('sits next to the approval server for the claude orchestrator', () => {

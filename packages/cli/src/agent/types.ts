@@ -36,7 +36,7 @@ export interface RunOptions {
   write: (line: string) => void;
   signal?: AbortSignal;
   /**
-   * 测试用：在模型运行时上登记假服务商，返回要用的「服务商/模型」。
+   * 测试用：在模型运行时上登记假服务商，返回要用的「服务商/模型」（代替 request.service 的 base URL 与模型）。
    * 参数是 pi 的 ModelRuntime，这里不写它的类型，免得这份文件 import pi。
    */
   setupModels?: (runtime: unknown) => Promise<string> | string;
@@ -45,5 +45,4 @@ export interface RunOptions {
 /** pi.ts（onset-agent.cjs）导出的东西。 */
 export interface AgentModule {
   runAgent(options: RunOptions): Promise<{ ok: boolean; error?: string }>;
-  listModels(agentDir: string): Promise<string[]>;
 }

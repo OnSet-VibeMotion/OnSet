@@ -36,6 +36,32 @@ describe('view', () => {
     expect(entries, '一轮结束后收件目录应当清掉').toHaveLength(0);
   });
 
+  // 用户在对话里确认分镜：编排工具调 studio_confirm，后端核对原话出自这一轮用户的话，记进 gates.json。
+  it('records a gate confirmed in the chat', async () => {
+    const f = newSessionFixture();
+    writeTree(f.root, { 'production/scene-plan.json': '{}' });
+    setEnv('FAKE_VIEW', '{"page":"","confirm":{"said":"就按这七种风格，开始渲染"}}');
+    const { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{}');
+    const id = body.session_id as string;
+    await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"好的，就按这七种风格，开始渲染"}');
+    await waitIdle(f, id);
+    const { text } = await rawGet(f.s, `/api/sessions/${id}/events?follow=0`);
+    expect(text).toContain('已记下你在对话里的确认：分镜审核');
+    expect(text, '关卡确认不是切页').not.toContain('event: view');
+    const gates = JSON.parse(fs.readFileSync(path.join(f.root, 'production/studio/gates.json'), 'utf8'));
+    expect(gates.gates['gate-storyboard'].said).toBe('就按这七种风格，开始渲染');
+
+    // 用户没说过这句话：不记，并在对话里说明。
+    const g = newSessionFixture();
+    writeTree(g.root, { 'production/scene-plan.json': '{}' });
+    setEnv('FAKE_VIEW', '{"page":"","confirm":{"said":"就按这七种风格，开始渲染"}}');
+    const other = (await studioRequest(g.s, 'POST', '/api/sessions', '{}')).body.session_id as string;
+    await studioRequest(g.s, 'POST', `/api/sessions/${other}/turns`, '{"message":"第三个镜头再快一点"}');
+    await waitIdle(g, other);
+    expect((await rawGet(g.s, `/api/sessions/${other}/events?follow=0`)).text).toContain('没有记下关卡确认');
+    expect(fs.existsSync(path.join(g.root, 'production/studio/gates.json'))).toBe(false);
+  });
+
   it('validateViewRequest', () => {
     const root = tempDir();
     writeTree(root, {

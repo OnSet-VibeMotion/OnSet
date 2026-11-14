@@ -84,7 +84,7 @@ const recordType: StructType = {
  */
 export function fingerprint(s: Scene, renderer: string, resolvedSkills: Record<string, string> | null, schema = recordSchema): Inputs {
   // 重试说明与 worker 数是调度层每次临时填的，不是镜头的输入。
-  s = { ...s, retryNote: '', renderWorkers: 0, afterAttempt: null };
+  s = { ...s, retryNote: '', renderWorkers: 0, afterAttempt: null, seam: null, continuation: null, fresh: false };
   const resolved = resolvedSkills ?? {};
   let prompt = buildPrompt(s, resolved);
   const parts: Record<string, string> = {

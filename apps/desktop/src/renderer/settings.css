@@ -83,75 +83,155 @@
   color: var(--bad);
   font-size: 13px;
 }
-.settings .agent-keys {
+/* 导演的模型服务：存下的几套 + 添加 / 编辑表单（DirectorServices.tsx）。 */
+.settings .agent-services {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   padding-top: 18px;
   border-top: 1px solid var(--line);
 }
-.settings .agent-keys-head {
+.settings .agent-services-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.settings .agent-services-head > div {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-.settings .agent-keys-head strong {
+.settings .agent-services-head strong {
   font: 600 15px var(--serif);
   color: var(--text);
 }
-.settings .agent-keys-head span {
-  font-size: 12px;
-  color: var(--muted);
-}
-.settings .agent-keys-note {
+.settings .agent-services-head span,
+.settings .agent-services-note {
   margin: 0;
   font-size: 12px;
   color: var(--muted);
 }
-.settings .agent-keys ul {
+.settings .agent-services-head .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.settings .agent-service-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
-.settings .agent-keys li {
+.settings .agent-service-list li {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  min-height: 44px;
+  min-height: 52px;
+  padding: 8px 0;
   border-top: 1px solid var(--line);
 }
-.settings .agent-key-name {
+.settings .agent-service-pick {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.settings .agent-service-dot {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+}
+.settings li.active .agent-service-dot {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 4px, transparent 5px);
+}
+.settings .agent-service-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.settings .agent-service-name {
   display: flex;
   align-items: baseline;
   gap: 10px;
   font-size: 13px;
   color: var(--text);
 }
-.settings .agent-key-name small {
-  font: 11px var(--mono);
-  color: var(--faint);
-}
-.settings .agent-key-actions,
-.settings .agent-key-form {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-}
-.settings .agent-key-state {
-  font: 11px var(--mono);
-  color: var(--faint);
-}
-.settings li.configured .agent-key-state {
+.settings .agent-service-name em {
+  font: normal 11px var(--mono);
   color: var(--accent-text);
 }
-.settings .agent-keys a {
+.settings .agent-service-main small {
+  overflow: hidden;
+  font: 11px var(--mono);
+  color: var(--faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings .agent-service-vision {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--stale);
+}
+.settings .agent-service-actions {
+  display: flex;
+  gap: 12px;
+  flex: none;
+  font-size: 12px;
+}
+.settings .agent-service-form {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--text) 3%, var(--bg));
+}
+.settings .agent-service-form > label {
+  display: contents;
+}
+.settings .agent-service-form > label > span:first-child {
+  font-size: 12px;
   color: var(--muted);
 }
-.settings .agent-key-form input {
-  width: 220px;
-  height: 30px;
+.settings .agent-service-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  grid-column: 1 / -1;
+  padding-bottom: 6px;
+}
+.settings .agent-service-presets > span {
+  margin-right: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.settings .agent-service-presets .chip {
+  cursor: pointer;
+}
+.settings .agent-service-presets .chip.on {
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.settings .agent-service-form input:not([type='checkbox']),
+.settings .agent-service-form select {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--well);
@@ -159,7 +239,51 @@
   font: 12px var(--mono);
   padding: 0 8px;
 }
+.settings .agent-service-key,
+.settings .agent-service-model {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  font-size: 12px;
+}
+.settings .agent-service-key a {
+  flex: none;
+  color: var(--muted);
+}
+.settings .agent-service-model .link {
+  flex: none;
+}
+.settings .agent-service-listing {
+  grid-column: 2;
+  margin: -4px 0 0;
+  font-size: 11px;
+  color: var(--faint);
+}
+.settings .agent-service-form > label.agent-service-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--muted);
+}
+.settings .agent-service-buttons {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  grid-column: 1 / -1;
+}
+.settings .agent-service-form .settings-error {
+  grid-column: 1 / -1;
+}
 @media (max-width: 720px) {
+  .settings .agent-service-form {
+    grid-template-columns: 1fr;
+  }
+  .settings .agent-service-listing {
+    grid-column: 1;
+  }
   .settings .settings-grid,
   .settings .settings-grid.with-project {
     grid-template-columns: 1fr;
@@ -172,14 +296,6 @@
     margin-bottom: 6px;
   }
 }
-.settings .agent-key-name .agent-key-vision {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: var(--stale);
-}
-
 /* 导演的模型看不了画面：设置页、首次引导与开工前的对话里共用。 */
 .vision-note {
   display: flex;

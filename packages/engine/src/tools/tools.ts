@@ -1,6 +1,7 @@
 import fs from 'node:fs';
+import { windowsPromptInput } from './windows';
 import { marshal } from '../gojson';
-import { defaultDir as directorDir, loadKeys as directorKeys, Tool as DirectorToolName } from '../director';
+import { defaultDir as directorDir, resolveService as directorService, Tool as DirectorToolName } from '../director';
 import { onsetCommand, WindowsBaseEnvKeys } from '../envutil';
 import { pluginChildEnvs } from '../plugin/registry';
 
@@ -42,6 +43,21 @@ export interface RendererAccess {
   readDirs?: string[];
   /** onset 的工具服务（--profile renderer）：渲染器只经它调用 HyperFrames，不在 Bash 里跑 onset。 */
   toolsServer?: McpServer;
+  /**
+   * 渲染器套在系统沙箱里（scene/sandbox.ts，macOS 上五家都套）：边界由沙箱按目录管，渲染器自己不再按命令白名单拦，
+   * python3、sips、组合命令都能跑。
+   */
+  osSandbox?: boolean;
+  /**
+   * 渲染器自己不按命令白名单拦：套了系统沙箱时（边界由沙箱管），以及 Windows 上（没有系统沙箱，
+   * 用户定的是全放开、先不要安全，2026-11）。拦了渲染途中也没人能批准，只是白耗几轮。
+   */
+  unfiltered?: boolean;
+  /**
+   * 镜头要用的技能（已链进镜头目录，scene.stageRendererSkills）的名字。opencode 会从镜头目录往上一直找到项目根的
+   * .agents/skills，用 permission.skill 只放行这几个（rendererEnv）；其余几家按目录找，链在哪看见哪。
+   */
+  skills?: string[];
 }
 
 /**
@@ -76,6 +92,23 @@ export function onsetToolsServer(executable: string, profile: 'orchestrator' | '
   const onset = onsetCommand(executable);
   return { name: ToolsServerName, command: onset.command, args: [...onset.args, 'studio', 'tools-mcp', '--profile', profile, '--workdir', workdir], env: { ...picked, ...onset.env } };
 }
+
+/**
+ * qoder 1.1.87 起缺省「懒加载」MCP：工具不进工具表，只能经 mcp_list / mcp_get / mcp_call 调。
+ * 于是 --permission-prompt-tool 按名字找不到审批工具，白名单外的命令一律直接拒绝、不问用户
+ * （报「Permission prompt tool "mcp__onset_studio__ask" was not found」，2026-11 实测）。
+ * 只要有一处设置写了 mcp.lazyLoad 它就照设置来，所以经 --settings 关掉。
+ */
+const qoderEagerSettings = { mcp: { lazyLoad: false } };
+const qoderEagerMcp = ['--settings', JSON.stringify(qoderEagerSettings)];
+
+/**
+ * qoder 渲染器不读用户级设置：用户级技能目录里有几十个与渲染无关的技能（飞书、百炼……，实测 74 个），
+ * 其中还有旧版的 hyperframes，会与项目钉死的版本混在一起；用户级的钩子也不该在渲染里跑。
+ * 镜头要用的技能由 scene.run 链进镜头目录的 .qoder/skills（stageRendererSkills），qoder 的 Skill 工具照常可用。
+ * 模型不受影响：onset 的渲染模型设置经 -m 传。
+ */
+const qoderRendererSources = ['--setting-sources', 'project,local'];
 
 /** claude / qoder / codebuddy 的 --mcp-config：几个服务合在一份 JSON 里。 */
 function mcpConfigJSON(servers: McpServer[]): string {
@@ -121,7 +154,9 @@ function claudeSettings(a: RendererAccess & { mcp?: string[] }): string {
       additionalDirectories: dirs,
       allow,
       // onset 只经工具服务调用；它不在 PATH 里，这里再明确拒绝一次，免得弹审批卡片。
-      deny: ['Bash(onset:*)', 'Read(**/.env)', 'Read(**/.env.*)'],
+      // 技能目录只读：acceptEdits 连 additionalDirectories 里的编辑也自动批准；qoder 经镜头目录里的技能链接
+      // （scene.stageRendererSkills）改的也是这里的真文件——规则按真实路径匹配，链接绕不过去（2026-11 实测）。
+      deny: ['Bash(onset:*)', 'Read(**/.env)', 'Read(**/.env.*)', ...dirs.flatMap((dir) => ['Edit(/' + dir + '/**)', 'Write(/' + dir + '/**)'])],
     },
   });
 }
@@ -146,45 +181,69 @@ export function modelArgs(tool: string, model: string): string[] {
   }
 }
 
-export function rendererInvocation(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model = ''): string[] {
+/**
+ * 渲染器的会话：id 为空时不指定；resume 为真时续接 id 那个会话（渲染中途异常退出后接着做，scene/resume.ts）。
+ * 新会话预先指定 id 只有 claude、qoder、codebuddy 支持（presetSessionID），codex、opencode 的会话号从输出流读。
+ * 各家的写法与编排工具相同（orchestratorInvocation）。
+ */
+export interface RendererSession {
+  id: string;
+  resume: boolean;
+}
+
+export function rendererInvocation(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model = '', session: RendererSession | null = null): string[] {
   const server = access.toolsServer;
   const m = modelArgs(tool, model);
+  if (session && session.id === '') session = null;
+  if (session && !session.resume && !presetSessionID(tool)) throw new Error(`${tool} 不支持预先指定会话 id`);
+  /** claude 系：新会话 --session-id，续接 --resume。 */
+  const claudeSession = session ? (session.resume ? ['--resume', session.id] : ['--session-id', session.id]) : [];
   switch (tool) {
     case 'codex': {
       const mcp = server ? codexMcpOverrides(server) : [];
-      // 新版 Windows Codex 的 MCP 审批独立于 shell 沙箱。渲染档位只暴露本机 HyperFrames
-      // 与任务控制；这些是用户已启动的镜头工作，逐项授权，不改变 shell 沙箱或其他服务。
+      // Windows Codex 的 MCP 审批独立于 shell 策略。只逐项授权内置渲染工具，
+      // 会话续接与上游的 unfiltered 模式继续使用同一组 MCP 配置。
       if (process.platform === 'win32' && server?.name === ToolsServerName && server.args.includes('tools-mcp') && server.args[server.args.indexOf('--profile') + 1] === 'renderer') {
         for (const tool of ['hyperframes', 'job_wait', 'job_cancel', 'tool_help']) mcp.push('-c', `mcp_servers.${server.name}.tools.${tool}.approval_mode="approve"`);
       }
-      if (unsafe) return ['codex', 'exec', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', ...mcp, ...m, '--json', prompt];
-      return ['codex', '--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...mcp, ...m, '--json', prompt];
+      const resume = session?.resume ? ['resume', session.id] : [];
+      // 不拦命令时也不套 codex 自己的沙箱：macOS 上它也是 sandbox-exec，套在外面那层沙箱里起不来；Windows 上用户定的是全放开。
+      if (unsafe || access.unfiltered) return ['codex', 'exec', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', ...mcp, ...m, '--json', ...resume, prompt];
+      return ['codex', '--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...mcp, ...m, '--json', ...resume, prompt];
     }
     case 'claude': {
       let mode = ['--dangerously-skip-permissions'];
-      if (!unsafe) mode = ['--permission-mode', 'acceptEdits', '--settings', claudeSettings({ ...access, mcp: server ? [server.name] : [] })];
+      if (!unsafe && !access.unfiltered) mode = ['--permission-mode', 'acceptEdits', '--settings', claudeSettings({ ...access, mcp: server ? [server.name] : [] })];
       // --mcp-config 吃多个值，后面必须紧跟一个选项（这里是 --verbose），不然会把提示词吞掉。
       const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
-      return ['claude', '-p', ...mode, ...m, ...mcp, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', prompt];
+      return ['claude', '-p', ...mode, ...m, ...mcp, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', ...claudeSession, prompt];
     }
     case 'qoder': {
-      let mode = ['--permission-mode', 'dont_ask'];
-      if (unsafe) mode = ['--dangerously-skip-permissions'];
-      const mcp = server ? ['--mcp-config', mcpConfigJSON([server]), ...(unsafe ? [] : ['--allowed-tools', 'mcp__' + server.name])] : [];
-      return ['qoderclicn', '-p', prompt, ...mode, ...m, ...mcp, '--output-format', 'stream-json'];
+      const qoderSession = session ? (session.resume ? ['-r', session.id] : ['--session-id', session.id]) : [];
+      // 与 claude 同一套放行规则（qoder 的 --settings 认 claude 的 permissions 写法），外加关掉懒加载 MCP。
+      // 以前用 dont_ask：它连镜头目录里写文件都拒、技能目录读不了、ls 都跑不了，渲染器一个 index.html 都写不出来（2026-11 实测）。
+      // 系统沙箱按目录管住了读写（或 Windows 上全放开），渲染器里不再按命令白名单拦（拦了也没人能批准，只会白耗几轮）。
+      if (unsafe || access.unfiltered) {
+        const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
+        return ['qoderclicn', '-p', prompt, ...qoderSession, '--dangerously-skip-permissions', ...m, ...qoderRendererSources, '--settings', JSON.stringify(qoderEagerSettings), ...mcp, '--output-format', 'stream-json'];
+      }
+      const settings = { ...(JSON.parse(claudeSettings({ ...access, mcp: server ? [server.name] : [] })) as Record<string, unknown>), ...qoderEagerSettings };
+      const mcp = server ? ['--mcp-config', mcpConfigJSON([server]), '--allowed-tools', 'mcp__' + server.name] : [];
+      return ['qoderclicn', '-p', prompt, ...qoderSession, '--permission-mode', 'accept_edits', ...m, ...qoderRendererSources, '--settings', JSON.stringify(settings), ...mcp, '--output-format', 'stream-json'];
     }
     case 'codebuddy': {
       let mode = ['--permission-mode', 'acceptEdits'];
       if (!unsafe && server) mode.push('--settings', claudeSettings({ ...access, commands: [], readDirs: access.readDirs, mcp: [server.name] }));
-      if (unsafe) mode = ['-y'];
+      if (unsafe || access.unfiltered) mode = ['-y'];
       const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
-      return ['codebuddy', '-p', ...m, ...mcp, '--verbose', '--output-format', 'stream-json', ...mode, prompt];
+      return ['codebuddy', '-p', ...m, ...mcp, '--verbose', '--output-format', 'stream-json', ...mode, ...claudeSession, prompt];
     }
     case 'opencode': {
       // --standalone：opencode run 默认连到后台常驻的服务，配置（包括 OPENCODE_CONFIG_CONTENT 里的 MCP 与模型）
       // 取的是那个服务启动时的，这一次给的全被忽略（2.1.0 实测）。私有服务才读这一次的环境。
       const args = ['opencode', 'run', '--standalone', ...m];
       if (unsafe) args.push('--auto');
+      if (session?.resume) args.push('-s', session.id);
       return [...args, '--format', 'json', prompt];
     }
     case 'director':
@@ -196,10 +255,19 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
 
 /** opencode 渲染器的工具服务经环境变量 OPENCODE_CONFIG_CONTENT 给（opencode run 没有 MCP 参数），合并用户自己的这个变量。 */
 export function rendererEnv(tool: string, access: RendererAccess, env: Record<string, string | undefined>): Record<string, string> {
-  if (tool !== 'opencode' || !access.toolsServer) return {};
+  if (tool !== 'opencode' || (!access.toolsServer && !access.skills)) return {};
   const own = parseConfig(env.OPENCODE_CONFIG_CONTENT);
-  const mcp = own.mcp && typeof own.mcp === 'object' ? (own.mcp as Record<string, unknown>) : {};
-  return { OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...own, mcp: { ...mcp, ...opencodeMcpConfig(access.toolsServer) } }) };
+  const config: Record<string, unknown> = { ...own };
+  if (access.toolsServer) {
+    const mcp = own.mcp && typeof own.mcp === 'object' ? (own.mcp as Record<string, unknown>) : {};
+    config.mcp = { ...mcp, ...opencodeMcpConfig(access.toolsServer) };
+  }
+  // 只放行镜头的技能：opencode 按 permission.skill 过滤技能列表（2026-11 实测，项目根与用户级的都不再出现）。
+  if (access.skills) {
+    const permission = own.permission && typeof own.permission === 'object' ? (own.permission as Record<string, unknown>) : {};
+    config.permission = { ...permission, skill: { '*': 'deny', ...Object.fromEntries(access.skills.map((name) => [name, 'allow'])) } };
+  }
+  return { OPENCODE_CONFIG_CONTENT: JSON.stringify(config) };
 }
 
 function parseConfig(text: string | undefined): Record<string, unknown> {
@@ -400,7 +468,7 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
       else args.push('--permission-mode', 'acceptEdits', '--settings', claudeSettings({ commands: access.commands, mcp: o.toolsServer ? [o.toolsServer.name] : [] }));
       args.push(...claudeSession());
       args.push(o.prompt);
-      return { argv: args, stdin: '' };
+      return windowsPromptInput(tool, args, o.prompt);
     }
     case 'qoder': {
       const args = ['qoderclicn', '-p', o.prompt, ...m, '--output-format', 'stream-json'];
@@ -410,6 +478,7 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
         args.push('--permission-mode', 'accept_edits');
         for (const command of access.commands ?? []) args.push('--allowed-tools', 'Bash(' + command + ':*)');
         if (o.toolsServer) args.push('--allowed-tools', 'mcp__' + o.toolsServer.name);
+        if (o.toolsServer || o.permissionPrompt) args.push(...qoderEagerMcp);
         args.push(...mcpArgs(o.permissionPrompt, o.toolsServer));
       }
       if (o.resume) args.push('-r', sessionID);
@@ -431,9 +500,9 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
         commands: access.commands && access.commands.length > 0 ? access.commands : undefined,
         writable_dirs: access.writableDirs && access.writableDirs.length > 0 ? access.writableDirs : undefined,
         agent_dir: agentDir,
-        // key 由这里（父进程）读出、经 stdin 交下去；客户端里经 safeStorage 解密（director.useKeyCodec）。
-        // 导演与它跑的命令都不读磁盘上的凭据，见 director.loadKeys。
-        keys: directorKeys(agentDir),
+        // 在用的模型服务连同 key 由这里（父进程）读出、经 stdin 交下去；客户端里经 safeStorage 解密（director.useKeyCodec）。
+        // 导演与它跑的命令都不读磁盘上的凭据，见 director.resolveService。
+        service: directorService(agentDir) ?? undefined,
       };
       return { argv: [onset.command, ...onset.args, 'studio', 'agent'], stdin: JSON.stringify(request) + '\n', env: onset.env };
     }

@@ -18,3 +18,5 @@
 - `production/audio/machine-qc.json`
 - `production/audio/sound-checklist.json`
 
+候选成片就是 `production/audio/candidate.mp4` 这个路径，不要另起名字：客户端的成片页与制作路线只按这个位置找，换个名字成片就「不存在」。
+

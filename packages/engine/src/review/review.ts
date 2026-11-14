@@ -54,6 +54,8 @@ export interface Segment {
 const handoffBreakDifference = 48.0;
 /** handoffLooseDifference 及以上进 hints，让看图的一方确认。 */
 const handoffLooseDifference = 20.0;
+/** 约定了交接的交界，两帧差异到这个数就算没接顺：拼接时抹平（concat）、修接缝（scene_seams）都按它挑交界。 */
+export const HandoffLooseDifference = handoffLooseDifference;
 
 /** Options 控制一次复查。segments 为空时只做与镜头无关的检查，联系表按固定间隔取帧。 */
 export interface Options {

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { dataDir, envMap, WindowsBaseEnvKeys } from '../envutil';
 import { RootEnv, rootDir } from '../filmstyle';
 import { formatG, goPathError, goTrimSpace } from '../gofmt';
-import { BrowserEnv, CLIDirEnv, HyperFramesBrowserEnv, PinnedVersion, cliDir } from '../hyperframes';
+import { BrowserAppArgEnv, BrowserEnv, BrowserHookEnv, CLIDirEnv, HyperFramesBrowserEnv, PinnedVersion, cliDir } from '../hyperframes';
 import { childEnvKeys as toolpathEnvKeys } from '../toolpath';
 import { pluginChildEnvs } from '../plugin/registry';
 import { DirEnv as VoicesDirEnv, defaultDir as defaultVoicesDir } from '../voice/dir';
@@ -390,7 +390,7 @@ export function childEnvironment(
   // 全局设置同理：子进程（编排工具调用的 onset、渲染）按同一份全局设置解析项目配置。
   if (config.settingsFile !== '') out[SettingsFileEnv] = config.settingsFile;
   // 客户端自带的浏览器与用户显式指定的浏览器同理：子进程里的 onset hyperframes 照样用它们，不去下载 headless-shell。
-  for (const key of [BrowserEnv, HyperFramesBrowserEnv]) if (source[key]) out[key] = source[key]!;
+  for (const key of [BrowserEnv, HyperFramesBrowserEnv, BrowserHookEnv, BrowserAppArgEnv]) if (source[key]) out[key] = source[key]!;
   // 客户端自带的 npm、工具目录与 onset setup 的工具目录同理：子进程里的 onset 要找到同一套，而白名单里没有它们。
   for (const key of toolpathEnvKeys) if (source[key]) out[key] = source[key]!;
   if (unsafe) out.ONSET_UNSAFE = '1';

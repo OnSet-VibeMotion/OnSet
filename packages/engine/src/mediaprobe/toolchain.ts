@@ -223,6 +223,15 @@ export class Toolchain {
   }
 
   /**
+   * 两个文件各取一帧比较，口径与 frameDifference 相同（32×32 RGB 逐通道绝对差的均值）。
+   * 镜头交界：前一镜的末帧对后一镜的首帧，拼接前就能量出哪道交界没接上。
+   */
+  frameDifferenceBetween(a: string, atA: number, b: string, atB: number): number {
+    const ffmpeg = this.ffmpegPath();
+    return meanAbsoluteDifference(this.rawFrame(ffmpeg, a, atA, differenceSampleSize, 'rgb24'), this.rawFrame(ffmpeg, b, atB, differenceSampleSize, 'rgb24'));
+  }
+
+  /**
    * 跑完整的校验流程并返回机器可读报告。
    *
    * 抛出的错误只表示「检查没跑成」（文件读不了、工具缺失），

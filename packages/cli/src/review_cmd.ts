@@ -10,6 +10,7 @@ import * as review from '@onset/engine/review';
 import * as scene from '@onset/engine/scene';
 import * as schedule from '@onset/engine/schedule';
 import { currentEnvironment } from './cli';
+import { requireReviewTarget } from './deliverables';
 import { type Finding, recordCheckFindings } from './memory_cmd';
 import { bool, num, str } from './ops/common';
 import { defineOp } from './ops/op';
@@ -44,7 +45,10 @@ defineOp({
 镜头的风格与密度是否一致、交界是否跳变突兀、结尾是否停在合适的画面。
 
 机器检查有不符项或跑不起来时失败。判断结果读结构化结果或 report_json
-（缺省为 <out>/review.json），不要解析文字输出。`,
+（缺省为 <out>/review.json），不要解析文字输出。
+
+在项目里 video 只能是候选成片 production/audio/candidate.mp4 或 final.mp4（silent 时是
+production/silent-master.mp4）：客户端的成片页与制作路线只认这些位置。`,
   examples: [
     '# 成片复查，镜头信息取自 scenes/',
     'review({"video": "production/audio/candidate.mp4", "scenes": "scenes/", "out": "production/review"})',
@@ -70,6 +74,7 @@ defineOp({
     const outDir = str(p.out);
     const silent = bool(p.silent);
     if (outDir === '') throw new Error('必须用 out 指定复查产物目录');
+    requireReviewTarget(rootDir, video, silent);
     let rate = num(p.fps);
     if (rate <= 0) {
       let canvas: scene.Canvas;

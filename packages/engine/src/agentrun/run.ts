@@ -6,7 +6,7 @@ import { detectModel, interactiveInvocation, type McpServer, newUsage, orchestra
 import { runACP } from './acp';
 import { runCodexApp } from './codexapp';
 import type { AskPermission } from './interactive';
-import { KindDone, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, KindUsage, newParser, type Event } from './parse';
+import { KindDone, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, KindUsage, newParser, type Event, type PlanItem } from './parse';
 
 /** 一次编排调用。 */
 export interface Spec {
@@ -36,6 +36,8 @@ export interface Spec {
   env?: Record<string, string>;
   /** 解析 argv[0]；找不到时抛错。为空时按 env（或当前进程）的 PATH 用 envutil.lookPath 查找。 */
   lookPath?: (name: string) => string;
+  /** 续接时上一轮最后的任务清单（带编号的项），逐条改的任务工具（TaskUpdate）才接得上。 */
+  plan?: PlanItem[];
   /** 若给出，原样写入每一行输出（带换行），供排查格式变化。 */
   raw?: { write(chunk: string): unknown };
 }
@@ -177,6 +179,7 @@ export async function run(spec: Spec, emit: (event: Event) => void, signal?: Abo
   let extraEnv: Record<string, string> = {};
   try {
     parser = newParser(spec.tool);
+    if (spec.resume && spec.plan) parser.seedPlan(spec.plan);
     ({ argv, stdin, env: extraEnv = {} } = orchestratorInvocation(spec.tool, {
       workdir: spec.workdir,
       prompt: spec.prompt,

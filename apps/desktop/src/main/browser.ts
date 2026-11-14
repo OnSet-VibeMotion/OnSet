@@ -47,10 +47,25 @@ interface Message {
   error?: unknown;
 }
 
+// 和 puppeteer 之间的通道，两种来路：
+//   - 由引导脚本接管启动时（Windows，见 engine 的 hyperframes/browserhook.ts）：连 ONSET_BROWSER_PIPE 这条本机命名管道，
+//     先报口令（ONSET_BROWSER_TOKEN），之后一条连接双向用；
+//   - 由包装脚本启动时（macOS）：puppeteer 的 fd 3（它写、我们读）与 fd 4（我们写、它读）。
 // 管道用 net.Socket 读写，不能用 fs 流：fs 流在线程池里阻塞地 read() fd 3，退出时要等这个线程，而 puppeteer
 // 正等着本进程退出、不会关管道——两边互等，Browser.close 之后进程永远退不掉（实测）。
-const toClient = new net.Socket({ fd: 4, readable: false, writable: true });
-const fromClient = new net.Socket({ fd: 3, readable: true, writable: false });
+function clientChannel(): { toClient: net.Socket; fromClient: net.Socket } {
+  const address = process.env.ONSET_BROWSER_PIPE;
+  if (address) {
+    const socket = net.connect(address);
+    socket.write(`${process.env.ONSET_BROWSER_TOKEN ?? ''}\n`);
+    return { toClient: socket, fromClient: socket };
+  }
+  return {
+    toClient: new net.Socket({ fd: 4, readable: false, writable: true }),
+    fromClient: new net.Socket({ fd: 3, readable: true, writable: false }),
+  };
+}
+const { toClient, fromClient } = clientChannel();
 
 const debug = process.env.ONSET_BROWSER_DEBUG === '1' ? (text: string) => process.stderr.write(`[onset-browser] ${text}\n`) : () => {};
 

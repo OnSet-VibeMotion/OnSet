@@ -250,21 +250,21 @@ export const spawnOp: Spawner = (name, params) => {
 };
 
 /**
- * 导演（onset studio agent）用的执行进程：会再起导演的操作（director.KeyOps，整理经验）经 stdin 拿到导演的 key，
- * 其余与 spawnOp 相同。执行进程解不开客户端加密的凭据文件，key 只能由手里有它的进程往下交。
+ * 导演（onset studio agent）用的执行进程：会再起导演的操作（director.KeyOps，整理经验）经 stdin 拿到导演在用的
+ * 模型服务（含 key），其余与 spawnOp 相同。执行进程解不开客户端加密的服务文件，只能由手里有它的进程往下交。
  */
-export function spawnOpWithKeys(keys: Record<string, string>): Spawner {
+export function spawnOpWithService(service: director.ResolvedService | null): Spawner {
   return (name, params) => {
-    if (!director.KeyOps.has(name) || Object.keys(keys).length === 0) return spawnOp(name, params);
+    if (!director.KeyOps.has(name) || !service) return spawnOp(name, params);
     const command = opCommand(name, params);
     const child = spawn(command.file, command.args, {
       cwd: process.cwd(),
-      env: { ...command.env, [director.KeysStdinEnv]: '1' },
+      env: { ...command.env, [director.ServiceStdinEnv]: '1' },
       stdio: ['pipe', 'pipe', 'pipe'],
       ...groupSpawnOptions(),
     });
     child.stdin!.on('error', () => {});
-    child.stdin!.end(JSON.stringify(keys) + '\n');
+    child.stdin!.end(JSON.stringify(service) + '\n');
     return child;
   };
 }
@@ -387,6 +387,8 @@ export async function serveToolsMCP(
   const tools = describeTools(profile, process.cwd());
   const byName = new Map(tools.map((t) => [t.name, t]));
   const jobs = new Jobs(spawner);
+  // 被取消（编排工具那一整组收到 SIGTERM）时立刻停掉还在跑的任务：等不到 stdin 关闭，进程可能随后就被 SIGKILL。
+  signal?.addEventListener('abort', () => jobs.stopAll(), { once: true });
   const pending: Promise<void>[] = [];
   try {
     for await (const line of lines) {

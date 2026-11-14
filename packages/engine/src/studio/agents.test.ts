@@ -27,7 +27,7 @@ describe('agents', () => {
     expect(claude.id).toBe('claude');
     expect(claude.command).toBe('claude');
     expect(claude.installed).toBe(true);
-    expect(claude.path.endsWith('/claude')).toBe(true);
+    expect(path.basename(claude.path)).toBe(process.platform === 'win32' ? 'claude.cmd' : 'claude');
     expect(body.orchestrator).toBe('claude');
     expect(body.renderer).toBe('claude');
     expect(body.global_renderer, '没有全局设置时是默认的渲染工具').toBe(config.GlobalDefaults.RENDERER);

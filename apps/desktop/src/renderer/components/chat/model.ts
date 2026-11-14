@@ -77,12 +77,39 @@ export function buildBlocks(events: SessionEvent[]): Block[] {
     else if (event.kind === 'view' && event.view) turn.block.views.push(event.view);
     else turn.raw.push(event);
   }
-  for (const { block, raw } of turns.values()) shapeTurn(block, raw);
+  let previous: SessionEvent[] = [];
+  for (const { block, raw } of turns.values()) {
+    shapeTurn(block, dropReplay(raw, previous));
+    previous = raw;
+  }
   return blocks;
+}
+
+/**
+ * 续接时有的工具会把上一轮结尾的思考与回复原样再吐一遍（qoder 续接前压缩长对话后实测），后端已经不再记下它们
+ * （studio/sessions.ts 的 replayGuard）；这里照同一条规则收拾以前存下的：一轮开头、还没有任何新东西之前，
+ * 与上一轮里某段思考或回复一字不差的，不显示。
+ */
+function dropReplay(raw: SessionEvent[], previous: SessionEvent[]): SessionEvent[] {
+  const said = new Set(previous.filter((e) => (e.kind === 'text' || e.kind === 'thinking') && (e.text ?? '').trim() !== '').map((e) => e.kind + '\u0000' + (e.text ?? '').trim()));
+  if (said.size === 0) return raw;
+  const out: SessionEvent[] = [];
+  let guarding = true;
+  for (const e of raw) {
+    if (guarding && (e.kind === 'text' || e.kind === 'thinking')) {
+      if (said.has(e.kind + '\u0000' + (e.text ?? '').trim())) continue;
+      guarding = false;
+    } else if (guarding && (e.kind === 'tool-call' || e.kind === 'tool-result' || e.kind === 'plan')) {
+      guarding = false;
+    }
+    out.push(e);
+  }
+  return out;
 }
 
 function shapeTurn(block: TurnBlock, raw: SessionEvent[]) {
   const calls = new Map<string, { type: 'tool'; call: SessionEvent; result?: SessionEvent }>();
+  const hidden = new Set<string>();
   const items: ProcessItem[] = [];
   let currentStep = '';
   for (const event of raw) {
@@ -105,9 +132,12 @@ function shapeTurn(block: TurnBlock, raw: SessionEvent[]) {
         break;
       }
       case 'tool-call': {
-        // 待办清单工具只用来更新进度，不单列一行。
-        if (/^todo_?write$/i.test(event.tool ?? '')) break;
-        const item = { type: 'tool' as const, call: event };
+        // 待办清单工具只用来更新进度，不单列一行；它们的结果也不列。
+        if (planTools.test(event.tool ?? '')) {
+          if (event.call_id) hidden.add(event.call_id);
+          break;
+        }
+        const item = { type: 'tool' as const, call: unwrapCall(event) };
         if (event.call_id) calls.set(event.call_id, item);
         items.push(item);
         break;
@@ -115,7 +145,7 @@ function shapeTurn(block: TurnBlock, raw: SessionEvent[]) {
       case 'tool-result': {
         const owner = event.call_id ? calls.get(event.call_id) : undefined;
         if (owner) owner.result = event;
-        else if (!/^todo_?write$/i.test(event.tool ?? '')) items.push({ type: 'tool', call: { ...event, kind: 'tool-call' }, result: event });
+        else if (!(event.call_id && hidden.has(event.call_id)) && !planTools.test(event.tool ?? '')) items.push({ type: 'tool', call: { ...event, kind: 'tool-call' }, result: event });
         break;
       }
       case 'text':
@@ -134,11 +164,17 @@ function shapeTurn(block: TurnBlock, raw: SessionEvent[]) {
       item.until = next ? timeOf(next) : block.end?.time;
     }
   });
-  // 末尾连续的几段话是这一轮的回复，放在过程之外。
+  // 末尾连续的几段话是这一轮的回复，放在过程之外。思考与只标步骤、切页的调用（studio_step /
+  // studio_show）不算把回复隔开：编排工具常常写完汇报再想一下、标步骤、补一句「请选一个方向」，
+  // 不跳过的话汇报连同里面的选项与风格推荐都被收进折叠的过程，界面上什么都点不了（2026-11 qoder 实测）。
   let cut = items.length;
-  while (cut > 0 && items[cut - 1].type === 'text') cut--;
-  block.prose = items.slice(cut).map((item) => (item as { type: 'text'; event: SessionEvent }).event);
-  block.process = items.slice(0, cut);
+  const between = (item: ProcessItem) => item.type === 'thinking' || item.type === 'step' || quietTool(item);
+  while (cut > 0 && (items[cut - 1].type === 'text' || between(items[cut - 1]))) cut--;
+  // 开头的思考、标记留在过程里，回复从第一段话开始。
+  while (cut < items.length && items[cut].type !== 'text') cut++;
+  const tail = items.slice(cut);
+  block.prose = tail.flatMap((item) => (item.type === 'text' ? [item.event] : []));
+  block.process = [...items.slice(0, cut), ...tail.filter((item) => item.type !== 'text')];
   const status = block.end?.status;
   if (!block.end) {
     const last = items[items.length - 1];
@@ -147,6 +183,24 @@ function shapeTurn(block: TurnBlock, raw: SessionEvent[]) {
   else if (status === 'cancelled') block.state = 'stopped';
   else if (status === 'interrupted') block.state = 'interrupted';
   else block.state = 'done';
+}
+
+/** 只用来更新待办清单的工具：TodoWrite 一次给全，TaskCreate / TaskUpdate 逐条建、逐条改（qoder、新版 claude）。 */
+const planTools = /^(todo_?write|task_?create|task_?update)$/i;
+
+/** 只做标记、不产出内容的 onset 工具：跑完的才算，还在跑的照常是过程的一部分。 */
+const quietTools = /^(mcp__onset__|onset[._])?(studio_step|studio_show)$/i;
+
+function quietTool(item: ProcessItem): boolean {
+  return item.type === 'tool' && !!item.result && quietTools.test(item.call.tool ?? '');
+}
+
+/** qoder 经 mcp_call({toolName, arguments}) 调 MCP 工具；解析器已经拆开，这里照顾拆开之前存下的事件。 */
+function unwrapCall(event: SessionEvent): SessionEvent {
+  if (event.tool !== 'mcp_call' || !event.input || typeof event.input !== 'object') return event;
+  const input = event.input as Record<string, unknown>;
+  if (typeof input.toolName !== 'string' || input.toolName === '') return event;
+  return { ...event, tool: input.toolName, input: input.arguments ?? {} };
 }
 
 function timeOf(item: ProcessItem): string | undefined {
@@ -275,15 +329,28 @@ export function splitAttachmentText(text: string): { body: string; extra: string
   return { body: text.slice(0, index), extra: text.slice(index).trim() };
 }
 
+/**
+ * 命令开头的 `cd <目录> &&` / `cd <目录>;` 去掉：渲染器（qoder 尤甚）每条命令都先 cd 到镜头或项目目录，
+ * 一行只显示得下开头，看到的全是 cd，真正跑的是什么反而看不见。完整命令仍在 `full` 里。
+ */
+export function strippedCommand(command: string): string {
+  let rest = command.trim();
+  for (;;) {
+    const match = /^cd\s+(?:"[^"]*"|'[^']*'|[^\s;&|]+)\s*(?:&&|;)\s*/.exec(rest);
+    if (!match || match[0].length >= rest.length) return rest;
+    rest = rest.slice(match[0].length);
+  }
+}
+
 /** 工具名译成一个动词，配上最能说明「做了什么」的那个参数。 */
-export function describeTool(tool: string, input: unknown): { verb: string; target: string; command: boolean; path?: string } {
+export function describeTool(tool: string, input: unknown): { verb: string; target: string; command: boolean; path?: string; full?: string } {
   const record = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
   const text = (key: string) => (typeof record[key] === 'string' ? (record[key] as string) : '');
   const name = tool.toLowerCase();
   const path = text('file_path') || text('path') || text('filePath') || text('notebook_path');
   if (name === 'bash' || name === 'shell' || name === 'command_execution') {
     const command = text('command') || (Array.isArray(record.command) ? (record.command as string[]).join(' ') : '');
-    return { verb: '执行', target: command, command: true };
+    return { verb: '执行', target: strippedCommand(command), command: true, full: command };
   }
   if (name === 'read') return { verb: '读取', target: path, command: false, path };
   if (name === 'write') return { verb: '创建', target: path, command: false, path };

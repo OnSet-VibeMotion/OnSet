@@ -22,6 +22,7 @@ import type { Project, Server } from './studio';
 import { writeStepMark } from './view';
 import { changedPaths, diffTrees, loadTurn, revertTurn, saveTurn, scanTree, statTree, studioRoot, validID, type FileChange, type Turn } from './turns';
 import { emitStudioEvent } from './events';
+import { confirmGateFromChat } from './progress';
 import { preferenceBrief, recordUtterance } from './memory';
 import { noVisionNote, orchestratorCannotSee } from './vision';
 import { uploadDir, uploadKind } from './uploads';
@@ -667,7 +668,16 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
     const inbox = viewInbox(studioRoot(p.path), turn.turn_id);
     env[ViewInboxEnv] = inbox;
     env[ViewProjectEnv] = p.path;
-    stopViews = watchViews(sess, turn.turn_id, inbox, p.path);
+    // 用户在对话里确认了关卡（studio_confirm）：原话要出自这一轮用户的话，记下后与界面按钮确认一样发 gate.confirmed。
+    stopViews = watchViews(sess, turn.turn_id, inbox, p.path, (req) => {
+      try {
+        const { gate, label } = confirmGateFromChat(p.path, turn.message, req.said, req.gate ?? '');
+        emit(sess, turn.turn_id, { kind: kindNotice, text: '已记下你在对话里的确认：' + label });
+        emitStudioEvent(s, p, 'gate.confirmed', { gate });
+      } catch (err) {
+        emit(sess, turn.turn_id, { kind: kindNotice, text: '没有记下关卡确认：' + (err as Error).message });
+      }
+    });
     let lastStat = statTree(p.path);
     let lastCheck = Date.now();
     const checkFiles = (force: boolean): void => {
@@ -678,9 +688,12 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
       if (changed.length > 0) emit(sess, turn.turn_id, { kind: kindFilesChanged, files: changed });
       lastStat = current;
     };
+    // 续接时有的工具会把上一轮结尾的话原样再吐一遍（qoder 续接前压缩长对话后实测），不当成这一轮说的。
+    const replay = replayGuard(sess.events, turn.turn_id);
     const onEvent = (event: agentrun.Event): void => {
       if (event.kind === agentrun.KindDone) return;
       if (event.kind === agentrun.KindSession) updateMeta(sess, (meta) => (meta.cli_session_id = event.session_id || undefined));
+      if (replay(event)) return;
       emit(sess, turn.turn_id, { ...event });
       if (event.kind === agentrun.KindToolResult) checkFiles(false);
     };
@@ -713,9 +726,10 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
     if (resumed) {
       spec.sessionID = previous;
       spec.resume = true;
+      spec.plan = lastTaskPlan(sess.events);
     } else {
       spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
-      if (earlierTurns && history !== '') spec.prompt = reseedPrompt(history, prompt);
+      if (earlierTurns && history !== '') spec.prompt = reseedPrompt(history, prompt, productionBrief(p, sess));
     }
     let outcome = await agentrun.run(spec, onEvent, signal);
     recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);
@@ -723,7 +737,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
       emit(sess, turn.turn_id, { kind: kindNotice, text: '原会话无法续接（' + outcome.error.message + '），已带上之前的对话记录开新会话' });
       spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
       spec.resume = false;
-      spec.prompt = reseedPrompt(history, prompt);
+      spec.prompt = reseedPrompt(history, prompt, productionBrief(p, sess));
       outcome = await agentrun.run(spec, onEvent, signal);
       recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);
     }
@@ -741,11 +755,15 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
  * watchViews 在这一轮进行中轮询收件目录，把 onset studio show 的请求译成 view 事件。
  * 返回的函数停止轮询、把剩下的请求处理完并删掉收件目录；可以调用多次。
  */
-function watchViews(sess: Session, turnID: string, inbox: string, projectPath: string): () => void {
+function watchViews(sess: Session, turnID: string, inbox: string, projectPath: string, onConfirm: (req: NonNullable<ViewRequest['confirm']>) => void): () => void {
   const seen = new Set<string>();
   const emitPermission = (turn: string, event: NewEvent): void => emit(sess, turn, event);
   const deliver = (): void => {
     for (const req of drainViewInbox(inbox)) {
+      if (req.confirm) {
+        onConfirm(req.confirm);
+        continue;
+      }
       if (req.step) writeStepMark(projectPath, req.step);
       emit(sess, turnID, { kind: KindView, text: req.note || undefined, view: req });
     }
@@ -763,8 +781,9 @@ function watchViews(sess: Session, turnID: string, inbox: string, projectPath: s
   };
 }
 
-export function reseedPrompt(history: string, prompt: string): string {
+export function reseedPrompt(history: string, prompt: string, production = ''): string {
   return (
+    (production !== '' ? production + '\n\n---\n\n' : '') +
     '下面是这个项目里你和用户之前的对话记录（较早的部分可能被截掉），供你接上上下文：\n\n' +
     history +
     '\n\n---\n\n' +
@@ -948,6 +967,61 @@ function recordUsage(signal: AbortSignal, p: Project, sess: Session, tool: strin
   } catch (err) {
     emit(sess, turnID, { kind: kindNotice, text: '编排用量没能记进账本：' + (err as Error).message });
   }
+}
+
+/**
+ * 整片制作的会话换了 CLI 会话（续接失败、换了编排工具）时，制作提示词要重发：对话记录只有双方说的话，
+ * 第一轮发过的制作说明（各阶段怎么做、关卡在哪）不在里面，新会话拿不到就只能凭对话猜。
+ * 按项目现在的流程重新组合，与「开始制作」同一份；组合不出来时照旧只带对话记录。
+ */
+function productionBrief(p: Project, sess: Session): string {
+  if (sess.meta.kind !== 'production') return '';
+  try {
+    const text = project.runPrompt(p.path, '').prompt.toString('utf8');
+    return '下面是这次整片制作的说明（与开工时给你的同一份，按项目现在的流程重新组合）：\n\n' + text;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * 认出续接时重放的上一轮结尾：这一轮开头、还没有任何新东西之前，与上一轮里某段思考或回复一字不差的，算重放、丢掉；
+ * 一出现新的东西（工具调用、不一样的话）就不再拦。qoder 续接时若先压缩了长对话，会把上一轮最后的思考与回复
+ * 原样再吐一遍（2026-11 实测：用户的新问题前面先出现一遍上一轮的总结），界面上看像是又回答了一次。
+ */
+export function replayGuard(events: readonly { kind?: string; text?: string; turn_id?: string }[], turnID: string): (event: { kind: string; text?: string }) => boolean {
+  let previousTurn = '';
+  for (let i = events.length - 1; i >= 0; i--) {
+    const id = events[i].turn_id ?? '';
+    if (id !== '' && id !== turnID) {
+      previousTurn = id;
+      break;
+    }
+  }
+  const said = new Set<string>();
+  for (const e of events) {
+    if (e.turn_id === previousTurn && (e.kind === agentrun.KindText || e.kind === agentrun.KindThinking) && (e.text ?? '').trim() !== '') said.add(e.kind + '\u0000' + (e.text ?? '').trim());
+  }
+  let guarding = said.size > 0;
+  return (event) => {
+    if (!guarding) return false;
+    if (event.kind === agentrun.KindText || event.kind === agentrun.KindThinking) {
+      if (said.has(event.kind + '\u0000' + (event.text ?? '').trim())) return true;
+      guarding = false;
+      return false;
+    }
+    if (event.kind === agentrun.KindToolCall || event.kind === agentrun.KindToolResult || event.kind === agentrun.KindPlan) guarding = false;
+    return false;
+  };
+}
+
+/** 会话里最后一份带编号的任务清单（逐条改的任务工具，agentrun.TaskBoard）；续接时交给解析器接上。 */
+export function lastTaskPlan(events: readonly { kind?: string; plan?: agentrun.PlanItem[] }[]): agentrun.PlanItem[] | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const plan = events[i].kind === agentrun.KindPlan ? events[i].plan : undefined;
+    if (plan && plan.length > 0) return plan.some((item) => item.id) ? plan : undefined;
+  }
+  return undefined;
 }
 
 /** 审批服务（onset studio permission-mcp）的启动方式；Windows 上用 Electron / Node 跑 onset.cjs（envutil.onsetCommand）。 */

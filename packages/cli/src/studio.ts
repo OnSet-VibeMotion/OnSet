@@ -77,6 +77,37 @@ note 的一句话显示在对话里，说明为什么要看这一页。
   },
 });
 
+/** 用户在对话里确认了审核关卡：记下来，制作路线上那一关标成「你确认过」。 */
+defineOp({
+  name: 'studio_confirm',
+  cli: ['studio', 'confirm'],
+  summary: '用户在对话里确认了审核关卡（稿件、分镜……）时记下来，路线上那一关标成已确认',
+  description: `用户在对话里明确确认了一道审核关卡（例如审稿时说「稿子没问题，开始配音」、看完分镜说「就按这个分镜，开始渲染」），
+在接着往下做之前调用一次，制作路线上那一关就标成「你确认过」，与用户在页面上点确认按钮一样。
+
+said 写用户确认时的原话（照抄这一轮用户的话里表示确认的那一句）。客户端会核对这句话确实出自这一轮用户的消息，
+对不上就不记：只有用户亲口确认了才能调用，不要替用户确认，也不要在用户只是提修改意见时调用。
+gate 一般不写，记的是路线上此刻在等确认的那一关；要指定时写关卡 id（例如 gate-script、gate-storyboard）。
+
+不在客户端的对话里调用时什么都不做，也不算失败。`,
+  examples: ['studio_confirm({"said": "就按这七种风格，开始渲染"})', 'studio_confirm({"said": "稿子没问题，开始配音", "gate": "gate-script"})'],
+  params: {
+    said: { type: 'string', description: '用户确认时的原话', required: true, positional: 0 },
+    gate: { type: 'string', description: '关卡 id；不写时是路线上在等确认的那一关' },
+  },
+  run: (p, { out }) => {
+    const confirm: { said: string; gate?: string } = { said: str(p.said).trim() };
+    if (str(p.gate).trim() !== '') confirm.gate = str(p.gate).trim();
+    const inStudio = studioview.writeViewRequest(currentEnvironment(), { page: '', confirm });
+    if (!inStudio) {
+      out.write('当前不在客户端的对话里，没有路线可记，已跳过。\n');
+      return { data: { recorded: false } };
+    }
+    out.write('已请客户端记下这道关卡的确认（原话：「' + confirm.said + '」）；原话对不上这一轮用户的话时客户端不会记，并在对话里说明。\n');
+    return { data: { requested: true, said: confirm.said, gate: confirm.gate ?? '' } };
+  },
+});
+
 /** 步骤说明（宿主的与内置插件登记的）：「  script      口播稿：整理、审稿、配音、对齐」。 */
 function stepHelp(): string {
   return studioview
@@ -136,6 +167,8 @@ permissions/ 子目录，客户端在输入框上方弹卡片问用户，答复�
   onset studio permission-mcp`,
     runE: async (cmd) => {
       const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+      // 编排工具结束时用 SIGTERM 停掉它：不再等下一行，服务循环结束后退出（不关的话进程挂着不走，实测 e2e 卡住）。
+      cmd.context().addEventListener('abort', () => rl.close(), { once: true });
       const inbox = currentEnvironment()[studioview.ViewInboxEnv] ?? '';
       await studioview.servePermissionMCP(rl, (line) => process.stdout.write(line), inbox, cmd.context());
     },
@@ -163,6 +196,8 @@ function newToolsMCPCommand(): Command {
       // 工作目录显式给：各家 agent 启动 MCP 服务时用哪个目录不一，相对路径（scenes/…）要对着项目或镜头目录解析。
       if (workdir.value !== '') process.chdir(workdir.value);
       const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+      // 取消时（SIGTERM）不再等下一行：关掉输入，服务循环结束、停掉全部任务后退出。
+      c.context().addEventListener('abort', () => rl.close(), { once: true });
       await serveToolsMCP(rl, (line) => process.stdout.write(line), profile.value as Profile, undefined, c.context());
     },
   });

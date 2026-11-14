@@ -7,6 +7,7 @@ import path from 'node:path';
 import { afterEach, onTestFinished } from 'vitest';
 import * as hyperframes from '@onset/engine/hyperframes';
 import { fakeBrowser, fakeCLI } from '@onset/engine/hyperframes/hftest';
+import { lookPath as resolveToolPath } from '@onset/engine/envutil';
 import { execute } from './cli';
 import type { Out } from './cobra';
 
@@ -83,6 +84,9 @@ export function setenv(key: string, value: string): void {
 
 /** 在 PATH 里找命令。 */
 export function lookPath(name: string): string {
+  if (process.platform === 'win32') {
+    try { return resolveToolPath(name, process.env.PATH ?? ''); } catch { return ''; }
+  }
   for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
     if (!dir) continue;
     const candidate = path.join(dir, name);

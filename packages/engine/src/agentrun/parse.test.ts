@@ -89,6 +89,50 @@ describe('agentrun parse', () => {
     expect(failed.length).toBeGreaterThan(0);
   });
 
+  // qoder 经 mcp_call 调 MCP 工具（2026-11 实测的流）：要拆成真正的工具名与参数。
+  it('qoder mcp_call is unwrapped', () => {
+    const parser = newParser('qoder');
+    const line = JSON.stringify({
+      type: 'assistant',
+      session_id: 's',
+      message: { content: [{ type: 'tool_use', id: 'call_1', name: 'mcp_call', input: { toolName: 'mcp__onset__studio_step', arguments: { step: 'script' } } }] },
+    });
+    const [call] = kinds(parser.parse(line), KindToolCall);
+    expect(call.tool).toBe('mcp__onset__studio_step');
+    expect(call.input).toEqual({ step: 'script' });
+    const listing = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'call_2', name: 'mcp_list', input: {} }] } });
+    expect(kinds(parser.parse(listing), KindToolCall)[0].tool).toBe('mcp_list');
+  });
+
+  // qoder 与新版 claude 逐条建任务（编号只在结果里）、逐条改，要攒成完整清单（2026-11 qoder 实测的写法）。
+  it('task tools build a plan', () => {
+    const call = (id: string, name: string, input: unknown) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] } });
+    const result = (id: string, text: string) => JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: text }] } });
+    const plans = (parser: Parser, lines: string[]) => lines.flatMap((line) => kinds(parser.parse(line), KindPlan));
+    const parser = newParser('qoder');
+    const created = plans(parser, [
+      call('c1', 'TaskCreate', { subject: '写口播终稿', activeForm: '写口播稿', description: '…' }),
+      call('c2', 'TaskCreate', { subject: '生成配音', activeForm: '生成配音中' }),
+      result('c1', 'Task #1 created successfully: 写口播终稿'),
+      result('c2', 'Task #2 created successfully: 生成配音'),
+    ]);
+    expect(created.at(-1)?.plan).toEqual([
+      { text: '写口播终稿', status: 'pending', id: '1' },
+      { text: '生成配音', status: 'pending', id: '2' },
+    ]);
+    const updated = plans(parser, [call('u1', 'TaskUpdate', { taskId: '1', status: 'in_progress' })]);
+    expect(updated.at(-1)?.plan?.[0]).toEqual({ text: '写口播稿', status: 'in_progress', id: '1' });
+
+    // 下一轮续接同一个会话：新的解析器接上上一轮的清单，才认得 TaskUpdate 的编号。
+    const next = newParser('qoder');
+    next.seedPlan(updated.at(-1)?.plan ?? []);
+    const resumed = plans(next, [call('u2', 'TaskUpdate', { taskId: '1', status: 'completed' }), call('u3', 'TaskUpdate', { taskId: '2', status: 'in_progress' })]);
+    expect(resumed.at(-1)?.plan?.map((item) => item.status)).toEqual(['completed', 'in_progress']);
+    // 不认识的编号不出清单；删掉的去掉。
+    expect(plans(newParser('qoder'), [call('u4', 'TaskUpdate', { taskId: '9', status: 'completed' })])).toEqual([]);
+    expect(plans(next, [call('u5', 'TaskUpdate', { taskId: '1', status: 'deleted' })]).at(-1)?.plan?.map((item) => item.id)).toEqual(['2']);
+  });
+
   // codebuddy 本机未登录，只录到 401：结果事件 is_error 要译成错误。
   it('codebuddy error stream', () => {
     const [events, parser] = parseFixture('codebuddy', 'codebuddy-1');

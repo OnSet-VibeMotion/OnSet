@@ -7,7 +7,7 @@
 画幅、帧率、编码、像素格式、总帧数、音轨规格、可完整解码和第 0 帧封面这几项由一条命令完成，不要自己拼 FFprobe：
 
 ```bash
-validate_video({"video": "<候选成片>", "audio": true, "expect_frames": "<冻结时间轴总帧数>", "decode": true, "check_frame_zero": true, "report_json": "production/final-check.json"})
+validate_video({"video": "production/audio/candidate.mp4", "audio": true, "expect_frames": "<冻结时间轴总帧数>", "decode": true, "check_frame_zero": true, "report_json": "production/final-check.json"})
 ```
 
 不符项会一次全部列出。判断结果读 `report_json` 落盘的报告，`ok` 为 `false` 时 `problems` 数组里是全部不符项，`hints` 里是值得看一眼但不构成失败的观察（例如第 0 帧偏暗）。
@@ -17,7 +17,7 @@ validate_video({"video": "<候选成片>", "audio": true, "expect_frames": "<冻
 机器检查只看规格，拼接与混音之后才出现的问题要靠整片复查：
 
 ```bash
-review({"video": "<候选成片>", "scenes": "scenes/", "out": "production/review"})
+review({"video": "production/audio/candidate.mp4", "scenes": "scenes/", "out": "production/review"})
 ```
 
 它比对音轨与视频流各自的时长，精确统计总帧数并与各镜头帧数之和比对（漏拼、重拼、掉帧都会被拦下），检查每个镜头交界两侧的帧，并把每个镜头的首帧、中间帧、末帧拼成联系表，每个交界再出一张前后各 6 帧的条带 `seam-NN.png`。判断结果读 `production/review/review.json`：`ok` 为 `false` 时 `problems` 里是全部不符项；交界处的纯色帧只进 `hints`，因为切黑、切白可能是有意的转场，要你看图确认。有音轨时它还会解码成片，测量积分响度、真峰与响度范围写进报告的 `loudness`，并与项目音频目标比对；偏离只进 `hints`，不影响退出码，但除非平台另有响度规范，出现了就回{{STAGE:beat-mix}}重新混音，不要在成片上再叠一次规范化。

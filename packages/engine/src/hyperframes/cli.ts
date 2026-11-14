@@ -14,6 +14,7 @@ import { bundled, nodeCommand, npmCommand, withNode } from '../toolpath';
 import { PinnedVersion } from './constants';
 import { defaultCacheDir } from './hyperframes';
 import type { Progress, Writer } from './progress';
+import { BrowserAppArgEnv, BrowserHookEnv, writeBootScript } from './browserhook';
 import { errorText, goQuote, runCommand, watchSize } from './util';
 
 /**
@@ -360,6 +361,25 @@ export function cliCommandFor(dir: string, env: Record<string, string>, args: st
   }
   const entry = cliEntry(dir);
   if (entry === '') return { file: cliBinary(dir), args: [...args], env: out };
+  // 借用客户端浏览器而不能用包装脚本时（Windows）：经引导脚本启动，由它接管启动浏览器的那一下（见 browserhook.ts）。
+  // 用户自己指定了 HYPERFRAMES_BROWSER_PATH 时不接管。
+  if (env[BrowserHookEnv] === '1' && browser !== '' && browser === env[BrowserEnv]) {
+    const { boot, standIn } = writeBootScript(dir);
+    const command = nodeCommand(boot, [entry, ...args]);
+    return {
+      file: command.file,
+      args: command.args,
+      env: {
+        ...out,
+        ...command.env,
+        // HyperFrames 看到的浏览器是替身；引导脚本把它换成真正的客户端（browser，即 ONSET_BROWSER）。
+        [HyperFramesBrowserEnv]: standIn,
+        ONSET_BOOT_BROWSER: standIn,
+        ONSET_BOOT_APP_EXE: browser,
+        ONSET_BOOT_APP_ARG: env[BrowserAppArgEnv] ?? '',
+      },
+    };
+  }
   const command = nodeCommand(entry, args);
   return { file: command.file, args: command.args, env: { ...out, ...command.env } };
 }

@@ -10,7 +10,7 @@ import { confirmGate, currentSummary } from './Progress';
 import { guideFor, type Guide, type GuideAction } from './guide';
 import { AgentPicker } from './AgentPicker';
 import { rendererState } from './agentReady';
-import { DirectorVisionNote } from './Settings';
+import { DirectorVisionNote } from './DirectorServices';
 import { DiffDialog } from './DiffDialog';
 import { Icon } from './Icon';
 import { Markdown } from './chat/Markdown';
@@ -1318,7 +1318,7 @@ function ToolRow(props: { call: SessionEvent; result?: SessionEvent; projectPath
       <summary>{head}</summary>
       <pre className="terminal">
         {info.command && <span className="prompt-sign">$ </span>}
-        {info.command && info.target + (output ? '\n' : '')}
+        {info.command && (info.full ?? info.target) + (output ? '\n' : '')}
         {output}
       </pre>
     </details>

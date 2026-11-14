@@ -21,6 +21,8 @@ import { lookIsZero, timingStructType, timingToJSON, verifyFilmStyleValue, verif
 import { verifyFrameAlignment } from './frames';
 import { timingSection } from './scenedata';
 import type { Attempt } from './attempt';
+import { seamSection, type SeamRequest } from './seam';
+import { continuationSection, type Continuation } from './resume';
 
 export const TextOpen = '<scene-text>';
 export const TextClose = '</scene-text>';
@@ -111,6 +113,17 @@ export interface Scene {
    * 对照组与试用组拿到逐字相同的一段；正式渲染时为空，提示词与指纹都不变。
    */
   examNote: string;
+  /**
+   * 修接缝（scene_seams）时给本次渲染的要求：只改开头几帧、从前一镜的末帧接过来，不来自 scene.json。
+   * 指纹不含它（fingerprint 清掉），修完的镜头照旧按本来的输入判断要不要重渲染。
+   */
+  seam: SeamRequest | null;
+  /**
+   * 中途异常退出后开新会话接着做（resume.ts 的第三层）：上次留下的文件与最后几步，不来自 scene.json，指纹清掉。
+   */
+  continuation: Continuation | null;
+  /** 不接着上一次做，一律从头渲染（scene_run 的 fresh），不来自 scene.json。 */
+  fresh: boolean;
   /**
    * 调度器按并发数分给本镜头的帧捕获 worker 数，不来自 scene.json；
    * 0 表示沿用 HyperFrames 的 auto。
@@ -204,6 +217,9 @@ export function newScene(fields: Partial<Scene> = {}): Scene {
     timing: null,
     retryNote: '',
     examNote: '',
+    seam: null,
+    continuation: null,
+    fresh: false,
     renderWorkers: 0,
     memory: null,
     afterAttempt: null,
@@ -329,7 +345,7 @@ export function load(directory: string): Scene {
   for (const key of requiredSceneFields) {
     if (!present.has(key)) throw new Error(`scene.json 缺少必填字段：${key}`);
   }
-  let decoded: Omit<Scene, 'directory' | 'retryNote' | 'examNote' | 'renderWorkers' | 'memory' | 'afterAttempt'>;
+  let decoded: Omit<Scene, 'directory' | 'retryNote' | 'examNote' | 'seam' | 'continuation' | 'fresh' | 'renderWorkers' | 'memory' | 'afterAttempt'>;
   try {
     decoded = unmarshal(body, sceneType());
   } catch (err) {
@@ -488,6 +504,16 @@ const projectMarker = 'onset.conf';
 /** 新建项目时按画幅下发到项目根的画幅文件。 */
 export const FrameFile = 'frame.md';
 
+/** 镜头所在的项目根（从镜头目录逐级向上第一个有 onset.conf 的目录）；不在项目里时为空。 */
+export function findProjectRoot(sceneDir: string): string {
+  for (let dir = path.resolve(sceneDir); ; ) {
+    if (isRegularFile(path.join(dir, projectMarker))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return '';
+    dir = parent;
+  }
+}
+
 /**
  * 镜头的画幅从哪份 frame.md 读：先看镜头目录，再逐级向上到项目根（有 onset.conf 的那一层）。
  * 找不到项目根时只看镜头目录本身，不去翻项目外的 frame.md。都没有时为 null。
@@ -616,6 +642,8 @@ export function buildPrompt(s: Scene, resolvedSkills: Record<string, string> | n
     selfReviewSection +
     examSection(s) +
     retrySection(s) +
+    (s.seam ? seamSection(s, s.seam, canvas.widthPx, canvas.heightPx) : '') +
+    (s.continuation ? continuationSection(s.continuation) : '') +
     '\n' +
     '阶段性汇报规则：仅在关键阶段输出以下原文：\n' +
     '[[USER_MESSAGE]]需求理解和素材检查已完成\n' +
