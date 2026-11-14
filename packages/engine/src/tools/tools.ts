@@ -42,6 +42,11 @@ export interface RendererAccess {
   readDirs?: string[];
   /** onset 的工具服务（--profile renderer）：渲染器只经它调用 HyperFrames，不在 Bash 里跑 onset。 */
   toolsServer?: McpServer;
+  /**
+   * 渲染器套在系统沙箱里（scene/sandbox.ts，目前只有 qoder）：边界由沙箱按目录管，渲染器自己不再按命令白名单拦，
+   * python3、sips、组合命令都能跑。
+   */
+  osSandbox?: boolean;
 }
 
 /**
@@ -181,7 +186,8 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
     case 'qoder': {
       // 与 claude 同一套放行规则（qoder 的 --settings 认 claude 的 permissions 写法），外加关掉懒加载 MCP。
       // 以前用 dont_ask：它连镜头目录里写文件都拒、技能目录读不了、ls 都跑不了，渲染器一个 index.html 都写不出来（2026-11 实测）。
-      if (unsafe) {
+      // 系统沙箱按目录管住了读写，渲染器里不再按命令白名单拦（拦了也没人能批准，只会白耗几轮）。
+      if (unsafe || access.osSandbox) {
         const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
         return ['qoderclicn', '-p', prompt, '--dangerously-skip-permissions', ...m, ...qoderRendererSources, '--settings', JSON.stringify(qoderEagerSettings), ...mcp, '--output-format', 'stream-json'];
       }

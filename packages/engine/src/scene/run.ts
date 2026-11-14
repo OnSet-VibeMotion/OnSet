@@ -23,8 +23,9 @@ import { formatFixed, goRound } from '../gofmt';
 import { newAttempt, OutcomeFailed, OutcomeInterrupted, OutcomeSucceeded, OutcomeVerificationFailed, timestamp, writeAttempt, archiveAttempt } from './attempt';
 import { CheckOutputFrames, classifyOutputProblem, DeterminismCheckPrefix } from './checks';
 import { fingerprint, removeRecord, writeRecord } from './record';
-import { buildPrompt, sceneCanvas, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
+import { buildPrompt, findProjectRoot, sceneCanvas, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
 import { removeLive, writeLive } from './live';
+import { sandboxAvailable, sandboxed, sandboxProfile } from './sandbox';
 import { writeSceneData } from './scenedata';
 import { HyperFramesSkillName, rendererAccess, resolveAllSkills, skillsEnvironment, SkillsDirEnv, stageRendererSkills, unstageRendererSkills } from './skills';
 import { VerificationError } from './verification';
@@ -87,8 +88,23 @@ export async function run(
   access.toolsServer = onsetToolsServer(onsetExecutable(), 'renderer', s.directory, childEnv);
   Object.assign(childEnv, rendererEnv(renderer, access, childEnv));
   const model = rendererModelFor(cfg, renderer);
-  const argv = rendererInvocation(renderer, prompt, unsafe, access, model);
+  // qoder 渲染器套系统沙箱：只能写镜头目录、读本项目与工具自己的目录（见 sandbox.ts）。不安全模式不套。
+  const projectRoot = findProjectRoot(s.directory);
+  if (renderer === 'qoder' && !unsafe && projectRoot !== '' && sandboxAvailable()) access.osSandbox = true;
+  let argv = rendererInvocation(renderer, prompt, unsafe, access, model);
   argv[0] = lookPath(argv[0], baseEnv.PATH ?? '');
+  if (access.osSandbox) {
+    const home = childEnv.HOME ?? baseEnv.HOME ?? '';
+    const profile = sandboxProfile({
+      sceneDir: s.directory,
+      projectRoot,
+      env: { ...baseEnv, ...childEnv },
+      toolStateDirs: home ? [path.join(home, '.qoder-cn'), path.join(home, '.qoder')] : [],
+      // 渲染工具、onset 的运行时与资源、借来的浏览器所在的目录；资源目录的上一层是应用资源目录（开发时是仓库，浏览器模式从那里加载界面）。
+      readDirs: [path.dirname(fs.realpathSync(argv[0])), path.dirname(process.execPath), ...(process.env.ONSET_ASSETS_DIR ? [path.dirname(process.env.ONSET_ASSETS_DIR)] : []), ...[process.env.ONSET_ASSETS_DIR, childEnv.ONSET_SELF, cliEnv[hyperframes.BrowserEnv], cliEnv[hyperframes.CLIDirEnv]].filter((v): v is string => !!v).map((v) => (fs.existsSync(v) && fs.statSync(v).isDirectory() ? v : path.dirname(v)))],
+    });
+    argv = sandboxed(argv, profile);
+  }
   const inputs = fingerprint(s, renderer, resolvedSkills);
   // 先挪走上一次的现场再截断日志；旧记录随即作废，本次通过校验后再写新的。
   archiveAttempt(s);

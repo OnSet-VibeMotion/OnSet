@@ -2,6 +2,7 @@
 // 输入指纹与渲染记录、尝试记录、镜头局部数据（onset-scene.js）、时间合同与交接，以及启动渲染器。
 export * from './scene';
 export * from './skills';
+export * from './sandbox';
 export * from './timing';
 export * from './scenedata';
 export * from './record';

@@ -488,6 +488,16 @@ const projectMarker = 'onset.conf';
 /** 新建项目时按画幅下发到项目根的画幅文件。 */
 export const FrameFile = 'frame.md';
 
+/** 镜头所在的项目根（从镜头目录逐级向上第一个有 onset.conf 的目录）；不在项目里时为空。 */
+export function findProjectRoot(sceneDir: string): string {
+  for (let dir = path.resolve(sceneDir); ; ) {
+    if (isRegularFile(path.join(dir, projectMarker))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return '';
+    dir = parent;
+  }
+}
+
 /**
  * 镜头的画幅从哪份 frame.md 读：先看镜头目录，再逐级向上到项目根（有 onset.conf 的那一层）。
  * 找不到项目根时只看镜头目录本身，不去翻项目外的 frame.md。都没有时为 null。
