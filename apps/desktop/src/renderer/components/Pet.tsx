@@ -9,14 +9,14 @@ import '../pet.css';
  * 桌宠窗口（main/pet.ts）：一间等距块面的微缩工作室。从斜上方平行投影看进去，家具都是有厚度的块，
  * 顶面最亮、朝左下的面次之、朝右下的面最暗（光从左上来）；人是实色的：衣服、皮肤、头发各有亮暗两面。
  *
- *   导演（编排工具）——在哪个部门干活就走到哪：读稿、写稿在剧本桌，排分镜在左墙的分镜板前，跑命令在导演台，拍摄时在机位旁，
- *       剪辑时站在剪辑师身后，配音时站在录音棚外；等批准、收工站到台前；想事情和待命坐在导演椅上。
+ *   制作人（编排工具）——在哪个部门干活就走到哪：读稿、写稿在剧本桌，排分镜在左墙的分镜板前，跑命令在制作人台，拍摄时在机位旁，
+ *       剪辑时站在剪辑师身后，配音时站在录音棚外；等批准、收工站到台前；想事情和待命坐在制作人椅上。
  *   摄影 ×3（渲染器）——每个正在渲染的镜头一个人，从沙发走到摄影机后面扶着机器，脚下挂着镜头号。
- *   剪辑师——导演交来拼接、复查、抽帧、校验、字幕时间轴时盯着时间线打字，平时靠在椅背上伸懒腰。
- *   配音演员——导演跑配音命令、动音色库时站到话筒前，录音灯亮；平时坐着看稿。
+ *   剪辑师——制作人交来拼接、复查、抽帧、校验、字幕时间轴时盯着时间线打字，平时靠在椅背上伸懒腰。
+ *   配音演员——制作人跑配音命令、动音色库时站到话筒前，录音灯亮；平时坐着看稿。
  *
  * 谁在干活靠「东西亮起来」看：开机时柔光灯亮、影棚背景纸被照亮、摄影机录制灯闪；剪辑时时间线走；
- * 配音时录音灯亮、话筒有声波；导演台跑命令时屏幕滚字。
+ * 配音时录音灯亮、话筒有声波；制作人台跑命令时屏幕滚字。
  *
  * 人是有骨架的小人：关节在人自己的坐标系里（向前、向右、向上）摆姿势，再按站位与朝向投影到等距空间，
  * 四肢按远近排先后，所以转身、背对、侧身都对。不是胶囊，也不是像素图——两种都被用户否过。
@@ -681,9 +681,9 @@ const operators = [0, 1, 2].map((i) => ({
 
 // ---- 闲着的时候 ----
 //
-// 没活的人不站桩：每人一张「闲着做什么」的表，到点按权重换一样。导演只在整个剧组待命时才闲逛
+// 没活的人不站桩：每人一张「闲着做什么」的表，到点按权重换一样。制作人只在整个剧组待命时才闲逛
 // （去翻剧本、看分镜板、到沙发边和摄影聊两句、坐回椅子喝咖啡或打个盹）；摄影、剪辑师、配音演员
-// 只要自己手上没活就闲着，哪怕导演正在忙别的。闲着时的动作不改 data-active，标签也不挂。
+// 只要自己手上没活就闲着，哪怕制作人正在忙别的。闲着时的动作不改 data-active，标签也不挂。
 
 type Prop = 'cup' | 'phone' | 'zzz' | 'notes' | 'script';
 interface IdleAct {
@@ -692,14 +692,14 @@ interface IdleAct {
   dur: [number, number];
   weight: number;
   prop?: Prop;
-  /** 导演：在哪做；摄影：'camera' 表示走到自己的机位前摆弄一下。 */
+  /** 制作人：在哪做；摄影：'camera' 表示走到自己的机位前摆弄一下。 */
   at?: keyof typeof director | 'camera';
   /** 坐着时扭头、转椅子的角度（弧度）。 */
   turn?: number;
   swivel?: boolean;
 }
 
-/** 导演闲着时站在沙发左头，和沙发上的摄影聊天。 */
+/** 制作人闲着时站在沙发左头，和沙发上的摄影聊天。 */
 const chatSpot: Spot = { x: 4.85, y: 4.95, a: toward.right, via: [[4.85, aisle]] };
 
 const directorIdle: Record<string, IdleAct> = {
@@ -833,7 +833,7 @@ function roomShell(): ReactElement {
   out.push(<polygon key="sweep" points={pts([P(2.9, 0), P(5.8, 0), P(5.8, 1.15), P(2.9, 1.15)])} fill={room.backdrop} />);
   out.push(<polygon key="sweepFade" points={pts([P(2.9, 0.85), P(5.8, 0.85), P(5.8, 1.15), P(2.9, 1.15)])} fill="rgba(0,0,0,0.14)" />);
   out.push(box('roll', 2.75, 0.02, 2.72, 3.2, 0.12, 0.12, mat.metal));
-  // 后墙的海报（一个太阳、两行字），在导演台上方。
+  // 后墙的海报（一个太阳、两行字），在制作人台上方。
   out.push(<polygon key="poster" points={pts(wallQuad('back', 1.0, 1.9, 1.3, 2.5))} fill="#2a2520" stroke="#6f6557" strokeWidth={1.4} />);
   const pc = wallAt('back', 1.45, 2.06);
   out.push(<ellipse key="sun" cx={pc[0]} cy={pc[1]} rx={4.6} ry={5.6} fill="#d9a35f" />);
@@ -896,7 +896,7 @@ function storyboardWall(active: boolean, frame: number): ReactElement {
   return <g key="storyboard">{out}</g>;
 }
 
-/** 导演台的显示器：跑命令时字往上滚，最后一行闪光标。 */
+/** 制作人台的显示器：跑命令时字往上滚，最后一行闪光标。 */
 function consoleScreen(active: boolean, frame: number): ReactElement {
   const widths = [0.7, 0.45, 0.85, 0.35, 0.6, 0.75];
   const rows = [0, 1, 2, 3].map((i) => {
@@ -1009,14 +1009,14 @@ export function Pet() {
     voice: { act: 'script', until: null },
   });
   const mood = signal.mood;
-  // 前三个在渲染的镜头各给一位摄影；导演在等渲染、却还没有镜头标成渲染中时，先开一台。
+  // 前三个在渲染的镜头各给一位摄影；制作人在等渲染、却还没有镜头标成渲染中时，先开一台。
   const shooting = signal.rendering.length > 0 ? signal.rendering : mood === 'filming' ? [''] : [];
   const live = useRef({ mood, shooting: shooting.length });
   live.current = { mood, shooting: shooting.length };
   useEffect(() => {
     const w = walkers.current!;
     const idle = idlers.current;
-    // 一有活就放下手里的闲事；回到待命先坐回导演椅，过一会儿再起来溜达。
+    // 一有活就放下手里的闲事；回到待命先坐回制作人椅，过一会儿再起来溜达。
     idle.director = { act: 'sit', until: null };
     retarget(w.director, director[directorSpot[mood]], still);
     w.ops.forEach((op, i) => {
@@ -1076,7 +1076,7 @@ export function Pet() {
   const items: { k: number; el: ReactElement }[] = [];
   const add = (k: number, el: ReactElement) => items.push({ k, el });
 
-  // 导演区：左墙的导演台、导演椅、剧本桌。
+  // 制作人区：左墙的制作人台、制作人椅、剧本桌。
   add(1.3, box('desk', 0.05, 0.55, 0, 0.75, 1.3, 0.78, mat.walnut));
   add(1.4, box('kbd', 0.3, 0.85, 0.78, 0.25, 0.7, 0.04, mat.dark));
   add(
@@ -1198,7 +1198,7 @@ export function Pet() {
     </g>,
   );
 
-  // 人：导演与三位摄影，按站位排进去。
+  // 人：制作人与三位摄影，按站位排进去。
   const dIdle = mood === 'idle' ? directorIdle[idle.director.act] : null;
   const dPose: Pose = !dirArrived ? 'walk' : dIdle ? dIdle.pose : directorPose[mood];
   const chatting = dIdle !== null && idle.director.act === 'chat' && dirArrived;
@@ -1218,10 +1218,10 @@ export function Pet() {
     const moving = !arrived(op);
     const act = operatorIdle[idle.ops[i].act];
     const onSofa = !moving && !filmingOps[i] && op.spot === operators[i].seat;
-    // 导演过来聊天时，沙发上的人都转过脸去，一个说一个笑。
+    // 制作人过来聊天时，沙发上的人都转过脸去，一个说一个笑。
     const listening = chatting && onSofa;
     const pose: Pose = moving ? 'walk' : filmingOps[i] ? 'operate' : listening ? (i % 2 === 0 ? 'laugh' : 'talk') : act.pose;
-    // 自己聊天时朝旁边的人扭头（最右边那位朝左，其余朝右）；听导演说话时都朝左边的导演。
+    // 自己聊天时朝旁边的人扭头（最右边那位朝左，其余朝右）；听制作人说话时都朝左边的制作人。
     const turn = !onSofa ? 0 : listening ? 0.8 : act.turn ? (i === operators.length - 1 ? act.turn : -act.turn) : 0;
     const angle = op.a + turn;
     const ot = t + i * 400;
@@ -1235,7 +1235,7 @@ export function Pet() {
   });
   items.sort((a, b) => a.k - b.k);
 
-  // 标签挂在脚下（头顶归导演的气泡）：开机的摄影写镜头号，干活的剪辑、配音写部门名。坐标是画布上的，画的时候换成屏幕上的。
+  // 标签挂在脚下（头顶归制作人的气泡）：开机的摄影写镜头号，干活的剪辑、配音写部门名。坐标是画布上的，画的时候换成屏幕上的。
   const tags: { key: string; text: string; title: string; at: Pt }[] = [];
   w.ops.forEach((op, i) => {
     if (!filmingOps[i] || !shooting[i]) return;
@@ -1261,7 +1261,7 @@ export function Pet() {
       const done = signal.plan.filter((p) => p.status === 'completed').length;
       const doing = dIdle && mood === 'idle' ? idleLabels.director[idle.director.act] ?? '待命' : signal.line;
       return {
-        name: '导演',
+        name: '制作人',
         role: '编排',
         doing,
         mood: crewMood,
@@ -1391,7 +1391,7 @@ export function Pet() {
     setPie((open) => (open === who ? null : who));
   };
 
-  // 导演的气泡：挂在头上，换成屏幕坐标后夹在视口里。
+  // 制作人的气泡：挂在头上，换成屏幕坐标后夹在视口里。
   const bubble = useRef<HTMLDivElement>(null);
   const [bubbleWidth, setBubbleWidth] = useState(0);
   useLayoutEffect(() => setBubbleWidth(bubble.current?.offsetWidth ?? 0), [signal.line]);
@@ -1570,8 +1570,8 @@ export function Pet() {
                 className="pet-act"
                 data-act="say"
                 data-on={composing ? 'true' : 'false'}
-                title="对导演说一句"
-                aria-label="对导演说一句"
+                title="对制作人说一句"
+                aria-label="对制作人说一句"
                 onClick={() => setComposing((open) => !open)}
               >
                 <Icon name="edit" size={11} />
@@ -1839,7 +1839,7 @@ function Desk(props: { signal: CrewSignal; composing: boolean; onCompose: (open:
     body = (
       <div className="pet-desk" data-desk="ask">
         <div className="pet-desk-head">
-          <span>导演想执行</span>
+          <span>制作人想执行</span>
           {signal.asks.length > 1 ? <span className="pet-desk-more">还有 {signal.asks.length - 1} 件</span> : null}
         </div>
         <code className="pet-desk-cmd" title={ask.text}>
@@ -1875,7 +1875,7 @@ function Desk(props: { signal: CrewSignal; composing: boolean; onCompose: (open:
             ref={input}
             className="pet-input"
             value={draft}
-            placeholder={signal.canSend ? (signal.running ? '说一句，排到这一轮之后' : '对导演说一句') : '项目正忙，稍后再说'}
+            placeholder={signal.canSend ? (signal.running ? '说一句，排到这一轮之后' : '对制作人说一句') : '项目正忙，稍后再说'}
             disabled={!signal.canSend}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
@@ -1913,7 +1913,7 @@ function Desk(props: { signal: CrewSignal; composing: boolean; onCompose: (open:
   } else if (sent) {
     body = (
       <div className="pet-desk" data-desk="sent">
-        <span className="pet-desk-note">已经交给导演</span>
+        <span className="pet-desk-note">已经交给制作人</span>
       </div>
     );
   }
@@ -1925,7 +1925,7 @@ function Desk(props: { signal: CrewSignal; composing: boolean; onCompose: (open:
   );
 }
 
-// ---- 导演手上的东西 ----
+// ---- 制作人手上的东西 ----
 
 /** 人自己坐标里的一点投影到画布。 */
 function local(w: Walker, f: number, r: number, z: number): Pt {

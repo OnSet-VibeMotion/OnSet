@@ -10,7 +10,7 @@ html.pet-window body {
 }
 
 .pet {
-  /* 线稿的色板：底色、暖灰线、更暗的辅助线、象牙白（导演）与黄铜（干活的人与物）。 */
+  /* 线稿的色板：底色、暖灰线、更暗的辅助线、象牙白（制作人）与黄铜（干活的人与物）。 */
   --pet-fill: #0f0e0c;
   --pet-line: #8a8377;
   --pet-dim: #4d4840;
@@ -116,7 +116,7 @@ html.pet-window body {
   color: var(--text);
 }
 
-/* 导演的气泡：跟着导演，尾巴指着他。 */
+/* 制作人的气泡：跟着制作人，尾巴指着他。 */
 .pet .pet-bubble {
   position: absolute;
   max-width: 300px;
