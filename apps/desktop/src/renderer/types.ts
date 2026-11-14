@@ -625,6 +625,14 @@ export interface SetupItemProgress {
   stage: string;
   /** 0–100；没有可量的进度时省略。 */
   percent?: number;
+  /** 没有可量的进度时，这一步到现在落到磁盘的字节数：显示下了多少、多快。 */
+  bytes?: number;
+  /** 子进程最近吐出的一行输出。 */
+  activity?: string;
+  /** 开始这一步的时间（毫秒时间戳）。 */
+  started_at?: number;
+  /** 进行中的项多少秒没有动静了（后端在 GET 时算）。 */
+  quiet?: number;
   error?: string;
 }
 

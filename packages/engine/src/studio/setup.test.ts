@@ -1,7 +1,7 @@
 import './testsupport';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { resetSetupTask, splitStage } from './setup';
+import { lastLine, resetSetupTask, splitStage } from './setup';
 import { setEnv, startStudio, studioRequest, tempDir } from './testsupport';
 
 async function waitIdle(s: ReturnType<typeof startStudio>): Promise<any> {
@@ -15,6 +15,13 @@ async function waitIdle(s: ReturnType<typeof startStudio>): Promise<any> {
 
 describe('setup installer', () => {
   afterEach(() => resetSetupTask());
+
+  it('keeps the last readable line of tool output', () => {
+    // 进度条用回车原地重画：只要最后一段；终端颜色去掉；空行与 onset 自己的分隔行跳过。
+    expect(lastLine('\x1b[32mResolving\x1b[0m\nDownloading torch\r 10%\r 55%\n\n')).toBe('55%');
+    expect(lastLine('fetch GET 200 https://registry.npmjs.org/esbuild\n===== x =====\n')).toBe('fetch GET 200 https://registry.npmjs.org/esbuild');
+    expect(lastLine('a'.repeat(200))).toHaveLength(158);
+  });
 
   it('splits the percentage off a stage line', () => {
     expect(splitStage('下载 ffmpeg 45%')).toEqual({ stage: '下载 ffmpeg', percent: 45 });

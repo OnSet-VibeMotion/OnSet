@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { api, errorText, forUser, post } from '../api';
 import type { PrereqStatus, SetupStatus } from '../types';
+import { CrewStage, paceWord, stageKind, usePace } from './CrewStage';
 import '../setup.css';
 
 /**
@@ -105,42 +106,8 @@ function Icon(props: { children: ReactNode }) {
   );
 }
 
-// 带 class 的那几笔在组「准备中」时动起来（setup.css 的「各组的小动画」）：镜头的光圈转、胶片走片、
-// 话筒外一圈声波、字幕一行行打出来。静止时与原来的线稿一模一样。
+// 「以后可能用到」那排药丸的图标；风格库那一层在装的时候轻轻抬起。四个核心组画的是小景（CrewStage）。
 const icons: Record<string, ReactNode> = {
-  render: (
-    <Icon>
-      <rect x="2.5" y="6.5" width="13" height="11" rx="2" />
-      <path className="ic-beam" d="M15.5 10.5l6-3.5v10l-6-3.5" />
-      <g className="ic-lens">
-        <circle cx="9" cy="12" r="2.2" />
-        <path d="M9 9.8v1.1M11.2 12h-1.1M9 14.2v-1.1M6.8 12h1.1" />
-      </g>
-    </Icon>
-  ),
-  media: (
-    <Icon>
-      <rect x="4" y="3" width="16" height="18" rx="1.5" />
-      <path d="M8 3v18M16 3v18" />
-      {/* 两侧的片孔：一条虚线，走片时挪动虚线的起点，片孔就在框里一格格往上走。 */}
-      <path className="ic-reel" d="M6 4.6v15M18 4.6v15" strokeWidth="2" strokeLinecap="butt" strokeDasharray="1.5 3" />
-    </Icon>
-  ),
-  voice: (
-    <Icon>
-      <rect x="9" y="2.5" width="6" height="11.5" rx="3" />
-      <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" />
-      <path className="ic-wave w1" d="M2.6 6.5a9 9 0 0 0 0 7" />
-      <path className="ic-wave w2" d="M21.4 6.5a9 9 0 0 1 0 7" />
-    </Icon>
-  ),
-  align: (
-    <Icon>
-      <rect x="2.5" y="5" width="19" height="14" rx="2" />
-      <path className="ic-type t1" pathLength={1} d="M6.5 11h6M14.5 11h3" />
-      <path className="ic-type t2" pathLength={1} d="M6.5 15h3M11.5 15h6" />
-    </Icon>
-  ),
   music: (
     <Icon>
       <path d="M9 18V6l10-2.5v12" />
@@ -227,12 +194,67 @@ function crewState(c: Crew, task: SetupStatus['task']): { state: State; percent:
   if (finished === c.items.length) return { state: 'ready', percent: 100 };
   const active = progress.findIndex((p) => p?.state === 'running');
   if (active >= 0) {
-    // 每一项占同样的份额：已完成的算满，正在进行的按它自己的百分比（没有就算一半）。
-    const current = (progress[active]?.percent ?? 50) / 100;
+    // 每一项占同样的份额：已完成的算满，正在进行的按它自己的百分比。量不出百分比（npm、pip、浏览器下载）的
+    // 不算——以前按一半算，Windows 上下浏览器时就一直停在 50%，看着像卡死了；那种步骤改为显示下了多少字节。
+    const current = (progress[active]?.percent ?? 0) / 100;
     return { state: 'working', percent: Math.round((100 * (finished + current)) / c.items.length) };
   }
   if (running && progress.some((p) => p?.state === 'pending')) return { state: 'waiting', percent: (100 * finished) / c.items.length };
   return { state: 'missing', percent: 0 };
+}
+
+/** 每一项用大白话说是在干什么（「正在赶来」那一条的第二行）。 */
+const purposes: Record<string, string> = {
+  skills: '下载画面组的制作手册',
+  cli: '安装渲染程序',
+  browser: '下载渲染用的浏览器，约 390 MB',
+  ffmpeg: '下载剪辑工具',
+  tts: '安装配音工具',
+  voice: '安装音色设计工具',
+  align: '安装字幕对齐工具',
+  styles: '下载风格库',
+  beat: '准备节拍分析环境',
+};
+
+function purposeOf(item: PrereqStatus): string {
+  return purposes[item.id] ?? purposes[item.group] ?? item.name;
+}
+
+/** 字节数写成 MB / GB。 */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1_048_576) return `${Math.max(0, Math.round(bytes / 1024))} KB`;
+  if (bytes < 1_073_741_824) return `${(bytes / 1_048_576).toFixed(bytes < 10_485_760 ? 1 : 0)} MB`;
+  return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
+}
+
+/** 秒数写成「3 分 12 秒」。 */
+function formatDuration(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s} 秒`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} 分 ${s % 60} 秒`;
+  return `${Math.floor(m / 60)} 小时 ${m % 60} 分`;
+}
+
+/** 一个组正在准备的那一项，以及它是第几步。 */
+function runningStep(c: Crew, task: SetupStatus['task']): { item: PrereqStatus; progress: NonNullable<SetupStatus['task']>['items'][string]; index: number } | null {
+  const index = c.items.findIndex((item) => task?.items[item.id]?.state === 'running');
+  if (index < 0 || !task) return null;
+  return { item: c.items[index], progress: task.items[c.items[index].id], index };
+}
+
+/**
+ * 人在路上走到哪：已完成的项加上正在准备的那一项走了多少。量得出百分比的按百分比；只知道字节数的，
+ * 下得越多越往前挪（最多走到这一段的 85%），一点都量不出的按用了多久慢慢挪——画面上看得出在走，
+ * 但不拿它冒充百分比，卡片与顶上的数字仍只按量得出的算。
+ */
+function walkPercent(c: Crew, task: SetupStatus['task'], percent: number): number {
+  const step = runningStep(c, task);
+  if (!step || step.progress.percent !== undefined) return percent;
+  const share = 100 / c.items.length;
+  const p = step.progress;
+  const amount = p.bytes !== undefined ? p.bytes / (80 * 1_048_576) : p.started_at ? (Date.now() - p.started_at) / 180_000 : 0;
+  return percent + share * 0.85 * (1 - Math.exp(-amount));
 }
 
 /** 悬停时给懂行的人看：具体是哪些工具、版本、装在哪。 */
@@ -240,42 +262,47 @@ function technical(c: Crew): string {
   return c.items.map((i) => `${i.name}${i.version ? ' ' + i.version : ''}${i.ready ? '\n  ' + i.location : ''}`).join('\n');
 }
 
-const stateLabel: Record<State, string> = { ready: '已就位', missing: '待准备', waiting: '排队中', working: '准备中', failed: '没成功', paused: '已暂停' };
+/** 这一组有没有参与这次安装（没参与的在安装进行中变暗，让正在装的那一组跳出来）。 */
+function inTask(c: Crew, task: SetupStatus['task']): boolean {
+  return c.items.some((item) => task?.items[item.id] !== undefined);
+}
 
-/** 图标外一圈进度：就位时整圈变绿并带一个对勾。 */
-function Ring(props: { percent: number; state: State; children: ReactNode }) {
-  const r = 27;
-  const c = 2 * Math.PI * r;
+const stateLabel: Record<State, string> = { ready: '已就位', missing: '待准备', waiting: '排队中', working: '在路上', failed: '没成功', paused: '已暂停' };
+
+function Check() {
   return (
-    <span className={'crew-ring ' + props.state}>
-      <svg viewBox="0 0 60 60" aria-hidden="true">
-        <circle className="track" cx="30" cy="30" r={r} />
-        <circle className="value" cx="30" cy="30" r={r} strokeDasharray={c} strokeDashoffset={c * (1 - props.percent / 100)} />
-        {/* 准备中时绕圈走的一点光：下载停在某个百分比上时，也看得出它还在干活。 */}
-        <circle className="orbit" cx="30" cy="30" r={r} strokeDasharray={`${c * 0.08} ${c * 0.92}`} />
+    <span className="crew-check" aria-hidden="true">
+      <svg viewBox="0 0 12 12">
+        <path d="M3 6.2l2 2 4-4.4" />
       </svg>
-      <span className="crew-icon">{props.children}</span>
-      {props.state === 'ready' && (
-        <span className="crew-check" aria-hidden="true">
-          <svg viewBox="0 0 12 12">
-            <path d="M3 6.2l2 2 4-4.4" />
-          </svg>
-        </span>
-      )}
     </span>
   );
 }
 
 function CrewCard(props: { crew: Crew; task: SetupStatus['task']; index: number }) {
   const { state, percent } = crewState(props.crew, props.task);
+  const idle = props.task?.running && !inTask(props.crew, props.task);
+  // 赶来的速度就是下载速度：量得出百分比的按百分比算，只知道字节数的按字节算，后端说好一会儿没动静就算停住。
+  const step = runningStep(props.crew, props.task);
+  const byBytes = step !== null && step.progress.percent === undefined;
+  const pace = usePace(byBytes ? step.progress.bytes ?? 0 : percent, state === 'working', byBytes ? 'bytes' : 'percent', step?.progress.quiet);
+  const word = paceWord(pace);
+  let working = `${stateLabel.working} ${percent}%`;
+  if (byBytes && step.progress.bytes) working = `${stateLabel.working} · 已下 ${formatBytes(step.progress.bytes)}`;
+  else if (byBytes && props.crew.items.length > 1) working = `${stateLabel.working} · 第 ${step.index + 1}/${props.crew.items.length} 步`;
+  else if (byBytes) working = stateLabel.working;
   return (
-    <li className={'crew-card ' + state} title={technical(props.crew)} style={{ '--i': props.index } as CSSProperties}>
-      <Ring percent={percent} state={state}>
-        {icons[props.crew.icon ?? props.crew.key] ?? icons.styles}
-      </Ring>
+    <li className={'crew-card ' + state + (idle ? ' idle' : '')} title={technical(props.crew)} style={{ '--i': props.index } as CSSProperties}>
+      <span className="crew-stage">
+        <CrewStage kind={stageKind(props.crew.key)} state={state} percent={walkPercent(props.crew, props.task, percent)} pace={pace} />
+        {state === 'ready' && <Check />}
+      </span>
+      <span className={'crew-meter ' + state} aria-hidden="true">
+        <span style={{ width: `${percent}%` }} />
+      </span>
       <span className="crew-title">{props.crew.title}</span>
       <span className="crew-desc">{props.crew.desc}</span>
-      <span className="crew-state">{state === 'working' ? `${stateLabel.working} ${percent}%` : stateLabel[state]}</span>
+      <span className="crew-state">{state === 'working' ? `${working}${word ? ' · ' + word : ''}` : stateLabel[state]}</span>
     </li>
   );
 }
@@ -303,13 +330,87 @@ function useTween(target: number, ms = 900): number {
 }
 
 /** 右上角的大百分比：平滑地数上去。 */
-function Percent(props: { value: number }) {
+function Percent(props: { value: number; className?: string }) {
   const shown = useTween(props.value);
   return (
-    <span className="setup-percent">
+    <span className={props.className ?? 'setup-percent'}>
       {Math.round(shown)}
       <small>%</small>
     </span>
+  );
+}
+
+/**
+ * 正在下载的那一项：单独一条亮出来——哪一组、具体是什么、走到哪一步、自己的进度，后面排着谁。
+ * 换到下一项时整条重新入场（key 换了），看得出「轮到谁了」。
+ */
+function NowPlaying(props: { crews: Crew[]; items: PrereqStatus[]; task: SetupStatus['task'] }) {
+  const task = props.task;
+  if (!task?.running) return null;
+  const item = props.items.find((i) => task.items[i.id]?.state === 'running');
+  const crew = item && props.crews.find((c) => c.items.includes(item));
+  const queued = props.crews.filter((c) => c !== crew && crewState(c, task).state === 'waiting').map((c) => c.title);
+  if (!item || !crew) return null;
+  return <NowCard key={item.id} crew={crew} item={item} task={task} queued={queued} />;
+}
+
+/**
+ * 「正在赶来」那一条：哪一组、第几步、用大白话说在干什么，量得出的给百分比，量不出的给下了多少、多快，
+ * 再加用了多久与子进程最近的一行输出；好一会儿没有动静时照实说，并指向「网络」里的代理。
+ */
+function NowCard(props: { crew: Crew; item: PrereqStatus; task: NonNullable<SetupStatus['task']>; queued: string[] }) {
+  const { crew, item, task, queued } = props;
+  const progress = task.items[item.id];
+  const measured = progress?.percent !== undefined;
+  const percent = progress?.percent ?? 0;
+  const crewPercent = crewState(crew, task).percent;
+  const pace = usePace(measured ? crewPercent : progress?.bytes ?? 0, true, measured ? 'percent' : 'bytes', progress?.quiet);
+  const word = paceWord(pace);
+  const index = crew.items.indexOf(item);
+  const elapsed = progress?.started_at ? (Date.now() - progress.started_at) / 1000 : 0;
+  const quiet = progress?.quiet ?? 0;
+  const facts: string[] = [];
+  if (!measured && progress?.bytes) facts.push(`已下载 ${formatBytes(progress.bytes)}`);
+  if (pace.bytesRate && pace.bytesRate > 0 && !pace.stalled) facts.push(`${formatBytes(pace.bytesRate)}/s`);
+  if (elapsed >= 1) facts.push(`已用 ${formatDuration(elapsed)}`);
+  return (
+    <div className={'setup-now' + (quiet >= 60 ? ' quiet' : '')}>
+      <span className="now-stage-art">
+        <CrewStage kind={stageKind(crew.key)} state="working" percent={walkPercent(crew, task, crewPercent)} pace={pace} />
+      </span>
+      <div className="now-body">
+        <span className="now-label">
+          <i className="now-live" aria-hidden="true" />
+          正在赶来{word ? ` · ${word}` : ''}
+        </span>
+        <span className="now-title">
+          {crew.title}
+          <span className="now-item">
+            {crew.items.length > 1 ? `第 ${index + 1} 步，共 ${crew.items.length} 步：` : ''}
+            {purposeOf(item)}
+          </span>
+        </span>
+        <span className={'now-bar' + (measured ? '' : ' unknown')} aria-hidden="true">
+          <span style={{ width: measured ? `${percent}%` : undefined }} />
+        </span>
+        <span className="now-stage">
+          <span>{progress?.stage || '准备中'}</span>
+          {facts.length > 0 && <span className="now-facts">{facts.join(' · ')}</span>}
+          {queued.length > 0 && <span className="now-queue">接下来：{queued.join('、')}</span>}
+        </span>
+        {progress?.activity && (
+          <span className="now-activity" title={progress.activity}>
+            {progress.activity}
+          </span>
+        )}
+        {quiet >= 60 && (
+          <span className="now-warn">
+            已经 {formatDuration(quiet)}没有新动静了，可能是网络不通。可以在下面「网络」里填一个代理，或者先暂停、过一会儿再继续——已经下好的不会丢。
+          </span>
+        )}
+      </div>
+      {measured && <Percent value={percent} className="now-percent" />}
+    </div>
   );
 }
 
@@ -349,7 +450,9 @@ export function SetupGuide(props: { setup: SetupHandle; compact?: boolean }) {
     );
   }
 
-  const overall = core.length === 0 ? 100 : Math.round(states.reduce((sum, s) => sum + s.percent, 0) / core.length);
+  // 安装进行中按这次真正在装的组算（只装一个风格库时不该一开始就显示 100%）；否则按四个核心组。
+  const counted = running ? [...core, ...later].filter((c) => inTask(c, task)) : core;
+  const overall = counted.length === 0 ? 100 : Math.round(counted.reduce((sum, c) => sum + crewState(c, task).percent, 0) / counted.length);
   const showCrew = coreMissing > 0 || running;
 
   let eyebrow = '开拍之前';
@@ -416,6 +519,8 @@ export function SetupGuide(props: { setup: SetupHandle; compact?: boolean }) {
         </span>
       )}
 
+      <NowPlaying crews={[...core, ...later]} items={status.items} task={task} />
+
       {showCrew && (
         <ul className="crew">
           {core.map((c, i) => (
@@ -430,10 +535,12 @@ export function SetupGuide(props: { setup: SetupHandle; compact?: boolean }) {
         <span className="setup-later">
           {later.map((c) => {
             const { state, percent } = crewState(c, task);
+            const idle = running && !inTask(c, task);
             return (
               <button
                 key={c.key}
-                className={'later-pill ' + state}
+                className={'later-pill ' + state + (idle ? ' idle' : '')}
+                style={{ '--p': `${percent}%` } as CSSProperties}
                 title={c.desc + '\n\n' + technical(c)}
                 disabled={running || state === 'ready'}
                 onClick={() => void setup.start(c.items.filter((i) => !i.ready).map((i) => i.id))}

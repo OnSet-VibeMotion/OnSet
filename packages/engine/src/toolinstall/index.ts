@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { lookPath } from '../envutil';
-import type { Progress, Writer } from '../hyperframes';
+import { watchSize, type Progress, type Writer } from '../hyperframes';
 import { abortReason } from '../procgroup';
 import { binDir, bundled, dataDir, findOptional, npmCommand, withNode } from '../toolpath';
 
@@ -358,10 +358,13 @@ async function installNpmTool(spec: Extract<ToolSpec, { kind: 'npm' }>, root: st
     const staging = fs.mkdtempSync(path.join(root, '.staging-'));
     try {
       fs.writeFileSync(path.join(staging, 'package.json'), '{"private":true}\n');
-      report({ stage: `安装 ${spec.package}@${spec.version}`, percent: 0, indeterminate: true });
+      const stage = `安装 ${spec.package}@${spec.version}`;
+      report({ stage, percent: 0, indeterminate: true });
       const npm = npmCommand(opts.env, ['install', '--no-audit', '--no-fund', '--loglevel=error', '--save-exact', `${spec.package}@${spec.version}`]);
       const sink: Writer = opts.output ?? { write: () => true };
-      await runCommandIn(npm.file, npm.args, staging, withNode({ ...opts.env, ...npm.env }), sink, opts.signal);
+      // npm 一声不吭：量临时目录长了多少，界面才看得出它在下载。
+      const stop = watchSize([staging], (bytes) => report({ stage, percent: 0, indeterminate: true, bytes }));
+      await runCommandIn(npm.file, npm.args, staging, withNode({ ...opts.env, ...npm.env }), sink, opts.signal).finally(stop);
       fs.writeFileSync(path.join(staging, '.onset-tool'), `${spec.package}@${spec.version}\n`);
       fs.rmSync(dir, { recursive: true, force: true });
       fs.renameSync(staging, dir);
@@ -407,11 +410,15 @@ function uvEnv(data: string, bin: string, opts: InstallOptions): Record<string, 
 }
 
 async function installUVTool(spec: Extract<ToolSpec, { kind: 'uv-tool' }>, uv: string, data: string, bin: string, opts: InstallOptions): Promise<void> {
-  (opts.progress ?? (() => {}))({ stage: `安装 ${spec.package}==${spec.version}`, percent: 0, indeterminate: true });
+  const report = opts.progress ?? (() => {});
+  const stage = `安装 ${spec.package}==${spec.version}`;
+  report({ stage, percent: 0, indeterminate: true });
   const args = ['tool', 'install', '--force', '--python', ToolPythonVersion];
   if (spec.prerelease) args.push('--prerelease', 'allow');
   args.push(`${spec.package}==${spec.version}`);
-  await runCommandIn(uv, args, data, uvEnv(data, bin, opts), opts.output ?? { write: () => true }, opts.signal);
+  // uv 装 Python 与包时量这两个目录长了多少：界面据此显示下了多少、多快。
+  const stop = watchSize([path.join(data, 'tools', 'uv'), pythonInstallDir(opts.env)], (bytes) => report({ stage, percent: 0, indeterminate: true, bytes }));
+  await runCommandIn(uv, args, data, uvEnv(data, bin, opts), opts.output ?? { write: () => true }, opts.signal).finally(stop);
 }
 
 async function installUVVenv(spec: Extract<ToolSpec, { kind: 'uv-venv' }>, uv: string, data: string, bin: string, opts: InstallOptions): Promise<void> {
@@ -419,13 +426,18 @@ async function installUVVenv(spec: Extract<ToolSpec, { kind: 'uv-venv' }>, uv: s
   const venv = path.join(data, 'tools', 'venv', spec.name);
   const env = uvEnv(data, bin, opts);
   const sink: Writer = opts.output ?? { write: () => true };
-  report({ stage: `建 ${spec.name} 的 Python 环境`, percent: 0, indeterminate: true });
+  const make = `建 ${spec.name} 的 Python 环境`;
+  report({ stage: make, percent: 0, indeterminate: true });
   fs.rmSync(venv, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(venv), { recursive: true });
-  await runCommandIn(uv, ['venv', '--python', ToolPythonVersion, venv], data, env, sink, opts.signal);
-  report({ stage: `安装 ${spec.packages.join(' ')}`, percent: 0, indeterminate: true });
+  let stop = watchSize([pythonInstallDir(opts.env)], (bytes) => report({ stage: make, percent: 0, indeterminate: true, bytes }));
+  await runCommandIn(uv, ['venv', '--python', ToolPythonVersion, venv], data, env, sink, opts.signal).finally(stop);
+  const install = `安装 ${spec.packages.join(' ')}`;
+  report({ stage: install, percent: 0, indeterminate: true });
   const python = path.join(venv, 'bin', 'python');
-  await runCommandIn(uv, ['pip', 'install', '--python', python, ...spec.packages], data, env, sink, opts.signal);
+  // torch 这类包几百 MB：量环境目录长了多少，界面才看得出它在下载。
+  stop = watchSize([venv], (bytes) => report({ stage: install, percent: 0, indeterminate: true, bytes }));
+  await runCommandIn(uv, ['pip', 'install', '--python', python, ...spec.packages], data, env, sink, opts.signal).finally(stop);
   writeExecutable(path.join(bin, spec.bin), `#!/bin/sh\n# 由 onset setup 写出：${spec.name} 专用的 Python 环境。\nexec ${q(python)} "$@"\n`);
 }
 

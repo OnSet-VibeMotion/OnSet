@@ -7,6 +7,8 @@ export interface Progress {
   stage: string;
   percent: number;
   indeterminate?: boolean;
+  /** 没有可量的进度时，这一步到现在落到磁盘上的字节数（见 util.watchSize）：界面据此显示「已下载多少、多快」。 */
+  bytes?: number;
 }
 
 /** 接收子进程原始输出的地方（对应 io.Writer）。process.stdout 之类的流可以直接传。 */

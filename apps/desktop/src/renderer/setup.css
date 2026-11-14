@@ -159,64 +159,6 @@
   border-color: color-mix(in srgb, var(--bad) 40%, var(--line));
 }
 
-.setup-guide .crew-ring {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 52px;
-  height: 52px;
-  margin-bottom: 10px;
-}
-
-.setup-guide .crew-ring > svg {
-  position: absolute;
-  inset: 0;
-  transform: rotate(-90deg);
-}
-
-.setup-guide .crew-ring > svg circle {
-  fill: none;
-  stroke-width: 1.5;
-}
-
-.setup-guide .crew-ring .track {
-  stroke: var(--line-strong);
-}
-
-.setup-guide .crew-ring .value {
-  stroke: var(--accent);
-  stroke-linecap: round;
-  transition: stroke-dashoffset 0.7s var(--ease), stroke 0.4s var(--ease);
-}
-
-.setup-guide .crew-ring.ready .value {
-  stroke: var(--ok);
-}
-
-.setup-guide .crew-ring.failed .value {
-  stroke: var(--bad);
-}
-
-.setup-guide .crew-ring.paused .value {
-  stroke: var(--muted);
-}
-
-.setup-guide .crew-icon {
-  position: relative;
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-  transition: color 0.4s var(--ease);
-}
-
-.setup-guide .crew-ring.working .crew-icon {
-  color: var(--accent-text);
-}
-
-.setup-guide .crew-ring.ready .crew-icon {
-  color: var(--text);
-}
-
 .setup-guide .crew-check {
   position: absolute;
   right: -2px;
@@ -725,144 +667,7 @@
   }
 }
 
-/* 进度环上绕圈的一点光。 */
-.setup-guide .crew-ring .orbit {
-  opacity: 0;
-  stroke: var(--accent-text);
-  stroke-width: 2.4;
-  stroke-linecap: round;
-  transform-box: view-box;
-  transform-origin: 30px 30px;
-  transition: opacity 0.4s var(--ease);
-}
-
-.setup-guide .crew-ring.working .orbit {
-  opacity: 0.9;
-  animation: orbit-spin 1.5s linear infinite;
-}
-
-.setup-guide .crew-ring.waiting .orbit {
-  opacity: 0.35;
-  animation: orbit-spin 3.6s linear infinite;
-}
-
-@keyframes orbit-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* ---- 各组的小动画（只在准备中动） ---- */
-
-.setup-guide .crew-icon svg * {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.setup-guide .crew-ring.working .crew-icon {
-  animation: icon-float 2.4s ease-in-out infinite;
-}
-
-@keyframes icon-float {
-  50% {
-    transform: translateY(-1.5px);
-  }
-}
-
-/* 画面：光圈转、镜头前的光一闪一闪。 */
-.setup-guide .crew-ring.working .ic-lens {
-  animation: lens-turn 2.8s linear infinite;
-}
-
-.setup-guide .crew-ring.working .ic-beam {
-  animation: beam-blink 1.3s ease-in-out infinite;
-}
-
-@keyframes lens-turn {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes beam-blink {
-  50% {
-    opacity: 0.35;
-  }
-}
-
-/* 剪辑：片孔一格格往上走。 */
-.setup-guide .crew-ring.working .ic-reel {
-  animation: reel-step 0.6s linear infinite;
-}
-
-@keyframes reel-step {
-  to {
-    stroke-dashoffset: 4.5;
-  }
-}
-
-/* 配音：话筒两侧的声波一圈圈荡开（平时不显示）。 */
-.setup-guide .ic-wave {
-  opacity: 0;
-  transform-box: view-box !important;
-  transform-origin: 12px 10px !important;
-}
-
-.setup-guide .crew-ring.working .ic-wave {
-  animation: wave-out 1.6s ease-out infinite;
-}
-
-.setup-guide .crew-ring.working .ic-wave.w2 {
-  animation-delay: 0.25s;
-}
-
-@keyframes wave-out {
-  0% {
-    opacity: 0;
-    transform: scale(0.72);
-  }
-  35% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.12);
-  }
-}
-
-/* 字幕：两行字依次打出来，停一下再来。 */
-.setup-guide .crew-ring.working .ic-type {
-  stroke-dasharray: 1 1;
-  animation: type-in 2.4s steps(9) infinite;
-}
-
-.setup-guide .crew-ring.working .ic-type.t2 {
-  animation-name: type-in-2;
-}
-
-@keyframes type-in {
-  0% {
-    stroke-dashoffset: 1;
-  }
-  35%,
-  100% {
-    stroke-dashoffset: 0;
-  }
-}
-
-@keyframes type-in-2 {
-  0%,
-  35% {
-    stroke-dashoffset: 1;
-  }
-  70%,
-  100% {
-    stroke-dashoffset: 0;
-  }
-}
-
 /* 风格库：上面一层轻轻抬起又落下。 */
-.setup-guide .crew-ring.working .ic-lift,
 .setup-guide .later-pill.working .ic-lift {
   animation: layer-lift 1.8s ease-in-out infinite;
 }
@@ -877,6 +682,393 @@
 .setup-guide .later-pill.working {
   border-color: var(--accent-line);
   animation: card-glow 2.6s ease-in-out infinite;
+}
+
+/* ---- 组里的小景（CrewStage）：与桌宠同一套块面小人 ---- */
+
+.setup-guide .crew-stage {
+  position: relative;
+  display: block;
+  align-self: stretch;
+  height: 124px;
+  margin: -6px -6px 6px;
+}
+
+.setup-guide .crew-stage-svg {
+  display: block;
+  border-radius: 10px;
+  width: 100%;
+  height: 100%;
+  transition: opacity 0.5s var(--ease), filter 0.5s var(--ease);
+}
+
+.setup-guide .crew-stage-svg .pet-shadow,
+.setup-guide .now-stage-art .pet-shadow {
+  fill: rgba(0, 0, 0, 0.38);
+}
+
+/* 还没请来：路上空着、片场黑着，整块暗一些。 */
+.setup-guide .crew-stage-svg.missing {
+  opacity: 0.5;
+  filter: saturate(0.5);
+}
+
+/* 路中线：虚线；走过的那一段换成亮的黄铜色，就位后整段亮。 */
+.setup-guide .stage-centerline {
+  fill: none;
+  stroke: #4a4239;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.setup-guide .stage-walked {
+  fill: none;
+  stroke: #d9a35f;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, #d9a35f 70%, transparent));
+}
+
+.setup-guide .stage-lamplight {
+  fill: color-mix(in srgb, #f4e7cf 9%, transparent);
+}
+
+.setup-guide .stage-window {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, #e9cf9f 60%, transparent));
+}
+
+.setup-guide .stage-dust {
+  fill: #8a7f70;
+}
+
+/* 停住时头上的「…」：三个点依次亮。 */
+.setup-guide .stage-bubble rect {
+  fill: #efe9dd;
+  opacity: 0.92;
+}
+
+.setup-guide .stage-bubble .dot {
+  fill: #5a5247;
+  animation: bubble-dot 1.2s ease-in-out infinite;
+}
+
+.setup-guide .stage-bubble .d1 {
+  animation-delay: 0.2s;
+}
+
+.setup-guide .stage-bubble .d2 {
+  animation-delay: 0.4s;
+}
+
+@keyframes bubble-dot {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.setup-guide .crew-stage .crew-check {
+  top: 4px;
+  right: 6px;
+  bottom: auto;
+}
+
+/* 每组自己的一根细进度：准备中才看得见数。 */
+.setup-guide .crew-meter {
+  display: block;
+  align-self: stretch;
+  height: 2px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.setup-guide .crew-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.9s var(--ease), background 0.4s var(--ease);
+}
+
+.setup-guide .crew-meter.ready > span {
+  background: var(--ok);
+}
+
+.setup-guide .crew-meter.failed > span {
+  background: var(--bad);
+}
+
+.setup-guide .crew-meter.missing > span,
+.setup-guide .crew-meter.paused > span {
+  background: var(--muted);
+}
+
+/* ---- 正在下载：聚光的一条 ---- */
+
+.setup-guide .setup-now {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: -4px 0 2px;
+  padding: 16px 20px;
+  overflow: hidden;
+  border: 1px solid var(--accent-line);
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 140% at 0% 50%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%),
+    color-mix(in srgb, var(--accent) 4%, transparent);
+  animation:
+    now-in 0.6s var(--ease) backwards,
+    card-glow 2.6s ease-in-out infinite;
+}
+
+/* 一道光从左往右掠过。 */
+.setup-guide .setup-now::before {
+  content: '';
+  position: absolute;
+  inset: -40% auto -40% -40%;
+  width: 30%;
+  background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--accent) 12%, transparent), transparent);
+  transform: skewX(-16deg);
+  pointer-events: none;
+  animation: card-sweep 3.2s var(--ease) infinite;
+}
+
+@keyframes now-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+    filter: blur(3px);
+  }
+}
+
+.setup-guide .now-stage-art {
+  flex: none;
+  width: 190px;
+  height: 120px;
+  margin: -10px 0 -12px -8px;
+}
+
+.setup-guide .now-stage-art svg {
+  width: 100%;
+  height: 100%;
+}
+
+.setup-guide .now-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.setup-guide .now-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-text);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.28em;
+}
+
+/* 像录制灯一样一闪一闪的小点。 */
+.setup-guide .now-live {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
+  animation: live-pulse 1.4s ease-out infinite;
+}
+
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+
+.setup-guide .now-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--text);
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.setup-guide .now-item {
+  color: var(--muted);
+  font-family: var(--sans, inherit);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.setup-guide .now-bar {
+  position: relative;
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--line);
+}
+
+.setup-guide .now-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: 4%;
+  border-radius: inherit;
+  background:
+    repeating-linear-gradient(115deg, transparent 0 6px, rgba(255, 255, 255, 0.14) 6px 12px),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 45%, transparent), var(--accent));
+  background-size: 26px 100%, 100% 100%;
+  transition: width 0.9s var(--ease);
+  animation: bar-stripes 0.9s linear infinite;
+}
+
+@keyframes bar-stripes {
+  to {
+    background-position: 26px 0, 0 0;
+  }
+}
+
+/* 量不出进度时：一小段来回滑。 */
+.setup-guide .now-bar.unknown > span {
+  width: 28%;
+  animation:
+    bar-stripes 0.9s linear infinite,
+    bar-roam 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes bar-roam {
+  from {
+    left: 0;
+  }
+  to {
+    left: 72%;
+  }
+}
+
+.setup-guide .now-stage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.setup-guide .now-facts {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 子进程最近的一行输出：等宽、小、一行放不下就省略，给懂行的人看它具体在干什么。 */
+.setup-guide .now-activity {
+  overflow: hidden;
+  max-width: 100%;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 好一会儿没有动静：照实说一句，边框从黄铜色换成提醒色。 */
+.setup-guide .now-warn {
+  margin-top: 2px;
+  color: color-mix(in srgb, var(--bad) 70%, var(--text));
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.setup-guide .setup-now.quiet {
+  border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
+}
+
+.setup-guide .now-queue {
+  color: var(--text-3);
+}
+
+.setup-guide .now-percent {
+  flex: none;
+  color: var(--accent-text);
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 300;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.setup-guide .now-percent small {
+  margin-left: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ---- 安装进行中：没参与这次安装的往后退，正在装的那一个亮起来 ---- */
+
+.setup-guide .crew-card.idle {
+  opacity: 0.38;
+  filter: saturate(0.4);
+  transition:
+    opacity 0.5s var(--ease),
+    filter 0.5s var(--ease);
+}
+
+/* 药丸在安装时是 disabled，不走全局的变暗，由下面按状态决定亮暗。 */
+.setup-guide .later-pill:disabled {
+  opacity: 1;
+}
+
+.setup-guide .later-pill {
+  position: relative;
+  overflow: hidden;
+  transition:
+    opacity 0.5s var(--ease),
+    border-color 0.4s var(--ease),
+    color 0.4s var(--ease),
+    transform 0.4s var(--ease);
+}
+
+.setup-guide .later-pill.idle {
+  opacity: 0.35;
+}
+
+/* 药丸自己就是一根进度条：底色从左往右填上去。 */
+.setup-guide .later-pill.working::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--p, 0%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 8%, transparent), color-mix(in srgb, var(--accent) 22%, transparent));
+  transition: width 0.9s var(--ease);
+  pointer-events: none;
+}
+
+.setup-guide .later-pill.working {
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.setup-guide .later-pill.working > * {
+  position: relative;
+}
+
+.setup-guide .later-pill.working .later-icon {
+  color: var(--accent-text);
+}
+
+.setup-guide .later-pill.waiting .later-state {
+  color: var(--muted);
 }
 
 @media (prefers-reduced-motion: reduce) {

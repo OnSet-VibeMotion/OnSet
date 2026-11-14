@@ -24,7 +24,8 @@ export interface Run {
   /** onset setup --proxy 的值（可能为空）。只给明确要走代理的下载用，例如节拍模型权重。 */
   proxy?: string;
   log: hyperframes.Writer;
-  stage: (text: string) => void;
+  /** 这一步在做什么；bytes 是没有可量进度时这一步落到磁盘的字节数（Progress.bytes）。 */
+  stage: (text: string, bytes?: number) => void;
 }
 
 /** git / npm 等的原始输出日志：<数据目录>/onset/setup.log，每次准备覆盖。onset setup 与客户端的安装页共用。 */
@@ -133,7 +134,7 @@ function toolItem(group: 'tts' | 'align' | 'voice', id: string, label: string, s
     prepare: async (run, signal) => {
       // npm 包用用户自己的 ~/.npmrc，不套代理；Python 类工具要从 GitHub 下 Python，--proxy 给它。
       const env = spec.kind === 'npm' ? run.npm : withProxy(run);
-      const progress = (p: hyperframes.Progress) => run.stage(hyperframesStage(p));
+      const progress = (p: hyperframes.Progress) => run.stage(hyperframesStage(p), p.bytes);
       await toolinstall.ensureTool(spec, { env, output: run.log, progress, signal });
       if (model) await toolinstall.ensureModel(model, { env: withProxy(run), output: run.log, progress, signal });
     },
@@ -157,7 +158,7 @@ export function items(pick?: Selection): Item[] {
       },
       prepare: (run, signal) =>
         hyperframes.prepareSkills(
-          { env: run.git, cacheDir: hyperframes.defaultCacheDir(run.base), output: run.log, progress: (p) => run.stage(hyperframesStage(p)) },
+          { env: run.git, cacheDir: hyperframes.defaultCacheDir(run.base), output: run.log, progress: (p) => run.stage(hyperframesStage(p), p.bytes) },
           signal,
         ),
     },
@@ -172,7 +173,7 @@ export function items(pick?: Selection): Item[] {
         return [hyperframes.cliReady(dir, hyperframes.PinnedVersion), dir];
       },
       prepare: async (run, signal) => {
-        await hyperframes.ensureCLI({ env: run.npm, output: run.log, progress: (p) => run.stage(hyperframesStage(p)) }, signal);
+        await hyperframes.ensureCLI({ env: run.npm, output: run.log, progress: (p) => run.stage(hyperframesStage(p), p.bytes) }, signal);
       },
     },
     {
@@ -188,7 +189,7 @@ export function items(pick?: Selection): Item[] {
       },
       prepare: async (run, signal) => {
         // 浏览器从 Google 的存储下载，国内要走代理；--proxy 只给这种明确要出境的下载。
-        await hyperframes.ensureBrowser({ env: withProxy(run, run.npm), output: run.log, progress: (p) => run.stage(hyperframesStage(p)) }, signal);
+        await hyperframes.ensureBrowser({ env: withProxy(run, run.npm), output: run.log, progress: (p) => run.stage(hyperframesStage(p), p.bytes) }, signal);
       },
     },
     {
@@ -203,7 +204,7 @@ export function items(pick?: Selection): Item[] {
         return [status.ok, status.where];
       },
       prepare: async (run, signal) => {
-        await toolinstall.ensureFFmpeg({ env: withProxy(run), output: run.log, progress: (p) => run.stage(hyperframesStage(p)), signal });
+        await toolinstall.ensureFFmpeg({ env: withProxy(run), output: run.log, progress: (p) => run.stage(hyperframesStage(p), p.bytes), signal });
       },
     },
   ];

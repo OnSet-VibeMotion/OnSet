@@ -30,15 +30,15 @@ const RX = 8;
 const RY = 6;
 const WALL = 3;
 /** 一个单位多少像素、画布大小、原点。 */
-const U = 32;
+export const U = 32;
 const CW = 400;
 const CH = 326;
 const OX = CW / 2 - ((RX - RY) / 2) * 0.866 * U;
 const OY = 99;
 
-type Pt = [number, number];
-const P = (x: number, y: number, z = 0): Pt => [OX + (x - y) * 0.866 * U, OY + (x + y) * 0.5 * U - z * U];
-const pts = (list: Pt[]) => list.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+export type Pt = [number, number];
+export const P = (x: number, y: number, z = 0): Pt => [OX + (x - y) * 0.866 * U, OY + (x + y) * 0.5 * U - z * U];
+export const pts = (list: Pt[]) => list.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
 
 /** 动画节拍：每 50 毫秒走一步、动一下。走路速度（单位每步）。 */
 const tickMs = 50;
@@ -46,8 +46,8 @@ const speed = 0.11;
 
 // ---- 材质：顶面、朝左下的面、朝右下的面 ----
 
-type Material = readonly [string, string, string];
-const mat = {
+export type Material = readonly [string, string, string];
+export const mat = {
   wood: ['#7a5e43', '#5c4632', '#46362a'],
   walnut: ['#5a4431', '#433224', '#33261c'],
   metal: ['#5a5148', '#3e3832', '#2e2924'],
@@ -76,7 +76,7 @@ const room: Record<keyof typeof roomDefaults, string> = { ...roomDefaults };
 const matDefaults: Record<string, Material> = { ...mat };
 
 /** 等距的箱子：顶面、+y 面（朝左下）、+x 面（朝右下）三种明暗。 */
-function box(key: string, x: number, y: number, z: number, w: number, d: number, h: number, m: Material, edge = 'rgba(0,0,0,0.25)'): ReactElement {
+export function box(key: string, x: number, y: number, z: number, w: number, d: number, h: number, m: Material, edge = 'rgba(0,0,0,0.25)'): ReactElement {
   const top = [P(x, y, z + h), P(x + w, y, z + h), P(x + w, y + d, z + h), P(x, y + d, z + h)];
   const left = [P(x, y + d, z), P(x + w, y + d, z), P(x + w, y + d, z + h), P(x, y + d, z + h)];
   const right = [P(x + w, y, z), P(x + w, y + d, z), P(x + w, y + d, z + h), P(x + w, y, z + h)];
@@ -89,15 +89,15 @@ function box(key: string, x: number, y: number, z: number, w: number, d: number,
   );
 }
 
-const seg = (key: string, a: Pt, b: Pt, stroke: string, width = 1, extra: Record<string, string | number> = {}) => (
+export const seg = (key: string, a: Pt, b: Pt, stroke: string, width = 1, extra: Record<string, string | number> = {}) => (
   <line key={key} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke={stroke} strokeWidth={width} strokeLinecap="round" {...extra} />
 );
 
 /** 墙上的一块平面（x=0 的左墙或 y=0 的后墙）与墙上某一点。 */
-function wallQuad(on: 'left' | 'back', a: number, b: number, z0: number, z1: number): Pt[] {
+export function wallQuad(on: 'left' | 'back', a: number, b: number, z0: number, z1: number): Pt[] {
   return on === 'left' ? [P(0.02, a, z0), P(0.02, b, z0), P(0.02, b, z1), P(0.02, a, z1)] : [P(a, 0.02, z0), P(b, 0.02, z0), P(b, 0.02, z1), P(a, 0.02, z1)];
 }
-const wallAt = (on: 'left' | 'back', s: number, z: number): Pt => (on === 'left' ? P(0.03, s, z) : P(s, 0.03, z));
+export const wallAt = (on: 'left' | 'back', s: number, z: number): Pt => (on === 'left' ? P(0.03, s, z) : P(s, 0.03, z));
 
 // ---- 人 ----
 
@@ -119,7 +119,7 @@ interface Body {
   head: L3;
 }
 
-type Pose =
+export type Pose =
   | 'stand'
   | 'walk'
   | 'sit'
@@ -144,7 +144,11 @@ type Pose =
   | 'talk'
   | 'laugh'
   | 'look'
-  | 'standTalk';
+  | 'standTalk'
+  // 安装页里赶路的人：抱着自己的器材走、跑，或站着抱着。
+  | 'carry'
+  | 'carryRun'
+  | 'hold';
 
 /** 坐着的姿势（气泡按坐着的头高放）。 */
 const seatedPoses = new Set<Pose>(['sit', 'think', 'type', 'stretch', 'script', 'doze', 'lean', 'phone', 'sitSip', 'talk', 'laugh']);
@@ -379,11 +383,40 @@ function body(pose: Pose, t: number): Body {
       b.head = [0.02, 0, 1.53 + Math.abs(g) * 0.012];
       break;
     }
+    case 'carry':
+    case 'carryRun': {
+      // 腿照走路摆（跑的时候步子大、抬腿高、身子前倾），胳膊抱在胸前。
+      const run = pose === 'carryRun';
+      const s = Math.sin(t / (run ? 85 : 110));
+      const c = Math.cos(t / (run ? 85 : 110));
+      const stride = run ? 0.32 : 0.22;
+      const lift = run ? 0.16 : 0.08;
+      const lean = run ? 0.08 : 0.02;
+      b.footL = [stride * s, -0.1, 0.04 + Math.max(0, lift * c)];
+      b.footR = [-stride * s, 0.1, 0.04 + Math.max(0, -lift * c)];
+      b.kneeL = [stride * 0.55 * s + 0.05 + (run ? 0.06 * Math.max(0, c) : 0), -0.09, 0.46 + (run ? 0.06 * Math.max(0, c) : 0)];
+      b.kneeR = [-stride * 0.55 * s + 0.05 + (run ? 0.06 * Math.max(0, -c) : 0), 0.09, 0.46 + (run ? 0.06 * Math.max(0, -c) : 0)];
+      b.shL = [lean, -0.18, 1.3];
+      b.shR = [lean, 0.18, 1.3];
+      b.elL = [0.14 + lean, -0.22, 1.04];
+      b.elR = [0.14 + lean, 0.22, 1.04];
+      b.haL = [0.3 + lean, -0.09, 1.12];
+      b.haR = [0.3 + lean, 0.09, 1.12];
+      b.head = [0.03 + lean * 1.4, 0, 1.53 + Math.abs(c) * (run ? 0.04 : 0.02)];
+      break;
+    }
+    case 'hold':
+      b.elL = [0.14, -0.22, 1.04];
+      b.elR = [0.14, 0.22, 1.04];
+      b.haL = [0.3, -0.09, 1.12];
+      b.haR = [0.3, 0.09, 1.12];
+      b.head = [0.03, sway * 2, 1.53];
+      break;
     default:
       b.head = [0, sway * 2, 1.53];
   }
   // 呼吸：不走路时肩和头跟着一起一伏，站着、坐着都不是僵住的。
-  if (pose !== 'walk') {
+  if (pose !== 'walk' && pose !== 'carry' && pose !== 'carryRun') {
     const br = Math.sin(t / 650) * 0.008;
     b.head = [b.head[0], b.head[1], b.head[2] + br];
     b.shL = [b.shL[0], b.shL[1], b.shL[2] + br * 0.6];
@@ -396,13 +429,13 @@ function body(pose: Pose, t: number): Body {
 const sipping = (t: number) => Math.sin(t / 1700) > 0.55;
 
 /** 一个人身上某个关节此刻在画布上的位置（与 person 同一种投影），给手里的东西用。 */
-function jointAt(x: number, y: number, a: number, pose: Pose, t: number, j: keyof Body): Pt {
+export function jointAt(x: number, y: number, a: number, pose: Pose, t: number, j: keyof Body): Pt {
   const [f, r, z] = body(pose, t)[j];
   return P(x + f * Math.cos(a) - r * Math.sin(a), y + f * Math.sin(a) + r * Math.cos(a), z);
 }
 
 /** 一个人的样子：衣服亮暗、裤子、鞋、头发、皮肤，以及头上戴什么。 */
-interface Look {
+export interface Look {
   coat: string;
   coatShade: string;
   trousers: string;
@@ -415,7 +448,7 @@ interface Look {
 }
 
 const skin = { skin: '#e4c4a2', skinShade: '#c49d7a' };
-const looks: Record<string, Look> = {
+export const looks: Record<string, Look> = {
   director: { coat: '#e3dbcc', coatShade: '#b3a996', trousers: '#4a4239', shoe: '#2a2520', hair: '#5a4330', ...skin, hat: 'beret', hatColor: '#d9a35f' },
   op1: { coat: '#7d7262', coatShade: '#5c5348', trousers: '#34302b', shoe: '#201c18', hair: '#3a2c20', ...skin, hat: 'cap', hatColor: '#3a342d' },
   op2: { coat: '#a59a88', coatShade: '#7d7363', trousers: '#3f3a33', shoe: '#201c18', hair: '#2a2018', ...skin, hat: 'cap', hatColor: '#6b5038' },
@@ -455,7 +488,7 @@ function petFilter(sk: SkinView | null): string | undefined {
 }
 
 /** 画一个人：站位 (x, y)、朝向角 a（弧度，0 朝 +x）、姿势与样子。四肢按远近排好先后。 */
-function person(key: string, x: number, y: number, a: number, pose: Pose, t: number, look: Look): ReactElement {
+export function person(key: string, x: number, y: number, a: number, pose: Pose, t: number, look: Look): ReactElement {
   const b = body(pose, t);
   const F: Pt = [Math.cos(a), Math.sin(a)];
   const R: Pt = [-Math.sin(a), Math.cos(a)];
@@ -927,7 +960,7 @@ function softbox(key: string, x: number, on: boolean): ReactElement {
   );
 }
 
-function prefersStill(): boolean {
+export function prefersStill(): boolean {
   try {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   } catch {

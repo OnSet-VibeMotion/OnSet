@@ -14,7 +14,7 @@ import { bundled, nodeCommand, npmCommand, withNode } from '../toolpath';
 import { PinnedVersion } from './constants';
 import { defaultCacheDir } from './hyperframes';
 import type { Progress, Writer } from './progress';
-import { errorText, goQuote, runCommand } from './util';
+import { errorText, goQuote, runCommand, watchSize } from './util';
 
 /**
  * 渲染器与编排工具调用 CLI 的写法。提示词、锁定文件与安全模式的放行列表
@@ -113,7 +113,7 @@ export async function ensureCLI(opts: CLIOptions, signal?: AbortSignal): Promise
       if (attempt > 1) stage = `安装 HyperFrames CLI ${version}（重试 ${attempt}/${cliAttempts}）`;
       report({ stage, percent: 0, indeterminate: true });
       try {
-        await installCLI(dir, pkg, version, env, opts.output, signal);
+        await installCLI(dir, pkg, version, env, opts.output, signal, (bytes) => report({ stage, percent: 0, indeterminate: true, bytes }));
         report({ stage: 'HyperFrames CLI 已就绪', percent: 100 });
         return dir;
       } catch (err) {
@@ -139,8 +139,11 @@ async function installCLI(
   env: Record<string, string>,
   output: Writer | undefined,
   signal: AbortSignal | undefined,
+  onBytes: (bytes: number) => void = () => {},
 ): Promise<void> {
   const staging = fs.mkdtempSync(path.join(path.dirname(dir), '.cli-'));
+  // npm 用 --loglevel=error 一声不吭：量临时目录长了多少，界面才看得出它在下载。
+  const stopWatch = watchSize([staging], onBytes);
   try {
     // 一个空的 package.json 让 npm 把依赖装进这个目录，而不是往上找到别的项目。
     fs.writeFileSync(path.join(staging, 'package.json'), '{"private":true}\n', { mode: 0o644 });
@@ -174,6 +177,7 @@ async function installCLI(
     fs.rmSync(dir, { recursive: true, force: true }); // 没有完成标记的残缺安装
     fs.renameSync(staging, dir);
   } finally {
+    stopWatch();
     fs.rmSync(staging, { recursive: true, force: true });
   }
 }
@@ -296,10 +300,13 @@ export async function ensureBrowser(opts: BrowserOptions, signal?: AbortSignal):
   const dir = requireCLI(env);
   let lastErr: unknown;
   for (let attempt = 1; attempt <= cliAttempts; attempt++) {
-    report({ stage: attempt > 1 ? `下载 chrome-headless-shell（重试 ${attempt}/${cliAttempts}）` : '下载 chrome-headless-shell', percent: 0, indeterminate: true });
+    const stage = attempt > 1 ? `下载 chrome-headless-shell（重试 ${attempt}/${cliAttempts}）` : '下载 chrome-headless-shell';
+    report({ stage, percent: 0, indeterminate: true });
+    // browser ensure 跑完才吐输出：量浏览器目录长了多少，界面才看得出下了多少、多快。
+    const stopWatch = watchSize([headlessShellRoot(env)], (bytes) => report({ stage, percent: 0, indeterminate: true, bytes }));
     try {
       const spec = cliCommandFor(dir, env, ['browser', 'ensure']);
-      const out = await runCommand(spec.file, spec.args, { env: spec.env, signal });
+      const out = await runCommand(spec.file, spec.args, { env: spec.env, signal }).finally(stopWatch);
       opts.output?.write(out);
       const after = browserStatus(env);
       if (after.ok) {

@@ -23,6 +23,16 @@ export interface ItemProgress {
   stage: string;
   /** 0–100；没有可量的进度时省略。 */
   percent?: number;
+  /** 没有可量的进度时，这一步到现在落到磁盘的字节数（目录长了多少）：界面据此显示下了多少、多快。 */
+  bytes?: number;
+  /** 子进程最近吐出的一行输出（去掉控制字符、截短）：给懂行的人看它具体在干什么。 */
+  activity?: string;
+  /** 开始这一步的时间（毫秒时间戳）。 */
+  started_at?: number;
+  /** 最近一次有动静的时间（毫秒时间戳）：说明换了、进度或字节数变了、子进程有输出。 */
+  active_at?: number;
+  /** GET 时算出的「多少秒没有动静了」，只给进行中的项；界面靠它判断是在干活还是卡住了，不用对两边的钟。 */
+  quiet?: number;
   error?: string;
 }
 
@@ -96,7 +106,25 @@ function currentStatus(projectRoot: string): SetupStatus {
 export function setupAPI(request: Request, projectRoot = ''): Response {
   if (request.method !== 'GET') return methodNotAllowed('GET');
   const resp = currentStatus(projectRoot);
+  const now = Date.now();
+  for (const item of Object.values(resp.task?.items ?? {})) {
+    if (item.state === 'running' && item.active_at !== undefined) item.quiet = Math.max(0, Math.round((now - item.active_at) / 1000));
+    else delete item.quiet;
+  }
   return writeJSON(200, { ready: resp.ready, items: resp.items.map(statusJSON), command: resp.command, task: resp.task });
+}
+
+/** 一段子进程输出里最后一行有字的：去掉终端控制序列，进度条用的回车只取最后一段，截到 160 字。 */
+export function lastLine(chunk: string): string {
+  // eslint-disable-next-line no-control-regex
+  const clean = chunk.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '');
+  const lines = clean
+    .split('\n')
+    .map((l) => l.split('\r').filter((s) => s.trim() !== '').pop() ?? '')
+    .map((l) => l.trim())
+    .filter((l) => l !== '' && !l.startsWith('====='));
+  const last = lines.pop() ?? '';
+  return last.length > 160 ? last.slice(0, 157) + '…' : last;
 }
 
 /** 从「下载 ffmpeg 45%」这样的阶段说明里取出百分比。 */
@@ -150,21 +178,39 @@ export async function setupRunAPI(request: Request, projectRoot = '', run: (fn: 
       fs.mkdirSync(path.dirname(log), { recursive: true });
       fd = fs.openSync(log, 'w');
       const out = fd;
-      const writer = { write: (chunk: string) => fs.writeSync(out, chunk) };
+      // 正在准备的那一项：子进程一有输出就记下「有动静」与最后一行，界面据此说清它在干什么、是不是卡住了。
+      let active: ItemProgress | null = null;
+      const writer = {
+        write: (chunk: string) => {
+          if (active) {
+            active.active_at = Date.now();
+            const line = lastLine(chunk);
+            if (line !== '') active.activity = line;
+          }
+          return fs.writeSync(out, chunk);
+        },
+      };
       const prep = prereqs.newRun(env, proxy, '', writer);
       for (const item of todo) {
         const progress = current.items[item.id];
         progress.state = 'running';
         progress.stage = '准备中';
+        progress.started_at = progress.active_at = Date.now();
         writer.write(`\n===== ${item.name} ${item.version} =====\n`);
-        prep.stage = (text) => {
+        active = progress;
+        prep.stage = (text, bytes) => {
           const { stage, percent } = splitStage(text);
+          const moved = stage !== progress.stage || percent !== progress.percent || (bytes !== undefined && bytes !== progress.bytes);
           progress.stage = stage;
           if (percent === undefined) delete progress.percent;
           else progress.percent = percent;
+          if (bytes === undefined) delete progress.bytes;
+          else progress.bytes = bytes;
+          if (moved) progress.active_at = Date.now();
         };
         try {
           await item.prepare(prep, signal);
+          active = null;
           progress.state = 'done';
           progress.stage = '';
           progress.percent = 100;
