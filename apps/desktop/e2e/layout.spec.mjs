@@ -56,18 +56,21 @@ test('the chat is the main column and the picture panel opens on demand', async 
   await page.mouse.down();
   await page.mouse.move(box.x - 120, box.y + box.height / 2, { steps: 6 });
   await page.mouse.up();
-  // pointermove 的 React 更新可能还没绘制完；先等最后一次拖动落到画面，再读取宽度并刷新。
-  const targetWidth = await page.locator('.workspace').evaluate((el, x) => el.getBoundingClientRect().right - x, box.x - 120);
-  await expect.poll(async () => {
-    const width = await page.locator('#panel').evaluate((el) => el.getBoundingClientRect().width);
-    return Math.abs(width - targetWidth);
-  }).toBeLessThan(2);
+  // pointerup 保存比例，React 随后绘制：先确认保存值与画面一致，不从自动化鼠标的坐标推算宽度。
+  const widthKey = 'onset-studio.panel-width:media';
+  await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), widthKey)).not.toBeNull();
+  const savedWidth = await page.locator('.workspace').evaluate((el, key) =>
+    el.getBoundingClientRect().width * Number(localStorage.getItem(key)), widthKey);
+  await expect.poll(async () => Math.abs(
+    await page.locator('#panel').evaluate((el) => el.getBoundingClientRect().width) - savedWidth,
+  )).toBeLessThan(2);
   const after = await page.locator('#panel').evaluate((el) => el.getBoundingClientRect().width);
   expect(after).toBeGreaterThan(before + 80);
   await page.reload();
   await expect(page.locator('#panel')).toBeVisible();
-  const reloaded = await page.locator('#panel').evaluate((el) => el.getBoundingClientRect().width);
-  expect(Math.abs(reloaded - after)).toBeLessThan(4);
+  await expect.poll(async () => Math.abs(
+    await page.locator('#panel').evaluate((el) => el.getBoundingClientRect().width) - after,
+  )).toBeLessThan(4);
   await page.locator('.panel-resize').dblclick();
   await expect.poll(() => page.locator('#panel').evaluate((el) => el.getBoundingClientRect().width)).toBeLessThan(after - 80);
 });
