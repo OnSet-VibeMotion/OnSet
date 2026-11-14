@@ -6,8 +6,6 @@
 
 片场是一个 macOS 桌面客户端：你在对话里说想做什么，智能体像一个剧组那样替你写稿、配音、对字幕、拆分镜、并发渲染动画镜头、拼接、出封面与发布，遇到要你拍板的地方停下来问你。手里有文章或口播稿可以直接丢给它，没有也行；也能做没有配音、画面踩着音乐节拍走的卡点片，竖屏、横屏都可以。
 
-▶ [观看片场宣传视频（MP4，4 分 47 秒）](https://github.com/chouheiwa/articale-to-motion/blob/main/docs/onset-tutorial.mp4)
-
 制作由你选的 AI 编排工具（Codex、Claude Code、Qoder、CodeBuddy、OpenCode）在客户端里完成，你通过对话告诉它要什么、在关卡上拍板。项目 Prompt、发布模板与技能随客户端内置，HyperFrames 技能按固定官方版本装进项目，项目因此自包含——整个目录拷到另一台装了客户端的机器上就能接着做。
 
 ## 安装

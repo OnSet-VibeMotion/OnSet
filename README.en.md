@@ -6,8 +6,6 @@
 
 OnSet (片场, "film set") is a macOS desktop client. You say what you want in a chat, and an agent works like a film crew: it writes the script, records the voice-over, times the subtitles, plans the shots, renders the motion-graphics scenes in parallel, cuts them together, makes covers and gets the film ready to publish, stopping to ask you whenever a decision is yours. Hand it an article or a narration script if you have one, or start from nothing. It can also make beat-synced films with no voice-over, where the picture follows the music, in vertical or landscape.
 
-▶ [Watch the OnSet promo video (MP4, 4m 47s)](https://github.com/chouheiwa/articale-to-motion/blob/main/docs/onset-tutorial.mp4)
-
 An AI orchestrator of your choice does the production inside the client: Codex, Claude Code, Qoder, CodeBuddy, or OpenCode. You tell it what you want in the chat and make the calls at each checkpoint. Project prompts, publishing templates, and skills ship inside the client. The HyperFrames skills are installed into the project at a pinned official release, so a project is self-contained: copy the directory to another machine with the client installed and carry on.
 
 ## Install
