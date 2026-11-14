@@ -136,7 +136,7 @@ SVG 转 PNG（角色包预览，`packages/engine/src/svgimage`）必须走 `rsvg
 
 ## 整片风格
 
-整片风格分两层：`packages/engine/src/filmstyle` 是**与来源无关的通用部分**（`Source` 接口、来源表、风格目录查找、装进项目的契约、目录式风格库 `DirectorySource`），具体风格来源由内置插件在 `apply` 里 `ctx.filmStyleSource(...)` 登记，`filmstyle.sources()` 从插件登记表取（`plugin.pluginFilmStyleSources`）再并上当前项目的第三方来源。目前只有内置插件 `lemo-styles`（「LemoLab 风格库」，`packages/engine/src/plugins/lemo-styles`：来源 lemo-opuscar，LemoLab，MIT + demo CC BY 4.0）。`filmstyle` 与内核（prereqs、config、studio、cli）不 import 它。am 本身不锁定视觉；整片风格是可选的第三种技能来源，与 `SourceEmbedded` / `SourceUpstream` 并列但**不进 `registeredSkills`**：那张表要求解析不到时退回按名字引用，而整片风格解析不到的意思是「本片没有整片风格」。`scene.resolveFilmStyle` 只找项目级（不找家目录），只认契约，解析到就并进 `resolveAllSkills` 的结果，指纹与安全模式读取因此自动覆盖；`buildPrompt` 据此把「视觉自由度」段换成 `filmStyleSection`。
+整片风格分两层：`packages/engine/src/filmstyle` 是**与来源无关的通用部分**（`Source` 接口、来源表、风格目录查找、装进项目的契约、目录式风格库 `DirectorySource`），具体风格来源由内置插件在 `apply` 里 `ctx.filmStyleSource(...)` 登记，`filmstyle.sources()` 从插件登记表取（`plugin.pluginFilmStyleSources`）再并上当前项目的第三方来源。目前有两个内置插件：`lemo-styles`（「LemoLab 风格库」，`packages/engine/src/plugins/lemo-styles`：来源 lemo-opuscar，LemoLab，MIT + demo CC BY 4.0）与 `anidoodle-styles`（「anidoodle 代码绘画」，`packages/engine/src/plugins/anidoodle-styles`：来源 anidoodle，Alex Greenshpun，Apache-2.0）。`filmstyle` 与内核（prereqs、config、studio、cli）不 import 它们。两个来源共用的下载零件（分段稀疏检出、锁、屏蔽用户配置的 git 调用）在 `filmstyle/gitlib.ts`，SKILL.md 模板用的 Go text/template 子集在 `filmstyle/template.ts`。am 本身不锁定视觉；整片风格是可选的第三种技能来源，与 `SourceEmbedded` / `SourceUpstream` 并列但**不进 `registeredSkills`**：那张表要求解析不到时退回按名字引用，而整片风格解析不到的意思是「本片没有整片风格」。`scene.resolveFilmStyle` 只找项目级（不找家目录），只认契约，解析到就并进 `resolveAllSkills` 的结果，指纹与安全模式读取因此自动覆盖；`buildPrompt` 据此把「视觉自由度」段换成 `filmStyleSection`。
 
 | 约定 | 原因 |
 |---|---|
@@ -165,6 +165,19 @@ lemo 来源（内置插件 `lemo-styles`，`packages/engine/src/plugins/lemo-sty
 | `SKILL.md` 由 `skill.md.tmpl` 生成：给制作的说明（先 treatment 再看 demo、字体从 Google Fonts 取、`core/fonts` 中文只有约 200 字）与渲染规则（`window.render(t)` 怎么换成 HyperFrames 的 `hf-seek`、`/core/...` 路径为何拷进镜头目录后不用改、Sound palette 与胶片颗粒对镜头无效） | 上游写给它自己的渲染器，这些冲突上游不会替我们守 |
 
 制作提示词「整片风格」一节由「carries the film style without naming a source」钉着。升级 `PinnedCommit` 时对比新旧 `core/lib.js` 与 `core/README.md` 的页面契约。
+
+anidoodle 来源（内置插件 `anidoodle-styles`）自己的约定。上游不是「风格目录 + demo」，而是一套 Canvas2D 绘图引擎：每种风格是 `draw(ctx, frame, env)` 写成的示范画（TypeScript），多数另有笔触模块（`<风格>Kit.ts`），`references/styles/<风格>.md` 写介质、笔触、边缘、顺序、色板与禁忌：
+
+| 约定 | 原因 |
+|---|---|
+| `PinnedCommit`（`anidoodle.ts`）固定 commit；`catalog.json` 由 `gen/main.ts` 从同一 commit 的检出生成，含每种风格要带的模块闭包（`modules`）与它在上游图鉴里的格子（`cell`）。中文名、分类、示范画与适用题材写在 `gen/zh.ts`，与上游风格一一对应，中文名避开别的来源（`anidoodle.test.ts` 的「does not share a Chinese name with another source」）。升级时 `AM_UPDATE_GOLDEN=1 AM_ANIDOODLE_SRC=<检出> npx vitest run --root packages/engine src/plugins/anidoodle-styles` 重写目录，不设 `AM_UPDATE_GOLDEN` 时核对目录并对 32 种风格跑转换与确定性扫描 | 示范画与笔触模块直接决定画面；中文名撞了，`film_style_use` 只写名字就得写全 |
+| 只稀疏检出要用的（约 2 MB：许可、风格说明、四份通用说明、各风格的模块闭包、图鉴），不取 README 的动图视频、配乐、采样包与工具脚本 | 整仓 94 MB，绝大部分是给它自己的工作流用的 |
+| TypeScript 在 `am setup` 时转成浏览器 ES 模块（`build.ts`）：用 am 自己的运行时的 `module.stripTypeScriptTypes`（transform 模式，上游有参数属性与 `<T>` 断言），再按 tsc 的规则去掉没当作值用到的具名引入（`elideUnusedImports`），相对引用补 `.js`。不用 esbuild / tsc。转换规则变了就递增 `CompilerVersion`，已下载的检出会重转、不重下 | 客户端里没有 esbuild、tsc 与 npm 装出来的原生二进制。上游有 `import { P, rng }` 这种不带 `type` 的类型引入，只去类型的话浏览器报「没有导出 P」，整个模块加载失败（实测）；判断「用到」时成员访问与对象字面量的键不算 |
+| 海报从上游图鉴 `skills/anidoodle/assets/styles.jpg`（8×4）裁（`mediaprobe.cropImages`），裁前核对图鉴的 sha256；缺 ffmpeg 时抛 `prereq.MissingError` | 上游没有单张海报；图鉴重排了而格子没改，海报会张冠李戴 |
+| 转好的模块与海报放在构建目录：am 自己克隆的放检出里的 `.am-build/`，`AM_ANIDOODLE_LIBRARY` 指向的用户检出另放在 `<风格根目录>/anidoodle/local-<路径摘要>`，不往用户目录里写 | 与 lemo 一样不改用户自己的检出 |
+| 项目里的风格目录：`anidoodle/`（转好的模块加接头 `am-anidoodle.js`，渲染器整目录拷进镜头目录）、`source/`（TypeScript 原文，读来学技法）、`references/`、`STYLE.md`（中文说明加上游原文；上游没写说明的两种指向源码文件头）。接头（`runtime.js.tmpl`）把 Film 接到 `hf-seek`：先画第 0 帧、准备登记成 `window.__hf.buildReady`，Film 的检查比上游 `validate` 宽（不要求镜头切在 bpm 网格上）。改 `core.ts` / `film.ts` 的 `Env` 或 `renderFrame` 时要同步改接头 | 上游的宿主（`hosts/page.ts`）依赖它自己的打包与 playwright，不能直接用 |
+| SKILL.md 要求只有 canvas、没有 GSAP 时间轴的合成在根元素上加 `data-no-timeline` | 不加的话 HyperFrames 每次渲染等 45 秒时间轴（实测 50 秒对 4.7 秒，产物逐字节相同） |
+| 只接画面：配乐、旁白、音效、采样包、发布片模板、品牌导入、3D（`three-core`）与上游全部工具脚本都没接 | 与 lemo 同理；3D 要另带 three.js，以后要接可复用 `filmstyle/select.ts` 的 `threeClosure` |
 
 ## Prompt 文件
 
@@ -220,7 +233,7 @@ lemo 来源（内置插件 `lemo-styles`，`packages/engine/src/plugins/lemo-sty
 | 渲染技能（`renderer_skills`）：`resolveAllSkills` 经 `flow.pluginSkillsFor` 加入 `plugin:<站>/<技能>`，于是指纹（`skill:` 摘要）、读取放行与 `pluginSkillSection` 提示词都自动覆盖；`scenes: all` 的每个镜头都带，`opt-in` 的只给 `scene.json` 的 `plugin_skills` 点名的镜头。点名了却没有直接报错。没点名 opt-in 技能的镜头装上插件前后指纹不变（`scene/pluginskills.test.ts`）。插件装在用户级：装上一个 `scenes: all` 的技能，**所有项目**已渲染的镜头都标成 Stale，添加确认（设置页与 `station_add` 输出）照实说 | 加一个对所有镜头生效的技能，已渲染的镜头标成 Stale 是对的：渲染输入确实变了；不想全变就用 opt-in |
 | 整片风格库（`film_styles`）：`flow.pluginStyleSource` 用通用的 `filmstyle.DirectorySource`（与内置插件能登记的同一种来源），来源 id `x-<站 id>`；`flow/styles.ts` 加载时经 `filmstyle.usePluginSources` 交进读取函数，`filmstyle.sources()` 每次现读已装插件，所有项目、首页（还没有项目）、`am init` 都看得到。用到来源表的地方要导入 `flow`（登记靠它的加载副作用）。装进项目走同一份 `filmstyle.install` 契约，缺 SKILL.md 时补通用的。实验性的 `film_styles.only_referenced` 打开按引用挑文件（`DirectorySource.onlyReferenced`，`filmstyle/select.ts` 的 `threeClosure` / `referencedAssets`，lemo 也用这一份）：风格目录与库根的 `assets/` 只带源码里出现过名字的、`node_modules/three/` 只带 import 到的模块，`filmstyle/select.test.ts` 钉着。第三方风格库不是前置资源 | 风格库随插件钉在 commit 上，不联网；整棵拷的话一种 three.js 风格就几十 MB |
 
-内置插件：ArticleToMotion 自己的可选功能也写成插件，放在 `assets/plugins/<id>/`（随 `extraResources` 进 .app），用同一份 `am-station.json`。现在有音乐卡点（`beat`）、歌曲讲解（`song`）、多角色对话（`cast`）、发布（`publishing`）、生成式艺术（`algorithmic-art`）、Lottie 图层（`text-to-lottie`）与 LemoLab 风格库（`lemo-styles`，整片风格来源 lemo-opuscar）。插件也可以在 `apply` 里登记整套流程（`ctx.flow`：路线写 `stations` 或沿用 `base`、提示词段落顺序 `prompt`、`first_page`、`marker`、`excludes`）。
+内置插件：ArticleToMotion 自己的可选功能也写成插件，放在 `assets/plugins/<id>/`（随 `extraResources` 进 .app），用同一份 `am-station.json`。现在有音乐卡点（`beat`）、歌曲讲解（`song`）、多角色对话（`cast`）、发布（`publishing`）、生成式艺术（`algorithmic-art`）、Lottie 图层（`text-to-lottie`）、LemoLab 风格库（`lemo-styles`，整片风格来源 lemo-opuscar）与 anidoodle 代码绘画（`anidoodle-styles`，整片风格来源 anidoodle）。插件也可以在 `apply` 里登记整套流程（`ctx.flow`：路线写 `stations` 或沿用 `base`、提示词段落顺序 `prompt`、`first_page`、`marker`、`excludes`）。
 
 内置插件的代码一律在进程内登记（`apply(ctx)`）：代码放在 `packages/engine/src/plugins/<id>/`，在 `apply` 里登记站（站点、判断函数、「接下来」的说法与关卡确认的话、提示词段落）、流程、操作、页面、后端接口、网页命令、校验器、渲染技能、镜头扩展块、叙事模式、新建选项、已有判断（`ctx.presentIn`，新建时的互斥用）、整批检查、命令组、前置资源、要传给子进程的环境变量与顶栏步骤，宿主各层从登记表里取，内核不按名字认识任何一个功能。清单（`assets/plugins/<id>/am-station.json`）只有名字与说明。内置插件常开，没有关掉的办法：它登记的东西对每个项目都在，一个流程用不用得上由流程的声明决定（口播项目的提示词里没有卡点的段落，是因为口播流程的段落顺序里没有它）。功能自己的引擎实现（`beat/`、`song/`、`cast/`、`dialogue/`、`castbeats/`）仍在原包里，由插件的 apply 引用。
 

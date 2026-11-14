@@ -1,4 +1,4 @@
-// Go text/template 的最小子集，只够渲染 skill.md.tmpl 与 attribution.md.tmpl：
+// Go text/template 的最小子集，只够渲染风格来源的 SKILL.md、ATTRIBUTION.md 这类模板（lemo-opuscar、anidoodle 共用）：
 // {{.A.B}} 取字段、{{if .X}} … {{end}} 条件、{{- / -}} 去掉相邻空白。
 // 遇到不认识的动作直接报错，免得模板悄悄用了这里没实现的语法却渲染成别的样子。
 

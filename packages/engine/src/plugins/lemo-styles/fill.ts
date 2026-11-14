@@ -7,7 +7,7 @@ import { RepoURL, entryLabel, type Entry } from './lemo';
 import skillTemplate from './skill.md.tmpl';
 import { demoUsesCoreAssets, exists, skipInDemo, sortedEntries, type Library } from './library';
 import { referencedAssets, sourceTexts, threeClosure } from './select';
-import { renderTemplate } from './template';
+import { renderTemplate } from '../../filmstyle/template';
 
 /**
  * 把 entry 这种风格写进 dir（空的临时目录）：STYLE.md、demo 源码、core/ 工具、

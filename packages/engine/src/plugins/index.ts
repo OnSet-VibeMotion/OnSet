@@ -8,6 +8,7 @@
  */
 import { deferBuiltin } from '../plugin/registry';
 import { algorithmicArt } from './algorithmic-art';
+import { anidoodleStyles } from './anidoodle-styles';
 import { beatPlugin } from './beat';
 import { castPlugin } from './cast';
 import { lemoStyles } from './lemo-styles';
@@ -23,3 +24,4 @@ deferBuiltin(algorithmicArt);
 deferBuiltin(textToLottie);
 deferBuiltin(castPlugin);
 deferBuiltin(lemoStyles);
+deferBuiltin(anidoodleStyles);

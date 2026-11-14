@@ -120,7 +120,7 @@ Projects no longer preset or lock a visual style. The tools guarantee the canvas
 
 ### Film style (optional)
 
-To render the whole film in one style, pick one from a style source. The currently registered source is [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar) by LemoLab: 66 styles, with a [gallery](https://lemomo-ai.github.io/lemo-opuscar/). More sources can be added later.
+To render the whole film in one style, pick one from a style source. The registered sources are [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar) by LemoLab (66 styles, with a [gallery](https://lemomo-ai.github.io/lemo-opuscar/)) and [anidoodle](https://github.com/alexgreensh/anidoodle) by Alex Greenshpun (32 hand-drawn looks painted entirely in code, such as pencil and watercolour, sumi-e, ukiyo-e woodblock, embroidery and scratchboard; [gallery](https://github.com/alexgreensh/anidoodle/blob/main/skills/anidoodle/assets/styles.jpg)). More sources can be added later.
 
 - You can pick directly on the home page, in the new-project dialog, and on the Style page (grouped by source, with posters and search), and switch or remove it there too.
 - If you have not picked one, the orchestrator suggests two or three at the script-review checkpoint, based on the subject.

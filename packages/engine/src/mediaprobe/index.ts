@@ -24,3 +24,5 @@ export { SilenceFloorDB } from './loudness';
 export type { ProgramLoudness } from './loudness';
 export { Toolchain, newToolchain } from './toolchain';
 export type { VerifyOptions } from './toolchain';
+export { cropImages } from './image';
+export type { CropRect } from './image';

@@ -17,6 +17,7 @@ describe('stations API', () => {
     expect(body.problems).toEqual([]);
     expect(body.stations.map((x: { id: string; builtin: boolean }) => [x.id, x.builtin])).toEqual([
       ['algorithmic-art', true],
+      ['anidoodle-styles', true],
       ['beat', true],
       ['cast', true],
       ['lemo-styles', true],
