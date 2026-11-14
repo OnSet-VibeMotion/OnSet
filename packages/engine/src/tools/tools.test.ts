@@ -14,7 +14,7 @@ describe('tools', () => {
       ['codex', ['codex', '--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', 'prompt']],
       ['claude', ['claude', '-p', '--permission-mode', 'acceptEdits', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]}}`, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', 'prompt']],
       // dont_ask 连镜头目录里写文件都拒（2026-11 实测渲染器一个 index.html 都写不出来）：与 claude 同一套放行规则。
-      ['qoder', ['qoderclicn', '-p', 'prompt', '--permission-mode', 'accept_edits', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]},"mcp":{"lazyLoad":false}}`, '--output-format', 'stream-json']],
+      ['qoder', ['qoderclicn', '-p', 'prompt', '--permission-mode', 'accept_edits', '--setting-sources', 'project,local', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]},"mcp":{"lazyLoad":false}}`, '--output-format', 'stream-json']],
       ['codebuddy', ['codebuddy', '-p', '--verbose', '--output-format', 'stream-json', '--permission-mode', 'acceptEdits', 'prompt']],
       ['opencode', ['opencode', 'run', '--standalone', '--format', 'json', 'prompt']],
     ];
@@ -34,6 +34,10 @@ describe('tools', () => {
     expect(settings.permissions.additionalDirectories).toEqual(['/proj/.agents/skills']);
     expect(settings.permissions.deny).toContain('Read(**/.env)');
     expect(argv).not.toContain('dont_ask');
+    // 不读用户级设置（用户级技能、钩子）：镜头的技能由 scene.run 链进镜头目录（安全与不安全模式都一样）。
+    expect(argv[argv.indexOf('--setting-sources') + 1]).toBe('project,local');
+    const unsafe = rendererInvocation('qoder', 'prompt', true, {});
+    expect(unsafe[unsafe.indexOf('--setting-sources') + 1]).toBe('project,local');
   });
 
   it('renderer invocation unsafe is explicit', () => {
@@ -188,7 +192,8 @@ describe('tools', () => {
     const settings = JSON.parse(got[index + 1]) as { permissions: { allow: string[]; deny: string[]; additionalDirectories: string[] } };
     expect(settings.permissions.allow).toEqual(['Bash(npx --yes hyperframes@0.8.14:*)', 'Bash(ffprobe:*)', 'Read(//proj/.agents/skills/**)']);
     expect(settings.permissions.additionalDirectories).toEqual(['/proj/.agents/skills']);
-    expect(settings.permissions.deny).toEqual(['Bash(onset:*)', 'Read(**/.env)', 'Read(**/.env.*)']);
+    // 技能目录只读：读放行、改一律拒绝。
+    expect(settings.permissions.deny).toEqual(['Bash(onset:*)', 'Read(**/.env)', 'Read(**/.env.*)', 'Edit(//proj/.agents/skills/**)', 'Write(//proj/.agents/skills/**)']);
   });
 
   // onset 只经工具服务调用：渲染器与编排工具在每家都挂上 onset 的 MCP 服务，claude 系放行整个服务。

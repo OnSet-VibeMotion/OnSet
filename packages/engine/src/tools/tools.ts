@@ -86,6 +86,14 @@ export function onsetToolsServer(executable: string, profile: 'orchestrator' | '
 const qoderEagerSettings = { mcp: { lazyLoad: false } };
 const qoderEagerMcp = ['--settings', JSON.stringify(qoderEagerSettings)];
 
+/**
+ * qoder 渲染器不读用户级设置：用户级技能目录里有几十个与渲染无关的技能（飞书、百炼……，实测 74 个），
+ * 其中还有旧版的 hyperframes，会与项目钉死的版本混在一起；用户级的钩子也不该在渲染里跑。
+ * 镜头要用的技能由 scene.run 链进镜头目录的 .qoder/skills（stageRendererSkills），qoder 的 Skill 工具照常可用。
+ * 模型不受影响：onset 的渲染模型设置经 -m 传。
+ */
+const qoderRendererSources = ['--setting-sources', 'project,local'];
+
 /** claude / qoder / codebuddy 的 --mcp-config：几个服务合在一份 JSON 里。 */
 function mcpConfigJSON(servers: McpServer[]): string {
   const mcpServers: Record<string, unknown> = {};
@@ -127,7 +135,9 @@ function claudeSettings(a: RendererAccess & { mcp?: string[] }): string {
       additionalDirectories: dirs,
       allow,
       // onset 只经工具服务调用；它不在 PATH 里，这里再明确拒绝一次，免得弹审批卡片。
-      deny: ['Bash(onset:*)', 'Read(**/.env)', 'Read(**/.env.*)'],
+      // 技能目录只读：acceptEdits 连 additionalDirectories 里的编辑也自动批准；qoder 经镜头目录里的技能链接
+      // （scene.stageRendererSkills）改的也是这里的真文件——规则按真实路径匹配，链接绕不过去（2026-11 实测）。
+      deny: ['Bash(onset:*)', 'Read(**/.env)', 'Read(**/.env.*)', ...dirs.flatMap((dir) => ['Edit(/' + dir + '/**)', 'Write(/' + dir + '/**)'])],
     },
   });
 }
@@ -172,12 +182,12 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
       // 与 claude 同一套放行规则（qoder 的 --settings 认 claude 的 permissions 写法），外加关掉懒加载 MCP。
       // 以前用 dont_ask：它连镜头目录里写文件都拒、技能目录读不了、ls 都跑不了，渲染器一个 index.html 都写不出来（2026-11 实测）。
       if (unsafe) {
-        const mcp = server ? [...qoderEagerMcp, '--mcp-config', mcpConfigJSON([server])] : [];
-        return ['qoderclicn', '-p', prompt, '--dangerously-skip-permissions', ...m, ...mcp, '--output-format', 'stream-json'];
+        const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
+        return ['qoderclicn', '-p', prompt, '--dangerously-skip-permissions', ...m, ...qoderRendererSources, '--settings', JSON.stringify(qoderEagerSettings), ...mcp, '--output-format', 'stream-json'];
       }
       const settings = { ...(JSON.parse(claudeSettings({ ...access, mcp: server ? [server.name] : [] })) as Record<string, unknown>), ...qoderEagerSettings };
       const mcp = server ? ['--mcp-config', mcpConfigJSON([server]), '--allowed-tools', 'mcp__' + server.name] : [];
-      return ['qoderclicn', '-p', prompt, '--permission-mode', 'accept_edits', ...m, '--settings', JSON.stringify(settings), ...mcp, '--output-format', 'stream-json'];
+      return ['qoderclicn', '-p', prompt, '--permission-mode', 'accept_edits', ...m, ...qoderRendererSources, '--settings', JSON.stringify(settings), ...mcp, '--output-format', 'stream-json'];
     }
     case 'codebuddy': {
       let mode = ['--permission-mode', 'acceptEdits'];

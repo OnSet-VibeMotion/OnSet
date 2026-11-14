@@ -26,7 +26,7 @@ import { fingerprint, removeRecord, writeRecord } from './record';
 import { buildPrompt, sceneCanvas, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
 import { removeLive, writeLive } from './live';
 import { writeSceneData } from './scenedata';
-import { HyperFramesSkillName, rendererAccess, resolveAllSkills, skillsEnvironment, SkillsDirEnv } from './skills';
+import { HyperFramesSkillName, rendererAccess, resolveAllSkills, skillsEnvironment, SkillsDirEnv, stageRendererSkills, unstageRendererSkills } from './skills';
 import { VerificationError } from './verification';
 
 /** SIGTERM 之后等渲染器进程组自行退出的时间（毫秒）。 */
@@ -55,6 +55,8 @@ export async function run(
 ): Promise<void> {
   if (!Number.isFinite(tolerance) || tolerance < 0) throw new Error('tolerance 必须是有限且非负的数字');
   const renderer = s.renderer !== '' ? s.renderer : cfg.renderer;
+  // 上次渲染没收拾干净的 qoder 技能链接先清掉：resolveSkill 也会找镜头目录里的 .qoder/skills。
+  unstageRendererSkills(s.directory);
   const resolvedSkills = resolveAllSkills(renderer, s.directory, skillsEnvironment(baseEnv, cfg.overlay), s);
   if ((resolvedSkills[HyperFramesSkillName] ?? '') === '') {
     userOutput.write(
@@ -109,11 +111,19 @@ export async function run(
   let err: unknown = null;
   // 客户端据此显示「渲染中」与渲染器此刻在做什么，见 live.ts。
   writeLive(s.directory, s.id, { pid: process.pid, renderer, started_at: attempt.started_at });
+  let unstage = () => {};
   try {
+    // qoder 用自己的 Skill 工具加载本镜头的技能（链接只在渲染期间存在，见 stageRendererSkills）。
+    unstage = stageRendererSkills(renderer, s.directory, resolvedSkills, prompt);
     await render();
   } catch (e) {
     err = e;
   } finally {
+    try {
+      unstage();
+    } catch {
+      // 清不掉就留到下次渲染前再清。
+    }
     removeLive(s.directory, s.id);
   }
   // Go 版的 defer：无论成败都写尝试记录、报一行用量、回调记忆经历。
