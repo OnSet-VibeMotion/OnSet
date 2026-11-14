@@ -72,7 +72,7 @@ test('completes @ mentions and / commands in the input', async ({ page, project 
 
 test('shows posters for film styles the orchestrator recommends', async ({ page, project }) => {
   await openProject(page, project);
-  await page.locator('#prompt').fill('推荐风格');
+  await page.locator('#prompt').fill('挑几张海报');
   await page.locator('#send').click();
   const picks = page.locator('.style-picks .style-pick');
   await expect(picks).toHaveCount(3);
@@ -293,7 +293,7 @@ test('storyboard lists the plan and each scene’s description before rendering'
 
 test('a style recommended for one segment is sent as that segment’s style, not the whole film’s', async ({ page, project }) => {
   await openProject(page, project);
-  await page.locator('#prompt').fill('推荐风格');
+  await page.locator('#prompt').fill('挑几张海报');
   await page.locator('#send').click();
   await page.locator('.style-pick.scoped button', { hasText: '用在这一段' }).click();
   const sent = page.locator('.message.user').last();
