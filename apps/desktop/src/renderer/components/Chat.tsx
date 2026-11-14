@@ -1,6 +1,6 @@
 import { playerProps } from '../media';
 import type { CSSProperties, ReactNode } from 'react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, errorText, post, rawURL } from '../api';
 import type { AgentChoice, AgentsResponse, Attachment, EventKind, PermissionAsk, PlanItem, Scene, SessionEvent, SessionMeta, ViewRequest, ViewState } from '../types';
 import { tabs } from './Preview';
@@ -188,11 +188,20 @@ export function Chat(props: Props) {
   // 导演这次会用的模型：会话选的，否则项目设置里给导演选的；都空时后端按填了 key 的服务商挑。
   const directorModel = props.choice.model || (props.agents?.orchestrator === 'director' ? props.agents.orchestrator_model : '');
 
+  const syncScrollState = useCallback((el: HTMLDivElement) => {
+    const bottom = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_TOLERANCE;
+    setAtBottom(bottom);
+    setScrolled(el.scrollTop > 1);
+    return bottom;
+  }, []);
+
   // 跟随到底：只有用户在底部（8px 内）时才跟；展开折叠项时不跳。
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (el && following.current && el.scrollHeight - el.scrollTop - el.clientHeight > 1) el.scrollTop = el.scrollHeight;
-  }, [blocks, queue.length]);
+    if (!el) return;
+    if (following.current && el.scrollHeight - el.scrollTop - el.clientHeight > 1) el.scrollTop = el.scrollHeight;
+    syncScrollState(el);
+  }, [blocks, queue.length, syncScrollState]);
   // 换会话时回到跟随：打开一段历史就落在最新的那一轮。
   useLayoutEffect(() => {
     following.current = true;
@@ -205,26 +214,27 @@ export function Chat(props: Props) {
     if (!el || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
       if (following.current && el.scrollHeight - el.scrollTop - el.clientHeight > 1) el.scrollTop = el.scrollHeight;
+      // 展开 / 收起可以只改变滚动范围而不改变 scrollTop，此时不会有 scroll 事件。
+      syncScrollState(el);
     });
     observer.observe(el);
     for (const child of Array.from(el.children)) observer.observe(child);
     return () => observer.disconnect();
-  }, [blocks]);
+  }, [blocks, syncScrollState]);
 
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
-    const bottom = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_TOLERANCE;
-    following.current = bottom;
-    setAtBottom(bottom);
-    setScrolled(el.scrollTop > 1);
+    following.current = syncScrollState(el);
   };
 
   const jumpToLatest = () => {
     const el = scroller.current;
     if (!el) return;
     following.current = true;
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    // 直接落到底：平滑滚动的中间帧会被 onScroll 判成离开底部，关掉刚打开的跟随。
+    el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
+    syncScrollState(el);
   };
 
   // 输入框随内容长高，最高 min(184px, 34vh)，再多就滚动。
@@ -570,7 +580,16 @@ export function Chat(props: Props) {
       <NextStep guide={guide} disabled={blocked || running || sending} onAction={runGuide} />
 
       <div className={'chat-log-wrap' + (scrolled ? ' edge' : '')}>
-        <div className={'chat-log' + (plan ? ' has-plan' : '')} id="messages" ref={scroller} onScroll={onScroll}>
+        <div
+          className={'chat-log' + (plan ? ' has-plan' : '')}
+          id="messages"
+          ref={scroller}
+          onScroll={onScroll}
+          onClickCapture={(event) => {
+            // 要在 details 改变高度之前停止跟随；toggle 通知可能晚于 ResizeObserver。
+            if ((event.target as Element).closest('summary')) following.current = false;
+          }}
+        >
           {loaded && events.length === 0 && (
             <div className="intro">
               <h3>说说要做什么</h3>
@@ -600,7 +619,6 @@ export function Chat(props: Props) {
               stations={props.progress?.turns}
               posterVersion={filmStyles.posterVersion}
               onReverted={props.onTurnEnd}
-              onToggle={() => (following.current = false)}
             />
           ))}
         </div>
@@ -919,7 +937,6 @@ interface BlockProps {
   onOpenFile: (path: string) => void;
   onView: (view: ViewRequest) => void;
   onReverted: () => void;
-  onToggle: () => void;
   styles: Map<string, FilmStyle>;
   posterVersion: number;
   files: string[];
@@ -1159,7 +1176,7 @@ function TurnView(props: BlockProps & { turn: TurnBlock }) {
   return (
     <div className="assistant-flow msg-enter">
       {(turn.process.length > 0 || live) && (
-        <ExecutionShell turn={turn} live={live} elapsed={elapsed} projectPath={props.projectPath} onOpenFile={props.onOpenFile} onToggle={props.onToggle} />
+        <ExecutionShell turn={turn} live={live} elapsed={elapsed} projectPath={props.projectPath} onOpenFile={props.onOpenFile} />
       )}
       {proseText.trim() && (
         <div className="message assistant" data-ctx-label="回复" data-ctx-whole>
@@ -1196,7 +1213,6 @@ function ExecutionShell(props: {
   elapsed: number;
   projectPath: string;
   onOpenFile: (path: string) => void;
-  onToggle: () => void;
 }) {
   const { turn, live } = props;
   // 跟随这一轮的状态（进行中展开、结束收起），直到用户自己点过。
@@ -1211,7 +1227,6 @@ function ExecutionShell(props: {
       onToggle={(e) => {
         const next = (e.currentTarget as HTMLDetailsElement).open;
         if (next !== open) {
-          props.onToggle();
           setUserOpen(next);
         }
       }}

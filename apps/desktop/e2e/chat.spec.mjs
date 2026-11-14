@@ -173,4 +173,23 @@ test('reopening a long conversation lands on the latest turn at once', async ({ 
   const gap = await page.locator('#messages').evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
   expect(gap).toBeLessThanOrEqual(8);
   await expect(page.locator('.intro')).toHaveCount(0);
+
+  // 翻历史后，按钮与手动滚动都必须能回到最后一轮。
+  const messages = page.locator('#messages');
+  const jump = page.getByRole('button', { name: '回到最新' });
+  const bottomGap = () => messages.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  await messages.evaluate((el) => { el.scrollTop = 0; });
+  await expect(jump).toBeVisible();
+  await jump.click();
+  await expect.poll(bottomGap).toBeLessThanOrEqual(8);
+  await expect(jump).toBeHidden();
+  await expect(page.locator('.done-line').last()).toBeInViewport();
+
+  await messages.evaluate((el) => { el.scrollTop = 0; });
+  await expect(jump).toBeVisible();
+  await messages.hover();
+  await page.mouse.wheel(0, 10000);
+  await expect.poll(bottomGap).toBeLessThanOrEqual(8);
+  await expect(jump).toBeHidden();
+  await expect(page.locator('.done-line').last()).toBeInViewport();
 });
