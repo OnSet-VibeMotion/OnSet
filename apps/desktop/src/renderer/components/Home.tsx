@@ -774,7 +774,7 @@ function TemplateArt({ id }: { id: string }) {
   }
 }
 
-/** 项目名：说的话第一句，或第一个文件名；去掉路径符号，截到 24 字，加上日期。 */
+/** 备用的项目名：说的话第一句，或第一个文件名；去掉路径符号，截到 24 字。AI 起名起不出来时用它，日期由开机画面加。 */
 function projectName(message: string, files: File[]): string {
   let base = message.split('\n').find((line) => line.trim()) ?? '';
   if (!base && files.length) base = files[0].name.replace(/\.[^.]+$/, '');
@@ -784,9 +784,7 @@ function projectName(message: string, files: File[]): string {
     .replace(/[，。！？、；：,.!?;:]+.*$/, '')
     .trim()
     .replace(/\s+/g, '-');
-  base = Array.from(base).slice(0, 24).join('') || '新视频';
-  const now = new Date();
-  return `${base}-${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  return Array.from(base).slice(0, 24).join('') || '新视频';
 }
 
 function formatSize(bytes: number): string {

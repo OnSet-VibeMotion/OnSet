@@ -9,6 +9,15 @@ for a in "$@"; do
 done
 printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "$sid"
 case "$prompt" in *慢慢来*) exec sleep 60 ;; esac
+# 首页起名（studio/naming.ts 的 namingPrompt）：把「用户的原话：」下一行逗号前的部分加上「的片子」当项目名；
+# 原话带「慢起名」时先等 2 秒，供看「拟片名」那一幕。
+case "$prompt" in *请给一条讲解视频的项目起一个名字*)
+  said=$(printf '%s\n' "$prompt" | sed -n '/^用户的原话：/{n;p;q;}' | sed 's/，.*//')
+  case "$said" in *慢起名*) sleep 2 ;; esac
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"%s的片子"}]}}\n' "$said"
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
+  exit 0 ;;
+esac
 # 「给我选项」：列一份待办清单，回复末尾带 choices 代码块，不改文件。
 case "$prompt" in *给我选项*)
   printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"p1","name":"TodoWrite","input":{"todos":[{"content":"读稿子","status":"completed","activeForm":"读稿子中"},{"content":"定风格","status":"in_progress","activeForm":"正在定风格"}]}}]}}\n'

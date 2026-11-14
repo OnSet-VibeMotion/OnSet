@@ -35,18 +35,19 @@ test('starts a new video from the home page', async ({ page, project, sandbox })
   await page.locator('#home-prompt').fill('首页端到端测试，讲讲复利');
   await page.locator('#home-send').click();
 
-  // 开机画面：场记板写着片名，时间线上五段片段依次完成（没选整片风格时那一段标「不用」），最后打板进项目。
-  await expect(page.locator('.creation .slate')).toContainText('首页端到端测试');
-  await expect(page.locator('.creation .clip')).toHaveCount(5);
+  // 开机画面：先由编排工具起片名（假 claude 回「首页端到端测试的片子」），场记板写着它；时间线上六段片段依次完成
+  // （没选整片风格时那一段标「不用」），最后打板进项目。
+  await expect(page.locator('.creation .slate')).toContainText('首页端到端测试的片子');
+  await expect(page.locator('.creation .clip')).toHaveCount(6);
   await expect(page.locator('.creation .clip', { hasText: '整片风格' })).toContainText('不用');
   await expect(page.locator('.creation')).toHaveCount(0, { timeout: 15_000 });
 
   // 建好项目、开始制作后直接进到新项目，对话里是整片制作这一轮。
-  await expect(page.locator('#title')).toContainText('首页端到端测试');
+  await expect(page.locator('#title')).toContainText('首页端到端测试的片子');
   await expect(page.locator('#session-title')).toContainText('整片制作');
   await expect(page.locator('.message.user').first()).toContainText('首页端到端测试，讲讲复利');
   const projects = await api(page, '/api/projects');
-  const created = projects.body.projects.find((p) => p.name.startsWith('首页端到端测试'));
+  const created = projects.body.projects.find((p) => p.name.startsWith('首页端到端测试的片子-'));
   expect(created).toBeTruthy();
   // 新项目落在临时 HOME 里，不会写到用户真实目录。
   expect(created.path.startsWith(sandbox.home + path.sep)).toBe(true);

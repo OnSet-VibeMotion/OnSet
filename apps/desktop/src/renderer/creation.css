@@ -172,6 +172,42 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 拟片名：场记板片名格先只有一个粉笔光标在闪，定名时与监视器同步逐字写上。 */
+.slate-row strong.pending {
+  min-height: 1.3em;
+}
+.chalk-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  vertical-align: -0.12em;
+  background: var(--accent-text);
+  animation: caret-blink 1s steps(1) infinite;
+}
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+/* 逐字写的字沿用所在位置的字体（场记板的 .slate-row span 是小字号，不能套到它们身上）。 */
+.slate-row strong .ink,
+.slate-row strong .ink-char {
+  font: inherit;
+  color: inherit;
+}
+.ink-char {
+  display: inline-block;
+  white-space: pre;
+  animation: ink-in 420ms var(--ease-strong) both;
+}
+@keyframes ink-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+    filter: blur(3px);
+  }
+}
+
 .slate-row span {
   font-size: 13px;
   color: var(--text-2);
@@ -272,6 +308,130 @@
   font-family: Georgia, 'Songti SC', STSong, serif;
   font-size: 22px;
   color: #f1efe9;
+}
+/* ---- 拟片名（监视器）---- */
+.title-draft {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  text-align: center;
+  background: radial-gradient(circle at 50% 45%, #1d1f22, #0b0c0e);
+  animation: title-in 600ms var(--ease-strong);
+}
+.title-draft .monitor-kicker {
+  white-space: nowrap;
+}
+.draft-words {
+  position: relative;
+  max-width: 100%;
+  padding: 2px 6px;
+  font-family: Georgia, 'Songti SC', STSong, serif;
+  font-size: 19px;
+  color: var(--text-2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition:
+    font-size 420ms var(--ease-strong),
+    color 420ms ease,
+    opacity 420ms ease;
+}
+/* 读稿的扫描线：一道琥珀色的光在原话上来回扫。 */
+.draft-scan {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 28%;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 34%, transparent), transparent);
+  mix-blend-mode: screen;
+  animation: draft-scan 1.6s ease-in-out infinite alternate;
+}
+@keyframes draft-scan {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(360%);
+  }
+}
+/* 定名：划线从左往右划掉原话，原话缩小变淡。 */
+.title-draft.reveal .draft-words {
+  font-size: 13px;
+  color: var(--faint);
+  opacity: 0.7;
+}
+.title-draft.reveal .draft-words::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 52%;
+  height: 1.5px;
+  background: var(--accent);
+  transform-origin: left center;
+  animation: strike 360ms cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+@keyframes strike {
+  from {
+    transform: scaleX(0);
+  }
+}
+.draft-title {
+  font-family: Georgia, 'Songti SC', STSong, serif;
+  font-size: 26px;
+  font-weight: 600;
+  color: #f1efe9;
+  max-width: 100%;
+}
+.draft-reading {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.draft-dots b {
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: draft-dot 1.2s ease-in-out infinite;
+}
+.draft-dots b:nth-child(2) {
+  animation-delay: 160ms;
+}
+.draft-dots b:nth-child(3) {
+  animation-delay: 320ms;
+}
+@keyframes draft-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ink-char,
+  .title-draft,
+  .title-draft.reveal .draft-words::after {
+    animation: none;
+  }
+  .draft-scan,
+  .chalk-caret,
+  .draft-dots b {
+    animation: none;
+  }
 }
 .monitor-kicker {
   font-family: var(--mono);

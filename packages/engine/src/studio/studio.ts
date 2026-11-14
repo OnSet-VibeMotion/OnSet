@@ -39,6 +39,7 @@ import {
   writeJSON,
 } from './http';
 import { memoryAPI, memoryActionAPI, memoryRecallAPI } from './memory';
+import { namingAPI, recordNamingUsage } from './naming';
 import { discoverScenes, fileExists, type SceneSummary } from './scenes';
 import { scriptAPI } from './script';
 import { computeStations, flowView, latestOutput, progressAPI } from './progress';
@@ -321,6 +322,7 @@ export class Server {
       ['/api/projects', () => this.projectsAPI()],
       ['/api/projects/open', (r) => this.openAPI(r)],
       ['/api/projects/create', (r) => this.createAPI(r)],
+      ['/api/projects/name', (r) => namingAPI(r)],
       ['/api/directories', (r) => this.directoriesAPI(r)],
       ['/api/projects/recent/remove', (r) => this.removeAPI(r)],
       ['/api/workspaces/current', () => this.currentAPI()],
@@ -509,7 +511,7 @@ export class Server {
 
   private async createAPI(request: Request): Promise<Response> {
     if (request.method !== 'POST') return methodNotAllowed('POST');
-    let req: { parent: string; name: string; canvas: string; delivery: string; narration: string; film_style: string };
+    let req: { parent: string; name: string; canvas: string; delivery: string; narration: string; film_style: string; naming: string };
     try {
       const body = await decodeJSONStrict(request);
       req = {
@@ -522,6 +524,8 @@ export class Server {
         // film_style 是整片风格（风格库目录名、中文名或英文名），空表示不用。
         // 建好项目后在后台起一个 am film-style use 任务，任务编号随响应返回。
         film_style: fieldString(body, 'film_style'),
+        // naming 是起名那次调用的凭据（/api/projects/name 给的），建好后把那次的用量记进新项目。
+        naming: fieldString(body, 'naming'),
       };
     } catch {
       return writeError(400, 'invalid_request', '请填写项目名称');
@@ -568,6 +572,7 @@ export class Server {
     // 官方技能从本机缓存拷进项目（前置资源由 am setup 准备，这里不联网），放到后台：项目先打开。
     // 用登记后的路径（已 realpath），与 currentProject() 返回的一致。
     installSkills(this, p.path);
+    recordNamingUsage(req.naming, p.path);
     this.current = p.id;
     this.registry.last_parent = parent;
     this.trySaveRegistry();
