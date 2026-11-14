@@ -2,9 +2,47 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { atomicWrite } from './index';
+import { atomicWrite, removeTree } from './index';
 
 const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'onset-fsutil-'));
+
+describe('removeTree', () => {
+  it('removes nested read-only git objects and accepts an absent directory', () => {
+    const dir = temp();
+    const object = path.join(dir, '.git', 'objects', 'pack', 'test.pack');
+    fs.mkdirSync(path.dirname(object), { recursive: true });
+    fs.writeFileSync(object, 'git object');
+    fs.chmodSync(object, 0o444);
+    removeTree(dir);
+    expect(fs.existsSync(dir)).toBe(false);
+    expect(() => removeTree(dir)).not.toThrow();
+  });
+
+  it('does not change or delete files reached through directory links', () => {
+    const parent = temp();
+    const dir = path.join(parent, 'checkout');
+    const outside = path.join(parent, 'outside');
+    fs.mkdirSync(dir);
+    fs.mkdirSync(outside);
+    const file = path.join(outside, 'keep.txt');
+    fs.writeFileSync(file, 'keep');
+    fs.chmodSync(file, 0o444);
+    try {
+      fs.symlinkSync(outside, path.join(dir, 'link'), process.platform === 'win32' ? 'junction' : 'dir');
+      // 强制触发 Windows 上清除只读属性的分支，链接目标必须保持只读。
+      const object = path.join(dir, 'object');
+      fs.writeFileSync(object, 'object');
+      fs.chmodSync(object, 0o444);
+      removeTree(dir);
+      expect(fs.existsSync(dir)).toBe(false);
+      expect(fs.readFileSync(file, 'utf8')).toBe('keep');
+      expect(fs.statSync(file).mode & 0o200).toBe(0);
+    } finally {
+      fs.chmodSync(file, 0o644);
+      removeTree(parent);
+    }
+  });
+});
 
 describe('atomicWrite', () => {
   it('creates the file', () => {

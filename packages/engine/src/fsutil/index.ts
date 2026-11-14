@@ -3,6 +3,30 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+/** 删除自有的临时目录。Electron 的 Windows 运行时不会像旧版 Node 一样清除只读文件（git 对象）的属性。 */
+export function removeTree(dir: string): void {
+  const options = { recursive: true, force: true, ...(process.platform === 'win32' ? { maxRetries: 3 } : {}) };
+  try {
+    fs.rmSync(dir, options);
+    return;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (process.platform !== 'win32' || (code !== 'EPERM' && code !== 'EACCES')) throw err;
+  }
+  const makeWritable = (file: string) => {
+    const stat = fs.lstatSync(file, { throwIfNoEntry: false });
+    // 不跟随目录链接或文件链接，不能修改临时目录以外的目标。
+    if (!stat || stat.isSymbolicLink()) return;
+    if (stat.isDirectory()) {
+      for (const entry of fs.readdirSync(file)) makeWritable(path.join(file, entry));
+    } else if (stat.isFile() && (stat.mode & 0o200) === 0) {
+      fs.chmodSync(file, stat.mode | 0o200);
+    }
+  };
+  makeWritable(dir);
+  fs.rmSync(dir, options);
+}
+
 /** 以原子方式写入文件：先写同目录的临时文件，再 rename 到目标路径；失败时清理临时文件，不留半成品。 */
 export function atomicWrite(file: string, data: string | Uint8Array, mode = 0o644): void {
   const dir = path.dirname(file);

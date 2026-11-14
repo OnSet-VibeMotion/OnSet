@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resetTreeDigestCache } from './digest';
 import {
   compareSemver,
@@ -162,6 +162,20 @@ describe('digest cache', () => {
 describe('two-step add and update', () => {
   const installedFile = (env: Record<string, string | undefined>) => path.join(stationsDir(env), 'installed.json');
   const read = (env: Record<string, string | undefined>) => (fs.existsSync(installedFile(env)) ? fs.readFileSync(installedFile(env), 'utf8') : '');
+
+  it.skipIf(process.platform !== 'win32')('keeps the original validation error when staging cleanup also fails', () => {
+    const env = { ...process.env, ONSET_STATIONS_DIR: temp('onset-stations-') };
+    const source = temp('onset-invalid-station-');
+    const cleanup = vi.spyOn(fs, 'rmSync').mockImplementation(() => {
+      throw Object.assign(new Error('cleanup denied'), { code: 'EPERM' });
+    });
+    try {
+      expect(() => stageStation(`link:${source}`, env)).toThrow('里没有 onset-station.json');
+      expect(read(env)).toBe('');
+    } finally {
+      cleanup.mockRestore();
+    }
+  });
 
   it('stages a plugin without installing it, shows what it asks for, and installs only on confirm', () => {
     if (!hasGit) return;

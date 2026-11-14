@@ -6,7 +6,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { atomicWrite } from '../fsutil';
+import { atomicWrite, removeTree } from '../fsutil';
 import { marshalIndent } from '../gojson';
 import { checkFiles, cloneSource, parseSource, placeCheckout, readManifest, stationsDir } from './fetch';
 import { treeDigest } from './digest';
@@ -154,7 +154,7 @@ function sweepStaging(env: Env): void {
     if (!entry.isDirectory() || !tokenPattern.test(entry.name)) continue;
     const dir = path.join(root, entry.name);
     try {
-      if (fs.statSync(dir).mtimeMs < cutoff) fs.rmSync(dir, { recursive: true, force: true });
+      if (fs.statSync(dir).mtimeMs < cutoff) removeTree(dir);
     } catch {
       // 别的进程正在用或已经删了。
     }
@@ -184,7 +184,12 @@ function fetchToStaging(spec: string, env: Env, log: (line: string) => void): { 
     const entry: InstalledEntry = { id: got.manifest.id, version: got.manifest.version, source: spec.trim(), commit: got.commit, digest: got.digest, role: roleOf(got.manifest) };
     return { token, entry, manifest: got.manifest };
   } catch (err) {
-    fs.rmSync(dir, { recursive: true, force: true });
+    try {
+      removeTree(dir);
+    } catch (cleanupError) {
+      // 清理失败不能掩盖取回或校验插件时的原错误；过期暂存下次再清。
+      if (process.platform !== 'win32') throw cleanupError;
+    }
     throw err;
   }
 }
@@ -203,7 +208,7 @@ export function stageUpdate(id: string, env: Env = process.env, log: (line: stri
   if (parseSource(before.source).kind === 'link') throw new Error(`插件 ${id} 来自本机目录，改动立即生效，不需要更新`);
   const { token, entry, manifest } = fetchToStaging(before.source, env, log);
   if (manifest.id !== id) {
-    fs.rmSync(stagingDir(token, env), { recursive: true, force: true });
+    removeTree(stagingDir(token, env));
     throw new Error(`来源 ${before.source} 现在的清单 id 是 ${manifest.id}，与这个插件（${id}）不符；要换插件请先去掉再添加`);
   }
   const d = updateDiff(before, entry, manifest, env);
@@ -253,11 +258,11 @@ export function installStaged(token: string, env: Env = process.env): InstalledE
     throw new Error(`插件 ${entry.id} 的版本在你看过之后变了，请重新添加`);
   }
   recordInstalled(stationsDir(env), entry);
-  fs.rmSync(stagingDir(token, env), { recursive: true, force: true });
+  removeTree(stagingDir(token, env));
   return entry;
 }
 
 /** 取消：清掉暂存（不碰已装插件清单）。 */
 export function discardStaged(token: string, env: Env = process.env): void {
-  fs.rmSync(stagingDir(token, env), { recursive: true, force: true });
+  removeTree(stagingDir(token, env));
 }

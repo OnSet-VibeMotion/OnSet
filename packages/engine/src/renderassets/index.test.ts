@@ -113,6 +113,14 @@ describe('shared render resources', () => {
     const blob = path.join(cache, fs.readdirSync(cache)[0]!);
     fs.chmodSync(blob, 0o644);
     fs.writeFileSync(blob, 'bad bytes');
+    // Windows may use independent copies when symlink privileges are absent.
+    // A damaged cache must be rejected without claiming its intact copy changed.
+    const mounted = path.join(f.scene, 'assets/fonts/font.woff2');
+    if (process.platform === 'win32' && !fs.lstatSync(mounted).isSymbolicLink()) {
+      expect(() => verify(f.scene)).not.toThrow();
+      expect(() => prepare(f.project, f.scene, f.files())).toThrow('缓存损坏');
+      fs.writeFileSync(mounted, 'bad mounted bytes');
+    }
     expect(() => verify(f.scene)).toThrow('已被修改');
     expect(() => prepare(f.project, f.scene, f.files())).toThrow();
     fs.writeFileSync(path.join(f.scene, ManifestFile), '{"schema":1,"files":[{"path":"../escape","sha256":"bad","kind":"link"}]}');

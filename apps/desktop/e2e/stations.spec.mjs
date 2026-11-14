@@ -1,9 +1,73 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { test, expect, openProject, api, desktopDir, installPlugin, installedPlugins, openPage } from './fixtures.mjs';
 
 // 测试用的假发布站：只写回执，不联网（packages/engine/src/flow/testdata/fake-publisher）。
 const fake = path.resolve(desktopDir, '..', '..', 'packages', 'engine', 'src', 'flow', 'testdata', 'fake-publisher');
+
+test('a git plugin can be previewed, cancelled, installed and updated using the client runtime', async ({ page, sandbox }) => {
+  test.skip(spawnSync('git', ['--version']).status !== 0, 'requires git');
+  const repo = path.join(sandbox.root, 'plugin-repo');
+  fs.cpSync(fake, repo, { recursive: true });
+  const git = (...args) => {
+    const result = spawnSync('git', ['-c', 'core.hooksPath=', '-c', 'commit.gpgsign=false', ...args], {
+      cwd: repo,
+      encoding: 'utf8',
+      env: { ...process.env, GIT_AUTHOR_NAME: 'test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'test', GIT_COMMITTER_EMAIL: 'test@example.invalid' },
+    });
+    expect(result.status, result.stderr).toBe(0);
+  };
+  git('init', '-q', '-b', 'main');
+  git('add', '.');
+  git('commit', '-qm', 'v1');
+
+  await page.locator('#settings-trigger').click();
+  const stations = page.locator('#settings-dialog section.stations[aria-label="我的插件"]');
+  const confirm = stations.getByRole('alertdialog', { name: '确认添加插件' });
+  const add = async () => {
+    await stations.getByLabel('插件来源').fill(pathToFileURL(repo).href);
+    await stations.getByRole('button', { name: '添加', exact: true }).click();
+    await expect(confirm).toContainText('假发布');
+    const staged = fs.readdirSync(path.join(sandbox.stations, '.staging'));
+    expect(staged).toHaveLength(1);
+    expect(fs.existsSync(path.join(sandbox.stations, '.staging', staged[0], 'src', '.git'))).toBe(false);
+  };
+
+  await add();
+  expect(installedPlugins(sandbox)).toEqual([]);
+  await confirm.getByRole('button', { name: '取消' }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect.poll(() => fs.readdirSync(path.join(sandbox.stations, '.staging'))).toEqual([]);
+
+  await add();
+  await confirm.getByRole('button', { name: '装上', exact: true }).click();
+  await expect.poll(() => installedPlugins(sandbox)).toEqual(['fake-publisher']);
+  const card = stations.locator('li[data-station="fake-publisher"]');
+  await expect(card).toContainText('假发布');
+
+  const file = path.join(repo, 'onset-station.json');
+  const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  manifest.version = '0.2.0';
+  fs.writeFileSync(file, JSON.stringify(manifest));
+  git('commit', '-qam', 'v2');
+  await card.getByRole('button', { name: '更新', exact: true }).click();
+  await expect(confirm).toContainText('0.2.0');
+  await confirm.getByRole('button', { name: '换上', exact: true }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect.poll(async () => (await api(page, '/api/stations')).body.stations.find((s) => s.id === 'fake-publisher')?.version).toBe('0.2.0');
+  expect(fs.readdirSync(path.join(sandbox.stations, '.staging'))).toEqual([]);
+
+  // 清单校验失败时 .git 还在：仍要清掉只读对象，并显示校验错误而不是清理错误。
+  manifest.unknown_field = true;
+  fs.writeFileSync(file, JSON.stringify(manifest));
+  git('commit', '-qam', 'invalid manifest');
+  await card.getByRole('button', { name: '更新', exact: true }).click();
+  await expect(stations).toContainText('不认识的字段');
+  expect(fs.readdirSync(path.join(sandbox.stations, '.staging'))).toEqual([]);
+  expect(installedPlugins(sandbox)).toEqual(['fake-publisher']);
+});
 
 /**
  * 点插件页面里的按钮，直到宿主有反应。Chromium 按合成器的命中数据把点击转进进程外的 iframe，后台运行的测试窗口里

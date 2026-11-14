@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { dataDir } from '../envutil';
+import { removeTree } from '../fsutil';
 import { gitHint, usableGit } from '../toolpath';
 import { treeDigest } from './digest';
 import { roleOf, type InstalledEntry } from './installed';
@@ -97,14 +98,14 @@ export function cloneSource(url: string, ref: string, checkout: string, env: Rec
   const commit = run(['rev-parse', 'HEAD'], checkout);
   const manifest = readManifest(checkout);
   checkFiles(checkout, manifest);
-  fs.rmSync(path.join(checkout, '.git'), { recursive: true, force: true });
+  removeTree(path.join(checkout, '.git'));
   return { commit, digest: treeDigest(checkout), manifest };
 }
 
 /** 把校验过的 checkout 放到 <stationsDir>/<id>/<commit>（已有且内容相同就沿用），返回最终目录。 */
 export function placeCheckout(checkout: string, entry: InstalledEntry, env: Record<string, string | undefined>): string {
   const final = path.join(stationsDir(env), entry.id, entry.commit);
-  if (fs.existsSync(final) && treeDigest(final) !== entry.digest) fs.rmSync(final, { recursive: true, force: true });
+  if (fs.existsSync(final) && treeDigest(final) !== entry.digest) removeTree(final);
   if (!fs.existsSync(final)) {
     fs.mkdirSync(path.dirname(final), { recursive: true });
     fs.renameSync(checkout, final);
@@ -131,7 +132,7 @@ export function fetchStation(spec: string, env: Record<string, string | undefine
     const entry: InstalledEntry = { id: got.manifest.id, version: got.manifest.version, source: spec.trim(), commit: got.commit, digest: got.digest, role: roleOf(got.manifest) };
     return { entry, dir: placeCheckout(path.join(tmp, 'src'), entry, env), manifest: got.manifest };
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    removeTree(tmp);
   }
 }
 
