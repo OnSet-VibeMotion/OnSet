@@ -11,6 +11,7 @@ import { compareBytes } from '../gojson';
 import { goPathError } from '../gofmt';
 import type { Writer } from '../hyperframes';
 import { ExitError, abortReason } from '../procgroup';
+import { runCommand as runWindowsCommand } from '../hyperframes/util';
 
 /**
  * 错误的文字（%w 的展开）。Node 的文件错误换成 Go *fs.PathError 的写法（open x: no such file or directory）。
@@ -169,6 +170,7 @@ export interface CommandOptions {
 
 /** 跑一个外部命令并等它结束，对应 exec.CommandContext(...).Output() / Run()。 */
 export function runCommand(file: string, args: string[], options: CommandOptions = {}): Promise<string> {
+  if (process.platform === 'win32') return runWindowsCommand(file, args, options);
   const { signal } = options;
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {

@@ -13,7 +13,7 @@ it('leaves macOS and Linux prompts byte-for-byte unchanged', () => {
 it('supplies Windows execution guidance only at invocation time', () => {
   const prompt = withWindowsInstructions('approved creative prompt', 'orchestrator', 'win32');
   expect(prompt.startsWith('approved creative prompt\n')).toBe(true);
-  for (const tool of ['windows_inspect()', 'source_download()', 'scene_run_all()']) expect(prompt).toContain(tool);
+  for (const tool of ['windows_inspect()', 'source_download()', 'scene_run_all']) expect(prompt).toContain(tool);
   expect(withWindowsInstructions('scene', 'renderer', 'win32')).not.toContain('source_download(');
 });
 

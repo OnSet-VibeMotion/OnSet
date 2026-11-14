@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Buffer, run } from './testutil';
 import { newRoot } from './cli';
 import type { Command } from './cobra';
+import { allOps } from './ops/op';
 
 /** 遍历命令树，跳过 cobra 自动生成的 help / completion。 */
 function walk(cmd: Command, visit: (cmd: Command) => void): void {
@@ -45,7 +46,8 @@ describe('help', () => {
       }
       // 样例必须真的调用这个命令，否则是复制粘贴留下的错样例。来自操作表的命令按工具写法举例
       //（scene run → scene_run(…)），只给开发用的命令（init、setup）按命令行写法。
-      const tool = cmd.commandPath().replace(/^onset /, '').replace(/[ -]/g, '_');
+      const route = cmd.commandPath().replace(/^onset /, '');
+      const tool = allOps().find(op => op.cli.join(' ') === route)?.name ?? route.replace(/[ -]/g, '_');
       if (!cmd.example.includes(cmd.commandPath()) && !cmd.example.includes(tool + '(')) problems.push(`${cmd.commandPath()} 的 Example 里没有出现该命令本身：${cmd.example}`);
     });
     expect(problems).toEqual([]);

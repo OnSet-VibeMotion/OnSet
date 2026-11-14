@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { directoryLink } from '../testsupport/windowsfixtures';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildPrompt, load, outputPath, sceneCanvas } from './scene';
@@ -50,10 +51,11 @@ describe('load', () => {
     const dir = tempDir();
     const outside = path.join(tempDir(), 'outside.srt');
     fs.writeFileSync(outside, 'outside');
-    fs.symlinkSync(outside, path.join(dir, 'transcript.srt'));
+    if (process.platform === 'win32') directoryLink(path.dirname(outside), path.join(dir, 'linked'));
+    else fs.symlinkSync(outside, path.join(dir, 'transcript.srt'));
     fs.writeFileSync(
       path.join(dir, 'scene.json'),
-      '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}',
+      JSON.stringify({id:'scene-001',duration_seconds:1,output:'out.mp4',transcript:process.platform === 'win32' ? 'linked/outside.srt' : 'transcript.srt',text:'hello'}),
     );
     expect(() => load(dir)).toThrow();
   });

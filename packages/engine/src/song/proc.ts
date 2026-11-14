@@ -1,5 +1,6 @@
 // 外部命令（mmx、python）的最小封装，对应 exec.CommandContext + Run / Output。只供本包内部使用。
 import { spawn } from 'node:child_process';
+import { start, ExitError } from '../procgroup';
 
 export interface ProcResult {
   /** Go 的 err.Error()：「exit status 1」「signal: killed」；成功为 null。 */
@@ -17,6 +18,7 @@ export interface ProcSinks {
 
 /** 运行命令直到结束；signal 触发时按 Go 的 CommandContext 直接杀掉（SIGKILL）。 */
 export function runProcess(command: string, args: string[], env: Record<string, string>, sinks: ProcSinks = {}, signal?: AbortSignal): Promise<ProcResult> {
+  if (process.platform === 'win32') return runWindowsProcess(command, args, env, sinks, signal);
   return new Promise((resolve) => {
     if (signal?.aborted) {
       resolve({ error: 'context canceled', exited: false, exitCode: -1 });
@@ -48,6 +50,21 @@ export function runProcess(command: string, args: string[], env: Record<string, 
       else settle({ error: null, exited: false, exitCode: 0 });
     });
   });
+}
+
+async function runWindowsProcess(command: string, args: string[], env: Record<string, string>, sinks: ProcSinks, signal?: AbortSignal): Promise<ProcResult> {
+  if (signal?.aborted) return {error:'context canceled',exited:false,exitCode:-1};
+  try {
+    const running=await start(command,args,{env,signal,stdio:['ignore',sinks.stdout?'pipe':'ignore',sinks.stderr?'pipe':'ignore']});
+    if(sinks.stdout)running.child.stdout?.on('data',sinks.stdout);
+    if(sinks.stderr)running.child.stderr?.on('data',sinks.stderr);
+    try {await running.wait();return {error:null,exited:false,exitCode:0};}
+    catch(error){
+      if(signal?.aborted)return {error:'context canceled',exited:true,exitCode:-1};
+      if(error instanceof ExitError)return {error:error.message,exited:true,exitCode:error.exitCode()};
+      throw error;
+    }
+  }catch(error){return {error:`fork/exec ${command}: ${error instanceof Error?error.message:String(error)}`,exited:false,exitCode:-1};}
 }
 
 /** cmd.Output()：成功时返回 stdout，失败抛 Error（文案由调用方覆盖）。 */

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { writeWindowsNodeFixture } from '../testsupport/windowsfixtures';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { newConfig } from '../config';
@@ -46,7 +47,8 @@ test -f render-scene-001.live.json && printf seen > live-seen
   it('cancellation terminates the process group', async () => {
     const s = load(writeScene(plainScene));
     const bin = tempDir();
-    executable(bin, 'codex', '/bin/sleep 300');
+    if (process.platform === 'win32') writeWindowsNodeFixture(path.join(bin, 'codex'), 'setInterval(()=>{},1000);');
+    else executable(bin, 'codex', '/bin/sleep 300');
     const started = Date.now();
     const signal = AbortSignal.timeout(150);
     await expect(run(s, cfg, false, { PATH: bin, HOME: tempDir() }, new Sink(), 0.15, signal)).rejects.toThrow('中断');

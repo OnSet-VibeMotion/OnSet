@@ -235,6 +235,11 @@ function isLocal(rel: string): boolean {
 
 /** localPath rejects traversal and symlinks before reading or writing project state. */
 export function localPath(root: string, rel: string): string {
+  if (process.platform === 'win32') {
+    // path.join emits backslashes on Windows; inspect every ancestor, including junctions.
+    if (path.win32.parse(rel).root !== '') throw new Error('项目路径必须是安全相对路径');
+    rel = rel.replaceAll('\\', '/');
+  }
   if (rel === '' || !isLocal(rel)) throw new Error('项目路径必须是安全相对路径');
   root = path.resolve(root);
   let p = root;

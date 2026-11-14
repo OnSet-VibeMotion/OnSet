@@ -9,6 +9,7 @@ import * as hyperframes from '../hyperframes';
 import { fakeBrowser, fakeCLI } from '../hyperframes/hftest';
 import { load, type Scene } from './scene';
 import { PhraseCopyFile } from './timing';
+import { writeShellFixture } from '../testsupport/windowsfixtures';
 
 // main_test.go 的 TestMain：渲染前会确保 onset 管理的 HyperFrames CLI 已装好，测试里换成假的，
 // 免得真的去 npm install。导入本文件即生效。
@@ -55,7 +56,7 @@ export function containsString(list: readonly string[] | undefined, value: strin
 
 /** 写一个可执行的 sh 脚本。 */
 export function executable(dir: string, name: string, body: string): void {
-  fs.writeFileSync(path.join(dir, name), '#!/bin/sh\nset -eu\n' + body, { mode: 0o755 });
+  writeShellFixture(path.join(dir, name), '#!/bin/sh\nset -eu\n' + body);
 }
 
 /**

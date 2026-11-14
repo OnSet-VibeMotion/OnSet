@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { directoryLink } from '../testsupport/windowsfixtures';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -54,7 +55,8 @@ describe('writeRules', () => {
     seedRulesTemplate(root, '# 项目规则\n');
     const outside = path.join(tempDir(), 'outside.md');
     fs.writeFileSync(outside, '别的文件\n');
-    fs.symlinkSync(outside, path.join(root, 'AGENTS.md'));
+    if (process.platform === 'win32') directoryLink(path.dirname(outside), path.join(root, 'AGENTS.md'));
+    else fs.symlinkSync(outside, path.join(root, 'AGENTS.md'));
     expect(() => writeRules(root, 'AGENTS.md')).toThrow();
     expect(fs.readFileSync(outside, 'utf8')).toBe('别的文件\n');
   });

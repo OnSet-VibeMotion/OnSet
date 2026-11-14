@@ -127,7 +127,9 @@ describe('plugin settings', () => {
     expect(stationSettings(env, m)).toEqual({ platform: 'bilibili', token: 'tok-123' });
     expect(publicSettings(env, m)).toEqual({ values: { platform: 'bilibili' }, secrets_set: { token: true } });
     const secrets = path.join(env.ONSET_STATIONS_DIR, 'fake-publisher', 'config', 'secrets.json');
-    expect(fs.statSync(secrets).mode & 0o777).toBe(0o600);
+    // Windows permissions are ACL-based, not the POSIX mode returned by stat.
+    if (process.platform !== 'win32') expect(fs.statSync(secrets).mode & 0o777).toBe(0o600);
+    else expect(JSON.parse(fs.readFileSync(secrets, 'utf8'))).toMatchObject({ token: 'tok-123' });
     writeStationSetting(env, m, 'token', '');
     expect(publicSettings(env, m).secrets_set.token).toBe(false);
     expect(coerceSetting({ key: 'b', label: 'B', type: 'boolean', description: '', options: [] }, 'true')).toBe(true);
@@ -318,8 +320,9 @@ describe('runStationOp', () => {
   it('checks params and reports failures', async () => {
     const root = project();
     const dir = writeStationForTest({
-      'onset-station.json': manifest({ ops: [{ name: 'fail', summary: '总是失败', command: ['bin/fail'], params: { n: { type: 'integer', description: '次数' } } }] }),
+      'onset-station.json': manifest({ ops: [{ name: 'fail', summary: '总是失败', command: process.platform === 'win32' ? ['{node}', 'fail.cjs'] : ['bin/fail'], params: { n: { type: 'integer', description: '次数' } } }] }),
       'bin/fail': '#!/bin/sh\necho "坏了" >&2\nexit 3\n',
+      'fail.cjs': 'console.error("坏了");process.exit(3);\n',
     });
     temps.push(dir);
     installStation(`link:${dir}`);

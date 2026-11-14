@@ -59,7 +59,7 @@ describe('the beat plugin', () => {
     const root = newSessionFixture().root;
     const env = { HOME: '/home/u', XDG_DATA_HOME: '/data' };
     const cfg = config.load(root, env);
-    expect(cfg.pluginEnv.ONSET_BEAT_ENV_DIR).toMatch(/^\/data\/onset\/beat\//);
+    expect(process.platform === 'win32' ? cfg.pluginEnv.ONSET_BEAT_ENV_DIR.replaceAll('\\', '/') : cfg.pluginEnv.ONSET_BEAT_ENV_DIR).toMatch(/^\/data\/onset\/beat\//);
     expect(config.childEnvironment(cfg, env).ONSET_BEAT_ENV_DIR).toBe(cfg.pluginEnv.ONSET_BEAT_ENV_DIR);
     expect(tools.onsetToolsServer('onset', 'orchestrator', root, { ONSET_BEAT_ENV_DIR: '/x', SECRET: 'no' }).env).toMatchObject({ ONSET_BEAT_ENV_DIR: '/x' });
     expect(tools.onsetToolsServer('onset', 'orchestrator', root, { SECRET: 'no' }).env?.SECRET).toBeUndefined();

@@ -286,7 +286,7 @@ describe.skipIf(!hasGit || !hasFFmpeg)('huashu library', () => {
 
     const dir = tempDir();
     fill(dir, f.catalog.styles[0]!, { ...lib, build }, f.catalog);
-    expect(files(dir).sort()).toEqual(
+    expect(files(dir).map(file => process.platform === 'win32' ? file.replaceAll('\\', '/') : file).sort()).toEqual(
       [
         'ATTRIBUTION.md',
         'LICENSE',

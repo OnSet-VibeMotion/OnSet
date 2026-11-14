@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { directoryLink } from '../testsupport/windowsfixtures';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -125,7 +126,8 @@ describe('reading a declared state', () => {
     const outside = temp();
     write(outside, '{"publish":{"status":"ready"}}', 'secret.json');
     fs.rmSync(path.join(root, 'status.json'));
-    fs.symlinkSync(path.join(outside, 'secret.json'), path.join(root, 'status.json'));
-    expect(readDeclaredState(root, decl()).branch).toBe('invalid');
+    if (process.platform === 'win32') directoryLink(outside, path.join(root, 'linked'));
+    else fs.symlinkSync(path.join(outside, 'secret.json'), path.join(root, 'status.json'));
+    expect(readDeclaredState(root, decl(process.platform === 'win32' ? {file:'linked/secret.json'} : {})).branch).toBe('invalid');
   });
 });

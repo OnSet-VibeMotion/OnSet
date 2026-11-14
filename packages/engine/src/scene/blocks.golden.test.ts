@@ -16,7 +16,9 @@ import { encodeSceneData, buildSceneData } from './scenedata';
 import { SongExplainerSkillName } from '../plugins/song';
 import { dataScene, frameWithCanvas, tempDir } from './testsupport';
 
-const goldenDir = path.join(__dirname, 'testdata', 'blocks-golden');
+// Windows uses native separators in instruction paths. Keep its reviewed fingerprints separate;
+// the Unix golden files and existing project fingerprints must never be rewritten to make tests pass.
+const goldenDir = path.join(__dirname, 'testdata', 'blocks-golden', ...(process.platform === 'win32' ? ['windows'] : []));
 const update = process.env.ONSET_UPDATE_GOLDEN === '1';
 
 /** 提示词里给技能用的假路径：只在提示词里出现，不参与指纹（指纹要读技能目录）。 */
@@ -134,7 +136,7 @@ function songScene(): Scene {
   song.writeJSON(path.join(dir, 'song-cues.json'), song.timelineToJSON(local));
   const cue = {
     fps: 30,
-    timeline: path.relative(dir, timelineFile),
+    timeline: path.relative(dir, timelineFile).replaceAll('\\', '/'),
     sha256: song.hashFile(timelineFile),
     start_seconds: 0,
     data: 'song-cues.json',

@@ -254,7 +254,7 @@ describe.skipIf(!hasGit || !hasFFmpeg)('anidoodle library', () => {
     fill(dir, f.catalog.styles[0]!, { ...lib, build }, f.catalog);
     const files = (d: string, rel = ''): string[] =>
       fs.readdirSync(path.join(d, rel), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(d, path.join(rel, e.name)) : [path.join(rel, e.name)]));
-    expect(files(dir).sort()).toEqual(
+    expect(files(dir).map(file => process.platform === 'win32' ? file.replaceAll('\\', '/') : file).sort()).toEqual(
       [
         'ATTRIBUTION.md',
         'LICENSE',

@@ -50,5 +50,16 @@ it.skipIf(process.platform !== 'win32')('Windows queue prioritizes representativ
     await expect(op.run(normalizeParams(op, { ...params, priority_scenes: ['unknown'] }), context)).rejects.toThrow(/priority_scenes/);
     await expect(op.run(normalizeParams(op, { ...params, queue_trace_json: '../outside.jsonl' }), context)).rejects.toThrow(/production/);
     expect(started).toHaveLength(9);
+    vi.useFakeTimers({toFake:['Date']});
+    try {
+      vi.setSystemTime(new Date('2026-11-14T04:00:00Z'));
+      const defaults={...params,queue_trace_json:''};
+      const first=(await op.run(normalizeParams(op,defaults),context))?.data as any;
+      const firstBytes=fs.readFileSync(first.queue_trace_json);
+      const second=(await op.run(normalizeParams(op,defaults),context))?.data as any;
+      expect(first.queue_trace_json).not.toBe(second.queue_trace_json);
+      expect(fs.readFileSync(first.queue_trace_json)).toEqual(firstBytes);
+      expect(fs.readFileSync(second.queue_trace_json,'utf8').trim().split('\n')).toHaveLength(18);
+    } finally {vi.useRealTimers();}
   } finally { mock.mockRestore(); budget.mockRestore(); }
 });

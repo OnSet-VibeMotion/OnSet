@@ -3,6 +3,7 @@
  * 移植自 internal/cli/cli.go 里内联定义的部分。
  */
 import fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { marshal } from '@onset/engine/gojson';
@@ -241,7 +242,9 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     if(process.platform==='win32'&&scenes.length){
       const project=scene.findProjectRoot(scenes[0].directory);
       if(!project)throw Error('Windows 队列监控需要合法项目根目录');
-      trace=path.resolve(project,str(p.queue_trace_json)||path.join('production/render-queues',run+'.jsonl'));
+      // newRunID has second precision; immediate reuse checks can start several queues in one second.
+      // Keep each trace distinct without overwriting earlier evidence or changing memory batch IDs.
+      trace=path.resolve(project,str(p.queue_trace_json)||path.join('production/render-queues',run+'-'+randomUUID()+'.jsonl'));
       const relative=path.relative(project,trace).split(path.sep).join('/');
       if(!relative.startsWith('production/')||relative.split('/').some(part=>part.startsWith('.')))throw Error('queue_trace_json 必须是 production/ 下的新文件');
       for(let dir=path.dirname(trace);dir!==project;dir=path.dirname(dir))if(fs.existsSync(dir)&&fs.lstatSync(dir).isSymbolicLink())throw Error('队列日志目录不能经过链接');

@@ -9,6 +9,9 @@ import { currentEnvironment } from './cli';
 import { num, projectRoot, str, strs } from './ops/common';
 import { defineOp, type Op } from './ops/op';
 import { windowsAlignOperation } from './windows_align';
+import { defineGroup } from './ops/cli';
+
+if (process.platform === 'win32') defineGroup({ path: ['windows'], summary: 'Windows 本机制作辅助', description: 'Windows 专用的只读预检、本地字幕对齐和公开来源下载操作。只使用已准备好的工具，保持现有批准素材与产物。' });
 
 /** 只在 Windows 登记，不改变其他平台的工具目录、参数或行为。 */
 export function windowsOperations(platform: NodeJS.Platform = process.platform): Op[] {

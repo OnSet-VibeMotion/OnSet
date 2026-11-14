@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { directoryLink } from '../testsupport/windowsfixtures';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { newToolchain } from '../mediaprobe';
@@ -63,7 +64,7 @@ describe('manual handoff', () => {
     const { root } = fakeEnvironment();
     const outside = tempDir();
     fs.mkdirSync(path.join(root, Store), { recursive: true });
-    fs.symlinkSync(outside, path.join(root, Store, 'handoffs'));
+    directoryLink(outside, path.join(root, Store, 'handoffs'));
     expect(() => handoff(root, new Buf()), 'followed symlink').toThrow();
     expect(fs.readdirSync(outside), 'wrote outside').toEqual([]);
   });

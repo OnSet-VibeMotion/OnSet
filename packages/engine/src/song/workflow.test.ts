@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { directoryLink } from '../testsupport/windowsfixtures';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
@@ -168,7 +169,7 @@ describe('song workflow', () => {
   it('boundary and atomic JSON', async () => {
     const root = tempDir();
     const outside = tempDir();
-    fs.symlinkSync(outside, path.join(root, 'link'));
+    directoryLink(outside, path.join(root, 'link'));
     for (const p of ['', '../x', '/absolute', 'link/a']) expect(() => localPath(root, p), p).toThrow();
     writeJSON(path.join(root, 'x.json'), { a: 1 });
     const before = fs.statSync(path.join(root, 'x.json')).mtimeMs;

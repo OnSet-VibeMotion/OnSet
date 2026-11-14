@@ -1,5 +1,6 @@
 // 子进程的小工具：把 Go 的 cmd.Output() / CombinedOutput() / Run() 与 *exec.ExitError 的文案搬过来。只供本包内部使用。
 import { spawn, spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { windowsCommand } from '../procgroup/windows';
 
 export interface Ran {
   stdout: Buffer;
@@ -42,6 +43,10 @@ function fromSync(command: string, result: SpawnSyncReturns<Buffer>): Ran {
 
 /** 同步运行并收集 stdout 与 stderr。 */
 export function run(command: string, args: string[], env: Record<string, string>): Ran {
+  if (process.platform === 'win32') {
+    const launch = windowsCommand(command, args, env);
+    return fromSync(command, spawnSync(launch.file, launch.args, { env: { ...env, ...launch.env }, windowsVerbatimArguments: launch.verbatim, windowsHide: true, maxBuffer: 1 << 30, stdio: ['ignore', 'pipe', 'pipe'] }));
+  }
   return fromSync(command, spawnSync(command, args, { env, maxBuffer: 1 << 30, stdio: ['ignore', 'pipe', 'pipe'] }));
 }
 
@@ -84,8 +89,11 @@ export function runAsync(
       resolve({ stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), error: 'context canceled', exited: false });
       return;
     }
-    const child = spawn(command, args, {
-      env,
+    const launch = process.platform === 'win32' ? windowsCommand(command, args, env) : { file: command, args, env: {} };
+    const child = spawn(launch.file, launch.args, {
+      env: process.platform === 'win32' ? { ...env, ...launch.env } : env,
+      windowsVerbatimArguments: 'verbatim' in launch ? launch.verbatim : undefined,
+      windowsHide: process.platform === 'win32' ? true : undefined,
       signal: options.signal,
       killSignal: 'SIGKILL',
       stdio: ['ignore', options.captureStdout ? 'pipe' : 'ignore', options.captureStderr ? 'pipe' : 'ignore'],

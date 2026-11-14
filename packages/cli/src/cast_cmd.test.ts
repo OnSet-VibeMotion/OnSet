@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import { directoryLink } from '@onset/engine/testsupport/windowsfixtures';
 import path from 'node:path';
 import { expect, it } from 'vitest';
 import { hasFfmpeg, lookPath, runCLI, tempDir } from './testutil';
@@ -78,7 +79,8 @@ it('cast add rejects a symlink in the source', async () => {
   const source = path.join(root, 'cast', 'heiwa');
   const outside = path.join(tempDir(), 'outside.txt');
   fs.writeFileSync(outside, 'x');
-  fs.symlinkSync(outside, path.join(source, 'evil-link'));
+  if (process.platform === 'win32') directoryLink(path.dirname(outside), path.join(source, 'evil-link'));
+  else fs.symlinkSync(outside, path.join(source, 'evil-link'));
   const project = tempDir();
   const [, err] = await tryCLI(project, 'cast', 'add', source);
   expect(err, '期望拒绝含符号链接的源目录').not.toBeNull();
@@ -225,7 +227,7 @@ it.skipIf(!hasFfmpeg)('dialogue assemble end to end', async () => {
   const out = await runCLI(root, 'dialogue', 'assemble');
   for (const rel of ['production/audio/voice.wav', 'transcription-production.srt', 'production/dialogue.json']) {
     expect(fs.existsSync(path.join(root, rel)), `缺产物 ${rel}`).toBe(true);
-    expect(out, `输出未提到产物路径 ${rel}`).toContain(rel);
+    expect(out, `输出未提到产物路径 ${rel}`).toContain(process.platform === 'win32' ? rel.replaceAll('/', '\\') : rel);
   }
   expect(out.includes('1.7') || out.includes('1.700'), `输出应提到总时长（约 1.7 秒）：${out}`).toBe(true);
 });

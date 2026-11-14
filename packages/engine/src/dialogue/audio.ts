@@ -5,6 +5,7 @@ import { find } from '../toolpath';
 import { atomicWrite } from '../fsutil';
 import { formatFixed, goTrimSpace } from '../gofmt';
 import type { Toolchain } from '../mediaprobe';
+import { windowsCommand } from '../procgroup/windows';
 
 // 全部片段统一到这一种格式后再 -c copy 拼接，样本级精确。
 // 格式不一致时 concat demuxer 会产出时长不可预期的结果，那正是漂移断言想拦的东西。
@@ -30,7 +31,8 @@ function combinedOutput(command: string, args: string[], env: Record<string, str
       resolve({ error: 'context canceled', output: '' });
       return;
     }
-    const child = spawn(command, args, { env, signal, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'pipe'] });
+    const launch = process.platform === 'win32' ? windowsCommand(command, args, env) : {file:command,args,env:{}};
+    const child = spawn(launch.file, launch.args, { env: process.platform === 'win32' ? {...env,...launch.env} : env, windowsHide: process.platform === 'win32' ? true : undefined, windowsVerbatimArguments: 'verbatim' in launch ? launch.verbatim : undefined, signal, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'pipe'] });
     const chunks: Buffer[] = [];
     child.stdout?.on('data', (c: Buffer) => chunks.push(c));
     child.stderr?.on('data', (c: Buffer) => chunks.push(c));

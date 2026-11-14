@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { directoryLink } from '../testsupport/windowsfixtures';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { goodSVG, goodYAML, tempDir } from './fixtures';
@@ -57,7 +58,7 @@ describe('roster', () => {
   it('loadPacks rejects path escape with dot-dot', () => {
     const root = writeRosterProject('', 'heiwa');
     fs.writeFileSync(path.join(root, RosterFile), rosterWithPacks('[../outside]'));
-    expect(() => loadPacks(loadRoster(root), root)).toThrow('cast.yaml 的 packs 不得逃出项目目录：../outside');
+    expect(() => loadPacks(loadRoster(root), root)).toThrow('cast.yaml 的 packs 不得逃出项目目录：' + (process.platform === 'win32' ? '..\\outside' : '../outside'));
   });
 
   // 指向项目外目录的软链被拒。
@@ -69,7 +70,7 @@ describe('roster', () => {
     fs.writeFileSync(path.join(dir, 'rig.svg'), goodSVG);
     const castDir = path.join(root, 'cast');
     fs.mkdirSync(castDir, { recursive: true });
-    fs.symlinkSync(dir, path.join(castDir, 'outside'));
+    directoryLink(dir, path.join(castDir, 'outside'));
     fs.writeFileSync(path.join(root, RosterFile), rosterWithPacks('[cast/outside]'));
     expect(() => loadPacks(loadRoster(root), root)).toThrow('不得逃出');
   });

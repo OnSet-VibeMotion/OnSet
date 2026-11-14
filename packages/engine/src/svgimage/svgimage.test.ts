@@ -54,11 +54,11 @@ describe('svgimage', () => {
 
   // 临时 fontconfig 必须引入系统默认配置、追加字体目录，并对路径做 XML 转义。
   it('fontconfigWith includes system config and escapes dirs', () => {
-    const dir = path.join(temp(), 'a&b<c>');
+    const dir = path.join(temp(), process.platform === 'win32' ? 'a&b' : 'a&b<c>');
     fs.mkdirSync(dir, { recursive: true });
     const [file, cleanup] = fontconfigWith([dir]);
     const text = fs.readFileSync(file, 'utf8');
-    for (const want of ['<include ignore_missing="yes">/etc/fonts/fonts.conf</include>', 'a&amp;b&lt;c&gt;', '<cachedir>']) {
+    for (const want of ['<include ignore_missing="yes">/etc/fonts/fonts.conf</include>', process.platform === 'win32' ? 'a&amp;b' : 'a&amp;b&lt;c&gt;', '<cachedir>']) {
       expect(text).toContain(want);
     }
     cleanup();

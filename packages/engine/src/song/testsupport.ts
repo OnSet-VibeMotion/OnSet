@@ -7,6 +7,7 @@ import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { HttpResponse } from './http';
 import { DefaultConfig } from './store';
+import { writeShellFixture } from '../testsupport/windowsfixtures';
 
 const temps: string[] = [];
 
@@ -67,7 +68,7 @@ case "$*" in
 esac
 `,
   };
-  for (const [name, body] of Object.entries(scripts)) fs.writeFileSync(path.join(bin, name), body, { mode: 0o755 });
+  for (const [name, body] of Object.entries(scripts)) writeShellFixture(path.join(bin, name), body);
   fs.writeFileSync(path.join(root, 'song.yaml'), DefaultConfig);
   fs.writeFileSync(path.join(root, 'lyrics.txt'), '[Verse]\n歌词\n');
   return { root, env: { PATH: bin, HOME: tempDir() } };

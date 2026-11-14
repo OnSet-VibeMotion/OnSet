@@ -1,5 +1,6 @@
 import './testsupport';
 import fs from 'node:fs';
+import { writeShellFixture } from '../testsupport/windowsfixtures';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { installStation, stageStation, writeStationForTest } from '../flow';
@@ -169,8 +170,7 @@ describe('stations API', () => {
     // 测试里没有真的执行进程：换一个假的 onset，像插件那样在项目里顺手写一个没声明的文件。
     const bin = fs.mkdtempSync(path.join(f.root, '..', 'onset-fake-'));
     const fakeOnset = path.join(bin, 'onset');
-    fs.writeFileSync(fakeOnset, '#!/bin/sh\nmkdir -p notes\necho x > notes/stray.txt\nmkdir -p production/publish\necho y > production/publish/ok.json\nprintf \'写好了\\n\\000am-result {"ok":true,"exit_code":0}\\n\'\n', { mode: 0o755 });
-    f.s.config.executable = fakeOnset;
+    f.s.config.executable = writeShellFixture(fakeOnset, '#!/bin/sh\nmkdir -p notes\necho x > notes/stray.txt\nmkdir -p production/publish\necho y > production/publish/ok.json\nprintf \'写好了\\n\\000am-result {"ok":true,"exit_code":0}\\n\'\n');
     const done = async () => {
       for (let i = 0; i < 250 && [...f.s.tasks.tasks.values()].some((t) => t.status === 'running' || t.status === 'queued'); i++) await new Promise((r) => setTimeout(r, 20));
     };

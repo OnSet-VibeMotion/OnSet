@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { directoryLink } from '../testsupport/windowsfixtures';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -51,7 +52,7 @@ describe('initialize', () => {
   it('rejects symlinked template directory', () => {
     const target = tempDir();
     const outside = tempDir();
-    fs.symlinkSync(outside, path.join(target, 'templates'));
+    directoryLink(outside, path.join(target, 'templates'));
     expect(() => initialize(target, ...builtinSources())).toThrow();
     expect(fs.existsSync(path.join(outside, 'project-rules.md')), 'initializer escaped through symlink').toBe(false);
   });

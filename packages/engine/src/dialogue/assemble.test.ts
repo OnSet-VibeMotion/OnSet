@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { writeShellFixture } from '../testsupport/windowsfixtures';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -90,7 +91,7 @@ function gapPatchingFfmpeg(overrideSeconds: string): string {
     '  i=$((i+1))\n' +
     'done\n' +
     'exec "$real" "$@"\n';
-  fs.writeFileSync(path.join(dir, 'ffmpeg'), script, { mode: 0o755 });
+  writeShellFixture(path.join(dir, 'ffmpeg'), script);
   return dir;
 }
 

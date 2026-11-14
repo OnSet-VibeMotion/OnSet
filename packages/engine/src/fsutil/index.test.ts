@@ -31,7 +31,11 @@ describe('atomicWrite', () => {
   it('applies the mode', () => {
     const file = path.join(temp(), 'x.sh');
     atomicWrite(file, '#!/bin/sh\n', 0o755);
-    expect(fs.statSync(file).mode & 0o777).toBe(0o755);
+    // Windows mode bits do not represent executable permissions; exercise the actual file there.
+    if (process.platform === 'win32') {
+      expect(fs.readFileSync(file, 'utf8')).toBe('#!/bin/sh\n');
+      expect(() => fs.accessSync(file, fs.constants.R_OK | fs.constants.W_OK)).not.toThrow();
+    } else expect(fs.statSync(file).mode & 0o777).toBe(0o755);
   });
 
   it('cleans the temp file when the write fails', () => {

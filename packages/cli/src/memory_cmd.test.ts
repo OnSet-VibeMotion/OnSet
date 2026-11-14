@@ -2,6 +2,7 @@
 // （整理者的用量记在记忆库的账本里，要 onset memory consolidate）。
 // 记忆库与 HOME 一律指到临时目录：绝不写开发者真实的 ~/.local/share/onset/memory。
 import fs from 'node:fs';
+import { writeShellFixture, writeWindowsNodeFixture } from '@onset/engine/testsupport/windowsfixtures';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as ledger from '@onset/engine/ledger';
@@ -28,7 +29,8 @@ describe('memory', () => {
     const source = path.join(tempDir(), 'source.mp4');
     makeClip(source, 'testsrc=size=320x240:rate=30:duration=1');
     const script = "#!/bin/sh\nset -eu\nprintf '%s' \"$*\" > prompt.txt\n/bin/cp '" + source + "' out.mp4\n";
-    fs.writeFileSync(path.join(binDir, 'codex'), script, { mode: 0o755 });
+    if (process.platform === 'win32') writeWindowsNodeFixture(path.join(binDir,'codex'), `const fs=require('node:fs');let text=process.argv.slice(2).join(' ');process.stdin.on('data',chunk=>text+=chunk);process.stdin.on('end',()=>{fs.writeFileSync('prompt.txt',text);fs.copyFileSync(${JSON.stringify(source)},'out.mp4');});process.stdin.resume();`);
+    else fs.writeFileSync(path.join(binDir, 'codex'), script, { mode: 0o755 });
     fs.writeFileSync(path.join(project, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\nMEMORY=on\n');
     const dir = writeScene(
       project,
@@ -137,7 +139,7 @@ describe('memory', () => {
       "#!/bin/sh\nset -eu\nprintf '%s\\n' '{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\"," +
       "\"text\":\"[[USER_MESSAGE]]视频已渲染完成\"}}'\n" +
       `/bin/cp '${source}' out.mp4\n`;
-    fs.writeFileSync(path.join(binDir, 'codex'), script, { mode: 0o755 });
+    writeShellFixture(path.join(binDir, 'codex'), script);
     fs.writeFileSync(path.join(project, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\nMEMORY=off\n');
     writeScene(
       project,
@@ -201,7 +203,7 @@ describe('memory', () => {
     );
     const bin = tempDir();
     const script = "#!/bin/sh\ncat > /dev/null\necho '{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":70,\"output_tokens\":7}}'\n";
-    fs.writeFileSync(path.join(bin, 'codex'), script, { mode: 0o755 });
+    writeShellFixture(path.join(bin, 'codex'), script);
     process.chdir(tempDir());
     setenv('PATH', bin + path.delimiter + process.env.PATH);
     setenv('HOME', tempDir());

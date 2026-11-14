@@ -1,5 +1,6 @@
 // 原在 validate/validate.test.ts（移植自 internal/validate/validate_test.go），随「发布」搬进内置插件。
 import fs from 'node:fs';
+import { directoryLink } from '../../testsupport/windowsfixtures';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { read, replaceOnce, sharedSource, tempDir } from '../../validate/testsupport';
@@ -52,8 +53,9 @@ describe('publish', () => {
     const root = tempDir();
     const outside = path.join(tempDir(), 'evidence.txt');
     fs.writeFileSync(outside, 'outside');
-    fs.symlinkSync(outside, path.join(root, 'evidence.txt'));
-    const body = replaceOnce(read(sharedSource('templates', 'publish.md')), 'approval: ""', 'approval: evidence.txt');
+    if (process.platform === 'win32') directoryLink(path.dirname(outside), path.join(root, 'linked'));
+    else fs.symlinkSync(outside, path.join(root, 'evidence.txt'));
+    const body = replaceOnce(read(sharedSource('templates', 'publish.md')), 'approval: ""', 'approval: ' + (process.platform === 'win32' ? 'linked/evidence.txt' : 'evidence.txt'));
     const file = path.join(root, 'publish.md');
     fs.writeFileSync(file, body);
     expect(() => publish(file, root)).toThrow();

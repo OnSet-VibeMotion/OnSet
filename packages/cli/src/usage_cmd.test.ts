@@ -3,6 +3,7 @@
 // 与 onset memory 的其余用例放在一起。
 import { Buffer, hasFfmpeg, lookPath, makeClip, run, setenv, tempDir } from './testutil';
 import fs from 'node:fs';
+import { writeShellFixture } from '@onset/engine/testsupport/windowsfixtures';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as ledger from '@onset/engine/ledger';
@@ -21,7 +22,7 @@ describe('usage', () => {
       "/bin/cp '" +
       source +
       "' out.mp4\n";
-    fs.writeFileSync(path.join(binDir, 'codex'), script, { mode: 0o755 });
+    writeShellFixture(path.join(binDir, 'codex'), script);
     fs.writeFileSync(path.join(project, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
     for (const id of ['scene-001', 'scene-002']) {
       const dir = path.join(project, 'scenes', id);

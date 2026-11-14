@@ -43,7 +43,8 @@ describe('cli', () => {
     setenv('XDG_DATA_HOME', tempDir());
     const out = new Buffer();
     expect(await run(['config', 'get', 'TTS_MODEL'], out), out.text).toBe(0);
-    expect(out.text.trim()).toBe('mlx-community/Breeze-TTS-2-mlx-8bit');
+    // Windows Breeze is the native CUDA tool, not the Apple-only MLX repository.
+    expect(out.text.trim()).toBe(process.platform === 'win32' ? '' : 'mlx-community/Breeze-TTS-2-mlx-8bit');
     fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nTTS_PROVIDER=minimax\n');
     const empty = new Buffer();
     expect(await run(['config', 'get', 'TTS_MODEL'], empty), empty.text).toBe(0);

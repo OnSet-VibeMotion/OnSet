@@ -1,5 +1,6 @@
 import './testsupport';
 import fs from 'node:fs';
+import { directoryLink } from '../testsupport/windowsfixtures';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { startStudio, tempDir, writeTree } from './testsupport';
@@ -15,7 +16,7 @@ describe('revealPath', () => {
     });
     const outside = tempDir();
     fs.writeFileSync(path.join(outside, 'secret.txt'), 'x');
-    fs.symlinkSync(outside, path.join(root, 'link-out'));
+    directoryLink(outside, path.join(root, 'link-out'));
     const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
     return { s, root: s.currentProject().path, outside };
   }

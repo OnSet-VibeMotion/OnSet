@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as ledger from '../ledger';
 import { cleanName, namingPrompt, recordNamingUsage, suggestName } from './naming';
+import { writeShellFixture } from '../testsupport/windowsfixtures';
 
 describe('naming', () => {
   it('cleans the answer into a folder name', () => {
@@ -31,7 +32,7 @@ describe('naming', () => {
   it('names with the chosen tool and books the call into the new project', async () => {
     const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-naming-bin-'));
     const fake = path.join(bin, 'claude');
-    fs.writeFileSync(
+    writeShellFixture(
       fake,
       [
         '#!/bin/sh',
