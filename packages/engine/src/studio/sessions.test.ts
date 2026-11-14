@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as agentrun from '../agentrun';
 import * as project from '../project';
+import { collect, prepare } from '../renderassets';
 import {
   attachmentText,
   createSession,
@@ -32,6 +33,20 @@ function eventOf(kind: string, text: string): SessionEvent {
 }
 
 describe('sessions', () => {
+  it('serves shared font and JS links through the actual preview route', async () => {
+    const f = newSessionFixture();
+    const source = path.join(f.root, 'assets', 'shared-test');
+    fs.mkdirSync(source, { recursive: true });
+    fs.writeFileSync(path.join(source, 'font.woff2'), 'font-bytes');
+    fs.writeFileSync(path.join(source, 'library.js'), 'window.shared = true;');
+    const scene = path.join(f.root, 'scenes', 'scene-001');
+    prepare(f.root, scene, collect([{ from: source, to: 'vendor' }]));
+    for (const [name, body] of [['font.woff2', 'font-bytes'], ['library.js', 'window.shared = true;']]) {
+      const response = await rawGet(f.s, '/preview/scenes/scene-001/vendor/' + name);
+      expect(response.status).toBe(200);
+      expect(response.text).toBe(body);
+    }
+  });
   it('turn, resume and revert', async () => {
     const f = newSessionFixture();
     let { status, body } = await studioRequest(f.s, 'POST', '/api/sessions', '{"title":"改镜头"}');

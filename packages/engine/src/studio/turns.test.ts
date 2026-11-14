@@ -1,6 +1,7 @@
 import './testsupport';
 import fs from 'node:fs';
 import path from 'node:path';
+import { collect, prepare } from '../renderassets';
 import { describe, expect, it } from 'vitest';
 import { newID } from './sessions';
 import { sleep, tempDir, writeTree } from './testsupport';
@@ -11,6 +12,23 @@ function turnOf(fields: Partial<Turn>): Turn {
 }
 
 describe('turns', () => {
+  it('does not revert the resource pool or its ownership manifest independently of links', () => {
+    const root = tempDir();
+    const source = path.join(root, 'assets/vendor/lib.js');
+    writeTree(root, { 'assets/vendor/lib.js': 'old library' });
+    const scene = path.join(root, 'scenes', 'one');
+    fs.mkdirSync(scene, { recursive: true });
+    const files = () => collect([{ from: source, to: 'vendor/lib.js' }]);
+    prepare(root, scene, files());
+    const before = scanTree(root);
+    fs.writeFileSync(source, 'new library');
+    prepare(root, scene, files());
+    const after = scanTree(root);
+    expect(Object.keys(after).some((p) => p.startsWith('.onset/') || p.endsWith('.onset-resources.json'))).toBe(false);
+    revertTurn(root, turnOf({ status: 'succeeded', before, after, changes: diffTrees(before, after) }));
+    prepare(root, scene, files());
+    expect(fs.readFileSync(path.join(scene, 'vendor/lib.js'), 'utf8')).toBe('old library');
+  });
   it('scanTree skips state dirs and stores text', () => {
     const root = tempDir();
     writeTree(root, {

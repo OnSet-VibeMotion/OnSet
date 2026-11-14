@@ -72,6 +72,8 @@ export const SourceUpstream: SkillSource = 1;
 
 /** 一个可自动发现的技能。 */
 export interface SkillDescriptor {
+  /** 技能目录内可共享的只读库文件，自动以同名路径放到镜头。 */
+  runtimeAssets?: readonly string[];
   /** 技能目录名。 */
   name: string;
   /** 技能来自嵌入树还是上游安装。 */
@@ -104,6 +106,7 @@ export const registeredSkills: readonly SkillDescriptor[] = [
   {
     name: SceneKitSkillName,
     source: SourceEmbedded,
+    runtimeAssets: [sceneKitLibraryFile],
     // 库文件本身也是必需文件：只有 SKILL.md 的技能目录，提示词里那条
     // 「把库复制进镜头目录」的契约就无从执行。
     requiredFiles: [skillManifestFile, sceneKitLibraryFile],

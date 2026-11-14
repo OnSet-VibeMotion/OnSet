@@ -33,7 +33,7 @@ description: 本片的整片风格「{{.Style.CN}} {{.Style.EN}}」，来自 ani
 
 1. **先读 `STYLE.md` 全文，再读 `source/` 里本风格模块的文件头注释，然后动手。** STYLE.md 规定的介质、笔触、边缘、下笔顺序、色板与禁忌全部遵守。本镜头提示词里的「全片配色」若与 STYLE.md 的色板冲突，以全片配色为准——它是在这种介质里为本片选定的。
 2. **内容来自本镜头，不来自示范画。** 画什么、讲什么、出现哪些物件，只取本镜头的 prompt.md、字幕与素材。不画示范画里的主体，除非本镜头本来就要画它。
-3. **怎么用。** 把 `anidoodle/` 整个目录拷进本镜头目录，目录名与里面的相对路径都不改（只有几百 KB）。合成里写一个 `<script type="module">`：
+3. **怎么用。** 片场在渲染前会把 `anidoodle/` 的运行资源共享到本镜头目录，目录名与相对路径不变。提示词的「共享渲染资源」列出它时直接用，不要再拷贝；独立使用本技能、上层未准备时才复制整个目录。合成里写一个 `<script type="module">`：
    - 从 `./anidoodle/canvas-core/…` 导入笔触函数与 `core.js` 的工具（`rng`、`sample`、`fractal`……）；
    - 按 `source/canvas-core/film.ts` 的 `Film` 写本镜头自己的片子：`meta: { title, W, H, fps, durationFrames }`，`assets: { images: {} }`，`shots` 按帧首尾相接铺满整段，每个 shot 的 `draw(ctx, local, env)` 用 `local`（这个 shot 内的帧号）画出那一帧；
    - `import { play } from './anidoodle/onset-anidoodle.js'`，加载后 `play(film, canvas)`。它负责 `hf-seek`、先画第 0 帧、把图片与字体的准备登记成 `window.__hf.buildReady`。根元素照 hyperframes 技能写 `data-duration`；合成里只有 canvas、没有登记 GSAP 时间轴时，根元素还要加 `data-no-timeline`，不然每次渲染都白等 45 秒（有时间轴的照常登记，不加它）。

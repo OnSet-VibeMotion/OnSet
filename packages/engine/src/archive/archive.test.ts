@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildPlan, execute } from './index';
+import { collect, prepare } from '../renderassets';
 
 const hasGit = spawnSync('git', ['--version']).status === 0;
 const temps: string[] = [];
@@ -47,6 +48,40 @@ function repository(): string {
 }
 
 describe.skipIf(!hasGit)('archive', () => {
+  it('restores resource links and cached content if switching to main fails', () => {
+    const dir = repository();
+    const source = path.join(dir, 'font.woff2');
+    fs.writeFileSync(source, 'font');
+    const scene = path.join(dir, 'scenes', 'one');
+    fs.mkdirSync(scene, { recursive: true });
+    prepare(dir, scene, collect([{ from: source, to: 'fonts/body.woff2' }]));
+    const linked = path.join(scene, 'fonts/body.woff2');
+    const wasLink = fs.lstatSync(linked).isSymbolicLink();
+    const plan = buildPlan(dir, 'main', path.join(tempDir(), 'archives'), 'rollback');
+    plan.mainCommit = 'not-a-commit';
+    expect(() => execute(plan)).toThrow('复位到 main 失败');
+    expect(fs.lstatSync(linked).isSymbolicLink()).toBe(wasLink);
+    expect(fs.readFileSync(linked, 'utf8')).toBe('font');
+    expect(fs.existsSync(plan.destination)).toBe(false);
+  });
+  it('materializes managed resource links even when the shared blob belongs to main', () => {
+    const dir = repository();
+    const source = path.join(dir, 'font.woff2');
+    fs.writeFileSync(source, 'shared font');
+    const scene = path.join(dir, 'scenes', 'one');
+    fs.mkdirSync(scene, { recursive: true });
+    prepare(dir, scene, collect([{ from: source, to: 'fonts/body.woff2' }]));
+    // 内容池已在 main 上，只有镜头链接是本次要归档的文件。
+    git(dir, 'add', '.onset', 'font.woff2');
+    git(dir, 'commit', '-m', 'shared resources');
+    git(dir, 'branch', '-f', 'main', 'HEAD');
+    const plan = buildPlan(dir, 'main', path.join(tempDir(), 'archives'), 'linked');
+    execute(plan);
+    fs.rmSync(dir, { recursive: true, force: true });
+    const archived = path.join(plan.destination, 'files/scenes/one/fonts/body.woff2');
+    expect(fs.lstatSync(archived).isFile()).toBe(true);
+    expect(fs.readFileSync(archived, 'utf8')).toBe('shared font');
+  });
   it('plan separates candidates from shared changes', () => {
     const dir = repository();
     fs.writeFileSync(path.join(dir, 'scene.json'), 'scene');

@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { lookPath } from '../envutil';
 import { compareBytes, marshalIndent, sortedKeys } from '../gojson';
+import { atomicWrite } from '../fsutil';
+import { archiveContent } from '../renderassets';
 
 export interface Plan {
   repository: string;
@@ -264,6 +266,11 @@ export function execute(plan: Plan): void {
   if (exists) {
     throw new Error(`归档目标已存在：${plan.destination}`);
   }
+  // 内容池可能属于 main，也可能先于镜头被移动；在任何移动前取出字节，归档中的镜头独立可读。
+  const resources = new Map(plan.candidates.flatMap((relative) => {
+    const content = archiveContent(plan.repository, path.join(plan.repository, relative));
+    return content ? [[relative, content] as const] : [];
+  }));
   const payload = path.join(plan.destination, 'files');
   mkdirAll(payload);
   const moved: string[] = [];
@@ -271,6 +278,15 @@ export function execute(plan: Plan): void {
     for (let i = moved.length - 1; i >= 0; i--) {
       const from = path.join(payload, moved[i]);
       const to = path.join(plan.repository, moved[i]);
+      const resource = resources.get(moved[i]!);
+      if (resource) {
+        try {
+          fs.rmSync(from, { force: true });
+          fs.symlinkSync(resource.link, from, 'file');
+        } catch {
+          // 与下面的恢复一样尽力执行，原始错误由调用处报告。
+        }
+      }
       try {
         fs.mkdirSync(path.dirname(to), { recursive: true, mode: 0o755 });
       } catch {
@@ -304,6 +320,15 @@ export function execute(plan: Plan): void {
       throw new Error(`移动 ${relative}: rename ${from} ${to}: ${reasonOf(err)}`, { cause: err });
     }
     moved.push(relative);
+    const resource = resources.get(relative);
+    if (resource) {
+      try {
+        atomicWrite(to, resource.body);
+      } catch (err) {
+        rollback();
+        throw err;
+      }
+    }
   }
   const entries: ManifestEntry[] = [];
   for (const relative of moved) {

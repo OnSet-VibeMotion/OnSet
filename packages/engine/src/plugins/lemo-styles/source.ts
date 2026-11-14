@@ -10,6 +10,7 @@ import { prepareLibrary, requireLibrary, requireStyle } from './prepare';
 
 /** lemo-opuscar 风格来源。 */
 export const lemoSource: Source = {
+  runtimeAssets: ['core', 'node_modules/three'],
   id: () => SourceID,
   name: () => `lemo-opuscar 风格库（LemoLab，${PinnedStyleCount} 种）`,
   gallery: () => Gallery,

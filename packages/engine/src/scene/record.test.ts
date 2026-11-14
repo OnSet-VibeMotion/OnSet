@@ -53,6 +53,21 @@ function readAttempt(file: string): Attempt {
 const plainScene = '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}';
 
 describe('render record', () => {
+  it('run prepares shared project resources and records their content before rendering', async () => {
+    const root = tempDir();
+    fs.writeFileSync(path.join(root, 'onset.conf'), '');
+    const dir = path.join(root, 'scenes', 'one');
+    fs.mkdirSync(path.dirname(dir));
+    fs.renameSync(writeScene(plainScene), dir);
+    fs.mkdirSync(path.join(root, 'assets/fonts'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'assets/fonts/body.woff2'), 'font');
+    const s = load(dir);
+    expect(await runFakeCodex(s, '0')).toBeNull();
+    expect(fs.readFileSync(path.join(dir, 'assets/fonts/body.woff2'), 'utf8')).toBe('font');
+    const record = loadRecord(s)!;
+    expect(record.parts?.['asset:assets/fonts/body.woff2']).toBeTruthy();
+    expect(record.fingerprint).toBe(fingerprint(s, 'codex', {}).fingerprint);
+  });
   it('run writes the record and the attempt on success', async () => {
     const s = load(writeScene(plainScene));
     expect(await runFakeCodex(s, '0')).toBeNull();

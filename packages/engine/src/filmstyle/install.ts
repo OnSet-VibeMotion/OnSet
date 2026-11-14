@@ -173,7 +173,8 @@ export function installed(projectDir: string): { manifest: Manifest; ok: boolean
   }
 }
 
-function readManifest(file: string): Manifest | null {
+/** 读指定风格的来源记录（默认与额外风格共用）；没有文件时返回 null。 */
+export function readManifest(file: string): Manifest | null {
   const body = readOptional(file);
   if (body === undefined) return null;
   let raw: Record<string, unknown>;

@@ -11,6 +11,7 @@ import path from 'node:path';
 import { atomicWrite, ProjectSkippedDirs as skippedDirs, walkDir } from '../fsutil';
 import { compareBytes, marshalIndent, sortedKeys } from '../gojson';
 import * as ledger from '../ledger';
+import { ManifestFile as ResourceManifestFile } from '../renderassets';
 
 /** maxSnapshotBytes 以上的文件只记 stat，不存内容。 */
 export const maxSnapshotBytes = 2 << 20;
@@ -143,7 +144,8 @@ export function scanTree(project: string): FileTree {
   walkDir(project, (file, entry) => {
     if (!entry) return;
     if (entry.isDirectory()) return skipDir(project, file, entry.name) ? 'skip' : undefined;
-    if (!entry.isFile()) return;
+    // 链接不进快照，管理清单也不能单独回退，否则它记的摘要与仍在原处的链接对不上。
+    if (!entry.isFile() || entry.name === ResourceManifestFile) return;
     let info: fs.BigIntStats;
     try {
       info = fs.lstatSync(file, { bigint: true });
@@ -320,7 +322,7 @@ export function statTree(project: string): Record<string, string> {
   walkDir(project, (file, entry) => {
     if (!entry) return;
     if (entry.isDirectory()) return skipDir(project, file, entry.name) ? 'skip' : undefined;
-    if (!entry.isFile()) return;
+    if (!entry.isFile() || entry.name === ResourceManifestFile) return;
     try {
       out[path.relative(project, file).split(path.sep).join('/')] = statState(fs.lstatSync(file, { bigint: true }));
     } catch {

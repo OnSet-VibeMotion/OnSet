@@ -35,6 +35,8 @@ import { rendererHome, rendererUnfiltered, sandboxAvailable, sandboxed, sandboxP
 import { verifySeam } from './seam';
 import { leftoverFiles, resumePrompt, resumeState } from './resume';
 import { writeSceneData } from './scenedata';
+import { prepareResources } from './resources';
+import { verify as verifyResources } from '../renderassets';
 import { HyperFramesSkillName, rendererAccess, resolveAllSkills, skillsEnvironment, SkillsDirEnv, stagedSkills, stageRendererSkills, unstageRendererSkills } from './skills';
 import { VerificationError } from './verification';
 
@@ -72,7 +74,6 @@ export async function run(
       `警告：未能为渲染工具 ${renderer} 定位 ${HyperFramesSkillName} 技能目录，组合规范与动效要求改用技能名兜底；请在客户端顶栏点「缺少 HyperFrames 技能 · 安装」，或用 ${SkillsDirEnv} 显式指定\n`,
     );
   }
-  const prompt = withWindowsInstructions(buildPrompt(s, resolvedSkills), 'renderer');
   // 渲染器要用的 CLI 是前置资源（onset setup 装）：在渲染途中现下载的话，网络一差渲染器
   // 就空等、白花一次模型调用，最后只剩「没有产物」。没装好就在这里停，不启动渲染器。
   const cliEnv: Record<string, string> = { ...baseEnv };
@@ -89,6 +90,9 @@ export async function run(
   }
   // 浏览器同理：客户端里是它自带的 Chromium，单独用命令行时是 onset setup 下载的 headless-shell。
   hyperframes.requireBrowser(cliEnv);
+  // 资源先落到项目内容池并链接进镜头；不联网，失败时不启动模型也不清掉上一次产物。
+  const preparedResources = prepareResources(s, resolvedSkills);
+  const prompt = withWindowsInstructions(buildPrompt(s, resolvedSkills), 'renderer');
   // 渲染器的环境：onset 不在它的 PATH 里，HyperFrames 经 onset 的工具服务（--profile renderer）调用。
   const childEnv = childEnvironment(cfg, baseEnv, unsafe, parsePassthrough(baseEnv.ONSET_PASSTHROUGH_ENV ?? ''));
   if (process.platform === 'win32' && s.renderWorkers > 0) childEnv.ONSET_RENDER_WORKERS = String(s.renderWorkers);
@@ -126,6 +130,10 @@ export async function run(
     return sandboxed(argv, profile);
   };
   const inputs = fingerprint(s, renderer, resolvedSkills);
+  const resourceKeys = new Set([...Object.keys(preparedResources), ...Object.keys(inputs.parts ?? {}).filter((key) => key.startsWith('asset:'))]);
+  if ([...resourceKeys].some((key) => preparedResources[key] !== inputs.parts?.[key])) {
+    throw new Error('准备期间共享渲染资源发生变化，请重新渲染；本次尚未启动渲染器');
+  }
   // 中途异常退出过、输入没变：接着上一次做，不从头重来（resume.ts）。要在归档上一次之前读。
   const design = s.designOnly === true;
   const resume = design || s.fresh || s.seam || s.examNote !== '' ? null : resumeState(s, inputs.fingerprint);
@@ -233,6 +241,7 @@ export async function run(
       verifyDesign(s);
       return;
     }
+    verifyResources(s.directory);
     verifyOutput(s, baseEnv, tolerance);
     // 修接缝：第 0 帧要接上前一镜的末帧、后面的画面不许变（seam.ts）。
     if (s.seam) verifySeam(s, s.seam, mediaprobe.newToolchain(baseEnv), sceneCanvas(s).fps);

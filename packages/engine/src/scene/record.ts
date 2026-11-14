@@ -11,6 +11,8 @@ import { buildPrompt, DesignFile, memoryActive, outputPath, sceneCanvas, type Sc
 import { localCues, localPhrases } from './scenedata';
 import { parsePhraseTimeline } from './timing';
 import { getToolVersion } from '../version';
+import * as renderassets from '../renderassets';
+import { resourceFiles } from './resources';
 
 /**
  * 写进输入指纹的 onset 版本，由 cli 在启动时设为 cli 的版本号（Go 的 scene.ToolVersion = cli.Version）。
@@ -107,6 +109,10 @@ export function fingerprint(s: Scene, renderer: string, resolvedSkills: Record<s
     parts['skill:' + name] = digest;
   }
   parts.prompt = digestString(prompt);
+  // 只有已由 run 准备过共享资源的镜头才启用新指纹项；升级不让从未挂载过资源的旧产物全部 Stale。
+  if (fs.existsSync(path.join(s.directory, renderassets.ManifestFile))) {
+    Object.assign(parts, renderassets.inputs(s.directory, resourceFiles(s, resolved)));
+  }
   // 召回的记忆单列一项：记忆一变，Stale 的原因能直接说成「召回的记忆变了」，
   // 而不是笼统的 prompt。没有召回时不加这一项，打开记忆不会让老镜头全部 Stale。
   if (memoryActive(s.memory)) parts.memory = s.memory.digest;

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { resourceSection } from './resources';
 import path from 'node:path';
 import { parseDocument } from 'yaml';
 import { unmarshal as yamlUnmarshal, type Schema as YamlSchema } from '../goyaml/decode';
@@ -704,6 +705,7 @@ function renderPrompt(s: Scene, resolvedSkills: Record<string, string> | null, w
     '\n' +
     skillPromptSections(resolved, allSkills()) +
     pluginSkillSection(resolved) +
+    resourceSection(s, resolved) +
     determinismSection +
     memorySection(s) +
     exemplarSection(s) +

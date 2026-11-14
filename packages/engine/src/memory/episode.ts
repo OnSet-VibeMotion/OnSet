@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { freeze as freezeResources } from '../renderassets';
 import { compareBytes } from '../gojson';
 import { goQuote } from '../gofmt';
 import { blockExtraInputDirs, FrameFile, frameSource, OutcomeSucceeded, OutcomeVerificationFailed, inputFiles, type Attempt, type Scene } from '../scene';
@@ -478,6 +479,7 @@ function episodeOutcome(e: Episode): string {
  * 以及镜头当时就近读到的 frame.md：画幅只从 frame.md 取，重放要按当时的画幅。
  */
 export function freezeInput(sc: Scene, target: string): void {
+  freezeResources(sc.directory, target);
   for (const rel of inputFiles(sc)) copyFile(path.join(sc.directory, rel), path.join(target, rel));
   const frame = frameSource(sc);
   if (frame) copyFile(path.join(frame.directory, frame.file), path.join(target, FrameFile));

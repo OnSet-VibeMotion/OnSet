@@ -10,6 +10,7 @@ import { libraryDir, prepareLibrary, requireLibrary } from './library';
 
 /** anidoodle 风格来源。 */
 export const anidoodleSource: Source = {
+  runtimeAssets: ['anidoodle'],
   id: () => SourceID,
   name: () => `anidoodle 代码绘画（Alex Greenshpun，${PinnedStyleCount} 种）`,
   gallery: () => Gallery,

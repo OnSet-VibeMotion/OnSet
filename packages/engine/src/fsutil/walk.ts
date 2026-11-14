@@ -7,7 +7,7 @@ import { compareBytes } from '../gojson';
  * 项目树遍历时不进入的目录（Studio 的轮次快照、文件树与第三方站操作的越界检查共用）：
  * attempts 与 .studio-frames 是渲染与抽帧的副产物，.agents 是技能树，.qoder、.claude、.codex、
  * .codebuddy、.opencode 是各家渲染工具自己的目录（渲染时 scene.stageRendererSkills 在镜头目录里放技能链接，渲染完删掉，
- * 不算项目文件的改动），其余是依赖与工具缓存。
+ * 不算项目文件的改动），.onset 是引擎管理的共享资源（随项目保存，但不参与对话回退），其余是依赖与工具缓存。
  */
 export const ProjectSkippedDirs: ReadonlySet<string> = new Set([
   '.git',
@@ -15,6 +15,7 @@ export const ProjectSkippedDirs: ReadonlySet<string> = new Set([
   'attempts',
   '.studio-frames',
   '.agents',
+  '.onset',
   '.qoder',
   '.claude',
   '.codex',

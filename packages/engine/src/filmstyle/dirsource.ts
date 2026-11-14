@@ -32,6 +32,8 @@ export interface DirectorySourceOptions {
   origin: string;
   /** 只带实际用到的素材与 three.js 模块（见文件头）。 */
   onlyReferenced?: boolean;
+  /** 已装风格中可共享的只读运行资源；默认不把示例源码当成库。 */
+  runtimeAssets?: readonly string[];
 }
 
 /** 按引用挑文件时，不整棵拷的两个目录（风格目录与库根下都认）。 */
@@ -95,6 +97,7 @@ function copyTree(from: string, to: string, skip: ReadonlySet<string> = new Set(
 }
 
 export class DirectorySource implements Source {
+  get runtimeAssets(): readonly string[] { return this.opts.runtimeAssets ?? []; }
   constructor(private readonly opts: DirectorySourceOptions) {}
 
   id(): string {

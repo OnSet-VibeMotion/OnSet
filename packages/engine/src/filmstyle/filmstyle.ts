@@ -70,6 +70,8 @@ export interface PrepareOptions {
 
 /** 一个风格来源。 */
 export interface Source {
+  /** 已装风格里的只读运行资源（文件或目录，相对风格根）；镜头自动共享，路径保持不变。不含要改写的 demo。 */
+  runtimeAssets?: readonly string[];
   /** 来源标识，只用小写字母、数字和连字符，例如 lemo-opuscar。 */
   id(): string;
   /** 给人看的来源名。 */

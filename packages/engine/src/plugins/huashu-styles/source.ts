@@ -10,6 +10,7 @@ import { libraryDir, prepareLibrary, requireLibrary } from './library';
 
 /** huashu 风格来源。 */
 export const huashuSource: Source = {
+  runtimeAssets: ['huashu'],
   id: () => SourceID,
   name: () => `花叔艺术动画（huashu-art-motion，${PinnedStyleCount} 种）`,
   gallery: () => Gallery,
