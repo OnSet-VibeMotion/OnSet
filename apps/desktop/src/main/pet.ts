@@ -23,6 +23,8 @@ interface PetPrefs {
 
 let pet: BrowserWindow | null = null;
 let latest: unknown = null;
+/** 后台运行（端到端测试）时永远不显示。 */
+let hidden = false;
 let onVisibility: (visible: boolean) => void = () => {};
 
 function prefsFile(): string {
@@ -106,7 +108,8 @@ export function createPet(options: { url: string; preload: string; background: b
   pet.setAlwaysOnTop(true, 'floating');
   pet.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   pet.webContents.on('did-finish-load', () => pet?.webContents.send('am:crew', latest));
-  if (!options.background && prefs.visible) pet.once('ready-to-show', () => pet?.showInactive());
+  hidden = options.background;
+  pet.once('ready-to-show', syncVisibility);
   pet.on('moved', () => {
     if (!pet) return;
     const [x, y] = pet.getPosition();
@@ -118,21 +121,30 @@ export function createPet(options: { url: string; preload: string; background: b
   void pet.loadURL(options.url);
 }
 
+/**
+ * 桌宠只在打开了项目时出现：工作室画的是这个项目的摄制组，首页、新手引导这些地方没有可画的。
+ * 主窗口的对话在项目里时一直报状态（没有进行中的一轮也报「待命」），离开项目时报 null。
+ */
+function syncVisibility(): void {
+  if (!pet || pet.isDestroyed()) return;
+  const show = !hidden && readPrefs().visible && latest !== null;
+  if (show && !pet.isVisible()) pet.showInactive();
+  if (!show && pet.isVisible()) pet.hide();
+}
+
 /** 显示或收起桌宠，记住选择。 */
 export function setPetVisible(visible: boolean): void {
   writePrefs({ ...readPrefs(), visible });
-  if (pet && !pet.isDestroyed()) {
-    if (visible) pet.showInactive();
-    else pet.hide();
-  }
+  syncVisibility();
   onVisibility(visible);
 }
 
 export function installPetIPC(): void {
-  // 主窗口的界面报来小人此刻的状态（null 是没有进行中的一轮）。
+  // 主窗口的界面报来工作室此刻的状态（null 是没有打开项目）。
   ipcMain.on('am:crew', (_event, state: unknown) => {
     latest = state ?? null;
     if (pet && !pet.isDestroyed()) pet.webContents.send('am:crew', latest);
+    syncVisibility();
   });
   // 桌宠窗口里的按钮：双击回到客户端、收起桌宠。
   ipcMain.on('am:pet', (_event, action: unknown) => {

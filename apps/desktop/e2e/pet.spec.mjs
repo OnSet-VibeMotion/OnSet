@@ -11,8 +11,11 @@ test('the desktop pet mirrors what the orchestrator is doing', async ({ page, pr
   // 没有进行中的一轮：坐在导演椅上待命。
   await expect(crew).toHaveAttribute('data-mood', 'idle');
   await expect(crew.locator('.pet-line')).toHaveText('待命');
+  // 没打开项目时主进程不显示桌宠（main/pet.ts 的 syncVisibility），工作室也知道还没有项目。
+  await expect(crew).toHaveAttribute('data-project', 'none');
 
   await openProject(page, project);
+  await expect(crew).toHaveAttribute('data-project', 'open');
   // 读文件的调用还没有结果：走到书架前读，气泡只写文件名，卡片底下写项目名。
   await page.locator('#prompt').fill('看看稿子');
   await page.locator('#send').click();
@@ -35,6 +38,13 @@ test('the desktop pet mirrors what the orchestrator is doing', async ({ page, pr
   await page.locator('#send').click();
   await expect(crew).toHaveAttribute('data-mood', 'filming');
   await expect(crew.locator('.pet-line')).toHaveText('渲染镜头 scene-001');
+  await page.locator('#cancel-turn').click();
+
+  // 改分镜计划：导演走到左墙的分镜板前。
+  await page.locator('#prompt').fill('排分镜');
+  await page.locator('#send').click();
+  await expect(crew).toHaveAttribute('data-mood', 'storyboarding');
+  await expect(crew.locator('.pet-line')).toHaveText('编辑 scene-plan.json');
   await page.locator('#cancel-turn').click();
 
   // 拼接：交给剪辑师，导演站到他身后。

@@ -15,6 +15,7 @@ export type CrewMood =
   | 'thinking'
   | 'reading'
   | 'writing'
+  | 'storyboarding'
   | 'running'
   | 'filming'
   | 'editing'
@@ -45,6 +46,10 @@ const am = '^(mcp__am__|am[._])?';
 const filmingTools = new RegExp(am + '(scene_run|scene_run_all|job_wait)$');
 /** 剪辑：拼接、复查、抽帧、各种校验与字幕时间轴。 */
 const editingTools = new RegExp(am + '(concat|review|scene_frames|audio_check|align_build|align_text|validate_[a-z_]+)$');
+/** 分镜：按分镜计划算镜头时长。 */
+const storyboardTools = new RegExp(am + '(scene_cues|beat_cues)$');
+/** 分镜的几份文件：整片处理方案、分镜计划（与 studio/storyboard.ts 的路径对应）。 */
+const storyboardFiles = /(^|[\\/])(production[\\/])?(scene-plan\.(json|md)|treatment\.md)(\s|、|$)/;
 /** 配音：音色库。 */
 const voicingTools = new RegExp(am + 'voice_[a-z_]+$');
 /** 配音与对齐工具的命令名，与 packages/engine/src/config/providers.ts 的 `command` 对应。 */
@@ -58,6 +63,8 @@ function department(name: string, input: unknown, command: boolean, target: stri
     return record.subcommand === 'render' ? 'filming' : null;
   }
   if (editingTools.test(name)) return 'editing';
+  if (storyboardTools.test(name)) return 'storyboarding';
+  if (/^(read|write|edit|multiedit|file_change)$/.test(name) && storyboardFiles.test(target)) return 'storyboarding';
   if (voicingTools.test(name)) return 'voicing';
   if (command && voiceCommands.test(target)) return 'voicing';
   if (command && alignCommands.test(target)) return 'editing';

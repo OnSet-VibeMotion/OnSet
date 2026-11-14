@@ -33,6 +33,11 @@ case "$prompt" in *导演开机*)
   printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"d1","name":"scene_run","input":{"scene":"scenes/scene-001"}}]}}\n'
   exec sleep 60 ;;
 esac
+# 「排分镜」：编辑分镜计划就挂起，桌宠的导演走到分镜板前。
+case "$prompt" in *排分镜*)
+  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"s1","name":"Edit","input":{"file_path":"production/scene-plan.json","old_string":"a","new_string":"b"}}]}}\n'
+  exec sleep 60 ;;
+esac
 # 「拼一下」：调用 am 的 concat 就挂起，桌宠的剪辑师开工。
 case "$prompt" in *拼一下*)
   printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"c1","name":"mcp__am__concat","input":{}}]}}\n'

@@ -6,7 +6,7 @@ import '../pet.css';
  * 桌宠窗口（main/pet.ts）：一间等距块面的微缩工作室。从斜上方平行投影看进去，家具都是有厚度的块，
  * 顶面最亮、朝左下的面次之、朝右下的面最暗（光从左上来）；人是实色的：衣服、皮肤、头发各有亮暗两面。
  *
- *   导演（编排工具）——在哪个部门干活就走到哪：读稿、写稿在剧本桌，跑命令在导演台，拍摄时在机位旁，
+ *   导演（编排工具）——在哪个部门干活就走到哪：读稿、写稿在剧本桌，排分镜在左墙的分镜板前，跑命令在导演台，拍摄时在机位旁，
  *       剪辑时站在剪辑师身后，配音时站在录音棚外；等批准、收工站到台前；想事情和待命坐在导演椅上。
  *   摄影 ×3（渲染器）——每个正在渲染的镜头一个人，从沙发走到摄影机后面扶着机器，脚下挂着镜头号。
  *   剪辑师——导演交来拼接、复查、抽帧、校验、字幕时间轴时盯着时间线打字，平时靠在椅背上伸懒腰。
@@ -429,6 +429,7 @@ const aisle = 3.2;
 const director: Record<string, Spot> = {
   chair: { x: 1.9, y: 2.85, a: toward.viewer, via: [[1.9, aisle]] },
   table: { x: 3.35, y: 3.45, a: toward.viewer, via: [[3.35, aisle]] },
+  storyboard: { x: 0.95, y: 3.1, a: toward.leftWall, via: [[0.95, aisle]] },
   console: { x: 1.15, y: 1.2, a: toward.leftWall, via: [[1.15, aisle]] },
   filming: { x: 2.35, y: 2.05, a: -0.6, via: [[2.35, aisle]] },
   editing: { x: 6.3, y: 1.95, a: toward.wall, via: [[6.3, aisle]] },
@@ -442,6 +443,7 @@ const directorSpot: Record<CrewMood, keyof typeof director> = {
   stopped: 'chair',
   reading: 'table',
   writing: 'table',
+  storyboarding: 'storyboard',
   running: 'console',
   filming: 'filming',
   editing: 'editing',
@@ -457,6 +459,7 @@ const directorPose: Record<CrewMood, Pose> = {
   stopped: 'sit',
   reading: 'read',
   writing: 'write',
+  storyboarding: 'point',
   running: 'write',
   filming: 'point',
   editing: 'cross',
@@ -550,12 +553,12 @@ function roomShell(): ReactElement {
   out.push(<polygon key="sweep" points={pts([P(2.9, 0), P(5.8, 0), P(5.8, 1.15), P(2.9, 1.15)])} fill="#5a5247" />);
   out.push(<polygon key="sweepFade" points={pts([P(2.9, 0.85), P(5.8, 0.85), P(5.8, 1.15), P(2.9, 1.15)])} fill="rgba(0,0,0,0.14)" />);
   out.push(box('roll', 2.75, 0.02, 2.72, 3.2, 0.12, 0.12, mat.metal));
-  // 左墙的海报（一个太阳、两行字）。
-  out.push(<polygon key="poster" points={pts(wallQuad('left', 2.3, 3.2, 1.2, 2.4))} fill="#2a2520" stroke="#6f6557" strokeWidth={1.4} />);
-  const pc = wallAt('left', 2.75, 1.98);
+  // 后墙的海报（一个太阳、两行字），在导演台上方。
+  out.push(<polygon key="poster" points={pts(wallQuad('back', 1.0, 1.9, 1.3, 2.5))} fill="#2a2520" stroke="#6f6557" strokeWidth={1.4} />);
+  const pc = wallAt('back', 1.45, 2.06);
   out.push(<ellipse key="sun" cx={pc[0]} cy={pc[1]} rx={4.6} ry={5.6} fill="#d9a35f" />);
-  out.push(seg('pt1', wallAt('left', 2.45, 1.52), wallAt('left', 3.05, 1.52), '#8a8377', 1.4));
-  out.push(seg('pt2', wallAt('left', 2.55, 1.4), wallAt('left', 2.95, 1.4), '#5d574d', 1.4));
+  out.push(seg('pt1', wallAt('back', 1.15, 1.6), wallAt('back', 1.75, 1.6), '#8a8377', 1.4));
+  out.push(seg('pt2', wallAt('back', 1.25, 1.48), wallAt('back', 1.65, 1.48), '#5d574d', 1.4));
   // 后墙的钟。
   const ck = wallAt('back', 7.3, 2.45);
   out.push(<ellipse key="clock" cx={ck[0]} cy={ck[1]} rx={6.5} ry={7.5} fill="#efe9dd" stroke="#6f6557" strokeWidth={1.4} />);
@@ -573,6 +576,30 @@ function screen(key: string, on: 'left' | 'back', a: number, b: number, z0: numb
       {rows.map((row, i) => seg(`${key}${i}`, wallAt(on, row.from, row.z), wallAt(on, row.to, row.z), row.color, 2))}
     </g>
   );
+}
+
+/** 左墙的分镜板：软木板上两排卡片。排分镜时卡片亮起来，正在排的那张是黄铜色，一张张换过去。 */
+function storyboardWall(active: boolean, frame: number): ReactElement {
+  const out: ReactElement[] = [
+    <polygon key="sbframe" points={pts(wallQuad('left', 2.05, 4.2, 0.85, 2.45))} fill="#5c4632" />,
+    <polygon key="sbcork" points={pts(wallQuad('left', 2.12, 4.13, 0.92, 2.38))} fill="#6b5537" />,
+  ];
+  const cols = 4;
+  const current = frame % (cols * 2);
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < cols; col++) {
+      const i = row * cols + col;
+      const a = 2.22 + col * 0.48;
+      const z1 = 2.27 - row * 0.7;
+      const card = active && i === current ? '#d9a35f' : active ? '#efe9dd' : '#a9a294';
+      out.push(<polygon key={`card${i}`} points={pts(wallQuad('left', a, a + 0.4, z1 - 0.55, z1))} fill={card} />);
+      out.push(<polygon key={`img${i}`} points={pts(wallQuad('left', a + 0.05, a + 0.35, z1 - 0.35, z1 - 0.05))} fill={active && i === current ? '#94693a' : '#5a5247'} />);
+      out.push(seg(`txt${i}`, wallAt('left', a + 0.06, z1 - 0.45), wallAt('left', a + 0.3, z1 - 0.45), '#8a8377', 1));
+      const pin = wallAt('left', a + 0.2, z1 - 0.02);
+      out.push(<circle key={`pin${i}`} cx={pin[0]} cy={pin[1]} r={1.3} fill="#e39a8c" />);
+    }
+  }
+  return <g key="storyboard">{out}</g>;
 }
 
 /** 导演台的显示器：跑命令时字往上滚，最后一行闪光标。 */
@@ -860,7 +887,7 @@ export function Pet() {
   const filmingCount = shooting.filter(Boolean).length;
 
   return (
-    <div className="pet" id="crew" data-mood={mood} data-walking={dirArrived ? 'false' : 'true'} role="status" aria-live="polite" aria-label={signal.line}>
+    <div className="pet" id="crew" data-mood={mood} data-project={signal.project ? 'open' : 'none'} data-walking={dirArrived ? 'false' : 'true'} role="status" aria-live="polite" aria-label={signal.line}>
       <div className="pet-card" onDoubleClick={() => window.am?.pet?.('focus')} title="双击回到客户端">
         <svg className="pet-room" viewBox={`0 0 ${CW} ${CH}`} width={CW} height={CH} aria-hidden="true">
           <defs>
@@ -870,6 +897,7 @@ export function Pet() {
             </radialGradient>
           </defs>
           {shell}
+          {storyboardWall(mood === 'storyboarding' && dirArrived, frame)}
           {consoleScreen(mood === 'running' && dirArrived, frame)}
           {editScreens(editing, frame)}
           {anyFilming ? (
