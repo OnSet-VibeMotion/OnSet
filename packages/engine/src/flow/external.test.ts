@@ -283,6 +283,21 @@ describe('prompt', () => {
 });
 
 describe('runStationOp', () => {
+  it('hands the desktop connection only to declared user operations via stdin', async () => {
+    const root = project();
+    const dir = writeStationForTest({
+      'onset-station.json': manifest({ browser: { origins: ['https://creator.example.com'] }, ops: ['user', 'agent'].map(trigger => ({ name: trigger, summary: trigger, trigger, command: ['{node}', 'read.cjs'] })) }),
+      'read.cjs': `let text='';process.stdin.on('data',c=>text+=c);process.stdin.on('end',()=>console.log('onset-result '+JSON.stringify({browser:JSON.parse(text).browser??null,env:process.env.ONSET_STATION_BROWSER??null})));`,
+    });
+    installStation(`link:${dir}`);
+    const connection = { endpoint: 'http://127.0.0.1:1234/', token: 'test-token' };
+    const env = { ...process.env, ONSET_STATION_BROWSER: JSON.stringify(connection) };
+    const run = (op: string, event?: Record<string, unknown>) => runStationOp(root, 'my-step', op, {}, () => {}, undefined, env, event);
+    expect((await run('user')).data).toEqual({ browser: connection, env: null });
+    expect((await run('agent')).data).toEqual({ browser: null, env: null });
+    expect((await run('user', { on: 'task.finished' })).data).toEqual({ browser: null, env: null });
+  });
+
   it('runs an op in the project with a minimal environment', async () => {
     const root = project();
     installStation(`link:${fake}`);

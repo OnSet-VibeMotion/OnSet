@@ -89,3 +89,5 @@ export { MaxStateFileBytes, readDeclaredState, type StateReading } from './state
 export { OpsTrustNotice, pagePermissionLines } from './trust';
 export { pluginStyleSource, pluginStyleSources } from './styles';
 export { coerceSetting, publicSettings, stationSettings, writeStationSetting, type SettingValue } from './settings';
+
+export { StationBrowserEnv, type StationBrowserConnection, type StationBrowserLease, type StationBrowserRequest } from './browser';

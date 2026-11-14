@@ -134,6 +134,8 @@ export interface Manifest {
   pages: ManifestPage[];
   settings: ManifestSetting[];
   permissions: ManifestPermissions;
+  /** 用户操作可在客户端内打开的网页；登录按插件与账号隔离。 */
+  browser?: { origins: string[] };
   hooks: { on: HookEvent; op: string }[];
   /** 定时：客户端开着、项目打开着时，每隔 every_minutes 分钟跑一次本站的操作（只限 agent 操作）。 */
   schedules: { every_minutes: number; op: string }[];
@@ -188,6 +190,7 @@ export const ManifestFields: readonly { name: string; tier: FieldTier; parent?: 
   { name: 'pages', tier: 'stable' },
   { name: 'settings', tier: 'stable' },
   { name: 'permissions', tier: 'stable' },
+  { name: 'browser', tier: 'experimental', used: (m) => m.browser !== undefined },
   { name: 'hooks', tier: 'experimental', used: (m) => m.hooks.length > 0 },
   { name: 'schedules', tier: 'experimental', used: (m) => m.schedules.length > 0 },
   { name: 'slots', tier: 'experimental', used: (m) => m.slots.length > 0 },

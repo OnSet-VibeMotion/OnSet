@@ -1005,6 +1005,7 @@ export interface StationInfo {
   ops: StationOp[];
   settings: StationSetting[];
   permissions: { project: boolean; network: string[]; uses: string[] };
+  browser?: { origins: string[] };
   hooks: { on: string; op: string }[];
   schedules: { every_minutes: number; op: string }[];
   /** 往制作提示词哪几个阶段里插了说明。 */
@@ -1076,6 +1077,7 @@ export interface StationPreview {
   ops_trust: string;
   page_permissions: string[];
   permissions: { project: boolean; network: string[]; uses: string[] };
+  browser?: { origins: string[] };
   reads: string[];
   pages: string[];
   experimental: string[];

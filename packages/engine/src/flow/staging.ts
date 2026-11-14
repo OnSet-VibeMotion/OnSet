@@ -48,6 +48,7 @@ export interface StationPreview {
   page_permissions: string[];
   /** 同一份权限的原样（界面按自己的说法列）：清单的 permissions 与页面能读的文件。 */
   permissions: Manifest['permissions'];
+  browser?: Manifest['browser'];
   reads: string[];
   pages: string[];
   experimental: string[];
@@ -113,6 +114,7 @@ export function previewOf(m: Manifest, entry: InstalledEntry): StationPreview {
     ops_trust: m.ops.length > 0 ? OpsTrustNotice : '',
     page_permissions: pagePermissionLines(m),
     permissions: m.permissions,
+    browser: m.browser,
     reads: [...new Set(m.pages.flatMap((p) => p.reads))],
     pages: m.pages.map((p) => p.label),
     experimental: experimentalFields(m),

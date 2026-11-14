@@ -92,6 +92,7 @@ echo 'onset-result {"url": "https://example.com/v/1"}'
 | `pages` | 稳定 | 页面，见「页面」 |
 | `settings` | 稳定 | 设置项，见「设置」 |
 | `permissions` | 稳定 | 页面要的权限，见「权限」 |
+| `browser` | 实验性 | `{"origins":["https://creator.example.com"]}`：允许用户触发的操作在客户端内打开网页，按插件与账号独立保存登录。桌面端经 stdin 的 `browser` 交付本次操作的连接，任务结束撤销控制、保留页面给用户；见「客户端内网页」 |
 | `hooks` | 实验性 | 事件钩子：`[{"on": "film.approved", "op": "notify"}]`。`on` 取 `turn.finished`、`task.finished`、`gate.confirmed`、`film.approved`；`op` 必须是 `trigger: agent` 且没有必填参数的操作。项目正忙时这次不跑，不排队 |
 | `schedules` | 实验性 | 定时：`[{"every_minutes": 30, "op": "sync"}]`，5–1440 分钟，只限 agent 操作。客户端开着时在当前打开的项目里跑，不补跑 |
 | `slots` | 实验性 | 把页面嵌进自带页面：`[{"at": "publish", "page": "mini", "height": 140}]`。`at` 取 `script`、`storyboard`、`scene`、`final`、`publish`、`progress`；`height` 80–1200，缺省 240 |
@@ -364,3 +365,17 @@ tell({ kind: 'hide' });                                    // 收起桌宠
 
 `open` 的 `page` 取客户端的页面 id（`progress`、`script`、`storyboard`、`scene`（`target` 写镜头编号）、`final`、`publish`……）。拿去当桌宠的页面不进顶栏的「插件」菜单。
 
+
+## 客户端内网页
+
+清单中的 `browser.origins` 列出网页可导航到的 HTTPS 来源（域名及可选端口，不含路径、通配符或用户名）。添加及更新插件时会展示这项能力。桌面端仅给用户触发的操作签发一次连接：stdin 多出 `browser: {endpoint, token}`。无此字段表示当前宿主不提供网页容器，应提示更新客户端；不要自行退回外部浏览器。钩子、定时和 agent 操作拿不到这份连接。
+
+插件向 `endpoint` POST JSON，头部带 `Authorization: Bearer <token>`：
+
+- `{action: "open", account: "稳定的账号编号", label: "账号备注", url: "https://creator.example.com/"}`：打开或恢复该账号的页面，返回 `{reused: boolean}`。编号为 1–80 位字母、数字、下划线或连字符，以字母数字开头。一次操作只控制一个账号。
+- `{action: "command", method: "Page.navigate", params: {url: "https://creator.example.com/editor"}}`：导航到声明过的来源。
+- 其余允许的 CDP 命令：`Page.enable`、`Page.bringToFront`、`Runtime.evaluate`、`Runtime.releaseObject`、`DOM.setFileInputFiles`、`Input.insertText`。上传文件必须是当前项目内的真实文件（校验符号链接后的路径）。命令返回 CDP 结果，错误返回非 2xx 与 `{error: "说明"}`。
+
+网页以 `WebContentsView` 显示在片场主窗口里，不拥有 Node、宿主 preload 或宿主会话。登录空间保存在插件 `data_dir/web-sessions/<account>/`，不同插件、账号独立；用户切回项目时页面保留，再次打开同一账号不自动导航，插件应在 `reused` 为 true 时避免覆盖用户编辑。账号仍在被某次操作填写时，另一项操作会明确失败。
+
+操作完成或取消后连接撤销，网页保留给用户；客户端关闭时销毁网页，登录状态继续保存。不要把连接地址、口令、网页 Cookie 写到项目、日志或操作结果。插件只需要连接这一页，不需要启动调试端口、安装浏览器或把网站代码加载到片场进程中。

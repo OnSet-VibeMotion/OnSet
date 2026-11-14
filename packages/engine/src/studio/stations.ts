@@ -123,6 +123,7 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
       ...(x.type === 'secret' ? { set: settings.secrets_set[x.key] === true } : { value: settings.values[x.key] }),
     })),
     permissions: m.permissions,
+    browser: m.browser,
     hooks: m.hooks,
     schedules: m.schedules,
     inserts: m.inserts.map((ins) => ins.stage),
@@ -196,19 +197,25 @@ async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: 
   };
   const scopeFields = (r: flow.ScopeReport | null) =>
     r ? { out_of_scope: r.out_of_scope, out_of_scope_more: r.out_of_scope_more, ...(r.reserved.length > 0 ? { reserved: r.reserved } : {}) } : {};
+  let browser: flow.StationBrowserLease | undefined;
   try {
+    if (!event && station?.manifest.browser && station.manifest.ops.find(o => o.name === op)?.trigger === 'user' && s.config.stationBrowser) {
+      browser = await s.config.stationBrowser({ id, name: station.manifest.name, origins: station.manifest.browser.origins, project_root: p.path, data_dir: path.join(flow.stationsDir(envMap()), id, 'data') });
+    }
     const r = await runStudioOp(
       s,
       signal,
       p,
       'station_run',
       { station: id, op, params: JSON.stringify(params), event: event ? JSON.stringify(event) : '', project_root: p.path },
-      { onText },
+      { onText, ...(browser ? { env: { [flow.StationBrowserEnv]: JSON.stringify(browser.connection) } } : {}) },
     );
     lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: true, text: stripProgress(r.text).slice(-maxRunText), ...(r.data !== undefined ? { data: r.data } : {}), ...scopeFields(scope()) });
   } catch (err) {
     lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: false, text: (err as Error).message.slice(-maxRunText), ...scopeFields(scope()) });
     throw err;
+  } finally {
+    browser?.dispose();
   }
 }
 

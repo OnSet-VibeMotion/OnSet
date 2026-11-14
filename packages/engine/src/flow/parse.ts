@@ -330,6 +330,7 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
     pages,
     settings,
     permissions,
+    ...(raw.browser === undefined ? {} : { browser: parseBrowser(raw.browser) }),
     hooks,
     schedules,
     inserts,
@@ -493,4 +494,17 @@ function checkDeclared(m: Manifest): void {
     n.state.cases.forEach((c, j) => fixGuide(c.guide, `${where}.state.cases[${j}].guide`));
     for (const k of ['otherwise', 'missing', 'invalid', 'no_field'] as const) fixGuide(n.state[k]?.guide, `${where}.state.${k}.guide`);
   });
+}
+
+function parseBrowser(value: unknown): { origins: string[] } {
+  if (!isObject(value)) throw new Error('browser 要是对象');
+  knownFields(value, ['origins'], 'browser');
+  const origins = strings(value, 'origins', 'browser');
+  if (origins.length === 0 || origins.length > 20) throw new Error('browser.origins 要有 1–20 个 HTTPS 来源');
+  return { origins: [...new Set(origins.map(origin => {
+    let url: URL;
+    try { url = new URL(origin); } catch { throw new Error('browser.origins 地址无效'); }
+    if (url.protocol !== 'https:' || url.origin !== origin || url.username || url.password || url.hostname.includes('*')) throw new Error('browser.origins 只写 HTTPS 来源（域名与可选端口）');
+    return url.origin;
+  }))] };
 }

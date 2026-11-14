@@ -26,6 +26,7 @@ import { nodeCommand } from '../toolpath';
 import { loadStations, stationsDir, type LoadedStation, type ManifestOp } from './external';
 import { scopeReport, scopeText, statProject, type ScopeReport } from './scope';
 import { stationSettings } from './settings';
+import { StationBrowserEnv } from './browser';
 
 export const ResultPrefix = 'onset-result ';
 /** 进度行：`onset-progress 0.4 正在上传`（0–1 的小数，后面是说明）。客户端的任务进度条显示它。 */
@@ -209,6 +210,7 @@ export async function runStationOp(
   // 设置（含插件自己的密钥）只经 stdin 交给它，不进环境变量，也不进命令行。
   const input: Record<string, unknown> = { params: checked, settings: stationSettings(env, station.manifest), project_root: root, station_dir: station.dir, data_dir: dataDir };
   if (event) input.event = event;
+  if (op.trigger === 'user' && station.manifest.browser && !event && env[StationBrowserEnv]) input.browser = JSON.parse(env[StationBrowserEnv]!);
   child.stdin.end(JSON.stringify(input) + '\n');
   let stdout = '';
   let stderr = '';

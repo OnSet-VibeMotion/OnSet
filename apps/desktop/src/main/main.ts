@@ -8,6 +8,7 @@ import { installKeyCodec } from './keycodec';
 import { installMenu } from './menu';
 import { createPet, installPetIPC, mainWindow, petPreferred, setPetVisible } from './pet';
 import { loginShellPath } from './shellpath';
+import { StationBrowsers } from './station-browser';
 
 /*
  * 桌面客户端的主进程。
@@ -38,6 +39,9 @@ const background = process.env.ONSET_DESKTOP_BACKGROUND === '1';
 if (background) app.setActivationPolicy?.('accessory');
 // 窗口不显示就永远不在前台，一轮结束、任务完成都会弹系统通知；测试里一律不弹（测通知的用例自己再换成记录）。
 if (background) Notification.prototype.show = function () {};
+
+const stationBrowsers = new StationBrowsers(mainWindow, background);
+app.on('before-quit', () => stationBrowsers.close());
 
 const rendererDir = path.join(__dirname, 'renderer');
 let backend: Server | null = null;
@@ -218,7 +222,7 @@ if (!app.requestSingleInstanceLock()) {
       if (npm !== '') process.env.ONSET_NPM_CLI = npm;
       // 导演的 API key 经 safeStorage 加密落盘、解密后经 stdin 交给导演（见 keycodec.ts）。
       installKeyCodec();
-      backend = newServer({ executable });
+      backend = newServer({ executable, stationBrowser: request => stationBrowsers.lease(request) });
     } catch (err) {
       dialog.showErrorBox('后台服务起不来', err instanceof Error ? err.message : String(err));
       app.quit();

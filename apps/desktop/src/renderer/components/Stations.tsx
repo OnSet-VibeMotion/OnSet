@@ -84,9 +84,10 @@ const opsTrust =
   '它的操作是在你电脑上运行的程序，能读写你的文件、能联网；片场只限制它拿不到项目 .env 与片场的凭据，并在它写了声明范围之外的项目文件时告诉你。';
 
 /** 页面申请的权限：页面在沙箱里，只能做这些。已装的插件与取回待装的（reads 另给）用同一种说法。 */
-function pagePermissionLines(s: { permissions: StationInfo['permissions']; pages?: StationInfo['pages']; reads?: string[] }): [string, string][] {
+function pagePermissionLines(s: { browser?: StationInfo['browser']; permissions: StationInfo['permissions']; pages?: StationInfo['pages']; reads?: string[] }): [string, string][] {
   const out: [string, string][] = [];
   const reads = s.reads ?? [...new Set((s.pages ?? []).flatMap((p) => p.reads))];
+  if (s.browser) out.push(['客户端内网页', s.browser.origins.join('、') + '（账号登录独立保存）']);
   if (s.permissions.project) out.push(['看项目', '镜头、制作进度、发布信息的概况']);
   if (reads.length > 0) out.push(['读文件', reads.join('、')]);
   if (s.permissions.network.length > 0) out.push(['联网', s.permissions.network.map((o) => o.replace(/^https?:\/\//, '')).join('、')]);
@@ -267,7 +268,7 @@ function StagedConfirm({ staged, onInstall, onCancel }: { staged: StagedPlugin; 
   const u = p.update;
   const tools = p.ops.filter((o) => o.trigger === 'agent');
   const buttons = p.ops.filter((o) => o.trigger === 'user');
-  const pagePerms = pagePermissionLines({ permissions: p.permissions, reads: p.reads });
+  const pagePerms = pagePermissionLines({ browser: p.browser, permissions: p.permissions, reads: p.reads });
   const rows: [string, string][] = [];
   if (p.replaces) rows.push(['制作路线', `顶替自带的「${p.replaces}」：${p.nodes.join('、')}`]);
   else if (p.nodes.length > 0) rows.push(['制作路线', `${p.after ? `接在「${stepLabel(p.after)}」后面` : p.flow ? '只在它带来的做法里' : '每个项目的最后'}：${p.nodes.join('、')}`]);

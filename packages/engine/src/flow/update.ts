@@ -70,7 +70,8 @@ export function installedEntry(id: string, env: Env = process.env): InstalledEnt
 /** 升级前后的差异：before 是已装的那一项，after 与 manifest 是取回的新一版。 */
 export function updateDiff(before: InstalledEntry, after: InstalledEntry, manifest: Manifest, env: Env = process.env): StationUpdate {
   const old = oldManifest(before, env);
-  const oldPerms = new Set(old ? permissionLines(old.permissions) : []);
+  const browserPermissions = (m: Manifest) => m.browser?.origins.map(origin => `客户端内网页：${origin}`) ?? [];
+  const oldPerms = new Set(old ? [...permissionLines(old.permissions), ...browserPermissions(old)] : []);
   const oldExp = new Set(old ? experimentalFields(old) : []);
   const experimental = experimentalFields(manifest);
   return {
@@ -80,7 +81,7 @@ export function updateDiff(before: InstalledEntry, after: InstalledEntry, manife
     after,
     old_version: old?.version ?? '',
     new_version: manifest.version,
-    new_permissions: permissionLines(manifest.permissions).filter((l) => !oldPerms.has(l)),
+    new_permissions: [...permissionLines(manifest.permissions), ...browserPermissions(manifest)].filter((l) => !oldPerms.has(l)),
     new_experimental: experimental.filter((f) => !oldExp.has(f)),
     experimental,
     changed: before.commit !== after.commit || before.digest !== after.digest || before.version !== after.version,

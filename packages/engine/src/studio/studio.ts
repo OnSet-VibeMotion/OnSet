@@ -63,6 +63,8 @@ import * as plugin from '../plugin';
 import * as studioview from '../studioview';
 
 export interface Config {
+  /** 只有桌面端提供；插件逻辑仍在子进程，不加载到宿主。 */
+  stationBrowser?: (request: import('../flow').StationBrowserRequest) => Promise<import('../flow').StationBrowserLease>;
   projectPath?: string;
   configPath?: string;
   /** 对应 onset --unsafe：编排工具与 onset 子命令都关闭权限隔离。 */

@@ -13,6 +13,7 @@ export const OpsTrustNotice =
 export function pagePermissionLines(m: Manifest): string[] {
   const out: string[] = [];
   const reads = [...new Set(m.pages.flatMap((p) => p.reads))];
+  if (m.browser) out.push(`客户端内网页：${m.browser.origins.join('、')}（账号登录独立保存；仅用户操作可控制页面）`);
   if (m.permissions.project) out.push('看项目：镜头、制作进度、发布信息的概况');
   if (reads.length > 0) out.push(`读文件：${reads.join('、')}`);
   if (m.permissions.network.length > 0) out.push(`联网：${m.permissions.network.join('、')}`);
