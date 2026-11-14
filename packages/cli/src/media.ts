@@ -11,6 +11,7 @@ import * as plugin from '@onset/engine/plugin';
 import * as scene from '@onset/engine/scene';
 import * as schedule from '@onset/engine/schedule';
 import { currentEnvironment } from './cli';
+import { requireSilentMaster } from './deliverables';
 import { type Finding, recordCheckFindings } from './memory_cmd';
 import { bool, num, str } from './ops/common';
 import { defineOp } from './ops/op';
@@ -359,7 +360,9 @@ defineOp({
 目标画幅默认从项目 frame.md 反查，canvas 可脱离项目使用。
 dry_run 只打印分析结果，不写任何文件，用于拼接前确认。
 
-拼完会自证：断言母版时长等于各片段时长之和、无音轨、画幅与帧率符合目标。`,
+拼完会自证：断言母版时长等于各片段时长之和、无音轨、画幅与帧率符合目标。
+
+在项目里 out 只能是 production/silent-master.mp4：客户端的制作路线与成片页按这个位置找。`,
   examples: [
     '# 拼成静音母版',
     'concat({"scenes": "scenes/", "out": "production/silent-master.mp4"})',
@@ -381,6 +384,7 @@ dry_run 只打印分析结果，不写任何文件，用于拼接前确认。
     const outPath = str(p.out);
     if (outPath === '') throw new Error('必须用 out 指定母版输出路径');
     const rootDir = str(p.project_root) !== '' ? str(p.project_root) : '.';
+    requireSilentMaster(rootDir, outPath);
     const fps = num(p.fps);
     const target: concat.Target = { widthPx: 0, heightPx: 0, fps: 0, codec: concat.DefaultCodec, pixelFormat: concat.DefaultPixelFormat };
     if (str(p.canvas) !== '') {
