@@ -14,6 +14,7 @@ import type * as filmstyle from '../filmstyle';
 import * as plugin from '../plugin';
 import * as hyperframes from '../hyperframes';
 import * as toolinstall from '../toolinstall';
+import {ensureWindowsGraphics,windowsGraphicsStatus} from '../windowsruntime/graphics';
 
 /** 一次准备要用的环境与输出：git 走代理、npm 走自己的配置；工具的原始输出写进 log，stage 汇报进行到哪一步。 */
 export interface Run {
@@ -217,6 +218,11 @@ export function items(pick?: Selection): Item[] {
   if (breeze && chosen.tts !== 'breeze') out.push(toolItem('voice', breeze.id, '音色设计 ' + breeze.name, breeze.install, breeze.model));
   const aligner = Aligners.find((a) => a.id === chosen.align);
   if (aligner) out.push(toolItem('align', aligner.id, '对齐 ' + aligner.name, aligner.install, aligner.model));
+  if(process.platform==='win32')out.push({
+    group:'python',id:'python:graphics',name:'图像与字体辅助库',version:'',required:false,
+    ready:env=>{const status=windowsGraphicsStatus(env);return [status.ok,status.where];},
+    prepare:async(run,signal)=>{await ensureWindowsGraphics({env:run.npm,output:run.log,progress:p=>run.stage(hyperframesStage(p),p.bytes),signal});},
+  });
   return out;
 }
 

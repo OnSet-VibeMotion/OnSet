@@ -73,4 +73,21 @@ describe('Windows reading inventory compatibility', () => {
     expect(report.problems.some((problem) => problem.includes('存在区间无效'))).toBe(true);
     expect(report.problems.some((problem) => problem.includes('graphic 在第 0 帧出现'))).toBe(true);
   });
+
+  it('recognizes combined snake_case approvals only with matching actual project user evidence',()=>{
+    const f=fixture();fs.unlinkSync(f.approvalFile);
+    const root=path.resolve(path.dirname(f.approvalFile),'../..'),sessions=path.join(root,'production/studio/sessions');
+    fs.mkdirSync(sessions,{recursive:true});
+    const said='确认稿件、封面和读法，保留所选风格';
+    const approval={approval:'script_cover_pronunciation_and_film_style',said,cover:{title_lines:['演示封面','第二行标题'],line_count:2}};
+    const file=path.join(path.dirname(f.approvalFile),'script-v01.json'),events=path.join(sessions,'test.events.jsonl');
+    fs.writeFileSync(file,JSON.stringify(approval));
+    fs.writeFileSync(events,JSON.stringify({kind:'text',text:said})+'\n');
+    expect(check(loadInventory(f.file,'win32'),f.timeline,{...Defaults,platform:'win32'}).ok).toBe(false);
+    fs.appendFileSync(events,JSON.stringify({kind:'user',text:said})+'\n');
+    expect(check(loadInventory(f.file,'win32'),f.timeline,{...Defaults,platform:'win32'}).ok).toBe(true);
+    for(const platform of ['darwin','linux'] as const)expect(loadInventory(f.file,platform).windowsApprovedCover).toBeUndefined();
+    approval.said='未确认的另一句话';fs.writeFileSync(file,JSON.stringify(approval));
+    expect(check(loadInventory(f.file,'win32'),f.timeline,{...Defaults,platform:'win32'}).ok).toBe(false);
+  });
 });
