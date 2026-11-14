@@ -29,8 +29,8 @@ export interface Library {
   /** 检出的 commit；读不到时为空。 */
   commit: string;
   /**
-   * 这份检出由 am 克隆（有 managedMarker）；
-   * 为 false 时是用户自己的检出，am 不改动它的 git 状态。
+   * 这份检出由 onset 克隆（有 managedMarker）；
+   * 为 false 时是用户自己的检出，onset 不改动它的 git 状态。
    */
   managed: boolean;
 }
@@ -57,7 +57,7 @@ function commitOf(opts: LibraryOptions): string {
 
 /**
  * 默认的风格库目录：<风格根目录>/lemo-opuscar/<commit 前 12 位>。
- * 按 commit 分目录，升级 am 换了固定版本时新旧两份并存，老项目引用的那份不会被改写。
+ * 按 commit 分目录，升级 onset 换了固定版本时新旧两份并存，老项目引用的那份不会被改写。
  */
 export function defaultLibraryDir(env: Record<string, string | undefined>, commit: string): string {
   if (commit.length > 12) commit = commit.slice(0, 12);
@@ -205,12 +205,12 @@ async function downloadLibrary(git: string, partial: string, commit: string, opt
 }
 
 /**
- * 标记一份由 am 克隆的风格库：只有它的稀疏规则可以由 am 改。
- * 用户自己的检出没有这个文件，am 不碰它的 git 状态。
- * 不用「目录是不是默认目录」来判断：am 会把风格库目录经 LibraryEnv 显式传给
+ * 标记一份由 onset 克隆的风格库：只有它的稀疏规则可以由 onset 改。
+ * 用户自己的检出没有这个文件，onset 不碰它的 git 状态。
+ * 不用「目录是不是默认目录」来判断：onset 会把风格库目录经 LibraryEnv 显式传给
  * 子进程，子进程看到的总是显式指定。
  */
-export const managedMarker = '.am-library';
+export const managedMarker = '.onset-library';
 
 /** demo 里不带进项目的东西：审片截图、渲染产物与本地依赖。 */
 export const skipInDemo = new Set(['stills', 'out', 'chk', 'node_modules']);

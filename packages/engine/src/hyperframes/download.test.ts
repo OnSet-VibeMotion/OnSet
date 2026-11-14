@@ -47,7 +47,7 @@ async function listen(server: http.Server): Promise<string> {
 }
 
 function tempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'am-download-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-download-'));
 }
 
 const env = { PATH: process.env.PATH ?? '' };
@@ -107,20 +107,20 @@ describe('download', () => {
 });
 
 // 真实下载：联网，CI 不跑。改了下载路径后在本机跑一遍：
-//   AM_TEST_SKILLS_DOWNLOAD=1 npx vitest run --root packages/engine src/hyperframes/download -t RealDownload
-describe.runIf(process.env.AM_TEST_SKILLS_DOWNLOAD === '1')('RealDownload', () => {
+//   ONSET_TEST_SKILLS_DOWNLOAD=1 npx vitest run --root packages/engine src/hyperframes/download -t RealDownload
+describe.runIf(process.env.ONSET_TEST_SKILLS_DOWNLOAD === '1')('RealDownload', () => {
   it('fetches the pinned skills without git, matching the clone byte for byte', async () => {
     const cache = tempDir();
-    await prepareSkills({ env: { ...env, HOME: tempDir(), AM_NO_GIT: '1' }, cacheDir: cache });
+    await prepareSkills({ env: { ...env, HOME: tempDir(), ONSET_NO_GIT: '1' }, cacheDir: cache });
     expect(cachedTree(cache, PinnedSkillsCommit, PinnedSkillsCount)).not.toBe('');
     // 与用 git 克隆进缓存的同一 commit 逐文件比对（本机已有那份缓存时）。
-    const cloned = process.env.AM_TEST_SKILLS_CLONED;
+    const cloned = process.env.ONSET_TEST_SKILLS_CLONED;
     if (cloned) {
       const list = (root: string): string[] =>
         fs.readdirSync(root, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => path.relative(root, path.join(e.parentPath, e.name))).sort();
       const got = path.join(cache, PinnedSkillsCommit);
-      const files = list(cloned).filter((f) => !f.startsWith('.am-'));
-      expect(list(got).filter((f) => !f.startsWith('.am-'))).toEqual(files);
+      const files = list(cloned).filter((f) => !f.startsWith('.onset-'));
+      expect(list(got).filter((f) => !f.startsWith('.onset-'))).toEqual(files);
       for (const f of files) expect(fs.readFileSync(path.join(got, f)).equals(fs.readFileSync(path.join(cloned, f))), f).toBe(true);
     }
   }, 600_000);

@@ -83,7 +83,7 @@ describe('station ops', () => {
 
     expect(await run(['station', 'remove', 'fake-publisher'], new Buffer())).toBe(0);
     // 项目里不留插件的记录。
-    expect(fs.existsSync(path.join(root, 'article-to-motion.flow.json'))).toBe(false);
+    expect(fs.existsSync(path.join(root, 'onset.flow.json'))).toBe(false);
     const gone = new Buffer();
     expect(await run(['station', 'run', 'fake-publisher', 'status', '--project-root', other], gone)).toBe(1);
     expect(gone.text).toContain('没有装插件 fake-publisher');
@@ -103,7 +103,7 @@ describe('third-party tools', () => {
 
     const status = tools.find((t) => t.name === 'x_fake_publisher_status')!;
     expect(status.description).toContain('第三方站「假发布」');
-    expect(status.help).toContain('不是 am 自带的工具');
+    expect(status.help).toContain('不是 onset 自带的工具');
     expect(() => prepareCall(status, { extra: 1 })).toThrow();
     expect(callTarget(status, prepareCall(status, {}))).toEqual({
       name: 'station_run',
@@ -115,7 +115,7 @@ describe('third-party tools', () => {
 describe('op worker scope', () => {
   it('refuses ops outside the scope the caller asked for', async () => {
     const { runOpWorker } = await import('./ops/worker');
-    const { OpScopeEnv } = await import('@am/engine/opworker');
+    const { OpScopeEnv } = await import('@onset/engine/opworker');
     const before = process.env[OpScopeEnv];
     process.env[OpScopeEnv] = 'orchestrator';
     try {
@@ -135,7 +135,7 @@ describe('op worker scope', () => {
 
 describe('builtin plugins', () => {
   it('register ops that land in the op table, each op by one plugin', async () => {
-    const registry = await import('@am/engine/plugin');
+    const registry = await import('@onset/engine/plugin');
     const names = new Set(allOps().map((o) => o.name));
     const owner = new Map<string, string>();
     // 内置插件在 apply 里登记的操作进了操作表。
@@ -154,7 +154,7 @@ describe('builtin plugins', () => {
   it('are always on: their ops are listed in every project and there is no switch', () => {
     const root = tempDir();
     // 锁文件里的 disabled、stations 直接忽略。
-    fs.writeFileSync(path.join(root, 'article-to-motion.flow.json'), JSON.stringify({ version: 1, stations: [], disabled: ['song', 'publishing'] }));
+    fs.writeFileSync(path.join(root, 'onset.flow.json'), JSON.stringify({ version: 1, stations: [], disabled: ['song', 'publishing'] }));
     const names = describeTools('orchestrator', root).map((t) => t.name);
     expect(names).toContain('song_generate');
     expect(names).toContain('validate_publish');

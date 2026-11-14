@@ -1,8 +1,8 @@
 /**
  * 前置资源清单：要联网准备的每一项、怎么判断就绪、怎么准备。
  *
- * am setup（下载）与客户端的引导（只读状态）共用这一份清单，两边说的永远是同一组东西。
- * 判断就绪不联网；准备只由 am setup 调用。错误类型与文案约定见 ../prereq。
+ * onset setup（下载）与客户端的引导（只读状态）共用这一份清单，两边说的永远是同一组东西。
+ * 判断就绪不联网；准备只由 onset setup 调用。错误类型与文案约定见 ../prereq。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -21,13 +21,13 @@ export interface Run {
   git: Record<string, string>;
   npm: Record<string, string>;
   mixed: Record<string, string>;
-  /** am setup --proxy 的值（可能为空）。只给明确要走代理的下载用，例如节拍模型权重。 */
+  /** onset setup --proxy 的值（可能为空）。只给明确要走代理的下载用，例如节拍模型权重。 */
   proxy?: string;
   log: hyperframes.Writer;
   stage: (text: string) => void;
 }
 
-/** git / npm 等的原始输出日志：<数据目录>/am/setup.log，每次准备覆盖。am setup 与客户端的安装页共用。 */
+/** git / npm 等的原始输出日志：<数据目录>/onset/setup.log，每次准备覆盖。onset setup 与客户端的安装页共用。 */
 export function logPath(env: Record<string, string>): string {
   return path.join(path.dirname(hyperframes.defaultCacheDir(env)), 'setup.log');
 }
@@ -87,16 +87,16 @@ export interface Selection {
 }
 
 /**
- * 当前该准备的配音与对齐工具。root 是项目目录时读项目配置（article-to-motion.conf、.env、环境变量），
+ * 当前该准备的配音与对齐工具。root 是项目目录时读项目配置（onset.conf、.env、环境变量），
  * 读不了或不在项目里时取环境变量 TTS_PROVIDER / ALIGN_PROVIDER，其次全局设置，再不然用缺省值（配音与对齐都按平台选）。
  */
 export function selection(env: Record<string, string>, root = ''): Selection {
-  if (root !== '' && fs.existsSync(path.join(root, 'article-to-motion.conf'))) {
+  if (root !== '' && fs.existsSync(path.join(root, 'onset.conf'))) {
     try {
       const cfg = config.load(root, env);
       return { tts: cfg.ttsProvider, align: cfg.alignProvider };
     } catch {
-      // 配置写错了：退回缺省，错误留给 am config / am run 去报。
+      // 配置写错了：退回缺省，错误留给 onset config / onset run 去报。
     }
   }
   // 没有项目时：环境变量，其次客户端设置页的全局设置，再不然内置默认（Apple Silicon 上是本机 Breeze）。
@@ -115,7 +115,7 @@ export function selection(env: Record<string, string>, root = ''): Selection {
   return { tts, align };
 }
 
-/** 配音或对齐工具的一项：装进 am 自己的目录，不碰全局；版本钉死。有 model 时连模型一起下好。 */
+/** 配音或对齐工具的一项：装进 onset 自己的目录，不碰全局；版本钉死。有 model 时连模型一起下好。 */
 function toolItem(group: 'tts' | 'align' | 'voice', id: string, label: string, spec: ToolSpec, model?: ModelSpec): Item {
   const version = spec.kind === 'uv-venv' ? '' : spec.version;
   return {
@@ -178,7 +178,7 @@ export function items(pick?: Selection): Item[] {
     {
       group: 'browser',
       id: 'browser',
-      // 客户端里用它自带的 Chromium（AM_BROWSER），这一项直接就绪；单独用命令行时才要下载 headless-shell。
+      // 客户端里用它自带的 Chromium（ONSET_BROWSER），这一项直接就绪；单独用命令行时才要下载 headless-shell。
       required: true,
       name: '渲染用浏览器',
       version: '',

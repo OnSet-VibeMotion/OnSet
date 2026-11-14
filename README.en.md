@@ -1,18 +1,20 @@
 <p align="right"><a href="./README.md">简体中文</a> | English</p>
 
-# ArticleToMotion
+# OnSet
 
-ArticleToMotion is a macOS desktop client for producing vertical and landscape motion-graphics videos. Starting from an article or a narration script, it covers the script, voice-over, subtitles, storyboard, concurrent scene rendering, concatenation, covers, and publishing. It can also make beat-synced films with no voice-over, where the picture follows the music.
+**Talk with an agent, and turn an idea into a video.**
 
-▶ [Watch the ArticleToMotion promo video (MP4, 4m 47s)](https://github.com/chouheiwa/articale-to-motion/blob/main/docs/article-to-motion-tutorial.mp4)
+OnSet (片场, "film set") is a macOS desktop client. You say what you want in a chat, and an agent works like a film crew: it writes the script, records the voice-over, times the subtitles, plans the shots, renders the motion-graphics scenes in parallel, cuts them together, makes covers and gets the film ready to publish, stopping to ask you whenever a decision is yours. Hand it an article or a narration script if you have one, or start from nothing. It can also make beat-synced films with no voice-over, where the picture follows the music, in vertical or landscape.
+
+▶ [Watch the OnSet promo video (MP4, 4m 47s)](https://github.com/chouheiwa/articale-to-motion/blob/main/docs/onset-tutorial.mp4)
 
 An AI orchestrator of your choice does the production inside the client: Codex, Claude Code, Qoder, CodeBuddy, or OpenCode. You tell it what you want in the chat and make the calls at each checkpoint. Project prompts, publishing templates, and skills ship inside the client. The HyperFrames skills are installed into the project at a pinned official release, so a project is self-contained: copy the directory to another machine with the client installed and carry on.
 
 ## Install
 
-Download the dmg for your chip from GitHub Releases (arm64 for Apple Silicon, x64 for Intel). You can verify it against `checksums.txt` on the same page. Open it and drag ArticleToMotion into Applications.
+Download the dmg for your chip from GitHub Releases (arm64 for Apple Silicon, x64 for Intel). You can verify it against `checksums.txt` on the same page. Open it and drag OnSet into Applications.
 
-The build is unsigned. The first time, **right-click (or Control-click) ArticleToMotion in Applications → Open**, then click Open in the dialog. After that it opens normally. If a double-click is blocked, you can also go to System Settings → Privacy & Security and click "Open Anyway".
+The build is unsigned. The first time, **right-click (or Control-click) OnSet in Applications → Open**, then click Open in the dialog. After that it opens normally. If a double-click is blocked, you can also go to System Settings → Privacy & Security and click "Open Anyway".
 
 Requirements:
 
@@ -48,7 +50,7 @@ The narration mode is also chosen at creation:
 - Multi-role dialogue: also writes a cast roster and a character-pack directory. See "Multi-role narration" below.
 - Two optional formats: solo song explainers and beat-synced reels without narration.
 
-The orchestrator, renderer (and the model each one uses), voice and alignment tools, concurrency and memory are chosen in the client's Settings (the gear at the top right, or ⌘,). Global settings apply to every project; a project that needs something different sets it in the "This project" column, which writes the project's `article-to-motion.conf`, and "Follow global" undoes that. Values resolve in this order: environment variables > project `.env` > project `article-to-motion.conf` > global settings > built-in defaults.
+The orchestrator, renderer (and the model each one uses), voice and alignment tools, concurrency and memory are chosen in the client's Settings (the gear at the top right, or ⌘,). Global settings apply to every project; a project that needs something different sets it in the "This project" column, which writes the project's `onset.conf`, and "Follow global" undoes that. Values resolve in this order: environment variables > project `.env` > project `onset.conf` > global settings > built-in defaults.
 
 If you would rather not install an AI CLI, pick "导演" (Director, the orchestrator bundled with the app) and enter one provider's API key under "导演的模型服务" in Settings (DeepSeek, Kimi, Zhipu GLM, Alibaba Bailian, MiniMax, Anthropic, OpenAI, OpenRouter). Models are written as `provider/model`; leave it empty and the Director picks, among the providers you entered keys for, one whose recommended model can see images. The key is stored only in an owner-readable file in your user data directory. Visual QC and the final review need to look at screenshots, and the recommended DeepSeek and Zhipu GLM models read text only: Settings marks them and the chat warns you before you start; with such a model the Director switches the screen to the images and asks you to look instead of pretending it did. The Director orchestrates only for now; scenes are still drawn by an external tool installed on this computer (Claude Code, Codex, …). The first-run guide checks for one, and "Start production" stays disabled while the configured renderer is missing.
 
@@ -88,7 +90,7 @@ The preview is on the left and the chat on the right.
 - In the input box, `@` completes files and scenes, and `/` completes common commands.
 - While the window is in the background, a system notification fires when a turn or render finishes, and the Dock icon shows how many jobs are running.
 
-The orchestrator and the renderers use the production tools through am's tool service (MCP). Voice alignment, deriving scene durations from the storyboard, rendering, concatenation, validation, and review are all deterministic tool calls. Calculations that fail silently when wrong, such as frame numbers and timelines, are never left to the model.
+The orchestrator and the renderers use the production tools through onset's tool service (MCP). Voice alignment, deriving scene durations from the storyboard, rendering, concatenation, validation, and review are all deterministic tool calls. Calculations that fail silently when wrong, such as frame numbers and timelines, are never left to the model.
 
 ## Production flow
 
@@ -105,7 +107,7 @@ The orchestrator and the renderers use the production tools through am's tool se
 4. **Rendering.** Scenes render concurrently, longest first. Each scene gets its own local data: canvas, safe area, and subtitles and phrases converted to scene-local frames. The built-in `scene-kit` skill provides a frame-driven subtitle component and helpers.
 5. **Concatenation, music, review, covers, and publishing.**
 
-A scene with a valid output and unchanged inputs is skipped. When an output passes validation, an input fingerprint is stored in the scene's `.am-render.json`. It digests each input separately:
+A scene with a valid output and unchanged inputs is skipped. When an output passes validation, an input fingerprint is stored in the scene's `.onset-render.json`. It digests each input separately:
 
 - the assembled render prompt, `scene.json`, and `prompt.md`
 - the subtitles and character packs
@@ -126,11 +128,11 @@ To render the whole film in one style, pick one from a style source. The registe
 - If you have not picked one, the orchestrator suggests two or three at the script-review checkpoint, based on the subject.
 - A single scene can name a different style. When neighbouring scenes use different styles, the storyboard must say how the picture changes over at the cut.
 
-The chosen style is installed into the project's `.agents/skills/am-film-style/` as three files:
+The chosen style is installed into the project's `.agents/skills/onset-film-style/` as three files:
 
 - `STYLE.md`: the style's invariants
 - `SKILL.md`: how to use it and where the technique references are
-- `am-film-style.json`: source and version
+- `onset-film-style.json`: source and version
 
 Renderers must follow `STYLE.md`, while content still comes from each scene's own copy. Switching or removing a style makes rendered scenes Stale. Only the picture is taken from the style; music is still chosen from licensed material.
 
@@ -144,7 +146,7 @@ When a project is created, the HyperFrames official skills at pinned release 0.8
 
 Skills are installed per project rather than in HOME so that projects never overwrite each other.
 
-The upstream installer, `hyperframes skills`, clones the repository's default branch and has no way to request a tag or commit. In testing, `hyperframes@0.8.1` and `0.8.14` installed byte-identical skills, both equal to that day's `main`. So ArticleToMotion shallow-clones by tag itself and verifies the commit and the skill count. It then records the version, commit, and a per-skill content digest in `.agents/skills/hyperframes-upstream.json`.
+The upstream installer, `hyperframes skills`, clones the repository's default branch and has no way to request a tag or commit. In testing, `hyperframes@0.8.1` and `0.8.14` installed byte-identical skills, both equal to that day's `main`. So OnSet shallow-clones by tag itself and verifies the commit and the skill count. It then records the version, commit, and a per-skill content digest in `.agents/skills/hyperframes-upstream.json`.
 
 ## Multi-role narration
 
@@ -160,7 +162,7 @@ Per-speaker voice-overs are rebuilt into one timeline by the tools and then cut 
 
 ## Render memory
 
-Render memory lets a project understand you better over time and makes the next render better than this one. It is on by default; `MEMORY=off` turns it off. Memory is stored as plain text in a user-level directory (default `~/.local/share/am/memory`), never in any tool's private memory.
+Render memory lets a project understand you better over time and makes the next render better than this one. It is on by default; `MEMORY=off` turns it off. Memory is stored as plain text in a user-level directory (default `~/.local/share/onset/memory`), never in any tool's private memory.
 
 | Layer | Content | Source |
 |---|---|---|
@@ -263,7 +265,7 @@ You can generate through an API or on a web page yourself. In web mode, the orch
 | MiniMax | `mmx` login; some accounts get 410 from the music API, which is closed to new users |
 | Self-hosted ACE-Step | `ACESTEP_API_KEY` if the service requires it; needs an existing service |
 
-Keys are set only on your machine, never in YAML or the project `.env`. In safety mode, pass the variable names explicitly through `AM_PASSTHROUGH_ENV`.
+Keys are set only on your machine, never in YAML or the project `.env`. In safety mode, pass the variable names explicitly through `ONSET_PASSTHROUGH_ENV`.
 
 Lyrics alignment uses [Xingyu](https://github.com/wangjiqing/xingyu-lyrics-aligner), pinned at v0.6.1. It needs a separate Python 3.11–3.13 environment, with `python` in `song.yaml` set to that environment's absolute Python path.
 
@@ -297,7 +299,7 @@ Beat analysis uses [beat-this](https://github.com/CPJKU/beat_this) (ISMIR 2024; 
 
 ## Writing a plugin
 
-To add a step to the production flow (for example, automatic publishing), write an `am-station.json` as described in [docs/plugin-authoring.md](docs/plugin-authoring.md) (Chinese) and install it under "我的插件" in the client's settings. A plugin is installed once for this computer and applies to every project; the kinds of video and styles it brings can be picked when creating a project.
+To add a step to the production flow (for example, automatic publishing), write an `onset-station.json` as described in [docs/plugin-authoring.md](docs/plugin-authoring.md) (Chinese) and install it under "我的插件" in the client's settings. A plugin is installed once for this computer and applies to every project; the kinds of video and styles it brings can be picked when creating a project.
 
 ## Development
 
@@ -305,21 +307,21 @@ Building from source needs Node.js 22+:
 
 ```bash
 npm ci
-npx tsc --noEmit -p packages/engine          # type-check the engine, am, and the client
+npx tsc --noEmit -p packages/engine          # type-check the engine, onset, and the client
 npx tsc --noEmit -p packages/cli
-npm run typecheck -w am-desktop
+npm run typecheck -w onset-desktop
 npx vitest run --root packages/engine        # unit and integration tests (cases needing ffmpeg or rsvg-convert skip without them)
 npx vitest run --root packages/cli
-npm run build -w @am/cli                     # am → packages/cli/dist/am.cjs
+npm run build -w @onset/cli                     # onset → packages/cli/dist/onset.cjs
 npm run desktop                              # build and launch the client
-npm run test:e2e -w am-desktop               # client end-to-end tests (Playwright, Electron mode, no windows pop up)
-npm run dist -w am-desktop                   # build the .app (apps/desktop/release/)
+npm run test:e2e -w onset-desktop               # client end-to-end tests (Playwright, Electron mode, no windows pop up)
+npm run dist -w onset-desktop                   # build the .app (apps/desktop/release/)
 ```
 
-`am` (`packages/cli`) is a program the client uses internally. Background jobs call it directly, and the orchestrator and renderers call it through its tool service (MCP). It is not offered to users as a command line. During development you can run it with `node packages/cli/dist/am.cjs <command>`.
+`onset` (`packages/cli`) is a program the client uses internally. Background jobs call it directly, and the orchestrator and renderers call it through its tool service (MCP). It is not offered to users as a command line. During development you can run it with `node packages/cli/dist/onset.cjs <command>`.
 
-After changing the canvas table or the `frame.md` template, run `npm run generate -w @am/engine` and commit the generated `assets/presets`. Development conventions are in `AGENTS.md` and `packages/engine/CONVENTIONS.md`.
+After changing the canvas table or the `frame.md` template, run `npm run generate -w @onset/engine` and commit the generated `assets/presets`. Development conventions are in `AGENTS.md` and `packages/engine/CONVENTIONS.md`.
 
-ArticleToMotion is licensed under the [Apache License 2.0](./LICENSE). HyperFrames is an independent Apache-2.0 project, used at a pinned release when a project is created.
+OnSet is licensed under the [Apache License 2.0](./LICENSE). HyperFrames is an independent Apache-2.0 project, used at a pinned release when a project is created.
 
 The `references/` of the built-in `text-to-lottie` skill are trimmed from [diffusionstudio/lottie](https://github.com/diffusionstudio/lottie) (MIT). The copyright notice and the record of what was kept, dropped, and changed live in `LICENSE` and `ATTRIBUTION.md` under `assets/shared/.agents/skills/text-to-lottie/`.

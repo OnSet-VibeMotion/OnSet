@@ -1,8 +1,8 @@
 //
 // 从固定 commit 的 anidoodle 检出生成 catalog.json：generateCatalog(<检出目录>)。只在开发时运行
-// （gen/main.test.ts 在设了 AM_ANIDOODLE_SRC 时核对，加 AM_UPDATE_GOLDEN=1 时重写）。
+// （gen/main.test.ts 在设了 ONSET_ANIDOODLE_SRC 时核对，加 ONSET_UPDATE_GOLDEN=1 时重写）。
 //
-// 检出的 HEAD 必须等于 PinnedCommit：目录与 commit 不一致的话，列出的风格与 am setup 实际下载、
+// 检出的 HEAD 必须等于 PinnedCommit：目录与 commit 不一致的话，列出的风格与 onset setup 实际下载、
 // 转换的模块会对不上。
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';

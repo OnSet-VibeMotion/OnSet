@@ -1,6 +1,6 @@
 //
 // 不移植 TestStaticServesBuiltAssetsWithMIME：TS 版后端不服务界面文件（Go 版 go:embed 的 web/），
-// 界面由 Electron 从 am://app/ 自己加载。
+// 界面由 Electron 从 onset://app/ 自己加载。
 import './testsupport';
 import { describe, expect, it } from 'vitest';
 import * as preset from '../preset';
@@ -26,7 +26,7 @@ describe('api_ui', () => {
     const { status, body } = await studioRequest(f.s, 'GET', '/api/tree');
     expect(status).toBe(200);
     const paths = new Set((body.files as { path: string }[]).map((entry) => entry.path));
-    for (const want of ['article-to-motion.flow.json', 'scenes/scene-001/prompt.md', 'production/review/sheet-01.png']) expect(paths.has(want), `缺少 ${want}`).toBe(true);
+    for (const want of ['onset.flow.json', 'scenes/scene-001/prompt.md', 'production/review/sheet-01.png']) expect(paths.has(want), `缺少 ${want}`).toBe(true);
     for (const skipped of ['.env', 'scenes/scene-001/.env', 'node_modules/x/index.js', 'production/studio/tasks.json', '.agents/skills/scene-kit/SKILL.md']) {
       expect(paths.has(skipped), `${skipped} 不应列出`).toBe(false);
     }

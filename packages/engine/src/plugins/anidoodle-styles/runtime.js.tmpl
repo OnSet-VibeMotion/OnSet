@@ -1,10 +1,10 @@
-// am-anidoodle.js：ArticleToMotion 写的接头，把 anidoodle 的 Film 接到 HyperFrames 的 hf-seek。不要改它。
+// onset-anidoodle.js：片场写的接头，把 anidoodle 的 Film 接到 HyperFrames 的 hf-seek。不要改它。
 //
 // 一个 Film 是数据：meta（画幅、帧率、总帧数）、assets（图片）与按帧铺满整段的 shots，
 // 每个 shot 的 draw(ctx, local, env) 只由帧号决定画面（见 canvas-core/film.js 的 renderFrame）。
 import { renderFrame } from './canvas-core/film.js';
 
-/** 秒换帧，与 ArticleToMotion 全片同一条规则（四舍五入）。 */
+/** 秒换帧，与片场全片同一条规则（四舍五入）。 */
 export const frameOf = (seconds, fps) => Math.round(seconds * fps);
 
 /** Film 的结构问题（空数组表示没有问题）。比上游的 validate 宽：不要求镜头切在 bpm 网格上。 */

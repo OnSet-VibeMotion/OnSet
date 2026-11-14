@@ -1,8 +1,8 @@
 {
-  "name": "am-desktop",
+  "name": "onset-desktop",
   "private": true,
   "version": "0.1.0",
-  "description": "ArticleToMotion 桌面客户端",
+  "description": "片场桌面客户端",
   "main": "out/entry.js",
   "scripts": {
     "build:main": "esbuild src/main/entry.ts src/main/main.ts src/main/browser.ts src/main/preload.ts --bundle --loader:.tmpl=text --platform=node --format=cjs --target=node22 --external:electron --outdir=out",
@@ -11,8 +11,8 @@
     "vendor": "node scripts/vendor.mjs",
     "start": "npm run build && electron .",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.main.json",
-    "dist": "npm run vendor && npm run build && npm run build -w @am/cli && electron-builder --mac --dir",
-    "test:e2e": "npm run build -w @am/cli && npm run build && playwright test"
+    "dist": "npm run vendor && npm run build && npm run build -w @onset/cli && electron-builder --mac --dir",
+    "test:e2e": "npm run build -w @onset/cli && npm run build && playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
@@ -31,8 +31,8 @@
     "vite": "^8.3.6"
   },
   "build": {
-    "appId": "com.chouheiwa.articletomotion",
-    "productName": "ArticleToMotion",
+    "appId": "com.chouheiwa.onset",
+    "productName": "片场",
     "afterPack": "scripts/afterpack.cjs",
     "directories": {
       "output": "release",
@@ -72,7 +72,8 @@
         "dmg"
       ],
       "identity": null,
-      "icon": "build/icon.icns"
+      "icon": "build/icon.icns",
+      "artifactName": "OnSet-${version}-${arch}.${ext}"
     },
     "asar": true,
     "electronVersion": "45.2.3"

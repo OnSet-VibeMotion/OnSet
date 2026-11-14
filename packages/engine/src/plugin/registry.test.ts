@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 function tempDir(): string {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-plugin-')));
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-plugin-')));
   temps.push(dir);
   return dir;
 }

@@ -17,7 +17,7 @@ function which(name: string): string | null {
 export const ffmpegBinary = which('ffmpeg');
 export const hasFfmpeg = ffmpegBinary !== null && which('ffprobe') !== null;
 
-export const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-mediaprobe-'));
+export const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'onset-mediaprobe-'));
 
 export function toolchain(): Toolchain {
   return newToolchain(envMap());

@@ -12,7 +12,7 @@ describe('voice ops', () => {
   });
 
   it('voice_get without a default voice says how to get one', async () => {
-    setenv('AM_VOICES_DIR', tempDir());
+    setenv('ONSET_VOICES_DIR', tempDir());
     const out = new Buffer();
     expect(await run(['voice', 'get'], out)).toBe(1);
     expect(out.text).toContain('voice_save()');
@@ -22,7 +22,7 @@ describe('voice ops', () => {
 describe.skipIf(!hasFfmpeg)('voice ops with real ffmpeg', () => {
   it('saves a project clip into the user library and hands back what Breeze needs to clone it', async () => {
     const library = tempDir();
-    setenv('AM_VOICES_DIR', library);
+    setenv('ONSET_VOICES_DIR', library);
     const project = tempDir();
     fs.mkdirSync(path.join(project, 'production', 'audio'), { recursive: true });
     const clip = path.join(project, 'production', 'audio', 'try-2.wav');

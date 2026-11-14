@@ -55,9 +55,9 @@ import type {
   ViewRequest,
 } from './types';
 
-const SESSION_KEY = 'am-studio-session:';
-const PANEL_OPEN_KEY = 'am-studio.panel-open';
-const PANEL_WIDTH_KEY = 'am-studio.panel-width:';
+const SESSION_KEY = 'onset-studio-session:';
+const PANEL_OPEN_KEY = 'onset-studio.panel-open';
+const PANEL_WIDTH_KEY = 'onset-studio.panel-width:';
 
 /** 看画面的页面面板默认宽一些，读文字的页面窄一些；宽度按这两类分别记住。 */
 type PanelKind = 'media' | 'doc';
@@ -108,7 +108,7 @@ export function App() {
   const [defaultParent, setDefaultParent] = useState('');
   const [homeAgents, setHomeAgents] = useState<AgentsResponse | null>(null);
   const [skills, setSkills] = useState<SkillsStatus | null>(null);
-  // 前置资源（安装页或 am setup 准备）：缺了在顶栏提示，点开就是安装页。
+  // 前置资源（安装页或 onset setup 准备）：缺了在顶栏提示，点开就是安装页。
   const setup = useSetup();
   const [setupOpen, setSetupOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -522,7 +522,7 @@ export function App() {
     [treePaths, showTab],
   );
 
-  // 编排工具经 am studio show 请用户看某一页：切过去，镜头与文件页带上对象。
+  // 编排工具经 onset studio show 请用户看某一页：切过去，镜头与文件页带上对象。
   const openView = (view: ViewRequest) => {
     // 标了制作步骤：重新读项目状态，顶栏的进度跟着变。只标步骤的请求不切页。
     if (view.step) void loadProject();
@@ -555,7 +555,7 @@ export function App() {
 
   // 口播稿：有了终稿却还没有镜头时（稿件审核阶段）自动切到口播稿页；稿子改过而没看过时标签打点。
   const scriptMtime = tree.find((f) => f.path === scriptFinalPath)?.mtime ?? 0;
-  const seenKey = `am-studio.script-seen:${project?.path ?? ''}`;
+  const seenKey = `onset-studio.script-seen:${project?.path ?? ''}`;
   const [scriptSeen, setScriptSeen] = useState(0);
   useEffect(() => {
     try {
@@ -596,7 +596,7 @@ export function App() {
     (latest, f) => (storyboardFiles.includes(f.path) || /^scenes\/[^/]+\/prompt\.md$/.test(f.path) ? Math.max(latest, f.mtime ?? 0) : latest),
     0,
   );
-  const boardSeenKey = `am-studio.storyboard-seen:${project?.path ?? ''}`;
+  const boardSeenKey = `onset-studio.storyboard-seen:${project?.path ?? ''}`;
   const [boardSeen, setBoardSeen] = useState(0);
   useEffect(() => {
     try {
@@ -627,11 +627,11 @@ export function App() {
   const taskStatus = useRef(new Map<string, Task['status']>());
   useEffect(() => {
     const active = tasks.filter((t) => t.status === 'queued' || t.status === 'running').length;
-    window.am?.setBadge?.(active);
+    window.onset?.setBadge?.(active);
     for (const task of tasks) {
       const before = taskStatus.current.get(task.task_id);
       if ((before === 'running' || before === 'queued') && (task.status === 'succeeded' || task.status === 'failed')) {
-        window.am?.notify?.(task.status === 'succeeded' ? '任务完成' : '任务失败', forUser(task.message || task.error || task.type));
+        window.onset?.notify?.(task.status === 'succeeded' ? '任务完成' : '任务失败', forUser(task.message || task.error || task.type));
       }
       taskStatus.current.set(task.task_id, task.status);
     }
@@ -639,7 +639,7 @@ export function App() {
 
   // 原生菜单（客户端里才有）：新建回首页，打开文件夹走与「打开项目」同一个接口，⌘1–⌘5 切五个步骤。
   useEffect(() => {
-    return window.am?.onMenu?.((action) => {
+    return window.onset?.onMenu?.((action) => {
       if (action.type === 'new' || action.type === 'home') setHomeOpen(true);
       else if (action.type === 'settings') setSettingsOpen(true);
       else if (action.type === 'step') {
@@ -874,7 +874,7 @@ export function App() {
               onFilesChanged={onFilesChanged}
               onTurnEnd={() => {
                 void loadProject();
-                window.am?.notify?.('这一轮做完了', project?.name ?? 'ArticleToMotion');
+                window.onset?.notify?.('这一轮做完了', project?.name ?? '片场');
               }}
               onOpenFile={(path) => {
                 const page = pageForFile(path);

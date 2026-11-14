@@ -23,13 +23,13 @@ describe('naming', () => {
   });
 
   it('records the naming usage into the new project once', () => {
-    const project = fs.mkdtempSync(path.join(os.tmpdir(), 'am-naming-test-'));
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-naming-test-'));
     recordNamingUsage('unknown', project);
     expect(fs.existsSync(ledger.projectFile(project))).toBe(false);
   });
 
   it('names with the chosen tool and books the call into the new project', async () => {
-    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'am-naming-bin-'));
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-naming-bin-'));
     const fake = path.join(bin, 'claude');
     fs.writeFileSync(
       fake,
@@ -48,7 +48,7 @@ describe('naming', () => {
       const result = await suggestName('claude', { message: '我想做一个这个内容的视频', files: [] });
       expect(result.name).toBe('复利的魔法');
       expect(result.token).not.toBe('');
-      const project = fs.mkdtempSync(path.join(os.tmpdir(), 'am-naming-project-'));
+      const project = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-naming-project-'));
       recordNamingUsage(result.token, project);
       recordNamingUsage(result.token, project);
       const entries = ledger.read(ledger.projectFile(project)) ?? [];
@@ -61,7 +61,7 @@ describe('naming', () => {
   });
 
   it('returns no name when the tool is missing', async () => {
-    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'am-naming-path-'));
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-naming-path-'));
     const saved = process.env.PATH;
     process.env.PATH = empty;
     try {

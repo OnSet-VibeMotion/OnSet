@@ -1,7 +1,7 @@
 /**
  * 记忆面板。
  *
- * 读接口直接读记忆库（只读，不记快照）；面板上的操作都经 am memory 子命令。
+ * 读接口直接读记忆库（只读，不记快照）；面板上的操作都经 onset memory 子命令。
  * 唯一的例外是对话信号（recordUtterance）：每轮结束、每次回退各追加一段经历，
  * 只增不改，不碰项目文件，为它每轮起一个子进程不值得。
  */
@@ -204,7 +204,7 @@ export function memoryRecallAPI(s: Server, request: Request): Response {
 const actionLabels: Record<string, string> = { promote: '确认生效 ', reject: '拒绝 ', retire: '沉睡 ' };
 
 /**
- * POST /api/memory/actions/{action}：面板能触发的 am memory 子命令。参数只取白名单里的字段，
+ * POST /api/memory/actions/{action}：面板能触发的 onset memory 子命令。参数只取白名单里的字段，
  * 不接受任意命令行。
  */
 export async function memoryActionAPI(s: Server, request: Request, rest: string): Promise<Response> {

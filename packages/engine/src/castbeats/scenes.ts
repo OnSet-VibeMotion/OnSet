@@ -57,7 +57,7 @@ function hasCastBlock(body: string): boolean {
  * 字段"，不是"镜头谁先谁后"——后者有第二条路径才是真问题。
  *
  * 代价：本命令不再对损坏的 scene.json 做完整校验。这不留缺口——渲染前的
- * scene.load 与 am validate cast 仍然会拦下越界节拍与其它非法字段，本命令
+ * scene.load 与 onset validate cast 仍然会拦下越界节拍与其它非法字段，本命令
  * 只是不在这一步重复拦一次。
  */
 export function readSceneHeads(scenesDir: string): SceneHead[] {

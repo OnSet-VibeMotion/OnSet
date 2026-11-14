@@ -1,5 +1,5 @@
 /**
- * am setup 的终端界面：每项前置资源一行，状态图标、名字、版本、进展对齐成列。终端里原地重画（转圈图标与计时）；
+ * onset setup 的终端界面：每项前置资源一行，状态图标、名字、版本、进展对齐成列。终端里原地重画（转圈图标与计时）；
  * 不是终端（管道、CI）时每次状态或阶段变化打一行，不重画。git / npm 的原始输出不上屏，写进日志文件。
  */
 import os from 'node:os';
@@ -80,7 +80,7 @@ export class SetupView {
     }
   }
 
-  /** 标成「本来就已就绪」，不在屏幕上打行（am setup 开头先标好已就绪的项）。 */
+  /** 标成「本来就已就绪」，不在屏幕上打行（onset setup 开头先标好已就绪的项）。 */
   markReady(index: number): void {
     this.items[index].state = ViewState.Ready;
   }

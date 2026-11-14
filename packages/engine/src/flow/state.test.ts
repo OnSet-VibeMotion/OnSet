@@ -9,7 +9,7 @@ afterEach(() => {
   for (const dir of temps.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 const temp = () => {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-state-')));
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-state-')));
   temps.push(dir);
   return dir;
 };
@@ -58,8 +58,8 @@ describe('parsing nodes[].state and guide', () => {
     [{ state: { ...state, frontmatter: 'x' } }, /要写 json 或 frontmatter 之一/],
     [{ state: { ...state, json: 'a..b' } }, /state\.json 要是用 \. 分隔的键/],
     [{ state: { ...state, file: '../outside.json' } }, /state\.file：\.\.\/outside\.json 要是项目里的相对路径/],
-    [{ state: { ...state, file: '.env' } }, /是 am 自己的文件/],
-    [{ state: { ...state, file: 'production/studio/gates.json' } }, /是 am 自己的文件/],
+    [{ state: { ...state, file: '.env' } }, /是 onset 自己的文件/],
+    [{ state: { ...state, file: 'production/studio/gates.json' } }, /是 onset 自己的文件/],
     [{ state: { ...state, file: 'script.md' } }, /state\.file：script\.md 不在本站的 produces、outputs 或页面 reads 里/],
     [{ state: { ...state, otherwise: { waiting: 'me' } } }, /state\.otherwise\.waiting 要是 user 或 ai/],
     [{ gate: true, gate_files: ['production/mine/a.md'], state }, /是关卡，不能写 state/],

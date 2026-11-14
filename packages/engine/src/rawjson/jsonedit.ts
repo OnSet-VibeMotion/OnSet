@@ -58,7 +58,7 @@ function scanValue(text: string, i: number): number {
  *
  * 不用普通对象是因为 JSON.parse 会丢掉重复键、也不保留数字原文：本命令只改
  * cast.beats 一个字段，重排其它键会让每次运行都产生一大片与本命令无关的
- * diff，作者再也看不出来 am 到底改了什么。
+ * diff，作者再也看不出来 onset 到底改了什么。
  */
 export function decodeObject(raw: string): Field[] {
   const syntax = checkValid(raw);

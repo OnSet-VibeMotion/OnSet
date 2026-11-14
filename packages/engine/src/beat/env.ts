@@ -2,8 +2,8 @@
 //
 // 以前 beat.yaml 默认写 `python: python3`，系统 Python 里没有 beat-this，编排工具就在对话里自己
 // `python -m venv` + `pip install`：每个新项目都可能另建一套（torch 一套约 800 MB），还要边做边联网。
-// 现在它和 HyperFrames CLI 一样是前置资源：只由 am setup 安装并预下载默认权重，其余路径
-// （am beat analyze / doctor、客户端）只检查，缺了抛 prereq.MissingError 指向 am setup。
+// 现在它和 HyperFrames CLI 一样是前置资源：只由 onset setup 安装并预下载默认权重，其余路径
+// （onset beat analyze / doctor、客户端）只检查，缺了抛 prereq.MissingError 指向 onset setup。
 import fs from 'node:fs';
 import path from 'node:path';
 import { dataDir, lookPath } from '../envutil';
@@ -17,16 +17,16 @@ import { findOptional } from '../toolpath';
 import { AnalyzerVersion } from './store';
 
 /** 覆盖节拍分析环境的目录（测试与特殊部署用）。 */
-export const EnvDirEnv = 'AM_BEAT_ENV_DIR';
+export const EnvDirEnv = 'ONSET_BEAT_ENV_DIR';
 
 /** 指定建环境用的 Python（默认在 PATH 里按 basePythonCandidates 挑一个 torch 支持的版本）。 */
-export const BasePythonEnv = 'AM_BEAT_BASE_PYTHON';
+export const BasePythonEnv = 'ONSET_BEAT_BASE_PYTHON';
 
-/** am setup 预下载的权重：beat.yaml 的默认 checkpoint。换别的 checkpoint 时用 am beat doctor 下载。 */
+/** onset setup 预下载的权重：beat.yaml 的默认 checkpoint。换别的 checkpoint 时用 onset beat doctor 下载。 */
 export const DefaultCheckpoint = 'final0';
 
 /** 写在环境目录里，内容是 beat-this 版本：只有装完、自检通过、权重下好的环境才有它。 */
-const envMarker = '.am-beat-env';
+const envMarker = '.onset-beat-env';
 
 /**
  * 建环境时按顺序找的 Python。torch 的预编译包跟不上最新的 Python（系统 python3 是 3.15 时装不上），
@@ -73,7 +73,7 @@ export function requireEnv(env: Record<string, string | undefined>): string {
 export interface EnvOptions {
   /** pip 的环境：沿用用户自己的 pip.conf（镜像、代理）。 */
   env?: Record<string, string>;
-  /** 下载权重的环境：am setup --proxy 时带 HTTPS_PROXY（权重在境外服务器上）。留空同 env。 */
+  /** 下载权重的环境：onset setup --proxy 时带 HTTPS_PROXY（权重在境外服务器上）。留空同 env。 */
   weightsEnv?: Record<string, string>;
   output?: Writer;
   progress?: (p: Progress) => void;
@@ -87,7 +87,7 @@ export interface EnvOptions {
 const installAttempts = 3;
 
 /**
- * 返回装好的环境目录，没有时新建。只有 am setup 调用它。
+ * 返回装好的环境目录，没有时新建。只有 onset setup 调用它。
  *
  * 在环境目录里直接建（venv 里的脚本写死了绝对路径，建好再改名会坏），完成标记最后才写：
  * 中途失败的残缺环境没有标记，下次整个删掉重来。同一时间只有一个进程在装（锁文件）。
@@ -167,7 +167,7 @@ export function uvPythonDir(env: Record<string, string | undefined>): string {
 }
 
 /**
- * 系统里有没有能装 torch 的 Python（或用户显式指定了一个）。没有时 am setup 先下载 uv，
+ * 系统里有没有能装 torch 的 Python（或用户显式指定了一个）。没有时 onset setup 先下载 uv，
  * 由 uv 带一份独立的 Python：客户端用户的 Mac 上常常只有 Xcode 的占位 python3，或者是 torch 还不支持的新版本。
  */
 export async function hasBasePython(env: Record<string, string>, signal?: AbortSignal): Promise<boolean> {
@@ -192,7 +192,7 @@ async function chooseBase(env: Record<string, string>, signal?: AbortSignal): Pr
 
 /**
  * 在 dir 建 venv。用 uv 时带 --seed 装上 pip：后面照旧用 `python -m pip install`，沿用用户 pip.conf 里的国内镜像
- * （uv 自己的安装器不读 pip.conf）。uv 下载 Python 走 downloadEnv（带 --proxy 的代理）；设了 AM_GITHUB_MIRROR
+ * （uv 自己的安装器不读 pip.conf）。uv 下载 Python 走 downloadEnv（带 --proxy 的代理）；设了 ONSET_GITHUB_MIRROR
  * 时把 Python 的下载也换到镜像。
  */
 async function createVenv(base: Base, dir: string, env: Record<string, string>, downloadEnv: Record<string, string>, sink: Writer, signal?: AbortSignal): Promise<void> {

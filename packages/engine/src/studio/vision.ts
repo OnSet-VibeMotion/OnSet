@@ -11,7 +11,7 @@ import * as config from '../config';
 import * as director from '../director';
 import { envMap } from '../envutil';
 
-/** 导演这一轮实际用的模型：设置或会话写了就用写的，否则按填了 key 的服务商挑（与 am studio agent 同一个 pickModel）。 */
+/** 导演这一轮实际用的模型：设置或会话写了就用写的，否则按填了 key 的服务商挑（与 onset studio agent 同一个 pickModel）。 */
 export function directorModel(model: string): string {
   return director.pickModel(model, director.configuredProviders(director.defaultDir(envMap())));
 }

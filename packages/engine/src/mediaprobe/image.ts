@@ -25,7 +25,7 @@ export async function cropImages(t: Toolchain, source: string, rects: CropRect[]
       if (!Number.isSafeInteger(v) || v < 0) throw new Error(`cropImages: 矩形必须是非负整数：${JSON.stringify(r)}`);
     }
     fs.mkdirSync(path.dirname(dest), { recursive: true });
-    const tmp = dest + '.am-tmp.jpg';
+    const tmp = dest + '.onset-tmp.jpg';
     try {
       const ran = await t.runAsync(ffmpeg, ['-v', 'error', '-y', '-i', source, '-vf', `crop=${r.w}:${r.h}:${r.x}:${r.y}`, '-frames:v', '1', '-q:v', '3', tmp], {
         signal,

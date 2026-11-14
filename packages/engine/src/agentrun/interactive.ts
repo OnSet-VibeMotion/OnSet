@@ -2,7 +2,7 @@
  * 双向协议的编排工具（ACP、codex app-server）共用的进程外壳：起进程、按行喂给 RPCPeer、收标准错误、
  * 进程退出时让还在等的请求失败。协议本身（建会话、发一轮、译事件、答审批）在 acp.ts / codexapp.ts。
  *
- * 只在客户端里、安全模式下用：那里有人能回答审批。am run（终端）与 --unsafe 仍走一次性的
+ * 只在客户端里、安全模式下用：那里有人能回答审批。onset run（终端）与 --unsafe 仍走一次性的
  * exec / stream-json，见 run.ts。
  */
 import { MissingToolError, lookPath as envLookPath } from '../envutil';

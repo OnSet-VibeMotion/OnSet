@@ -26,7 +26,7 @@ describe('boundary', () => {
       /^article_to_motion\//,
       /^auto-test\//,
       /^pyproject\.toml$/,
-      /^am$/,
+      /^onset$/,
     ];
     const hits: string[] = [];
     // strings.Fields：按 ASCII 空白切分（git 会把非 ASCII 路径加引号转义，与 Go 版看到的一样）。
@@ -42,7 +42,7 @@ describe('boundary', () => {
   it('prompts use installed CLI and do not expose executor identity', () => {
     const problems: string[] = [];
     for (const { name, text } of everyBuiltinPrompt()) {
-      if (text.includes('./am')) problems.push(`${name} 引用了 ./am：用户项目里没有这个二进制`);
+      if (text.includes('./onset')) problems.push(`${name} 引用了 ./onset：用户项目里没有这个二进制`);
       // 内置技能树的路径字面含 "agent"，但它是文件系统路径，不是执行者身份声明，
       // 而提示词必须能点名它——锁定文件要靠这条路径写读取例外。先摘掉这个字面量
       // 再查身份词，其余任何 "agent" 出现仍然失败。

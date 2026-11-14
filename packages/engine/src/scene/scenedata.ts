@@ -1,9 +1,9 @@
 //
-// 本文件生成镜头局部数据文件 am-scene.js，并据此拼装提示词里的时间合同段。
+// 本文件生成镜头局部数据文件 onset-scene.js，并据此拼装提示词里的时间合同段。
 //
 // 渲染器过去要自己从完整字幕里减去镜头的全局起点，再按帧率换算——每个镜头
-// 各算一遍，取整口径各不相同。现在局部帧号由 am 统一算好，写成
-// window.AM_SCENE 交给 composition 直接读，提示词里的表格与它同源。
+// 各算一遍，取整口径各不相同。现在局部帧号由 onset 统一算好，写成
+// window.ONSET_SCENE 交给 composition 直接读，提示词里的表格与它同源。
 import fs from 'node:fs';
 import path from 'node:path';
 import { frameOf } from '../frames';
@@ -16,13 +16,13 @@ import { contained, sceneCanvas, frameSource, delimiterMatchAll, readFrameFrontm
 import { handoffGuide, handoffIsZero, loadPhraseTimelineIn, lookIsZero, lookToJSON, type Handoff, type Look, type PhraseTimeline, type Timing } from './timing';
 
 /** 写进镜头目录的局部数据文件名。 */
-export const SceneDataFile = 'am-scene.js';
+export const SceneDataFile = 'onset-scene.js';
 
-/** am-scene.js 的结构版本。字段名由运行时库按名读取，不得改名。 */
+/** onset-scene.js 的结构版本。字段名由运行时库按名读取，不得改名。 */
 export const SceneDataSchema = 1;
 
 /**
- * window.AM_SCENE 的内容。帧号除 start_frame 外都是镜头局部帧：
+ * window.ONSET_SCENE 的内容。帧号除 start_frame 外都是镜头局部帧：
  * 0 是本镜头第一帧。区间左闭右开。
  */
 export interface SceneData {
@@ -184,7 +184,7 @@ export function sceneDataToJSON(data: SceneData): unknown {
 }
 
 /**
- * am-scene.js 的完整内容。map 的键按字节序排序，同样的输入总是得到同样的字节。
+ * onset-scene.js 的完整内容。map 的键按字节序排序，同样的输入总是得到同样的字节。
  */
 export function encodeSceneData(data: SceneData): string {
   let body: string;
@@ -193,10 +193,10 @@ export function encodeSceneData(data: SceneData): string {
   } catch (err) {
     throw new Error(`镜头局部数据无法编码为 JSON：${(err as Error).message}`, { cause: err });
   }
-  return '// 由 am 生成，勿手改。\n' + 'window.AM_SCENE = ' + body + ';\n';
+  return '// 由 onset 生成，勿手改。\n' + 'window.ONSET_SCENE = ' + body + ';\n';
 }
 
-/** 原子写出 <镜头目录>/am-scene.js。内容不变时不重写。 */
+/** 原子写出 <镜头目录>/onset-scene.js。内容不变时不重写。 */
 export function writeSceneData(s: Scene): void {
   const body = Buffer.from(encodeSceneData(buildSceneData(s)), 'utf8');
   const file = path.join(s.directory, SceneDataFile);
@@ -208,7 +208,7 @@ export function writeSceneData(s: Scene): void {
   atomicWrite(file, body, 0o644);
 }
 
-/** 提示词里每张表最多列出的行数，其余让渲染器去读 am-scene.js。 */
+/** 提示词里每张表最多列出的行数，其余让渲染器去读 onset-scene.js。 */
 const timingTableLimit = 40;
 
 /** 表格里单条文字最多保留的字符数。 */
@@ -250,7 +250,7 @@ export function timingSection(s: Scene): string {
   const t = s.timing;
   if (t === null) return '';
   const data = buildSceneData(s);
-  let b = '\n时间合同（强制，由 am 计算）：\n';
+  let b = '\n时间合同（强制，由 onset 计算）：\n';
   b += `- 本镜头覆盖全片第 ${t.start_frame} 帧到第 ${t.end_frame_exclusive} 帧（不含），共 ${data.frames} 帧。下面所有帧号都是本镜头局部帧：0 = 本镜头第一帧，已减去全片偏移，不要再自行换算。\n`;
   if (data.phrases.length > 0) {
     b += '- 短语（编号｜原文｜局部起止帧，左闭右开｜最少可读帧数）：\n';
@@ -283,8 +283,8 @@ export function timingSection(s: Scene): string {
     b += '- 每个可读元素（文字、数字、标签）不得早于它对应字幕的起始帧出现；上表之外的字幕属于其他镜头，其内容不得出现在本镜头画面里。\n';
   }
   b +=
-    `- 本镜头目录里的 ${SceneDataFile} 以 window.AM_SCENE 提供同一份数据（帧率、帧数、画布、安全区、字幕样式、字幕与短语的局部帧）。` +
-    `在 composition 里用 <script src="${SceneDataFile}"></script> 加载，帧号从中读取，不要把帧号写死在代码里；该文件由 am 生成，不要修改。\n`;
+    `- 本镜头目录里的 ${SceneDataFile} 以 window.ONSET_SCENE 提供同一份数据（帧率、帧数、画布、安全区、字幕样式、字幕与短语的局部帧）。` +
+    `在 composition 里用 <script src="${SceneDataFile}"></script> 加载，帧号从中读取，不要把帧号写死在代码里；该文件由 onset 生成，不要修改。\n`;
   b += lookSection(t.look);
   b += handoffSection(t, data);
   return b;
@@ -293,7 +293,7 @@ export function timingSection(s: Scene): string {
 /** 全片配色段。没有 look 时为空，镜头照旧自主选色。 */
 function lookSection(look: Look): string {
   if (lookIsZero(look)) return '';
-  let b = '\n全片配色（强制，全片共用，window.AM_SCENE.look 是同一份）：\n';
+  let b = '\n全片配色（强制，全片共用，window.ONSET_SCENE.look 是同一份）：\n';
   b += `- 底色 ${look.background}：画面大面积背景只用它；正文与主要文字 ${look.ink}；强调 ${look.accent}`;
   if (look.accent_2 !== '') b += `，第二强调 ${look.accent_2}`;
   if (look.surface !== '') b += `；卡片、面板等承载面 ${look.surface}`;

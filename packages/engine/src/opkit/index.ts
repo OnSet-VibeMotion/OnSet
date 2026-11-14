@@ -1,5 +1,5 @@
 /**
- * 操作（am 工具）的共用零件：内置插件在 apply 里登记操作（ctx.op）时用，cli 的操作表也从这里取同一份
+ * 操作（onset 工具）的共用零件：内置插件在 apply 里登记操作（ctx.op）时用，cli 的操作表也从这里取同一份
  * （ops/common.ts、ops/op.ts 的 ParamError 都是转出）。这里不依赖任何功能包。
  */
 import type { PluginParamSpec } from '../plugin/types';

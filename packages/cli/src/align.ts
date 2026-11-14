@@ -3,9 +3,9 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import * as align from '@am/engine/align';
-import { atomicWrite } from '@am/engine/fsutil';
-import { formatFixed } from '@am/engine/gofmt';
+import * as align from '@onset/engine/align';
+import { atomicWrite } from '@onset/engine/fsutil';
+import { formatFixed } from '@onset/engine/gofmt';
 import { ExitError } from './cobra';
 import { defineGroup } from './ops/cli';
 import { num, projectRoot, str, strs } from './ops/common';

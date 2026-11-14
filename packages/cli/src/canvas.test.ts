@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import tty from 'node:tty';
 import { describe, expect, it } from 'vitest';
-import * as preset from '@am/engine/preset';
+import * as preset from '@onset/engine/preset';
 import {
   canvasPicker,
   isTerminal,
@@ -34,7 +34,7 @@ describe('canvas', () => {
     expect(isTerminal({ isTTY: tty.isatty(fd) })).toBe(false);
     fs.closeSync(fd);
     expect(isTerminal(undefined)).toBe(false);
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'am-cli-')), 'stdin');
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-cli-')), 'stdin');
     fs.writeFileSync(file, '');
     expect(isTerminal({ isTTY: false })).toBe(false);
   });

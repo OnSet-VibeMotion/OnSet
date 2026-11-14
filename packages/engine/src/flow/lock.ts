@@ -1,5 +1,5 @@
 /**
- * 项目里的 article-to-motion.flow.json（LockFile）：新建时记下的流程与画幅。第三方插件不记在这里，
+ * 项目里的 onset.flow.json（LockFile）：新建时记下的流程与画幅。第三方插件不记在这里，
  * 装在用户级（installed.ts），对所有项目生效。
  */
 import fs from 'node:fs';
@@ -8,7 +8,7 @@ import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
 import { isObject } from './fields';
 
-export const LockFile = 'article-to-motion.flow.json';
+export const LockFile = 'onset.flow.json';
 
 /**
  * 新建项目时记下的流程（片型）与画幅。制作提示词由运行期按它组合（compose.ts）；项目用哪个流程也只看它。

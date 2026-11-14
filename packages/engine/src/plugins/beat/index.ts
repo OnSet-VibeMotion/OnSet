@@ -7,7 +7,7 @@
  * - 站点的判断函数与「接下来」的说法；
  * - beat_* 操作与 validate_beat（ops.ts）、渲染前的覆盖检查、镜头的 beat 块（block.ts）；
  * - 节拍页、它的后端接口 /api/beat（api.ts）与两条网页命令（确认网格、重排重拍）；
- * - 顶栏的第一步「节拍」、前置资源「节拍分析环境」、要显式传给子进程的 AM_BEAT_ENV_DIR、新建选项「音乐卡点」。
+ * - 顶栏的第一步「节拍」、前置资源「节拍分析环境」、要显式传给子进程的 ONSET_BEAT_ENV_DIR、新建选项「音乐卡点」。
  *
  * 引擎里的卡点实现（beat/：网格、计划、cue、分析环境）仍在原包里，这里引用它。
  */
@@ -129,7 +129,7 @@ export const beatPlugin: BuiltinPlugin = {
           produces: [{ path: beat.TrackFile }, { path: beat.ConfigFile }, { prefix: beat.Store + '/', base: /^music/ }],
         },
         { id: 'grid', label: '分析节拍', step: 'beat', page: 'beat', produces: [{ prefix: beat.Store + '/' }] },
-        // 节拍确认看 grid.json，由编排与 am 写，不经界面按钮，所以没有 gateFiles。
+        // 节拍确认看 grid.json，由编排与 onset 写，不经界面按钮，所以没有 gateFiles。
         { id: 'gate-grid', label: '试听节拍', step: 'beat', gate: true, page: 'beat' },
       ],
       flows: [],
@@ -279,7 +279,7 @@ export const beatPlugin: BuiltinPlugin = {
       },
     });
     // 节拍分析环境的目录：默认由 XDG_DATA_HOME 推出而它不在子进程白名单里，编排工具调用的 beat_analyze
-    // 会算出另一个目录、找不到 am setup 装好的那一套，就会想自己去建。
+    // 会算出另一个目录、找不到 onset setup 装好的那一套，就会想自己去建。
     ctx.childEnv({ key: beat.EnvDirEnv, value: (env) => beat.envDir(env) });
 
     ctx.preset({

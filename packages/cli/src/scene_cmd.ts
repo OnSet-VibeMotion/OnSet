@@ -4,13 +4,13 @@
  */
 import fs from 'node:fs';
 import os from 'node:os';
-import * as config from '@am/engine/config';
-import * as envutil from '@am/engine/envutil';
-import * as scene from '@am/engine/scene';
-import * as schedule from '@am/engine/schedule';
-import * as plugin from '@am/engine/plugin';
-import * as srt from '@am/engine/srt';
-import { newUsage, usageAdd, type Usage } from '@am/engine/tools';
+import * as config from '@onset/engine/config';
+import * as envutil from '@onset/engine/envutil';
+import * as scene from '@onset/engine/scene';
+import * as schedule from '@onset/engine/schedule';
+import * as plugin from '@onset/engine/plugin';
+import * as srt from '@onset/engine/srt';
+import { newUsage, usageAdd, type Usage } from '@onset/engine/tools';
 import { currentEnvironment, validateTolerance } from './cli';
 import { ExitError } from './cobra';
 import { attachMemory, newRunID } from './memory_cmd';
@@ -94,7 +94,7 @@ defineOp({
   其余           渲染
 
 输入指纹覆盖组好的渲染提示词、scene.json、prompt.md、字幕、角色包、
-渲染工具、技能内容与 am 版本，产物通过校验时记在镜头目录的 .am-render.json。
+渲染工具、技能内容与 onset 版本，产物通过校验时记在镜头目录的 .onset-render.json。
 没有渲染记录的产物同样标 Stale。
 
 force 跳过全部上述判定，无条件重渲染每个镜头。

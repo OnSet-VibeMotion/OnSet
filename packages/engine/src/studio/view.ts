@@ -1,7 +1,7 @@
 /**
  * 编排工具与 Studio 网页之间的两条通道。
  *
- * 与 am studio show 共用的部分（页面表、请求校验、收件目录）已在 ../studioview，这里只做
+ * 与 onset studio show 共用的部分（页面表、请求校验、收件目录）已在 ../studioview，这里只做
  * Go 版 studio 包里的同名入口：ValidateViewRequest、WriteViewRequest、drainViewInbox、viewInbox、
  * ViewState.Describe，免得两份实现漂移。
  */

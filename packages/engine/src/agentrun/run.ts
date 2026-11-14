@@ -19,7 +19,7 @@ export interface Spec {
   access?: OrchestratorAccess;
   /** 见 tools.OrchestratorOptions.permissionPrompt。 */
   permissionPrompt?: PermissionPrompt;
-  /** am 的工具服务（客户端里给）：五家都挂上，编排工具只经它调用 am。 */
+  /** onset 的工具服务（客户端里给）：五家都挂上，编排工具只经它调用 onset。 */
   toolsServer?: McpServer;
   /** 模型；空用那家工具自己的默认（tools.modelArgs）。 */
   model?: string;

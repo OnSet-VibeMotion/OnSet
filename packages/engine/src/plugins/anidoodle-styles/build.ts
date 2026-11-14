@@ -1,13 +1,13 @@
 //
-// 把下载下来的 anidoodle 变成项目里能直接用的东西（am setup 的最后两步，不联网）：
+// 把下载下来的 anidoodle 变成项目里能直接用的东西（onset setup 的最后两步，不联网）：
 //
-//   1. TypeScript 转成浏览器能直接 import 的 ES 模块。用 am 自己的 Node 运行时的
+//   1. TypeScript 转成浏览器能直接 import 的 ES 模块。用 onset 自己的 Node 运行时的
 //      module.stripTypeScriptTypes（transform 模式：上游用了参数属性与 <T> 断言，只剥类型不够），
 //      再把相对引用补上 .js。不用 esbuild / tsc：客户端里没有它们，装它们要 npm 与原生二进制。
 //   2. 从上游图鉴（一张 8×4 的总图）里裁出每种风格的海报。
 //
-// 产物放在构建目录（buildDir）：am 自己克隆的检出放在检出里的 .am-build/，用户自己的检出另放在
-// am 的数据目录，不往用户的目录里写。全部完成写 BuildMarker（commit 与 CompilerVersion），
+// 产物放在构建目录（buildDir）：onset 自己克隆的检出放在检出里的 .onset-build/，用户自己的检出另放在
+// onset 的数据目录，不往用户的目录里写。全部完成写 BuildMarker（commit 与 CompilerVersion），
 // 转换规则变了就递增 CompilerVersion，已下载的检出会重新转换、不必重新下载。
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -24,7 +24,7 @@ import { EngineSrc, SourceID, catalogFile, type Catalog, type Entry } from './an
 export const CompilerVersion = 1;
 
 /** 构建完成的记录文件。 */
-export const BuildMarker = 'am-build.txt';
+export const BuildMarker = 'onset-build.txt';
 
 /** 转好的模块在构建目录里的位置（下面按 EngineSrc 的相对路径放）。 */
 export const ModulesDir = 'anidoodle';
@@ -41,7 +41,7 @@ export interface BuildTarget {
 
 /** 这份检出的构建目录。 */
 export function buildDir(lib: BuildTarget, env: Record<string, string | undefined>): string {
-  if (lib.managed) return path.join(lib.dir, '.am-build');
+  if (lib.managed) return path.join(lib.dir, '.onset-build');
   const key = crypto.createHash('sha256').update(path.resolve(lib.dir)).digest('hex').slice(0, 12);
   return path.join(sourceDir(env, SourceID), 'local-' + key);
 }
@@ -72,7 +72,7 @@ function stripper(): Strip {
 
 /**
  * 一个 TypeScript 模块转成浏览器 ES 模块：去掉类型（transform 模式），去掉没当作值用到的引入，相对引用补成 .js。
- * name 只用于报错。转换时 Node 会发一条 ExperimentalWarning，这里吞掉：它会混进 am setup 的进度行。
+ * name 只用于报错。转换时 Node 会发一条 ExperimentalWarning，这里吞掉：它会混进 onset setup 的进度行。
  */
 export function compileModule(ts: string, name: string): string {
   const strip = stripper();

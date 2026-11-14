@@ -3,7 +3,7 @@
 // 屏蔽用户 git 配置的 git 调用。lemo-opuscar、anidoodle 与 huashu 几个来源共用；来源自己的目录结构、
 // 检出规则与说法留在各自插件里。
 //
-// 只用于来源数据的下载（前置资源，只由 am setup 调用）。
+// 只用于来源数据的下载（前置资源，只由 onset setup 调用）。
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -220,7 +220,7 @@ export function gitEnv(env: Record<string, string>): Record<string, string> {
   out.GIT_CONFIG_SYSTEM = '/dev/null';
   out.GIT_TERMINAL_PROMPT = '0';
   // 连接被掐断时 git 的按需取文件（--filter=blob:none）不报错，只是一直挂着
-  // （实测：检出时 fetch-pack 断开后整个 am 卡了半小时）。低于 1 KB/s 持续
+  // （实测：检出时 fetch-pack 断开后整个 onset 卡了半小时）。低于 1 KB/s 持续
   // 60 秒就放弃，让调用方拿到一个能重试的错误。用户显式设置时尊重用户的值。
   if (!out.GIT_HTTP_LOW_SPEED_LIMIT) out.GIT_HTTP_LOW_SPEED_LIMIT = '1000';
   if (!out.GIT_HTTP_LOW_SPEED_TIME) out.GIT_HTTP_LOW_SPEED_TIME = '60';

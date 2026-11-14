@@ -2,7 +2,7 @@
  * 设置页的后端：/api/settings。
  *
  * 全局设置在用户级目录（config/global.ts），与安装页、音色库一样在进程里直接写；
- * 「这个项目」一栏改的是项目的 article-to-motion.conf，那是项目文件，走写任务（config_set），
+ * 「这个项目」一栏改的是项目的 onset.conf，那是项目文件，走写任务（config_set），
  * 不和一轮对话的快照打架。
  *
  *   GET  /api/settings          每一项：可选值、全局值、这个项目的值、现在实际用的值与来历

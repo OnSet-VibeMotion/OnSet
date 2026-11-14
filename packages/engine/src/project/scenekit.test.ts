@@ -29,7 +29,7 @@ describe('scene-kit', () => {
     expect(/gsap\.timeline/.test(body)).toBe(false);
   });
 
-  // 把 scene-kit 放进一个照技能说明搭起来的镜头目录，跑一遍 am 自己的确定性源码扫描。
+  // 把 scene-kit 放进一个照技能说明搭起来的镜头目录，跑一遍 onset 自己的确定性源码扫描。
   //
   // 技能要求渲染器把 scene-kit.js 复制进每个镜头目录，所以它会被每个镜头的
   // 扫描读到。库里一旦混进时钟、未播种随机数或定时器，所有用它的镜头都会被
@@ -38,7 +38,7 @@ describe('scene-kit', () => {
   it('passes determinism scan', () => {
     const shared = assets.shared();
     const skill = `${skillTreeRoot}/scene-kit/`;
-    const sceneDir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-project-'));
+    const sceneDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-project-'));
     temps.push(sceneDir);
     const copies: Record<string, string> = {
       [skill + 'scene-kit.js']: 'scene-kit.js',
@@ -49,8 +49,8 @@ describe('scene-kit', () => {
     const fonts = path.join(sceneDir, 'assets', 'fonts');
     fs.mkdirSync(fonts, { recursive: true });
     for (const name of exampleFontFiles(shared, skill + 'example.html')) fs.writeFileSync(path.join(fonts, name), 'woff2');
-    // am-scene.js 由 am 在渲染前生成，这里只放一个占位，让引用能解析到本地文件。
-    fs.writeFileSync(path.join(sceneDir, 'am-scene.js'), 'window.AM_SCENE = {schema: 1};\n');
+    // onset-scene.js 由 onset 在渲染前生成，这里只放一个占位，让引用能解析到本地文件。
+    fs.writeFileSync(path.join(sceneDir, 'onset-scene.js'), 'window.ONSET_SCENE = {schema: 1};\n');
 
     const report = scan(sceneDir);
     expect(report.ok, `scene-kit 没通过确定性扫描：\n${problems(report).join('\n')}`).toBe(true);
@@ -75,7 +75,7 @@ describe('scene-kit', () => {
         return node;
       };
       const win: Record<string, unknown> = {
-        AM_SCENE: { schema: 1, fps: 30, frames: 60, width_px: 1080, height_px: 1920, safe_area: { subtitles: safe }, subtitles: front.subtitles, cues: [{ index: 1, text: '你好', start_frame: 0, end_frame_exclusive: 30 }], phrases: [], ...(look ? { look } : {}) },
+        ONSET_SCENE: { schema: 1, fps: 30, frames: 60, width_px: 1080, height_px: 1920, safe_area: { subtitles: safe }, subtitles: front.subtitles, cues: [{ index: 1, text: '你好', start_frame: 0, end_frame_exclusive: 30 }], phrases: [], ...(look ? { look } : {}) },
       };
       win.document = { createElement: el };
       vm.runInNewContext(assets.shared().readText(`${skillTreeRoot}/scene-kit/scene-kit.js`), { window: win });

@@ -13,7 +13,7 @@ describe('prereqs', () => {
   });
 
   it('reports nothing ready in an empty home, without touching the network', () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'am-prereqs-'));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-prereqs-'));
     // PATH 只留系统目录：开发机上 Homebrew 的 ffmpeg 会让 ffmpeg 一项直接就绪。
     const status = check({ HOME: home, PATH: '/usr/bin:/bin' });
     expect(status.every((s) => !s.ready)).toBe(true);
@@ -22,15 +22,15 @@ describe('prereqs', () => {
   });
 
   it('treats the browser bundled with the desktop client as ready', () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'am-prereqs-'));
-    const browser = path.join(home, 'am-browser');
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-prereqs-'));
+    const browser = path.join(home, 'onset-browser');
     fs.writeFileSync(browser, '#!/bin/sh\n', { mode: 0o755 });
-    const status = check({ HOME: home, PATH: process.env.PATH ?? '', AM_BROWSER: browser });
+    const status = check({ HOME: home, PATH: process.env.PATH ?? '', ONSET_BROWSER: browser });
     expect(status.find((s) => s.id === 'browser')).toMatchObject({ ready: true, location: browser });
   });
 
   it('finds a headless shell downloaded by HyperFrames', () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'am-prereqs-'));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-prereqs-'));
     const platformDir = { arm64: 'chrome-headless-shell-mac-arm64', x64: 'chrome-headless-shell-mac-x64' }[process.arch as 'arm64' | 'x64'];
     if (process.platform !== 'darwin' || !platformDir) return;
     const binary = path.join(home, '.cache', 'hyperframes', 'chrome', 'chrome-headless-shell', 'mac_arm-152.0.7977.30', platformDir, 'chrome-headless-shell');
@@ -48,16 +48,16 @@ describe('prereqs', () => {
   });
 
   it('picks tools from the project config, then the environment, then the defaults', () => {
-    const project = fs.mkdtempSync(path.join(os.tmpdir(), 'am-prereqs-project-'));
-    fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\nTTS_PROVIDER=tencent\nALIGN_PROVIDER=funasr\n');
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-prereqs-project-'));
+    fs.writeFileSync(path.join(project, 'onset.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\nTTS_PROVIDER=tencent\nALIGN_PROVIDER=funasr\n');
     expect(selection({ HOME: project }, project)).toEqual({ tts: 'tencent', align: 'funasr' });
     expect(selection({ TTS_PROVIDER: 'edge', ALIGN_PROVIDER: 'mlx' })).toEqual({ tts: 'edge', align: 'mlx' });
     expect(selection({ TTS_PROVIDER: 'nope' }).tts).toBe(defaultTTSProvider());
   });
 
-  it('counts a voice tool installed by am in its own bin directory', () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'am-prereqs-'));
-    const bin = path.join(home, '.local', 'share', 'am', 'bin');
+  it('counts a voice tool installed by onset in its own bin directory', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-prereqs-'));
+    const bin = path.join(home, '.local', 'share', 'onset', 'bin');
     fs.mkdirSync(bin, { recursive: true });
     fs.writeFileSync(path.join(bin, 'mmx'), '#!/bin/sh\n', { mode: 0o755 });
     const status = check({ HOME: home, PATH: '/usr/bin:/bin' }, { tts: 'minimax', align: 'funasr' });
@@ -66,8 +66,8 @@ describe('prereqs', () => {
   });
 
   it('counts the MLX aligner as ready only once its model is downloaded too', () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'am-prereqs-'));
-    const data = path.join(home, '.local', 'share', 'am');
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-prereqs-'));
+    const data = path.join(home, '.local', 'share', 'onset');
     fs.mkdirSync(path.join(data, 'bin'), { recursive: true });
     fs.writeFileSync(path.join(data, 'bin', 'mlx_audio.stt.generate'), '#!/bin/sh\n', { mode: 0o755 });
     const pick = { tts: 'minimax', align: 'mlx' };
@@ -83,8 +83,8 @@ describe('prereqs', () => {
   });
 
   it('counts Breeze TTS 2 as ready only once its model is downloaded too, subdirectories included', () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'am-prereqs-'));
-    const data = path.join(home, '.local', 'share', 'am');
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-prereqs-'));
+    const data = path.join(home, '.local', 'share', 'onset');
     fs.mkdirSync(path.join(data, 'bin'), { recursive: true });
     fs.writeFileSync(path.join(data, 'bin', 'mlx_audio.tts.generate'), '#!/bin/sh\n', { mode: 0o755 });
     const pick = { tts: 'breeze', align: 'funasr' };

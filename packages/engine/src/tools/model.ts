@@ -9,7 +9,7 @@ import path from 'node:path';
  * configuredModel 读配置文件，opencode 记为未知。
  */
 export function detectModel(tool: string, line: string): string {
-  // director（导演，am 自带的编排）照 claude 系的格式输出，见 director 包。
+  // director（导演，onset 自带的编排）照 claude 系的格式输出，见 director 包。
   if (tool !== 'claude' && tool !== 'qoder' && tool !== 'codebuddy' && tool !== 'director') return '';
   let event: unknown;
   try {

@@ -1,12 +1,12 @@
 /**
- * voice_*：音色库（@am/engine/voice）的四条操作。
+ * voice_*：音色库（@onset/engine/voice）的四条操作。
  *
  * 删除不是操作：音色库是用户积累下来的声音，编排工具一句话删掉就找不回来，只在客户端的音色页里删。
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { envMap } from '@am/engine/envutil';
-import * as voice from '@am/engine/voice';
+import { envMap } from '@onset/engine/envutil';
+import * as voice from '@onset/engine/voice';
 import { bool, str } from './ops/common';
 import { defineGroup } from './ops/cli';
 import { ParamError, defineOp } from './ops/op';
@@ -33,7 +33,7 @@ function voiceJSON(v: voice.VoiceEntry): Record<string, unknown> {
 defineGroup({
   path: ['voice'],
   summary: '音色库：所有项目共用的参考音色，Breeze 从它克隆，保持同一个声音',
-  description: `音色库放在用户级目录（AM_VOICES_DIR 可覆盖），所有项目共用。每个音色是一段确认过的参考音频
+  description: `音色库放在用户级目录（ONSET_VOICES_DIR 可覆盖），所有项目共用。每个音色是一段确认过的参考音频
 （转成 24kHz 单声道 WAV）加逐字一致的文字稿，用 Breeze 配音时从它克隆。
 
 只靠一句描述设计音色每次生成都会漂，同一个账号的片子之间听起来像换了人；克隆出来的始终是同一个声音。

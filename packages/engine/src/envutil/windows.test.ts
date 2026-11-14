@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { amCommand, dataDir, lookPath, MissingToolError, normalizeWindowsEnv } from './index';
+import { onsetCommand, dataDir, lookPath, MissingToolError, normalizeWindowsEnv } from './index';
 
 // Windows 上的差异按 platform 参数模拟，在 macOS / Linux 上也能跑；Windows CI 上测的是真实行为。
 const dirs: string[] = [];
@@ -10,7 +10,7 @@ afterEach(() => {
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 function temp(): string {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'am-win-'));
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-win-'));
   dirs.push(d);
   return d;
 }
@@ -48,17 +48,17 @@ describe('Windows compatibility in envutil', () => {
   });
 
   it('keeps data in LOCALAPPDATA on Windows', () => {
-    expect(dataDir({ LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local' }, 'win32')).toBe('C:\\Users\\u\\AppData\\Local\\am');
-    expect(dataDir({ LOCALAPPDATA: 'C:\\L', HOME: '/h' }, 'win32')).toBe('C:\\L\\am');
-    expect(dataDir({ XDG_DATA_HOME: '/x', LOCALAPPDATA: 'C:\\L' }, 'win32')).toBe(path.join('/x', 'am'));
-    expect(dataDir({ LOCALAPPDATA: 'C:\\L', HOME: '/h' }, 'darwin')).toBe(path.join('/h', '.local', 'share', 'am'));
+    expect(dataDir({ LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local' }, 'win32')).toBe('C:\\Users\\u\\AppData\\Local\\onset');
+    expect(dataDir({ LOCALAPPDATA: 'C:\\L', HOME: '/h' }, 'win32')).toBe('C:\\L\\onset');
+    expect(dataDir({ XDG_DATA_HOME: '/x', LOCALAPPDATA: 'C:\\L' }, 'win32')).toBe(path.join('/x', 'onset'));
+    expect(dataDir({ LOCALAPPDATA: 'C:\\L', HOME: '/h' }, 'darwin')).toBe(path.join('/h', '.local', 'share', 'onset'));
   });
 
-  it('runs am.cjs with the current runtime instead of as a program', () => {
-    expect(amCommand('/app/bin/am')).toEqual({ command: '/app/bin/am', args: [], env: {} });
-    const script = amCommand('C:\\app\\resources\\cli\\am.cjs');
+  it('runs onset.cjs with the current runtime instead of as a program', () => {
+    expect(onsetCommand('/app/bin/onset')).toEqual({ command: '/app/bin/onset', args: [], env: {} });
+    const script = onsetCommand('C:\\app\\resources\\cli\\onset.cjs');
     expect(script.command).toBe(process.execPath);
-    expect(script.args).toEqual(['C:\\app\\resources\\cli\\am.cjs']);
-    expect(script.env.AM_SELF).toBe('C:\\app\\resources\\cli\\am.cjs');
+    expect(script.args).toEqual(['C:\\app\\resources\\cli\\onset.cjs']);
+    expect(script.env.ONSET_SELF).toBe('C:\\app\\resources\\cli\\onset.cjs');
   });
 });

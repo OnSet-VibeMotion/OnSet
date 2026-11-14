@@ -1,9 +1,9 @@
 /**
  * run-all 复用已有产物的判定。
  */
-import type { Config } from '@am/engine/config';
-import * as scene from '@am/engine/scene';
-import * as schedule from '@am/engine/schedule';
+import type { Config } from '@onset/engine/config';
+import * as scene from '@onset/engine/scene';
+import * as schedule from '@onset/engine/schedule';
 
 /**
  * reuseDecision 判定一个已有合格产物的镜头是跳过还是标 Stale。

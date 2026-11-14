@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 function sceneDir(extra: Record<string, unknown> = {}): string {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-plugin-skill-')));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-plugin-skill-')));
   temps.push(root);
   const dir = path.join(root, 'scenes', 'scene-001');
   fs.mkdirSync(dir, { recursive: true });
@@ -32,7 +32,7 @@ describe('plugin skills on scenes', () => {
   it('puts an opt-in skill into the fingerprint of the scenes that name it only', () => {
     const plain = load(sceneDir());
     const named = load(sceneDir({ plugin_skills: ['fake-publisher/caption-kit'] }));
-    const env = { AM_STATIONS_DIR: process.env.AM_STATIONS_DIR! };
+    const env = { ONSET_STATIONS_DIR: process.env.ONSET_STATIONS_DIR! };
     const before = fingerprint(plain, 'claude', resolveAllSkills('claude', plain.directory, env, plain));
     installStation(`link:${fake}`);
     // 装了插件，没点名它的镜头指纹不变。

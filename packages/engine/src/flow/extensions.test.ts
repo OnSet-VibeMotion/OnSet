@@ -32,10 +32,10 @@ afterEach(() => {
 
 /** 一个新建的项目（新建时记下流程与画幅）。插件装在用户级，与项目无关。 */
 function bare(flowID = 'speech'): string {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-ext-')));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-ext-')));
   temps.push(root);
   recordFlow(root, { id: flowID, canvas: 'vertical-3x4' });
-  fs.writeFileSync(path.join(root, 'article-to-motion.conf'), '');
+  fs.writeFileSync(path.join(root, 'onset.conf'), '');
   return root;
 }
 
@@ -50,7 +50,7 @@ const base = () =>
 
 describe('manifest extensions', () => {
   it('reads every extension of the fake publisher', () => {
-    const m = parseManifest(fs.readFileSync(path.join(fake, 'am-station.json'), 'utf8'));
+    const m = parseManifest(fs.readFileSync(path.join(fake, 'onset-station.json'), 'utf8'));
     expect(m.provides.tts).toEqual({ name: '假配音', op: 'speak', timestamps: 'none' });
     expect(m.renderer_skills).toEqual([{ name: 'caption-kit', dir: 'skills/caption-kit', summary: '字幕卡片的写法', scenes: 'opt-in' }]);
     expect(m.film_styles).toEqual({ name: '假风格库', dir: 'styles' });
@@ -119,7 +119,7 @@ describe('plugin flows', () => {
     expect(route('x:fake-publisher', extras).map((r) => r.node.id)).toEqual(['intake', 'render', 'assemble', 'review', 'gate-final', 'auto-publish']);
     expect(extras.find((x) => x.station.id === 'fake-publisher')?.flow?.first_page).toBe('x:fake-publisher:dashboard');
     const text = runPrompt(root, '').prompt.toString('utf8');
-    // am 的公共约定照旧在前，各阶段换成这套流程的。
+    // onset 的公共约定照旧在前，各阶段换成这套流程的。
     expect(text.startsWith('# 完成一次从稿件到成片的')).toBe(true);
     expect(text).toContain('## 工作边界');
     expect(text).toContain('### 渲染器配置');
@@ -144,12 +144,12 @@ describe('plugin flows', () => {
 describe('a plugin flow stays in its own flow', () => {
   /** 假发布的一份拷贝，只带整套流程：不写 after、不顶替。 */
   function flowOnly(): string {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-ext-flow-only-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-ext-flow-only-'));
     temps.push(dir);
     fs.cpSync(fake, dir, { recursive: true });
-    const m = JSON.parse(fs.readFileSync(path.join(dir, 'am-station.json'), 'utf8')) as Record<string, unknown>;
+    const m = JSON.parse(fs.readFileSync(path.join(dir, 'onset-station.json'), 'utf8')) as Record<string, unknown>;
     delete m.after;
-    fs.writeFileSync(path.join(dir, 'am-station.json'), JSON.stringify(m));
+    fs.writeFileSync(path.join(dir, 'onset-station.json'), JSON.stringify(m));
     return dir;
   }
   const sha = (t: string) => crypto.createHash('sha256').update(t).digest('hex');
@@ -217,11 +217,11 @@ describe('installed once, every project', () => {
 
   it('a plugin that cannot be read only stops the projects it takes part in', () => {
     // 一份拷贝装上（git 来源的做法：记摘要），之后改它的内容：摘要对不上，读不出来。
-    const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'am-ext-broken-'));
+    const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-ext-broken-'));
     temps.push(copy);
     fs.cpSync(fake, copy, { recursive: true });
     const got = installStation(`link:${copy}`);
-    const installed = path.join(process.env.AM_STATIONS_DIR!, 'installed.json');
+    const installed = path.join(process.env.ONSET_STATIONS_DIR!, 'installed.json');
     const list = JSON.parse(fs.readFileSync(installed, 'utf8')) as { version: 1; plugins: { digest: string }[] };
     list.plugins[0].digest = 'sha256:not-this-one';
     fs.writeFileSync(installed, JSON.stringify(list));
@@ -234,11 +234,11 @@ describe('installed once, every project', () => {
   });
 
   it('a broken plugin that does not touch this flow is only a warning', () => {
-    const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'am-ext-broken-'));
+    const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-ext-broken-'));
     temps.push(copy);
     // 只带操作、不进路线的插件。
     fs.writeFileSync(
-      path.join(copy, 'am-station.json'),
+      path.join(copy, 'onset-station.json'),
       JSON.stringify({ id: 'side-tool', version: '1.0.0', name: '小工具', ops: [{ name: 'go', summary: '做一件事', command: ['bin/go'] }] }),
     );
     fs.mkdirSync(path.join(copy, 'bin'));
@@ -266,7 +266,7 @@ describe('plugin providers, skills and styles', () => {
     expect(pluginSkillsFor([])).toEqual({});
     expect(pluginSkillsFor(['fake-publisher/caption-kit'])).toEqual({ 'plugin:fake-publisher/caption-kit': path.join(fake, 'skills/caption-kit') });
     expect(() => pluginSkillsFor(['fake-publisher/nope'])).toThrow('不在这台电脑装的插件里');
-    const resolved = resolveAllSkills('claude', scene, { AM_STATIONS_DIR: process.env.AM_STATIONS_DIR! }, { film_style: '', timing: null, plugin_skills: ['fake-publisher/caption-kit'] });
+    const resolved = resolveAllSkills('claude', scene, { ONSET_STATIONS_DIR: process.env.ONSET_STATIONS_DIR! }, { film_style: '', timing: null, plugin_skills: ['fake-publisher/caption-kit'] });
     expect(resolved['plugin:fake-publisher/caption-kit']).toBe(path.join(fake, 'skills/caption-kit'));
     expect(pluginSkillSection(resolved)).toContain(`fake-publisher/caption-kit：动手前读 ${path.join(fake, 'skills/caption-kit', 'SKILL.md')}`);
     expect(pluginSkillSection({})).toBe('');
@@ -280,7 +280,7 @@ describe('plugin providers, skills and styles', () => {
       { source: 'x-fake-publisher', slug: 'ink', order: 'ink', cn: '水墨', en: 'Ink', category_cn: '国风', category_en: 'Plugin', uses: null, summary: '测试用的插件风格' },
     ]);
     expect(filmstyle.styleKey(filmstyle.lookup('水墨'))).toBe('x-fake-publisher/ink');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-ext-style-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-ext-style-'));
     temps.push(dir);
     expect(source!.fill(dir, source!.catalog()[0], {})).toBe('fake-publisher@0.1.0');
     expect(fs.readFileSync(path.join(dir, 'STYLE.md'), 'utf8')).toContain('水墨');
@@ -288,7 +288,7 @@ describe('plugin providers, skills and styles', () => {
     // 走装进项目的同一份契约：装成默认风格，镜头就能用。
     const installed = filmstyle.install({ projectDir: root, style: filmstyle.lookup('x-fake-publisher/ink'), now: new Date('2026-11-11T00:00:00Z') });
     expect(installed.manifest).toMatchObject({ source: 'x-fake-publisher', slug: 'ink', cn: '水墨', version: 'fake-publisher@0.1.0' });
-    expect(fs.existsSync(path.join(root, '.agents', 'skills', 'am-film-style', 'STYLE.md'))).toBe(true);
+    expect(fs.existsSync(path.join(root, '.agents', 'skills', 'onset-film-style', 'STYLE.md'))).toBe(true);
     removeStation('fake-publisher');
     expect(filmstyle.sourceByID('x-fake-publisher')).toBeUndefined();
   });

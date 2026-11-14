@@ -3,10 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /**
- * am 程序。客户端自带 Node（Electron 以 ELECTRON_RUN_AS_NODE=1 运行即是 Node），所以 am 是打包进资源目录的
- * 一个 JS 文件（resources/cli/am.cjs），由一段 shim 脚本调起。命令行不对外提供：这份 shim 只给客户端自己用——
- * 后台任务直接调它，编排工具与渲染器经它启动的工具服务（am studio tools-mcp）调用 am，am 不在它们的 PATH 里。
- * AM_SELF 指向它，am 起子进程时据此找到自己。
+ * onset 程序。客户端自带 Node（Electron 以 ELECTRON_RUN_AS_NODE=1 运行即是 Node），所以 onset 是打包进资源目录的
+ * 一个 JS 文件（resources/cli/onset.cjs），由一段 shim 脚本调起。命令行不对外提供：这份 shim 只给客户端自己用——
+ * 后台任务直接调它，编排工具与渲染器经它启动的工具服务（onset studio tools-mcp）调用 onset，onset 不在它们的 PATH 里。
+ * ONSET_SELF 指向它，onset 起子进程时据此找到自己。
  */
 
 /** 资源目录：打包后是 .app/Contents/Resources，开发时是仓库根。 */
@@ -16,7 +16,7 @@ export function resourcesDir(): string {
 
 /** 命令行入口文件。开发时用 packages/cli/dist。 */
 export function cliEntry(): string {
-  return app.isPackaged ? path.join(resourcesDir(), 'cli', 'am.cjs') : path.join(resourcesDir(), 'packages', 'cli', 'dist', 'am.cjs');
+  return app.isPackaged ? path.join(resourcesDir(), 'cli', 'onset.cjs') : path.join(resourcesDir(), 'packages', 'cli', 'dist', 'onset.cjs');
 }
 
 /** 内置资产目录。 */
@@ -28,26 +28,26 @@ const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 
 /**
  * 随客户端下发的 npm（打包前由 scripts/vendor.mjs 取到 vendor/npm，打进 .app/Contents/Resources/npm）。
- * 没有时（开发时没跑过 npm run vendor）为空，am 退回 PATH 里的 npm。
+ * 没有时（开发时没跑过 npm run vendor）为空，onset 退回 PATH 里的 npm。
  */
 export function npmCLI(): string {
   const file = app.isPackaged ? path.join(resourcesDir(), 'npm', 'bin', 'npm-cli.js') : path.join(resourcesDir(), 'apps', 'desktop', 'vendor', 'npm', 'bin', 'npm-cli.js');
   return fs.existsSync(file) ? file : '';
 }
 
-/** 借给 HyperFrames 渲染的浏览器（包装脚本 browserScript）的位置，与私有 am 放在一起。 */
+/** 借给 HyperFrames 渲染的浏览器（包装脚本 browserScript）的位置，与私有 onset 放在一起。 */
 export function browserPath(): string {
-  return path.join(app.getPath('userData'), 'bin', 'am-browser');
+  return path.join(app.getPath('userData'), 'bin', 'onset-browser');
 }
 
 /** shim 的内容：用本应用的 Electron 当 Node 运行命令行。路径用单引号包住，含空格或中文都没关系。 */
 export function shimScript(): string {
   const npm = npmCLI();
-  const npmVar = npm === '' ? '' : ` AM_NPM_CLI=${q(npm)}`;
+  const npmVar = npm === '' ? '' : ` ONSET_NPM_CLI=${q(npm)}`;
   return [
     '#!/bin/sh',
-    '# 由 ArticleToMotion 客户端写出：用客户端自带的运行时执行 am，只供客户端内部使用。',
-    `ELECTRON_RUN_AS_NODE=1 AM_ASSETS_DIR=${q(assetsDir())} AM_BROWSER=${q(browserPath())}${npmVar} AM_SELF="$0" exec ${q(process.execPath)} ${q(cliEntry())} "$@"`,
+    '# 由片场客户端写出：用客户端自带的运行时执行 onset，只供客户端内部使用。',
+    `ELECTRON_RUN_AS_NODE=1 ONSET_ASSETS_DIR=${q(assetsDir())} ONSET_BROWSER=${q(browserPath())}${npmVar} ONSET_SELF="$0" exec ${q(process.execPath)} ${q(cliEntry())} "$@"`,
     '',
   ].join('\n');
 }
@@ -63,9 +63,9 @@ export function browserScript(): string {
   const appArg = app.isPackaged ? '' : ` ${q(app.getAppPath())}`;
   return [
     '#!/bin/sh',
-    '# 由 ArticleToMotion 客户端写出：HyperFrames 渲染用的浏览器，借用客户端自带的 Chromium。',
+    '# 由片场客户端写出：HyperFrames 渲染用的浏览器，借用客户端自带的 Chromium。',
     'unset ELECTRON_RUN_AS_NODE',
-    `if [ "$1" = --version ]; then echo 'Chromium ${process.versions.chrome} (ArticleToMotion)'; exit 0; fi`,
+    `if [ "$1" = --version ]; then echo 'Chromium ${process.versions.chrome} (OnSet)'; exit 0; fi`,
     'for a; do',
     '  shift',
     '  case "$a" in',
@@ -73,7 +73,7 @@ export function browserScript(): string {
     '    *) set -- "$@" "$a" ;;',
     '  esac',
     'done',
-    `AM_BROWSER_MODE=1 exec ${q(process.execPath)}${appArg} "$@"`,
+    `ONSET_BROWSER_MODE=1 exec ${q(process.execPath)}${appArg} "$@"`,
     '',
   ].join('\n');
 }

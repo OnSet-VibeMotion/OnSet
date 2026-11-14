@@ -3,12 +3,12 @@
 //
 //   STYLE.md        中文说明 + 上游风格说明原文
 //   SKILL.md        这套风格在 HyperFrames 镜头里怎么用（skill.md.tmpl）
-//   anidoodle/      转好的浏览器模块（构建目录里的）与接头 am-anidoodle.js
+//   anidoodle/      转好的浏览器模块（构建目录里的）与接头 onset-anidoodle.js
 //   source/         同一批模块的 TypeScript 原文
 //   references/     上游的通用说明
 //   poster.jpg、LICENSE、NOTICE、ATTRIBUTION.md
 //
-// am 自己克隆的检出与构建目录内容固定在 commit 上，文件硬链接进项目；用户自己的检出照旧复制。
+// onset 自己克隆的检出与构建目录内容固定在 commit 上，文件硬链接进项目；用户自己的检出照旧复制。
 import fs from 'node:fs';
 import path from 'node:path';
 import { renderTemplate } from '../../filmstyle/template';
@@ -22,7 +22,7 @@ import skillTemplate from './skill.md.tmpl';
 import styleTemplate from './style.md.tmpl';
 
 /** 接头在技能目录与镜头目录里的文件名（在 anidoodle/ 下）。 */
-export const RuntimeFile = 'am-anidoodle.js';
+export const RuntimeFile = 'onset-anidoodle.js';
 
 /** 一份可用的检出与它的构建目录。 */
 export interface FillSource {

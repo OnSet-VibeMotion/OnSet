@@ -59,7 +59,7 @@ export {
   type ManifestParam,
   ManifestFields,
   ManifestVersion,
-  amVersion,
+  onsetVersion,
   checkCompatible,
   compareSemver,
   experimentalFields,

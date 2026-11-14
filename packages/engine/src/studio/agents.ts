@@ -74,7 +74,7 @@ export function agentsAPI(s: Server, request: Request): Response {
     if (a.id === director.Tool) {
       // 导演随客户端下发，不用装；「装好」指填了至少一家模型服务的密钥。
       const ready = director.configuredProviders(director.defaultDir(envMap())).length > 0;
-      return { id: a.id, label: a.label, command: 'am studio agent', installed: ready, renderer, ...(ready ? {} : { hint: '先在设置里填一个模型服务的 API key' }) };
+      return { id: a.id, label: a.label, command: 'onset studio agent', installed: ready, renderer, ...(ready ? {} : { hint: '先在设置里填一个模型服务的 API key' }) };
     }
     const info: AgentInfo = { id: a.id, label: a.label, command: executable(a.id), installed: false, renderer, install_url: a.installURL };
     try {

@@ -49,7 +49,7 @@ test('a plugin is added in settings without a project, every project gets it, an
   await confirmAdd.getByRole('button', { name: '装上' }).click();
   await expect.poll(() => installedPlugins(sandbox)).toEqual(['fake-publisher']);
   await expect(confirmAdd).toHaveCount(0);
-  const lock = path.join(project.path, 'article-to-motion.flow.json');
+  const lock = path.join(project.path, 'onset.flow.json');
   expect(JSON.parse(fs.readFileSync(lock, 'utf8'))).toEqual({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } });
   const card = stations.locator('li[data-station="fake-publisher"]');
   await expect(card).toContainText('假发布');
@@ -166,7 +166,7 @@ test('a plugin page runs sandboxed and gets everything through the host', async 
   await expect(frame.locator('#result')).toHaveText('没执行：用户没有同意');
 });
 
-test('plugins get settings, a slot in the publish page, a slash command, hooks and calls into am', async ({ page, project, sandbox }) => {
+test('plugins get settings, a slot in the publish page, a slash command, hooks and calls into onset', async ({ page, project, sandbox }) => {
   fs.mkdirSync(path.join(project.path, 'production'), { recursive: true });
   fs.writeFileSync(path.join(project.path, 'production', 'script-final.md'), '# 稿\n正文\n');
   fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: draft\n---\n');
@@ -204,10 +204,10 @@ test('plugins get settings, a slot in the publish page, a slash command, hooks a
   // 页面跟随宿主的配色。
   await expect(frame.locator('#theme')).toHaveText('强调色 #d9a35f');
 
-  // 调 am 自带的操作：先请用户确认，拒绝就不跑。
+  // 调 onset 自带的操作：先请用户确认，拒绝就不跑。
   const confirm = page.locator('.station-confirm');
   await clickInPage(frame.locator('#review'), () => expect(confirm).toBeVisible({ timeout: 2000 }));
-  await expect(confirm).toContainText('「假发布」请求调用 ArticleToMotion 的：整片复查');
+  await expect(confirm).toContainText('「假发布」请求调用片场的：整片复查');
   await confirm.getByRole('button', { name: '不执行' }).click();
   await expect(frame.locator('#result')).toHaveText('没执行：用户没有同意');
 
@@ -263,7 +263,7 @@ test('a plugin brings a new kind of project, a voice and a style library, and se
   await expect(page.locator('.creation')).toHaveCount(0, { timeout: 15_000 });
   await expect(page.locator('#title')).toContainText('插件做法的端到端测试');
   const created = (await api(page, '/api/projects')).body.projects.find((p) => p.name.startsWith('插件做法的端到端测试'));
-  expect(JSON.parse(fs.readFileSync(path.join(created.path, 'article-to-motion.flow.json'), 'utf8')).production.id).toBe('x:fake-publisher');
+  expect(JSON.parse(fs.readFileSync(path.join(created.path, 'onset.flow.json'), 'utf8')).production.id).toBe('x:fake-publisher');
 
   // 顶栏第一步是它的页面，路线是它的。
   await expect(page.locator('.steps [data-tab="x:fake-publisher:dashboard"]')).toBeVisible();
@@ -304,7 +304,7 @@ test('builtin features are plugins too: always on, listed with what they bring, 
   await expect(builtin.locator('li[data-builtin="anidoodle-styles"]')).toContainText('anidoodle 代码绘画');
   await expect(builtin.locator('li[data-builtin="huashu-styles"]')).toContainText('花叔艺术动画');
   await expect(builtin.locator('li[data-builtin="cast"]')).toContainText('多角色对话');
-  // 「详情」照实列出这个功能在 ArticleToMotion 里登记了什么。
+  // 「详情」照实列出这个功能在片场里登记了什么。
   const cast = builtin.locator('li[data-builtin="cast"]');
   await cast.getByRole('button', { name: '详情' }).click();
   await expect(cast.locator('.builtin-detail')).toContainText('character-rig');
@@ -339,7 +339,7 @@ test('files a plugin op writes outside what it declared are shown as a warning',
   await page.locator('#tasks-toggle').click();
   await page.screenshot({ path: test.info().outputPath('station-scope-publish.png') });
 
-  // 插件页面的 am.run()：用户点「执行」后，回执处（宿主那一侧）标出越界的文件。
+  // 插件页面的 onset.run()：用户点「执行」后，回执处（宿主那一侧）标出越界的文件。
   fs.rmSync(path.join(project.path, 'notes'), { recursive: true, force: true });
   await openPage(page, 'x:fake-publisher:dashboard');
   const host = page.locator('.station-page');
@@ -357,13 +357,13 @@ test('a third-party station that declares its state says when it waits for you, 
   // 假发布只用清单顶替内置「发布」：并进 declared-state.json（站点读 publish.md 的 publish_status）。
   const dir = test.info().outputPath('declared-publisher');
   fs.cpSync(fake, dir, { recursive: true });
-  const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'am-station.json'), 'utf8'));
+  const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'onset-station.json'), 'utf8'));
   const patch = JSON.parse(fs.readFileSync(path.join(dir, 'declared-state.json'), 'utf8'));
   manifest.replaces = patch.replaces;
   delete manifest.after;
   delete manifest.flow;
   Object.assign(manifest.nodes[0], patch.node);
-  fs.writeFileSync(path.join(dir, 'am-station.json'), JSON.stringify(manifest, null, 2));
+  fs.writeFileSync(path.join(dir, 'onset-station.json'), JSON.stringify(manifest, null, 2));
 
   // 试听确认过（前面的站都算过了），发布信息只差人工检查。
   fs.mkdirSync(path.join(project.path, 'production'), { recursive: true });

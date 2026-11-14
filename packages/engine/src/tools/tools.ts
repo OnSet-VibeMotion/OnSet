@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { marshal } from '../gojson';
 import { defaultDir as directorDir, loadKeys as directorKeys, Tool as DirectorToolName } from '../director';
-import { amCommand, WindowsBaseEnvKeys } from '../envutil';
+import { onsetCommand, WindowsBaseEnvKeys } from '../envutil';
 import { pluginChildEnvs } from '../plugin/registry';
 
 export const UserMessageMarker = '[[USER_MESSAGE]]';
@@ -40,41 +40,41 @@ export interface RendererAccess {
   commands?: string[];
   /** 镜头目录之外需要读取的目录（技能树），绝对路径。 */
   readDirs?: string[];
-  /** am 的工具服务（--profile renderer）：渲染器只经它调用 HyperFrames，不在 Bash 里跑 am。 */
+  /** onset 的工具服务（--profile renderer）：渲染器只经它调用 HyperFrames，不在 Bash 里跑 onset。 */
   toolsServer?: McpServer;
 }
 
 /**
- * 一个 stdio MCP 服务。客户端里的编排工具与渲染器经 am 的工具服务（am studio tools-mcp）调用 am 的能力，
- * am 不在它们的 PATH 里：以前它们会 which am、strings am 反推格式，每次都撞白名单打断用户。
+ * 一个 stdio MCP 服务。客户端里的编排工具与渲染器经 onset 的工具服务（onset studio tools-mcp）调用 onset 的能力，
+ * onset 不在它们的 PATH 里：以前它们会 which onset、strings onset 反推格式，每次都撞白名单打断用户。
  */
 export interface McpServer {
   /** 配置里的服务名；claude 系的工具全名是 mcp__<名字>__<工具>。 */
   name: string;
   command: string;
   args: string[];
-  /** 服务要的环境变量（am 的设置、收件目录等）。各家把多少环境传给 MCP 服务不一，显式给最稳。 */
+  /** 服务要的环境变量（onset 的设置、收件目录等）。各家把多少环境传给 MCP 服务不一，显式给最稳。 */
   env?: Record<string, string>;
 }
 
-/** am 工具服务在配置里的名字。 */
-export const ToolsServerName = 'am';
+/** onset 工具服务在配置里的名字。 */
+export const ToolsServerName = 'onset';
 
 /**
- * am 的工具服务：executable 是 am 的启动脚本（客户端的私有 shim，或终端里的 am），workdir 是工具执行的目录。
- * env 只挑 am 自己要的变量：整个子进程环境写进 MCP 配置会出现在命令行里，不安全模式下里面还有凭据。
+ * onset 的工具服务：executable 是 onset 的启动脚本（客户端的私有 shim，或终端里的 onset），workdir 是工具执行的目录。
+ * env 只挑 onset 自己要的变量：整个子进程环境写进 MCP 配置会出现在命令行里，不安全模式下里面还有凭据。
  */
-export function amToolsServer(executable: string, profile: 'orchestrator' | 'renderer', workdir: string, env: Record<string, string | undefined> = {}): McpServer {
+export function onsetToolsServer(executable: string, profile: 'orchestrator' | 'renderer', workdir: string, env: Record<string, string | undefined> = {}): McpServer {
   const picked: Record<string, string> = {};
   // 内置插件登记的子进程变量（plugin.PluginChildEnv）同样放行。
   const pluginKeys = new Set(pluginChildEnvs().map((e) => e.value.key));
   for (const [key, value] of Object.entries(env)) {
     if (value === undefined) continue;
-    if (/^(AM_|HYPERFRAMES_|MEMORY|ORCHESTRATOR$|RENDERER$|ORCHESTRATOR_MODEL$|RENDERER_MODEL$|TTS_|ALIGN_|SCENE_JOBS$|PATH$|HOME$|USER$|LANG$|TMPDIR$|XDG_DATA_HOME$)/.test(key) || WindowsBaseEnvKeys.includes(key) || pluginKeys.has(key)) picked[key] = value;
+    if (/^(ONSET_|HYPERFRAMES_|MEMORY|ORCHESTRATOR$|RENDERER$|ORCHESTRATOR_MODEL$|RENDERER_MODEL$|TTS_|ALIGN_|SCENE_JOBS$|PATH$|HOME$|USER$|LANG$|TMPDIR$|XDG_DATA_HOME$)/.test(key) || WindowsBaseEnvKeys.includes(key) || pluginKeys.has(key)) picked[key] = value;
   }
-  // Windows 上 executable 是 am.cjs，要用 Electron / Node 来跑（envutil.amCommand）。
-  const am = amCommand(executable);
-  return { name: ToolsServerName, command: am.command, args: [...am.args, 'studio', 'tools-mcp', '--profile', profile, '--workdir', workdir], env: { ...picked, ...am.env } };
+  // Windows 上 executable 是 onset.cjs，要用 Electron / Node 来跑（envutil.onsetCommand）。
+  const onset = onsetCommand(executable);
+  return { name: ToolsServerName, command: onset.command, args: [...onset.args, 'studio', 'tools-mcp', '--profile', profile, '--workdir', workdir], env: { ...picked, ...onset.env } };
 }
 
 /** claude / qoder / codebuddy 的 --mcp-config：几个服务合在一份 JSON 里。 */
@@ -117,8 +117,8 @@ function claudeSettings(a: RendererAccess & { mcp?: string[] }): string {
     permissions: {
       additionalDirectories: dirs,
       allow,
-      // am 只经工具服务调用；它不在 PATH 里，这里再明确拒绝一次，免得弹审批卡片。
-      deny: ['Bash(am:*)', 'Read(**/.env)', 'Read(**/.env.*)'],
+      // onset 只经工具服务调用；它不在 PATH 里，这里再明确拒绝一次，免得弹审批卡片。
+      deny: ['Bash(onset:*)', 'Read(**/.env)', 'Read(**/.env.*)'],
     },
   });
 }
@@ -207,7 +207,7 @@ function parseConfig(text: string | undefined): Record<string, unknown> {
 /**
  * 安全模式下编排工具要放行的 Bash 命令前缀。
  *
- * 编排工具要跑 am 子命令、ffmpeg、TTS 与对齐 CLI，而各家「只批准文件编辑」的权限模式
+ * 编排工具要跑 onset 子命令、ffmpeg、TTS 与对齐 CLI，而各家「只批准文件编辑」的权限模式
  * 一律拦下 Bash（claude 的 acceptEdits、qoder 的 accept_edits），dont_ask 更是连写文件
  * 都拒——实测安全模式下整片制作因此一步都走不动。清单由调用方按项目配置算出，
  * 见 project.OrchestratorAccess。
@@ -216,7 +216,7 @@ export interface OrchestratorAccess {
   commands?: string[];
   /**
    * 工作目录之外还要可写的目录（渲染记忆库）。只有靠沙箱限制写入
-   * 的工具（codex）需要它：编排工具调用的 am memory remember 与 am scene run
+   * 的工具（codex）需要它：编排工具调用的 onset memory remember 与 onset scene run
    * 要往用户级的记忆库写，workspace-write 沙箱默认只放行工作目录。
    * 不存在的目录不传，codex 对它的处理没有实测过。
    */
@@ -237,11 +237,11 @@ export interface OrchestratorOptions {
   access?: OrchestratorAccess;
   /**
    * 安全模式下需要批准的调用交给谁问。给了就让 claude 把审批交给这个 MCP 服务（客户端里是
-   * am studio permission-mcp，问界面上的用户）；不给（am run）时照旧，白名单外的一律拒绝。
+   * onset studio permission-mcp，问界面上的用户）；不给（onset run）时照旧，白名单外的一律拒绝。
    * claude 与 qoder 支持（qoder 的帮助里没列，实测可用），其他工具忽略它。
    */
   permissionPrompt?: PermissionPrompt;
-  /** am 的工具服务（--profile orchestrator）：客户端里给，编排工具只经它调用 am。 */
+  /** onset 的工具服务（--profile orchestrator）：客户端里给，编排工具只经它调用 onset。 */
   toolsServer?: McpServer;
   /** 模型（config 的 orchestratorModel）；空用那家工具自己的默认，见 modelArgs。 */
   model?: string;
@@ -253,7 +253,7 @@ export interface OrchestratorOptions {
 export interface PermissionPrompt {
   command: string;
   args: string[];
-  /** 启动它要的环境变量（Windows 上用 Electron 跑 am.cjs 时的 ELECTRON_RUN_AS_NODE 等，见 envutil.amCommand）。 */
+  /** 启动它要的环境变量（Windows 上用 Electron 跑 onset.cjs 时的 ELECTRON_RUN_AS_NODE 等，见 envutil.onsetCommand）。 */
   env?: Record<string, string>;
   /** MCP 配置里的服务名；工具名是 mcp__<server>__ask。 */
   server: string;
@@ -409,9 +409,9 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
       return { argv: args, stdin: '' };
     }
     case 'director': {
-      // 导演是 am 自己（am studio agent），请求经 stdin 给，见 director.Request。
-      // 不能按名字找 am：编排工具的 PATH 最前面是只会报错的那个 am（envutil.addToolsLocation）。
-      const am = amCommand();
+      // 导演是 onset 自己（onset studio agent），请求经 stdin 给，见 director.Request。
+      // 不能按名字找 onset：编排工具的 PATH 最前面是只会报错的那个 onset（envutil.addToolsLocation）。
+      const onset = onsetCommand();
       const agentDir = o.agentDir || directorDir({ ...process.env, ...env });
       const request = {
         workdir,
@@ -427,7 +427,7 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
         // 导演与它跑的命令都不读磁盘上的凭据，见 director.loadKeys。
         keys: directorKeys(agentDir),
       };
-      return { argv: [am.command, ...am.args, 'studio', 'agent'], stdin: JSON.stringify(request) + '\n', env: am.env };
+      return { argv: [onset.command, ...onset.args, 'studio', 'agent'], stdin: JSON.stringify(request) + '\n', env: onset.env };
     }
     case 'opencode': {
       // opencode 只认项目目录里的 opencode.json，规则集写法实测拦不住命令，

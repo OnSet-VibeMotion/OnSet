@@ -46,7 +46,7 @@ function finish(root: string, c: Candidate, media: Toolchain): void {
   writeJSON(path.join(dir, 'candidate.json'), candidateToJSON(c));
 }
 
-/** 导入外部歌曲（am song import）。 */
+/** 导入外部歌曲（onset song import）。 */
 export function importSong(root: string, audio: string, lyrics: string, media: Toolchain): Candidate {
   loadConfig(root);
   return withLock(root, () => importCandidate(root, audio, lyrics, media));

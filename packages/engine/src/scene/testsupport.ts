@@ -10,18 +10,18 @@ import { fakeBrowser, fakeCLI } from '../hyperframes/hftest';
 import { load, type Scene } from './scene';
 import { PhraseCopyFile } from './timing';
 
-// main_test.go 的 TestMain：渲染前会确保 am 管理的 HyperFrames CLI 已装好，测试里换成假的，
+// main_test.go 的 TestMain：渲染前会确保 onset 管理的 HyperFrames CLI 已装好，测试里换成假的，
 // 免得真的去 npm install。导入本文件即生效。
-const fakeCLIDir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-hyperframes-cli-test-'));
+const fakeCLIDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-hyperframes-cli-test-'));
 fakeCLI(fakeCLIDir);
-process.env.AM_BROWSER = fakeBrowser(fakeCLIDir);
-// am setup 下载的工具目录指到空目录：开发机上 ~/.local/share/am/bin 里真实的 ffmpeg、mmx 不能混进测试。
-process.env.AM_BIN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-bin-test-'));
+process.env.ONSET_BROWSER = fakeBrowser(fakeCLIDir);
+// onset setup 下载的工具目录指到空目录：开发机上 ~/.local/share/onset/bin 里真实的 ffmpeg、mmx 不能混进测试。
+process.env.ONSET_BIN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-bin-test-'));
 process.env[hyperframes.CLIDirEnv] = fakeCLIDir;
 
 /** t.TempDir()：测试结束时删掉。 */
 export function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-scene-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-scene-'));
   onTestFinished(() => fs.rmSync(dir, { recursive: true, force: true }));
   return dir;
 }

@@ -1,6 +1,6 @@
 /**
  * 内置插件的进程内入口（apply）能登记的东西。设计见 docs/superpowers/specs/2026-11-11-流程插件-design.md 第二节：
- * 第三方站只能声明（am-station.json），内置插件随客户端下发、与宿主同进程，在 apply(ctx) 里登记代码。
+ * 第三方站只能声明（onset-station.json），内置插件随客户端下发、与宿主同进程，在 apply(ctx) 里登记代码。
  *
  * 这一层在依赖的最底下：只 import flow 的类型（不 import 运行时代码），不依赖 studio 与 cli。
  * 各层从登记表里取自己要的东西：
@@ -14,8 +14,8 @@
  * | 接口 | studio.ts 的路由表 |
  * | 校验器 | 客户端后端的「检查」命令（/api/commands/<id>.check） |
  * | 网页命令 | 客户端后端的 /api/commands/<id>（界面按钮直接触发的写任务） |
- * | 前置资源 | prereqs.items（am setup、客户端安装页） |
- * | 子进程环境变量 | config.childEnvironment 与工具服务（tools.amToolsServer）的放行表 |
+ * | 前置资源 | prereqs.items（onset setup、客户端安装页） |
+ * | 子进程环境变量 | config.childEnvironment 与工具服务（tools.onsetToolsServer）的放行表 |
  * | 顶栏步骤 | studioview.stepIDs（studio_step 能标的步骤、顶栏的步骤） |
  * | 整片风格来源 | filmstyle 的来源表（风格目录、装进项目、风格选择器） |
  * | 界面皮肤 | studio/skins.ts（设置页的外观、主窗口与桌宠的配色） |
@@ -146,7 +146,7 @@ export interface PluginOpContext {
   unsafe: boolean;
 }
 
-/** 一条 am 操作，字段与 cli 的 ops/op.ts 的 Op 相同；cli 订阅登记表后照旧 defineOp。 */
+/** 一条 onset 操作，字段与 cli 的 ops/op.ts 的 Op 相同；cli 订阅登记表后照旧 defineOp。 */
 export interface PluginOp {
   name: string;
   cli: string[];
@@ -199,7 +199,7 @@ export interface PluginValidator {
 }
 
 /**
- * 叙事模式（am init --narration、新建对话框）。单口播（solo）是宿主自己的缺省，不登记；
+ * 叙事模式（onset init --narration、新建对话框）。单口播（solo）是宿主自己的缺省，不登记；
  * 插件登记的模式选中时由 init 写出它的初始文件（目标目录里已有同名文件且内容不同时要报错，不静默覆盖）。
  * 选了这个模式就算在用登记它的插件（流程的 excludes.plugins 据此判断）。
  */
@@ -233,7 +233,7 @@ export interface PluginRenderCheck {
   beforeConcat?(root: string, scenes: readonly Scene[]): void;
 }
 
-/** 开发用命令行的命令组（`am song` 这一层）的说明。 */
+/** 开发用命令行的命令组（`onset song` 这一层）的说明。 */
 export interface PluginOpGroup {
   path: string[];
   summary: string;
@@ -270,7 +270,7 @@ export interface PluginStep {
 }
 
 /**
- * 网页上直接触发的一条确定性命令（/api/commands/<id>）：跑一条 am 操作，作为写任务。params 从请求体与项目根算出
+ * 网页上直接触发的一条确定性命令（/api/commands/<id>）：跑一条 onset 操作，作为写任务。params 从请求体与项目根算出
  * 操作参数，请求不合格时返回 { error }（回 400，code 是 error.code）。
  */
 export interface PluginCommand {
@@ -281,7 +281,7 @@ export interface PluginCommand {
 }
 
 export interface PluginContext {
-  /** 插件 id，与 assets/plugins/<id>/am-station.json 的 id 相同（名字、说明都在那份清单里）。 */
+  /** 插件 id，与 assets/plugins/<id>/onset-station.json 的 id 相同（名字、说明都在那份清单里）。 */
   readonly id: string;
   /** 插件目录（缺省 assets/plugins/<id>/），提示词段落的 file 相对它。 */
   readonly dir: string;

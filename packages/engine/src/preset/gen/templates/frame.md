@@ -32,7 +32,7 @@ audio:
 
 # 画幅：{{ORIENTATION}} {{CANVAS}}
 
-本文件由 am 按新建项目时选的画幅写出，只记录技术信息：画布与帧率（`canvas`）、安全区（`safe_area`）、烧录字幕的版式约束（`subtitles`：字号范围、最大宽度、行数、每行字数、行高与断句规则，`scene-kit` 的 `SceneKit.captions` 读它；字幕的配色由镜头自己定）与混音响度目标（`audio`）。镜头的配色、字体、版式、材质与动效由各镜头自行决定，不从这里取。
+本文件由 onset 按新建项目时选的画幅写出，只记录技术信息：画布与帧率（`canvas`）、安全区（`safe_area`）、烧录字幕的版式约束（`subtitles`：字号范围、最大宽度、行数、每行字数、行高与断句规则，`scene-kit` 的 `SceneKit.captions` 读它；字幕的配色由镜头自己定）与混音响度目标（`audio`）。镜头的配色、字体、版式、材质与动效由各镜头自行决定，不从这里取。
 
 镜头产物的画幅、帧率由 `canvas` 决定，`scene_run()` 渲染后按它校验；`canvas` 与 `safe_area` 的数字不要改。
 

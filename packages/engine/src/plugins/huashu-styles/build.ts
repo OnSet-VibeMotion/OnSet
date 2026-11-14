@@ -1,5 +1,5 @@
 //
-// 把下载下来的 huashu-art-motion 变成项目里能直接用的东西（am setup 的最后一步，不联网）：
+// 把下载下来的 huashu-art-motion 变成项目里能直接用的东西（onset setup 的最后一步，不联网）：
 //
 //   1. engine.js 去掉预览播放器（patchEngine）：那段只在浏览器里手动预览时用，读 performance.now()，
 //      HyperFrames 的 lint 直接拦下。
@@ -7,7 +7,7 @@
 //      引擎启动时加载 FONT_FACES 里的每一个字体，列了没带的文件会启动失败；全带上的话每个镜头多 15 MB。
 //   3. 从上游全风格总览图里裁出每种风格的海报。
 //
-// 产物放在构建目录（buildDir）：am 自己克隆的检出放在检出里的 .am-build/，用户自己的检出另放在 am 的数据目录，
+// 产物放在构建目录（buildDir）：onset 自己克隆的检出放在检出里的 .onset-build/，用户自己的检出另放在 onset 的数据目录，
 // 不往用户的目录里写。全部完成写 BuildMarker（commit 与 BuildVersion），改了这里的规则就递增 BuildVersion，
 // 已下载的检出会重新构建、不必重新下载。
 import crypto from 'node:crypto';
@@ -23,7 +23,7 @@ import { EngineDir, SourceID, catalogFile, type Catalog, type Entry, type Font }
 export const BuildVersion = 1;
 
 /** 构建完成的记录文件。 */
-export const BuildMarker = 'am-build.txt';
+export const BuildMarker = 'onset-build.txt';
 
 /** 去掉预览播放器的 engine.js 在构建目录里的位置。 */
 export const EngineOut = 'engine.js';
@@ -44,7 +44,7 @@ export interface BuildTarget {
 
 /** 这份检出的构建目录。 */
 export function buildDir(lib: BuildTarget, env: Record<string, string | undefined>): string {
-  if (lib.managed) return path.join(lib.dir, '.am-build');
+  if (lib.managed) return path.join(lib.dir, '.onset-build');
   const key = crypto.createHash('sha256').update(path.resolve(lib.dir)).digest('hex').slice(0, 12);
   return path.join(sourceDir(env, SourceID), 'local-' + key);
 }
@@ -73,13 +73,13 @@ function once(text: string, marker: string): number {
 
 /**
  * 去掉 engine.js 的预览播放器：从「预览 UI」那行注释到 boot() 之前（拖动条、播放按钮与读 performance.now() 的播放循环）。
- * 引擎在镜头里只由 hf-seek 驱动（接头 am-huashu.js），用不上它。
+ * 引擎在镜头里只由 hf-seek 驱动（接头 onset-huashu.js），用不上它。
  */
 export function patchEngine(js: string): string {
   const start = once(js, previewStart);
   const end = once(js, previewEnd);
   if (end < start) throw new Error('engine.js 的预览播放器不在 boot() 之前：上游写法已变，要同步改 build.ts 的 patchEngine');
-  const out = js.slice(0, start) + '// ---------- 预览 UI：ArticleToMotion 去掉了（镜头里只由 hf-seek 驱动，见 am-huashu.js） ----------\n' + js.slice(end);
+  const out = js.slice(0, start) + '// ---------- 预览 UI：片场去掉了（镜头里只由 hf-seek 驱动，见 onset-huashu.js） ----------\n' + js.slice(end);
   if (/performance\.now|requestAnimationFrame|Math\.random|Date\.now/.test(out)) throw new Error('去掉预览播放器后的 engine.js 里仍有读时钟或不带种子的随机数：上游写法已变');
   return out;
 }
@@ -106,7 +106,7 @@ export function fontsScript(upstream: string, fonts: Font[]): string {
     return line;
   });
   return [
-    '// 这种风格带上的字体（ArticleToMotion 按风格从上游 lib/fonts.js 挑出，路径相对镜头目录）。',
+    '// 这种风格带上的字体（片场按风格从上游 lib/fonts.js 挑出，路径相对镜头目录）。',
     '// 每个字体文件注册成独立 family（文件名去扩展名），用法：ctx.font = \'96px "Cinzel-700"\'。没列在这里的上游字体没有带。',
     'window.FONT_FACES = [',
     ...kept,

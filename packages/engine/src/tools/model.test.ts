@@ -21,7 +21,7 @@ describe('model', () => {
   });
 
   it('configured model reads codex top level only', () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'am-tools-'));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-tools-'));
     fs.writeFileSync(path.join(home, 'config.toml'), '# 注释\nmodel = "gpt-6-astra"  # 默认\nmodel_reasoning_effort = "medium"\n[profiles.fast]\nmodel = "other"\n');
     expect(configuredModel('codex', { CODEX_HOME: home })).toBe('gpt-6-astra');
     fs.writeFileSync(path.join(home, 'config.toml'), '[profiles.fast]\nmodel = "other"\n');

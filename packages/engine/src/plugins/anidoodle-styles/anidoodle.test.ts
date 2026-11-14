@@ -42,7 +42,7 @@ const hasFFmpeg = has('ffmpeg');
 
 const temps: string[] = [];
 function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-anidoodle-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-anidoodle-'));
   temps.push(dir);
   return dir;
 }
@@ -262,7 +262,7 @@ describe.skipIf(!hasGit || !hasFFmpeg)('anidoodle library', () => {
         'SKILL.md',
         'STYLE.md',
         'poster.jpg',
-        'anidoodle/am-anidoodle.js',
+        'anidoodle/onset-anidoodle.js',
         'anidoodle/canvas-core/core.js',
         'anidoodle/canvas-core/film.js',
         'anidoodle/canvas-core/foo.js',
@@ -300,15 +300,15 @@ describe.skipIf(!hasGit || !hasFFmpeg)('anidoodle library', () => {
     const lib = await prepareLibrary({ env, commit: f.commit, catalog: f.catalog });
     expect(lib.managed).toBe(false);
     expect(buildDir(lib, env).startsWith(own)).toBe(false);
-    expect(fs.existsSync(path.join(own, '.am-build'))).toBe(false);
+    expect(fs.existsSync(path.join(own, '.onset-build'))).toBe(false);
     expect(gitRun(own, 'status', '--porcelain')).toBe('');
     await expect(prepareLibrary({ env, commit: 'f'.repeat(40), catalog: f.catalog })).rejects.toThrow('请在你的检出里切到这个 commit');
   });
 });
 
-// 真实上游：设 AM_ANIDOODLE_SRC=<固定 commit 的检出> 时，把 32 种风格全部转换、装进镜头目录，
+// 真实上游：设 ONSET_ANIDOODLE_SRC=<固定 commit 的检出> 时，把 32 种风格全部转换、装进镜头目录，
 // 用镜头产物校验同一套确定性扫描过一遍（接头 + 风格模块不能被判成不确定）。
-const realSrc = process.env.AM_ANIDOODLE_SRC ?? '';
+const realSrc = process.env.ONSET_ANIDOODLE_SRC ?? '';
 describe.skipIf(realSrc === '' || !hasFFmpeg)('anidoodle against the pinned upstream', () => {
   it('builds every style and passes the determinism scan', async () => {
     const env = { PATH: process.env.PATH ?? '', XDG_DATA_HOME: tempDir(), HOME: process.env.HOME ?? '', [LibraryEnv]: realSrc };
@@ -323,7 +323,7 @@ describe.skipIf(realSrc === '' || !hasFFmpeg)('anidoodle against the pinned upst
       const kit = entry.modules.find((m) => /Kit\.ts$/.test(m)) ?? entry.module;
       fs.writeFileSync(
         path.join(scene, 'index.html'),
-        `<canvas id="c"></canvas><script type="module">\nimport { play } from './anidoodle/am-anidoodle.js';\nimport * as kit from './anidoodle/${kit.replace(/\.ts$/, '.js')}';\nimport * as plate from './anidoodle/${entry.draw_film.replace(/\.ts$/, '.js')}';\n</script>\n`,
+        `<canvas id="c"></canvas><script type="module">\nimport { play } from './anidoodle/onset-anidoodle.js';\nimport * as kit from './anidoodle/${kit.replace(/\.ts$/, '.js')}';\nimport * as plate from './anidoodle/${entry.draw_film.replace(/\.ts$/, '.js')}';\n</script>\n`,
       );
       fs.rmSync(style, { recursive: true });
       const report = determinism.scan(scene);

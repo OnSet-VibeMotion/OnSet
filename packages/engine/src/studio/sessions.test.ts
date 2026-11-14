@@ -246,7 +246,7 @@ describe('sessions', () => {
     const preview = await rawGet(f.s, '/preview/scenes/scene-001/');
     expect(preview.status).toBe(200);
     expect(preview.text).toContain('composition');
-    for (const p of ['/preview/scenes/scene-001/.env', '/preview/scenes/missing/index.html', '/preview/scenes/scene-001/%2e%2e/%2e%2e/article-to-motion.conf']) {
+    for (const p of ['/preview/scenes/scene-001/.env', '/preview/scenes/missing/index.html', '/preview/scenes/scene-001/%2e%2e/%2e%2e/onset.conf']) {
       const res = await rawGet(f.s, p);
       const leaked = res.status === 200 && (res.text.includes('NOTE=1') || res.text.includes('ORCHESTRATOR=claude'));
       expect(leaked, `${p} 不应可读：${res.text}`).toBe(false);

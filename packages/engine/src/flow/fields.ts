@@ -28,7 +28,7 @@ export function strings(raw: Record<string, unknown>, key: string, where: string
 export function projectPath(p: string, where: string): string {
   const norm = p.replaceAll('\\', '/');
   if (norm.startsWith('/') || /^[A-Za-z]:/.test(norm) || norm.split('/').includes('..')) throw new Error(`${where}：${p} 要是项目里的相对路径`);
-  if (ReservedPrefixes.some((r) => norm === r.replace(/\/$/, '') || norm.startsWith(r))) throw new Error(`${where}：${p} 是 am 自己的文件，第三方站不能声明`);
+  if (ReservedPrefixes.some((r) => norm === r.replace(/\/$/, '') || norm.startsWith(r))) throw new Error(`${where}：${p} 是 onset 自己的文件，第三方站不能声明`);
   return norm;
 }
 

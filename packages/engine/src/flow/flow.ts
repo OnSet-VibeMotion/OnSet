@@ -23,7 +23,7 @@ export class MissingFlowRecordError extends Error {
 }
 
 /**
- * 新建时记下的流程（article-to-motion.flow.json 的 production.id）。没有记录、读不了锁文件、
+ * 新建时记下的流程（onset.flow.json 的 production.id）。没有记录、读不了锁文件、
  * 或记的流程这一版不认得，一律抛 MissingFlowRecordError：项目用哪个流程只看记录，不按 beat.yaml、song.yaml 这类文件推断。
  * 第三方插件带来的流程记成 x:<插件 id>，要这台电脑装着那个插件（extra 里有它的流程）；没装时说清楚缺哪个插件。
  */
@@ -40,7 +40,7 @@ export function recordedFlow(root: string, extra: readonly ExtraStation[] = []):
   if (!rec) {
     throw new MissingFlowRecordError(
       `这个目录没有流程记录：${LockFile} 里要有 "production": {"id": "<${ids.join(' | ')}>", "canvas": "<画幅>"}。` +
-        '它不是用这一版 ArticleToMotion 新建的项目（旧版建的项目没有这一段）：请新建一个项目，再把文章与素材拷进去。',
+        '它不是用这一版片场新建的项目（旧版建的项目没有这一段）：请新建一个项目，再把文章与素材拷进去。',
     );
   }
   if (rec.id.startsWith('x:')) {

@@ -4,19 +4,19 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall, getAttributionHeaders, type ClientIdentity } from '@earendil-works/pi-ai';
-import * as agentrun from '@am/engine/agentrun';
-import * as director from '@am/engine/director';
-import * as opworker from '@am/engine/opworker';
-import * as studioview from '@am/engine/studioview';
-import * as tools from '@am/engine/tools';
-import { amTools, parseRequest, runBuiltinAgent } from './command';
+import * as agentrun from '@onset/engine/agentrun';
+import * as director from '@onset/engine/director';
+import * as opworker from '@onset/engine/opworker';
+import * as studioview from '@onset/engine/studioview';
+import * as tools from '@onset/engine/tools';
+import { onsetTools, parseRequest, runBuiltinAgent } from './command';
 import { newGate } from './gate';
 import { StreamWriter } from './stream';
 import { TodoToolName } from './todo';
 
 let tmp: string;
 beforeEach(() => {
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'am-agent-test-'));
+  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-agent-test-'));
 });
 afterEach(() => {
   fs.rmSync(tmp, { recursive: true, force: true });
@@ -83,9 +83,9 @@ describe('StreamWriter', () => {
 });
 
 describe('gate', () => {
-  const base = () => ({ workdir: tmp, unsafe: false, commands: ['ls', 'git status'], writableDirs: [], amTools: new Set(['scene_run']), inbox: '', pollInterval: 10 });
+  const base = () => ({ workdir: tmp, unsafe: false, commands: ['ls', 'git status'], writableDirs: [], onsetTools: new Set(['scene_run']), inbox: '', pollInterval: 10 });
 
-  it('allows whitelisted commands, project files and am tools; refuses .env and the rest outside the client', async () => {
+  it('allows whitelisted commands, project files and onset tools; refuses .env and the rest outside the client', async () => {
     const gate = newGate(base());
     expect(await gate('bash', { command: 'ls -la' }, undefined)).toBeNull();
     expect(await gate('bash', { command: 'git status' }, undefined)).toBeNull();
@@ -137,7 +137,7 @@ describe('gate keeps credentials away from bash', () => {
     fs.writeFileSync(path.join(workdir, 'a.txt'), 'hello\n');
     fs.writeFileSync(path.join(agentDir, 'auth.json'), '{}\n');
     const commands = ['ls', 'cat', 'head', 'cp', 'find', 'grep', 'rg', 'tar', 'curl', 'git show', 'base64', 'ln'];
-    const gate = newGate({ workdir, unsafe: false, commands, writableDirs: [], agentDir, amTools: new Set(), inbox: '', pollInterval: 10 });
+    const gate = newGate({ workdir, unsafe: false, commands, writableDirs: [], agentDir, onsetTools: new Set(), inbox: '', pollInterval: 10 });
     return { workdir, agentDir, gate };
   };
   const run = (gate: ReturnType<typeof newGate>, command: string) => gate('bash', { command }, undefined);
@@ -191,10 +191,10 @@ describe('gate keeps credentials away from bash', () => {
     const { workdir, agentDir, gate } = setup();
     fs.symlinkSync(path.join(agentDir, 'auth.json'), path.join(workdir, 'k.json'));
     expect(await run(gate, 'cat k.json')).toMatch(/导演的数据目录/);
-    const homeAgent = path.join(os.homedir(), '.am-gate-test-nonexistent', 'agent');
-    const homeGate = newGate({ workdir, unsafe: false, commands: ['cat', 'find'], writableDirs: [], agentDir: homeAgent, amTools: new Set(), inbox: '', pollInterval: 10 });
-    expect(await run(homeGate, 'cat ~/.am-gate-test-nonexistent/agent/auth.json')).toMatch(/导演的数据目录/);
-    expect(await run(homeGate, 'find ~/.am-gate-test-nonexistent')).toBeNull();
+    const homeAgent = path.join(os.homedir(), '.onset-gate-test-nonexistent', 'agent');
+    const homeGate = newGate({ workdir, unsafe: false, commands: ['cat', 'find'], writableDirs: [], agentDir: homeAgent, onsetTools: new Set(), inbox: '', pollInterval: 10 });
+    expect(await run(homeGate, 'cat ~/.onset-gate-test-nonexistent/agent/auth.json')).toMatch(/导演的数据目录/);
+    expect(await run(homeGate, 'find ~/.onset-gate-test-nonexistent')).toBeNull();
     expect(await run(homeGate, 'find ~ -name auth.json -exec cat {} +')).toMatch(/安全模式下不允许/);
     expect(await run(homeGate, 'cat ~someone/x')).toMatch(/安全模式下不允许/);
   });
@@ -230,9 +230,9 @@ describe('parseRequest', () => {
   });
 });
 
-describe('amTools', () => {
+describe('onsetTools', () => {
   it('exposes the orchestrator ops without the job tools or wait_seconds', () => {
-    const { tools: list } = amTools();
+    const { tools: list } = onsetTools();
     const names = list.map((t) => t.name);
     expect(names).toContain('scene_run');
     expect(names).toContain('tool_help');
@@ -366,7 +366,7 @@ describe('runBuiltinAgent', () => {
     expect(getAttributionHeaders({ provider: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1' }, identity)).toEqual({});
   });
 
-  it('runs am tools one at a time even when the model sends several in one message', async () => {
+  it('runs onset tools one at a time even when the model sends several in one message', async () => {
     let active = 0;
     let peak = 0;
     const started: string[] = [];
@@ -393,8 +393,8 @@ describe('runBuiltinAgent', () => {
     expect(parse(lines).events.filter((e) => e.kind === 'tool-result').map((e) => e.is_error === true)).toEqual([false, false]);
   });
 
-  it('marks am ops sequential except the read-only tool_help', () => {
-    const { tools: list } = amTools();
+  it('marks onset ops sequential except the read-only tool_help', () => {
+    const { tools: list } = onsetTools();
     expect(list.find((t) => t.name === 'tool_help')!.sequential).toBe(false);
     expect(list.filter((t) => t.name !== 'tool_help').every((t) => t.sequential)).toBe(true);
   });

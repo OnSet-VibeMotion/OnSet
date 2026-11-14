@@ -7,9 +7,9 @@ import { fileURLToPath } from 'node:url';
 /*
  * 客户端端到端测试的公共部分。
  *
- * 每个用例一套临时目录：HOME、userData（AM_DESKTOP_USER_DATA）、项目登记（AM_STUDIO_CONFIG）、记忆库（AM_MEMORY_DIR）、音色库（AM_VOICES_DIR），
- * 测试不碰 ~/.local/share/am、~/Library/Application Support/ArticleToMotion 与真实的项目登记。
- * PATH 最前面是 e2e/fake-bin（假 claude 与只用来显示「已安装」的 codex），AM_DESKTOP_KEEP_PATH=1 让主进程不再把登录 shell 的
+ * 每个用例一套临时目录：HOME、userData（ONSET_DESKTOP_USER_DATA）、项目登记（ONSET_STUDIO_CONFIG）、记忆库（ONSET_MEMORY_DIR）、音色库（ONSET_VOICES_DIR），
+ * 测试不碰 ~/.local/share/onset、~/Library/Application Support/片场与真实的项目登记。
+ * PATH 最前面是 e2e/fake-bin（假 claude 与只用来显示「已安装」的 codex），ONSET_DESKTOP_KEEP_PATH=1 让主进程不再把登录 shell 的
  * PATH 并到前面——否则真实的 claude 会被先找到。
  */
 
@@ -26,7 +26,7 @@ export const test = base.extend({
 
   sandbox: async ({}, use) => {
     // realpath：macOS 的临时目录在 /var 下，而 /var 是 /private/var 的链接，Studio 按解析后的路径认项目。
-    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-desktop-e2e-')));
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-desktop-e2e-')));
     const dirs = {
       root,
       home: path.join(root, 'home'),
@@ -45,13 +45,13 @@ export const test = base.extend({
 
   /** 一个只有 scene-001 的项目，放在临时 HOME 下（「打开项目」从 HOME 浏览）。 */
   project: async ({ sandbox }, use) => {
-    const project = fs.mkdtempSync(path.join(sandbox.home, 'am-studio-e2e-'));
+    const project = fs.mkdtempSync(path.join(sandbox.home, 'onset-studio-e2e-'));
     const scene = path.join(project, 'scenes', 'scene-001');
     fs.mkdirSync(scene, { recursive: true });
-    fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\n');
+    fs.writeFileSync(path.join(project, 'onset.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\n');
     // 新建时记下的流程：顶栏、制作路线与「开始制作」的提示词都按它。
     fs.writeFileSync(
-      path.join(project, 'article-to-motion.flow.json'),
+      path.join(project, 'onset.flow.json'),
       JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } }, null, 2) + '\n',
     );
     fs.writeFileSync(path.join(project, 'notes.md'), '项目笔记\n');
@@ -69,24 +69,24 @@ export const test = base.extend({
   electronApp: async ({ sandbox, appEnv }, use) => {
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
-    delete env.AM_STUDIO_E2E_CONFIG;
+    delete env.ONSET_STUDIO_E2E_CONFIG;
     Object.assign(env, {
       HOME: sandbox.home,
-      AM_DESKTOP_USER_DATA: sandbox.userData,
-      AM_DESKTOP_KEEP_PATH: '1',
+      ONSET_DESKTOP_USER_DATA: sandbox.userData,
+      ONSET_DESKTOP_KEEP_PATH: '1',
       // 后台运行：不弹窗口、不进 Dock，不打断开发者手上的事（main.ts）。
-      AM_DESKTOP_BACKGROUND: '1',
-      AM_STUDIO_CONFIG: sandbox.registry,
-      AM_MEMORY_DIR: sandbox.memory,
-      AM_VOICES_DIR: sandbox.voices,
+      ONSET_DESKTOP_BACKGROUND: '1',
+      ONSET_STUDIO_CONFIG: sandbox.registry,
+      ONSET_MEMORY_DIR: sandbox.memory,
+      ONSET_VOICES_DIR: sandbox.voices,
       // 导演的模型服务密钥：不碰开发者自己填的。
-      AM_AGENT_DIR: sandbox.agent,
+      ONSET_AGENT_DIR: sandbox.agent,
       // 不用 safeStorage：测试不能碰开发者的钥匙串（第一次用会弹授权框），key 照旧写成 0600 的明文文件。
-      AM_AGENT_KEYS_PLAINTEXT: '1',
+      ONSET_AGENT_KEYS_PLAINTEXT: '1',
       // 第三方插件（已装插件清单与插件的数据目录）：不碰开发者自己装的。
-      AM_STATIONS_DIR: sandbox.stations,
-      AM_SETTINGS_FILE: sandbox.settings,
-      AM_STUDIO_SKIP_SKILL_INSTALL: '1',
+      ONSET_STATIONS_DIR: sandbox.stations,
+      ONSET_SETTINGS_FILE: sandbox.settings,
+      ONSET_STUDIO_SKIP_SKILL_INSTALL: '1',
       ORCHESTRATOR: 'claude',
       RENDERER: 'claude',
       PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ''}`,
@@ -157,7 +157,7 @@ export async function openPanel(page) {
   await expect(page.locator('#panel')).toBeVisible();
 }
 
-/** 在窗口里请求后台接口：界面从 am://app/ 加载，/api 与它同源。 */
+/** 在窗口里请求后台接口：界面从 onset://app/ 加载，/api 与它同源。 */
 /** 打开顶栏「页面」菜单里的一页（合成、风格、音色、复查、记忆与插件页面）。 */
 export async function openPage(page, tab) {
   await page.locator('#page-menu-trigger').click();

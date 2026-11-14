@@ -1,6 +1,6 @@
 //
 // 不移植：
-// - TestListenAndServeStopsWithContext：TS 版后端不监听端口，Electron 主进程经 am://app/ 协议直接调 handle。
+// - TestListenAndServeStopsWithContext：TS 版后端不监听端口，Electron 主进程经 onset://app/ 协议直接调 handle。
 // - TestStudioContentAndTaskEndpoints 里静态文件的两条（/missing-asset.js 404、/some/route 回落到 index.html）：
 //   界面文件由 Electron 加载，这里不服务。
 // - 「/api/scenes/scene-001/frames/../evil.jpg」那一条：Go 版绕过 ServeMux 直接调 sceneFeatureAPI，

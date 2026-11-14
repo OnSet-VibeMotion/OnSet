@@ -20,7 +20,7 @@ test('settings pick what to use for every project, and one project can differ', 
   await expect(row('ORCHESTRATOR')).toContainText('被环境变量覆盖');
 
   // 这个项目单独把同时渲染改成 5 个：写进项目配置（写任务）。
-  const conf = path.join(project.path, 'article-to-motion.conf');
+  const conf = path.join(project.path, 'onset.conf');
   await row('SCENE_JOBS').getByLabel('这个项目的同时渲染').selectOption('5');
   await expect.poll(() => fs.readFileSync(conf, 'utf8')).toContain('SCENE_JOBS=5');
   await expect(row('SCENE_JOBS').getByLabel('这个项目的同时渲染')).toHaveClass(/overridden/);

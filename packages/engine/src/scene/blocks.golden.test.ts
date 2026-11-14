@@ -1,9 +1,9 @@
 // 镜头扩展块的黄金测试：带 cast、song、beat、timing 块与什么块都没有的镜头，
-// 各自的渲染提示词、输入指纹、am-scene.js 与 scene.json 读入再写回的字节都钉在
+// 各自的渲染提示词、输入指纹、onset-scene.js 与 scene.json 读入再写回的字节都钉在
 // testdata/blocks-golden/ 里。块的实现搬家、换成注册表都不得改变其中任何一个字节：
 // 那会让已有项目的镜头被判 Stale、提示词变样。
 //
-// 确实要改行为时，用 AM_UPDATE_GOLDEN=1 重新生成，并在提交里说明为什么变。
+// 确实要改行为时，用 ONSET_UPDATE_GOLDEN=1 重新生成，并在提交里说明为什么变。
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -17,7 +17,7 @@ import { SongExplainerSkillName } from '../plugins/song';
 import { dataScene, frameWithCanvas, tempDir } from './testsupport';
 
 const goldenDir = path.join(__dirname, 'testdata', 'blocks-golden');
-const update = process.env.AM_UPDATE_GOLDEN === '1';
+const update = process.env.ONSET_UPDATE_GOLDEN === '1';
 
 /** 提示词里给技能用的假路径：只在提示词里出现，不参与指纹（指纹要读技能目录）。 */
 const fakeSkills = '/golden/skills';
@@ -51,7 +51,7 @@ function check(name: string, s: Scene): void {
     fs.writeFileSync(file, got);
     return;
   }
-  expect(fs.existsSync(file), `缺少黄金文件 ${file}：用 AM_UPDATE_GOLDEN=1 生成`).toBe(true);
+  expect(fs.existsSync(file), `缺少黄金文件 ${file}：用 ONSET_UPDATE_GOLDEN=1 生成`).toBe(true);
   expect(got).toBe(fs.readFileSync(file, 'utf8'));
 }
 

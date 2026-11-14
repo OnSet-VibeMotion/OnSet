@@ -96,7 +96,7 @@ export interface Usage {
   source?: string;
 }
 
-/** 整个项目花掉的 token：渲染（各镜头全部尝试）加编排（am run 与 Studio 对话的账本）。 */
+/** 整个项目花掉的 token：渲染（各镜头全部尝试）加编排（onset run 与 Studio 对话的账本）。 */
 export interface ProjectUsage {
   renders: Usage;
   attempts: number;
@@ -323,7 +323,7 @@ export interface BeatState {
   plan_error?: string;
   /** 故事与文案：production/beat/story.md。 */
   story?: { path: string; content: string; mtime: number };
-  /** 节拍分析环境：没就绪时 command 是要在终端里跑的 am setup --only beat。 */
+  /** 节拍分析环境：没就绪时 command 是要在终端里跑的 onset setup --only beat。 */
   analyzer?: { ready: boolean; location: string; command?: string };
 }
 
@@ -553,7 +553,7 @@ export interface FilmStyle {
   tags?: string[];
 }
 
-/** 一个风格来源。ready 为 false 时来源数据还没由 am setup 准备好。 */
+/** 一个风格来源。ready 为 false 时来源数据还没由 onset setup 准备好。 */
 export interface FilmStyleSource {
   id: string;
   name: string;
@@ -686,7 +686,7 @@ export interface ScriptResponse {
   change_log?: { path: string; content: string };
 }
 
-/** 编排工具经 am studio show 请网页切到的页面。 */
+/** 编排工具经 onset studio show 请网页切到的页面。 */
 export interface ViewRequest {
   /** 只标制作步骤时为空。 */
   page: string;
@@ -905,7 +905,7 @@ export interface StationRun {
   /** 写了它没声明会写的项目文件（最多 20 条）；没有越界时不出现。 */
   out_of_scope?: string[];
   out_of_scope_more?: number;
-  /** 其中属于 ArticleToMotion 自己的文件（这次操作因此算失败）。 */
+  /** 其中属于片场自己的文件（这次操作因此算失败）。 */
   reserved?: string[];
 }
 
@@ -941,7 +941,7 @@ export interface StationInfo {
   name: string;
   version: string;
   description: string;
-  /** 随 ArticleToMotion 下发的内置插件。 */
+  /** 随片场下发的内置插件。 */
   builtin: boolean;
   /** 内置插件在 apply 里登记的东西（第三方站为 null）：设置页「详情」照实列出。 */
   contents: BuiltinContents | null;

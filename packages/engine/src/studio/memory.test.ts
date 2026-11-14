@@ -11,8 +11,8 @@ describe('studio memory', () => {
   it('memory panel reads store and recalls for scene', async () => {
     const root = tempDir();
     const memoryDir = tempDir();
-    setEnv('AM_MEMORY_DIR', memoryDir);
-    writeStudioFile(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nMEMORY=on\n');
+    setEnv('ONSET_MEMORY_DIR', memoryDir);
+    writeStudioFile(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nMEMORY=on\n');
     writeStudioFile(path.join(root, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
     const sceneDir = path.join(root, 'scenes', 'scene-001');
     writeStudioFile(path.join(sceneDir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\nx\n');
@@ -71,8 +71,8 @@ describe('studio memory', () => {
   it('exam cells carry their output, problem texts and narration', async () => {
     const root = tempDir();
     const memoryDir = tempDir();
-    setEnv('AM_MEMORY_DIR', memoryDir);
-    writeStudioFile(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nMEMORY=on\n');
+    setEnv('ONSET_MEMORY_DIR', memoryDir);
+    writeStudioFile(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nMEMORY=on\n');
     writeStudioFile(path.join(root, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
     const sceneDir = path.join(root, 'scenes', 'scene-001');
     writeStudioFile(path.join(sceneDir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\nx\n');
@@ -130,7 +130,7 @@ describe('studio memory', () => {
   it('chat turns carry user preferences', async () => {
     const f = newSessionFixture();
     const memoryDir = tempDir();
-    setEnv('AM_MEMORY_DIR', memoryDir);
+    setEnv('ONSET_MEMORY_DIR', memoryDir);
     const store = memory.open(memoryDir);
     store.remember({ name: 'calm-palette', body: '配色克制，不要满屏霓虹', global: true });
     const { status, body } = await studioRequest(f.s, 'POST', '/api/sessions', '{"title":"偏好"}');
@@ -155,7 +155,7 @@ describe('studio memory', () => {
   it('chat turns and reverts become conversation episodes', async () => {
     const f = newSessionFixture();
     const memoryDir = tempDir();
-    setEnv('AM_MEMORY_DIR', memoryDir);
+    setEnv('ONSET_MEMORY_DIR', memoryDir);
     let { status, body } = await studioRequest(f.s, 'POST', '/api/sessions', '{"title":"信号"}');
     expect(status).toBe(201);
     const id = body.session_id as string;

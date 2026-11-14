@@ -26,14 +26,14 @@ test('the desktop pet mirrors what the orchestrator is doing', async ({ page, pr
   await page.locator('#cancel-turn').click();
   await expect(crew).toHaveAttribute('data-mood', 'stopped');
 
-  // 调 am 渲染镜头：走到摄影机旁。假编排工具不真的起渲染，没有镜头在渲染时气泡写工具在做什么。
+  // 调 onset 渲染镜头：走到摄影机旁。假编排工具不真的起渲染，没有镜头在渲染时气泡写工具在做什么。
   await page.locator('#prompt').fill('拍一下');
   await page.locator('#send').click();
   await expect(crew).toHaveAttribute('data-mood', 'filming');
   await expect(crew.locator('.pet-line')).toHaveText('渲染镜头 scene-001');
   await page.locator('#cancel-turn').click();
 
-  // 导演（内置编排工具）调 am 的操作不带前缀：照样认得是在拍，气泡也写成人话。
+  // 导演（内置编排工具）调 onset 的操作不带前缀：照样认得是在拍，气泡也写成人话。
   await page.locator('#prompt').fill('导演开机');
   await page.locator('#send').click();
   await expect(crew).toHaveAttribute('data-mood', 'filming');
@@ -202,8 +202,8 @@ test('the pet window is bigger by default and its size is remembered', async ({ 
   // 拖把手的那一套在主进程里跟着鼠标改；这里只看结束时记下大小。
   await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.isResizable())?.setSize(700, 520));
   await pet.evaluate(() => {
-    window.am.pet({ kind: 'resize', phase: 'start' });
-    window.am.pet({ kind: 'resize', phase: 'end' });
+    window.onset.pet({ kind: 'resize', phase: 'start' });
+    window.onset.pet({ kind: 'resize', phase: 'end' });
   });
   const prefs = path.join(sandbox.userData, 'pet.json');
   await expect.poll(() => (fs.existsSync(prefs) ? JSON.parse(fs.readFileSync(prefs, 'utf8')) : {})).toMatchObject({ width: expect.any(Number), height: expect.any(Number) });

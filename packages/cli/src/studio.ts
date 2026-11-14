@@ -1,10 +1,10 @@
 /**
- * am studio：与 ArticleToMotion 客户端打交道的命令。
+ * onset studio：与片场客户端打交道的命令。
  *
  * 浏览器版 Studio 已经去掉，客户端是唯一的界面；这里只留编排工具在客户端对话里调用的 show。
  */
 import readline from 'node:readline';
-import * as studioview from '@am/engine/studioview';
+import * as studioview from '@onset/engine/studioview';
 import { currentEnvironment } from './cli';
 import { Command, type Out, ref } from './cobra';
 import { str } from './ops/common';
@@ -15,8 +15,8 @@ import { newAgentCommand } from './agent/command';
 export function newStudioCommand(_stdout?: Out): Command {
   const cmd = new Command({
     use: 'studio',
-    short: '与 ArticleToMotion 客户端打交道',
-    long: `ArticleToMotion 客户端是制作视频的界面（浏览器版 Studio 已去掉）。
+    short: '与片场客户端打交道',
+    long: `片场客户端是制作视频的界面（浏览器版 Studio 已去掉）。
 
 这里有编排工具在客户端对话里使用的 show（把用户的界面切到要看的那一页），以及客户端内部用的两个 MCP 服务。`,
   });
@@ -129,11 +129,11 @@ function newPermissionMCPCommand(): Command {
     short: '客户端内部用：编排工具的权限审批服务（MCP，stdio）',
     long: `客户端给 claude 编排工具挂的权限审批服务，由 claude 按 --mcp-config 自己启动，人不直接运行。
 
-claude 遇到白名单外的工具调用时调它的 ask 工具：请求写进这一轮收件目录（AM_STUDIO_INBOX）的
+claude 遇到白名单外的工具调用时调它的 ask 工具：请求写进这一轮收件目录（ONSET_STUDIO_INBOX）的
 permissions/ 子目录，客户端在输入框上方弹卡片问用户，答复写回后这里把结果交还 claude。
-不在客户端里（没有 AM_STUDIO_INBOX）时一律拒绝。stdin / stdout 是 MCP 的 JSON-RPC，每行一条。`,
+不在客户端里（没有 ONSET_STUDIO_INBOX）时一律拒绝。stdin / stdout 是 MCP 的 JSON-RPC，每行一条。`,
     example: `  # 客户端写给 claude 的 --mcp-config 里就是这一条，由 claude 启动：
-  am studio permission-mcp`,
+  onset studio permission-mcp`,
     runE: async (cmd) => {
       const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
       const inbox = currentEnvironment()[studioview.ViewInboxEnv] ?? '';
@@ -143,8 +143,8 @@ permissions/ 子目录，客户端在输入框上方弹卡片问用户，答复�
 }
 
 /**
- * 客户端给编排工具与渲染器挂的 am 工具服务（MCP，stdio），由它们按 MCP 配置自己启动，人不直接用。
- * 应用里的 agent 只经它调用 am 的能力；am 不在它们的 PATH 里。
+ * 客户端给编排工具与渲染器挂的 onset 工具服务（MCP，stdio），由它们按 MCP 配置自己启动，人不直接用。
+ * 应用里的 agent 只经它调用 onset 的能力；onset 不在它们的 PATH 里。
  */
 function newToolsMCPCommand(): Command {
   const profile = ref('orchestrator');
@@ -152,12 +152,12 @@ function newToolsMCPCommand(): Command {
   const cmd = new Command({
     use: 'tools-mcp',
     hidden: true,
-    short: '客户端内部用：am 的工具服务（MCP，stdio）',
-    long: `把 am 的每条命令做成一个 MCP 工具，给客户端里的编排工具（--profile orchestrator，全部工具）与
-镜头渲染器（--profile renderer，只有 hyperframes）用。每次调用起一个 am 子进程执行，最多等 wait_seconds，
+    short: '客户端内部用：onset 的工具服务（MCP，stdio）',
+    long: `把 onset 的每条命令做成一个 MCP 工具，给客户端里的编排工具（--profile orchestrator，全部工具）与
+镜头渲染器（--profile renderer，只有 hyperframes）用。每次调用起一个 onset 子进程执行，最多等 wait_seconds，
 没跑完返回任务号，用 job_wait 接着等。stdin / stdout 是 MCP 的 JSON-RPC，每行一条。`,
     example: `  # 客户端写进编排工具 MCP 配置里的就是这一条，由编排工具启动：
-  am studio tools-mcp --profile orchestrator --workdir /path/to/project`,
+  onset studio tools-mcp --profile orchestrator --workdir /path/to/project`,
     runE: async (c) => {
       if (profile.value !== 'orchestrator' && profile.value !== 'renderer') throw new Error(`--profile 只认 orchestrator 或 renderer，收到 ${profile.value}`);
       // 工作目录显式给：各家 agent 启动 MCP 服务时用哪个目录不一，相对路径（scenes/…）要对着项目或镜头目录解析。

@@ -95,7 +95,7 @@ interface Props {
 export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
   const [script, setScript] = useState<ScriptResponse | null>(null);
   const [error, setError] = useState('');
-  const [marks, setMarks] = useState(() => readBool('am-studio.script-marks', true));
+  const [marks, setMarks] = useState(() => readBool('onset-studio.script-marks', true));
   const [selection, setSelection] = useState('');
   const body = useRef<HTMLDivElement>(null);
 
@@ -138,7 +138,7 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
   const voiced = !!script.voice;
   const toggleMarks = () => {
     setMarks(!marks);
-    writeBool('am-studio.script-marks', !marks);
+    writeBool('onset-studio.script-marks', !marks);
   };
 
   // 第一个标题当文稿的大标题，正文里不再重复它。

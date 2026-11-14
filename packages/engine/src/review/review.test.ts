@@ -225,7 +225,7 @@ function which(name: string): string | null {
 
 // 用真实 ffmpeg 拼出「两镜 + 音轨」的成片走一遍全流程；本机没有 ffmpeg / ffprobe 时跳过。
 it.skipIf(which('ffmpeg') === null || which('ffprobe') === null)('runs against real ffmpeg', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-review-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-review-'));
   const film = path.join(dir, 'final.mp4');
   const made = spawnSync(
     which('ffmpeg')!,

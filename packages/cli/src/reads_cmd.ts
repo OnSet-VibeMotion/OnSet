@@ -3,10 +3,10 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { formatG } from '@am/engine/gofmt';
-import * as reads from '@am/engine/reads';
-import * as scene from '@am/engine/scene';
-import * as schedule from '@am/engine/schedule';
+import { formatG } from '@onset/engine/gofmt';
+import * as reads from '@onset/engine/reads';
+import * as scene from '@onset/engine/scene';
+import * as schedule from '@onset/engine/schedule';
 import type { Out } from './cobra';
 import { num, projectRoot, str } from './ops/common';
 import { defineOp } from './ops/op';

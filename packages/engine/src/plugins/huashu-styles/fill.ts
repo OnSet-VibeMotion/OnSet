@@ -8,7 +8,7 @@
 //   references/     上游的三份通用说明
 //   poster.jpg、LICENSE、ATTRIBUTION.md
 //
-// am 自己克隆的检出与构建目录内容固定在 commit 上，文件硬链接进项目；用户自己的检出照旧复制。
+// onset 自己克隆的检出与构建目录内容固定在 commit 上，文件硬链接进项目；用户自己的检出照旧复制。
 import fs from 'node:fs';
 import path from 'node:path';
 import { renderTemplate } from '../../filmstyle/template';
@@ -23,8 +23,8 @@ import skillTemplate from './skill.md.tmpl';
 import styleTemplate from './style.md.tmpl';
 
 /** 接头与模板在 huashu/ 下的文件名。 */
-export const PreFile = 'am-huashu-pre.js';
-export const RuntimeFile = 'am-huashu.js';
+export const PreFile = 'onset-huashu-pre.js';
+export const RuntimeFile = 'onset-huashu.js';
 export const TemplateFile = 'template.html';
 
 /** 镜头自己的场景文件与它注册的名字（模板里写死）。 */
@@ -71,7 +71,7 @@ export function templateHTML(catalog: Pick<Catalog, 'libs'>): string {
   return [
     '<!doctype html>',
     // 注释里不写占位符本身：渲染器按说明整份替换时会把注释也改掉（盲测反馈）。
-    '<!-- 镜头合成模板（ArticleToMotion 生成）：拷成镜头目录的 index.html，按风格目录 SKILL.md 换掉画幅与时长的占位符；',
+    '<!-- 镜头合成模板（片场生成）：拷成镜头目录的 index.html，按风格目录 SKILL.md 换掉画幅与时长的占位符；',
     `     场景写在镜头目录的 ${SceneFile}，注册 SCENES['${SceneName}']。canvas 的 id 必须是 c（引擎按它找画布）。 -->`,
     '<html><head><meta charset="utf-8">',
     '<style>html,body{margin:0;background:#000;overflow:hidden}#main{position:absolute;inset:0}#c{position:absolute;left:0;top:0;width:100%;height:100%}</style>',
@@ -85,7 +85,7 @@ export function templateHTML(catalog: Pick<Catalog, 'libs'>): string {
     ...catalog.libs.map((rel) => script(`${RuntimeDir}/${rel}`)),
     '<script>U.setStage(__W__, __H__);</script>',
     script(SceneFile),
-    `<script>AMHuashu.use('${SceneName}', __DUR__);</script>`,
+    `<script>OnsetHuashu.use('${SceneName}', __DUR__);</script>`,
     script(`${RuntimeDir}/transitions.js`),
     script(`${RuntimeDir}/engine.js`),
     script(`${RuntimeDir}/${RuntimeFile}`),

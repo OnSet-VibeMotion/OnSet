@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import * as plugin from '@am/engine/plugin';
+import * as plugin from '@onset/engine/plugin';
 import { findOp } from './ops/op';
 import { Buffer, run, tempDir } from './testutil';
 import { describeTools } from './toolsmcp';

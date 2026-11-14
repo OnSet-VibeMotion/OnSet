@@ -23,20 +23,20 @@ jobs:
         run: |
           npx tsc --noEmit -p packages/engine
           npx tsc --noEmit -p packages/cli
-          npm run typecheck -w am-desktop
+          npm run typecheck -w onset-desktop
           npx vitest run --root packages/engine
           npx vitest run --root packages/cli
-      # 版本号经 esbuild --define 写进命令行（am --version），客户端的版本号取同一个 tag。
+      # 版本号经 esbuild --define 写进命令行（onset --version），客户端的版本号取同一个 tag。
       - name: Build the CLI with the release version
         run: |
           version="${GITHUB_REF_NAME#v}"
-          AM_VERSION="$version" npm run build -w @am/cli
-          npm version "$version" --no-git-tag-version -w am-desktop
+          ONSET_VERSION="$version" npm run build -w @onset/cli
+          npm version "$version" --no-git-tag-version -w onset-desktop
       # 没有签名证书：dmg 只能在本机「右键打开」。有了 Apple 开发者账号后在这里接签名与公证。
       - name: Package the desktop client (arm64 + x64 dmg)
         run: |
-          npm run vendor -w am-desktop
-          npm run build -w am-desktop
+          npm run vendor -w onset-desktop
+          npm run build -w onset-desktop
           cd apps/desktop
           npx electron-builder --mac dmg --arm64 --x64 --publish never
       - name: Publish GitHub Release
@@ -45,4 +45,4 @@ jobs:
         run: |
           cd apps/desktop/release
           shasum -a 256 *.dmg > checksums.txt
-          gh release create "$GITHUB_REF_NAME" *.dmg checksums.txt --verify-tag --generate-notes --title "ArticleToMotion $GITHUB_REF_NAME"
+          gh release create "$GITHUB_REF_NAME" *.dmg checksums.txt --verify-tag --generate-notes --title "片场 OnSet $GITHUB_REF_NAME"

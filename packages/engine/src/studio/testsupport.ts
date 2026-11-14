@@ -2,9 +2,9 @@
  * Studio 测试的公共设置与辅助函数。每个 *.test.ts 第一行导入它（vitest 每个测试文件一个独立的模块环境）。
  *
  * 设置部分对应 Go 的 main_test.go TestMain：
- * - 把记忆库指到临时目录：渲染记忆默认打开，没设 AM_MEMORY_DIR 的测试会把经历与快照写进开发者真实的
- *   ~/.local/share/am/memory。
- * - 渲染前会确保 am 管理的 HyperFrames CLI 已装好；测试里换成假的，免得真的去 npm install。
+ * - 把记忆库指到临时目录：渲染记忆默认打开，没设 ONSET_MEMORY_DIR 的测试会把经历与快照写进开发者真实的
+ *   ~/.local/share/onset/memory。
+ * - 渲染前会确保 onset 管理的 HyperFrames CLI 已装好；测试里换成假的，免得真的去 npm install。
  * - 新建项目会在后台装 HyperFrames 官方技能；测试里换成什么都不做。
  *
  * Go 测试经 httptest 起真服务；这里直接构造 Request 调 Server.handle。
@@ -20,16 +20,16 @@ import { fakeBrowser, fakeCLI } from '../hyperframes/hftest';
 import { setInstallOfficialSkills } from './skills';
 import { Server, type Config } from './studio';
 
-const memoryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-memory-test-'));
-process.env.AM_MEMORY_DIR = memoryDir;
+const memoryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-memory-test-'));
+process.env.ONSET_MEMORY_DIR = memoryDir;
 const cli = path.join(memoryDir, 'hyperframes-cli');
 fakeCLI(cli);
-process.env.AM_BROWSER = fakeBrowser(cli);
-// am setup 下载的工具目录指到空目录：开发机上 ~/.local/share/am/bin 里真实的 ffmpeg、mmx 不能混进测试。
-process.env.AM_BIN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-bin-test-'));
+process.env.ONSET_BROWSER = fakeBrowser(cli);
+// onset setup 下载的工具目录指到空目录：开发机上 ~/.local/share/onset/bin 里真实的 ffmpeg、mmx 不能混进测试。
+process.env.ONSET_BIN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-bin-test-'));
 process.env[CLIDirEnv] = cli;
 // 音色库同理：用户积累的声音不能被测试写进或删掉。
-process.env.AM_VOICES_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-voices-test-'));
+process.env.ONSET_VOICES_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-voices-test-'));
 setInstallOfficialSkills(async () => {});
 
 const temps: string[] = [];
@@ -50,7 +50,7 @@ afterAll(() => {
 
 /** t.TempDir()：测试结束时删掉。返回 realpath 之前的路径（与 Go 一样，macOS 上是 /var/…）。 */
 export function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-studio-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-studio-'));
   temps.push(dir);
   return dir;
 }
@@ -180,7 +180,7 @@ export async function waitStudioTask(s: Server, id: string): Promise<Record<stri
  * fakeClaude 是一个假的 claude：记下参数，按 --session-id / --resume 回报会话，
  * 改写 scenes/scene-001/prompt.md，输出一组 stream-json。
  *
- * 子进程环境按安全模式白名单构造，测试用的开关要经 AM_PASSTHROUGH_ENV 透传。
+ * 子进程环境按安全模式白名单构造，测试用的开关要经 ONSET_PASSTHROUGH_ENV 透传。
  */
 export const fakeClaude = `#!/bin/sh
 printf '%s' "$*" | tr '\\n' ' ' >> "$FAKE_ARGS_LOG"; echo >> "$FAKE_ARGS_LOG"
@@ -195,7 +195,7 @@ done
 if [ -n "$resume" ] && [ -n "$FAKE_FAIL_RESUME" ]; then echo "No conversation found with session ID: $sid" >&2; exit 1; fi
 printf '{"type":"system","subtype":"init","session_id":"%s","model":"claude-fake"}\\n' "$sid"
 if [ -n "$FAKE_SLEEP" ]; then sleep "$FAKE_SLEEP"; fi
-if [ -n "$FAKE_VIEW" ] && [ -n "$AM_STUDIO_INBOX" ]; then mkdir -p "$AM_STUDIO_INBOX"; printf '%s' "$FAKE_VIEW" > "$AM_STUDIO_INBOX/1.json"; fi
+if [ -n "$FAKE_VIEW" ] && [ -n "$ONSET_STUDIO_INBOX" ]; then mkdir -p "$ONSET_STUDIO_INBOX"; printf '%s' "$FAKE_VIEW" > "$ONSET_STUDIO_INBOX/1.json"; fi
 printf '%s\\n' "\${FAKE_CONTENT:-edited}" > scenes/scene-001/prompt.md
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"scenes/scene-001/prompt.md"}}]}}\\n'
 printf '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}\\n'
@@ -212,9 +212,9 @@ export interface SessionFixture {
 export function newSessionFixture(): SessionFixture {
   const root = tempDir();
   writeTree(root, {
-    'article-to-motion.conf': 'ORCHESTRATOR=claude\nRENDERER=claude\n',
+    'onset.conf': 'ORCHESTRATOR=claude\nRENDERER=claude\n',
     // 新建时记下的流程：制作提示词、路线与顶栏都按它。
-    'article-to-motion.flow.json': '{"version": 1, "production": {"id": "speech", "canvas": "vertical-3x4"}}\n',
+    'onset.flow.json': '{"version": 1, "production": {"id": "speech", "canvas": "vertical-3x4"}}\n',
     'templates/project-rules.md': '# 项目规则\n',
     'scenes/scene-001/scene.json': '{"id":"scene-001","duration_seconds":1,"output":"out.mp4"}',
     'scenes/scene-001/prompt.md': 'original',
@@ -235,7 +235,7 @@ export function newSessionFixture(): SessionFixture {
   setEnv('FAKE_FAIL_RESUME', '');
   setEnv('FAKE_CONTENT', '');
   setEnv('FAKE_VIEW', '');
-  setEnv('AM_PASSTHROUGH_ENV', 'FAKE_ARGS_LOG,FAKE_SLEEP,FAKE_FAIL_RESUME,FAKE_CONTENT,FAKE_VIEW');
+  setEnv('ONSET_PASSTHROUGH_ENV', 'FAKE_ARGS_LOG,FAKE_SLEEP,FAKE_FAIL_RESUME,FAKE_CONTENT,FAKE_VIEW');
   const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
   // 服务端按 realpath 后的路径区分项目（macOS 的 /var → /private/var），测试要用同一个。
   return { root: s.currentProject().path, argsLog, s };

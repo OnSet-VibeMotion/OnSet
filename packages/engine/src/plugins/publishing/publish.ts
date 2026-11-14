@@ -68,7 +68,7 @@ export function publish(file: string, projectRoot: string): Record<string, unkno
 
 /**
  * 只解析 publish.md 的 frontmatter，不做任何校验。Studio 发布页
- * 用它把发布信息排成表单式的页面；合不合格仍以 publish（am validate publish）为准。
+ * 用它把发布信息排成表单式的页面；合不合格仍以 publish（onset validate publish）为准。
  * 返回 null 表示 frontmatter 为空（Go 的 nil map）。
  */
 export function readPublish(file: string): Record<string, unknown> | null {

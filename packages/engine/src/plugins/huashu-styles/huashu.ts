@@ -5,7 +5,7 @@
 // 绘画、骨架、后期等十几个库，每种艺术风格是 scenes/<id>.js 里注册的一个场景（SCENES[id] = { draw(c, lt, t) }），
 // references/风格配方/<id>.md 是这种风格的配方卡：管线、色板、母题动作、踩过的坑。
 //
-// am 这样接：am setup 按固定 commit 稀疏检出引擎、库、选中风格的场景与配方卡、要用的字体和全风格总览图，
+// onset 这样接：onset setup 按固定 commit 稀疏检出引擎、库、选中风格的场景与配方卡、要用的字体和全风格总览图，
 // 从总览图里裁出每种风格的海报（build.ts）；装风格时（fill.ts）把引擎（去掉预览播放器）、库、这种风格要用的
 // 字体与接 HyperFrames 的接头写进项目，原场景放进 source/ 只当技法参考。
 //
@@ -25,7 +25,7 @@ export const RepoURL = 'https://github.com/alchaincyf/huashu-art-motion.git';
 export const Gallery = 'https://github.com/alchaincyf/huashu-art-motion/blob/main/assets/%E5%85%A8%E9%A3%8E%E6%A0%BC%E6%80%BB%E8%A7%88.jpg';
 
 /**
- * am 安装的上游版本。
+ * onset 安装的上游版本。
  *
  * 固定 commit 而不跟随 main：引擎、库与场景直接决定成片画面。升级时更新这里，用新 commit 的检出重跑生成器
  * （gen/main.ts 的 generateCatalog），核对 gen/zh.ts 的中文表与总览图格子，并对比新旧 engine.js 的
@@ -33,14 +33,14 @@ export const Gallery = 'https://github.com/alchaincyf/huashu-art-motion/blob/mai
  */
 export const PinnedCommit = '1468196505a51728686db118d52561aa27a25124';
 
-/** 该 commit 上 am 接入的风格数。 */
+/** 该 commit 上 onset 接入的风格数。 */
 export const PinnedStyleCount = 26;
 
 /**
- * 指定上游检出目录，覆盖默认位置。指向一份已有检出时直接使用；那是用户自己的检出，am 不改它的 git 状态，
- * 海报另放在 am 的数据目录里。
+ * 指定上游检出目录，覆盖默认位置。指向一份已有检出时直接使用；那是用户自己的检出，onset 不改它的 git 状态，
+ * 海报另放在 onset 的数据目录里。
  */
-export const LibraryEnv = 'AM_HUASHU_LIBRARY';
+export const LibraryEnv = 'ONSET_HUASHU_LIBRARY';
 
 /** 引擎在仓库里的位置。 */
 export const EngineDir = 'scripts/engine';
@@ -63,7 +63,7 @@ export interface Font {
 
 /** catalog.json 里的一种风格。 */
 export interface Entry {
-  /** am 里的目录名。 */
+  /** onset 里的目录名。 */
   slug: string;
   /** 上游的场景 id（例如 02_egypt）。 */
   id: string;

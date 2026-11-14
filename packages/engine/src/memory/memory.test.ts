@@ -532,7 +532,7 @@ describe('memory', () => {
     // 被替换的偏好转为沉睡。
     expect(store.find('yellow-captions')!.status).toBe(StatusDormant);
     const s = writeSceneDir(path.join(tempDir(), 'demo', 'scenes', 'scene-001'), 'scene-001', '标题', '');
-    fs.writeFileSync(path.join(path.dirname(path.dirname(s.directory)), 'article-to-motion.conf'), '');
+    fs.writeFileSync(path.join(path.dirname(path.dirname(s.directory)), 'onset.conf'), '');
     const names = recallNames(store.recallScene(s, { budget: 1500, renderer: 'claude' }));
     // 偏好也召回给渲染工具。
     expect(names).toContain('white-captions');
@@ -617,7 +617,7 @@ describe('memory', () => {
     const store = newStore();
     const project = path.join(tempDir(), 'demo');
     fs.mkdirSync(project, { recursive: true });
-    fs.writeFileSync(path.join(project, 'article-to-motion.conf'), '');
+    fs.writeFileSync(path.join(project, 'onset.conf'), '');
     const say = (turn: string, message: string, reverted: boolean) =>
       store.recordUtterance({ projectDir: project, session: 's1', turn, message, reverted });
     say('t1', '节奏再慢一点', false);

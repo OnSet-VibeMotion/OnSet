@@ -8,7 +8,7 @@ import { hasFfmpeg, newSessionFixture, rawGet, setEnv, studioRequest, tempDir } 
 
 describe('voices API', () => {
   it('lists an empty library and 404s unknown voices', async () => {
-    setEnv('AM_VOICES_DIR', tempDir());
+    setEnv('ONSET_VOICES_DIR', tempDir());
     const f = newSessionFixture();
     const { status, body } = await studioRequest(f.s, 'GET', '/api/voices');
     expect(status).toBe(200);
@@ -20,7 +20,7 @@ describe('voices API', () => {
 
   it.skipIf(!hasFfmpeg)('saves an uploaded take, plays it, switches the default and deletes', async () => {
     const library = tempDir();
-    setEnv('AM_VOICES_DIR', library);
+    setEnv('ONSET_VOICES_DIR', library);
     const f = newSessionFixture();
     const upload = 'production/studio/uploads/me.m4a';
     fs.mkdirSync(path.dirname(path.join(f.root, upload)), { recursive: true });
@@ -54,7 +54,7 @@ describe('voices API', () => {
   });
 
   it('tells the page what to read and whether Breeze is here to design with', async () => {
-    setEnv('AM_VOICES_DIR', tempDir());
+    setEnv('ONSET_VOICES_DIR', tempDir());
     const f = newSessionFixture();
     const { body } = await studioRequest(f.s, 'GET', '/api/voices');
     expect(body.sample_text).toContain('大家好');
@@ -70,7 +70,7 @@ describe('voices API', () => {
 
   it.skipIf(!hasFfmpeg)('saves a microphone take without going through any project', async () => {
     const library = tempDir();
-    setEnv('AM_VOICES_DIR', library);
+    setEnv('ONSET_VOICES_DIR', library);
     const f = newSessionFixture();
     const take = path.join(tempDir(), 'take.m4a');
     expect(spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=200:duration=8', take]).status).toBe(0);

@@ -7,13 +7,13 @@ import { GlobalDefaults, SettingsFileEnv, writeGlobal } from './global';
 import { defaultTTSProvider } from './providers';
 
 function tempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'am-config-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-config-'));
 }
 
 describe('config', () => {
   it('resolves env > .env > conf', () => {
     const root = tempDir();
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nSCENE_JOBS=2\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nSCENE_JOBS=2\n');
     fs.writeFileSync(path.join(root, '.env'), 'RENDERER=qoder\nSCENE_JOBS=4\n', { mode: 0o600 });
     const cfg = load(root, { ORCHESTRATOR: 'opencode' });
     expect(cfg.orchestrator).toBe('opencode');
@@ -24,7 +24,7 @@ describe('config', () => {
 
   it('allows the same tool for both roles', () => {
     const root = tempDir();
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
     const cfg = load(root, {});
     expect(cfg.orchestrator).toBe('codex');
     expect(cfg.renderer).toBe('codex');
@@ -65,7 +65,7 @@ describe('config', () => {
 
   it('rejects secrets in .env', () => {
     const root = tempDir();
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
     fs.writeFileSync(path.join(root, '.env'), 'OPENAI_API_KEY=secret\n', { mode: 0o600 });
     expect(() => load(root, null)).toThrow('.env 不得保存密钥 OPENAI_API_KEY');
   });
@@ -77,23 +77,23 @@ describe('config', () => {
     ['jobs', 'ORCHESTRATOR=codex\nRENDERER=claude\nSCENE_JOBS=99\n'],
   ])('rejects invalid choices and jobs (%s)', (_name, body) => {
     const root = tempDir();
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), body);
+    fs.writeFileSync(path.join(root, 'onset.conf'), body);
     expect(() => load(root, {})).toThrow();
   });
 
   it('loads memory settings', () => {
     const root = tempDir();
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
     let cfg = load(root, { HOME: '/home/u' });
     expect(cfg.memory).toEqual({
       enabled: true,
       snapshot: 0,
       recallBudget: DefaultMemoryRecallBudget,
       explore: DefaultMemoryExplore,
-      dir: path.join('/home/u', '.local', 'share', 'am', 'memory'),
+      dir: path.join('/home/u', '.local', 'share', 'onset', 'memory'),
     });
     expect(load(root, { MEMORY: 'off' }).memory.enabled, 'MEMORY=off 应当关闭').toBe(false);
-    cfg = load(root, { MEMORY: 'on', MEMORY_SNAPSHOT: '7', MEMORY_RECALL_BUDGET: '800', MEMORY_EXPLORE: '0', AM_MEMORY_DIR: '/tmp/mem' });
+    cfg = load(root, { MEMORY: 'on', MEMORY_SNAPSHOT: '7', MEMORY_RECALL_BUDGET: '800', MEMORY_EXPLORE: '0', ONSET_MEMORY_DIR: '/tmp/mem' });
     expect(cfg.memory).toEqual({ enabled: true, snapshot: 7, recallBudget: 800, explore: 0, dir: '/tmp/mem' });
     for (const bad of <Record<string, string>[]>[
       { MEMORY: 'yes' },
@@ -107,7 +107,7 @@ describe('config', () => {
     }
   });
 
-  // 编排工具调用的 am 要用同一个记忆库，安全模式的白名单不放行 AM_MEMORY_DIR，必须显式写进去。
+  // 编排工具调用的 onset 要用同一个记忆库，安全模式的白名单不放行 ONSET_MEMORY_DIR，必须显式写进去。
   it('carries memory settings into the child environment', () => {
     const cfg = newConfig({
       orchestrator: 'codex',
@@ -115,8 +115,8 @@ describe('config', () => {
       ttsProvider: 'minimax',
       memory: { enabled: true, dir: '/data/mem', recallBudget: 800, snapshot: 3, explore: 0.2 },
     });
-    const env = childEnvironment(cfg, { PATH: '/bin', AM_MEMORY_DIR: '/elsewhere' }, false);
-    expect(env.AM_MEMORY_DIR).toBe('/data/mem');
+    const env = childEnvironment(cfg, { PATH: '/bin', ONSET_MEMORY_DIR: '/elsewhere' }, false);
+    expect(env.ONSET_MEMORY_DIR).toBe('/data/mem');
     expect(env.MEMORY).toBe('on');
     expect(env.MEMORY_RECALL_BUDGET).toBe('800');
     expect(env.MEMORY_SNAPSHOT).toBe('3');
@@ -128,14 +128,14 @@ describe('config', () => {
     const file = path.join(tempDir(), 'settings.conf');
     const env = { [SettingsFileEnv]: file };
     // 项目这几项留空：没有全局设置时用内置默认，与以前模板里写死的值相同。
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=\nRENDERER=\nTTS_PROVIDER=\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=\nRENDERER=\nTTS_PROVIDER=\n');
     let cfg = load(root, env);
     expect([cfg.orchestrator, cfg.renderer, cfg.ttsProvider, cfg.sceneJobs]).toEqual([GlobalDefaults.ORCHESTRATOR, GlobalDefaults.RENDERER, GlobalDefaults.TTS_PROVIDER, 3]);
     writeGlobal(env, { ORCHESTRATOR: 'claude', TTS_PROVIDER: 'breeze', SCENE_JOBS: '5', MEMORY: 'off' }, parseConfFile);
     cfg = load(root, env);
     expect([cfg.orchestrator, cfg.ttsProvider, cfg.sceneJobs, cfg.memory.enabled]).toEqual(['claude', 'breeze', 5, false]);
     // 项目写了的项只对这个项目生效，压过全局；环境变量压过项目。
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=qoder\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=qoder\n');
     expect(load(root, env).orchestrator).toBe('qoder');
     expect(load(root, { ...env, ORCHESTRATOR: 'opencode' }).orchestrator).toBe('opencode');
     // 子进程拿到同一份全局设置。
@@ -146,7 +146,7 @@ describe('config', () => {
     const root = tempDir();
     const file = path.join(tempDir(), 'settings.conf');
     const env = { [SettingsFileEnv]: file };
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'RENDERER=codex\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'RENDERER=codex\n');
     writeGlobal(env, { ORCHESTRATOR: 'claude' }, parseConfFile);
     const rows = Object.fromEntries(describeSettings(root, env).map((r) => [r.key, r]));
     expect(rows.ORCHESTRATOR).toMatchObject({ effective: 'claude', source: 'global', global: 'claude', project: '' });
@@ -164,13 +164,13 @@ describe('config', () => {
     const root = tempDir();
     const file = path.join(tempDir(), 'settings.conf');
     const env = { [SettingsFileEnv]: file };
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=\nRENDERER=\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=\nRENDERER=\n');
     writeGlobal(env, { ORCHESTRATOR: 'claude', ORCHESTRATOR_MODEL: 'opus', RENDERER: 'claude', RENDERER_MODEL: 'sonnet' }, parseConfFile);
     expect(load(root, env)).toMatchObject({ orchestratorModel: 'opus', rendererModel: 'sonnet' });
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
     expect(load(root, env), '项目换了编排工具；渲染还是 claude，全局模型照用').toMatchObject({ orchestratorModel: '', rendererModel: 'sonnet' });
     // 子进程环境里换了渲染工具、没写模型：项目里给旧工具写的模型作废。
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'RENDERER=claude\nRENDERER_MODEL=haiku\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'RENDERER=claude\nRENDERER_MODEL=haiku\n');
     expect(load(root, { ...env, RENDERER: 'codex' }).rendererModel).toBe('');
     expect(load(root, { ...env, RENDERER: 'codex', RENDERER_MODEL: 'gpt-6-luna' }).rendererModel).toBe('gpt-6-luna');
     const child = childEnvironment(load(root, { ...env, RENDERER: 'codex' }), { RENDERER_MODEL: 'stale' }, true);

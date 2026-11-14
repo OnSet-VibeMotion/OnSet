@@ -2,17 +2,17 @@
  * 在子进程里执行第三方站的一条操作。
  *
  * 协议：工作目录是项目根；stdin 是一行 JSON（params、project_root、station_dir、data_dir）；stdout 是给人看的文字，
- * 以 `am-result ` 开头的最后一行是结构化结果（JSON），没有就当成没有结构化结果；退出码 0 是成功。
+ * 以 `onset-result ` 开头的最后一行是结构化结果（JSON），没有就当成没有结构化结果；退出码 0 是成功。
  *
- * 环境只给最少的几样：PATH、HOME、语言、代理、证书，加上 AM_STATION_DATA（插件自己的数据目录，凭据放这里）。
- * 项目 .env、am 与编排工具的设置一概不传。HOME 照给：很多工具（git、npm、各家 SDK）离了它不工作。
+ * 环境只给最少的几样：PATH、HOME、语言、代理、证书，加上 ONSET_STATION_DATA（插件自己的数据目录，凭据放这里）。
+ * 项目 .env、onset 与编排工具的设置一概不传。HOME 照给：很多工具（git、npm、各家 SDK）离了它不工作。
  *
- * 这不是沙箱：操作是用户电脑上的普通程序，能读写用户的文件、能联网。am 只做两件事：不把凭据交给它，
+ * 这不是沙箱：操作是用户电脑上的普通程序，能读写用户的文件、能联网。onset 只做两件事：不把凭据交给它，
  * 以及前后各扫一遍项目树，它写了声明范围（produces、站点 outputs）之外的项目文件时照实列出来（scope.ts）；
- * 写到 am 自己的文件时这次操作按失败处理（文件已经写了，撤销不了）。
+ * 写到 onset 自己的文件时这次操作按失败处理（文件已经写了，撤销不了）。
  *
- * 运行时：command 的第一个元素可以写 `{node}`（am 自己的运行时，客户端里是 Electron 带 ELECTRON_RUN_AS_NODE=1，
- * 用户机器上不必装 Node）或 `{python}`（am setup 用 uv 装进 <数据目录>/am/python 的 Python，没有时报缺前置资源，
+ * 运行时：command 的第一个元素可以写 `{node}`（onset 自己的运行时，客户端里是 Electron 带 ELECTRON_RUN_AS_NODE=1，
+ * 用户机器上不必装 Node）或 `{python}`（onset setup 用 uv 装进 <数据目录>/onset/python 的 Python，没有时报缺前置资源，
  * 不现下载）。占位符后面第一个参数是脚本：相对路径按站目录解析。裸写 `node` / `python3` 照旧按 PATH 找。
  */
 import { spawn } from 'node:child_process';
@@ -27,9 +27,9 @@ import { loadStations, stationsDir, type LoadedStation, type ManifestOp } from '
 import { scopeReport, scopeText, statProject, type ScopeReport } from './scope';
 import { stationSettings } from './settings';
 
-export const ResultPrefix = 'am-result ';
-/** 进度行：`am-progress 0.4 正在上传`（0–1 的小数，后面是说明）。客户端的任务进度条显示它。 */
-export const ProgressPrefix = 'am-progress ';
+export const ResultPrefix = 'onset-result ';
+/** 进度行：`onset-progress 0.4 正在上传`（0–1 的小数，后面是说明）。客户端的任务进度条显示它。 */
+export const ProgressPrefix = 'onset-progress ';
 
 /** 解析一行进度；不是进度行返回 null。 */
 export function parseProgressLine(line: string): { progress: number; message: string } | null {
@@ -40,7 +40,7 @@ export function parseProgressLine(line: string): { progress: number; message: st
   if (!Number.isFinite(n)) return null;
   return { progress: Math.min(1, Math.max(0, n)), message: cut < 0 ? '' : rest.slice(cut + 1).trim() };
 }
-export const StationDataEnv = 'AM_STATION_DATA';
+export const StationDataEnv = 'ONSET_STATION_DATA';
 
 const passKeys = ['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'LANG', 'LC_ALL', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy', 'SSL_CERT_FILE', 'SSL_CERT_DIR', ...WindowsBaseEnvKeys];
 
@@ -49,8 +49,8 @@ export function stationEnv(base: Record<string, string | undefined>, dataDir: st
   const out: Record<string, string> = {};
   for (const key of passKeys) if (base[key] !== undefined) out[key] = base[key]!;
   out[StationDataEnv] = dataDir;
-  out.AM_PROJECT_ROOT = root;
-  out.AM_STATION_DIR = stationDir;
+  out.ONSET_PROJECT_ROOT = root;
+  out.ONSET_STATION_DIR = stationDir;
   return out;
 }
 
@@ -63,17 +63,17 @@ export interface StationResult {
   out_of_scope?: string[];
   /** 没列出来的越界文件还有几个。 */
   out_of_scope_more?: number;
-  /** 越界文件里属于 am 自己的（有它时 ok 为 false）。 */
+  /** 越界文件里属于 onset 自己的（有它时 ok 为 false）。 */
   reserved?: string[];
 }
 
-/** command 的第一个元素写它：用 am 自己的运行时跑脚本。 */
+/** command 的第一个元素写它：用 onset 自己的运行时跑脚本。 */
 export const NodePlaceholder = '{node}';
-/** command 的第一个元素写它：用 am setup 装的 Python 跑脚本。 */
+/** command 的第一个元素写它：用 onset setup 装的 Python 跑脚本。 */
 export const PythonPlaceholder = '{python}';
 
 /**
- * am setup 用 uv 装进 <数据目录>/am/python 的 Python（uv 的目录名形如 cpython-3.12.12-macos-aarch64-none）。
+ * onset setup 用 uv 装进 <数据目录>/onset/python 的 Python（uv 的目录名形如 cpython-3.12.12-macos-aarch64-none）。
  * 优先工具用的那个小版本，其余按版本从新到旧；没有就抛 MissingError，指向工具准备页——不现下载。
  */
 export function managedPython(env: Record<string, string | undefined>): string {
@@ -129,7 +129,7 @@ export function resolveCommand(
   } catch (err) {
     if (/^(node|python(3(\.\d+)?)?)$/.test(head)) {
       const placeholder = head === 'node' ? NodePlaceholder : PythonPlaceholder;
-      throw new Error(`${(err as Error).message}。用户的电脑上不一定装了 ${head}：插件作者可以把 command 的 "${head}" 改成 "${placeholder}"，由 ArticleToMotion 提供运行时`, { cause: err });
+      throw new Error(`${(err as Error).message}。用户的电脑上不一定装了 ${head}：插件作者可以把 command 的 "${head}" 改成 "${placeholder}"，由片场提供运行时`, { cause: err });
     }
     throw err;
   }
@@ -171,7 +171,7 @@ export function checkParams(op: ManifestOp, params: Record<string, unknown>): Re
   return out;
 }
 
-/** 从输出里取出最后一行 am-result。 */
+/** 从输出里取出最后一行 onset-result。 */
 export function parseResultLine(stdout: string): { data?: unknown; bad?: string } {
   const lines = stdout.split('\n').map((l) => l.trimEnd()).filter((l) => l !== '');
   const last = lines[lines.length - 1];
@@ -184,7 +184,7 @@ export function parseResultLine(stdout: string): { data?: unknown; bad?: string 
 }
 
 /**
- * 执行一条第三方操作。文字边跑边写进 write（am-result 那一行不转发）；取消时整组结束子进程。
+ * 执行一条第三方操作。文字边跑边写进 write（onset-result 那一行不转发）；取消时整组结束子进程。
  */
 export async function runStationOp(
   root: string,
@@ -250,7 +250,7 @@ export async function runStationOp(
     return withScope({ ok: false, error: `第三方站 ${stationID} 的 ${opName} 失败（退出码 ${code}）${tail ? '：' + tail : ''}`, exit_code: code }, scope);
   }
   if (scope && scope.reserved.length > 0) {
-    return withScope({ ok: false, error: `第三方站 ${stationID} 的 ${opName} 写了 ArticleToMotion 自己的文件（${scope.reserved.join('、')}），按失败处理`, exit_code: 1 }, scope);
+    return withScope({ ok: false, error: `第三方站 ${stationID} 的 ${opName} 写了片场自己的文件（${scope.reserved.join('、')}），按失败处理`, exit_code: 1 }, scope);
   }
   if (bad) return withScope({ ok: false, error: `第三方站 ${stationID} 的结果行不是合法的 JSON：${bad.slice(0, 200)}`, exit_code: 1 }, scope);
   return withScope(data === undefined ? { ok: true, exit_code: 0 } : { ok: true, data, exit_code: 0 }, scope);

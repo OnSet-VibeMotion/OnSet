@@ -96,8 +96,8 @@ export function beatAPI(s: ApiHost): Response {
 }
 
 /**
- * beatAnalyzer 报告节拍分析能不能跑：beat.yaml 没写 python 时看 am setup 装的共享环境，写了就看那个文件。
- * 缺了界面给出 am setup --only beat，不让用户（或编排工具）自己去建 Python 环境。
+ * beatAnalyzer 报告节拍分析能不能跑：beat.yaml 没写 python 时看 onset setup 装的共享环境，写了就看那个文件。
+ * 缺了界面给出 onset setup --only beat，不让用户（或编排工具）自己去建 Python 环境。
  */
 function beatAnalyzer(root: string): { ready: boolean; location: string; command?: string } {
   const env = envMap();
@@ -117,7 +117,7 @@ function beatAnalyzer(root: string): { ready: boolean; location: string; command
     return { ready, location: python };
   }
   const dir = beat.envDir(env);
-  const ready = beat.envReady(dir) || process.env.AM_STUDIO_SKIP_SKILL_INSTALL === '1';
+  const ready = beat.envReady(dir) || process.env.ONSET_STUDIO_SKIP_SKILL_INSTALL === '1';
   return ready ? { ready, location: dir } : { ready, location: dir, command: SetupCommand + ' --only beat' };
 }
 

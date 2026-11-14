@@ -1,18 +1,20 @@
 <p align="right">简体中文 | <a href="./README.en.md">English</a></p>
 
-# ArticleToMotion
+# 片场（OnSet）
 
-ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的 MG 动画视频：从文章或口播稿出发，完成写稿、配音、字幕、分镜、并发渲染动画镜头、拼接、封面与发布交付；也可以做没有配音、画面踩着音乐节拍走的卡点片。
+**和智能体聊着天，就把想法做成一支视频。**
 
-▶ [观看 ArticleToMotion 宣传视频（MP4，4 分 47 秒）](https://github.com/chouheiwa/articale-to-motion/blob/main/docs/article-to-motion-tutorial.mp4)
+片场是一个 macOS 桌面客户端：你在对话里说想做什么，智能体像一个剧组那样替你写稿、配音、对字幕、拆分镜、并发渲染动画镜头、拼接、出封面与发布，遇到要你拍板的地方停下来问你。手里有文章或口播稿可以直接丢给它，没有也行；也能做没有配音、画面踩着音乐节拍走的卡点片，竖屏、横屏都可以。
+
+▶ [观看片场宣传视频（MP4，4 分 47 秒）](https://github.com/chouheiwa/articale-to-motion/blob/main/docs/onset-tutorial.mp4)
 
 制作由你选的 AI 编排工具（Codex、Claude Code、Qoder、CodeBuddy、OpenCode）在客户端里完成，你通过对话告诉它要什么、在关卡上拍板。项目 Prompt、发布模板与技能随客户端内置，HyperFrames 技能按固定官方版本装进项目，项目因此自包含——整个目录拷到另一台装了客户端的机器上就能接着做。
 
 ## 安装
 
-从 GitHub Releases 下载对应芯片的 dmg（Apple Silicon 选 arm64，Intel 选 x64），可用同页的 `checksums.txt` 校验，打开后把 ArticleToMotion 拖进「应用程序」。
+从 GitHub Releases 下载对应芯片的 dmg（Apple Silicon 选 arm64，Intel 选 x64），可用同页的 `checksums.txt` 校验，打开后把片场拖进「应用程序」。
 
-安装包没有签名：第一次打开时在「应用程序」里**右键（或按住 Control 点按）ArticleToMotion →「打开」**，在弹出的对话框里再点「打开」；之后正常双击即可。直接双击被拦下时，也可以到「系统设置 → 隐私与安全性」里点「仍要打开」。
+安装包没有签名：第一次打开时在「应用程序」里**右键（或按住 Control 点按）片场 →「打开」**，在弹出的对话框里再点「打开」；之后正常双击即可。直接双击被拦下时，也可以到「系统设置 → 隐私与安全性」里点「仍要打开」。
 
 运行需要：
 
@@ -40,7 +42,7 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 叙事模式也在新建时选：默认单口播；「多角色对话」额外写出班底与角色包目录，见下方「多角色叙事」；还有单人歌曲讲解与无配音卡点两种可选形式。
 
-编排工具、渲染工具（各自用哪个模型）、配音与对齐工具、并发数与记忆在客户端的「设置」（顶栏右侧的齿轮，或 ⌘,）里选。全局设置对所有项目生效；某个项目要用不一样的，在「这个项目」一栏单独选，写进项目的 `article-to-motion.conf`，选「跟随全局」就回去。取值顺序是：环境变量 > 项目 `.env` > 项目 `article-to-motion.conf` > 全局设置 > 内置默认。不想另装 AI CLI 时，编排工具选「导演」：在设置页下方「导演的模型服务」填一家的 API key（DeepSeek、Kimi、智谱、阿里云百炼、MiniMax、Anthropic、OpenAI、OpenRouter），模型写成「服务商/模型」，留空时在填了 key 的几家里先挑推荐模型能看画面的那家；key 只存在用户目录里一个仅自己可读的文件里。画面验收和整片复查要看截图，DeepSeek、智谱 GLM 的推荐模型只读得了文字：设置页会标出来，开工前也会提示，用它们时导演会把要看的图切给你、等你说结论，而不是假装看过。导演暂时只做编排，镜头仍要一家装在这台电脑上的外部工具来画（Claude Code、Codex 等）；首次引导会一并确认，设置里的渲染工具没装时「开始制作」不可点。对话输入框底部还可以为每个会话临时另选编排与渲染工具及其模型，不改任何文件。模型列表来自各家工具自己（codex、qoder、codebuddy、opencode 按你的账号与服务商列出，claude 给 fable / opus / sonnet / haiku 这几个别名），列表里没有的可以选「其他…」手填；留「默认」就用那家工具自己的默认模型。
+编排工具、渲染工具（各自用哪个模型）、配音与对齐工具、并发数与记忆在客户端的「设置」（顶栏右侧的齿轮，或 ⌘,）里选。全局设置对所有项目生效；某个项目要用不一样的，在「这个项目」一栏单独选，写进项目的 `onset.conf`，选「跟随全局」就回去。取值顺序是：环境变量 > 项目 `.env` > 项目 `onset.conf` > 全局设置 > 内置默认。不想另装 AI CLI 时，编排工具选「导演」：在设置页下方「导演的模型服务」填一家的 API key（DeepSeek、Kimi、智谱、阿里云百炼、MiniMax、Anthropic、OpenAI、OpenRouter），模型写成「服务商/模型」，留空时在填了 key 的几家里先挑推荐模型能看画面的那家；key 只存在用户目录里一个仅自己可读的文件里。画面验收和整片复查要看截图，DeepSeek、智谱 GLM 的推荐模型只读得了文字：设置页会标出来，开工前也会提示，用它们时导演会把要看的图切给你、等你说结论，而不是假装看过。导演暂时只做编排，镜头仍要一家装在这台电脑上的外部工具来画（Claude Code、Codex 等）；首次引导会一并确认，设置里的渲染工具没装时「开始制作」不可点。对话输入框底部还可以为每个会话临时另选编排与渲染工具及其模型，不改任何文件。模型列表来自各家工具自己（codex、qoder、codebuddy、opencode 按你的账号与服务商列出，claude 给 fable / opus / sonnet / haiku 这几个别名），列表里没有的可以选「其他…」手填；留「默认」就用那家工具自己的默认模型。
 
 配音可选 MiniMax、阿里云百炼、Edge 朗读（免鉴权，适合预览）、ElevenLabs、腾讯云、MLX（本机离线，仅 Apple Silicon）、Breeze TTS 2（本机离线，仅 Apple Silicon；模型与生成的配音仅限研究与非商业用途，商用需 RESONIA, Inc. 书面授权）；凭据一律走各工具自己的登录，项目 `.env` 不允许保存 API Key、Token、Secret 或 Password。字幕时间轴由已知文本强制对齐生成：Apple Silicon 上用 mlx-audio 的 Qwen3-ForcedAligner，其余平台用 FunASR。
 
@@ -57,7 +59,7 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 界面左边是预览，右边是对话。顶栏中间是按制作顺序编号的四步——口播稿、镜头、成片、发布（菜单「视图」里可用 ⌘1–⌘4 切换），合成、风格、复查、记忆、文件这些页面以小字列在右侧。编排工具需要你看某一页时会直接把界面切过去；页面上的文字、口播稿段落、镜头和文件都能右键「引用到对话」，输入框里 `@` 补全文件与镜头、`/` 补全常用命令。窗口在后台时，一轮对话或渲染任务结束会发系统通知，进行中的任务数显示在 Dock 图标上。
 
-编排工具与渲染器经 am 的工具服务（MCP）使用制作工具：配音对齐、按分镜计划推出镜头时长、渲染、拼接、校验、复查都是确定的工具调用，帧号、时间轴这些「算错了不报错、只会让成片对不上」的计算不交给模型。
+编排工具与渲染器经 onset 的工具服务（MCP）使用制作工具：配音对齐、按分镜计划推出镜头时长、渲染、拼接、校验、复查都是确定的工具调用，帧号、时间轴这些「算错了不报错、只会让成片对不上」的计算不交给模型。
 
 ## 制作流程
 
@@ -67,7 +69,7 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 4. **渲染。** 镜头并发渲染，按时长从长到短派发；每个镜头拿到自己的局部数据（画布、安全区、换算成镜头局部帧的字幕与短语），内置的 `scene-kit` 技能提供按帧驱动的字幕组件与工具函数。
 5. **拼接、配乐、复查、封面与发布。**
 
-已有合格产物且输入没变的镜头会跳过。产物通过校验时，输入指纹记在镜头目录的 `.am-render.json`：组好的渲染提示词、`scene.json`、`prompt.md`、字幕、角色包、渲染工具、技能内容与版本，逐项记摘要。输入变了的镜头标记为 Stale，写明是哪几项变了，要明确重渲染才覆盖。每次渲染尝试记一份尝试记录（耗时、结果、能读到时的 token 用量），重跑前上一次的产物与日志先归档进 `attempts/`。
+已有合格产物且输入没变的镜头会跳过。产物通过校验时，输入指纹记在镜头目录的 `.onset-render.json`：组好的渲染提示词、`scene.json`、`prompt.md`、字幕、角色包、渲染工具、技能内容与版本，逐项记摘要。输入变了的镜头标记为 Stale，写明是哪几项变了，要明确重渲染才覆盖。每次渲染尝试记一份尝试记录（耗时、结果、能读到时的 token 用量），重跑前上一次的产物与日志先归档进 `attempts/`。
 
 ### 视觉方向
 
@@ -77,13 +79,13 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 想让全片统一画成一种风格时，从风格来源里选一种。目前登记的来源有 [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar)（作者 LemoLab，66 种，[图鉴](https://lemomo-ai.github.io/lemo-opuscar/)）与 [anidoodle](https://github.com/alexgreensh/anidoodle)（作者 Alex Greenshpun，32 种代码画出的手绘画风，如铅笔淡彩、水墨、浮世绘木版、刺绣、刮画，[图鉴](https://github.com/alexgreensh/anidoodle/blob/main/skills/anidoodle/assets/styles.jpg)）与 [huashu-art-motion](https://github.com/alchaincyf/huashu-art-motion)（作者花叔，26 种艺术史画风，如梵高、莫奈、克里姆特、古埃及壁画、敦煌壁画、包豪斯、波普，每一帧都由代码画出，[总览图](https://github.com/alchaincyf/huashu-art-motion/blob/main/assets/%E5%85%A8%E9%A3%8E%E6%A0%BC%E6%80%BB%E8%A7%88.jpg)），之后可以接入更多来源。首页、新建对话框和「风格」页都能直接挑（按来源分组，带海报，可搜索），也能换或去掉；没选时，编排工具会在稿件审核关卡按题材推荐两三种。个别镜头可以点名另一种风格，相邻镜头风格不同时，分镜计划要写明交界怎么在画面里换过去。
 
-选中的风格装进项目的 `.agents/skills/am-film-style/`：`STYLE.md`（风格的不变量）、`SKILL.md`（怎么用、技法参考在哪）与 `am-film-style.json`（来源与版本）。渲染器必须遵守 `STYLE.md`，内容仍来自每个镜头自己的文案。换风格或去掉风格会让已渲染的镜头 Stale。只接画面：配乐仍选授权素材。
+选中的风格装进项目的 `.agents/skills/onset-film-style/`：`STYLE.md`（风格的不变量）、`SKILL.md`（怎么用、技法参考在哪）与 `onset-film-style.json`（来源与版本）。渲染器必须遵守 `STYLE.md`，内容仍来自每个镜头自己的文案。换风格或去掉风格会让已渲染的镜头 Stale。只接画面：配乐仍选授权素材。
 
 ### 技能
 
 新建项目时，固定版本 0.8.225 的 HyperFrames 官方技能从本机缓存拷进项目的 `.agents/skills/`，与内置的 `text-to-lottie`（Lottie 图层：logo 演绎、图标、loader、SVG 描边、矢量特效）、`algorithmic-art`（算法与生成式视觉效果）、`scene-kit` 同处一个目录。技能装进项目而不是 HOME，项目之间才互不覆盖。
 
-上游的 `hyperframes skills` 安装器直接克隆仓库默认分支，没有指定 tag 或 commit 的口子：实测 `hyperframes@0.8.1` 与 `0.8.14` 装出的技能逐字节相同、都等于当天 `main`。所以 ArticleToMotion 自己按 tag 浅克隆，校验 commit 与技能数量，并在 `.agents/skills/hyperframes-upstream.json` 记下版本、commit 与每个技能的内容摘要。
+上游的 `hyperframes skills` 安装器直接克隆仓库默认分支，没有指定 tag 或 commit 的口子：实测 `hyperframes@0.8.1` 与 `0.8.14` 装出的技能逐字节相同、都等于当天 `main`。所以片场自己按 tag 浅克隆，校验 commit 与技能数量，并在 `.agents/skills/hyperframes-upstream.json` 记下版本、commit 与每个技能的内容摘要。
 
 ## 多角色叙事
 
@@ -91,7 +93,7 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 ## 渲染记忆
 
-渲染记忆让项目随使用越来越懂你，也让下一次渲染比这一次好。默认打开，`MEMORY=off` 关闭。记忆存成纯文本放在用户级目录（默认 `~/.local/share/am/memory`），不写进任何工具私有的记忆。
+渲染记忆让项目随使用越来越懂你，也让下一次渲染比这一次好。默认打开，`MEMORY=off` 关闭。记忆存成纯文本放在用户级目录（默认 `~/.local/share/onset/memory`），不写进任何工具私有的记忆。
 
 | 层 | 内容 | 怎么来 |
 |---|---|---|
@@ -152,7 +154,7 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 | MiniMax | `mmx` 登录；部分账户音乐 API 返回 410，不再向新用户开放 |
 | 自建 ACE-Step | `ACESTEP_API_KEY`（按服务要求）；需已有服务 |
 
-密钥只在本机设置，不写入 YAML 或项目 `.env`；安全模式下要经 `AM_PASSTHROUGH_ENV` 显式透传变量名。歌词对齐用 [Xingyu](https://github.com/wangjiqing/xingyu-lyrics-aligner)（固定 v0.6.1），需要另建 Python 3.11–3.13 环境，并把 `song.yaml` 的 `python` 设为该环境 Python 的绝对路径。对齐成功不代表唱词正确：人工核对核心知识和术语，抽查句首误差目标 ≤200 ms。镜头从零覆盖完整音频，不变速、不额外叠 BGM。
+密钥只在本机设置，不写入 YAML 或项目 `.env`；安全模式下要经 `ONSET_PASSTHROUGH_ENV` 显式透传变量名。歌词对齐用 [Xingyu](https://github.com/wangjiqing/xingyu-lyrics-aligner)（固定 v0.6.1），需要另建 Python 3.11–3.13 环境，并把 `song.yaml` 的 `python` 设为该环境 Python 的绝对路径。对齐成功不代表唱词正确：人工核对核心知识和术语，抽查句首误差目标 ≤200 ms。镜头从零覆盖完整音频，不变速、不额外叠 BGM。
 
 ## 可选：无配音卡点（开发中）
 
@@ -164,7 +166,7 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 ## 写插件
 
-想给制作流程加一站（例如自动发布），按 [docs/plugin-authoring.md](docs/plugin-authoring.md) 写一份 `am-station.json`，在客户端设置页的「我的插件」里装上：装一次，这台电脑上的所有项目都能用，它带来的做法与风格在新建项目时就能选。
+想给制作流程加一站（例如自动发布），按 [docs/plugin-authoring.md](docs/plugin-authoring.md) 写一份 `onset-station.json`，在客户端设置页的「我的插件」里装上：装一次，这台电脑上的所有项目都能用，它带来的做法与风格在新建项目时就能选。
 
 ## 开发
 
@@ -172,19 +174,19 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 ```bash
 npm ci
-npx tsc --noEmit -p packages/engine          # 引擎、am、客户端分别做类型检查
+npx tsc --noEmit -p packages/engine          # 引擎、onset、客户端分别做类型检查
 npx tsc --noEmit -p packages/cli
-npm run typecheck -w am-desktop
+npm run typecheck -w onset-desktop
 npx vitest run --root packages/engine        # 单元与集成测试（缺 ffmpeg、rsvg-convert 的用例会跳过）
 npx vitest run --root packages/cli
-npm run build -w @am/cli                     # am → packages/cli/dist/am.cjs
+npm run build -w @onset/cli                     # onset → packages/cli/dist/onset.cjs
 npm run desktop                              # 构建并启动客户端
-npm run test:e2e -w am-desktop               # 客户端端到端测试（Playwright，Electron 模式，窗口不弹出）
-npm run dist -w am-desktop                   # 打出 .app（apps/desktop/release/）
+npm run test:e2e -w onset-desktop               # 客户端端到端测试（Playwright，Electron 模式，窗口不弹出）
+npm run dist -w onset-desktop                   # 打出 .app（apps/desktop/release/）
 ```
 
-`am`（`packages/cli`）是客户端内部用的程序：后台任务直接调它，编排工具与渲染器经它的工具服务（MCP）调用，不对用户提供命令行。开发时可以用 `node packages/cli/dist/am.cjs <命令>` 直接跑。改了画幅表或 `frame.md` 模板后要跑 `npm run generate -w @am/engine` 并提交生成的 `assets/presets`。开发约定见 `AGENTS.md` 与 `packages/engine/CONVENTIONS.md`。
+`onset`（`packages/cli`）是客户端内部用的程序：后台任务直接调它，编排工具与渲染器经它的工具服务（MCP）调用，不对用户提供命令行。开发时可以用 `node packages/cli/dist/onset.cjs <命令>` 直接跑。改了画幅表或 `frame.md` 模板后要跑 `npm run generate -w @onset/engine` 并提交生成的 `assets/presets`。开发约定见 `AGENTS.md` 与 `packages/engine/CONVENTIONS.md`。
 
-项目采用 [Apache License 2.0](./LICENSE)。HyperFrames 是独立的 Apache-2.0 项目，ArticleToMotion 初始化时使用固定版本，不在本仓库复制本机技能目录。
+项目采用 [Apache License 2.0](./LICENSE)。HyperFrames 是独立的 Apache-2.0 项目，片场初始化时使用固定版本，不在本仓库复制本机技能目录。
 
 内置技能 `text-to-lottie` 的 `references/` 裁剪自 [diffusionstudio/lottie](https://github.com/diffusionstudio/lottie)（MIT），版权声明与改动记录见 `assets/shared/.agents/skills/text-to-lottie/` 下的 `LICENSE` 与 `ATTRIBUTION.md`。

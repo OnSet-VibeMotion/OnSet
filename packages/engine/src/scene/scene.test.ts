@@ -304,7 +304,7 @@ describe('canvas', () => {
     expect(prompt, '提示词仍含硬编码的 1080x1440').not.toContain('1080x1440');
   });
 
-  // 哪儿都没有 frame.md 时报错，不静默落到某个默认画幅：那样提示词、am-scene.js 与产物校验会一起按错的画幅走。
+  // 哪儿都没有 frame.md 时报错，不静默落到某个默认画幅：那样提示词、onset-scene.js 与产物校验会一起按错的画幅走。
   it('fails without any frame.md', () => {
     const dir = writeScene('{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
     fs.rmSync(path.join(dir, 'frame.md'));
@@ -315,7 +315,7 @@ describe('canvas', () => {
   // 画幅取自项目根的 frame.md；镜头目录里自己有一份时用离镜头最近的那份。
   it('reads the project frame.md', () => {
     const project = tempDir();
-    fs.writeFileSync(path.join(project, 'article-to-motion.conf'), '');
+    fs.writeFileSync(path.join(project, 'onset.conf'), '');
     fs.writeFileSync(path.join(project, 'frame.md'), frameWithCanvas(1080, 1920));
     const dir = path.join(project, 'scenes', 'scene-001');
     fs.mkdirSync(dir, { recursive: true });

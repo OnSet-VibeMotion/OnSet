@@ -9,7 +9,7 @@ afterEach(() => {
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 function temp(): string {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'am-win-'));
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-win-'));
   dirs.push(d);
   return d;
 }

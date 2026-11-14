@@ -8,7 +8,7 @@ import * as assets from '../assets';
 
 /** t.TempDir()：测试结束时删掉。 */
 export function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-validate-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-validate-'));
   onTestFinished(() => fs.rmSync(dir, { recursive: true, force: true }));
   return dir;
 }

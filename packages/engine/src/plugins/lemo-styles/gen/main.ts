@@ -2,7 +2,7 @@
 // 从固定 commit 的 lemo-opuscar 检出生成 catalog.json：generateCatalog(<检出目录>)。
 //
 // 检出的 HEAD 必须等于 PinnedCommit：目录清单与 commit 不一致的话，
-// am film-style list 列出的风格与 am film-style use 实际装到的会对不上。
+// onset film-style list 列出的风格与 onset film-style use 实际装到的会对不上。
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';

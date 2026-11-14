@@ -1,13 +1,13 @@
 /**
  * 第三方插件：装上、去掉、更新、列出、执行它的一条操作。设计见 docs/superpowers/specs/2026-11-11-流程插件-design.md。
- * 插件装在用户级（<数据目录>/am/stations/installed.json），对这台电脑上的所有项目生效。
+ * 插件装在用户级（<数据目录>/onset/stations/installed.json），对这台电脑上的所有项目生效。
  *
  * 全部只给命令行与客户端后端（scopes 只有 cli）：装不装第三方插件是用户的决定，编排工具不能自己装；
  * 只能由用户触发的操作（发布这类对外动作）也只有界面上的按钮经 station_run 执行。
  * 编排工具能用的那些操作由工具服务登记成 x_<站>_<操作>，执行时同样落到 station_run（toolsmcp.ts）。
  */
 import path from 'node:path';
-import * as flow from '@am/engine/flow';
+import * as flow from '@onset/engine/flow';
 import { defineGroup } from './ops/cli';
 import { defineOp, ParamError } from './ops/op';
 import { projectRoot, str } from './ops/common';
@@ -15,7 +15,7 @@ import { projectRoot, str } from './ops/common';
 defineGroup({
   path: ['station'],
   summary: '第三方插件：装上、去掉、更新、列出与执行',
-  description: `第三方插件是用户自己装的制作步骤（例如自动发布），am 不分发、不维护。
+  description: `第三方插件是用户自己装的制作步骤（例如自动发布），onset 不分发、不维护。
 装一次对这台电脑上的所有项目生效：它的说明接在制作提示词后面，它的站点出现在制作路线上，编排工具能用的操作登记成 x_<插件>_<操作> 工具，
 它带来的做法（流程）在新建项目时能选。
 这一组命令只给客户端与开发用：编排工具不能自己装或执行第三方插件。`,
@@ -53,7 +53,7 @@ defineOp({
   description: `来源可以是 link:/绝对路径（本机目录，开发用，不核对内容）、github:owner/repo#ref 或 git 地址#ref。
 只取回到用户级目录的暂存处（${flow.StationsDirEnv} 可覆盖）并校验清单，列出它的操作、页面权限、实验性能力、钩子、定时、渲染技能、带来的做法与风格库、
 在路线上的位置；不写 ${flow.InstalledFile}，不参与任何项目。看过之后用 station_install 装上，或 station_discard 取消。`,
-  examples: ['station_add({"source": "github:someone/am-publisher#v0.1.0"})', 'station_add({"source": "link:/Users/me/dev/my-station"})'],
+  examples: ['station_add({"source": "github:someone/onset-publisher#v0.1.0"})', 'station_add({"source": "link:/Users/me/dev/my-station"})'],
   scopes: ['cli'],
   params: {
     source: { type: 'string', description: '来源', required: true, positional: 0 },
@@ -73,7 +73,7 @@ defineOp({
   description: `按 ${flow.InstalledFile} 里记的来源重新取到暂存处：来源写的是分支时拿到它现在的 commit，写的是 tag 时 tag 被移动过才会变。
 列出版本、commit、新申请的权限与新用到的实验性能力；已装的那一版不动，用 station_install 换上，或 station_discard 取消。
 link: 来源是本机目录，改动立即生效，不需要更新。`,
-  examples: ['station_update({"id": "am-publisher"})'],
+  examples: ['station_update({"id": "onset-publisher"})'],
   scopes: ['cli'],
   params: {
     id: { type: 'string', description: '插件的 id', required: true, positional: 0 },
@@ -135,7 +135,7 @@ defineOp({
   summary: '去掉一个第三方插件（所有项目都不再用它）',
   description: `只改用户级的 ${flow.InstalledFile}，不删存着的插件目录，也不删它在各项目里写过的文件。
 用它带来的做法新建的项目，去掉之后开不了工，直到重新装上。`,
-  examples: ['station_remove({"id": "am-publisher"})'],
+  examples: ['station_remove({"id": "onset-publisher"})'],
   scopes: ['cli'],
   params: {
     id: { type: 'string', description: '插件的 id', required: true, positional: 0 },
@@ -171,8 +171,8 @@ defineOp({
   cli: ['station', 'run'],
   summary: '在这个项目里执行第三方插件的一条操作',
   description: `在子进程里执行，工作目录是项目根，只拿到最少的环境变量（不含项目 .env）。参数按站的清单校验。
-这不是沙箱：操作是电脑上的普通程序。执行前后各扫一遍项目，写了站声明范围之外的文件时在输出末尾列出来；写了 am 自己的文件（production/studio/、.agents/、.env 等）时按失败处理，文件已经写了，没法自动撤销。`,
-  examples: ['station_run({"station": "am-publisher", "op": "send", "params": "{\\"platform\\": \\"douyin\\"}"})'],
+这不是沙箱：操作是电脑上的普通程序。执行前后各扫一遍项目，写了站声明范围之外的文件时在输出末尾列出来；写了 onset 自己的文件（production/studio/、.agents/、.env 等）时按失败处理，文件已经写了，没法自动撤销。`,
+  examples: ['station_run({"station": "onset-publisher", "op": "send", "params": "{\\"platform\\": \\"douyin\\"}"})'],
   scopes: ['cli'],
   params: {
     station: { type: 'string', description: '插件的 id', required: true, positional: 0 },

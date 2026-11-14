@@ -6,7 +6,7 @@ import { listPermissionRequests, permissionsDir, writePermissionRequest } from '
 import { allowCommand, allowedCommands, answerPermission, expirePermissions, matchesPrefix, noticeSubject, pollPermissions, type PendingPermission } from './permissions';
 
 function tempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'am-studio-perm-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-studio-perm-'));
 }
 
 function responseOf(inbox: string, id: string): any {
@@ -71,10 +71,10 @@ describe('studio permissions', () => {
   it('auto-approves every request when the project or the global settings say so', () => {
     const project = tempDir();
     const settings = path.join(tempDir(), 'settings.conf');
-    const before = process.env.AM_SETTINGS_FILE;
-    process.env.AM_SETTINGS_FILE = settings;
+    const before = process.env.ONSET_SETTINGS_FILE;
+    process.env.ONSET_SETTINGS_FILE = settings;
     try {
-      fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'AUTO_APPROVE=\n');
+      fs.writeFileSync(path.join(project, 'onset.conf'), 'AUTO_APPROVE=\n');
       fs.writeFileSync(settings, 'AUTO_APPROVE=on\n');
       const inbox = path.join(project, 'inbox');
       const pending = new Map<string, PendingPermission>();
@@ -89,14 +89,14 @@ describe('studio permissions', () => {
       expect(events).toEqual([{ turn: 't1', kind: 'notice', text: '已自动允许：brew install ffmpeg' }]);
 
       // 这个项目单独关掉：照常问。
-      fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'AUTO_APPROVE=off\n');
+      fs.writeFileSync(path.join(project, 'onset.conf'), 'AUTO_APPROVE=off\n');
       const b = writePermissionRequest(inbox, 'Bash', { command: 'brew install uv' });
       pollPermissions(project, inbox, 't1', pending, seen, emit);
       expect(responseOf(inbox, b.id)).toBeNull();
       expect(events[events.length - 1]).toMatchObject({ kind: 'permission', permission: { id: b.id } });
     } finally {
-      if (before === undefined) delete process.env.AM_SETTINGS_FILE;
-      else process.env.AM_SETTINGS_FILE = before;
+      if (before === undefined) delete process.env.ONSET_SETTINGS_FILE;
+      else process.env.ONSET_SETTINGS_FILE = before;
     }
   });
 

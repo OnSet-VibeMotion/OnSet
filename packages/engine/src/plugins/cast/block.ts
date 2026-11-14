@@ -178,7 +178,7 @@ export function validateCast(s: Scene): void {
     // 但不放开成任意字符串：画外音说话人同样要能在 pack_dir 下找到角色包，
     // 走的是与 on_stage 角色完全相同的 contained + cast.load 路径。否则一个
     // 拼错的名字既不会在这里被拦下，也不会在渲染时被发现（画外音本来就不
-    // 出现在画面里），只会让 am validate cast 那边的台词覆盖对不上。
+    // 出现在画面里），只会让 onset validate cast 那边的台词覆盖对不上。
     if (!onStage.has(b.speaker) && !voiceOver.has(b.speaker)) {
       const actorDir = contained(packDir, b.speaker, `cast.beats[${i}] 的画外音 speaker ${b.speaker}`);
       try {
@@ -236,7 +236,7 @@ export function castSection(s: Scene): string {
   const beats = c.beats ?? [];
   const onStage = new Set(actors.map((a) => a.id));
   let b = '';
-  // noStageNoBeats 是 on_stage 与 beats 都是空数组的退化组合：am dialogue
+  // noStageNoBeats 是 on_stage 与 beats 都是空数组的退化组合：onset dialogue
   // beats 会给"整段完全没有台词覆盖"的纯 B-roll 镜头写出这个组合，
   // 不是坏输入，validateCast 不拒绝它。但下面两段各自的措辞都假设了对方不为空——
   // "台词全部是画外音"蕴含"有台词"，"角色只做反应"蕴含"有角色在台上"——
@@ -277,7 +277,7 @@ export function castSection(s: Scene): string {
     lines.push(`${beatItem.speaker} ${formatFixed(beatItem.start, 3)}–${formatFixed(beatItem.end, 3)}${mark}`);
   }
   if (lines.length === 0) {
-    // am dialogue beats 对"有 cast 块、整镜没人说话"的镜头写出空数组，
+    // onset dialogue beats 对"有 cast 块、整镜没人说话"的镜头写出空数组，
     // 这是正常产物（角色在台上做反应）。留一个空的"台词节拍："读起来
     // 像节拍算漏了，明说没人说话。
     //

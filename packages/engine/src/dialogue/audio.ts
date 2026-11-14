@@ -101,7 +101,7 @@ export class Runner {
     for (const p of paths) this.checkFormat(p);
     fs.mkdirSync(path.dirname(dest), { recursive: true, mode: 0o755 });
     // 进程内唯一的清单文件名：固定文件名在同一目录并发跑多个 concat 时会互相覆盖对方还没读完的清单。
-    const listPath = path.join(path.dirname(dest), `.am-dialogue-list-${process.pid}-${Date.now()}-${Math.floor(Math.random() * 1e9)}.txt`);
+    const listPath = path.join(path.dirname(dest), `.onset-dialogue-list-${process.pid}-${Date.now()}-${Math.floor(Math.random() * 1e9)}.txt`);
     try {
       let list = '';
       for (const p of paths) {

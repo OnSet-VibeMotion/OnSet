@@ -10,7 +10,7 @@
  *   POST /api/stations/{id}/settings           改一项插件设置（用户级，不进项目）
  * 下面几样针对当前项目：
  *   POST /api/stations/{id}/ops/{操作}         执行本站的一条操作（写任务 station_run）
- *   POST /api/stations/{id}/call/{操作}        替插件页面调一条 am 自带的操作（清单 permissions.uses 里申请过的）
+ *   POST /api/stations/{id}/call/{操作}        替插件页面调一条 onset 自带的操作（清单 permissions.uses 里申请过的）
  *   GET  /api/stations/{id}/read?path=         插件页面读项目文件（只给声明过的）
  *
  * 改项目文件的一律走写任务，与一轮对话互斥；客户端自己不写项目文件。钩子与定时只对当前打开的项目跑。插件页面发来的执行请求，
@@ -41,7 +41,7 @@ interface LastRun {
   /** 写了声明范围之外的项目文件（flow.scopeReport）；没有越界时不出现。 */
   out_of_scope?: string[];
   out_of_scope_more?: number;
-  /** 其中属于 am 自己的文件（这次操作因此算失败）。 */
+  /** 其中属于 onset 自己的文件（这次操作因此算失败）。 */
   reserved?: string[];
 }
 
@@ -168,7 +168,7 @@ async function readParams(request: Request): Promise<Record<string, unknown>> {
 }
 
 /**
- * 跑一条第三方操作：插件写的 am-progress 行变成任务进度；结果记进 lastRuns。
+ * 跑一条第三方操作：插件写的 onset-progress 行变成任务进度；结果记进 lastRuns。
  *
  * 越界检查在执行进程里（flow.runStationOp）已经做过一遍，结果写进了操作的文字，给编排工具看；这里在调用点
  * 外面再扫一遍项目，拿到结构化的列表给界面（任务、发布页的按钮、插件页面）。执行进程的协议只回传插件自己的 data，
@@ -218,7 +218,7 @@ function reportScope(s: Server, p: Project, task: Task, name: string, r: flow.Sc
   const files = r.out_of_scope.join('、') + (r.out_of_scope_more > 0 ? ` 等 ${total} 个` : '');
   const text =
     r.reserved.length > 0
-      ? `插件「${name}」写了 ArticleToMotion 自己的文件（${files}），这次操作按失败处理。文件已经写了，没法自动撤销：可以回退那一轮对话，或者用 git 恢复。`
+      ? `插件「${name}」写了片场自己的文件（${files}），这次操作按失败处理。文件已经写了，没法自动撤销：可以回退那一轮对话，或者用 git 恢复。`
       : `插件「${name}」改了它没有声明会写的项目文件：${files}。`;
   warnTask(s, task.task_id, text);
   if (!event) return;
@@ -355,7 +355,7 @@ export async function stationsAPI(s: Server, request: Request, rest: string): Pr
     delete params.project_root;
     try {
       const t = runWriteTask(s, p, 'station.call', `${station.manifest.name} 调用 ${opName}`, async (signal) => {
-        // 执行进程只跑编排工具本来就能用的操作（AM_OP_SCOPE），清单写什么都越不过去。
+        // 执行进程只跑编排工具本来就能用的操作（ONSET_OP_SCOPE），清单写什么都越不过去。
         await runStudioOp(s, signal, p, opName, params, { env: { [OpScopeEnv]: 'orchestrator' } });
       });
       return writeJSON(202, goMap({ task_id: t.task_id }));
@@ -464,16 +464,16 @@ export function pageURL(stationID: string, entry: string): string {
 
 /**
  * 插件页面的内容安全策略。页面在 sandbox="allow-scripts"（不给 allow-same-origin）的 iframe 里，是不透明源；
- * 这里再把它能加载的东西限定在本站目录（与宿主给的 SDK）里：不能请求 am 的接口、不能连网、不能提交表单、
+ * 这里再把它能加载的东西限定在本站目录（与宿主给的 SDK）里：不能请求 onset 的接口、不能连网、不能提交表单、
  * 不能再嵌页面。要数据只能经 postMessage 请宿主转交（StationPage.tsx），宿主逐条把关。
  */
 export function pageCSP(stationID: string, network: readonly string[] = []): string {
-  const own = `am://app/station-ui/${encodeURIComponent(stationID)}/`;
-  const sdk = 'am://app/station-ui/_sdk.js';
+  const own = `onset://app/station-ui/${encodeURIComponent(stationID)}/`;
+  const sdk = 'onset://app/station-ui/_sdk.js';
   // 当桌宠的页面里由宿主插进来的拖动脚本（petDragScript）。
-  const petDrag = 'am://app/station-ui/_pet.js';
+  const petDrag = 'onset://app/station-ui/_pet.js';
   // 项目里的视频、封面经 /station-media/<站>/ 放（只给声明过能读的文件）。
-  const media = `am://app/station-media/${encodeURIComponent(stationID)}/`;
+  const media = `onset://app/station-media/${encodeURIComponent(stationID)}/`;
   // 联网只给清单 permissions.network 里写的地址（添加时与设置页里给用户看）。
   const net = network.length > 0 ? network.join(' ') : "'none'";
   return [
@@ -501,11 +501,11 @@ const pageHeaders = (stationID: string, network: readonly string[] = []): Record
 export const pageHostTimeoutMs = 15_000;
 
 /**
- * 插件页面的辅助脚本：页面里 <script src="/station-ui/_sdk.js"> 后用 window.am。宿主一侧是
- * apps/desktop 的 Stations.tsx（StationFrame）：请求 {am:'station', id, type, …}，回答 {am:'host', id, ok, result|error}，
- * 执行类请求先回 {am:'host', id, ack:true}，项目变化时发 {am:'host', type:'refresh'}。
+ * 插件页面的辅助脚本：页面里 <script src="/station-ui/_sdk.js"> 后用 window.onset。宿主一侧是
+ * apps/desktop 的 Stations.tsx（StationFrame）：请求 {onset:'station', id, type, …}，回答 {onset:'host', id, ok, result|error}，
+ * 执行类请求先回 {onset:'host', id, ack:true}，项目变化时发 {onset:'host', type:'refresh'}。
  */
-export const pageSDK = `// ArticleToMotion 插件页面 SDK：页面在沙箱里，只能经宿主读文件、执行操作、往对话框填字。
+export const pageSDK = `// 片场插件页面 SDK：页面在沙箱里，只能经宿主读文件、执行操作、往对话框填字。
 (() => {
   // 本站 id：页面地址 /station-ui/<站>/…
   const STATION = decodeURIComponent((location.pathname.split('/')[2]) || '');
@@ -517,7 +517,7 @@ export const pageSDK = `// ArticleToMotion 插件页面 SDK：页面在沙箱里
   window.addEventListener('message', (e) => {
     if (e.source !== window.parent) return;
     const m = e.data;
-    if (!m || m.am !== 'host') return;
+    if (!m || m.onset !== 'host') return;
     if (m.type === 'refresh') {
       for (const f of refreshers) { try { f(); } catch (err) { console.error(err); } }
       return;
@@ -534,31 +534,31 @@ export const pageSDK = `// ArticleToMotion 插件页面 SDK：页面在沙箱里
     const id = ++seq;
     const timer = setTimeout(() => {
       pending.delete(id);
-      reject(new Error('ArticleToMotion 没有回应这个请求（' + type + '），请重新打开这个页面再试'));
+      reject(new Error('片场没有回应这个请求（' + type + '），请重新打开这个页面再试'));
     }, HOST_TIMEOUT_MS);
     pending.set(id, { resolve, reject, timer });
-    window.parent.postMessage(Object.assign({ am: 'station', id, type }, payload), '*');
+    window.parent.postMessage(Object.assign({ onset: 'station', id, type }, payload), '*');
   });
   // 跟随宿主的配色与基础控件：宿主把 :root 的颜色变量交过来，页面照着用 var(--accent) 等。
   const applyTheme = (theme) => {
     if (!theme) return;
     for (const [k, v] of Object.entries(theme.vars || {})) document.documentElement.style.setProperty(k, v);
-    if (theme.css && !document.getElementById('am-theme')) {
+    if (theme.css && !document.getElementById('onset-theme')) {
       const style = document.createElement('style');
-      style.id = 'am-theme';
+      style.id = 'onset-theme';
       style.textContent = theme.css;
       document.head.prepend(style);
     }
   };
   const ready = call('theme', {}).then(applyTheme, () => {});
-  window.am = {
-    /** 主题加载完（页面可以 await am.ready 再显示，避免闪一下）。 */
+  window.onset = {
+    /** 主题加载完（页面可以 await onset.ready 再显示，避免闪一下）。 */
     ready,
     /** 项目名、本站信息、操作、设置（不含密钥）与嵌入位上下文（嵌在镜头页时有镜头编号）。 */
     info: () => call('info', {}),
     /** 项目摘要：镜头、制作路线、发布信息、画幅、风格（清单 permissions.project 申请过才给）。 */
     project: () => call('project', {}),
-    /** 请用户确认后调用一条 am 自带的操作（清单 permissions.uses 申请过的），例如 scene_run、review。 */
+    /** 请用户确认后调用一条 onset 自带的操作（清单 permissions.uses 申请过的），例如 scene_run、review。 */
     call: (op, params) => call('call', { op, params: params || {} }),
     /** 项目里视频、图片的地址（可以直接放进 <video>/<img>，只给声明过能读的文件）。 */
     mediaURL: (path) => '/station-media/' + encodeURIComponent(STATION) + '/' + String(path).split('/').map(encodeURIComponent).join('/'),
@@ -589,7 +589,7 @@ export const petDragScript = `(() => {
   let start = null;
   let dragging = false;
   let swallow = false;
-  const post = (phase) => parent.postMessage({ am: 'pet-drag', phase }, '*');
+  const post = (phase) => parent.postMessage({ onset: 'pet-drag', phase }, '*');
   addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || (e.target instanceof Element && e.target.closest(interactive))) return;
     start = { id: e.pointerId, x: e.screenX, y: e.screenY };

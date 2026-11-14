@@ -66,7 +66,7 @@ const landscapeLayoutNotes = `
 - 底部控制栏与进度条是关键避让区：标题、数字、结论和字幕都不得进入 critical_text 下沿以下的区域；字幕带贴在进度条上方。
 `;
 
-/** 顺序即 am init 选择框里的展示顺序，第一项是默认值。 */
+/** 顺序即 onset init 选择框里的展示顺序，第一项是默认值。 */
 const builtin: Preset[] = [
   {
     id: 'vertical-3x4',

@@ -1,4 +1,4 @@
-// am memory 整组命令推迟到 memory 那一轮移植，这里遍历的命令树暂时不含它。
+// onset memory 整组命令推迟到 memory 那一轮移植，这里遍历的命令树暂时不含它。
 import { describe, expect, it } from 'vitest';
 import { Buffer, run } from './testutil';
 import { newRoot } from './cli';
@@ -19,7 +19,7 @@ describe('help', () => {
   // 门槛刻意定得低（有 Long、且比 Short 长），只拦「新增命令时忘了写」，不评价内容好坏。
   it('every command has agent-readable long help', () => {
     const { root } = newRoot(new Buffer(), new Buffer());
-    expect(root.long.trim(), '根命令缺少 Long：am --help 是调用方读到的第一屏').not.toBe('');
+    expect(root.long.trim(), '根命令缺少 Long：onset --help 是调用方读到的第一屏').not.toBe('');
     const problems: string[] = [];
     walk(root, (cmd) => {
       const p = cmd.commandPath();
@@ -45,7 +45,7 @@ describe('help', () => {
       }
       // 样例必须真的调用这个命令，否则是复制粘贴留下的错样例。来自操作表的命令按工具写法举例
       //（scene run → scene_run(…)），只给开发用的命令（init、setup）按命令行写法。
-      const tool = cmd.commandPath().replace(/^am /, '').replace(/[ -]/g, '_');
+      const tool = cmd.commandPath().replace(/^onset /, '').replace(/[ -]/g, '_');
       if (!cmd.example.includes(cmd.commandPath()) && !cmd.example.includes(tool + '(')) problems.push(`${cmd.commandPath()} 的 Example 里没有出现该命令本身：${cmd.example}`);
     });
     expect(problems).toEqual([]);

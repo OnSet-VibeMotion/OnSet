@@ -8,19 +8,19 @@ import { KindError, KindText, newSessionID, run, type Result } from './index';
 /**
  * 对真实 CLI 跑两轮：第一轮记住一个词，第二轮续接后问它。
  *
- * 每次都是真实的模型调用，所以只在设置 AM_TEST_AGENT_TOOLS 时运行，例如
+ * 每次都是真实的模型调用，所以只在设置 ONSET_TEST_AGENT_TOOLS 时运行，例如
  *
- *   AM_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run src/agentrun -t RealCLI
+ *   ONSET_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run src/agentrun -t RealCLI
  *
  * 改了某个工具的调用参数或解析器之后，要在本机对它跑一遍。
  */
-const list = process.env.AM_TEST_AGENT_TOOLS ?? '';
+const list = process.env.ONSET_TEST_AGENT_TOOLS ?? '';
 
 describe('RealCLI resume', () => {
   it.skipIf(list === '')('runs two turns per tool', { timeout: 20 * 60_000 }, async () => {
     for (const raw of list.split(',')) {
       const tool = raw.trim();
-      const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-agentrun-'));
+      const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-agentrun-'));
       const signal = AbortSignal.timeout(10 * 60_000);
       const turn = async (prompt: string, session: string, resume: boolean): Promise<[Result, string]> => {
         let text = '';

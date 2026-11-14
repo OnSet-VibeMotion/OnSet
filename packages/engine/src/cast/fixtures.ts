@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Rig } from './pack';
 
-export const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-cast-'));
+export const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'onset-cast-'));
 
 export function writePack(body: string): string {
   const dir = tempDir();

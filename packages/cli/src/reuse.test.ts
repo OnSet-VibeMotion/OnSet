@@ -2,9 +2,9 @@ import { tempDir } from './testutil';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import * as config from '@am/engine/config';
-import * as scene from '@am/engine/scene';
-import * as schedule from '@am/engine/schedule';
+import * as config from '@onset/engine/config';
+import * as scene from '@onset/engine/scene';
+import * as schedule from '@onset/engine/schedule';
 import { reuseDecision } from './reuse';
 
 function reuseScene(): scene.Scene {

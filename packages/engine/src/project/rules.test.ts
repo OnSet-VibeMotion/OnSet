@@ -8,7 +8,7 @@ import { builtinSources } from './testsupport';
 
 const temps: string[] = [];
 function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-project-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-project-'));
   temps.push(dir);
   return dir;
 }
@@ -59,7 +59,7 @@ describe('writeRules', () => {
     expect(fs.readFileSync(outside, 'utf8')).toBe('别的文件\n');
   });
 
-  // 模板必须随 am init 下发，否则 am run 永远只会打印「缺模板」。
+  // 模板必须随 onset init 下发，否则 onset run 永远只会打印「缺模板」。
   it('initialize ships rules template', () => {
     const target = path.join(tempDir(), 'video');
     initialize(target, ...builtinSources());

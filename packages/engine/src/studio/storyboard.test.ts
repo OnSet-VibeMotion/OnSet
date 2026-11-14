@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 function project(files: Record<string, string>): string {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-storyboard-')));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-storyboard-')));
   roots.push(root);
   for (const [name, body] of Object.entries(files)) {
     fs.mkdirSync(path.dirname(path.join(root, name)), { recursive: true });
@@ -109,8 +109,8 @@ describe('readStoryboard', () => {
   it('resolves each scene’s film style and leaves boundaries visible', () => {
     const manifest = (source: string, slug: string, cn: string) => JSON.stringify({ source, slug, cn, en: slug, version: '1', digest: 'x', installed_at: '' });
     const root = project({
-      '.agents/skills/am-film-style/am-film-style.json': manifest('lemo-opuscar', 'watercolor', '水彩'),
-      '.agents/am-film-styles/lemo-opuscar/ink-wash/am-film-style.json': manifest('lemo-opuscar', 'ink-wash', '水墨'),
+      '.agents/skills/onset-film-style/onset-film-style.json': manifest('lemo-opuscar', 'watercolor', '水彩'),
+      '.agents/onset-film-styles/lemo-opuscar/ink-wash/onset-film-style.json': manifest('lemo-opuscar', 'ink-wash', '水墨'),
       'production/scene-plan.json': JSON.stringify({
         schema: 1,
         scenes: [

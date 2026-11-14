@@ -6,4 +6,4 @@ const receipt = { platform, url: `https://example.invalid/${platform}/1` };
 fs.mkdirSync('production/publish', { recursive: true });
 fs.writeFileSync('production/publish/receipts.json', JSON.stringify(receipt) + '\n');
 console.log(`已发到 ${platform}`);
-console.log('am-result ' + JSON.stringify(receipt));
+console.log('onset-result ' + JSON.stringify(receipt));

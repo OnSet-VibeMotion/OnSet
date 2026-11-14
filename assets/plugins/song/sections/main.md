@@ -2,7 +2,7 @@
 
 ## 制作工具
 
-- 制作命令都是 am 工具服务（MCP）里的工具：下文写成 `工具名({参数})` 的就是一次工具调用，位置参数放进 `args`，其余参数按名字填；参数怎么填、会产出什么用 `tool_help({"tool": "<工具名>"})` 查。渲染、拼接这类长任务会先返回任务号，用 `job_wait` 等到完成，不要重复发起。说明、报错或工具输出里写成 `am <命令> <子命令>` 的，指的就是同名工具（空格与连字符换成下划线，例如 `am scene run-all` 就是 `scene_run_all`）。`am` 不在终端里，不要在 Bash 里找它或运行它。
+- 制作命令都是 onset 工具服务（MCP）里的工具：下文写成 `工具名({参数})` 的就是一次工具调用，位置参数放进 `args`，其余参数按名字填；参数怎么填、会产出什么用 `tool_help({"tool": "<工具名>"})` 查。渲染、拼接这类长任务会先返回任务号，用 `job_wait` 等到完成，不要重复发起。说明、报错或工具输出里写成 `onset <命令> <子命令>` 的，指的就是同名工具（空格与连字符换成下划线，例如 `onset scene run-all` 就是 `scene_run_all`）。`onset` 不在终端里，不要在 Bash 里找它或运行它。
 
 本项目以 song.yaml 启用歌曲讲解。先读 frame.md、templates/project-rules.md
 和 .agents/skills/song-explainer/SKILL.md，沿用项目画幅、风格、MG 制作与逐帧
@@ -17,7 +17,7 @@
    用户确定平台后用 `song_configure()` 配置。支持网页手动生成（manual）、MiniMax、百炼、ElevenLabs、fal、Mureka、Google Lyria 和远端 ACE-Step。
    百炼需北京邀测及普通按量 Key，指定歌词时忽略曲风；不要承诺 Token Plan 覆盖。
    不把任何密钥写进项目。各平台凭据从对应环境变量读取；嵌套
-   调用需要用户显式加入 AM_PASSTHROUGH_ENV。不得放宽全局环境白名单。
+   调用需要用户显式加入 ONSET_PASSTHROUGH_ENV。不得放宽全局环境白名单。
 2. 用户选择在网页生成时，用 `song_configure({"provider": "manual"})` 配置，写好歌词及曲风后
    运行 `song_handoff()`。manual 模式的 `song_generate()` 也只输出交接材料，不调用服务。
    将命令输出中的完整歌词和曲风分别作为可复制文本展示给用户，不要只给文件路径。

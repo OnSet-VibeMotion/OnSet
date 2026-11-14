@@ -32,18 +32,18 @@ exit 2
 }
 
 function tempDir(): string {
-  return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-beat-env-')));
+  return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-beat-env-')));
 }
 
 describe('beat analysis environment', () => {
   it('lives under the user data directory, keyed by the analyzer version', () => {
-    expect(envDir({ HOME: '/home/u' })).toBe('/home/u/.local/share/am/beat/venv-1.1.0');
-    expect(envDir({ HOME: '/home/u', XDG_DATA_HOME: '/data' })).toBe('/data/am/beat/venv-1.1.0');
+    expect(envDir({ HOME: '/home/u' })).toBe('/home/u/.local/share/onset/beat/venv-1.1.0');
+    expect(envDir({ HOME: '/home/u', XDG_DATA_HOME: '/data' })).toBe('/data/onset/beat/venv-1.1.0');
     expect(envDir({ HOME: '/home/u', [EnvDirEnv]: '/opt/beat' })).toBe('/opt/beat');
     expect(envDir({})).toBe('');
   });
 
-  it('is missing until am setup installs it, and never installs on its own', () => {
+  it('is missing until onset setup installs it, and never installs on its own', () => {
     const home = tempDir();
     let err: unknown;
     try {
@@ -97,11 +97,11 @@ describe('beat analysis environment', () => {
     expect(envReady(dir)).toBe(true);
     const first = fs.readFileSync(log, 'utf8').trim().split('\n')[0];
     expect(first).toBe(
-      `uv venv --seed --python 3.12 --python-preference only-managed ${dir} dir=${path.join(root, '.local', 'share', 'am', 'python')} proxy=http://127.0.0.1:7890`,
+      `uv venv --seed --python 3.12 --python-preference only-managed ${dir} dir=${path.join(root, '.local', 'share', 'onset', 'python')} proxy=http://127.0.0.1:7890`,
     );
   });
 
-  it('asks for am setup when there is neither a suitable Python nor uv', async () => {
+  it('asks for onset setup when there is neither a suitable Python nor uv', async () => {
     const root = tempDir();
     await expect(ensureEnv({ env: { HOME: root, PATH: '/nonexistent' } })).rejects.toThrow(/工具准备页安装「音乐卡点」/);
   });

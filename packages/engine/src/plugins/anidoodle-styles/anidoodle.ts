@@ -5,8 +5,8 @@
 // draw(ctx, frame, env) 写成的示范画（TypeScript），多数另有一个笔触工具模块（<风格>Kit.ts），
 // references/styles/<风格>.md 写着介质、笔触、边缘、顺序、色板与禁忌。
 //
-// am 这样接：am setup 按固定 commit 稀疏检出风格说明与每种风格用到的模块（catalog.json 的
-// modules），在本机用 am 自己的 Node 运行时把 TypeScript 转成浏览器能直接 import 的 ES 模块
+// onset 这样接：onset setup 按固定 commit 稀疏检出风格说明与每种风格用到的模块（catalog.json 的
+// modules），在本机用 onset 自己的 Node 运行时把 TypeScript 转成浏览器能直接 import 的 ES 模块
 // （build.ts），并从上游图鉴里裁出每种风格的海报；装风格时（fill.ts）把说明、转好的模块、
 // TypeScript 原文与接 HyperFrames 的接头（runtime.js.tmpl）写进项目。
 //
@@ -24,7 +24,7 @@ export const RepoURL = 'https://github.com/alexgreensh/anidoodle.git';
 export const Gallery = 'https://github.com/alexgreensh/anidoodle/blob/main/skills/anidoodle/assets/styles.jpg';
 
 /**
- * am 安装的上游版本。
+ * onset 安装的上游版本。
  *
  * 固定 commit 而不跟随 main：示范画与笔触模块直接决定成片画面。升级时更新这里，用新 commit 的检出重跑
  * 生成器（gen/main.ts 的 generateCatalog），核对 gen/zh.ts 的中文表与图鉴格子，并对比新旧 core.ts / film.ts
@@ -36,10 +36,10 @@ export const PinnedCommit = '4ae27d2c281fcfd01bce87ab13dc5ad4df81a795';
 export const PinnedStyleCount = 32;
 
 /**
- * 指定上游检出目录，覆盖默认位置。指向一份已有检出时直接使用；那是用户自己的检出，am 不改它的 git 状态，
- * 转好的模块与海报另放在 am 的数据目录里。
+ * 指定上游检出目录，覆盖默认位置。指向一份已有检出时直接使用；那是用户自己的检出，onset 不改它的 git 状态，
+ * 转好的模块与海报另放在 onset 的数据目录里。
  */
-export const LibraryEnv = 'AM_ANIDOODLE_LIBRARY';
+export const LibraryEnv = 'ONSET_ANIDOODLE_LIBRARY';
 
 /** 上游技能在仓库里的位置。 */
 export const SkillRoot = 'skills/anidoodle';
@@ -52,7 +52,7 @@ export const CoreModules = ['canvas-core/core.ts', 'canvas-core/film.ts'];
 
 /** catalog.json 里的一种风格。 */
 export interface Entry {
-  /** am 里的目录名（上游 id 转成小写连字符）。 */
+  /** onset 里的目录名（上游 id 转成小写连字符）。 */
   slug: string;
   /** 上游的风格 id（camelCase）。 */
   id: string;
@@ -136,7 +136,7 @@ export function entryStyle(entry: Entry): Style {
   };
 }
 
-/** 上游 id（camelCase）转成 am 的目录名。 */
+/** 上游 id（camelCase）转成 onset 的目录名。 */
 export function slugOf(id: string): string {
   return id.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
 }

@@ -14,7 +14,7 @@ import path from 'node:path';
  * 取帧（beginFrame 只在 Linux 的 headless-shell 上用），隐藏窗口截图实测正常（中文、WebGL、指定视口）。
  *
  * 启动方是包装脚本（clishim.ts 的 browserScript）：它去掉 puppeteer 加的 `--remote-debugging-pipe` 等参数——
- * 留着的话 Electron 自己也会去占 fd 3/4——再以 AM_BROWSER_MODE=1 启动本应用，入口（entry.ts）据此进到这里。
+ * 留着的话 Electron 自己也会去占 fd 3/4——再以 ONSET_BROWSER_MODE=1 启动本应用，入口（entry.ts）据此进到这里。
  */
 
 const argv = process.argv.slice(1);
@@ -25,7 +25,7 @@ function switchValue(name: string): string | undefined {
   return hit === undefined ? undefined : hit.slice(prefix.length);
 }
 
-const userData = switchValue('user-data-dir') || fs.mkdtempSync(path.join(os.tmpdir(), 'am-browser-'));
+const userData = switchValue('user-data-dir') || fs.mkdtempSync(path.join(os.tmpdir(), 'onset-browser-'));
 app.setPath('userData', userData);
 const activePortFile = path.join(userData, 'DevToolsActivePort');
 fs.rmSync(activePortFile, { force: true });
@@ -52,7 +52,7 @@ interface Message {
 const toClient = new net.Socket({ fd: 4, readable: false, writable: true });
 const fromClient = new net.Socket({ fd: 3, readable: true, writable: false });
 
-const debug = process.env.AM_BROWSER_DEBUG === '1' ? (text: string) => process.stderr.write(`[am-browser] ${text}\n`) : () => {};
+const debug = process.env.ONSET_BROWSER_DEBUG === '1' ? (text: string) => process.stderr.write(`[onset-browser] ${text}\n`) : () => {};
 
 function reply(message: Message): void {
   toClient.write(JSON.stringify(message) + '\0');

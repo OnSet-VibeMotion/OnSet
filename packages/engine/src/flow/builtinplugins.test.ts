@@ -11,7 +11,7 @@ afterEach(() => {
   for (const dir of temps.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 const project = () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'am-builtin-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-builtin-'));
   temps.push(root);
   return root;
 };
@@ -34,10 +34,10 @@ describe('builtin plugins', () => {
     const all = ['algorithmic-art', 'anidoodle-styles', 'beat', 'cast', 'huashu-styles', 'lemo-styles', 'publishing', 'skins', 'song', 'text-to-lottie'];
     expect(loadStations().stations.map((s) => s.manifest.id)).toEqual(all);
     // 锁文件里写的 stations、flow、disabled 都不认，也不写回。
-    fs.writeFileSync(path.join(root, 'article-to-motion.flow.json'), JSON.stringify({ version: 1, stations: [{ id: 'x', source: 'link:/nope' }], flow: 'x', disabled: ['song'] }));
+    fs.writeFileSync(path.join(root, 'onset.flow.json'), JSON.stringify({ version: 1, stations: [{ id: 'x', source: 'link:/nope' }], flow: 'x', disabled: ['song'] }));
     expect(readLock(root)).toEqual({ version: 1 });
     recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
-    expect(JSON.parse(fs.readFileSync(path.join(root, 'article-to-motion.flow.json'), 'utf8'))).toEqual({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } });
+    expect(JSON.parse(fs.readFileSync(path.join(root, 'onset.flow.json'), 'utf8'))).toEqual({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } });
   });
 });
 
@@ -56,7 +56,7 @@ describe('builtin plugins that register renderer skills', () => {
     expect(prompt).toContain('生成式艺术参考');
     expect(prompt).toContain('Lottie 图层');
     // 锁文件在（连旧的 disabled 一起）：逐字不变。
-    fs.writeFileSync(path.join(root, 'article-to-motion.flow.json'), JSON.stringify({ version: 1, stations: [], disabled: ['algorithmic-art'] }));
+    fs.writeFileSync(path.join(root, 'onset.flow.json'), JSON.stringify({ version: 1, stations: [], disabled: ['algorithmic-art'] }));
     const same = resolveAllSkills('claude', sceneDir, {}, s);
     expect(buildPrompt(s, same)).toBe(prompt);
     expect(fingerprint(s, 'claude', same).fingerprint).toBe(print);

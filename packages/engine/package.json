@@ -1,8 +1,8 @@
 {
-  "name": "@am/engine",
+  "name": "@onset/engine",
   "private": true,
   "version": "0.1.0",
-  "description": "ArticleToMotion 引擎：internal/* 的 TypeScript 移植，目录与 Go 包一一对应",
+  "description": "片场引擎：internal/* 的 TypeScript 移植，目录与 Go 包一一对应",
   "type": "module",
   "exports": {
     "./*": "./src/*/index.ts"
@@ -10,7 +10,7 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p .",
-    "generate": "esbuild src/preset/gen/main.ts --bundle --platform=node --format=cjs --target=node22 --log-level=warning --outfile=node_modules/.cache/am-preset-gen.cjs && node node_modules/.cache/am-preset-gen.cjs"
+    "generate": "esbuild src/preset/gen/main.ts --bundle --platform=node --format=cjs --target=node22 --log-level=warning --outfile=node_modules/.cache/onset-preset-gen.cjs && node node_modules/.cache/onset-preset-gen.cjs"
   },
   "dependencies": {
     "yaml": "^2.9.1"

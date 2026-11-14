@@ -38,7 +38,7 @@ describe('the beat plugin', () => {
     expect(owned(plugin.pluginSteps()).map((s) => s.id)).toEqual(['beat']);
     expect(owned(plugin.pluginCommands()).map((c) => c.id)).toEqual(['beat.confirm', 'beat.regrid']);
     expect(owned(plugin.pluginPrereqs()).map((p) => p.id)).toEqual(['beat']);
-    expect(owned(plugin.pluginChildEnvs()).map((e) => e.key)).toEqual(['AM_BEAT_ENV_DIR']);
+    expect(owned(plugin.pluginChildEnvs()).map((e) => e.key)).toEqual(['ONSET_BEAT_ENV_DIR']);
     expect(owned(plugin.pluginPresets()).map((p) => p.id)).toEqual(['beat']);
     expect(owned(plugin.pluginSceneBlocks()).map((b) => b.key)).toEqual(['beat']);
     expect(owned(plugin.pluginRenderChecks())).toHaveLength(1);
@@ -59,10 +59,10 @@ describe('the beat plugin', () => {
     const root = newSessionFixture().root;
     const env = { HOME: '/home/u', XDG_DATA_HOME: '/data' };
     const cfg = config.load(root, env);
-    expect(cfg.pluginEnv.AM_BEAT_ENV_DIR).toMatch(/^\/data\/am\/beat\//);
-    expect(config.childEnvironment(cfg, env).AM_BEAT_ENV_DIR).toBe(cfg.pluginEnv.AM_BEAT_ENV_DIR);
-    expect(tools.amToolsServer('am', 'orchestrator', root, { AM_BEAT_ENV_DIR: '/x', SECRET: 'no' }).env).toMatchObject({ AM_BEAT_ENV_DIR: '/x' });
-    expect(tools.amToolsServer('am', 'orchestrator', root, { SECRET: 'no' }).env?.SECRET).toBeUndefined();
+    expect(cfg.pluginEnv.ONSET_BEAT_ENV_DIR).toMatch(/^\/data\/onset\/beat\//);
+    expect(config.childEnvironment(cfg, env).ONSET_BEAT_ENV_DIR).toBe(cfg.pluginEnv.ONSET_BEAT_ENV_DIR);
+    expect(tools.onsetToolsServer('onset', 'orchestrator', root, { ONSET_BEAT_ENV_DIR: '/x', SECRET: 'no' }).env).toMatchObject({ ONSET_BEAT_ENV_DIR: '/x' });
+    expect(tools.onsetToolsServer('onset', 'orchestrator', root, { SECRET: 'no' }).env?.SECRET).toBeUndefined();
   });
 
   it('is there in every project: its prerequisite is listed and /api/stations has no switch for it', async () => {

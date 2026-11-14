@@ -3,7 +3,7 @@
 //
 // 为什么这一步在引擎而不在编排工具：分段 TTS 只给得到段内相对时间戳，
 // 拼成全局时间轴要逐段累加偏移。算错的后果是成片画面正常、只是嘴和字对不上，
-// 不会报错——这类会静默坏掉的机械计算一律收进 am。
+// 不会报错——这类会静默坏掉的机械计算一律收进 onset。
 
 /** SchemaVersion 是 plan.json 与 dialogue.json 共用的 schema 标识。 */
 import { sliceOf, unmarshal, type StructType } from '../gojson/decode';

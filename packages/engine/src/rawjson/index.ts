@@ -1,6 +1,6 @@
 /**
  * Go 里 `var fields map[string]json.RawMessage; json.Unmarshal(raw, &fields)` 改几个键再
- * `json.MarshalIndent(fields, "", "  ")` 的写法（am beat cues、am song cues 用它改 scene.json）。
+ * `json.MarshalIndent(fields, "", "  ")` 的写法（onset beat cues、onset song cues 用它改 scene.json）。
  *
  * 不能用 JSON.parse 再写回：RawMessage 保留数字原文（2.50 仍是 2.50），而 map 的输出按键排序、
  * 字符串里的 < > & 与 U+2028/U+2029 按 json.Marshal 的 compact 规则转义。这是现行的固定格式：

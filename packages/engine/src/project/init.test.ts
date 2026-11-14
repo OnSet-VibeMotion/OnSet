@@ -7,7 +7,7 @@ import { builtinSources, mapTree } from './testsupport';
 
 const temps: string[] = [];
 function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-project-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-project-'));
   temps.push(dir);
   return dir;
 }
@@ -21,7 +21,7 @@ describe('initialize', () => {
     const result = initialize(target, ...builtinSources());
     expect(result.created).toBeGreaterThan(0);
     for (const name of [
-      'article-to-motion.conf',
+      'onset.conf',
       '.env.example',
       'frame.md',
       'templates/project-rules.md',
@@ -45,7 +45,7 @@ describe('initialize', () => {
     const target = tempDir();
     fs.writeFileSync(path.join(target, 'frame.md'), 'custom');
     expect(() => initialize(target, ...builtinSources())).toThrow();
-    expect(fs.existsSync(path.join(target, 'article-to-motion.conf')), 'initializer wrote files before conflict check').toBe(false);
+    expect(fs.existsSync(path.join(target, 'onset.conf')), 'initializer wrote files before conflict check').toBe(false);
   });
 
   it('rejects symlinked template directory', () => {

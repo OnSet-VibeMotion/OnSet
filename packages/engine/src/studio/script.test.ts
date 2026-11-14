@@ -8,7 +8,7 @@ describe('script', () => {
   // 标记写错时给出位置并带回原文，不让页面空着。
   it('script endpoint', async () => {
     const root = tempDir();
-    writeStudioFile(path.join(root, 'article-to-motion.conf'), '');
+    writeStudioFile(path.join(root, 'onset.conf'), '');
     writeStudioFile(path.join(root, 'SCRIPT.md'), '原稿');
     const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
 

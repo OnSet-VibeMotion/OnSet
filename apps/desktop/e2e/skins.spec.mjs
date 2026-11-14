@@ -37,7 +37,7 @@ test('a plugin skin can replace the pet with its own page', async ({ page, proje
   fs.mkdirSync(path.join(dir, 'skins'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'ui'), { recursive: true });
   fs.writeFileSync(
-    path.join(dir, 'am-station.json'),
+    path.join(dir, 'onset-station.json'),
     JSON.stringify({ id: 'cat-skins', version: '1', name: '猫咪皮肤', skins: ['skins/cat.json'], pages: [{ id: 'cat', label: '猫咪小窝', entry: 'ui/cat.html' }] }),
   );
   fs.writeFileSync(path.join(dir, 'skins', 'cat.json'), JSON.stringify({ id: 'cat', name: '猫咪', tokens: { accent: '#e07a5f' }, pet: { page: 'cat' } }));
@@ -50,9 +50,9 @@ test('a plugin skin can replace the pet with its own page', async ({ page, proje
     path.join(dir, 'ui', 'cat.js'),
     `let asked = false;
 const answered = new Set();
-const tell = (command) => parent.postMessage({ am: 'pet-command', command }, '*');
+const tell = (command) => parent.postMessage({ onset: 'pet-command', command }, '*');
 window.addEventListener('message', (e) => {
-  if (!e.data || e.data.am !== 'pet') return;
+  if (!e.data || e.data.onset !== 'pet') return;
   const sig = e.data.signal;
   document.getElementById('mood').textContent = sig.mood + ' ' + e.data.skin.tokens.accent;
   if (!asked) { asked = true; tell({ kind: 'open', page: 'progress' }); }
@@ -99,7 +99,7 @@ window.addEventListener('message', (e) => {
   await pet.evaluate(() => {
     window.__drags = [];
     window.addEventListener('message', (e) => {
-      if (e.data && e.data.am === 'pet-drag') window.__drags.push(e.data.phase);
+      if (e.data && e.data.onset === 'pet-drag') window.__drags.push(e.data.phase);
     });
   });
   const box = await pet.locator('.pet-frame').boundingBox();
@@ -115,10 +115,10 @@ window.addEventListener('message', (e) => {
 });
 
 // 上次选了浅色皮肤：重开客户端时窗口底色与第一帧就是它（主进程同步给界面，画完才显示窗口），不先闪一下黑底。
-const remembered = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'am-skin-registry-')), 'projects.json');
+const remembered = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-skin-registry-')), 'projects.json');
 fs.writeFileSync(remembered, JSON.stringify({ schema: 1, projects: null, skin: 'skins/daylight' }) + '\n');
 test.describe('with a remembered skin', () => {
-  test.use({ appEnv: { AM_STUDIO_CONFIG: remembered } });
+  test.use({ appEnv: { ONSET_STUDIO_CONFIG: remembered } });
   test('starts in the remembered skin from the first frame', async ({ page, electronApp }) => {
     // 不经接口：skinNow 在 React 画第一帧之前就写上了。
     await expect(page.locator('html')).toHaveAttribute('data-skin', 'skins/daylight');

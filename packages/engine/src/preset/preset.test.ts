@@ -10,7 +10,7 @@ function assertSafeArea(id: string, want: Record<string, ResolvedBox>) {
 }
 
 describe('preset', () => {
-  // 3:4 的推导结果钉死：安全区的数字进 frame.md、镜头的 am-scene.js 与渲染指纹。
+  // 3:4 的推导结果钉死：安全区的数字进 frame.md、镜头的 onset-scene.js 与渲染指纹。
   it('vertical 3:4 matches the shipped frame values', () => {
     assertSafeArea('vertical-3x4', {
       structural: { leftPx: 40, rightPx: 40, topPx: 96, bottomPx: 60 },

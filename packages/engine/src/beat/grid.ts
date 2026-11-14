@@ -226,7 +226,7 @@ export function confirm(root: string, g: Grid): Grid {
  *
  * reviewed 只是一个字段：它防的是「拿草稿直接切镜头」这种疏忽，不防有人
  * 故意手改 grid.json。确认之后的任何改动都会改变文件摘要，已写好的镜头 cue
- * 随之失效，必须重跑 am beat cues。
+ * 随之失效，必须重跑 onset beat cues。
  */
 export function loadGrid(root: string): Grid {
   loadConfig(root);

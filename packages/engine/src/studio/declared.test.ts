@@ -24,21 +24,21 @@ function temp(prefix: string): string {
 
 /** 假发布的一份拷贝，清单并进 declared-state.json（顶替内置发布、站点带上 state 与 guide）。 */
 function declaredPublisher(): string {
-  const dir = temp('am-fake-declared-');
+  const dir = temp('onset-fake-declared-');
   fs.cpSync(fake, dir, { recursive: true });
-  const m = JSON.parse(fs.readFileSync(path.join(dir, 'am-station.json'), 'utf8'));
+  const m = JSON.parse(fs.readFileSync(path.join(dir, 'onset-station.json'), 'utf8'));
   const patch = JSON.parse(fs.readFileSync(path.join(dir, 'declared-state.json'), 'utf8'));
   m.replaces = patch.replaces;
   delete m.after;
   delete m.flow;
   Object.assign(m.nodes[0], patch.node);
-  fs.writeFileSync(path.join(dir, 'am-station.json'), JSON.stringify(m, null, 2));
+  fs.writeFileSync(path.join(dir, 'onset-station.json'), JSON.stringify(m, null, 2));
   return dir;
 }
 
 /** 走到发布这一站的项目：试听确认过，前面的站都算过了。给了 station 时装上它，没给时不装。 */
 function project(publishMD: string | null, station?: string): string {
-  const root = temp('am-declared-');
+  const root = temp('onset-declared-');
   recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
   fs.mkdirSync(path.join(root, 'production'), { recursive: true });
   fs.writeFileSync(path.join(root, 'production', 'approval.json'), '{"approved_at":"2026-11-01T00:00:00Z"}');

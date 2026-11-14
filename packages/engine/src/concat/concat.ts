@@ -153,7 +153,7 @@ export class Runner {
     // 用 CreateTemp 式的唯一清单文件名：固定文件名在同一目录并发跑
     // 多个 concat 时会互相覆盖对方还没读完的清单（与 internal/dialogue/audio.go
     // 的 Concat 同样的问题、同样的修法）。
-    const listPath = createTemp(path.dirname(dest), '.am-concat-list-', '.txt');
+    const listPath = createTemp(path.dirname(dest), '.onset-concat-list-', '.txt');
     try {
       let list = '';
       for (const p of paths) {

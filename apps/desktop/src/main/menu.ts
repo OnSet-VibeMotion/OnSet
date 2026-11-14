@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, Menu, type MenuItemConstructorOptions } fro
 import { mainWindow } from './pet';
 
 /**
- * 原生菜单。菜单项只发「做什么」给当前窗口的界面（am:menu），界面用它已有的状态与接口去做：
+ * 原生菜单。菜单项只发「做什么」给当前窗口的界面（onset:menu），界面用它已有的状态与接口去做：
  * 新建、切页这些逻辑只在界面里有一份，菜单不另写。选目录用系统对话框，选好后把路径一并发过去。
  */
 export type MenuAction = { type: 'new' } | { type: 'home' } | { type: 'open'; path: string } | { type: 'step'; index: number } | { type: 'settings' } | { type: 'panel' } | { type: 'reveal' };
@@ -15,7 +15,7 @@ function target(): BrowserWindow | undefined {
 
 function send(action: MenuAction): void {
   const win = target();
-  win?.webContents.send('am:menu', action);
+  win?.webContents.send('onset:menu', action);
 }
 
 async function openFolder(): Promise<void> {
@@ -39,7 +39,7 @@ export function installMenu(pet?: PetMenu): void {
           {
             label: app.name,
             submenu: [
-              { role: 'about', label: '关于 ArticleToMotion' },
+              { role: 'about', label: '关于片场' },
               { type: 'separator' },
               { label: '设置…', accelerator: 'CmdOrCtrl+,', click: () => send({ type: 'settings' }) },
               { type: 'separator' },
@@ -47,7 +47,7 @@ export function installMenu(pet?: PetMenu): void {
               { role: 'hideOthers', label: '隐藏其他' },
               { role: 'unhide', label: '全部显示' },
               { type: 'separator' },
-              { role: 'quit', label: '退出 ArticleToMotion' },
+              { role: 'quit', label: '退出片场' },
             ] as MenuItemConstructorOptions[],
           },
         ]
@@ -93,5 +93,5 @@ export function installMenu(pet?: PetMenu): void {
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
-  app.setAboutPanelOptions({ applicationName: 'ArticleToMotion', copyright: '把文章做成竖屏动画视频' });
+  app.setAboutPanelOptions({ applicationName: '片场', copyright: '把文章做成竖屏动画视频' });
 }

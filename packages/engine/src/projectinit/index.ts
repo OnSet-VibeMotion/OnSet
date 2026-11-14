@@ -1,5 +1,5 @@
 /**
- * 建一个新的视频项目：am init 与客户端的「新建项目」共用这一条路。
+ * 建一个新的视频项目：onset init 与客户端的「新建项目」共用这一条路。
  *
  * 两边曾经各写一份：Studio 那份漏了讲解形式（歌曲 / 卡点）、多角色对话，也不装 HyperFrames 官方技能——
  * 新建的项目渲染时拿不到 hyperframes 入口技能。放在一处，两个入口建出的项目逐字节相同。
@@ -12,12 +12,12 @@ import * as hyperframes from '../hyperframes';
 import * as plugin from '../plugin';
 import * as project from '../project';
 
-// 讲解形式（am init --delivery）：就是项目的流程（片型），可选值是内置流程、内置插件登记的流程与已装的第三方插件
+// 讲解形式（onset init --delivery）：就是项目的流程（片型），可选值是内置流程、内置插件登记的流程与已装的第三方插件
 // 带来的流程（x:<插件 id>，deliveryFlows）。流程只在新建时定。
 export const DeliverySpeech = 'speech';
 export const DeliverySong = 'song';
 
-// 叙事模式（am init --narration）。solo 是单口播，宿主自己的缺省；其余由内置插件登记（ctx.narration），
+// 叙事模式（onset init --narration）。solo 是单口播，宿主自己的缺省；其余由内置插件登记（ctx.narration），
 // 选中时写出那个插件的初始文件（多角色对话是 cast.yaml 与 cast/）。
 export const NarrationSolo = 'solo';
 
@@ -151,7 +151,7 @@ export function recordProjectFlow(target: string, id: string, canvas: string): v
 
 /**
  * 把固定版本的 HyperFrames 官方技能从本机缓存拷进项目的 .agents/skills/，与内置技能重名的保留内置版本。
- * 不联网：技能是前置资源，由 am setup 下载进缓存；缓存里没有时抛 prereq.MissingError。
+ * 不联网：技能是前置资源，由 onset setup 下载进缓存；缓存里没有时抛 prereq.MissingError。
  */
 export function installSkills(
   target: string,

@@ -3,7 +3,7 @@
  * （runStudioOp）与开发用的命令行都从操作表来，所以新增内置功能不用改 toolsmcp.ts。命令组的说明（ctx.opGroup）
  * 同样挂进命令行。内置插件常开，它的操作对每个项目都在。
  */
-import * as plugin from '@am/engine/plugin';
+import * as plugin from '@onset/engine/plugin';
 import { defineGroup } from './ops/cli';
 import { defineOp, removeOp, type Op } from './ops/op';
 

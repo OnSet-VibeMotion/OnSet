@@ -13,7 +13,7 @@ import { parsePhraseTimeline } from './timing';
 import { getToolVersion } from '../version';
 
 /**
- * 写进输入指纹的 am 版本，由 cli 在启动时设为 cli 的版本号（Go 的 scene.ToolVersion = cli.Version）。
+ * 写进输入指纹的 onset 版本，由 cli 在启动时设为 cli 的版本号（Go 的 scene.ToolVersion = cli.Version）。
  * 存取在 version 包（不依赖任何功能包，flow 的兼容检查也读它），这里转出，原有的 import 不用改。
  */
 export { getToolVersion, setToolVersion } from '../version';
@@ -22,7 +22,7 @@ export { getToolVersion, setToolVersion } from '../version';
 export type { RenderRecord as Record };
 
 /** 镜头目录里的渲染记录文件名。 */
-export const RecordFile = '.am-render.json';
+export const RecordFile = '.onset-render.json';
 
 /**
  * 渲染记录的结构版本。
@@ -38,7 +38,7 @@ export const RecordSchemaBytes = 1;
 /**
  * 一次渲染的全部输入摘要。
  *
- * parts 的键是输入项名字（prompt、renderer、am、file:<相对路径>、skill:<技能名>），
+ * parts 的键是输入项名字（prompt、renderer、onset、file:<相对路径>、skill:<技能名>），
  * 值是该项内容的 sha256。分项记下而不是只存总指纹，是为了在判定 Stale 时能说出
  * 到底是哪一项变了——只说「输入变了」的话，人还得自己去翻是谁改了什么。
  */
@@ -89,7 +89,7 @@ export function fingerprint(s: Scene, renderer: string, resolvedSkills: Record<s
   let prompt = buildPrompt(s, resolved);
   const parts: Record<string, string> = {
     renderer: digestString(renderer),
-    am: digestString(getToolVersion()),
+    onset: digestString(getToolVersion()),
   };
   // 技能目录的绝对路径换成技能名：项目整体挪个位置不该让所有镜头变成 Stale，
   // 技能内容的变化由下面的 skill:<名字> 单独记录。
@@ -141,7 +141,7 @@ export function inputFiles(s: Scene): string[] {
 /**
  * 时间合同引用的镜头内文件，供输入指纹使用。
  *
- * 镜头局部数据 am-scene.js 不算：它由 scene.json、字幕、frame.md 与这里的
+ * 镜头局部数据 onset-scene.js 不算：它由 scene.json、字幕、frame.md 与这里的
  * 短语时间轴推出，每次渲染前重写，算进去只会重复计数。
  */
 function timingInputFiles(s: Scene): string[] {
@@ -182,7 +182,7 @@ function windowOf(s: Scene): () => InputWindow | null {
  * 就这样被判要重渲染，实际一个都没受影响）。
  *
  *   scene.json        解析后按键排序重新序列化：数字写法、键的先后、缩进都不算变化
- *   字幕、短语时间轴  只记渲染器实际拿到的那几条：有 timing 的镜头是 am-scene.js 里裁到本镜头的字幕与短语
+ *   字幕、短语时间轴  只记渲染器实际拿到的那几条：有 timing 的镜头是 onset-scene.js 里裁到本镜头的字幕与短语
  *                     （正文与局部帧号，scenedata 的 localCues / localPhrases），没有 timing 的镜头记全部字幕（正文与时间）
  *   其余（prompt.md） 按字节：渲染器逐字读它
  *
@@ -222,12 +222,12 @@ function canonicalJSON(value: unknown): string {
 /**
  * 客户端每轮对话前后把项目里的文本文件按 sha256 存进 production/studio/blobs/（studio/turns.ts）。旧记录里的
  * 摘要正是那份内容的 sha256，找得到就能拿渲染时的内容按新规则比。项目根是镜头目录往上第一个有
- * article-to-motion.conf 的目录。
+ * onset.conf 的目录。
  */
 function snapshotOf(dir: string, digest: string): string | null {
   if (!/^[0-9a-f]{64}$/.test(digest)) return null;
   for (let at = path.resolve(dir); ; ) {
-    if (fs.existsSync(path.join(at, 'article-to-motion.conf'))) {
+    if (fs.existsSync(path.join(at, 'onset.conf'))) {
       const file = path.join(at, 'production', 'studio', 'blobs', digest);
       return fs.existsSync(file) ? file : null;
     }
@@ -257,7 +257,7 @@ export function inputMatchesRecord(s: Scene, rel: string, record: Pick<RenderRec
 
 /**
  * 当前输入与渲染记录是否等价：指纹相同，或者变了的只有镜头的输入文件、且每个都与记录一致
- * （inputMatchesRecord：内容没变，只是写法、别的镜头的字幕变了）。am 判断复用与镜头列表都用它。
+ * （inputMatchesRecord：内容没变，只是写法、别的镜头的字幕变了）。onset 判断复用与镜头列表都用它。
  */
 export function inputsMatchRecord(s: Scene, current: Inputs, record: RenderRecord): boolean {
   if (current.fingerprint === record.fingerprint) return true;

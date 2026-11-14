@@ -23,9 +23,9 @@ case "$prompt" in *看看稿子*)
   printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"r1","name":"Read","input":{"file_path":"production/script-final.md"}}]}}\n'
   exec sleep 60 ;;
 esac
-# 「拍一下」：调用 am 的 scene_run 就挂起，小人停在「拍」。
+# 「拍一下」：调用 onset 的 scene_run 就挂起，小人停在「拍」。
 case "$prompt" in *拍一下*)
-  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"f1","name":"mcp__am__scene_run","input":{"scene":"scenes/scene-001"}}]}}\n'
+  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"f1","name":"mcp__onset__scene_run","input":{"scene":"scenes/scene-001"}}]}}\n'
   exec sleep 60 ;;
 esac
 # 「导演开机」：像导演（pi）那样不带前缀直接调 scene_run，然后挂起。
@@ -38,9 +38,9 @@ case "$prompt" in *排分镜*)
   printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"s1","name":"Edit","input":{"file_path":"production/scene-plan.json","old_string":"a","new_string":"b"}}]}}\n'
   exec sleep 60 ;;
 esac
-# 「拼一下」：调用 am 的 concat 就挂起，桌宠的剪辑师开工。
+# 「拼一下」：调用 onset 的 concat 就挂起，桌宠的剪辑师开工。
 case "$prompt" in *拼一下*)
-  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"c1","name":"mcp__am__concat","input":{}}]}}\n'
+  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"c1","name":"mcp__onset__concat","input":{}}]}}\n'
   exec sleep 60 ;;
 esac
 # 「给我选项」：列一份待办清单，回复末尾带 choices 代码块，不改文件。
@@ -70,7 +70,7 @@ case "$prompt" in *排版测试*)
   printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
   exit 0 ;;
 esac
-# 「要批准」：经客户端挂的审批服务（--mcp-config 里的 am studio permission-mcp）请用户批准一条命令，
+# 「要批准」：经客户端挂的审批服务（--mcp-config 里的 onset studio permission-mcp）请用户批准一条命令，
 # 把结果写进回复。没有 --mcp-config（安全模式外或不在客户端里）时如实说明。
 case "$prompt" in *要批准*)
   mcp=""; prev=""
@@ -85,9 +85,9 @@ case "$prompt" in *要批准*)
 esac
 # 「标步骤」：照 studio_step 的写法往这一轮的收件目录写一份请求（只标步骤、不切页），再照常回复。
 case "$prompt" in *标步骤*)
-  if [ -n "$AM_STUDIO_INBOX" ]; then
-    mkdir -p "$AM_STUDIO_INBOX"
-    printf '{"page":"","step":"final","note":"成片拼好了，等你试听"}' > "$AM_STUDIO_INBOX/00000000000000000001.json"
+  if [ -n "$ONSET_STUDIO_INBOX" ]; then
+    mkdir -p "$ONSET_STUDIO_INBOX"
+    printf '{"page":"","step":"final","note":"成片拼好了，等你试听"}' > "$ONSET_STUDIO_INBOX/00000000000000000001.json"
   fi
   printf '{"type":"assistant","message":{"content":[{"type":"text","text":"成片拼好了"}]}}\n'
   printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'

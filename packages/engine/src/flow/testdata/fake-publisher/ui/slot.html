@@ -5,10 +5,10 @@
   <p id="where">…</p>
   <button id="open">打开发布看板</button>
   <script>
-    am.info().then((info) => {
+    onset.info().then((info) => {
       document.getElementById('where').textContent = '嵌在 ' + info.context.slot + ' · 默认平台 ' + info.settings.platform;
     });
-    document.getElementById('open').onclick = () => am.open('dashboard');
+    document.getElementById('open').onclick = () => onset.open('dashboard');
   </script>
 </body>
 </html>

@@ -1,12 +1,12 @@
 /**
  * 第三方站操作的越界检查：操作前后各扫一遍项目树（只 stat，不读内容），变了的文件里不在本站声明范围
- * （produces、站点 outputs）之内的算越界；写到 am 自己的文件（ReservedPrefixes）的，操作按失败处理。
+ * （produces、站点 outputs）之内的算越界；写到 onset 自己的文件（ReservedPrefixes）的，操作按失败处理。
  *
  * 这不是沙箱：插件的操作是用户电脑上的普通程序，越界的文件已经写了。检查只负责照实告诉用户与编排工具。
  *
  * 跳过的目录与 Studio 的轮次快照一致（fsutil.ProjectSkippedDirs），只有两处不同：
- * - 项目根的 .agents 照样扫：它是 am 自己的技能树，写进去要算失败；
- * - production/studio 里 am 自己边跑边写的状态（任务、会话、收件、快照……）不算：操作进行中客户端本来就在写它们，
+ * - 项目根的 .agents 照样扫：它是 onset 自己的技能树，写进去要算失败；
+ * - production/studio 里 onset 自己边跑边写的状态（任务、会话、收件、快照……）不算：操作进行中客户端本来就在写它们，
  *   分不清是谁写的。production/studio/blobs 整个不进（文件多，且只有 Studio 写）。
  */
 import fs from 'node:fs';
@@ -15,7 +15,7 @@ import { ProjectSkippedDirs, walkDir } from '../fsutil';
 import { compareBytes } from '../gojson';
 import type { Manifest } from './external';
 
-/** am 自己的文件，第三方站不能写。清单校验（fields.ts）用的也是这一份。 */
+/** onset 自己的文件，第三方站不能写。清单校验（fields.ts）用的也是这一份。 */
 export const ReservedPrefixes: readonly string[] = ['production/studio/', 'production/usage/', 'production/memory-exams/', '.agents/', '.env'];
 
 /** 操作进行中客户端自己会写的状态：不计入（分不清是谁写的）。 */
@@ -72,7 +72,7 @@ export function changedFiles(before: StatSnapshot, after: StatSnapshot): string[
   return [...out].filter((p) => !hostChurn.some((h) => matches(p, h))).sort(compareBytes);
 }
 
-/** 这个路径是不是 am 自己的文件。 */
+/** 这个路径是不是 onset 自己的文件。 */
 export function isReservedPath(rel: string): boolean {
   const p = rel.replaceAll('\\', '/');
   return ReservedPrefixes.some((r) => p === r.replace(/\/$/, '') || p.startsWith(r));
@@ -91,11 +91,11 @@ export function declaredPath(m: Manifest, rel: string): boolean {
 
 /** 一次操作的越界情况。 */
 export interface ScopeReport {
-  /** 越界的文件（am 自己的文件排在前面），最多 MaxListedPaths 条。 */
+  /** 越界的文件（onset 自己的文件排在前面），最多 MaxListedPaths 条。 */
   out_of_scope: string[];
   /** 没列出来的越界文件还有几个。 */
   out_of_scope_more: number;
-  /** 其中写到 am 自己的文件的（也受上限约束）。 */
+  /** 其中写到 onset 自己的文件的（也受上限约束）。 */
   reserved: string[];
 }
 
@@ -116,10 +116,10 @@ export function scopeReport(m: Manifest, before: StatSnapshot, after: StatSnapsh
 export function scopeText(stationName: string, r: ScopeReport): string {
   const total = r.out_of_scope.length + r.out_of_scope_more;
   const lines = [`注意：插件「${stationName}」这次改了它没有声明会写的项目文件（${total} 个）：`];
-  for (const p of r.out_of_scope) lines.push(`  ${p}${isReservedPath(p) ? '（ArticleToMotion 自己的文件）' : ''}`);
+  for (const p of r.out_of_scope) lines.push(`  ${p}${isReservedPath(p) ? '（片场自己的文件）' : ''}`);
   if (r.out_of_scope_more > 0) lines.push(`  ……另有 ${r.out_of_scope_more} 个`);
   if (r.reserved.length > 0) {
-    lines.push('它写了 ArticleToMotion 自己的文件，这次操作按失败处理。文件已经写了，没法自动撤销：可以回退包含这次操作的那一轮对话，或者用 git 恢复。');
+    lines.push('它写了片场自己的文件，这次操作按失败处理。文件已经写了，没法自动撤销：可以回退包含这次操作的那一轮对话，或者用 git 恢复。');
   } else {
     lines.push('这些文件已经写了；要是不该改，可以回退包含这次操作的那一轮对话，或者用 git 恢复。');
   }

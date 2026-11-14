@@ -1,5 +1,5 @@
 //
-// 风格库是前置资源：只由 am setup 经 prepareLibrary 一次下全（全部风格的说明、
+// 风格库是前置资源：只由 onset setup 经 prepareLibrary 一次下全（全部风格的说明、
 // demo 源码、海报、core/assets 模型，以及 three.js 风格要的 Node 依赖），其余地方只用
 // requireLibrary / requireStyle 检查，缺了抛 prereq.MissingError，不联网。
 import crypto from 'node:crypto';
@@ -31,8 +31,8 @@ import {
   type LibraryOptions,
 } from './library';
 
-/** 记录风格库已完整下载（am 管理的风格库才有）。 */
-const completeMarker = 'am-complete';
+/** 记录风格库已完整下载（onset 管理的风格库才有）。 */
+const completeMarker = 'onset-complete';
 
 /** 完整检出的稀疏规则：除图鉴与文档图片以外的全部内容。 */
 const fullSparse = ['/*', '!/styleboard/', '!/docs/'];
@@ -50,8 +50,8 @@ export interface PrepareOptions extends LibraryOptions {
 }
 
 /**
- * 风格库已完整可用：am 管理的看完成记录；用户自己的检出
- * 看第一种风格的 demo 与海报在不在（它的 git 状态 am 不碰）。
+ * 风格库已完整可用：onset 管理的看完成记录；用户自己的检出
+ * 看第一种风格的 demo 与海报在不在（它的 git 状态 onset 不碰）。
  */
 export function libraryComplete(lib: Library): boolean {
   if (lib.managed) return exists(path.join(lib.dir, '.git', completeMarker));
@@ -84,7 +84,7 @@ export function requireStyle(lib: Library, style: Entry): void {
 }
 
 /**
- * 把风格库完整下载好（am setup 用）：先按 ensureLibrary 的几段取基础部分，
+ * 把风格库完整下载好（onset setup 用）：先按 ensureLibrary 的几段取基础部分，
  * 再取海报、按批取 demo、取 core/assets，最后装 three.js 依赖。每段各自重试、断了重跑
  * 接着下；已完整的直接返回。用户自己的检出只检查不下载。
  */
@@ -108,7 +108,7 @@ export async function prepareLibrary(opts: PrepareOptions, signal?: AbortSignal)
   const lib = await ensureLibrary(opts, signal);
   if (!lib.managed) {
     if (!libraryComplete(lib)) {
-      throw new Error(`${lib.dir} 是你自己的检出，am 不改它：请在里面检出全部 demo 与海报（styles/*/demo、styles/*/poster.jpg）`);
+      throw new Error(`${lib.dir} 是你自己的检出，onset 不改它：请在里面检出全部 demo 与海报（styles/*/demo、styles/*/poster.jpg）`);
     }
     return lib;
   }
@@ -177,11 +177,11 @@ export interface SetupOptions {
 }
 
 /** 记录装 node_modules 时 package.json 与 package-lock.json 的摘要。 */
-const nodeMarker = '.am-ok';
+const nodeMarker = '.onset-ok';
 
 /**
  * 在风格库里按 package-lock.json 装 Node 依赖（three.js）。只有用 three.js 的
- * 风格要它，由 prepareLibrary（am setup）在最后一步调用。
+ * 风格要它，由 prepareLibrary（onset setup）在最后一步调用。
  * 用 npm ci 而不是 npm install：后者会改写锁文件，同一个 commit 装出不同版本。
  * --ignore-scripts：只要 three 的源文件，不跑任何安装脚本，也不下载浏览器。
  */

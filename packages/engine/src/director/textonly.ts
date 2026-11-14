@@ -1,9 +1,9 @@
 /**
  * pi 自带模型目录里看不了图片的模型（输入只有 text），只收客户端里能直接选的几家服务商（director.Providers）。
  *
- * 引擎拿不到 pi 的模型目录（pi 只打进 am-agent.cjs），所以照抄一份。这份表由
+ * 引擎拿不到 pi 的模型目录（pi 只打进 onset-agent.cjs），所以照抄一份。这份表由
  * packages/cli/src/agent/catalog.test.ts 对着 pi 自带的目录逐家核对，升级 pi 后那条测试失败时，
- * 用 AM_UPDATE_GOLDEN=1 重跑它重写这个文件。不在表里的模型按「不知道」处理，不按「看不了」。
+ * 用 ONSET_UPDATE_GOLDEN=1 重跑它重写这个文件。不在表里的模型按「不知道」处理，不按「看不了」。
  */
 export const TextOnlyModels: Readonly<Record<string, readonly string[]>> = {
   "deepseek": ["deepseek-v4-pro"],

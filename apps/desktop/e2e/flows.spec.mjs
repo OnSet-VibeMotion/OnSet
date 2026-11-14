@@ -7,7 +7,7 @@ import { test, expect, openProject } from './fixtures.mjs';
 
 /** 把 fixture 项目记成另一个流程（或去掉记录）。 */
 function recordFlow(project, id) {
-  const lock = path.join(project.path, 'article-to-motion.flow.json');
+  const lock = path.join(project.path, 'onset.flow.json');
   if (id === '') fs.rmSync(lock);
   else fs.writeFileSync(lock, JSON.stringify({ version: 1, production: { id, canvas: 'vertical-3x4' } }, null, 2) + '\n');
 }
@@ -40,7 +40,7 @@ test('a directory without a flow record says so on the route page', async ({ pag
   await openProject(page, project);
   await page.locator('#progress-open').click();
   await expect(page.locator('#progress-flow-error')).toContainText('这个目录没有流程记录');
-  await expect(page.locator('#progress-flow-error')).toContainText('不是用这一版 ArticleToMotion 新建的项目');
+  await expect(page.locator('#progress-flow-error')).toContainText('不是用这一版片场新建的项目');
 });
 
 test('confirming the storyboard of a beat project records the beat storyboard gate', async ({ page, project }) => {

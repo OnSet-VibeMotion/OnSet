@@ -17,7 +17,7 @@
           "path": "production/production-config.json"
         },
         {
-          "path": "article-to-motion.conf"
+          "path": "onset.conf"
         }
       ]
     },
@@ -113,10 +113,10 @@
       "page": "style",
       "produces": [
         {
-          "prefix": ".agents/skills/am-film-style/"
+          "prefix": ".agents/skills/onset-film-style/"
         },
         {
-          "prefix": ".agents/am-film-styles/"
+          "prefix": ".agents/onset-film-styles/"
         }
       ]
     },
@@ -332,10 +332,10 @@
       "page": "style",
       "produces": [
         {
-          "prefix": ".agents/skills/am-film-style/"
+          "prefix": ".agents/skills/onset-film-style/"
         },
         {
-          "prefix": ".agents/am-film-styles/"
+          "prefix": ".agents/onset-film-styles/"
         }
       ]
     },

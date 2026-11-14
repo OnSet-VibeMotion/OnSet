@@ -3,7 +3,7 @@ import type { SkinView } from './types';
 
 /**
  * 界面皮肤（后端 studio/skins.ts）：把一份皮肤的变量写到 <html> 的内联样式上，盖过 styles.css `:root` 的默认值。
- * 主窗口与桌宠窗口启动时各取一次；设置页换了皮肤后经主进程通知别的窗口（am:skin）再取一次。
+ * 主窗口与桌宠窗口启动时各取一次；设置页换了皮肤后经主进程通知别的窗口（onset:skin）再取一次。
  * 皮肤里的值后端已经逐个校验过（只有颜色与字体名），这里照写。
  */
 
@@ -47,7 +47,7 @@ export async function chooseSkin(id: string): Promise<SkinView> {
     body: JSON.stringify({ id }),
   });
   applySkin(skin);
-  window.am?.skinChanged?.(skin.tokens.bg ?? '');
+  window.onset?.skinChanged?.(skin.tokens.bg ?? '');
   return skin;
 }
 
@@ -68,12 +68,12 @@ export function onSkin(listener: (skin: SkinView) => void): () => void {
 export function installSkin(): void {
   let initial: SkinView | null = null;
   try {
-    initial = window.am?.skinNow?.() ?? null;
+    initial = window.onset?.skinNow?.() ?? null;
   } catch {
     initial = null;
   }
   if (initial) applySkin(initial);
   else void loadSkin();
-  requestAnimationFrame(() => requestAnimationFrame(() => window.am?.painted?.()));
-  window.am?.onSkin?.(() => void loadSkin());
+  requestAnimationFrame(() => requestAnimationFrame(() => window.onset?.painted?.()));
+  window.onset?.onSkin?.(() => void loadSkin());
 }

@@ -7,7 +7,7 @@ import path from 'node:path';
 
 function catPlugin(extra: Record<string, string> = {}): string {
   return writeStationForTest({
-    'am-station.json': JSON.stringify({ id: 'cat-skins', version: '1', name: '猫咪皮肤', skins: ['skins/cat.json', 'skins/broken.json'], pages: [{ id: 'cat', label: '猫咪', entry: 'ui/cat.html' }] }),
+    'onset-station.json': JSON.stringify({ id: 'cat-skins', version: '1', name: '猫咪皮肤', skins: ['skins/cat.json', 'skins/broken.json'], pages: [{ id: 'cat', label: '猫咪', entry: 'ui/cat.html' }] }),
     'skins/cat.json': JSON.stringify({ id: 'cat', name: '猫咪', scheme: 'light', tokens: { bg: '#fff8f0', accent: '#e07a5f' }, pet: { page: 'cat' } }),
     'skins/broken.json': JSON.stringify({ id: 'broken', name: '坏的', tokens: { bg: 'url(https://x.test/a.png)' } }),
     'ui/cat.html': '<!doctype html><title>cat</title>',
@@ -46,9 +46,9 @@ describe('skins API', () => {
     const res = await send(f.s, 'GET', '/station-ui/cat-skins/ui/cat.html');
     expect(res.status).toBe(200);
     expect(await res.text()).toBe('<!doctype html><title>cat</title><script src="/station-ui/_pet.js"></script>');
-    expect(res.headers.get('Content-Security-Policy')).toContain('am://app/station-ui/_pet.js');
+    expect(res.headers.get('Content-Security-Policy')).toContain('onset://app/station-ui/_pet.js');
     const drag = await send(f.s, 'GET', '/station-ui/_pet.js');
-    expect(await drag.text()).toContain("am: 'pet-drag'");
+    expect(await drag.text()).toContain("onset: 'pet-drag'");
   });
 
   it('remembers the choice for the user, not the project, and falls back when it is gone', async () => {

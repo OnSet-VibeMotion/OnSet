@@ -2,9 +2,9 @@
  * 编排工具要运行白名单外的命令时，在客户端里问用户。
  *
  * claude -p 遇到需要批准的工具调用时，可以交给一个 MCP 工具去问（--permission-prompts host +
- * --permission-prompt-tool）。这个 MCP 工具就是 am studio permission-mcp：它把请求写进这一轮收件目录的
+ * --permission-prompt-tool）。这个 MCP 工具就是 onset studio permission-mcp：它把请求写进这一轮收件目录的
  * permissions/ 子目录，等客户端写回答复；客户端后端轮询到请求就发 permission 事件，界面弹出卡片，
- * 用户点了之后后端写答复文件。走文件而不是 HTTP，理由与 am studio show 相同（见 ./index.ts）。
+ * 用户点了之后后端写答复文件。走文件而不是 HTTP，理由与 onset studio show 相同（见 ./index.ts）。
  *
  * claude 与 qoder 经这个审批 MCP 问（qoder 的 --permission-prompt-tool 帮助里没列，实测可用）；codebuddy、opencode、
  * codex 在客户端里改用双向协议（ACP、codex app-server，见 agentrun/acp.ts、codexapp.ts），它们的审批请求由
@@ -22,7 +22,7 @@ export const KindPermission = 'permission';
 /** 会话事件：这条请求有了结果（允许、拒绝，或这一轮结束时没人回答）。 */
 export const KindPermissionResolved = 'permission-resolved';
 /** claude 的 --mcp-config 里给审批服务起的名字；工具名就是 mcp__<名字>__ask。 */
-export const PermissionServerName = 'am_studio';
+export const PermissionServerName = 'onset_studio';
 export const PermissionToolName = 'mcp__' + PermissionServerName + '__ask';
 
 /** 一条审批请求。tool_name / input 原样来自 claude；command 与 suggestion 是给界面看的。 */
@@ -178,7 +178,7 @@ export function permissionToolResult(request: Pick<PermissionRequest, 'input'>, 
 export const PermissionPollInterval = 300;
 
 /**
- * am studio permission-mcp 的 MCP 服务：stdio 上按行收发 JSON-RPC，只提供一个工具 ask。
+ * onset studio permission-mcp 的 MCP 服务：stdio 上按行收发 JSON-RPC，只提供一个工具 ask。
  * claude 遇到需要批准的调用时调 ask（参数是 tool_name、input），这里写请求、等客户端答复，
  * 再把答复译成 claude 要的结果。
  *
@@ -222,7 +222,7 @@ export async function servePermissionMCP(
             tools: [
               {
                 name: 'ask',
-                description: '在 ArticleToMotion 客户端里请用户批准一次工具调用（只供权限审批使用）',
+                description: '在片场客户端里请用户批准一次工具调用（只供权限审批使用）',
                 inputSchema: {
                   type: 'object',
                   properties: { tool_name: { type: 'string' }, input: { type: 'object' }, tool_use_id: { type: 'string' } },
@@ -240,7 +240,7 @@ export async function servePermissionMCP(
         const answer = async (): Promise<void> => {
           let text: string;
           if (inbox === '') {
-            text = permissionToolResult({ input }, { decision: 'deny', message: '不在 ArticleToMotion 客户端里，没有人能批准这条调用。' });
+            text = permissionToolResult({ input }, { decision: 'deny', message: '不在片场客户端里，没有人能批准这条调用。' });
           } else {
             const req = writePermissionRequest(inbox, toolName, input);
             const response = (await waitPermissionResponse(inbox, req.id, PermissionPollInterval, signal)) ?? { decision: 'expired' as const };

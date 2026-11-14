@@ -125,7 +125,7 @@ export function initializeWithFiles(
       rollback();
       throw new Error(goPathError('mkdir', path.dirname(destination), err), { cause: err });
     }
-    const tmpName = path.join(path.dirname(destination), `.am-init-${crypto.randomBytes(5).readUInt32BE(0)}`);
+    const tmpName = path.join(path.dirname(destination), `.onset-init-${crypto.randomBytes(5).readUInt32BE(0)}`);
     try {
       fs.writeFileSync(tmpName, item.body, { mode: 0o600, flag: 'wx' });
       fs.chmodSync(tmpName, 0o644);

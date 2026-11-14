@@ -10,7 +10,7 @@ import { readDraft, summarize, summaryString } from './grid';
 import { ClickFile, ConfigFile, DraftFile } from './store';
 import { importTrack } from './track';
 
-const python = process.env.AM_TEST_BEAT_PYTHON ?? '';
+const python = process.env.ONSET_TEST_BEAT_PYTHON ?? '';
 
 function which(name: string): string | null {
   try {
@@ -23,16 +23,16 @@ function which(name: string): string | null {
 /**
  * 真跑一遍分析。需要装好 beat-this 的 Python：
  *
- *	AM_TEST_BEAT_PYTHON=/path/to/venv/bin/python npx vitest run src/beat -t RealBeatThis
+ *	ONSET_TEST_BEAT_PYTHON=/path/to/venv/bin/python npx vitest run src/beat -t RealBeatThis
  *
  * 素材是 120 BPM 的合成鼓点（每 0.5 秒一下底鼓），只断言普通拍的间隔——
  * 这么单调的信号里重拍落在哪一拍本来就没有定论。
- * 未设置 AM_TEST_BEAT_PYTHON 或本机没有 ffmpeg 时跳过。
+ * 未设置 ONSET_TEST_BEAT_PYTHON 或本机没有 ffmpeg 时跳过。
  */
 it.skipIf(python === '' || which('ffmpeg') === null)('analyze with RealBeatThis', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'am-beat-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-beat-'));
   fs.writeFileSync(path.join(root, ConfigFile), `schema: 1\ncheckpoint: small0\npython: ${python}\n`);
-  const music = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'am-beat-')), 'kick.wav');
+  const music = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-beat-')), 'kick.wav');
   const kick = 'aevalsrc=sin(2*PI*(50+80*exp(-30*mod(t\\,0.5)))*mod(t\\,0.5))*exp(-12*mod(t\\,0.5)):s=44100:d=16';
   const made = spawnSync(which('ffmpeg')!, ['-v', 'error', '-y', '-f', 'lavfi', '-i', kick, music], { encoding: 'utf8' });
   if (made.status !== 0) throw new Error(`生成鼓点失败：${made.stderr}`);

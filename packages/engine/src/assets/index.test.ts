@@ -8,7 +8,7 @@ afterEach(() => setAssetsBaseForTest(null));
 
 describe('assets (real tree)', () => {
   it('finds the repository assets', () => {
-    expect(shared().exists('article-to-motion.conf')).toBe(true);
+    expect(shared().exists('onset.conf')).toBe(true);
     // 制作提示词不再随项目下发：段落在 assets/prompts/，开工时组合。
     expect(shared().exists('PROMPT.md')).toBe(false);
   });
@@ -32,16 +32,16 @@ describe('assets (real tree)', () => {
 
 describe('assets (go:embed filtering)', () => {
   it('skips dot and underscore entries except the explicit ones', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'am-assets-'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-assets-'));
     const sharedDir = path.join(root, 'assets', 'shared');
     fs.mkdirSync(path.join(sharedDir, '.agents', 'skills', 'demo'), { recursive: true });
-    fs.writeFileSync(path.join(sharedDir, 'article-to-motion.conf'), 'x');
+    fs.writeFileSync(path.join(sharedDir, 'onset.conf'), 'x');
     fs.writeFileSync(path.join(sharedDir, '.env.example'), 'x');
     fs.writeFileSync(path.join(sharedDir, '.DS_Store'), 'x');
     fs.writeFileSync(path.join(sharedDir, '_draft.md'), 'x');
     fs.writeFileSync(path.join(sharedDir, '.agents', 'skills', 'demo', 'SKILL.md'), 'x');
     fs.writeFileSync(path.join(sharedDir, '.agents', 'skills', 'demo', '.DS_Store'), 'x');
     setAssetsBaseForTest(root);
-    expect(shared().walkFiles()).toEqual(['.agents/skills/demo/SKILL.md', '.env.example', 'article-to-motion.conf']);
+    expect(shared().walkFiles()).toEqual(['.agents/skills/demo/SKILL.md', '.env.example', 'onset.conf']);
   });
 });

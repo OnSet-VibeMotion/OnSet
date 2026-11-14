@@ -9,21 +9,21 @@ import { KindError, KindText, KindToolCall, KindUsage, newSessionID, run, type P
  * 客户端里的双向协议（ACP、codex app-server）对真实 CLI 跑一遍：第一轮让它依次跑 brew --version（批准）
  * 与 npm --version（拒绝），确认两条都来问了、批准的跑了；第二轮续接，问它第一轮记住的词。
  *
- * 每次都是真实的模型调用，只在设置 AM_TEST_INTERACTIVE_TOOLS 时运行，例如
+ * 每次都是真实的模型调用，只在设置 ONSET_TEST_INTERACTIVE_TOOLS 时运行，例如
  *
- *   AM_TEST_INTERACTIVE_TOOLS=codex,opencode,codebuddy npx vitest run src/agentrun -t RealInteractive
+ *   ONSET_TEST_INTERACTIVE_TOOLS=codex,opencode,codebuddy npx vitest run src/agentrun -t RealInteractive
  *
- * opencode 用的模型取用户自己的配置；默认模型不可用时用 AM_TEST_OPENCODE_MODEL 指定（例如 github-copilot/claude-haiku-4.5）。
+ * opencode 用的模型取用户自己的配置；默认模型不可用时用 ONSET_TEST_OPENCODE_MODEL 指定（例如 github-copilot/claude-haiku-4.5）。
  */
-const list = process.env.AM_TEST_INTERACTIVE_TOOLS ?? '';
+const list = process.env.ONSET_TEST_INTERACTIVE_TOOLS ?? '';
 
 describe('RealInteractive approvals', () => {
   it.skipIf(list === '')('asks before commands outside the allowlist and resumes', { timeout: 20 * 60_000 }, async () => {
     for (const raw of list.split(',')) {
       const tool = raw.trim();
-      const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-interactive-'));
+      const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-interactive-'));
       const env = envMap();
-      if (tool === 'opencode' && process.env.AM_TEST_OPENCODE_MODEL) env.OPENCODE_CONFIG_CONTENT = JSON.stringify({ model: process.env.AM_TEST_OPENCODE_MODEL });
+      if (tool === 'opencode' && process.env.ONSET_TEST_OPENCODE_MODEL) env.OPENCODE_CONFIG_CONTENT = JSON.stringify({ model: process.env.ONSET_TEST_OPENCODE_MODEL });
       const asked: string[] = [];
       const ask = async (toolName: string, input: unknown): Promise<PermissionAnswer> => {
         const command = String((input as { command?: unknown }).command ?? toolName);

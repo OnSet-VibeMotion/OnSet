@@ -4,7 +4,7 @@
 export const SkillsSubdir = '.agents/skills';
 
 /**
- * am init 安装的 HyperFrames 上游版本。
+ * onset init 安装的 HyperFrames 上游版本。
  *
  * 固定版本不自动前进是刻意的：技能内容变化会直接改变成片动效。升级前要对比
  * 两版 skills/ 树与自动内联字体清单（CANONICAL_FONTS），确认 scene
@@ -18,7 +18,7 @@ export const SkillsSubdir = '.agents/skills';
  * ⚠️ 这个版本号固定的是 CLI 二进制，不是技能内容：上游 `hyperframes skills`
  * 直接 git clone 仓库默认分支取 skills/，安装器没有任何指定 ref 的口子。
  * 实测 0.8.1 与 0.8.14 装出来的 26 个技能逐字节相同，且都等于当天 main 的
- * 状态——所以两次 am init 之间技能可能已经变了，与这里的版本号无关。
+ * 状态——所以两次 onset init 之间技能可能已经变了，与这里的版本号无关。
  * 详见 README「HyperFrames 版本固定的边界」。
  *
  * 这里是唯一来源：命令行、错误信息、--help 与下发提示词里的锁定指令都从它

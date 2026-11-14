@@ -1,7 +1,7 @@
 //
 // 编排工具用量的账本。
 //
-// 渲染的用量记在每个镜头的尝试记录里；编排工具（am run、Studio 对话、整理记忆）
+// 渲染的用量记在每个镜头的尝试记录里；编排工具（onset run、Studio 对话、整理记忆）
 // 没有这样的落点，跑完只在终端打印一行，关掉就没了。账本是一份只追加的 JSONL：
 // 每次调用一行，失败、取消的调用照样记——钱已经花了。
 import fs from 'node:fs';
@@ -11,7 +11,7 @@ import { newUsage, usageAdd, usageEmpty, usageJSON, type Usage } from '../tools'
 
 // 调用来源。
 export const SourceStudio = 'studio'; // Studio 的一轮对话或「开始制作」
-export const SourceConsolidate = 'consolidate'; // am memory consolidate 的整理者
+export const SourceConsolidate = 'consolidate'; // onset memory consolidate 的整理者
 
 /**
  * 项目里的账本路径。它在 production/usage/ 下而不是 production/studio/：Studio 扫描项目时跳过这个目录，

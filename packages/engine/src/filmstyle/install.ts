@@ -12,19 +12,19 @@ export const SkillsSubdir = '.agents/skills';
 /**
  * 整片风格在项目 .agents/skills/ 下的目录名。
  *
- * 带 am- 前缀而不叫 film-style：技能解析会从镜头目录逐级向上找 .agents/skills，
+ * 带 onset- 前缀而不叫 film-style：技能解析会从镜头目录逐级向上找 .agents/skills，
  * 名字太通用容易撞上用户自己装的别的技能。
  */
-export const SkillName = 'am-film-style';
+export const SkillName = 'onset-film-style';
 
 /** 整片风格技能目录里的来源记录。 */
-export const ManifestFile = 'am-film-style.json';
+export const ManifestFile = 'onset-film-style.json';
 
 /** 契约里的两份必需文件。 */
 export const StyleFile = 'STYLE.md';
 export const GuideFile = 'SKILL.md';
 
-/** am-film-style.json：这个项目装的是哪个来源的哪种风格。字段名照抄 Go 的 JSON tag。 */
+/** onset-film-style.json：这个项目装的是哪个来源的哪种风格。字段名照抄 Go 的 JSON tag。 */
 export interface Manifest {
   source: string;
   slug: string;
@@ -48,13 +48,13 @@ export function skillDir(projectDir: string): string {
 }
 
 /**
- * 默认风格之外、个别镜头用的风格装在这里：.agents/am-film-styles/<来源>/<目录名>/。
+ * 默认风格之外、个别镜头用的风格装在这里：.agents/onset-film-styles/<来源>/<目录名>/。
  *
  * 不放进 .agents/skills：镜头的输入指纹把整个 .agents/skills 算成一份摘要，
  * 装在那里的话给项目添一种风格，所有镜头都会变成 Stale。放在这里，只有用到它的镜头
  * 才把它算进指纹（scene.resolveAllSkills）。契约与默认风格相同（STYLE.md + SKILL.md + 来源记录）。
  */
-export const ExtraSubdir = '.agents/am-film-styles';
+export const ExtraSubdir = '.agents/onset-film-styles';
 
 /** 额外风格在项目里的目录。 */
 export function extraDir(projectDir: string, key: string): string {
@@ -250,8 +250,8 @@ function linkError(op: string, from: string, to: string, err: unknown): string {
 }
 
 /**
- * 把 opts.style 装进项目：默认装成默认风格（.agents/skills/am-film-style/），
- * as: 'extra' 时装成额外风格（.agents/am-film-styles/<来源>/<目录名>/）。不联网：来源数据
+ * 把 opts.style 装进项目：默认装成默认风格（.agents/skills/onset-film-style/），
+ * as: 'extra' 时装成额外风格（.agents/onset-film-styles/<来源>/<目录名>/）。不联网：来源数据
  * 没就绪时由来源抛 prereq.MissingError。
  *
  * 先在同级临时目录让来源写好整棵技能树、校验契约，再整体换位：中途失败时项目里

@@ -2,7 +2,7 @@ import catalogData from './catalog.json';
 //
 // 风格来源 lemo-opuscar（LemoLab 的风格库，MIT + demo CC BY 4.0）。
 //
-// 它实现 filmstyle.Source：风格目录随程序下发（catalog.json），风格库本体由 am setup
+// 它实现 filmstyle.Source：风格目录随程序下发（catalog.json），风格库本体由 onset setup
 // 下载到 <风格根目录>/lemo-opuscar/<commit>（prepareLibrary），装风格时把 STYLE.md、demo
 // 源码、core/ 工具与 demo 实际用到的 three.js 模块、模型写进项目（fill），SKILL.md 说明
 // lemo 的页面契约（window.render(t)）怎么换成 HyperFrames 的 hf-seek。
@@ -22,7 +22,7 @@ export const RepoURL = 'https://github.com/lemomo-ai/lemo-opuscar.git';
 export const Gallery = 'https://lemomo-ai.github.io/lemo-opuscar/';
 
 /**
- * am 安装的风格库版本。
+ * onset 安装的风格库版本。
  *
  * 固定 commit 而不跟随 main：STYLE.md 与 demo 引擎的变化会直接改变成片画面，
  * 跟随 main 的话同一个项目两次安装可能拿到不同的风格。升级时更新这里、
@@ -36,9 +36,9 @@ export const PinnedStyleCount = 66;
 
 /**
  * 指定风格库目录，覆盖默认位置。指向一份已有检出时直接使用；
- * 那是用户自己的检出，am 不改它的 git 状态。
+ * 那是用户自己的检出，onset 不改它的 git 状态。
  */
-export const LibraryEnv = 'AM_LEMO_OPUSCAR_LIBRARY';
+export const LibraryEnv = 'ONSET_LEMO_OPUSCAR_LIBRARY';
 
 /** catalog.json 里的一项，字段取自上游 styles/<slug>/style.json。字段名照抄 Go 的 JSON tag。 */
 export interface Entry {

@@ -32,7 +32,7 @@ describe('stations and flows', () => {
 
   // 流程只看锁文件里新建时记下的那一段；beat.yaml 这类功能自己的配置文件不再决定流程。
   it('reads the flow only from the record', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'am-flow-'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-flow-'));
     fs.writeFileSync(path.join(root, beat.ConfigFile), 'bpm: 120\n');
     expect(() => detectFlow(root)).toThrow(MissingFlowRecordError);
     recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });

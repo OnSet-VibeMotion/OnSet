@@ -1,5 +1,5 @@
 /**
- * 清单到客户端与路线的映射：路线用的站、插件页面的 id 与可读文件、工具名、页面能申请的 am 操作。
+ * 清单到客户端与路线的映射：路线用的站、插件页面的 id 与可读文件、工具名、页面能申请的 onset 操作。
  */
 import { opPattern, projectPath } from './fields';
 import { pluginOps } from '../plugin/registry';
@@ -8,12 +8,12 @@ import type { Manifest } from './manifest';
 import type { ExtraStation, RouteNode, Station } from './types';
 
 /**
- * 插件页面不能调的 am 操作：不可逆的（归档、记忆回滚与导入）、只在一轮对话里有意义的（切页、标步骤）。
+ * 插件页面不能调的 onset 操作：不可逆的（归档、记忆回滚与导入）、只在一轮对话里有意义的（切页、标步骤）。
  * 内置插件的操作标了 noPageCall 的（要用户本人确认的，例如节拍网格的确认）同样不能调。
  */
 const pageDenied = new Set(['archive', 'memory_rollback', 'memory_import', 'memory_retire', 'memory_reject', 'memory_promote', 'film_style_remove', 'studio_show', 'studio_step']);
 
-/** 插件页面能不能申请调这条操作。编排工具能用的（scope 含 orchestrator）由执行进程再查一遍（AM_OP_SCOPE）。 */
+/** 插件页面能不能申请调这条操作。编排工具能用的（scope 含 orchestrator）由执行进程再查一遍（ONSET_OP_SCOPE）。 */
 export function pageCallableOp(name: string): boolean {
   if (pluginOps().some(({ value }) => value.name === name && value.noPageCall)) return false;
   return opPattern.test(name) && !pageDenied.has(name) && !name.startsWith('station_') && name !== 'config_set';
@@ -50,7 +50,7 @@ export function pageTab(stationID: string, page: string): string {
 
 /**
  * 插件页面能不能读项目里的这个文件：页面声明的 reads、站声明会写的文件（produces）与站点的 outputs。
- * 路径先规范化，不能跑出项目、不能是 am 自己的文件。
+ * 路径先规范化，不能跑出项目、不能是 onset 自己的文件。
  */
 export function pageMayRead(m: Manifest, rel: string): boolean {
   let p: string;

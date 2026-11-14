@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 function project(): string {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-scenes-')));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-scenes-')));
   dirs.push(root);
   return root;
 }
@@ -89,7 +89,7 @@ describe('discoverScenes', () => {
     fs.utimesSync(path.join(dir, 'scene-001.mp4'), old, old);
     const digest = crypto.createHash('sha256').update(fs.readFileSync(sceneFile)).digest('hex');
     const record = (sceneDigest: string, size = 5) =>
-      fs.writeFileSync(path.join(dir, '.am-render.json'), JSON.stringify({ schema: 1, output: 'scene-001.mp4', output_size: size, parts: { 'file:scene.json': sceneDigest } }));
+      fs.writeFileSync(path.join(dir, '.onset-render.json'), JSON.stringify({ schema: 1, output: 'scene-001.mp4', output_size: size, parts: { 'file:scene.json': sceneDigest } }));
 
     // 没有渲染记录：只能按修改时间。
     expect(discoverScenes(root)[0].stale).toBe(true);

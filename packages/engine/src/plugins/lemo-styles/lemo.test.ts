@@ -34,7 +34,7 @@ const hasNpm = has('npm');
 
 const temps: string[] = [];
 function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-lemo-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-lemo-'));
   temps.push(dir);
   return dir;
 }
@@ -154,7 +154,7 @@ function fixtureOptions(url: string, commit: string): LibraryOptions {
   };
 }
 
-/** 用 am setup 的路径把夹具风格库完整准备好（含 npm ci，要 npm）。 */
+/** 用 onset setup 的路径把夹具风格库完整准备好（含 npm ci，要 npm）。 */
 async function prepared(opts: LibraryOptions): Promise<Library> {
   return prepareLibrary(opts);
 }
@@ -165,7 +165,7 @@ function withLibrary(env: Record<string, string>, dir: string): Record<string, s
 
 /**
  * 走通用的 filmstyle.install：夹具风格库钉在夹具 commit 上，用 LibraryEnv
- * 把来源指过去（标记文件还在，仍按 am 管理的风格库对待）。
+ * 把来源指过去（标记文件还在，仍按 onset 管理的风格库对待）。
  */
 async function installWith(project: string, style: Entry, replace: boolean, opts: LibraryOptions): Promise<filmstyle.InstallResult> {
   const lib = await prepared(opts);
@@ -306,7 +306,7 @@ describe.skipIf(!hasGit)('lemo library', () => {
     expect(fs.readFileSync(path.join(skill, 'SKILL.md'), 'utf8')).toContain('node_modules/three');
   });
 
-  // 用户自己的检出（没有 am 的标记）只读不改：缺 demo 时报错，不去改它的稀疏规则。
+  // 用户自己的检出（没有 onset 的标记）只读不改：缺 demo 时报错，不去改它的稀疏规则。
   it('does not modify a user library', async () => {
     const dir = tempDir();
     writeFiles(dir, { 'core/lib.js': '//', 'styles/impasto/STYLE.md': '# x' });
@@ -338,7 +338,7 @@ describe.skipIf(!hasGit)('lemo library', () => {
     expect(exists(path.join(lib.dir, 'styles', 'impasto', 'STYLE.md'))).toBe(true);
   });
 
-  // am setup 一次下全：基础部分之外的 demo、海报、core/assets 都在，写完成记录；
+  // onset setup 一次下全：基础部分之外的 demo、海报、core/assets 都在，写完成记录；
   // 只有基础部分时算不完整，其余命令报缺前置资源。再跑一次不重下。
   it('prepareLibrary downloads everything', async ({ skip }) => {
     const { url, commit } = fixtureLibrary();
@@ -362,7 +362,7 @@ describe.skipIf(!hasGit)('lemo library', () => {
     expect(steps).toEqual([]);
   });
 
-  // core/assets/ 只有个别风格用：基础检出不带它，am setup 才取；装风格时只带被引用的文件。
+  // core/assets/ 只有个别风格用：基础检出不带它，onset setup 才取；装风格时只带被引用的文件。
   it.skipIf(!hasNpm)('fetches core/assets only for styles that use them', async () => {
     const { url, commit } = fixtureLibrary();
     const opts = fixtureOptions(url, commit);
@@ -381,7 +381,7 @@ describe.skipIf(!hasGit)('lemo library', () => {
     expect(exists(path.join(assets, 'unused.jpg')), '没被引用的资源不该带进项目').toBe(false);
   });
 
-  // am 管理的风格库：放进项目的文件是硬链接（不占第二份磁盘），可写（见 copyPath）。
+  // onset 管理的风格库：放进项目的文件是硬链接（不占第二份磁盘），可写（见 copyPath）。
   // 用户自己的检出：复制，不改它文件的权限。
   it.skipIf(!hasNpm)('links managed library files and copies user checkouts', async () => {
     const { url, commit } = fixtureLibrary();
@@ -391,7 +391,7 @@ describe.skipIf(!hasGit)('lemo library', () => {
     const lib = openLibrary(opts);
     const a = fs.statSync(path.join(filmstyle.skillDir(project), 'STYLE.md'));
     const b = fs.statSync(path.join(lib.dir, 'styles', 'impasto', 'STYLE.md'));
-    expect(a.ino === b.ino && a.dev === b.dev, 'am 管理的风格库应当硬链接进项目').toBe(true);
+    expect(a.ino === b.ino && a.dev === b.dev, 'onset 管理的风格库应当硬链接进项目').toBe(true);
     // 不设只读：渲染器 cp 出来的副本会继承只读，而安全模式不放行 chmod。
     expect(a.mode & 0o200).not.toBe(0);
 

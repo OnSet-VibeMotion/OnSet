@@ -156,7 +156,7 @@ describe('agents', () => {
     const cfg = overrideAgents(base, { tool: '', renderer: 'opencode' });
     expect(cfg.orchestrator).toBe('claude');
     expect(cfg.renderer).toBe('opencode');
-    // childEnvironment 把它写进子进程，am scene run 读到的就是这个值。
+    // childEnvironment 把它写进子进程，onset scene run 读到的就是这个值。
     expect(config.childEnvironment(cfg, { PATH: '/bin' }, false, []).RENDERER).toBe('opencode');
     expect(() => overrideAgents(base, { tool: 'nope', renderer: '' }), '无效工具应报错').toThrow();
   });

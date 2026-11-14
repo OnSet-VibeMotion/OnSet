@@ -19,7 +19,7 @@ interface Props {
  * 记忆面板。页头用三步讲清记忆在做什么：记下的问题 → 整理成的提醒 → 渲染时用上，各带现在的数字；
  * 下面依次是等你确认的、还没整理的问题（按问题归组，不是渲染日志）、你的要求、学到的经验、当前镜头会带上的几条。
  * 渲染记录、考试、批次对比、存档与回退是维护用的，收进「高级」。
- * 面板上不直接露出校验器 ID、事件类型和特征名，一律经 labels 换成大白话。改动一律经 am memory 子命令。
+ * 面板上不直接露出校验器 ID、事件类型和特征名，一律经 labels 换成大白话。改动一律经 onset memory 子命令。
  */
 export function MemoryTab({ scene, version, run }: Props) {
   const [state, setState] = useState<MemoryState | null>(null);
@@ -612,7 +612,7 @@ function RunsSection({ runs }: { runs: RunSummary[] }) {
     return (
       <section className="memory-section">
         <h4>效果对比</h4>
-        <p className="small muted">还没有渲染批次。每次 am scene run / run-all 是一批。</p>
+        <p className="small muted">还没有渲染批次。每次 onset scene run / run-all 是一批。</p>
       </section>
     );
   }

@@ -85,7 +85,7 @@ function runCastNew(stdout: Out, id: string): string {
   // new 必须自己登记进班底：它硬编码写到 cast/<id>/，而 add 见到目标目录
   // 已存在就拒绝，两条命令对 cast/ 的假设互斥——不在这里登记，new 出来的
   // 角色包就没有任何命令能进班底，只能手改 cast.yaml，否则
-  // am validate cast 一直报"班底为空"。registerCastPack 是幂等的。
+  // onset validate cast 一直报"班底为空"。registerCastPack 是幂等的。
   try {
     registerCastPack('.', dir.split(path.sep).join('/'));
   } catch (err) {
@@ -266,8 +266,8 @@ function registerCastPack(root: string, relPath: string): void {
 function resolveCastValidateProvider(explicit: string): string {
   if (explicit !== '') return explicit;
   // 有了全局设置之后，没有项目配置也能解析出配音工具（全局或内置默认）；
-  // 这里要的是「项目还没配置就不查」，所以没有 article-to-motion.conf 时照旧跳过。
-  if (!fs.existsSync('article-to-motion.conf')) return '';
+  // 这里要的是「项目还没配置就不查」，所以没有 onset.conf 时照旧跳过。
+  if (!fs.existsSync('onset.conf')) return '';
   try {
     return config.load('.', null).ttsProvider;
   } catch {
@@ -406,7 +406,7 @@ JSON.parse 读取——渲染机的 CSP 环境下引不进 YAML 解析库。char
 仍是人工编辑的唯一真相源，character.json 只是产物，不要手改。
 
 ⚠️ 手改 character.yaml 后不会自动同步：character.json 只在 cast_new / cast_add /
-cast_validate 成功时重新生成，am 不会比较两者的修改时间。手改完 yaml 却忘记调一次
+cast_validate 成功时重新生成，onset 不会比较两者的修改时间。手改完 yaml 却忘记调一次
 cast_validate()，渲染机读到的仍是旧 json——不会报错、不会警告，成片里角色
 的音色、姿势、关节范围仍是改动前的值，问题只会在肉眼比对渲染结果时才会
 发现。改完 character.yaml，一律先调 cast_validate() 再渲染。`,

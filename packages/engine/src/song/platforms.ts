@@ -56,7 +56,7 @@ export function platformGuide(out: Writer, id: string, env: Record<string, strin
       let status = '未设置';
       if (goTrimSpace(env?.[p.key] ?? '') !== '') status = '已设置（未验证权限/额度）';
       out.write(
-        `  ${p.key}：${status}\n  在本机终端设置环境变量（不要填入 song.yaml）：\n    export ${p.key}='<你的 API Key>'\n  安全模式下还需显式透传（保留已有列表）：\n    export AM_PASSTHROUGH_ENV="\${AM_PASSTHROUGH_ENV:+\${AM_PASSTHROUGH_ENV},}${p.key}"\n`,
+        `  ${p.key}：${status}\n  在本机终端设置环境变量（不要填入 song.yaml）：\n    export ${p.key}='<你的 API Key>'\n  安全模式下还需显式透传（保留已有列表）：\n    export ONSET_PASSTHROUGH_ENV="\${ONSET_PASSTHROUGH_ENV:+\${ONSET_PASSTHROUGH_ENV},}${p.key}"\n`,
       );
     } else if (p.id === 'manual') {
       out.write('  写好歌词后运行 song_handoff()；上传生成的音频或提供本机路径后继续。\n');
@@ -121,7 +121,7 @@ export function checkCredential(c: Config, env: Record<string, string> | null): 
   const p = providerInfo(c.provider);
   if (p.key === '' || c.provider === 'acestep') return;
   const key = goTrimSpace(env?.[p.key] ?? '');
-  if (key === '') throw new Error(`缺少 ${p.key}；运行 song_providers({"platform": "${p.id}"}) 查看申请及配置步骤；安全模式下需通过 AM_PASSTHROUGH_ENV 透传`);
+  if (key === '') throw new Error(`缺少 ${p.key}；运行 song_providers({"platform": "${p.id}"}) 查看申请及配置步骤；安全模式下需通过 ONSET_PASSTHROUGH_ENV 透传`);
   if (c.provider === 'bailian' && key.startsWith('sk-sp-')) {
     throw new Error('Fun-Music 不支持 Token Plan 专用 Key，请配置北京地域普通 DASHSCOPE_API_KEY');
   }

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, it } from 'vitest';
 import { Buffer, run, setenv, tempDir } from './testutil';
-import * as song from '@am/engine/song';
+import * as song from '@onset/engine/song';
 
 it('song platform guide and configure', async () => {
   setenv('FAL_KEY', 'do-not-print-this');
@@ -10,7 +10,7 @@ it('song platform guide and configure', async () => {
   let err = new Buffer();
   expect(await run(['song', 'providers', 'fal'], out, err), err.text).toBe(0);
   expect(out.text).not.toContain('do-not-print-this');
-  expect(out.text).toContain('AM_PASSTHROUGH_ENV');
+  expect(out.text).toContain('ONSET_PASSTHROUGH_ENV');
   const root = tempDir();
   fs.writeFileSync(path.join(root, 'song.yaml'), song.DefaultConfig);
   out = new Buffer();
@@ -34,7 +34,7 @@ it('mureka and lyria CLI setup', async () => {
     expect(await run(['song', 'configure', '--project-root', root, '--provider', tc.provider], out, err), err.text).toBe(0);
     expect(out.text).not.toContain('private-value-not-for-output');
     expect(out.text).toContain(tc.key);
-    expect(out.text).toContain('AM_PASSTHROUGH_ENV');
+    expect(out.text).toContain('ONSET_PASSTHROUGH_ENV');
     expect(song.loadConfig(root).model).toBe(tc.model);
   }
 });

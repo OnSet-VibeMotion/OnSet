@@ -1,7 +1,7 @@
 // 角色包（character pack）规范的唯一真相源。
 //
-// am 不内置任何角色：这个包只定义格式、解析它、并拦住那些会在渲染阶段
-// 静默坏掉的写法。角色包由 am cast add 从外部拷进项目。
+// onset 不内置任何角色：这个包只定义格式、解析它、并拦住那些会在渲染阶段
+// 静默坏掉的写法。角色包由 onset cast add 从外部拷进项目。
 //
 // 字段名照抄 Go 的 yaml/json tag（小驼峰）。Go 里是 map、切片、指针的字段在 TS 里允许为 null，
 // 对应 Go 的 nil：写 character.json 时它们是 null 而不是 {}，与 Go 版逐字节一致。
@@ -424,7 +424,7 @@ export function packToJSON(p: Pack): unknown {
  *
  * 驱动库 cast.js 要在浏览器里读角色包：渲染机是干净的无头 Chrome，CSP 下引不进
  * YAML 解析库，手写 YAML 子集解析器纯属埋雷。character.yaml 仍是人工编辑的
- * 唯一真相源，character.json 是每次校验（am cast new/add/validate）都重新
+ * 唯一真相源，character.json 是每次校验（onset cast new/add/validate）都重新
  * 生成的产物，用 JSON.parse 读。dir 是本机绝对路径，不该进产物。
  */
 export function writePackJSON(p: Pack, dir: string): void {

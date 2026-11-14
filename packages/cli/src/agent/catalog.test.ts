@@ -1,6 +1,6 @@
 /**
  * 引擎里那份「看不了图片的模型」（director.TextOnlyModels）与推荐模型的 vision 标记，对着 pi 自带的模型目录核对。
- * 引擎拿不到 pi（它只打进 am-agent.cjs），只能照抄；升级 pi 后这里失败，用 AM_UPDATE_GOLDEN=1 重跑重写 textonly.ts，
+ * 引擎拿不到 pi（它只打进 onset-agent.cjs），只能照抄；升级 pi 后这里失败，用 ONSET_UPDATE_GOLDEN=1 重跑重写 textonly.ts，
  * 再看一眼 director.Providers 的推荐模型还在不在、能不能读图。
  */
 import fs from 'node:fs';
@@ -9,22 +9,22 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
-import * as director from '@am/engine/director';
+import * as director from '@onset/engine/director';
 
 const textOnlyFile = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../engine/src/director/textonly.ts');
 
 const header = `/**
  * pi 自带模型目录里看不了图片的模型（输入只有 text），只收客户端里能直接选的几家服务商（director.Providers）。
  *
- * 引擎拿不到 pi 的模型目录（pi 只打进 am-agent.cjs），所以照抄一份。这份表由
+ * 引擎拿不到 pi 的模型目录（pi 只打进 onset-agent.cjs），所以照抄一份。这份表由
  * packages/cli/src/agent/catalog.test.ts 对着 pi 自带的目录逐家核对，升级 pi 后那条测试失败时，
- * 用 AM_UPDATE_GOLDEN=1 重跑它重写这个文件。不在表里的模型按「不知道」处理，不按「看不了」。
+ * 用 ONSET_UPDATE_GOLDEN=1 重跑它重写这个文件。不在表里的模型按「不知道」处理，不按「看不了」。
  */
 `;
 
 let tmp: string;
 beforeEach(() => {
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'am-catalog-test-'));
+  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-catalog-test-'));
 });
 afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
@@ -53,7 +53,7 @@ describe('director model catalog', () => {
       expect(models.length, `pi 的目录里没有 ${provider}`).toBeGreaterThan(0);
       textOnly[provider] = [...new Set(models.filter((m) => !m.image).map((m) => m.id))].sort();
     }
-    if (process.env.AM_UPDATE_GOLDEN === '1') {
+    if (process.env.ONSET_UPDATE_GOLDEN === '1') {
       const body = Object.entries(textOnly)
         .map(([k, v]) => `  ${JSON.stringify(k)}: [${v.map((id) => JSON.stringify(id)).join(', ')}],\n`)
         .join('');

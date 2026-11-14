@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as config from '../config';
 import * as director from '../director';
-import { amCommand, envMap, parsePassthrough } from '../envutil';
+import { onsetCommand, envMap, parsePassthrough } from '../envutil';
 import { marshal, marshalIndent } from '../gojson';
 import { parseWorkerOutput, workerArgs } from '../opworker';
 import { ExitError, start } from '../procgroup';
@@ -233,8 +233,8 @@ export interface OpRunOptions {
 }
 
 /**
- * runStudioOpWith 在执行进程里跑一条 am 操作（`am.cjs __op <名字> <参数>`，见 opworker），
- * 用网页选的工具覆盖项目配置：子进程环境里的 RENDERER 优先于 article-to-motion.conf，
+ * runStudioOpWith 在执行进程里跑一条 onset 操作（`onset.cjs __op <名字> <参数>`，见 opworker），
+ * 用网页选的工具覆盖项目配置：子进程环境里的 RENDERER 优先于 onset.conf，
  * scene_run 因此用网页选的渲染工具。参数按名字给，不拼命令行。
  */
 export async function runStudioOpWith(
@@ -260,15 +260,15 @@ export function runUserOp(s: Server, signal: AbortSignal, name: string, params: 
 }
 
 async function runOpIn(s: Server, signal: AbortSignal, cwd: string, cfg: config.Config, name: string, params: Record<string, unknown>, opts: OpRunOptions = {}): Promise<OpOutcome> {
-  // Windows 上 executable 是 am.cjs，用 Electron / Node 来跑（envutil.amCommand）。
-  const am = amCommand(s.executable());
-  const args = [...am.args, ...(s.config.unsafe ? ['--unsafe'] : []), ...workerArgs(name, params)];
-  const env = { ...config.childEnvironment(cfg, envMap(), s.config.unsafe, parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? '')), ...am.env, ...(opts.env ?? {}) };
+  // Windows 上 executable 是 onset.cjs，用 Electron / Node 来跑（envutil.onsetCommand）。
+  const onset = onsetCommand(s.executable());
+  const args = [...onset.args, ...(s.config.unsafe ? ['--unsafe'] : []), ...workerArgs(name, params)];
+  const env = { ...config.childEnvironment(cfg, envMap(), s.config.unsafe, parsePassthrough(process.env.ONSET_PASSTHROUGH_ENV ?? '')), ...onset.env, ...(opts.env ?? {}) };
   // 整理经验会起导演：执行进程里没有 safeStorage，解不开加密的凭据文件，key 由这里解密后经 stdin 交下去（不进环境）。
   const keys = director.KeyOps.has(name) && cfg.orchestrator === director.Tool ? director.loadKeys(director.defaultDir(envMap())) : {};
   const handKeys = Object.keys(keys).length > 0;
   if (handKeys) env[director.KeysStdinEnv] = '1';
-  const started = await start(am.command, args, { cwd, env, stdio: [handKeys ? 'pipe' : 'ignore', 'pipe', 'pipe'], signal });
+  const started = await start(onset.command, args, { cwd, env, stdio: [handKeys ? 'pipe' : 'ignore', 'pipe', 'pipe'], signal });
   if (handKeys && started.child.stdin) {
     started.child.stdin.on('error', () => {});
     started.child.stdin.end(JSON.stringify(keys) + '\n');

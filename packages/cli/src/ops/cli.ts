@@ -1,11 +1,11 @@
 /**
- * 操作表的命令行适配：给开发与 CI 用（`am beat import track.mp3`），不对外提供。
+ * 操作表的命令行适配：给开发与 CI 用（`onset beat import track.mp3`），不对外提供。
  * 每条操作按 cli 路径挂进命令树，位置参数与 --flag 从 params 生成，解析完照常走 normalizeParams。
  */
 import { Command, type Out, parseDuration, type PositionalArgs, ref, type Ref } from '../cobra';
 import { allOps, normalizeParams, type Op, type ParamSpec, type ParamValues } from './op';
 
-/** 命令组（`am beat`、`am memory` 这一层）的说明。 */
+/** 命令组（`onset beat`、`onset memory` 这一层）的说明。 */
 export interface Group {
   path: string[];
   summary: string;

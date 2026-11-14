@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test, expect, openProject, petPage } from './fixtures.mjs';
 
-// 编排工具（claude）在客户端里遇到白名单外的命令时，经 am studio permission-mcp 在输入框上方弹卡片问用户。
+// 编排工具（claude）在客户端里遇到白名单外的命令时，经 onset studio permission-mcp 在输入框上方弹卡片问用户。
 // 假 claude 的「要批准」真的启动 --mcp-config 里的审批服务，请求 npm install three。
 
 test('asks before running a command outside the allowlist and remembers "always"', async ({ page, project, electronApp }) => {

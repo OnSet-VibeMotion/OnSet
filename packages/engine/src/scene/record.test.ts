@@ -122,12 +122,12 @@ describe('render record', () => {
   it('writes the record in Go layout', () => {
     const s = load(writeScene(plainScene));
     fs.writeFileSync(outputPath(s), 'video');
-    writeRecord(s, { fingerprint: 'abc', parts: { prompt: 'x', am: 'y', 'file:<a>': 'z' } });
+    writeRecord(s, { fingerprint: 'abc', parts: { prompt: 'x', onset: 'y', 'file:<a>': 'z' } });
     const sha = crypto.createHash('sha256').update('video').digest('hex');
-    expect(fs.readFileSync(path.join(s.directory, '.am-render.json'), 'utf8')).toBe(
+    expect(fs.readFileSync(path.join(s.directory, '.onset-render.json'), 'utf8')).toBe(
       '{\n  "schema": 2,\n  "output": "out.mp4",\n  "output_size": 5,\n' +
         `  "output_sha256": "${sha}",\n  "fingerprint": "abc",\n` +
-        '  "parts": {\n    "am": "y",\n    "file:\\u003ca\\u003e": "z",\n    "prompt": "x"\n  }\n}\n',
+        '  "parts": {\n    "file:\\u003ca\\u003e": "z",\n    "onset": "y",\n    "prompt": "x"\n  }\n}\n',
     );
   });
 });

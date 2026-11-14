@@ -106,24 +106,24 @@ function askText(ask: PermissionAsk): string {
 /** 一轮结束后导演还留多久（毫秒）显示收工，再回到待命。 */
 export const crewLinger = 6000;
 
-const am = '^(mcp__am__|am[._])?';
+const onset = '^(mcp__onset__|onset[._])?';
 /** 拍：渲染、等渲染任务，以及 HyperFrames 的 render 子命令。 */
-const filmingTools = new RegExp(am + '(scene_run|scene_run_all|job_wait)$');
+const filmingTools = new RegExp(onset + '(scene_run|scene_run_all|job_wait)$');
 /** 剪辑：拼接、复查、抽帧、各种校验与字幕时间轴。 */
-const editingTools = new RegExp(am + '(concat|review|scene_frames|audio_check|align_build|align_text|validate_[a-z_]+)$');
+const editingTools = new RegExp(onset + '(concat|review|scene_frames|audio_check|align_build|align_text|validate_[a-z_]+)$');
 /** 分镜：按分镜计划算镜头时长。 */
-const storyboardTools = new RegExp(am + '(scene_cues|beat_cues)$');
+const storyboardTools = new RegExp(onset + '(scene_cues|beat_cues)$');
 /** 分镜的几份文件：整片处理方案、分镜计划（与 studio/storyboard.ts 的路径对应）。 */
 const storyboardFiles = /(^|[\\/])(production[\\/])?(scene-plan\.(json|md)|treatment\.md)(\s|、|$)/;
 /** 配音：音色库。 */
-const voicingTools = new RegExp(am + 'voice_[a-z_]+$');
+const voicingTools = new RegExp(onset + 'voice_[a-z_]+$');
 /** 配音与对齐工具的命令名，与 packages/engine/src/config/providers.ts 的 `command` 对应。 */
 const voiceCommands = /(^|[\s;&|/])(edge-tts|mmx|bl|elevenlabs|tccli|mlx_audio\.tts\.generate)(\s|$)/;
 const alignCommands = /(^|[\s;&|/])(mlx_audio\.stt\.generate|funasr-python)(\s|$)/;
 
 function department(name: string, input: unknown, command: boolean, target: string): CrewMood | null {
   if (filmingTools.test(name)) return 'filming';
-  if (new RegExp(am + 'hyperframes$').test(name)) {
+  if (new RegExp(onset + 'hyperframes$').test(name)) {
     const record = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
     return record.subcommand === 'render' ? 'filming' : null;
   }
@@ -219,9 +219,9 @@ export function useCrewBroadcast(turn: TurnBlock | undefined, asks: PermissionAs
   useEffect(() => {
     if (key === sent.current) return;
     sent.current = key;
-    window.am?.setCrew?.(JSON.parse(key));
+    window.onset?.setCrew?.(JSON.parse(key));
   }, [key]);
-  useEffect(() => () => window.am?.setCrew?.(null), []);
+  useEffect(() => () => window.onset?.setCrew?.(null), []);
 }
 
 /**
@@ -230,5 +230,5 @@ export function useCrewBroadcast(turn: TurnBlock | undefined, asks: PermissionAs
 export function usePetCommands(handler: (command: PetCommand) => void): void {
   const latest = useRef(handler);
   latest.current = handler;
-  useEffect(() => window.am?.onPetCommand?.((command) => latest.current(command)), []);
+  useEffect(() => window.onset?.onPetCommand?.((command) => latest.current(command)), []);
 }

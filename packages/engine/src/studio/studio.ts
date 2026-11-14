@@ -2,7 +2,7 @@
  * Studio 后端的服务骨架：项目登记、路由表、写锁、当前项目、项目状态，
  * 以及 /api/assets、/api/review、/api/review/run。
  *
- * Go 版是 net/http 服务；TS 版是 fetch 风格的 handle(request)：Electron 主进程用 am://app/ 协议
+ * Go 版是 net/http 服务；TS 版是 fetch 风格的 handle(request)：Electron 主进程用 onset://app/ 协议
  * 承接界面的 /api/…、EventSource 与上传请求后直接调它。路由、JSON 字段、状态码与错误文案与 Go 版一致。
  * 界面本身（Go 版 go:embed 的 web/）由 Electron 自己加载，这里不服务静态文件。
  *
@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import YAML from 'yaml';
-import { amExecutable } from '../envutil';
+import { onsetExecutable } from '../envutil';
 import * as filmstyle from '../filmstyle';
 import { goClean, goPathError, goTrimSpace } from '../gofmt';
 import { marshalIndent } from '../gojson';
@@ -62,11 +62,11 @@ import * as studioview from '../studioview';
 export interface Config {
   projectPath?: string;
   configPath?: string;
-  /** 对应 am --unsafe：编排工具与 am 子命令都关闭权限隔离。 */
+  /** 对应 onset --unsafe：编排工具与 onset 子命令都关闭权限隔离。 */
   unsafe?: boolean;
   /**
-   * am 命令行入口（Go 版是 os.Executable()）：写任务经它运行 am 子命令，编排工具的 PATH 里也放它所在的目录。
-   * 不给时用 envutil.amExecutable()（AM_SELF）。
+   * onset 命令行入口（Go 版是 os.Executable()）：写任务经它运行 onset 子命令，编排工具的 PATH 里也放它所在的目录。
+   * 不给时用 envutil.onsetExecutable()（ONSET_SELF）。
    */
   executable?: string;
 }
@@ -120,11 +120,11 @@ function userConfigDir(): string {
 }
 
 function defaultConfigPath(): string {
-  if (process.env.AM_STUDIO_CONFIG) return process.env.AM_STUDIO_CONFIG;
+  if (process.env.ONSET_STUDIO_CONFIG) return process.env.ONSET_STUDIO_CONFIG;
   try {
-    return path.join(userConfigDir(), 'am', 'studio', 'projects.json');
+    return path.join(userConfigDir(), 'onset', 'studio', 'projects.json');
   } catch {
-    return path.join(os.tmpdir(), 'am-studio-projects.json');
+    return path.join(os.tmpdir(), 'onset-studio-projects.json');
   }
 }
 
@@ -157,7 +157,7 @@ export class Server {
 
   /**
    * 退出前停掉进行中的每一轮对话与每个写任务。Go 版是独立进程，被整组结束时子进程跟着结束；
-   * 在客户端主进程里，编排工具与 am 子命令各自成进程组，不显式取消就会在客户端退出后继续跑。
+   * 在客户端主进程里，编排工具与 onset 子命令各自成进程组，不显式取消就会在客户端退出后继续跑。
    */
   shutdown(): void {
     clearInterval(this.scheduleTimer);
@@ -175,9 +175,9 @@ export class Server {
     }
   }
 
-  /** am 命令行入口（Go 版的 os.Executable()）。 */
+  /** onset 命令行入口（Go 版的 os.Executable()）。 */
   executable(): string {
-    return this.config.executable || amExecutable();
+    return this.config.executable || onsetExecutable();
   }
 
   private loadRegistry(): void {
@@ -451,7 +451,7 @@ export class Server {
   // ---- 项目 ----
 
   private health(): Response {
-    return writeJSON(200, goMap({ ok: true, service: 'am-studio', started_at: formatRFC3339Nano(this.started) }));
+    return writeJSON(200, goMap({ ok: true, service: 'onset-studio', started_at: formatRFC3339Nano(this.started) }));
   }
 
   private directoriesAPI(request: Request): Response {
@@ -536,11 +536,11 @@ export class Server {
         parent: fieldString(body, 'parent'),
         name: fieldString(body, 'name'),
         canvas: fieldString(body, 'canvas'),
-        // delivery 与 narration 同 am init --delivery / --narration，缺省为 speech / solo。
+        // delivery 与 narration 同 onset init --delivery / --narration，缺省为 speech / solo。
         delivery: fieldString(body, 'delivery'),
         narration: fieldString(body, 'narration'),
         // film_style 是整片风格（风格库目录名、中文名或英文名），空表示不用。
-        // 建好项目后在后台起一个 am film-style use 任务，任务编号随响应返回。
+        // 建好项目后在后台起一个 onset film-style use 任务，任务编号随响应返回。
         film_style: fieldString(body, 'film_style'),
         // naming 是起名那次调用的凭据（/api/projects/name 给的），建好后把那次的用量记进新项目。
         naming: fieldString(body, 'naming'),
@@ -587,7 +587,7 @@ export class Server {
     } catch (err) {
       return writeError(500, 'project_register_failed', (err as Error).message);
     }
-    // 官方技能从本机缓存拷进项目（前置资源由 am setup 准备，这里不联网），放到后台：项目先打开。
+    // 官方技能从本机缓存拷进项目（前置资源由 onset setup 准备，这里不联网），放到后台：项目先打开。
     // 用登记后的路径（已 realpath），与 currentProject() 返回的一致。
     installSkills(this, p.path);
     recordNamingUsage(req.naming, p.path);

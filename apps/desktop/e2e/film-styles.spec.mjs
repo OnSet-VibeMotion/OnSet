@@ -10,7 +10,7 @@ function writeStyle(dir, slug, cn, en) {
   fs.writeFileSync(path.join(dir, 'STYLE.md'), `# ${cn}\n\n笔触与材质的不变量。\n`);
   fs.writeFileSync(path.join(dir, 'SKILL.md'), 'guide');
   fs.writeFileSync(
-    path.join(dir, 'am-film-style.json'),
+    path.join(dir, 'onset-film-style.json'),
     JSON.stringify({ source: 'lemo-opuscar', slug, cn, en, version: 'v', digest: 'd', installed_at: '' }),
   );
 }
@@ -26,8 +26,8 @@ function writeScene(root, id, filmStyle) {
 }
 
 test('shows several film styles and asks the orchestrator to change a scene', async ({ page, project }) => {
-  writeStyle(path.join(project.path, '.agents/skills/am-film-style'), 'watercolor', '水彩笔刷', 'Watercolor Brush');
-  writeStyle(path.join(project.path, '.agents/am-film-styles/lemo-opuscar/ink-wash'), 'ink-wash', '中国水墨', 'Chinese Ink Wash');
+  writeStyle(path.join(project.path, '.agents/skills/onset-film-style'), 'watercolor', '水彩笔刷', 'Watercolor Brush');
+  writeStyle(path.join(project.path, '.agents/onset-film-styles/lemo-opuscar/ink-wash'), 'ink-wash', '中国水墨', 'Chinese Ink Wash');
   writeScene(project.path, 'scene-002', 'lemo-opuscar/ink-wash');
   writeScene(project.path, 'scene-003', 'none');
   await openProject(page, project);
@@ -52,8 +52,8 @@ test('shows several film styles and asks the orchestrator to change a scene', as
 });
 
 test('storyboard shows each scene’s style, the style boundaries, and changes a scene’s style through the chat', async ({ page, project }) => {
-  writeStyle(path.join(project.path, '.agents/skills/am-film-style'), 'watercolor', '水彩笔刷', 'Watercolor Brush');
-  writeStyle(path.join(project.path, '.agents/am-film-styles/lemo-opuscar/ink-wash'), 'ink-wash', '中国水墨', 'Chinese Ink Wash');
+  writeStyle(path.join(project.path, '.agents/skills/onset-film-style'), 'watercolor', '水彩笔刷', 'Watercolor Brush');
+  writeStyle(path.join(project.path, '.agents/onset-film-styles/lemo-opuscar/ink-wash'), 'ink-wash', '中国水墨', 'Chinese Ink Wash');
   writeScene(project.path, 'scene-002', '');
   writeScene(project.path, 'scene-003', '');
   fs.mkdirSync(path.join(project.path, 'production'), { recursive: true });

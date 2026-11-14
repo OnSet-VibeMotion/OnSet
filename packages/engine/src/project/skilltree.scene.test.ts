@@ -16,7 +16,7 @@ describe('skill tree gates that need scene', () => {
   it('every registered skill is embedded', () => {
     const shared = assets.shared();
     for (const desc of scene.allSkills()) {
-      if (desc.source !== scene.SourceEmbedded) continue; // 上游技能由 am init 安装，不随二进制下发
+      if (desc.source !== scene.SourceEmbedded) continue; // 上游技能由 onset init 安装，不随二进制下发
       for (const required of desc.requiredFiles) {
         const file = `${skillTreeRoot}/${desc.name}/${required}`;
         expect(shared.exists(file), `内置技能树缺少 ${file}`).toBe(true);
@@ -37,14 +37,14 @@ describe('skill tree gates that need scene', () => {
 
   // 把下发与发现两端接起来：从一个真实深度的镜头目录出发，resolveSkill 必须命中项目级技能树。
   it('delivered skill tree is discoverable from scene directory', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'am-project-'));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-project-'));
     try {
       const target = path.join(tmp, 'video');
       initialize(target, ...builtinSources());
       const sceneDir = path.join(target, 'scenes', 'scene-001');
       fs.mkdirSync(sceneDir, { recursive: true });
       // HOME 指向一个没装任何技能的空目录，确保命中的是项目级而非家目录级。
-      const home = fs.mkdtempSync(path.join(os.tmpdir(), 'am-project-home-'));
+      const home = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-project-home-'));
       const environ = { HOME: home };
       for (const desc of scene.allSkills()) {
         if (desc.source !== scene.SourceEmbedded) continue;
@@ -57,7 +57,7 @@ describe('skill tree gates that need scene', () => {
     }
   });
 
-  // 上一条的反面门禁：上游技能只能由 am init 安装，不得进 assets/。
+  // 上一条的反面门禁：上游技能只能由 onset init 安装，不得进 assets/。
   it('upstream skills are not vendored into the embedded tree', () => {
     const shared = assets.shared();
     let checked = 0;

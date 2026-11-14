@@ -34,7 +34,7 @@ describe('model choice', () => {
     expect(JSON.parse(opencode.env.OPENCODE_CONFIG_CONTENT!)).toEqual({ theme: 'x', model: 'a/b', permission: { bash: 'ask' } });
     // 导演的模型、会话与白名单都在 stdin 的请求里，不进命令行（ps 里谁都看得见）。
     // API key 也在请求里：父进程读出（客户端里解密）交下去，导演不读磁盘上的凭据。
-    const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-director-req-'));
+    const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-director-req-'));
     try {
       setProviderKey(agentDir, 'deepseek', 'sk-1');
       const director = orchestratorInvocation('director', { workdir: '/w', prompt: 'p', sessionID: 's', resume: true, model: 'deepseek/deepseek-v4-pro', access: { commands: ['ls'] }, agentDir });

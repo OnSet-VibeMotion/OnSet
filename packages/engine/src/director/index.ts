@@ -2,8 +2,8 @@
  * 导演：客户端自带的编排工具，不要求用户另装 claude、codex 这类 CLI，填一个模型服务的 API key 就能用。
  *
  * 引擎这边只放与 agent 实现无关的部分：工具名、请求格式、凭据文件与服务商表。真正的 agent 循环用的是
- * pi（@earendil-works/pi-coding-agent，MIT），由 am studio agent（packages/cli/src/agent/）在子进程里跑，
- * 打成单独的 am-agent.cjs，只在这一个命令里加载：pi 连同依赖有十几 MB，打进 am.cjs 的话每次 __op、
+ * pi（@earendil-works/pi-coding-agent，MIT），由 onset studio agent（packages/cli/src/agent/）在子进程里跑，
+ * 打成单独的 onset-agent.cjs，只在这一个命令里加载：pi 连同依赖有十几 MB，打进 onset.cjs 的话每次 __op、
  * 每个工具服务进程都要多解析一遍。
  *
  * 子进程输出 claude 系的 stream-json（system/init、assistant、user、result），agentrun 的解析、用量累计与
@@ -20,9 +20,9 @@ export { TextOnlyModels } from './textonly';
 export const Tool = 'director';
 
 /** 覆盖导演数据目录（凭据、模型缓存）的环境变量。 */
-export const DirEnv = 'AM_AGENT_DIR';
+export const DirEnv = 'ONSET_AGENT_DIR';
 
-/** 导演的数据目录：AM_AGENT_DIR，否则 <数据目录>/am/agent。环境里什么都没有时为空。 */
+/** 导演的数据目录：ONSET_AGENT_DIR，否则 <数据目录>/onset/agent。环境里什么都没有时为空。 */
 export function defaultDir(env: Record<string, string | undefined>): string {
   if (env[DirEnv]) return env[DirEnv]!;
   const data = dataDir(env);
@@ -170,7 +170,7 @@ export function useKeys(keys: Record<string, string> | null): void {
 
 /**
  * 读出全部 API key（服务商 → key），给导演的请求用。父进程交过 key 就用交来的；否则读文件，
- * 加密的项用 codec 解密，解不开（没有 codec，例如在终端里跑 am run 而 key 是客户端加密写下的）就跳过，
+ * 加密的项用 codec 解密，解不开（没有 codec，例如在终端里跑 onset run 而 key 是客户端加密写下的）就跳过，
  * 导演会照常报「还没有填 key」。
  */
 export function loadKeys(dir: string): Record<string, string> {
@@ -193,11 +193,11 @@ export function loadKeys(dir: string): Record<string, string> {
 }
 
 /**
- * 执行进程（am.cjs __op）的环境里有它（值为 1）时，先从 stdin 读一行 JSON（服务商 → key）交给 useKeys。
+ * 执行进程（onset.cjs __op）的环境里有它（值为 1）时，先从 stdin 读一行 JSON（服务商 → key）交给 useKeys。
  * 只给 KeyOps 里的操作这样起：它们会再起导演（整理经验的整理者），而执行进程解不开加密的文件。
  * key 只走 stdin，不进环境、命令行与磁盘。
  */
-export const KeysStdinEnv = 'AM_AGENT_KEYS_STDIN';
+export const KeysStdinEnv = 'ONSET_AGENT_KEYS_STDIN';
 
 /** 会起导演的操作。 */
 export const KeyOps: ReadonlySet<string> = new Set(['memory_consolidate']);
@@ -209,7 +209,7 @@ export function providerOf(model: string): string {
 }
 
 /**
- * 交给 am studio agent 的一次调用（经 stdin，一行 JSON）。不走命令行参数：提示词很长，
+ * 交给 onset studio agent 的一次调用（经 stdin，一行 JSON）。不走命令行参数：提示词很长，
  * 而且命令行在 ps 里谁都看得见。
  */
 export interface Request {

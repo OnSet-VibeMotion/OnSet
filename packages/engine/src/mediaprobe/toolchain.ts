@@ -76,7 +76,7 @@ function formatSecondsShort(value: number): string {
  * 在这里一并要求会让「装了 ffprobe 没装 ffmpeg」的机器连镜头校验都跑不了。
  */
 export function newToolchain(env: Record<string, string>): Toolchain {
-  // am setup 下载的、客户端自带的优先，其次 PATH（toolpath.find）。
+  // onset setup 下载的、客户端自带的优先，其次 PATH（toolpath.find）。
   const ffprobe = find('ffprobe', env);
   return new Toolchain(ffprobe, env.PATH ?? '', { ...env });
 }

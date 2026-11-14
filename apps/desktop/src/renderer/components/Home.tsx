@@ -45,7 +45,7 @@ interface Props {
 }
 
 /**
- * 制作方式：映射到 am init 的 --delivery 与 --narration。选项来自后端（/api/styles 的 modes：
+ * 制作方式：映射到 onset init 的 --delivery 与 --narration。选项来自后端（/api/styles 的 modes：
  * 宿主的口播、内置插件登记的做法与已装的第三方插件带来的做法）；还没取到时只有口播。
  */
 const fallbackModes: ModeOption[] = [{ id: 'speech', label: '口播讲解', hint: '配音 + 动画，最常用', delivery: 'speech', narration: 'solo' }];
@@ -84,7 +84,7 @@ const placeholders = [
   '把这周的产品更新做成一条横屏讲解',
 ];
 
-const LAST_TOOL = 'am-studio:home-tool';
+const LAST_TOOL = 'onset-studio:home-tool';
 
 export function Home(props: Props) {
   const [text, setText] = useState('');
@@ -138,7 +138,7 @@ export function Home(props: Props) {
 
   const working = job !== null;
   const setup = useSetup();
-  // 技能与 CLI 没准备好时建了项目也装不上技能、渲染不了：先引导去跑 am setup。
+  // 技能与 CLI 没准备好时建了项目也装不上技能、渲染不了：先引导去跑 onset setup。
   const prereqsReady = setup.status?.ready !== false;
   // 新建的项目用全局设置里的渲染工具：没装的话整片会一路做到第一次渲染才报错，先说清楚。
   const drawing = rendererState(props.agents, props.agents?.global_renderer ?? '');

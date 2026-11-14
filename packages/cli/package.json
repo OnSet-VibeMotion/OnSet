@@ -1,8 +1,8 @@
 {
-  "name": "@am/cli",
+  "name": "@onset/cli",
   "private": true,
   "version": "0.1.0",
-  "description": "am 命令行：internal/cli 的 TypeScript 移植",
+  "description": "onset 命令行：internal/cli 的 TypeScript 移植",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",

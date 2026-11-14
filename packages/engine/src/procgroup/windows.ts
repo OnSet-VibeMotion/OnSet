@@ -54,7 +54,7 @@ export function windowsCommand(file: string, args: string[], env: Record<string,
   if (!/\.(cmd|bat)$/i.test(file)) return { file, args, env: {} };
   const entry = cmdShimEntry(file);
   if (entry !== '') {
-    // 包装自己先找同目录的 node.exe，再找 PATH 里的 node；都没有时用 am 自己的运行时。
+    // 包装自己先找同目录的 node.exe，再找 PATH 里的 node；都没有时用 onset 自己的运行时。
     const local = path.win32.join(path.win32.dirname(file), 'node.exe');
     if (fs.existsSync(local)) return { file: local, args: [entry, ...args], env: {} };
     try {

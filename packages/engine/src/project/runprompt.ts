@@ -42,7 +42,7 @@ export function composeProjectPrompt(root: string): { text: string; flow: flow.F
 }
 
 /**
- * runPrompt 给出整片制作发给编排工具的提示词，am run 与客户端的「开始制作」共用。
+ * runPrompt 给出整片制作发给编排工具的提示词，onset run 与客户端的「开始制作」共用。
  *
  * override 非空时原样读那份文件（显式指定的提示词，不再组合、不接任何插件的说明）；否则按流程组合（composeProjectPrompt）。
  */

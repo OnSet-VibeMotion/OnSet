@@ -1,6 +1,6 @@
 // 把 agentrun 的统一事件整理成终端里的可读文字。
-import * as agentrun from '@am/engine/agentrun';
-import { formatFixed } from '@am/engine/gofmt';
+import * as agentrun from '@onset/engine/agentrun';
+import { formatFixed } from '@onset/engine/gofmt';
 import type { Out } from './cobra';
 
 export const summaryLimit = 160;

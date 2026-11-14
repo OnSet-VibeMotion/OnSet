@@ -62,7 +62,7 @@ const rawType: StructType = {
  * Analyze 分析已导入音乐的节拍，写出草稿网格与试听轨。
  *
  * 草稿永远不直接生效：模型会把重拍整体错位或判错拍号，只有人听过试听轨
- * 才知道，所以必须再经 am beat confirm。
+ * 才知道，所以必须再经 onset beat confirm。
  */
 export async function analyze(root: string, env: Record<string, string>, media: Media, out: Writer, signal?: AbortSignal): Promise<Grid> {
   const config = loadConfig(root);
@@ -155,7 +155,7 @@ async function runPython(config: Config, env: Record<string, string>, args: stri
 }
 
 /**
- * pythonFor 返回跑分析用的 Python：beat.yaml 没写 python 时用 am setup 装好的共享环境
+ * pythonFor 返回跑分析用的 Python：beat.yaml 没写 python 时用 onset setup 装好的共享环境
  * （没装好抛 prereq.MissingError），写了就用用户自己的。两种情况都不在这里建环境、装依赖。
  */
 export function pythonFor(config: Config, env: Record<string, string>): string {

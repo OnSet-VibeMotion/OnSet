@@ -6,7 +6,7 @@ import { authFile, configuredProviders, defaultDir, keyStorage, loadKeys, modelV
 
 let dir: string;
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-director-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-director-'));
 });
 afterEach(() => {
   useKeyCodec(null);
@@ -29,9 +29,9 @@ function fakeCodec(available = true): KeyCodec & { calls: number } {
 }
 
 describe('director credentials', () => {
-  it('lives in the user data dir, overridable by AM_AGENT_DIR', () => {
-    expect(defaultDir({ HOME: '/h' })).toBe(path.join('/h', '.local', 'share', 'am', 'agent'));
-    expect(defaultDir({ HOME: '/h', AM_AGENT_DIR: '/x' })).toBe('/x');
+  it('lives in the user data dir, overridable by ONSET_AGENT_DIR', () => {
+    expect(defaultDir({ HOME: '/h' })).toBe(path.join('/h', '.local', 'share', 'onset', 'agent'));
+    expect(defaultDir({ HOME: '/h', ONSET_AGENT_DIR: '/x' })).toBe('/x');
     expect(defaultDir({})).toBe('');
   });
 
@@ -89,7 +89,7 @@ describe('director credentials', () => {
     if (process.platform !== 'win32') expect(fs.statSync(authFile(agent)).mode & 0o777).toBe(0o600);
     expect(configuredProviders(agent)).toEqual(['deepseek', 'moonshotai-cn']);
     expect(loadKeys(agent)).toEqual({ deepseek: 'sk-secret', 'moonshotai-cn': 'sk-old' });
-    // 没有 codec 的进程（终端里的 am run）解不开：当作没填，不把密文当 key。
+    // 没有 codec 的进程（终端里的 onset run）解不开：当作没填，不把密文当 key。
     useKeyCodec(null);
     expect(loadKeys(agent)).toEqual({});
     expect(configuredProviders(agent)).toEqual(['deepseek', 'moonshotai-cn']);

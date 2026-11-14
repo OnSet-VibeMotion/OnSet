@@ -8,10 +8,10 @@ import { changedInputs, fingerprint, inputMatchesRecord, inputsMatchRecord, Reco
 import { load } from './scene';
 import { dataScene, tempDir } from './testsupport';
 
-/** dataScene 搬进一个项目（有 article-to-motion.conf）的 scenes/ 下：快照按项目根找。 */
+/** dataScene 搬进一个项目（有 onset.conf）的 scenes/ 下：快照按项目根找。 */
 function projectScene(): { root: string; dir: string } {
   const root = tempDir();
-  fs.writeFileSync(path.join(root, 'article-to-motion.conf'), '');
+  fs.writeFileSync(path.join(root, 'onset.conf'), '');
   const dir = path.join(root, 'scenes', 'scene-002');
   fs.cpSync(dataScene().directory, dir, { recursive: true });
   return { root, dir };

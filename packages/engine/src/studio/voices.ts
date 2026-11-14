@@ -137,7 +137,7 @@ export async function voiceRecordAPI(request: Request): Promise<Response> {
   const file = form.get('file');
   if (!(file instanceof Blob) || file.size === 0) return writeError(400, 'no_file', '没有收到录音');
   if (file.size > 50 << 20) return writeError(400, 'too_large', '录音太大：只要十几秒就够了');
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'am-voice-record-'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-voice-record-'));
   try {
     const take = path.join(tmp, 'take' + (file.type.includes('mp4') ? '.m4a' : '.webm'));
     fs.writeFileSync(take, Buffer.from(await file.arrayBuffer()));

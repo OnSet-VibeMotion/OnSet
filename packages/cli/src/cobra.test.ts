@@ -9,7 +9,7 @@ import { Command, ExactArgs, formatDuration, NoArgs, parseDuration, ref, Second 
  */
 function tree() {
   let out = '';
-  const root = new Command({ use: 'am', short: '短说明', long: '长说明第一行\n\n第二段。  ', version: 'dev' });
+  const root = new Command({ use: 'onset', short: '短说明', long: '长说明第一行\n\n第二段。  ', version: 'dev' });
   root.persistentFlags().boolVar(ref(false), 'unsafe', false, '关闭隔离（危险）');
   const scene = new Command({ use: 'scene', short: '镜头相关操作' });
   const s = ref('');
@@ -99,7 +99,7 @@ describe('durations', () => {
 describe('disableFlagParsing', () => {
   it('passes every argument through, --help included', async () => {
     let got: string[] = [];
-    const root = new Command({ use: 'am' });
+    const root = new Command({ use: 'onset' });
     root.persistentFlags().boolVar(ref(false), 'unsafe', false, 'x');
     root.addCommand(new Command({ use: 'hyperframes [ARGS...]', disableFlagParsing: true, runE: (_c, a) => void (got = a) }));
     await root.execute(['hyperframes', 'render', '--quality', 'high', '--help']);

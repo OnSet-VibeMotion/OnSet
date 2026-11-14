@@ -7,7 +7,7 @@ import { SourceConsolidate, SourceStudio, append, fromResult, memoryFile, projec
 
 describe('ledger', () => {
   it('append, read and summarize', () => {
-    const file = projectFile(fs.mkdtempSync(path.join(os.tmpdir(), 'am-ledger-')));
+    const file = projectFile(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-ledger-')));
     // 不存在的账本读出空。
     expect(read(file)).toBeNull();
     const claude: Usage = { input_tokens: 100, cached_input_tokens: 80, output_tokens: 10, cost_usd: 0.5, source: 'claude result', basis: BasisTotalInput };
@@ -44,7 +44,7 @@ describe('ledger', () => {
 
   // TS 额外：写出的行与 Go 的 json.Marshal(Entry) 字段顺序一致。
   it('writes Go-compatible lines', () => {
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'am-ledger-')), 'x.jsonl');
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-ledger-')), 'x.jsonl');
     append(file, { ...fromResult(SourceConsolidate, 'codex', '', '', { input_tokens: 1, source: 'codex turn.completed', basis: BasisTotalInput }, null, false), time: 't' });
     expect(fs.readFileSync(file, 'utf8')).toBe(
       '{"time":"t","source":"consolidate","tool":"codex","status":"succeeded","usage":{"input_tokens":1,"basis":"total-input","source":"codex turn.completed"}}\n',

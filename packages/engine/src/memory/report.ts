@@ -28,7 +28,7 @@ export interface RunStats {
 }
 
 /**
- * 一次 am scene run / run-all 调用（一个批次）的汇总。
+ * 一次 onset scene run / run-all 调用（一个批次）的汇总。
  *
  * 「第二次比第一次好」要能被机器量出来：一次通过率、重试次数、失败项数、耗时与
  * token 都按批次汇总，并按「渲染工具/模型」分开——混在一起的话，换了渲染工具

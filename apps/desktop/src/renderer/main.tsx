@@ -12,7 +12,7 @@ export type MenuAction = { type: 'new' } | { type: 'home' } | { type: 'open'; pa
 declare global {
   interface Window {
     /** 客户端的 preload 注入；浏览器里没有。 */
-    am?: {
+    onset?: {
       desktop: boolean;
       platform: string;
       /** 原生菜单的动作：new / home / open（带路径）/ step（第几步）。返回取消订阅。 */
@@ -36,7 +36,7 @@ declare global {
 }
 
 // 在客户端里：给红绿灯按钮留位置、让顶栏可以拖动窗口（见 styles.css 的 .desktop 规则）。
-if (window.am?.desktop) document.documentElement.classList.add('desktop', `platform-${window.am.platform}`);
+if (window.onset?.desktop) document.documentElement.classList.add('desktop', `platform-${window.onset.platform}`);
 
 // 桌宠窗口（main/pet.ts）载入的是 /pet：同一份界面产物，只画像素工作室。
 const petWindow = location.pathname === '/pet';

@@ -1,12 +1,12 @@
 /**
- * am 的根命令与命令之间共用的小工具。
+ * onset 的根命令与命令之间共用的小工具。
  *
  * 命令行只给开发与 CI 用，不对外提供：制作步骤都是操作表里的操作（ops/），由 mountOps 挂进命令树；
  * 这里另挂几个客户端自己的入口（setup、init、studio 下的两个 MCP 服务）。
  */
-import * as envutil from '@am/engine/envutil';
-import { formatFixed } from '@am/engine/gofmt';
-import { PinnedVersion } from '@am/engine/hyperframes';
+import * as envutil from '@onset/engine/envutil';
+import { formatFixed } from '@onset/engine/gofmt';
+import { PinnedVersion } from '@onset/engine/hyperframes';
 import { Command, ExitError, type Out, type PositionalArgs, ref } from './cobra';
 // 各模块在加载时把自己的操作登记进操作表（ops/op.ts）；命令行与工具服务都从那张表来。
 import './align';
@@ -30,14 +30,14 @@ import { mountOps } from './ops/cli';
 import { newInitCommand } from './project_cmds';
 import { newSetupCommand } from './setup';
 import { newStudioCommand } from './studio';
-import { setToolVersion } from '@am/engine/scene';
+import { setToolVersion } from '@onset/engine/scene';
 
 /**
- * `am --version` 的版本号。由发布流程在构建时注入（esbuild --define:AM_VERSION），本地构建是 dev。
+ * `onset --version` 的版本号。由发布流程在构建时注入（esbuild --define:ONSET_VERSION），本地构建是 dev。
  * 版本号必须只有 tag 这一个来源：曾经写死过 1.0.0，发新版时没人改，下载到的程序一直自称 1.0.0。
  */
-declare const AM_VERSION: string | undefined;
-export const Version = typeof AM_VERSION === 'string' ? AM_VERSION : 'dev';
+declare const ONSET_VERSION: string | undefined;
+export const Version = typeof ONSET_VERSION === 'string' ? ONSET_VERSION : 'dev';
 
 /** 本包内的简写，真相在 hyperframes.PinnedVersion（也是下发提示词里锁定指令的取值来源）。 */
 export const hyperframesVersion = PinnedVersion;
@@ -54,20 +54,20 @@ export function addExecutableLocation(env: Record<string, string>, stderr: Out):
   }
 }
 
-export const rootLong = `ArticleToMotion 竖屏 MG 视频制作工具。
+export const rootLong = `片场竖屏 MG 视频制作工具。
 
 把定稿 SRT 拆成并发渲染的动画镜头，或从文章/口播稿走完 TTS、字幕、封面、
-声音与发布交付的全流程。渲染由外部 AI CLI 完成，am 负责契约、调度与校验。
+声音与发布交付的全流程。渲染由外部 AI CLI 完成，onset 负责契约、调度与校验。
 
-am 只随 ArticleToMotion 客户端使用：后台任务直接调用，编排工具与渲染器经
-am studio tools-mcp（MCP）调用，不对外提供命令行。
+onset 只随片场客户端使用：后台任务直接调用，编排工具与渲染器经
+onset studio tools-mcp（MCP）调用，不对外提供命令行。
 
-配置解析优先级（高到低）：环境变量 > 项目 .env > article-to-motion.conf > 客户端设置页的全局设置 > 内置默认。
-用 am config get 读取解析结果，不要自己解析配置文件。
+配置解析优先级（高到低）：环境变量 > 项目 .env > onset.conf > 客户端设置页的全局设置 > 内置默认。
+用 onset config get 读取解析结果，不要自己解析配置文件。
 项目 .env 不允许出现以 API_KEY / TOKEN / SECRET / PASSWORD 结尾的键，出现则拒绝启动。
 
 外部 AI CLI 默认运行在限制于项目工作区的安全模式。安全模式下子进程只继承白名单
-环境变量加上 .env 覆盖层；缺变量用 AM_PASSTHROUGH_ENV=NAME1,NAME2 显式列出，
+环境变量加上 .env 覆盖层；缺变量用 ONSET_PASSTHROUGH_ENV=NAME1,NAME2 显式列出，
 不要改用 --unsafe 绕过隔离。
 
 退出码：
@@ -75,7 +75,7 @@ am studio tools-mcp（MCP）调用，不对外提供命令行。
   1    一般失败（参数、校验、配置、IO）
   127  缺少必需的外部命令
   130  被中断（SIGINT / 上下文取消）
-  其他 透传子进程退出码：am scene run-all 用镜头汇总退出码
+  其他 透传子进程退出码：onset scene run-all 用镜头汇总退出码
 
 所有错误写 stderr，正常输出写 stdout；失败时不打印 usage，只打印一行错误。`;
 
@@ -87,7 +87,7 @@ export interface RootFlags {
 export function newRoot(stdout: Out, stderr: Out): { root: Command; flags: RootFlags } {
   const unsafe = ref(false);
   setToolVersion(Version);
-  const root = new Command({ use: 'am', short: 'ArticleToMotion 竖屏 MG 视频制作工具', long: rootLong, version: Version });
+  const root = new Command({ use: 'onset', short: '片场竖屏 MG 视频制作工具', long: rootLong, version: Version });
   root.setOut(stdout);
   root.setErr(stderr);
   root.persistentFlags().boolVar(
@@ -104,7 +104,7 @@ export function newRoot(stdout: Out, stderr: Out): { root: Command; flags: RootF
 }
 
 /**
- * 执行一条 am 命令并返回退出码：0 成功，1 一般失败，127 缺外部命令，130 被中断，
+ * 执行一条 onset 命令并返回退出码：0 成功，1 一般失败，127 缺外部命令，130 被中断，
  * 其余是 ExitError 透传的子进程退出码。错误写 stderr，失败时不打印 usage，只打印一行错误。
  */
 export async function execute(args: string[], stdout: Out, stderr: Out, signal?: AbortSignal): Promise<number> {
@@ -114,7 +114,7 @@ export async function execute(args: string[], stdout: Out, stderr: Out, signal?:
     await root.execute(args);
     return 0;
   } catch (err) {
-    // 自己已经把结果完整打在屏幕上的命令（例如 am setup）抛出不带消息的 ExitError，这里不再补一行。
+    // 自己已经把结果完整打在屏幕上的命令（例如 onset setup）抛出不带消息的 ExitError，这里不再补一行。
     if (!(err instanceof ExitError) || err.bare !== '') stderr.write(String((err as Error)?.message ?? err) + '\n');
     if (err instanceof ExitError) return err.code;
     if (signal?.aborted) return 130;

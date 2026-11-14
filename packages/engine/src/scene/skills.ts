@@ -60,12 +60,12 @@ export const sceneKitLibraryFile = 'scene-kit.js';
 export type SkillSource = 0 | 1;
 
 /**
- * 随 am 下发，由 project.initialize 写进项目。
+ * 随 onset 下发，由 project.initialize 写进项目。
  * 这类技能必须存在于 assets/shared/.agents/skills/ 里。
  */
 export const SourceEmbedded: SkillSource = 0;
 /**
- * 由 am init 按固定版本从上游安装进项目。
+ * 由 onset init 按固定版本从上游安装进项目。
  * 这类技能不得进嵌入树——那会留下一份永远追不上上游的陈旧副本。
  */
 export const SourceUpstream: SkillSource = 1;
@@ -430,7 +430,7 @@ export function skillPromptSections(resolved: Record<string, string>, skills: re
 }
 
 /**
- * 渲染器调用 CLI 的写法（am 管理的固定版本 CLI，见 hyperframes.requireCLI，由 am setup 装好）。
+ * 渲染器调用 CLI 的写法（onset 管理的固定版本 CLI，见 hyperframes.requireCLI，由 onset setup 装好）。
  * 提示词里教的写法与安全模式放行的命令必须是同一个字符串：
  * 以前只有放行列表里有前缀，提示词不提，渲染器写成不带版本的 `npx hyperframes`，
  * 整场渲染的 lint、check、render 全被拦下（实测，无产物）。
@@ -505,7 +505,7 @@ export function hyperFramesPrompt(skillsDir: string): string {
  *
  * 上游该技能按「工作」列出全部命令，其中三类必须挡掉：
  *   - cloud / cloudrun / lambda / publish 把镜头送去远端，绕开本机的确定性前提；
- *   - skills / upgrade 会顶掉 am 固定的技能与 CLI 版本，影响同项目其他镜头；
+ *   - skills / upgrade 会顶掉 onset 固定的技能与 CLI 版本，影响同项目其他镜头；
  *   - preview / open / catch-up / history / feedback / usage 是交互、桌面应用、
  *     遥测与额度查询，无头单镜头渲染里要么卡住等人，要么往外发数据。
  *
@@ -520,10 +520,10 @@ export function hyperFramesCLIPrompt(skillsDir: string): string {
   return (
     '渲染命令（强制）：\n' +
     reference +
-    '- HyperFrames CLI 只经 am 工具服务里的 `hyperframes` 工具调用：`subcommand` 填子命令，其余参数照命令行写法放进 `args`。' +
+    '- HyperFrames CLI 只经 onset 工具服务里的 `hyperframes` 工具调用：`subcommand` 填子命令，其余参数照命令行写法放进 `args`。' +
     '例如检查是 `{"subcommand": "lint"}`、`{"subcommand": "check", "args": ["--json"]}`，渲染是 `{"subcommand": "render"}`。' +
     '技能里写成 `npx hyperframes <子命令>` 或 `hyperframes <子命令>` 的命令，一律照此换成工具调用。\n' +
-    '- 不在 Bash 里跑 hyperframes、npx hyperframes 或 am：它们不在本环境里，也不被放行。固定版本 ' +
+    '- 不在 Bash 里跑 hyperframes、npx hyperframes 或 onset：它们不在本环境里，也不被放行。固定版本 ' +
     hyperframes.PinnedVersion +
     ' 的 CLI 已经装好，工具就在本镜头目录里执行，不需要 cd。\n' +
     '- 渲染要几分钟：工具最多等 `wait_seconds` 秒（缺省 50），没跑完会返回任务号，用 `job_wait` 接着等到完成；不要重复发起同一次渲染。\n' +
@@ -584,6 +584,6 @@ export function rendererAccess(resolved: Record<string, string> | null): Rendere
     }
   }
   dirs.sort(compareBytes);
-  // HyperFrames 经 am 的工具服务调用（scene.run 挂上 toolsServer），不在 Bash 里跑 am。
+  // HyperFrames 经 onset 的工具服务调用（scene.run 挂上 toolsServer），不在 Bash 里跑 onset。
   return { commands: ['ls', 'ffprobe'], readDirs: dirs };
 }

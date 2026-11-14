@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-archive-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-archive-'));
   temps.push(dir);
   return dir;
 }

@@ -1,7 +1,7 @@
 //
 // agentrun 运行编排工具，并把各家 CLI 的结构化输出统一成同一套事件。
 //
-// am run 与 am studio 共用这一条路径：前者把事件打印成可读文字，后者推给网页。
+// onset run 与 onset studio 共用这一条路径：前者把事件打印成可读文字，后者推给网页。
 // 各家的流格式在 2026-11 实测录下，见 testdata/；codebuddy 本机未登录，只录到
 // 401 的错误流，结构按与 claude 相同处理，未经完整实测。
 import { compareBytes } from '../gojson';

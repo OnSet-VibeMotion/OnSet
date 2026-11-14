@@ -11,7 +11,7 @@ import { DefaultConfig } from './store';
 const temps: string[] = [];
 
 export function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-song-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-song-'));
   temps.push(dir);
   return dir;
 }

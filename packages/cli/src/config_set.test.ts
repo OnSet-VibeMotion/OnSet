@@ -11,7 +11,7 @@ describe('config_set', () => {
 
   it('edits the line in place, keeps comments, and an empty value follows the global settings', async () => {
     const root = tempDir();
-    const conf = path.join(root, 'article-to-motion.conf');
+    const conf = path.join(root, 'onset.conf');
     fs.writeFileSync(conf, '# 编排工具\nORCHESTRATOR=codex\n# 配音\nTTS_PROVIDER=\n');
     const out = new Buffer();
     expect(await run(['config', 'set', 'TTS_PROVIDER', 'breeze', '--project-root', root], out), out.text).toBe(0);

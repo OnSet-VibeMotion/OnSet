@@ -6,20 +6,20 @@ import { describe, expect, it } from 'vitest';
 import { ensureFFmpeg, ensureTool, ensureUV, ffmpegStatus, mirrored, pipIndexURL, sha256File, uvStatus } from './index';
 
 function tempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'am-toolinstall-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-toolinstall-'));
 }
 
 describe('toolinstall', () => {
   it('rewrites only GitHub URLs to the mirror', () => {
-    const env = { AM_GITHUB_MIRROR: 'https://ghfast.top/https://github.com' };
+    const env = { ONSET_GITHUB_MIRROR: 'https://ghfast.top/https://github.com' };
     expect(mirrored('https://github.com/a/b/releases/download/x/y.gz', env)).toBe('https://ghfast.top/https://github.com/a/b/releases/download/x/y.gz');
     expect(mirrored('https://example.com/y.gz', env)).toBe('https://example.com/y.gz');
     expect(mirrored('https://github.com/a/b', {})).toBe('https://github.com/a/b');
   });
 
-  it('counts tools in am\'s own bin directory as installed, without PATH', () => {
+  it('counts tools in onset\'s own bin directory as installed, without PATH', () => {
     const home = tempDir();
-    const bin = path.join(home, '.local', 'share', 'am', 'bin');
+    const bin = path.join(home, '.local', 'share', 'onset', 'bin');
     fs.mkdirSync(bin, { recursive: true });
     const env = { HOME: home, PATH: '/nonexistent' };
     expect(ffmpegStatus(env)).toEqual({ ok: false, where: bin });
@@ -45,8 +45,8 @@ describe('toolinstall', () => {
 });
 
 // 真实下载：联网，CI 不跑。改了下载表或安装方式后在本机跑一遍：
-//   AM_TEST_TOOL_DOWNLOAD=1 npx vitest run --root packages/engine src/toolinstall -t RealToolDownload
-describe.runIf(process.env.AM_TEST_TOOL_DOWNLOAD === '1' && process.platform === 'darwin')('RealToolDownload', () => {
+//   ONSET_TEST_TOOL_DOWNLOAD=1 npx vitest run --root packages/engine src/toolinstall -t RealToolDownload
+describe.runIf(process.env.ONSET_TEST_TOOL_DOWNLOAD === '1' && process.platform === 'darwin')('RealToolDownload', () => {
   it('downloads ffmpeg, ffprobe and uv that run', async () => {
     const env = { HOME: tempDir(), PATH: '/usr/bin:/bin', ...(process.env.https_proxy ? { https_proxy: process.env.https_proxy } : {}) };
     const ffmpeg = await ensureFFmpeg({ env });
@@ -57,11 +57,11 @@ describe.runIf(process.env.AM_TEST_TOOL_DOWNLOAD === '1' && process.platform ===
   }, 900_000);
 });
 
-// 真实安装配音工具：联网，CI 不跑。AM_TEST_NPM_CLI 指向一份 npm 的 npm-cli.js（模拟客户端自带的 npm）。
-//   AM_TEST_TOOL_DOWNLOAD=1 AM_TEST_NPM_CLI=… npx vitest run --root packages/engine src/toolinstall -t RealVoiceTools
-describe.runIf(process.env.AM_TEST_TOOL_DOWNLOAD === '1' && Boolean(process.env.AM_TEST_NPM_CLI))('RealVoiceTools', () => {
+// 真实安装配音工具：联网，CI 不跑。ONSET_TEST_NPM_CLI 指向一份 npm 的 npm-cli.js（模拟客户端自带的 npm）。
+//   ONSET_TEST_TOOL_DOWNLOAD=1 ONSET_TEST_NPM_CLI=… npx vitest run --root packages/engine src/toolinstall -t RealVoiceTools
+describe.runIf(process.env.ONSET_TEST_TOOL_DOWNLOAD === '1' && Boolean(process.env.ONSET_TEST_NPM_CLI))('RealVoiceTools', () => {
   it('installs an npm tool and a Python tool without Node or Python on PATH', async () => {
-    const env = { HOME: tempDir(), PATH: '/usr/bin:/bin', AM_NPM_CLI: process.env.AM_TEST_NPM_CLI!, ...(process.env.https_proxy ? { https_proxy: process.env.https_proxy } : {}) };
+    const env = { HOME: tempDir(), PATH: '/usr/bin:/bin', ONSET_NPM_CLI: process.env.ONSET_TEST_NPM_CLI!, ...(process.env.https_proxy ? { https_proxy: process.env.https_proxy } : {}) };
     const mmx = await ensureTool({ kind: 'npm', package: 'mmx-cli', version: '1.0.28', bins: ['mmx'] }, { env });
     expect(spawnSync(mmx, ['--version'], { encoding: 'utf8', env }).status).toBe(0);
     const edge = await ensureTool({ kind: 'uv-tool', package: 'edge-tts', version: '7.3.1', bins: ['edge-tts'] }, { env });
@@ -71,7 +71,7 @@ describe.runIf(process.env.AM_TEST_TOOL_DOWNLOAD === '1' && Boolean(process.env.
 
 describe('sha256File', () => {
   it('hashes by streaming, so files over 2 GiB (Breeze TTS 2 weights) do not hit the Buffer limit', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-sha-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-sha-'));
     const file = path.join(dir, 'big.bin');
     // 稀疏文件：不占磁盘，readFileSync 会因超过 2 GiB 直接抛错。
     fs.writeFileSync(file, '');

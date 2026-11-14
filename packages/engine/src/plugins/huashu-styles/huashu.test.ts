@@ -39,7 +39,7 @@ const hasFFmpeg = has('ffmpeg');
 
 const temps: string[] = [];
 function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-huashu-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-huashu-'));
   temps.push(dir);
   return dir;
 }
@@ -189,7 +189,7 @@ describe('huashu build steps', () => {
   // 场景在库与 STAGE 之后、引擎之前加载：场景模块初始化时就读 STAGE（试作时竖屏读到 1920×1080）。
   it('loads the scene after the stage is set and before the engine', () => {
     const html = templateHTML({ libs: ['lib/util.js', 'lib/paint.js'] });
-    const order = ['huashu/am-huashu-pre.js', 'huashu/lib/fonts.js', 'huashu/lib/util.js', 'huashu/lib/paint.js', 'U.setStage(__W__, __H__)', 'scene.js', "AMHuashu.use('scene', __DUR__)", 'huashu/engine.js', 'huashu/am-huashu.js'];
+    const order = ['huashu/onset-huashu-pre.js', 'huashu/lib/fonts.js', 'huashu/lib/util.js', 'huashu/lib/paint.js', 'U.setStage(__W__, __H__)', 'scene.js', "OnsetHuashu.use('scene', __DUR__)", 'huashu/engine.js', 'huashu/onset-huashu.js'];
     let at = -1;
     for (const needle of order) {
       const next = html.indexOf(needle, at + 1);
@@ -293,8 +293,8 @@ describe.skipIf(!hasGit || !hasFFmpeg)('huashu library', () => {
         'SKILL.md',
         'STYLE.md',
         'poster.jpg',
-        'huashu/am-huashu-pre.js',
-        'huashu/am-huashu.js',
+        'huashu/onset-huashu-pre.js',
+        'huashu/onset-huashu.js',
         'huashu/engine.js',
         'huashu/template.html',
         'huashu/transitions.js',
@@ -349,11 +349,11 @@ describe.skipIf(!hasGit || !hasFFmpeg)('huashu library', () => {
   });
 });
 
-// 真实上游：设 AM_HUASHU_SRC=<固定 commit 的检出> 时，把全部风格构建、装进镜头目录（场景用上游原文），
+// 真实上游：设 ONSET_HUASHU_SRC=<固定 commit 的检出> 时，把全部风格构建、装进镜头目录（场景用上游原文），
 // 用镜头产物校验同一套确定性扫描过一遍：接头、引擎与库不能被判成不确定；上游场景里已知的命中（测耗时读的时钟）
 // 必须在 STYLE.md 的源码导览里点名，渲染器照抄时才知道为什么被拦。
 const knownSceneFindings: Record<string, string[]> = { 'roman-mosaic': ['clock:301', 'clock:448'] };
-const realSrc = process.env.AM_HUASHU_SRC ?? '';
+const realSrc = process.env.ONSET_HUASHU_SRC ?? '';
 describe.skipIf(realSrc === '' || !hasFFmpeg)('huashu against the pinned upstream', () => {
   it('builds every style and passes the determinism scan', async () => {
     const env = { PATH: process.env.PATH ?? '', XDG_DATA_HOME: tempDir(), HOME: process.env.HOME ?? '', [LibraryEnv]: realSrc };
@@ -366,7 +366,7 @@ describe.skipIf(realSrc === '' || !hasFFmpeg)('huashu against the pinned upstrea
       fill(style, entry, { ...lib, build });
       fs.cpSync(path.join(style, 'huashu'), path.join(scene, 'huashu'), { recursive: true });
       const html = fs.readFileSync(path.join(scene, 'huashu', 'template.html'), 'utf8').replaceAll('__W__', '1920').replaceAll('__H__', '1080').replaceAll('__DUR__', '4');
-      fs.writeFileSync(path.join(scene, 'index.html'), html.replace("AMHuashu.use('scene'", `AMHuashu.use('${entry.id}'`));
+      fs.writeFileSync(path.join(scene, 'index.html'), html.replace("OnsetHuashu.use('scene'", `OnsetHuashu.use('${entry.id}'`));
       fs.copyFileSync(path.join(style, 'source', entry.id + '.js'), path.join(scene, 'scene.js'));
       const report = determinism.scan(scene);
       expect(report.findings.filter((f) => f.file !== 'scene.js'), entry.slug).toEqual([]);

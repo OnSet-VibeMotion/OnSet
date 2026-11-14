@@ -61,7 +61,7 @@ const unregister = registerBuiltin({
 afterAll(unregister);
 
 function tempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'am-filmstyle-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-filmstyle-'));
 }
 
 function errorOf(fn: () => unknown): Error | undefined {
@@ -112,7 +112,7 @@ describe('filmstyle', () => {
     expect(ok).toBe(false);
   });
 
-  // 一个项目可以装几种风格：默认风格在 .agents/skills/am-film-style，其余在 .agents/am-film-styles/<来源>/<目录名>，
+  // 一个项目可以装几种风格：默认风格在 .agents/skills/onset-film-style，其余在 .agents/onset-film-styles/<来源>/<目录名>，
   // 不进 .agents/skills（那里整棵算进每个镜头的指纹）。
   it('installs extra styles beside the default', () => {
     const project = tempDir();
@@ -131,7 +131,7 @@ describe('filmstyle', () => {
 
     expect(removeStyle(project, 'beta/ink')).toMatchObject({ had: true, wasDefault: false });
     expect(installedExtras(project)).toEqual([]);
-    expect(fs.existsSync(path.join(project, '.agents', 'am-film-styles', 'beta')), '空下来的来源目录应当删掉').toBe(false);
+    expect(fs.existsSync(path.join(project, '.agents', 'onset-film-styles', 'beta')), '空下来的来源目录应当删掉').toBe(false);
     expect(removeStyle(project, 'beta/ink').had).toBe(false);
     expect(removeStyle(project, 'alpha/ink')).toMatchObject({ had: true, wasDefault: true });
     expect(installed(project).ok).toBe(false);

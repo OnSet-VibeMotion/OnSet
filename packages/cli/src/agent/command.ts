@@ -1,16 +1,16 @@
 /**
- * am studio agent：导演（ORCHESTRATOR=director）。客户端与 am run 按 tools.orchestratorInvocation 启动它，
+ * onset studio agent：导演（ORCHESTRATOR=director）。客户端与 onset run 按 tools.orchestratorInvocation 启动它，
  * 请求经 stdin 一行 JSON（director.Request），输出 claude 系的 stream-json，由 agentrun 解析。
  *
- * am 的制作工具不经 MCP，直接在这个进程里做成 agent 的工具：工具列表与参数校验与工具服务（toolsmcp）
+ * onset 的制作工具不经 MCP，直接在这个进程里做成 agent 的工具：工具列表与参数校验与工具服务（toolsmcp）
  * 是同一份（describeTools、prepareCall），每次调用照样起一个执行进程（Jobs），只是不用 wait_seconds /
  * job_wait——那是给 codex 的 60 秒 MCP 超时准备的，这里直接等到跑完，取消时整组结束。
  *
- * pi 在单独的 am-agent.cjs 里（见 pi.ts 的说明），只有这个命令加载它。
+ * pi 在单独的 onset-agent.cjs 里（见 pi.ts 的说明），只有这个命令加载它。
  */
 import path from 'node:path';
-import * as director from '@am/engine/director';
-import * as studioview from '@am/engine/studioview';
+import * as director from '@onset/engine/director';
+import * as studioview from '@onset/engine/studioview';
 import { currentEnvironment } from '../cli';
 import { Command, ref } from '../cobra';
 import { callTarget, describeTools, Jobs, prepareCall, spawnOp, spawnOpWithKeys, type Spawner } from '../toolsmcp';
@@ -19,14 +19,14 @@ import { newGate } from './gate';
 import { todoTool } from './todo';
 import type { AgentModule, AgentTool, Gate } from './types';
 
-/** 打包时由 esbuild 定义成 am-agent.cjs 的文件名；开发与测试时没有定义，直接 import 源码。 */
-declare const AM_AGENT_BUNDLE: string | undefined;
+/** 打包时由 esbuild 定义成 onset-agent.cjs 的文件名；开发与测试时没有定义，直接 import 源码。 */
+declare const ONSET_AGENT_BUNDLE: string | undefined;
 
-/** 加载 pi 那一半。打包后是与 am.cjs 同目录的 am-agent.cjs。 */
+/** 加载 pi 那一半。打包后是与 onset.cjs 同目录的 onset-agent.cjs。 */
 export async function loadAgentModule(): Promise<AgentModule> {
-  if (typeof AM_AGENT_BUNDLE !== 'undefined') {
+  if (typeof ONSET_AGENT_BUNDLE !== 'undefined') {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require(path.join(__dirname, AM_AGENT_BUNDLE)) as AgentModule;
+    return require(path.join(__dirname, ONSET_AGENT_BUNDLE)) as AgentModule;
   }
   return (await import('./pi')) as AgentModule;
 }
@@ -38,7 +38,7 @@ const maxToolSeconds = 24 * 3600;
  * 把编排档位的操作做成 agent 的工具；job_wait、job_cancel 不要（这里直接等到跑完）。
  * 除了只读的 tool_help，都顺序执行：模型一次发出 scene_cues 与 scene_run 时，后者要等前者写完 scene.json。
  */
-export function amTools(spawner: Spawner = spawnOp, root = ''): { tools: AgentTool[]; jobs: Jobs } {
+export function onsetTools(spawner: Spawner = spawnOp, root = ''): { tools: AgentTool[]; jobs: Jobs } {
   const jobs = new Jobs(spawner);
   const defs = describeTools('orchestrator', root).filter((t) => t.name !== 'job_wait' && t.name !== 'job_cancel');
   const byName = new Map(defs.map((t) => [t.name, t]));
@@ -85,7 +85,7 @@ export function parseRequest(text: string): director.Request {
   try {
     raw = JSON.parse(text);
   } catch {
-    throw new Error('am studio agent 的 stdin 不是合法 JSON');
+    throw new Error('onset studio agent 的 stdin 不是合法 JSON');
   }
   const r = (raw ?? {}) as Partial<director.Request>;
   if (typeof r.workdir !== 'string' || r.workdir === '') throw new Error('请求里没有 workdir');
@@ -123,10 +123,10 @@ export async function runBuiltinAgent(
 ): Promise<{ ok: boolean; error?: string }> {
   const env = options.env ?? currentEnvironment();
   // 整理经验这类会再起导演的操作要拿到 key：经执行进程的 stdin 交下去（spawnOpWithKeys），不进环境。
-  const am = amTools(options.spawner ?? spawnOpWithKeys(req.keys ?? {}), req.workdir);
-  const jobs = am.jobs;
-  // 待办清单与 am 的工具一样直接放行：它只把清单写进工具调用，什么也不做。
-  const tools = [...am.tools, todoTool()];
+  const onset = onsetTools(options.spawner ?? spawnOpWithKeys(req.keys ?? {}), req.workdir);
+  const jobs = onset.jobs;
+  // 待办清单与 onset 的工具一样直接放行：它只把清单写进工具调用，什么也不做。
+  const tools = [...onset.tools, todoTool()];
   const gate =
     options.gate ??
     newGate({
@@ -135,7 +135,7 @@ export async function runBuiltinAgent(
       commands: req.commands ?? [],
       writableDirs: req.writable_dirs ?? [],
       agentDir: req.agent_dir,
-      amTools: new Set(tools.map((t) => t.name)),
+      onsetTools: new Set(tools.map((t) => t.name)),
       inbox: env[studioview.ViewInboxEnv] ?? '',
     });
   const agent = await loadAgentModule();
@@ -152,12 +152,12 @@ export function newAgentCommand(): Command {
     use: 'agent',
     hidden: true,
     short: '客户端内部用：导演（编排工具 director）',
-    long: `导演：不用另装 AI CLI，填一个模型服务的 API key 就能做编排。由客户端（或 am run）按
+    long: `导演：不用另装 AI CLI，填一个模型服务的 API key 就能做编排。由客户端（或 onset run）按
 ORCHESTRATOR=director 启动，人不直接运行。请求经 stdin 一行 JSON，输出 claude 系的 stream-json。
 
 --list-models 打印已填 API key 的服务商下能选的模型，每行一个「服务商/模型」。`,
     example: `  # 客户端里换成导演后，每一轮都这样启动：
-  echo '{"workdir":"/path/to/project","prompt":"…","agent_dir":"…"}' | am studio agent`,
+  echo '{"workdir":"/path/to/project","prompt":"…","agent_dir":"…"}' | onset studio agent`,
     runE: async (c) => {
       const env = currentEnvironment();
       if (listModels.value) {

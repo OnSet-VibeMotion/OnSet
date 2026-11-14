@@ -909,7 +909,7 @@ function sceneNumber(scenes: Scene[], id: string): string {
 /**
  * 风格页：本项目的风格。默认风格（不写 film_style 的镜头用它）展示海报、适用题材、STYLE.md，
  * 可以换或去掉；下面是个别镜头点名用的其他风格，每种列出在用的镜头，可以添加、去掉。
- * 装、换、添加、去掉都是 am film-style 写任务，会占项目写锁，进度在右上角任务里。
+ * 装、换、添加、去掉都是 onset film-style 写任务，会占项目写锁，进度在右上角任务里。
  * 哪个镜头用哪种风格要改分镜计划与 scene.json，那是编排工具的事，这里只读。
  */
 function StyleTab({ version, run, scenes, onScene }: { version: number; run: RunAction; scenes: Scene[]; onScene: (id: string) => void }) {
@@ -940,7 +940,7 @@ function StyleTab({ version, run, scenes, onScene }: { version: number; run: Run
         .then(setDoc, () => setDoc(''));
   }, [docFile, version]);
   const rendered = scenes.some((scene) => scene.exists);
-  const staleNote = rendered ? '已经渲染的镜头不会自动更新，要重渲染才会换成新风格（整批渲染时 am 会按输入指纹把它们判为过期）。' : '';
+  const staleNote = rendered ? '已经渲染的镜头不会自动更新，要重渲染才会换成新风格（整批渲染时 onset 会按输入指纹把它们判为过期）。' : '';
   const installedKeys = new Set([...(info?.manifest ? [styleKey(info.manifest)] : []), ...extras.map((x) => styleKey(x.manifest))]);
   const pickDefault = (slug: string) => {
     if (!slug) return;
@@ -1179,7 +1179,7 @@ function ReviewTab({ tree, version, run }: { tree: TreeFile[]; version: number; 
   return (
     <div className="review-tab">
       <div className="toolbar">
-        <span className="small muted">am review 的结果：音画时长、交界帧、联系表与响度。</span>
+        <span className="small muted">onset review 的结果：音画时长、交界帧、联系表与响度。</span>
         <span className="spacer" />
         <button className="primary" onClick={() => run('/api/review/run')}>
           运行复查

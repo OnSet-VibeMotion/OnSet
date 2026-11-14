@@ -11,7 +11,7 @@ export async function prepareAlignment(t: Toolchain, source: string, dest: strin
 /**
  * 显式给出，不吃 ffmpeg 原生 aac 的缺省 128k：瞬态密集的音乐在
  * 低码率下编解码一趟，采样之间的峰值能抬高 3 dB 以上，波形文件达标的混音在
- * 成片里顶过 0 dBFS。am review 量的是解码后的真峰，会把这种情况报出来。
+ * 成片里顶过 0 dBFS。onset review 量的是解码后的真峰，会把这种情况报出来。
  */
 const songAACBitrate = '384k';
 

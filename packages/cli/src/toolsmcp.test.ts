@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { ResultMarker } from '@am/engine/opworker';
+import { ResultMarker } from '@onset/engine/opworker';
 import { describe, expect, it } from 'vitest';
 import { allOps, opScopes } from './ops/op';
 import { describeTools, opCommand, prepareCall, serveToolsMCP, type Spawner } from './toolsmcp';
@@ -21,12 +21,12 @@ async function call(requests: Record<string, unknown>[], spawner: Spawner, profi
 function fakeWorker(script: string, result: Record<string, unknown> = { ok: true, exit_code: 0 }): Spawner {
   const marker = ResultMarker.replace('\u0000', '\\0');
   const tail = `printf '${marker}%s\\n' '${JSON.stringify(result)}'`;
-  return (name, params) => spawn('/bin/sh', ['-c', `${script}\n${tail}`, 'am', name, JSON.stringify(params)], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+  return (name, params) => spawn('/bin/sh', ['-c', `${script}\n${tail}`, 'onset', name, JSON.stringify(params)], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
 }
 
 const text = (msg: any): string => msg.result.content[0].text;
 
-describe('am tools MCP', () => {
+describe('onset tools MCP', () => {
   it('makes one tool per operation, with named parameters', () => {
     const tools = describeTools('orchestrator');
     const names = tools.map((t) => t.name);
@@ -43,13 +43,13 @@ describe('am tools MCP', () => {
     expect(describeTools('renderer').map((t) => t.name)).toEqual(['hyperframes', 'job_wait', 'job_cancel', 'tool_help']);
   });
 
-  // 说明与例子是 agent 照着调的：写成命令行它就会去终端里找 am；例子里的参数名必须真的存在。
+  // 说明与例子是 agent 照着调的：写成命令行它就会去终端里找 onset；例子里的参数名必须真的存在。
   it('writes every description and example as tool calls', () => {
     for (const op of allOps()) {
       if (!opScopes(op).includes('orchestrator') && !opScopes(op).includes('renderer')) continue;
       expect(op.summary, op.name).not.toBe('');
       const prose = [op.summary, op.description ?? '', ...(op.examples ?? []), ...Object.values(op.params).map((p) => p.description)].join('\n');
-      expect(prose, `${op.name} 的说明里写了命令行`).not.toMatch(/(^|[^\w/.\-`])am (setup|init|run|scene|beat|align|song|cast|dialogue|validate|memory|film-style|concat|review|audio|config|studio|style|usage|archive|hyperframes)\b/m);
+      expect(prose, `${op.name} 的说明里写了命令行`).not.toMatch(/(^|[^\w/.\-`])onset (setup|init|run|scene|beat|align|song|cast|dialogue|validate|memory|film-style|concat|review|audio|config|studio|style|usage|archive|hyperframes)\b/m);
       for (const example of op.examples ?? []) {
         if (example.trim().startsWith('#') || example.trim() === '') continue;
         const m = /^([a-z_]+)\((.*)\)(\s+#.*)?$/.exec(example.trim());
@@ -151,7 +151,7 @@ describe('am tools MCP', () => {
     expect(second).toContain('second');
     expect(second).not.toContain('first');
     expect(second).toContain('结果：{"n":2}');
-    expect(second).not.toContain('am-result');
+    expect(second).not.toContain('onset-result');
     push ? push('END') : queue.push('END');
     await served;
   });
@@ -164,11 +164,11 @@ describe('am tools MCP', () => {
   });
 });
 
-// 客户端里 am 由 Electron 当 Node 运行，main.ts 一启动就删掉 ELECTRON_RUN_AS_NODE（不能漏给 agent）。
+// 客户端里 onset 由 Electron 当 Node 运行，main.ts 一启动就删掉 ELECTRON_RUN_AS_NODE（不能漏给 agent）。
 // 执行进程要是照抄 process.env，起来的会是一个完整的 Electron 应用：操作跑完了进程也不退出，
 // 工具服务每次都报「还在运行」（2026-11 实测）。CI 跑在普通 Node 下复现不了，所以在这里钉住。
 describe('op worker command', () => {
-  it('puts ELECTRON_RUN_AS_NODE back when am runs inside Electron', () => {
+  it('puts ELECTRON_RUN_AS_NODE back when onset runs inside Electron', () => {
     const saved = process.env.ELECTRON_RUN_AS_NODE;
     delete process.env.ELECTRON_RUN_AS_NODE;
     Object.defineProperty(process.versions, 'electron', { value: '45.0.0', configurable: true });

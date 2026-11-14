@@ -52,7 +52,7 @@ export function observeModel(s: Store, renderer: string, model: string): void {
 }
 
 /**
- * 渲染工具当前的模型：am 设置里选定的（declared，见 config.rendererModelFor）优先，其次是工具配置文件声明的
+ * 渲染工具当前的模型：onset 设置里选定的（declared，见 config.rendererModelFor）优先，其次是工具配置文件声明的
  * 默认模型（codex 的 config.toml），否则取最近一次实测到的；都没有时返回空串。
  */
 export function currentModel(s: Store, renderer: string, env: Record<string, string | undefined>, declared = ''): string {

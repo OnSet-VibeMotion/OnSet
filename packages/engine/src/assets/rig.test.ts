@@ -60,7 +60,7 @@ describe('character-rig skill', () => {
 
   // 用 node 对 cast.js 导出的纯函数直接求值：把「转身在哪一帧换视图」这类定义性行为锁进可执行断言。
   it('cast.js pure functions', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-assets-rig-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-assets-rig-'));
     try {
       const driver = path.join(dir, 'cast.js');
       fs.writeFileSync(driver, shared().readFile(castSkillPath('cast.js')));

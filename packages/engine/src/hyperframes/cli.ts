@@ -1,10 +1,10 @@
 //
-// CLI 是 am 管理的 HyperFrames CLI：按固定版本装在用户级目录里，所有项目、所有镜头共用。
+// CLI 是 onset 管理的 HyperFrames CLI：按固定版本装在用户级目录里，所有项目、所有镜头共用。
 //
 // 以前由渲染器在渲染途中 `npx --yes hyperframes@<版本>` 现下载：版本一升级，第一次渲染
 // 就要先下几十 MB 的 npm 包，网络不好时渲染器空等二十多分钟、花一次模型调用，最后只
-// 留下「没有产物」（实测）。现在它是前置资源：由 am setup 装好，所有调用都走
-// `am hyperframes`，没装好在开工前就报出来，而且不再依赖 npx 自己那份缓存是否还在。
+// 留下「没有产物」（实测）。现在它是前置资源：由 onset setup 装好，所有调用都走
+// `onset hyperframes`，没装好在开工前就报出来，而且不再依赖 npx 自己那份缓存是否还在。
 import fs from 'node:fs';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -18,15 +18,15 @@ import { errorText, goQuote, runCommand } from './util';
 
 /**
  * 渲染器与编排工具调用 CLI 的写法。提示词、锁定文件与安全模式的放行列表
- * 都用它，版本号只在 am 里出现一次。
+ * 都用它，版本号只在 onset 里出现一次。
  */
-export const CLICommand = 'am hyperframes';
+export const CLICommand = 'onset hyperframes';
 
 /** 覆盖 CLI 的安装目录（测试与特殊部署用）。 */
-export const CLIDirEnv = 'AM_HYPERFRAMES_CLI_DIR';
+export const CLIDirEnv = 'ONSET_HYPERFRAMES_CLI_DIR';
 
 /** 写在安装目录里，内容是版本号：只有完整装好、自检通过的目录才有它。 */
-const cliMarker = '.am-cli';
+const cliMarker = '.onset-cli';
 
 /** 一次 CLI 安装。 */
 export interface CLIOptions {
@@ -69,7 +69,7 @@ export function cliReady(dir: string, version: string): boolean {
 
 /**
  * 返回已装好的 CLI 目录，没装好抛 prereq.MissingError，不联网。
- * 除 am setup 以外的地方都用它：CLI 是前置资源。
+ * 除 onset setup 以外的地方都用它：CLI 是前置资源。
  */
 export function requireCLI(env: Record<string, string | undefined>): string {
   const dir = cliDir(env, PinnedVersion);
@@ -82,7 +82,7 @@ export function requireCLI(env: Record<string, string | undefined>): string {
 const cliAttempts = 3;
 
 /**
- * 返回装好的 CLI 安装目录，没有时用 npm 安装。只有 am setup 调用它，
+ * 返回装好的 CLI 安装目录，没有时用 npm 安装。只有 onset setup 调用它，
  * 其余地方用 requireCLI：CLI 是前置资源，不在建项目、渲染途中现装。
  *
  * npm install 在同级临时目录里进行，装好、跑过 `--version` 自检后整体改名进位，
@@ -187,10 +187,10 @@ export interface CLICommandSpec {
 }
 
 /**
- * 客户端自带的浏览器（客户端写出的包装脚本，见 apps/desktop/src/main/browser.ts）。客户端的 am shim 设它，
- * am 据此把 HyperFrames 指到客户端里的 Chromium，用户不必再下载 chrome-headless-shell。
+ * 客户端自带的浏览器（客户端写出的包装脚本，见 apps/desktop/src/main/browser.ts）。客户端的 onset shim 设它，
+ * onset 据此把 HyperFrames 指到客户端里的 Chromium，用户不必再下载 chrome-headless-shell。
  */
-export const BrowserEnv = 'AM_BROWSER';
+export const BrowserEnv = 'ONSET_BROWSER';
 
 /** HyperFrames 自己认的浏览器位置。用户显式设了它就尊重用户的。 */
 export const HyperFramesBrowserEnv = 'HYPERFRAMES_BROWSER_PATH';
@@ -283,7 +283,7 @@ export interface BrowserOptions {
 
 /**
  * 准备渲染用的浏览器：已有（客户端自带或已下载）就直接返回，否则用固定版本的 CLI 运行
- * `hyperframes browser ensure` 下载 headless-shell。只有 am setup 调用；CLI 要先装好。
+ * `hyperframes browser ensure` 下载 headless-shell。只有 onset setup 调用；CLI 要先装好。
  */
 export async function ensureBrowser(opts: BrowserOptions, signal?: AbortSignal): Promise<string> {
   const env = opts.env ?? {};
@@ -335,7 +335,7 @@ export function cliEntry(dir: string): string {
 /**
  * 构造运行缓存里 CLI 的命令；args 原样传给它。
  *
- * CLI 用 am 自己的运行时启动（toolpath.nodeCommand），不经它的 `#!/usr/bin/env node`：客户端用户的机器上
+ * CLI 用 onset 自己的运行时启动（toolpath.nodeCommand），不经它的 `#!/usr/bin/env node`：客户端用户的机器上
  * 未必有 Node，有的话版本也未必够。浏览器、ffmpeg、ffprobe 也在这里指给它：客户端自带的优先。
  */
 export function cliCommandFor(dir: string, env: Record<string, string>, args: string[]): CLICommandSpec {

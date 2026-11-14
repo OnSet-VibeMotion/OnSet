@@ -8,10 +8,10 @@ const path = require('node:path');
 exports.default = async function afterPack(context) {
   const source = path.join(__dirname, '..', 'vendor', 'npm');
   if (!fs.existsSync(path.join(source, 'bin', 'npm-cli.js'))) {
-    throw new Error('vendor/npm 不存在：先运行 npm run vendor -w am-desktop');
+    throw new Error('vendor/npm 不存在：先运行 npm run vendor -w onset-desktop');
   }
   const app = `${context.packager.appInfo.productFilename}.app`;
   const target = path.join(context.appOutDir, app, 'Contents', 'Resources', 'npm');
   fs.rmSync(target, { recursive: true, force: true });
-  fs.cpSync(source, target, { recursive: true, filter: (src) => path.basename(src) !== '.am-vendor' });
+  fs.cpSync(source, target, { recursive: true, filter: (src) => path.basename(src) !== '.onset-vendor' });
 };

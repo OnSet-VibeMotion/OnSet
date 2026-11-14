@@ -40,7 +40,7 @@ const roundGrid = 1e6;
  *
  * 说话人在不在 on_stage 里，这里一概不问：一拍的含义是"这段时间这个人在
  * 说话"，不蕴含"他被画出来"。画外音的台词同样要出现在节拍里，否则
- * am validate cast 会报这一行没被覆盖。
+ * onset validate cast 会报这一行没被覆盖。
  *
  * 返回的 beats[i] 为 null 表示该镜头没有节拍（Go 的 nil 切片）。
  */

@@ -131,7 +131,7 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
     return { decision: codexDecision(answer) };
   });
   // MCP 工具调用的审批：codex 在 untrusted 策略下给每次 MCP 调用发一个 elicitation（2026-11，0.163 实测）。
-  // am 的工具服务是客户端自己挂的，直接同意；别的服务照常问用户。
+  // onset 的工具服务是客户端自己挂的，直接同意；别的服务照常问用户。
   peer.onRequest('mcpServer/elicitation/request', async (params) => {
     const p = obj(params);
     const server = str(p.serverName);
@@ -146,7 +146,7 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
   });
   const race = <T>(p: Promise<T>) => Promise.race([p, ctx.exited]);
 
-  await race(peer.request('initialize', { clientInfo: { name: 'article-to-motion', title: 'ArticleToMotion', version: '1' } }));
+  await race(peer.request('initialize', { clientInfo: { name: 'onset', title: 'OnSet', version: '1' } }));
   peer.notification('initialized', {});
   const cwd = spec.workdir || process.cwd();
   const writable = spec.access?.writableDirs ?? [];
@@ -158,7 +158,7 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
     config: {
       'sandbox_workspace_write.network_access': true,
       ...(writable.length > 0 ? { 'sandbox_workspace_write.writable_roots': writable } : {}),
-      // am 的工具服务：编排工具只经它调用 am（codex 的 config 键用点号路径，值按 TOML 的结构给）。
+      // onset 的工具服务：编排工具只经它调用 onset（codex 的 config 键用点号路径，值按 TOML 的结构给）。
       ...(spec.toolsServer
         ? { [`mcp_servers.${spec.toolsServer.name}`]: { command: spec.toolsServer.command, args: spec.toolsServer.args, env: spec.toolsServer.env ?? {} } }
         : {}),

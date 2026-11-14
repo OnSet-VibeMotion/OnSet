@@ -1,7 +1,7 @@
 /**
- * 编排工具与客户端界面之间的两条通道（am studio show 与客户端后端共用）。
+ * 编排工具与客户端界面之间的两条通道（onset studio show 与客户端后端共用）。
  *
- * - 编排工具 → 界面：一轮对话里编排工具运行 am studio show <页面> [对象]，把一份请求写进这一轮的收件目录
+ * - 编排工具 → 界面：一轮对话里编排工具运行 onset studio show <页面> [对象]，把一份请求写进这一轮的收件目录
  *   （ViewInboxEnv）；客户端在这一轮进行中轮询收件目录，译成 view 事件，界面切到那一页。写文件而不是发 HTTP：
  *   codex 的沙箱默认断网，连本机端口也连不上，项目目录却总是可写的。
  * - 界面 → 编排工具：界面发消息时带上用户此刻在看的页面（ViewState），客户端把它写进这一轮的提示词。
@@ -12,10 +12,10 @@ import { marshal } from '../gojson';
 import { goQuote } from '../gofmt';
 import * as plugin from '../plugin';
 
-/** 这一轮的收件目录；不在客户端里运行时没有它，am studio show 什么都不做。 */
-export const ViewInboxEnv = 'AM_STUDIO_INBOX';
-/** 客户端打开的项目根目录，am studio show 据此校验镜头与文件。 */
-export const ViewProjectEnv = 'AM_STUDIO_PROJECT';
+/** 这一轮的收件目录；不在客户端里运行时没有它，onset studio show 什么都不做。 */
+export const ViewInboxEnv = 'ONSET_STUDIO_INBOX';
+/** 客户端打开的项目根目录，onset studio show 据此校验镜头与文件。 */
+export const ViewProjectEnv = 'ONSET_STUDIO_PROJECT';
 /** 会话事件里的切页请求。 */
 export const KindView = 'view';
 /** 一轮进行中查看收件目录的间隔（毫秒）。 */
@@ -274,7 +274,7 @@ function nextStamp(): bigint {
 
 /**
  * 把请求放进这一轮的收件目录。不在客户端里（没有收件目录）时返回 false。页面写错照样抛错：
- * 编排工具在 am run 里也会照着提示词调用，写错要让它知道。
+ * 编排工具在 onset run 里也会照着提示词调用，写错要让它知道。
  */
 export function writeViewRequest(env: Record<string, string | undefined>, req: ViewRequest): boolean {
   const inbox = env[ViewInboxEnv] ?? '';

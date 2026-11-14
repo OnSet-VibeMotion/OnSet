@@ -146,7 +146,7 @@ describe('reads', () => {
   });
 
   it('load and write', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-reads-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-reads-'));
     temps.push(dir);
     const inventory = path.join(dir, 'inv.json');
     fs.writeFileSync(

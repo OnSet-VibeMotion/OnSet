@@ -1,12 +1,12 @@
 // memory 操作的测试，外加整理者用量记进记忆库的用例
-// （整理者的用量记在记忆库的账本里，要 am memory consolidate）。
-// 记忆库与 HOME 一律指到临时目录：绝不写开发者真实的 ~/.local/share/am/memory。
+// （整理者的用量记在记忆库的账本里，要 onset memory consolidate）。
+// 记忆库与 HOME 一律指到临时目录：绝不写开发者真实的 ~/.local/share/onset/memory。
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import * as ledger from '@am/engine/ledger';
-import * as memory from '@am/engine/memory';
-import * as scene from '@am/engine/scene';
+import * as ledger from '@onset/engine/ledger';
+import * as memory from '@onset/engine/memory';
+import * as scene from '@onset/engine/scene';
 import { Buffer, hasFfmpeg, lookPath, makeClip, run as execute, setenv, tempDir } from './testutil';
 
 function writeScene(project: string, sceneJSON: string): string {
@@ -29,7 +29,7 @@ describe('memory', () => {
     makeClip(source, 'testsrc=size=320x240:rate=30:duration=1');
     const script = "#!/bin/sh\nset -eu\nprintf '%s' \"$*\" > prompt.txt\n/bin/cp '" + source + "' out.mp4\n";
     fs.writeFileSync(path.join(binDir, 'codex'), script, { mode: 0o755 });
-    fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\nMEMORY=on\n');
+    fs.writeFileSync(path.join(project, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\nMEMORY=on\n');
     const dir = writeScene(
       project,
       '{"id":"scene-001","duration_seconds":1.0,"output":"out.mp4","transcript":"transcription.srt","text":"中文内容"}',
@@ -51,13 +51,13 @@ describe('memory', () => {
     process.chdir(project);
     setenv('PATH', binDir + path.delimiter + path.dirname(lookPath('ffmpeg')));
     setenv('HOME', tempDir());
-    setenv('AM_MEMORY_DIR', memoryDir);
+    setenv('ONSET_MEMORY_DIR', memoryDir);
 
     const run = async (...args: string[]): Promise<string> => {
       const out = new Buffer();
       const errOut = new Buffer();
       const code = await execute(args, out, errOut);
-      if (code !== 0) throw new Error(`am ${args.join(' ')} 退出 ${code}\nstdout: ${out.text}\nstderr: ${errOut.text}`);
+      if (code !== 0) throw new Error(`onset ${args.join(' ')} 退出 ${code}\nstdout: ${out.text}\nstderr: ${errOut.text}`);
       return out.text;
     };
     const reportPath = path.join(project, 'report.json');
@@ -138,7 +138,7 @@ describe('memory', () => {
       "\"text\":\"[[USER_MESSAGE]]视频已渲染完成\"}}'\n" +
       `/bin/cp '${source}' out.mp4\n`;
     fs.writeFileSync(path.join(binDir, 'codex'), script, { mode: 0o755 });
-    fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\nMEMORY=off\n');
+    fs.writeFileSync(path.join(project, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\nMEMORY=off\n');
     writeScene(
       project,
       '{"id":"scene-001","duration_seconds":1.0,"output":"out.mp4","transcript":"transcription.srt","text":"中文"}',
@@ -146,7 +146,7 @@ describe('memory', () => {
     process.chdir(project);
     setenv('PATH', binDir + path.delimiter + path.dirname(lookPath('ffmpeg')));
     setenv('HOME', tempDir());
-    setenv('AM_MEMORY_DIR', memoryDir);
+    setenv('ONSET_MEMORY_DIR', memoryDir);
     const out = new Buffer();
     const errOut = new Buffer();
     expect(await execute(['scene', 'run', 'scenes/scene-001'], out, errOut), `渲染失败：${errOut.text}`).toBe(0);
@@ -157,7 +157,7 @@ describe('memory', () => {
   it('validate reads records findings per scene', async () => {
     const project = tempDir();
     const memoryDir = tempDir();
-    fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
+    fs.writeFileSync(path.join(project, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
     for (const id of ['scene-001', 'scene-002']) {
       const dir = path.join(project, 'scenes', id);
       fs.mkdirSync(dir, { recursive: true });
@@ -172,7 +172,7 @@ describe('memory', () => {
     );
     process.chdir(project);
     setenv('HOME', tempDir());
-    setenv('AM_MEMORY_DIR', memoryDir);
+    setenv('ONSET_MEMORY_DIR', memoryDir);
     const out = new Buffer();
     expect(await execute(['validate', 'reads'], out, out), `阅读时间不够应当失败：${out.text}`).not.toBe(0);
     const episodes = memory.open(memoryDir).episodes();
@@ -206,7 +206,7 @@ describe('memory', () => {
     setenv('PATH', bin + path.delimiter + process.env.PATH);
     setenv('HOME', tempDir());
     setenv('ORCHESTRATOR', 'codex');
-    setenv('AM_MEMORY_DIR', memoryDir);
+    setenv('ONSET_MEMORY_DIR', memoryDir);
     const out = new Buffer();
     expect(await execute(['memory', 'consolidate', '--min-count', '1', '--all'], out, out), out.text).toBe(0);
     const entries = ledger.read(ledger.memoryFile(memoryDir)) ?? [];

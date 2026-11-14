@@ -42,7 +42,7 @@ heiwa: 你先别急，我们从背景讲起。
 
 ### 三、逐段调用 mmx / bl，保存段内时间戳
 
-TTS 服务提供方仍由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定，各路径的凭据、鉴权方式、密钥保管规则与{{STAGE:voice}}完全一致，此处不重复；音色、语速试听确认，以及易误读词发音控制（`mmx` 的 `--pronunciation`、百炼 SSML `<phoneme>`，不支持自定义发音的路径改写送进 TTS 的文本）的要求也一致，只是作用范围从"整篇口播"缩小到"每一段"。
+TTS 服务提供方仍由 `onset.conf`（或环境变量 `TTS_PROVIDER`）决定，各路径的凭据、鉴权方式、密钥保管规则与{{STAGE:voice}}完全一致，此处不重复；音色、语速试听确认，以及易误读词发音控制（`mmx` 的 `--pronunciation`、百炼 SSML `<phoneme>`，不支持自定义发音的路径改写送进 TTS 的文本）的要求也一致，只是作用范围从"整篇口播"缩小到"每一段"。
 
 - 每个说话人使用其 `cast/<id>/character.yaml` 里 `voice.<TTS_PROVIDER>.voiceId`（例如 `voice.minimax.voiceId`、`voice.edge.voiceId`，取决于当前 `TTS_PROVIDER`）对应的音色；同一说话人从头到尾使用同一个 voiceId，不得中途切换。`TTS_PROVIDER=breeze` 时 `voice.breeze.voiceId` 写音色库里的音色名，合成该说话人的每一段前用 `voice_get({"name": "<音色名>"})` 取参考音频与文字稿克隆；库里还没有这个角色的声音时，按{{STAGE:voice}}设计、试听，用户选定后 `voice_save` 存进音色库再填名字。
 - 逐段合成时依旧按{{STAGE:voice}}的方式取真实时间戳：MiniMax 用 `--subtitles` 直接产出，百炼走合成 + `bl speech recognize` 两步识别。这里拿到的时间戳是相对本段音频起点的段内时间，不是全局时间轴——全局时间轴由 `dialogue_assemble()` 统一计算，不要在这一步手工换算或累加偏移。

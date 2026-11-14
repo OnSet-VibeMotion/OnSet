@@ -1,10 +1,10 @@
 /**
  * 前置资源：客户端的安装页，在客户端里直接安装。
  *
- * 以前客户端只读不下载，要用户自己去终端跑 am setup：理由是能看着进度、能加代理、断了能重来。
+ * 以前客户端只读不下载，要用户自己去终端跑 onset setup：理由是能看着进度、能加代理、断了能重来。
  * 可客户端用户多半不会开终端，装好应用却用不了。现在安装页满足同样的三条——每项一行的进度、
- * 可填代理、失败显示原因与日志最后几行、重试接着下——跑的是与 am setup 同一份清单（../prereqs）、
- * 同一份日志（<数据目录>/am/setup.log）。边界不变：下载只发生在这里（或 am setup），
+ * 可填代理、失败显示原因与日志最后几行、重试接着下——跑的是与 onset setup 同一份清单（../prereqs）、
+ * 同一份日志（<数据目录>/onset/setup.log）。边界不变：下载只发生在这里（或 onset setup），
  * 建项目、渲染、打开菜单时仍然只检查。
  *
  * 同一时间只跑一次安装（模块级的 task）；进度经 GET /api/setup 轮询，安装中界面每秒取一次。
@@ -80,7 +80,7 @@ function statusJSON(item: prereqs.Status): Record<string, unknown> {
 
 /** 浏览器端到端测试不联网、也没有真实的前置资源：与跳过技能安装用同一个开关，当作全部就绪。 */
 function skipAll(): boolean {
-  return process.env.AM_STUDIO_SKIP_SKILL_INSTALL === '1';
+  return process.env.ONSET_STUDIO_SKIP_SKILL_INSTALL === '1';
 }
 
 function currentStatus(projectRoot: string): SetupStatus {
@@ -108,7 +108,7 @@ export function splitStage(text: string): { stage: string; percent?: number } {
 
 /**
  * POST /api/setup/run {only?: string[], proxy?: string}：在后台准备缺的项，立即返回 202。
- * only 认的写法与 am setup --only 相同（组名或项 ID）；不给时准备全部必需项与配音、对齐工具
+ * only 认的写法与 onset setup --only 相同（组名或项 ID）；不给时准备全部必需项与配音、对齐工具
  * ——节拍分析环境与整片风格来源动辄上 GB，只在点名时才装。
  */
 export async function setupRunAPI(request: Request, projectRoot = '', run: (fn: () => Promise<void>) => void = (fn) => void fn()): Promise<Response> {
@@ -170,7 +170,7 @@ export async function setupRunAPI(request: Request, projectRoot = '', run: (fn: 
           progress.percent = 100;
         } catch (err) {
           const message = signal.aborted ? '已取消' : (err as Error).message;
-          writer.write(`\n[am] ${message}\n`);
+          writer.write(`\n[onset] ${message}\n`);
           progress.state = 'failed';
           progress.error = message;
           current.error = `${item.name} 没准备好：${message}`;
@@ -197,7 +197,7 @@ export function setupCancelAPI(request: Request): Response {
   return writeJSON(200, { cancelled: Boolean(task?.running) });
 }
 
-/** 日志最后 12 行（去掉 am 自己记的错误行，界面上另有显示）。 */
+/** 日志最后 12 行（去掉 onset 自己记的错误行，界面上另有显示）。 */
 function logTail(file: string): string[] {
   let body = '';
   try {
@@ -205,7 +205,7 @@ function logTail(file: string): string[] {
   } catch {
     return [];
   }
-  const cut = body.lastIndexOf('\n[am] ');
+  const cut = body.lastIndexOf('\n[onset] ');
   if (cut >= 0) body = body.slice(0, cut);
   return body
     .replace(/\r/g, '\n')

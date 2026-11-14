@@ -1,5 +1,5 @@
 // 画幅的选择。
-import * as preset from '@am/engine/preset';
+import * as preset from '@onset/engine/preset';
 import type { Out } from './cobra';
 
 /** Go 的 %-Ns：按码点数在右侧补空格。 */
@@ -24,7 +24,7 @@ export interface Input {
 
 /**
  * 判断输入是不是真正的交互终端。不能只看是不是字符设备：/dev/null 也是字符设备，
- * `am init < /dev/null` 会被误判成交互，绕过失败关闭直接掉进选择框，而选择框在没有 TTY 时读不到按键。
+ * `onset init < /dev/null` 会被误判成交互，绕过失败关闭直接掉进选择框，而选择框在没有 TTY 时读不到按键。
  */
 export function isTerminal(input: Input | undefined): boolean {
   return Boolean(input && input.isTTY);

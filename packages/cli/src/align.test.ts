@@ -1,15 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import * as align from '@am/engine/align';
-import { readCues } from '@am/engine/srt';
+import * as align from '@onset/engine/align';
+import { readCues } from '@onset/engine/srt';
 import { Buffer, tempDir } from './testutil';
 import './align';
 import { newRoot } from './cli';
 import { ExitError } from './cobra';
 import { findOp } from './ops/op';
 
-/** runAlign：执行 am align 子命令，返回 stdout 与错误。 */
+/** runAlign：执行 onset align 子命令，返回 stdout 与错误。 */
 async function runAlign(...args: string[]): Promise<{ out: string; err: unknown }> {
   const out = new Buffer();
   const { root: cmd } = newRoot(out, new Buffer());

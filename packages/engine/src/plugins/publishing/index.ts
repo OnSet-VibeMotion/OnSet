@@ -1,6 +1,6 @@
 /**
  * 内置插件「发布」（publishing）：按发布平台出封面、写标题简介话题、整理发布信息并校验。
- * 名字与说明在 assets/plugins/publishing/am-station.json；制作提示词的段落在同目录的 sections/（口播与卡点各有一版的带 -beat）。
+ * 名字与说明在 assets/plugins/publishing/onset-station.json；制作提示词的段落在同目录的 sections/（口播与卡点各有一版的带 -beat）。
  * 这里登记它的全部代码：站（路线上的「封面与发布信息」、判断函数、提示词段落）、validate_publish 操作、
  * 发布页、/api/publish 接口与「检查发布信息」命令。宿主里没有按名字写的「发布」特判。
  */

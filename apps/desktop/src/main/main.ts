@@ -1,8 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { currentSkin, newServer, skinJSON, type Server } from '@am/engine/studio';
-import { setHostVersion } from '@am/engine/version';
+import { currentSkin, newServer, skinJSON, type Server } from '@onset/engine/studio';
+import { setHostVersion } from '@onset/engine/version';
 import { assetsDir, browserPath, browserScript, cliEntry, npmCLI, shimScript, writeScript } from './clishim';
 import { installKeyCodec } from './keycodec';
 import { installMenu } from './menu';
@@ -12,13 +12,13 @@ import { loginShellPath } from './shellpath';
 /*
  * 桌面客户端的主进程。
  *
- * 界面从自定义协议 am://app/ 加载，于是界面里所有相对地址——fetch('/api/…')、EventSource、
+ * 界面从自定义协议 onset://app/ 加载，于是界面里所有相对地址——fetch('/api/…')、EventSource、
  * <video src="/api/…">、合成预览的 <iframe src="/preview/…">、上传的 FormData——都落到
  * 下面同一个 handleRequest 里，界面代码不用为客户端改一行。/api 与 /preview 交给进程内的
- * Studio 后端（@am/engine/studio 的 handle），其余路径返回界面的静态文件。
+ * Studio 后端（@onset/engine/studio 的 handle），其余路径返回界面的静态文件。
  */
 
-const SCHEME = 'am';
+const SCHEME = 'onset';
 const ORIGIN = `${SCHEME}://app`;
 
 // 必须在 ready 之前登记：standard + secure 才有正常的同源与相对路径；stream 让 SSE 与视频按流返回。
@@ -26,15 +26,15 @@ protocol.registerSchemesAsPrivileged([
   { scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
 ]);
 
-app.setName('ArticleToMotion');
+app.setName('片场');
 
-// 端到端测试用（apps/desktop/e2e）：把 userData 指到临时目录，私有 am shim、单实例锁与浏览器存储都不碰
-// 真实的 ~/Library/Application Support/ArticleToMotion。必须在 requestSingleInstanceLock 之前设。
-if (process.env.AM_DESKTOP_USER_DATA) app.setPath('userData', process.env.AM_DESKTOP_USER_DATA);
+// 端到端测试用（apps/desktop/e2e）：把 userData 指到临时目录，私有 onset shim、单实例锁与浏览器存储都不碰
+// 真实的 ~/Library/Application Support/片场。必须在 requestSingleInstanceLock 之前设。
+if (process.env.ONSET_DESKTOP_USER_DATA) app.setPath('userData', process.env.ONSET_DESKTOP_USER_DATA);
 
-// 端到端测试用：AM_DESKTOP_BACKGROUND=1 时在后台运行——不进 Dock、不激活、窗口不显示，
+// 端到端测试用：ONSET_DESKTOP_BACKGROUND=1 时在后台运行——不进 Dock、不激活、窗口不显示，
 // 跑测试时不会一次次弹到最前面抢走开发者手上的焦点。Playwright 经 CDP 操作页面，窗口可见与否不影响。
-const background = process.env.AM_DESKTOP_BACKGROUND === '1';
+const background = process.env.ONSET_DESKTOP_BACKGROUND === '1';
 if (background) app.setActivationPolicy?.('accessory');
 // 窗口不显示就永远不在前台，一轮结束、任务完成都会弹系统通知；测试里一律不弹（测通知的用例自己再换成记录）。
 if (background) Notification.prototype.show = function () {};
@@ -69,16 +69,16 @@ async function serveStatic(pathname: string): Promise<Response> {
 }
 
 /**
- * Studio 后端写任务与编排工具调用的 am：一段私有 shim，用本应用的 Electron 当 Node 跑自带的命令行。
- * 不依赖用户有没有在菜单里「安装命令行工具」，也不会用到 ~/.local/bin 里可能是别的版本的 am。
+ * Studio 后端写任务与编排工具调用的 onset：一段私有 shim，用本应用的 Electron 当 Node 跑自带的命令行。
+ * 不依赖用户有没有在菜单里「安装命令行工具」，也不会用到 ~/.local/bin 里可能是别的版本的 onset。
  */
 function privateCLI(): string {
-  // Windows 上不写 shim：.cmd 不能直接 spawn，经 cmd.exe 又要转义多行参数。am 就是 am.cjs，
-  // 由 envutil.amCommand 用本应用的 Electron（ELECTRON_RUN_AS_NODE=1）来跑；渲染也不借用本应用的浏览器（见 browser.ts）。
+  // Windows 上不写 shim：.cmd 不能直接 spawn，经 cmd.exe 又要转义多行参数。onset 就是 onset.cjs，
+  // 由 envutil.onsetCommand 用本应用的 Electron（ELECTRON_RUN_AS_NODE=1）来跑；渲染也不借用本应用的浏览器（见 browser.ts）。
   if (process.platform === 'win32') return cliEntry();
-  const file = path.join(app.getPath('userData'), 'bin', 'am');
+  const file = path.join(app.getPath('userData'), 'bin', 'onset');
   writeScript(file, shimScript());
-  // 渲染用的浏览器包装脚本与 am 放在一起；shim 经 AM_BROWSER 把它的位置告诉 am。
+  // 渲染用的浏览器包装脚本与 onset 放在一起；shim 经 ONSET_BROWSER 把它的位置告诉 onset。
   writeScript(browserPath(), browserScript());
   return file;
 }
@@ -118,7 +118,7 @@ function createWindow(): BrowserWindow {
     height: 900,
     minWidth: 1024,
     minHeight: 640,
-    title: 'ArticleToMotion',
+    title: '片场',
     backgroundColor: skinBackground(),
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 22 },
@@ -131,7 +131,7 @@ function createWindow(): BrowserWindow {
       backgroundThrottling: !background,
     },
   });
-  // 界面写好皮肤、画完第一帧才报 am:painted，那时再显示；报不来（界面出错）就在第一次画完 1.5 秒后照样显示。
+  // 界面写好皮肤、画完第一帧才报 onset:painted，那时再显示；报不来（界面出错）就在第一次画完 1.5 秒后照样显示。
   if (!background) {
     let shown = false;
     const show = () => {
@@ -141,12 +141,12 @@ function createWindow(): BrowserWindow {
     };
     const painted = (event: Electron.IpcMainEvent) => {
       if (event.sender !== win.webContents) return;
-      ipcMain.removeListener('am:painted', painted);
+      ipcMain.removeListener('onset:painted', painted);
       show();
     };
-    ipcMain.on('am:painted', painted);
+    ipcMain.on('onset:painted', painted);
     win.once('ready-to-show', () => setTimeout(show, 1500));
-    win.once('closed', () => ipcMain.removeListener('am:painted', painted));
+    win.once('closed', () => ipcMain.removeListener('onset:painted', painted));
   }
   // 外链交给系统浏览器；项目内的文件（封面原图、成片）开一个新的客户端窗口。
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -175,7 +175,7 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  // 插件清单的 requires.am 按客户端的版本号查（发布时取 tag）。只设宿主版本：工具版本进渲染指纹，客户端不改它。
+  // 插件清单的 requires.onset 按客户端的版本号查（发布时取 tag）。只设宿主版本：工具版本进渲染指纹，客户端不改它。
   setHostVersion(app.getVersion());
   app.whenReady().then(async () => {
     // 打包后的 .app 用 build/icon.icns；开发时跑的是裸 Electron，Dock 里会是 Electron 的图标。
@@ -183,21 +183,21 @@ if (!app.requestSingleInstanceLock()) {
       const devIcon = path.join(__dirname, '..', 'build', 'icon.png');
       if (fs.existsSync(devIcon)) app.dock?.setIcon(devIcon);
     }
-    // 端到端测试用：AM_DESKTOP_KEEP_PATH=1 时不并入登录 shell 的 PATH，否则测试放在 PATH 最前面的
+    // 端到端测试用：ONSET_DESKTOP_KEEP_PATH=1 时不并入登录 shell 的 PATH，否则测试放在 PATH 最前面的
     // 假编排工具（e2e/fake-bin/claude）会被登录 shell 里真实的 claude 挤到后面。
-    if (process.env.AM_DESKTOP_KEEP_PATH !== '1') process.env.PATH = loginShellPath();
+    if (process.env.ONSET_DESKTOP_KEEP_PATH !== '1') process.env.PATH = loginShellPath();
     // 引擎从这里读内置资产（Go 版是 go:embed 进二进制的）。
-    process.env.AM_ASSETS_DIR ??= assetsDir();
+    process.env.ONSET_ASSETS_DIR ??= assetsDir();
     try {
       const executable = privateCLI();
-      // 引擎里经 envutil.amExecutable() 找 am 的地方（子进程环境的 AM_EXECUTABLE、PATH）也认这一份。
-      process.env.AM_SELF = executable;
+      // 引擎里经 envutil.onsetExecutable() 找 onset 的地方（子进程环境的 ONSET_EXECUTABLE、PATH）也认这一份。
+      process.env.ONSET_SELF = executable;
       // 进程内的后端直接调 HyperFrames 时（预览截图等）同样用客户端自带的浏览器。
       // Windows 上浏览器模式接不上 puppeteer 的管道（fd 3/4），交给 HyperFrames 自己的 chrome-headless-shell。
-      if (process.platform !== 'win32') process.env.AM_BROWSER = browserPath();
+      if (process.platform !== 'win32') process.env.ONSET_BROWSER = browserPath();
       // 进程内的后端（客户端的安装页、新建项目）装 HyperFrames CLI 与 npm 类工具时用客户端自带的 npm。
       const npm = npmCLI();
-      if (npm !== '') process.env.AM_NPM_CLI = npm;
+      if (npm !== '') process.env.ONSET_NPM_CLI = npm;
       // 导演的 API key 经 safeStorage 加密落盘、解密后经 stdin 交给导演（见 keycodec.ts）。
       installKeyCodec();
       backend = newServer({ executable });
@@ -210,23 +210,23 @@ if (!app.requestSingleInstanceLock()) {
     const menu = (visible: boolean) => installMenu({ visible, toggle: setPetVisible });
     installPetIPC();
     // 界面在第一次画之前同步要现在的皮肤（preload 的 skinNow）。
-    ipcMain.on('am:skin-now', (event) => {
+    ipcMain.on('onset:skin-now', (event) => {
       event.returnValue = skinNow();
     });
     // 界面皮肤换了（设置页）：别的窗口（桌宠、另开的窗口）重取一次；普通窗口的背景色跟着换，免得拖动、开窗时露出旧底色。
-    ipcMain.on('am:skin', (event, background: unknown) => {
+    ipcMain.on('onset:skin', (event, background: unknown) => {
       for (const win of BrowserWindow.getAllWindows()) {
         if (win.isDestroyed()) continue;
         if (typeof background === 'string' && /^#[0-9a-f]{6}$/i.test(background) && win.isResizable()) win.setBackgroundColor(background);
-        if (win.webContents !== event.sender) win.webContents.send('am:skin');
+        if (win.webContents !== event.sender) win.webContents.send('onset:skin');
       }
     });
     // 界面报来的任务数与完成通知。通知只在没有窗口在前台时弹：人就在看着的时候不打扰。
-    ipcMain.on('am:badge', (_event, count: number) => {
+    ipcMain.on('onset:badge', (_event, count: number) => {
       app.setBadgeCount(Math.max(0, Math.trunc(Number(count) || 0)));
     });
     // 在 Finder 中显示：只认项目里的路径（后端 revealPath 校验），项目文件夹直接打开，其余在 Finder 里选中。
-    ipcMain.handle('am:reveal', async (_event, request: { project?: unknown; path?: unknown }) => {
+    ipcMain.handle('onset:reveal', async (_event, request: { project?: unknown; path?: unknown }) => {
       if (!backend) return '后台服务没起来';
       try {
         const project = typeof request?.project === 'string' ? request.project : '';
@@ -242,11 +242,11 @@ if (!app.requestSingleInstanceLock()) {
         return err instanceof Error ? err.message : String(err);
       }
     });
-    ipcMain.on('am:notify', (_event, message: { title?: string; body?: string }) => {
+    ipcMain.on('onset:notify', (_event, message: { title?: string; body?: string }) => {
       // 桌宠窗口点了也会成为焦点窗口，但那不等于人在看客户端。
     const focused = BrowserWindow.getFocusedWindow();
     if ((focused && focused === mainWindow()) || !Notification.isSupported()) return;
-      const note = new Notification({ title: String(message?.title ?? 'ArticleToMotion'), body: String(message?.body ?? '') });
+      const note = new Notification({ title: String(message?.title ?? '片场'), body: String(message?.body ?? '') });
       note.on('click', () => {
         const win = mainWindow();
         if (win) {

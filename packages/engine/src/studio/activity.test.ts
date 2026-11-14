@@ -20,7 +20,7 @@ const callRead = JSON.stringify({
 const resultRead = JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] }, session_id: 'x' });
 const callRender = JSON.stringify({
   type: 'assistant',
-  message: { content: [{ type: 'tool_use', id: 't2', name: 'mcp__am__hyperframes', input: { subcommand: 'render', args: [], code: 'x'.repeat(5000) } }] },
+  message: { content: [{ type: 'tool_use', id: 't2', name: 'mcp__onset__hyperframes', input: { subcommand: 'render', args: [], code: 'x'.repeat(5000) } }] },
   session_id: 'x',
 });
 const say = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: '画面已经排好，开始渲染。' }] }, session_id: 'x' });
@@ -54,7 +54,7 @@ describe('scene activity', () => {
     a = sceneActivity(summary(dir)) as Record<string, any>;
     expect(a.step_count).toBe(3);
     const render = a.steps[2];
-    expect(render.tool).toBe('mcp__am__hyperframes');
+    expect(render.tool).toBe('mcp__onset__hyperframes');
     expect(render.state).toBe('running');
     expect((render.input.code as string).length).toBeLessThan(400);
   });

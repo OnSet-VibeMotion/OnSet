@@ -8,9 +8,9 @@ import { newSessionFixture, setEnv, studioRequest, tempDir } from './testsupport
 describe('settings API', () => {
   it('shows each setting with its global value, the project value and where the effective one comes from', async () => {
     const file = path.join(tempDir(), 'settings.conf');
-    setEnv('AM_SETTINGS_FILE', file);
+    setEnv('ONSET_SETTINGS_FILE', file);
     const f = newSessionFixture();
-    fs.writeFileSync(path.join(f.root, 'article-to-motion.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\nSCENE_JOBS=5\n');
+    fs.writeFileSync(path.join(f.root, 'onset.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\nSCENE_JOBS=5\n');
     let { status, body } = await studioRequest(f.s, 'GET', '/api/settings');
     expect(status).toBe(200);
     expect(body.has_project).toBe(true);

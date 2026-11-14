@@ -30,7 +30,7 @@ describe('setup installer', () => {
 
   // 端到端测试的开关打开时当作全部就绪：安装立即结束、没有要装的项，不联网。
   it('runs in the background and reports the task through GET /api/setup', async () => {
-    setEnv('AM_STUDIO_SKIP_SKILL_INSTALL', '1');
+    setEnv('ONSET_STUDIO_SKIP_SKILL_INSTALL', '1');
     const s = startStudio({ projectPath: tempDir(), configPath: path.join(tempDir(), 'projects.json') });
     const started = await studioRequest(s, 'POST', '/api/setup/run', JSON.stringify({ only: ['ffmpeg'], proxy: 'http://127.0.0.1:7890' }));
     expect(started.status).toBe(202);
@@ -45,7 +45,7 @@ describe('setup installer', () => {
   it('lists the voice and alignment tools of the open project', async () => {
     const project = tempDir();
     const fs = await import('node:fs');
-    fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\nTTS_PROVIDER=edge\nALIGN_PROVIDER=funasr\n');
+    fs.writeFileSync(path.join(project, 'onset.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\nTTS_PROVIDER=edge\nALIGN_PROVIDER=funasr\n');
     const s = startStudio({ projectPath: project, configPath: path.join(tempDir(), 'projects.json') });
     const { body } = await studioRequest(s, 'GET', '/api/setup');
     const ids = body.items.map((item: { id: string }) => item.id);

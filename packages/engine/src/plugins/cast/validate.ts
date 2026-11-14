@@ -61,7 +61,7 @@ export function castProblems(root: string, provider: string): string[] | null {
     return done();
   }
 
-  // 早前的裁定：loadRoster 接受 packs: []（am init 刚建的项目本就还没
+  // 早前的裁定：loadRoster 接受 packs: []（onset init 刚建的项目本就还没
   // 角色），"班底为空"要在发布前由这一层拦下，不是 loadRoster 的职责。
   if ((roster.packs ?? []).length === 0) {
     problems.push(`班底为空：${cast.RosterFile} 没有登记任何角色包，发布前必须至少有一个角色`);
@@ -208,7 +208,7 @@ function sceneCastProblems(root: string, lines: readonly Line[]): string[] {
 
   const problems: string[] = [];
   const beats: GlobalBeat[] = [];
-  // 镜头全局起点走 schedule.startOffsets：正向的 am dialogue beats 用同一个
+  // 镜头全局起点走 schedule.startOffsets：正向的 onset dialogue beats 用同一个
   // 函数把全局台词切成镜头本地节拍，两边同源，这条反向校验才是在验产物，
   // 而不是在验"两处各自累加的结果碰巧一致"。
   const offsets = schedule.startOffsets(scenes);
@@ -253,7 +253,7 @@ function sceneCastProblems(root: string, lines: readonly Line[]): string[] {
  * 这里曾经是一条名为 suspectCumulativeDrift 的启发式：未覆盖的行如果构成
  * "从某一行起一路延伸到最后一行"的后缀，就断言病因是镜头时长累计漂移。
  * 它有两个问题——其一，同样的指纹也会由"某个镜头压根没写 beats"产生，
- * 那时它把人支去改镜头时长，方向完全错了；其二，am dialogue beats 落地后
+ * 那时它把人支去改镜头时长，方向完全错了；其二，onset dialogue beats 落地后
  * 正反两向都走 schedule.startOffsets，工具产出的节拍不可能因为漂移而对不上，
  * 剩下的未覆盖只会来自手写或过期的 beats。
  *

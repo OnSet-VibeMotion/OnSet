@@ -14,7 +14,7 @@ import type { Store } from './store';
 import { omitEmpty, rendererModel, uniqueSorted } from './util';
 
 // 经历来源。
-/** 正式渲染（am scene run / run-all）。 */
+/** 正式渲染（onset scene run / run-all）。 */
 export const SourceRender = 'render';
 /**
  * 考试里的作答。不进入整理，也不计入效果统计：
@@ -91,7 +91,7 @@ export interface Episode {
   snapshot: number;
   /** 非空表示这次召回做了探索，recalled 是探索后真正注入的。 */
   explored: Exploration | null;
-  /** 这次渲染所属的批次（一次 am scene run / run-all 调用），用于按批次对比。 */
+  /** 这次渲染所属的批次（一次 onset scene run / run-all 调用），用于按批次对比。 */
   run: string;
   /** Studio 对话的会话与轮次，只对 SourceConversation 有值。 */
   session: string;
@@ -99,7 +99,7 @@ export interface Episode {
   /** 考试编号，只对 SourceExam 有值。 */
   exam: string;
   feedback: Feedback | null;
-  /** 导入来源（原始路径加开始时间），只对 am memory import 导入的经历有值，用于去重。 */
+  /** 导入来源（原始路径加开始时间），只对 onset memory import 导入的经历有值，用于去重。 */
   imported: string;
   /** 冻结输入相对经历目录的路径；考试从这里原样重放。 */
   input: string;
@@ -320,7 +320,7 @@ function goFileBase(p: string): string {
   return base === '' ? '/' : base;
 }
 
-/** dir 所在项目的名字（项目根目录名：向上找含 article-to-motion.conf 的目录），不在项目里时为空。 */
+/** dir 所在项目的名字（项目根目录名：向上找含 onset.conf 的目录），不在项目里时为空。 */
 export function projectName(dir: string): string {
   return projectOf(dir);
 }
@@ -329,7 +329,7 @@ export function projectOf(dir: string): string {
   let current = dir;
   for (;;) {
     try {
-      fs.statSync(path.join(current, 'article-to-motion.conf'));
+      fs.statSync(path.join(current, 'onset.conf'));
       return goFileBase(current);
     } catch {
       // 继续向上找。

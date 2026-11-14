@@ -6,11 +6,11 @@ import path from 'node:path';
  * 桌宠：一个透明、无边框、置顶的小窗口，里面是一间等距线稿工作室：导演（编排工具）、摄影（渲染器）、剪辑、配音各在各的位置，
  * 谁在干活谁就动起来。
  *
- * 状态不在这里算：主窗口的界面从会话事件推出（components/chat/crew.ts 的 crewState），经 am:crew 发来，
+ * 状态不在这里算：主窗口的界面从会话事件推出（components/chat/crew.ts 的 crewState），经 onset:crew 发来，
  * 这里只记下最新的一份转给桌宠窗口；桌宠窗口刚载入时也补发一次。不装 hooks、不读 CLI 的记录文件。
  * 显示与否、位置记在 userData/pet.json，菜单「窗口 → 场记桌宠」开关。
  *
- * 桌宠上也能动手（PetCommand，经 am:pet 发来）：答批准、点上一轮的选项、说一句、停下这一轮交给主窗口的对话，
+ * 桌宠上也能动手（PetCommand，经 onset:pet 发来）：答批准、点上一轮的选项、说一句、停下这一轮交给主窗口的对话，
  * 不抢焦点；点人或东西（open）先把主窗口叫到前面再切页。桌宠自己不调接口，会话、批准都只有主窗口一份。
  */
 
@@ -93,7 +93,7 @@ export function petPreferred(): boolean {
 
 /**
  * 建桌宠窗口。后台运行（端到端测试）时照样建、照样收状态，只是永远不显示，不抢开发者的屏幕。
- * `url` 是界面的地址（am://app/pet），`preload` 与主窗口共用。
+ * `url` 是界面的地址（onset://app/pet），`preload` 与主窗口共用。
  */
 export function createPet(options: { url: string; preload: string; background: boolean; onVisibility: (visible: boolean) => void }): void {
   onVisibility = options.onVisibility;
@@ -132,7 +132,7 @@ export function createPet(options: { url: string; preload: string; background: b
   // （UIElement），Dock 图标与 ⌘Tab 里的入口一起消失（实测）。
   pet.setAlwaysOnTop(true, 'floating');
   pet.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
-  pet.webContents.on('did-finish-load', () => pet?.webContents.send('am:crew', latest));
+  pet.webContents.on('did-finish-load', () => pet?.webContents.send('onset:crew', latest));
   hidden = options.background;
   pet.once('ready-to-show', syncVisibility);
   pet.on('moved', () => {
@@ -214,13 +214,13 @@ function stopDrag(): void {
 
 export function installPetIPC(): void {
   // 主窗口的界面报来工作室此刻的状态（null 是没有打开项目）。
-  ipcMain.on('am:crew', (_event, state: unknown) => {
+  ipcMain.on('onset:crew', (_event, state: unknown) => {
     latest = state ?? null;
-    if (pet && !pet.isDestroyed()) pet.webContents.send('am:crew', latest);
+    if (pet && !pet.isDestroyed()) pet.webContents.send('onset:crew', latest);
     syncVisibility();
   });
   // 桌宠窗口里的动作（renderer/components/chat/crew.ts 的 PetCommand）。
-  ipcMain.on('am:pet', (event, raw: unknown) => {
+  ipcMain.on('onset:pet', (event, raw: unknown) => {
     if (!pet || event.sender !== pet.webContents) return;
     const command = petCommand(raw);
     if (!command) return;
@@ -236,7 +236,7 @@ export function installPetIPC(): void {
       win.show();
       win.focus();
     }
-    if (command.kind !== 'focus') win.webContents.send('am:pet-command', command);
+    if (command.kind !== 'focus') win.webContents.send('onset:pet-command', command);
   });
 }
 

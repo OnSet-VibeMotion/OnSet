@@ -10,10 +10,10 @@ import '../beat.css';
 /**
  * 「节拍」页：卡点模式下代替口播稿页排在第一步。
  *
- * 以前只能听 grid-click.wav（每拍一声、重拍更高）再在终端里看 am beat bars 的表。这里把同一份网格画出来：
+ * 以前只能听 grid-click.wav（每拍一声、重拍更高）再在终端里看 onset beat bars 的表。这里把同一份网格画出来：
  * 波形上的每一拍、每个重拍和小节号，播放时大字数拍；重拍错位或拍号判错时，在页面上换拍号、换起始拍
  * 立刻就能听到（咔嗒由 WebAudio 按预览的网格现合成，不用等 ffmpeg 重做试听轨），听对了再写回草稿、确认。
- * 写文件只经 am beat regrid / am beat confirm 两个写任务，客户端自己不改网格。
+ * 写文件只经 onset beat regrid / onset beat confirm 两个写任务，客户端自己不改网格。
  */
 
 interface Props {
@@ -846,7 +846,7 @@ export function BeatTab(props: Props) {
                   : odd.length > 0
                     ? `有 ${odd.length} 个小节不是 ${meter} 拍（波形上用黄色标出），多半是模型在那里漏了或多了重拍；整体错位时换「重拍是第几拍」，零星几处可以在对话里说是第几小节。`
                     : confirmed
-                      ? '改网格会让已写好的镜头时长全部失效，要重跑 am beat cues 并重渲染。'
+                      ? '改网格会让已写好的镜头时长全部失效，要重跑 onset beat cues 并重渲染。'
                       : '整体错位（「1」总落在第 2、3 拍上）就换「重拍是第几拍」；拍子数不对就换每小节几拍。'}
               </p>
               <div className="beat-actions">

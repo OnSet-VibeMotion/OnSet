@@ -211,7 +211,7 @@ async function driveACP(ctx: DriveContext): Promise<void> {
       peer.request('initialize', {
         protocolVersion: ACPProtocolVersion,
         clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-        clientInfo: { name: 'article-to-motion', version: '1' },
+        clientInfo: { name: 'onset', version: '1' },
       }),
     ),
   );

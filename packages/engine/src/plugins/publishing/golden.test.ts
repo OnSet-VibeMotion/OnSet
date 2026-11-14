@@ -1,6 +1,6 @@
 /**
  * 对照测试：「发布」搬进内置插件的进程内登记（apply）前后，宿主看到的东西逐字节不变。
- * 金样（testdata/golden.json）是搬家之前的代码写下的；AM_UPDATE_GOLDEN=1 时重写（只在确实要改行为时用）。
+ * 金样（testdata/golden.json）是搬家之前的代码写下的；ONSET_UPDATE_GOLDEN=1 时重写（只在确实要改行为时用）。
  */
 import '../../studio/testsupport';
 import fs from 'node:fs';
@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 function project(files: Record<string, string> = {}): string {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-publishing-golden-')));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-publishing-golden-')));
   temps.push(root);
   flow.recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
   for (const [rel, body] of Object.entries(files)) {
@@ -90,7 +90,7 @@ async function collect(): Promise<Record<string, unknown>> {
 describe('publishing plugin keeps the host output byte-for-byte', () => {
   it('matches the golden output recorded before the move', async () => {
     const got = await collect();
-    if (process.env.AM_UPDATE_GOLDEN === '1') {
+    if (process.env.ONSET_UPDATE_GOLDEN === '1') {
       fs.writeFileSync(goldenFile, JSON.stringify(got, null, 2) + '\n');
       return;
     }

@@ -10,7 +10,7 @@ import { open, type Store } from './store';
 
 /** t.TempDir()：测试结束时删掉。 */
 export function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-memory-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-memory-'));
   onTestFinished(() => fs.rmSync(dir, { recursive: true, force: true }));
   return dir;
 }

@@ -1,12 +1,12 @@
 /**
- * am setup：下载并准备全部前置资源。
+ * onset setup：下载并准备全部前置资源。
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { goQuote } from '@am/engine/gofmt';
-import { SetupCommand } from '@am/engine/prereq';
-import * as plugin from '@am/engine/plugin';
-import * as prereqs from '@am/engine/prereqs';
+import { goQuote } from '@onset/engine/gofmt';
+import { SetupCommand } from '@onset/engine/prereq';
+import * as plugin from '@onset/engine/plugin';
+import * as prereqs from '@onset/engine/prereqs';
 import { currentEnvironment, hyperframesVersion, noArgs } from './cli';
 import { Command, ExitError, type Out, ref } from './cobra';
 import { sourceSummary } from './filmstyle';
@@ -26,43 +26,43 @@ export function newSetupCommand(stdout: Out, _stderr?: Out): Command {
 
   skills   HyperFrames ` +
       hyperframesVersion +
-      ` 官方技能（有 git 时浅克隆，没有时从 GitHub 逐个文件下载并核对，缓存在 ~/.local/share/am/hyperframes/<commit>）
+      ` 官方技能（有 git 时浅克隆，没有时从 GitHub 逐个文件下载并核对，缓存在 ~/.local/share/onset/hyperframes/<commit>）
   cli      HyperFrames CLI ` +
       hyperframesVersion +
-      `（npm，客户端自带一份；装在 ~/.local/share/am/hyperframes/cli-<版本>）
-  browser  渲染用浏览器。客户端里的 am 用客户端自带的 Chromium，这一项直接就绪；单独使用命令行时
+      `（npm，客户端自带一份；装在 ~/.local/share/onset/hyperframes/cli-<版本>）
+  browser  渲染用浏览器。客户端里的 onset 用客户端自带的 Chromium，这一项直接就绪；单独使用命令行时
            下载 chrome-headless-shell（约 390 MB，在 ~/.cache/hyperframes/chrome）
   ffmpeg   ffmpeg 与 ffprobe。系统里已有（PATH 能找到）就直接就绪；没有时下载固定版本的静态构建
-           （约 40 MB，装在 ~/.local/share/am/bin），不需要 Homebrew
+           （约 40 MB，装在 ~/.local/share/onset/bin），不需要 Homebrew
   tts      配音工具（按项目的 TTS_PROVIDER，缺省在 Apple Silicon 上是本机 Breeze TTS 2，其余平台是 MiniMax 的 mmx）；align  对齐工具（按 ALIGN_PROVIDER）。
-           固定版本，装在 ~/.local/share/am/tools，命令放进 ~/.local/share/am/bin；npm 包用客户端
+           固定版本，装在 ~/.local/share/onset/tools，命令放进 ~/.local/share/onset/bin；npm 包用客户端
            自带的运行时，Python 包由 uv 带一份独立的 Python，都不需要你装 Node 或 Python
 ` +
       pluginPrereqSummary() +
-      `  styles   每个整片风格来源一项（styles:<来源>），数据放在 ~/.local/share/am/film-styles/<来源>；
+      `  styles   每个整片风格来源一项（styles:<来源>），数据放在 ~/.local/share/onset/film-styles/<来源>；
            已登记的来源：
 ` +
       sourceSummary() +
       `
 
-其余命令（am init、am film-style use、am scene run、am hyperframes、am studio）只检查
-不下载，缺了就提示先运行 am setup。已就绪的项直接跳过；下载断了再运行一次会接着下。
-git 与 npm 的原始输出写进 ~/.local/share/am/setup.log，失败时屏幕上给出最后几行。
+其余命令（onset init、onset film-style use、onset scene run、onset hyperframes、onset studio）只检查
+不下载，缺了就提示先运行 onset setup。已就绪的项直接跳过；下载断了再运行一次会接着下。
+git 与 npm 的原始输出写进 ~/.local/share/onset/setup.log，失败时屏幕上给出最后几行。
 
 --proxy（例如本机的 Clash）只给 git 与 GitHub 下载（技能、ffmpeg、uv、Python）、浏览器与模型权重（例如节拍分析）用；
-GitHub 的 release 也可以设 AM_GITHUB_MIRROR 走镜像（文件都核对 sha256）。npm 与 pip 照常用你 ~/.npmrc、
+GitHub 的 release 也可以设 ONSET_GITHUB_MIRROR 走镜像（文件都核对 sha256）。npm 与 pip 照常用你 ~/.npmrc、
 pip.conf 里的镜像与代理（Python 类工具由 uv 安装，也沿用 pip.conf 的 index-url），npm 要临时换源用
 --npm-registry。--only 认 ` +
       onlyGroups().join('、') +
       `（styles 是全部风格来源）或
 styles:<来源>。--check 只报告哪些已就绪、哪些缺，不下载；有缺项时退出码为 1。`,
-    example: `  am setup
-  am setup --proxy http://127.0.0.1:7890
-  am setup --only styles --proxy http://127.0.0.1:7890
-  am setup --only styles:lemo-opuscar
-  am setup --only beat
-  am setup --only tts,align
-  am setup --check`,
+    example: `  onset setup
+  onset setup --proxy http://127.0.0.1:7890
+  onset setup --only styles --proxy http://127.0.0.1:7890
+  onset setup --only styles:lemo-opuscar
+  onset setup --only beat
+  onset setup --only tts,align
+  onset setup --check`,
     runE: async (c) => {
       const env = currentEnvironment();
       // 在项目目录里运行时，配音与对齐工具按项目配置挑；不在项目里按环境变量与缺省值。
@@ -140,7 +140,7 @@ function setupCheck(stdout: Out, env: Record<string, string>, items: prereqs.Ite
   stdout.write('前置资源都已就绪。\n');
 }
 
-/** git / npm 原始输出的日志：<数据目录>/am/setup.log，每次运行覆盖。 */
+/** git / npm 原始输出的日志：<数据目录>/onset/setup.log，每次运行覆盖。 */
 export function setupLogPath(env: Record<string, string>): string {
   return prereqs.logPath(env);
 }
@@ -167,7 +167,7 @@ async function setupPrepare(
     const run = prereqs.newRun(env, proxy, npmRegistry, log);
 
     const view = newItemsView(stdout, items);
-    let header = 'am setup · 准备前置资源';
+    let header = 'onset setup · 准备前置资源';
     if (proxy !== '') header += view.paint('2', '（git 代理 ' + proxy + '）');
     stdout.write(`\n${header}\n\n`);
     items.forEach((item, i) => {
@@ -185,20 +185,20 @@ async function setupPrepare(
         await item.prepare(run, signal);
       } catch (err) {
         const message = (err as Error).message;
-        log.write(`\n[am] ${message}\n`);
+        log.write(`\n[onset] ${message}\n`);
         view.set(i, ViewState.Failed, '');
         view.stop();
         fs.fsyncSync(logFd);
         const body = fs.readFileSync(logPath, 'utf8');
         stdout.write(`\n${view.paint('31', '✗')} ${item.name} 没准备好：${message}\n`);
-        // 日志最后一行是 am 自己记的错误，上面已经打过，不重复。
-        const cut = body.lastIndexOf('\n[am] ');
+        // 日志最后一行是 onset 自己记的错误，上面已经打过，不重复。
+        const cut = body.lastIndexOf('\n[onset] ');
         const tail = tailLines(body.slice(0, Math.max(0, cut)).replace(/\n+$/, ''), 12);
         if (tail.length > 0) {
           stdout.write(view.paint('2', '\n  日志最后几行：') + '\n');
           for (const line of tail) stdout.write(view.paint('2', '  │ ' + line) + '\n');
         }
-        stdout.write(`\n完整日志：${homeShort(logPath)}\n再运行一次 am setup 会接着下；GitHub 慢可以加 --proxy。\n`);
+        stdout.write(`\n完整日志：${homeShort(logPath)}\n再运行一次 onset setup 会接着下；GitHub 慢可以加 --proxy。\n`);
         throw new ExitError(1, '');
       }
       view.set(i, ViewState.Done, '');

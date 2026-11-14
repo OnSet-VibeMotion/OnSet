@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-determinism-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-determinism-'));
   temps.push(dir);
   return dir;
 }

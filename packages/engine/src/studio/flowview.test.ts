@@ -15,7 +15,7 @@ afterEach(() => {
 });
 /** 一个记下了流程的项目目录（id 为空时不写记录）。 */
 function root(id = 'speech'): string {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-flowview-')));
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-flowview-')));
   temps.push(dir);
   if (id !== '') flow.recordFlow(dir, { id, canvas: preset.defaultPreset().id });
   return dir;
@@ -76,7 +76,7 @@ describe('directories without a flow record', () => {
     // 标记文件不再决定流程。
     fs.writeFileSync(path.join(dir, 'beat.yaml'), 'schema: 1\n');
     expect(() => flowView(dir)).toThrow(flow.MissingFlowRecordError);
-    expect(() => readProgress(dir)).toThrow('不是用这一版 ArticleToMotion 新建的项目');
+    expect(() => readProgress(dir)).toThrow('不是用这一版片场新建的项目');
   });
 });
 

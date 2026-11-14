@@ -1,5 +1,5 @@
 //
-// anidoodle 检出的位置、下载与检查。数据是前置资源：只由 am setup 经 prepareLibrary 下载并构建（build.ts），
+// anidoodle 检出的位置、下载与检查。数据是前置资源：只由 onset setup 经 prepareLibrary 下载并构建（build.ts），
 // 其余地方只用 requireLibrary 检查，缺了抛 prereq.MissingError，不联网。
 //
 // 只稀疏检出要用的部分（约 2 MB）：许可、风格说明、几份通用说明、每种风格要带的引擎模块与图鉴。
@@ -20,7 +20,7 @@ export interface Library {
   dir: string;
   /** 检出的 commit；读不到时为空。 */
   commit: string;
-  /** 由 am 克隆（有 managedMarker）；为 false 时是用户自己的检出，am 不改它。 */
+  /** 由 onset 克隆（有 managedMarker）；为 false 时是用户自己的检出，onset 不改它。 */
   managed: boolean;
 }
 
@@ -35,8 +35,8 @@ export interface LibraryOptions {
   output?: Writer;
 }
 
-/** 标记一份由 am 克隆的检出。 */
-export const managedMarker = '.am-library';
+/** 标记一份由 onset 克隆的检出。 */
+export const managedMarker = '.onset-library';
 
 function commitOf(opts: LibraryOptions): string {
   return opts.commit || PinnedCommit;
@@ -86,7 +86,7 @@ export function openLibrary(opts: LibraryOptions): Library {
     if (result.status === 0 && !result.error) lib.commit = result.stdout.trim();
   }
   if (lib.managed && lib.commit === '') {
-    // 没有 git 也要认得 am 自己克隆的版本：标记里记着 commit。
+    // 没有 git 也要认得 onset 自己克隆的版本：标记里记着 commit。
     lib.commit = fs.readFileSync(path.join(dir, managedMarker), 'utf8').trim();
   }
   return lib;
@@ -162,14 +162,14 @@ export interface PrepareOptions extends LibraryOptions {
   progress?: (p: PrepareProgress) => void;
 }
 
-/** am setup：下载、转换、裁海报。已完整的直接返回。用户自己的检出只构建，不改它。 */
+/** onset setup：下载、转换、裁海报。已完整的直接返回。用户自己的检出只构建，不改它。 */
 export async function prepareLibrary(opts: PrepareOptions, signal?: AbortSignal): Promise<Library> {
   const report = opts.progress ?? (() => {});
   const steps = 3;
   report({ step: 1, steps, stage: '下载 anidoodle（风格说明与绘图模块）' });
   const lib = await ensureLibrary(opts, signal);
   if (lib.commit !== commitOf(opts)) {
-    throw new Error(`${lib.dir} 检出的是 ${lib.commit || '未知版本'}，am 要的是 ${commitOf(opts)}${lib.managed ? '' : `：请在你的检出里切到这个 commit，或去掉 ${LibraryEnv}`}`);
+    throw new Error(`${lib.dir} 检出的是 ${lib.commit || '未知版本'}，onset 要的是 ${commitOf(opts)}${lib.managed ? '' : `：请在你的检出里切到这个 commit，或去掉 ${LibraryEnv}`}`);
   }
   let step = 1;
   await build(lib, { env: opts.env, catalog: opts.catalog, stage: (what) => report({ step: ++step, steps, stage: what }) }, signal);

@@ -123,7 +123,7 @@ export function renderReport(r: Report): string {
  * 列出 root 下所有含 scene.json 的子目录，按目录名升序返回——
  * 这个顺序就是镜头在时间轴上的先后顺序。
  *
- * 单抽出来的理由与 startOffsets 相同：am dialogue beats 不能走 plan
+ * 单抽出来的理由与 startOffsets 相同：onset dialogue beats 不能走 plan
  * （plan 里的 scene.load 会因为过期的 cast.beats 越界而拒绝加载，而那正是
  * 该命令要修的东西），但它必须与 plan 用同一套顺序，否则镜头起点的累加
  * 就有了第二条路径。顺序规则放这里，两边共用；各自要读什么字段各自决定。
@@ -158,8 +158,8 @@ export function plan(root: string): Scene[] {
  * 第 i 个镜头的起点是它前面所有镜头 duration_seconds 之和。返回的数组与
  * 传入的 scenes 一一对应，顺序即 plan 给出的顺序。
  *
- * 单抽成一个函数是因为这条累加规则有两个方向的使用者：am dialogue beats
- * 用它把 dialogue.json 的全局台词切成镜头本地节拍，am validate cast 用它把
+ * 单抽成一个函数是因为这条累加规则有两个方向的使用者：onset dialogue beats
+ * 用它把 dialogue.json 的全局台词切成镜头本地节拍，onset validate cast 用它把
  * 镜头本地节拍换算回全局时间做覆盖比对。两处各写一遍 cursor += duration
  * 就是两个基准，正反向一旦漂开，校验通过与否取决于哪一边算错，而不取决
  * 于产物对不对。

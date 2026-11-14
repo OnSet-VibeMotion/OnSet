@@ -1,14 +1,14 @@
 # 引擎的编码约定
 
-`packages/engine/src/<包>/` 是 am 的引擎，`packages/cli` 与 `apps/desktop` 都只经它读写项目。
+`packages/engine/src/<包>/` 是 onset 的引擎，`packages/cli` 与 `apps/desktop` 都只经它读写项目。
 
-这些约定大多数只为一件事：**用户机器上已经有的文件必须读写得一模一样**。用户的项目（`scene.json`、`.am-render.json`、尝试记录、Studio 会话与快照）、用户级的记忆库（经历、快照、`models.json`）与渲染指纹，很多是早先的 Go 实现写出来的。指纹按字节算摘要，记忆召回段要逐字稳定，错误文案被测试、提示词和用户一起依赖——换一种 JSON 转义、换一种浮点格式，老镜头就会全部被判成 Stale，记忆快照对不上，编排工具照着提示词找的那句报错也不见了。所以下面这些写法看起来像在模仿 Go，用意是兼容已有数据，不是怀旧。
+这些约定大多数只为一件事：**用户机器上已经有的文件必须读写得一模一样**。用户的项目（`scene.json`、`.onset-render.json`、尝试记录、Studio 会话与快照）、用户级的记忆库（经历、快照、`models.json`）与渲染指纹，很多是早先的 Go 实现写出来的。指纹按字节算摘要，记忆召回段要逐字稳定，错误文案被测试、提示词和用户一起依赖——换一种 JSON 转义、换一种浮点格式，老镜头就会全部被判成 Stale，记忆快照对不上，编排工具照着提示词找的那句报错也不见了。所以下面这些写法看起来像在模仿 Go，用意是兼容已有数据，不是怀旧。
 
 ## 目录与命名
 
 | 位置 | 约定 |
 |---|---|
-| `src/<包>/<文件>.ts` | 包的实现；包的公开 API 统一从 `src/<包>/index.ts` 导出，外部用 `@am/engine/<包>` 引用 |
+| `src/<包>/<文件>.ts` | 包的实现；包的公开 API 统一从 `src/<包>/index.ts` 导出，外部用 `@onset/engine/<包>` 引用 |
 | `src/<包>/<文件>.test.ts` | Vitest 用例，与实现同目录 |
 | `src/<包>/testdata/…` | 测试用的固定数据，只放在包自己的目录里 |
 | 子包（如 `src/plugins/lemo-styles/`） | 同样有自己的 `index.ts` |
@@ -40,7 +40,7 @@
 ## 测试
 
 - 需要外部工具（ffmpeg、rsvg-convert、git）的测试在工具缺失时跳过（`it.skipIf(!hasFfmpeg)`）。CI 装了这些工具，缺了的话测试照样「通过」，真正跑外部命令的代码就没人验证。
-- 临时目录用 `fs.mkdtempSync(path.join(os.tmpdir(), 'am-<包>-'))`；测试不得写进用户的真实目录（HOME、`~/.local/share/am`）。需要 HOME 的测试把 `process.env.HOME` 指到临时目录并在 `afterEach` 里还原；记忆库默认打开，要写记忆的测试经 `AM_MEMORY_DIR` 指到临时目录（`studio/testsupport.ts`、`packages/cli/src/testutil.ts` 已经这样做）。
+- 临时目录用 `fs.mkdtempSync(path.join(os.tmpdir(), 'onset-<包>-'))`；测试不得写进用户的真实目录（HOME、`~/.local/share/onset`）。需要 HOME 的测试把 `process.env.HOME` 指到临时目录并在 `afterEach` 里还原；记忆库默认打开，要写记忆的测试经 `ONSET_MEMORY_DIR` 指到临时目录（`studio/testsupport.ts`、`packages/cli/src/testutil.ts` 已经这样做）。
 - 改完至少在 `packages/engine` 下跑通 `npx vitest run src/<包>` 与 `npx tsc --noEmit -p .`（整个包零类型错误）。
 
 ## 边界

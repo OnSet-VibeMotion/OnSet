@@ -1,5 +1,5 @@
 //
-// 配置的解析顺序：环境变量 > 项目 .env > article-to-motion.conf > 缺省值。
+// 配置的解析顺序：环境变量 > 项目 .env > onset.conf > 缺省值。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -47,7 +47,7 @@ const secretKey = (() => {
 export interface MemorySettings {
   /** 为 false 时完全不召回、不写经历（对照组）。 */
   enabled: boolean;
-  /** 记忆库目录，AM_MEMORY_DIR 可覆盖，默认 ~/.local/share/am/memory。 */
+  /** 记忆库目录，ONSET_MEMORY_DIR 可覆盖，默认 ~/.local/share/onset/memory。 */
   dir: string;
   /** 为 0 表示跟随最新快照，否则钉住该快照。 */
   snapshot: number;
@@ -78,7 +78,7 @@ export interface Config {
   memory: MemorySettings;
   /** 整片风格来源数据的根目录，见 filmstyle.rootDir。 */
   filmStyleRoot: string;
-  /** am 管理的固定版本 HyperFrames CLI 的安装目录，见 hyperframes.requireCLI（am setup 用 ensureCLI 安装）。 */
+  /** onset 管理的固定版本 HyperFrames CLI 的安装目录，见 hyperframes.requireCLI（onset setup 用 ensureCLI 安装）。 */
   hyperFramesCLI: string;
   /** 内置插件登记的、要显式传给子进程的环境变量（plugin.PluginChildEnv），理由同 hyperFramesCLI。 */
   pluginEnv: Record<string, string>;
@@ -130,7 +130,7 @@ export function defaultMemoryDir(environ: Record<string, string | undefined>): s
   return path.join(dataDir(environ) || dataDir({ HOME: os.homedir() }), 'memory');
 }
 
-/** 读 KEY=VALUE 格式的配置文件（article-to-motion.conf、.env、全局设置）；不存在时为空。 */
+/** 读 KEY=VALUE 格式的配置文件（onset.conf、.env、全局设置）；不存在时为空。 */
 export function parseConfFile(file: string): Record<string, string> {
   const out: Record<string, string> = {};
   let body: string;
@@ -217,9 +217,9 @@ export function load(root: string, environ?: Record<string, string> | null): Con
   }
   let conf: Record<string, string>;
   try {
-    conf = parseConfFile(path.join(root, 'article-to-motion.conf'));
+    conf = parseConfFile(path.join(root, 'onset.conf'));
   } catch (err) {
-    throw new Error(`读取 article-to-motion.conf: ${(err as Error).message}`, { cause: err });
+    throw new Error(`读取 onset.conf: ${(err as Error).message}`, { cause: err });
   }
   const globalFile = settingsFile(env);
   let global: Record<string, string> = {};
@@ -286,10 +286,10 @@ export function load(root: string, environ?: Record<string, string> | null): Con
   if (memory === 'on') cfg.memory.enabled = true;
   else if (memory !== 'off') throw new Error(`无效的 MEMORY: ${memory}（可选：on off）`);
   cfg.extraCommands = parseAllowCommands(resolve('ORCHESTRATOR_ALLOW_COMMANDS', ''));
-  cfg.memory.dir = resolve('AM_MEMORY_DIR', defaultMemoryDir(env));
+  cfg.memory.dir = resolve('ONSET_MEMORY_DIR', defaultMemoryDir(env));
   cfg.filmStyleRoot = resolve(RootEnv, rootDir(env));
   cfg.hyperFramesCLI = resolve(CLIDirEnv, cliDir(env, PinnedVersion));
-  // 内置插件的目录类变量（例如卡点的节拍分析环境）同理：编排工具调用的操作要找到 am setup 装好的那一套。
+  // 内置插件的目录类变量（例如卡点的节拍分析环境）同理：编排工具调用的操作要找到 onset setup 装好的那一套。
   cfg.pluginEnv = {};
   for (const { value: spec } of pluginChildEnvs()) {
     const v = resolve(spec.key, spec.value(env));
@@ -351,32 +351,32 @@ export function childEnvironment(
   out.ORCHESTRATOR = config.orchestrator;
   out.RENDERER = config.renderer;
   // 模型与工具一起写进去（空就删掉 .env 里带进来的旧值）：子进程按 load 的规则，环境里只有工具、
-  // 没有模型时不会捡起项目配置里给别的工具写的模型。编排工具调用的 am scene run 因此用会话选的渲染模型。
+  // 没有模型时不会捡起项目配置里给别的工具写的模型。编排工具调用的 onset scene run 因此用会话选的渲染模型。
   for (const [key, value] of [['ORCHESTRATOR_MODEL', config.orchestratorModel], ['RENDERER_MODEL', config.rendererModel]] as const) {
     if (value !== '') out[key] = value;
     else delete out[key];
   }
   out.TTS_PROVIDER = config.ttsProvider;
   if (config.alignProvider !== '') out.ALIGN_PROVIDER = config.alignProvider;
-  // 记忆设置与 ORCHESTRATOR 一样显式写进去：编排工具调用的 am memory remember、
-  // am scene run 必须用同一个记忆库。安全模式的白名单里没有 AM_MEMORY_DIR，
+  // 记忆设置与 ORCHESTRATOR 一样显式写进去：编排工具调用的 onset memory remember、
+  // onset scene run 必须用同一个记忆库。安全模式的白名单里没有 ONSET_MEMORY_DIR，
   // 不写的话子进程回落到默认目录——既不是这一个库，也不在 codex 沙箱放行的范围里
   // （实测：偏好写入被拒，报「没有写入权限」）。
   if (config.memory.dir !== '') {
-    out.AM_MEMORY_DIR = config.memory.dir;
+    out.ONSET_MEMORY_DIR = config.memory.dir;
     out.MEMORY = config.memory.enabled ? 'on' : 'off';
     out.MEMORY_RECALL_BUDGET = String(config.memory.recallBudget);
     out.MEMORY_EXPLORE = formatFloatShortest(config.memory.explore);
     if (config.memory.snapshot > 0) out.MEMORY_SNAPSHOT = String(config.memory.snapshot);
   }
   // 风格来源的数据目录同理显式写进去：默认根目录由 XDG_DATA_HOME 推出，而它不在白名单里，
-  // 编排工具调用的 am film-style 会算出另一个目录，找不到 am setup 准备好的数据。
+  // 编排工具调用的 onset film-style 会算出另一个目录，找不到 onset setup 准备好的数据。
   // 各来源自己的覆盖变量由登记来源的内置插件经 ctx.childEnv 登记，随下面的 pluginEnv 一起写。
   if (config.filmStyleRoot !== '') out[RootEnv] = config.filmStyleRoot;
-  // CLI 目录同理：子进程里的 am hyperframes 要找到同一份已装好的 CLI，否则会按 HOME
+  // CLI 目录同理：子进程里的 onset hyperframes 要找到同一份已装好的 CLI，否则会按 HOME
   // 另算一个目录，在渲染途中重新 npm install。
   if (config.hyperFramesCLI !== '') out[CLIDirEnv] = config.hyperFramesCLI;
-  // 内置插件登记的变量同理（例如卡点的节拍分析环境：编排工具调用的 beat_analyze 要找到 am setup 装好的那一套，
+  // 内置插件登记的变量同理（例如卡点的节拍分析环境：编排工具调用的 beat_analyze 要找到 onset setup 装好的那一套，
   // 找不到就会想自己去建）。
   Object.assign(out, config.pluginEnv);
   // 音色库同理：编排工具调用的 voice_save、voice_get 与客户端的音色页要是同一个库，
@@ -385,15 +385,15 @@ export function childEnvironment(
   // 第三方站的存放目录同理：客户端的写任务（station_run）要找到设置页加进来的同一份站。只在子进程会算出
   // 另一个目录时写（显式指定了，或默认目录由不在白名单里的 XDG_DATA_HOME 推出）。
   // 名字与默认值同 flow.StationsDirEnv / flow.stationsDir；这里不 import flow，免得配置包依赖流程包。
-  if (source.AM_STATIONS_DIR) out.AM_STATIONS_DIR = source.AM_STATIONS_DIR;
-  else if (source.XDG_DATA_HOME && !unsafe) out.AM_STATIONS_DIR = path.join(dataDir(source), 'stations');
-  // 全局设置同理：子进程（编排工具调用的 am、渲染）按同一份全局设置解析项目配置。
+  if (source.ONSET_STATIONS_DIR) out.ONSET_STATIONS_DIR = source.ONSET_STATIONS_DIR;
+  else if (source.XDG_DATA_HOME && !unsafe) out.ONSET_STATIONS_DIR = path.join(dataDir(source), 'stations');
+  // 全局设置同理：子进程（编排工具调用的 onset、渲染）按同一份全局设置解析项目配置。
   if (config.settingsFile !== '') out[SettingsFileEnv] = config.settingsFile;
-  // 客户端自带的浏览器与用户显式指定的浏览器同理：子进程里的 am hyperframes 照样用它们，不去下载 headless-shell。
+  // 客户端自带的浏览器与用户显式指定的浏览器同理：子进程里的 onset hyperframes 照样用它们，不去下载 headless-shell。
   for (const key of [BrowserEnv, HyperFramesBrowserEnv]) if (source[key]) out[key] = source[key]!;
-  // 客户端自带的 npm、工具目录与 am setup 的工具目录同理：子进程里的 am 要找到同一套，而白名单里没有它们。
+  // 客户端自带的 npm、工具目录与 onset setup 的工具目录同理：子进程里的 onset 要找到同一套，而白名单里没有它们。
   for (const key of toolpathEnvKeys) if (source[key]) out[key] = source[key]!;
-  if (unsafe) out.AM_UNSAFE = '1';
+  if (unsafe) out.ONSET_UNSAFE = '1';
   return out;
 }
 
@@ -414,7 +414,7 @@ export function describeSettings(root: string, environ?: Record<string, string> 
   const file = settingsFile(env);
   const global = file === '' ? {} : parseConfFile(file);
   const dotenv = root === '' ? {} : parseConfFile(path.join(root, '.env'));
-  const conf = root === '' ? {} : parseConfFile(path.join(root, 'article-to-motion.conf'));
+  const conf = root === '' ? {} : parseConfFile(path.join(root, 'onset.conf'));
   return GlobalKeys.map((key) => {
     const layers: [SettingRow['source'], string | undefined][] = [
       ['env', env[key]],

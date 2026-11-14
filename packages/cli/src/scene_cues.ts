@@ -4,12 +4,12 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { formatG, goPathError, goQuote, goRound } from '@am/engine/gofmt';
-import { marshal } from '@am/engine/gojson';
-import * as filmstyle from '@am/engine/filmstyle';
-import * as scene from '@am/engine/scene';
-import * as schedule from '@am/engine/schedule';
-import * as srt from '@am/engine/srt';
+import { formatG, goPathError, goQuote, goRound } from '@onset/engine/gofmt';
+import { marshal } from '@onset/engine/gojson';
+import * as filmstyle from '@onset/engine/filmstyle';
+import * as scene from '@onset/engine/scene';
+import * as schedule from '@onset/engine/schedule';
+import * as srt from '@onset/engine/srt';
 import { type Out } from './cobra';
 import { bool, num, str } from './ops/common';
 import { defineOp } from './ops/op';
@@ -46,7 +46,7 @@ defineOp({
                     mid_gap     切在空白正中（向下取整）
                   前一条与锚点重叠、没有空白时，三种规则都切在锚点开始处。
   look            可选，全片配色：background、ink、accent 必填，surface、accent_2 可选，
-                  一律 #RRGGBB。写了就进每个镜头的提示词与 am-scene.js，镜头不再自主选色
+                  一律 #RRGGBB。写了就进每个镜头的提示词与 onset-scene.js，镜头不再自主选色
   chapter         可选，镜头所属章节；写了就每个镜头都要写，相邻镜头章节不同即章节交界
   handoff         从上一镜头进入本镜头的交接，章节交界必填、章节内可选：
                     device  手法：` +
@@ -404,7 +404,7 @@ export interface PendingWrite {
  * commitWrites 分两轮落盘：先把每份新内容写成同目录的临时文件，全部成功后
  * 再逐个改名替换。磁盘满、权限不足这类错误都发生在第一轮，此时一个目标文件
  * 都还没动；第二轮只剩同文件系统内的 rename。rename 本身仍可能中途失败，
- * 那时 am validate beat 会按网格摘要把没换上的镜头报出来。
+ * 那时 onset validate beat 会按网格摘要把没换上的镜头报出来。
  *
  * 内容不变的文件不重写：客户端的镜头列表靠 scene.json 的修改时间判断产物是否过期，
  * 无变化的重跑不能把所有镜头都标成需要重渲染。

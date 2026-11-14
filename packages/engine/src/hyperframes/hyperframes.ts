@@ -75,7 +75,7 @@ export interface Options {
   cacheDir?: string;
   /**
    * 为 true 时只从缓存拷贝，缓存里没有就抛 prereq.MissingError，不联网。
-   * am init 与 Studio 新建项目都这样装：技能是前置资源，由 am setup 下载（见 prepareSkills）。
+   * onset init 与 Studio 新建项目都这样装：技能是前置资源，由 onset setup 下载（见 prepareSkills）。
    */
   cacheOnly?: boolean;
 }
@@ -124,7 +124,7 @@ function exists(file: string): boolean {
 }
 
 /**
- * 把固定版本的技能树下载进本机缓存（am setup 用）。已有就不动。
+ * 把固定版本的技能树下载进本机缓存（onset setup 用）。已有就不动。
  * 与 install 走同一套克隆与校验，只是不往项目里拷。
  */
 export async function prepareSkills(options: Options, signal?: AbortSignal): Promise<void> {
@@ -156,14 +156,14 @@ export async function prepareSkills(options: Options, signal?: AbortSignal): Pro
 
 function makeTemp(): string {
   try {
-    return fs.mkdtempSync(path.join(os.tmpdir(), 'am-hyperframes-'));
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-hyperframes-'));
   } catch (err) {
     throw new Error(`无法创建临时目录：${errorText(err)}`, { cause: err });
   }
 }
 
 /** 写在缓存目录里，内容是 commit：只有完整搬进去、校验过的技能树才有它。 */
-export const cacheMarker = '.am-commit';
+export const cacheMarker = '.onset-commit';
 
 /**
  * 返回 commit 的缓存目录；没有可用缓存时返回空串。
@@ -253,7 +253,7 @@ export async function install(options: Options, signal?: AbortSignal): Promise<R
     throw missing('HyperFrames ' + opts.version + ' 技能', '本机缓存里没有');
   } else {
     // 克隆目录必须在项目之外：放项目里会把 .git 和中间产物留在交付目录，
-    // 而且 am archive 会连它们一起归档。
+    // 而且 onset archive 会连它们一起归档。
     tmp = makeTemp();
     cleanup = tmp;
   }
@@ -351,7 +351,7 @@ async function cloneSkills(
     (await runCommand(git, args, { cwd: dir, env, stderr, signal })).trim();
   const tag = 'v' + opts.version;
   // -c advice.detachedHead=false：按 tag 克隆必然是 detached HEAD，git 会
-  // 往 stderr 打一段给人看的忠告，而 stderr 是接到 am 输出上的。
+  // 往 stderr 打一段给人看的忠告，而 stderr 是接到 onset 输出上的。
   // 要进度时用 --progress（stderr 不是终端时 git 默认不报进度）：进度行解析成回调，
   // 原文照样转给 output，克隆失败时 git 的 fatal 信息还在。
   let verbosity = '--quiet';
@@ -410,7 +410,7 @@ function readDirSorted(dir: string): fs.Dirent[] {
  * 收多个来源是因为上游把技能放在仓库的两处（skills/ 与 .agents/skills/）。
  * 判定标准仍是"目录里有 SKILL.md"，与上游安装器的筛选结果实测逐字节一致。
  *
- * 上游技能由 am 按固定 commit 管理，所以同名目录整体替换而不是合并：残留上
+ * 上游技能由 onset 按固定 commit 管理，所以同名目录整体替换而不是合并：残留上
  * 一版的文件会让技能树处于两个版本混合的状态，而那正是固定版本要消除的东西。
  * 随二进制下发的技能受 protectedSkills 保护，永远不会被上游同名技能覆盖。
  */

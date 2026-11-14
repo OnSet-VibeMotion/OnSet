@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { atomicWrite } from './index';
 
-const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-fsutil-'));
+const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'onset-fsutil-'));
 
 describe('atomicWrite', () => {
   it('creates the file', () => {

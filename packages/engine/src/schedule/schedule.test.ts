@@ -28,7 +28,7 @@ import {
 } from './schedule';
 
 function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-schedule-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-schedule-'));
   onTestFinished(() => fs.rmSync(dir, { recursive: true, force: true }));
   return dir;
 }

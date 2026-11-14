@@ -11,11 +11,11 @@ export const CheckOutputAudio = 'output.audio';
 export const CheckOutputOther = 'output.other';
 /** 接 determinism 的规则 ID，如 determinism.raf。 */
 export const DeterminismCheckPrefix = 'determinism.';
-/** am scene frames --check-blank 发现的空白帧。 */
+/** onset scene frames --check-blank 发现的空白帧。 */
 export const CheckFramesBlank = 'frames.blank';
 /** 接 reads 的规则 ID，如 reads.duration。 */
 export const ReadsCheckPrefix = 'reads.';
-/** am review 判定的约定交接没接上。 */
+/** onset review 判定的约定交接没接上。 */
 export const CheckReviewHandoff = 'review.handoff';
 
 /** 全部产物校验器 ID，顺序固定。 */

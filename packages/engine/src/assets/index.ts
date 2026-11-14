@@ -1,8 +1,8 @@
 /**
- * am 自带的项目骨架。
+ * onset 自带的项目骨架。
  *
  * Go 版用 //go:embed 把 assets/ 打进二进制；TS 版从磁盘读：开发时是仓库里的 assets/，
- * 打包后是应用资源目录里的 assets/（客户端与命令行的启动方经 AM_ASSETS_DIR 告知）。
+ * 打包后是应用资源目录里的 assets/（客户端与命令行的启动方经 ONSET_ASSETS_DIR 告知）。
  *
  * 两棵源树：
  *   assets/shared/           与画幅无关，所有项目共用
@@ -22,10 +22,10 @@ const explicitDotEntries = new Set(['assets/shared/.env.example', 'assets/shared
 
 let cachedRoot: string | undefined;
 
-/** 仓库根（含 assets/ 的那一层）。AM_ASSETS_DIR 指向 assets/ 本身。 */
+/** 仓库根（含 assets/ 的那一层）。ONSET_ASSETS_DIR 指向 assets/ 本身。 */
 export function assetsBase(): string {
   if (cachedRoot) return cachedRoot;
-  const explicit = process.env.AM_ASSETS_DIR;
+  const explicit = process.env.ONSET_ASSETS_DIR;
   if (explicit) {
     cachedRoot = path.dirname(path.resolve(explicit));
     return cachedRoot;
@@ -34,7 +34,7 @@ export function assetsBase(): string {
   for (const start of starts) {
     let dir = path.resolve(start);
     for (;;) {
-      if (fs.existsSync(path.join(dir, 'assets', 'shared', 'article-to-motion.conf'))) {
+      if (fs.existsSync(path.join(dir, 'assets', 'shared', 'onset.conf'))) {
         cachedRoot = dir;
         return dir;
       }
@@ -43,7 +43,7 @@ export function assetsBase(): string {
       dir = parent;
     }
   }
-  throw new Error('找不到 am 自带的 assets 目录：请设置 AM_ASSETS_DIR');
+  throw new Error('找不到 onset 自带的 assets 目录：请设置 ONSET_ASSETS_DIR');
 }
 
 /** 测试用：换一个资产根目录（null 恢复默认查找）。 */
@@ -136,7 +136,7 @@ export function canvas(canvasID: string): AssetTree {
 }
 
 /**
- * 随 am 下发的技能名。从资产树现读而不是写死：新增内置技能只要放进
+ * 随 onset 下发的技能名。从资产树现读而不是写死：新增内置技能只要放进
  * assets/shared/.agents/skills/ 就自动受保护，不会被上游同名技能悄悄覆盖。
  */
 export function builtinSkills(): Set<string> {

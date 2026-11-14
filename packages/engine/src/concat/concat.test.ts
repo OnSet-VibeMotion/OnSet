@@ -19,7 +19,7 @@ const ffmpegBinary = which('ffmpeg');
 /** 本机没有 ffmpeg / ffprobe 时与 Go 版一样跳过。 */
 const missing = ffmpegBinary === null || which('ffprobe') === null;
 
-const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-concat-'));
+const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'onset-concat-'));
 const toolchain = (): Toolchain => newToolchain(envMap());
 const target = (): Target => ({ widthPx: 320, heightPx: 240, fps: 30, codec: DefaultCodec, pixelFormat: DefaultPixelFormat });
 
@@ -111,7 +111,7 @@ describe.skipIf(missing)('concat', () => {
     expect(tc.countFrames(dest), '母版帧数应为 90（30 + 60）').toBe(90);
     expect(tc.probe(dest).audio, '静音母版不该有音轨').toBeNull();
     // 清单文件是中间产物，不能留在交付目录里。清单文件名是随机的，用前缀匹配。
-    const leftovers = fs.readdirSync(path.join(dir, 'production')).filter((n) => n.startsWith('.am-concat-list-') && n.endsWith('.txt'));
+    const leftovers = fs.readdirSync(path.join(dir, 'production')).filter((n) => n.startsWith('.onset-concat-list-') && n.endsWith('.txt'));
     expect(leftovers, '拼接清单没有清理').toEqual([]);
   });
 

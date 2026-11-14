@@ -67,7 +67,7 @@ export interface Contrast {
   passed: string;
   passed_dir: string;
   /**
-   * 通过那次的输入指纹：镜头目录里 .am-render.json 的指纹与它相同时，
+   * 通过那次的输入指纹：镜头目录里 .onset-render.json 的指纹与它相同时，
    * 目录里的合成代码就是那次通过的版本。
    */
   passed_fingerprint: string;

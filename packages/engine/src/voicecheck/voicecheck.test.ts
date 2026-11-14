@@ -106,7 +106,7 @@ describe('voicecheck', () => {
     expect(medianOf([0.3, -0.1, 0.1, 0.2])).toBe(0.15);
     const [segments, threshold] = speech(levels(3, seg(1, 2)));
     const report = check([cue(1, 1, 2)], segments, threshold);
-    const target = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'am-voicecheck-')), 'check.json');
+    const target = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-voicecheck-')), 'check.json');
     writeReportJSON(report, target);
     // 与 Go 的 json.MarshalIndent 输出逐字节一致（字段顺序、空 hints 省略、末尾换行）。
     expect(fs.readFileSync(target, 'utf8')).toBe(`{

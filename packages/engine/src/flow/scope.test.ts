@@ -20,7 +20,7 @@ const temp = (prefix: string) => {
 };
 
 function project(): string {
-  const root = temp('am-scope-project-');
+  const root = temp('onset-scope-project-');
   fs.writeFileSync(path.join(root, 'PROMPT-PRODUCTION.md'), '# 制作\n');
   return root;
 }
@@ -28,7 +28,7 @@ function project(): string {
 /** 一个用 {node} 跑一段脚本的站：脚本按 stdin 的 params.files 写文件。 */
 function writer(): void {
   const dir = writeStationForTest({
-    'am-station.json': JSON.stringify({
+    'onset-station.json': JSON.stringify({
       id: 'my-step',
       version: '1.0.0',
       name: '我的一站',
@@ -39,7 +39,7 @@ function writer(): void {
     'write.cjs': `const fs = require('node:fs'); const path = require('node:path');
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 for (const f of input.params.files ?? []) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, 'x'); }
-console.log('am-result {"n":' + (input.params.files ?? []).length + '}');
+console.log('onset-result {"n":' + (input.params.files ?? []).length + '}');
 `,
   });
   temps.push(dir);
@@ -48,8 +48,8 @@ console.log('am-result {"n":' + (input.params.files ?? []).length + '}');
 
 /** 没有 node 的 PATH：一个空目录。 */
 function bareEnv(): Record<string, string | undefined> {
-  const empty = temp('am-empty-path-');
-  return { HOME: process.env.HOME, PATH: empty, AM_STATIONS_DIR: process.env.AM_STATIONS_DIR, XDG_DATA_HOME: temp('am-data-') };
+  const empty = temp('onset-empty-path-');
+  return { HOME: process.env.HOME, PATH: empty, ONSET_STATIONS_DIR: process.env.ONSET_STATIONS_DIR, XDG_DATA_HOME: temp('onset-data-') };
 }
 
 describe('scope check', () => {
@@ -72,7 +72,7 @@ describe('scope check', () => {
     expect(out).toContain('  notes/x.md\n');
   });
 
-  it('fails the op when it writes am’s own files, and says the files stay written', async () => {
+  it('fails the op when it writes onset’s own files, and says the files stay written', async () => {
     const root = project();
     writer();
     let out = '';
@@ -80,7 +80,7 @@ describe('scope check', () => {
     expect(r.ok).toBe(false);
     expect(r.reserved).toEqual(['.agents/skills/x/SKILL.md', '.env', 'production/studio/hack.json']);
     expect(r.out_of_scope).toEqual(r.reserved);
-    expect(r.error).toContain('写了 ArticleToMotion 自己的文件');
+    expect(r.error).toContain('写了片场自己的文件');
     expect(out).toContain('没法自动撤销');
     expect(fs.existsSync(path.join(root, '.env'))).toBe(true);
   });
@@ -92,7 +92,7 @@ describe('scope check', () => {
       fs.mkdirSync(path.dirname(path.join(root, f)), { recursive: true });
       fs.writeFileSync(path.join(root, f), 'x');
     }
-    const m = parseManifest(fs.readFileSync(path.join(fake, 'am-station.json'), 'utf8'));
+    const m = parseManifest(fs.readFileSync(path.join(fake, 'onset-station.json'), 'utf8'));
     expect(scopeReport(m, before, statProject(root))).toBeNull();
   });
 
@@ -104,7 +104,7 @@ describe('scope check', () => {
       fs.writeFileSync(path.join(root, 'notes', `n${String(i).padStart(2, '0')}.md`), 'x');
     }
     fs.rmSync(path.join(root, 'PROMPT-PRODUCTION.md'));
-    const m = parseManifest(fs.readFileSync(path.join(fake, 'am-station.json'), 'utf8'));
+    const m = parseManifest(fs.readFileSync(path.join(fake, 'onset-station.json'), 'utf8'));
     const r = scopeReport(m, before, statProject(root))!;
     expect(r.out_of_scope).toHaveLength(MaxListedPaths);
     expect(r.out_of_scope_more).toBe(6);
@@ -140,15 +140,15 @@ describe('station runtimes', () => {
   });
 
   it('tells the author to use the placeholder when a bare node or python is missing', () => {
-    expect(() => resolveCommand(['node', 'a.js'], '/st', process.env, temp('am-empty-'))).toThrow('改成 "{node}"');
-    expect(() => resolveCommand(['python3', 'a.py'], '/st', process.env, temp('am-empty-'))).toThrow('改成 "{python}"');
+    expect(() => resolveCommand(['node', 'a.js'], '/st', process.env, temp('onset-empty-'))).toThrow('改成 "{node}"');
+    expect(() => resolveCommand(['python3', 'a.py'], '/st', process.env, temp('onset-empty-'))).toThrow('改成 "{python}"');
   });
 
-  it('uses the Python am setup installed, and never downloads one', () => {
-    const data = temp('am-data-');
+  it('uses the Python onset setup installed, and never downloads one', () => {
+    const data = temp('onset-data-');
     const env = { XDG_DATA_HOME: data, HOME: data };
     expect(() => managedPython(env)).toThrow(MissingError);
-    const base = path.join(data, 'am', 'python');
+    const base = path.join(data, 'onset', 'python');
     for (const name of ['cpython-3.13.1-macos-aarch64-none', 'cpython-3.12.9-macos-aarch64-none', 'cpython-3.12.12-macos-aarch64-none', 'cpython-3.14.0+freethreaded-macos-aarch64-none']) {
       const bin = process.platform === 'win32' ? path.join(base, name, 'python.exe') : path.join(base, name, 'bin', 'python3');
       fs.mkdirSync(path.dirname(bin), { recursive: true });

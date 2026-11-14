@@ -9,7 +9,7 @@ import { hasFfmpeg, setEnv, startStudio, studioRequest, tempDir, writeStudioFile
 
 describe('filmstyle', () => {
   // 风格目录随程序下发，不联网就能列出；海报从风格库读并缩成缩略图；
-  // 本项目的整片风格可查、可装（经 am film-style 任务）、未知风格直接拒绝。
+  // 本项目的整片风格可查、可装（经 onset film-style 任务）、未知风格直接拒绝。
   it('film style endpoints', async () => {
     const library = tempDir();
     writeStudioFile(path.join(library, 'core', 'lib.js'), '//');
@@ -19,7 +19,7 @@ describe('filmstyle', () => {
       expect(source, `风格来源里没有 ${lemo.SourceID}`).toBeDefined();
       return source;
     };
-    // 来源数据是前置资源：先看没准备好时报 ready=false、提示 am setup。
+    // 来源数据是前置资源：先看没准备好时报 ready=false、提示 onset setup。
     setEnv(lemo.LibraryEnv, path.join(tempDir(), 'absent'));
     const empty = startStudio({ projectPath: tempDir(), configPath: path.join(tempDir(), 'projects.json') });
     let { status, body } = await studioRequest(empty, 'GET', '/api/film-styles');
@@ -39,7 +39,7 @@ describe('filmstyle', () => {
     setEnv(filmstyle.RootEnv, tempDir());
 
     const root = tempDir();
-    writeStudioFile(path.join(root, 'article-to-motion.conf'), '');
+    writeStudioFile(path.join(root, 'onset.conf'), '');
     const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
 
     ({ status, body } = await studioRequest(s, 'GET', '/api/film-styles'));
@@ -80,13 +80,13 @@ describe('filmstyle', () => {
     expect(body.installed, '新项目不该有整片风格').toBe(false);
     ({ status } = await studioRequest(s, 'POST', '/api/film-style', '{"style":"no-such"}'));
     expect(status, '未知风格应当 400').toBe(400);
-    // 合法风格会起一个 am film-style 任务；测试里没有可运行的 am，只验到拒绝未知风格为止（同 Go 版）。
+    // 合法风格会起一个 onset film-style 任务；测试里没有可运行的 onset，只验到拒绝未知风格为止（同 Go 版）。
   });
 
   // 一个项目装几种风格：GET 列出默认风格、额外风格与各自有哪些镜头在用，点名了却没装的镜头单列出来。
   it('lists extra styles and which scenes use them', async () => {
     const root = tempDir();
-    writeStudioFile(path.join(root, 'article-to-motion.conf'), '');
+    writeStudioFile(path.join(root, 'onset.conf'), '');
     const [a, b] = lemo.catalog();
     const writeStyle = (dir: string, slug: string) => {
       writeStudioFile(path.join(dir, filmstyle.StyleFile), '# ' + slug);
@@ -111,19 +111,19 @@ describe('filmstyle', () => {
     expect(body.extras).toHaveLength(1);
     expect(body.extras[0].manifest.slug).toBe(b.slug);
     expect(body.extras[0].scenes).toEqual(['scene-002']);
-    expect(body.extras[0].style_file).toBe(`.agents/am-film-styles/${bKey}/STYLE.md`);
+    expect(body.extras[0].style_file).toBe(`.agents/onset-film-styles/${bKey}/STYLE.md`);
     expect(body.scenes).toContainEqual({ id: 'scene-003', film_style: 'none' });
     expect(body.missing).toEqual([{ scene: 'scene-004', style: 'other/missing' }]);
   });
 
-  // 前置资源引导：只读状态，缺技能时 ready 为 false，并给出 am setup。
+  // 前置资源引导：只读状态，缺技能时 ready 为 false，并给出 onset setup。
   it('setup status endpoint', async () => {
     setEnv('XDG_DATA_HOME', tempDir()); // 技能缓存在这里找，必然没有
     const s = startStudio({ projectPath: tempDir(), configPath: path.join(tempDir(), 'projects.json') });
     const { status, body } = await studioRequest(s, 'GET', '/api/setup');
     expect(status).toBe(200);
     expect(body.ready, '缺技能时应当 ready=false').toBe(false);
-    expect(body.command).toBe('am setup');
+    expect(body.command).toBe('onset setup');
     const byID: Record<string, any> = {};
     for (const item of body.items) byID[item.id] = item;
     expect(byID.skills.ready, '技能应当是缺的必需项').toBe(false);

@@ -14,7 +14,7 @@ import { overrideAgents } from './sessions';
  * 首页「一句话建项目」的起名：建文件夹之前，用首页选的编排工具调一次模型，按用户的话与素材
  * 起一个说清片子内容的项目名。以前直接截用户第一句话，满是「我想做一个这个内容的视频」。
  *
- * 在一个空的临时目录里、安全模式下跑，不挂 am 的工具服务：起名只要读提示词、回一行字。
+ * 在一个空的临时目录里、安全模式下跑，不挂 onset 的工具服务：起名只要读提示词、回一行字。
  * 这次调用花了钱，用量先存在内存里（token → 账），建项目时（createAPI 带上 naming）记进
  * 新项目的编排账本；一直没建的，过一阵丢掉。
  */
@@ -112,14 +112,14 @@ export interface NamingResult {
 
 /** 用编排工具 tool 起名。不抛错：任何失败都只让界面退回旧的起名办法。 */
 export async function suggestName(tool: string, input: NamingInput, signal?: AbortSignal): Promise<NamingResult> {
-  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-naming-'));
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-naming-'));
   const timeout = new AbortController();
   const timer = setTimeout(() => timeout.abort(new Error('起名超时')), NamingTimeoutMs);
   const abort = signal ? AbortSignal.any([signal, timeout.signal]) : timeout.signal;
   try {
     // 空目录没有项目配置，读到的是全局设置；工具换成首页选的那家，模型跟着 overrideAgents 的规矩走。
     const cfg = overrideAgents(config.load(workdir, null), { tool, renderer: '', model: '', rendererModel: '' });
-    const env = config.childEnvironment(cfg, envMap(), false, parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? ''));
+    const env = config.childEnvironment(cfg, envMap(), false, parsePassthrough(process.env.ONSET_PASSTHROUGH_ENV ?? ''));
     addToolsLocation(env);
     let text = '';
     const outcome = await agentrun.run(

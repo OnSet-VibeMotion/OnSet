@@ -81,8 +81,8 @@ describe('roster', () => {
     expect(packs.heiwa.id).toBe('heiwa');
   });
 
-  // 允许空 packs 列表：am init --narration cast 刚建的项目还没引入任何角色包，
-  // 需要通过后续 am cast add 来添加。"班底为空"的检查由项目级校验负责。
+  // 允许空 packs 列表：onset init --narration cast 刚建的项目还没引入任何角色包，
+  // 需要通过后续 onset cast add 来添加。"班底为空"的检查由项目级校验负责。
   it('loadRoster allows empty packs', () => {
     const root = writeRosterProject('');
     fs.writeFileSync(path.join(root, RosterFile), rosterWithPacks('[]'));

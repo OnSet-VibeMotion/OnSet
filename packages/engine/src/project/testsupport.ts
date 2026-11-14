@@ -16,7 +16,7 @@ export const skillManifest = 'SKILL.md';
  */
 export const skillTreeRoot = '.agents/skills';
 
-/** builtinSources 返回一次真实 am init 会用到的两棵源树。 */
+/** builtinSources 返回一次真实 onset init 会用到的两棵源树。 */
 export function builtinSources(): SourceTree[] {
   return [assets.shared(), assets.canvas(preset.defaultPreset().id)];
 }

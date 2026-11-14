@@ -9,7 +9,7 @@ const lines = [
   { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'SCENE_DIR/scene.json' } }] }, session_id: 'r' },
   { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: '{}' }] }, session_id: 'r' },
   { type: 'assistant', message: { content: [{ type: 'text', text: '[[USER_MESSAGE]]画面排好了，开始渲染' }] }, session_id: 'r' },
-  { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't2', name: 'mcp__am__hyperframes', input: { subcommand: 'render', args: ['--output', 'out.mp4'] } }] }, session_id: 'r' },
+  { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't2', name: 'mcp__onset__hyperframes', input: { subcommand: 'render', args: ['--output', 'out.mp4'] } }] }, session_id: 'r' },
 ];
 
 test('shows what the renderer is doing while a scene renders', async ({ page, project }) => {

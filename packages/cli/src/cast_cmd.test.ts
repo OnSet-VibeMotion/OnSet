@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, it } from 'vitest';
 import { hasFfmpeg, lookPath, runCLI, tempDir } from './testutil';
-import { marshalIndent } from '@am/engine/gojson';
-import * as dialogue from '@am/engine/dialogue';
-import { formatFixed } from '@am/engine/gofmt';
+import { marshalIndent } from '@onset/engine/gojson';
+import * as dialogue from '@onset/engine/dialogue';
+import { formatFixed } from '@onset/engine/gofmt';
 
 /** runCLI 失败时返回 [输出, 错误]，对应 Go 的 (string, error)。 */
 async function tryCLI(root: string, ...args: string[]): Promise<[string, Error | null]> {
@@ -96,7 +96,7 @@ it('cast validate without roster or cast dir succeeds', async () => {
   await runCLI(tempDir(), 'cast', 'validate');
 });
 
-// am cast validate 顺带提醒音色缺口：通过但带提醒，真正的硬校验在 am validate cast。
+// onset cast validate 顺带提醒音色缺口：通过但带提醒，真正的硬校验在 onset validate cast。
 it('cast validate warns about a missing voice with an explicit provider', async () => {
   const root = tempDir();
   await runCLI(root, 'cast', 'new', 'heiwa');
@@ -117,7 +117,7 @@ it('cast validate is silent on voices when the provider is unresolvable', async 
 it('cast validate resolves the default provider from config', async () => {
   const root = tempDir();
   await runCLI(root, 'cast', 'new', 'heiwa');
-  fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
+  fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
   const out = await runCLI(root, 'cast', 'validate');
   expect(out).toContain('缺少 voiceId');
 });
@@ -180,7 +180,7 @@ turns:
   for (const name of ['rig.svg', 'rig-tq.svg', 'rig-side.svg']) fs.writeFileSync(path.join(dir, name), svg);
 }
 
-// am cast preview 的逐视图打印：每个视图各占一行，且这一行同时含视图名与它自己的 contact sheet 文件名。
+// onset cast preview 的逐视图打印：每个视图各占一行，且这一行同时含视图名与它自己的 contact sheet 文件名。
 it.skipIf(lookPath('rsvg-convert') === '' || lookPath('magick') === '')('cast preview prints every view', async () => {
   const root = tempDir();
   writeMultiViewCastPack(path.join(root, 'cast', 'heiwa'));
@@ -239,7 +239,7 @@ it('cast new registers into the roster', async () => {
   expect(roster).toContain('ground_y');
 });
 
-// am init --narration cast 的真实起点：cast.yaml 已存在且 packs 为空列表；new 追加而不是重建。
+// onset init --narration cast 的真实起点：cast.yaml 已存在且 packs 为空列表；new 追加而不是重建。
 it('cast new appends to an existing roster', async () => {
   const root = tempDir();
   fs.writeFileSync(path.join(root, 'cast.yaml'), 'schema: cast/v1\npacks: []\ndefaults:\n    ground_y: 0.66\n    gap_ms:\n        turn: 240\n        interject: 100\n');
@@ -250,12 +250,12 @@ it('cast new appends to an existing roster', async () => {
   expect(roster).toContain('0.66');
 });
 
-// 验收：new 之后项目级 am validate cast 不再报「班底为空」。
+// 验收：new 之后项目级 onset validate cast 不再报「班底为空」。
 it('cast new leaves no empty-roster complaint', async () => {
   const root = tempDir();
   fs.writeFileSync(path.join(root, 'cast.yaml'), 'schema: cast/v1\npacks: []\ndefaults:\n    ground_y: 0.78\n    gap_ms:\n        turn: 240\n        interject: 100\n');
-  // am validate cast 先解析项目配置，配置不全会在走到班底检查之前就退出。
-  fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
+  // onset validate cast 先解析项目配置，配置不全会在走到班底检查之前就退出。
+  fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
   await runCLI(root, 'cast', 'new', 'heiwa');
   const [out, err] = await tryCLI(root, 'validate', 'cast');
   expect(out + (err?.message ?? '')).not.toContain('班底为空');

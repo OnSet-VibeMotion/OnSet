@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { childEnvironment, rendererModelFor, type Config } from '../config';
 import * as determinism from '../determinism';
-import { addToolsLocation, amExecutable, lookPath, parsePassthrough } from '../envutil';
+import { addToolsLocation, onsetExecutable, lookPath, parsePassthrough } from '../envutil';
 import * as hyperframes from '../hyperframes';
 import * as mediaprobe from '../mediaprobe';
 import { ExitError, start, type Started } from '../procgroup';
@@ -13,7 +13,7 @@ import {
   extractUserMessages,
   formatUsage,
   newUsage,
-  amToolsServer,
+  onsetToolsServer,
   rendererEnv,
   rendererInvocation,
   usageEmpty,
@@ -62,7 +62,7 @@ export async function run(
     );
   }
   const prompt = buildPrompt(s, resolvedSkills);
-  // 渲染器要用的 CLI 是前置资源（am setup 装）：在渲染途中现下载的话，网络一差渲染器
+  // 渲染器要用的 CLI 是前置资源（onset setup 装）：在渲染途中现下载的话，网络一差渲染器
   // 就空等、白花一次模型调用，最后只剩「没有产物」。没装好就在这里停，不启动渲染器。
   const cliEnv: Record<string, string> = { ...baseEnv };
   if (cfg.hyperFramesCLI !== '') {
@@ -76,13 +76,13 @@ export async function run(
   for (const key of [hyperframes.BrowserEnv, hyperframes.HyperFramesBrowserEnv]) {
     if (!cliEnv[key] && process.env[key]) cliEnv[key] = process.env[key]!;
   }
-  // 浏览器同理：客户端里是它自带的 Chromium，单独用命令行时是 am setup 下载的 headless-shell。
+  // 浏览器同理：客户端里是它自带的 Chromium，单独用命令行时是 onset setup 下载的 headless-shell。
   hyperframes.requireBrowser(cliEnv);
-  // 渲染器的环境：am 不在它的 PATH 里，HyperFrames 经 am 的工具服务（--profile renderer）调用。
-  const childEnv = childEnvironment(cfg, baseEnv, unsafe, parsePassthrough(baseEnv.AM_PASSTHROUGH_ENV ?? ''));
+  // 渲染器的环境：onset 不在它的 PATH 里，HyperFrames 经 onset 的工具服务（--profile renderer）调用。
+  const childEnv = childEnvironment(cfg, baseEnv, unsafe, parsePassthrough(baseEnv.ONSET_PASSTHROUGH_ENV ?? ''));
   addToolsLocation(childEnv);
   const access = rendererAccess(resolvedSkills);
-  access.toolsServer = amToolsServer(amExecutable(), 'renderer', s.directory, childEnv);
+  access.toolsServer = onsetToolsServer(onsetExecutable(), 'renderer', s.directory, childEnv);
   Object.assign(childEnv, rendererEnv(renderer, access, childEnv));
   const model = rendererModelFor(cfg, renderer);
   const argv = rendererInvocation(renderer, prompt, unsafe, access, model);

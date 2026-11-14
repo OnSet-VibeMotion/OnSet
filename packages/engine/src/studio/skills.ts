@@ -35,10 +35,10 @@ export function tail(text: string, n: number): string {
 
 /**
  * 默认的安装函数。模块级变量只为测试：测试的 setup 换成不联网的版本；
- * 浏览器端到端测试起的是真程序，靠 AM_STUDIO_SKIP_SKILL_INSTALL=1 跳过联网。
+ * 浏览器端到端测试起的是真程序，靠 ONSET_STUDIO_SKIP_SKILL_INSTALL=1 跳过联网。
  */
 let installOfficialSkills: SkillInstaller = async (signal, dir, report) => {
-  if (process.env.AM_STUDIO_SKIP_SKILL_INSTALL === '1') return;
+  if (process.env.ONSET_STUDIO_SKIP_SKILL_INSTALL === '1') return;
   let log = '';
   try {
     await projectinit.installSkills(dir, envMap(), { write: (chunk: string) => (log += chunk) }, report, signal);

@@ -6,7 +6,7 @@ import { envMap } from '../envutil';
 import { ffmpeg, hasFfmpeg } from '../mediaprobe/testutil';
 import { DirEnv, ReferenceFile, defaultDir, defaultName, get, list, remove, save, setDefault, validName } from './index';
 
-const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-voice-'));
+const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'onset-voice-'));
 
 /** 现场生成一段正弦波当「录音」（双声道 44.1kHz MP3，存进去要转成 24kHz 单声道 WAV）。 */
 function tone(seconds: number): string {
@@ -16,9 +16,9 @@ function tone(seconds: number): string {
 }
 
 describe('voice library', () => {
-  it('lives in the user data dir, overridable by AM_VOICES_DIR', () => {
-    expect(defaultDir({ HOME: '/h' })).toBe('/h/.local/share/am/voices');
-    expect(defaultDir({ HOME: '/h', XDG_DATA_HOME: '/x' })).toBe('/x/am/voices');
+  it('lives in the user data dir, overridable by ONSET_VOICES_DIR', () => {
+    expect(defaultDir({ HOME: '/h' })).toBe('/h/.local/share/onset/voices');
+    expect(defaultDir({ HOME: '/h', XDG_DATA_HOME: '/x' })).toBe('/x/onset/voices');
     expect(defaultDir({ HOME: '/h', [DirEnv]: '/v' })).toBe('/v');
     expect(defaultDir({})).toBe('');
   });

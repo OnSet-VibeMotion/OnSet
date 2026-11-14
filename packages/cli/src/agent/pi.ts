@@ -1,6 +1,6 @@
 /**
- * 导演的 agent 循环：pi（@earendil-works/pi-coding-agent，MIT）。打成单独的 am-agent.cjs，
- * 只由 am studio agent 加载（见 command.ts）。
+ * 导演的 agent 循环：pi（@earendil-works/pi-coding-agent，MIT）。打成单独的 onset-agent.cjs，
+ * 只由 onset studio agent 加载（见 command.ts）。
  *
  * pi 默认会到处找东西：~/.pi/agent 下的设置、技能、扩展、凭据，上级目录与家目录里的 AGENTS.md / CLAUDE.md，
  * 项目里的 .pi/。这些在用户机器上都可能有（开发者自己装了 pi，或别的工具留下的 CLAUDE.md），读进来就会让
@@ -12,7 +12,7 @@
  * | 凭据 | 只在内存里：父进程经 stdin 交来的 request.keys，设成运行时 key（setRuntimeApiKey），不读也不写任何凭据文件 |
  * | 模型缓存 | request.agent_dir 下的 models-store.json，不联网刷新模型目录 |
  * | 扩展 | 只有这里的权限闸门（extensionsOverride 去掉其余） |
- * | 技能 | 只有项目根 .agents/skills（am init 装进去的那一份） |
+ * | 技能 | 只有项目根 .agents/skills（onset init 装进去的那一份） |
  * | 上下文文件 | 只有项目根的 AGENTS.md（项目规则，project.rules 写的） |
  * | 提示词模板、主题 | 不要 |
  * | 遥测、归因头 | 关掉（enableInstallTelemetry 与 PI_TELEMETRY，见 runAgent） |
@@ -30,14 +30,14 @@ import {
   SettingsManager,
 } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
-import * as director from '@am/engine/director';
+import * as director from '@onset/engine/director';
 import { StreamWriter } from './stream';
 import type { AgentModule, AgentTool, RunOptions } from './types';
 
 /** pi 的内置工具里给编排用的这几个；powershell、codemode、tool_search 不要。 */
 const builtinTools = ['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls'];
 
-const GateExtension = 'am-gate';
+const GateExtension = 'onset-gate';
 
 /**
  * 系统提示词：只交代环境与工作习惯。做什么由每一轮的提示词说（制作提示词、客户端的交互约定 studioInteraction：
@@ -45,7 +45,7 @@ const GateExtension = 'am-gate';
  * 每一轮都要发、按 token 计费，所以一条一句话。成熟的编码 CLI 自带的习惯（先读后改、失败先看报错）pi 没有，要写明。
  */
 const preamble = `你在一个视频项目的目录里工作，帮用户把文章做成动态视频。
-- 项目里的每一步制作都有对应的工具（scene_run、align_build……）。参数不确定时先 tool_help({"tool": "<工具名>"}) 查，不要猜。am 不在终端里，不要在 bash 里找它或运行它。
+- 项目里的每一步制作都有对应的工具（scene_run、align_build……）。参数不确定时先 tool_help({"tool": "<工具名>"}) 查，不要猜。onset 不在终端里，不要在 bash 里找它或运行它。
 - 这里的制作工具会一直等到做完才返回，渲染、拼接可能要几十分钟：直接等结果，不要中途重复发起；没有任务号，也没有 job_wait。
 - 文件只在项目目录里读写，.env 里是凭据，不要读。改文件前先读它；大文件按段读，不要一次读全。
 - 工具报错或命令失败时，先读报错弄清原因，再换一种做法；不要原样重试同一条调用。命令被拒绝了就换一种在白名单内的做法。
@@ -106,7 +106,7 @@ function toPiTool(tool: AgentTool) {
     label: tool.label,
     description: tool.description,
     parameters: Type.Unsafe<Record<string, unknown>>(tool.parameters),
-    // pi 自带的 read、bash 这些保持 pi 的默认（并行）；am 的写操作顺序执行，见 AgentTool.sequential。
+    // pi 自带的 read、bash 这些保持 pi 的默认（并行）；onset 的写操作顺序执行，见 AgentTool.sequential。
     executionMode: tool.sequential ? 'sequential' : 'parallel',
     async execute(_id, params, signal) {
       const r = await tool.execute((params ?? {}) as Record<string, unknown>, signal);
@@ -218,7 +218,7 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
     resourceLoader: loader,
     settingsManager: settings,
     sessionManager: sessionManager(workdir, req.agent_dir, req.session_id ?? '', req.resume === true),
-    // tools 是这一会话启用的全部工具名：不把 am 的工具列进去，它们就被藏起来（只登记不启用）。
+    // tools 是这一会话启用的全部工具名：不把 onset 的工具列进去，它们就被藏起来（只登记不启用）。
     tools: [...builtinTools, ...o.tools.map((t) => t.name)],
     customTools: o.tools.map(toPiTool),
   });

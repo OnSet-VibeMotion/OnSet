@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as agentrun from '../agentrun';
 import * as config from '../config';
-import { addToolsLocation, amCommand, envMap, lookPath, parsePassthrough } from '../envutil';
+import { addToolsLocation, onsetCommand, envMap, lookPath, parsePassthrough } from '../envutil';
 import { atomicWrite } from '../fsutil';
 import { formatFixed, goClean, goTrimSpace } from '../gofmt';
 import { marshal, marshalIndent } from '../gojson';
@@ -94,7 +94,7 @@ export interface SessionEvent extends agentrun.Event {
   changes?: FileChange[];
   /** 标出 queued / unqueued 事件说的是哪一条排队的消息。 */
   queue_id?: string;
-  /** 编排工具经 am studio show 请网页切到的页面（view 事件）。 */
+  /** 编排工具经 onset studio show 请网页切到的页面（view 事件）。 */
   view?: ViewRequest;
   /** 等用户批准的调用（permission 事件）与它的结果（permission-resolved 事件）。 */
   permission?: PermissionEventData;
@@ -504,9 +504,9 @@ export function validateAttachments(projectPath: string, attachments: Attachment
 /** chatPreamble 是聊天会话第一轮的开场说明。整片制作会话第一轮直接发制作提示词，末尾附 studioInteraction。 */
 export function chatPreamble(rulesName: string): string {
   return (
-    '你正在协助用户修改当前目录下的 ArticleToMotion 视频项目。动手前先读项目规则 ' +
+    '你正在协助用户修改当前目录下的片场视频项目。动手前先读项目规则 ' +
     rulesName +
-    '。需要渲染、校验、复查时直接调用 am 工具服务里的工具。改完用几句话说明改了哪些文件、为什么，以及接下来要不要重渲染哪些镜头。\n\n' +
+    '。需要渲染、校验、复查时直接调用 onset 工具服务里的工具。改完用几句话说明改了哪些文件、为什么，以及接下来要不要重渲染哪些镜头。\n\n' +
     studioInteraction +
     '\n\n用户的请求：'
   );
@@ -661,8 +661,8 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
   let runErr: Error | null = null;
   let stopViews: () => void = () => {};
   try {
-    const env = config.childEnvironment(cfg, envMap(), s.config.unsafe, parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? ''));
-    // am 不进编排工具的 PATH：它只经 am 的工具服务（MCP）调用 am，下面的 spec.toolsServer。
+    const env = config.childEnvironment(cfg, envMap(), s.config.unsafe, parsePassthrough(process.env.ONSET_PASSTHROUGH_ENV ?? ''));
+    // onset 不进编排工具的 PATH：它只经 onset 的工具服务（MCP）调用 onset，下面的 spec.toolsServer。
     addToolsLocation(env);
     const inbox = viewInbox(studioRoot(p.path), turn.turn_id);
     env[ViewInboxEnv] = inbox;
@@ -688,7 +688,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
     const earlierTurns = (sess.meta.turns ?? []).length > 1;
     // 末尾两条是本轮刚发的 user 与 turn-start，不算进历史。
     const history = transcript(sess.events.slice(0, Math.max(sess.events.length - 2, 0)));
-    // 「以后都允许」的前缀并进白名单；claude 遇到白名单外的调用时经 am studio permission-mcp 问界面上的用户。
+    // 「以后都允许」的前缀并进白名单；claude 遇到白名单外的调用时经 onset studio permission-mcp 问界面上的用户。
     const access = config.orchestratorAccess(cfg);
     access.commands = [...(access.commands ?? []), ...allowedCommands(p.path)];
     const spec: agentrun.Spec = {
@@ -699,7 +699,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
       unsafe: s.config.unsafe,
       access,
       permissionPrompt: permissionPrompt(s.executable()),
-      toolsServer: tools.amToolsServer(s.executable(), 'orchestrator', p.path, env),
+      toolsServer: tools.onsetToolsServer(s.executable(), 'orchestrator', p.path, env),
       // codebuddy、opencode、codex 走双向协议，审批请求由 agentrun 直接交到这里：写进同一个收件目录，
       // 与审批 MCP 走同一条路（轮询、卡片、以后都允许），等用户回答。
       ask: async (toolName, input) => {
@@ -738,7 +738,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
 }
 
 /**
- * watchViews 在这一轮进行中轮询收件目录，把 am studio show 的请求译成 view 事件。
+ * watchViews 在这一轮进行中轮询收件目录，把 onset studio show 的请求译成 view 事件。
  * 返回的函数停止轮询、把剩下的请求处理完并删掉收件目录；可以调用多次。
  */
 function watchViews(sess: Session, turnID: string, inbox: string, projectPath: string): () => void {
@@ -950,8 +950,8 @@ function recordUsage(signal: AbortSignal, p: Project, sess: Session, tool: strin
   }
 }
 
-/** 审批服务（am studio permission-mcp）的启动方式；Windows 上用 Electron / Node 跑 am.cjs（envutil.amCommand）。 */
+/** 审批服务（onset studio permission-mcp）的启动方式；Windows 上用 Electron / Node 跑 onset.cjs（envutil.onsetCommand）。 */
 function permissionPrompt(executable: string): tools.PermissionPrompt {
-  const am = amCommand(executable);
-  return { command: am.command, args: [...am.args, 'studio', 'permission-mcp'], server: PermissionServerName, env: am.env };
+  const onset = onsetCommand(executable);
+  return { command: onset.command, args: [...onset.args, 'studio', 'permission-mcp'], server: PermissionServerName, env: onset.env };
 }

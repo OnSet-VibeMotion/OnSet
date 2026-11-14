@@ -3,17 +3,17 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import * as dialogue from '@am/engine/dialogue';
-import { formatG } from '@am/engine/gofmt';
-import { marshalIndent } from '@am/engine/gojson';
+import * as dialogue from '@onset/engine/dialogue';
+import { formatG } from '@onset/engine/gofmt';
+import { marshalIndent } from '@onset/engine/gojson';
 import { Buffer, hasFfmpeg, lookPath, makeClip, run, runIn, setenv, tempDir } from './testutil';
-import { copyTree } from '@am/engine/plugins/cast';
+import { copyTree } from '@onset/engine/plugins/cast';
 
 const skip = !hasFfmpeg || process.platform === 'win32';
 
 /**
  * 装一个假渲染工具：它不真的渲染，只把预先准备好的 mp4 拷到 scene.json 声明的产物路径，
- * 并输出一条阶段消息。被替换掉的只是「画面从哪来」，am 自己的那部分（契约、调度、校验、拼接）全部是真的在跑。
+ * 并输出一条阶段消息。被替换掉的只是「画面从哪来」，onset 自己的那部分（契约、调度、校验、拼接）全部是真的在跑。
  */
 function fakeRenderer(binDir: string, source: string): void {
   const script =
@@ -37,7 +37,7 @@ async function tryCLI(root: string, ...args: string[]): Promise<{ out: string; f
 }
 
 describe.skipIf(skip)('end to end', () => {
-  // 把 am 自己负责的四段串起来跑一遍：调度 → 产物校验 → 抽帧 → 拼接 → 成片验收。
+  // 把 onset 自己负责的四段串起来跑一遍：调度 → 产物校验 → 抽帧 → 拼接 → 成片验收。
   it('render, verify, concat, validate', async () => {
     const project = tempDir();
     const binDir = tempDir();
@@ -47,7 +47,7 @@ describe.skipIf(skip)('end to end', () => {
     fakeRenderer(binDir, source);
     // 项目级视觉规范，让画幅从 frame.md 反查而不是靠命令行传。
     fs.writeFileSync(path.join(project, 'frame.md'), '---\ncanvas:\n  width_px: 320\n  height_px: 240\n  fps: 30\n---\n视觉规范正文\n');
-    fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
+    fs.writeFileSync(path.join(project, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
     // 两条字幕，跨度 2 秒，正好等于两个 1 秒镜头之和。
     fs.writeFileSync(path.join(project, 'transcription.srt'), '1\n00:00:00,000 --> 00:00:01,000\n第一句\n\n2\n00:00:01,000 --> 00:00:02,000\n第二句\n');
     const scenes = path.join(project, 'scenes');
@@ -99,7 +99,7 @@ describe.skipIf(skip)('end to end', () => {
     const binDir = tempDir();
     const marker = path.join(project, 'renderer-was-called');
     fs.writeFileSync(path.join(binDir, 'codex'), `#!/bin/sh\nset -eu\n: > '${marker}'\n`, { mode: 0o755 });
-    fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
+    fs.writeFileSync(path.join(project, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
     fs.writeFileSync(path.join(project, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
     // 字幕跨度 10 秒，镜头只声明了 1 秒——少了 9 秒。
     fs.writeFileSync(path.join(project, 'transcription.srt'), '1\n00:00:00,000 --> 00:00:10,000\n很长的一句\n');
@@ -215,7 +215,7 @@ describe.skipIf(skip)('end to end', () => {
     expect(r.out).toContain('通过');
 
     // 9. 死锁回归：把 scene-001 的时长改小、另起一个 scene-002 吸收剩下的时间，旧节拍越界；
-    // am dialogue beats 必须仍然跑得通，跑完之后校验重新通过。
+    // onset dialogue beats 必须仍然跑得通，跑完之后校验重新通过。
     const total = written.cast.beats[1].end;
     const shrunk = sceneBody.replace('"duration_seconds": 1.7', '"duration_seconds": 1');
     expect(shrunk).not.toBe(sceneBody);
@@ -258,7 +258,7 @@ describe.skipIf(skip)('end to end', () => {
     makeClip(source, 'testsrc=size=320x240:rate=30:duration=1');
     fakeRenderer(binDir, source);
     fs.writeFileSync(path.join(project, 'frame.md'), '---\ncanvas:\n  width_px: 320\n  height_px: 240\n  fps: 30\n---\n正文\n');
-    fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
+    fs.writeFileSync(path.join(project, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
     const scenes = path.join(project, 'scenes');
     // 镜头数明显多于并发数，确保 worker 之间真的会同时写。
     for (const id of ['scene-001', 'scene-002', 'scene-003', 'scene-004', 'scene-005', 'scene-006']) {

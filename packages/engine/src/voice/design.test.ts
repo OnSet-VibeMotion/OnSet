@@ -5,12 +5,12 @@ import { describe, expect, it } from 'vitest';
 import { envMap } from '../envutil';
 import { design, designStatus, get, getDraft, save, SampleText } from './index';
 
-const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-voice-design-'));
+const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'onset-voice-design-'));
 
 describe('voice design', () => {
   it('is only possible on Apple Silicon, and says Breeze is missing on an empty machine', () => {
     expect(designStatus({ HOME: tempDir() }, 'linux', 'x64')).toMatchObject({ ready: false, supported: false });
-    const empty = designStatus({ HOME: tempDir(), PATH: '/usr/bin:/bin', AM_BIN_DIR: tempDir() }, 'darwin', 'arm64');
+    const empty = designStatus({ HOME: tempDir(), PATH: '/usr/bin:/bin', ONSET_BIN_DIR: tempDir() }, 'darwin', 'arm64');
     expect(empty).toMatchObject({ ready: false, supported: true });
     expect(empty.problem).toContain('Breeze');
   });
@@ -32,11 +32,11 @@ describe('voice design', () => {
   });
 });
 
-// 真的跑一次本机 Breeze（几十秒、要 4.6 GB 模型）：AM_TEST_BREEZE=1 时才跑，用开发机上 am setup 装好的那一份。
-describe.skipIf(process.env.AM_TEST_BREEZE !== '1')('RealBreeze voice design', () => {
+// 真的跑一次本机 Breeze（几十秒、要 4.6 GB 模型）：ONSET_TEST_BREEZE=1 时才跑，用开发机上 onset setup 装好的那一份。
+describe.skipIf(process.env.ONSET_TEST_BREEZE !== '1')('RealBreeze voice design', () => {
   it('designs a take that can be saved into the library as a cloneable voice', async () => {
     const env = envMap();
-    delete env.AM_BIN_DIR;
+    delete env.ONSET_BIN_DIR;
     const root = tempDir();
     const draft = await design(root, { instruction: '三十多岁的男性，声音沉稳清晰，语气平静、真诚', env });
     expect(fs.statSync(draft.audio).size).toBeGreaterThan(10000);

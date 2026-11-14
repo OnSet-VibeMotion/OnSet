@@ -70,7 +70,7 @@ const archiveNumber = /attempt-([0-9]+)/;
  *   - production/visible-event-inventory.json（schema 1）的阅读时间问题。
  *
  * 每个镜头最早的一次尝试算首次尝试，其余算重试，批次编号是 import:<项目名>，
- * am memory report 里能看到这些项目当时的一次通过率。冻结的输入是镜头现在的输入，
+ * onset memory report 里能看到这些项目当时的一次通过率。冻结的输入是镜头现在的输入，
  * 不是当时的——历史输入没有留存。同一个来源重复导入时跳过。
  */
 export function importProject(s: Store, rootDir: string, opts: ImportOptions): ImportResult {

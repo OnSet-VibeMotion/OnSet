@@ -324,8 +324,8 @@ describe('skill prompts', () => {
     }
   });
 
-  // am 不进渲染器的白名单（HyperFrames 经工具服务调用）；技能目录去重排序，argv 才稳定可比。
-  it('renderer access keeps am out and opens skill dirs', () => {
+  // onset 不进渲染器的白名单（HyperFrames 经工具服务调用）；技能目录去重排序，argv 才稳定可比。
+  it('renderer access keeps onset out and opens skill dirs', () => {
     const access = rendererAccess({
       [HyperFramesSkillName]: '/proj/.agents/skills',
       [HyperFramesCLISkillName]: '/proj/.agents/skills',
@@ -353,12 +353,12 @@ describe('skill prompts', () => {
     }
   });
 
-  // 渲染器只经 am 工具服务的 hyperframes 工具调用 CLI：提示词要教会工具写法、长任务怎么等，并且不再教 am / npx 的命令行。
+  // 渲染器只经 onset 工具服务的 hyperframes 工具调用 CLI：提示词要教会工具写法、长任务怎么等，并且不再教 onset / npx 的命令行。
   it('CLI prompt teaches the hyperframes tool instead of a command line', () => {
     expect(containsString(rendererAccess(null).commands, hyperFramesCommand())).toBe(false);
     for (const dir of ['', '/tmp/skills']) {
       const section = hyperFramesCLIPrompt(dir);
-      for (const want of ['`hyperframes` 工具', '"subcommand": "render"', 'job_wait', '不在 Bash 里跑 hyperframes、npx hyperframes 或 am', '--describe false']) {
+      for (const want of ['`hyperframes` 工具', '"subcommand": "render"', 'job_wait', '不在 Bash 里跑 hyperframes、npx hyperframes 或 onset', '--describe false']) {
         expect(section, `skillsDir=${dir}`).toContain(want);
       }
       expect(section).not.toContain(hyperFramesCommand() + ' ');

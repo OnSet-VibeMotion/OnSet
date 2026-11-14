@@ -5,24 +5,24 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, onTestFinished } from 'vitest';
-import * as hyperframes from '@am/engine/hyperframes';
-import { fakeBrowser, fakeCLI } from '@am/engine/hyperframes/hftest';
+import * as hyperframes from '@onset/engine/hyperframes';
+import { fakeBrowser, fakeCLI } from '@onset/engine/hyperframes/hftest';
 import { execute } from './cli';
 import type { Out } from './cobra';
 
-// main_test.go 的 TestMain：把记忆库指到临时目录（渲染记忆默认打开，没设 AM_MEMORY_DIR 的测试
-// 会把经历与快照写进开发者真实的 ~/.local/share/am/memory）；渲染前会确保 am 管理的
+// main_test.go 的 TestMain：把记忆库指到临时目录（渲染记忆默认打开，没设 ONSET_MEMORY_DIR 的测试
+// 会把经历与快照写进开发者真实的 ~/.local/share/onset/memory）；渲染前会确保 onset 管理的
 // HyperFrames CLI 已装好，测试里换成假的，免得真的去 npm install。导入本文件即生效。
-const memoryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-memory-test-'));
-process.env.AM_MEMORY_DIR = memoryDir;
+const memoryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-memory-test-'));
+process.env.ONSET_MEMORY_DIR = memoryDir;
 const fakeCLIDir = path.join(memoryDir, 'hyperframes-cli');
 fakeCLI(fakeCLIDir);
-process.env.AM_BROWSER = fakeBrowser(fakeCLIDir);
-// am setup 下载的工具目录指到空目录：开发机上 ~/.local/share/am/bin 里真实的 ffmpeg、mmx 不能混进测试。
-process.env.AM_BIN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-bin-test-'));
+process.env.ONSET_BROWSER = fakeBrowser(fakeCLIDir);
+// onset setup 下载的工具目录指到空目录：开发机上 ~/.local/share/onset/bin 里真实的 ffmpeg、mmx 不能混进测试。
+process.env.ONSET_BIN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-bin-test-'));
 process.env[hyperframes.CLIDirEnv] = fakeCLIDir;
 // 音色库同理：用户积累的声音不能被测试写进或删掉。
-process.env.AM_VOICES_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'am-voices-test-'));
+process.env.ONSET_VOICES_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-voices-test-'));
 
 // 每个用例结束后恢复工作目录与环境变量（Go 的 t.Chdir / t.Setenv）。
 const startDir = process.cwd();
@@ -35,7 +35,7 @@ afterEach(() => {
 
 /** t.TempDir()：测试结束时删掉。返回真实路径（macOS 的 /var 是 /private/var 的链接）。 */
 export function tempDir(): string {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-cli-')));
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-cli-')));
   onTestFinished(() => fs.rmSync(dir, { recursive: true, force: true }));
   return dir;
 }

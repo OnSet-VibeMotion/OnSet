@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { readCues, readSpan } from './index';
 
-const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-srt-'));
+const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'onset-srt-'));
 
 function write(body: string): string {
   const file = path.join(temp(), 'transcription.srt');

@@ -2,8 +2,8 @@ import { Buffer, tempDir } from './testutil';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import * as filmstyle from '@am/engine/filmstyle';
-import * as scene from '@am/engine/scene';
+import * as filmstyle from '@onset/engine/filmstyle';
+import * as scene from '@onset/engine/scene';
 import { ref } from './cobra';
 import { opCommand } from './ops/cli';
 import { findOp } from './ops/op';
@@ -46,7 +46,7 @@ function cuesProject(): string {
     }
     fs.writeFileSync(path.join(dir, 'scene.json'), body);
   }
-  fs.writeFileSync(path.join(root, 'article-to-motion.conf'), '');
+  fs.writeFileSync(path.join(root, 'onset.conf'), '');
   fs.writeFileSync(path.join(root, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
   fs.mkdirSync(path.join(root, 'production'), { recursive: true });
   fs.writeFileSync(path.join(root, 'transcription-production.srt'), cuesSRT);
@@ -94,7 +94,7 @@ async function runCues(root: string, ...extra: string[]): Promise<{ out: string;
 
 const mustRead = (file: string) => fs.readFileSync(file, 'utf8');
 
-describe('am scene cues', () => {
+describe('onset scene cues', () => {
   it('writes durations and timing', async () => {
     const root = cuesProject();
     const first = await runCues(root);

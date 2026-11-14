@@ -14,7 +14,7 @@ describe('generateCatalog', () => {
   });
 
   it.skipIf(!hasGit)('rejects a checkout that is not at the pinned commit', () => {
-    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'am-lemo-gen-'));
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-lemo-gen-'));
     const env = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t', GIT_CONFIG_GLOBAL: '/dev/null' };
     execFileSync('git', ['init', '-q'], { cwd: repo, env });
     execFileSync('git', ['commit', '-q', '--allow-empty', '-m', 'x'], { cwd: repo, env });

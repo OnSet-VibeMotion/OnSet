@@ -46,7 +46,7 @@ export function treeAPI(s: Server, request: Request): Response {
   let truncated = false;
   walkDir(p.path, (file, entry) => {
     if (!entry) return;
-    // 用量账本是 Studio 与 am 自己记的账，不是项目内容，文件树里不列。
+    // 用量账本是 Studio 与 onset 自己记的账，不是项目内容，文件树里不列。
     if (entry.isDirectory()) return skipDir(p.path, file, entry.name) ? 'skip' : undefined;
     if (!entry.isFile() || isEnvFile(file)) return;
     if (entries.length >= maxTreeEntries) {

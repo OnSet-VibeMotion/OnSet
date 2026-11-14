@@ -1,13 +1,13 @@
 /**
- * 全局设置：用户级的一份 settings.conf（<数据目录>/am/settings.conf，AM_SETTINGS_FILE 覆盖），
+ * 全局设置：用户级的一份 settings.conf（<数据目录>/onset/settings.conf，ONSET_SETTINGS_FILE 覆盖），
  * 客户端「设置」页写它。它是所有项目的默认值，取值顺序是
  *
- *   环境变量 > 项目 .env > 项目 article-to-motion.conf > 全局设置 > 内置默认
+ *   环境变量 > 项目 .env > 项目 onset.conf > 全局设置 > 内置默认
  *
  * 项目里写了的项只对那个项目生效；没写（或写成 KEY= 空值）的跟着全局走，改一次全局，所有这类项目都变。
- * 新项目的 article-to-motion.conf 里这几项留空，所以默认跟随全局。
+ * 新项目的 onset.conf 里这几项留空，所以默认跟随全局。
  *
- * 文件格式与 article-to-motion.conf 相同（KEY=VALUE、# 注释），由 writeGlobal 整份重写。
+ * 文件格式与 onset.conf 相同（KEY=VALUE、# 注释），由 writeGlobal 整份重写。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,7 +16,7 @@ import { atomicWrite } from '../fsutil';
 import { ValidRenderers, ValidTools } from '../tools';
 import { AlignAuto, defaultTTSProvider, validAligner, validTTSProvider } from './providers';
 
-export const SettingsFileEnv = 'AM_SETTINGS_FILE';
+export const SettingsFileEnv = 'ONSET_SETTINGS_FILE';
 
 /** 设置页管的几项：「什么用什么」。 */
 export const GlobalKeys = ['ORCHESTRATOR', 'ORCHESTRATOR_MODEL', 'RENDERER', 'RENDERER_MODEL', 'TTS_PROVIDER', 'ALIGN_PROVIDER', 'SCENE_JOBS', 'MEMORY', 'AUTO_APPROVE'] as const;
@@ -28,7 +28,7 @@ export type GlobalKey = (typeof GlobalKeys)[number];
  */
 export const GlobalDefaults: Record<GlobalKey, string> = {
   ORCHESTRATOR: 'codex',
-  // 模型留空是「这家工具自己的默认模型」（它自己的配置或登录账号决定），am 不另定默认。
+  // 模型留空是「这家工具自己的默认模型」（它自己的配置或登录账号决定），onset 不另定默认。
   ORCHESTRATOR_MODEL: '',
   RENDERER: 'claude',
   RENDERER_MODEL: '',
@@ -61,7 +61,7 @@ export function isGlobalKey(key: string): key is GlobalKey {
   return (GlobalKeys as readonly string[]).includes(key);
 }
 
-/** 全局设置文件：AM_SETTINGS_FILE，否则 <数据目录>/am/settings.conf。环境里什么都没有时为空。 */
+/** 全局设置文件：ONSET_SETTINGS_FILE，否则 <数据目录>/onset/settings.conf。环境里什么都没有时为空。 */
 export function settingsFile(env: Record<string, string | undefined>): string {
   if (env[SettingsFileEnv]) return env[SettingsFileEnv]!;
   const data = dataDir(env);
@@ -94,8 +94,8 @@ export function validateSetting(key: string, value: string): string {
   }
 }
 
-const header = `# ArticleToMotion 全局设置：所有项目的默认值，由客户端的「设置」页写入。
-# 项目的 article-to-motion.conf 里写了的项只对那个项目生效；没写的跟着这里走。
+const header = `# 片场全局设置：所有项目的默认值，由客户端的「设置」页写入。
+# 项目的 onset.conf 里写了的项只对那个项目生效；没写的跟着这里走。
 `;
 
 /** 写全局设置：values 里给的项覆盖，值为空串的项删掉（回到内置默认），没给的项保留。 */

@@ -34,7 +34,7 @@ export function permissionLines(p: ManifestPermissions): string[] {
   const out: string[] = [];
   if (p.project) out.push('读项目摘要（镜头、制作路线、发布信息）');
   for (const origin of p.network) out.push(`连网：${origin}`);
-  for (const op of p.uses) out.push(`请你确认后调用 am 操作：${op}`);
+  for (const op of p.uses) out.push(`请你确认后调用 onset 操作：${op}`);
   return out;
 }
 
@@ -42,7 +42,7 @@ function oldManifest(entry: InstalledEntry, env: Env): Manifest | null {
   try {
     const dir = sourceDir(entry, env);
     // 只用来比差异：原来那一版被改过也照读，读不出来就当没有。
-    return parseManifest(fs.readFileSync(path.join(dir, ManifestFile), 'utf8'), { amVersion: 'dev' });
+    return parseManifest(fs.readFileSync(path.join(dir, ManifestFile), 'utf8'), { onsetVersion: 'dev' });
   } catch {
     return null;
   }

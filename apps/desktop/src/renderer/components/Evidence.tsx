@@ -13,7 +13,7 @@ interface Props {
 /**
  * 进化页：把「它学到了什么、学了之后好在哪、不好能不能退回」排成一页。
  * 从上到下是同一个镜头带与不带一条经验的两段画面、这条经验本身、两批渲染的对比、存档与回退。
- * 数据全部来自 /api/memory，这一页不另算任何数字；改动只有回退，经 am 的记忆操作。
+ * 数据全部来自 /api/memory，这一页不另算任何数字；改动只有回退，经 onset 的记忆操作。
  */
 export function EvidenceTab({ version, run, onOpen }: Props) {
   const [state, setState] = useState<MemoryState | null>(null);

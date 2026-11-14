@@ -33,7 +33,7 @@ describe('scene data', () => {
     writeSceneData(s);
     const file = path.join(s.directory, SceneDataFile);
     const text = fs.readFileSync(file, 'utf8');
-    const prefix = '// 由 am 生成，勿手改。\nwindow.AM_SCENE = ';
+    const prefix = '// 由 onset 生成，勿手改。\nwindow.ONSET_SCENE = ';
     expect(text.startsWith(prefix + '{') && text.endsWith('};\n'), `文件格式不对：\n${text}`).toBe(true);
     const decoded = JSON.parse(text.slice(prefix.length, -';\n'.length)) as Record<string, unknown>;
     for (const key of ['schema', 'scene_id', 'fps', 'frames', 'width_px', 'height_px', 'duration_seconds', 'start_frame', 'safe_area', 'subtitles', 'cues', 'phrases']) {
@@ -61,13 +61,13 @@ describe('timing contract in the prompt', () => {
   it('carries the timing contract', () => {
     const prompt = buildPrompt(dataScene(), null);
     for (const want of [
-      '时间合同（强制，由 am 计算）',
+      '时间合同（强制，由 onset 计算）',
       '全片第 150 帧到第 300 帧',
       '0 = 本镜头第一帧',
       'p-2｜GPU 跑满了｜0–50｜25',
       '3｜本镜头内｜60–90',
-      '<script src="am-scene.js"></script>',
-      'window.AM_SCENE',
+      '<script src="onset-scene.js"></script>',
+      'window.ONSET_SCENE',
     ]) {
       expect(prompt).toContain(want);
     }
@@ -82,7 +82,7 @@ describe('timing contract in the prompt', () => {
     const dir = writeScene('{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
     const s = load(dir);
     expect(timingSection(s), '老镜头的时间合同段应为空').toBe('');
-    // am-scene.js 本身照常出现：scene-kit 技能段也要求先加载它。老镜头只是没有时间合同表。
+    // onset-scene.js 本身照常出现：scene-kit 技能段也要求先加载它。老镜头只是没有时间合同表。
     expect(buildPrompt(s, null)).not.toContain('时间合同');
   });
 
@@ -102,7 +102,7 @@ describe('timing contract in the prompt', () => {
 "timing":{"fps":30,"start_frame":0,"end_frame_exclusive":300,"plan":"${testPlanSHA}"}}`,
     );
     const section = timingSection(load(dir));
-    expect(section, '超过上限应截断并指向 am-scene.js').toContain('其余 10 条见 am-scene.js');
+    expect(section, '超过上限应截断并指向 onset-scene.js').toContain('其余 10 条见 onset-scene.js');
     expect(section, '字幕原文里的阶段消息与定界标记应被去掉').not.toContain('[[USER_MESSAGE]]');
     expect(section).not.toContain('<scene-text>');
   });
@@ -146,7 +146,7 @@ describe('look and handoffs', () => {
     expect(prompt.split('[[USER_MESSAGE]]').length - 1, '交界帧描述里的阶段消息标记应被清除').toBe(4);
     expect(prompt, '有全片配色时不应再说配色由镜头自主决定').not.toContain('本镜头的配色、字体');
     const data = buildSceneData(s);
-    expect(data.look?.accent, 'am-scene.js 应带上全片配色').toBe('#F2B134');
+    expect(data.look?.accent, 'onset-scene.js 应带上全片配色').toBe('#F2B134');
   });
 
   it('handoff section uses free frames around subtitles', () => {

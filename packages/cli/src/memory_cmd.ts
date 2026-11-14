@@ -5,18 +5,18 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import * as agentrun from '@am/engine/agentrun';
-import * as config from '@am/engine/config';
-import * as envutil from '@am/engine/envutil';
-import * as fsutil from '@am/engine/fsutil';
-import { compareBytes, marshalIndent, sortedKeys } from '@am/engine/gojson';
-import { formatFixed, formatG, goTrimSpace } from '@am/engine/gofmt';
-import * as ledger from '@am/engine/ledger';
-import * as mediaprobe from '@am/engine/mediaprobe';
-import * as memory from '@am/engine/memory';
-import * as scene from '@am/engine/scene';
-import * as schedule from '@am/engine/schedule';
-import * as tools from '@am/engine/tools';
+import * as agentrun from '@onset/engine/agentrun';
+import * as config from '@onset/engine/config';
+import * as envutil from '@onset/engine/envutil';
+import * as fsutil from '@onset/engine/fsutil';
+import { compareBytes, marshalIndent, sortedKeys } from '@onset/engine/gojson';
+import { formatFixed, formatG, goTrimSpace } from '@onset/engine/gofmt';
+import * as ledger from '@onset/engine/ledger';
+import * as mediaprobe from '@onset/engine/mediaprobe';
+import * as memory from '@onset/engine/memory';
+import * as scene from '@onset/engine/scene';
+import * as schedule from '@onset/engine/schedule';
+import * as tools from '@onset/engine/tools';
 import { EventPrinter } from './agentprint';
 import { currentEnvironment, validateTolerance } from './cli';
 import { ExitError, type Out } from './cobra';
@@ -122,15 +122,15 @@ defineGroup({
 新经验先进入试用，经 memory_exam 回放考试（多个渲染工具 × {不带, 带试用经验}）
 通过才转为生效；生效记忆集合每变一次就生成一个快照，memory_rollback 可回到任意一版。
 
-渲染前由 am 按镜头特征与关键词召回相关的几条，注入提示词里固定的「记忆」段，
+渲染前由 onset 按镜头特征与关键词召回相关的几条，注入提示词里固定的「记忆」段，
 所有渲染工具收到逐字相同的文本。召回只读快照：手改记忆文件后调用 memory_status()
 把改动记成新快照，才会被召回。
 
-项目配置（article-to-motion.conf）：
+项目配置（onset.conf）：
   MEMORY=on                  off 时完全不召回、不写经历
   MEMORY_SNAPSHOT=           留空跟随最新快照，写快照号就钉住
   MEMORY_RECALL_BUDGET=1500  每个镜头召回的记忆总字数上限
-记忆库目录默认 ~/.local/share/am/memory，可用 AM_MEMORY_DIR 覆盖。`,
+记忆库目录默认 ~/.local/share/onset/memory，可用 ONSET_MEMORY_DIR 覆盖。`,
 });
 
 const jsonParam: ParamSpec = { type: 'boolean', description: '输出 JSON' };
@@ -140,11 +140,11 @@ function loadMemoryConfig(): { cfg: config.Config; store: memory.Store } {
   try {
     cfg = config.load('.', null);
   } catch (err) {
-    // 不在项目里（没有 article-to-motion.conf）时也能看记忆库：
-    // 按 AM_MEMORY_DIR 或默认位置打开。项目配置本身有错时照常报错。
+    // 不在项目里（没有 onset.conf）时也能看记忆库：
+    // 按 ONSET_MEMORY_DIR 或默认位置打开。项目配置本身有错时照常报错。
     let missing = false;
     try {
-      fs.statSync('article-to-motion.conf');
+      fs.statSync('onset.conf');
     } catch (statErr) {
       missing = (statErr as NodeJS.ErrnoException).code === 'ENOENT';
     }
@@ -154,7 +154,7 @@ function loadMemoryConfig(): { cfg: config.Config; store: memory.Store } {
     cfg = config.newConfig({
       orchestrator: env.ORCHESTRATOR ?? '',
       renderer: env.RENDERER ?? '',
-      memory: { enabled: true, dir: env.AM_MEMORY_DIR ?? '', recallBudget: config.DefaultMemoryRecallBudget },
+      memory: { enabled: true, dir: env.ONSET_MEMORY_DIR ?? '', recallBudget: config.DefaultMemoryRecallBudget },
     });
     if (cfg.memory.dir === '') cfg.memory.dir = config.defaultMemoryDir(env);
   }
@@ -307,7 +307,7 @@ drafts 跳过整理者，直接收录一个目录里现成的草稿（lessons/*.
           throw new Error('没有配置整理者：在项目里运行，或用环境变量 ORCHESTRATOR 指定编排工具；也可以用 drafts 参数直接收录现成草稿');
         }
         const isUnsafe = envutil.isUnsafe(unsafe);
-        const env = config.childEnvironment(cfg, currentEnvironment(), isUnsafe, envutil.parsePassthrough(process.env.AM_PASSTHROUGH_ENV ?? ''));
+        const env = config.childEnvironment(cfg, currentEnvironment(), isUnsafe, envutil.parsePassthrough(process.env.ONSET_PASSTHROUGH_ENV ?? ''));
         out.write(`整理者: ${cfg.orchestrator}\n工作目录: ${workdir}\n---\n`);
         const printer = new EventPrinter(out, stderr);
         const { result, error } = await agentrun.run(

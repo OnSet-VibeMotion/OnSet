@@ -76,7 +76,7 @@ export function recallReason(i: RecallItem): string {
  * 样本，排序就固化了（Kiyohara et al. 2025 讨论的日志 bandit 数据偏差）。探索给它们
  * 机会，propensity 是这次换的概率，日后可以按它做反倾向加权的离线评估。
  *
- * 探索是这一次运行（agent 一次 am scene run / run-all）的决定，不是镜头的属性：
+ * 探索是这一次运行（agent 一次 onset scene run / run-all）的决定，不是镜头的属性：
  * 输入指纹仍用不探索时的召回，镜头不会因为探索被判 Stale，也不会因为某次探索
  * 过就以后都被判 Stale。
  */

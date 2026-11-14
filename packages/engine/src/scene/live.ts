@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export interface LiveRender {
-  /** 跑 scene.run 的进程（客户端里是 am 的执行进程）。 */
+  /** 跑 scene.run 的进程（客户端里是 onset 的执行进程）。 */
   pid: number;
   renderer: string;
   started_at: string;

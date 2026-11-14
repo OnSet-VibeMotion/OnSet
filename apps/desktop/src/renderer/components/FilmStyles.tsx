@@ -8,8 +8,8 @@ import '../film-styles.css';
  * 整片风格的选择器：首页与「风格」页的「换风格」用弹窗（FilmStyleDialog），新建对话框与还没有风格的「风格」页内嵌网格（FilmStylePicker）。
  *
  * 风格来自多个风格来源，按「来源 → 分类」分组，每种风格的标识是「来源/目录名」。
- * 目录随 am 下发，打开就有；海报在来源数据里。来源数据是前置资源，由用户在终端里
- * 运行 am setup 准备，Studio 不下载：没准备好的来源显示占位块和提示。
+ * 目录随 onset 下发，打开就有；海报在来源数据里。来源数据是前置资源，由用户在终端里
+ * 运行 onset setup 准备，Studio 不下载：没准备好的来源显示占位块和提示。
  */
 
 /** 风格的全局标识：来源/目录名。 */
@@ -18,7 +18,7 @@ export function styleKey(style: { source: string; slug: string }): string {
 }
 
 /**
- * 读风格目录；有来源没准备好时隔一会儿再看（用户可能正在终端里跑 am setup）。
+ * 读风格目录；有来源没准备好时隔一会儿再看（用户可能正在终端里跑 onset setup）。
  * 读失败（多半是 Studio 在重启）时退避重试，已经读到的目录照常显示，不让一次失败一直挂在菜单上。
  */
 export function useFilmStyles(active: boolean): { data: FilmStylesResponse | null; error: string; posterVersion: number } {

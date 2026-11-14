@@ -32,7 +32,7 @@ describe('stations API', () => {
     for (const b of body.stations) expect(b).not.toHaveProperty('enabled');
 
     installStation(`link:${fake}`);
-    const gone = writeStationForTest({ 'am-station.json': JSON.stringify({ id: 'gone', version: '1', name: '没了' }) });
+    const gone = writeStationForTest({ 'onset-station.json': JSON.stringify({ id: 'gone', version: '1', name: '没了' }) });
     installStation(`link:${gone}`);
     fs.rmSync(gone, { recursive: true, force: true });
     ({ status, body } = await studioRequest(f.s, 'GET', '/api/stations'));
@@ -86,12 +86,12 @@ describe('stations API', () => {
     const csp = page.headers.get('Content-Security-Policy')!;
     expect(csp).toContain("connect-src 'none'");
     expect(csp).toContain("default-src 'none'");
-    expect(csp).toContain('script-src am://app/station-ui/fake-publisher/ am://app/station-ui/_sdk.js');
+    expect(csp).toContain('script-src onset://app/station-ui/fake-publisher/ onset://app/station-ui/_sdk.js');
     expect(await page.text()).toContain('发布看板');
     expect((await send(f.s, 'GET', '/station-ui/fake-publisher/ui/slot.html')).status).toBe(200);
     expect((await send(f.s, 'GET', '/station-ui/_sdk.js')).headers.get('Content-Type')).toContain('javascript');
     // 只给页面所在目录：清单、命令、站目录外的文件都不给。
-    for (const bad of ['/station-ui/fake-publisher/am-station.json', '/station-ui/fake-publisher/bin/publish.cjs', '/station-ui/fake-publisher/prompt.md', '/station-ui/nope/ui/index.html']) {
+    for (const bad of ['/station-ui/fake-publisher/onset-station.json', '/station-ui/fake-publisher/bin/publish.cjs', '/station-ui/fake-publisher/prompt.md', '/station-ui/nope/ui/index.html']) {
       expect((await send(f.s, 'GET', bad)).status, bad).not.toBe(200);
     }
   });
@@ -110,7 +110,7 @@ describe('stations API', () => {
     r = await read('production/publish/cover.png');
     expect(r.body.data_url).toBe('data:image/png;base64,iVBORw==');
     expect((await read('production/publish/receipts.json')).status).toBe(404);
-    for (const bad of ['.env', 'article-to-motion.conf', '../etc/passwd', '/etc/passwd', 'production/publish/../../.env', 'production/studio/tasks.json']) {
+    for (const bad of ['.env', 'onset.conf', '../etc/passwd', '/etc/passwd', 'production/publish/../../.env', 'production/studio/tasks.json']) {
       expect((await read(bad)).status, bad).toBe(403);
     }
   });
@@ -123,10 +123,10 @@ describe('stations API', () => {
     let res = await send(f.s, 'GET', '/station-media/fake-publisher/production/publish/cover.png');
     expect(res.status).toBe(200);
     expect(await res.text()).toBe('png');
-    for (const bad of ['/station-media/fake-publisher/.env', '/station-media/fake-publisher/article-to-motion.conf', '/station-media/nope/publish.md']) {
+    for (const bad of ['/station-media/fake-publisher/.env', '/station-media/fake-publisher/onset.conf', '/station-media/nope/publish.md']) {
       expect((await send(f.s, 'GET', bad)).status, bad).toBe(404);
     }
-    // 只能调清单里申请过的 am 操作。
+    // 只能调清单里申请过的 onset 操作。
     res = await send(f.s, 'POST', '/api/stations/fake-publisher/call/scene_run', '{"params":{}}');
     expect(res.status).toBe(403);
     expect(((await res.json()) as { message: string }).message).toContain('没有申请调用 scene_run');
@@ -166,11 +166,11 @@ describe('stations API', () => {
   it('shows files an op wrote outside its declared scope, and posts a notice when a hook ran it', async () => {
     const f = newSessionFixture();
     installStation(`link:${fake}`);
-    // 测试里没有真的执行进程：换一个假的 am，像插件那样在项目里顺手写一个没声明的文件。
-    const bin = fs.mkdtempSync(path.join(f.root, '..', 'am-fake-'));
-    const fakeAm = path.join(bin, 'am');
-    fs.writeFileSync(fakeAm, '#!/bin/sh\nmkdir -p notes\necho x > notes/stray.txt\nmkdir -p production/publish\necho y > production/publish/ok.json\nprintf \'写好了\\n\\000am-result {"ok":true,"exit_code":0}\\n\'\n', { mode: 0o755 });
-    f.s.config.executable = fakeAm;
+    // 测试里没有真的执行进程：换一个假的 onset，像插件那样在项目里顺手写一个没声明的文件。
+    const bin = fs.mkdtempSync(path.join(f.root, '..', 'onset-fake-'));
+    const fakeOnset = path.join(bin, 'onset');
+    fs.writeFileSync(fakeOnset, '#!/bin/sh\nmkdir -p notes\necho x > notes/stray.txt\nmkdir -p production/publish\necho y > production/publish/ok.json\nprintf \'写好了\\n\\000am-result {"ok":true,"exit_code":0}\\n\'\n', { mode: 0o755 });
+    f.s.config.executable = fakeOnset;
     const done = async () => {
       for (let i = 0; i < 250 && [...f.s.tasks.tasks.values()].some((t) => t.status === 'running' || t.status === 'queued'); i++) await new Promise((r) => setTimeout(r, 20));
     };

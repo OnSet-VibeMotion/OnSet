@@ -2,7 +2,7 @@
  * 制作提示词只有一条路：按项目记下的流程在开工时组合（project.runPrompt → flow.composeFlowPrompt）。
  *
  * 这里是它的门禁：
- * - 新建的口播、卡点、歌曲项目的 runPrompt 全文摘要与阶段标题序列（testdata/flow-prompts.json，AM_UPDATE_GOLDEN=1 时重写）；
+ * - 新建的口播、卡点、歌曲项目的 runPrompt 全文摘要与阶段标题序列（testdata/flow-prompts.json，ONSET_UPDATE_GOLDEN=1 时重写）；
  * - 提示词内容的门禁（原先钉在签入的 PROMPT-PRODUCTION.md 上），对适用的每个内置流程的组合结果断言；
  * - 没有流程记录的目录直接报错，不按 beat.yaml / song.yaml 推断；
  * - 内置流程不引用自己没有的阶段（第三方流程才有「<标题>那一步」的退路）。
@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 function tempProject(): string {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-flowprompt-')));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-flowprompt-')));
   temps.push(root);
   return root;
 }
@@ -64,7 +64,7 @@ describe('new projects compose the prompt of their own flow', () => {
 
   it('matches the golden digest and stage titles', () => {
     const got = collect();
-    if (process.env.AM_UPDATE_GOLDEN === '1') fs.writeFileSync(goldenFile, JSON.stringify(got, null, 2) + '\n');
+    if (process.env.ONSET_UPDATE_GOLDEN === '1') fs.writeFileSync(goldenFile, JSON.stringify(got, null, 2) + '\n');
     expect(got).toEqual(JSON.parse(fs.readFileSync(goldenFile, 'utf8')));
   });
 
@@ -122,7 +122,7 @@ describe('directories without a flow record', () => {
     for (const call of [() => runPrompt(root, ''), () => flow.detectFlow(root)]) {
       expect(call).toThrow(flow.MissingFlowRecordError);
       expect(call).toThrow(`${flow.LockFile} 里要有 "production"`);
-      expect(call).toThrow('不是用这一版 ArticleToMotion 新建的项目');
+      expect(call).toThrow('不是用这一版片场新建的项目');
     }
   });
 
@@ -172,16 +172,16 @@ describe('every builtin prompt', () => {
 
   it('leaves the visual style free and names no style source', () => {
     for (const { name, text } of everyBuiltinPrompt()) {
-      for (const banned of ['定风格（仅自定义风格）', 'custom-draft', 'docs/style-brief.md', 'am style add-font', 'am validate style --regenerate-examples', 'docs/自定义-视频风格说明书.md', 'lemo', 'DEMO.md', 'core/fonts']) {
+      for (const banned of ['定风格（仅自定义风格）', 'custom-draft', 'docs/style-brief.md', 'onset style add-font', 'onset validate style --regenerate-examples', 'docs/自定义-视频风格说明书.md', 'lemo', 'DEMO.md', 'core/fonts']) {
         expect(text.includes(banned), `${name} 不应包含 ${banned}`).toBe(false);
       }
     }
   });
 
-  // 配音与对齐工具是前置资源：提示词里写安装命令的话，编排工具会在对话里自己装一份全局的。am 不在 PATH 里：$(am …) 跑不起来。
+  // 配音与对齐工具是前置资源：提示词里写安装命令的话，编排工具会在对话里自己装一份全局的。onset 不在 PATH 里：$(onset …) 跑不起来。
   it('installs nothing and never tells to use a terminal', () => {
     for (const { name, text } of everyBuiltinPrompt()) {
-      for (const banned of ['$(am ', '在终端运行', '在终端里运行', 'pipx install', 'npm install -g', 'brew install', 'uv tool install', 'pip install funasr', 'pip install tccli']) {
+      for (const banned of ['$(onset ', '在终端运行', '在终端里运行', 'pipx install', 'npm install -g', 'brew install', 'uv tool install', 'pip install funasr', 'pip install tccli']) {
         expect(text.includes(banned), `${name} 不应包含 ${banned}`).toBe(false);
       }
     }
@@ -231,7 +231,7 @@ describe('prompt content', () => {
   });
 
   it('carries the film style without naming a source (speech, beat)', () => {
-    const common = ['### 整片风格', 'film_style_list()', 'film_style_use({"style": "<来源/目录名>"})', 'film_style_show()', '"replace": true', '.agents/skills/am-film-style/', 'SKILL.md', 'STYLE.md', '不用整片风格', '工具准备页', 'STYLE.md 里关于声音的内容只作为选曲和音效方向的参考'];
+    const common = ['### 整片风格', 'film_style_list()', 'film_style_use({"style": "<来源/目录名>"})', 'film_style_show()', '"replace": true', '.agents/skills/onset-film-style/', 'SKILL.md', 'STYLE.md', '不用整片风格', '工具准备页', 'STYLE.md 里关于声音的内容只作为选曲和音效方向的参考'];
     has(speech, [...common, '稿件审核关卡', '第六阶段渲染镜头之前'], '口播·整片风格');
     has(beat, [...common, '在第二阶段的故事审核关卡', '第四阶段渲染镜头之前'], '卡点·整片风格');
   });
@@ -264,17 +264,17 @@ describe('prompt content', () => {
     has(beat, ['过第四阶段的「分镜审核关卡」'], '卡点·分镜审核');
   });
 
-  // 编排工具缺了信息时会 strings / grep 已装的 am 程序反推格式（实测），每次都弹权限确认打断用户。
-  it('keeps the orchestrator out of am internals (all flows)', () => {
+  // 编排工具缺了信息时会 strings / grep 已装的 onset 程序反推格式（实测），每次都弹权限确认打断用户。
+  it('keeps the orchestrator out of onset internals (all flows)', () => {
     for (const [body, what] of [
       [speech, '口播'],
       [beat, '卡点'],
       [sung, '歌曲'],
-    ]) has(body, ['am 工具服务（MCP）里的工具', '`job_wait`', '`am` 不在终端里'], what + '·格式约定');
+    ]) has(body, ['onset 工具服务（MCP）里的工具', '`job_wait`', '`onset` 不在终端里'], what + '·格式约定');
     for (const [body, what] of [
       [speech, '口播'],
       [beat, '卡点'],
-    ]) has(body, ['不要用 `which`、`strings`、`grep` 去找、去读 `am` 程序本身'], what + '·格式约定');
+    ]) has(body, ['不要用 `which`、`strings`、`grep` 去找、去读 `onset` 程序本身'], what + '·格式约定');
     has(beat, ['节拍页把这个文件当普通 Markdown 原样显示'], '卡点·格式约定');
   });
 
@@ -315,7 +315,7 @@ describe('prompt content', () => {
   });
 
   it('derives scene durations (speech from subtitles, beat from bars)', () => {
-    has(speech, ['scene_cues({"scenes": "scenes/", "plan": "production/scene-plan.json"', '`first_subtitle`', '`first_phrase`', '"check": true', 'am-scene.js', '`scene-kit`'], '口播·镜头时长');
+    has(speech, ['scene_cues({"scenes": "scenes/", "plan": "production/scene-plan.json"', '`first_subtitle`', '`first_phrase`', '"check": true', 'onset-scene.js', '`scene-kit`'], '口播·镜头时长');
     has(beat, ['：按小节拆分镜头', 'production/beat/plan.json', 'beat_cues({"scenes": "scenes/"})', '不得手改 duration_seconds', '`scene-kit`'], '卡点·镜头时长');
     for (const [body, what] of [
       [speech, '口播'],

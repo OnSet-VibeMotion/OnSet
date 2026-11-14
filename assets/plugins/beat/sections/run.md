@@ -6,7 +6,7 @@
 - 保留 `render-<scene>.user.log`。
 - 阶段消息至少覆盖需求与素材检查、联网搜索、代码完成开始渲染、MP4 渲染完成。
 
-用 `scene_run_all({"scenes": "scenes/", "report_json": "production/run-report.json"})` 一次性调度。已有合格产物且输入没变的镜头会被跳过：`am` 在产物通过校验时把输入指纹（渲染提示词、`scene.json`、`prompt.md`、字幕、角色包、渲染工具、技能内容与 `am` 版本）记在镜头目录的 `.am-render.json`。输入变了的镜头会被跳过并在报告里写明是哪几项变了，确认要重渲染时用 `scene_run({"scene": "<镜头目录>"})` 或加 `"force": true`。渲染器非零退出自动重试（退避 10 秒与 30 秒）并把失败证据保留在 `attempts/attempt-NN/`；产物校验失败不重试。每次尝试的耗时、结果与用量写在镜头目录的 `render-<镜头编号>.attempt.json`，重跑前上一次的产物与日志会先归档进 `attempts/`。
+用 `scene_run_all({"scenes": "scenes/", "report_json": "production/run-report.json"})` 一次性调度。已有合格产物且输入没变的镜头会被跳过：`onset` 在产物通过校验时把输入指纹（渲染提示词、`scene.json`、`prompt.md`、字幕、角色包、渲染工具、技能内容与 `onset` 版本）记在镜头目录的 `.onset-render.json`。输入变了的镜头会被跳过并在报告里写明是哪几项变了，确认要重渲染时用 `scene_run({"scene": "<镜头目录>"})` 或加 `"force": true`。渲染器非零退出自动重试（退避 10 秒与 30 秒）并把失败证据保留在 `attempts/attempt-NN/`；产物校验失败不重试。每次尝试的耗时、结果与用量写在镜头目录的 `render-<镜头编号>.attempt.json`，重跑前上一次的产物与日志会先归档进 `attempts/`。
 
 渲染前先跑一次 `validate_beat()`：它核对每个镜头的小节区间与 `plan.json`、网格一致。漏掉一镜等到拼接时才发现的话，每一镜都已经烧掉一次完整的渲染调用。
 

@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import * as agentrun from '@am/engine/agentrun';
+import * as agentrun from '@onset/engine/agentrun';
 import { EventPrinter, summaryLimit, truncate } from './agentprint';
 
 describe('event printer', () => {
-  // 记录下来的真实 codex 输出经解析器译成事件后，打印出来应当是人能读的（整理记忆 am memory consolidate 用它）。
+  // 记录下来的真实 codex 输出经解析器译成事件后，打印出来应当是人能读的（整理记忆 onset memory consolidate 用它）。
   it('prints a recorded stream readably', () => {
     const fixture = path.resolve(__dirname, '..', '..', 'engine', 'src', 'agentrun', 'testdata', 'codex-1.jsonl');
     const parser = agentrun.newParser('codex');

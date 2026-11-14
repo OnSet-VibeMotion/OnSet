@@ -38,7 +38,7 @@ export const delimiterMatchAll = new RegExp(delimiterSource, 'g');
 
 /**
  * requiredSceneFields、optionalSceneFields 加上已登记的镜头扩展块（block.ts）是 scene.json 字段契约的唯一真相源：
- * Load 的未知字段/缺字段校验、以及 cli 里 `am scene --help` 的说明文字
+ * Load 的未知字段/缺字段校验、以及 cli 里 `onset scene --help` 的说明文字
  * 都从这里派生，不再各写一份、彼此漂移。扩展块排在 plugin_skills 之后、timing 之前。
  */
 const requiredSceneFields = ['id', 'duration_seconds', 'output', 'transcript', 'text'];
@@ -85,7 +85,7 @@ export interface Scene {
   renderer: string;
   /**
    * 本镜头的整片风格：空表示项目的默认风格，「来源/目录名」表示项目里装的另一种风格，
-   * none 表示不用整片风格、自主定视觉。口播项目由 am scene cues 从分镜计划抄进来。
+   * none 表示不用整片风格、自主定视觉。口播项目由 onset scene cues 从分镜计划抄进来。
    */
   film_style: string;
   /**
@@ -96,7 +96,7 @@ export interface Scene {
   // 镜头扩展块由 scene/blocks/ 下各自的模块用 declare module 并进这个接口，
   // 值为 null 表示 scene.json 里没有这个块。
   /**
-   * 口播镜头在全片时间轴上的帧区间，由 am scene cues 写入。
+   * 口播镜头在全片时间轴上的帧区间，由 onset scene cues 写入。
    * 老镜头没有这个字段，timing 为 null，提示词与校验都与引入之前一致。
    */
   timing: Timing | null;
@@ -450,7 +450,7 @@ function splitN(s: string, sep: string, n: number): string[] {
 /**
  * 解析 frame.md 的 frontmatter。
  *
- * 这里刻意不依赖 preset：镜头目录可以脱离项目独立运行（am scene run <目录>），
+ * 这里刻意不依赖 preset：镜头目录可以脱离项目独立运行（onset scene run <目录>），
  * 能拿到的只有文件里写的数字。
  */
 function readFrameTokens(directory: string, file: string): FrameTokens {
@@ -484,12 +484,12 @@ export interface FrameSource {
 }
 
 /** 项目根的标志：项目配置文件。 */
-const projectMarker = 'article-to-motion.conf';
+const projectMarker = 'onset.conf';
 /** 新建项目时按画幅下发到项目根的画幅文件。 */
 export const FrameFile = 'frame.md';
 
 /**
- * 镜头的画幅从哪份 frame.md 读：先看镜头目录，再逐级向上到项目根（有 article-to-motion.conf 的那一层）。
+ * 镜头的画幅从哪份 frame.md 读：先看镜头目录，再逐级向上到项目根（有 onset.conf 的那一层）。
  * 找不到项目根时只看镜头目录本身，不去翻项目外的 frame.md。都没有时为 null。
  */
 export function frameSource(s: Pick<Scene, 'directory'>): FrameSource | null {
@@ -514,7 +514,7 @@ export function frameSource(s: Pick<Scene, 'directory'>): FrameSource | null {
 
 /**
  * 镜头的画幅，见 frameSource。找不到 frame.md 时报错，不静默按某个默认画幅渲染：
- * 那样提示词、am-scene.js 与产物校验会一起按错的画幅走，成片画幅错了也照样「通过」。
+ * 那样提示词、onset-scene.js 与产物校验会一起按错的画幅走，成片画幅错了也照样「通过」。
  */
 export function sceneCanvas(s: Pick<Scene, 'directory'>): Canvas {
   const source = frameSource(s);
@@ -638,7 +638,7 @@ export const determinismSection =
   '- 渲染实际加载的 HTML、JS、CSS 里不得出现：Date.now()、performance.now()、无参 new Date()、Math.random()、requestAnimationFrame、setInterval、repeat: -1，以及渲染时的网络请求（远程 fetch、XMLHttpRequest、WebSocket）。随机效果用固定种子的 PRNG。随镜头拷贝的第三方库放进 vendor/ 目录或保留 .min.js 文件名，它们按库跳过、不做判定。\n' +
   '- @font-face 的 src 必须指向本镜头目录里实际存在的字体文件，font-display 只能是 block（或不写）；指向不存在的文件会静默 404、字体回退，swap / fallback / optional 会让并行抽帧的部分帧抓到回退字体。\n' +
   '- 远程资源只允许 cdn.jsdelivr.net、unpkg.com、esm.sh、cdnjs.cloudflare.com 上带完整版本号（x.y.z）的库；在线字体、远程图片与未固定版本的库都不允许，所需文件放进镜头目录。\n' +
-  '- 仅在渲染路径确实不经过的交互代码（如 viewer 预览播放）上，可在同一行注释写 `am-allow-nondeterministic: 理由` 豁免，豁免会写进报告。\n';
+  '- 仅在渲染路径确实不经过的交互代码（如 viewer 预览播放）上，可在同一行注释写 `onset-allow-nondeterministic: 理由` 豁免，豁免会写进报告。\n';
 
 /**
  * selfReviewSection 要求渲染器在正式渲染前看自己的画面并至少返工一轮。

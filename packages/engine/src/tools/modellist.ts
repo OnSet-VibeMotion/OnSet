@@ -1,7 +1,7 @@
-import { amCommand } from '../envutil';
+import { onsetCommand } from '../envutil';
 /**
  * 各家工具能选哪些模型：客户端的模型下拉框用。列表来自工具自己（登录账号、配置的服务商决定能用什么），
- * am 不维护一份会过期的模型表；claude 没有列模型的命令，给它帮助里写的别名。
+ * onset 不维护一份会过期的模型表；claude 没有列模型的命令，给它帮助里写的别名。
  *
  * 2026-11 实测：
  * - codex：`codex debug models` 打印 JSON 目录，visibility 为 list 的是选择器里列出的。
@@ -9,7 +9,7 @@ import { amCommand } from '../envutil';
  * - codebuddy：没有列模型的命令，`--help` 里 --model 的说明写着「Currently supported: (a, b, …)」。
  * - opencode：`opencode models` 每行一个「服务商/模型」。
  * - claude：`--model` 的说明只给别名（fable、opus、sonnet）或完整模型名。
- * - director（导演）：`am studio agent --list-models` 打印填了 API key 的服务商下 pi 自带目录里的模型，
+ * - director（导演）：`onset studio agent --list-models` 打印填了 API key 的服务商下 pi 自带目录里的模型，
  *   每行一个「服务商/模型」，格式与 opencode 相同。
  */
 
@@ -34,18 +34,18 @@ export function modelListCommand(tool: string): string[] | null {
     case 'claude':
       return null;
     case 'director': {
-      // am 不能按名字找（编排工具的 PATH 前面是只会报错的 am），给绝对路径。
-      const am = amCommand();
-      return [am.command, ...am.args, 'studio', 'agent', '--list-models'];
+      // onset 不能按名字找（编排工具的 PATH 前面是只会报错的 onset），给绝对路径。
+      const onset = onsetCommand();
+      return [onset.command, ...onset.args, 'studio', 'agent', '--list-models'];
     }
     default:
       throw new Error(`未知工具：${tool}`);
   }
 }
 
-/** 列模型的命令要额外加的环境变量（Windows 上用 Electron 跑 am.cjs 时的 ELECTRON_RUN_AS_NODE，见 envutil.amCommand）。 */
+/** 列模型的命令要额外加的环境变量（Windows 上用 Electron 跑 onset.cjs 时的 ELECTRON_RUN_AS_NODE，见 envutil.onsetCommand）。 */
 export function modelListEnv(tool: string): Record<string, string> {
-  return tool === 'director' ? amCommand().env : {};
+  return tool === 'director' ? onsetCommand().env : {};
 }
 
 /** claude 的别名：总指向这一档最新的模型。 */

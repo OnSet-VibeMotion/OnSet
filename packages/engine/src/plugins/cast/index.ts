@@ -29,7 +29,7 @@ export { CastRequiredHeading, CharacterRigSkillName, castDriverFile, characterRi
 export { beatsRecomputeHint, castProblems, setDialogueRelPath } from './validate';
 export { copyTree } from './ops';
 
-/** 叙事模式 id（am init --narration cast）。 */
+/** 叙事模式 id（onset init --narration cast）。 */
 export const NarrationCast = 'cast';
 
 export const castPlugin: BuiltinPlugin = {

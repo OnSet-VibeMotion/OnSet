@@ -5,15 +5,15 @@
  * - bash 只放行白名单前缀（orchestratorAccess 加「以后都允许」的前缀），带 shell 控制符的整条不算；
  *   参数里指向凭据（.env、导演的数据目录）的直接拒绝，可能间接读到的改成问用户（secrets.ts）；
  * - 文件工具只在项目里（与记忆库、音色库这类可写目录）直接放行，.env 与导演的数据目录一律不读不写；
- * - am 自己的工具一律放行（它们本来就是给编排工具用的）；
- * - 其余的在客户端里经收件目录问用户（与审批 MCP、双向协议同一条路），不在客户端里（am run）直接拒绝。
+ * - onset 自己的工具一律放行（它们本来就是给编排工具用的）；
+ * - 其余的在客户端里经收件目录问用户（与审批 MCP、双向协议同一条路），不在客户端里（onset run）直接拒绝。
  *
  * --unsafe 时什么都不拦，与其他几家的 --unsafe 相同。
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { commandAllowed } from '@am/engine/agentrun';
-import * as studioview from '@am/engine/studioview';
+import { commandAllowed } from '@onset/engine/agentrun';
+import * as studioview from '@onset/engine/studioview';
 import { AgentDirReason, checkCommand, EnvFileReason, isEnvFile } from './secrets';
 import type { Gate } from './types';
 
@@ -25,9 +25,9 @@ export interface GateOptions {
   writableDirs: readonly string[];
   /** 导演的数据目录（API key、会话）：bash 与文件工具都碰不得。空表示没有。 */
   agentDir?: string;
-  /** am 的工具名：一律放行。 */
-  amTools: ReadonlySet<string>;
-  /** 这一轮的收件目录（AM_STUDIO_INBOX）；空表示不在客户端里，白名单外的一律拒绝。 */
+  /** onset 的工具名：一律放行。 */
+  onsetTools: ReadonlySet<string>;
+  /** 这一轮的收件目录（ONSET_STUDIO_INBOX）；空表示不在客户端里，白名单外的一律拒绝。 */
   inbox: string;
   /** 等用户答复的轮询间隔（毫秒），测试调小。 */
   pollInterval?: number;
@@ -89,7 +89,7 @@ export function newGate(o: GateOptions): Gate {
 
   return async (toolName, input, signal) => {
     if (o.unsafe) return null;
-    if (o.amTools.has(toolName)) return null;
+    if (o.onsetTools.has(toolName)) return null;
     if (toolName === 'bash') {
       const command = typeof input.command === 'string' ? input.command : '';
       // 先看碰不碰凭据：指向凭据的不管在不在白名单里都直接拒绝（不弹审批卡片，免得用户随手点了允许）。

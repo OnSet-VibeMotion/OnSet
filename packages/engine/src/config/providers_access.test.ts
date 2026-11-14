@@ -17,8 +17,8 @@ describe('orchestrator access', () => {
     expect(got).toEqual([...orchestratorBaseCommands, 'edge-tts', 'mlx_audio.stt.generate', 'npx --yes hyperframes@1.0.0']);
     const again = orchestratorAccess(cfg).commands!;
     expect(again.length, '基础清单被上一次调用改写了').toBe(orchestratorBaseCommands.length + 2);
-    // am 不在白名单里：编排工具只经 am 的工具服务（MCP）调用它。
-    expect(again).not.toContain('am');
+    // onset 不在白名单里：编排工具只经 onset 的工具服务（MCP）调用它。
+    expect(again).not.toContain('onset');
     expect(again[0]).toBe('ffmpeg');
   });
 
@@ -32,9 +32,9 @@ describe('orchestrator access', () => {
   });
 
   it('extends the allowlist with ORCHESTRATOR_ALLOW_COMMANDS', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'am-config-'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-config-'));
     const writeConf = (body: string) =>
-      fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\n' + body);
+      fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\n' + body);
     writeConf('ORCHESTRATOR_ALLOW_COMMANDS=uv run,  pnpm ,magick\n');
     const commands = orchestratorAccess(load(root, {})).commands!;
     for (const want of ['uv run', 'pnpm', 'magick']) expect(commands, `补充的命令 ${want} 没有放行`).toContain(want);

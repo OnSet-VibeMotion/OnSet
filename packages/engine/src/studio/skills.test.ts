@@ -8,7 +8,7 @@ import { Server } from './studio';
 import { setEnv, sleep, studioRequest, tempDir } from './testsupport';
 
 describe('skills', () => {
-  // 新建项目与 am init 同一条路——卡点、多角色对话写出各自的模式文件，并在后台装官方技能；装失败的项目可以补装。
+  // 新建项目与 onset init 同一条路——卡点、多角色对话写出各自的模式文件，并在后台装官方技能；装失败的项目可以补装。
   it('create honours modes and installs skills', async () => {
     const home = tempDir();
     setEnv('HOME', home);

@@ -31,7 +31,7 @@ const packSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 520">
 `;
 
 function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-castbeats-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-castbeats-'));
   onTestFinished(() => fs.rmSync(dir, { recursive: true, force: true }));
   return dir;
 }

@@ -14,7 +14,7 @@ import { S, goTrimSpace } from './gostd';
  *
  * 豁免必须逐行写、写在代码旁边，并且会出现在报告的 allowed 里，可审计。
  */
-export const AllowMarker = 'am-allow-nondeterministic';
+export const AllowMarker = 'onset-allow-nondeterministic';
 
 /**
  * Rule 是一条源码级确定性规则。needsStrings 的规则要看字符串字面量

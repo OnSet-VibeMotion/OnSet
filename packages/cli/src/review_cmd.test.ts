@@ -58,7 +58,7 @@ describe('review', () => {
     expect(fs.existsSync(report)).toBe(true);
     fs.writeFileSync(
       index,
-      '<script>const x = rng(); // am-allow-nondeterministic: demo\nrequestAnimationFrame(f); // am-allow-nondeterministic: 预览\n</script>',
+      '<script>const x = rng(); // onset-allow-nondeterministic: demo\nrequestAnimationFrame(f); // onset-allow-nondeterministic: 预览\n</script>',
     );
     out = new Buffer();
     errOut = new Buffer();

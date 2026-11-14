@@ -18,7 +18,7 @@ describe('cli', () => {
     expect(await run(['init', target, '--canvas', 'vertical-3x4', '--skip-hyperframes'], out), out.text).toBe(0);
     // 不写提示词文件，只记下流程与画幅；提示词开工时组合，prompt show 能看全文。
     expect(fs.existsSync(path.join(target, 'PROMPT.md'))).toBe(false);
-    expect(JSON.parse(fs.readFileSync(path.join(target, 'article-to-motion.flow.json'), 'utf8')).production).toEqual({ id: 'speech', canvas: 'vertical-3x4' });
+    expect(JSON.parse(fs.readFileSync(path.join(target, 'onset.flow.json'), 'utf8')).production).toEqual({ id: 'speech', canvas: 'vertical-3x4' });
     const shown = new Buffer();
     expect(await run(['prompt', 'show', '--project-root', target], shown), shown.text).toBe(0);
     expect(shown.text).toContain('## 第一阶段：盘点输入和制作规格');
@@ -26,23 +26,23 @@ describe('cli', () => {
 
   it('config get uses the project root', async () => {
     const root = tempDir();
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
     process.chdir(root);
     const out = new Buffer();
     const code = await run(['config', 'get', 'RENDERER'], out);
     expect(code === 0 && out.text.trim() === 'claude', `code=${code} output=${out.text}`).toBe(true);
   });
 
-  it('config get TTS_MODEL prints the Breeze model repo until am setup downloads it, and nothing for cloud voices', async () => {
+  it('config get TTS_MODEL prints the Breeze model repo until onset setup downloads it, and nothing for cloud voices', async () => {
     const root = tempDir();
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nTTS_PROVIDER=breeze\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nTTS_PROVIDER=breeze\n');
     process.chdir(root);
-    // 数据目录指到空的临时目录：开发机上 am setup 真下好的模型不能混进来。
+    // 数据目录指到空的临时目录：开发机上 onset setup 真下好的模型不能混进来。
     setenv('XDG_DATA_HOME', tempDir());
     const out = new Buffer();
     expect(await run(['config', 'get', 'TTS_MODEL'], out), out.text).toBe(0);
     expect(out.text.trim()).toBe('mlx-community/Breeze-TTS-2-mlx-8bit');
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nTTS_PROVIDER=minimax\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nTTS_PROVIDER=minimax\n');
     const empty = new Buffer();
     expect(await run(['config', 'get', 'TTS_MODEL'], empty), empty.text).toBe(0);
     expect(empty.text).toBe('\n');
@@ -65,7 +65,7 @@ describe('cli', () => {
     const out = new Buffer();
     expect(await run(['validate', 'style', '--project-root', root], out), out.text).not.toBe(0);
     const project = tempDir();
-    fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
+    fs.writeFileSync(path.join(project, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
     fs.mkdirSync(path.join(project, 'scenes'));
     process.chdir(project);
     const out2 = new Buffer();
@@ -77,7 +77,7 @@ describe('cli', () => {
     fs.writeFileSync(path.join(target, 'frame.md'), 'custom');
     expect(await run(['init', target, '--canvas', 'vertical-3x4', '--skip-hyperframes'])).toBe(1);
     const root = tempDir();
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
     process.chdir(root);
     const out = new Buffer();
     expect(await run(['config', 'get', 'RENDERER'], out), out.text).toBe(0);
@@ -105,7 +105,7 @@ describe('cli', () => {
 
   it('run-all rejects NaN tolerance even when no scenes exist', async () => {
     const root = tempDir();
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
     fs.mkdirSync(path.join(root, 'scenes'));
     process.chdir(root);
     expect(await run(['scene', 'run-all', 'scenes', '--duration-tolerance', 'nan'])).toBe(1);
@@ -154,7 +154,7 @@ describe('cli', () => {
     const target = path.join(root, 'story');
     await runCLI(root, 'init', target, '--canvas', 'vertical-3x4', '--narration', 'cast', '--skip-hyperframes');
     const body = fs.readFileSync(path.join(target, 'cast.yaml'), 'utf8');
-    // packs: [] 是明确裁定过的设计：am init 刚建的项目本来就还没有角色包。
+    // packs: [] 是明确裁定过的设计：onset init 刚建的项目本来就还没有角色包。
     for (const want of ['schema: cast/v1', 'packs: []', 'ground_y: 0.78', 'turn: 240', 'interject: 100']) expect(body).toContain(want);
     // 多角色的作业规程是口播制作提示词的附录，不再是项目里的一份文件。
     expect(fs.existsSync(path.join(target, 'PROMPT-CAST-ADDENDUM.md'))).toBe(false);
@@ -168,7 +168,7 @@ describe('cli', () => {
   // 渲染前一次列全所有非整数帧时长的镜头，且不启动任何渲染器。
   it('run-all rejects fractional frame durations before rendering', async () => {
     const project = tempDir();
-    fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
+    fs.writeFileSync(path.join(project, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
     for (const [id, duration] of Object.entries({ 'scene-001': '14.367', 'scene-002': '4', 'scene-003': '2.01' })) {
       const dir = path.join(project, 'scenes', id);
       fs.mkdirSync(dir, { recursive: true });

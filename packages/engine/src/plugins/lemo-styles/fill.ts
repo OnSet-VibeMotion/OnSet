@@ -16,7 +16,7 @@ import { renderTemplate } from '../../filmstyle/template';
  */
 export function fill(dir: string, entry: Entry, lib: Library): void {
   const source = path.join(lib.dir, 'styles', entry.slug);
-  // am 管理的风格库里的文件内容固定（钉在 commit 上），硬链接进项目即可，不占第二份
+  // onset 管理的风格库里的文件内容固定（钉在 commit 上），硬链接进项目即可，不占第二份
   // 磁盘；用户自己的检出照旧复制，不去改它文件的权限。
   const place = (from: string, to: string) => copyPath(from, to, lib.managed);
   const copies: { from: string; to: string }[] = [
@@ -78,7 +78,7 @@ const skipExtensions = new Set(['.mp4', '.wav', '.mp3', '.npy', '.log']);
  *
  * 不设只读。试过：渲染器用 cp 把引擎拷进镜头目录时副本继承了只读，它要改副本就得
  * chmod，而安全模式不放行 chmod（实测一次渲染在这上面绕了好几轮）。硬链接被就地
- * 改写的风险由 SKILL.md 的「不要改本目录的文件」与项目里只有 am 写这个目录来兜。
+ * 改写的风险由 SKILL.md 的「不要改本目录的文件」与项目里只有 onset 写这个目录来兜。
  *
  * 符号链接一律拒绝：指向风格库的链接搬进项目后，项目换一台机器就成了静默失效的空文件。
  * 硬链接没有这个问题——它就是文件本身，项目整体拷走时拷的是真实内容。

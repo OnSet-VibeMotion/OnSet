@@ -6,7 +6,7 @@
  * 拿其中一段当参考音频克隆新文案是 0.93 / 0.89。长期做一个账号要的是同一个声音，所以
  * 确认过的声音存成「参考音频 + 逐字一致的文字稿」，以后每部片子都从它克隆。
  *
- * 目录结构（<数据目录>/am/voices，AM_VOICES_DIR 覆盖）：
+ * 目录结构（<数据目录>/onset/voices，ONSET_VOICES_DIR 覆盖）：
  *
  *   library.json          {"default": "<名字>"}
  *   <名字>/reference.wav  24kHz 单声道 16 位，由 mediaprobe 从原文件转出

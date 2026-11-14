@@ -2,13 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Buffer, run, tempDir } from './testutil';
-import * as assets from '@am/engine/assets';
-import * as flow from '@am/engine/flow';
-import { sortedKeys } from '@am/engine/gojson';
-import * as scene from '@am/engine/scene';
-import * as schedule from '@am/engine/schedule';
-import * as song from '@am/engine/song';
-import { applySongCues, SongExplainerSkillName, songOutputsCurrent, songScaffold, verifySongInputs } from '@am/engine/plugins/song';
+import * as assets from '@onset/engine/assets';
+import * as flow from '@onset/engine/flow';
+import { sortedKeys } from '@onset/engine/gojson';
+import * as scene from '@onset/engine/scene';
+import * as schedule from '@onset/engine/schedule';
+import * as song from '@onset/engine/song';
+import { applySongCues, SongExplainerSkillName, songOutputsCurrent, songScaffold, verifySongInputs } from '@onset/engine/plugins/song';
 
 it('song init modes', async () => {
   for (const delivery of ['speech', 'song']) {

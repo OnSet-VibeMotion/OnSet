@@ -1,5 +1,5 @@
 /**
- * 这台电脑上装了哪些第三方插件：用户级的 installed.json（在 stationsDir 里，AM_STATIONS_DIR 覆盖）。
+ * 这台电脑上装了哪些第三方插件：用户级的 installed.json（在 stationsDir 里，ONSET_STATIONS_DIR 覆盖）。
  * 插件不按项目走：装一次，对所有项目生效，和内置插件一样常在。项目里只记「这个项目选了什么」（流程记录、
  * 配音与对齐的取值、镜头的 plugin_skills、整片风格）。
  */
@@ -50,7 +50,7 @@ export interface LoadedStation {
   entry: InstalledEntry;
   dir: string;
   manifest: Manifest;
-  /** 随 ArticleToMotion 下发的内置插件（assets/plugins/），不是用户装的。 */
+  /** 随片场下发的内置插件（assets/plugins/），不是用户装的。 */
   builtin?: boolean;
 }
 

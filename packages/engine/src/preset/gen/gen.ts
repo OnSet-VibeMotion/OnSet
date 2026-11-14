@@ -38,7 +38,7 @@ export function canvasAndSafeArea(p: preset.Preset): string {
 
 /**
  * 替换随画幅变化的固定占位符。版本号从 hyperframes 取，不在模板里写字面量：改了常量忘了模板，
- * 下发给渲染工具的锁定指令会停在旧版本上，而 am init 装的已经是新版。
+ * 下发给渲染工具的锁定指令会停在旧版本上，而 onset init 装的已经是新版。
  */
 function substitute(p: preset.Preset, s: string): string {
   return s.split('{{CANVAS}}').join(preset.canvasLabel(p.canvas)).split('{{HYPERFRAMES_VERSION}}').join(PinnedVersion);

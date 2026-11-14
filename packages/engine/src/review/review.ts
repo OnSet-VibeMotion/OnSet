@@ -1,7 +1,7 @@
 // Package review 对成片做整片复查：机器能判的音画时长、总帧数与镜头交界帧
 // 直接给结论，其余交给联系表让人或编排工具逐页看。
 //
-// 镜头级的检查（scene.VerifyOutput、am scene frames）只看单镜头产物；拼接、
+// 镜头级的检查（scene.VerifyOutput、onset scene frames）只看单镜头产物；拼接、
 // 混音之后才出现的问题它们一个都看不到：音轨比画面短半秒、某镜在拼接时掉了
 // 一帧、交界处闪一帧黑。这些要等成片发布后才被观众发现。
 import path from 'node:path';

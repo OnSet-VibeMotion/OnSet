@@ -3,7 +3,7 @@ import { test, expect, openProject } from './fixtures.mjs';
 // 对话是主栏，画面面板按需打开：默认收起，步骤、收起栏、菜单都能打开，× 与 Esc 收起，拖动的宽度记住。
 
 async function sendMenu(electronApp, action) {
-  await electronApp.evaluate(({ BrowserWindow }, action) => BrowserWindow.getAllWindows().find((w) => w.isResizable()).webContents.send('am:menu', action), action);
+  await electronApp.evaluate(({ BrowserWindow }, action) => BrowserWindow.getAllWindows().find((w) => w.isResizable()).webContents.send('onset:menu', action), action);
 }
 
 test('the chat is the main column and the picture panel opens on demand', async ({ page, project, electronApp }) => {

@@ -10,7 +10,7 @@ import type { Store } from './store';
 
 /**
  * 快照里的一条生效记忆，存完整文件内容：回退时原样写回，
- * 召回也只读快照，不读记忆文件——所以手改记忆文件要经 am memory status
+ * 召回也只读快照，不读记忆文件——所以手改记忆文件要经 onset memory status
  * 记成新快照才会生效，同样的镜头输入加同一个快照永远得到同样的召回。
  */
 export interface SnapshotEntry {

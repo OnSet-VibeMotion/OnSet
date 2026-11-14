@@ -3,12 +3,12 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import * as determinism from '@am/engine/determinism';
-import { formatFixed, goRound } from '@am/engine/gofmt';
-import * as mediaprobe from '@am/engine/mediaprobe';
-import * as review from '@am/engine/review';
-import * as scene from '@am/engine/scene';
-import * as schedule from '@am/engine/schedule';
+import * as determinism from '@onset/engine/determinism';
+import { formatFixed, goRound } from '@onset/engine/gofmt';
+import * as mediaprobe from '@onset/engine/mediaprobe';
+import * as review from '@onset/engine/review';
+import * as scene from '@onset/engine/scene';
+import * as schedule from '@onset/engine/schedule';
 import { currentEnvironment } from './cli';
 import { type Finding, recordCheckFindings } from './memory_cmd';
 import { bool, num, str } from './ops/common';

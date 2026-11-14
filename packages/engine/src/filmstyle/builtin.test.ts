@@ -22,7 +22,7 @@ const unregister = registerBuiltin({
     const source = new filmstyle.DirectorySource({ id: 'test-ink', name: '测试风格库', dir: library, version: 'test@1', origin: '测试插件' });
     ctx.filmStyleSource(source);
     ctx.prereq({ ...prereqs.filmStyleSourceItem(source), later: { title: '测试风格库', desc: '测试' } });
-    ctx.childEnv({ key: 'AM_TEST_INK_LIBRARY', value: () => '' });
+    ctx.childEnv({ key: 'ONSET_TEST_INK_LIBRARY', value: () => '' });
   },
 });
 afterAll(unregister);
@@ -35,9 +35,9 @@ describe('builtin film-style source', () => {
     expect(item!.ready({})).toEqual([true, library]);
 
     const root = tempDir();
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), '');
-    const env = { HOME: tempDir(), PATH: '/usr/bin:/bin', AM_TEST_INK_LIBRARY: '/elsewhere' };
-    expect(config.childEnvironment(config.load(root, env), env).AM_TEST_INK_LIBRARY).toBe('/elsewhere');
+    fs.writeFileSync(path.join(root, 'onset.conf'), '');
+    const env = { HOME: tempDir(), PATH: '/usr/bin:/bin', ONSET_TEST_INK_LIBRARY: '/elsewhere' };
+    expect(config.childEnvironment(config.load(root, env), env).ONSET_TEST_INK_LIBRARY).toBe('/elsewhere');
 
     const body = (await filmStylesAPI(new Request('http://studio.test/api/film-styles')).json()) as { sources: { id: string; ready: boolean }[]; styles: { source: string; slug: string }[] };
     expect(body.sources.find((s) => s.id === 'test-ink')).toMatchObject({ ready: true });

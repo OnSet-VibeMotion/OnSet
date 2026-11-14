@@ -23,7 +23,7 @@ type Out = { write(text: string): void };
 type ParamValues = Record<string, unknown>;
 const currentEnvironment = (): Record<string, string> => envMap();
 
-/** 命令行里 am beat 这一层的说明。 */
+/** 命令行里 onset beat 这一层的说明。 */
 export const beatGroup = {
   path: ['beat'],
   summary: '无配音卡点：导入音乐、确认节拍网格、按小节切镜头',
@@ -359,7 +359,7 @@ export function beatOps(ctx: PluginContext): void {
    * commitWrites 分两轮落盘：先把每份新内容写成同目录的临时文件，全部成功后
    * 再逐个改名替换。磁盘满、权限不足这类错误都发生在第一轮，此时一个目标文件
    * 都还没动；第二轮只剩同文件系统内的 rename。rename 本身仍可能中途失败，
-   * 那时 am validate beat 会按网格摘要把没换上的镜头报出来。
+   * 那时 onset validate beat 会按网格摘要把没换上的镜头报出来。
    *
    * 内容不变的文件不重写：run-all 靠 scene.json 的修改时间判断产物是否过期，
    * 无变化的重跑不能把所有镜头都标成需要重渲染。

@@ -1,6 +1,6 @@
 ## {{STAGE:voice}}：TTS 和断句校对
 
-TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定，用 `config_get({"key": "TTS_PROVIDER"})` 读取解析结果。可选：
+TTS 工具由 `onset.conf`（或环境变量 `TTS_PROVIDER`）决定，用 `config_get({"key": "TTS_PROVIDER"})` 读取解析结果。可选：
 
 | 取值 | 服务 | 自带时间戳 | 适合 |
 |---|---|---|---|
@@ -45,7 +45,7 @@ TTS 工具由 `article-to-motion.conf`（或环境变量 `TTS_PROVIDER`）决定
 
 **ElevenLabs（`TTS_PROVIDER=elevenlabs`）**
 
-- 先用 `elevenlabs auth login` 登录，凭据存进系统钥匙串，不进入项目目录。不得在项目 `.env` 写 `ELEVENLABS_API_KEY`：这个 CLI 会自动加载当前目录的 `.env`，`am` 也会拒绝在 `.env` 里出现密钥的项目。
+- 先用 `elevenlabs auth login` 登录，凭据存进系统钥匙串，不进入项目目录。不得在项目 `.env` 写 `ELEVENLABS_API_KEY`：这个 CLI 会自动加载当前目录的 `.env`，`onset` 也会拒绝在 `.env` 里出现密钥的项目。
 - 密钥不得写入脚本、Markdown、JSON、命令行参数或日志。
 
 **腾讯云（`TTS_PROVIDER=tencent`）**

@@ -78,7 +78,7 @@ jobs:
              确认自动内联字体清单没变，并同步 \`packages/engine/src/validate/validate.ts\` 的 \`autoEmbeddedFonts\` 注释。
           3. 改 \`packages/engine/src/hyperframes/constants.ts\` 的 \`PinnedVersion\`（唯一来源），
              同时更新 \`PinnedSkillsCommit\`（新 tag 指向的 commit）与 \`PinnedSkillsCount\`，
-             再跑 \`npm run generate -w @am/engine\` 更新下发提示词里的版本号。
+             再跑 \`npm run generate -w @onset/engine\` 更新下发提示词里的版本号。
           EOF
           echo "::error::HyperFrames 已发布 $latest，仓库仍固定在 $pinned"
           exit 1

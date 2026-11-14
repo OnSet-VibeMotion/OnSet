@@ -8,7 +8,7 @@ import '../setup.css';
  *
  * 给用户看的是「摄制组」——画面、剪辑、配音、字幕四个组各自就位——而不是工具名：几项技术上的前置资源
  * 合成一个组（HyperFrames 技能 + CLI + 浏览器 = 画面组），工具名、版本、安装位置只在悬停提示与「高级」里。
- * 背后跑的是与 am setup 同一份清单（/api/setup/run），断了重来会接着下。首页与顶栏的弹窗共用这一个组件。
+ * 背后跑的是与 onset setup 同一份清单（/api/setup/run），断了重来会接着下。首页与顶栏的弹窗共用这一个组件。
  */
 
 export interface SetupHandle {
@@ -24,7 +24,7 @@ export interface SetupHandle {
   setProxy: (value: string) => void;
 }
 
-const proxyKey = 'am.setup.proxy';
+const proxyKey = 'onset.setup.proxy';
 
 function loadProxy(): string {
   try {

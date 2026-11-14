@@ -10,7 +10,7 @@ import { create, DeliverySong, DeliverySpeech, narrations, NarrationSolo, skills
 // 多角色对话插件登记的叙事模式。
 const NarrationCast = 'cast';
 
-const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-projectinit-'));
+const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'onset-projectinit-'));
 
 describe('projectinit', () => {
   it('rejects conflicting modes', () => {
@@ -32,7 +32,7 @@ describe('projectinit', () => {
       beat: [DeliveryBeat, NarrationSolo, ['beat.yaml']],
       song: [DeliverySong, NarrationSolo, ['song.yaml']],
       cast: [DeliverySpeech, NarrationCast, ['cast.yaml', 'cast']],
-      speech: [DeliverySpeech, NarrationSolo, ['article-to-motion.flow.json', 'frame.md']],
+      speech: [DeliverySpeech, NarrationSolo, ['onset.flow.json', 'frame.md']],
     };
     for (const [name, [delivery, narration, want]] of Object.entries(cases)) {
       const dir = path.join(temp(), name);

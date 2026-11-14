@@ -1,16 +1,16 @@
 /**
- * 第三方站的清单 am-station.json：类型、字段分级与兼容性。设计见 docs/superpowers/specs/2026-11-11-流程插件-design.md，
+ * 第三方站的清单 onset-station.json：类型、字段分级与兼容性。设计见 docs/superpowers/specs/2026-11-11-流程插件-design.md，
  * 写给插件作者的说明见 docs/plugin-authoring.md（字段与这里的 ManifestFields 一一对应，有单测核对）。
  *
- * 一个第三方站是一个目录，根上一份 am-station.json（Manifest）。它只能声明：提示词文本、路线上的站点
- * （声明式判断）、会写的文件、子进程执行的操作。代码不进 am 的进程，操作在子进程里跑（run.ts）。
+ * 一个第三方站是一个目录，根上一份 onset-station.json（Manifest）。它只能声明：提示词文本、路线上的站点
+ * （声明式判断）、会写的文件、子进程执行的操作。代码不进 onset 的进程，操作在子进程里跑（run.ts）。
  */
 import { compatVersion } from '../version';
 import type { DeclaredGuide, DeclaredState, PathRule } from './types';
 
-export const ManifestFile = 'am-station.json';
+export const ManifestFile = 'onset-station.json';
 
-/** 这一版 am 读得懂的清单格式版本。清单不写 manifest_version 时按 1 读。 */
+/** 这一版 onset 读得懂的清单格式版本。清单不写 manifest_version 时按 1 读。 */
 export const ManifestVersion = 1;
 
 export type ParamType = 'string' | 'boolean' | 'integer' | 'number' | 'strings';
@@ -51,7 +51,7 @@ export interface ManifestNode {
 
 /**
  * 插件自己的页面：站目录里的一个 HTML（entry），在客户端的画面面板里以沙箱 iframe 打开（studio/stations.ts）。
- * 页面碰不到 am 的接口，也连不了网，只能经宿主转交：读 reads 里声明的项目文件（以及站自己声明会写的文件）、
+ * 页面碰不到 onset 的接口，也连不了网，只能经宿主转交：读 reads 里声明的项目文件（以及站自己声明会写的文件）、
  * 请用户确认后执行本站的操作、把一段话填进对话框。
  */
 export interface ManifestPage {
@@ -78,7 +78,7 @@ export interface ManifestPermissions {
   project: boolean;
   /** 页面能连的地址（https://域名[:端口]）。不写就完全不能连网。 */
   network: string[];
-  /** 页面能请用户确认后调用的 am 操作（只限编排工具本来就能用的那些，见 pageCallableOp）。 */
+  /** 页面能请用户确认后调用的 onset 操作（只限编排工具本来就能用的那些，见 pageCallableOp）。 */
   uses: string[];
 }
 
@@ -103,7 +103,7 @@ export interface ManifestFlow {
   stations: string[];
   /** 顶栏第一步：script、beat，或本站页面的 id。 */
   first_page: string;
-  /** 这套流程的制作提示词（替换内置流程的各阶段，am 的公共约定照旧在前）。 */
+  /** 这套流程的制作提示词（替换内置流程的各阶段，onset 的公共约定照旧在前）。 */
   prompt: string;
 }
 
@@ -118,8 +118,8 @@ export interface ManifestCommand {
 export interface Manifest {
   /** 清单格式版本（缺省 1）。 */
   manifest_version: number;
-  /** 对 am 的要求：am 是最低版本（x.y.z），空是不限。 */
-  requires: { am: string };
+  /** 对 onset 的要求：onset 是最低版本（x.y.z），空是不限。 */
+  requires: { onset: string };
   id: string;
   version: string;
   name: string;
@@ -223,10 +223,10 @@ export function experimentalFields(m: Manifest): string[] {
 // 兼容性
 
 /**
- * 兼容检查用的 am 版本（version.compatVersion）：客户端里是客户端的版本号（主进程用 app.getVersion() 设的宿主版本），
- * 命令行里是 `am --version` 的版本号（与渲染指纹同一个来源）。
+ * 兼容检查用的 onset 版本（version.compatVersion）：客户端里是客户端的版本号（主进程用 app.getVersion() 设的宿主版本），
+ * 命令行里是 `onset --version` 的版本号（与渲染指纹同一个来源）。
  */
-export function amVersion(): string {
+export function onsetVersion(): string {
   return compatVersion();
 }
 
@@ -268,13 +268,13 @@ export function compareSemver(a: string, b: string): number {
 }
 
 /**
- * 这一版 am 能不能用这份清单。am 的版本号不是 x.y.z（本地构建是 dev）时不查最低版本：开发版就是最新的代码。
+ * 这一版 onset 能不能用这份清单。onset 的版本号不是 x.y.z（本地构建是 dev）时不查最低版本：开发版就是最新的代码。
  */
-export function checkCompatible(m: Pick<Manifest, 'id' | 'manifest_version' | 'requires'>, current = amVersion()): void {
+export function checkCompatible(m: Pick<Manifest, 'id' | 'manifest_version' | 'requires'>, current = onsetVersion()): void {
   if (m.manifest_version > ManifestVersion) {
-    throw new Error(`这个插件（${m.id}）的清单格式是第 ${m.manifest_version} 版，要更新的 ArticleToMotion 才能用（这一版只认到第 ${ManifestVersion} 版）`);
+    throw new Error(`这个插件（${m.id}）的清单格式是第 ${m.manifest_version} 版，要更新的片场才能用（这一版只认到第 ${ManifestVersion} 版）`);
   }
-  if (m.requires.am !== '' && validSemver(current) && compareSemver(current, m.requires.am) < 0) {
-    throw new Error(`这个插件（${m.id}）要 ArticleToMotion ${m.requires.am} 或更新的版本，现在是 ${current}，请先更新 ArticleToMotion`);
+  if (m.requires.onset !== '' && validSemver(current) && compareSemver(current, m.requires.onset) < 0) {
+    throw new Error(`这个插件（${m.id}）要片场 ${m.requires.onset} 或更新的版本，现在是 ${current}，请先更新片场`);
   }
 }

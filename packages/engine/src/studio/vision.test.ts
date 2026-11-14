@@ -10,9 +10,9 @@ import { newSessionFixture, setEnv, studioRequest } from './testsupport';
 import { noVisionNote, orchestratorCannotSee } from './vision';
 
 function agentDir(...providers: string[]): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-vision-test-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-vision-test-'));
   for (const p of providers) director.setProviderKey(dir, p, 'sk-test');
-  setEnv('AM_AGENT_DIR', dir);
+  setEnv('ONSET_AGENT_DIR', dir);
   return dir;
 }
 
@@ -52,9 +52,9 @@ describe('director vision', () => {
   });
 
   it('writes the turn note like the production prompt', () => {
-    // 与 project/boundary.test.ts、flowprompts.test.ts 同样的约束：不点名执行者身份、不教 am 命令，工具写成调用。
+    // 与 project/boundary.test.ts、flowprompts.test.ts 同样的约束：不点名执行者身份、不教 onset 命令，工具写成调用。
     expect(noVisionNote.toLowerCase()).not.toContain('agent');
-    expect(noVisionNote).not.toMatch(/\bAI\b|Codex|主控|导演|模型|\.\/am|`am /);
+    expect(noVisionNote).not.toMatch(/\bAI\b|Codex|主控|导演|模型|\.\/onset|`onset /);
     expect(noVisionNote).toContain('我看不了图，请你看这几张');
     const calls = [...noVisionNote.matchAll(/studio_show\((\{.*?\})\)/g)].map((m) => JSON.parse(m[1]!) as { page: string });
     expect(calls.length).toBeGreaterThanOrEqual(2);

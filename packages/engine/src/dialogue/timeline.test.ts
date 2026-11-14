@@ -7,7 +7,7 @@ import { rebuild, writeResultJSON, writeSRT } from './timeline';
 
 const temps: string[] = [];
 function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-dialogue-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-dialogue-'));
   temps.push(dir);
   return dir;
 }

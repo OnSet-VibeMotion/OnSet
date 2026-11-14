@@ -11,7 +11,7 @@ import { SourceAdjusted, SourceForced, SourceInterpolated, loadAdjust, loadExist
 import { VocalEvents, parseScript, type Script } from './script';
 import { tokenize } from './token';
 
-const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-align-'));
+const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'onset-align-'));
 
 /**
  * heard 把一段文本按匹配单元切开，每个单元占 step 秒，从 start 开始首尾相接，

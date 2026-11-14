@@ -1,22 +1,22 @@
 //
 // 整片风格的通用部分：风格来源的接口与登记、风格目录的查找，以及把一种风格装进项目的契约。
 //
-// am 自身不锁定视觉风格（见制作提示词「视觉方向」）。整片风格是可选项：从某个风格
-// 来源里挑一种，装成项目里的一个技能（.agents/skills/am-film-style/），镜头提示词据此
+// onset 自身不锁定视觉风格（见制作提示词「视觉方向」）。整片风格是可选项：从某个风格
+// 来源里挑一种，装成项目里的一个技能（.agents/skills/onset-film-style/），镜头提示词据此
 // 把「视觉自由度」换成「遵守整片风格」。
 //
 // 契约只有三个文件，与来源无关：
 //
 //	STYLE.md         风格的不变量（渲染器必须遵守）
 //	SKILL.md         这套风格在 HyperFrames 镜头里怎么用、技法参考在哪
-//	am-film-style.json  来源、风格、版本与内容摘要（ManifestFile）
+//	onset-film-style.json  来源、风格、版本与内容摘要（ManifestFile）
 //
 // 其余文件（demo 源码、引擎、模型）由各来源自己决定。镜头渲染与制作提示词只依赖
 // 这份契约，不点名任何来源。具体来源由内置插件在 apply 里 ctx.filmStyleSource 登记
 // （例如 plugins/lemo-styles），已装的第三方插件清单的 film_styles 由 flow 经 usePluginSources 交进来。
 // 新增来源不需要改这里。
 //
-// 风格来源的数据是前置资源：只由 am setup 经 Source.prepare 下载，其余路径只检查。
+// 风格来源的数据是前置资源：只由 onset setup 经 Source.prepare 下载，其余路径只检查。
 import os from 'node:os';
 import path from 'node:path';
 import { dataDir } from '../envutil';
@@ -60,7 +60,7 @@ export interface PrepareProgress {
   stage: string;
 }
 
-/** 一次前置资源准备（am setup）。 */
+/** 一次前置资源准备（onset setup）。 */
 export interface PrepareOptions {
   /** 给下载工具用的环境（PATH、HOME、代理、npm 设置）。 */
   env: Record<string, string>;
@@ -78,11 +78,11 @@ export interface Source {
   gallery(): string;
   /** 来源里的全部风格（source 字段已填），不联网。 */
   catalog(): Style[];
-  /** 来源数据在本机的位置，给 am setup 显示。 */
+  /** 来源数据在本机的位置，给 onset setup 显示。 */
   location(env: Record<string, string>): string;
   /** 判断来源数据是否已就绪，没就绪抛 prereq.MissingError。不联网。 */
   check(env: Record<string, string>): void;
-  /** 下载来源数据（只由 am setup 调用），已就绪时直接返回。 */
+  /** 下载来源数据（只由 onset setup 调用），已就绪时直接返回。 */
   prepare(opts: PrepareOptions, signal?: AbortSignal): Promise<void>;
   /** 风格海报的本机路径；没有海报时抛错。 */
   poster(env: Record<string, string>, slug: string): string;
@@ -207,7 +207,7 @@ export function lookup(name: string): Style {
 }
 
 /** 覆盖全部风格来源数据的根目录。 */
-export const RootEnv = 'AM_FILM_STYLES_DIR';
+export const RootEnv = 'ONSET_FILM_STYLES_DIR';
 
 /**
  * 风格来源数据的根目录：RootEnv，否则 <数据目录>/film-styles（envutil.dataDir；环境里什么都没有时按家目录推）。

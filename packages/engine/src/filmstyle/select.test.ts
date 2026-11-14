@@ -37,7 +37,7 @@ function list(dir: string): string[] {
 
 /** 假风格库：一种 three.js 风格（用到一个模型与一张贴图）、一种纯 2D 风格，库根下共用的素材与 three.js。 */
 function library(): string {
-  const lib = temp('am-dirsource-lib-');
+  const lib = temp('onset-dirsource-lib-');
   write(lib, {
     'orbit/STYLE.md': '# 轨道\n',
     'orbit/index.html': `<script type="module">
@@ -74,7 +74,7 @@ describe('directory style library with only_referenced', () => {
     const lib = library();
     const src = source(lib, true);
     const orbit = src.catalog().find((s) => s.slug === 'orbit')!;
-    const dir = temp('am-dirsource-out-');
+    const dir = temp('onset-dirsource-out-');
     src.fill(dir, orbit);
     expect(list(dir)).toEqual([
       'SKILL.md',
@@ -95,7 +95,7 @@ describe('directory style library with only_referenced', () => {
   it('leaves three.js out of a style that does not import it', () => {
     const lib = library();
     const src = source(lib, true);
-    const dir = temp('am-dirsource-out-');
+    const dir = temp('onset-dirsource-out-');
     src.fill(dir, src.catalog().find((s) => s.slug === 'flat')!);
     expect(list(dir)).toEqual(['SKILL.md', 'STYLE.md', 'assets/SOURCES.md', 'main.js']);
   });
@@ -103,7 +103,7 @@ describe('directory style library with only_referenced', () => {
   it('copies the style directory as is without it', () => {
     const lib = library();
     const src = source(lib, false);
-    const dir = temp('am-dirsource-out-');
+    const dir = temp('onset-dirsource-out-');
     src.fill(dir, src.catalog().find((s) => s.slug === 'orbit')!);
     expect(list(dir)).toEqual(['SKILL.md', 'STYLE.md', 'assets/local-note.txt', 'index.html']);
   });

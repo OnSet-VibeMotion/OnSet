@@ -6,7 +6,7 @@ import { rejectSymlinkPath } from './init';
 
 /**
  * RulesTemplate 是项目规则模板在项目内的相对路径。
- * 模板随 am init 下发，用户可以按项目改写；生成的指令文件永远由它派生。
+ * 模板随 onset init 下发，用户可以按项目改写；生成的指令文件永远由它派生。
  */
 export const RulesTemplate = 'templates/project-rules.md';
 

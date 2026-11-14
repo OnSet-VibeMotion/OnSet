@@ -14,9 +14,9 @@ async function clickMenu(electronApp, top, label) {
   }, { top, label });
 }
 
-/** 直接向窗口发 am:menu，与菜单项发的是同一条消息。 */
+/** 直接向窗口发 onset:menu，与菜单项发的是同一条消息。 */
 async function sendMenu(electronApp, action) {
-  await electronApp.evaluate(({ BrowserWindow }, action) => BrowserWindow.getAllWindows().find((w) => w.isResizable()).webContents.send('am:menu', action), action);
+  await electronApp.evaluate(({ BrowserWindow }, action) => BrowserWindow.getAllWindows().find((w) => w.isResizable()).webContents.send('onset:menu', action), action);
 }
 
 test('native menu opens a folder, switches steps and goes home', async ({ electronApp, page, project, sandbox }) => {
@@ -53,7 +53,7 @@ test('native menu opens a folder, switches steps and goes home', async ({ electr
   await clickMenu(electronApp, '文件', '新建项目');
   await expect(page.locator('.home-hero h1')).toBeVisible();
 
-  // am:menu open 直接带路径。
+  // onset:menu open 直接带路径。
   await sendMenu(electronApp, { type: 'open', path: project.path });
   await expect(page.locator('.home-hero h1')).toHaveCount(0);
   await expect(page.locator('#title')).toHaveText(project.name);
@@ -124,7 +124,7 @@ test('does not notify when the window is in front', async ({ electronApp, page, 
 test('shows running tasks on the Dock badge and notifies when they finish', async ({ electronApp, page, project }) => {
   await openProject(page, project);
   await recordNativeCalls(electronApp, false);
-  // 镜头页「⋯」里的「校验」：一个经私有 am shim 运行的写任务。点步骤打开画面面板。
+  // 镜头页「⋯」里的「校验」：一个经私有 onset shim 运行的写任务。点步骤打开画面面板。
   await page.locator('[data-tab="scene"]').click();
   await page.locator('.scene-menu summary').click();
   await page.locator('.scene-menu button', { hasText: '校验' }).first().click();

@@ -1,14 +1,14 @@
 /**
  * cobra（v1.10）+ pflag（v1.0.9）的最小 TypeScript 复刻。
  *
- * 不用 commander：编排工具与用户都会读 `am xxx --help`，Go 版的帮助格式（Usage / Flags / Global Flags
+ * 不用 commander：编排工具与用户都会读 `onset xxx --help`，Go 版的帮助格式（Usage / Flags / Global Flags
  * 分段、pflag 按字节对齐的列、(default "…") 的写法、Did you mean 建议）是他们已经见过的样子，
  * help_test 也在断言帮助内容。这里只实现 internal/cli 实际用到的部分：StringVar、BoolVar、IntVar、
  * StringArrayVar、StringSliceVar、DurationVar，持久参数，参数个数校验，help 子命令与 --version。
  * 文案与格式照抄 cobra / pflag 源码（见各函数注释里对应的上游函数名）。
  */
 
-import { formatG } from '@am/engine/gofmt';
+import { formatG } from '@onset/engine/gofmt';
 
 export interface Out {
   write(text: string): void;
@@ -66,8 +66,8 @@ export const Minute = 60 * Second;
 export const Hour = 60 * Minute;
 
 /** time.ParseDuration（与内置插件的操作共用一份）。 */
-export { parseDuration } from '@am/engine/opkit';
-import { parseDuration } from '@am/engine/opkit';
+export { parseDuration } from '@onset/engine/opkit';
+import { parseDuration } from '@onset/engine/opkit';
 
 /** time.Duration.String()：1h2m3.5s、500ms、0s。 */
 export function formatDuration(d: Duration): string {

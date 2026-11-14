@@ -81,7 +81,7 @@ test.describe('without a renderer on this computer', () => {
   });
 
   test('start production stays off while the renderer is not installed', async ({ page, project }) => {
-    await write(project.path, 'article-to-motion.conf', 'ORCHESTRATOR=claude\nRENDERER=qoder\n');
+    await write(project.path, 'onset.conf', 'ORCHESTRATOR=claude\nRENDERER=qoder\n');
     await openProject(page, project);
     await expect(page.locator('#start-production')).toBeDisabled();
     await expect(page.locator('#renderer-missing')).toContainText('Qoder');

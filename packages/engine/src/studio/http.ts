@@ -3,7 +3,7 @@
  * 与 Go 时间格式。
  *
  * Go 版是 net/http 处理函数；TS 版暴露 handle(request: Request): Promise<Response>，Electron 主进程用
- * am://app/ 协议承接界面请求后直接调它，vitest 里也直接构造 Request 测。
+ * onset://app/ 协议承接界面请求后直接调它，vitest 里也直接构造 Request 测。
  */
 import fs from 'node:fs';
 import path from 'node:path';

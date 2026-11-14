@@ -1,15 +1,15 @@
 //
 // TestConsolidateRecordsDrafterUsageInMemoryStore（整理者的用量记在记忆库的账本里）移植在 memory_cmd.test.ts，
-// 与 am memory 的其余用例放在一起。
+// 与 onset memory 的其余用例放在一起。
 import { Buffer, hasFfmpeg, lookPath, makeClip, run, setenv, tempDir } from './testutil';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import * as ledger from '@am/engine/ledger';
+import * as ledger from '@onset/engine/ledger';
 import { skillsProgressPrinter } from './cli';
 
 describe('usage', () => {
-  // 每次渲染打印用量，run-all 报告带每个镜头与整批的合计，am scene usage 把归档的尝试也算进去。
+  // 每次渲染打印用量，run-all 报告带每个镜头与整批的合计，onset scene usage 把归档的尝试也算进去。
   it.skipIf(!hasFfmpeg)('render usage is reported and totalled', async () => {
     const project = tempDir();
     const binDir = tempDir();
@@ -22,7 +22,7 @@ describe('usage', () => {
       source +
       "' out.mp4\n";
     fs.writeFileSync(path.join(binDir, 'codex'), script, { mode: 0o755 });
-    fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
+    fs.writeFileSync(path.join(project, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
     for (const id of ['scene-001', 'scene-002']) {
       const dir = path.join(project, 'scenes', id);
       fs.mkdirSync(dir, { recursive: true });
@@ -55,9 +55,9 @@ describe('usage', () => {
     expect(out.text).toContain('合计：输入 3,000');
   });
 
-  it('am usage totals orchestrator and render usage', async () => {
+  it('onset usage totals orchestrator and render usage', async () => {
     const root = tempDir();
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
     process.chdir(root);
     // 客户端每一轮对话记一行账（studio/sessions.ts 的 recordUsage）；这里直接写两行同样的账。
     for (let i = 0; i < 2; i++) {

@@ -1,5 +1,5 @@
 {
-  "_comment": "假发布顶替内置「发布」时的清单补丁（测试把它并进 am-station.json）：只用清单表达发布这一站的状态、说明与在等谁，对照 plugins/publishing 的判断函数。",
+  "_comment": "假发布顶替内置「发布」时的清单补丁（测试把它并进 onset-station.json）：只用清单表达发布这一站的状态、说明与在等谁，对照 plugins/publishing 的判断函数。",
   "replaces": "publish",
   "after": "",
   "node": {

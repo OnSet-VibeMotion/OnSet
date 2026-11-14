@@ -1,5 +1,5 @@
 ---
-name: am-film-style
+name: onset-film-style
 description: 本片的整片风格「{{.Style.CN}} {{.Style.EN}}」，来自花叔的 huashu-art-motion（{{.Short}}）。画面全部在 canvas 上用代码画出；每个镜头都必须遵守 STYLE.md，上游场景只用来学技法。
 ---
 
@@ -50,7 +50,7 @@ description: 本片的整片风格「{{.Style.CN}} {{.Style.EN}}」，来自花�
    - 不变的底图画一次反复用：`P.cached(键, 宽, 高, (g, canvas) => { …画… })` 第一次调用时画，之后用同一个键调用直接返回那张画布（回调不再执行），在 `draw` 里 `c.drawImage(P.cached(键, W, H, 画法), 0, 0)` 即可。笔触类的渲染器每次都读整张画布，只有会动的部分才每帧重画。
    - 根元素已写 `data-no-timeline`（只有 canvas、没有 GSAP 时间轴）。在 canvas 上面另加用 GSAP 的层（例如 `SceneKit.captions` 字幕）时，照 hyperframes 技能登记时间轴，并去掉 `data-no-timeline`。
    - 不要在合成里引用本目录（镜头目录之外的路径渲染时会静默 404）；不要改 `huashu/` 里的文件，要换某个库函数的做法，在 `scene.js` 里另写一个。
-4. **帧的契约。** 每一帧只由时间决定，可以单独画任意一帧：随机数只用 `U.rng(seed)`，不读时钟，不用 `requestAnimationFrame`；缓存（`P.cached`）的键要包含它依赖的一切。`huashu/am-huashu-pre.js` 让全部 2D 画布走软件光栅、保证两次渲染逐帧相同，不要另建 WebGL 画布绕开它。
+4. **帧的契约。** 每一帧只由时间决定，可以单独画任意一帧：随机数只用 `U.rng(seed)`，不读时钟，不用 `requestAnimationFrame`；缓存（`P.cached`）的键要包含它依赖的一切。`huashu/onset-huashu-pre.js` 让全部 2D 画布走软件光栅、保证两次渲染逐帧相同，不要另建 WebGL 画布绕开它。
 5. **画幅、帧率与时长以本镜头为准。** 上游场景按 1920×1080 画，坐标全是那个画幅的；横屏、竖屏都按 `STAGE` 重新排版，不是把横屏画面缩放或裁一块。竖屏里的分栏、字列比上游窄，配方卡里按栏宽算的系数（字形缩放、间距）要跟着调。
 6. **一个画面一种画法。** 不把别的风格的笔触混进来；需要换风格时由分镜的风格交界处理。
 7. **上游的工具与流程不用。** 配方卡与源码注释里提到的 `render.py`、`qa.py`、`deliver.py`、`--film`、`--solo`、配乐与口播一律跳过：渲染走 HyperFrames，产物必须静音。

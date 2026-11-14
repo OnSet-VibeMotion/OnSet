@@ -1,29 +1,29 @@
 /**
- * am 的工具服务（MCP，stdio）：客户端里的编排工具与渲染器只经它调用 am 的能力，不在 Bash 里跑 am。
+ * onset 的工具服务（MCP，stdio）：客户端里的编排工具与渲染器只经它调用 onset 的能力，不在 Bash 里跑 onset。
  *
- * 以前 am 在它们的 PATH 里，缺信息时它们会 `which am`、`strings "$(which am)"` 反推格式（实测两次），
- * 每次都撞白名单、弹审批卡片打断用户。现在 am 没有对外的命令行：工具直接来自操作表（ops/op.ts），
+ * 以前 onset 在它们的 PATH 里，缺信息时它们会 `which onset`、`strings "$(which onset)"` 反推格式（实测两次），
+ * 每次都撞白名单、弹审批卡片打断用户。现在 onset 没有对外的命令行：工具直接来自操作表（ops/op.ts），
  * 工具名、具名参数、说明与例子都是操作自己定义的，结果是操作写下的文字加结构化的 data。
  *
- * 每次调用起一个执行进程（`am.cjs __op <名字> <参数>`，同一个运行时、同一个 am.cjs）：并发调用、
+ * 每次调用起一个执行进程（`onset.cjs __op <名字> <参数>`，同一个运行时、同一个 onset.cjs）：并发调用、
  * 环境变量互不影响，取消时整组结束。MCP 客户端多有调用超时（codex 默认 60 秒），而渲染、拼接动辄
  * 几分钟到几小时，所以每次最多等 wait_seconds；没跑完就返回任务号与已有输出，由 job_wait 接着等、
  * job_cancel 停掉。
  */
 import { type ChildProcess, spawn } from 'node:child_process';
-import * as director from '@am/engine/director';
-import * as flow from '@am/engine/flow';
-import { parseWorkerOutput, visibleText, workerArgs } from '@am/engine/opworker';
-import { groupSpawnOptions, killTree } from '@am/engine/procgroup';
-import { nodeCommand } from '@am/engine/toolpath';
+import * as director from '@onset/engine/director';
+import * as flow from '@onset/engine/flow';
+import { parseWorkerOutput, visibleText, workerArgs } from '@onset/engine/opworker';
+import { groupSpawnOptions, killTree } from '@onset/engine/procgroup';
+import { nodeCommand } from '@onset/engine/toolpath';
 import './cli';
 import { allOps, normalizeParams, type Op, opScopes, type ParamSpec, type ParamValues } from './ops/op';
 
 /** 档位：编排工具拿全部工具，渲染器只拿 hyperframes。 */
 export type Profile = 'orchestrator' | 'renderer';
 
-/** MCP 配置里给这个服务起的名字；claude 系的工具全名是 mcp__am__<工具名>。 */
-export const ToolsServerName = 'am';
+/** MCP 配置里给这个服务起的名字；claude 系的工具全名是 mcp__onset__<工具名>。 */
+export const ToolsServerName = 'onset';
 
 /** hyperframes 工具放行的子命令：本机渲染与只读检查。远端渲染、改动已装技能、交互与遥测命令一律不给。 */
 export const HyperFramesSubcommands = ['lint', 'check', 'validate', 'inspect', 'snapshot', 'keyframes', 'render', 'timeline', 'compositions', 'info', 'docs'] as const;
@@ -131,7 +131,7 @@ export function externalOps(): { op: Op; external: { station: string; op: string
           name,
           cli: [],
           summary: `${m.summary}（第三方站「${s.manifest.name}」）`,
-          description: (m.description ? m.description + '\n\n' : '') + `由用户装的第三方插件「${s.manifest.name}」（${s.manifest.id} ${s.manifest.version}）提供，不是 am 自带的工具。`,
+          description: (m.description ? m.description + '\n\n' : '') + `由用户装的第三方插件「${s.manifest.name}」（${s.manifest.id} ${s.manifest.version}）提供，不是 onset 自带的工具。`,
           ...(m.examples ? { examples: m.examples } : {}),
           params,
           scopes: ['orchestrator'],
@@ -232,7 +232,7 @@ export function opCommand(name: string, params: ParamValues): { file: string; ar
 }
 
 /**
- * 用 am 自己的运行时、自己的入口文件执行：客户端里是 Electron 当 Node，不经 PATH 找 am。
+ * 用 onset 自己的运行时、自己的入口文件执行：客户端里是 Electron 当 Node，不经 PATH 找 onset。
  *
  * 必须经 nodeCommand 补回 ELECTRON_RUN_AS_NODE=1：main.ts 一启动就把它从 process.env 里删掉了（不能漏给 agent），
  * 直接用 process.env 起的执行进程会是一个完整的 Electron 应用——操作照样跑完、结果照样打印，但进程永远不退出，
@@ -250,7 +250,7 @@ export const spawnOp: Spawner = (name, params) => {
 };
 
 /**
- * 导演（am studio agent）用的执行进程：会再起导演的操作（director.KeyOps，整理经验）经 stdin 拿到导演的 key，
+ * 导演（onset studio agent）用的执行进程：会再起导演的操作（director.KeyOps，整理经验）经 stdin 拿到导演的 key，
  * 其余与 spawnOp 相同。执行进程解不开客户端加密的凭据文件，key 只能由手里有它的进程往下交。
  */
 export function spawnOpWithKeys(keys: Record<string, string>): Spawner {
@@ -372,7 +372,7 @@ function clip(text: string): string {
 // ---------------------------------------------------------------- MCP
 
 /**
- * am studio tools-mcp 的服务循环：stdio 上按行收发 JSON-RPC（与 permission-mcp 同一套写法）。
+ * onset studio tools-mcp 的服务循环：stdio 上按行收发 JSON-RPC（与 permission-mcp 同一套写法）。
  * tools/call 不阻塞读下一行：agent 可能并行发几条调用。
  */
 export async function serveToolsMCP(
@@ -409,9 +409,9 @@ export async function serveToolsMCP(
               capabilities: { tools: {} },
               serverInfo: { name: ToolsServerName, version: '1' },
               instructions:
-                'ArticleToMotion 的制作工具，每个工具对应一条制作步骤。参数怎么填、产出什么用 tool_help 查。' +
+                '片场的制作工具，每个工具对应一条制作步骤。参数怎么填、产出什么用 tool_help 查。' +
                 `每次调用最多等 wait_seconds 秒（缺省 ${DefaultWaitSeconds}）；没跑完会返回任务号，用 job_wait 接着等，job_cancel 停掉。` +
-                '结果里「结果：」那一行是结构化的 JSON。am 不在终端里，不要去找它。',
+                '结果里「结果：」那一行是结构化的 JSON。onset 不在终端里，不要去找它。',
             },
           });
           break;

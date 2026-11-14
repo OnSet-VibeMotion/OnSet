@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
-import * as director from '@am/engine/director';
+import * as director from '@onset/engine/director';
 import { takeHandedKeys } from './worker';
 
 afterEach(() => director.useKeys(null));

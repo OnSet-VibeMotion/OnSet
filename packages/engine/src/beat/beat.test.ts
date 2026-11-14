@@ -11,7 +11,7 @@ import { ConfigFile, DefaultConfig, DraftFile, Store, loadConfig } from './store
 import { importTrack, loadTrack } from './track';
 import { writeDraftAndClick } from './analyze';
 
-const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-beat-'));
+const tempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'onset-beat-'));
 
 /**
  * fourFour 是 120 BPM、4/4、弱起 0.5 秒的网格：第一个重拍在 0.5 秒，

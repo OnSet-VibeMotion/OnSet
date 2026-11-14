@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { contactSheet, fontconfigWith, renderSVG } from './svgimage';
 
-const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-svgimage-'));
+const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'onset-svgimage-'));
 const savedPath = process.env.PATH;
 afterEach(() => {
   process.env.PATH = savedPath;

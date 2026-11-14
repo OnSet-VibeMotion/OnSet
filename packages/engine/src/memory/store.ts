@@ -125,7 +125,7 @@ export class Store {
   /** 重写 MEMORY.md：每条生效记忆一行「标题 — 一句话钩子」。它只给人读，召回不读它。 */
   writeIndex(): void {
     const all = this.memories().memories;
-    let b = '# 渲染记忆索引\n\n由 am 维护，只列生效记忆。改记忆请改 lessons/ 与 preferences/ 下的文件，再运行 memory_status()。\n\n';
+    let b = '# 渲染记忆索引\n\n由 onset 维护，只列生效记忆。改记忆请改 lessons/ 与 preferences/ 下的文件，再运行 memory_status()。\n\n';
     let count = 0;
     for (const m of all) {
       if (m.status !== StatusActive) continue;

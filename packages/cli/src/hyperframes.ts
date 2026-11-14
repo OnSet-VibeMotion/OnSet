@@ -1,8 +1,8 @@
 /**
- * hyperframes：am 管理的固定版本 HyperFrames CLI 的入口，参数原样转给它。
+ * hyperframes：onset 管理的固定版本 HyperFrames CLI 的入口，参数原样转给它。
  */
 import { spawn } from 'node:child_process';
-import * as hyperframes from '@am/engine/hyperframes';
+import * as hyperframes from '@onset/engine/hyperframes';
 import { currentEnvironment, hyperframesVersion } from './cli';
 import { ExitError } from './cobra';
 import { strs, str } from './ops/common';
@@ -11,13 +11,13 @@ import { defineOp, ParamError } from './ops/op';
 defineOp({
   name: 'hyperframes',
   cli: ['hyperframes'],
-  summary: '运行 am 管理的固定版本 HyperFrames CLI',
+  summary: '运行 onset 管理的固定版本 HyperFrames CLI',
   description:
     `用固定版本 ` +
     hyperframesVersion +
     ` 的 HyperFrames CLI 执行 subcommand 与 args，工作目录不变，退出码透传。
 
-CLI 是前置资源，在客户端工具准备页装在用户级目录（默认 ~/.local/share/am/hyperframes/cli-` +
+CLI 是前置资源，在客户端工具准备页装在用户级目录（默认 ~/.local/share/onset/hyperframes/cli-` +
     hyperframesVersion +
     `，
 可用 ` +

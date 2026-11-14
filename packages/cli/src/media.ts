@@ -4,12 +4,12 @@
  * 这里的操作共用一组辅助函数（时间点与画幅解析），放在一起也更好找。
  */
 import path from 'node:path';
-import * as concat from '@am/engine/concat';
-import { formatFixed, goQuote, goRound, goTrimSpace } from '@am/engine/gofmt';
-import * as mediaprobe from '@am/engine/mediaprobe';
-import * as plugin from '@am/engine/plugin';
-import * as scene from '@am/engine/scene';
-import * as schedule from '@am/engine/schedule';
+import * as concat from '@onset/engine/concat';
+import { formatFixed, goQuote, goRound, goTrimSpace } from '@onset/engine/gofmt';
+import * as mediaprobe from '@onset/engine/mediaprobe';
+import * as plugin from '@onset/engine/plugin';
+import * as scene from '@onset/engine/scene';
+import * as schedule from '@onset/engine/schedule';
 import { currentEnvironment } from './cli';
 import { type Finding, recordCheckFindings } from './memory_cmd';
 import { bool, num, str } from './ops/common';

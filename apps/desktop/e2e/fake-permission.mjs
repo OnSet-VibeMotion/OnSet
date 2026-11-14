@@ -1,4 +1,4 @@
-// 假 claude 的「要批准」：照 --mcp-config 启动客户端挂的审批服务（真的 am studio permission-mcp），
+// 假 claude 的「要批准」：照 --mcp-config 启动客户端挂的审批服务（真的 onset studio permission-mcp），
 // 像 claude 一样发一次 tools/call，等用户在界面上回答，把结果原样打印出来。
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';

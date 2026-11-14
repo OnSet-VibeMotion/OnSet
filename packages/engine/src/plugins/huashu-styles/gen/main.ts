@@ -1,8 +1,8 @@
 //
 // 从固定 commit 的 huashu-art-motion 检出生成 catalog.json：generateCatalog(<检出目录>)。只在开发时运行
-// （gen/main.test.ts 在设了 AM_HUASHU_SRC 时核对，加 AM_UPDATE_GOLDEN=1 时重写）。
+// （gen/main.test.ts 在设了 ONSET_HUASHU_SRC 时核对，加 ONSET_UPDATE_GOLDEN=1 时重写）。
 //
-// 检出的 HEAD 必须等于 PinnedCommit：目录与 commit 不一致的话，列出的风格、字体与 am setup 实际下载的会对不上。
+// 检出的 HEAD 必须等于 PinnedCommit：目录与 commit 不一致的话，列出的风格、字体与 onset setup 实际下载的会对不上。
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -28,7 +28,7 @@ const sheetPath = 'assets/全风格总览.jpg';
 const references = ['references/04-纯代码绘制.md', 'references/07-正面经验.md', 'references/15-跨场景风格提炼.md'];
 
 /**
- * 不随风格带的库：fonts.js 由 am 按风格重写（build.ts 的 fontsScript）；three.min.js 没有一种接入的风格用到；
+ * 不随风格带的库：fonts.js 由 onset 按风格重写（build.ts 的 fontsScript）；three.min.js 没有一种接入的风格用到；
  * rig_huashu.js 是花叔本人卡通形象的骨架，上游写明他的形象不随 MIT 授权（README「许可证」）。
  */
 const skippedLibs = new Set(['lib/fonts.js', 'lib/three.min.js', 'lib/rig_huashu.js']);

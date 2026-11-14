@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import * as filmstyle from '@am/engine/filmstyle';
-import { registerBuiltin } from '@am/engine/plugin';
+import * as filmstyle from '@onset/engine/filmstyle';
+import { registerBuiltin } from '@onset/engine/plugin';
 import './filmstyle';
 import { Command, ref } from './cobra';
 import { opCommand } from './ops/cli';
@@ -47,7 +47,7 @@ registerBuiltin({
 
 function project(): string {
   const root = tempDir();
-  fs.writeFileSync(path.join(root, 'article-to-motion.conf'), '');
+  fs.writeFileSync(path.join(root, 'onset.conf'), '');
   return root;
 }
 
@@ -59,7 +59,7 @@ function sceneWith(root: string, id: string, filmStyle: string): void {
   fs.writeFileSync(path.join(dir, 'scene.json'), JSON.stringify(body));
 }
 
-async function am(root: string, ...args: string[]): Promise<{ out: string; err: Error | null }> {
+async function onset(root: string, ...args: string[]): Promise<{ out: string; err: Error | null }> {
   const out = new Buffer();
   // 只挂 film-style 这一组操作：命令行适配与 mountOps 相同。
   const cmd = new Command({ use: 'film-style' });
@@ -74,11 +74,11 @@ async function am(root: string, ...args: string[]): Promise<{ out: string; err: 
   }
 }
 
-describe('am film-style', () => {
+describe('onset film-style', () => {
   it('adds extra styles, shows who uses them, and guards removal', async () => {
     const root = project();
-    expect((await am(root, 'use', 'fake/ink')).err).toBeNull();
-    const added = await am(root, 'add', '油画');
+    expect((await onset(root, 'use', 'fake/ink')).err).toBeNull();
+    const added = await onset(root, 'add', '油画');
     expect(added.err, added.out).toBeNull();
     expect(added.out).toContain('"film_style": "fake/oil"');
     expect(filmstyle.installedExtras(root).map(filmstyle.manifestKey)).toEqual(['fake/oil']);
@@ -87,34 +87,34 @@ describe('am film-style', () => {
     sceneWith(root, 'scene-002', 'fake/oil');
     sceneWith(root, 'scene-003', 'none');
     sceneWith(root, 'scene-004', 'fake/pixel');
-    const shown = await am(root, 'show');
+    const shown = await onset(root, 'show');
     expect(shown.out).toContain('默认风格：水墨 ink（fake/ink）');
     expect(shown.out).toMatch(/使用：scene-001\n/);
     expect(shown.out).toContain('额外风格：油画 oil（fake/oil）');
     expect(shown.out).toMatch(/使用：scene-002\n/);
     expect(shown.out).toContain('不用整片风格的镜头：scene-003');
     expect(shown.out).toContain('scene-004 点名的 fake/pixel 没装进项目');
-    const json = JSON.parse((await am(root, 'show', '--json')).out);
+    const json = JSON.parse((await onset(root, 'show', '--json')).out);
     expect(json.extras[0].slug).toBe('oil');
     expect(json.scenes.find((s: { id: string }) => s.id === 'scene-002').film_style).toBe('fake/oil');
 
-    const refused = await am(root, 'remove', 'fake/oil');
+    const refused = await onset(root, 'remove', 'fake/oil');
     expect(refused.err?.message).toContain('还有镜头点名用 fake/oil：scene-002');
-    expect((await am(root, 'remove', 'fake/oil', '--force')).err).toBeNull();
+    expect((await onset(root, 'remove', 'fake/oil', '--force')).err).toBeNull();
     expect(filmstyle.installedExtras(root)).toEqual([]);
   });
 
   // 换默认风格时还有镜头点名旧的默认风格：旧的留作额外风格，那些镜头照常渲染。
   it('keeps a replaced default that scenes still name', async () => {
     const root = project();
-    await am(root, 'use', 'fake/ink');
+    await onset(root, 'use', 'fake/ink');
     sceneWith(root, 'scene-001', 'fake/ink');
-    const replaced = await am(root, 'use', 'fake/pixel', '--replace');
+    const replaced = await onset(root, 'use', 'fake/pixel', '--replace');
     expect(replaced.err, replaced.out).toBeNull();
     expect(replaced.out).toContain('fake/ink 还有镜头点名在用，已留作额外风格');
     expect(filmstyle.styleDirOf(root, 'fake/ink')).toBe(filmstyle.extraDir(root, 'fake/ink'));
 
-    const removed = await am(root, 'remove');
+    const removed = await onset(root, 'remove');
     expect(removed.err, removed.out).toBeNull();
     expect(removed.out).toContain('已去掉默认风格 像素 pixel');
   });

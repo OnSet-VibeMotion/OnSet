@@ -1,8 +1,8 @@
 /**
  * 画幅生成器的命令行入口。在仓库任意位置运行：
  *
- *   npm run generate -w @am/engine
- *   npm run generate -w @am/engine -- -preset vertical-9x16
+ *   npm run generate -w @onset/engine
+ *   npm run generate -w @onset/engine -- -preset vertical-9x16
  *
  * CI 的 generated-assets 门禁要求重跑后 git diff 为空。
  */

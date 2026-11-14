@@ -1,10 +1,10 @@
 /**
  * 配音相关的操作。
  */
-import { formatFixed, formatG } from '@am/engine/gofmt';
-import * as mediaprobe from '@am/engine/mediaprobe';
-import * as srt from '@am/engine/srt';
-import * as voicecheck from '@am/engine/voicecheck';
+import { formatFixed, formatG } from '@onset/engine/gofmt';
+import * as mediaprobe from '@onset/engine/mediaprobe';
+import * as srt from '@onset/engine/srt';
+import * as voicecheck from '@onset/engine/voicecheck';
 import { currentEnvironment } from './cli';
 import { defineGroup } from './ops/cli';
 import { num, str } from './ops/common';

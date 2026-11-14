@@ -13,8 +13,8 @@ import { roleOf, type InstalledEntry } from './installed';
 import { ManifestFile, type Manifest } from './manifest';
 import { parseManifest } from './parse';
 
-/** 第三方插件的存放目录（默认 <数据目录>/am/stations）：已装插件清单 installed.json 与按 commit 存的插件目录。 */
-export const StationsDirEnv = 'AM_STATIONS_DIR';
+/** 第三方插件的存放目录（默认 <数据目录>/onset/stations）：已装插件清单 installed.json 与按 commit 存的插件目录。 */
+export const StationsDirEnv = 'ONSET_STATIONS_DIR';
 
 export function stationsDir(env: Record<string, string | undefined>): string {
   if (env[StationsDirEnv]) return env[StationsDirEnv]!;
@@ -137,7 +137,7 @@ export function fetchStation(spec: string, env: Record<string, string | undefine
 
 /** 测试与开发用：在临时目录里写一个站。 */
 export function writeStationForTest(files: Record<string, string>): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-station-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-station-'));
   for (const [rel, body] of Object.entries(files)) {
     fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
     fs.writeFileSync(path.join(dir, rel), body, { mode: rel.startsWith('bin/') ? 0o755 : 0o644 });

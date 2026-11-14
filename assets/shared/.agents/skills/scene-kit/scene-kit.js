@@ -6,11 +6,11 @@
 //    不保证只走一遍；本库不读时钟、不用未播种随机数、不建定时器、不发网络请求，
 //    也不在两次 render 之间携带任何影响画面的状态。
 //
-// 2) 帧号一律是镜头本地帧（第 0 帧是本镜头第一帧），与 am-scene.js 里 cues /
+// 2) 帧号一律是镜头本地帧（第 0 帧是本镜头第一帧），与 onset-scene.js 里 cues /
 //    phrases 的坐标系一致。时间换帧号只有 frameOf 一处：Math.round(秒 × fps)。
 //    取整方式在两处不一致时，字幕会与配音慢慢错开，而且看半天说不出哪里不对。
 //
-// 3) 数据只从 window.AM_SCENE 读。它由 am 在渲染前写进镜头目录的 am-scene.js，
+// 3) 数据只从 window.ONSET_SCENE 读。它由 onset 在渲染前写进镜头目录的 onset-scene.js，
 //    来源是 frame.md 与本镜头的字幕时间轴。不要把安全区像素、字号、字幕时间
 //    手抄进合成——frame.md 改了，手抄的那份不会跟着改。
 //
@@ -114,15 +114,15 @@
   // ======================= 数据 =======================
 
   function scene() {
-    var data = global.AM_SCENE;
+    var data = global.ONSET_SCENE;
     if (!data || typeof data !== 'object') {
       throw new Error(
-        'am-scene.js 未加载：window.AM_SCENE 不存在。am-scene.js 由 am 写在镜头目录里，' +
-          '必须在 scene-kit.js 之前用 <script src="am-scene.js"></script> 引入'
+        'onset-scene.js 未加载：window.ONSET_SCENE 不存在。onset-scene.js 由 onset 写在镜头目录里，' +
+          '必须在 scene-kit.js 之前用 <script src="onset-scene.js"></script> 引入'
       );
     }
     if (data.schema !== SCHEMA) {
-      throw new Error('am-scene.js 的 schema 是 ' + data.schema + '，本版 scene-kit 只认 ' + SCHEMA + '：重新从技能目录复制 scene-kit.js');
+      throw new Error('onset-scene.js 的 schema 是 ' + data.schema + '，本版 scene-kit 只认 ' + SCHEMA + '：重新从技能目录复制 scene-kit.js');
     }
     return data;
   }
@@ -433,7 +433,7 @@
     var s = scene();
     var tokens = s.subtitles;
     if (!tokens) {
-      throw new Error('SceneKit.captions：am-scene.js 里 subtitles 为 null（frame.md 没有字幕规范），不能按规范排字幕');
+      throw new Error('SceneKit.captions：onset-scene.js 里 subtitles 为 null（frame.md 没有字幕规范），不能按规范排字幕');
     }
     var area = safeRect(opts.safeArea || 'subtitles');
     var fontRange = tokens.font_size_px || {};

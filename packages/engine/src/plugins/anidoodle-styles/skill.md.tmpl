@@ -1,5 +1,5 @@
 ---
-name: am-film-style
+name: onset-film-style
 description: 本片的整片风格「{{.Style.CN}} {{.Style.EN}}」，来自 anidoodle（{{.Short}}）。画面全部在 canvas 上用代码画出；每个镜头都必须遵守 STYLE.md 的介质与笔触，示范画只用来学技法。
 ---
 
@@ -12,7 +12,7 @@ description: 本片的整片风格「{{.Style.CN}} {{.Style.EN}}」，来自 ani
 | 文件 | 用途 |
 |---|---|
 | `STYLE.md` | 风格的不变量：介质、笔触、边缘、下笔顺序、色板、纸张、与哪些风格不能混、动态语法。**全部遵守** |
-| `anidoodle/` | 转好的浏览器模块，镜头里直接 import：`am-anidoodle.js`（接 HyperFrames 的接头）、`canvas-core/core.js`（`rng`、噪声、`sample` 等几何工具）、`canvas-core/film.js`（帧的契约）与本风格的模块（见下） |
+| `anidoodle/` | 转好的浏览器模块，镜头里直接 import：`onset-anidoodle.js`（接 HyperFrames 的接头）、`canvas-core/core.js`（`rng`、噪声、`sample` 等几何工具）、`canvas-core/film.js`（帧的契约）与本风格的模块（见下） |
 | `source/` | 同一批模块的 TypeScript 原文，注释与类型都在这里。**读这里学技法**，`anidoodle/` 里转好的代码排版不好读 |
 | `references/` | 上游的通用说明：风格是下笔方式而不是换色（`styles.md`）、成品标准（`craft-bar.md`）、解剖与真实感 |
 | `poster.jpg` | 示范画（{{.Style.HeroCN}}） |
@@ -36,7 +36,7 @@ description: 本片的整片风格「{{.Style.CN}} {{.Style.EN}}」，来自 ani
 3. **怎么用。** 把 `anidoodle/` 整个目录拷进本镜头目录，目录名与里面的相对路径都不改（只有几百 KB）。合成里写一个 `<script type="module">`：
    - 从 `./anidoodle/canvas-core/…` 导入笔触函数与 `core.js` 的工具（`rng`、`sample`、`fractal`……）；
    - 按 `source/canvas-core/film.ts` 的 `Film` 写本镜头自己的片子：`meta: { title, W, H, fps, durationFrames }`，`assets: { images: {} }`，`shots` 按帧首尾相接铺满整段，每个 shot 的 `draw(ctx, local, env)` 用 `local`（这个 shot 内的帧号）画出那一帧；
-   - `import { play } from './anidoodle/am-anidoodle.js'`，加载后 `play(film, canvas)`。它负责 `hf-seek`、先画第 0 帧、把图片与字体的准备登记成 `window.__hf.buildReady`。根元素照 hyperframes 技能写 `data-duration`；合成里只有 canvas、没有登记 GSAP 时间轴时，根元素还要加 `data-no-timeline`，不然每次渲染都白等 45 秒（有时间轴的照常登记，不加它）。
+   - `import { play } from './anidoodle/onset-anidoodle.js'`，加载后 `play(film, canvas)`。它负责 `hf-seek`、先画第 0 帧、把图片与字体的准备登记成 `window.__hf.buildReady`。根元素照 hyperframes 技能写 `data-duration`；合成里只有 canvas、没有登记 GSAP 时间轴时，根元素还要加 `data-no-timeline`，不然每次渲染都白等 45 秒（有时间轴的照常登记，不加它）。
 
    不要在合成里引用本目录（镜头目录之外的路径渲染时会静默 404）；不要改拷进来的模块，要换某个笔触函数的做法，在镜头自己的脚本里另写一个。示范画模块（`{{.Style.Module}}`、`{{.Style.DrawFilm}}`）导出的是上游那幅画本身，只读来学，不当成镜头画面用。
 4. **帧的契约。** 每一帧只由帧号决定，可以单独画任意一帧：随机数只用 `core.js` 的 `rng(seed)` 加固定种子，不读时钟，不用 `requestAnimationFrame`，不用 `ctx.filter`；离屏画布只经 `env.canvas(w, h)` 取，缓存放进 `env.cache`，缓存的键要包含它依赖的一切。

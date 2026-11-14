@@ -18,9 +18,9 @@ export interface TTSProvider {
   name: string;
   timestamps: string;
   command: string;
-  /** am setup 怎么装它（版本钉死）。客户端用户不必自己 npm / pipx / brew。 */
+  /** onset setup 怎么装它（版本钉死）。客户端用户不必自己 npm / pipx / brew。 */
   install: ToolSpec;
-  /** 工具第一次运行会去下的模型：am setup（客户端的工具准备页）预先下好，提示词经 config_get 工具取 TTS_MODEL 的本地路径。 */
+  /** 工具第一次运行会去下的模型：onset setup（客户端的工具准备页）预先下好，提示词经 config_get 工具取 TTS_MODEL 的本地路径。 */
   model?: ModelSpec;
 }
 
@@ -51,7 +51,7 @@ export const BreezeTTS2: ModelSpec = {
  * TTS_PROVIDER 的全部合法取值，顺序即帮助文字里的顺序。
  *
  * 收录标准是「有可非交互调用的 CLI，且凭据不必落进项目文件」：
- *   - 豆包 / 火山引擎没有官方 CLI，接入要在 am 里写一个无法离线验证的 HTTP 客户端；
+ *   - 豆包 / 火山引擎没有官方 CLI，接入要在 onset 里写一个无法离线验证的 HTTP 客户端；
  *   - Azure 的 spx 把密钥写进当前目录下的 ./spx/data，即项目目录；
  *   - IndexTTS2 的许可对商用与模型输出有限制，且只能从源码安装。
  *
@@ -105,7 +105,7 @@ function mlxAudio(bins: string[]): ToolSpec {
  * 一个已知文本强制对齐工具：文稿是现成的，把它逐字对到配音上
  * 比识别更准，也不会把专有名词识别错。
  *
- * command 同 TTSProvider.command。funasr 没有命令行入口：am setup 把它装进专用的 Python 环境，
+ * command 同 TTSProvider.command。funasr 没有命令行入口：onset setup 把它装进专用的 Python 环境，
  * 并写一个 funasr-python 调用那份 Python；提示词让编排工具用它跑 Python 脚本。安全模式因此不必放行系统的 python3。
  */
 export interface Aligner {
@@ -113,7 +113,7 @@ export interface Aligner {
   name: string;
   command: string;
   install: ToolSpec;
-  /** 工具第一次运行会去下的模型：am setup（客户端的工具准备页）预先下好，提示词经 config_get 工具取 ALIGN_MODEL 的本地路径。 */
+  /** 工具第一次运行会去下的模型：onset setup（客户端的工具准备页）预先下好，提示词经 config_get 工具取 ALIGN_MODEL 的本地路径。 */
   model?: ModelSpec;
 }
 
@@ -150,7 +150,7 @@ export const Aligners: readonly Aligner[] = [
   },
 ];
 
-/** 让 am 按运行平台选择对齐工具。 */
+/** 让 onset 按运行平台选择对齐工具。 */
 export const AlignAuto = 'auto';
 
 /**
@@ -175,7 +175,7 @@ export function defaultTTSProvider(goos: string = process.platform, goarch: stri
 
 /**
  * 第三方插件提供的配音、对齐：取值是 x:<站 id>。这里只查写法，项目里加没加那个插件、它是不是真的提供，
- * 由编排工具调插件的工具时见分晓（插件的说明接在制作提示词末尾）。插件的工具经 am 的工具服务调用，
+ * 由编排工具调插件的工具时见分晓（插件的说明接在制作提示词末尾）。插件的工具经 onset 的工具服务调用，
  * 不进编排工具的命令白名单，也不是前置资源。
  */
 export const PluginProviderPattern = /^x:[a-z][a-z0-9-]{1,39}$/;
@@ -210,7 +210,7 @@ export function hostAligner(value: string): string {
 /**
  * 任何配置下编排工具都要用到的命令（安全模式下按前缀放行）。
  *
- * 早先只放行 am、ffmpeg、ffprobe、ls、mkdir，编排工具连 cat、head、echo、shasum 都被拦，
+ * 早先只放行 onset、ffmpeg、ffprobe、ls、mkdir，编排工具连 cat、head、echo、shasum 都被拦，
  * 一轮对话里大半工具调用是「需要批准」，而 -p 模式下没人批准（实测）。这里补上只读查看、
  * 校验哈希、只读 git 与下载（制作提示词要求从 Google Fonts 下载字体）。之后又放了
  * python3 / python / node：编排工具常要写小脚本处理数据，拦掉只会逼用户改用 --unsafe
@@ -227,7 +227,7 @@ export function hostAligner(value: string): string {
  * 客户端里时会弹卡片问用户（studio/permissions.ts），其余工具照旧直接拒绝。
  */
 export const orchestratorBaseCommands: readonly string[] = [
-  // am 不在这里：编排工具只经 am 的工具服务（MCP）调用它，见 tools.amToolsServer。
+  // onset 不在这里：编排工具只经 onset 的工具服务（MCP）调用它，见 tools.onsetToolsServer。
   'ffmpeg', 'ffprobe',
   // 查看文件与目录（只读）
   'ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'sort', 'uniq', 'cut', 'diff', 'cmp',
@@ -318,7 +318,7 @@ export function orchestratorAccess(config: Config, ...extra: string[]): Orchestr
   // 音色库同理：voice_save 写的是用户级目录，codex 的 workspace-write 沙箱默认只放行工作目录。
   if (config.voicesDir !== '') writable.push(config.voicesDir);
   if (writable.length > 0) access.writableDirs = writable;
-  // 风格来源的数据不放进可写范围：它是前置资源，只由用户在终端里跑的 am setup 下载，
-  // 编排工具调用的 am film-style use 只读它、写项目。
+  // 风格来源的数据不放进可写范围：它是前置资源，只由用户在终端里跑的 onset setup 下载，
+  // 编排工具调用的 onset film-style use 只读它、写项目。
   return access;
 }

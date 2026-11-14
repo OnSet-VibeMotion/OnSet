@@ -20,7 +20,7 @@
 // 4) 角色包从 character.json 读，不在浏览器里解析 YAML。渲染机是干净的无头
 //    Chrome，CSP 下引不进 YAML 库，手写 YAML 子集解析器纯属埋雷。
 //    character.yaml 仍是人工编辑的唯一真相源，character.json 由
-//    am cast new/add/validate 每次重新生成。
+//    onset cast new/add/validate 每次重新生成。
 //
 // ====================================================================
 const cast = (() => {

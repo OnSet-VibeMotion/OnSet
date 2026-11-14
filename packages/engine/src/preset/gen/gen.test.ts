@@ -6,7 +6,7 @@ import * as preset from '../index';
 import { canvasAndSafeArea, canvasMarker, frameAssetPath, generate, loadTemplate, renderFrame, repoRoot, selectTargets, substituteCanvas } from './gen';
 
 const repo = repoRoot(__dirname);
-const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-gen-'));
+const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'onset-gen-'));
 const discard = { write: () => {} };
 const byID = (id: string) => preset.byID(id)!;
 const frameOf = (p: preset.Preset) => renderFrame(p, loadTemplate(repo));

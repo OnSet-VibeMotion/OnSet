@@ -28,11 +28,11 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npx tsc --noEmit -p packages/engine
       - run: npx tsc --noEmit -p packages/cli
-      - run: npm run typecheck -w am-desktop
+      - run: npm run typecheck -w onset-desktop
       - run: npx vitest run --root packages/engine
       - run: npx vitest run --root packages/cli
-      - run: npm run build -w @am/cli
-      - run: npm run build -w am-desktop
+      - run: npm run build -w @onset/cli
+      - run: npm run build -w onset-desktop
 
   windows:
     # 客户端还没移植到 Windows（见 AGENTS.md「Windows」）。这一项先让问题暴露出来：类型检查与构建必须通过，
@@ -50,9 +50,9 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npx tsc --noEmit -p packages/engine
       - run: npx tsc --noEmit -p packages/cli
-      - run: npm run typecheck -w am-desktop
-      - run: npm run build -w @am/cli
-      - run: npm run build -w am-desktop
+      - run: npm run typecheck -w onset-desktop
+      - run: npm run build -w @onset/cli
+      - run: npm run build -w onset-desktop
       - name: Engine unit tests (not yet expected to pass)
         continue-on-error: true
         run: npx vitest run --root packages/engine --reporter=default --reporter=junit --outputFile.junit=engine-junit.xml
@@ -82,11 +82,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npm run generate -w @am/engine
+      - run: npm run generate -w @onset/engine
       - name: assets/presets 必须与画幅表、模板一致
         run: |
           if ! git diff --exit-code; then
-            echo "::error::生成产物与提交的不一致：改了画幅表或 frame.md 模板后要跑 npm run generate -w @am/engine 并提交产物" >&2
+            echo "::error::生成产物与提交的不一致：改了画幅表或 frame.md 模板后要跑 npm run generate -w @onset/engine 并提交产物" >&2
             exit 1
           fi
 
@@ -102,7 +102,7 @@ jobs:
       - name: Install media tools
         run: brew install ffmpeg
       - run: npm ci --no-audit --no-fund
-      - run: npm run test:e2e -w am-desktop
+      - run: npm run test:e2e -w onset-desktop
       - name: Upload Playwright traces
         if: failure()
         uses: actions/upload-artifact@v5

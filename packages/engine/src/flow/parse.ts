@@ -1,5 +1,5 @@
 /**
- * 解析并校验 am-station.json（清单的类型与字段分级见 manifest.ts）。错误一律带上字段位置。
+ * 解析并校验 onset-station.json（清单的类型与字段分级见 manifest.ts）。错误一律带上字段位置。
  */
 import { stepIDs } from '../studioview';
 import { allStageTitles, allStations, builtinFirstPages } from './registered';
@@ -34,29 +34,29 @@ import type { DeclaredGuide, DeclaredGuideAction, DeclaredOutcome, DeclaredState
 const paramTypes: readonly ParamType[] = ['string', 'boolean', 'integer', 'number', 'strings'];
 
 export interface ParseOptions {
-  /** 随 ArticleToMotion 下发的内置插件（assets/plugins/）：id 可以就是内置插件的 id。 */
+  /** 随片场下发的内置插件（assets/plugins/）：id 可以就是内置插件的 id。 */
   builtin?: boolean;
-  /** 拿来比 requires.am 的 am 版本；缺省是当前 am 的版本（manifest.amVersion）。 */
-  amVersion?: string;
+  /** 拿来比 requires.onset 的 onset 版本；缺省是当前 onset 的版本（manifest.onsetVersion）。 */
+  onsetVersion?: string;
 }
 
-/** 清单格式版本与 requires：先于其他字段检查，新格式的清单才能报「要更新 am」而不是「不认识的字段」。 */
+/** 清单格式版本与 requires：先于其他字段检查，新格式的清单才能报「要更新 onset」而不是「不认识的字段」。 */
 function parseHeader(raw: Record<string, unknown>): Pick<Manifest, 'manifest_version' | 'requires'> {
   const mv = raw.manifest_version === undefined ? 1 : raw.manifest_version;
   if (!Number.isInteger(mv) || (mv as number) < 1) throw new Error('station.manifest_version 要是正整数（现在是 1）');
-  const requires = { am: '' };
+  const requires = { onset: '' };
   if (raw.requires !== undefined) {
     if (!isObject(raw.requires)) throw new Error('station.requires 要是对象');
     // 新格式的清单可能在 requires 里写这一版不认识的要求：格式版本更新时交给 checkCompatible 报「要更新」。
-    if ((mv as number) <= ManifestVersion) knownFields(raw.requires, ['am'], 'requires');
-    const am = str(raw.requires, 'am', 'requires', false).trim();
-    if (am !== '' && !validSemver(am)) throw new Error(`requires.am 要是 x.y.z 形式的版本号：${am}`);
-    requires.am = am;
+    if ((mv as number) <= ManifestVersion) knownFields(raw.requires, ['onset'], 'requires');
+    const onset = str(raw.requires, 'onset', 'requires', false).trim();
+    if (onset !== '' && !validSemver(onset)) throw new Error(`requires.onset 要是 x.y.z 形式的版本号：${onset}`);
+    requires.onset = onset;
   }
   return { manifest_version: mv as number, requires };
 }
 
-/** 解析并校验 am-station.json。错误一律带上字段位置。 */
+/** 解析并校验 onset-station.json。错误一律带上字段位置。 */
 export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
   let raw: unknown;
   try {
@@ -66,7 +66,7 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
   }
   if (!isObject(raw)) throw new Error(`${ManifestFile} 要是一个对象`);
   const header = parseHeader(raw);
-  checkCompatible({ id: typeof raw.id === 'string' ? raw.id : '?', ...header }, opts.amVersion);
+  checkCompatible({ id: typeof raw.id === 'string' ? raw.id : '?', ...header }, opts.onsetVersion);
   knownFields(raw, manifestFieldNames(), ManifestFile);
   const id = str(raw, 'id', 'station');
   if (!idPattern.test(id)) throw new Error(`station.id ${id} 要是小写字母开头的小写字母、数字与连字符（2–40 个字符）`);

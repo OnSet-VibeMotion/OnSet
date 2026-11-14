@@ -8,7 +8,7 @@ import { CLIDirEnv, cliCommandFor, cliDir, cliReady, ensureCLI } from './index';
 import { fakeCLI } from './hftest';
 
 function tempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'am-hyperframes-cli-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-hyperframes-cli-'));
 }
 
 function which(name: string): string {
@@ -44,7 +44,7 @@ function fakePackage(version: string): string {
 }
 
 describe('hyperframes CLI', () => {
-  // am 管理 CLI：装进指定目录、自检通过才算装好；再调用时直接用，不再碰 npm。
+  // onset 管理 CLI：装进指定目录、自检通过才算装好；再调用时直接用，不再碰 npm。
   it.skipIf(!hasNpm || node === '')('ensureCLI installs once and reuses the cache', { timeout: 120_000 }, async () => {
     const pkg = fakePackage('9.9.9');
     const dir = path.join(tempDir(), 'cli-9.9.9');
@@ -78,9 +78,9 @@ describe('hyperframes CLI', () => {
 
   it('cliDir follows environment', () => {
     // 默认目录。
-    expect(cliDir({ HOME: '/h' }, '1.2.3')).toBe('/h/.local/share/am/hyperframes/cli-1.2.3');
+    expect(cliDir({ HOME: '/h' }, '1.2.3')).toBe('/h/.local/share/onset/hyperframes/cli-1.2.3');
     // 应当遵循 XDG_DATA_HOME。
-    expect(cliDir({ HOME: '/h', XDG_DATA_HOME: '/x' }, '1.2.3')).toBe('/x/am/hyperframes/cli-1.2.3');
+    expect(cliDir({ HOME: '/h', XDG_DATA_HOME: '/x' }, '1.2.3')).toBe('/x/onset/hyperframes/cli-1.2.3');
     // 显式指定的目录优先。
     expect(cliDir({ HOME: '/h', [CLIDirEnv]: '/c' }, '1.2.3')).toBe('/c');
     // 没有 HOME 时不猜家目录。

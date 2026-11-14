@@ -1,12 +1,12 @@
 /**
- * 操作表：am 的每一条制作步骤是一个 Op——名字、说明、具名参数、处理函数。
+ * 操作表：onset 的每一条制作步骤是一个 Op——名字、说明、具名参数、处理函数。
  *
  * 编排工具与渲染器经工具服务（MCP）调用的工具、客户端后端跑的写任务，都直接从这张表来：
  * 工具名就是 Op 的 name，参数就是 params，结果是处理函数写下的文字加结构化的 data。
- * 命令行（`am beat import …`）只是给开发与 CI 用的一层适配（ops/cli.ts），不对外提供。
+ * 命令行（`onset beat import …`）只是给开发与 CI 用的一层适配（ops/cli.ts），不对外提供。
  *
- * 说明与例子按工具的写法写（`beat_cues({"scenes": "scenes/"})`），不写 `am <命令>`：
- * agent 拿到什么就照着调什么，写成命令行它就会去终端里找 am。
+ * 说明与例子按工具的写法写（`beat_cues({"scenes": "scenes/"})`），不写 `onset <命令>`：
+ * agent 拿到什么就照着调什么，写成命令行它就会去终端里找 onset。
  */
 import type { Out } from '../cobra';
 
@@ -77,8 +77,8 @@ export interface Op {
 }
 
 /** 参数校验或调用方式不对：工具服务把它原样交给 agent，不当成操作失败的堆栈（与内置插件的操作同一个类）。 */
-export { ParamError } from '@am/engine/opkit';
-import { ParamError } from '@am/engine/opkit';
+export { ParamError } from '@onset/engine/opkit';
+import { ParamError } from '@onset/engine/opkit';
 
 const registry = new Map<string, Op>();
 

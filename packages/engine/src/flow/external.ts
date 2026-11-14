@@ -3,11 +3,11 @@
  *
  * | 文件 | 内容 |
  * |---|---|
- * | manifest.ts | 清单类型、字段分级（ManifestFields）、格式版本与 am 版本兼容 |
- * | parse.ts | 解析与校验 am-station.json |
+ * | manifest.ts | 清单类型、字段分级（ManifestFields）、格式版本与 onset 版本兼容 |
+ * | parse.ts | 解析与校验 onset-station.json |
  * | fields.ts | 解析用的小工具（路径校验、拒收不认识的字段） |
  * | pages.ts | 清单到路线、页面、工具名的映射 |
- * | lock.ts | 项目的 article-to-motion.flow.json（新建时记下的流程） |
+ * | lock.ts | 项目的 onset.flow.json（新建时记下的流程） |
  * | installed.ts | 用户级的已装插件清单 |
  * | digest.ts | 站目录的内容摘要（带进程内缓存） |
  * | fetch.ts | 来源、git 下载、读清单与检查文件 |
@@ -23,7 +23,7 @@ export {
   ManifestFields,
   ManifestVersion,
   HookEvents,
-  amVersion,
+  onsetVersion,
   checkCompatible,
   compareSemver,
   experimentalFields,

@@ -19,8 +19,8 @@ import '../onboarding.css';
  * 全局设置写的是 /api/settings/global，与设置页同一份；key 写的是 /api/agent-keys。
  */
 
-export const OnboardingDoneKey = 'am.onboarding.done';
-const ttsAckKey = 'am.onboarding.tts';
+export const OnboardingDoneKey = 'onset.onboarding.done';
+const ttsAckKey = 'onset.onboarding.tts';
 
 function readFlag(key: string): boolean {
   try {

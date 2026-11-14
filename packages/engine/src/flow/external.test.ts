@@ -43,7 +43,7 @@ const temp = (prefix: string) => {
 
 /** 一个最小的项目：只记了流程（口播）与画幅。 */
 function project(): string {
-  const root = temp('am-flow-project-');
+  const root = temp('onset-flow-project-');
   recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
   return root;
 }
@@ -59,7 +59,7 @@ const manifest = (over: Record<string, unknown> = {}) =>
 
 describe('parseManifest', () => {
   it('reads the fake publisher', () => {
-    const m = parseManifest(fs.readFileSync(path.join(fake, 'am-station.json'), 'utf8'));
+    const m = parseManifest(fs.readFileSync(path.join(fake, 'onset-station.json'), 'utf8'));
     expect(m.id).toBe('fake-publisher');
     expect(m.ops.map((o) => [o.name, o.trigger])).toEqual([
       ['send', 'user'],
@@ -85,14 +85,14 @@ describe('parseManifest', () => {
       [{ nodes: [{ id: 'n1', label: 'x', step: 'final', gate: true }] }, '要写 gate_files'],
       [{ nodes: [{ id: 'n1', label: 'x', step: 'final', outputs: ['../out'] }] }, '要是项目里的相对路径'],
       [{ nodes: [{ id: 'n1', label: 'x', step: 'final', outputs: ['/etc/passwd'] }] }, '要是项目里的相对路径'],
-      [{ produces: [{ prefix: 'production/studio/' }] }, '是 am 自己的文件'],
-      [{ produces: [{ path: '.env' }] }, '是 am 自己的文件'],
+      [{ produces: [{ prefix: 'production/studio/' }] }, '是 onset 自己的文件'],
+      [{ produces: [{ path: '.env' }] }, '是 onset 自己的文件'],
       [{ ops: [{ name: 'go', summary: 's', command: ['../x'] }] }, '要是站目录里的相对路径'],
       [{ ops: [{ name: 'go', summary: 's', command: ['bin/x'], trigger: 'cron' }] }, 'trigger 要是 agent 或 user'],
       [{ ops: [{ name: 'go', summary: 's', command: ['bin/x'], params: { a: { type: 'blob', description: 'd' } } }] }, 'params.a.type'],
       [{ pages: [{ id: 'p1', label: 'x', entry: 'ui/app.js' }] }, '要是 .html 文件'],
       [{ pages: [{ id: 'p1', label: 'x', entry: '../ui/index.html' }] }, '要是站目录里的相对路径'],
-      [{ pages: [{ id: 'p1', label: 'x', entry: 'ui/index.html', reads: ['.env'] }] }, '是 am 自己的文件'],
+      [{ pages: [{ id: 'p1', label: 'x', entry: 'ui/index.html', reads: ['.env'] }] }, '是 onset 自己的文件'],
       [{ settings: [{ key: 'k', label: 'K', type: 'select' }] }, '要写 options'],
       [{ settings: [{ key: 'k', label: 'K', type: 'secret', default: 'x' }] }, '密钥不能有缺省值'],
       [{ settings: [{ key: 'k', label: 'K', type: 'number', default: 'x' }] }, 'default 与 type 不符'],
@@ -117,8 +117,8 @@ describe('parseManifest', () => {
 
 describe('plugin settings', () => {
   it('stores settings per plugin, keeps secrets in a 0600 file and out of the public view', async () => {
-    const env = { ...process.env, AM_STATIONS_DIR: temp('am-stations-') };
-    const m = parseManifest(fs.readFileSync(path.join(fake, 'am-station.json'), 'utf8'));
+    const env = { ...process.env, ONSET_STATIONS_DIR: temp('onset-stations-') };
+    const m = parseManifest(fs.readFileSync(path.join(fake, 'onset-station.json'), 'utf8'));
     expect(stationSettings(env, m)).toEqual({ platform: 'douyin' });
     writeStationSetting(env, m, 'platform', 'bilibili');
     writeStationSetting(env, m, 'token', 'tok-123');
@@ -126,7 +126,7 @@ describe('plugin settings', () => {
     expect(() => writeStationSetting(env, m, 'nope', 'x')).toThrow('没有设置 nope');
     expect(stationSettings(env, m)).toEqual({ platform: 'bilibili', token: 'tok-123' });
     expect(publicSettings(env, m)).toEqual({ values: { platform: 'bilibili' }, secrets_set: { token: true } });
-    const secrets = path.join(env.AM_STATIONS_DIR, 'fake-publisher', 'config', 'secrets.json');
+    const secrets = path.join(env.ONSET_STATIONS_DIR, 'fake-publisher', 'config', 'secrets.json');
     expect(fs.statSync(secrets).mode & 0o777).toBe(0o600);
     writeStationSetting(env, m, 'token', '');
     expect(publicSettings(env, m).secrets_set.token).toBe(false);
@@ -137,22 +137,22 @@ describe('plugin settings', () => {
     const root = project();
     installStation(`link:${fake}`);
     const env = { ...process.env };
-    const m = parseManifest(fs.readFileSync(path.join(fake, 'am-station.json'), 'utf8'));
+    const m = parseManifest(fs.readFileSync(path.join(fake, 'onset-station.json'), 'utf8'));
     writeStationSetting(env, m, 'token', 'tok-123');
     let out = '';
     const r = await runStationOp(root, 'fake-publisher', 'on_event', {}, (t) => (out += t), undefined, env, { name: 'gate.confirmed', gate: 'gate-script' });
     expect(r.ok).toBe(true);
     expect(fs.readFileSync(path.join(root, 'production/publish/hooks.log'), 'utf8')).toBe('gate.confirmed token=set\n');
-    expect(out).toContain('am-progress 0.5 正在记下事件');
-    expect(parseProgressLine('am-progress 0.5 正在记下事件')).toEqual({ progress: 0.5, message: '正在记下事件' });
-    expect(parseProgressLine('am-progress 7')).toEqual({ progress: 1, message: '' });
-    expect(parseProgressLine('am-progress x')).toBeNull();
+    expect(out).toContain('onset-progress 0.5 正在记下事件');
+    expect(parseProgressLine('onset-progress 0.5 正在记下事件')).toEqual({ progress: 0.5, message: '正在记下事件' });
+    expect(parseProgressLine('onset-progress 7')).toEqual({ progress: 1, message: '' });
+    expect(parseProgressLine('onset-progress x')).toBeNull();
     expect(parseProgressLine('hello')).toBeNull();
   });
 });
 
 describe('plugin pages', () => {
-  const m = parseManifest(fs.readFileSync(path.join(fake, 'am-station.json'), 'utf8'));
+  const m = parseManifest(fs.readFileSync(path.join(fake, 'onset-station.json'), 'utf8'));
 
   it('maps a stop to the station page and tells the orchestrator how to open it', () => {
     expect(toExtra(m).station.nodes[0].page).toBe('x:fake-publisher:dashboard');
@@ -170,7 +170,7 @@ describe('plugin pages', () => {
   });
 
   it('refuses a page whose entry is missing', () => {
-    const dir = writeStationForTest({ 'am-station.json': manifest({ pages: [{ id: 'p1', label: '页', entry: 'ui/index.html' }] }) });
+    const dir = writeStationForTest({ 'onset-station.json': manifest({ pages: [{ id: 'p1', label: '页', entry: 'ui/index.html' }] }) });
     temps.push(dir);
     expect(() => fetchStation(`link:${dir}`, process.env)).toThrow('缺文件 ui/index.html');
   });
@@ -217,7 +217,7 @@ describe('installed plugins', () => {
     removeStation('fake-publisher');
     expect(readInstalled(stationsDir(process.env)).plugins).toEqual([]);
     // 项目的锁文件不碰：只有新建时记下的流程。
-    expect(JSON.parse(fs.readFileSync(path.join(root, 'article-to-motion.flow.json'), 'utf8'))).toEqual({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } });
+    expect(JSON.parse(fs.readFileSync(path.join(root, 'onset.flow.json'), 'utf8'))).toEqual({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } });
     expect(() => removeStation('fake-publisher')).toThrow('没有装插件 fake-publisher');
   });
 
@@ -230,18 +230,18 @@ describe('installed plugins', () => {
 
   it('fetches a git station by commit and refuses it once tampered', () => {
     if (spawnSync('git', ['--version']).status !== 0) return;
-    const repo = temp('am-flow-repo-');
+    const repo = temp('onset-flow-repo-');
     fs.cpSync(fake, repo, { recursive: true });
     const git = (...args: string[]) => spawnSync('git', args, { cwd: repo, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
     git('init', '-q');
     git('add', '.');
     git('commit', '-qm', 'v1');
     git('tag', 'v1');
-    const env = { ...process.env, AM_STATIONS_DIR: temp('am-stations-') };
+    const env = { ...process.env, ONSET_STATIONS_DIR: temp('onset-stations-') };
     const got = fetchStation(`file://${repo}#v1`, env);
     expect(got.entry.commit).toMatch(/^[0-9a-f]{40}$/);
     expect(got.entry.digest).toMatch(/^sha256:/);
-    expect(got.dir).toBe(path.join(env.AM_STATIONS_DIR, 'fake-publisher', got.entry.commit));
+    expect(got.dir).toBe(path.join(env.ONSET_STATIONS_DIR, 'fake-publisher', got.entry.commit));
     expect(fs.existsSync(path.join(got.dir, '.git'))).toBe(false);
 
     installStation(`file://${repo}#v1`, env);
@@ -268,7 +268,7 @@ describe('prompt', () => {
 
   it('refuses to start when an installed plugin that joins the route cannot be read', () => {
     const root = project();
-    const dir = writeStationForTest({ 'am-station.json': manifest({}), 'bin/x': '#!/bin/sh\n' });
+    const dir = writeStationForTest({ 'onset-station.json': manifest({}), 'bin/x': '#!/bin/sh\n' });
     installStation(`link:${dir}`);
     fs.rmSync(dir, { recursive: true, force: true });
     // 它有站点、没写 after：接在每条路线最后，参与这个项目的制作。
@@ -286,12 +286,12 @@ describe('runStationOp', () => {
   it('runs an op in the project with a minimal environment', async () => {
     const root = project();
     installStation(`link:${fake}`);
-    const env = { ...process.env, AM_TEST_SECRET: 'leaked' };
+    const env = { ...process.env, ONSET_TEST_SECRET: 'leaked' };
     let out = '';
     const sent = await runStationOp(root, 'fake-publisher', 'send', { platform: 'douyin' }, (t) => (out += t), undefined, env);
     expect(sent).toEqual({ ok: true, data: { platform: 'douyin', url: 'https://example.invalid/douyin/1' }, exit_code: 0 });
     expect(out).toContain('已发到 douyin');
-    expect(out).not.toContain('am-result');
+    expect(out).not.toContain('onset-result');
     expect(JSON.parse(fs.readFileSync(path.join(root, 'production/publish/receipts.json'), 'utf8')).platform).toBe('douyin');
 
     out = '';
@@ -303,7 +303,7 @@ describe('runStationOp', () => {
   it('checks params and reports failures', async () => {
     const root = project();
     const dir = writeStationForTest({
-      'am-station.json': manifest({ ops: [{ name: 'fail', summary: '总是失败', command: ['bin/fail'], params: { n: { type: 'integer', description: '次数' } } }] }),
+      'onset-station.json': manifest({ ops: [{ name: 'fail', summary: '总是失败', command: ['bin/fail'], params: { n: { type: 'integer', description: '次数' } } }] }),
       'bin/fail': '#!/bin/sh\necho "坏了" >&2\nexit 3\n',
     });
     temps.push(dir);

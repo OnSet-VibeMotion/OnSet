@@ -6,14 +6,14 @@ import { childEnvironment, load } from './config';
 import { AlignAuto, Aligners, TTSProviders, alignerIDs, resolveAligner, ttsProviderIDs, validAligner, validTTSProvider } from './providers';
 
 function tempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'am-config-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-config-'));
 }
 
 describe('providers', () => {
   it('accepts every TTS provider', () => {
     for (const provider of TTSProviders) {
       const root = tempDir();
-      fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nTTS_PROVIDER=' + provider.id + '\n');
+      fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nTTS_PROVIDER=' + provider.id + '\n');
       expect(load(root, {}).ttsProvider, `${provider.id} 应被接受`).toBe(provider.id);
     }
   });
@@ -34,7 +34,7 @@ describe('providers', () => {
   // 缺省按平台解析，编排工具从环境变量拿到的是具体工具名而不是 auto。
   it('defaults the aligner to auto and exports it', () => {
     const root = tempDir();
-    fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
     const cfg = load(root, {});
     const want = resolveAligner(AlignAuto, process.platform, process.arch);
     expect(cfg.alignProvider).toBe(want);

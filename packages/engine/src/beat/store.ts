@@ -33,7 +33,7 @@ export const AnalysisFile = Store + '/analysis.wav';
  */
 export const AnalyzerVersion = '1.1.0';
 
-/** DefaultConfig 是 am beat init 写出的 beat.yaml。 */
+/** DefaultConfig 是 onset beat init 写出的 beat.yaml。 */
 export const DefaultConfig = `schema: 1
 # 节拍模型：final0（约 78 MB，默认）或 small0（约 8 MB，精度略低）；
 # 同系列还有 final1/final2、small1/small2，是不同随机种子训练的同结构模型。
@@ -46,7 +46,7 @@ checkpoint: final0
 export interface Config {
   schema: number;
   checkpoint: string;
-  /** 空：用 am setup 装好的共享环境（beat/env.ts）。 */
+  /** 空：用 onset setup 装好的共享环境（beat/env.ts）。 */
   python: string;
 }
 

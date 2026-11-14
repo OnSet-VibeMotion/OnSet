@@ -13,7 +13,7 @@ afterEach(() => {
 
 /** 一个记下了流程（缺省口播）的项目，带着给定的文件。 */
 function project(files: Record<string, string>, flowID = 'speech'): string {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-progress-')));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-progress-')));
   recordFlow(root, { id: flowID, canvas: 'vertical-3x4' });
   roots.push(root);
   for (const [name, body] of Object.entries(files)) write(root, name, body);

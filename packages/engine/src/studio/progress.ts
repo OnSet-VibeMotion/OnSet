@@ -90,7 +90,7 @@ function gateFilesFor(): Record<string, string[]> {
   return out;
 }
 
-/** 可以经界面按钮记确认的关卡。试听确认（approval.json）与节拍确认（grid.json）由编排与 am 写，不在这里。 */
+/** 可以经界面按钮记确认的关卡。试听确认（approval.json）与节拍确认（grid.json）由编排与 onset 写，不在这里。 */
 export function gateIDs(): string[] {
   return Object.keys(gateFilesFor());
 }
@@ -318,10 +318,10 @@ const judges: Record<string, Judge> = {
     },
   },
   'style:style': {
-    output: (c) => f(c, '.agents/skills/am-film-style/am-film-style.json'),
+    output: (c) => f(c, '.agents/skills/onset-film-style/onset-film-style.json'),
     detail: (c) => {
       try {
-        const raw = JSON.parse(fs.readFileSync(path.join(c.root, '.agents/skills/am-film-style/am-film-style.json'), 'utf8')) as Record<string, unknown>;
+        const raw = JSON.parse(fs.readFileSync(path.join(c.root, '.agents/skills/onset-film-style/onset-film-style.json'), 'utf8')) as Record<string, unknown>;
         return typeof raw.cn === 'string' && raw.cn ? raw.cn : undefined;
       } catch {
         return undefined;

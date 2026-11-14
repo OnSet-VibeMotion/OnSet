@@ -12,7 +12,7 @@ import { readSceneHeads } from './scenes';
 import { slice } from './slice';
 
 /**
- * 对白时间线在项目里的固定位置，与 am dialogue assemble 的产出位置一致。
+ * 对白时间线在项目里的固定位置，与 onset dialogue assemble 的产出位置一致。
  * 是 dialogue.DialogueRelPath 的别名，不要另造第三处：写方（dialogue.assemble）、
  * 打印方（cli 的 runDialogueAssemble）、读方（validate/cast.ts、本包）都只应引用这一份真相源。
  *
@@ -55,7 +55,7 @@ export interface Report {
 export function apply(root: string): Report {
   // cast.yaml 存在与否就是叙事模式本身。单口播项目误跑到这条命令时，
   // 先说清"本项目不是多角色项目"——否则报出来的是"找不到 dialogue.json"，
-  // 会把人往"少跑了 am dialogue assemble"上引，接着去装配一个根本不存在
+  // 会把人往"少跑了 onset dialogue assemble"上引，接着去装配一个根本不存在
   // 的对白。
   if (!cast.hasRoster(root)) {
     throw new Error(

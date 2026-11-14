@@ -2,7 +2,7 @@
  * 整片风格（../filmstyle）在 Studio 里的入口：各风格来源的目录与海报、本项目的
  * 整片风格、装 / 换 / 去掉。
  *
- * 来源数据是前置资源（am setup 准备），这里只读不下载。装与去掉经 am film-style 子命令完成，
+ * 来源数据是前置资源（onset setup 准备），这里只读不下载。装与去掉经 onset film-style 子命令完成，
  * 占项目写锁，与渲染、拼接同一条路：Studio 自己不写项目文件。这里不点名任何来源，
  * 全部经 filmstyle.sources() 取。
  */
@@ -20,7 +20,7 @@ import { runStudioOp, runWriteTask, writeTaskError, type Task } from './tasks';
 // 已装的第三方插件带来的风格来源由 flow 加载时交给 filmstyle（flow/styles.ts）。
 import '../flow';
 
-/** /api/film-styles 里的一个来源。ready 为 false 时来源数据还没由 am setup 准备好（附 problem）。 */
+/** /api/film-styles 里的一个来源。ready 为 false 时来源数据还没由 onset setup 准备好（附 problem）。 */
 export interface FilmStyleSource {
   id: string;
   name: string;
@@ -168,7 +168,7 @@ export async function posterThumbnail(dir: string, slug: string, source: string,
   const toolchain = newToolchain(env);
   const ffmpeg = toolchain.ffmpegPath();
   fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
-  const tmp = path.join(dir, `.am-tmp-${crypto.randomBytes(6).toString('hex')}.jpg`);
+  const tmp = path.join(dir, `.onset-tmp-${crypto.randomBytes(6).toString('hex')}.jpg`);
   try {
     const ran = await toolchain.runAsync(ffmpeg, ['-v', 'error', '-y', '-i', source, '-vf', `scale=${width}:${height}:flags=area`, '-q:v', '4', tmp], {
       captureStderr: true,
@@ -283,7 +283,7 @@ export function startAddFilmStyleTask(s: Server, p: Project, style: filmstyle.St
   });
 }
 
-/** 去掉一种风格；key 为空时去掉默认风格。还有镜头点名它时 am 会拒绝，错误进任务日志。 */
+/** 去掉一种风格；key 为空时去掉默认风格。还有镜头点名它时 onset 会拒绝，错误进任务日志。 */
 function removeFilmStyle(s: Server, p: Project, key: string): Response {
   try {
     const params: Record<string, unknown> = { project_root: p.path, ...(key !== '' ? { style: key } : {}) };

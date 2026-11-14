@@ -4,13 +4,13 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import type * as agentrun from '@am/engine/agentrun';
-import * as config from '@am/engine/config';
-import { compareBytes, marshalIndent, sortedKeys } from '@am/engine/gojson';
-import * as ledger from '@am/engine/ledger';
-import * as scene from '@am/engine/scene';
-import * as schedule from '@am/engine/schedule';
-import * as tools from '@am/engine/tools';
+import type * as agentrun from '@onset/engine/agentrun';
+import * as config from '@onset/engine/config';
+import { compareBytes, marshalIndent, sortedKeys } from '@onset/engine/gojson';
+import * as ledger from '@onset/engine/ledger';
+import * as scene from '@onset/engine/scene';
+import * as schedule from '@onset/engine/schedule';
+import * as tools from '@onset/engine/tools';
 import { type Out } from './cobra';
 import { bool, str } from './ops/common';
 import { defineOp } from './ops/op';
@@ -25,14 +25,14 @@ export interface SceneUsage {
   by_model: Record<string, tools.Usage>;
 }
 
-/** am scene usage 的机器可读结果。 */
+/** onset scene usage 的机器可读结果。 */
 export interface UsageReport {
   scenes: SceneUsage[];
   total: tools.Usage;
   by_model: Record<string, tools.Usage>;
 }
 
-/** am usage 的机器可读结果。 */
+/** onset usage 的机器可读结果。 */
 export interface ProjectUsage {
   renders: UsageReport;
   orchestrator: ledger.Summary;

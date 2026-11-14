@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Buffer, hasFfmpeg, makeClip, run, tempDir, writeFrameFor } from './testutil';
-import * as beat from '@am/engine/beat';
-import * as scene from '@am/engine/scene';
-import { verifyBeatInputs } from '@am/engine/plugins/beat';
+import * as beat from '@onset/engine/beat';
+import * as scene from '@onset/engine/scene';
+import { verifyBeatInputs } from '@onset/engine/plugins/beat';
 
 /** media_test.go 的 makeSceneDir：建一个可被 scene.load 读取的镜头目录。 */
 function makeSceneDir(root: string, id: string, duration: number, filter: string): string {

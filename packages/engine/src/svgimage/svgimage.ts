@@ -53,7 +53,7 @@ export function renderSVG(svgPath: string, pngPath: string, ...fontDirs: string[
  * fontDirs：随项目下发的字体不装进系统也能被 rsvg-convert 找到。
  */
 export function fontconfigWith(fontDirs: string[]): [string, () => void] {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-fontconfig-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-fontconfig-'));
   const cleanup = () => fs.rmSync(dir, { recursive: true, force: true });
   try {
     let b = '<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "fonts.dtd">\n<fontconfig>\n';

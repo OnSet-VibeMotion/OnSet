@@ -2,17 +2,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { amToolsServer, extractUserMessages, orchestratorInvocation, presetSessionID, projectRulesFilename, rendererEnv, rendererInvocation } from './index';
+import { onsetToolsServer, extractUserMessages, orchestratorInvocation, presetSessionID, projectRulesFilename, rendererEnv, rendererInvocation } from './index';
 
 function tempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'am-tools-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-tools-'));
 }
 
 describe('tools', () => {
   describe('renderer invocation safe by default', () => {
     const tests: [string, string[]][] = [
       ['codex', ['codex', '--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', 'prompt']],
-      ['claude', ['claude', '-p', '--permission-mode', 'acceptEdits', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(am:*)","Read(**/.env)","Read(**/.env.*)"]}}`, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', 'prompt']],
+      ['claude', ['claude', '-p', '--permission-mode', 'acceptEdits', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]}}`, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', 'prompt']],
       ['qoder', ['qoderclicn', '-p', 'prompt', '--permission-mode', 'dont_ask', '--output-format', 'stream-json']],
       ['codebuddy', ['codebuddy', '-p', '--verbose', '--output-format', 'stream-json', '--permission-mode', 'acceptEdits', 'prompt']],
       ['opencode', ['opencode', 'run', '--standalone', '--format', 'json', 'prompt']],
@@ -48,7 +48,7 @@ describe('tools', () => {
     expect(stdin).toBe('prompt');
   });
 
-  // 编排工具调用的 am 要写用户级记忆库，codex 的 workspace-write 沙箱只放行工作目录，
+  // 编排工具调用的 onset 要写用户级记忆库，codex 的 workspace-write 沙箱只放行工作目录，
   // 记忆库要用 --add-dir 加进去；不存在的目录不传。
   it('codex sandbox adds writable memory dir', () => {
     const memory = tempDir();
@@ -118,10 +118,10 @@ describe('tools', () => {
   });
 
   it('orchestrator safe mode allows listed commands', () => {
-    const access = { commands: ['am', 'ffprobe'] };
+    const access = { commands: ['onset', 'ffprobe'] };
     const { argv } = orchestratorInvocation('qoder', { prompt: 'p', access });
     const joined = argv.join(' ');
-    for (const want of ['--permission-mode accept_edits', '--allowed-tools Bash(am:*)', '--allowed-tools Bash(ffprobe:*)']) {
+    for (const want of ['--permission-mode accept_edits', '--allowed-tools Bash(onset:*)', '--allowed-tools Bash(ffprobe:*)']) {
       expect(joined).toContain(want);
     }
     // dont_ask 连写文件都拒，不能用于编排。
@@ -129,7 +129,7 @@ describe('tools', () => {
     for (const tool of ['claude', 'codebuddy']) {
       const { argv } = orchestratorInvocation(tool, { prompt: 'p', access });
       const settings = argv[argv.indexOf('--settings') + 1];
-      expect(settings).toContain(`"Bash(am:*)"`);
+      expect(settings).toContain(`"Bash(onset:*)"`);
       expect(settings).toContain(`"Read(**/.env)"`);
     }
   });
@@ -176,19 +176,19 @@ describe('tools', () => {
     const settings = JSON.parse(got[index + 1]) as { permissions: { allow: string[]; deny: string[]; additionalDirectories: string[] } };
     expect(settings.permissions.allow).toEqual(['Bash(npx --yes hyperframes@0.8.14:*)', 'Bash(ffprobe:*)', 'Read(//proj/.agents/skills/**)']);
     expect(settings.permissions.additionalDirectories).toEqual(['/proj/.agents/skills']);
-    expect(settings.permissions.deny).toEqual(['Bash(am:*)', 'Read(**/.env)', 'Read(**/.env.*)']);
+    expect(settings.permissions.deny).toEqual(['Bash(onset:*)', 'Read(**/.env)', 'Read(**/.env.*)']);
   });
 
-  // am 只经工具服务调用：渲染器与编排工具在每家都挂上 am 的 MCP 服务，claude 系放行整个服务。
-  describe('am tools server', () => {
-    const server = amToolsServer('/app/bin/am', 'renderer', '/proj/scenes/s1', { AM_BROWSER: '/b', OPENAI_API_KEY: 'secret', PATH: '/usr/bin' });
+  // onset 只经工具服务调用：渲染器与编排工具在每家都挂上 onset 的 MCP 服务，claude 系放行整个服务。
+  describe('onset tools server', () => {
+    const server = onsetToolsServer('/app/bin/onset', 'renderer', '/proj/scenes/s1', { ONSET_BROWSER: '/b', OPENAI_API_KEY: 'secret', PATH: '/usr/bin' });
 
-    it('passes only am settings to the server, never credentials', () => {
+    it('passes only onset settings to the server, never credentials', () => {
       expect(server).toEqual({
-        name: 'am',
-        command: '/app/bin/am',
+        name: 'onset',
+        command: '/app/bin/onset',
         args: ['studio', 'tools-mcp', '--profile', 'renderer', '--workdir', '/proj/scenes/s1'],
-        env: { AM_BROWSER: '/b', PATH: '/usr/bin' },
+        env: { ONSET_BROWSER: '/b', PATH: '/usr/bin' },
       });
     });
 
@@ -196,35 +196,35 @@ describe('tools', () => {
       const got = rendererInvocation('claude', 'prompt', false, { commands: ['ls'], toolsServer: server });
       expect(got.at(-1)).toBe('prompt');
       const at = got.indexOf('--mcp-config');
-      expect(JSON.parse(got[at + 1]).mcpServers.am.args).toContain('renderer');
+      expect(JSON.parse(got[at + 1]).mcpServers.onset.args).toContain('renderer');
       expect(got[at + 2].startsWith('--')).toBe(true);
       const settings = JSON.parse(got[got.indexOf('--settings') + 1]);
-      expect(settings.permissions.allow).toContain('mcp__am');
+      expect(settings.permissions.allow).toContain('mcp__onset');
     });
 
     it('attaches to codex, qoder, codebuddy and opencode renderers', () => {
       const codex = rendererInvocation('codex', 'prompt', false, { toolsServer: server });
-      expect(codex).toContain('mcp_servers.am.command="/app/bin/am"');
+      expect(codex).toContain('mcp_servers.onset.command="/app/bin/onset"');
       expect(codex.at(-1)).toBe('prompt');
       const qoder = rendererInvocation('qoder', 'prompt', false, { toolsServer: server });
-      expect(qoder.slice(qoder.indexOf('--allowed-tools'), qoder.indexOf('--allowed-tools') + 2)).toEqual(['--allowed-tools', 'mcp__am']);
+      expect(qoder.slice(qoder.indexOf('--allowed-tools'), qoder.indexOf('--allowed-tools') + 2)).toEqual(['--allowed-tools', 'mcp__onset']);
       expect(rendererInvocation('codebuddy', 'prompt', false, { toolsServer: server })).toContain('--mcp-config');
       const env = rendererEnv('opencode', { toolsServer: server }, { OPENCODE_CONFIG_CONTENT: '{"model":"x"}' });
-      expect(JSON.parse(env.OPENCODE_CONFIG_CONTENT)).toEqual({ model: 'x', mcp: { am: { type: 'local', command: ['/app/bin/am', 'studio', 'tools-mcp', '--profile', 'renderer', '--workdir', '/proj/scenes/s1'], enabled: true, environment: server.env } } });
+      expect(JSON.parse(env.OPENCODE_CONFIG_CONTENT)).toEqual({ model: 'x', mcp: { onset: { type: 'local', command: ['/app/bin/onset', 'studio', 'tools-mcp', '--profile', 'renderer', '--workdir', '/proj/scenes/s1'], enabled: true, environment: server.env } } });
     });
 
     it('sits next to the approval server for the claude orchestrator', () => {
-      const permissionPrompt = { command: '/app/am', args: ['studio', 'permission-mcp'], server: 'am_studio' };
+      const permissionPrompt = { command: '/app/onset', args: ['studio', 'permission-mcp'], server: 'onset_studio' };
       const { argv } = orchestratorInvocation('claude', { prompt: 'hello', workdir: '/p', permissionPrompt, toolsServer: server });
       const config = JSON.parse(argv[argv.indexOf('--mcp-config') + 1]);
-      expect(Object.keys(config.mcpServers)).toEqual(['am_studio', 'am']);
-      expect(JSON.parse(argv[argv.indexOf('--settings') + 1]).permissions.allow).toContain('mcp__am');
+      expect(Object.keys(config.mcpServers)).toEqual(['onset_studio', 'onset']);
+      expect(JSON.parse(argv[argv.indexOf('--settings') + 1]).permissions.allow).toContain('mcp__onset');
       expect(argv.at(-1)).toBe('hello');
       // 没有审批服务（不安全模式）也挂上工具服务，提示词照样是最后一个。
       const unsafe = orchestratorInvocation('claude', { prompt: 'hello', unsafe: true, toolsServer: server }).argv;
       expect(unsafe).toContain('--mcp-config');
       expect(unsafe.at(-1)).toBe('hello');
-      expect(orchestratorInvocation('codex', { prompt: 'p', workdir: '/p', toolsServer: server }).argv).toContain('mcp_servers.am.command="/app/bin/am"');
+      expect(orchestratorInvocation('codex', { prompt: 'p', workdir: '/p', toolsServer: server }).argv).toContain('mcp_servers.onset.command="/app/bin/onset"');
     });
   });
 
@@ -233,15 +233,15 @@ describe('tools', () => {
     expect(rendererInvocation('claude', 'prompt', true, { commands: ['ls'] })).not.toContain('--settings');
   });
 
-  // 客户端里 claude 遇到白名单外的调用时交给 am studio permission-mcp 去问用户；--mcp-config 后面紧跟选项，
+  // 客户端里 claude 遇到白名单外的调用时交给 onset studio permission-mcp 去问用户；--mcp-config 后面紧跟选项，
   // 不会把提示词当成第二份配置吞进去。不安全模式、其他工具、没给审批服务时都不加。
   it('routes claude permission prompts to the studio approver', () => {
-    const permissionPrompt = { command: '/app/am', args: ['studio', 'permission-mcp'], server: 'am_studio' };
+    const permissionPrompt = { command: '/app/onset', args: ['studio', 'permission-mcp'], server: 'onset_studio' };
     const { argv } = orchestratorInvocation('claude', { prompt: 'hello', workdir: '/p', permissionPrompt });
     const at = argv.indexOf('--mcp-config');
     expect(at).toBeGreaterThan(0);
-    expect(JSON.parse(argv[at + 1])).toEqual({ mcpServers: { am_studio: { command: '/app/am', args: ['studio', 'permission-mcp'] } } });
-    expect(argv.slice(at + 2, at + 6)).toEqual(['--permission-prompt-tool', 'mcp__am_studio__ask', '--permission-prompts', 'host']);
+    expect(JSON.parse(argv[at + 1])).toEqual({ mcpServers: { onset_studio: { command: '/app/onset', args: ['studio', 'permission-mcp'] } } });
+    expect(argv.slice(at + 2, at + 6)).toEqual(['--permission-prompt-tool', 'mcp__onset_studio__ask', '--permission-prompts', 'host']);
     expect(argv[argv.length - 1]).toBe('hello');
     expect(orchestratorInvocation('claude', { prompt: 'hello', unsafe: true, permissionPrompt }).argv).not.toContain('--mcp-config');
     expect(orchestratorInvocation('codebuddy', { prompt: 'hello', permissionPrompt }).argv).not.toContain('--mcp-config');
@@ -249,7 +249,7 @@ describe('tools', () => {
     const qoder = orchestratorInvocation('qoder', { prompt: 'hello', permissionPrompt }).argv;
     const q = qoder.indexOf('--mcp-config');
     expect(q).toBeGreaterThan(0);
-    expect(qoder.slice(q + 2, q + 4)).toEqual(['--permission-prompt-tool', 'mcp__am_studio__ask']);
+    expect(qoder.slice(q + 2, q + 4)).toEqual(['--permission-prompt-tool', 'mcp__onset_studio__ask']);
     expect(qoder).not.toContain('--permission-prompts');
     expect(orchestratorInvocation('qoder', { prompt: 'hello', unsafe: true, permissionPrompt }).argv).not.toContain('--mcp-config');
     expect(orchestratorInvocation('claude', { prompt: 'hello' }).argv).not.toContain('--permission-prompts');

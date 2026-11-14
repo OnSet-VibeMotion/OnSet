@@ -1,11 +1,11 @@
 //
-// 本文件是口播镜头的时间合同：由 am scene cues 从字幕或短语锚点推导每个镜头的
+// 本文件是口播镜头的时间合同：由 onset scene cues 从字幕或短语锚点推导每个镜头的
 // 全局帧区间，写进 scene.json 的 timing 块。
 //
 // 过去镜头时长由制作者手算（先定帧数，再写 duration_seconds = 帧数 ÷ 帧率），
 // 渲染器还要自己从完整字幕里减去镜头起点。两处手算各有一个取整口径，错开一帧
 // 只有拼完成片对轴时才看得出来。现在切点只由锚点和 frames.frameOf 一个公式决定，
-// 局部帧号由 am 算好交给渲染器。
+// 局部帧号由 onset 算好交给渲染器。
 import fs from 'node:fs';
 import { frameOf } from '../frames';
 import { unmarshal as goUnmarshal, type StructType as GoStructType } from '../gojson/decode';
@@ -17,13 +17,13 @@ import { sceneCanvas, contained, type Canvas, type Scene } from './scene';
 import { verifyFrameAlignment } from './frames';
 import { VerificationError } from './verification';
 
-/** am scene cues 复制进镜头目录的短语时间轴文件名。 */
+/** onset scene cues 复制进镜头目录的短语时间轴文件名。 */
 export const PhraseCopyFile = 'phrase-timeline.json';
 
 /**
  * scene.json 的 timing 块：镜头在全片时间轴上的帧区间。
  * 帧号都是全局帧，区间左闭右开。plan 是分镜计划文件的 SHA-256，
- * 用来发现「计划改了却没重跑 am scene cues」。phrases 可省略，是镜头目录内
+ * 用来发现「计划改了却没重跑 onset scene cues」。phrases 可省略，是镜头目录内
  * 短语时间轴副本的相对路径。
  *
  * chapter、look、enter、exit 抄自分镜计划：渲染器互相看不到，相邻两个镜头只能
@@ -390,7 +390,7 @@ export const CutPrevEnd = 'prev_end';
 /** 切在空白正中（向下取整）。 */
 export const CutMidGap = 'mid_gap';
 
-/** am scene cues 的分镜计划。 */
+/** onset scene cues 的分镜计划。 */
 export interface TimingPlan {
   schema: number;
   look: Look | null;
@@ -749,7 +749,7 @@ export function planHandoffs(plan: TimingPlan): { enter: Handoff[]; exit: Handof
  * 不同时必须写 handoff 与 style_shift，相同时不能写 style_shift。
  *
  * 风格不同却没有约定的话，两侧各画各的硬切在一起，画法突变比章节硬切更扎眼。
- * 这一条要知道项目的默认风格是哪种，所以不在 parseTimingPlan 里，由 am scene cues 调用。
+ * 这一条要知道项目的默认风格是哪种，所以不在 parseTimingPlan 里，由 onset scene cues 调用。
  */
 export function verifyStyleBoundaries(plan: TimingPlan, effective: (filmStyle: string) => string): void {
   const scenes = plan.scenes ?? [];

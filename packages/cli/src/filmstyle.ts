@@ -4,10 +4,10 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import * as filmstyle from '@am/engine/filmstyle';
-import '@am/engine/plugin';
-import { goQuote } from '@am/engine/gofmt';
-import { encodeLine } from '@am/engine/gojson';
+import * as filmstyle from '@onset/engine/filmstyle';
+import '@onset/engine/plugin';
+import { goQuote } from '@onset/engine/gofmt';
+import { encodeLine } from '@onset/engine/gojson';
 import { currentEnvironment } from './cli';
 import { type Out } from './cobra';
 import { padRight } from './canvas';
@@ -15,7 +15,7 @@ import { defineGroup } from './ops/cli';
 import { bool, str } from './ops/common';
 import { defineOp, type ParamSpec } from './ops/op';
 // 已装的第三方插件带来的风格来源由 flow 加载时交给 filmstyle（flow/styles.ts）。
-import '@am/engine/flow';
+import '@onset/engine/flow';
 
 /** 帮助里列出的已登记来源。 */
 export function sourceSummary(): string {
@@ -73,8 +73,8 @@ const styleParam = (description: string, required = true): ParamSpec => ({ type:
 
 function projectDir(value: unknown): string {
   const abs = path.resolve(str(value) || '.');
-  if (!fs.existsSync(path.join(abs, 'article-to-motion.conf'))) {
-    throw new Error(`${abs} 不是 am 项目（缺少 article-to-motion.conf），用 project_root 参数指向项目根目录`);
+  if (!fs.existsSync(path.join(abs, 'onset.conf'))) {
+    throw new Error(`${abs} 不是 onset 项目（缺少 onset.conf），用 project_root 参数指向项目根目录`);
   }
   return abs;
 }

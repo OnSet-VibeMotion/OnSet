@@ -25,7 +25,7 @@ import { manifestFile } from './constants';
 import { copyStart } from './progress';
 
 function tempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'am-hftest-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-hftest-'));
 }
 
 const PATH = process.env.PATH ?? '';
@@ -191,7 +191,7 @@ describe.skipIf(!hasGit)('install', () => {
 
   it('leaves no temp directory behind', async () => {
     const { url, commit } = fixtureRepo('v9.9.9', ['hyperframes-core'], []);
-    const count = () => fs.readdirSync(os.tmpdir()).filter((name) => name.startsWith('am-hyperframes-')).length;
+    const count = () => fs.readdirSync(os.tmpdir()).filter((name) => name.startsWith('onset-hyperframes-')).length;
     const before = count();
     await install({
       projectDir: tempDir(), version: '9.9.9', repoURL: url, expectCommit: commit, expectSkills: 1,
@@ -249,7 +249,7 @@ describe.skipIf(!hasGit)('install', () => {
     expect(skillDigest(dir)).toBe(first.skills['hyperframes-core']);
   });
 
-  // 可复现安装的主用例：am 自己按 tag 克隆，技能来源完全由 PinnedVersion + PinnedSkillsCommit 决定。
+  // 可复现安装的主用例：onset 自己按 tag 克隆，技能来源完全由 PinnedVersion + PinnedSkillsCommit 决定。
   it('clones pinned commit', async () => {
     const { url, commit } = fixtureRepo('v9.9.9', ['alpha', 'beta'], ['gamma']);
     const project = tempDir();
@@ -339,7 +339,7 @@ describe.skipIf(!hasGit)('install', () => {
   });
 
   // 技能是前置资源：只拷缓存（cacheOnly）时缓存里没有就报缺前置资源、不联网；
-  // am setup 用 prepareSkills 下进缓存后，同样的安装就能从缓存装上。
+  // onset setup 用 prepareSkills 下进缓存后，同样的安装就能从缓存装上。
   it('cache-only install needs prepareSkills', async () => {
     const { url, commit } = fixtureRepo('v9.9.9', ['hyperframes-animation'], ['hyperframes-core']);
     const cache = tempDir();

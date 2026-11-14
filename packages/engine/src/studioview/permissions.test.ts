@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { commandPrefix, listPermissionRequests, permissionToolResult, servePermissionMCP, writePermissionResponse } from './permissions';
 
 function tempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'am-perm-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-perm-'));
 }
 
 /** 一行一行喂给 MCP 服务的输入；close 之后迭代结束。 */

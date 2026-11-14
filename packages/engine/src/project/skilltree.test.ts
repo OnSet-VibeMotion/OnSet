@@ -10,7 +10,7 @@ import { builtinSources, skillManifest, skillTreeRoot } from './testsupport';
 
 const temps: string[] = [];
 function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am-project-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-project-'));
   temps.push(dir);
   return dir;
 }
@@ -43,14 +43,14 @@ describe('skill tree', () => {
     }
   });
 
-  // 与提示词那条同源：用户项目里没有 ./am，技能文件写了它就是一条死路径。
+  // 与提示词那条同源：用户项目里没有 ./onset，技能文件写了它就是一条死路径。
   //
   // 不检查 "agent" 一词——技能树的路径本身叫 .agents/skills，上游英文原文也合法地
   // 提到 Agent Skills，这条只对下发给操作者的 PROMPT 文件成立。
   it('does not reference repo-local binary', () => {
     const problems: string[] = [];
     forEachSkillFile((file, text) => {
-      if (text.includes('./am')) problems.push(`${file} 引用了 ./am，用户项目里没有这个二进制`);
+      if (text.includes('./onset')) problems.push(`${file} 引用了 ./onset，用户项目里没有这个二进制`);
     });
     expect(problems).toEqual([]);
   });
@@ -59,7 +59,7 @@ describe('skill tree', () => {
   //
   // text-to-lottie 的上游把场景绑死在它自己那个 Vite + Skia Skottie 播放器项目上
   // （public/projects/ 布局、dev server、GET /__context）。本项目的镜头是
-  // HyperFrames 组合，由 am scene run 无头渲染，那套契约整体不适用。日后同步上游
+  // HyperFrames 组合，由 onset scene run 无头渲染，那套契约整体不适用。日后同步上游
   // 时很容易把这些描述带回来，带回来渲染器就会去起 dev server 或写错路径。
   //
   // 只扫 references/：那是会被上游整份覆盖的部分。SKILL.md 与 ATTRIBUTION.md 是

@@ -1,12 +1,12 @@
-// am setup 下载的独立工具：ffmpeg / ffprobe 与 uv。装进 toolpath.binDir（默认 ~/.local/share/am/bin），
+// onset setup 下载的独立工具：ffmpeg / ffprobe 与 uv。装进 toolpath.binDir（默认 ~/.local/share/onset/bin），
 // toolpath.find 先找那里再找 PATH，所以用户不必装 Homebrew。
 //
-// 为什么下载而不是打进 .app：HyperFrames 与 am 自己的拼接都写死了 libx264（GPL），LGPL 构建渲染不了；
+// 为什么下载而不是打进 .app：HyperFrames 与 onset 自己的拼接都写死了 libx264（GPL），LGPL 构建渲染不了；
 // 把 GPL 加 x264 的二进制随应用发布要背许可与专利义务，还让安装包大一百多 MB。由用户机器从上游下载，
 // 不算我们分发。系统里已经有 ffmpeg（PATH 能找到）就直接算就绪，不重复下载。
 //
 // 每个文件都钉了版本与 sha256（来自上游 release 的 digest），下载后核对，对不上就丢掉：上游被替换、
-// 镜像被篡改都会被拦下，所以也可以放心走镜像（AM_GITHUB_MIRROR）。
+// 镜像被篡改都会被拦下，所以也可以放心走镜像（ONSET_GITHUB_MIRROR）。
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -18,7 +18,7 @@ import { abortReason } from '../procgroup';
 import { binDir, bundled, dataDir, findOptional, npmCommand, withNode } from '../toolpath';
 
 /** GitHub release 下载地址的镜像前缀，例如 https://ghfast.top/https://github.com/ 。文件都有 sha256，走镜像也安全。 */
-export const GitHubMirrorEnv = 'AM_GITHUB_MIRROR';
+export const GitHubMirrorEnv = 'ONSET_GITHUB_MIRROR';
 
 /** 一个钉死的下载文件。 */
 interface Asset {
@@ -89,7 +89,7 @@ export interface InstallOptions {
   signal?: AbortSignal;
 }
 
-/** ffmpeg 与 ffprobe 都能找到（自带、am 下载的或 PATH 里的）。where 是 ffmpeg 的位置，缺时是将要装到的目录。 */
+/** ffmpeg 与 ffprobe 都能找到（自带、onset 下载的或 PATH 里的）。where 是 ffmpeg 的位置，缺时是将要装到的目录。 */
 export function ffmpegStatus(env: Record<string, string | undefined>): { ok: boolean; where: string } {
   const ffmpeg = findOptional('ffmpeg', env);
   const ffprobe = findOptional('ffprobe', env);
@@ -132,7 +132,7 @@ export async function ensureFFmpeg(opts: InstallOptions): Promise<string> {
   return path.join(dir, 'ffmpeg');
 }
 
-/** uv 能找到（am 下载的或 PATH 里的）。 */
+/** uv 能找到（onset 下载的或 PATH 里的）。 */
 export function uvStatus(env: Record<string, string | undefined>): { ok: boolean; where: string } {
   const uv = findOptional('uv', env);
   return uv !== '' ? { ok: true, where: uv } : { ok: false, where: binDir(env) };
@@ -281,8 +281,8 @@ export function pythonInstallDir(env: Record<string, string | undefined>): strin
 export const ToolPythonVersion = '3.12';
 
 /**
- * 一个由 am setup 安装的命令行工具（配音、对齐）。版本都钉死，同一台机器两次安装得到同一个东西。
- * - npm：npm 包，用 am 自己的运行时执行（客户端用户不必装 Node）。
+ * 一个由 onset setup 安装的命令行工具（配音、对齐）。版本都钉死，同一台机器两次安装得到同一个东西。
+ * - npm：npm 包，用 onset 自己的运行时执行（客户端用户不必装 Node）。
  * - uv-tool：Python 包的命令行入口，`uv tool install` 装进独立环境，用 uv 带的 Python。
  * - uv-venv：没有命令行入口的 Python 包（funasr），装进专用环境，再写一个调用那份 Python 的小脚本。
  */
@@ -302,7 +302,7 @@ export function toolSupported(spec: ToolSpec): boolean {
   return !platforms || platforms.includes(platformKey());
 }
 
-/** 工具的命令都能找到（am 装的或用户自己装的）。 */
+/** 工具的命令都能找到（onset 装的或用户自己装的）。 */
 export function toolStatus(spec: ToolSpec, env: Record<string, string | undefined>): { ok: boolean; where: string } {
   const found = toolBins(spec).map((bin) => findOptional(bin, env));
   if (found.every((f) => f !== '')) return { ok: true, where: found[0] };
@@ -348,13 +348,13 @@ function writeExecutable(file: string, body: string): void {
 
 /**
  * npm 包装进 <数据目录>/tools/npm/<包>@<版本>（先在临时目录装好再改名进位），每个命令写一个小脚本进 bin：
- * 用 am 的运行时执行包的入口；客户端换了位置导致运行时不在时，退回 PATH 里的 node。
+ * 用 onset 的运行时执行包的入口；客户端换了位置导致运行时不在时，退回 PATH 里的 node。
  */
 async function installNpmTool(spec: Extract<ToolSpec, { kind: 'npm' }>, root: string, bin: string, opts: InstallOptions): Promise<void> {
   const report = opts.progress ?? (() => {});
   const dir = path.join(root, `${spec.package.replace('/', '+')}@${spec.version}`);
   fs.mkdirSync(root, { recursive: true });
-  if (!fs.existsSync(path.join(dir, '.am-tool'))) {
+  if (!fs.existsSync(path.join(dir, '.onset-tool'))) {
     const staging = fs.mkdtempSync(path.join(root, '.staging-'));
     try {
       fs.writeFileSync(path.join(staging, 'package.json'), '{"private":true}\n');
@@ -362,7 +362,7 @@ async function installNpmTool(spec: Extract<ToolSpec, { kind: 'npm' }>, root: st
       const npm = npmCommand(opts.env, ['install', '--no-audit', '--no-fund', '--loglevel=error', '--save-exact', `${spec.package}@${spec.version}`]);
       const sink: Writer = opts.output ?? { write: () => true };
       await runCommandIn(npm.file, npm.args, staging, withNode({ ...opts.env, ...npm.env }), sink, opts.signal);
-      fs.writeFileSync(path.join(staging, '.am-tool'), `${spec.package}@${spec.version}\n`);
+      fs.writeFileSync(path.join(staging, '.onset-tool'), `${spec.package}@${spec.version}\n`);
       fs.rmSync(dir, { recursive: true, force: true });
       fs.renameSync(staging, dir);
     } finally {
@@ -379,7 +379,7 @@ async function installNpmTool(spec: Extract<ToolSpec, { kind: 'npm' }>, root: st
       path.join(bin, name),
       [
         '#!/bin/sh',
-        `# 由 am setup 写出：用 am 的运行时执行 ${spec.package}@${spec.version}。`,
+        `# 由 onset setup 写出：用 onset 的运行时执行 ${spec.package}@${spec.version}。`,
         `r=${q(process.execPath)}`,
         `if [ -x "$r" ]; then ELECTRON_RUN_AS_NODE=1 exec "$r" ${q(entry)} "$@"; fi`,
         `exec node ${q(entry)} "$@"`,
@@ -389,7 +389,7 @@ async function installNpmTool(spec: Extract<ToolSpec, { kind: 'npm' }>, root: st
   }
 }
 
-/** uv 的公共环境：工具、Python 都装在 am 的数据目录；Python 包的源沿用用户 pip.conf 里的镜像。 */
+/** uv 的公共环境：工具、Python 都装在 onset 的数据目录；Python 包的源沿用用户 pip.conf 里的镜像。 */
 function uvEnv(data: string, bin: string, opts: InstallOptions): Record<string, string> {
   const env: Record<string, string> = {
     ...opts.env,
@@ -426,7 +426,7 @@ async function installUVVenv(spec: Extract<ToolSpec, { kind: 'uv-venv' }>, uv: s
   report({ stage: `安装 ${spec.packages.join(' ')}`, percent: 0, indeterminate: true });
   const python = path.join(venv, 'bin', 'python');
   await runCommandIn(uv, ['pip', 'install', '--python', python, ...spec.packages], data, env, sink, opts.signal);
-  writeExecutable(path.join(bin, spec.bin), `#!/bin/sh\n# 由 am setup 写出：${spec.name} 专用的 Python 环境。\nexec ${q(python)} "$@"\n`);
+  writeExecutable(path.join(bin, spec.bin), `#!/bin/sh\n# 由 onset setup 写出：${spec.name} 专用的 Python 环境。\nexec ${q(python)} "$@"\n`);
 }
 
 /**
@@ -483,7 +483,7 @@ function runCommandIn(file: string, args: string[], cwd: string, env: Record<str
 /**
  * 工具第一次运行时才会去下的模型（例如 MLX 强制对齐的 Qwen3-ForcedAligner）。不预先下好的话，就是在制作途中
  * 现下载一个 1 GB 多的模型，而 huggingface.co 在国内常常连不上（hf-mirror 现在也 308 跳回 huggingface.co，
- * 2026-11 实测）。所以它也是前置资源：am setup 下到 <数据目录>/models/<仓库名>，能连上 Hugging Face 就从那里下，
+ * 2026-11 实测）。所以它也是前置资源：onset setup 下到 <数据目录>/models/<仓库名>，能连上 Hugging Face 就从那里下，
  * 否则从魔搭（ModelScope，同一个仓库的镜像）下；每个文件按钉死的 sha256 核对，对不上的来源不用。
  */
 export interface ModelSpec {
@@ -493,7 +493,7 @@ export interface ModelSpec {
 }
 
 /** 选模型来源：huggingface 或 modelscope；不设时先探一下 Hugging Face 通不通。 */
-export const ModelSourceEnv = 'AM_MODEL_SOURCE';
+export const ModelSourceEnv = 'ONSET_MODEL_SOURCE';
 
 /** 模型的本地目录。 */
 export function modelDir(spec: ModelSpec, env: Record<string, string | undefined>): string {

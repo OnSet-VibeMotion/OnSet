@@ -7,7 +7,7 @@ import { usageEmpty } from '../tools';
 import { ExitError, KindDone, KindSession, KindUsage, TailBuffer, newSessionID, run, type Event } from './index';
 
 function tempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'am-agentrun-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-agentrun-'));
 }
 
 /** 写一个假的编排工具脚本，lookPath 无论要什么名字都返回它。 */

@@ -7,7 +7,7 @@ import path from 'node:path';
 export function atomicWrite(file: string, data: string | Uint8Array, mode = 0o644): void {
   const dir = path.dirname(file);
   fs.mkdirSync(dir, { recursive: true });
-  const tmp = path.join(dir, `.am-tmp-${crypto.randomBytes(6).toString('hex')}`);
+  const tmp = path.join(dir, `.onset-tmp-${crypto.randomBytes(6).toString('hex')}`);
   try {
     fs.writeFileSync(tmp, data, { mode });
     fs.chmodSync(tmp, mode);

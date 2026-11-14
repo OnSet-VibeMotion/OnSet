@@ -1,5 +1,5 @@
 /**
- * 内置插件：ArticleToMotion 自己的功能也写成插件，清单（名字、说明）在 assets/plugins/<id>/am-station.json，
+ * 内置插件：片场自己的功能也写成插件，清单（名字、说明）在 assets/plugins/<id>/onset-station.json，
  * 代码在 packages/engine/src/plugins/<id>/ 的 apply 里登记（站、操作、渲染技能、镜头扩展块……）。内置插件常开，
  * 没有关掉的办法：它登记的东西对每个项目都在，一个流程用不用得上由流程自己的声明决定。
  */
@@ -13,14 +13,14 @@ import { ManifestFile } from './manifest';
 import { parseManifest } from './parse';
 import { pluginStationOwners } from './registered';
 
-/** 内置插件的目录：assets/plugins/<id>/am-station.json，随客户端下发（extraResources 带着整棵 assets）。 */
+/** 内置插件的目录：assets/plugins/<id>/onset-station.json，随客户端下发（extraResources 带着整棵 assets）。 */
 export function builtinPluginsDir(): string {
   return path.join(assetsBase(), 'assets', 'plugins');
 }
 
 let builtinCache: { dir: string; plugins: LoadedStation[] } | null = null;
 
-/** 全部内置插件（按 id 排序）。清单坏了直接报错：那是 ArticleToMotion 自己的 bug，不能静默少一个功能。 */
+/** 全部内置插件（按 id 排序）。清单坏了直接报错：那是片场自己的 bug，不能静默少一个功能。 */
 export function builtinPlugins(): LoadedStation[] {
   let dir: string;
   try {

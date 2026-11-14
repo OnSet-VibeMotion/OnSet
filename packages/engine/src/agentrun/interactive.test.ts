@@ -18,9 +18,9 @@ async function fakeRun(kind: 'acp' | 'codex', prompt: string, answer: Permission
   const raw: string[] = [];
   const spec: Spec = {
     tool: kind === 'acp' ? 'opencode' : 'codex',
-    workdir: fs.mkdtempSync(path.join(os.tmpdir(), 'am-fake-agent-')),
+    workdir: fs.mkdtempSync(path.join(os.tmpdir(), 'onset-fake-agent-')),
     prompt,
-    access: { commands: ['ls'], writableDirs: ['/tmp/am-memory'] },
+    access: { commands: ['ls'], writableDirs: ['/tmp/onset-memory'] },
     lookPath: () => process.execPath,
     raw: { write: (line: string) => raw.push(line) },
     ask: async (toolName, input) => {
@@ -51,7 +51,7 @@ describe('interactive orchestrators', () => {
   // 只有客户端里、安全模式下才换协议；claude、qoder 照旧走审批 MCP。
   it('picks the interactive protocol per tool', () => {
     expect(interactiveInvocation('codex', {})?.argv).toEqual(['codex', 'app-server']);
-    expect(interactiveInvocation('codebuddy', { access: { commands: ['am'] } })?.argv.slice(0, 4)).toEqual(['codebuddy', '--acp', '--permission-mode', 'acceptEdits']);
+    expect(interactiveInvocation('codebuddy', { access: { commands: ['onset'] } })?.argv.slice(0, 4)).toEqual(['codebuddy', '--acp', '--permission-mode', 'acceptEdits']);
     const oc = interactiveInvocation('opencode', {}, { OPENCODE_CONFIG_CONTENT: '{"model":"x/y","permission":{"edit":"allow"}}' })!;
     expect(oc.argv).toEqual(['opencode', 'acp']);
     expect(JSON.parse(oc.env.OPENCODE_CONFIG_CONTENT), '保留用户自己的配置，只把 bash 设成 ask').toEqual({ model: 'x/y', permission: { edit: 'allow', bash: 'ask' } });
@@ -166,7 +166,7 @@ describe('interactive orchestrators', () => {
     expect(JSON.parse(start.slice(2)).params).toMatchObject({
       approvalPolicy: 'untrusted',
       sandbox: 'workspace-write',
-      config: { 'sandbox_workspace_write.network_access': true, 'sandbox_workspace_write.writable_roots': ['/tmp/am-memory'] },
+      config: { 'sandbox_workspace_write.network_access': true, 'sandbox_workspace_write.writable_roots': ['/tmp/onset-memory'] },
     });
   });
 

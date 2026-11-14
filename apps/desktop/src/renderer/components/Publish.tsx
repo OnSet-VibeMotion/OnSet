@@ -9,7 +9,7 @@ import '../publish.css';
  * 原样贴出来时，发布要用的标题、简介、话题和封面埋在几十行字段中间。这里按「发布时要做什么」排：
  * 状态 → 要复制的文案 → 封面 → 还剩哪些人工检查，规格与证据收进折叠。不显示 Markdown 原文：
  * Studio 里这一页就是发布助手，文件只是数据来源；聊天、文件树里点到 publish.md 也会切到这一页。
- * 只读：改动经对话由编排工具改 publish.md，合格与否以「发布校验」（am validate publish）为准。
+ * 只读：改动经对话由编排工具改 publish.md，合格与否以「发布校验」（onset validate publish）为准。
  */
 
 interface PublishCover {

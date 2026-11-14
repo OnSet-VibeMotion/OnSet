@@ -24,7 +24,7 @@ export function preferenceBrief(s: Store, project: string, pinned: number): { te
       if (m.kind === KindPreference && (m.scope === '' || m.scope === project)) prefs.push(m);
     }
   }
-  let b = '用户偏好（来自 am 记忆库：用户以往亲口说过、或在反馈里表达过的长期取向）：\n';
+  let b = '用户偏好（来自 onset 记忆库：用户以往亲口说过、或在反馈里表达过的长期取向）：\n';
   if (prefs.length === 0) b += '（还没有记下任何偏好）\n';
   for (const m of prefs) {
     const scope = m.scope !== '' ? '本项目' : '全局';

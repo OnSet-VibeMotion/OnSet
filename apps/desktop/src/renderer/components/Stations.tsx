@@ -81,7 +81,7 @@ function placement(s: StationInfo): string {
  * 引擎里是 flow.OpsTrustNotice）。页面的权限另列，不混成一张表，免得让人以为操作也受限。
  */
 const opsTrust =
-  '它的操作是在你电脑上运行的程序，能读写你的文件、能联网；ArticleToMotion 只限制它拿不到项目 .env 与 ArticleToMotion 的凭据，并在它写了声明范围之外的项目文件时告诉你。';
+  '它的操作是在你电脑上运行的程序，能读写你的文件、能联网；片场只限制它拿不到项目 .env 与片场的凭据，并在它写了声明范围之外的项目文件时告诉你。';
 
 /** 页面申请的权限：页面在沙箱里，只能做这些。已装的插件与取回待装的（reads 另给）用同一种说法。 */
 function pagePermissionLines(s: { permissions: StationInfo['permissions']; pages?: StationInfo['pages']; reads?: string[] }): [string, string][] {
@@ -118,7 +118,7 @@ function permissionLines(s: StationInfo): [string, string][] {
   return out;
 }
 
-/** 内置功能带了什么：它在 ArticleToMotion 里登记的站点、工具、渲染技能、页面与流程，用用户的话列出。 */
+/** 内置功能带了什么：它在片场里登记的站点、工具、渲染技能、页面与流程，用用户的话列出。 */
 function BuiltinDetail({ contents }: { contents: BuiltinContents }) {
   const rows: [string, string][] = [];
   if (contents.flows.length > 0) rows.push(['做法', contents.flows.join('、')]);
@@ -392,7 +392,7 @@ export function PluginSettings({ version, onChanged }: { version: number; onChan
       <section className="stations builtin-stations" aria-label="内置功能">
         <div className="stations-head">
           <strong>内置功能</strong>
-          <span>ArticleToMotion 自带的功能，每个项目都有。用不用得上由片子的做法决定，点「详情」看它带了什么。</span>
+          <span>片场自带的功能，每个项目都有。用不用得上由片子的做法决定，点「详情」看它带了什么。</span>
         </div>
         <ul className="stations-list">
           {builtins.map((s) => (
@@ -420,7 +420,7 @@ export function PluginSettings({ version, onChanged }: { version: number; onChan
     <section className="stations" aria-label="我的插件">
       <div className="stations-head">
         <strong>我的插件</strong>
-        <span>装上别人写的制作步骤，例如自动发布、新的做法或风格。装一次，这台电脑上的所有项目都能用。插件不是 ArticleToMotion 自带的，由它的作者维护；装之前请确认来源可信，装完看一眼它要了哪些权限。</span>
+        <span>装上别人写的制作步骤，例如自动发布、新的做法或风格。装一次，这台电脑上的所有项目都能用。插件不是片场自带的，由它的作者维护；装之前请确认来源可信，装完看一眼它要了哪些权限。</span>
       </div>
       {error && <div className="settings-error">{error}</div>}
       {task.busy && <div className="stations-busy" role="status">{task.busy}…</div>}
@@ -528,7 +528,7 @@ export function PluginSettings({ version, onChanged }: { version: number; onChan
                             </div>
                           ))}
                         </dl>
-                        <span className="station-perms-note">页面在沙箱里运行，只能做上面这些；读文件、执行操作都要经过 ArticleToMotion。</span>
+                        <span className="station-perms-note">页面在沙箱里运行，只能做上面这些；读文件、执行操作都要经过片场。</span>
                       </>
                     )}
                     {perms.length > 0 && (
@@ -654,7 +654,7 @@ function ScopeWarning({ run, label }: { run?: StationRun; label?: string }) {
     <div className="station-scope" role="alert">
       <strong>
         {label ? `${label}：` : ''}
-        {reserved.size > 0 ? '它写了 ArticleToMotion 自己的文件，这次按失败处理' : `它改了 ${files.length + more} 个没声明会写的文件`}
+        {reserved.size > 0 ? '它写了片场自己的文件，这次按失败处理' : `它改了 ${files.length + more} 个没声明会写的文件`}
       </strong>
       <ul>
         {files.map((f) => (
@@ -790,7 +790,7 @@ async function projectSummary(): Promise<Record<string, unknown>> {
 
 /** 页面经 postMessage 发来的请求（协议同 /station-ui/_sdk.js）。 */
 interface PageRequest {
-  am: 'station';
+  onset: 'station';
   id: number;
   type: 'theme' | 'info' | 'project' | 'read' | 'run' | 'call' | 'ask' | 'send' | 'open';
   path?: string;
@@ -800,7 +800,7 @@ interface PageRequest {
   text?: string;
 }
 
-/** 等用户确认的执行请求：本站的操作（run）或 am 自带的操作（call）。 */
+/** 等用户确认的执行请求：本站的操作（run）或 onset 自带的操作（call）。 */
 interface PendingRun {
   id: number;
   kind: 'run' | 'call' | 'send';
@@ -838,19 +838,19 @@ interface FrameProps {
 function StationFrame({ station, page, context, version, run, onQuick, onOpen, projectName, height }: FrameProps) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [pending, setPending] = useState<PendingRun | null>(null);
-  // 这个页面经 am.run() 请用户确认后执行过的操作（操作名 → 点「执行」的时间）：之后的执行结果越界了，回执处要标出来。
+  // 这个页面经 onset.run() 请用户确认后执行过的操作（操作名 → 点「执行」的时间）：之后的执行结果越界了，回执处要标出来。
   const [ran, setRan] = useState<Record<string, string>>({});
   const pendingRef = useRef<PendingRun | null>(null);
 
   const reply = (id: number, ok: boolean, result?: unknown, error?: string) => {
-    frame.current?.contentWindow?.postMessage({ am: 'host', id, ok, result, error }, '*');
+    frame.current?.contentWindow?.postMessage({ onset: 'host', id, ok, result, error }, '*');
   };
   const ask = (req: PendingRun) => {
     if (pendingRef.current) throw new Error('上一个请求还在等用户确认');
     pendingRef.current = req;
     setPending(req);
     // 收到了、在等用户：页面的 SDK 据此停掉「宿主没回应」的计时，用户想多久都行。
-    frame.current?.contentWindow?.postMessage({ am: 'host', id: req.id, ack: true }, '*');
+    frame.current?.contentWindow?.postMessage({ onset: 'host', id: req.id, ack: true }, '*');
   };
 
   // 监听在布局阶段挂上：iframe 元素与监听在同一次提交里出现，页面脚本最早也要等这次提交之后才跑，
@@ -859,7 +859,7 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
     const onMessage = async (event: MessageEvent) => {
       if (!frame.current || event.source !== frame.current.contentWindow) return;
       const m = event.data as PageRequest;
-      if (!m || m.am !== 'station' || typeof m.id !== 'number') return;
+      if (!m || m.onset !== 'station' || typeof m.id !== 'number') return;
       try {
         switch (m.type) {
           case 'theme':
@@ -934,7 +934,7 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
 
   // 项目有变化：告诉页面重读（不重载 iframe，页面里的状态不丢）。
   useEffect(() => {
-    frame.current?.contentWindow?.postMessage({ am: 'host', type: 'refresh' }, '*');
+    frame.current?.contentWindow?.postMessage({ onset: 'host', type: 'refresh' }, '*');
   }, [version]);
 
   const decide = (allow: boolean) => {
@@ -965,7 +965,7 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
               <strong>
                 {pending.kind === 'send'
                   ? `「${station.name}」想替你发一条消息给 AI`
-                  : `「${station.name}」请求${pending.kind === 'call' ? '调用 ArticleToMotion 的' : '执行'}：${pending.label}`}
+                  : `「${station.name}」请求${pending.kind === 'call' ? '调用片场的' : '执行'}：${pending.label}`}
               </strong>
               {pending.kind === 'send' && <span className="station-confirm-text">{pending.label}</span>}
               {paramText(pending.params) && <span>参数：{paramText(pending.params)}</span>}

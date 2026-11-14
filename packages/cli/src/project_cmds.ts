@@ -3,14 +3,14 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import * as archive from '@am/engine/archive';
-import * as config from '@am/engine/config';
-import * as filmstyle from '@am/engine/filmstyle';
-import '@am/engine/plugin';
-import * as hyperframes from '@am/engine/hyperframes';
-import * as preset from '@am/engine/preset';
-import * as projectinit from '@am/engine/projectinit';
-import * as toolinstall from '@am/engine/toolinstall';
+import * as archive from '@onset/engine/archive';
+import * as config from '@onset/engine/config';
+import * as filmstyle from '@onset/engine/filmstyle';
+import '@onset/engine/plugin';
+import * as hyperframes from '@onset/engine/hyperframes';
+import * as preset from '@onset/engine/preset';
+import * as projectinit from '@onset/engine/projectinit';
+import * as toolinstall from '@onset/engine/toolinstall';
 import { canvasOptions, resolveCanvas } from './canvas';
 import { currentEnvironment, hyperframesVersion, maxArgs, skillsProgressPrinter } from './cli';
 import { Command, type Out, ref } from './cobra';
@@ -46,10 +46,10 @@ export function newInitCommand(stdout: Out, stderr: Out): Command {
 frame.md 只记画幅的技术信息：画布与帧率、安全区、烧录字幕的缺省样式与混音响度目标。
 
 写入内容：
-  article-to-motion.conf、.env.example、article-to-motion.flow.json（记下讲解形式对应的流程与画幅；
+  onset.conf、.env.example、onset.flow.json（记下讲解形式对应的流程与画幅；
   制作提示词不写进项目，开工时按这份记录组合）
   frame.md（画幅技术信息）、assets/fonts/ 中文正文字体
-  templates/project-rules.md（am run 据此派生 AGENTS.md / CLAUDE.md 等）
+  templates/project-rules.md（onset run 据此派生 AGENTS.md / CLAUDE.md 等）
   .agents/skills/ 内置技能树（text-to-lottie、algorithmic-art），随二进制下发
 
 不覆盖内容不同的已有文件：目标已存在且字节不同就整体失败并回滚，不做合并。
@@ -58,18 +58,18 @@ frame.md 只记画幅的技术信息：画布与帧率、安全区、烧录字�
 默认把固定版本 ` +
       hyperframesVersion +
       ` 的 HyperFrames 官方技能从本机缓存拷进项目的
-.agents/skills/，与内置技能树同一个目录。am init 不联网：技能是前置资源，先运行一次
-am setup 把它下载进缓存；缓存里没有时 am init 写完项目文件后报错，提示先 am setup
-再重跑 am init 补齐。--skip-hyperframes 跳过这一步；它不影响内置技能树，那随二进制下发。
+.agents/skills/，与内置技能树同一个目录。onset init 不联网：技能是前置资源，先运行一次
+onset setup 把它下载进缓存；缓存里没有时 onset init 写完项目文件后报错，提示先 onset setup
+再重跑 onset init 补齐。--skip-hyperframes 跳过这一步；它不影响内置技能树，那随二进制下发。
 
 技能装进项目而不是装进 HOME，是因为项目之间互不覆盖只有这样才成立：上游
 安装器只认 homedir，一台机器上只有一份技能，两个项目固定不同版本时谁后
 初始化谁说了算。装进项目还让项目自包含——整个目录拷到另一台机器就能渲染。
 安装不写任何 agent 的技能目录。校验过的技能树按 commit 缓存在
-~/.local/share/am/hyperframes/（遵循 XDG_DATA_HOME），所有项目从这里拷贝。
+~/.local/share/onset/hyperframes/（遵循 XDG_DATA_HOME），所有项目从这里拷贝。
 
 技能不走上游安装器：它只克隆仓库默认分支，没有指定 tag 的口子，同一个版本号
-隔几天装出来的技能可以不同。am 自己按 tag 浅克隆并校验 commit 与技能数量，
+隔几天装出来的技能可以不同。onset 自己按 tag 浅克隆并校验 commit 与技能数量，
 两次初始化的技能树逐字节一致。安装后在 .agents/skills/` +
       hyperframes.ManifestFile +
       `
@@ -80,32 +80,32 @@ am setup 把它下载进缓存；缓存里没有时 am init 写完项目文件�
 叙事模式由 --narration 一次性选定，默认 solo（单口播）。传 cast 会额外在
 项目根写 cast.yaml 并建出空的 cast/ 目录，进入多角色对话叙事模式；此时
 配音与时间线装配改为遵守制作提示词末尾的「附：多角色叙事作业规程」。cast.yaml 刚建出时 packs 为空
-列表，这是预期状态：项目在第一次 am cast add / am cast new 之前本来就还
+列表，这是预期状态：项目在第一次 onset cast add / onset cast new 之前本来就还
 没有可用角色。
 
---film-style 给全片选一种整片风格（各风格来源的风格，am film-style list 查看），
-等同于初始化后运行 am film-style use；不传时各镜头自主定视觉，之后也可以再选。
-风格库同样是前置资源（am setup 下载），这里不联网，不受 --skip-hyperframes 影响。`,
+--film-style 给全片选一种整片风格（各风格来源的风格，onset film-style list 查看），
+等同于初始化后运行 onset film-style use；不传时各镜头自主定视觉，之后也可以再选。
+风格库同样是前置资源（onset setup 下载），这里不联网，不受 --skip-hyperframes 影响。`,
     example: `  # 交互选择画幅
-  am init my-video
+  onset init my-video
 
   # 非交互环境必须显式指定画幅
-  am init my-video --canvas vertical-9x16
+  onset init my-video --canvas vertical-9x16
 
   # 画幅之外不指定视觉风格，镜头由模型自由创作
-  am init my-video --canvas vertical-9x16
+  onset init my-video --canvas vertical-9x16
 
   # 离线或 CI：跳过联网安装 HyperFrames 技能
-  am init my-video --canvas vertical-3x4 --skip-hyperframes
+  onset init my-video --canvas vertical-3x4 --skip-hyperframes
 
   # 在当前目录补齐缺失的骨架文件（幂等）
-  am init --canvas vertical-3x4
+  onset init --canvas vertical-3x4
 
   # 多角色对话叙事：额外写出 cast.yaml 与 cast/
-  am init my-story --canvas vertical-3x4 --narration cast
+  onset init my-story --canvas vertical-3x4 --narration cast
 
   # 全片用同一种风格（油画厚涂）
-  am init my-video --canvas landscape-16x9 --film-style lemo-opuscar/impasto`,
+  onset init my-video --canvas landscape-16x9 --film-style lemo-opuscar/impasto`,
     args: maxArgs(1, 'DIR'),
     runE: async (cmd, args) => {
       const modes = projectinit.narrations().map((n) => n.id);
@@ -136,7 +136,7 @@ am setup 把它下载进缓存；缓存里没有时 am init 写完项目文件�
       try {
         installed = await projectinit.installSkills(target, currentEnvironment(), stderr, skillsProgressPrinter(stderr), cmd.context());
       } catch (err) {
-        throw new Error(`项目文件已写入，但 HyperFrames 技能没装进项目（准备好后重跑 am init 补齐）：${(err as Error).message}`);
+        throw new Error(`项目文件已写入，但 HyperFrames 技能没装进项目（准备好后重跑 onset init 补齐）：${(err as Error).message}`);
       }
       stdout.write(`HyperFrames ${hyperframesVersion} 技能已装入 ${hyperframes.SkillsSubdir}（${installed.installed.length} 个）\n`);
       try {
@@ -160,7 +160,7 @@ am setup 把它下载进缓存；缓存里没有时 am init 写完项目文件�
         .map((n) => `${n.id}（${n.name}${n.id === narrationSolo ? '，默认' : ''}）`)
         .join(' | '),
   );
-  flags.stringVar(filmStyleName, 'film-style', '', '整片风格：来源/目录名，或唯一的目录名、中文名、英文名（am film-style list）；不传则各镜头自主定视觉');
+  flags.stringVar(filmStyleName, 'film-style', '', '整片风格：来源/目录名，或唯一的目录名、中文名、英文名（onset film-style list）；不传则各镜头自主定视觉');
   flags.stringVar(
     delivery,
     'delivery',
@@ -177,15 +177,15 @@ am setup 把它下载进缓存；缓存里没有时 am init 写完项目文件�
 defineGroup({
   path: ['config'],
   summary: '读取解析后的配置',
-  description: `读取 am 解析后的配置值。
+  description: `读取 onset 解析后的配置值。
 
-不要自己去读 article-to-motion.conf 或 .env——解析涉及五层优先级
-（环境变量 > 项目 .env > article-to-motion.conf > 客户端设置页的全局设置 > 内置默认），只有 config_get 的
-结果等于 am 实际会用的值。`,
+不要自己去读 onset.conf 或 .env——解析涉及五层优先级
+（环境变量 > 项目 .env > onset.conf > 客户端设置页的全局设置 > 内置默认），只有 config_get 的
+结果等于 onset 实际会用的值。`,
 });
 
 /**
- * config_set：改项目 article-to-motion.conf 里设置页管的那几项（客户端「设置」页的「这个项目」一栏）。
+ * config_set：改项目 onset.conf 里设置页管的那几项（客户端「设置」页的「这个项目」一栏）。
  * 只给命令行与客户端后端（scopes 只有 cli）：用哪个工具是用户的选择，不让编排工具自己改。
  * 原地改那一行、保留注释；值为空写成 KEY=，表示跟随全局设置。
  */
@@ -194,7 +194,7 @@ defineOp({
   cli: ['config', 'set'],
   summary: '改这个项目的一项设置；值为空表示跟随全局设置',
   description: `只改设置页管的几项：${config.GlobalKeys.join('、')}。
-写进项目的 article-to-motion.conf，只对这个项目生效；值为空时写成 KEY=，这个项目改为跟随全局设置。`,
+写进项目的 onset.conf，只对这个项目生效；值为空时写成 KEY=，这个项目改为跟随全局设置。`,
   examples: ['config_set({"key": "TTS_PROVIDER", "value": "breeze"})', 'config_set({"key": "TTS_PROVIDER", "value": ""})'],
   scopes: ['cli'],
   params: {
@@ -207,7 +207,7 @@ defineOp({
     const value = str(p.value).trim();
     const problem = config.validateSetting(key, value);
     if (problem !== '') throw new Error(problem);
-    const file = path.join(str(p.project_root), 'article-to-motion.conf');
+    const file = path.join(str(p.project_root), 'onset.conf');
     let body = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
     const lineOf = (k: string) => new RegExp(`^(\\s*(?:export\\s+)?)${k}\\s*=(.*)$`, 'm');
     const line = lineOf(key);

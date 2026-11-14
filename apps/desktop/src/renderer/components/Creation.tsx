@@ -284,7 +284,7 @@ export function Creation(props: { job: CreationJob; onDone: (projectId: string, 
         if (cancelled) return;
         await sleep(300);
 
-        // 5. 整片风格：选了才装（am film-style use，第一次要下载风格库）。装不上可以重试或跳过，
+        // 5. 整片风格：选了才装（onset film-style use，第一次要下载风格库）。装不上可以重试或跳过，
         // 跳过就由编排工具在稿件审核时再推荐。
         if (job.filmStyle) {
           mark('style', 'running');

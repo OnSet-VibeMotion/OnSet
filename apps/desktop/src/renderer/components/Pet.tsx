@@ -938,7 +938,7 @@ function prefersStill(): boolean {
 /** 没有对话在跑时的那一份。 */
 const idleSignal: CrewSignal = { mood: 'idle', line: '待命', project: '', rendering: [], asks: [], choices: [], question: '', running: false, canSend: false, plan: [], turnStarted: '', renderSince: {}, recent: [] };
 
-const send = (command: PetCommand) => window.am?.pet?.(command);
+const send = (command: PetCommand) => window.onset?.pet?.(command);
 
 export function Pet() {
   const [signal, setSignal] = useState<CrewSignal>(idleSignal);
@@ -965,7 +965,7 @@ export function Pet() {
   const start = useRef(Date.now());
 
   // 旧版主窗口发来的状态可能缺新字段，按空补上。
-  useEffect(() => window.am?.onCrew?.((next) => setSignal(next ? { ...idleSignal, ...next } : idleSignal)), []);
+  useEffect(() => window.onset?.onCrew?.((next) => setSignal(next ? { ...idleSignal, ...next } : idleSignal)), []);
 
   const walkers = useRef<{ director: Walker; ops: Walker[] } | null>(null);
   if (!walkers.current) walkers.current = { director: newWalker(director.chair), ops: operators.map((o) => newWalker(o.seat)) };
@@ -1524,7 +1524,7 @@ export function Pet() {
           <Desk signal={signal} composing={composing} onCompose={setComposing} />
         </div>
         <div className="pet-foot">
-          <span className="pet-project">{signal.project || 'ArticleToMotion'}</span>
+          <span className="pet-project">{signal.project || '片场'}</span>
           <span className="pet-legend">{filmingCount > 0 ? `${filmingCount} 个镜头在拍` : ''}</span>
           {signal.project ? (
             <span className="pet-actions" onDoubleClick={(event) => event.stopPropagation()}>
@@ -1719,19 +1719,19 @@ function ambient(now: Date): { part: string; label: string; color: string; opaci
  */
 function PetPage({ url, signal, skin }: { url: string; signal: CrewSignal; skin: SkinView }) {
   const frame = useRef<HTMLIFrameElement>(null);
-  const message = useMemo(() => ({ am: 'pet', signal, skin: { scheme: skin.scheme, tokens: skin.tokens } }), [signal, skin]);
+  const message = useMemo(() => ({ onset: 'pet', signal, skin: { scheme: skin.scheme, tokens: skin.tokens } }), [signal, skin]);
   const post = () => frame.current?.contentWindow?.postMessage(message, '*');
   useEffect(post, [message]);
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow) return;
-      const data = event.data as { am?: unknown; phase?: unknown; command?: unknown } | null;
+      const data = event.data as { onset?: unknown; phase?: unknown; command?: unknown } | null;
       // 宿主插进页面的拖动脚本（studio/stations.ts 的 petDragScript）：按住空白处挪动就拖窗口。
-      if (data?.am === 'pet-drag' && (data.phase === 'start' || data.phase === 'end')) {
+      if (data?.onset === 'pet-drag' && (data.phase === 'start' || data.phase === 'end')) {
         send({ kind: 'drag', phase: data.phase });
         return;
       }
-      if (!data || data.am !== 'pet-command' || !data.command || typeof data.command !== 'object') return;
+      if (!data || data.onset !== 'pet-command' || !data.command || typeof data.command !== 'object') return;
       send(data.command as PetCommand);
     };
     window.addEventListener('message', onMessage);

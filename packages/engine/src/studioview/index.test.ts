@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { describeView, drainViewInbox, stepIDs, validateViewRequest, ViewInboxEnv, ViewProjectEnv, type ViewRequest, writeViewRequest } from './index';
 
-const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'am-studioview-'));
+const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'onset-studioview-'));
 
 function writeTree(root: string, files: Record<string, string>) {
   for (const [rel, body] of Object.entries(files)) {
