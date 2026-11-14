@@ -75,7 +75,7 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 ### 整片风格（可选）
 
-想让全片统一画成一种风格时，从风格来源里选一种。目前登记的来源有 [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar)（作者 LemoLab，66 种，[图鉴](https://lemomo-ai.github.io/lemo-opuscar/)）与 [anidoodle](https://github.com/alexgreensh/anidoodle)（作者 Alex Greenshpun，32 种代码画出的手绘画风，如铅笔淡彩、水墨、浮世绘木版、刺绣、刮画，[图鉴](https://github.com/alexgreensh/anidoodle/blob/main/skills/anidoodle/assets/styles.jpg)），之后可以接入更多来源。首页、新建对话框和「风格」页都能直接挑（按来源分组，带海报，可搜索），也能换或去掉；没选时，编排工具会在稿件审核关卡按题材推荐两三种。个别镜头可以点名另一种风格，相邻镜头风格不同时，分镜计划要写明交界怎么在画面里换过去。
+想让全片统一画成一种风格时，从风格来源里选一种。目前登记的来源有 [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar)（作者 LemoLab，66 种，[图鉴](https://lemomo-ai.github.io/lemo-opuscar/)）与 [anidoodle](https://github.com/alexgreensh/anidoodle)（作者 Alex Greenshpun，32 种代码画出的手绘画风，如铅笔淡彩、水墨、浮世绘木版、刺绣、刮画，[图鉴](https://github.com/alexgreensh/anidoodle/blob/main/skills/anidoodle/assets/styles.jpg)）与 [huashu-art-motion](https://github.com/alchaincyf/huashu-art-motion)（作者花叔，26 种艺术史画风，如梵高、莫奈、克里姆特、古埃及壁画、敦煌壁画、包豪斯、波普，每一帧都由代码画出，[总览图](https://github.com/alchaincyf/huashu-art-motion/blob/main/assets/%E5%85%A8%E9%A3%8E%E6%A0%BC%E6%80%BB%E8%A7%88.jpg)），之后可以接入更多来源。首页、新建对话框和「风格」页都能直接挑（按来源分组，带海报，可搜索），也能换或去掉；没选时，编排工具会在稿件审核关卡按题材推荐两三种。个别镜头可以点名另一种风格，相邻镜头风格不同时，分镜计划要写明交界怎么在画面里换过去。
 
 选中的风格装进项目的 `.agents/skills/am-film-style/`：`STYLE.md`（风格的不变量）、`SKILL.md`（怎么用、技法参考在哪）与 `am-film-style.json`（来源与版本）。渲染器必须遵守 `STYLE.md`，内容仍来自每个镜头自己的文案。换风格或去掉风格会让已渲染的镜头 Stale。只接画面：配乐仍选授权素材。
 

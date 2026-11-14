@@ -1,0 +1,35 @@
+# 来源
+
+- 风格：{{.Style.CN}} · {{.Style.EN}}（上游场景 `{{.Style.ID}}`）
+- 上游：huashu-art-motion，作者花叔（Huashu），{{.Repo}}
+- commit：`{{.Commit}}`
+- 安装方式：`film_style_use({"style": "huashu/{{.Style.Slug}}"})`，从固定 commit 拷贝，不跟随上游 main
+
+## 保留了什么
+
+- 这种风格的配方卡 `{{.Style.Card}}`，原文放在 `STYLE.md` 的分隔线下面
+- 这种风格的场景 `{{.Style.Scene}}`，原文在 `source/`
+- 引擎 `scripts/engine/engine.js`、`transitions.js` 与 `scripts/engine/lib/` 下的绘画库，在 `huashu/`
+- 这种风格用到的字体与字体许可（`huashu/lib/fonts/`，各自沿用 SIL OFL 1.1，见那里的 `LICENSES.md`）
+- `references/` 里的三份通用说明，原样拷贝；仓库根目录的 `LICENSE`
+
+## 丢了什么
+
+- 别的风格的场景、研究配方（38–55 号）与解说动画语法的示范片
+- `lib/rig_huashu.js` 与全部角色帧：花叔本人的卡通形象不随 MIT 授权
+- `lib/three.min.js`（接入的风格都没有用到）与这种风格用不到的字体
+- 配乐、口播、长卷穿越片骨架、Python 工具（`render.py`、`qa.py`、`deliver.py` 等）与上游的工作流程：故事、分镜、审批由 am 的制作流程负责
+
+## 改了哪几处
+
+- `huashu/engine.js` 去掉了预览播放器（拖动条、播放按钮与读时钟的播放循环），其余不变
+- `huashu/lib/fonts.js` 由 am 按这种风格重写：只列带上的字体，路径改成相对镜头目录
+- 场景改用普通的 `<script src>` 加载，不用上游的同步 XHR 加 eval 加载器；只放一段，没有年份角标
+- `huashu/am-huashu-pre.js`、`huashu/am-huashu.js`、`huashu/template.html`、`SKILL.md`、`STYLE.md` 的中文说明与本文件由 am 生成
+- `poster.jpg` 是从上游全风格总览图 `assets/全风格总览.jpg` 裁下的这一格
+
+## 许可
+
+- 代码与文档：MIT（见 `LICENSE`）
+- 字体：SIL Open Font License 1.1（见 `huashu/lib/fonts/LICENSES.md` 与 `OFL.txt`）
+- 用这套风格做出的片子归制作者所有

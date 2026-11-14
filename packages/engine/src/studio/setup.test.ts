@@ -61,6 +61,7 @@ describe('setup installer', () => {
     expect(later('beat')).toMatchObject({ title: expect.any(String) });
     expect(later('styles:lemo-opuscar').title).toBe('LemoLab 风格库');
     expect(later('styles:anidoodle').title).toBe('anidoodle 代码绘画');
+    expect(later('styles:huashu').title).toBe('花叔艺术动画');
     expect(later('ffmpeg')).toBeUndefined();
   });
 });

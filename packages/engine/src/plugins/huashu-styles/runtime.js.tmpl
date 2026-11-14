@@ -1,0 +1,24 @@
+// am-huashu.js：ArticleToMotion 写的接头（后半），在 engine.js 之后加载。不要改它。
+//
+// 引擎启动（字体、cmap、场景 init 都就绪，第 0 帧已画）登记成 window.__hf.buildReady.huashu；
+// 每次 hf-seek 画那一刻：先 prepare(t) 再 renderFrame(t)。启动失败时 buildReady 带着原因 reject，渲染直接报错。
+(() => {
+  const hf = (window.__hf = window.__hf || {});
+  hf.buildReady = hf.buildReady || {};
+  const ready = (hf.buildReady.huashu = new Promise((resolve, reject) => {
+    const poll = () => {
+      if (window.__ready) resolve();
+      else if (window.__bootFailed) reject(new Error('huashu 引擎没有启动：' + window.__bootFailed));
+      else setTimeout(poll, 20);
+    };
+    poll();
+  }));
+  window.addEventListener('hf-seek', (e) => {
+    const t = e.detail.time;
+    const done = ready.then(async () => {
+      await window.prepare(t);
+      window.renderFrame(t);
+    });
+    if (typeof e.detail.waitUntil === 'function') e.detail.waitUntil(done);
+  });
+})();

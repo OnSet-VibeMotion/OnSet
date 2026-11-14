@@ -20,6 +20,7 @@ describe('stations API', () => {
       ['anidoodle-styles', true],
       ['beat', true],
       ['cast', true],
+      ['huashu-styles', true],
       ['lemo-styles', true],
       ['publishing', true],
       ['song', true],
