@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { api, errorText, post } from '../api';
 import type { AgentsResponse, SettingRow, SettingsResponse } from '../types';
-import { AgentKeys, DirectorVisionNote } from './Settings';
+import { DirectorServices, DirectorVisionNote } from './DirectorServices';
 import { rendererState } from './agentReady';
 import { SetupGuide, type SetupHandle } from './SetupGuide';
 import { Icon } from './Icon';
@@ -12,11 +12,11 @@ import '../onboarding.css';
  *
  * 四步，每一步做没做都看真实状态，不靠用户打勾：
  * 1. 摄制组就位：做片必需的工具装好了（/api/setup 的 ready，就是安装页）
- * 2. 请 AI 来编排：全局设置里的编排工具能用（装好了，或导演填了 key），并且全局设置里的渲染工具装在这台电脑上
+ * 2. 请 AI 来编排：全局设置里的编排工具能用（装好了，或导演配了模型服务），并且全局设置里的渲染工具装在这台电脑上
  *    （镜头由 Claude Code、Codex 这类工具来画，导演只做编排；没装的话要到第一次渲染才报错）
  * 3. 配音方式：全局选过配音，或者说过「用默认的」（可跳过）
  * 4. 开拍：有了第一个项目
- * 全局设置写的是 /api/settings/global，与设置页同一份；key 写的是 /api/agent-keys。
+ * 全局设置写的是 /api/settings/global，与设置页同一份；导演的模型服务写的是 /api/agent-services。
  */
 
 export const OnboardingDoneKey = 'onset.onboarding.done';
@@ -125,11 +125,11 @@ export function Onboarding(props: Props) {
       sub: '和你商量、写稿、定分镜、安排渲染的那一位',
       body: (
         <>
-          <p className="ob-lead">选一位来编排整片。电脑上装过 Claude Code、Codex 这类工具就直接用；没装的话选「导演」，填一个模型服务的 API key 就能编排。镜头还要一家装在这台电脑上的工具来画，下面一并确认。</p>
+          <p className="ob-lead">选一位来编排整片。电脑上装过 Claude Code、Codex 这类工具就直接用；没装的话选「导演」，填一个模型服务的 base URL 和 API key 就能编排。镜头还要一家装在这台电脑上的工具来画，下面一并确认。</p>
           <div className="ob-agents" role="radiogroup" aria-label="编排工具">
             {agents?.agents.map((a) => {
               const chosen = a.id === orchestrator;
-              const state = a.installed ? (chosen ? '在用' : '可用') : a.hint ? '要填 key' : '没装';
+              const state = a.installed ? (chosen ? '在用' : '可用') : a.hint ? '要配模型服务' : '没装';
               return (
                 <button
                   key={a.id}
@@ -137,7 +137,7 @@ export function Onboarding(props: Props) {
                   aria-checked={chosen}
                   data-agent={a.id}
                   className={'ob-agent' + (chosen ? ' on' : '') + (a.installed ? '' : ' missing')}
-                  // 导演还没填 key 也能选：选了下面就出现填 key 的地方。
+                  // 导演还没配模型服务也能选：选了下面就出现配置的地方。
                   disabled={!a.installed && !a.hint}
                   onClick={() => void setGlobal('ORCHESTRATOR', a.id)}
                 >
@@ -150,7 +150,7 @@ export function Onboarding(props: Props) {
           </div>
           {orchestrator === 'director' && (
             <div className="ob-keys settings">
-              <AgentKeys version={0} onChange={() => {
+              <DirectorServices version={0} onChange={() => {
                 setInstallKey((k) => k + 1);
                 void reload();
               }} />

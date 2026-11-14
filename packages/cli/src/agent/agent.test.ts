@@ -29,6 +29,10 @@ function parse(lines: string[]) {
   return { events, usage: parser.usage(), session: parser.sessionID(), model: lines.map((l) => tools.detectModel('director', l)).find((m) => m !== '') ?? '' };
 }
 
+
+/** 测试里的模型服务：base URL 与模型由 setupModels 登记的假服务商代替，key 照正式路径走请求。 */
+const fauxService: director.ResolvedService = { id: 's-faux', name: 'faux', protocol: 'openai', base_url: 'https://faux.invalid/v1', model: 'm1', vision: true, key: 'sk-faux' };
+
 describe('StreamWriter', () => {
   it('writes claude-like stream-json that agentrun reads as the director tool', () => {
     const lines: string[] = [];
@@ -226,7 +230,8 @@ describe('parseRequest', () => {
     expect(() => parseRequest('{"prompt":"x","agent_dir":"d"}')).toThrow(/workdir/);
     expect(() => parseRequest('{"workdir":"w","prompt":"x","agent_dir":"d","resume":true}')).toThrow(/session_id/);
     expect(parseRequest('{"workdir":"w","prompt":"x","agent_dir":"d","commands":["ls",3]}').commands).toEqual(['ls']);
-    expect(parseRequest('{"workdir":"w","prompt":"x","agent_dir":"d","keys":{"deepseek":"sk-1","bad":3}}').keys).toEqual({ deepseek: 'sk-1' });
+    expect(parseRequest('{"workdir":"w","prompt":"x","agent_dir":"d","service":{"protocol":"anthropic","base_url":"https://a","model":"m","key":"sk-1"}}').service).toMatchObject({ protocol: 'anthropic', model: 'm', key: 'sk-1' });
+    expect(parseRequest('{"workdir":"w","prompt":"x","agent_dir":"d","service":{"base_url":""}}').service).toBeUndefined();
   });
 });
 
@@ -274,7 +279,7 @@ describe('runBuiltinAgent', () => {
       (runtime as { registerNativeProvider(p: unknown): void }).registerNativeProvider(faux.provider);
       return 'faux/m1';
     };
-    const req: director.Request = { workdir, prompt: '读一下 a.txt', agent_dir: agentDir, commands: ['ls'], writable_dirs: [], keys: { faux: 'sk-faux' } };
+    const req: director.Request = { workdir, prompt: '读一下 a.txt', agent_dir: agentDir, commands: ['ls'], writable_dirs: [], service: fauxService };
     const lines: string[] = [];
     const result = await runBuiltinAgent(req, (l) => lines.push(l), undefined, { setupModels, env: {} });
     expect(result).toEqual({ ok: true });
@@ -302,8 +307,8 @@ describe('runBuiltinAgent', () => {
     expect(stored).toHaveLength(1);
     expect(stored[0]).toContain(session);
     expect(sessionFiles(workdir)).toEqual([]);
-    // 凭据只在内存里：agent_dir 下没有 auth.json，任何文件里都没有这把 key。
-    expect(fs.existsSync(director.authFile(agentDir))).toBe(false);
+    // 凭据只在内存里：agent_dir 下没有服务文件，任何文件里都没有这把 key。
+    expect(fs.existsSync(director.servicesFile(agentDir))).toBe(false);
     for (const f of fs.readdirSync(agentDir, { recursive: true }).map(String)) {
       const full = path.join(agentDir, f);
       if (fs.statSync(full).isFile()) expect(fs.readFileSync(full, 'utf8'), f).not.toContain('sk-faux');
@@ -322,7 +327,7 @@ describe('runBuiltinAgent', () => {
 
   /** 登记假服务商的 setupModels，与上一条用例相同。 */
   const fauxSetup = (faux: ReturnType<typeof fauxProvider>) => async (runtime: unknown) => {
-    // key 走请求里的 keys（与正式路径相同），这里只登记假服务商。
+    // key 走请求里的 service（与正式路径相同），这里只登记假服务商。
     (runtime as { registerNativeProvider(p: unknown): void }).registerNativeProvider(faux.provider);
     return 'faux/m1';
   };
@@ -344,7 +349,7 @@ describe('runBuiltinAgent', () => {
       },
       fauxAssistantMessage('列好了'),
     ]);
-    const req: director.Request = { workdir: tmp, prompt: '开始制作', agent_dir: path.join(tmp, 'agent'), commands: [], writable_dirs: [], keys: { faux: 'sk-faux' } };
+    const req: director.Request = { workdir: tmp, prompt: '开始制作', agent_dir: path.join(tmp, 'agent'), commands: [], writable_dirs: [], service: fauxService };
     const lines: string[] = [];
     // 不在客户端里（没有收件目录）：闸门拒绝一切白名单外的调用，TodoWrite 照样放行。
     expect(await runBuiltinAgent(req, (l) => lines.push(l), undefined, { setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
@@ -385,7 +390,7 @@ describe('runBuiltinAgent', () => {
       fauxAssistantMessage([fauxToolCall('scene_run', { scene: 'scenes/scene-001' }), fauxToolCall('scene_run', { scene: 'scenes/scene-002' })], { stopReason: 'toolUse' }),
       fauxAssistantMessage('都渲染了'),
     ]);
-    const req: director.Request = { workdir: tmp, prompt: '渲染', agent_dir: path.join(tmp, 'agent'), commands: [], writable_dirs: [], keys: { faux: 'sk-faux' } };
+    const req: director.Request = { workdir: tmp, prompt: '渲染', agent_dir: path.join(tmp, 'agent'), commands: [], writable_dirs: [], service: fauxService };
     const lines: string[] = [];
     expect(await runBuiltinAgent(req, (l) => lines.push(l), undefined, { spawner, setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
     expect(started).toEqual(['scene_run scenes/scene-001', 'scene_run scenes/scene-002']);
@@ -399,15 +404,15 @@ describe('runBuiltinAgent', () => {
     expect(list.filter((t) => t.name !== 'tool_help').every((t) => t.sequential)).toBe(true);
   });
 
-  it('fails clearly when no provider has a key', async () => {
+  it('fails clearly without a model service', async () => {
     const req: director.Request = { workdir: tmp, prompt: 'x', agent_dir: path.join(tmp, 'agent') };
-    await expect(runBuiltinAgent(req, () => {}, undefined, { env: {} })).rejects.toThrow(director.NoModelMessage);
+    await expect(runBuiltinAgent(req, () => {}, undefined, { env: {} })).rejects.toThrow(director.NoServiceMessage);
   });
 
-  it('never reads keys from the agent dir: a key file there without keys in the request is ignored', async () => {
+  it('never reads services from the agent dir: a service file there without one in the request is ignored', async () => {
     const agentDir = path.join(tmp, 'agent');
-    director.setProviderKey(agentDir, 'deepseek', 'sk-on-disk');
+    director.saveService(agentDir, { name: 'd', protocol: 'openai', base_url: 'https://api.deepseek.com', model: 'deepseek-v4-pro', vision: false, key: 'sk-on-disk' });
     const req: director.Request = { workdir: tmp, prompt: 'x', agent_dir: agentDir };
-    await expect(runBuiltinAgent(req, () => {}, undefined, { env: {} })).rejects.toThrow(director.NoModelMessage);
+    await expect(runBuiltinAgent(req, () => {}, undefined, { env: {} })).rejects.toThrow(director.NoServiceMessage);
   });
 });

@@ -784,28 +784,48 @@ export interface SettingsResponse {
   rows: SettingRow[];
 }
 
-/** GET /api/agent-keys（后端 studio/agentkeys.ts）：导演的模型服务密钥，只说填没填、不回传 key。 */
-export interface AgentKeyProvider {
+/** 导演的模型服务协议：OpenAI 兼容（Chat Completions）或 Anthropic（Messages）。 */
+export type AgentProtocol = 'openai' | 'anthropic';
+
+/** GET /api/agent-services 的预设：只用来预填表单。 */
+export interface AgentServicePreset {
   id: string;
   label: string;
-  key_url: string;
-  default_model: string;
+  protocol: AgentProtocol;
+  base_url: string;
+  model: string;
   /** 推荐模型能不能读图（看画面）。 */
   vision: boolean;
-  configured: boolean;
+  key_url: string;
 }
 
-/** GET /api/agent-keys/vision：导演实际会用的模型与它能不能读图（false 看不了，null 不知道）。 */
-export interface AgentVision {
+/** 存下的一套模型服务（后端 studio/agentservices.ts），不回传 key，只说填没填。 */
+export interface AgentService {
+  id: string;
+  name: string;
+  /** 从哪个预设填的；手填的为空。 */
+  preset: string;
+  protocol: AgentProtocol;
+  base_url: string;
   model: string;
-  vision: boolean | null;
+  vision: boolean;
+  has_key: boolean;
 }
 
-export interface AgentKeysResponse {
-  providers: AgentKeyProvider[];
-  others: string[];
+export interface AgentServicesResponse {
+  presets: AgentServicePreset[];
+  services: AgentService[];
+  /** 在用的那套的 id；没有服务时为空。 */
+  active: string;
   /** key 在磁盘上是否加密（safeStorage）；没加密时 note 是给用户的一句说明。 */
   storage?: { encrypted: boolean; note?: string };
+}
+
+/** GET /api/agent-services/vision：导演这一轮会用的模型、哪套服务、能不能看图（没有服务时 null）。 */
+export interface AgentVision {
+  model: string;
+  service: string;
+  vision: boolean | null;
 }
 
 /** GET /api/storyboard（后端 studio/storyboard.ts）：分镜页。 */

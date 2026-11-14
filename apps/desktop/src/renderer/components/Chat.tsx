@@ -10,7 +10,7 @@ import { confirmGate, currentSummary } from './Progress';
 import { guideFor, type Guide, type GuideAction } from './guide';
 import { AgentPicker } from './AgentPicker';
 import { rendererState } from './agentReady';
-import { DirectorVisionNote } from './Settings';
+import { DirectorVisionNote } from './DirectorServices';
 import { DiffDialog } from './DiffDialog';
 import { Icon } from './Icon';
 import { Markdown } from './chat/Markdown';

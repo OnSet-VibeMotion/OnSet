@@ -12,8 +12,8 @@ import path from 'node:path';
 import * as director from '@onset/engine/director';
 import * as studioview from '@onset/engine/studioview';
 import { currentEnvironment } from '../cli';
-import { Command, ref } from '../cobra';
-import { callTarget, describeTools, Jobs, prepareCall, spawnOp, spawnOpWithKeys, type Spawner } from '../toolsmcp';
+import { Command } from '../cobra';
+import { callTarget, describeTools, Jobs, prepareCall, spawnOp, spawnOpWithService, type Spawner } from '../toolsmcp';
 import type { ParamValues } from '../ops/op';
 import { newGate } from './gate';
 import { todoTool } from './todo';
@@ -102,16 +102,8 @@ export function parseRequest(text: string): director.Request {
     commands: Array.isArray(r.commands) ? r.commands.filter((c): c is string => typeof c === 'string') : [],
     writable_dirs: Array.isArray(r.writable_dirs) ? r.writable_dirs.filter((c): c is string => typeof c === 'string') : [],
     agent_dir: r.agent_dir,
-    keys: parseKeys(r.keys),
+    service: director.parseResolvedService(r.service) ?? undefined,
   };
-}
-
-/** 服务商 → key；只留字符串值。 */
-function parseKeys(raw: unknown): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) if (typeof v === 'string' && v !== '') out[k] = v;
-  return out;
 }
 
 /** 跑一轮；测试直接调它（换掉 spawner、gate，给假模型）。 */
@@ -122,8 +114,8 @@ export async function runBuiltinAgent(
   options: { spawner?: Spawner; gate?: Gate; setupModels?: (runtime: unknown) => Promise<string> | string; env?: Record<string, string | undefined> } = {},
 ): Promise<{ ok: boolean; error?: string }> {
   const env = options.env ?? currentEnvironment();
-  // 整理经验这类会再起导演的操作要拿到 key：经执行进程的 stdin 交下去（spawnOpWithKeys），不进环境。
-  const onset = onsetTools(options.spawner ?? spawnOpWithKeys(req.keys ?? {}), req.workdir);
+  // 整理经验这类会再起导演的操作要拿到模型服务与 key：经执行进程的 stdin 交下去（spawnOpWithService），不进环境。
+  const onset = onsetTools(options.spawner ?? spawnOpWithService(req.service ?? null), req.workdir);
   const jobs = onset.jobs;
   // 待办清单与 onset 的工具一样直接放行：它只把清单写进工具调用，什么也不做。
   const tools = [...onset.tools, todoTool()];
@@ -147,24 +139,16 @@ export async function runBuiltinAgent(
 }
 
 export function newAgentCommand(): Command {
-  const listModels = ref(false);
   const cmd = new Command({
     use: 'agent',
     hidden: true,
     short: '客户端内部用：导演（编排工具 director）',
-    long: `导演：不用另装 AI CLI，填一个模型服务的 API key 就能做编排。由客户端（或 onset run）按
-ORCHESTRATOR=director 启动，人不直接运行。请求经 stdin 一行 JSON，输出 claude 系的 stream-json。
-
---list-models 打印已填 API key 的服务商下能选的模型，每行一个「服务商/模型」。`,
+    long: `导演：不用另装 AI CLI，配一个模型服务（base URL 与 API key）就能做编排。由客户端（或 onset run）按
+ORCHESTRATOR=director 启动，人不直接运行。请求经 stdin 一行 JSON，输出 claude 系的 stream-json。`,
     example: `  # 客户端里换成导演后，每一轮都这样启动：
   echo '{"workdir":"/path/to/project","prompt":"…","agent_dir":"…"}' | onset studio agent`,
     runE: async (c) => {
       const env = currentEnvironment();
-      if (listModels.value) {
-        const agent = await loadAgentModule();
-        for (const m of await agent.listModels(director.defaultDir(env))) process.stdout.write(m + '\n');
-        return;
-      }
       const req = parseRequest(await readStdin());
       // 取消时 agentrun 先发 SIGTERM：停掉这一轮、结束还在跑的制作步骤（各成进程组，不显式结束会留在后台），再退出。
       const controller = new AbortController();
@@ -176,6 +160,5 @@ ORCHESTRATOR=director 启动，人不直接运行。请求经 stdin 一行 JSON�
       if (!result.ok) throw new Error(result.error ?? '导演出错');
     },
   });
-  cmd.flags().boolVar(listModels, 'list-models', false, '打印能选的模型');
   return cmd;
 }

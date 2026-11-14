@@ -20,12 +20,12 @@ export function exitCodeOf(err: unknown, signal: AbortSignal): number {
 }
 
 /**
- * 调用方把导演的 key 经 stdin 交来（director.KeysStdinEnv）：读出来只放在这个进程的内存里（director.useKeys），
- * 变量随即从环境里删掉，免得这个进程再起的子进程以为 stdin 上也有 key。
+ * 调用方把导演在用的模型服务（含 key）经 stdin 交来（director.ServiceStdinEnv）：读出来只放在这个进程的内存里
+ * （director.useService），变量随即从环境里删掉，免得这个进程再起的子进程以为 stdin 上也有。
  */
-export async function takeHandedKeys(input: AsyncIterable<unknown> = process.stdin, env: NodeJS.ProcessEnv = process.env): Promise<void> {
-  if (env[director.KeysStdinEnv] !== '1') return;
-  delete env[director.KeysStdinEnv];
+export async function takeHandedService(input: AsyncIterable<unknown> = process.stdin, env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  if (env[director.ServiceStdinEnv] !== '1') return;
+  delete env[director.ServiceStdinEnv];
   const chunks: Buffer[] = [];
   for await (const chunk of input) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
   let parsed: unknown = null;
@@ -34,15 +34,11 @@ export async function takeHandedKeys(input: AsyncIterable<unknown> = process.std
   } catch {
     parsed = null;
   }
-  const keys: Record<string, string> = {};
-  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) if (typeof v === 'string' && v !== '') keys[k] = v;
-  }
-  director.useKeys(keys);
+  director.useService(director.parseResolvedService(parsed));
 }
 
 export async function runOpWorker(name: string, paramsJSON: string, out: Out, signal: AbortSignal, unsafe: boolean): Promise<number> {
-  await takeHandedKeys();
+  await takeHandedService();
   const finish = (r: WorkerResult): number => {
     out.write(ResultMarker + JSON.stringify(r) + '\n');
     return r.exit_code;

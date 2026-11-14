@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { setProviderKey } from '../director';
+import { saveService } from '../director';
 import { interactiveInvocation, modelArgs, modelListCommand, orchestratorInvocation, parseModelList, rendererInvocation, ValidRenderers, ValidTools } from './index';
 
 describe('model choice', () => {
@@ -33,15 +33,24 @@ describe('model choice', () => {
     const opencode = interactiveInvocation('opencode', { model: 'a/b' }, { OPENCODE_CONFIG_CONTENT: '{"theme":"x"}' })!;
     expect(JSON.parse(opencode.env.OPENCODE_CONFIG_CONTENT!)).toEqual({ theme: 'x', model: 'a/b', permission: { bash: 'ask' } });
     // 导演的模型、会话与白名单都在 stdin 的请求里，不进命令行（ps 里谁都看得见）。
-    // API key 也在请求里：父进程读出（客户端里解密）交下去，导演不读磁盘上的凭据。
+    // 在用的模型服务连同 API key 也在请求里：父进程读出（客户端里解密）交下去，导演不读磁盘上的凭据。
     const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-director-req-'));
     try {
-      setProviderKey(agentDir, 'deepseek', 'sk-1');
-      const director = orchestratorInvocation('director', { workdir: '/w', prompt: 'p', sessionID: 's', resume: true, model: 'deepseek/deepseek-v4-pro', access: { commands: ['ls'] }, agentDir });
+      const id = saveService(agentDir, { name: 'DeepSeek', protocol: 'openai', base_url: 'https://api.deepseek.com', model: 'deepseek-v4-pro', vision: false, key: 'sk-1' });
+      const director = orchestratorInvocation('director', { workdir: '/w', prompt: 'p', sessionID: 's', resume: true, model: 'deepseek-v4-flash', access: { commands: ['ls'] }, agentDir });
       expect(director.argv.slice(-2)).toEqual(['studio', 'agent']);
       expect(director.argv.join(' ')).not.toContain('sk-1');
       expect(JSON.stringify(director.env ?? {})).not.toContain('sk-1');
-      expect(JSON.parse(director.stdin)).toEqual({ workdir: '/w', prompt: 'p', session_id: 's', resume: true, model: 'deepseek/deepseek-v4-pro', commands: ['ls'], agent_dir: agentDir, keys: { deepseek: 'sk-1' } });
+      expect(JSON.parse(director.stdin)).toEqual({
+        workdir: '/w',
+        prompt: 'p',
+        session_id: 's',
+        resume: true,
+        model: 'deepseek-v4-flash',
+        commands: ['ls'],
+        agent_dir: agentDir,
+        service: { id, name: 'DeepSeek', protocol: 'openai', base_url: 'https://api.deepseek.com', model: 'deepseek-v4-pro', vision: false, key: 'sk-1' },
+      });
     } finally {
       fs.rmSync(agentDir, { recursive: true, force: true });
     }
@@ -64,7 +73,7 @@ describe('model choice', () => {
     expect(parseModelList('codebuddy', help).map((m) => m.id)).toEqual(['hy4free', 'glm-5.3', 'kimi-k3.1-pro']);
     expect(parseModelList('opencode', 'a/b\nwarning: something\nc/d#high\n').map((m) => m.id)).toEqual(['a/b', 'c/d#high']);
     expect(parseModelList('claude', '').map((m) => m.id)).toContain('opus');
-    expect(parseModelList('director', 'deepseek/deepseek-v4-pro\nmoonshotai-cn/kimi-k3\n').map((m) => m.id)).toEqual(['deepseek/deepseek-v4-pro', 'moonshotai-cn/kimi-k3']);
-    expect(modelListCommand('director')!.slice(-3)).toEqual(['studio', 'agent', '--list-models']);
+    // 导演不跑命令：客户端后端直接问模型服务（studio/agents.ts）。
+    expect(modelListCommand('director')).toBeNull();
   });
 });

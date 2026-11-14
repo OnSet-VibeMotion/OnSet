@@ -264,14 +264,14 @@ async function runOpIn(s: Server, signal: AbortSignal, cwd: string, cfg: config.
   const onset = onsetCommand(s.executable());
   const args = [...onset.args, ...(s.config.unsafe ? ['--unsafe'] : []), ...workerArgs(name, params)];
   const env = { ...config.childEnvironment(cfg, envMap(), s.config.unsafe, parsePassthrough(process.env.ONSET_PASSTHROUGH_ENV ?? '')), ...onset.env, ...(opts.env ?? {}) };
-  // 整理经验会起导演：执行进程里没有 safeStorage，解不开加密的凭据文件，key 由这里解密后经 stdin 交下去（不进环境）。
-  const keys = director.KeyOps.has(name) && cfg.orchestrator === director.Tool ? director.loadKeys(director.defaultDir(envMap())) : {};
-  const handKeys = Object.keys(keys).length > 0;
-  if (handKeys) env[director.KeysStdinEnv] = '1';
+  // 整理经验会起导演：执行进程里没有 safeStorage，解不开加密的服务文件，在用的服务连同 key 由这里解密后经 stdin 交下去（不进环境）。
+  const service = director.KeyOps.has(name) && cfg.orchestrator === director.Tool ? director.resolveService(director.defaultDir(envMap())) : null;
+  const handKeys = service !== null;
+  if (handKeys) env[director.ServiceStdinEnv] = '1';
   const started = await start(onset.command, args, { cwd, env, stdio: [handKeys ? 'pipe' : 'ignore', 'pipe', 'pipe'], signal });
   if (handKeys && started.child.stdin) {
     started.child.stdin.on('error', () => {});
-    started.child.stdin.end(JSON.stringify(keys) + '\n');
+    started.child.stdin.end(JSON.stringify(service) + '\n');
   }
   const chunks: Buffer[] = [];
   started.child.stdout!.on('data', (chunk: Buffer) => {

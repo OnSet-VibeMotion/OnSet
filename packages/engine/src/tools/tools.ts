@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { marshal } from '../gojson';
-import { defaultDir as directorDir, loadKeys as directorKeys, Tool as DirectorToolName } from '../director';
+import { defaultDir as directorDir, resolveService as directorService, Tool as DirectorToolName } from '../director';
 import { onsetCommand, WindowsBaseEnvKeys } from '../envutil';
 import { pluginChildEnvs } from '../plugin/registry';
 
@@ -491,9 +491,9 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
         commands: access.commands && access.commands.length > 0 ? access.commands : undefined,
         writable_dirs: access.writableDirs && access.writableDirs.length > 0 ? access.writableDirs : undefined,
         agent_dir: agentDir,
-        // key 由这里（父进程）读出、经 stdin 交下去；客户端里经 safeStorage 解密（director.useKeyCodec）。
-        // 导演与它跑的命令都不读磁盘上的凭据，见 director.loadKeys。
-        keys: directorKeys(agentDir),
+        // 在用的模型服务连同 key 由这里（父进程）读出、经 stdin 交下去；客户端里经 safeStorage 解密（director.useKeyCodec）。
+        // 导演与它跑的命令都不读磁盘上的凭据，见 director.resolveService。
+        service: directorService(agentDir) ?? undefined,
       };
       return { argv: [onset.command, ...onset.args, 'studio', 'agent'], stdin: JSON.stringify(request) + '\n', env: onset.env };
     }

@@ -9,8 +9,8 @@
  * | 东西 | 这里怎么给 |
  * |---|---|
  * | 设置 | SettingsManager.inMemory，不读 ~/.pi/agent/settings.json |
- * | 凭据 | 只在内存里：父进程经 stdin 交来的 request.keys，设成运行时 key（setRuntimeApiKey），不读也不写任何凭据文件 |
- * | 模型缓存 | request.agent_dir 下的 models-store.json，不联网刷新模型目录 |
+ * | 模型服务 | 父进程经 stdin 交来的 request.service 登记成服务商 onset（serviceModel），key 设成运行时 key（setRuntimeApiKey），不读也不写任何凭据文件 |
+ * | 模型目录 | 只用 pi 自带的那份查上下文长度、推理参数（serviceModel），不联网刷新；缓存在 request.agent_dir 下的 models-store.json |
  * | 扩展 | 只有这里的权限闸门（extensionsOverride 去掉其余） |
  * | 技能 | 只有项目根 .agents/skills（onset init 装进去的那一份） |
  * | 上下文文件 | 只有项目根的 AGENTS.md（项目规则，project.rules 写的） |
@@ -20,6 +20,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import type { Api, Model } from '@earendil-works/pi-ai';
 import type { CreateModelRuntimeOptions, ExtensionAPI, ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import {
   createAgentSession,
@@ -88,16 +89,55 @@ async function modelRuntime(agentDir: string): Promise<ModelRuntime> {
   });
 }
 
-/** 父进程交来的 key 设成运行时 key（只在内存里）。 */
-async function applyKeys(runtime: ModelRuntime, keys: Record<string, string> | undefined): Promise<void> {
-  for (const [provider, key] of Object.entries(keys ?? {})) {
-    if (key !== '') await runtime.setRuntimeApiKey(provider, key);
-  }
-}
+/** 用户的模型服务在 pi 里登记成的服务商 id。 */
+export const ServiceProvider = 'onset';
 
-function splitModel(model: string): { provider: string; id: string } {
-  const provider = director.providerOf(model);
-  return { provider, id: provider === '' ? model : model.slice(provider.length + 1) };
+/** 没在 pi 目录里查到这个模型时的缺省：够做片的上下文，又不至于让服务拒绝请求。 */
+const fallbackContextWindow = 128_000;
+const fallbackMaxTokens = 16_384;
+
+const trimSlash = (u: string) => u.replace(/\/+$/, '');
+
+/**
+ * 把一套模型服务登记成 pi 的服务商 onset，返回要用的模型。协议决定 pi 用哪种接口（openai-completions 或
+ * anthropic-messages），各家 OpenAI 兼容端点的差异（DeepSeek 的 reasoning_content、Kimi、GLM……）由 pi 按 base URL
+ * 自己认（pi-ai 的 openai-completions detectCompat）。pi 自带目录里有同一 base URL、同一模型名的，
+ * 沿用它的上下文长度与推理（预设就是照目录写的，见 director.Presets）；查不到时按不推理、128K 上下文。
+ * 能不能看图只按服务上用户写的那一项。
+ */
+export async function serviceModel(runtime: ModelRuntime, service: director.ResolvedService, modelId: string): Promise<Model<Api>> {
+  const api = director.piApi(service.protocol);
+  const baseUrl = trimSlash(service.base_url);
+  const same = runtime.getModels().filter((m) => m.id === modelId && trimSlash(m.baseUrl) === baseUrl);
+  // 上下文长度、推理与价格不随接口变（OpenAI 在目录里是 Responses 接口，这里走 Chat Completions）；接口特有的参数只在接口相同时沿用。
+  const known = same.find((m) => m.api === api) ?? same[0];
+  const sameApi = known?.api === api;
+  runtime.registerProvider(ServiceProvider, {
+    name: service.name,
+    baseUrl,
+    api,
+    models: [
+      {
+        id: modelId,
+        name: modelId,
+        api,
+        baseUrl,
+        input: service.vision ? ['text', 'image'] : ['text'],
+        cost: known?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        reasoning: known?.reasoning ?? false,
+        contextWindow: known?.contextWindow ?? fallbackContextWindow,
+        maxTokens: known?.maxTokens ?? fallbackMaxTokens,
+        ...(sameApi && known.thinkingLevelMap ? { thinkingLevelMap: known.thinkingLevelMap } : {}),
+        ...(sameApi && known.promptCache ? { promptCache: known.promptCache } : {}),
+        ...(sameApi && known.compat ? { compat: known.compat } : {}),
+      },
+    ],
+  });
+  // 本机的服务常常不要 key，但 pi 没有 key 就当这家没配置；随便给一个，服务不看它。
+  await runtime.setRuntimeApiKey(ServiceProvider, service.key || 'none');
+  const model = runtime.getModel(ServiceProvider, modelId);
+  if (!model) throw new Error(`导演没能登记模型 ${modelId}`);
+  return model;
 }
 
 function toPiTool(tool: AgentTool) {
@@ -165,16 +205,23 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
   if (req.agent_dir === '') throw new Error('没有导演的数据目录（agent_dir）');
   const runtime = await modelRuntime(req.agent_dir);
 
-  let model = req.model ?? '';
-  if (o.setupModels) model = await o.setupModels(runtime);
-  await applyKeys(runtime, req.keys);
-  const keyed = Object.keys(req.keys ?? {}).filter((p) => req.keys![p] !== '');
-  model = director.pickModel(model, keyed);
-  if (model === '') throw new Error(director.NoModelMessage);
-  const { provider, id } = splitModel(model);
-  const selected = runtime.getModel(provider, id);
-  if (!selected) throw new Error(`导演不认识模型 ${model}（写成「服务商/模型」，例如 ${director.Providers[0]!.defaultModel}）`);
-  if (!keyed.includes(provider) && !runtime.hasConfiguredAuth(provider)) throw new Error(`还没有填 ${provider} 的 API key：请在设置里填写`);
+  const service = req.service;
+  if (!service) throw new Error(director.NoServiceMessage);
+  let selected: Model<Api> | undefined;
+  let model: string;
+  if (o.setupModels) {
+    // 测试：登记假服务商，返回「服务商/模型」；key 照正式路径来自请求。
+    const ref = await o.setupModels(runtime);
+    const i = ref.indexOf('/');
+    await runtime.setRuntimeApiKey(ref.slice(0, i), service.key || 'none');
+    selected = runtime.getModel(ref.slice(0, i), ref.slice(i + 1));
+    model = ref;
+  } else {
+    model = director.effectiveModel(req.model ?? '', service);
+    if (model === '') throw new Error(director.NoServiceMessage);
+    selected = await serviceModel(runtime, service, model);
+  }
+  if (!selected) throw new Error(`导演不认识模型 ${model}`);
 
   const gate: ExtensionFactory = (pi: ExtensionAPI) => {
     pi.on('tool_call', async (event) => {
@@ -243,14 +290,4 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
     o.signal?.removeEventListener('abort', onAbort);
     session.dispose();
   }
-};
-
-/** 列模型只要服务商 id（configuredProviders 不解密），pi 的模型目录不需要 key。 */
-export const listModels: AgentModule['listModels'] = async (agentDir: string) => {
-  const runtime = await modelRuntime(agentDir);
-  const out: string[] = [];
-  for (const provider of director.configuredProviders(agentDir)) {
-    for (const m of runtime.getModels(provider)) out.push(provider + '/' + m.id);
-  }
-  return out;
 };

@@ -1,74 +1,56 @@
 /**
- * 引擎里那份「看不了图片的模型」（director.TextOnlyModels）与推荐模型的 vision 标记，对着 pi 自带的模型目录核对。
- * 引擎拿不到 pi（它只打进 onset-agent.cjs），只能照抄；升级 pi 后这里失败，用 ONSET_UPDATE_GOLDEN=1 重跑重写 textonly.ts，
- * 再看一眼 director.Providers 的推荐模型还在不在、能不能读图。
+ * 导演的预设（director.Presets）对着 pi 自带的模型目录核对：每个预设的协议、base URL 与模型在目录里都有一项，
+ * 能不能看图与目录一致。这样预设填出来的服务登记进 pi 时（serviceModel），能沿用目录里的上下文长度与推理参数。
+ * 升级 pi 后这条失败，就照新目录改 Presets。
  */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import * as director from '@onset/engine/director';
+import { serviceModel, ServiceProvider } from './pi';
 
-const textOnlyFile = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../engine/src/director/textonly.ts');
-
-const header = `/**
- * pi 自带模型目录里看不了图片的模型（输入只有 text），只收客户端里能直接选的几家服务商（director.Providers）。
- *
- * 引擎拿不到 pi 的模型目录（pi 只打进 onset-agent.cjs），所以照抄一份。这份表由
- * packages/cli/src/agent/catalog.test.ts 对着 pi 自带的目录逐家核对，升级 pi 后那条测试失败时，
- * 用 ONSET_UPDATE_GOLDEN=1 重跑它重写这个文件。不在表里的模型按「不知道」处理，不按「看不了」。
- */
-`;
-
-let tmp: string;
-beforeEach(() => {
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-catalog-test-'));
-});
-afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
-
-async function catalog(): Promise<Map<string, { id: string; image: boolean }[]>> {
-  const runtime = await ModelRuntime.create({
-    authPath: path.join(tmp, 'auth.json'),
-    modelsPath: null,
-    modelsStorePath: path.join(tmp, 'models-store.json'),
-    allowModelNetwork: false,
-  });
-  const out = new Map<string, { id: string; image: boolean }[]>();
-  for (const p of director.Providers) {
-    out.set(
-      p.id,
-      runtime.getModels(p.id).map((m) => ({ id: m.id, image: (m.input as readonly string[]).includes('image') })),
-    );
-  }
-  return out;
+async function runtime(): Promise<ModelRuntime> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-catalog-'));
+  return ModelRuntime.create({ modelsPath: null, modelsStorePath: path.join(dir, 'models-store.json'), allowModelNetwork: false });
 }
 
-describe('director model catalog', () => {
-  it('lists exactly the text-only models of pi’s bundled catalog', async () => {
-    const got = await catalog();
-    const textOnly: Record<string, string[]> = {};
-    for (const [provider, models] of got) {
-      expect(models.length, `pi 的目录里没有 ${provider}`).toBeGreaterThan(0);
-      textOnly[provider] = [...new Set(models.filter((m) => !m.image).map((m) => m.id))].sort();
+const service = (p: Partial<director.ResolvedService>): director.ResolvedService => ({ id: 's', name: 'n', protocol: 'openai', base_url: 'https://x.example/v1', model: 'm', vision: false, key: 'k', ...p });
+
+describe('director presets', () => {
+  it('match a model in the pi catalog', async () => {
+    const rt = await runtime();
+    for (const p of director.Presets) {
+      // 接口可以不同（OpenAI 在目录里是 Responses，预设走 Chat Completions），base URL 与模型名要对上。
+      const hit = rt.getModels().find((m) => m.id === p.model && m.baseUrl.replace(/\/+$/, '') === p.baseURL);
+      expect(hit, p.id).toBeDefined();
+      expect(hit!.input.includes('image'), p.id).toBe(p.vision);
     }
-    if (process.env.ONSET_UPDATE_GOLDEN === '1') {
-      const body = Object.entries(textOnly)
-        .map(([k, v]) => `  ${JSON.stringify(k)}: [${v.map((id) => JSON.stringify(id)).join(', ')}],\n`)
-        .join('');
-      fs.writeFileSync(textOnlyFile, header + 'export const TextOnlyModels: Readonly<Record<string, readonly string[]>> = {\n' + body + '};\n');
-    }
-    expect(textOnly).toEqual(director.TextOnlyModels);
   });
 
-  it('marks each recommended model by whether it can read images', async () => {
-    const got = await catalog();
-    for (const p of director.Providers) {
-      const id = p.defaultModel.slice(p.id.length + 1);
-      const model = got.get(p.id)!.find((m) => m.id === id);
-      expect(model, `推荐模型 ${p.defaultModel} 不在 pi 的目录里`).toBeTruthy();
-      expect(p.vision, p.defaultModel).toBe(model!.image);
-    }
+  it('registers a preset service with the catalog’s limits', async () => {
+    const rt = await runtime();
+    const deepseek = director.Presets.find((p) => p.id === 'deepseek')!;
+    const m = await serviceModel(rt, service({ base_url: deepseek.baseURL + '/', model: deepseek.model }), deepseek.model);
+    expect(m.provider).toBe(ServiceProvider);
+    expect(m.api).toBe('openai-completions');
+    expect(m.baseUrl).toBe(deepseek.baseURL);
+    expect(m.reasoning).toBe(true);
+    expect(m.contextWindow).toBeGreaterThan(128_000);
+    expect(m.input).toEqual(['text']);
+    expect(rt.hasConfiguredAuth(ServiceProvider)).toBe(true);
+  });
+
+  it('registers an unknown endpoint with safe defaults and the user’s vision flag', async () => {
+    const rt = await runtime();
+    const m = await serviceModel(rt, service({ protocol: 'anthropic', base_url: 'https://relay.example.com', vision: true, key: '' }), 'claude-x');
+    expect(m.api).toBe('anthropic-messages');
+    expect(m.baseUrl).toBe('https://relay.example.com');
+    expect(m.reasoning).toBe(false);
+    expect(m.contextWindow).toBe(128_000);
+    expect(m.input).toEqual(['text', 'image']);
+    // 本机服务没有 key：pi 也当它配好了。
+    expect(rt.hasConfiguredAuth(ServiceProvider)).toBe(true);
   });
 });
