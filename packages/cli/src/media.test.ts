@@ -2,6 +2,7 @@ import { Buffer, hasFfmpeg, makeClip, makeSceneDir, run, tempDir } from './testu
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import * as mediaprobe from '@onset/engine/mediaprobe';
 import { parseCanvas, parseTimePoints } from './media';
 
 describe('media', () => {
@@ -146,6 +147,33 @@ describe('media', () => {
     errOut = new Buffer();
     expect(await run(['concat', scenes, '--out', master, '--canvas', '320x240', '--fps', '30'], out, errOut)).toBe(1);
     expect(errOut.text).toContain('重渲染');
+  });
+
+  // 约定了交接却没接上的交界（红 → 蓝）：拼接时两边各叠对方那一帧淡掉，总帧数不变；关掉就照原样拼。
+  it.skipIf(!hasFfmpeg)('concat smooths a declared handoff that does not join', async () => {
+    const root = tempDir();
+    const scenes = path.join(root, 'scenes');
+    makeSceneDir(scenes, 'scene-001', 1, 'color=c=red:size=320x240:rate=30:duration=1');
+    const second = makeSceneDir(scenes, 'scene-002', 1, 'color=c=blue:size=320x240:rate=30:duration=1');
+    const json = JSON.parse(fs.readFileSync(path.join(second, 'scene.json'), 'utf8'));
+    json.timing = { fps: 30, start_frame: 30, end_frame_exclusive: 60, plan: 'x', phrases: 'phrase-timeline.json', chapter: 'c', enter: { peer: 'scene-001', device: 'match', bridge: '红色铺满画面' } };
+    fs.writeFileSync(path.join(second, 'scene.json'), JSON.stringify(json));
+    const master = path.join(root, 'production', 'silent-master.mp4');
+    let out = new Buffer();
+    let errOut = new Buffer();
+    expect(await run(['concat', scenes, '--out', master, '--canvas', '320x240', '--fps', '30'], out, errOut), errOut.text).toBe(0);
+    expect(out.text).toContain('抹平交界：scene-001 → scene-002');
+    const tc = mediaprobe.newToolchain(process.env as Record<string, string>);
+    expect(tc.countFrames(master)).toBe(60);
+    // 交界两帧几乎一样（各是一半一半），离交界远的帧还是原样。
+    expect(tc.frameDifference(master, 29 / 30, 30 / 30)).toBeLessThan(20);
+    expect(tc.frameDifferenceBetween(master, 0, path.join(scenes, 'scene-001', 'out.mp4'), 0)).toBeLessThan(3);
+
+    out = new Buffer();
+    errOut = new Buffer();
+    expect(await run(['concat', scenes, '--out', master, '--canvas', '320x240', '--fps', '30', '--smooth-seams=false'], out, errOut), errOut.text).toBe(0);
+    expect(out.text).not.toContain('抹平交界');
+    expect(tc.frameDifference(master, 29 / 30, 30 / 30)).toBeGreaterThan(40);
   });
 
   it('concat requires output path', async () => {

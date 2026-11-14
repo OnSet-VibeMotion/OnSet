@@ -8,6 +8,7 @@ import * as concat from '@onset/engine/concat';
 import { formatFixed, goQuote, goRound, goTrimSpace } from '@onset/engine/gofmt';
 import * as mediaprobe from '@onset/engine/mediaprobe';
 import * as plugin from '@onset/engine/plugin';
+import * as review from '@onset/engine/review';
 import * as scene from '@onset/engine/scene';
 import * as schedule from '@onset/engine/schedule';
 import { currentEnvironment } from './cli';
@@ -362,7 +363,11 @@ dry_run 只打印分析结果，不写任何文件，用于拼接前确认。
 
 拼完会自证：断言母版时长等于各片段时长之和、无音轨、画幅与帧率符合目标。
 
-在项目里 out 只能是 production/silent-master.mp4：客户端的制作路线与成片页按这个位置找。`,
+在项目里 out 只能是 production/silent-master.mp4：客户端的制作路线与成片页按这个位置找。
+
+约定了交接的交界（后一镜 timing.enter 有手法），拼接前先量前一镜末帧与后一镜首帧；差异大到算没接顺时，
+在交界两边各约 0.25 秒里叠上对方的那一帧再淡掉，成一次很短的溶解，总帧数不变。这是兜底，
+更好的做法是先用 scene_seams() 让后一镜按真实末帧重做开头。不要抹平就传 "smooth_seams": false。`,
   examples: [
     '# 拼成静音母版',
     'concat({"scenes": "scenes/", "out": "production/silent-master.mp4"})',
@@ -379,6 +384,7 @@ dry_run 只打印分析结果，不写任何文件，用于拼接前确认。
     fps: { type: 'integer', description: '帧率覆盖值；不传则读 frame.md 的 canvas.fps' },
     normalized_dir: { type: 'string', description: '规范化副本目录，缺省为 <out 所在目录>/normalized' },
     dry_run: { type: 'boolean', description: '只分析并打印结果，不写任何文件' },
+    smooth_seams: { type: 'boolean', description: '抹平没接上的约定交接（缺省打开）', default: true },
   },
   run: async (p, { out, signal }) => {
     const outPath = str(p.out);
@@ -408,16 +414,54 @@ dry_run 只打印分析结果，不写任何文件，用于拼接前确认。
     for (const item of plan.normalize ?? []) out.write(`  规范化：${item.id}\n`);
     if ((plan.blocking?.length ?? 0) > 0) throw new Error(`拼接前必须先修复以下问题：\n  - ${plan.blocking.join('\n  - ')}`);
     const normalize = (plan.normalize ?? []).map((item) => item.id);
+    // 约定了交接却没接顺的交界：前一镜末帧与后一镜首帧差异到 review 判「要看一眼」的程度就抹平。
+    const seams: { from: string; to: string; difference: number }[] = [];
+    const frameCounts = new Map<string, number>();
+    const framesOf = (input: concat.Input) => {
+      if (!frameCounts.has(input.id)) frameCounts.set(input.id, toolchain.countFrames(input.path));
+      return frameCounts.get(input.id)!;
+    };
+    if (p.smooth_seams !== false) {
+      for (let i = 1; i < scenes.length; i++) {
+        if ((scenes[i].timing?.enter?.device ?? '') === '') continue;
+        const a = inputs[i - 1];
+        const b = inputs[i];
+        const difference = toolchain.frameDifferenceBetween(a.path, (framesOf(a) - 1) / target.fps, b.path, 0);
+        if (difference >= review.HandoffLooseDifference) seams.push({ from: a.id, to: b.id, difference });
+      }
+    }
+    for (const seam of seams) out.write(`  抹平交界：${seam.from} → ${seam.to}（末帧与首帧差异 ${formatFixed(seam.difference, 1)}）\n`);
     if (bool(p.dry_run)) {
       out.write('dry-run：未写入任何文件\n');
-      return { data: { dry_run: true, scenes: inputs.length, total_seconds: plan.totalSeconds, normalize } };
+      return { data: { dry_run: true, scenes: inputs.length, total_seconds: plan.totalSeconds, normalize, smoothed: seams } };
     }
 
     const runner = concat.newRunner(currentEnvironment(), toolchain);
     const needsNormalize = new Set(normalize);
     const destinations = str(p.normalized_dir) !== '' ? str(p.normalized_dir) : path.join(path.dirname(outPath), 'normalized');
+    // 每个镜头片头、片尾各要叠哪一帧：交界 A → B 给 A 的片尾叠 B 的首帧、给 B 的片头叠 A 的末帧。
+    const blends = new Map<string, { head?: concat.SeamBlend; tail?: concat.SeamBlend }>();
+    const blendFrames = Math.max(1, Math.round(concat.SeamBlendSeconds * target.fps));
+    for (const seam of seams) {
+      const a = inputs.find((x) => x.id === seam.from)!;
+      const b = inputs.find((x) => x.id === seam.to)!;
+      const aLast = path.join(destinations, 'seams', `${seam.from}-last.png`);
+      const bFirst = path.join(destinations, 'seams', `${seam.to}-first.png`);
+      toolchain.extractFrame(a.path, (framesOf(a) - 1) / target.fps, aLast);
+      toolchain.extractFrame(b.path, 0, bFirst);
+      blends.set(seam.from, { ...blends.get(seam.from), tail: { plate: bFirst, frames: blendFrames } });
+      blends.set(seam.to, { ...blends.get(seam.to), head: { plate: aLast, frames: blendFrames } });
+    }
     const paths: string[] = [];
     for (const input of inputs) {
+      const blend = blends.get(input.id);
+      if (blend) {
+        // 抹平时按 target 重新编码，规范化顺带完成。
+        const dest = path.join(destinations, input.id + '.mp4');
+        await runner.smoothSeams(input.path, dest, target, { ...blend, totalFrames: framesOf(input) }, signal);
+        paths.push(dest);
+        continue;
+      }
       if (!needsNormalize.has(input.id)) {
         paths.push(input.path);
         continue;
@@ -442,6 +486,6 @@ dry_run 只打印分析结果，不写任何文件，用于拼接前确认。
       throw new Error(`母版已写出但不符合预期，不要直接用于后续阶段：${outPath}\n  - ${(report.problems ?? []).join('\n  - ')}`);
     }
     out.write(`静音母版已生成：${outPath}（${formatFixed(report.media.duration_seconds, 3)} 秒）\n`);
-    return { data: { out: outPath, scenes: inputs.length, duration_seconds: report.media.duration_seconds, normalize } };
+    return { data: { out: outPath, scenes: inputs.length, duration_seconds: report.media.duration_seconds, normalize, smoothed: seams } };
   },
 });

@@ -18,6 +18,7 @@ import './memory_cmd';
 import './reads_cmd';
 import './review_cmd';
 import './scene_cmd';
+import './seams_cmd';
 import './scene_cues';
 import './station_cmd';
 import './usage_cmd';

@@ -26,6 +26,7 @@ import { fingerprint, removeRecord, writeRecord } from './record';
 import { buildPrompt, findProjectRoot, sceneCanvas, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
 import { removeLive, writeLive } from './live';
 import { sandboxAvailable, sandboxed, sandboxProfile } from './sandbox';
+import { verifySeam } from './seam';
 import { writeSceneData } from './scenedata';
 import { HyperFramesSkillName, rendererAccess, resolveAllSkills, skillsEnvironment, SkillsDirEnv, stageRendererSkills, unstageRendererSkills } from './skills';
 import { VerificationError } from './verification';
@@ -188,6 +189,8 @@ export async function run(
     }
     attempt.exit_code = 0;
     verifyOutput(s, baseEnv, tolerance);
+    // 修接缝：第 0 帧要接上前一镜的末帧、后面的画面不许变（seam.ts）。
+    if (s.seam) verifySeam(s, s.seam, mediaprobe.newToolchain(baseEnv), sceneCanvas(s).fps);
     writeRecord(s, inputs);
   }
 

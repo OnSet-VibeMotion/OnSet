@@ -293,7 +293,7 @@ huashu 来源（内置插件 `huashu-styles`）自己的约定。上游 huashu-a
 
 空白帧阈值（`flatStdDev = 2.0`）刻意取得极保守。不能凭「真实帧标准差通常很高」来定：深色背景上只有一行标题时亮部占比不到 1%，标准差会低到 20 出头，那是合法封面。误判它比漏判一个真空白帧更糟——前者会让人很快不再信任这个检查。`mediaprobe.test.ts` 的「frameStats does not flag sparse text on dark background」钉着这个上界。
 
-`packages/engine/src/concat` **刻意不提供重定时能力**。PROMPT 第八阶段写着「禁止通过 `setpts` 或改变帧率让镜头追赶配音」——提示词里的禁令可以被忽略，不存在的能力不能。所以分辨率或帧率不符归入 `Plan.blocking` 要求重渲染，只有编码和像素格式差异走 `Plan.normalize`。**不要为了「方便」给它加缩放或变速参数。**
+`packages/engine/src/concat` **刻意不提供重定时能力**。PROMPT 第八阶段写着「禁止通过 `setpts` 或改变帧率让镜头追赶配音」——提示词里的禁令可以被忽略，不存在的能力不能。所以分辨率或帧率不符归入 `Plan.blocking` 要求重渲染，只有编码和像素格式差异走 `Plan.normalize`。**不要为了「方便」给它加缩放或变速参数。** 唯一会改画面的是抹平交界（`Runner.smoothSeams`，`concat` 的 `smooth_seams` 缺省打开）：约定了交接的交界拼接前先量前一镜末帧对后一镜首帧（`Toolchain.frameDifferenceBetween`，口径与 `review` 相同），到 `review.HandoffLooseDifference` 就在交界两边各 `SeamBlendSeconds` 里叠上对方那一帧再淡掉（交界处一半一半），只叠画面、不增删帧，总帧数与时长不变，抹平的片段按 target 重编码、顺带完成规范化。它是兜底：两侧渲染器只拿到文字约定，Qoder 这类较弱的模型常常交界那帧对上了、运动却断开（2026-11 实测）。更好的修法是拼接前的 `scene_seams`（见「镜头时长、局部数据与复用」的镜头交接）。
 
 镜头产物校验（`scene.verifyOutput`，`scene/run.ts`）查画幅、帧率、时长、逐帧解码的总帧数、无音轨，不查编码和像素格式：PROMPT 第八阶段明确允许镜头产物规格不一致，由拼接前的规范化统一，在镜头层拦下会和那条既定流程打架。
 
@@ -318,6 +318,8 @@ huashu 来源（内置插件 `huashu-styles`）自己的约定。上游 huashu-a
 `scene.run` 在启动渲染器前写 `onset-scene.js`（`window.ONSET_SCENE`）。它的字段名是 `scene-kit` 技能的契约：`packages/engine/src/scene/scenedata.ts` 与 `assets/shared/.agents/skills/scene-kit/scene-kit.js` 两边改一处就要改另一处，`packages/engine/src/project/scenekit.test.ts` 用真实扫描器把示例镜头跑一遍。没有 `timing` 块的老镜头照样写这份文件（`cues` / `phrases` 为空），提示词里不出现时间合同表。
 
 镜头交接（`scene/timing.ts` 的 `PlanHandoff` / `Handoff`）是分镜计划里唯一跨镜头的约定。渲染器互相看不到，交界能接上只靠两侧拿到**同一份**约定，所以它由 `onset scene cues` 从计划抄进两侧的 `timing.enter` / `timing.exit`，不让编排工具在两份 `prompt.md` 里各写一遍。手法表 `HandoffDevices` 刻意只收「靠画面里的东西接过去」的写法，不收通用擦除——章节交界套固定转场正是要消除的生硬；「相邻章节交界不得同手法」也是同一个理由。`onset review` 用 `Toolchain.frameDifference`（32×32 RGB 均值绝对差）比对声明过交接的交界，阈值取得宽，只拦「两张不同的画面」：物件挪几像素就报的话，这道门很快没人信。改手法表要同步改制作提示词第五阶段「镜头交接」的表格，`gen.test.ts` 的「carries scene handoffs」钉着。
+
+文字约定接不住运动，所以镜头都渲染好以后、拼接之前还有一遍修接缝（`scene_seams`，`packages/cli/src/seams_cmd.ts`；引擎在 `scene/seam.ts`）：约定了交接却没接顺（差异到 `review.HandoffLooseDifference`，`all` 时不论）的交界，把前一镜的末帧（`seam/plate.png`）与最后 6 帧放进后一镜的 `seam/`、现产物留一份 `seam/before.mp4`，以 `Scene.seam`（不进 scene.json，`fingerprint` 清掉，渲染记录照旧按镜头本来的输入写，修完不会被判 Stale）重跑后一镜，提示词末尾的 `seamSection` 只许改开头约半秒（`SeamSeconds`）。`scene.run` 渲染后 `verifySeam` 按帧核对：第 0 帧对 plate（`SeamPlateTolerance`）、第 frames 帧以后与末帧对 before（`SeamKeepTolerance`），不合格抛 `VerificationError`（校验器 `seam.head` / `seam.keep`）。带原因重试一次，仍不合格就把产物与渲染记录恢复成修之前的，留给 `concat` 抹平。末帧不许变，所以下一道交界用的 plate 不变，各道接缝并行修（`SCENE_JOBS`）。修接缝不接记忆（不是正式渲染）。制作提示词的拼接阶段（口播与卡点）让编排先 `scene_seams()` 再 `concat()`；`seams.test.ts` 用假渲染器钉着修好、恢复与跳过。
 
 scene.json 里功能自己的块（多角色对话的 `cast`、歌曲讲解的 `song`、卡点的 `beat`）是**镜头扩展块**：`scene/block.ts` 是注册表（`SceneBlock`：字段名 `key`、先后 `order`、解码描述 `type`、`toJSON`、load 时的 `validate`、互斥 `excludes`、渲染前与复用前的 `verifyInputs`、与 timing 互斥的 `timeline`、提示词段 `promptSection`、指纹项 `fingerprintParts`、记忆特征 `feature`、考试要拷的目录 `extraInputDirs`）。块一律由功能插件在 apply 里 `ctx.sceneBlock(...)` 登记（`plugins/cast/block.ts`、`plugins/song/block.ts`、`plugins/beat/block.ts`），用 `declare module` 把自己的字段并进 `Scene`；`registerBlock` 只给测试登记假块。`scene.ts`、`record.ts`、`timing.ts`、memory 的特征与考场、cli 的 `scene_cues` / `beat_cues` 只遍历注册表，不按名字读 `s.cast` / `s.song`。
 

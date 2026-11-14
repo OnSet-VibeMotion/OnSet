@@ -21,6 +21,7 @@ import { lookIsZero, timingStructType, timingToJSON, verifyFilmStyleValue, verif
 import { verifyFrameAlignment } from './frames';
 import { timingSection } from './scenedata';
 import type { Attempt } from './attempt';
+import { seamSection, type SeamRequest } from './seam';
 
 export const TextOpen = '<scene-text>';
 export const TextClose = '</scene-text>';
@@ -111,6 +112,11 @@ export interface Scene {
    * 对照组与试用组拿到逐字相同的一段；正式渲染时为空，提示词与指纹都不变。
    */
   examNote: string;
+  /**
+   * 修接缝（scene_seams）时给本次渲染的要求：只改开头几帧、从前一镜的末帧接过来，不来自 scene.json。
+   * 指纹不含它（fingerprint 清掉），修完的镜头照旧按本来的输入判断要不要重渲染。
+   */
+  seam: SeamRequest | null;
   /**
    * 调度器按并发数分给本镜头的帧捕获 worker 数，不来自 scene.json；
    * 0 表示沿用 HyperFrames 的 auto。
@@ -204,6 +210,7 @@ export function newScene(fields: Partial<Scene> = {}): Scene {
     timing: null,
     retryNote: '',
     examNote: '',
+    seam: null,
     renderWorkers: 0,
     memory: null,
     afterAttempt: null,
@@ -329,7 +336,7 @@ export function load(directory: string): Scene {
   for (const key of requiredSceneFields) {
     if (!present.has(key)) throw new Error(`scene.json 缺少必填字段：${key}`);
   }
-  let decoded: Omit<Scene, 'directory' | 'retryNote' | 'examNote' | 'renderWorkers' | 'memory' | 'afterAttempt'>;
+  let decoded: Omit<Scene, 'directory' | 'retryNote' | 'examNote' | 'seam' | 'renderWorkers' | 'memory' | 'afterAttempt'>;
   try {
     decoded = unmarshal(body, sceneType());
   } catch (err) {
@@ -626,6 +633,7 @@ export function buildPrompt(s: Scene, resolvedSkills: Record<string, string> | n
     selfReviewSection +
     examSection(s) +
     retrySection(s) +
+    (s.seam ? seamSection(s, s.seam, canvas.widthPx, canvas.heightPx) : '') +
     '\n' +
     '阶段性汇报规则：仅在关键阶段输出以下原文：\n' +
     '[[USER_MESSAGE]]需求理解和素材检查已完成\n' +

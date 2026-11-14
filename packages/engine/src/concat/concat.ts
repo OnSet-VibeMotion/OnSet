@@ -105,6 +105,15 @@ function formatFPS(value: number): string {
   return formatFixed(value, 3);
 }
 
+/** 抹平交界时叠在一端的那一帧（另一镜头的末帧或首帧，PNG）与淡掉用的帧数。 */
+export interface SeamBlend {
+  plate: string;
+  frames: number;
+}
+
+/** 抹平交界缺省用几秒：两边各这么长，合起来是一次很短的溶解。 */
+export const SeamBlendSeconds = 0.25;
+
 /** NewRunner 解析 ffmpeg 并返回可用的执行器。缺失时抛 MissingToolError。 */
 export function newRunner(env: Record<string, string>, toolchain: Toolchain): Runner {
   const ffmpeg = find('ffmpeg', env);
@@ -139,6 +148,42 @@ export class Runner {
       signal,
     );
     if (!ran.ok) throw new Error(`规范化失败：${source}（${firstLine(ran.output)}）`);
+  }
+
+  /**
+   * 抹平没接上的镜头交界：在片头叠上一镜的末帧（head）、在片尾叠下一镜的首帧（tail），各在 frames 帧里
+   * 淡掉，交界那一刻两边都是一半一半，看上去是一次短暂的溶解。只叠画面、不增删帧，总帧数与时长不变
+   * （刻意不提供重定时，见包注释）；输出按 target 编码，所以同时完成了规范化。
+   *
+   * 这是兜底：约定的交接本该由画面里的物件接过去（scene_seams 让渲染器按真实末帧重做开头），
+   * 只用在拼接前量出来仍没接上的交界。
+   */
+  async smoothSeams(source: string, dest: string, target: Target, seams: { head?: SeamBlend; tail?: SeamBlend; totalFrames: number }, signal?: AbortSignal): Promise<void> {
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    if (!equalFold(target.codec, 'h264')) throw new Error(`规范化目前只支持 h264，收到 ${target.codec}`);
+    const fps = target.fps;
+    if (!(fps > 0)) throw new Error('抹平交界要知道帧率');
+    const args = ['-v', 'error', '-y', '-i', source];
+    const filters: string[] = [];
+    let current = '0:v';
+    let input = 1;
+    const plate = (blend: SeamBlend, fade: string, offsetFrames: number, label: string) => {
+      args.push('-loop', '1', '-framerate', String(fps), '-i', blend.plate);
+      const k = Math.max(1, Math.round(blend.frames));
+      filters.push(
+        `[${input}:v]scale=${target.widthPx}:${target.heightPx},format=rgba,fade=t=${fade}:s=0:n=${k}:alpha=1,colorchannelmixer=aa=0.5,trim=end_frame=${k},setpts=PTS-STARTPTS+${offsetFrames}/(${fps}*TB)[${label}p]`,
+        `[${current}][${label}p]overlay=eof_action=pass[${label}]`,
+      );
+      current = label;
+      input++;
+    };
+    if (seams.head) plate(seams.head, 'out', 0, 'head');
+    if (seams.tail) plate(seams.tail, 'in', Math.max(0, seams.totalFrames - Math.max(1, Math.round(seams.tail.frames))), 'tail');
+    if (filters.length === 0) throw new Error('没有要抹平的交界');
+    filters.push(`[${current}]format=${target.pixelFormat}[out]`);
+    args.push('-filter_complex', filters.join(';'), '-map', '[out]', '-frames:v', String(seams.totalFrames), '-c:v', 'libx264', '-pix_fmt', target.pixelFormat, '-fps_mode', 'passthrough', '-an', '-movflags', '+faststart', dest);
+    const ran = await combinedOutput(this.ffmpeg, args, this.env, signal);
+    if (!ran.ok) throw new Error(`抹平交界失败：${source}（${firstLine(ran.output)}）`);
   }
 
   /**
