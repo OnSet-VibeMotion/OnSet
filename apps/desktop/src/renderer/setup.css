@@ -1079,3 +1079,77 @@
     transition: none !important;
   }
 }
+
+/* ---- 试渲染一个镜头 ---- */
+
+.setup-guide .setup-ok-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.setup-guide .render-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+/* 全部就位那一行：按钮跟在标题右边，结果另起一行占满宽度。 */
+.setup-guide .setup-ok-row .render-check {
+  display: contents;
+}
+
+.setup-guide .render-check-note {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.setup-guide .render-check-result {
+  display: flex;
+  flex-basis: 100%;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+  animation: drawer-in 0.4s var(--ease);
+}
+
+.setup-guide .render-check-result.ok {
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+}
+
+.setup-guide .render-check-result.fail {
+  border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
+}
+
+.setup-guide .render-check-result img {
+  flex: none;
+  width: 160px;
+  height: 120px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.setup-guide .render-check-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.setup-guide .render-check-text strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.setup-guide .render-check-fail {
+  color: color-mix(in srgb, var(--bad) 70%, var(--text));
+  font-size: 12px;
+}

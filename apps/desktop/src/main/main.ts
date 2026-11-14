@@ -74,13 +74,32 @@ async function serveStatic(pathname: string): Promise<Response> {
  */
 function privateCLI(): string {
   // Windows 上不写 shim：.cmd 不能直接 spawn，经 cmd.exe 又要转义多行参数。onset 就是 onset.cjs，
-  // 由 envutil.onsetCommand 用本应用的 Electron（ELECTRON_RUN_AS_NODE=1）来跑；渲染也不借用本应用的浏览器（见 browser.ts）。
+  // 由 envutil.onsetCommand 用本应用的 Electron（ELECTRON_RUN_AS_NODE=1）来跑；渲染借用本应用的浏览器走引导脚本接管的路（见 lendBrowser）。
   if (process.platform === 'win32') return cliEntry();
   const file = path.join(app.getPath('userData'), 'bin', 'onset');
   writeScript(file, shimScript());
   // 渲染用的浏览器包装脚本与 onset 放在一起；shim 经 ONSET_BROWSER 把它的位置告诉 onset。
   writeScript(browserPath(), browserScript());
   return file;
+}
+
+/**
+ * 把客户端自带的 Chromium 借给 HyperFrames 渲染，免得用户再下载约 390 MB 的 chrome-headless-shell。
+ * macOS：HYPERFRAMES_BROWSER_PATH 指向包装脚本（clishim.ts 的 browserScript），puppeteer 的 fd 3/4 直接传进来。
+ * Windows：包装只能是 .exe，fd 3/4 的交接也没把握，改为 HyperFrames 经引导脚本启动、由它接管启动浏览器的那一下，
+ * 通信走本机命名管道（engine 的 hyperframes/browserhook.ts）；ONSET_BROWSER 就是本应用自己。
+ * 在 macOS 上预先设 ONSET_BROWSER_HOOK=1 也走后一条路，用来在 Mac 上验证它。
+ */
+function lendBrowser(): void {
+  if (process.platform === 'win32' || process.env.ONSET_BROWSER_HOOK === '1') {
+    process.env.ONSET_BROWSER = process.execPath;
+    process.env.ONSET_BROWSER_HOOK = '1';
+    // 开发时 Electron 要先拿到应用目录才知道加载哪个应用；打包后它总是加载自己。
+    if (!app.isPackaged) process.env.ONSET_BROWSER_APP_ARG = app.getAppPath();
+    else delete process.env.ONSET_BROWSER_APP_ARG;
+    return;
+  }
+  process.env.ONSET_BROWSER = browserPath();
 }
 
 async function handleRequest(request: Request): Promise<Response> {
@@ -189,12 +208,11 @@ if (!app.requestSingleInstanceLock()) {
     // 引擎从这里读内置资产（Go 版是 go:embed 进二进制的）。
     process.env.ONSET_ASSETS_DIR ??= assetsDir();
     try {
+      // 先定浏览器变量：privateCLI 写出的 shim 要带上同一套。
+      lendBrowser();
       const executable = privateCLI();
       // 引擎里经 envutil.onsetExecutable() 找 onset 的地方（子进程环境的 ONSET_EXECUTABLE、PATH）也认这一份。
       process.env.ONSET_SELF = executable;
-      // 进程内的后端直接调 HyperFrames 时（预览截图等）同样用客户端自带的浏览器。
-      // Windows 上浏览器模式接不上 puppeteer 的管道（fd 3/4），交给 HyperFrames 自己的 chrome-headless-shell。
-      if (process.platform !== 'win32') process.env.ONSET_BROWSER = browserPath();
       // 进程内的后端（客户端的安装页、新建项目）装 HyperFrames CLI 与 npm 类工具时用客户端自带的 npm。
       const npm = npmCLI();
       if (npm !== '') process.env.ONSET_NPM_CLI = npm;

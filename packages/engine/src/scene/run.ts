@@ -73,7 +73,7 @@ export async function run(
     if (dir) cliEnv[hyperframes.CLIDirEnv] = dir;
   }
   hyperframes.requireCLI(cliEnv);
-  for (const key of [hyperframes.BrowserEnv, hyperframes.HyperFramesBrowserEnv]) {
+  for (const key of [hyperframes.BrowserEnv, hyperframes.HyperFramesBrowserEnv, hyperframes.BrowserHookEnv, hyperframes.BrowserAppArgEnv]) {
     if (!cliEnv[key] && process.env[key]) cliEnv[key] = process.env[key]!;
   }
   // 浏览器同理：客户端里是它自带的 Chromium，单独用命令行时是 onset setup 下载的 headless-shell。

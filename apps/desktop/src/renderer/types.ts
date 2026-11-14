@@ -648,6 +648,19 @@ export interface SetupTask {
   log: string;
 }
 
+/** POST /api/setup/render-check：试渲染一个小镜头的结果。 */
+export interface RenderCheckResult {
+  ok: boolean;
+  seconds: number;
+  /** lent：借用客户端自带的浏览器；own：用户自己指定的；downloaded：HyperFrames 自己下载的。 */
+  browser: 'lent' | 'own' | 'downloaded';
+  /** 借用时走的是不是引导脚本接管的路（Windows 上是）。 */
+  hooked: boolean;
+  frame?: string;
+  error?: string;
+  log_tail?: string[];
+}
+
 export interface SetupStatus {
   /** 做片必需的项都已就绪。 */
   ready: boolean;

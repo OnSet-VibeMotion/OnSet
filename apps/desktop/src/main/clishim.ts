@@ -40,6 +40,15 @@ export function browserPath(): string {
   return path.join(app.getPath('userData'), 'bin', 'onset-browser');
 }
 
+/** shim 里给 onset 的浏览器变量：与主进程（main.ts 的 lendBrowser）设的一致。 */
+function browserVars(): string {
+  if (process.env.ONSET_BROWSER_HOOK === '1') {
+    const appArg = process.env.ONSET_BROWSER_APP_ARG ? ` ONSET_BROWSER_APP_ARG=${q(process.env.ONSET_BROWSER_APP_ARG)}` : '';
+    return `ONSET_BROWSER=${q(process.execPath)} ONSET_BROWSER_HOOK=1${appArg}`;
+  }
+  return `ONSET_BROWSER=${q(browserPath())}`;
+}
+
 /** shim 的内容：用本应用的 Electron 当 Node 运行命令行。路径用单引号包住，含空格或中文都没关系。 */
 export function shimScript(): string {
   const npm = npmCLI();
@@ -47,7 +56,7 @@ export function shimScript(): string {
   return [
     '#!/bin/sh',
     '# 由片场客户端写出：用客户端自带的运行时执行 onset，只供客户端内部使用。',
-    `ELECTRON_RUN_AS_NODE=1 ONSET_ASSETS_DIR=${q(assetsDir())} ONSET_BROWSER=${q(browserPath())}${npmVar} ONSET_SELF="$0" exec ${q(process.execPath)} ${q(cliEntry())} "$@"`,
+    `ELECTRON_RUN_AS_NODE=1 ONSET_ASSETS_DIR=${q(assetsDir())} ${browserVars()}${npmVar} ONSET_SELF="$0" exec ${q(process.execPath)} ${q(cliEntry())} "$@"`,
     '',
   ].join('\n');
 }

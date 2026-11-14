@@ -5,3 +5,4 @@ export * from './manifest';
 export { GitProgress, type Progress, type Writer } from './progress';
 export { dirSize, watchSize } from './util';
 export * from './cli';
+export { BrowserAppArgEnv, BrowserHookEnv, bootScript, standInName, writeBootScript } from './browserhook';
