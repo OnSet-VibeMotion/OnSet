@@ -1,6 +1,8 @@
 name: Release
 
 on:
+  # Manual runs build downloadable test installers without publishing a Release.
+  workflow_dispatch:
   push:
     tags: ['v*']
   release:
@@ -15,7 +17,7 @@ permissions:
   contents: read
 
 env:
-  RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && format('v0.0.0-test.{0}', github.run_number) || github.event.release.tag_name || github.ref_name }}
 
 jobs:
   package:
@@ -39,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || env.RELEASE_TAG }}
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -81,6 +83,7 @@ jobs:
 
   publish:
     name: Publish all installers
+    if: github.event_name != 'workflow_dispatch'
     needs: package
     runs-on: ubuntu-latest
     permissions:
