@@ -4,6 +4,7 @@ export * from './scene';
 export * from './skills';
 export * from './sandbox';
 export * from './seam';
+export * from './resume';
 export * from './timing';
 export * from './scenedata';
 export * from './record';

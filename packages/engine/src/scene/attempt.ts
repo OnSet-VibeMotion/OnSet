@@ -8,7 +8,12 @@ import { outputPath, stderrLog, streamLog, userLog, type Scene } from './scene';
 
 /** 本次渲染尝试的记录文件，与三份日志放在一起、一起归档。 */
 export function attemptLog(s: Pick<Scene, 'directory' | 'id'>): string {
-  return path.join(s.directory, 'render-' + s.id + '.attempt.json');
+  return path.join(s.directory, attemptFileName(s.id));
+}
+
+/** 尝试记录的文件名（归档目录里也是这个名字）。 */
+export function attemptFileName(id: string): string {
+  return 'render-' + id + '.attempt.json';
 }
 
 /**
@@ -39,6 +44,10 @@ export interface Attempt {
   checks: string[] | null;
   retry: boolean;
   usage: Usage | null;
+  /** 渲染工具这一次的会话号：中途异常退出时下一次靠它续接（resume.ts）。读不到为空。 */
+  session_id: string;
+  /** 这一次是怎么接着上一次做的：render（onset 直接渲染）、session（续接会话）、files（新会话照上次的文件接着做）；从头做为空。 */
+  resumed: string;
 }
 
 /** 零值尝试记录，测试与调用方构造时用。 */
@@ -59,6 +68,8 @@ export function newAttempt(fields: Partial<Attempt> = {}): Attempt {
     checks: null,
     retry: false,
     usage: null,
+    session_id: '',
+    resumed: '',
     ...fields,
   };
 }
@@ -87,6 +98,8 @@ export function attemptToJSON(a: Attempt): unknown {
     checks: a.checks && a.checks.length > 0 ? a.checks : undefined,
     retry: a.retry,
     usage: a.usage ? usageJSON(a.usage) : undefined,
+    session_id: a.session_id || undefined,
+    resumed: a.resumed || undefined,
   };
 }
 
@@ -126,6 +139,8 @@ const attemptType: StructType = {
     ['checks', sliceOf('string')],
     ['retry', 'bool'],
     ['usage', ptrTo(usageType)],
+    ['session_id', 'string'],
+    ['resumed', 'string'],
   ],
 };
 

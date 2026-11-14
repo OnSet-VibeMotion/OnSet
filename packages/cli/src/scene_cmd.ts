@@ -60,6 +60,9 @@ defineOp({
 
 无条件重新渲染：不做已有产物检查，也没有 force。需要跳过已完成镜头时用 scene_run_all()。
 
+上一次中途异常退出（不是产物不合格）、镜头输入又没变时，接着上一次做而不是从头来：合成已经写完的由 onset 直接渲染，
+否则续接渲染工具原来的会话，续不上就开新会话照上次留下的文件接着做。确实要从头重做时传 "fresh": true。
+
 渲染完成后校验产物时长是否落在 duration_seconds ± duration_tolerance 内，
 超出则失败。容差必须是有限非负数。
 
@@ -69,6 +72,7 @@ defineOp({
   params: {
     scene: { type: 'string', description: '镜头目录', required: true, positional: 0 },
     duration_tolerance: durationTolerance,
+    fresh: { type: 'boolean', description: '不接着上一次中断的地方做，从头渲染' },
   },
   run: async (p, { out, err, signal, unsafe }) => {
     const tolerance = num(p.duration_tolerance);
@@ -76,6 +80,7 @@ defineOp({
     const cfg = config.load('.', null);
     let s = scene.load(str(p.scene));
     s = attachMemory(s, cfg, err, newRunID());
+    if (bool(p.fresh)) s = { ...s, fresh: true };
     await scene.run(s, cfg, envutil.isUnsafe(unsafe), currentEnvironment(), out, tolerance, signal);
     return { data: { scene: s.id, output: scene.outputPath(s) } };
   },
@@ -96,6 +101,9 @@ defineOp({
 输入指纹覆盖组好的渲染提示词、scene.json、prompt.md、字幕、角色包、
 渲染工具、技能内容与 onset 版本，产物通过校验时记在镜头目录的 .onset-render.json。
 没有渲染记录的产物同样标 Stale。
+
+上一次中途异常退出的镜头（重试时也一样）接着上一次做，不从头来：合成写完了就直接渲染，否则续接原来的会话，
+续不上再开新会话照上次的文件接着做。fresh 为 true 时一律从头渲染。
 
 force 跳过全部上述判定，无条件重渲染每个镜头。
 
@@ -130,6 +138,7 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     retries: { type: 'integer', description: '单个镜头失败后的最大重试次数，取值 0..5', default: 2 },
     duration_tolerance: durationTolerance,
     force: { type: 'boolean', description: '跳过「已有合格产物」与 Stale 判定，无条件重渲染每个镜头' },
+    fresh: { type: 'boolean', description: '中途中断过的镜头也从头渲染，不接着上一次做' },
     report_json: { type: 'string', description: '把逐镜头结果写成 JSON 报告到该路径；镜头失败时应读它' },
     // 内置插件的整批检查要的参数（例如歌曲讲解的 song_timeline）。
     ...Object.fromEntries(plugin.pluginRenderChecks().flatMap((c) => Object.entries(c.value.params ?? {}))),
@@ -178,6 +187,7 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     const run = newRunID();
     for (let i = 0; i < scenes.length; i++) {
       scenes[i] = attachMemory(scenes[i], cfg, err, run);
+      if (bool(p.fresh)) scenes[i] = { ...scenes[i], fresh: true };
     }
     // 每个镜头这一批里全部尝试（含重试）的用量，渲染结束后填进报告。
     const usage = new Map<string, Usage>();

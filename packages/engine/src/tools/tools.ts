@@ -167,46 +167,63 @@ export function modelArgs(tool: string, model: string): string[] {
   }
 }
 
-export function rendererInvocation(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model = ''): string[] {
+/**
+ * 渲染器的会话：id 为空时不指定；resume 为真时续接 id 那个会话（渲染中途异常退出后接着做，scene/resume.ts）。
+ * 新会话预先指定 id 只有 claude、qoder、codebuddy 支持（presetSessionID），codex、opencode 的会话号从输出流读。
+ * 各家的写法与编排工具相同（orchestratorInvocation）。
+ */
+export interface RendererSession {
+  id: string;
+  resume: boolean;
+}
+
+export function rendererInvocation(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model = '', session: RendererSession | null = null): string[] {
   const server = access.toolsServer;
   const m = modelArgs(tool, model);
+  if (session && session.id === '') session = null;
+  if (session && !session.resume && !presetSessionID(tool)) throw new Error(`${tool} 不支持预先指定会话 id`);
+  /** claude 系：新会话 --session-id，续接 --resume。 */
+  const claudeSession = session ? (session.resume ? ['--resume', session.id] : ['--session-id', session.id]) : [];
   switch (tool) {
     case 'codex': {
       const mcp = server ? codexMcpOverrides(server) : [];
-      if (unsafe) return ['codex', 'exec', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', ...mcp, ...m, '--json', prompt];
-      return ['codex', '--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...mcp, ...m, '--json', prompt];
+      const resume = session?.resume ? ['resume', session.id] : [];
+      if (unsafe) return ['codex', 'exec', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', ...mcp, ...m, '--json', ...resume, prompt];
+      return ['codex', '--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...mcp, ...m, '--json', ...resume, prompt];
     }
     case 'claude': {
       let mode = ['--dangerously-skip-permissions'];
       if (!unsafe) mode = ['--permission-mode', 'acceptEdits', '--settings', claudeSettings({ ...access, mcp: server ? [server.name] : [] })];
       // --mcp-config 吃多个值，后面必须紧跟一个选项（这里是 --verbose），不然会把提示词吞掉。
       const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
-      return ['claude', '-p', ...mode, ...m, ...mcp, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', prompt];
+      return ['claude', '-p', ...mode, ...m, ...mcp, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', ...claudeSession, prompt];
     }
     case 'qoder': {
+      const qoderSession = session ? (session.resume ? ['-r', session.id] : ['--session-id', session.id]) : [];
       // 与 claude 同一套放行规则（qoder 的 --settings 认 claude 的 permissions 写法），外加关掉懒加载 MCP。
       // 以前用 dont_ask：它连镜头目录里写文件都拒、技能目录读不了、ls 都跑不了，渲染器一个 index.html 都写不出来（2026-11 实测）。
       // 系统沙箱按目录管住了读写，渲染器里不再按命令白名单拦（拦了也没人能批准，只会白耗几轮）。
       if (unsafe || access.osSandbox) {
         const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
-        return ['qoderclicn', '-p', prompt, '--dangerously-skip-permissions', ...m, ...qoderRendererSources, '--settings', JSON.stringify(qoderEagerSettings), ...mcp, '--output-format', 'stream-json'];
+        return ['qoderclicn', '-p', prompt, ...qoderSession, '--dangerously-skip-permissions', ...m, ...qoderRendererSources, '--settings', JSON.stringify(qoderEagerSettings), ...mcp, '--output-format', 'stream-json'];
       }
       const settings = { ...(JSON.parse(claudeSettings({ ...access, mcp: server ? [server.name] : [] })) as Record<string, unknown>), ...qoderEagerSettings };
       const mcp = server ? ['--mcp-config', mcpConfigJSON([server]), '--allowed-tools', 'mcp__' + server.name] : [];
-      return ['qoderclicn', '-p', prompt, '--permission-mode', 'accept_edits', ...m, ...qoderRendererSources, '--settings', JSON.stringify(settings), ...mcp, '--output-format', 'stream-json'];
+      return ['qoderclicn', '-p', prompt, ...qoderSession, '--permission-mode', 'accept_edits', ...m, ...qoderRendererSources, '--settings', JSON.stringify(settings), ...mcp, '--output-format', 'stream-json'];
     }
     case 'codebuddy': {
       let mode = ['--permission-mode', 'acceptEdits'];
       if (!unsafe && server) mode.push('--settings', claudeSettings({ ...access, commands: [], readDirs: access.readDirs, mcp: [server.name] }));
       if (unsafe) mode = ['-y'];
       const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
-      return ['codebuddy', '-p', ...m, ...mcp, '--verbose', '--output-format', 'stream-json', ...mode, prompt];
+      return ['codebuddy', '-p', ...m, ...mcp, '--verbose', '--output-format', 'stream-json', ...mode, ...claudeSession, prompt];
     }
     case 'opencode': {
       // --standalone：opencode run 默认连到后台常驻的服务，配置（包括 OPENCODE_CONFIG_CONTENT 里的 MCP 与模型）
       // 取的是那个服务启动时的，这一次给的全被忽略（2.1.0 实测）。私有服务才读这一次的环境。
       const args = ['opencode', 'run', '--standalone', ...m];
       if (unsafe) args.push('--auto');
+      if (session?.resume) args.push('-s', session.id);
       return [...args, '--format', 'json', prompt];
     }
     case 'director':
