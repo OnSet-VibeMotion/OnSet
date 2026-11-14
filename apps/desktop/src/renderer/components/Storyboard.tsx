@@ -1,8 +1,9 @@
 import { confirmGate } from './Progress';
 import { Fragment, useEffect, useState } from 'react';
 import { api, errorText } from '../api';
-import type { Attachment, StoryboardResponse, StoryboardScene } from '../types';
+import type { Attachment, FilmStyle, StoryboardResponse, StoryboardScene, StoryboardStyle } from '../types';
 import { Markdown } from './chat/Markdown';
+import { Poster, SceneStyleDialog } from './FilmStyles';
 import '../storyboard.css';
 
 /** 分镜相关的文件：聊天与文件树点到它们时打开分镜页。 */
@@ -29,9 +30,37 @@ function duration(seconds: number): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
-function filmStyleName(style: string): string {
-  if (style === 'none') return '不用整片风格';
-  return style.split('/').pop() ?? style;
+function sceneNo(index: number): string {
+  return String(index + 1).padStart(2, '0');
+}
+
+/** 镜头编号连成段：01–03、07。 */
+function ranges(indexes: number[]): string {
+  const out: string[] = [];
+  for (let i = 0; i < indexes.length; i++) {
+    let j = i;
+    while (j + 1 < indexes.length && indexes[j + 1] === indexes[j] + 1) j++;
+    out.push(j > i ? `${sceneNo(indexes[i])}–${sceneNo(indexes[j])}` : sceneNo(indexes[i]));
+    i = j;
+  }
+  return out.join('、');
+}
+
+/** 风格的小海报：只有「来源/目录名」时也能画（Poster 只用来源、目录名与分类）。 */
+function StyleThumb({ style }: { style: StoryboardStyle | { key: string; cn: string; category_cn?: string } }) {
+  if (!style.key) return <span className="sb-style-thumb free">Aa</span>;
+  const [source, ...rest] = style.key.split('/');
+  const film = { source, slug: rest.join('/'), cn: style.cn, category_cn: style.category_cn ?? '' } as FilmStyle;
+  return (
+    <span className="sb-style-thumb">
+      <Poster style={film} />
+    </span>
+  );
+}
+
+/** 镜头之间换没换画风只看实际用的风格（与 scene_cues 的风格交界判定相同）。 */
+function sameStyle(a: StoryboardStyle, b: StoryboardStyle): boolean {
+  return a.key === b.key;
 }
 
 interface Props {
@@ -40,12 +69,15 @@ interface Props {
   onQuick: (text: string, attachments: Attachment[], draftOnly?: boolean) => void;
   onFile: (path: string) => void;
   onScene: (id: string) => void;
+  /** 打开「风格」页。 */
+  onStyles?: () => void;
 }
 
 /** 分镜页：整片处理方案、按章节排的镜头与每个镜头的画面描述。只读，改分镜在对话里说。 */
-export function StoryboardTab({ version, busy, onQuick, onFile, onScene }: Props) {
+export function StoryboardTab({ version, busy, onQuick, onFile, onScene, onStyles }: Props) {
   const [board, setBoard] = useState<StoryboardResponse | null>(null);
   const [error, setError] = useState('');
+  const [restyle, setRestyle] = useState<{ scene: StoryboardScene; no: string } | null>(null);
 
   useEffect(() => {
     api<StoryboardResponse>('/api/storyboard').then(
@@ -123,9 +155,13 @@ export function StoryboardTab({ version, busy, onQuick, onFile, onScene }: Props
         </details>
       )}
 
+      {scenes.length > 0 && <StyleOverview board={board} onStyles={onStyles} />}
+
       <ol className="sb-list">
         {scenes.map((sc, index) => {
           const chapterStart = sc.chapter && sc.chapter !== scenes[index - 1]?.chapter;
+          const prev = index > 0 ? scenes[index - 1] : null;
+          const shift = prev && !sameStyle(prev.style, sc.style) ? prev.style : null;
           return (
             <Fragment key={sc.id}>
               {chapterStart && (
@@ -133,34 +169,128 @@ export function StoryboardTab({ version, busy, onQuick, onFile, onScene }: Props
                   {sc.chapter}
                 </li>
               )}
-              {sc.handoff && index > 0 && <Handoff scene={sc} />}
-              <SceneCard scene={sc} index={index} version={version} onScene={onScene} />
+              {(sc.handoff || shift) && index > 0 && <Handoff scene={sc} from={shift} planned={!!board.plan_path && !board.parse_error} />}
+              <SceneCard
+                scene={sc}
+                index={index}
+                version={version}
+                offDefault={sc.style.kind === 'named' || (sc.style.kind === 'none' && !!board.default_style)}
+                onScene={onScene}
+                onRestyle={() => setRestyle({ scene: sc, no: sceneNo(index) })}
+              />
             </Fragment>
           );
         })}
       </ol>
+      {restyle && (
+        <SceneStyleDialog
+          who={`镜头 ${restyle.no}（${restyle.scene.id}）`}
+          current={restyle.scene.film_style ?? ''}
+          defaultStyle={board.default_style}
+          installed={new Set(board.installed_styles)}
+          nameOf={(key) => scenes.find((x) => x.style.key === key)?.style.cn}
+          onAsk={(text) => onQuick(text, [], true)}
+          onClose={() => setRestyle(null)}
+        />
+      )}
     </div>
   );
 }
 
-/** 两个镜头之间的交接：用什么手法、交界那一帧是什么样。 */
-function Handoff({ scene }: { scene: StoryboardScene }) {
-  const h = scene.handoff!;
+/**
+ * 全片的画风：默认风格与个别段落换上的风格各用在哪几个镜头。
+ * 点一组跳到它的第一个镜头；风格本身（装、换默认、去掉）在「风格」页。
+ */
+function StyleOverview({ board, onStyles }: { board: StoryboardResponse; onStyles?: () => void }) {
+  const groups: { style: StoryboardStyle; indexes: number[] }[] = [];
+  board.scenes.forEach((sc, index) => {
+    const id = sc.style.key || sc.style.kind;
+    const group = groups.find((g) => (g.style.key || g.style.kind) === id);
+    if (group) group.indexes.push(index);
+    else groups.push({ style: sc.style, indexes: [index] });
+  });
+  const boundaries = board.scenes.filter((sc, i) => i > 0 && !sameStyle(board.scenes[i - 1].style, sc.style)).length;
+  const onlyFree = groups.length === 1 && groups[0].style.kind === 'free';
+  const jump = (index: number) => {
+    const id = board.scenes[index]?.id;
+    if (id) document.querySelector(`#storyboard [data-scene="${CSS.escape(id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
   return (
-    <li className="sb-handoff" title="上一个镜头怎么接到这个镜头">
-      <span className="sb-handoff-device">
-        ↓ {h.device_label || h.device}
-        {h.style_shift && ` · 换画风：${h.style_shift_label || h.style_shift}`}
-      </span>
-      <span className="sb-handoff-bridge">{h.bridge}</span>
+    <section className="sb-styles" id="storyboard-styles" aria-label="画风">
+      <header className="sb-styles-head">
+        <span className="eyebrow">画风</span>
+        <span className="sb-styles-sum">
+          {onlyFree ? '还没有整片风格，每个镜头按文案自己定视觉' : groups.length === 1 ? '全片一种画风' : `${groups.length} 种画风 · ${boundaries} 处风格交界`}
+        </span>
+        {onStyles && (
+          <button className="link" onClick={onStyles}>
+            {board.default_style ? '风格页' : '选整片风格'}
+          </button>
+        )}
+      </header>
+      {!onlyFree && (
+        <ul className="sb-styles-list">
+          {groups.map((g) => (
+            <li key={g.style.key || g.style.kind}>
+              <button className={'sb-style-group' + (g.style.missing ? ' missing' : '')} onClick={() => jump(g.indexes[0])} title="跳到这种画风的第一个镜头">
+                <StyleThumb style={g.style} />
+                <span className="sb-style-group-text">
+                  <strong>
+                    {g.style.cn}
+                    {g.style.kind === 'default' && <span className="sb-style-default">默认</span>}
+                  </strong>
+                  <span>
+                    {g.indexes.length} 个镜头 · {ranges(g.indexes)}
+                    {g.style.missing && <span className="bad"> · 还没装进项目</span>}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/**
+ * 两个镜头之间的交接：用什么手法、交界那一帧是什么样。
+ * 风格交界（from 不为空）另写画风从哪种换到哪种、用哪种过渡；计划里没写过渡手法时照实标出，scene_cues 会拒绝它。
+ */
+function Handoff({ scene, from, planned }: { scene: StoryboardScene; from: StoryboardStyle | null; planned: boolean }) {
+  const h = scene.handoff;
+  const unplanned = from && planned && !h?.style_shift;
+  return (
+    <li className={'sb-handoff' + (from ? ' style-shift' : '') + (unplanned ? ' unplanned' : '')} title="上一个镜头怎么接到这个镜头">
+      {from && (
+        <span className="sb-handoff-style">
+          <StyleThumb style={from} />
+          <span>{from.cn}</span>
+          <span aria-hidden="true">→</span>
+          <StyleThumb style={scene.style} />
+          <span>{scene.style.cn}</span>
+          {h?.style_shift ? <em>{h.style_shift_label || h.style_shift}</em> : unplanned ? <em className="bad">还没写画风怎么换过去</em> : null}
+        </span>
+      )}
+      {h && <span className="sb-handoff-device">↓ {h.device_label || h.device}</span>}
+      {h && <span className="sb-handoff-bridge">{h.bridge}</span>}
     </li>
   );
 }
 
-function SceneCard({ scene, index, version, onScene }: { scene: StoryboardScene; index: number; version: number; onScene: (id: string) => void }) {
-  const no = String(index + 1).padStart(2, '0');
+function SceneCard(props: {
+  scene: StoryboardScene;
+  index: number;
+  version: number;
+  /** 没用默认风格（点名了别的或不用整片风格）：卡片左边加一道线，一眼看出哪几段换了画风。 */
+  offDefault: boolean;
+  onScene: (id: string) => void;
+  onRestyle: () => void;
+}) {
+  const { scene, index, version, onScene } = props;
+  const no = sceneNo(index);
   return (
-    <li className={`sb-scene${scene.rendered ? ' rendered' : ''}`} data-ctx-scene={scene.id} data-scene={scene.id}>
+    <li className={`sb-scene${scene.rendered ? ' rendered' : ''}${props.offDefault ? ' off-default' : ''}`} data-ctx-scene={scene.id} data-scene={scene.id}>
       <div className="sb-side">
         <span className="sb-no">{no}</span>
         {scene.rendered && (
@@ -184,7 +314,6 @@ function SceneCard({ scene, index, version, onScene }: { scene: StoryboardScene;
               {scene.visual_role}
             </span>
           )}
-          {scene.film_style && <span className="sb-chip">{filmStyleName(scene.film_style)}</span>}
           {scene.anchor && <span title="这个镜头从哪里开始">从{scene.anchor}起</span>}
           <span className="sb-id">{scene.id}</span>
           {!scene.created && <span className="sb-todo">镜头目录还没建</span>}
@@ -193,6 +322,17 @@ function SceneCard({ scene, index, version, onScene }: { scene: StoryboardScene;
               {scene.rendered ? '看画面' : '打开镜头'}
             </button>
           )}
+        </div>
+        <div className={'sb-style' + (scene.style.missing ? ' missing' : '')}>
+          <StyleThumb style={scene.style} />
+          <span className="sb-style-name">
+            {scene.style.cn}
+            {scene.style.kind === 'default' && <span className="muted">（默认）</span>}
+            {scene.style.missing && <span className="bad">（还没装进项目）</span>}
+          </span>
+          <button className="link" onClick={props.onRestyle}>
+            换风格
+          </button>
         </div>
         {scene.text && (
           <blockquote className="sb-text" data-ctx-source={`${scene.dir}/scene.json`} data-ctx-label={`镜头 ${no} 的口播`} data-ctx-whole="">

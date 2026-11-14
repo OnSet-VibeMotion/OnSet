@@ -93,7 +93,7 @@ describe('readStoryboard', () => {
     expect(out.scenes[0].prompt?.content).toBe('画面');
 
     const empty = readStoryboard(project({}));
-    expect(empty).toEqual({ plan_path: '', scenes: [] });
+    expect(empty).toEqual({ plan_path: '', installed_styles: [], scenes: [] });
   });
 
   it('does not read outside the project when the plan points there', () => {
@@ -104,5 +104,39 @@ describe('readStoryboard', () => {
     const out = readStoryboard(root);
     expect(out.parse_error).toBeUndefined();
     for (const sc of out.scenes) expect(sc.prompt).toBeUndefined();
+  });
+
+  it('resolves each scene’s film style and leaves boundaries visible', () => {
+    const manifest = (source: string, slug: string, cn: string) => JSON.stringify({ source, slug, cn, en: slug, version: '1', digest: 'x', installed_at: '' });
+    const root = project({
+      '.agents/skills/am-film-style/am-film-style.json': manifest('lemo-opuscar', 'watercolor', '水彩'),
+      '.agents/am-film-styles/lemo-opuscar/ink-wash/am-film-style.json': manifest('lemo-opuscar', 'ink-wash', '水墨'),
+      'production/scene-plan.json': JSON.stringify({
+        schema: 1,
+        scenes: [
+          { id: 'scene-001', dir: 'scenes/scene-001' },
+          { id: 'scene-002', dir: 'scenes/scene-002', first_subtitle: 2, film_style: 'lemo-opuscar/ink-wash', handoff: { device: 'carry', bridge: '墨滴', style_shift: 'morph' } },
+          { id: 'scene-003', dir: 'scenes/scene-003', first_subtitle: 3, film_style: 'none' },
+          { id: 'scene-004', dir: 'scenes/scene-004', first_subtitle: 4, film_style: 'lemo-opuscar/crayon-book' },
+        ],
+      }),
+    });
+    const out = readStoryboard(root);
+    expect(out.parse_error).toBeUndefined();
+    expect(out.default_style).toMatchObject({ key: 'lemo-opuscar/watercolor', cn: '水彩' });
+    expect(out.installed_styles.sort()).toEqual(['lemo-opuscar/ink-wash', 'lemo-opuscar/watercolor']);
+    expect(out.scenes.map((s) => [s.style.kind, s.style.key, !!s.style.missing])).toEqual([
+      ['default', 'lemo-opuscar/watercolor', false],
+      ['named', 'lemo-opuscar/ink-wash', false],
+      ['none', '', false],
+      ['named', 'lemo-opuscar/crayon-book', true],
+    ]);
+    expect(out.scenes[1].style.cn).toBe('水墨');
+    expect(out.scenes[1].handoff?.style_shift).toBe('morph');
+
+    // 没有默认风格时，不写风格的镜头自主定视觉；没有分镜计划时读镜头自己的 scene.json。
+    const bare = readStoryboard(project({ 'scenes/scene-001/scene.json': sceneJSON('scene-001', { film_style: 'none' }), 'scenes/scene-002/scene.json': sceneJSON('scene-002') }));
+    expect(bare.default_style).toBeUndefined();
+    expect(bare.scenes.map((s) => s.style.kind)).toEqual(['none', 'free']);
   });
 });

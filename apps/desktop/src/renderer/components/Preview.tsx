@@ -8,7 +8,7 @@ import { cssSelector } from '../selector';
 import { Icon } from './Icon';
 import { MemoryTab } from './Memory';
 import { VoicesTab } from './Voices';
-import { FilmStyleDialog, FilmStylePicker, Poster, styleKey, useFilmStyles } from './FilmStyles';
+import { FilmStyleDialog, FilmStylePicker, Poster, SceneStyleDialog, styleKey, useFilmStyles } from './FilmStyles';
 import { Markdown } from './chat/Markdown';
 import { SceneActivityPanel } from './RenderActivity';
 import { ScriptTab } from './Script';
@@ -121,7 +121,7 @@ export function Preview(props: Props) {
           <ScriptTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} onAttach={props.onAttach} />
         )}
         {props.tab === 'storyboard' && (
-          <StoryboardTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} onScene={props.onScene} />
+          <StoryboardTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} onScene={props.onScene} onStyles={() => props.onTab?.('style')} />
         )}
         {props.tab === 'scene' && <SceneTab {...props} scene={scene} />}
         {props.tab === 'compose' && <ComposeTab {...props} scene={scene} />}
@@ -857,40 +857,22 @@ function FinalTab({ tree, version, run, onTab }: { tree: TreeFile[]; version: nu
   );
 }
 
-/**
- * 镜头页里的风格一行：这个镜头用的是哪种风格，「换风格」打开风格弹窗。
- * 选好后不直接改文件（客户端不写项目文件），把要求写进输入框交给编排工具：它要改分镜计划、
- * 必要时 am film-style add，并给变成风格交界的地方挑过渡手法，再重跑 am scene cues。
- */
+/** 镜头页里的风格一行：这个镜头用的是哪种风格，「换风格」打开风格弹窗（SceneStyleDialog，分镜页也用它）。 */
 function SceneStyle(props: { scene: Scene; label: string; version: number; onQuick: Props['onQuick'] }) {
   const [info, setInfo] = useState<ProjectFilmStyle | null>(null);
   const [open, setOpen] = useState(false);
-  const films = useFilmStyles(open);
   useEffect(() => {
     api<ProjectFilmStyle>('/api/film-style').then(setInfo, () => setInfo(null));
   }, [props.version]);
   if (!info) return null;
   const raw = info.scenes?.find((x) => x.id === props.scene.id)?.film_style ?? '';
   const extras = info.extras ?? [];
-  const nameOf = (key: string) =>
-    extras.find((x) => styleKey(x.manifest) === key)?.manifest.cn ?? films.data?.styles.find((x) => styleKey(x) === key)?.cn ?? key;
+  const nameOf = (key: string) => extras.find((x) => styleKey(x.manifest) === key)?.manifest.cn;
   let label: ReactNode;
   if (raw === '') label = info.manifest ? <>{info.manifest.cn}<span className="muted">（默认）</span></> : <span className="muted">自主定视觉</span>;
   else if (raw === 'none') label = <span className="muted">不用整片风格</span>;
-  else label = <>{nameOf(raw)}{info.missing?.some((m) => m.scene === props.scene.id) && <span className="bad">（没装进项目）</span>}</>;
+  else label = <>{nameOf(raw) ?? raw.split('/').pop()}{info.missing?.some((m) => m.scene === props.scene.id) && <span className="bad">（没装进项目）</span>}</>;
   const installed = new Set([...(info.manifest ? [styleKey(info.manifest)] : []), ...extras.map((x) => styleKey(x.manifest))]);
-  const pick = (value: string) => {
-    const who = `${props.label}（${props.scene.id}）`;
-    let ask: string;
-    if (value === '@default') ask = info.manifest ? `把${who}改回默认风格「${info.manifest.cn}」。` : `把${who}改回不写风格、自主定视觉。`;
-    else if (value === 'none') ask = `把${who}改成不用整片风格、自主定视觉。`;
-    else ask = `把${who}换成「${nameOf(value)}」风格（${value}）。`;
-    props.onQuick(
-      ask + '改分镜计划并重跑 am scene cues；它和相邻镜头的风格不同时，按「风格交界」挑一种过渡手法，让画法在画面里自然地换过去，不要硬切或叠化。',
-      [],
-      true,
-    );
-  };
   return (
     <>
       <p className="scene-style">
@@ -901,25 +883,13 @@ function SceneStyle(props: { scene: Scene; label: string; version: number; onQui
         </button>
       </p>
       {open && (
-        <FilmStyleDialog
-          title={`${props.label} 换一种风格`}
-          intro="选好后写进对话，由 AI 改分镜，并给前后的风格交界设计画面里的过渡。"
-          confirm="写进对话"
-          data={films.data}
-          error={films.error}
-          posterVersion={films.posterVersion}
-          selected={raw === '' ? '@default' : raw}
+        <SceneStyleDialog
+          who={`${props.label}（${props.scene.id}）`}
+          current={raw}
+          defaultStyle={info.manifest ? { key: styleKey(info.manifest), cn: info.manifest.cn } : undefined}
           installed={installed}
-          specials={[
-            {
-              value: '@default',
-              title: info.manifest ? `跟随默认风格：${info.manifest.cn}` : '跟随默认风格',
-              desc: info.manifest ? '和全片大多数镜头一样。' : '项目还没有默认风格，镜头自主定视觉。',
-              mark: '默',
-            },
-            { value: 'none', title: '不用整片风格', desc: '这个镜头按文案自己定配色、字体与动效。', mark: 'Aa' },
-          ]}
-          onPick={pick}
+          nameOf={nameOf}
+          onAsk={(text) => props.onQuick(text, [], true)}
           onClose={() => setOpen(false)}
         />
       )}

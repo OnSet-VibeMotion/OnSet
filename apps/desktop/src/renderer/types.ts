@@ -784,13 +784,25 @@ export interface StoryboardHandoff {
   style_shift_label?: string;
 }
 
+/** 镜头实际用的画风（后端 studio/storyboard.ts 的 StoryboardStyle）。 */
+export interface StoryboardStyle {
+  /** 实际用的「来源/目录名」；不用整片风格时为空。相邻镜头不同就是风格交界。 */
+  key: string;
+  kind: 'default' | 'named' | 'none' | 'free';
+  cn: string;
+  category_cn?: string;
+  missing?: boolean;
+}
+
 export interface StoryboardScene {
   id: string;
   dir: string;
   chapter?: string;
   visual_role?: string;
   summary?: string;
+  /** 分镜计划里写的 film_style 原值：空是默认风格，none 是不用整片风格。 */
   film_style?: string;
+  style: StoryboardStyle;
   anchor?: string;
   handoff?: StoryboardHandoff;
   text?: string;
@@ -807,6 +819,8 @@ export interface StoryboardResponse {
   updated_at?: string;
   parse_error?: string;
   look?: { background?: string; surface?: string; ink?: string; accent?: string; accent_2?: string };
+  default_style?: { key: string; cn: string; category_cn?: string };
+  installed_styles: string[];
   treatment?: { path: string; content: string };
   doc_path?: string;
   scenes: StoryboardScene[];

@@ -200,6 +200,147 @@
   color: var(--accent-text);
 }
 
+/* 画风：风格的小海报（复用 FilmStyles 的 Poster，样式在这里另给，film-styles.css 的规则挂在 .film-styles 下）。 */
+.storyboard-tab .sb-style-thumb {
+  flex: none;
+  display: inline-block;
+  width: 40px;
+  aspect-ratio: 16 / 9;
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  vertical-align: middle;
+}
+.storyboard-tab .sb-style-thumb.free {
+  display: inline-grid;
+  place-items: center;
+  font: 600 10px var(--serif);
+  color: var(--muted);
+  background: var(--well);
+}
+.storyboard-tab .sb-style-thumb .fs-poster {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, hsl(var(--fs-hue, 30) 35% 26%), hsl(calc(var(--fs-hue, 30) + 40) 30% 16%));
+}
+.storyboard-tab .sb-style-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.storyboard-tab .sb-style-thumb .fs-poster-fallback {
+  display: none;
+}
+
+/* 全片画风一览：在处理方案下面、镜头列表上面。 */
+.storyboard-tab .sb-styles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.storyboard-tab .sb-styles-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+.storyboard-tab .sb-styles-sum {
+  font-size: 13px;
+  color: var(--text-2);
+}
+.storyboard-tab .sb-styles-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+.storyboard-tab .sb-style-group {
+  width: 100%;
+  height: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  cursor: pointer;
+}
+.storyboard-tab .sb-style-group:hover {
+  border-color: var(--line-strong);
+}
+.storyboard-tab .sb-style-group.missing {
+  border-color: var(--bad);
+}
+.storyboard-tab .sb-style-group .sb-style-thumb {
+  width: 64px;
+}
+.storyboard-tab .sb-style-group-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.storyboard-tab .sb-style-group-text strong {
+  font: 600 14px var(--serif);
+}
+.storyboard-tab .sb-style-group-text > span {
+  font: 11px var(--mono);
+  color: var(--muted);
+}
+.storyboard-tab .sb-style-default {
+  margin-left: 6px;
+  font: 11px var(--sans);
+  color: var(--accent-text);
+}
+
+/* 每个镜头卡里的画风一行。 */
+.storyboard-tab .sb-style {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.storyboard-tab .sb-style-name {
+  min-width: 0;
+}
+/* 没用默认风格的镜头：左边一道黄铜线，连着几张就是一段换了画风的段落。 */
+.storyboard-tab .sb-scene.off-default {
+  border-left: 3px solid var(--accent-line);
+}
+
+/* 风格交界：画风从哪种换到哪种、用哪种过渡。 */
+.storyboard-tab .sb-handoff-style {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+}
+.storyboard-tab .sb-handoff-style .sb-style-thumb {
+  width: 32px;
+}
+.storyboard-tab .sb-handoff-style em {
+  font-style: normal;
+  color: var(--accent-text);
+}
+.storyboard-tab .sb-handoff-style em.bad {
+  color: var(--bad);
+}
+.storyboard-tab .sb-handoff.style-shift {
+  border-left-style: solid;
+}
+.storyboard-tab .sb-handoff.unplanned {
+  border-left-color: var(--bad);
+}
+
 @media (max-width: 720px) {
   .storyboard-tab .sb-scene {
     grid-template-columns: minmax(0, 1fr);
