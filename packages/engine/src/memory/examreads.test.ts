@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { newAttempt, newTiming, OutcomeSucceeded, type Attempt, type Scene } from '../scene';
 import { ArmControl, ArmTrial, type ExamOptions } from './exam';
-import { ExamEventsFile, readsPostCheck } from './examreads';
+import { ExamEventsFile, readsExamNote, readsPostCheck } from './examreads';
 import { examinable } from './features';
 import { MaxBodyChars } from './lint';
 import { format, StatusActive, StatusTrial } from './memory';
@@ -17,6 +17,7 @@ interface EventFields {
   enter: number;
   start: number;
   end: number;
+  role?: string;
 }
 
 function writeEvents(dir: string, events: EventFields[]): void {
@@ -27,7 +28,7 @@ function writeEvents(dir: string, events: EventFields[]): void {
       event_id: e.id,
       selector: '#' + e.id,
       text: e.text,
-      role: 'title',
+      role: e.role ?? 'title',
       phrase_id: e.phrase ?? '',
       enter_frame: e.enter,
       readable_start_frame: e.start,
@@ -57,6 +58,7 @@ describe('exam reads', () => {
     const checks = ['reads.duration', 'reads.binding', 'reads.spoiler'];
     // 没交清单：判不了，不能算通过。
     expect(readsPostCheck(s, checks).map((f) => f.check)).toEqual(['reads.duration']);
+    expect(readsPostCheck(s, checks)[0].incomplete).toBe(true);
     writeEvents(dir, [
       { id: 'ok', text: '复利', phrase: 'p1', enter: 30, start: 34, end: 80 },
       { id: 'short', text: '一二三四五六七八九十一二三四五六七八', phrase: 'p1', enter: 40, start: 44, end: 60 },
@@ -105,6 +107,54 @@ describe('exam reads', () => {
       if (c.arm === ArmTrial) expect(c.passed).toBe(true);
     }
     expect(store.find('hold-readable')!.status).toBe(StatusActive);
+  });
+
+  it('catches a later title repeating an earlier phrase after a caption has exposed the next phrase', () => {
+    const dir = tempDir();
+    const sc = writeSceneDir(dir, 'scene-002', '分层阅读', '');
+    sc.duration_seconds = 4;
+    fs.writeFileSync(path.join(dir, sc.transcript), '1\n00:00:04,000 --> 00:00:07,000\n先整理，再比较。\n');
+    fs.writeFileSync(path.join(dir, 'phrase-timeline.json'), JSON.stringify({ schema: 1, fps: 30, phrases: [
+      { phrase_id: 'sort', source_text: '整理', semantic_order: 1, start_frame: 130, end_frame_exclusive: 155 },
+      { phrase_id: 'compare', source_text: '比较', semantic_order: 2, start_frame: 160, end_frame_exclusive: 190 },
+    ] }));
+    sc.timing = newTiming({ start_frame: 100, phrases: 'phrase-timeline.json' });
+    const caption: EventFields = { id: 'subtitle-1', role: 'subtitle', text: '先整理，\n再比较。', enter: 20, start: 20, end: 110 };
+    writeEvents(dir, [caption, { id: 'title', text: '整理', phrase: 'sort', enter: 30, start: 35, end: 75 }]);
+    expect(readsPostCheck(sc, ['reads.order']).map((f) => f.problem)).toEqual([
+      expect.stringContaining('subtitle-1/compare（短语顺序 2）比 title（短语顺序 1）先可读'),
+    ]);
+    // 用不重复前序文字的图形承接，不改冻结字幕也能消除跨层倒序。
+    writeEvents(dir, [caption, { id: 'title', text: '比较', phrase: 'compare', enter: 60, start: 65, end: 110 }]);
+    expect(readsPostCheck(sc, ['reads.order'])).toEqual([]);
+    expect(readsPostCheck(sc, ['reads.order', 'reads.binding', 'reads.spoiler'])).toEqual([]);
+    writeEvents(dir, [{ id: 'title', text: '整理', phrase: 'sort', enter: 30, start: 35, end: 75 }]);
+    expect(readsPostCheck(sc, ['reads.order'])[0]).toMatchObject({ incomplete: true, problem: expect.stringContaining('未声明实际烧录的字幕编号') });
+    // 把未登记的文字改报为 subtitle，也不能绕过检查。
+    writeEvents(dir, [caption, { id: 'hidden-title', role: 'subtitle', text: '整理', enter: 30, start: 35, end: 75 }]);
+    expect(readsPostCheck(sc, ['reads.order'])[0].problem).toContain('不是本镜头的冻结字幕事件');
+    writeEvents(dir, [caption]);
+    expect(readsPostCheck(sc, ['reads.binding'])[0]).toMatchObject({incomplete:true});
+    expect(readsExamNote(['reads.order'])).toContain('烧录字幕也必须登记');
+    expect(readsExamNote(['reads.duration'])).toContain('烧录字幕不用登记');
+    // 同一份 SRT 在字幕可选的项目里可能只用作时间合同；没有烧录时不可凭空引入字幕倒序。
+    writeEvents(dir, [{ id: 'title', text: '整理', phrase: 'sort', enter: 30, start: 35, end: 75 }]);
+    const file = path.join(dir, ExamEventsFile);
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    raw.subtitle_cues = [];
+    fs.writeFileSync(file, JSON.stringify(raw));
+    expect(readsPostCheck(sc, ['reads.order'])).toEqual([]);
+    fs.writeFileSync(path.join(dir, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\nsubtitles: {required: true}\n---\n');
+    expect(readsPostCheck(sc, ['reads.order']).some((f) => f.incomplete && f.problem.includes('要求烧录字幕'))).toBe(true);
+  });
+
+  it('does not pass an order-only exam with invalid inventory frames or no phrase timeline', () => {
+    const dir = tempDir();
+    const sc = writeSceneDir(dir, 'scene-002', '分层阅读', '');
+    writeEvents(dir, [{ id: 'title', text: '整理', enter: 40, start: 20, end: 60 }]);
+    const problems = readsPostCheck(sc, ['reads.order']).map((f) => f.problem);
+    expect(problems.some((p) => p.includes('帧号顺序不成立'))).toBe(true);
+    expect(problems.some((p) => p.includes('没有冻结短语时间轴'))).toBe(true);
   });
 
   it('hands rejected drafts back for one revision round', async () => {

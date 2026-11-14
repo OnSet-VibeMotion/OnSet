@@ -20,6 +20,67 @@ function exampleFontFiles(shared: assets.AssetTree, file: string): string[] {
 }
 
 describe('scene-kit', () => {
+  function textKit(start: number | null = 100) {
+    const win: Record<string, unknown> = { ONSET_SCENE: { schema: 1, scene_id: 'scene-001', fps: 30, frames: 90, start_frame: start,
+      phrases: [{ phrase_id: 'p1', text: '顺序', start_frame: 10, end_frame_exclusive: 45 }] } };
+    vm.runInNewContext(assets.shared().readText(`${skillTreeRoot}/scene-kit/scene-kit.js`), { window: win });
+    return win.SceneKit as { phraseText: (element: unknown, id: string, options?: Record<string, unknown>) => {
+      render: (frame: number) => void; event: (coordinates?: {global: boolean}) => Record<string, unknown>;
+    } };
+  }
+
+  it('keeps every text layer hidden before its phrase, including backward seeks, and exports one coordinate conversion', () => {
+    const kit = textKit();
+    const nodes = [0, 1].map((i) => ({ id: `line-${i}`, tagName: 'DIV', style: {} as Record<string,string>, textContent: '' }));
+    const labels = nodes.map((node) => kit.phraseText(node, 'p1', { readableStartFrame: 15, endFrame: 60 }));
+    expect(nodes.map(n => n.style.visibility)).toEqual(['hidden', 'hidden']);
+    for (const frame of [0, 9, 10, 59, 0, 60, 10]) {
+      labels.forEach(label => label.render(frame));
+      expect(nodes.map(n => n.style.visibility)).toEqual([frame >= 10 && frame < 60 ? 'visible' : 'hidden'].flatMap(v => [v,v]));
+    }
+    expect(labels[0].event()).toMatchObject({ text: '顺序', phrase_id: 'p1', enter_frame: 10, readable_start_frame: 15, readable_end_frame_exclusive: 60 });
+    expect(labels[0].event({global:true})).toMatchObject({ enter_frame: 110, readable_start_frame: 115, exit_end_frame: 160 });
+    expect(labels[0].event().enter_frame).toBe(10);
+    expect(() => textKit(null).phraseText(nodes[0], 'p1').event({global:true})).toThrow('缺少 start_frame');
+  });
+
+  it('clears a dedicated canvas even when seeking before the phrase and never draws outside its window', () => {
+    const drawn: number[] = [], cleared: unknown[][] = [];
+    const context = { save() {}, restore() {}, setTransform() {}, clearRect(...args: unknown[]) { cleared.push(args); } };
+    const node = { id: 'canvas-label', tagName: 'CANVAS', style: {} as Record<string,string>, width: 300, height: 100, getContext: () => context };
+    const label = textKit().phraseText(node, 'p1', { endFrame: 50, draw: (frame: number) => drawn.push(frame) });
+    for (const frame of [0, 10, 49, 9, 50]) label.render(frame);
+    expect(drawn).toEqual([10, 49]);
+    expect(cleared).toHaveLength(5);
+    expect(cleared.every(args => args.join(',') === '0,0,300,100')).toBe(true);
+    expect(node.style.visibility).toBe('hidden');
+    expect(() => textKit().phraseText(node, 'p1')).toThrow('独占图层');
+  });
+
+  it('rejects invented bindings, decorative text and windows outside the frozen scene', () => {
+    const kit = textKit(), node = { id:'text', tagName:'DIV', style:{}, textContent:'' };
+    expect(() => kit.phraseText(node, 'invented')).toThrow('没有短语');
+    expect(() => kit.phraseText(node, 'p1', {role:'decorative'})).toThrow('不能标为 decorative');
+    for (const options of [{enterFrame:9}, {endFrame:91}, {readableStartFrame:60,endFrame:60}]) {
+      expect(() => kit.phraseText(node, 'p1', options)).toThrow('须满足');
+    }
+  });
+
+  it('exports captions from the actual layout windows and line text instead of another hand-copied timeline', () => {
+    const element = () => ({ style: {}, className: '', textContent: '', appendChild() {}, setAttribute() {} });
+    const win: Record<string, unknown> = { ONSET_SCENE: { schema: 1, scene_id: 'fixture', fps: 30, frames: 90, start_frame: 100,
+      width_px: 800, height_px: 600, safe_area: {subtitles:{left_px:20,top_px:400,right_px:20,bottom_px:30}},
+      subtitles: {font_size_px:{min:24,max:24},max_lines:2}, cues:[{index:4,text:'早一点',start_frame:10,end_frame_exclusive:30}],phrases:[] },
+      document: {createElement:element} };
+    vm.runInNewContext(assets.shared().readText(`${skillTreeRoot}/scene-kit/scene-kit.js`), {window:win});
+    const kit=win.SceneKit as {captions:(root:unknown,options:unknown)=>{layouts:{lines:string[]}[];events:(coordinates?:{global:boolean})=>Record<string,unknown>[]}};
+    const captions=kit.captions({appendChild() {},ownerDocument:win.document},{leadFrames:3,tailFrames:4});
+    expect(captions.events()).toMatchObject([{event_id:'subtitle-4',role:'subtitle',text:'早一点',readable_start_frame:7,readable_end_frame_exclusive:34}]);
+    expect(captions.events({global:true})).toMatchObject([{readable_start_frame:107,readable_end_frame_exclusive:134}]);
+    captions.layouts[0].lines=['早','一点'];
+    expect(captions.events()[0].text).toBe('早\n一点');
+  });
+
   // HyperFrames lint 的 gsap_timeline_not_registered 逐个脚本按正则查（0.8.225 实测）：脚本里出现 gsap 紧跟 .timeline，
   // 又没有 window.__timelines 赋值，就判「建了时间线却没注册」。scene-kit.js 被复制进每个镜头目录、作为单独的
   // <script> 加载，它的注释或报错文案里只要写了这串字，所有用 scene-kit 的镜头都报这条错，渲染器自己修不掉，

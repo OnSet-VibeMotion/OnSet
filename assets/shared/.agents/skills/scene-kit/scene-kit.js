@@ -146,6 +146,56 @@
     return frame >= p.start_frame && frame < p.end_frame_exclusive;
   }
 
+  // 正文的一个独立文字层：绑定、逐帧显隐与事件导出共用同一份定义。
+  // Canvas 必须是该项文字独占的图层；不能清掉共用画布里的其他语义内容。
+  function phraseText(element, id, options) {
+    var opts = options || {}, data = scene(), p = phrase(id);
+    if (!element || !element.style || !element.id) throw new Error('SceneKit.phraseText：文字层须有稳定 id 与 style');
+    var text = opts.text === undefined ? p.text : opts.text;
+    if (typeof text !== 'string' || !text.trim()) throw new Error('SceneKit.phraseText：文字不能为空');
+    if (opts.role === 'decorative') throw new Error('SceneKit.phraseText：正文文字不能标为 decorative');
+    var enter = opts.enterFrame === undefined ? p.start_frame : opts.enterFrame;
+    var readable = opts.readableStartFrame === undefined ? enter : opts.readableStartFrame;
+    var end = opts.endFrame === undefined ? data.frames : opts.endFrame;
+    var readableEnd = opts.readableEndFrame === undefined ? end : opts.readableEndFrame;
+    var frames = [enter, readable, readableEnd, end];
+    if (!frames.every(Number.isInteger) || enter < p.start_frame || enter < 0 || enter > readable ||
+      readable >= readableEnd || readableEnd > end || end > data.frames) {
+      throw new Error('SceneKit.phraseText：须满足短语开始 ≤ enter ≤ readableStart < readableEnd ≤ end ≤ 镜头总帧');
+    }
+    var canvas = String(element.tagName).toLowerCase() === 'canvas';
+    if (canvas && typeof opts.draw !== 'function') throw new Error('SceneKit.phraseText：画布文字须提供 draw，并独占图层');
+    var context = canvas ? element.getContext('2d') : null;
+    if (canvas && !context) throw new Error('SceneKit.phraseText：没有二维画布上下文');
+    element.style.visibility = 'hidden';
+    if (!canvas) element.textContent = text;
+    function render(frame) {
+      element.style.visibility = 'hidden';
+      if (context) {
+        context.save(); context.setTransform(1, 0, 0, 1, 0, 0);
+        context.clearRect(0, 0, element.width, element.height); context.restore();
+      }
+      var visible = frame >= enter && frame < end;
+      if (visible) {
+        if (!canvas) element.textContent = text;
+        if (typeof opts.draw === 'function') opts.draw(frame, p, context);
+        element.style.visibility = 'visible';
+      }
+    }
+    function event(coordinates) {
+      var offset = 0;
+      if (coordinates && coordinates.global) {
+        if (!Number.isInteger(data.start_frame) || data.start_frame < 0) throw new Error('SceneKit.phraseText：全片帧导出缺少 start_frame');
+        offset = data.start_frame;
+      }
+      return { event_id: opts.eventId || element.id, scene_id: data.scene_id, selector: opts.selector || '#' + element.id,
+        text: text, role: opts.role || 'label', phrase_id: id,
+        enter_frame: enter + offset, readable_start_frame: readable + offset,
+        readable_end_frame_exclusive: readableEnd + offset, exit_end_frame: end + offset };
+    }
+    return { phrase: p, text: text, render: render, event: event };
+  }
+
   // sortedCues：按开始帧排序（同帧按 index），不改原数组。
   function sortedCues(cues) {
     return cues.slice().sort(function (a, b) {
@@ -559,7 +609,21 @@
     }
 
     render(0);
-    return { element: layer, layouts: layouts, render: render, activeAt: activeAt };
+    function events(coordinates) {
+      var offset = 0;
+      if (coordinates && coordinates.global) {
+        if (!Number.isInteger(s.start_frame) || s.start_frame < 0) throw new Error('SceneKit.captions：全片帧导出缺少 start_frame');
+        offset = s.start_frame;
+      }
+      return layouts.map(function (layout) {
+        if (!Number.isInteger(layout.cue.index)) throw new Error('SceneKit.captions：字幕事件缺少 cue.index');
+        return { event_id: 'subtitle-' + layout.cue.index, scene_id: s.scene_id,
+          selector: '.scene-kit-caption', text: layout.lines.join('\n'), role: 'subtitle', phrase_id: '',
+          enter_frame: layout.from + offset, readable_start_frame: layout.from + offset,
+          readable_end_frame_exclusive: layout.until + offset, exit_end_frame: layout.until + offset };
+      });
+    }
+    return { element: layer, layouts: layouts, render: render, activeAt: activeAt, events: events };
   }
 
   // ======================= 接入 GSAP 时间线 =======================
@@ -666,6 +730,7 @@
     frameOf: frameOf,
     phrase: phrase,
     phraseActive: phraseActive,
+    phraseText: phraseText,
     cueAt: cueAt,
     safeRect: safeRect,
     breakLines: breakLines,

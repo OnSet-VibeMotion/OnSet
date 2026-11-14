@@ -17,11 +17,11 @@ import { usageJSON, type Usage } from '../tools';
 import type { Finding } from './checks';
 import { episodeByID, freezeInput, projectOf, SourceExam } from './episode';
 import { EventDormant, EventExam, EventPromote, EventReject } from './events';
-import { ReadsExamNote, readsChecks } from './examreads';
+import { readsExamNote, readsChecks } from './examreads';
 import { CheckerAudition, examinableLesson, features as sceneFeatures, promptText } from './features';
 import { rfc3339 } from './gostr';
 import { copyTree, isNotExist, readDirSorted, readJSON, writeJSON } from './io';
-import { appliesInScope, cloneMemory, KindLesson, StatusActive, StatusDormant, StatusRejected, StatusTrial, type Memory, type Status } from './memory';
+import { appliesInScope, cloneMemory, KindLesson, ruleDigest, StatusActive, StatusDormant, StatusRejected, StatusTrial, type Memory, type Status } from './memory';
 import { attachRecall, recall, recallNames, type RecallOptions, type RecallResult } from './recall';
 import type { Snapshot } from './snapshot';
 import type { Store } from './store';
@@ -67,6 +67,8 @@ export interface Cell {
   recalled: string[] | null;
   episode: string;
   workdir: string;
+  /** 检查所需证据不完整，不能用该格的缺失申报证明质量增益。 */
+  incomplete?: boolean;
 }
 
 export function newCell(fields: Partial<Cell> = {}): Cell {
@@ -111,6 +113,7 @@ export function cellToJSON(c: Cell): Record<string, unknown> {
     recalled: omitEmpty(c.recalled),
     episode: c.episode || undefined,
     workdir: c.workdir,
+    incomplete: c.incomplete || undefined,
   };
 }
 
@@ -130,7 +133,7 @@ export interface Verdict {
   pass: boolean;
   /** 为 true 时整场考试无效：既不生效也不拒绝。 */
   invalid: boolean;
-  /** 为 true 时生效记忆变过或待考经验未实际召回，保留原状态，需核实后重考或人工确认。 */
+  /** 为 true 时规则变过、经验未召回或检查证据不足，保留原状态，需核实后重考。 */
   needs_human: boolean;
   control_score: number;
   trial_score: number;
@@ -211,6 +214,12 @@ export function judge(questions: readonly Question[], renderers: readonly string
     }
   }
   if (v.invalid) return v;
+  const incomplete = cells.filter((c) => c.incomplete);
+  if (incomplete.length > 0) {
+    v.needs_human = true;
+    v.reasons.push(...incomplete.map((c) => `${c.question} × ${c.renderer} × ${c.arm} 检查依据不完整，不能把清单缺失算成视频质量差异`));
+    return v;
+  }
   for (const q of questions) {
     for (const r of renderers) {
       const control = cellKey(q.id, r, ArmControl);
@@ -271,6 +280,8 @@ export interface ExamOptions {
   episodes?: string[] | null;
   /** 留出题的镜头目录。 */
   holdout?: string[] | null;
+  /** 仅验证未参与总结的新镜头；用于旧题已被用户批准例外取代后的迁移验证。 */
+  holdoutOnly?: boolean;
   maxQuestions?: number;
   repeat?: number;
   jobs?: number;
@@ -281,9 +292,9 @@ export interface ExamOptions {
   /** 渲染工具当前的模型，召回按它筛选限定了模型的经验；为 null 时视为未知。 */
   modelOf?: ((renderer: string) => string) | null;
   /**
-   * 要重考的生效经验名：对照组去掉它们、试用组照常带上。模型换了以后，
+   * 要重考的生效、停用或被拒经验名：对照组去掉它们、试用组按真实条件召回。模型换了以后，
    * 旧考试的结论不再可信，见 StatusReport.retest。通过时补记考试编号，不通过时
-   * 状态不变、只在结果里写明，是否沉睡或限定范围由人决定。
+   * 状态不变、只在结果里写明；停用或被拒经验通过后恢复生效并生成快照。
    */
   retest?: string[] | null;
   /**
@@ -409,6 +420,7 @@ function parseExamResult(raw: unknown): ExamResult {
             recalled: strList(c?.recalled),
             episode: String(c?.episode ?? ''),
             workdir: String(c?.workdir ?? ''),
+            incomplete: c?.incomplete === true || undefined,
           }),
         )
       : null,
@@ -478,11 +490,12 @@ export async function exam(s: Store, opts: ExamOptions): Promise<ExamResult> {
   const maxQuestions = opts.maxQuestions && opts.maxQuestions >= 1 ? opts.maxQuestions : 4;
   const retest = opts.retest ?? [];
   const trialNames = opts.trial ?? [];
+  if (retest.length > 0 && trialNames.length > 0) throw new Error('试用考试与经验重考不能同时指定');
   const all = s.memories().memories;
   const trials: Memory[] = [];
   for (const name of retest) {
     const m = all.find((x) => x.name === name);
-    if (!m || m.status !== StatusActive || m.kind !== KindLesson) throw new Error(`${name} 不是生效中的经验，不能重考`);
+    if (!m || ![StatusActive, StatusDormant, StatusRejected].includes(m.status) || m.kind !== KindLesson) throw new Error(`${name} 不是生效、停用或被拒的经验，不能重考`);
     if (!examinableLesson(m)) throw new Error(`${name} 只由相邻镜头的交接判定，考不了`);
     trials.push(m);
   }
@@ -506,13 +519,19 @@ export async function exam(s: Store, opts: ExamOptions): Promise<ExamResult> {
   if (trials.length === 0) {
     throw new Error('没有能考的试用经验；先运行 memory_consolidate()。只由相邻镜头的交接判定的经验考不了，用 memory_promote() 人工确认');
   }
-  const questions = examQuestions(s, trials, opts.episodes ?? [], opts.holdout ?? [], maxQuestions);
+  if (opts.holdoutOnly && (opts.holdout?.length ?? 0) === 0) throw new Error('仅验证新镜头时必须提供留出镜头');
+  if (opts.holdoutOnly && (opts.episodes?.length ?? 0) > 0) throw new Error('仅验证新镜头不能同时指定来源旧题');
+  const questions = examQuestions(s, trials, opts.episodes ?? [], opts.holdout ?? [], maxQuestions, opts.holdoutOnly ?? false);
   if (questions.length === 0) throw new Error('没有考题：试用记忆的来源经历都没有冻结输入，也没有给 --holdout');
   const requiredPost = postChecks(trials);
   if (requiredPost.length > 0 && !opts.postCheck) throw new Error(`考试缺少事后检查：${requiredPost.join('、')}；不能用产物校验代替这些检查`);
   const before = s.latestSnapshot();
   const beforeID = before?.id ?? 0;
-  const driftBefore = s.drift();
+  // 比较实际规则摘要，而不是“哪些文件偏离快照”的名字列表：同一脏文件再次改正文
+  // 仍须被发现；只追加来源或验证编号则不会改变渲染器收到的规则。
+  const activeRules = () => s.memories().memories.filter((m) => m.status === StatusActive)
+    .map((m) => m.name + '=' + ruleDigest(m)).sort(compareBytes).join('\n');
+  const rulesBefore = activeRules();
   const id = nextExamID(s);
   const result: ExamResult = {
     id,
@@ -586,14 +605,21 @@ export async function exam(s: Store, opts: ExamOptions): Promise<ExamResult> {
     result.cells = cells.filter(Boolean);
     if (opts.signal?.aborted) throw new Error('考试已取消，未改变记忆状态');
     const after = s.latestSnapshot();
-    const driftAfter = s.drift();
-    const changed = (after?.id ?? 0) !== beforeID || (driftAfter ?? []).join(',') !== (driftBefore ?? []).join(',');
+    const changed = (after?.id ?? 0) !== beforeID || activeRules() !== rulesBefore;
     result.verdict = judge(questions, opts.renderers, cells, changed, trials.map((m) => m.name));
     if (retest.length > 0 && !opts.dryRun && !result.verdict.invalid && !result.verdict.needs_human) {
       result.applied = 'retest-failed';
       if (result.verdict.pass) {
         result.applied = 'retest-passed';
-        for (const m of trials) setStatus(s, m, StatusActive, '', id);
+        const inactive = trials.filter((m) => m.status !== StatusActive);
+        for (const m of trials.filter((m) => m.status === StatusActive)) setStatus(s, m, StatusActive, '', id);
+        if (inactive.length > 0) {
+          result.snapshot = promoteList(s, inactive, id).id;
+          result.applied = 'promoted';
+        } else {
+          // 验证编号也属于快照内容；正式记录这次证据，避免合法重考留下永久文件漂移。
+          result.snapshot = s.takeSnapshot(EventExam, `重考 ${id} 通过：更新验证出处`, before?.unverified ?? false).id;
+        }
       }
     } else if (!opts.dryRun && !result.verdict.invalid && !result.verdict.needs_human) {
       if (result.verdict.pass) {
@@ -630,18 +656,25 @@ export async function exam(s: Store, opts: ExamOptions): Promise<ExamResult> {
   return result;
 }
 
-function examQuestions(s: Store, trials: readonly Memory[], episodes: readonly string[], holdout: readonly string[], maxQuestions: number): Question[] {
+function examQuestions(s: Store, trials: readonly Memory[], episodes: readonly string[], holdout: readonly string[], maxQuestions: number, holdoutOnly: boolean): Question[] {
   const ids = [...episodes];
-  if (ids.length === 0) {
+  if (!holdoutOnly && ids.length === 0) {
     for (const m of trials) {
       for (const id of m.from_episodes) if (!ids.includes(id)) ids.push(id);
     }
   }
   const questions: Question[] = [];
-  for (const id of ids) {
+  const seen = new Set<string>();
+  for (const id of holdoutOnly ? [] : ids) {
     if (questions.length >= maxQuestions) break;
     const episode = episodeByID(s, id);
     if (episode.input === '') continue;
+    // 同一输入的多次失败不是多道题；不同输入指纹的版本仍各自保留。
+    if (episode.fingerprint !== '') {
+      const key = JSON.stringify([episode.scene_dir, episode.scene_id, episode.fingerprint]);
+      if (seen.has(key)) continue;
+      seen.add(key);
+    }
     questions.push({
       id: `q${questions.length + 1}`,
       episode: id,
@@ -656,6 +689,14 @@ function examQuestions(s: Store, trials: readonly Memory[], episodes: readonly s
       sc = loadScene(dir);
     } catch (err) {
       throw new Error(`留出题 ${dir}：${err instanceof Error ? err.message : String(err)}`, { cause: err });
+    }
+    if (holdoutOnly) {
+      for (const m of trials) for (const id of m.from_episodes) {
+        const source = episodeByID(s, id);
+        if (source.scene_dir !== '' && path.relative(path.resolve(source.scene_dir), sc.directory) === '') {
+          throw new Error(`镜头 ${sc.id} 参与过经验 ${m.name} 的总结，不能作为仅验证新镜头的留出题`);
+        }
+      }
     }
     questions.push({ id: `h${i + 1}`, episode: '', holdout: true, scene_id: sc.id, input: sc.directory });
   });
@@ -695,7 +736,7 @@ async function examCell(
     if (snapshot === 0) recallOpts.snapshot = -1;
     const retest = opts.retest ?? [];
     if (retest.length > 0 && arm === ArmControl) recallOpts.exclude = retest;
-    else if (retest.length === 0 && arm === ArmTrial) recallOpts.extra = trials;
+    else if (arm === ArmTrial) recallOpts.extra = retest.length === 0 ? trials : trials.filter((m) => m.status !== StatusActive);
     recalled = recallForExam(s, sc, recallOpts);
   } catch (err) {
     return fail(err);
@@ -704,10 +745,11 @@ async function examCell(
   cell.recalled = recallNames(recalled);
   const post = postChecks(trials);
   // 要补查阅读时间时，两组都被要求交出本镜头的可读元素清单。
-  if (opts.postCheck && readsChecks(post).length > 0) sc = { ...sc, examNote: ReadsExamNote };
+  if (opts.postCheck && readsChecks(post).length > 0) sc = { ...sc, examNote: readsExamNote(post) };
   const attempt: Attempt = { ...(await run(sc, renderer, opts.signal)) };
   if (attempt.outcome === OutcomeSucceeded && post.length > 0 && opts.postCheck) {
     const findings = await opts.postCheck(sc, post, opts.signal);
+    if (findings.some((f) => f.incomplete)) cell.incomplete = true;
     if (findings.length > 0) {
       attempt.outcome = OutcomeVerificationFailed;
       attempt.checks = [...(attempt.checks ?? []), ...findings.map((f) => f.check)];
@@ -797,6 +839,7 @@ export function setStatus(s: Store, original: Memory, status: Status, reason: st
   const m = cloneMemory(original);
   m.status = status;
   if (status === StatusRejected) m.rejected_reason = reason;
+  else if (status === StatusActive) m.rejected_reason = '';
   if (examID !== '' && !m.verified_by.includes(examID)) m.verified_by = [...m.verified_by, examID];
   s.write(m);
   if (status === StatusRejected) {

@@ -8,6 +8,8 @@ import { equalStrings, uniqueSorted } from './util';
 export interface Finding {
   check: string;
   problem: string;
+  /** 申报或合同不完整，不能把它计为已观察到的视频质量差异。 */
+  incomplete?: boolean;
 }
 
 /**

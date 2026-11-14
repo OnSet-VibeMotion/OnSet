@@ -79,7 +79,33 @@ window.__timelines['main'] = tl; // 键名与根节点 data-composition-id 一�
 | `frameOf(seconds)` | 时间轴秒数换本地帧号：`Math.round(秒 × fps)`。全库只有这一处换算 |
 | `phrase(id)` | 短语时间窗 `{phrase_id, text, start_frame, end_frame_exclusive, min_readable_frames}`；未知 id 抛错并列出已有 id |
 | `phraseActive(id, frame)` | `start_frame <= frame < end_frame_exclusive` |
+| `phraseText(element, id, options?)` | 正文独立文字层，共用短语定义生成逐帧显隐与阅读事件；见下节 |
 | `cueAt(frame)` | 该帧所在的原始字幕条目（不含 lead/tail 放宽），重叠时开始得晚的胜出；没有则 `null` |
+
+### 正文文字层
+
+正文标题、标签和多行文字优先用同一份定义驱动绘制与清单，避免只写入场位移、首帧露字、回跳残留或重复加全局起点：
+
+```js
+var labels = [SceneKit.phraseText(document.getElementById('label'), 'phrase-id', {
+  text: SceneKit.phrase('phrase-id').text,
+  readableStartFrame: SceneKit.phrase('phrase-id').start_frame + 6,
+  endFrame: SceneKit.scene().frames
+})];
+function render(frame) {
+  // 先更新其他动画，再逐帧重算文字显隐。
+  labels.forEach(function (label) { label.render(frame); });
+}
+var localEvents = labels.map(function (label) { return label.event(); });
+var filmEvents = labels.map(function (label) { return label.event({global: true}); });
+```
+
+- 元素必须有稳定 `id`，创建时就隐藏；`render(frame)` 只在 `[enterFrame, endFrame)` 显示，默认从短语开始到镜头结束。`enterFrame` 不能早于短语，返回后仍须接进逐帧回调。
+- `text` 默认用短语文字。每个独立可读项分别定义；多行属于同一短语时对全部文字层调用，不给共用画布只绑一次。
+- 可选 `readableStartFrame`、`readableEndFrame` 声明实际稳定可读窗口；库不自动测量动画的可读性，淡入、遮罩或位移耗时须如实填写，阅读时长仍用正式检查核对。`event()` 输出局部帧，`event({global:true})` 才加一次全片起点；不要再手工加偏移。
+- 画布文字须独占一层并提供 `draw(frame, phrase, context)`；每帧先清除该层，只有时间窗内才绘制。回调仍须按帧计算、保持绘制与申报的 `text` 一致。不要把含其他图形的共用画布交给它清除。
+- 可选 `eventId`、`selector`、`role` 定义事件身份；正文不能标为 `decorative`。纯装饰或语义图形单独登记，不为了凑清单硬加文字。
+- 已核实批准的封面主题预告按项目例外独立实现；不要为了使用此函数给封面随意绑定第一个短语，也不能修改冻结字幕或短语合同。
 
 ### 版式
 
@@ -92,6 +118,8 @@ var subs = SceneKit.captions(rootElement, options);
 subs.render(frame);   // 返回当前显示的 cue 或 null
 subs.element;         // 字幕层根元素
 subs.layouts;         // 每条字幕的排版结果：{cue, fontSize, lines, overflow, from, until}
+subs.events();        // 按实际布局导出字幕事件，局部帧
+subs.events({global: true}); // 导出全片帧，仅加一次 start_frame
 ```
 
 - **位置**：字幕层铺满 `safe_area.subtitles`，字幕框默认贴底居中。
@@ -101,6 +129,8 @@ subs.layouts;         // 每条字幕的排版结果：{cue, fontSize, lines, ov
 - **超长**：放不进 `max_lines` 时逐像素缩小字号，最小到 `font_size_px.min`（每行可容纳字数按比例放宽，行的像素长度不变）；仍放不下才多出行数，并按字幕序号各 `console.warn` 一次。看到这条告警要回去把字幕拆短，而不是改库。
 - **交接**：同一时刻只显示一条字幕，后一条一出现就截断前一条。
 - **纯函数**：DOM 只在 `captions()` 时建一次；`render(frame)` 每次都把文字、字号、显隐全部写成该帧应有的值，任意帧、任意顺序调用结果相同。
+- **阅读事件**：`events()` 读取实际 `layouts` 的行文字与 `from/until`，事件编号为 `subtitle-<cue.index>`、角色为 `subtitle`。跨层顺序检查时与正文 `phraseText(...).event()` 合并导出，不手抄另一套字幕时间。它不证明正文清单完整；只有字幕而没有待检查的正文或绑定图形时，不代表正文类经验已得到验证。
+- **字幕是否实际烧录**：考试清单的 `subtitle_cues` 填实际字幕的 `subs.layouts.map(l => l.cue.index)`；镜头未烧录字幕时填 `[]`。字幕可选时，不因为存在 SRT 就假定画面已有字幕，也不只为交清单增加字幕。项目明确要求烧录时仍须按要求制作。
 
 | options | 默认 | 说明 |
 |---|---|---|
