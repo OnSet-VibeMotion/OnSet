@@ -663,6 +663,7 @@ ONSET_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run --ro
 | 声音事件只能写成 `<\|[笑]>` 这类只读标记（`align.VocalEvents`，`Piece.event`）：进 `tts-text.txt`，不进 `align-text.txt`、不是朗读单元、不显示；正文里直接写 `[笑]` 解析时报错。第四阶段对齐一律用 `align-text.txt` | 实测把事件留在对齐文本里，对齐器会把「叹」「笑」塞进几十毫秒、产生零长度的字；去掉后每个字一样准。`align.test.ts` 的「vocal events」用那次真实对齐结果（`testdata/breeze-events-align.json`）钉着 |
 | 音色页能直接做新声音，不经项目对话、不管项目配音选的是谁：「录我的声音」用麦克风念 `voice.SampleText`（`POST /api/voice-record`，逐字稿就是那段字，念错了让用户改）；「按描述设计」用本机 Breeze 念试听（`voice.design`，`POST /api/voice-design`，试听放在库目录的 `.drafts/`、一天后清掉，挑中的经 `/api/voice-drafts/{id}/save` 存进库）；「上传录音」照旧 | 以前做新声音只能在项目里把配音设成 Breeze 再走对话，用户在 Studio 里找不到入口 |
 | 「按描述设计」要的 Breeze 在安装页单独一项 `voice:breeze`（项目配音本来就是 Breeze 时用 `tts:breeze`，`/api/voices` 的 `design.install_id` 告诉页面是哪一项），音色页里能直接点安装 | 安装页的配音项按项目配置挑，项目不用 Breeze 时根本不列它 |
+| 音色页每个声音画波形、放的时候文字稿逐字点亮（`apps/desktop/src/renderer/voiceTiming.ts`、`components/VoiceWave.tsx`）：字的时间在界面里按能量包络估——找出停顿，用动态规划让标点落在停顿上，小句里按字数平分；整页共用一个隐藏的 `<audio>`，点波形或点字从那里放。高亮不加过渡 | 音色库只有参考音频与逐字稿、没有字级时间戳，为十几秒的试听跑强制对齐要装几个 GB 的模型；跟读差一两个字看不出来，配音的时间轴仍由第四阶段对齐给。过渡在后台窗口（e2e）里会停住，高亮与波形对不上 |
 | 打包的 .app 要 `NSMicrophoneUsageDescription`（`apps/desktop/package.json` 的 `mac.extendInfo`）；e2e 启动时加 `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream` | 没有这条说明 macOS 直接拒绝麦克风；测试不能碰真麦克风、也不能弹系统授权 |
 | Breeze 的非商用许可与「只克隆本人或已授权的声音」只写在 README 里；界面、提示词、配置注释与工具说明都不另行提示，也不让编排工具找用户确认 | 软件开源，怎么用是用户自己的事；反复提示只是打断（用户要求） |
 | mlx-audio 0.6.1 的命令行没有 `--seed`：同一段重生成结果会变，不能靠种子复现 | 上游 PyTorch 版与 API 有 seed，换到它们时再接 |
