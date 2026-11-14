@@ -1,5 +1,7 @@
 <p align="right">简体中文 | <a href="./README.en.md">English</a></p>
 
+<p align="center"><img src="docs/showcase/showcase.zh.jpg" alt="用片场做的九支片子" width="100%"></p>
+
 # 片场（OnSet）
 
 **和智能体聊着天，就把想法做成一支视频。**
@@ -11,8 +13,6 @@
 ## 用它做的片子
 
 下面这张图里的每一格都取自一支用片场做完的成片：同一套流程，画风由每支片子按题材定。
-
-<p align="center"><img src="docs/showcase/showcase.zh.jpg" alt="用片场做的九支片子" width="100%"></p>
 
 ## 安装
 

@@ -1,5 +1,7 @@
 <p align="right"><a href="./README.md">简体中文</a> | English</p>
 
+<p align="center"><img src="docs/showcase/showcase.en.jpg" alt="Nine films made with OnSet" width="100%"></p>
+
 # OnSet
 
 **Talk with an agent, and turn an idea into a video.**
@@ -11,8 +13,6 @@ An AI orchestrator of your choice does the production inside the client: Codex, 
 ## Made with OnSet
 
 Every tile below is a still from a finished film made with OnSet. Same pipeline every time; each film picks its own look to fit the topic.
-
-<p align="center"><img src="docs/showcase/showcase.en.jpg" alt="Nine films made with OnSet" width="100%"></p>
 
 ## Install
 
