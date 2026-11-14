@@ -13,7 +13,8 @@ describe('tools', () => {
     const tests: [string, string[]][] = [
       ['codex', ['codex', '--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', 'prompt']],
       ['claude', ['claude', '-p', '--permission-mode', 'acceptEdits', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]}}`, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', 'prompt']],
-      ['qoder', ['qoderclicn', '-p', 'prompt', '--permission-mode', 'dont_ask', '--output-format', 'stream-json']],
+      // dont_ask 连镜头目录里写文件都拒（2026-11 实测渲染器一个 index.html 都写不出来）：与 claude 同一套放行规则。
+      ['qoder', ['qoderclicn', '-p', 'prompt', '--permission-mode', 'accept_edits', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]},"mcp":{"lazyLoad":false}}`, '--output-format', 'stream-json']],
       ['codebuddy', ['codebuddy', '-p', '--verbose', '--output-format', 'stream-json', '--permission-mode', 'acceptEdits', 'prompt']],
       ['opencode', ['opencode', 'run', '--standalone', '--format', 'json', 'prompt']],
     ];
@@ -22,6 +23,17 @@ describe('tools', () => {
         expect(rendererInvocation(tool, 'prompt', false, {})).toEqual(want);
       });
     }
+  });
+
+  // qoder 渲染器要能读技能目录、跑 ls / ffprobe、在镜头目录写文件，读不到 .env（规则写进 --settings，实测 qoder 认）。
+  it('qoder renderer gets the same access rules as claude', () => {
+    const argv = rendererInvocation('qoder', 'prompt', false, { commands: ['ls', 'ffprobe'], readDirs: ['/proj/.agents/skills'] });
+    expect(argv.slice(argv.indexOf('--permission-mode'), argv.indexOf('--permission-mode') + 2)).toEqual(['--permission-mode', 'accept_edits']);
+    const settings = JSON.parse(argv[argv.indexOf('--settings') + 1]);
+    expect(settings.permissions.allow).toEqual(['Bash(ls:*)', 'Bash(ffprobe:*)', 'Read(//proj/.agents/skills/**)']);
+    expect(settings.permissions.additionalDirectories).toEqual(['/proj/.agents/skills']);
+    expect(settings.permissions.deny).toContain('Read(**/.env)');
+    expect(argv).not.toContain('dont_ask');
   });
 
   it('renderer invocation unsafe is explicit', () => {
@@ -208,7 +220,9 @@ describe('tools', () => {
       expect(codex.at(-1)).toBe('prompt');
       const qoder = rendererInvocation('qoder', 'prompt', false, { toolsServer: server });
       expect(qoder.slice(qoder.indexOf('--allowed-tools'), qoder.indexOf('--allowed-tools') + 2)).toEqual(['--allowed-tools', 'mcp__onset']);
-      expect(JSON.parse(qoder[qoder.indexOf('--settings') + 1])).toEqual({ mcp: { lazyLoad: false } });
+      const qoderSettings = JSON.parse(qoder[qoder.indexOf('--settings') + 1]);
+      expect(qoderSettings.mcp).toEqual({ lazyLoad: false });
+      expect(qoderSettings.permissions.allow).toContain('mcp__onset');
       expect(rendererInvocation('codebuddy', 'prompt', false, { toolsServer: server })).toContain('--mcp-config');
       const env = rendererEnv('opencode', { toolsServer: server }, { OPENCODE_CONFIG_CONTENT: '{"model":"x"}' });
       expect(JSON.parse(env.OPENCODE_CONFIG_CONTENT)).toEqual({ model: 'x', mcp: { onset: { type: 'local', command: ['/app/bin/onset', 'studio', 'tools-mcp', '--profile', 'renderer', '--workdir', '/proj/scenes/s1'], enabled: true, environment: server.env } } });

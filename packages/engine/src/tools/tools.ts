@@ -83,7 +83,8 @@ export function onsetToolsServer(executable: string, profile: 'orchestrator' | '
  * （报「Permission prompt tool "mcp__onset_studio__ask" was not found」，2026-11 实测）。
  * 只要有一处设置写了 mcp.lazyLoad 它就照设置来，所以经 --settings 关掉。
  */
-const qoderEagerMcp = ['--settings', JSON.stringify({ mcp: { lazyLoad: false } })];
+const qoderEagerSettings = { mcp: { lazyLoad: false } };
+const qoderEagerMcp = ['--settings', JSON.stringify(qoderEagerSettings)];
 
 /** claude / qoder / codebuddy 的 --mcp-config：几个服务合在一份 JSON 里。 */
 function mcpConfigJSON(servers: McpServer[]): string {
@@ -168,10 +169,15 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
       return ['claude', '-p', ...mode, ...m, ...mcp, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', prompt];
     }
     case 'qoder': {
-      let mode = ['--permission-mode', 'dont_ask'];
-      if (unsafe) mode = ['--dangerously-skip-permissions'];
-      const mcp = server ? [...qoderEagerMcp, '--mcp-config', mcpConfigJSON([server]), ...(unsafe ? [] : ['--allowed-tools', 'mcp__' + server.name])] : [];
-      return ['qoderclicn', '-p', prompt, ...mode, ...m, ...mcp, '--output-format', 'stream-json'];
+      // 与 claude 同一套放行规则（qoder 的 --settings 认 claude 的 permissions 写法），外加关掉懒加载 MCP。
+      // 以前用 dont_ask：它连镜头目录里写文件都拒、技能目录读不了、ls 都跑不了，渲染器一个 index.html 都写不出来（2026-11 实测）。
+      if (unsafe) {
+        const mcp = server ? [...qoderEagerMcp, '--mcp-config', mcpConfigJSON([server])] : [];
+        return ['qoderclicn', '-p', prompt, '--dangerously-skip-permissions', ...m, ...mcp, '--output-format', 'stream-json'];
+      }
+      const settings = { ...(JSON.parse(claudeSettings({ ...access, mcp: server ? [server.name] : [] })) as Record<string, unknown>), ...qoderEagerSettings };
+      const mcp = server ? ['--mcp-config', mcpConfigJSON([server]), '--allowed-tools', 'mcp__' + server.name] : [];
+      return ['qoderclicn', '-p', prompt, '--permission-mode', 'accept_edits', ...m, '--settings', JSON.stringify(settings), ...mcp, '--output-format', 'stream-json'];
     }
     case 'codebuddy': {
       let mode = ['--permission-mode', 'acceptEdits'];
