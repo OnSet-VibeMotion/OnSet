@@ -3,9 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { mainWindow } from './pet';
 
-/** Windows 的保存位置与项目目录共用系统文件夹选择器。 */
+/** 插件目录，以及 Windows 的保存位置与项目目录共用系统文件夹选择器。 */
 export function installDirectoryPicker(): void {
-  if (process.platform !== 'win32') return;
   ipcMain.handle('onset:select-directory', async (event, requested: unknown): Promise<string | null> => {
     const owner = BrowserWindow.fromWebContents(event.sender);
     if (!owner || owner !== mainWindow() || event.senderFrame !== event.sender.mainFrame) return null;

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
+import { NativeDirectoryPicker } from './NativeDirectoryPicker';
 import { api, errorText, post } from '../api';
 import type { BuiltinContents, ProgressState, ProjectState, Scene, StationInfo, StationOp, StationPageInfo, StationParam, StationPreview, StationRun, StationSetting, StationsResponse, Task } from '../types';
 import { setPluginCommands } from './chat/complete';
@@ -295,6 +296,9 @@ function StagedConfirm({ staged, onInstall, onCancel }: { staged: StagedPlugin; 
         </span>
         {p.description && <span>{p.description}</span>}
       </div>
+      {p.linked && (
+        <p className="staged-local">直接加载本地文件夹：{p.source.replace(/^link:/, '')}。改动立即生效，请保留这个文件夹；移动或删除后插件将无法使用。</p>
+      )}
       {u && (
         <p className="staged-update">
           {u.changed ? `新版本：${u.old_version || '（本机已没有原来那一版）'} → ${u.new_version}` : `已是来源上的最新版本（${u.new_version}）`}
@@ -372,7 +376,7 @@ export function PluginSettings({ version, onChanged }: { version: number; onChan
   const show = (result: unknown) => setPending(result as StagedPlugin);
   const fetchPlugin = () => {
     const value = source.trim();
-    if (value === '' || task.busy !== '') return;
+    if (value === '' || pending !== null || task.busy !== '') return;
     task.start('/api/stations', '取回插件', { source: value }, show);
   };
   const install = () => {
@@ -560,6 +564,15 @@ export function PluginSettings({ version, onChanged }: { version: number; onChan
         </ul>
       )}
       <div className="stations-add">
+        {window.onset?.selectDirectory && (
+          <NativeDirectoryPicker
+            id="station-local-directory"
+            value={source.replace(/^link:/, '')}
+            label="选择本地文件夹"
+            disabled={pending !== null || task.busy !== ''}
+            onChange={(directory) => setSource(`link:${directory}`)}
+          />
+        )}
         <input
           aria-label="插件来源"
           placeholder="github:作者/仓库#版本，或本机目录的绝对路径"
@@ -573,6 +586,7 @@ export function PluginSettings({ version, onChanged }: { version: number; onChan
           添加
         </button>
       </div>
+      <p className="stations-source-help">支持 Git 地址或本地文件夹。本地文件夹需包含 onset-station.json，无需 Git；选好后点「添加」查看插件详情。</p>
       {pending && <StagedConfirm staged={pending} onInstall={install} onCancel={cancel} />}
     </section>
     </>

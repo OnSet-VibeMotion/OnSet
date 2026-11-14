@@ -7,6 +7,52 @@ import { test, expect, openProject, api, desktopDir, installPlugin, installedPlu
 // 测试用的假发布站：只写回执，不联网（packages/engine/src/flow/testdata/fake-publisher）。
 const fake = path.resolve(desktopDir, '..', '..', 'packages', 'engine', 'src', 'flow', 'testdata', 'fake-publisher');
 
+test('a local plugin folder can be selected, previewed and loaded without a git repository', async ({ page, electronApp, sandbox }) => {
+  const folder = path.join(sandbox.root, '本地插件 #1');
+  fs.cpSync(fake, folder, { recursive: true });
+  const selectFolder = async (directory) => {
+    await electronApp.evaluate(({ dialog }, selected) => {
+      dialog.showOpenDialog = async () => ({ canceled: selected === null, filePaths: selected === null ? [] : [selected] });
+    }, directory);
+    await stations.getByRole('button', { name: '选择本地文件夹' }).click();
+    await expect(stations.getByRole('button', { name: '选择本地文件夹' })).toBeEnabled();
+  };
+  await page.locator('#settings-trigger').click();
+  const stations = page.locator('#settings-dialog section.stations[aria-label="我的插件"]');
+  const source = stations.getByLabel('插件来源');
+  await source.fill('github:someone/plugin');
+  await selectFolder(null);
+  await expect(source).toHaveValue('github:someone/plugin');
+  expect(installedPlugins(sandbox)).toEqual([]);
+
+  // 选错目录时沿用清单校验，失败不安装，也不影响下一次选择。
+  await selectFolder(sandbox.root);
+  await stations.getByRole('button', { name: '添加', exact: true }).click();
+  await expect(stations).toContainText('里没有 onset-station.json');
+  expect(installedPlugins(sandbox)).toEqual([]);
+
+  await selectFolder(folder);
+  await expect(source).toHaveValue(`link:${folder}`);
+  await stations.getByRole('button', { name: '添加', exact: true }).click();
+  const confirm = stations.getByRole('alertdialog', { name: '确认添加插件' });
+  await expect(confirm).toContainText(folder);
+  await expect(confirm).toContainText('改动立即生效');
+  expect(installedPlugins(sandbox)).toEqual([]);
+  await confirm.getByRole('button', { name: '装上', exact: true }).click();
+  const card = stations.locator('li[data-station="fake-publisher"]');
+  await expect(card).toContainText('假发布');
+  await expect(card.getByRole('button', { name: '更新', exact: true })).toHaveCount(0);
+  expect(fs.existsSync(path.join(folder, '.git'))).toBe(false);
+  const manifestPath = path.join(folder, 'onset-station.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  manifest.description = '本地修改已经生效';
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+  expect((await api(page, '/api/stations')).body.stations.find((s) => s.id === 'fake-publisher')?.description).toBe(manifest.description);
+  await card.getByRole('button', { name: '去掉', exact: true }).click();
+  await expect.poll(() => installedPlugins(sandbox)).toEqual([]);
+  expect(fs.existsSync(manifestPath)).toBe(true);
+});
+
 test('a git plugin can be previewed, cancelled, installed and updated using the client runtime', async ({ page, sandbox }) => {
   test.skip(spawnSync('git', ['--version']).status !== 0, 'requires git');
   const repo = path.join(sandbox.root, 'plugin-repo');

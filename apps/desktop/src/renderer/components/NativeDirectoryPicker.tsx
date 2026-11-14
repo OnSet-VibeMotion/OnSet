@@ -10,13 +10,14 @@ export function NativeDirectoryPicker(props: {
   value: string;
   label: string;
   className?: string;
+  disabled?: boolean;
   onChange: (directory: string) => void;
   onBeforePick?: () => void;
 }) {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
   const choose = async () => {
-    if (working) return;
+    if (working || props.disabled) return;
     props.onBeforePick?.();
     setWorking(true);
     setError('');
@@ -31,7 +32,7 @@ export function NativeDirectoryPicker(props: {
   };
   return (
     <div className="native-directory-picker">
-      <button id={props.id} className={props.className} title={props.value} aria-haspopup="dialog" disabled={working} onClick={() => void choose()}>
+      <button id={props.id} className={props.className} title={props.value} aria-haspopup="dialog" disabled={working || props.disabled} onClick={() => void choose()}>
         {working ? '正在选择…' : props.label}
       </button>
       {error && <p className="error-line" role="alert">{error}</p>}

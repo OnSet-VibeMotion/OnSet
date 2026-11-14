@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld('onset', {
   showApplicationMenu(position: { x: number; y: number }): void {
     ipcRenderer.send('onset:application-menu', position);
   },
-  /** Windows 系统文件夹选择器；取消时返回 null。 */
+  /** 系统文件夹选择器；取消时返回 null。 */
   selectDirectory(defaultPath?: string): Promise<string | null> {
     return ipcRenderer.invoke('onset:select-directory', defaultPath);
   },
