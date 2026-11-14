@@ -56,6 +56,12 @@ test('the chat is the main column and the picture panel opens on demand', async 
   await page.mouse.down();
   await page.mouse.move(box.x - 120, box.y + box.height / 2, { steps: 6 });
   await page.mouse.up();
+  // pointermove 的 React 更新可能还没绘制完；先等最后一次拖动落到画面，再读取宽度并刷新。
+  const targetWidth = await page.locator('.workspace').evaluate((el, x) => el.getBoundingClientRect().right - x, box.x - 120);
+  await expect.poll(async () => {
+    const width = await page.locator('#panel').evaluate((el) => el.getBoundingClientRect().width);
+    return Math.abs(width - targetWidth);
+  }).toBeLessThan(2);
   const after = await page.locator('#panel').evaluate((el) => el.getBoundingClientRect().width);
   expect(after).toBeGreaterThan(before + 80);
   await page.reload();

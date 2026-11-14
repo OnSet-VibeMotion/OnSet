@@ -5,6 +5,7 @@
  * 唯一的例外是对话信号（recordUtterance）：每轮结束、每次回退各追加一段经历，
  * 只增不改，不碰项目文件，为它每轮起一个子进程不值得。
  */
+import fs from 'node:fs';
 import path from 'node:path';
 import * as config from '../config';
 import { envMap } from '../envutil';
@@ -235,7 +236,16 @@ export function memoryApplicationsAPI(s: Server, request: Request): Response {
   const m = store.find(name);
   if (!m || m.kind !== memory.KindLesson) return writeError(404, 'memory_not_found', '经验不存在');
   const summaries = discoverScenes(p.path);
-  const sourceDirs = store.episodes().filter((e) => m.from_episodes.includes(e.id) && e.scene_dir !== '').map((e) => e.scene_dir);
+  const sourceDirs = new Set<string>();
+  for (const episode of store.episodes()) {
+    if (!m.from_episodes.includes(episode.id) || episode.scene_dir === '') continue;
+    try {
+      // 历史路径可能经 /var 或项目别名写入；只在比较时解析，不改经历。
+      sourceDirs.add(fs.realpathSync(episode.scene_dir));
+    } catch {
+      // 来源项目已搬走或删除时，仍然可以预演这条经验的召回。
+    }
+  }
   const matches: Record<string, unknown>[] = [];
   let unreadable = 0;
   const env = envMap();
@@ -265,7 +275,7 @@ export function memoryApplicationsAPI(s: Server, request: Request): Response {
         }
       }
       matches.push({ scene_id: sc.id, text: sc.text, renderer, model, selected: !!selected, score: item.score,
-        source_scene: sourceDirs.some((dir) => path.relative(path.resolve(dir), sc.directory) === ''),
+        source_scene: sourceDirs.has(fs.realpathSync(sc.directory)),
         features: item.matched_features, keywords: item.matched_keywords, global: item.global, omit_reason: item.omit_reason,
         reading_context: readingContext });
     } catch {

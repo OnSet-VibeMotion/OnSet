@@ -219,13 +219,16 @@ test('steps scene frames with the arrow keys', async ({ page, project }) => {
 });
 
 test('memory page explains the loop in three steps and records a preference', async ({ page, project }) => {
+  // 召回会读取画幅来提取镜头特征；这个最小项目也需要真实的 frame.md。
+  await fs.writeFile(path.join(project.path, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
   await openProject(page, project);
   await openPage(page, 'memory');
   const flow = page.locator('.memory-flow li');
   await expect(flow).toHaveCount(3);
   await expect(flow.nth(0)).toContainText('记下的问题');
   await expect(flow.nth(1)).toContainText('整理成的提醒');
-  await expect(flow.nth(2)).toContainText('scene-001 会带上 0 条');
+  await expect(flow.nth(2).locator('strong')).toHaveText('0');
+  await expect(flow.nth(2).locator('small')).toHaveText('scene-001 · 0 条');
   // 页头照实说：成片确认可用后才整理，经验要考试才带进渲染。
   await expect(page.locator('.memory-head')).toContainText('这一版可用');
   await expect(page.locator('.memory-head')).toContainText('考过了');

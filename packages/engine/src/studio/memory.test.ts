@@ -1,4 +1,5 @@
 import './testsupport';
+import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import * as memory from '../memory';
@@ -68,6 +69,28 @@ describe('studio memory', () => {
     expect(store.episodes()).toHaveLength(1);
   });
 
+  it.each([false, true])('matches source scene aliases without rewriting history (removed: %s)', async (removed) => {
+    const root = tempDir();
+    setEnv('ONSET_MEMORY_DIR', tempDir());
+    writeStudioFile(path.join(root, 'onset.conf'), 'RENDERER=claude\n');
+    writeSceneDir(path.join(root, 'scenes', 'scene-001'), 'scene-001', '中文标题', '');
+    const alias = path.join(tempDir(), 'project-alias');
+    fs.symlinkSync(root, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    const store = memory.open(process.env.ONSET_MEMORY_DIR!);
+    const source = store.recordAttempt(scene.load(path.join(alias, 'scenes', 'scene-001')),
+      scene.newAttempt({ renderer: 'claude', outcome: scene.OutcomeVerificationFailed, checks: ['determinism.remote-font'], problems: ['远程字体'] }), { source: memory.SourceRender });
+    store.write(memory.newMemory({ name: 'local-font', kind: memory.KindLesson, status: memory.StatusTrial,
+      description: '中文字体用本地文件', body: '反例：远程字体。正例：本地字体。',
+      applies_when: memory.newApplies({ features: ['cjk_text'] }), checked_by: ['determinism.remote-font'], from_episodes: [source.id] }));
+    if (removed) fs.unlinkSync(alias);
+    const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
+    const result = await studioRequest(s, 'GET', '/api/memory/applications?name=local-font');
+    expect(result.status).toBe(200);
+    expect(result.body.unreadable).toBe(0);
+    expect(result.body.matches).toMatchObject([{ scene_id: 'scene-001', selected: true, source_scene: !removed }]);
+    expect(store.episodes()[0].scene_dir).toBe(source.scene_dir);
+  });
+
   it('finds applicable scenes without reactivating a stopped lesson and respects scope and budget', async () => {
     const root = tempDir();
     const dir = tempDir();
@@ -104,6 +127,7 @@ describe('studio memory', () => {
 
   it('resolves selected exam scene IDs to project directories and rejects outside paths', async () => {
     const root = tempDir();
+    const projectRoot = fs.realpathSync(root);
     writeStudioFile(path.join(root, 'onset.conf'), 'RENDERER=claude\n');
     writeSceneDir(path.join(root, 'scenes', 'scene-001'), 'scene-001', '考题', '');
     const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
@@ -113,12 +137,12 @@ describe('studio memory', () => {
       const { status, body } = await studioRequest(s, 'POST', '/api/memory/actions/exam', '{"renderers":["claude"],"name":"local-font","scenes":["scene-001","scene-001"]}');
       expect(status).toBe(202);
       await waitStudioTask(s, body.task_id);
-      expect(operation.mock.calls[0].slice(3, 5)).toEqual(['memory_exam', { renderers: 'claude', retest: 'local-font', holdout: [path.join(root, 'scenes', 'scene-001')] }]);
+      expect(operation.mock.calls[0].slice(3, 5)).toEqual(['memory_exam', { renderers: 'claude', retest: 'local-font', holdout: [path.join(projectRoot, 'scenes', 'scene-001')] }]);
       expect((await studioRequest(s, 'POST', '/api/memory/actions/exam', '{"renderers":["claude"],"name":"local-font","holdout_only":true}')).status).toBe(400);
       const migration = await studioRequest(s, 'POST', '/api/memory/actions/exam', '{"renderers":["claude"],"name":"local-font","scenes":["scene-001"],"holdout_only":true}');
       expect(migration.status).toBe(202);
       await waitStudioTask(s, migration.body.task_id);
-      expect(operation.mock.calls[1].slice(3, 5)).toEqual(['memory_exam', { renderers: 'claude', retest: 'local-font', holdout: [path.join(root, 'scenes', 'scene-001')], holdout_only: true }]);
+      expect(operation.mock.calls[1].slice(3, 5)).toEqual(['memory_exam', { renderers: 'claude', retest: 'local-font', holdout: [path.join(projectRoot, 'scenes', 'scene-001')], holdout_only: true }]);
     } finally { operation.mockRestore(); }
   });
 

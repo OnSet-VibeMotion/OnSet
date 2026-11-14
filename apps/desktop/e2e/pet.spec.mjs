@@ -8,6 +8,12 @@ import { test, expect, openProject, petPage } from './fixtures.mjs';
 test('the desktop pet mirrors what the orchestrator is doing', async ({ page, project, electronApp }) => {
   const pet = await petPage(electronApp);
   const crew = pet.locator('#crew');
+  const stop = async () => {
+    await page.locator('#cancel-turn').click();
+    // click 只发出取消请求。等 turn-end 到界面后再发下一轮，避免把旧的 filming 当成新一轮。
+    await expect(page.locator('#cancel-turn')).toHaveCount(0);
+    await expect(crew).toHaveAttribute('data-mood', 'stopped');
+  };
   // 没有进行中的一轮：坐在导演椅上待命。
   await expect(crew).toHaveAttribute('data-mood', 'idle');
   await expect(crew.locator('.pet-line')).toHaveText('待命');
@@ -23,29 +29,28 @@ test('the desktop pet mirrors what the orchestrator is doing', async ({ page, pr
   await expect(crew.locator('.pet-line')).toHaveText('读取 script-final.md');
   await expect(crew.locator('.pet-project')).toHaveText(project.name);
   await expect(crew).toHaveAttribute('data-walking', 'false');
-  await page.locator('#cancel-turn').click();
-  await expect(crew).toHaveAttribute('data-mood', 'stopped');
+  await stop();
 
   // 调 onset 渲染镜头：走到摄影机旁。假编排工具不真的起渲染，没有镜头在渲染时气泡写工具在做什么。
   await page.locator('#prompt').fill('拍一下');
   await page.locator('#send').click();
   await expect(crew).toHaveAttribute('data-mood', 'filming');
   await expect(crew.locator('.pet-line')).toHaveText('渲染镜头 scene-001');
-  await page.locator('#cancel-turn').click();
+  await stop();
 
   // 导演（内置编排工具）调 onset 的操作不带前缀：照样认得是在拍，气泡也写成人话。
   await page.locator('#prompt').fill('导演开机');
   await page.locator('#send').click();
   await expect(crew).toHaveAttribute('data-mood', 'filming');
   await expect(crew.locator('.pet-line')).toHaveText('渲染镜头 scene-001');
-  await page.locator('#cancel-turn').click();
+  await stop();
 
   // 改分镜计划：导演走到左墙的分镜板前。
   await page.locator('#prompt').fill('排分镜');
   await page.locator('#send').click();
   await expect(crew).toHaveAttribute('data-mood', 'storyboarding');
   await expect(crew.locator('.pet-line')).toHaveText('编辑 scene-plan.json');
-  await page.locator('#cancel-turn').click();
+  await stop();
 
   // 拼接：交给剪辑师，导演站到他身后。
   await page.locator('#prompt').fill('拼一下');
@@ -53,7 +58,7 @@ test('the desktop pet mirrors what the orchestrator is doing', async ({ page, pr
   await expect(crew).toHaveAttribute('data-mood', 'editing');
   await expect(pet.locator('[data-who="editor"]')).toHaveAttribute('data-active', 'true');
   await expect(pet.locator('[data-tag="editor"]')).toHaveText('剪辑');
-  await page.locator('#cancel-turn').click();
+  await stop();
   await expect(pet.locator('[data-who="editor"]')).toHaveAttribute('data-active', 'false');
 
   // 正常做完：收工，过一会儿回到待命。
