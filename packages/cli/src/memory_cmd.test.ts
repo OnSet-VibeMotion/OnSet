@@ -54,6 +54,7 @@ describe('memory', () => {
     setenv('PATH', binDir + path.delimiter + path.dirname(lookPath('ffmpeg')));
     setenv('HOME', tempDir());
     setenv('ONSET_MEMORY_DIR', memoryDir);
+    setenv('RENDERER_MODEL', 'fixture-model');
 
     const run = async (...args: string[]): Promise<string> => {
       const out = new Buffer();
@@ -116,7 +117,7 @@ describe('memory', () => {
     expect(status.snapshot, body).toBe(3);
     text = await run('memory', 'list');
     expect(text, '列表应当标出偏好并给出效果统计').toContain('未经机器验证');
-    expect(text).toContain('codex：召回 1 次，一次通过 1 次');
+    expect(text).toContain('codex/fixture-model：召回 1 次，一次通过 1 次');
     text = await run('memory', 'timeline');
     expect(text, '时间线不完整').toContain('promote');
     expect(text).toContain('episode');

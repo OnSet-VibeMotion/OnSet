@@ -27,6 +27,8 @@ export const ToolsServerName = 'onset';
 
 /** hyperframes 工具放行的子命令：本机渲染与只读检查。远端渲染、改动已装技能、交互与遥测命令一律不给。 */
 export const HyperFramesSubcommands = ['lint', 'check', 'validate', 'inspect', 'snapshot', 'keyframes', 'render', 'timeline', 'compositions', 'info', 'docs'] as const;
+const orchestratorHyperFramesSubcommands = HyperFramesSubcommands.filter((sub) => sub !== 'render');
+const sceneDispatchNote = '镜头实现与 MP4 渲染交给渲染工具。单镜头用 scene_run({"scene": "<镜头目录>"})，整批用 scene_run_all({"scenes": "scenes/"})；本工具在制作端只用于检查。';
 
 /** 一次调用最多等多久（秒）：codex 的 MCP 调用默认 60 秒超时，留出余量。 */
 export const DefaultWaitSeconds = 50;
@@ -49,6 +51,8 @@ interface JSONSchema {
 
 /** 一个工具：来自一条操作，或是服务自己的 job_wait / job_cancel / tool_help。 */
 export interface ToolDef {
+  /** 生成工具时的角色，用于执行时再次校验，不能只依赖 schema 限制。 */
+  profile?: Profile;
   name: string;
   description: string;
   inputSchema: JSONSchema;
@@ -73,9 +77,11 @@ function defaultNote(spec: ParamSpec): string {
   return `（缺省 ${Array.isArray(d) ? d.join(',') : String(d)}）`;
 }
 
-function paramSchema(op: Op, key: string, spec: ParamSpec): JSONSchema {
+function paramSchema(op: Op, key: string, spec: ParamSpec, profile: Profile): JSONSchema {
   const description = firstSentence(spec.description) + defaultNote(spec);
-  if (op.name === 'hyperframes' && key === 'subcommand') return { type: 'string', enum: HyperFramesSubcommands, description: 'HyperFrames 子命令' };
+  if (op.name === 'hyperframes' && key === 'subcommand') {
+    return { type: 'string', enum: profile === 'orchestrator' ? orchestratorHyperFramesSubcommands : HyperFramesSubcommands, description: 'HyperFrames 子命令' };
+  }
   switch (spec.type) {
     case 'boolean':
       return { type: 'boolean', description };
@@ -158,20 +164,30 @@ export function describeTools(profile: Profile, root = ''): ToolDef[] {
   const extras = profile === 'orchestrator' && root !== '' ? externalOps() : [];
   for (const { op, external } of [...allOps().map((op) => ({ op, external: undefined as ToolDef['external'] })), ...extras]) {
     if (!external && !opScopes(op).includes(profile)) continue;
+    // 制作端仍需 inspect / snapshot 验收，但不能把 scene_run 降成单纯的出片工具。
+    const inspecting = op.name === 'hyperframes' && profile === 'orchestrator';
+    const shownOp = inspecting ? {
+      ...op,
+      summary: '检查镜头合成与预览帧；渲染请派发镜头任务',
+      description: sceneDispatchNote,
+      params: { ...op.params, subcommand: { ...op.params.subcommand, description: 'HyperFrames 检查子命令，例如 lint、check、snapshot' } },
+      examples: (op.examples ?? []).filter((e) => !e.includes('"render"')),
+    } : op;
     const properties: Record<string, JSONSchema> = {};
     const required: string[] = [];
     for (const [key, spec] of visibleParams(op)) {
-      properties[key] = paramSchema(op, key, spec);
+      properties[key] = paramSchema(op, key, spec, profile);
       if (spec.required) required.push(key);
     }
     properties.wait_seconds = waitSchema();
     out.push({
       name: op.name,
+      profile,
       // 列表里只放一句话：全部工具的完整说明有好几万字，每次请求都塞进 agent 的上下文太浪费。
-      description: `${op.summary}（完整说明与例子用 tool_help 查）`,
+      description: `${shownOp.summary}（完整说明与例子用 tool_help 查）`,
       inputSchema: { type: 'object', properties, ...(required.length > 0 ? { required } : {}), additionalProperties: false },
       op,
-      help: helpText(op),
+      help: helpText(shownOp),
       ...(external ? { external } : {}),
     });
   }
@@ -207,7 +223,9 @@ export function prepareCall(tool: ToolDef, input: ParamValues): ParamValues {
   const params = normalizeToolParams(op, rest);
   if (op.name === 'hyperframes') {
     const sub = String(params.subcommand ?? '');
-    if (!(HyperFramesSubcommands as readonly string[]).includes(sub)) throw new Error(`hyperframes 不放行子命令 ${sub || '（空）'}；只能用：${HyperFramesSubcommands.join('、')}`);
+    if (tool.profile === 'orchestrator' && sub === 'render') throw new Error(sceneDispatchNote);
+    const allowed: readonly string[] = tool.profile === 'orchestrator' ? orchestratorHyperFramesSubcommands : HyperFramesSubcommands;
+    if (!allowed.includes(sub)) throw new Error(`hyperframes 不放行子命令 ${sub || '（空）'}；只能用：${allowed.join('、')}`);
     const args = (params.args as string[]).slice();
     if (sub === 'timeline' && (!args.includes('--json') || args.some((a) => !a.startsWith('-')))) {
       throw new Error('timeline 只放行只读的 --json（不能用 move、trim、split 等改写子命令）');

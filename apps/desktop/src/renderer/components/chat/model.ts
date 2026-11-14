@@ -1,4 +1,4 @@
-import type { PermissionAsk, PlanItem, SessionEvent, Usage, ViewRequest } from '../../types';
+import type { BackgroundTask, PermissionAsk, PlanItem, SessionEvent, Usage, ViewRequest } from '../../types';
 
 /** 一轮里「过程」的一项：思考、工具调用、中间的话、报错与提示。 */
 export type ProcessItem =
@@ -22,6 +22,7 @@ export interface TurnBlock {
   /** 最后一段话：过程之后给用户看的回复。 */
   prose: SessionEvent[];
   plan: PlanItem[] | null;
+  backgroundTasks: BackgroundTask[];
   usage?: Usage;
   reverted: boolean;
   /** 这一轮里编排工具请用户看的页面，显示在回复下面。 */
@@ -44,7 +45,7 @@ export function buildBlocks(events: SessionEvent[]): Block[] {
   const turnOf = (id: string) => {
     let turn = turns.get(id);
     if (!turn) {
-      const block: TurnBlock = { kind: 'turn', id, state: 'running', process: [], prose: [], plan: null, reverted: reverted.has(id), views: [] };
+      const block: TurnBlock = { kind: 'turn', id, state: 'running', process: [], prose: [], plan: null, backgroundTasks: [], reverted: reverted.has(id), views: [] };
       turn = { block, raw: [] };
       turns.set(id, turn);
       blocks.push(block);
@@ -114,6 +115,9 @@ function shapeTurn(block: TurnBlock, raw: SessionEvent[]) {
   let currentStep = '';
   for (const event of raw) {
     switch (event.kind) {
+      case 'background-tasks':
+        block.backgroundTasks = event.background_tasks ?? [];
+        break;
       case 'plan':
         if (event.plan?.length) {
           block.plan = event.plan;
@@ -176,6 +180,8 @@ function shapeTurn(block: TurnBlock, raw: SessionEvent[]) {
   block.prose = tail.flatMap((item) => (item.type === 'text' ? [item.event] : []));
   block.process = [...items.slice(0, cut), ...tail.filter((item) => item.type !== 'text')];
   const status = block.end?.status;
+  // turn-end 表示 CLI 进程已结束；中断、取消、重开历史也不能留下仍在执行的假象。
+  if (block.end) block.backgroundTasks = [];
   if (!block.end) {
     const last = items[items.length - 1];
     block.state = last?.type === 'thinking' ? 'thinking' : 'running';

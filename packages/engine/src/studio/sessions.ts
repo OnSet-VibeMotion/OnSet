@@ -10,6 +10,7 @@ import path from 'node:path';
 import * as agentrun from '../agentrun';
 import * as config from '../config';
 import { addToolsLocation, onsetCommand, envMap, lookPath, parsePassthrough } from '../envutil';
+import { readSection } from '../flow';
 import { atomicWrite } from '../fsutil';
 import { formatFixed, goClean, goTrimSpace } from '../gofmt';
 import { marshal, marshalIndent } from '../gojson';
@@ -629,6 +630,10 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
   } else {
     prompt = message;
   }
+  // 同一 CLI 会话续接不会重发制作说明；把短的职责边界每轮带上，旧项目也能收到修订。
+  // 不写进项目 AGENTS.md：渲染子进程也会读它，而这些限制只针对编排。
+  const ownership = readSection('host', 'scene-ownership').trim();
+  if (!prompt.includes(ownership)) prompt += '\n\n---\n\n' + ownership;
   // 导演用的模型看不了图：每一轮都提醒，续接的会话里它也可能走到画面验收、复查。
   if (orchestratorCannotSee(cfg)) prompt += '\n\n---\n\n' + noVisionNote;
   const [brief, digest] = preferenceBrief(p, cfg);

@@ -40,7 +40,7 @@ export const songPlugin: BuiltinPlugin = {
       id: SongFlow,
       name: '歌曲讲解',
       base: 'speech',
-      prompt: ['song-prompt/main'],
+      prompt: ['song-prompt/main', 'host/scene-ownership'],
       first_page: 'script',
       marker: { file: 'song.yaml', body: DefaultConfig },
       excludes: { plugins: ['cast'], message: '首版不支持 song + cast' },

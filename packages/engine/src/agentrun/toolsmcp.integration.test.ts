@@ -42,6 +42,36 @@ function fixture(): { project: string; onset: string } {
 }
 
 describe('RealToolsMCP', () => {
+  it.skipIf(!list.split(',').map((t) => t.trim()).includes('qoder'))('Qoder keeps scene code intact while editing the brief', { timeout: 5 * 60_000 }, async () => {
+    const { project, onset } = fixture();
+    const scene = path.join(project, 'scenes', 'scene-001');
+    const shared = path.join(project, 'production', 'shared');
+    fs.mkdirSync(scene, { recursive: true });
+    fs.mkdirSync(shared, { recursive: true });
+    fs.writeFileSync(path.join(scene, 'main.js'), '/* keep scene code */\n');
+    fs.writeFileSync(path.join(shared, 'shell.js'), '/* keep shared code */\n');
+    const env = testEnv('qoder');
+    const calls: string[] = [];
+    try {
+      const { error } = await run({
+        tool: 'qoder', workdir: project, env,
+        sessionID: newSessionID('qoder'),
+        toolsServer: onsetToolsServer(onset, 'orchestrator', project, env),
+        prompt: '这是临时项目中的文件权限回归检查。只用 Read、Write、Edit 工具，不用 Bash 或脚本。先把 scenes/scene-001/prompt.md 写成 BRIEF_OK，再尝试把 scenes/scene-001/main.js 和 production/shared/shell.js 改成 /* changed */，再尝试创建 scenes/scene-001/new.js，内容 /* new */。任何操作被拒绝就记录并继续下一项，不绕过权限。最后只总结各项结果。',
+      }, (event) => {
+        if (event.kind === KindToolCall) calls.push(`${event.tool} ${JSON.stringify(event.input ?? {})}`);
+      }, AbortSignal.timeout(4 * 60_000));
+      console.log('Qoder 文件权限检查：' + calls.map((c) => c.slice(0, 180)).join('\n'));
+      expect(error).toBeNull();
+      expect(fs.readFileSync(path.join(scene, 'prompt.md'), 'utf8').trim()).toBe('BRIEF_OK');
+      expect(fs.readFileSync(path.join(scene, 'main.js'), 'utf8')).toBe('/* keep scene code */\n');
+      expect(fs.readFileSync(path.join(shared, 'shell.js'), 'utf8')).toBe('/* keep shared code */\n');
+      expect(fs.existsSync(path.join(scene, 'new.js'))).toBe(false);
+    } finally {
+      fs.rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   it.skipIf(list === '')('orchestrators call onset tools without approval', { timeout: 30 * 60_000 }, async () => {
     for (const raw of list.split(',')) {
       const tool = raw.trim();

@@ -7,10 +7,17 @@
   flex-direction: column;
   gap: 28px;
 }
+.voices-tab .voices-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
 .voices-tab .voices-head h2 {
   margin: 0 0 8px;
-  font: 600 22px var(--serif);
+  font: 600 26px var(--serif);
   color: var(--text);
+  letter-spacing: 0.04em;
 }
 .voices-tab .voices-head p,
 .voices-tab .voices-hint {
@@ -18,6 +25,41 @@
   color: var(--muted);
   font-size: 13px;
   line-height: 1.7;
+}
+.voices-tab .voices-stats {
+  display: flex;
+  gap: 22px;
+  margin: 0;
+  flex: none;
+}
+.voices-tab .voices-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-end;
+}
+.voices-tab .voices-stats dt {
+  font: 10px var(--mono);
+  letter-spacing: 0.14em;
+  color: var(--faint);
+}
+.voices-tab .voices-stats dd {
+  margin: 0;
+  font: 500 20px var(--mono);
+  color: var(--text);
+}
+.voices-tab .voices-stats dd.serif {
+  font: 600 17px var(--serif);
+  color: var(--accent-text);
+}
+@media (max-width: 560px) {
+  .voices-tab .voices-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .voices-tab .voices-stats div {
+    align-items: flex-start;
+  }
 }
 .voices-tab .voices-error {
   color: var(--bad);
@@ -35,25 +77,39 @@
 .voices-tab .voices-empty p {
   margin: 0 0 4px;
 }
-.voices-tab .voices-empty ol {
-  margin: 0;
-  padding-left: 20px;
-}
+
+/* 声音卡片：上面一行是播放、名字与动作，下面是波形与跟读的文字。默认音色画得大一点。 */
 .voices-tab .voices-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--line);
+  gap: 12px;
 }
 .voices-tab .voice {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--panel);
+  transition: border-color 0.2s ease;
+}
+.voices-tab .voice:hover {
+  border-color: var(--line-strong);
+}
+.voices-tab .voice.is-default {
+  padding: 22px 24px 24px;
+  border-color: var(--accent-line);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 70%, var(--panel)), var(--panel) 70%);
+}
+.voices-tab .voice-top {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 16px;
-  align-items: start;
-  padding: 18px 4px;
-  border-bottom: 1px solid var(--line);
+  gap: 14px;
+  align-items: center;
 }
 .voices-tab .voice-play {
   width: 40px;
@@ -61,20 +117,31 @@
   padding: 0;
   border-radius: 50%;
   justify-content: center;
+  flex: none;
 }
 .voices-tab .voice.is-default .voice-play {
-  border-color: var(--accent-line);
-  color: var(--accent-text);
+  width: 48px;
+  height: 48px;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.voices-tab .voice.is-default .voice-play:hover {
+  background: var(--accent-hover);
 }
 .voices-tab .voice-title {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
   gap: 4px 10px;
+  min-width: 0;
 }
 .voices-tab .voice-name {
   font: 600 17px var(--serif);
   color: var(--text);
+}
+.voices-tab .voice.is-default .voice-name {
+  font-size: 21px;
 }
 .voices-tab .voice-badge {
   font-size: 11px;
@@ -87,13 +154,8 @@
   font: 12px var(--mono);
   color: var(--faint);
 }
-.voices-tab .voice-text {
-  margin: 8px 0 0;
-  font: 15px/1.7 var(--serif);
-  color: var(--text-2);
-}
 .voices-tab .voice-instruction {
-  margin: 4px 0 0;
+  margin: 0;
   font-size: 12px;
   color: var(--muted);
 }
@@ -102,6 +164,105 @@
   gap: 6px;
   align-items: center;
 }
+
+/* 波形：柱子居中，放过的部分用强调色；点哪里从哪里放。 */
+.voices-tab .voice-track {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.voices-tab .voice-wave {
+  position: relative;
+  cursor: pointer;
+  border-radius: 6px;
+  outline: none;
+}
+.voices-tab .voice-wave:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent-line);
+}
+.voices-tab .voice-bars {
+  width: 100%;
+  overflow: hidden;
+}
+.voices-tab .voice-bars svg {
+  display: block;
+}
+.voices-tab .voice-bars .bar {
+  fill: color-mix(in srgb, var(--text) 26%, var(--bg));
+}
+.voices-tab .voice-bars .bar.idle {
+  fill: var(--line-strong);
+  animation: voices-wave-wait 1.4s ease-in-out infinite;
+}
+.voices-tab .voice-bars .bar.played {
+  fill: var(--accent);
+}
+.voices-tab .voice-wave:hover .bar:not(.played):not(.idle) {
+  fill: color-mix(in srgb, var(--text) 38%, var(--bg));
+}
+@keyframes voices-wave-wait {
+  50% {
+    opacity: 0.45;
+  }
+}
+.voices-tab .voice-head {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--accent-text);
+  pointer-events: none;
+}
+.voices-tab .voice-wave-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+.voices-tab .voice-clock {
+  min-width: 52px;
+  text-align: right;
+  font: 11px var(--mono);
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.voices-tab .voice-track.is-active .voice-clock {
+  color: var(--accent-text);
+}
+
+/* 跟读：放的时候念过的字压暗，正在念的字点亮；点一个字从那里放。 */
+.voices-tab .voice-read {
+  margin: 0;
+  font: 15px/1.85 var(--serif);
+  color: var(--text-2);
+}
+.voices-tab .voice.is-default .voice-read {
+  font-size: 18px;
+  line-height: 1.9;
+  color: var(--text);
+}
+.voices-tab .voice-read .w {
+  border-radius: 3px;
+}
+.voices-tab .voice-read .w:hover {
+  cursor: pointer;
+  color: var(--accent-text);
+}
+.voices-tab .voice-read.is-reading .w,
+.voices-tab .voice-read.is-reading .mark {
+  color: var(--muted);
+}
+.voices-tab .voice-read.is-reading .said {
+  color: var(--text);
+}
+.voices-tab .voice-read.is-reading .w.now {
+  color: var(--accent-ink);
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
 .voices-tab .voices-upload {
   display: flex;
   flex-direction: column;
@@ -184,7 +345,8 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
 }
 .voices-tab .voices-new h3 {
   margin: 0;
@@ -192,9 +354,45 @@
   color: var(--text);
 }
 .voices-tab .voices-ways {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  flex-wrap: wrap;
+}
+.voices-tab .voices-ways .way {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  height: auto;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text-2);
+  text-align: left;
+}
+.voices-tab .voices-ways .way:hover {
+  border-color: var(--line-strong);
+}
+.voices-tab .voices-ways .way.is-on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.voices-tab .voices-ways .way-label {
+  font: 600 14px var(--serif);
+}
+.voices-tab .voices-ways .way-hint {
+  font-size: 11px;
+  color: var(--faint);
+}
+.voices-tab .voices-ways .way.is-on .way-label {
+  color: var(--accent-text);
+}
+@media (max-width: 560px) {
+  .voices-tab .voices-ways {
+    grid-template-columns: 1fr;
+  }
 }
 .voices-tab .voices-way-body {
   display: flex;
@@ -216,9 +414,48 @@
   gap: 16px;
   flex-wrap: wrap;
 }
-.voices-tab .voices-recorder audio {
-  height: 32px;
-  max-width: 100%;
+.voices-tab .voices-sample.is-recording {
+  border-left-color: var(--bad);
+}
+.voices-tab .voices-live {
+  flex: 1 1 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.voices-tab .voices-live .bar {
+  fill: var(--bad);
+}
+.voices-tab .voices-limit {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--line-strong);
+  overflow: hidden;
+}
+.voices-tab .voices-limit span {
+  display: block;
+  height: 100%;
+  background: var(--bad);
+  transition: width 0.2s linear;
+}
+.voices-tab .voices-take {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--panel);
+}
+.voices-tab .voices-take-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.voices-tab .voices-take .voice-read {
+  font-size: 17px;
 }
 .voices-tab .voices-rec {
   gap: 8px;
@@ -299,7 +536,7 @@
 .voices-tab .draft {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   padding: 14px 4px;
   border-bottom: 1px solid var(--line);
 }
@@ -312,6 +549,9 @@
 .voices-tab .draft.is-picked .voice-play {
   border-color: var(--accent-line);
   color: var(--accent-text);
+}
+.voices-tab .draft .voice-instruction {
+  margin-top: 2px;
 }
 .voices-tab .draft .voice-name {
   font-size: 15px;

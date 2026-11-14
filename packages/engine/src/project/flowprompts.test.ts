@@ -44,6 +44,16 @@ const stageTitles = (text: string) => [...text.matchAll(/^## (第[一二三四�
 const sha = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 
 describe('new projects compose the prompt of their own flow', () => {
+  it('keeps scene implementation with the renderer in every flow', () => {
+    for (const { text, name: label } of everyBuiltinPrompt()) {
+      expect(text, label).toContain('## 镜头实现的归属');
+      for (const rule of ['不得创建、编辑或覆盖镜头实现代码', '共用模块', '修复自己引入的问题', 'prompt.md', 'scene_run', 'scene_run_all']) {
+        expect(text, label).toContain(rule);
+      }
+      for (const old of ['改完合成代码、重渲染前', '修改源工程时间轴并只重渲染', '再做最小源级修改']) expect(text, label).not.toContain(old);
+    }
+  });
+
   // 每种讲解形式一种画幅：全文摘要与阶段标题序列都钉住。改了提示词段落就要重写金样，并在差异里看清改了什么。
   const cases: [string, string][] = [
     ['speech', 'vertical-3x4'],

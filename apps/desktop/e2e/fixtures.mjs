@@ -118,13 +118,10 @@ export const test = base.extend({
   },
 
   page: async ({ electronApp }, use) => {
-    let page;
-    if (process.platform === 'win32') {
-      // 主窗口与桌宠异步载入，Windows 偶尔先收到桌宠的 window 事件。
-      const mainPage = () => electronApp.windows().find((window) => window.url() === 'onset://app/');
-      await expect.poll(() => !!mainPage()).toBe(true);
-      page = mainPage();
-    } else page = await electronApp.firstWindow();
+    // 主窗口与桌宠异步载入；macOS 负载较高时也可能先收到桌宠的 window 事件。
+    const mainPage = () => electronApp.windows().find((window) => window.url() === 'onset://app/');
+    await expect.poll(() => !!mainPage()).toBe(true);
+    const page = mainPage();
     await page.waitForLoadState('domcontentloaded');
     await use(page);
   },

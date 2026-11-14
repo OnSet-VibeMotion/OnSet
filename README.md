@@ -1,10 +1,12 @@
 <p align="right">简体中文 | <a href="./README.en.md">English</a></p>
 
+<p align="center"><img src="docs/showcase/showcase.zh.jpg" alt="用片场做的九支片子" width="100%"></p>
+
 # 片场（OnSet）
 
 **和智能体聊着天，就把想法做成一支视频。**
 
-片场是一个 macOS 桌面客户端：你在对话里说想做什么，智能体像一个剧组那样替你写稿、配音、对字幕、拆分镜、并发渲染动画镜头、拼接、出封面与发布，遇到要你拍板的地方停下来问你。手里有文章或口播稿可以直接丢给它，没有也行；也能做没有配音、画面踩着音乐节拍走的卡点片，竖屏、横屏都可以。
+片场是一个桌面客户端（macOS、Windows）：你在对话里说想做什么，智能体像一个剧组那样替你写稿、配音、对字幕、拆分镜、并发渲染动画镜头、拼接、出封面与发布，遇到要你拍板的地方停下来问你。手里有文章或口播稿可以直接丢给它，没有也行；也能做没有配音、画面踩着音乐节拍走的卡点片，竖屏、横屏都可以。
 
 制作由你选的 AI 编排工具（Codex、Claude Code、Qoder、CodeBuddy、OpenCode）在客户端里完成，你通过对话告诉它要什么、在关卡上拍板。项目 Prompt、发布模板与技能随客户端内置，HyperFrames 技能按固定官方版本装进项目，项目因此自包含——整个目录拷到另一台装了客户端的机器上就能接着做。
 
@@ -19,7 +21,7 @@ macOS 安装包没有签名：第一次打开时在「应用程序」里**右键
 
 运行需要：
 
-- macOS（Apple Silicon 或 Intel）
+- macOS（Apple Silicon 或 Intel）或 Windows x64
 - Codex、Claude Code、Qoder、CodeBuddy、OpenCode 中至少一个已登录的 CLI
 - 配音默认用本机的 Breeze TTS 2（Apple Silicon，离线、不用账号，第一次在安装页下载约 4.6 GB 的模型）；Intel Mac 默认 MiniMax，要它的账号。都能在「设置」里换
 

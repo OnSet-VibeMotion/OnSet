@@ -26,6 +26,7 @@ export const builtinStations: readonly Station[] = [
     prompt: [
       { id: 'head' },
       { id: 'work' },
+      { id: 'scene-ownership' },
       { id: 'renderer' },
       { id: 'deliverables' },
       { id: 'deliverables-tail' },
@@ -203,6 +204,7 @@ export const tailStations: readonly string[] = ['render', 'visual-qc', 'assemble
 export const speechPrompt: readonly string[] = [
   'host/head',
   'host/work',
+  'host/scene-ownership',
   'host/renderer',
   'intake/stage',
   'intake/visual',

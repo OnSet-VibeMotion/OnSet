@@ -1,7 +1,53 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { test, expect, openProject, api } from './fixtures.mjs';
 
 // 从 internal/studio/ui/e2e/studio.spec.mjs 迁来：对话、回退、停止、选项、排队、工具选择、镜头快捷指令。
+
+test('shows Claude background tasks, restores them on reload, and clears completed or stopped work', async ({ page, project }, testInfo) => {
+  await openProject(page, project);
+  await page.locator('#prompt').fill('后台任务测试');
+  await page.locator('#send').click();
+  const tasks = page.getByRole('region', { name: '正在执行的后台任务' });
+  await expect(tasks).toContainText('2 个后台任务正在执行');
+  await expect(tasks).toContainText('检查素材尺寸');
+  await expect(tasks).toContainText('生成配音');
+  await expect(page.locator('#messages')).not.toContainText('正在启动 AI');
+  const screenshot = testInfo.outputPath('background-tasks.png');
+  await page.screenshot({ path: screenshot });
+  await testInfo.attach('background-tasks', { path: screenshot, contentType: 'image/png' });
+  await page.reload();
+  await expect(tasks).toContainText('2 个后台任务正在执行');
+  await fs.writeFile(path.join(project.path, 'production/studio/bg-test-progress'), '');
+  await expect(tasks).toContainText('1 个后台任务正在执行');
+  await expect(tasks).toContainText('正在核对封面图片');
+  await expect(tasks).not.toContainText('生成配音');
+  await fs.writeFile(path.join(project.path, 'production/studio/bg-test-complete'), '');
+  await expect(tasks).toHaveCount(0);
+  await fs.writeFile(path.join(project.path, 'production/studio/bg-test-next'), '');
+  await expect(tasks).toContainText('整理检查报告');
+  await expect(tasks).not.toContainText('检查素材尺寸');
+  await page.locator('#cancel-turn').click();
+  await expect(tasks).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('.pause-line')).toBeVisible();
+  await expect(tasks).toHaveCount(0);
+});
+
+test('shows OpenCode child tasks and clears them when stopped', async ({ page, project }) => {
+  await openProject(page, project);
+  await page.locator('#agent-tool').selectOption('opencode');
+  await page.locator('#prompt').fill('后台子任务挂起');
+  await page.locator('#send').click();
+  const tasks = page.getByRole('region', { name: '正在执行的后台任务' });
+  await expect(tasks).toContainText('1 个后台任务正在执行');
+  await expect(tasks).toContainText('核对分镜');
+  await page.reload();
+  await expect(tasks).toContainText('核对分镜');
+  await page.locator('#cancel-turn').click();
+  await expect(tasks).toHaveCount(0);
+  await expect(page.locator('.pause-line')).toContainText('已停止');
+});
 
 test('asks for a change, reviews the diff, and reverts the turn', async ({ page, project }) => {
   await openProject(page, project);

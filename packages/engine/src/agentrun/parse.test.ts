@@ -11,6 +11,7 @@ import {
   KindToolCall,
   KindToolResult,
   clip,
+  eventJSON,
   maxToolOutput,
   newParser,
   type Event,
@@ -48,6 +49,39 @@ describe('agentrun parse', () => {
     if(process.platform==='win32')expect(result).toEqual([{kind:KindToolResult,tool:'mcp__onset__hyperframes',call_id:'m1',input:{subcommand:'render'},text:'actual check failed',is_error:true}]);
     else expect(result[0].tool).toBe('mcp_tool_call');
   });
+  it.each(['claude', 'qoder', 'codebuddy'])('tracks concurrent %s background tasks through progress and completion', (tool) => {
+    const parser = newParser(tool);
+    const task = (subtype: string, fields: object) => parser.parse(JSON.stringify({ type: 'system', subtype, ...fields }));
+    const first = task('task_started', { task_id: 'a', description: '检查素材', is_backgrounded: true });
+    expect(first).toEqual([{ kind: 'background-tasks', background_tasks: [{ id: 'a', description: '检查素材' }] }]);
+    expect(eventJSON(first[0]).background_tasks).toEqual([{ id: 'a', description: '检查素材' }]);
+    task('task_started', { task_id: 'b', description: '生成配音' });
+    expect(task('task_progress', { task_id: 'a', description: '检查素材', summary: '核对图片尺寸', last_tool_name: 'Read' })[0]).toMatchObject({
+      background_tasks: [{ id: 'a', description: '检查素材', activity: '核对图片尺寸' }, { id: 'b', description: '生成配音' }],
+    });
+    expect(task('task_notification', { task_id: 'a', status: 'completed' })[0]).toMatchObject({ background_tasks: [{ id: 'b' }] });
+    const end = task('task_notification', { task_id: 'b', status: 'failed' })[0];
+    expect(eventJSON(end).background_tasks).toEqual([]);
+  });
+
+  it('handles foreground transitions, ambient tasks, snapshots and resumed task runs', () => {
+    const parser = newParser('claude');
+    const task = (subtype: string, fields: object) => parser.parse(JSON.stringify({ type: 'system', subtype, ...fields }))[0];
+    expect(task('task_started', { task_id: 'a', description: '前台', is_backgrounded: false })).toMatchObject({ background_tasks: [] });
+    expect(task('task_progress', { task_id: 'a', description: '前台' })).toMatchObject({ background_tasks: [] });
+    expect(task('task_updated', { task_id: 'a', patch: { is_backgrounded: true } })).toMatchObject({ background_tasks: [{ id: 'a' }] });
+    expect(task('task_updated', { task_id: 'a', patch: { status: 'killed' } })).toMatchObject({ background_tasks: [] });
+    task('task_started', { task_id: 'watch', description: '内部监控', ambient: true });
+    expect(task('task_progress', { task_id: 'watch', description: '内部监控' })).toMatchObject({ background_tasks: [] });
+    task('task_started', { task_id: 'a', run_id: '02', description: '重新检查' });
+    expect(task('task_notification', { task_id: 'a', run_id: '01', status: 'completed' })).toMatchObject({ background_tasks: [{ id: 'a' }] });
+    expect(task('background_tasks_changed', { tasks: [{ task_id: 'b', description: '配音' }, { task_id: 'watch', ambient: true }] })).toMatchObject({ background_tasks: [{ id: 'b', description: '配音' }] });
+    expect(task('background_tasks_changed', { tasks: [] })).toMatchObject({ background_tasks: [] });
+    expect(task('task_started', { task_id: 1 })).toBeUndefined();
+    expect(task('background_tasks_changed', { tasks: null })).toBeUndefined();
+    expect(task('init', {})).toBeUndefined();
+  });
+
   // 每份 fixture 都是同一个两轮脚本：第一轮记住 PELICAN、创建 note.txt、回复 OK；
   // 第二轮续接后问单词。第二轮答对，说明续接拿到了第一轮的上下文。
   describe('recorded streams', () => {

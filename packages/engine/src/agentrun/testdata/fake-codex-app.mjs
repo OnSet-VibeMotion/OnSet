@@ -26,6 +26,18 @@ rl.on('line', async (line) => {
       }
       const turn = 'turn_1';
       send({ id: m.id, result: { turn: { id: turn, status: 'inProgress' } } });
+      if (m.params.input[0].text.includes('后台子任务')) {
+        for (const [id, prompt] of [['child-a', '检查素材'], ['child-b', '检查字幕']]) {
+          const item = { type: 'collabAgentToolCall', id: 'spawn-' + id, tool: 'spawnAgent', prompt, senderThreadId: thread, receiverThreadIds: [id], agentsStates: { [id]: { status: 'running' } }, status: 'completed' };
+          note('item/completed', { threadId: thread, turnId: turn, item });
+        }
+        note('item/completed', { threadId: 'child-a', item: { type: 'agentMessage', id: 'private', text: '子任务的内部回复' } });
+        note('turn/completed', { threadId: 'child-a', turn: { id: 'child-turn', status: 'completed' } });
+        note('thread/status/changed', { threadId: 'child-b', status: { type: 'idle' } });
+        note('item/completed', { threadId: thread, item: { type: 'agentMessage', id: 'answer', text: '父任务完成' } });
+        note('turn/completed', { threadId: thread, turn: { id: turn, status: 'completed' } });
+        break;
+      }
       note('item/completed', { threadId: thread, turnId: turn, item: { type: 'agentMessage', id: 'a1', text: '先装依赖。' } });
       note('turn/plan/updated', { threadId: thread, turnId: turn, plan: [{ step: '装依赖', status: 'inProgress' }] });
       const answer = await ask('item/commandExecution/requestApproval', { threadId: thread, turnId: turn, itemId: 'c1', command: "/bin/zsh -lc 'npm install three'", startedAtMs: 1 });

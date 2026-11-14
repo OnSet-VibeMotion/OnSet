@@ -16,9 +16,15 @@ test('records my own voice from the microphone into the shared library', async (
   await expect(tab.locator('.voices-sample')).toContainText('大家好');
 
   await tab.getByRole('button', { name: '开始录音' }).click();
+  // 录的时候有实时电平。
+  await expect(tab.locator('.voices-live .voice-bars rect').first()).toBeVisible();
   await expect(tab.locator('.voices-rec')).toContainText('停止 · 4 秒', { timeout: 10_000 });
   await tab.locator('.voices-rec').click();
-  await expect(tab.locator('.voices-recorder audio')).toBeVisible();
+  // 录完是这一段的波形，回放时文字跟着亮。
+  const takeTrack = tab.locator('.voices-take');
+  await expect(takeTrack.locator('.voice-clock')).toHaveText(/^0:0\d\.\d$/);
+  await takeTrack.getByTitle('回放').click();
+  await expect(takeTrack.locator('.voice-read .w.now')).toHaveCount(1, { timeout: 5_000 });
   // 念的就是那段字，逐字稿已经填好。
   await expect(tab.locator('.voices-field textarea')).toHaveValue(/大家好/);
   await tab.getByPlaceholder('给它起个名字，例如：我的声音').fill('我的声音');
@@ -67,8 +73,20 @@ test('uploaded recording goes into the shared library, plays and deletes', async
   await expect(voice).toContainText('6.0 秒 · 本人录音');
   expect(fs.existsSync(path.join(sandbox.voices, '我的声音', 'reference.wav'))).toBe(true);
 
+  // 波形画出来了，时长与音频一致。
+  await expect(voice.locator('.voice-clock')).toHaveText('0:06.0');
+  await expect(voice.locator('.voice-bars rect.idle')).toHaveCount(0);
   await voice.locator('.voice-play').click();
   await expect(voice.locator('.voice-play')).toHaveClass(/armed/);
+  // 放的时候逐字点亮：正好有一个字在念，前面的字算念过。
+  await expect(voice.locator('.voice-read .w.now')).toHaveCount(1);
+  await expect(voice.locator('.voice-read .w.said').first()).toBeVisible({ timeout: 5_000 });
+  await expect(voice.locator('.voice-bars rect.played').first()).toBeVisible();
+  // 点某个字从那里放。
+  await voice.locator('.voice-read .w', { hasText: '节' }).click();
+  await expect(voice.locator('.voice-read .w.now')).toHaveText(/节|目/);
+  await page.screenshot({ path: test.info().outputPath('read-along.png') });
+  await voice.locator('.voice-play').click();
   await voice.getByTitle('删除').click();
   await voice.getByRole('button', { name: '确认删除' }).click();
   await expect(tab.locator('.voices-empty')).toBeVisible();

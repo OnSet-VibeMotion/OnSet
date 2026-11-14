@@ -1,13 +1,16 @@
-import { playerProps } from '../media';
 import { useEffect, useRef, useState } from 'react';
 import { api, errorText, post } from '../api';
 import type { Attachment, SetupStatus, VoiceDraft, VoiceEntry, VoiceLibrary } from '../types';
 import { Icon } from './Icon';
+import { Bars, useLiveLevels, useVoicePlayer, VoiceTrack, type VoicePlayer } from './VoiceWave';
 import '../voices.css';
 
 /**
  * 音色页：音色库在用户级目录，所有项目共用。确认过的声音存成「参考音频 + 逐字一致的文字稿」，
  * 用 Breeze 配音时从默认音色克隆，同一个账号的每部片子都是同一个声音。
+ *
+ * 每个声音画成波形，放的时候文字稿逐字点亮（时间按音频的能量包络估，见 voiceTiming.ts），点波形或点字
+ * 从那里开始放。整页共用一个隐藏的播放器，同一时间只放一段。
  *
  * 这一页能试听、设默认、删除，也能直接做一个新声音，不用开项目对话、也不管项目配音选的是谁：
  * 对着麦克风念一段（录我的声音）、按一句描述让本机 Breeze 念几段挑一个（按描述设计）、或上传录好的音频。
@@ -20,12 +23,12 @@ const sourceNames: Record<VoiceEntry['source'], string> = {
   uploaded: '上传',
 };
 
+const voiceURL = (v: VoiceEntry) => `/api/voices/${encodeURIComponent(v.name)}/reference.wav?v=${encodeURIComponent(v.created)}`;
+
 export function VoicesTab({ version }: { version: number }) {
   const [library, setLibrary] = useState<VoiceLibrary | null>(null);
   const [error, setError] = useState('');
-  const [playing, setPlaying] = useState('');
-  const [armed, setArmed] = useState('');
-  const audio = useRef<HTMLAudioElement>(null);
+  const player = useVoicePlayer();
 
   const reload = () =>
     api<VoiceLibrary>('/api/voices').then(
@@ -39,19 +42,6 @@ export function VoicesTab({ version }: { version: number }) {
     void reload();
   }, [version]);
 
-  const play = (name: string) => {
-    const el = audio.current;
-    if (!el) return;
-    if (playing === name) {
-      el.pause();
-      setPlaying('');
-      return;
-    }
-    el.src = `/api/voices/${encodeURIComponent(name)}/reference.wav?t=${Date.now()}`;
-    void el.play();
-    setPlaying(name);
-  };
-
   const act = async (fn: () => Promise<unknown>) => {
     try {
       await fn();
@@ -62,101 +52,130 @@ export function VoicesTab({ version }: { version: number }) {
   };
 
   if (!library) return <div className="empty">{error || '正在读取音色库…'}</div>;
+  // 默认音色排在最前、画得大一点。
+  const voices = [...library.voices].sort((a, b) => Number(b.is_default) - Number(a.is_default));
+  const fallback = library.voices.find((v) => v.is_default);
   return (
     <div className="voices-tab">
-      <audio
-        ref={audio}
-        onEnded={() => setPlaying('')}
-        onPause={(event) => {
-          if (window.onset?.platform === 'win32' && event.currentTarget.paused) setPlaying('');
-        }}
-        hidden
-      />
+      {player.audio}
       <header className="voices-head">
-        <h2>音色</h2>
-        <p>确认过的声音存在这里，所有项目共用。用 Breeze 配音时从默认音色克隆，每部片子都是同一个声音；只靠一句描述设计的声音，每次生成都会变。</p>
+        <div>
+          <h2>音色</h2>
+          <p>确认过的声音存在这里，所有项目共用。用 Breeze 配音时从默认音色克隆，每部片子都是同一个声音；只靠一句描述设计的声音，每次生成都会变。</p>
+        </div>
+        {library.voices.length > 0 && (
+          <dl className="voices-stats">
+            <div>
+              <dt>声音</dt>
+              <dd>{library.voices.length}</dd>
+            </div>
+            <div>
+              <dt>默认</dt>
+              <dd className="serif">{fallback?.name ?? '—'}</dd>
+            </div>
+          </dl>
+        )}
       </header>
 
       {error && <div className="voices-error">{error}</div>}
 
-      {library.voices.length === 0 ? (
+      {voices.length === 0 ? (
         <div className="voices-empty">
           <p>音色库还是空的。在下面录一段自己的声音，或者描述一个你想要的声音，存进第一个音色。</p>
         </div>
       ) : (
         <ul className="voices-list">
-          {library.voices.map((v) => (
-            <li key={v.name} className={v.is_default ? 'voice is-default' : 'voice'}>
-              <button className={playing === v.name ? 'voice-play armed' : 'voice-play'} title={playing === v.name ? '停止' : '试听'} onClick={() => play(v.name)}>
-                <Icon name={playing === v.name ? 'pause' : 'play'} size={14} />
-              </button>
-              <div className="voice-body">
-                <div className="voice-title">
-                  <span className="voice-name">{v.name}</span>
-                  {v.is_default && <span className="voice-badge">默认</span>}
-                  <span className="voice-meta">
-                    {v.duration_seconds.toFixed(1)} 秒 · {sourceNames[v.source]}
-                  </span>
-                </div>
-                <p className="voice-text">「{v.text}」</p>
-                {v.instruction && <p className="voice-instruction">设计时的描述：{v.instruction}</p>}
-              </div>
-              <div className="voice-actions">
-                {!v.is_default && (
-                  <button className="quiet" onClick={() => act(() => post(`/api/voices/${encodeURIComponent(v.name)}/default`))}>
-                    设为默认
-                  </button>
-                )}
-                {armed === v.name ? (
-                  <button
-                    className="armed"
-                    onClick={() => {
-                      setArmed('');
-                      void act(() => api(`/api/voices/${encodeURIComponent(v.name)}`, { method: 'DELETE' }));
-                    }}
-                    onBlur={() => setArmed('')}
-                  >
-                    确认删除
-                  </button>
-                ) : (
-                  <button className="ghost icon" title="删除" onClick={() => setArmed(v.name)}>
-                    <Icon name="trash" />
-                  </button>
-                )}
-              </div>
-            </li>
+          {voices.map((v) => (
+            <VoiceCard
+              key={v.name}
+              voice={v}
+              player={player}
+              onDefault={() => act(() => post(`/api/voices/${encodeURIComponent(v.name)}/default`))}
+              onDelete={() => {
+                if (player.current === `voice:${v.name}`) player.stop();
+                return act(() => api(`/api/voices/${encodeURIComponent(v.name)}`, { method: 'DELETE' }));
+              }}
+            />
           ))}
         </ul>
       )}
 
-      <NewVoice library={library} onSaved={reload} />
+      <NewVoice library={library} player={player} onSaved={reload} />
     </div>
+  );
+}
+
+function VoiceCard({ voice: v, player, onDefault, onDelete }: { voice: VoiceEntry; player: VoicePlayer; onDefault: () => void; onDelete: () => void }) {
+  const [armed, setArmed] = useState(false);
+  const id = `voice:${v.name}`;
+  const on = player.current === id && player.playing;
+  return (
+    <li className={v.is_default ? 'voice is-default' : 'voice'}>
+      <div className="voice-top">
+        <button className={on ? 'voice-play armed' : 'voice-play'} title={on ? '停止' : '试听'} onClick={() => player.toggle(id, voiceURL(v))}>
+          <Icon name={on ? 'pause' : 'play'} size={v.is_default ? 16 : 14} />
+        </button>
+        <div className="voice-title">
+          <span className="voice-name">{v.name}</span>
+          {v.is_default && <span className="voice-badge">默认</span>}
+          <span className="voice-meta">
+            {v.duration_seconds.toFixed(1)} 秒 · {sourceNames[v.source]}
+          </span>
+        </div>
+        <div className="voice-actions">
+          {!v.is_default && (
+            <button className="quiet" onClick={onDefault}>
+              设为默认
+            </button>
+          )}
+          {armed ? (
+            <button
+              className="armed"
+              onClick={() => {
+                setArmed(false);
+                onDelete();
+              }}
+              onBlur={() => setArmed(false)}
+            >
+              确认删除
+            </button>
+          ) : (
+            <button className="ghost icon" title="删除" onClick={() => setArmed(true)}>
+              <Icon name="trash" />
+            </button>
+          )}
+        </div>
+      </div>
+      <VoiceTrack id={id} url={voiceURL(v)} text={v.text} player={player} height={v.is_default ? 64 : 40} />
+      {v.instruction && <p className="voice-instruction">设计时的描述：{v.instruction}</p>}
+    </li>
   );
 }
 
 type Way = 'record' | 'design' | 'upload';
 
 /** 做一个新声音：三种办法，存进去的都是「参考音频 + 逐字一致的文字稿」。 */
-function NewVoice({ library, onSaved }: { library: VoiceLibrary; onSaved: () => Promise<void> }) {
+function NewVoice({ library, player, onSaved }: { library: VoiceLibrary; player: VoicePlayer; onSaved: () => Promise<void> }) {
   const [way, setWay] = useState<Way>('record');
   const first = library.voices.length === 0;
-  const ways: [Way, string][] = [
-    ['record', '录我的声音'],
-    ['design', '按描述设计'],
-    ['upload', '上传录音'],
+  const ways: [Way, string, string][] = [
+    ['record', '录我的声音', '对着麦克风念一段'],
+    ['design', '按描述设计', '本机 Breeze 生成'],
+    ['upload', '上传录音', '已经录好的音频'],
   ];
   return (
     <section className="voices-new">
       <h3>新的声音</h3>
       <div className="voices-ways" role="tablist">
-        {ways.map(([id, label]) => (
-          <button key={id} role="tab" aria-selected={way === id} className={way === id ? 'way armed' : 'way quiet'} onClick={() => setWay(id)}>
-            {label}
+        {ways.map(([id, label, hint]) => (
+          <button key={id} role="tab" aria-selected={way === id} className={way === id ? 'way is-on' : 'way'} onClick={() => setWay(id)}>
+            <span className="way-label">{label}</span>
+            <span className="way-hint">{hint}</span>
           </button>
         ))}
       </div>
-      {way === 'record' && <RecordVoice sample={library.sample_text} first={first} onSaved={onSaved} />}
-      {way === 'design' && <DesignVoice library={library} first={first} onSaved={onSaved} />}
+      {way === 'record' && <RecordVoice sample={library.sample_text} first={first} player={player} onSaved={onSaved} />}
+      {way === 'design' && <DesignVoice library={library} first={first} player={player} onSaved={onSaved} />}
       {way === 'upload' && <UploadVoice first={first} onSaved={onSaved} />}
     </section>
   );
@@ -186,15 +205,17 @@ function SaveRow({ first, busy, disabled, onSave }: { first: boolean; busy: bool
 const maxRecordSeconds = 30;
 
 /** 对着麦克风念一段：念的就是页面上这段字，逐字稿自然对得上；念错了可以在下面改。 */
-function RecordVoice({ sample, first, onSaved }: { sample: string; first: boolean; onSaved: () => Promise<void> }) {
+function RecordVoice({ sample, first, player, onSaved }: { sample: string; first: boolean; player: VoicePlayer; onSaved: () => Promise<void> }) {
   const [phase, setPhase] = useState<'idle' | 'recording' | 'done'>('idle');
   const [seconds, setSeconds] = useState(0);
+  const [stream, setStream] = useState<MediaStream | null>(null);
   const [take, setTake] = useState<{ blob: Blob; url: string } | null>(null);
   const [text, setText] = useState(sample);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const recorder = useRef<MediaRecorder | null>(null);
   const timer = useRef<number>(0);
+  const levels = useLiveLevels(stream);
 
   useEffect(
     () => () => {
@@ -206,20 +227,22 @@ function RecordVoice({ sample, first, onSaved }: { sample: string; first: boolea
 
   const start = async () => {
     setError('');
-    let stream: MediaStream;
+    if (player.current === 'take') player.stop();
+    let media: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true } });
+      media = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true } });
     } catch (err) {
       const name = (err as DOMException).name;
       setError(name === 'NotAllowedError' ? '没有麦克风权限：在「系统设置 → 隐私与安全性 → 麦克风」里允许这个应用，再点一次开始录音。' : `打不开麦克风：${(err as Error).message}`);
       return;
     }
     const chunks: Blob[] = [];
-    const rec = new MediaRecorder(stream);
+    const rec = new MediaRecorder(media);
     rec.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data);
     rec.onstop = () => {
-      stream.getTracks().forEach((t) => t.stop());
+      media.getTracks().forEach((t) => t.stop());
       window.clearInterval(timer.current);
+      setStream(null);
       const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
       setTake((old) => {
         if (old) URL.revokeObjectURL(old.url);
@@ -229,6 +252,7 @@ function RecordVoice({ sample, first, onSaved }: { sample: string; first: boolea
     };
     recorder.current = rec;
     rec.start();
+    setStream(media);
     setSeconds(0);
     setPhase('recording');
     const began = Date.now();
@@ -254,6 +278,7 @@ function RecordVoice({ sample, first, onSaved }: { sample: string; first: boolea
       form.append('text', text);
       form.append('make_default', String(makeDefault));
       await api('/api/voice-record', { method: 'POST', body: form });
+      if (player.current === 'take') player.stop();
       setTake(null);
       setPhase('idle');
       setText(sample);
@@ -268,7 +293,20 @@ function RecordVoice({ sample, first, onSaved }: { sample: string; first: boolea
   return (
     <div className="voices-way-body">
       <p className="voices-hint">找个安静的地方，用平时说话的语气把下面这段念一遍，十秒左右。克隆出来的声音会学你念它时的音色和语气。</p>
-      <blockquote className="voices-sample">{sample}</blockquote>
+      {phase === 'done' && take ? (
+        <div className="voices-take">
+          <div className="voices-take-head">
+            <button className={player.current === 'take' && player.playing ? 'voice-play armed' : 'voice-play'} title="回放" onClick={() => player.toggle('take', take.url)}>
+              <Icon name={player.current === 'take' && player.playing ? 'pause' : 'play'} size={14} />
+            </button>
+            <span className="voice-name">刚才这段</span>
+            <span className="voice-meta">回放时字会跟着亮，对不上的地方多半是念错或漏了</span>
+          </div>
+          <VoiceTrack id="take" url={take.url} text={text} player={player} height={56} />
+        </div>
+      ) : (
+        <blockquote className={phase === 'recording' ? 'voices-sample is-recording' : 'voices-sample'}>{sample}</blockquote>
+      )}
       <div className="voices-recorder">
         {phase === 'recording' ? (
           <button className="armed voices-rec" onClick={stop}>
@@ -281,7 +319,14 @@ function RecordVoice({ sample, first, onSaved }: { sample: string; first: boolea
             {phase === 'done' ? '重录' : '开始录音'}
           </button>
         )}
-        {take && phase === 'done' && <audio src={take.url} {...playerProps} />}
+        {phase === 'recording' && (
+          <div className="voices-live">
+            <Bars levels={levels} height={36} />
+            <div className="voices-limit" title={`最长 ${maxRecordSeconds} 秒`}>
+              <span style={{ width: `${Math.min(100, (seconds / maxRecordSeconds) * 100)}%` }} />
+            </div>
+          </div>
+        )}
       </div>
       {take && phase === 'done' && (
         <>
@@ -307,16 +352,14 @@ const designPresets = [
 ];
 
 /** 按描述设计：本机 Breeze 按一句描述念一段，同一句描述每次都不一样，多生成几段挑一个存下来。 */
-function DesignVoice({ library, first, onSaved }: { library: VoiceLibrary; first: boolean; onSaved: () => Promise<void> }) {
+function DesignVoice({ library, first, player, onSaved }: { library: VoiceLibrary; first: boolean; player: VoicePlayer; onSaved: () => Promise<void> }) {
   const [instruction, setInstruction] = useState('');
   const [text, setText] = useState(library.sample_text);
   const [drafts, setDrafts] = useState<VoiceDraft[]>([]);
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState('');
   const [picked, setPicked] = useState('');
-  const [playing, setPlaying] = useState('');
   const [error, setError] = useState('');
-  const audio = useRef<HTMLAudioElement>(null);
 
   if (!library.design.ready) return <InstallBreeze design={library.design} onReady={onSaved} />;
 
@@ -334,24 +377,12 @@ function DesignVoice({ library, first, onSaved }: { library: VoiceLibrary; first
     }
   };
 
-  const play = (id: string) => {
-    const el = audio.current;
-    if (!el) return;
-    if (playing === id) {
-      el.pause();
-      setPlaying('');
-      return;
-    }
-    el.src = `/api/voice-drafts/${id}.wav`;
-    void el.play();
-    setPlaying(id);
-  };
-
   const save = async (id: string, name: string, makeDefault: boolean) => {
     setSaving(id);
     setError('');
     try {
       await post(`/api/voice-drafts/${id}/save`, { name, make_default: makeDefault });
+      if (player.current === `draft:${id}`) player.stop();
       setDrafts((old) => old.filter((d) => d.id !== id));
       await onSaved();
     } catch (err) {
@@ -363,14 +394,6 @@ function DesignVoice({ library, first, onSaved }: { library: VoiceLibrary; first
 
   return (
     <div className="voices-way-body">
-      <audio
-        ref={audio}
-        onEnded={() => setPlaying('')}
-        onPause={(event) => {
-          if (window.onset?.platform === 'win32' && event.currentTarget.paused) setPlaying('');
-        }}
-        hidden
-      />
       <p className="voices-hint">用一句话描述想要的声音：性别、年龄段、音色和语气。同一句描述每次生成的声音都不一样，多生成几段，挑一段最满意的存下来，以后就一直是它。</p>
       <label className="voices-field">
         <span>想要的声音</span>
@@ -395,25 +418,31 @@ function DesignVoice({ library, first, onSaved }: { library: VoiceLibrary; first
       </div>
       {drafts.length > 0 && (
         <ul className="voices-drafts">
-          {drafts.map((d, i) => (
-            <li key={d.id} className={picked === d.id ? 'draft is-picked' : 'draft'}>
-              <div className="draft-row">
-                <button className={playing === d.id ? 'voice-play armed' : 'voice-play'} title={playing === d.id ? '停止' : '试听'} onClick={() => play(d.id)}>
-                  <Icon name={playing === d.id ? 'pause' : 'play'} size={14} />
-                </button>
-                <div className="voice-body">
-                  <span className="voice-name">第 {drafts.length - i} 段</span>
-                  <p className="voice-instruction">{d.instruction}</p>
-                </div>
-                {picked !== d.id && (
-                  <button className="quiet" onClick={() => setPicked(d.id)}>
-                    用这段
+          {drafts.map((d, i) => {
+            const id = `draft:${d.id}`;
+            const url = `/api/voice-drafts/${d.id}.wav`;
+            const on = player.current === id && player.playing;
+            return (
+              <li key={d.id} className={picked === d.id ? 'draft is-picked' : 'draft'}>
+                <div className="draft-row">
+                  <button className={on ? 'voice-play armed' : 'voice-play'} title={on ? '停止' : '试听'} onClick={() => player.toggle(id, url)}>
+                    <Icon name={on ? 'pause' : 'play'} size={14} />
                   </button>
-                )}
-              </div>
-              {picked === d.id && <SaveRow first={first} busy={saving === d.id} onSave={(n, def) => void save(d.id, n, def)} />}
-            </li>
-          ))}
+                  <div className="voice-body">
+                    <span className="voice-name">第 {drafts.length - i} 段</span>
+                    <p className="voice-instruction">{d.instruction}</p>
+                  </div>
+                  {picked !== d.id && (
+                    <button className="quiet" onClick={() => setPicked(d.id)}>
+                      用这段
+                    </button>
+                  )}
+                </div>
+                <VoiceTrack id={id} url={url} text={d.text} player={player} height={40} />
+                {picked === d.id && <SaveRow first={first} busy={saving === d.id} onSave={(n, def) => void save(d.id, n, def)} />}
+              </li>
+            );
+          })}
         </ul>
       )}
       {error && <div className="voices-error">{error}</div>}

@@ -40,6 +40,7 @@ const CommonStation = 'beat-common';
 export const beatPrompt: readonly string[] = [
   `${CommonStation}/head`,
   `${CommonStation}/work`,
+  'host/scene-ownership',
   'host/renderer',
   `${CommonStation}/intake`,
   'intake/visual',

@@ -68,6 +68,7 @@ describe('sessions', () => {
     expect(a[0]).toContain('--session-id ' + cliSession);
     expect(a[0]).toContain('把开头改快一点');
     expect(a[0]).toContain('动手前先读项目规则');
+    expect(a[0]).toContain('## 镜头实现的归属');
 
     // 第二轮续接同一个 CLI 会话，不再带开场说明。
     setEnv('FAKE_CONTENT', 'edited twice');
@@ -78,6 +79,7 @@ describe('sessions', () => {
     a = args(f);
     expect(a[1]).toContain('--resume ' + cliSession);
     expect(a[1]).not.toContain('动手前先读项目规则');
+    expect(a[1]).toContain('不得创建、编辑或覆盖镜头实现代码');
 
     // 事件流：断线重放从 Last-Event-ID 之后开始。
     const events = await rawGet(f.s, `/api/sessions/${id}/events?follow=0`);
@@ -176,6 +178,7 @@ describe('sessions', () => {
     // 制作提示词的标题（第一轮原样发过），重开的会话里也要有。
     const opening = project.runPrompt(f.root, '').prompt.toString('utf8').split('\n')[0];
     expect(a[0]).toContain(opening);
+    for (const invocation of a) expect(invocation).toContain('## 镜头实现的归属');
     expect(a[2], '重开的会话没带上制作说明').toContain(opening);
     for (const want of ['整片制作的说明', '之前的对话', '改好了', '第二句']) expect(a[2]).toContain(want);
     // 普通对话不带制作说明。
