@@ -8,6 +8,12 @@ OnSet (片场, "film set") is a macOS desktop client. You say what you want in a
 
 An AI orchestrator of your choice does the production inside the client: Codex, Claude Code, Qoder, CodeBuddy, or OpenCode. You tell it what you want in the chat and make the calls at each checkpoint. Project prompts, publishing templates, and skills ship inside the client. The HyperFrames skills are installed into the project at a pinned official release, so a project is self-contained: copy the directory to another machine with the client installed and carry on.
 
+## Made with OnSet
+
+Every tile below is a still from a finished film made with OnSet. Same pipeline every time; each film picks its own look to fit the topic.
+
+<p align="center"><img src="docs/showcase/showcase.en.jpg" alt="Nine films made with OnSet" width="100%"></p>
+
 ## Install
 
 GitHub Releases provides these installers, with `checksums.txt` for verification:
