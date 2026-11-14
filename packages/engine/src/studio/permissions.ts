@@ -96,6 +96,21 @@ export function autoApprove(project: string): boolean {
   }
 }
 
+/** noticeMaxRunes 是「已自动允许」那一行里命令最多显示几个字。 */
+const noticeMaxRunes = 40;
+
+/**
+ * 自动允许的通知只说一句是什么：命令常是多行脚本、heredoc，整段贴进对话会占好几屏。
+ * 只取第一行非空内容、压掉连续空白，超出 noticeMaxRunes 截断加「…」；多行的也加「…」。
+ */
+export function noticeSubject(text: string): string {
+  const lines = text.split('\n').map((line) => line.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const first = lines[0] ?? '';
+  const chars = [...first];
+  if (chars.length > noticeMaxRunes) return `${chars.slice(0, noticeMaxRunes).join('')}…`;
+  return lines.length > 1 ? `${first} …` : first;
+}
+
 /**
  * 看一遍收件目录：新请求里命令落在「以后都允许」前缀下的直接放行，其余发 permission 事件、记进 pending。
  */
@@ -109,7 +124,7 @@ export function pollPermissions(project: string, inbox: string, turnID: string, 
     auto ??= autoApprove(project);
     if (auto) {
       writePermissionResponse(inbox, request.id, { decision: 'allow' });
-      emit(turnID, { kind: 'notice', text: `已自动允许：${request.command || request.description || request.tool_name || '一次调用'}` });
+      emit(turnID, { kind: 'notice', text: `已自动允许：${noticeSubject(request.command || request.description || request.tool_name || '一次调用')}` });
       continue;
     }
     allowed ??= allowedCommands(project);
