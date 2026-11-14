@@ -40,6 +40,8 @@ export interface Station {
   detail?: string;
   /** 产物最后一次写入或确认的时间（RFC 3339，本地时区）。 */
   at?: string;
+  /** 关卡是在对话里确认的：用户的原话。 */
+  said?: string;
   /** 去哪看：页面 id，或 file 加 file 路径。 */
   page?: string;
   file?: string;
@@ -79,6 +81,8 @@ export const gatesPath = 'production/studio/gates.json';
 interface GateRecord {
   at: string;
   files: Record<string, string>;
+  /** 在对话里确认的：用户的原话（studio_confirm）。界面按钮确认的没有。 */
+  said?: string;
 }
 
 /** 关卡绑定的文件：确认后它们变了，确认就不算数。来自各站的声明，已装的第三方插件的关卡也算。 */
@@ -164,7 +168,7 @@ export function readGates(root: string): Record<string, GateRecord> {
     for (const [id, value] of Object.entries(gates as Record<string, unknown>)) {
       const v = value as Record<string, unknown> | null;
       if (!v || typeof v.at !== 'string' || v.files === null || typeof v.files !== 'object') continue;
-      out[id] = { at: v.at, files: v.files as Record<string, string> };
+      out[id] = { at: v.at, files: v.files as Record<string, string>, ...(typeof v.said === 'string' && v.said !== '' ? { said: v.said } : {}) };
     }
     return out;
   } catch {
@@ -173,7 +177,7 @@ export function readGates(root: string): Record<string, GateRecord> {
 }
 
 /** 记下用户确认了某个关卡：绑定的文件一个都没有时拒绝（没东西可确认）。 */
-export function recordGate(root: string, id: string, now = new Date()): GateRecord {
+export function recordGate(root: string, id: string, now = new Date(), said = ''): GateRecord {
   const bound = gateFilesFor()[id];
   if (!bound) throw new Error(`没有这个审核关卡：${id}`);
   const files: Record<string, string> = {};
@@ -192,12 +196,39 @@ export function recordGate(root: string, id: string, now = new Date()): GateReco
   }
   if (Object.keys(files).length === 0) throw new Error('要确认的内容还没写出来');
   const gates = readGates(root);
-  const record = { at: localRFC3339(now), files };
+  const record: GateRecord = { at: localRFC3339(now), files, ...(said !== '' ? { said } : {}) };
   gates[id] = record;
   const sorted: Record<string, GateRecord> = {};
   for (const key of Object.keys(gates).sort()) sorted[key] = gates[key];
   atomicWrite(path.join(root, gatesPath), marshalIndent({ version: 1, gates: sorted }) + '\n', 0o644);
   return record;
+}
+
+/** 比对用：去掉空白与常见标点，「确认，开始渲染」与「确认 开始渲染。」算同一句。 */
+function bareWords(text: string): string {
+  return text.replace(/[\s，。、！？；：,.!?;:「」“”"'《》()（）【】\[\]…—-]+/gu, '');
+}
+
+/**
+ * 用户在对话里确认了关卡（编排工具调 studio_confirm）：记下它，与界面上点「确认」同一份记录，另存用户的原话。
+ * 编排工具不能替用户确认：said 必须真的出现在这一轮用户发的话里（message），不然拒绝。
+ * 没指定关卡时记路线上此刻在等用户确认的那一个。
+ */
+export function confirmGateFromChat(root: string, message: string, said: string, gate = '', now = new Date()): { gate: string; label: string; record: GateRecord } {
+  const quote = said.trim();
+  if (bareWords(quote).length < 2) throw new Error('said 要写用户确认时的原话');
+  if (!bareWords(message).includes(bareWords(quote))) throw new Error('这一轮用户的话里没有「' + quote + '」：只有用户在对话里明确确认了，才能记下关卡');
+  const progress = readProgress(root);
+  let id = gate.trim();
+  if (id !== '') {
+    if (!gateFilesFor()[id]) throw new Error(`没有这个审核关卡：${id}（可选：${gateIDs().join('、')}）`);
+  } else {
+    const current = progress.stations.find((st) => st.id === progress.current);
+    if (!current?.gate || !gateFilesFor()[current.id]) throw new Error('路线上现在没有在等用户确认的关卡');
+    id = current.id;
+  }
+  const label = progress.stations.find((st) => st.id === id)?.label ?? id;
+  return { gate: id, label, record: recordGate(root, id, now, quote) };
 }
 
 /**
@@ -596,6 +627,7 @@ export function computeStations(root: string, scenes: SceneSummary[]): { mode: f
       } else if (record) {
         station.status = gateChanged(root, record) ? 'changed' : 'confirmed';
         station.at = record.at;
+        if (record.said) station.said = record.said;
       } else if (laterDone) station.status = 'passed';
     } else {
       const out = outputs[i];

@@ -880,6 +880,8 @@ export interface ProgressStation {
   status: 'done' | 'skipped' | 'stale' | 'todo' | 'confirmed' | 'passed' | 'changed';
   detail?: string;
   at?: string;
+  /** 关卡是在对话里确认的：用户的原话。 */
+  said?: string;
   page?: string;
   file?: string;
   turns: ProgressTurn[];

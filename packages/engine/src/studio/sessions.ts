@@ -22,6 +22,7 @@ import type { Project, Server } from './studio';
 import { writeStepMark } from './view';
 import { changedPaths, diffTrees, loadTurn, revertTurn, saveTurn, scanTree, statTree, studioRoot, validID, type FileChange, type Turn } from './turns';
 import { emitStudioEvent } from './events';
+import { confirmGateFromChat } from './progress';
 import { preferenceBrief, recordUtterance } from './memory';
 import { noVisionNote, orchestratorCannotSee } from './vision';
 import { uploadDir, uploadKind } from './uploads';
@@ -667,7 +668,16 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
     const inbox = viewInbox(studioRoot(p.path), turn.turn_id);
     env[ViewInboxEnv] = inbox;
     env[ViewProjectEnv] = p.path;
-    stopViews = watchViews(sess, turn.turn_id, inbox, p.path);
+    // 用户在对话里确认了关卡（studio_confirm）：原话要出自这一轮用户的话，记下后与界面按钮确认一样发 gate.confirmed。
+    stopViews = watchViews(sess, turn.turn_id, inbox, p.path, (req) => {
+      try {
+        const { gate, label } = confirmGateFromChat(p.path, turn.message, req.said, req.gate ?? '');
+        emit(sess, turn.turn_id, { kind: kindNotice, text: '已记下你在对话里的确认：' + label });
+        emitStudioEvent(s, p, 'gate.confirmed', { gate });
+      } catch (err) {
+        emit(sess, turn.turn_id, { kind: kindNotice, text: '没有记下关卡确认：' + (err as Error).message });
+      }
+    });
     let lastStat = statTree(p.path);
     let lastCheck = Date.now();
     const checkFiles = (force: boolean): void => {
@@ -742,11 +752,15 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
  * watchViews 在这一轮进行中轮询收件目录，把 onset studio show 的请求译成 view 事件。
  * 返回的函数停止轮询、把剩下的请求处理完并删掉收件目录；可以调用多次。
  */
-function watchViews(sess: Session, turnID: string, inbox: string, projectPath: string): () => void {
+function watchViews(sess: Session, turnID: string, inbox: string, projectPath: string, onConfirm: (req: NonNullable<ViewRequest['confirm']>) => void): () => void {
   const seen = new Set<string>();
   const emitPermission = (turn: string, event: NewEvent): void => emit(sess, turn, event);
   const deliver = (): void => {
     for (const req of drainViewInbox(inbox)) {
+      if (req.confirm) {
+        onConfirm(req.confirm);
+        continue;
+      }
       if (req.step) writeStepMark(projectPath, req.step);
       emit(sess, turnID, { kind: KindView, text: req.note || undefined, view: req });
     }
