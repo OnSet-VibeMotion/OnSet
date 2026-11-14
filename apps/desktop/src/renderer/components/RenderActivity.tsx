@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { ActivityStep, Scene, SceneActivity, ViewRequest } from '../types';
 import { describeTool, formatElapsed } from './chat/model';
+import {windowsRenderProgress} from './render-progress';
 import '../render-activity.css';
 
 /*
@@ -184,20 +185,21 @@ function WatchCard({ scene, onView }: { scene: Scene; onView: (view: ViewRequest
   const elapsed = since(activity?.started_at, now);
   const quiet = since(activity?.updated_at, now);
   const running = steps[steps.length - 1]?.state === 'running';
+  const windows=window.onset?.platform==='win32'?windowsRenderProgress(steps,activity?.renderer!=='codex'||activity?.tool_lifecycle==='codex-mcp-v1'):null;
   const shown = steps.slice(-30);
   return (
     <div className={'render-card' + (open ? ' open' : '')} data-render-scene={scene.id}>
       <button className="ra-head" aria-expanded={open} onClick={() => setOpen(!open)}>
         <span className="orb tiny" aria-hidden="true" />
-        <span className="ra-title">{scene.id} 渲染中</span>
+        <span className="ra-title">{scene.id} {windows?.title??'渲染中'}</span>
         {activity?.started_at && <span className="ra-elapsed mono">{formatElapsed(elapsed)}</span>}
-        <span className="ra-current ellipsis">{currentLine(steps, scene.directory)}</span>
+        <span className="ra-current ellipsis">{windows?.line??currentLine(steps, scene.directory)}</span>
         <span className="ra-toggle">{open ? '收起' : '看过程'}</span>
       </button>
       {quiet > 90 && (
         <p className="ra-quiet">
           已经 {formatElapsed(quiet)} 没有新动静
-          {running ? '：这一步还在跑，渲染视频、截图检查本来就要几分钟' : ''}
+          {windows?'：'+windows.quiet:running ? '：这一步还在跑，渲染视频、截图检查本来就要几分钟' : ''}
         </p>
       )}
       {open && (

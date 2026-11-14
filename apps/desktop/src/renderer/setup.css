@@ -214,6 +214,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+.setup-guide .crew-install {
+  margin-top: 6px;
+  color: var(--accent-text);
+}
+
 .setup-guide .crew-card.working .crew-state {
   color: var(--accent-text);
 }

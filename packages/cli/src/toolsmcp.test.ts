@@ -44,8 +44,8 @@ describe('onset tools MCP', () => {
     expect(importTool.inputSchema.properties).not.toHaveProperty('args');
   });
 
-  it('gives the renderer only HyperFrames', () => {
-    expect(describeTools('renderer').map((t) => t.name)).toEqual(['hyperframes', 'job_wait', 'job_cancel', 'tool_help']);
+  it('gives the Windows renderer its required source check, retaining the other platform tool lists', () => {
+    expect(describeTools('renderer').map((t) => t.name)).toEqual(['hyperframes', ...(process.platform==='win32'?['scene_lint']:[]), 'job_wait', 'job_cancel', 'tool_help']);
   });
 
   // 说明与例子是 agent 照着调的：写成命令行它就会去终端里找 onset；例子里的参数名必须真的存在。

@@ -279,7 +279,7 @@ function Check() {
   );
 }
 
-function CrewCard(props: { crew: Crew; task: SetupStatus['task']; index: number }) {
+function CrewCard(props: { crew: Crew; task: SetupStatus['task']; index: number; onInstall: () => void }) {
   const { state, percent } = crewState(props.crew, props.task);
   const idle = props.task?.running && !inTask(props.crew, props.task);
   // 赶来的速度就是下载速度：量得出百分比的按百分比算，只知道字节数的按字节算，后端说好一会儿没动静就算停住。
@@ -303,6 +303,11 @@ function CrewCard(props: { crew: Crew; task: SetupStatus['task']; index: number 
       <span className="crew-title">{props.crew.title}</span>
       <span className="crew-desc">{props.crew.desc}</span>
       <span className="crew-state">{state === 'working' ? `${working}${word ? ' · ' + word : ''}` : stateLabel[state]}</span>
+      {state !== 'ready' && (
+        <button className="setup-link crew-install" onClick={props.onInstall} disabled={!!props.task?.running}>
+          {state === 'working' ? '正在准备…' : state === 'waiting' ? '等待安装' : state === 'failed' ? '重试安装' : `安装${props.crew.title}工具`}
+        </button>
+      )}
     </li>
   );
 }
@@ -577,7 +582,7 @@ export function SetupGuide(props: { setup: SetupHandle; compact?: boolean }) {
       {showCrew && (
         <ul className="crew">
           {core.map((c, i) => (
-            <CrewCard key={c.key} crew={c} task={task} index={i} />
+            <CrewCard key={c.key} crew={c} task={task} index={i} onInstall={() => void setup.start(c.items.filter((item) => !item.ready).map((item) => item.id))} />
           ))}
         </ul>
       )}

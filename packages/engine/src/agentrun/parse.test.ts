@@ -39,6 +39,15 @@ function lastText(events: Event[]): string {
 }
 
 describe('agentrun parse', () => {
+  it('reports Windows Codex MCP starts and actual results without changing other platforms',()=>{
+    const parser=newParser('codex');
+    const item={id:'m1',type:'mcp_tool_call',server:'onset',tool:'hyperframes',arguments:{subcommand:'render'}};
+    const started=parser.parse(JSON.stringify({type:'item.started',item}));
+    expect(started).toEqual(process.platform==='win32'?[{kind:KindToolCall,tool:'mcp__onset__hyperframes',call_id:'m1',input:{subcommand:'render'}}]:[]);
+    const result=parser.parse(JSON.stringify({type:'item.completed',item:{...item,status:'completed',error:null,result:{isError:true,content:[{type:'text',text:'actual check failed'}]}}}));
+    if(process.platform==='win32')expect(result).toEqual([{kind:KindToolResult,tool:'mcp__onset__hyperframes',call_id:'m1',input:{subcommand:'render'},text:'actual check failed',is_error:true}]);
+    else expect(result[0].tool).toBe('mcp_tool_call');
+  });
   // 每份 fixture 都是同一个两轮脚本：第一轮记住 PELICAN、创建 note.txt、回复 OK；
   // 第二轮续接后问单词。第二轮答对，说明续接拿到了第一轮的上下文。
   describe('recorded streams', () => {

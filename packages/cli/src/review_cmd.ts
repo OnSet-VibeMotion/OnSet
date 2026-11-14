@@ -158,6 +158,7 @@ export function reviewLoudnessTarget(rootDir: string, silent: boolean): review.L
 defineOp({
   name: 'scene_lint',
   cli: ['scene', 'lint'],
+  ...(process.platform==='win32'?{scopes:['orchestrator','renderer'] as Array<'orchestrator'|'renderer'>}:{}),
   summary: '扫描镜头合成源码的确定性问题',
   description:
     `静态扫描镜头目录里渲染实际加载的合成源码，找出让渲染结果不可复现的写法。

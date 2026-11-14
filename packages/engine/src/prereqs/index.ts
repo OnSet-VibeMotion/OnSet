@@ -220,6 +220,7 @@ export function items(pick?: Selection): Item[] {
   if (aligner) out.push(toolItem('align', aligner.id, '对齐 ' + aligner.name, aligner.install, aligner.model));
   if(process.platform==='win32')out.push({
     group:'python',id:'python:graphics',name:'图像与字体辅助库',version:'',required:false,
+    later:{title:'图像与字体辅助库',desc:'Windows 镜头图像检查、截图分析与字体校验',icon:'styles'},
     ready:env=>{const status=windowsGraphicsStatus(env);return [status.ok,status.where];},
     prepare:async(run,signal)=>{await ensureWindowsGraphics({env:run.npm,output:run.log,progress:p=>run.stage(hyperframesStage(p),p.bytes),signal});},
   });

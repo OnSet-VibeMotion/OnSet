@@ -18,6 +18,7 @@ function fixture(){
 
 it('lists helper preparation only on Windows without changing existing required prerequisites',()=>{
  expect(items().some(item=>item.id==='python:graphics')).toBe(process.platform==='win32');
+ if(process.platform==='win32')expect(items().find(item=>item.id==='python:graphics')?.later?.title).toBe('图像与字体辅助库');
 });
 
 it.skipIf(process.platform!=='win32')('requires both actual helper modules, not only a Python executable',()=>{

@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { lookPath } from '../envutil';
+import { marshal } from '../gojson';
 import { watchSize, type Progress, type Writer } from '../hyperframes';
 import { abortReason } from '../procgroup';
 import { binDir, bundled, dataDir, findOptional, npmCommand, withNode } from '../toolpath';
@@ -383,6 +384,26 @@ async function installNpmTool(spec: Extract<ToolSpec, { kind: 'npm' }>, root: st
     const rel = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.[name];
     if (!rel) throw new Error(`${spec.package}@${spec.version} 没有 ${name} 这个命令`);
     const entry = path.join(pkgDir, rel);
+    if (process.platform === 'win32') {
+      // bin 与工具数据可在不同盘：在 bin 留一个可被 cmd-shim 识别的 JS 入口，
+      // 由同一 Node/Electron 运行时启动真正的入口，保留 require.main、ESM 与多行参数。
+      const bridge = `${name}.onset.cjs`;
+      writeExecutable(path.join(bin, bridge), [
+        "const { spawnSync } = require('node:child_process');",
+        `const result = spawnSync(process.execPath, [${marshal(entry)}, ...process.argv.slice(2)], { env: process.env, stdio: 'inherit', windowsHide: true });`,
+        'if (result.error) { console.error(result.error.message); process.exitCode = 1; }',
+        'else process.exitCode = result.status ?? 1;',
+        '',
+      ].join('\n'));
+      const runtime = process.execPath.replaceAll('%', '%%');
+      writeExecutable(path.join(bin, name + '.cmd'), [
+        '@echo off', 'chcp 65001 >nul', 'setlocal',
+        `if exist "${runtime}" (`, '  set "ELECTRON_RUN_AS_NODE=1"',
+        `  "${runtime}" "%~dp0\\${bridge}" %*`,
+        ') else (', `  node "%~dp0\\${bridge}" %*`, ')', '',
+      ].join('\r\n'));
+      continue;
+    }
     writeExecutable(
       path.join(bin, name),
       [

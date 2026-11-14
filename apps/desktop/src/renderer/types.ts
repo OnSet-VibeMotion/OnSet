@@ -71,6 +71,8 @@ export interface ActivityStep {
 export interface SceneActivity {
   scene_id: string;
   rendering: boolean;
+  /** Windows 后端是否提供 Codex MCP 的开始/结束事件。 */
+  tool_lifecycle?: string;
   renderer?: string;
   model?: string;
   started_at?: string;
