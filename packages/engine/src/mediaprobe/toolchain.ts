@@ -54,6 +54,18 @@ export interface VerifyOptions {
 /** 计算统计量时的缩放边长。缩放到固定尺寸让阈值与画幅无关，也让代价与视频分辨率无关。 */
 const statsSampleSize = 128;
 
+function grayStats(atSeconds: number, pixels: Buffer): FrameStats {
+  let sum = 0;
+  for (const pixel of pixels) sum += pixel;
+  const mean = sum / pixels.length;
+  let variance = 0;
+  for (const pixel of pixels) {
+    const delta = pixel - mean;
+    variance += delta * delta;
+  }
+  return { at_seconds: atSeconds, mean, stddev: Math.sqrt(variance / pixels.length) };
+}
+
 /**
  * 比对两帧时的缩放边长。取得很小是刻意的：交接时物件
  * 在交界两侧挪动几像素、描边粗细差一点都属于接上了，缩到 32 像素后这类差异
@@ -186,16 +198,26 @@ export class Toolchain {
   frameStats(file: string, atSeconds: number): FrameStats {
     const ffmpeg = this.ffmpegPath();
     const output = this.rawFrame(ffmpeg, file, atSeconds, statsSampleSize, 'gray');
-    let sum = 0;
-    for (const pixel of output) sum += pixel;
-    const mean = sum / output.length;
-    let variance = 0;
-    for (const pixel of output) {
-      const delta = pixel - mean;
-      variance += delta * delta;
+    return grayStats(atSeconds, output);
+  }
+
+  /** 一次定位与解码同时写 PNG 和统计像素；统计仍取整帧，不能被裁剪区域改变。 */
+  private extractFrameAndStats(file: string, atSeconds: number, region: Region | null, dest: string): FrameStats {
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    // 沿用 extractFrameRegion / frameStats 的自动选流：多视频流文件未必以第一条为主画面。
+    const argv = ['-v', 'error', '-y', '-ss', formatSeconds(atSeconds), '-i', file, '-frames:v', '1'];
+    const filter = regionFilter(region);
+    if (filter !== '') argv.push('-vf', filter);
+    const ran = run(this.ffmpegPath(), [
+      ...argv, '-f', 'image2', '-c:v', 'png', dest,
+      '-frames:v', '1', '-vf', `scale=${statsSampleSize}:${statsSampleSize},format=gray`, '-f', 'rawvideo', '-',
+    ], this.env);
+    if (ran.error) throw new Error(`抽帧失败：${file} @ ${formatFixed(atSeconds, 3)} 秒（${firstLine(ran.stderr.toString('utf8'))}）`);
+    if (!nonEmpty(dest) || ran.stdout.length === 0) {
+      fs.rmSync(dest, { force: true });
+      throw new Error(`抽帧没有产出内容：${file} @ ${formatFixed(atSeconds, 3)} 秒（时间点可能超出视频时长）`);
     }
-    variance /= output.length;
-    return { at_seconds: atSeconds, mean, stddev: Math.sqrt(variance) };
+    return grayStats(atSeconds, ran.stdout);
   }
 
   /** 抽取 atSeconds 处的一帧，缩放成 size×size 的指定像素格式后返回裸像素。 */
@@ -290,8 +312,13 @@ export class Toolchain {
     const report: FrameReport = { schema_version: ReportSchemaVersion, path: file, ok: false, frames: [], problems: [] };
     for (const at of atSeconds) {
       const image = path.join(destDir, `frame-${formatSecondsShort(at).replaceAll('.', '_')}.png`);
-      this.extractFrameRegion(file, at, region, image);
-      const stats = this.frameStats(file, at);
+      let stats: FrameStats;
+      if (process.platform === 'win32') stats = this.extractFrameAndStats(file, at, region, image);
+      else {
+        // 本轮只加速 Windows；其它平台沿用原来的抽帧与整帧统计路径。
+        this.extractFrameRegion(file, at, region, image);
+        stats = this.frameStats(file, at);
+      }
       const frame: ExtractedFrame = { at_seconds: at, image, stats, blank: isBlank(stats), dark: isDark(stats) };
       report.frames.push(frame);
       if (frame.blank) {
