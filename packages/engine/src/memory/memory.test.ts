@@ -215,7 +215,8 @@ describe('memory', () => {
     store.recordAttempt(s, failingAttempt('codex', 'output.audio'), { source: SourceRender });
     let brief = '';
     const drafter = async (workdir: string, prompt: string): Promise<void> => {
-      brief = prompt;
+      // 被拒的草稿会带着原因再交回来改一稿；这里只看第一轮的说明。
+      if (brief === '') brief = prompt;
       const good = lesson('timeline-not-raf', StatusActive, null, 'determinism.raf');
       good.from_episodes = [a.id, b.id];
       fs.writeFileSync(path.join(workdir, 'drafts', 'lessons', 'timeline-not-raf.md'), format(good));
@@ -568,21 +569,21 @@ describe('memory', () => {
     expect(clusters[0].key).toBe('reads.duration');
   });
 
-  // 只由整片检查判定的经验考不了，转人工确认；引用空白帧的经验在考试里补查首帧。
-  it('TestExamSkipsWholeFilmLessonsAndPostChecksBlankFrames', async () => {
+  // 只由相邻镜头交接判定的经验考不了，转人工确认；引用空白帧的经验在考试里补查首帧。
+  it('TestExamSkipsHandoffLessonsAndPostChecksBlankFrames', async () => {
     const store = newStore();
     const project = tempDir();
     const s = writeSceneDir(path.join(project, 'scenes', 'scene-001'), 'scene-001', '中文标题', '');
     const { episode: failed } = store.recordCheck(s, [{ check: 'frames.blank', problem: '第 0 帧是空白帧' }]);
-    const reads = lesson('reads-pacing', StatusTrial, null, 'reads.duration');
-    reads.from_episodes = [failed.id];
-    store.write(reads);
+    const handoff = lesson('handoff-carry', StatusTrial, null, 'review.handoff');
+    handoff.from_episodes = [failed.id];
+    store.write(handoff);
     const run = async (_sc: Scene, renderer: string): Promise<Attempt> => newAttempt({ renderer, outcome: OutcomeSucceeded });
     const opts: ExamOptions = { renderers: ['codex'], budget: 1500, workspace: path.join(project, 'production', 'memory-exams'), run };
-    // 只有整片检查的经验考不了，要提示人工确认。
+    // 只有交接检查的经验考不了，要提示人工确认。
     await expect(store.exam(opts)).rejects.toThrow(/promote/);
-    opts.trial = ['reads-pacing'];
-    // 点名考整片经验时要说明原因。
+    opts.trial = ['handoff-carry'];
+    // 点名考交接经验时要说明原因。
     await expect(store.exam(opts)).rejects.toThrow(/单镜头回放考不了/);
     const cover = lesson('paint-first-frame', StatusTrial, null, 'frames.blank');
     cover.from_episodes = [failed.id];
@@ -608,7 +609,7 @@ describe('memory', () => {
       }
     }
     // 考不了的经验保持试用，等人确认。
-    expect(store.find('reads-pacing')!.status).toBe(StatusTrial);
+    expect(store.find('handoff-carry')!.status).toBe(StatusTrial);
   });
 
   // 单独一句话不算信号；在不同轮次反复提的要求、被回退的一轮才交给整理者。

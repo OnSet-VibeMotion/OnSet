@@ -491,7 +491,7 @@ function MemoryCard({
       </div>
       {facts.length > 0 && <p className="small muted">{facts.join(' · ')}</p>}
       {memory.status === 'trial' && memory.kind === 'lesson' && !memory.examinable && (
-        <p className="small muted">这条要看整片才能判断有没有用，没法自动考试，需要你确认。</p>
+        <p className="small muted">这条要看相邻镜头的衔接才能判断有没有用，没法自动考试，需要你确认。</p>
       )}
       {memory.rejected_reason && <p className="error-line">{memory.rejected_reason}</p>}
       <button className="link small" onClick={() => setOpen(!open)} aria-expanded={open}>

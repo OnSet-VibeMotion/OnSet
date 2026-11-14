@@ -57,7 +57,7 @@ export function memoryAPI(s: Server, request: Request): Response {
     const rows = all.map((m) => ({
       ...memory.memoryToJSON(m),
       stats: Object.hasOwn(stats, m.name) ? stats[m.name] : null,
-      // examinable 为 false 的试用经验只由整片检查判定，考不了，要人确认生效。
+      // examinable 为 false 的试用经验只由相邻镜头的交接判定，考不了，要人确认生效。
       examinable: m.kind === memory.KindLesson && memory.examinableLesson(m),
     }));
     const events = store.timeline();

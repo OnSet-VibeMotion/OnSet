@@ -104,5 +104,6 @@ export {
 } from './consolidate';
 export type { Cluster, Contrast, Drafter, ConsolidateOptions, ConsolidateResult } from './consolidate';
 export * from './exam';
+export * from './examreads';
 export { importResultToJSON, importProject } from './importer';
 export type { ImportOptions, ImportResult } from './importer';

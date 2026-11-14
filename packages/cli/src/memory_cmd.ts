@@ -285,6 +285,7 @@ defineOp({
   description: `把上次整理之后的失败经历按校验器聚类，出现次数不少于 min_count 的组交给 ORCHESTRATOR
 起草经验或修订旧经验。草稿要过格式校验才进入试用：字段齐全、checked_by 是已有校验器、
 不出现渲染工具名或模型名、不照抄镜头文案、不超长、与已有记忆说同一件事时必须写成修订。
+没过校验的草稿带着原因交回去改一稿，改了仍不合格才记为被拒。
 
 整理者只在记忆库的 consolidate/<run>/ 目录里写草稿，不改动项目。
 drafts 跳过整理者，直接收录一个目录里现成的草稿（lessons/*.md、preferences/*.md）。`,
@@ -432,7 +433,7 @@ defineOp({
       run,
       dryRun: bool(p.dry_run),
       modelOf: (renderer) => store.currentModel(renderer, currentEnvironment(), config.rendererModelFor(cfg, renderer)),
-      postCheck: blankPostCheck,
+      postCheck: examPostCheck,
       signal,
     });
     const data = memory.examResultToJSON(result);
@@ -786,6 +787,11 @@ export function blankPostCheck(s: scene.Scene, checks: string[]): Finding[] {
     return [{ check: scene.CheckFramesBlank, problem: '无法补查空白帧：' + errorText(err) }];
   }
   return (report.problems ?? []).map((problem) => ({ check: scene.CheckFramesBlank, problem }));
+}
+
+/** 考试作答后的补查：空白帧看产物第 0 帧，阅读时间看作答者交的本镜头清单。 */
+export function examPostCheck(s: scene.Scene, checks: string[]): Finding[] {
+  return [...blankPostCheck(s, checks), ...memory.readsPostCheck(s, checks)];
 }
 
 function snapshotsText(list: readonly number[] | null): string {

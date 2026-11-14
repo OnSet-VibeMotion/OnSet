@@ -4,6 +4,7 @@ import { formatFixed } from '../gofmt';
 import { compareBytes } from '../gojson';
 import {
   CheckFramesBlank,
+  ReadsCheckPrefix,
   load as loadScene,
   OutcomeFailed,
   OutcomeSucceeded,
@@ -15,6 +16,7 @@ import { usageJSON, type Usage } from '../tools';
 import type { Finding } from './checks';
 import { episodeByID, freezeInput, projectOf, SourceExam } from './episode';
 import { EventDormant, EventExam, EventPromote, EventReject } from './events';
+import { ReadsExamNote, readsChecks } from './examreads';
 import { examinableLesson, features as sceneFeatures, promptText } from './features';
 import { rfc3339 } from './gostr';
 import { copyTree, isNotExist, readDirSorted, readJSON, writeJSON } from './io';
@@ -257,7 +259,7 @@ export interface ExamOptions {
    */
   retest?: string[] | null;
   /**
-   * 在作答通过产物校验后补跑事后检查（目前是空白帧），只跑试用经验
+   * 在作答通过产物校验后补跑事后检查（空白帧、阅读时间），只跑试用经验
    * 引用到的那几个；为 null 时不补查。
    */
   postCheck?: PostCheck | null;
@@ -411,7 +413,7 @@ export async function exam(s: Store, opts: ExamOptions): Promise<ExamResult> {
   for (const name of retest) {
     const m = all.find((x) => x.name === name);
     if (!m || m.status !== StatusActive || m.kind !== KindLesson) throw new Error(`${name} 不是生效中的经验，不能重考`);
-    if (!examinableLesson(m)) throw new Error(`${name} 只由整片检查判定，考不了`);
+    if (!examinableLesson(m)) throw new Error(`${name} 只由相邻镜头的交接判定，考不了`);
     trials.push(m);
   }
   if (retest.length === 0) {
@@ -420,7 +422,7 @@ export async function exam(s: Store, opts: ExamOptions): Promise<ExamResult> {
       if (trialNames.length > 0 && !trialNames.includes(m.name)) continue;
       if (!examinableLesson(m)) {
         if (trialNames.length > 0) {
-          throw new Error(`${m.name} 只由整片检查（${(m.checked_by ?? []).join('、')}）判定，单镜头回放考不了；确认有效后用 memory_promote() 生效`);
+          throw new Error(`${m.name} 只由相邻镜头的交接（${(m.checked_by ?? []).join('、')}）判定，单镜头回放考不了；确认有效后用 memory_promote() 生效`);
         }
         continue;
       }
@@ -431,7 +433,7 @@ export async function exam(s: Store, opts: ExamOptions): Promise<ExamResult> {
     if (!trials.some((m) => m.name === name)) throw new Error(`${name} 不是试用中的经验（偏好不参加考试，由人工确认）`);
   }
   if (trials.length === 0) {
-    throw new Error('没有能考的试用经验；先运行 memory_consolidate()。只由阅读时间、交接这类整片检查判定的经验考不了，用 memory_promote() 人工确认');
+    throw new Error('没有能考的试用经验；先运行 memory_consolidate()。只由相邻镜头的交接判定的经验考不了，用 memory_promote() 人工确认');
   }
   const questions = examQuestions(s, trials, opts.episodes ?? [], opts.holdout ?? [], maxQuestions);
   if (questions.length === 0) throw new Error('没有考题：试用记忆的来源经历都没有冻结输入，也没有给 --holdout');
@@ -589,8 +591,10 @@ async function examCell(
   }
   sc = attachRecall(recalled, sc);
   cell.recalled = recallNames(recalled);
-  const attempt: Attempt = { ...(await run(sc, renderer, opts.signal)) };
   const post = postChecks(trials);
+  // 要补查阅读时间时，两组都被要求交出本镜头的可读元素清单。
+  if (opts.postCheck && readsChecks(post).length > 0) sc = { ...sc, examNote: ReadsExamNote };
+  const attempt: Attempt = { ...(await run(sc, renderer, opts.signal)) };
   if (attempt.outcome === OutcomeSucceeded && post.length > 0 && opts.postCheck) {
     const findings = await opts.postCheck(sc, post, opts.signal);
     if (findings.length > 0) {
@@ -712,7 +716,7 @@ function postChecks(trials: readonly Memory[]): string[] {
   const out: string[] = [];
   for (const m of trials) {
     for (const id of m.checked_by ?? []) {
-      if (id === CheckFramesBlank && !out.includes(id)) out.push(id);
+      if ((id === CheckFramesBlank || id.startsWith(ReadsCheckPrefix)) && !out.includes(id)) out.push(id);
     }
   }
   return out;

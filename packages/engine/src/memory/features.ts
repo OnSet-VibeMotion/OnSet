@@ -135,12 +135,13 @@ export function knownCheckers(): string[] {
 /**
  * 报告校验器能否在单镜头回放考试里判定。
  *
- * 产物校验、确定性扫描在渲染后自动跑；空白帧由考试在作答后补查首帧。
- * 阅读时间要读整片的可读元素清单与短语时间轴，交接要看相邻镜头，单镜头重放
- * 判不了——只靠它们判定的经验不进考试，由人确认后生效，标为未经考试。
+ * 产物校验、确定性扫描在渲染后自动跑；空白帧由考试在作答后补查首帧；阅读时间
+ * 由考试要求作答者交出本镜头的可读元素清单（examreads.ts），按镜头自己的短语
+ * 时间轴判。交接要看相邻镜头，单镜头重放判不了——只靠它判定的经验不进考试，
+ * 由人确认后生效，标为未经考试。
  */
 export function examinable(id: string): boolean {
-  return !id.startsWith(ReadsCheckPrefix) && id !== CheckReviewHandoff;
+  return id !== CheckReviewHandoff;
 }
 
 /** 报告经验是否至少有一个校验器能在考试里判定。 */

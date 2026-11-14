@@ -353,7 +353,7 @@ export function consolidateResultToJSON(r: ConsolidateResult): Record<string, un
 }
 
 /**
- * 整理：失败经历聚类 → 交给整理者起草或修订 → 格式校验 → 合格的进入试用。
+ * 整理：失败经历聚类 → 交给整理者起草或修订 → 格式校验（被拒的交回去改一稿）→ 合格的进入试用。
  * 失败时抛出的错误带 result 属性（Go 版返回的部分结果）。
  */
 export async function consolidate(s: Store, opts: ConsolidateOptions): Promise<ConsolidateResult> {
@@ -388,7 +388,25 @@ export async function consolidate(s: Store, opts: ConsolidateOptions): Promise<C
   // 直接收录现成草稿时没有聚类约束，来源经历只要存在即可。
   if (opts.draftsDir) for (const e of episodes) allowed.add(e.id);
   const texts = episodes.map((e) => e.text);
-  ingestDrafts(s, drafts, allowed, texts, result);
+  ingestDrafts(s, drafts, allowed, texts, result, null);
+  // 被拒的草稿带着原因交回整理者改一稿：超长、漏写字段这类问题改一下就能收，
+  // 不改的话一整次整理（一次模型调用）什么都留不下。只改一轮，再不合格照实记为被拒。
+  const firstRejected = Object.keys(result.rejected).sort(compareBytes);
+  if (!opts.draftsDir && opts.drafter && firstRejected.length > 0) {
+    const brief = revisionBrief(result.rejected);
+    fs.writeFileSync(path.join(result.workdir, 'revise.md'), brief, { mode: 0o644 });
+    let revised = true;
+    try {
+      await opts.drafter(result.workdir, brief, opts.signal);
+    } catch {
+      // 改稿没跑成：第一轮的结果照旧。
+      revised = false;
+    }
+    if (revised) {
+      for (const label of firstRejected) delete result.rejected[label];
+      ingestDrafts(s, drafts, allowed, texts, result, new Set(firstRejected));
+    }
+  }
   s.log({
     time: '',
     type: EventConsolidate,
@@ -402,13 +420,37 @@ function withResult(err: Error, result: ConsolidateResult): Error {
   return Object.assign(err, { result });
 }
 
-function ingestDrafts(s: Store, dir: string, allowedEpisodes: Set<string>, sceneTexts: string[], result: ConsolidateResult): void {
+/**
+ * 改稿说明：列出每份被拒草稿与原因，要求整理者原地改这几份。
+ */
+function revisionBrief(rejected: Record<string, string[]>): string {
+  let b = '# 改稿：下面的草稿没有通过格式校验\n\n';
+  b += '只改 drafts/ 下列出的这几份文件，原地改、文件名不变；其他文件不要动，不要新增草稿。\n';
+  b += '格式与硬性要求见当前目录的 brief.md。超长的删掉次要的话、保留约束本身与反例正例；改完即结束。\n\n';
+  for (const label of Object.keys(rejected).sort(compareBytes)) {
+    b += `## drafts/${label}\n\n`;
+    for (const problem of rejected[label]) b += `- ${problem}\n`;
+    b += '\n';
+  }
+  return b;
+}
+
+/** only 非空时只收录这几份（改稿后的第二轮），其余文件第一轮已经处理过。 */
+function ingestDrafts(
+  s: Store,
+  dir: string,
+  allowedEpisodes: Set<string>,
+  sceneTexts: string[],
+  result: ConsolidateResult,
+  only: Set<string> | null,
+): void {
   for (const kind of [KindLesson, KindPreference] as Kind[]) {
     const entries = readDirSorted(path.join(dir, kindDir(kind)));
     if (entries === null) continue;
     for (const entry of entries) {
       if (entry.isDirectory() || !entry.name.endsWith('.md')) continue;
       const label = kindDir(kind) + '/' + entry.name;
+      if (only !== null && !only.has(label)) continue;
       const body = fs.readFileSync(path.join(dir, kindDir(kind), entry.name));
       let m: Memory;
       try {
@@ -500,8 +542,8 @@ from_episodes: [ep-20261102-101500-a1b2c3]
 
 - name 用小写字母、数字与连字符，与文件名一致，不得与已有记忆重名。
 - 经验必须写成一条可检验的约束，正文同时给出「反例」与「正例」代码片段，正文不超过 600 字，description 不超过 80 字。
-- checked_by 优先用能在单镜头里判定的校验器（output.*、determinism.*、frames.blank）：只由 reads.* 或
-  review.handoff 判定的经验要看整片，考试考不了，只能等人确认。
+- checked_by 优先用能在单镜头里判定的校验器（output.*、determinism.*、frames.blank、reads.*）：只由
+  review.handoff 判定的经验要看相邻镜头，考试考不了，只能等人确认。
 - checked_by 只能取下面「校验器」里的 ID，写明这条经验由哪个校验器判定；偏好的 checked_by 写 [human]。
 - applies_when.features 只能取下面「镜头特征」里的值；适用于所有镜头时省略 applies_when。
 - from_episodes 列出这条经验来自哪些经历编号，只能取下面各组里出现的编号。
