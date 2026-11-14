@@ -32,6 +32,10 @@ export interface SandboxPaths {
   env: Record<string, string | undefined>;
   /** 渲染工具自己的状态目录（会话、日志、缓存），要能读写，例如 ~/.qoder-cn。 */
   toolStateDirs: string[];
+  /** 渲染工具在家目录根上写的状态文件（~/.claude.json 与它的临时文件、备份），按前缀放行读写。 */
+  toolStateFiles?: string[];
+  /** 不许读的目录：渲染工具的用户级技能与插件（只让它看见镜头自己的那几个技能）。 */
+  hiddenDirs?: string[];
   /** 另外要能读的目录：渲染工具、onset 运行时、浏览器所在的地方。 */
   readDirs: string[];
 }
@@ -53,15 +57,29 @@ function unique(paths: string[]): string[] {
   return [...new Set(paths.filter((p) => p !== '' && p !== '/').map(real))].sort();
 }
 
-/** 家目录里的 PATH 项（asdf、~/.local/bin……）：渲染器跑的命令从这里来，读不到就起不来。 */
+/**
+ * 家目录里的 PATH 项（asdf、~/.local/bin……）连同它的上一层：渲染器跑的命令从这里来，读不到就起不来。
+ * 要上一层是因为版本管理器的 shim 只是转一道（~/.asdf/shims/codex → ~/.asdf/installs/nodejs/…），
+ * ~/.local/bin/claude 指向 ~/.local/share/claude/versions/…（2026-11 实测）。家目录本身不算。
+ */
 function homePathEntries(env: SandboxPaths['env'], home: string): string[] {
   const out: string[] = [];
   for (const dir of (env.PATH ?? '').split(path.delimiter)) {
     if (dir === '' || !path.isAbsolute(dir)) continue;
     const resolved = real(dir);
-    if (resolved.startsWith(home + path.sep)) out.push(resolved);
+    if (!resolved.startsWith(home + path.sep)) continue;
+    out.push(resolved);
+    const parent = path.dirname(resolved);
+    if (parent !== home) out.push(parent);
   }
   return out;
+}
+
+/** 家目录根上几个工具要读的配置文件：asdf 按它选版本，git、npm 读自己的配置。 */
+const homeConfigFiles = ['.tool-versions', '.asdfrc', '.gitconfig', '.npmrc'];
+
+function regexQuote(p: string): string {
+  return p.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&');
 }
 
 /** 生成 sandbox-exec 的规则文本（SBPL）。后写的规则优先，所以先整体禁止，再逐项放开，最后再收回凭据。 */
@@ -80,7 +98,10 @@ export function sandboxProfile(p: SandboxPaths): string {
     home ? path.join(home, 'Library') : '',
     ...p.readDirs,
     ...(home ? homePathEntries(p.env, home) : []),
+    ...(home ? homeConfigFiles.map((f) => path.join(home, f)) : []),
   ]);
+  // 家目录根上的状态文件按前缀放行（~/.claude.json 写的时候先写 ~/.claude.json.tmp.… 再改名）。
+  const stateFiles = (p.toolStateFiles ?? []).filter((f) => f !== '').map((f) => `  (regex #"^${regexQuote(path.join(home || path.dirname(f), path.basename(f)))}")`);
   const secrets = unique([data ? path.join(data, 'agent') : '', p.env.ONSET_AGENT_DIR ?? '']);
   const lines = [
     '(version 1)',
@@ -88,15 +109,54 @@ export function sandboxProfile(p: SandboxPaths): string {
     '(deny file-write*)',
     '(allow file-write*',
     ...writable.map((d) => `  (subpath ${quote(d)})`),
+    ...stateFiles,
     '  (regex #"^/dev/"))',
   ];
   if (home) {
-    lines.push(`(deny file-read-data (subpath ${quote(home)}))`, '(allow file-read-data', ...readable.map((d) => `  (subpath ${quote(d)})`), ')');
+    lines.push(`(deny file-read-data (subpath ${quote(home)}))`, '(allow file-read-data', ...readable.map((d) => `  (subpath ${quote(d)})`), ...stateFiles, ')');
   }
+  // 渲染工具的用户级技能与插件：读不到就不会出现在它的技能列表里，渲染器只看见镜头自己的那几个（stageRendererSkills）。
+  const hidden = unique(p.hiddenDirs ?? []);
+  if (hidden.length > 0) lines.push('(deny file-read-data', ...hidden.map((d) => `  (subpath ${quote(d)})`), ')');
   // 凭据最后收回。读要写成 file-read-data：Seatbelt 里同一路径上更具体的操作压过 file-read*，
   // 写成 file-read* 的话前面放开项目目录的 allow file-read-data 照样让 .env 读得到（实测）。
   lines.push('(deny file-read-data file-write*', '  (regex #"/\\.env$")', '  (regex #"/\\.env\\.[^/]*$")', ...secrets.map((d) => `  (subpath ${quote(d)})`), ')');
   return lines.join('\n') + '\n';
+}
+
+/** 渲染工具在家目录里的东西：要能读写的状态目录与根上的状态文件，要藏起来的用户级技能与插件。 */
+export interface RendererHome {
+  state: string[];
+  files: string[];
+  hidden: string[];
+}
+
+/**
+ * 各家渲染工具在家目录里的落点（2026-11 实测）。技能的发现位置：claude 读 .claude/skills，codex 读 .agents/skills 与
+ * .codex/skills，codebuddy 读 .codebuddy/skills，opencode 读 .agents/skills、.claude/skills、.opencode/skill(s)，qoder 读
+ * .qoder-cn/skills 与 .agents/skills；家目录里的这些一律藏起来，镜头要用的技能由 stageRendererSkills 链进镜头目录。
+ */
+export function rendererHome(tool: string, home: string): RendererHome {
+  const h = (...p: string[]) => path.join(home, ...p);
+  const agents = h('.agents', 'skills');
+  switch (tool) {
+    case 'claude':
+      return { state: [h('.claude')], files: [h('.claude.json')], hidden: [h('.claude', 'skills'), h('.claude', 'plugins'), agents] };
+    case 'codex':
+      return { state: [h('.codex')], files: [], hidden: [h('.codex', 'skills'), h('.codex', 'plugins'), agents] };
+    case 'codebuddy':
+      return { state: [h('.codebuddy')], files: [h('.codebuddy.json')], hidden: [h('.codebuddy', 'skills'), h('.codebuddy', 'plugins'), agents] };
+    case 'opencode':
+      return {
+        state: [h('.local', 'share', 'opencode'), h('.local', 'state', 'opencode'), h('.cache', 'opencode'), h('.config', 'opencode')],
+        files: [],
+        hidden: [h('.config', 'opencode', 'skills'), h('.config', 'opencode', 'skill'), h('.claude', 'skills'), agents],
+      };
+    case 'qoder':
+      return { state: [h('.qoder-cn'), h('.qoder')], files: [], hidden: [h('.qoder-cn', 'skills'), h('.qoder', 'skills'), agents] };
+    default:
+      return { state: [], files: [], hidden: [] };
+  }
 }
 
 /** 把渲染器的命令行套进沙箱。argv[0] 要已经是绝对路径（lookPath 之后）。 */

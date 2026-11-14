@@ -40,6 +40,24 @@ describe('tools', () => {
     expect(unsafe[unsafe.indexOf('--setting-sources') + 1]).toBe('project,local');
   });
 
+  // macOS 上五家渲染器都套系统沙箱：边界按目录管，各家自己不再按命令白名单拦（拦了也没人能批准）。
+  it('sandboxed renderers do not filter commands themselves', () => {
+    const access = { commands: ['ls'], readDirs: ['/p/.agents/skills'], osSandbox: true };
+    expect(rendererInvocation('claude', 'p', false, access)).toContain('--dangerously-skip-permissions');
+    expect(rendererInvocation('claude', 'p', false, access)).not.toContain('acceptEdits');
+    expect(rendererInvocation('codex', 'p', false, access)).toContain('--dangerously-bypass-approvals-and-sandbox');
+    expect(rendererInvocation('codex', 'p', false, access)).not.toContain('workspace-write');
+    expect(rendererInvocation('codebuddy', 'p', false, access)).toContain('-y');
+    expect(rendererInvocation('qoder', 'p', false, access)).toContain('--dangerously-skip-permissions');
+  });
+
+  // opencode 会一直往上找到项目根的 .agents/skills：只放行镜头链进来的那几个技能。
+  it('opencode renderer only sees the scene skills', () => {
+    const env = rendererEnv('opencode', { skills: ['hyperframes', 'scene-kit'] }, { OPENCODE_CONFIG_CONTENT: '{"permission":{"bash":"ask"}}' });
+    expect(JSON.parse(env.OPENCODE_CONFIG_CONTENT).permission).toEqual({ bash: 'ask', skill: { '*': 'deny', hyperframes: 'allow', 'scene-kit': 'allow' } });
+    expect(rendererEnv('claude', { skills: ['x'] }, {})).toEqual({});
+  });
+
   it('renderer invocation unsafe is explicit', () => {
     expect(rendererInvocation('codex', 'prompt', true, {})).toEqual([
       'codex', 'exec', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '--json', 'prompt',

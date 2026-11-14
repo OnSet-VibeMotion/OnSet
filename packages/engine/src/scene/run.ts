@@ -29,11 +29,11 @@ import { CheckOutputFrames, classifyOutputProblem, DeterminismCheckPrefix } from
 import { fingerprint, removeRecord, writeRecord } from './record';
 import { buildPrompt, findProjectRoot, sceneCanvas, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
 import { removeLive, writeLive } from './live';
-import { sandboxAvailable, sandboxed, sandboxProfile } from './sandbox';
+import { rendererHome, sandboxAvailable, sandboxed, sandboxProfile } from './sandbox';
 import { verifySeam } from './seam';
 import { leftoverFiles, resumePrompt, resumeState } from './resume';
 import { writeSceneData } from './scenedata';
-import { HyperFramesSkillName, rendererAccess, resolveAllSkills, skillsEnvironment, SkillsDirEnv, stageRendererSkills, unstageRendererSkills } from './skills';
+import { HyperFramesSkillName, rendererAccess, resolveAllSkills, skillsEnvironment, SkillsDirEnv, stagedSkills, stageRendererSkills, unstageRendererSkills } from './skills';
 import { VerificationError } from './verification';
 
 /** SIGTERM 之后等渲染器进程组自行退出的时间（毫秒）。 */
@@ -90,24 +90,31 @@ export async function run(
   // 渲染器的环境：onset 不在它的 PATH 里，HyperFrames 经 onset 的工具服务（--profile renderer）调用。
   const childEnv = childEnvironment(cfg, baseEnv, unsafe, parsePassthrough(baseEnv.ONSET_PASSTHROUGH_ENV ?? ''));
   addToolsLocation(childEnv);
+  // opencode 按 PWD 而不是进程的工作目录定项目目录：不安全模式下照搬过来的 PWD 是 onset 自己的目录，渲染器会写到镜头外面（2026-11 实测）。
+  childEnv.PWD = s.directory;
   const access = rendererAccess(resolvedSkills);
   access.toolsServer = onsetToolsServer(onsetExecutable(), 'renderer', s.directory, childEnv);
+  // 镜头要用的技能链进镜头目录（stageRendererSkills），opencode 另按名字只放行这几个。
+  access.skills = stagedSkills(resolvedSkills, prompt).map((x) => x.name);
   Object.assign(childEnv, rendererEnv(renderer, access, childEnv));
   const model = rendererModelFor(cfg, renderer);
-  // qoder 渲染器套系统沙箱：只能写镜头目录、读本项目与工具自己的目录（见 sandbox.ts）。不安全模式不套。
+  // 渲染器套系统沙箱：只能写镜头目录、读本项目与工具自己的目录（见 sandbox.ts）。macOS 上五家都套，不安全模式不套。
   const projectRoot = findProjectRoot(s.directory);
-  if (renderer === 'qoder' && !unsafe && projectRoot !== '' && sandboxAvailable()) access.osSandbox = true;
+  if (!unsafe && projectRoot !== '' && sandboxAvailable()) access.osSandbox = true;
   /** 渲染器的命令行：给定提示词与会话；qoder 再套系统沙箱。 */
   const invocation = (text: string, session: RendererSession | null): string[] => {
     let argv = rendererInvocation(renderer, text, unsafe, access, model, session);
     argv[0] = lookPath(argv[0], baseEnv.PATH ?? '');
     if (!access.osSandbox) return argv;
     const home = childEnv.HOME ?? baseEnv.HOME ?? '';
+    const own = rendererHome(renderer, home);
     const profile = sandboxProfile({
       sceneDir: s.directory,
       projectRoot,
       env: { ...baseEnv, ...childEnv },
-      toolStateDirs: home ? [path.join(home, '.qoder-cn'), path.join(home, '.qoder')] : [],
+      toolStateDirs: home ? own.state : [],
+      toolStateFiles: home ? own.files : [],
+      hiddenDirs: home ? own.hidden : [],
       // 渲染工具、onset 的运行时与资源、借来的浏览器所在的目录；资源目录的上一层是应用资源目录（开发时是仓库，浏览器模式从那里加载界面）。
       readDirs: [path.dirname(fs.realpathSync(argv[0])), path.dirname(process.execPath), ...(process.env.ONSET_ASSETS_DIR ? [path.dirname(process.env.ONSET_ASSETS_DIR)] : []), ...[process.env.ONSET_ASSETS_DIR, childEnv.ONSET_SELF, cliEnv[hyperframes.BrowserEnv], cliEnv[hyperframes.CLIDirEnv]].filter((v): v is string => !!v).map((v) => (fs.existsSync(v) && fs.statSync(v).isDirectory() ? v : path.dirname(v)))],
     });

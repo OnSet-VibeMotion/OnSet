@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { rendererInvocation } from '../tools';
-import { sandboxAvailable, sandboxed, sandboxProfile, SandboxExec } from './sandbox';
+import { rendererHome, sandboxAvailable, sandboxed, sandboxProfile, SandboxExec } from './sandbox';
 
 /** 假的家目录：本项目、另一个项目、~/.ssh 与 onset 的凭据目录。 */
 function home(): { home: string; project: string; scene: string; other: string } {
@@ -36,6 +36,29 @@ describe('renderer sandbox', () => {
     // 凭据的收回写成 file-read-data：写成 file-read* 会被前面放开项目目录的 allow 压过（实测）。
     expect(profile).toMatch(/\(deny file-read-data file-write\*\n {2}\(regex #"\/\\\.env\$"\)/);
     expect(profile).toContain(`(subpath "${path.join(h.home, '.local', 'share', 'onset', 'agent')}")`);
+  });
+
+  // 用户级的技能与插件藏起来；家目录根上的状态文件（~/.claude.json 与它的临时文件）能写。
+  it.runIf(sandboxAvailable())('hides user skills and allows the tool\'s own state files', () => {
+    const h = home();
+    fs.mkdirSync(path.join(h.home, '.claude', 'skills', 'mine'), { recursive: true });
+    fs.writeFileSync(path.join(h.home, '.claude', 'skills', 'mine', 'SKILL.md'), 'x\n');
+    fs.writeFileSync(path.join(h.home, '.claude.json'), '{}\n');
+    const own = rendererHome('claude', h.home);
+    const profile = sandboxProfile({ sceneDir: h.scene, projectRoot: h.project, env: { HOME: h.home, PATH: '/usr/bin:/bin' }, toolStateDirs: own.state, toolStateFiles: own.files, hiddenDirs: own.hidden, readDirs: [] });
+    const sh = (script: string) => spawnSync(SandboxExec, ['-p', profile, '/bin/sh', '-c', script], { cwd: h.scene, encoding: 'utf8' }).status === 0;
+    expect(sh(`cat "${path.join(h.home, '.claude', 'skills', 'mine', 'SKILL.md')}"`)).toBe(false);
+    expect(sh(`echo x > "${path.join(h.home, '.claude', 'state.txt')}"`)).toBe(true);
+    expect(sh(`cat "${path.join(h.home, '.claude.json')}" && echo 1 > "${path.join(h.home, '.claude.json.tmp.1')}"`)).toBe(true);
+  });
+
+  it('knows where each renderer keeps its state and skills', () => {
+    for (const tool of ['claude', 'codex', 'codebuddy', 'opencode', 'qoder']) {
+      const own = rendererHome(tool, '/h');
+      expect(own.state.length, tool).toBeGreaterThan(0);
+      expect(own.hidden, tool).toContain('/h/.agents/skills');
+    }
+    expect(rendererHome('claude', '/h').files).toEqual(['/h/.claude.json']);
   });
 
   it('only exists on macOS', () => {

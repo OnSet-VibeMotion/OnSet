@@ -43,10 +43,15 @@ export interface RendererAccess {
   /** onset 的工具服务（--profile renderer）：渲染器只经它调用 HyperFrames，不在 Bash 里跑 onset。 */
   toolsServer?: McpServer;
   /**
-   * 渲染器套在系统沙箱里（scene/sandbox.ts，目前只有 qoder）：边界由沙箱按目录管，渲染器自己不再按命令白名单拦，
+   * 渲染器套在系统沙箱里（scene/sandbox.ts，macOS 上五家都套）：边界由沙箱按目录管，渲染器自己不再按命令白名单拦，
    * python3、sips、组合命令都能跑。
    */
   osSandbox?: boolean;
+  /**
+   * 镜头要用的技能（已链进镜头目录，scene.stageRendererSkills）的名字。opencode 会从镜头目录往上一直找到项目根的
+   * .agents/skills，用 permission.skill 只放行这几个（rendererEnv）；其余几家按目录找，链在哪看见哪。
+   */
+  skills?: string[];
 }
 
 /**
@@ -188,12 +193,13 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
     case 'codex': {
       const mcp = server ? codexMcpOverrides(server) : [];
       const resume = session?.resume ? ['resume', session.id] : [];
-      if (unsafe) return ['codex', 'exec', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', ...mcp, ...m, '--json', ...resume, prompt];
+      // 系统沙箱里不再套 codex 自己的沙箱：它也是 sandbox-exec，套在沙箱里起不来；边界由外面那层管。
+      if (unsafe || access.osSandbox) return ['codex', 'exec', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', ...mcp, ...m, '--json', ...resume, prompt];
       return ['codex', '--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...mcp, ...m, '--json', ...resume, prompt];
     }
     case 'claude': {
       let mode = ['--dangerously-skip-permissions'];
-      if (!unsafe) mode = ['--permission-mode', 'acceptEdits', '--settings', claudeSettings({ ...access, mcp: server ? [server.name] : [] })];
+      if (!unsafe && !access.osSandbox) mode = ['--permission-mode', 'acceptEdits', '--settings', claudeSettings({ ...access, mcp: server ? [server.name] : [] })];
       // --mcp-config 吃多个值，后面必须紧跟一个选项（这里是 --verbose），不然会把提示词吞掉。
       const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
       return ['claude', '-p', ...mode, ...m, ...mcp, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', ...claudeSession, prompt];
@@ -214,7 +220,7 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
     case 'codebuddy': {
       let mode = ['--permission-mode', 'acceptEdits'];
       if (!unsafe && server) mode.push('--settings', claudeSettings({ ...access, commands: [], readDirs: access.readDirs, mcp: [server.name] }));
-      if (unsafe) mode = ['-y'];
+      if (unsafe || access.osSandbox) mode = ['-y'];
       const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
       return ['codebuddy', '-p', ...m, ...mcp, '--verbose', '--output-format', 'stream-json', ...mode, ...claudeSession, prompt];
     }
@@ -235,10 +241,19 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
 
 /** opencode 渲染器的工具服务经环境变量 OPENCODE_CONFIG_CONTENT 给（opencode run 没有 MCP 参数），合并用户自己的这个变量。 */
 export function rendererEnv(tool: string, access: RendererAccess, env: Record<string, string | undefined>): Record<string, string> {
-  if (tool !== 'opencode' || !access.toolsServer) return {};
+  if (tool !== 'opencode' || (!access.toolsServer && !access.skills)) return {};
   const own = parseConfig(env.OPENCODE_CONFIG_CONTENT);
-  const mcp = own.mcp && typeof own.mcp === 'object' ? (own.mcp as Record<string, unknown>) : {};
-  return { OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...own, mcp: { ...mcp, ...opencodeMcpConfig(access.toolsServer) } }) };
+  const config: Record<string, unknown> = { ...own };
+  if (access.toolsServer) {
+    const mcp = own.mcp && typeof own.mcp === 'object' ? (own.mcp as Record<string, unknown>) : {};
+    config.mcp = { ...mcp, ...opencodeMcpConfig(access.toolsServer) };
+  }
+  // 只放行镜头的技能：opencode 按 permission.skill 过滤技能列表（2026-11 实测，项目根与用户级的都不再出现）。
+  if (access.skills) {
+    const permission = own.permission && typeof own.permission === 'object' ? (own.permission as Record<string, unknown>) : {};
+    config.permission = { ...permission, skill: { '*': 'deny', ...Object.fromEntries(access.skills.map((name) => [name, 'allow'])) } };
+  }
+  return { OPENCODE_CONFIG_CONTENT: JSON.stringify(config) };
 }
 
 function parseConfig(text: string | undefined): Record<string, unknown> {

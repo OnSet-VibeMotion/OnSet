@@ -589,9 +589,11 @@ export function rendererAccess(resolved: Record<string, string> | null): Rendere
 }
 
 /**
- * qoder 渲染器的原生技能：把这个镜头提示词里点名的技能，以符号链接放进镜头目录的 `.qoder/skills/`，
- * 渲染器自己的 Skill 工具就能直接加载（比让它按路径一个个 Read 快）。配合 `--setting-sources project,local`
- * （tools.rendererInvocation），用户级的几十个技能不进来——里面还有旧版的 hyperframes，会顶掉项目钉死的版本。
+ * 渲染器的原生技能：把这个镜头提示词里点名的技能，以符号链接放进镜头目录里那家渲染工具读项目技能的位置
+ * （rendererSkillDirs 的 project：.claude/skills、.codex/skills、.qoder/skills、.codebuddy/skills、.opencode/skills），
+ * 渲染器自己的 Skill 工具就能直接加载（比让它按路径一个个 Read 快）。用户级的技能由系统沙箱藏起来（sandbox.ts 的
+ * rendererHome），qoder 另加 `--setting-sources project,local`；opencode 会一直往上找到项目根，另用 permission.skill
+ * 只放行这几个（tools.rendererEnv）。
  *
  * 只链提示词里出现了目录的技能：与渲染器被告知要用的那几份一一对应，不多带（song-explainer 之类只在对应镜头里）。
  * 链接只在渲染期间存在：stageRendererSkills 返回的函数在渲染结束后删掉它们；上次没删干净的，
@@ -599,6 +601,11 @@ export function rendererAccess(resolved: Record<string, string> | null): Rendere
  */
 export const QoderSkillsStage = path.join('.qoder', 'skills');
 const stageMarker = '.onset-staged.json';
+
+/** 一个渲染工具在镜头目录里读项目技能的位置；不认识的工具为空。 */
+export function rendererStageDir(renderer: string): string {
+  return rendererSkillDirs.get(renderer)?.project ?? '';
+}
 
 /** 一个技能实际的目录：注册技能解析到的是技能根（.agents/skills），整片风格与插件技能就是技能目录本身。 */
 function skillFolder(key: string, dir: string): string {
@@ -608,25 +615,35 @@ function skillFolder(key: string, dir: string): string {
   return '';
 }
 
-/** 链接名：qoder 按目录名认技能，film-style:own、plugin:站/技能 换成文件名能用的写法。 */
+/** 链接名：渲染工具按目录名认技能，film-style:own、plugin:站/技能 换成文件名能用的写法。 */
 function stagedName(key: string): string {
   return key.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
+/** 要链进镜头目录的技能：名字与真实目录，按提示词里出现了目录的挑。 */
+export function stagedSkills(resolved: Record<string, string>, prompt: string): { name: string; folder: string }[] {
+  const out: { name: string; folder: string }[] = [];
+  for (const [key, dir] of Object.entries(resolved)) {
+    const folder = skillFolder(key, dir);
+    if (folder === '' || !prompt.includes(folder)) continue;
+    const name = stagedName(key);
+    if (name === '' || out.some((s) => s.name === name)) continue;
+    out.push({ name, folder });
+  }
+  return out;
+}
+
 export function stageRendererSkills(renderer: string, sceneDir: string, resolved: Record<string, string>, prompt: string): () => void {
   unstageRendererSkills(sceneDir);
-  if (renderer !== 'qoder') return () => {};
-  const stage = path.join(sceneDir, QoderSkillsStage);
-  const qoderDir = path.dirname(stage);
-  const createdQoder = !fs.existsSync(qoderDir);
+  const rel = rendererStageDir(renderer);
+  if (rel === '') return () => {};
+  const stage = path.join(sceneDir, rel);
+  const parent = path.dirname(stage);
+  const createdParent = !fs.existsSync(parent);
   const createdStage = !fs.existsSync(stage);
   const linked: string[] = [];
   try {
-    for (const [key, dir] of Object.entries(resolved)) {
-      const folder = skillFolder(key, dir);
-      if (folder === '' || !prompt.includes(folder)) continue;
-      const name = stagedName(key);
-      if (name === '' || linked.includes(name)) continue;
+    for (const { name, folder } of stagedSkills(resolved, prompt)) {
       const link = path.join(stage, name);
       // 用户自己放在这里的同名技能不动。
       if (fs.existsSync(link) || isSymlink(link)) continue;
@@ -635,10 +652,10 @@ export function stageRendererSkills(renderer: string, sceneDir: string, resolved
       linked.push(name);
     }
   } finally {
-    if (linked.length > 0 || createdStage || createdQoder) {
+    if (linked.length > 0 || createdStage || createdParent) {
       try {
         fs.mkdirSync(stage, { recursive: true });
-        fs.writeFileSync(path.join(stage, stageMarker), JSON.stringify({ linked, createdStage, createdQoder }) + '\n');
+        fs.writeFileSync(path.join(stage, stageMarker), JSON.stringify({ linked, createdStage, createdParent }) + '\n');
       } catch {
         // 写不下标记：照常渲染，结束时按 linked 清理。
       }
@@ -647,31 +664,33 @@ export function stageRendererSkills(renderer: string, sceneDir: string, resolved
   return () => unstageRendererSkills(sceneDir);
 }
 
-/** 删掉 stageRendererSkills 放的链接（只删标记里记着、确实是符号链接的），以及它建出来、已经空了的目录。 */
+/** 删掉 stageRendererSkills 放的链接（只删标记里记着、确实是符号链接的），以及它建出来、已经空了的目录。各家的位置都看一遍：上次可能换过渲染工具。 */
 export function unstageRendererSkills(sceneDir: string): void {
-  const stage = path.join(sceneDir, QoderSkillsStage);
-  const marker = path.join(stage, stageMarker);
-  let record: { linked?: unknown; createdStage?: unknown; createdQoder?: unknown };
-  try {
-    record = JSON.parse(fs.readFileSync(marker, 'utf8'));
-  } catch {
-    return;
-  }
-  for (const name of Array.isArray(record.linked) ? record.linked : []) {
-    if (typeof name !== 'string' || name.includes('/') || name.includes('\\')) continue;
-    const link = path.join(stage, name);
-    if (isSymlink(link)) fs.rmSync(link, { force: true });
-  }
-  fs.rmSync(marker, { force: true });
-  const removeIfEmpty = (dir: string) => {
+  for (const rel of new Set([...rendererSkillDirs.values()].map((d) => d.project))) {
+    const stage = path.join(sceneDir, rel);
+    const marker = path.join(stage, stageMarker);
+    let record: { linked?: unknown; createdStage?: unknown; createdParent?: unknown; createdQoder?: unknown };
     try {
-      if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+      record = JSON.parse(fs.readFileSync(marker, 'utf8'));
     } catch {
-      // 不在或不空：留着。
+      continue;
     }
-  };
-  if (record.createdStage === true) removeIfEmpty(stage);
-  if (record.createdQoder === true) removeIfEmpty(path.dirname(stage));
+    for (const name of Array.isArray(record.linked) ? record.linked : []) {
+      if (typeof name !== 'string' || name.includes('/') || name.includes('\\')) continue;
+      const link = path.join(stage, name);
+      if (isSymlink(link)) fs.rmSync(link, { force: true });
+    }
+    fs.rmSync(marker, { force: true });
+    const removeIfEmpty = (dir: string) => {
+      try {
+        if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+      } catch {
+        // 不在或不空：留着。
+      }
+    };
+    if (record.createdStage === true) removeIfEmpty(stage);
+    if (record.createdParent === true || record.createdQoder === true) removeIfEmpty(path.dirname(stage));
+  }
 }
 
 function isSymlink(file: string): boolean {

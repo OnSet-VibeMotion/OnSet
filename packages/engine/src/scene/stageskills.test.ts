@@ -36,10 +36,21 @@ describe('qoder renderer skills', () => {
     expect(fs.existsSync(path.join(skills, 'hyperframes', 'SKILL.md'))).toBe(true);
   });
 
-  it('does nothing for other renderers', () => {
+  // 每家放在自己读项目技能的位置；换了渲染工具，上次那家的链接下次也清掉。
+  it('stages into each renderer\'s own skill folder', () => {
     const { skills, scene } = project();
-    stageRendererSkills('claude', scene, { hyperframes: skills }, `${skills}/hyperframes`);
-    expect(fs.existsSync(path.join(scene, '.qoder'))).toBe(false);
+    const prompt = `${skills}/hyperframes`;
+    for (const [tool, rel] of [['claude', '.claude/skills'], ['codex', '.codex/skills'], ['codebuddy', '.codebuddy/skills'], ['opencode', '.opencode/skills']] as const) {
+      const unstage = stageRendererSkills(tool, scene, { hyperframes: skills }, prompt);
+      expect(fs.lstatSync(path.join(scene, rel, 'hyperframes')).isSymbolicLink(), tool).toBe(true);
+      unstage();
+      expect(fs.existsSync(path.join(scene, rel.split('/')[0])), tool).toBe(false);
+    }
+    stageRendererSkills('claude', scene, { hyperframes: skills }, prompt);
+    unstageRendererSkills(scene);
+    expect(fs.existsSync(path.join(scene, '.claude'))).toBe(false);
+    stageRendererSkills('director', scene, { hyperframes: skills }, prompt);
+    expect(fs.readdirSync(scene)).toEqual([]);
   });
 
   it('leaves the user’s own .qoder files alone and clears leftovers from an interrupted render', () => {
