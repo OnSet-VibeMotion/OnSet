@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Icon, type IconName } from './Icon';
 import { api, errorText, post } from '../api';
 import type { BuiltinContents, ProgressState, ProjectState, Scene, StationInfo, StationOp, StationPageInfo, StationParam, StationPreview, StationRun, StationSetting, StationsResponse, Task } from '../types';
 import { setPluginCommands } from './chat/complete';
@@ -1043,11 +1044,22 @@ export function StationSlots({ at, context = {}, ...rest }: Omit<PageProps, 'tab
   );
 }
 
+/** 顶栏「页面」菜单里自带页面的图标。 */
+const builtinPageIcons: Record<string, IconName> = {
+  compose: 'layers',
+  style: 'brush',
+  voice: 'mic',
+  review: 'check',
+  memory: 'brain',
+  file: 'folder',
+};
+
 /**
- * 顶栏里的「插件」：插件页面不一个个塞进顶栏（几个插件一加顶栏就溢出），收进一个菜单。
- * 当前开着的是插件页面时，按钮显示那一页的名字。
+ * 顶栏的「页面」菜单：五个制作步骤之外的页面（合成、风格、音色、复查、记忆，内置插件登记的页面）与第三方插件的页面
+ * 不一个个摆在顶栏上（几个页面一摆，顶栏就乱、插件一多还会溢出），收进一个菜单，插件页面另起一组。
+ * 当前开着的是菜单里的页面时，按钮显示那一页的名字。
  */
-export function PluginMenu({ tabs, current, onPick }: { tabs: [string, string][]; current: string; onPick: (tab: `x:${string}`) => void }) {
+export function PageMenu({ pages, tabs, current, onPick }: { pages: [string, string][]; tabs: [string, string][]; current: string; onPick: (tab: string) => void }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1055,36 +1067,64 @@ export function PluginMenu({ tabs, current, onPick }: { tabs: [string, string][]
     const close = (e: MouseEvent) => {
       if (root.current && !root.current.contains(e.target as Node)) setOpen(false);
     };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
     window.addEventListener('mousedown', close);
-    return () => window.removeEventListener('mousedown', close);
+    window.addEventListener('keydown', esc);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', esc);
+    };
   }, [open]);
-  if (tabs.length === 0) return null;
-  const active = tabs.find(([id]) => id === current);
+  if (pages.length === 0 && tabs.length === 0) return null;
+  const active = [...pages, ...tabs].find(([id]) => id === current);
+  const item = (id: string, label: string, icon: ReactNode, owner?: string) => (
+    <button
+      key={id}
+      role="menuitem"
+      data-tab={id}
+      className={id === current ? 'on' : ''}
+      aria-current={id === current ? 'page' : undefined}
+      onClick={() => {
+        setOpen(false);
+        onPick(id);
+      }}
+    >
+      {icon}
+      {label}
+      {owner && <span className="page-menu-owner">{owner}</span>}
+    </button>
+  );
   return (
-    <div className="plugin-menu" ref={root}>
-      <button className={active ? 'on' : ''} id="plugin-menu-trigger" aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen(!open)}>
-        {active ? active[1] : '插件'} ▾
+    <div className="page-menu" ref={root}>
+      <button className={'page-menu-trigger' + (active ? ' on' : '')} id="page-menu-trigger" aria-expanded={open} aria-haspopup="menu" title="其他页面" onClick={() => setOpen(!open)}>
+        <Icon name="pages" size={13} />
+        <span>{active ? active[1] : '页面'}</span>
+        <Icon name="chevron" size={10} />
       </button>
       {open && (
-        <div className="plugin-menu-list" role="menu">
-          {tabs.map(([id, label]) => (
-            <button
-              key={id}
-              role="menuitem"
-              data-tab={id}
-              className={id === current ? 'on' : ''}
-              onClick={() => {
-                setOpen(false);
-                onPick(id as `x:${string}`);
-              }}
-            >
+        <div className="page-menu-list" role="menu">
+          {pages.map(([id, label]) =>
+            item(
+              id,
+              label,
+              <span className="page-icon">
+                <Icon name={builtinPageIcons[id] ?? 'file'} size={13} />
+              </span>,
+            ),
+          )}
+          {tabs.length > 0 && pages.length > 0 && <div className="page-menu-sep" role="separator" />}
+          {tabs.map(([id, label]) =>
+            item(
+              id,
+              label,
               <span className="station-icon">
                 <PluginGlyph />
-              </span>
-              {label}
-              <span className="plugin-menu-owner">{pageRegistry.get(id)?.station.name ?? ''}</span>
-            </button>
-          ))}
+              </span>,
+              pageRegistry.get(id)?.station.name ?? '',
+            ),
+          )}
         </div>
       )}
     </div>

@@ -411,29 +411,33 @@
   border-top: 1px solid var(--line);
 }
 
-/* 顶栏的「插件」菜单。 */
-.plugin-menu {
+/* 顶栏的「页面」菜单：步骤之外的页面与插件页面。 */
+.page-menu {
   position: relative;
   flex: none;
 }
-.plugin-menu > button {
+.page-menu > button.page-menu-trigger {
   height: 30px;
-  padding: 0 8px;
+  gap: 6px;
+  padding: 0 10px;
   border: 0;
+  border-radius: 999px;
   background: transparent;
-  color: var(--faint);
-  font-size: 12px;
+  color: var(--muted);
+  font-size: 13px;
 }
-.plugin-menu > button:hover {
-  background: transparent;
-  color: var(--text-2);
-}
-.plugin-menu > button.on {
+.page-menu > button.page-menu-trigger:hover,
+.page-menu > button.page-menu-trigger[aria-expanded='true'] {
+  background: var(--hover);
   color: var(--text);
-  box-shadow: inset 0 -1px 0 var(--accent);
-  border-radius: 0;
 }
-.plugin-menu .plugin-menu-list {
+.page-menu > button.page-menu-trigger.on {
+  color: var(--text);
+}
+.page-menu > button.page-menu-trigger.on svg:first-child {
+  color: var(--accent);
+}
+.page-menu .page-menu-list {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
@@ -447,38 +451,54 @@
   background: var(--raised);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
-.plugin-menu .plugin-menu-list button {
+.page-menu .page-menu-list button {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   height: 36px;
   padding: 0 8px;
+  border: 0;
   border-radius: 8px;
+  background: transparent;
   color: var(--text-2);
   font-size: 13px;
   text-align: left;
   box-shadow: none;
 }
-.plugin-menu .plugin-menu-list button:hover,
-.plugin-menu .plugin-menu-list button.on {
+.page-menu .page-menu-list button:hover,
+.page-menu .page-menu-list button.on {
   background: var(--hover);
   color: var(--text);
 }
-.plugin-menu .station-icon {
+.page-menu .page-menu-list button.on .page-icon {
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
+.page-menu .page-menu-sep {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--line);
+}
+.page-menu .page-icon,
+.page-menu .station-icon {
   display: inline-grid;
   place-items: center;
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  border: 1px solid var(--accent-line);
+  border: 1px solid var(--line-strong);
+  color: var(--text-3);
+}
+.page-menu .station-icon {
+  border-color: var(--accent-line);
   background: var(--accent-soft);
   color: var(--accent-text);
 }
-.plugin-menu .station-icon svg {
+.page-menu .station-icon svg {
   width: 13px;
   height: 13px;
 }
-.plugin-menu .plugin-menu-owner {
+.page-menu .page-menu-owner {
   margin-left: auto;
   font-size: 11px;
   color: var(--faint);

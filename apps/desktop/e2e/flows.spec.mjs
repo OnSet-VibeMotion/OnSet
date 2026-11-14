@@ -16,17 +16,20 @@ test('the top bar follows the flow of the project', async ({ page, project }) =>
   fs.writeFileSync(path.join(project.path, 'beat.yaml'), 'schema: 1\n');
   recordFlow(project, 'beat');
   await openProject(page, project);
-  const steps = page.locator('nav.steps [data-tab]');
+  const steps = page.locator('nav.steps .step:not(.route-step)');
   await expect(steps.first()).toHaveAttribute('data-tab', 'beat');
   await expect(steps).toHaveCount(5);
   await expect(page.locator('nav.steps [data-tab="script"]')).toHaveCount(0);
-  await expect(page.locator('nav.more-pages [data-tab="script"]')).toHaveCount(0);
-  await expect(page.locator('nav.more-pages [data-tab="beat"]')).toHaveCount(0);
+  // 用不上的口播稿页不在「页面」菜单里，节拍是步骤，也不重复列。
+  await page.locator('#page-menu-trigger').click();
+  await expect(page.locator('.page-menu-list [data-tab]').first()).toBeVisible();
+  await expect(page.locator('.page-menu-list [data-tab="script"]')).toHaveCount(0);
+  await expect(page.locator('.page-menu-list [data-tab="beat"]')).toHaveCount(0);
 });
 
 test('a speech project lists the script first and hides the beat page', async ({ page, project }) => {
   await openProject(page, project);
-  await expect(page.locator('nav.steps [data-tab]').first()).toHaveAttribute('data-tab', 'script');
+  await expect(page.locator('nav.steps .step:not(.route-step)').first()).toHaveAttribute('data-tab', 'script');
   await expect(page.locator('[data-tab="beat"]')).toHaveCount(0);
 });
 

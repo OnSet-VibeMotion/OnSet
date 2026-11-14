@@ -40,6 +40,10 @@ const paths = {
       <path d="M6 1.2v1.4M6 9.4v1.4M1.2 6h1.4M9.4 6h1.4M2.6 2.6l1 1M8.4 8.4l1 1M2.6 9.4l1-1M8.4 3.6l1-1" />
     </>
   ),
+  mic: <path d="M6 1.5a1.5 1.5 0 0 1 1.5 1.5v2.5a1.5 1.5 0 0 1-3 0V3A1.5 1.5 0 0 1 6 1.5zM3 5.5a3 3 0 0 0 6 0M6 8.5v2" />,
+  layers: <path d="M6 1.5l4.5 2.3L6 6.1 1.5 3.8zM1.5 6L6 8.3 10.5 6M1.5 8.2L6 10.5l4.5-2.3" />,
+  list: <path d="M4 3h6.5M4 6h6.5M4 9h6.5M1.6 3h.01M1.6 6h.01M1.6 9h.01" strokeWidth="1.5" />,
+  pages: <path d="M2 2h3.5v3.5H2zM6.5 2H10v3.5H6.5zM2 6.5h3.5V10H2zM6.5 6.5H10V10H6.5z" />,
   film: (
     <>
       <rect x="1.5" y="2" width="9" height="8" rx="1" />

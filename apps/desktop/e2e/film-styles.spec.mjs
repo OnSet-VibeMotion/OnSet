@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { test, expect, openProject } from './fixtures.mjs';
+import { test, expect, openProject, openPage } from './fixtures.mjs';
 
 // 一个项目装几种风格：风格页列出默认风格与其他风格、各有哪些镜头在用；镜头页显示本镜头的风格，
 // 「换风格」不直接改文件，而是把要求写进输入框交给编排工具。
@@ -32,7 +32,7 @@ test('shows several film styles and asks the orchestrator to change a scene', as
   writeScene(project.path, 'scene-003', 'none');
   await openProject(page, project);
 
-  await page.locator('[data-tab="style"]').click();
+  await openPage(page, 'style');
   await expect(page.locator('.style-intro.film h3')).toContainText('水彩笔刷');
   const ink = page.locator('.style-other[data-style="lemo-opuscar/ink-wash"]');
   await expect(ink).toContainText('中国水墨');

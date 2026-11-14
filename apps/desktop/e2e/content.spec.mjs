@@ -1,13 +1,13 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { test, expect, openProject } from './fixtures.mjs';
+import { test, expect, openProject, openPage } from './fixtures.mjs';
 
 // 从 internal/studio/ui/e2e/studio.spec.mjs 迁来：文件树、右键引用、@ 与 / 补全、回复里的风格海报、音频与 Markdown。
 
 test('opens a project file from the tree', async ({ page, project }) => {
   await openProject(page, project);
   // 文件树只在「文件」页里。
-  await page.locator('[data-tab="file"]').click();
+  await openPage(page, 'file');
   await page.locator('.tree-file', { hasText: 'notes.md' }).click();
   await expect(page.locator('#file-content')).toContainText('项目笔记');
 });
@@ -25,7 +25,7 @@ test('right-click quotes script text and files into the chat', async ({ page, pr
   await expect(page.locator('#attachments .quote-card')).toContainText('第一段，2025年很贵。');
   await expect(page.locator('#attachments .quote-card')).not.toContainText('二零二五年');
   // 文件树上右键：引用文件。
-  await page.locator('[data-tab="file"]').click();
+  await openPage(page, 'file');
   await page.locator('.tree-file', { hasText: 'notes.md' }).click({ button: 'right' });
   await page.locator('.ctx-item', { hasText: '引用这个文件到对话' }).click();
   await expect(page.locator('#attachments .quote-card')).toHaveCount(2);
@@ -62,7 +62,8 @@ test('completes @ mentions and / commands in the input', async ({ page, project 
   await expect(page.locator('#completions')).toContainText('记忆');
   await prompt.pressSequentially('记忆');
   await prompt.press('Enter');
-  await expect(page.locator('[data-tab="memory"]')).toHaveClass(/on/);
+  await expect(page.locator('#page-menu-trigger')).toHaveClass(/on/);
+  await expect(page.locator('#page-menu-trigger')).toContainText('记忆');
   // Esc 收起补全。
   await prompt.fill('@');
   await expect(page.locator('#completions')).toBeVisible();
@@ -219,7 +220,7 @@ test('steps scene frames with the arrow keys', async ({ page, project }) => {
 
 test('memory page explains the loop in three steps and records a preference', async ({ page, project }) => {
   await openProject(page, project);
-  await page.locator('[data-tab="memory"]').click();
+  await openPage(page, 'memory');
   const flow = page.locator('.memory-flow li');
   await expect(flow).toHaveCount(3);
   await expect(flow.nth(0)).toContainText('记下的问题');
@@ -268,7 +269,7 @@ test('storyboard lists the plan and each scene’s description before rendering'
   await fs.writeFile(project.promptFile, '# 开场\n\n门缝里透出一道光。\n');
   await openProject(page, project);
   // 分镜步骤排在口播稿与镜头之间。
-  await expect(page.locator('.steps .step')).toHaveText([/口播稿/, /分镜/, /镜头/, /成片/, /发布/]);
+  await expect(page.locator('.steps .step:not(.route-step)')).toHaveText([/口播稿/, /分镜/, /镜头/, /成片/, /发布/]);
   await page.locator('[data-tab="storyboard"]').click();
   await expect(page.locator('#storyboard .sb-title')).toHaveText('1 个镜头');
   await expect(page.locator('#storyboard .sb-chapter')).toHaveText('开场');

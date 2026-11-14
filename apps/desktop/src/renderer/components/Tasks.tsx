@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { forUser } from '../api';
+import { Icon } from './Icon';
 import type { Task } from '../types';
 
 const statusLabels: Record<Task['status'], string> = {
@@ -15,9 +16,10 @@ export function Tasks({ tasks, onCancel }: { tasks: Task[]; onCancel: (id: strin
   const active = tasks.filter((t) => t.status === 'queued' || t.status === 'running').length;
   return (
     <div className="tasks">
-      <button className="quiet" id="tasks-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-        任务
-        {tasks.length > 0 && <span className={'count' + (active ? ' on' : '')}>{active || tasks.length}</span>}
+      {/* 只在有任务在跑或排队时挂数字：做完的任务数不是要你注意的事。 */}
+      <button className="ghost icon tasks-toggle" id="tasks-toggle" aria-expanded={open} aria-label="任务" title={active ? `任务：${active} 个在进行` : '任务'} onClick={() => setOpen(!open)}>
+        <Icon name="list" size={14} />
+        {active > 0 && <span className="count on">{active}</span>}
       </button>
       {open && (
         <div className="popover" id="tasks">

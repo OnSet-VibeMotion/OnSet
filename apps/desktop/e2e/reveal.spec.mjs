@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { test, expect, openProject } from './fixtures.mjs';
+import { test, expect, openProject, openPage } from './fixtures.mjs';
 
 // 在 Finder 中显示：顶栏、原生菜单、镜头「⋯」菜单、右键菜单、首页最近项目。
 // 测试里不能真的弹 Finder，把主进程的 shell.openPath / showItemInFolder 换成记录。
@@ -39,7 +39,7 @@ test('shows the project, a scene and files in Finder', async ({ page, project, e
   await expect.poll(() => revealed(electronApp)).toEqual([['select', sceneDir]]);
 
   // 右键文件：选中那个文件。
-  await page.locator('[data-tab="file"]').click();
+  await openPage(page, 'file');
   const row = page.locator('[data-ctx-file="notes.md"]').first();
   await row.click({ button: 'right' });
   await page.locator('.ctx-menu button', { hasText: '在 Finder 中显示' }).click();

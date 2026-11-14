@@ -147,6 +147,12 @@ export async function openPanel(page) {
 }
 
 /** 在窗口里请求后台接口：界面从 am://app/ 加载，/api 与它同源。 */
+/** 打开顶栏「页面」菜单里的一页（合成、风格、音色、复查、记忆与插件页面）。 */
+export async function openPage(page, tab) {
+  await page.locator('#page-menu-trigger').click();
+  await page.locator(`.page-menu-list [data-tab="${tab}"]`).click();
+}
+
 export async function api(page, url, init) {
   return page.evaluate(
     async ({ url, init }) => {

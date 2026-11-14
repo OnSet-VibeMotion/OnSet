@@ -14,7 +14,7 @@ import { pageView } from './components/pageViews';
 import { scriptFinalPath } from './components/Script';
 import { storyboardFiles } from './components/Storyboard';
 import { currentSummary } from './components/Progress';
-import { isStationTab, PluginMenu, setStationPages, stationPageLabel } from './components/Stations';
+import { isStationTab, PageMenu, setStationPages, stationPageLabel } from './components/Stations';
 import type { StationsResponse } from './types';
 
 const tabLabel = (id: Tab) => tabs.find(([t]) => t === id)?.[1] ?? stationPageLabel(id) ?? id;
@@ -688,20 +688,22 @@ export function App() {
           </button>
         )}
         {currentId && !homeOpen && (
-          <button
-            className={'route-button' + (tab === 'progress' && panelOpen ? ' on' : '') + (route?.waiting_on === 'user' || now.station?.status === 'changed' ? ' waiting' : '')}
-            id="progress-open"
-            data-tab="progress"
-            aria-current={tab === 'progress' && panelOpen ? 'page' : undefined}
-            title={now.station ? `制作路线：现在在「${now.station.label}」，${now.text}` : '制作路线'}
-            onClick={() => showTab('progress')}
-          >
-            <Icon name="route" size={13} />
-            路线
-          </button>
-        )}
-        {currentId && !homeOpen && (
           <nav className="steps" aria-label="制作步骤">
+            {/* 制作路线是步骤条的第一格：同一种样式，有关卡在等你时编号位置亮一个黄铜色点。 */}
+            <button
+              className={'step route-step' + (tab === 'progress' && panelOpen ? ' on' : '') + (route?.waiting_on === 'user' || now.station?.status === 'changed' ? ' waiting' : '')}
+              id="progress-open"
+              data-tab="progress"
+              aria-current={tab === 'progress' && panelOpen ? 'page' : undefined}
+              title={now.station ? `制作路线：现在在「${now.station.label}」，${now.text}` : '制作路线'}
+              onClick={() => showTab('progress')}
+            >
+              <span className="step-no">
+                <Icon name="route" size={12} />
+              </span>
+              路线
+            </button>
+            <span className="steps-sep" aria-hidden="true" />
             {steps.map((id, index) => (
               <button
                 key={id}
@@ -726,17 +728,13 @@ export function App() {
         )}
         <span className="spacer" />
         {currentId && !homeOpen && (
-          <nav className="more-pages" aria-label="更多页面">
-            {visibleTabs(flowHidden, state?.pages)
-              .filter(([id]) => !steps.includes(id))
-              .map(([id, label]) => (
-                <button key={id} data-tab={id} className={tab === id && panelOpen ? 'on' : ''} aria-current={tab === id && panelOpen ? 'page' : undefined} onClick={() => showTab(id)}>
-                  {label}
-                </button>
-              ))}
-          </nav>
+          <PageMenu
+            pages={visibleTabs(flowHidden, state?.pages).filter(([id]) => !steps.includes(id)) as [string, string][]}
+            tabs={pluginTabs}
+            current={panelOpen ? tab : ''}
+            onPick={(id) => showTab(id as Tab)}
+          />
         )}
-        {currentId && !homeOpen && <PluginMenu tabs={pluginTabs} current={panelOpen ? tab : ''} onPick={showTab} />}
         {setupMissing > 0 && (
           <button className={'skills-pill' + (setupRequiredMissing ? ' bad' : '')} id="setup-pill" onClick={() => setSetupOpen(true)} title="渲染与配音要用的工具：点开一键安装">
             {setupCore > 0 ? `还差 ${setupCore} 项工具 · 去安装` : `可按需安装 ${setupMissing} 项`}
@@ -749,26 +747,30 @@ export function App() {
             {busy}
           </span>
         )}
+        {currentId && !homeOpen && <span className="topbar-sep" aria-hidden="true" />}
         {currentId && !homeOpen && (
           <button
-            className={'panel-toggle' + (panelOpen ? ' on' : '')}
+            className={'ghost icon panel-toggle' + (panelOpen ? ' on' : '')}
+            aria-label="画面"
             id="panel-toggle"
             aria-pressed={panelOpen}
             title={panelOpen ? '收起画面（⌘\\）' : '显示画面（⌘\\）'}
             onClick={() => setPanelOpen(!panelOpen)}
           >
-            <Icon name="panel" size={13} />
-            画面
+            <Icon name="panel" size={14} />
           </button>
         )}
         <Tasks tasks={tasks} onCancel={(id) => run(`/api/tasks/${id}/cancel`)} />
         <button className="ghost icon settings-trigger" id="settings-trigger" title="设置（⌘,）" aria-label="设置" onClick={() => setSettingsOpen(true)}>
           <Icon name="settings" size={14} />
         </button>
-        <span className={'pill conn' + (connected ? '' : ' down')} title={connected ? '已连接' : '连接断开'} aria-label={connected ? '已连接' : '连接断开'}>
-          <span className={'dot ' + (connected ? 'ok' : 'bad')} />
-          {!connected && <span>连接断开</span>}
-        </span>
+        {/* 连上了是常态，不占位置；只在断开时说一句。 */}
+        {!connected && (
+          <span className="pill conn down" title="连接断开" aria-label="连接断开">
+            <span className="dot bad" />
+            <span>连接断开</span>
+          </span>
+        )}
       </header>
 
       {loaded && (!currentId || homeOpen) && guideOpen ? (

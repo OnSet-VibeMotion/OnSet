@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { test, expect, openProject, api, desktopDir, installPlugin, installedPlugins } from './fixtures.mjs';
+import { test, expect, openProject, api, desktopDir, installPlugin, installedPlugins, openPage } from './fixtures.mjs';
 
 // 测试用的假发布站：只写回执，不联网（packages/engine/src/flow/testdata/fake-publisher）。
 const fake = path.resolve(desktopDir, '..', '..', 'packages', 'engine', 'src', 'flow', 'testdata', 'fake-publisher');
@@ -107,11 +107,11 @@ test('a plugin page runs sandboxed and gets everything through the host', async 
   installPlugin(sandbox, fake);
   await openProject(page, project);
 
-  // 插件页面收在顶栏的「插件」菜单里（只用来嵌小窗的页面不列）。
-  await page.locator('#plugin-menu-trigger').click();
-  await expect(page.locator('.plugin-menu-list [data-tab]')).toHaveCount(1);
-  await page.locator('.plugin-menu-list [data-tab="x:fake-publisher:dashboard"]').click();
-  await expect(page.locator('#plugin-menu-trigger')).toHaveText('发布看板 ▾');
+  // 插件页面收在顶栏「页面」菜单里自己的一组（只用来嵌小窗的页面不列）。
+  await page.locator('#page-menu-trigger').click();
+  await expect(page.locator('.page-menu-list .station-icon')).toHaveCount(1);
+  await page.locator('.page-menu-list [data-tab="x:fake-publisher:dashboard"]').click();
+  await expect(page.locator('#page-menu-trigger')).toHaveText('发布看板');
   const host = page.locator('.station-page');
   await expect(host).toContainText('第三方插件 · 假发布');
   const frame = page.frameLocator('.station-frame');
@@ -158,8 +158,7 @@ test('a plugin page runs sandboxed and gets everything through the host', async 
   await page.locator('#prompt').fill('');
   await page.locator('.steps [data-tab="script"]').click();
   await expect(page.locator('.station-frame')).toHaveCount(0);
-  await page.locator('#plugin-menu-trigger').click();
-  await page.locator('.plugin-menu-list [data-tab="x:fake-publisher:dashboard"]').click();
+  await openPage(page, 'x:fake-publisher:dashboard');
   await expect(frame.locator('#title')).toHaveText(`假发布 · ${project.name}`);
   await expect(frame.locator('#receipt')).toHaveText('回执：https://example.invalid/douyin/1');
   await clickInPage(frame.locator('#send'), () => expect(confirm).toBeVisible({ timeout: 2000 }));
@@ -341,8 +340,7 @@ test('files a plugin op writes outside what it declared are shown as a warning',
 
   // 插件页面的 am.run()：用户点「执行」后，回执处（宿主那一侧）标出越界的文件。
   fs.rmSync(path.join(project.path, 'notes'), { recursive: true, force: true });
-  await page.locator('#plugin-menu-trigger').click();
-  await page.locator('.plugin-menu-list [data-tab="x:fake-publisher:dashboard"]').click();
+  await openPage(page, 'x:fake-publisher:dashboard');
   const host = page.locator('.station-page');
   const frame = page.frameLocator('.station-frame');
   await expect(frame.locator('#title')).toHaveText(`假发布 · ${project.name}`);
