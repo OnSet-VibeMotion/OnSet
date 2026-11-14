@@ -100,8 +100,11 @@ export function memoryAPI(s: Server, request: Request): Response {
         const c: Record<string, unknown> = memory.cellToJSON(cell);
         // output 是这一格产物相对项目根的路径，供画面对照读取；不在项目里时不写。
         if (path.isAbsolute(cell.workdir)) {
-          const rel = path.relative(p.path, examOutput(cell.workdir));
-          if (!rel.startsWith('..') && fileExists(path.join(p.path, rel))) {
+          let rel: string | undefined;
+          try {
+            rel = path.relative(p.path, fs.realpathSync(examOutput(cell.workdir)));
+          } catch { /* 产物尚不存在或已移走。 */ }
+          if (rel && !path.isAbsolute(rel) && rel !== '..' && !rel.startsWith('..' + path.sep) && fileExists(path.join(p.path, rel))) {
             c.output = rel.split(path.sep).join('/');
             const q = (exam.questions ?? []).find((q) => q.id === cell.question);
             const source = q?.holdout ? q.input : byID.get(q?.episode ?? '')?.scene_dir ?? '';

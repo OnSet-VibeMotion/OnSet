@@ -131,7 +131,7 @@ test('shows running tasks on the Dock badge and notifies when they finish', asyn
   // 镜头页「⋯」里的「校验」：一个经私有 onset shim 运行的写任务。点步骤打开画面面板。
   await page.locator('[data-tab="scene"]').click();
   await page.locator('.scene-menu summary').click();
-  await page.locator('.scene-menu button', { hasText: '校验' }).first().click();
+  await page.locator('.scene-menu-body').getByRole('button', { name: '校验', exact: true }).click();
   await expect.poll(async () => (await nativeCalls(electronApp)).badges.some((n) => n >= 1)).toBe(true);
   await expect.poll(async () => (await nativeCalls(electronApp)).notes.map((n) => n.title), { timeout: 20_000 }).toContainEqual(
     expect.stringMatching(/^任务(完成|失败)$/),

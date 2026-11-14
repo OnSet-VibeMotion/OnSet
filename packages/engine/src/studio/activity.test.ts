@@ -28,6 +28,24 @@ const say = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'te
 describe('scene activity', () => {
   afterEach(() => resetActivityCache());
 
+  it('reports Codex MCP lifecycle and keeps parallel calls independent on every platform', () => {
+    const dir = tempDir();
+    const log = path.join(dir, 'render-s1.stream.jsonl');
+    const item = { id: 'render', type: 'mcp_tool_call', server: 'onset', tool: 'hyperframes', arguments: { subcommand: 'render' } };
+    const append = (event: object) => fs.appendFileSync(log, JSON.stringify(event) + '\n');
+    append({ type: 'thread.started', thread_id: 'fixture' });
+    append({ type: 'item.started', item });
+    append({ type: 'item.completed', item: { id: 'shell', type: 'command_execution', status: 'completed', exit_code: 0 } });
+    const running = sceneActivity(summary(dir)) as Record<string, any>;
+    expect(running.tool_lifecycle).toBe('codex-mcp-v1');
+    expect(running.steps[0]).toMatchObject({ tool: 'mcp__onset__hyperframes', input: { subcommand: 'render' }, state: 'running' });
+    expect(running.steps[1]).toMatchObject({ tool: 'shell', state: 'done' });
+    append({ type: 'item.completed', item: { ...item, status: 'completed', result: { content: [{ type: 'text', text: 'rendered' }] } } });
+    const finished = sceneActivity(summary(dir)) as Record<string, any>;
+    expect(finished.steps).toHaveLength(2);
+    expect(finished.steps[0]).toMatchObject({ state: 'done', output: 'rendered' });
+  });
+
   it('sniffs which CLI wrote the stream', () => {
     expect(sniffStreamTool(init)).toBe('claude');
     expect(sniffStreamTool('{"type":"thread.started","thread_id":"a"}')).toBe('codex');

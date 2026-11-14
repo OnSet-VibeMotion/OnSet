@@ -16,6 +16,10 @@ export interface ExamAudio {
 /** 仅沿考试记录的来源，在已登记项目里匹配；不接受请求方提供任意音频路径。 */
 export function resolveExamAudio(project: string, workdir: string, sourceDirectory: string, projects: Pick<Project, 'path' | 'name'>[]): ExamAudio | null {
   try {
+    // 考试记录可能保留 /var 等别名，项目登记则使用 realpath。先统一路径，再校验项目边界。
+    project = fs.realpathSync(project);
+    workdir = fs.realpathSync(workdir);
+    if (sourceDirectory) sourceDirectory = fs.realpathSync(sourceDirectory);
     const frozen = scene.load(containedPath(project, path.relative(project, workdir)));
     const sourceProject = sourceDirectory ? projects.find((p) => {
       const rel = path.relative(p.path, sourceDirectory);

@@ -66,13 +66,14 @@ it('serves old cross-project exam narration only through a recorded question and
   server.openProject(sourceRoot); server.openProject(root);
   const response = await studioRequest(server, 'GET', '/api/memory');
   const cell = response.body.exams.find((e: {id: string}) => e.id === exam.id).cells[0];
+  expect(cell.output).toBeDefined();
   expect(cell.preview_audio).toMatchObject({start_seconds: 2, source_project: path.basename(sourceRoot)});
   const served = await send(server, 'GET', cell.preview_audio.url, undefined, {Range: 'bytes=0-5'});
   expect(served.status).toBe(206);
   expect(await served.text()).toBe('SOURCE');
   expect((await send(server, 'GET', cell.preview_audio.url.replace('question=h1', 'question=unknown'))).status).toBe(404);
   expect(resolveExamAudio(root, exam.cells![0].workdir, directory, [])).toBeNull();
-  expect(server.currentProject().path).toBe(root);
+  expect(server.currentProject().path).toBe(fs.realpathSync(root));
   expect((await send(server, 'GET', '/api/raw?path=' + encodeURIComponent(path.join(sourceRoot, 'production/audio/voice.wav')))).status).toBe(404);
   const file = path.join(memoryDir, 'exams', exam.id, 'result.json');
   const lost = JSON.parse(fs.readFileSync(file, 'utf8'));

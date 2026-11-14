@@ -2,6 +2,7 @@ import { playerProps } from '../media';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { ReactNode } from 'react';
 import { Fragment, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api, errorText, post, rawURL } from '../api';
 import type { Attachment, ProgressState, Box, ProjectFilmStyle, ProjectState, ProjectUsage, Scene, TreeFile, Usage } from '../types';
 import { cssSelector } from '../selector';
@@ -322,9 +323,10 @@ function SceneTab(props: Props & { scene: Scene | null }) {
   const [note, setNote] = useState('');
   const [feedback, setFeedback] = useState('');
   const menu = useRef<HTMLDetailsElement>(null);
+  const menuBody = useRef<HTMLDivElement>(null);
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right: number; maxHeight: number } | null>(null);
 
-  // 菜单按视口定位（fixed）：外层容器会裁剪、时间线会盖住绝对定位的弹出层。
+  // 菜单挂到 body 后按视口定位，避开面板动画的 transform 包含块与外层裁剪。
   // 下方放得下就往下开，否则往上开，高度不够时菜单内部滚动。
   const placeMenu = () => {
     const el = menu.current;
@@ -355,7 +357,8 @@ function SceneTab(props: Props & { scene: Scene | null }) {
   useEffect(() => {
     const close = (e: MouseEvent) => {
       const el = menu.current;
-      if (el?.open && !el.contains(e.target as Node)) el.open = false;
+      const target = e.target as Node;
+      if (el?.open && !el.contains(target) && !menuBody.current?.contains(target)) el.open = false;
     };
     document.addEventListener('click', close);
     return () => document.removeEventListener('click', close);
@@ -616,8 +619,8 @@ function SceneTab(props: Props & { scene: Scene | null }) {
               <summary aria-label="更多操作" title="更多操作">
                 <Icon name="more" size={16} />
               </summary>
-              {/* Windows 的 details toggle 异步送达；定位前先隐藏，避免首帧在视口外闪现。 */}
-              <div className="scene-menu-body" style={window.onset?.platform === 'win32' && !menuPos ? { visibility: 'hidden' } : menuPos ?? undefined}>
+              {/* details toggle 异步送达，定位完成后再显示。 */}
+              {menuPos && createPortal(<div className="scene-menu-body" ref={menuBody} style={menuPos}>
                 {scene.exists && (
                   <div className="menu-group">
                     <button id="attach-frame" onClick={attach}>
@@ -683,7 +686,7 @@ function SceneTab(props: Props & { scene: Scene | null }) {
                     </span>
                   )}
                 </div>
-              </div>
+              </div>, document.body)}
             </details>
           </div>
           {error && <p className="error-line">{error}</p>}

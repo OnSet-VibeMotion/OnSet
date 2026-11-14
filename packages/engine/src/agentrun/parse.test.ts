@@ -40,14 +40,13 @@ function lastText(events: Event[]): string {
 }
 
 describe('agentrun parse', () => {
-  it('reports Windows Codex MCP starts and actual results without changing other platforms',()=>{
+  it('reports Codex MCP starts and actual results on every platform',()=>{
     const parser=newParser('codex');
     const item={id:'m1',type:'mcp_tool_call',server:'onset',tool:'hyperframes',arguments:{subcommand:'render'}};
     const started=parser.parse(JSON.stringify({type:'item.started',item}));
-    expect(started).toEqual(process.platform==='win32'?[{kind:KindToolCall,tool:'mcp__onset__hyperframes',call_id:'m1',input:{subcommand:'render'}}]:[]);
+    expect(started).toEqual([{kind:KindToolCall,tool:'mcp__onset__hyperframes',call_id:'m1',input:{subcommand:'render'}}]);
     const result=parser.parse(JSON.stringify({type:'item.completed',item:{...item,status:'completed',error:null,result:{isError:true,content:[{type:'text',text:'actual check failed'}]}}}));
-    if(process.platform==='win32')expect(result).toEqual([{kind:KindToolResult,tool:'mcp__onset__hyperframes',call_id:'m1',input:{subcommand:'render'},text:'actual check failed',is_error:true}]);
-    else expect(result[0].tool).toBe('mcp_tool_call');
+    expect(result).toEqual([{kind:KindToolResult,tool:'mcp__onset__hyperframes',call_id:'m1',input:{subcommand:'render'},text:'actual check failed',is_error:true}]);
   });
   it.each(['claude', 'qoder', 'codebuddy'])('tracks concurrent %s background tasks through progress and completion', (tool) => {
     const parser = newParser(tool);

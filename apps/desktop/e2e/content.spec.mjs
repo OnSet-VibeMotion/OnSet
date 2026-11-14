@@ -140,7 +140,19 @@ test('scene "more" menu opens as a popover inside the window, above the timeline
   await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.isResizable()).setSize(1100, 640));
   await openProject(page, project);
   await page.locator('[data-tab="scene"]').click();
-  await page.locator('.scene-menu > summary').click();
+  // 面板进入动画会建立 fixed 定位的包含块；保持这一状态，不能靠动画结束碰巧通过。
+  await page.addStyleTag({ content: '.panel { transform: translateX(0) !important; }' });
+  await page.locator('.scene-menu > summary').scrollIntoViewIfNeeded();
+  // details 的 toggle 在下一次任务才送达；第一帧不能先露出一个尚未定位的菜单。
+  const opening = await page.locator('.scene-menu > summary').evaluate((summary) => {
+    summary.click();
+    const body = document.querySelector('.scene-menu-body');
+    if (!body) return { visible: false, bottom: 0, height: innerHeight };
+    const style = getComputedStyle(body);
+    const box = body.getBoundingClientRect();
+    return { visible: style.visibility !== 'hidden' && style.display !== 'none', bottom: box.bottom, height: innerHeight };
+  });
+  expect(opening.visible ? opening.bottom : 0).toBeLessThanOrEqual(opening.height);
   const body = page.locator('.scene-menu-body');
   await expect(body).toBeVisible();
   const box = await body.boundingBox();
@@ -154,6 +166,10 @@ test('scene "more" menu opens as a popover inside the window, above the timeline
     y: box.y + box.height - 6,
   });
   expect(onTop).toBe(true);
+  // 顶层菜单内的点击仍算内部操作，输入反馈不能把菜单关掉。
+  await body.getByRole('textbox', { name: '反馈说明' }).click();
+  await body.getByRole('textbox', { name: '反馈说明' }).fill('保留这个镜头');
+  await expect(body).toBeVisible();
   await page.screenshot({ path: test.info().outputPath('scene-menu.png') });
   // 点外面收起。
   await page.locator('.scene-title').click();

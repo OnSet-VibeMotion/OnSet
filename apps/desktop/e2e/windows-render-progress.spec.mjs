@@ -2,8 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {test,expect,openProject} from './fixtures.mjs';
 
-test('distinguishes model waiting, MCP rendering, reconnecting and completion on Windows',async({page,project})=>{
- test.skip(process.platform!=='win32','Windows progress adaptation');
+test('distinguishes model waiting, MCP rendering, reconnecting and completion on every platform',async({page,project})=>{
  const directory=path.join(project.path,'scenes/scene-001'),stream=path.join(directory,'render-scene-001.stream.jsonl'),live=path.join(directory,'render-scene-001.live.json');
  const done={type:'item.completed',item:{id:'cmd',type:'command_execution',command:'inspect existing files',aggregated_output:'done',exit_code:0,status:'completed'}};
  fs.writeFileSync(stream,[{type:'thread.started',thread_id:'fixture'},done].map(row=>JSON.stringify(row)).join('\n')+'\n');

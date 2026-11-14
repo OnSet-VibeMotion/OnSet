@@ -441,20 +441,24 @@ function parseCodex(e: Obj): Event[] {
     case 'item.started':
     case 'item.updated':
       if (str(item.type) === 'todo_list') return [{ kind: KindPlan, plan: planFromCodex(item) }];
-      if(process.platform==='win32'&&str(e.type)==='item.started'&&str(item.type)==='mcp_tool_call'){
-        return [{kind:KindToolCall,tool:`mcp__${str(item.server)}__${str(item.tool)}`,call_id:str(item.id),input:rawJSON(item.arguments??{})}];
+      if (str(e.type) === 'item.started' && str(item.type) === 'mcp_tool_call') {
+        return [{ kind: KindToolCall, tool: `mcp__${str(item.server)}__${str(item.tool)}`, call_id: str(item.id), input: rawJSON(item.arguments ?? {}) }];
       }
       if (str(e.type) === 'item.started' && str(item.type) === 'command_execution') {
         return [{ kind: KindToolCall, tool: 'shell', call_id: str(item.id), input: rawJSON({ command: item.command ?? null }) }];
       }
       break;
     case 'item.completed':
-      if(process.platform==='win32'&&str(item.type)==='mcp_tool_call'){
-        const result=obj(item.result),content=Array.isArray(result.content)?result.content:[];
-        const text=content.filter(part=>str(obj(part).type)==='text').map(part=>str(obj(part).text)).join('\n')||str(obj(item.error).message);
-        return [{kind:KindToolResult,tool:`mcp__${str(item.server)}__${str(item.tool)}`,call_id:str(item.id),input:rawJSON(item.arguments??{}),text:clip(text),is_error:str(item.status)==='failed'||result.isError===true||item.error!=null}];
-      }
       switch (str(item.type)) {
+        case 'mcp_tool_call': {
+          const result = obj(item.result);
+          const text = toolResultText(result.content) || str(obj(item.error).message);
+          return [{
+            kind: KindToolResult, tool: `mcp__${str(item.server)}__${str(item.tool)}`, call_id: str(item.id),
+            input: rawJSON(item.arguments ?? {}), text: clip(text),
+            is_error: str(item.status) === 'failed' || result.isError === true || item.error != null,
+          }];
+        }
         case 'agent_message':
           return [{ kind: KindText, text: str(item.text) }];
         case 'todo_list':
@@ -466,7 +470,6 @@ function parseCodex(e: Obj): Event[] {
           return [{ kind: KindToolResult, tool: 'shell', call_id: str(item.id), text: clip(str(item.aggregated_output)), is_error: code !== 0 }];
         }
         case 'file_change':
-        case 'mcp_tool_call':
         case 'web_search': {
           const failed = str(item.status) === 'failed';
           return [{ kind: KindToolResult, tool: str(item.type), call_id: str(item.id), input: rawJSON(item), is_error: failed }];

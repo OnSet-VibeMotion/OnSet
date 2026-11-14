@@ -223,7 +223,7 @@ export function sceneActivity(sc: SceneSummary): Record<string, unknown> {
   return goMap({
     scene_id: sc.id,
     rendering,
-    ...(process.platform==='win32'?{tool_lifecycle:'codex-mcp-v1'}:{}),
+    tool_lifecycle: 'codex-mcp-v1',
     renderer: live?.renderer || state?.tool || undefined,
     model: state?.model || undefined,
     started_at: live?.started_at || (read ? new Date(read.info.birthtimeMs).toISOString() : undefined),
