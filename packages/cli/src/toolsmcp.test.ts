@@ -86,6 +86,25 @@ describe('onset tools MCP', () => {
     expect(prepareCall(hf, { subcommand: 'timeline', args: ['--json'] }).args).toEqual(['--json']);
   });
 
+  it('keeps direct rendering out of the orchestrator while retaining inspection and dispatch', async () => {
+    const tools = describeTools('orchestrator');
+    const hf = tools.find((t) => t.name === 'hyperframes')!;
+    expect(hf.inputSchema.properties!.subcommand.enum).not.toContain('render');
+    expect(hf.help).not.toContain('hyperframes({"subcommand": "render"})');
+    expect(hf.help).toContain('scene_run');
+    expect(prepareCall(hf, { subcommand: 'snapshot', args: ['scenes/scene-002', '--at', '1.5'] }).args).toContain('--describe');
+    const spawned: string[] = [];
+    const replies = await call([
+      { id: 1, method: 'tools/call', params: { name: 'hyperframes', arguments: { subcommand: 'render', args: ['scenes/scene-002'] } } },
+    ], (name, params) => { spawned.push(name); return fakeWorker('')(name, params); });
+    expect(replies.get(1).result.isError).toBe(true);
+    expect(text(replies.get(1))).toContain('scene_run');
+    expect(spawned).toEqual([]);
+    expect(tools.map((t) => t.name)).toEqual(expect.arrayContaining(['scene_run', 'scene_run_all']));
+    const renderer = describeTools('renderer').find((t) => t.name === 'hyperframes')!;
+    expect(prepareCall(renderer, { subcommand: 'render' })).toMatchObject({ subcommand: 'render' });
+  });
+
   it('runs an operation and returns its text and structured result', async () => {
     const replies = await call(
       [{ id: 1, method: 'tools/call', params: { name: 'beat_bars', arguments: {} } }],

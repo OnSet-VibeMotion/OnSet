@@ -168,6 +168,25 @@ describe('tools', () => {
     }
   });
 
+  it('protects scene code from Qoder orchestrator file edits without blocking briefs or renderer edits', () => {
+    const server = { name: 'onset', command: '/app/onset', args: ['studio', 'tools-mcp'] };
+    const root = path.resolve('/project').replaceAll('\\', '/');
+    for (const resume of [false, true]) {
+      const { argv } = orchestratorInvocation('qoder', { prompt: 'p', workdir: '/project', sessionID: 's1', resume, toolsServer: server });
+      const settings = JSON.parse(argv[argv.indexOf('--settings') + 1]);
+      expect(settings.mcp).toEqual({ lazyLoad: false });
+      for (const ext of ['html', 'css', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx']) {
+        for (const dir of ['scenes', 'production/shared']) {
+          expect(settings.permissions.deny).toContain(`Edit(/${root}/${dir}/**/*.${ext})`);
+        }
+      }
+      expect(settings.permissions.deny.join(' ')).not.toMatch(/prompt\.md|scene\.json/);
+    }
+    const argv = rendererInvocation('qoder', 'p', false, { toolsServer: server });
+    const settings = JSON.parse(argv[argv.indexOf('--settings') + 1]);
+    expect(settings.permissions.deny.join(' ')).not.toContain('/scenes/');
+  });
+
   it('extract messages for every stream shape', () => {
     const tests: Record<string, string> = {
       claude: `{"type":"assistant","message":{"content":[{"type":"text","text":"[[USER_MESSAGE]]claude"}]}}`,
@@ -277,7 +296,7 @@ describe('tools', () => {
     it('keeps qoder from lazy-loading the approval and tools servers', () => {
       const permissionPrompt = { command: '/app/onset', args: ['studio', 'permission-mcp'], server: 'onset_studio' };
       const { argv } = orchestratorInvocation('qoder', { prompt: 'hello', permissionPrompt, toolsServer: server });
-      expect(JSON.parse(argv[argv.indexOf('--settings') + 1])).toEqual({ mcp: { lazyLoad: false } });
+      expect(JSON.parse(argv[argv.indexOf('--settings') + 1])).toMatchObject({ mcp: { lazyLoad: false } });
       expect(argv.indexOf('--settings')).toBeLessThan(argv.indexOf('--mcp-config'));
       expect(argv[argv.indexOf('--permission-prompt-tool') + 1]).toBe('mcp__onset_studio__ask');
       // 没有任何 MCP 服务时不加。

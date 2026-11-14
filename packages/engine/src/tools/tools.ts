@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { windowsPromptInput } from './windows';
 import { marshal } from '../gojson';
 import { defaultDir as directorDir, resolveService as directorService, Tool as DirectorToolName } from '../director';
@@ -100,7 +101,24 @@ export function onsetToolsServer(executable: string, profile: 'orchestrator' | '
  * 只要有一处设置写了 mcp.lazyLoad 它就照设置来，所以经 --settings 关掉。
  */
 const qoderEagerSettings = { mcp: { lazyLoad: false } };
-const qoderEagerMcp = ['--settings', JSON.stringify(qoderEagerSettings)];
+
+/**
+ * 制作端的 accept_edits 会自动批准镜头源码改写；用文件工具的 deny 再守一层角色边界。
+ * 只限制实现代码，不拦 prompt.md / scene.json 或素材准备。Bash/脚本不是文件工具，
+ * 不能把这当成系统沙箱；每轮的 scene-ownership 说明同时约束复制、同步和脚本写入。
+ * 渲染器使用自己的设置，不能继承这些禁令。
+ */
+function qoderOrchestratorSettings(workdir: string): string {
+  const deny: string[] = [];
+  const root = path.resolve(workdir || '.').replaceAll('\\', '/');
+  for (const dir of ['scenes', 'production/shared']) {
+    for (const ext of ['html', 'css', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx']) {
+      // Qoder 的文件写规则统一用 Edit（也覆盖 Write）；// 开头表示绝对路径。
+      deny.push(`Edit(/${root}/${dir}/**/*.${ext})`);
+    }
+  }
+  return marshal({ ...qoderEagerSettings, permissions: { deny } });
+}
 
 /**
  * qoder 渲染器不读用户级设置：用户级技能目录里有几十个与渲染无关的技能（飞书、百炼……，实测 74 个），
@@ -478,7 +496,7 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
         args.push('--permission-mode', 'accept_edits');
         for (const command of access.commands ?? []) args.push('--allowed-tools', 'Bash(' + command + ':*)');
         if (o.toolsServer) args.push('--allowed-tools', 'mcp__' + o.toolsServer.name);
-        if (o.toolsServer || o.permissionPrompt) args.push(...qoderEagerMcp);
+        if (o.toolsServer || o.permissionPrompt) args.push('--settings', qoderOrchestratorSettings(workdir));
         args.push(...mcpArgs(o.permissionPrompt, o.toolsServer));
       }
       if (o.resume) args.push('-r', sessionID);
