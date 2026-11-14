@@ -387,6 +387,8 @@ export async function serveToolsMCP(
   const tools = describeTools(profile, process.cwd());
   const byName = new Map(tools.map((t) => [t.name, t]));
   const jobs = new Jobs(spawner);
+  // 被取消（编排工具那一整组收到 SIGTERM）时立刻停掉还在跑的任务：等不到 stdin 关闭，进程可能随后就被 SIGKILL。
+  signal?.addEventListener('abort', () => jobs.stopAll(), { once: true });
   const pending: Promise<void>[] = [];
   try {
     for await (const line of lines) {

@@ -21,17 +21,31 @@ for (const stream of [process.stdout, process.stderr]) {
 
 const controller = new AbortController();
 let interrupted = false;
-process.on('SIGINT', () => {
-  // 第二次 Ctrl-C 直接退出，不等子进程收尾。
-  if (interrupted) process.exit(130);
-  interrupted = true;
-  controller.abort();
-});
+// SIGTERM / SIGHUP 与 Ctrl-C 一样先取消、让操作收拾自己起的子进程（渲染器各成进程组，不收拾就留在后台）。
+// 以前只认 SIGINT：客户端停掉一轮时整组发 SIGTERM，工具服务与执行进程按 Node 的缺省立刻退出，
+// 已经起来的镜头渲染器没人管，用户在界面上怎么都停不掉（2026-11 实测）。
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+  process.on(sig, () => {
+    // 第二次直接退出，不等子进程收尾。
+    if (interrupted) process.exit(sig === 'SIGINT' ? 130 : 143);
+    interrupted = true;
+    controller.abort();
+  });
+}
 
 // 操作的执行进程：`onset.cjs [--unsafe] __op <名字> <参数 JSON>`，工具服务与客户端后端都起它跑一条操作（ops/worker.ts）。
 const argv = process.argv.slice(2);
 const unsafe = argv[0] === '--unsafe';
 const rest = unsafe ? argv.slice(1) : argv;
+// 执行进程的调用方（工具服务、客户端后端）没了——多半是被 SIGKILL，来不及停掉任务——就自己取消：
+// 父进程变了说明已被过继给 init。不取消的话渲染这类几小时的操作会一直跑下去，界面上已经没有停的地方。
+if (rest[0] === WorkerArg) {
+  const parent = process.ppid;
+  setInterval(() => {
+    if (process.ppid !== parent && !controller.signal.aborted) controller.abort();
+  }, 1000).unref();
+}
+
 const running = rest[0] === WorkerArg ? runOpWorker(rest[1] ?? '', rest[2] ?? '', process.stdout, controller.signal, unsafe) : execute(argv, process.stdout, process.stderr, controller.signal);
 
 running.then(

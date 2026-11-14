@@ -156,6 +156,47 @@ describe('onset tools MCP', () => {
     await served;
   });
 
+  // 客户端停掉一轮时编排工具那一整组收到 SIGTERM：工具服务要立刻停掉还在跑的任务（渲染这类各成进程组），
+  // 不能等 stdin 关闭——随后的 SIGKILL 不给机会（2026-11：渲染器在界面上停不掉）。
+  it('stops running jobs as soon as it is cancelled', async () => {
+    const out = new Map<unknown, any>();
+    let release = () => {};
+    const ended = new Promise<void>((resolve) => (release = resolve));
+    async function* lines() {
+      yield JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'beat_bars', arguments: { wait_seconds: 0 } } });
+      await ended;
+    }
+    let pid = 0;
+    const worker = fakeWorker('sleep 30');
+    const spawner: Spawner = (name, params) => {
+      const child = worker(name, params);
+      pid = child.pid ?? 0;
+      return child;
+    };
+    const controller = new AbortController();
+    const served = serveToolsMCP(lines(), (line) => {
+      const msg = JSON.parse(line);
+      out.set(msg.id, msg);
+    }, 'orchestrator', spawner, controller.signal);
+    while (!out.has(1)) await new Promise((r) => setTimeout(r, 20));
+    expect(text(out.get(1))).toContain('还在运行');
+    const alive = () => {
+      try {
+        process.kill(-pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    expect(alive()).toBe(true);
+    controller.abort();
+    const deadline = Date.now() + 3000;
+    while (alive() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
+    expect(alive(), '取消后任务的进程组应当没了').toBe(false);
+    release();
+    await served;
+  });
+
   it('explains a tool on request, with its parameters and examples', async () => {
     const replies = await call([{ id: 1, method: 'tools/call', params: { name: 'tool_help', arguments: { tool: 'beat_regrid' } } }], fakeWorker('true'));
     const help = text(replies.get(1));

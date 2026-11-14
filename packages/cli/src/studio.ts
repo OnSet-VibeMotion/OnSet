@@ -194,6 +194,8 @@ function newToolsMCPCommand(): Command {
       // 工作目录显式给：各家 agent 启动 MCP 服务时用哪个目录不一，相对路径（scenes/…）要对着项目或镜头目录解析。
       if (workdir.value !== '') process.chdir(workdir.value);
       const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+      // 取消时（SIGTERM）不再等下一行：关掉输入，服务循环结束、停掉全部任务后退出。
+      c.context().addEventListener('abort', () => rl.close(), { once: true });
       await serveToolsMCP(rl, (line) => process.stdout.write(line), profile.value as Profile, undefined, c.context());
     },
   });
