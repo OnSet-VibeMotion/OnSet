@@ -104,9 +104,11 @@ export function createPet(options: { url: string; preload: string; background: b
       backgroundThrottling: !options.background,
     },
   });
-  // 浮在普通窗口之上，切桌面、别的应用全屏时也在。
+  // 浮在普通窗口之上，切桌面时也在。
+  // skipTransformProcessType 不能去掉：带 visibleOnFullScreen 时 Electron 默认把整个应用改成辅助程序
+  // （UIElement），Dock 图标与 ⌘Tab 里的入口一起消失（实测）。代价是别的应用全屏时桌宠不盖在上面。
   pet.setAlwaysOnTop(true, 'floating');
-  pet.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  pet.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
   pet.webContents.on('did-finish-load', () => pet?.webContents.send('am:crew', latest));
   hidden = options.background;
   pet.once('ready-to-show', syncVisibility);
