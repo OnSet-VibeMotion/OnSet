@@ -14,6 +14,11 @@ export interface SceneSummary {
   duration_seconds?: number;
   output?: string;
   exists: boolean;
+  /**
+   * 产物文件的指纹（修改时间与大小）。界面拿它给镜头视频的地址做缓存参数：只有这个镜头的产物变了才重新加载，
+   * 编排工具改别的镜头、别的文件时，正在看的镜头不会被打断、从头播放。
+   */
+  output_stamp?: string;
   stale: boolean;
   /** 这个镜头全部渲染尝试（含归档）的次数与用量合计。 */
   attempts: number;
@@ -30,6 +35,7 @@ export function sceneSummaryJSON(sc: SceneSummary): Record<string, unknown> {
     duration_seconds: sc.duration_seconds || undefined,
     output: sc.output || undefined,
     exists: sc.exists,
+    output_stamp: sc.output_stamp || undefined,
     stale: sc.stale,
     attempts: sc.attempts,
     usage: sc.usage ? usageJSON(sc.usage) : undefined,
@@ -81,9 +87,12 @@ export function discoverScenes(root: string): SceneSummary[] {
     const contained = rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(output);
     const exists = contained && fileExists(target);
     let stale = false;
+    let stamp = '';
     if (exists) {
       try {
-        stale = fs.statSync(file).mtimeMs > fs.statSync(target).mtimeMs;
+        const out = fs.statSync(target);
+        stamp = `${Math.floor(out.mtimeMs)}-${out.size}`;
+        stale = fs.statSync(file).mtimeMs > out.mtimeMs;
       } catch {
         stale = false;
       }
@@ -94,6 +103,7 @@ export function discoverScenes(root: string): SceneSummary[] {
       duration_seconds: duration || undefined,
       output: output || undefined,
       exists,
+      output_stamp: stamp || undefined,
       stale,
       attempts: 0,
       rendering: sceneRendering(dir, id) || undefined,

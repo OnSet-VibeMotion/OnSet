@@ -54,4 +54,27 @@ describe('discoverScenes', () => {
     writeScene(root, 'scenes/scene-001', 'scene-001');
     expect(discoverScenes(root).map((s) => s.id)).toEqual(['scene-001', 'scene-009']);
   });
+
+  it('stamps each scene by its own output so other changes do not reload it', () => {
+    const root = project();
+    writeScene(root, 'scenes/scene-001', 'scene-001');
+    writeScene(root, 'scenes/scene-002', 'scene-002');
+    const out1 = path.join(root, 'scenes/scene-001/scene-001.mp4');
+    const out2 = path.join(root, 'scenes/scene-002/scene-002.mp4');
+    fs.writeFileSync(out1, 'a');
+    fs.writeFileSync(out2, 'b');
+    const before = discoverScenes(root);
+    expect(before[0].output_stamp).toBeTruthy();
+
+    // 改了第二个镜头的产物：第一个镜头的指纹不变，第二个变了。
+    fs.writeFileSync(out2, 'bb');
+    fs.utimesSync(out2, new Date(), new Date(Date.now() + 5000));
+    const after = discoverScenes(root);
+    expect(after[0].output_stamp).toBe(before[0].output_stamp);
+    expect(after[1].output_stamp).not.toBe(before[1].output_stamp);
+
+    // 没有产物的镜头没有指纹，界面退回全局版本号。
+    fs.rmSync(out2);
+    expect(discoverScenes(root)[1].output_stamp).toBeUndefined();
+  });
 });

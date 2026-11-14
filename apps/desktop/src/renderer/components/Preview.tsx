@@ -241,7 +241,7 @@ function Timeline({ scenes, usage, sceneId, version, onScene }: { scenes: Scene[
                   preload="metadata"
                   aria-hidden="true"
                   tabIndex={-1}
-                  src={`/api/scenes/${encodeURIComponent(scene.id)}/asset?v=${version}#t=${Math.min(1, (scene.duration_seconds || 2) / 2)}`}
+                  src={`/api/scenes/${encodeURIComponent(scene.id)}/asset?v=${scene.output_stamp ?? version}#t=${Math.min(1, (scene.duration_seconds || 2) / 2)}`}
                 />
               )}
               <span className="scene-no" aria-hidden="true">
@@ -492,7 +492,7 @@ function SceneTab(props: Props & { scene: Scene | null }) {
                 <video
                   ref={video}
                   preload="metadata"
-                  src={`/api/scenes/${encodeURIComponent(scene.id)}/asset?v=${props.version}`}
+                  src={`/api/scenes/${encodeURIComponent(scene.id)}/asset?v=${scene.output_stamp ?? props.version}`}
                   onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
                   onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
                   onSeeked={(e) => setTime(e.currentTarget.currentTime)}

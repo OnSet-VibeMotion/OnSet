@@ -44,6 +44,8 @@ export interface Scene {
   duration_seconds?: number;
   output?: string;
   exists: boolean;
+  /** 产物文件的修改时间与大小；镜头视频按它刷新，别的文件变了不重新加载。 */
+  output_stamp?: string;
   stale: boolean;
   /** 全部渲染尝试（含归档）的次数与用量合计。 */
   attempts: number;
