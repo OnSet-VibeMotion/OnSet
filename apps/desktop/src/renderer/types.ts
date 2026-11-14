@@ -199,6 +199,8 @@ export type EventKind =
 export interface PlanItem {
   text: string;
   status: 'pending' | 'in_progress' | 'completed';
+  /** 逐条建的任务（TaskCreate）的编号；TodoWrite 的清单没有。 */
+  id?: string;
 }
 
 export interface SessionEvent {

@@ -713,6 +713,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
     if (resumed) {
       spec.sessionID = previous;
       spec.resume = true;
+      spec.plan = lastTaskPlan(sess.events);
     } else {
       spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
       if (earlierTurns && history !== '') spec.prompt = reseedPrompt(history, prompt);
@@ -948,6 +949,15 @@ function recordUsage(signal: AbortSignal, p: Project, sess: Session, tool: strin
   } catch (err) {
     emit(sess, turnID, { kind: kindNotice, text: '编排用量没能记进账本：' + (err as Error).message });
   }
+}
+
+/** 会话里最后一份带编号的任务清单（逐条改的任务工具，agentrun.TaskBoard）；续接时交给解析器接上。 */
+export function lastTaskPlan(events: readonly { kind?: string; plan?: agentrun.PlanItem[] }[]): agentrun.PlanItem[] | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const plan = events[i].kind === agentrun.KindPlan ? events[i].plan : undefined;
+    if (plan && plan.length > 0) return plan.some((item) => item.id) ? plan : undefined;
+  }
+  return undefined;
 }
 
 /** 审批服务（onset studio permission-mcp）的启动方式；Windows 上用 Electron / Node 跑 onset.cjs（envutil.onsetCommand）。 */

@@ -208,9 +208,21 @@ describe('tools', () => {
       expect(codex.at(-1)).toBe('prompt');
       const qoder = rendererInvocation('qoder', 'prompt', false, { toolsServer: server });
       expect(qoder.slice(qoder.indexOf('--allowed-tools'), qoder.indexOf('--allowed-tools') + 2)).toEqual(['--allowed-tools', 'mcp__onset']);
+      expect(JSON.parse(qoder[qoder.indexOf('--settings') + 1])).toEqual({ mcp: { lazyLoad: false } });
       expect(rendererInvocation('codebuddy', 'prompt', false, { toolsServer: server })).toContain('--mcp-config');
       const env = rendererEnv('opencode', { toolsServer: server }, { OPENCODE_CONFIG_CONTENT: '{"model":"x"}' });
       expect(JSON.parse(env.OPENCODE_CONFIG_CONTENT)).toEqual({ model: 'x', mcp: { onset: { type: 'local', command: ['/app/bin/onset', 'studio', 'tools-mcp', '--profile', 'renderer', '--workdir', '/proj/scenes/s1'], enabled: true, environment: server.env } } });
+    });
+
+    // qoder 缺省懒加载 MCP，审批工具不进工具表，--permission-prompt-tool 就找不到它（2026-11 实测）。
+    it('keeps qoder from lazy-loading the approval and tools servers', () => {
+      const permissionPrompt = { command: '/app/onset', args: ['studio', 'permission-mcp'], server: 'onset_studio' };
+      const { argv } = orchestratorInvocation('qoder', { prompt: 'hello', permissionPrompt, toolsServer: server });
+      expect(JSON.parse(argv[argv.indexOf('--settings') + 1])).toEqual({ mcp: { lazyLoad: false } });
+      expect(argv.indexOf('--settings')).toBeLessThan(argv.indexOf('--mcp-config'));
+      expect(argv[argv.indexOf('--permission-prompt-tool') + 1]).toBe('mcp__onset_studio__ask');
+      // 没有任何 MCP 服务时不加。
+      expect(orchestratorInvocation('qoder', { prompt: 'hello' }).argv).not.toContain('--settings');
     });
 
     it('sits next to the approval server for the claude orchestrator', () => {

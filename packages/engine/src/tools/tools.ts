@@ -77,6 +77,14 @@ export function onsetToolsServer(executable: string, profile: 'orchestrator' | '
   return { name: ToolsServerName, command: onset.command, args: [...onset.args, 'studio', 'tools-mcp', '--profile', profile, '--workdir', workdir], env: { ...picked, ...onset.env } };
 }
 
+/**
+ * qoder 1.1.87 起缺省「懒加载」MCP：工具不进工具表，只能经 mcp_list / mcp_get / mcp_call 调。
+ * 于是 --permission-prompt-tool 按名字找不到审批工具，白名单外的命令一律直接拒绝、不问用户
+ * （报「Permission prompt tool "mcp__onset_studio__ask" was not found」，2026-11 实测）。
+ * 只要有一处设置写了 mcp.lazyLoad 它就照设置来，所以经 --settings 关掉。
+ */
+const qoderEagerMcp = ['--settings', JSON.stringify({ mcp: { lazyLoad: false } })];
+
 /** claude / qoder / codebuddy 的 --mcp-config：几个服务合在一份 JSON 里。 */
 function mcpConfigJSON(servers: McpServer[]): string {
   const mcpServers: Record<string, unknown> = {};
@@ -162,7 +170,7 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
     case 'qoder': {
       let mode = ['--permission-mode', 'dont_ask'];
       if (unsafe) mode = ['--dangerously-skip-permissions'];
-      const mcp = server ? ['--mcp-config', mcpConfigJSON([server]), ...(unsafe ? [] : ['--allowed-tools', 'mcp__' + server.name])] : [];
+      const mcp = server ? [...qoderEagerMcp, '--mcp-config', mcpConfigJSON([server]), ...(unsafe ? [] : ['--allowed-tools', 'mcp__' + server.name])] : [];
       return ['qoderclicn', '-p', prompt, ...mode, ...m, ...mcp, '--output-format', 'stream-json'];
     }
     case 'codebuddy': {
@@ -402,6 +410,7 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
         args.push('--permission-mode', 'accept_edits');
         for (const command of access.commands ?? []) args.push('--allowed-tools', 'Bash(' + command + ':*)');
         if (o.toolsServer) args.push('--allowed-tools', 'mcp__' + o.toolsServer.name);
+        if (o.toolsServer || o.permissionPrompt) args.push(...qoderEagerMcp);
         args.push(...mcpArgs(o.permissionPrompt, o.toolsServer));
       }
       if (o.resume) args.push('-r', sessionID);
