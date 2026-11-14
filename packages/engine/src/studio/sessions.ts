@@ -1008,7 +1008,7 @@ function productionBrief(p: Project, sess: Session): string {
  * 一出现新的东西（工具调用、不一样的话）就不再拦。qoder 续接时若先压缩了长对话，会把上一轮最后的思考与回复
  * 原样再吐一遍（2026-11 实测：用户的新问题前面先出现一遍上一轮的总结），界面上看像是又回答了一次。
  */
-export function replayGuard(events: readonly { kind?: string; text?: string; turn_id?: string }[], turnID: string): (event: { kind: string; text?: string }) => boolean {
+export function replayGuard(events: readonly { kind?: string; text?: string; turn_id?: string }[], turnID: string): (event: { kind: string; text?: string; text_id?: string }) => boolean {
   let previousTurn = '';
   for (let i = events.length - 1; i >= 0; i--) {
     const id = events[i].turn_id ?? '';
@@ -1024,6 +1024,11 @@ export function replayGuard(events: readonly { kind?: string; text?: string; tur
   let guarding = said.size > 0;
   return (event) => {
     if (!guarding) return false;
+    // ACP 已在 session/load 时过滤历史；流式短片段相同不代表重放（例如两轮都以 Let me 开头）。
+    if (event.text_id) {
+      guarding = false;
+      return false;
+    }
     if (event.kind === agentrun.KindText || event.kind === agentrun.KindThinking) {
       if (said.has(event.kind + '\u0000' + (event.text ?? '').trim())) return true;
       guarding = false;

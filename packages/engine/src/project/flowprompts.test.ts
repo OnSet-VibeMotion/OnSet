@@ -212,7 +212,7 @@ describe('prompt content', () => {
 
   // TTS 会把「2025 年」读成「两千零二十五年」，只能在生成前逐个钉住。口播才有 TTS。
   it('pins year readings (speech)', () => {
-    has(speech, ['四位数年份一律逐位读', '不得读成「一千九百七十二年」「两千零二十五年」', '--pronunciation "2025年/二零二五年"', '直接写成逐位汉字', '每个四位年份是否逐位读出'], '口播·年份读法');
+    has(speech, ['四位数年份一律逐位读', '不得读成「一千九百七十二年」「两千零二十五年」', '2025年/二零二五年', '直接写成逐位汉字', '每个四位年份是否逐位读出'], '口播·年份读法');
   });
 
   it('leaves the visual style free (speech, beat)', () => {
@@ -286,6 +286,11 @@ describe('prompt content', () => {
       [beat, '卡点'],
     ]) has(body, ['不要用 `which`、`strings`、`grep` 去找、去读 `onset` 程序本身'], what + '·格式约定');
     has(beat, ['节拍页把这个文件当普通 Markdown 原样显示'], '卡点·格式约定');
+  });
+
+  it('keeps all speech synthesis behind OnSet operations', () => {
+    has(speech, ['voice_synthesize(', 'voice_catalog()', 'voice_design(', 'voice_save('], '配音托管');
+    lacks(speech, ['mlx_audio.tts.generate', 'mmx speech synthesize', 'bl speech synthesize', 'edge-tts -v', 'elevenlabs text-to-speech', 'tccli tts', '--ref_audio', '--ref_text'], '配音托管');
   });
 
   it('leaves voice tools to the tool page (speech)', () => {

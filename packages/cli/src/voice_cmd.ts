@@ -1,5 +1,5 @@
 /**
- * voice_*：音色库（@onset/engine/voice）的四条操作。
+ * voice_*：音色库与配音（@onset/engine/voice）的宿主操作。
  *
  * 删除不是操作：音色库是用户积累下来的声音，编排工具一句话删掉就找不回来，只在客户端的音色页里删。
  */
@@ -7,7 +7,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { envMap } from '@onset/engine/envutil';
 import * as voice from '@onset/engine/voice';
-import { bool, str } from './ops/common';
+import * as config from '@onset/engine/config';
+import { bool, str, strs, projectRoot } from './ops/common';
 import { defineGroup } from './ops/cli';
 import { ParamError, defineOp } from './ops/op';
 
@@ -16,6 +17,101 @@ function libraryDir(): string {
   if (dir === '') throw new Error('无法确定音色库目录：环境里没有 HOME');
   return dir;
 }
+
+/** 配音只读写项目内的普通路径；拒绝通过父目录软链接越过项目边界。 */
+function projectFile(root: string, value: string): string {
+  const file = path.resolve(root, value);
+  const inside = (candidate: string) => {
+    const rel = path.relative(root, candidate);
+    if (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) throw new ParamError('配音文件必须在项目目录内');
+  };
+  inside(file);
+  if (/(^|[\\/])\.(?:env|git|codex)(?:[.\\/]|$)/i.test(path.relative(root, file))) throw new ParamError('配音不能读取或写入凭据与内部配置文件');
+  let parent = file;
+  while (true) {
+    try {
+      if (fs.lstatSync(parent).isSymbolicLink()) throw new ParamError('配音路径不能经过符号链接');
+      inside(fs.realpathSync(parent));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    if (parent === root) break;
+    parent = path.dirname(parent);
+  }
+  return file;
+}
+
+defineOp({
+  name: 'voice_synthesize', cli: ['voice', 'synthesize'], verb: '生成配音',
+  summary: '按项目配置生成配音：OnSet 管理服务调用、Breeze 音色克隆、格式转换与原始产物',
+  description: `所有内置 TTS 都从这里调用，不在终端执行配音命令。读取项目的 TTS_PROVIDER，text 与 text_file 二选一。
+Breeze 的 voice 是音色库名称，留空取默认音色；参考音频和逐字稿由 OnSet 读取，instruction 只指导语气。
+其他服务的 voice 是 voice_catalog 返回的 ID。speed 通常是倍率；腾讯沿用 -2..6 刻度（0 正常）；Breeze 和 MLX 用 instruction 指导语速。
+输出统一为 48kHz 双声道 WAV，同名 .tts 目录保存文本、原始音频、原始时间戳和 report.json。
+ElevenLabs 返回 alignment 路径，可交给 align_build；其他服务需继续强制对齐。已有产物不覆盖，重做用新的版本文件名。
+模型或工具缺失时回工具准备页；调用可用 job_cancel 取消，不自行安装、下载或重试失败请求。`,
+  examples: ['voice_synthesize({"text_file":"production/audio/tts-text.txt","output":"production/audio/voice.wav"})', 'voice_synthesize({"text":"大家好。","voice":"沉稳男声","instruction":"平静、真诚","output":"production/audio/try-01.wav"})'],
+  params: {
+    project_root: projectRoot,
+    text: { type: 'string', description: '要朗读的文稿，与 text_file 二选一' },
+    text_file: { type: 'string', description: '项目内的 UTF-8 文稿文件，与 text 二选一' },
+    voice: { type: 'string', description: '音色 ID；Breeze 为音色库名称，留空取默认音色' },
+    output: { type: 'string', description: '项目内的新 WAV 文件；不覆盖', default: 'production/audio/voice.wav' },
+    speed: { type: 'string', description: '可选语速数值：通常为倍率；腾讯为 -2..6（0 正常）；Breeze 和 MLX 不支持，改用 instruction' },
+    instruction: { type: 'string', description: 'Breeze、MLX 或百炼的语气指导，不用于更换 Breeze 音色' },
+    pronunciation: { type: 'strings', description: 'MiniMax 发音替换，每项为 原文/读法，如 2025年/二零二五年' },
+    ssml: { type: 'boolean', description: '仅百炼：文稿使用 SSML' },
+  },
+  run: async (p, { out, signal }) => {
+    const root = fs.realpathSync(str(p.project_root));
+    const cfg = config.load(root, null);
+    if ((str(p.text) === '') === (str(p.text_file) === '')) throw new ParamError('text 与 text_file 要给且只给一个');
+    const text = str(p.text_file) ? fs.readFileSync(projectFile(root, str(p.text_file)), 'utf8') : str(p.text);
+    const result = await voice.synthesize({ provider: cfg.ttsProvider, text, voice: str(p.voice), output: projectFile(root, str(p.output)),
+      ...(str(p.speed) ? { speed: Number(str(p.speed)) } : {}), instruction: str(p.instruction), pronunciation: strs(p.pronunciation), ssml: bool(p.ssml),
+      env: { ...envMap(), ...cfg.overlay }, signal, progress: (message) => out.write(message + '\n') });
+    out.write(`配音已生成：${result.audio}\n生成报告：${result.report}\n`);
+    return { data: result };
+  },
+});
+
+defineOp({
+  name: 'voice_catalog', cli: ['voice', 'catalog'], summary: '查询项目当前配音服务的可用音色；Breeze 返回用户音色库',
+  description: '读取项目 TTS_PROVIDER，由 OnSet 查询当前服务的音色，不需要执行外部命令。Breeze 返回已保存音色及默认项；MLX 返回预置音色；腾讯返回 VoiceType 列表入口。云端服务使用已有的用户级登录，未登录先完成服务登录，不把密钥传给工具。',
+  examples: ['voice_catalog()'],
+  params: { project_root: projectRoot },
+  run: async (p, { out, signal }) => {
+    const cfg = config.load(str(p.project_root), null);
+    const data = await voice.catalog(cfg.ttsProvider, { ...envMap(), ...cfg.overlay }, signal);
+    out.write('已查询配音音色\n');
+    return { data };
+  },
+});
+
+defineOp({
+  name: 'voice_design', cli: ['voice', 'design'], summary: '用 Breeze 按描述生成新音色试听；确认后用 voice_save 存入库',
+  description: '只用于试听新声音，不用于正式配音。已有音色用 voice_synthesize 克隆。设计会检查本地工具和模型，不联网下载。',
+  examples: ['voice_design({"instruction":"三十多岁的男性，声音沉稳清晰，语气平静、真诚","output":"production/audio/try-01.wav"})'],
+  params: {
+    project_root: projectRoot,
+    instruction: { type: 'string', description: '新声音的性别、年龄段、音色和语气', required: true },
+    text: { type: 'string', description: '试听文稿，120 字以内；留空用标准朗读稿' },
+    output: { type: 'string', description: '项目内的新试听 WAV 文件', required: true },
+  },
+  run: async (p, { out, signal }) => {
+    const root = fs.realpathSync(str(p.project_root));
+    const output = projectFile(root, str(p.output));
+    if (path.extname(output).toLowerCase() !== '.wav') throw new ParamError('output 必须是 .wav 文件');
+    if (fs.existsSync(output)) throw new ParamError('试听文件已存在，请换一个文件名');
+    out.write('正在设计音色试听\n');
+    const draft = await voice.design(libraryDir(), { instruction: str(p.instruction), text: str(p.text), env: envMap(), signal });
+    signal.throwIfAborted();
+    fs.mkdirSync(path.dirname(output), { recursive: true });
+    fs.copyFileSync(draft.audio, output, fs.constants.COPYFILE_EXCL);
+    out.write(`试听已生成：${output}\n`);
+    return { data: { ...draft, audio: output } };
+  },
+});
 
 function voiceJSON(v: voice.VoiceEntry): Record<string, unknown> {
   return {
@@ -39,7 +135,10 @@ defineGroup({
 只靠一句描述设计音色每次生成都会漂，同一个账号的片子之间听起来像换了人；克隆出来的始终是同一个声音。
 
   voice_list()      看库里有哪些音色、默认是哪个
-  voice_get()       取默认音色（或指定音色）的参考音频与文字稿，用来克隆
+  voice_catalog()   看项目配音服务的可用音色
+  voice_synthesize()  按项目配置生成配音
+  voice_design()    设计新音色的试听
+  voice_get()       查看默认音色（或指定音色）的详情
   voice_save()      把用户确认过的一段声音存进来
   voice_default()   换默认音色
 
@@ -71,8 +170,7 @@ defineOp({
   name: 'voice_get',
   cli: ['voice', 'get'],
   summary: '取一个音色的参考音频路径与文字稿（不给名字取默认音色），用来克隆',
-  description: `返回参考音频的绝对路径（24kHz 单声道 WAV）与逐字一致的文字稿，分别交给 Breeze 的
---ref_audio 与 --ref_text。不给 name 时取默认音色；还没有默认音色时报错。`,
+  description: `返回音色详情与参考文字稿。正式配音把 name 交给 voice_synthesize，OnSet 自动读取参考音频和文字稿。不给 name 时取默认音色；还没有默认音色时报错。`,
   examples: ['voice_get()', 'voice_get({"name": "老周"})'],
   params: {
     name: { type: 'string', description: '音色名；不填取默认音色', positional: 0 },
@@ -95,7 +193,7 @@ defineOp({
   cli: ['voice', 'save'],
   summary: '把用户确认过的一段声音存进音色库，以后的片子都从它克隆',
   description: `audio 是项目里的一段音频（试听文件或用户上传的录音），text 是这段音频里说的话，必须逐字一致——
-克隆时它就是 --ref_text，对不上会让克隆出来的声音含糊、吞字。音频转成 24kHz 单声道 WAV 存进
+克隆时 OnSet 使用它，对不上会让克隆出来的声音含糊、吞字。音频转成 24kHz 单声道 WAV 存进
 用户级的音色库，时长要在 ${voice.MinReferenceSeconds} 到 ${voice.MaxReferenceSeconds} 秒之间（一两句话）。
 
 同名音色已存在时报错，确实要替换加 overwrite。

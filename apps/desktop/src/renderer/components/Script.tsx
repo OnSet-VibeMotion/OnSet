@@ -1,9 +1,10 @@
 import { confirmGate } from './Progress';
-import { useEffect, useRef, useState } from 'react';
-import { api, errorText } from '../api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { api, errorText, rawURL } from '../api';
 import type { Attachment, ScriptBlock, ScriptNode, ScriptResponse } from '../types';
 import { focusChatInput, readableText } from './ContextMenu';
 import { Markdown } from './chat/Markdown';
+import { estimateScriptTiming } from '../scriptTiming';
 import '../script.css';
 
 /** 口播终稿在项目里的位置；聊天与文件树点到它时打开口播稿页。 */
@@ -42,7 +43,23 @@ function hasMarks(nodes: ScriptNode[]): boolean {
   return nodes.some((node) => node.kind !== 'text' || hasMarks(node.children ?? []));
 }
 
-function Nodes({ nodes }: { nodes: ScriptNode[] }) {
+interface Reading { time: number; onSeek: (time: number) => void }
+
+function Characters({ text = '', timings, time, onSeek }: { text?: string; timings?: ScriptNode['timings'] } & Reading) {
+  if (!timings) return <>{text}</>;
+  return <>{[...text].map((char, i) => {
+    const timing = timings[i];
+    return timing ? (
+      <span key={i} className={`script-char${time >= timing.start && time < timing.end ? ' now' : ''}`}
+        data-start={timing.start} title="点击跳到这里试听"
+        onClick={() => { if (window.getSelection()?.isCollapsed !== false) onSeek(timing.start); }}>
+        {char}
+      </span>
+    ) : <span key={i}>{char}</span>;
+  })}</>;
+}
+
+function Nodes({ nodes, time, onSeek }: { nodes: ScriptNode[] } & Reading) {
   return (
     <>
       {nodes.map((node, index) => {
@@ -51,7 +68,7 @@ function Nodes({ nodes }: { nodes: ScriptNode[] }) {
             if (!node.text) {
               return (
                 <span key={index} className="spoken-only" title="只朗读、不显示在字幕里">
-                  {node.spoken}
+                  <Characters text={node.spoken} timings={node.timings} time={time} onSeek={onSeek} />
                 </span>
               );
             }
@@ -64,18 +81,18 @@ function Nodes({ nodes }: { nodes: ScriptNode[] }) {
             }
             return (
               <ruby key={index} className="alt" title={`字幕显示「${node.text}」，配音读作「${node.spoken}」`}>
-                {node.text}
+                <Characters text={node.text} timings={node.timings} time={time} onSeek={onSeek} />
                 <rt>{node.spoken}</rt>
               </ruby>
             );
           case 'phrase':
             return (
               <mark key={index} className="phrase" title={`受保护短语 ${node.id}：会单独出现在画面上，配音不能在中间断开`}>
-                <Nodes nodes={node.children ?? []} />
+                <Nodes nodes={node.children ?? []} time={time} onSeek={onSeek} />
               </mark>
             );
           default:
-            return <span key={index}>{node.text}</span>;
+            return <span key={index}><Characters text={node.text} timings={node.timings} time={time} onSeek={onSeek} /></span>;
         }
       })}
     </>
@@ -98,16 +115,67 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
   const [marks, setMarks] = useState(() => readBool('onset-studio.script-marks', true));
   const [selection, setSelection] = useState('');
   const body = useRef<HTMLDivElement>(null);
+  const audio = useRef<HTMLAudioElement>(null);
+  const [selectedAudio, setSelectedAudio] = useState('');
+  const [playing, setPlaying] = useState(false);
+  const [time, setTime] = useState(-1);
+  const [audioSeconds, setAudioSeconds] = useState(0);
+  const [audioError, setAudioError] = useState('');
+  const audioURL = script?.voice ? rawURL(script.voice.path, script.voice.version) : '';
+  const timedBlocks = useMemo(() => {
+    if (!script?.blocks || script.voice?.timing === 'aligned') return script?.blocks;
+    return estimateScriptTiming(script.blocks, audioSeconds || script.voice?.seconds || 0);
+  }, [script, audioSeconds]);
 
   useEffect(() => {
-    api<ScriptResponse>('/api/script').then(
+    setPlaying(false);
+    setTime(-1);
+    setAudioSeconds(0);
+    setAudioError('');
+  }, [audioURL]);
+
+  useEffect(() => {
+    if (!playing) return;
+    let frame = 0, last = 0;
+    const tick = (now: number) => {
+      if (now - last >= 40 && audio.current) {
+        setTime(audio.current.currentTime);
+        last = now;
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [playing]);
+
+  const play = () => {
+    const el = audio.current;
+    if (!el) return;
+    setAudioError('');
+    void el.play().catch((err: unknown) => {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setAudioError('音频无法播放，请检查文件是否完整，或重新生成配音。');
+    });
+  };
+  const seek = (at: number) => {
+    if (!audio.current || audio.current.readyState === 0) return;
+    audio.current.currentTime = at;
+    setTime(at);
+    play();
+  };
+
+  useEffect(() => {
+    let live = true;
+    api<ScriptResponse>('/api/script' + (selectedAudio ? '?audio=' + encodeURIComponent(selectedAudio) : '')).then(
       (result) => {
+        if (!live) return;
         setScript(result);
         setError('');
       },
-      (err) => setError(errorText(err)),
+      (err) => live && setError(errorText(err)),
     );
-  }, [version]);
+    return () => { live = false; };
+  }, [version, selectedAudio]);
 
   // 在稿子里选中一段文字，就能针对这段提意见。
   useEffect(() => {
@@ -142,9 +210,9 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
   };
 
   // 第一个标题当文稿的大标题，正文里不再重复它。
-  const titleIndex = script.blocks?.findIndex((block) => block.kind === 'heading') ?? -1;
-  const title = titleIndex >= 0 ? script.blocks![titleIndex].text : '';
-  const blocks = script.blocks?.filter((_, index) => index !== titleIndex);
+  const titleIndex = timedBlocks?.findIndex((block) => block.kind === 'heading') ?? -1;
+  const title = titleIndex >= 0 ? timedBlocks![titleIndex].text : '';
+  const blocks = timedBlocks?.filter((_, index) => index !== titleIndex);
 
   return (
     <div className="script-tab">
@@ -158,7 +226,7 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
           <div className="script-stats">
             {script.stats && <span>{script.stats.units} 字</span>}
             {script.estimate_seconds ? <span title="按每秒 4.5 字估算">预计 {duration(script.estimate_seconds)}</span> : null}
-            {script.voice && <span className="voiced">配音 {duration(script.voice.seconds)}</span>}
+            {script.voice && (audioSeconds || script.voice.seconds) > 0 && <span className="voiced">配音 {duration(audioSeconds || script.voice.seconds)}</span>}
             <button className="link" onClick={() => onFile(script.path)} title={`在文件页查看原文：${script.path}`}>
               原文
             </button>
@@ -194,7 +262,32 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
             )}
           </div>
         )}
-        {voiced && script.final && <p className="script-note">已按这版配音。改稿之后要重新配音、对齐，已渲染的镜头可能要跟着改。</p>}
+        {script.voice ? (
+          <div className="script-player">
+            <div className="script-player-top">
+              <button className="primary" onClick={() => playing ? audio.current?.pause() : play()}>{playing ? '暂停配音' : '播放配音'}</button>
+              {(script.audio_options?.length ?? 0) > 1 ? (
+                <select aria-label="配音版本" value={script.voice.path} onChange={(e) => {
+                  audio.current?.pause();
+                  setSelectedAudio(e.target.value);
+                }}>
+                  {script.audio_options?.map((option) => <option key={option.path} value={option.path}>{option.name}</option>)}
+                </select>
+              ) : <span className="small muted">{script.voice.name}</span>}
+            </div>
+            <audio key={audioURL} ref={audio} src={audioURL} controls preload="metadata" aria-label="口播配音"
+              onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+              onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+              onSeeked={(e) => setTime(e.currentTarget.currentTime)}
+              onEnded={() => setPlaying(false)}
+              onLoadedMetadata={(e) => setAudioSeconds(e.currentTarget.duration)}
+              onError={() => { setPlaying(false); setAudioError('音频无法播放，请检查文件是否完整，或重新生成配音。'); }} />
+            {audioError ? <p className="script-note bad" role="alert">{audioError}</p> : script.blocks && (
+              <p className="script-note">{script.voice.timing === 'aligned' ? '逐字跟读 · 点击文字可跳转试听' : '逐字跟读按时长估算，完成对齐后会更准确 · 点击文字可跳转试听'}</p>
+            )}
+          </div>
+        ) : script.final && <p className="script-note">还没有找到配音音频，生成后可在这里试听。</p>}
+        {voiced && script.final && <p className="script-note">改稿之后要重新配音、对齐，已渲染的镜头可能要跟着改。</p>}
         {script.parse_error && (
           <p className="script-note bad">终稿的标记写错了：{script.parse_error}。下面是原文；让 AI 修好标记再配音。</p>
         )}
@@ -212,7 +305,7 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
                 <span className="para-no" aria-hidden="true">
                   {String(para).padStart(2, '0')}
                 </span>
-                <Nodes nodes={block.nodes ?? []} />
+                <Nodes nodes={block.nodes ?? []} time={time} onSeek={seek} />
               </p>
             ),
           )}

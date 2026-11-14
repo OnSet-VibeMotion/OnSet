@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { interactiveInvocation } from '../tools';
 import { ACPTranslator, CodebuddyUsage, acpOutcome, acpPermissionTool, acpUsage, runACP } from './acp';
 import { CodexTasks, codexDecision, codexItemEvents, runCodexApp } from './codexapp';
@@ -39,6 +39,56 @@ async function fakeRun(kind: 'acp' | 'codex', prompt: string, answer: Permission
 const kinds = (events: Event[]) => events.map((e) => e.kind);
 
 describe('interactive orchestrators', () => {
+  it('publishes long ACP thoughts in batches before a tool call or turn completion', () => {
+    vi.useFakeTimers();
+    const events: Event[] = [];
+    const translator = new ACPTranslator(event => events.push(event));
+    const thought = (text: string) => translator.update({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text } });
+    try {
+      thought('正在');
+      thought('检查 ');
+      expect(events).toEqual([]);
+      vi.advanceTimersByTime(500);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ kind: KindThinking, text: '正在检查 ', text_id: expect.any(String) });
+      thought('Code');
+      thought('Buddy\n');
+      vi.advanceTimersByTime(500);
+      expect(events).toHaveLength(2);
+      expect(events[1]).toMatchObject({ kind: KindThinking, text: 'CodeBuddy\n', text_id: events[0].text_id });
+      thought('的续接。');
+      translator.update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '检查完成' } });
+      translator.flush();
+      expect(events.filter(event => event.kind === KindThinking).map(event => event.text).join('')).toBe('正在检查 CodeBuddy\n的续接。');
+      expect(events.at(-1)).toEqual({ kind: KindText, text: '检查完成' });
+      expect(vi.getTimerCount()).toBe(0);
+      thought('新的思考');
+      vi.advanceTimersByTime(500);
+      expect(events.at(-1)?.text_id).not.toBe(events[0].text_id);
+    } finally {
+      translator.flush();
+      vi.useRealTimers();
+    }
+  });
+
+  it('ends an ACP thought batch even when a text chunk arrives just after its timer flushed', () => {
+    vi.useFakeTimers();
+    const events: Event[] = [];
+    const translator = new ACPTranslator(event => events.push(event));
+    try {
+      translator.update({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: '第一段' } });
+      vi.advanceTimersByTime(500);
+      translator.update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '回复' } });
+      translator.update({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: '第二段' } });
+      vi.advanceTimersByTime(500);
+      expect(events.map(event => event.kind)).toEqual([KindThinking, KindText, KindThinking]);
+      expect(events[0].text_id).not.toBe(events[2].text_id);
+    } finally {
+      translator.flush();
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps Codex children visible after spawn returns and isolates their events from the parent', async () => {
     const { events, outcome } = await fakeRun('codex', '后台子任务', { decision: 'allow' });
     expect(outcome.error).toBeNull();

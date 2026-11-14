@@ -14,11 +14,12 @@ describe('orchestrator access', () => {
   it('follows the config', () => {
     const cfg = newConfig({ ttsProvider: 'edge', alignProvider: 'mlx' });
     const got = orchestratorAccess(cfg, 'npx --yes hyperframes@1.0.0', 'ffmpeg').commands;
-    expect(got).toEqual([...orchestratorBaseCommands, 'edge-tts', 'mlx_audio.stt.generate', 'npx --yes hyperframes@1.0.0']);
+    expect(got).toEqual([...orchestratorBaseCommands, 'mlx_audio.stt.generate', 'npx --yes hyperframes@1.0.0']);
     const again = orchestratorAccess(cfg).commands!;
-    expect(again.length, '基础清单被上一次调用改写了').toBe(orchestratorBaseCommands.length + 2);
+    expect(again.length, '基础清单被上一次调用改写了').toBe(orchestratorBaseCommands.length + 1);
     // onset 不在白名单里：编排工具只经 onset 的工具服务（MCP）调用它。
     expect(again).not.toContain('onset');
+    for (const provider of TTSProviders) expect(again).not.toContain(provider.command);
     expect(again[0]).toBe('ffmpeg');
   });
 

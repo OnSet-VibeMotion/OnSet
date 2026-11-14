@@ -40,12 +40,12 @@ heiwa: 你先别急，我们从背景讲起。
 - 说话人切换处必须切段，哪怕上下两句在内容上是一次紧密的问答呼应，也不能把两个说话人的台词合并进同一次 TTS 调用。
 - 一段内部如果因为过长需要分批合成，仍必须保持"这一批只属于同一个说话人"，不得为了缩短单次请求而把说话人切换点藏进一段里。
 
-### 三、逐段调用 mmx / bl，保存段内时间戳
+### 三、逐段调用 OnSet 配音工具，保存段内时间戳
 
-TTS 服务提供方仍由 `onset.conf`（或环境变量 `TTS_PROVIDER`）决定，各路径的凭据、鉴权方式、密钥保管规则与{{STAGE:voice}}完全一致，此处不重复；音色、语速试听确认，以及易误读词发音控制（`mmx` 的 `--pronunciation`、百炼 SSML `<phoneme>`，不支持自定义发音的路径改写送进 TTS 的文本）的要求也一致，只是作用范围从"整篇口播"缩小到"每一段"。
+TTS 服务提供方仍由 `onset.conf`（或环境变量 `TTS_PROVIDER`）决定，各路径的凭据、鉴权方式、密钥保管规则与{{STAGE:voice}}完全一致，此处不重复；音色、语速试听确认，以及易误读词发音控制（MiniMax 的 `pronunciation`、百炼 SSML `<phoneme>`，不支持自定义发音的路径改写送进 TTS 的文本）的要求也一致，只是作用范围从"整篇口播"缩小到"每一段"。
 
-- 每个说话人使用其 `cast/<id>/character.yaml` 里 `voice.<TTS_PROVIDER>.voiceId`（例如 `voice.minimax.voiceId`、`voice.edge.voiceId`，取决于当前 `TTS_PROVIDER`）对应的音色；同一说话人从头到尾使用同一个 voiceId，不得中途切换。`TTS_PROVIDER=breeze` 时 `voice.breeze.voiceId` 写音色库里的音色名，合成该说话人的每一段前用 `voice_get({"name": "<音色名>"})` 取参考音频与文字稿克隆；库里还没有这个角色的声音时，按{{STAGE:voice}}设计、试听，用户选定后 `voice_save` 存进音色库再填名字。
-- 逐段合成时依旧按{{STAGE:voice}}的方式取真实时间戳：MiniMax 用 `--subtitles` 直接产出，百炼走合成 + `bl speech recognize` 两步识别。这里拿到的时间戳是相对本段音频起点的段内时间，不是全局时间轴——全局时间轴由 `dialogue_assemble()` 统一计算，不要在这一步手工换算或累加偏移。
+- 每个说话人使用其 `cast/<id>/character.yaml` 里 `voice.<TTS_PROVIDER>.voiceId`（例如 `voice.minimax.voiceId`、`voice.edge.voiceId`，取决于当前 `TTS_PROVIDER`）对应的音色；同一说话人从头到尾使用同一个 voiceId，不得中途切换。`TTS_PROVIDER=breeze` 时 `voice.breeze.voiceId` 写音色库里的音色名，合成该说话人的每一段时，将库名传给 `voice_synthesize` 的 `voice`，OnSet 自动读取参考音频与文字稿克隆；库里还没有这个角色的声音时，按{{STAGE:voice}}设计、试听，用户选定后 `voice_save` 存进音色库再填名字。
+- 逐段合成时依旧按{{STAGE:voice}}的方式取真实时间戳：通过 `voice_synthesize` 返回的 `sources` 查看原始时间戳；没有字级时间戳的段落继续强制对齐。这里拿到的时间戳是相对本段音频起点的段内时间，不是全局时间轴——全局时间轴由 `dialogue_assemble()` 统一计算，不要在这一步手工换算或累加偏移。
 - 每段落盘为独立音频文件，建议命名 `production/audio/segments/<index>-<speaker>.wav`，`index` 从 0 开始，与后面 `plan.json` 里 `segments[].index` 一一对应。
 - 断句检查、发音控制覆盖范围的要求与单口播一致，只是逐段各自核对：产品名/模型名是否被拆开、数字、英文缩写和多音字是否读对、长句是否留出呼吸、段尾是否留出画面展示时间。
 

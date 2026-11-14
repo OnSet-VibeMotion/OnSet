@@ -33,6 +33,13 @@ function eventOf(kind: string, text: string): SessionEvent {
 }
 
 describe('sessions', () => {
+  it('keeps streamed thought prefixes that also appeared in the previous turn', () => {
+    const previous = [{ turn_id: 't1', kind: 'thinking', text: 'Let me ', text_id: 'acp-thought-1' }];
+    const replay = replayGuard(previous, 't2');
+    expect(replay({ kind: 'thinking', text: 'Let me ', text_id: 'acp-thought-1' })).toBe(false);
+    expect(replay({ kind: 'thinking', text: 'check the new request', text_id: 'acp-thought-1' })).toBe(false);
+  });
+
   it('serves shared font and JS links through the actual preview route', async () => {
     const f = newSessionFixture();
     const source = path.join(f.root, 'assets', 'shared-test');

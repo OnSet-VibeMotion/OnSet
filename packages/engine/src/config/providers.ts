@@ -4,14 +4,12 @@ import type { OrchestratorAccess } from '../tools';
 import type { Config } from './config';
 
 /**
- * 一个可选的配音服务。合成本身由编排工具按
- * 口播流程制作提示词的配音阶段（assets/prompts/voice/stage.md）对应小节执行，这里只登记取值与校验所需信息。
+ * 一个可选的配音服务。合成由 voice.synthesize 执行，编排工具只调用 voice_synthesize。
  *
  * timestamps 是该服务自带时间戳的粒度，决定第四阶段要不要另做强制对齐：
  * sentence 只能用于粗排，char 可以直接用作短语级时间轴的依据。
  *
- * command 是第三阶段调用的命令名，安全模式下编排工具只被放行这一个 TTS 命令，
- * 见 orchestratorAccess。改提示词里的命令时要同步改这里。
+ * command 是 OnSet 内部使用的适配器命令，不加入编排工具的命令白名单。
  */
 export interface TTSProvider {
   id: string;
@@ -20,7 +18,7 @@ export interface TTSProvider {
   command: string;
   /** onset setup 怎么装它（版本钉死）。客户端用户不必自己 npm / pipx / brew。 */
   install: ToolSpec;
-  /** 工具第一次运行会去下的模型：onset setup（客户端的工具准备页）预先下好，提示词经 config_get 工具取 TTS_MODEL 的本地路径。 */
+  /** 工具第一次运行会去下的模型：onset setup（客户端的工具准备页）预先下好，OnSet 的配音适配器直接取本地路径。 */
   model?: ModelSpec;
 }
 
@@ -44,6 +42,24 @@ export const BreezeTTS2: ModelSpec = {
     { path: 'special_tokens_map.json', sha256: '194f265bb588d142a16f27d9576104eb3dab3d7ba9961541d2d6e3d5e77e6470', size: 886 },
     { path: 'tokenizer.json', sha256: 'd3ec9ac3eb2392389b9f5112e85d8b43316494addb587ba7b7a9d61eac23af96', size: 33386945 },
     { path: 'tokenizer_config.json', sha256: '2c084fd6725c2284e8aa6da095a8d036d48fe79665595bfcd50371821b620e44', size: 1157960 },
+  ],
+};
+
+/** MLX Qwen3 配音模型：摘要来自魔搭同名镜像，2026-11；与 Breeze 一样只由工具准备页下载。 */
+export const QwenCustomVoice: ModelSpec = {
+  repo: 'mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit',
+  files: [
+    { path: 'config.json', sha256: '2eea3665564268139c3beb8d497fd3c2e4524e9eed5452836cdf1de96ed3cdbd', size: 6058 },
+    { path: 'generation_config.json', sha256: 'f1b90b4513f3b34c62851049e2492d7b4c5940daf1276f89c82b8ef04127f3aa', size: 245 },
+    { path: 'merges.txt', sha256: '599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3', size: 1671839 },
+    { path: 'model.safetensors', sha256: '3bcb2c4a127e6243e81a30b7126c7865f686d3559de4f938e5d3b150c6a9560d', size: 1286743170 },
+    { path: 'model.safetensors.index.json', sha256: '0c92041960fa189cf35ae538c8d9ca07c468edddd0c9bb52274c5d4d287a860b', size: 71447 },
+    { path: 'preprocessor_config.json', sha256: 'efdde1022ea9d76928bf7a9cd53139138f5ba2e466e837f08f6105ab1af1c119', size: 127 },
+    { path: 'speech_tokenizer/config.json', sha256: 'ee65bb901c876664ab8707c487157aa1a6ee57c65969b28fb5ec9dc211e68167', size: 2336 },
+    { path: 'speech_tokenizer/model.safetensors', sha256: '836b7b357f5ea43e889936a3709af68dfe3751881acefe4ecf0dbd30ba571258', size: 682293092 },
+    { path: 'speech_tokenizer/preprocessor_config.json', sha256: 'fcb3805e597e786d4067706e602f6688524640f8d3396790e2e09b5942fcbdfb', size: 234 },
+    { path: 'tokenizer_config.json', sha256: 'dc3c31c3bdaedd5016382bb3cbe07323026775ad51f5a4fb564505992ae4a670', size: 7344 },
+    { path: 'vocab.json', sha256: 'ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910', size: 2776833 },
   ],
 };
 
@@ -85,6 +101,7 @@ export const TTSProviders: readonly TTSProvider[] = [
     timestamps: 'none',
     command: 'mlx_audio.tts.generate',
     install: mlxAudio(['mlx_audio.tts.generate']),
+    model: QwenCustomVoice,
   },
   {
     id: 'breeze',
@@ -308,16 +325,13 @@ export function parseAllowCommands(value: string): string[] {
 }
 
 /**
- * 安全模式下编排工具要放行的命令：基础命令、当前 TTS 与对齐
- * 工具各自的那一个命令，加上调用方补充的（固定版本的 hyperframes）。安装命令
+ * 安全模式下编排工具要放行的命令：基础命令、当前对齐
+ * 工具的命令（配音由 OnSet 的工具操作托管），加上调用方补充的（固定版本的 hyperframes）。安装命令
  * （brew、pip、uv、npm）不在其中：安全模式下要用户自己装好。
  * 对应 Go 的 Config.OrchestratorAccess。
  */
 export function orchestratorAccess(config: Config, ...extra: string[]): OrchestratorAccess {
   const commands = [...orchestratorBaseCommands];
-  for (const provider of TTSProviders) {
-    if (provider.id === config.ttsProvider && provider.command !== '') commands.push(provider.command);
-  }
   for (const aligner of Aligners) {
     if (aligner.id === config.alignProvider && aligner.command !== '') commands.push(aligner.command);
   }

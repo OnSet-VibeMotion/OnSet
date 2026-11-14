@@ -25,6 +25,17 @@ rl.on('line', async (line) => {
       promptId = m.id;
       const sid = m.params.sessionId;
       const text = m.params.prompt[0].text;
+      if (text.includes('简短回复测试')) {
+        update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '第一轮完成' } });
+        send({ id: m.id, result: { stopReason: 'end_turn' } });
+        break;
+      }
+      if (text.includes('长思考挂起')) {
+        update(sid, { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: '正在核对 Code' } });
+        await new Promise(resolve => setTimeout(resolve, 900));
+        update(sid, { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Buddy 的第二轮上下文。' } });
+        break;
+      }
       if (text.includes('后台子任务')) {
         const child = (rootSessionId, status) => send({ method: 'opencode/session/child_update', params: {
           rootSessionId, childSessionId: 'child', parentSessionId: sid, depth: 1, title: '核对分镜', type: 'status', status,

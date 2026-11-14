@@ -4,14 +4,13 @@
  *
  * 试听稿放在音色库目录的 .drafts/ 下（以点开头，list 不会把它当成音色），一天后清掉。
  */
-import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { BreezeTTS2, TTSProviders } from '../config/providers';
 import { modelDir, modelReady, toolStatus } from '../toolinstall';
 import { findOptional } from '../toolpath';
-import { start } from '../procgroup';
+import { runVoice } from './runner';
 import { windowsBreezeStatus } from '../windowsruntime/breeze';
 
 /**
@@ -132,7 +131,7 @@ export async function design(root: string, opts: DesignOptions): Promise<Draft> 
       '--join_audio',
       '--audio_format', 'wav',
     ];
-    await run(command, args, opts.env, opts.signal);
+    await runVoice(command, args, { ...opts.env, HF_HUB_OFFLINE: '1', TRANSFORMERS_OFFLINE: '1' }, opts.signal);
     const take = path.join(work, 'take.wav');
     if (!fs.existsSync(take)) throw new Error('Breeze 没有生成音频');
     fs.renameSync(take, path.join(dir, id + '.wav'));
@@ -142,32 +141,4 @@ export async function design(root: string, opts: DesignOptions): Promise<Draft> 
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }
-}
-
-/** 跑一次合成；失败时带上输出的最后几行（mlx-audio 的报错在最后）。 */
-function run(command: string, args: string[], env: Record<string, string>, signal?: AbortSignal): Promise<void> {
-  if (process.platform === 'win32') {
-    return (async () => {
-      const started = await start(command, args, { env, signal, stdio: ['ignore', 'pipe', 'pipe'] });
-      let tail = '';
-      const keep = (chunk: Buffer) => { tail = (tail + chunk.toString('utf8')).slice(-4000); };
-      started.child.stdout!.on('data', keep);
-      started.child.stderr!.on('data', keep);
-      try { await started.wait(); } catch (error) { throw new Error('Breeze 生成失败：' + tail.trim().split('\n').slice(-6).join(' '), { cause: error }); }
-    })();
-  }
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { env, stdio: ['ignore', 'pipe', 'pipe'], signal });
-    let tail = '';
-    const keep = (chunk: Buffer) => {
-      tail = (tail + chunk.toString('utf8')).slice(-2000);
-    };
-    child.stdout.on('data', keep);
-    child.stderr.on('data', keep);
-    child.on('error', (err) => reject(err));
-    child.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`Breeze 生成失败（退出码 ${code}）：${tail.trim().split('\n').slice(-3).join(' ')}`));
-    });
-  });
 }

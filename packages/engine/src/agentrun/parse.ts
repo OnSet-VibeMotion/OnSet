@@ -53,6 +53,8 @@ export const maxToolOutput = 4000;
 export interface Event {
   kind: Kind;
   text?: string;
+  /** 流式思考的分批文本；同一轮里同一 text_id 按原样拼接，不另加换行。 */
+  text_id?: string;
   tool?: string;
   call_id?: string;
   /**
@@ -80,6 +82,7 @@ export function eventJSON(e: Event): Record<string, unknown> {
     usage: e.usage ? usageJSON(e.usage) : undefined,
     plan: e.plan && e.plan.length > 0 ? e.plan.map((item) => ({ text: item.text, status: item.status })) : undefined,
     background_tasks: e.background_tasks,
+    text_id: e.text_id || undefined,
   };
 }
 

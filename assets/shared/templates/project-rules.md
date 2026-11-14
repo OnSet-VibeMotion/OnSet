@@ -34,7 +34,7 @@
 
 ## 安全模式下怎么写命令
 
-安全模式按命令前缀放行：`onset`、`ffmpeg`、`ffprobe`、查看文件的 `ls` `cat` `head` `tail` `wc` `grep` `find` `jq`、`echo`、`shasum`、只读的 `git status` / `git diff` / `git log`、`curl`、`python3` / `node`（跑脚本时写成 `python3 脚本.py`），当前 TTS 与对齐工具的那一个命令，以及用户在 `onset.conf` 的 `ORCHESTRATOR_ALLOW_COMMANDS` 里补充的。`sh` / `bash`、`rm`、安装命令不在其中。写法不对时整条命令会被拦下，而无头运行里没有人来批准：
+安全模式按命令前缀放行：`onset`、`ffmpeg`、`ffprobe`、查看文件的 `ls` `cat` `head` `tail` `wc` `grep` `find` `jq`、`echo`、`shasum`、只读的 `git status` / `git diff` / `git log`、`curl`、`python3` / `node`（跑脚本时写成 `python3 脚本.py`），当前对齐工具的命令（配音统一通过 `voice_synthesize`，不直接运行配音命令），以及用户在 `onset.conf` 的 `ORCHESTRATOR_ALLOW_COMMANDS` 里补充的。`sh` / `bash`、`rm`、安装命令不在其中。写法不对时整条命令会被拦下，而无头运行里没有人来批准：
 
 - 每条命令单独执行，不要用 `cd …;`、`&&`、`;` 或管道把几条拼在一起；工作目录已经是项目根，路径直接写相对路径。
 - 不要用 shell 变量赋值（`T="…"; mmx … "$T"`）或跨行的引号传长文本：先把文本写进文件，再把文件路径交给命令。

@@ -218,6 +218,8 @@ export interface SessionEvent {
   time: string;
   kind: EventKind;
   text?: string;
+  /** 同一轮里同一 text_id 的思考文本按原样拼接。 */
+  text_id?: string;
   tool?: string;
   call_id?: string;
   input?: unknown;
@@ -714,6 +716,7 @@ export interface ScriptNode {
   spoken?: string;
   id?: string;
   children?: ScriptNode[];
+  timings?: ({ start: number; end: number } | null)[];
 }
 
 export interface ScriptBlock {
@@ -741,7 +744,8 @@ export interface ScriptResponse {
   stats?: { units: number; paragraphs: number; phrases: number };
   parse_error?: string;
   estimate_seconds?: number;
-  voice?: { path: string; seconds: number };
+  voice?: { path: string; name: string; version: number; seconds: number; timing: 'aligned' | 'estimated' };
+  audio_options?: { path: string; name: string; version: number }[];
   change_log?: { path: string; content: string };
 }
 

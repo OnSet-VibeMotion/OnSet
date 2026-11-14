@@ -4,6 +4,8 @@
 
 # OnSet
 
+<p align="center"><img src="apps/desktop/build/icon.png" alt="OnSet app icon" width="96" height="96"></p>
+
 **Talk with an agent, and turn an idea into a video.**
 
 OnSet (片场, "film set") is a desktop client for macOS and Windows. You say what you want in a chat, and an agent works like a film crew: it writes the script, records the voice-over, times the subtitles, plans the shots, renders the motion-graphics scenes in parallel, cuts them together, makes covers and gets the film ready to publish, stopping to ask you whenever a decision is yours. Hand it an article or a narration script if you have one, or start from nothing. It can also make beat-synced films with no voice-over, where the picture follows the music, in vertical or landscape.
@@ -12,7 +14,7 @@ An AI orchestrator of your choice does the production inside the client: Codex, 
 
 ## Install
 
-GitHub Releases provides these installers, with `checksums.txt` for verification:
+[Download the latest release](https://github.com/OnSet-VibeMotion/OnSet/releases/latest). GitHub Releases provides these installers, with `checksums.txt` for verification:
 
 - macOS: download `OnSet-<version>-arm64.dmg` for Apple Silicon or `OnSet-<version>-x64.dmg` for Intel, then drag OnSet into Applications.
 - Windows x64 (experimental): run `OnSet-<version>-windows-x64-setup.exe`. The Windows port is incomplete; tool downloads and parts of the production workflow still need adaptation. The installer is unsigned.
@@ -70,6 +72,8 @@ Voice options:
 Credentials always go through each tool's own login. The project `.env` may not store an API key, token, secret, or password.
 
 The subtitle timeline comes from known-text forced alignment. On Apple Silicon this uses mlx-audio's Qwen3-ForcedAligner; elsewhere it uses FunASR.
+
+All built-in speech providers run through OnSet tools. The agent supplies text, a voice and delivery settings; OnSet handles provider arguments, local models, audio conversion and cancellation. Each take produces a 48 kHz stereo WAV and keeps source audio, timestamps and settings separately. New takes use new filenames to preserve approved audio.
 
 With Breeze, the voice comes from the voice library on the workbench's Voice page: a reference clip plus its exact transcript, stored in a user-level folder and shared by all projects. Every film is cloned from it, so an account keeps one voice across films. A new voice can be recorded from the microphone, designed from a one-line description (the local Breeze generates takes to pick from), or uploaded. Breeze can also direct the tone paragraph by paragraph while keeping the same voice, and the script can carry vocal events such as `<|[笑]>` and `<|[叹气]>`. Only clone your own voice or one you are authorized to use; the Breeze model and the speech it generates fall under the BreezeBlue Research and Non-Commercial License noted above.
 
@@ -190,7 +194,7 @@ Orchestrators and renderers are confined to the project workspace. They are allo
 - copy and move within the workspace
 - `curl` for fonts and licensed assets
 - `python3` / `node` for scripts
-- the one command of the current voice and alignment tool
+- the current alignment tool command (speech synthesis runs through OnSet tools)
 
 `.env` cannot be read. `sh` / `bash`, `rm`, permission changes, and install commands are not on the list.
 

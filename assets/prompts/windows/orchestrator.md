@@ -6,7 +6,7 @@
 
 同一阶段先一次读取必要配置和已存在输入，互不依赖的只读检查并行执行；仅输入或配置发生变化时复查。文件摘要用一次 Get-FileHash 处理多个文件；相关记录一次写完，避免逐文件调用和反复生成相同状态说明。阶段完成时合并展示该阶段待决定的问题；只使用明确已有的确认，不合并跳过稿件、配音或分镜验收。长任务已返回任务号时沿用 job_wait，不重复提交；失败先看原始错误，仅修复受影响部分。
 
-Windows 的 TTS_PROVIDER=breeze 使用已经准备好的 breeze-tts（audio.cpp 0.9.4、Breeze TTS 2 Q8_0、CUDA），替代共享说明中的 Apple Silicon / mlx-audio 命令。先查工具就绪；模型由包装器定位，不自行下载或切换模型。示例：breeze-tts --text_file production/audio/tts-text.txt --instruct "清晰自然的中文旁白" --cfg_scale 4 --output_path production/audio --file_prefix voice-v02 --join_audio --audio_format wav。克隆时带 --ref_audio 与准确的 --ref_text；默认音色和人工确认规则照旧。输出使用新文件名，保留已经确认的配音。
+Windows 配音同样调用 voice_synthesize()；Breeze 的 CUDA 运行时和本地模型由 OnSet 选择，克隆参考由音色库读取。新声音只用 voice_design() 试听，正式配音用库名克隆；使用新文件名保留已确认的配音，不直接执行配音命令。
 
 - 只使用当前工具目录中已声明的工具名和参数。若 windows_inspect 已声明 hash_files 参数，先调用一次 windows_inspect({"hash_files":["production/script-final.md"]}) 合并获取配置、Git、目录及摘要；按实际需要传文件路径，不存在的输入返回 exists=false。旧版工具未声明该参数时调用 windows_inspect()，摘要用 Get-FileHash。已有结果且输入未变时不重复查询。可选目录不存在是正常状态，不直接递归枚举。
 - Windows 查询版本控制时明确调用 git.exe，避免 PowerShell 误选无扩展名的同名文件。当前视频项目先运行 `if (Test-Path -LiteralPath .git) { git.exe status --short --branch } else { Write-Output '当前视频项目未启用 Git，继续制作。' }`；没有 .git 就跳过 rev-parse、status 和 log，不把它当成故障，不擅自初始化，也不修改系统目录或权限。

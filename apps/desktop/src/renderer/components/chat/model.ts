@@ -97,6 +97,7 @@ function dropReplay(raw: SessionEvent[], previous: SessionEvent[]): SessionEvent
   const out: SessionEvent[] = [];
   let guarding = true;
   for (const e of raw) {
+    if (e.text_id) guarding = false; // ACP 的历史已过滤，不能按上一轮的短片段删掉新思考。
     if (guarding && (e.kind === 'text' || e.kind === 'thinking')) {
       if (said.has(e.kind + '\u0000' + (e.text ?? '').trim())) continue;
       guarding = false;
@@ -111,6 +112,7 @@ function dropReplay(raw: SessionEvent[], previous: SessionEvent[]): SessionEvent
 function shapeTurn(block: TurnBlock, raw: SessionEvent[]) {
   const calls = new Map<string, { type: 'tool'; call: SessionEvent; result?: SessionEvent }>();
   const hidden = new Set<string>();
+  const thoughts = new Map<string, Extract<ProcessItem, { type: 'thinking' }>>();
   const items: ProcessItem[] = [];
   let currentStep = '';
   for (const event of raw) {
@@ -129,16 +131,30 @@ function shapeTurn(block: TurnBlock, raw: SessionEvent[]) {
         }
         break;
       case 'thinking': {
+        const previous = event.text_id ? thoughts.get(event.text_id) : undefined;
+        if (previous) {
+          previous.event = { ...previous.event, text: (previous.event.text ?? '') + (event.text ?? '') };
+          break;
+        }
         const last = items[items.length - 1];
+        const item = last?.type === 'thinking' ? last : { type: 'thinking' as const, event };
         // 连续的思考片段并成一行。
-        if (last?.type === 'thinking') last.event = { ...last.event, text: `${last.event.text ?? ''}\n\n${event.text ?? ''}` };
-        else items.push({ type: 'thinking', event });
+        if (item === last) item.event = { ...item.event, text: `${item.event.text ?? ''}\n\n${event.text ?? ''}` };
+        else items.push(item);
+        if (event.text_id) thoughts.set(event.text_id, item);
         break;
       }
       case 'tool-call': {
         // 待办清单工具只用来更新进度，不单列一行；它们的结果也不列。
         if (planTools.test(event.tool ?? '')) {
           if (event.call_id) hidden.add(event.call_id);
+          break;
+        }
+        // CodeBuddy 会先发空参数、再以同一 call_id 补发完整调用。更新原行，否则结果只会配到最后
+        // 一行，早先的「执行」会一直转。保留首次事件的时间与序号，耗时从开始算，也保留已有结果。
+        const existing = event.call_id ? calls.get(event.call_id) : undefined;
+        if (existing) {
+          existing.call = { ...existing.call, ...unwrapCall(event), time: existing.call.time, seq: existing.call.seq };
           break;
         }
         const item = { type: 'tool' as const, call: unwrapCall(event) };

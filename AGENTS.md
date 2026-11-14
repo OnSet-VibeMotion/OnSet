@@ -599,7 +599,7 @@ opencode 默认模型不可用时加 `ONSET_TEST_OPENCODE_MODEL`。
 
 客户端里的 claude 与 qoder 编排工具遇到白名单外的调用时不直接拒绝，而是问界面上的用户：`orchestratorInvocation` 给它们加 `--mcp-config`（`onset studio permission-mcp`，`OrchestratorOptions.permissionPrompt`）与 `--permission-prompt-tool mcp__onset_studio__ask`（claude 还要 `--permission-prompts host`；qoder 的这个参数帮助里没列，实测可用）；审批服务把请求写进这一轮收件目录的 `permissions/` 子目录（`studioview/permissions.ts`），后端轮询到就发 `permission` 事件、界面在输入框上方弹卡片，答复经 `POST /api/sessions/{id}/permissions/{请求}` 写回（`studio/permissions.ts`），这一轮结束时没答的一律答成 `expired`。「以后都允许」把命令前缀记进项目的 `production/studio/permissions.json`，下一轮并进白名单。设置里的「自动批准」（`AUTO_APPROVE`，全局或这个项目，卡片上的「以后都不用问」打开全局的）开着时，`pollPermissions` 收到请求直接答 allow、不发 permission 事件，只在这一轮里发一条「已自动允许：…」的 notice；五家的审批都落到同一个收件目录，所以只此一处。它只回答「要不要问」，工具自己的沙箱照旧（用户嫌审批太多次）。codebuddy 不认 `--permission-prompt-tool`、codex exec 不能中途审批、opencode 的 `run` 根本不拦命令，所以客户端里（`agentrun.Spec.ask` 给了、安全模式）它们改用双向协议：`tools.interactiveInvocation` 选 ACP（`codebuddy --acp` 沿用 acceptEdits 与白名单 `--settings`；`opencode acp` 经 `OPENCODE_CONFIG_CONTENT` 把 bash 设成 ask，合并用户自己的这个变量）或 `codex app-server`（`thread/start` 给 `approvalPolicy: untrusted`、workspace-write 沙箱、网络与可写目录），由 `agentrun/acp.ts`、`codexapp.ts` 在 `interactive.ts` 的进程外壳上跑。对方的审批请求先过白名单（`commandAllowed`，去掉 codex 的 `zsh -lc` 包装），白名单外的经 `spec.ask` 写进同一个收件目录，后面与审批 MCP 一模一样。约定：ACP 的「总是允许」只答 `allow_once`、codex 拒绝答 `decline`（不打断整轮），「以后都允许」只由客户端记；续接用 `session/load` / `thread/resume`，ACP 续接时对方重放的历史不当成这一轮的事件；opencode、codebuddy 被拒后会直接结束这一轮，`acp.ts` 在对话里补一句说明。三家用旧的一次性模式建的会话都能在新协议下续接（2026-11 实测），所以升级不会让已有会话断掉。`onset run` 与 `--unsafe` 仍走一次性模式。离线测试用 `agentrun/testdata/fake-acp.mjs` 与 `fake-codex-app.mjs`，e2e 的 `fake-bin/opencode` 复用前者；`--mcp-config` 吃多个值，后面必须紧跟一个选项，不然会把提示词吞掉。改了这条链要用真实 CLI 跑一遍：claude 与 qoder 照下面的 RealCLI，三家双向协议用 `ONSET_TEST_INTERACTIVE_TOOLS=codex,opencode,codebuddy npx vitest run --root packages/engine src/agentrun -t RealInteractive`（opencode 默认模型不可用时加 `ONSET_TEST_OPENCODE_MODEL`）；fake 只模拟协议。
 
-编排工具同理，`orchestratorAccess`（`config/providers.ts`）列出它要放行的命令：基础命令（`orchestratorBaseCommands`，**不含 `onset`**——onset 只经工具服务调用）加当前 TTS 与对齐工具各自的那一个命令（`TTSProviders` / `Aligners` 的 `command` 字段）。各家的权限模式实测结果不同，改之前先读 `orchestratorInvocation` 的注释：qoder 的 `dont_ask` 连写文件都拒；codex 没有命令白名单，靠沙箱，而沙箱默认断网会让 TTS 失败；opencode 2.x 只读项目目录里的 `opencode.json`，规则集拦不住命令，写成全拒时无头运行会直接挂起，所以 `opencode run`（`onset run`）在安全模式下不加限制，README 里写明了；客户端里的 `opencode acp` 经 `OPENCODE_CONFIG_CONTENT` 把 bash 设成 ask，白名单外的命令照样会问（实测 2.1.0 有效）。
+编排工具同理，`orchestratorAccess`（`config/providers.ts`）列出它要放行的命令：基础命令（`orchestratorBaseCommands`，**不含 `onset`**——onset 只经工具服务调用）加当前对齐工具的命令（`Aligners` 的 `command` 字段）；TTS 命令只由 OnSet 配音适配器运行，不放行给编排工具。各家的权限模式实测结果不同，改之前先读 `orchestratorInvocation` 的注释：qoder 的 `dont_ask` 连写文件都拒；codex 没有命令白名单，靠沙箱，而沙箱默认断网会让 TTS 失败；opencode 2.x 只读项目目录里的 `opencode.json`，规则集拦不住命令，写成全拒时无头运行会直接挂起，所以 `opencode run`（`onset run`）在安全模式下不加限制，README 里写明了；客户端里的 `opencode acp` 经 `OPENCODE_CONFIG_CONTENT` 把 bash 设成 ask，白名单外的命令照样会问（实测 2.1.0 有效）。
 
 Qoder 编排在安全模式且挂有 onset 工具或审批服务时，额外通过 `permissions.deny` 拒绝文件工具修改项目 `scenes/` 与 `production/shared/` 下的 HTML/CSS/JS/TS 实现文件（`tools.ts` 的 `qoderOrchestratorSettings`）。Qoder 的路径写入规则用 `Edit`，同时覆盖 Write；模式以 `//` 开头写绝对路径，不能使用没有根目录的多段 glob（实测未拦住）。`prompt.md`、`scene.json` 和渲染器权限保持原样。此规则不限制 Bash/脚本，不能当作系统沙箱；复制、同步和补丁仍由每轮职责说明约束。`RealToolsMCP` 中的 Qoder 文件权限用例必须在本机通过。
 
@@ -654,16 +654,17 @@ ONSET_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run --ro
 
 ## 新增一个 TTS 或对齐工具
 
-配音与对齐由编排工具按提示词执行，`onset` 只登记取值并做与工具无关的校验。取值表在 `packages/engine/src/config/providers.ts`（`TTSProviders` / `Aligners`），校验与 `onset config get` 的帮助都从它派生。加一个工具要同步：
+内置配音统一由 `voice_synthesize`（`packages/engine/src/voice`）执行，编排工具只给文稿、音色和表达参数，不直接运行供应商 CLI；音色发现走 `voice_catalog`，新声音试听走 `voice_design`。对齐沿用已有对齐工具。取值表在 `packages/engine/src/config/providers.ts`（`TTSProviders` / `Aligners`），校验与 `onset config get` 的帮助都从它派生。加一个工具要同步：
 
 | 位置 | 作用 |
 |---|---|
-| `packages/engine/src/config/providers.ts` | 取值、名称、自带时间戳粒度、命令名（安全模式下编排工具只被放行这一个命令），以及 `install`：`onset setup` 怎么装它（npm 包 / uv 工具 / uv 专用环境，版本钉死，至少发布两周） |
-| `assets/prompts/voice/stage.md`、`timeline/stage.md`（第三、四阶段） | 登录、合成与取时间戳的具体命令（**不写安装命令**，`gen.test.ts` 的「leaves voice tools to onset setup」拦着），改完跑 `npm run generate -w @onset/engine` |
+| `packages/engine/src/config/providers.ts` | 取值、名称、自带时间戳粒度、宿主内部使用的命令名（配音命令不加入编排工具白名单），以及 `install`：`onset setup` 怎么装它（npm 包 / uv 工具 / uv 专用环境，版本钉死，至少发布两周） |
+| `assets/prompts/voice/stage.md`、`timeline/stage.md`（第三、四阶段） | OnSet 操作的用法、各家支持的创作参数与时间戳来源（**不写安装命令**，`gen.test.ts` 的「leaves voice tools to onset setup」拦着），改完跑 `npm run generate -w @onset/engine` |
+| `packages/engine/src/voice/synthesis.ts` / `adapters.ts` / `catalog.ts` | 合成与音色查询适配、参数验证、统一 48kHz 双声道 WAV，保留原始音频与服务响应；不覆盖旧 take，不自动下载 |
 | `apps/desktop/src/renderer/components/SetupGuide.tsx` 的 `voiceNames` | 安装页配音卡片上显示的服务名 |
 | `assets/shared/onset.conf`、`.env.example`、两份 README | 可选值注释 |
 
-收录门槛是「有可非交互调用的 CLI，且凭据不必落进项目文件」。写进提示词的命令要实测过；跑不了的（没有账号）照官方文档写，并让编排工具先打印返回结构再解析。没有自带字级时间戳的路径，`voice.srt` 一律由强制对齐生成，不拿句级时间戳凑。
+收录门槛是「有可非交互调用的 CLI，且凭据不必落进项目文件」。供应商适配器的参数与返回结构由宿主代码管理并测试；没有账号的服务按固定版本的官方 CLI 文档与响应样本测试，不让编排工具临时写解析脚本。没有自带字级时间戳的路径，`voice.srt` 一律由强制对齐生成，不拿句级时间戳凑。
 
 ## 音色库
 
@@ -672,7 +673,7 @@ ONSET_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run --ro
 | 约定 | 原因 |
 |---|---|
 | 正式配音一律克隆，描述（`--instruct`）只用来设计新声音的试听 | 2026-11 实测（Resemblyzer 余弦）：同一句描述三次生成只有 0.69 / 0.69 / 0.82，听起来像换了人；从参考音频克隆新文案 0.93 / 0.89 |
-| 编排工具只有 `voice_list` / `voice_get` / `voice_save` / `voice_default`（`packages/cli/src/voice_cmd.ts`），删除只在客户端的音色页（`DELETE /api/voices/{名字}`）；`voice_save` 同名不覆盖，要 `overwrite` | 音色是用户长期积累的声音，一句话删掉或顶掉就找不回来。`voice_cmd.test.ts` 的「no way to delete a voice」钉着 |
+| 编排工具有 `voice_synthesize` / `voice_catalog` / `voice_design` 与 `voice_list` / `voice_get` / `voice_save` / `voice_default`（`packages/cli/src/voice_cmd.ts`），删除只在客户端的音色页（`DELETE /api/voices/{名字}`）；`voice_save` 同名不覆盖，要 `overwrite` | 音色是用户长期积累的声音，一句话删掉或顶掉就找不回来。`voice_cmd.test.ts` 的「no way to delete a voice」钉着 |
 | 音色页（`Voices.tsx`，后端 `studio/voices.ts`）在进程里直接读写音色库，不占项目写锁、不进轮次快照；上传录音先走 `/api/uploads` 再转存 | 与安装页、记忆面板相同：写的是用户级目录，不是项目文件 |
 | `ONSET_VOICES_DIR` 经 `childEnvironment` 显式传下去，并进 `orchestratorAccess` 的 `writableDirs`；测试的 testutil / testsupport / e2e fixtures 都指到临时目录 | 理由同记忆库：子进程会算出另一个目录，codex 沙箱写不进去；测试不能动开发者真实积累的声音 |
 | 语气指导（克隆参数加 `--instruct` 与 `--cfg_scale 4`）按段落分组合成再拼接，语气说明写进 `production/audio/directions.md`；说明只写语气、情绪、语速，不写音色 | 实测同一参考音频下「沉重」「兴奋」「亲切」三种说明，相似度仍有 0.90 / 0.90 / 0.94，时长与音高明显变化；「兴奋」把音高从 132 Hz 抬到 223 Hz，所以提示词要求先试听 |

@@ -64,11 +64,15 @@ function planStatus(status: string): string {
 
 /**
  * 把 session/update 译成统一事件。正文与思考是一小段一小段推来的，攒成一条再发：统一事件是消息级的，
- * 每个字一条事件会把对话撑爆。工具调用、待办或一轮结束时把攒着的发出去。
+ * 每个字一条事件会把对话撑爆。思考每半秒发一批，避免长思考时界面一直停在「正在启动 AI」；
+ * 正文、剩余思考在工具调用、待办或一轮结束时发出去。
  */
 export class ACPTranslator {
   private textBuf = '';
   private thoughtBuf = '';
+  private thoughtTimer: ReturnType<typeof setTimeout> | undefined;
+  private thoughtID: string | undefined;
+  private thoughtSerial = 0;
   private readonly tools = new Map<string, string>();
   private readonly tasks = new ActiveTasks();
   private readonly teams = new Map<string, Map<string, string>>();
@@ -76,10 +80,30 @@ export class ACPTranslator {
   constructor(private readonly emit: (event: Event) => void) {}
 
   flush(): void {
-    if (this.thoughtBuf.trim() !== '') this.emit({ kind: KindThinking, text: this.thoughtBuf.trim() });
+    if (this.thoughtTimer) clearTimeout(this.thoughtTimer);
+    this.thoughtTimer = undefined;
+    this.flushThought();
+    this.thoughtID = undefined;
     if (this.textBuf.trim() !== '') this.emit({ kind: KindText, text: this.textBuf.trim() });
-    this.thoughtBuf = '';
     this.textBuf = '';
+  }
+
+  private flushThought(): void {
+    // 一旦开始分批，空格与换行也是原文的一部分，不能逐批 trim。
+    if (this.thoughtBuf !== '' && (this.thoughtID || this.thoughtBuf.trim() !== '')) {
+      this.emit({ kind: KindThinking, text: this.thoughtID ? this.thoughtBuf : this.thoughtBuf.trim(), ...(this.thoughtID ? { text_id: this.thoughtID } : {}) });
+    }
+    this.thoughtBuf = '';
+  }
+
+  private scheduleThought(): void {
+    if (this.thoughtTimer || this.thoughtBuf === '') return;
+    this.thoughtTimer = setTimeout(() => {
+      this.thoughtTimer = undefined;
+      if (!this.thoughtID && this.thoughtBuf.trim() === '') return;
+      this.thoughtID ??= `acp-thought-${++this.thoughtSerial}`;
+      this.flushThought();
+    }, 500);
   }
 
   update(u: Obj): void {
@@ -109,12 +133,13 @@ export class ACPTranslator {
     }
     switch (str(u.sessionUpdate)) {
       case 'agent_message_chunk':
-        if (this.thoughtBuf !== '') this.flush();
+        if (this.thoughtBuf !== '' || this.thoughtID) this.flush();
         this.textBuf += acpText(u.content);
         return;
       case 'agent_thought_chunk':
         if (this.textBuf !== '') this.flush();
         this.thoughtBuf += acpText(u.content);
+        this.scheduleThought();
         return;
       case 'tool_call': {
         this.flush();
