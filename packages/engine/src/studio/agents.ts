@@ -17,10 +17,10 @@ import type { Server } from './studio';
  * 列出来）。取值必须都在 tools.ValidTools 里，「agentOrder 覆盖全部工具」的测试守着两边一致。
  */
 export const agentOrder: readonly { id: string; label: string; installURL: string }[] = [
-  { id: 'claude', label: 'Claude Code', installURL: 'https://docs.claude.com/en/docs/claude-code/setup' },
+  { id: 'claude', label: 'Claude Code', installURL: 'https://code.claude.com/docs/en/setup' },
   { id: 'codex', label: 'Codex', installURL: 'https://developers.openai.com/codex/cli' },
-  { id: 'qoder', label: 'Qoder', installURL: 'https://qoder.com/cli' },
-  { id: 'codebuddy', label: 'CodeBuddy', installURL: 'https://www.codebuddy.ai/cli' },
+  { id: 'qoder', label: 'Qoder', installURL: 'https://help.aliyun.com/zh/lingma/qoder-cli-cn-get-started-quickly' },
+  { id: 'codebuddy', label: 'CodeBuddy', installURL: 'https://www.codebuddy.cn/docs/cli/installation' },
   { id: 'opencode', label: 'OpenCode', installURL: 'https://opencode.ai/docs/' },
   { id: 'director', label: '导演', installURL: '' },
 ];
