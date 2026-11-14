@@ -145,3 +145,32 @@ test('the orchestrator marks which production step the project is at', async ({ 
   await page.reload();
   await expect(page.locator('[data-tab="final"]')).toHaveClass(/current/);
 });
+
+// 重新打开一段长对话：历史一次画完、直接落在最新一轮，不是从第一条起一帧帧往下长、往下滚。
+test('reopening a long conversation lands on the latest turn at once', async ({ page, project }) => {
+  await openProject(page, project);
+  const turns = 8;
+  for (let i = 1; i <= turns; i++) {
+    await page.locator('#prompt').fill(`第 ${i} 句话`);
+    await page.locator('#send').click();
+    await expect(page.locator('.assistant-flow')).toHaveCount(i);
+    await expect(page.locator('.done-line').last()).toBeVisible();
+  }
+  // 记下每一帧里对话有几轮：一帧帧补出来的话，这串数会从 1 慢慢涨到 8。
+  await page.addInitScript(() => {
+    const seen = [];
+    window.__turnCounts = seen;
+    const tick = () => {
+      const n = document.querySelectorAll('.assistant-flow').length;
+      if (n > 0 && seen[seen.length - 1] !== n) seen.push(n);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await page.reload();
+  await expect(page.locator('.assistant-flow')).toHaveCount(turns);
+  expect(await page.evaluate(() => window.__turnCounts)).toEqual([turns]);
+  const gap = await page.locator('#messages').evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  expect(gap).toBeLessThanOrEqual(8);
+  await expect(page.locator('.intro')).toHaveCount(0);
+});

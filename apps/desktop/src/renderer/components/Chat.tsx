@@ -109,7 +109,7 @@ interface Props {
 const BOTTOM_TOLERANCE = 8;
 
 export function Chat(props: Props) {
-  const events = useSessionEvents(props.sessionId, props.onFilesChanged, props.onTurnEnd, props.onView);
+  const { events, loaded } = useSessionEvents(props.sessionId, props.onFilesChanged, props.onTurnEnd, props.onView);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
@@ -171,6 +171,23 @@ export function Chat(props: Props) {
     const el = scroller.current;
     if (el && following.current && el.scrollHeight - el.scrollTop - el.clientHeight > 1) el.scrollTop = el.scrollHeight;
   }, [blocks, queue.length]);
+  // 换会话时回到跟随：打开一段历史就落在最新的那一轮。
+  useLayoutEffect(() => {
+    following.current = true;
+    setAtBottom(true);
+  }, [props.sessionId]);
+  // 内容在画完之后还会长高（图片、海报、视频封面解码完），对话区也会被上面后到的提示条压矮：
+  // 跟随时一起贴住底部，不然打开历史停在半截。
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (following.current && el.scrollHeight - el.scrollTop - el.clientHeight > 1) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    for (const child of Array.from(el.children)) observer.observe(child);
+    return () => observer.disconnect();
+  }, [blocks]);
 
   const onScroll = () => {
     const el = scroller.current;
@@ -521,7 +538,7 @@ export function Chat(props: Props) {
 
       <div className={'chat-log-wrap' + (scrolled ? ' edge' : '')}>
         <div className={'chat-log' + (plan ? ' has-plan' : '')} id="messages" ref={scroller} onScroll={onScroll}>
-          {events.length === 0 && (
+          {loaded && events.length === 0 && (
             <div className="intro">
               <h3>说说要做什么</h3>
               <p>AI 会直接改项目文件，每一轮的改动都能查看和回退。</p>
@@ -761,7 +778,25 @@ function useNow(active: boolean): number {
 /** 切页请求在多久之内算刚发生（毫秒）。 */
 const viewFreshMs = 15000;
 
-/** 订阅一个会话的事件流。EventSource 断线后自带 Last-Event-ID 重连，后端按 seq 补发，这里再按 seq 去重。 */
+/** 把 SSE 正文里的事件读出来（follow=0 时后端写完历史就结束）。 */
+export function parseEventStream(text: string): SessionEvent[] {
+  const out: SessionEvent[] = [];
+  for (const chunk of text.split('\n\n')) {
+    const data = chunk
+      .split('\n')
+      .filter((line) => line.startsWith('data: '))
+      .map((line) => line.slice('data: '.length))
+      .join('\n');
+    if (data !== '') out.push(JSON.parse(data) as SessionEvent);
+  }
+  return out;
+}
+
+/**
+ * 订阅一个会话的事件流。打开会话时先一次取完历史（follow=0）、一次画出来，再从最后一条接着订阅：
+ * 历史也走 SSE 的话是一条条到、一帧帧画，画面会从头往下滚上好一阵。EventSource 断线后自带
+ * Last-Event-ID 重连，后端按 seq 补发，这里再按 seq 去重。
+ */
 function useSessionEvents(
   sessionId: string,
   onFilesChanged: (files: string[]) => void,
@@ -769,12 +804,19 @@ function useSessionEvents(
   onView: (view: ViewRequest) => void,
 ) {
   const [events, setEvents] = useState<SessionEvent[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const callbacks = useRef({ onFilesChanged, onTurnEnd, onView });
   callbacks.current = { onFilesChanged, onTurnEnd, onView };
 
   useEffect(() => {
     setEvents([]);
-    if (!sessionId) return;
+    setLoaded(false);
+    if (!sessionId) {
+      setLoaded(true);
+      return;
+    }
+    let closed = false;
+    let source: EventSource | null = null;
     let last = 0;
     let pending: SessionEvent[] = [];
     let frame = 0;
@@ -785,26 +827,50 @@ function useSessionEvents(
       pending = [];
       setEvents((current) => current.concat(batch));
     };
-    const source = new EventSource(`/api/sessions/${sessionId}/events`);
+    const notify = (event: SessionEvent) => {
+      if (event.kind === 'files-changed' && event.files) callbacks.current.onFilesChanged(event.files);
+      if (event.kind === 'turn-end') callbacks.current.onTurnEnd();
+      // 只执行刚发生的切页请求：打开会话时重放的历史不该把页面切来切去。
+      if (event.kind === 'view' && event.view && Date.now() - Date.parse(event.time) < viewFreshMs) callbacks.current.onView(event.view);
+    };
     const handle = (message: MessageEvent<string>) => {
       const event = JSON.parse(message.data) as SessionEvent;
       if (event.seq <= last) return;
       last = event.seq;
       pending.push(event);
       if (!frame) frame = requestAnimationFrame(flush);
-      if (event.kind === 'files-changed' && event.files) callbacks.current.onFilesChanged(event.files);
-      if (event.kind === 'turn-end') callbacks.current.onTurnEnd();
-      // 只执行刚发生的切页请求：打开会话时重放的历史不该把页面切来切去。
-      if (event.kind === 'view' && event.view && Date.now() - Date.parse(event.time) < viewFreshMs) callbacks.current.onView(event.view);
+      notify(event);
     };
-    for (const kind of kinds) source.addEventListener(kind, handle as EventListener);
+    const follow = () => {
+      if (closed) return;
+      source = new EventSource(`/api/sessions/${sessionId}/events?after=${last}`);
+      for (const kind of kinds) source.addEventListener(kind, handle as EventListener);
+    };
+    void (async () => {
+      try {
+        const response = await fetch(`/api/sessions/${sessionId}/events?follow=0`);
+        if (!response.ok) throw new Error(String(response.status));
+        const history = parseEventStream(await response.text());
+        if (closed) return;
+        const fresh = history.filter((event) => event.seq > last);
+        if (fresh.length > 0) last = fresh[fresh.length - 1].seq;
+        setEvents(fresh);
+        for (const event of fresh) notify(event);
+      } catch {
+        // 取不到就退回原来的路子：整段历史从订阅里补发。
+      }
+      if (closed) return;
+      setLoaded(true);
+      follow();
+    })();
     return () => {
-      source.close();
+      closed = true;
+      source?.close();
       if (frame) cancelAnimationFrame(frame);
     };
   }, [sessionId]);
 
-  return events;
+  return { events, loaded };
 }
 
 interface BlockProps {

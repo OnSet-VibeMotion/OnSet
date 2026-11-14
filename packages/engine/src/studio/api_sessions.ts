@@ -266,9 +266,11 @@ function atoi(value: string | null): number {
  */
 export function sessionEvents(request: Request, sess: Session): Response {
   const url = new URL(request.url);
+  // 两个都有时取大的：客户端先取完历史再带 ?after= 订阅，断线重连时 EventSource 另带 Last-Event-ID，
+  // 那是它最后收到的一条，比 ?after= 新。
   let after = atoi(request.headers.get('Last-Event-ID'));
   const afterParam = url.searchParams.get('after');
-  if (afterParam !== null && afterParam !== '') after = atoi(afterParam);
+  if (afterParam !== null && afterParam !== '') after = Math.max(after, atoi(afterParam));
   const follow = url.searchParams.get('follow') !== '0';
   const encoder = new TextEncoder();
   let closed = false;
