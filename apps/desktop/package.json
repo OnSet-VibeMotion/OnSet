@@ -12,7 +12,7 @@
     "start": "npm run build && electron .",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.main.json",
     "dist": "npm run vendor && npm run build && npm run build -w @onset/cli && electron-builder --dir",
-    "test:packaging": "node --test scripts/packaging.test.mjs",
+    "test:packaging": "node --test scripts/packaging.test.mjs scripts/local-runtime.test.mjs",
     "test:e2e": "npm run build -w @onset/cli && npm run build && playwright test"
   },
   "devDependencies": {
