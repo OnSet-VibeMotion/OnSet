@@ -89,6 +89,21 @@ export function installedDir(projectDir: string): string {
   return '';
 }
 
+/**
+ * 默认风格在 t（毫秒）之后装上或换过：manifest 每次 film_style_use 都重写，看它的修改时间。没装为 false。
+ * 制作路线用它判断分镜是不是照旧的视觉写的（分镜写好之后才定风格、或换了风格，镜头语言要按新风格改）。
+ */
+export function changedAfter(projectDir: string, t: number): boolean {
+  try {
+    return fs.statSync(path.join(skillDir(projectDir), ManifestFile)).mtimeMs > t;
+  } catch {
+    return false;
+  }
+}
+
+/** 分镜比默认风格旧时，制作路线上「上游改过」的说明。 */
+export const PlanBehindStyleNote = '整片风格是在分镜写好之后定的（或换过），镜头语言要按新风格改一遍';
+
 function readOptional(file: string): string | undefined {
   try {
     return fs.readFileSync(file, 'utf8');

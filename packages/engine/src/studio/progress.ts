@@ -10,6 +10,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as align from '../align';
+import * as filmstyle from '../filmstyle';
 import * as flow from '../flow';
 import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
@@ -36,6 +37,8 @@ export interface Station {
    * 关卡：confirmed 你确认过 / passed 已经过了（没有确认记录）/ changed 确认后又改过 / todo 还没到或在等你。
    */
   status: 'done' | 'skipped' | 'stale' | 'todo' | 'confirmed' | 'passed' | 'changed';
+  /** 上游改过时是哪儿改了（NodeJudge.staleNote）；没有就用通用说法。 */
+  stale_note?: string;
   /** 一句结果：几个镜头、几条字幕、还差几个镜头……；没有可说的为空。 */
   detail?: string;
   /** 产物最后一次写入或确认的时间（RFC 3339，本地时区）。 */
@@ -314,6 +317,22 @@ function storyboardDetail(c: Ctx): string | undefined {
   }
 }
 
+/** 默认风格比分镜计划与处理方案都新。 */
+function planBehindStyle(c: Ctx, out: number): boolean {
+  return filmstyle.changedAfter(c.root, Math.max(out, f(c, 'production/treatment.md')));
+}
+
+/**
+ * 分镜计划只写锚点，帧号由 scene_cues 按配音算进各镜头的 scene.json。重新配音后（例如修一个读音）
+ * 计划本身不用改，重跑过 cues 就跟上了：配音比计划新、而且比最早一个镜头的 scene.json 还新，才是没跟上。
+ */
+function voiceAhead(c: Ctx, out: number): boolean {
+  const voice = f(c, 'production/audio/voice.srt');
+  if (voice <= out) return false;
+  if (c.scenes.length === 0) return true;
+  return voice > Math.min(...c.scenes.map((sc) => mtime(path.join(sc.directory, 'scene.json'))));
+}
+
 /** 宿主自带的站的判断，键是「站:站点」。内置插件的判断随它登记（pluginJudges，例如卡点的 beat-plan:plan）。 */
 const judges: Record<string, Judge> = {
   'intake:intake': { output: (c) => anyOf(c, 'production/input-inventory.md', 'production/production-config.json') },
@@ -361,14 +380,9 @@ const judges: Record<string, Judge> = {
   },
   'plan:plan': {
     output: (c) => f(c, 'production/scene-plan.json'),
-    // 分镜计划只写锚点，帧号由 scene_cues 按配音算进各镜头的 scene.json。重新配音后（例如修一个读音）
-    // 计划本身不用改，重跑过 cues 就跟上了：配音比计划新、而且比最早一个镜头的 scene.json 还新，才是没跟上。
-    stale: (c, out) => {
-      const voice = f(c, 'production/audio/voice.srt');
-      if (voice <= out) return false;
-      if (c.scenes.length === 0) return true;
-      return voice > Math.min(...c.scenes.map((sc) => mtime(path.join(sc.directory, 'scene.json'))));
-    },
+    // 配音改过而 cues 没跟上要重做；分镜写好之后才定风格（或换了默认风格）也要重做：分镜与处理方案是照旧的视觉写的。处理方案改过就算跟上了。
+    stale: (c, out) => planBehindStyle(c, out) || voiceAhead(c, out),
+    staleNote: (c, out) => (planBehindStyle(c, out) ? filmstyle.PlanBehindStyleNote : undefined),
     detail: storyboardDetail,
   },
   // 渲染：全部镜头出片才算做完，结果写几个出了片。
@@ -633,6 +647,10 @@ export function computeStations(root: string, scenes: SceneSummary[]): { mode: f
       const out = outputs[i];
       if (out > 0) {
         station.status = d.stale?.(ctx, out) ? 'stale' : 'done';
+        if (station.status === 'stale') {
+          const note = d.staleNote?.(ctx, out);
+          if (note) station.stale_note = note;
+        }
         station.at = localRFC3339(new Date(out));
       } else if (d.id === 'render' && d.stale?.(ctx, 0)) {
         station.status = 'stale';

@@ -465,7 +465,7 @@ export function SceneStyleDialog(props: {
     else ask = `把${props.who}换成「${name(value)}」风格（${value}）。` + (props.installed.has(value) ? '' : '这种风格还没装进项目，先用 film_style_add() 装上。');
     props.onAsk(
       ask +
-        '改分镜计划里这个镜头的 film_style 并重跑 scene_cues()（没有分镜计划的项目直接改镜头 scene.json 的 film_style）；它和相邻镜头的风格不同时，按「风格交界」挑一种过渡手法，让画法在画面里自然地换过去，不要硬切或叠化。',
+        '改分镜计划里这个镜头的 film_style 并重跑 scene_cues()（没有分镜计划的项目直接改镜头 scene.json 的 film_style），再按新风格的镜头语法改它的 prompt.md 里的景别、镜头运动与构图；它和相邻镜头的风格不同时，按「风格交界」挑一种过渡手法，让画法在画面里自然地换过去，不要硬切或叠化。',
     );
   };
   return (

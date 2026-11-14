@@ -969,7 +969,7 @@ function StyleTab({ version, run, scenes, onScene }: { version: number; run: Run
       {dialog === 'default' && info?.manifest && (
         <FilmStyleDialog
           title="换默认风格"
-          intro={<>不写风格的镜头都会换成新风格；点名了其他风格的镜头不受影响。{staleNote}</>}
+          intro={<>不写风格的镜头都会换成新风格；点名了其他风格的镜头不受影响。换好后分镜要按新风格的镜头语言改一遍，「接下来」会提示你交给 AI。{staleNote}</>}
           confirm="换成这个风格"
           data={films.data}
           error={films.error}

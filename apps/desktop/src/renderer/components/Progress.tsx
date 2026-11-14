@@ -39,6 +39,11 @@ export async function confirmGate(id: string, onQuick: (text: string, attachment
   onQuick(message ?? gateMessages[id], []);
 }
 
+/** 上游改过、要重做时发给 AI 的话：知道是哪儿改了就一并说清。「接下来」卡片也用它。 */
+export function redoMessage(s: Pick<ProgressStation, 'label' | 'stale_note'>): string {
+  return s.stale_note ? `「${s.label}」要重做：${s.stale_note}。请按制作说明改好，再请我看一遍。` : `「${s.label}」的上游改过了，请按新的重做这一步。`;
+}
+
 /** 「11-10 10:07」：同一年里不写年份。 */
 export function shortTime(at: string | undefined): string {
   if (!at) return '';
@@ -78,7 +83,7 @@ function statusNote(station: ProgressStation): string {
     case 'skipped':
       return '没留下产物';
     case 'stale':
-      return '上游改过，要重做';
+      return station.stale_note ?? '上游改过，要重做';
     case 'todo':
       return station.optional ? '可选' : '';
     default:
@@ -214,7 +219,7 @@ function StationRow(props: Props & { station: ProgressStation; current: boolean 
               </button>
             )}
             {!station.gate && station.status === 'stale' && (
-              <button className="primary" disabled={!!props.busy} onClick={() => props.onQuick(`「${station.label}」的上游改过了，请按新的重做这一步。`, [])}>
+              <button className="primary" disabled={!!props.busy} onClick={() => props.onQuick(redoMessage(station), [])}>
                 让 AI 重做
               </button>
             )}

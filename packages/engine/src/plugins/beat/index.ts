@@ -14,6 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as beat from '../../beat';
+import * as filmstyle from '../../filmstyle';
 import { planRules, tailStations } from '../../flow/builtin';
 import type { BuiltinPlugin, JudgeContext } from '../../plugin/types';
 import { hyperframesStage, withProxy } from '../../prereqs';
@@ -74,6 +75,7 @@ function mtime(file: string): number {
 }
 
 const f = (c: JudgeContext, rel: string) => mtime(path.join(c.root, rel));
+const planBehindStyle = (c: JudgeContext, out: number) => filmstyle.changedAfter(c.root, Math.max(out, f(c, 'production/treatment.md')));
 const anyOf = (c: JudgeContext, ...rels: string[]) => Math.max(0, ...rels.map((rel) => f(c, rel)));
 
 function readGrid(root: string, rel: string): beat.Grid | null {
@@ -178,7 +180,9 @@ export const beatPlugin: BuiltinPlugin = {
       judges: {
         plan: {
           output: (c) => f(c, beat.PlanFile),
-          stale: (c, out) => f(c, beat.GridFile) > out,
+          // 分镜写好之后才定风格（或换了默认风格）也要重做，见宿主的 plan:plan。
+          stale: (c, out) => f(c, beat.GridFile) > out || planBehindStyle(c, out),
+          staleNote: (c, out) => (planBehindStyle(c, out) ? filmstyle.PlanBehindStyleNote : undefined),
         },
         'gate-beat-storyboard': {
           guide: {

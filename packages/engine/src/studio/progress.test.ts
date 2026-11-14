@@ -157,6 +157,28 @@ describe('production map', () => {
     expect(status(root).plan).toBe('done');
   });
 
+  it('asks to rework the storyboard when the film style is chosen after it', () => {
+    const style = '.agents/skills/onset-film-style/onset-film-style.json';
+    const plan = (root: string) => stations(root).stations.find((s) => s.id === 'plan')!;
+    for (const flowID of ['speech', 'beat']) {
+      const planFile = flowID === 'beat' ? 'production/beat/plan.json' : 'production/scene-plan.json';
+      const root = project({ 'beat.yaml': 'x', 'scenes/scene-001/scene.json': scene }, flowID);
+      write(root, planFile, '{}', 600);
+      write(root, 'production/treatment.md', 'x', 600);
+      // 风格在分镜之前定：分镜照它写，不用重做。
+      write(root, style, '{}', 1200);
+      expect(plan(root).status, flowID).toBe('done');
+      expect(plan(root).stale_note).toBeUndefined();
+      // 分镜写好之后才定（或换了）风格：分镜要按新风格改。
+      write(root, style, '{}');
+      expect(plan(root).status, flowID).toBe('stale');
+      expect(plan(root).stale_note).toContain('镜头语言');
+      // 按新风格改过处理方案就算跟上了。
+      write(root, 'production/treatment.md', 'y');
+      expect(plan(root).status, flowID).toBe('done');
+    }
+  });
+
   it('uses the beat stations for beat projects', () => {
     const root = project({ 'beat.yaml': 'x', 'production/beat/story.md': '# 片名' }, 'beat');
     const p = stations(root);

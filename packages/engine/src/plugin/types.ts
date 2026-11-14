@@ -41,6 +41,8 @@ export interface NodeJudge<C extends JudgeContext = JudgeContext> {
   output?: (c: C) => number;
   /** 上游产物比这一站的产物新：要重做。 */
   stale?: (c: C, out: number) => boolean;
+  /** 上游改过时说清是哪儿改了、要怎么改（客户端「接下来」卡片与路线页用）；不写就用通用说法。 */
+  staleNote?: (c: C, out: number) => string | undefined;
   detail?: (c: C) => string | undefined;
   /** 关卡的状态不经 gates.json 时自己判断。 */
   gateState?: (c: C) => { status: 'confirmed' | 'changed' | 'todo'; at?: number | string };

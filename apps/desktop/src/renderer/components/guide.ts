@@ -1,5 +1,5 @@
 import type { ProgressState, ProgressStation } from '../types';
-import { gateMessage } from './Progress';
+import { gateMessage, redoMessage } from './Progress';
 
 /**
  * 项目内的「接下来」：按制作路线现在这一站（/api/progress 的 current 与 waiting_on），用一两句大白话说清
@@ -151,7 +151,12 @@ export function guideFor(progress: ProgressState | null, started: boolean): Guid
     return { title: s.label, text: '你确认过之后它又改过了，再看一遍。', waiting: true, actions: [...pageAction(s), ...gate] };
   }
   if (s.status === 'stale') {
-    return { title: s.label, text: '前面的步骤改过了，这一步要按新的重做。', waiting: true, actions: [{ kind: 'say', label: '按新的重做', text: `「${s.label}」的上游改过了，请按新的重做这一步。` }] };
+    return {
+      title: s.label,
+      text: s.stale_note ? `${s.stale_note}。` : '前面的步骤改过了，这一步要按新的重做。',
+      waiting: true,
+      actions: [...(s.stale_note ? pageAction(s) : []), { kind: 'say', label: '按新的重做', text: redoMessage(s) }],
+    };
   }
   if (progress.waiting_on === 'user') {
     const text = g.user ?? (s.detail ? `${s.detail}，等你处理。` : `「${s.label}」这一步等你处理。`);
@@ -160,3 +165,4 @@ export function guideFor(progress: ProgressState | null, started: boolean): Guid
   }
   return { title: s.label, text: g.ai ?? `AI 在做「${s.label}」。`, waiting: false, actions: [] };
 }
+

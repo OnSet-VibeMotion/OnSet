@@ -898,6 +898,8 @@ export interface ProgressStation {
   gate?: boolean;
   optional?: boolean;
   status: 'done' | 'skipped' | 'stale' | 'todo' | 'confirmed' | 'passed' | 'changed';
+  /** 上游改过时是哪儿改了（例如分镜写好之后才定了整片风格）；没有就用通用说法。 */
+  stale_note?: string;
   detail?: string;
   at?: string;
   /** 关卡是在对话里确认的：用户的原话。 */
