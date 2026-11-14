@@ -63,7 +63,7 @@ it('limits source outputs to project source directories', () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-source-path-'));
   temps.push(temp);
   for (const relative of ['production/audio/voice.wav', 'scenes/scene-001/video.mp4', 'production/approvals/cover.json', 'production/sources/../../outside', 'production/sources/audio.wav:alternate', 'production/sources/NUL.mp3', 'production/sources/audio.']) expect(() => sourceOutput(temp, relative)).toThrow();
-  expect(sourceOutput(temp, 'production/sources/page.html')).toBe(path.join(temp, 'production/sources/page.html'));
+  expect(sourceOutput(temp, 'production/sources/page.html')).toBe(path.join(fs.realpathSync(temp), 'production/sources/page.html'));
 });
 
 describe.skipIf(!enabled)('Windows source downloads through a real prepared Python', () => {

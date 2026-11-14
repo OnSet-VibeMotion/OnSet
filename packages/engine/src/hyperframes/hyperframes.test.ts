@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { envMap } from '../envutil';
 import { isMissing } from '../prereq';
 import {
@@ -191,13 +191,20 @@ describe.skipIf(!hasGit)('install', () => {
 
   it('leaves no temp directory behind', async () => {
     const { url, commit } = fixtureRepo('v9.9.9', ['hyperframes-core'], []);
-    const count = () => fs.readdirSync(os.tmpdir()).filter((name) => name.startsWith('onset-hyperframes-')).length;
-    const before = count();
-    await install({
-      projectDir: tempDir(), version: '9.9.9', repoURL: url, expectCommit: commit, expectSkills: 1,
-      env: { PATH }, output: new Sink(),
-    });
-    expect(count()).toBeLessThanOrEqual(before);
+    // 只观察本次安装创建的目录，其他测试 worker 可能同时在系统临时目录里安装。
+    const makeTemp = vi.spyOn(fs, 'mkdtempSync');
+    try {
+      await install({
+        projectDir: tempDir(), version: '9.9.9', repoURL: url, expectCommit: commit, expectSkills: 1,
+        env: { PATH }, output: new Sink(),
+      });
+      const created = makeTemp.mock.calls.flatMap(([prefix], index) =>
+        String(prefix).endsWith('onset-hyperframes-') ? [makeTemp.mock.results[index].value as string] : []);
+      expect(created).toHaveLength(1);
+      for (const dir of created) expect(fs.existsSync(dir), dir).toBe(false);
+    } finally {
+      makeTemp.mockRestore();
+    }
   });
 
   it('rejects missing version and toolchain', async () => {

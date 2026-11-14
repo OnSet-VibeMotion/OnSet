@@ -25,7 +25,8 @@ if (fs.existsSync(marker) && fs.readFileSync(marker, 'utf8').trim() === NpmVersi
     const npmEntry = process.env.npm_execpath;
     if (!npmEntry) throw new Error('请通过 npm run vendor -w onset-desktop 准备 npm');
     const name = execFileSync(process.execPath, [npmEntry, 'pack', `npm@${NpmVersion}`, '--silent'], { cwd: tmp, encoding: 'utf8' }).trim().split('\n').at(-1);
-    execFileSync('tar', ['-xzf', path.join(tmp, name), '-C', tmp]);
+    // Git Bash 的 GNU tar 把 C: 当作远端主机；在临时目录内使用相对文件名。
+    execFileSync('tar', ['-xzf', name], { cwd: tmp });
     fs.rmSync(target, { recursive: true, force: true });
     fs.mkdirSync(vendor, { recursive: true });
     // Windows 的 TEMP 与工作区可能位于不同盘符，不能用 rename 跨盘移动。

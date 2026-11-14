@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as beat from '../beat';
+import { withWindowsInstructions } from '../windowsruntime';
 import { builtinFlows, builtinStations, chineseNumber, composePrompt, detectFlow, gateFiles, MissingFlowRecordError, recordFlow, route, stationOfPath } from './index';
 
 const templates = path.join(__dirname, '..', '..', '..', '..', 'assets', 'prompts');
@@ -94,7 +95,16 @@ describe('composePrompt', () => {
       .filter((f) => f.endsWith('.md'))
       .map((f) => f.replaceAll('\\', '/').replace(/\.md$/, ''))
       .sort();
-    expect(files).toEqual(declared);
+    // Windows 执行约束由实际调用层追加，不属于制作流程的阶段段落。
+    const roles = ['orchestrator', 'renderer'] as const;
+    const platformSections = roles.map((role) => `windows/${role}`);
+    expect(files).toEqual([...declared, ...platformSections].sort());
+    for (const role of roles) {
+      const body = fs.readFileSync(path.join(templates, 'windows', `${role}.md`), 'utf8');
+      expect(body.trim()).not.toBe('');
+      expect(withWindowsInstructions('base', role, 'win32')).toBe(`base\n\n${body}`);
+      expect(withWindowsInstructions('base', role, 'darwin')).toBe('base');
+    }
     // 每一段都至少进一个内置流程的提示词，每个流程的段落都声明过、不重复。
     const used = new Set(builtinFlows.flatMap((f) => f.prompt ?? []));
     expect([...used].sort()).toEqual(declared);

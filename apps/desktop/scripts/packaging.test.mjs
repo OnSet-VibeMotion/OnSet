@@ -57,7 +57,7 @@ test('vendor uses npm’s JS entry with spaces in its path and keeps dependencie
   fs.writeFileSync(path.join(payload, 'bin', 'npm-cli.js'), 'entry');
   fs.writeFileSync(path.join(payload, 'node_modules', 'dependency', 'index.js'), 'dependency');
   const archive = path.join(root, 'fixture.tgz');
-  execFileSync('tar', ['-czf', archive, '-C', root, 'package']);
+  execFileSync('tar', ['-czf', 'fixture.tgz', 'package'], { cwd: root });
   const npmEntry = path.join(root, 'fake npm.cjs');
   fs.writeFileSync(npmEntry, `
     const fs = require('node:fs');
