@@ -72,6 +72,9 @@ function statusJSON(item: prereqs.Status): Record<string, unknown> {
     required: item.required,
     ready: item.ready,
     location: item.location,
+    // 安装页按它把「以后可能用到」的几项（节拍分析环境、各整片风格来源）排成单独点装的卡片；漏了它，
+    // 这几项缺着时顶栏照样数出「可按需安装」，打开却只看到「已全部就位」。
+    later: item.later,
   };
 }
 

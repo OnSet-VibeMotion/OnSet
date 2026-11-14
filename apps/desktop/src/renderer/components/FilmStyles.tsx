@@ -164,7 +164,7 @@ export function FilmStylePicker(props: PickerProps) {
           )}
           {!source.ready && (
             <p className="fs-note bad" title={source.problem}>
-              这个风格来源还没准备好，海报先显示占位，选了也装不上。在工具准备页的「以后可能用到」里装好「整片风格库」再来。
+              这个风格来源还没准备好，海报先显示占位，选了也装不上。在工具准备页的「以后可能用到」里装好它再来。
             </p>
           )}
           {groups.map((group) => (
@@ -335,7 +335,7 @@ export function FilmStyleDialog(props: DialogProps) {
               .filter((s) => !s.ready)
               .map((s) => (
                 <p key={s.id} className="fs-note bad" title={s.problem}>
-                  「{s.name}」还没准备好，海报先显示占位，选了也装不上。在工具准备页的「以后可能用到」里装好「整片风格库」再来。
+                  「{s.name}」还没准备好，海报先显示占位，选了也装不上。在工具准备页的「以后可能用到」里装好它再来。
                 </p>
               ))}
             {showSpecials && (

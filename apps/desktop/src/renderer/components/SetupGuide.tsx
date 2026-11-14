@@ -190,11 +190,13 @@ function coreCrews(items: PrereqStatus[]): Crew[] {
 /** 以后可能用到、要单独点的：体积大，用到才装。 */
 function laterCrews(items: PrereqStatus[]): Crew[] {
   const out: Crew[] = [];
-  // 内置插件登记的（例如卡点的节拍分析环境、LemoLab 风格库）：同一 group 合成一张卡片，名字、说明与图标由插件登记。
-  for (const group of [...new Set(items.filter((i) => i.later).map((i) => i.group))]) {
-    const own = items.filter((i) => i.group === group && i.later);
+  // 内置插件登记的（例如卡点的节拍分析环境、各整片风格来源）：同一 group 里名字相同的合成一张卡片，名字、说明与图标由插件登记。
+  // 不只按 group 合：两个风格来源同在 styles 组，合成一张的话一个装了、一个没装时卡片上看不出缺的是哪个。
+  const cardKey = (i: PrereqStatus) => i.group + ':' + i.later!.title;
+  for (const key of [...new Set(items.filter((i) => i.later).map(cardKey))]) {
+    const own = items.filter((i) => i.later && cardKey(i) === key);
     const later = own[0].later!;
-    out.push({ key: group, icon: later.icon, title: later.title, desc: later.desc, items: own });
+    out.push({ key, icon: later.icon ?? own[0].group, title: later.title, desc: later.desc, items: own });
   }
   const design = items.filter((i) => i.group === 'voice');
   if (design.length) out.push({ key: 'design', title: '音色设计', desc: '在音色页按描述做一个新声音 · 约 4.6 GB', items: design });
