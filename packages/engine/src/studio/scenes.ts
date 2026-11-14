@@ -1,6 +1,7 @@
 /**
  * 项目里的镜头列表：studio.go 的 discoverScenes / SceneSummary / sceneRendering。
  */
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { compareBytes } from '../gojson';
@@ -52,6 +53,25 @@ export function sceneRendering(dir: string, id: string): boolean {
   return live ? scene.processAlive(live.pid) : false;
 }
 
+/**
+ * scene.json 比产物新，但内容还是渲染时那一份：`scene_cues` 每次都把全部镜头的 scene.json 重写一遍，
+ * 时长没变的镜头内容逐字节相同，只是修改时间变了。只看修改时间的话，重跑一次 cues 所有镜头都显示「要重渲染」
+ * （2026-11 实测：修一个多音字重新配音后，24 个镜头全标成要重渲染）。
+ * 按渲染记录（.am-render.json）里 scene.json 的摘要核对；记录对不上当前产物（大小不同）时不算数。
+ * 只核对 scene.json 这一项：完整的输入指纹要读技能、配置与记忆，镜头列表每几秒刷新一次，算不起。
+ */
+function renderedFrom(dir: string, output: string, outputSize: number, sceneFile: string): boolean {
+  try {
+    const record = JSON.parse(fs.readFileSync(path.join(dir, scene.RecordFile), 'utf8')) as Record<string, unknown>;
+    const parts = record.parts as Record<string, unknown> | undefined;
+    if (record.output !== output || record.output_size !== outputSize || !parts) return false;
+    const digest = crypto.createHash('sha256').update(fs.readFileSync(sceneFile)).digest('hex');
+    return parts['file:scene.json'] === digest;
+  } catch {
+    return false;
+  }
+}
+
 export function fileExists(file: string): boolean {
   try {
     fs.statSync(file);
@@ -92,7 +112,7 @@ export function discoverScenes(root: string): SceneSummary[] {
       try {
         const out = fs.statSync(target);
         stamp = `${Math.floor(out.mtimeMs)}-${out.size}`;
-        stale = fs.statSync(file).mtimeMs > out.mtimeMs;
+        stale = fs.statSync(file).mtimeMs > out.mtimeMs && !renderedFrom(dir, output, out.size, file);
       } catch {
         stale = false;
       }

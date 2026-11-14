@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -76,5 +77,31 @@ describe('discoverScenes', () => {
     // 没有产物的镜头没有指纹，界面退回全局版本号。
     fs.rmSync(out2);
     expect(discoverScenes(root)[1].output_stamp).toBeUndefined();
+  });
+
+  it('does not call a scene stale when cues rewrote the same scene.json', () => {
+    const root = project();
+    writeScene(root, 'scenes/scene-001', 'scene-001');
+    const dir = path.join(root, 'scenes/scene-001');
+    const sceneFile = path.join(dir, 'scene.json');
+    fs.writeFileSync(path.join(dir, 'scene-001.mp4'), 'video');
+    const old = new Date(Date.now() - 60_000);
+    fs.utimesSync(path.join(dir, 'scene-001.mp4'), old, old);
+    const digest = crypto.createHash('sha256').update(fs.readFileSync(sceneFile)).digest('hex');
+    const record = (sceneDigest: string, size = 5) =>
+      fs.writeFileSync(path.join(dir, '.am-render.json'), JSON.stringify({ schema: 1, output: 'scene-001.mp4', output_size: size, parts: { 'file:scene.json': sceneDigest } }));
+
+    // 没有渲染记录：只能按修改时间。
+    expect(discoverScenes(root)[0].stale).toBe(true);
+    // 记录里的 scene.json 与现在逐字节相同：只是被原样重写了一遍。
+    record(digest);
+    expect(discoverScenes(root)[0].stale).toBe(false);
+    // 记录是别的产物的（大小对不上）：不算数。
+    record(digest, 99);
+    expect(discoverScenes(root)[0].stale).toBe(true);
+    // scene.json 真的改了。
+    record(digest);
+    fs.writeFileSync(sceneFile, JSON.stringify({ id: 'scene-001', duration_seconds: 4, output: 'scene-001.mp4' }));
+    expect(discoverScenes(root)[0].stale).toBe(true);
   });
 });

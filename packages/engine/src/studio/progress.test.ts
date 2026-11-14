@@ -62,6 +62,22 @@ describe('production map', () => {
     expect(() => recordGate(root, 'gate-nope')).toThrow('没有这个审核关卡');
   });
 
+  it('does not reopen the script review when only readings change', () => {
+    const root = project({ 'production/script-final.md': '# 开头\n\n训练和考试都没为“不知道”给过分。\n' });
+    recordGate(root, 'gate-script');
+    // 修一个多音字的读音、加受保护短语与声音事件：显示的字不变。
+    write(root, 'production/script-final.md', '# 开头\n\n训练和考试都没为“不知道”@{score}<给过分|给过芬>@{/score}。<|[笑]>\n');
+    expect(status(root)['gate-script']).toBe('confirmed');
+    // 显示的字变了、标题变了、分段变了，都算改过。
+    for (const body of ['# 开头\n\n训练和考试都没为“不知道”给过一分。\n', '# 开场\n\n训练和考试都没为“不知道”给过分。\n', '# 开头\n\n训练和考试\n\n都没为“不知道”给过分。\n']) {
+      write(root, 'production/script-final.md', body);
+      expect(status(root)['gate-script'], body).toBe('changed');
+    }
+    // 写坏了解析不了：按改过算。
+    write(root, 'production/script-final.md', '# 开头\n\n<给过分\n');
+    expect(status(root)['gate-script']).toBe('changed');
+  });
+
   it('counts gates without a record as passed once later work exists, and missing early outputs as skipped', () => {
     const root = project({ 'production/script-final.md': 'x', 'production/audio/voice.wav': 'x', 'production/audio/voice.srt': '1\n00:00:00,000 --> 00:00:01,000\n字\n' });
     const s = status(root);
@@ -102,6 +118,21 @@ describe('production map', () => {
     expect(p.waiting_on).toBe('user');
     write(root, 'publish.md', '---\n{"publish_status": "ready"}\n---\n');
     expect(stations(root).current).toBe('');
+  });
+
+  it('keeps the plan current once the cues follow a new voice', () => {
+    const root = project({
+      'production/scene-plan.json': '{}',
+      'production/audio/voice.srt': '1\n00:00:00,000 --> 00:00:01,000\n字\n',
+      'scenes/scene-001/scene.json': scene,
+    });
+    write(root, 'production/scene-plan.json', '{}', 600);
+    write(root, 'scenes/scene-001/scene.json', scene, 600);
+    // 重新配音，cues 还没跟上：要重拆。
+    expect(status(root).plan).toBe('stale');
+    // 重跑 cues：计划本身没改，镜头的时长跟上了新配音。
+    write(root, 'scenes/scene-001/scene.json', scene);
+    expect(status(root).plan).toBe('done');
   });
 
   it('uses the beat stations for beat projects', () => {

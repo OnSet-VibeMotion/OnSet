@@ -9,6 +9,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import * as align from '../align';
 import * as flow from '../flow';
 import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
@@ -20,7 +21,7 @@ import { readStoryboard } from './storyboard';
 import { localRFC3339 } from './script';
 import type { Server } from './studio';
 import { emitStudioEvent } from './events';
-import { decodeTurn, studioRoot } from './turns';
+import { decodeTurn, readBlob, storeBlob, studioRoot } from './turns';
 
 /** 一站：普通站看产物，关卡看用户的确认。step 是它归在顶栏哪一步下（页面 id）。 */
 export interface Station {
@@ -178,7 +179,16 @@ export function recordGate(root: string, id: string, now = new Date()): GateReco
   const files: Record<string, string> = {};
   for (const rel of bound) {
     const state = fileState(path.join(root, rel));
-    if (state) files[rel] = state;
+    if (!state) continue;
+    files[rel] = state;
+    // 只比显示文字的文件要留一份确认时的内容，之后才比得出改的是不是只有读法。
+    if (displayOnlyGateFiles.has(rel) && state.startsWith('sha256:')) {
+      try {
+        storeBlob(root, fs.readFileSync(path.join(root, rel)));
+      } catch {
+        // 存不下就只能按字节比，最多多问一次。
+      }
+    }
   }
   if (Object.keys(files).length === 0) throw new Error('要确认的内容还没写出来');
   const gates = readGates(root);
@@ -190,8 +200,52 @@ export function recordGate(root: string, id: string, now = new Date()): GateReco
   return record;
 }
 
+/**
+ * 用户审的是显示出来的文字的文件。终稿只改读法（`<显示|朗读>` 的朗读侧、声音事件、受保护短语标记）时，
+ * 用户看到的稿子一个字没变：按字节比的话，用户自己要求修一个多音字的读音，稿件审核就退回「确认后又改过」，
+ * 成片都出来了路线还停在审稿（2026-11 实测）。
+ */
+const displayOnlyGateFiles = new Set(['production/script-final.md']);
+
+/** 终稿显示出来的文字：标题与各段的显示侧。解析不了时返回 null（按改过算）。 */
+function reviewedText(body: string): string | null {
+  try {
+    const s = align.parseScript(body);
+    const lines = s.headings.map((h) => `${h.atPiece}#${h.level} ${h.text}`);
+    let para = '';
+    let last = -1;
+    for (const p of s.pieces) {
+      if (p.para !== last && para !== '') {
+        lines.push(para);
+        para = '';
+      }
+      last = p.para;
+      para += p.display;
+    }
+    if (para !== '') lines.push(para);
+    return lines.join('\n');
+  } catch {
+    return null;
+  }
+}
+
+function gateFileChanged(root: string, rel: string, state: string): boolean {
+  const file = path.join(root, rel);
+  if (fileState(file) === state) return false;
+  if (!displayOnlyGateFiles.has(rel)) return true;
+  try {
+    const before = readBlob(root, state);
+    if (!before) return true;
+    const was = reviewedText(before.toString('utf8'));
+    const now = reviewedText(fs.readFileSync(file, 'utf8'));
+    return was === null || now === null || was !== now;
+  } catch {
+    return true;
+  }
+}
+
 function gateChanged(root: string, record: GateRecord): boolean {
-  return Object.entries(record.files).some(([rel, state]) => fileState(path.join(root, rel)) !== state);
+  return Object.entries(record.files).some(([rel, state]) => gateFileChanged(root, rel, state));
 }
 
 // ---------------------------------------------------------------------------
@@ -276,7 +330,14 @@ const judges: Record<string, Judge> = {
   },
   'plan:plan': {
     output: (c) => f(c, 'production/scene-plan.json'),
-    stale: (c, out) => f(c, 'production/audio/voice.srt') > out,
+    // 分镜计划只写锚点，帧号由 scene_cues 按配音算进各镜头的 scene.json。重新配音后（例如修一个读音）
+    // 计划本身不用改，重跑过 cues 就跟上了：配音比计划新、而且比最早一个镜头的 scene.json 还新，才是没跟上。
+    stale: (c, out) => {
+      const voice = f(c, 'production/audio/voice.srt');
+      if (voice <= out) return false;
+      if (c.scenes.length === 0) return true;
+      return voice > Math.min(...c.scenes.map((sc) => mtime(path.join(sc.directory, 'scene.json'))));
+    },
     detail: storyboardDetail,
   },
   // 渲染：全部镜头出片才算做完，结果写几个出了片。

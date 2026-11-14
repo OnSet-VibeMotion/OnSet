@@ -187,6 +187,14 @@ export function diffTrees(before: FileTree | null, after: FileTree): FileChange[
   return changes;
 }
 
+/** storeBlob 把一份内容按 sha256 存进 blobs（已有就不再写），返回它的状态。 */
+export function storeBlob(project: string, body: Buffer): string {
+  const state = shaPrefix + crypto.createHash('sha256').update(body).digest('hex');
+  const blob = blobPath(project, state);
+  if (!fs.existsSync(blob)) atomicWrite(blob, body, 0o644);
+  return state;
+}
+
 /** readBlob 读出某个状态对应的内容；stat 状态与空状态返回 null。 */
 export function readBlob(project: string, state: string | undefined): Buffer | null {
   if (!isContentState(state)) return null;
