@@ -47,7 +47,7 @@ TTS 服务提供方仍由 `article-to-motion.conf`（或环境变量 `TTS_PROVID
 - 每个说话人使用其 `cast/<id>/character.yaml` 里 `voice.<TTS_PROVIDER>.voiceId`（例如 `voice.minimax.voiceId`、`voice.edge.voiceId`，取决于当前 `TTS_PROVIDER`）对应的音色；同一说话人从头到尾使用同一个 voiceId，不得中途切换。`TTS_PROVIDER=breeze` 时 `voice.breeze.voiceId` 写音色库里的音色名，合成该说话人的每一段前用 `voice_get({"name": "<音色名>"})` 取参考音频与文字稿克隆；库里还没有这个角色的声音时，按{{STAGE:voice}}设计、试听，用户选定后 `voice_save` 存进音色库再填名字。
 - 逐段合成时依旧按{{STAGE:voice}}的方式取真实时间戳：MiniMax 用 `--subtitles` 直接产出，百炼走合成 + `bl speech recognize` 两步识别。这里拿到的时间戳是相对本段音频起点的段内时间，不是全局时间轴——全局时间轴由 `dialogue_assemble()` 统一计算，不要在这一步手工换算或累加偏移。
 - 每段落盘为独立音频文件，建议命名 `production/audio/segments/<index>-<speaker>.wav`，`index` 从 0 开始，与后面 `plan.json` 里 `segments[].index` 一一对应。
-- 断句检查、发音控制覆盖范围的要求与单口播一致，只是逐段各自核对：产品名/模型名是否被拆开、数字和英文缩写是否读对、长句是否留出呼吸、段尾是否留出画面展示时间。
+- 断句检查、发音控制覆盖范围的要求与单口播一致，只是逐段各自核对：产品名/模型名是否被拆开、数字、英文缩写和多音字是否读对、长句是否留出呼吸、段尾是否留出画面展示时间。
 
 ### 四、写 `production/audio/plan.json`
 
