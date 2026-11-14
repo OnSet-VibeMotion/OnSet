@@ -5,7 +5,7 @@ import { test, expect, openProject, api, installPlugin } from './fixtures.mjs';
 const origin = 'https://creator.example.test';
 const html = '<input type="file"><input id="title"><button onclick="window.published=true">发布</button>';
 
-test('plugin fills an embedded page, leaves manual publishing available, isolates accounts and revokes automation', async ({ electronApp, page, project, sandbox }) => {
+for (const shutdown of ['application', 'window', 'page-before-window']) test(`plugin fills an embedded page, leaves manual publishing available, isolates accounts and revokes automation (${shutdown})`, async ({ electronApp, page, project, sandbox }) => {
   const errors = [];
   electronApp.on('console', message => {
     if (message.text().startsWith('STATION_BROWSER_UNCAUGHT:')) errors.push(message.text());
@@ -92,6 +92,22 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   const second = await run('account-b');
   expect(second.previous).toBe('');
   expect((await run('account-a')).previous).toContain('account=account-a');
+  if (shutdown !== 'application') {
+    await electronApp.evaluate(async ({ BrowserWindow, webContents }, destroyPagesFirst) => {
+      const window = BrowserWindow.getAllWindows().find(w => w.isResizable());
+      if (!window) throw Error('主窗口不存在');
+      if (destroyPagesFirst) {
+        const pages = webContents.getAllWebContents().filter(w => w.getURL().startsWith('https://creator.example.test'));
+        await Promise.all(pages.map(w => new Promise(resolve => {
+          w.once('destroyed', resolve);
+          w.close({ waitForBeforeUnload: false });
+        })));
+      }
+      // 让主进程先回复，再关闭窗口；Windows 关闭主窗口时还会退出应用。
+      setImmediate(() => window.close());
+    }, shutdown === 'page-before-window');
+    await expect.poll(() => page.isClosed()).toBe(true);
+  }
   await electronApp.close();
   expect(errors).toEqual([]);
 });
