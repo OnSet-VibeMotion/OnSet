@@ -17,7 +17,7 @@ import type { Finding } from './checks';
 import { episodeByID, freezeInput, projectOf, SourceExam } from './episode';
 import { EventDormant, EventExam, EventPromote, EventReject } from './events';
 import { ReadsExamNote, readsChecks } from './examreads';
-import { examinableLesson, features as sceneFeatures, promptText } from './features';
+import { CheckerAudition, examinableLesson, features as sceneFeatures, promptText } from './features';
 import { rfc3339 } from './gostr';
 import { copyTree, isNotExist, readDirSorted, readJSON, writeJSON } from './io';
 import { appliesInScope, cloneMemory, KindLesson, StatusActive, StatusDormant, StatusRejected, StatusTrial, type Memory, type Status } from './memory';
@@ -422,6 +422,7 @@ export async function exam(s: Store, opts: ExamOptions): Promise<ExamResult> {
       if (trialNames.length > 0 && !trialNames.includes(m.name)) continue;
       if (!examinableLesson(m)) {
         if (trialNames.length > 0) {
+          if ((m.checked_by ?? []).includes(CheckerAudition)) throw new Error(`${m.name} 由你在试镜里判定，机器考不了；用人评考试决定它留不留`);
           throw new Error(`${m.name} 只由相邻镜头的交接（${(m.checked_by ?? []).join('、')}）判定，单镜头回放考不了；确认有效后用 memory_promote() 生效`);
         }
         continue;
@@ -638,6 +639,20 @@ function recallForExam(s: Store, sc: Scene, opts: RecallOptions): RecallResult {
     budget: opts.budget,
     maxLessons: opts.maxLessons ?? 0,
   });
+}
+
+/**
+ * 人评考试（audition 包）通过：把这几条试用经验转为生效，考试编号记进 verified_by，快照不标「未经考试」。
+ */
+export function promoteExamined(s: Store, names: readonly string[], examID: string): Snapshot {
+  if (examID === '') throw new Error('人评考试要有编号');
+  const list: Memory[] = [];
+  for (const name of names) {
+    const m = s.find(name);
+    if (m === null || m.status !== StatusTrial) throw new Error(`${name} 不是试用中的记忆`);
+    list.push(m);
+  }
+  return promoteList(s, list, examID);
 }
 
 /** 把试用记忆转为生效并生成快照；修订生效时被修订的旧记忆转为沉睡。 */

@@ -61,7 +61,7 @@ const PANEL_WIDTH_KEY = 'onset-studio.panel-width:';
 
 /** 看画面的页面面板默认宽一些，读文字的页面窄一些；宽度按这两类分别记住。 */
 type PanelKind = 'media' | 'doc';
-const panelKind = (tab: Tab): PanelKind => (['scene', 'compose', 'final', 'review', 'style'].includes(tab) || pageView(tab)?.media || isStationTab(tab) ? 'media' : 'doc');
+const panelKind = (tab: Tab): PanelKind => (['scene', 'compose', 'final', 'review', 'style', 'audition'].includes(tab) || pageView(tab)?.media || isStationTab(tab) ? 'media' : 'doc');
 const panelDefault: Record<PanelKind, number> = { media: 0.58, doc: 0.45 };
 /** 对话栏最窄 420px，面板最窄 360px：拖动时两边都夹住。 */
 const minChat = 420;
@@ -542,7 +542,7 @@ export function App() {
       }
       setFilePath(view.target);
     }
-    if ((page === 'scene' || page === 'compose') && view.target) setSceneId(view.target);
+    if ((page === 'scene' || page === 'compose' || page === 'audition') && view.target) setSceneId(view.target);
     showTab(page);
   };
 
@@ -942,7 +942,7 @@ export function App() {
                     }}
                     onScene={(id) => {
                       setSceneId(id);
-                      if (tab !== 'scene' && tab !== 'compose' && tab !== 'memory') setTab('scene');
+                      if (tab !== 'scene' && tab !== 'compose' && tab !== 'memory' && tab !== 'audition') setTab('scene');
                     }}
                     onTurn={jumpToTurn}
                     run={run}

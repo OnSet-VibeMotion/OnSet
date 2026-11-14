@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as agentrun from '@onset/engine/agentrun';
+import * as audition from '@onset/engine/audition';
 import * as config from '@onset/engine/config';
 import * as envutil from '@onset/engine/envutil';
 import * as fsutil from '@onset/engine/fsutil';
@@ -81,7 +82,15 @@ export function attachMemory(s: scene.Scene, cfg: config.Config, warn: Out, run:
   } catch (err) {
     throw new Error(`召回记忆：${errorText(err)}`, { cause: err });
   }
-  const attached = memory.attachRecall(result, s);
+  // 参考范例跟着学习关系走：这位渲染工具 + 模型向谁学，就带上谁在同类镜头上被人选中的代码（audition.pickExemplars）。
+  const exemplars = audition.pickExemplars(cfg.memory.dir, {
+    renderer,
+    model: store.currentModel(renderer, currentEnvironment(), config.rendererModelFor(cfg, renderer)),
+    features: memory.features(s),
+    project: memory.projectName(s.directory),
+    sceneID: s.id,
+  });
+  const attached: scene.Scene = { ...memory.attachRecall(result, s), ...(exemplars ? { exemplars } : {}) };
   const x = result.explored;
   if (x) warn.write(`[${attached.id}] 记忆探索：这次用 ${x.added} 替换 ${x.dropped}（概率 ${formatG(x.propensity)}，镜头是否过期不受影响）\n`);
   const recorded: scene.Scene = { ...attached, afterAttempt: null };

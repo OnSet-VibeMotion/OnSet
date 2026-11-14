@@ -26,6 +26,7 @@ export {
   recordFeedback,
   episodes,
   episodeByID,
+  freezeInput,
 } from './episode';
 export type { Feedback, Episode, AttemptSource } from './episode';
 export {
@@ -34,6 +35,7 @@ export {
   features,
   promptText,
   CheckerHuman,
+  CheckerAudition,
   knownCheckers,
   examinable,
   examinableLesson,

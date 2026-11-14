@@ -27,7 +27,7 @@ import { formatFixed, goRound } from '../gofmt';
 import { newAttempt, OutcomeFailed, OutcomeInterrupted, OutcomeSucceeded, OutcomeVerificationFailed, timestamp, writeAttempt, archiveAttempt } from './attempt';
 import { CheckOutputFrames, classifyOutputProblem, DeterminismCheckPrefix } from './checks';
 import { fingerprint, removeRecord, writeRecord } from './record';
-import { buildPrompt, findProjectRoot, sceneCanvas, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
+import { buildPrompt, DesignFile, findProjectRoot, sceneCanvas, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
 import { removeLive, writeLive } from './live';
 import { rendererHome, rendererUnfiltered, sandboxAvailable, sandboxed, sandboxProfile } from './sandbox';
 import { verifySeam } from './seam';
@@ -118,13 +118,14 @@ export async function run(
       toolStateFiles: home ? own.files : [],
       hiddenDirs: home ? own.hidden : [],
       // 渲染工具、onset 的运行时与资源、借来的浏览器所在的目录；资源目录的上一层是应用资源目录（开发时是仓库，浏览器模式从那里加载界面）。
-      readDirs: [path.dirname(fs.realpathSync(argv[0])), path.dirname(process.execPath), ...(process.env.ONSET_ASSETS_DIR ? [path.dirname(process.env.ONSET_ASSETS_DIR)] : []), ...[process.env.ONSET_ASSETS_DIR, childEnv.ONSET_SELF, cliEnv[hyperframes.BrowserEnv], cliEnv[hyperframes.CLIDirEnv]].filter((v): v is string => !!v).map((v) => (fs.existsSync(v) && fs.statSync(v).isDirectory() ? v : path.dirname(v)))],
+      readDirs: [path.dirname(fs.realpathSync(argv[0])), path.dirname(process.execPath), ...(process.env.ONSET_ASSETS_DIR ? [path.dirname(process.env.ONSET_ASSETS_DIR)] : []), ...[process.env.ONSET_ASSETS_DIR, childEnv.ONSET_SELF, cliEnv[hyperframes.BrowserEnv], cliEnv[hyperframes.CLIDirEnv]].filter((v): v is string => !!v).map((v) => (fs.existsSync(v) && fs.statSync(v).isDirectory() ? v : path.dirname(v))), ...(s.exemplars?.dirs ?? [])],
     });
     return sandboxed(argv, profile);
   };
   const inputs = fingerprint(s, renderer, resolvedSkills);
   // 中途异常退出过、输入没变：接着上一次做，不从头重来（resume.ts）。要在归档上一次之前读。
-  const resume = s.fresh || s.seam || s.examNote !== '' ? null : resumeState(s, inputs.fingerprint);
+  const design = s.designOnly === true;
+  const resume = design || s.fresh || s.seam || s.examNote !== '' ? null : resumeState(s, inputs.fingerprint);
   const frameCount = goRound(s.duration_seconds * sceneCanvas(s).fps);
   /** 新会话：能预先指定会话号的工具给一个，续接时就靠它。 */
   const newSession = (): RendererSession | null => (presetSessionID(renderer) ? { id: crypto.randomUUID(), resume: false } : null);
@@ -135,8 +136,11 @@ export async function run(
   // 直接渲染要看的是归档前就在镜头目录里的合成入口（归档只挪产物与日志，合成代码留在原处）。
   const directRender = resume !== null && resume.codeDone && fs.existsSync(path.join(s.directory, 'index.html'));
   // 先挪走上一次的现场再截断日志；旧记录随即作废，本次通过校验后再写新的。
-  archiveAttempt(s);
-  removeRecord(s);
+  // 只写设计稿时不动镜头已有的产物、日志与渲染记录：设计稿只是给实现者的输入。
+  if (!design) {
+    archiveAttempt(s);
+    removeRecord(s);
+  }
   // 局部时间数据在渲染器启动前写好：提示词让渲染器直接加载它，
   // 不再自己从全片字幕里做减法。
   writeSceneData(s);
@@ -188,7 +192,8 @@ export async function run(
   }
   if (err !== null) attempt.error = err instanceof Error ? err.message : String(err);
   try {
-    writeAttempt(s, attempt);
+    // 设计稿那一次不写尝试记录：镜头的尝试记录只记渲染，用量经 afterAttempt 交给调用方。
+    if (!design) writeAttempt(s, attempt);
   } catch (writeErr) {
     if (err === null) err = writeErr;
   }
@@ -199,11 +204,11 @@ export async function run(
   if (err !== null) throw err;
 
   async function render(): Promise<void> {
-    const rawFile = fs.openSync(streamLog(s), 'w');
+    const rawFile = fs.openSync(design ? designLog(s, 'stream.jsonl') : streamLog(s), 'w');
     try {
-      const stderrFile = fs.openSync(stderrLog(s), 'w');
+      const stderrFile = fs.openSync(design ? designLog(s, 'stderr.log') : stderrLog(s), 'w');
       try {
-        const userFile = fs.openSync(userLog(s), 'w');
+        const userFile = fs.openSync(design ? designLog(s, 'user.log') : userLog(s), 'w');
         try {
           await renderLayers(rawFile, stderrFile, userFile);
         } finally {
@@ -221,6 +226,10 @@ export async function run(
 
   /** 渲染出来以后：校验产物（修接缝另核对开头与其余画面），写渲染记录。 */
   function finish(): void {
+    if (design) {
+      verifyDesign(s);
+      return;
+    }
     verifyOutput(s, baseEnv, tolerance);
     // 修接缝：第 0 帧要接上前一镜的末帧、后面的画面不许变（seam.ts）。
     if (s.seam) verifySeam(s, s.seam, mediaprobe.newToolchain(baseEnv), sceneCanvas(s).fps);
@@ -335,6 +344,22 @@ export async function run(
     }
     return events;
   }
+}
+
+/** 只写设计稿那一次的日志：design-<镜头>.<后缀>，不盖掉渲染的日志。 */
+export function designLog(s: Pick<Scene, 'directory' | 'id'>, suffix: string): string {
+  return path.join(s.directory, `design-${s.id}.${suffix}`);
+}
+
+/** 设计稿那一次的校验：design.md 写出来了、不是空的。 */
+function verifyDesign(s: Scene): void {
+  let text = '';
+  try {
+    text = fs.readFileSync(path.join(s.directory, DesignFile), 'utf8');
+  } catch {
+    throw new Error(`设计稿没写出来：镜头目录里没有 ${DesignFile}`);
+  }
+  if (text.trim() === '') throw new Error(`设计稿是空的：${DesignFile}`);
 }
 
 /**

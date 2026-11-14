@@ -169,7 +169,7 @@ function readAttempt(file: string): Attempt | null {
   return attempt.outcome === '' ? null : attempt;
 }
 
-const skipDirs = new Set(['attempts', 'node_modules', 'memory-exams', '_archive', '.git']);
+const skipDirs = new Set(['attempts', 'node_modules', 'memory-exams', 'auditions', '_archive', '.git']);
 
 /** 找出项目里的全部镜头，跳过归档与考场。 */
 function discoverScenes(root: string): Scene[] {

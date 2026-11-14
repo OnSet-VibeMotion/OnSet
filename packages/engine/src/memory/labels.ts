@@ -55,6 +55,7 @@ export const CheckerLabels: Readonly<Record<string, string>> = {
   'reads.timeline': '配音时间轴与画面对不上帧率',
 
   'review.handoff': '与相邻镜头接不上',
+  'audition.judged': '你在试镜里选的更好',
 
   [CheckerHuman]: '你的确认',
 };

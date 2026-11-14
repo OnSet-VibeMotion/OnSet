@@ -1,7 +1,7 @@
 import { goQuote, goTrimSpace } from '../gofmt';
 import { compareBytes } from '../gojson';
 import { ValidRenderers } from '../tools';
-import { CheckerHuman, knownChecker, knownFeature } from './features';
+import { CheckerAudition, CheckerHuman, knownChecker, knownFeature } from './features';
 import { goLowerRune, isDigit, isLetter, runeCount } from './gostr';
 import { KindLesson, KindPreference, StatusActive, StatusTrial, validName, validStatus, type Memory } from './memory';
 import { contains, equalStrings } from './util';
@@ -86,6 +86,7 @@ export function lint(m: Memory, ctx: LintContext = {}): string[] {
       if (checkedBy.length === 0) add('checked_by 为空：说不清由哪个校验器判定的经验不能进入试用');
       for (const id of checkedBy) {
         if (id === CheckerHuman) add('经验的 checked_by 不能是 human；只能由人判定的取向请写成偏好');
+        else if (id === CheckerAudition && (m.learned_from ?? []).length === 0) add('audition.judged 只给向老师学来的经验（要写 learned_from）');
         else if (!knownChecker(id)) add(`checked_by 引用了不存在的校验器：${id}`);
       }
       if (!m.body.includes('反例') || !m.body.includes('正例')) add('经验正文必须同时给出「反例」与「正例」');

@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, errorText, rawURL } from '../api';
 import '../evidence.css';
-import type { ExamCell, ExamResult, MemoryRow, MemoryState, RunStats, RunSummary } from '../types';
+import type { ExamCell, ExamResult, MemoryRow, MemoryState, RunStats, RunSummary, Scene } from '../types';
+import { LearningSection } from './Learning';
 import type { RunAction, Tab } from './Preview';
 
 interface Props {
   version: number;
   run: RunAction;
   onOpen: (tab: Tab) => void;
+  scenes?: Scene[];
+  sceneId?: string;
 }
 
 /**
@@ -15,7 +18,7 @@ interface Props {
  * 从上到下是同一个镜头带与不带一条经验的两段画面、这条经验本身、两批渲染的对比、存档与回退。
  * 数据全部来自 /api/memory，这一页不另算任何数字；改动只有回退，经 onset 的记忆操作。
  */
-export function EvidenceTab({ version, run, onOpen }: Props) {
+export function EvidenceTab({ version, run, onOpen, scenes = [], sceneId = '' }: Props) {
   const [state, setState] = useState<MemoryState | null>(null);
   const [error, setError] = useState('');
 
@@ -56,6 +59,8 @@ export function EvidenceTab({ version, run, onOpen }: Props) {
       ) : (
         <Contrast exams={exams} memories={state.memories} labels={state.labels?.checks ?? {}} version={version} tested={tested.length} />
       )}
+
+      <LearningSection version={version} scenes={scenes} sceneId={sceneId} run={run} onAudition={() => onOpen('audition')} />
 
       <Runs runs={state.runs_all ?? state.runs} project={state.project ?? ''} />
 

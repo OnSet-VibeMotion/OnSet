@@ -107,11 +107,12 @@ export function fileExists(file: string): boolean {
 
 export function discoverScenes(root: string): SceneSummary[] {
   const out: SceneSummary[] = [];
-  // 渲染记忆的考场里是镜头副本，不是项目的镜头。
+  // 渲染记忆的考场与试镜（在 Studio 的状态目录里）是镜头副本，不是项目的镜头。
   const exams = path.join(root, 'production', 'memory-exams');
+  const studioState = path.join(root, 'production', 'studio');
   walkDir(root, (file, entry) => {
     if (!entry) return;
-    if (entry.isDirectory()) return file === exams ? 'skip' : undefined;
+    if (entry.isDirectory()) return file === exams || file === studioState ? 'skip' : undefined;
     if (entry.name !== 'scene.json') return;
     let v: Record<string, unknown>;
     try {

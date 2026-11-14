@@ -27,7 +27,7 @@ describe('director service handed to an op worker', () => {
     expect(director.resolveService('')).toBeNull();
   });
 
-  it('only memory consolidation (which starts the Director) gets the service', () => {
-    expect([...director.KeyOps]).toEqual(['memory_consolidate']);
+  it('only the ops that start the Director as drafter (memory consolidation, learning from a teacher) get the service', () => {
+    expect([...director.KeyOps]).toEqual(['memory_consolidate', 'audition_learn']);
   });
 });

@@ -112,6 +112,13 @@ export interface Meta {
   /** 被本条修订的旧记忆名。本条生效时旧记忆转为沉睡。 */
   revises: string;
   rejected_reason: string;
+  /**
+   * 向谁学的（「渲染工具/模型」，audition 包的 learn 写）：老师由人在试镜里的评判定。
+   * 只是出处，不进 ruleDigest；没写时文件与引入之前逐字相同。
+   */
+  learned_from?: string[];
+  /** 来自哪几场试镜（与 from_episodes 并列的出处）。 */
+  from_auditions?: string[];
 }
 
 /** Memory 是一条经验或偏好。 */
@@ -152,6 +159,8 @@ export function cloneMemory(m: Memory): Memory {
     checked_by: m.checked_by === null ? null : [...m.checked_by],
     from_episodes: [...m.from_episodes],
     verified_by: [...m.verified_by],
+    ...(m.learned_from ? { learned_from: [...m.learned_from] } : {}),
+    ...(m.from_auditions ? { from_auditions: [...m.from_auditions] } : {}),
   };
 }
 
@@ -177,6 +186,8 @@ export function memoryToJSON(m: Memory): Record<string, unknown> {
     verified_by: omitEmpty(m.verified_by),
     revises: m.revises || undefined,
     rejected_reason: m.rejected_reason || undefined,
+    learned_from: omitEmpty(m.learned_from ?? []),
+    from_auditions: omitEmpty(m.from_auditions ?? []),
     kind: m.kind,
     body: m.body,
   };
@@ -207,6 +218,8 @@ const metaSchema = {
     verified_by: 'strings',
     revises: 'string',
     rejected_reason: 'string',
+    learned_from: 'strings',
+    from_auditions: 'strings',
   } as Record<string, FieldSchema>,
 };
 
@@ -254,6 +267,8 @@ export function parse(kind: Kind, content: string | Uint8Array): Memory {
     verified_by: strings(raw.verified_by),
     revises: (raw.revises as string | undefined) ?? '',
     rejected_reason: (raw.rejected_reason as string | undefined) ?? '',
+    ...(strings(raw.learned_from).length > 0 ? { learned_from: strings(raw.learned_from) } : {}),
+    ...(strings(raw.from_auditions).length > 0 ? { from_auditions: strings(raw.from_auditions) } : {}),
     kind,
     body: goTrimSpace(body),
   };
@@ -284,6 +299,8 @@ export function format(m: Memory): string {
     ['verified_by', omitEmpty(m.verified_by)],
     ['revises', m.revises || undefined],
     ['rejected_reason', m.rejected_reason || undefined],
+    ['learned_from', omitEmpty(m.learned_from ?? [])],
+    ['from_auditions', omitEmpty(m.from_auditions ?? [])],
   ]);
   return '---\n' + front + '---\n\n' + goTrimSpace(m.body) + '\n';
 }

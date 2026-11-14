@@ -7,7 +7,7 @@ import { goPathError, goRound } from '../gofmt';
 import { blockValue, sceneBlocks } from './block';
 import { mapOf, unmarshal, type StructType } from './jsondecode';
 import * as srt from '../srt';
-import { buildPrompt, memoryActive, outputPath, sceneCanvas, type Scene } from './scene';
+import { buildPrompt, DesignFile, memoryActive, outputPath, sceneCanvas, type Scene } from './scene';
 import { localCues, localPhrases } from './scenedata';
 import { parsePhraseTimeline } from './timing';
 import { getToolVersion } from '../version';
@@ -84,7 +84,7 @@ const recordType: StructType = {
  */
 export function fingerprint(s: Scene, renderer: string, resolvedSkills: Record<string, string> | null, schema = recordSchema): Inputs {
   // 重试说明与 worker 数是调度层每次临时填的，不是镜头的输入。
-  s = { ...s, retryNote: '', renderWorkers: 0, afterAttempt: null, seam: null, continuation: null, fresh: false };
+  s = { ...s, retryNote: '', renderWorkers: 0, afterAttempt: null, seam: null, continuation: null, fresh: false, designOnly: false };
   const resolved = resolvedSkills ?? {};
   let prompt = buildPrompt(s, resolved);
   const parts: Record<string, string> = {
@@ -110,6 +110,8 @@ export function fingerprint(s: Scene, renderer: string, resolvedSkills: Record<s
   // 召回的记忆单列一项：记忆一变，Stale 的原因能直接说成「召回的记忆变了」，
   // 而不是笼统的 prompt。没有召回时不加这一项，打开记忆不会让老镜头全部 Stale。
   if (memoryActive(s.memory)) parts.memory = s.memory.digest;
+  // 参考范例同理：带了才有这一项，范例换了 Stale 的原因说得出来。
+  if (s.exemplars && s.exemplars.names.length > 0) parts.exemplars = s.exemplars.digest;
   const win = windowOf(s);
   for (const rel of inputFiles(s)) {
     parts['file:' + toSlash(rel)] = schema >= 2 ? inputDigest(s, rel, win) : digestFile(path.join(s.directory, rel));
@@ -135,6 +137,8 @@ function toSlash(p: string): string {
 export function inputFiles(s: Scene): string[] {
   const files = ['scene.json', s.transcript];
   if (fs.existsSync(path.join(s.directory, 'prompt.md'))) files.push('prompt.md');
+  // 两段式的设计稿：有它时实现者照它做，改了它就该重渲染。没有它的镜头清单不变。
+  if (fs.existsSync(path.join(s.directory, DesignFile))) files.push(DesignFile);
   return [...files, ...timingInputFiles(s)];
 }
 

@@ -374,7 +374,7 @@ export function parseResolvedService(raw: unknown): ResolvedService | null {
 export const ServiceStdinEnv = 'ONSET_AGENT_SERVICE_STDIN';
 
 /** 会起导演的操作。 */
-export const KeyOps: ReadonlySet<string> = new Set(['memory_consolidate']);
+export const KeyOps: ReadonlySet<string> = new Set(['memory_consolidate', 'audition_learn']);
 
 /**
  * 交给 onset studio agent 的一次调用（经 stdin，一行 JSON）。不走命令行参数：提示词很长，

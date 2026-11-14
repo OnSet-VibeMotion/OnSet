@@ -48,6 +48,7 @@ export const ViewPages: readonly ViewPage[] = [
   { id: 'review', label: '复查', target: '' },
   { id: 'memory', label: '记忆', target: '' },
   { id: 'evidence', label: '进化', target: '' },
+  { id: 'audition', label: '试镜', target: 'scene?' },
   { id: 'file', label: '文件', target: 'file' },
 ];
 
@@ -176,10 +177,11 @@ export function describeView(v: ViewState | null | undefined): string {
   return '（用户发这条消息时，Studio 网页上开着' + where + '。）';
 }
 
-/** 项目里的镜头编号，按 Go filepath.WalkDir 的词法顺序；渲染记忆考场里的镜头副本不算。 */
+/** 项目里的镜头编号，按 Go filepath.WalkDir 的词法顺序；渲染记忆考场与试镜（Studio 状态目录）里的镜头副本不算。 */
 export function sceneIDs(root: string): string[] {
   const out: string[] = [];
   const exams = path.join(root, 'production', 'memory-exams');
+  const studioState = path.join(root, 'production', 'studio');
   const walk = (dir: string) => {
     let entries: fs.Dirent[];
     try {
@@ -191,7 +193,7 @@ export function sceneIDs(root: string): string[] {
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (full !== exams) walk(full);
+        if (full !== exams && full !== studioState) walk(full);
       } else if (entry.name === 'scene.json') {
         try {
           const v = JSON.parse(fs.readFileSync(full, 'utf8')) as { id?: unknown };

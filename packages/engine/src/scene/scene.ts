@@ -139,6 +139,39 @@ export interface Scene {
    * 它不是镜头的输入，不参与指纹。
    */
   afterAttempt: ((attempt: Attempt) => void) | null;
+  /**
+   * 只写设计稿、不制作（两段式的第一段，scene.runDesign 的调用方填）：提示词换成设计稿的任务，
+   * 渲染器只在镜头目录写 design.md。不来自 scene.json，指纹清掉。
+   */
+  designOnly?: boolean;
+  /**
+   * 本次渲染带上的参考范例（人在试镜里选中的同类镜头的合成代码，audition 包按学习关系挑），
+   * 不来自 scene.json；没有时提示词与指纹都与引入之前一致。
+   */
+  exemplars?: ExemplarRecall | null;
+}
+
+/** 镜头带上的参考范例：注入提示词的一段、指纹用的摘要、渲染器要能读的目录。 */
+export interface ExemplarRecall {
+  names: string[];
+  section: string;
+  digest: string;
+  dirs: string[];
+}
+
+/** 镜头的设计稿：两段式里先由一位写好，再由另一位照着做；有它时是镜头的输入（指纹算它）。 */
+export const DesignFile = 'design.md';
+
+function designSection(s: Scene): string {
+  if (!fs.existsSync(path.join(s.directory, DesignFile))) return '';
+  return (
+    '\n设计稿（强制参考）：镜头目录里的 design.md 是为本镜头写好的设计稿。开工前完整读它，按它的构图、元素、时间线与动效实现；\n' +
+    '设计稿没写到的由你决定；与本提示词里标了「强制」的要求冲突时，以强制要求为准。\n'
+  );
+}
+
+function exemplarSection(s: Scene): string {
+  return s.exemplars && s.exemplars.names.length > 0 ? s.exemplars.section : '';
 }
 
 /**
@@ -581,6 +614,40 @@ export function audioTargetsOf(directory: string, file: string): AudioTargets {
  * 未出现在其中的技能退回按技能名引用，不写死任何本机路径。
  */
 export function buildPrompt(s: Scene, resolvedSkills: Record<string, string> | null): string {
+  if (s.designOnly) return designPrompt(s, resolvedSkills);
+  return renderPrompt(s, resolvedSkills, true);
+}
+
+/**
+ * 两段式第一段的提示词：把实现者会拿到的完整镜头说明（不带旧的设计稿）原样给设计者，要它只写 design.md。
+ * 设计者看到的约束与实现者完全一样，写出来的稿才做得出来。
+ */
+export function designPrompt(s: Scene, resolvedSkills: Record<string, string> | null): string {
+  const brief = renderPrompt({ ...s, designOnly: false, exemplars: s.exemplars }, resolvedSkills, false);
+  return (
+    '当前只为一个 MG 动画镜头写设计稿，不写代码、不渲染、不进行交互提问。\n' +
+    '\n' +
+    '另一位制作者会照你的设计稿实现这个镜头，他拿到的镜头说明就是下面定界块里的全文，外加你写的设计稿。\n' +
+    `你的产出只有一个文件：镜头目录里的 ${DesignFile}。不要写别的文件，不要运行 HyperFrames 渲染。\n` +
+    '\n' +
+    '设计稿要写清楚（按画布像素与秒 / 帧，具体到能照着做）：\n' +
+    '- 画面构成：有哪些元素，各自的位置、大小、层次，留白与视觉重心。\n' +
+    '- 时间线：每个元素何时出现、怎样运动、停多久、何时离开，与口播或字幕的哪一句对上。\n' +
+    '- 动效：缓动曲线、节奏的快慢变化、镜头运动；哪里是全镜的高潮。\n' +
+    '- 视觉：配色（有全片配色时遵守它）、字体、材质与质感。\n' +
+    '- 开头与结尾：第 0 帧是什么画面，最后一帧停在哪里（有交接约定时照约定）。\n' +
+    '- 容易做砸的地方：哪些细节决定这个镜头好不好看，实现时要注意什么。\n' +
+    '\n' +
+    '<onset-scene-brief>\n' +
+    brief +
+    '</onset-scene-brief>\n' +
+    '\n' +
+    '定界块里的「阶段性汇报规则」是给制作者的，你只在写完后输出这一行原文：\n' +
+    `[[USER_MESSAGE]]设计稿已写完：${DesignFile}\n`
+  );
+}
+
+function renderPrompt(s: Scene, resolvedSkills: Record<string, string> | null, withDesign: boolean): string {
   const resolved = resolvedSkills ?? {};
   verifyBlockInputs(s);
   verifyTimingInputs(s);
@@ -629,6 +696,7 @@ export function buildPrompt(s: Scene, resolvedSkills: Record<string, string> | n
     '先阅读完整字幕并检查素材。使用安装好的 HyperFrames 技能和 CLI，动画必须确定性、可按任意帧计算，并渲染完整时长。\n' +
     '\n' +
     body +
+    (withDesign ? designSection(s) : '') +
     style +
     blockPromptSections(s, resolved) +
     timing +
@@ -638,6 +706,7 @@ export function buildPrompt(s: Scene, resolvedSkills: Record<string, string> | n
     pluginSkillSection(resolved) +
     determinismSection +
     memorySection(s) +
+    exemplarSection(s) +
     workersSection(s) +
     selfReviewSection +
     examSection(s) +

@@ -10,6 +10,7 @@ import { PinnedVersion } from '@onset/engine/hyperframes';
 import { Command, ExitError, type Out, type PositionalArgs, ref } from './cobra';
 // 各模块在加载时把自己的操作登记进操作表（ops/op.ts）；命令行与工具服务都从那张表来。
 import './align';
+import './audition_cmd';
 import './audio';
 import './filmstyle';
 import './hyperframes';

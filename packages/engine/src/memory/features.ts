@@ -122,6 +122,12 @@ export function promptText(s: Scene): string {
 /** 只能出现在偏好的 checked_by 里：偏好由人判定。 */
 export const CheckerHuman = 'human';
 
+/**
+ * 「你在试镜里判的」：向老师学来的经验（audition 包的 learn）由它判定。画面好坏只有人判得了，
+ * 机器考试考不了（examinable 为 false），由人评考试（同一镜头学生带与不带经验、老师作参照，盲评）决定生效。
+ */
+export const CheckerAudition = 'audition.judged';
+
 /** 经验可以引用的全部校验器 ID。 */
 export function knownCheckers(): string[] {
   const ids = outputCheckIDs();
@@ -129,6 +135,7 @@ export function knownCheckers(): string[] {
   ids.push(CheckFramesBlank);
   for (const rule of readsRuleIDs()) ids.push(ReadsCheckPrefix + rule);
   ids.push(CheckReviewHandoff);
+  ids.push(CheckerAudition);
   return ids;
 }
 
@@ -141,7 +148,7 @@ export function knownCheckers(): string[] {
  * 由人确认后生效，标为未经考试。
  */
 export function examinable(id: string): boolean {
-  return id !== CheckReviewHandoff;
+  return id !== CheckReviewHandoff && id !== CheckerAudition;
 }
 
 /** 报告经验是否至少有一个校验器能在考试里判定。 */

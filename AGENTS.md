@@ -384,6 +384,27 @@ scene.json 里功能自己的块（多角色对话的 `cast`、歌曲讲解的 `
 | 进化页（`apps/desktop/src/renderer/components/Evidence.tsx`、`evidence.css`，页面 id `evidence`，`studio_show` 能切）把一场考试排给人看：三个数字（带上经验前后查出的问题数、考试结论与样本量、考过试正在用的经验数）→ 同一个镜头对照组与试用组的两段画面并排、一个播放键两边同步 → 这条经验本身 → 两批渲染对比（主指标是每个镜头查出的问题数，缺省挑最近两批不少于 3 个镜头的）→ 存档与回退（点两下才退）。数据全部来自 `/api/memory`，页面不另算数：考试格子的 `output` 取考场里 `scene.json` 的 `output`（`studio/memory.ts` 的 `examOutput`）、`problem_texts` 与题目的 `text` 取自格子的考试经历、`runs_all` 是所有项目最近 40 批。问题按 `labels` 的大白话归组显示，校验器原话收进折叠。`e2e/evidence.spec.mjs` 钉着 | 评审要在两分钟里看到「学到了什么、好在哪、能不能退」，原来这些散在记忆页的「高级」里。产物名以前写死 `out.mp4`，真实镜头叫 `scene-001.mp4`，考试矩阵的画面在真实项目上从没显示过（2026-11-12 实测）。一次通过率在真实数据里是 97%，比不出差别，所以主指标换成问题数。画面在做考试的那个项目里，考试结果在所有项目共用的记忆库里：换个项目打开只有数字没有画面，页面照实说 |
 | 门槛 `judge`（`memory/exam.ts`）是纯函数，五条门槛各有单测；渲染工具自身故障让整场无效，不按 0 分算 | 一次认证失效不能让一条好经验被拒 |
 
+## 试镜与模型互学
+
+`packages/engine/src/audition` 实现「同一镜头、多个渲染器」的对比，以及在它上面的模型互学：同一份冻结输入交给几位选手（渲染工具 + 模型，`renderer[:model]`，只按第一个冒号切；两段式写「实现者<设计者」）各渲染一遍，由人盲评，再决定采用哪一份；评判跨项目累积成「谁在哪类镜头上赢了谁」，人确认学习关系后，学生向老师学、带上老师的范例，经人评考试确认。**任何模型都可以当老师或学生，谁是老师只由人的评判定，代码里不写死任何一家。** 操作在 `packages/cli/src/audition_cmd.ts`（`scene_audition` / `scene_audition_vote` / `scene_audition_adopt` / `scene_design` / `audition_learn`），接口在 `studio/auditions.ts` 与 `studio/learning.ts`，界面是「试镜」页（`Audition.tsx`，镜头页「⋯」菜单进入）与「进化」页的「谁向谁学」（`Learning.tsx`）。
+
+| 约定 | 原因 |
+|---|---|
+| 一场试镜在 `production/studio/auditions/<编号>/`，每位选手一个子目录（随机标号 A、B……，人评考试的老师是 R），里面是 `freezeInput` 冻结的镜头输入；镜头列表（`discoverScenes`）、`sceneIDs` 跳过整个 `production/studio`，记忆导入跳过 `auditions` | 选手目录里有 scene.json，不跳过就会被当成项目的镜头；放在 Studio 状态目录里，渲染器写的合成代码不进每轮快照 |
+| 选手的工具与模型经 `{...cfg, renderer, rendererModel}` 盖掉项目配置，`scene.json` 不动 | `rendererModelFor` 只在工具相同时用 `rendererModel`，这样每位选手拿到的就是它自己的模型 |
+| 盲评由后端守：评判之前 `blindJSON` 只给标号、进度、成没成与产物路径；人评考试的老师（参照）公开，两份学生作品不说哪份带了经验 | 界面拿不到就漏不出去；用量、耗时也看得出是谁 |
+| 五条操作的 scopes 只有 cli；`audition_learn` 在 `director.KeyOps` 里 | 试镜是好几次完整渲染，谁来比、选谁、向谁学由人定，编排工具不能自己发起、不能替人投票。`audition_learn` 会起整理者，编排是导演时要经 stdin 交 key |
+| 试镜的渲染不写记忆经历 | 同一镜头连着渲染几遍是人为安排的对照，混进统计会让一次通过率失真（与考试经历同理） |
+| 评判写进 `audition.json`，同时经 `afterVote`（命令行与客户端同一个函数）追加进记忆库目录的 `auditions.jsonl`（同一场改判以最后一行为准）、同步范例库、落人评考试的结论。选手在记录里叫「渲染工具/模型」（`contestantKey`：指定了模型用指定的，否则用实际读到的），两段式的叫「实现者<设计者」，记录带项目目录与每位的标号 | 谁在哪类镜头（`features`）上赢了谁要跨项目累积；向老师学要回项目里读两边的代码 |
+| 采用（`adoptFiles`）只收评判过、产物合格、不是人评考试的选手，镜头输入摘要（`inputDigest`）对不上就拒绝；先 `archiveAttempt`，再拷入除项目镜头输入、`frame.md`、渲染记录、设计稿日志以外的文件（选手的 `design.md` 跟着进去）；随后把 `scene.json` 的 `renderer` 改成胜者的工具，按项目里的镜头（同样召回记忆与范例）重写渲染记录 | 渲染工具在指纹里，不改的话采用完马上 Stale；模型不在指纹里，以后重渲染按设置的模型 |
+| 两段式：镜头目录有 `design.md`（`scene.DesignFile`）时它是镜头的输入（`inputFiles`），提示词在 prompt.md 之后加「设计稿（强制参考）」；`Scene.designOnly` 时 `buildPrompt` 换成 `designPrompt`（把实现者会拿到的完整说明放进定界块，只要求写 design.md），`scene.run` 不归档、不写尝试记录与渲染记录，日志写 `design-<镜头>.*`，校验 design.md 非空。没有 design.md 的镜头提示词与指纹逐字不变 | 设计者看到的约束与实现者完全一样，写出来的稿才做得出来；只写设计稿不能动镜头已有的产物 |
+| 学习关系在记忆库目录的 `learning.json`（`confirmRelation` / `removeRelation` / `dismissProposal`），由人在「进化」页确认；`proposals` 从评判里两两比胜负提议（总体说不清、某类题材说得清时单独提一条），样本少（少于 `ProposalMinMatches` 场或胜率低于 `ProposalMinRate`）照样列出、标「样本少」；两段式的选手、人评考试不进胜负统计 | 不自动认定老师：照别人设计稿做出来的说明不了实现者自己的本事 |
+| 向老师学（`learn`）：取老师赢了学生、两边目录都在、还没学过（经验的 `from_auditions`）的试镜，最多 `MaxPairs` 组，代码拷进记忆库 `learn/<run>/pairs/`，交给整理者（与记忆整理同一个 Drafter、同一套 `lint`，被拒的改一稿）。收下时 onset 写定 `checked_by: [audition.judged]`、`applies_when.renderers/models`（学生）、`learned_from`（老师）、`from_auditions`；不写 consolidate 事件 | 范围与出处不能交给整理者写；consolidate 事件会挪动「上次整理」的时间，下一次整理就漏了失败经历 |
+| `audition.judged`（`memory.CheckerAudition`）是「人在试镜里判的」：只给带 `learned_from` 的经验（`lint` 拦着），`examinable` 为 false（机器考试不考它），由人评考试定。记忆文件的 `learned_from` / `from_auditions` 没写时文件逐字不变，不进 `ruleDigest` | 画面好坏只有人判得了；出处不该让召回它的镜头 Stale |
+| 人评考试：`scene_audition` 给 `exam`（关系编号）时出三份——学生不带新经验（control）、学生带（trial，召回时 `extra` 加上要考的试用经验，其余逐字相同）、老师作参照（reference，R）。人只能从两份学生作品里选；选中 trial 经 `memory.promoteExamined` 生效（试镜编号记进 `verified_by`），选中 control 经验被拒，差不多或都不行留在试用；结论生效后不能改判 | 校验器分不出动画好坏（真实数据一次通过率 97%），学得对不对只能人看 |
+| 范例库在记忆库目录的 `exemplars/`：评判的胜者（不含人评考试）拷一份合成源码（只拷文本、跳过日志与尝试记录、限大小）带 `exemplar.json`，改判换胜者就换、改成差不多就删。渲染时（`attachMemory`、试镜各选手）按学习关系 `pickExemplars`：学生匹配（模型前缀）的关系里老师的范例，按共同题材、新旧挑最多 `MaxExemplars` 份，同项目同镜头的不给；经 `Scene.exemplars` 进提示词（召回段之后）与指纹（`exemplars` 一项，没有就不加），目录加进沙箱的可读目录 | 没有学习关系的渲染工具提示词与指纹都不变；同一个镜头给自己的答案等于抄 |
+| 按镜头分派（`recommend`，`GET /api/auditions/recommend`）：与这个镜头有共同题材的试镜里谁赢得最多（出场不到两次不推荐，两段式的组合也在内），只在试镜页给一句推荐，不改任何设置 | 换不换由人定 |
+
 ## 卡点模式
 
 卡点是内置插件 `beat`（`packages/engine/src/plugins/beat`，见「内置插件」）；`packages/engine/src/beat` 是它用的无配音卡点时间契约，以项目根 `beat.yaml` 启用，与 `song.yaml`、`cast.yaml` 互斥。链路是「导入音乐 → 分析出草稿网格 → 试听确认 → 按小节的分镜计划 → `beat_cues` 写镜头时长」。
