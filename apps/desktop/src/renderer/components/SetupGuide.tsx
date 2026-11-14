@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { api, errorText, forUser, post } from '../api';
 import type { PrereqStatus, SetupStatus } from '../types';
 import '../setup.css';
@@ -105,30 +105,40 @@ function Icon(props: { children: ReactNode }) {
   );
 }
 
+// 带 class 的那几笔在组「准备中」时动起来（setup.css 的「各组的小动画」）：镜头的光圈转、胶片走片、
+// 话筒外一圈声波、字幕一行行打出来。静止时与原来的线稿一模一样。
 const icons: Record<string, ReactNode> = {
   render: (
     <Icon>
       <rect x="2.5" y="6.5" width="13" height="11" rx="2" />
-      <path d="M15.5 10.5l6-3.5v10l-6-3.5" />
-      <circle cx="9" cy="12" r="2.2" />
+      <path className="ic-beam" d="M15.5 10.5l6-3.5v10l-6-3.5" />
+      <g className="ic-lens">
+        <circle cx="9" cy="12" r="2.2" />
+        <path d="M9 9.8v1.1M11.2 12h-1.1M9 14.2v-1.1M6.8 12h1.1" />
+      </g>
     </Icon>
   ),
   media: (
     <Icon>
       <rect x="4" y="3" width="16" height="18" rx="1.5" />
-      <path d="M8 3v18M16 3v18M4 7.5h4M4 12h4M4 16.5h4M16 7.5h4M16 12h4M16 16.5h4" />
+      <path d="M8 3v18M16 3v18" />
+      {/* 两侧的片孔：一条虚线，走片时挪动虚线的起点，片孔就在框里一格格往上走。 */}
+      <path className="ic-reel" d="M6 4.6v15M18 4.6v15" strokeWidth="2" strokeLinecap="butt" strokeDasharray="1.5 3" />
     </Icon>
   ),
   voice: (
     <Icon>
       <rect x="9" y="2.5" width="6" height="11.5" rx="3" />
       <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" />
+      <path className="ic-wave w1" d="M2.6 6.5a9 9 0 0 0 0 7" />
+      <path className="ic-wave w2" d="M21.4 6.5a9 9 0 0 1 0 7" />
     </Icon>
   ),
   align: (
     <Icon>
       <rect x="2.5" y="5" width="19" height="14" rx="2" />
-      <path d="M6.5 11h6M14.5 11h3M6.5 15h3M11.5 15h6" />
+      <path className="ic-type t1" pathLength={1} d="M6.5 11h6M14.5 11h3" />
+      <path className="ic-type t2" pathLength={1} d="M6.5 15h3M11.5 15h6" />
     </Icon>
   ),
   music: (
@@ -146,7 +156,7 @@ const icons: Record<string, ReactNode> = {
   ),
   styles: (
     <Icon>
-      <path d="M12 3l9 5-9 5-9-5 9-5z" />
+      <path className="ic-lift" d="M12 3l9 5-9 5-9-5 9-5z" />
       <path d="M3 13l9 5 9-5" />
     </Icon>
   ),
@@ -241,6 +251,8 @@ function Ring(props: { percent: number; state: State; children: ReactNode }) {
       <svg viewBox="0 0 60 60" aria-hidden="true">
         <circle className="track" cx="30" cy="30" r={r} />
         <circle className="value" cx="30" cy="30" r={r} strokeDasharray={c} strokeDashoffset={c * (1 - props.percent / 100)} />
+        {/* 准备中时绕圈走的一点光：下载停在某个百分比上时，也看得出它还在干活。 */}
+        <circle className="orbit" cx="30" cy="30" r={r} strokeDasharray={`${c * 0.08} ${c * 0.92}`} />
       </svg>
       <span className="crew-icon">{props.children}</span>
       {props.state === 'ready' && (
@@ -254,10 +266,10 @@ function Ring(props: { percent: number; state: State; children: ReactNode }) {
   );
 }
 
-function CrewCard(props: { crew: Crew; task: SetupStatus['task'] }) {
+function CrewCard(props: { crew: Crew; task: SetupStatus['task']; index: number }) {
   const { state, percent } = crewState(props.crew, props.task);
   return (
-    <li className={'crew-card ' + state} title={technical(props.crew)}>
+    <li className={'crew-card ' + state} title={technical(props.crew)} style={{ '--i': props.index } as CSSProperties}>
       <Ring percent={percent} state={state}>
         {icons[props.crew.icon ?? props.crew.key] ?? icons.styles}
       </Ring>
@@ -265,6 +277,49 @@ function CrewCard(props: { crew: Crew; task: SetupStatus['task'] }) {
       <span className="crew-desc">{props.crew.desc}</span>
       <span className="crew-state">{state === 'working' ? `${stateLabel.working} ${percent}%` : stateLabel[state]}</span>
     </li>
+  );
+}
+
+/** 数字平滑地走到目标值（进度每秒才更新一次，直接跳显得一顿一顿）。 */
+function useTween(target: number, ms = 900): number {
+  const [value, setValue] = useState(target);
+  const from = useRef(target);
+  const shown = useRef(target);
+  useEffect(() => {
+    from.current = shown.current;
+    const start = performance.now();
+    let frame = 0;
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / ms);
+      const eased = 1 - Math.pow(1 - t, 3);
+      shown.current = from.current + (target - from.current) * eased;
+      setValue(shown.current);
+      if (t < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [target, ms]);
+  return value;
+}
+
+/** 右上角的大百分比：平滑地数上去。 */
+function Percent(props: { value: number }) {
+  const shown = useTween(props.value);
+  return (
+    <span className="setup-percent">
+      {Math.round(shown)}
+      <small>%</small>
+    </span>
+  );
+}
+
+/** 安装进行中顶上的放映机光束与走动的胶片：只是氛围，不承载信息。 */
+function Projector() {
+  return (
+    <span className="setup-projector" aria-hidden="true">
+      <span className="setup-beam" />
+      <span className="setup-reel" />
+    </span>
   );
 }
 
@@ -321,19 +376,26 @@ export function SetupGuide(props: { setup: SetupHandle; compact?: boolean }) {
   return (
     <div className={'setup-guide' + (props.compact ? ' compact' : '') + (running ? ' running' : '') + (failed ? ' failed' : '')} id="setup-guide">
       <span className="setup-grain" aria-hidden="true" />
+      {running && <Projector />}
       <header className="setup-head">
         <div className="setup-heading">
           <span className="setup-eyebrow">{eyebrow}</span>
-          <p className="setup-title">{title}</p>
+          <p className="setup-title">
+            {title}
+            {running && (
+              <span className="setup-dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+            )}
+          </p>
           <p className="setup-lead">{lead}</p>
         </div>
         <div className="setup-cta">
           {running ? (
             <>
-              <span className="setup-percent">
-                {overall}
-                <small>%</small>
-              </span>
+              <Percent value={overall} />
               <button className="ghost" onClick={() => void setup.cancel()}>
                 暂停
               </button>
@@ -348,10 +410,16 @@ export function SetupGuide(props: { setup: SetupHandle; compact?: boolean }) {
         </div>
       </header>
 
+      {running && (
+        <span className="setup-progress" aria-hidden="true">
+          <span style={{ width: `${overall}%` }} />
+        </span>
+      )}
+
       {showCrew && (
         <ul className="crew">
-          {core.map((c) => (
-            <CrewCard key={c.key} crew={c} task={task} />
+          {core.map((c, i) => (
+            <CrewCard key={c.key} crew={c} task={task} index={i} />
           ))}
         </ul>
       )}
