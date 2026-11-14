@@ -111,7 +111,7 @@ export function discoverScenes(root: string, platform: NodeJS.Platform = process
   const exams = path.join(root, 'production', 'memory-exams');
   const studioState = path.join(root, 'production', 'studio');
   const qc = path.join(root, 'production', 'visual-qc');
-  const plannedQC = platform === 'win32' && [...plannedDirs(root)].some(dir => dir === qc || dir.startsWith(qc + path.sep));
+  const plannedQC = platform === 'win32' && [...plannedDirs(root)].some(dir => dir.toLowerCase() === qc.toLowerCase() || dir.toLowerCase().startsWith(qc.toLowerCase() + path.sep));
   walkDir(root, (file, entry) => {
     if (!entry) return;
     if (entry.isDirectory()) return file === exams || file === studioState || (platform === 'win32' && file === qc && !plannedQC) ? 'skip' : undefined;
@@ -173,7 +173,7 @@ export function discoverScenes(root: string, platform: NodeJS.Platform = process
     out.push(summary);
   });
   out.sort((a, b) => compareBytes(a.id, b.id));
-  return currentScenes(root, out);
+  return currentScenes(root, out, platform);
 }
 
 /**
@@ -181,11 +181,15 @@ export function discoverScenes(root: string, platform: NodeJS.Platform = process
  * 两套 id 相同：不去重的话镜头列表出现两组，按 id 找镜头的地方（镜头页、渲染、校验）又先碰到旧的那份。
  * 取舍：分镜计划 `dir` 指向的 → 项目根 `scenes/` 下的 → 路径层级浅的 → 路径字典序。
  */
-function currentScenes(root: string, scenes: SceneSummary[]): SceneSummary[] {
+function currentScenes(root: string, scenes: SceneSummary[], platform: NodeJS.Platform): SceneSummary[] {
   const planned = plannedDirs(root);
+  const comparable = (directory: string) => platform === 'win32' ? path.resolve(directory).toLowerCase() : path.resolve(directory);
+  const plannedKeys = new Set([...planned].map(comparable));
+  // Windows 修订与复查会生成不同 id 的镜头副本；明确计划存在时，它们不能增加镜头数或触发返工。
+  if (platform === 'win32' && plannedKeys.size > 0) scenes = scenes.filter(sc => plannedKeys.has(comparable(sc.directory)));
   const top = path.join(root, 'scenes') + path.sep;
   const rank = (sc: SceneSummary): number[] => [
-    planned.has(path.resolve(sc.directory)) ? 0 : 1,
+    plannedKeys.has(comparable(sc.directory)) ? 0 : 1,
     sc.directory.startsWith(top) ? 0 : 1,
     sc.directory.split(path.sep).length,
   ];

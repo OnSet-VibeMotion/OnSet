@@ -30,8 +30,22 @@ describe('discoverScenes', () => {
     expect(discoverScenes(root, 'win32').map(s => s.id)).toEqual(['scene-001']);
     // 其它平台保持原来的发现规则。
     expect(discoverScenes(root, 'darwin').map(s => s.id)).toEqual(['candidate-qc','scene-001']);
-    fs.writeFileSync(path.join(root, 'production/scene-plan.json'), JSON.stringify({scenes:[{id:'candidate-qc',dir:'production/visual-qc/candidate-source'}]}));
+    fs.writeFileSync(path.join(root, 'production/scene-plan.json'), JSON.stringify({scenes:[{id:'scene-001',dir:'scenes/scene-001'},{id:'candidate-qc',dir:'production/visual-qc/candidate-source'}]}));
     expect(discoverScenes(root, 'win32').map(s => s.id)).toEqual(['candidate-qc','scene-001']);
+  });
+
+  it('Windows counts only planned directories, retaining other platforms and unplanned-project discovery', () => {
+    const root = project();
+    writeScene(root, 'scenes/scene-001', 'scene-001');
+    writeScene(root, 'production/revisions/scene005-alignment-v03', 'candidate-qc-scene005-v03');
+    expect(discoverScenes(root, 'win32')).toHaveLength(2);
+    const plan = path.join(root,'production/scene-plan.json');
+    fs.writeFileSync(plan,JSON.stringify({scenes:[{id:'scene-001',dir:'scenes/scene-001'}]}));
+    expect(discoverScenes(root,'win32').map(s=>s.id)).toEqual(['scene-001']);
+    expect(discoverScenes(root,'darwin')).toHaveLength(2);
+    expect(discoverScenes(root,'linux')).toHaveLength(2);
+    fs.writeFileSync(plan,JSON.stringify({scenes:[{id:'scene-001',dir:'SCENES/SCENE-001'}]}));
+    expect(discoverScenes(root,'win32').map(s=>s.id)).toEqual(['scene-001']);
   });
   it('lists each scene once when an older plan was archived with the same ids', () => {
     const root = project();
