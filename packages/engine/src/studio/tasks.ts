@@ -15,6 +15,8 @@ import { BusyError, overrideAgents, type AgentChoice } from './sessions';
 import type { Project, Server } from './studio';
 import { emitStudioEvent } from './events';
 import { stationsDir } from '../flow/fetch';
+import { installedEntry } from '../flow/update';
+import { stationDownloadEnv } from './stationproxy';
 
 export interface Task {
   task_id: string;
@@ -253,10 +255,14 @@ export async function runStudioOpWith(
  * 跑一条与项目无关的操作（装、去掉、更新插件）：工作目录是插件的存放目录，配置只有全局设置，
  * 不占项目写锁，没有打开项目也能跑。
  */
-export function runUserOp(s: Server, signal: AbortSignal, name: string, params: Record<string, unknown>): Promise<OpOutcome> {
-  const dir = stationsDir(envMap());
+export async function runUserOp(s: Server, signal: AbortSignal, name: string, params: Record<string, unknown>): Promise<OpOutcome> {
+  const base = envMap();
+  const dir = stationsDir(base);
   fs.mkdirSync(dir, { recursive: true });
-  return runOpIn(s, signal, dir, config.load(dir, null), name, params);
+  const source = name === 'station_add' ? String(params.source ?? '')
+    : name === 'station_update' ? installedEntry(String(params.id ?? ''), base)?.source ?? '' : '';
+  const env = await stationDownloadEnv(source, base, s.config.stationProxy);
+  return runOpIn(s, signal, dir, config.load(dir, null), name, params, { env });
 }
 
 async function runOpIn(s: Server, signal: AbortSignal, cwd: string, cfg: config.Config, name: string, params: Record<string, unknown>, opts: OpRunOptions = {}): Promise<OpOutcome> {

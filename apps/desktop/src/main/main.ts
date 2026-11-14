@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, session, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { currentSkin, newServer, skinJSON, type Server } from '@onset/engine/studio';
@@ -229,7 +229,7 @@ if (!app.requestSingleInstanceLock()) {
       if (npm !== '') process.env.ONSET_NPM_CLI = npm;
       // 导演的 API key 经 safeStorage 加密落盘、解密后经 stdin 交给导演（见 keycodec.ts）。
       installKeyCodec();
-      backend = newServer({ executable, stationBrowser: request => stationBrowsers.lease(request) });
+      backend = newServer({ executable, stationBrowser: request => stationBrowsers.lease(request), stationProxy: url => session.defaultSession.resolveProxy(url) });
     } catch (err) {
       dialog.showErrorBox('后台服务起不来', err instanceof Error ? err.message : String(err));
       app.quit();

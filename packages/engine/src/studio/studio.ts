@@ -64,6 +64,8 @@ import * as studioview from '../studioview';
 import { directoryBrowseRoot, directoryDrives, withinDirectoryBrowseRoot } from './directories';
 
 export interface Config {
+  /** 桌面端按来源地址解析系统/PAC 代理；只用于插件的 Git 下载，返回 Chromium resolveProxy 的原样结果。 */
+  stationProxy?: (url: string) => Promise<string>;
   /** 只有桌面端提供；插件逻辑仍在子进程，不加载到宿主。 */
   stationBrowser?: (request: import('../flow').StationBrowserRequest) => Promise<import('../flow').StationBrowserLease>;
   projectPath?: string;
