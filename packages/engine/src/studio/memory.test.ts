@@ -3,11 +3,125 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import * as memory from '../memory';
 import * as scene from '../scene';
+import { writeSceneDir } from '../memory/testsupport';
 import { renderRecord } from './turns';
 import * as tasks from './tasks';
 import { args, newSessionFixture, setEnv, startStudio, studioRequest, tempDir, waitIdle, waitStudioTask, writeStudioFile, type SessionFixture } from './testsupport';
 
 describe('studio memory', () => {
+  it('audits legacy empty-inventory gains without rewriting history or changing memory status', async () => {
+    const root=tempDir();
+    setEnv('ONSET_MEMORY_DIR', tempDir());
+    writeStudioFile(path.join(root,'onset.conf'),'RENDERER=claude\n');
+    const sc=writeSceneDir(path.join(root,'scenes','scene-001'),'scene-001','验证','');
+    const store=memory.open(process.env.ONSET_MEMORY_DIR!);
+    const source=store.recordAttempt(sc,scene.newAttempt({renderer:'claude',outcome:scene.OutcomeVerificationFailed,checks:['reads.duration'],problems:['太短']}),{source:memory.SourceRender});
+    const m=memory.newMemory({name:'reading-rule',kind:memory.KindLesson,status:memory.StatusTrial,description:'阅读停留',body:'反例：太短。正例：停够。',
+      from_episodes:[source.id],checked_by:['reads.duration']});
+    store.write(m);
+    const exam=await store.exam({renderers:['claude'],trial:[m.name],budget:1500,workspace:path.join(root,'production','memory-exams'),
+      run:async()=>scene.newAttempt({outcome:scene.OutcomeSucceeded}),
+      // 模拟旧版补查没有完整性标记的历史结果。
+      postCheck:s=>s.memory?.names?.includes(m.name)?[]:[{check:'reads.duration',problem:path.join(s.directory,'visible-events.json')+' 的 events 为空'}]});
+    expect(exam.verdict.pass).toBe(true);
+    const s=startStudio({projectPath:root,configPath:path.join(tempDir(),'projects.json')});
+    const response=await studioRequest(s,'GET','/api/memory');
+    const view=response.body.exams.find((e:{id:string})=>e.id===exam.id);
+    expect(view.verdict).toMatchObject({pass:false,needs_human:true});
+    expect(view.evaluation_note).toContain('原始考试记录保留');
+    expect(view.cells[0].incomplete).toBe(true);
+    expect(store.exams()[0].verdict.pass).toBe(true);
+    expect(store.find(m.name)?.status).toBe(memory.StatusActive);
+  });
+
+  it('prioritizes compound subtitle candidates without claiming they are broken', async () => {
+    const root = tempDir();
+    setEnv('ONSET_MEMORY_DIR', tempDir());
+    writeStudioFile(path.join(root, 'onset.conf'), 'RENDERER=claude\n');
+    for (const id of ['scene-001', 'scene-002']) {
+      const dir = path.join(root, 'scenes', id);
+      const sc = writeSceneDir(dir, id, '分层阅读', '');
+      writeStudioFile(path.join(dir, 'scene.json'), JSON.stringify({
+        id, duration_seconds: 3, output: 'out.mp4', transcript: sc.transcript, text: sc.text,
+        timing: { fps: 30, start_frame: 0, end_frame_exclusive: 90, plan: 'a'.repeat(64), phrases: 'phrases.json' },
+      }));
+      writeStudioFile(path.join(dir, sc.transcript), `1\n00:00:00,000 --> 00:00:03,000\n${id === 'scene-002' ? '先整理，再比较。' : '先整理。'}\n`);
+      writeStudioFile(path.join(dir, 'phrases.json'), JSON.stringify({ schema: 1, fps: 30, phrases: [
+        { phrase_id: 'sort', source_text: '整理', semantic_order: 1, start_frame: 10, end_frame_exclusive: 40 },
+        { phrase_id: 'compare', source_text: '比较', semantic_order: 2, start_frame: 45, end_frame_exclusive: 75 },
+      ] }));
+    }
+    const store = memory.open(process.env.ONSET_MEMORY_DIR!);
+    const source = store.recordAttempt(scene.load(path.join(root, 'scenes', 'scene-001')),
+      scene.newAttempt({ renderer: 'claude', outcome: scene.OutcomeVerificationFailed, checks: ['reads.order'], problems: ['顺序倒退'] }), { source: memory.SourceRender });
+    store.write(memory.newMemory({ name: 'read-order', kind: memory.KindLesson, status: memory.StatusTrial,
+      description: '核对跨层阅读顺序', body: '反例：文字倒序。正例：核对各层。',
+      applies_when: memory.newApplies({ features: ['timing'] }), checked_by: ['reads.order'], from_episodes: [source.id] }));
+    const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
+    const result = await studioRequest(s, 'GET', '/api/memory/applications?name=read-order');
+    expect(result.status).toBe(200);
+    expect(result.body.matches).toMatchObject([
+      { scene_id: 'scene-002', selected: true, source_scene: false, reading_context: { compound_cues: [1], hint: expect.stringContaining('不代表已经出错') } },
+      { scene_id: 'scene-001', selected: true, source_scene: true, reading_context: { compound_cues: [], hint: expect.stringContaining('仅匹配召回条件') } },
+    ]);
+    expect(store.find('read-order')?.status).toBe(memory.StatusTrial);
+    expect(store.episodes()).toHaveLength(1);
+  });
+
+  it('finds applicable scenes without reactivating a stopped lesson and respects scope and budget', async () => {
+    const root = tempDir();
+    const dir = tempDir();
+    setEnv('ONSET_MEMORY_DIR', dir);
+    writeStudioFile(path.join(root, 'onset.conf'), 'RENDERER=claude\nMEMORY=on\n');
+    writeSceneDir(path.join(root, 'scenes', 'scene-001'), 'scene-001', '中文标题', '');
+    writeSceneDir(path.join(root, 'scenes', 'scene-002'), 'scene-002', 'English', '');
+    const store = memory.open(dir);
+    store.write(memory.newMemory({ name: 'local-font', kind: memory.KindLesson, status: memory.StatusDormant,
+      description: '中文字体用本地文件', body: '反例：远程字体。正例：本地字体。', applies_when: memory.newApplies({ features: ['cjk_text'] }), checked_by: ['determinism.remote-font'] }));
+    const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
+    const get = () => studioRequest(s, 'GET', '/api/memory/applications?name=local-font');
+    let result = await get();
+    expect(result.status).toBe(200);
+    expect(result.body.scanned).toBe(2);
+    expect(result.body.matches).toMatchObject([{ scene_id: 'scene-001', selected: true, features: ['cjk_text'] }]);
+    expect(store.find('local-font')?.status).toBe(memory.StatusDormant);
+    expect(store.latestSnapshot()).toBeNull();
+    const m = store.find('local-font')!;
+    m.applies_when.models = ['unavailable-model'];
+    store.write(m);
+    expect((await get()).body.matches).toEqual([]);
+    m.applies_when.models = [];
+    m.applies_when.renderers = ['codex'];
+    store.write(m);
+    expect((await get()).body.matches).toEqual([]);
+    m.applies_when.renderers = [];
+    store.write(m);
+    setEnv('MEMORY_RECALL_BUDGET', '1');
+    result = await get();
+    expect(result.body.matches).toMatchObject([{ scene_id: 'scene-001', selected: false, omit_reason: 'budget' }]);
+    expect(store.episodes()).toEqual([]);
+  });
+
+  it('resolves selected exam scene IDs to project directories and rejects outside paths', async () => {
+    const root = tempDir();
+    writeStudioFile(path.join(root, 'onset.conf'), 'RENDERER=claude\n');
+    writeSceneDir(path.join(root, 'scenes', 'scene-001'), 'scene-001', '考题', '');
+    const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
+    const operation = vi.spyOn(tasks, 'runStudioOp').mockResolvedValue({ text: '' });
+    try {
+      expect((await studioRequest(s, 'POST', '/api/memory/actions/exam', '{"renderers":["claude"],"name":"local-font","scenes":["../outside"]}')).status).toBe(400);
+      const { status, body } = await studioRequest(s, 'POST', '/api/memory/actions/exam', '{"renderers":["claude"],"name":"local-font","scenes":["scene-001","scene-001"]}');
+      expect(status).toBe(202);
+      await waitStudioTask(s, body.task_id);
+      expect(operation.mock.calls[0].slice(3, 5)).toEqual(['memory_exam', { renderers: 'claude', retest: 'local-font', holdout: [path.join(root, 'scenes', 'scene-001')] }]);
+      expect((await studioRequest(s, 'POST', '/api/memory/actions/exam', '{"renderers":["claude"],"name":"local-font","holdout_only":true}')).status).toBe(400);
+      const migration = await studioRequest(s, 'POST', '/api/memory/actions/exam', '{"renderers":["claude"],"name":"local-font","scenes":["scene-001"],"holdout_only":true}');
+      expect(migration.status).toBe(202);
+      await waitStudioTask(s, migration.body.task_id);
+      expect(operation.mock.calls[1].slice(3, 5)).toEqual(['memory_exam', { renderers: 'claude', retest: 'local-font', holdout: [path.join(root, 'scenes', 'scene-001')], holdout_only: true }]);
+    } finally { operation.mockRestore(); }
+  });
+
   it('dispatches a selected trial without turning it into an active-lesson retest', async () => {
     const root = tempDir();
     writeStudioFile(path.join(root, 'onset.conf'), 'RENDERER=claude\n');

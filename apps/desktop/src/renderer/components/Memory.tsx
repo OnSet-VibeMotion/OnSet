@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
-import { api, errorText, post, rawURL } from '../api';
+import { useEffect, useRef, useState } from 'react';
+import { api, errorText, post } from '../api';
 import '../memory.css';
 import type { ExamResult, MemoryEvent, MemoryRow, MemoryState, MemoryStatus, MemorySuspect, RecallResponse, RunStats, RunSummary, Scene } from '../types';
 import type { RunAction } from './Preview';
 import { ExamProgressPanel } from './ExamProgress';
+import { ExamReview as ExamMatrix } from './ExamReview';
+import { MemoryApplications } from './MemoryApplications';
 
 type Labels = MemoryState['labels'];
 
@@ -23,6 +25,7 @@ interface Props {
  * 面板上不直接露出校验器 ID、事件类型和特征名，一律经 labels 换成大白话。改动一律经 onset memory 子命令。
  */
 export function MemoryTab({ scene, version, run }: Props) {
+  const retiredRef = useRef<HTMLDetailsElement>(null);
   const [state, setState] = useState<MemoryState | null>(null);
   const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
@@ -46,12 +49,27 @@ export function MemoryTab({ scene, version, run }: Props) {
   }, [version, refresh]);
 
   // 当前镜头渲染时会带上哪几条：页头的第三步与「会带上」一节共用。
-  const [recall, setRecall] = useState<RecallResponse | null>(null);
+  const [recallState, setRecallState] = useState<{ scene: string; data: RecallResponse | null; stale: boolean } | null>(null);
   useEffect(() => {
-    setRecall(null);
     if (!scene) return;
-    api<RecallResponse>(`/api/memory/recall?scene=${encodeURIComponent(scene.id)}`).then(setRecall, () => setRecall(null));
-  }, [scene?.id, version, refresh]);
+    let current = true;
+    let timer: number | undefined;
+    const id = scene.id;
+    const update = async () => {
+      try {
+        const data = await api<RecallResponse>(`/api/memory/recall?scene=${encodeURIComponent(id)}`);
+        if (current) setRecallState({ scene: id, data, stale: false });
+      } catch {
+        if (current) setRecallState((old) => old?.scene === id ? { ...old, stale: true } : { scene: id, data: null, stale: true });
+      } finally {
+        if (current) timer = window.setTimeout(() => void update(), 2000);
+      }
+    };
+    void update();
+    return () => { current = false; window.clearTimeout(timer); };
+  }, [scene?.id, version]);
+  const recall = scene && recallState?.scene === scene.id ? recallState.data : null;
+  const recallFailed = scene && recallState?.scene === scene.id && recallState.stale && !recallState.data;
 
   if (error) return <div className="empty">{error}</div>;
   if (!state) return <div className="empty">正在读取记忆…</div>;
@@ -119,17 +137,24 @@ export function MemoryTab({ scene, version, run }: Props) {
             </small>
           </li>
           <li>
-            <strong>{scene ? recalled.length : '—'}</strong>
-            <span>渲染时用上</span>
-            <small>{scene ? `${scene.id} 会带上 ${recalled.length} 条` : '还没有镜头'}</small>
+            <strong>{scene ? recall ? recalled.length : recallFailed ? '—' : '…' : '—'}</strong>
+            <span>本镜头会带上</span>
+            <small>{scene ? recall ? `${scene.id} · ${recalled.length} 条${recallState?.stale ? '（上次结果，暂未更新）' : ''}` : `${scene.id} · ${recallFailed ? '暂时无法读取' : '正在读取'}` : '还没有镜头'}</small>
           </li>
         </ol>
       </header>
 
+      {retired.some((m) => m.kind === 'lesson' && m.examinable) && <section className="memory-retest-call" aria-label="重考入口">
+        <p>已停用或未通过的经验也可以重新考试。</p>
+        <button className="primary" onClick={() => {
+          if (retiredRef.current) { retiredRef.current.open = true; retiredRef.current.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+        }}>查看并重考</button>
+      </section>}
+
       <ExamProgressPanel state={state} />
       {state.exams.length > 0 && <section className="memory-section" aria-label="最近考试结果">
         <h3>最近考试结果</h3>
-        <ExamMatrix exam={state.exams[state.exams.length - 1]} version={version} state={state} />
+        <ExamMatrix key={state.exams[state.exams.length - 1].id} exam={state.exams[state.exams.length - 1]} version={version} state={state} />
       </section>}
 
       {pending.length > 0 && (
@@ -204,7 +229,7 @@ export function MemoryTab({ scene, version, run }: Props) {
           </>
         )}
         {retired.length > 0 && (
-          <details className="memory-retired">
+          <details className="memory-retired" ref={retiredRef}>
             <summary className="small muted">已停用 · {retired.length}</summary>
             {retired.map(card)}
           </details>
@@ -453,6 +478,7 @@ function MemoryCard({
   const recalled = stats.reduce((n, [, s]) => n + s.recalled, 0);
   const passed = stats.reduce((n, [, s]) => n + s.passed_first_try, 0);
   const guards = memory.kind === 'lesson' ? checkText(labels, memory.checked_by) : '';
+  const examRenderer = memory.applies_when.renderers?.includes(renderer) ? renderer : memory.applies_when.renderers?.[0] || renderer;
   const facts = [
     guards && `防止：${guards}`,
     memory.applies_when.features?.length && `适用：${memory.applies_when.features.map((f) => label(labels?.features, f)).join('、')}`,
@@ -480,7 +506,7 @@ function MemoryCard({
           {memory.status === 'trial' && (
             <>
               {memory.kind === 'lesson' && memory.examinable && (
-                <button className="primary" onClick={() => run('/api/memory/actions/exam', { renderers: [renderer], trial: memory.name })}>
+                <button className="primary" onClick={() => run('/api/memory/actions/exam', { renderers: [examRenderer], trial: memory.name })}>
                   只考这条
                 </button>
               )}
@@ -493,6 +519,8 @@ function MemoryCard({
             </>
           )}
           {memory.status === 'active' && weak && <button onClick={() => run('/api/memory/actions/retire', { name: memory.name })}>停用</button>}
+          {['dormant', 'rejected'].includes(memory.status) && memory.kind === 'lesson' && memory.examinable &&
+            <button onClick={() => run('/api/memory/actions/exam', { renderers: [examRenderer], name: memory.name })}>重新考试</button>}
           {memory.status === 'active' &&
             suspect
               .filter((x) => !retest.some((r) => x.renderer.split('/')[0] === r.renderer))
@@ -513,10 +541,14 @@ function MemoryCard({
         </div>
       </div>
       {facts.length > 0 && <p className="small muted">{facts.join(' · ')}</p>}
+      {memory.revised_by?.map((next) => <p className="small muted" key={next.name}>
+        {next.status === 'active' ? '已有生效修订' : next.status === 'trial' ? '有修订版在试用' : '修订版暂未生效'}：{next.description}
+      </p>)}
       {memory.status === 'trial' && memory.kind === 'lesson' && !memory.examinable && (
         <p className="small muted">这条要看相邻镜头的衔接才能判断有没有用，没法自动考试，需要你确认。</p>
       )}
       {memory.rejected_reason && <p className="error-line">{memory.rejected_reason}</p>}
+      {memory.kind === 'lesson' && <MemoryApplications memory={memory} featureLabels={labels?.features ?? {}} run={run} />}
       <button className="link small" onClick={() => setOpen(!open)} aria-expanded={open}>
         {open ? '收起全文' : '查看全文'}
       </button>
@@ -530,75 +562,6 @@ function MemoryCard({
           </p>
         </>
       )}
-    </div>
-  );
-}
-
-function ExamMatrix({ exam, version, state: memoryState }: { exam: ExamResult; version: number; state: MemoryState }) {
-  const verdict = exam.verdict;
-  const state = verdict.invalid ? '无效' : verdict.needs_human ? '待人工确认' : verdict.pass ? '通过' : '未通过';
-  return (
-    <div className="exam">
-      <p>
-        <strong>{exam.id}</strong> · {state} · 试用 {exam.trials.map((name) => memoryState.memories.find((m) => m.name === name)?.description || name).join('、')} · 对照 {verdict.control_score.toFixed(1)} 分 → 试用{' '}
-        {verdict.trial_score.toFixed(1)} 分
-      </p>
-      {verdict.reasons.length > 0 && (
-        <ul className="issues">
-          {verdict.reasons.map((r) => (
-            <li key={r}>{r}</li>
-          ))}
-        </ul>
-      )}
-      <div className="exam-scroll">
-        <table className="exam-table">
-          <thead>
-            <tr>
-              <th>考题</th>
-              {exam.renderers.map((r) => [
-                <th key={r + 'c'}>{r} · 对照</th>,
-                <th key={r + 't'}>{r} · 试用</th>,
-              ])}
-            </tr>
-          </thead>
-          <tbody>
-            {exam.questions.map((q) => (
-              <tr key={q.id}>
-                <th>
-                  {q.id} <span className="small muted">{q.scene_id}{q.holdout ? ' · 留出' : ''}</span>
-                  {q.text && <p className="small">{q.text}</p>}
-                </th>
-                {exam.renderers.map((r) =>
-                  (['control', 'trial'] as const).map((arm) => {
-                    const cells = exam.cells.filter((c) => c.question === q.id && c.renderer === r && c.arm === arm);
-                    return (
-                      <td key={r + arm}>
-                        {cells.map((c, i) => (
-                          <div
-                            key={i}
-                            className={'exam-cell ' + (c.invalid ? 'invalid' : c.passed ? 'pass' : 'fail')}
-                            title={[c.model, c.error || (c.checks ?? []).join('\n')].filter(Boolean).join('\n')}
-                          >
-                            {c.output && <video src={rawURL(c.output, version)} preload="none" controls muted />}
-                            <span>{c.invalid ? '⚠' : c.passed ? '✅' : `❌ ${c.problems}`}</span>
-                            <details>
-                              <summary>第 {c.repeat} 次 · {c.invalid ? '执行无效' : c.passed ? '检查通过' : '查看问题'}</summary>
-                              <p>{c.model || '模型未记录'} · {Math.round(c.seconds)} 秒</p>
-                              {c.error && <p>{c.error}</p>}
-                              {(c.problem_texts?.length ?? 0) > 0 ? <ul>{c.problem_texts!.map((text, i) => <li key={i}>{text}</li>)}</ul> : <p>{checkText(memoryState.labels, c.checks)}</p>}
-                              <p>实际带入：{(c.recalled ?? []).map((name) => memoryState.memories.find((m) => m.name === name)?.description || name).join('、') || '无'}</p>
-                            </details>
-                          </div>
-                        ))}
-                      </td>
-                    );
-                  }),
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 }

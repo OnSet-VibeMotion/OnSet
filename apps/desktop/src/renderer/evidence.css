@@ -213,7 +213,10 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
 }
+.evidence .evidence-lesson-head > p { flex: 1 1 260px; }
+.evidence .evidence-lesson-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .evidence .evidence-lesson-head p {
   margin: 0;
   font: 16px/1.7 var(--serif);

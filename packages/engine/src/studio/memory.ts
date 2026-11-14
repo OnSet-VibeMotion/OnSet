@@ -9,7 +9,7 @@ import path from 'node:path';
 import * as config from '../config';
 import { envMap } from '../envutil';
 import { formatFixed, goTrimSpace } from '../gofmt';
-import { sortedKeys } from '../gojson';
+import { compareBytes, sortedKeys } from '../gojson';
 import * as memory from '../memory';
 import * as scene from '../scene';
 import * as tools from '../tools';
@@ -69,6 +69,7 @@ export function memoryAPI(s: Server, request: Request): Response {
     const stats = memory.statsToJSON(store.stats());
     const rows = all.map((m) => ({
       ...memory.memoryToJSON(m),
+      revised_by: all.filter((next) => next.revises === m.name).map((next) => ({ name: next.name, description: next.description, status: next.status })),
       stats: Object.hasOwn(stats, m.name) ? stats[m.name] : null,
       // examinable 为 false 的试用经验只由相邻镜头的交接判定，考不了，要人确认生效。
       examinable: m.kind === memory.KindLesson && memory.examinableLesson(m),
@@ -103,6 +104,8 @@ export function memoryAPI(s: Server, request: Request): Response {
         const episode = byID.get(cell.episode);
         if (episode) {
           if ((episode.problems ?? []).length > 0) c.problem_texts = episode.problems;
+          if ((cell.checks ?? []).some((check) => check.startsWith(scene.ReadsCheckPrefix)) &&
+            (episode.problems ?? []).some(memory.missingReadEvidence)) c.incomplete = true;
           if (episode.text !== '' && !texts.has(cell.question)) texts.set(cell.question, episode.text);
         }
         return c;
@@ -110,7 +113,13 @@ export function memoryAPI(s: Server, request: Request): Response {
       // Go 的 examView 内嵌 ExamResult、再用自己的 cells 遮住它：cells 排在最后。
       const { cells: _hidden, questions: _questions, ...rest } = memory.examResultToJSON(exam);
       const questions = (exam.questions ?? []).map((q) => ({ ...memory.questionToJSON(q), text: texts.get(q.id) }));
-      return { ...rest, questions, cells };
+      const incomplete = cells.some((c) => c.incomplete === true);
+      const audit = incomplete ? {
+        verdict: memory.verdictToJSON(memory.judge(exam.questions ?? [], exam.renderers ?? [], (exam.cells ?? []).map((c, i) => ({ ...c, incomplete: cells[i].incomplete === true })), false, exam.trials ?? [])),
+        applied: 'none',
+        evaluation_note: '补充审计：检查依据不完整，清单缺失或无效不能作为视频质量改善的依据。原始考试记录保留。',
+      } : {};
+      return { ...rest, ...audit, questions, cells };
     });
     let allRuns: memory.RunSummary[] = [];
     try {
@@ -216,6 +225,58 @@ export function memoryRecallAPI(s: Server, request: Request): Response {
 
 const actionLabels: Record<string, string> = { promote: '确认生效 ', reject: '拒绝 ', retire: '沉睡 ' };
 
+/** 只读地预演召回：停用经验仅放进本次候选池，不改状态、快照或统计。 */
+export function memoryApplicationsAPI(s: Server, request: Request): Response {
+  if (request.method !== 'GET') return methodNotAllowed('GET');
+  const opened = memoryStore(s);
+  if (opened instanceof Response) return opened;
+  const { p, cfg, store } = opened;
+  const name = new URL(request.url).searchParams.get('name') ?? '';
+  const m = store.find(name);
+  if (!m || m.kind !== memory.KindLesson) return writeError(404, 'memory_not_found', '经验不存在');
+  const summaries = discoverScenes(p.path);
+  const sourceDirs = store.episodes().filter((e) => m.from_episodes.includes(e.id) && e.scene_dir !== '').map((e) => e.scene_dir);
+  const matches: Record<string, unknown>[] = [];
+  let unreadable = 0;
+  const env = envMap();
+  for (const summary of summaries) {
+    try {
+      const sc = scene.load(summary.directory);
+      const renderer = sc.renderer || cfg.renderer;
+      const model = store.currentModel(renderer, env, config.rendererModelFor(cfg, renderer));
+      const result = store.recallScene(sc, { snapshot: cfg.memory.snapshot, budget: cfg.memory.recallBudget, renderer, model,
+        extra: m.status === memory.StatusActive ? [] : [m] });
+      const selected = result.items.find((item) => item.name === name);
+      const item = selected ?? result.omitted.find((item) => item.name === name);
+      if (!item) continue;
+      let readingContext: { compound_cues: number[]; hint: string } | undefined;
+      if (m.checked_by?.includes('reads.order')) {
+        try {
+          const data = scene.buildSceneData(sc);
+          const compact = (text: string) => text.replace(/[\t\n\r ]/g, '');
+          const cues = data.cues.filter((cue) => data.phrases.filter((phrase) => compact(phrase.text) !== '' &&
+            phrase.start_frame < cue.end_frame_exclusive && phrase.end_frame_exclusive > cue.start_frame &&
+            compact(cue.text).includes(compact(phrase.text))).length > 1).map((cue) => cue.index);
+          readingContext = { compound_cues: cues, hint: cues.length > 0
+            ? `有 ${cues.length} 条字幕同时包含多个短语，优先核对是否较晚重复出现前序文字；这不代表已经出错。`
+            : '仅匹配召回条件，未发现一条字幕包含多个短语；还需结合画面判断是否适用。' };
+        } catch {
+          readingContext = { compound_cues: [], hint: '暂时读不了字幕结构，仍需结合画面判断是否适用。' };
+        }
+      }
+      matches.push({ scene_id: sc.id, text: sc.text, renderer, model, selected: !!selected, score: item.score,
+        source_scene: sourceDirs.some((dir) => path.relative(path.resolve(dir), sc.directory) === ''),
+        features: item.matched_features, keywords: item.matched_keywords, global: item.global, omit_reason: item.omit_reason,
+        reading_context: readingContext });
+    } catch {
+      unreadable++;
+    }
+  }
+  const hasCompound = (row: Record<string, unknown>) => Number(((row.reading_context as { compound_cues: number[] } | undefined)?.compound_cues.length ?? 0) > 0);
+  matches.sort((a, b) => Number(b.selected) - Number(a.selected) || hasCompound(b) - hasCompound(a) || Number(b.score) - Number(a.score) || compareBytes(String(a.scene_id), String(b.scene_id)));
+  return writeJSON(200, goMap({ name, status: m.status, enabled: cfg.memory.enabled, scanned: summaries.length, unreadable, matches }));
+}
+
 /**
  * POST /api/memory/actions/{action}：面板能触发的 onset memory 子命令。参数只取白名单里的字段，
  * 不接受任意命令行。
@@ -225,12 +286,14 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
   const p = s.projectOr404();
   if (p instanceof Response) return p;
   const action = rest.replace(/^\/+|\/+$/g, '');
-  let req: { name: string; trial: string; to: number; renderers: string[]; scene_id: string; verdict: string; note: string; seconds: number | null; region: number[]; global: boolean; final: boolean };
+  let req: { name: string; trial: string; scenes: string[]; holdoutOnly: boolean; to: number; renderers: string[]; scene_id: string; verdict: string; note: string; seconds: number | null; region: number[]; global: boolean; final: boolean };
   try {
     const body = await decodeJSON(request);
     req = {
       name: fieldString(body, 'name'),
       trial: fieldString(body, 'trial'),
+      scenes: fieldStrings(body, 'scenes'),
+      holdoutOnly: fieldBool(body, 'holdout_only'),
       to: fieldInt(body, 'to'),
       renderers: fieldStrings(body, 'renderers'),
       scene_id: fieldString(body, 'scene_id'),
@@ -278,6 +341,20 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
         if (!memory.validName(req.name)) return writeError(400, 'invalid_name', '记忆名不合法');
         params.retest = req.name;
         label = '重考 ' + req.name;
+      }
+      if (req.scenes.length > 0) {
+        const allScenes = discoverScenes(p.path);
+        const dirs: string[] = [];
+        for (const id of new Set(req.scenes)) {
+          const selected = allScenes.find((sc) => sc.id === id);
+          if (!selected) return writeError(400, 'invalid_scene', '考试镜头不存在：' + id);
+          dirs.push(selected.directory);
+        }
+        params.holdout = dirs;
+      }
+      if (req.holdoutOnly) {
+        if (req.scenes.length === 0) return writeError(400, 'invalid_scene', '仅验证新镜头时必须选择镜头');
+        params.holdout_only = true;
       }
       break;
     case 'rollback':

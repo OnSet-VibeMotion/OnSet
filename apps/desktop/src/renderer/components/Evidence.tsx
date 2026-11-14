@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api, errorText, rawURL } from '../api';
+import { api, errorText } from '../api';
 import '../evidence.css';
 import type { ExamCell, ExamResult, MemoryRow, MemoryState, RunStats, RunSummary, Scene } from '../types';
 import { LearningSection } from './Learning';
 import type { RunAction, Tab } from './Preview';
 import { ExamProgressPanel } from './ExamProgress';
+import { ExamPlayer as SidePlayer } from './ExamPlayer';
+import { MemoryApplications } from './MemoryApplications';
 import '../memory.css';
 
 interface Props {
@@ -74,7 +76,7 @@ export function EvidenceTab({ version, run, onOpen, scenes = [], sceneId = '' }:
           <button onClick={() => onOpen('memory')}>去记忆页</button>
         </section>
       ) : (
-        <Contrast exams={exams} memories={state.memories} labels={state.labels?.checks ?? {}} version={version} tested={tested.length} />
+        <Contrast exams={exams} memories={state.memories} labels={state.labels?.checks ?? {}} featureLabels={state.labels?.features ?? {}} renderer={state.renderer || 'claude'} run={run} version={version} tested={tested.length} />
       )}
 
       <LearningSection version={version} scenes={scenes} sceneId={sceneId} run={run} onAudition={() => onOpen('audition')} />
@@ -85,8 +87,6 @@ export function EvidenceTab({ version, run, onOpen, scenes = [], sceneId = '' }:
     </div>
   );
 }
-
-const armName = { control: '对照组 · 现有记忆', trial: '试用组 · 加入待考经验' } as const;
 
 /** 一场考试里一组的问题总数；通过的格子记 0。 */
 function problemsOf(exam: ExamResult, arm: ExamCell['arm']): number {
@@ -99,13 +99,20 @@ function Contrast({
   labels,
   version,
   tested,
+  run,
+  renderer: currentRenderer,
+  featureLabels,
 }: {
   exams: ExamResult[];
   memories: MemoryRow[];
   labels: Record<string, string>;
   version: number;
   tested: number;
+  run: RunAction;
+  renderer: string;
+  featureLabels: Record<string, string>;
 }) {
+  const lessonsRef = useRef<HTMLElement>(null);
   const [examIndex, setExamIndex] = useState(exams.length - 1);
   const exam = exams[Math.min(examIndex, exams.length - 1)];
   const [questionID, setQuestionID] = useState(exam.questions[0]?.id ?? '');
@@ -119,19 +126,22 @@ function Contrast({
   const trial = pick('trial');
   const before = problemsOf(exam, 'control');
   const after = problemsOf(exam, 'trial');
+  const incomplete = exam.cells.some((c) => c.incomplete);
   const repeats = Math.max(1, ...exam.cells.map((c) => c.repeat));
   const models = [...new Set(exam.cells.map((c) => c.model).filter(Boolean))];
   const lessons = exam.trials.map((name) => memories.find((m) => m.name === name)).filter((m): m is MemoryRow => !!m);
-  const verdict = exam.verdict.needs_human ? '等你确认' : exam.verdict.pass ? '考试通过' : '没有通过';
+  const bothPassed = !exam.verdict.needs_human && !exam.verdict.pass && exam.cells.length > 0 && exam.cells.every((c) => c.passed && !c.invalid);
+  const verdict = exam.cells.some((c) => c.incomplete) ? '检查依据不完整' : exam.verdict.needs_human ? '等你确认' : exam.verdict.pass ? '考试通过' : bothPassed ? '未发现额外改善' : '没有通过';
+  const examinable = lessons.filter((m) => m.kind === 'lesson' && m.examinable);
 
   return (
     <>
       <ol className="evidence-figures" aria-label="这场考试的结果">
         <li>
           <strong>
-            {before} <i>→</i> {after}
+            {incomplete ? '暂不能比较' : <>{before} <i>→</i> {after}</>}
           </strong>
-          <span>查出的问题</span>
+          <span>{incomplete ? '检查依据不完整' : '查出的问题'}</span>
           <small>同样的镜头，带上经验之前与之后</small>
         </li>
         <li className={exam.verdict.pass ? 'on' : ''}>
@@ -147,6 +157,11 @@ function Contrast({
           <small>以后渲染相似的镜头会带上</small>
         </li>
       </ol>
+
+      {examinable.length > 0 && <section className="evidence-retest-call" aria-label="重考入口">
+        <p>本场有 {examinable.length} 条经验可以重新考试。停用或未通过的经验，重考通过后才会恢复生效。</p>
+        <button className="primary" onClick={() => lessonsRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })}>查看并重考</button>
+      </section>}
 
       <section className="evidence-section">
         <div className="evidence-bar">
@@ -196,6 +211,8 @@ function Contrast({
         {question?.text && <p className="evidence-narration">「{question.text}」</p>}
         <SidePlayer key={exam.id + question?.id + renderer + selectedRepeat} control={control} trial={trial} labels={labels} version={version} />
         <p className="small muted">对照 {exam.verdict.control_score} 分 → 试用 {exam.verdict.trial_score} 分。{exam.verdict.reasons.join('；')}</p>
+        {exam.evaluation_note && <p role="status">{exam.evaluation_note}</p>}
+        {bothPassed && <p>两组都通过了本场检查，尚未证明经验带来额外改善。先核对检查是否覆盖原问题，再加入相关新镜头或做观看对照；重复相同满分题不能增加改善证据。</p>}
         <p className="small muted evidence-note">
           {models.length > 0 ? `${models.join('、')} 渲染 · ` : ''}
           两组使用相同镜头输入，试用组按召回条件加入待考经验。多条合考的结果属于整组，不能证明每条经验单独有效。画面上每段文字的出现与停留时间由渲染方登记，机器按登记核对
@@ -209,14 +226,20 @@ function Contrast({
         </p>
       </section>
 
-      <section className="evidence-section">
-        <h3>本场待考经验 · {exam.trials.length} 条</h3>
+      <section className="evidence-section" ref={lessonsRef} aria-label="本场经验与重考">
+        <h3>本场经验与重考 · {exam.trials.length} 条</h3>
         {lessons.length === 0 && <p className="small muted">这场考试的经验已经不在记忆库里了。</p>}
         {lessons.map((m) => (
           <article key={m.name} className="evidence-lesson">
             <div className="evidence-lesson-head">
               <p>{m.description}</p>
-              <span className={'evidence-chip' + (m.status === 'active' ? ' on' : '')}>{statusName[m.status] ?? m.status}</span>
+              <div className="evidence-lesson-actions">
+                <span className={'evidence-chip' + (m.status === 'active' ? ' on' : '')}>{statusName[m.status] ?? m.status}</span>
+                {m.kind === 'lesson' && m.examinable && <button className="primary" onClick={() => {
+                  const renderer = m.applies_when.renderers?.includes(currentRenderer) ? currentRenderer : m.applies_when.renderers?.[0] || currentRenderer;
+                  void run('/api/memory/actions/exam', { renderers: [renderer], ...(m.status === 'trial' ? { trial: m.name } : { name: m.name }) });
+                }}>{m.status === 'trial' ? '只考这条' : '重新考试'}</button>}
+              </div>
             </div>
             <p className="small muted">
               从 {m.from_episodes?.length ?? 0} 次出过的问题里整理出来 · 管的是：{[...new Set(m.checked_by)].map((id) => labels[id] ?? id).join('、')}
@@ -225,6 +248,7 @@ function Contrast({
               <summary>它对渲染方说了什么</summary>
               <pre>{m.body}</pre>
             </details>
+            {m.kind === 'lesson' && <MemoryApplications memory={m} featureLabels={featureLabels} run={run} />}
           </article>
         ))}
       </section>
@@ -233,103 +257,6 @@ function Contrast({
 }
 
 const statusName: Record<string, string> = { active: '正在用', trial: '试用中', rejected: '没留下', dormant: '已停用' };
-
-/** 两段画面并排、同一个播放键：评委要看的是同一时刻两边差在哪。 */
-function SidePlayer({
-  control,
-  trial,
-  labels,
-  version,
-}: {
-  control: ExamCell | null;
-  trial: ExamCell | null;
-  labels: Record<string, string>;
-  version: number;
-}) {
-  const left = useRef<HTMLVideoElement>(null);
-  const right = useRef<HTMLVideoElement>(null);
-  const [playing, setPlaying] = useState(false);
-  const both = () => [left.current, right.current].filter((v): v is HTMLVideoElement => v !== null);
-  const toggle = () => {
-    const videos = both();
-    if (playing) {
-      for (const v of videos) v.pause();
-      setPlaying(false);
-      return;
-    }
-    // 两边对到同一时刻再放：一边先结束时另一边还在走。
-    const at = Math.min(...videos.map((v) => v.currentTime));
-    for (const v of videos) {
-      if (v.ended || Math.abs(v.currentTime - at) > 0.05) v.currentTime = v.ended ? 0 : at;
-      void v.play().catch(() => undefined);
-    }
-    setPlaying(true);
-  };
-  const restart = () => {
-    for (const v of both()) v.currentTime = 0;
-  };
-  const side = (cell: ExamCell | null, arm: ExamCell['arm'], ref: React.RefObject<HTMLVideoElement | null>) => (
-    <figure className={'evidence-side ' + arm}>
-      <figcaption>
-        <span>{armName[arm]}</span>
-        {cell && (
-          <strong className={cell.invalid ? '' : cell.passed ? 'ok' : 'bad'}>
-            {cell.invalid ? '这一次没跑成' : cell.passed ? '没有查出问题' : `查出 ${cell.problems} 处问题`}
-          </strong>
-        )}
-      </figcaption>
-      {cell?.output ? (
-        <video ref={ref} src={rawURL(cell.output, version)} preload="metadata" muted playsInline onEnded={() => setPlaying(false)} />
-      ) : (
-        <div className="evidence-novideo">{cell ? '这段画面不在当前项目里，打开做考试的那个项目就能看到' : '没有这一组的结果'}</div>
-      )}
-      {cell && !cell.passed && !cell.invalid && (
-        <>
-          <ul>
-            {grouped(cell.checks ?? []).map(([id, count]) => (
-              <li key={id}>
-                {labels[id] ?? id}
-                {count > 1 ? ` · ${count} 处` : ''}
-              </li>
-            ))}
-          </ul>
-          {(cell.problem_texts?.length ?? 0) > 0 && (
-            <details>
-              <summary>机器查出的原话</summary>
-              <pre>{cell.problem_texts!.join('\n')}</pre>
-            </details>
-          )}
-        </>
-      )}
-    </figure>
-  );
-  const playable = !!(control?.output || trial?.output);
-  return (
-    <div className="evidence-player">
-      <div className="evidence-sides">
-        {side(control, 'control', left)}
-        {side(trial, 'trial', right)}
-      </div>
-      {playable && (
-        <div className="evidence-controls">
-          <button className="primary" onClick={toggle}>
-            {playing ? '暂停' : '两边一起播放'}
-          </button>
-          <button className="ghost" onClick={restart}>
-            回到开头
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** 按问题的种类归组并数出个数，出现多的在前。 */
-function grouped(checks: readonly string[]): [string, number][] {
-  const counts = new Map<string, number>();
-  for (const id of checks) counts.set(id, (counts.get(id) ?? 0) + 1);
-  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-}
 
 const perScene = (total: number, s: RunStats) => (s.scenes ? total / s.scenes : 0);
 const fixed = (v: number) => (Math.round(v * 10) / 10).toString();

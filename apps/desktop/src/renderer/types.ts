@@ -415,6 +415,7 @@ export interface MemoryRow {
   from_episodes?: string[];
   verified_by?: string[];
   revises?: string;
+  revised_by?: { name: string; description: string; status: MemoryStatus }[];
   rejected_reason?: string;
   body: string;
   stats?: Record<string, MemoryStat>;
@@ -465,6 +466,7 @@ export interface ExamCell {
   checks?: string[];
   seconds: number;
   invalid?: boolean;
+  incomplete?: boolean;
   error?: string;
   recalled?: string[];
   output?: string;
@@ -491,6 +493,7 @@ export interface ExamResult {
   verdict: { pass: boolean; invalid: boolean; needs_human: boolean; control_score: number; trial_score: number; reasons: string[] };
   applied: 'promoted' | 'rejected' | 'none';
   snapshot?: number;
+  evaluation_note?: string;
 }
 
 export interface ExamProgress {

@@ -38,7 +38,7 @@ import {
   writeError,
   writeJSON,
 } from './http';
-import { memoryAPI, memoryActionAPI, memoryRecallAPI } from './memory';
+import { memoryAPI, memoryActionAPI, memoryRecallAPI, memoryApplicationsAPI } from './memory';
 import { auditionAPI, auditionsAPI } from './auditions';
 import { learningAPI, learningFeatureAPI } from './learning';
 import { namingAPI, recordNamingUsage } from './naming';
@@ -385,6 +385,7 @@ export class Server {
       ['/api/raw', (r) => rawAPI(this, r)],
       ['/api/memory', (r) => memoryAPI(this, r)],
       ['/api/memory/recall', (r) => memoryRecallAPI(this, r)],
+      ['/api/memory/applications', (r) => memoryApplicationsAPI(this, r)],
       ['/api/memory/actions/', (r, rest) => memoryActionAPI(this, r, rest)],
       ['/api/auditions', (r) => auditionsAPI(this, r)],
       ['/api/auditions/', (r, rest) => auditionAPI(this, r, rest)],

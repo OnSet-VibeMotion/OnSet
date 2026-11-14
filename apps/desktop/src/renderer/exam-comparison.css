@@ -1,0 +1,24 @@
+.exam-review { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.exam-review-heading, .exam-pair-heading { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.exam-review-heading > strong { font: 600 21px/1.4 var(--serif); }
+.exam-lessons { margin: 0; padding-left: 20px; line-height: 1.7; }
+.exam-question-picker { display: flex; flex-wrap: wrap; gap: 8px; }
+.exam-question-picker [aria-selected="true"] { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-text); }
+.exam-question-text { padding: 12px 14px; margin: 0; background: var(--well); border-left: 2px solid var(--accent-line); line-height: 1.7; }
+.exam-review p, .exam-review li { overflow-wrap: anywhere; }
+.exam-player.evidence-player { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.exam-player.evidence-player .evidence-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0; }
+.exam-player.evidence-player .evidence-sides { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.exam-player.evidence-player .evidence-side { flex: 1 1 280px; min-width: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.exam-player.evidence-player figcaption { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; letter-spacing: 0; color: var(--text-2); }
+.exam-player.evidence-player figcaption strong { font-size: 14px; }
+.exam-player .ok { color: var(--ok); }
+.exam-player .bad, .exam-player .exam-media-error { color: var(--bad); }
+.exam-player.evidence-player video { display: block; width: 100%; height: clamp(240px, 40vh, 420px); max-height: none; object-fit: contain; background: #080808; border: 1px solid var(--line); border-radius: var(--radius); }
+.exam-player.evidence-player .evidence-novideo { min-height: 240px; display: grid; place-items: center; padding: 20px; border: 1px dashed var(--line); color: var(--muted); text-align: center; }
+.exam-player p, .exam-player li { margin: 0; line-height: 1.65; overflow-wrap: anywhere; }
+.exam-player details { font-size: 13px; }
+.exam-player .exam-seek { flex: 1 1 160px; display: flex; gap: 8px; align-items: center; font-size: 12px; }
+.exam-player .exam-seek span { white-space: nowrap; flex: none; }
+.exam-player .exam-seek input { flex: 1; width: 100%; min-width: 60px; }
+.exam-player .link { align-self: flex-start; }

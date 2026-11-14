@@ -1,5 +1,7 @@
 /* 记忆页：先讲记住了什么，维护用的东西收进「高级」。选择器都挂在 .memory-tab 下。 */
 .memory-tab {
+  flex: none;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -196,7 +198,7 @@
   margin: 14px 0 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border: 1px solid var(--line);
   border-radius: var(--radius);
 }
@@ -316,3 +318,13 @@
 .exam-progress details { border-top: 1px solid var(--line); padding: 12px 0; }
 .exam-progress p, .exam-progress li { overflow-wrap: anywhere; }
 .exam-progress-steps { max-height: 240px; overflow-y: auto; }
+.memory-tab .memory-card-head { flex-wrap: wrap; }
+.memory-tab .memory-card-head .memory-desc { flex: 1 1 300px; }
+.memory-tab .memory-flow li { min-width: 0; padding: 14px 12px; overflow-wrap: anywhere; }
+:is(.memory-tab, .evidence) .memory-application-results { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; gap: 10px; }
+:is(.memory-tab, .evidence) .memory-application-results ul { list-style: none; margin: 0; padding: 0; }
+:is(.memory-tab, .evidence) .memory-application-results li { padding: 10px 0; border-top: 1px solid var(--line); }
+:is(.memory-tab, .evidence) .memory-application-results label { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+:is(.memory-tab, .evidence) .memory-application-results p { margin: 4px 0; line-height: 1.6; overflow-wrap: anywhere; }
+.memory-retest-call, .evidence-retest-call { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 14px 16px; border: 1px solid var(--accent-line); border-radius: var(--radius); background: var(--accent-soft); }
+.memory-retest-call p, .evidence-retest-call p { flex: 1 1 220px; margin: 0; line-height: 1.6; }
