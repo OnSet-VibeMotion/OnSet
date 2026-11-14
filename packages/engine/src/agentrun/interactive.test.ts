@@ -176,6 +176,15 @@ describe('interactive orchestrators', () => {
     expect(events.find((e) => e.kind === KindError)?.text).toBe('模型请求失败');
   });
 
+  it.skipIf(process.platform !== 'win32')('passes Windows orchestrator effort without changing permissions', async () => {
+    const { outcome, raw } = await fakeRun('codex', '整理资料', { decision: 'allow' }, { env: { ONSET_WINDOWS_ORCHESTRATOR_EFFORT: 'medium' } });
+    expect(outcome.error).toBeNull();
+    const turn = raw.find(line => line.includes('"turn/start"'))!;
+    expect(JSON.parse(turn.slice(2)).params.effort).toBe('medium');
+    const start = raw.find(line => line.includes('"thread/start"'))!;
+    expect(JSON.parse(start.slice(2)).params).toMatchObject({ approvalPolicy: 'untrusted', sandbox: 'workspace-write' });
+  });
+
   it.skipIf(process.platform !== 'win32')('preserves an actual Windows agent process failure', async () => {
     const { outcome } = await fakeRun('codex', '装一下', { decision: 'deny' }, {}, undefined, { FAKE_EXIT_BEFORE_TURN: '1' });
     expect(outcome.result.exitCode).toBe(23);

@@ -1,26 +1,38 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import * as config from '@onset/engine/config';
-import { windowsPython } from '@onset/engine/envutil';
+import { windowsPython, lookPath, dataDir } from '@onset/engine/envutil';
 import { downloadSource, type SourceKind } from '@onset/engine/windowsruntime';
 import { currentEnvironment } from './cli';
 import { num, projectRoot, str, strs } from './ops/common';
 import { defineOp, type Op } from './ops/op';
+import { windowsAlignOperation } from './windows_align';
 
 /** 只在 Windows 登记，不改变其他平台的工具目录、参数或行为。 */
 export function windowsOperations(platform: NodeJS.Platform = process.platform): Op[] {
   if (platform !== 'win32') return [];
   return [{
     name: 'windows_inspect', cli: ['windows', 'inspect'], summary: '查看 Windows 工具、并发与可选产物目录',
-    description: '只读检查本项目的可选目录、已准备的 Python 和实际并发。目录尚未生成时返回 exists=false，不将其当成制作失败，不创建目录或修改制作文件。',
+    description: '一次只读检查项目目录、Python、并发、非敏感制作配置、Git 状态和指定文件的流式 SHA256，支持配音。缺可选目录或未初始化 Git 是正常状态，不创建文件、不安装工具。优先用它合并配置、Git 和文件摘要检查，避免分别启动 shell。',
     examples: ['windows_inspect()', 'windows_inspect({"paths":["production/visual-qc","production/audio/source"]})'],
-    params: { project_root: projectRoot, paths: { type: 'strings', description: '要检查的项目内相对路径；默认检查视觉校验和声音来源目录' } },
-    run: (p) => {
+    params: { project_root: projectRoot, paths: { type: 'strings', description: '要检查的项目内相对路径；默认检查视觉校验和声音来源目录' }, hash_files: { type: 'strings', description: '一次核对至多 16 个项目内文件的 SHA256，支持配音；单文件最多 256 MiB、合计 512 MiB，流式读取，不含凭据或个人目录' } },
+    run: async (p, context) => {
       const root = fs.realpathSync(str(p.project_root));
+      const checked = (relative: string): string => {
+        const target = path.resolve(root, relative), rel = path.relative(root, target);
+        if (rel.startsWith('..') || path.isAbsolute(rel) || /(^|[\\/])(?:\.env(?:\.|$)|\.git(?:[\\/]|$)|\.codex(?:[\\/]|$))/i.test(rel)) throw new Error('只能检查项目内的非凭据路径');
+        if (fs.existsSync(target)) {
+          const real = path.relative(root, fs.realpathSync(target));
+          if (real.startsWith('..') || path.isAbsolute(real) || /(^|[\\/])(?:\.env(?:\.|$)|\.git(?:[\\/]|$)|\.codex(?:[\\/]|$))/i.test(real)) throw new Error('路径的实际位置越出了项目或指向凭据');
+        }
+        return target;
+      };
       const requested = strs(p.paths);
       if (requested.length > 32) throw new Error('一次最多检查 32 个目录');
       const paths = (requested.length ? requested : ['production/visual-qc', 'production/audio/source']).map((relative) => {
-        const target = path.resolve(root, relative);
+        const target = checked(relative);
         const rel = path.relative(root, target);
         if (rel.startsWith('..') || path.isAbsolute(rel) || /(^|[\\/])\.env(?:\.|$)/.test(rel)) throw new Error('只能检查项目内的非凭据路径');
         if (!fs.existsSync(target)) return { path: relative, exists: false };
@@ -29,13 +41,40 @@ export function windowsOperations(platform: NodeJS.Platform = process.platform):
         const stat = fs.statSync(target);
         return { path: relative, exists: true, directory: stat.isDirectory(), files: stat.isDirectory() ? fs.readdirSync(target).sort().slice(0, 100) : undefined, bytes: stat.isFile() ? stat.size : undefined };
       });
+      const files = strs(p.hash_files);
+      if (files.length > 16) throw new Error('一次最多核对 16 个文件');
+      const hashes = [];let totalBytes=0;
+      for (const relative of files) {
+        const target = checked(relative);
+        if (!fs.existsSync(target)) {hashes.push({path:relative,exists:false});continue;}
+        const stat = fs.statSync(target);
+        totalBytes+=stat.size;
+        if (!stat.isFile() || stat.size > 256 * 1024 * 1024 || totalBytes > 512 * 1024 * 1024) throw new Error('摘要只支持单文件 256 MiB、合计 512 MiB 以内的普通文件');
+        const hash=crypto.createHash('sha256');
+        for await(const chunk of fs.createReadStream(target,{highWaterMark:256*1024,signal:context.signal}))hash.update(chunk);
+        hashes.push({path:relative,exists:true,bytes:stat.size,sha256:hash.digest('hex')});
+      }
+      const env = currentEnvironment(), cfg = config.load(root, null);
+      const modelFiles = ['am.mvn','config.yaml','configuration.json','model.pt','seg_dict','tokens.json'];
+      const model = [env.ALIGN_MODEL, path.join(dataDir(env),'models','iic__speech_timestamp_prediction-v1-16k-offline')].filter((dir): dir is string => !!dir).find(dir => modelFiles.every(name => {
+        try {return fs.statSync(path.join(dir,name)).isFile();} catch {return false;}
+      }));
+      const alignment_model = model ? {ready:true,path:model} : {ready:false,reason:'model_files_missing'};
+      let git: Record<string, unknown> = {repository:false,reason:'not_initialized'};
+      if (fs.existsSync(path.join(root,'.git'))) {
+        try {
+          const binary = lookPath('git.exe', env.PATH ?? '');
+          const result = spawnSync(binary,['-C',root,'rev-parse','--is-inside-work-tree'],{env,encoding:'utf8',windowsHide:true,timeout:3000});
+          git = result.status === 0 ? {repository:result.stdout.trim()==='true'} : {repository:false,reason:'metadata_unavailable',error:result.error?.message || result.stderr.trim().slice(0,300)};
+        } catch {git={repository:false,reason:'git_unavailable'};}
+      }
       const scenes = path.join(root, 'scenes');
       const running = fs.existsSync(scenes) ? fs.readdirSync(scenes).sort().flatMap((id) => {
         const live = path.join(scenes, id, `render-${id}.live.json`);
         if (!fs.existsSync(live)) return [];
         try { const state = JSON.parse(fs.readFileSync(live, 'utf8')); return [{ scene: id, started_at: state.started_at, pid: state.pid }]; } catch { return []; }
       }) : [];
-      return { data: { platform: 'win32', python: windowsPython(currentEnvironment()), configured_scene_jobs: config.load(root, null).sceneJobs, running_scene_count: running.length, running_scenes: running, paths } };
+      return { data: { platform: 'win32', python: windowsPython(env), alignment_model, configured_scene_jobs: cfg.sceneJobs, configuration: {ORCHESTRATOR:cfg.orchestrator,ORCHESTRATOR_MODEL:cfg.orchestratorModel,RENDERER:cfg.renderer,RENDERER_MODEL:cfg.rendererModel,TTS_PROVIDER:cfg.ttsProvider,ALIGN_PROVIDER:cfg.alignProvider}, git, hashes, running_scene_count: running.length, running_scenes: running, paths } };
     },
   }, {
     name: 'source_download', cli: ['windows', 'source-download'], summary: '验证并下载 Windows 项目的公开来源素材',
@@ -55,7 +94,7 @@ export function windowsOperations(platform: NodeJS.Platform = process.platform):
       record_title: { type: 'string', description: 'JSON 条目的 title 必须匹配的标题' },
     },
     run: async (p, context) => ({ data: await downloadSource({ root: str(p.project_root), url: str(p.url), workURL: str(p.work_url), output: str(p.output), kind: str(p.kind) as SourceKind, env: currentEnvironment(), maxBytes: num(p.max_megabytes) * 1024 * 1024, timeoutSeconds: num(p.timeout_seconds), sha256: str(p.sha256), recordField: str(p.record_field), recordValue: str(p.record_value), recordTitle: str(p.record_title), signal: context.signal }) }),
-  }];
+  }, windowsAlignOperation()];
 }
 
 for (const operation of windowsOperations()) defineOp(operation);

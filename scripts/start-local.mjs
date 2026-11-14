@@ -2,10 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { installedWindowsAssets, recordWindowsRuntime } from './windows-runtime-assets.mjs';
 
 export const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-export function prepareLocalRuntime() {
+export function prepareLocalRuntime({ rebuild = process.argv.includes('--rebuild') } = {}) {
   const runtime = path.join(projectRoot, '.onset-local');
   const bin = path.join(runtime, 'bin');
   const logs = path.join(runtime, 'logs');
@@ -63,6 +64,9 @@ export function prepareLocalRuntime() {
     if (browser) env.HYPERFRAMES_BROWSER_PATH = browser;
   }
   if (process.platform === 'win32') {
+    // --rebuild 构建源码与源码资源；普通启动保持已安装工具与资源的版本一致。
+    const installedAssets = !rebuild && installedWindowsAssets(projectRoot);
+    if (installedAssets) env.ONSET_ASSETS_DIR = installedAssets;
     env.ONSET_WINDOWS_RESOURCES_DIR = runtime;
     env.ONSET_BEAT_ENV_DIR = path.join(runtime, 'tools', 'venv', 'beat-this-1.1.0');
     env.TORCH_HOME = path.join(runtime, 'cache', 'torch');
@@ -96,17 +100,20 @@ export function prepareLocalRuntime() {
 }
 
 function start() {
-  const { env, logs, npmCLI } = prepareLocalRuntime();
+  const outputs = ['packages/cli/dist/onset.cjs', 'apps/desktop/out/entry.js', 'apps/desktop/out/renderer/index.html'];
+  const shouldBuild = process.argv.includes('--rebuild') || outputs.some((file) => !fs.existsSync(path.join(projectRoot, file)));
+  const { env, logs, npmCLI } = prepareLocalRuntime({ rebuild: shouldBuild });
   const electron = path.join(projectRoot, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
   if (!fs.existsSync(electron)) throw new Error('Dependencies are missing. Run npm ci in the project folder first.');
-  const outputs = ['packages/cli/dist/onset.cjs', 'apps/desktop/out/entry.js', 'apps/desktop/out/renderer/index.html'];
-  if (process.argv.includes('--rebuild') || outputs.some((file) => !fs.existsSync(path.join(projectRoot, file)))) {
+  if (shouldBuild) {
     if (!fs.existsSync(npmCLI)) throw new Error('The Node.js npm runtime could not be located.');
     for (const workspace of ['@onset/cli', 'onset-desktop']) {
       const result = spawnSync(process.execPath, [npmCLI, 'run', 'build', '-w', workspace], { cwd: projectRoot, env, stdio: 'inherit', windowsHide: true });
       if (result.error) throw result.error;
       if (result.status !== 0) throw new Error(`Build failed: ${workspace}`);
     }
+    const builtAssets = recordWindowsRuntime(projectRoot);
+    if (builtAssets) env.ONSET_ASSETS_DIR = builtAssets;
   }
   const output = fs.openSync(path.join(logs, 'desktop.log'), 'a');
   const child = spawn(electron, [path.join(projectRoot, 'apps', 'desktop')], {

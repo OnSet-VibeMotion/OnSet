@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { onsetCommand, dataDir, lookPath, MissingToolError, normalizeWindowsEnv, windowsPython, windowsPythonScript, agentBinDir } from './index';
+import { onsetCommand, dataDir, lookPath, MissingToolError, normalizeWindowsEnv, windowsPython, windowsPythonScript, agentBinDir, preferWindowsGit, addToolsLocation } from './index';
 
 // Windows 上的差异按 platform 参数模拟，在 macOS / Linux 上也能跑；Windows CI 上测的是真实行为。
 const dirs: string[] = [];
@@ -16,6 +16,28 @@ function temp(): string {
 }
 
 describe('Windows compatibility in envutil', () => {
+  it('prioritizes installed Git over extensionless shell shadows only on Windows', () => {
+    const shadow = temp(), installed = temp();
+    fs.writeFileSync(path.join(shadow, 'git'), '');
+    fs.writeFileSync(path.join(installed, 'git.exe'), 'fixture');
+    const original = `${shadow};${installed}`;
+    const env = { PATH: original };
+    preferWindowsGit(env, 'win32');
+    expect(env.PATH).toBe(`${installed};${shadow}`);
+    preferWindowsGit(env, 'win32');
+    expect(env.PATH).toBe(`${installed};${shadow}`);
+    for (const platform of ['darwin', 'linux'] as const) {
+      const other = { PATH: original }; preferWindowsGit(other, platform);
+      expect(other.PATH).toBe(original);
+    }
+    const missing = { PATH: shadow }; preferWindowsGit(missing, 'win32');
+    expect(missing.PATH).toBe(shadow);
+    if (process.platform === 'win32') {
+      const agent = { PATH: original, ONSET_BIN_DIR: temp(), ONSET_AGENT_BIN_DIR: temp() };
+      addToolsLocation(agent);
+      expect(agent.PATH.split(';').slice(0, 2)).toEqual([agent.ONSET_AGENT_BIN_DIR, installed]);
+    }
+  });
   it('lookPath finds .exe and .cmd by PATHEXT without execute bits', () => {
     const a = temp();
     const b = temp();

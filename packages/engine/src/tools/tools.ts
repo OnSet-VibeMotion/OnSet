@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { windowsPromptInput } from './windows';
+import { windowsPromptInput, windowsOrchestratorEffort } from './windows';
 import { marshal } from '../gojson';
 import { defaultDir as directorDir, resolveService as directorService, Tool as DirectorToolName } from '../director';
 import { onsetCommand, WindowsBaseEnvKeys } from '../envutil';
@@ -441,7 +441,8 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
   };
   switch (tool) {
     case 'codex': {
-      const args = ['codex', ...(o.toolsServer ? codexMcpOverrides(o.toolsServer) : []), ...m];
+      const effort = windowsOrchestratorEffort(env);
+      const args = ['codex', ...(o.toolsServer ? codexMcpOverrides(o.toolsServer) : []), ...m, ...(effort ? ['-c', 'model_reasoning_effort=' + marshal(effort)] : [])];
       if (o.unsafe) {
         args.push('exec', '--skip-git-repo-check', '--cd', workdir, '--dangerously-bypass-approvals-and-sandbox');
       } else {

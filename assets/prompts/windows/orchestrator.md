@@ -2,14 +2,26 @@
 
 这是 Windows 客户端的执行适配，不改变已批准的稿件、配音、分镜、时间轴或已完成镜头。
 
+效率约束：用户明确要求制作“示例视频”且没有原稿时，可直接撰写原创示例稿供审核，不再多开一轮仅询问是否允许写示例。主题、风格与稿件仍经原有审核，不冒充用户提供的原文。
+
+同一阶段先一次读取必要配置和已存在输入，互不依赖的只读检查并行执行；仅输入或配置发生变化时复查。文件摘要用一次 Get-FileHash 处理多个文件；相关记录一次写完，避免逐文件调用和反复生成相同状态说明。阶段完成时合并展示该阶段待决定的问题；只使用明确已有的确认，不合并跳过稿件、配音或分镜验收。长任务已返回任务号时沿用 job_wait，不重复提交；失败先看原始错误，仅修复受影响部分。
+
 Windows 的 TTS_PROVIDER=breeze 使用已经准备好的 breeze-tts（audio.cpp 0.9.4、Breeze TTS 2 Q8_0、CUDA），替代共享说明中的 Apple Silicon / mlx-audio 命令。先查工具就绪；模型由包装器定位，不自行下载或切换模型。示例：breeze-tts --text_file production/audio/tts-text.txt --instruct "清晰自然的中文旁白" --cfg_scale 4 --output_path production/audio --file_prefix voice-v02 --join_audio --audio_format wav。克隆时带 --ref_audio 与准确的 --ref_text；默认音色和人工确认规则照旧。输出使用新文件名，保留已经确认的配音。
 
-- 先用 windows_inspect() 查看已安装的 Python、实际并发上限和正在运行的镜头。可选的 production/visual-qc 等目录尚未生成是正常状态；用 windows_inspect({"paths":["production/visual-qc"]}) 查询，目录不存在时不要直接递归枚举。
+- 只使用当前工具目录中已声明的工具名和参数。若 windows_inspect 已声明 hash_files 参数，先调用一次 windows_inspect({"hash_files":["production/script-final.md"]}) 合并获取配置、Git、目录及摘要；按实际需要传文件路径，不存在的输入返回 exists=false。旧版工具未声明该参数时调用 windows_inspect()，摘要用 Get-FileHash。已有结果且输入未变时不重复查询。可选目录不存在是正常状态，不直接递归枚举。
+- Windows 查询版本控制时明确调用 git.exe，避免 PowerShell 误选无扩展名的同名文件。当前视频项目先运行 `if (Test-Path -LiteralPath .git) { git.exe status --short --branch } else { Write-Output '当前视频项目未启用 Git，继续制作。' }`；没有 .git 就跳过 rev-parse、status 和 log，不把它当成故障，不擅自初始化，也不修改系统目录或权限。
+- Windows 文件摘要使用 PowerShell 原生命令 `Get-FileHash -Algorithm SHA256 -LiteralPath 'production/inputs/request-v01.txt','production/inputs/mg-demo-v01.md','production/script-final.md'`（按实际输入替换文件名），不要照搬共享说明中的 shasum / sha256sum，不为计算摘要临时安装工具。
+- 制作素材和记录限定在当前视频项目；片场共享记忆通过其记忆工具访问，不读取用户个人 Codex 的 .codex/memories、会话、附件或凭据目录。
 - 项目规则中的 python3 由客户端映射到已准备好的 Python。运行脚本仍单独调用 python3 脚本.py；不要依赖 Windows 的应用商店别名，不在制作途中安装解释器或升级工具。
+- 当前工具目录已声明 windows_align 时，Windows 字幕对齐统一调用 windows_align()：读取已确认配音与终稿，固定本地模型、规范标点，一次生成和独立校验；不再自行写 FunASR 脚本、分段猜时间或循环调用 align_build/audio_check。它只写隔离候选并返回路径，输入未变时复用已验证结果；失败读诊断，修复原因后才显式 retry=true。新项目且规范字幕全部不存在时可 publish=true；已有字幕、分镜和完成镜头一律保留。若当前工具目录没有 windows_align，不尝试未知工具，沿用下述本地模型方案，等客户端空闲更新。
+- FunASR 对齐必须使用 windows_inspect 返回的 alignment_model.path 本地完整目录，且 ready=true；不传远端模型 ID，不猜个人用户目录，不在制作途中访问模型仓库或检查更新。若模型未就绪，回工具准备页处理，不反复运行同一下载失败命令。
+- 时间戳模型输入先由原始 align-text 派生一份仅将 Unicode 标点替换为空格并合并空白的文本；保留原文，断言去标点与空白后的朗读字符序列逐字相同，再做一次全篇对齐。独立 audio_check 仍必须通过；匹配率 100% 不代表时间正确。失败时先核对实际尾部覆盖、文本标点与时间单位，不凭猜测切段、手工平移时间戳或取消校验。
+- 查询可能已退出的进程时用 Get-Process -Id 进程号 -ErrorAction SilentlyContinue；查不到即记录已结束，不把它当成新的工具故障，不结束其他进程。优先读取原任务的退出码和错误日志。
 - 获取公开作品页、JSON、音频、ZIP 用 source_download()，不要混用 Windows curl 的 Schannel、Node REPL fetch 和临时下载脚本。下载工具保留 TLS 证书校验，使用系统代理，返回底层原因；不关闭证书验证或沙箱。
 - source_download({"url":"https://example.org/work.html","output":"production/sources/work.html","kind":"html"}) 会提示页面中的公开 JSON 和下载端点。ZIP 下载页和返回下载链接的 JSON 会被解析；文件类型、CRC、体积或摘要不匹配时不写成正式素材。
 - 动态作品页可能在 JavaScript 中 fetch 一个 JSON。原始 HTML 没有曲名时，先获取公开 JSON 数据，再用 record_field、record_value 和 record_title 核对唯一曲目身份。示例：source_download({"url":"https://example.org/pieces.json","output":"production/sources/pieces.json","kind":"json","record_field":"isrc","record_value":"曲目编号","record_title":"曲名"})。曲目身份检查不等于许可批准，仍须保存该作品的一手许可与署名证据。
 - 下载到来源收件目录后，先核对类型、条目和许可，再提取、转换或混音。重复调用同一 URL 和文件可核对摘要后复用；遇到其他已有文件保持原样。不要在脚本失败后重复覆盖配音、素材、批准记录或已完成镜头。
 - Windows 的 validate_reads 会核对已批准的第零帧封面文字例外，照常检查阅读时长；无文字的 decorative / graphic 元素使用自身存在区间，不伪造可读区间。不得把可读标题或语义文字改标为装饰来逃避校验，也不要靠删掉待检查文字获得“全片通过”。
-- 同时渲染设置是上限。代表镜头可先单独检查，其余镜头使用 scene_run_all() 批量派发，jobs 缺省读取当前配置；单个 scene_run() 不会自动生成并发。依据实际运行镜头和任务报告说明进度。
-- 代表镜头验收完成后，立即将全部待制作镜头交给一次 scene_run_all()，jobs 留空以读取用户当前设置；不要把之前的 3 或某次实际运行数量写死为 jobs。批量任务运行时可并行做来源核验和发布草稿等独立工作；共享素材与确认后的上游输入先准备并冻结。
+- 同时渲染设置是上限。jobs 留空以读取用户当前配置，不把之前的 3 或某次实际运行数量写死；单个 scene_run() 不会自动生成并发。批量任务运行时可并行做来源核验和发布草稿等独立工作。共享素材与确认后的上游输入先准备并冻结。仅当旧版工具没有 priority_scenes 时才按原有代表镜头检查关卡再提交其余镜头。
+- 分镜已批准、输入已冻结，且当前 scene_run_all 已声明 priority_scenes 时，将全部待制作镜头一次入队，通过 priority_scenes 优先派发代表镜头（例如 scene-001、scene-004、scene-009）；一个名额释放即由队列补入下一镜头，不在模型层等待 1、4、9 全部结束才提交其余镜头。已经在独立任务运行的镜头不可被另一批重复派发。已有合格镜头照常跳过，过期镜头保留原有显式重做规则；未批准或存在依赖的输入先完成关卡，不提前派发。
+- 可见事件的 phrase_id 是单个短语 ID 字符串（无绑定时为 null），不能写成数组。组合元素的多个来源 ID 保留在 source_phrase_ids，不把列表直接用作 Python 字典键；生成归一化脚本时先检查 isinstance(value, str/list)，类型不明一次报告具体文件与 selector 后停止。真实多概念标题应由实际语义时间约束共同核对，不随意取第一个 ID、不猜时间重绑，也不改成装饰逃过检查。保留现有清单、批准和帧号，归一化输出写入复查候选。

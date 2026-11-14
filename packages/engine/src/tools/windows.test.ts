@@ -1,5 +1,12 @@
 import { expect, it } from 'vitest';
-import { windowsPromptInput } from './windows';
+import { windowsPromptInput, windowsOrchestratorEffort } from './windows';
+
+it('only accepts explicit supported Windows orchestrator effort settings', () => {
+  expect(windowsOrchestratorEffort({}, 'win32')).toBeUndefined();
+  for (const value of ['low', 'medium', 'high']) expect(windowsOrchestratorEffort({ ONSET_WINDOWS_ORCHESTRATOR_EFFORT: value }, 'win32')).toBe(value);
+  for (const value of ['inherit', 'invalid', '']) expect(windowsOrchestratorEffort({ ONSET_WINDOWS_ORCHESTRATOR_EFFORT: value }, 'win32')).toBeUndefined();
+  for (const platform of ['darwin', 'linux'] as const) expect(windowsOrchestratorEffort({ ONSET_WINDOWS_ORCHESTRATOR_EFFORT: 'medium' }, platform)).toBeUndefined();
+});
 
 it('sends long Windows prompts intact through stdin without changing flags or resume ids', () => {
   const prompt = '中文 "引号" \\ 路径\n'.repeat(4000);

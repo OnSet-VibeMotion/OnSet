@@ -7,7 +7,7 @@
  * （TTS 要连外网，理由同 exec 路径）。来问的命令先过白名单，白名单里的直接放行，其余交给用户。
  * 字段名按 codex-cli 0.163 的 app-server generate-json-schema 写。
  */
-import { BasisTotalInput, newUsage, type Usage } from '../tools';
+import { BasisTotalInput, newUsage, windowsOrchestratorEffort, type Usage } from '../tools';
 import { runInteractive, unwrapShell, type DriveContext, type PermissionAnswer } from './interactive';
 import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, clip, type Event, type PlanItem } from './parse';
 import type { Outcome, Spec } from './run';
@@ -172,7 +172,8 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
   ctx.result.model = str(opened.model);
   ctx.emit({ kind: KindSession, session_id: threadID });
 
-  const started = obj(await race(peer.request('turn/start', { threadId: threadID, input: [{ type: 'text', text: spec.prompt }] })));
+  const effort = windowsOrchestratorEffort(spec.env ?? {});
+  const started = obj(await race(peer.request('turn/start', { threadId: threadID, input: [{ type: 'text', text: spec.prompt }], ...(effort ? { effort } : {}) })));
   turnID = str(obj(started.turn).id);
   const already = early.find((t) => str(t.id) === turnID);
   if (already) finished(already);

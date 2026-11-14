@@ -1,3 +1,10 @@
+/** 只控制 Windows 编排；镜头渲染保持原有推理设置。inherit/未设置时沿用 CLI 默认。 */
+export function windowsOrchestratorEffort(env: Record<string, string | undefined>, platform: NodeJS.Platform = process.platform): string | undefined {
+  if (platform !== 'win32') return undefined;
+  const value = env.ONSET_WINDOWS_ORCHESTRATOR_EFFORT;
+  return value && ['low', 'medium', 'high'].includes(value) ? value : undefined;
+}
+
 /** Windows 的 CreateProcess 命令行上限约 32K UTF-16；长提示词走 CLI 原有的标准输入接口。 */
 export function windowsPromptInput(tool: string, argv: string[], prompt: string, platform: NodeJS.Platform = process.platform): { argv: string[]; stdin: string } {
   const unchanged = { argv, stdin: '' };

@@ -27,6 +27,9 @@ import { preferenceBrief, recordUtterance } from './memory';
 import { noVisionNote, orchestratorCannotSee } from './vision';
 import { uploadDir, uploadKind } from './uploads';
 import { allowedCommands, expirePermissions, permissionEventJSON, pollPermissions, type PendingPermission, type PermissionEventData } from './permissions';
+import { LocalStyleReceipt, localStyleContext, windowsStyleAction, windowsResumeFallbackAllowed } from './windowsactions';
+import { runStudioOp } from './tasks';
+import { styleKey } from '../filmstyle';
 
 // Studio 在 agentrun 事件之外自己发的几种事件。
 export const kindUser = 'user';
@@ -697,52 +700,63 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
       emit(sess, turn.turn_id, { ...event });
       if (event.kind === agentrun.KindToolResult) checkFiles(false);
     };
-    const previous = sess.meta.cli_session_id ?? '';
-    const earlierTurns = (sess.meta.turns ?? []).length > 1;
-    // 末尾两条是本轮刚发的 user 与 turn-start，不算进历史。
-    const history = transcript(sess.events.slice(0, Math.max(sess.events.length - 2, 0)));
-    // 「以后都允许」的前缀并进白名单；claude 遇到白名单外的调用时经 onset studio permission-mcp 问界面上的用户。
-    const access = config.orchestratorAccess(cfg);
-    access.commands = [...(access.commands ?? []), ...allowedCommands(p.path)];
-    const spec: agentrun.Spec = {
-      tool: cfg.orchestrator,
-      model: cfg.orchestratorModel,
-      workdir: p.path,
-      prompt,
-      unsafe: s.config.unsafe,
-      access,
-      permissionPrompt: permissionPrompt(s.executable()),
-      toolsServer: tools.onsetToolsServer(s.executable(), 'orchestrator', p.path, env),
-      // codebuddy、opencode、codex 走双向协议，审批请求由 agentrun 直接交到这里：写进同一个收件目录，
-      // 与审批 MCP 走同一条路（轮询、卡片、以后都允许），等用户回答。
-      ask: async (toolName, input) => {
-        const req = writePermissionRequest(inbox, toolName, input);
-        return (await waitPermissionResponse(inbox, req.id, PermissionPollInterval, signal)) ?? { decision: 'expired' };
-      },
-      env,
-      lookPath: (name) => lookPath(name, env.PATH ?? ''),
-    };
-    const resumed = previous !== '' && earlierTurns;
-    if (resumed) {
-      spec.sessionID = previous;
-      spec.resume = true;
-      spec.plan = lastTaskPlan(sess.events);
+    const localStyle = windowsStyleAction(turn.message, p.path);
+    if (localStyle) {
+      // runTurn 已持有项目写权，沿用现有执行进程；不能另开 runWriteTask 再拿一次锁。
+      await runStudioOp(s, signal, p, 'film_style_use', { style: styleKey(localStyle), project_root: p.path, replace: false });
+      const receipt = `${LocalStyleReceipt}${localStyle.cn}（${styleKey(localStyle)}）已设为整片默认风格。`;
+      emit(sess, turn.turn_id, { kind: kindNotice, text: receipt });
+      emit(sess, turn.turn_id, { kind: agentrun.KindText, text: receipt + ' 稿件、配音和分镜的确认状态保持原样。' });
+      checkFiles(true);
     } else {
-      spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
-      if (earlierTurns && history !== '') spec.prompt = reseedPrompt(history, prompt, productionBrief(p, sess));
-    }
-    let outcome = await agentrun.run(spec, onEvent, signal);
-    recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);
-    if (outcome.error && resumed && !outcome.result.produced && !signal.aborted) {
-      emit(sess, turn.turn_id, { kind: kindNotice, text: '原会话无法续接（' + outcome.error.message + '），已带上之前的对话记录开新会话' });
-      spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
-      spec.resume = false;
-      spec.prompt = reseedPrompt(history, prompt, productionBrief(p, sess));
-      outcome = await agentrun.run(spec, onEvent, signal);
+      if (process.platform === 'win32') prompt = localStyleContext(sess.events) + prompt;
+      const previous = sess.meta.cli_session_id ?? '';
+      const earlierTurns = (sess.meta.turns ?? []).length > 1;
+      // 末尾两条是本轮刚发的 user 与 turn-start，不算进历史。
+      const history = transcript(sess.events.slice(0, Math.max(sess.events.length - 2, 0)));
+      // 「以后都允许」的前缀并进白名单；claude 遇到白名单外的调用时经 onset studio permission-mcp 问界面上的用户。
+      const access = config.orchestratorAccess(cfg);
+      access.commands = [...(access.commands ?? []), ...allowedCommands(p.path)];
+      const spec: agentrun.Spec = {
+        tool: cfg.orchestrator,
+        model: cfg.orchestratorModel,
+        workdir: p.path,
+        prompt,
+        unsafe: s.config.unsafe,
+        access,
+        permissionPrompt: permissionPrompt(s.executable()),
+        toolsServer: tools.onsetToolsServer(s.executable(), 'orchestrator', p.path, env),
+        // codebuddy、opencode、codex 走双向协议，审批请求由 agentrun 直接交到这里：写进同一个收件目录，
+        // 与审批 MCP 走同一条路（轮询、卡片、以后都允许），等用户回答。
+        ask: async (toolName, input) => {
+          const req = writePermissionRequest(inbox, toolName, input);
+          return (await waitPermissionResponse(inbox, req.id, PermissionPollInterval, signal)) ?? { decision: 'expired' };
+        },
+        env,
+        lookPath: (name) => lookPath(name, env.PATH ?? ''),
+      };
+      const resumed = previous !== '' && earlierTurns;
+      if (resumed) {
+        spec.sessionID = previous;
+        spec.resume = true;
+        spec.plan = lastTaskPlan(sess.events);
+      } else {
+        spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
+        if (earlierTurns && history !== '') spec.prompt = reseedPrompt(history, spec.prompt, productionBrief(p, sess));
+      }
+      let outcome = await agentrun.run(spec, onEvent, signal);
       recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);
+      if (outcome.error && resumed && !outcome.result.produced && !signal.aborted && windowsResumeFallbackAllowed(outcome.error)) {
+        emit(sess, turn.turn_id, { kind: kindNotice, text: '原会话无法续接（' + outcome.error.message + '），已带上之前的对话记录开新会话' });
+        spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
+        spec.resume = false;
+        spec.prompt = reseedPrompt(history, prompt, productionBrief(p, sess));
+        outcome = await agentrun.run(spec, onEvent, signal);
+        recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);
+      }
+      runErr = outcome.error;
+      checkFiles(true);
     }
-    runErr = outcome.error;
-    checkFiles(true);
   } catch (err) {
     // Go 版这里不会出错；TS 里任何意外都不能让写锁一直挂着。
     runErr = err instanceof Error ? err : new Error(String(err));

@@ -170,10 +170,23 @@ function appendToolsDir(env: Record<string, string>): void {
  */
 export function addToolsLocation(env: Record<string, string>): void {
   appendToolsDir(env);
+  preferWindowsGit(env);
   const blocker = agentBinDir(env);
   if (blocker === '') return;
   const kept = env.PATH.split(path.delimiter).filter((dir) => dir !== '' && dir !== blocker);
   env.PATH = [blocker, ...kept].join(path.delimiter);
+}
+
+/** PowerShell 也会命中 PATH 中无扩展名的同名文件；将已有 Git 的目录提前，不改系统 PATH 或文件。 */
+export function preferWindowsGit(env: Record<string, string>, platform: NodeJS.Platform = process.platform): void {
+  if (platform !== 'win32') return;
+  try {
+    const directory = path.dirname(lookPath('git.exe', env.PATH ?? '', 'win32', '.EXE'));
+    const kept = (env.PATH ?? '').split(';').filter(dir => dir && dir.toLowerCase() !== directory.toLowerCase());
+    env.PATH = [directory, ...kept].join(';');
+  } catch {
+    // Git 未安装时保持环境；不在制作过程中下载或修改系统目录。
+  }
 }
 
 /** 客户端写出的 onset 启动脚本里都有这句话（apps/desktop/src/main/clishim.ts 的 shimScript）。 */
