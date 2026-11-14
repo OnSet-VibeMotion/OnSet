@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeShellFixture } from '../../../packages/engine/src/testsupport/windowsfixtures/index.ts';
 
 /*
  * 客户端端到端测试的公共部分。
@@ -73,6 +74,15 @@ export const test = base.extend({
   },
 
   electronApp: async ({ sandbox, appEnv }, use) => {
+    // Unix fake executables need explicit Node/Git-sh launchers on Windows.
+    // Keep all generated adapters inside this test's private sandbox.
+    let clientFakeBin = fakeBin;
+    if (process.platform === 'win32') {
+      clientFakeBin = path.join(sandbox.root, 'fake-bin');
+      for (const name of ['claude', 'codex', 'opencode']) {
+        writeShellFixture(path.join(clientFakeBin, name), fs.readFileSync(path.join(fakeBin, name), 'utf8'));
+      }
+    }
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
     delete env.ONSET_STUDIO_E2E_CONFIG;
@@ -95,11 +105,11 @@ export const test = base.extend({
       ONSET_STUDIO_SKIP_SKILL_INSTALL: '1',
       ORCHESTRATOR: 'claude',
       RENDERER: 'claude',
-      PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ''}`,
+      PATH: `${clientFakeBin}${path.delimiter}${process.env.PATH ?? ''}`,
     });
     for (const [key, value] of Object.entries(appEnv)) {
       if (value === null) delete env[key];
-      else env[key] = value.replaceAll('{fakeBin}', fakeBin);
+      else env[key] = value.replaceAll('{fakeBin}', clientFakeBin);
     }
     // 假麦克风：音色页「录我的声音」的用例不碰真麦克风，也不弹系统的麦克风授权。
     const app = await electron.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '.'], cwd: desktopDir, env });

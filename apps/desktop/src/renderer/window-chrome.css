@@ -65,3 +65,9 @@
 .window-application-menu {
   flex-shrink: 0;
 }
+
+/* Windows 小窗口还可能同时显示工具缺失提示与制作引导；给输入框留出空间，过程区自行滚动。 */
+.platform-win32 .render-watch {
+  flex-shrink: 1;
+  min-height: 44px;
+}

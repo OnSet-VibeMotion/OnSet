@@ -616,7 +616,8 @@ function SceneTab(props: Props & { scene: Scene | null }) {
               <summary aria-label="更多操作" title="更多操作">
                 <Icon name="more" size={16} />
               </summary>
-              <div className="scene-menu-body" style={menuPos ?? undefined}>
+              {/* Windows 的 details toggle 异步送达；定位前先隐藏，避免首帧在视口外闪现。 */}
+              <div className="scene-menu-body" style={window.onset?.platform === 'win32' && !menuPos ? { visibility: 'hidden' } : menuPos ?? undefined}>
                 {scene.exists && (
                   <div className="menu-group">
                     <button id="attach-frame" onClick={attach}>
