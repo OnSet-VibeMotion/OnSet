@@ -12,9 +12,69 @@ const lines = [
   { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't2', name: 'mcp__onset__hyperframes', input: { subcommand: 'render', args: ['--output', 'out.mp4'] } }] }, session_id: 'r' },
 ];
 
+test('keeps render cards collapsible when many scenes and long commands fill the chat', async ({ page, project, electronApp }) => {
+  await electronApp.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows().find(window => window.isResizable()).setSize(1280, 720);
+  });
+  const command = '"C:\\Program Files\\WindowsApps\\OpenAI.CodexPrimaryRuntime\\powershell\\pwsh.exe" -Command ' + 'inspect-long-render-path '.repeat(20);
+  for (let index = 1; index <= 9; index++) {
+    const id = `scene-${String(index).padStart(3, '0')}`;
+    const dir = path.join(project.path, 'scenes', id);
+    fs.mkdirSync(dir, { recursive: true });
+    if (index > 1) {
+      fs.copyFileSync(path.join(project.path, 'scenes/scene-001/scene.json'), path.join(dir, 'scene.json'));
+      const scene = JSON.parse(fs.readFileSync(path.join(dir, 'scene.json'), 'utf8'));
+      fs.writeFileSync(path.join(dir, 'scene.json'), JSON.stringify({ ...scene, id }));
+      fs.writeFileSync(path.join(dir, 'voice.srt'), '');
+    }
+    const stream = Array.from({ length: 24 }, (_, step) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id: `t-${step}`, name: 'Bash', input: { command } }] } }));
+    fs.writeFileSync(path.join(dir, `render-${id}.stream.jsonl`), stream.map(line => JSON.stringify(line)).join('\n') + '\n');
+    fs.writeFileSync(path.join(dir, `render-${id}.live.json`), JSON.stringify({ pid: process.pid, renderer: 'claude', started_at: new Date().toISOString() }));
+  }
+  await openProject(page, project);
+  const watch = page.locator('.render-watch');
+  await expect(watch.locator('.render-card')).toHaveCount(9);
+  const card = watch.locator('[data-render-scene="scene-001"]');
+  const header = card.locator('.ra-head');
+  await header.click();
+  await expect(header).toHaveAttribute('aria-expanded', 'true');
+  await expect(card.locator('.ra-step')).toHaveCount(24);
+  await page.screenshot({ path: test.info().outputPath('render-cards-expanded.png'), animations: 'disabled' });
+  // 展开多个镜头后，过程只在自己的区域滚动，不把收起按钮与输入框挤出窗口。
+  await expect(page.locator('#prompt')).toBeInViewport();
+  const watchBox = await watch.boundingBox();
+  expect(watchBox.height).toBeLessThanOrEqual(720 / 2);
+  await header.getByText('收起', { exact: true }).click();
+  await expect(header).toHaveAttribute('aria-expanded', 'false');
+  await expect(card.locator('.ra-steps')).toHaveCount(0);
+  await header.click();
+  const stream = path.join(project.path, 'scenes/scene-001/render-scene-001.stream.jsonl');
+  fs.appendFileSync(stream, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: '新步骤已完成' }] } }) + '\n');
+  await expect(card.locator('.ra-step')).toHaveCount(25);
+  await header.getByText('收起', { exact: true }).click();
+  await expect(header).toHaveAttribute('aria-expanded', 'false');
+  fs.appendFileSync(stream, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: '收起后继续更新' }] } }) + '\n');
+  await expect(header.locator('.ra-current')).toHaveText('收起后继续更新');
+  await expect(header).toHaveAttribute('aria-expanded', 'false');
+  const last = watch.locator('[data-render-scene="scene-009"] .ra-head');
+  await last.click();
+  await expect(last).toHaveAttribute('aria-expanded', 'true');
+  await last.getByText('收起', { exact: true }).click();
+  await expect(last).toHaveAttribute('aria-expanded', 'false');
+  await electronApp.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows().find(window => window.isResizable()).setSize(1024, 640);
+  });
+  await header.click();
+  await expect(card.locator('.ra-step')).toHaveCount(26);
+  await expect(page.locator('#prompt')).toBeInViewport();
+  await header.press('Space');
+  await expect(header).toHaveAttribute('aria-expanded', 'false');
+  await page.screenshot({ path: test.info().outputPath('render-cards-collapsed.png'), animations: 'disabled' });
+});
+
 test('shows what the renderer is doing while a scene renders', async ({ page, project }) => {
   const sceneDir = path.join(project.path, 'scenes', 'scene-001');
-  const stream = lines.map((line) => JSON.stringify(line).replaceAll('SCENE_DIR', sceneDir)).join('\n') + '\n';
+  const stream = lines.map((line) => JSON.stringify(line, (_key, value) => typeof value === 'string' ? value.replaceAll('SCENE_DIR', sceneDir) : value)).join('\n') + '\n';
   fs.writeFileSync(path.join(sceneDir, 'render-scene-001.stream.jsonl'), stream);
   // 进行中标记指向一个活着的进程：测试进程自己。
   fs.writeFileSync(

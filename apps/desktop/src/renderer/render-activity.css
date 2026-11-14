@@ -1,13 +1,20 @@
 /* 渲染器此刻在做什么：对话里的卡片（.render-watch）与镜头页的过程（.scene-activity）。组件见 components/RenderActivity.tsx。 */
 
 .render-watch {
+  /* 与上方已定位的消息区按顺序绘制，避免它溢出时拦截标题点击。 */
+  position: relative;
   flex: none;
+  /* 并发镜头与展开的过程不能把对话挤到零高度，导致消息层盖住收起按钮。 */
+  max-height: min(360px, 45vh);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   margin: 6px calc(var(--gutter, 16px) - 6px) 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 .render-watch .render-card {
+  flex-shrink: 0;
   border: 1px solid var(--line-strong);
   border-radius: 12px;
   background: var(--raised);
