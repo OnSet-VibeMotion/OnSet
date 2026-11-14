@@ -306,3 +306,13 @@
 .memory-tab .memory-exam-call button {
   flex: none;
 }
+.exam-progress {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 20px 0;
+}
+.exam-progress progress { width: 100%; accent-color: var(--accent); }
+.exam-progress details { border-top: 1px solid var(--line); padding: 12px 0; }
+.exam-progress p, .exam-progress li { overflow-wrap: anywhere; }
+.exam-progress-steps { max-height: 240px; overflow-y: auto; }

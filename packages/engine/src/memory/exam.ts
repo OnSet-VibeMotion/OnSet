@@ -9,6 +9,7 @@ import {
   OutcomeFailed,
   OutcomeSucceeded,
   OutcomeVerificationFailed,
+  processAlive,
   type Attempt,
   type Scene,
 } from '../scene';
@@ -283,6 +284,48 @@ export interface ExamResult {
   snapshot: number;
 }
 
+/** 进度与最终成绩分开保存：未交卷的格子不能参与判分或改变记忆状态。 */
+export interface ExamProgress {
+  id: string;
+  pid: number;
+  created_at: string;
+  updated_at: string;
+  workspace: string;
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  error?: string;
+  trials: { name: string; description: string; checks: string[] }[];
+  questions: (Question & { text: string })[];
+  cells: {
+    question: string; renderer: string; arm: Arm; repeat: number;
+    status: 'queued' | 'running' | 'completed' | 'cancelled';
+    started_at?: string; finished_at?: string; result?: Cell;
+  }[];
+}
+
+export function examProgressToJSON(p: ExamProgress): Record<string, unknown> {
+  return { ...p, cells: p.cells.map((c) => ({ ...c, result: c.result ? cellToJSON(c.result) : undefined })) };
+}
+
+/** 旧版本只有 result.json；不把缺少进度的旧考试推测为仍在运行。 */
+export function examProgress(s: Store): ExamProgress[] {
+  const rows: ExamProgress[] = [];
+  for (const entry of readDirSorted(path.join(s.dir, 'exams')) ?? []) {
+    if (!entry.isDirectory()) continue;
+    try {
+      const p = readJSON(path.join(s.dir, 'exams', entry.name, 'progress.json')) as ExamProgress;
+      if (p.id === entry.name && Array.isArray(p.cells) && Array.isArray(p.questions)) {
+        if (p.status === 'running' && p.pid > 0 && !processAlive(p.pid)) {
+          p.status = 'failed';
+          p.error = '考试进程已退出，未生成最终成绩；记忆是否生效以最终成绩为准';
+          for (const c of p.cells) if (c.status === 'queued' || c.status === 'running') c.status = 'cancelled';
+        }
+        rows.push(p);
+      }
+    } catch { /* 未安装此功能的历史考试或未写完的进度不影响成绩读取。 */ }
+  }
+  return rows;
+}
+
 export function examResultToJSON(r: ExamResult): Record<string, unknown> {
   return {
     id: r.id,
@@ -469,18 +512,50 @@ export async function exam(s: Store, opts: ExamOptions): Promise<ExamResult> {
     }
   }
   const cells: Cell[] = new Array(list.length);
+  const progress: ExamProgress = {
+    id, pid: process.pid, created_at: result.created_at, updated_at: result.created_at,
+    workspace: opts.workspace, status: 'running',
+    trials: trials.map((m) => ({ name: m.name, description: m.description, checks: m.checked_by ?? [] })),
+    questions: questions.map((q) => {
+      let text = '';
+      try { text = loadScene(q.input).text; } catch { /* 作答时报告输入错误。 */ }
+      return { ...q, text };
+    }),
+    cells: list.map((j) => ({ question: j.q.id, renderer: j.renderer, arm: j.arm, repeat: j.repeat, status: 'queued' })),
+  };
+  const saveProgress = () => {
+    progress.updated_at = rfc3339(s.clock());
+    writeJSON(path.join(s.dir, 'exams', id, 'progress.json'), examProgressToJSON(progress));
+  };
+  saveProgress();
   let next = 0;
   const worker = async (): Promise<void> => {
-    while (next < list.length) {
+    while (next < list.length && !opts.signal?.aborted) {
       const i = next++;
       const j = list[i];
       const workdir = path.join(opts.workspace, id, j.q.id, `${j.renderer}-${j.arm}-${j.repeat}`);
-      cells[i] = await examCell(s, j.q, j.renderer, j.arm, j.repeat, workdir, trials, beforeID, opts, run, id);
+      progress.cells[i].status = 'running';
+      progress.cells[i].started_at = rfc3339(s.clock());
+      saveProgress();
+      try {
+        cells[i] = await examCell(s, j.q, j.renderer, j.arm, j.repeat, workdir, trials, beforeID, opts, run, id);
+      } catch (err) {
+        // 作答者或补查抛错也是基础设施故障；等其他格子收尾后整场判无效。
+        cells[i] = newCell({ question: j.q.id, holdout: j.q.holdout, renderer: j.renderer, arm: j.arm,
+          repeat: j.repeat, workdir, invalid: true, outcome: OutcomeFailed, error: err instanceof Error ? err.message : String(err) });
+      }
+      progress.cells[i].status = 'completed';
+      progress.cells[i].finished_at = rfc3339(s.clock());
+      progress.cells[i].result = cells[i];
+      saveProgress();
     }
   };
-  await Promise.all(Array.from({ length: Math.min(jobs, list.length) }, () => worker()));
-  result.cells = cells;
   try {
+    const workers = await Promise.allSettled(Array.from({ length: Math.min(jobs, list.length) }, () => worker()));
+    const failed = workers.find((w) => w.status === 'rejected');
+    if (failed?.status === 'rejected') throw failed.reason;
+    result.cells = cells.filter(Boolean);
+    if (opts.signal?.aborted) throw new Error('考试已取消，未改变记忆状态');
     const after = s.latestSnapshot();
     const driftAfter = s.drift();
     const changed = (after?.id ?? 0) !== beforeID || (driftAfter ?? []).join(',') !== (driftBefore ?? []).join(',');
@@ -514,7 +589,13 @@ export async function exam(s: Store, opts: ExamOptions): Promise<ExamResult> {
       summary: `考试 ${id} ${state}：${questions.length} 道题 × ${opts.renderers.length} 个渲染工具，对照 ${formatFixed(result.verdict.control_score, 1)} 分，试用 ${formatFixed(result.verdict.trial_score, 1)} 分`,
       detail: { exam: id, trials: result.trials, verdict: verdictToJSON(result.verdict), applied: result.applied },
     });
+    progress.status = 'completed';
+    saveProgress();
   } catch (err) {
+    progress.status = opts.signal?.aborted ? 'cancelled' : 'failed';
+    progress.error = err instanceof Error ? err.message : String(err);
+    for (const c of progress.cells) if (c.status === 'queued') c.status = 'cancelled';
+    saveProgress();
     throw withResult(err, result);
   }
   return result;

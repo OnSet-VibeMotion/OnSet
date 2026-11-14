@@ -485,6 +485,19 @@ export interface ExamResult {
   snapshot?: number;
 }
 
+export interface ExamProgress {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  error?: string;
+  trials: { name: string; description: string; checks: string[] }[];
+  questions: (ExamQuestion & { text: string })[];
+  cells: { question: string; renderer: string; arm: string; repeat: number;
+    status: 'queued' | 'running' | 'completed' | 'cancelled';
+    result?: ExamCell; activity?: SceneActivity; started_at?: string; finished_at?: string }[];
+}
+
 export interface MemoryWeak {
   name: string;
   renderer: string;
@@ -502,6 +515,7 @@ export interface MemorySuspect {
 }
 
 export interface MemoryState {
+  exam_progress?: ExamProgress[];
   enabled: boolean;
   dir: string;
   /** 当前项目名，用来筛时间线。 */

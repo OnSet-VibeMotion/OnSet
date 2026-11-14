@@ -775,7 +775,7 @@ export function App() {
           </button>
         )}
         <WindowsApplicationMenu />
-        <Tasks tasks={tasks} onCancel={(id) => run(`/api/tasks/${id}/cancel`)} />
+        <Tasks tasks={tasks} onCancel={(id) => run(`/api/tasks/${id}/cancel`)} onOpenMemory={() => { setPanelOpen(true); setTab('memory'); }} />
         <button className="ghost icon settings-trigger" id="settings-trigger" title="设置（⌘,）" aria-label="设置" onClick={() => setSettingsOpen(true)}>
           <Icon name="settings" size={14} />
         </button>

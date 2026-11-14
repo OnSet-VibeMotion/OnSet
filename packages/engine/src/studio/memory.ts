@@ -19,6 +19,7 @@ import type { Project, Server } from './studio';
 import { addTask, runStudioOp, runTask, runWriteTask, writeTaskError } from './tasks';
 import type { Turn } from './turns';
 import { emitStudioEvent } from './events';
+import { sceneActivity } from './activity';
 
 function memoryStore(s: Server): { p: Project; cfg: config.Config; store: memory.Store } | Response {
   const p = s.projectOr404();
@@ -135,6 +136,18 @@ export function memoryAPI(s: Server, request: Request): Response {
         memories: rows,
         timeline,
         exams: views,
+        exam_progress: memory.examProgress(store).filter((e) => {
+          const rel = path.relative(p.path, e.workspace);
+          return rel !== '' && !path.isAbsolute(rel) && rel !== '..' && !rel.startsWith('..' + path.sep);
+        }).slice(-12).map((e) => ({
+          ...memory.examProgressToJSON(e),
+          cells: e.cells.map((c) => {
+            const q = e.questions.find((q) => q.id === c.question);
+            const directory = path.join(e.workspace, e.id, c.question, `${c.renderer}-${c.arm}-${c.repeat}`);
+            return { ...c, result: c.result ? memory.cellToJSON(c.result) : undefined,
+              activity: c.status === 'running' && q ? sceneActivity({ id: q.scene_id, directory, exists: false, stale: false, attempts: 0 }) : undefined };
+          }),
+        })),
         snapshots,
         runs: runs.map(memory.runSummaryToJSON),
         runs_all: allRuns.map(memory.runSummaryToJSON),

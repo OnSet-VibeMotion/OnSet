@@ -3,6 +3,7 @@ import { api, errorText, post, rawURL } from '../api';
 import '../memory.css';
 import type { ExamResult, MemoryEvent, MemoryRow, MemoryState, MemoryStatus, MemorySuspect, RecallResponse, RunStats, RunSummary, Scene } from '../types';
 import type { RunAction } from './Preview';
+import { ExamProgressPanel } from './ExamProgress';
 
 type Labels = MemoryState['labels'];
 
@@ -27,13 +28,21 @@ export function MemoryTab({ scene, version, run }: Props) {
   const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setRefresh((n) => n + 1), 2000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let current = true;
     api<MemoryState>('/api/memory').then(
       (result) => {
+        if (!current) return;
         setState(result);
         setError('');
       },
-      (err) => setError(errorText(err)),
+      (err) => { if (current) setError(errorText(err)); },
     );
+    return () => { current = false; };
   }, [version, refresh]);
 
   // 当前镜头渲染时会带上哪几条：页头的第三步与「会带上」一节共用。
@@ -115,6 +124,12 @@ export function MemoryTab({ scene, version, run }: Props) {
           </li>
         </ol>
       </header>
+
+      <ExamProgressPanel state={state} />
+      {state.exams.length > 0 && <section className="memory-section" aria-label="最近考试结果">
+        <h3>最近考试结果</h3>
+        <ExamMatrix exam={state.exams[state.exams.length - 1]} version={version} state={state} />
+      </section>}
 
       {pending.length > 0 && (
         <section className="memory-section memory-pending">
@@ -319,7 +334,7 @@ function AdvancedSection({ state, version, run }: { state: MemoryState; version:
   const [examIndex, setExamIndex] = useState(state.exams.length - 1);
   const [rollbackTo, setRollbackTo] = useState(0);
   const [allProjects, setAllProjects] = useState(false);
-  const exam = state.exams[examIndex] ?? null;
+  const exam = state.exams[examIndex < 0 ? state.exams.length - 1 : Math.min(examIndex, state.exams.length - 1)] ?? null;
   const previous = state.snapshots.filter((id) => id !== state.status.snapshot);
   const others = state.timeline.filter((e) => e.type === 'episode' && e.project !== state.project);
   return (
@@ -359,7 +374,7 @@ function AdvancedSection({ state, version, run }: { state: MemoryState; version:
             </select>
           )}
         </div>
-        {exam ? <ExamMatrix exam={exam} version={version} /> : <p className="small muted">还没有考试。</p>}
+        {exam ? <ExamMatrix exam={exam} version={version} state={state} /> : <p className="small muted">还没有考试。</p>}
         {state.exams.length > 0 && <ScoreCurve exams={state.exams} />}
       </section>
 
@@ -511,13 +526,13 @@ function MemoryCard({
   );
 }
 
-function ExamMatrix({ exam, version }: { exam: ExamResult; version: number }) {
+function ExamMatrix({ exam, version, state: memoryState }: { exam: ExamResult; version: number; state: MemoryState }) {
   const verdict = exam.verdict;
   const state = verdict.invalid ? '无效' : verdict.needs_human ? '待人工确认' : verdict.pass ? '通过' : '未通过';
   return (
     <div className="exam">
       <p>
-        <strong>{exam.id}</strong> · {state} · 试用 {exam.trials.join('、')} · 对照 {verdict.control_score.toFixed(1)} 分 → 试用{' '}
+        <strong>{exam.id}</strong> · {state} · 试用 {exam.trials.map((name) => memoryState.memories.find((m) => m.name === name)?.description || name).join('、')} · 对照 {verdict.control_score.toFixed(1)} 分 → 试用{' '}
         {verdict.trial_score.toFixed(1)} 分
       </p>
       {verdict.reasons.length > 0 && (
@@ -543,6 +558,7 @@ function ExamMatrix({ exam, version }: { exam: ExamResult; version: number }) {
               <tr key={q.id}>
                 <th>
                   {q.id} <span className="small muted">{q.scene_id}{q.holdout ? ' · 留出' : ''}</span>
+                  {q.text && <p className="small">{q.text}</p>}
                 </th>
                 {exam.renderers.map((r) =>
                   (['control', 'trial'] as const).map((arm) => {
@@ -555,8 +571,15 @@ function ExamMatrix({ exam, version }: { exam: ExamResult; version: number }) {
                             className={'exam-cell ' + (c.invalid ? 'invalid' : c.passed ? 'pass' : 'fail')}
                             title={[c.model, c.error || (c.checks ?? []).join('\n')].filter(Boolean).join('\n')}
                           >
-                            {c.output && <video src={rawURL(c.output, version) + '#t=0.5'} preload="metadata" muted />}
+                            {c.output && <video src={rawURL(c.output, version)} preload="none" controls muted />}
                             <span>{c.invalid ? '⚠' : c.passed ? '✅' : `❌ ${c.problems}`}</span>
+                            <details>
+                              <summary>第 {c.repeat} 次 · {c.invalid ? '执行无效' : c.passed ? '检查通过' : '查看问题'}</summary>
+                              <p>{c.model || '模型未记录'} · {Math.round(c.seconds)} 秒</p>
+                              {c.error && <p>{c.error}</p>}
+                              {(c.problem_texts?.length ?? 0) > 0 ? <ul>{c.problem_texts!.map((text, i) => <li key={i}>{text}</li>)}</ul> : <p>{checkText(memoryState.labels, c.checks)}</p>}
+                              <p>实际带入：{(c.recalled ?? []).map((name) => memoryState.memories.find((m) => m.name === name)?.description || name).join('、') || '无'}</p>
+                            </details>
                           </div>
                         ))}
                       </td>

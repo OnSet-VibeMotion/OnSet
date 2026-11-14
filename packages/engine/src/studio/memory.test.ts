@@ -105,6 +105,10 @@ describe('studio memory', () => {
       budget: 1500,
       workspace: path.join(project, 'production', 'memory-exams'),
       run: async (cell, renderer) => {
+        const live = (await studioRequest(s, 'GET', '/api/memory')).body.exam_progress;
+        expect(live).toHaveLength(1);
+        expect(live[0].questions[0].text).toBe('中文标题');
+        expect(live[0].cells.some((c: { status: string }) => c.status === 'running')).toBe(true);
         writeStudioFile(path.join(cell.directory, 'scene-001.mp4'), 'video');
         return scene.newAttempt({ scene_id: cell.id, renderer, outcome: scene.OutcomeSucceeded });
       },

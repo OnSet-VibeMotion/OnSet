@@ -103,3 +103,65 @@ test('the evidence page says what to do before any exam', async ({ page, project
   await page.locator('.evidence-empty button').click();
   await expect(page.locator('.memory-tab')).toBeVisible();
 });
+
+test('live exam questions and both arms update without reopening memory or evolution', async ({ page, project, sandbox, electronApp }) => {
+  const examDir = path.join(sandbox.memory, 'exams', 'exam-0001');
+  fs.mkdirSync(examDir, { recursive: true });
+  const pid = await electronApp.evaluate(() => process.pid);
+  const progress = {
+    id: 'exam-0001', pid, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    workspace: path.join(project.path, 'production', 'memory-exams'), status: 'running',
+    trials: [{ name: 'hold-readable', description: '画面上的字要停够时间再换', checks: ['reads.duration'] }],
+    questions: [{ id: 'q1', scene_id: 'scene-001', holdout: false, text: '这道题考字幕阅读时间', input: '' }],
+    cells: ['control', 'trial'].map((arm) => ({ question: 'q1', renderer: 'claude', arm, repeat: 1, status: arm === 'control' ? 'running' : 'queued' })),
+  };
+  const file = path.join(examDir, 'progress.json');
+  fs.writeFileSync(file, JSON.stringify(progress));
+  await openProject(page, project);
+  await openPage(page, 'memory');
+  const panel = page.getByRole('region', { name: '考试进度' });
+  await expect(panel).toContainText('已完成 0 / 2 组');
+  await expect(panel).toContainText('这道题考字幕阅读时间');
+  await expect(panel).toContainText('画面上的字要停够时间再换');
+  await expect(panel).toContainText('等待空位');
+  progress.cells[0].status = 'completed';
+  progress.cells[0].result = { passed: true, problems: 0 };
+  progress.cells[1].status = 'running';
+  fs.writeFileSync(file, JSON.stringify(progress));
+  await expect(panel).toContainText('已完成 1 / 2 组');
+  await openPage(page, 'evidence');
+  await expect(page.getByRole('region', { name: '考试进度' })).toContainText('已完成 1 / 2 组');
+  seedExam(sandbox, project);
+  progress.status = 'completed';
+  fs.writeFileSync(file, JSON.stringify(progress));
+  await expect(page.getByRole('region', { name: '考试进度' })).toHaveCount(0);
+  await expect(page.locator('.evidence-figures')).toContainText('考试通过');
+  await openPage(page, 'memory');
+  const recent = page.getByRole('region', { name: '最近考试结果' });
+  await expect(recent).toBeVisible();
+  await expect(recent).toContainText('画面上的字要停够时间再换');
+  await expect(recent.locator('video[controls]')).toHaveCount(2);
+  await recent.getByText('第 1 次 · 查看问题', { exact: true }).click();
+  await expect(recent).toContainText('实际带入：无');
+});
+
+test('evolution can inspect each repeated pair and exposes invalid exams', async ({ page, project, sandbox }) => {
+  seedExam(sandbox, project);
+  const file = path.join(sandbox.memory, 'exams', 'exam-0001', 'result.json');
+  const result = JSON.parse(fs.readFileSync(file, 'utf8'));
+  result.cells.push(...result.cells.map((c) => ({ ...c, repeat: 2, passed: true, problems: 0, checks: [] })));
+  fs.writeFileSync(file, JSON.stringify(result));
+  const invalid = path.join(sandbox.memory, 'exams', 'exam-0002');
+  fs.mkdirSync(invalid);
+  fs.writeFileSync(path.join(invalid, 'result.json'), JSON.stringify({ ...result, id: 'exam-0002', applied: 'none',
+    cells: result.cells.map((c) => ({ ...c, invalid: true, error: '作答工具崩溃' })),
+    verdict: { pass: false, invalid: true, needs_human: false, control_score: 0, trial_score: 0, reasons: ['作答无效，不计成绩'] } }));
+  await openProject(page, project);
+  await openPage(page, 'evidence');
+  await expect(page.locator('.evidence')).toContainText('exam-0002 · 考试无效');
+  await expect(page.locator('.evidence')).toContainText('作答工具崩溃');
+  await expect(page.locator('.evidence-side.control')).toContainText('查出 2 处问题');
+  await page.getByRole('combobox', { name: '第几次重复' }).selectOption('2');
+  await expect(page.locator('.evidence-side.control')).toContainText('没有查出问题');
+  await expect(page.locator('.evidence')).toContainText('不能证明每条经验单独有效');
+});

@@ -4,6 +4,8 @@ import '../evidence.css';
 import type { ExamCell, ExamResult, MemoryRow, MemoryState, RunStats, RunSummary, Scene } from '../types';
 import { LearningSection } from './Learning';
 import type { RunAction, Tab } from './Preview';
+import { ExamProgressPanel } from './ExamProgress';
+import '../memory.css';
 
 interface Props {
   version: number;
@@ -21,16 +23,25 @@ interface Props {
 export function EvidenceTab({ version, run, onOpen, scenes = [], sceneId = '' }: Props) {
   const [state, setState] = useState<MemoryState | null>(null);
   const [error, setError] = useState('');
+  const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setRefresh((n) => n + 1), 2000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let current = true;
     api<MemoryState>('/api/memory').then(
       (result) => {
+        if (!current) return;
         setState(result);
         setError('');
       },
-      (err) => setError(errorText(err)),
+      (err) => { if (current) setError(errorText(err)); },
     );
-  }, [version]);
+    return () => { current = false; };
+  }, [version, refresh]);
 
   if (error) return <div className="empty">{error}</div>;
   if (!state) return <div className="empty">正在读取…</div>;
@@ -50,6 +61,12 @@ export function EvidenceTab({ version, run, onOpen, scenes = [], sceneId = '' }:
         </p>
       </header>
 
+      <ExamProgressPanel state={state} />
+      {state.exams.filter((e) => e.verdict.invalid).map((e) => <section className="evidence-section" key={e.id}>
+        <h3>{e.id} · 考试无效</h3>
+        <p>未改变记忆状态。{e.verdict.reasons.join('；')}</p>
+        {e.cells.filter((c) => c.invalid).map((c) => <p key={`${c.question}-${c.renderer}-${c.arm}-${c.repeat}`}>{c.question} · {c.renderer} · {c.arm === 'control' ? '对照组' : '试用组'}：{c.error || '执行失败'}</p>)}
+      </section>)}
       {exams.length === 0 ? (
         <section className="evidence-empty">
           <h3>还没有考过试的经验</h3>
@@ -69,7 +86,7 @@ export function EvidenceTab({ version, run, onOpen, scenes = [], sceneId = '' }:
   );
 }
 
-const armName = { control: '没带这条经验', trial: '带上之后' } as const;
+const armName = { control: '对照组 · 现有记忆', trial: '试用组 · 加入待考经验' } as const;
 
 /** 一场考试里一组的问题总数；通过的格子记 0。 */
 function problemsOf(exam: ExamResult, arm: ExamCell['arm']): number {
@@ -94,7 +111,10 @@ function Contrast({
   const [questionID, setQuestionID] = useState(exam.questions[0]?.id ?? '');
   const question = exam.questions.find((q) => q.id === questionID) ?? exam.questions[0];
   const [renderer, setRenderer] = useState(exam.renderers[0] ?? '');
-  const pick = (arm: ExamCell['arm']) => exam.cells.find((c) => c.question === question?.id && c.renderer === (renderer || exam.renderers[0]) && c.arm === arm) ?? null;
+  const [repeat, setRepeat] = useState(1);
+  const repeatsForPair = [...new Set(exam.cells.filter((c) => c.question === question?.id && c.renderer === renderer).map((c) => c.repeat))].sort((a, b) => a - b);
+  const selectedRepeat = repeatsForPair.includes(repeat) ? repeat : repeatsForPair[0];
+  const pick = (arm: ExamCell['arm']) => exam.cells.find((c) => c.question === question?.id && c.renderer === renderer && c.arm === arm && c.repeat === selectedRepeat) ?? null;
   const control = pick('control');
   const trial = pick('trial');
   const before = problemsOf(exam, 'control');
@@ -119,7 +139,7 @@ function Contrast({
           <span>
             {exam.questions.length} 个镜头 × 每组 {repeats} 次
           </span>
-          <small>{exam.verdict.pass ? '问题少了，这条经验留下' : '没有变好的经验不会留下'}</small>
+          <small>{exam.verdict.needs_human ? '考试期间记忆变过，等待确认' : exam.applied === 'promoted' ? '待考经验已生效' : exam.applied === 'rejected' ? '待考经验未留下' : '本场未改变记忆状态'}</small>
         </li>
         <li>
           <strong>{tested}</strong>
@@ -132,6 +152,9 @@ function Contrast({
         <div className="evidence-bar">
           <h3>同一个镜头，带与不带</h3>
           <span className="spacer" />
+          {repeatsForPair.length > 1 && <select aria-label="第几次重复" value={selectedRepeat} onChange={(e) => setRepeat(Number(e.currentTarget.value))}>
+            {repeatsForPair.map((n) => <option key={n} value={n}>第 {n} 次</option>)}
+          </select>}
           {exam.renderers.length > 1 && (
             <select value={renderer} aria-label="渲染工具" onChange={(e) => setRenderer(e.currentTarget.value)}>
               {exam.renderers.map((r) => (
@@ -164,23 +187,24 @@ function Contrast({
           <div className="evidence-questions" role="tablist" aria-label="考试用的镜头">
             {exam.questions.map((q) => (
               <button key={q.id} role="tab" aria-selected={q.id === question?.id} className={q.id === question?.id ? 'armed' : 'ghost'} onClick={() => setQuestionID(q.id)}>
-                {q.scene_id}
+                {q.id} · {q.scene_id}
                 {q.holdout ? ' · 没见过的' : ''}
               </button>
             ))}
           </div>
         )}
         {question?.text && <p className="evidence-narration">「{question.text}」</p>}
-        <SidePlayer key={exam.id + question?.id + renderer} control={control} trial={trial} labels={labels} version={version} />
+        <SidePlayer key={exam.id + question?.id + renderer + selectedRepeat} control={control} trial={trial} labels={labels} version={version} />
+        <p className="small muted">对照 {exam.verdict.control_score} 分 → 试用 {exam.verdict.trial_score} 分。{exam.verdict.reasons.join('；')}</p>
         <p className="small muted evidence-note">
           {models.length > 0 ? `${models.join('、')} 渲染 · ` : ''}
-          两组拿到的镜头说明逐字相同，只差这条经验。画面上每段文字的出现与停留时间由渲染方登记，机器按登记核对
+          两组使用相同镜头输入，试用组按召回条件加入待考经验。多条合考的结果属于整组，不能证明每条经验单独有效。画面上每段文字的出现与停留时间由渲染方登记，机器按登记核对
           {exam.questions.some((q) => !q.holdout) ? '；考的是当初出过问题的镜头' : ''}。
         </p>
       </section>
 
       <section className="evidence-section">
-        <h3>学到的是这一条</h3>
+        <h3>本场待考经验 · {exam.trials.length} 条</h3>
         {lessons.length === 0 && <p className="small muted">这场考试的经验已经不在记忆库里了。</p>}
         {lessons.map((m) => (
           <article key={m.name} className="evidence-lesson">

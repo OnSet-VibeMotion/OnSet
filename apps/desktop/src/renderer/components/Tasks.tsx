@@ -11,7 +11,7 @@ const statusLabels: Record<Task['status'], string> = {
   cancelled: '已取消',
 };
 
-export function Tasks({ tasks, onCancel }: { tasks: Task[]; onCancel: (id: string) => void }) {
+export function Tasks({ tasks, onCancel, onOpenMemory }: { tasks: Task[]; onCancel: (id: string) => void; onOpenMemory?: () => void }) {
   const [open, setOpen] = useState(false);
   const active = tasks.filter((t) => t.status === 'queued' || t.status === 'running').length;
   return (
@@ -27,7 +27,7 @@ export function Tasks({ tasks, onCancel }: { tasks: Task[]; onCancel: (id: strin
           {tasks.slice(0, 20).map((task) => (
             <div key={task.task_id} className={'task ' + task.status}>
               <div className="task-head">
-                <strong>{forUser(task.message.split('\n')[0] ?? '')}</strong>
+                <strong>{task.type === 'memory.exam' ? '记忆考试 · ' : ''}{forUser(task.message.split('\n')[0] ?? '')}</strong>
                 <span className="muted small">{statusLabels[task.status]}</span>
               </div>
               {task.status === 'running' && (
@@ -37,6 +37,7 @@ export function Tasks({ tasks, onCancel }: { tasks: Task[]; onCancel: (id: strin
               )}
               {task.error && <pre className="task-error">{forUser(task.error)}</pre>}
               {task.warning && <p className="task-warning">{task.warning}</p>}
+              {task.type === 'memory.exam' && onOpenMemory && <button className="ghost" onClick={() => { setOpen(false); onOpenMemory(); }}>查看考题与进度</button>}
               {(task.status === 'running' || task.status === 'queued') && (
                 <button className="ghost" onClick={() => onCancel(task.task_id)}>
                   取消
