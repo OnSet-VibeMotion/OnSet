@@ -2,7 +2,9 @@ import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, shell } fr
 import fs from 'node:fs';
 import path from 'node:path';
 import { newServer, type Server } from '@am/engine/studio';
-import { assetsDir, browserPath, browserScript, npmCLI, shimScript, writeScript } from './clishim';
+import { setHostVersion } from '@am/engine/version';
+import { assetsDir, browserPath, browserScript, cliEntry, npmCLI, shimScript, writeScript } from './clishim';
+import { installKeyCodec } from './keycodec';
 import { installMenu } from './menu';
 import { createPet, installPetIPC, mainWindow, petPreferred, setPetVisible } from './pet';
 import { loginShellPath } from './shellpath';
@@ -71,6 +73,9 @@ async function serveStatic(pathname: string): Promise<Response> {
  * 不依赖用户有没有在菜单里「安装命令行工具」，也不会用到 ~/.local/bin 里可能是别的版本的 am。
  */
 function privateCLI(): string {
+  // Windows 上不写 shim：.cmd 不能直接 spawn，经 cmd.exe 又要转义多行参数。am 就是 am.cjs，
+  // 由 envutil.amCommand 用本应用的 Electron（ELECTRON_RUN_AS_NODE=1）来跑；渲染也不借用本应用的浏览器（见 browser.ts）。
+  if (process.platform === 'win32') return cliEntry();
   const file = path.join(app.getPath('userData'), 'bin', 'am');
   writeScript(file, shimScript());
   // 渲染用的浏览器包装脚本与 am 放在一起；shim 经 AM_BROWSER 把它的位置告诉 am。
@@ -81,7 +86,7 @@ function privateCLI(): string {
 async function handleRequest(request: Request): Promise<Response> {
   const url = new URL(request.url);
   if (url.host !== 'app') return new Response('not found', { status: 404 });
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/preview/')) {
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/preview/') || url.pathname.startsWith('/station-ui/') || url.pathname.startsWith('/station-media/')) {
     if (!backend) return new Response(JSON.stringify({ code: 'backend_down', message: '后台服务没有启动' }), { status: 503 });
     return backend.handle(request);
   }
@@ -135,6 +140,8 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
+  // 插件清单的 requires.am 按客户端的版本号查（发布时取 tag）。只设宿主版本：工具版本进渲染指纹，客户端不改它。
+  setHostVersion(app.getVersion());
   app.whenReady().then(async () => {
     // 打包后的 .app 用 build/icon.icns；开发时跑的是裸 Electron，Dock 里会是 Electron 的图标。
     if (!app.isPackaged) {
@@ -151,10 +158,13 @@ if (!app.requestSingleInstanceLock()) {
       // 引擎里经 envutil.amExecutable() 找 am 的地方（子进程环境的 AM_EXECUTABLE、PATH）也认这一份。
       process.env.AM_SELF = executable;
       // 进程内的后端直接调 HyperFrames 时（预览截图等）同样用客户端自带的浏览器。
-      process.env.AM_BROWSER = browserPath();
+      // Windows 上浏览器模式接不上 puppeteer 的管道（fd 3/4），交给 HyperFrames 自己的 chrome-headless-shell。
+      if (process.platform !== 'win32') process.env.AM_BROWSER = browserPath();
       // 进程内的后端（客户端的安装页、新建项目）装 HyperFrames CLI 与 npm 类工具时用客户端自带的 npm。
       const npm = npmCLI();
       if (npm !== '') process.env.AM_NPM_CLI = npm;
+      // 导演的 API key 经 safeStorage 加密落盘、解密后经 stdin 交给导演（见 keycodec.ts）。
+      installKeyCodec();
       backend = newServer({ executable });
     } catch (err) {
       dialog.showErrorBox('后台服务起不来', err instanceof Error ? err.message : String(err));
@@ -167,6 +177,23 @@ if (!app.requestSingleInstanceLock()) {
     // 界面报来的任务数与完成通知。通知只在没有窗口在前台时弹：人就在看着的时候不打扰。
     ipcMain.on('am:badge', (_event, count: number) => {
       app.setBadgeCount(Math.max(0, Math.trunc(Number(count) || 0)));
+    });
+    // 在 Finder 中显示：只认项目里的路径（后端 revealPath 校验），项目文件夹直接打开，其余在 Finder 里选中。
+    ipcMain.handle('am:reveal', async (_event, request: { project?: unknown; path?: unknown }) => {
+      if (!backend) return '后台服务没起来';
+      try {
+        const project = typeof request?.project === 'string' ? request.project : '';
+        const target = typeof request?.path === 'string' ? request.path : '';
+        const found = backend.revealPath(project, target);
+        if (found.folder) {
+          const error = await shell.openPath(found.path);
+          return error || '';
+        }
+        shell.showItemInFolder(found.path);
+        return '';
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
     });
     ipcMain.on('am:notify', (_event, message: { title?: string; body?: string }) => {
       // 桌宠窗口点了也会成为焦点窗口，但那不等于人在看客户端。

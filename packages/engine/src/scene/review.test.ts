@@ -1,4 +1,3 @@
-// 移植自 internal/scene/review_test.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -38,7 +37,7 @@ describe('review sections', () => {
 
   // 风格示例不再成为渲染器的强制参照。
   it('buildPrompt ignores style examples', () => {
-    const dir = writeScene('{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello","style_guide":"frame.md"}');
+    const dir = writeScene('{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
     fs.writeFileSync(path.join(dir, 'frame.md'), frameWithCanvas(1080, 1920));
     const prompt = buildPrompt(load(dir), null);
     for (const banned of ['scene_archetypes', 'example_png', '不照抄', 'display_stack']) {

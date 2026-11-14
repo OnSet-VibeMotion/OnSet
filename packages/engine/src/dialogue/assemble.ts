@@ -1,4 +1,3 @@
-// 移植自 internal/dialogue/assemble.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import { envMap } from '../envutil';

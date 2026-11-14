@@ -1,6 +1,6 @@
 /**
  * Studio 后端的 HTTP 辅助：fetch 风格的 JSON 响应、错误格式、请求体解码、文件响应（对应 http.ServeFile）
- * 与 Go 时间格式。移植自 internal/studio/studio.go 的 write / error / method 与 api_sessions.go 的 decodeJSON。
+ * 与 Go 时间格式。
  *
  * Go 版是 net/http 处理函数；TS 版暴露 handle(request: Request): Promise<Response>，Electron 主进程用
  * am://app/ 协议承接界面请求后直接调它，vitest 里也直接构造 Request 测。

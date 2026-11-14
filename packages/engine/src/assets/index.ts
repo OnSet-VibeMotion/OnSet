@@ -1,13 +1,13 @@
 /**
- * am 自带的项目骨架。移植自仓库根的 assets.go。
+ * am 自带的项目骨架。
  *
  * Go 版用 //go:embed 把 assets/ 打进二进制；TS 版从磁盘读：开发时是仓库里的 assets/，
  * 打包后是应用资源目录里的 assets/（客户端与命令行的启动方经 AM_ASSETS_DIR 告知）。
  *
- * 三棵源树：
- *   assets/shared/                 与画幅、风格都无关，所有项目共用
- *   assets/presets/<画幅>/          只随画幅变化（由预设生成器产出）
- *   assets/styles/<风格>/<画幅>/    风格 × 画幅（文本由生成器产出，示例图手绘）
+ * 两棵源树：
+ *   assets/shared/           与画幅无关，所有项目共用
+ *   assets/presets/<画幅>/   只随画幅变化（frame.md，由生成器从画幅表写出）
+ * 制作提示词不拷进项目：段落在 assets/prompts/ 与 assets/plugins/<id>/sections/，开工时按流程组合（flow.composeFlowPrompt）。
  * 每棵树的内部路径就是它在项目根下的目标路径，project.initialize 直接叠加拷贝，不做路径改写。
  *
  * 遍历规则照搬 go:embed：目录里名字以 . 或 _ 开头的条目一律跳过（macOS 的 .DS_Store 就靠这条挡住），
@@ -34,7 +34,7 @@ export function assetsBase(): string {
   for (const start of starts) {
     let dir = path.resolve(start);
     for (;;) {
-      if (fs.existsSync(path.join(dir, 'assets', 'shared', 'PROMPT.md'))) {
+      if (fs.existsSync(path.join(dir, 'assets', 'shared', 'article-to-motion.conf'))) {
         cachedRoot = dir;
         return dir;
       }
@@ -127,19 +127,11 @@ export function shared(): AssetTree {
   return tree('assets/shared');
 }
 
-/** 指定画幅预设的素材树。 */
-export function preset(id: string): AssetTree {
-  const sub = tree(`assets/presets/${id}`);
-  if (!fs.existsSync(sub.dir)) throw new Error(`找不到预设素材 ${id}: open assets/presets/${id}: file does not exist`);
-  if (!sub.exists('PROMPT-PRODUCTION.md')) throw new Error(`预设素材 ${id} 不完整，缺少 PROMPT-PRODUCTION.md`);
-  return sub;
-}
-
-/** 指定风格在指定画幅下的素材树（frame.md、风格说明书、示例图）。 */
-export function style(styleID: string, canvasID: string): AssetTree {
-  const sub = tree(`assets/styles/${styleID}/${canvasID}`);
-  if (!fs.existsSync(sub.dir)) throw new Error(`找不到风格素材 ${styleID}/${canvasID}: open assets/styles/${styleID}/${canvasID}: file does not exist`);
-  if (!sub.exists('frame.md')) throw new Error(`风格素材 ${styleID}/${canvasID} 不完整，缺少 frame.md`);
+/** 指定画幅的源树（frame.md）。 */
+export function canvas(canvasID: string): AssetTree {
+  const sub = tree(`assets/presets/${canvasID}`);
+  if (!fs.existsSync(sub.dir)) throw new Error(`找不到画幅素材 ${canvasID}: open assets/presets/${canvasID}: file does not exist`);
+  if (!sub.exists('frame.md')) throw new Error(`画幅素材 ${canvasID} 不完整，缺少 frame.md`);
   return sub;
 }
 
@@ -152,36 +144,4 @@ export function builtinSkills(): Set<string> {
   for (const entry of shared().readDir('.agents/skills')) if (entry.isDir) out.add(entry.name);
   if (out.size === 0) throw new Error('内置技能树是空的：assets/shared/.agents/skills');
   return out;
-}
-
-/** 字体在用户项目里的目录，与 frame.md typography.font_files 的前缀一致。 */
-export const FontsDir = 'assets/fonts/';
-
-/** 字体池里的一款字体：文件与它的许可证。对应 preset.Font 里用到的两个字段。 */
-export interface FontRef {
-  file: string;
-  license: string;
-}
-
-/** 从字体池取出给定字体及其许可证，键是项目内的相对路径；许可证按文件去重。 */
-export function fontFiles(fonts: FontRef[]): Map<string, Buffer> {
-  const out = new Map<string, Buffer>();
-  const pool = tree('assets/fontpool');
-  for (const font of fonts) {
-    for (const name of [font.file, font.license]) {
-      if (out.has(FontsDir + name)) continue;
-      if (!pool.exists(name)) throw new Error(`字体池里没有文件 ${name}`);
-      out.set(FontsDir + name, pool.readFile(name));
-    }
-  }
-  return out;
-}
-
-/** 所选风格要从字体池带进项目的文件。 */
-export function styleFonts(style: { id: string; fonts: FontRef[] }): Map<string, Buffer> {
-  try {
-    return fontFiles(style.fonts);
-  } catch (err) {
-    throw new Error(`风格 ${style.id}: ${err instanceof Error ? err.message : String(err)}`);
-  }
 }

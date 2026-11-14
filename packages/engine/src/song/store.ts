@@ -1,5 +1,4 @@
 // Package song owns immutable song candidates and their derived timing contract.
-// 移植自 internal/song/store.go。
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';

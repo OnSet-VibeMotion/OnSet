@@ -154,6 +154,7 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
     cwd,
     approvalPolicy: 'untrusted',
     sandbox: 'workspace-write',
+    ...(spec.model ? { model: spec.model } : {}),
     config: {
       'sandbox_workspace_write.network_access': true,
       ...(writable.length > 0 ? { 'sandbox_workspace_write.writable_roots': writable } : {}),

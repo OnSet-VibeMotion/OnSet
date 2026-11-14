@@ -1,7 +1,7 @@
 // 记忆文件 frontmatter 的读写，按 gopkg.in/yaml.v3 的规则。只供本包内部使用。
 //
-// 写出：Go 版用 yaml.NewEncoder + SetIndent(2) 编码 Meta。记忆文件内容进快照、参与摘要，
-// 用户已有的记忆库是 Go 写的，这里哪怕引号风格差一点，快照摘要就对不上、Drift 全报漂移。
+// 写出：现行的固定格式是 yaml.v3 的 Encoder + SetIndent(2)。记忆文件内容进快照、参与摘要，
+// 写法哪怕引号风格差一点，快照摘要就对不上、Drift 全报漂移。
 // 所以照 yaml.v3 的 encode.go（何时必须加引号）与 emitterc.go（libyaml 的标量分析与
 // 风格选择、双引号转义）移植了需要的那部分：字符串标量、字符串序列、一层嵌套映射。
 // yaml.v3 的行宽是无限（best_width = -1），不折行。
@@ -239,7 +239,7 @@ function doubleQuoted(value: string): string {
 /**
  * 字面块（|）：yaml_emitter_write_block_scalar_hints 与 write_literal_scalar。
  * 照抄 libyaml 的写法：正文第一个字符是换行时，它被当成头部那一行的行尾写出（yaml.v3 的
- * 写法本身会丢掉这个前导换行，这里照样丢，否则写出的字节与 Go 版不同）。
+ * 写法本身会丢掉这个前导换行，这里照样丢，否则写出的字节与现行格式不同）。
  * 返回写出的文本，以及结尾是否停在行首（是则后面不用再补换行）。
  */
 function literal(value: string, indent: string): { text: string; atLineStart: boolean } {

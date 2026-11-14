@@ -1,4 +1,3 @@
-// 移植自 internal/concat/concat_test.go。
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';

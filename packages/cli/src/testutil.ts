@@ -6,7 +6,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, onTestFinished } from 'vitest';
 import * as hyperframes from '@am/engine/hyperframes';
-import * as preset from '@am/engine/preset';
 import { fakeBrowser, fakeCLI } from '@am/engine/hyperframes/hftest';
 import { execute } from './cli';
 import type { Out } from './cobra';
@@ -111,7 +110,7 @@ export function makeClip(file: string, filter: string, ...extra: string[]): void
 export async function initProject(): Promise<string> {
   const root = path.join(tempDir(), 'video');
   const out = new Buffer();
-  const code = await execute(['init', root, '--canvas', 'vertical-3x4', '--style', preset.defaultStyle().id, '--skip-hyperframes'], out, out);
+  const code = await execute(['init', root, '--canvas', 'vertical-3x4', '--skip-hyperframes'], out, out);
   if (code !== 0) throw new Error(`init code=${code} output=${out.text}`);
   return root;
 }
@@ -122,6 +121,13 @@ export function writeExecutable(file: string, body: string): void {
   fs.writeFileSync(file, body, { mode: 0o755 });
 }
 
+/** 按 ffmpeg 滤镜里的 size= 给镜头目录写一份 frame.md（画幅只从 frame.md 取）。 */
+export function writeFrameFor(dir: string, filter: string): void {
+  const m = /size=(\d+)x(\d+)/.exec(filter);
+  const [w, h] = m ? [m[1], m[2]] : ['1080', '1440'];
+  fs.writeFileSync(path.join(dir, 'frame.md'), `---\ncanvas:\n  width_px: ${w}\n  height_px: ${h}\n  fps: 30\n---\n`);
+}
+
 /** media_test.go 的 makeSceneDir：建一个可被 scene.load 读取的镜头目录，产物用 ffmpeg 合成。 */
 export function makeSceneDir(root: string, id: string, duration: number, filter: string): string {
   const dir = path.join(root, id);
@@ -129,6 +135,7 @@ export function makeSceneDir(root: string, id: string, duration: number, filter:
   fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\nx\n');
   const body = `{"id":"${id}","duration_seconds":${String(duration)},"output":"out.mp4","transcript":"transcript.srt","text":"hello"}`;
   fs.writeFileSync(path.join(dir, 'scene.json'), body);
+  writeFrameFor(dir, filter);
   makeClip(path.join(dir, 'out.mp4'), filter);
   return dir;
 }

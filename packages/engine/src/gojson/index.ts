@@ -1,8 +1,8 @@
 /**
- * 与 Go encoding/json 逐字节一致的 JSON 写出。
+ * am 现行的固定 JSON 写法（规则取自 Go encoding/json）。
  *
- * 用户已有的项目、记忆库与渲染指纹都是 Go 版写的，TS 版写出的文件哪怕差一个字节，
- * 指纹就对不上、老镜头全被判为过期。凡是要落盘或参与摘要的 JSON 都必须经这里，不要用 JSON.stringify。
+ * 项目文件、记忆库与渲染指纹都按这份写法逐字节固定：写法一变，同样的输入就算出不同的摘要，
+ * 已渲染的镜头全被判为过期。凡是要落盘或参与摘要的 JSON 都必须经这里，不要用 JSON.stringify。
  *
  * 与 JSON.stringify 的差别：
  * - 默认把 < > & 转义成 < > &（Go 的 HTML 转义）；Encoder.SetEscapeHTML(false) 对应 escapeHTML: false。

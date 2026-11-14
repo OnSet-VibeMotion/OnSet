@@ -11,7 +11,10 @@
  * job_cancel 停掉。
  */
 import { type ChildProcess, spawn } from 'node:child_process';
+import * as director from '@am/engine/director';
+import * as flow from '@am/engine/flow';
 import { parseWorkerOutput, visibleText, workerArgs } from '@am/engine/opworker';
+import { groupSpawnOptions, killTree } from '@am/engine/procgroup';
 import { nodeCommand } from '@am/engine/toolpath';
 import './cli';
 import { allOps, normalizeParams, type Op, opScopes, type ParamSpec, type ParamValues } from './ops/op';
@@ -53,6 +56,8 @@ export interface ToolDef {
   op?: Op;
   /** tool_help 返回的完整说明。 */
   help: string;
+  /** 第三方站的操作：执行时落到 station_run。 */
+  external?: { station: string; op: string };
 }
 
 /** 参数说明只留第一句：完整的在 tool_help 里，列表要短。 */
@@ -107,11 +112,52 @@ function helpText(op: Op): string {
   return parts.join('\n\n');
 }
 
-/** 这一档位的全部工具。 */
-export function describeTools(profile: Profile): ToolDef[] {
+/**
+ * 已装的第三方插件里编排工具能调的操作，做成不进操作表的 Op（参数校验、说明与内置工具同一套）。插件对所有项目生效。
+ * 只能由用户触发的操作（trigger: user）不在这里：它们只有界面上的按钮。
+ */
+export function externalOps(): { op: Op; external: { station: string; op: string } }[] {
+  const out: { op: Op; external: { station: string; op: string } }[] = [];
+  for (const s of flow.loadStations().stations) {
+    for (const m of s.manifest.ops) {
+      if (m.trigger !== 'agent') continue;
+      const params: Record<string, ParamSpec> = {};
+      for (const [key, spec] of Object.entries(m.params)) {
+        params[key] = { type: spec.type, description: spec.description, ...(spec.required ? { required: true } : {}), ...(spec.default !== undefined ? { default: spec.default as ParamSpec['default'] } : {}) };
+      }
+      const name = flow.toolName(s.manifest.id, m.name);
+      out.push({
+        op: {
+          name,
+          cli: [],
+          summary: `${m.summary}（第三方站「${s.manifest.name}」）`,
+          description: (m.description ? m.description + '\n\n' : '') + `由用户装的第三方插件「${s.manifest.name}」（${s.manifest.id} ${s.manifest.version}）提供，不是 am 自带的工具。`,
+          ...(m.examples ? { examples: m.examples } : {}),
+          params,
+          scopes: ['orchestrator'],
+          run: () => {
+            throw new Error(`${name} 要经 station_run 执行`);
+          },
+        },
+        external: { station: s.manifest.id, op: m.name },
+      });
+    }
+  }
+  return out;
+}
+
+/** 一次调用实际起哪条操作：第三方工具落到 station_run。 */
+export function callTarget(tool: ToolDef, params: ParamValues): { name: string; params: ParamValues } {
+  if (!tool.external) return { name: tool.op!.name, params };
+  return { name: 'station_run', params: { station: tool.external.station, op: tool.external.op, params: JSON.stringify(params), project_root: '.' } };
+}
+
+/** 这一档位的全部工具。root 给了时（编排档位），再加上项目里第三方站的工具。 */
+export function describeTools(profile: Profile, root = ''): ToolDef[] {
   const out: ToolDef[] = [];
-  for (const op of allOps()) {
-    if (!opScopes(op).includes(profile)) continue;
+  const extras = profile === 'orchestrator' && root !== '' ? externalOps() : [];
+  for (const { op, external } of [...allOps().map((op) => ({ op, external: undefined as ToolDef['external'] })), ...extras]) {
+    if (!external && !opScopes(op).includes(profile)) continue;
     const properties: Record<string, JSONSchema> = {};
     const required: string[] = [];
     for (const [key, spec] of visibleParams(op)) {
@@ -126,6 +172,7 @@ export function describeTools(profile: Profile): ToolDef[] {
       inputSchema: { type: 'object', properties, ...(required.length > 0 ? { required } : {}), additionalProperties: false },
       op,
       help: helpText(op),
+      ...(external ? { external } : {}),
     });
   }
   out.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -197,9 +244,30 @@ export const spawnOp: Spawner = (name, params) => {
     cwd: process.cwd(),
     env: command.env,
     stdio: ['ignore', 'pipe', 'pipe'],
-    detached: true,
+    // 各成进程组，取消时整组结束（Windows 上按进程树，见 procgroup）。
+    ...groupSpawnOptions(),
   });
 };
+
+/**
+ * 导演（am studio agent）用的执行进程：会再起导演的操作（director.KeyOps，整理经验）经 stdin 拿到导演的 key，
+ * 其余与 spawnOp 相同。执行进程解不开客户端加密的凭据文件，key 只能由手里有它的进程往下交。
+ */
+export function spawnOpWithKeys(keys: Record<string, string>): Spawner {
+  return (name, params) => {
+    if (!director.KeyOps.has(name) || Object.keys(keys).length === 0) return spawnOp(name, params);
+    const command = opCommand(name, params);
+    const child = spawn(command.file, command.args, {
+      cwd: process.cwd(),
+      env: { ...command.env, [director.KeysStdinEnv]: '1' },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      ...groupSpawnOptions(),
+    });
+    child.stdin!.on('error', () => {});
+    child.stdin!.end(JSON.stringify(keys) + '\n');
+    return child;
+  };
+}
 
 interface Job {
   id: string;
@@ -293,11 +361,7 @@ export class Jobs {
 
 function killGroup(child: ChildProcess): void {
   if (child.pid === undefined) return;
-  try {
-    process.kill(-child.pid, 'SIGTERM');
-  } catch {
-    child.kill('SIGTERM');
-  }
+  if (!killTree(child.pid, 'SIGTERM')) child.kill('SIGTERM');
 }
 
 function clip(text: string): string {
@@ -319,7 +383,8 @@ export async function serveToolsMCP(
   signal?: AbortSignal,
 ): Promise<void> {
   const send = (msg: Record<string, unknown>): void => write(JSON.stringify({ jsonrpc: '2.0', ...msg }) + '\n');
-  const tools = describeTools(profile);
+  // 工作目录就是项目根（编排档位）：已装的第三方插件各自的工具一起登记。
+  const tools = describeTools(profile, process.cwd());
   const byName = new Map(tools.map((t) => [t.name, t]));
   const jobs = new Jobs(spawner);
   const pending: Promise<void>[] = [];
@@ -386,7 +451,8 @@ export async function serveToolsMCP(
             } catch (err) {
               return reply({ text: (err as Error).message, isError: true });
             }
-            reply(await jobs.wait(jobs.start(tool.op.name, params), seconds, signal));
+            const target = callTarget(tool, params);
+            reply(await jobs.wait(jobs.start(target.name, target.params), seconds, signal));
           };
           pending.push(handle());
           break;

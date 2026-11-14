@@ -1,4 +1,3 @@
-// 移植自 internal/hyperframes/hyperframes.go。
 //
 // 把上游官方技能按固定 commit 装进用户项目。
 //
@@ -32,7 +31,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { compareBytes } from '../gojson';
 import { missing } from '../prereq';
-import { MissingToolPrefix } from '../envutil';
+import { MissingToolPrefix, dataDir } from '../envutil';
 import { gitHint, usableGit } from '../toolpath';
 import { downloadTree, githubRepo } from './download';
 import { PinnedSkillsCommit, PinnedSkillsCount, PinnedVersion, SkillsRepoURL, SkillsSubdir, manifestFile, skillsSubdirsInRepo } from './constants';
@@ -102,13 +101,12 @@ function resolve(opts: Options, defaultVersion: string): Resolved {
 }
 
 /**
- * 用户级缓存根目录：XDG_DATA_HOME 或 HOME 下的 .local/share/am/hyperframes。
- * 两者都没有时返回空串（不用缓存），不去猜家目录。
+ * 用户级缓存根目录：<数据目录>/hyperframes（envutil.dataDir：XDG_DATA_HOME、Windows 的 LOCALAPPDATA 或 HOME）。
+ * 都没有时返回空串（不用缓存），不去猜家目录。
  */
 export function defaultCacheDir(env: Record<string, string | undefined>): string {
-  if (env.XDG_DATA_HOME) return path.join(env.XDG_DATA_HOME, 'am', 'hyperframes');
-  if (env.HOME) return path.join(env.HOME, '.local', 'share', 'am', 'hyperframes');
-  return '';
+  const data = dataDir(env);
+  return data === '' ? '' : path.join(data, 'hyperframes');
 }
 
 /** 本机缓存里已有校验过的固定版本技能树。 */

@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { errorText, forUser, post, rawURL } from '../api';
+import { api, errorText, forUser, post, rawURL } from '../api';
 import type { Attachment, BeatGrid, BeatPlanSegment, BeatState } from '../types';
 import type { RunAction } from './Preview';
+import type { PageViewProps } from './pageViews';
 import { Markdown } from './chat/Markdown';
 import '../beat.css';
 
@@ -610,6 +611,48 @@ function Story({ story, open, onQuick }: { story: NonNullable<BeatState['story']
         <button onClick={() => onQuick('故事和文案：', [], true)}>提修改意见</button>
       </div>
     </section>
+  );
+}
+
+/** 读 /api/beat（卡点插件登记的接口）；version 变了重读。读不到（项目没开卡点、接口不在）时为 null。 */
+function useBeatState(version: number): BeatState | null {
+  const [beat, setBeat] = useState<BeatState | null>(null);
+  useEffect(() => {
+    let live = true;
+    api<BeatState>('/api/beat')
+      .then((b) => live && setBeat(b))
+      .catch(() => live && setBeat(null));
+    return () => {
+      live = false;
+    };
+  }, [version]);
+  return beat;
+}
+
+/** 节拍页（卡点插件登记的页面 beat）：自己读 /api/beat。 */
+export function BeatPage(props: PageViewProps) {
+  const beat = useBeatState(props.version);
+  return <BeatTab beat={beat} version={props.version} busy={props.busy} run={props.run} onQuick={props.onQuick} onScene={props.onScene} />;
+}
+
+/** 不在节拍页时的一行提示：网格还没确认、或分镜计划算不出来时才出现。 */
+export function BeatBanner({ version, onTab }: PageViewProps) {
+  const beat = useBeatState(version);
+  if (!beat?.enabled) return null;
+  let text = '';
+  if (!beat.grid) text = '卡点模式：还没有节拍网格。';
+  else if (beat.grid.kind === 'draft') text = '节拍网格还没确认：试听一遍，重拍对上了再确认。';
+  else if (beat.plan_error) text = '分镜计划和节拍网格对不上：' + beat.plan_error;
+  if (!text) return null;
+  return (
+    <div className="banner beat" id="beat-banner">
+      <span>{text}</span>
+      {onTab && (
+        <button className="primary" onClick={() => onTab('beat')}>
+          去节拍页
+        </button>
+      )}
+    </div>
   );
 }
 

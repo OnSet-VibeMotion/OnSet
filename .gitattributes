@@ -1,0 +1,3 @@
+# 一律以 LF 检出：内置资产按字节下发、指纹按字节算，生成器幂等门逐字节比对。
+# Windows 上 git 默认把文本转成 CRLF（GitHub 的 windows runner 也是），不固定的话这些测试在 Windows 上全会失败。
+* text=auto eol=lf

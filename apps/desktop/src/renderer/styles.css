@@ -259,7 +259,17 @@ svg {
   height: 26px;
   display: flex;
 }
-/* 项目名用宋体，像片名；路径只在悬停提示里。 */
+/* 项目名用宋体，像片名；路径只在悬停提示里。旁边「在 Finder 中显示」平时隐藏，指到项目名一带才出现。 */
+.topbar .reveal-project {
+  margin-left: -12px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.project-switch:hover + .reveal-project,
+.topbar .reveal-project:hover,
+.topbar .reveal-project:focus-visible {
+  opacity: 1;
+}
 .project-switch {
   height: 36px;
   gap: 12px;
@@ -286,11 +296,35 @@ svg {
   letter-spacing: 0.14em;
   color: var(--muted);
 }
-/* 四个制作步骤，编号是等宽字；当前一步下面一条黄铜色细线。 */
+/* 五个制作步骤，编号是等宽字；正在看的一页下面一条黄铜色细线。
+   制作进度另外标：做过的步骤编号换成 ✓，现在在做的那一步编号是一枚黄铜色小章。 */
 .steps {
   display: flex;
+  align-items: center;
   gap: 28px;
-  margin-left: 28px;
+  margin-left: 20px;
+}
+/* 路线是步骤条的第一格，和后面的步骤隔一道细竖线。 */
+.steps-sep {
+  width: 1px;
+  height: 14px;
+  margin: 0 -8px;
+  background: var(--line-strong);
+}
+.steps .route-step .step-no {
+  display: inline-grid;
+  place-items: center;
+  color: var(--muted);
+}
+.steps .route-step.on .step-no {
+  color: var(--accent);
+}
+/* 有关卡在等你：编号位置换成黄铜色，字也提亮。 */
+.steps .route-step.waiting {
+  color: var(--accent-text);
+}
+.steps .route-step.waiting .step-no {
+  color: var(--accent);
 }
 .steps .step {
   height: 36px;
@@ -317,6 +351,18 @@ svg {
 .steps .step.on .step-no {
   color: var(--accent);
 }
+.steps .step.done .step-no {
+  color: var(--ok);
+}
+.steps .step.current {
+  color: var(--text);
+}
+.steps .step.current .step-no {
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
 .step-count {
   font: 11px var(--mono);
   color: var(--muted);
@@ -329,28 +375,6 @@ svg {
   height: 6px;
   border-radius: 50%;
   background: var(--accent);
-}
-/* 其余页面：小字列在右侧，不和四个步骤抢。 */
-.more-pages {
-  display: flex;
-  gap: 2px;
-}
-.more-pages button {
-  height: 30px;
-  padding: 0 8px;
-  border: 0;
-  background: transparent;
-  color: var(--faint);
-  font-size: 12px;
-}
-.more-pages button:hover {
-  background: transparent;
-  color: var(--text-2);
-}
-.more-pages button.on {
-  color: var(--text);
-  box-shadow: inset 0 -1px 0 var(--accent);
-  border-radius: 0;
 }
 .chip {
   font-size: 12px;
@@ -552,29 +576,6 @@ body.resizing video {
   font-family: var(--mono);
   font-size: 10px;
   color: var(--muted);
-}
-
-/* 顶栏的「画面」开关。 */
-button.panel-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid var(--line-strong);
-  background: transparent;
-  color: var(--text-2);
-  font-size: 12px;
-}
-button.panel-toggle:hover {
-  background: var(--chip);
-  color: var(--text);
-}
-button.panel-toggle.on {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-  color: var(--accent-text);
 }
 
 /* 窄窗口：面板变成盖在对话上的抽屉，对话不让位、输入框一直在。 */
@@ -1330,6 +1331,12 @@ h4 {
   max-height: 120px;
   overflow: auto;
 }
+.task-warning {
+  margin: 0;
+  color: var(--stale);
+  font-size: 12px;
+  word-break: break-all;
+}
 .task button {
   align-self: flex-start;
 }
@@ -1651,23 +1658,6 @@ button.skills-pill.bad {
   border-radius: 4px;
   background: var(--chip);
   color: var(--accent-text);
-}
-.style-brief {
-  margin: 0;
-  padding: 10px 12px;
-  border-left: 2px solid var(--accent);
-  border-radius: 0 8px 8px 0;
-  background: color-mix(in srgb, var(--bg) 60%, transparent);
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--text);
-  white-space: pre-wrap;
-}
-.style-brief span {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 11px;
-  color: var(--muted);
 }
 .palette {
   display: flex;
@@ -2042,4 +2032,30 @@ button.skills-pill.bad {
 }
 .platform-darwin .topbar {
   padding-left: 88px;
+}
+
+/* 顶栏右侧：画面开关、任务、设置都是图标；开着画面时画面开关是黄铜色。 */
+.topbar button.panel-toggle.on {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+.topbar .tasks-toggle {
+  position: relative;
+}
+.topbar .tasks-toggle .count {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 15px;
+  text-align: center;
+}
+.topbar-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--line-strong);
 }

@@ -1230,6 +1230,23 @@ div.tool {
   text-overflow: ellipsis;
   cursor: pointer;
 }
+.composer .agent-select select + select,
+.composer .agent-select select + .model-input {
+  /* 工具与模型在同一枚胶囊里：模型前面一道细分隔线，名字长时先收窄模型。 */
+  border-left: 1px solid var(--line-soft);
+  border-radius: 0;
+  max-width: 150px;
+  padding-left: 6px;
+}
+.composer .agent-select .model-input {
+  height: 22px;
+  width: 140px;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  color: var(--text);
+  outline: none;
+}
 .composer .agent-error {
   flex-basis: 100%;
 }
@@ -1445,7 +1462,7 @@ div.tool {
   text-overflow: ellipsis;
 }
 
-/* 推荐的整片风格：海报卡片，两列。 */
+/* 推荐的风格：海报卡片，两列；只给一段的卡片标出用在哪。 */
 .chat .style-picks {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -1482,6 +1499,18 @@ div.tool {
   font-weight: 400;
   font-size: 11px;
   color: var(--muted);
+}
+.chat .style-pick-scope {
+  align-self: flex-start;
+  font-size: 11px;
+  color: var(--muted);
+}
+.chat .style-pick.scoped .style-pick-scope {
+  padding: 1px 8px;
+  border: 1px solid var(--accent-line);
+  border-radius: 999px;
+  color: var(--accent-text);
+  background: var(--accent-soft);
 }
 .chat .style-pick-reason {
   font-size: 12px;
@@ -1615,4 +1644,154 @@ div.tool {
 .chat .permission-actions code {
   font: 11px var(--mono);
   color: var(--accent-text);
+}
+
+/* 对话顶上的一行：现在在制作路线的哪一站。等你的时候是黄铜色，AI 在做时是转着的小球。 */
+.chat .progress-strip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 calc(var(--gutter) - 6px) 4px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--text-3);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.chat .progress-strip:hover {
+  border-color: var(--line-strong);
+  color: var(--text-2);
+}
+.chat .progress-strip.waiting {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.chat .progress-strip .ps-label {
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.chat .progress-strip .ps-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat .progress-strip .ps-open {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.chat .progress-strip .ps-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.chat .progress-strip .ps-dot.done {
+  background: var(--ok);
+  box-shadow: none;
+}
+.chat .turn-stations {
+  color: var(--text-3);
+}
+.chat .jump-flash {
+  border-radius: var(--radius);
+  animation: jump-flash 1.8s ease;
+}
+@keyframes jump-flash {
+  0%,
+  40% {
+    box-shadow: 0 0 0 2px var(--accent-line);
+    background: var(--accent-soft);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+    background: transparent;
+  }
+}
+
+/* 「接下来」：等你的时候展开在那一行下面，说清现在该做什么。黄铜色细边，和等你确认的那一行同一个色。 */
+.chat .next-step {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 calc(var(--gutter) - 6px) 8px;
+  padding: 12px 14px 12px 16px;
+  border: 1px solid var(--accent-line);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--raised);
+}
+.chat .next-step .ns-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.chat .next-step .ns-kicker {
+  font: 11px var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--accent-text);
+}
+.chat .next-step strong {
+  font: 600 15px var(--serif);
+  color: var(--text);
+}
+.chat .next-step p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.chat .next-step .ns-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chat .next-step .ns-actions button {
+  height: 30px;
+  padding: 0 14px;
+  font-size: 12px;
+}
+.chat .next-step .ns-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+.chat .next-step .ns-confirm button {
+  height: 30px;
+  padding: 0 14px;
+  font-size: 12px;
+}
+
+/* 渲染工具没装在这台电脑上：开始制作不可点，顶上说清原因。 */
+.chat .chat-renderer-missing {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 var(--gutter, 24px);
+  padding: 10px 14px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--accent-text);
+}
+.chat .chat-renderer-missing svg {
+  flex: none;
+  margin-top: 3px;
+}
+.chat .intro .vision-note {
+  margin-top: 14px;
 }

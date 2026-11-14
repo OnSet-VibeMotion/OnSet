@@ -1,4 +1,3 @@
-// 移植自 internal/memory/models.go。
 import path from 'node:path';
 import { sortedKeys } from '../gojson';
 import { configuredModel } from '../tools';
@@ -53,10 +52,11 @@ export function observeModel(s: Store, renderer: string, model: string): void {
 }
 
 /**
- * 渲染工具当前的模型：工具配置文件声明的默认模型优先
- * （codex 的 config.toml），否则取最近一次实测到的；都没有时返回空串。
+ * 渲染工具当前的模型：am 设置里选定的（declared，见 config.rendererModelFor）优先，其次是工具配置文件声明的
+ * 默认模型（codex 的 config.toml），否则取最近一次实测到的；都没有时返回空串。
  */
-export function currentModel(s: Store, renderer: string, env: Record<string, string | undefined>): string {
+export function currentModel(s: Store, renderer: string, env: Record<string, string | undefined>, declared = ''): string {
+  if (declared !== '') return declared;
   const configured = configuredModel(renderer, env);
   if (configured !== '') return configured;
   return readSeen(path.join(s.dir, modelsFile))[renderer]?.model ?? '';

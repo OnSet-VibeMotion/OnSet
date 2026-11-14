@@ -6,7 +6,7 @@
  * exec / stream-json，见 run.ts。
  */
 import { MissingToolError, lookPath as envLookPath } from '../envutil';
-import { DefaultGrace, ExitError as ProcessExitError, abortReason, start } from '../procgroup';
+import { DefaultGrace, ExitError as ProcessExitError, abortReason, killTree, start } from '../procgroup';
 import { newUsage, usageEmpty } from '../tools';
 import { KindDone, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, KindUsage, type Event } from './parse';
 import { RPCPeer } from './rpc';
@@ -128,11 +128,7 @@ export async function runInteractive(
   // 一轮结束：这类工具是常驻服务，不会自己退出。
   child.stdin?.end();
   if (!child.killed && child.exitCode === null) {
-    try {
-      process.kill(-child.pid!, 'SIGTERM');
-    } catch {
-      child.kill('SIGTERM');
-    }
+    if (child.pid === undefined || !killTree(child.pid, 'SIGTERM')) child.kill('SIGTERM');
   }
   await waited;
   if (pending !== '') peer.handleLine(pending);

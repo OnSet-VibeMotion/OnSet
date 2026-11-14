@@ -13,13 +13,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { dataDir } from '../envutil';
 import { atomicWrite } from '../fsutil';
-import { ValidTools } from '../tools';
+import { ValidRenderers, ValidTools } from '../tools';
 import { AlignAuto, defaultTTSProvider, validAligner, validTTSProvider } from './providers';
 
 export const SettingsFileEnv = 'AM_SETTINGS_FILE';
 
 /** 设置页管的几项：「什么用什么」。 */
-export const GlobalKeys = ['ORCHESTRATOR', 'RENDERER', 'TTS_PROVIDER', 'ALIGN_PROVIDER', 'SCENE_JOBS', 'MEMORY', 'AUTO_APPROVE'] as const;
+export const GlobalKeys = ['ORCHESTRATOR', 'ORCHESTRATOR_MODEL', 'RENDERER', 'RENDERER_MODEL', 'TTS_PROVIDER', 'ALIGN_PROVIDER', 'SCENE_JOBS', 'MEMORY', 'AUTO_APPROVE'] as const;
 export type GlobalKey = (typeof GlobalKeys)[number];
 
 /**
@@ -28,7 +28,10 @@ export type GlobalKey = (typeof GlobalKeys)[number];
  */
 export const GlobalDefaults: Record<GlobalKey, string> = {
   ORCHESTRATOR: 'codex',
+  // 模型留空是「这家工具自己的默认模型」（它自己的配置或登录账号决定），am 不另定默认。
+  ORCHESTRATOR_MODEL: '',
   RENDERER: 'claude',
+  RENDERER_MODEL: '',
   TTS_PROVIDER: defaultTTSProvider(),
   ALIGN_PROVIDER: AlignAuto,
   SCENE_JOBS: '3',
@@ -36,6 +39,23 @@ export const GlobalDefaults: Record<GlobalKey, string> = {
   // 客户端里编排工具要跑白名单外的命令时：off 每次弹卡片问，on 直接允许（studio/permissions.ts）。
   AUTO_APPROVE: 'off',
 };
+
+/**
+ * 模型跟着哪一项工具：模型名只对那一家工具有意义（claude 的 opus 交给 codex 就是错的），
+ * 所以 config.load 只在「写这个模型的那一层，工具也是现在这一家」时才用它，见 config.ts 的 modelFor。
+ */
+export const ModelToolKey = { ORCHESTRATOR_MODEL: 'ORCHESTRATOR', RENDERER_MODEL: 'RENDERER' } as const;
+
+/** 反过来：工具项对应的模型项。在同一层换了工具，那一层的模型要一起清掉（writeGlobal、config_set）。 */
+export const ToolModelKey: Readonly<Record<string, GlobalKey>> = { ORCHESTRATOR: 'ORCHESTRATOR_MODEL', RENDERER: 'RENDERER_MODEL' };
+
+/**
+ * 模型名的写法：各家的模型 ID 只用字母、数字与 . _ - : / @ # [ ]（claude 的 claude-opus-5-5[1m]、
+ * opencode 的 provider/model#variant）。空白与引号一律不收：它要原样拼进命令行与 TOML 覆盖项。
+ */
+export function validModel(value: string): boolean {
+  return value.length <= 200 && /^[A-Za-z0-9._:/@#\[\]+-]+$/.test(value);
+}
 
 export function isGlobalKey(key: string): key is GlobalKey {
   return (GlobalKeys as readonly string[]).includes(key);
@@ -54,8 +74,12 @@ export function validateSetting(key: string, value: string): string {
   if (value === '') return '';
   switch (key) {
     case 'ORCHESTRATOR':
-    case 'RENDERER':
       return ValidTools.has(value) ? '' : `${key} 只能是 ${[...ValidTools].join(' ')}`;
+    case 'RENDERER':
+      return ValidRenderers.has(value) ? '' : `${key} 只能是 ${[...ValidRenderers].join(' ')}`;
+    case 'ORCHESTRATOR_MODEL':
+    case 'RENDERER_MODEL':
+      return validModel(value) ? '' : `不认识的模型名 ${value}：只能用字母、数字与 . _ - : / @ # [ ] +`;
     case 'TTS_PROVIDER':
       return validTTSProvider(value) ? '' : `不认识的配音工具 ${value}`;
     case 'ALIGN_PROVIDER':
@@ -84,6 +108,8 @@ export function writeGlobal(env: Record<string, string | undefined>, values: Rec
   }
   const current = fs.existsSync(file) ? read(file) : {};
   for (const [key, value] of Object.entries(values)) {
+    const modelKey = ToolModelKey[key];
+    if (modelKey && !Object.hasOwn(values, modelKey) && (current[key] ?? '') !== value.trim()) delete current[modelKey];
     if (value.trim() === '') delete current[key];
     else current[key] = value.trim();
   }

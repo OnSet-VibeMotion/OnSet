@@ -1,5 +1,5 @@
 /**
- * am 的根命令与命令之间共用的小工具。移植自 internal/cli/cli.go。
+ * am 的根命令与命令之间共用的小工具。
  *
  * 命令行只给开发与 CI 用，不对外提供：制作步骤都是操作表里的操作（ops/），由 mountOps 挂进命令树；
  * 这里另挂几个客户端自己的入口（setup、init、studio 下的两个 MCP 服务）。
@@ -11,8 +11,6 @@ import { Command, ExitError, type Out, type PositionalArgs, ref } from './cobra'
 // 各模块在加载时把自己的操作登记进操作表（ops/op.ts）；命令行与工具服务都从那张表来。
 import './align';
 import './audio';
-import './beat_cmd';
-import './cast_cmd';
 import './filmstyle';
 import './hyperframes';
 import './media';
@@ -21,11 +19,12 @@ import './reads_cmd';
 import './review_cmd';
 import './scene_cmd';
 import './scene_cues';
-import './song_cmd';
-import './style_cmd';
+import './station_cmd';
 import './usage_cmd';
-import './validate_cast';
 import './validate_cmd';
+// 内置插件登记的操作（例如发布的 validate_publish）。
+import './plugin_ops';
+import './prompt_cmd';
 import './voice_cmd';
 import { mountOps } from './ops/cli';
 import { newInitCommand } from './project_cmds';

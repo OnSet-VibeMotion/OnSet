@@ -1,10 +1,9 @@
-// 移植自 internal/config/providers_test.go。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { childEnvironment, load } from './config';
-import { AlignAuto, Aligners, TTSProviders, alignerIDs, resolveAligner, ttsProviderIDs } from './providers';
+import { AlignAuto, Aligners, TTSProviders, alignerIDs, resolveAligner, ttsProviderIDs, validAligner, validTTSProvider } from './providers';
 
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'am-config-'));
@@ -45,7 +44,10 @@ describe('providers', () => {
   it('lists provider ids', () => {
     expect(ttsProviderIDs().startsWith('minimax bailian ')).toBe(true);
     expect(ttsProviderIDs()).toContain('elevenlabs');
-    expect(alignerIDs()).toBe('auto mlx funasr');
+    expect(alignerIDs()).toBe('auto mlx funasr x:<插件>');
+    expect(validTTSProvider('x:my-voice')).toBe(true);
+    expect(validTTSProvider('x:Bad')).toBe(false);
+    expect(validAligner('x:my-align')).toBe(true);
     expect(Aligners.length).toBe(2);
   });
 });

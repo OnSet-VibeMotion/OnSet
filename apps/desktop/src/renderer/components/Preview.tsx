@@ -1,25 +1,35 @@
+import { playerProps } from '../media';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { api, errorText, post, rawURL } from '../api';
-import type { Attachment, BeatState, Box, ProjectFilmStyle, ProjectState, ProjectUsage, Scene, TreeFile, Usage } from '../types';
+import type { Attachment, ProgressState, Box, ProjectFilmStyle, ProjectState, ProjectUsage, Scene, TreeFile, Usage } from '../types';
 import { cssSelector } from '../selector';
 import { Icon } from './Icon';
 import { MemoryTab } from './Memory';
 import { VoicesTab } from './Voices';
-import { FilmStyleDialog, FilmStylePicker, Poster, styleKey, useFilmStyles } from './FilmStyles';
+import { FilmStyleDialog, FilmStylePicker, Poster, SceneStyleDialog, styleKey, useFilmStyles } from './FilmStyles';
 import { Markdown } from './chat/Markdown';
 import { SceneActivityPanel } from './RenderActivity';
 import { ScriptTab } from './Script';
-import { BeatTab } from './Beat';
+import { pageView, pageViews, type PageViewID } from './pageViews';
 import { PublishTab } from './Publish';
+import { isStationTab, StationPage, StationSlots } from './Stations';
+
+import { SceneBrief, StoryboardTab } from './Storyboard';
+import { ProgressTab } from './Progress';
 import { FileTree } from './Sidebar';
+import { canReveal, revealInFinder, revealLabel } from '../reveal';
 
-export type Tab = 'beat' | 'script' | 'scene' | 'compose' | 'final' | 'style' | 'voice' | 'review' | 'publish' | 'memory' | 'file';
+export type BuiltinTab = 'progress' | 'script' | 'storyboard' | 'scene' | 'compose' | 'final' | 'style' | 'voice' | 'review' | 'publish' | 'memory' | 'file';
+/** 内置插件登记的页面（组件在 pageViews.tsx）与第三方插件自己的页面：x:<站>:<页面>（Stations.tsx）。 */
+export type Tab = BuiltinTab | PageViewID | `x:${string}`;
 
-export const tabs: [Tab, string][] = [
-  ['beat', '节拍'],
+/** 宿主的页面。内置插件的页面（例如卡点的节拍页）有没有、排在哪由后端的页面表定（/api/state 的 pages）。 */
+const hostTabs: [Tab, string][] = [
+  ['progress', '制作路线'],
   ['script', '口播稿'],
+  ['storyboard', '分镜'],
   ['scene', '镜头'],
   ['compose', '合成'],
   ['final', '成片'],
@@ -31,17 +41,24 @@ export const tabs: [Tab, string][] = [
   ['file', '文件'],
 ];
 
-/** 顶栏中间的四个步骤，按制作顺序编号；其余页面（合成、复查、风格、音色、记忆、文件）在顶栏右侧用小字列出。 */
-export const stepTabs: Tab[] = ['script', 'scene', 'final', 'publish'];
+/** 全部页面的名字（宿主的与界面认识的内置插件页面），切页、显示名字时查它。 */
+export const tabs: [Tab, string][] = [...hostTabs, ...Object.entries(pageViews).map(([id, v]): [Tab, string] => [id as Tab, v.label])];
 
-/** 卡点项目没有口播稿：第一步换成节拍。 */
-export function stepTabsFor(beatMode: boolean): Tab[] {
-  return beatMode ? ['beat', ...stepTabs.slice(1)] : stepTabs;
-}
+/**
+ * 顶栏中间的五个步骤，按制作顺序编号；其余页面（合成、复查、风格、音色、记忆、文件）在顶栏右侧用小字列出。
+ * 项目的步骤来自它的流程声明（/api/state 的 flow.steps），这里只是还没读到时的缺省（口播）。
+ */
+export const stepTabs: Tab[] = ['script', 'storyboard', 'scene', 'final', 'publish'];
 
-/** 顶栏列出的页面：卡点项目不列口播稿，其他项目不列节拍（编排工具仍可以 am studio show 切过去）。 */
-export function visibleTabs(beatMode: boolean): [Tab, string][] {
-  return tabs.filter(([id]) => (beatMode ? id !== 'script' : id !== 'beat'));
+/**
+ * 顶栏列出的页面：后端页面表里有的（pages，按它的顺序；还没读到时只列宿主的），不列这个项目的流程用不上的页
+ * （flow.hidden_pages；编排工具仍可以 studio_show 切过去）。界面没有组件的页面不列。
+ */
+export function visibleTabs(hidden: readonly string[], pages?: readonly { id: string; label: string }[]): [Tab, string][] {
+  const known = (id: string) => hostTabs.some(([t]) => t === id) || pageView(id) !== undefined;
+  const list: [Tab, string][] = pages ? pages.filter((pg) => known(pg.id)).map((pg) => [pg.id as Tab, pg.label]) : hostTabs;
+  // 制作路线在顶栏步骤条左边有自己的按钮。
+  return list.filter(([id]) => id !== 'progress' && !hidden.includes(id));
 }
 
 /** 按钮触发的写任务：返回 task_id 的接口。App 负责发请求、提示与刷新任务列表。 */
@@ -60,13 +77,17 @@ interface Props {
   /** 这一轮对话改过的文件，文件树里打点。 */
   recent: Set<string>;
   version: number;
-  beat: BeatState | null;
+  /** 这个项目用得上的内置插件页面（后端页面表里有、流程没藏起来的）：它们的提示条挂在面板顶上。 */
+  pages: string[];
+  progress: ProgressState | null;
   busy: string;
   onAttach: (attachment: Attachment) => void;
   /** 把一条消息交给对话：draftOnly 为 true 时只填进输入框。 */
   onQuick: (text: string, attachments: Attachment[], draftOnly?: boolean) => void;
   onFile: (path: string) => void;
   onScene: (id: string) => void;
+  /** 跳到对话里的某一轮（制作路线里点「做了什么」）。 */
+  onTurn: (sessionId: string, turnId: string) => void;
   run: RunAction;
 }
 
@@ -74,11 +95,33 @@ export function Preview(props: Props) {
   const scene = props.scenes.find((s) => s.id === props.sceneId) ?? null;
   return (
     <main className="pane center">
-      {props.beat?.enabled && props.tab !== 'beat' && <BeatBanner beat={props.beat} onTab={props.onTab} />}
+      {props.pages
+        .filter((id) => id !== props.tab)
+        .map((id) => {
+          const banner = pageView(id)?.banner;
+          return banner ? <Fragment key={id}>{banner(viewProps(props))}</Fragment> : null;
+        })}
       <div className="preview-body">
-        {props.tab === 'beat' && <BeatTab beat={props.beat} version={props.version} busy={props.busy} run={props.run} onQuick={props.onQuick} onScene={props.onScene} />}
+        {props.tab === 'progress' && (
+          <ProgressTab
+            progress={props.progress}
+            flowError={props.state?.flow_error}
+            busy={props.busy}
+            onPage={(page) => {
+              const tab = isStationTab(page) ? (page as Tab) : tabs.find(([id]) => id === page)?.[0];
+              if (tab) props.onTab?.(tab);
+            }}
+            onFile={props.onFile}
+            onQuick={props.onQuick}
+            onTurn={props.onTurn}
+          />
+        )}
+        {pageView(props.tab)?.render(viewProps(props))}
         {props.tab === 'script' && (
           <ScriptTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} onAttach={props.onAttach} />
+        )}
+        {props.tab === 'storyboard' && (
+          <StoryboardTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} onScene={props.onScene} onStyles={() => props.onTab?.('style')} />
         )}
         {props.tab === 'scene' && <SceneTab {...props} scene={scene} />}
         {props.tab === 'compose' && <ComposeTab {...props} scene={scene} />}
@@ -87,6 +130,29 @@ export function Preview(props: Props) {
         {props.tab === 'voice' && <VoicesTab version={props.version} />}
         {props.tab === 'review' && <ReviewTab tree={props.tree} version={props.version} run={props.run} />}
         {props.tab === 'publish' && <PublishTab version={props.version} run={props.run} />}
+        {isStationTab(props.tab) && (
+          <StationPage
+            key={props.tab}
+            tab={props.tab}
+            version={props.version}
+            run={props.run}
+            onQuick={props.onQuick}
+            onOpen={(t) => props.onTab?.(t as Tab)}
+            projectName={props.state?.project.name ?? ''}
+          />
+        )}
+        {/* 第三方插件嵌进这一页的小窗：能嵌在哪几页由后端的页面表定（studioview.slotPages），清单校验时已经拦过。 */}
+        {!isStationTab(props.tab) && (
+          <StationSlots
+            at={props.tab}
+            context={props.tab === 'scene' && scene ? { scene: scene.id } : {}}
+            version={props.version}
+            run={props.run}
+            onQuick={props.onQuick}
+            onOpen={(t) => props.onTab?.(t as Tab)}
+            projectName={props.state?.project.name ?? ''}
+          />
+        )}
         {props.tab === 'memory' && <MemoryTab scene={scene} version={props.version} run={props.run} />}
         {props.tab === 'file' && <FilesTab tree={props.tree} recent={props.recent} path={props.filePath} version={props.version} onFile={props.onFile} />}
       </div>
@@ -102,23 +168,9 @@ function Empty({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
 }
 
-/** 不在节拍页时的一行提示：网格还没确认、或分镜计划算不出来时才出现。 */
-function BeatBanner({ beat, onTab }: { beat: BeatState; onTab?: (tab: Tab) => void }) {
-  let text = '';
-  if (!beat.grid) text = '卡点模式：还没有节拍网格。';
-  else if (beat.grid.kind === 'draft') text = '节拍网格还没确认：试听一遍，重拍对上了再确认。';
-  else if (beat.plan_error) text = '分镜计划和节拍网格对不上：' + beat.plan_error;
-  if (!text) return null;
-  return (
-    <div className="banner beat" id="beat-banner">
-      <span>{text}</span>
-      {onTab && (
-        <button className="primary" onClick={() => onTab('beat')}>
-          去节拍页
-        </button>
-      )}
-    </div>
-  );
+/** 内置插件页面组件拿到的回调。 */
+function viewProps(props: Props) {
+  return { version: props.version, busy: props.busy, run: props.run, onQuick: props.onQuick, onScene: props.onScene, onTab: props.onTab as ((tab: string) => void) | undefined };
 }
 
 const FPS = 30;
@@ -189,7 +241,7 @@ function Timeline({ scenes, usage, sceneId, version, onScene }: { scenes: Scene[
                   preload="metadata"
                   aria-hidden="true"
                   tabIndex={-1}
-                  src={`/api/scenes/${encodeURIComponent(scene.id)}/asset?v=${version}#t=${Math.min(1, (scene.duration_seconds || 2) / 2)}`}
+                  src={`/api/scenes/${encodeURIComponent(scene.id)}/asset?v=${scene.output_stamp ?? version}#t=${Math.min(1, (scene.duration_seconds || 2) / 2)}`}
                 />
               )}
               <span className="scene-no" aria-hidden="true">
@@ -440,7 +492,7 @@ function SceneTab(props: Props & { scene: Scene | null }) {
                 <video
                   ref={video}
                   preload="metadata"
-                  src={`/api/scenes/${encodeURIComponent(scene.id)}/asset?v=${props.version}`}
+                  src={`/api/scenes/${encodeURIComponent(scene.id)}/asset?v=${scene.output_stamp ?? props.version}`}
                   onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
                   onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
                   onSeeked={(e) => setTime(e.currentTarget.currentTime)}
@@ -547,6 +599,7 @@ function SceneTab(props: Props & { scene: Scene | null }) {
             {scene.duration_seconds ? `${scene.duration_seconds.toFixed(1)} 秒 · ` : ''}
             <span className={'status-' + status}>{statusText[status]}</span>
           </p>
+          <SceneBrief sceneId={scene.id} version={props.version} onStoryboard={props.onTab ? () => props.onTab!('storyboard') : undefined} />
           <SceneStyle scene={scene} label={`镜头 ${number}`} version={props.version} onQuick={props.onQuick} />
           <SceneActivityPanel scene={scene} />
           <div className="scene-actions">
@@ -568,8 +621,8 @@ function SceneTab(props: Props & { scene: Scene | null }) {
                     </button>
                   </div>
                 )}
-                <div className="menu-group quick-actions" role="group" aria-label="让编排工具">
-                  <span className="menu-label">让编排工具</span>
+                <div className="menu-group quick-actions" role="group" aria-label="让 AI">
+                  <span className="menu-label">让 AI</span>
                   {quickActions
                     .filter((action) => scene.exists || !action.needsOutput)
                     .map((action) => (
@@ -600,6 +653,11 @@ function SceneTab(props: Props & { scene: Scene | null }) {
                 )}
                 <div className="menu-group">
                   <button onClick={() => props.run('/api/commands/scene.validate', { scene_id: scene.id })}>校验</button>
+                  {canReveal && (
+                    <button id="reveal-scene" onClick={() => revealInFinder(scene.exists && scene.output ? scene.directory + '/' + scene.output : scene.directory)}>
+                      {revealLabel}
+                    </button>
+                  )}
                   {scene.attempts > 0 && (
                     <span className="menu-note" title={usageTitle(scene)}>
                       {usageLabel(scene)}
@@ -714,7 +772,7 @@ function FinalTab({ tree, version, run, onTab }: { tree: TreeFile[]; version: nu
         <div className="scene-stage">
           {current ? (
             <div className="stage-frame">
-              <video controls preload="metadata" src={rawURL(current, version)} />
+              <video {...playerProps} preload="metadata" src={rawURL(current, version)} />
             </div>
           ) : (
             <Empty>还没有成片。镜头都出片后，可以先拼接无声母版。</Empty>
@@ -787,6 +845,11 @@ function FinalTab({ tree, version, run, onTab }: { tree: TreeFile[]; version: nu
             <button className="link" onClick={() => run('/api/render/all')}>
               渲染全部镜头
             </button>
+            {canReveal && current && (
+              <button className="link" id="reveal-final" onClick={() => revealInFinder(current)}>
+                {revealLabel}
+              </button>
+            )}
           </div>
         </aside>
       </div>
@@ -794,40 +857,22 @@ function FinalTab({ tree, version, run, onTab }: { tree: TreeFile[]; version: nu
   );
 }
 
-/**
- * 镜头页里的风格一行：这个镜头用的是哪种风格，「换风格」打开风格弹窗。
- * 选好后不直接改文件（客户端不写项目文件），把要求写进输入框交给编排工具：它要改分镜计划、
- * 必要时 am film-style add，并给变成风格交界的地方挑过渡手法，再重跑 am scene cues。
- */
+/** 镜头页里的风格一行：这个镜头用的是哪种风格，「换风格」打开风格弹窗（SceneStyleDialog，分镜页也用它）。 */
 function SceneStyle(props: { scene: Scene; label: string; version: number; onQuick: Props['onQuick'] }) {
   const [info, setInfo] = useState<ProjectFilmStyle | null>(null);
   const [open, setOpen] = useState(false);
-  const films = useFilmStyles(open);
   useEffect(() => {
     api<ProjectFilmStyle>('/api/film-style').then(setInfo, () => setInfo(null));
   }, [props.version]);
   if (!info) return null;
   const raw = info.scenes?.find((x) => x.id === props.scene.id)?.film_style ?? '';
   const extras = info.extras ?? [];
-  const nameOf = (key: string) =>
-    extras.find((x) => styleKey(x.manifest) === key)?.manifest.cn ?? films.data?.styles.find((x) => styleKey(x) === key)?.cn ?? key;
+  const nameOf = (key: string) => extras.find((x) => styleKey(x.manifest) === key)?.manifest.cn;
   let label: ReactNode;
   if (raw === '') label = info.manifest ? <>{info.manifest.cn}<span className="muted">（默认）</span></> : <span className="muted">自主定视觉</span>;
   else if (raw === 'none') label = <span className="muted">不用整片风格</span>;
-  else label = <>{nameOf(raw)}{info.missing?.some((m) => m.scene === props.scene.id) && <span className="bad">（没装进项目）</span>}</>;
+  else label = <>{nameOf(raw) ?? raw.split('/').pop()}{info.missing?.some((m) => m.scene === props.scene.id) && <span className="bad">（没装进项目）</span>}</>;
   const installed = new Set([...(info.manifest ? [styleKey(info.manifest)] : []), ...extras.map((x) => styleKey(x.manifest))]);
-  const pick = (value: string) => {
-    const who = `${props.label}（${props.scene.id}）`;
-    let ask: string;
-    if (value === '@default') ask = info.manifest ? `把${who}改回默认风格「${info.manifest.cn}」。` : `把${who}改回不写风格、自主定视觉。`;
-    else if (value === 'none') ask = `把${who}改成不用整片风格、自主定视觉。`;
-    else ask = `把${who}换成「${nameOf(value)}」风格（${value}）。`;
-    props.onQuick(
-      ask + '改分镜计划并重跑 am scene cues；它和相邻镜头的风格不同时，按「风格交界」挑一种过渡手法，让画法在画面里自然地换过去，不要硬切或叠化。',
-      [],
-      true,
-    );
-  };
   return (
     <>
       <p className="scene-style">
@@ -838,25 +883,13 @@ function SceneStyle(props: { scene: Scene; label: string; version: number; onQui
         </button>
       </p>
       {open && (
-        <FilmStyleDialog
-          title={`${props.label} 换一种风格`}
-          intro="选好后写进对话，由编排工具改分镜，并给前后的风格交界设计画面里的过渡。"
-          confirm="写进对话"
-          data={films.data}
-          error={films.error}
-          posterVersion={films.posterVersion}
-          selected={raw === '' ? '@default' : raw}
+        <SceneStyleDialog
+          who={`${props.label}（${props.scene.id}）`}
+          current={raw}
+          defaultStyle={info.manifest ? { key: styleKey(info.manifest), cn: info.manifest.cn } : undefined}
           installed={installed}
-          specials={[
-            {
-              value: '@default',
-              title: info.manifest ? `跟随默认风格：${info.manifest.cn}` : '跟随默认风格',
-              desc: info.manifest ? '和全片大多数镜头一样。' : '项目还没有默认风格，镜头自主定视觉。',
-              mark: '默',
-            },
-            { value: 'none', title: '不用整片风格', desc: '这个镜头按文案自己定配色、字体与动效。', mark: 'Aa' },
-          ]}
-          onPick={pick}
+          nameOf={nameOf}
+          onAsk={(text) => props.onQuick(text, [], true)}
           onClose={() => setOpen(false)}
         />
       )}
@@ -947,7 +980,7 @@ function StyleTab({ version, run, scenes, onScene }: { version: number; run: Run
       {dialog === 'extra' && (
         <FilmStyleDialog
           title="添加一种风格"
-          intro="装进项目后，在对话里告诉编排工具哪些镜头或段落用它；它会改分镜，并给风格交界设计画面里的过渡。"
+          intro="装进项目后，在对话里告诉 AI 哪些镜头或段落用它；它会改分镜，并给风格交界设计画面里的过渡。"
           confirm="添加"
           data={films.data}
           error={films.error}
@@ -972,7 +1005,7 @@ function StyleTab({ version, run, scenes, onScene }: { version: number; run: Run
       </header>
       {(info?.missing ?? []).map((m) => (
         <p key={m.scene + m.style} className="bad small">
-          {sceneNumber(scenes, m.scene)} 点名的 {m.style} 没装进项目，渲染会失败：添加这种风格，或在对话里让编排工具改掉。
+          {sceneNumber(scenes, m.scene)} 点名的 {m.style} 没装进项目，渲染会失败：添加这种风格，或在对话里让 AI 改掉。
         </p>
       ))}
       {extras.length === 0 ? (
@@ -1006,7 +1039,7 @@ function StyleTab({ version, run, scenes, onScene }: { version: number; run: Run
                       <button
                         className="ghost"
                         disabled={x.scenes.length > 0}
-                        title={x.scenes.length > 0 ? '还有镜头在用：先在对话里让编排工具把它们换掉' : ''}
+                        title={x.scenes.length > 0 ? '还有镜头在用：先在对话里让 AI 把它们换掉' : ''}
                         onClick={() => setConfirmRemove(key)}
                       >
                         去掉
@@ -1107,13 +1140,12 @@ function StyleTab({ version, run, scenes, onScene }: { version: number; run: Run
   );
 }
 
-/** production/review/review.json（review.Report）。问题字段是 problems；issues 是早期写法，照样认。 */
+/** production/review/review.json（review.Report）。 */
 interface ReviewResponse {
   available: boolean;
   report?: {
     ok?: boolean;
     problems?: string[];
-    issues?: unknown[];
     hints?: unknown[];
     expected_frames?: number;
     counted_frames?: number;
@@ -1122,7 +1154,7 @@ interface ReviewResponse {
   } & Record<string, unknown>;
 }
 
-const reviewProblems = (r?: ReviewResponse['report']) => [...(r?.problems ?? []), ...(r?.issues ?? [])];
+const reviewProblems = (r?: ReviewResponse['report']) => r?.problems ?? [];
 
 function ReviewTab({ tree, version, run }: { tree: TreeFile[]; version: number; run: RunAction }) {
   const [review, setReview] = useState<ReviewResponse | null>(null);
@@ -1199,17 +1231,22 @@ export function FileView({ path, version }: { path: string; version: number }) {
       <div className="toolbar">
         <code className="path">{path}</code>
         <span className="spacer" />
+        {canReveal && (
+          <button id="reveal-file" onClick={() => revealInFinder(path)}>
+            {revealLabel}
+          </button>
+        )}
         <a className="button" href={rawURL(path, version)} target="_blank" rel="noreferrer">
           新窗口打开
         </a>
       </div>
       {videoExt.test(path) && (
         <div className="stage-frame">
-          <video controls preload="metadata" src={rawURL(path, version)} />
+          <video {...playerProps} preload="metadata" src={rawURL(path, version)} />
         </div>
       )}
       {imageExt.test(path) && <img className="file-image" src={rawURL(path, version)} alt="" />}
-      {audioExt.test(path) && <audio controls src={rawURL(path, version)} />}
+      {audioExt.test(path) && <audio {...playerProps} src={rawURL(path, version)} />}
       {error && <p className="error-line">{error}</p>}
       {file && (file.binary ? <Empty>二进制文件或超过 2 MB，不显示内容。</Empty> : <pre className="text" id="file-content" data-ctx-source={path} data-ctx-label={path.split('/').pop()}>
             {file.content}
@@ -1264,8 +1301,7 @@ function tokenLabel(u: Usage): string {
   return parts.join(' · ');
 }
 
-// run 是早先命令行 am run 记下的账，命令行不对外后不再产生，旧账照样显示。
-const usageSources: Record<string, string> = { run: '命令行（旧）', studio: 'Studio 对话', consolidate: '整理记忆' };
+const usageSources: Record<string, string> = { studio: 'Studio 对话', consolidate: '整理记忆' };
 
 function projectUsageTitle(u: ProjectUsage): string {
   const lines = [`渲染：${u.attempts} 次尝试 · ${tokenLabel(u.renders)}`, `编排：${u.orchestrator.calls} 次调用 · ${tokenLabel(u.orchestrator.total)}`];

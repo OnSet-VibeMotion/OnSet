@@ -1,4 +1,3 @@
-// 移植自 internal/memory/labels.go。
 //
 // 面向人的说法。校验器 ID、事件类型是给程序和整理者看的，记忆面板直接显示它们时
 // 用户只看到一串 reads.binding、episode，看不懂记忆在做什么。这里是它们的大白话，

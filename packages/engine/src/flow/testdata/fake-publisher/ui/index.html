@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>发布看板</title>
+<script src="/station-ui/_sdk.js"></script>
+</head>
+<body>
+  <h1 id="title">发布看板</h1>
+  <p id="receipt">正在读回执…</p>
+  <p id="publish">正在读发布信息…</p>
+  <p id="secret">正在读 .env…</p>
+  <p id="probe">正在试直接调接口…</p>
+  <p id="project">正在读项目…</p>
+  <p id="theme"></p>
+  <button id="send">再发一次到 douyin</button>
+  <button id="ask">让 AI 写一句发布语</button>
+  <button id="review">整片复查</button>
+  <button id="send-msg">交给 AI 处理</button>
+  <button id="scribble">顺手记一笔</button>
+  <p id="result"></p>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    async function load() {
+      await am.ready;
+      const info = await am.info();
+      $('title').textContent = info.station.name + ' · ' + info.project;
+      try {
+        const r = await am.read('production/publish/receipts.json');
+        $('receipt').textContent = '回执：' + JSON.parse(r.text).url;
+      } catch (err) {
+        $('receipt').textContent = '还没有回执';
+      }
+      const project = await am.project();
+      $('project').textContent = '项目有 ' + project.scenes.length + ' 个镜头，现在在 ' + (project.progress ? project.progress.current : '');
+      $('theme').textContent = '强调色 ' + getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+      const pub = await am.read('publish.md');
+      $('publish').textContent = '发布信息 ' + pub.size + ' 字节';
+      try {
+        await am.read('.env');
+        $('secret').textContent = '读到了 .env';
+      } catch (err) {
+        $('secret').textContent = '.env 被拒绝';
+      }
+    }
+    // 沙箱页面直接调 Studio 接口应当失败（CSP 拦下，后端也拒绝不透明源）。
+    fetch('/api/state').then(() => { $('probe').textContent = '接口竟然能直接调'; }, () => { $('probe').textContent = '直接调接口被拦下'; });
+    $('send').onclick = () => am.run('send', { platform: 'douyin' }).then(() => { $('result').textContent = '已开始'; }, (err) => { $('result').textContent = '没执行：' + err.message; });
+    $('scribble').onclick = () => am.run('scribble', {}).then(() => { $('result').textContent = '已开始'; }, (err) => { $('result').textContent = '没执行：' + err.message; });
+    $('review').onclick = () => am.call('review', {}).then(() => { $('result').textContent = '复查已开始'; }, (err) => { $('result').textContent = '没执行：' + err.message; });
+    $('send-msg').onclick = () => am.send('帮我把发布标题改短一点').then(() => { $('result').textContent = '已发给 AI'; }, (err) => { $('result').textContent = '没发：' + err.message; });
+    $('ask').onclick = () => am.ask('帮我写一句抖音的发布语').then(() => { $('result').textContent = '已填进对话框'; });
+    am.onRefresh(load);
+    load();
+  </script>
+</body>
+</html>

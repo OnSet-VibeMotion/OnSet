@@ -5,7 +5,7 @@ import type { CrewSignal } from './components/chat/crew';
 import './styles.css';
 
 /** 原生菜单发给界面的动作，与主进程 menu.ts 的 MenuAction 一致。 */
-export type MenuAction = { type: 'new' } | { type: 'home' } | { type: 'open'; path: string } | { type: 'step'; index: number } | { type: 'settings' } | { type: 'panel' };
+export type MenuAction = { type: 'new' } | { type: 'home' } | { type: 'open'; path: string } | { type: 'step'; index: number } | { type: 'settings' } | { type: 'panel' } | { type: 'reveal' };
 
 declare global {
   interface Window {
@@ -21,6 +21,8 @@ declare global {
       setCrew?: (state: CrewSignal | null) => void;
       onCrew?: (callback: (state: CrewSignal | null) => void) => () => void;
       pet?: (action: 'focus' | 'hide') => void;
+      /** 在 Finder 中显示；path 空是项目文件夹，project 空是当前项目。返回错误文字，成功为空。 */
+      reveal?: (path: string, project?: string) => Promise<string>;
     };
   }
 }

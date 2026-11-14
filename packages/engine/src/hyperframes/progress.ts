@@ -1,5 +1,3 @@
-// 移植自 internal/hyperframes/progress.go。
-
 /**
  * 安装的一次进度汇报。percent 是整体进度（0–100）；indeterminate 为 true
  * 时这一步没有可量的进度（检出技能文件时 git 一声不吭），界面显示不确定进度。

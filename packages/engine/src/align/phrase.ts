@@ -1,7 +1,6 @@
-// 移植自 internal/align/phrase.go。
 import fs from 'node:fs';
-import { frameOf } from '../beat';
-import { decodeFirst, sliceOf, unmarshal, type StructType } from '../beat/jsondecode';
+import { frameOf } from '../frames';
+import { decodeFirst, sliceOf, unmarshal, type StructType } from '../gojson/decode';
 import { goPathError, goRound, goTrimSpace } from '../gofmt';
 import { cueOfPiece, toMs, type Cue } from './cue';
 import { LabelExact, LabelMerge, LabelOmission, LabelReplace, LabelSplit } from './match';

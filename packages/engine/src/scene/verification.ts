@@ -1,4 +1,4 @@
-// 移植自 internal/scene/run_unix.go 的 VerificationError（单独成文件：scene、timing、frames 都要用它，
+// VerificationError（单独成文件：scene、timing、frames 都要用它，
 // 放在 run.ts 里会让这几个模块与渲染流程互相依赖）。
 
 /**

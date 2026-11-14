@@ -1,0 +1,47 @@
+---
+name: am-film-style
+description: 本片的整片风格「{{.Style.CN}} {{.Style.EN}}」，来自 anidoodle（{{.Short}}）。画面全部在 canvas 上用代码画出；每个镜头都必须遵守 STYLE.md 的介质与笔触，示范画只用来学技法。
+---
+
+# 整片风格：{{.Style.CN}} · {{.Style.EN}}
+
+本片的每个镜头都画成这一种风格。它来自 anidoodle（`{{.Style.ID}}`，commit `{{.Short}}`），由编排阶段的 `film_style_use` 工具装进项目，不要手改本目录。
+
+这套风格不是一组配色或一种滤镜，而是一种**下笔的方式**：介质是「{{.Style.Medium}}」。画面全部由代码在 `<canvas>` 上一笔一笔画出，每一帧只由帧号决定。
+
+| 文件 | 用途 |
+|---|---|
+| `STYLE.md` | 风格的不变量：介质、笔触、边缘、下笔顺序、色板、纸张、与哪些风格不能混、动态语法。**全部遵守** |
+| `anidoodle/` | 转好的浏览器模块，镜头里直接 import：`am-anidoodle.js`（接 HyperFrames 的接头）、`canvas-core/core.js`（`rng`、噪声、`sample` 等几何工具）、`canvas-core/film.js`（帧的契约）与本风格的模块（见下） |
+| `source/` | 同一批模块的 TypeScript 原文，注释与类型都在这里。**读这里学技法**，`anidoodle/` 里转好的代码排版不好读 |
+| `references/` | 上游的通用说明：风格是下笔方式而不是换色（`styles.md`）、成品标准（`craft-bar.md`）、解剖与真实感 |
+| `poster.jpg` | 示范画（{{.Style.HeroCN}}） |
+| `ATTRIBUTION.md`、`LICENSE`、`NOTICE` | 来源与许可 |
+
+本风格的模块：
+
+{{.Modules}}
+
+## 给制作的说明（定方案、备素材时读）
+
+- 先写 `treatment.md`，再看示范画：示范画（{{.Style.HeroCN}}）只用来学这种介质怎么下笔、按什么顺序画，不借它的题材、构图和道具。
+- 这套风格擅长插画、手绘感的叙事与解说；镜头要以真实照片、实拍素材为主时不适合它。
+- 上游没有中文字体，画面里的中文标题与字幕按制作提示词「整片风格」一节的办法取字体。
+- 上游自带的配乐、旁白与音效没有接入，配乐仍按制作流程选授权素材。
+
+## 规则（渲染镜头时）
+
+1. **先读 `STYLE.md` 全文，再读 `source/` 里本风格模块的文件头注释，然后动手。** STYLE.md 规定的介质、笔触、边缘、下笔顺序、色板与禁忌全部遵守。本镜头提示词里的「全片配色」若与 STYLE.md 的色板冲突，以全片配色为准——它是在这种介质里为本片选定的。
+2. **内容来自本镜头，不来自示范画。** 画什么、讲什么、出现哪些物件，只取本镜头的 prompt.md、字幕与素材。不画示范画里的主体，除非本镜头本来就要画它。
+3. **怎么用。** 把 `anidoodle/` 整个目录拷进本镜头目录，目录名与里面的相对路径都不改（只有几百 KB）。合成里写一个 `<script type="module">`：
+   - 从 `./anidoodle/canvas-core/…` 导入笔触函数与 `core.js` 的工具（`rng`、`sample`、`fractal`……）；
+   - 按 `source/canvas-core/film.ts` 的 `Film` 写本镜头自己的片子：`meta: { title, W, H, fps, durationFrames }`，`assets: { images: {} }`，`shots` 按帧首尾相接铺满整段，每个 shot 的 `draw(ctx, local, env)` 用 `local`（这个 shot 内的帧号）画出那一帧；
+   - `import { play } from './anidoodle/am-anidoodle.js'`，加载后 `play(film, canvas)`。它负责 `hf-seek`、先画第 0 帧、把图片与字体的准备登记成 `window.__hf.buildReady`。根元素照 hyperframes 技能写 `data-duration`；合成里只有 canvas、没有登记 GSAP 时间轴时，根元素还要加 `data-no-timeline`，不然每次渲染都白等 45 秒（有时间轴的照常登记，不加它）。
+
+   不要在合成里引用本目录（镜头目录之外的路径渲染时会静默 404）；不要改拷进来的模块，要换某个笔触函数的做法，在镜头自己的脚本里另写一个。示范画模块（`{{.Style.Module}}`、`{{.Style.DrawFilm}}`）导出的是上游那幅画本身，只读来学，不当成镜头画面用。
+4. **帧的契约。** 每一帧只由帧号决定，可以单独画任意一帧：随机数只用 `core.js` 的 `rng(seed)` 加固定种子，不读时钟，不用 `requestAnimationFrame`，不用 `ctx.filter`；离屏画布只经 `env.canvas(w, h)` 取，缓存放进 `env.cache`，缓存的键要包含它依赖的一切。
+5. **画幅、帧率与时长以本镜头为准。** `meta.W`、`meta.H` 是本镜头的画幅，`meta.fps` 是帧率，`durationFrames` 是本镜头的总帧数。示范画是 1080 见方，横屏、竖屏要按画幅重新构图，不是把方图缩放或裁一块。
+6. **画面要一直在动。** 按 STYLE.md 的动态语法（Motion grammar）让画面「被画出来」、被呼吸般地推进：每一秒都有看得见的变化。不要用整体淡入代替下笔。示范画的影片版从一张白纸画起，镜头不能这样：第 0 帧就要有画面（它可能被当成封面），从已经画了一部分的状态开始。
+7. **一个画面一种介质。** 不把别的风格的笔触混进来；STYLE.md 里「不是某某风格」的那几条就是边界。
+8. **文字。** canvas 上画的字用镜头目录里的字体（`play` 会等字体就绪再画），不得用本机系统字体或 `local()`。字幕仍用镜头工具库的 `SceneKit.captions` 叠在 canvas 上面。
+9. **上游的工具与流程不用。** `references/` 与源码注释里提到的 `scaffold.mjs`、`render.mjs`、`gate.mjs`、配乐、旁白、Remotion 一律跳过：渲染走 HyperFrames，产物必须静音。

@@ -1,7 +1,6 @@
-// 移植自 internal/memory/lint.go。
 import { goQuote, goTrimSpace } from '../gofmt';
 import { compareBytes } from '../gojson';
-import { ValidTools } from '../tools';
+import { ValidRenderers } from '../tools';
 import { CheckerHuman, knownChecker, knownFeature } from './features';
 import { goLowerRune, isDigit, isLetter, runeCount } from './gostr';
 import { KindLesson, KindPreference, StatusActive, StatusTrial, validName, validStatus, type Memory } from './memory';
@@ -102,7 +101,7 @@ export function lint(m: Memory, ctx: LintContext = {}): string[] {
     if (!knownFeature(feature)) add(`applies_when.features 含未知特征：${feature}`);
   }
   for (const renderer of m.applies_when.renderers) {
-    if (!ValidTools.has(renderer)) add(`applies_when.renderers 含未知渲染工具：${renderer}`);
+    if (!ValidRenderers.has(renderer)) add(`applies_when.renderers 含未知渲染工具：${renderer}`);
   }
   for (const model of m.applies_when.models) {
     if (goTrimSpace(model) === '' || /[ \t\n]/.test(model)) add(`applies_when.models 含不合法的模型名：${goQuote(model)}`);

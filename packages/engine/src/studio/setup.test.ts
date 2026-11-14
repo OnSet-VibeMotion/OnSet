@@ -52,4 +52,15 @@ describe('setup installer', () => {
     expect(ids).toContain('tts:edge');
     expect(ids).toContain('align:funasr');
   });
+
+  // 安装页靠 later 把「以后可能用到」的项排成单独点装的卡片；接口漏了它，这几项缺着时打开只看到「已全部就位」。
+  it('tells the page which items are installed only when needed, one card per film-style source', async () => {
+    const s = startStudio({ projectPath: tempDir(), configPath: path.join(tempDir(), 'projects.json') });
+    const { body } = await studioRequest(s, 'GET', '/api/setup');
+    const later = (id: string) => body.items.find((item: { id: string }) => item.id === id)?.later;
+    expect(later('beat')).toMatchObject({ title: expect.any(String) });
+    expect(later('styles:lemo-opuscar').title).toBe('LemoLab 风格库');
+    expect(later('styles:anidoodle').title).toBe('anidoodle 代码绘画');
+    expect(later('ffmpeg')).toBeUndefined();
+  });
 });

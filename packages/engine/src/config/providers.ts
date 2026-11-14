@@ -1,4 +1,3 @@
-// 移植自 internal/config/providers.go。
 import { goQuote, isGoSpace } from '../gofmt';
 import type { ModelSpec, ToolSpec } from '../toolinstall';
 import type { OrchestratorAccess } from '../tools';
@@ -6,7 +5,7 @@ import type { Config } from './config';
 
 /**
  * 一个可选的配音服务。合成本身由编排工具按
- * PROMPT-PRODUCTION.md 第三阶段对应小节执行，这里只登记取值与校验所需信息。
+ * 口播流程制作提示词的配音阶段（assets/prompts/voice/stage.md）对应小节执行，这里只登记取值与校验所需信息。
  *
  * timestamps 是该服务自带时间戳的粒度，决定第四阶段要不要另做强制对齐：
  * sentence 只能用于粗排，char 可以直接用作短语级时间轴的依据。
@@ -174,22 +173,33 @@ export function defaultTTSProvider(goos: string = process.platform, goarch: stri
   return goos === 'darwin' && goarch === 'arm64' ? 'breeze' : 'minimax';
 }
 
+/**
+ * 第三方插件提供的配音、对齐：取值是 x:<站 id>。这里只查写法，项目里加没加那个插件、它是不是真的提供，
+ * 由编排工具调插件的工具时见分晓（插件的说明接在制作提示词末尾）。插件的工具经 am 的工具服务调用，
+ * 不进编排工具的命令白名单，也不是前置资源。
+ */
+export const PluginProviderPattern = /^x:[a-z][a-z0-9-]{1,39}$/;
+
+export function isPluginProvider(id: string): boolean {
+  return PluginProviderPattern.test(id);
+}
+
 export function validTTSProvider(id: string): boolean {
-  return TTSProviders.some((provider) => provider.id === id);
+  return TTSProviders.some((provider) => provider.id === id) || isPluginProvider(id);
 }
 
 export function validAligner(id: string): boolean {
-  return Aligners.some((aligner) => aligner.id === id);
+  return Aligners.some((aligner) => aligner.id === id) || isPluginProvider(id);
 }
 
 /** 空格分隔的全部取值，用于错误信息与帮助文字。 */
 export function ttsProviderIDs(): string {
-  return TTSProviders.map((provider) => provider.id).join(' ');
+  return [...TTSProviders.map((provider) => provider.id), 'x:<插件>'].join(' ');
 }
 
 /** 空格分隔的全部取值（含 auto）。 */
 export function alignerIDs(): string {
-  return [AlignAuto, ...Aligners.map((aligner) => aligner.id)].join(' ');
+  return [AlignAuto, ...Aligners.map((aligner) => aligner.id), 'x:<插件>'].join(' ');
 }
 
 /** 按当前进程的平台解析 auto；测试用 resolveAligner 覆盖其他平台。 */

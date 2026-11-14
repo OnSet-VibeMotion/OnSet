@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { marshal } from '../gojson';
-import { BasisTotalInput, accumulateUsage, formatUsage, newUsage, usageAdd, usageEmpty, usageJSON, usageNormalized, usageTotal, type Usage } from './index';
+import { BasisTotalInput, accumulateUsage, formatUsage, newUsage, usageAdd, usageEmpty, usageJSON, usageTotal } from './index';
 
 describe('usage', () => {
   it('accumulate usage reads claude result event', () => {
@@ -62,19 +62,6 @@ describe('usage', () => {
     expect(total.input_tokens).toBe(3);
     expect(formatUsage({})).toBe('未读到用量');
     expect(formatUsage({ input_tokens: 1234567, source: 'x' })).toContain('1,234,567');
-  });
-
-  // 统一口径之前写下的 claude 记录输入不含缓存，读的时候加回去；新记录不动。
-  it('normalized converts old records', () => {
-    const old: Usage = { input_tokens: 191925, cached_input_tokens: 6368426, output_tokens: 47697, source: 'claude result' };
-    const got = usageNormalized(old);
-    expect(got.input_tokens).toBe(6560351);
-    expect(got.basis).toBe(BasisTotalInput);
-    expect(usageNormalized({ input_tokens: 100, cached_input_tokens: 60, source: 'codex turn.completed' }).input_tokens).toBe(100);
-    const fresh = newUsage();
-    accumulateUsage('claude', `{"type":"result","usage":{"input_tokens":4,"cache_read_input_tokens":40,"output_tokens":1}}`, fresh);
-    // 新记录不能再加一次。
-    expect(usageNormalized(fresh).input_tokens).toBe(44);
   });
 
   // TS 额外：写出的 JSON 与 Go struct 的字段顺序、omitempty 一致（指针 0 费用照写）。

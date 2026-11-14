@@ -213,8 +213,8 @@ function lastOutcome(dir: string, id: string): { outcome?: string; error?: strin
 }
 
 /** 镜头的渲染过程：进行中的，或者最近一次的。 */
-export function sceneActivity(sc: SceneSummary, now: Date): Record<string, unknown> {
-  const rendering = sceneRendering(sc.directory, sc.id, now);
+export function sceneActivity(sc: SceneSummary): Record<string, unknown> {
+  const rendering = sceneRendering(sc.directory, sc.id);
   const live = scene.readLive(sc.directory, sc.id);
   const read = readStream(sc.directory, sc.id);
   const state = read?.state;

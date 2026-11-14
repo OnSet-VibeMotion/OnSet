@@ -1,12 +1,12 @@
-// 移植自 internal/studio/agents_test.go。
 import './testsupport';
 import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as config from '../config';
 import * as tools from '../tools';
 import { agentOrder } from './agents';
 import { eventsAfter, getSession, kindNotice, overrideAgents, updateMeta } from './sessions';
-import { newSessionFixture, setEnv, studioRequest, waitIdle } from './testsupport';
+import { args, newSessionFixture, setEnv, studioRequest, waitIdle } from './testsupport';
 
 describe('agents', () => {
   it('agentOrder covers valid tools', () => {
@@ -30,6 +30,9 @@ describe('agents', () => {
     expect(claude.path.endsWith('/claude')).toBe(true);
     expect(body.orchestrator).toBe('claude');
     expect(body.renderer).toBe('claude');
+    expect(body.global_renderer, '没有全局设置时是默认的渲染工具').toBe(config.GlobalDefaults.RENDERER);
+    expect(claude.install_url).toMatch(/^https:\/\//);
+    for (const a of body.agents) expect(a.id === 'director' || /^https:\/\//.test(a.install_url), `${a.id} 没有安装入口`).toBe(true);
     for (const a of body.agents) expect(a.command, '命令名为空').not.toBe('');
     expect((await studioRequest(f.s, 'POST', '/api/agents', '{}')).status).toBe(405);
   });
@@ -69,6 +72,50 @@ describe('agents', () => {
     expect(body.tool).toBe('codex');
     expect(body.renderer).toBe('qoder');
     expect(body.cli_session_id).toBe('keep');
+  });
+
+  it('session models reach the orchestrator and its children', async () => {
+    const f = newSessionFixture();
+    expect((await studioRequest(f.s, 'POST', '/api/sessions', '{"model":"bad model"}')).status, '模型名里不能有空白').toBe(400);
+    let { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{"model":"opus","renderer":"codex","renderer_model":"gpt-6.1-sol"}');
+    const id = body.session_id as string;
+    expect([body.model, body.renderer_model]).toEqual(['opus', 'gpt-6.1-sol']);
+    await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"改一下"}');
+    await waitIdle(f, id);
+    expect(args(f).at(-1)).toContain('--model opus');
+    expect(fs.readFileSync(f.argsLog + '.renderer_model', 'utf8').trim(), '编排工具调用的 scene_run 要用会话选的渲染模型').toBe('gpt-6.1-sol');
+
+    // 同一家换模型：会话照样续接，发一条提示。
+    const sess = getSession(f.s, f.root, id)!;
+    updateMeta(sess, (meta) => (meta.cli_session_id = 'keep'));
+    ({ body } = await studioRequest(f.s, 'POST', `/api/sessions/${id}/agents`, '{"model":"sonnet"}'));
+    expect([body.model, body.cli_session_id]).toEqual(['sonnet', 'keep']);
+    expect(eventsAfter(sess, 0).events.at(-1)?.text).toContain('sonnet');
+    // 换了工具又没给模型：模型是给上一家选的，回到跟随设置。
+    ({ body } = await studioRequest(f.s, 'POST', `/api/sessions/${id}/agents`, '{"tool":"codex","renderer":"claude"}'));
+    expect([body.model, body.renderer_model]).toEqual([undefined, undefined]);
+  });
+
+  it('a configured model only follows the tool it was chosen for', () => {
+    const cfg = config.newConfig({ orchestrator: 'claude', orchestratorModel: 'opus', renderer: 'claude', rendererModel: 'sonnet' });
+    expect(overrideAgents(cfg, { tool: '', renderer: '' })).toMatchObject({ orchestratorModel: 'opus', rendererModel: 'sonnet' });
+    expect(overrideAgents(cfg, { tool: 'codex', renderer: 'claude', model: '' })).toMatchObject({ orchestrator: 'codex', orchestratorModel: '', rendererModel: 'sonnet' });
+    expect(overrideAgents(cfg, { tool: 'claude', renderer: 'qoder', rendererModel: 'Qwen3.8-Max' })).toMatchObject({ orchestratorModel: 'opus', rendererModel: 'Qwen3.8-Max' });
+  });
+
+  it('agent models API lists what each tool offers', async () => {
+    const f = newSessionFixture();
+    let { status, body } = await studioRequest(f.s, 'GET', '/api/agents/claude/models');
+    expect(status).toBe(200);
+    expect(body.models.map((m: { id: string }) => m.id)).toEqual(['fable', 'opus', 'sonnet', 'haiku']);
+    ({ status } = await studioRequest(f.s, 'GET', '/api/agents/nope/models'));
+    expect(status).toBe(404);
+    // 没装的工具：列表为空、附说明，界面仍能手填。
+    setEnv('PATH', path.dirname(f.argsLog));
+    ({ status, body } = await studioRequest(f.s, 'GET', '/api/agents/opencode/models?refresh=1'));
+    expect(status).toBe(200);
+    expect(body.models).toEqual([]);
+    expect(body.error).toContain('opencode');
   });
 
   it('session agents cannot change mid-turn', async () => {

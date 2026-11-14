@@ -2,7 +2,7 @@
 
 # ArticleToMotion
 
-ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的 MG 动画视频：从文章或口播稿出发，完成写稿、配音、字幕、分镜、并发渲染动画镜头、拼接、封面与发布交付；已有定稿字幕时也可以直接拆成镜头渲染。
+ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的 MG 动画视频：从文章或口播稿出发，完成写稿、配音、字幕、分镜、并发渲染动画镜头、拼接、封面与发布交付；也可以做没有配音、画面踩着音乐节拍走的卡点片。
 
 ▶ [观看 ArticleToMotion 宣传视频（MP4，4 分 47 秒）](https://github.com/chouheiwa/articale-to-motion/blob/main/docs/article-to-motion-tutorial.mp4)
 
@@ -40,7 +40,7 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 叙事模式也在新建时选：默认单口播；「多角色对话」额外写出班底与角色包目录，见下方「多角色叙事」；还有单人歌曲讲解与无配音卡点两种可选形式。
 
-编排工具、渲染工具、配音与对齐工具、并发数与记忆在客户端的「设置」（顶栏右侧的齿轮，或 ⌘,）里选。全局设置对所有项目生效；某个项目要用不一样的，在「这个项目」一栏单独选，写进项目的 `article-to-motion.conf`，选「跟随全局」就回去。取值顺序是：环境变量 > 项目 `.env` > 项目 `article-to-motion.conf` > 全局设置 > 内置默认。对话栏顶部还可以为每个会话临时另选编排与渲染工具，不改任何文件。
+编排工具、渲染工具（各自用哪个模型）、配音与对齐工具、并发数与记忆在客户端的「设置」（顶栏右侧的齿轮，或 ⌘,）里选。全局设置对所有项目生效；某个项目要用不一样的，在「这个项目」一栏单独选，写进项目的 `article-to-motion.conf`，选「跟随全局」就回去。取值顺序是：环境变量 > 项目 `.env` > 项目 `article-to-motion.conf` > 全局设置 > 内置默认。不想另装 AI CLI 时，编排工具选「导演」：在设置页下方「导演的模型服务」填一家的 API key（DeepSeek、Kimi、智谱、阿里云百炼、MiniMax、Anthropic、OpenAI、OpenRouter），模型写成「服务商/模型」，留空时在填了 key 的几家里先挑推荐模型能看画面的那家；key 只存在用户目录里一个仅自己可读的文件里。画面验收和整片复查要看截图，DeepSeek、智谱 GLM 的推荐模型只读得了文字：设置页会标出来，开工前也会提示，用它们时导演会把要看的图切给你、等你说结论，而不是假装看过。导演暂时只做编排，镜头仍要一家装在这台电脑上的外部工具来画（Claude Code、Codex 等）；首次引导会一并确认，设置里的渲染工具没装时「开始制作」不可点。对话输入框底部还可以为每个会话临时另选编排与渲染工具及其模型，不改任何文件。模型列表来自各家工具自己（codex、qoder、codebuddy、opencode 按你的账号与服务商列出，claude 给 fable / opus / sonnet / haiku 这几个别名），列表里没有的可以选「其他…」手填；留「默认」就用那家工具自己的默认模型。
 
 配音可选 MiniMax、阿里云百炼、Edge 朗读（免鉴权，适合预览）、ElevenLabs、腾讯云、MLX（本机离线，仅 Apple Silicon）、Breeze TTS 2（本机离线，仅 Apple Silicon；模型与生成的配音仅限研究与非商业用途，商用需 RESONIA, Inc. 书面授权）；凭据一律走各工具自己的登录，项目 `.env` 不允许保存 API Key、Token、Secret 或 Password。字幕时间轴由已知文本强制对齐生成：Apple Silicon 上用 mlx-audio 的 Qwen3-ForcedAligner，其余平台用 FunASR。
 
@@ -71,11 +71,11 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 ### 视觉方向
 
-项目不预设或锁定视觉风格。画幅、帧率和渲染确定性由工具保证；配色、字体、版式、材质和动效由模型根据本片内容与每个镜头自主决定，镜头之间可以使用不同的视觉语言。早先版本的内置风格包只为兼容已有项目保留，不再进入渲染提示词。
+项目不预设或锁定视觉风格。画幅、帧率和渲染确定性由工具保证；配色、字体、版式、材质和动效由模型根据本片内容与每个镜头自主决定，镜头之间可以使用不同的视觉语言。项目根的 `frame.md` 只记画幅的技术信息：画布与帧率、安全区、烧录字幕的缺省样式与混音响度目标。
 
 ### 整片风格（可选）
 
-想让全片统一画成一种风格时，从风格来源里选一种。目前登记的来源是 [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar)（作者 LemoLab，66 种，[图鉴](https://lemomo-ai.github.io/lemo-opuscar/)），之后可以接入更多来源。首页、新建对话框和「风格」页都能直接挑（按来源分组，带海报，可搜索），也能换或去掉；没选时，编排工具会在稿件审核关卡按题材推荐两三种。个别镜头可以点名另一种风格，相邻镜头风格不同时，分镜计划要写明交界怎么在画面里换过去。
+想让全片统一画成一种风格时，从风格来源里选一种。目前登记的来源有 [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar)（作者 LemoLab，66 种，[图鉴](https://lemomo-ai.github.io/lemo-opuscar/)）与 [anidoodle](https://github.com/alexgreensh/anidoodle)（作者 Alex Greenshpun，32 种代码画出的手绘画风，如铅笔淡彩、水墨、浮世绘木版、刺绣、刮画，[图鉴](https://github.com/alexgreensh/anidoodle/blob/main/skills/anidoodle/assets/styles.jpg)），之后可以接入更多来源。首页、新建对话框和「风格」页都能直接挑（按来源分组，带海报，可搜索），也能换或去掉；没选时，编排工具会在稿件审核关卡按题材推荐两三种。个别镜头可以点名另一种风格，相邻镜头风格不同时，分镜计划要写明交界怎么在画面里换过去。
 
 选中的风格装进项目的 `.agents/skills/am-film-style/`：`STYLE.md`（风格的不变量）、`SKILL.md`（怎么用、技法参考在哪）与 `am-film-style.json`（来源与版本）。渲染器必须遵守 `STYLE.md`，内容仍来自每个镜头自己的文案。换风格或去掉风格会让已渲染的镜头 Stale。只接画面：配乐仍选授权素材。
 
@@ -87,7 +87,7 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 ## 多角色叙事
 
-「多角色对话」项目里，`cast.yaml`（登记班底）与 `cast/` 目录的存在本身就是模式开关。一个角色包是 `cast/<id>/` 下的一个目录：`character.yaml` 是唯一真相源（音色、rig 关节、姿势、可选的多视图与转身路径），配一份（或每个视图各一份）`rig.svg` 骨架图，`dna.md` 写人设供编排工具读、不参与渲染。分说话人合成的配音由工具重建成一条时间线，再按拆定的镜头切成节拍；作业规程随项目下发在 `PROMPT-CAST-ADDENDUM.md`。
+「多角色对话」项目里，`cast.yaml`（登记班底）与 `cast/` 目录的存在本身就是模式开关。一个角色包是 `cast/<id>/` 下的一个目录：`character.yaml` 是唯一真相源（音色、rig 关节、姿势、可选的多视图与转身路径），配一份（或每个视图各一份）`rig.svg` 骨架图，`dna.md` 写人设供编排工具读、不参与渲染。分说话人合成的配音由工具重建成一条时间线，再按拆定的镜头切成节拍；作业规程是制作提示词末尾的「附：多角色叙事作业规程」。
 
 ## 渲染记忆
 
@@ -162,6 +162,10 @@ ArticleToMotion 是一个 macOS 桌面客户端，用来生产竖屏与横屏的
 
 节拍分析用 [beat-this](https://github.com/CPJKU/beat_this)（ISMIR 2024，代码与权重均为 MIT），同时给出普通拍与重拍，CPU 可跑；不依赖 madmom。
 
+## 写插件
+
+想给制作流程加一站（例如自动发布），按 [docs/plugin-authoring.md](docs/plugin-authoring.md) 写一份 `am-station.json`，在客户端设置页的「我的插件」里装上：装一次，这台电脑上的所有项目都能用，它带来的做法与风格在新建项目时就能选。
+
 ## 开发
 
 从源码构建需要 Node.js 22+：
@@ -179,7 +183,7 @@ npm run test:e2e -w am-desktop               # 客户端端到端测试（Playwr
 npm run dist -w am-desktop                   # 打出 .app（apps/desktop/release/）
 ```
 
-`am`（`packages/cli`）是客户端内部用的程序：后台任务直接调它，编排工具与渲染器经它的工具服务（MCP）调用，不对用户提供命令行。开发时可以用 `node packages/cli/dist/am.cjs <命令>` 直接跑。改了画幅表、风格表或提示词模板后要跑 `npm run generate -w @am/engine` 并提交生成的 `assets/presets`、`assets/styles`。开发约定见 `AGENTS.md` 与 `packages/engine/CONVENTIONS.md`。
+`am`（`packages/cli`）是客户端内部用的程序：后台任务直接调它，编排工具与渲染器经它的工具服务（MCP）调用，不对用户提供命令行。开发时可以用 `node packages/cli/dist/am.cjs <命令>` 直接跑。改了画幅表或 `frame.md` 模板后要跑 `npm run generate -w @am/engine` 并提交生成的 `assets/presets`。开发约定见 `AGENTS.md` 与 `packages/engine/CONVENTIONS.md`。
 
 项目采用 [Apache License 2.0](./LICENSE)。HyperFrames 是独立的 Apache-2.0 项目，ArticleToMotion 初始化时使用固定版本，不在本仓库复制本机技能目录。
 

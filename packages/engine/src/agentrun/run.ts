@@ -1,4 +1,3 @@
-// 移植自 internal/agentrun/run.go。
 import crypto from 'node:crypto';
 import { MissingToolError, lookPath as envLookPath } from '../envutil';
 import { DefaultGrace, ExitError as ProcessExitError, abortReason, start } from '../procgroup';
@@ -22,6 +21,8 @@ export interface Spec {
   permissionPrompt?: PermissionPrompt;
   /** am 的工具服务（客户端里给）：五家都挂上，编排工具只经它调用 am。 */
   toolsServer?: McpServer;
+  /** 模型；空用那家工具自己的默认（tools.modelArgs）。 */
+  model?: string;
   /**
    * 请用户批准一次调用（客户端里给）。给了且是安全模式时，codebuddy、opencode、codex 改用双向协议
    * （tools.interactiveInvocation），白名单外的调用经它问用户；claude、qoder 经 permissionPrompt 的审批 MCP。
@@ -162,7 +163,7 @@ function asError(err: unknown): Error {
 export async function run(spec: Spec, emit: (event: Event) => void, signal?: AbortSignal): Promise<Outcome> {
   if (spec.ask) {
     const base = spec.env ?? (process.env as Record<string, string>);
-    const inter = interactiveInvocation(spec.tool, { unsafe: spec.unsafe, access: spec.access, toolsServer: spec.toolsServer }, base);
+    const inter = interactiveInvocation(spec.tool, { unsafe: spec.unsafe, access: spec.access, toolsServer: spec.toolsServer, model: spec.model }, base);
     if (inter) {
       const env = { ...base, ...inter.env };
       return inter.protocol === 'acp' ? runACP(spec, emit, signal, inter.argv, env) : runCodexApp(spec, emit, signal, inter.argv, env);
@@ -183,6 +184,7 @@ export async function run(spec: Spec, emit: (event: Event) => void, signal?: Abo
       access: spec.access,
       permissionPrompt: spec.permissionPrompt,
       toolsServer: spec.toolsServer,
+      model: spec.model,
     }, spec.env ?? (process.env as Record<string, string>)));
   } catch (err) {
     return { result: emptyResult(), error: asError(err) };

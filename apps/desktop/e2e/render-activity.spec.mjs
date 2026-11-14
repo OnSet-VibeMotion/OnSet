@@ -45,16 +45,22 @@ test('shows what the renderer is doing while a scene renders', async ({ page, pr
     const [p, t] = await Promise.all([panel.boundingBox(), page.locator('#panel .scene-title').boundingBox()]);
     return { x: p.x, y: p.y, width: p.width, height: p.height, titleY: t.y };
   };
-  // 面板刚打开还在滑入：等位置稳定下来再量。
+  // 面板刚打开还在滑入：先等它的滑入动画跑完（转圈这类循环动画除外；隐藏窗口里动画时快时慢，只比两次位置会在半路停顿时误判稳定），再等位置稳定下来量。
+  await page.locator('#panel').evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished)));
+  // 动画跑完后再隔开取样、连续几次都一样才算停住。
   let before = await box();
+  let steady = 0;
   await expect
-    .poll(async () => {
-      const now = await box();
-      const same = JSON.stringify(now) === JSON.stringify(before);
-      before = now;
-      return same;
-    })
-    .toBe(true);
+    .poll(
+      async () => {
+        const now = await box();
+        steady = JSON.stringify(now) === JSON.stringify(before) ? steady + 1 : 0;
+        before = now;
+        return steady;
+      },
+      { intervals: [150] },
+    )
+    .toBeGreaterThanOrEqual(4);
   const info = await page.locator('#panel .scene-info').boundingBox();
   expect(before.width).toBeLessThanOrEqual(info.width + 1);
   const long = { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't3', name: 'Bash', input: { command: 'shasum -a 256 ' + 'scenes/scene-001/very-long-file-name-'.repeat(12) } }] }, session_id: 'r' };

@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, errorText } from '../api';
-import type { AgentsResponse, CanvasOption, DirectoryEntry, Project, StylesResponse } from '../types';
+import type { AgentsResponse, CanvasOption, DirectoryEntry, ModeOption, Project, StylesResponse } from '../types';
 import { FilmStyleDialog, styleKey, useFilmStyles } from './FilmStyles';
 import { SetupGuide, useSetup } from './SetupGuide';
 import { Creation, type CreationJob } from './Creation';
 import { Icon } from './Icon';
+import { rendererState } from './agentReady';
+import { canReveal, revealInFinder } from '../reveal';
 import '../home.css';
 
 /**
@@ -15,7 +17,9 @@ import '../home.css';
  */
 
 export interface ProjectSummary {
+  /** 制作走到了顶栏的哪一步（与顶栏同一个来源）与它的名字；没有流程记录时为空。 */
   stage: string;
+  stage_label: string;
   completed: number;
   total: number;
   busy?: string;
@@ -28,32 +32,49 @@ interface Props {
   defaultParent: string;
   currentId: string;
   agents: AgentsResponse | null;
+  /** 装、去掉插件后加一：重读做法（插件可能带来新的做法）。 */
+  pluginsVersion?: number;
   onOpen: (id: string) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
   onBrowse: () => void;
   /** 新项目建好、制作已经开始：切到项目，打开这个会话。 */
   onStarted: (projectId: string, sessionId: string) => Promise<void>;
   onBack?: () => void;
+  /** 打开新手引导。 */
+  onGuide?: () => void;
 }
 
-/** 制作方式：映射到 am init 的 --delivery 与 --narration。 */
-const modes = [
-  { id: 'speech', label: '口播讲解', hint: '配音 + 动画，最常用', delivery: 'speech', narration: 'solo' },
-  { id: 'cast', label: '角色对白', hint: '多个角色你一言我一语', delivery: 'speech', narration: 'cast' },
-  { id: 'beat', label: '音乐卡点', hint: '没有配音，画面踩着节拍切', delivery: 'beat', narration: 'solo' },
-  { id: 'song', label: '歌曲 MV', hint: '把内容写成一首歌来讲', delivery: 'song', narration: 'solo' },
-] as const;
-type ModeID = (typeof modes)[number]['id'];
+/**
+ * 制作方式：映射到 am init 的 --delivery 与 --narration。选项来自后端（/api/styles 的 modes：
+ * 宿主的口播、内置插件登记的做法与已装的第三方插件带来的做法）；还没取到时只有口播。
+ */
+const fallbackModes: ModeOption[] = [{ id: 'speech', label: '口播讲解', hint: '配音 + 动画，最常用', delivery: 'speech', narration: 'solo' }];
 
-/** 模板就是几种常见的视频形式：点一下把画幅、制作方式和示例填好。 */
-const templates: { id: string; title: string; desc: string; canvas: string; mode: ModeID; example: string }[] = [
+interface Template {
+  id: string;
+  title: string;
+  desc: string;
+  canvas: string;
+  mode: string;
+  example: string;
+}
+
+/** 口播的几种常见形式（画幅不同）。别的做法的模板来自后端给的做法里带了 example 的那几种。 */
+const speechTemplates: Template[] = [
   { id: 'explainer', title: '口播科普', desc: '3:4 竖屏，讲清一个概念', canvas: 'vertical-3x4', mode: 'speech', example: '把这篇文章做成 3 分钟的口播科普，讲清楚核心概念' },
   { id: 'short', title: '竖屏快讲', desc: '9:16，一分钟抓住注意力', canvas: 'vertical-9x16', mode: 'speech', example: '做一条 60 秒的竖屏快讲，开头三秒就抛出反常识的结论' },
   { id: 'landscape', title: '横屏讲解', desc: '16:9，适合 B 站长视频', canvas: 'landscape-16x9', mode: 'speech', example: '做成 5 分钟的横屏讲解视频，分三个小节，配图表' },
-  { id: 'beat', title: '音乐卡点', desc: '没有配音，节奏驱动', canvas: 'vertical-9x16', mode: 'beat', example: '用一首轻快的曲子做卡点短片，每个重拍切一个画面' },
-  { id: 'song', title: '歌曲 MV', desc: '把知识写成一首歌', canvas: 'vertical-9x16', mode: 'song', example: '把这篇文章写成一首歌，做成带歌词的 MV' },
-  { id: 'cast', title: '角色对白', desc: '两个角色对话讲道理', canvas: 'vertical-3x4', mode: 'cast', example: '用两个角色一问一答的方式讲这件事，一个好奇一个专业' },
 ];
+
+/** 模板就是几种常见的视频形式：点一下把画幅、制作方式和示例填好。 */
+function templatesOf(modes: readonly ModeOption[]): Template[] {
+  return [
+    ...speechTemplates,
+    ...modes
+      .filter((m) => m.example && m.canvas)
+      .map((m) => ({ id: m.id, title: m.label, desc: m.hint, canvas: m.canvas!, mode: m.id, example: m.example! })),
+  ];
+}
 
 const rotatingWords = ['科普视频', '竖屏快讲', '卡点短片', '歌曲 MV', '对白短剧'];
 const placeholders = [
@@ -63,15 +84,6 @@ const placeholders = [
   '把这周的产品更新做成一条横屏讲解',
 ];
 
-const stageLabels: Record<string, string> = {
-  setup: '准备',
-  plan: '脚本与分镜',
-  render: '渲染',
-  assemble: '合成',
-  review: '复查',
-  publish: '发布',
-};
-
 const LAST_TOOL = 'am-studio:home-tool';
 
 export function Home(props: Props) {
@@ -79,7 +91,7 @@ export function Home(props: Props) {
   const [files, setFiles] = useState<File[]>([]);
   const [styles, setStyles] = useState<StylesResponse | null>(null);
   const [canvas, setCanvas] = useState('');
-  const [mode, setMode] = useState<ModeID>('speech');
+  const [mode, setMode] = useState('speech');
   const [filmStyle, setFilmStyle] = useState('');
   const [parent, setParent] = useState('');
   const [tool, setTool] = useState(() => {
@@ -107,7 +119,7 @@ export function Home(props: Props) {
       },
       () => setStyles(null),
     );
-  }, []);
+  }, [props.pluginsVersion]);
   useEffect(() => {
     if (!parent && props.defaultParent) setParent(props.defaultParent);
   }, [props.defaultParent]);
@@ -128,10 +140,14 @@ export function Home(props: Props) {
   const setup = useSetup();
   // 技能与 CLI 没准备好时建了项目也装不上技能、渲染不了：先引导去跑 am setup。
   const prereqsReady = setup.status?.ready !== false;
-  const canSend = !working && prereqsReady && (text.trim() !== '' || files.length > 0) && !!tool && !!parent;
+  // 新建的项目用全局设置里的渲染工具：没装的话整片会一路做到第一次渲染才报错，先说清楚。
+  const drawing = rendererState(props.agents, props.agents?.global_renderer ?? '');
+  const canSend = !working && prereqsReady && drawing.ok && (text.trim() !== '' || files.length > 0) && !!tool && !!parent;
+  const modes = styles?.modes?.length ? styles.modes : fallbackModes;
+  const templates = templatesOf(modes);
   const current = templates.find((t) => t.id === template);
   const canvasInfo = styles?.canvases.find((c) => c.id === canvas);
-  const modeInfo = modes.find((m) => m.id === mode)!;
+  const modeInfo = modes.find((m) => m.id === mode) ?? modes[0];
   const films = useFilmStyles(menu === 'style' || filmStyle !== '');
   const styleLabel = filmStyle ? films.data?.styles.find((s) => styleKey(s) === filmStyle)?.cn ?? filmStyle : '不用整片风格';
 
@@ -154,7 +170,7 @@ export function Home(props: Props) {
     } catch {
       // 记不住上次选的工具不影响建项目。
     }
-    const m = modes.find((item) => item.id === mode)!;
+    const m = modes.find((item) => item.id === mode) ?? modes[0];
     const message = text.trim();
     setJob({
       parent,
@@ -197,6 +213,7 @@ export function Home(props: Props) {
         onRemove={props.onRemove}
         onBrowse={props.onBrowse}
         onBack={props.onBack}
+        onGuide={props.onGuide}
       />
       <main className="home-main">
         <section className={'home-hero' + (props.projects.length === 0 ? ' centered' : '')}>
@@ -204,10 +221,27 @@ export function Home(props: Props) {
             今天想做一条
             <RotatingWord words={rotatingWords} />？
           </h1>
-          <p className="home-sub">粘贴一篇文章、拖进讲稿，或者说说你想要的视频。剩下的交给编排工具。</p>
+          <p className="home-sub">粘贴一篇文章、拖进讲稿，或者说说你想要的视频。剩下的交给 AI。</p>
           {setup.status && setup.status.items.some((item) => !item.ready) && (
             <div className="home-setup">
               <SetupGuide setup={setup} />
+            </div>
+          )}
+
+          {!drawing.ok && (
+            <div className="home-renderer" role="alert" id="home-renderer">
+              <span className="home-renderer-icon">
+                <Icon name="brush" size={14} />
+              </span>
+              <span className="home-renderer-text">
+                <strong>还差一家画镜头的工具</strong>
+                <span>{drawing.reason}。</span>
+              </span>
+              {props.onGuide && (
+                <button className="pill" onClick={props.onGuide}>
+                  去选一个
+                </button>
+              )}
             </div>
           )}
 
@@ -338,7 +372,7 @@ export function Home(props: Props) {
                     align="right"
                     open={menu === 'tool'}
                     onOpen={(open) => setMenu(open ? 'tool' : '')}
-                    label={props.agents?.agents.find((a) => a.id === tool)?.label ?? '编排工具'}
+                    label={props.agents?.agents.find((a) => a.id === tool)?.label ?? 'AI'}
                   >
                     {props.agents?.agents.map((agent) => (
                       <MenuItem
@@ -346,7 +380,7 @@ export function Home(props: Props) {
                         selected={agent.id === tool}
                         disabled={!agent.installed}
                         title={agent.label}
-                        desc={agent.installed ? '编排整片制作' : `没有找到 ${agent.command}`}
+                        desc={agent.installed ? '编排整片制作' : (agent.hint ?? `没有找到 ${agent.command}`)}
                         onClick={() => {
                           setTool(agent.id);
                           setMenu('');
@@ -354,7 +388,7 @@ export function Home(props: Props) {
                       />
                     ))}
                   </Dropdown>
-                  <button id="home-send" className="send" disabled={!canSend} onClick={() => void submit()} aria-label="开始制作" title={prereqsReady ? '建项目并开始制作（Enter）' : '先在终端运行 am setup 准备前置资源'}>
+                  <button id="home-send" className="send" disabled={!canSend} onClick={() => void submit()} aria-label="开始制作" title={!prereqsReady ? '先在工具准备页把必需的工具装好' : !drawing.ok ? drawing.reason : '建项目并开始制作（Enter）'}>
                     {working ? <span className="spinner" /> : <Icon name="up" size={15} />}
                   </button>
                 </div>
@@ -376,7 +410,7 @@ export function Home(props: Props) {
                   error={films.error}
                   posterVersion={films.posterVersion}
                   selected={filmStyle}
-                  none={{ title: '不用整片风格', desc: '每个镜头按文案自己定配色、字体与动效。编排工具会在稿件审核时按题材推荐几种风格，也可以之后在「风格」页里选。' }}
+                  none={{ title: '不用整片风格', desc: '每个镜头按文案自己定配色、字体与动效。AI 会在稿件审核时按题材推荐几种风格，也可以之后在「风格」页里选。' }}
                   onPick={setFilmStyle}
                   onClose={() => setMenu('')}
                 />
@@ -417,6 +451,7 @@ function HomeRail(props: {
   onRemove: (id: string) => Promise<void>;
   onBrowse: () => void;
   onBack?: () => void;
+  onGuide?: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(true);
@@ -449,6 +484,12 @@ function HomeRail(props: {
         <Icon name="folder" size={14} />
         打开文件夹…
       </button>
+      {props.onGuide && (
+        <button className="rail-btn" id="open-guide" onClick={props.onGuide}>
+          <Icon name="route" size={14} />
+          新手引导
+        </button>
+      )}
       <button className="rail-head" aria-expanded={open} onClick={() => setOpen(!open)}>
         最近项目
         <Icon name="chevron" size={11} />
@@ -467,6 +508,11 @@ function HomeRail(props: {
                     <span className="rail-meta ellipsis">{summaryText(summary)}</span>
                   </span>
                 </button>
+                {canReveal && !summary?.missing && (
+                  <button className="rail-more rail-reveal" aria-label={`在 Finder 中打开 ${p.name}`} title="在 Finder 中打开" onClick={() => revealInFinder('', p.id)}>
+                    <Icon name="folder" size={11} />
+                  </button>
+                )}
                 <button className="rail-more" aria-label={`从最近项目移除 ${p.name}`} title="从列表移除（不删文件）" onClick={() => void props.onRemove(p.id)}>
                   <Icon name="close" size={10} />
                 </button>
@@ -488,7 +534,8 @@ function summaryText(summary?: ProjectSummary): string {
   if (!summary) return '';
   if (summary.missing) return '目录不见了';
   if (summary.busy) return summary.busy;
-  const stage = stageLabels[summary.stage] ?? summary.stage;
+  const stage = summary.stage_label;
+  if (!stage) return summary.total ? `${summary.completed}/${summary.total} 镜头` : '';
   return summary.total ? `${stage} · ${summary.completed}/${summary.total} 镜头` : stage;
 }
 
@@ -727,7 +774,7 @@ function TemplateArt({ id }: { id: string }) {
   }
 }
 
-/** 项目名：说的话第一句，或第一个文件名；去掉路径符号，截到 24 字，加上日期。 */
+/** 备用的项目名：说的话第一句，或第一个文件名；去掉路径符号，截到 24 字。AI 起名起不出来时用它，日期由开机画面加。 */
 function projectName(message: string, files: File[]): string {
   let base = message.split('\n').find((line) => line.trim()) ?? '';
   if (!base && files.length) base = files[0].name.replace(/\.[^.]+$/, '');
@@ -737,9 +784,7 @@ function projectName(message: string, files: File[]): string {
     .replace(/[，。！？、；：,.!?;:]+.*$/, '')
     .trim()
     .replace(/\s+/g, '-');
-  base = Array.from(base).slice(0, 24).join('') || '新视频';
-  const now = new Date();
-  return `${base}-${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  return Array.from(base).slice(0, 24).join('') || '新视频';
 }
 
 function formatSize(bytes: number): string {

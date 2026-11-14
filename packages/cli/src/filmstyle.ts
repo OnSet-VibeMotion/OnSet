@@ -1,11 +1,11 @@
 /**
  * 整片风格（film_style_*）：从风格来源里挑画面风格装进项目。一个默认风格（不写 film_style 的镜头用它），
- * 外加个别镜头点名用的额外风格。移植自 internal/cli/filmstyle.go。
+ * 外加个别镜头点名用的额外风格。
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import * as filmstyle from '@am/engine/filmstyle';
-import '@am/engine/filmstyle/sources';
+import '@am/engine/plugin';
 import { goQuote } from '@am/engine/gofmt';
 import { encodeLine } from '@am/engine/gojson';
 import { currentEnvironment } from './cli';
@@ -14,6 +14,8 @@ import { padRight } from './canvas';
 import { defineGroup } from './ops/cli';
 import { bool, str } from './ops/common';
 import { defineOp, type ParamSpec } from './ops/op';
+// 已装的第三方插件带来的风格来源由 flow 加载时交给 filmstyle（flow/styles.ts）。
+import '@am/engine/flow';
 
 /** 帮助里列出的已登记来源。 */
 export function sourceSummary(): string {
@@ -27,7 +29,7 @@ export function sourceSummary(): string {
     .join('\n');
 }
 
-/** Manifest 写成 JSON 时去掉只在内存里的 legacy（Go 的 json:"-"）。 */
+/** Manifest 按字段顺序写成 JSON。 */
 function manifestJSON(m: filmstyle.Manifest): Record<string, unknown> {
   return { source: m.source, slug: m.slug, cn: m.cn, en: m.en, version: m.version, digest: m.digest, installed_at: m.installed_at };
 }
@@ -139,7 +141,7 @@ defineOp({
   cli: ['film-style', 'use'],
   summary: '把一种风格装成本项目的默认风格',
   description: `style 写成「来源/目录名」，或者在各来源里唯一的目录名、中文名、英文名。不联网：
-来源数据是前置资源，先在客户端工具准备页（「整片风格库」）准备好，这里只装进项目。
+来源数据是前置资源，先在客户端工具准备页的「以后可能用到」里准备好，这里只装进项目。
 
 项目已有另一种默认风格时默认拒绝：换默认风格会让不写 film_style 的镜头输入指纹变化，
 已渲染的都要重渲染。确认要换就加 "replace": true；还有镜头点名用旧的默认风格时，旧的会留作
@@ -239,7 +241,6 @@ defineOp({
     const users = (ids: string[]) => (ids.length === 0 ? '没有镜头' : ids.join('、'));
     if (isInstalled) {
       out.write(`默认风格：${manifest.cn} ${manifest.en}（${defaultKey}），版本 ${shortCommit(manifest.version)}\n技能目录：${skillDirPath}\n`);
-      if (manifest.legacy) out.write('（旧版目录；再运行一次 film_style_use() 会换成新目录）\n');
       if (scenes.length > 0) out.write(`  使用：${users([...usedBy(''), ...usedBy(defaultKey)])}\n`);
     } else {
       out.write('默认风格：无（不写 film_style 的镜头自主定视觉）。用 film_style_list() 查看可选风格\n');
@@ -271,7 +272,7 @@ defineOp({
   description:
     `不写 style 时删除默认风格（.agents/skills/` +
     filmstyle.SkillName +
-    `/ 以及旧版目录），不写 film_style 的镜头回到「视觉自由度」，
+    `/），不写 film_style 的镜头回到「视觉自由度」，
 已渲染的会被判为 Stale；写了 style 时删除那一种（默认或额外风格都行）。
 
 还有镜头在 scene.json 点名用这种风格时默认拒绝并列出它们——删了这些镜头渲染时会找不到风格。

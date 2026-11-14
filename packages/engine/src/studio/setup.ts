@@ -1,5 +1,5 @@
 /**
- * 前置资源：客户端的安装页。移植自 internal/studio/setup.go，后来加上了在客户端里直接安装。
+ * 前置资源：客户端的安装页，在客户端里直接安装。
  *
  * 以前客户端只读不下载，要用户自己去终端跑 am setup：理由是能看着进度、能加代理、断了能重来。
  * 可客户端用户多半不会开终端，装好应用却用不了。现在安装页满足同样的三条——每项一行的进度、
@@ -72,6 +72,9 @@ function statusJSON(item: prereqs.Status): Record<string, unknown> {
     required: item.required,
     ready: item.ready,
     location: item.location,
+    // 安装页按它把「以后可能用到」的几项（节拍分析环境、各整片风格来源）排成单独点装的卡片；漏了它，
+    // 这几项缺着时顶栏照样数出「可按需安装」，打开却只看到「已全部就位」。
+    later: item.later,
   };
 }
 

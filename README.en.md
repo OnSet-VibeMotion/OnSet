@@ -2,7 +2,7 @@
 
 # ArticleToMotion
 
-ArticleToMotion is a macOS desktop client for producing vertical and landscape motion-graphics videos. Starting from an article or a narration script, it covers the script, voice-over, subtitles, storyboard, concurrent scene rendering, concatenation, covers, and publishing. If you already have a final subtitle file, it can split that straight into scenes and render them.
+ArticleToMotion is a macOS desktop client for producing vertical and landscape motion-graphics videos. Starting from an article or a narration script, it covers the script, voice-over, subtitles, storyboard, concurrent scene rendering, concatenation, covers, and publishing. It can also make beat-synced films with no voice-over, where the picture follows the music.
 
 ▶ [Watch the ArticleToMotion promo video (MP4, 4m 47s)](https://github.com/chouheiwa/articale-to-motion/blob/main/docs/article-to-motion-tutorial.mp4)
 
@@ -48,9 +48,11 @@ The narration mode is also chosen at creation:
 - Multi-role dialogue: also writes a cast roster and a character-pack directory. See "Multi-role narration" below.
 - Two optional formats: solo song explainers and beat-synced reels without narration.
 
-The orchestrator, renderer, voice and alignment tools, concurrency and memory are chosen in the client's Settings (the gear at the top right, or ⌘,). Global settings apply to every project; a project that needs something different sets it in the "This project" column, which writes the project's `article-to-motion.conf`, and "Follow global" undoes that. Values resolve in this order: environment variables > project `.env` > project `article-to-motion.conf` > global settings > built-in defaults.
+The orchestrator, renderer (and the model each one uses), voice and alignment tools, concurrency and memory are chosen in the client's Settings (the gear at the top right, or ⌘,). Global settings apply to every project; a project that needs something different sets it in the "This project" column, which writes the project's `article-to-motion.conf`, and "Follow global" undoes that. Values resolve in this order: environment variables > project `.env` > project `article-to-motion.conf` > global settings > built-in defaults.
 
-The bar at the top of the chat can also pick a different orchestrator and renderer for one session without touching any file.
+If you would rather not install an AI CLI, pick "导演" (Director, the orchestrator bundled with the app) and enter one provider's API key under "导演的模型服务" in Settings (DeepSeek, Kimi, Zhipu GLM, Alibaba Bailian, MiniMax, Anthropic, OpenAI, OpenRouter). Models are written as `provider/model`; leave it empty and the Director picks, among the providers you entered keys for, one whose recommended model can see images. The key is stored only in an owner-readable file in your user data directory. Visual QC and the final review need to look at screenshots, and the recommended DeepSeek and Zhipu GLM models read text only: Settings marks them and the chat warns you before you start; with such a model the Director switches the screen to the images and asks you to look instead of pretending it did. The Director orchestrates only for now; scenes are still drawn by an external tool installed on this computer (Claude Code, Codex, …). The first-run guide checks for one, and "Start production" stays disabled while the configured renderer is missing.
+
+The bar under the chat input can also pick a different orchestrator and renderer, and their models, for one session without touching any file. Model lists come from the tools themselves (codex, qoder, codebuddy and opencode list what your account and providers offer; claude offers the fable / opus / sonnet / haiku aliases); pick "Other…" to type a model that is not listed, or leave "Default" to use the tool's own default.
 
 Voice options:
 
@@ -114,11 +116,11 @@ A scene whose inputs changed is marked Stale, with the changed items named, and 
 
 ### Visual direction
 
-Projects no longer preset or lock a visual style. The tools guarantee the canvas, frame rate, and render determinism. Palette, typography, layout, materials, and motion are decided by the model from the film's content and each scene, so scenes may use different visual languages. The older built-in style packs remain only for compatibility with existing projects and no longer enter render prompts.
+Projects no longer preset or lock a visual style. The tools guarantee the canvas, frame rate, and render determinism. Palette, typography, layout, materials, and motion are decided by the model from the film's content and each scene, so scenes may use different visual languages. The project's `frame.md` records only technical facts about the canvas: size and frame rate, safe areas, default burned-in caption styling, and loudness targets.
 
 ### Film style (optional)
 
-To render the whole film in one style, pick one from a style source. The currently registered source is [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar) by LemoLab: 66 styles, with a [gallery](https://lemomo-ai.github.io/lemo-opuscar/). More sources can be added later.
+To render the whole film in one style, pick one from a style source. The registered sources are [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar) by LemoLab (66 styles, with a [gallery](https://lemomo-ai.github.io/lemo-opuscar/)) and [anidoodle](https://github.com/alexgreensh/anidoodle) by Alex Greenshpun (32 hand-drawn looks painted entirely in code, such as pencil and watercolour, sumi-e, ukiyo-e woodblock, embroidery and scratchboard; [gallery](https://github.com/alexgreensh/anidoodle/blob/main/skills/anidoodle/assets/styles.jpg)). More sources can be added later.
 
 - You can pick directly on the home page, in the new-project dialog, and on the Style page (grouped by source, with posters and search), and switch or remove it there too.
 - If you have not picked one, the orchestrator suggests two or three at the script-review checkpoint, based on the subject.
@@ -154,7 +156,7 @@ A character pack is a directory under `cast/<id>/`:
 - One `rig.svg` skeleton, or one per view.
 - `dna.md` holds the persona for the orchestrator and does not affect rendering.
 
-Per-speaker voice-overs are rebuilt into one timeline by the tools and then cut into beats per scene. The working rules ship with the project in `PROMPT-CAST-ADDENDUM.md`.
+Per-speaker voice-overs are rebuilt into one timeline by the tools and then cut into beats per scene. The working rules are the appendix at the end of the production prompt ("附：多角色叙事作业规程").
 
 ## Render memory
 
@@ -293,6 +295,10 @@ A draft grid never takes effect directly; you move on only after listening and c
 
 Beat analysis uses [beat-this](https://github.com/CPJKU/beat_this) (ISMIR 2024; code and weights are MIT). It gives both beats and downbeats and runs on a CPU, with no dependency on madmom.
 
+## Writing a plugin
+
+To add a step to the production flow (for example, automatic publishing), write an `am-station.json` as described in [docs/plugin-authoring.md](docs/plugin-authoring.md) (Chinese) and install it under "我的插件" in the client's settings. A plugin is installed once for this computer and applies to every project; the kinds of video and styles it brings can be picked when creating a project.
+
 ## Development
 
 Building from source needs Node.js 22+:
@@ -312,7 +318,7 @@ npm run dist -w am-desktop                   # build the .app (apps/desktop/rele
 
 `am` (`packages/cli`) is a program the client uses internally. Background jobs call it directly, and the orchestrator and renderers call it through its tool service (MCP). It is not offered to users as a command line. During development you can run it with `node packages/cli/dist/am.cjs <command>`.
 
-After changing the canvas table, the style table, or the prompt templates, run `npm run generate -w @am/engine` and commit the generated `assets/presets` and `assets/styles`. Development conventions are in `AGENTS.md` and `packages/engine/CONVENTIONS.md`.
+After changing the canvas table or the `frame.md` template, run `npm run generate -w @am/engine` and commit the generated `assets/presets`. Development conventions are in `AGENTS.md` and `packages/engine/CONVENTIONS.md`.
 
 ArticleToMotion is licensed under the [Apache License 2.0](./LICENSE). HyperFrames is an independent Apache-2.0 project, used at a pinned release when a project is created.
 

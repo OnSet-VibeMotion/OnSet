@@ -9,6 +9,15 @@ for a in "$@"; do
 done
 printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "$sid"
 case "$prompt" in *慢慢来*) exec sleep 60 ;; esac
+# 首页起名（studio/naming.ts 的 namingPrompt）：把「用户的原话：」下一行逗号前的部分加上「的片子」当项目名；
+# 原话带「慢起名」时先等 2 秒，供看「拟片名」那一幕。
+case "$prompt" in *请给一条讲解视频的项目起一个名字*)
+  said=$(printf '%s\n' "$prompt" | sed -n '/^用户的原话：/{n;p;q;}' | sed 's/，.*//')
+  case "$said" in *慢起名*) sleep 2 ;; esac
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"%s的片子"}]}}\n' "$said"
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
+  exit 0 ;;
+esac
 # 「看看稿子」：发一次读文件调用就挂起，供场记小人测试使用（调用一直没有结果，小人停在「读」）。
 case "$prompt" in *看看稿子*)
   printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"r1","name":"Read","input":{"file_path":"production/script-final.md"}}]}}\n'
@@ -31,9 +40,9 @@ case "$prompt" in *给我选项*)
   printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
   exit 0 ;;
 esac
-# 「推荐风格」：回复带 film-styles 代码块与 choices 代码块，不改文件。
-case "$prompt" in *推荐风格*)
-  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"推荐两种：\\n```film-styles\\nlemo-opuscar/impasto 厚涂有分量\\nlemo-opuscar/ukiyoe 版画感强\\n```\\n```choices\\n不用整片风格\\n```"}]}}\n'
+# 「挑几张海报」（不用「推荐风格」：每轮提示词的交互约定里就有这几个字，会把所有对话都接到这里）：回复带 film-styles 代码块与 choices 代码块，不改文件。
+case "$prompt" in *挑几张海报*)
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"推荐两种：\\n```film-styles\\nlemo-opuscar/impasto 厚涂有分量\\nlemo-opuscar/ukiyoe 版画感强\\nlemo-opuscar/ink-wash [回忆段，镜头 04–06] 留白像记忆\\n```\\n```choices\\n不用整片风格\\n```"}]}}\n'
   printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
   exit 0 ;;
 esac
@@ -47,7 +56,7 @@ case "$prompt" in *做几个试听*)
 esac
 # 「排版测试」：回复带表格、嵌套列表、任务列表、代码块，以及要被清洗掉的 HTML。
 case "$prompt" in *排版测试*)
-  printf '%s\n' '{"type": "assistant", "message": {"content": [{"type": "text", "text": "# 标题\n\n| 文件 | 音色 |\n|---|---|\n| `PROMPT.md` | **稳重** |\n\n- 第一层\n  - 第二层\n- [x] 已完成\n- [ ] 待办\n\n~~删掉~~ *斜体* **好。**了 见 https://example.com\n\n```bash\nam setup\n```\n\n<img src=x onerror=\"window.__xss=1\"><script>window.__xss=2</script>[坏链接](javascript:alert(1))\n"}]}}'
+  printf '%s\n' '{"type": "assistant", "message": {"content": [{"type": "text", "text": "# 标题\n\n| 文件 | 音色 |\n|---|---|\n| `notes.md` | **稳重** |\n\n- 第一层\n  - 第二层\n- [x] 已完成\n- [ ] 待办\n\n~~删掉~~ *斜体* **好。**了 见 https://example.com\n\n```bash\nam setup\n```\n\n<img src=x onerror=\"window.__xss=1\"><script>window.__xss=2</script>[坏链接](javascript:alert(1))\n"}]}}'
   printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
   exit 0 ;;
 esac
@@ -61,6 +70,16 @@ case "$prompt" in *要批准*)
   done
   if [ -z "$mcp" ]; then answer="没有审批服务"; else answer=$(node "$(dirname "$0")/../fake-permission.mjs" "$mcp" | tr -d '"{}\\'); fi
   printf '{"type":"assistant","message":{"content":[{"type":"text","text":"审批结果：%s"}]}}\n' "$answer"
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
+  exit 0 ;;
+esac
+# 「标步骤」：照 studio_step 的写法往这一轮的收件目录写一份请求（只标步骤、不切页），再照常回复。
+case "$prompt" in *标步骤*)
+  if [ -n "$AM_STUDIO_INBOX" ]; then
+    mkdir -p "$AM_STUDIO_INBOX"
+    printf '{"page":"","step":"final","note":"成片拼好了，等你试听"}' > "$AM_STUDIO_INBOX/00000000000000000001.json"
+  fi
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"成片拼好了"}]}}\n'
   printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
   exit 0 ;;
 esac

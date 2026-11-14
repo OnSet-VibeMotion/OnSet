@@ -1,4 +1,3 @@
-// 移植自 internal/determinism/scan.go。
 //
 // Package determinism 静态扫描镜头合成源码，拦下会让渲染结果不可复现的写法。
 //

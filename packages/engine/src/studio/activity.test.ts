@@ -41,7 +41,7 @@ describe('scene activity', () => {
     const log = path.join(dir, 'render-s1.stream.jsonl');
     const half = Math.floor(callRender.length / 2);
     fs.writeFileSync(log, [init, callRead, resultRead, say].join('\n') + '\n' + callRender.slice(0, half));
-    let a = sceneActivity(summary(dir), new Date()) as Record<string, any>;
+    let a = sceneActivity(summary(dir)) as Record<string, any>;
     expect(a.model).toBe('claude-test');
     expect(a.renderer).toBe('claude');
     expect(a.steps.map((s: any) => [s.kind, s.state ?? ''])).toEqual([
@@ -51,7 +51,7 @@ describe('scene activity', () => {
     expect(a.steps[1].text).toBe('画面已经排好，开始渲染。');
 
     fs.appendFileSync(log, callRender.slice(half) + '\n');
-    a = sceneActivity(summary(dir), new Date()) as Record<string, any>;
+    a = sceneActivity(summary(dir)) as Record<string, any>;
     expect(a.step_count).toBe(3);
     const render = a.steps[2];
     expect(render.tool).toBe('mcp__am__hyperframes');
@@ -64,10 +64,10 @@ describe('scene activity', () => {
     const dir = tempDir();
     const log = path.join(dir, 'render-s1.stream.jsonl');
     fs.writeFileSync(log, [init, callRead, resultRead, say].join('\n') + '\n');
-    expect((sceneActivity(summary(dir), new Date()) as any).step_count).toBe(2);
+    expect((sceneActivity(summary(dir)) as any).step_count).toBe(2);
     fs.renameSync(log, path.join(dir, 'old.jsonl'));
     fs.writeFileSync(log, init + '\n' + say + '\n');
-    expect((sceneActivity(summary(dir), new Date()) as any).step_count).toBe(1);
+    expect((sceneActivity(summary(dir)) as any).step_count).toBe(1);
   });
 
   // 渲染视频的几分钟里流日志不动：有进行中标记时看进程，不看日志静默了多久。
@@ -77,15 +77,15 @@ describe('scene activity', () => {
     fs.writeFileSync(log, init + '\n');
     const hourAgo = new Date(Date.now() - 3600_000);
     fs.utimesSync(log, hourAgo, hourAgo);
-    expect(sceneRendering(dir, 's1', new Date()), '没有标记、日志一小时没动：不算渲染中').toBe(false);
+    expect(sceneRendering(dir, 's1'), '没有标记、日志一小时没动：不算渲染中').toBe(false);
 
     scene.writeLive(dir, 's1', { pid: process.pid, renderer: 'claude', started_at: '2026-11-09T00:00:00Z' });
-    expect(sceneRendering(dir, 's1', new Date()), '标记里的进程还在：渲染中').toBe(true);
-    expect((sceneActivity(summary(dir), new Date()) as any).started_at).toBe('2026-11-09T00:00:00Z');
+    expect(sceneRendering(dir, 's1'), '标记里的进程还在：渲染中').toBe(true);
+    expect((sceneActivity(summary(dir)) as any).started_at).toBe('2026-11-09T00:00:00Z');
 
     // 找一个肯定不存在的 pid：进程被强杀、来不及删标记。
     scene.writeLive(dir, 's1', { pid: 2 ** 22 + 12345, renderer: 'claude', started_at: '' });
-    expect(sceneRendering(dir, 's1', new Date()), '标记里的进程没了：不算渲染中').toBe(false);
+    expect(sceneRendering(dir, 's1'), '标记里的进程没了：不算渲染中').toBe(false);
 
     scene.removeLive(dir, 's1');
     expect(fs.existsSync(scene.liveFile(dir, 's1'))).toBe(false);

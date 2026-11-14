@@ -6,7 +6,7 @@
 // （am beat analyze / doctor、客户端）只检查，缺了抛 prereq.MissingError 指向 am setup。
 import fs from 'node:fs';
 import path from 'node:path';
-import { lookPath } from '../envutil';
+import { dataDir, lookPath } from '../envutil';
 import { lockFile } from '../hyperframes/cli';
 import type { Progress, Writer } from '../hyperframes/progress';
 import { errorText, runCommand } from '../hyperframes/util';
@@ -39,9 +39,7 @@ const supportedPython = { min: [3, 10], max: [3, 14] } as const;
 export function envDir(env: Record<string, string | undefined>): string {
   const dir = env[EnvDirEnv];
   if (dir) return dir;
-  let root = '';
-  if (env.XDG_DATA_HOME) root = path.join(env.XDG_DATA_HOME, 'am');
-  else if (env.HOME) root = path.join(env.HOME, '.local', 'share', 'am');
+  const root = dataDir(env);
   if (root === '') return '';
   return path.join(root, 'beat', 'venv-' + AnalyzerVersion);
 }

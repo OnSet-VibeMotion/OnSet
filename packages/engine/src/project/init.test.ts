@@ -1,4 +1,3 @@
-// 移植自 internal/project/init_test.go。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,19 +21,16 @@ describe('initialize', () => {
     const result = initialize(target, ...builtinSources());
     expect(result.created).toBeGreaterThan(0);
     for (const name of [
-      'PROMPT.md',
-      'PROMPT-PRODUCTION.md',
       'article-to-motion.conf',
       '.env.example',
-      'PROMPT-CAST-ADDENDUM.md',
       'frame.md',
-      'templates/publish.md',
-      'docs/清晰系统蓝图-视频风格说明书.md',
+      'templates/project-rules.md',
       'assets/fonts/noto-sans-sc-400.woff2',
-      'assets/style-guide/examples/proposition.png',
     ]) {
       expect(fs.existsSync(path.join(target, ...name.split('/'))), `missing ${name}`).toBe(true);
     }
+    // 制作提示词不拷进项目：开工时按流程组合。
+    for (const name of ['PROMPT.md', 'PROMPT-PRODUCTION.md', 'PROMPT-SONG.md', 'PROMPT-CAST-ADDENDUM.md']) expect(fs.existsSync(path.join(target, name)), name).toBe(false);
   });
 
   it('is idempotent for identical files', () => {
@@ -47,7 +43,7 @@ describe('initialize', () => {
 
   it('refuses conflicting file without partial writes', () => {
     const target = tempDir();
-    fs.writeFileSync(path.join(target, 'PROMPT.md'), 'custom');
+    fs.writeFileSync(path.join(target, 'frame.md'), 'custom');
     expect(() => initialize(target, ...builtinSources())).toThrow();
     expect(fs.existsSync(path.join(target, 'article-to-motion.conf')), 'initializer wrote files before conflict check').toBe(false);
   });
@@ -55,9 +51,9 @@ describe('initialize', () => {
   it('rejects symlinked template directory', () => {
     const target = tempDir();
     const outside = tempDir();
-    fs.symlinkSync(outside, path.join(target, 'docs'));
+    fs.symlinkSync(outside, path.join(target, 'templates'));
     expect(() => initialize(target, ...builtinSources())).toThrow();
-    expect(fs.existsSync(path.join(outside, '清晰系统蓝图-视频风格说明书.md')), 'initializer escaped through symlink').toBe(false);
+    expect(fs.existsSync(path.join(outside, 'project-rules.md')), 'initializer escaped through symlink').toBe(false);
   });
 
   it('merges multiple sources', () => {

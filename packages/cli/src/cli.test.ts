@@ -1,10 +1,7 @@
-// 移植自 internal/cli/cli_test.go。
-
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import * as preset from '@am/engine/preset';
 import { Buffer, initProject, run, runCLI, setenv, tempDir } from './testutil';
 import { Version } from './cli';
 
@@ -19,7 +16,12 @@ describe('cli', () => {
     const target = path.join(tempDir(), 'project');
     const out = new Buffer();
     expect(await run(['init', target, '--canvas', 'vertical-3x4', '--skip-hyperframes'], out), out.text).toBe(0);
-    expect(fs.existsSync(path.join(target, 'PROMPT.md'))).toBe(true);
+    // 不写提示词文件，只记下流程与画幅；提示词开工时组合，prompt show 能看全文。
+    expect(fs.existsSync(path.join(target, 'PROMPT.md'))).toBe(false);
+    expect(JSON.parse(fs.readFileSync(path.join(target, 'article-to-motion.flow.json'), 'utf8')).production).toEqual({ id: 'speech', canvas: 'vertical-3x4' });
+    const shown = new Buffer();
+    expect(await run(['prompt', 'show', '--project-root', target], shown), shown.text).toBe(0);
+    expect(shown.text).toContain('## 第一阶段：盘点输入和制作规格');
   });
 
   it('config get uses the project root', async () => {
@@ -58,10 +60,10 @@ describe('cli', () => {
   });
 
 
-  it('style and empty run-all commands', async () => {
+  it('empty run-all and no validate style', async () => {
     const root = await initProject();
     const out = new Buffer();
-    expect(await run(['validate', 'style', '--project-root', root], out), out.text).toBe(0);
+    expect(await run(['validate', 'style', '--project-root', root], out), out.text).not.toBe(0);
     const project = tempDir();
     fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
     fs.mkdirSync(path.join(project, 'scenes'));
@@ -72,7 +74,7 @@ describe('cli', () => {
 
   it('init conflict, and same-tool config succeeds', async () => {
     const target = tempDir();
-    fs.writeFileSync(path.join(target, 'PROMPT.md'), 'custom');
+    fs.writeFileSync(path.join(target, 'frame.md'), 'custom');
     expect(await run(['init', target, '--canvas', 'vertical-3x4', '--skip-hyperframes'])).toBe(1);
     const root = tempDir();
     fs.writeFileSync(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=codex\n');
@@ -109,16 +111,6 @@ describe('cli', () => {
     expect(await run(['scene', 'run-all', 'scenes', '--duration-tolerance', 'nan'])).toBe(1);
   });
 
-  it('validate style --regenerate-examples reports missing ImageMagick', async () => {
-    // 先铺项目再清空 PATH：init 本身不需要外部命令，但清空后就没法建了。
-    const root = await initProject();
-    setenv('PATH', tempDir());
-    const stderr = new Buffer();
-    expect(await run(['validate', 'style', '--project-root', root, '--regenerate-examples'], new Buffer(), stderr), stderr.text).toBe(1);
-    expect(stderr.text).toContain('ImageMagick');
-  });
-
-
   it('init rejects an unknown canvas', async () => {
     const out = new Buffer();
     const code = await run(['init', path.join(tempDir(), 'video'), '--canvas', 'vertical-4x5', '--skip-hyperframes'], out);
@@ -129,14 +121,17 @@ describe('cli', () => {
   it('init writes the chosen canvas', async () => {
     const target = path.join(tempDir(), 'video');
     const out = new Buffer();
-    expect(await run(['init', target, '--canvas', 'vertical-9x16', '--style', preset.defaultStyle().id, '--skip-hyperframes'], out), out.text).toBe(0);
+    expect(await run(['init', target, '--canvas', 'vertical-9x16', '--skip-hyperframes'], out), out.text).toBe(0);
     const body = fs.readFileSync(path.join(target, 'frame.md'), 'utf8');
     expect(body, 'frame.md 未写入 9:16 画幅').toContain('height_px: 1920');
     expect(body, 'frame.md 的字幕安全区未按 9:16 推导').toContain('top_px: 1470');
-    // 共享树与预设树都要落地。
-    for (const name of [path.join('assets', 'fonts', 'noto-sans-sc-400.woff2'), path.join('assets', 'style-guide', 'examples', 'proposition.png'), path.join('templates', 'project-rules.md')]) {
+    // 共享树与画幅树都要落地；旧版风格的说明书、示例图与风格描述不再出现。
+    for (const name of [path.join('assets', 'fonts', 'noto-sans-sc-400.woff2'), path.join('templates', 'project-rules.md')]) {
       expect(fs.existsSync(path.join(target, name)), `缺少 ${name}`).toBe(true);
     }
+    for (const name of ['docs', path.join('assets', 'style-guide')]) expect(fs.existsSync(path.join(target, name)), `不该有 ${name}`).toBe(false);
+    // --style 已经没有了。
+    expect(await run(['init', path.join(tempDir(), 'v2'), '--canvas', 'vertical-9x16', '--style', 'custom', '--skip-hyperframes'], new Buffer())).not.toBe(0);
   });
 
   // 非交互环境不静默取默认画幅：选错画幅会让整个项目的排版基准和成片规格全错。
@@ -161,8 +156,8 @@ describe('cli', () => {
     const body = fs.readFileSync(path.join(target, 'cast.yaml'), 'utf8');
     // packs: [] 是明确裁定过的设计：am init 刚建的项目本来就还没有角色包。
     for (const want of ['schema: cast/v1', 'packs: []', 'ground_y: 0.78', 'turn: 240', 'interject: 100']) expect(body).toContain(want);
-    // 附录随 shared 树无条件下发，两种模式都在。
-    expect(fs.existsSync(path.join(target, 'PROMPT-CAST-ADDENDUM.md'))).toBe(true);
+    // 多角色的作业规程是口播制作提示词的附录，不再是项目里的一份文件。
+    expect(fs.existsSync(path.join(target, 'PROMPT-CAST-ADDENDUM.md'))).toBe(false);
   });
 
   it('init rejects an unknown narration', async () => {

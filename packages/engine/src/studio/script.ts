@@ -1,11 +1,12 @@
 /**
- * 口播稿页。移植自 internal/studio/script.go。
+ * 口播稿页。
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import * as align from '../align';
 import * as srt from '../srt';
 import { writeError, writeJSON } from './http';
+import { pageGate } from './progress';
 import type { Server } from './studio';
 
 // 口播稿页读的文件。终稿由制作提示词第二阶段写出；没有终稿时退回用户放进项目的原稿。
@@ -67,7 +68,7 @@ export function scriptAPI(s: Server, request: Request): Response {
   } catch (err) {
     return writeError(404, 'no_project', (err as Error).message);
   }
-  return writeJSON(200, scriptResponseJSON(readScript(root)));
+  return writeJSON(200, { ...scriptResponseJSON(readScript(root)), gate: pageGate(root, 'script') });
 }
 
 export function readScript(root: string): ScriptResponse {

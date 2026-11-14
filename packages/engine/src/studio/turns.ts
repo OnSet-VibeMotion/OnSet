@@ -1,5 +1,5 @@
 /**
- * 每轮对话前后各扫一遍项目，记下每个文件的状态；两次之差就是这一轮的改动。移植自 internal/studio/turns.go。
+ * 每轮对话前后各扫一遍项目，记下每个文件的状态；两次之差就是这一轮的改动。
  *
  * Studio 自己不改项目文件，所以「回退这一轮」只能靠快照：文本文件的内容按 sha256
  * 存进 production/studio/blobs/，相同内容只存一份；媒体与超大文件只记大小和修改
@@ -8,7 +8,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { atomicWrite } from '../fsutil';
+import { atomicWrite, ProjectSkippedDirs as skippedDirs, walkDir } from '../fsutil';
 import { compareBytes, marshalIndent, sortedKeys } from '../gojson';
 import * as ledger from '../ledger';
 
@@ -18,21 +18,10 @@ export const statPrefix = 'stat:';
 export const shaPrefix = 'sha256:';
 
 /**
- * skippedDirs 是快照不进入的目录。production/studio 是 Studio 自己的状态，
- * production/usage 是编排用量的账本（在一轮结束前写下，不跳过的话会算成这一轮的改动，
- * 回退时把账一起抹掉），
- * attempts 与 .studio-frames 是渲染与抽帧的副产物，其余是依赖与工具缓存。
+ * skippedDirs 是快照不进入的目录（表在 fsutil，第三方站操作的越界检查也用它）。另外 production/studio 是 Studio 自己的状态，
+ * production/usage 是编排用量的账本（在一轮结束前写下，不跳过的话会算成这一轮的改动，回退时把账一起抹掉），见 skipDir。
  */
-export const skippedDirs: ReadonlySet<string> = new Set([
-  '.git',
-  'node_modules',
-  'attempts',
-  '.studio-frames',
-  '.agents',
-  '__pycache__',
-  '.venv',
-  '.cache',
-]);
+export { ProjectSkippedDirs as skippedDirs, walkDir } from '../fsutil';
 
 /** mediaExtensions 直接按 stat 处理，不读内容。 */
 const mediaExtensions: ReadonlySet<string> = new Set([
@@ -97,30 +86,6 @@ function blobPath(project: string, state: string): string {
   return path.join(studioRoot(project), 'blobs', state.startsWith(shaPrefix) ? state.slice(shaPrefix.length) : state);
 }
 
-/** 同步遍历（filepath.WalkDir 的词法顺序）。visit 返回 'skip' 跳过目录。 */
-export function walkDir(root: string, visit: (file: string, entry: fs.Dirent | null, isRoot: boolean) => 'skip' | 'stop' | void): void {
-  let stopped = false;
-  const walk = (dir: string): void => {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    entries.sort((a, b) => compareBytes(a.name, b.name));
-    for (const entry of entries) {
-      if (stopped) return;
-      const full = path.join(dir, entry.name);
-      const result = visit(full, entry, false);
-      if (result === 'stop') {
-        stopped = true;
-        return;
-      }
-      if (entry.isDirectory() && result !== 'skip') walk(full);
-    }
-  };
-  walk(root);
-}
 
 /** 快照与文件树都不进入的目录：上面那张表、Studio 状态目录与用量账本。 */
 export function skipDir(project: string, dir: string, name: string): boolean {
@@ -220,6 +185,14 @@ export function diffTrees(before: FileTree | null, after: FileTree): FileChange[
   }
   changes.sort((a, b) => compareBytes(a.path, b.path));
   return changes;
+}
+
+/** storeBlob 把一份内容按 sha256 存进 blobs（已有就不再写），返回它的状态。 */
+export function storeBlob(project: string, body: Buffer): string {
+  const state = shaPrefix + crypto.createHash('sha256').update(body).digest('hex');
+  const blob = blobPath(project, state);
+  if (!fs.existsSync(blob)) atomicWrite(blob, body, 0o644);
+  return state;
 }
 
 /** readBlob 读出某个状态对应的内容；stat 状态与空状态返回 null。 */

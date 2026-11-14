@@ -1,4 +1,3 @@
-// 移植自 internal/tools/model.go。
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -10,7 +9,8 @@ import path from 'node:path';
  * configuredModel 读配置文件，opencode 记为未知。
  */
 export function detectModel(tool: string, line: string): string {
-  if (tool !== 'claude' && tool !== 'qoder' && tool !== 'codebuddy') return '';
+  // director（导演，am 自带的编排）照 claude 系的格式输出，见 director 包。
+  if (tool !== 'claude' && tool !== 'qoder' && tool !== 'codebuddy' && tool !== 'director') return '';
   let event: unknown;
   try {
     event = JSON.parse(line);

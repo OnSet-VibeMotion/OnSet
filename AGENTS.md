@@ -5,7 +5,7 @@
 | 目录 | 内容 |
 |---|---|
 | `packages/engine/src/<包>/` | 引擎。包的公开 API 从各自的 `index.ts` 导出，外部用 `@am/engine/<包>` 引用。编码约定见 `packages/engine/CONVENTIONS.md`——为了与用户已有的项目文件、记忆库和渲染指纹逐字节兼容，JSON、数字格式、正则都有固定写法 |
-| `packages/cli/src/` | am：制作步骤是操作表里的操作（`ops/op.ts` 的 `defineOp`，各模块加载时登记，例如 `beat_cmd.ts`），工具服务、客户端后端与开发用的命令行都从这张表来；`cli.ts` 只另挂 setup、init 与两个 MCP 服务。esbuild 打成 `packages/cli/dist/am.cjs` |
+| `packages/cli/src/` | am：制作步骤是操作表里的操作（`ops/op.ts` 的 `defineOp`，各模块加载时登记，例如 `scene_cmd.ts`；内置插件的操作经 `plugin_ops.ts` 订阅登记表），工具服务、客户端后端与开发用的命令行都从这张表来；`cli.ts` 只另挂 setup、init 与两个 MCP 服务。esbuild 打成 `packages/cli/dist/am.cjs` |
 | `apps/desktop/` | Electron 客户端：主进程 `src/main/`，React 19 界面 `src/renderer/`，端到端测试 `e2e/` |
 | `assets/` | 随客户端下发的内置资产，运行时从磁盘读，见「内置资产」 |
 
@@ -22,22 +22,23 @@ npm run build -w @am/cli          # → packages/cli/dist/am.cjs
 npm run build -w am-desktop       # → apps/desktop/out/
 npm run test:e2e -w am-desktop    # Playwright 的 Electron 模式，会先构建命令行与客户端
 npm run dist -w am-desktop        # 本机出一份 .app（apps/desktop/release/）
-npm run generate -w @am/engine    # 由画幅表、风格表与模板重新生成 assets/presets 与 assets/styles
+npm run generate -w @am/engine    # 由画幅表与模板重新生成 assets/presets/<画幅>/frame.md
 ```
 
 CI（`.github/workflows/ci.yml`）跑类型检查、两包的 Vitest、构建、生成器幂等与 e2e；发布（`.github/workflows/release.yml`）在推 `v*` tag 时出 arm64 与 x64 两份 dmg。
 
 ## 内置资产
 
-项目骨架分三棵源树，`packages/engine/src/assets/index.ts` 是读取它们的唯一入口：
+项目骨架分两棵源树，`packages/engine/src/assets/index.ts` 是读取它们的唯一入口：
 
 | 源树 | 内容 |
 |---|---|
-| `assets/shared/` | 与画幅、风格都无关，所有项目共用（`PROMPT.md`、配置模板、中文正文字体、`templates/`、`.agents/skills/`） |
-| `assets/presets/<画幅>/` | 只随画幅变化（`PROMPT-PRODUCTION.md`） |
-| `assets/styles/<风格>/<画幅>/` | 风格 × 画幅（`frame.md`、风格说明书、示例图，以及该风格独有的字体） |
+| `assets/shared/` | 与画幅无关，所有项目共用（配置模板、中文正文字体、`templates/`、`.agents/skills/`） |
+| `assets/presets/<画幅>/` | 只随画幅变化：`frame.md`（由生成器从画幅表写出） |
 
-**每棵树的内部路径就是它在用户项目根下的目标路径**，`project.initialize`（`packages/engine/src/project/init.ts`）把选中的三棵树叠加拷贝，不做任何路径改写。所以 `assets/shared/assets/fonts/` 这层嵌套是刻意的——它对应项目里的 `assets/fonts/`。多棵树写入同一路径会直接报错，不静默覆盖；风格独有的字体要换一个文件名放进风格树，不能与共用树里的字体同名。
+制作提示词不在任何一棵树里、不拷进项目：段落在 `assets/prompts/` 与 `assets/plugins/<id>/sections/`，开工时按项目记下的流程组合（见「Prompt 文件」）。
+
+**每棵树的内部路径就是它在用户项目根下的目标路径**，`project.initialize`（`packages/engine/src/project/init.ts`）把选中的两棵树叠加拷贝，不做任何路径改写。所以 `assets/shared/assets/fonts/` 这层嵌套是刻意的——它对应项目里的 `assets/fonts/`。两棵树写入同一路径会直接报错，不静默覆盖：画幅树里不放与共用树同名的文件。
 
 资产不打进 JS：开发时直接读仓库里的 `assets/`，打包时 `apps/desktop/package.json` 的 `extraResources` 把整棵 `assets/` 拷进应用资源目录，客户端与命令行的启动方经 `AM_ASSETS_DIR` 告诉引擎它在哪。遍历时有一条过滤规则：**目录里名字以 `.` 或 `_` 开头的条目一律跳过**（macOS 的 `.DS_Store` 就靠它挡住），只有 `explicitDotEntries` 里列出的 `assets/shared/.env.example` 与 `assets/shared/.agents` 两个入口例外。**新增一个需要随 `am init` 下发的点开头条目时，要把它加进 `explicitDotEntries`**——漏了不报错，只是那份内容静默到不了用户项目。`packages/engine/src/assets/index.test.ts` 的「skips dot and underscore entries except the explicit ones」与「includes the explicitly embedded dot entries」钉着这条规则；打包规则里的 `**/.*` 也要保留，否则点开头的文件在 .app 里根本不存在。
 
@@ -53,7 +54,7 @@ CI（`.github/workflows/ci.yml`）跑类型检查、两包的 Vitest、构建、
 
 更要命的是上游安装器根本给不了可复现性：它 `git clone` 仓库默认分支取技能，没有指定 ref 的口子，技能内容随上游 `main` 漂移而版本号不变（实测 0.8.1 与 0.8.14 装出来逐字节相同）。所以 `hyperframes` 包不调用它，改为自己按 tag 浅克隆并校验 commit 与技能数量，见 `packages/engine/src/hyperframes/constants.ts` 里 `PinnedSkillsCommit` / `PinnedSkillsCount` 的注释；安装后写一份 `hyperframes-upstream.json` 记录 commit 与每个技能的内容摘要，见 `manifest.ts`。校验过的技能树按 commit 缓存在用户级目录（`defaultCacheDir`）；缓存只在调用方显式传 `Options.cacheDir` 时启用，测试里传临时 `HOME` 的用例因此仍能断言 HOME 一个字节都没动。缓存按技能数判可用。
 
-**要联网的东西都是前置资源**（`packages/engine/src/prereq`）：HyperFrames 技能（`hyperframes.prepareSkills`）、HyperFrames CLI（`ensureCLI`）、卡点模式的节拍分析环境（`beat.ensureEnv`）、各整片风格来源的数据（`Source.prepare`，lemo-opuscar 含全部 demo、海报、core/assets 与 three.js 依赖）以及渲染用浏览器（`hyperframes.ensureBrowser`）、ffmpeg / ffprobe 与 uv（`toolinstall`）、项目选用的配音与对齐工具（`toolinstall.ensureTool`，按 `providers.ts` 里各家的 `install` 描述）只由 `am setup` 或客户端的安装页（`studio/setup.ts`）下载——两边跑同一份清单（`prereqs.items`）、同一份日志，都能看进度、加代理、断了重来。其余路径只检查：`am init` / 客户端新建用 `Options.cacheOnly` 从缓存拷技能，`am hyperframes` 与 `scene.run` 用 `requireCLI`，`am beat analyze` / `doctor` 用 `beat.requireEnv`，`am film-style use` 与客户端用 `filmstyle.install` / `Source.check`，缺了一律抛 `prereq.MissingError`（文案统一指向 `am setup`）。`scene.run` 渲染前还要 `requireBrowser`（不然 HyperFrames 会在第一次渲染时自己下 390 MB 的 chrome-headless-shell）。**不要再在这些路径里加自动下载**：以前建项目、渲染、打开菜单时各自现下载，网络一差就卡在半路，用户看不到卡在哪，渲染途中卡住还白花一次模型调用。`am setup` 的界面（`packages/cli/src/setupview.ts`）每项一行、按显示宽度对齐，终端里原地重画，管道里每次状态变化打一行；git / npm 的原始输出一律写进 `<数据目录>/am/setup.log`（`packages/cli/src/setup.ts`），失败时屏幕只给错误、日志最后几行与日志路径——别再把子进程输出直接接到终端，混进进度行就乱了。`am setup --proxy` 用 `GIT_CONFIG_PARAMETERS` 只给 git 设代理：设成 `HTTPS_PROXY` 的话 npm 也走它，国内镜像经代理反而连不上（实测）。要从 GitHub release、Google 存储下载的（ffmpeg、uv、uv 的 Python、浏览器）经 `prereqs` 的 `withProxy` 设 `https_proxy`，curl 与 HyperFrames 都认；GitHub release 也可以设 `AM_GITHUB_MIRROR` 走镜像，文件都按钉死的 sha256 核对。
+**要联网的东西都是前置资源**（`packages/engine/src/prereq`）：HyperFrames 技能（`hyperframes.prepareSkills`）、HyperFrames CLI（`ensureCLI`）、内置插件登记的前置资源（`ctx.prereq`，例如卡点插件的节拍分析环境 `beat.ensureEnv`）、各整片风格来源的数据（`Source.prepare`，由登记来源的内置插件经 `ctx.prereq` 登记成 `styles:<来源>`；lemo-opuscar 含全部 demo、海报、core/assets 与 three.js 依赖）以及渲染用浏览器（`hyperframes.ensureBrowser`）、ffmpeg / ffprobe 与 uv（`toolinstall`）、项目选用的配音与对齐工具（`toolinstall.ensureTool`，按 `providers.ts` 里各家的 `install` 描述）只由 `am setup` 或客户端的安装页（`studio/setup.ts`）下载——两边跑同一份清单（`prereqs.items`）、同一份日志，都能看进度、加代理、断了重来。其余路径只检查：`am init` / 客户端新建用 `Options.cacheOnly` 从缓存拷技能，`am hyperframes` 与 `scene.run` 用 `requireCLI`，`beat_analyze` / `beat_doctor` 用 `beat.requireEnv`，`am film-style use` 与客户端用 `filmstyle.install` / `Source.check`，缺了一律抛 `prereq.MissingError`（文案统一指向 `am setup`）。`scene.run` 渲染前还要 `requireBrowser`（不然 HyperFrames 会在第一次渲染时自己下 390 MB 的 chrome-headless-shell）。**不要再在这些路径里加自动下载**：以前建项目、渲染、打开菜单时各自现下载，网络一差就卡在半路，用户看不到卡在哪，渲染途中卡住还白花一次模型调用。`am setup` 的界面（`packages/cli/src/setupview.ts`）每项一行、按显示宽度对齐，终端里原地重画，管道里每次状态变化打一行；git / npm 的原始输出一律写进 `<数据目录>/am/setup.log`（`packages/cli/src/setup.ts`），失败时屏幕只给错误、日志最后几行与日志路径——别再把子进程输出直接接到终端，混进进度行就乱了。`am setup --proxy` 用 `GIT_CONFIG_PARAMETERS` 只给 git 设代理：设成 `HTTPS_PROXY` 的话 npm 也走它，国内镜像经代理反而连不上（实测）。要从 GitHub release、Google 存储下载的（ffmpeg、uv、uv 的 Python、浏览器）经 `prereqs` 的 `withProxy` 设 `https_proxy`，curl 与 HyperFrames 都认；GitHub release 也可以设 `AM_GITHUB_MIRROR` 走镜像，文件都按钉死的 sha256 核对。
 
 **开箱即用**：客户端用户的 Mac 上可以什么都没有（没有 Node、Python、Homebrew、Xcode 命令行工具），装好 .app、点一次安装页就能做片。约定如下，改动时别打破：
 
@@ -97,9 +98,10 @@ HyperFrames **CLI** 与技能分开管理但同一个版本：`hyperframes.ensur
 |---|---|
 | `assets/shared/.agents/skills/<name>/SKILL.md` | 技能本体，`SKILL.md` 是必需文件 |
 | `packages/engine/src/assets/index.ts` | 已含 `assets/shared/.agents`，新技能自动覆盖（名字别以 `.` 或 `_` 开头） |
-| `packages/engine/src/scene/skills.ts` 的 `registeredSkills` | 追加描述符，`source: SourceEmbedded` |
-| 同文件的 `<name>Prompt` 函数 | 该技能注入镜头提示词的片段，挂在描述符的 `promptSection` 上 |
+| 描述符（`source: SourceEmbedded`）与 `<name>Prompt` 函数 | 属于某个功能的技能由那个内置插件在 `apply` 里 `ctx.skill(...)` 登记（例如 `plugins/cast/skill.ts` 的 character-rig），每个镜头都带；宿主自己的（scene-kit）追加在 `packages/engine/src/scene/skills.ts` 的 `registeredSkills`。提示词片段挂在描述符的 `promptSection` 上；不写 `promptSection` 的技能只解析目录，由别处按需引用（song-explainer 由 song 块引用） |
 | `assets/shared/templates/project-rules.md` | 下发规则要点名它，有门禁强制（「builtin skills are documented in project rules」） |
+
+全部技能（宿主的加上内置插件登记的）是 `scene.allSkills()`，下面的技能树门禁按它查，插件登记的技能一条都不能松；每个镜头用的也是它（内置插件常开）。
 
 新增一个**上游**技能只要在 `registeredSkills` 加一条 `source: SourceUpstream` 的描述符加提示词片段——它已经被 `am init` 装进项目了，注册只是让 `am` 把绝对路径和用法边界写进渲染提示词。
 
@@ -114,60 +116,42 @@ HyperFrames **CLI** 与技能分开管理但同一个版本：`hyperframes.ensur
 
 fork 自外部项目的技能要带 `LICENSE` 和 `ATTRIBUTION.md`，后者记清上游 commit、保留了什么、丢了什么、改了哪几处，供日后同步上游时重做。`text-to-lottie` 的 `references/` 还有一道门禁止上游播放器契约（`Skottie`、`public/projects` 等）回流（`skilltree.test.ts` 的「forked skill carries no upstream player contract」）。
 
-## 画幅预设与风格
+## 画幅预设
 
-画幅与风格是两个正交维度，都在 `am init` 时各选一次（`--canvas`、`--style`）。画幅决定画布与安全区，风格决定配色、字体、版式骨架、动效语法与禁用项；生成器把二者组合成每个风格 × 画幅的 `frame.md`：canvas 与 safe_area 两块来自画幅，其余 token 来自风格模板。2026-10-20 起内置风格只作为旧项目的兼容资产保留：新镜头的提示词不再把 `frame.md` 的风格 token、`style_id`、风格说明书当作视觉命令，`am init` 不传 `--style` 时取自定义草稿（`packages/cli/src/canvas.ts` 的 `resolveStyle`），视觉由各镜头自主决定或由「整片风格」统一。画幅部分（画布、帧率、安全区）照常生效。
+画幅在 `am init` / 客户端新建时选一次（`--canvas`），之后不再改。它决定画布、帧率与安全区；配色、字体、版式、材质与动效不由项目文件规定，由各镜头自主决定或由「整片风格」统一。旧版的内置风格体系（风格表、风格说明书、示例图、自定义风格草稿、`--style` / `--style-brief`、`am validate style`、`am style fonts` / `add-font`、字体池）已整套删除。
 
-镜头的画幅一律经 `scene.sceneCanvas` 取（`scene/scene.ts` 的 `styleSource`）：`scene.json` 写了 `style_guide` 用它，没写就近找 `frame.md`——镜头目录，再逐级向上到项目根（有 `article-to-motion.conf` 的那一层），找不到项目根时只看镜头目录。**不要再写 `canvasOf(s.directory, s.style_guide)`**：新镜头不写 `style_guide`，那样会静默落到默认的 1080×1440，提示词、`am-scene.js` 与产物校验三处一起错，选了 9:16 的项目整片出成 3:4 还照样「通过」（2026-11 实测）。`scene.test.ts` 的「reads the project frame.md when scene.json has no style guide」钉着。
+项目根的 `frame.md` 是画幅的唯一落点，只有四块技术信息：`canvas`（宽高、帧率、朝向）、`safe_area`（五个安全区的像素内缩）、`subtitles`（烧录字幕的版式约束：字号范围、最大宽度、行数、每行字数、行高与断句规则，`scene-kit` 的 `SceneKit.captions` 读它；没有配色、圆角与内边距，字幕文字缺省跟随整片配色的 `look.ink`，底框与颜色由镜头经 `captions` 的选项自己定）与 `audio`（混音与成片响度目标，`am review` 读 `final_*` 三项）。正文说明这些是技术信息、不是视觉命令。
 
-`assets/presets/<画幅>/` 与 `assets/styles/<风格>/<画幅>/` 下的**文本产物全部由 `npm run generate -w @am/engine` 生成，不要手改**。真相源是 `packages/engine/src/preset/table.ts` 的画幅表、`packages/engine/src/preset/style.ts` 的风格表，以及 `packages/engine/src/preset/gen/templates/` 下的模板（`PROMPT-PRODUCTION.md` 与风格无关；每套风格在 `templates/styles/<风格>/` 下各有 `frontmatter.yaml`、`frame.body.md`、`style-guide.body.md`）。安全区在预设表里用 anchor 声明（贴顶 / 贴底 / 上下固定），构建期推导成绝对像素写进 `frame.md`——anchor 不进项目文件，渲染工具读到的始终是现成像素值。
+镜头的画幅一律经 `scene.sceneCanvas` 取（`scene/scene.ts` 的 `frameSource`）：就近找 `frame.md`——镜头目录，再逐级向上到项目根（有 `article-to-motion.conf` 的那一层），找不到项目根时只看镜头目录。**哪儿都没有就报错，不回退任何默认画幅**：静默落到某个默认值的话，提示词、`am-scene.js` 与产物校验三处一起错，选了 9:16 的项目整片出成 3:4 还照样「通过」（2026-11 实测）。`scene.json` 没有画幅字段（旧的 `style_guide` 已删，写了会报未知字段）。`scene.test.ts` 的「reads the project frame.md」「fails without any frame.md」钉着。记忆的考试重放时，`freezeInput` 把镜头当时就近读到的 `frame.md` 一起冻结进输入，重放按当时的画幅。
 
-改完预设表后必须重跑生成器并提交产物，CI 的 `generated-assets` job 会校验二者一致（`packages/engine/src/preset/gen/gen.test.ts` 的「matches the committed assets byte-for-byte」在本地也能先拦下）。
+`assets/presets/<画幅>/frame.md` **由 `npm run generate -w @am/engine` 生成，不要手改**。真相源是 `packages/engine/src/preset/table.ts` 的画幅表与 `packages/engine/src/preset/gen/templates/frame.md` 模板；生成器（`preset/gen/gen.ts`）整块替换 `canvas` 与 `safe_area`，再填占位符，不做 YAML 重序列化。安全区在画幅表里用 anchor 声明（贴顶 / 贴底 / 上下固定），构建期推导成绝对像素——anchor 不进项目文件，渲染工具读到的始终是现成像素值。`project.initialize` 把共用树与选中画幅的树叠加拷贝，`frame.md` 逐字节来自这里（`projectinit/index.test.ts` 的「writes the canvas frame.md and nothing of the old styles」）。
 
-示例 SVG 是手绘的排版基准，生成器不改它们的内容；改完 SVG 用 `npm run generate -w @am/engine -- -examples -style <风格> -preset <画幅>` 更新 PNG（入口是 `packages/engine/src/preset/gen/main.ts`）。PNG 不参与 CI 幂等门——不同版本的 `rsvg-convert` 输出字节不同，纳进来会让门随 runner 随机失败。
+改完画幅表或模板后必须重跑生成器并提交产物，CI 的 `generated-assets` job 会校验二者一致（`gen.test.ts` 的「matches the committed assets byte-for-byte」在本地也能先拦下）。
 
-SVG 转 PNG 必须走 `rsvg-convert`（`packages/engine/src/styleimage`），**不能用 ImageMagick**：多数 ImageMagick 构建自带内置 XML SVG 渲染器，会抢在 rsvg 委托前接管 `.svg`，渲染不出文字也画不对背景填充，却返回退出码 0。
+模板里随画幅变化的东西一律写占位符，不写死：`{{SUBTITLE_MAX_WIDTH_PX}}` 等像素由生成器从安全区推导（可带整数偏移，如 `{{CONTENT_LEFT_PX+8}}`）；`{{ORIENTATION}}`、`{{PLATFORM_UI}}`、`{{AVOIDANCE_ZONES}}` 取自画幅表的 `platform`；`{{CANVAS}}` 是全角乘号写法的画幅。未知占位符会让生成器直接报错。同一个 `substituteCanvas` 也给运行期组合的制作提示词换画幅占位符。
 
-新增画幅要动的地方：`packages/engine/src/preset/table.ts` 加一条（安全区、`platform` 平台措辞，必要时加 `layoutNotes` 构图要点）、为每套风格手绘 4 张该尺寸的示例 SVG、跑生成器与 `-examples`。`validate` 与 `scene.buildPrompt` 都向预设表反查，不持有画幅常量，无需改动。
+新增画幅要动的地方：`packages/engine/src/preset/table.ts` 加一条（安全区、`platform` 平台措辞，必要时加 `layoutNotes` 构图要点，它接在 `frame.md` 正文末尾），跑生成器并提交 `assets/presets/<新画幅>/`。`scene.buildPrompt` 与产物校验只读 `frame.md` 的数字，不持有画幅常量。`assets/trees.test.ts` 查 `assets/presets/` 的目录与画幅表一一对应。
 
-风格模板是所有画幅共用的，**随画幅变化的东西一律写占位符，不写死**：`{{CONTENT_LEFT_PX}}`、`{{CONTENT_WIDTH_PX}}`、`{{SUBTITLE_MAX_WIDTH_PX}}`、`{{COVER_MAX_WIDTH_PX}}` 由生成器从安全区推导（可带整数偏移，如 `{{CONTENT_LEFT_PX+8}}`）；`{{ORIENTATION}}`、`{{PLATFORM_UI}}`、`{{UI_ZONE}}`、`{{AVOIDANCE_ZONES}}` 取自画幅表的 `platform`。在模板里写「竖屏」「抖音右侧互动栏」或 `904` 这类数字，横屏项目就会拿到错的规范。未知占位符会让生成器直接报错。
-
-新增风格要动的地方：`packages/engine/src/preset/style.ts` 加一条；在 `templates/styles/<风格>/` 写三份模板（`style_id` / `style_name` 必须与风格表一致，生成器会校验）；为每个画幅手绘 4 张示例 SVG，放进 `assets/styles/<风格>/<画幅>/assets/style-guide/examples/`；跑生成器与 `-examples`。四种镜头骨架的 id（`preset.ArchetypeIDs`）是叙事职责，所有风格共用、顺序固定，风格只换名字、用途说明和示例图。`packages/engine/src/validate/validate.test.ts` 的「accepts every builtin preset」对每个风格 × 画幅的产物跑一遍 `validate.style`，`packages/engine/src/assets/trees.test.ts` 的「resolve for every combination」确认每个组合的三棵树都在。
-
-### 自定义风格
-
-`am init --style custom --style-brief "…"` 不套内置风格：只写入描述（`docs/style-brief.md`）和草稿树 `assets/styles/custom-draft/<画幅>/`。草稿由生成器产出（模板在 `templates/styles/custom-draft/`），字段齐全但 token 只是默认风格的占位值，没有示例图。原先由编排提示词的「第一阶段补充：定风格」定稿；2026-10-20 起那一节已从制作提示词里拿掉，`gen.test.ts` 的「leaves the visual style free」钉着它与 `custom-draft`、`docs/style-brief.md` 不回流。以下约定仍对存量项目成立：
-
-| 位置 | 约定 |
-|---|---|
-| `preset.CustomStyle` | 草稿身份（`style_id: custom-draft`）。**刻意不进 `builtinStyles`**——生成器、选择框和一串枚举内置风格的测试都遍历那张表，混进去会把草稿当成带示例图的正式风格（`preset.test.ts` 的「keeps the custom draft out of the builtin table」） |
-| `preset.isCustomStyleID` | 自定义风格的命名空间 `custom-<小写短名>`。内置风格不得以 `custom-` 开头 |
-| `validate.style` | 草稿直接报「定风格阶段未完成」；定稿后说明书路径固定为 `preset.guideDoc(preset.CustomStyle)`，不从用户写的 `style_name` 拼；其余检查与内置风格相同 |
-| `validate.regenerateExamples` | 自定义风格直接渲染项目里的四张 SVG，不重着色、不改写；草稿也放行。`am validate style --regenerate-examples` 因此先出图再校验 |
-| `scene.load` | 原先在 `style_guide` 仍是草稿时拒绝加载；风格不再是渲染前置条件后改为放行，旧项目仍从中读技术画布（`scene/style_guide.test.ts` 的「load accepts a draft style guide」） |
-| `am style fonts` / `add-font` | 字体只能来自 `preset.allFonts`（与 `assets/fontpool/` 双向一致，`packages/engine/src/assets/trees.test.ts` 的「matches AllFonts in both directions」守着）或用户自带 woff2 |
-
-可选键 `mood_refs` 列氛围参照图，通常来自编排工具的内置生图（官方 Codex 的 `$imagegen`）。它**不查尺寸**——生图工具不能指定像素——也不当版式基准；现在 `buildPrompt` 已不读它（`style_guide.test.ts` 的「buildPrompt does not read mood refs」）。生图只在 ChatGPT 登录的官方 Codex 下才可能可用（API key 与第三方 provider 会被上游过滤），所以它只能是可跳过的一步，不能变成任何流程的前提。`CODEX_HOME` 为此进了安全模式白名单。
+SVG 转 PNG（角色包预览，`packages/engine/src/svgimage`）必须走 `rsvg-convert`，**不能用 ImageMagick**：多数 ImageMagick 构建自带内置 XML SVG 渲染器，会抢在 rsvg 委托前接管 `.svg`，渲染不出文字也画不对背景填充，却返回退出码 0。
 
 ## 整片风格
 
-整片风格分两层：`packages/engine/src/filmstyle` 是**与来源无关的通用部分**（`Source` 接口与登记、风格目录查找、装进项目的契约），具体风格来源在子目录里实现 `Source`，模块加载时调用 `filmstyle.register`。目前只有 `packages/engine/src/filmstyle/lemo`（lemo-opuscar，LemoLab，MIT + demo CC BY 4.0）。am 本身不锁定视觉；整片风格是可选的第三种技能来源，与 `SourceEmbedded` / `SourceUpstream` 并列但**不进 `registeredSkills`**：那张表要求解析不到时退回按名字引用，而整片风格解析不到的意思是「本片没有整片风格」。`scene.resolveFilmStyle` 只找项目级（不找家目录），只认契约，解析到就并进 `resolveAllSkills` 的结果，指纹与安全模式读取因此自动覆盖；`buildPrompt` 据此把「视觉自由度」段换成 `filmStyleSection`。
+整片风格分两层：`packages/engine/src/filmstyle` 是**与来源无关的通用部分**（`Source` 接口、来源表、风格目录查找、装进项目的契约、目录式风格库 `DirectorySource`），具体风格来源由内置插件在 `apply` 里 `ctx.filmStyleSource(...)` 登记，`filmstyle.sources()` 从插件登记表取（`plugin.pluginFilmStyleSources`）再并上当前项目的第三方来源。目前有两个内置插件：`lemo-styles`（「LemoLab 风格库」，`packages/engine/src/plugins/lemo-styles`：来源 lemo-opuscar，LemoLab，MIT + demo CC BY 4.0）与 `anidoodle-styles`（「anidoodle 代码绘画」，`packages/engine/src/plugins/anidoodle-styles`：来源 anidoodle，Alex Greenshpun，Apache-2.0）。`filmstyle` 与内核（prereqs、config、studio、cli）不 import 它们。两个来源共用的下载零件（分段稀疏检出、锁、屏蔽用户配置的 git 调用）在 `filmstyle/gitlib.ts`，SKILL.md 模板用的 Go text/template 子集在 `filmstyle/template.ts`。am 本身不锁定视觉；整片风格是可选的第三种技能来源，与 `SourceEmbedded` / `SourceUpstream` 并列但**不进 `registeredSkills`**：那张表要求解析不到时退回按名字引用，而整片风格解析不到的意思是「本片没有整片风格」。`scene.resolveFilmStyle` 只找项目级（不找家目录），只认契约，解析到就并进 `resolveAllSkills` 的结果，指纹与安全模式读取因此自动覆盖；`buildPrompt` 据此把「视觉自由度」段换成 `filmStyleSection`。
 
 | 约定 | 原因 |
 |---|---|
 | 项目里的契约：`.agents/skills/am-film-style/` 下必须有 `STYLE.md`（不变量）与 `SKILL.md`（用法、技法参考在哪、来源特有的注意事项），`am-film-style.json` 记来源、风格、版本与内容摘要；其余文件由来源决定。`filmstyle.install`（`install.ts`）校验契约、负责换位与新旧目录，来源只实现 `fill` | 镜头提示词、制作提示词与客户端只依赖契约，接新来源不用改它们。目录名带 `am-` 前缀，免得撞上用户自己装的技能 |
 | **镜头提示词与制作提示词不点名任何来源**：lemo 的页面契约、demo、`core/fonts`、真实素材类风格的先后顺序都写在 lemo 自己的 `SKILL.md` 模板里；`gen.test.ts` 的「carries the film style without naming a source」拦 `lemo`、`DEMO.md`、`core/fonts` 回流到制作提示词 | 来源特有的话写进通用提示词，下一个来源就得到一份错的说明 |
 | 风格标识是「来源/目录名」（`styleKey`）；`filmstyle.lookup` 也认唯一的目录名、中文名、英文名，多个来源重名时要求写全 | 来源之间目录名会撞 |
-| 各来源的数据放在 `filmstyle.rootDir`（`~/.local/share/am/film-styles`，`AM_FILM_STYLES_DIR` 覆盖）下以来源 ID 分目录；`childEnvironment` 显式传根目录与各来源 `envKeys()` 里设了的变量 | 默认目录由 `XDG_DATA_HOME` 推出而它不在白名单，子进程会算出另一个目录 |
-| 来源数据是前置资源：只由 `am setup` 经 `Source.prepare` 下载（每个来源一项 `styles:<来源>`），其余路径用 `Source.check` / `fill` 只读，缺了抛 `prereq.MissingError`。编排工具的可写范围里**没有**来源数据 | 见「技能树」一节前置资源的理由 |
-| 新增来源：子目录实现 `Source`、模块加载时 `register`，在 `packages/engine/src/filmstyle/sources/index.ts` 里加一行 import（am 命令、客户端后端与前置资源清单都 import 这个模块）。`packages/engine/src/filmstyle/filmstyle.test.ts` 的假来源证明通用部分不依赖任何具体来源 | 登记靠 import 副作用，集中在一处才不会漏 |
-| 早先只有一个来源时装在 `.agents/skills/lemo-film-style/`（`lemo-upstream.json`）：`filmstyle.installed`、`resolveFilmStyle` 照样认，`install` 装好新目录后删掉旧目录 | 两份并存会被当成两套整片风格 |
+| 各来源的数据放在 `filmstyle.rootDir`（`~/.local/share/am/film-styles`，`AM_FILM_STYLES_DIR` 覆盖）下以来源 ID 分目录；`childEnvironment` 显式传根目录，来源自己的覆盖变量（lemo 的 `AM_LEMO_OPUSCAR_LIBRARY`）由插件经 `ctx.childEnv` 登记、随 `pluginEnv` 传 | 默认目录由 `XDG_DATA_HOME` 推出而它不在白名单，子进程会算出另一个目录 |
+| 来源数据是前置资源：只由 `am setup` 经 `Source.prepare` 下载（每个来源一项 `styles:<来源>`，插件用 `prereqs.filmStyleSourceItem(来源)` 造这一项再 `ctx.prereq` 登记，带 `later` 进安装页「以后可能用到」，每个来源一张卡片（`later.title` 用来源名；安装页按 group 加 title 合卡片，几个来源合成一张的话一个装了、一个没装时看不出缺的是谁）），其余路径用 `Source.check` / `fill` 只读，缺了抛 `prereq.MissingError`。编排工具的可写范围里**没有**来源数据 | 见「技能树」一节前置资源的理由 |
+| 新增来源：写一个内置插件（`plugins/<id>/` 加 `assets/plugins/<id>/am-station.json`、在 `plugins/index.ts` 排队），在 `apply` 里 `ctx.filmStyleSource(来源)`，要下载数据的另登记 `ctx.prereq`、有目录覆盖变量的另登记 `ctx.childEnv`；随插件下发的现成风格目录直接用 `new filmstyle.DirectorySource(...)`。来源 id 不能以 `x-` 开头（那是第三方的）。用到来源表的地方要导入 `plugin` 包（内置插件靠它登记）。`filmstyle/filmstyle.test.ts` 的假来源证明通用部分不依赖任何具体来源，`filmstyle/builtin.test.ts` 用测试里登记的假插件证明新增来源不用改 `filmstyle/`、`prereqs/`、`config/`、`studio/` | 与别的内置功能同一条登记路；以前来源在模块加载时 `register`、集中在一个 sources 模块 import，是第二套登记 |
 | 一个项目可以装几种风格：默认风格在 `.agents/skills/am-film-style/`（`am film-style use`），个别镜头用的额外风格在 `.agents/am-film-styles/<来源>/<目录名>/`（`am film-style add`，`filmstyle.extraDir`），契约相同。**额外风格不能放进 `.agents/skills`** | 技能目录在指纹里是整棵算一份摘要（`resolveAllSkills` 给注册技能的值就是 `.agents/skills`），放进去的话给项目添一种风格，所有镜头都变 Stale |
 | 镜头 `scene.json` 的 `film_style`：空是默认风格，「来源/目录名」是点名的风格，`none` 是不用整片风格。不写的镜头仍记在 `filmstyle.SkillName` 下、提示词仍是 `filmStyleSection`，与只有一种风格时逐字相同；点名的记在 `FilmStyleOwnKey`、提示词换成 `sceneFilmStyleSection`。点名了却没装时 `resolveSceneFilmStyle` 报错，不降级 | 升级 am 不让老镜头变 Stale；降级成「不用风格」会一路静默到成片 |
 | 风格交界：相邻镜头实际用的风格不同时，分镜计划的 `handoff` 必须写 `style_shift`（`scene.StyleShifts`：`morph` / `window` / `sweep` / `match_cut`，每种只配几种 `device`），由 `am scene cues` 的 `verifyStyleBoundaries` 按项目当前的默认风格判定。cues 把它连同对方镜头 `film_style` 的**原值**（`peer_film_style`）写进两侧的 `timing.enter` / `exit`；`resolveAllSkills` 据此把对方风格解析进 `FilmStyleEnterKey` / `FilmStyleExitKey`，`styleShiftSection` 告诉每一侧手法、自己负责哪一段与对方的 STYLE.md 在哪 | 两侧分别渲染、互相看不到，画法要在画面里自然地换过去，只能靠同一份约定指定谁来换、换的那一侧能读到对方的风格。记原值而不是解析结果，是为了换默认风格后两侧跟着变、不用重跑 cues。改手法表要同步改制作提示词第五阶段「风格交界」的表格，`gen.test.ts` 的「carries style boundaries」逐行比对 |
 | 去掉或换掉一种风格前看 `filmstyle.scenesNaming`：还有镜头点名它时 `am film-style remove` 拒绝（`--force` 才删），`use --replace` 把旧的默认风格留作额外风格（`keepReplaced`）。客户端里镜头的「换风格」不改文件，只把要求写进输入框交给编排工具 | 删了被点名的风格，那些镜头渲染时找不到它；哪个镜头用哪种风格要改分镜计划，是编排工具的事 |
 
-lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
+lemo 来源（内置插件 `lemo-styles`，`packages/engine/src/plugins/lemo-styles`）自己的约定：
 
 | 约定 | 原因 |
 |---|---|
@@ -182,9 +166,101 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 
 制作提示词「整片风格」一节由「carries the film style without naming a source」钉着。升级 `PinnedCommit` 时对比新旧 `core/lib.js` 与 `core/README.md` 的页面契约。
 
+anidoodle 来源（内置插件 `anidoodle-styles`）自己的约定。上游不是「风格目录 + demo」，而是一套 Canvas2D 绘图引擎：每种风格是 `draw(ctx, frame, env)` 写成的示范画（TypeScript），多数另有笔触模块（`<风格>Kit.ts`），`references/styles/<风格>.md` 写介质、笔触、边缘、顺序、色板与禁忌：
+
+| 约定 | 原因 |
+|---|---|
+| `PinnedCommit`（`anidoodle.ts`）固定 commit；`catalog.json` 由 `gen/main.ts` 从同一 commit 的检出生成，含每种风格要带的模块闭包（`modules`）与它在上游图鉴里的格子（`cell`）。中文名、分类、示范画与适用题材写在 `gen/zh.ts`，与上游风格一一对应，中文名避开别的来源（`anidoodle.test.ts` 的「does not share a Chinese name with another source」）。升级时 `AM_UPDATE_GOLDEN=1 AM_ANIDOODLE_SRC=<检出> npx vitest run --root packages/engine src/plugins/anidoodle-styles` 重写目录，不设 `AM_UPDATE_GOLDEN` 时核对目录并对 32 种风格跑转换与确定性扫描 | 示范画与笔触模块直接决定画面；中文名撞了，`film_style_use` 只写名字就得写全 |
+| 只稀疏检出要用的（约 2 MB：许可、风格说明、四份通用说明、各风格的模块闭包、图鉴），不取 README 的动图视频、配乐、采样包与工具脚本 | 整仓 94 MB，绝大部分是给它自己的工作流用的 |
+| TypeScript 在 `am setup` 时转成浏览器 ES 模块（`build.ts`）：用 am 自己的运行时的 `module.stripTypeScriptTypes`（transform 模式，上游有参数属性与 `<T>` 断言），再按 tsc 的规则去掉没当作值用到的具名引入（`elideUnusedImports`），相对引用补 `.js`。不用 esbuild / tsc。转换规则变了就递增 `CompilerVersion`，已下载的检出会重转、不重下 | 客户端里没有 esbuild、tsc 与 npm 装出来的原生二进制。上游有 `import { P, rng }` 这种不带 `type` 的类型引入，只去类型的话浏览器报「没有导出 P」，整个模块加载失败（实测）；判断「用到」时成员访问与对象字面量的键不算 |
+| 海报从上游图鉴 `skills/anidoodle/assets/styles.jpg`（8×4）裁（`mediaprobe.cropImages`），裁前核对图鉴的 sha256；缺 ffmpeg 时抛 `prereq.MissingError` | 上游没有单张海报；图鉴重排了而格子没改，海报会张冠李戴 |
+| 转好的模块与海报放在构建目录：am 自己克隆的放检出里的 `.am-build/`，`AM_ANIDOODLE_LIBRARY` 指向的用户检出另放在 `<风格根目录>/anidoodle/local-<路径摘要>`，不往用户目录里写 | 与 lemo 一样不改用户自己的检出 |
+| 项目里的风格目录：`anidoodle/`（转好的模块加接头 `am-anidoodle.js`，渲染器整目录拷进镜头目录）、`source/`（TypeScript 原文，读来学技法）、`references/`、`STYLE.md`（中文说明加上游原文；上游没写说明的两种指向源码文件头）。接头（`runtime.js.tmpl`）把 Film 接到 `hf-seek`：先画第 0 帧、准备登记成 `window.__hf.buildReady`，Film 的检查比上游 `validate` 宽（不要求镜头切在 bpm 网格上）。改 `core.ts` / `film.ts` 的 `Env` 或 `renderFrame` 时要同步改接头 | 上游的宿主（`hosts/page.ts`）依赖它自己的打包与 playwright，不能直接用 |
+| SKILL.md 要求只有 canvas、没有 GSAP 时间轴的合成在根元素上加 `data-no-timeline` | 不加的话 HyperFrames 每次渲染等 45 秒时间轴（实测 50 秒对 4.7 秒，产物逐字节相同） |
+| 只接画面：配乐、旁白、音效、采样包、发布片模板、品牌导入、3D（`three-core`）与上游全部工具脚本都没接 | 与 lemo 同理；3D 要另带 three.js，以后要接可复用 `filmstyle/select.ts` 的 `threeClosure` |
+
 ## Prompt 文件
 
-`assets/shared/PROMPT.md` 和 `assets/presets/<画幅>/PROMPT-PRODUCTION.md` 是内置资产，不是本仓库的文档。它们随新建项目下发到项目根，被客户端的「开始制作」直接喂给编排工具。`PROMPT-PRODUCTION.md` 是生成产物，改它要改 `packages/engine/src/preset/gen/templates/PROMPT-PRODUCTION.md` 再跑生成器。
+制作提示词不是项目里的文件，也不是生成器的产物：它只有一条路——开工时按项目锁文件里记下的流程，把 `assets/prompts/<站>/<段>.md`（宿主的段落）与 `assets/plugins/<id>/sections/`（内置插件登记的段落，例如发布、歌曲讲解）组合起来（`project.runPrompt` → `flow.composeFlowPrompt`），客户端的「开始制作」把它直接喂给编排工具。改提示词就改段落；要看某个项目现在组合出的全文，用 cli-only 的 `prompt_show`（`am prompt show`）。`runPrompt` 的 `override`（显式指定一份提示词文件）原样读那份文件，不再组合。
+
+对某个流程不成立的话不写成「如果是卡点则…」：把段落拆细，或给它一版按流程挑（插件流程自己的那一版放在插件名下，例如宿主的 `host/head`、`render/stage` 与卡点插件的 `beat-common/head`、`beat-common/render`），由流程的段落顺序决定用哪一版。`project/flowprompts.test.ts` 对每个内置流程的组合结果做内容门禁（哪条断言对哪些流程成立写在测试名里），并用 `testdata/flow-prompts.json` 钉住新建口播、卡点、歌曲项目的全文摘要与阶段标题序列（`AM_UPDATE_GOLDEN=1` 重写）；`boundary.test.ts` 的「prompts use installed CLI and do not expose executor identity」对每个流程 × 画幅的组合结果检查。
+
+### 流程与站
+
+制作流程拆成「站」（`packages/engine/src/flow`）：一个站带一段或几段制作提示词（`assets/prompts/<站>/<段>.md`）、制作路线页上的站点（含审核关卡与绑定文件）和它会写的文件（`produces`）；流程（片型）是站的有序组合，既定路线（`Flow.stations`）也定提示词的段落顺序（`Flow.prompt`），写在同一个声明里。宿主只有口播（`speech`）；卡点（`beat`）与歌曲讲解（`song`）由各自的内置插件在 `apply` 里登记。项目用哪个流程只看新建时记下的流程（`flow.detectFlow` / `flow.recordedFlow`），流程只在新建时定；记的是第三方插件的流程（`x:<插件 id>`）而这台电脑没装那个插件时抛 `flow.MissingPluginFlowError`，说清缺哪个插件；没有记录的目录直接抛 `flow.MissingFlowRecordError`，说明锁文件里缺哪一段，不按 `beat.yaml`、`song.yaml` 这类功能自己的配置文件推断。设计稿是 `docs/superpowers/specs/2026-11-11-流程插件-design.md`（本地，不进公开树），以后第三方站也挂在这里。
+
+| 约定 | 原因 |
+|---|---|
+| 段落正文里不写「第六阶段」，写 `{{STAGE:render}}`（只要数字写 `{{STAGE_N:render}}`），由 `flow.composePrompt` 按阶段在提示词里的先后编号；引用了没有的阶段直接报错。`flow.test.ts` 的「leaves no hard-coded stage numbers in the sections」拦着写死的编号 | 换了站或顺序，交叉引用跟着变，不会指错阶段 |
+| 每个流程拼自己的提示词（`flow.flowPrompt(id)`：流程的顺序，插件段落按 `after` 插进去，`append` 段接在最后），`{{STAGE:…}}` 按各流程自己的阶段先后编号；流程可以声明 `stage_aliases`（卡点把两边共用段落里的 `sound` 指到自己的 `beat-sound`）。卡点的顺序（卡点插件的 `beatPrompt`）没有口播稿、TTS、对齐三个阶段，开自己的阶段「故事、音乐与节拍」「按小节拆分镜头」「音乐授权和音效」「音乐与音效的混合」；多角色对话的作业规程由多角色插件登记成站 `cast-rules` 的两段（口播稿阶段末尾一句指向附录、口播流程文末「附：多角色叙事作业规程」），只进口播流程。流程自己的配置由登记流程的插件经 `Flow.check(root)` 在组合前核对（歌曲讲解读一遍 `song.yaml`），`project/runprompt.ts` 不 import 任何功能包。内置流程引用了自己没有的阶段直接报错（`flowprompts.test.ts` 的「references only stages of its own flow」） | 每个流程的提示词只说对这个流程成立的话 |
+| 流程记录：新建项目（`projectinit.create`，am init 与客户端共用）在 `article-to-motion.flow.json` 写 `production: {id, canvas}`（`flow.FlowRecord`）；`song_init` 给已有项目补歌曲资产时把记录换成 `song`。`runPrompt` 按它组合（`flow.composeFlowPrompt`）：内置插件的段落按流程的段落顺序参与（流程里没有的就不出现），第三方站的 `inserts` 插在那个阶段末尾、`prompt` 接在最后，第三方流程（`x:<站>`）是公共约定（口播流程第一个阶段之前的几段：`host/head`、`host/work`、`host/renderer`）加 `stations` 里内置站的段落加本站 `flow.prompt`，内置段落引用了它没有的阶段时写成「<标题>」那一步（只有第三方流程有这条退路） | 提示词改了，项目下次开工就用上；没有按标记删段、按标题正则插入这类运行期修补 |
+| 没有流程记录的目录：`runPrompt`、`/api/progress`（409 `no_flow_record`）照实报错；`/api/state` 不给 `flow` 与 `step`，改给 `flow_error`，路线页显示这句话 | 客户端还没发布，不为旧版建的项目留兼容路径 |
+| 讲解形式（`am init --delivery`）就是流程：可选值来自有段落顺序的内置流程、内置插件流程与已装的第三方插件带来的流程（`x:<插件 id>`，`projectinit.deliveryFlows`；首页的做法是 `projectinit.presets`，第三方的标明来自哪个插件）；新建时写哪个标记文件（`Flow.marker`）、与什么互斥（`Flow.excludes`：插件、别的片型）由流程声明，`projectinit.validate` 不写死片型 | 新片型不用改 projectinit |
+| 改过的文件归哪一站由各站 `produces` 决定（`flow.stationOfPath`）：整条路径 > 前缀加文件名 > 只有前缀，同级比前缀长短；只算当前流程里的站 | 不再维护一张按顺序匹配的手写表，新站声明自己的文件即可 |
+| 宿主站点做没做的判断函数留在 `studio/progress.ts` 的 `judges`，内置插件的随站登记（`PluginStation.judges`），键都是「站:站点」；普通站漏了判断函数，`stationDefs` 直接报错（`progress.test.ts` 的「judges every station of every builtin flow」） | 引擎的 `flow` 只有声明，不依赖 `studio`；口播与卡点的「拆分镜头」都叫 `plan`，判断不同 |
+| 新增一个宿主自己的站：在 `flow/builtin.ts` 加站与段落、在 `assets/prompts/<站>/` 写段落、在用到它的流程的 `prompt`（`speechPrompt`，插件流程在插件里）里排位置、在 `judges` 里加判断。可选功能不走这条路，写成内置插件在 `apply` 里登记（见下面「内置插件」） | `flow.test.ts` 的「has a template for every section and no orphan templates」查模板与声明一一对应、每一段都进了某个内置流程 |
+| `flow/builtin.ts` 的 `builtinStations` / `builtinFlows` / `stageTitles` / `speechPrompt` 只有宿主自己的部分（另导出 `planRules`、`tailStations` 给卡点插件复用）；要「全部」时用 `flow/registered.ts` 的 `allStations` / `allFlows` / `allStageTitles` / `flowPrompt`，它们把内置插件登记的站、段落与流程并进来。路线、关卡、文件归站、清单校验、阶段补充都经它们 | 插件的站不写进宿主的表，新增内置功能不用改 `flow/builtin.ts` |
+
+第三方站（第三方插件；`flow/` 下按职责分文件：`manifest.ts` 清单类型与字段分级、`parse.ts` 解析、`lock.ts` 项目的锁文件（只有新建时记下的流程）、`installed.ts` 用户级的已装插件清单、`fetch.ts` 来源与下载、`staging.ts` 装与升级的两步（暂存、给用户看、装上或取消）、`load.ts` 读出全部插件（`loadStations`）与读不出来的插件参与了哪些制作（`brokenParticipants`）、`update.ts` 装、去掉与升级、`builtinplugins.ts` 内置插件、`promptparts.ts` 第三方站的阶段补充与说明、`skills.ts` 渲染技能；`external.ts` 只做转出，执行在 `run.ts`）是用户自己装的插件，am 不分发、不维护，第一个用例是自动发布。插件装在用户级，装一次对这台电脑上的所有项目生效，和内置插件一样常在；项目里只记「这个项目选了什么」（新建时的流程、配音与对齐取值、镜头的 `plugin_skills`、整片风格）。写给插件作者的说明是 `docs/plugin-authoring.md`：
+
+| 约定 | 原因 |
+|---|---|
+| 一个站是一个目录加 `am-station.json`，只能声明：提示词文本、站点（`outputs` / `stale_after` / `gate_files` / `state` / `guide` 声明式判断）、`produces`、操作。清单严格校验：路径只能是项目里的相对路径，不能声明 `production/studio/`、`.agents/`、`.env` 这类 am 自己的文件，id 不能与内置站重名 | 第三方代码不进 am 的进程，能做什么全写在清单里，添加时给用户看得见 |
+| 清单有格式版本 `manifest_version`（缺省 1，`flow.ManifestVersion`）与可选的 `requires.am`（最低 am 版本，semver）：格式更新时先于「不认识的字段」报「要更新的 ArticleToMotion」；比较用的版本取 `version.compatVersion()`：客户端主进程启动时用 `app.getVersion()` 设的宿主版本（`setHostVersion`），没有再退回工具版本（`setToolVersion`，与 `am --version`、渲染指纹同源）；不是 x.y.z（本地构建 dev）时不查最低版本。版本存取在不依赖任何功能包的 `packages/engine/src/version`，`scene/record.ts` 只转出，flow 不 import scene。**客户端不调 `setToolVersion`** | 趁还没有第三方用户把兼容面收住；旧 am 读到新清单要说清楚该做什么，而不是列一串不认识的字段。客户端是主要交付物，进程内后端也得查；工具版本进渲染指纹，客户端改它会让进程内算的指纹变 |
+| 顶层字段分「稳定 / 实验性」两档（内置插件与第三方站用同一份字段，没有内置专用的），唯一来源是 `flow.ManifestFields`：解析器的已知字段从它来，`experimentalFields` 按它报告一份清单用到了哪些实验性字段（设置页「详情与设置」与 `station_add` 输出照实写「以后的版本可能调整」，内置插件不标）。`docs/plugin-authoring.md` 的「顶层字段」表与它一一对应，`manifest.test.ts` 的「lists exactly the top-level fields the parser accepts」核对；加字段要同时改表、改文档 | 稳定字段承诺不改意思；实验性的先让作者与用户知道可能会变 |
+| 站目录摘要（`treeDigest`，`digest.ts`）按目录缓存在进程里：每次先 stat 整棵树（路径、大小、mtime、ctime、inode），概要变了才重读重算 | `loadStations` 到处都在调，每次全量读 git 来源的站太浪费；缓存只省读文件，不放过任何改动（`manifest.test.ts` 的「still refuses a station whose content changed」） |
+| 装与升级都两步走（`flow/staging.ts`）：`station_add` / `station_update`（客户端 `POST /api/stations`、`POST /api/stations/{id}/update`）只把插件取到 `<stationsDir>/.staging/<编号>/`、校验清单，给出 `flow.StationPreview`——操作（AI 能用的工具与要用户点的按钮，附 `OpsTrustNotice`）、页面权限（project / network / uses / 读哪些文件）、实验性字段、钩子与定时、渲染技能（`scenes: all` 时 `rerender_all`）、带来的做法与风格库、顶替或接在哪一站，升级另带版本、commit、新申请的权限与新用到的实验性字段的差异；不写 `installed.json`、不参与任何项目。用户看过点「装上 / 换上」才走 `station_install`（`POST /api/stations/staged/{编号}/install`，git 来源再核对一遍摘要，看过之后被改的不装），取消走 `station_discard`（`…/discard`）清掉暂存。客户端里取回是后台任务，预览经任务的 `result` 交给设置页的确认（`StagedConfirm`）。`flow.installStation` 不经确认，只给测试与引擎内部用；`link:` 来源不用更新。既没装也没取消的暂存目录放过一天（`StagingMaxAgeMs`），下次取插件时清掉（`sweepStaging`） | 插件对所有项目生效：在用户看清它要什么之前就装上，等于替用户做了决定；升级也要让用户看见插件多要了什么 |
+| 已装插件记在用户级的 `<数据目录>/am/stations/installed.json`（`flow.InstalledFile`，`AM_STATIONS_DIR` 覆盖，`childEnvironment` 在会算出另一个目录时显式传）：来源、版本、commit、内容摘要与它在制作里出现在哪（`InstalledRole`：带不带流程、顶替或接在哪个站点后面、有没有站点）。git 来源按 ref 克隆、记 commit 与内容摘要，存进 `<数据目录>/am/stations/<id>/<commit>`，摘要对不上就不用；`link:` 是开发用的本机目录，不核对。不接 npm。项目锁文件（`flow.LockFile`）不记插件：读到旧的 `stations`、`flow` 字段直接忽略。`station_add` / `remove` / `update` / `list` 不带项目；客户端的 `/api/stations` 列表、装、去掉、更新、设置不要打开项目，装、去掉、更新是不占项目写锁的后台任务（`studio/tasks.ts` 的 `runUserOp`），执行操作、页面读文件仍针对当前项目 | 同一份已装插件 + 同一个项目两次制作要得到同样的说明；npm 包装一次就执行了 install 脚本。插件不按项目走是项目主人的决定：装一次到处能用，首页新建时就能选到它的片型与风格 |
+| 提示词：`runPrompt` 把各站说明接在最后（`flow.extraPrompt`），每站一节，声明「与上面的约定冲突时以上面为准」。读不出来的插件只在参与这个项目的制作时（流程是它带来的、它顶替了流程里的站、它的站点接进了这条路线——写了 `after`，或没带流程；按装上时记的 `InstalledRole` 判断，`flow.brokenParticipants`）让「开始制作」报错；其余的进 `RunPromptResult.warnings`，客户端在那次整片制作的对话里发 notice，设置页「我的插件」列出问题并给「更新 / 去掉」 | 参与制作的插件悄悄少一步更糟；但插件对所有项目生效，一个坏插件不该让与它无关的项目都开不了工 |
+| 操作在子进程里跑（`flow.runStationOp`）：工作目录是项目根，stdin 一行 JSON，最后一行 `am-result <JSON>` 是结构化结果；环境只给 PATH、HOME、语言、代理、证书与 `AM_STATION_DATA`（插件自己的数据目录，凭据放这里），项目 `.env` 一概不传 | 发布插件要读成片，但不能拿到配音、模型服务的凭据 |
+| 操作**不是沙箱**：它是用户电脑上的普通程序，能读写用户的文件、能联网（HOME 照传，很多工具离了它不工作）。`runStationOp` 前后各扫一遍项目树（`flow/scope.ts`，只 stat；跳过的目录与轮次快照同一张表 `fsutil.ProjectSkippedDirs`，但项目根的 `.agents` 照扫，`production/studio` 里客户端自己边跑边写的状态不算），变了的文件不在 `produces` / 站点 `outputs` 里的算越界：写进操作输出末尾、结果的 `out_of_scope`（最多 20 条加 `out_of_scope_more`）；写到 am 自己的文件（`ReservedPrefixes`，与清单校验的 `reservedPrefixes` 同一份）时操作按失败处理，照实说文件已经写了、只能回退那一轮或用 git 恢复。客户端在调用点外再扫一遍拿结构化列表（执行进程的协议只回传插件的 data），记在任务的 `warning`、`last_run` 上，钩子与定时触发的另在最近的对话里发 notice。添加时（`station_add` 的输出、设置页的添加确认与详情）用 `flow.OpsTrustNotice` 这句话说清，页面的权限另列 | 设计稿承诺过越界写入要标出来；清单里的权限只管得住页面，混在一起写会让用户以为操作也受限。不做文件系统沙箱 |
+| 运行时：`command` 第一个元素写 `{node}` 用 am 自己的运行时（`toolpath.nodeCommand`，客户端里是 Electron 带 `ELECTRON_RUN_AS_NODE=1`），写 `{python}` 用 am setup 经 uv 装进 `<数据目录>/am/python` 的 Python（`flow.managedPython`，没有就抛 `prereq.MissingError`，不现下载）；后面第一个参数是脚本，相对路径按站目录解析。裸写 `node` / `python3` 照旧按 PATH 找，找不到时报错提示改用占位符。站目录在 `"type": "module"` 的包里时脚本要用 `.cjs` 才能 `require`（假发布站就是这样） | 客户端用户的电脑上可以没有 Node 与 Python（见「开箱即用」） |
+| `trigger: agent` 的操作由工具服务登记成 `x_<站>_<操作>` 工具（`toolsmcp.externalOps`，所有项目都有，执行时落到 `station_run`）；`trigger: user` 的只在界面上出按钮（发布页的 `StationActions`，`POST /api/stations/{id}/ops/{操作}`）。`station_add` / `station_install` / `station_discard` / `station_remove` / `station_list` / `station_run` / `station_update` 的 scopes 只有 cli | 发出去、上传这类对外且不能撤回的动作只能由用户点；加不加第三方插件是用户的决定，编排工具不能自己装 |
+| 插件自己的页面（清单 `pages`：`entry` 是站目录里的 HTML，`reads` 是页面能读的项目文件）在画面面板里以 `sandbox="allow-scripts"` 的 iframe 打开（`Stations.tsx` 的 `StationPage`，页面 id `x:<站>:<页面>`，顶栏「更多页面」与 `studio_show` 都认）。`/station-ui/<站>/…` 只给 entry 所在目录，响应带 `pageCSP`：`default-src 'none'`、`connect-src 'none'`，脚本、样式、图片只能来自本站目录与 `/station-ui/_sdk.js`；后端另拒 `Origin: null` 的 `/api` 请求 | 页面是第三方代码，又和界面同在 `am://app/` 下：不隔离的话它能调任何接口、读项目文件。不许连网是为了宿主交给它的数据传不出去 |
+| 页面要的东西都经 `postMessage` 请宿主转交（`window.am`：`info`、`read`、`run`、`ask`、`onRefresh`）：`read` 只给 `reads`、`produces` 与站点 `outputs` 里的文件（`flow.pageMayRead`，后端 `/api/stations/{id}/read` 再查一遍），图片给 data URL；`run` 先在页面上方弹确认条，用户点「执行」才跑；`ask` 只填进对话输入框，不发送 | 页面里的按钮可以被脚本自己点，不算用户同意；要对外的动作必须是用户在宿主界面上点的 |
+| 页面桥的时序（`StationFrame` 与 `studio/stations.ts` 的 `pageSDK`）：宿主用 `useLayoutEffect` 挂监听，与 iframe 在同一次提交里出现；执行类请求一弹确认条先回 `{ack: true}`，SDK 对每个请求计时 `pageHostTimeoutMs`（15 秒），既没回答也没 ack 就 reject 一句「没有回应」（`pagesdk.test.ts`）。确认条绝对定位盖在 iframe 上、越界提醒排在 iframe 下面，都不挪动 iframe | 偶发的「页面请求没回应」查下来不是消息丢了，是 iframe 刚挂上或刚被确认条推下去时，点击按合成器里还没更新的命中数据落在宿主的 iframe 元素上、页面根本没收到（后台窗口里更明显）。e2e 里点插件页面的按钮一律用 `stations.spec.mjs` 的 `clickInPage`，按宿主的反应重点 |
+| 站点的声明式状态（`nodes[].state`，实验性，读文件在 `flow/state.ts`，接路线在 `studio/progress.ts` 的 `declaredJudge`）：读一个项目文件（只能是本站 `produces` / `outputs` / 页面 `reads` 里的，256 KB 上限，真实路径跑出项目算读不了）的一个字段（JSON 键路径或 Markdown frontmatter 键），值只做相等比较，落到 `cases` / `otherwise` / `missing` / `invalid` / `no_field` 之一，各给 `status`（todo / doing / done）、`detail`、`waiting`（等你 / 等 AI）与可选的 `guide`。`outputs` 有产物时直接算做完、不看 state；`doing` 不会被判成「跳过」（`NodeJudge.inProgress`）。`nodes[].guide` 是「接下来」卡片的说法与按钮（`say` / `draft` / `page` / `op`；`op` 只能是本站 `trigger: user`、没有必填参数的操作，界面先在卡片上确认再执行），经 `/api/progress` 的 `station.guide` 与内置插件的判断函数同一种形状给界面。`studio/declared.test.ts` 用假发布（`flow/testdata/fake-publisher/declared-state.json` 并进清单、顶替内置发布）对齐内置发布插件在各种发布状态下的状态、说明与等谁 | 发布这类站点做没做看的是文件里的字段，等不等你也随状态变；第三方站不能带代码，只能声明，所以给一套可列举、不是表达式的写法，读坏了各有确定结果，不拖垮整条路线 |
+| 第三方站点的产物不参与「后面已经做了」的推断（`computeStations` 的 `laterDone` 跳过 `declared`） | 插件一写回执，前面所有自带的站就全成了「跳过」，顶栏全打勾 |
+| 插件的扩展点都写在清单里，设置页「详情与设置」照实列出：`settings`（设置页按类型出表单；`secret` 存 `<站目录>/<id>/config/secrets.json`，0600，只经 stdin 的 `settings` 交给插件子进程，接口与页面只知道「填没填」）、`permissions.project`（页面 `am.project()` 拿镜头、路线、发布信息的摘要）、`permissions.network`（只许 https/wss 到域名，进页面 CSP 的 `connect-src`）、`permissions.uses`（页面 `am.call()` 请用户确认后调 am 自带的操作，经 `/api/stations/{id}/call/{op}`）、`hooks`（`turn.finished` / `task.finished` / `gate.confirmed` / `film.approved` 时自动跑本站的 agent 操作）、`slots`（页面嵌进口播稿、分镜、镜头、成片、发布、路线页，`am.info().context` 带上镜头编号等）、`commands`（对话框的斜杠命令）。操作打印 `am-progress <0–1> <说明>` 会显示成任务进度 | 插件能做的事要多，但每一项都要用户看得见：权限不写进清单就没有 |
+| `am.call()` 的边界有两层：清单只能申请 `flow.pageCallableOp` 放行的操作（不含归档、记忆回滚与导入、节拍确认、`station_*`、`config_set` 等），执行时客户端给执行进程设 `AM_OP_SCOPE=orchestrator`，`ops/worker.ts` 拒绝不在这个范围里的操作 | 清单写错、宿主漏判，都越不过执行进程这一道 |
+| 事件经 `studio/events.ts` 的小总线发（对话、任务、关卡、记忆各自 `emitStudioEvent`，`stations.ts` 订阅），事件只来自当前打开的项目，钩子也只在这个项目里跑；钩子是写任务：项目正忙就这次不跑，不排队；`station.*` 任务结束不发 `task.finished`；一轮对话结束先开排队的下一轮再发事件 | 钩子是顺手做的事，不能挡住用户的下一句话，也不能互相触发、没完没了 |
+| 插件页面收在顶栏的「插件」菜单（`PluginMenu`），只用来嵌小窗的页面不列；顶栏右侧的页面链接（`.more-pages`）挤不下时在自己里面横向滚动 | 几个插件一加，顶栏就把整个窗口撑宽（e2e 里断言了不溢出） |
+| 页面 `am.send()` 替用户发一条消息给编排工具，与 `run` / `call` 一样先在宿主上确认；`ask()` 只填输入框 | 发消息会开一轮对话、花钱，算对外动作 |
+| 定时（`schedules`，5–1440 分钟）：`Server` 构造时起一个每分钟的定时器（`unref`，`shutdown` 清掉），`tickStationSchedules` 到点在当前打开的项目里起写任务（没打开项目不跑），项目正忙就等下一次，不补跑；只限 agent 操作 | 客户端关着不跑，所以不是 cron；不补跑免得一开客户端连跑一串 |
+| 阶段补充（`inserts`）：组合时插在那个阶段的段落末尾（按阶段 id 找）；这个流程没有那个阶段时接在最后，按 `flow.allStageTitles` 的标题注明原本要插在哪。`flow.test.ts` / `extensions.test.ts` 核对标题表与模板一致 | 阶段编号随流程变，阶段 id 与标题不变 |
+| 整套流程（`flow`）：是新建项目时的一个做法（首页、`am init --delivery x:<插件 id>`），流程记录写 `x:<插件 id>`，`detectFlow` 返回它，路线按它的 `stations`（内置站 id 加本站 id）排，顶栏第一步换成 `first_page`（是插件页面时，用不上的自带第一页按口播算，`flowView`）。已有项目不能换流程。提示词：公共约定（口播流程第一个阶段之前的几段）在前，`stations` 里写的内置站复用内置站的段落，本站那一节是清单的 `flow.prompt`。插件去掉后用它新建的项目开不了工，报缺哪个插件。带流程的插件，它的站点、说明（`prompt`）与阶段补充只进自己的流程；显式写了 `replaces` 或非空 `after` 的才参与别的流程，没带流程的插件照旧进每个流程（`after` 为空接在最后）——路线（`flow.route`）、提示词组合与 `brokenParticipants` 都按 `flow.joinsFlow`。`extensions.test.ts` 的「a plugin flow stays in its own flow」钉着装上一个只带流程的插件后口播、卡点项目的路线与提示词全文摘要不变 | 新片型不用改 am；公共约定（工作边界、凭据、工具调用写法）不让插件换掉。流程只在新建时定：中途换流程，已经做出的文件对不上新路线。装一个新片型插件不该让所有口播、卡点项目的路线最后都多出它的站 |
+| 配音、对齐（`provides`）：取值 `x:<站 id>` 在 `validTTSProvider` / `validAligner` 里只查写法；插件的配音是它的 agent 工具，不进编排工具命令白名单、不是前置资源（安装页不列）。制作提示词第三、四阶段各有一句指向末尾的插件说明 | 插件工具经 MCP 调用，本来就不需要命令白名单 |
+| 渲染技能（`renderer_skills`）：`resolveAllSkills` 经 `flow.pluginSkillsFor` 加入 `plugin:<站>/<技能>`，于是指纹（`skill:` 摘要）、读取放行与 `pluginSkillSection` 提示词都自动覆盖；`scenes: all` 的每个镜头都带，`opt-in` 的只给 `scene.json` 的 `plugin_skills` 点名的镜头。点名了却没有直接报错。没点名 opt-in 技能的镜头装上插件前后指纹不变（`scene/pluginskills.test.ts`）。插件装在用户级：装上一个 `scenes: all` 的技能，**所有项目**已渲染的镜头都标成 Stale，添加确认（设置页与 `station_add` 输出）照实说 | 加一个对所有镜头生效的技能，已渲染的镜头标成 Stale 是对的：渲染输入确实变了；不想全变就用 opt-in |
+| 整片风格库（`film_styles`）：`flow.pluginStyleSource` 用通用的 `filmstyle.DirectorySource`（与内置插件能登记的同一种来源），来源 id `x-<站 id>`；`flow/styles.ts` 加载时经 `filmstyle.usePluginSources` 交进读取函数，`filmstyle.sources()` 每次现读已装插件，所有项目、首页（还没有项目）、`am init` 都看得到。用到来源表的地方要导入 `flow`（登记靠它的加载副作用）。装进项目走同一份 `filmstyle.install` 契约，缺 SKILL.md 时补通用的。实验性的 `film_styles.only_referenced` 打开按引用挑文件（`DirectorySource.onlyReferenced`，`filmstyle/select.ts` 的 `threeClosure` / `referencedAssets`，lemo 也用这一份）：风格目录与库根的 `assets/` 只带源码里出现过名字的、`node_modules/three/` 只带 import 到的模块，`filmstyle/select.test.ts` 钉着。第三方风格库不是前置资源 | 风格库随插件钉在 commit 上，不联网；整棵拷的话一种 three.js 风格就几十 MB |
+
+内置插件：ArticleToMotion 自己的可选功能也写成插件，放在 `assets/plugins/<id>/`（随 `extraResources` 进 .app），用同一份 `am-station.json`。现在有音乐卡点（`beat`）、歌曲讲解（`song`）、多角色对话（`cast`）、发布（`publishing`）、生成式艺术（`algorithmic-art`）、Lottie 图层（`text-to-lottie`）、LemoLab 风格库（`lemo-styles`，整片风格来源 lemo-opuscar）与 anidoodle 代码绘画（`anidoodle-styles`，整片风格来源 anidoodle）。插件也可以在 `apply` 里登记整套流程（`ctx.flow`：路线写 `stations` 或沿用 `base`、提示词段落顺序 `prompt`、`first_page`、`marker`、`excludes`）。
+
+内置插件的代码一律在进程内登记（`apply(ctx)`）：代码放在 `packages/engine/src/plugins/<id>/`，在 `apply` 里登记站（站点、判断函数、「接下来」的说法与关卡确认的话、提示词段落）、流程、操作、页面、后端接口、网页命令、校验器、渲染技能、镜头扩展块、叙事模式、新建选项、已有判断（`ctx.presentIn`，新建时的互斥用）、整批检查、命令组、前置资源、要传给子进程的环境变量与顶栏步骤，宿主各层从登记表里取，内核不按名字认识任何一个功能。清单（`assets/plugins/<id>/am-station.json`）只有名字与说明。内置插件常开，没有关掉的办法：它登记的东西对每个项目都在，一个流程用不用得上由流程的声明决定（口播项目的提示词里没有卡点的段落，是因为口播流程的段落顺序里没有它）。功能自己的引擎实现（`beat/`、`song/`、`cast/`、`dialogue/`、`castbeats/`）仍在原包里，由插件的 apply 引用。
+
+| 约定（进程内登记） | 原因 |
+|---|---|
+| 登记表在 `packages/engine/src/plugin`（类型 `types.ts`、登记 `registry.ts`），只 import flow 与 scene 的**类型**，不依赖 studio 与 cli；全部内置插件在 `packages/engine/src/plugins/index.ts` 一处 `deferBuiltin`（排队，第一次取登记表时才 apply），`plugin` 包的入口 `index.ts` 导入它，scene 的包入口也导入它。凡是经 `../plugin` / `@am/engine/plugin` 取登记表的地方都拿得到 | 登记靠 import 副作用，散在各处就会漏。排队是因为插件要用 scene、flow 的常量，而这两个包又经登记表取插件的东西：模块加载期立刻 apply，从 scene 进来的那条加载链上 scene 还没执行完。插件模块的顶层也不要用 scene 的常量（技能描述符写成函数，在 apply 里造） |
+| 谁用登记的东西：站 → `flow/registered.ts`（路线、关卡、文件归站、制作提示词顺序与段落正文、阶段标题）；判断函数 → `studio/progress.ts` 的 `stationDefs`（键「站:站点」，与宿主 `judges` 同一种 `plugin.NodeJudge`，另有 `waiting` 说「现在在这」时等谁）；操作 → cli 的 `plugin_ops.ts` 订阅（`plugin.onPluginOps`）后 `defineOp`，工具服务、`tool_help`、`runStudioOp` 与开发用命令行随之都有；页面 → `studioview.viewPages()`（`studio_show` 能切的页、`dedicatedPage` 的专门文件）；接口 → `studio.ts` 路由表末尾；校验器 → `/api/commands/<id>.check`（`api_sessions.ts` 的 `commandAPI`） | 新增内置功能不用改 `flow/builtin.ts`、`studio/progress.ts`、`toolsmcp.ts`：`plugin/registry.test.ts` 与 `packages/cli/src/plugin_ops.test.ts` 用只在测试里登记的假插件钉着 |
+| 内置插件常开：锁文件没有 `disabled`（旧文件里的这个字段读到就忽略），没有 `station_builtin` 与开关接口，设置页「内置功能」只列出每个功能与它带了什么（「详情」）。站、操作、渲染技能、镜头扩展块、前置资源对每个项目都在；顶栏不显示哪一页只看流程声明（`/api/state` 的 `flow.hidden_pages`：别的流程的第一步页）。宿主（含 `app.tsx`）不按名字判断「发布」 | 有没有一页、一步由插件登记的东西与流程声明决定，不是特判；关掉一个功能只省下几行工具列表，却要整套「关掉时什么都不在」的机制陪着 |
+| 插件的提示词段落放在 `assets/plugins/<id>/sections/`，`PluginSection.after` 指定接在哪一段（`站/段`）后面，`flows` 限定只进哪些流程（发布的「发布配置生命周期」「刷新发布配置」口播与卡点各一版），开阶段的段落写 `stage` 与 `title`；组合时经 `flow.flowPrompt` 排进去。`plugin/registry.test.ts` 的「the shipped prompt sections of builtin plugins」查文件与声明一一对应、标题与正文第一行一致、不写死阶段编号 | 段落随插件下发在资产树里，组合时直接读 |
+| 谁用登记的东西（再续）：前置资源 → `prereqs.items`（`am setup --only` 认它的 `group`，安装页按 `later` 的名字、说明、图标合成「以后可能用到」里的一张卡片）；子进程环境变量 → `config.load` 算出 `Config.pluginEnv`，`childEnvironment` 照写，工具服务（`tools.amToolsServer`）放行这些键；顶栏步骤 → `studioview.steps()` / `stepIDs()`（`studio_step` 认的、`flowView` 排顶栏、编排工具看到的步骤说明，`flow` 写了只有哪个流程用得上的注明「X 项目的第一步」）；网页命令 → `/api/commands/<id>`（插件从请求体算出操作参数）；页面 → `/api/state` 的 `pages`，界面只列这里有的页，组件在 `apps/desktop/src/renderer/components/pageViews.tsx` 按页面 id 对上（含不在这一页时挂在面板顶上的提示条）；判断函数的 `guide.actions` / `guide.confirm` → 界面「接下来」的按钮与关卡确认时发给 AI 的话；操作的 `noPageCall` → 插件页面不能申请调它（`flow.pageCallableOp`）；整片风格来源 → `filmstyle.sources()`（风格目录、装进项目、风格选择器与海报，见「整片风格」） | 卡点是最后一个写在内核里的功能，它要的这几样以前散在 prereqs、config、studioview、progress、`api_sessions.ts` 与界面里按名字写死 |
+| 音乐卡点（`plugins/beat`）登记：流程 `beat`（路线沿用口播的后半程 `tailStations`）、站 `beat-story` / `beat-music` / `beat-plan`（站点、判断函数、「接下来」的说法）与只带段落的站 `beat-common`（宿主段落的卡点版：`head`、`intake`、`render`、`sound`……，正文在 `assets/plugins/beat/sections/`）、`beat_*` 与 `validate_beat`（`ops.ts`）、渲染前的覆盖检查、`beat` 镜头块（`block.ts`）、节拍页与 `/api/beat`（`api.ts`）、网页命令 `beat.confirm` / `beat.regrid`、顶栏第一步 `beat`、前置资源 `beat`（节拍分析环境）、`AM_BEAT_ENV_DIR`、新建选项「音乐卡点」与已有判断（目录里有 `beat.yaml`，新建时的互斥据此判断）。登记顺序排在发布之后、歌曲讲解之前，流程与新建选项的先后因此仍是口播、卡点、歌曲讲解。`plugins/beat/beat.test.ts` 钉着登记了什么 | 卡点做成插件之后，`flow`、`studio`、`studioview`、`scene`、`config`、`prereqs`、`projectinit` 里没有一处按名字认识它 |
+| 每个登记的内置插件在 `assets/plugins/<id>/` 都有清单（名字、说明来自它）；`registerBuiltin` 拒收重复的插件、站、操作、页面、接口、校验器、渲染技能、镜头扩展块、叙事模式与新建选项，普通站点没有判断函数直接报错 | 漏一个判断函数，那一站就永远显示「没做」 |
+| 谁用登记的东西（续）：渲染技能 → `scene.allSkills`；镜头扩展块 → `scene.sceneBlocks()`（与宿主经 `registerBlock` 登记的合在一起按 `order` 排）；叙事模式 → `projectinit.narrations()`（`am init --narration` 的取值、新建时调用它的 `init` 写初始文件，选了它就算用了这个插件）；新建选项 → `projectinit.presets()` → `/api/styles` 的 `modes`（首页的做法与模板）；已有判断 → `plugin.pluginPresentIn`（`projectinit.validate`：目标目录里已经有某个插件的文件时，按流程的 `excludes.plugins` 拒绝新建）；整批检查 → `scene_run_all` 渲染前（`beforeRender`，它的 `params` 并进 `scene_run_all` 的参数，例如歌曲讲解的 `song_timeline`）与 `concat` 拼接前（`beforeConcat`）；命令组 → 开发用命令行。判断函数的 `guide` 是界面「接下来」卡片的说法（`/api/progress` 的 `station.guide`），操作的 `verb` 是对话里的说法（`/api/stations` 的 `contents.ops`）；`/api/stations` 给内置插件的 `contents` 列出它登记的站点、工具、技能、块、页面与流程，设置页「内置功能」的「详情」照实显示 | 新增一个带操作、渲染技能、镜头扩展块与初始文件的内置功能不用改 `scene/`、`projectinit/`、`toolsmcp.ts`、`studio/`：`plugin/registry.test.ts` 的「a builtin plugin with a skill, a scene block and a narration」用测试里登记的假插件钉着 |
+| 内置插件的操作写在引擎里（`plugins/<id>/ops.ts`），共用零件（`projectRoot`、`timeout`、`withTimeoutSignal`、`ParamError`、`parseDuration`）在 `packages/engine/src/opkit`，cli 的 `ops/common.ts`、`ops/op.ts` 转出同一份；改 scene.json 的 Go RawMessage 写法在 `packages/engine/src/rawjson` | 引擎不能 import cli；两边各写一份，工具服务按 `instanceof ParamError` 判断参数错误就会认错 |
+| 「发布」（`plugins/publishing`）：站 `publish`（排在 `review` 后、段落三段）、判断函数、`validate_publish`、发布页（排在复查后，`publish.md` 是它的专门文件）、`/api/publish` 与 `publish.check`；`publish.md` 的校验（原 `validate.publish` / `readPublish`）、平台封面规格与标题字数都在这个目录里。`plugins/publishing/golden.test.ts` 用搬家前记下的金样核对提示词、路线、制作路线、页面与接口逐字节不变 | 发布是第一个真搬的功能；金样证明搬家没有改变任何行为 |
+
+| 约定（清单） | 原因 |
+|---|---|
+| `flow.builtinPlugins()` 读 `assets/plugins/`，`loadStations` 把它们排在第三方插件前面，`LoadedStation.builtin` 为真；内置插件常开，没有项目级开关。清单坏了直接报错，不静默少一个功能 | 内置功能是 ArticleToMotion 的一部分；用不用得上由流程决定，不由开关决定 |
+| 清单没有给内置插件专用的字段：操作、技能、站都在 apply 里登记。`station_cmd.test.ts` 的门禁：登记的操作都进了操作表、一个操作只归一个插件、`song_*` 全归歌曲讲解、`cast_*` / `dialogue_*` 全归多角色对话。第三方站不能与内置插件重名 | 归属跟着插件走 |
+| 已有判断（`ctx.presentIn`）：目录里有 `song.yaml`（歌曲讲解）、`cast.yaml`（多角色对话）、`beat.yaml`（卡点）就算已有；只给新建时的互斥（`Flow.excludes.plugins`）用 | 在已有目录里新建时，不能把卡点与多角色对话这类互斥的做法叠在一起 |
+| 歌曲讲解（`plugins/song`）登记 `song_*` 与 `validate_song`（`ops.ts`）、song-explainer 技能（`skill.ts`，不写 `promptSection`：它的提示词由 song 块在歌曲镜头里引用）、song 块（`block.ts`）、整批检查（渲染前核对歌曲时间轴覆盖、拼接前核对歌曲镜头没过期）与新建选项；多角色对话（`plugins/cast`）登记 `cast_*` / `dialogue_*` / `validate_cast`、character-rig 技能、cast 块（考试重放带上角色包目录）、叙事模式 `cast`（写 `cast.yaml` 与 `cast/`）与新建选项；生成式艺术与 Lottie 图层各登记一条渲染技能。`PROMPT-SONG.md` 与技能本体仍在 `assets/shared`（`song_init` 从那里拷） | 内核（scene、projectinit、toolsmcp、memory、cli 的 scene_run_all / concat / scene_cues）不再按名字认识它们 |
+| 歌曲讲解的流程（`plugins/song`）：站 `song-prompt`（站 id 不能与插件 id 同名）只有一段 `main`（`assets/plugins/song/sections/main.md`，歌曲讲解的完整制作说明）。流程 `song` 的路线沿用口播（`base: 'speech'`）；操作、技能、块在同一个 `apply` 里登记 | 歌曲项目的提示词只有歌曲讲解自己的规程，口播流程里也不再带「歌曲讲解分支」 |
+| 歌曲讲解的引擎代码与 song-explainer 技能不动（技能仍是注册的内置技能）；`song_init` 给已有项目补 `song.yaml` 与技能，并把流程记录换成 `song` | 项目用哪个流程只看记录，不看 `song.yaml` |
+| 插件 id 不能与站 id 相同（所以发布插件叫 `publishing`） | 站与插件同在一张登记表里按 id 认 |
+| 交付清单里发布的两行拆成 `assets/plugins/publishing/sections/deliverables.md` 归发布站 | 发布的说明随发布插件的段落走 |
+| 测试用的假发布站在 `flow/testdata/fake-publisher`（只写回执、不联网）；vitest setup 把 `AM_STATIONS_DIR` 指到临时目录、每个用例换一个新的（插件对所有项目生效，一个用例装的不能漏进下一个），e2e fixtures 指到沙箱目录，用 `installPlugin` 写已装插件清单 | 测试不能往开发者真实的插件目录写 |
 
 - 要像直接写给人类操作者的任务说明，不暴露执行者是 agent、Codex 或 AI，也不使用「主控 agent」这类身份设定；但可以明确说明他需要操作其他 AI。
 - 不得出现 `./am` —— 用户项目里没有这个可执行文件。
@@ -218,27 +294,36 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 
 `am validate reads`（`packages/engine/src/reads`）读 `visible-event-inventory.json` 检查每个可读元素的停留时长、短语绑定与顺序。阈值取 Netflix 简体中文字幕规范（每秒 9 字、每条至少 5/6 秒），那是固定位置字幕的下限；画面元素还要先被找到，所以只能放宽不能收紧——收紧会把合法的快节奏镜头判死。字数按阅读单位算（一个英文词算一个），同理是为了不高估。两个 JSON 的字段名写死在制作提示词第四阶段，改字段要同步改那里。
 
-`mediaprobe` / `concat` 的集成测试需要真实 ffmpeg，缺失时自行跳过。CI 装了 ffmpeg 与 librsvg——不装的话测试仍然「通过」，真正跑外部命令的代码再没被验证过。
+`mediaprobe` / `concat` 的集成测试需要真实 ffmpeg，缺失时自行跳过。CI 装了 ffmpeg——不装的话测试仍然「通过」，真正跑外部命令的代码再没被验证过。
 
 ## 镜头时长、局部数据与复用
 
 配音时间轴由 `am align`（`packages/engine/src/align`）从终稿与对齐器输出算出：终稿用 `<显示|朗读>` 与 `@{id}…@{/id}` 标记，`build` 逐字匹配（标签 exact / split / merge / replacement / source-omission / evidence-insertion），写 `voice.srt` 与 `phrase-timeline.json`。匹配代价刻意不照搬 HYPIT：它按整词匹配，按单字匹配时原样的代价会把漏读的几个字合并成一次「替换」藏起来，见 `align/match.ts` 的注释。对齐器 JSON 的结构没有逐版本实测，加载器按「找到第一组带 text/start/end 的对象数组」宽松解析，认不出时报出顶层结构并给出标准结构 `[{"text","start","end"}]`。人工修正只走 `phrase-adjust.json`，不改测量数据。
 
-口播项目的镜头时长由 `am scene cues`（`packages/cli/src/scene_cues.ts`）从分镜计划 `production/scene-plan.json` 推出，与卡点模式的 `am beat cues` 同一个思路：计划只写锚点（`first_subtitle` / `first_phrase`）与切点规则（`cut`），帧号由代码算，写进 `scene.json` 的 `duration_seconds` 与 `timing` 块，`scene.verifyTimingInputs` 做精确比对。秒换帧沿用 `beat.frameOf`，不要另写取整。计划严格解析，新增字段要在 `scene.PlanEntry`（`scene/timing.ts`）里登记，否则提示词里让编排工具写的键会让命令直接失败。
+口播项目的镜头时长由 `am scene cues`（`packages/cli/src/scene_cues.ts`）从分镜计划 `production/scene-plan.json` 推出，与卡点插件的 `beat_cues` 同一个思路：计划只写锚点（`first_subtitle` / `first_phrase`）与切点规则（`cut`），帧号由代码算，写进 `scene.json` 的 `duration_seconds` 与 `timing` 块，`scene.verifyTimingInputs` 做精确比对。秒换帧沿用 `frames.frameOf`（`packages/engine/src/frames`），不要另写取整。计划严格解析，新增字段要在 `scene.PlanEntry`（`scene/timing.ts`）里登记，否则提示词里让编排工具写的键会让命令直接失败。
 
 `scene.run` 在启动渲染器前写 `am-scene.js`（`window.AM_SCENE`）。它的字段名是 `scene-kit` 技能的契约：`packages/engine/src/scene/scenedata.ts` 与 `assets/shared/.agents/skills/scene-kit/scene-kit.js` 两边改一处就要改另一处，`packages/engine/src/project/scenekit.test.ts` 用真实扫描器把示例镜头跑一遍。没有 `timing` 块的老镜头照样写这份文件（`cues` / `phrases` 为空），提示词里不出现时间合同表。
 
 镜头交接（`scene/timing.ts` 的 `PlanHandoff` / `Handoff`）是分镜计划里唯一跨镜头的约定。渲染器互相看不到，交界能接上只靠两侧拿到**同一份**约定，所以它由 `am scene cues` 从计划抄进两侧的 `timing.enter` / `timing.exit`，不让编排工具在两份 `prompt.md` 里各写一遍。手法表 `HandoffDevices` 刻意只收「靠画面里的东西接过去」的写法，不收通用擦除——章节交界套固定转场正是要消除的生硬；「相邻章节交界不得同手法」也是同一个理由。`am review` 用 `Toolchain.frameDifference`（32×32 RGB 均值绝对差）比对声明过交接的交界，阈值取得宽，只拦「两张不同的画面」：物件挪几像素就报的话，这道门很快没人信。改手法表要同步改制作提示词第五阶段「镜头交接」的表格，`gen.test.ts` 的「carries scene handoffs」钉着。
 
+scene.json 里功能自己的块（多角色对话的 `cast`、歌曲讲解的 `song`、卡点的 `beat`）是**镜头扩展块**：`scene/block.ts` 是注册表（`SceneBlock`：字段名 `key`、先后 `order`、解码描述 `type`、`toJSON`、load 时的 `validate`、互斥 `excludes`、渲染前与复用前的 `verifyInputs`、与 timing 互斥的 `timeline`、提示词段 `promptSection`、指纹项 `fingerprintParts`、记忆特征 `feature`、考试要拷的目录 `extraInputDirs`）。块一律由功能插件在 apply 里 `ctx.sceneBlock(...)` 登记（`plugins/cast/block.ts`、`plugins/song/block.ts`、`plugins/beat/block.ts`），用 `declare module` 把自己的字段并进 `Scene`；`registerBlock` 只给测试登记假块。`scene.ts`、`record.ts`、`timing.ts`、memory 的特征与考场、cli 的 `scene_cues` / `beat_cues` 只遍历注册表，不按名字读 `s.cast` / `s.song`。
+
+| 约定 | 原因 |
+|---|---|
+| 功能的块放在 `plugins/<id>/`，不放进 cast / song 包 | 块要用 scene 的 `contained`、`sceneCanvas`、`VerificationError`；放进功能包，功能包就反过来依赖 scene。`castbeats` 从 `plugins/cast/block.ts` 取 `Beat` 与重叠容差 |
+| scene 的包入口导入 `../plugin`（登记全部内置插件）；engine 的 `vitest.setup.ts` 另导入一次，因为 scene/ 自己的测试直接 import `./scene` | 登记靠 import 副作用，散在各处 import 就会漏。漏了不静默——含这个块的 scene.json 报「未知字段」 |
+| 字段、提示词段、校验、指纹项的先后都按 `order`（cast 10、song 20、beat 30），扩展块排在 `plugin_skills` 之后、`timing` 之前；timing 是 scene 自己的块，不进注册表 | 同一版本内 scene.json 写回、提示词与指纹要稳定，`scene/blocks.golden.test.ts` 用 `testdata/blocks-golden/` 钉着；`block.test.ts` 用只在测试里登记的假块证明加一种块不用改内核 |
+| 全片唯一的秒换帧公式与总帧数在 `frames/`（`frameOf`、`totalFrames`），Go `encoding/json` 与 yaml.v3 解码的复刻在 `gojson/decode.ts`、`goyaml/decode.ts`；卡点、对齐、镜头时间合同、角色包都从那里取，`beat` 包转出 `frameOf` / `totalFrames` | 它们不属于任何一个功能；放在 beat、cast 包里时内核就得 import 功能包 |
+
 镜头复用按输入指纹判定（`scene.fingerprint`，`scene/record.ts`，记录在镜头目录的 `.am-render.json`）。指纹只算**声明过的输入**，不扫整个镜头目录——渲染器自己会往目录里写合成代码，算进去的话渲染一结束指纹就变了。镜头新增一类输入文件时，要把它加进 `fingerprint` 的文件清单，否则改了它也不会触发 Stale。指纹一致只表示「这份已验收产物出自当前输入」，不表示可复现；指纹不一致仍只标 Stale、要 `--force` 才覆盖，不要改成自动重渲染。指纹的摘要按字节算，所以写进 `.am-render.json` 与提示词的文字要逐字稳定，见 `packages/engine/CONVENTIONS.md`。
 
 每次渲染写 `render-<id>.attempt.json`，重渲染前 `scene.archiveAttempt`（`scene/attempt.ts`）先把上一次的产物、日志与尝试记录挪进 `attempts/`。调度层的重试与单镜头重跑走同一个归档函数，不要各写一份编号逻辑。token 用量按各工具流式事件尽力读取（`tools.accumulateUsage`），读不到就留空，不做估算。
 
-用量口径统一（`tools/usage.ts` 的 `Usage`）：输入含缓存命中与写入，缓存是输入里命中的部分，输出含推理。codex 原样就是这个口径，claude 系与 opencode 要把缓存加回输入——不统一的话 claude 显示「输入 4、缓存 40437」，跨工具既不能比也不能相加。新记录带 `basis: total-input`，没有它的老记录读时经 `usageNormalized` 换算；新增一家工具时要按这个口径填，并在 `tools/usage.test.ts` 的「usage is comparable across tools」里加一行真实流。汇总一律用 `usageAdd`：有一次没读到用量就标 `partial`，数字只是下限。
+用量口径统一（`tools/usage.ts` 的 `Usage`）：输入含缓存命中与写入，缓存是输入里命中的部分，输出含推理。codex 原样就是这个口径，claude 系与 opencode 要把缓存加回输入——不统一的话 claude 显示「输入 4、缓存 40437」，跨工具既不能比也不能相加。记录带 `basis: total-input`；新增一家工具时要按这个口径填，并在 `tools/usage.test.ts` 的「usage is comparable across tools」里加一行真实流。汇总一律用 `usageAdd`：有一次没读到用量就标 `partial`，数字只是下限。
 
 用量账以尝试记录为准：`scene.attemptHistory` 读当前记录加 `attempts/` 归档，失败与重试照样计入（`am scene usage`、客户端镜头列表）。客户端后端把 `render-*.attempt.json` 当媒体只记 stat，回退一轮不会删掉它——那是已经花掉的钱。
 
-编排工具的用量记在账本里（`packages/engine/src/ledger`，只追加的 JSONL）：客户端每一轮（以前还有命令行 `am run`，旧账照样统计）记进项目的 `production/usage/orchestrator.jsonl`，整理记忆记进记忆库的 `orchestrator-usage.jsonl`。每次调用一行，失败、取消、续接失败后重开的会话都各记一行；进程没起来（`agentrun` 的 `Result.started` 为 false）的不记。模型名取 `Result.model`（流里的 `system/init`），读不到再按 `tools.configuredModel` 补。客户端后端的 `scanTree` / `statTree` 跳过 `production/usage/`：账在一轮结束前写下，不跳过的话会算成这一轮的改动，回退时连账一起抹掉。`am usage` 合计渲染与编排两本账。
+编排工具的用量记在账本里（`packages/engine/src/ledger`，只追加的 JSONL）：客户端每一轮记进项目的 `production/usage/orchestrator.jsonl`，整理记忆记进记忆库的 `orchestrator-usage.jsonl`。每次调用一行，失败、取消、续接失败后重开的会话都各记一行；进程没起来（`agentrun` 的 `Result.started` 为 false）的不记。模型名取 `Result.model`（流里的 `system/init`），读不到再按 `tools.configuredModel` 补。客户端后端的 `scanTree` / `statTree` 跳过 `production/usage/`：账在一轮结束前写下，不跳过的话会算成这一轮的改动，回退时连账一起抹掉。`am usage` 合计渲染与编排两本账。
 
 ## 渲染记忆
 
@@ -264,7 +349,7 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 | 偏好信号（`memory.preferenceSignals`，`memory/conversation.ts`）：客户端每轮对话的话与回退经 `recordUtterance` 记为 `conversation` 经历，在不同轮次反复提的同一要求（字二元组 Jaccard ≥ 0.5 或重合占短句 ≥ 0.6）、被回退的一轮、带说明的 👍 / 👎 汇成 `human` 组交给整理者起草偏好；起草的偏好要确认，偏好段会让编排工具在对话里问用户 | 单独一句话大多只对这一次成立，反复与回退才说明默认做法不合心意 |
 | 批次：每次 `am scene run` / `run-all` 生成一个 `run-…` 编号写进经历，`am memory report` 与客户端「运行对比」按批次、按渲染工具/模型比一次通过率、重试、问题数、耗时与 token | 评审要看到「第二次比第一次好」，混在一起的话换了渲染工具的变化会被算成记忆的功劳 |
 | 统计键是「渲染工具/模型」（`statKey`）；召回排序只把当前模型自己的样本当强证据，别的模型的样本向 0.5 收缩一半。`am memory status` 报告的 `retest` 列出考试时用的模型与现在不同的生效经验，`am memory exam --retest` 对照组去掉它重考，通过补记考试编号，不通过只报告不改状态 | 换了模型，旧结论不再可信，但也不能自动作废 |
-| `am memory import` 导入已有项目：尝试记录直接读；只有产物的老归档在临时目录里铺上镜头目录现在的文件（字体、视觉规范）再覆盖归档后重判，只记失败；时长 / 帧数差出 3 帧以上视为镜头后来改过时长，不记 | 不铺镜头目录会把引用本地字体的合成全误判成 font-missing（实测 29 条）；按现在的 scene.json 重判改过时长的镜头会凭空制造失败 |
+| `am memory import` 导入已有项目：只读尝试记录（当前的与 `attempts/` 归档里的）、review.json 的交接与阅读时间清单；没有尝试记录的归档不导入 | 没有尝试记录就说不清当时用的是哪个渲染工具、为什么失败，按现在的镜头重判会凭空制造失败 |
 | 记忆设置经 `childEnvironment` 显式传给子进程（`AM_MEMORY_DIR`、`MEMORY`……） | 安全模式白名单里没有它们，编排工具调用的 `am memory remember` 会落到默认目录，codex 沙箱里直接写失败（实测） |
 | 召回每个镜头最多注入 `DefaultMaxLessons`（3）条经验（`memory/recall.ts`），排在后面的记为 `limit`；偏好不占条数，只受字数预算 | SkillsBench（2026）里 1–3 条技能提升 18–19 个百分点，4 条以上只剩 10：条数多了指导互相冲突。字数预算拦不住「很多条短经验」。考试的试用组同样受这个上限，挤不进前 3 的试用经验就是在真实召回里也用不上 |
 | 经验的修订（`revises`）要保留旧版全部 `checked_by`，正文不得短于旧版的一半（`lintRevision`） | ACE（ICLR 2026）记录过整体重写把上下文从 1.8 万 token 压成 122 token、准确率跌破基线；LLM 改写还倾向为简洁丢细节。偏好不查：用户换说法替换旧偏好，短一点正常 |
@@ -280,16 +365,16 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 
 ## 卡点模式
 
-`packages/engine/src/beat` 是无配音卡点的时间契约，以项目根 `beat.yaml` 启用，与 `song.yaml`、`cast.yaml` 互斥。链路是「导入音乐 → 分析出草稿网格 → 试听确认 → 按小节的分镜计划 → `am beat cues` 写镜头时长」。
+卡点是内置插件 `beat`（`packages/engine/src/plugins/beat`，见「内置插件」）；`packages/engine/src/beat` 是它用的无配音卡点时间契约，以项目根 `beat.yaml` 启用，与 `song.yaml`、`cast.yaml` 互斥。链路是「导入音乐 → 分析出草稿网格 → 试听确认 → 按小节的分镜计划 → `beat_cues` 写镜头时长」。
 
 | 约定 | 原因 |
 |---|---|
-| 切点帧号只由 `beat.frameOf`（秒 × fps 四舍五入）算出，总帧数只由 `beat.totalFrames` 算出（都在 `beat/grid.ts`） | 两处取整方式不同，画面与音乐会慢慢错开，而且是那种看半天说不出哪里不对的错开 |
+| 切点帧号只由 `frameOf`（秒 × fps 四舍五入）算出，总帧数只由 `totalFrames` 算出（都在 `frames/`，`beat` 包转出） | 两处取整方式不同，画面与音乐会慢慢错开，而且是那种看半天说不出哪里不对的错开 |
 | 分镜计划 `plan.json` 只接受小节数，不接受秒数 | 能写秒数就能写出不在重拍上的切点；切点卡在重拍上要由结构保证，不靠事后对轴 |
-| `am beat cues` 写 `duration_seconds`，`beat.verifyCue`（`beat/cue.ts`）对切点做**精确**比对 | 帧号只有一个来源，任何偏差都是有人手改了时长；成片里的 ±1 帧容差属于整片复查，不属于这里 |
+| `beat_cues` 写 `duration_seconds`，`beat.verifyCue`（`beat/cue.ts`）对切点做**精确**比对 | 帧号只有一个来源，任何偏差都是有人手改了时长；成片里的 ±1 帧容差属于整片复查，不属于这里 |
 | 草稿网格永远不直接生效，只有 `beat.confirm` 能把 `reviewed` 置为 true | 模型最常见的错是重拍整体错位或拍号判错，只有听过试听轨才知道 |
 | 分析脚本把结果写进文件，不打印到 stdout | 首次运行下载模型权重，进度输出会污染标准输出，按 stdout 解析时结果直接丢失（实测过） |
-| 节拍分析环境是前置资源（`beat/env.ts`）：`am setup --only beat` 在 `~/.local/share/am/beat/venv-<AnalyzerVersion>`（`AM_BEAT_ENV_DIR` 可覆盖，`childEnvironment` 显式传）里建 venv、`pip install beat-this==<版本>`、预下载默认 `final0` 权重，全部成功才写完成标记，失败整个删掉重来、重试 3 次。基础 Python 按 `basePythonCandidates` 找 3.10–3.14 的（`AM_BEAT_BASE_PYTHON` 可指定）；pip 用用户自己的 pip.conf，`--proxy` 只给权重下载。`beat.yaml` 的 `python` 可选，不写用共享环境，缺了抛 `prereq.MissingError`；制作提示词「卡点分支」禁止编排工具自己建环境 | 以前 `beat.yaml` 默认 `python: python3`，系统 Python 里没有 beat-this，编排工具就在对话里自己建 venv、pip install，每个新项目都可能多一套约 800 MB 的 torch（实测两套并存，一套是客户端新建项目时现建的）。系统 `python3` 是 3.15 时 torch 装不上，所以按已知可用的版本挑 |
+| 节拍分析环境是卡点插件登记的前置资源（`ctx.prereq`，实现在 `beat/env.ts`）：`am setup --only beat` 在 `~/.local/share/am/beat/venv-<AnalyzerVersion>`（`AM_BEAT_ENV_DIR` 可覆盖，插件经 `ctx.childEnv` 登记，`childEnvironment` 显式传）里建 venv、`pip install beat-this==<版本>`、预下载默认 `final0` 权重，全部成功才写完成标记，失败整个删掉重来、重试 3 次。基础 Python 按 `basePythonCandidates` 找 3.10–3.14 的（`AM_BEAT_BASE_PYTHON` 可指定）；pip 用用户自己的 pip.conf，`--proxy` 只给权重下载。`beat.yaml` 的 `python` 可选，不写用共享环境，缺了抛 `prereq.MissingError`；卡点流程的制作提示词禁止编排工具自己建环境 | 以前 `beat.yaml` 默认 `python: python3`，系统 Python 里没有 beat-this，编排工具就在对话里自己建 venv、pip install，每个新项目都可能多一套约 800 MB 的 torch（实测两套并存，一套是客户端新建项目时现建的）。系统 `python3` 是 3.15 时 torch 装不上，所以按已知可用的版本挑 |
 | 音乐由 ffmpeg 解码成单声道 WAV，脚本用标准库 `wave` 读，再调 `Audio2Beats` | 不走 beat-this 自带的 torchaudio 读文件：它的后端随版本变化，能不能读 MP3 取决于用户机器 |
 
 节拍分析固定 `beat-this` `AnalyzerVersion`（`beat/store.ts`，代码与权重 MIT），不用 librosa（没有重拍）和 madmom（Python 3.12+ 兼容问题，DBN 后处理有专利、限非商用）。CI 不装 torch，真实分析的集成测试（`beat/analyze.test.ts`）只在设置 `AM_TEST_BEAT_PYTHON` 时运行，改动分析脚本后要在本机跑一遍：
@@ -298,11 +383,11 @@ lemo 来源（`packages/engine/src/filmstyle/lemo`）自己的约定：
 AM_TEST_BEAT_PYTHON=/path/to/venv/bin/python npx vitest run --root packages/engine src/beat -t RealBeatThis
 ```
 
-镜头的 `beat` 块与 `song` 块并列，`scene.verifyBeatInputs` 在渲染前、复用已有产物前与 `run-all` 里都会执行；启用了卡点却没有 `beat` 块的镜头直接拒绝。
+镜头的 `beat` 块与 `song` 块并列（卡点插件的 `block.ts`），它的 `verifyInputs` 在渲染前、复用已有产物前与 `run-all` 里都会执行；启用了卡点却没有 `beat` 块的镜头直接拒绝。`scene_run_all` 渲染前经插件的整批检查（`beatCoverage`）核对全部镜头与网格、分镜计划一致。
 
 ## 平台封面
 
-`publish.md` 的 `cover.images` 登记上传用的平台封面，校验在 `packages/engine/src/validate/cover_images.ts`，平台规格只有一个来源：`coverSpecs`（抖音 4:3 + 3:4、小红书 3:4 / 1:1 / 4:3、视频号 3:4 / 16:9、B 站与知乎 16:10，以及各平台 `ready` 前必须备齐的比例）。平台规则变了改这张表，制作提示词第十二阶段「平台封面」的表格要同步改，`gen.test.ts` 的「requires platform covers」钉着那一节。
+`publish.md` 的 `cover.images` 登记上传用的平台封面，校验在 `packages/engine/src/plugins/publishing/cover_images.ts`（随「发布」搬进内置插件），平台规格只有一个来源：`coverSpecs`（抖音 4:3 + 3:4、小红书 3:4 / 1:1 / 4:3、视频号 3:4 / 16:9、B 站与知乎 16:10，以及各平台 `ready` 前必须备齐的比例）。平台规则变了改这张表，制作提示词第十二阶段「平台封面」的表格要同步改，`gen.test.ts` 的「requires platform covers」钉着那一节。
 
 尺寸以文件实测为准、声明值只用来对账：手填宽高与实际不符，说明封面改过却没回填，发布时上传的就不是记录里那张。短边下限 1080，所以 B 站常见的 1146×717 不合格（它本身也不是精确的 16:10），用 1920×1200。模板里写封面尺寸时用「宽 1440、高 1080」，不要写成 `1440×1080` 这类乘号形式——`gen.test.ts` 的「substitutes the canvas label」会把它当成写死的画幅拦下。
 
@@ -327,7 +412,7 @@ am 的每一条制作步骤是一条操作（`packages/cli/src/ops/op.ts`）：
 | `scopes` | 缺省只给编排工具；`hyperframes` 另给渲染器 |
 | `run(params, ctx)` | 文字写进 `ctx.out`（工具输出、命令行屏幕都是它），结构化结果 `return { data }`；取消看 `ctx.signal`，`ctx.unsafe` 是根命令的 `--unsafe` |
 
-新增一步制作：在对应模块里 `defineOp` 一条（模块要在 `cli.ts` 里 import，登记靠加载时的副作用），写好说明、参数与至少一个例子；工具、`tool_help`、客户端后端（`runStudioOp`）与开发用命令行自动都有。多条操作共用的参数（`project_root`、`timeout`）用 `ops/common.ts`。
+新增一步制作：在对应模块里 `defineOp` 一条（模块要在 `cli.ts` 里 import，登记靠加载时的副作用），写好说明、参数与至少一个例子；工具、`tool_help`、客户端后端（`runStudioOp`）与开发用命令行自动都有。内置插件的操作在它的 `apply` 里 `ctx.op(...)`（字段与 `Op` 相同，可另写对话里的说法 `verb`），命令组用 `ctx.opGroup(...)`，由 `plugin_ops.ts` 照旧 `defineOp` / `defineGroup`。多条操作共用的参数（`project_root`、`timeout`）用 `ops/common.ts`（内置插件用 `@am/engine/opkit`，同一份）。
 
 ## am 的工具服务（MCP）
 
@@ -368,6 +453,7 @@ opencode 默认模型不可用时加 `AM_TEST_OPENCODE_MODEL`。
 | am 是打进资源目录的 `cli/am.cjs`，由一段 shim（`src/main/clishim.ts` 的 `shimScript`，写在 `userData/bin/am`）以 `ELECTRON_RUN_AS_NODE=1` 用客户端自带的 Electron 运行，同时设 `AM_ASSETS_DIR`、`AM_BROWSER`、`AM_NPM_CLI`。**没有「安装命令行工具」**：命令行不对外，以前装到 `~/.local/bin/am` 的旧 shim 由 `envutil.addToolsLocation` 放在 PATH 最前面的 am 遮住 | 用户不必另装 Node；agent 只经工具服务调用 am，找不到也不会去翻它 |
 | 主进程启动时从登录 shell 读 PATH（`shellpath.ts`） | 从 Finder 启动的应用只有系统 PATH，编排工具、ffmpeg、asdf 的 node 全都找不到 |
 | 顶栏就是标题栏：`.desktop .topbar` 可拖动窗口，按钮 `no-drag`；macOS 左侧留 88px 给红绿灯 | `titleBarStyle: hiddenInset` 去掉了系统标题栏 |
+| 在 Finder 中显示（`renderer/reveal.ts` → preload 的 `am.reveal` → 主进程 `am:reveal`）：后端 `Server.revealPath` 只认项目里的路径（含符号链接）、`.env` 不选中、还没生成的文件退到最近一层存在的目录；项目文件夹用 `shell.openPath` 打开，其余 `showItemInFolder` 选中。入口：顶栏项目名旁的文件夹按钮、菜单「文件 → 在 Finder 中显示项目」（⌥⌘R）、镜头与文件的右键菜单、镜头「⋯」菜单、文件页、成片页、首页最近项目。e2e（`reveal.spec.mjs`）把主进程的 `shell` 两个函数换成记录 | 界面拿不到 Node 与 Electron 接口，只能经 IPC 请主进程做；不限定在项目里的话，界面里跑的合成页面就能让主进程去开任意路径。测试不能真的弹 Finder |
 | 静态文件（`serveStatic`）只把不带扩展名的路径回落到 `index.html`，带扩展名找不到直接 404；按扩展名设 MIME，一律 `no-cache` | 缺失的脚本拿到一份 HTML，浏览器只报模块 MIME 错误，看不出真正原因 |
 | 界面产物文件名固定（`assets/app.js`，见 `vite.config.mjs`），不带 hash；`apps/desktop/out/` 与 `packages/cli/dist/` 是构建产物，不提交 | 主进程按路径直接取文件；产物每次由 `npm run build` / `npm run dist` 现做，CI 与发布都从源码构建 |
 | 根目录 `package-lock.json` 的 `resolved` 必须是 `registry.npmjs.org` | 用镜像装完依赖要把 `resolved` 换回官方源再提交，CI 访问不到国内镜像 |
@@ -385,20 +471,24 @@ opencode 默认模型不可用时加 `AM_TEST_OPENCODE_MODEL`。
 | 预先指定或从流里读到会话 id 立刻落盘；续接失败且没有任何产出时，带对话记录开新会话 | 进程中途崩了也能续接；CLI 会话过期是常态，不能让对话就此断掉 |
 | 会话、事件（`<id>.events.jsonl`，SSE 的 id 就是 seq）、轮次记录都在项目的 `production/studio/` 下 | 状态跟着项目走，`am archive` 一起归档；客户端重启后进行中的轮次标成 `interrupted` |
 | 编排工具与渲染工具按会话选（`SessionMeta.tool` / `renderer`，`sessions.ts`），默认取项目配置；客户端不改 `article-to-motion.conf`，选择经 `sessionConfig` 覆盖后由 `childEnvironment` 写进子进程的 `ORCHESTRATOR` / `RENDERER` | 环境变量优先于项目配置，编排工具在这一轮里调用的 `am scene run` 因此也用会话选的渲染工具。换编排工具时清掉 CLI 会话 id，下一轮按续接失败的路子带上对话记录开新会话 |
+| 镜头列表（`discoverScenes`，`studio/scenes.ts`）同一个 id 只留一份：分镜计划 `dir` 指向的 → 项目根 `scenes/` 下的 → 层级浅的；`scenes.test.ts` 钉着 | 重做分镜时编排工具会把旧的一套挪进 `production/v1/scenes/` 留底，id 与新的一套相同；不去重时镜头列表出现两组，镜头页按 id 先找到旧的那份，换了风格也一直显示旧画面（2026-11 实测） |
 | 项目路径一律用 `Server.currentProject()` 返回的（登记时已 realpath） | macOS 的 `/var` 是 `/private/var` 的链接，两种写法会被当成两个项目，锁和会话都对不上 |
 | 上传的文件存进 `production/studio/uploads/`（`uploads.ts`），附件带 `upload: true`，提示词里只给路径和种类，由编排工具在这一轮里复制或转换到项目里；`.env` 拒收 | 客户端不写项目文件。上传落在不进快照的状态目录，文件真正进项目的那一步是某一轮的改动，照常能看差异、能回退 |
 | 一轮进行中发的消息排队（`enqueueTurn`，事件 `queued` 带 `queue_id`），这一轮结束后合并成下一轮（`drainQueue`）；`DELETE …/queue/{id}` 移除（事件 `unqueued`），`POST …/queue/{id}/steer` 把它提到最前并停掉当前这一轮；按停止会清掉排队 | 各家 CLI 在非交互模式下都不能中途注入输入，只能排到下一轮。按停止多半是不想让后面的要求接着跑 |
-| 渲染器此刻在做什么（`studio/activity.ts` 的 `/api/scenes/{id}/activity`，界面 `RenderActivity.tsx`）：把镜头目录的 `render-<id>.stream.jsonl` 用 `agentrun.Parser` 按偏移增量译成步骤（文件被换掉就从头读，半行留到下次）；对话里有镜头在渲染时输入框上方挂卡片，镜头页显示完整过程。「渲染中」以 `scene.run` 写的进行中标记 `render-<id>.live.json`（`scene/live.ts`，记 pid、渲染工具、开始时间，结束即删）为准、看进程在不在，没有标记的旧渲染才退回看日志静默 | 编排工具调了渲染就只能等，聊天页只有一个转圈的工具调用；渲染器跑 `hyperframes render` 的几分钟里流日志不动，按静默判断会在最该显示进度时把镜头判成没在渲染 |
-| 待办清单统一成 `agentrun` 的 `KindPlan`（claude 的 TodoWrite、codex 的 `todo_list`、opencode 的 `todowrite`），每条是完整清单；镜头的「渲染中」由渲染日志三分钟内有写入且比尝试记录新判断（`sceneRendering`，`scenes.ts`） | 整片制作要跑几个小时，只看一串工具调用不知道做到哪了。新增一家 CLI 时它的待办工具也要译成 plan 事件 |
+| 渲染器此刻在做什么（`studio/activity.ts` 的 `/api/scenes/{id}/activity`，界面 `RenderActivity.tsx`）：把镜头目录的 `render-<id>.stream.jsonl` 用 `agentrun.Parser` 按偏移增量译成步骤（文件被换掉就从头读，半行留到下次）；对话里有镜头在渲染时输入框上方挂卡片，镜头页显示完整过程。「渲染中」以 `scene.run` 写的进行中标记 `render-<id>.live.json`（`scene/live.ts`，记 pid、渲染工具、开始时间，结束即删）为准、看进程在不在，没有标记就不算渲染中 | 编排工具调了渲染就只能等，聊天页只有一个转圈的工具调用；渲染器跑 `hyperframes render` 的几分钟里流日志不动，按静默判断会在最该显示进度时把镜头判成没在渲染 |
+| 待办清单统一成 `agentrun` 的 `KindPlan`（claude 的 TodoWrite、codex 的 `todo_list`、opencode 的 `todowrite`），每条是完整清单；镜头的「渲染中」只看进行中标记（`sceneRendering`，`scenes.ts`） | 整片制作要跑几个小时，只看一串工具调用不知道做到哪了。新增一家 CLI 时它的待办工具也要译成 plan 事件 |
 | 建项目只走 `packages/engine/src/projectinit`：`am init` 与客户端的新建（`Server.createAPI`）共用 `create`（讲解形式、叙事模式、cast 骨架）与 `installSkills`（HyperFrames 官方技能）。客户端新建后在后台从本机缓存拷技能（`studio/skills.ts`，不联网；缓存是 `am setup` 准备的前置资源，缺了显示指向 `am setup` 的错误），顶栏在缺技能时给「安装」，安装中显示进度条（`hyperframes.Options.progress`，拷贝按技能计数；`am setup` 下载时克隆让 git `--progress` 并解析百分比，在终端里用一行回车刷新）；端到端测试用 `AM_STUDIO_SKIP_SKILL_INSTALL=1` 跳过 | 两边各写一份时界面漏了讲解形式、多角色对话，也不装官方技能，渲染器拿不到 hyperframes 入口技能 |
 | `/api/files` 与 `/preview/scenes/` 经 `containedPath`（`sessions.ts`）解析（含符号链接），`.env` 一律不读 | 这两个接口按路径读文件，而预览 iframe 里跑的是渲染器写出的合成页面、与界面同在 `am://app/` 下；不限定在项目内的话，一段生成的 HTML 就能读到项目外的文件与 `.env` |
-| 风格只展示整片风格（`studio/filmstyle.ts`）：首页、新建对话框、「风格」页与镜头页共用 `FilmStyles.tsx`（首页、换风格、添加风格用整体弹窗 `FilmStyleDialog`）；旧版内置风格不再出现在界面里（`/api/styles` 只剩画幅还在用）。装、换、添加、去掉都经 `am film-style` 写任务（`startFilmStyleTask` / `startAddFilmStyleTask`）；「风格」页列出默认风格与其他风格及各自在用的镜头，镜头页显示本镜头的风格，新建时 `/api/projects/create` 收 `film_style` 并返回 `film_style_task`，开机画面跟这个任务；顶栏显示的是 `metadata.film_style` | 旧风格 10 月 20 日起已不影响渲染，留在选择器里只会让人选一个不起作用的东西。风格改的是项目文件，走写任务才不会和一轮对话的快照打架 |
+| 风格只展示整片风格（`studio/filmstyle.ts`）：首页、新建对话框、「风格」页与镜头页共用 `FilmStyles.tsx`（首页、换风格、添加风格用整体弹窗 `FilmStyleDialog`）；`/api/styles` 只给新建对话框的画幅与做法（旧版内置风格已删除）。装、换、添加、去掉都经 `am film-style` 写任务（`startFilmStyleTask` / `startAddFilmStyleTask`）；「风格」页列出默认风格与其他风格及各自在用的镜头，镜头页显示本镜头的风格，新建时 `/api/projects/create` 收 `film_style` 并返回 `film_style_task`，开机画面跟这个任务；顶栏显示的是 `metadata.film_style` | 旧风格 10 月 20 日起已不影响渲染，留在选择器里只会让人选一个不起作用的东西。风格改的是项目文件，走写任务才不会和一轮对话的快照打架 |
 | 客户端不下载风格来源与海报（前置资源，`am setup` 准备）：来源没准备好时 `/api/film-styles` 的那个来源报 `ready: false` 并附指向 `am setup` 的说明，界面显示分类色占位块；`/api/film-styles/{来源}/{目录名}/poster.jpg` 默认给 480 宽的缩略图（`posterThumbWidth`，缓存在 `<风格根目录>/.thumbs/<来源>/`），`?size=full` 给原图 | 原图一张 1920×1080，菜单一屏几十张会卡 |
-| 编排工具与界面互通（`studio/view.ts`、`packages/engine/src/studioview`）：编排工具调用 `studio_show` 工具（`am studio show <页面> [对象] [--note …]`）把界面切到要用户看的那一页——请求写进这一轮的收件目录（`AM_STUDIO_INBOX`，在 `production/studio/inbox/<轮次>/`，`runTurn` 经子进程环境传下去），后端每 300 毫秒取一次、译成 `view` 事件，界面只执行刚发生的（15 秒内，重放历史不切页），回复下面留一个可点的「↗ 页面」。反方向，界面每条消息带 `view`（当前页、镜头、文件），`describeView` 把它写进这一轮的提示词，不进对话显示。约定写在 `studioInteraction`（`viewInteraction`），页面表 `ViewPages` 与 `Preview.tsx` 的 `tabs` 一一对应 | 走文件不走 HTTP：codex 沙箱默认断网，项目目录总是可写，编排工具也不必知道客户端的任何地址。不在客户端里（`am run`）时 `am studio show` 静默跳过、页面写错照样报错，编排工具照提示词调用不会失败。实测 claude 在安全模式下能直接调用并切页 |
+| 编排工具与界面互通（`studio/view.ts`、`packages/engine/src/studioview`）：编排工具调用 `studio_show` 工具（`am studio show <页面> [对象] [--note …]`）把界面切到要用户看的那一页——请求写进这一轮的收件目录（`AM_STUDIO_INBOX`，在 `production/studio/inbox/<轮次>/`，`runTurn` 经子进程环境传下去），后端每 300 毫秒取一次、译成 `view` 事件，界面只执行刚发生的（15 秒内，重放历史不切页），回复下面留一个可点的「↗ 页面」。反方向，界面每条消息带 `view`（当前页、镜头、文件），`describeView` 把它写进这一轮的提示词，不进对话显示。约定写在 `studioInteraction`（`viewInteraction`），宿主的页面表 `ViewPages` 加内置插件登记的页面（`viewPages()`）与 `Preview.tsx` 的 `tabs` 加 `pageViews.tsx` 一一对应。要看的文件有专门页面时（口播稿、分镜计划与处理方案、成片与配音合成版、发布信息、镜头目录里的文件），`validateViewRequest` 经 `dedicatedPage` 改切到那一页，不开文件页。编排每轮结束前调用 `studio_step`（只标步骤、不切页，请求里 `page` 为空、`step` 取 `stepIDs()`：宿主的步骤加内置插件登记的）标出整片制作在哪一步，后端记进 `production/studio/step.json`（`writeStepMark`），`/api/state` 的 `step` / `step_marked`（`stepOf`：标记比项目里最新的产物新时用标记，否则取制作路线当前一站所在的步骤）给顶栏：做过的步骤编号换成 ✓，当前一步是黄铜色小章 | 走文件不走 HTTP：codex 沙箱默认断网，项目目录总是可写，编排工具也不必知道客户端的任何地址。不在客户端里（`am run`）时 `am studio show` 静默跳过、页面写错照样报错，编排工具照提示词调用不会失败。实测 claude 在安全模式下能直接调用并切页 |
 | 口播稿页（`studio/script.ts` 的 `/api/script`、`Script.tsx`）排在标签第一位：读 `production/script-final.md`，经 `align` 的 `view`（`align/view.ts`）排成标题、段落、读法（ruby）与受保护短语，附字数、估算时长（每秒 4.5 字）、`voice.srt` 的实际配音时长与 `script-change-log.md`；没有终稿时原样显示原稿，标记写错时给出位置并显示原文。有终稿、还没有镜头时自动切到这一页，稿子改过没看过时标签打点，聊天里点到终稿也打开这一页。「确认，开始配音」「提修改意见」「针对所选提意见」都只是往对话里发话或填输入框 | 稿件审核关卡要用户看稿，以前只能在聊天里翻；视图与 `am align` 共用一份解析器，读法与短语和配音、对齐看到的是同一份。客户端自己不改稿 |
-| 节拍页（`Beat.tsx`，`/api/beat`）在卡点项目里代替口播稿排第一步（`stepTabsFor`）。页头六步（故事与文案 → 导入音乐 → 分析节拍 → 试听确认 → 分镜计划 → 做镜头）各自判断完成与否，下面一块「接下来」用一句话说清下一步、按钮把它交给对话；故事与文案读 `production/beat/story.md`（制作提示词「卡点分支」让编排工具开工先写它，`gen.test.ts` 的「tells the beat story before the music」钉着）（`BeatStoryFile`），还在定故事时展开全文、之后收成标题加梗概。其下画波形、每拍刻度、重拍与小节号、分镜计划的镜头条，播放时大字数拍；拍数与多数小节不同的小节标黄。音乐用 WebAudio 解码播放，咔嗒按当前网格在同一个 `AudioContext` 里现合成，所以在页面上换「每小节几拍 / 重拍是第几拍」（或播放中按 T 敲重拍）立刻能听到；只有动过这两个控件才进入预览，原网格（手改、拼接过的常常不规整）照原样显示。写回只走 `beat.regrid` / `beat.confirm` 两个写任务，客户端不改网格；`/api/beat` 不哈希音乐（每次刷新都要读），网格与音乐不符由 `am beat confirm` 拦下 | 卡点项目原先跑的是口播流程的制作提示词，没有任何卡点步骤，用户在听音乐之前不知道片子讲什么、接下来要做什么；以前也只有一条横幅放 `grid-click.wav`，重拍错位要回终端跑 `am beat regrid` 再重听整条试听轨，小节、拍数与切点只能看 `am beat bars` 的文字表 |
-| 发布页（`Publish.tsx`）不贴 `publish.md` 原文：`/api/publish` 经 `validate.readPublish` 只解析 frontmatter（不校验）返回 `data`，页面按「状态 → 可复制的标题 / 简介 / 话题 → 登记的封面 → 还剩的人工检查」排，规格与证据收进折叠。客户端里任何地方都不显示它的 Markdown 原文：接口不回传正文，解析失败只给原因、让编排工具修；聊天、文件树、`am studio show file publish.md` 点到它都切到发布页（`app.tsx` 的 `pageForFile`，口播稿同理）。合格与否仍只看「发布校验」 | `publish.md` 是 `am run` 下给人看的发布助手；在客户端里发布页就是那份助手，再贴原文只是把几十行校验字段和重复的表格摆到用户面前 |
-| 设置页（`Settings.tsx`，后端 `studio/settings.ts`，顶栏齿轮或 ⌘,）管「什么用什么」：`config.GlobalKeys`（编排、渲染、配音、对齐、并发、记忆、自动批准）。全局值写用户级的 `settings.conf`（`config/global.ts`，`AM_SETTINGS_FILE` 覆盖，`childEnvironment` 显式传下去），在进程里直接写；「这个项目」一栏经 `config_set` 写任务改项目的 `article-to-motion.conf`（`config_set` 的 scopes 只有 cli，编排工具没有这个工具）。取值顺序：环境变量 > 项目 `.env` > 项目 conf > 全局设置 > `GlobalDefaults`；新项目模板里这几项留空，所以跟随全局。测试的 vitest setup 与 e2e fixtures 都把 `AM_SETTINGS_FILE` 指到临时文件 | 以前这几项只能手改每个项目的 conf，客户端里改不了配音、对齐与并发；全局为准、项目可单独改是用户选的方案。设置项被环境变量或 `.env` 盖住时页面照实说，不假装改了有用 |
+| 制作路线（`studio/progress.ts` 的 `/api/progress`，`Progress.tsx`）：把制作拆成十几站（口播：盘点素材 → 口播稿 → 稿件审核 → 配音 → 配音审核 → 字幕时间轴 → 整片风格（可选）→ 拆分镜头 → 分镜审核 → 渲染 → 画面验收 → 拼接 → 配乐混音 → 复查 → 试听确认 → 发布；卡点项目换成故事、音乐、节拍那几站），按顶栏五步分组。每站做没做只看产物，上游产物比下游新时下游标「上游改过」（只用在由工具从上游生成的产物上：稿子比配音新不算，编排常在配音后改读法标记）；没留产物但后面已经做了的算跳过。审核关卡另记用户确认：界面的确认按钮（口播稿页、分镜页、路线页）先 `POST /api/progress/gates/{关卡}` 写 `production/studio/gates.json`（记下绑定文件的摘要，大文件记 stat），文件之后变了就是「确认后又改过」；没有记录但下游已做的算「已经过了」；试听确认读 `approval.json`，节拍读确认过的网格。「做了什么」读轮次记录（按修改时间缓存摘要），改过的文件经 `stationOfPath` 归站；同一份归站结果给对话里每轮结尾的「→ 站名」。入口：顶栏步骤左边的「路线」、对话顶上一行「现在 · 某站 · 等你确认 / AI 在做」，点轮次跳回对话那一轮。`studio_show progress` 也能打开 | 顶栏五步太粗，看不出做过什么、现在卡在哪、在等谁；不让编排汇报进度，是因为它会忘、会标错 |
+| 分镜页（`studio/storyboard.ts` 的 `/api/storyboard`、`Storyboard.tsx`）是第二步，排在口播稿与镜头之间：读 `production/scene-plan.json`（经 `scene.parseTimingPlan`）、`treatment.md` 与每个镜头目录的 `scene.json`（口播 `text`、跑过 cues 才有的时长）和 `prompt.md`，按章节列出镜头的一句话说明、视觉角色、交接手法（`device_label` 取 `handoffGuide` 冒号前的中文名）与完整画面描述；计划缺失或写坏时按已有镜头目录列。计划里的 `dir` 跑出项目的一律不读。镜头页右栏的 `SceneBrief` 显示同一份说明。画风也在这一页：后端按项目当前的默认风格把每个镜头的 `film_style` 解析成实际用的风格（`StoryboardStyle`，与 `scene_cues` 的风格交界同一种判定），页上列出全片几种画风各用在哪几个镜头、每张镜头卡的画风、风格交界从哪种换到哪种与过渡手法（计划里漏写 `style_shift` 的照实标红）；镜头卡的「换风格」与镜头页共用 `SceneStyleDialog`（`FilmStyles.tsx`），只把要求写进输入框交给编排工具。制作提示词第六阶段的「分镜审核关卡」让编排在 `scene_cues()` 之后、任何渲染之前 `studio_show storyboard` 并停下等确认（`gen.test.ts` 的「stops for storyboard review before rendering」）；「确认，开始渲染」先记关卡再往对话里发话，记到哪个关卡由 `/api/storyboard` 的 `gate` 给（`studio/progress.ts` 的 `pageGate`：当前流程路线上 `page` 是这一页的审核关卡，口播是 `gate-storyboard`，卡点是 `gate-beat-storyboard`），口播稿页的 `/api/script` 同理，界面不写死关卡 id。有分镜计划、镜头都没渲染、分镜有没看过的改动时，点镜头步骤会先落到分镜页 | 分镜和每个镜头的画面描述在渲染前就写好了，以前界面上看不到、编排也不停：用户第一次看到画面时每个镜头都已经渲染过一遍，发现想法不对只能整批重做 |
+| 节拍页（`Beat.tsx`，卡点插件登记的页面与 `/api/beat`，界面经 `pageViews.tsx` 对上组件，组件自己读 `/api/beat`）在卡点项目里代替口播稿排第一步：顶栏的步骤、第一步、用不上的页与没有镜头时落在哪一页都来自 `/api/state` 的 `flow`（`studio/progress.ts` 的 `flowView`，按流程声明 `first_page` / `land_first` 算），界面里没有按片型写死的分支。页头六步（故事与文案 → 导入音乐 → 分析节拍 → 试听确认 → 分镜计划 → 做镜头）各自判断完成与否，下面一块「接下来」用一句话说清下一步、按钮把它交给对话；故事与文案读 `production/beat/story.md`（卡点流程的第二阶段让编排工具开工先写它，`flowprompts.test.ts` 的「tells the beat story before the music (beat)」钉着）（`BeatStoryFile`），还在定故事时展开全文、之后收成标题加梗概。其下画波形、每拍刻度、重拍与小节号、分镜计划的镜头条，播放时大字数拍；拍数与多数小节不同的小节标黄。音乐用 WebAudio 解码播放，咔嗒按当前网格在同一个 `AudioContext` 里现合成，所以在页面上换「每小节几拍 / 重拍是第几拍」（或播放中按 T 敲重拍）立刻能听到；只有动过这两个控件才进入预览，原网格（手改、拼接过的常常不规整）照原样显示。写回只走 `beat.regrid` / `beat.confirm` 两个网页命令（插件登记的写任务），客户端不改网格；`/api/beat` 不哈希音乐（每次刷新都要读），网格与音乐不符由 `beat_confirm` 拦下 | 卡点项目原先跑的是口播流程的制作提示词，没有任何卡点步骤，用户在听音乐之前不知道片子讲什么、接下来要做什么；以前也只有一条横幅放 `grid-click.wav`，重拍错位要回终端跑 `am beat regrid` 再重听整条试听轨，小节、拍数与切点只能看 `am beat bars` 的文字表 |
+| 发布页（`Publish.tsx`）不贴 `publish.md` 原文：`/api/publish`（发布插件登记的接口，`plugins/publishing/api.ts`）经 `readPublish` 只解析 frontmatter（不校验）返回 `data`，页面按「状态 → 可复制的标题 / 简介 / 话题 → 登记的封面 → 还剩的人工检查」排，规格与证据收进折叠。客户端里任何地方都不显示它的 Markdown 原文：接口不回传正文，解析失败只给原因、让编排工具修；聊天、文件树、`am studio show file publish.md` 点到它都切到发布页（`app.tsx` 的 `pageForFile`，口播稿同理）。合格与否仍只看「发布校验」 | `publish.md` 是 `am run` 下给人看的发布助手；在客户端里发布页就是那份助手，再贴原文只是把几十行校验字段和重复的表格摆到用户面前 |
+| 模型（`ORCHESTRATOR_MODEL` / `RENDERER_MODEL`，`Config.orchestratorModel` / `rendererModel`）：空是那家工具自己的默认。`config.load` 只在「写模型的那一层往下看，工具就是现在这一家」时用它（`modelFor`）；在同一层换工具时 `writeGlobal` 与 `config_set` 把那一层的模型一起清掉；`childEnvironment` 有模型才写、没有就删，`amToolsServer` 放行这两个键。会话也能选（`SessionMeta.model` / `renderer_model`，空串是跟随设置，换工具不给模型时回到跟随设置；同一家换模型不清 CLI 会话 id）。各家的参数在 `tools.modelArgs`（codex 用 `-c model=…`，exec 与 resume 都认；app-server 走 `thread/start` / `thread/resume` 的 `model`；opencode acp 没有参数，经 `OPENCODE_CONFIG_CONTENT` 的 `model`，`acp.ts` 的 `ensureModel` 开会话后按 `configOptions` / `models` 再核对一次）。下拉框的选项来自工具自己（`tools.modelListCommand` / `parseModelList`，`/api/agents/{工具}/models` 缓存 10 分钟），claude 没有列模型的命令，给帮助里写的别名；列不出时仍能手填。镜头 `scene.json` 换了渲染工具时不用设置里的渲染模型（`config.rendererModelFor`），记忆召回同样按它取模型 | 模型名只对一家工具有意义，opus 交给 codex 会让整轮失败；不跟着工具走的话，在设置里换一次工具就会撞上。各家能用的模型随登录账号与服务商变，am 维护一份表只会过期 |
+| 设置页（`Settings.tsx`，后端 `studio/settings.ts`，顶栏齿轮或 ⌘,）管「什么用什么」：`config.GlobalKeys`（编排、渲染及各自的模型、配音、对齐、并发、记忆、自动批准）。全局值写用户级的 `settings.conf`（`config/global.ts`，`AM_SETTINGS_FILE` 覆盖，`childEnvironment` 显式传下去），在进程里直接写；「这个项目」一栏经 `config_set` 写任务改项目的 `article-to-motion.conf`（`config_set` 的 scopes 只有 cli，编排工具没有这个工具）。取值顺序：环境变量 > 项目 `.env` > 项目 conf > 全局设置 > `GlobalDefaults`；新项目模板里这几项留空，所以跟随全局。测试的 vitest setup 与 e2e fixtures 都把 `AM_SETTINGS_FILE` 指到临时文件 | 以前这几项只能手改每个项目的 conf，客户端里改不了配音、对齐与并发；全局为准、项目可单独改是用户选的方案。设置项被环境变量或 `.env` 盖住时页面照实说，不假装改了有用 |
 | 前置资源的安装页（`studio/setup.ts` 的 `/api/setup`、`/api/setup/run`、`/api/setup/cancel`，`SetupGuide.tsx`）：清单与 `am setup` 同一份（`prereqs`，配音与对齐工具按当前项目配置挑）。界面把几项技术资源合成用户听得懂的「摄制组」——画面（技能 + CLI + 浏览器）、剪辑（ffmpeg）、配音、字幕——每组一张卡片、图标外一圈进度环；工具名、版本、路径只在悬停提示里，日志与终端命令收进「高级」；节拍环境、风格来源动辄上 GB，作为「以后可能用到」单独点装。安装在后台跑，同一时间一份，进度经 GET 轮询（安装中每秒一次）；暂停记成「已取消」，界面显示为暂停而不是失败。不占项目写锁（只写用户级目录）。必需项缺时「开始制作」不可点。`AM_STUDIO_SKIP_SKILL_INSTALL=1` 时当作全部就绪 | 以前只给一条要复制到终端的命令，客户端用户多半不会开终端，装好应用却用不了；列一排工具名用户看不懂在装什么 |
 
 ### 界面（`apps/desktop/src/renderer`）
@@ -408,15 +498,15 @@ opencode 默认模型不可用时加 `AM_TEST_OPENCODE_MODEL`。
 | 编排工具要用户拍板时在回复末尾写 ` ```choices ` 代码块，界面渲染成按钮（`components/chat/model.ts` 的 `parseChoices`），点了把那一行原样发出；约定写在 `studioInteraction`，聊天开场、整片制作第一轮、续接失败补发时都带上 | 没有结构化的「提问」事件，这是三家都能做到的最小约定；改格式要两边一起改 |
 | Markdown 渲染（`components/chat/Markdown.tsx`）用 marked（GFM：表格、任务列表、删除线、嵌套列表、自动链接）加 DOMPurify 清洗，再做对话里的处理：标题降两级、外链交给系统浏览器、项目文件路径（链接或行内代码）可点开文件页（`MarkdownContext` 由 `app.tsx` 提供文件树）、代码块带语言与复制、表格可横向滚动、图片只读项目文件或外链。另加两条内联规则 `cjkStrong` / `cjkDel`：CommonMark 的分隔符规则按英文标点设计，`**字体还没下载。**下载` 这种收尾符号前是中文标点、后面紧跟汉字的写法不算粗体，而中文回复里到处是 | 原来的手写解析只认段落、列表、代码与粗体，表格（编排工具最常用的对比格式）、嵌套列表都原样显示；回复里的 HTML 一律经 DOMPurify，事件属性与 `javascript:` 链接进不了页面，e2e 的「renders GitHub-flavored markdown safely」专门测这条 |
 | 回复里提到的音频、图片、视频直接在对话里放（`Chat.tsx` 的 `MediaStrip`，查找在 `model.ts` 的 `findMedia`）：按项目文件树认，写全路径或只写文件名都行（同名多个时优先回复里提到过的目录），音频与视频给播放器、图片给缩略图，点文件名打开文件页；`studioInteraction` 要求编排工具写出项目内的相对路径 | 音色试听、配音片段、封面候选原来只是一串文件名，用户得自己去文件树里找；编排工具常把目录写在前文、表格里只写文件名，所以按文件名也要能认 |
-| 推荐整片风格时写 ` ```film-styles ` 代码块，每行「来源/目录名 理由」（约定同在 `studioInteraction`）；界面按风格目录渲染成海报卡片（`StylePicks`，海报走 `/api/film-styles/…/poster.jpg`），「用这个风格」把「整片风格用「中文名」（标识）」作为下一条消息发出，由编排工具运行 `am film-style use`。没有代码块时，回复里写到的已知风格标识也显示海报（`parseStylePicks`）——制作提示词只要求「写明中文名、标识」，`am run` 下同一份提示词也得能用 | 用户选画风要看图，光看名字选不出来；装风格仍由编排工具做，客户端不绕过对话改项目文件 |
+| 推荐风格时写 ` ```film-styles ` 代码块，每行「来源/目录名 理由」是全片默认风格，「来源/目录名 [用在哪一段] 理由」是只给那一段的风格（约定同在 `studioInteraction`）；界面按风格目录渲染成海报卡片（`StylePicks`，海报走 `/api/film-styles/…/poster.jpg`），卡片标出「全片默认风格」或「只用在：…」：「设为整片风格」发「整片风格用「中文名」（标识）」，由编排工具运行 `film_style_use()`；「用在这一段」发「<那一段>用「中文名」风格（标识），其余镜头不变」，由编排工具 `film_style_add()` 并改分镜里那几个镜头的 `film_style`（`stylePickMessage`）。没有代码块时，回复里写到的已知风格标识也显示海报（`parseStylePicks`），但不知道是给全片还是给一段，按钮写「选这个风格」、发出的话不说「整片」——制作提示词只要求「写明中文名、标识」，`am run` 下同一份提示词也得能用 | 用户选画风要看图，光看名字选不出来；装风格仍由编排工具做，客户端不绕过对话改项目文件 |
 | 对话是主栏，画面是按需打开的面板（`app.tsx` 的 `panelOpen` / `showTab`）：工作区里对话占满，正文居中限宽 760px（`chat.css` 的 `--gutter`）；页面（口播稿、镜头、成片……）放在右侧面板里，默认收起成一条镜头进度细栏（`PanelRail`）。用户点步骤、更多页面、收起栏里的镜头、回复里的文件或「↗ 页面」，以及编排工具 `studio_show`，都经 `showTab` 打开面板；稿件审核、卡点这类自动切页只换页、不开面板。× 、Esc（输入框里、圈选与菜单开着时除外）与菜单「显示或收起画面」（⌘\）收起。面板宽度可拖动、双击复原，按「看画面 / 读文字」两类分别记在 localStorage，对话栏最窄 420px；1180px 以下面板变成盖在对话上的抽屉。面板收起时 `view.page` 为空，提示词里不写「用户开着哪一页」。e2e 的 `openProject` 只等收起栏，要看页面的用例先点步骤，`layout.spec.mjs` 钉着这些行为 | 用户整场制作的操作都在对话里，原先预览占 `1fr`、对话被限在 360–400px 的右栏，窄屏还被挤到画面下面；真正要看画面的只有审稿、看镜头、看成片、发布这几个节点 |
 | 已经答过的选项收起（`Chat.tsx` 的 `AnsweredOptions`）：这一轮之后用户发的第一条消息与某个选项逐字相同（风格推荐按 `stylePickMessage`）就只留那一个，其余收进「另外 n 个选项」；自己打字回复时整组收成一行 | 历史里一排排不能再点的按钮只占地方 |
 | 场记桌宠（`apps/desktop/src/main/pet.ts`，界面 `Pet.tsx`、`pet.css`）：透明、无边框、置顶的小窗（载入 `am://app/pet`，`main.tsx` 按路径分流），里面是一间等距块面的微缩工作室（平行投影，家具是有厚度的块，顶面最亮、朝左下次之、朝右下最暗；放在一块地台上，像桌上的模型；按 x + y 排远近，走动先回走廊再横过去；谁在干活靠东西亮起来看：柔光灯与背景纸、录制灯、时间线、录音灯、导演台滚字）。一个部门一个人：导演是编排工具，在哪个部门干活就走到哪（读、写在剧本桌，跑命令在导演台，拍时在机位旁，剪辑时站在剪辑师身后，配音时在录音棚外，等批准与收工站到台前，想和待命坐导演椅）；摄影是渲染器，每个正在渲染的镜头（镜头列表的 `rendering`）一位，从沙发走到摄影机后扶着机器，脚下挂镜头号；剪辑师在拼接、复查、抽帧、校验、字幕时间轴时开工；配音演员在配音命令（与 `providers.ts` 的 `command` 对应）与音色库工具时站到话筒前。状态只从会话事件推出：`components/chat/crew.ts` 的 `crewState` 看 `buildBlocks` 整理好的最后一轮里还没有结果的那次工具调用与 `pendingPermissions`（没有进行中的调用就是在想，一轮结束后留 `crewLinger` 显示收工 / 停下 / 没做成），`useCrewBroadcast` 连同在渲染的镜头经 `am:crew` 发给主进程，主进程转给桌宠窗口，桌宠刚载入时补发最新一份。还有镜头在渲染时 `app.tsx` 照样每 8 秒刷新镜头列表，不只在项目被占用时刷，不然一轮结束后渲染完的镜头一直停在「渲染中」。显示与否、位置记在 userData 的 `pet.json`，菜单「窗口 → 场记桌宠」开关，卡片上的 × 收起、双击回到客户端。后台运行（e2e）时桌宠照建照收状态但不显示，`e2e/pet.spec.mjs` 用 `petPage` 拿到它。主窗口一律经 `pet.ts` 的 `mainWindow()` 找，不能再用 `getAllWindows()[0]` 或「还有没有窗口」判断；e2e 在主进程里用 `isResizable()` 认主窗口（桌宠刚建好时 URL 是空的）。人是有骨架的实色小人（`body` 按姿势在人自己的坐标里摆关节，`person` 按站位与朝向投影、四肢按远近排先后，衣服与皮肤各有亮暗两面，正面点两只眼睛、背面整块头发），所以转身、背对都对；衣帽颜色在 `looks`。全是 `Pet.tsx` 里手写的矢量。用户依次否过像素图、胶囊小人与纯线稿，选定的是这种块面微缩模型，别再换回去 | 同类开源桌宠靠 Claude Code hooks 或盯 JSONL 记录取状态；这里五家 CLI 的流早已统一成 `agentrun` 事件，再装全局 hooks、改用户的 `~/.claude/settings.json` 只换来一家能用、还动了用户自己的配置。一个人的工作室说不清「谁在干活」：渲染器与编排工具同时在跑、几个镜头并行渲染时，只有分部门、一镜头一人才看得出来。桌宠窗口一直在，按窗口数判断的话关掉主窗口后点 Dock 不会再开主窗口、通知点了会去聚焦桌宠。美术不拷任何项目的素材（有的是 AGPL） |
 | 聊天面板的结构照 OpenDesign：一轮的过程（思考、工具、中间的话）收进一个折叠块，进行中展开、结束收起，结尾的话才是回复；进度是底部浮动的药丸，排队的消息叠在输入框上方。事件到界面的整理只在 `components/chat/model.ts`（`buildBlocks`） | 一轮动辄几十次工具调用，平铺会把回复淹没；整理逻辑放一处，渲染组件只管画 |
-| 没有打开项目、或点左上角时显示首页（`Home.tsx`，照 OpenDesign 首页）：在输入框说要做什么、拖进文章，发送后进入「开机」画面（`Creation.tsx`）：场记板、按画幅的监视器、四段片段的时间线，依次 `projects/create` → `uploads` → 等 `/api/skills` 装完 → `production/start`（带 `attachments`），播放头按真实进度走，装技能可以「不等了」转后台，最后打板推进到项目。先装技能再开工，编排工具一开工就有 hyperframes 技能。项目名由第一句话或文件名推出，重名加 `-2`；「保存到」默认取上次新建时的父目录（项目登记里的 `last_parent`），最近项目带阶段与出片摘要（`ProjectSummary`） | 从一句话到开始制作不该要先填一张表；已经不存在的项目不混进最近列表，给一键清理 |
+| 没有打开项目、或点左上角时显示首页（`Home.tsx`，照 OpenDesign 首页）：在输入框说要做什么、拖进文章，发送后进入「开机」画面（`Creation.tsx`）：场记板、按画幅的监视器、四段片段的时间线，依次 `projects/create` → `uploads` → 等 `/api/skills` 装完 → `production/start`（带 `attachments`），播放头按真实进度走，装技能可以「不等了」转后台，最后打板推进到项目。先装技能再开工，编排工具一开工就有 hyperframes 技能。项目名在建文件夹之前起（开机画面第一段「起片名」）：`/api/projects/name`（`studio/naming.ts`）用首页选的编排工具在空的临时目录里调一次模型，按用户的话与文本素材的开头起一个说清内容的名字，整理成文件夹名（`cleanName`）后加月日；起不出来、超时（45 秒）或用户点「不等了」时退回第一句话或文件名，重名加 `-2`。这次调用的用量随 `naming` 凭据在建项目时记进新项目的编排账本；e2e 的假 claude 认「请给一条讲解视频的项目起一个名字」这句；「保存到」默认取上次新建时的父目录（项目登记里的 `last_parent`），最近项目带阶段与出片摘要（`ProjectSummary`；阶段是 `stageFor`，与顶栏同一个来源 `stepOf`，不另看文件） | 从一句话到开始制作不该要先填一张表；已经不存在的项目不混进最近列表，给一键清理 |
 | 输入框的 `@` 与 `/`（`components/chat/complete.ts`）：`@` 在任意位置补全口播稿、镜头与项目文件，文字里留 `@编号` / `@路径`，发送时 `mentionAttachments` 把认得的 `@` 变成引用（与右键引用同一种附件）；`/` 只在开头，补全 Studio 命令：新对话、停止、开始制作、切页、渲染 / 校验镜头、拼接、复查在界面里直接执行（走已有接口，不经编排工具），确认口播稿、重做镜头、记偏好换成一句话交给编排工具。带参数的命令先选命令再选参数；认不出的 `/xxx` 照常发出 | 各家 CLI 都用 `@` 指文件、`/` 调命令，用户会照着习惯打；`@` 只留在文字里的话编排工具未必去读，变成引用才有明确的出处。新增命令改 `slashCommands` 与 `Chat.tsx` 的 `runCommand` 两处 |
 | 右键菜单（`ContextMenu.tsx`）：工作台里右键按点到的东西给动作——选中的文字、口播稿的一段、镜头、文件树的文件、编排工具的回复，都能「引用到对话」或「引用并说哪里不满意」；输入框里与按住 Shift 时不拦截右键。页面元素用 `data-ctx-source` / `data-ctx-label` / `data-ctx-para` / `data-ctx-scene` / `data-ctx-file`（`data-ctx-whole` 表示没选文字时可整块引用）声明自己是什么，新页面要能右键引用就加这几个属性。引用是附件的一种（后端 `Attachment` 的 `quote` / `label` / `ref`），`attachmentText`（`studio/sessions.ts`）写成「用户引用的内容」一节，界面的 `splitAttachmentText`（`model.ts`）按这个标题把它从用户消息里拆出来，两边改一处要改另一处；引用上限 `maxQuoteRunes`，出处必须在项目里 | 用户对稿子、镜头不满意时，原来只能自己在输入框里描述是哪一段；引用让编排工具拿到原文与出处，不用猜。引用里去掉读法（ruby）与只读不显示的部分，用户看到什么就引用什么 |
-| 视觉是「放映室」：`styles.css` 的 `:root` 是唯一的色板（暖黑底、象牙白字、只有一种黄铜色 `--accent`），标题用 `--serif`（本机宋体栈）、数字与小标签用 `--mono`；按钮默认是胶囊形描边。外框没有左侧栏：顶栏中间是四个编号步骤（`Preview.tsx` 的 `stepTabs`），其余页面小字列在右侧，文件树只在「文件」页；作品在画面面板里是主角，但工作区的主栏是对话（见「对话是主栏」那一条）。镜头页只留画面、名字与「重新渲染」，其余动作收进「⋯」菜单；时间线每格是那个镜头的画面，只在镜头、合成、成片三页出现。成片页与镜头页同版式（左画面、右信息），右栏是复查摘要（问题数、帧数、响度、真峰，读 `review.json` 的 `problems`）与「去发布」；口播稿是居中一栏的宋体文稿、段落编号挂在页边（`.para-no`，`readableText` 引用时去掉）；发布页封面在左（竖版在前）、文案在右 | 用户要「少即是多」和高级感：作品是主角，界面往后退。新页面沿用这套色板与字体，不要再引入第二种强调色 |
+| 视觉是「放映室」：`styles.css` 的 `:root` 是唯一的色板（暖黑底、象牙白字、只有一种黄铜色 `--accent`），标题用 `--serif`（本机宋体栈）、数字与小标签用 `--mono`；按钮默认是胶囊形描边。外框没有左侧栏：顶栏中间是五个编号步骤（`Preview.tsx` 的 `stepTabs`），其余页面小字列在右侧，文件树只在「文件」页；作品在画面面板里是主角，但工作区的主栏是对话（见「对话是主栏」那一条）。镜头页只留画面、名字与「重新渲染」，其余动作收进「⋯」菜单；时间线每格是那个镜头的画面，只在镜头、合成、成片三页出现。成片页与镜头页同版式（左画面、右信息），右栏是复查摘要（问题数、帧数、响度、真峰，读 `review.json` 的 `problems`）与「去发布」；口播稿是居中一栏的宋体文稿、段落编号挂在页边（`.para-no`，`readableText` 引用时去掉）；发布页封面在左（竖版在前）、文案在右 | 用户要「少即是多」和高级感：作品是主角，界面往后退。新页面沿用这套色板与字体，不要再引入第二种强调色 |
 | 新组件的样式放进各自的 css（`chat.css`、`home.css`、`creation.css` 等），选择器挂在组件根类下（`.chat …`、`.home …`） | 全局 `styles.css` 里已有 `.legend`、`.style-thumb` 这类通用名，同名类后写的覆盖先写的，撞过两次：时间线图例被挤成一条、风格缩略图撑满整个菜单 |
 | `src/renderer/types.ts` 与后端 JSON 字段一一对应 | 前后端之间没有生成代码，改字段两边一起改 |
 
@@ -428,7 +518,7 @@ opencode 默认模型不可用时加 `AM_TEST_OPENCODE_MODEL`。
 
 ## 新增一个 AI CLI
 
-工具矩阵散落在五个文件，加一个工具必须七处同步改，漏一处会在运行期才炸：
+工具矩阵散落在六个文件，加一个工具必须九处同步改，漏一处会在运行期才炸（导演 `director` 不是外部 CLI，它的约定见「导演（自带的编排工具）」）：
 
 | 位置 | 作用 |
 |---|---|
@@ -439,6 +529,7 @@ opencode 默认模型不可用时加 `AM_TEST_OPENCODE_MODEL`。
 | `packages/engine/src/agentrun/parse.ts` | 把该工具的结构化流译成统一事件；先录一份真实的两轮输出放进 `packages/engine/src/agentrun/testdata/`，`parse.test.ts` 的「recorded streams」加一行 |
 | `packages/engine/src/scene/skills.ts` `rendererSkillDirs` | 该工具的技能目录约定（家目录级与项目级） |
 | `packages/engine/src/studio/agents.ts` `agentOrder` | 客户端工具选择里的展示名与顺序，`agents.test.ts` 的「agentOrder covers valid tools」守着与 `ValidTools` 一致 |
+| `packages/engine/src/tools/tools.ts` `modelArgs`、`packages/engine/src/tools/modellist.ts` | 指定模型的参数（双向协议另见 `interactiveInvocation`、`codexapp.ts`）与列出可选模型的命令及其输出解析，`modellist.test.ts` 加一行 |
 | `tools.ts` 的 `rendererInvocation` / `orchestratorInvocation`（或 `acp.ts`、`codexapp.ts`） | 挂上 am 的工具服务（见「am 的工具服务」），并放行它的工具；`toolsmcp.integration.test.ts` 的 RealToolsMCP 加上这一家 |
 
 同时更新 `assets/shared/article-to-motion.conf`、`assets/shared/.env.example`、`README.md`、`README.en.md` 里的可选值注释。
@@ -457,6 +548,31 @@ AM_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run --root 
 
 它对每家跑两轮，第二轮续接后要答出第一轮让它记住的词。每次都是真实模型调用，CI 不跑。
 
+## 导演（自带的编排工具）
+
+`ORCHESTRATOR=director`（界面上叫「导演」）是客户端自带的编排工具：不要求用户另装 claude、codex 这类 CLI，在设置页填一家模型服务的 API key 就能做片。agent 循环用 pi（`@earendil-works/pi-coding-agent`，MIT，**钉死 1.4.0**，升级前对照它的 CHANGELOG 重跑 `packages/cli/src/agent/agent.test.ts`，并重新核对 `director.Providers` 里的推荐模型还在 pi 自带的模型目录里）。
+
+| 约定 | 原因 |
+|---|---|
+| 引擎只有 `packages/engine/src/director`（工具名、请求格式、凭据文件、服务商表），pi 只在 `packages/cli/src/agent/pi.ts`，打成单独的 `dist/am-agent.cjs`；`am studio agent`（`agent/command.ts`）打包后 `require` 同目录的它，开发时 `import('./pi')`。构建在 `packages/cli/build.mjs`，发布流程用 `AM_VERSION=… npm run build -w @am/cli` | pi 连依赖十几 MB，打进 am.cjs 的话每次 `__op`、每个工具服务进程都要多解析一遍 |
+| 子进程输出 claude 系的 stream-json（`agent/stream.ts`：system/init、assistant、user、result），`tools.claudeLikeStream` 与 agentrun 的解析、用量、模型识别都把 `director` 当 claude 系处理；会话 id 由子进程在 system/init 里报（`presetSessionID` 为 false） | 不再为它写一份解析器；用量口径与 claude 相同（input 不含缓存，命中与写入分开） |
+| 请求经 stdin 一行 JSON（`director.Request`），模型、会话、白名单、数据目录（`agent_dir`）与 API key（`keys`）都在里面，不进命令行；数据目录与 key 都由父进程算好、读好放进请求（`tools.orchestratorInvocation` 用 `director.loadKeys`）。导演与 pi 不读任何凭据文件：`pi.ts` 给 pi 一份只在内存里的凭据（`ModelRuntime.create` 的 `credentials`），key 用 `setRuntimeApiKey` 设进去；`--list-models` 只要服务商 id，不要 key | 命令行在 ps 里谁都看得见；子进程环境按安全模式白名单裁过，`XDG_DATA_HOME` 不在里面，自己算会算出另一个目录；磁盘上的文件是加密的，导演自己读的话它跑的命令也读得到 |
+| API key 只在 `<数据目录>/am/agent/auth.json`（`AM_AGENT_DIR` 覆盖，0600），由设置页经 `/api/agent-keys`（`studio/agentkeys.ts`）写，接口只回「填没填」；不进 settings.conf、项目文件与任何子进程的环境。客户端里用 Electron 的 safeStorage 加密（`{type, enc}`）：引擎不能 import electron，由主进程 `apps/desktop/src/main/keycodec.ts` 经 `director.useKeyCodec` 注入加解密，写入时加密（顺手把旧的明文项也加密）、起导演前解密。没有注入（开发用命令行、vitest）或 `isEncryptionAvailable` 为 false 时退回明文 `{type, key}`，`/api/agent-keys` 的 `storage.note` 让设置页照实说一句；在终端里跑 `am run` 读不了客户端加密的 key，当作没填。vitest setup 与 e2e fixtures 都把 `AM_AGENT_DIR` 指到临时目录，e2e 另设 `AM_AGENT_KEYS_PLAINTEXT=1` 不注入 | 编排工具能跑的命令里拿不到 key：白名单里的 python3、node 能跑导演自己写的脚本，闸门看不见脚本读什么，磁盘上不留明文才挡得住；测试不能读改开发者自己的 key、不能碰钥匙串（第一次用会弹授权框） |
+| 会再起导演的操作（`director.KeyOps`：`memory_consolidate`，整理者用编排工具）在执行进程里解不开加密的文件，key 由手里有它的进程经执行进程的 stdin 交下去：客户端后端（`studio/tasks.ts` 的 `runOpIn`，编排是导演时）与导演自己（`toolsmcp.spawnOpWithKeys`）设 `AM_AGENT_KEYS_STDIN=1` 并写一行 JSON，`ops/worker.ts` 的 `takeHandedKeys` 读进内存（`director.useKeys`）、随即从环境删掉这个变量 | key 只走 stdin：环境变量会被编排工具跑的命令继承，文件会被读到 |
+| pi 会到处找东西，`pi.ts` 逐项关掉：设置用 `SettingsManager.inMemory`；`noExtensions` 只留权限闸门；技能只要项目根 `.agents/skills`；上下文文件只要项目根 `AGENTS.md`（`projectRulesFilename('director')`）；不读 `~/.pi/agent/models.json`、不联网刷新模型目录；遥测关掉：设置给 `enableInstallTelemetry: false`，进程里另设 `PI_TELEMETRY=0`（环境变量优先于设置，`--unsafe` 时用户环境里可能有 `PI_TELEMETRY=1`）——这个开关在 SDK 路径上管的是给 OpenRouter、NVIDIA、OpenCode 的请求加归因头（pi-ai 的 `utils/identity.js`，默认开），安装 / 更新上报与版本检查只在 pi 的交互模式里（`modes/interactive/interactive-mode.js`、`utils/version-check.js`），SDK 不走；会话放应用数据目录 `<数据目录>/am/agent/sessions/<按项目路径编码>/`（`agent/pi.ts` 的 `projectSessionDir`，编码与 pi 自己的默认目录相同），不写进项目，续接时项目挪过位置就按 id 全局找。`agent.test.ts` 用上级目录的 `CLAUDE.md` 钉着「不读进来」、查项目里没有留下会话文件、查请求不带归因头 | 用户机器上可能装了 pi、留着别的工具的 CLAUDE.md，读进来就会照着别人的规矩做片；项目里的 `.pi/extensions` 是会被执行的代码；国内网络下刷新模型目录可能卡住；不往外报告用户在用什么 |
+| 待办清单：pi 没有待办工具，`agent/todo.ts` 给导演加一个叫 `TodoWrite` 的工具，参数与 claude 的相同（`todos: [{content, status, activeForm?}]`，每次完整清单），执行只回一句确认；它的 tool_use 经 `StreamWriter` 原样写出，`agentrun` 按 claude 系解析成 plan 事件。`command.ts` 把它并进传给闸门的工具集合，一律放行 | 客户端靠 plan 事件显示整片制作做到哪了；起 claude 的名字、用 claude 的形状，解析器一行不用改 |
+| am 的工具顺序执行：pi 默认把一次发出的几个工具调用并行跑（pi-agent-core 的 `toolExecution` 缺省 `parallel`），`AgentTool.sequential` 经 `toPiTool` 设成 pi 工具的 `executionMode: 'sequential'`（pi-agent-core `types.d.ts` 的 `AgentTool.executionMode`；一批里只要有一个是顺序的，整批逐个跑，见 `agent-loop.js` 的 `executeToolCalls`）。只读的 `tool_help` 与 `TodoWrite` 不设；pi 自带的 read、bash 等保持 pi 的默认 | 模型一次发出 `scene_cues` 与 `scene_run` 时，后者要等前者写完 `scene.json`；两个写操作同时跑会互相踩文件 |
+| 系统提示词（`pi.ts` 的 `preamble`）只写环境与工作习惯：工具参数先 `tool_help`、制作工具直接等结果（没有 `job_wait`）、先读后改、大文件分段读、报错先看原因再换做法、多步工作用 `TodoWrite`、要用户拍板就停下来问、每轮结束说清做了什么与下一步。做什么、怎样和界面来回（choices、`studio_show`、`studio_step`）由每一轮的提示词说（制作提示词、`studioInteraction`），不在这里重复；按工具调用写法写，不教 `am <命令>` | 成熟的编码 CLI 自带这些习惯，pi 没有；系统提示词每一轮都要发、按 token 计费，与每轮提示词说两遍还可能说法不一 |
+| am 的制作工具不经 MCP：`agent/command.ts` 用工具服务同一份 `describeTools` / `prepareCall` / `Jobs` 在进程内做成 agent 的工具，去掉 `wait_seconds` / `job_wait`，直接等到跑完。pi 的 `tools` 选项是「启用的全部工具名」，am 的工具名必须列进去，否则只登记不启用 | job 那一套是给 codex 60 秒 MCP 超时准备的；漏列工具名实测模型调用时报「Tool not found」 |
+| 权限闸门（`agent/gate.ts`，pi 的 `tool_call`）：bash 走 `agentrun.commandAllowed` 与同一份白名单，文件工具只在项目与可写目录里直接放行，`.env` 与导演的数据目录一律拒绝，am 的工具放行，其余经收件目录问用户（与审批 MCP 同一条路，「以后都允许」这一轮里也生效）；不在客户端里一律拒绝，`--unsafe` 全放行 | 与其他几家的安全模式同一套规矩 |
+| bash 先过凭据检查（`agent/secrets.ts` 的 `checkCommand`），在白名单之前：按 shell 规则拆参数（引号、`~`、相对路径、`--x=路径`、`@路径`、`file://`、`rev:路径`、通配符、符号链接、`sh -c '…'` 里的命令），指向 `agent_dir` 或 `.env` / `.env.*`（`.env.example` 除外）的直接拒绝、不弹审批卡片；可能间接读到的（`grep -r` / 带 `--hidden` 的 `rg` / `tar` / `zip` / `cp -r` / `diff -r` 的起点包含凭据、`find` 带 `-exec` 一类、`~user`）改成问用户。`agent.test.ts` 的「gate keeps credentials away from bash」钉着各种写法 | 白名单只比命令前缀，`cat`、`cp`、`find`、`curl` 都在里面；宁可多问一次，不能让 key 进模型的上下文。审批卡片上随手点「允许」就会交出 key，所以凭据直接拒绝 |
+| 导演暂时只做编排：`tools.ValidRenderers` 不含它，`RENDERER`、`scene.json` 的 `renderer`、记忆的 `applies_when.renderers` 都按这张表校验，`rendererInvocation('director')` 直接报错，设置页与输入框的渲染下拉框不列它 | 渲染要写复杂的 HyperFrames 合成、自己检查再改，最依赖成熟的编码工具；以后要接，先用记忆的「运行对比」比一次通过率 |
+| 渲染工具要装在这台电脑上：`/api/agents` 给每家的 `installed`、`renderer`、`install_url`（`studio/agents.ts` 的 `agentOrder`）与不看项目时的渲染工具 `global_renderer`；界面的判断只在 `components/agentReady.ts` 的 `rendererState`。首次引导第二步在编排之外确认全局 `RENDERER` 装着，没装就从已装的能渲染的工具里选一家写进全局设置，一家都没有就给各家的安装入口；首页的发送与对话的「开始制作」在渲染工具不可用时不可点并说明原因，缺渲染工具也会让引导自动出现。e2e 的 `onboarding.spec.mjs` 用 `appEnv`（`fixtures.mjs`）去掉固定的 `RENDERER` 并把 PATH 收窄到假工具与系统目录 | 导演只做编排：什么 CLI 都没装的用户选导演、填 key 走完引导，原先要到第一次渲染才报缺 claude。PATH 要收窄，是因为开发机上真装着的 qoder、codebuddy 会被认成已装 |
+| 模型写成「服务商/模型」（pi 的服务商 id），留空时在填了 key 的服务商里先挑推荐模型能读图的（`Provider.vision`，按 `director.Providers` 的顺序），都不能读图才用第一家（`director.pickModel`）；`/api/agents/director/models` 跑 `am studio agent --list-models` | 与 opencode 的写法一致；pi 自带的模型目录随版本走，不另维护一份 |
+| 看不了图的模型：画面验收与整片复查要打开 PNG 看图，pi 的 read 遇到只收文字的模型只回一句「图片已省略」。`director.TextOnlyModels`（`director/textonly.ts`）照抄 pi 目录里只收文字的模型（只收 `Providers` 那几家），`director.modelVision` 查它：标着只收文字的是 false，其余（含查不到的）按不知道、不提示。`packages/cli/src/agent/catalog.test.ts` 对着 pi 自带的目录核对这份表与每家的 `vision`，升级 pi 后失败就 `AM_UPDATE_GOLDEN=1` 重跑重写。界面：`/api/agent-keys` 给每家 `vision`，设置页「导演的模型服务」在不能读图的一家旁标一句；`/api/agent-keys/vision?model=` 给实际会用的模型（空时按 `pickModel`）能不能读图，设置页编排模型一栏、首次引导与开工前的对话用 `DirectorVisionNote` 提示。提示词：编排是导演、实际模型看不了图时，`studio/vision.ts` 的 `noVisionNote` 接在每一轮提示词末尾，让它在画面验收与复查里用 `studio_show` 把图切给用户、明说「我看不了图，请你看这几张」，写法守「Prompt 文件」一节的约束（`vision.test.ts` 钉着） | 引擎拿不到 pi 的目录（pi 只打进 am-agent.cjs），只能照抄再用测试守着；查不到的不提示，免得手填一个新模型就被误报。验收等于没做又没人知道，比让用户自己看一眼更糟 |
+
+改了这条链要在本机用真实 key 跑一轮（设置页填 key、编排选导演、发一句话）；CI 只跑 `agent.test.ts` 里的假模型（pi 的 `fauxProvider`）。
+
 ## 新增一个 TTS 或对齐工具
 
 配音与对齐由编排工具按提示词执行，`am` 只登记取值并做与工具无关的校验。取值表在 `packages/engine/src/config/providers.ts`（`TTSProviders` / `Aligners`），校验与 `am config get` 的帮助都从它派生。加一个工具要同步：
@@ -464,7 +580,7 @@ AM_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run --root 
 | 位置 | 作用 |
 |---|---|
 | `packages/engine/src/config/providers.ts` | 取值、名称、自带时间戳粒度、命令名（安全模式下编排工具只被放行这一个命令），以及 `install`：`am setup` 怎么装它（npm 包 / uv 工具 / uv 专用环境，版本钉死，至少发布两周） |
-| `packages/engine/src/preset/gen/templates/PROMPT-PRODUCTION.md` 第三、四阶段 | 登录、合成与取时间戳的具体命令（**不写安装命令**，`gen.test.ts` 的「leaves voice tools to am setup」拦着），改完跑 `npm run generate -w @am/engine` |
+| `assets/prompts/voice/stage.md`、`timeline/stage.md`（第三、四阶段） | 登录、合成与取时间戳的具体命令（**不写安装命令**，`gen.test.ts` 的「leaves voice tools to am setup」拦着），改完跑 `npm run generate -w @am/engine` |
 | `apps/desktop/src/renderer/components/SetupGuide.tsx` 的 `voiceNames` | 安装页配音卡片上显示的服务名 |
 | `assets/shared/article-to-motion.conf`、`.env.example`、两份 README | 可选值注释 |
 
@@ -487,6 +603,24 @@ AM_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run --root 
 | 打包的 .app 要 `NSMicrophoneUsageDescription`（`apps/desktop/package.json` 的 `mac.extendInfo`）；e2e 启动时加 `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream` | 没有这条说明 macOS 直接拒绝麦克风；测试不能碰真麦克风、也不能弹系统授权 |
 | Breeze 的非商用许可与「只克隆本人或已授权的声音」只写在 README 里；界面、提示词、配置注释与工具说明都不另行提示，也不让编排工具找用户确认 | 软件开源，怎么用是用户自己的事；反复提示只是打断（用户要求） |
 | mlx-audio 0.6.1 的命令行没有 `--seed`：同一段重生成结果会变，不能靠种子复现 | 上游 PyTorch 版与 API 有 seed，换到它们时再接 |
+
+## Windows
+
+客户端还没移植完：类型检查与构建在 CI 的 `windows` 任务（`windows-latest`）里必须通过，两包单元测试照跑但失败不挡合并（`continue-on-error`），全部通过后去掉。已经定下的约定：
+
+| 约定 | 原因 |
+|---|---|
+| 仓库一律以 LF 检出（`.gitattributes`） | Windows 上 git 默认转 CRLF，内置资产按字节下发、指纹按字节算、生成器幂等门逐字节比，全会错 |
+| 找可执行文件只用 `envutil.lookPath`：Windows 上按 `PATHEXT` 补扩展名、不看执行权限位；`toolpath.bundled` 同样试 `.exe` / `.cmd` | Windows 的 stat 没有执行位，原先的判断在那里什么都找不到 |
+| 环境拷进普通对象一律经 `envMap`（`normalizeWindowsEnv` 把 `Path` 改名 `PATH`） | Windows 上 PATH 通常叫 `Path`；`process.env` 不分大小写，拷出来的对象却分，引擎到处读 `env.PATH` |
+| 要整组结束的子进程用 `procgroup` 的 `start` / `groupSpawnOptions` / `killTree`，不要自己写 `detached: true` 与 `process.kill(-pid)` | Windows 没有进程组信号，要 `taskkill /T /F`；`detached` 在那里会弹出新的控制台窗口 |
+| `.cmd` / `.bat` 不直接 spawn：`procgroup/windows.ts` 把 npm 的 cmd-shim 改成用 node 跑它的 JS 入口，其余经 `cmd.exe` 转义，多行参数直接报错 | Node 不让直接 spawn 批处理；`cmd.exe` 传不了多行参数，而提示词、MCP 配置正是多行的 |
+| 启动 am 一律经 `envutil.amCommand`：Windows 上客户端不写 shim，`AM_SELF` 就是 `am.cjs`，用 Electron（`ELECTRON_RUN_AS_NODE=1`）跑；MCP 服务（`amToolsServer`、审批服务）与写任务都这样起 | 同上：交给各家 CLI 的 MCP 命令若是 `.cmd`，Node 写的 CLI 起不来 |
+| Windows 上写出的批处理（agent 的 `am.cmd` 只用 ASCII；`node.cmd` 先 `chcp 65001`） | 批处理按系统代码页解析，中文 Windows 是 GBK，UTF-8 的中文与中文路径会读错 |
+| 数据目录只经 `envutil.dataDir`：Windows 上是 `%LOCALAPPDATA%\am`，项目登记在 `%APPDATA%\am\studio`；`LOCALAPPDATA` 等系统变量在 `envutil.WindowsBaseEnvKeys` 里，进安全模式白名单与工具服务的环境 | Windows 上通常没有 `HOME`；子进程拿不到同一组变量就会算出另一个目录。缺 `SystemRoot` 时 Node、Python 的网络与加密直接失败 |
+| Windows 上不借用客户端的 Chromium 渲染（不设 `AM_BROWSER`） | 浏览器模式接管 puppeteer 在 fd 3/4 上的管道，Windows 的管道句柄传法不同；改用 HyperFrames 自己的 chrome-headless-shell |
+
+还没做：工具准备页的 Windows 下载表（ffmpeg、uv、无头浏览器）与 `toolinstall` 写出的 sh 包装、测试里的 sh 假工具、Windows 打包与真实 CLI 实测。
 
 ## 子进程环境
 

@@ -1,4 +1,3 @@
-// 移植自 internal/song/prepare.go。
 import fs from 'node:fs';
 import path from 'node:path';
 import { lookPath } from '../envutil';

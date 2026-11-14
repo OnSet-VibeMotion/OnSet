@@ -1,4 +1,3 @@
-// 移植自 internal/dialogue/paths.go。
 //
 // Assemble 落地的三个产物路径，相对项目根。它们在写方（assemble 本身）、
 // 打印方（cli 的 runDialogueAssemble）、读方（validate/cast、castbeats）之间只应有这一份真相源——

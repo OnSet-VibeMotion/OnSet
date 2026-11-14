@@ -39,11 +39,13 @@
   display: contents;
 }
 .settings .settings-label,
-.settings .settings-row > select {
+.settings .settings-row > select,
+.settings .settings-row > .model-input {
   padding: 14px 0;
   border-top: 1px solid var(--line);
 }
-.settings .settings-row > select {
+.settings .settings-row > select,
+.settings .settings-row > .model-input {
   padding: 0;
   margin: 0;
   height: 34px;
@@ -81,6 +83,82 @@
   color: var(--bad);
   font-size: 13px;
 }
+.settings .agent-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.settings .agent-keys-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings .agent-keys-head strong {
+  font: 600 15px var(--serif);
+  color: var(--text);
+}
+.settings .agent-keys-head span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.settings .agent-keys-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.settings .agent-keys ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.settings .agent-keys li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  border-top: 1px solid var(--line);
+}
+.settings .agent-key-name {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text);
+}
+.settings .agent-key-name small {
+  font: 11px var(--mono);
+  color: var(--faint);
+}
+.settings .agent-key-actions,
+.settings .agent-key-form {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+.settings .agent-key-state {
+  font: 11px var(--mono);
+  color: var(--faint);
+}
+.settings li.configured .agent-key-state {
+  color: var(--accent-text);
+}
+.settings .agent-keys a {
+  color: var(--muted);
+}
+.settings .agent-key-form input {
+  width: 220px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--well);
+  color: var(--text);
+  font: 12px var(--mono);
+  padding: 0 8px;
+}
 @media (max-width: 720px) {
   .settings .settings-grid,
   .settings .settings-grid.with-project {
@@ -89,7 +167,60 @@
   .settings .settings-col {
     display: none;
   }
-  .settings .settings-row > select {
+  .settings .settings-row > select,
+  .settings .settings-row > .model-input {
     margin-bottom: 6px;
   }
+}
+.settings .agent-key-name .agent-key-vision {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--stale);
+}
+
+/* 导演的模型看不了画面：设置页、首次引导与开工前的对话里共用。 */
+.vision-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  text-align: left;
+}
+.vision-note span.vision-note-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--accent-line);
+  color: var(--accent-text);
+}
+.vision-note span.vision-note-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.vision-note .vision-note-text strong {
+  font: 600 13px var(--serif);
+  color: var(--accent-text);
+}
+.vision-note .vision-note-text span {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.vision-note.compact {
+  margin-top: 6px;
+  padding: 8px 10px;
+  gap: 8px;
+}
+.vision-note.compact span.vision-note-icon {
+  width: 22px;
+  height: 22px;
 }

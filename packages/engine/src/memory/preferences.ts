@@ -1,4 +1,3 @@
-// 移植自 internal/memory/preferences.go。
 import crypto from 'node:crypto';
 import { goTrimSpace } from '../gofmt';
 import { CheckerHuman } from './features';

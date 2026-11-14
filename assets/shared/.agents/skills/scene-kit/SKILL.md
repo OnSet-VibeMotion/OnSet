@@ -91,7 +91,8 @@ subs.layouts;         // 每条字幕的排版结果：{cue, fontSize, lines, ov
 ```
 
 - **位置**：字幕层铺满 `safe_area.subtitles`，字幕框默认贴底居中。
-- **样式**全部来自 `AM_SCENE.subtitles`：字号取 `font_size_px.max`，行高取 `line_height.max`，`background`、`text_color`、`padding_px`、`radius_px`、`max_width_px`（再与安全区宽度取小）。字体族继承自 `rootElement`，所以根节点上要设好 frame.md 规定的正文字体。
+- **版式**来自 `AM_SCENE.subtitles`（frame.md 只规定这些技术约束）：字号取 `font_size_px.max`，行高取 `line_height.max`，`max_width_px`（再与安全区宽度取小）、`max_lines`、`max_fullwidth_chars_per_line`。字体族继承自 `rootElement`。
+- **配色**由镜头自己定，frame.md 不规定：文字颜色缺省取整片配色的 `AM_SCENE.look.ink`（分镜计划定了 `look` 时），否则继承 `rootElement`；没有底框。要底框、换颜色、加内边距或圆角，用下表的 `color`、`background`、`padding`、`radius`，跟随本镜头或整片风格的配色，并保证字幕在画面上读得清。
 - **断行**：宽度按全角字计，汉字与全角标点算 1、ASCII 算 0.5，每行不超过 `max_fullwidth_chars_per_line`。不拆英文词、不拆数字与单位（`3.5 秒`、`98%`、`GPT-4`）、不拆《》“”""「」括起来的整段；优先在 `；，、。！？：` 之后断；两行时尽量等长；逗号句号不落行首。
 - **超长**：放不进 `max_lines` 时逐像素缩小字号，最小到 `font_size_px.min`（每行可容纳字数按比例放宽，行的像素长度不变）；仍放不下才多出行数，并按字幕序号各 `console.warn` 一次。看到这条告警要回去把字幕拆短，而不是改库。
 - **交接**：同一时刻只显示一条字幕，后一条一出现就截断前一条。
@@ -102,6 +103,9 @@ subs.layouts;         // 每条字幕的排版结果：{cue, fontSize, lines, ov
 | `fontSize` | `font_size_px.max` | 首选字号；缩字号的下限仍是 `font_size_px.min` |
 | `lineHeight` | `line_height.max` | 行高倍数 |
 | `fontFamily` / `fontWeight` | 继承 | 只在字幕要用与根节点不同的字体时设 |
+| `color` | `look.ink`，没有 look 时继承 | 字幕文字颜色 |
+| `background` | 透明 | 字幕框底色（例如本镜头配色里的深色加透明度） |
+| `padding` / `radius` | 0 / 0 | 字幕框内边距 `{vertical, horizontal}`（px）与圆角（px） |
 | `leadFrames` / `tailFrames` | 0 | 让字幕提前出现 / 延后消失，但不侵入相邻字幕本来的显示区间 |
 | `align` | `bottom` | 字幕框在安全区内的竖直位置：`bottom` / `center` / `top` |
 | `safeArea` | `subtitles` | 换用别的安全区 |

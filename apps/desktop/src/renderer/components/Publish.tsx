@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, rawURL } from '../api';
 import type { RunAction } from './Preview';
+import { StationActions } from './Stations';
 import '../publish.css';
 
 /**
@@ -100,7 +101,7 @@ export function PublishTab({ version, run }: { version: number; run: RunAction }
           {check}
         </div>
         <p className="error-line">发布信息的格式有误，页面排不出来：{publish.parse_error}</p>
-        <p className="small muted">在对话里让编排工具修好发布信息（例如「发布信息格式坏了，修一下」），修好后这里会自动刷新。</p>
+        <p className="small muted">在对话里让 AI 修好发布信息（例如「发布信息格式坏了，修一下」），修好后这里会自动刷新。</p>
       </div>
     );
   }
@@ -177,6 +178,7 @@ export function PublishTab({ version, run }: { version: number; run: RunAction }
             {check}
           </div>
         </header>
+        <StationActions version={version} run={run} step="publish" />
         <section className="publish-section" data-ctx-source="publish.md" data-ctx-label="发布文案">
           <CopyField label="标题" value={copy.primary_title} count display />
           {platformTitles.map(([platform, title]) => (
@@ -202,7 +204,7 @@ export function PublishTab({ version, run }: { version: number; run: RunAction }
                 );
               })}
             </ul>
-            <p className="small muted">做完后在对话里告诉编排工具，例如「耳机和外放都听过了，没问题」，它会更新状态。</p>
+            <p className="small muted">做完后在对话里告诉 AI，例如「耳机和外放都听过了，没问题」，它会更新状态。</p>
           </section>
         )}
 

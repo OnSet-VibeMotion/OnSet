@@ -1,4 +1,3 @@
-// 移植自 internal/filmstyle/install.go。
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,12 +24,6 @@ export const ManifestFile = 'am-film-style.json';
 export const StyleFile = 'STYLE.md';
 export const GuideFile = 'SKILL.md';
 
-// LegacySkillName / legacyManifest 是只有 lemo-opuscar 一个来源时的目录名与记录。
-// 早先装过的项目照样认（读、渲染、去掉），下次装风格时换成新目录。
-export const LegacySkillName = 'lemo-film-style';
-const legacyManifest = 'lemo-upstream.json';
-const legacySource = 'lemo-opuscar';
-
 /** am-film-style.json：这个项目装的是哪个来源的哪种风格。字段名照抄 Go 的 JSON tag。 */
 export interface Manifest {
   source: string;
@@ -42,8 +35,6 @@ export interface Manifest {
   /** 技能目录里除本文件外全部文件的内容摘要，用来判断重装是否有变化。 */
   digest: string;
   installed_at: string;
-  /** 表示读自旧目录（lemo-film-style），不写进文件（json:"-"）。 */
-  legacy: boolean;
 }
 
 /** <来源>/<目录名>。 */
@@ -83,10 +74,6 @@ export function splitKey(key: string): [string, string] {
   return [parts[0], parts[1]];
 }
 
-function legacyDir(projectDir: string): string {
-  return path.join(projectDir, SkillsSubdir, LegacySkillName);
-}
-
 function exists(file: string): boolean {
   try {
     fs.statSync(file);
@@ -96,10 +83,9 @@ function exists(file: string): boolean {
   }
 }
 
-/** 项目里实际装着整片风格的目录（新目录或旧目录）；没有时为空。 */
+/** 项目里实际装着整片风格的目录；没有时为空。 */
 export function installedDir(projectDir: string): string {
   if (exists(path.join(skillDir(projectDir), ManifestFile))) return skillDir(projectDir);
-  if (exists(path.join(legacyDir(projectDir), legacyManifest))) return legacyDir(projectDir);
   return '';
 }
 
@@ -150,48 +136,25 @@ function errorText(err: unknown): string {
 
 /** 读取项目里已装的整片风格；没有时 ok 为 false。 */
 export function installed(projectDir: string): { manifest: Manifest; ok: boolean } {
-  const empty: Manifest = { source: '', slug: '', cn: '', en: '', version: '', digest: '', installed_at: '', legacy: false };
-  let body = readOptional(path.join(skillDir(projectDir), ManifestFile));
-  if (body !== undefined) {
-    try {
-      const raw = decodeObject(body);
-      return {
-        manifest: {
-          source: stringField(raw, 'source'),
-          slug: stringField(raw, 'slug'),
-          cn: stringField(raw, 'cn'),
-          en: stringField(raw, 'en'),
-          version: stringField(raw, 'version'),
-          digest: stringField(raw, 'digest'),
-          installed_at: stringField(raw, 'installed_at'),
-          legacy: false,
-        },
-        ok: true,
-      };
-    } catch (err) {
-      throw new Error(`${ManifestFile} 损坏：${errorText(err)}`, { cause: err });
-    }
-  }
-  body = readOptional(path.join(legacyDir(projectDir), legacyManifest));
+  const empty: Manifest = { source: '', slug: '', cn: '', en: '', version: '', digest: '', installed_at: '' };
+  const body = readOptional(path.join(skillDir(projectDir), ManifestFile));
   if (body === undefined) return { manifest: empty, ok: false };
   try {
-    // 旧记录的字段没有 JSON tag（Commit、Slug……），encoding/json 按名字不区分大小写匹配。
     const raw = decodeObject(body);
     return {
       manifest: {
-        source: legacySource,
-        slug: stringField(raw, 'Slug'),
-        cn: stringField(raw, 'CN'),
-        en: stringField(raw, 'EN'),
-        version: stringField(raw, 'Commit'),
-        digest: stringField(raw, 'Digest'),
+        source: stringField(raw, 'source'),
+        slug: stringField(raw, 'slug'),
+        cn: stringField(raw, 'cn'),
+        en: stringField(raw, 'en'),
+        version: stringField(raw, 'version'),
+        digest: stringField(raw, 'digest'),
         installed_at: stringField(raw, 'installed_at'),
-        legacy: true,
       },
       ok: true,
     };
   } catch (err) {
-    throw new Error(`${legacyManifest} 损坏：${errorText(err)}`, { cause: err });
+    throw new Error(`${ManifestFile} 损坏：${errorText(err)}`, { cause: err });
   }
 }
 
@@ -212,7 +175,6 @@ function readManifest(file: string): Manifest | null {
     version: stringField(raw, 'version'),
     digest: stringField(raw, 'digest'),
     installed_at: stringField(raw, 'installed_at'),
-    legacy: false,
   };
 }
 
@@ -293,7 +255,7 @@ function linkError(op: string, from: string, to: string, err: unknown): string {
  * 没就绪时由来源抛 prereq.MissingError。
  *
  * 先在同级临时目录让来源写好整棵技能树、校验契约，再整体换位：中途失败时项目里
- * 要么是旧风格、要么是新风格，不会半新半旧。装好默认风格后删掉旧目录（lemo-film-style）。
+ * 要么是旧风格、要么是新风格，不会半新半旧。
  */
 export function install(opts: InstallOptions): InstallResult {
   const style = opts.style;
@@ -333,7 +295,7 @@ export function install(opts: InstallOptions): InstallResult {
       }
     }
     const digest = treeDigest(staging);
-    if (had && !previous.legacy && manifestKey(previous) === styleKey(style) && previous.digest === digest && previous.version === version) {
+    if (had && manifestKey(previous) === styleKey(style) && previous.digest === digest && previous.version === version) {
       return { manifest: previous, unchanged: true, replaced: '' };
     }
     const manifest: Manifest = {
@@ -344,7 +306,6 @@ export function install(opts: InstallOptions): InstallResult {
       version,
       digest,
       installed_at: rfc3339(opts.now ?? new Date()),
-      legacy: false,
     };
     const body = marshalIndent({
       source: manifest.source,
@@ -380,7 +341,7 @@ export function install(opts: InstallOptions): InstallResult {
     const replacedKey = had && manifestKey(previous) !== styleKey(style) ? manifestKey(previous) : '';
     if (backup !== '') {
       // 换掉的默认风格还有镜头点名在用：留作额外风格，不删。
-      if (!asExtra && replacedKey !== '' && opts.keepReplaced && !previous.legacy) {
+      if (!asExtra && replacedKey !== '' && opts.keepReplaced) {
         const keep = extraDir(opts.projectDir, replacedKey);
         fs.rmSync(keep, { recursive: true, force: true });
         fs.mkdirSync(path.dirname(keep), { recursive: true });
@@ -390,12 +351,6 @@ export function install(opts: InstallOptions): InstallResult {
       }
     }
     if (!asExtra) {
-      // 旧目录与新目录并存的话，两份都会被当成整片风格；新的放好了就删旧的。
-      try {
-        fs.rmSync(legacyDir(opts.projectDir), { recursive: true, force: true });
-      } catch {
-        // 与 Go 版一样忽略错误。
-      }
       // 新的默认风格原先是额外风格时，那份额外的就多余了：点名它的镜头现在落到默认目录上。
       removeExtraDir(opts.projectDir, styleKey(style));
     }
@@ -431,12 +386,11 @@ export function removeStyle(projectDir: string, key: string): { manifest: Manife
   return { manifest: extra, had: true, wasDefault: false };
 }
 
-/** 删除项目的默认风格（新旧目录都删），不写 film_style 的镜头回到自主定视觉。额外风格不动。 */
+/** 删除项目的默认风格，不写 film_style 的镜头回到自主定视觉。额外风格不动。 */
 export function remove(projectDir: string): { manifest: Manifest; had: boolean } {
   const { manifest, ok } = installed(projectDir);
   if (!ok) return { manifest, had: false };
   fs.rmSync(skillDir(projectDir), { recursive: true, force: true });
-  fs.rmSync(legacyDir(projectDir), { recursive: true, force: true });
   return { manifest, had: true };
 }
 

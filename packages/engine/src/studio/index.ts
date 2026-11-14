@@ -1,4 +1,4 @@
-// 移植自 internal/studio：对话驱动的本地工作台的后端。Electron 主进程经 handle(request) 承接界面请求。
+// 对话驱动的本地工作台的后端。Electron 主进程经 handle(request) 承接界面请求。
 export { Server, newServer, inspectProject, projectMetadata, stageFor } from './studio';
 export type { Config, Project, ProjectSummary } from './studio';
 export { BusyError, attachmentText, studioInteraction, transcript, type Attachment, type SessionEvent, type SessionMeta } from './sessions';

@@ -4,10 +4,12 @@
  *
  * 输出协议见 @am/engine/opworker。
  */
+import * as director from '@am/engine/director';
 import * as envutil from '@am/engine/envutil';
 import { ExitError, type Out } from '../cobra';
 import { ResultMarker, type WorkerResult } from '@am/engine/opworker';
-import { findOp, normalizeParams, ParamError, type ParamValues } from './op';
+import { findOp, normalizeParams, opScopes, ParamError, type OpScope, type ParamValues } from './op';
+import { OpScopeEnv } from '@am/engine/opworker';
 
 /** 失败的退出码：与命令行相同，127 缺外部命令，130 被中断，ExitError 透传子进程的。 */
 export function exitCodeOf(err: unknown, signal: AbortSignal): number {
@@ -17,13 +19,39 @@ export function exitCodeOf(err: unknown, signal: AbortSignal): number {
   return 1;
 }
 
+/**
+ * 调用方把导演的 key 经 stdin 交来（director.KeysStdinEnv）：读出来只放在这个进程的内存里（director.useKeys），
+ * 变量随即从环境里删掉，免得这个进程再起的子进程以为 stdin 上也有 key。
+ */
+export async function takeHandedKeys(input: AsyncIterable<unknown> = process.stdin, env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  if (env[director.KeysStdinEnv] !== '1') return;
+  delete env[director.KeysStdinEnv];
+  const chunks: Buffer[] = [];
+  for await (const chunk of input) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(Buffer.concat(chunks).toString('utf8') || 'null');
+  } catch {
+    parsed = null;
+  }
+  const keys: Record<string, string> = {};
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) if (typeof v === 'string' && v !== '') keys[k] = v;
+  }
+  director.useKeys(keys);
+}
+
 export async function runOpWorker(name: string, paramsJSON: string, out: Out, signal: AbortSignal, unsafe: boolean): Promise<number> {
+  await takeHandedKeys();
   const finish = (r: WorkerResult): number => {
     out.write(ResultMarker + JSON.stringify(r) + '\n');
     return r.exit_code;
   };
   const op = findOp(name);
   if (!op) return finish({ ok: false, error: `没有这个操作：${name}`, param_error: true, exit_code: 1 });
+  // 调用方要求的权限范围（客户端替第三方插件调 am 操作时给 orchestrator）：不在范围里的操作一律拒绝。
+  const scope = process.env[OpScopeEnv];
+  if (scope && !opScopes(op).includes(scope as OpScope)) return finish({ ok: false, error: `${name} 不在 ${scope} 能调用的范围里`, param_error: true, exit_code: 1 });
   let params: ParamValues;
   try {
     const parsed: unknown = paramsJSON.trim() === '' ? {} : JSON.parse(paramsJSON);

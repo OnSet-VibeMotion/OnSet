@@ -1,4 +1,3 @@
-// 移植自 internal/agentrun/parse.go。
 //
 // agentrun 运行编排工具，并把各家 CLI 的结构化输出统一成同一套事件。
 //
@@ -209,7 +208,7 @@ export function clip(text: string): string {
   return bytes.subarray(0, cut).toString('utf8') + '\n…（已截断）';
 }
 
-/** 处理 claude、qoder、codebuddy 共用的 stream-json。 */
+/** 处理 claude、qoder、codebuddy 共用的 stream-json；导演（director）也照这个格式输出。 */
 function parseClaudeLike(e: Obj): Event[] {
   const events: Event[] = [];
   const id = str(e.session_id);

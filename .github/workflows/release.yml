@@ -17,7 +17,7 @@ jobs:
           node-version: 22
           cache: npm
       - name: Install media tools
-        run: brew install ffmpeg librsvg
+        run: brew install ffmpeg
       - run: npm ci --no-audit --no-fund
       - name: Test
         run: |
@@ -30,8 +30,7 @@ jobs:
       - name: Build the CLI with the release version
         run: |
           version="${GITHUB_REF_NAME#v}"
-          npx esbuild packages/cli/src/main.ts --bundle --loader:.tmpl=text --platform=node --format=cjs --target=node22 \
-            --define:AM_VERSION="\"$version\"" --outfile=packages/cli/dist/am.cjs
+          AM_VERSION="$version" npm run build -w @am/cli
           npm version "$version" --no-git-tag-version -w am-desktop
       # 没有签名证书：dmg 只能在本机「右键打开」。有了 Apple 开发者账号后在这里接签名与公证。
       - name: Package the desktop client (arm64 + x64 dmg)

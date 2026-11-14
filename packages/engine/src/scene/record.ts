@@ -1,28 +1,19 @@
-// 移植自 internal/scene/record.go 与 record_timing.go。
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { atomicWrite } from '../fsutil';
 import { compareBytes, marshalIndent, sortedKeys } from '../gojson';
 import { goPathError } from '../gofmt';
+import { blockValue, sceneBlocks } from './block';
 import { mapOf, unmarshal, type StructType } from './jsondecode';
 import { buildPrompt, memoryActive, outputPath, type Scene } from './scene';
-
-let toolVersion = 'dev';
+import { getToolVersion } from '../version';
 
 /**
  * 写进输入指纹的 am 版本，由 cli 在启动时设为 cli 的版本号（Go 的 scene.ToolVersion = cli.Version）。
- *
- * 换了 am 版本，提示词措辞、技能清单和校验规则都可能变了，同一份 scene.json
- * 渲出的已不是同一件东西，所以版本号算作一项输入。
+ * 存取在 version 包（不依赖任何功能包，flow 的兼容检查也读它），这里转出，原有的 import 不用改。
  */
-export function setToolVersion(version: string): void {
-  toolVersion = version;
-}
-
-export function getToolVersion(): string {
-  return toolVersion;
-}
+export { getToolVersion, setToolVersion } from '../version';
 
 /** Go 的 scene.Record。 */
 export type { RenderRecord as Record };
@@ -87,7 +78,7 @@ export function fingerprint(s: Scene, renderer: string, resolvedSkills: Record<s
   let prompt = buildPrompt(s, resolved);
   const parts: Record<string, string> = {
     renderer: digestString(renderer),
-    am: digestString(toolVersion),
+    am: digestString(getToolVersion()),
   };
   // 技能目录的绝对路径换成技能名：项目整体挪个位置不该让所有镜头变成 Stale，
   // 技能内容的变化由下面的 skill:<名字> 单独记录。
@@ -111,16 +102,11 @@ export function fingerprint(s: Scene, renderer: string, resolvedSkills: Record<s
   for (const rel of inputFiles(s)) {
     parts['file:' + toSlash(rel)] = digestFile(path.join(s.directory, rel));
   }
-  // 角色包是一棵目录：换了姿势图或 dna.md，画出来的角色就不一样了。
-  // song / beat 的数据文件不单独算：它们的 sha256 已写在 scene.json 的 cue 里。
-  if (s.cast !== null) {
-    let digest: string;
-    try {
-      digest = digestTree(path.join(s.directory, s.cast.pack_dir));
-    } catch (err) {
-      throw new Error(`计算角色包摘要：${(err as Error).message}`, { cause: err });
-    }
-    parts['cast:' + toSlash(s.cast.pack_dir)] = digest;
+  // 扩展块自己的输入（例如角色包目录）由块给出。歌曲、卡点的数据文件不单独算：
+  // 它们的 sha256 已写在 scene.json 的块里。
+  for (const block of sceneBlocks()) {
+    const value = blockValue(s, block.key);
+    if (value !== null && block.fingerprintParts) Object.assign(parts, block.fingerprintParts(s, value));
   }
   return { fingerprint: combine(parts), parts };
 }
@@ -132,19 +118,18 @@ function toSlash(p: string): string {
 /**
  * 列出镜头声明过的输入文件（相对镜头目录），即输入指纹覆盖的文件。
  * 渲染记忆冻结经历时按这份清单拷贝，与指纹同源，不会一边多一边少。
- * 角色包是目录，见 Scene.cast.pack_dir，不在这份清单里。
+ * 扩展块的目录类输入（例如角色包）见各块的 fingerprintParts，不在这份清单里。
  */
 export function inputFiles(s: Scene): string[] {
   const files = ['scene.json', s.transcript];
   if (fs.existsSync(path.join(s.directory, 'prompt.md'))) files.push('prompt.md');
-  if (s.style_guide !== '') files.push(s.style_guide);
   return [...files, ...timingInputFiles(s)];
 }
 
 /**
  * 时间合同引用的镜头内文件，供输入指纹使用。
  *
- * 镜头局部数据 am-scene.js 不算：它由 scene.json、字幕、视觉规范与这里的
+ * 镜头局部数据 am-scene.js 不算：它由 scene.json、字幕、frame.md 与这里的
  * 短语时间轴推出，每次渲染前重写，算进去只会重复计数。
  */
 function timingInputFiles(s: Scene): string[] {
@@ -194,8 +179,7 @@ export function writeRecord(s: Scene, inputs: Inputs): void {
 /**
  * 读出仍然适用于当前产物的渲染记录。
  *
- * 产物被替换过（大小或内容摘要对不上）时记录不再适用，返回 null，
- * 由调用方退回旧的修改时间判定——那份记录描述的是另一个文件。
+ * 产物被替换过（大小或内容摘要对不上）时记录不再适用，返回 null——那份记录描述的是另一个文件。
  */
 export function loadRecord(s: Scene): RenderRecord | null {
   let body: Buffer;

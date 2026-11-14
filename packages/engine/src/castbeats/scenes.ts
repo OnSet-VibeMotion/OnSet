@@ -1,7 +1,6 @@
-// 移植自 internal/castbeats/scenes.go。
 import fs from 'node:fs';
 import path from 'node:path';
-import { checkValid } from '../beat/jsondecode';
+import { checkValid } from '../gojson/decode';
 import { formatG, goPathError } from '../gofmt';
 import { sceneDirs } from '../schedule';
 import { ptrTo, unmarshal, type StructType } from '../scene/jsondecode';

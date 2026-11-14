@@ -1,4 +1,3 @@
-// 移植自 internal/memory/checks.go。
 import { loadRecord, OutcomeVerificationFailed, type Scene } from '../scene';
 import { newEpisode, saveEpisode, SourceCheck, SourceRender, type Episode } from './episode';
 import { features } from './features';

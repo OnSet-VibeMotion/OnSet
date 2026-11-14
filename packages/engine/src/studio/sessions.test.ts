@@ -1,4 +1,3 @@
-// 移植自 internal/studio/sessions_test.go。
 import './testsupport';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -132,7 +131,7 @@ describe('sessions', () => {
     let { status, body } = await studioRequest(f.s, 'POST', '/api/production/start', '{"message":"竖屏，三分钟"}');
     expect(status).toBe(202);
     const id = body.session_id as string;
-    expect(body.prompt).toBe('PROMPT.md');
+    expect(body.prompt).toBe('口播流程');
     // 进行中：其他写入一律 409。
     for (const p of ['/api/production/start', '/api/render/all', '/api/scenes/scene-001/render', '/api/commands/project.concat']) {
       ({ status, body } = await studioRequest(f.s, 'POST', p, '{}'));
@@ -164,7 +163,8 @@ describe('sessions', () => {
     expect(text).toContain('event: queued');
     expect(text).toContain('排队的 1 条消息不再发送');
     const a = args(f);
-    expect(a[0]).toContain('整片制作提示词');
+    // 开工发的是按项目流程组合出的制作提示词。
+    expect(a[0]).toContain('# 完成一次从稿件到成片的');
     expect(a[0]).toContain('用户补充：竖屏，三分钟');
     ({ status } = await studioRequest(f.s, 'POST', `/api/sessions/${id}/cancel`));
     expect(status).toBe(409);
@@ -246,9 +246,9 @@ describe('sessions', () => {
     const preview = await rawGet(f.s, '/preview/scenes/scene-001/');
     expect(preview.status).toBe(200);
     expect(preview.text).toContain('composition');
-    for (const p of ['/preview/scenes/scene-001/.env', '/preview/scenes/missing/index.html', '/preview/scenes/scene-001/%2e%2e/%2e%2e/PROMPT.md']) {
+    for (const p of ['/preview/scenes/scene-001/.env', '/preview/scenes/missing/index.html', '/preview/scenes/scene-001/%2e%2e/%2e%2e/article-to-motion.conf']) {
       const res = await rawGet(f.s, p);
-      const leaked = res.status === 200 && (res.text.includes('NOTE=1') || res.text.includes('整片制作提示词'));
+      const leaked = res.status === 200 && (res.text.includes('NOTE=1') || res.text.includes('ORCHESTRATOR=claude'));
       expect(leaked, `${p} 不应可读：${res.text}`).toBe(false);
     }
 

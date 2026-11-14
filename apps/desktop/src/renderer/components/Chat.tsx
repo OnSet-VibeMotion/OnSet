@@ -1,11 +1,16 @@
+import { playerProps } from '../media';
 import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, errorText, post, rawURL } from '../api';
 import type { AgentChoice, AgentsResponse, Attachment, EventKind, PermissionAsk, PlanItem, Scene, SessionEvent, SessionMeta, ViewRequest, ViewState } from '../types';
 import { tabs } from './Preview';
 import { Poster, styleKey, useFilmStyles } from './FilmStyles';
-import type { FilmStyle, TreeFile } from '../types';
+import type { FilmStyle, ProgressState, TreeFile } from '../types';
+import { confirmGate, currentSummary } from './Progress';
+import { guideFor, type Guide, type GuideAction } from './guide';
 import { AgentPicker } from './AgentPicker';
+import { rendererState } from './agentReady';
+import { DirectorVisionNote } from './Settings';
 import { DiffDialog } from './DiffDialog';
 import { Icon } from './Icon';
 import { Markdown } from './chat/Markdown';
@@ -32,6 +37,7 @@ import { applySuggestion, findToken, mentionAttachments, parseCommand, slashComm
 import '../chat.css';
 import { RenderWatch } from './RenderActivity';
 import { useCrewBroadcast } from './chat/crew';
+import { stationPageLabel } from './Stations';
 
 // SSE 的 event 字段就是事件种类，EventSource 只把具名事件派给对应监听器，所以要逐个注册。
 const kinds: EventKind[] = [
@@ -93,13 +99,18 @@ interface Props {
   tree: TreeFile[];
   /** 触发一个写任务（/render 这类命令用）。 */
   run: (path: string, payload?: Record<string, unknown>) => void;
+  /** 制作路线：对话顶上一行「现在在哪」，每轮结尾标出推进到了哪几站。 */
+  progress: ProgressState | null;
+  /** 从制作路线跳到某一轮。 */
+  jump: { turn: string; nonce: number } | null;
+  onProgress: () => void;
 }
 
 /** 视为「在底部」的容差：比这近就继续跟随新消息。 */
 const BOTTOM_TOLERANCE = 8;
 
 export function Chat(props: Props) {
-  const events = useSessionEvents(props.sessionId, props.onFilesChanged, props.onTurnEnd, props.onView);
+  const { events, loaded } = useSessionEvents(props.sessionId, props.onFilesChanged, props.onTurnEnd, props.onView);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
@@ -119,6 +130,23 @@ export function Chat(props: Props) {
   const pendingCaret = useRef<number | null>(null);
 
   const blocks = useMemo(() => buildBlocks(events), [events]);
+  // 从制作路线跳过来：等那一轮出现在页面上（可能要先切会话、读完事件）再滚过去闪一下。
+  const pendingJump = useRef('');
+  useEffect(() => {
+    if (props.jump) pendingJump.current = props.jump.turn;
+  }, [props.jump]);
+  useEffect(() => {
+    const id = pendingJump.current;
+    if (!id) return;
+    const el = document.getElementById('turn-' + id);
+    if (!el) return;
+    pendingJump.current = '';
+    following.current = false;
+    const target = el.closest('.assistant-flow') ?? el;
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    target.classList.add('jump-flash');
+    window.setTimeout(() => target.classList.remove('jump-flash'), 1800);
+  }, [props.jump, blocks]);
   // 整片风格目录：回复里推荐风格时按标识找名字与海报。
   const filmStyles = useFilmStyles(!!props.sessionId);
   const files = useMemo(() => props.tree.map((f) => f.path), [props.tree]);
@@ -136,12 +164,33 @@ export function Chat(props: Props) {
   // 这一轮进行中照样能发：消息排到这一轮之后。别的写任务占着项目时不能发。
   const blocked = sending || (props.busy !== '' && !running);
   const session = props.sessions.find((s) => s.session_id === props.sessionId);
+  // 镜头由渲染工具来画（导演只做编排）：这台电脑上没装它时，整片制作会做到第一次渲染才报错，开工前就拦下。
+  const drawing = rendererState(props.agents, props.choice.renderer || props.agents?.renderer || '');
+  // 导演这次会用的模型：会话选的，否则项目设置里给导演选的；都空时后端按填了 key 的服务商挑。
+  const directorModel = props.choice.model || (props.agents?.orchestrator === 'director' ? props.agents.orchestrator_model : '');
 
   // 跟随到底：只有用户在底部（8px 内）时才跟；展开折叠项时不跳。
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && following.current && el.scrollHeight - el.scrollTop - el.clientHeight > 1) el.scrollTop = el.scrollHeight;
   }, [blocks, queue.length]);
+  // 换会话时回到跟随：打开一段历史就落在最新的那一轮。
+  useLayoutEffect(() => {
+    following.current = true;
+    setAtBottom(true);
+  }, [props.sessionId]);
+  // 内容在画完之后还会长高（图片、海报、视频封面解码完），对话区也会被上面后到的提示条压矮：
+  // 跟随时一起贴住底部，不然打开历史停在半截。
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (following.current && el.scrollHeight - el.scrollTop - el.clientHeight > 1) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    for (const child of Array.from(el.children)) observer.observe(child);
+    return () => observer.disconnect();
+  }, [blocks]);
 
   const onScroll = () => {
     const el = scroller.current;
@@ -209,6 +258,37 @@ export function Chat(props: Props) {
     textarea.current?.focus();
   };
 
+  // 「接下来」卡片：按制作路线现在这一站说清该做什么（guide.ts），按钮只做界面本来就能做的事。
+  const started = props.sessions.length > 0 || Object.keys(props.progress?.turns ?? {}).length > 0;
+  const guide = guideFor(props.progress, started);
+  const runGuide = (action: GuideAction) => {
+    switch (action.kind) {
+      case 'page':
+        props.onView({ page: action.page, target: action.target });
+        return;
+      case 'say':
+        void deliver(action.text, []);
+        return;
+      case 'draft':
+        fill(action.text);
+        return;
+      case 'gate':
+        void confirmGate(action.gate, (text) => void deliver(text, []), action.text);
+        return;
+      case 'start':
+        if (!drawing.ok) {
+          setError(drawing.reason);
+          return;
+        }
+        void startProduction();
+        return;
+      case 'op':
+        // NextStep 已经让用户确认过；执行是写任务，进度在任务列表里。
+        props.run(`/api/stations/${encodeURIComponent(action.station)}/ops/${encodeURIComponent(action.op)}`, { params: {} });
+        return;
+    }
+  };
+
   /** 执行一条 / 命令：网页里直接做的清空输入框，交给编排工具的换成一句模板。 */
   const runCommand = (command: SlashCommand, arg: string) => {
     setDismissed(false);
@@ -223,6 +303,10 @@ export function Chat(props: Props) {
         return;
       case 'start':
         fill('');
+        if (!drawing.ok) {
+          setError(drawing.reason);
+          return;
+        }
         void startProduction('');
         return;
       case 'script':
@@ -264,6 +348,11 @@ export function Chat(props: Props) {
       case 'remember':
         fill('记住这个偏好，以后都这样做：');
         return;
+      default:
+        if (command.plugin?.tab) {
+          fill('');
+          props.onView({ page: command.plugin.tab });
+        } else if (command.plugin) fill(command.plugin.prompt);
     }
   };
 
@@ -431,21 +520,35 @@ export function Chat(props: Props) {
             <Icon name="plus" size={13} />
           </button>
         )}
-        <button id="start-production" className="primary pill" disabled={blocked || running} onClick={() => void startProduction()} title="从头开始整片制作">
+        <button
+          id="start-production"
+          className="primary pill"
+          disabled={blocked || running || !drawing.ok}
+          onClick={() => void startProduction()}
+          title={drawing.ok ? '从头开始整片制作' : drawing.reason}
+        >
           开始制作
         </button>
       </header>
+      {!drawing.ok && (
+        <div className="chat-renderer-missing" role="alert" id="renderer-missing">
+          <Icon name="alert" size={13} />
+          <span>{drawing.reason}：在输入框下方「渲染」里换一家，或去设置里改。</span>
+        </div>
+      )}
+      <ProgressStrip progress={props.progress} onOpen={props.onProgress} />
+      <NextStep guide={guide} disabled={blocked || running || sending} onAction={runGuide} />
 
       <div className={'chat-log-wrap' + (scrolled ? ' edge' : '')}>
         <div className={'chat-log' + (plan ? ' has-plan' : '')} id="messages" ref={scroller} onScroll={onScroll}>
-          {events.length === 0 && (
+          {loaded && events.length === 0 && (
             <div className="intro">
               <h3>说说要做什么</h3>
-              <p>编排工具会直接改项目文件，每一轮的改动都能查看和回退。</p>
+              <p>AI 会直接改项目文件，每一轮的改动都能查看和回退。</p>
               <p className="muted">
-                新项目先点「开始制作」：还没有定稿字幕时照 PROMPT-PRODUCTION.md 从文章开始做到成片，已有 transcription.srt 时照 PROMPT.md
-                从字幕开始。之后在同一个会话里继续改。文章、图片和音频可以直接拖进输入框。
+                新项目先点「开始制作」：按新建时选的片型，从文章开始一步步做到成片。之后在同一个会话里继续改。文章、图片和音频可以直接拖进输入框。
               </p>
+              {props.choice.tool === 'director' && <DirectorVisionNote model={directorModel} />}
             </div>
           )}
           {blocks.map((block, index) => (
@@ -464,6 +567,7 @@ export function Chat(props: Props) {
               styles={styleIndex}
               files={files}
               mtimes={mtimes}
+              stations={props.progress?.turns}
               posterVersion={filmStyles.posterVersion}
               onReverted={props.onTurnEnd}
               onToggle={() => (following.current = false)}
@@ -506,7 +610,7 @@ export function Chat(props: Props) {
           {suggestions.length > 0 && token && (
             <ul className="completions" id="completions" role="listbox" aria-label={token.trigger === '@' ? '引用镜头或文件' : '命令'}>
               <li className="completions-head" aria-hidden="true">
-                {token.trigger === '@' ? '引用镜头或文件，发送时一起交给编排工具' : token.command ? `/${token.command.name} 的参数` : '命令'}
+                {token.trigger === '@' ? '引用镜头或文件，发送时一起交给 AI' : token.command ? `/${token.command.name} 的参数` : '命令'}
               </li>
               {suggestions.map((item, index) => (
                 <li
@@ -677,7 +781,25 @@ function useNow(active: boolean): number {
 /** 切页请求在多久之内算刚发生（毫秒）。 */
 const viewFreshMs = 15000;
 
-/** 订阅一个会话的事件流。EventSource 断线后自带 Last-Event-ID 重连，后端按 seq 补发，这里再按 seq 去重。 */
+/** 把 SSE 正文里的事件读出来（follow=0 时后端写完历史就结束）。 */
+export function parseEventStream(text: string): SessionEvent[] {
+  const out: SessionEvent[] = [];
+  for (const chunk of text.split('\n\n')) {
+    const data = chunk
+      .split('\n')
+      .filter((line) => line.startsWith('data: '))
+      .map((line) => line.slice('data: '.length))
+      .join('\n');
+    if (data !== '') out.push(JSON.parse(data) as SessionEvent);
+  }
+  return out;
+}
+
+/**
+ * 订阅一个会话的事件流。打开会话时先一次取完历史（follow=0）、一次画出来，再从最后一条接着订阅：
+ * 历史也走 SSE 的话是一条条到、一帧帧画，画面会从头往下滚上好一阵。EventSource 断线后自带
+ * Last-Event-ID 重连，后端按 seq 补发，这里再按 seq 去重。
+ */
 function useSessionEvents(
   sessionId: string,
   onFilesChanged: (files: string[]) => void,
@@ -685,12 +807,19 @@ function useSessionEvents(
   onView: (view: ViewRequest) => void,
 ) {
   const [events, setEvents] = useState<SessionEvent[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const callbacks = useRef({ onFilesChanged, onTurnEnd, onView });
   callbacks.current = { onFilesChanged, onTurnEnd, onView };
 
   useEffect(() => {
     setEvents([]);
-    if (!sessionId) return;
+    setLoaded(false);
+    if (!sessionId) {
+      setLoaded(true);
+      return;
+    }
+    let closed = false;
+    let source: EventSource | null = null;
     let last = 0;
     let pending: SessionEvent[] = [];
     let frame = 0;
@@ -701,26 +830,50 @@ function useSessionEvents(
       pending = [];
       setEvents((current) => current.concat(batch));
     };
-    const source = new EventSource(`/api/sessions/${sessionId}/events`);
+    const notify = (event: SessionEvent) => {
+      if (event.kind === 'files-changed' && event.files) callbacks.current.onFilesChanged(event.files);
+      if (event.kind === 'turn-end') callbacks.current.onTurnEnd();
+      // 只执行刚发生的切页请求：打开会话时重放的历史不该把页面切来切去。
+      if (event.kind === 'view' && event.view && Date.now() - Date.parse(event.time) < viewFreshMs) callbacks.current.onView(event.view);
+    };
     const handle = (message: MessageEvent<string>) => {
       const event = JSON.parse(message.data) as SessionEvent;
       if (event.seq <= last) return;
       last = event.seq;
       pending.push(event);
       if (!frame) frame = requestAnimationFrame(flush);
-      if (event.kind === 'files-changed' && event.files) callbacks.current.onFilesChanged(event.files);
-      if (event.kind === 'turn-end') callbacks.current.onTurnEnd();
-      // 只执行刚发生的切页请求：打开会话时重放的历史不该把页面切来切去。
-      if (event.kind === 'view' && event.view && Date.now() - Date.parse(event.time) < viewFreshMs) callbacks.current.onView(event.view);
+      notify(event);
     };
-    for (const kind of kinds) source.addEventListener(kind, handle as EventListener);
+    const follow = () => {
+      if (closed) return;
+      source = new EventSource(`/api/sessions/${sessionId}/events?after=${last}`);
+      for (const kind of kinds) source.addEventListener(kind, handle as EventListener);
+    };
+    void (async () => {
+      try {
+        const response = await fetch(`/api/sessions/${sessionId}/events?follow=0`);
+        if (!response.ok) throw new Error(String(response.status));
+        const history = parseEventStream(await response.text());
+        if (closed) return;
+        const fresh = history.filter((event) => event.seq > last);
+        if (fresh.length > 0) last = fresh[fresh.length - 1].seq;
+        setEvents(fresh);
+        for (const event of fresh) notify(event);
+      } catch {
+        // 取不到就退回原来的路子：整段历史从订阅里补发。
+      }
+      if (closed) return;
+      setLoaded(true);
+      follow();
+    })();
     return () => {
-      source.close();
+      closed = true;
+      source?.close();
       if (frame) cancelAnimationFrame(frame);
     };
   }, [sessionId]);
 
-  return events;
+  return { events, loaded };
 }
 
 interface BlockProps {
@@ -741,6 +894,8 @@ interface BlockProps {
   posterVersion: number;
   files: string[];
   mtimes: Map<string, number>;
+  /** 每一轮推进到了哪几站（站名）。 */
+  stations?: Record<string, string[]>;
 }
 
 function BlockView(props: BlockProps) {
@@ -815,7 +970,7 @@ function MediaStrip(props: { media: MediaRef[]; mtimes: Map<string, number>; onO
             <button className="link media-name" title={m.path} onClick={() => props.onOpenFile(m.path)}>
               {name}
             </button>
-            {m.kind === 'audio' ? <audio controls preload="metadata" src={src} /> : <video controls preload="metadata" src={src} />}
+            {m.kind === 'audio' ? <audio {...playerProps} preload="metadata" src={src} /> : <video {...playerProps} preload="metadata" src={src} />}
           </div>
         );
       })}
@@ -832,7 +987,10 @@ function MediaStrip(props: { media: MediaRef[]; mtimes: Map<string, number>; onO
   );
 }
 
-/** 编排工具推荐的整片风格：海报、名字与理由，点了把选择发回去。认不出的标识照样列出，只是没有图。 */
+/**
+ * 编排工具推荐的风格：海报、名字、用在哪（全片默认或某一段）与理由，点了把选择发回去。
+ * 认不出的标识照样列出，只是没有图。
+ */
 function StylePicks(props: { picks: StylePick[]; styles: Map<string, FilmStyle>; version: number; enabled: boolean; onPick: (text: string) => void }) {
   return (
     <div className="style-picks film-styles" role="group" aria-label="推荐的整片风格">
@@ -841,7 +999,7 @@ function StylePicks(props: { picks: StylePick[]; styles: Map<string, FilmStyle>;
         const [source, slug] = pick.key.split('/');
         const name = style ? style.cn : pick.key;
         return (
-          <figure key={pick.key} className="style-pick" data-style={pick.key}>
+          <figure key={pick.key + '\u0000' + pick.scope} className={'style-pick' + (pick.scope ? ' scoped' : '')} data-style={pick.key} data-scope={pick.scope || undefined}>
             <a
               className="style-pick-poster"
               href={`/api/film-styles/${encodeURIComponent(source)}/${encodeURIComponent(slug)}/poster.jpg?size=full`}
@@ -856,14 +1014,15 @@ function StylePicks(props: { picks: StylePick[]; styles: Map<string, FilmStyle>;
                 {name}
                 {style?.en && <span className="style-pick-en">{style.en}</span>}
               </span>
+              {pick.explicit && <span className="style-pick-scope">{pick.scope ? `只用在：${pick.scope}` : '全片默认风格'}</span>}
               <span className="style-pick-reason">{pick.reason || style?.summary || ''}</span>
               <button
                 className="pill"
                 disabled={!props.enabled}
-                title={props.enabled ? '把这个选择发给编排工具' : '只有最新一条回复的推荐可以点'}
-                onClick={() => props.onPick(stylePickMessage(name, pick.key))}
+                title={props.enabled ? '把这个选择发给 AI' : '只有最新一条回复的推荐可以点'}
+                onClick={() => props.onPick(stylePickMessage(name, pick))}
               >
-                用这个风格
+                {!pick.explicit ? '选这个风格' : pick.scope ? '用在这一段' : '设为整片风格'}
               </button>
             </figcaption>
           </figure>
@@ -873,9 +1032,14 @@ function StylePicks(props: { picks: StylePick[]; styles: Map<string, FilmStyle>;
   );
 }
 
-/** 点「用这个风格」发出的那句话；收起已答的选项时按它认出选的是哪个。 */
-function stylePickMessage(name: string, key: string): string {
-  return `整片风格用「${name}」（${key}）`;
+/**
+ * 点风格卡片发出的那句话；收起已答的选项时按它认出选的是哪个。
+ * 全片默认、只给一段、不知道是哪种（回复里没有 film-styles 代码块）各是一种说法，不能都说成「整片风格」。
+ */
+function stylePickMessage(name: string, pick: StylePick): string {
+  if (!pick.explicit) return `选「${name}」（${pick.key}）这个风格`;
+  if (pick.scope) return `${pick.scope}用「${name}」风格（${pick.key}），其余镜头不变`;
+  return `整片风格用「${name}」（${pick.key}）`;
 }
 
 /** blocks[index] 这一轮之后用户发的第一条消息（去掉引用、附件说明）。 */
@@ -916,7 +1080,7 @@ function AnsweredOptions(props: { picked?: string; count: number; children: Reac
 
 /** 切页请求的说法：「口播稿」「镜头 scene-003」「文件 production/treatment.md」。 */
 function viewLabel(view: ViewRequest): string {
-  const label = tabs.find(([id]) => id === view.page)?.[1] ?? view.page;
+  const label = tabs.find(([id]) => id === view.page)?.[1] ?? stationPageLabel(view.page) ?? view.page;
   return view.target ? `${label} ${view.target}` : label;
 }
 
@@ -926,7 +1090,7 @@ function pickedOption(answer: string, choices: string[], picks: StylePick[], sty
   if (choice) return choice;
   for (const pick of picks) {
     const name = styles.get(pick.key)?.cn ?? pick.key;
-    if (stylePickMessage(name, pick.key) === answer) return name;
+    if (stylePickMessage(name, pick) === answer) return pick.scope ? `${pick.scope}：${name}` : name;
   }
   return undefined;
 }
@@ -972,9 +1136,9 @@ function TurnView(props: BlockProps & { turn: TurnBlock }) {
           <Markdown text={stripChoices(proseText)} />
         </div>
       )}
-      {turn.views.length > 0 && (
+      {turn.views.some((view) => view.page) && (
         <div className="view-links" aria-label="请你看的页面">
-          {turn.views.map((view, index) => (
+          {turn.views.filter((view) => view.page).map((view, index) => (
             <button key={index} className="view-link" onClick={() => props.onView(view)} title="打开这一页">
               <span className="view-arrow" aria-hidden="true">↗</span>
               <span className="view-page">{viewLabel(view)}</span>
@@ -1038,7 +1202,7 @@ function ExecutionShell(props: {
         <Icon name="chevron" size={11} />
       </summary>
       <div className="shell-body">
-        {turn.process.length === 0 && <p className="muted small">正在启动编排工具…</p>}
+        {turn.process.length === 0 && <p className="muted small">正在启动 AI…</p>}
         {turn.process.map((item, index) => (
           <ProcessRow key={index} item={item} projectPath={props.projectPath} onOpenFile={props.onOpenFile} />
         ))}
@@ -1188,7 +1352,7 @@ function TurnEnd(props: BlockProps & { turn: TurnBlock; elapsed: number }) {
             {turn.state === 'failed' ? '运行失败' : '这一轮被中断了'}
           </h4>
           {end.text && <p>{end.text}</p>}
-          {turn.state === 'interrupted' && !end.text && <p>Studio 重启时这一轮还在进行，编排工具的进程已经不在了。</p>}
+          {turn.state === 'interrupted' && !end.text && <p>Studio 重启时这一轮还在进行，AI 的进程已经不在了。</p>}
           {retryText && (
             <div className="actions">
               <button className="pill primary-pill" onClick={() => props.onRetry(retryText)}>
@@ -1247,6 +1411,11 @@ function TurnEnd(props: BlockProps & { turn: TurnBlock; elapsed: number }) {
           <span>{formatElapsed(props.elapsed)}</span>
           {tokens > 0 && <span className="mono">{tokens.toLocaleString()} tokens</span>}
           {changes.length === 0 && <span>没有改动项目文件</span>}
+          {(props.stations?.[end.turn_id ?? ''] ?? []).length > 0 && (
+            <span className="turn-stations" title="这一轮推进到的制作环节">
+              → {props.stations![end.turn_id ?? ''].join(' · ')}
+            </span>
+          )}
           <span>{clockOf(end.time)}</span>
         </footer>
       )}
@@ -1443,5 +1612,84 @@ function HistoryMenu(props: { sessions: SessionMeta[]; current: string; onPick: 
         </button>
       ))}
     </div>
+  );
+}
+
+/**
+ * 「接下来」：在等你的时候，对话顶上那一行下面展开一张卡片，说清现在该做什么，带几个按钮。
+ * AI 在做时不展开（那一行已经写着「AI 在做」）。点 × 收起这一次，换到下一站或下一种状态时再出现。
+ */
+function NextStep({ guide, disabled, onAction }: { guide: Guide | null; disabled: boolean; onAction: (action: GuideAction) => void }) {
+  const key = guide ? guide.title + '|' + guide.text : '';
+  const [hidden, setHidden] = useState('');
+  // 插件的操作对外、不能撤回：点了先在卡片上问一次，用户点「执行」才跑。
+  const [confirming, setConfirming] = useState<Extract<GuideAction, { kind: 'op' }> | null>(null);
+  if (!guide || !guide.waiting || hidden === key) return null;
+  return (
+    <section className="next-step" id="next-step" aria-label="接下来">
+      <div className="ns-head">
+        <span className="ns-kicker">接下来</span>
+        <strong>{guide.title}</strong>
+        <span className="spacer" />
+        <button className="icon-button" aria-label="收起" title="收起" onClick={() => setHidden(key)}>
+          <Icon name="close" size={10} />
+        </button>
+      </div>
+      <p>{guide.text}</p>
+      {confirming && (
+        <div className="ns-confirm" role="alertdialog" aria-label="确认执行">
+          <span>执行插件操作「{confirming.summary}」？</span>
+          <button
+            className="primary"
+            disabled={disabled}
+            onClick={() => {
+              onAction(confirming);
+              setConfirming(null);
+            }}
+          >
+            执行
+          </button>
+          <button onClick={() => setConfirming(null)}>取消</button>
+        </div>
+      )}
+      {guide.actions.length > 0 && !confirming && (
+        <div className="ns-actions">
+          {guide.actions.map((action) => (
+            <button
+              key={action.label}
+              // 推进制作的（确认、开工、发话）是主按钮；开页面、填输入框是次要的。
+              className={action.kind === 'page' || action.kind === 'draft' ? '' : 'primary'}
+              disabled={disabled && action.kind !== 'page' && action.kind !== 'draft'}
+              onClick={() => (action.kind === 'op' ? setConfirming(action) : onAction(action))}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** 对话顶上的一行：现在在制作路线的哪一站、在等谁；点开制作路线。 */
+function ProgressStrip({ progress, onOpen }: { progress: ProgressState | null; onOpen: () => void }) {
+  const { station, text } = currentSummary(progress);
+  if (!progress || !text) return null;
+  const waiting = progress.waiting_on === 'user' || station?.status === 'changed';
+  return (
+    <button className={'progress-strip' + (waiting ? ' waiting' : '')} id="progress-strip" onClick={onOpen} title="打开制作路线">
+      {station && !waiting ? <span className="orb tiny" aria-hidden="true" /> : <span className={'ps-dot' + (station ? '' : ' done')} aria-hidden="true" />}
+      {station ? (
+        <>
+          <span className="ps-label">现在 · {station.label}</span>
+          <span className="ps-text">{text}</span>
+        </>
+      ) : (
+        <span className="ps-label">{text}</span>
+      )}
+      <span className="spacer" />
+      <span className="ps-open">制作路线</span>
+      <Icon name="next" size={10} />
+    </button>
   );
 }

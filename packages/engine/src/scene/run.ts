@@ -1,7 +1,6 @@
-// 移植自 internal/scene/run_unix.go（Go 版只在 darwin / linux 上编译）。
 import fs from 'node:fs';
 import path from 'node:path';
-import { childEnvironment, type Config } from '../config';
+import { childEnvironment, rendererModelFor, type Config } from '../config';
 import * as determinism from '../determinism';
 import { addToolsLocation, amExecutable, lookPath, parsePassthrough } from '../envutil';
 import * as hyperframes from '../hyperframes';
@@ -85,7 +84,8 @@ export async function run(
   const access = rendererAccess(resolvedSkills);
   access.toolsServer = amToolsServer(amExecutable(), 'renderer', s.directory, childEnv);
   Object.assign(childEnv, rendererEnv(renderer, access, childEnv));
-  const argv = rendererInvocation(renderer, prompt, unsafe, access);
+  const model = rendererModelFor(cfg, renderer);
+  const argv = rendererInvocation(renderer, prompt, unsafe, access, model);
   argv[0] = lookPath(argv[0], baseEnv.PATH ?? '');
   const inputs = fingerprint(s, renderer, resolvedSkills);
   // 先挪走上一次的现场再截断日志；旧记录随即作废，本次通过校验后再写新的。
@@ -100,7 +100,7 @@ export async function run(
   const attempt = newAttempt({
     scene_id: s.id,
     renderer,
-    model: configuredModel(renderer, baseEnv),
+    model: model || configuredModel(renderer, baseEnv),
     fingerprint: inputs.fingerprint,
     started_at: timestamp(started),
     retry: s.retryNote !== '',
@@ -224,7 +224,7 @@ export async function run(
  * 另外静态扫描合成源码的确定性（determinism）：读时钟、未播种随机数、
  * requestAnimationFrame 这类写法渲染照样成功，要到重渲染对不上时才暴露。
  *
- *   - 画幅：视觉规范（style_guide 或就近的 frame.md）声明了画布，渲染成别的尺寸无法靠后期规范化补救——
+ *   - 画幅：就近的 frame.md 声明了画布，渲染成别的尺寸无法靠后期规范化补救——
  *     把 720p 拉伸到 1080 是画质损失而不是格式统一。
  *   - 静音：镜头产物按契约就该无音轨，混音在后面的阶段统一做。
  *

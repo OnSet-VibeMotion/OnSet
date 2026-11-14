@@ -22,9 +22,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      # 引擎的集成测试要真实的 ffmpeg / ffprobe / rsvg-convert；缺了会跳过，覆盖就成了假的。
+      # 引擎的集成测试要真实的 ffmpeg / ffprobe；缺了会跳过，覆盖就成了假的。
       - name: Install media tools
-        run: brew install ffmpeg librsvg
+        run: brew install ffmpeg
       - run: npm ci --no-audit --no-fund
       - run: npx tsc --noEmit -p packages/engine
       - run: npx tsc --noEmit -p packages/cli
@@ -33,6 +33,42 @@ jobs:
       - run: npx vitest run --root packages/cli
       - run: npm run build -w @am/cli
       - run: npm run build -w am-desktop
+
+  windows:
+    # 客户端还没移植到 Windows（见 AGENTS.md「Windows」）。这一项先让问题暴露出来：类型检查与构建必须通过，
+    # 两包的单元测试照跑、失败不挡合并，等移植完再去掉 continue-on-error。
+    name: Windows (typecheck, build; tests report only)
+    runs-on: windows-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc --noEmit -p packages/engine
+      - run: npx tsc --noEmit -p packages/cli
+      - run: npm run typecheck -w am-desktop
+      - run: npm run build -w @am/cli
+      - run: npm run build -w am-desktop
+      - name: Engine unit tests (not yet expected to pass)
+        continue-on-error: true
+        run: npx vitest run --root packages/engine --reporter=default --reporter=junit --outputFile.junit=engine-junit.xml
+      - name: CLI unit tests (not yet expected to pass)
+        continue-on-error: true
+        run: npx vitest run --root packages/cli --reporter=default --reporter=junit --outputFile.junit=cli-junit.xml
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-test-reports
+          path: |
+            packages/engine/engine-junit.xml
+            packages/cli/cli-junit.xml
+          retention-days: 7
+          if-no-files-found: ignore
 
   generated-assets:
     name: Generator reproduces the committed assets
@@ -47,10 +83,10 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run generate -w @am/engine
-      - name: assets/presets 与 assets/styles 必须与画幅表、风格表、模板一致
+      - name: assets/presets 必须与画幅表、模板一致
         run: |
           if ! git diff --exit-code; then
-            echo "::error::生成产物与提交的不一致：改了画幅表、风格表或模板后要跑 npm run generate -w @am/engine 并提交产物" >&2
+            echo "::error::生成产物与提交的不一致：改了画幅表或 frame.md 模板后要跑 npm run generate -w @am/engine 并提交产物" >&2
             exit 1
           fi
 

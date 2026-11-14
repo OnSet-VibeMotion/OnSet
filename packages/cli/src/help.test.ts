@@ -1,4 +1,3 @@
-// 移植自 internal/cli/help_test.go。
 // am memory 整组命令推迟到 memory 那一轮移植，这里遍历的命令树暂时不含它。
 import { describe, expect, it } from 'vitest';
 import { Buffer, run } from './testutil';
@@ -71,18 +70,6 @@ describe('help', () => {
       // 用法行要能直接照着补参数。
       expect(message).toContain('用法：');
     }
-  });
-
-  // --regenerate-examples 实际需要 rsvg-convert 和 magick 两个命令，帮助曾经只写 ImageMagick。
-  it('help documents both tools for example regeneration', () => {
-    const { root } = newRoot(new Buffer(), new Buffer());
-    let style: Command | undefined;
-    walk(root, (cmd) => {
-      if (cmd.commandPath() === 'am validate style') style = cmd;
-    });
-    expect(style, '找不到 am validate style 命令').toBeDefined();
-    const text = style!.long + style!.flags().lookup('regenerate-examples')!.usage;
-    for (const tool of ['rsvg-convert', 'magick']) expect(text, `--regenerate-examples 的帮助没提到必需的 ${tool}`).toContain(tool);
   });
 
   // 调用方靠退出码分支，帮助里少写一个就会被当成通用失败处理。

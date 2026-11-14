@@ -1,11 +1,11 @@
 /**
- * am setup：下载并准备全部前置资源。移植自 internal/cli/setup.go。
+ * am setup：下载并准备全部前置资源。
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import * as beat from '@am/engine/beat';
 import { goQuote } from '@am/engine/gofmt';
 import { SetupCommand } from '@am/engine/prereq';
+import * as plugin from '@am/engine/plugin';
 import * as prereqs from '@am/engine/prereqs';
 import { currentEnvironment, hyperframesVersion, noArgs } from './cli';
 import { Command, ExitError, type Out, ref } from './cobra';
@@ -37,11 +37,9 @@ export function newSetupCommand(stdout: Out, _stderr?: Out): Command {
   tts      配音工具（按项目的 TTS_PROVIDER，缺省在 Apple Silicon 上是本机 Breeze TTS 2，其余平台是 MiniMax 的 mmx）；align  对齐工具（按 ALIGN_PROVIDER）。
            固定版本，装在 ~/.local/share/am/tools，命令放进 ~/.local/share/am/bin；npm 包用客户端
            自带的运行时，Python 包由 uv 带一份独立的 Python，都不需要你装 Node 或 Python
-  beat     卡点模式的节拍分析环境：beat-this ` +
-      beat.AnalyzerVersion +
-      ` 与 torch 的 Python 虚拟环境加默认模型权重，约 1 GB
-           （装在 ~/.local/share/am/beat/venv-<版本>）；只做卡点片才需要
-  styles   每个整片风格来源一项（styles:<来源>），数据放在 ~/.local/share/am/film-styles/<来源>；
+` +
+      pluginPrereqSummary() +
+      `  styles   每个整片风格来源一项（styles:<来源>），数据放在 ~/.local/share/am/film-styles/<来源>；
            已登记的来源：
 ` +
       sourceSummary() +
@@ -51,10 +49,12 @@ export function newSetupCommand(stdout: Out, _stderr?: Out): Command {
 不下载，缺了就提示先运行 am setup。已就绪的项直接跳过；下载断了再运行一次会接着下。
 git 与 npm 的原始输出写进 ~/.local/share/am/setup.log，失败时屏幕上给出最后几行。
 
---proxy（例如本机的 Clash）只给 git 与 GitHub 下载（技能、ffmpeg、uv、Python）、浏览器与节拍模型权重用；
+--proxy（例如本机的 Clash）只给 git 与 GitHub 下载（技能、ffmpeg、uv、Python）、浏览器与模型权重（例如节拍分析）用；
 GitHub 的 release 也可以设 AM_GITHUB_MIRROR 走镜像（文件都核对 sha256）。npm 与 pip 照常用你 ~/.npmrc、
 pip.conf 里的镜像与代理（Python 类工具由 uv 安装，也沿用 pip.conf 的 index-url），npm 要临时换源用
---npm-registry。--only 认 skills、cli、browser、ffmpeg、tts、align、beat、styles（全部风格来源）或
+--npm-registry。--only 认 ` +
+      onlyGroups().join('、') +
+      `（styles 是全部风格来源）或
 styles:<来源>。--check 只报告哪些已就绪、哪些缺，不下载；有缺项时退出码为 1。`,
     example: `  am setup
   am setup --proxy http://127.0.0.1:7890
@@ -72,10 +72,26 @@ styles:<来源>。--check 只报告哪些已就绪、哪些缺，不下载；有
     },
   });
   cmd.flags().boolVar(check, 'check', false, '只检查哪些已就绪，不下载；有缺项时退出码为 1');
-  cmd.flags().stringSliceVar(only, 'only', [], '只准备其中几项：skills、cli、browser、ffmpeg、tts、align、beat、styles 或 styles:<来源>（可逗号分隔）');
+  cmd.flags().stringSliceVar(only, 'only', [], `只准备其中几项：${onlyGroups().join('、')} 或 styles:<来源>（可逗号分隔）`);
   cmd.flags().stringVar(proxy, 'proxy', '', 'git 下载（GitHub）、浏览器与节拍模型权重用的代理，例如 http://127.0.0.1:7890；不影响 npm 与 pip');
   cmd.flags().stringVar(npmRegistry, 'npm-registry', '', 'npm 用的源，覆盖 ~/.npmrc 的 registry');
   return cmd;
+}
+
+/** --only 认的大类：宿主的几类，然后是内置插件登记的前置资源的类（例如卡点的 beat、风格库插件的 styles）。 */
+function onlyGroups(): string[] {
+  const groups = ['skills', 'cli', 'browser', 'ffmpeg', 'tts', 'align'];
+  for (const { value } of plugin.pluginPrereqs()) if (!groups.includes(value.group)) groups.push(value.group);
+  return groups;
+}
+
+/** 帮助里内置插件登记的前置资源，每类一行（例如卡点的节拍分析环境）。风格来源另有一段（styles）。 */
+function pluginPrereqSummary(): string {
+  return plugin
+    .pluginPrereqs()
+    .filter(({ value }) => value.group !== 'styles')
+    .map(({ value }) => `  ${value.group.padEnd(8)} ${value.name}${value.version ? ' ' + value.version : ''}${value.later ? '：' + value.later.title + '用，' + value.later.desc : ''}\n`)
+    .join('');
 }
 
 export function selectSetupItems(items: prereqs.Item[], only: string[]): prereqs.Item[] {
@@ -83,7 +99,7 @@ export function selectSetupItems(items: prereqs.Item[], only: string[]): prereqs
   for (const value of only) for (const id of value.split(',')) if (id.trim() !== '') wanted.add(id.trim());
   for (const id of wanted) {
     if (!items.some((item) => item.id === id || item.group === id)) {
-      throw new Error(`--only 不认 ${goQuote(id)}（可选：skills、cli、browser、ffmpeg、tts、align、beat、styles、${items.map((item) => item.id).join('、')}）`);
+      throw new Error(`--only 不认 ${goQuote(id)}（可选：${onlyGroups().join('、')}、${items.map((item) => item.id).join('、')}）`);
     }
   }
   return items.filter((item) => wanted.size === 0 || wanted.has(item.id) || wanted.has(item.group));

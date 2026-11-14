@@ -3,14 +3,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, errorText, forUser, post } from './api';
 import { Chat, type Outbox } from './components/Chat';
 import { Home, type ProjectSummary } from './components/Home';
+import { rendererState } from './components/agentReady';
+import { Onboarding, shouldOnboard } from './components/Onboarding';
 import { SkillsPill, type SkillsStatus } from './components/SkillsPill';
 import { SetupGuide, useSetup } from './components/SetupGuide';
 import { Settings } from './components/Settings';
 import { Icon } from './components/Icon';
-import { Preview, stepTabsFor, tabs, visibleTabs, type Tab } from './components/Preview';
+import { Preview, stepTabs, tabs, visibleTabs, type Tab } from './components/Preview';
+import { pageView } from './components/pageViews';
 import { scriptFinalPath } from './components/Script';
+import { storyboardFiles } from './components/Storyboard';
+import { currentSummary } from './components/Progress';
+import { isStationTab, PageMenu, setStationPages, stationPageLabel } from './components/Stations';
+import type { StationsResponse } from './types';
 
-const tabLabel = (id: Tab) => tabs.find(([t]) => t === id)?.[1] ?? id;
+const tabLabel = (id: Tab) => tabs.find(([t]) => t === id)?.[1] ?? stationPageLabel(id) ?? id;
 
 /** 画幅写成比例（1080x1440 → 3:4），帧率不在顶栏里出现。 */
 function canvasLabel(canvas: string): string {
@@ -22,20 +29,22 @@ function canvasLabel(canvas: string): string {
   return `${w / g}:${h / g}`;
 }
 
-/** 有专门页面的项目文件：口播稿开口播稿页，publish.md 开发布页，不在文件页里显示原文。 */
-const pageForFile = (path: string): 'script' | 'publish' | null =>
-  path === scriptFinalPath ? 'script' : path === 'publish.md' ? 'publish' : null;
+/** 有专门页面的项目文件：口播稿开口播稿页，分镜计划与处理方案开分镜页，publish.md 开发布页，不在文件页里显示原文。 */
+const pageForFile = (path: string): 'script' | 'storyboard' | 'publish' | null =>
+  path === scriptFinalPath ? 'script' : storyboardFiles.includes(path) ? 'storyboard' : path === 'publish.md' ? 'publish' : null;
 import { ContextMenu } from './components/ContextMenu';
 import { MarkdownContext } from './components/chat/Markdown';
+import { setPluginVerbs } from './components/chat/model';
 import { ProjectDialog } from './components/ProjectDialog';
 import { Tasks } from './components/Tasks';
 import { BrandMark } from './components/BrandMark';
+import { canReveal, revealInFinder, revealLabel, setRevealErrorHandler } from './reveal';
 import type {
   AgentChoice,
   AgentsResponse,
   Attachment,
-  BeatState,
   Project,
+  ProgressState,
   ProjectState,
   ProjectUsage,
   Scene,
@@ -51,7 +60,7 @@ const PANEL_WIDTH_KEY = 'am-studio.panel-width:';
 
 /** 看画面的页面面板默认宽一些，读文字的页面窄一些；宽度按这两类分别记住。 */
 type PanelKind = 'media' | 'doc';
-const panelKind = (tab: Tab): PanelKind => (['scene', 'compose', 'final', 'review', 'style', 'beat'].includes(tab) ? 'media' : 'doc');
+const panelKind = (tab: Tab): PanelKind => (['scene', 'compose', 'final', 'review', 'style'].includes(tab) || pageView(tab)?.media || isStationTab(tab) ? 'media' : 'doc');
 const panelDefault: Record<PanelKind, number> = { media: 0.58, doc: 0.45 };
 /** 对话栏最窄 420px，面板最窄 360px：拖动时两边都夹住。 */
 const minChat = 420;
@@ -114,9 +123,27 @@ export function App() {
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [usage, setUsage] = useState<ProjectUsage | null>(null);
   const [tree, setTree] = useState<TreeFile[]>([]);
-  const [beat, setBeat] = useState<BeatState | null>(null);
-  const beatMode = !!beat?.enabled;
-  const steps = useMemo(() => stepTabsFor(beatMode), [beatMode]);
+  // 制作路线：每一站做没做、现在在哪；对话顶上的一行与每轮结尾的标签也用它。
+  const [route, setRoute] = useState<ProgressState | null>(null);
+  // 从制作路线跳到对话里的某一轮：nonce 让同一轮能再跳一次。
+  const [jump, setJump] = useState<{ turn: string; nonce: number } | null>(null);
+  /**
+   * 项目的流程（片型）声明：第一步是哪一页、有哪些步骤、哪些页用不上、没有镜头时落在哪一页。
+   * 第三方流程的第一步页也在里面。还没读到时按口播。
+   */
+  const flowDecl = state?.flow;
+  const flowHidden = useMemo(() => flowDecl?.hidden_pages ?? [], [flowDecl]);
+  const landPage = (flowDecl?.land_page ?? '') as Tab | '';
+  const steps = useMemo(() => (flowDecl?.steps ?? stepTabs) as Tab[], [flowDecl]);
+  // 这个项目用得上的内置插件页面（后端页面表里有、流程没藏起来）：它们的提示条（例如卡点的节拍提示）挂在面板顶上。
+  const pluginPages = useMemo(
+    () => (state?.pages ?? []).map((pg) => pg.id).filter((id) => pageView(id) !== undefined && !flowHidden.includes(id)),
+    [state, flowHidden],
+  );
+  // 整片制作现在在哪一步（编排工具每轮结束前用 studio_step 标的，没标过时按产物推），顶栏据此标出进度。
+  // 第一步可能换成了第三方流程的页面：流程声明里算第一步的标记（口播稿、节拍）都落在第一步上。
+  const firstSteps = flowDecl?.first_steps ?? ['script'];
+  const progress = state?.step ? (firstSteps.includes(state.step) ? 0 : steps.indexOf(state.step as Tab)) : -1;
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [busy, setBusy] = useState('');
   const [sessionId, setSessionId] = useState('');
@@ -185,6 +212,10 @@ export function App() {
   const [outbox, setOutbox] = useState<Outbox | null>(null);
   const [recent, setRecent] = useState<Set<string>>(new Set());
   const [version, setVersion] = useState(1);
+  // 装、去掉插件后首页重读做法（插件可能带来新的做法）。
+  const [pluginsVersion, setPluginsVersion] = useState(0);
+  /** 第三方插件自己的页面，列在顶栏右侧「更多页面」的最后。 */
+  const [pluginTabs, setPluginTabs] = useState<[Tab, string][]>([]);
   const [dialog, setDialog] = useState(false);
   const [toast, setToast] = useState('');
   const [agents, setAgents] = useState<AgentsResponse | null>(null);
@@ -195,6 +226,7 @@ export function App() {
     setToast(message);
     window.setTimeout(() => setToast((current) => (current === message ? '' : current)), 5000);
   }, []);
+  useEffect(() => setRevealErrorHandler(notify), [notify]);
 
   const loadProjects = useCallback(async () => {
     try {
@@ -228,25 +260,41 @@ export function App() {
     }
   }, []);
 
+  const loadRoute = useCallback(async () => {
+    try {
+      setRoute(await api<ProgressState>('/api/progress'));
+    } catch {
+      // 制作路线读不到不影响别的页面。
+    }
+  }, []);
   const loadProject = useCallback(async () => {
     try {
-      const [st, sc, tr, bt] = await Promise.all([
+      const [st, sc, tr, sts] = await Promise.all([
         api<ProjectState>('/api/state'),
         api<{ scenes: Scene[]; usage?: ProjectUsage }>('/api/scenes'),
         api<{ files: TreeFile[] }>('/api/tree'),
-        api<BeatState>('/api/beat'),
+        // 第三方插件的页面：读不到不影响别的（插件坏了时设置页会说明）。
+        api<StationsResponse>('/api/stations').catch(() => ({ stations: [], problems: [] }) as StationsResponse),
       ]);
+      setStationPages(sts.stations);
+      setPluginVerbs(sts.stations.flatMap((x) => x.contents?.ops ?? []));
+      // 只用来嵌进别的页面的小窗不单独列。
+      setPluginTabs(
+        sts.stations.flatMap((x) =>
+          x.pages.filter((pg) => !x.slots.some((sl) => sl.page === pg.id) || x.commands.some((c) => c.page === pg.id)).map((pg) => [pg.tab as Tab, pg.label] as [Tab, string]),
+        ),
+      );
       setState(st);
       setScenes(sc.scenes ?? []);
       setUsage(sc.usage ?? null);
       setTree(tr.files ?? []);
-      setBeat(bt);
       setVersion((v) => v + 1);
     } catch (err) {
       notify(errorText(err));
     }
+    await loadRoute();
     await loadSessions();
-  }, [loadSessions, notify]);
+  }, [loadSessions, loadRoute, notify]);
 
   // 项目被占用（对话或渲染任务在跑）、或者还有镜头在渲染时定时刷新镜头列表：对话顶部的进度与桌宠的摄影
   // 靠它看到出片与渲染中的镜头。一轮结束后渲染还在跑的话，不接着刷就一直停在「渲染中」。
@@ -278,6 +326,17 @@ export function App() {
     void loadProjects();
     api<AgentsResponse>('/api/agents').then(setHomeAgents, () => setHomeAgents(null));
   }, []);
+
+  // 首次使用引导：还没有项目、又确实缺东西（工具没装好，或者没有一家编排工具能用）时自动打开一次；
+  // 都齐了就直接是首页。首页左栏「新手引导」随时能再打开。
+  const [guideOpen, setGuideOpen] = useState(false);
+  const guideChecked = useRef(false);
+  useEffect(() => {
+    if (guideChecked.current || !loaded || !setup.status || !homeAgents) return;
+    guideChecked.current = true;
+    const missing = !setup.status.ready || !homeAgents.agents.some((a) => a.installed) || !rendererState(homeAgents, homeAgents.global_renderer).ok;
+    if (missing && shouldOnboard(projects.length)) setGuideOpen(true);
+  }, [loaded, setup.status, homeAgents, projects.length]);
 
   // HyperFrames 官方技能：在 Studio 里新建的项目在后台装，装好之前或装失败时提示。
   const loadSkills = useCallback(async () => {
@@ -376,7 +435,7 @@ export function App() {
 
   const session = sessions.find((s) => s.session_id === sessionId);
   const choice: AgentChoice = session
-    ? { tool: session.tool, renderer: session.renderer || agents?.renderer || '' }
+    ? { tool: session.tool, renderer: session.renderer || agents?.renderer || '', model: session.model ?? '', renderer_model: session.renderer_model ?? '' }
     : pending;
 
   const changeChoice = async (next: AgentChoice) => {
@@ -394,10 +453,11 @@ export function App() {
 
   // 渲染按钮用当前会话（或新对话）选的渲染工具。
   const renderer = choice.renderer;
+  const rendererModel = choice.renderer_model ?? '';
   const run = useCallback(
     async (path: string, payload: Record<string, unknown> = {}) => {
       try {
-        await post(path, /\/render(\/all)?$/.test(path) ? { ...payload, renderer } : payload);
+        await post(path, /\/render(\/all)?$/.test(path) ? { ...payload, renderer, renderer_model: rendererModel } : payload);
         notify('已开始，进度见右上角任务。');
         await loadTasks();
         await loadSessions();
@@ -405,13 +465,20 @@ export function App() {
         notify(errorText(err));
       }
     },
-    [loadTasks, loadSessions, notify, renderer],
+    [loadTasks, loadSessions, notify, renderer, rendererModel],
   );
 
   const chooseSession = (id: string) => {
     setSessionId(id);
     remember(currentId, id);
   };
+  const jumpToTurn = (session: string, turn: string) => {
+    if (session && session !== sessionId) chooseSession(session);
+    setJump({ turn, nonce: Date.now() });
+    // 窄窗口里面板是盖在对话上的抽屉，收起来才看得到对话。
+    if (window.innerWidth < 1180) setPanelOpen(false);
+  };
+  const now = currentSummary(route);
 
   const project = projects.find((p) => p.id === currentId);
 
@@ -429,7 +496,9 @@ export function App() {
   };
   const quick = (text: string, quickAttachments: Attachment[], draftOnly?: boolean) => {
     setOutbox({ text, attachments: quickAttachments, nonce: Date.now(), draftOnly });
-    if (!draftOnly) notify('已发给编排工具，进度看对话。');
+    // 确认关卡的按钮先记下确认再发话：路线上的那一站马上变成「你确认了」。
+    if (!draftOnly) void loadRoute();
+    if (!draftOnly) notify('已发给 AI，进度看对话。');
   };
 
   // Markdown 里写到的项目文件可点：口播稿开口播稿页，其余开文件页。
@@ -452,6 +521,13 @@ export function App() {
 
   // 编排工具经 am studio show 请用户看某一页：切过去，镜头与文件页带上对象。
   const openView = (view: ViewRequest) => {
+    // 标了制作步骤：重新读项目状态，顶栏的进度跟着变。只标步骤的请求不切页。
+    if (view.step) void loadProject();
+    if (isStationTab(view.page)) {
+      // 插件页面：装了这个插件才切过去。
+      if (pluginTabs.some(([id]) => id === view.page)) showTab(view.page as Tab);
+      return;
+    }
     const page = tabs.find(([id]) => id === view.page)?.[0];
     if (!page) return;
     if (page === 'file') {
@@ -478,16 +554,16 @@ export function App() {
       setScriptSeen(0);
     }
   }, [seenKey]);
-  // 卡点项目：口播稿页换成节拍页；还没有镜头时（节拍、分镜阶段）打开项目先到节拍页。
-  const autoBeat = useRef('');
+  // 流程声明了落脚页（卡点是节拍页）：用不上的页换成它；还没有镜头时（节拍、分镜阶段）打开项目先到它。
+  const autoLand = useRef('');
   useEffect(() => {
-    if (!beatMode) return;
-    if (tab === 'script') setTab('beat');
-    else if (tab === 'scene' && scenes.length === 0 && autoBeat.current !== seenKey) {
-      autoBeat.current = seenKey;
-      setTab('beat');
+    if (!landPage) return;
+    if (flowHidden.includes(tab)) setTab(landPage);
+    else if (tab === 'scene' && scenes.length === 0 && autoLand.current !== seenKey) {
+      autoLand.current = seenKey;
+      setTab(landPage);
     }
-  }, [beatMode, tab, scenes.length, seenKey]);
+  }, [landPage, flowHidden, tab, scenes.length, seenKey]);
   const autoScript = useRef('');
   useEffect(() => {
     if (!scriptMtime || scenes.length > 0 || tab !== 'scene' || autoScript.current === seenKey) return;
@@ -504,6 +580,39 @@ export function App() {
     }
   }, [tab, scriptMtime, scriptSeen, seenKey]);
 
+  // 分镜：有了分镜计划、镜头一个都还没渲染、分镜又有没看过的改动时（分镜审核阶段）自动切到分镜页；
+  // 分镜或画面描述改过而没看过时标签打点。
+  const storyboardMtime = tree.reduce(
+    (latest, f) => (storyboardFiles.includes(f.path) || /^scenes\/[^/]+\/prompt\.md$/.test(f.path) ? Math.max(latest, f.mtime ?? 0) : latest),
+    0,
+  );
+  const boardSeenKey = `am-studio.storyboard-seen:${project?.path ?? ''}`;
+  const [boardSeen, setBoardSeen] = useState(0);
+  useEffect(() => {
+    try {
+      setBoardSeen(Number(window.localStorage.getItem(boardSeenKey) ?? 0) || 0);
+    } catch {
+      setBoardSeen(0);
+    }
+  }, [boardSeenKey]);
+  const hasPlan = tree.some((f) => f.path === storyboardFiles[0]);
+  const unrendered = hasPlan && scenes.length > 0 && scenes.every((s) => !s.exists && !s.rendering);
+  const autoBoard = useRef('');
+  useEffect(() => {
+    if (!unrendered || storyboardMtime <= boardSeen || tab !== 'scene' || autoBoard.current === boardSeenKey) return;
+    autoBoard.current = boardSeenKey;
+    setTab('storyboard');
+  }, [unrendered, storyboardMtime, boardSeen, tab, boardSeenKey]);
+  useEffect(() => {
+    if (tab !== 'storyboard' || !storyboardMtime || storyboardMtime <= boardSeen) return;
+    setBoardSeen(storyboardMtime);
+    try {
+      window.localStorage.setItem(boardSeenKey, String(storyboardMtime));
+    } catch {
+      // 记不住只是下次还会打点。
+    }
+  }, [tab, storyboardMtime, boardSeen, boardSeenKey]);
+
   // Dock 角标与完成通知（客户端里才有）：一轮对话、一次渲染要跑很久，人多半去做别的事了。
   const taskStatus = useRef(new Map<string, Task['status']>());
   useEffect(() => {
@@ -518,7 +627,7 @@ export function App() {
     }
   }, [tasks]);
 
-  // 原生菜单（客户端里才有）：新建回首页，打开文件夹走与「打开项目」同一个接口，⌘1–⌘4 切四个步骤。
+  // 原生菜单（客户端里才有）：新建回首页，打开文件夹走与「打开项目」同一个接口，⌘1–⌘5 切五个步骤。
   useEffect(() => {
     return window.am?.onMenu?.((action) => {
       if (action.type === 'new' || action.type === 'home') setHomeOpen(true);
@@ -531,6 +640,8 @@ export function App() {
         }
       } else if (action.type === 'panel') {
         if (currentId) setPanelOpen((open) => !open);
+      } else if (action.type === 'reveal') {
+        if (currentId) revealInFinder('');
       } else if (action.type === 'open') {
         void (async () => {
           try {
@@ -573,17 +684,38 @@ export function App() {
           </strong>
           {state?.metadata.canvas && <span className="project-meta">{canvasLabel(state.metadata.canvas)}</span>}
         </button>
+        {canReveal && currentId && !homeOpen && (
+          <button className="ghost icon reveal-project" id="reveal-project" title={`${revealLabel}（⌥⌘R）`} aria-label={`在 Finder 中打开项目文件夹`} onClick={() => revealInFinder('')}>
+            <Icon name="folder" size={13} />
+          </button>
+        )}
         {currentId && !homeOpen && (
           <nav className="steps" aria-label="制作步骤">
+            {/* 制作路线是步骤条的第一格：同一种样式，有关卡在等你时编号位置亮一个黄铜色点。 */}
+            <button
+              className={'step route-step' + (tab === 'progress' && panelOpen ? ' on' : '') + (route?.waiting_on === 'user' || now.station?.status === 'changed' ? ' waiting' : '')}
+              id="progress-open"
+              data-tab="progress"
+              aria-current={tab === 'progress' && panelOpen ? 'page' : undefined}
+              title={now.station ? `制作路线：现在在「${now.station.label}」，${now.text}` : '制作路线'}
+              onClick={() => showTab('progress')}
+            >
+              <span className="step-no">
+                <Icon name="route" size={12} />
+              </span>
+              路线
+            </button>
+            <span className="steps-sep" aria-hidden="true" />
             {steps.map((id, index) => (
               <button
                 key={id}
                 data-tab={id}
-                className={'step' + (tab === id && panelOpen ? ' on' : '')}
-                aria-current={tab === id && panelOpen ? 'page' : undefined}
+                className={'step' + (tab === id && panelOpen ? ' on' : '') + (index < progress ? ' done' : index === progress ? ' current' : '')}
+                aria-current={tab === id && panelOpen ? 'page' : index === progress ? 'step' : undefined}
+                title={index === progress ? (state?.step_marked ? 'AI 标记：现在在这一步' : '现在在这一步') : index < progress ? '已经做过' : undefined}
                 onClick={() => showTab(id)}
               >
-                <span className="step-no">{String(index + 1).padStart(2, '0')}</span>
+                <span className="step-no">{index < progress ? '✓' : String(index + 1).padStart(2, '0')}</span>
                 {tabLabel(id)}
                 {id === 'scene' && state && state.scenes.total > 0 && (
                   <span className={'step-count' + (state.scenes.stale > 0 ? ' warn' : '')} title={state.scenes.stale > 0 ? `${state.scenes.stale} 个镜头过期` : '已出片 / 全部镜头'}>
@@ -591,21 +723,19 @@ export function App() {
                   </span>
                 )}
                 {id === 'script' && scriptMtime > scriptSeen && tab !== 'script' && <i className="tab-dot" aria-label="有更新" />}
+                {id === 'storyboard' && storyboardMtime > boardSeen && tab !== 'storyboard' && <i className="tab-dot" aria-label="有更新" />}
               </button>
             ))}
           </nav>
         )}
         <span className="spacer" />
         {currentId && !homeOpen && (
-          <nav className="more-pages" aria-label="更多页面">
-            {visibleTabs(beatMode)
-              .filter(([id]) => !steps.includes(id))
-              .map(([id, label]) => (
-                <button key={id} data-tab={id} className={tab === id && panelOpen ? 'on' : ''} aria-current={tab === id && panelOpen ? 'page' : undefined} onClick={() => showTab(id)}>
-                  {label}
-                </button>
-              ))}
-          </nav>
+          <PageMenu
+            pages={visibleTabs(flowHidden, state?.pages).filter(([id]) => !steps.includes(id)) as [string, string][]}
+            tabs={pluginTabs}
+            current={panelOpen ? tab : ''}
+            onPick={(id) => showTab(id as Tab)}
+          />
         )}
         {setupMissing > 0 && (
           <button className={'skills-pill' + (setupRequiredMissing ? ' bad' : '')} id="setup-pill" onClick={() => setSetupOpen(true)} title="渲染与配音要用的工具：点开一键安装">
@@ -619,35 +749,50 @@ export function App() {
             {busy}
           </span>
         )}
+        {currentId && !homeOpen && <span className="topbar-sep" aria-hidden="true" />}
         {currentId && !homeOpen && (
           <button
-            className={'panel-toggle' + (panelOpen ? ' on' : '')}
+            className={'ghost icon panel-toggle' + (panelOpen ? ' on' : '')}
+            aria-label="画面"
             id="panel-toggle"
             aria-pressed={panelOpen}
             title={panelOpen ? '收起画面（⌘\\）' : '显示画面（⌘\\）'}
             onClick={() => setPanelOpen(!panelOpen)}
           >
-            <Icon name="panel" size={13} />
-            画面
+            <Icon name="panel" size={14} />
           </button>
         )}
         <Tasks tasks={tasks} onCancel={(id) => run(`/api/tasks/${id}/cancel`)} />
         <button className="ghost icon settings-trigger" id="settings-trigger" title="设置（⌘,）" aria-label="设置" onClick={() => setSettingsOpen(true)}>
           <Icon name="settings" size={14} />
         </button>
-        <span className={'pill conn' + (connected ? '' : ' down')} title={connected ? '已连接' : '连接断开'} aria-label={connected ? '已连接' : '连接断开'}>
-          <span className={'dot ' + (connected ? 'ok' : 'bad')} />
-          {!connected && <span>连接断开</span>}
-        </span>
+        {/* 连上了是常态，不占位置；只在断开时说一句。 */}
+        {!connected && (
+          <span className="pill conn down" title="连接断开" aria-label="连接断开">
+            <span className="dot bad" />
+            <span>连接断开</span>
+          </span>
+        )}
       </header>
 
-      {loaded && (!currentId || homeOpen) ? (
+      {loaded && (!currentId || homeOpen) && guideOpen ? (
+        <Onboarding
+          setup={setup}
+          projectCount={projects.length}
+          onClose={() => {
+            setGuideOpen(false);
+            // 引导里可能填了 key、换了编排工具：首页的工具菜单要按新的显示。
+            api<AgentsResponse>('/api/agents').then(setHomeAgents, () => {});
+          }}
+        />
+      ) : loaded && (!currentId || homeOpen) ? (
         <Home
           projects={projects}
           summaries={summaries}
           defaultParent={defaultParent}
           currentId={currentId}
           agents={homeAgents}
+          pluginsVersion={pluginsVersion}
           onOpen={async (id) => {
             try {
               await post('/api/workspaces/switch', { project_id: id });
@@ -672,6 +817,7 @@ export function App() {
             setHomeOpen(false);
           }}
           onBack={currentId ? () => setHomeOpen(false) : undefined}
+          onGuide={() => setGuideOpen(true)}
         />
       ) : (
         <MarkdownContext.Provider value={markdownLinks}>
@@ -692,6 +838,15 @@ export function App() {
                 setFilePath(path);
                 showTab('file');
               }}
+              onReveal={
+                canReveal
+                  ? (target) => {
+                      const sc = target.scene ? scenes.find((s) => s.id === target.scene) : undefined;
+                      if (target.scene && !sc) return;
+                      revealInFinder(sc ? (sc.exists && sc.output ? sc.directory + '/' + sc.output : sc.directory) : (target.file ?? ''));
+                    }
+                  : undefined
+              }
             />
             <Chat
               projectPath={project?.path ?? ''}
@@ -727,6 +882,9 @@ export function App() {
               tree={tree}
               run={run}
               onView={openView}
+              progress={route}
+              jump={jump}
+              onProgress={() => showTab('progress')}
             />
             {panelOpen ? (
               <>
@@ -763,7 +921,8 @@ export function App() {
                     tree={tree}
                     recent={recent}
                     version={version}
-                    beat={beat}
+                    pages={pluginPages}
+                    progress={route}
                     busy={busy}
                     onAttach={addAttachment}
                     onQuick={quick}
@@ -775,6 +934,7 @@ export function App() {
                       setSceneId(id);
                       if (tab !== 'scene' && tab !== 'compose' && tab !== 'memory') setTab('scene');
                     }}
+                    onTurn={jumpToTurn}
                     run={run}
                   />
                 </section>
@@ -816,7 +976,10 @@ export function App() {
               </button>
             </header>
             <div className="pad">
-              <Settings version={version} run={run} />
+              <Settings version={version} run={run} onPluginsChanged={() => {
+                setPluginsVersion((v) => v + 1);
+                if (currentId) void loadProject();
+              }} />
             </div>
           </section>
         </div>

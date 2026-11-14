@@ -1,5 +1,5 @@
 /**
- * 画幅预设的唯一真相源。移植自 internal/preset/preset.go。
+ * 画幅预设的唯一真相源。
  *
  * 安全区在这里用 anchor 语义声明，由预设生成器在构建期推导成绝对像素写进 frame.md。
  * anchor 不进项目文件：渲染工具读到的始终是现成像素值，无需自行运算。
@@ -96,9 +96,9 @@ export interface Preset {
   label: string;
   canvas: Canvas;
   safeArea: Box[];
-  /** 这个画幅面向的平台界面，风格模板里与平台有关的措辞由它填入。 */
+  /** 这个画幅面向的平台界面，frame.md 里与平台有关的措辞由它填入。 */
   platform: Platform;
-  /** 追加在 frame.md 与风格说明书正文末尾的画幅构图要点；为空时不追加。 */
+  /** 追加在 frame.md 正文末尾的画幅构图要点；为空时不追加。 */
   layoutNotes: string;
 }
 

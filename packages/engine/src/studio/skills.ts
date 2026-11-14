@@ -1,5 +1,5 @@
 /**
- * 项目里 HyperFrames 官方技能的后台安装。移植自 internal/studio/skills.go。
+ * 项目里 HyperFrames 官方技能的后台安装。
  */
 import fs from 'node:fs';
 import path from 'node:path';

@@ -1,15 +1,15 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { test, expect, openProject } from './fixtures.mjs';
+import { test, expect, openProject, openPage } from './fixtures.mjs';
 
 // 从 internal/studio/ui/e2e/studio.spec.mjs 迁来：文件树、右键引用、@ 与 / 补全、回复里的风格海报、音频与 Markdown。
 
 test('opens a project file from the tree', async ({ page, project }) => {
   await openProject(page, project);
   // 文件树只在「文件」页里。
-  await page.locator('[data-tab="file"]').click();
-  await page.locator('.tree-file', { hasText: 'PROMPT.md' }).click();
-  await expect(page.locator('#file-content')).toContainText('整片制作提示词');
+  await openPage(page, 'file');
+  await page.locator('.tree-file', { hasText: 'notes.md' }).click();
+  await expect(page.locator('#file-content')).toContainText('项目笔记');
 });
 
 test('right-click quotes script text and files into the chat', async ({ page, project }) => {
@@ -25,8 +25,8 @@ test('right-click quotes script text and files into the chat', async ({ page, pr
   await expect(page.locator('#attachments .quote-card')).toContainText('第一段，2025年很贵。');
   await expect(page.locator('#attachments .quote-card')).not.toContainText('二零二五年');
   // 文件树上右键：引用文件。
-  await page.locator('[data-tab="file"]').click();
-  await page.locator('.tree-file', { hasText: 'PROMPT.md' }).click({ button: 'right' });
+  await openPage(page, 'file');
+  await page.locator('.tree-file', { hasText: 'notes.md' }).click({ button: 'right' });
   await page.locator('.ctx-item', { hasText: '引用这个文件到对话' }).click();
   await expect(page.locator('#attachments .quote-card')).toHaveCount(2);
   // 输入框里保留系统自己的菜单。
@@ -35,7 +35,7 @@ test('right-click quotes script text and files into the chat', async ({ page, pr
   await page.locator('#prompt').fill('这段太长');
   await page.locator('#send').click();
   await expect(page.locator('.user-extra')).toContainText('口播稿第 1 段（production/script-final.md）');
-  await expect(page.locator('.user-extra')).toContainText('文件 PROMPT.md');
+  await expect(page.locator('.user-extra')).toContainText('文件 notes.md');
 });
 
 test('completes @ mentions and / commands in the input', async ({ page, project }) => {
@@ -62,7 +62,8 @@ test('completes @ mentions and / commands in the input', async ({ page, project 
   await expect(page.locator('#completions')).toContainText('记忆');
   await prompt.pressSequentially('记忆');
   await prompt.press('Enter');
-  await expect(page.locator('[data-tab="memory"]')).toHaveClass(/on/);
+  await expect(page.locator('#page-menu-trigger')).toHaveClass(/on/);
+  await expect(page.locator('#page-menu-trigger')).toContainText('记忆');
   // Esc 收起补全。
   await prompt.fill('@');
   await expect(page.locator('#completions')).toBeVisible();
@@ -72,17 +73,24 @@ test('completes @ mentions and / commands in the input', async ({ page, project 
 
 test('shows posters for film styles the orchestrator recommends', async ({ page, project }) => {
   await openProject(page, project);
-  await page.locator('#prompt').fill('推荐风格');
+  await page.locator('#prompt').fill('挑几张海报');
   await page.locator('#send').click();
   const picks = page.locator('.style-picks .style-pick');
-  await expect(picks).toHaveCount(2);
+  await expect(picks).toHaveCount(3);
   await expect(picks.first()).toContainText('油画厚涂');
   await expect(picks.first()).toContainText('厚涂有分量');
+  await expect(picks.first()).toContainText('全片默认风格');
   await expect(picks.nth(1)).toContainText('浮世绘');
   await expect(page.locator('.message.assistant')).not.toContainText('film-styles');
   await expect(page.locator('.choices')).toContainText('不用整片风格');
-  // 点「用这个风格」：把选择作为下一条消息发出。
-  await picks.first().locator('button', { hasText: '用这个风格' }).click();
+  // 只推荐给一段的风格：标出用在哪，按钮与发出的话都不说成整片风格。
+  const scoped = page.locator('.style-pick.scoped');
+  await expect(scoped).toHaveCount(1);
+  await expect(scoped).toContainText('只用在：回忆段，镜头 04–06');
+  await expect(scoped.locator('button')).toHaveText('用在这一段');
+  await expect(picks.first().locator('button')).toHaveText('设为整片风格');
+  // 点全片默认的那张：把选择作为下一条消息发出。
+  await picks.first().locator('button', { hasText: '设为整片风格' }).click();
   await expect(page.locator('.message.user').last()).toContainText('整片风格用「油画厚涂」（lemo-opuscar/impasto）');
   // 选过之后海报与其他选项收起，只留选中的风格名。
   await expect(page.locator('.choice-picked')).toContainText('油画厚涂');
@@ -97,6 +105,8 @@ test('plays audio files a reply mentions', async ({ page, project }) => {
   await expect(item).toHaveCount(1);
   await expect(item).toContainText('try-A.wav');
   await expect(item.locator('audio')).toHaveAttribute('src', /production%2Faudio%2Fauditions%2Ftry-A\.wav/);
+  // 原生播放控件的「⋮」菜单里不出现「下载」与「投放」。
+  expect(await item.locator('audio').evaluate((el) => [el.controls, el.controlsList.contains('nodownload'), el.controlsList.contains('noremoteplayback')])).toEqual([true, true, true]);
 });
 
 test('renders GitHub-flavored markdown safely', async ({ page, project }) => {
@@ -119,8 +129,8 @@ test('renders GitHub-flavored markdown safely', async ({ page, project }) => {
   await expect(prose.locator('a[href^="javascript"]')).toHaveCount(0);
   expect(await page.evaluate(() => window.__xss)).toBeUndefined();
   // 写成行内代码的项目文件可点，打开文件页。
-  await prose.locator('code.file-link', { hasText: 'PROMPT.md' }).click();
-  await expect(page.locator('#file-content')).toContainText('整片制作提示词');
+  await prose.locator('code.file-link', { hasText: 'notes.md' }).click();
+  await expect(page.locator('#file-content')).toContainText('项目笔记');
 });
 
 test('scene "more" menu opens as a popover inside the window, above the timeline', async ({ page, project, electronApp }) => {
@@ -210,7 +220,7 @@ test('steps scene frames with the arrow keys', async ({ page, project }) => {
 
 test('memory page explains the loop in three steps and records a preference', async ({ page, project }) => {
   await openProject(page, project);
-  await page.locator('[data-tab="memory"]').click();
+  await openPage(page, 'memory');
   const flow = page.locator('.memory-flow li');
   await expect(flow).toHaveCount(3);
   await expect(flow.nth(0)).toContainText('记下的问题');
@@ -235,8 +245,60 @@ test('approving the final film starts consolidating memory and goes to publish',
   await fs.writeFile(path.join(project.path, 'production', 'review', 'review.json'), JSON.stringify({ ok: true, problems: [] }));
   await openProject(page, project);
   await page.locator('[data-tab="final"]').click();
+  // 成片的播放器没有「下载」。
+  const film = page.locator('#panel video[controls]');
+  await expect(film).toHaveCount(1);
+  expect(await film.evaluate((el) => el.controlsList.contains('nodownload'))).toBe(true);
   await page.locator('#final-approve').click();
   await expect(page.locator('[data-tab="publish"]')).toHaveClass(/on/);
   const tasks = await page.evaluate(async () => (await (await fetch('/api/tasks')).json()).tasks);
   expect(tasks.some((t) => t.type === 'memory.consolidate')).toBe(true);
+});
+
+test('storyboard lists the plan and each scene’s description before rendering', async ({ page, project }) => {
+  await fs.mkdir(path.join(project.path, 'production'), { recursive: true });
+  await fs.writeFile(
+    path.join(project.path, 'production', 'scene-plan.json'),
+    JSON.stringify({
+      schema: 1,
+      look: { background: '#0F1720', ink: '#F5F1E8', accent: '#F2B134' },
+      scenes: [{ id: 'scene-001', dir: 'scenes/scene-001', chapter: '开场', visual_role: '语境', summary: '一只猫推开门' }],
+    }),
+  );
+  await fs.writeFile(path.join(project.path, 'production', 'treatment.md'), '# 处理方案\n\n主旨：猫也想看世界。\n');
+  await fs.writeFile(project.promptFile, '# 开场\n\n门缝里透出一道光。\n');
+  await openProject(page, project);
+  // 分镜步骤排在口播稿与镜头之间。
+  await expect(page.locator('.steps .step:not(.route-step)')).toHaveText([/口播稿/, /分镜/, /镜头/, /成片/, /发布/]);
+  await page.locator('[data-tab="storyboard"]').click();
+  await expect(page.locator('#storyboard .sb-title')).toHaveText('1 个镜头');
+  await expect(page.locator('#storyboard .sb-chapter')).toHaveText('开场');
+  await expect(page.locator('#storyboard .sb-summary')).toHaveText('一只猫推开门');
+  await expect(page.locator('#storyboard .sb-text')).toHaveText('hello');
+  await page.locator('#storyboard .sb-treatment summary').click();
+  await expect(page.locator('#storyboard .sb-treatment')).toContainText('猫也想看世界');
+  await page.locator('#storyboard .sb-prompt summary').click();
+  await expect(page.locator('#storyboard .sb-prompt')).toContainText('门缝里透出一道光');
+  // 右键镜头卡：引用镜头。
+  await page.locator('#storyboard .sb-summary').click({ button: 'right' });
+  await expect(page.locator('.ctx-menu')).toContainText('引用镜头 scene-001 到对话');
+  await page.locator('#storyboard .sb-title').click();
+  await expect(page.locator('.ctx-menu')).toHaveCount(0);
+  // 确认交给对话。
+  await page.locator('#storyboard-confirm').click();
+  await expect(page.locator('#messages')).toContainText('分镜我看过了，没问题，开始渲染。');
+  // 镜头页旁边有这个镜头的说明。
+  await page.locator('[data-tab="scene"]').click();
+  await expect(page.locator('#scene-brief')).toContainText('一只猫推开门');
+});
+
+test('a style recommended for one segment is sent as that segment’s style, not the whole film’s', async ({ page, project }) => {
+  await openProject(page, project);
+  await page.locator('#prompt').fill('挑几张海报');
+  await page.locator('#send').click();
+  await page.locator('.style-pick.scoped button', { hasText: '用在这一段' }).click();
+  const sent = page.locator('.message.user').last();
+  await expect(sent).toContainText(/回忆段，镜头 04–06用「.+」风格（lemo-opuscar\/ink-wash），其余镜头不变/);
+  await expect(sent).not.toContainText('整片风格');
+  await expect(page.locator('.choice-picked')).toContainText('回忆段，镜头 04–06：');
 });

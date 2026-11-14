@@ -11,7 +11,7 @@
 | `src/<包>/<文件>.ts` | 包的实现；包的公开 API 统一从 `src/<包>/index.ts` 导出，外部用 `@am/engine/<包>` 引用 |
 | `src/<包>/<文件>.test.ts` | Vitest 用例，与实现同目录 |
 | `src/<包>/testdata/…` | 测试用的固定数据，只放在包自己的目录里 |
-| 子包（如 `src/filmstyle/lemo/`） | 同样有自己的 `index.ts` |
+| 子包（如 `src/plugins/lemo-styles/`） | 同样有自己的 `index.ts` |
 
 - 类型、接口、类用 PascalCase；函数与变量用 camelCase；导出的常量保留历史名字（`MissingToolPrefix`、`PinnedVersion`、`DefaultMaxLessons`），文档、提示词和注释里一直这么叫它们。
 - JSON 字段名就是文件里的字段名，类型定义里直接写成 `snake_case` 字段，不在读写时转换。

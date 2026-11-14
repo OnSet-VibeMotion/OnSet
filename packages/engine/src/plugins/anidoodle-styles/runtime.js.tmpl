@@ -1,0 +1,79 @@
+// am-anidoodle.js：ArticleToMotion 写的接头，把 anidoodle 的 Film 接到 HyperFrames 的 hf-seek。不要改它。
+//
+// 一个 Film 是数据：meta（画幅、帧率、总帧数）、assets（图片）与按帧铺满整段的 shots，
+// 每个 shot 的 draw(ctx, local, env) 只由帧号决定画面（见 canvas-core/film.js 的 renderFrame）。
+import { renderFrame } from './canvas-core/film.js';
+
+/** 秒换帧，与 ArticleToMotion 全片同一条规则（四舍五入）。 */
+export const frameOf = (seconds, fps) => Math.round(seconds * fps);
+
+/** Film 的结构问题（空数组表示没有问题）。比上游的 validate 宽：不要求镜头切在 bpm 网格上。 */
+export function check(film) {
+  const problems = [];
+  const { W, H, fps, durationFrames } = film.meta ?? {};
+  if (![W, H, fps, durationFrames].every((n) => Number.isSafeInteger(n) && n > 0)) problems.push('meta 的 W、H、fps、durationFrames 必须是正整数');
+  let t = 0;
+  const ids = new Set();
+  for (const s of [...(film.shots ?? [])].sort((a, b) => a.start - b.start)) {
+    if (ids.has(s.id)) problems.push(`shot ${s.id} 重名`);
+    ids.add(s.id);
+    if (s.start !== t) problems.push(`shot ${s.id} 从第 ${s.start} 帧开始，应该从第 ${t} 帧（中间有空档或重叠）`);
+    if (!(s.end > s.start)) problems.push(`shot ${s.id} 没有长度`);
+    if (typeof s.draw !== 'function') problems.push(`shot ${s.id} 没有 draw`);
+    t = s.end;
+  }
+  if (t !== durationFrames) problems.push(`shots 铺到第 ${t} 帧，Film 一共 ${durationFrames} 帧`);
+  return problems;
+}
+
+/**
+ * 把 film 画到 canvas 上：建好 anidoodle 要的 env（离屏画布、缓存、图片），返回
+ * { ready, env, draw(frame), drawAt(seconds) }。ready 在图片解码完、字体就绪后兑现。
+ */
+export function mount(film, canvas, options = {}) {
+  const problems = check(film);
+  if (problems.length) throw new Error('anidoodle Film：' + problems.join('；'));
+  const scale = options.scale ?? 1;
+  const { W, H } = film.meta;
+  // raster "cpu"：全部画布走软件光栅，不同页面、不同时机画出的同一帧逐像素相同。
+  const opts = film.meta.raster === 'cpu' ? { willReadFrequently: true } : undefined;
+  const surface = (w, h) => {
+    const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h });
+    return { canvas: c, ctx: c.getContext('2d', opts) };
+  };
+  canvas.width = Math.round(W * scale);
+  canvas.height = Math.round(H * scale);
+  const ctx = canvas.getContext('2d', opts);
+  const images = new Map();
+  const env = { W, H, scale, cache: new Map(), canvas: surface, image: (name) => images.get(name), root: true };
+  const ready = (async () => {
+    for (const [name, url] of Object.entries(film.assets?.images ?? {})) {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      images.set(name, img);
+    }
+    if (document.fonts && document.fonts.size) await document.fonts.ready;
+  })();
+  const draw = (frame) => renderFrame(film, ctx, frame, env);
+  return { ready, env, draw, drawAt: (seconds) => draw(frameOf(seconds, film.meta.fps)) };
+}
+
+/**
+ * 接到 HyperFrames：每次 hf-seek 画 e.detail.time 那一帧，加载后先画第 0 帧；
+ * 图片与字体的准备登记成 window.__hf.buildReady[key]。options.key 缺省 "anidoodle"，
+ * 一个合成里接了两个 Film 时各给一个 key。
+ */
+export function play(film, canvas, options = {}) {
+  const m = mount(film, canvas, options);
+  const hf = (window.__hf = window.__hf || {});
+  hf.buildReady = hf.buildReady || {};
+  hf.buildReady[options.key ?? 'anidoodle'] = m.ready;
+  const at = (seconds) => m.ready.then(() => m.drawAt(seconds));
+  window.addEventListener('hf-seek', (e) => {
+    const done = at(e.detail.time);
+    if (typeof e.detail.waitUntil === 'function') e.detail.waitUntil(done);
+  });
+  at(0);
+  return m;
+}

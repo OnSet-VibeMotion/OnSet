@@ -1,4 +1,4 @@
-// 把 agentrun 的统一事件整理成终端里的可读文字。移植自 internal/cli/agentprint.go。
+// 把 agentrun 的统一事件整理成终端里的可读文字。
 import * as agentrun from '@am/engine/agentrun';
 import { formatFixed } from '@am/engine/gofmt';
 import type { Out } from './cobra';

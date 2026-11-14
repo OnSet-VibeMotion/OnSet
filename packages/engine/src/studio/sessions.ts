@@ -1,5 +1,5 @@
 /**
- * 会话、事件流、轮次的生命周期与排队。移植自 internal/studio/sessions.go。
+ * 会话、事件流、轮次的生命周期与排队。
  *
  * Go 版靠 sessions.mu 串行化；Node 是单线程，同步代码段天然不会被打断，所以这里没有锁，
  * 但保留 Go 版「先改内存、再落盘、再唤醒」的顺序。
@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as agentrun from '../agentrun';
 import * as config from '../config';
-import { addToolsLocation, envMap, lookPath, parsePassthrough } from '../envutil';
+import { addToolsLocation, amCommand, envMap, lookPath, parsePassthrough } from '../envutil';
 import { atomicWrite } from '../fsutil';
 import { formatFixed, goClean, goTrimSpace } from '../gofmt';
 import { marshal, marshalIndent } from '../gojson';
@@ -19,8 +19,11 @@ import { KindView, PermissionPollInterval, PermissionServerName, ViewInboxEnv, w
 import * as tools from '../tools';
 import { compareTimes, nowTime } from './http';
 import type { Project, Server } from './studio';
+import { writeStepMark } from './view';
 import { changedPaths, diffTrees, loadTurn, revertTurn, saveTurn, scanTree, statTree, studioRoot, validID, type FileChange, type Turn } from './turns';
+import { emitStudioEvent } from './events';
 import { preferenceBrief, recordUtterance } from './memory';
+import { noVisionNote, orchestratorCannotSee } from './vision';
 import { uploadDir, uploadKind } from './uploads';
 import { allowedCommands, expirePermissions, permissionEventJSON, pollPermissions, type PendingPermission, type PermissionEventData } from './permissions';
 
@@ -48,7 +51,10 @@ export interface SessionMeta {
   /** chat | production */
   kind: string;
   tool: string;
+  /** 编排工具的模型；空跟随设置（同一家工具时）或用那家工具自己的默认。 */
+  model?: string;
   renderer?: string;
+  renderer_model?: string;
   cli_session_id?: string;
   created_at: string;
   updated_at: string;
@@ -66,7 +72,9 @@ export function sessionMetaJSON(meta: SessionMeta): Record<string, unknown> {
     title: meta.title,
     kind: meta.kind,
     tool: meta.tool,
+    model: meta.model || undefined,
     renderer: meta.renderer || undefined,
+    renderer_model: meta.renderer_model || undefined,
     cli_session_id: meta.cli_session_id || undefined,
     created_at: meta.created_at,
     updated_at: meta.updated_at,
@@ -102,7 +110,7 @@ export function sessionEventJSON(e: SessionEvent): Record<string, unknown> {
     files: e.files && e.files.length > 0 ? e.files : undefined,
     changes: e.changes && e.changes.length > 0 ? e.changes.map((c) => ({ path: c.path, change: c.change, revertable: c.revertable })) : undefined,
     queue_id: e.queue_id || undefined,
-    view: e.view ? { page: e.view.page, target: e.view.target || undefined, note: e.view.note || undefined } : undefined,
+    view: e.view ? { page: e.view.page, target: e.view.target || undefined, note: e.view.note || undefined, step: e.view.step || undefined } : undefined,
     permission: e.permission ? permissionEventJSON(e.permission) : undefined,
   };
 }
@@ -212,7 +220,7 @@ function decodeMeta(body: string): SessionMeta | undefined {
     if (v === undefined || v === null) return '';
     return typeof v === 'string' ? v : undefined;
   };
-  const fields = ['session_id', 'title', 'kind', 'tool', 'renderer', 'cli_session_id', 'created_at', 'updated_at', 'running_turn', 'preference_digest'];
+  const fields = ['session_id', 'title', 'kind', 'tool', 'model', 'renderer', 'renderer_model', 'cli_session_id', 'created_at', 'updated_at', 'running_turn', 'preference_digest'];
   const values: Record<string, string> = {};
   for (const key of fields) {
     const v = s(key);
@@ -230,7 +238,9 @@ function decodeMeta(body: string): SessionMeta | undefined {
     title: values.title,
     kind: values.kind,
     tool: values.tool,
+    model: values.model || undefined,
     renderer: values.renderer || undefined,
+    renderer_model: values.renderer_model || undefined,
     cli_session_id: values.cli_session_id || undefined,
     created_at: values.created_at || zero,
     updated_at: values.updated_at || zero,
@@ -345,6 +355,12 @@ export function getSession(s: Server, projectPath: string, id: string): Session 
 export interface AgentChoice {
   tool: string;
   renderer: string;
+  /**
+   * 两家工具各自的模型。undefined 是「没说」（不改）；空串是「跟随设置」：工具与设置里的相同时用设置里的模型，
+   * 不同时用那家工具自己的默认——设置里的模型是给设置里那家工具挑的。
+   */
+  model?: string;
+  rendererModel?: string;
 }
 
 export function createSession(s: Server, projectPath: string, kind: string, title: string, agents: AgentChoice): Session {
@@ -352,7 +368,18 @@ export function createSession(s: Server, projectPath: string, kind: string, titl
   const now = nowTime();
   const sess: Session = {
     project: projectPath,
-    meta: { session_id: newID('s'), title, kind, tool: agents.tool, renderer: agents.renderer || undefined, created_at: now, updated_at: now, turns: [] },
+    meta: {
+      session_id: newID('s'),
+      title,
+      kind,
+      tool: agents.tool,
+      model: agents.model || undefined,
+      renderer: agents.renderer || undefined,
+      renderer_model: agents.rendererModel || undefined,
+      created_at: now,
+      updated_at: now,
+      turns: [],
+    },
     events: [],
     waiters: new Set(),
     cancel: null,
@@ -469,7 +496,7 @@ export function validateAttachments(projectPath: string, attachments: Attachment
     }
     if (a.source) containedPath(projectPath, a.source);
     const n = [...(a.quote ?? '')].length;
-    if (n > maxQuoteRunes) throw new Error(`引用太长（${n} 字，上限 ${maxQuoteRunes}）：长内容请直接说文件名，让编排工具自己读`);
+    if (n > maxQuoteRunes) throw new Error(`引用太长（${n} 字，上限 ${maxQuoteRunes}）：长内容请直接说文件名，让 AI 自己读`);
     if (a.ref && !a.scene_id && !a.source) throw new Error('引用要指明镜头或文件');
   }
 }
@@ -498,11 +525,11 @@ export const studioInteraction =
   '```choices\n用方案 A：深色科技风\n用方案 B：白板手绘风\n```' +
   `
   用户会看到可点的按钮，点了就把那一行原样发给你。问完就结束这一轮等用户回复，不要替用户选。用户也可能直接打字回答。
-- 推荐整片风格时（用户没指定画风、或要换风格），先用 film_style_list({"json": true}) 挑出两三种贴合的，在回复里放一个语言标成 film-styles 的代码块，每行一种，写「来源/目录名」加一句为什么合适，例如：
+- 推荐风格时（用户没指定画风、要换风格，或某一段想换一种画法），先用 film_style_list({"json": true}) 挑出两三种贴合的，在回复里放一个语言标成 film-styles 的代码块，每行一种，写「来源/目录名」加一句为什么合适。推荐给全片当默认风格的直接写；只推荐给某一段的，在标识后面用方括号写清用在哪一段（段落名加镜头编号），例如：
 ` +
-  '```film-styles\nlemo-opuscar/impasto 厚涂笔触适合讲历史人物的分量\n```' +
+  '```film-styles\nlemo-opuscar/impasto 厚涂笔触适合讲历史人物的分量\nlemo-opuscar/ink-wash [回忆段，镜头 04–06] 水墨的留白像记忆一样模糊\n```' +
   `
-  网页会显示每种风格的海报，用户点「用这个风格」就把选择发给你，你再运行 film_style_use()。「不用整片风格，各镜头自主定视觉」写进同一条回复的 choices 代码块。
+  网页会显示每种风格的海报并标出是全片默认还是只用在哪一段。用户点了，全片默认的发来「整片风格用「中文名」（标识）」，你运行 film_style_use()；只给一段的发来「<那一段>用「中文名」风格（标识），其余镜头不变」，你按段落换风格的做法 film_style_add() 并改分镜里那几个镜头的 film_style，不要动默认风格。「不用整片风格，各镜头自主定视觉」写进同一条回复的 choices 代码块。
 - 要用户试听音频、看图片或视频时（音色试听、配音片段、封面候选、预览帧），在回复里写出每个文件在项目里的相对路径，例如 production/audio/auditions/try-A.wav，网页会在回复下面直接放播放器和缩略图；只写文件名、目录另说的话网页未必找得到。
 ` +
   viewInteraction();
@@ -534,19 +561,27 @@ export interface TurnRequest {
 /** 读项目配置，再用会话选定的工具覆盖（agents.go 的 sessionConfig，放在这里免得循环导入）。 */
 export function sessionConfig(projectPath: string, meta: SessionMeta): config.Config {
   const cfg = config.load(projectPath, null);
-  return overrideAgents(cfg, { tool: meta.tool, renderer: meta.renderer ?? '' });
+  return overrideAgents(cfg, { tool: meta.tool, renderer: meta.renderer ?? '', model: meta.model ?? '', rendererModel: meta.renderer_model ?? '' });
 }
 
 export function validateChoice(choice: AgentChoice): void {
   if (choice.tool !== '' && !tools.ValidTools.has(choice.tool)) throw new Error(`未知的编排工具：${choice.tool}`);
-  if (choice.renderer !== '' && !tools.ValidTools.has(choice.renderer)) throw new Error(`未知的渲染工具：${choice.renderer}`);
+  if (choice.renderer !== '' && !tools.ValidRenderers.has(choice.renderer)) throw new Error(`未知的渲染工具：${choice.renderer}`);
+  for (const value of [choice.model, choice.rendererModel]) {
+    if (value && !config.validModel(value)) throw new Error(`不认识的模型名 ${value}：只能用字母、数字与 . _ - : / @ # [ ] +`);
+  }
 }
 
 export function overrideAgents(cfg: config.Config, choice: AgentChoice): config.Config {
   validateChoice(choice);
   const out = { ...cfg };
+  // 换了工具、又没选模型时，设置里的模型是给原来那家的，不能带过去。
+  if (choice.tool !== '' && choice.tool !== cfg.orchestrator) out.orchestratorModel = '';
+  if (choice.renderer !== '' && choice.renderer !== cfg.renderer) out.rendererModel = '';
   if (choice.tool !== '') out.orchestrator = choice.tool;
   if (choice.renderer !== '') out.renderer = choice.renderer;
+  if (choice.model) out.orchestratorModel = choice.model;
+  if (choice.rendererModel) out.rendererModel = choice.rendererModel;
   return out;
 }
 
@@ -590,6 +625,8 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
   } else {
     prompt = message;
   }
+  // 导演用的模型看不了图：每一轮都提醒，续接的会话里它也可能走到画面验收、复查。
+  if (orchestratorCannotSee(cfg)) prompt += '\n\n---\n\n' + noVisionNote;
   const [brief, digest] = preferenceBrief(p, cfg);
   const resend = brief !== '' && (digest !== (sess.meta.preference_digest ?? '') || !sess.meta.cli_session_id || (sess.meta.turns ?? []).length === 0);
   if (resend) prompt = brief + '\n---\n\n' + prompt;
@@ -656,11 +693,12 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
     access.commands = [...(access.commands ?? []), ...allowedCommands(p.path)];
     const spec: agentrun.Spec = {
       tool: cfg.orchestrator,
+      model: cfg.orchestratorModel,
       workdir: p.path,
       prompt,
       unsafe: s.config.unsafe,
       access,
-      permissionPrompt: { command: s.executable(), args: ['studio', 'permission-mcp'], server: PermissionServerName },
+      permissionPrompt: permissionPrompt(s.executable()),
       toolsServer: tools.amToolsServer(s.executable(), 'orchestrator', p.path, env),
       // codebuddy、opencode、codex 走双向协议，审批请求由 agentrun 直接交到这里：写进同一个收件目录，
       // 与审批 MCP 走同一条路（轮询、卡片、以后都允许），等用户回答。
@@ -707,7 +745,10 @@ function watchViews(sess: Session, turnID: string, inbox: string, projectPath: s
   const seen = new Set<string>();
   const emitPermission = (turn: string, event: NewEvent): void => emit(sess, turn, event);
   const deliver = (): void => {
-    for (const req of drainViewInbox(inbox)) emit(sess, turnID, { kind: KindView, text: req.note || undefined, view: req });
+    for (const req of drainViewInbox(inbox)) {
+      if (req.step) writeStepMark(projectPath, req.step);
+      emit(sess, turnID, { kind: KindView, text: req.note || undefined, view: req });
+    }
     pollPermissions(projectPath, inbox, turnID, sess.permissions, seen, emitPermission);
   };
   const timer = setInterval(deliver, ViewPollInterval);
@@ -763,6 +804,8 @@ function finishTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, t
   s.release(p.path);
   emit(sess, turn.turn_id, { kind: kindTurnEnd, text: turn.error || undefined, status: turn.status, changes: turn.changes ?? undefined });
   drainQueue(s, p, sess);
+  // 排队的下一轮先开（它占了写权的话，钩子这次就不跑）：钩子不能挡住用户的下一句话。
+  if (turn.status === 'succeeded') emitStudioEvent(s, p, 'turn.finished', { turn_id: turn.turn_id, session_id: turn.session_id, changed: (turn.changes ?? []).map((c) => c.path) });
 }
 
 /**
@@ -905,4 +948,10 @@ function recordUsage(signal: AbortSignal, p: Project, sess: Session, tool: strin
   } catch (err) {
     emit(sess, turnID, { kind: kindNotice, text: '编排用量没能记进账本：' + (err as Error).message });
   }
+}
+
+/** 审批服务（am studio permission-mcp）的启动方式；Windows 上用 Electron / Node 跑 am.cjs（envutil.amCommand）。 */
+function permissionPrompt(executable: string): tools.PermissionPrompt {
+  const am = amCommand(executable);
+  return { command: am.command, args: [...am.args, 'studio', 'permission-mcp'], server: PermissionServerName, env: am.env };
 }

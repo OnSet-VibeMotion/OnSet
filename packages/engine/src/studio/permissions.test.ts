@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { listPermissionRequests, permissionsDir, writePermissionRequest } from '../studioview';
-import { allowCommand, allowedCommands, answerPermission, expirePermissions, matchesPrefix, pollPermissions, type PendingPermission } from './permissions';
+import { allowCommand, allowedCommands, answerPermission, expirePermissions, matchesPrefix, noticeSubject, pollPermissions, type PendingPermission } from './permissions';
 
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'am-studio-perm-'));
@@ -110,5 +110,15 @@ describe('studio permissions', () => {
     expect(() => answerPermission(project, pending, r.id, 'always', '', () => {})).toThrow('只能允许这一次');
     expect(answerPermission(project, pending, r.id, 'deny', '别这样', () => {})).toBe(true);
     expect(responseOf(inbox, r.id)).toEqual({ decision: 'deny', message: '别这样' });
+  });
+});
+
+describe('noticeSubject', () => {
+  it('keeps the auto-approve notice to one short line', () => {
+    expect(noticeSubject('brew install ffmpeg')).toBe('brew install ffmpeg');
+    expect(noticeSubject("python3 - <<'EOF'\nimport json\nprint(1)\nEOF")).toBe("python3 - <<'EOF' …");
+    expect(noticeSubject('\n  cd   /tmp  \n')).toBe('cd /tmp');
+    const long = `ffmpeg ${'-i a.wav '.repeat(20)}`;
+    expect(noticeSubject(long)).toBe(`${[...long].slice(0, 40).join('')}…`);
   });
 });

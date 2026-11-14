@@ -1,3 +1,4 @@
+import { confirmGate } from './Progress';
 import { useEffect, useRef, useState } from 'react';
 import { api, errorText } from '../api';
 import type { Attachment, ScriptBlock, ScriptNode, ScriptResponse } from '../types';
@@ -129,7 +130,7 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
   if (!script.path) {
     return (
       <div className="empty">
-        还没有口播稿。开始制作后，编排工具会先把文章整理成口播终稿（{scriptFinalPath}），稿子整理好就显示在这里，你确认之后才会配音。
+        还没有口播稿。开始制作后，AI 会先把文章整理成口播终稿（{scriptFinalPath}），稿子整理好就显示在这里，你确认之后才会配音。
       </div>
     );
   }
@@ -181,12 +182,12 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
               引用所选
             </button>
             <button onClick={() => onQuick('口播稿要改：', [], true)}>提修改意见</button>
-            {!voiced && (
+            {!voiced && script.gate && (
               <button
                 className="primary"
                 disabled={!!busy}
-                title={busy ? '编排工具正在工作，等这一轮结束' : '确认终稿，开始正式配音'}
-                onClick={() => onQuick('口播稿我看过了，没问题，按这版继续配音。', [])}
+                title={busy ? 'AI 正在工作，等这一轮结束' : '确认终稿，开始正式配音'}
+                onClick={() => script.gate && void confirmGate(script.gate.id, onQuick, script.gate.confirm)}
               >
                 确认，开始配音
               </button>
@@ -195,7 +196,7 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
         )}
         {voiced && script.final && <p className="script-note">已按这版配音。改稿之后要重新配音、对齐，已渲染的镜头可能要跟着改。</p>}
         {script.parse_error && (
-          <p className="script-note bad">终稿的标记写错了：{script.parse_error}。下面是原文；让编排工具修好标记再配音。</p>
+          <p className="script-note bad">终稿的标记写错了：{script.parse_error}。下面是原文；让 AI 修好标记再配音。</p>
         )}
       </header>
 

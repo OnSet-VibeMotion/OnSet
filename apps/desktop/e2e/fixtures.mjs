@@ -18,6 +18,12 @@ export const desktopDir = path.resolve(here, '..');
 const fakeBin = path.join(here, 'fake-bin');
 
 export const test = base.extend({
+  /**
+   * 个别用例要换掉的启动环境（test.use({ appEnv: {...} })）：值为 null 的删掉。
+   * 例如测「渲染工具没装」时去掉固定的 RENDERER，并把 PATH 收窄到假工具与系统目录——开发机上真装着的 qoder、codebuddy 不能算进来。
+   */
+  appEnv: [{}, { option: true }],
+
   sandbox: async ({}, use) => {
     // realpath：macOS 的临时目录在 /var 下，而 /var 是 /private/var 的链接，Studio 按解析后的路径认项目。
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'am-desktop-e2e-')));
@@ -27,6 +33,8 @@ export const test = base.extend({
       userData: path.join(root, 'user-data'),
       memory: path.join(root, 'memory'),
       voices: path.join(root, 'voices'),
+      agent: path.join(root, 'agent'),
+      stations: path.join(root, 'stations'),
       settings: path.join(root, 'settings.conf'),
       registry: path.join(root, 'config', 'projects.json'),
     };
@@ -41,7 +49,14 @@ export const test = base.extend({
     const scene = path.join(project, 'scenes', 'scene-001');
     fs.mkdirSync(scene, { recursive: true });
     fs.writeFileSync(path.join(project, 'article-to-motion.conf'), 'ORCHESTRATOR=claude\nRENDERER=claude\n');
-    fs.writeFileSync(path.join(project, 'PROMPT.md'), '整片制作提示词\n');
+    // 新建时记下的流程：顶栏、制作路线与「开始制作」的提示词都按它。
+    fs.writeFileSync(
+      path.join(project, 'article-to-motion.flow.json'),
+      JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } }, null, 2) + '\n',
+    );
+    fs.writeFileSync(path.join(project, 'notes.md'), '项目笔记\n');
+    fs.mkdirSync(path.join(project, 'templates'));
+    fs.writeFileSync(path.join(project, 'templates', 'project-rules.md'), '# 项目规则\n');
     fs.writeFileSync(path.join(scene, 'voice.srt'), '1\n00:00:00,000 --> 00:00:01,000\nhello\n');
     fs.writeFileSync(path.join(scene, 'prompt.md'), 'before\n');
     fs.writeFileSync(
@@ -51,7 +66,7 @@ export const test = base.extend({
     await use({ path: project, name: path.basename(project), promptFile: path.join(scene, 'prompt.md') });
   },
 
-  electronApp: async ({ sandbox }, use) => {
+  electronApp: async ({ sandbox, appEnv }, use) => {
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
     delete env.AM_STUDIO_E2E_CONFIG;
@@ -64,12 +79,22 @@ export const test = base.extend({
       AM_STUDIO_CONFIG: sandbox.registry,
       AM_MEMORY_DIR: sandbox.memory,
       AM_VOICES_DIR: sandbox.voices,
+      // 导演的模型服务密钥：不碰开发者自己填的。
+      AM_AGENT_DIR: sandbox.agent,
+      // 不用 safeStorage：测试不能碰开发者的钥匙串（第一次用会弹授权框），key 照旧写成 0600 的明文文件。
+      AM_AGENT_KEYS_PLAINTEXT: '1',
+      // 第三方插件（已装插件清单与插件的数据目录）：不碰开发者自己装的。
+      AM_STATIONS_DIR: sandbox.stations,
       AM_SETTINGS_FILE: sandbox.settings,
       AM_STUDIO_SKIP_SKILL_INSTALL: '1',
       ORCHESTRATOR: 'claude',
       RENDERER: 'claude',
       PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ''}`,
     });
+    for (const [key, value] of Object.entries(appEnv)) {
+      if (value === null) delete env[key];
+      else env[key] = value.replaceAll('{fakeBin}', fakeBin);
+    }
     // 假麦克风：音色页「录我的声音」的用例不碰真麦克风，也不弹系统的麦克风授权。
     const app = await electron.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '.'], cwd: desktopDir, env });
     await use(app);
@@ -107,6 +132,25 @@ export async function openProject(page, project) {
   await expect(page.locator('.rail-scene[title="scene-001"]')).toBeAttached();
 }
 
+/**
+ * 在测试的插件目录里装上一个本机目录的插件（写用户级的 installed.json，与 station_add 写的同一种格式）。
+ * 插件对所有项目生效；客户端每次请求现读，开着也能装。
+ */
+export function installPlugin(sandbox, dir, id = 'fake-publisher') {
+  fs.mkdirSync(sandbox.stations, { recursive: true });
+  const role = { flow: false, replaces: '', after: '', nodes: true };
+  fs.writeFileSync(
+    path.join(sandbox.stations, 'installed.json'),
+    JSON.stringify({ version: 1, plugins: [{ id, version: '0.1.0', source: `link:${dir}`, commit: '', digest: '', role }] }, null, 2) + '\n',
+  );
+}
+
+/** 已装插件的 id（用户级的 installed.json）。 */
+export function installedPlugins(sandbox) {
+  const file = path.join(sandbox.stations, 'installed.json');
+  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')).plugins.map((p) => p.id) : [];
+}
+
 /** 打开画面面板（默认收起）。 */
 export async function openPanel(page) {
   await page.locator('#panel-toggle').click();
@@ -114,6 +158,12 @@ export async function openPanel(page) {
 }
 
 /** 在窗口里请求后台接口：界面从 am://app/ 加载，/api 与它同源。 */
+/** 打开顶栏「页面」菜单里的一页（合成、风格、音色、复查、记忆与插件页面）。 */
+export async function openPage(page, tab) {
+  await page.locator('#page-menu-trigger').click();
+  await page.locator(`.page-menu-list [data-tab="${tab}"]`).click();
+}
+
 export async function api(page, url, init) {
   return page.evaluate(
     async ({ url, init }) => {

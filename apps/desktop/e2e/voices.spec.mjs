@@ -1,14 +1,14 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { test, expect, openProject } from './fixtures.mjs';
+import { test, expect, openProject, openPage } from './fixtures.mjs';
 
 const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0;
 
 test('records my own voice from the microphone into the shared library', async ({ page, project, sandbox }) => {
   test.skip(!hasFfmpeg, '要用 ffmpeg 把录音转成参考音频');
   await openProject(page, project);
-  await page.locator('[data-tab="voice"]').click();
+  await openPage(page, 'voice');
   const tab = page.locator('.voices-tab');
   await expect(tab.locator('.voices-empty')).toContainText('录一段自己的声音');
   // 默认就是「录我的声音」：页面给出要念的那段字。
@@ -34,7 +34,7 @@ test('records my own voice from the microphone into the shared library', async (
 
 test('designing a voice offers to install Breeze when it is not on this Mac', async ({ page, project }) => {
   await openProject(page, project);
-  await page.locator('[data-tab="voice"]').click();
+  await openPage(page, 'voice');
   const tab = page.locator('.voices-tab');
   await tab.getByRole('tab', { name: '按描述设计' }).click();
   // 测试的 HOME 是空的：Breeze 不在。Apple Silicon 上给安装按钮，别的机器说明原因。
@@ -48,7 +48,7 @@ test('uploaded recording goes into the shared library, plays and deletes', async
   expect(spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=180:duration=6', take]).status).toBe(0);
 
   await openProject(page, project);
-  await page.locator('[data-tab="voice"]').click();
+  await openPage(page, 'voice');
   const tab = page.locator('.voices-tab');
   await tab.getByRole('tab', { name: '上传录音' }).click();
 

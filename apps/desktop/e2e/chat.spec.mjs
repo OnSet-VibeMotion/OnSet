@@ -51,18 +51,24 @@ test('picks the orchestrator and renderer per session', async ({ page, project }
   await expect(page.locator('#agent-tool')).toHaveValue('claude');
   await expect(page.locator('#agent-tool option[value="claude"]')).toContainText('默认');
 
-  // 新对话：选的渲染工具在建会话时带上。
+  // 新对话：选的渲染工具与编排模型在建会话时带上。claude 的模型是内置别名，不用跑命令。
   await page.locator('#agent-renderer').selectOption('codex');
+  await expect(page.locator('#agent-model option[value="opus"]')).toHaveCount(1);
+  await page.locator('#agent-model').selectOption('opus');
   await page.locator('#prompt').fill('把镜头提示词改成 after');
   await page.locator('#send').click();
   await expect(page.locator('.done-line').last()).toContainText('已完成');
   const sessions = await api(page, '/api/sessions');
   expect(sessions.status).toBe(200);
-  expect(sessions.body.sessions[0]).toMatchObject({ tool: 'claude', renderer: 'codex' });
+  expect(sessions.body.sessions[0]).toMatchObject({ tool: 'claude', renderer: 'codex', model: 'opus' });
+
+  // 已有会话：同一家换模型从下一轮起生效。
+  await page.locator('#agent-model').selectOption('sonnet');
+  await expect(page.locator('#messages')).toContainText('编排模型改为 sonnet');
 
   // 已有会话：换编排工具从下一轮起生效，并在对话里留一条提示。
   await page.locator('#agent-tool').selectOption('codex');
-  await expect(page.locator('#messages')).toContainText('编排工具改为 codex');
+  await expect(page.locator('#messages')).toContainText('对话改用 codex');
   await expect(page.locator('#agent-tool')).toHaveValue('codex');
 });
 
@@ -119,4 +125,52 @@ test('sends a scene quick action to the orchestrator', async ({ page, project })
   await page.locator('.quick-actions button', { hasText: '重做这个镜头' }).click();
   await expect(page.locator('.message.user').last()).toContainText('重做镜头 scene-001');
   await expect(page.locator('.done-line').last()).toContainText('已完成');
+});
+
+test('the orchestrator marks which production step the project is at', async ({ page, project }) => {
+  await openProject(page, project);
+  // 没标过时按产物推：项目里还没有任何制作产物，算在第一步。
+  await expect(page.locator('[data-tab="script"]')).toHaveClass(/current/);
+  await page.locator('#prompt').fill('标步骤');
+  await page.locator('#send').click();
+  await expect(page.locator('#messages')).toContainText('成片拼好了');
+  await expect(page.locator('[data-tab="final"]')).toHaveClass(/current/);
+  await expect(page.locator('[data-tab="final"]')).toHaveAttribute('title', 'AI 标记：现在在这一步');
+  await expect(page.locator('[data-tab="scene"]')).toHaveClass(/done/);
+  await expect(page.locator('[data-tab="scene"] .step-no')).toHaveText('✓');
+  // 只标步骤不切页，回复下面也不留「↗ 页面」链接；面板仍是收起的。
+  await expect(page.locator('#panel')).toHaveCount(0);
+  await expect(page.locator('.view-links')).toHaveCount(0);
+  // 标记跟着项目走：重新加载后还在。
+  await page.reload();
+  await expect(page.locator('[data-tab="final"]')).toHaveClass(/current/);
+});
+
+// 重新打开一段长对话：历史一次画完、直接落在最新一轮，不是从第一条起一帧帧往下长、往下滚。
+test('reopening a long conversation lands on the latest turn at once', async ({ page, project }) => {
+  await openProject(page, project);
+  const turns = 8;
+  for (let i = 1; i <= turns; i++) {
+    await page.locator('#prompt').fill(`第 ${i} 句话`);
+    await page.locator('#send').click();
+    await expect(page.locator('.assistant-flow')).toHaveCount(i);
+    await expect(page.locator('.done-line').last()).toBeVisible();
+  }
+  // 记下每一帧里对话有几轮：一帧帧补出来的话，这串数会从 1 慢慢涨到 8。
+  await page.addInitScript(() => {
+    const seen = [];
+    window.__turnCounts = seen;
+    const tick = () => {
+      const n = document.querySelectorAll('.assistant-flow').length;
+      if (n > 0 && seen[seen.length - 1] !== n) seen.push(n);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await page.reload();
+  await expect(page.locator('.assistant-flow')).toHaveCount(turns);
+  expect(await page.evaluate(() => window.__turnCounts)).toEqual([turns]);
+  const gap = await page.locator('#messages').evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  expect(gap).toBeLessThanOrEqual(8);
+  await expect(page.locator('.intro')).toHaveCount(0);
 });
