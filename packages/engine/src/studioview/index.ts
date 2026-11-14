@@ -47,6 +47,7 @@ export const ViewPages: readonly ViewPage[] = [
   { id: 'voice', label: '音色', target: '' },
   { id: 'review', label: '复查', target: '' },
   { id: 'memory', label: '记忆', target: '' },
+  { id: 'evidence', label: '进化', target: '' },
   { id: 'file', label: '文件', target: 'file' },
 ];
 

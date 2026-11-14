@@ -43,6 +43,18 @@ function labels(table: Readonly<Record<string, string>>): Record<string, unknown
   return sortedKeys({ ...table });
 }
 
+/**
+ * 考试一格的产物：文件名取自考场里 scene.json 的 output，读不了时退回 out.mp4。
+ * 真实镜头的产物名各不相同（scene-001.mp4……），写死一个名字的话画面对照永远是空的。
+ */
+function examOutput(workdir: string): string {
+  try {
+    return scene.outputPath(scene.load(workdir));
+  } catch {
+    return path.join(workdir, 'out.mp4');
+  }
+}
+
 /** GET /api/memory：记忆面板的全部数据。 */
 export function memoryAPI(s: Server, request: Request): Response {
   if (request.method !== 'GET') return methodNotAllowed('GET');
@@ -75,28 +87,40 @@ export function memoryAPI(s: Server, request: Request): Response {
       }
       timeline.push(memory.eventToJSON(events[i]));
     }
+    const episodes = store.episodes();
+    const byID = new Map(episodes.map((e) => [e.id, e]));
     const views = store.exams().map((exam) => {
+      const texts = new Map<string, string>();
       const cells = (exam.cells ?? []).map((cell) => {
         const c: Record<string, unknown> = memory.cellToJSON(cell);
-        // output 是这一格产物相对项目根的路径，供缩略图读取；不在项目里时不写。
+        // output 是这一格产物相对项目根的路径，供画面对照读取；不在项目里时不写。
         if (path.isAbsolute(cell.workdir)) {
-          const rel = path.relative(p.path, path.join(cell.workdir, 'out.mp4'));
+          const rel = path.relative(p.path, examOutput(cell.workdir));
           if (!rel.startsWith('..') && fileExists(path.join(p.path, rel))) c.output = rel.split(path.sep).join('/');
+        }
+        // 这一格查出的问题原文与镜头口播取自它的考试经历：格子里只有校验器 ID 与个数。
+        const episode = byID.get(cell.episode);
+        if (episode) {
+          if ((episode.problems ?? []).length > 0) c.problem_texts = episode.problems;
+          if (episode.text !== '' && !texts.has(cell.question)) texts.set(cell.question, episode.text);
         }
         return c;
       });
       // Go 的 examView 内嵌 ExamResult、再用自己的 cells 遮住它：cells 排在最后。
-      const { cells: _hidden, ...rest } = memory.examResultToJSON(exam);
-      return { ...rest, cells };
+      const { cells: _hidden, questions: _questions, ...rest } = memory.examResultToJSON(exam);
+      const questions = (exam.questions ?? []).map((q) => ({ ...memory.questionToJSON(q), text: texts.get(q.id) }));
+      return { ...rest, questions, cells };
     });
-    const episodes = store.episodes();
-    let runs: memory.RunSummary[] = [];
+    let allRuns: memory.RunSummary[] = [];
     try {
-      runs = memory.runReport(episodes).filter((r) => r.project === project);
+      allRuns = memory.runReport(episodes);
     } catch {
-      runs = [];
+      allRuns = [];
     }
+    let runs = allRuns.filter((r) => r.project === project);
     if (runs.length > 12) runs = runs.slice(runs.length - 12);
+    // 进化页挑两批来比：记忆库所有项目共用，第一次与第二次常常不在同一个项目里。
+    if (allRuns.length > 40) allRuns = allRuns.slice(allRuns.length - 40);
     const snapshots = store.snapshotIDs() ?? [];
     return writeJSON(
       200,
@@ -113,6 +137,7 @@ export function memoryAPI(s: Server, request: Request): Response {
         exams: views,
         snapshots,
         runs: runs.map(memory.runSummaryToJSON),
+        runs_all: allRuns.map(memory.runSummaryToJSON),
         pending: pendingProblems(episodes, status.last_consolidated),
         // 面板显示的大白话：校验器、事件类型与镜头特征都不直接露出 ID。
         labels: goMap({ checks: labels(memory.CheckerLabels), events: labels(memory.EventLabels), features: labels(memory.featureDescriptions()) }),

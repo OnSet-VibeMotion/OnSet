@@ -17,11 +17,12 @@ import { PublishTab } from './Publish';
 import { isStationTab, StationPage, StationSlots } from './Stations';
 
 import { SceneBrief, StoryboardTab } from './Storyboard';
+import { EvidenceTab } from './Evidence';
 import { ProgressTab } from './Progress';
 import { FileTree } from './Sidebar';
 import { canReveal, revealInFinder, revealLabel } from '../reveal';
 
-export type BuiltinTab = 'progress' | 'script' | 'storyboard' | 'scene' | 'compose' | 'final' | 'style' | 'voice' | 'review' | 'publish' | 'memory' | 'file';
+export type BuiltinTab = 'progress' | 'script' | 'storyboard' | 'scene' | 'compose' | 'final' | 'style' | 'voice' | 'review' | 'publish' | 'memory' | 'evidence' | 'file';
 /** 内置插件登记的页面（组件在 pageViews.tsx）与第三方插件自己的页面：x:<站>:<页面>（Stations.tsx）。 */
 export type Tab = BuiltinTab | PageViewID | `x:${string}`;
 
@@ -38,6 +39,7 @@ const hostTabs: [Tab, string][] = [
   ['review', '复查'],
   ['publish', '发布'],
   ['memory', '记忆'],
+  ['evidence', '进化'],
   ['file', '文件'],
 ];
 
@@ -154,6 +156,7 @@ export function Preview(props: Props) {
           />
         )}
         {props.tab === 'memory' && <MemoryTab scene={scene} version={props.version} run={props.run} />}
+        {props.tab === 'evidence' && <EvidenceTab version={props.version} run={props.run} onOpen={(t) => props.onTab?.(t)} />}
         {props.tab === 'file' && <FilesTab tree={props.tree} recent={props.recent} path={props.filePath} version={props.version} onFile={props.onFile} />}
       </div>
       {/* 镜头条只在跟镜头有关的页面出现：口播稿、发布这些页面不需要它。 */}

@@ -445,10 +445,14 @@ export interface ExamCell {
   error?: string;
   recalled?: string[];
   output?: string;
+  /** 这一格查出的问题原文，取自它的考试经历。 */
+  problem_texts?: string[];
 }
 
 export interface ExamQuestion {
   id: string;
+  /** 这个镜头的口播，取自考试经历。 */
+  text?: string;
   episode?: string;
   holdout: boolean;
   scene_id: string;
@@ -505,6 +509,8 @@ export interface MemoryState {
   exams: ExamResult[];
   snapshots: number[];
   runs: RunSummary[];
+  /** 所有项目最近的渲染批次，进化页挑两批来比。 */
+  runs_all?: RunSummary[];
   /** 上次整理之后还没整理的问题，按校验器归组（human 表示用户回退或说不满意）。 */
   pending?: { check: string; count: number; scenes: { project: string; scene: string }[] }[];
   /** 校验器、事件类型、镜头特征的大白话说法（internal/memory/labels.go）。 */

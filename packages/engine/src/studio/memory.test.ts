@@ -66,6 +66,65 @@ describe('studio memory', () => {
     expect((await studioRequest(s, 'POST', '/api/memory/actions/shell', '{}')).status).toBe(404);
   });
 
+  // 进化页要的三样：考试每一格的画面（产物名取自考场里的 scene.json，不是写死的 out.mp4）、
+  // 查出的问题原文与镜头口播、所有项目的渲染批次。
+  it('exam cells carry their output, problem texts and narration', async () => {
+    const root = tempDir();
+    const memoryDir = tempDir();
+    setEnv('AM_MEMORY_DIR', memoryDir);
+    writeStudioFile(path.join(root, 'article-to-motion.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\nMEMORY=on\n');
+    writeStudioFile(path.join(root, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
+    const sceneDir = path.join(root, 'scenes', 'scene-001');
+    writeStudioFile(path.join(sceneDir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\nx\n');
+    writeStudioFile(
+      path.join(sceneDir, 'scene.json'),
+      '{"id":"scene-001","duration_seconds":2,"output":"scene-001.mp4","transcript":"transcript.srt","text":"中文标题"}',
+    );
+    const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
+    const project = (await studioRequest(s, 'GET', '/api/state')).body.project.path as string;
+    const store = memory.open(memoryDir);
+    const sc = scene.load(path.join(project, 'scenes', 'scene-001'));
+    store.recordAttempt(sc, scene.newAttempt({ scene_id: 'scene-001', renderer: 'claude', outcome: scene.OutcomeSucceeded }), {
+      source: memory.SourceRender,
+      run: 'run-20261112-000000',
+    });
+    const { episode: failed } = store.recordCheck(sc, [{ check: 'frames.blank', problem: '第 0 帧是空白帧' }]);
+    store.write(
+      memory.newMemory({
+        kind: memory.KindLesson,
+        name: 'paint-first-frame',
+        description: '第 0 帧就要有画面',
+        status: memory.StatusTrial,
+        checked_by: ['frames.blank'],
+        from_episodes: [failed.id],
+        body: '反例：x\n正例：y',
+      }),
+    );
+    await store.exam({
+      renderers: ['claude'],
+      budget: 1500,
+      workspace: path.join(project, 'production', 'memory-exams'),
+      run: async (cell, renderer) => {
+        writeStudioFile(path.join(cell.directory, 'scene-001.mp4'), 'video');
+        return scene.newAttempt({ scene_id: cell.id, renderer, outcome: scene.OutcomeSucceeded });
+      },
+      postCheck: (cell) => (cell.memory?.names?.includes('paint-first-frame') ? [] : [{ check: 'frames.blank', problem: '第 0 帧是空白帧' }]),
+    });
+
+    const { status, body } = await studioRequest(s, 'GET', '/api/memory');
+    expect(status).toBe(200);
+    expect(body.exams).toHaveLength(1);
+    const exam = body.exams[0];
+    expect(exam.questions[0].text).toBe('中文标题');
+    const control = exam.cells.find((c: { arm: string }) => c.arm === 'control');
+    const trial = exam.cells.find((c: { arm: string }) => c.arm === 'trial');
+    expect(control.output).toMatch(/^production\/memory-exams\/exam-0001\/q1\/claude-control-1\/scene-001\.mp4$/);
+    expect(trial.output).toMatch(/claude-trial-1\/scene-001\.mp4$/);
+    expect(control.problem_texts).toEqual(['第 0 帧是空白帧']);
+    expect(trial.problem_texts).toBeUndefined();
+    expect(body.runs_all.map((r: { run: string }) => r.run)).toContain('run-20261112-000000');
+  });
+
   // 用户偏好交给编排工具，让它能按偏好理解简短的要求；偏好没变时续接的会话不重复发送，
   // 偏好变了下一轮就带上新版本。
   it('chat turns carry user preferences', async () => {
