@@ -25,6 +25,18 @@ rl.on('line', async (line) => {
       promptId = m.id;
       const sid = m.params.sessionId;
       const text = m.params.prompt[0].text;
+      if (text.includes('后台子任务')) {
+        const child = (rootSessionId, status) => send({ method: 'opencode/session/child_update', params: {
+          rootSessionId, childSessionId: 'child', parentSessionId: sid, depth: 1, title: '核对分镜', type: 'status', status,
+        } });
+        child('another-session', 'running');
+        child(sid, 'running');
+        if (text.includes('挂起')) break;
+        child(sid, 'completed');
+        update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '父任务完成' } });
+        send({ id: m.id, result: { stopReason: 'end_turn' } });
+        break;
+      }
       update(sid, { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: '想一' } });
       update(sid, { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: '想' } });
       update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '先装' } });

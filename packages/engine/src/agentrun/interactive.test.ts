@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { interactiveInvocation } from '../tools';
 import { ACPTranslator, CodebuddyUsage, acpOutcome, acpPermissionTool, acpUsage, runACP } from './acp';
-import { codexDecision, codexItemEvents, runCodexApp } from './codexapp';
+import { CodexTasks, codexDecision, codexItemEvents, runCodexApp } from './codexapp';
 import { commandAllowed, unwrapShell, type PermissionAnswer } from './interactive';
 import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, KindUsage, type Event } from './parse';
 import type { Spec } from './run';
@@ -39,6 +39,105 @@ async function fakeRun(kind: 'acp' | 'codex', prompt: string, answer: Permission
 const kinds = (events: Event[]) => events.map((e) => e.kind);
 
 describe('interactive orchestrators', () => {
+  it('keeps Codex children visible after spawn returns and isolates their events from the parent', async () => {
+    const { events, outcome } = await fakeRun('codex', '后台子任务', { decision: 'allow' });
+    expect(outcome.error).toBeNull();
+    const snapshots = events.filter((e) => e.kind === 'background-tasks').map((e) => e.background_tasks);
+    expect(snapshots).toContainEqual([{ id: 'child-a', description: '检查素材' }, { id: 'child-b', description: '检查字幕' }]);
+    expect(snapshots).toContainEqual([{ id: 'child-b', description: '检查字幕' }]);
+    expect(snapshots.at(-1)).toEqual([]);
+    expect(events.some((e) => e.kind === 'text' && e.text === '子任务的内部回复')).toBe(false);
+    expect(events.some((e) => e.kind === 'text' && e.text === '父任务完成')).toBe(true);
+  });
+
+  it('tracks CodeBuddy subagent lifecycle independently of the spawning tool result', () => {
+    const events: Event[] = [];
+    const t = new ACPTranslator((e) => events.push(e));
+    const lifecycle = (sessionId: string, status: string) => t.update({ sessionUpdate: 'session_info_update', _meta: {
+      'codebuddy.ai/subagent': { version: 1, sessionId, parentToolCallId: 'spawn-' + sessionId, description: '检查素材', mode: 'background', status },
+    } });
+    lifecycle('child', 'running');
+    t.update({ sessionUpdate: 'tool_call_update', toolCallId: 'spawn-child', status: 'completed', rawOutput: '已启动' });
+    expect(events.filter((e) => e.kind === 'background-tasks').at(-1)?.background_tasks).toEqual([{ id: 'child', description: '检查素材' }]);
+    t.update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '子任务内部输出' }, _meta: { 'codebuddy.ai/subagent': { version: 1, sessionId: 'child' } } });
+    t.flush();
+    expect(events.some((e) => e.kind === 'text')).toBe(false);
+    lifecycle('child', 'completed');
+    expect(events.at(-1)?.background_tasks).toEqual([]);
+    lifecycle('child', 'running');
+    lifecycle('child', 'cancelled');
+    expect(events.at(-1)?.background_tasks).toEqual([]);
+  });
+
+  it('tracks OpenCode child notifications and ignores late child output after completion', () => {
+    const events: Event[] = [];
+    const t = new ACPTranslator((e) => events.push(e));
+    t.childUpdate({ childSessionId: 'child', title: '核对分镜', type: 'status', status: 'running' });
+    expect(events.at(-1)?.background_tasks).toEqual([{ id: 'child', description: '核对分镜' }]);
+    t.childUpdate({ childSessionId: 'child', type: 'update', update: { sessionUpdate: 'tool_call', toolCallId: 'read', title: '读取分镜计划', status: 'in_progress' } });
+    expect(events.at(-1)?.background_tasks?.[0].activity).toBe('读取分镜计划');
+    t.childUpdate({ childSessionId: 'child', type: 'status', status: 'failed' });
+    expect(events.at(-1)?.background_tasks).toEqual([]);
+    t.childUpdate({ childSessionId: 'child', type: 'update', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '迟到的内容' } } });
+    expect(events.at(-1)?.background_tasks).toEqual([]);
+    expect(events.some((e) => e.kind === 'text')).toBe(false);
+  });
+
+  it('routes ACP child lifecycle only for the current root session', async () => {
+    const { events, outcome } = await fakeRun('acp', '后台子任务', { decision: 'allow' });
+    expect(outcome.error).toBeNull();
+    expect(events.filter((event) => event.kind === 'background-tasks').map((event) => event.background_tasks)).toEqual([
+      [{ id: 'child', description: '核对分镜' }], [],
+    ]);
+    expect(events.some((event) => event.kind === 'text' && event.text === '父任务完成')).toBe(true);
+  });
+
+  it('tracks Codex spawning, waiting, failed spawns and resumed children by agent state', () => {
+    const t = new CodexTasks();
+    const spawn = { type: 'collabAgentToolCall', id: 'call', tool: 'spawnAgent', prompt: '检查素材', receiverThreadIds: [], agentsStates: {} };
+    expect(t.item('started', spawn)?.background_tasks).toEqual([{ id: 'spawn:call', description: '检查素材' }]);
+    expect(t.item('completed', { ...spawn, status: 'failed' })?.background_tasks).toEqual([]);
+    t.item('completed', { ...spawn, receiverThreadIds: ['child'], status: 'completed', agentsStates: { child: { status: 'running' } } });
+    expect(t.item('completed', { ...spawn, tool: 'wait', prompt: '', agentsStates: { child: { status: 'running' } } })?.background_tasks).toEqual([{ id: 'child', description: '检查素材' }]);
+    expect(t.item('completed', { ...spawn, tool: 'wait', agentsStates: { child: { status: 'completed' } } })?.background_tasks).toEqual([]);
+    t.item('completed', { ...spawn, tool: 'resumeAgent', receiverThreadIds: ['child'], status: 'completed' });
+    expect(t.child('item/started', { threadId: 'child', item: { type: 'commandExecution', command: 'ls' } })?.background_tasks?.[0].activity).toBe('ls');
+    expect(t.child('turn/completed', { threadId: 'unrelated' })).toBeNull();
+    expect(t.child('turn/completed', { threadId: 'child' })?.background_tasks).toEqual([]);
+  });
+
+  it('tracks CodeBuddy team tasks until their actual completion and keeps member replies separate', () => {
+    const events: Event[] = [];
+    const translator = new ACPTranslator((event) => events.push(event));
+    const team = (members: unknown[]) => translator.update({ sessionUpdate: 'session_info_update', _meta: { 'codebuddy.ai/teamUpdate': { teamName: 'team', members } } });
+    const member = { name: 'calculator', taskId: 'task-1', description: '计算乘积', status: 'running' };
+    team([member]);
+    expect(events.at(-1)?.background_tasks).toEqual([{ id: 'task-1', description: '计算乘积' }]);
+    translator.update({ sessionUpdate: 'tool_call_update', toolCallId: 'spawn', status: 'completed' });
+    translator.update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '323' }, _meta: { 'codebuddy.ai/memberEvent': 'calculator' } });
+    expect(events.at(-1)?.background_tasks).toEqual([{ id: 'task-1', description: '计算乘积', activity: '正在整理结果' }]);
+    const count = events.length;
+    translator.update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '。' }, _meta: { 'codebuddy.ai/memberEvent': 'calculator' } });
+    expect(events).toHaveLength(count);
+    team([{ ...member, status: 'completed', lifecycle: 'alive' }]);
+    expect(events.at(-1)?.background_tasks).toEqual([]);
+    translator.update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '迟到的子回复' }, _meta: { 'codebuddy.ai/memberEvent': 'calculator' } });
+    translator.flush();
+    expect(events.some((event) => event.kind === 'text')).toBe(false);
+    expect(events.at(-1)?.background_tasks).toEqual([]);
+    team([member]);
+    team([]);
+    expect(events.at(-1)?.background_tasks).toEqual([]);
+  });
+
+  it('tracks the subAgentActivity events emitted by Codex 0.163', () => {
+    const t = new CodexTasks();
+    const item = { type: 'subAgentActivity', id: 'spawn', kind: 'started', agentThreadId: 'child', agentPath: '/root/calculate' };
+    expect(t.item('started', item)?.background_tasks).toEqual([{ id: 'child', description: 'calculate' }]);
+    expect(t.item('completed', item)?.background_tasks).toEqual([{ id: 'child', description: 'calculate' }]);
+    expect(t.item('started', { ...item, kind: 'completed' })?.background_tasks).toEqual([]);
+  });
+
   it('unwraps shell wrappers and matches the allowlist', () => {
     expect(unwrapShell("/bin/zsh -lc 'npm install three'")).toBe('npm install three');
     expect(unwrapShell('bash -c "ls -la"')).toBe('ls -la');

@@ -192,6 +192,7 @@ export type EventKind =
   | 'queued'
   | 'unqueued'
   | 'plan'
+  | 'background-tasks'
   | 'permission'
   | 'permission-resolved';
 
@@ -201,6 +202,12 @@ export interface PlanItem {
   status: 'pending' | 'in_progress' | 'completed';
   /** 逐条建的任务（TaskCreate）的编号；TodoWrite 的清单没有。 */
   id?: string;
+}
+
+export interface BackgroundTask {
+  id: string;
+  description: string;
+  activity?: string;
 }
 
 export interface SessionEvent {
@@ -219,6 +226,7 @@ export interface SessionEvent {
   files?: string[];
   changes?: FileChange[];
   plan?: PlanItem[];
+  background_tasks?: BackgroundTask[];
   queue_id?: string;
   /** view 事件：编排工具请网页切到的页面。 */
   view?: ViewRequest;

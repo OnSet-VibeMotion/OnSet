@@ -2,7 +2,7 @@ import { playerProps } from '../media';
 import type { CSSProperties, ReactNode } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, errorText, post, rawURL } from '../api';
-import type { AgentChoice, AgentsResponse, Attachment, EventKind, PermissionAsk, PlanItem, Scene, SessionEvent, SessionMeta, ViewRequest, ViewState } from '../types';
+import type { AgentChoice, AgentsResponse, Attachment, BackgroundTask, EventKind, PermissionAsk, PlanItem, Scene, SessionEvent, SessionMeta, ViewRequest, ViewState } from '../types';
 import { tabs } from './Preview';
 import { Poster, styleKey, useFilmStyles } from './FilmStyles';
 import type { FilmStyle, ProgressState, TreeFile } from '../types';
@@ -59,6 +59,7 @@ const kinds: EventKind[] = [
   'queued',
   'unqueued',
   'plan',
+  'background-tasks',
   'permission',
   'permission-resolved',
 ];
@@ -635,6 +636,7 @@ export function Chat(props: Props) {
       </div>
 
       <RenderWatch scenes={props.scenes} onView={props.onView} />
+      {running && !!lastTurn?.backgroundTasks.length && <BackgroundTaskStatus tasks={lastTurn.backgroundTasks} />}
       {asks.length > 0 && <PermissionStack asks={asks} onAnswer={answer} />}
       {queue.length > 0 && <QueuedStack queue={queue} onAction={queueAction} />}
 
@@ -1247,7 +1249,7 @@ function ExecutionShell(props: {
         <Icon name="chevron" size={11} />
       </summary>
       <div className="shell-body">
-        {turn.process.length === 0 && <p className="muted small">正在启动 AI…</p>}
+        {turn.process.length === 0 && <p className="muted small">{turn.backgroundTasks.length > 0 ? '后台任务正在执行…' : '正在启动 AI…'}</p>}
         {turn.process.map((item, index) => (
           <ProcessRow key={index} item={item} projectPath={props.projectPath} onOpenFile={props.onOpenFile} />
         ))}
@@ -1465,6 +1467,25 @@ function TurnEnd(props: BlockProps & { turn: TurnBlock; elapsed: number }) {
         </footer>
       )}
     </div>
+  );
+}
+
+function BackgroundTaskStatus({ tasks }: { tasks: BackgroundTask[] }) {
+  return (
+    <section className="background-tasks" aria-label="正在执行的后台任务">
+      <header role="status">
+        <StatusMark state="running" />
+        <span>{tasks.length} 个后台任务正在执行</span>
+      </header>
+      <ul>
+        {tasks.map((task) => (
+          <li key={task.id}>
+            <span className="ellipsis" title={task.description}>{task.description}</span>
+            {task.activity && <span className="background-task-activity ellipsis" title={task.activity}>{task.activity}</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

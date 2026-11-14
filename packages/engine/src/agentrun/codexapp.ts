@@ -11,6 +11,7 @@ import { BasisTotalInput, newUsage, type Usage } from '../tools';
 import { runInteractive, unwrapShell, type DriveContext, type PermissionAnswer } from './interactive';
 import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, clip, type Event, type PlanItem } from './parse';
 import type { Outcome, Spec } from './run';
+import { ActiveTasks } from './activetasks';
 
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Obj) : {});
@@ -60,9 +61,10 @@ export function codexItemEvents(phase: 'started' | 'completed', item: Obj): Even
       if (phase === 'started') return [{ kind: KindToolCall, tool: 'shell', call_id: id, input: { command: unwrapShell(str(item.command)) } }];
       return [{ kind: KindToolResult, tool: 'shell', call_id: id, text: clip(str(item.aggregatedOutput)), is_error: num(item.exitCode) !== 0 || str(item.status) === 'failed' || undefined }];
     case 'fileChange':
+    case 'collabAgentToolCall':
     case 'mcpToolCall':
     case 'webSearch': {
-      let tool = ({ fileChange: 'file_change', mcpToolCall: 'mcp_tool_call', webSearch: 'web_search' } as Record<string, string>)[str(item.type)];
+      let tool = ({ fileChange: 'file_change', mcpToolCall: 'mcp_tool_call', webSearch: 'web_search', collabAgentToolCall: str(item.tool) } as Record<string, string>)[str(item.type)];
       // MCP 调用按 claude 的写法记成 mcp__<服务>__<工具>：界面与测试要认出调用的是哪个工具。
       if (str(item.type) === 'mcpToolCall' && str(item.server) !== '' && str(item.tool) !== '') tool = `mcp__${str(item.server)}__${str(item.tool)}`;
       if (phase === 'started') return [{ kind: KindToolCall, tool, call_id: id, input: item }];
@@ -70,6 +72,60 @@ export function codexItemEvents(phase: 'started' | 'completed', item: Obj): Even
     }
   }
   return [];
+}
+
+/** spawn 的 completed 只表示已派发；子任务的结束看 agentsStates 或对应子会话的通知。 */
+export class CodexTasks {
+  private readonly tasks = new ActiveTasks();
+
+  item(phase: 'started' | 'completed', item: Obj): Event | null {
+    // 0.163 的子任务活动本身也有 item/completed，结束与否由 kind 决定。
+    if (item.type === 'subAgentActivity') {
+      const id = str(item.agentThreadId);
+      if (!id) return null;
+      if (item.kind === 'started') this.tasks.start(id, str(item.agentPath).split('/').filter(Boolean).at(-1) || '子任务');
+      else if (item.kind === 'completed' || item.kind === 'interrupted') this.tasks.finish(id);
+      else return null;
+      return this.tasks.event();
+    }
+    if (item.type !== 'collabAgentToolCall') return null;
+    const tool = str(item.tool);
+    const call = str(item.id);
+    const pending = call ? 'spawn:' + call : '';
+    const receivers = Array.isArray(item.receiverThreadIds) ? item.receiverThreadIds.filter((id): id is string => typeof id === 'string' && id !== '') : [];
+    const states = obj(item.agentsStates);
+    if (phase === 'started' && tool === 'spawnAgent' && receivers.length === 0) this.tasks.start(pending, str(item.prompt) || '正在启动子任务');
+    if (phase === 'completed' || receivers.length > 0) this.tasks.finish(pending);
+    for (const id of new Set([...receivers, ...Object.keys(states)])) {
+      const status = str(obj(states[id]).status);
+      if (status === 'running' || status === 'pendingInit') {
+        const description = tool === 'spawnAgent' || tool === 'followupTask' ? str(item.prompt) : '';
+        this.tasks.start(id, description);
+      } else if (['interrupted', 'completed', 'errored', 'shutdown', 'notFound'].includes(status)) {
+        this.tasks.finish(id);
+      } else if (phase === 'completed' && item.status === 'completed') {
+        if (['spawnAgent', 'resumeAgent', 'followupTask'].includes(tool)) this.tasks.start(id, str(item.prompt));
+        else if (tool === 'closeAgent' || tool === 'interruptAgent') this.tasks.finish(id);
+      }
+    }
+    return this.tasks.event();
+  }
+
+  /** 只接已登记的子会话，不能把别的线程或主线程的状态当作子任务。 */
+  child(method: string, p: Obj): Event | null {
+    const id = str(p.threadId);
+    if (!this.tasks.has(id)) return null;
+    if (method === 'turn/completed' || method === 'thread/closed') this.tasks.finish(id);
+    else if (method === 'thread/status/changed') {
+      const status = str(obj(p.status).type);
+      if (status === 'active') this.tasks.start(id, '');
+      else if (['idle', 'notLoaded', 'systemError'].includes(status)) this.tasks.finish(id);
+    } else if (method === 'item/started') {
+      const item = obj(p.item);
+      this.tasks.progress(id, str(item.command) || str(item.tool) || (item.type === 'reasoning' ? '正在思考' : '正在处理子任务'));
+    } else return null;
+    return this.tasks.event();
+  }
 }
 
 /** 用户的回答 → codex 的审批决定。拒绝用 decline（codex 接着这一轮换做法），不用 cancel（会打断整轮）。 */
@@ -90,15 +146,24 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
   let finished: (turn: Obj) => void = () => {};
   const completed = new Promise<Obj>((resolve) => (finished = resolve));
   const early: Obj[] = [];
+  const tasks = new CodexTasks();
 
   peer.onNotification((method, params) => {
     const p = obj(params);
-    if (threadID !== '' && str(p.threadId) !== '' && str(p.threadId) !== threadID) return;
+    if (threadID !== '' && str(p.threadId) !== '' && str(p.threadId) !== threadID) {
+      const event = tasks.child(method, p);
+      if (event) ctx.emit(event);
+      return;
+    }
     switch (method) {
       case 'item/started':
-      case 'item/completed':
-        for (const event of codexItemEvents(method === 'item/started' ? 'started' : 'completed', obj(p.item))) ctx.emit(event);
+      case 'item/completed': {
+        const phase = method === 'item/started' ? 'started' : 'completed';
+        for (const event of codexItemEvents(phase, obj(p.item))) ctx.emit(event);
+        const background = tasks.item(phase, obj(p.item));
+        if (background) ctx.emit(background);
         return;
+      }
       case 'turn/plan/updated': {
         const steps = Array.isArray(p.plan) ? p.plan.map(obj) : [];
         const plan: PlanItem[] = steps.map((s) => ({ text: str(s.step), status: planStatus(str(s.status)) })).filter((s) => s.text !== '');

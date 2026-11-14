@@ -4,12 +4,13 @@
  * 一轮 = initialize → session/new（或 session/load 续接）→ session/prompt，期间对方用 session/update 推送
  * 正文、思考、工具调用与待办，用 session/request_permission 请我们批准工具调用。2026-11 用 opencode 2.1.0
  * 实测：请求里的 toolCall 带 rawInput.command；拒绝后 opencode 直接结束这一轮（stopReason cancelled），
- * 不像 claude 那样接着换做法。codebuddy 2.168 本机未登录，只实测到握手与建会话。
+ * 不像 claude 那样接着换做法。CodeBuddy 2.168 的审批、续接与后台子任务也经真实 CLI 验证。
  */
 import { BasisTotalInput, type McpServer, newUsage } from '../tools';
 import { runInteractive, type DriveContext, type PermissionAnswer } from './interactive';
 import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, clip, type Event, type PlanItem } from './parse';
 import type { Outcome, Spec } from './run';
+import { ActiveTasks } from './activetasks';
 
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Obj) : {});
@@ -69,6 +70,8 @@ export class ACPTranslator {
   private textBuf = '';
   private thoughtBuf = '';
   private readonly tools = new Map<string, string>();
+  private readonly tasks = new ActiveTasks();
+  private readonly teams = new Map<string, Map<string, string>>();
 
   constructor(private readonly emit: (event: Event) => void) {}
 
@@ -80,6 +83,30 @@ export class ACPTranslator {
   }
 
   update(u: Obj): void {
+    const meta = obj(u._meta);
+    const team = obj(meta['codebuddy.ai/teamUpdate']);
+    if (Array.isArray(team.members)) {
+      this.teamUpdate(str(team.teamName), team.members);
+      return;
+    }
+    const member = str(meta['codebuddy.ai/memberEvent']);
+    if (member) {
+      for (const members of this.teams.values()) {
+        const id = members.get(member);
+        if (id) this.childProgress(id, u);
+      }
+      return;
+    }
+    // CodeBuddy 把生命周期与子会话内容都标在 subagent 上；内容不能并入主 Agent 的回复。
+    // 字段依据本机 CodeBuddy 2.168 的 createAcpSubagentStatusUpdate / getSubagentDescriptor。
+    const subagent = obj(meta['codebuddy.ai/subagent']);
+    const childID = str(subagent.sessionId);
+    if (childID) {
+      if (u.sessionUpdate === 'session_info_update') {
+        this.childStatus(childID, str(subagent.status), str(subagent.description) || str(subagent.role));
+      } else this.childProgress(childID, u);
+      return;
+    }
     switch (str(u.sessionUpdate)) {
       case 'agent_message_chunk':
         if (this.thoughtBuf !== '') this.flush();
@@ -112,6 +139,45 @@ export class ACPTranslator {
         return;
       }
     }
+  }
+
+  /** OpenCode 的 opencode/session/child_update 扩展，根会话由调用方校验。 */
+  childUpdate(p: Obj): void {
+    const id = str(p.childSessionId);
+    if (!id) return;
+    if (p.type === 'status') this.childStatus(id, str(p.status), str(p.title));
+    else if (p.type === 'update') this.childProgress(id, obj(p.update));
+  }
+
+  /** CodeBuddy 后台 Agent 实际走团队快照；成员仍存活不代表它的任务仍在运行。 */
+  private teamUpdate(team: string, members: unknown[]): void {
+    const next = new Map<string, string>();
+    for (const value of members) {
+      const member = obj(value);
+      const name = str(member.name);
+      const id = str(member.taskId) || str(member.sessionId) || (name ? `${team}/${name}` : '');
+      if (!id) continue;
+      next.set(name, id);
+      if (member.status === 'running' && member.lifecycle !== 'terminated') this.tasks.start(id, str(member.description) || name);
+      else this.tasks.finish(id);
+    }
+    const ids = new Set(next.values());
+    for (const id of this.teams.get(team)?.values() ?? []) if (!ids.has(id)) this.tasks.finish(id);
+    this.teams.set(team, next);
+    this.emit(this.tasks.event());
+  }
+
+  private childStatus(id: string, status: string, description: string): void {
+    if (status === 'created' || status === 'running') this.tasks.start(id, description);
+    else if (['completed', 'failed', 'cancelled', 'interrupted'].includes(status)) this.tasks.finish(id);
+    else return;
+    this.emit(this.tasks.event());
+  }
+
+  private childProgress(id: string, u: Obj): void {
+    // 子会话正文逐字推送，只展示当前动作，避免每个字都写一份任务快照。
+    const activity = str(u.title) || (u.sessionUpdate === 'agent_thought_chunk' ? '正在思考' : u.sessionUpdate === 'agent_message_chunk' ? '正在整理结果' : '');
+    if (this.tasks.progress(id, activity)) this.emit(this.tasks.event());
   }
 
   private toolDone(id: string, u: Obj): void {
@@ -189,6 +255,11 @@ async function driveACP(ctx: DriveContext): Promise<void> {
   const requests = new CodebuddyUsage();
   let sessionID = '';
   peer.onNotification((method, params) => {
+    if (method === 'opencode/session/child_update' && !loading) {
+      const p = obj(params);
+      if (sessionID !== '' && str(p.rootSessionId) === sessionID) translator.childUpdate(p);
+      return;
+    }
     if (method !== 'session/update' || loading) return; // 续接时对方会把历史重放一遍，不能当成这一轮的事件。
     const p = obj(params);
     if (sessionID !== '' && str(p.sessionId) !== '' && str(p.sessionId) !== sessionID) return;
@@ -210,7 +281,10 @@ async function driveACP(ctx: DriveContext): Promise<void> {
     await race(
       peer.request('initialize', {
         protocolVersion: ACPProtocolVersion,
-        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+        clientCapabilities: {
+          fs: { readTextFile: false, writeTextFile: false }, terminal: false,
+          ...(spec.tool === 'opencode' ? { _meta: { 'opencode/child-session-updates': true } } : {}),
+        },
         clientInfo: { name: 'onset', version: '1' },
       }),
     ),

@@ -9,6 +9,20 @@ for a in "$@"; do
 done
 printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "$sid"
 case "$prompt" in *慢慢来*) exec sleep 60 ;; esac
+# 后台任务的工具调用已经返回，任务仍在执行；文件信号由测试推进，避免依赖固定延时。
+case "$prompt" in *后台任务测试*)
+  printf '%s\n' '{"type":"system","subtype":"task_started","task_id":"a","description":"检查素材尺寸","is_backgrounded":true}'
+  printf '%s\n' '{"type":"system","subtype":"task_started","task_id":"b","description":"生成配音","is_backgrounded":true}'
+  printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"任务已交给后台处理。"}]}}'
+  while [ ! -f production/studio/bg-test-progress ]; do sleep 0.1; done
+  printf '%s\n' '{"type":"system","subtype":"task_progress","task_id":"a","description":"检查素材尺寸","summary":"正在核对封面图片"}'
+  printf '%s\n' '{"type":"system","subtype":"task_notification","task_id":"b","status":"completed","summary":"配音已生成"}'
+  while [ ! -f production/studio/bg-test-complete ]; do sleep 0.1; done
+  printf '%s\n' '{"type":"system","subtype":"task_notification","task_id":"a","status":"completed","summary":"检查完成"}'
+  while [ ! -f production/studio/bg-test-next ]; do sleep 0.1; done
+  printf '%s\n' '{"type":"system","subtype":"task_started","task_id":"c","description":"整理检查报告","is_backgrounded":true}'
+  exec sleep 60 ;;
+esac
 # 首页起名（studio/naming.ts 的 namingPrompt）：把「用户的原话：」下一行逗号前的部分加上「的片子」当项目名；
 # 原话带「慢起名」时先等 2 秒，供看「拟片名」那一幕。
 case "$prompt" in *请给一条讲解视频的项目起一个名字*)

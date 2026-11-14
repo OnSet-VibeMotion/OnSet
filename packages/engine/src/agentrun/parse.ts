@@ -23,6 +23,14 @@ export const KindDone: Kind = 'done';
  * opencode 的 todowrite）。每条都是完整的最新清单，不是增量。
  */
 export const KindPlan: Kind = 'plan';
+/** 当前进程的后台任务完整快照；空数组表示全部结束。 */
+export const KindBackgroundTasks: Kind = 'background-tasks';
+
+export interface BackgroundTask {
+  id: string;
+  description: string;
+  activity?: string;
+}
 
 /** 待办清单的一项。status 是 pending、in_progress 或 completed。 */
 export interface PlanItem {
@@ -56,6 +64,7 @@ export interface Event {
   session_id?: string;
   usage?: Usage;
   plan?: PlanItem[];
+  background_tasks?: BackgroundTask[];
 }
 
 /** 按 Go struct 的字段顺序与 omitempty 排出可交给 gojson 的对象。 */
@@ -70,6 +79,7 @@ export function eventJSON(e: Event): Record<string, unknown> {
     session_id: e.session_id || undefined,
     usage: e.usage ? usageJSON(e.usage) : undefined,
     plan: e.plan && e.plan.length > 0 ? e.plan.map((item) => ({ text: item.text, status: item.status })) : undefined,
+    background_tasks: e.background_tasks,
   };
 }
 
@@ -85,6 +95,68 @@ function obj(value: unknown): Obj {
 
 function arr(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+/**
+ * Claude 的任务生命周期独立于 Agent / Bash 的工具返回，不能用 tool-result 当作后台任务结束。
+ * 协议：https://code.claude.com/docs/en/agent-sdk/typescript#sdktaskstartedmessage
+ * 新版有完整快照，旧版靠生命周期事件；未提供 is_backgrounded 的旧事件也要显示。
+ */
+class BackgroundTasks {
+  private tasks = new Map<string, BackgroundTask & { run?: string; background?: boolean; ambient?: boolean; ended?: boolean }>();
+
+  parse(e: Obj): Event | null {
+    if (e.type !== 'system') return null;
+    const subtype = str(e.subtype);
+    if (subtype === 'background_tasks_changed') {
+      if (!Array.isArray(e.tasks)) return null;
+      const previous = this.tasks;
+      this.tasks = new Map();
+      for (const entry of e.tasks) {
+        const item = obj(entry);
+        const id = str(item.task_id);
+        if (!id) continue;
+        const old = previous.get(id);
+        const run = str(item.run_id);
+        this.tasks.set(id, {
+          id,
+          description: clip(str(item.description)) || '后台任务',
+          run,
+          activity: !run || run === old?.run ? old?.activity : undefined,
+          background: true,
+          ambient: item.ambient === true,
+        });
+      }
+    } else {
+      if (!['task_started', 'task_progress', 'task_updated', 'task_notification'].includes(subtype)) return null;
+      const id = str(e.task_id);
+      if (!id) return null;
+      const run = str(e.run_id);
+      let task = this.tasks.get(id);
+      // 恢复的子任务沿用 task_id；旧一次运行迟到的结束事件不能关掉新一次。
+      if (task?.run && run && run < task.run) return this.event();
+      if (!task || (run && run !== task.run) || (subtype === 'task_started' && task.ended)) {
+        task = { id, description: '后台任务', run };
+        this.tasks.set(id, task);
+      }
+      const data = subtype === 'task_updated' ? obj(e.patch) : e;
+      if (str(data.description)) task.description = clip(str(data.description));
+      if (typeof data.is_backgrounded === 'boolean') task.background = data.is_backgrounded;
+      if (typeof data.ambient === 'boolean') task.ambient = data.ambient;
+      if (subtype === 'task_progress') task.activity = clip(str(e.summary) || str(e.last_tool_name)) || undefined;
+      if (subtype === 'task_notification' || ['completed', 'failed', 'stopped', 'killed'].includes(str(data.status))) task.ended = true;
+    }
+    return this.event();
+  }
+
+  private event(): Event {
+    return {
+      kind: KindBackgroundTasks,
+      background_tasks: [...this.tasks.values()]
+        .filter((task) => !task.ended && !task.ambient && task.background !== false)
+        .map(({ id, description, activity }) => ({ id, description, ...(activity ? { activity } : {}) })),
+    };
+  }
 }
 
 /** 读 claude 系与 opencode 的 todos 数组：[{content, status, activeForm?}]。 */
@@ -187,6 +259,7 @@ export class Parser {
   session = '';
   private readonly accumulated: Usage = newUsage();
   private readonly tasks = new TaskBoard();
+  private readonly backgroundTasks = new BackgroundTasks();
 
   /** 不校验工具名；外部一律经 newParser 创建。 */
   constructor(readonly tool: string) {}
@@ -227,6 +300,8 @@ export class Parser {
         break;
       default:
         events = parseClaudeLike(e, this.tasks);
+        const background = this.backgroundTasks.parse(e);
+        if (background) events.push(background);
     }
     const out: Event[] = [];
     for (const event of events) {
