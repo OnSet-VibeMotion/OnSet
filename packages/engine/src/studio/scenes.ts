@@ -54,22 +54,43 @@ export function sceneRendering(dir: string, id: string): boolean {
 }
 
 /**
- * scene.json 比产物新，但内容还是渲染时那一份：`scene_cues` 每次都把全部镜头的 scene.json 重写一遍，
- * 时长没变的镜头内容逐字节相同，只是修改时间变了。只看修改时间的话，重跑一次 cues 所有镜头都显示「要重渲染」
- * （2026-11 实测：修一个多音字重新配音后，24 个镜头全标成要重渲染）。
- * 按渲染记录（.am-render.json）里 scene.json 的摘要核对；记录对不上当前产物（大小不同）时不算数。
- * 只核对 scene.json 这一项：完整的输入指纹要读技能、配置与记忆，镜头列表每几秒刷新一次，算不起。
+ * 输入文件比产物新，但内容还是渲染时那一份：`scene_cues` 每次都把全部镜头的 scene.json 重写一遍，编排工具
+ * 也常用自己的脚本整批重写 scene.json 与字幕（6.100000 写成 6.1），全片字幕里别的镜头的一条改了时间，每个
+ * 镜头目录里那份字幕都跟着变。只看修改时间的话这些镜头全都显示「要重渲染」（2026-11 实测：先是 24 个全标，
+ * 后来是 24 个里 3 个）。按渲染记录（.am-render.json）逐个核对这几个文件，与 am 判断复用用同一个比法
+ * （scene.inputMatchesRecord：新记录按内容，旧记录按字节）；记录对不上当前产物（大小不同）时不算数。
+ * 只核对这几个文件：完整的输入指纹要读技能、配置与记忆，镜头列表每几秒刷新一次，算不起。
  */
-function renderedFrom(dir: string, output: string, outputSize: number, sceneFile: string): boolean {
+function renderedFrom(dir: string, output: string, outputSize: number, files: string[]): boolean {
   try {
     const record = JSON.parse(fs.readFileSync(path.join(dir, scene.RecordFile), 'utf8')) as Record<string, unknown>;
-    const parts = record.parts as Record<string, unknown> | undefined;
-    if (record.output !== output || record.output_size !== outputSize || !parts) return false;
-    const digest = crypto.createHash('sha256').update(fs.readFileSync(sceneFile)).digest('hex');
-    return parts['file:scene.json'] === digest;
+    const parts = record.parts as Record<string, string> | undefined;
+    if (record.output !== output || record.output_size !== outputSize || !parts || typeof record.schema !== 'number') return false;
+    // 逐字节相同的（cues 原样重写了一遍）不用读镜头；剩下的才按渲染记录的比法核对内容。
+    const differ = files.filter((rel) => parts['file:' + rel] !== digestFile(path.join(dir, rel)));
+    if (differ.length === 0) return true;
+    const sc = scene.load(dir);
+    return differ.every((rel) => scene.inputMatchesRecord(sc, rel, { schema: record.schema as number, parts }));
   } catch {
     return false;
   }
+}
+
+function digestFile(file: string): string {
+  try {
+    return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  } catch {
+    return '';
+  }
+}
+
+/** 镜头声明过、会影响画面的输入文件（相对镜头目录）：scene.json、字幕与短语时间轴。 */
+function inputFilesOf(v: Record<string, unknown>): string[] {
+  const files = ['scene.json'];
+  if (typeof v.transcript === 'string' && v.transcript !== '') files.push(v.transcript);
+  const timing = v.timing as Record<string, unknown> | undefined;
+  if (timing && typeof timing.phrases === 'string' && timing.phrases !== '') files.push(timing.phrases);
+  return files;
 }
 
 export function fileExists(file: string): boolean {
@@ -112,7 +133,14 @@ export function discoverScenes(root: string): SceneSummary[] {
       try {
         const out = fs.statSync(target);
         stamp = `${Math.floor(out.mtimeMs)}-${out.size}`;
-        stale = fs.statSync(file).mtimeMs > out.mtimeMs && !renderedFrom(dir, output, out.size, file);
+        const newer = inputFilesOf(v).filter((rel) => {
+          try {
+            return fs.statSync(path.join(dir, rel)).mtimeMs > out.mtimeMs;
+          } catch {
+            return false;
+          }
+        });
+        stale = newer.length > 0 && !renderedFrom(dir, output, out.size, newer);
       } catch {
         stale = false;
       }

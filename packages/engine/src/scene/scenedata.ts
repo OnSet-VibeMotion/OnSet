@@ -13,7 +13,7 @@ import { goRound } from '../gofmt';
 import * as reads from '../reads';
 import * as srt from '../srt';
 import { contained, sceneCanvas, frameSource, delimiterMatchAll, readFrameFrontmatter, type Scene } from './scene';
-import { handoffGuide, handoffIsZero, loadPhraseTimelineIn, lookIsZero, lookToJSON, type Handoff, type Look, type Timing } from './timing';
+import { handoffGuide, handoffIsZero, loadPhraseTimelineIn, lookIsZero, lookToJSON, type Handoff, type Look, type PhraseTimeline, type Timing } from './timing';
 
 /** 写进镜头目录的局部数据文件名。 */
 export const SceneDataFile = 'am-scene.js';
@@ -104,26 +104,37 @@ export function buildSceneData(s: Scene): SceneData {
   } catch (err) {
     throw new Error(`transcript ${s.transcript}：${(err as Error).message}`, { cause: err });
   }
-  for (const c of cues) {
-    const clipped = clipLocal(frameOf(c.start_seconds, canvas.fps), frameOf(c.end_seconds, canvas.fps), start, data.frames);
-    if (!clipped) continue;
-    data.cues.push({ index: c.index, text: c.text, start_frame: clipped[0], end_frame_exclusive: clipped[1] });
-  }
-  if (t.phrases !== '') {
-    const timeline = loadPhraseTimelineIn(s.directory, t.phrases, canvas.fps);
-    for (const p of timeline.phrases ?? []) {
-      const clipped = clipLocal(p.start_frame, p.end_frame_exclusive, start, data.frames);
-      if (!clipped) continue;
-      data.phrases.push({
-        phrase_id: p.phrase_id,
-        text: p.source_text,
-        start_frame: clipped[0],
-        end_frame_exclusive: clipped[1],
-        min_readable_frames: reads.requiredFrames(reads.units(p.source_text), canvas.fps, reads.Defaults),
-      });
-    }
-  }
+  data.cues = localCues(cues, start, data.frames, canvas.fps);
+  if (t.phrases !== '') data.phrases = localPhrases(loadPhraseTimelineIn(s.directory, t.phrases, canvas.fps), start, data.frames, canvas.fps);
   return data;
+}
+
+/** 全片字幕里落在本镜头 [start, start + frames) 的几条，换成局部帧并裁到镜头内。渲染记录按内容比字幕时也用它。 */
+export function localCues(cues: readonly srt.Cue[], start: number, frames: number, fps: number): LocalCue[] {
+  const out: LocalCue[] = [];
+  for (const c of cues) {
+    const clipped = clipLocal(frameOf(c.start_seconds, fps), frameOf(c.end_seconds, fps), start, frames);
+    if (!clipped) continue;
+    out.push({ index: c.index, text: c.text, start_frame: clipped[0], end_frame_exclusive: clipped[1] });
+  }
+  return out;
+}
+
+/** 短语时间轴里落在本镜头的几条，同 localCues。 */
+export function localPhrases(timeline: PhraseTimeline, start: number, frames: number, fps: number): LocalPhrase[] {
+  const out: LocalPhrase[] = [];
+  for (const p of timeline.phrases ?? []) {
+    const clipped = clipLocal(p.start_frame, p.end_frame_exclusive, start, frames);
+    if (!clipped) continue;
+    out.push({
+      phrase_id: p.phrase_id,
+      text: p.source_text,
+      start_frame: clipped[0],
+      end_frame_exclusive: clipped[1],
+      min_readable_frames: reads.requiredFrames(reads.units(p.source_text), fps, reads.Defaults),
+    });
+  }
+  return out;
 }
 
 /**

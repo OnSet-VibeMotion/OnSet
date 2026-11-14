@@ -3,10 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { atomicWrite } from '../fsutil';
 import { compareBytes, marshalIndent, sortedKeys } from '../gojson';
-import { goPathError } from '../gofmt';
+import { goPathError, goRound } from '../gofmt';
 import { blockValue, sceneBlocks } from './block';
 import { mapOf, unmarshal, type StructType } from './jsondecode';
-import { buildPrompt, memoryActive, outputPath, type Scene } from './scene';
+import * as srt from '../srt';
+import { buildPrompt, memoryActive, outputPath, sceneCanvas, type Scene } from './scene';
+import { localCues, localPhrases } from './scenedata';
+import { parsePhraseTimeline } from './timing';
 import { getToolVersion } from '../version';
 
 /**
@@ -21,8 +24,16 @@ export type { RenderRecord as Record };
 /** 镜头目录里的渲染记录文件名。 */
 export const RecordFile = '.am-render.json';
 
-/** 渲染记录的结构版本。 */
-const recordSchema = 1;
+/**
+ * 渲染记录的结构版本。
+ *
+ * 2：镜头的输入文件按内容记（inputDigest）：scene.json 按解析后的数据，字幕与短语时间轴只记落在本镜头里的那几条。
+ * 1：输入文件按字节记。旧记录照旧按字节核对（fingerprint 的 schema 参数），升级后没动过的镜头不会因为换了算法变成 Stale。
+ */
+const recordSchema = 2;
+
+/** 输入文件按字节记的旧记录版本。 */
+export const RecordSchemaBytes = 1;
 
 /**
  * 一次渲染的全部输入摘要。
@@ -71,7 +82,7 @@ const recordType: StructType = {
  * 只算声明过的输入，不扫整个镜头目录：渲染器自己会往目录里写合成代码与素材，
  * 把它们算进来的话，渲染一结束指纹就变了，记录永远对不上。
  */
-export function fingerprint(s: Scene, renderer: string, resolvedSkills: Record<string, string> | null): Inputs {
+export function fingerprint(s: Scene, renderer: string, resolvedSkills: Record<string, string> | null, schema = recordSchema): Inputs {
   // 重试说明与 worker 数是调度层每次临时填的，不是镜头的输入。
   s = { ...s, retryNote: '', renderWorkers: 0, afterAttempt: null };
   const resolved = resolvedSkills ?? {};
@@ -99,8 +110,9 @@ export function fingerprint(s: Scene, renderer: string, resolvedSkills: Record<s
   // 召回的记忆单列一项：记忆一变，Stale 的原因能直接说成「召回的记忆变了」，
   // 而不是笼统的 prompt。没有召回时不加这一项，打开记忆不会让老镜头全部 Stale。
   if (memoryActive(s.memory)) parts.memory = s.memory.digest;
+  const win = windowOf(s);
   for (const rel of inputFiles(s)) {
-    parts['file:' + toSlash(rel)] = digestFile(path.join(s.directory, rel));
+    parts['file:' + toSlash(rel)] = schema >= 2 ? inputDigest(s, rel, win) : digestFile(path.join(s.directory, rel));
   }
   // 扩展块自己的输入（例如角色包目录）由块给出。歌曲、卡点的数据文件不单独算：
   // 它们的 sha256 已写在 scene.json 的块里。
@@ -135,6 +147,123 @@ export function inputFiles(s: Scene): string[] {
 function timingInputFiles(s: Scene): string[] {
   if (s.timing === null || s.timing.phrases === '') return [];
   return [s.timing.phrases];
+}
+
+/** 本镜头在全片里的位置（裁字幕、短语时间轴用），只算一次；没有 timing 或画幅读不出时为 null。 */
+export interface InputWindow {
+  start: number;
+  frames: number;
+  fps: number;
+}
+
+function windowOf(s: Scene): () => InputWindow | null {
+  let done = false;
+  let w: InputWindow | null = null;
+  return () => {
+    if (!done) {
+      done = true;
+      try {
+        if (s.timing !== null) {
+          const fps = sceneCanvas(s).fps;
+          w = { start: s.timing.start_frame, frames: goRound(s.duration_seconds * fps), fps };
+        }
+      } catch {
+        w = null;
+      }
+    }
+    return w;
+  };
+}
+
+/**
+ * 一个输入文件按内容的摘要（file 默认是镜头目录里的 rel，旧记录核对时换成快照里的旧内容）。按字节算的话，
+ * 同一份内容换个写法也算输入变了：编排工具用脚本重写 scene.json，6.100000 变成 6.1；全片字幕里另一个镜头的
+ * 一条改了时间，每个镜头目录里那份字幕都变，所有镜头跟着 Stale（2026-11 实测：一个项目 24 个镜头里 18 个
+ * 就这样被判要重渲染，实际一个都没受影响）。
+ *
+ *   scene.json        解析后按键排序重新序列化：数字写法、键的先后、缩进都不算变化
+ *   字幕、短语时间轴  只记渲染器实际拿到的那几条：有 timing 的镜头是 am-scene.js 里裁到本镜头的字幕与短语
+ *                     （正文与局部帧号，scenedata 的 localCues / localPhrases），没有 timing 的镜头记全部字幕（正文与时间）
+ *   其余（prompt.md） 按字节：渲染器逐字读它
+ *
+ * 渲染器能看到的其余信息都在提示词里，由 prompt 那一项管。读不懂（JSON 写坏、字幕格式不对）时退回按字节。
+ */
+function inputDigest(s: Scene, rel: string, win: () => InputWindow | null, file = path.join(s.directory, rel)): string {
+  try {
+    if (rel === 'scene.json') return digestString('json\n' + canonicalJSON(JSON.parse(fs.readFileSync(file, 'utf8'))));
+    if (rel === s.transcript) {
+      const w = win();
+      if (w !== null) return digestString('cues\n' + JSON.stringify(localCues(srt.readCues(file), w.start, w.frames, w.fps).map((c) => [c.text, c.start_frame, c.end_frame_exclusive])));
+      if (s.timing === null) return digestString('cues\n' + JSON.stringify(srt.readCues(file).map((c) => [c.text, c.start_seconds, c.end_seconds])));
+    }
+    if (s.timing !== null && rel === s.timing.phrases) {
+      const w = win();
+      if (w !== null) {
+        const phrases = localPhrases(parsePhraseTimeline(fs.readFileSync(file), w.fps), w.start, w.frames, w.fps);
+        return digestString('phrases\n' + JSON.stringify(phrases.map((p) => [p.phrase_id, p.text, p.start_frame, p.end_frame_exclusive])));
+      }
+    }
+  } catch {
+    // 读不懂，按字节。
+  }
+  return digestFile(file);
+}
+
+/** 键按字节序排好的 JSON（数字按 JS 的最短写法）。 */
+function canonicalJSON(value: unknown): string {
+  if (Array.isArray(value)) return '[' + value.map(canonicalJSON).join(',') + ']';
+  if (value !== null && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    return '{' + Object.keys(obj).sort(compareBytes).map((k) => JSON.stringify(k) + ':' + canonicalJSON(obj[k])).join(',') + '}';
+  }
+  return JSON.stringify(value);
+}
+
+/**
+ * 客户端每轮对话前后把项目里的文本文件按 sha256 存进 production/studio/blobs/（studio/turns.ts）。旧记录里的
+ * 摘要正是那份内容的 sha256，找得到就能拿渲染时的内容按新规则比。项目根是镜头目录往上第一个有
+ * article-to-motion.conf 的目录。
+ */
+function snapshotOf(dir: string, digest: string): string | null {
+  if (!/^[0-9a-f]{64}$/.test(digest)) return null;
+  for (let at = path.resolve(dir); ; ) {
+    if (fs.existsSync(path.join(at, 'article-to-motion.conf'))) {
+      const file = path.join(at, 'production', 'studio', 'blobs', digest);
+      return fs.existsSync(file) ? file : null;
+    }
+    const up = path.dirname(at);
+    if (up === at) return null;
+    at = up;
+  }
+}
+
+/**
+ * 镜头声明过的输入文件 rel 与渲染记录里的那一项是否一致。新记录（2）按内容比；旧记录（1）先按字节比，
+ * 对不上时到客户端的快照里找渲染时那份内容，找到就两份都按内容比，找不到才算变了。
+ */
+export function inputMatchesRecord(s: Scene, rel: string, record: Pick<RenderRecord, 'schema' | 'parts'>, win: () => InputWindow | null = windowOf(s)): boolean {
+  const want = record.parts?.['file:' + toSlash(rel)];
+  if (want === undefined) return false;
+  try {
+    if (record.schema >= 2) return inputDigest(s, rel, win) === want;
+    const file = path.join(s.directory, rel);
+    if (digestFile(file) === want) return true;
+    const old = snapshotOf(s.directory, want);
+    return old !== null && inputDigest(s, rel, win, old) === inputDigest(s, rel, win);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 当前输入与渲染记录是否等价：指纹相同，或者变了的只有镜头的输入文件、且每个都与记录一致
+ * （inputMatchesRecord：内容没变，只是写法、别的镜头的字幕变了）。am 判断复用与镜头列表都用它。
+ */
+export function inputsMatchRecord(s: Scene, current: Inputs, record: RenderRecord): boolean {
+  if (current.fingerprint === record.fingerprint) return true;
+  const changed = changedInputs(current, record);
+  const win = windowOf(s);
+  return changed.every((name) => name.startsWith('file:') && inputMatchesRecord(s, name.slice('file:'.length), record, win));
 }
 
 /** 与 other 相比内容不同、新增或消失的输入项，按名字排序。 */
@@ -194,7 +323,7 @@ export function loadRecord(s: Scene): RenderRecord | null {
   } catch {
     return null;
   }
-  if (record.schema !== recordSchema || record.output !== s.output || record.fingerprint === '') return null;
+  if ((record.schema !== recordSchema && record.schema !== RecordSchemaBytes) || record.output !== s.output || record.fingerprint === '') return null;
   try {
     const [size, digest] = outputIdentity(s);
     if (size !== record.output_size || digest !== record.output_sha256) return null;

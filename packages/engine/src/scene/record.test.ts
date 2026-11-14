@@ -125,7 +125,7 @@ describe('render record', () => {
     writeRecord(s, { fingerprint: 'abc', parts: { prompt: 'x', am: 'y', 'file:<a>': 'z' } });
     const sha = crypto.createHash('sha256').update('video').digest('hex');
     expect(fs.readFileSync(path.join(s.directory, '.am-render.json'), 'utf8')).toBe(
-      '{\n  "schema": 1,\n  "output": "out.mp4",\n  "output_size": 5,\n' +
+      '{\n  "schema": 2,\n  "output": "out.mp4",\n  "output_size": 5,\n' +
         `  "output_sha256": "${sha}",\n  "fingerprint": "abc",\n` +
         '  "parts": {\n    "am": "y",\n    "file:\\u003ca\\u003e": "z",\n    "prompt": "x"\n  }\n}\n',
     );

@@ -317,6 +317,8 @@ scene.json 里功能自己的块（多角色对话的 `cast`、歌曲讲解的 `
 
 镜头复用按输入指纹判定（`scene.fingerprint`，`scene/record.ts`，记录在镜头目录的 `.am-render.json`）。指纹只算**声明过的输入**，不扫整个镜头目录——渲染器自己会往目录里写合成代码，算进去的话渲染一结束指纹就变了。镜头新增一类输入文件时，要把它加进 `fingerprint` 的文件清单，否则改了它也不会触发 Stale。指纹一致只表示「这份已验收产物出自当前输入」，不表示可复现；指纹不一致仍只标 Stale、要 `--force` 才覆盖，不要改成自动重渲染。指纹的摘要按字节算，所以写进 `.am-render.json` 与提示词的文字要逐字稳定，见 `packages/engine/CONVENTIONS.md`。
 
+镜头自己的输入文件按内容记（渲染记录 `schema: 2`，`scene/record.ts` 的 `inputDigest`）：`scene.json` 解析后按键排序重新序列化，数字写法、键的先后、缩进都不算变化；字幕与短语时间轴只记渲染器实际拿到的那几条——有 `timing` 的镜头是 `am-scene.js` 里裁到本镜头的字幕与短语（`scenedata.ts` 的 `localCues` / `localPhrases`，与渲染前写的局部数据同一份裁法），没有 `timing` 的记全部字幕；`prompt.md` 仍按字节。渲染器能看到的其余信息都在提示词里，由 `prompt` 那一项管。按字节记的话，编排工具用脚本重写 scene.json（`6.100000` 写成 `6.1`）、全片字幕里另一个镜头的一条改了时间，所有镜头都变 Stale（2026-11 实测：一个项目 24 个镜头里 18 个被判要重渲染，实际一个都没受影响）。旧记录（`schema: 1`，按字节）照旧按字节核对（`fingerprint` 的 `schema` 参数），对不上时到客户端的快照（`production/studio/blobs/<sha256>`，键正是旧记录里的摘要）找渲染时那份内容，找到就两份按内容比，找不到才算变了（`inputMatchesRecord`）。am 判断复用（`cli/src/reuse.ts`）与客户端镜头列表（`studio/scenes.ts`，看 scene.json、字幕、短语时间轴三个文件）都经 `inputsMatchRecord` / `inputMatchesRecord`，同一种比法。`scene/record.content.test.ts` 钉着。
+
 每次渲染写 `render-<id>.attempt.json`，重渲染前 `scene.archiveAttempt`（`scene/attempt.ts`）先把上一次的产物、日志与尝试记录挪进 `attempts/`。调度层的重试与单镜头重跑走同一个归档函数，不要各写一份编号逻辑。token 用量按各工具流式事件尽力读取（`tools.accumulateUsage`），读不到就留空，不做估算。
 
 用量口径统一（`tools/usage.ts` 的 `Usage`）：输入含缓存命中与写入，缓存是输入里命中的部分，输出含推理。codex 原样就是这个口径，claude 系与 opencode 要把缓存加回输入——不统一的话 claude 显示「输入 4、缓存 40437」，跨工具既不能比也不能相加。记录带 `basis: total-input`；新增一家工具时要按这个口径填，并在 `tools/usage.test.ts` 的「usage is comparable across tools」里加一行真实流。汇总一律用 `usageAdd`：有一次没读到用量就标 `partial`，数字只是下限。
