@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as agentrun from '../agentrun';
+import * as project from '../project';
 import {
   attachmentText,
   createSession,
@@ -14,6 +15,7 @@ import {
   listSessions,
   maxQuoteRunes,
   newID,
+  reseedPrompt,
   transcript,
   transcriptLimit,
   updateMeta,
@@ -123,6 +125,26 @@ describe('sessions', () => {
     for (const want of ['之前的对话', '第一句', '改好了', '第二句']) expect(a[2], '补发的提示词没带上对话记录').toContain(want);
     const { text } = await rawGet(f.s, `/api/sessions/${id}/events?follow=0`);
     expect(text, '应提示续接失败').toContain('原会话无法续接');
+  });
+
+  // 整片制作换了 CLI 会话时，第一轮的制作说明不在对话记录里，要重发（2026-11：qoder 换会话后只剩对话记录）。
+  it('a reseeded production session gets the production prompt again', async () => {
+    const f = newSessionFixture();
+    const { body } = await studioRequest(f.s, 'POST', '/api/production/start', '{"message":"竖屏，三分钟"}');
+    const id = body.session_id as string;
+    await waitIdle(f, id);
+    setEnv('FAKE_FAIL_RESUME', '1');
+    await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"第二句"}');
+    await waitIdle(f, id);
+    const a = args(f);
+    expect(a).toHaveLength(3);
+    // 制作提示词的标题（第一轮原样发过），重开的会话里也要有。
+    const opening = project.runPrompt(f.root, '').prompt.toString('utf8').split('\n')[0];
+    expect(a[0]).toContain(opening);
+    expect(a[2], '重开的会话没带上制作说明').toContain(opening);
+    for (const want of ['整片制作的说明', '之前的对话', '改好了', '第二句']) expect(a[2]).toContain(want);
+    // 普通对话不带制作说明。
+    expect(reseedPrompt('用户：你好', '再说一句')).not.toContain('整片制作的说明');
   });
 
   it('production start, busy and cancel', async () => {

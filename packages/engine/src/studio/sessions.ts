@@ -716,7 +716,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
       spec.plan = lastTaskPlan(sess.events);
     } else {
       spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
-      if (earlierTurns && history !== '') spec.prompt = reseedPrompt(history, prompt);
+      if (earlierTurns && history !== '') spec.prompt = reseedPrompt(history, prompt, productionBrief(p, sess));
     }
     let outcome = await agentrun.run(spec, onEvent, signal);
     recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);
@@ -724,7 +724,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
       emit(sess, turn.turn_id, { kind: kindNotice, text: '原会话无法续接（' + outcome.error.message + '），已带上之前的对话记录开新会话' });
       spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
       spec.resume = false;
-      spec.prompt = reseedPrompt(history, prompt);
+      spec.prompt = reseedPrompt(history, prompt, productionBrief(p, sess));
       outcome = await agentrun.run(spec, onEvent, signal);
       recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);
     }
@@ -764,8 +764,9 @@ function watchViews(sess: Session, turnID: string, inbox: string, projectPath: s
   };
 }
 
-export function reseedPrompt(history: string, prompt: string): string {
+export function reseedPrompt(history: string, prompt: string, production = ''): string {
   return (
+    (production !== '' ? production + '\n\n---\n\n' : '') +
     '下面是这个项目里你和用户之前的对话记录（较早的部分可能被截掉），供你接上上下文：\n\n' +
     history +
     '\n\n---\n\n' +
@@ -948,6 +949,21 @@ function recordUsage(signal: AbortSignal, p: Project, sess: Session, tool: strin
     ledger.append(ledger.projectFile(p.path), entry);
   } catch (err) {
     emit(sess, turnID, { kind: kindNotice, text: '编排用量没能记进账本：' + (err as Error).message });
+  }
+}
+
+/**
+ * 整片制作的会话换了 CLI 会话（续接失败、换了编排工具）时，制作提示词要重发：对话记录只有双方说的话，
+ * 第一轮发过的制作说明（各阶段怎么做、关卡在哪）不在里面，新会话拿不到就只能凭对话猜。
+ * 按项目现在的流程重新组合，与「开始制作」同一份；组合不出来时照旧只带对话记录。
+ */
+function productionBrief(p: Project, sess: Session): string {
+  if (sess.meta.kind !== 'production') return '';
+  try {
+    const text = project.runPrompt(p.path, '').prompt.toString('utf8');
+    return '下面是这次整片制作的说明（与开工时给你的同一份，按项目现在的流程重新组合）：\n\n' + text;
+  } catch {
+    return '';
   }
 }
 
