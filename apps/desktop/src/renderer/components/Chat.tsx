@@ -918,7 +918,10 @@ function MediaStrip(props: { media: MediaRef[]; mtimes: Map<string, number>; onO
   );
 }
 
-/** 编排工具推荐的整片风格：海报、名字与理由，点了把选择发回去。认不出的标识照样列出，只是没有图。 */
+/**
+ * 编排工具推荐的风格：海报、名字、用在哪（全片默认或某一段）与理由，点了把选择发回去。
+ * 认不出的标识照样列出，只是没有图。
+ */
 function StylePicks(props: { picks: StylePick[]; styles: Map<string, FilmStyle>; version: number; enabled: boolean; onPick: (text: string) => void }) {
   return (
     <div className="style-picks film-styles" role="group" aria-label="推荐的整片风格">
@@ -927,7 +930,7 @@ function StylePicks(props: { picks: StylePick[]; styles: Map<string, FilmStyle>;
         const [source, slug] = pick.key.split('/');
         const name = style ? style.cn : pick.key;
         return (
-          <figure key={pick.key} className="style-pick" data-style={pick.key}>
+          <figure key={pick.key + '\u0000' + pick.scope} className={'style-pick' + (pick.scope ? ' scoped' : '')} data-style={pick.key} data-scope={pick.scope || undefined}>
             <a
               className="style-pick-poster"
               href={`/api/film-styles/${encodeURIComponent(source)}/${encodeURIComponent(slug)}/poster.jpg?size=full`}
@@ -942,14 +945,15 @@ function StylePicks(props: { picks: StylePick[]; styles: Map<string, FilmStyle>;
                 {name}
                 {style?.en && <span className="style-pick-en">{style.en}</span>}
               </span>
+              {pick.explicit && <span className="style-pick-scope">{pick.scope ? `只用在：${pick.scope}` : '全片默认风格'}</span>}
               <span className="style-pick-reason">{pick.reason || style?.summary || ''}</span>
               <button
                 className="pill"
                 disabled={!props.enabled}
                 title={props.enabled ? '把这个选择发给 AI' : '只有最新一条回复的推荐可以点'}
-                onClick={() => props.onPick(stylePickMessage(name, pick.key))}
+                onClick={() => props.onPick(stylePickMessage(name, pick))}
               >
-                用这个风格
+                {!pick.explicit ? '选这个风格' : pick.scope ? '用在这一段' : '设为整片风格'}
               </button>
             </figcaption>
           </figure>
@@ -959,9 +963,14 @@ function StylePicks(props: { picks: StylePick[]; styles: Map<string, FilmStyle>;
   );
 }
 
-/** 点「用这个风格」发出的那句话；收起已答的选项时按它认出选的是哪个。 */
-function stylePickMessage(name: string, key: string): string {
-  return `整片风格用「${name}」（${key}）`;
+/**
+ * 点风格卡片发出的那句话；收起已答的选项时按它认出选的是哪个。
+ * 全片默认、只给一段、不知道是哪种（回复里没有 film-styles 代码块）各是一种说法，不能都说成「整片风格」。
+ */
+function stylePickMessage(name: string, pick: StylePick): string {
+  if (!pick.explicit) return `选「${name}」（${pick.key}）这个风格`;
+  if (pick.scope) return `${pick.scope}用「${name}」风格（${pick.key}），其余镜头不变`;
+  return `整片风格用「${name}」（${pick.key}）`;
 }
 
 /** blocks[index] 这一轮之后用户发的第一条消息（去掉引用、附件说明）。 */
@@ -1012,7 +1021,7 @@ function pickedOption(answer: string, choices: string[], picks: StylePick[], sty
   if (choice) return choice;
   for (const pick of picks) {
     const name = styles.get(pick.key)?.cn ?? pick.key;
-    if (stylePickMessage(name, pick.key) === answer) return name;
+    if (stylePickMessage(name, pick) === answer) return pick.scope ? `${pick.scope}：${name}` : name;
   }
   return undefined;
 }

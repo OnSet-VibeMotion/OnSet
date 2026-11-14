@@ -75,14 +75,21 @@ test('shows posters for film styles the orchestrator recommends', async ({ page,
   await page.locator('#prompt').fill('推荐风格');
   await page.locator('#send').click();
   const picks = page.locator('.style-picks .style-pick');
-  await expect(picks).toHaveCount(2);
+  await expect(picks).toHaveCount(3);
   await expect(picks.first()).toContainText('油画厚涂');
   await expect(picks.first()).toContainText('厚涂有分量');
+  await expect(picks.first()).toContainText('全片默认风格');
   await expect(picks.nth(1)).toContainText('浮世绘');
   await expect(page.locator('.message.assistant')).not.toContainText('film-styles');
   await expect(page.locator('.choices')).toContainText('不用整片风格');
-  // 点「用这个风格」：把选择作为下一条消息发出。
-  await picks.first().locator('button', { hasText: '用这个风格' }).click();
+  // 只推荐给一段的风格：标出用在哪，按钮与发出的话都不说成整片风格。
+  const scoped = page.locator('.style-pick.scoped');
+  await expect(scoped).toHaveCount(1);
+  await expect(scoped).toContainText('只用在：回忆段，镜头 04–06');
+  await expect(scoped.locator('button')).toHaveText('用在这一段');
+  await expect(picks.first().locator('button')).toHaveText('设为整片风格');
+  // 点全片默认的那张：把选择作为下一条消息发出。
+  await picks.first().locator('button', { hasText: '设为整片风格' }).click();
   await expect(page.locator('.message.user').last()).toContainText('整片风格用「油画厚涂」（lemo-opuscar/impasto）');
   // 选过之后海报与其他选项收起，只留选中的风格名。
   await expect(page.locator('.choice-picked')).toContainText('油画厚涂');
@@ -282,4 +289,15 @@ test('storyboard lists the plan and each scene’s description before rendering'
   // 镜头页旁边有这个镜头的说明。
   await page.locator('[data-tab="scene"]').click();
   await expect(page.locator('#scene-brief')).toContainText('一只猫推开门');
+});
+
+test('a style recommended for one segment is sent as that segment’s style, not the whole film’s', async ({ page, project }) => {
+  await openProject(page, project);
+  await page.locator('#prompt').fill('推荐风格');
+  await page.locator('#send').click();
+  await page.locator('.style-pick.scoped button', { hasText: '用在这一段' }).click();
+  const sent = page.locator('.message.user').last();
+  await expect(sent).toContainText(/回忆段，镜头 04–06用「.+」风格（lemo-opuscar\/ink-wash），其余镜头不变/);
+  await expect(sent).not.toContainText('整片风格');
+  await expect(page.locator('.choice-picked')).toContainText('回忆段，镜头 04–06：');
 });

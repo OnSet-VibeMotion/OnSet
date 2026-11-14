@@ -211,12 +211,19 @@ export function stripChoices(text: string): string {
   return text.replace(choicesBlock, '').replace(filmStylesBlock, '').trimEnd();
 }
 
-/** 推荐的整片风格：film-styles 代码块，每行「来源/目录名 理由」。 */
+/**
+ * 推荐的整片风格：film-styles 代码块，每行「来源/目录名 理由」是全片的默认风格；
+ * 「来源/目录名 [用在哪一段] 理由」是只给那一段换的风格（studio/sessions.ts 的 studioInteraction）。
+ */
 const filmStylesBlock = /```film-styles\s*\n([\s\S]*?)```/;
 
 export interface StylePick {
   key: string;
   reason: string;
+  /** 只用在哪一段（方括号里写的，例如「回忆段，镜头 04–06」）；空是全片的默认风格。 */
+  scope: string;
+  /** 来自 film-styles 代码块。没有代码块、按回复里写到的风格标识认出来的，不知道是给全片还是给一段。 */
+  explicit: boolean;
 }
 
 /**
@@ -230,10 +237,13 @@ export function parseStylePicks(text: string, known: Set<string>): StylePick[] {
   if (block) {
     for (const raw of block[1].split('\n')) {
       const line = raw.replace(/^\s*(?:[-*•]|\d+[.)、])\s*/, '').trim();
-      const match = /^`?([\w.-]+\/[\w.-]+)`?\s*[:：—–-]*\s*(.*)$/.exec(line);
-      if (!match || seen.has(match[1])) continue;
-      seen.add(match[1]);
-      picks.push({ key: match[1], reason: match[2].trim() });
+      const match = /^`?([\w.-]+\/[\w.-]+)`?\s*(?:[[【]([^\]】]*)[\]】])?\s*[:：—–-]*\s*(.*)$/.exec(line);
+      if (!match) continue;
+      const scope = (match[2] ?? '').trim();
+      // 同一种风格可以既推荐给全片、又推荐给某一段，按「风格 + 范围」去重。
+      if (seen.has(match[1] + '\u0000' + scope)) continue;
+      seen.add(match[1] + '\u0000' + scope);
+      picks.push({ key: match[1], reason: match[3].trim(), scope, explicit: true });
     }
     return picks.slice(0, 6);
   }
@@ -242,7 +252,7 @@ export function parseStylePicks(text: string, known: Set<string>): StylePick[] {
     const key = match[0];
     if (!known.has(key) || seen.has(key)) continue;
     seen.add(key);
-    picks.push({ key, reason: '' });
+    picks.push({ key, reason: '', scope: '', explicit: false });
   }
   return picks.slice(0, 6);
 }

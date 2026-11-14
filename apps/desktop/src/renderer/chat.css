@@ -1461,7 +1461,7 @@ div.tool {
   text-overflow: ellipsis;
 }
 
-/* 推荐的整片风格：海报卡片，两列。 */
+/* 推荐的风格：海报卡片，两列；只给一段的卡片标出用在哪。 */
 .chat .style-picks {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -1498,6 +1498,18 @@ div.tool {
   font-weight: 400;
   font-size: 11px;
   color: var(--muted);
+}
+.chat .style-pick-scope {
+  align-self: flex-start;
+  font-size: 11px;
+  color: var(--muted);
+}
+.chat .style-pick.scoped .style-pick-scope {
+  padding: 1px 8px;
+  border: 1px solid var(--accent-line);
+  border-radius: 999px;
+  color: var(--accent-text);
+  background: var(--accent-soft);
 }
 .chat .style-pick-reason {
   font-size: 12px;
