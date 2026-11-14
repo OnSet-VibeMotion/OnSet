@@ -176,7 +176,7 @@ function laterCrews(items: PrereqStatus[]): Crew[] {
     out.push({ key, icon: later.icon ?? own[0].group, title: later.title, desc: later.desc, items: own });
   }
   const design = items.filter((i) => i.group === 'voice');
-  if (design.length) out.push({ key: 'design', title: '音色设计', desc: '在音色页按描述做一个新声音 · 约 4.6 GB', items: design });
+  if (design.length) out.push({ key: 'design', title: '音色设计', desc: window.onset?.platform === 'win32' ? '在音色页按描述做一个新声音 · Windows CUDA Q8_0 · 约 6.2 GB' : '在音色页按描述做一个新声音 · 约 4.6 GB', items: design });
   return out;
 }
 

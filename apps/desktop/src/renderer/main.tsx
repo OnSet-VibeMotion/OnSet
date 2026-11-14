@@ -3,6 +3,7 @@ import { App } from './app';
 import { Pet } from './components/Pet';
 import type { CrewSignal, PetCommand } from './components/chat/crew';
 import { installSkin } from './skin';
+import { installExclusiveAudioPlayback } from './media';
 import type { SkinView } from './types';
 import './styles.css';
 
@@ -15,6 +16,10 @@ declare global {
     onset?: {
       desktop: boolean;
       platform: string;
+      windowCommand?: (command: 'close' | 'minimize' | 'maximize') => void;
+      showApplicationMenu?: (position: { x: number; y: number }) => void;
+      /** Windows 系统文件夹选择器；取消不改变当前位置。 */
+      selectDirectory?: (defaultPath?: string) => Promise<string | null>;
       /** 原生菜单的动作：new / home / open（带路径）/ step（第几步）。返回取消订阅。 */
       onMenu?: (callback: (action: MenuAction) => void) => () => void;
       setBadge?: (count: number) => void;
@@ -44,5 +49,6 @@ if (petWindow) document.documentElement.classList.add('pet-window');
 
 // 界面皮肤：两个窗口都在画之前开始取（studio/skins.ts），取到前是放映室的默认色。
 installSkin();
+installExclusiveAudioPlayback();
 
 createRoot(document.getElementById('app')!).render(petWindow ? <Pet /> : <App />);

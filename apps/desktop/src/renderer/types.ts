@@ -289,6 +289,15 @@ export interface DirectoryEntry {
   is_project: boolean;
 }
 
+export interface DirectoryListing {
+  path: string;
+  parent: string;
+  root: string;
+  entries: DirectoryEntry[];
+  /** 只有 Windows 返回盘符；其他平台保留原来的目录浏览方式。 */
+  drives?: { name: string; path: string }[];
+}
+
 export interface BeatGrid {
   /** draft：还没确认（或与正式网格不同）的草稿；confirmed：正式网格。 */
   kind: 'draft' | 'confirmed';

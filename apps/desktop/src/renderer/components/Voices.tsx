@@ -64,7 +64,14 @@ export function VoicesTab({ version }: { version: number }) {
   if (!library) return <div className="empty">{error || '正在读取音色库…'}</div>;
   return (
     <div className="voices-tab">
-      <audio ref={audio} onEnded={() => setPlaying('')} hidden />
+      <audio
+        ref={audio}
+        onEnded={() => setPlaying('')}
+        onPause={(event) => {
+          if (window.onset?.platform === 'win32' && event.currentTarget.paused) setPlaying('');
+        }}
+        hidden
+      />
       <header className="voices-head">
         <h2>音色</h2>
         <p>确认过的声音存在这里，所有项目共用。用 Breeze 配音时从默认音色克隆，每部片子都是同一个声音；只靠一句描述设计的声音，每次生成都会变。</p>
@@ -356,7 +363,14 @@ function DesignVoice({ library, first, onSaved }: { library: VoiceLibrary; first
 
   return (
     <div className="voices-way-body">
-      <audio ref={audio} onEnded={() => setPlaying('')} hidden />
+      <audio
+        ref={audio}
+        onEnded={() => setPlaying('')}
+        onPause={(event) => {
+          if (window.onset?.platform === 'win32' && event.currentTarget.paused) setPlaying('');
+        }}
+        hidden
+      />
       <p className="voices-hint">用一句话描述想要的声音：性别、年龄段、音色和语气。同一句描述每次生成的声音都不一样，多生成几段，挑一段最满意的存下来，以后就一直是它。</p>
       <label className="voices-field">
         <span>想要的声音</span>
@@ -447,7 +461,9 @@ function InstallBreeze({ design, onReady }: { design: VoiceLibrary['design']; on
   return (
     <div className="voices-way-body voices-install">
       <p>
-        按描述设计要用本机的 Breeze TTS 2：不联网生成，只能在 Apple Silicon 的 Mac 上运行，模型约 4.6 GB。
+        {window.onset?.platform === 'win32'
+          ? '按描述设计使用本机 Breeze TTS 2 Q8_0，通过 NVIDIA CUDA 生成；模型与运行资源约 6.2 GB。'
+          : '按描述设计要用本机的 Breeze TTS 2：不联网生成，只能在 Apple Silicon 的 Mac 上运行，模型约 4.6 GB。'}
       </p>
       {progress?.running ? (
         <div className="voices-progress">

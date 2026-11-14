@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api, errorText, post } from '../api';
-import type { CanvasOption, DirectoryEntry, Project, StylesResponse } from '../types';
+import type { CanvasOption, DirectoryListing, Project, StylesResponse } from '../types';
 import { Icon } from './Icon';
 import { FilmStylePicker, styleKey, useFilmStyles } from './FilmStyles';
+import { NativeDirectoryPicker, usesNativeDirectoryPicker } from './NativeDirectoryPicker';
 
 interface Props {
   projects: Project[];
@@ -11,27 +12,21 @@ interface Props {
   onOpened: () => void;
 }
 
-interface Listing {
-  path: string;
-  parent: string;
-  root: string;
-  entries: DirectoryEntry[];
-}
-
 type Mode = 'recent' | 'open' | 'create';
 
 export function ProjectDialog({ projects, currentId, onClose, onOpened }: Props) {
   const [mode, setMode] = useState<Mode>(projects.length ? 'recent' : 'open');
-  const [listing, setListing] = useState<Listing | null>(null);
+  const [listing, setListing] = useState<DirectoryListing | null>(null);
   const [selected, setSelected] = useState('');
   const [error, setError] = useState('');
   const [working, setWorking] = useState(false);
 
   const browse = async (path = '') => {
     try {
-      const result = await api<Listing>('/api/directories' + (path ? '?path=' + encodeURIComponent(path) : ''));
+      const result = await api<DirectoryListing>('/api/directories' + (path ? '?path=' + encodeURIComponent(path) : ''));
       setListing(result);
-      setSelected('');
+      // 系统对话框可能先于初始目录请求返回，不能清掉用户刚选好的路径。
+      if (!usesNativeDirectoryPicker()) setSelected('');
       setError('');
     } catch (err) {
       setError(errorText(err));
@@ -149,13 +144,23 @@ function RecentList(props: {
 }
 
 function DirectoryBrowser(props: {
-  listing: Listing | null;
+  listing: DirectoryListing | null;
   selected: string;
   projectsOnly: boolean;
   onBrowse: (path: string) => void;
   onSelect: (path: string) => void;
 }) {
   const { listing } = props;
+  if (usesNativeDirectoryPicker()) {
+    const selected = props.selected || listing?.path || '';
+    return (
+      <div className="native-directory-browser">
+        <span className="muted">{props.projectsOnly ? '选择已有项目文件夹' : '选择新项目的保存文件夹'}</span>
+        <NativeDirectoryPicker id={props.projectsOnly ? 'native-open-directory' : 'native-create-directory'} value={selected} label="选择文件夹…" onChange={props.onSelect} />
+        <code className="path">{selected || '尚未选择文件夹'}</code>
+      </div>
+    );
+  }
   if (!listing) return <p className="muted pad">正在读取目录…</p>;
   return (
     <div className="browser">
