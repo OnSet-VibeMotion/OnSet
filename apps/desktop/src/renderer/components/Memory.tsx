@@ -71,6 +71,7 @@ export function MemoryTab({ scene, version, run }: Props) {
       weak={state.status.weak.some((w) => w.name === m.name)}
       retest={state.status.retest.filter((r) => r.name === m.name)}
       suspect={(state.status.suspect ?? []).filter((x) => x.name === m.name)}
+      renderer={state.renderer || 'claude'}
       run={run}
     />
   );
@@ -436,6 +437,7 @@ function MemoryCard({
   weak,
   retest,
   suspect,
+  renderer,
   run,
 }: {
   memory: MemoryRow;
@@ -443,6 +445,7 @@ function MemoryCard({
   weak: boolean;
   retest: MemoryState['status']['retest'];
   suspect: MemorySuspect[];
+  renderer: string;
   run: RunAction;
 }) {
   const [open, setOpen] = useState(false);
@@ -476,6 +479,11 @@ function MemoryCard({
           )}
           {memory.status === 'trial' && (
             <>
+              {memory.kind === 'lesson' && memory.examinable && (
+                <button className="primary" onClick={() => run('/api/memory/actions/exam', { renderers: [renderer], trial: memory.name })}>
+                  只考这条
+                </button>
+              )}
               {(memory.kind === 'preference' || !memory.examinable) && (
                 <button className="primary" onClick={() => run('/api/memory/actions/promote', { name: memory.name })}>
                   确认

@@ -153,9 +153,9 @@ from_auditions: [audition-20261114-153012]
 - 每个镜头最多注入 3 条经验：只写最能拉开差距的一两条，宁可少写。几组对照说的是同一件事时合成一条。
 - 已有的同类经验说的是同一件事时，写成修订：换新名字，加 revises: <旧名>，正文写完整的新版本。
 
-## 镜头特征
-
 `;
+  b += memory.lessonWritingGuide();
+  b += '## 镜头特征\n\n';
   const features = memory.featureDescriptions();
   for (const name of Object.keys(features).sort(compareBytes)) b += `- \`${name}\`：${features[name]}\n`;
   b += '\n## 学生已有的、向这位老师学来的经验\n\n';

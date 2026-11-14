@@ -225,11 +225,12 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
   const p = s.projectOr404();
   if (p instanceof Response) return p;
   const action = rest.replace(/^\/+|\/+$/g, '');
-  let req: { name: string; to: number; renderers: string[]; scene_id: string; verdict: string; note: string; seconds: number | null; region: number[]; global: boolean; final: boolean };
+  let req: { name: string; trial: string; to: number; renderers: string[]; scene_id: string; verdict: string; note: string; seconds: number | null; region: number[]; global: boolean; final: boolean };
   try {
     const body = await decodeJSON(request);
     req = {
       name: fieldString(body, 'name'),
+      trial: fieldString(body, 'trial'),
       to: fieldInt(body, 'to'),
       renderers: fieldStrings(body, 'renderers'),
       scene_id: fieldString(body, 'scene_id'),
@@ -267,6 +268,12 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
       name = 'memory_exam';
       params = { renderers: req.renderers.join(',') };
       label = '记忆考试';
+      if (req.trial !== '') {
+        if (!memory.validName(req.trial)) return writeError(400, 'invalid_name', '记忆名不合法');
+        if (req.name !== '') return writeError(400, 'invalid_exam', '试用考试与生效经验重考不能同时指定');
+        params.trial = req.trial;
+        label = '考试 ' + req.trial;
+      }
       if (req.name !== '') {
         if (!memory.validName(req.name)) return writeError(400, 'invalid_name', '记忆名不合法');
         params.retest = req.name;

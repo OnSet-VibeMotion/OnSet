@@ -130,7 +130,7 @@ export interface Verdict {
   pass: boolean;
   /** 为 true 时整场考试无效：既不生效也不拒绝。 */
   invalid: boolean;
-  /** 为 true 时考试期间生效记忆变过，结果交给人确认。 */
+  /** 为 true 时生效记忆变过或待考经验未实际召回，保留原状态，需核实后重考或人工确认。 */
   needs_human: boolean;
   control_score: number;
   trial_score: number;
@@ -160,10 +160,12 @@ function cellKey(question: string, renderer: string, arm: Arm): string {
  *  3. 留出题上任意一个渲染工具的一次通过数都不下降；
  *  4. 所有格子都有有效结果，渲染工具自身故障使整场考试无效；
  *  5. 考试期间生效记忆没有被改动过，否则转为待人工确认。
+ *  6. 两组逐次唯一配对、实际模型相同，否则整场无效。
+ *  7. 每条待考经验都实际出现在至少一对试用组中，否则保留原状态。
  *
  * 重复多次的格子按多数结果判定通过，得分取平均。
  */
-export function judge(questions: readonly Question[], renderers: readonly string[], cells: readonly Cell[], activeChanged: boolean): Verdict {
+export function judge(questions: readonly Question[], renderers: readonly string[], cells: readonly Cell[], activeChanged: boolean, trials: readonly string[] = []): Verdict {
   const v: Verdict = { pass: false, invalid: false, needs_human: false, control_score: 0, trial_score: 0, reasons: [] };
   const grouped = new Map<string, Cell[]>();
   for (const c of cells) {
@@ -190,6 +192,20 @@ export function judge(questions: readonly Question[], renderers: readonly string
         if ((grouped.get(cellKey(q.id, r, arm))?.length ?? 0) === 0) {
           v.invalid = true;
           v.reasons.push(`${q.id} × ${r} × ${arm} 没有结果`);
+        }
+      }
+      const control = grouped.get(cellKey(q.id, r, ArmControl)) ?? [];
+      const trial = grouped.get(cellKey(q.id, r, ArmTrial)) ?? [];
+      const repeats = new Set([...control, ...trial].map((c) => c.repeat));
+      for (const repeat of repeats) {
+        const a = control.filter((c) => c.repeat === repeat);
+        const b = trial.filter((c) => c.repeat === repeat);
+        if (a.length !== 1 || b.length !== 1) {
+          v.invalid = true;
+          v.reasons.push(`${q.id} × ${r} × 第 ${repeat} 次没有唯一配对的两组结果`);
+        } else if (a[0].model !== b[0].model) {
+          v.invalid = true;
+          v.reasons.push(`${q.id} × ${r} × 第 ${repeat} 次两组模型不一致，不能把模型变化算成记忆效果`);
         }
       }
     }
@@ -220,6 +236,17 @@ export function judge(questions: readonly Question[], renderers: readonly string
   if (activeChanged) {
     v.needs_human = true;
     v.reasons.push('考试期间生效记忆被改动过，结果转为待人工确认');
+  }
+  // 多条合考仍受真实召回预算与条数限制，未被注入的经验不能随整组通过而生效。
+  // 这是缺少证据，保留试用，而不是把经验判为有害。
+  for (const name of trials) {
+    const exposed = cells.some((c) => c.arm === ArmTrial && contains(c.recalled, name) &&
+      cells.some((a) => a.question === c.question && a.renderer === c.renderer && a.repeat === c.repeat &&
+        a.arm === ArmControl && !contains(a.recalled, name)));
+    if (!exposed) {
+      v.needs_human = true;
+      v.reasons.push(`${name} 没有在配对试用组中实际召回，证据不足；请单独考试或检查适用条件与召回预算`);
+    }
   }
   v.pass = v.reasons.length === 0;
   return v;
@@ -261,7 +288,7 @@ export interface ExamOptions {
   retest?: string[] | null;
   /**
    * 在作答通过产物校验后补跑事后检查（空白帧、阅读时间），只跑试用经验
-   * 引用到的那几个；为 null 时不补查。
+   * 引用到的那几个；需要补查的考试未提供此回调时，在渲染前报错。
    */
   postCheck?: PostCheck | null;
   /** 为 true 时只出结果，不改记忆状态。 */
@@ -481,6 +508,8 @@ export async function exam(s: Store, opts: ExamOptions): Promise<ExamResult> {
   }
   const questions = examQuestions(s, trials, opts.episodes ?? [], opts.holdout ?? [], maxQuestions);
   if (questions.length === 0) throw new Error('没有考题：试用记忆的来源经历都没有冻结输入，也没有给 --holdout');
+  const requiredPost = postChecks(trials);
+  if (requiredPost.length > 0 && !opts.postCheck) throw new Error(`考试缺少事后检查：${requiredPost.join('、')}；不能用产物校验代替这些检查`);
   const before = s.latestSnapshot();
   const beforeID = before?.id ?? 0;
   const driftBefore = s.drift();
@@ -559,7 +588,7 @@ export async function exam(s: Store, opts: ExamOptions): Promise<ExamResult> {
     const after = s.latestSnapshot();
     const driftAfter = s.drift();
     const changed = (after?.id ?? 0) !== beforeID || (driftAfter ?? []).join(',') !== (driftBefore ?? []).join(',');
-    result.verdict = judge(questions, opts.renderers, cells, changed);
+    result.verdict = judge(questions, opts.renderers, cells, changed, trials.map((m) => m.name));
     if (retest.length > 0 && !opts.dryRun && !result.verdict.invalid && !result.verdict.needs_human) {
       result.applied = 'retest-failed';
       if (result.verdict.pass) {

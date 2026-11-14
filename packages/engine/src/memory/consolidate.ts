@@ -14,6 +14,7 @@ import { appliesScoped, kindDir, KindLesson, KindPreference, parse, StatusActive
 import { checkFailures, effectivelyPassed } from './stats';
 import type { Store } from './store';
 import { contains, intersect, omitEmpty, rendererModel, uniqueSorted } from './util';
+import { lessonWritingGuide } from './writing';
 
 /** 一组同类失败：同一个校验器（或人工 👎）下的经历。 */
 export interface Cluster {
@@ -187,7 +188,8 @@ function clusterSince(fresh: readonly Episode[], all: readonly Episode[], since:
 
 /**
  * 为一组失败找成败对照：通过的正式渲染、事后检查也没查出问题、
- * 没有被这个校验器判过失败。同一镜头后来改对的优先，其次同渲染工具、共同特征多的。
+ * 没有被这个校验器判过失败。同一镜头后来通过的优先，其次同渲染工具、共同特征多的。
+ * 同镜头更早的成功不能当成修复；跨镜头至少要有共同特征，同工具本身不是可比条件。
  */
 function contrasts(c: Cluster, byID: Map<string, Episode>, all: readonly Episode[], failedChecks: Set<string>): Contrast[] {
   const out: Contrast[] = [];
@@ -201,9 +203,13 @@ function contrasts(c: Cluster, byID: Map<string, Episode>, all: readonly Episode
     for (const e of all) {
       if (e.source !== SourceRender || !effectivelyPassed(e, failedChecks) || used.has(e.id) || contains(e.checks, c.key)) continue;
       const shared = intersect(failed.features, e.features);
+      const sameScene = e.scene_dir !== '' && e.scene_dir === failed.scene_dir;
+      if (sameScene && compareBytes(e.created_at, failed.created_at) <= 0) continue;
+      if (!sameScene && (shared?.length ?? 0) === 0) continue;
       let score = shared?.length ?? 0;
-      if (e.scene_dir !== '' && e.scene_dir === failed.scene_dir) score += 100;
+      if (sameScene) score += 100;
       if (e.renderer === failed.renderer) score += 0.5;
+      if (e.renderer === failed.renderer && e.model !== '' && e.model === failed.model) score += 0.25;
       if (score === 0) continue;
       if (best === null || score > bestScore || (score === bestScore && compareBytes(e.created_at, best.created_at) > 0)) {
         best = e;
@@ -557,13 +563,15 @@ from_episodes: [ep-20261102-101500-a1b2c3]
   不要为了简洁删掉旧版里仍然成立的细节、数值和反例正例。
 - 每个镜头最多注入 3 条经验：宁可一条写准，不要拆成几条泛泛的。
 - 只为确有共性的失败写经验；拿不准的组宁可不写。
-- 有「成败对照」的组，先读 contrasts/ 下通过那一版的合成代码：失败的一次犯了这个错，通过的一次没犯。
+- 有「成败对照」的组，先读 contrasts/ 下通过那一版的合成代码，找与本组问题相关的可执行做法。
   经验写成「通过的那一边是怎么做的」，正例尽量取自通过的写法，不要只是把报错改写成禁令。
+  对照可能没运行本组的事后检查，不能把「未发现失败」当成「已验证修复」。
 - 「用户的反应」一组写成偏好：从回退、反复提的要求与 👍 / 👎 里归纳用户长期的取向（节奏、配色、
   信息密度、语气……），不是复述某一次的修改要求。只在一个项目里出现的写 scope: <项目名>，
   几个项目都出现的不写 scope。偏好要用户确认后才生效，宁可少写。
 
 `;
+  b += lessonWritingGuide();
   b += '## 镜头特征\n\n';
   const features = featureDescriptions();
   for (const name of Object.keys(features).sort(compareBytes)) b += `- \`${name}\`：${features[name]}\n`;
@@ -597,11 +605,12 @@ from_episodes: [ep-20261102-101500-a1b2c3]
 }
 
 export function contrastLine(pair: Contrast): string {
-  const kind = pair.same_scene ? '同一个镜头后来改对了' : '特征相近的另一个镜头通过了';
+  const kind = pair.same_scene ? '同一个镜头后来通过了' : '特征相近的另一个镜头通过了';
   let line = `- 成败对照（${kind}）：失败 ${pair.failed}，通过 ${pair.passed}`;
   if (pair.passed_code !== '') line += '；通过那一版的合成代码拷在当前目录的 ' + pair.passed_code + '/';
   else line += '；通过那一版的代码已被后来的渲染覆盖，只能对照报错与特征';
   if ((pair.shared_features?.length ?? 0) > 0) line += '；共同特征 ' + pair.shared_features!.join(', ');
+  line += '；通过指渲染及已有检查未报错，不代表本组事后校验器已运行，也不证明画面更好';
   return line + '\n';
 }
 

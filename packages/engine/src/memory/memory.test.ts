@@ -316,7 +316,14 @@ describe('memory', () => {
     // 考试期间生效记忆变过要转人工确认。
     expect(v.pass).toBe(false);
     expect(v.needs_human).toBe(true);
-    const repeated = [...matrix(null), cell('h1', 'claude', ArmTrial, false), cell('h1', 'claude', ArmTrial, false)];
+    const repeated = [1, 2, 3].flatMap((repeat) => matrix((c) => {
+      c.repeat = repeat;
+      if (repeat > 1 && c.question === 'h1' && c.renderer === 'claude' && c.arm === ArmTrial) {
+        c.passed = false;
+        c.problems = 2;
+        c.outcome = OutcomeVerificationFailed;
+      }
+    }));
     v = judge(questions, renderers, repeated, false);
     // 重复格按多数结果判定。
     expect(v.pass).toBe(false);

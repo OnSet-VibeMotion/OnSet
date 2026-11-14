@@ -94,6 +94,8 @@ test('the evidence page puts both arms of an exam side by side', async ({ page, 
   await expect(trial).toContainText('没有查出问题');
   await expect(page.locator('.evidence-lesson')).toContainText('画面上的字要停够时间再换');
   await expect(page.locator('.evidence-lesson .evidence-chip')).toHaveText('正在用');
+  await expect(page.locator('.evidence-scope')).toContainText('本场没有留出镜头');
+  await expect(page.locator('.evidence-scope')).toContainText('画面是否更好，要看人的对照评价');
 });
 
 test('the evidence page says what to do before any exam', async ({ page, project }) => {
@@ -102,6 +104,28 @@ test('the evidence page says what to do before any exam', async ({ page, project
   await expect(page.locator('.evidence-empty')).toContainText('还没有考过试的经验');
   await page.locator('.evidence-empty button').click();
   await expect(page.locator('.memory-tab')).toBeVisible();
+});
+
+test('a trial lesson can be examined on its own from its memory card', async ({ page, project, sandbox }) => {
+  seedExam(sandbox, project);
+  const lessonFile = path.join(sandbox.memory, 'lessons', 'hold-readable.md');
+  fs.writeFileSync(lessonFile, fs.readFileSync(lessonFile, 'utf8').replace('status: active', 'status: trial'));
+  await openProject(page, project);
+  await openPage(page, 'memory');
+  // onset:// 是 Electron 的自定义协议，不经过 Playwright 的 HTTP route 拦截。
+  await page.evaluate(() => {
+    const original = window.fetch;
+    window.__examRequests = [];
+    window.fetch = (input, init) => {
+      if (input === '/api/memory/actions/exam') {
+        window.__examRequests.push(JSON.parse(init.body));
+        return Promise.resolve(new Response('{"task_id":"selected-trial"}', { status: 202 }));
+      }
+      return original.call(window, input, init);
+    };
+  });
+  await page.getByRole('button', { name: '只考这条', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__examRequests)).toEqual([{ renderers: ['claude'], trial: 'hold-readable' }]);
 });
 
 test('live exam questions and both arms update without reopening memory or evolution', async ({ page, project, sandbox, electronApp }) => {

@@ -53,11 +53,11 @@ export function EvidenceTab({ version, run, onOpen, scenes = [], sceneId = '' }:
   return (
     <div className="evidence">
       <header className="evidence-head">
-        <span className="eyebrow">进化 · 每个数字都是机器查出来的</span>
+        <span className="eyebrow">进化 · 看对照，也看依据</span>
         <h2>它学到了什么</h2>
         <p>
-          渲染里出过的问题会被整理成经验。一条新经验不会直接生效：先拿出过问题的镜头，带上它、不带它各渲染一遍，
-          带上之后问题确实少了才留下。每次变化都存一份，随时能退回上一版。
+          渲染里出过的问题会被整理成试用经验。技术问题用带与不带经验的两组渲染检查，构图、节奏等观看体验由你看过对照后判断。
+          每次变化都存一份，随时能退回上一版。
         </p>
       </header>
 
@@ -139,7 +139,7 @@ function Contrast({
           <span>
             {exam.questions.length} 个镜头 × 每组 {repeats} 次
           </span>
-          <small>{exam.verdict.needs_human ? '考试期间记忆变过，等待确认' : exam.applied === 'promoted' ? '待考经验已生效' : exam.applied === 'rejected' ? '待考经验未留下' : '本场未改变记忆状态'}</small>
+          <small>{exam.verdict.needs_human ? '有待核实的条件，本场未改变记忆状态' : exam.applied === 'promoted' ? '待考经验已生效' : exam.applied === 'rejected' ? '待考经验未留下' : '本场未改变记忆状态'}</small>
         </li>
         <li>
           <strong>{tested}</strong>
@@ -188,7 +188,7 @@ function Contrast({
             {exam.questions.map((q) => (
               <button key={q.id} role="tab" aria-selected={q.id === question?.id} className={q.id === question?.id ? 'armed' : 'ghost'} onClick={() => setQuestionID(q.id)}>
                 {q.id} · {q.scene_id}
-                {q.holdout ? ' · 没见过的' : ''}
+                {q.holdout ? ' · 留出镜头' : ''}
               </button>
             ))}
           </div>
@@ -200,6 +200,12 @@ function Contrast({
           {models.length > 0 ? `${models.join('、')} 渲染 · ` : ''}
           两组使用相同镜头输入，试用组按召回条件加入待考经验。多条合考的结果属于整组，不能证明每条经验单独有效。画面上每段文字的出现与停留时间由渲染方登记，机器按登记核对
           {exam.questions.some((q) => !q.holdout) ? '；考的是当初出过问题的镜头' : ''}。
+        </p>
+        <p className="small muted evidence-scope">
+          {exam.questions.some((q) => q.holdout)
+            ? '本场包含留出镜头，可检查新镜头是否退步；能否迁移到其他项目还要继续观察。'
+            : '本场没有留出镜头，只能说明这些旧题上的表现，还没有新镜头的迁移证据。'}
+          机器检查通过说明对应问题未被查出；画面是否更好，要看人的对照评价。
         </p>
       </section>
 

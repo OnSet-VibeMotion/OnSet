@@ -1,12 +1,29 @@
 import './testsupport';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as memory from '../memory';
 import * as scene from '../scene';
 import { renderRecord } from './turns';
-import { args, newSessionFixture, setEnv, startStudio, studioRequest, tempDir, waitIdle, writeStudioFile, type SessionFixture } from './testsupport';
+import * as tasks from './tasks';
+import { args, newSessionFixture, setEnv, startStudio, studioRequest, tempDir, waitIdle, waitStudioTask, writeStudioFile, type SessionFixture } from './testsupport';
 
 describe('studio memory', () => {
+  it('dispatches a selected trial without turning it into an active-lesson retest', async () => {
+    const root = tempDir();
+    writeStudioFile(path.join(root, 'onset.conf'), 'RENDERER=claude\n');
+    const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
+    const operation = vi.spyOn(tasks, 'runStudioOp').mockResolvedValue({ text: '' });
+    try {
+      const { status, body } = await studioRequest(s, 'POST', '/api/memory/actions/exam', '{"renderers":["claude"],"trial":"rule-a"}');
+      expect(status).toBe(202);
+      expect((await waitStudioTask(s, body.task_id)).status).toBe('succeeded');
+      expect(operation).toHaveBeenCalledOnce();
+      expect(operation.mock.calls[0].slice(3, 5)).toEqual(['memory_exam', { renderers: 'claude', trial: 'rule-a' }]);
+    } finally {
+      operation.mockRestore();
+    }
+  });
+
   // 面板的读接口只读记忆库，「本镜头想起了什么」给出召回条目与理由；考场里的镜头副本不出现在镜头列表里。
   it('memory panel reads store and recalls for scene', async () => {
     const root = tempDir();
@@ -63,6 +80,8 @@ describe('studio memory', () => {
 
     expect((await studioRequest(s, 'POST', '/api/memory/actions/promote', '{"name":"../x"}')).status).toBe(400);
     expect((await studioRequest(s, 'POST', '/api/memory/actions/exam', '{"renderers":["rm -rf"]}')).status).toBe(400);
+    expect((await studioRequest(s, 'POST', '/api/memory/actions/exam', '{"renderers":["claude"],"trial":"../x"}')).status).toBe(400);
+    expect((await studioRequest(s, 'POST', '/api/memory/actions/exam', '{"renderers":["claude"],"trial":"rule-a","name":"rule-b"}')).status).toBe(400);
     expect((await studioRequest(s, 'POST', '/api/memory/actions/shell', '{}')).status).toBe(404);
   });
 

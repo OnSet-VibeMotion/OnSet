@@ -75,7 +75,7 @@ describe('evolution', () => {
     expect([second.failed, second.passed, second.same_scene]).toEqual(['ep-3', 'ep-4', false]);
     expect(second.shared_features!.join(',')).toBe('cjk_text,numbers');
     const brief = consolidationBrief(clusters, null);
-    for (const want of ['成败对照（同一个镜头后来改对了）', '已被后来的渲染覆盖', '修订必须保留旧版的全部 checked_by', '最多注入 3 条经验']) {
+    for (const want of ['成败对照（同一个镜头后来通过了）', '已被后来的渲染覆盖', '修订必须保留旧版的全部 checked_by', '最多注入 3 条经验']) {
       expect(brief).toContain(want);
     }
   });
