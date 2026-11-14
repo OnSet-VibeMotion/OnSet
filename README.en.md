@@ -10,9 +10,12 @@ An AI orchestrator of your choice does the production inside the client: Codex, 
 
 ## Install
 
-Download the dmg for your chip from GitHub Releases (arm64 for Apple Silicon, x64 for Intel). You can verify it against `checksums.txt` on the same page. Open it and drag OnSet into Applications.
+GitHub Releases provides these installers, with `checksums.txt` for verification:
 
-The build is unsigned. The first time, **right-click (or Control-click) OnSet in Applications → Open**, then click Open in the dialog. After that it opens normally. If a double-click is blocked, you can also go to System Settings → Privacy & Security and click "Open Anyway".
+- macOS: download `OnSet-<version>-arm64.dmg` for Apple Silicon or `OnSet-<version>-x64.dmg` for Intel, then drag OnSet into Applications.
+- Windows x64 (experimental): run `OnSet-<version>-windows-x64-setup.exe`. The Windows port is incomplete; tool downloads and parts of the production workflow still need adaptation. The installer is unsigned.
+
+The macOS build is unsigned. The first time, **right-click (or Control-click) OnSet in Applications → Open**, then click Open in the dialog. After that it opens normally. If a double-click is blocked, you can also go to System Settings → Privacy & Security and click "Open Anyway".
 
 Requirements:
 
@@ -313,12 +316,14 @@ npx vitest run --root packages/cli
 npm run build -w @onset/cli                     # onset → packages/cli/dist/onset.cjs
 npm run desktop                              # build and launch the client
 npm run test:e2e -w onset-desktop               # client end-to-end tests (Playwright, Electron mode, no windows pop up)
-npm run dist -w onset-desktop                   # build the .app (apps/desktop/release/)
+npm run dist -w onset-desktop                   # build an unpacked app for the host OS (apps/desktop/release/)
 ```
 
 `onset` (`packages/cli`) is a program the client uses internally. Background jobs call it directly, and the orchestrator and renderers call it through its tool service (MCP). It is not offered to users as a command line. During development you can run it with `node packages/cli/dist/onset.cjs <command>`.
 
 After changing the canvas table or the `frame.md` template, run `npm run generate -w @onset/engine` and commit the generated `assets/presets`. Development conventions are in `AGENTS.md` and `packages/engine/CONVENTIONS.md`.
+
+Push a `v<version>` tag or publish its GitHub Release to build macOS arm64 / x64 DMGs and a Windows x64 installer. All installers and SHA-256 checksums are uploaded after both platforms succeed. Reruns replace the assets on the same Release.
 
 OnSet is licensed under the [Apache License 2.0](./LICENSE). HyperFrames is an independent Apache-2.0 project, used at a pinned release when a project is created.
 

@@ -11,7 +11,8 @@
     "vendor": "node scripts/vendor.mjs",
     "start": "npm run build && electron .",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.main.json",
-    "dist": "npm run vendor && npm run build && npm run build -w @onset/cli && electron-builder --mac --dir",
+    "dist": "npm run vendor && npm run build && npm run build -w @onset/cli && electron-builder --dir",
+    "test:packaging": "node --test scripts/packaging.test.mjs",
     "test:e2e": "npm run build -w @onset/cli && npm run build && playwright test"
   },
   "devDependencies": {
@@ -74,6 +75,16 @@
       "identity": null,
       "icon": "build/icon.icns",
       "artifactName": "OnSet-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build/icon.ico",
+      "artifactName": "OnSet-${version}-windows-${arch}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
     },
     "asar": true,
     "electronVersion": "45.2.3"

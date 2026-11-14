@@ -29,6 +29,7 @@ jobs:
       - run: npx tsc --noEmit -p packages/engine
       - run: npx tsc --noEmit -p packages/cli
       - run: npm run typecheck -w onset-desktop
+      - run: npm run test:packaging -w onset-desktop
       - run: npx vitest run --root packages/engine
       - run: npx vitest run --root packages/cli
       - run: npm run build -w @onset/cli
@@ -51,6 +52,7 @@ jobs:
       - run: npx tsc --noEmit -p packages/engine
       - run: npx tsc --noEmit -p packages/cli
       - run: npm run typecheck -w onset-desktop
+      - run: npm run test:packaging -w onset-desktop
       - run: npm run build -w @onset/cli
       - run: npm run build -w onset-desktop
       - name: Engine unit tests (not yet expected to pass)

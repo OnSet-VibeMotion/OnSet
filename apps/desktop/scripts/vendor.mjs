@@ -21,11 +21,15 @@ if (fs.existsSync(marker) && fs.readFileSync(marker, 'utf8').trim() === NpmVersi
 } else {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-vendor-'));
   try {
-    const name = execFileSync('npm', ['pack', `npm@${NpmVersion}`, '--silent'], { cwd: tmp, encoding: 'utf8' }).trim().split('\n').at(-1);
+    // npm run 提供 JS 入口；Windows 的 npm.cmd 不能用 execFileSync 直接启动。
+    const npmEntry = process.env.npm_execpath;
+    if (!npmEntry) throw new Error('请通过 npm run vendor -w onset-desktop 准备 npm');
+    const name = execFileSync(process.execPath, [npmEntry, 'pack', `npm@${NpmVersion}`, '--silent'], { cwd: tmp, encoding: 'utf8' }).trim().split('\n').at(-1);
     execFileSync('tar', ['-xzf', path.join(tmp, name), '-C', tmp]);
     fs.rmSync(target, { recursive: true, force: true });
     fs.mkdirSync(vendor, { recursive: true });
-    fs.renameSync(path.join(tmp, 'package'), target);
+    // Windows 的 TEMP 与工作区可能位于不同盘符，不能用 rename 跨盘移动。
+    fs.cpSync(path.join(tmp, 'package'), target, { recursive: true });
     fs.writeFileSync(marker, NpmVersion + '\n');
     console.log(`vendor/npm ← npm@${NpmVersion}`);
   } finally {

@@ -10,9 +10,12 @@
 
 ## 安装
 
-从 GitHub Releases 下载对应芯片的 dmg（Apple Silicon 选 arm64，Intel 选 x64），可用同页的 `checksums.txt` 校验，打开后把片场拖进「应用程序」。
+GitHub Releases 提供以下安装包，可用同页的 `checksums.txt` 校验：
 
-安装包没有签名：第一次打开时在「应用程序」里**右键（或按住 Control 点按）片场 →「打开」**，在弹出的对话框里再点「打开」；之后正常双击即可。直接双击被拦下时，也可以到「系统设置 → 隐私与安全性」里点「仍要打开」。
+- macOS：Apple Silicon 下载 `OnSet-<版本>-arm64.dmg`，Intel 下载 `OnSet-<版本>-x64.dmg`，打开后把片场拖进「应用程序」。
+- Windows x64（测试版）：下载 `OnSet-<版本>-windows-x64-setup.exe`，运行安装向导。Windows 移植尚未完成，工具下载与部分制作功能仍待适配；安装程序也尚未签名。
+
+macOS 安装包没有签名：第一次打开时在「应用程序」里**右键（或按住 Control 点按）片场 →「打开」**，在弹出的对话框里再点「打开」；之后正常双击即可。直接双击被拦下时，也可以到「系统设置 → 隐私与安全性」里点「仍要打开」。
 
 运行需要：
 
@@ -180,10 +183,12 @@ npx vitest run --root packages/cli
 npm run build -w @onset/cli                     # onset → packages/cli/dist/onset.cjs
 npm run desktop                              # 构建并启动客户端
 npm run test:e2e -w onset-desktop               # 客户端端到端测试（Playwright，Electron 模式，窗口不弹出）
-npm run dist -w onset-desktop                   # 打出 .app（apps/desktop/release/）
+npm run dist -w onset-desktop                   # 打出本机平台的应用目录（apps/desktop/release/）
 ```
 
 `onset`（`packages/cli`）是客户端内部用的程序：后台任务直接调它，编排工具与渲染器经它的工具服务（MCP）调用，不对用户提供命令行。开发时可以用 `node packages/cli/dist/onset.cjs <命令>` 直接跑。改了画幅表或 `frame.md` 模板后要跑 `npm run generate -w @onset/engine` 并提交生成的 `assets/presets`。开发约定见 `AGENTS.md` 与 `packages/engine/CONVENTIONS.md`。
+
+发布时推送 `v<版本>` tag，或在 GitHub 发布对应 tag 的 Release，会构建 macOS arm64 / x64 DMG 与 Windows x64 安装程序；两平台都成功后才上传全部安装包及 SHA-256 校验文件。重跑会更新同一 Release 的附件。
 
 项目采用 [Apache License 2.0](./LICENSE)。HyperFrames 是独立的 Apache-2.0 项目，片场初始化时使用固定版本，不在本仓库复制本机技能目录。
 

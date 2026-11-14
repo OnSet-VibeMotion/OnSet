@@ -21,11 +21,11 @@ npx vitest run --root packages/cli
 npm run build -w @onset/cli          # → packages/cli/dist/onset.cjs
 npm run build -w onset-desktop       # → apps/desktop/out/
 npm run test:e2e -w onset-desktop    # Playwright 的 Electron 模式，会先构建命令行与客户端
-npm run dist -w onset-desktop        # 本机出一份 .app（apps/desktop/release/）
+npm run dist -w onset-desktop        # 本机出一份应用目录（apps/desktop/release/）
 npm run generate -w @onset/engine    # 由画幅表与模板重新生成 assets/presets/<画幅>/frame.md
 ```
 
-CI（`.github/workflows/ci.yml`）跑类型检查、两包的 Vitest、构建、生成器幂等与 e2e；发布（`.github/workflows/release.yml`）在推 `v*` tag 时出 arm64 与 x64 两份 dmg。
+CI（`.github/workflows/ci.yml`）跑类型检查、两包的 Vitest、构建、生成器幂等与 e2e；发布（`.github/workflows/release.yml`）在推 `v*` tag 或发布 GitHub Release 时构建 macOS arm64 / x64 DMG 与 Windows x64 NSIS 安装程序；两平台成功后统一上传及生成 SHA-256 校验文件。打包脚本回归测试在两平台 CI 中必须通过，Windows 运行功能仍处于移植阶段。
 
 ## 内置资产
 
@@ -669,7 +669,7 @@ ONSET_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run --ro
 | 渲染器在 Windows 上全放开：没有系统沙箱，各家自己也不按命令白名单拦（`scene.rendererUnfiltered` → `RendererAccess.unfiltered`，与 macOS 沙箱里同一组参数：claude、qoder 跳过权限，codex 不套自己的沙箱，codebuddy `-y`），`.env` 也不再禁读。镜头技能照样链进各家的目录，用户级技能与设置照常加载（qoder 的 `--setting-sources` 与 opencode 的 `permission.skill` 仍生效） | 用户定的（2026-11）：Windows 上先不要安全，命令白名单只会让渲染器白耗几轮。以后要补目录边界，最接近 macOS 沙箱的是 AppContainer，要在 Windows 真机上验证各家 CLI、Node 与借用的浏览器能在里面跑 |
 | Windows 上借用客户端的 Chromium 渲染走引导脚本接管的路（见「开箱即用」），不用包装脚本与 fd 3/4 | 包装只能是 `.exe`；Windows 的管道句柄传法不同。隐藏窗口截图在 Windows 上是否与 macOS 一致只有真机验证得了，用安装页的「试渲染一个镜头」 |
 
-还没做：工具准备页的 Windows 下载表（ffmpeg、uv；借用浏览器之后不再需要无头浏览器）与 `toolinstall` 写出的 sh 包装、测试里的 sh 假工具、Windows 打包与真实 CLI 实测。
+还没做：工具准备页的 Windows 下载表（ffmpeg、uv；借用浏览器之后不再需要无头浏览器）与 `toolinstall` 写出的 sh 包装、测试里的 sh 假工具、Windows 真实安装与 CLI 实测。
 
 ## 子进程环境
 
