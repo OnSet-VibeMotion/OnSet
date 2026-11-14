@@ -31,8 +31,31 @@ contextBridge.exposeInMainWorld('am', {
     ipcRenderer.on('am:crew', listener);
     return () => ipcRenderer.removeListener('am:crew', listener);
   },
-  /** 桌宠窗口的动作：focus 回到客户端，hide 收起桌宠。 */
-  pet(action: 'focus' | 'hide'): void {
-    ipcRenderer.send('am:pet', action);
+  /** 桌宠窗口的动作（见 renderer/components/chat/crew.ts 的 PetCommand）。 */
+  pet(command: unknown): void {
+    ipcRenderer.send('am:pet', command);
+  },
+  /** 现在用的界面皮肤，同步取：界面在第一次画之前写上去，不先闪一下默认的黑底。 */
+  skinNow(): unknown {
+    return ipcRenderer.sendSync('am:skin-now');
+  },
+  /** 写好皮肤、画完第一帧：主进程这时才显示窗口。 */
+  painted(): void {
+    ipcRenderer.send('am:painted');
+  },
+  /** 界面皮肤换了：告诉主进程（带新的底色），主进程转告别的窗口。 */
+  skinChanged(background: string): void {
+    ipcRenderer.send('am:skin', background);
+  },
+  onSkin(callback: () => void): () => void {
+    const listener = () => callback();
+    ipcRenderer.on('am:skin', listener);
+    return () => ipcRenderer.removeListener('am:skin', listener);
+  },
+  /** 主窗口收桌宠转来的动作（切页、答批准、发话、停下）。 */
+  onPetCommand(callback: (command: unknown) => void): () => void {
+    const listener = (_event: unknown, command: unknown) => callback(command);
+    ipcRenderer.on('am:pet-command', listener);
+    return () => ipcRenderer.removeListener('am:pet-command', listener);
   },
 });

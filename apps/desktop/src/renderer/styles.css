@@ -712,7 +712,7 @@ body.resizing video {
   height: 10px;
   margin-top: 5px;
   border-radius: 50%;
-  border: 1.5px solid #4a463f;
+  border: 1.5px solid color-mix(in srgb, var(--text) 26%, var(--bg));
   flex: none;
 }
 .stage-line {
@@ -726,12 +726,12 @@ body.resizing video {
   border-color: var(--ok);
 }
 .stages li.done .stage-line {
-  background: #4f6b53;
+  background: color-mix(in srgb, var(--ok) 50%, var(--bg));
 }
 .stages li.now .stage-dot {
   background: var(--accent);
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(217, 163, 95, 0.18);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .stage-body {
   flex: 1;
@@ -961,7 +961,7 @@ li.active > .row {
 .select-box {
   position: absolute;
   border: 1.5px dashed var(--accent);
-  background: rgba(217, 163, 95, 0.08);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 /* 走带 */
@@ -1238,7 +1238,7 @@ h4 {
 }
 .style-card.on {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(217, 163, 95, 0.18);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .style-card-text {
   display: flex;
@@ -1267,7 +1267,7 @@ h4 {
   justify-content: center;
   color: var(--text-2);
   border: 0;
-  border-bottom: 1px dashed #4a463f;
+  border-bottom: 1px dashed color-mix(in srgb, var(--text) 26%, var(--bg));
   background: transparent;
 }
 
@@ -1280,11 +1280,11 @@ h4 {
 }
 .diff .add {
   background: var(--add-bg);
-  color: #b9ecd0;
+  color: color-mix(in srgb, var(--ok) 60%, var(--text));
 }
 .diff .del {
   background: var(--del-bg);
-  color: #f6c6c0;
+  color: color-mix(in srgb, var(--bad) 60%, var(--text));
 }
 .diff .skip {
   color: var(--muted);
@@ -1878,7 +1878,7 @@ button.skills-pill.bad {
   color: var(--accent-ink);
 }
 .transport .play:hover {
-  background: #fff;
+  background: color-mix(in srgb, var(--text) 88%, var(--accent));
 }
 /* 时间线：每格是那个镜头的画面，宽度按时长。当前镜头描一圈黄铜色，其余压暗。 */
 .timeline {
@@ -1940,7 +1940,7 @@ button.skills-pill.bad {
 }
 .strip .scene.todo {
   background: transparent;
-  border: 1px dashed #4a463f;
+  border: 1px dashed color-mix(in srgb, var(--text) 26%, var(--bg));
 }
 .strip .scene.todo .scene-no {
   color: var(--muted);

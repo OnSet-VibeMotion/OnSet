@@ -1,7 +1,9 @@
 import { createRoot } from 'react-dom/client';
 import { App } from './app';
 import { Pet } from './components/Pet';
-import type { CrewSignal } from './components/chat/crew';
+import type { CrewSignal, PetCommand } from './components/chat/crew';
+import { installSkin } from './skin';
+import type { SkinView } from './types';
 import './styles.css';
 
 /** 原生菜单发给界面的动作，与主进程 menu.ts 的 MenuAction 一致。 */
@@ -20,7 +22,13 @@ declare global {
       /** 桌宠：主窗口报状态、桌宠窗口收状态、桌宠窗口的按钮（见 main/pet.ts）。 */
       setCrew?: (state: CrewSignal | null) => void;
       onCrew?: (callback: (state: CrewSignal | null) => void) => () => void;
-      pet?: (action: 'focus' | 'hide') => void;
+      pet?: (command: PetCommand) => void;
+      onPetCommand?: (callback: (command: PetCommand) => void) => () => void;
+      /** 界面皮肤：本窗口换了皮肤告诉别的窗口（带新的底色给窗口背景），别的窗口收到后重取。 */
+      skinChanged?: (background: string) => void;
+      skinNow?: () => SkinView | null;
+      painted?: () => void;
+      onSkin?: (callback: () => void) => () => void;
       /** 在 Finder 中显示；path 空是项目文件夹，project 空是当前项目。返回错误文字，成功为空。 */
       reveal?: (path: string, project?: string) => Promise<string>;
     };
@@ -33,5 +41,8 @@ if (window.am?.desktop) document.documentElement.classList.add('desktop', `platf
 // 桌宠窗口（main/pet.ts）载入的是 /pet：同一份界面产物，只画像素工作室。
 const petWindow = location.pathname === '/pet';
 if (petWindow) document.documentElement.classList.add('pet-window');
+
+// 界面皮肤：两个窗口都在画之前开始取（studio/skins.ts），取到前是放映室的默认色。
+installSkin();
 
 createRoot(document.getElementById('app')!).render(petWindow ? <Pet /> : <App />);

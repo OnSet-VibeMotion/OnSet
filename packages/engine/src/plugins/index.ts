@@ -14,6 +14,7 @@ import { castPlugin } from './cast';
 import { huashuStyles } from './huashu-styles';
 import { lemoStyles } from './lemo-styles';
 import { publishing } from './publishing';
+import { skinsPlugin } from './skins';
 import { songPlugin } from './song';
 import { textToLottie } from './text-to-lottie';
 
@@ -27,3 +28,4 @@ deferBuiltin(castPlugin);
 deferBuiltin(lemoStyles);
 deferBuiltin(anidoodleStyles);
 deferBuiltin(huashuStyles);
+deferBuiltin(skinsPlugin);

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, errorText, post } from '../api';
 import type { AgentKeysResponse, AgentVision, SettingRow, SettingsResponse } from '../types';
 import { Icon } from './Icon';
+import { SkinPicker } from './Skins';
 import { ModelSelect } from './ModelSelect';
 import type { RunAction } from './Preview';
 import '../settings.css';
@@ -93,6 +94,7 @@ export function Settings({ version, run, onPluginsChanged }: { version: number; 
         })}
       </div>
       {error && <div className="settings-error">{error}</div>}
+      <SkinPicker version={version} />
       <AgentKeys version={version} />
       <PluginSettings version={version} onChanged={onPluginsChanged} />
       <p className="settings-file">全局设置保存在 {data.file}</p>

@@ -36,7 +36,7 @@ import {
 import { applySuggestion, findToken, mentionAttachments, parseCommand, slashCommands, suggest, type SlashCommand, type Suggestion } from './chat/complete';
 import '../chat.css';
 import { RenderWatch } from './RenderActivity';
-import { useCrewBroadcast } from './chat/crew';
+import { choiceQuestion, useCrewBroadcast, usePetCommands } from './chat/crew';
 import { stationPageLabel } from './Stations';
 
 // SSE 的 event 字段就是事件种类，EventSource 只把具名事件派给对应监听器，所以要逐个注册。
@@ -157,12 +157,31 @@ export function Chat(props: Props) {
   const lastTurn = [...blocks].reverse().find((b): b is TurnBlock => b.kind === 'turn');
   const running = !!lastTurn && !lastTurn.end;
   const plan = running ? lastTurn?.plan ?? null : null;
-  // 桌宠的场记小人跟着这一轮走（main/pet.ts）。
-  useCrewBroadcast(lastTurn, asks, props.scenes, props.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? '');
   const now = useNow(running);
 
   // 这一轮进行中照样能发：消息排到这一轮之后。别的写任务占着项目时不能发。
   const blocked = sending || (props.busy !== '' && !running);
+  // 上一轮回复末尾的选项只在它还能点时有效（与对话里的按钮同一个条件）。
+  const choiceTurn = !running && queue.length === 0 && blocks[blocks.length - 1]?.kind === 'turn' ? lastTurn?.id : undefined;
+  const lastProse = choiceTurn && lastTurn ? lastTurn.prose.map((event) => event.text ?? '').join('\n\n') : '';
+  const deskChoices = useMemo(() => (lastProse ? parseChoices(lastProse) : []), [lastProse]);
+  // 最近几轮怎么收场的（桌宠里剧组的心情按它算）。
+  const recentResults = useMemo(
+    () =>
+      blocks
+        .filter((b): b is TurnBlock => b.kind === 'turn' && !!b.end && !b.reverted)
+        .slice(-5)
+        .map((b) => (b.state === 'failed' ? 'failed' : b.state === 'stopped' || b.state === 'interrupted' ? 'stopped' : 'done')),
+    [blocks],
+  );
+  // 桌宠的场记小人跟着这一轮走（main/pet.ts），批准、选项、发话、停下也能在桌宠上做。
+  useCrewBroadcast(lastTurn, asks, props.scenes, props.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? '', {
+    choices: blocked ? [] : deskChoices,
+    question: choiceQuestion(lastProse),
+    running,
+    canSend: !blocked,
+    recent: recentResults,
+  });
   const session = props.sessions.find((s) => s.session_id === props.sessionId);
   // 镜头由渲染工具来画（导演只做编排）：这台电脑上没装它时，整片制作会做到第一次渲染才报错，开工前就拦下。
   const drawing = rendererState(props.agents, props.choice.renderer || props.agents?.renderer || '');
@@ -463,6 +482,18 @@ export function Chat(props: Props) {
     }
   };
 
+  // 桌宠上的动作：答批准、点选项或说一句、停下这一轮。
+  usePetCommands((command) => {
+    if (command.kind === 'answer') {
+      const ask = asks.find((a) => a.id === command.id);
+      if (ask) void answer(ask, command.decision);
+    } else if (command.kind === 'say') {
+      void deliver(command.text, []);
+    } else if (command.kind === 'stop') {
+      if (running) void cancel();
+    }
+  });
+
   // 镜头页快捷动作：直接发，或填进输入框等用户补充。
   const lastOutbox = useRef(0);
   useEffect(() => {
@@ -479,7 +510,6 @@ export function Chat(props: Props) {
   }, [props.outbox]);
 
   // 只有最后一条回复、之后用户还没说话时，选项才可点。
-  const choiceTurn = !running && queue.length === 0 && blocks[blocks.length - 1]?.kind === 'turn' ? lastTurn?.id : undefined;
   const canSend = !blocked && draft.trim() !== '';
   // 刚发出的一刻不换成停止键：按钮就在指针底下，连点两下会把这一轮停掉。
   const showStop = running && !draft.trim() && !sending;

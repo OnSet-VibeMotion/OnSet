@@ -299,7 +299,7 @@ test('builtin features are plugins too: always on, listed with what they bring, 
   await builtin.scrollIntoViewIfNeeded();
   await page.screenshot({ path: test.info().outputPath('builtin-features.png') });
 
-  await expect(builtin.locator('li[data-builtin]')).toHaveCount(9);
+  await expect(builtin.locator('li[data-builtin]')).toHaveCount(10);
   await expect(builtin.locator('li[data-builtin="lemo-styles"]')).toContainText('LemoLab 风格库');
   await expect(builtin.locator('li[data-builtin="anidoodle-styles"]')).toContainText('anidoodle 代码绘画');
   await expect(builtin.locator('li[data-builtin="huashu-styles"]')).toContainText('花叔艺术动画');

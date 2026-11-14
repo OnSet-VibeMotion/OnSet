@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { newServer, type Server } from '@am/engine/studio';
+import { currentSkin, newServer, skinJSON, type Server } from '@am/engine/studio';
 import { setHostVersion } from '@am/engine/version';
 import { assetsDir, browserPath, browserScript, cliEntry, npmCLI, shimScript, writeScript } from './clishim';
 import { installKeyCodec } from './keycodec';
@@ -93,6 +93,25 @@ async function handleRequest(request: Request): Promise<Response> {
   return serveStatic(url.pathname);
 }
 
+/**
+ * 现在用的界面皮肤（studio/skins.ts 的同一份），给界面在第一次画之前同步取（preload 的 skinNow），
+ * 也给新窗口定底色：选了浅色皮肤时，开窗与载入的一瞬间不再露出放映室的黑底。
+ */
+function skinNow(): Record<string, unknown> | null {
+  if (!backend) return null;
+  try {
+    return skinJSON(currentSkin(backend.skinChoice()).entry);
+  } catch {
+    return null;
+  }
+}
+
+function skinBackground(): string {
+  const tokens = skinNow()?.tokens as Record<string, string> | undefined;
+  const bg = tokens?.bg ?? '';
+  return /^#[0-9a-f]{6}$/i.test(bg) ? bg : '#0b0a09';
+}
+
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1440,
@@ -100,7 +119,7 @@ function createWindow(): BrowserWindow {
     minWidth: 1024,
     minHeight: 640,
     title: 'ArticleToMotion',
-    backgroundColor: '#0b0a09',
+    backgroundColor: skinBackground(),
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 22 },
     show: false,
@@ -112,10 +131,26 @@ function createWindow(): BrowserWindow {
       backgroundThrottling: !background,
     },
   });
-  if (!background) win.once('ready-to-show', () => win.show());
+  // 界面写好皮肤、画完第一帧才报 am:painted，那时再显示；报不来（界面出错）就在第一次画完 1.5 秒后照样显示。
+  if (!background) {
+    let shown = false;
+    const show = () => {
+      if (shown || win.isDestroyed()) return;
+      shown = true;
+      win.show();
+    };
+    const painted = (event: Electron.IpcMainEvent) => {
+      if (event.sender !== win.webContents) return;
+      ipcMain.removeListener('am:painted', painted);
+      show();
+    };
+    ipcMain.on('am:painted', painted);
+    win.once('ready-to-show', () => setTimeout(show, 1500));
+    win.once('closed', () => ipcMain.removeListener('am:painted', painted));
+  }
   // 外链交给系统浏览器；项目内的文件（封面原图、成片）开一个新的客户端窗口。
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith(`${ORIGIN}/`)) return { action: 'allow', overrideBrowserWindowOptions: { backgroundColor: '#0b0a09' } };
+    if (url.startsWith(`${ORIGIN}/`)) return { action: 'allow', overrideBrowserWindowOptions: { backgroundColor: skinBackground() } };
     if (/^https?:\/\//.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
@@ -174,6 +209,18 @@ if (!app.requestSingleInstanceLock()) {
     protocol.handle(SCHEME, handleRequest);
     const menu = (visible: boolean) => installMenu({ visible, toggle: setPetVisible });
     installPetIPC();
+    // 界面在第一次画之前同步要现在的皮肤（preload 的 skinNow）。
+    ipcMain.on('am:skin-now', (event) => {
+      event.returnValue = skinNow();
+    });
+    // 界面皮肤换了（设置页）：别的窗口（桌宠、另开的窗口）重取一次；普通窗口的背景色跟着换，免得拖动、开窗时露出旧底色。
+    ipcMain.on('am:skin', (event, background: unknown) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (win.isDestroyed()) continue;
+        if (typeof background === 'string' && /^#[0-9a-f]{6}$/i.test(background) && win.isResizable()) win.setBackgroundColor(background);
+        if (win.webContents !== event.sender) win.webContents.send('am:skin');
+      }
+    });
     // 界面报来的任务数与完成通知。通知只在没有窗口在前台时弹：人就在看着的时候不打扰。
     ipcMain.on('am:badge', (_event, count: number) => {
       app.setBadgeCount(Math.max(0, Math.trunc(Number(count) || 0)));

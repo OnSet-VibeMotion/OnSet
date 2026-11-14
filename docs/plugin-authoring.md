@@ -101,6 +101,7 @@ echo 'am-result {"url": "https://example.com/v/1"}'
 | `provides` | 实验性 | 提供配音或字幕对齐：`{"tts": {"name": "某配音", "op": "speak", "timestamps": "none"}, "align": {"name": "某对齐", "op": "align"}}`。`timestamps` 取 `none`、`sentence`、`word`；项目把 `TTS_PROVIDER` / `ALIGN_PROVIDER` 设成 `x:<插件 id>` 时 AI 用这条操作 |
 | `renderer_skills` | 实验性 | 给渲染镜头的技能：`[{"name": "caption-kit", "dir": "skills/caption-kit", "summary": "字幕卡片的写法", "scenes": "opt-in"}]`。`dir` 下必须有 `SKILL.md`；`scenes: all` 每个镜头都带（装上后所有项目里已渲染的镜头要重渲染），`opt-in`（缺省）只给 `scene.json` 的 `plugin_skills` 点名的镜头 |
 | `film_styles` | 实验性 | 整片风格库：`{"name": "我的风格库", "dir": "styles"}`。`dir` 下每个子目录是一种风格（`STYLE.md` 必需，`SKILL.md`、`poster.jpg`、`style.json` 可选），装进项目时整个子目录拷进去。加 `"only_referenced": true`（实验性）时只带用到的：风格目录与风格库根目录下的 `assets/` 只带风格的脚本与页面里出现过名字的文件（模型目录按目录名认），`node_modules/three/` 只带脚本 import 到的模块；风格库根的这两个目录给几种风格共用 |
+| `skins` | 实验性 | 界面皮肤：`["skins/mint.json"]`，每个文件一套皮肤，格式见下面「界面皮肤」。换的是这台电脑上客户端与桌宠的样子，用户在设置页「外观」里选 |
 
 ArticleToMotion 自己的内置功能（音乐卡点、歌曲讲解、多角色对话、发布……）也用这份清单（只写名字与说明），它们带来的代码在 ArticleToMotion 进程里登记，不经清单，所以没有给内置插件专用的字段。内置功能常开、不能关：它们的工具与说明对每个项目都在，一个项目用不用得上由片型（流程）决定，例如口播项目的制作说明里没有卡点的那几段。
 
@@ -299,3 +300,67 @@ git 来源克隆后记下 commit 与整个目录的内容摘要，存进用户�
 - 清单格式有变时升 `manifest_version`；旧版 ArticleToMotion 读到新格式的清单会报「要更新的 ArticleToMotion」，而不是「不认识的字段」。
 - 用到了新版 ArticleToMotion 才有的能力时写 `requires.am`。
 - 实验性字段可能在以后的版本里调整；只用稳定字段的插件，升级 ArticleToMotion 不用改。
+
+## 界面皮肤（`skins`）
+
+一套皮肤是一份 JSON，换客户端（主窗口与桌宠）的配色、字体与桌宠工作室的样子。皮肤只能是数据：不能带样式表与脚本，每个值都逐个校验，颜色只认 `#rrggbb`（3、4、6、8 位）、`rgb()`、`hsl()`，字体只认用逗号隔开的本机字体名，所以皮肤里写不进 `url()`、`@import` 这类会去连网或读文件的东西。
+
+```json
+{
+  "id": "mint",
+  "name": "薄荷",
+  "description": "浅绿底，适合白天",
+  "scheme": "light",
+  "tokens": { "bg": "#f2faf5", "panel": "#fafffc", "text": "#13261b", "accent": "#2f8f5b" },
+  "fonts": { "serif": "'Songti SC', serif" },
+  "radius": 8,
+  "pet": {
+    "filter": { "hue": 100, "saturate": 0.9 },
+    "materials": { "wood": ["#9cc9a8", "#7fae8c", "#679476"] },
+    "crew": { "director": { "coat": "#ffffff", "hatColor": "#2f8f5b" } },
+    "room": { "backdrop": "#e9f6ee" }
+  }
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `id` | 小写字母开头的小写字母、数字与连字符；对外的标识是「插件 id/皮肤 id」 |
+| `name` / `description` | 设置页「外观」上的名字（24 字以内）与一句话 |
+| `scheme` | `dark`（缺省）或 `light`：原生控件（滚动条、输入框）跟着它 |
+| `tokens` | 界面的颜色，键取 `bg` `panel` `raised` `well` `chip` `hover` `line` `line-strong` `text` `text-2` `text-3` `muted` `faint` `accent` `accent-hover` `accent-ink` `accent-soft` `accent-line` `accent-text` `ok` `stale` `bad` `add-bg` `del-bg`；没写的沿用放映室的默认值。浅色皮肤要把底（`bg` 到 `hover`）、线、字与强调色一起换 |
+| `fonts` | `sans`（正文）、`serif`（标题）、`mono`（数字与小标签） |
+| `radius` | 圆角像素，0–24 |
+| `pet.filter` | 整间工作室一起调色：`hue`（-180–180 度）、`saturate`（0–2）、`brightness`、`contrast`（0.5–1.5） |
+| `pet.materials` | 家具材质，每种三个颜色（顶面、朝左下的面、朝右下的面）：`wood` `walnut` `metal` `dark` `canvas` `brass` `paper` `plant` `pot` `lit` `rec` `roof` |
+| `pet.crew` | 人的衣着：`director` `op1` `op2` `op3` `editor` `voice`，每人可换 `coat` `coatShade` `trousers` `shoe` `hair` `skin` `skinShade` `hatColor` |
+| `pet.room` | 房间本身：`slab` `slab-left` `slab-right`（地台三面）、`wall-left` `wall-back`、`cap`（墙头）、`backdrop`（影棚背景纸） |
+| `pet.page` | 整个换掉工作室：本插件 `pages` 里的一个页面 id。页面在桌宠的画布位置（400×326）以沙箱 iframe 打开，不能连网、不能直接调接口，但能经下面的消息做桌宠能做的一切；卡片、底下的批准与选项、脚注照旧由客户端画 |
+
+用页面换掉工作室时，页面拿到桌宠的全部状态，也能做桌宠能做的一切——答批准、替用户发话、停下这一轮、切页。这些动作不再要用户在客户端上确认：用户选了这套皮肤，就是把桌宠交给你的插件，装插件时设置页会照实说明。
+
+```js
+// 收：{am: 'pet', signal, skin: {scheme, tokens}}
+//   signal.mood 取 idle / thinking / reading / writing / storyboarding / running / filming / editing / voicing / waiting / done / failed / stopped
+//   signal.line 是导演此刻在做什么的一句话，project 是项目名，rendering 是正在渲染的镜头编号
+//   signal.asks 是等批准的调用 [{id, text, always}]（always 为真才能「以后都允许」）
+//   signal.choices 是上一轮回复末尾的选项、signal.question 是选项前那句问话
+//   signal.running 是这一轮还在跑，signal.canSend 是此刻能不能发话
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.am === 'pet') draw(e.data.signal);
+});
+// 发：
+const tell = (command) => parent.postMessage({ am: 'pet-command', command }, '*');
+tell({ kind: 'answer', id: ask.id, decision: 'allow' }); // 或 'always'、'deny'
+tell({ kind: 'say', text: '换成白板手绘风' });            // 替用户发一句话（这一轮在跑时排到它之后）
+tell({ kind: 'stop' });                                    // 停下这一轮
+tell({ kind: 'open', page: 'scene', target: 'scene-003' }); // 切到客户端的某一页
+tell({ kind: 'focus' });                                   // 回到客户端
+tell({ kind: 'type' });                                    // 页面里有输入框时先发它，桌宠窗口才收得到键盘
+tell({ kind: 'hide' });                                    // 收起桌宠
+```
+
+桌宠能拖动：客户端发这个页面时会插进一小段脚本，在空白处按住挪动就拖桌宠窗口；按钮、链接、输入框照常能点，别的元素不想被当成拖动处就加 `data-no-drag`。
+
+`open` 的 `page` 取客户端的页面 id（`progress`、`script`、`storyboard`、`scene`（`target` 写镜头编号）、`final`、`publish`……）。拿去当桌宠的页面不进顶栏的「插件」菜单。
+

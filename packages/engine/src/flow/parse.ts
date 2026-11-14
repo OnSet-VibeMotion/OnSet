@@ -284,6 +284,12 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
     if (only !== undefined && typeof only !== 'boolean') throw new Error('station.film_styles.only_referenced 要是 true 或 false');
     if (only === true) filmStyles.only_referenced = true;
   }
+  const skins = strings(raw, 'skins', 'station');
+  skins.forEach((f, i) => {
+    relativeInside(f, `station.skins[${i}]`);
+    if (!f.endsWith('.json')) throw new Error(`station.skins[${i}]：${f} 要是 .json 文件`);
+  });
+  if (new Set(skins).size !== skins.length) throw new Error('station.skins 里有重复的文件');
   const slots = list('slots').map((sl, i): ManifestSlot => {
     const where = `slots[${i}]`;
     knownFields(sl, ['at', 'page', 'height'], where);
@@ -331,6 +337,7 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
     provides,
     renderer_skills: rendererSkills,
     film_styles: filmStyles,
+    skins,
     slots,
     commands,
   };

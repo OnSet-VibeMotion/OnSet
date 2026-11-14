@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { PermissionAsk, Scene } from '../../types';
+import type { PermissionAsk, PlanItem, Scene } from '../../types';
 import { describeTool, type TurnBlock } from './model';
 
 /**
@@ -31,11 +31,76 @@ export interface CrewState {
   line: string;
 }
 
+/** 桌宠上能直接回答的一次批准请求。 */
+export interface PetAsk {
+  id: string;
+  /** 要批准的是什么：命令、说明或工具名，一行。 */
+  text: string;
+  /** 有命令前缀可记，才给「以后都允许」。 */
+  always: boolean;
+}
+
 /** 发给桌宠窗口的一份。离开对话（换项目、回首页）时发 null，工作室回到待命。 */
 export interface CrewSignal extends CrewState {
   project: string;
   /** 正在渲染的镜头，每个一位摄影。 */
   rendering: string[];
+  /** 等用户批准的调用，桌宠上能直接答。 */
+  asks: PetAsk[];
+  /** 上一轮回复末尾的选项（```choices```），桌宠上点了原样发出；这一轮还在跑或已经答过时为空。 */
+  choices: string[];
+  /** 选项前面那句问话，截成一行。 */
+  question: string;
+  /** 这一轮还在跑：桌宠上给「停下」。 */
+  running: boolean;
+  /** 此刻能不能发话（别的写任务占着项目、正在发送时不能）。 */
+  canSend: boolean;
+  /** 这一轮（或刚结束的上一轮）的待办清单：导演的动作队列。 */
+  plan: PlanItem[];
+  /** 这一轮从什么时候开始（ISO，没有为空）：导演的精力按它算。 */
+  turnStarted: string;
+  /** 正在渲染的镜头各从什么时候开始拍（ISO，读不到为空）：摄影的面板显示已拍多久。 */
+  renderSince: Record<string, string>;
+  /** 最近几轮的结果（新的在后：done / failed / stopped）：剧组的心情按它算。 */
+  recent: string[];
+}
+
+/**
+ * 桌宠窗口发回来的动作（main/pet.ts 转交）：focus / hide / type 由主进程自己做；
+ * open 先把主窗口叫到前面再交给界面切页；answer / say / stop 交给主窗口的对话，不抢焦点。
+ */
+export type PetCommand =
+  | { kind: 'focus' }
+  | { kind: 'hide' }
+  | { kind: 'type' }
+  | { kind: 'open'; page: string; target?: string }
+  | { kind: 'answer'; id: string; decision: 'allow' | 'always' | 'deny' }
+  | { kind: 'say'; text: string }
+  | { kind: 'stop' }
+  /** 当桌宠的插件页面里按住拖动（页面拿不到窗口的拖动区域，由主进程跟着鼠标挪窗口）。 */
+  | { kind: 'drag'; phase: 'start' | 'end' }
+  /** 拖右下角的把手改桌宠窗口的大小（主进程跟着鼠标改）。 */
+  | { kind: 'resize'; phase: 'start' | 'end' };
+
+/** 对话交给桌宠的、桌宠上能直接操作的那几样，与算心情用的最近几轮结果。 */
+export interface PetDesk {
+  choices: string[];
+  question: string;
+  running: boolean;
+  canSend: boolean;
+  recent: string[];
+}
+
+/** 回复正文里选项前面的那句问话：去掉 choices 代码块，取最后一段的最后一行，截成一行。 */
+export function choiceQuestion(prose: string): string {
+  const body = prose.replace(/```choices[\s\S]*?```/g, '').trim();
+  const line = body.split(/\n+/).map((l) => l.replace(/^[#>*\-\s]+/, '').replace(/\*\*/g, '').trim()).filter(Boolean).pop() ?? '';
+  return line.length > 60 ? line.slice(0, 59) + '…' : line;
+}
+
+function askText(ask: PermissionAsk): string {
+  const text = (ask.command || ask.description || ask.tool_name || '一次调用').split('\n')[0].trim();
+  return text.length > 80 ? text.slice(0, 79) + '…' : text;
 }
 
 /** 一轮结束后导演还留多久（毫秒）显示收工，再回到待命。 */
@@ -124,7 +189,7 @@ function trimVerb(text: string): string {
  * 主窗口把工作室此刻的状态报给主进程，主进程转给桌宠窗口（main/pet.ts）。只在内容变了时发；
  * 一轮结束后的收工要按时退场，所以那段时间里到点再算一次。离开对话时发 null。
  */
-export function useCrewBroadcast(turn: TurnBlock | undefined, asks: PermissionAsk[], scenes: Scene[], project: string): void {
+export function useCrewBroadcast(turn: TurnBlock | undefined, asks: PermissionAsk[], scenes: Scene[], project: string, desk: PetDesk): void {
   const [, setTick] = useState(0);
   const sent = useRef<string | null>(null);
   const state = crewState(turn, asks, scenes, Date.now());
@@ -133,6 +198,15 @@ export function useCrewBroadcast(turn: TurnBlock | undefined, asks: PermissionAs
     line: state?.line ?? '待命',
     project,
     rendering: scenes.filter((scene) => scene.rendering).map((scene) => scene.id),
+    asks: asks.map((ask) => ({ id: ask.id, text: askText(ask), always: !!ask.suggestion })),
+    choices: desk.choices,
+    question: desk.choices.length > 0 ? desk.question : '',
+    running: desk.running,
+    canSend: desk.canSend,
+    plan: (turn?.plan ?? []).map((p) => ({ text: p.text, status: p.status })),
+    turnStarted: turn?.start ?? '',
+    renderSince: Object.fromEntries(scenes.filter((scene) => scene.rendering).map((scene) => [scene.id, scene.rendering_since ?? ''])),
+    recent: desk.recent,
   };
   const key = JSON.stringify(signal);
   const ending = turn?.end && state ? turn.end.time : '';
@@ -148,4 +222,13 @@ export function useCrewBroadcast(turn: TurnBlock | undefined, asks: PermissionAs
     window.am?.setCrew?.(JSON.parse(key));
   }, [key]);
   useEffect(() => () => window.am?.setCrew?.(null), []);
+}
+
+/**
+ * 主窗口接桌宠发来的动作。handler 每次渲染都换成最新的（拿得到当前会话与状态），订阅只挂一次。
+ */
+export function usePetCommands(handler: (command: PetCommand) => void): void {
+  const latest = useRef(handler);
+  latest.current = handler;
+  useEffect(() => window.am?.onPetCommand?.((command) => latest.current(command)), []);
 }

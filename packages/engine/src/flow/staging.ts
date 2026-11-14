@@ -60,6 +60,8 @@ export interface StationPreview {
   flow: string;
   /** 带来的整片风格库名，没有为空。 */
   film_styles: string;
+  /** 带来的界面皮肤（清单里列的皮肤文件；名字要读文件，设置页装好后在「详情」里列）。 */
+  skins: string[];
   provides: { tts: string; align: string };
   replaces: string;
   after: string;
@@ -120,6 +122,7 @@ export function previewOf(m: Manifest, entry: InstalledEntry): StationPreview {
     rerender_all: m.renderer_skills.some((r) => r.scenes === 'all'),
     flow: m.flow?.name ?? '',
     film_styles: m.film_styles?.name ?? '',
+    skins: m.skins,
     provides: { tts: m.provides.tts?.name ?? '', align: m.provides.align?.name ?? '' },
     replaces: m.replaces,
     after: m.after,

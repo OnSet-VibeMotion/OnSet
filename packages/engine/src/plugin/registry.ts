@@ -11,6 +11,7 @@ import { builtinFlows, builtinStations } from '../flow/builtin';
 import type { Source as FilmStyleSource } from '../filmstyle/filmstyle';
 import type { SceneBlock } from '../scene/block';
 import type { SkillDescriptor } from '../scene/skills';
+import { parseSkin, type Skin } from '../skin/skin';
 import type {
   BuiltinPlugin,
   PluginContext,
@@ -51,6 +52,7 @@ interface Applied {
   steps: PluginStep[];
   commands: PluginCommand[];
   filmStyleSources: FilmStyleSource[];
+  skins: Skin[];
 }
 
 /** 按登记顺序。 */
@@ -93,7 +95,7 @@ export function registerBuiltin(plugin: BuiltinPlugin): () => void {
   flush();
   if (!/^[a-z][a-z0-9-]*$/.test(plugin.id)) throw new Error(`内置插件 id ${plugin.id} 要是小写字母、数字与连字符`);
   if (applied.some((a) => a.id === plugin.id)) throw new Error(`内置插件 ${plugin.id} 登记了两次`);
-  const entry: Applied = { id: plugin.id, dir: () => plugin.dir ?? defaultDir(plugin.id), stations: [], flows: [], ops: [], pages: [], routes: [], validators: [], skills: [], blocks: [], narrations: [], presets: [], presentIn: [], renderChecks: [], opGroups: [], prereqs: [], childEnvs: [], steps: [], commands: [], filmStyleSources: [] };
+  const entry: Applied = { id: plugin.id, dir: () => plugin.dir ?? defaultDir(plugin.id), stations: [], flows: [], ops: [], pages: [], routes: [], validators: [], skills: [], blocks: [], narrations: [], presets: [], presentIn: [], renderChecks: [], opGroups: [], prereqs: [], childEnvs: [], steps: [], commands: [], filmStyleSources: [], skins: [] };
   const where = `内置插件 ${plugin.id}`;
   const ctx: PluginContext = {
     id: plugin.id,
@@ -180,6 +182,12 @@ export function registerBuiltin(plugin: BuiltinPlugin): () => void {
       if (allApplied(entry).some((a) => a.filmStyleSources.some((x) => x.id() === id))) throw new Error(`${where}：风格来源 ${id} 已经有了`);
       entry.filmStyleSources.push(source);
     },
+    skin(raw) {
+      // 与第三方插件的皮肤走同一个校验；内置插件不给页面，写了 pet.page 直接报错。
+      const sk = parseSkin(raw, `${where}：皮肤`);
+      if (entry.skins.some((x) => x.id === sk.id)) throw new Error(`${where}：皮肤 ${sk.id} 已经有了`);
+      entry.skins.push(sk);
+    },
   };
   plugin.apply(ctx);
   applied.push(entry);
@@ -237,6 +245,7 @@ export const pluginChildEnvs = (): Owned<PluginChildEnv>[] => collect((a) => a.c
 export const pluginSteps = (): Owned<PluginStep>[] => collect((a) => a.steps);
 export const pluginCommands = (): Owned<PluginCommand>[] => collect((a) => a.commands);
 export const pluginFilmStyleSources = (): Owned<FilmStyleSource>[] => collect((a) => a.filmStyleSources);
+export const pluginSkins = (): Owned<Skin>[] => collect((a) => a.skins);
 
 /** 目录里已有这个内置插件的文件时给出证据（第一个非空的判断）；插件没登记判断或目录里没有时为空串。 */
 export function pluginPresentIn(id: string, root: string): string {

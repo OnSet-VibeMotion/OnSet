@@ -48,6 +48,8 @@ import { storyboardAPI } from './storyboard';
 import { readStepMark, viewPages } from './view';
 import { BusyError, type Session } from './sessions';
 import { cancelSetup, setupAPI, setupCancelAPI, setupRunAPI } from './setup';
+import { currentSkinAPI, skinsAPI } from './skins';
+import * as skin from '../skin';
 import { voiceAPI, voiceDesignAPI, voiceDraftAPI, voiceRecordAPI, voicesAPI } from './voices';
 import { settingsAPI, settingsGlobalAPI, settingsProjectAPI } from './settings';
 import { SkillsState, installSkills, skillsAPI, skillsInstallAPI } from './skills';
@@ -87,6 +89,8 @@ interface Registry {
   projects: Project[] | null;
   /** 上次新建项目时选的父目录，首页的「保存到」默认用它。 */
   last_parent?: string;
+  /** 客户端用哪套界面皮肤（studio/skins.ts）；空是放映室。 */
+  skin?: string;
 }
 
 /** 最近项目列表里每个项目的一行状态：做到哪一步、出了几个镜头、是否正忙。 */
@@ -202,6 +206,7 @@ export class Server {
         });
       }
       if (typeof r.last_parent === 'string' && r.last_parent !== '') this.registry.last_parent = r.last_parent;
+      if (typeof r.skin === 'string' && r.skin !== '') this.registry.skin = r.skin;
     }
     if (this.registry.schema === 0) this.registry.schema = 1;
   }
@@ -214,6 +219,7 @@ export class Server {
         schema: this.registry.schema,
         projects: this.registry.projects ? this.registry.projects.map(projectJSON) : null,
         last_parent: this.registry.last_parent || undefined,
+        skin: this.registry.skin || undefined,
       }) + '\n';
     const tmp = path.join(dir, `.projects-${crypto.randomBytes(5).toString('hex')}`);
     try {
@@ -223,6 +229,16 @@ export class Server {
     } finally {
       fs.rmSync(tmp, { force: true });
     }
+  }
+
+  /** 用哪套界面皮肤（studio/skins.ts）。 */
+  skinChoice(): string {
+    return this.registry.skin ?? '';
+  }
+
+  setSkinChoice(id: string): void {
+    this.registry.skin = id === skin.DefaultSkinID ? undefined : id;
+    this.saveRegistry();
   }
 
   private trySaveRegistry(): void {
@@ -376,6 +392,8 @@ export class Server {
       ['/api/voice-record', (r) => voiceRecordAPI(r)],
       ['/api/voice-design', (r) => voiceDesignAPI(r)],
       ['/api/voice-drafts/', (r, rest) => voiceDraftAPI(r, rest)],
+      ['/api/skins', (r) => skinsAPI(this, r)],
+      ['/api/skins/current', (r) => currentSkinAPI(this, r)],
       ['/api/setup', (r) => setupAPI(r, this.projectRoot())],
       ['/api/setup/run', (r) => setupRunAPI(r, this.projectRoot())],
       ['/api/setup/cancel', (r) => setupCancelAPI(r)],

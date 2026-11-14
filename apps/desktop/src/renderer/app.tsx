@@ -11,6 +11,7 @@ import { Settings } from './components/Settings';
 import { Icon } from './components/Icon';
 import { Preview, stepTabs, tabs, visibleTabs, type Tab } from './components/Preview';
 import { pageView } from './components/pageViews';
+import { usePetCommands } from './components/chat/crew';
 import { scriptFinalPath } from './components/Script';
 import { storyboardFiles } from './components/Storyboard';
 import { currentSummary } from './components/Progress';
@@ -278,10 +279,12 @@ export function App() {
       ]);
       setStationPages(sts.stations);
       setPluginVerbs(sts.stations.flatMap((x) => x.contents?.ops ?? []));
-      // 只用来嵌进别的页面的小窗不单独列。
+      // 只用来嵌进别的页面的小窗、被皮肤拿去当桌宠的页面不单独列。
       setPluginTabs(
         sts.stations.flatMap((x) =>
-          x.pages.filter((pg) => !x.slots.some((sl) => sl.page === pg.id) || x.commands.some((c) => c.page === pg.id)).map((pg) => [pg.tab as Tab, pg.label] as [Tab, string]),
+          x.pages
+            .filter((pg) => !pg.pet)
+            .filter((pg) => !x.slots.some((sl) => sl.page === pg.id) || x.commands.some((c) => c.page === pg.id)).map((pg) => [pg.tab as Tab, pg.label] as [Tab, string]),
         ),
       );
       setState(st);
@@ -542,6 +545,13 @@ export function App() {
     if ((page === 'scene' || page === 'compose') && view.target) setSceneId(view.target);
     showTab(page);
   };
+
+  // 桌宠上点了某个人或某样东西：主进程已经把窗口叫到前面，这里切到那一页（与 studio_show 同一条路）。
+  usePetCommands((command) => {
+    if (command.kind !== 'open' || !currentId) return;
+    setHomeOpen(false);
+    openView({ page: command.page, target: command.target });
+  });
 
   // 口播稿：有了终稿却还没有镜头时（稿件审核阶段）自动切到口播稿页；稿子改过而没看过时标签打点。
   const scriptMtime = tree.find((f) => f.path === scriptFinalPath)?.mtime ?? 0;

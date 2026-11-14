@@ -26,6 +26,8 @@ export interface SceneSummary {
   usage?: Usage;
   /** 这个镜头此刻正在渲染：进行中标记里的进程还在（没有标记时看渲染日志最近还在写，且比上一次尝试记录新）。 */
   rendering?: boolean;
+  /** 正在渲染时，这次渲染从什么时候开始（进行中标记的 started_at）；桌宠的摄影面板显示已拍多久。 */
+  rendering_since?: string;
 }
 
 /** SceneSummary 的 JSON（Go struct 的字段顺序与 omitempty）。 */
@@ -41,6 +43,7 @@ export function sceneSummaryJSON(sc: SceneSummary): Record<string, unknown> {
     attempts: sc.attempts,
     usage: sc.usage ? usageJSON(sc.usage) : undefined,
     rendering: sc.rendering || undefined,
+    rendering_since: sc.rendering_since || undefined,
   };
 }
 
@@ -156,6 +159,7 @@ export function discoverScenes(root: string): SceneSummary[] {
       attempts: 0,
       rendering: sceneRendering(dir, id) || undefined,
     };
+    if (summary.rendering) summary.rendering_since = scene.readLive(dir, id)?.started_at || undefined;
     const history = scene.attemptHistory(dir, id);
     if (history.length > 0) {
       const total = newUsage();

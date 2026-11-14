@@ -107,6 +107,7 @@ function permissionLines(s: StationInfo): [string, string][] {
     out.push(['给渲染器的技能', `${rs.name}：${rs.summary}（${rs.scenes === 'all' ? '每个镜头都用，装上后所有项目里已渲染的镜头都要重渲染' : 'AI 点名的镜头才用'}）`]);
   }
   if (s.film_styles) out.push(['整片风格库', `${s.film_styles}（新建项目和「风格」里都能选到）`]);
+  if ((s.skins ?? []).length > 0) out.push(['界面皮肤', `${s.skins.join('、')}（在设置的「外观」里选）`]);
   if (s.flow) out.push(['新的做法', `${s.flow.name}（新建项目时在「做法」里选）`]);
   if ((s.inserts ?? []).length > 0) out.push(['补充制作说明', `往这几个阶段里加了说明：${s.inserts.join('、')}`]);
   for (const sc of s.schedules ?? []) {
@@ -127,6 +128,7 @@ function BuiltinDetail({ contents }: { contents: BuiltinContents }) {
   if (contents.blocks.length > 0) rows.push(['镜头里的设定', contents.blocks.join('、')]);
   if (contents.pages.length > 0) rows.push(['页面', contents.pages.join('、')]);
   if (contents.film_styles.length > 0) rows.push(['整片风格库', contents.film_styles.join('、')]);
+  if ((contents.skins ?? []).length > 0) rows.push(['界面皮肤', contents.skins.join('、')]);
   if (rows.length === 0) return null;
   return (
     <div className="station-detail builtin-detail">
@@ -271,6 +273,11 @@ function StagedConfirm({ staged, onInstall, onCancel }: { staged: StagedPlugin; 
   else if (p.nodes.length > 0) rows.push(['制作路线', `${p.after ? `接在「${stepLabel(p.after)}」后面` : p.flow ? '只在它带来的做法里' : '每个项目的最后'}：${p.nodes.join('、')}`]);
   if (p.flow) rows.push(['新的做法', `${p.flow}（新建项目时在「做法」里选）`]);
   if (p.film_styles) rows.push(['整片风格库', p.film_styles]);
+  if ((p.skins ?? []).length > 0) {
+    // 皮肤可以用插件自己的页面换掉桌宠，那个页面能替你答批准、发话、停下（不再另外确认）。
+    const petNote = p.pages.length > 0 ? '；带页面的皮肤会用它换掉桌宠，选了之后它能替你答批准、发话和停下' : '';
+    rows.push(['界面皮肤', `${p.skins.length} 套（装上后在设置的「外观」里选${petNote}）`]);
+  }
   if (p.provides.tts) rows.push(['提供配音', p.provides.tts]);
   if (p.provides.align) rows.push(['提供字幕对齐', p.provides.align]);
   for (const h of p.hooks) rows.push(['自动执行', `${h.label}：${h.summary}`]);

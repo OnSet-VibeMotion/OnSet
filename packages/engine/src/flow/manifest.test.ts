@@ -106,7 +106,7 @@ describe('field tiers', () => {
     expect(new Set(names).size).toBe(names.length);
     const tier = (t: string) => ManifestFields.filter((f) => f.tier === t && !f.parent).map((f) => f.name).sort();
     expect(tier('stable')).toEqual(['after', 'description', 'id', 'manifest_version', 'name', 'nodes', 'ops', 'pages', 'permissions', 'produces', 'prompt', 'replaces', 'requires', 'settings', 'version']);
-    expect(tier('experimental')).toEqual(['commands', 'film_styles', 'flow', 'hooks', 'inserts', 'provides', 'renderer_skills', 'schedules', 'slots']);
+    expect(tier('experimental')).toEqual(['commands', 'film_styles', 'flow', 'hooks', 'inserts', 'provides', 'renderer_skills', 'schedules', 'skins', 'slots']);
     for (const f of ManifestFields) expect(f.tier === 'experimental').toBe(f.used !== undefined);
     // 站点里的字段：基本的几项稳定，按文件内容定状态与「接下来」是实验性的。
     const nodeTier = (t: string) => ManifestFields.filter((f) => f.tier === t && f.parent === 'nodes').map((f) => f.name).sort();

@@ -23,6 +23,7 @@ describe('stations API', () => {
       ['huashu-styles', true],
       ['lemo-styles', true],
       ['publishing', true],
+      ['skins', true],
       ['song', true],
       ['text-to-lottie', true],
     ]);

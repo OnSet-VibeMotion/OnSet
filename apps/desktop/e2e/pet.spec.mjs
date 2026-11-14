@@ -92,3 +92,119 @@ test('the pet can be put away and remembers it', async ({ electronApp, sandbox }
   const prefs = path.join(sandbox.userData, 'pet.json');
   await expect.poll(() => fs.existsSync(prefs) && JSON.parse(fs.readFileSync(prefs, 'utf8')).visible).toBe(false);
 });
+
+// 桌宠不只是看：批准、选项、说一句、停下与「点人打开那一页」都能在桌宠上做，动作经主进程交回主窗口。
+// 后台运行时桌宠不显示，按钮用 force 点（与收起桌宠同理）。
+
+test('approvals can be answered from the pet', async ({ page, project, electronApp }) => {
+  const pet = await petPage(electronApp);
+  await openProject(page, project);
+  await page.locator('#prompt').fill('要批准：装一下 three');
+  await page.locator('#prompt').press('Enter');
+  const desk = pet.locator('.pet-desk[data-desk="ask"]');
+  await expect(desk.locator('.pet-desk-cmd')).toHaveText('npm install three');
+  await desk.locator('button', { hasText: '允许' }).first().click({ force: true });
+  await expect(page.locator('.permission-card')).toHaveCount(0);
+  await expect(page.locator('.message.assistant').last()).toContainText('behavior:allow');
+  await expect(desk).toHaveCount(0);
+  // 「允许」只放行这一次，不记前缀。
+  expect(fs.existsSync(path.join(project.path, 'production', 'studio', 'permissions.json'))).toBe(false);
+});
+
+test('choices and a quick message can be sent from the pet', async ({ page, project, electronApp }) => {
+  const pet = await petPage(electronApp);
+  await openProject(page, project);
+  await page.locator('#prompt').fill('给我选项');
+  await page.locator('#send').click();
+  const choices = pet.locator('.pet-desk[data-desk="choices"]');
+  await expect(choices.locator('.pet-desk-q')).toHaveText('选一个风格：');
+  await choices.locator('button', { hasText: '白板手绘风' }).click({ force: true });
+  await expect(page.locator('.message.user').last()).toContainText('白板手绘风');
+  await expect(page.locator('.choice-picked')).toContainText('白板手绘风');
+
+  // 说一句：打开输入框，回车发出；这一轮还在跑时给「停下」。
+  await expect(pet.locator('.pet-act[data-act="stop"]')).toHaveCount(0);
+  await pet.locator('.pet-act[data-act="say"]').click({ force: true });
+  await pet.locator('.pet-input').fill('慢慢来');
+  await pet.locator('.pet-input').press('Enter');
+  await expect(page.locator('.message.user').last()).toContainText('慢慢来');
+  await expect(pet.locator('.pet-desk[data-desk="sent"]')).toBeVisible();
+  await pet.locator('.pet-act[data-act="stop"]').click({ force: true });
+  await expect(pet.locator('#crew')).toHaveAttribute('data-mood', 'stopped');
+  await expect(pet.locator('.pet-act[data-act="stop"]')).toHaveCount(0);
+});
+
+test('clicking someone selects them, shows their state and queue, and offers a ring of real actions', async ({ page, project, electronApp }) => {
+  const pet = await petPage(electronApp);
+  await openProject(page, project);
+  // 一轮带待办清单：导演的动作队列就是它。
+  await page.locator('#prompt').fill('给我选项');
+  await page.locator('#send').click();
+  await expect(page.locator('.choice').first()).toBeVisible();
+
+  await pet.locator('.pet-spot[data-spot="director"]').click({ force: true });
+  await expect(pet.locator('.pet-spot[data-spot="director"]')).toHaveAttribute('data-selected', 'true');
+  const panel = pet.locator('.pet-panel[data-who="director"]');
+  await expect(panel.locator('strong')).toHaveText('导演');
+  await expect(panel.locator('.pet-queue li')).toHaveText(['读稿子', '正在定风格']);
+  await expect(panel.locator('.pet-queue li').first()).toHaveAttribute('data-state', 'completed');
+  await expect(panel.locator('.pet-needs')).toContainText('进度');
+  await expect(panel.locator('.pet-needs')).toContainText('1 / 2');
+  // 刚做完一轮：心情是满意或舒心（收工后回到待命）。
+  await expect(panel.locator('.pet-mood')).toHaveText(/满意|舒心/);
+
+  // 环形菜单：点「看制作路线」，主窗口切过去，菜单收起，选中留着。
+  const pie = pet.locator('.pet-pie[data-who="director"]');
+  await expect(pie.locator('.pet-pie-item')).toContainText(['看制作路线', '对他说一句', '回到对话']);
+  await pie.getByRole('menuitem', { name: '看制作路线' }).click({ force: true });
+  await expect(page.locator('#progress-open')).toHaveAttribute('aria-current', 'page');
+  await expect(pie).toHaveCount(0);
+  await expect(panel).toBeVisible();
+
+  // 换选摄影：闲着的摄影只给「看镜头」，面板写他在做什么闲事。
+  await pet.locator('.pet-spot[data-spot="op1"]').click({ force: true });
+  await expect(pet.locator('.pet-panel[data-who="op1"] strong')).toHaveText('摄影 1');
+  await expect(pet.locator('.pet-pie[data-who="op1"] .pet-pie-item')).toHaveText(['看镜头']);
+  await pet.locator('.pet-pie-item', { hasText: '看镜头' }).click({ force: true });
+  await expect(page.locator('[data-tab="scene"]')).toHaveAttribute('aria-current', 'page');
+
+  // 物件不弹菜单：分镜板直接打开分镜。
+  await pet.locator('.pet-spot[data-spot="storyboard"]').click({ force: true });
+  await expect(page.locator('[data-tab="storyboard"]')).toHaveAttribute('aria-current', 'page');
+
+  // 取消选中。
+  await pet.locator('.pet-panel-close').click({ force: true });
+  await expect(pet.locator('.pet-panel')).toHaveCount(0);
+});
+
+test('the camera zooms and pans the studio, and the light follows the clock', async ({ electronApp, page, project }) => {
+  const pet = await petPage(electronApp);
+  await openProject(page, project);
+  const stage = pet.locator('.pet-stage');
+  const scaleOf = async () => Number((await stage.evaluate((el) => getComputedStyle(el).transform)).match(/matrix\(([^,]+)/)?.[1] ?? '1');
+  const before = await scaleOf();
+  await pet.locator('.pet-cam button[aria-label="放大"]').click({ force: true });
+  await expect.poll(scaleOf).toBeGreaterThan(before * 1.2);
+  await pet.locator('.pet-cam button[data-cam="reset"]').click({ force: true });
+  await expect.poll(scaleOf).toBeCloseTo(before, 3);
+  // 昼夜：按这台电脑的时间给出一个时段。
+  await expect(pet.locator('#crew')).toHaveAttribute('data-daypart', /^(night|dawn|day|dusk|evening)$/);
+  await expect(pet.locator('.pet-clock')).toHaveText(/^(夜|清晨|白天|傍晚|晚上) \d\d:\d\d$/);
+});
+
+test('the pet window is bigger by default and its size is remembered', async ({ electronApp, sandbox }) => {
+  const pet = await petPage(electronApp);
+  const size = await electronApp.evaluate(({ BrowserWindow }) => {
+    const pet = BrowserWindow.getAllWindows().find((w) => !w.isResizable());
+    return pet?.getSize();
+  });
+  expect(size).toEqual([640, 500]);
+  // 拖把手的那一套在主进程里跟着鼠标改；这里只看结束时记下大小。
+  await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.isResizable())?.setSize(700, 520));
+  await pet.evaluate(() => {
+    window.am.pet({ kind: 'resize', phase: 'start' });
+    window.am.pet({ kind: 'resize', phase: 'end' });
+  });
+  const prefs = path.join(sandbox.userData, 'pet.json');
+  await expect.poll(() => (fs.existsSync(prefs) ? JSON.parse(fs.readFileSync(prefs, 'utf8')) : {})).toMatchObject({ width: expect.any(Number), height: expect.any(Number) });
+});

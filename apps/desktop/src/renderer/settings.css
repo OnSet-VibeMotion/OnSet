@@ -224,3 +224,105 @@
   width: 22px;
   height: 22px;
 }
+
+/* 外观：一排皮肤卡片，每张是按皮肤自己的颜色画的小样。 */
+.settings .skins {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.settings .skins-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings .skins-head h3 {
+  margin: 0;
+  font: 600 15px var(--serif);
+  color: var(--text);
+}
+.settings .skins-head span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.settings .skins-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+.settings .skin-card {
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  white-space: normal;
+  text-align: left;
+}
+.settings .skin-card:hover {
+  background: var(--hover);
+}
+.settings .skin-card.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.settings .skin-sample {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 78px;
+  padding: 0 10px 10px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+}
+.settings .skin-sample-bar {
+  display: flex;
+  align-items: center;
+  height: 16px;
+  margin: 0 -10px 4px;
+  padding: 0 8px;
+}
+.settings .skin-sample-bar i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+}
+.settings .skin-sample-line {
+  height: 5px;
+  width: 78%;
+  border-radius: 3px;
+}
+.settings .skin-sample-line.short {
+  width: 52%;
+}
+.settings .skin-sample-pill {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 30px;
+  height: 12px;
+  border-radius: 999px;
+}
+.settings .skin-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 2px;
+}
+.settings .skin-meta strong {
+  font-size: 13px;
+  color: var(--text);
+}
+.settings .skin-meta em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--muted);
+}

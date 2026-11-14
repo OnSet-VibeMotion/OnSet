@@ -29,6 +29,7 @@ import type { Project, Server } from './studio';
 import { onStudioEvent } from './events';
 import { emit, getSession, kindNotice, listSessions } from './sessions';
 import { addTask, runStudioOp, runTask, runUserOp, runWriteTask, updateTask, warnTask, writeTaskError, type Task } from './tasks';
+import { listSkins, petPageIDs } from './skins';
 
 /** 最近一次从界面执行的结果，按「项目 站 操作」记，客户端重启就没了（站自己写的回执才是凭据）。 */
 interface LastRun {
@@ -63,6 +64,8 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
   const m = s.manifest;
   const pageInfo = (id: string) => m.pages.find((pg) => pg.id === id)!;
   const settings = flow.publicSettings(envMap(), m);
+  // 被皮肤拿去当桌宠的页面：插件菜单不列。
+  const petPages = petPageIDs(s);
   // 内置插件的站、操作、渲染技能、页面在 apply 里登记，不在清单里：另列在 contents 里，设置页「详情」照实显示
   // 这个功能带了什么（不并进 nodes、pages：那两样给第三方站的页面与路线用）。
   const owned = <T>(list: plugin.Owned<T>[]) => (s.builtin ? list.filter((x) => x.owner === m.id).map((x) => x.value) : []);
@@ -77,6 +80,7 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
         pages: owned(plugin.pluginPages()).map((pg) => pg.label),
         flows: owned(plugin.pluginFlows()).map((f) => f.name),
         film_styles: owned(plugin.pluginFilmStyleSources()).map((src) => src.name()),
+        skins: owned(plugin.pluginSkins()).map((sk) => sk.name),
       }
     : null;
   return {
@@ -95,7 +99,8 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
     after: m.after,
     prompt,
     nodes: m.nodes.map((n) => ({ id: n.id, label: n.label, step: n.step, gate: n.gate === true })),
-    pages: m.pages.map((pg) => ({ id: pg.id, label: pg.label, tab: flow.pageTab(m.id, pg.id), url: pageURL(m.id, pg.entry), reads: pg.reads })),
+    pages: m.pages.map((pg) => ({ id: pg.id, label: pg.label, tab: flow.pageTab(m.id, pg.id), url: pageURL(m.id, pg.entry), reads: pg.reads, ...(petPages.includes(pg.id) ? { pet: true } : {}) })),
+    skins: s.builtin ? [] : listSkins().skins.filter((e) => e.key.startsWith(m.id + '/')).map((e) => e.skin.name),
     ops: m.ops.map((o) => {
       const last = lastRuns.get(`${root}\n${m.id}\n${o.name}`);
       return {
@@ -465,13 +470,15 @@ export function pageURL(stationID: string, entry: string): string {
 export function pageCSP(stationID: string, network: readonly string[] = []): string {
   const own = `am://app/station-ui/${encodeURIComponent(stationID)}/`;
   const sdk = 'am://app/station-ui/_sdk.js';
+  // 当桌宠的页面里由宿主插进来的拖动脚本（petDragScript）。
+  const petDrag = 'am://app/station-ui/_pet.js';
   // 项目里的视频、封面经 /station-media/<站>/ 放（只给声明过能读的文件）。
   const media = `am://app/station-media/${encodeURIComponent(stationID)}/`;
   // 联网只给清单 permissions.network 里写的地址（添加时与设置页里给用户看）。
   const net = network.length > 0 ? network.join(' ') : "'none'";
   return [
     "default-src 'none'",
-    `script-src ${own} ${sdk} 'unsafe-inline'`,
+    `script-src ${own} ${sdk} ${petDrag} 'unsafe-inline'`,
     `style-src ${own} 'unsafe-inline'`,
     `img-src ${own} ${media} data: blob:${network.length > 0 ? ' ' + network.join(' ') : ''}`,
     `media-src ${own} ${media} data: blob:`,
@@ -571,10 +578,55 @@ export const pageSDK = `// ArticleToMotion 插件页面 SDK：页面在沙箱里
 })();
 `;
 
+/**
+ * 当桌宠的插件页面里的拖动：沙箱 iframe 盖住的那一块收不到窗口的拖动区域（-webkit-app-region 在 iframe 里不起作用），
+ * 所以宿主在发这种页面时插一段脚本：在不是按钮、链接、输入框（或标了 data-no-drag）的地方按下并挪动超过 3 像素，
+ * 就请宿主开始拖窗口（主进程跟着鼠标挪），松开时结束；拖过之后的那一下 click 吞掉，免得拖完误点。
+ * 页面作者不用做什么，自己的按钮照常能点。
+ */
+export const petDragScript = `(() => {
+  const interactive = 'a,button,input,textarea,select,label,summary,[contenteditable],[data-no-drag]';
+  let start = null;
+  let dragging = false;
+  let swallow = false;
+  const post = (phase) => parent.postMessage({ am: 'pet-drag', phase }, '*');
+  addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || (e.target instanceof Element && e.target.closest(interactive))) return;
+    start = { id: e.pointerId, x: e.screenX, y: e.screenY };
+    dragging = false;
+  }, true);
+  addEventListener('pointermove', (e) => {
+    if (!start || e.pointerId !== start.id || dragging) return;
+    if (Math.hypot(e.screenX - start.x, e.screenY - start.y) < 3) return;
+    dragging = true;
+    try { document.documentElement.setPointerCapture(e.pointerId); } catch {}
+    post('start');
+  }, true);
+  const end = () => {
+    if (dragging) { post('end'); swallow = true; setTimeout(() => { swallow = false; }, 0); }
+    start = null;
+    dragging = false;
+  };
+  addEventListener('pointerup', end, true);
+  addEventListener('pointercancel', end, true);
+  addEventListener('lostpointercapture', end, true);
+  addEventListener('blur', end);
+  addEventListener('click', (e) => { if (swallow) { e.stopPropagation(); e.preventDefault(); } }, true);
+})();
+`;
+
+/** 当桌宠的页面：在 </head> 前插进拖动脚本；没写 </head> 就接在最后（不能插在 doctype 前面，那会让页面进怪异模式）。 */
+function withPetDrag(html: string): string {
+  const tag = '<script src="/station-ui/_pet.js"></script>';
+  const at = html.search(/<\/head>/i);
+  return at >= 0 ? html.slice(0, at) + tag + html.slice(at) : html + tag;
+}
+
 /** GET /station-ui/_sdk.js 与 /station-ui/<站>/<文件>：只给页面 entry 所在目录里的文件。 */
 export function stationUIAPI(s: { projectOr404(): unknown }, request: Request, rest: string): Response {
   if (request.method !== 'GET' && request.method !== 'HEAD') return methodNotAllowed('GET');
   if (rest === '_sdk.js') return new Response(pageSDK, { headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' } });
+  if (rest === '_pet.js') return new Response(petDragScript, { headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' } });
   // 插件页面只在打开的项目里用（它要的项目数据经宿主转交）。
   const p = s.projectOr404();
   if (p instanceof Response) return p;
@@ -597,7 +649,13 @@ export function stationUIAPI(s: { projectOr404(): unknown }, request: Request, r
     return notFound();
   }
   if (!real.startsWith(fs.realpathSync(station.dir) + path.sep)) return notFound();
-  return serveFile(request, real, pageHeaders(id, station.manifest.permissions.network));
+  const headers = pageHeaders(id, station.manifest.permissions.network);
+  // 被皮肤拿去当桌宠的页面：插进拖动脚本（见 petDragScript）。
+  const petEntries = petPageIDs(station).map((pid) => station.manifest.pages.find((pg) => pg.id === pid)?.entry);
+  if (petEntries.includes(file) && /\.html?$/i.test(file)) {
+    return new Response(request.method === 'HEAD' ? null : withPetDrag(fs.readFileSync(real, 'utf8')), { headers: { ...headers, 'Content-Type': 'text/html; charset=utf-8' } });
+  }
+  return serveFile(request, real, headers);
 }
 
 /** GET /station-media/<站>/<项目里的路径>：插件页面放项目里的视频、图片（只给声明过能读的，支持拖动）。 */

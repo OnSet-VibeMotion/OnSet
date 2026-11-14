@@ -646,7 +646,7 @@ div.tool {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: conic-gradient(from var(--orb-angle), var(--accent), #6b4a22, var(--accent-text), var(--accent));
+  background: conic-gradient(from var(--orb-angle), var(--accent), color-mix(in srgb, var(--accent) 45%, var(--bg)), var(--accent-text), var(--accent));
   box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 45%, transparent);
   animation: orb-spin 3s linear infinite;
 }
@@ -1179,7 +1179,7 @@ div.tool {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: conic-gradient(from var(--orb-angle), var(--accent), #6b4a22, var(--accent-text), var(--accent));
+  background: conic-gradient(from var(--orb-angle), var(--accent), color-mix(in srgb, var(--accent) 45%, var(--bg)), var(--accent-text), var(--accent));
   animation: orb-spin 2s linear infinite;
 }
 .chat .primary-slot.stop:hover .stop-glyph {

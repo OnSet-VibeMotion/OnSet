@@ -31,7 +31,7 @@ describe('builtin plugins', () => {
 
   it('is always on, and a project lock file has no say in which plugins there are', () => {
     const root = project();
-    const all = ['algorithmic-art', 'anidoodle-styles', 'beat', 'cast', 'huashu-styles', 'lemo-styles', 'publishing', 'song', 'text-to-lottie'];
+    const all = ['algorithmic-art', 'anidoodle-styles', 'beat', 'cast', 'huashu-styles', 'lemo-styles', 'publishing', 'skins', 'song', 'text-to-lottie'];
     expect(loadStations().stations.map((s) => s.manifest.id)).toEqual(all);
     // 锁文件里写的 stations、flow、disabled 都不认，也不写回。
     fs.writeFileSync(path.join(root, 'article-to-motion.flow.json'), JSON.stringify({ version: 1, stations: [{ id: 'x', source: 'link:/nope' }], flow: 'x', disabled: ['song'] }));

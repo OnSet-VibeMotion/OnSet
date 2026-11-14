@@ -153,6 +153,8 @@ export interface Manifest {
    * only_referenced 为真时装进项目只带用到的素材与 three.js 模块（filmstyle.DirectorySource 的 onlyReferenced）。
    */
   film_styles: { name: string; dir: string; only_referenced?: boolean } | null;
+  /** 界面皮肤：插件目录里的皮肤 JSON（每份一个皮肤，格式见 skin.parseSkin）。 */
+  skins: string[];
   slots: ManifestSlot[];
   commands: ManifestCommand[];
 }
@@ -195,6 +197,7 @@ export const ManifestFields: readonly { name: string; tier: FieldTier; parent?: 
   { name: 'provides', tier: 'experimental', used: (m) => m.provides.tts !== undefined || m.provides.align !== undefined },
   { name: 'renderer_skills', tier: 'experimental', used: (m) => m.renderer_skills.length > 0 },
   { name: 'film_styles', tier: 'experimental', used: (m) => m.film_styles !== null },
+  { name: 'skins', tier: 'experimental', used: (m) => m.skins.length > 0 },
   // 站点（nodes[]）里的字段：基本的几项是稳定的，按文件内容定状态与「接下来」是实验性的。
   ...['id', 'label', 'step', 'gate', 'page', 'outputs', 'stale_after', 'gate_files'].map((name) => ({ name: `nodes.${name}`, tier: 'stable' as const, parent: 'nodes' as const })),
   { name: 'nodes.state', tier: 'experimental', parent: 'nodes', used: (m) => m.nodes.some((n) => n.state !== undefined) },

@@ -52,6 +52,8 @@ export interface Scene {
   usage?: Usage;
   /** 此刻正在渲染（进行中标记里的进程还在）。 */
   rendering?: boolean;
+  /** 正在渲染时，这次从什么时候开始。 */
+  rendering_since?: string;
 }
 
 /** 渲染器的一步（后端 studio/activity.ts 的 ActivityStep）。 */
@@ -920,6 +922,7 @@ export interface BuiltinContents {
   flows: string[];
   /** 它带来的整片风格库（名字）。 */
   film_styles: string[];
+  skins: string[];
 }
 
 export interface StationOp {
@@ -964,6 +967,8 @@ export interface StationInfo {
   renderer_skills: { name: string; summary: string; scenes: 'all' | 'opt-in' }[];
   /** 带来的整片风格库名（没有为空）。 */
   film_styles: string;
+  /** 带来的界面皮肤名。 */
+  skins: string[];
   /** 带来的整套流程（新片型）。 */
   flow: { name: string; stations: string[]; first_tab: string } | null;
   slots: StationSlot[];
@@ -1007,6 +1012,8 @@ export interface StationPageInfo {
   tab: string;
   url: string;
   reads: string[];
+  /** 被皮肤拿去当桌宠的页面：插件菜单不列。 */
+  pet?: boolean;
 }
 
 /** 取回、还没装上的插件给你看的实情（flow.StationPreview）。 */
@@ -1031,6 +1038,8 @@ export interface StationPreview {
   rerender_all: boolean;
   flow: string;
   film_styles: string;
+  /** 带来的皮肤文件。 */
+  skins: string[];
   provides: { tts: string; align: string };
   replaces: string;
   after: string;
@@ -1052,3 +1061,31 @@ export interface StationsResponse {
   stations: StationInfo[];
   problems: StationProblem[];
 }
+
+/** 一套界面皮肤（后端 studio/skins.ts 的 skinJSON）：变量名不带 `--`。 */
+export interface SkinView {
+  id: string;
+  name: string;
+  description: string;
+  scheme: 'dark' | 'light';
+  origin: 'host' | 'builtin' | 'plugin';
+  plugin: string;
+  tokens: Record<string, string>;
+  fonts: Record<string, string>;
+  radius: number | null;
+  swatch: [string, string, string, string];
+  pet: {
+    materials: Record<string, [string, string, string]>;
+    crew: Record<string, Record<string, string>>;
+    room: Record<string, string>;
+    filter: { hue?: number; saturate?: number; brightness?: number; contrast?: number };
+    page_url: string;
+  };
+}
+
+export interface SkinsResponse {
+  current: string;
+  skins: SkinView[];
+  problems: { plugin: string; file: string; message: string }[];
+}
+

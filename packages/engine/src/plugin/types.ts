@@ -18,8 +18,10 @@
  * | 子进程环境变量 | config.childEnvironment 与工具服务（tools.amToolsServer）的放行表 |
  * | 顶栏步骤 | studioview.stepIDs（studio_step 能标的步骤、顶栏的步骤） |
  * | 整片风格来源 | filmstyle 的来源表（风格目录、装进项目、风格选择器） |
+ * | 界面皮肤 | studio/skins.ts（设置页的外观、主窗口与桌宠的配色） |
  */
 import type { Source as FilmStyleSource } from '../filmstyle/filmstyle';
+import type { Skin } from '../skin/skin';
 import type { FlowExcludes, FlowMarker, RouteNode } from '../flow/types';
 import type { Item as PrereqItem } from '../prereqs';
 import type { SceneBlock } from '../scene/block';
@@ -312,6 +314,11 @@ export interface PluginContext {
    * （prereq，id 写 styles:<来源 id>），数据目录的覆盖变量另登记 childEnv。来源 id 不能以 x- 开头（那是第三方插件的）。
    */
   filmStyleSource(source: FilmStyleSource): void;
+  /**
+   * 界面皮肤（主窗口与桌宠的配色、字体、工作室的样子）。只能是数据，经 skin.parseSkin 校验；
+   * 内置插件不能用页面换掉桌宠（那是第三方插件在沙箱里做的）。对外的标识是「插件 id/皮肤 id」。
+   */
+  skin(s: Skin): void;
 }
 
 export interface BuiltinPlugin {

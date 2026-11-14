@@ -60,7 +60,7 @@
 .script-tab .script-body {
   display: block;
   padding: 16px 0 8px;
-  color: #e3dccf;
+  color: color-mix(in srgb, var(--text) 95%, var(--bg));
   font: 19px/2 var(--serif);
 }
 .script-tab .script-body h3 {
