@@ -1318,7 +1318,7 @@ function ToolRow(props: { call: SessionEvent; result?: SessionEvent; projectPath
       <summary>{head}</summary>
       <pre className="terminal">
         {info.command && <span className="prompt-sign">$ </span>}
-        {info.command && info.target + (output ? '\n' : '')}
+        {info.command && (info.full ?? info.target) + (output ? '\n' : '')}
         {output}
       </pre>
     </details>

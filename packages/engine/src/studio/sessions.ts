@@ -688,9 +688,12 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
       if (changed.length > 0) emit(sess, turn.turn_id, { kind: kindFilesChanged, files: changed });
       lastStat = current;
     };
+    // 续接时有的工具会把上一轮结尾的话原样再吐一遍（qoder 续接前压缩长对话后实测），不当成这一轮说的。
+    const replay = replayGuard(sess.events, turn.turn_id);
     const onEvent = (event: agentrun.Event): void => {
       if (event.kind === agentrun.KindDone) return;
       if (event.kind === agentrun.KindSession) updateMeta(sess, (meta) => (meta.cli_session_id = event.session_id || undefined));
+      if (replay(event)) return;
       emit(sess, turn.turn_id, { ...event });
       if (event.kind === agentrun.KindToolResult) checkFiles(false);
     };
@@ -979,6 +982,37 @@ function productionBrief(p: Project, sess: Session): string {
   } catch {
     return '';
   }
+}
+
+/**
+ * 认出续接时重放的上一轮结尾：这一轮开头、还没有任何新东西之前，与上一轮里某段思考或回复一字不差的，算重放、丢掉；
+ * 一出现新的东西（工具调用、不一样的话）就不再拦。qoder 续接时若先压缩了长对话，会把上一轮最后的思考与回复
+ * 原样再吐一遍（2026-11 实测：用户的新问题前面先出现一遍上一轮的总结），界面上看像是又回答了一次。
+ */
+export function replayGuard(events: readonly { kind?: string; text?: string; turn_id?: string }[], turnID: string): (event: { kind: string; text?: string }) => boolean {
+  let previousTurn = '';
+  for (let i = events.length - 1; i >= 0; i--) {
+    const id = events[i].turn_id ?? '';
+    if (id !== '' && id !== turnID) {
+      previousTurn = id;
+      break;
+    }
+  }
+  const said = new Set<string>();
+  for (const e of events) {
+    if (e.turn_id === previousTurn && (e.kind === agentrun.KindText || e.kind === agentrun.KindThinking) && (e.text ?? '').trim() !== '') said.add(e.kind + '\u0000' + (e.text ?? '').trim());
+  }
+  let guarding = said.size > 0;
+  return (event) => {
+    if (!guarding) return false;
+    if (event.kind === agentrun.KindText || event.kind === agentrun.KindThinking) {
+      if (said.has(event.kind + '\u0000' + (event.text ?? '').trim())) return true;
+      guarding = false;
+      return false;
+    }
+    if (event.kind === agentrun.KindToolCall || event.kind === agentrun.KindToolResult || event.kind === agentrun.KindPlan) guarding = false;
+    return false;
+  };
 }
 
 /** 会话里最后一份带编号的任务清单（逐条改的任务工具，agentrun.TaskBoard）；续接时交给解析器接上。 */

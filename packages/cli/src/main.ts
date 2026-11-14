@@ -30,6 +30,9 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
     if (interrupted) process.exit(sig === 'SIGINT' ? 130 : 143);
     interrupted = true;
     controller.abort();
+    // 被别的进程停掉（SIGTERM / SIGHUP）时给收尾留几秒，到点照样退出：有的命令不看取消信号（例如等 stdin 的 MCP 服务），
+    // 不兜底的话进程永远挂着，调用方等它退出也跟着卡住（2026-11 实测审批服务）。渲染器的收尾只要半秒（先 SIGTERM，0.5 秒后 SIGKILL）。
+    if (sig !== 'SIGINT') setTimeout(() => process.exit(143), 5000).unref();
   });
 }
 

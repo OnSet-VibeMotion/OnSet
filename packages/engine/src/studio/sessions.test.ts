@@ -15,6 +15,7 @@ import {
   listSessions,
   maxQuoteRunes,
   newID,
+  replayGuard,
   reseedPrompt,
   transcript,
   transcriptLimit,
@@ -105,6 +106,24 @@ describe('sessions', () => {
     const restored = getSession(s2, f.root, id)!.events;
     expect(restored.length).toBeGreaterThan(0);
     expect(restored[restored.length - 1].kind).toBe(kindTurnReverted);
+  });
+
+  // qoder 续接前压缩长对话后会把上一轮结尾的思考与回复原样再吐一遍：开头那几段一字不差的不算这一轮说的。
+  it('drops the previous turn replayed at the start of a resumed turn', () => {
+    const events = [
+      { turn_id: 't1', kind: 'thinking', text: '总结一下' },
+      { turn_id: 't1', kind: 'text', text: '成片重出了。' },
+      { turn_id: 't2', kind: 'user', text: '分镜 5 不对' },
+    ];
+    const replay = replayGuard(events, 't2');
+    expect(replay({ kind: 'session' })).toBe(false);
+    expect(replay({ kind: 'thinking', text: '总结一下' })).toBe(true);
+    expect(replay({ kind: 'text', text: ' 成片重出了。\n' })).toBe(true);
+    expect(replay({ kind: 'text', text: '我先看一下 scene-005。' })).toBe(false);
+    // 有了新东西以后，哪怕又说了一样的话，也照常记下。
+    expect(replay({ kind: 'text', text: '成片重出了。' })).toBe(false);
+    // 第一轮没有上一轮，什么都不拦。
+    expect(replayGuard([{ turn_id: 't1', kind: 'user', text: 'x' }], 't1')({ kind: 'text', text: 'x' })).toBe(false);
   });
 
   it('resume failure reseeds transcript', async () => {

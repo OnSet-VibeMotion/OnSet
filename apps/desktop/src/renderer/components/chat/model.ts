@@ -77,8 +77,34 @@ export function buildBlocks(events: SessionEvent[]): Block[] {
     else if (event.kind === 'view' && event.view) turn.block.views.push(event.view);
     else turn.raw.push(event);
   }
-  for (const { block, raw } of turns.values()) shapeTurn(block, raw);
+  let previous: SessionEvent[] = [];
+  for (const { block, raw } of turns.values()) {
+    shapeTurn(block, dropReplay(raw, previous));
+    previous = raw;
+  }
   return blocks;
+}
+
+/**
+ * 续接时有的工具会把上一轮结尾的思考与回复原样再吐一遍（qoder 续接前压缩长对话后实测），后端已经不再记下它们
+ * （studio/sessions.ts 的 replayGuard）；这里照同一条规则收拾以前存下的：一轮开头、还没有任何新东西之前，
+ * 与上一轮里某段思考或回复一字不差的，不显示。
+ */
+function dropReplay(raw: SessionEvent[], previous: SessionEvent[]): SessionEvent[] {
+  const said = new Set(previous.filter((e) => (e.kind === 'text' || e.kind === 'thinking') && (e.text ?? '').trim() !== '').map((e) => e.kind + '\u0000' + (e.text ?? '').trim()));
+  if (said.size === 0) return raw;
+  const out: SessionEvent[] = [];
+  let guarding = true;
+  for (const e of raw) {
+    if (guarding && (e.kind === 'text' || e.kind === 'thinking')) {
+      if (said.has(e.kind + '\u0000' + (e.text ?? '').trim())) continue;
+      guarding = false;
+    } else if (guarding && (e.kind === 'tool-call' || e.kind === 'tool-result' || e.kind === 'plan')) {
+      guarding = false;
+    }
+    out.push(e);
+  }
+  return out;
 }
 
 function shapeTurn(block: TurnBlock, raw: SessionEvent[]) {
@@ -303,15 +329,28 @@ export function splitAttachmentText(text: string): { body: string; extra: string
   return { body: text.slice(0, index), extra: text.slice(index).trim() };
 }
 
+/**
+ * 命令开头的 `cd <目录> &&` / `cd <目录>;` 去掉：渲染器（qoder 尤甚）每条命令都先 cd 到镜头或项目目录，
+ * 一行只显示得下开头，看到的全是 cd，真正跑的是什么反而看不见。完整命令仍在 `full` 里。
+ */
+export function strippedCommand(command: string): string {
+  let rest = command.trim();
+  for (;;) {
+    const match = /^cd\s+(?:"[^"]*"|'[^']*'|[^\s;&|]+)\s*(?:&&|;)\s*/.exec(rest);
+    if (!match || match[0].length >= rest.length) return rest;
+    rest = rest.slice(match[0].length);
+  }
+}
+
 /** 工具名译成一个动词，配上最能说明「做了什么」的那个参数。 */
-export function describeTool(tool: string, input: unknown): { verb: string; target: string; command: boolean; path?: string } {
+export function describeTool(tool: string, input: unknown): { verb: string; target: string; command: boolean; path?: string; full?: string } {
   const record = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
   const text = (key: string) => (typeof record[key] === 'string' ? (record[key] as string) : '');
   const name = tool.toLowerCase();
   const path = text('file_path') || text('path') || text('filePath') || text('notebook_path');
   if (name === 'bash' || name === 'shell' || name === 'command_execution') {
     const command = text('command') || (Array.isArray(record.command) ? (record.command as string[]).join(' ') : '');
-    return { verb: '执行', target: command, command: true };
+    return { verb: '执行', target: strippedCommand(command), command: true, full: command };
   }
   if (name === 'read') return { verb: '读取', target: path, command: false, path };
   if (name === 'write') return { verb: '创建', target: path, command: false, path };

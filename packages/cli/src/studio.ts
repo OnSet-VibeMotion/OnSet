@@ -167,6 +167,8 @@ permissions/ 子目录，客户端在输入框上方弹卡片问用户，答复�
   onset studio permission-mcp`,
     runE: async (cmd) => {
       const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+      // 编排工具结束时用 SIGTERM 停掉它：不再等下一行，服务循环结束后退出（不关的话进程挂着不走，实测 e2e 卡住）。
+      cmd.context().addEventListener('abort', () => rl.close(), { once: true });
       const inbox = currentEnvironment()[studioview.ViewInboxEnv] ?? '';
       await studioview.servePermissionMCP(rl, (line) => process.stdout.write(line), inbox, cmd.context());
     },
