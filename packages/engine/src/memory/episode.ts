@@ -515,11 +515,13 @@ export function episodes(s: Store): Episode[] {
     episode.dir = path.dirname(file);
     out.push(episode);
   });
-  out.sort((a, b) => {
-    if (a.created_at !== b.created_at) return compareBytes(a.created_at, b.created_at);
-    return compareBytes(a.id, b.id);
-  });
+  out.sort((a, b) => compareBytes(episodeTimeKey(a.created_at), episodeTimeKey(b.created_at)) || compareBytes(a.id, b.id));
   return out;
+}
+
+/** RFC3339Nano 的 UTC 时间补齐小数后才可按字节排序；保留旧 Go 记录的纳秒精度，不改磁盘内容。 */
+function episodeTimeKey(time: string): string {
+  return time.replace(/(?:\.(\d+))?Z$/, (_match, fraction: string | undefined) => `.${(fraction ?? '').padEnd(9, '0')}Z`);
 }
 
 /** 按编号找经历。 */

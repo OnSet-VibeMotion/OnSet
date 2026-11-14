@@ -293,13 +293,11 @@ describe('sessions', () => {
       ({ status, body } = await studioRequest(f.s, 'GET', '/api/files?path=' + p));
       expect(status, `${p} → ${JSON.stringify(body)}`).toBe(want);
     }
-    try {
-      fs.symlinkSync('/etc', path.join(f.root, 'escape'));
-      ({ status } = await studioRequest(f.s, 'GET', '/api/files?path=escape/hosts'));
-      expect(status, '符号链接逃逸应被拒').toBe(400);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EPERM') throw err;
-    }
+    const outside = fs.realpathSync(tempDir());
+    writeStudioFile(path.join(outside, 'private.txt'), 'outside project');
+    fs.symlinkSync(outside, path.join(f.root, 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
+    ({ status } = await studioRequest(f.s, 'GET', '/api/files?path=escape/private.txt'));
+    expect(status, '符号链接逃逸应被拒').toBe(400);
     writeStudioFile(path.join(f.root, 'blob.bin'), 'a\x00b');
     ({ body } = await studioRequest(f.s, 'GET', '/api/files?path=blob.bin'));
     expect(body.binary).toBe(true);

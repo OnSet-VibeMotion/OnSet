@@ -1,7 +1,7 @@
 import './testsupport';
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import * as memory from '../memory';
 import * as scene from '../scene';
 import { writeSceneDir } from '../memory/testsupport';
@@ -315,6 +315,8 @@ describe('studio memory', () => {
   // 每轮说的话和回退都留下信号，整理时据此归纳偏好。
   it('chat turns and reverts become conversation episodes', async () => {
     const f = newSessionFixture();
+    const clock = vi.spyOn(memory.Store.prototype, 'clock').mockReturnValue(new Date('2026-11-14T10:00:00.100Z'));
+    onTestFinished(() => clock.mockRestore());
     const memoryDir = tempDir();
     setEnv('ONSET_MEMORY_DIR', memoryDir);
     let { status, body } = await studioRequest(f.s, 'POST', '/api/sessions', '{"title":"信号"}');
@@ -324,6 +326,7 @@ describe('studio memory', () => {
     expect(status).toBe(202);
     const turnID = body.turn_id as string;
     await waitIdle(f, id);
+    clock.mockReturnValue(new Date('2026-11-14T10:00:00.101Z'));
     ({ status, body } = await studioRequest(f.s, 'POST', `/api/turns/${turnID}/revert`, '{}'));
     expect(status).toBe(200);
     const episodes = memory.open(memoryDir).episodes();

@@ -2,10 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { isBlank, isDark } from './mediaprobe';
+import { Toolchain } from './toolchain';
 import { ffmpeg, hasFfmpeg, sample, tempDir, toolchain } from './testutil';
 
 it.each(['darwin','linux'] as const)('preserves the existing %s extraction and statistics calls', platform => {
-  const tc=toolchain(), descriptor=Object.getOwnPropertyDescriptor(process,'platform')!;
+  // 这里只测平台分派，两个外部调用都被替身接管，不要求本机安装媒体工具。
+  const tc=new Toolchain('unused-ffprobe','',{}), descriptor=Object.getOwnPropertyDescriptor(process,'platform')!;
   const extract=vi.spyOn(tc,'extractFrameRegion').mockImplementation(()=>{});
   const statistics=vi.spyOn(tc,'frameStats').mockReturnValue({at_seconds:0.5,mean:100,stddev:10});
   try {
