@@ -14,13 +14,14 @@ import { compareBytes, sortedKeys } from '../gojson';
 import * as memory from '../memory';
 import * as scene from '../scene';
 import * as tools from '../tools';
-import { DecodeError, decodeJSON, fieldBool, fieldInt, fieldNumberPtr, fieldNumbers, fieldString, fieldStrings, goMap, methodNotAllowed, writeError, writeJSON } from './http';
+import { DecodeError, decodeJSON, fieldBool, fieldInt, fieldNumberPtr, fieldNumbers, fieldString, fieldStrings, goMap, methodNotAllowed, notFound, serveFile, writeError, writeJSON } from './http';
 import { discoverScenes, fileExists } from './scenes';
 import type { Project, Server } from './studio';
 import { addTask, runStudioOp, runTask, runWriteTask, writeTaskError } from './tasks';
 import type { Turn } from './turns';
 import { emitStudioEvent } from './events';
 import { sceneActivity } from './activity';
+import { resolveExamAudio } from './exammedia';
 
 function memoryStore(s: Server): { p: Project; cfg: config.Config; store: memory.Store } | Response {
   const p = s.projectOr404();
@@ -92,6 +93,7 @@ export function memoryAPI(s: Server, request: Request): Response {
     }
     const episodes = store.episodes();
     const byID = new Map(episodes.map((e) => [e.id, e]));
+    const projects = s.registeredProjects();
     const views = store.exams().map((exam) => {
       const texts = new Map<string, string>();
       const cells = (exam.cells ?? []).map((cell) => {
@@ -99,7 +101,18 @@ export function memoryAPI(s: Server, request: Request): Response {
         // output 是这一格产物相对项目根的路径，供画面对照读取；不在项目里时不写。
         if (path.isAbsolute(cell.workdir)) {
           const rel = path.relative(p.path, examOutput(cell.workdir));
-          if (!rel.startsWith('..') && fileExists(path.join(p.path, rel))) c.output = rel.split(path.sep).join('/');
+          if (!rel.startsWith('..') && fileExists(path.join(p.path, rel))) {
+            c.output = rel.split(path.sep).join('/');
+            const q = (exam.questions ?? []).find((q) => q.id === cell.question);
+            const source = q?.holdout ? q.input : byID.get(q?.episode ?? '')?.scene_dir ?? '';
+            const audio = q && (!q.episode || byID.has(q.episode)) && (!q.holdout || source !== '')
+              ? resolveExamAudio(p.path, cell.workdir, source, projects) : null;
+            if (audio) {
+              const query = new URLSearchParams({ question: cell.question, renderer: cell.renderer, arm: cell.arm, repeat: String(cell.repeat) });
+              c.preview_audio = { url: `/api/memory/exams/${encodeURIComponent(exam.id)}/audio?${query}`, start_seconds: audio.start_seconds,
+                duration_seconds: audio.duration_seconds, label: '来源项目口播', source_project: audio.source_project };
+            } else c.audio_unavailable = '此题的来源配音暂时不可用，请检查原项目是否仍在、口播时间是否已改变。';
+          }
         }
         // 这一格查出的问题原文与镜头口播取自它的考试经历：格子里只有校验器 ID 与个数。
         const episode = byID.get(cell.episode);
@@ -120,7 +133,8 @@ export function memoryAPI(s: Server, request: Request): Response {
         applied: 'none',
         evaluation_note: '补充审计：检查依据不完整，清单缺失或无效不能作为视频质量改善的依据。原始考试记录保留。',
       } : {};
-      return { ...rest, ...audit, questions, cells };
+      const acceptance = memory.examAcceptance(store, exam);
+      return { ...rest, ...audit, questions, cells, ...(acceptance ? { human_acceptance: acceptance, original_verdict: exam.verdict } : {}) };
     });
     let allRuns: memory.RunSummary[] = [];
     try {
@@ -169,6 +183,28 @@ export function memoryAPI(s: Server, request: Request): Response {
   } catch (err) {
     return writeError(500, 'memory_unavailable', (err as Error).message);
   }
+}
+
+/** 历史考试的专用音频入口：只能定位现存考题与其登记来源，原始文件接口仍限于当前项目。 */
+export function memoryExamAudioAPI(s: Server, request: Request, rest: string): Response {
+  if (request.method !== 'GET' && request.method !== 'HEAD') return methodNotAllowed('GET, HEAD');
+  const opened = memoryStore(s);
+  if (opened instanceof Response) return opened;
+  const match = /^([^/]+)\/audio$/.exec(rest);
+  if (!match) return notFound();
+  const exam = opened.store.exams().find((e) => e.id === match[1]);
+  if (!exam) return notFound();
+  const query = new URL(request.url).searchParams;
+  const cell = (exam.cells ?? []).find((c) => c.question === query.get('question') && c.renderer === query.get('renderer') &&
+    c.arm === query.get('arm') && String(c.repeat) === query.get('repeat'));
+  if (!cell) return notFound();
+  const question = (exam.questions ?? []).find((q) => q.id === cell.question);
+  if (!question) return notFound();
+  const source = question.holdout ? question.input : opened.store.episodes().find((e) => e.id === question.episode)?.scene_dir ?? '';
+  if ((question.episode || question.holdout) && source === '') return notFound();
+  const audio = resolveExamAudio(opened.p.path, cell.workdir, source, s.registeredProjects());
+  if (!audio) return notFound();
+  return serveFile(request, audio.file, { 'Cache-Control': 'no-cache' });
 }
 
 /**

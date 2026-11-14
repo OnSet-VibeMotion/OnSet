@@ -22,3 +22,7 @@
 .exam-player .exam-seek span { white-space: nowrap; flex: none; }
 .exam-player .exam-seek input { flex: 1; width: 100%; min-width: 60px; }
 .exam-player .link { align-self: flex-start; }
+.exam-audio-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; margin: 0 0 16px; }
+.exam-audio-controls button { font-size: 12px; }
+.exam-audio-controls label { display: flex; align-items: center; gap: 8px; color: var(--text-3); font-size: 12px; }
+.exam-audio-controls input { width: 90px; }

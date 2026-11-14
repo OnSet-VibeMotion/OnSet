@@ -67,6 +67,7 @@ export function checkerLabel(id: string): string {
 
 /** 时间线事件类型的说法。 */
 export const EventLabels: Readonly<Record<string, string>> = {
+  human_acceptance: '人工验收通过',
   [EventEpisode]: '渲染',
   [EventConsolidate]: '整理',
   [EventTrial]: '新经验',

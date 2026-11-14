@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { test, expect, openProject, openPage } from './fixtures.mjs';
 
 // 进化页：一场考过的试排成「同一个镜头带与不带一条经验」的两段画面、这条经验本身与考试结果。
@@ -113,6 +115,70 @@ test('missing evidence is not presented as fewer video problems', async ({ page,
   const recent=page.getByRole('region',{name:'最近考试结果'});
   await expect(recent).toContainText('本题结果不完整，不能比较');
   await expect(recent).not.toContainText('带上后少了');
+});
+
+test('human acceptance persists, shows evolution complete, and retains incomplete machine remarks', async ({ page, project, sandbox }) => {
+  seedExam(sandbox, project);
+  const file = path.join(sandbox.memory, 'exams', 'exam-0001', 'result.json');
+  const exam = JSON.parse(fs.readFileSync(file, 'utf8'));
+  exam.cells[0].incomplete = true;
+  Object.assign(exam.verdict, {pass: false, needs_human: true, reasons: ['检查依据不完整，原始备注保留']});
+  fs.writeFileSync(file, JSON.stringify(exam));
+  const machine = fs.readFileSync(file);
+  const cli = fileURLToPath(new URL('../../../packages/cli/dist/onset.cjs', import.meta.url));
+  execFileSync(process.execPath, [cli, 'memory', 'accept-exam', '--exam', 'exam-0001', '--name', 'hold-readable', '--questions', 'q1', '--note', '用户认可该镜头的观看效果', '--statement', '我认为这个已经属于进化完成了'], {
+    cwd: project.path, env: {...process.env, ONSET_MEMORY_DIR: sandbox.memory, ONSET_SETTINGS_FILE: sandbox.settings, HOME: sandbox.home}, encoding: 'utf8',
+  });
+  const later = path.join(sandbox.memory, 'exams', 'exam-0002');
+  fs.mkdirSync(later, {recursive: true});
+  fs.writeFileSync(path.join(later, 'result.json'), JSON.stringify({...exam, id: 'exam-0002'}));
+  await openProject(page, project);
+  await openPage(page, 'evidence');
+  await expect(page.locator('.evidence-figures')).toContainText('进化完成');
+  await expect(page.locator('.evidence-figures')).toContainText('检查依据不完整');
+  const accepted = page.getByRole('region', {name: '人工验收结论'});
+  await expect(accepted).toContainText('exam-0001 · q1 · scene-001');
+  await expect(accepted).toContainText('后续渲染符合适用条件的镜头会继续带上');
+  await expect(page.locator('.evidence')).toContainText('检查依据不完整，原始备注保留');
+  await page.reload();
+  await openPage(page, 'evidence');
+  await expect(page.getByRole('region', {name: '人工验收结论'})).toContainText('进化完成');
+  await openPage(page, 'memory');
+  await expect(page.getByRole('region', {name: '人工验收结论'})).toContainText('人工验收通过');
+  await expect(page.locator('.memory-tab')).toContainText('检查依据不完整');
+  expect(fs.readFileSync(file)).toEqual(machine);
+});
+
+test('long exam conclusions remain inside their columns and stack in a narrow panel', async ({ page, project, sandbox, electronApp }) => {
+  seedExam(sandbox, project);
+  const file = path.join(sandbox.memory, 'exams', 'exam-0001', 'result.json');
+  const exam = JSON.parse(fs.readFileSync(file, 'utf8')); exam.cells[0].incomplete = true;
+  fs.writeFileSync(file, JSON.stringify(exam));
+  await openProject(page, project);
+  await openPage(page, 'evidence');
+  const evidence = page.locator('.evidence'), summary = evidence.locator('.evidence-figures');
+  await expect(summary).toContainText('检查依据不完整');
+  for (const zoom of [1, 1.25]) {
+    await electronApp.evaluate(({ BrowserWindow }, value) => BrowserWindow.getAllWindows().find(w => w.isResizable()).webContents.setZoomFactor(value), zoom);
+    for (const width of [840, 680, 420, 320]) {
+      await evidence.evaluate((el, value) => { el.style.width = `${value}px`; el.style.maxWidth = 'none'; }, width);
+      const layout = await summary.evaluate(el => [...el.children].map(cell => {
+        const box = cell.getBoundingClientRect();
+        const text = [...cell.children].flatMap(child => {
+          const range = document.createRange(); range.selectNodeContents(child);
+          return [...range.getClientRects()].map(rect => ({left: rect.left, right: rect.right, bottom: rect.bottom}));
+        });
+        return {top: box.top, bottom: box.bottom, left: box.left, right: box.right,
+          contained: text.every(rect => rect.left >= box.left - 1 && rect.right <= box.right + 1 && rect.bottom <= box.bottom + 1)};
+      }));
+      expect(layout.every(cell => cell.contained), `width=${width}, zoom=${zoom}`).toBe(true);
+      if (width <= 684) expect(layout[1].top).toBeGreaterThanOrEqual(layout[0].bottom - 1);
+      else expect(layout[1].top).toBeCloseTo(layout[0].top, 0);
+    }
+  }
+  await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(w => w.isResizable()).webContents.setZoomFactor(1));
+  await evidence.evaluate(el => { el.style.width = '840px'; });
+  await summary.screenshot({path: test.info().outputPath('exam-conclusions-no-overlap.png')});
 });
 
 test('the evidence page says what to do before any exam', async ({ page, project }) => {
@@ -265,7 +331,7 @@ for (const status of ['rejected', 'trial']) {
   });
 }
 
-test('memory exam videos are large, playable together and share a seek control', async ({ page, project, sandbox }) => {
+test('memory exam videos play historical source narration and share a seek control', async ({ page, project, sandbox }) => {
   seedExam(sandbox, project);
   const bytes = await page.evaluate(async () => {
     const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 360;
@@ -286,10 +352,39 @@ test('memory exam videos are large, playable together and share a seek control',
   });
   const resultFile = path.join(sandbox.memory, 'exams', 'exam-0001', 'result.json');
   const result = JSON.parse(fs.readFileSync(resultFile, 'utf8'));
+  // 无声镜头按冻结时间合同叠加项目口播：音频含非零信号，起点为全片 0.5 秒。
+  const voiceDir = path.join(project.path, 'production/audio'); fs.mkdirSync(voiceDir, { recursive: true });
+  const rate = 24000, samples = rate * 5, wave = Buffer.alloc(44 + samples * 2);
+  wave.write('RIFF', 0); wave.writeUInt32LE(wave.length - 8, 4); wave.write('WAVEfmt ', 8); wave.writeUInt32LE(16, 16);
+  wave.writeUInt16LE(1, 20); wave.writeUInt16LE(1, 22); wave.writeUInt32LE(rate, 24); wave.writeUInt32LE(rate * 2, 28);
+  wave.writeUInt16LE(2, 32); wave.writeUInt16LE(16, 34); wave.write('data', 36); wave.writeUInt32LE(samples * 2, 40);
+  for (let i = 0; i < samples; i++) wave.writeInt16LE(Math.round(Math.sin(i / rate * 440 * Math.PI * 2) * 3000), 44 + i * 2);
+  fs.writeFileSync(path.join(voiceDir, 'voice.wav'), wave);
+  const timing = { fps: 30, start_frame: 15, end_frame_exclusive: 105, plan: 'a'.repeat(64), phrases: 'phrases.json' };
+  const phrases = { schema: 1, fps: 30, phrases: [{ phrase_id: 'hello', source_text: 'hello', semantic_order: 1, start_frame: 15, end_frame_exclusive: 95 }] };
+  const originalDir = path.join(project.path, 'scenes/scene-001');
+  const originalScene = JSON.parse(fs.readFileSync(path.join(originalDir, 'scene.json'), 'utf8'));
+  fs.writeFileSync(path.join(originalDir, 'scene.json'), JSON.stringify({ ...originalScene, duration_seconds: 3, timing }));
+  fs.writeFileSync(path.join(originalDir, 'phrases.json'), JSON.stringify(phrases));
+  fs.writeFileSync(path.join(project.path, 'frame.md'), '---\ncanvas: {width_px: 640, height_px: 360, fps: 30}\n---\n');
+  // 同编号、同文字的当前项目也有音频，但它是静音；必须沿旧题来源读取另一个项目的有声 WAV。
+  const prior = path.join(sandbox.home, 'earlier-video-project'), priorScene = path.join(prior, 'scenes/scene-001');
+  fs.cpSync(originalDir, priorScene, {recursive: true});
+  fs.copyFileSync(path.join(project.path, 'onset.conf'), path.join(prior, 'onset.conf'));
+  fs.copyFileSync(path.join(project.path, 'onset.flow.json'), path.join(prior, 'onset.flow.json'));
+  fs.copyFileSync(path.join(project.path, 'frame.md'), path.join(prior, 'frame.md'));
+  fs.mkdirSync(path.join(prior, 'production/audio'), {recursive: true});
+  fs.writeFileSync(path.join(prior, 'production/audio/voice.wav'), wave);
+  const silent = Buffer.from(wave); silent.fill(0, 44); fs.writeFileSync(path.join(voiceDir, 'voice.wav'), silent);
+  const episodeDir = path.join(sandbox.memory, 'episodes/2026-11/ep-historical'); fs.mkdirSync(episodeDir, {recursive: true});
+  fs.writeFileSync(path.join(episodeDir, 'episode.json'), JSON.stringify({schema: 1, id: 'ep-historical', source: 'check', created_at: '2026-11-12T07:00:00Z',
+    project: 'earlier-video-project', scene_dir: priorScene, scene_id: 'scene-001', text: 'hello'}));
+  result.questions[0].episode = 'ep-historical';
   for (const cell of result.cells) {
     const sceneFile = path.join(cell.workdir, 'scene.json');
-    const scene = JSON.parse(fs.readFileSync(sceneFile, 'utf8')); scene.output = 'comparison.webm';
+    const scene = JSON.parse(fs.readFileSync(sceneFile, 'utf8')); scene.output = 'comparison.webm'; scene.duration_seconds = 3; scene.timing = timing;
     fs.writeFileSync(sceneFile, JSON.stringify(scene));
+    fs.writeFileSync(path.join(cell.workdir, 'phrases.json'), JSON.stringify(phrases));
     fs.writeFileSync(path.join(cell.workdir, scene.output), Buffer.from(bytes));
   }
   result.verdict = { ...result.verdict, pass: false, control_score: 10, trial_score: -1, reasons: ['带上后多了一处阅读时间问题'] };
@@ -297,11 +392,12 @@ test('memory exam videos are large, playable together and share a seek control',
   result.cells[1].passed = false; result.cells[1].problems = 1; result.cells[1].checks = ['reads.duration'];
   result.applied = 'none';
   fs.writeFileSync(resultFile, JSON.stringify(result));
+  expect(await page.evaluate(async prior => (await fetch('/api/projects/open', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path: prior})})).status, prior)).toBe(200);
   await openProject(page, project);
   await openPage(page, 'memory');
   const recent = page.getByRole('region', { name: '最近考试结果' });
   await expect(recent).toContainText('带上后多了 1 处问题');
-  await expect(page.locator('.memory-flow li').nth(2)).toContainText('暂时无法读取');
+  await expect(page.locator('.memory-flow li').nth(2)).toContainText('scene-001');
   await expect.poll(() => recent.locator('video').evaluateAll((vs) => vs.every((v) => v.readyState >= 2))).toBe(true);
   // MediaRecorder 的 WebM 没写总时长；读到末尾后 Chromium 才知道时长。
   await recent.locator('video').evaluateAll((vs) => vs.forEach((v) => { if (!Number.isFinite(v.duration)) v.currentTime = 1e6; }));
@@ -311,12 +407,47 @@ test('memory exam videos are large, playable together and share a seek control',
   expect(size.width).toBeGreaterThan(260); expect(size.height).toBeGreaterThanOrEqual(240);
   await recent.getByRole('button', { name: '两边一起播放', exact: true }).click();
   await expect.poll(() => recent.locator('video').evaluateAll((vs) => vs.every((v) => !v.paused))).toBe(true);
+  const sound = recent.locator('.exam-player > audio');
+  await expect(recent.getByRole('button', { name: '配音已开启' })).toBeVisible();
+  await expect(recent.locator('.exam-audio-controls')).toContainText('earlier-video-project');
+  await expect.poll(() => sound.evaluate(a => !a.paused && !a.muted && a.volume > 0 && a.currentTime > 0.5)).toBe(true);
+  await expect.poll(() => recent.locator('.exam-player').evaluate(el => Math.abs(el.querySelector('audio').currentTime - el.querySelector('video').currentTime - 0.5) < 0.2)).toBe(true);
+  await expect(sound).toHaveCount(1);
+  const peak = await sound.evaluate(async a => {
+    const context = new AudioContext(), analyser = context.createAnalyser();
+    context.createMediaElementSource(a).connect(analyser); analyser.connect(context.destination);
+    await context.resume();
+    const signal = new Float32Array(analyser.fftSize);
+    let peak = 0;
+    for (let i = 0; i < 15 && peak <= 0.01; i++) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      analyser.getFloatTimeDomainData(signal);
+      peak = Math.max(...signal.map(Math.abs));
+    }
+    window.__examAudioContext = context;
+    return { peak, state: context.state, paused: a.paused, muted: a.muted, volume: a.volume, time: a.currentTime, ready: a.readyState };
+  });
+  expect(peak.peak, JSON.stringify(peak)).toBeGreaterThan(0.01);
   await recent.getByRole('button', { name: '暂停', exact: true }).click();
+  await expect.poll(() => sound.evaluate(a => a.paused)).toBe(true);
   await recent.getByRole('slider', { name: '对照视频时间' }).evaluate((el) => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '1');
     el.dispatchEvent(new Event('input', { bubbles: true }));
   });
   await expect.poll(() => recent.locator('video').evaluateAll((vs) => vs.every((v) => Math.abs(v.currentTime - 1) < 0.15))).toBe(true);
+  await expect.poll(() => sound.evaluate(a => Math.abs(a.currentTime - 1.5) < 0.15 && a.paused)).toBe(true);
+  // 原生单侧播放也要带口播；切到另一侧只保留一份声音，拖动后重新对齐。
+  await recent.locator('video').last().evaluate(v => v.play());
+  await expect.poll(() => sound.evaluate(a => !a.paused)).toBe(true);
+  await expect.poll(() => recent.locator('video').first().evaluate(v => v.paused)).toBe(true);
+  await recent.locator('video').last().evaluate(v => { v.currentTime = 0.8; });
+  await expect.poll(() => recent.locator('.exam-player').evaluate(el => Math.abs(el.querySelector('audio').currentTime - el.querySelectorAll('video')[1].currentTime - 0.5) < 0.2)).toBe(true);
+  await recent.locator('video').last().evaluate(v => v.pause());
+  await expect.poll(() => sound.evaluate(a => a.paused)).toBe(true);
+  await recent.getByRole('button', { name: '配音已开启' }).click();
+  await expect.poll(() => sound.evaluate(a => a.muted)).toBe(true);
+  await recent.getByRole('button', { name: '配音已静音' }).click();
+  await expect.poll(() => sound.evaluate(a => !a.muted)).toBe(true);
   await page.screenshot({ path: test.info().outputPath('memory-exam-comparison.png'), fullPage: true });
   await recent.locator('.evidence-controls').evaluate((el) => el.scrollIntoView({ block: 'start' }));
   await page.screenshot({ path: test.info().outputPath('memory-exam-players.png'), fullPage: true });

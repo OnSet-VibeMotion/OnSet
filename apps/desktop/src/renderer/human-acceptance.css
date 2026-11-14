@@ -1,0 +1,17 @@
+.human-acceptance {
+  padding: 20px 24px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ok);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.human-acceptance .human-acceptance-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; }
+.human-acceptance .human-acceptance-heading strong { font: 600 26px/1.4 var(--serif); color: var(--ok); }
+.human-acceptance .human-acceptance-heading span { color: var(--text-2); font-size: 13px; }
+.human-acceptance p { margin: 0; line-height: 1.7; }
+.human-acceptance details p, .human-acceptance blockquote { margin: 10px 0 0; }
+.human-acceptance blockquote { padding-left: 16px; border-left: 2px solid var(--line); color: var(--text-2); }

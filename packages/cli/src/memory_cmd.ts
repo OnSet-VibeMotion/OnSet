@@ -322,7 +322,7 @@ drafts 跳过整理者，直接收录一个目录里现成的草稿（lessons/*.
         const { result, error } = await agentrun.run(
           {
             tool: cfg.orchestrator,
-            // 用设置里给编排选的模型：导演（director）靠它挑服务商，其他几家空着就用自己的默认。
+            // 用设置里给编排选的模型：制作人（director）靠它挑服务商，其他几家空着就用自己的默认。
             model: cfg.orchestratorModel,
             workdir,
             prompt,
@@ -503,6 +503,27 @@ export function renderExam(r: memory.ExamResult): string {
   }
   return b;
 }
+
+defineOp({
+  name: 'memory_accept_exam',
+  cli: ['memory', 'accept-exam'],
+  summary: '记录用户对视频对照的人工验收，标记进化完成',
+  description: '只在用户明确确认观看效果后调用。指定本场已生效经验及看过的题目，保留原话；独立保存人工验收，不改机器判卷、评分、适用范围或原考试文件。',
+  examples: ['memory_accept_exam({"exam":"exam-0001","name":"hold-readable","questions":["q1"],"note":"已核对画面与阅读节奏","statement":"填写用户明确确认的原话"})'],
+  params: {
+    exam: {type: 'string', required: true, description: '考试编号'},
+    name: {type: 'string', required: true, description: '本场已生效经验名'},
+    questions: {type: 'strings', required: true, description: '明确看过并认可的题目编号'},
+    note: {type: 'string', required: true, description: '人工验收结论'},
+    statement: {type: 'string', required: true, description: '用户确认原话，不得自行编造'},
+  },
+  run: (p, {out}) => {
+    const {store} = loadMemoryConfig();
+    const acceptance = memory.acceptExam(store, {exam: str(p.exam), name: str(p.name), questions: strs(p.questions), note: str(p.note), userStatement: str(p.statement)});
+    out.write(`${acceptance.exam}：进化完成（人工验收通过），机器检查记录保留\n`);
+    return {data: acceptance};
+  },
+});
 
 defineOp({
   name: 'memory_promote',
