@@ -195,6 +195,7 @@ export type EventKind =
   | 'unqueued'
   | 'plan'
   | 'background-tasks'
+  | 'context-compaction'
   | 'permission'
   | 'permission-resolved';
 
@@ -231,6 +232,7 @@ export interface SessionEvent {
   changes?: FileChange[];
   plan?: PlanItem[];
   background_tasks?: BackgroundTask[];
+  compaction?: { state: 'running' | 'completed' | 'ended' | 'failed' | 'cancelled'; pre_tokens?: number; post_tokens?: number };
   queue_id?: string;
   /** view 事件：编排工具请网页切到的页面。 */
   view?: ViewRequest;

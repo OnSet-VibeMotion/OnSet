@@ -8,7 +8,7 @@
  */
 import { BasisTotalInput, type McpServer, newUsage } from '../tools';
 import { runInteractive, type DriveContext, type PermissionAnswer } from './interactive';
-import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, clip, type Event, type PlanItem } from './parse';
+import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, clip, compactionEvent, type ContextCompaction, type Event, type PlanItem } from './parse';
 import type { Outcome, Spec } from './run';
 import { ActiveTasks } from './activetasks';
 
@@ -76,6 +76,7 @@ export class ACPTranslator {
   private readonly tools = new Map<string, string>();
   private readonly tasks = new ActiveTasks();
   private readonly teams = new Map<string, Map<string, string>>();
+  private compactionState: ContextCompaction['state'] | undefined;
 
   constructor(private readonly emit: (event: Event) => void) {}
 
@@ -131,6 +132,25 @@ export class ACPTranslator {
       } else this.childProgress(childID, u);
       return;
     }
+    if (meta['codebuddy.ai/isSubAgent'] === true) return;
+    // OpenCode 2.1 的旧客户端扩展与新版 ACP / CodeBuddy 的正式 compaction_update。
+    const compact = u.sessionUpdate === 'compaction_update' ? u : obj(meta['opencode/compaction']);
+    const status = str(compact.status);
+    if (['started', 'in_progress', 'completed', 'failed', 'cancelled'].includes(status)) {
+      const aborted = ['aborted', 'compaction.interrupted'].includes(str(obj(compact.error).type));
+      this.compaction(status === 'started' || status === 'in_progress' ? 'running' : aborted ? 'cancelled' : status as 'completed' | 'failed' | 'cancelled');
+      return;
+    }
+    // CodeBuddy 2.168 默认 ACP 客户端通过 progress 扩展报告；清空不代表压缩成功。
+    const progress = meta['codebuddy.ai/progress'];
+    const progressType = str(obj(progress).type);
+    if (progressType === 'compacting' || progressType.includes('Compacting context')) {
+      this.compaction('running');
+      return;
+    }
+    if (progress === null && this.compactionState === 'running') this.compaction('ended');
+    if (meta['codebuddy.ai/isCompactInternal'] === true) return;
+    if (['agent_message_chunk', 'agent_thought_chunk', 'tool_call'].includes(str(u.sessionUpdate))) this.compactionState = undefined;
     switch (str(u.sessionUpdate)) {
       case 'agent_message_chunk':
         if (this.thoughtBuf !== '' || this.thoughtID) this.flush();
@@ -164,6 +184,13 @@ export class ACPTranslator {
         return;
       }
     }
+  }
+
+  private compaction(state: ContextCompaction['state']): void {
+    if (this.compactionState === state) return;
+    this.flush();
+    this.compactionState = state;
+    this.emit(compactionEvent(state));
   }
 
   /** OpenCode 的 opencode/session/child_update 扩展，根会话由调用方校验。 */

@@ -5,6 +5,7 @@
  * 只译消息级的事件（message_end），不译 token 增量：与其他几家一样，界面只按整条消息显示。
  * 不 import pi：事件按结构读，测试可以直接喂对象。
  */
+import { marshal } from '@onset/engine/gojson';
 
 type Obj = Record<string, unknown>;
 
@@ -51,6 +52,21 @@ export class StreamWriter {
   /** 译一条 pi 事件。 */
   event(raw: unknown): void {
     const e = obj(raw);
+    // pi 的会话级事件不经过 message_end，必须单独转发，否则整理上下文时界面没有任何更新。
+    if (e.type === 'compaction_start') {
+      this.write(marshal({ type: 'system', subtype: 'status', status: 'compacting', session_id: this.sessionID }));
+      return;
+    }
+    if (e.type === 'compaction_end') {
+      if (e.result && !e.aborted && !e.errorMessage) {
+        this.write(marshal({ type: 'system', subtype: 'compact_boundary', session_id: this.sessionID,
+          compact_metadata: { pre_tokens: obj(e.result).tokensBefore } }));
+      } else {
+        this.write(marshal({ type: 'agent_event', session_id: this.sessionID,
+          event: { type: 'compaction', data: { status: e.aborted ? 'cancelled' : 'failed' } } }));
+      }
+      return;
+    }
     if (e.type !== 'message_end') return;
     const message = obj(e.message);
     switch (message.role) {

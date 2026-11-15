@@ -26,6 +26,14 @@ rl.on('line', async (line) => {
       }
       const turn = 'turn_1';
       send({ id: m.id, result: { turn: { id: turn, status: 'inProgress' } } });
+      if (m.params.input[0].text.includes('压缩上下文')) {
+        note('item/started', { threadId: 'other-thread', item: { type: 'contextCompaction', id: 'private' } });
+        note('item/started', { threadId: thread, item: { type: 'contextCompaction', id: 'compact' } });
+        note('item/completed', { threadId: thread, item: { type: 'contextCompaction', id: 'compact' } });
+        note('item/completed', { threadId: thread, item: { type: 'agentMessage', id: 'answer', text: '继续工作' } });
+        note('turn/completed', { threadId: thread, turn: { id: turn, status: 'completed' } });
+        break;
+      }
       if (m.params.input[0].text.includes('后台子任务')) {
         for (const [id, prompt] of [['child-a', '检查素材'], ['child-b', '检查字幕']]) {
           const item = { type: 'collabAgentToolCall', id: 'spawn-' + id, tool: 'spawnAgent', prompt, senderThreadId: thread, receiverThreadIds: [id], agentsStates: { [id]: { status: 'running' } }, status: 'completed' };

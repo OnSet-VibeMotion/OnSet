@@ -25,6 +25,23 @@ export const KindDone: Kind = 'done';
 export const KindPlan: Kind = 'plan';
 /** 当前进程的后台任务完整快照；空数组表示全部结束。 */
 export const KindBackgroundTasks: Kind = 'background-tasks';
+export const KindContextCompaction: Kind = 'context-compaction';
+
+export interface ContextCompaction {
+  /** ended 只表示工具退出了压缩状态，不保证成功；completed 必须有明确的完成事件。 */
+  state: 'running' | 'completed' | 'ended' | 'failed' | 'cancelled';
+  pre_tokens?: number;
+  post_tokens?: number;
+}
+
+/** 各家只转换明确的生命周期信号；没有成功信号时用 ended。 */
+export function compactionEvent(state: ContextCompaction['state']): Event {
+  const text = {
+    running: '正在压缩上下文', completed: '上下文压缩完成',
+    ended: '上下文压缩阶段结束，等待模型继续', failed: '上下文压缩失败', cancelled: '上下文压缩已取消',
+  }[state];
+  return { kind: KindContextCompaction, text, compaction: { state } };
+}
 
 export interface BackgroundTask {
   id: string;
@@ -67,6 +84,7 @@ export interface Event {
   usage?: Usage;
   plan?: PlanItem[];
   background_tasks?: BackgroundTask[];
+  compaction?: ContextCompaction;
 }
 
 /** 按 Go struct 的字段顺序与 omitempty 排出可交给 gojson 的对象。 */
@@ -83,6 +101,7 @@ export function eventJSON(e: Event): Record<string, unknown> {
     plan: e.plan && e.plan.length > 0 ? e.plan.map((item) => ({ text: item.text, status: item.status })) : undefined,
     background_tasks: e.background_tasks,
     text_id: e.text_id || undefined,
+    compaction: e.compaction,
   };
 }
 
@@ -159,6 +178,50 @@ class BackgroundTasks {
         .filter((task) => !task.ended && !task.ambient && task.background !== false)
         .map(({ id, description, activity }) => ({ id, description, ...(activity ? { activity } : {}) })),
     };
+  }
+}
+
+/** Qoder 1.1.87 与 Claude 的 system/status + compact_boundary 协议。
+ * Qoder 在压缩成功或失败后都会清 status；只有 boundary 能确认压缩成功。
+ */
+class CompactionStatus {
+  private active = false;
+
+  parse(e: Obj): Event | null {
+    if (str(e.agent_id)) return null; // 子任务整理自己的上下文，不改变主会话状态。
+    // CodeBuddy 的 stream-json（制作人也用同一形状报告失败与取消）。
+    if (e.type === 'agent_event' && obj(e.event).type === 'compaction') {
+      const origin = obj(e.origin);
+      if (origin.type === 'subagent' || origin.parentSessionId) return null;
+      const status = str(obj(obj(e.event).data).status);
+      if (['in_progress', 'completed', 'failed', 'cancelled'].includes(status)) {
+        if (status === 'in_progress' && this.active) return null;
+        this.active = status === 'in_progress';
+        return compactionEvent(status === 'in_progress' ? 'running' : status as 'completed' | 'failed' | 'cancelled');
+      }
+    }
+    if (e.type !== 'system') {
+      if (['assistant', 'user', 'result'].includes(str(e.type))) this.active = false;
+      return null;
+    }
+    if (e.subtype === 'compact_boundary') {
+      this.active = false;
+      const metadata = obj(e.compact_metadata);
+      const count = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+      return { kind: KindContextCompaction, text: '上下文压缩完成', compaction: {
+        state: 'completed', pre_tokens: count(metadata.pre_tokens), post_tokens: count(metadata.post_tokens),
+      } };
+    }
+    if (e.subtype !== 'status') return null;
+    if (e.status === 'compacting' && !this.active) {
+      this.active = true;
+      return { kind: KindContextCompaction, text: '正在压缩上下文', compaction: { state: 'running' } };
+    }
+    if (e.status === null && this.active) {
+      this.active = false;
+      return { kind: KindContextCompaction, text: '上下文压缩阶段结束，等待模型继续', compaction: { state: 'ended' } };
+    }
+    return null;
   }
 }
 
@@ -263,6 +326,7 @@ export class Parser {
   private readonly accumulated: Usage = newUsage();
   private readonly tasks = new TaskBoard();
   private readonly backgroundTasks = new BackgroundTasks();
+  private readonly compaction = new CompactionStatus();
 
   /** 不校验工具名；外部一律经 newParser 创建。 */
   constructor(readonly tool: string) {}
@@ -305,6 +369,8 @@ export class Parser {
         events = parseClaudeLike(e, this.tasks);
         const background = this.backgroundTasks.parse(e);
         if (background) events.push(background);
+        const compact = this.compaction.parse(e);
+        if (compact) events.push(compact);
     }
     const out: Event[] = [];
     for (const event of events) {

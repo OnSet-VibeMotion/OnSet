@@ -9,6 +9,26 @@ for a in "$@"; do
 done
 printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "$sid"
 case "$prompt" in *慢慢来*) exec sleep 60 ;; esac
+# Qoder / Claude 的自动压缩协议：状态清除也可能是失败，只以边界事件确认成功。
+case "$prompt" in *压缩状态回归*)
+  printf '%s\n' '{"type":"system","subtype":"status","status":"compacting"}'
+  while [ ! -f production/studio/compact-done ]; do sleep 0.1; done
+  printf '%s\n' '{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"auto","pre_tokens":150000,"post_tokens":20000}}'
+  printf '%s\n' '{"type":"system","subtype":"status","status":null}'
+  while [ ! -f production/studio/compact-resume ]; do sleep 0.1; done
+  printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"after-compact","name":"Read","input":{"file_path":"production/scene-plan.md"}}]}}'
+  exec sleep 60 ;;
+esac
+# 进度回归：后启动的调用先结束，文件信号推进剩余调用和整轮结束。
+case "$prompt" in *进度状态回归*)
+  printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"read","name":"Read","input":{"file_path":"scenes/scene-010/prompt.md"}},{"type":"tool_use","id":"other","name":"Read","input":{"file_path":"frame.md"}}]}}'
+  printf '%s\n' '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"other","content":"done"}]}}'
+  while [ ! -f production/studio/progress-read-done ]; do sleep 0.1; done
+  printf '%s\n' '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"read","content":"done"}]}}'
+  while [ ! -f production/studio/progress-finish ]; do sleep 0.1; done
+  printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"done"}'
+  exit 0 ;;
+esac
 # 润色（assets/optimizer/polish.md）：草稿里有「已经很清楚」时说不用改，否则返回一份保留了 @scene-001 的改写稿。
 # 放在前面：优化器提示词里带着用户的草稿，不能被后面按关键词认的分支接走。
 case "$prompt" in *改稿助手*)

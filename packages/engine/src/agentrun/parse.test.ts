@@ -40,6 +40,40 @@ function lastText(events: Event[]): string {
 }
 
 describe('agentrun parse', () => {
+  it('reads CodeBuddy structured compaction events without duplicate starts or false success', () => {
+    const parser = newParser('codebuddy');
+    const parse = (status: string) => parser.parse(JSON.stringify({ type: 'agent_event', event: { type: 'compaction', data: { status } } }));
+    parser.parse('{"type":"system","subtype":"status","status":"compacting"}');
+    expect(parse('in_progress')).toEqual([]);
+    expect(parse('completed')[0].compaction?.state).toBe('completed');
+    expect(parser.parse('{"type":"system","subtype":"status","status":null}')).toEqual([]);
+    expect(parse('in_progress')[0].compaction?.state).toBe('running');
+    expect(parse('failed')[0].compaction?.state).toBe('failed');
+    expect(parse('cancelled')[0].compaction?.state).toBe('cancelled');
+  });
+
+  it.each(['qoder', 'claude', 'codebuddy'])('preserves %s context compaction start and confirmed completion', tool => {
+    const parser = newParser(tool);
+    const parse = (event: object) => parser.parse(JSON.stringify({ type: 'system', ...event }));
+    expect(parse({ subtype: 'status', status: null })).toEqual([]);
+    expect(parse({ subtype: 'status', status: 'compacting', agent_id: 'child' })).toEqual([]);
+    expect(parse({ subtype: 'status', status: 'compacting' })).toEqual([
+      { kind: 'context-compaction', text: '正在压缩上下文', compaction: { state: 'running' } },
+    ]);
+    expect(parse({ subtype: 'status', status: 'compacting' })).toEqual([]);
+    const completed = parse({ subtype: 'compact_boundary', compact_metadata: { trigger: 'auto', pre_tokens: 150000, post_tokens: 20000 } });
+    expect(completed).toEqual([{ kind: 'context-compaction', text: '上下文压缩完成', compaction: { state: 'completed', pre_tokens: 150000, post_tokens: 20000 } }]);
+    expect(JSON.parse(JSON.stringify(eventJSON(completed[0]))).compaction).toEqual(completed[0].compaction);
+    expect(parse({ subtype: 'status', status: null })).toEqual([]);
+  });
+
+  it('does not equate clearing the compacting status with successful compaction', () => {
+    const parser = newParser('qoder');
+    parser.parse('{"type":"system","subtype":"status","status":"compacting"}');
+    expect(parser.parse('{"type":"system","subtype":"status","status":null}')).toEqual([
+      { kind: 'context-compaction', text: '上下文压缩阶段结束，等待模型继续', compaction: { state: 'ended' } },
+    ]);
+  });
   it('reports Codex MCP starts and actual results on every platform',()=>{
     const parser=newParser('codex');
     const item={id:'m1',type:'mcp_tool_call',server:'onset',tool:'hyperframes',arguments:{subcommand:'render'}};

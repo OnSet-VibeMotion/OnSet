@@ -173,6 +173,7 @@ function shapeTurn(block: TurnBlock, raw: SessionEvent[]) {
         break;
       case 'error':
       case 'notice':
+      case 'context-compaction':
         items.push({ type: 'note', event });
         break;
     }

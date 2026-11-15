@@ -34,6 +34,18 @@ function parse(lines: string[]) {
 const fauxService: director.ResolvedService = { id: 's-faux', name: 'faux', protocol: 'openai', base_url: 'https://faux.invalid/v1', model: 'm1', vision: true, key: 'sk-faux' };
 
 describe('StreamWriter', () => {
+  it('forwards director compaction lifecycle including unsuccessful endings', () => {
+    const lines: string[] = [];
+    const w = new StreamWriter(l => lines.push(l));
+    for (const end of [{ result: { tokensBefore: 150000 } }, { aborted: true }, { errorMessage: 'timeout' }]) {
+      w.event({ type: 'compaction_start', reason: 'threshold' });
+      w.event({ type: 'compaction_end', reason: 'threshold', ...end });
+    }
+    const { events } = parse(lines);
+    expect(events.map(e => e.compaction?.state)).toEqual(['running', 'completed', 'running', 'cancelled', 'running', 'failed']);
+    expect(events[1].compaction?.pre_tokens).toBe(150000);
+  });
+
   it('writes claude-like stream-json that agentrun reads as the director tool', () => {
     const lines: string[] = [];
     const w = new StreamWriter((l) => lines.push(l));

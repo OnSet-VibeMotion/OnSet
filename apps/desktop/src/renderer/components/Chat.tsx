@@ -15,6 +15,8 @@ import { DiffDialog } from './DiffDialog';
 import { Icon } from './Icon';
 import { Markdown } from './chat/Markdown';
 import { PolishCard, type PolishResult, type PolishState } from './chat/Polish';
+import { turnActivity } from './chat/activity';
+import { ActivityStatus } from './chat/ActivityStatus';
 import {
   buildBlocks,
   describeTool,
@@ -61,6 +63,7 @@ const kinds: EventKind[] = [
   'unqueued',
   'plan',
   'background-tasks',
+  'context-compaction',
   'permission',
   'permission-resolved',
 ];
@@ -112,7 +115,7 @@ interface Props {
 const BOTTOM_TOLERANCE = 8;
 
 export function Chat(props: Props) {
-  const { events, loaded } = useSessionEvents(props.sessionId, props.onFilesChanged, props.onTurnEnd, props.onView);
+  const { events, loaded, reconnecting } = useSessionEvents(props.sessionId, props.onFilesChanged, props.onTurnEnd, props.onView);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
@@ -163,6 +166,8 @@ export function Chat(props: Props) {
   const running = !!lastTurn && !lastTurn.end;
   const plan = running ? lastTurn?.plan ?? null : null;
   const now = useNow(running);
+  const activityEvents = useMemo(() => events.filter(event => event.turn_id === lastTurn?.id), [events, lastTurn?.id]);
+  const activity = lastTurn && running ? turnActivity(lastTurn, activityEvents, asks, now) : null;
 
   // 这一轮进行中照样能发：消息排到这一轮之后。别的写任务占着项目时不能发。
   const blocked = sending || (props.busy !== '' && !running);
@@ -676,6 +681,8 @@ export function Chat(props: Props) {
       {queue.length > 0 && <QueuedStack queue={queue} onAction={queueAction} />}
       {polishing && <PolishCard state={polishing} draft={draft} onUse={applyPolish} onRetry={() => void polish(polishing.from)} onClose={closePolish} />}
 
+      {activity && lastTurn && <ActivityStatus activity={activity} turn={lastTurn} now={now} projectPath={props.projectPath} reconnecting={reconnecting} />}
+
       <footer className="composer">
         <div
           className={'composer-shell' + (dragging ? ' dragging' : '')}
@@ -910,12 +917,14 @@ function useSessionEvents(
 ) {
   const [events, setEvents] = useState<SessionEvent[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const callbacks = useRef({ onFilesChanged, onTurnEnd, onView });
   callbacks.current = { onFilesChanged, onTurnEnd, onView };
 
   useEffect(() => {
     setEvents([]);
     setLoaded(false);
+    setReconnecting(false);
     if (!sessionId) {
       setLoaded(true);
       return;
@@ -949,6 +958,8 @@ function useSessionEvents(
     const follow = () => {
       if (closed) return;
       source = new EventSource(`/api/sessions/${sessionId}/events?after=${last}`);
+      source.onopen = () => { if (!closed) setReconnecting(false); };
+      source.onerror = () => { if (!closed) setReconnecting(true); };
       for (const kind of kinds) source.addEventListener(kind, handle as EventListener);
     };
     void (async () => {
@@ -975,7 +986,7 @@ function useSessionEvents(
     };
   }, [sessionId]);
 
-  return { events, loaded };
+  return { events, loaded, reconnecting };
 }
 
 interface BlockProps {
@@ -1301,7 +1312,7 @@ function ExecutionShell(props: {
         <Icon name="chevron" size={11} />
       </summary>
       <div className="shell-body">
-        {turn.process.length === 0 && <p className="muted small">{turn.backgroundTasks.length > 0 ? '后台任务正在执行…' : '正在启动 AI…'}</p>}
+        {live && turn.process.length === 0 && turn.prose.length === 0 && <p className="muted small">{turn.backgroundTasks.length > 0 ? '后台任务正在执行…' : '等待 AI 首次响应…'}</p>}
         {turn.process.map((item, index) => (
           <ProcessRow key={index} item={item} projectPath={props.projectPath} onOpenFile={props.onOpenFile} />
         ))}

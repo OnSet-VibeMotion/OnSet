@@ -9,7 +9,7 @@
  */
 import { BasisTotalInput, newUsage, windowsOrchestratorEffort, type Usage } from '../tools';
 import { runInteractive, unwrapShell, type DriveContext, type PermissionAnswer } from './interactive';
-import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, clip, type Event, type PlanItem } from './parse';
+import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, clip, compactionEvent, type Event, type PlanItem } from './parse';
 import type { Outcome, Spec } from './run';
 import { ActiveTasks } from './activetasks';
 
@@ -49,6 +49,8 @@ function planStatus(status: string): string {
 export function codexItemEvents(phase: 'started' | 'completed', item: Obj): Event[] {
   const id = str(item.id);
   switch (str(item.type)) {
+    case 'contextCompaction':
+      return [compactionEvent(phase === 'started' ? 'running' : 'completed')];
     case 'agentMessage':
       return phase === 'completed' && str(item.text) !== '' ? [{ kind: KindText, text: str(item.text) }] : [];
     case 'reasoning': {

@@ -25,6 +25,14 @@ rl.on('line', async (line) => {
       promptId = m.id;
       const sid = m.params.sessionId;
       const text = m.params.prompt[0].text;
+      if (text.includes('压缩上下文')) {
+        update('other-session', { sessionUpdate: 'compaction_update', status: 'in_progress' });
+        update(sid, { sessionUpdate: 'compaction_update', status: 'in_progress' });
+        update(sid, { sessionUpdate: 'compaction_update', status: 'completed' });
+        update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '继续工作' } });
+        send({ id: m.id, result: { stopReason: 'end_turn' } });
+        break;
+      }
       if (text.includes('简短回复测试')) {
         update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '第一轮完成' } });
         send({ id: m.id, result: { stopReason: 'end_turn' } });

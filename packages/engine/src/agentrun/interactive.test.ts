@@ -39,6 +39,58 @@ async function fakeRun(kind: 'acp' | 'codex', prompt: string, answer: Permission
 const kinds = (events: Event[]) => events.map((e) => e.kind);
 
 describe('interactive orchestrators', () => {
+  it.each(['acp', 'codex'] as const)('forwards %s compaction over RPC and ignores other sessions', async kind => {
+    const { events, outcome } = await fakeRun(kind, '压缩上下文', { decision: 'allow' });
+    expect(outcome.error).toBeNull();
+    expect(events.filter(e => e.kind === 'context-compaction').map(e => e.compaction?.state)).toEqual(['running', 'completed']);
+    expect(events.some(e => e.kind === 'text' && e.text === '继续工作')).toBe(true);
+  });
+
+  it('translates Codex context compaction items', () => {
+    const item = { type: 'contextCompaction', id: 'compact-1' };
+    expect(codexItemEvents('started', item)).toMatchObject([{ kind: 'context-compaction', compaction: { state: 'running' } }]);
+    expect(codexItemEvents('completed', item)).toMatchObject([{ kind: 'context-compaction', compaction: { state: 'completed' } }]);
+  });
+
+  it('reads ACP compaction without leaking summaries or child progress into the main conversation', () => {
+    const events: Event[] = [];
+    const t = new ACPTranslator(e => events.push(e));
+    t.update({ sessionUpdate: 'compaction_update', status: 'in_progress', _meta: { 'codebuddy.ai/subagent': { sessionId: 'child' } } });
+    expect(events).toEqual([]);
+    t.update({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: '先检查' } });
+    t.update({ sessionUpdate: 'compaction_update', compactionId: 'c', status: 'in_progress' });
+    t.update({ sessionUpdate: 'compaction_summary_chunk', compactionId: 'c', content: { type: 'text', text: '内部摘要' } });
+    t.update({ sessionUpdate: 'compaction_update', compactionId: 'c', status: 'completed', summary: [{ type: 'text', text: '内部摘要' }] });
+    t.flush();
+    expect(events.map(e => e.kind)).toEqual(['thinking', 'context-compaction', 'context-compaction']);
+    expect(events.slice(1).map(e => e.compaction?.state)).toEqual(['running', 'completed']);
+    expect(JSON.stringify(events)).not.toContain('内部摘要');
+  });
+
+  it('handles OpenCode legacy compaction metadata and distinguishes failure and cancellation', () => {
+    const events: Event[] = [];
+    const t = new ACPTranslator(e => events.push(e));
+    for (const status of ['started', 'completed', 'started', 'failed']) {
+      t.update({ sessionUpdate: 'session_info_update', _meta: { 'opencode/compaction': { status, messageId: 'c', error: { type: 'compaction.failed', message: 'timeout' } } } });
+    }
+    t.update({ sessionUpdate: 'compaction_update', status: 'cancelled' });
+    expect(events.map(e => e.compaction?.state)).toEqual(['running', 'completed', 'running', 'failed', 'cancelled']);
+  });
+
+  it('reads CodeBuddy progress metadata without claiming that a cleared progress means success', () => {
+    const events: Event[] = [];
+    const t = new ACPTranslator(e => events.push(e));
+    const progress = (value: unknown) => t.update({ sessionUpdate: 'session_info_update', _meta: { 'codebuddy.ai/progress': value } });
+    progress(null);
+    progress({ type: 'compacting' });
+    progress({ type: 'Compacting context…' });
+    t.update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '内部摘要' }, _meta: { 'codebuddy.ai/isCompactInternal': true } });
+    progress(null);
+    t.flush();
+    expect(events.map(e => e.compaction?.state)).toEqual(['running', 'ended']);
+    expect(JSON.stringify(events)).not.toContain('内部摘要');
+  });
+
   it('publishes long ACP thoughts in batches before a tool call or turn completion', () => {
     vi.useFakeTimers();
     const events: Event[] = [];
