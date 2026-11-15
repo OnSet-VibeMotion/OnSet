@@ -7,7 +7,7 @@ import { freezeInput } from '../memory';
 import { load, newAttempt, OutcomeSucceeded } from '../scene';
 import { writeSceneDir } from '../memory/testsupport';
 import { send, setEnv, startStudio, studioRequest, tempDir, writeStudioFile } from './testsupport';
-import { examPreviewAudio, resolveExamAudio } from './exammedia';
+import { examPreviewAudio, resolveExamAudio, resolveExamVideo } from './exammedia';
 
 it('matches project narration by scene text, time range and phrase timing without rewriting exam video', () => {
   const root = tempDir(), directory = path.join(root, 'scenes', 'scene-001');
@@ -82,4 +82,69 @@ it('serves old cross-project exam narration only through a recorded question and
   expect((await send(server, 'GET', cell.preview_audio.url)).status).toBe(404);
   const missing = await studioRequest(server, 'GET', '/api/memory');
   expect(missing.body.exams[0].cells[0].preview_audio).toBeUndefined();
+});
+
+it('previews recorded exam videos and source narration from another registered project without changing the current project', async () => {
+  const root = tempDir(), owner = tempDir(), memoryDir = tempDir();
+  setEnv('ONSET_MEMORY_DIR', memoryDir);
+  for (const p of [root, owner]) writeStudioFile(path.join(p, 'onset.conf'), 'RENDERER=claude\n');
+  const source = writeSceneDir(path.join(owner, 'scenes/scene-001'), 'scene-001', '历史考题', '');
+  writeStudioFile(path.join(source.directory, 'scene.json'), JSON.stringify({id: source.id, text: source.text, output: source.output, transcript: source.transcript,
+    duration_seconds: 3, timing: {fps: 30, start_frame: 60, end_frame_exclusive: 150, plan: 'a'.repeat(64), phrases: 'phrases.json'}}));
+  writeStudioFile(path.join(source.directory, 'phrases.json'), JSON.stringify({schema: 1, fps: 30, phrases: [
+    {phrase_id: 'p', source_text: '历史考题', semantic_order: 1, start_frame: 65, end_frame_exclusive: 130},
+  ]}));
+  writeStudioFile(path.join(owner, 'production/audio/voice.wav'), 'OWNER-AUDIO');
+  writeStudioFile(path.join(root, 'production/audio/voice.wav'), 'WRONG-CURRENT-AUDIO');
+  const store = memory.open(memoryDir);
+  store.write(memory.newMemory({name: 'cross-project-preview', kind: memory.KindLesson, status: memory.StatusTrial, checked_by: ['determinism.raf']}));
+  const exam = await store.exam({renderers: ['claude'], trial: ['cross-project-preview'], holdout: [source.directory], holdoutOnly: true, budget: 1500,
+    workspace: path.join(owner, 'production/memory-exams'), run: async sc => {
+      writeStudioFile(path.join(sc.directory, sc.output), 'RECORDED-VIDEO');
+      return newAttempt({outcome: OutcomeSucceeded});
+    }});
+  const server = startStudio({projectPath: root, configPath: path.join(tempDir(), 'projects.json')});
+  const absent = await studioRequest(server, 'GET', '/api/memory');
+  expect(absent.body.exams[0].cells[0].preview_video).toBeUndefined();
+  server.openProject(owner); server.openProject(root);
+  const state = await studioRequest(server, 'GET', '/api/memory');
+  const cell = state.body.exams[0].cells[0];
+  expect(cell.output).toBeUndefined();
+  expect(cell.preview_video).toMatchObject({source_project: path.basename(owner)});
+  const video = await send(server, 'GET', cell.preview_video.url, undefined, {Range: 'bytes=0-7'});
+  expect(video.status).toBe(206);
+  expect(await video.text()).toBe('RECORDED');
+  const head = await send(server, 'HEAD', cell.preview_video.url);
+  expect(head.status).toBe(200);
+  expect(await head.text()).toBe('');
+  const audio = await send(server, 'GET', cell.preview_audio.url);
+  expect(await audio.text()).toBe('OWNER-AUDIO');
+  expect((await send(server, 'GET', cell.preview_video.url.replace('question=h1', 'question=unknown'))).status).toBe(404);
+  expect((await send(server, 'GET', cell.preview_video.url.replace('repeat=1', 'repeat=99'))).status).toBe(404);
+  expect((await send(server, 'GET', cell.preview_video.url.replace('/exam-0001/', '/unknown/'))).status).toBe(404);
+  const raw = await send(server, 'GET', '/api/raw?path=' + encodeURIComponent(path.join(exam.cells![0].workdir, source.output)));
+  expect(raw.status).toBe(404);
+  expect(server.currentProject().path).toBe(fs.realpathSync(root));
+  fs.unlinkSync(path.join(exam.cells![0].workdir, source.output));
+  expect((await send(server, 'GET', cell.preview_video.url)).status).toBe(404);
+});
+
+it('rejects exam workspaces and output links outside registered project boundaries', () => {
+  const root = tempDir(), owner = tempDir(), outside = tempDir();
+  const workdir = path.join(owner, 'production/memory-exams/exam-0001/q1/control');
+  const sc = writeSceneDir(workdir, 'scene-001', '题目', '');
+  const output = path.join(workdir, sc.output);
+  writeStudioFile(output, 'video');
+  expect(resolveExamVideo(root, workdir, [])).toBeNull();
+  expect(resolveExamVideo(root, workdir, [{path: owner, name: 'owner'}])).toEqual({file: output, source_project: 'owner'});
+  expect(resolveExamVideo(root, '../relative', [{path: owner, name: 'owner'}])).toBeNull();
+  const link = path.join(owner, 'production/memory-exams/outside');
+  fs.symlinkSync(outside, link, process.platform === 'win32' ? 'junction' : 'dir');
+  expect(resolveExamVideo(root, link, [{path: owner, name: 'owner'}])).toBeNull();
+  fs.unlinkSync(output);
+  const external = path.join(outside, 'private.mp4');
+  writeStudioFile(external, 'not an exam video');
+  try { fs.symlinkSync(external, output); }
+  catch (err) { if ((err as NodeJS.ErrnoException).code === 'EPERM') return; throw err; }
+  expect(resolveExamVideo(root, workdir, [{path: owner, name: 'owner'}])).toBeNull();
 });

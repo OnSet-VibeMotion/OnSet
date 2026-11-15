@@ -13,12 +13,41 @@ export interface ExamAudio {
   source_project: string;
 }
 
+/** 考场必须属于当前项目或已登记项目，路径仍使用 containedPath 的真实路径边界。 */
+function examWorkspace(project: string, workdir: string, projects: Pick<Project, 'path' | 'name'>[]): { project: string; name: string; workdir: string } | null {
+  if (!path.isAbsolute(workdir)) return null;
+  for (const candidate of [{ path: project, name: path.basename(project) }, ...projects]) {
+    try {
+      const root = fs.realpathSync(candidate.path);
+      const directory = containedPath(root, path.relative(root, workdir));
+      if (fs.statSync(directory).isDirectory()) return { project: root, name: candidate.name, workdir: directory };
+    } catch { /* 不属于该项目、项目已移走或链接逃出边界。 */ }
+  }
+  return null;
+}
+
+/** 只定位考试记录中的产物，不能借此读取其他项目里的任意文件。 */
+export function resolveExamVideo(project: string, workdir: string, projects: Pick<Project, 'path' | 'name'>[]): { file: string; source_project: string } | null {
+  const owner = examWorkspace(project, workdir, projects);
+  if (!owner) return null;
+  try {
+    let output: string;
+    try { output = scene.outputPath(scene.load(owner.workdir)); }
+    catch { output = path.join(owner.workdir, 'out.mp4'); }
+    const file = containedPath(owner.workdir, path.relative(owner.workdir, output));
+    if (!fs.statSync(file).isFile()) return null;
+    return { file, source_project: owner.name };
+  } catch { return null; }
+}
+
 /** 仅沿考试记录的来源，在已登记项目里匹配；不接受请求方提供任意音频路径。 */
 export function resolveExamAudio(project: string, workdir: string, sourceDirectory: string, projects: Pick<Project, 'path' | 'name'>[]): ExamAudio | null {
   try {
+    const owner = examWorkspace(project, workdir, projects);
+    if (!owner) return null;
     // 考试记录可能保留 /var 等别名，项目登记则使用 realpath。先统一路径，再校验项目边界。
-    project = fs.realpathSync(project);
-    workdir = fs.realpathSync(workdir);
+    project = owner.project;
+    workdir = owner.workdir;
     if (sourceDirectory) sourceDirectory = fs.realpathSync(sourceDirectory);
     const frozen = scene.load(containedPath(project, path.relative(project, workdir)));
     const sourceProject = sourceDirectory ? projects.find((p) => {

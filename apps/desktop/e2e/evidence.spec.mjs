@@ -87,8 +87,8 @@ test('the evidence page puts both arms of an exam side by side', async ({ page, 
   // 两段画面都读得到：路径来自考场里 scene.json 的 output。
   const control = page.locator('.evidence-side.control');
   const trial = page.locator('.evidence-side.trial');
-  await expect(control.locator('video')).toHaveAttribute('src', /claude-control-1%2Fscene-001\.mp4/);
-  await expect(trial.locator('video')).toHaveAttribute('src', /claude-trial-1%2Fscene-001\.mp4/);
+  await expect(control.locator('video')).toHaveAttribute('src', /\/api\/memory\/exams\/exam-0001\/video\?.*arm=control/);
+  await expect(trial.locator('video')).toHaveAttribute('src', /\/api\/memory\/exams\/exam-0001\/video\?.*arm=trial/);
   // 问题用大白话说，不露出校验器的编号。
   await expect(control).toContainText('查出 2 处问题');
   await expect(control).toContainText('文字停留太短，读不完 · 2 处');
@@ -387,6 +387,9 @@ test('memory exam videos play historical source narration and share a seek contr
     fs.writeFileSync(path.join(cell.workdir, 'phrases.json'), JSON.stringify(phrases));
     fs.writeFileSync(path.join(cell.workdir, scene.output), Buffer.from(bytes));
   }
+  // 考场与音频都留在原项目；切到新项目后仍须能载入两段视频并同步播放原配音。
+  fs.renameSync(path.join(project.path, 'production/memory-exams'), path.join(prior, 'production/memory-exams'));
+  for (const cell of result.cells) cell.workdir = path.join(prior, path.relative(project.path, cell.workdir));
   result.verdict = { ...result.verdict, pass: false, control_score: 10, trial_score: -1, reasons: ['带上后多了一处阅读时间问题'] };
   result.cells[0].passed = true; result.cells[0].problems = 0; result.cells[0].checks = [];
   result.cells[1].passed = false; result.cells[1].problems = 1; result.cells[1].checks = ['reads.duration'];
@@ -437,7 +440,12 @@ test('memory exam videos play historical source narration and share a seek contr
   await expect.poll(() => recent.locator('video').evaluateAll((vs) => vs.every((v) => Math.abs(v.currentTime - 1) < 0.15))).toBe(true);
   await expect.poll(() => sound.evaluate(a => Math.abs(a.currentTime - 1.5) < 0.15 && a.paused)).toBe(true);
   // 原生单侧播放也要带口播；切到另一侧只保留一份声音，拖动后重新对齐。
-  await recent.locator('video').last().evaluate(v => v.play());
+  await recent.locator('video').last().evaluate(v => {
+    const playing = v.play();
+    // 模拟拖动后先前一侧迟到的 play 事件，不能把新播放的一侧停掉。
+    v.closest('.exam-player').querySelector('video').dispatchEvent(new Event('play'));
+    return playing;
+  });
   await expect.poll(() => sound.evaluate(a => !a.paused)).toBe(true);
   await expect.poll(() => recent.locator('video').first().evaluate(v => v.paused)).toBe(true);
   await recent.locator('video').last().evaluate(v => { v.currentTime = 0.8; });
