@@ -456,6 +456,7 @@ export interface MemoryEvent {
 }
 
 export interface ExamCell {
+  preview_video?: { url: string; source_project: string };
   preview_audio?: { path?: string; url?: string; start_seconds: number; duration_seconds: number; label: string; source_project?: string };
   audio_unavailable?: string;
   question: string;

@@ -21,7 +21,7 @@ import { addTask, runStudioOp, runTask, runWriteTask, writeTaskError } from './t
 import type { Turn } from './turns';
 import { emitStudioEvent } from './events';
 import { sceneActivity } from './activity';
-import { resolveExamAudio } from './exammedia';
+import { resolveExamAudio, resolveExamVideo } from './exammedia';
 
 function memoryStore(s: Server): { p: Project; cfg: config.Config; store: memory.Store } | Response {
   const p = s.projectOr404();
@@ -44,18 +44,6 @@ function memoryStore(s: Server): { p: Project; cfg: config.Config; store: memory
 /** 对象与它的 map[string]string 标签表：按键排序写出。 */
 function labels(table: Readonly<Record<string, string>>): Record<string, unknown> {
   return sortedKeys({ ...table });
-}
-
-/**
- * 考试一格的产物：文件名取自考场里 scene.json 的 output，读不了时退回 out.mp4。
- * 真实镜头的产物名各不相同（scene-001.mp4……），写死一个名字的话画面对照永远是空的。
- */
-function examOutput(workdir: string): string {
-  try {
-    return scene.outputPath(scene.load(workdir));
-  } catch {
-    return path.join(workdir, 'out.mp4');
-  }
 }
 
 /** GET /api/memory：记忆面板的全部数据。 */
@@ -99,23 +87,26 @@ export function memoryAPI(s: Server, request: Request): Response {
       const cells = (exam.cells ?? []).map((cell) => {
         const c: Record<string, unknown> = memory.cellToJSON(cell);
         // output 是这一格产物相对项目根的路径，供画面对照读取；不在项目里时不写。
-        if (path.isAbsolute(cell.workdir)) {
+        const video = resolveExamVideo(p.path, cell.workdir, projects);
+        if (video) {
+          const query = new URLSearchParams({ question: cell.question, renderer: cell.renderer, arm: cell.arm, repeat: String(cell.repeat) });
+          const mediaURL = `/api/memory/exams/${encodeURIComponent(exam.id)}`;
+          c.preview_video = { url: `${mediaURL}/video?${query}`, source_project: video.source_project };
           let rel: string | undefined;
           try {
-            rel = path.relative(p.path, fs.realpathSync(examOutput(cell.workdir)));
+            rel = path.relative(p.path, fs.realpathSync(video.file));
           } catch { /* 产物尚不存在或已移走。 */ }
           if (rel && !path.isAbsolute(rel) && rel !== '..' && !rel.startsWith('..' + path.sep) && fileExists(path.join(p.path, rel))) {
             c.output = rel.split(path.sep).join('/');
-            const q = (exam.questions ?? []).find((q) => q.id === cell.question);
-            const source = q?.holdout ? q.input : byID.get(q?.episode ?? '')?.scene_dir ?? '';
-            const audio = q && (!q.episode || byID.has(q.episode)) && (!q.holdout || source !== '')
-              ? resolveExamAudio(p.path, cell.workdir, source, projects) : null;
-            if (audio) {
-              const query = new URLSearchParams({ question: cell.question, renderer: cell.renderer, arm: cell.arm, repeat: String(cell.repeat) });
-              c.preview_audio = { url: `/api/memory/exams/${encodeURIComponent(exam.id)}/audio?${query}`, start_seconds: audio.start_seconds,
-                duration_seconds: audio.duration_seconds, label: '来源项目口播', source_project: audio.source_project };
-            } else c.audio_unavailable = '此题的来源配音暂时不可用，请检查原项目是否仍在、口播时间是否已改变。';
           }
+          const q = (exam.questions ?? []).find((q) => q.id === cell.question);
+          const source = q?.holdout ? q.input : byID.get(q?.episode ?? '')?.scene_dir ?? '';
+          const audio = q && (!q.episode || byID.has(q.episode)) && (!q.holdout || source !== '')
+            ? resolveExamAudio(p.path, cell.workdir, source, projects) : null;
+          if (audio) {
+            c.preview_audio = { url: `/api/memory/exams/${encodeURIComponent(exam.id)}/audio?${query}`, start_seconds: audio.start_seconds,
+              duration_seconds: audio.duration_seconds, label: '来源项目口播', source_project: audio.source_project };
+          } else c.audio_unavailable = '此题的来源配音暂时不可用，请检查原项目是否仍在、口播时间是否已改变。';
         }
         // 这一格查出的问题原文与镜头口播取自它的考试经历：格子里只有校验器 ID 与个数。
         const episode = byID.get(cell.episode);
@@ -188,12 +179,12 @@ export function memoryAPI(s: Server, request: Request): Response {
   }
 }
 
-/** 历史考试的专用音频入口：只能定位现存考题与其登记来源，原始文件接口仍限于当前项目。 */
+/** 历史考试的专用媒体入口：只能定位记录中的考场与登记来源，原始文件接口仍限于当前项目。 */
 export function memoryExamAudioAPI(s: Server, request: Request, rest: string): Response {
   if (request.method !== 'GET' && request.method !== 'HEAD') return methodNotAllowed('GET, HEAD');
   const opened = memoryStore(s);
   if (opened instanceof Response) return opened;
-  const match = /^([^/]+)\/audio$/.exec(rest);
+  const match = /^([^/]+)\/(audio|video)$/.exec(rest);
   if (!match) return notFound();
   const exam = opened.store.exams().find((e) => e.id === match[1]);
   if (!exam) return notFound();
@@ -203,6 +194,10 @@ export function memoryExamAudioAPI(s: Server, request: Request, rest: string): R
   if (!cell) return notFound();
   const question = (exam.questions ?? []).find((q) => q.id === cell.question);
   if (!question) return notFound();
+  if (match[2] === 'video') {
+    const video = resolveExamVideo(opened.p.path, cell.workdir, s.registeredProjects());
+    return video ? serveFile(request, video.file, { 'Cache-Control': 'no-cache' }) : notFound();
+  }
   const source = question.holdout ? question.input : opened.store.episodes().find((e) => e.id === question.episode)?.scene_dir ?? '';
   if ((question.episode || question.holdout) && source === '') return notFound();
   const audio = resolveExamAudio(opened.p.path, cell.workdir, source, s.registeredProjects());
