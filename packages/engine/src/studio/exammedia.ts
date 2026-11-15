@@ -16,6 +16,9 @@ export interface ExamAudio {
 /** 考场必须属于当前项目或已登记项目，路径仍使用 containedPath 的真实路径边界。 */
 function examWorkspace(project: string, workdir: string, projects: Pick<Project, 'path' | 'name'>[]): { project: string; name: string; workdir: string } | null {
   if (!path.isAbsolute(workdir)) return null;
+  // 项目登记使用真实路径，历史记录可能保留 macOS 的 /var → /private/var 别名。
+  // 两边都归一后再计算相对位置；实际落在项目外的目录仍由 containedPath 拒绝。
+  try { workdir = fs.realpathSync(workdir); } catch { return null; }
   for (const candidate of [{ path: project, name: path.basename(project) }, ...projects]) {
     try {
       const root = fs.realpathSync(candidate.path);

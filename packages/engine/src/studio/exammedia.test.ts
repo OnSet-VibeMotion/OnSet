@@ -136,7 +136,7 @@ it('rejects exam workspaces and output links outside registered project boundari
   const output = path.join(workdir, sc.output);
   writeStudioFile(output, 'video');
   expect(resolveExamVideo(root, workdir, [])).toBeNull();
-  expect(resolveExamVideo(root, workdir, [{path: owner, name: 'owner'}])).toEqual({file: output, source_project: 'owner'});
+  expect(resolveExamVideo(root, workdir, [{path: owner, name: 'owner'}])).toEqual({file: fs.realpathSync(output), source_project: 'owner'});
   expect(resolveExamVideo(root, '../relative', [{path: owner, name: 'owner'}])).toBeNull();
   const link = path.join(owner, 'production/memory-exams/outside');
   fs.symlinkSync(outside, link, process.platform === 'win32' ? 'junction' : 'dir');
@@ -147,4 +147,20 @@ it('rejects exam workspaces and output links outside registered project boundari
   try { fs.symlinkSync(external, output); }
   catch (err) { if ((err as NodeJS.ErrnoException).code === 'EPERM') return; throw err; }
   expect(resolveExamVideo(root, workdir, [{path: owner, name: 'owner'}])).toBeNull();
+});
+
+it('resolves historical workspace aliases against canonical registered project paths', () => {
+  const root = tempDir(), owner = tempDir(), aliases = tempDir();
+  const relative = 'production/memory-exams/exam-0001/q1/control';
+  const workdir = path.join(owner, relative);
+  const sc = writeSceneDir(workdir, 'scene-001', '题目', '');
+  const output = path.join(workdir, sc.output);
+  writeStudioFile(output, 'video');
+  const alias = path.join(aliases, 'project');
+  fs.symlinkSync(owner, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  const expected = {file: fs.realpathSync(output), source_project: 'owner'};
+  expect(resolveExamVideo(root, path.join(alias, relative), [{path: fs.realpathSync(owner), name: 'owner'}])).toEqual(expected);
+  expect(resolveExamVideo(root, fs.realpathSync(workdir), [{path: alias, name: 'owner'}])).toEqual(expected);
+  fs.unlinkSync(alias);
+  expect(resolveExamVideo(root, path.join(alias, relative), [{path: owner, name: 'owner'}])).toBeNull();
 });
