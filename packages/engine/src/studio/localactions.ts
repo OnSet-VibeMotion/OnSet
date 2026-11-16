@@ -36,8 +36,10 @@ export function localStyleContext(events: ReadonlyArray<{kind: string; text?: st
   const receipt = events.filter(e => e.kind === 'notice' && (e.text?.startsWith(LocalStyleReceipt) || e.text?.startsWith('Windows 本地风格操作：'))).at(-1)?.text;
   if (receipt && projectRoot) {
     const key = /（([a-z0-9-]+\/[a-z0-9_-]+)）/.exec(receipt)?.[1];
-    const current = filmstyle.installed(projectRoot);
-    if (key && (!current.ok || `${current.manifest.source}/${current.manifest.slug}` !== key)) return '';
+    // 风格清单读坏了（installed 会抛错）也算核对不上：不补回执，但不能让这一轮因此开不了工。
+    let current: ReturnType<typeof filmstyle.installed> | null = null;
+    try { current = filmstyle.installed(projectRoot); } catch { current = null; }
+    if (key && (!current?.ok || `${current.manifest.source}/${current.manifest.slug}` !== key)) return '';
   }
   return receipt ? `客户端已执行的操作回执（不是新的用户批准）：\n${receipt}\n风格已安装，无需重复 film_style_use；稿件、配音和分镜仍遵守各自确认。\n\n` : '';
 }

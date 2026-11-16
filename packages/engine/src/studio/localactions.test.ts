@@ -164,3 +164,23 @@ it('sends a changed preference after a locally handled style turn', async () => 
     expect(args(f).at(-1)).toContain('【no-emoji】');
   } finally { op.mockRestore(); }
 });
+
+it('still reaches the model when the style manifest behind an old receipt is broken', async () => {
+  const f = newSessionFixture(), style = filmstyle.lookup(lemo.SourceID + '/' + lemo.catalog()[0].slug);
+  const op = vi.spyOn(tasks, 'runStudioOp').mockImplementation(async () => { installStyle(f.root, style); return { text: 'ok' }; });
+  try {
+    const { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{}');
+    const id = body.session_id;
+    await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, JSON.stringify({ message: `整片风格用「${style.cn}」（${filmstyle.styleKey(style)}）` }));
+    await waitIdle(f, id);
+    // 回执之后风格清单被写坏了。
+    fs.writeFileSync(path.join(filmstyle.skillDir(f.root), filmstyle.ManifestFile), '{broken');
+    expect(() => filmstyle.installed(f.root)).toThrow();
+    await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, JSON.stringify({ message: '修复风格配置' }));
+    const detail = await waitIdle(f, id);
+    expect(lastTurn(detail).status).toBe('succeeded');
+    expect(args(f)).toHaveLength(1);
+    // 核对不了的旧回执不再说「风格已安装」（对话记录里照实留着那条回执）。
+    expect(args(f)[0]).not.toContain('风格已安装，无需重复');
+  } finally { op.mockRestore(); }
+});

@@ -1098,13 +1098,19 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
             // 先说收到了：跑操作要几秒，别让页面按「没回应」报错。
             frame.current?.contentWindow?.postMessage({ onset: 'host', id: m.id, ack: true }, '*');
             const id = encodeURIComponent(station.id);
-            const t = await runAndWait(`/api/stations/${id}/ops/${encodeURIComponent(op.name)}`, { params: {} });
-            if (t.status !== 'succeeded') throw new Error(t.error || t.message || `${op.summary}没有成功`);
-            // 结果不进任务（任务会写进项目），从插件列表里这条操作的最近一次结果取。
-            const r = await api<StationsResponse>('/api/stations');
-            const last = r.stations.find((x) => x.id === station.id)?.ops.find((o) => o.name === op.name)?.last_run;
-            reply(m.id, true, last?.ok ? (last.data ?? {}) : {});
-            return;
+            // 结果不进任务（任务会写进项目），从插件列表里这条操作的最近一次结果取。最近一次可能是同时跑的另一次
+            // （设置弹窗也会自动跑列表）：那次成功的话它读的是同一份数据、不比这次旧，照用；失败了就再跑一次。
+            for (let attempt = 0; ; attempt++) {
+              const t = await runAndWait(`/api/stations/${id}/ops/${encodeURIComponent(op.name)}`, { params: {} });
+              if (t.status !== 'succeeded') throw new Error(t.error || t.message || `${op.summary}没有成功`);
+              const r = await api<StationsResponse>('/api/stations');
+              const last = r.stations.find((x) => x.id === station.id)?.ops.find((o) => o.name === op.name)?.last_run;
+              if (last?.ok) {
+                reply(m.id, true, last.data ?? {});
+                return;
+              }
+              if (attempt >= 2) throw new Error(`${op.summary}的结果被同时跑的另一次覆盖了，请重试`);
+            }
           }
           case 'run': {
             const op = station.ops.find((o) => o.name === m.op);
