@@ -959,9 +959,10 @@ function useSessionEvents(
       pending = [];
       setEvents((current) => current.concat(batch));
     };
-    const notify = (event: SessionEvent) => {
+    // replay：打开会话时一次取回的历史。里面的「一轮结束」早就结束了，不算刚做完：不然每轮都弹一次「这一轮做完了」。
+    const notify = (event: SessionEvent, replay = false) => {
       if (event.kind === 'files-changed' && event.files) callbacks.current.onFilesChanged(event.files);
-      if (event.kind === 'turn-end') callbacks.current.onTurnEnd();
+      if (event.kind === 'turn-end' && !replay) callbacks.current.onTurnEnd();
       // 只执行刚发生的切页请求：打开会话时重放的历史不该把页面切来切去。
       if (event.kind === 'view' && event.view && Date.now() - Date.parse(event.time) < viewFreshMs) callbacks.current.onView(event.view);
     };
@@ -989,7 +990,7 @@ function useSessionEvents(
         const fresh = history.filter((event) => event.seq > last);
         if (fresh.length > 0) last = fresh[fresh.length - 1].seq;
         setEvents(fresh);
-        for (const event of fresh) notify(event);
+        for (const event of fresh) notify(event, true);
       } catch {
         // 取不到就退回原来的路子：整段历史从订阅里补发。
       }
