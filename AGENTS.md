@@ -572,7 +572,7 @@ opencode 默认模型不可用时加 `ONSET_TEST_OPENCODE_MODEL`。
 
 ### 端到端测试
 
-`apps/desktop/e2e/` 用 Playwright 的 Electron 模式启动构建好的客户端（`playwright.config.mjs`、`e2e/fixtures.mjs`）。每个用例一套临时目录：HOME、userData（`ONSET_DESKTOP_USER_DATA`）、项目登记（`ONSET_STUDIO_CONFIG`）、记忆库（`ONSET_MEMORY_DIR`），并设 `ONSET_STUDIO_SKIP_SKILL_INSTALL=1` 与 `ONSET_DESKTOP_BACKGROUND=1`（客户端以辅助程序运行：不进 Dock、不激活、窗口不显示、系统通知默认不弹，见 `main.ts`；测通知的用例自己把 `Notification.prototype.show` 换成记录。否则每个用例都弹到最前面抢走开发者的焦点）——记忆默认打开，不设 `ONSET_MEMORY_DIR` 的话每次跑 e2e 都往用户真实记忆库写经历，记忆面板曾被几百条 `onset-studio-e2e-*` 淹没。用例并行跑（`fullyParallel`，本机 4 个、CI 3 个，`ONSET_E2E_WORKERS` 可改，调试时设 1）：新用例只用 fixtures 给的临时目录与自己的 Electron，不能依赖全局状态、固定路径、固定端口或别的用例的执行顺序。
+`apps/desktop/e2e/` 用 Playwright 的 Electron 模式启动构建好的客户端（`playwright.config.mjs`、`e2e/fixtures.mjs`）。每个用例一套临时目录：HOME、userData（`ONSET_DESKTOP_USER_DATA`）、项目登记（`ONSET_STUDIO_CONFIG`）、记忆库（`ONSET_MEMORY_DIR`），并设 `ONSET_STUDIO_SKIP_SKILL_INSTALL=1` 与 `ONSET_DESKTOP_BACKGROUND=1`（客户端以辅助程序运行：不进 Dock、不激活、窗口不显示、系统通知默认不弹，见 `main.ts`；测通知的用例自己把 `Notification.prototype.show` 换成记录。否则每个用例都弹到最前面抢走开发者的焦点）——记忆默认打开，不设 `ONSET_MEMORY_DIR` 的话每次跑 e2e 都往用户真实记忆库写经历，记忆面板曾被几百条 `onset-studio-e2e-*` 淹没。用例并行跑（`fullyParallel`，本机 4 个，`ONSET_E2E_WORKERS` 可改，调试时设 1；CI 的 macOS 机器只有 3 个核，一台上同时开几个 Electron 每个用例慢 4 倍、音视频用例超时，所以 CI 一台一次一个、用 `--shard` 分到三台，分支保护要求的检查名留给汇总的那个 job）：新用例只用 fixtures 给的临时目录与自己的 Electron，不能依赖全局状态、固定路径、固定端口或别的用例的执行顺序。
 
 `apps/desktop/e2e/fake-bin/claude` 是 e2e 用的假编排工具（同目录的 `codex` 只用来显示为「已安装」，被调用时直接失败），`fixtures.mjs` 把它放在 PATH 最前面，并设 `ONSET_DESKTOP_KEEP_PATH=1` 让主进程不再把登录 shell 的 PATH 并到前面（否则真实的 claude 会被先找到）；提示词里带「慢慢来」时它只回报会话然后挂起，供取消测试使用。单元测试里的假工具同理，子进程环境按安全模式白名单构造，测试开关要经 `ONSET_PASSTHROUGH_ENV` 透传。
 

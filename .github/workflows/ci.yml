@@ -92,9 +92,15 @@ jobs:
             exit 1
           fi
 
-  e2e:
-    name: Desktop client end-to-end (Playwright, Electron)
+  # e2e 分到几台机器上跑：macOS 机器只有 3 个核，一台机器上同时开几个 Electron 每个都慢好几倍，总时间不省、
+  # 对时间敏感的音视频用例还会超时（实测）。每台一次只跑一个用例，按 Playwright 的 --shard 分。
+  e2e-shard:
+    name: Desktop client end-to-end shard ${{ matrix.shard }}/3
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -104,11 +110,21 @@ jobs:
       - name: Install media tools
         run: brew install ffmpeg
       - run: npm ci --no-audit --no-fund
-      - run: npm run test:e2e -w onset-desktop
+      - run: npm run test:e2e -w onset-desktop -- --shard=${{ matrix.shard }}/3
       - name: Upload Playwright traces
         if: failure()
         uses: actions/upload-artifact@v5
         with:
-          name: playwright-results
+          name: playwright-results-${{ matrix.shard }}
           path: apps/desktop/test-results
           retention-days: 7
+
+  # 分支保护要求的检查名：几个分片都过了才算过。
+  e2e:
+    name: Desktop client end-to-end (Playwright, Electron)
+    if: always()
+    needs: e2e-shard
+    runs-on: ubuntu-latest
+    steps:
+      - name: All shards passed
+        run: test "${{ needs.e2e-shard.result }}" = success
