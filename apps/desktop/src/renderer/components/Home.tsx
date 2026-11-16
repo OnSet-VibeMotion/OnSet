@@ -9,6 +9,7 @@ import { Icon } from './Icon';
 import { NativeDirectoryPicker, usesNativeDirectoryPicker } from './NativeDirectoryPicker';
 import { rendererState } from './agentReady';
 import { canReveal, revealInFinder } from '../reveal';
+import { droppedMaterials, fileMaterials, type HomeMaterial } from './homeAttachments';
 import '../home.css';
 
 /**
@@ -89,7 +90,8 @@ const LAST_TOOL = 'onset-studio:home-tool';
 
 export function Home(props: Props) {
   const [text, setText] = useState('');
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<HomeMaterial[]>([]);
+  const [reading, setReading] = useState(0);
   const [styles, setStyles] = useState<StylesResponse | null>(null);
   const [canvas, setCanvas] = useState('');
   const [mode, setMode] = useState('speech');
@@ -143,7 +145,7 @@ export function Home(props: Props) {
   const prereqsReady = setup.status?.ready !== false;
   // 新建的项目用全局设置里的渲染工具：没装的话整片会一路做到第一次渲染才报错，先说清楚。
   const drawing = rendererState(props.agents, props.agents?.global_renderer ?? '');
-  const canSend = !working && prereqsReady && drawing.ok && (text.trim() !== '' || files.length > 0) && !!tool && !!parent;
+  const canSend = !working && reading === 0 && prereqsReady && drawing.ok && (text.trim() !== '' || files.length > 0) && !!tool && !!parent;
   const modes = styles?.modes?.length ? styles.modes : fallbackModes;
   const templates = templatesOf(modes);
   const current = templates.find((t) => t.id === template);
@@ -152,7 +154,23 @@ export function Home(props: Props) {
   const films = useFilmStyles(menu === 'style' || filmStyle !== '');
   const styleLabel = filmStyle ? films.data?.styles.find((s) => styleKey(s) === filmStyle)?.cn ?? filmStyle : '不用整片风格';
 
-  const addFiles = (list: FileList | File[]) => setFiles((current) => [...current, ...Array.from(list)].slice(0, 10));
+  const addFiles = (list: FileList | File[]) => {
+    const materials = fileMaterials(list);
+    setError('');
+    setFiles((current) => [...current, ...materials].slice(0, 10));
+  };
+  const drop = async (data: DataTransfer) => {
+    setReading((count) => count + 1);
+    setError('');
+    try {
+      const materials = await droppedMaterials(data);
+      setFiles((current) => [...current, ...materials].slice(0, 10));
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setReading((count) => count - 1);
+    }
+  };
 
   const pickTemplate = (id: string) => {
     const t = templates.find((item) => item.id === id);
@@ -185,7 +203,7 @@ export function Home(props: Props) {
       tool,
       toolLabel: props.agents?.agents.find((a) => a.id === tool)?.label ?? tool,
       message,
-      files,
+      materials: files,
     });
   };
 
@@ -263,17 +281,17 @@ export function Home(props: Props) {
                 setDragging(false);
                 if (!e.dataTransfer?.files.length) return;
                 e.preventDefault();
-                addFiles(e.dataTransfer.files);
+                if (!working) void drop(e.dataTransfer);
               }}
             >
               {files.length > 0 && (
-                <ul className="home-tray">
+                <ul className="home-tray" aria-label="引用素材">
                   {files.map((file, index) => (
                     <li key={index} title={file.name}>
-                      <Icon name="file" size={15} />
+                      <Icon name={file.kind === 'directory' ? 'folder' : 'file'} size={15} />
                       <span className="doc-text">
                         <span className="doc-name">{file.name}</span>
-                        <span className="doc-meta">{formatSize(file.size)}</span>
+                        <span className="doc-meta">{file.kind === 'directory' ? `文件夹引用 · ${file.files.length} 个文件` : formatSize(file.file.size)}</span>
                       </span>
                       <button className="remove" aria-label="移除" onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}>
                         <Icon name="close" size={9} />
@@ -282,6 +300,7 @@ export function Home(props: Props) {
                   ))}
                 </ul>
               )}
+              {reading > 0 && <p role="status">正在读取文件夹…</p>}
               <div className="prompt-editor">
                 <textarea
                   id="home-prompt"
@@ -874,9 +893,9 @@ function TemplateArt({ id, canvas }: { id: string; canvas: string }) {
 }
 
 /** 备用的项目名：说的话第一句，或第一个文件名；去掉路径符号，截到 24 字。AI 起名起不出来时用它，日期由开机画面加。 */
-function projectName(message: string, files: File[]): string {
+function projectName(message: string, files: HomeMaterial[]): string {
   let base = message.split('\n').find((line) => line.trim()) ?? '';
-  if (!base && files.length) base = files[0].name.replace(/\.[^.]+$/, '');
+  if (!base && files.length) base = files[0].kind === 'directory' ? files[0].name : files[0].name.replace(/\.[^.]+$/, '');
   base = base
     .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
     .replace(/^[\s.]+/, '')

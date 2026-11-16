@@ -42,6 +42,86 @@ describe('uploads', () => {
     expect((await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, bad)).status).toBe(400);
   });
 
+  it('imports a folder without flattening it and passes a directory reference to the conversation', async () => {
+    const f = newSessionFixture();
+    const form = new FormData();
+    form.append('file:notes.md', new Blob(['root']), 'notes.md');
+    form.append('file:子目录/notes.md', new Blob(['nested']), 'notes.md');
+    form.append('directory:空目录', new Blob([]), 'directory');
+    form.append('file:empty.txt', new Blob([]), 'empty.txt');
+    form.append('file:' + encodeURIComponent('100% 资料.md'), new Blob(['percent']), 'file');
+    const res = await f.s.handle(new Request('http://studio.test/api/uploads', {
+      method: 'POST', headers: { 'X-Onset-Upload-Directory': encodeURIComponent('参考 素材') }, body: form,
+    }));
+    const body = await res.json() as any;
+    expect(res.status, JSON.stringify(body)).toBe(201);
+    expect(body.attachments).toHaveLength(1);
+    const attachment = body.attachments[0];
+    expect(attachment.ref).toBe(true);
+    expect(attachment.label).toBe('文件夹「参考 素材」');
+    const dir = path.join(f.root, attachment.source);
+    expect(fs.readFileSync(path.join(dir, 'notes.md'), 'utf8')).toBe('root');
+    expect(fs.readFileSync(path.join(dir, '子目录/notes.md'), 'utf8')).toBe('nested');
+    expect(fs.statSync(path.join(dir, '空目录')).isDirectory()).toBe(true);
+    expect(fs.statSync(path.join(dir, 'empty.txt')).size).toBe(0);
+    expect(fs.readFileSync(path.join(dir, '100% 资料.md'), 'utf8')).toBe('percent');
+    const session = await studioRequest(f.s, 'POST', '/api/sessions', '{"title":"目录引用"}');
+    const id = session.body.session_id;
+    expect((await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, JSON.stringify({ message: '用这些素材', attachments: [attachment] }))).status).toBe(202);
+    await waitIdle(f, id);
+    expect(args(f)[0]).toContain('文件夹「参考 素材」');
+    expect(args(f)[0]).toContain(attachment.source);
+  });
+
+  it.each(['../outside.md', '/absolute.md', 'a/../../outside.md', 'a\\..\\outside.md', 'a/.env', '.env.local/key', 'C:/outside.md', 'a//b', 'a/./b', 'a/CON'])('rejects unsafe folder entry %s and removes partial imports', async (entry) => {
+    const f = newSessionFixture();
+    const form = new FormData();
+    form.append('file:ok.txt', new Blob(['ok']), 'ok.txt');
+    form.append('file:' + encodeURIComponent(entry), new Blob(['bad']), 'bad.txt');
+    const res = await f.s.handle(new Request('http://studio.test/api/uploads', {
+      method: 'POST', headers: { 'X-Onset-Upload-Directory': 'materials' }, body: form,
+    }));
+    expect(res.status).toBe(400);
+    expect(fs.readdirSync(path.join(f.root, uploadDir))).toEqual([]);
+  });
+
+  it('imports an empty folder and rejects duplicate paths atomically', async () => {
+    const f = newSessionFixture();
+    const send = (form: FormData) => f.s.handle(new Request('http://studio.test/api/uploads', {
+      method: 'POST', headers: { 'X-Onset-Upload-Directory': 'empty' }, body: form,
+    }));
+    const empty = new FormData();
+    empty.append('directory:', new Blob([]), 'directory');
+    const res = await send(empty);
+    expect(res.status).toBe(201);
+    const body = await res.json() as any;
+    expect(fs.statSync(path.join(f.root, body.attachments[0].source)).isDirectory()).toBe(true);
+    const before = fs.readdirSync(path.join(f.root, uploadDir));
+    const duplicate = new FormData();
+    duplicate.append('file:a.txt', new Blob(['first']), 'a.txt');
+    duplicate.append('file:a.txt', new Blob(['second']), 'a.txt');
+    expect((await send(duplicate)).status).toBe(400);
+    expect(fs.readdirSync(path.join(f.root, uploadDir))).toEqual(before);
+  });
+
+  it('rejects an upload directory linked outside the project before writing there', async () => {
+    const f = newSessionFixture();
+    const outside = fs.mkdtempSync(f.root + '-outside-');
+    try {
+      fs.mkdirSync(path.join(f.root, 'production/studio'), { recursive: true });
+      fs.symlinkSync(outside, path.join(f.root, uploadDir), 'junction');
+      const form = new FormData();
+      form.append('file:a.txt', new Blob(['private']), 'a.txt');
+      const res = await f.s.handle(new Request('http://studio.test/api/uploads', {
+        method: 'POST', headers: { 'X-Onset-Upload-Directory': 'folder' }, body: form,
+      }));
+      expect(res.status).toBe(400);
+      expect(fs.readdirSync(outside)).toEqual([]);
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   // TS 额外：流式读 multipart 的边界情况。
   it('multipart edge cases', async () => {
     const f = newSessionFixture();

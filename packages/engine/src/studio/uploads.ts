@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { goExt } from '../gofmt';
 import { goMap, methodNotAllowed, writeError, writeJSON } from './http';
-import { attachmentJSON, newID, type Attachment } from './sessions';
+import { attachmentJSON, containedPath, newID, type Attachment } from './sessions';
 import type { Server } from './studio';
 
 export const uploadDir = 'production/studio/uploads';
@@ -44,6 +44,7 @@ export async function uploadsAPI(s: Server, request: Request): Promise<Response>
   if (p instanceof Response) return p;
   const boundary = multipartBoundary(request.headers.get('Content-Type') ?? '');
   if (!boundary || !request.body) return writeError(400, 'invalid_upload', '需要 multipart/form-data');
+  if (request.headers.has('X-Onset-Upload-Directory')) return uploadDirectory(p.path, request, boundary);
   const dir = path.join(p.path, uploadDir);
   try {
     fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
@@ -106,6 +107,72 @@ export async function uploadsAPI(s: Server, request: Request): Promise<Response>
   }
   if (out.length === 0) return writeError(400, 'no_file', '没有收到文件');
   return writeJSON(201, goMap({ attachments: out.map(attachmentJSON) }));
+}
+
+/** 文件夹按一次导入保留相对路径；只在全部成功后给出引用，失败不留下半份目录。 */
+async function uploadDirectory(projectPath: string, request: Request, boundary: string): Promise<Response> {
+  let dir = '';
+  let current: { fd: number } | null = null;
+  try {
+    const name = decodeURIComponent(request.headers.get('X-Onset-Upload-Directory') ?? '');
+    directoryEntryPath(name);
+    if (name.includes('/')) throw new Error('文件夹名称不能含路径');
+    let relParent = '';
+    for (const segment of uploadDir.split('/')) {
+      relParent = relParent ? relParent + '/' + segment : segment;
+      const next = path.join(projectPath, relParent);
+      if (!fs.existsSync(next)) fs.mkdirSync(next, { mode: 0o755 });
+      // 先校验这一层，再创建下一层，避免沿项目外的链接写目录。
+      containedPath(projectPath, relParent);
+    }
+    const parent = containedPath(projectPath, uploadDir);
+    dir = fs.mkdtempSync(path.join(parent, localStamp() + '-' + safeFileName(name) + '-'));
+    let entries = 0;
+    let bytes = 0;
+    await readMultipart(request.body!, boundary, maxUploadBytes + (1 << 20), {
+      start(headers) {
+        const { formName } = disposition(headers['content-disposition'] ?? '');
+        const directory = formName.startsWith('directory:');
+        if (!directory && !formName.startsWith('file:')) throw new Error('文件夹上传项无效');
+        if (++entries > 1000) throw new Error('一个文件夹最多导入 1000 个条目');
+        const rel = decodeURIComponent(formName.slice(directory ? 10 : 5));
+        if (rel !== '' || !directory) directoryEntryPath(rel);
+        const target = path.join(dir, rel);
+        if (directory) {
+          fs.mkdirSync(target, { recursive: true, mode: 0o755 });
+          return false;
+        }
+        fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o755 });
+        current = { fd: fs.openSync(target, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY, 0o644) };
+        return true;
+      },
+      data(chunk) {
+        bytes += chunk.length;
+        if (bytes > maxUploadBytes) throw new Error(`文件夹素材超过 ${maxUploadBytes >> 20} MB`);
+        fs.writeSync(current!.fd, chunk);
+      },
+      end() {
+        fs.closeSync(current!.fd);
+        current = null;
+      },
+    });
+    if (!entries) throw new Error('没有收到文件夹内容');
+    const attachment: Attachment = { ref: true, source: uploadDir + '/' + path.basename(dir), label: `文件夹「${name}」` };
+    return writeJSON(201, goMap({ attachments: [attachmentJSON(attachment)] }));
+  } catch (err) {
+    if (current) fs.closeSync((current as { fd: number }).fd);
+    if (dir) fs.rmSync(dir, { recursive: true, force: true });
+    return writeError(400, 'invalid_directory_upload', (err as Error).message);
+  }
+}
+
+/** 不改写目录内的名称，否则文档、HTML 与素材之间的相对引用会断。拒收不安全或跨平台歧义路径。 */
+function directoryEntryPath(rel: string): void {
+  const parts = rel.split('/');
+  if (parts.some((part) => !part || part === '.' || part === '..' || part.startsWith('.env') ||
+    /[\\:*?"<>|\x00-\x1f\x7f]/.test(part) || /[. ]$/.test(part) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part))) {
+    throw new Error(`文件夹内的路径不能导入：${rel}`);
+  }
 }
 
 /** Content-Type 是 multipart/form-data（或 multipart/mixed）时返回 boundary。 */
