@@ -72,7 +72,9 @@
         "dir",
         "dmg"
       ],
-      "identity": null,
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "icon": "build/icon.icns",
       "artifactName": "OnSet-${version}-${arch}.${ext}"
     },

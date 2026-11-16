@@ -19,7 +19,7 @@ An AI orchestrator of your choice does the production inside the client: Codex, 
 - macOS: download `OnSet-<version>-arm64.dmg` for Apple Silicon or `OnSet-<version>-x64.dmg` for Intel, then drag OnSet into Applications.
 - Windows x64 (experimental): run `OnSet-<version>-windows-x64-setup.exe`. The Windows port is incomplete; tool downloads and parts of the production workflow still need adaptation. The installer is unsigned.
 
-The macOS build is unsigned. The first time, **right-click (or Control-click) OnSet in Applications → Open**, then click Open in the dialog. After that it opens normally. If a double-click is blocked, you can also go to System Settings → Privacy & Security and click "Open Anyway".
+The new macOS release workflow requires code signing and Apple notarization. For older unsigned installers, you may need to go to System Settings → Privacy & Security and click "Open Anyway" on first launch.
 
 Requirements:
 
@@ -330,6 +330,8 @@ npm run dist -w onset-desktop                   # build an unpacked app for the 
 After changing the canvas table or the `frame.md` template, run `npm run generate -w @onset/engine` and commit the generated `assets/presets`. Development conventions are in `AGENTS.md` and `packages/engine/CONVENTIONS.md`.
 
 Push a `v<version>` tag or publish its GitHub Release to build macOS arm64 / x64 DMGs and a Windows x64 installer. All installers and SHA-256 checksums are uploaded after both platforms succeed. Reruns replace the assets on the same Release.
+
+Before releasing for macOS, configure the signing certificate and notarization Secrets described in [macOS signing and notarization](docs/macos-signing.md) (Chinese). Manual Release workflow runs also sign and notarize, but only upload Actions artifacts without publishing a Release.
 
 OnSet is licensed under the [Apache License 2.0](./LICENSE). HyperFrames is an independent Apache-2.0 project, used at a pinned release when a project is created.
 
