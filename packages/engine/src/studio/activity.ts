@@ -154,16 +154,8 @@ function consume(state: StreamState, line: string): void {
         break;
       }
       case agentrun.KindThinking: {
-        if (!event.text) break;
-        const last = state.steps.at(-1);
-        if (event.text_id && last?.kind === 'thinking' && last.text_id === event.text_id) {
-          // 同一段思考的后续分批：接上，字数累加。
-          last.chars = (last.chars ?? 0) + event.text.length;
-          if ((last.text ?? '').length < maxStepText) last.text = clipText((last.text ?? '') + event.text);
-          break;
-        }
-        const text = event.text.trim();
-        if (text) push(state, { kind: 'thinking', text: clipText(text), chars: text.length, ...(event.text_id ? { text_id: event.text_id } : {}) });
+        const step = addThinking(state.steps.at(-1), event.text ?? '', event.text_id);
+        if (step) push(state, step);
         break;
       }
       case agentrun.KindText:
@@ -177,6 +169,21 @@ function consume(state: StreamState, line: string): void {
         break;
     }
   }
+}
+
+/**
+ * 一段思考：同一 text_id 的分批接到上一步上、字数累加（返回 undefined），否则返回新的一步（空白返回 undefined）。
+ * 分批的文本按原样拼接，不 trim：「Checking 」后面接「Code」要得到「Checking Code」。整段到达的（没有 text_id）去掉首尾空白。
+ */
+export function addThinking(last: ActivityStep | undefined, text: string, textID?: string): ActivityStep | undefined {
+  if (textID && last?.kind === 'thinking' && last.text_id === textID) {
+    last.chars = (last.chars ?? 0) + text.length;
+    if ((last.text ?? '').length < maxStepText) last.text = clipText((last.text ?? '') + text);
+    return undefined;
+  }
+  if (text.trim() === '') return undefined;
+  const kept = textID ? text : text.trim();
+  return { kind: 'thinking', text: clipText(kept), chars: kept.length, ...(textID ? { text_id: textID } : {}) };
 }
 
 function agentrunModel(tool: string, line: string): string {

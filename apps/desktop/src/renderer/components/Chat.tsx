@@ -539,15 +539,16 @@ export function Chat(props: Props) {
 
   // 桌宠上点的选项或说的一句：一轮刚结束时选项马上出现在桌宠上，项目占用状态却要等下一次刷新才清掉，
   // 这时 deliver 会因为 blocked 静默丢掉这句话（CI 上实测撞到）。先记下，等不挡了再发。
-  const petSay = useRef<string | null>(null);
+  // 记下是哪个会话里点的：Chat 切会话时不重建，暂存的话不能发到切过去的那个会话里。
+  const petSay = useRef<{ text: string; session: string } | null>(null);
   useEffect(() => {
     if (blocked || petSay.current === null) return;
-    const text = petSay.current;
+    const pending = petSay.current;
     petSay.current = null;
-    void deliver(text, []);
+    if (pending.session === props.sessionId) void deliver(pending.text, []);
     // deliver 每次渲染都是新函数；只在挡不挡变了时看一眼。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blocked]);
+  }, [blocked, props.sessionId]);
 
   // 桌宠上的动作：答批准、点选项或说一句、停下这一轮。
   usePetCommands((command) => {
@@ -555,7 +556,7 @@ export function Chat(props: Props) {
       const ask = asks.find((a) => a.id === command.id);
       if (ask) void answer(ask, command.decision);
     } else if (command.kind === 'say') {
-      if (blocked) petSay.current = command.text;
+      if (blocked) petSay.current = { text: command.text, session: props.sessionId };
       else void deliver(command.text, []);
     } else if (command.kind === 'stop') {
       if (running) void cancel();
