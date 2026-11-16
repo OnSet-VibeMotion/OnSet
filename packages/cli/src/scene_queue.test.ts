@@ -2,12 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, it, vi } from 'vitest';
 import * as scene from '@onset/engine/scene';
-import * as windows from '@onset/engine/windowsruntime';
+import * as schedule from '@onset/engine/schedule';
 import { findOp, normalizeParams } from './ops/op';
 import { Buffer, tempDir } from './testutil';
 import './scene_cmd';
 
-it.skipIf(process.platform !== 'win32')('Windows queue prioritizes representatives, refills before a slow scene ends, and writes a complete trace', async () => {
+it('Queue prioritizes representatives, refills before a slow scene ends, and writes a complete trace', async () => {
   const root = tempDir();
   fs.writeFileSync(path.join(root, 'frame.md'), '---\ncanvas:\n  width_px: 320\n  height_px: 240\n  fps: 30\n---\n');
   fs.writeFileSync(path.join(root, 'onset.conf'), 'MEMORY=off\n');
@@ -21,7 +21,7 @@ it.skipIf(process.platform !== 'win32')('Windows queue prioritizes representativ
   const op = findOp('scene_run_all')!, out = new Buffer(), signal = new AbortController().signal;
   const context = { out, err: out, signal, unsafe: false };
   const params = { scenes: 'scenes', jobs: 3, priority_scenes: ['scene-001','scene-004','scene-009'], retries: 0, queue_trace_json: 'production/queue.jsonl' };
-  const budget = vi.spyOn(windows, 'windowsSceneJobs').mockReturnValue(3);
+  const budget = vi.spyOn(schedule, 'renderBudget').mockReturnValue({ jobs: 3, workers: 2 });
   let release!: () => void;
   const hold = new Promise<void>(resolve => { release = resolve; });
   const started: string[] = [];

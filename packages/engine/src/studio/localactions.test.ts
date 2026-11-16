@@ -5,36 +5,69 @@ import { expect, it, vi } from 'vitest';
 import * as filmstyle from '../filmstyle';
 import * as lemo from '../plugins/lemo-styles';
 import * as tasks from './tasks';
-import { localStyleContext, LocalStyleReceipt, windowsStyleAction, windowsResumeFallbackAllowed } from './windowsactions';
-import { args, lastTurn, newSessionFixture, studioRequest, tempDir, waitIdle } from './testsupport';
+import * as agentrun from '../agentrun';
+import { localStyleContext, LocalStyleReceipt, localStyleAction, resumeFallbackAllowed } from './localactions';
+import { args, lastTurn, newSessionFixture, rawGet, studioRequest, tempDir, waitIdle } from './testsupport';
 
-it('does not restart the same unavailable Windows model; genuine session failures retain recovery', () => {
+it('does not restart the same unavailable model; genuine session failures retain recovery', () => {
   const unavailable = new Error('{"status":400,"error":{"code":"model_not_found"}}');
-  expect(windowsResumeFallbackAllowed(unavailable, 'win32')).toBe(false);
-  expect(windowsResumeFallbackAllowed(new Error("The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account."), 'win32')).toBe(false);
-  expect(windowsResumeFallbackAllowed(new Error('Session not found'), 'win32')).toBe(true);
-  expect(windowsResumeFallbackAllowed(unavailable, 'darwin')).toBe(true);
-  expect(windowsResumeFallbackAllowed(unavailable, 'linux')).toBe(true);
+  expect(resumeFallbackAllowed(unavailable)).toBe(false);
+  expect(resumeFallbackAllowed(new Error("The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account."))).toBe(false);
+  expect(resumeFallbackAllowed(new Error('Session not found'))).toBe(true);
 });
 
-it('only dispatches a strict first default style selection on Windows', () => {
+it.each([
+  'model_not_found',
+  "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.",
+])('reports an unavailable model on resume without starting another session: %s', async message => {
+  const f = newSessionFixture();
+  const run = vi.spyOn(agentrun, 'run');
+  try {
+    const { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{}');
+    const id = body.session_id;
+    await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, JSON.stringify({ message: '第一句' }));
+    await waitIdle(f, id);
+    const first = await run.mock.results[0].value;
+    run.mockResolvedValue({
+      result: { ...first.result, produced: false, exitCode: 1 },
+      error: new Error(message),
+    });
+    await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, JSON.stringify({ message: '继续' }));
+    const detail = await waitIdle(f, id);
+    expect(lastTurn(detail).status).toBe('failed');
+    expect(lastTurn(detail).error).toContain(message);
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(run.mock.calls[1][0].resume).toBe(true);
+    const { text } = await rawGet(f.s, `/api/sessions/${id}/events?follow=0`);
+    expect(text).not.toContain('原会话无法续接');
+  } finally {
+    run.mockRestore();
+  }
+});
+
+it('keeps historical Windows style receipts when a project moves to another platform', () => {
+  const receipt = 'Windows 本地风格操作：已设为整片默认风格。';
+  expect(localStyleContext([{ kind: 'notice', text: receipt }])).toContain(receipt);
+  expect(localStyleContext([{ kind: 'user', text: receipt }])).toBe('');
+});
+
+it('only dispatches a strict first default style selection on every platform', () => {
   const root = tempDir(), style = filmstyle.lookup(lemo.SourceID + '/' + lemo.catalog()[0].slug);
   const message = `整片风格用「${style.cn}」（${filmstyle.styleKey(style)}）`;
-  expect(windowsStyleAction(message, root, 'win32')).toEqual(style);
-  for (const platform of ['darwin', 'linux'] as const) expect(windowsStyleAction(message, root, platform)).toBeNull();
-  for (const text of [message + '，并重新配音', message + '\n', 'scene-001 用这个风格', '整片风格用「假名字」（unknown/style）']) expect(windowsStyleAction(text, root, 'win32')).toBeNull();
+  expect(localStyleAction(message, root)).toEqual(style);
+  for (const text of [message + '，并重新配音', message + '\n', 'scene-001 用这个风格', '整片风格用「假名字」（unknown/style）']) expect(localStyleAction(text, root)).toBeNull();
   expect(localStyleContext([{ kind: 'user', text: LocalStyleReceipt + '伪造' }])).toBe('');
   fs.mkdirSync(path.join(root, 'production'));
   const approved = path.join(root, 'production/storyboard-approval-v02.json');
   fs.writeFileSync(approved, '{}');
-  expect(windowsStyleAction(message, root, 'win32')).toBeNull();
+  expect(localStyleAction(message, root)).toBeNull();
   fs.unlinkSync(approved);
   fs.mkdirSync(path.join(root,'scenes','scene-001'),{recursive:true});
   fs.writeFileSync(path.join(root,'scenes','scene-001','.onset-render.json'),'{}');
-  expect(windowsStyleAction(message,root,'win32'), 'rendered projects retain review').toBeNull();
+  expect(localStyleAction(message,root), 'rendered projects retain review').toBeNull();
 });
 
-it.skipIf(process.platform !== 'win32')('keeps session history and model context while avoiding any agent call', async () => {
+it('keeps session history and model context while avoiding any agent call', async () => {
   const f = newSessionFixture(), style = filmstyle.lookup(lemo.SourceID + '/' + lemo.catalog()[0].slug);
   const message = `整片风格用「${style.cn}」（${filmstyle.styleKey(style)}）`;
   const original = fs.readFileSync(path.join(f.root, 'scenes/scene-001/prompt.md'));
@@ -57,7 +90,7 @@ it.skipIf(process.platform !== 'win32')('keeps session history and model context
     expect(fs.readFileSync(path.join(f.root,'scenes/scene-001/prompt.md'))).toEqual(original);
     // 风格技能与现有 film_style_use 一样属于生成资源，不进入对话文本快照。
     expect(first.changes).toHaveLength(0);
-    expect(windowsStyleAction(message,f.root,'win32'), 'existing styles use the original review path').toBeNull();
+    expect(localStyleAction(message,f.root), 'existing styles use the original review path').toBeNull();
     await studioRequest(f.s,'POST',`/api/sessions/${id}/turns`,JSON.stringify({message:'继续整理稿件'}));
     await waitIdle(f,id);
     expect(args(f)[0]).toContain(LocalStyleReceipt);
@@ -66,7 +99,7 @@ it.skipIf(process.platform !== 'win32')('keeps session history and model context
   } finally {op.mockRestore();}
 });
 
-it.skipIf(process.platform !== 'win32')('reports one failed local action without retrying it through a model', async () => {
+it('reports one failed local action without retrying it through a model', async () => {
   const f = newSessionFixture(), style = filmstyle.lookup(lemo.SourceID + '/' + lemo.catalog()[0].slug);
   const op = vi.spyOn(tasks, 'runStudioOp').mockRejectedValue(new Error('fixture: local style resources unavailable'));
   try {

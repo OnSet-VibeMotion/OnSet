@@ -14,7 +14,7 @@ import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
 import { unmarshal } from './decode';
 import type { StructType } from './decode';
-import { attachWindowsCover } from './windows';
+import { attachApprovedCover } from './approvals';
 
 /** Event 是 visible-event-inventory.json 里的一个可读元素。帧号都是全片全局帧。 */
 export interface Event {
@@ -35,8 +35,8 @@ export interface Inventory {
   schema: number;
   fps: number;
   events: Event[];
-  /** 只由 Windows 文件加载器根据实际批准记录填入，不从清单的自述直接采信。 */
-  windowsApprovedCover?: { ids: ReadonlySet<string>; approval: string };
+  /** 只由文件加载器根据实际批准记录填入，不从清单的自述直接采信。 */
+  approvedCover?: { ids: ReadonlySet<string>; approval: string };
 }
 
 /** Phrase 是 phrase-timeline.json 里本检查用到的字段。 */
@@ -84,8 +84,6 @@ export interface Options {
   minSeconds: number;
   /** crowdSeconds：两个可读元素的可读起点相距不到这么久，视为同时出现。 */
   crowdSeconds: number;
-  /** 平台差异的测试入口；正常调用使用当前平台。 */
-  platform?: NodeJS.Platform;
 }
 
 /**
@@ -221,7 +219,7 @@ const timelineType: StructType = {
 };
 
 /** LoadInventory 读取并做结构校验。 */
-export function loadInventory(path: string, platform: NodeJS.Platform = process.platform): Inventory {
+export function loadInventory(path: string): Inventory {
   const raw = readJSON(path, inventoryType);
   const inv: Inventory = {
     schema: (raw.schema as number | undefined) ?? 0,
@@ -234,7 +232,7 @@ export function loadInventory(path: string, platform: NodeJS.Platform = process.
   if (inv.events.length === 0) {
     throw new Error(`${path} 的 events 为空`);
   }
-  return platform === 'win32' ? attachWindowsCover(inv, path) : inv;
+  return attachApprovedCover(inv, path);
 }
 
 /** LoadTimeline 读取短语时间轴。 */
@@ -320,7 +318,6 @@ function goRound(x: number): number {
 
 /** Check 逐个检查可读元素；timeline 为 null 时跳过与短语相关的两项。 */
 export function check(inv: Inventory, timeline: Timeline | null, opts: Options): Report {
-  const windows = (opts.platform ?? process.platform) === 'win32';
   const report: Report = {
     schema_version: ReportSchemaVersion,
     ok: false,
@@ -353,9 +350,9 @@ export function check(inv: Inventory, timeline: Timeline | null, opts: Options):
       continue;
     }
     seen.add(event.event_id);
-    // Windows 生成的非文字清单用 null 表示没有阅读区间，Go 兼容解码会把它变成零。
+    // 非文字清单用 null 表示没有阅读区间，Go 兼容解码会把它变成零。
     // 这些元素仍须有有效的存在区间；有文字的元素不能借此跳过阅读检查。
-    if (windows && event.text.trim() === '' && (event.role === DecorativeRole || event.role === 'graphic')) {
+    if (event.text.trim() === '' && (event.role === DecorativeRole || event.role === 'graphic')) {
       if (event.enter_frame < 0 || event.exit_end_frame <= event.enter_frame) fail(report, RuleFrames, event, `${event.event_id} 的非文字元素存在区间无效：${event.enter_frame} / ${event.exit_end_frame}`);
       if (timeline !== null && event.role === 'graphic' && event.phrase_id !== '') checkPhrase(report, event, phrases);
       continue;
@@ -364,8 +361,8 @@ export function check(inv: Inventory, timeline: Timeline | null, opts: Options):
       continue;
     }
     checkDuration(report, event, inv.fps, opts);
-    if (windows && inv.windowsApprovedCover?.ids.has(event.event_id)) {
-      (report.hints ??= []).push(`${event.event_id} 按已批准的第零帧封面主题检查，阅读时长仍已核对；批准记录：${inv.windowsApprovedCover.approval}`);
+    if (inv.approvedCover?.ids.has(event.event_id)) {
+      (report.hints ??= []).push(`${event.event_id} 按已批准的第零帧封面主题检查，阅读时长仍已核对；批准记录：${inv.approvedCover.approval}`);
       continue;
     }
     semantic.push(event);

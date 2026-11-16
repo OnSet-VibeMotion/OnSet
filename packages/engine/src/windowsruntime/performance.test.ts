@@ -6,7 +6,7 @@ import { envPython } from '../beat/env';
 import { cliCommandFor } from '../hyperframes';
 import { onsetToolsServer } from '../tools';
 import path from 'node:path';
-import { renderBudgetArgs, windowsRenderMetrics, windowsRenderWorkers, windowsSceneJobs } from './performance';
+import { windowsRenderMetrics, windowsRenderWorkers, windowsSceneJobs } from './performance';
 
 describe('Windows performance boundaries', () => {
   it('budgets 32 GiB across three simultaneous scenes and reports Windows RAM', () => {
@@ -16,14 +16,7 @@ describe('Windows performance boundaries', () => {
     expect(windowsRenderWorkers(22, 32 * 1024 ** 3, 11 * 1024 ** 3, 3)).toBe(2);
     expect(windowsRenderWorkers(22, 32 * 1024 ** 3, 11 * 1024 ** 3, 8)).toBe(1);
   });
-  it('enforces workers for absent, auto, explicit, equal and duplicate forms', () => {
-    const env = { ONSET_RENDER_WORKERS: '3' };
-    expect(renderBudgetArgs(['render', '--quality', 'delivery'], env, 'win32')).toEqual(['render', '--quality', 'delivery', '--workers', '3']);
-    expect(renderBudgetArgs(['render', '--workers', 'auto'], env, 'win32')).toEqual(['render', '--workers', '3']);
-    expect(renderBudgetArgs(['render', '--workers=6'], env, 'win32')).toEqual(['render', '--workers', '3']);
-    expect(renderBudgetArgs(['render', '--workers', '2', '--workers=12'], env, 'win32')).toEqual(['render', '--workers', '2']);
-    expect(() => renderBudgetArgs(['render', '--workers', '--fps', '30'], env, 'win32')).toThrow(/workers/);
-  });
+
   it('caps simultaneous scenes when one browser each would still exceed the available memory', () => {
     const gib = 1024 ** 3;
     const jobs = windowsSceneJobs(22, 32 * gib, 11 * gib, 8);
@@ -32,12 +25,7 @@ describe('Windows performance boundaries', () => {
     expect(windowsSceneJobs(22, 32 * gib, 24 * gib, 3)).toBe(3);
     expect(windowsSceneJobs(2, 8 * gib, gib, 8)).toBe(1);
   });
-  it('leaves other platforms, unbudgeted CLI calls and help untouched', () => {
-    const args = ['render', '--workers', 'auto'];
-    for (const platform of ['darwin', 'linux'] as const) expect(renderBudgetArgs(args, { ONSET_RENDER_WORKERS: '3' }, platform)).toBe(args);
-    expect(renderBudgetArgs(args, {}, 'win32')).toBe(args);
-    expect(renderBudgetArgs(['render', '--help'], { ONSET_RENDER_WORKERS: '3' }, 'win32')).toEqual(['render', '--help']);
-  });
+
   it('selects Windows CUDA without changing the POSIX analyzer', () => {
     expect(analysisScript('win32')).toContain('torch.cuda.is_available()');
     expect(analysisScript('win32')).toContain('device=device');

@@ -56,8 +56,7 @@ async function openAuditions(page, project) {
   await expect(page.locator('.media-strip audio')).toHaveCount(3);
 }
 
-test.describe('Windows exclusive audio playback', () => {
-  test.skip(process.platform !== 'win32', 'Windows 客户端的播放修复');
+test.describe('Exclusive audio playback', () => {
 
   test('switches chat auditions and the file preview without resetting progress', async ({ page, project }) => {
     await seedAuditions(project);

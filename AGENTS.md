@@ -691,6 +691,8 @@ ONSET_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run --ro
 
 ## Windows
 
+通用制作能力不按操作系统分叉：单镜头互斥（`scene/lease.ts`）、计划镜头筛选、音频互斥播放、不可用模型停止续接重试与首次默认风格本地执行（`studio/localactions.ts`）、阅读清单与封面批准校验（`reads/approvals.ts`）、单次解码抽帧，以及代表镜头优先派发和队列日志，两平台共用代码与测试。渲染并发的硬上限经 `schedule/budget.ts` 传到渲染器工具入口；Windows 沿用可用内存预算，macOS 沿用物理内存的一半，不能用空闲内存直接代替 Mac 的可用内存。不要再给这些通用能力加 `win32` 开关或让 Mac 测试断言旧行为。
+
 客户端还没移植完：类型检查与构建在 CI 的 `windows` 任务（`windows-latest`）里必须通过，两包单元测试照跑但失败不挡合并（`continue-on-error`），全部通过后去掉。已经定下的约定：
 
 | 约定 | 原因 |

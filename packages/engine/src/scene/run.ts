@@ -40,7 +40,7 @@ import { prepareResources } from './resources';
 import { verify as verifyResources } from '../renderassets';
 import { HyperFramesSkillName, rendererAccess, resolveAllSkills, skillsEnvironment, SkillsDirEnv, stagedSkills, stageRendererSkills, unstageRendererSkills } from './skills';
 import { VerificationError } from './verification';
-import { acquireWindowsSceneLease } from './windowslease';
+import { acquireSceneLease } from './lease';
 
 /** SIGTERM 之后等渲染器进程组自行退出的时间（毫秒）。 */
 const terminateGrace = 500;
@@ -66,7 +66,7 @@ export async function run(
   tolerance: number,
   signal?: AbortSignal,
 ): Promise<void> {
-  const release = acquireWindowsSceneLease(s.directory, s.id);
+  const release = acquireSceneLease(s.directory, s.id);
   try { await runScene(s, cfg, unsafe, baseEnv, userOutput, tolerance, signal); }
   finally { release(); }
 }
@@ -109,7 +109,7 @@ async function runScene(
   const childEnv = childEnvironment(cfg, baseEnv, unsafe, parsePassthrough(baseEnv.ONSET_PASSTHROUGH_ENV ?? ''));
   // 客户端操作转发只交给编排工具。镜头渲染器已经拿到本次服务，不给它请求整片写操作的入口。
   delete childEnv.ONSET_STUDIO_OP_PIPE;
-  if (process.platform === 'win32' && s.renderWorkers > 0) childEnv.ONSET_RENDER_WORKERS = String(s.renderWorkers);
+  if (s.renderWorkers > 0) childEnv.ONSET_RENDER_WORKERS = String(s.renderWorkers);
   addToolsLocation(childEnv);
   // opencode 按 PWD 而不是进程的工作目录定项目目录：不安全模式下照搬过来的 PWD 是 onset 自己的目录，渲染器会写到镜头外面（2026-11 实测）。
   childEnv.PWD = s.directory;

@@ -8,9 +8,8 @@ export const playerProps = { controls: true, controlsList: 'nodownload noremotep
 
 let activePlayback: { owner: object; pause: () => void } | null = null;
 
-/** Windows 试听共用一个播放席位；WebAudio 的节拍预览也走这里。 */
+/** 试听共用一个播放席位；WebAudio 的节拍预览也走这里。 */
 export function claimAudioPlayback(owner: object, pause: () => void): void {
-  if (window.onset?.platform !== 'win32') return;
   const previous = activePlayback;
   activePlayback = { owner, pause };
   if (previous && previous.owner !== owner) previous.pause();
@@ -22,7 +21,6 @@ export function releaseAudioPlayback(owner: object): void {
 
 /** 捕获不冒泡的 play 事件，也覆盖后来出现的聊天附件、文件预览与隐藏的音色播放器。 */
 export function installExclusiveAudioPlayback(): void {
-  if (window.onset?.platform !== 'win32') return;
   const playing = (event: Event) => {
     const player = event.target;
     if (!(player instanceof HTMLMediaElement) || player.paused || player.muted || player.volume === 0) return;

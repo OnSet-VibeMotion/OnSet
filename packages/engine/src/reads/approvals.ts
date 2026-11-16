@@ -20,8 +20,8 @@ function confirmedByProjectUser(root: string, said: unknown): boolean {
   return false;
 }
 
-/** 仅 Windows 的清单适配：批准的是封面主题提前出现，阅读时间与实际画面仍照常检查。 */
-export function approvedWindowsCover(file: string): { ids: Set<string>; approval: string } | undefined {
+/** 批准的是封面主题提前出现，阅读时间与实际画面仍照常检查。 */
+export function approvedCover(file: string): { ids: Set<string>; approval: string } | undefined {
   const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as { events?: unknown[] };
   const events = (raw.events ?? []).filter((event): event is Record<string, unknown> => event !== null && typeof event === 'object').filter((event) => event.role === 'cover' && event.exception === 'approved_theme_preview');
   if (events.length === 0) return;
@@ -40,7 +40,7 @@ export function approvedWindowsCover(file: string): { ids: Set<string>; approval
           const approval = JSON.parse(fs.readFileSync(approvalFile, 'utf8'));
           const cover = approval.cover;
           const canonical=approval.status==='APPROVED'&&cover?.textAndLineCountApproved===true&&cover.frame===0;
-          // Existing Windows projects also store the combined script/cover confirmation in snake_case.
+          // Existing projects also store the combined script/cover confirmation in snake_case.
           // Its exact quoted approval must occur as an actual project user event, never a tool output.
           const combined=approval.approval==='script_cover_pronunciation_and_film_style'&&(approval.status===undefined||approval.status==='APPROVED')&&confirmedByProjectUser(root,approval.said);
           if(!canonical&&!combined)continue;
@@ -63,7 +63,7 @@ export function approvedWindowsCover(file: string): { ids: Set<string>; approval
   }
 }
 
-export function attachWindowsCover(inv: Inventory, file: string): Inventory {
-  const approved = approvedWindowsCover(file);
-  return approved ? { ...inv, windowsApprovedCover: approved } : inv;
+export function attachApprovedCover(inv: Inventory, file: string): Inventory {
+  const approved = approvedCover(file);
+  return approved ? { ...inv, approvedCover: approved } : inv;
 }

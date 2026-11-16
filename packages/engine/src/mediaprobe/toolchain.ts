@@ -312,13 +312,7 @@ export class Toolchain {
     const report: FrameReport = { schema_version: ReportSchemaVersion, path: file, ok: false, frames: [], problems: [] };
     for (const at of atSeconds) {
       const image = path.join(destDir, `frame-${formatSecondsShort(at).replaceAll('.', '_')}.png`);
-      let stats: FrameStats;
-      if (process.platform === 'win32') stats = this.extractFrameAndStats(file, at, region, image);
-      else {
-        // 本轮只加速 Windows；其它平台沿用原来的抽帧与整帧统计路径。
-        this.extractFrameRegion(file, at, region, image);
-        stats = this.frameStats(file, at);
-      }
+      const stats = this.extractFrameAndStats(file, at, region, image);
       const frame: ExtractedFrame = { at_seconds: at, image, stats, blank: isBlank(stats), dark: isDark(stats) };
       report.frames.push(frame);
       if (frame.blank) {

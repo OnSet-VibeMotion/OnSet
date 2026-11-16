@@ -14,23 +14,6 @@ export function windowsRenderWorkers(cpus: number, total: number, available: num
   return Math.max(1, Math.min(Math.trunc((cpus - 2) / concurrent), Math.trunc(budget / (1.5 * 1024 ** 3) / concurrent)));
 }
 
-/** 镜头之间已按 CPU 与内存均分预算；Windows 的工具入口必须执行它，不能只靠提示词。 */
-export function renderBudgetArgs(args: string[], env: Record<string, string | undefined>, platform: NodeJS.Platform = process.platform): string[] {
-  const limit = Number(env.ONSET_RENDER_WORKERS ?? '0');
-  if (platform !== 'win32' || args[0] !== 'render' || !Number.isInteger(limit) || limit < 1 || args.includes('--help') || args.includes('-h')) return args;
-  const out: string[] = [];
-  let workers = limit;
-  for (let index = 0; index < args.length; index++) {
-    const arg = args[index];
-    if (arg === '--workers' || arg.startsWith('--workers=')) {
-      const value = arg === '--workers' ? args[++index] : arg.slice('--workers='.length);
-      if (value !== 'auto' && (!value || !/^[1-9][0-9]*$/.test(value))) throw new Error('Windows 渲染的 --workers 必须是 auto 或正整数');
-      if (value !== 'auto') workers = Math.min(workers, Number(value));
-    } else out.push(arg);
-  }
-  return [...out, '--workers', String(workers)];
-}
-
 /** HyperFrames 的画面硬件路径与编码耗时是两件事；原日志保留，只提取最后一次完成汇总。 */
 export function windowsRenderMetrics(text: string): { browser_hardware: string; seconds: Record<string, number> } | undefined {
   const line = text.split(/\r?\n/).reverse().find(line => /hardware (?:gpu|cpu|software)/.test(line) && /\bcapture [0-9]/.test(line));

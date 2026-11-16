@@ -2,30 +2,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { isBlank, isDark } from './mediaprobe';
-import { Toolchain } from './toolchain';
 import { ffmpeg, hasFfmpeg, sample, tempDir, toolchain } from './testutil';
 
-it.each(['darwin','linux'] as const)('preserves the existing %s extraction and statistics calls', platform => {
-  // 这里只测平台分派，两个外部调用都被替身接管，不要求本机安装媒体工具。
-  const tc=new Toolchain('unused-ffprobe','',{}), descriptor=Object.getOwnPropertyDescriptor(process,'platform')!;
-  const extract=vi.spyOn(tc,'extractFrameRegion').mockImplementation(()=>{});
-  const statistics=vi.spyOn(tc,'frameStats').mockReturnValue({at_seconds:0.5,mean:100,stddev:10});
-  try {
-    Object.defineProperty(process,'platform',{...descriptor,value:platform});
-    const report=tc.extractFramesRegion('fixture.mp4',[0.5],null,'fixture-output');
-    expect(extract).toHaveBeenCalledOnce();expect(statistics).toHaveBeenCalledOnce();
-    expect(report.frames[0].stats).toEqual({at_seconds:0.5,mean:100,stddev:10});
-  } finally {Object.defineProperty(process,'platform',descriptor);extract.mockRestore();statistics.mockRestore();}
-});
-
-describe.skipIf(!hasFfmpeg || process.platform !== 'win32')('Windows single-decode frame extraction', () => {
+describe.skipIf(!hasFfmpeg)('Single-decode frame extraction', () => {
   it('preserves PNG bytes and full-frame statistics, including cropped images and seeks across a long GOP', () => {
     const tc = toolchain();
     const file = sample('testsrc2=size=160x120:rate=30:duration=6', '-g', '120');
     const root = tempDir();
     const points = [130 / 30, 0, 7 / 30, 1.966667, 179 / 30];
     for (const region of [null, { x: 10, y: 20, w: 80, h: 60 }]) {
+      const imageCall = vi.spyOn(tc, 'extractFrameRegion');
+      const statsCall = vi.spyOn(tc, 'frameStats');
       const report = tc.extractFramesRegion(file, points, region, path.join(root, region ? 'cropped' : 'full'));
+      expect(imageCall).not.toHaveBeenCalled();
+      expect(statsCall).not.toHaveBeenCalled();
+      imageCall.mockRestore();
+      statsCall.mockRestore();
       expect(report.frames.map(frame => frame.at_seconds)).toEqual(points);
       for (const frame of report.frames) {
         const reference = path.join(root, 'reference.png');

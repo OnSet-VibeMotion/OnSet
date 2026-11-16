@@ -7,7 +7,7 @@ import { check, Defaults, loadInventory, newEvent, newPhrase } from './reads';
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); });
 function fixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-reads-windows-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-reads-approvals-'));
   roots.push(root);
   const directory = path.join(root, 'scenes', 'scene-demo');
   const approvals = path.join(root, 'production', 'approvals');
@@ -29,37 +29,27 @@ function fixture() {
   return { file, events, write, approval, approvalFile, timeline };
 }
 
-describe('Windows reading inventory compatibility', () => {
+describe('Reading inventory compatibility', () => {
   it('checks approved cover duration and valid non-text intervals without editing source inventories', () => {
     const f = fixture();
     const original = fs.readFileSync(f.file);
-    const inv = loadInventory(f.file, 'win32');
-    const report = check(inv, f.timeline, { ...Defaults, platform: 'win32' });
+    const inv = loadInventory(f.file);
+    const report = check(inv, f.timeline, Defaults);
     expect(report.ok, report.problems.join('\n')).toBe(true);
     expect(report.events.map((event) => event.event_id)).toEqual(['cover-a', 'cover-b']);
     expect(report.hints?.join('\n')).toContain(f.approvalFile);
     expect(fs.readFileSync(f.file)).toEqual(original);
   });
 
-  it.each(['darwin', 'linux'] as const)('preserves %s behavior for the same inventory', (platform) => {
-    const f = fixture();
-    const inv = loadInventory(f.file, platform);
-    expect(inv.windowsApprovedCover).toBeUndefined();
-    const report = check(inv, f.timeline, { ...Defaults, platform });
-    expect(report.ok).toBe(false);
-    expect(report.problems.some((problem) => problem.includes('早于绑定短语'))).toBe(true);
-    expect(report.problems.some((problem) => problem.includes('background 的帧号顺序'))).toBe(true);
-  });
-
   it('does not accept pending approvals or mismatched cover text', () => {
     const f = fixture();
     f.approval.status = 'PENDING';
     fs.writeFileSync(f.approvalFile, JSON.stringify(f.approval));
-    expect(check(loadInventory(f.file, 'win32'), f.timeline, { ...Defaults, platform: 'win32' }).ok).toBe(false);
+    expect(check(loadInventory(f.file), f.timeline, Defaults).ok).toBe(false);
     f.approval.status = 'APPROVED';
     f.approval.cover.titleLines[0] = '另一份封面';
     fs.writeFileSync(f.approvalFile, JSON.stringify(f.approval));
-    expect(check(loadInventory(f.file, 'win32'), f.timeline, { ...Defaults, platform: 'win32' }).ok).toBe(false);
+    expect(check(loadInventory(f.file), f.timeline, Defaults).ok).toBe(false);
   });
 
   it('still rejects short approved titles, invalid existence windows and early semantic graphics', () => {
@@ -68,7 +58,7 @@ describe('Windows reading inventory compatibility', () => {
     f.events[2].exit_end_frame = 0;
     f.events[3].enter_frame = 0;
     f.write();
-    const report = check(loadInventory(f.file, 'win32'), f.timeline, { ...Defaults, platform: 'win32' });
+    const report = check(loadInventory(f.file), f.timeline, Defaults);
     expect(report.problems.some((problem) => problem.includes('读完'))).toBe(true);
     expect(report.problems.some((problem) => problem.includes('存在区间无效'))).toBe(true);
     expect(report.problems.some((problem) => problem.includes('graphic 在第 0 帧出现'))).toBe(true);
@@ -83,11 +73,11 @@ describe('Windows reading inventory compatibility', () => {
     const file=path.join(path.dirname(f.approvalFile),'script-v01.json'),events=path.join(sessions,'test.events.jsonl');
     fs.writeFileSync(file,JSON.stringify(approval));
     fs.writeFileSync(events,JSON.stringify({kind:'text',text:said})+'\n');
-    expect(check(loadInventory(f.file,'win32'),f.timeline,{...Defaults,platform:'win32'}).ok).toBe(false);
+    expect(check(loadInventory(f.file),f.timeline,Defaults).ok).toBe(false);
     fs.appendFileSync(events,JSON.stringify({kind:'user',text:said})+'\n');
-    expect(check(loadInventory(f.file,'win32'),f.timeline,{...Defaults,platform:'win32'}).ok).toBe(true);
-    for(const platform of ['darwin','linux'] as const)expect(loadInventory(f.file,platform).windowsApprovedCover).toBeUndefined();
+    expect(check(loadInventory(f.file),f.timeline,Defaults).ok).toBe(true);
+    expect(loadInventory(f.file).approvedCover).toBeDefined();
     approval.said='未确认的另一句话';fs.writeFileSync(file,JSON.stringify(approval));
-    expect(check(loadInventory(f.file,'win32'),f.timeline,{...Defaults,platform:'win32'}).ok).toBe(false);
+    expect(check(loadInventory(f.file),f.timeline,Defaults).ok).toBe(false);
   });
 });
