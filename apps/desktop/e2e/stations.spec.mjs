@@ -578,3 +578,34 @@ test('a third-party station that declares its state says when it waits for you, 
   fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: ready\n---\n');
   await expect.poll(async () => (await api(page, '/api/progress')).body.stations.find((s) => s.id === 'auto-publish').status).toBe('done');
 });
+
+test('opening a plugin page from settings leaves the home page', async ({ page, project, sandbox }) => {
+  installPlugin(sandbox, fake);
+  await openProject(page, project);
+  // 回到首页，再从设置里打开插件的页面：页面要真的出来，不能还停在首页。
+  await page.locator('.brand').click();
+  await expect(page.locator('.home-hero h1')).toBeVisible();
+  await page.locator('#settings-trigger').click();
+  await page.locator('#settings-dialog li[data-station="fake-publisher"]').getByRole('button', { name: '详情与设置' }).click();
+  await page.getByRole('dialog', { name: '假发布 详情与设置' }).getByRole('button', { name: '打开「发布看板」' }).click();
+  await expect(page.locator('.home-hero h1')).toHaveCount(0);
+  await expect(page.locator('.station-page:not(.station-slot) .station-page-bar')).toContainText('发布看板');
+});
+
+test('a plugin action clicked twice in a row runs once', async ({ page, sandbox }) => {
+  installPlugin(sandbox, fake);
+  await expect(page.locator('.home-hero h1')).toBeVisible();
+  await page.locator('#settings-trigger').click();
+  await page.locator('#settings-dialog li[data-station="fake-publisher"]').getByRole('button', { name: '详情与设置' }).click();
+  const detail = page.getByRole('dialog', { name: '假发布 详情与设置' });
+  await expect(detail.locator('.plugin-list[data-op="accounts"]')).toContainText('还没有。');
+  const idle = async () => expect.poll(async () => (await api(page, '/api/tasks')).body.tasks.some((t) => t.status === 'running' || t.status === 'queued'), { timeout: 15000 }).toBe(false);
+  await idle();
+  const before = (await api(page, '/api/tasks')).body.tasks.length;
+  // 连点两下：按钮在重画成「不可点」之前还能收到第二下，第二次提交要被挡住。
+  await detail.locator('.station-op[data-op="login"]').getByRole('button', { name: '登录平台账号' }).evaluate((button) => { button.click(); button.click(); });
+  await expect(detail.locator('.plugin-list[data-op="accounts"] .plugin-item')).toHaveCount(1);
+  await idle();
+  // 一次登录，加上登录完刷新一次账号列表。
+  expect((await api(page, '/api/tasks')).body.tasks.length - before).toBe(2);
+});

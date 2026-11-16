@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { test, expect, openProject } from './fixtures.mjs';
 import { buildBlocks } from '../src/renderer/components/chat/model.ts';
-import { suggestStop, turnActivity, waitingOnRender } from '../src/renderer/components/chat/activity.ts';
+import { showProgressCard, suggestStop, turnActivity, waitingOnRender } from '../src/renderer/components/chat/activity.ts';
 
 const start = Date.parse('2026-11-15T00:00:00Z');
 function activity(rows, now = start + 70000, asks = []) {
@@ -173,4 +173,14 @@ test('quiet stretches during a running job never suggest stopping', () => {
   // 提交后一直没有任何输出、也没执行过操作：才提一句可以停止。
   expect(suggestStop(activity([], start + 180000))).toBe(true);
   expect(suggestStop(activity([], start + 2000))).toBe(false);
+});
+
+test('the progress card comes back while the connection is reconnecting, even when waiting on renders', () => {
+  const events = [{ kind: 'turn-start' }, { kind: 'tool-call', call_id: 'r', tool: 'mcp__onset__scene_run_all', input: {} }].map((event, seq) => ({ seq, turn_id: 'current', time: new Date(start + seq * 1000).toISOString(), ...event }));
+  const turn = buildBlocks(events).find(block => block.kind === 'turn');
+  const state = turnActivity(turn, events, [], start + 70000);
+  expect(showProgressCard(state, turn, 2, false)).toBe(false);
+  // 连接断了：卡片照常出来，说清「正在重连」。
+  expect(showProgressCard(state, turn, 2, true)).toBe(true);
+  expect(showProgressCard(null, turn, 2, true)).toBe(false);
 });

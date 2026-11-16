@@ -83,6 +83,14 @@ export function waitingOnRender(activity: TurnActivity | null, turn: TurnBlock |
 }
 
 /**
+ * 输入框上方要不要画进度卡片：在等镜头制作时交给「镜头制作」卡片；但连接断了的时候照常画，
+ * 卡片要说清「进度连接中断，正在重连」，不能当成正常等待藏起来。
+ */
+export function showProgressCard(activity: TurnActivity | null, turn: TurnBlock | undefined, renderingScenes: number, reconnecting: boolean): boolean {
+  return !!activity && (reconnecting || !waitingOnRender(activity, turn, renderingScenes));
+}
+
+/**
  * 没收到新消息时要不要提示「可以停止」：这一轮已经执行过或正在执行操作（制作任务动辄几分钟没有输出），
  * 安静是正常的，不劝用户停；只在提交后一直没有任何输出、也还没执行过操作时才提一句。
  */

@@ -15,7 +15,7 @@ import { DiffDialog } from './DiffDialog';
 import { Icon } from './Icon';
 import { Markdown } from './chat/Markdown';
 import { PolishCard, type PolishResult, type PolishState } from './chat/Polish';
-import { turnActivity, waitingOnRender } from './chat/activity';
+import { showProgressCard, turnActivity } from './chat/activity';
 import { ActivityStatus } from './chat/ActivityStatus';
 import {
   buildBlocks,
@@ -170,7 +170,7 @@ export function Chat(props: Props) {
   const activity = lastTurn && running ? turnActivity(lastTurn, activityEvents, asks, now) : null;
   // 在等镜头制作时，「镜头制作」卡片已经逐个镜头报进度，不再叠一张「正在执行操作」。
   const renderingScenes = props.scenes.filter((scene) => scene.rendering).length;
-  const showActivity = !!activity && !waitingOnRender(activity, lastTurn, renderingScenes);
+  const showActivity = showProgressCard(activity, lastTurn, renderingScenes, reconnecting);
 
   // 这一轮进行中照样能发：消息排到这一轮之后。别的写任务占着项目时不能发。
   const blocked = sending || (props.busy !== '' && !running);

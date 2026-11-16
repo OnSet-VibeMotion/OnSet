@@ -101,6 +101,30 @@ describe('stations API', () => {
     expect(fs.readFileSync(log, 'utf8')).toContain('"project_root":""');
   });
 
+  it('keeps only the plugin message in task results, and nothing of list results', async () => {
+    const f = newSessionFixture();
+    installStation(`link:${fake}`);
+    const bin = tempDir();
+    // 假的 onset：登录回一句说明加账号名，列表回账号卡片（昵称、头像）。
+    const data = { message: '已登录：小号', logged_in: '小号', items: [{ title: '小号', image: 'data:image/png;base64,AAAA' }] };
+    f.s.config.executable = writeShellFixture(path.join(bin, 'onset'), `#!/bin/sh\nprintf '\\000am-result %s\\n' '${JSON.stringify({ ok: true, exit_code: 0, data })}'\n`);
+    // 打开了项目时，不需要项目的登录照常在项目里跑：设置弹窗照样要拿到插件的那句说明。
+    const login = await studioRequest(f.s, 'POST', '/api/stations/fake-publisher/ops/login', '{"params":{}}');
+    expect(await waitStudioTask(f.s, login.body.task_id)).toMatchObject({ status: 'succeeded', result: { message: '已登录：小号' } });
+    const list = await studioRequest(f.s, 'POST', '/api/stations/fake-publisher/ops/accounts', '{"params":{}}');
+    const listed = await waitStudioTask(f.s, list.body.task_id);
+    expect(listed.status).toBe('succeeded');
+    expect(listed.result).toBeUndefined();
+    // 设置弹窗照样从 last_run 读到卡片（只在内存里）。
+    const { body } = await studioRequest(f.s, 'GET', '/api/stations');
+    expect(body.stations.find((x: { id: string }) => x.id === 'fake-publisher').ops.find((o: { name: string }) => o.name === 'accounts').last_run.data.items).toHaveLength(1);
+    // 写进项目的任务记录里只有说明，没有账号卡片、头像与插件的完整结果。
+    const saved = fs.readFileSync(path.join(f.root, 'production', 'studio', 'tasks.json'), 'utf8');
+    expect(saved).toContain('已登录：小号');
+    expect(saved).not.toContain('data:image');
+    expect(saved).not.toContain('logged_in');
+  });
+
   it('validates requests before starting a write task', async () => {
     const f = newSessionFixture();
     installStation(`link:${fake}`);

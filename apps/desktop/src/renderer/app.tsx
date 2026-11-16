@@ -991,6 +991,8 @@ export function App() {
             <div className="settings-frame">
               <Settings version={version} run={run} project={currentId !== ''} onOpenPage={(page) => {
                 setSettingsOpen(false);
+                // 从首页打开的设置：先回到项目，页面才看得见（桌宠切页同理）。
+                setHomeOpen(false);
                 showTab(page as Tab);
               }} onAgentsChanged={() => {
                 api<AgentsResponse>('/api/agents').then((result) => {

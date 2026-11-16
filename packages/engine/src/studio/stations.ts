@@ -220,6 +220,8 @@ async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: 
       { onText, ...(browser ? { env: { [flow.StationBrowserEnv]: JSON.stringify(browser.connection) } } : {}) },
     );
     lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: true, text: stripProgress(r.text).slice(-maxRunText), ...(r.data !== undefined ? { data: r.data } : {}), ...scopeFields(scope()) });
+    // 打开了项目时，不需要项目的操作（例如登录）也走这里：设置弹窗读 result 里插件的说明。
+    task.result = taskResult(station?.manifest.ops.find((o) => o.name === op), r.data);
   } catch (err) {
     lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: false, text: (err as Error).message.slice(-maxRunText), ...scopeFields(scope()) });
     throw err;
@@ -256,13 +258,24 @@ async function runUserStationTask(s: Server, signal: AbortSignal, task: Task, st
     );
     lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: true, text: stripProgress(r.text).slice(-maxRunText), ...(r.data !== undefined ? { data: r.data } : {}) });
     // 设置里的弹窗等任务跑完后读 result 里插件的说明（例如「已登录：昵称」）。
-    task.result = r.data;
+    task.result = taskResult(station.manifest.ops.find((o) => o.name === op), r.data);
   } catch (err) {
     lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: false, text: (err as Error).message.slice(-maxRunText) });
     throw err;
   } finally {
     browser?.dispose();
   }
+}
+
+/**
+ * 插件操作交给任务的 result：只留插件的一句说明。任务连同 result 会写进打开着的项目的
+ * production/studio/tasks.json，插件的完整结果（账号列表的昵称、头像、按钮参数）不能跟着项目被拷走、分享出去；
+ * 列表操作（ops[].list）的结果设置弹窗从 /api/stations 的 last_run（只在内存里）读，任务里什么都不留。
+ */
+function taskResult(op: flow.ManifestOp | undefined, data: unknown): Record<string, string> | undefined {
+  if (op?.list) return undefined;
+  const message = (data as { message?: unknown } | undefined)?.message;
+  return typeof message === 'string' && message !== '' ? { message: message.slice(0, 500) } : undefined;
 }
 
 /** 越界写入：记在任务上；钩子、定时这类没人在看的触发，另在最近的对话里发一条 notice。 */

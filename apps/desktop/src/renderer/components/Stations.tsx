@@ -198,6 +198,8 @@ function PluginActions({ station, run, onDone }: { station: StationInfo; run?: R
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [asking, setAsking] = useState('');
+  // 同一时间只跑一个：按钮在 React 重画前还能再点一次，靠这个同步的标记挡住第二次提交。
+  const inflight = useRef(false);
   const base = `/api/stations/${encodeURIComponent(station.id)}/ops/`;
   const refresh = async () => {
     for (const l of lists) await runAndWait(base + encodeURIComponent(l.name), { params: {} }).catch(() => undefined);
@@ -214,6 +216,8 @@ function PluginActions({ station, run, onDone }: { station: StationInfo; run?: R
       if (!run) return setMessage({ ok: false, text: `「${op.summary.replace(/（.*?）/g, '')}」要在项目里执行，先打开一个项目` });
       return run(base + encodeURIComponent(op.name), { params });
     }
+    if (inflight.current) return;
+    inflight.current = true;
     const label = op.summary.replace(/（.*?）/g, '');
     setBusy(label);
     setMessage(null);
@@ -225,6 +229,7 @@ function PluginActions({ station, run, onDone }: { station: StationInfo; run?: R
       } catch (err) {
         setMessage({ ok: false, text: `${label}没有成功：${errorText(err)}` });
       }
+      inflight.current = false;
       setBusy('');
       await refresh();
     })();
@@ -258,11 +263,12 @@ function PluginActions({ station, run, onDone }: { station: StationInfo; run?: R
                     {it.actions.map((a) => {
                       const op = user.find((o) => o.name === a.op);
                       if (!op) return null;
-                      const key = `${i}:${a.label}`;
+                      // 确认状态认的是这一项本身（名字与按钮参数），不是它在列表里的位置：列表刷新后挪了位，不能确认到别的账号上。
+                      const key = `${it.title}\n${a.label}\n${JSON.stringify(a.params)}`;
                       return asking === key ? (
                         <span key={key} className="plugin-item-confirm">
                           <span>{a.confirm}</span>
-                          <button className="danger" onClick={() => { setAsking(''); start(op, a.params); }}>{a.label}</button>
+                          <button className="danger" disabled={busy !== ''} onClick={() => { setAsking(''); start(op, a.params); }}>{a.label}</button>
                           <button onClick={() => setAsking('')}>取消</button>
                         </span>
                       ) : (
@@ -280,7 +286,7 @@ function PluginActions({ station, run, onDone }: { station: StationInfo; run?: R
       })}
       {forms.length > 0 && <div className="station-prompt-label">要你点的操作</div>}
       {forms.filter((o) => !o.project).map((o) => (
-        <OpAction key={o.name} station={station} op={o} run={(_path, payload) => start(o, (payload?.params as Record<string, unknown>) ?? {})} />
+        <OpAction key={o.name} station={station} op={o} disabled={busy !== ''} run={(_path, payload) => start(o, (payload?.params as Record<string, unknown>) ?? {})} />
       ))}
       {projectForms.length > 0 &&
         (run ? (
@@ -831,7 +837,7 @@ function toParams(params: StationParam[], values: Record<string, string | boolea
   return out;
 }
 
-function OpAction({ station, op, run }: { station: StationInfo; op: StationOp; run: RunAction }) {
+function OpAction({ station, op, run, disabled = false }: { station: StationInfo; op: StationOp; run: RunAction; disabled?: boolean }) {
   const [values, setValues] = useState<Record<string, string | boolean>>(() => Object.fromEntries(op.params.map((p) => [p.key, initialValue(p)])));
   const missing = op.params.some((p) => p.required && p.type !== 'boolean' && String(values[p.key] ?? '').trim() === '');
   const last = op.last_run;
@@ -862,7 +868,7 @@ function OpAction({ station, op, run }: { station: StationInfo; op: StationOp; r
         </label>
       ))}
       <div className="station-op-foot">
-        <button className="primary" disabled={missing} onClick={() => run(`/api/stations/${encodeURIComponent(station.id)}/ops/${encodeURIComponent(op.name)}`, { params: toParams(op.params, values) })}>
+        <button className="primary" disabled={missing || disabled} onClick={() => run(`/api/stations/${encodeURIComponent(station.id)}/ops/${encodeURIComponent(op.name)}`, { params: toParams(op.params, values) })}>
           {op.summary.replace(/（.*?）/g, '')}
         </button>
         {last && <span className={last.ok ? 'station-last ok' : 'station-last bad'}>{last.ok ? '上次执行成功' : '上次执行失败'}</span>}
