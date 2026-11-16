@@ -238,9 +238,11 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     if (activeJobs > 0) out.write(`渲染预算：设置上限 ${jobs} 个，当前最多 ${activeJobs} 个镜头，每镜头 ${workers} 个浏览器 worker\n`);
     let trace = '';
     let traceFD: number | undefined;
-    if (scenes.length) {
-      const project = scene.findProjectRoot(scenes[0].directory);
-      if (!project) throw new Error('队列监控需要合法项目根目录');
+    // 队列日志写在项目的 production/ 里：没有项目根（独立的镜头目录、上层没有 onset.conf）时缺省就不写，
+    // 不拦整批渲染；只有显式要了 queue_trace_json 才非有项目根不可。
+    const project = scenes.length ? scene.findProjectRoot(scenes[0].directory) : '';
+    if (!project && str(p.queue_trace_json) !== '') throw new Error('queue_trace_json 需要合法项目根目录（镜头目录上层要有 onset.conf）');
+    if (scenes.length && project) {
       // newRunID has second precision; immediate reuse checks can start several queues in one second.
       // Keep each trace distinct without overwriting earlier evidence or changing memory batch IDs.
       trace = path.resolve(project, str(p.queue_trace_json) || path.join('production/render-queues', run + '-' + randomUUID() + '.jsonl'));

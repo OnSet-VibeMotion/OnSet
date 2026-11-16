@@ -63,3 +63,29 @@ it('Queue prioritizes representatives, refills before a slow scene ends, and wri
     } finally {vi.useRealTimers();}
   } finally { mock.mockRestore(); budget.mockRestore(); }
 });
+
+it('Standalone scenes without a project root still render; only an explicit queue log needs one', async () => {
+  const root = tempDir();
+  for (let n = 1; n <= 2; n++) {
+    const id = 'scene-' + String(n).padStart(3, '0'), dir = path.join(root, 'scenes', id);
+    fs.mkdirSync(dir, { recursive: true });
+    // 没有 onset.conf：画幅只看镜头目录自己的 frame.md。
+    fs.writeFileSync(path.join(dir, 'frame.md'), '---\ncanvas:\n  width_px: 320\n  height_px: 240\n  fps: 30\n---\n');
+    fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\nhello\n');
+    fs.writeFileSync(path.join(dir, 'scene.json'), JSON.stringify({ id, duration_seconds: 1, output: 'out.mp4', transcript: 'transcript.srt', text: 'hello' }));
+  }
+  process.chdir(root);
+  const op = findOp('scene_run_all')!, out = new Buffer(), signal = new AbortController().signal;
+  const context = { out, err: out, signal, unsafe: false };
+  const budget = vi.spyOn(schedule, 'renderBudget').mockReturnValue({ jobs: 2, workers: 1 });
+  const started: string[] = [];
+  const mock = vi.spyOn(scene, 'run').mockImplementation(async s => { started.push(s.id); });
+  try {
+    const result = (await op.run(normalizeParams(op, { scenes: 'scenes', jobs: 2, retries: 0 }), context))?.data as any;
+    expect(result.counts.succeeded).toBe(2);
+    expect(result.queue_trace_json).toBeUndefined();
+    expect(fs.existsSync(path.join(root, 'production'))).toBe(false);
+    await expect(op.run(normalizeParams(op, { scenes: 'scenes', jobs: 2, retries: 0, queue_trace_json: 'production/queue.jsonl' }), context)).rejects.toThrow(/onset\.conf/);
+    expect(started).toHaveLength(2);
+  } finally { mock.mockRestore(); budget.mockRestore(); }
+});

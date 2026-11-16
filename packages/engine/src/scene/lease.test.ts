@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { acquireSceneLease, SceneBusyError } from './lease';
 import { writeLive } from './live';
 const roots: string[] = [];
@@ -30,4 +30,20 @@ test('dead owner can resume; malformed lease safely blocks without deletion', ()
   fs.writeFileSync(path.join(leases, 'incomplete.json'), '');
   expect(() => acquireSceneLease(dir, 'one')).toThrow(SceneBusyError);
   expect(fs.readdirSync(leases)).toHaveLength(2);
+});
+
+test('a lease write that fails half way leaves nothing behind, so the next render can start', () => {
+  const dir = fixture();
+  const real = fs.writeFileSync;
+  // 磁盘满：写进一半内容后抛错。
+  const spy = vi.spyOn(fs, 'writeFileSync').mockImplementationOnce((file, data) => {
+    real(file as number, String(data).slice(0, 5));
+    throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
+  });
+  try {
+    expect(() => acquireSceneLease(dir, 'one')).toThrow('ENOSPC');
+  } finally { spy.mockRestore(); }
+  expect(fs.readdirSync(path.join(dir, '.onset-render-leases'))).toEqual([]);
+  const release = acquireSceneLease(dir, 'one');
+  release();
 });

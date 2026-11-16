@@ -7,7 +7,8 @@ import * as lemo from '../plugins/lemo-styles';
 import * as tasks from './tasks';
 import * as agentrun from '../agentrun';
 import { localStyleContext, LocalStyleReceipt, localStyleAction, resumeFallbackAllowed } from './localactions';
-import { args, lastTurn, newSessionFixture, rawGet, studioRequest, tempDir, waitIdle } from './testsupport';
+import * as memory from '../memory';
+import { args, lastTurn, newSessionFixture, rawGet, setEnv, studioRequest, tempDir, waitIdle } from './testsupport';
 
 it('does not restart the same unavailable model; genuine session failures retain recovery', () => {
   const unavailable = new Error('{"status":400,"error":{"code":"model_not_found"}}');
@@ -112,4 +113,54 @@ it('reports one failed local action without retrying it through a model', async 
     expect(fs.existsSync(f.argsLog)).toBe(false);
     expect(filmstyle.installed(f.root).ok).toBe(false);
   } finally {op.mockRestore();}
+});
+
+/** 在项目里装上一种风格（只写清单，与 film_style_use 落下的东西一样够 installed() 认）。 */
+function installStyle(root: string, style: filmstyle.Style): void {
+  const directory = filmstyle.skillDir(root); fs.mkdirSync(directory, {recursive:true});
+  fs.writeFileSync(path.join(directory, filmstyle.StyleFile), '# style');
+  fs.writeFileSync(path.join(directory, filmstyle.GuideFile), '# guide');
+  fs.writeFileSync(path.join(directory, filmstyle.ManifestFile), JSON.stringify({ source: style.source, slug: style.slug, cn: style.cn, en: style.en, version:'test',digest:'test',installed_at:'' }));
+}
+
+it('stops saying a locally chosen style is installed once the default style changed', () => {
+  const [a, b] = lemo.catalog().slice(0, 2).map(c => filmstyle.lookup(lemo.SourceID + '/' + c.slug));
+  const receipt = `${LocalStyleReceipt}${a.cn}（${filmstyle.styleKey(a)}）已设为整片默认风格。`;
+  const root = tempDir();
+  installStyle(root, a);
+  expect(localStyleContext([{ kind: 'notice', text: receipt }], root)).toContain(receipt);
+  // 之后经原来的路子换成了 B：不能再说 A 已经装好。
+  installStyle(root, b);
+  expect(localStyleContext([{ kind: 'notice', text: receipt }], root)).toBe('');
+  // 风格被去掉了也一样。
+  fs.rmSync(filmstyle.skillDir(root), { recursive: true });
+  expect(localStyleContext([{ kind: 'notice', text: receipt }], root)).toBe('');
+});
+
+it('sends a changed preference after a locally handled style turn', async () => {
+  const f = newSessionFixture(), style = filmstyle.lookup(lemo.SourceID + '/' + lemo.catalog()[0].slug);
+  const memoryDir = tempDir();
+  setEnv('ONSET_MEMORY_DIR', memoryDir);
+  const store = memory.open(memoryDir);
+  store.remember({ name: 'calm-palette', body: '配色克制，不要满屏霓虹', global: true });
+  const op = vi.spyOn(tasks, 'runStudioOp').mockImplementation(async () => { installStyle(f.root, style); return { text: 'ok' }; });
+  try {
+    const { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{}');
+    const id = body.session_id;
+    const turn = async (message: string) => {
+      expect((await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, JSON.stringify({ message }))).status).toBe(202);
+      await waitIdle(f, id);
+    };
+    // 先有一个续接着的 CLI 会话，偏好已经发过一次。
+    await turn('先看看素材');
+    expect(args(f).at(-1)).toContain('【calm-palette】');
+    const calls = args(f).length;
+    // 偏好变了，紧接着的一轮是在客户端里直接选风格，没调模型。
+    store.remember({ name: 'no-emoji', body: '画面里不要 emoji', global: true });
+    await turn(`整片风格用「${style.cn}」（${filmstyle.styleKey(style)}）`);
+    expect(args(f)).toHaveLength(calls);
+    // 下一轮调模型时要把新偏好带上，不能当成已经发过。
+    await turn('继续整理稿件');
+    expect(args(f).at(-1)).toContain('【no-emoji】');
+  } finally { op.mockRestore(); }
 });

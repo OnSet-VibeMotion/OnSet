@@ -18,7 +18,17 @@ export function acquireSceneLease(directory: string, id: string): () => void {
   const leases = path.join(directory, '.onset-render-leases');
   fs.mkdirSync(leases, { recursive: true });
   const own = path.join(leases, crypto.randomUUID() + '.json');
-  fs.writeFileSync(own, marshal({ pid: process.pid, started_at: new Date().toISOString() }), { flag: 'wx' });
+  // 先独占创建（wx：撞名就失败，不碰别人的文件），再写内容。写到一半失败（例如磁盘满）时删掉这个刚建的文件：
+  // 留下空的或截断的租约，以后每次取租约都会因为读不懂它而判「镜头忙」，磁盘恢复了也渲染不了。
+  const fd = fs.openSync(own, 'wx');
+  try {
+    fs.writeFileSync(fd, marshal({ pid: process.pid, started_at: new Date().toISOString() }));
+  } catch (error) {
+    fs.closeSync(fd);
+    fs.rmSync(own, { force: true });
+    throw error;
+  }
+  fs.closeSync(fd);
   const release = () => { fs.rmSync(own, { force: true }); };
   try {
     // 两个调用竞争时，后创建者必然看见先创建者；同时看见对方则都退出，避免重复写产物。

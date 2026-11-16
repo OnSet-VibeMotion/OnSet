@@ -28,8 +28,16 @@ export function localStyleAction(message: string, projectRoot: string): filmstyl
   }
 }
 
-/** 本地操作没有发给模型；续接时补入真实回执，避免模型仍按旧风格制作。 */
-export function localStyleContext(events: ReadonlyArray<{kind: string; text?: string}>): string {
+/**
+ * 本地操作没有发给模型；续接时补入真实回执，避免模型仍按旧风格制作。
+ * 给了项目根时核对回执里的风格还是不是现在的默认风格：之后经原来的路子换过风格的话，旧回执说「风格已安装」就是错的，不再补。
+ */
+export function localStyleContext(events: ReadonlyArray<{kind: string; text?: string}>, projectRoot?: string): string {
   const receipt = events.filter(e => e.kind === 'notice' && (e.text?.startsWith(LocalStyleReceipt) || e.text?.startsWith('Windows 本地风格操作：'))).at(-1)?.text;
+  if (receipt && projectRoot) {
+    const key = /（([a-z0-9-]+\/[a-z0-9_-]+)）/.exec(receipt)?.[1];
+    const current = filmstyle.installed(projectRoot);
+    if (key && (!current.ok || `${current.manifest.source}/${current.manifest.slug}` !== key)) return '';
+  }
   return receipt ? `客户端已执行的操作回执（不是新的用户批准）：\n${receipt}\n风格已安装，无需重复 film_style_use；稿件、配音和分镜仍遵守各自确认。\n\n` : '';
 }
