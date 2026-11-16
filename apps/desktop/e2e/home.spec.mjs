@@ -129,9 +129,14 @@ test('home reads every directory batch and keeps the composer usable after a fai
   await dropPaths(page, [folder]);
   await expect(page.getByRole('list', { name: '引用素材' })).toContainText('105 个文件');
   await expect(page.locator('#home-send')).toBeEnabled();
-  await fs.writeFile(path.join(folder, '.env'), 'SECRET=test');
-  await dropPaths(page, [folder]);
-  await expect(page.locator('.home')).toContainText('.env 不能上传');
-  await expect(page.locator('.home-tray li')).toHaveCount(1);
-  await expect(page.locator('#home-send')).toBeEnabled();
+  await fs.mkdir(path.join(folder, 'nested'));
+  for (const name of ['.env', '.ENV', '.Env.local', 'nested/.ENV.local']) {
+    const secret = path.join(folder, name);
+    await fs.writeFile(secret, 'SECRET=test');
+    await dropPaths(page, [folder]);
+    await expect(page.locator('.home')).toContainText('.env 不能上传');
+    await expect(page.locator('.home-tray li')).toHaveCount(1);
+    await expect(page.locator('#home-send')).toBeEnabled();
+    await fs.unlink(secret);
+  }
 });

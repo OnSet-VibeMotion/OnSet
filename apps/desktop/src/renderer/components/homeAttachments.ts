@@ -24,7 +24,7 @@ export function droppedMaterials(data: DataTransfer): Promise<HomeMaterial[]> {
     let bytes = 0;
     const visit = async (entry: FileSystemEntry, rel: string): Promise<void> => {
       if (++count > 1000) throw new Error('一个文件夹最多导入 1000 个条目');
-      if (entry.name.startsWith('.env')) throw new Error('.env 不能上传：凭据不进项目');
+      if (entry.name.toLowerCase().startsWith('.env')) throw new Error('.env 不能上传：凭据不进项目');
       if (entry.isFile) {
         const file = await new Promise<File>((resolve, reject) => (entry as FileSystemFileEntry).file(resolve, reject));
         bytes += file.size;

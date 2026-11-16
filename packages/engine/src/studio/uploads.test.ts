@@ -73,7 +73,7 @@ describe('uploads', () => {
     expect(args(f)[0]).toContain(attachment.source);
   });
 
-  it.each(['../outside.md', '/absolute.md', 'a/../../outside.md', 'a\\..\\outside.md', 'a/.env', '.env.local/key', 'C:/outside.md', 'a//b', 'a/./b', 'a/CON'])('rejects unsafe folder entry %s and removes partial imports', async (entry) => {
+  it.each(['../outside.md', '/absolute.md', 'a/../../outside.md', 'a\\..\\outside.md', 'a/.env', '.ENV', '.Env.local', 'nested/.ENV.local', '.env.local/key', 'C:/outside.md', 'a//b', 'a/./b', 'a/CON'])('rejects unsafe folder entry %s and removes partial imports', async (entry) => {
     const f = newSessionFixture();
     const form = new FormData();
     form.append('file:ok.txt', new Blob(['ok']), 'ok.txt');

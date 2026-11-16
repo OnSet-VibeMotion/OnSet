@@ -169,7 +169,7 @@ async function uploadDirectory(projectPath: string, request: Request, boundary: 
 /** 不改写目录内的名称，否则文档、HTML 与素材之间的相对引用会断。拒收不安全或跨平台歧义路径。 */
 function directoryEntryPath(rel: string): void {
   const parts = rel.split('/');
-  if (parts.some((part) => !part || part === '.' || part === '..' || part.startsWith('.env') ||
+  if (parts.some((part) => !part || part === '.' || part === '..' || part.toLowerCase().startsWith('.env') ||
     /[\\:*?"<>|\x00-\x1f\x7f]/.test(part) || /[. ]$/.test(part) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part))) {
     throw new Error(`文件夹内的路径不能导入：${rel}`);
   }
