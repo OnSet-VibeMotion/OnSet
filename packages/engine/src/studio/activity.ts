@@ -26,7 +26,7 @@ export interface ActivityStep {
   state?: string;
   output?: string;
   text?: string;
-  /** 思考的全文字数（text 只留开头一段）。有的模型一次能想几万字、几分钟，界面据此说清它想了多久。 */
+  /** 思考的全文字数（按字符，不按 UTF-16 码元；text 只留开头一段）。有的模型一次能想几万字、几分钟，界面据此说清它想了多久。 */
   chars?: number;
   /** 流式思考的分批编号：同一编号的后续文本接在这一步上，不另起一步。 */
   text_id?: string;
@@ -177,13 +177,13 @@ function consume(state: StreamState, line: string): void {
  */
 export function addThinking(last: ActivityStep | undefined, text: string, textID?: string): ActivityStep | undefined {
   if (textID && last?.kind === 'thinking' && last.text_id === textID) {
-    last.chars = (last.chars ?? 0) + text.length;
+    last.chars = (last.chars ?? 0) + [...text].length;
     if ((last.text ?? '').length < maxStepText) last.text = clipText((last.text ?? '') + text);
     return undefined;
   }
   if (text.trim() === '') return undefined;
   const kept = textID ? text : text.trim();
-  return { kind: 'thinking', text: clipText(kept), chars: kept.length, ...(textID ? { text_id: textID } : {}) };
+  return { kind: 'thinking', text: clipText(kept), chars: [...kept].length, ...(textID ? { text_id: textID } : {}) };
 }
 
 function agentrunModel(tool: string, line: string): string {

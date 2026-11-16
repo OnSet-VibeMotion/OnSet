@@ -102,6 +102,11 @@ describe('scene activity', () => {
     expect(addThinking(first, 'next', 'th2')).toMatchObject({ text: 'next', text_id: 'th2' });
     expect(addThinking(undefined, '  整段想完  ')).toMatchObject({ text: '整段想完', chars: 4 });
     expect(addThinking(undefined, '   ')).toBeUndefined();
+    // 字数按字符算：emoji 这类 BMP 之外的字符算一个，不是两个。
+    const emoji = addThinking(undefined, '想😀', 'th3')!;
+    expect(emoji.chars).toBe(2);
+    addThinking(emoji, '😀', 'th3');
+    expect(emoji.chars).toBe(3);
   });
 
   // 重渲染前旧日志被挪走、新日志从头写：不能接着旧的偏移读。
