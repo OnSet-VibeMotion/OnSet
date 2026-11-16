@@ -7,52 +7,6 @@ import { test, expect, openProject, api, desktopDir, installPlugin, installedPlu
 // 测试用的假发布站：只写回执，不联网（packages/engine/src/flow/testdata/fake-publisher）。
 const fake = path.resolve(desktopDir, '..', '..', 'packages', 'engine', 'src', 'flow', 'testdata', 'fake-publisher');
 
-test('a local plugin folder can be selected, previewed and loaded without a git repository', async ({ page, electronApp, sandbox }) => {
-  const folder = path.join(sandbox.root, '本地插件 #1');
-  fs.cpSync(fake, folder, { recursive: true });
-  const selectFolder = async (directory) => {
-    await electronApp.evaluate(({ dialog }, selected) => {
-      dialog.showOpenDialog = async () => ({ canceled: selected === null, filePaths: selected === null ? [] : [selected] });
-    }, directory);
-    await stations.getByRole('button', { name: '选择本地文件夹' }).click();
-    await expect(stations.getByRole('button', { name: '选择本地文件夹' })).toBeEnabled();
-  };
-  await page.locator('#settings-trigger').click();
-  const stations = page.locator('#settings-dialog section.stations[aria-label="我的插件"]');
-  const source = stations.getByLabel('插件来源');
-  await source.fill('github:someone/plugin');
-  await selectFolder(null);
-  await expect(source).toHaveValue('github:someone/plugin');
-  expect(installedPlugins(sandbox)).toEqual([]);
-
-  // 选错目录时沿用清单校验，失败不安装，也不影响下一次选择。
-  await selectFolder(sandbox.root);
-  await stations.getByRole('button', { name: '添加', exact: true }).click();
-  await expect(stations).toContainText('里没有 onset-station.json');
-  expect(installedPlugins(sandbox)).toEqual([]);
-
-  await selectFolder(folder);
-  await expect(source).toHaveValue(`link:${folder}`);
-  await stations.getByRole('button', { name: '添加', exact: true }).click();
-  const confirm = stations.getByRole('alertdialog', { name: '确认添加插件' });
-  await expect(confirm).toContainText(folder);
-  await expect(confirm).toContainText('改动立即生效');
-  expect(installedPlugins(sandbox)).toEqual([]);
-  await confirm.getByRole('button', { name: '装上', exact: true }).click();
-  const card = stations.locator('li[data-station="fake-publisher"]');
-  await expect(card).toContainText('假发布');
-  await expect(card.getByRole('button', { name: '更新', exact: true })).toHaveCount(0);
-  expect(fs.existsSync(path.join(folder, '.git'))).toBe(false);
-  const manifestPath = path.join(folder, 'onset-station.json');
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  manifest.description = '本地修改已经生效';
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest));
-  expect((await api(page, '/api/stations')).body.stations.find((s) => s.id === 'fake-publisher')?.description).toBe(manifest.description);
-  await card.getByRole('button', { name: '去掉', exact: true }).click();
-  await expect.poll(() => installedPlugins(sandbox)).toEqual([]);
-  expect(fs.existsSync(manifestPath)).toBe(true);
-});
-
 test('a git plugin can be previewed, cancelled, installed and updated using the client runtime', async ({ page, sandbox }) => {
   test.skip(spawnSync('git', ['--version']).status !== 0, 'requires git');
   const repo = path.join(sandbox.root, 'plugin-repo');
@@ -128,7 +82,7 @@ async function clickInPage(target, reacted) {
   }).toPass({ timeout: 20_000 });
 }
 
-test('a plugin is added in settings without a project, every project gets it, and its action in settings runs only when the user clicks', async ({ page, project, sandbox }) => {
+test('a plugin is added in settings without a project, every project gets it, and its action in settings runs only when the user clicks', async ({ page, project, sandbox, electronApp }) => {
   fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: draft\ncopy:\n  primary_title: 测试标题\n---\n');
   // 还没打开任何项目：首页。
   await expect(page.locator('.home-hero h1')).toContainText('今天想做一条');
@@ -136,7 +90,15 @@ test('a plugin is added in settings without a project, every project gets it, an
   // 设置页「我的插件」：装在这台电脑上，对所有项目生效（写用户级的 installed.json，不碰项目文件）。
   await page.locator('#settings-trigger').click();
   const stations = page.locator('#settings-dialog section.stations[aria-label="我的插件"]');
-  await stations.getByLabel('插件来源').fill(`link:${fake}`);
+  // 本地文件夹经系统的文件夹选择器（主进程的 dialog，测试里换成直接返回）选，路径带空格与 #，不要 Git 仓库。
+  // 选错目录、取消选择与预览里的说法在 Stations.test.tsx。
+  const folder = path.join(sandbox.root, '本地插件 #1');
+  fs.cpSync(fake, folder, { recursive: true });
+  await electronApp.evaluate(({ dialog }, selected) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
+  }, folder);
+  await stations.getByRole('button', { name: '选择本地文件夹' }).click();
+  await expect(stations.getByLabel('插件来源')).toHaveValue(`link:${folder}`);
   await stations.getByRole('button', { name: '添加' }).click();
   // 第一步：取回、给你看这个插件自己的实情，还没装上——任何项目都看不到它。
   const confirmAdd = stations.getByRole('alertdialog', { name: '确认添加插件' });
@@ -151,6 +113,7 @@ test('a plugin is added in settings without a project, every project gets it, an
   await expect(confirmAdd).toContainText('接在「发布」后面');
   await expect(confirmAdd).toContainText('用到了实验性能力：hooks');
   await expect(confirmAdd).toContainText('对这台电脑上的所有项目生效');
+  await expect(confirmAdd).toContainText('改动立即生效');
   expect(installedPlugins(sandbox)).toEqual([]);
   expect((await api(page, '/api/stations')).body.stations.some((x) => x.id === 'fake-publisher')).toBe(false);
   await stations.scrollIntoViewIfNeeded();
@@ -164,6 +127,13 @@ test('a plugin is added in settings without a project, every project gets it, an
   const card = stations.locator('li[data-station="fake-publisher"]');
   await expect(card).toContainText('假发布');
   await expect(card).toContainText('第三方');
+  // 直接用那个文件夹，不拷、不建 Git 仓库；改了清单立即生效。
+  expect(fs.existsSync(path.join(folder, '.git'))).toBe(false);
+  const manifestPath = path.join(folder, 'onset-station.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  manifest.description = '本地修改已经生效';
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+  expect((await api(page, '/api/stations')).body.stations.find((s) => s.id === 'fake-publisher')?.description).toBe(manifest.description);
   // 「详情与设置」是盖在设置上的弹窗。
   await card.getByRole('button', { name: '详情与设置' }).click();
   const detail = page.getByRole('dialog', { name: '假发布 详情与设置' });
@@ -280,6 +250,14 @@ test('a plugin is added in settings without a project, every project gets it, an
   await expect(page.locator('#settings-dialog')).toHaveCount(0);
   await expect(pluginCard).toHaveCount(0);
   await expect(page.locator('.station-page:not(.station-slot) .station-page-bar')).toContainText('发布看板');
+  // 回到首页再从设置里打开：页面要真的出来，不能还停在首页（app 里的接线；弹窗里的按钮在 Stations.test.tsx）。
+  await page.locator('.brand').click();
+  await expect(page.locator('.home-hero h1')).toBeVisible();
+  await page.locator('#settings-trigger').click();
+  await page.locator('#settings-dialog li[data-station="fake-publisher"]').getByRole('button', { name: '详情与设置' }).click();
+  await page.getByRole('dialog', { name: '假发布 详情与设置' }).getByRole('button', { name: '打开「发布看板」' }).click();
+  await expect(page.locator('.home-hero h1')).toHaveCount(0);
+  await expect(page.locator('.station-page:not(.station-slot) .station-page-bar')).toContainText('发布看板');
 
   // 去掉：所有项目都不再有它；项目的锁文件始终只有新建时记下的流程。
   await page.locator('#settings-trigger').click();
@@ -287,6 +265,8 @@ test('a plugin is added in settings without a project, every project gets it, an
   await expect.poll(() => installedPlugins(sandbox)).toEqual([]);
   await expect.poll(async () => (await api(page, '/api/progress')).body.stations.some((s) => s.id === 'auto-publish')).toBe(false);
   expect(JSON.parse(fs.readFileSync(lock, 'utf8'))).toEqual({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } });
+  // 去掉只是不用了，本地文件夹留着。
+  expect(fs.existsSync(manifestPath)).toBe(true);
 });
 
 test('a plugin page runs sandboxed and gets everything through the host', async ({ page, project, sandbox }) => {
@@ -294,6 +274,8 @@ test('a plugin page runs sandboxed and gets everything through the host', async 
   fs.writeFileSync(path.join(project.path, '.env'), 'MINIMAX_VOICE_ID=do-not-leak\n');
   installPlugin(sandbox, fake);
   await openProject(page, project);
+  // 插件不把顶栏撑出窗口（原来就有的 2px 是右上角的连接状态点）。
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(2);
 
   // 插件页面收在顶栏「页面」菜单里自己的一组（只用来嵌小窗的页面不列）。
   await page.locator('#page-menu-trigger').click();
@@ -309,6 +291,9 @@ test('a plugin page runs sandboxed and gets everything through the host', async 
   await expect(frame.locator('#secret')).toHaveText('.env 被拒绝');
   await expect(frame.locator('#publish')).toContainText('发布信息');
   await expect(frame.locator('#receipt')).toHaveText('还没有回执');
+  // 页面里的 SDK 拿到项目概况，并跟随宿主的配色（宿主一侧给什么在 Stations.test.tsx）。
+  await expect(frame.locator('#project')).toHaveText(/项目有 1 个镜头/);
+  await expect(frame.locator('#theme')).toHaveText('强调色 #d9a35f');
 
   // 页面里的按钮不算用户同意：宿主先弹确认。
   // 只比纵向：面板滑入的动画可能还在走，横向会差一两个像素。
@@ -352,46 +337,12 @@ test('a plugin page runs sandboxed and gets everything through the host', async 
   await clickInPage(frame.locator('#send'), () => expect(confirm).toBeVisible({ timeout: 2000 }));
   await confirm.getByRole('button', { name: '不执行' }).click();
   await expect(frame.locator('#result')).toHaveText('没执行：用户没有同意');
-});
 
-test('plugins get settings, a slot in the publish page, a slash command, hooks and calls into onset', async ({ page, project, sandbox }) => {
-  fs.mkdirSync(path.join(project.path, 'production'), { recursive: true });
-  fs.writeFileSync(path.join(project.path, 'production', 'script-final.md'), '# 稿\n正文\n');
-  fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: draft\n---\n');
-  installPlugin(sandbox, fake);
-  await openProject(page, project);
-
-  // 设置页：权限一目了然；密钥只写不读。
-  await page.locator('#settings-trigger').click();
-  const card = page.locator('#settings-dialog li[data-station="fake-publisher"]');
-  await expect(card).toContainText('还有设置没填');
-  await card.getByRole('button', { name: '详情与设置' }).click();
-  const detail = page.getByRole('dialog', { name: '假发布 详情与设置' });
-  // 页面的权限与插件接进来的地方分开列：页面在沙箱里，操作不在。
-  await expect(detail.locator('.station-page-perms')).toContainText('镜头、制作进度、发布信息的概况');
-  await expect(detail.locator('.station-page-perms')).toContainText('整片复查');
-  await expect(detail.locator('.station-perms:not(.station-page-perms)')).toContainText('你确认一个审核关卡后');
-  await detail.getByLabel('平台令牌').fill('tok-e2e-secret');
-  await detail.locator('[data-setting="token"]').getByRole('button', { name: '保存' }).click();
-  await expect(detail.locator('[data-setting="token"]')).toContainText('已填写');
-  await detail.getByLabel('默认平台').selectOption('bilibili');
-  await page.screenshot({ path: test.info().outputPath('station-settings.png') });
-  expect(await page.content()).not.toContain('tok-e2e-secret');
-  await detail.getByRole('button', { name: '关闭' }).click();
-  await expect(card).toContainText('第三方');
-  await page.locator('#settings-dialog').getByRole('button', { name: '关闭' }).click();
-  // 插件不把顶栏撑出窗口（原来就有的 2px 是右上角的连接状态点）。
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(2);
-
-  // 没打开项目时在设置里登录过的账号（只在插件自己的数据目录里，项目里没有它的文件）。
-  fs.mkdirSync(path.join(sandbox.stations, 'fake-publisher', 'data'), { recursive: true });
-  fs.writeFileSync(path.join(sandbox.stations, 'fake-publisher', 'data', 'login.json'), JSON.stringify({ name: '小号' }));
-  // 嵌进发布页的小窗：拿到嵌入位与设置（不含密钥）。
+  // 嵌进发布页的小窗：经 onset.list 现读插件的账号列表，不用用户确认。
   await page.locator('[data-tab="publish"]').click();
   const slot = page.frameLocator('.station-slots[data-slot="publish"] .station-frame');
-  await expect(slot.locator('#where')).toHaveText('嵌在 publish · 默认平台 bilibili');
-  // 小窗经 onset.list 现读插件的账号列表，不用用户确认，也不靠项目里的文件。
-  await expect(slot.locator('#accounts')).toHaveText('账号：小号');
+  await expect(slot.locator('#where')).toContainText('嵌在 publish');
+  await expect(slot.locator('#accounts')).toHaveText('还没有账号');
   await expect(page.locator('.station-confirm')).toHaveCount(0);
   // 小窗排在发布页下面，不盖住发布页的内容（发布页曾被压扁、内容溢出到小窗上）。
   const overlap = await page.evaluate(() => {
@@ -403,26 +354,17 @@ test('plugins get settings, a slot in the publish page, a slash command, hooks a
   });
   expect(overlap).not.toBeNull();
   expect(overlap).toBeLessThanOrEqual(0);
-  // 小窗里打开插件的整页。
-  await clickInPage(slot.locator('#open'), () => expect(page.locator('.station-page:not(.station-slot) .station-frame')).toBeVisible({ timeout: 2000 }));
-  const frame = page.frameLocator('.station-page:not(.station-slot) .station-frame');
-  await expect(frame.locator('#project')).toHaveText(/项目有 1 个镜头/);
-  // 页面跟随宿主的配色。
-  await expect(frame.locator('#theme')).toHaveText('强调色 #d9a35f');
 
-  // 调 onset 自带的操作：先请用户确认，拒绝就不跑。
-  const confirm = page.locator('.station-confirm');
-  await clickInPage(frame.locator('#review'), () => expect(confirm).toBeVisible({ timeout: 2000 }));
-  await expect(confirm).toContainText('「假发布」请求调用片场的：整片复查');
-  await confirm.getByRole('button', { name: '不执行' }).click();
-  await expect(frame.locator('#result')).toHaveText('没执行：用户没有同意');
-
-  // 事件钩子：确认稿件审核关卡后自动跑插件的操作，令牌经 stdin 交给它。
-  await api(page, '/api/progress/gates/gate-script', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } });
+  // 事件钩子：确认稿件审核关卡后自动跑插件的操作，设置里的密钥经 stdin 交给它。
+  const json = { 'Content-Type': 'application/json' };
+  await api(page, '/api/stations/fake-publisher/settings', { method: 'POST', body: JSON.stringify({ key: 'token', value: 'tok-e2e-secret' }), headers: json });
+  fs.writeFileSync(path.join(project.path, 'production', 'script-final.md'), '# 稿\n正文\n');
+  await api(page, '/api/progress/gates/gate-script', { method: 'POST', body: '{}', headers: json });
   const log = path.join(project.path, 'production', 'publish', 'hooks.log');
   await expect.poll(() => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '')).toBe('gate.confirmed token=set\n');
+  expect(await page.content()).not.toContain('tok-e2e-secret');
 
-  // 斜杠命令：/fabu 打开插件页面。
+  // 斜杠命令：/fabu 打开插件页面（插件命令登记进补全在 Stations.test.tsx）。
   await page.locator('[data-tab="script"]').click();
   await page.locator('#prompt').fill('/fabu');
   await page.locator('#prompt').press('Enter');
@@ -560,79 +502,4 @@ test('files a plugin op writes outside what it declared are shown as a warning',
   await expect(host.locator('.station-scope')).toContainText('「假发布」执行「顺手记一笔」');
   await expect(host.locator('.station-scope')).toContainText('notes/scribble.txt');
   await page.screenshot({ path: test.info().outputPath('station-scope-page.png') });
-});
-
-test('a third-party station that declares its state says when it waits for you, and its next-step buttons work', async ({ page, project, sandbox }) => {
-  // 假发布只用清单顶替内置「发布」：并进 declared-state.json（站点读 publish.md 的 publish_status）。
-  const dir = test.info().outputPath('declared-publisher');
-  fs.cpSync(fake, dir, { recursive: true });
-  const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'onset-station.json'), 'utf8'));
-  const patch = JSON.parse(fs.readFileSync(path.join(dir, 'declared-state.json'), 'utf8'));
-  manifest.replaces = patch.replaces;
-  delete manifest.after;
-  delete manifest.flow;
-  Object.assign(manifest.nodes[0], patch.node);
-  fs.writeFileSync(path.join(dir, 'onset-station.json'), JSON.stringify(manifest, null, 2));
-
-  // 试听确认过（前面的站都算过了），发布信息只差人工检查。
-  fs.mkdirSync(path.join(project.path, 'production'), { recursive: true });
-  fs.writeFileSync(path.join(project.path, 'production', 'approval.json'), '{"approved_at":"2026-11-01T00:00:00Z"}');
-  fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: pending_manual_checks\n---\n');
-  installPlugin(sandbox, dir);
-  await openProject(page, project);
-
-  const progress = await api(page, '/api/progress');
-  expect(progress.body.current).toBe('auto-publish');
-  expect(progress.body.waiting_on).toBe('user');
-  const strip = page.locator('#progress-strip');
-  await expect(strip).toContainText('现在 · 自动发布');
-  await expect(strip).toContainText('还剩人工检查，等你处理');
-  await expect(strip).toHaveClass(/waiting/);
-
-  const card = page.locator('#next-step');
-  await expect(card).toContainText('发布前还剩几项人工检查');
-  await page.screenshot({ path: test.info().outputPath('declared-next-step.png') });
-  // 填进输入框。
-  await card.getByRole('button', { name: '核对完了' }).click();
-  await expect(page.locator('#prompt')).toHaveValue('发布前的人工检查我核对完了：');
-  // 插件的操作：先在卡片上问一次，点「执行」才跑。
-  await card.getByRole('button', { name: '先记一笔' }).click();
-  const confirm = card.getByRole('alertdialog', { name: '确认执行' });
-  await expect(confirm).toContainText('执行插件操作「顺手记一笔（测试用：会写一个没声明的文件）」？');
-  await confirm.getByRole('button', { name: '取消' }).click();
-  await expect(confirm).toHaveCount(0);
-  const note = path.join(project.path, 'notes', 'scribble.txt');
-  expect(fs.existsSync(note)).toBe(false);
-  await card.getByRole('button', { name: '先记一笔' }).click();
-  await confirm.getByRole('button', { name: '执行' }).click();
-  await expect.poll(() => fs.existsSync(note)).toBe(true);
-
-  // 发布信息改成 ready：这一站做完，路线走完。
-  fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: ready\n---\n');
-  await expect.poll(async () => (await api(page, '/api/progress')).body.stations.find((s) => s.id === 'auto-publish').status).toBe('done');
-});
-
-// 打开过项目再回到首页：连点两下只跑一次；随后从设置里打开插件的页面，页面要真的出来，不能还停在首页。
-test('a plugin action clicked twice in a row runs once', async ({ page, project, sandbox }) => {
-  installPlugin(sandbox, fake);
-  await openProject(page, project);
-  await page.locator('.brand').click();
-  await expect(page.locator('.home-hero h1')).toBeVisible();
-  await page.locator('#settings-trigger').click();
-  await page.locator('#settings-dialog li[data-station="fake-publisher"]').getByRole('button', { name: '详情与设置' }).click();
-  const detail = page.getByRole('dialog', { name: '假发布 详情与设置' });
-  await expect(detail.locator('.plugin-list[data-op="accounts"]')).toContainText('还没有。');
-  const idle = async () => expect.poll(async () => (await api(page, '/api/tasks')).body.tasks.some((t) => t.status === 'running' || t.status === 'queued'), { timeout: 15000 }).toBe(false);
-  await idle();
-  const before = (await api(page, '/api/tasks')).body.tasks.length;
-  // 连点两下：按钮在重画成「不可点」之前还能收到第二下，第二次提交要被挡住。
-  await detail.locator('.station-op[data-op="login"]').getByRole('button', { name: '登录平台账号' }).evaluate((button) => { button.click(); button.click(); });
-  await expect(detail.locator('.plugin-list[data-op="accounts"] .plugin-item')).toHaveCount(1);
-  await idle();
-  // 一次登录，加上登录完刷新一次账号列表。
-  expect((await api(page, '/api/tasks')).body.tasks.length - before).toBe(2);
-
-  await detail.getByRole('button', { name: '打开「发布看板」' }).click();
-  await expect(page.locator('.home-hero h1')).toHaveCount(0);
-  await expect(page.locator('.station-page:not(.station-slot) .station-page-bar')).toContainText('发布看板');
 });

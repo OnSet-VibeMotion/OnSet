@@ -59,27 +59,3 @@ test('plays actual script audio, follows word timing, seeks and switches takes',
   await expect(page.locator('.script-char.now')).toHaveText('你');
   await page.getByRole('button', { name: '暂停配音', exact: true }).click();
 });
-
-test('subtitles alone are not playable, unreadable audio says so, and versioned audio works without subtitles', async ({ page, project }) => {
-  const dir = await draft(project, '你好世界');
-  await fs.writeFile(path.join(dir, 'voice.srt'), '1\n00:00:00,000 --> 00:00:04,000\n你好世界\n');
-  await openProject(page, project);
-  await page.locator('[data-tab="script"]').click();
-  await expect(page.locator('.script-tab')).toContainText('还没有找到配音音频');
-  await expect(page.getByRole('button', { name: '播放配音' })).toHaveCount(0);
-  await fs.rm(path.join(dir, 'voice.srt'));
-  // 读不了的音频文件：照实说放不了，不当成没有配音。
-  await fs.writeFile(path.join(dir, 'voice.wav'), 'broken audio');
-  await page.reload();
-  await page.locator('[data-tab="script"]').click();
-  await expect(page.locator('.script-player [role="alert"]')).toContainText('音频无法播放');
-  await fs.rm(path.join(dir, 'voice.wav'));
-  await fs.writeFile(path.join(dir, 'voice-v01.wav'), wav());
-  await page.reload();
-  await page.locator('[data-tab="script"]').click();
-  const audio = page.locator('audio[aria-label="口播配音"]');
-  await expect(audio).toHaveAttribute('src', /voice-v01\.wav/);
-  await page.getByRole('button', { name: '播放配音' }).click();
-  await expect.poll(() => audio.evaluate(el => el.currentTime)).toBeGreaterThan(0.1);
-  await expect(page.locator('.script-char.now')).toHaveText('你');
-});

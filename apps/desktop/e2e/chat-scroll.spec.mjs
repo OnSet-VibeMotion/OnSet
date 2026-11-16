@@ -32,25 +32,13 @@ async function openLongProcess(page, project) {
   await page.locator('.shell > summary').click();
 }
 
-test('scrolls over expanded process details and keeps the latest button in step with the scroll range', async ({ page, project }) => {
+// 鼠标停在展开的思考、工具输出上也能滚动整段对话，并能回到最新回复：滚轮落在嵌套的可滚动块上时
+// 由谁接住是真实浏览器的排版与滚动链，jsdom 测不了。展开、收起时「回到最新」跟着滚动范围变、历史里被拒的命令
+// 显示成失败，在 src/renderer/components/Chat.test.tsx。
+test('scrolls the conversation with the wheel over expanded thinking and tool output', async ({ page, project }) => {
   await openLongProcess(page, project);
   const messages = page.locator('#messages');
   const jump = page.getByRole('button', { name: '回到最新' });
-  await expect(page.locator('.tool.running')).toHaveCount(0);
-  await expect(page.locator('.tool.done')).toContainText('notes.md');
-  await expect(page.locator('.tool.failed')).toContainText('pwd');
-
-  // 展开、收起过程改变滚动范围时，「回到最新」跟着变。
-  await expect.poll(() => messages.evaluate(el => el.scrollHeight - el.clientHeight)).toBeGreaterThan(500);
-  await expect(jump).toBeVisible();
-  // 在顶部收起过程：scrollTop 一直是 0，不会有 scroll 事件来纠正按钮。
-  await messages.evaluate(el => { el.scrollTop = 0; });
-  await page.locator('.shell > summary').click();
-  await expect.poll(() => messages.evaluate(el => el.scrollHeight - el.clientHeight)).toBe(0);
-  await expect(jump).toBeHidden();
-
-  // 鼠标停在展开的思考、工具输出上也能滚，并能回到最新回复。
-  await page.locator('.shell > summary').click();
   for (const kind of ['thinking', 'tool']) {
     const detail = page.locator(kind === 'thinking' ? '.thinking-row' : '.tool.done');
     await detail.locator(':scope > summary').click();

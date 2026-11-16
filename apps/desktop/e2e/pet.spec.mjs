@@ -5,34 +5,18 @@ import { test, expect, openProject, petPage } from './fixtures.mjs';
 // 桌宠（main/pet.ts、Pet.tsx）：主窗口从会话事件推出小人在做什么，经主进程转给桌宠窗口；
 // 后台运行（测试）时桌宠窗口照样建、照样收状态，只是不显示。
 
-test('a camera operator goes to work for each scene that is rendering', async ({ page, project, electronApp }) => {
-  // 进行中标记指向一个活着的进程（测试进程自己）：scene-001 在渲染。
+// 桌宠不只是看：批准、选项、说一句、停下与「点人打开那一页」都能在桌宠上做，动作经主进程交回主窗口。
+// 后台运行时桌宠不显示，按钮用 force 点。
+
+// 小人在哪个部门、气泡怎么说在 chat/crew.test.mjs；这里只走一遍主窗口 → 主进程 → 桌宠窗口的转发。
+test('approvals, choices and a quick message can be sent from the pet, which mirrors the orchestrator', async ({ page, project, electronApp, sandbox }) => {
+  // 进行中标记指向一个活着的进程（测试进程自己）：scene-001 在渲染（镜头列表 → 主窗口 → 桌宠这一路）。
   const sceneDir = path.join(project.path, 'scenes', 'scene-001');
   fs.writeFileSync(path.join(sceneDir, 'render-scene-001.stream.jsonl'), '');
   fs.writeFileSync(
     path.join(sceneDir, 'render-scene-001.live.json'),
     JSON.stringify({ pid: process.pid, renderer: 'claude', started_at: new Date().toISOString() }),
   );
-  const pet = await petPage(electronApp);
-  await openProject(page, project);
-  // 没有对话在跑，制作人仍在待命；摄影从沙发走到机位，脚下挂着镜头号。
-  await expect(pet.locator('#crew')).toHaveAttribute('data-mood', 'idle');
-  await expect(pet.locator('[data-who="op1"]')).toHaveAttribute('data-active', 'true');
-  await expect(pet.locator('[data-who="op2"]')).toHaveAttribute('data-active', 'false');
-  await expect(pet.locator('[data-tag="op1"]')).toHaveText('001');
-  await expect(pet.locator('.pet-legend')).toHaveText('1 个镜头在拍');
-
-  // 渲染结束：回沙发。（只删标记不行：没有标记时按渲染日志三分钟内有没有写入判断，日志也一并拿掉。）
-  fs.rmSync(path.join(sceneDir, 'render-scene-001.live.json'));
-  fs.rmSync(path.join(sceneDir, 'render-scene-001.stream.jsonl'));
-  await expect(pet.locator('[data-who="op1"]')).toHaveAttribute('data-active', 'false', { timeout: 15_000 });
-});
-
-// 桌宠不只是看：批准、选项、说一句、停下与「点人打开那一页」都能在桌宠上做，动作经主进程交回主窗口。
-// 后台运行时桌宠不显示，按钮用 force 点。
-
-// 小人在哪个部门、气泡怎么说在 chat/crew.test.mjs；这里只走一遍主窗口 → 主进程 → 桌宠窗口的转发。
-test('approvals, choices and a quick message can be sent from the pet, which mirrors the orchestrator', async ({ page, project, electronApp }) => {
   const pet = await petPage(electronApp);
   const crew = pet.locator('#crew');
   // 没有进行中的一轮：坐在制作人椅上待命；没打开项目时工作室也知道还没有项目（主进程据此不显示桌宠）。
@@ -41,6 +25,13 @@ test('approvals, choices and a quick message can be sent from the pet, which mir
   await expect(crew).toHaveAttribute('data-project', 'none');
   await openProject(page, project);
   await expect(crew).toHaveAttribute('data-project', 'open');
+  // 摄影从沙发走到机位，脚下挂着镜头号（每个镜头一位、面板与菜单在 Pet.test.tsx）。
+  await expect(pet.locator('[data-who="op1"]')).toHaveAttribute('data-active', 'true');
+  await expect(pet.locator('[data-tag="op1"]')).toHaveText('001');
+  // 渲染结束：一轮也没在跑时镜头列表照样刷新，摄影回沙发。（只删标记不行：没有标记时按渲染日志三分钟内有没有写入判断，日志也一并拿掉。）
+  fs.rmSync(path.join(sceneDir, 'render-scene-001.live.json'));
+  fs.rmSync(path.join(sceneDir, 'render-scene-001.stream.jsonl'));
+  await expect(pet.locator('[data-who="op1"]')).toHaveAttribute('data-active', 'false', { timeout: 15_000 });
 
   // 读文件的调用还没有结果：走到书架前读，气泡写文件名，卡片底下写项目名；停下后是「停下」。
   await page.locator('#prompt').fill('看看稿子');
@@ -82,64 +73,10 @@ test('approvals, choices and a quick message can be sent from the pet, which mir
   await pet.locator('.pet-act[data-act="stop"]').click({ force: true });
   await expect(pet.locator('#crew')).toHaveAttribute('data-mood', 'stopped');
   await expect(pet.locator('.pet-act[data-act="stop"]')).toHaveCount(0);
-});
 
-test('clicking someone selects them, shows their state and queue, and offers a ring of real actions', async ({ page, project, electronApp }) => {
-  const pet = await petPage(electronApp);
-  await openProject(page, project);
-  // 一轮带待办清单：制作人的动作队列就是它。
-  await page.locator('#prompt').fill('给我选项');
-  await page.locator('#send').click();
-  await expect(page.locator('.choice').first()).toBeVisible();
-
-  await pet.locator('.pet-spot[data-spot="director"]').click({ force: true });
-  await expect(pet.locator('.pet-spot[data-spot="director"]')).toHaveAttribute('data-selected', 'true');
-  const panel = pet.locator('.pet-panel[data-who="director"]');
-  await expect(panel.locator('strong')).toHaveText('制作人');
-  await expect(panel.locator('.pet-queue li')).toHaveText(['读稿子', '正在定风格']);
-  await expect(panel.locator('.pet-queue li').first()).toHaveAttribute('data-state', 'completed');
-  await expect(panel.locator('.pet-needs')).toContainText('进度');
-  await expect(panel.locator('.pet-needs')).toContainText('1 / 2');
-  // 刚做完一轮：心情是满意或舒心（收工后回到待命）。
-  await expect(panel.locator('.pet-mood')).toHaveText(/满意|舒心/);
-
-  // 环形菜单：点「看制作路线」，主窗口切过去，菜单收起，选中留着。
-  const pie = pet.locator('.pet-pie[data-who="director"]');
-  await expect(pie.locator('.pet-pie-item')).toContainText(['看制作路线', '对他说一句', '回到对话']);
-  await pie.getByRole('menuitem', { name: '看制作路线' }).click({ force: true });
-  await expect(page.locator('#progress-open')).toHaveAttribute('aria-current', 'page');
-  await expect(pie).toHaveCount(0);
-  await expect(panel).toBeVisible();
-
-  // 换选摄影：闲着的摄影只给「看镜头」，面板写他在做什么闲事。
-  await pet.locator('.pet-spot[data-spot="op1"]').click({ force: true });
-  await expect(pet.locator('.pet-panel[data-who="op1"] strong')).toHaveText('摄影 1');
-  await expect(pet.locator('.pet-pie[data-who="op1"] .pet-pie-item')).toHaveText(['看镜头']);
-  await pet.locator('.pet-pie-item', { hasText: '看镜头' }).click({ force: true });
-  await expect(page.locator('[data-tab="scene"]')).toHaveAttribute('aria-current', 'page');
-
-  // 物件不弹菜单：分镜板直接打开分镜。
+  // 点物件切页：主进程把主窗口叫到前面再交给界面切过去。
   await pet.locator('.pet-spot[data-spot="storyboard"]').click({ force: true });
   await expect(page.locator('[data-tab="storyboard"]')).toHaveAttribute('aria-current', 'page');
-
-  // 取消选中。
-  await pet.locator('.pet-panel-close').click({ force: true });
-  await expect(pet.locator('.pet-panel')).toHaveCount(0);
-});
-
-test('the camera zooms and pans the studio, the light follows the clock, and the window is remembered', async ({ electronApp, page, project, sandbox }) => {
-  const pet = await petPage(electronApp);
-  await openProject(page, project);
-  const stage = pet.locator('.pet-stage');
-  const scaleOf = async () => Number((await stage.evaluate((el) => getComputedStyle(el).transform)).match(/matrix\(([^,]+)/)?.[1] ?? '1');
-  const before = await scaleOf();
-  await pet.locator('.pet-cam button[aria-label="放大"]').click({ force: true });
-  await expect.poll(scaleOf).toBeGreaterThan(before * 1.2);
-  await pet.locator('.pet-cam button[data-cam="reset"]').click({ force: true });
-  await expect.poll(scaleOf).toBeCloseTo(before, 3);
-  // 昼夜：按这台电脑的时间给出一个时段。
-  await expect(pet.locator('#crew')).toHaveAttribute('data-daypart', /^(night|dawn|day|dusk|evening)$/);
-  await expect(pet.locator('.pet-clock')).toHaveText(/^(夜|清晨|白天|傍晚|晚上) \d\d:\d\d$/);
 
   // 窗口缺省 640×500；拖把手的那一套在主进程里跟着鼠标改，这里只看结束时记下大小。
   const size = await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.isResizable())?.getSize());

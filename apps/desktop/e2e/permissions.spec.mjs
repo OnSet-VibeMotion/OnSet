@@ -60,26 +60,3 @@ test('asks for an ACP orchestrator too', async ({ page, project }) => {
   await card.locator('button', { hasText: '拒绝' }).click();
   await expect(page.locator('#messages')).toContainText('你拒绝了一条调用');
 });
-
-// 「以后都不用问」：打开全局的自动批准，眼前这条放行；之后的请求不再弹卡片，对话里留一行「已自动允许」。
-test('"never ask again" turns on auto-approve for every later request', async ({ page, project, sandbox }) => {
-  await openProject(page, project);
-  await page.locator('#prompt').fill('要批准：装一下 three');
-  await page.locator('#prompt').press('Enter');
-  const card = page.locator('.permission-card');
-  await expect(card).toBeVisible();
-  await card.locator('button', { hasText: '以后都不用问' }).click();
-  await expect(card).toHaveCount(0);
-  await expect(page.locator('.message.assistant').last()).toContainText('behavior:allow');
-  expect(fs.readFileSync(sandbox.settings, 'utf8')).toContain('AUTO_APPROVE=on');
-
-  await page.locator('#prompt').fill('要批准：再装一次');
-  await page.locator('#prompt').press('Enter');
-  await expect(page.locator('.message.assistant').last()).toContainText('behavior:allow', { timeout: 10_000 });
-  await expect(page.locator('.permission-card')).toHaveCount(0);
-  await expect(page.locator('#messages')).toContainText('已自动允许：npm install three');
-
-  // 设置页里能看到、也能关掉。
-  await page.locator('#settings-trigger').click();
-  await expect(page.locator('.settings-row[data-key="AUTO_APPROVE"]').getByLabel('全局执行操作前问我')).toHaveValue('on');
-});

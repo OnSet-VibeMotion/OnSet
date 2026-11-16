@@ -503,7 +503,7 @@ export interface ExamResult {
   questions: ExamQuestion[];
   cells: ExamCell[];
   verdict: { pass: boolean; invalid: boolean; needs_human: boolean; control_score: number; trial_score: number; reasons: string[] };
-  applied: 'promoted' | 'rejected' | 'none';
+  applied: 'promoted' | 'rejected' | 'retest-passed' | 'retest-failed' | 'none';
   snapshot?: number;
   evaluation_note?: string;
 }

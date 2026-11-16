@@ -94,15 +94,11 @@ jobs:
             exit 1
           fi
 
-  # e2e 分到几台机器上跑：macOS 机器只有 3 个核，一台机器上同时开几个 Electron 每个都慢好几倍，总时间不省、
-  # 对时间敏感的音视频用例还会超时（实测）。每台一次只跑一个用例，按 Playwright 的 --shard 分。
-  e2e-shard:
-    name: Desktop client end-to-end shard ${{ matrix.shard }}/3
+  # e2e 只测核心流程（AGENTS.md「端到端测试」），一台机器一次一个用例：这台 macOS 只有 3 个核，
+  # 同时开几个 Electron 每个用例慢好几倍、音视频用例超时（实测）。界面细节在组件测试里，随「类型检查和测试」跑。
+  e2e:
+    name: Desktop client end-to-end (Playwright, Electron)
     runs-on: macos-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -112,21 +108,11 @@ jobs:
       - name: Install media tools
         run: node .github/scripts/install-ffmpeg.mjs "$RUNNER_TEMP/ffmpeg"
       - run: npm ci --no-audit --no-fund
-      - run: npm run test:e2e -w onset-desktop -- --shard=${{ matrix.shard }}/3
+      - run: npm run test:e2e -w onset-desktop
       - name: Upload Playwright traces
         if: failure()
         uses: actions/upload-artifact@v5
         with:
-          name: playwright-results-${{ matrix.shard }}
+          name: playwright-results
           path: apps/desktop/test-results
           retention-days: 7
-
-  # 分支保护要求的检查名：几个分片都过了才算过。
-  e2e:
-    name: Desktop client end-to-end (Playwright, Electron)
-    if: always()
-    needs: e2e-shard
-    runs-on: ubuntu-latest
-    steps:
-      - name: All shards passed
-        run: test "${{ needs.e2e-shard.result }}" = success

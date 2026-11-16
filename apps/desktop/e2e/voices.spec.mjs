@@ -5,38 +5,7 @@ import { test, expect, openProject, openPage } from './fixtures.mjs';
 
 const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0;
 
-test('records my own voice from the microphone into the shared library', async ({ page, project, sandbox }) => {
-  test.skip(!hasFfmpeg, '要用 ffmpeg 把录音转成参考音频');
-  await openProject(page, project);
-  await openPage(page, 'voice');
-  const tab = page.locator('.voices-tab');
-  await expect(tab.locator('.voices-empty')).toContainText('录一段自己的声音');
-  // 默认就是「录我的声音」：页面给出要念的那段字。
-  await expect(tab.getByRole('tab', { name: '录我的声音' })).toHaveAttribute('aria-selected', 'true');
-  await expect(tab.locator('.voices-sample')).toContainText('大家好');
-
-  await tab.getByRole('button', { name: '开始录音' }).click();
-  // 录的时候有实时电平。
-  await expect(tab.locator('.voices-live .voice-bars rect').first()).toBeVisible();
-  await expect(tab.locator('.voices-rec')).toContainText('停止 · 4 秒', { timeout: 10_000 });
-  await tab.locator('.voices-rec').click();
-  // 录完是这一段的波形，回放时文字跟着亮。
-  const takeTrack = tab.locator('.voices-take');
-  await expect(takeTrack.locator('.voice-clock')).toHaveText(/^0:0\d\.\d$/);
-  await takeTrack.getByTitle('回放').click();
-  await expect(takeTrack.locator('.voice-read .w.now')).toHaveCount(1, { timeout: 5_000 });
-  // 念的就是那段字，逐字稿已经填好。
-  await expect(tab.locator('.voices-field textarea')).toHaveValue(/大家好/);
-  await tab.getByPlaceholder('给它起个名字，例如：我的声音').fill('我的声音');
-  await page.screenshot({ path: test.info().outputPath('record.png') });
-  await tab.getByRole('button', { name: '存进音色库' }).click();
-
-  const voice = tab.locator('.voice', { hasText: '我的声音' });
-  await expect(voice).toBeVisible();
-  await expect(voice.locator('.voice-badge')).toHaveText('默认');
-  await expect(voice).toContainText('本人录音');
-  expect(fs.existsSync(path.join(sandbox.voices, '我的声音', 'reference.wav'))).toBe(true);
-});
+// 录我的声音（麦克风、实时电平、回放跟读、交给 /api/voice-record 的内容）在 src/renderer/components/Voices.test.tsx。
 
 test('designing offers Breeze; an uploaded recording goes into the shared library, plays and deletes', async ({ page, project, sandbox }) => {
   await openProject(page, project);

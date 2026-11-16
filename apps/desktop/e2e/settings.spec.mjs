@@ -1,61 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import http from 'node:http';
 import { test, expect, openProject } from './fixtures.mjs';
 
-test.describe('Producer renderer settings', () => {
-  test.use({ appEnv: { RENDERER: null } });
-  test('selects the Producer, lists models from the custom service, and keeps the home tool menu in step', async ({ page, sandbox }) => {
-    const server = http.createServer((_req, res) => {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ data: [{ id: 'custom-render-model' }, { id: 'custom-other-model' }] }));
-    });
-    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    try {
-      // 还没有模型服务：首页的工具菜单里制作人不能选。
-      const homeTool = page.locator('#home-tool');
-      const director = page.getByRole('menuitemradio', { name: /^制作人/ });
-      await homeTool.click();
-      await expect(director).toBeDisabled();
-      await homeTool.click();
-      await page.locator('#settings-trigger').click();
-      const dialog = page.locator('#settings-dialog');
-      const section = dialog.locator('section.agent-services');
-      const form = dialog.getByRole('form', { name: '添加模型服务' });
-      await form.locator('[data-preset=""]').click();
-      await form.getByLabel('名称', { exact: true }).fill('自定义渲染服务');
-      await form.getByLabel('Base URL').fill(`http://127.0.0.1:${server.address().port}/v1`);
-      await form.getByLabel('API key').fill('sk-refresh-test');
-      await form.getByLabel('模型', { exact: true }).fill('custom-render-model');
-      await form.getByRole('button', { name: '保存' }).click();
-      await expect(page.locator('.agent-service-list li')).toContainText('自定义渲染服务');
-      // 存下服务后首页菜单立刻能选制作人，不用重开。
-      await dialog.getByRole('button', { name: '关闭', exact: true }).click();
-      await homeTool.click();
-      await expect(director).toBeEnabled();
-      await director.click();
-      await expect(homeTool).toContainText('制作人');
-      await page.locator('#settings-trigger').click();
-      const renderer = page.getByLabel('全局画镜头的工具');
-      await expect(renderer.locator('option[value="director"]')).toHaveText('制作人');
-      await renderer.selectOption('director');
-      await expect.poll(() => fs.readFileSync(sandbox.settings, 'utf8')).toContain('RENDERER=director');
-      const model = page.getByLabel('全局画镜头的模型');
-      await expect(model.locator('option[value="custom-other-model"]')).toHaveCount(1);
-      await model.selectOption('custom-other-model');
-      await expect.poll(() => fs.readFileSync(sandbox.settings, 'utf8')).toContain('RENDERER_MODEL=custom-other-model');
-      // 删掉服务：首页菜单里的制作人跟着变回不能选。
-      await section.getByRole('button', { name: '删除', exact: true }).click();
-      await expect(section.locator('.agent-service-list li')).toHaveCount(0);
-      await dialog.getByRole('button', { name: '关闭', exact: true }).click();
-      await homeTool.click();
-      await expect(director).toBeDisabled();
-      await expect(homeTool).not.toContainText('制作人');
-    } finally {
-      await new Promise(resolve => server.close(resolve));
-    }
-  });
-});
+// 制作人的模型服务与首页工具菜单联动、模型目录的筛选与键盘选择是组件测试：
+// src/renderer/components/Settings.test.tsx、ServiceModelPicker.test.tsx。
 
 test('settings pick what to use for every project, and one project can differ', async ({ page, project, sandbox }) => {
   await openProject(page, project);
@@ -90,55 +38,6 @@ test('settings pick what to use for every project, and one project can differ', 
   await dialog.getByRole('button', { name: /全部改回和其他项目一样/ }).click();
   await expect.poll(() => fs.readFileSync(conf, 'utf8')).toMatch(/^SCENE_JOBS=$/m);
   await expect(row('SCENE_JOBS').getByLabel('这个项目的同时画几个镜头')).toHaveCount(0);
-});
-
-test('a large custom model catalogue scrolls and can be filtered or selected by keyboard', async ({ page, project }) => {
-  const models = Array.from({ length: 97 }, (_, i) => `provider/model-${String(i).padStart(3, '0')}`);
-  const server = http.createServer((_req, res) => {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ data: models.map((id) => ({ id })) }));
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  try {
-    await openProject(page, project);
-    await page.locator('#settings-trigger').click();
-    const form = page.locator('#settings-dialog section.agent-services').getByRole('form', { name: '添加模型服务' });
-    await form.locator('[data-preset=""]').click();
-    await form.getByLabel('Base URL').fill(`http://127.0.0.1:${server.address().port}/v1`);
-    await form.getByRole('button', { name: '读取模型列表' }).click();
-    const list = form.getByRole('listbox', { name: '可选模型' });
-    await expect(list.getByRole('option')).toHaveCount(97);
-    const input = form.getByRole('combobox', { name: '模型', exact: true });
-    const geometry = await list.evaluate((el) => ({ height: el.clientHeight, scrollHeight: el.scrollHeight, overflow: getComputedStyle(el).overflowY }));
-    expect(geometry.height).toBeLessThanOrEqual(240);
-    expect(geometry.scrollHeight).toBeGreaterThan(geometry.height);
-    expect(geometry.overflow).toBe('scroll');
-    await list.hover();
-    await page.mouse.wheel(0, 2000);
-    await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
-    await list.getByRole('option', { name: models[96], exact: true }).click();
-    await expect(input).toHaveValue(models[96]);
-    await expect(list).toHaveCount(0);
-    await form.getByRole('button', { name: '展开模型列表' }).click();
-    await expect(list.getByRole('option')).toHaveCount(97);
-    await input.fill('model-096');
-    await expect(list.getByRole('option')).toHaveCount(1);
-    await input.press('ArrowDown');
-    await input.press('Enter');
-    await expect(input).toHaveValue(models[96]);
-    await expect(list).toHaveCount(0);
-    await input.fill('my-private-model');
-    await expect(form.getByText('没有匹配的模型，可以直接使用输入的名称')).toBeVisible();
-    await input.press('Escape');
-    await expect(input).toHaveValue('my-private-model');
-    await expect(list).toHaveCount(0);
-    await expect(page.locator('#settings-dialog')).toBeVisible();
-    await form.getByRole('button', { name: '展开模型列表' }).click();
-    await list.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: test.info().outputPath('scrollable-model-catalogue.png') });
-  } finally {
-    await new Promise((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
-  }
 });
 
 test('the Director keeps several model services, prefilled by presets that reset when switched to custom, and never shows a key back', async ({ page, project, sandbox }) => {
