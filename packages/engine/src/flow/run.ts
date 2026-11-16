@@ -202,13 +202,17 @@ export async function runStationOp(
   const checked = checkParams(op, params);
   const dataDir = path.join(stationsDir(env), station.manifest.id, 'data');
   fs.mkdirSync(dataDir, { recursive: true });
-  const childEnv = stationEnv(env, dataDir, root, station.dir);
+  // 不需要项目的操作（登录、管理账号这类插件自己的配置）没打开项目时：工作目录是插件的数据目录，不扫项目。
+  const projectless = root === '';
+  if (projectless && op.project !== false) throw new Error(`第三方站 ${stationID} 的 ${opName} 要在项目里执行，先打开一个项目`);
+  const projectRoot = root;
+  const childEnv = stationEnv(env, dataDir, projectRoot, station.dir);
   const cmd = resolveCommand(op.command, station.dir, env, childEnv.PATH ?? '');
   write(`第三方站 ${station.manifest.name}（${station.manifest.id} ${station.manifest.version}）：${op.summary}\n`);
-  const before = statProject(root);
-  const child = spawn(cmd.file, cmd.args, { cwd: root, env: { ...childEnv, ...cmd.env }, stdio: ['pipe', 'pipe', 'pipe'], ...groupSpawnOptions() });
+  const before = projectless ? null : statProject(root);
+  const child = spawn(cmd.file, cmd.args, { cwd: projectless ? dataDir : root, env: { ...childEnv, ...cmd.env }, stdio: ['pipe', 'pipe', 'pipe'], ...groupSpawnOptions() });
   // 设置（含插件自己的密钥）只经 stdin 交给它，不进环境变量，也不进命令行。
-  const input: Record<string, unknown> = { params: checked, settings: stationSettings(env, station.manifest), project_root: root, station_dir: station.dir, data_dir: dataDir };
+  const input: Record<string, unknown> = { params: checked, settings: stationSettings(env, station.manifest), project_root: projectRoot, station_dir: station.dir, data_dir: dataDir };
   if (event) input.event = event;
   if (op.trigger === 'user' && station.manifest.browser && !event && env[StationBrowserEnv]) input.browser = JSON.parse(env[StationBrowserEnv]!);
   child.stdin.end(JSON.stringify(input) + '\n');
@@ -244,7 +248,7 @@ export async function runStationOp(
   });
   signal?.removeEventListener('abort', onAbort);
   if (pending !== '' && !pending.startsWith(ResultPrefix)) write(pending + '\n');
-  const scope = scopeReport(station.manifest, before, statProject(root));
+  const scope = before ? scopeReport(station.manifest, before, statProject(root)) : null;
   if (scope) write(scopeText(station.manifest.name, scope));
   const { data, bad } = parseResultLine(stdout);
   if (code !== 0) {

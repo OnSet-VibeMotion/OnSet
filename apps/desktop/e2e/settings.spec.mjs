@@ -1,38 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import http from 'node:http';
 import { test, expect, openProject } from './fixtures.mjs';
 
-test.describe('Producer renderer settings', () => {
-  test.use({ appEnv: { RENDERER: null } });
-  test('selects the Producer and lists models from the custom service', async ({ page, sandbox }) => {
-    const server = http.createServer((_req, res) => {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ data: [{ id: 'custom-render-model' }, { id: 'custom-other-model' }] }));
-    });
-    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    try {
-      await page.locator('#settings-trigger').click();
-      const form = page.locator('#settings-dialog').getByRole('form', { name: '添加模型服务' });
-      await form.locator('[data-preset=""]').click();
-      await form.getByLabel('名称', { exact: true }).fill('自定义渲染服务');
-      await form.getByLabel('Base URL').fill(`http://127.0.0.1:${server.address().port}/v1`);
-      await form.getByLabel('模型', { exact: true }).fill('custom-render-model');
-      await form.getByRole('button', { name: '保存' }).click();
-      await expect(page.locator('.agent-service-list li')).toContainText('自定义渲染服务');
-      const renderer = page.getByLabel('全局画镜头的工具');
-      await expect(renderer.locator('option[value="director"]')).toHaveText('制作人');
-      await renderer.selectOption('director');
-      await expect.poll(() => fs.readFileSync(sandbox.settings, 'utf8')).toContain('RENDERER=director');
-      const model = page.getByLabel('全局画镜头的模型');
-      await expect(model.locator('option[value="custom-other-model"]')).toHaveCount(1);
-      await model.selectOption('custom-other-model');
-      await expect.poll(() => fs.readFileSync(sandbox.settings, 'utf8')).toContain('RENDERER_MODEL=custom-other-model');
-    } finally {
-      await new Promise(resolve => server.close(resolve));
-    }
-  });
-});
+// 制作人的模型服务与首页工具菜单联动、模型目录的筛选与键盘选择是组件测试：
+// src/renderer/components/Settings.test.tsx、ServiceModelPicker.test.tsx。
 
 test('settings pick what to use for every project, and one project can differ', async ({ page, project, sandbox }) => {
   await openProject(page, project);
@@ -69,104 +40,7 @@ test('settings pick what to use for every project, and one project can differ', 
   await expect(row('SCENE_JOBS').getByLabel('这个项目的同时画几个镜头')).toHaveCount(0);
 });
 
-test('saving and deleting a Director service refreshes the home tool menu immediately', async ({ page }) => {
-  await page.locator('#home-tool').click();
-  const director = page.getByRole('menuitemradio', { name: /^制作人/ });
-  await expect(director).toBeDisabled();
-  await page.locator('#home-tool').click();
-  await page.locator('#settings-trigger').click();
-  const section = page.locator('#settings-dialog section.agent-services');
-  const form = section.getByRole('form', { name: '添加模型服务' });
-  await form.getByLabel('API key').fill('sk-refresh-test');
-  await form.getByRole('button', { name: '保存' }).click();
-  await expect(section.locator('.agent-service-list li')).toHaveCount(1);
-  await page.locator('#settings-dialog').getByRole('button', { name: '关闭', exact: true }).click();
-  await page.locator('#home-tool').click();
-  await expect(director).toBeEnabled();
-  await director.click();
-  await expect(page.locator('#home-tool')).toContainText('制作人');
-  await page.locator('#settings-trigger').click();
-  await section.getByRole('button', { name: '删除', exact: true }).click();
-  await expect(section.locator('.agent-service-list li')).toHaveCount(0);
-  await page.locator('#settings-dialog').getByRole('button', { name: '关闭', exact: true }).click();
-  await page.locator('#home-tool').click();
-  await expect(director).toBeDisabled();
-  await expect(page.locator('#home-tool')).not.toContainText('制作人');
-});
-
-test('a large custom model catalogue scrolls and can be filtered or selected by keyboard', async ({ page, project }) => {
-  const models = Array.from({ length: 97 }, (_, i) => `provider/model-${String(i).padStart(3, '0')}`);
-  const server = http.createServer((_req, res) => {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ data: models.map((id) => ({ id })) }));
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  try {
-    await openProject(page, project);
-    await page.locator('#settings-trigger').click();
-    const form = page.locator('#settings-dialog section.agent-services').getByRole('form', { name: '添加模型服务' });
-    await form.locator('[data-preset=""]').click();
-    await form.getByLabel('Base URL').fill(`http://127.0.0.1:${server.address().port}/v1`);
-    await form.getByRole('button', { name: '读取模型列表' }).click();
-    const list = form.getByRole('listbox', { name: '可选模型' });
-    await expect(list.getByRole('option')).toHaveCount(97);
-    const input = form.getByRole('combobox', { name: '模型', exact: true });
-    const geometry = await list.evaluate((el) => ({ height: el.clientHeight, scrollHeight: el.scrollHeight, overflow: getComputedStyle(el).overflowY }));
-    expect(geometry.height).toBeLessThanOrEqual(240);
-    expect(geometry.scrollHeight).toBeGreaterThan(geometry.height);
-    expect(geometry.overflow).toBe('scroll');
-    await list.hover();
-    await page.mouse.wheel(0, 2000);
-    await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
-    await list.getByRole('option', { name: models[96], exact: true }).click();
-    await expect(input).toHaveValue(models[96]);
-    await expect(list).toHaveCount(0);
-    await form.getByRole('button', { name: '展开模型列表' }).click();
-    await expect(list.getByRole('option')).toHaveCount(97);
-    await input.fill('model-096');
-    await expect(list.getByRole('option')).toHaveCount(1);
-    await input.press('ArrowDown');
-    await input.press('Enter');
-    await expect(input).toHaveValue(models[96]);
-    await expect(list).toHaveCount(0);
-    await input.fill('my-private-model');
-    await expect(form.getByText('没有匹配的模型，可以直接使用输入的名称')).toBeVisible();
-    await input.press('Escape');
-    await expect(input).toHaveValue('my-private-model');
-    await expect(list).toHaveCount(0);
-    await expect(page.locator('#settings-dialog')).toBeVisible();
-    await form.getByRole('button', { name: '展开模型列表' }).click();
-    await list.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: test.info().outputPath('scrollable-model-catalogue.png') });
-  } finally {
-    await new Promise((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
-  }
-});
-
-test('switching a Director preset to custom resets provider fields', async ({ page, project }) => {
-  await openProject(page, project);
-  await page.locator('#settings-trigger').click();
-  const form = page.locator('#settings-dialog section.agent-services').getByRole('form', { name: '添加模型服务' });
-  for (const preset of ['deepseek', 'anthropic']) {
-    await form.locator(`[data-preset="${preset}"]`).click();
-    await form.locator('[data-preset=""]').click();
-    await expect(form.getByLabel('名称', { exact: true })).toHaveValue('');
-    await expect(form.getByLabel('协议')).toHaveValue('openai');
-    await expect(form.getByLabel('Base URL')).toHaveValue('');
-    await expect(form.getByLabel('模型', { exact: true })).toHaveValue('');
-    await expect(form.getByRole('checkbox')).toBeChecked();
-    await expect(form.getByRole('link', { name: '去申请' })).toHaveCount(0);
-    await expect(form.getByRole('button', { name: '保存' })).toBeDisabled();
-  }
-  // 已经是自定义时，再点一次不丢掉手填内容。
-  await form.getByLabel('名称', { exact: true }).fill('本机服务');
-  await form.getByLabel('Base URL').fill('http://localhost:8080/v1');
-  await form.locator('[data-preset=""]').click();
-  await expect(form.getByLabel('名称', { exact: true })).toHaveValue('本机服务');
-  await expect(form.getByLabel('Base URL')).toHaveValue('http://localhost:8080/v1');
-});
-
-test('the Director keeps several model services, prefilled by presets, and never shows a key back', async ({ page, project, sandbox }) => {
+test('the Director keeps several model services, prefilled by presets that reset when switched to custom, and never shows a key back', async ({ page, project, sandbox }) => {
   await openProject(page, project);
   await page.locator('#settings-trigger').click();
   const section = page.locator('#settings-dialog section.agent-services');
@@ -190,7 +64,24 @@ test('the Director keeps several model services, prefilled by presets, and never
   // 再加一套手填的：OpenAI 兼容的中转。
   await section.getByRole('button', { name: '添加' }).click();
   const second = section.getByRole('form', { name: '添加模型服务' });
+  // 从预设换回自定义：服务商带来的字段全部清空，要重新填。
+  for (const preset of ['deepseek', 'anthropic']) {
+    await second.locator(`[data-preset="${preset}"]`).click();
+    await second.locator('[data-preset=""]').click();
+    await expect(second.getByLabel('名称', { exact: true })).toHaveValue('');
+    await expect(second.getByLabel('协议')).toHaveValue('openai');
+    await expect(second.getByLabel('Base URL')).toHaveValue('');
+    await expect(second.getByLabel('模型', { exact: true })).toHaveValue('');
+    await expect(second.getByRole('checkbox')).toBeChecked();
+    await expect(second.getByRole('link', { name: '去申请' })).toHaveCount(0);
+    await expect(second.getByRole('button', { name: '保存' })).toBeDisabled();
+  }
+  // 已经是自定义时，再点一次不丢掉手填内容。
+  await second.getByLabel('名称', { exact: true }).fill('本机服务');
+  await second.getByLabel('Base URL').fill('http://localhost:8080/v1');
   await second.locator('[data-preset=""]').click();
+  await expect(second.getByLabel('名称', { exact: true })).toHaveValue('本机服务');
+  await expect(second.getByLabel('Base URL')).toHaveValue('http://localhost:8080/v1');
   await second.getByLabel('名称', { exact: true }).fill('公司中转');
   await second.getByLabel('Base URL').fill('https://relay.example.com/v1/');
   await second.getByLabel('API key').fill('sk-relay');

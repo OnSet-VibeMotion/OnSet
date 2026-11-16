@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { test, expect, openProject } from './fixtures.mjs';
 
-// 制作路线：按产物列出每一站做没做、现在在哪；关卡记下用户的确认；每一轮归到它动过的站上。
+// 制作路线：按产物列出每一站做没做、现在在哪，「接下来」卡片说清下一步；关卡记下用户的确认；每一轮归到它动过的站上。
 
 async function write(root, rel, body) {
   await fs.mkdir(path.dirname(path.join(root, rel)), { recursive: true });
@@ -21,6 +21,15 @@ test('the production map shows what was done and where the project is', async ({
   await expect(page.locator('#progress-strip')).toContainText('等你确认');
   await expect(page.locator('#progress-strip')).toHaveClass(/waiting/);
   await expect(page.locator('[data-tab="storyboard"]')).toHaveClass(/current/);
+
+  // 「接下来」卡片说清现在做什么：「看分镜」打开分镜页；「我要改」只是把一句话填进输入框。
+  const card = page.locator('#next-step');
+  await expect(card).toContainText('分镜审核');
+  await expect(card).toContainText('渲染前先看一遍');
+  await card.getByRole('button', { name: '看分镜' }).click();
+  await expect(page.locator('#storyboard')).toBeVisible();
+  await card.getByRole('button', { name: '我要改' }).click();
+  await expect(page.locator('#prompt')).toHaveValue(/分镜这几处要改/);
 
   // 点开制作路线。
   await page.locator('#progress-strip').click();

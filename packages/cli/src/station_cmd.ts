@@ -197,7 +197,10 @@ defineOp({
       throw new ParamError(`params 不是合法的 JSON：${(err as Error).message}`);
     }
     if (params === null || typeof params !== 'object' || Array.isArray(params)) throw new ParamError('params 要是 JSON 对象');
-    const result = await flow.runStationOp(path.resolve(str(p.project_root)), str(p.station), str(p.op), params as Record<string, unknown>, (t) => out.write(t), signal, process.env, event);
+    // 空的项目根表示没打开项目（设置里点的、清单写了 project: false 的操作），原样交下去；
+    // 不能按当前目录解析，不然执行进程的工作目录（插件目录）会被当成项目扫、插件也会往里写项目文件。
+    const root = str(p.project_root) === '' ? '' : path.resolve(str(p.project_root));
+    const result = await flow.runStationOp(root, str(p.station), str(p.op), params as Record<string, unknown>, (t) => out.write(t), signal, process.env, event);
     if (!result.ok) throw new Error(result.error ?? '第三方插件的操作失败');
     return result.data === undefined ? undefined : { data: result.data };
   },

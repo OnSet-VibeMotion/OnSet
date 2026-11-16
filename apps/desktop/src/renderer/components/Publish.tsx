@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, rawURL } from '../api';
 import type { RunAction } from './Preview';
-import { StationActions } from './Stations';
 import '../publish.css';
 
 /**
@@ -178,7 +177,6 @@ export function PublishTab({ version, run }: { version: number; run: RunAction }
             {check}
           </div>
         </header>
-        <StationActions version={version} run={run} step="publish" />
         <section className="publish-section" data-ctx-source="publish.md" data-ctx-label="发布文案">
           <CopyField label="标题" value={copy.primary_title} count display />
           {platformTitles.map(([platform, title]) => (

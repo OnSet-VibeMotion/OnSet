@@ -7,7 +7,6 @@ import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { marshal } from '@onset/engine/gojson';
-import { windowsRenderWorkers, windowsSceneJobs } from '@onset/engine/windowsruntime';
 import * as config from '@onset/engine/config';
 import * as envutil from '@onset/engine/envutil';
 import * as scene from '@onset/engine/scene';
@@ -83,7 +82,8 @@ defineOp({
     validateTolerance(tolerance);
     const cfg = config.load('.', null);
     let s = scene.load(str(p.scene));
-    if (process.platform === 'win32') s = scene.withRenderWorkers(s, windowsRenderWorkers(os.availableParallelism(), os.totalmem(), os.freemem(), 1));
+    const budget = schedule.renderBudget(os.availableParallelism(), schedule.systemMemory(), os.freemem(), 1, 1);
+    s = scene.withRenderWorkers(s, budget.workers);
     s = attachMemory(s, cfg, err, newRunID());
     if (bool(p.fresh)) s = { ...s, fresh: true };
     await scene.run(s, cfg, envutil.isUnsafe(unsafe), currentEnvironment(), out, tolerance, signal);
@@ -148,10 +148,8 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     ...Object.fromEntries(plugin.pluginRenderChecks().flatMap((c) => Object.entries(c.value.params ?? {}))),
     srt: { type: 'string', description: '定稿字幕路径；给了就核对镜头总时长是否等于字幕跨度' },
     coverage_tolerance: { type: 'number', description: '镜头总时长与字幕跨度的允许偏差（秒）', default: 0.1 },
-    ...(process.platform === 'win32' ? {
-      priority_scenes: { type: 'strings' as const, description: '优先派发的代表镜头 ID，如 scene-001、scene-004、scene-009。其余镜头同时入队，任何名额释放即补位，不等待代表镜头全部结束' },
-      queue_trace_json: { type: 'string' as const, description: '项目 production/ 内的新 JSONL 文件，记录派发、完成、并发和补位空闲时间；缺省自动创建' },
-    } : {}),
+    priority_scenes: { type: 'strings' as const, description: '优先派发的代表镜头 ID，如 scene-001、scene-004、scene-009。其余镜头同时入队，任何名额释放即补位，不等待代表镜头全部结束' },
+    queue_trace_json: { type: 'string' as const, description: '项目 production/ 内的新 JSONL 文件，记录派发、完成、并发和补位空闲时间；缺省自动创建' },
     strict_coverage: { type: 'boolean', description: '覆盖校验不通过时直接失败，而不是只打印警告' },
   },
   run: async (p, { out, err, signal, unsafe }) => {
@@ -166,8 +164,10 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     if (jobs === 0) jobs = cfg.sceneJobs;
     if (jobs < 1 || jobs > 16 || retries < 0 || retries > 5) throw new Error('jobs 必须为 1..16，retries 必须为 0..5');
     const scenes = schedule.plan(str(p.scenes));
-    const priority = process.platform === 'win32' ? strs(p.priority_scenes) : [];
-    if(new Set(priority).size!==priority.length||priority.some(id=>!scenes.some(s=>s.id===id)))throw Error('priority_scenes 必须是本批中不重复的镜头 ID');
+    const priority = strs(p.priority_scenes);
+    if (new Set(priority).size !== priority.length || priority.some(id => !scenes.some(s => s.id === id))) {
+      throw new Error('priority_scenes 必须是本批中不重复的镜头 ID');
+    }
     // 覆盖校验在渲染之前跑：漏掉一镜或某镜时长写错，等全部渲染完
     // 拼接时才发现的话，每一镜都已经烧掉一次完整的 AI CLI 调用。
     let span = 0;
@@ -231,53 +231,76 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     // 已跳过的镜头不占渲染并发，worker 按真正要渲染的镜头数分。
     // 并发镜头往同一个 out 写阶段消息：Node 单线程，每次 write 是整行，不会互相切开。
     const cpus = os.availableParallelism(), total = schedule.systemMemory(), available = os.freemem();
-    const runJobs = process.platform === 'win32' ? windowsSceneJobs(cpus, total, available, jobs) : jobs;
-    const activeJobs = Math.min(runJobs, scenes.length - initial.size);
-    out.write(`镜头调度：并发上限 ${runJobs}，本批待渲染 ${scenes.length - initial.size} 个，最多同时运行 ${activeJobs} 个\n`);
-    const workers = process.platform === 'win32'
-      ? windowsRenderWorkers(cpus, total, available, activeJobs)
-      : schedule.renderWorkers(cpus, total, activeJobs);
-    if (process.platform === 'win32' && activeJobs > 0) out.write(`Windows 渲染预算：设置上限 ${jobs} 个，当前最多 ${activeJobs} 个镜头，每镜头 ${workers} 个浏览器 worker（按当前 CPU 与可用内存）\n`);
-    let trace = '', traceFD: number | undefined;
-    if(process.platform==='win32'&&scenes.length){
-      const project=scene.findProjectRoot(scenes[0].directory);
-      if(!project)throw Error('Windows 队列监控需要合法项目根目录');
+    const pending = scenes.length - initial.size;
+    const { jobs: runJobs, workers } = schedule.renderBudget(cpus, total, available, jobs, pending);
+    const activeJobs = Math.min(runJobs, pending);
+    out.write(`镜头调度：并发上限 ${runJobs}，本批待渲染 ${pending} 个，最多同时运行 ${activeJobs} 个\n`);
+    if (activeJobs > 0) out.write(`渲染预算：设置上限 ${jobs} 个，当前最多 ${activeJobs} 个镜头，每镜头 ${workers} 个浏览器 worker\n`);
+    let trace = '';
+    let traceFD: number | undefined;
+    // 队列日志写在项目的 production/ 里：没有项目根（独立的镜头目录、上层没有 onset.conf）时缺省就不写，
+    // 不拦整批渲染；只有显式要了 queue_trace_json 才非有项目根不可。
+    const project = scenes.length ? scene.findProjectRoot(scenes[0].directory) : '';
+    if (!project && str(p.queue_trace_json) !== '') throw new Error('queue_trace_json 需要合法项目根目录（镜头目录上层要有 onset.conf）');
+    if (scenes.length && project) {
       // newRunID has second precision; immediate reuse checks can start several queues in one second.
       // Keep each trace distinct without overwriting earlier evidence or changing memory batch IDs.
-      trace=path.resolve(project,str(p.queue_trace_json)||path.join('production/render-queues',run+'-'+randomUUID()+'.jsonl'));
-      const relative=path.relative(project,trace).split(path.sep).join('/');
-      if(!relative.startsWith('production/')||relative.split('/').some(part=>part.startsWith('.')))throw Error('queue_trace_json 必须是 production/ 下的新文件');
-      for(let dir=path.dirname(trace);dir!==project;dir=path.dirname(dir))if(fs.existsSync(dir)&&fs.lstatSync(dir).isSymbolicLink())throw Error('队列日志目录不能经过链接');
-      fs.mkdirSync(path.dirname(trace),{recursive:true});traceFD=fs.openSync(trace,'wx');
-      out.write(`Windows 连续队列：${scenes.length} 个镜头已入队；优先 ${priority.join('、')||'按长镜头优先'}；日志 ${trace}\n`);
+      trace = path.resolve(project, str(p.queue_trace_json) || path.join('production/render-queues', run + '-' + randomUUID() + '.jsonl'));
+      const relative = path.relative(project, trace).split(path.sep).join('/');
+      if (!relative.startsWith('production/') || relative.split('/').some(part => part.startsWith('.'))) {
+        throw new Error('queue_trace_json 必须是 production/ 下的新文件');
+      }
+      for (let dir = path.dirname(trace); dir !== project; dir = path.dirname(dir)) {
+        if (fs.existsSync(dir) && fs.lstatSync(dir).isSymbolicLink()) throw new Error('队列日志目录不能经过链接');
+      }
+      fs.mkdirSync(path.dirname(trace), { recursive: true });
+      traceFD = fs.openSync(trace, 'wx');
+      out.write(`连续队列：${scenes.length} 个镜头已入队；优先 ${priority.join('、') || '按长镜头优先'}；日志 ${trace}\n`);
     }
     let report: schedule.RunReport;
-    let traceFailed=false;
-    try { report = await schedule.runAll(signal, scenes, runJobs, retries, async (sig, s) => {
-      const outcome = initial.get(s.id);
-      if (outcome) throw outcome;
-      s = scene.withRenderWorkers(s, workers);
-      try {
-        await scene.run(s, cfg, envutil.isUnsafe(unsafe), currentEnvironment(), out, tolerance, sig);
-      } catch (e) {
-        // 产物规格不符是确定性的：同样的提示词和渲染器重跑只会得到同样的产物。
-        // 不在这里截断的话，每个规格不符的镜头都要白烧 retries 次 AI CLI 调用。
-        if (e instanceof scene.VerificationError || e instanceof scene.SceneBusyError) throw schedule.fatal(e);
-        throw e;
+    let traceFailed = false;
+    try {
+      report = await schedule.runAll(signal, scenes, runJobs, retries, async (sig, s) => {
+        const outcome = initial.get(s.id);
+        if (outcome) throw outcome;
+        s = scene.withRenderWorkers(s, workers);
+        try {
+          await scene.run(s, cfg, envutil.isUnsafe(unsafe), currentEnvironment(), out, tolerance, sig);
+        } catch (e) {
+          // 产物规格不符是确定性的：同样的提示词和渲染器重跑只会得到同样的产物。
+          // 不在这里截断的话，每个规格不符的镜头都要白烧 retries 次 AI CLI 调用。
+          if (e instanceof scene.VerificationError || e instanceof scene.SceneBusyError) throw schedule.fatal(e);
+          throw e;
+        }
+      }, {
+        priority,
+        onEvent: event => {
+          if (traceFD === undefined || traceFailed) return;
+          try {
+            fs.writeSync(traceFD, marshal({ ...event, at: new Date().toISOString() }) + '\n');
+          } catch (error) {
+            traceFailed = true;
+            err.write('队列监控写入失败：' + (error as Error).message + '\n');
+          }
+        },
+      });
+    } finally {
+      if (traceFD !== undefined) {
+        try { fs.closeSync(traceFD); }
+        catch (error) {
+          traceFailed = true;
+          err.write('队列监控关闭失败：' + (error as Error).message + '\n');
+        }
       }
-    }, process.platform==='win32'?{priority,onEvent:event=>{
-      if(traceFD===undefined||traceFailed)return;
-      try{fs.writeSync(traceFD,marshal({...event,at:new Date().toISOString()})+'\n');}
-      catch(error){traceFailed=true;err.write('队列监控写入失败：'+(error as Error).message+'\n');}
-    }}:{}); } finally {
-      if (traceFD !== undefined) try { fs.closeSync(traceFD); }
-      catch (error) { traceFailed = true; err.write('队列监控关闭失败：' + (error as Error).message + '\n'); }
     }
     schedule.attachUsage(report, usage);
     out.write(schedule.renderReport(report) + '\n');
     if (reportPath !== '') schedule.writeReportJSON(report, reportPath);
     const code = schedule.reportExitCode(report);
     if (code !== 0) throw new ExitError(code, '镜头执行未全部成功');
-    return { data: {...schedule.reportToJSON(report) as Record<string,unknown>,...(trace?{queue_trace_json:trace,queue_trace_ok:!traceFailed}:{})} };
+    return { data: {
+      ...schedule.reportToJSON(report) as Record<string, unknown>,
+      ...(trace ? { queue_trace_json: trace, queue_trace_ok: !traceFailed } : {}),
+    } };
   },
 });

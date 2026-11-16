@@ -505,3 +505,13 @@ export function findMedia(text: string, files: string[]): MediaRef[] {
   }
   return out.slice(0, 12);
 }
+
+/**
+ * 点风格卡片发出的那句话；收起已答的选项时按它认出选的是哪个。
+ * 全片默认、只给一段、不知道是哪种（回复里没有 film-styles 代码块）各是一种说法，不能都说成「整片风格」。
+ */
+export function stylePickMessage(name: string, pick: StylePick): string {
+  if (!pick.explicit) return `选「${name}」（${pick.key}）这个风格`;
+  if (pick.scope) return `${pick.scope}用「${name}」风格（${pick.key}），其余镜头不变`;
+  return `整片风格用「${name}」（${pick.key}）`;
+}

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon, type IconName } from './Icon';
 import { NativeDirectoryPicker } from './NativeDirectoryPicker';
 import { api, errorText, post } from '../api';
@@ -11,8 +12,8 @@ import '../stations.css';
 /**
  * 插件。
  * - 设置页：内置功能与「我的插件」——这台电脑上装的第三方插件，对所有项目生效：它会做什么、要了哪些权限、
- *   它的设置（含密钥），添加、更新与去掉。没有打开项目也能管（PluginSettings）；
- * - 发布页：只能由用户触发的操作的按钮（StationActions）；
+ *   它的设置（含密钥）、要你点的操作与它的页面入口，添加、更新与去掉。没有打开项目也能管（PluginSettings），
+ *   操作与页面要先打开项目；发布页这类制作页面里不放插件的配置；
  * - 插件自己的页面（StationPage）与嵌进自带页面的小窗（StationSlots），都经 StationFrame 的沙箱桥接。
  * 装、去掉、更新是后台任务（/api/stations），执行操作是项目的写任务；客户端自己不写项目文件。
  */
@@ -147,6 +148,199 @@ function BuiltinDetail({ contents }: { contents: BuiltinContents }) {
 }
 
 /** 插件的设置：按清单出表单。密钥只写不读，界面上只显示「已填写」。 */
+/** 列表操作结果里的一项（清单 ops[].list）：卡片上的头像、名字与按钮。只认 data:image 的图片。 */
+interface ListItem {
+  title: string;
+  detail: string;
+  image: string;
+  actions: { label: string; op: string; params: Record<string, unknown>; confirm: string }[];
+}
+
+function listItems(run?: StationRun): ListItem[] | null {
+  const raw = (run?.data as { items?: unknown } | undefined)?.items;
+  if (!Array.isArray(raw)) return null;
+  const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
+  return raw.slice(0, 50).flatMap((it): ListItem[] => {
+    if (!it || typeof it !== 'object') return [];
+    const o = it as Record<string, unknown>;
+    const title = str(o.title, 80);
+    if (!title) return [];
+    const image = typeof o.image === 'string' && /^data:image\/(png|jpeg|jpg|gif|webp);base64,/.test(o.image) ? o.image : '';
+    const actions = (Array.isArray(o.actions) ? o.actions : []).slice(0, 4).flatMap((a) => {
+      if (!a || typeof a !== 'object') return [];
+      const x = a as Record<string, unknown>;
+      const params = x.params && typeof x.params === 'object' && !Array.isArray(x.params) ? (x.params as Record<string, unknown>) : {};
+      return str(x.label, 20) && str(x.op, 80) ? [{ label: str(x.label, 20), op: str(x.op, 80), params, confirm: str(x.confirm, 120) }] : [];
+    });
+    return [{ title, detail: str(o.detail, 160), image, actions }];
+  });
+}
+
+/** 发起一条插件操作并等它跑完（不需要项目的操作是用户级任务，设置里没打开项目也能跑）。 */
+async function runAndWait(path: string, payload: Record<string, unknown>): Promise<Task> {
+  const { task_id } = await post<{ task_id: string }>(path, payload);
+  for (;;) {
+    await new Promise((r) => window.setTimeout(r, 400));
+    const t = await api<Task>(`/api/tasks/${encodeURIComponent(task_id)}`);
+    if (t.status === 'succeeded' || t.status === 'failed' || t.status === 'cancelled') return t;
+  }
+}
+
+/**
+ * 「详情与设置」里插件要你点的东西：列表操作（ops[].list，例如已登录的账号）画成卡片，打开弹窗与每次操作跑完后自动刷新；
+ * 其余操作出按钮表单（ops[].form 为 false 的不出）。不需要项目的在这里跑完再刷新列表，要项目的交给客户端的写任务。
+ */
+function PluginActions({ station, run, onDone }: { station: StationInfo; run?: RunAction; onDone: () => void }) {
+  const user = station.ops.filter((o) => o.trigger === 'user');
+  const lists = user.filter((o) => o.list);
+  const forms = user.filter((o) => !o.list && o.form);
+  const [busy, setBusy] = useState('');
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [asking, setAsking] = useState('');
+  // 同一时间只跑一个：按钮在 React 重画前还能再点一次，靠这个同步的标记挡住第二次提交。
+  const inflight = useRef(false);
+  const base = `/api/stations/${encodeURIComponent(station.id)}/ops/`;
+  const refresh = async () => {
+    for (const l of lists) await runAndWait(base + encodeURIComponent(l.name), { params: {} }).catch(() => undefined);
+    setLoaded(true);
+    onDone();
+  };
+  useEffect(() => {
+    if (lists.length > 0) void refresh();
+    // 只在打开弹窗（换插件）时刷新。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [station.id]);
+  const start = (op: StationOp, params: Record<string, unknown>) => {
+    if (op.project) {
+      if (!run) return setMessage({ ok: false, text: `「${op.summary.replace(/（.*?）/g, '')}」要在项目里执行，先打开一个项目` });
+      return run(base + encodeURIComponent(op.name), { params });
+    }
+    if (inflight.current) return;
+    inflight.current = true;
+    const label = op.summary.replace(/（.*?）/g, '');
+    setBusy(label);
+    setMessage(null);
+    void (async () => {
+      try {
+        const t = await runAndWait(base + encodeURIComponent(op.name), { params });
+        const done = (t.result as { message?: unknown } | undefined)?.message;
+        setMessage(t.status === 'succeeded' ? { ok: true, text: typeof done === 'string' && done ? done : `${label}：好了` } : { ok: false, text: `${label}没有成功：${t.error || t.message}` });
+      } catch (err) {
+        setMessage({ ok: false, text: `${label}没有成功：${errorText(err)}` });
+      }
+      inflight.current = false;
+      setBusy('');
+      await refresh();
+    })();
+  };
+  if (user.length === 0) return null;
+  const projectForms = forms.filter((o) => o.project);
+  return (
+    <div className="station-actions-group plugin-actions">
+      {busy && <div className="stations-busy" role="status">{busy}…</div>}
+      {!busy && message && <div className={message.ok ? 'stations-result' : 'stations-result bad'} role="status">{message.text}</div>}
+      {lists.map((l) => {
+        const items = listItems(l.last_run);
+        return (
+          <section key={l.name} className="plugin-list" data-op={l.name} aria-label={l.summary}>
+            <div className="plugin-list-head">
+              <div className="station-prompt-label">{l.summary.replace(/（.*?）/g, '')}</div>
+              <button className="link" disabled={busy !== ''} onClick={() => void refresh()}>刷新</button>
+            </div>
+            {!loaded && !items && <span className="station-perms-note">正在读取…</span>}
+            {l.last_run && !l.last_run.ok && <span className="station-last bad">{l.last_run.text.trim().split('\n').pop()}</span>}
+            {items && items.length === 0 && <span className="station-perms-note">还没有。</span>}
+            {items && items.length > 0 && (
+              <ul className="plugin-items">
+                {items.map((it, i) => (
+                  <li key={it.title + i} className="plugin-item">
+                    {it.image ? <img src={it.image} alt="" /> : <span className="plugin-item-blank">{[...it.title][0]}</span>}
+                    <div className="plugin-item-text">
+                      <strong>{it.title}</strong>
+                      {it.detail && <span>{it.detail}</span>}
+                    </div>
+                    {it.actions.map((a) => {
+                      const op = user.find((o) => o.name === a.op);
+                      if (!op) return null;
+                      // 确认状态认的是这一项本身（名字与按钮参数），不是它在列表里的位置：列表刷新后挪了位，不能确认到别的账号上。
+                      const key = `${it.title}\n${a.label}\n${JSON.stringify(a.params)}`;
+                      return asking === key ? (
+                        <span key={key} className="plugin-item-confirm">
+                          <span>{a.confirm}</span>
+                          <button className="danger" disabled={busy !== ''} onClick={() => { setAsking(''); start(op, a.params); }}>{a.label}</button>
+                          <button onClick={() => setAsking('')}>取消</button>
+                        </span>
+                      ) : (
+                        <button key={key} disabled={busy !== ''} onClick={() => (a.confirm ? setAsking(key) : start(op, a.params))}>
+                          {a.label}
+                        </button>
+                      );
+                    })}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        );
+      })}
+      {forms.length > 0 && <div className="station-prompt-label">要你点的操作</div>}
+      {forms.filter((o) => !o.project).map((o) => (
+        <OpAction key={o.name} station={station} op={o} disabled={busy !== ''} run={(_path, payload) => start(o, (payload?.params as Record<string, unknown>) ?? {})} />
+      ))}
+      {projectForms.length > 0 &&
+        (run ? (
+          projectForms.map((o) => <OpAction key={o.name} station={station} op={o} run={run} />)
+        ) : (
+          <span className="station-perms-note">
+            {projectForms.map((o) => `「${o.summary.replace(/（.*?）/g, '')}」`).join('')}针对项目执行，打开一个项目后在这里点。
+          </span>
+        ))}
+    </div>
+  );
+}
+
+/**
+ * 一个第三方插件的「详情与设置」：盖在设置窗口上的弹窗（挂到 body 上，不受设置窗口的滚动与裁切）。
+ * Esc、点背景、「关闭」都只关这一层，设置窗口留着。
+ */
+function PluginDialog({ station, onClose, children }: { station: StationInfo; onClose: () => void; children: ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      onClose();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
+  return createPortal(
+    <div className="modal-backdrop plugin-dialog-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <section className="modal plugin-dialog" role="dialog" aria-modal="true" aria-label={`${station.name} 详情与设置`} data-station={station.id}>
+        <header className="modal-head">
+          <span className="station-icon">
+            <PluginGlyph />
+          </span>
+          <div className="plugin-dialog-title">
+            <h2>{station.name}</h2>
+            <span>
+              {placement(station)} · {station.version}
+            </span>
+          </div>
+          <span className="station-badge">第三方</span>
+          <span className="spacer" />
+          <button className="ghost icon" onClick={onClose} aria-label="关闭">
+            <Icon name="close" />
+          </button>
+        </header>
+        <div className="stations plugin-dialog-body">{children}</div>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
 function StationSettingsForm({ station, onSaved }: { station: StationInfo; onSaved: () => void }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
@@ -363,7 +557,10 @@ function StagedConfirm({ staged, onInstall, onCancel }: { staged: StagedPlugin; 
 }
 
 /** 设置页：内置功能与「我的插件」。插件装在这台电脑上，对所有项目生效；没有打开项目也能管。 */
-export function PluginSettings({ version, onChanged }: { version: number; onChanged?: () => void }) {
+/**
+ * run 与 onOpenPage 只在打开了项目时给：要你点的操作是项目的写任务，插件的页面在项目的画面面板里打开。
+ */
+export function PluginSettings({ version, onChanged, run, onOpenPage }: { version: number; onChanged?: () => void; run?: RunAction; onOpenPage?: (tab: string) => void }) {
   const [data, error, reload] = useStations(version);
   const [source, setSource] = useState('');
   const [open, setOpen] = useState<string>('');
@@ -471,8 +668,12 @@ export function PluginSettings({ version, onChanged }: { version: number; onChan
                     </span>
                   </div>
                   <span className="station-badge">第三方</span>
-                  <button className="link" onClick={() => setOpen(open === s.id ? '' : s.id)}>
-                    {open === s.id ? '收起' : '详情与设置'}
+                  <button
+                    className="link"
+                    aria-haspopup="dialog"
+                    onClick={() => setOpen(s.id)}
+                  >
+                    详情与设置
                   </button>
                   {!s.linked && (
                     <button className="link" disabled={task.busy !== ''} onClick={() => task.start(`/api/stations/${encodeURIComponent(s.id)}/update`, '取回新版本', {}, show)}>
@@ -484,79 +685,98 @@ export function PluginSettings({ version, onChanged }: { version: number; onChan
                   </button>
                 </div>
                 {open === s.id && (
-                  <div className="station-detail">
-                    <dl>
-                      <dt>来源</dt>
-                      <dd className="mono">
-                        {s.source}
-                        {s.commit ? ` · ${s.commit.slice(0, 12)}` : s.linked ? ' · 本机目录，改动立即生效' : ''}
-                      </dd>
-                      {s.experimental.length > 0 && (
-                        <>
-                          <dt>实验性</dt>
-                          <dd className="station-experimental">用到了实验性能力：{s.experimental.join('、')}，以后的版本可能调整</dd>
-                        </>
-                      )}
-                      {s.ops.some((o) => o.trigger === 'agent') && (
-                        <>
-                          <dt>AI 能用的</dt>
-                          <dd>{s.ops.filter((o) => o.trigger === 'agent').map((o) => o.summary).join('；')}</dd>
-                        </>
-                      )}
-                      {s.ops.some((o) => o.trigger === 'user') && (
-                        <>
-                          <dt>要你点的</dt>
-                          <dd>{s.ops.filter((o) => o.trigger === 'user').map((o) => o.summary).join('；')}</dd>
-                        </>
-                      )}
-                      {s.pages.length > 0 && (
-                        <>
-                          <dt>页面</dt>
-                          <dd>{s.pages.map((p) => p.label).join('、')}</dd>
-                        </>
-                      )}
-                    </dl>
-                    {s.ops.length > 0 && (
-                      <>
-                        <div className="station-prompt-label">它的操作</div>
-                        <p className="station-trust">{opsTrust}</p>
-                      </>
-                    )}
-                    {pagePerms.length > 0 && (
-                      <>
-                        <div className="station-prompt-label">它的页面能做的</div>
-                        <dl className="station-perms station-page-perms">
-                          {pagePerms.map(([k, v]) => (
-                            <div key={k + v}>
-                              <dt>{k}</dt>
-                              <dd>{v}</dd>
-                            </div>
-                          ))}
+                  <PluginDialog station={s} onClose={() => setOpen('')}>
+                      <div className="station-detail">
+                        <StationSettingsForm station={s} onSaved={reload} />
+                        {s.pages.length > 0 && (
+                          <div className="station-page-links">
+                            <div className="station-prompt-label">它的页面</div>
+                            {onOpenPage ? (
+                              <div className="station-page-buttons">
+                                {s.pages.map((p) => (
+                                  <button key={p.tab} onClick={() => onOpenPage(p.tab)}>
+                                    打开「{p.label}」
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="station-perms-note">打开一个项目后，可以在这里打开它的页面。</span>
+                            )}
+                          </div>
+                        )}
+                        <PluginActions station={s} run={run} onDone={reload} />
+                        <dl>
+                          <dt>来源</dt>
+                          <dd className="mono">
+                            {s.source}
+                            {s.commit ? ` · ${s.commit.slice(0, 12)}` : s.linked ? ' · 本机目录，改动立即生效' : ''}
+                          </dd>
+                          {s.experimental.length > 0 && (
+                            <>
+                              <dt>实验性</dt>
+                              <dd className="station-experimental">用到了实验性能力：{s.experimental.join('、')}，以后的版本可能调整</dd>
+                            </>
+                          )}
+                          {s.ops.some((o) => o.trigger === 'agent') && (
+                            <>
+                              <dt>AI 能用的</dt>
+                              <dd>{s.ops.filter((o) => o.trigger === 'agent').map((o) => o.summary).join('；')}</dd>
+                            </>
+                          )}
+                          {s.ops.some((o) => o.trigger === 'user') && (
+                            <>
+                              <dt>要你点的</dt>
+                              <dd>{s.ops.filter((o) => o.trigger === 'user').map((o) => o.summary).join('；')}</dd>
+                            </>
+                          )}
+                          {s.pages.length > 0 && (
+                            <>
+                              <dt>页面</dt>
+                              <dd>{s.pages.map((p) => p.label).join('、')}</dd>
+                            </>
+                          )}
                         </dl>
-                        <span className="station-perms-note">页面在沙箱里运行，只能做上面这些；读文件、执行操作都要经过片场。</span>
-                      </>
-                    )}
-                    {perms.length > 0 && (
-                      <>
-                        <div className="station-prompt-label">它接进来的地方</div>
-                        <dl className="station-perms">
-                          {perms.map(([k, v]) => (
-                            <div key={k + v}>
-                              <dt>{k}</dt>
-                              <dd>{v}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      </>
-                    )}
-                    <StationSettingsForm station={s} onSaved={reload} />
-                    {s.prompt && (
-                      <>
-                        <div className="station-prompt-label">它交给 AI 的说明</div>
-                        <pre className="station-prompt">{s.prompt}</pre>
-                      </>
-                    )}
-                  </div>
+                        {s.ops.length > 0 && (
+                          <>
+                            <div className="station-prompt-label">它的操作</div>
+                            <p className="station-trust">{opsTrust}</p>
+                          </>
+                        )}
+                        {pagePerms.length > 0 && (
+                          <>
+                            <div className="station-prompt-label">它的页面能做的</div>
+                            <dl className="station-perms station-page-perms">
+                              {pagePerms.map(([k, v]) => (
+                                <div key={k + v}>
+                                  <dt>{k}</dt>
+                                  <dd>{v}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                            <span className="station-perms-note">页面在沙箱里运行，只能做上面这些；读文件、执行操作都要经过片场。</span>
+                          </>
+                        )}
+                        {perms.length > 0 && (
+                          <>
+                            <div className="station-prompt-label">它接进来的地方</div>
+                            <dl className="station-perms">
+                              {perms.map(([k, v]) => (
+                                <div key={k + v}>
+                                  <dt>{k}</dt>
+                                  <dd>{v}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          </>
+                        )}
+                        {s.prompt && (
+                          <>
+                            <div className="station-prompt-label">它交给 AI 的说明</div>
+                            <pre className="station-prompt">{s.prompt}</pre>
+                          </>
+                        )}
+                      </div>
+                  </PluginDialog>
                 )}
               </li>
             );
@@ -617,7 +837,7 @@ function toParams(params: StationParam[], values: Record<string, string | boolea
   return out;
 }
 
-function OpAction({ station, op, run }: { station: StationInfo; op: StationOp; run: RunAction }) {
+function OpAction({ station, op, run, disabled = false }: { station: StationInfo; op: StationOp; run: RunAction; disabled?: boolean }) {
   const [values, setValues] = useState<Record<string, string | boolean>>(() => Object.fromEntries(op.params.map((p) => [p.key, initialValue(p)])));
   const missing = op.params.some((p) => p.required && p.type !== 'boolean' && String(values[p.key] ?? '').trim() === '');
   const last = op.last_run;
@@ -648,7 +868,7 @@ function OpAction({ station, op, run }: { station: StationInfo; op: StationOp; r
         </label>
       ))}
       <div className="station-op-foot">
-        <button className="primary" disabled={missing} onClick={() => run(`/api/stations/${encodeURIComponent(station.id)}/ops/${encodeURIComponent(op.name)}`, { params: toParams(op.params, values) })}>
+        <button className="primary" disabled={missing || disabled} onClick={() => run(`/api/stations/${encodeURIComponent(station.id)}/ops/${encodeURIComponent(op.name)}`, { params: toParams(op.params, values) })}>
           {op.summary.replace(/（.*?）/g, '')}
         </button>
         {last && <span className={last.ok ? 'station-last ok' : 'station-last bad'}>{last.ok ? '上次执行成功' : '上次执行失败'}</span>}
@@ -683,37 +903,6 @@ function ScopeWarning({ run, label }: { run?: StationRun; label?: string }) {
     </div>
   );
 }
-
-/**
- * 发布页（或别的页面）上给第三方站的「用户触发」操作的按钮：只列站点落在这一步的站。
- * 这些动作（发出去、上传）对外且不能撤回，所以只能由用户点，编排工具没有这些工具。
- */
-export function StationActions({ version, run, step }: { version: number; run: RunAction; step: string }) {
-  const [data] = useStations(version);
-  const here = (data?.stations ?? []).filter((s) => s.nodes.some((n) => n.step === step) && s.ops.some((o) => o.trigger === 'user'));
-  if (here.length === 0) return null;
-  return (
-    <section className="publish-section stations-actions" aria-label="第三方插件">
-      {here.map((s) => (
-        <div key={s.id} className="station-actions-group">
-          <h4>
-            <span className="station-icon">
-              <PluginGlyph />
-            </span>
-            {s.name}
-            <span className="station-badge">第三方插件</span>
-          </h4>
-          {s.ops
-            .filter((o) => o.trigger === 'user')
-            .map((o) => (
-              <OpAction key={o.name} station={s} op={o} run={run} />
-            ))}
-        </div>
-      ))}
-    </section>
-  );
-}
-
 
 // ---------------------------------------------------------------------------
 // 插件自己的页面与嵌入小窗
@@ -807,7 +996,7 @@ async function projectSummary(): Promise<Record<string, unknown>> {
 interface PageRequest {
   onset: 'station';
   id: number;
-  type: 'theme' | 'info' | 'project' | 'read' | 'run' | 'call' | 'ask' | 'send' | 'open';
+  type: 'theme' | 'info' | 'project' | 'read' | 'list' | 'run' | 'call' | 'ask' | 'send' | 'open';
   path?: string;
   op?: string;
   page?: string;
@@ -847,7 +1036,7 @@ interface FrameProps {
 
 /**
  * 沙箱 iframe（只给 allow-scripts，不透明源，CSP 只许它碰本站目录与申请过的地址）加宿主一侧的桥。
- * 页面要的东西都经这里：theme / info / project / read / run / call / ask / open。执行类（run、call）
+ * 页面要的东西都经这里：theme / info / project / read / list / run / call / ask / open。执行类（run、call）
  * 一律先在上方请用户确认——页面里的按钮可以被脚本自己点，不算用户同意。只认来自这个 iframe 的消息。
  */
 function StationFrame({ station, page, context, version, run, onQuick, onOpen, projectName, height }: FrameProps) {
@@ -902,6 +1091,27 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
           case 'read':
             reply(m.id, true, await api(`/api/stations/${encodeURIComponent(station.id)}/read?path=${encodeURIComponent(String(m.path ?? ''))}`));
             return;
+          case 'list': {
+            // 列表操作只读插件自己的数据（清单 ops[].list），与设置里打开弹窗时自动跑的是同一条，不用用户确认。
+            const op = station.ops.find((o) => o.name === m.op && o.list);
+            if (!op) throw new Error(`没有列表操作 ${String(m.op)}（清单 ops[].list）`);
+            // 先说收到了：跑操作要几秒，别让页面按「没回应」报错。
+            frame.current?.contentWindow?.postMessage({ onset: 'host', id: m.id, ack: true }, '*');
+            const id = encodeURIComponent(station.id);
+            // 结果不进任务（任务会写进项目），从插件列表里这条操作的最近一次结果取。最近一次可能是同时跑的另一次
+            // （设置弹窗也会自动跑列表）：那次成功的话它读的是同一份数据、不比这次旧，照用；失败了就再跑一次。
+            for (let attempt = 0; ; attempt++) {
+              const t = await runAndWait(`/api/stations/${id}/ops/${encodeURIComponent(op.name)}`, { params: {} });
+              if (t.status !== 'succeeded') throw new Error(t.error || t.message || `${op.summary}没有成功`);
+              const r = await api<StationsResponse>('/api/stations');
+              const last = r.stations.find((x) => x.id === station.id)?.ops.find((o) => o.name === op.name)?.last_run;
+              if (last?.ok) {
+                reply(m.id, true, last.data ?? {});
+                return;
+              }
+              if (attempt >= 2) throw new Error(`${op.summary}的结果被同时跑的另一次覆盖了，请重试`);
+            }
+          }
           case 'run': {
             const op = station.ops.find((o) => o.name === m.op);
             if (!op) throw new Error(`没有操作 ${String(m.op)}`);

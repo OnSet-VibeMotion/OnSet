@@ -79,6 +79,46 @@
         "bin/scribble.cjs"
       ],
       "params": {}
+    },
+    {
+      "name": "login",
+      "summary": "登录平台账号（测试用：只写插件的数据目录）",
+      "trigger": "user",
+      "project": false,
+      "command": [
+        "{node}",
+        "bin/login.cjs"
+      ],
+      "params": {
+        "name": {
+          "type": "string",
+          "description": "账号备注名"
+        }
+      }
+    },
+    {
+      "name": "accounts",
+      "summary": "已登录的账号",
+      "trigger": "user",
+      "project": false,
+      "list": true,
+      "command": [
+        "{node}",
+        "bin/accounts.cjs"
+      ],
+      "params": {}
+    },
+    {
+      "name": "logout",
+      "summary": "退出账号",
+      "trigger": "user",
+      "project": false,
+      "form": false,
+      "command": [
+        "{node}",
+        "bin/logout.cjs"
+      ],
+      "params": {}
     }
   ],
   "pages": [

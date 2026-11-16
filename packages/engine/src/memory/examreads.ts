@@ -138,7 +138,7 @@ export function readsPostCheck(sc: Scene, checks: readonly string[]): Finding[] 
   if (needsTimeline && timeline === null) out.push({ check: needsTimeline, problem: '没有冻结短语时间轴，不能核对阅读顺序、绑定或提前出现', incomplete: true });
   for (const id of wanted.filter((id) => ['reads.duration', 'reads.binding', 'reads.spoiler'].includes(id))) {
     const applicable = inventory.events.some((event) => event.role !== 'subtitle' && event.role !== reads.DecorativeRole &&
-      !inventory.windowsApprovedCover?.ids.has(event.event_id) &&
+      !inventory.approvedCover?.ids.has(event.event_id) &&
       (event.text.trim() !== '' || id !== 'reads.duration' && event.role === 'graphic' && event.phrase_id !== ''));
     if (!applicable) out.push({ check: id, problem: '没有可用于此项检查的正文或绑定图形证据，不能比较经验效果', incomplete: true });
   }

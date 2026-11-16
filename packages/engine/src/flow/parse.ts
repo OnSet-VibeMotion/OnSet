@@ -12,6 +12,7 @@ import {
   ManifestFile,
   manifestFieldNames,
   nodeFieldNames,
+  opFieldNames,
   ManifestVersion,
   validSemver,
   type HookEvent,
@@ -129,7 +130,7 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
   const ops = opsRaw.map((o, i): ManifestOp => {
     const where = `ops[${i}]`;
     if (!isObject(o)) throw new Error(`${where} 要是对象`);
-    knownFields(o, ['name', 'summary', 'description', 'examples', 'command', 'params', 'trigger'], where);
+    knownFields(o, opFieldNames(), where);
     const name = str(o, 'name', where);
     if (!opPattern.test(name)) throw new Error(`${where}.name ${name} 要是小写加下划线`);
     const command = strings(o, 'command', where);
@@ -152,6 +153,24 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
     }
     const op: ManifestOp = { name, summary: str(o, 'summary', where), command, params, trigger };
     if (o.description !== undefined) op.description = str(o, 'description', where);
+    if (o.project !== undefined) {
+      if (typeof o.project !== 'boolean') throw new Error(`${where}.project 要是 true 或 false`);
+      if (o.project === false && trigger !== 'user') throw new Error(`${where}.project：只有 trigger: user 的操作能不需要项目`);
+      if (o.project === false) op.project = false;
+    }
+    if (o.list !== undefined) {
+      if (typeof o.list !== 'boolean') throw new Error(`${where}.list 要是 true 或 false`);
+      if (o.list) {
+        if (trigger !== 'user' || o.project !== false) throw new Error(`${where}.list：只有 trigger: user、project: false 的操作能返回列表`);
+        if (Object.values(params).some((p) => p.required)) throw new Error(`${where}.list：返回列表的操作不能有必填参数（宿主会自动执行它）`);
+        op.list = true;
+      }
+    }
+    if (o.form !== undefined) {
+      if (typeof o.form !== 'boolean') throw new Error(`${where}.form 要是 true 或 false`);
+      if (o.form === false && trigger !== 'user') throw new Error(`${where}.form：只有 trigger: user 的操作才有按钮表单`);
+      if (o.form === false) op.form = false;
+    }
     const examples = strings(o, 'examples', where);
     if (examples.length > 0) op.examples = examples;
     return op;

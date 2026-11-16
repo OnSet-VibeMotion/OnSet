@@ -28,7 +28,7 @@ import { preferenceBrief, recordUtterance } from './memory';
 import { noVisionNote, orchestratorCannotSee } from './vision';
 import { uploadDir, uploadKind } from './uploads';
 import { allowedCommands, expirePermissions, permissionEventJSON, pollPermissions, type PendingPermission, type PermissionEventData } from './permissions';
-import { LocalStyleReceipt, localStyleContext, windowsStyleAction, windowsResumeFallbackAllowed } from './windowsactions';
+import { LocalStyleReceipt, localStyleContext, localStyleAction, resumeFallbackAllowed } from './localactions';
 import { runStudioOp } from './tasks';
 import { styleKey } from '../filmstyle';
 
@@ -705,16 +705,18 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
       emit(sess, turn.turn_id, { ...event });
       if (event.kind === agentrun.KindToolResult) checkFiles(false);
     };
-    const localStyle = windowsStyleAction(turn.message, p.path);
+    const localStyle = localStyleAction(turn.message, p.path);
     if (localStyle) {
       // runTurn 已持有项目写权，沿用现有执行进程；不能另开 runWriteTask 再拿一次锁。
       await runStudioOp(s, signal, p, 'film_style_use', { style: styleKey(localStyle), project_root: p.path, replace: false });
       const receipt = `${LocalStyleReceipt}${localStyle.cn}（${styleKey(localStyle)}）已设为整片默认风格。`;
       emit(sess, turn.turn_id, { kind: kindNotice, text: receipt });
       emit(sess, turn.turn_id, { kind: agentrun.KindText, text: receipt + ' 稿件、配音和分镜的确认状态保持原样。' });
+      // 这一轮没调模型：prepareTurn 记下的偏好摘要其实没发出去，清掉，下一轮把偏好重新带上。
+      updateMeta(sess, (meta) => (meta.preference_digest = undefined));
       checkFiles(true);
     } else {
-      if (process.platform === 'win32') prompt = localStyleContext(sess.events) + prompt;
+      prompt = localStyleContext(sess.events, p.path) + prompt;
       const previous = sess.meta.cli_session_id ?? '';
       const earlierTurns = (sess.meta.turns ?? []).length > 1;
       // 末尾两条是本轮刚发的 user 与 turn-start，不算进历史。
@@ -751,7 +753,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
       }
       let outcome = await agentrun.run(spec, onEvent, signal);
       recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);
-      if (outcome.error && resumed && !outcome.result.produced && !signal.aborted && windowsResumeFallbackAllowed(outcome.error)) {
+      if (outcome.error && resumed && !outcome.result.produced && !signal.aborted && resumeFallbackAllowed(outcome.error)) {
         emit(sess, turn.turn_id, { kind: kindNotice, text: '原会话无法续接（' + outcome.error.message + '），已带上之前的对话记录开新会话' });
         spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
         spec.resume = false;

@@ -7,6 +7,11 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 45_000,
   expect: { timeout: 10_000 },
-  workers: 1,
+  // 每个用例一套临时目录与自己的 Electron（e2e/fixtures.mjs），彼此不共享状态，可以并行：
+  // 本机 4 个（再多 Electron 互相抢 CPU、反而不快）。CI 的 macOS 机器只有 3 个核，同时开 3 个时每个用例慢 4 倍、
+  // 音视频用例超时（实测），所以 CI 一台一次只跑一个，改成分到几台机器上（ci.yml 的 --shard）。
+  // ONSET_E2E_WORKERS 可以改（调试时设 1 回到逐个跑）。不加自动重试：不稳定的用例要暴露出来修，不能被重跑盖住。
+  fullyParallel: true,
+  workers: Number(process.env.ONSET_E2E_WORKERS) || (process.env.CI ? 1 : 4),
   reporter: [['list']],
 });

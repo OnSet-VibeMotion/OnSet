@@ -17,15 +17,19 @@ import { detectModel, ValidTools } from '../tools';
 import { goMap, goValue } from './http';
 import { sceneRendering, type SceneSummary } from './scenes';
 
-/** 一步：一次工具调用（带结果）、一段话或一条错误。 */
+/** 一步：一次工具调用（带结果）、一段思考、一段话或一条错误。 */
 export interface ActivityStep {
-  kind: 'tool' | 'text' | 'error';
+  kind: 'tool' | 'thinking' | 'text' | 'error';
   tool?: string;
   input?: unknown;
   /** running / done / failed，只有工具调用有。 */
   state?: string;
   output?: string;
   text?: string;
+  /** 思考的全文字数（按字符，不按 UTF-16 码元；text 只留开头一段）。有的模型一次能想几万字、几分钟，界面据此说清它想了多久。 */
+  chars?: number;
+  /** 流式思考的分批编号：同一编号的后续文本接在这一步上，不另起一步。 */
+  text_id?: string;
 }
 
 /** 返回给界面的步骤条数上限：更早的只计数。 */
@@ -149,6 +153,11 @@ function consume(state: StreamState, line: string): void {
         }
         break;
       }
+      case agentrun.KindThinking: {
+        const step = addThinking(state.steps.at(-1), event.text ?? '', event.text_id);
+        if (step) push(state, step);
+        break;
+      }
       case agentrun.KindText:
         if (event.text?.trim()) push(state, { kind: 'text', text: clipText(event.text.trim()) });
         break;
@@ -160,6 +169,21 @@ function consume(state: StreamState, line: string): void {
         break;
     }
   }
+}
+
+/**
+ * 一段思考：同一 text_id 的分批接到上一步上、字数累加（返回 undefined），否则返回新的一步（空白返回 undefined）。
+ * 分批的文本按原样拼接，不 trim：「Checking 」后面接「Code」要得到「Checking Code」。整段到达的（没有 text_id）去掉首尾空白。
+ */
+export function addThinking(last: ActivityStep | undefined, text: string, textID?: string): ActivityStep | undefined {
+  if (textID && last?.kind === 'thinking' && last.text_id === textID) {
+    last.chars = (last.chars ?? 0) + [...text].length;
+    if ((last.text ?? '').length < maxStepText) last.text = clipText((last.text ?? '') + text);
+    return undefined;
+  }
+  if (text.trim() === '') return undefined;
+  const kept = textID ? text : text.trim();
+  return { kind: 'thinking', text: clipText(kept), chars: [...kept].length, ...(textID ? { text_id: textID } : {}) };
 }
 
 function agentrunModel(tool: string, line: string): string {

@@ -7,7 +7,8 @@ import type { StationBrowserLease, StationBrowserRequest } from '@onset/engine/f
 
 const methods = new Set(['Page.enable', 'Page.bringToFront', 'Runtime.evaluate', 'Runtime.releaseObject', 'DOM.setFileInputFiles', 'Input.insertText']);
 const escapeHTML = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
-type EmbeddedPage = { view: WebContentsView; bar: WebContentsView; contents: Electron.WebContents; controls: Electron.WebContents; closed: boolean; window: BrowserWindow; origins: string[]; owner?: symbol; title: string };
+type EmbeddedPage = { key: string; view: WebContentsView; bar: WebContentsView; contents: Electron.WebContents; controls: Electron.WebContents; closed: boolean; hidden: boolean; window: BrowserWindow; origins: string[]; owner?: symbol; title: string; hint: string; layout?: () => void };
+const defaultHint = '请检查账号与内容，发布由你确认';
 
 function allowed(url: string, origins: string[]): boolean {
   try { const parsed = new URL(url); return !parsed.username && !parsed.password && origins.includes(parsed.origin); } catch { return false; }
@@ -43,6 +44,7 @@ export class StationBrowsers {
 
   private hide(page: EmbeddedPage): void {
     if (page.closed || page.window.isDestroyed()) return;
+    page.hidden = true;
     page.view.setVisible(false);
     page.bar.setVisible(false);
     if (!page.window.isDestroyed()) page.window.webContents.focus();
@@ -50,13 +52,16 @@ export class StationBrowsers {
   private show(page: EmbeddedPage): void {
     if (page.closed || page.window.isDestroyed() || page.contents.isDestroyed()) throw Error('客户端网页已关闭');
     for (const other of this.pages.values()) if (other.window === page.window) this.hide(other);
+    page.hidden = false;
     page.view.setVisible(true);
     page.bar.setVisible(true);
     if (!this.background) { page.window.show(); page.window.focus(); }
     page.contents.focus();
   }
   private async open(request: StationBrowserRequest, raw: Record<string, unknown>, owner: symbol): Promise<{ page: EmbeddedPage; reused: boolean }> {
-    const account = raw.account, label = raw.label, url = raw.url;
+    const account = raw.account, label = raw.label, url = raw.url, hint = raw.hint ?? defaultHint;
+    // 工具栏上的一句提示（例如登录时说明登录后会自动回来）；只是文字，宿主照样转义。
+    if (typeof hint !== 'string' || !hint.trim() || hint.length > 60 || /[\x00-\x1f]/.test(hint)) throw Error('网页提示无效');
     if (typeof account !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(account)) throw Error('网页账号编号无效');
     if (typeof label !== 'string' || !label.trim() || label.length > 100) throw Error('网页账号名称无效');
     if (typeof url !== 'string' || !allowed(url, request.origins)) throw Error('网页地址不在插件声明的来源里');
@@ -68,6 +73,7 @@ export class StationBrowsers {
       existing.origins = request.origins;
       existing.owner = owner;
       existing.title = `${request.name} · ${label}`;
+      existing.hint = hint;
       await this.toolbar(existing);
       if (!allowed(existing.contents.getURL(), request.origins)) await existing.contents.loadURL(url);
       this.show(existing);
@@ -82,7 +88,7 @@ export class StationBrowsers {
     const view = new WebContentsView({ webPreferences: { session: storage, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: false } });
     const bar = new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, partition: `station-toolbar-${randomBytes(12).toString('hex')}` } });
     // 关闭后 View.webContents 可能变成 undefined；必须保存 WebContents 的稳定引用。
-    const page: EmbeddedPage = { view, bar, contents: view.webContents, controls: bar.webContents, closed: false, window, origins: request.origins, owner, title: `${request.name} · ${label}` };
+    const page: EmbeddedPage = { key, view, bar, contents: view.webContents, controls: bar.webContents, closed: false, hidden: false, window, origins: request.origins, owner, title: `${request.name} · ${label}`, hint };
     this.pages.set(key, page);
     window.contentView.addChildView(view);
     window.contentView.addChildView(bar);
@@ -91,6 +97,7 @@ export class StationBrowsers {
       bar.setBounds({ x: 0, y: 0, width, height: 74 });
       view.setBounds({ x: 0, y: 74, width, height: Math.max(0, height - 74) });
     };
+    page.layout = layout;
     window.on('resize', layout);
     window.once('closed', () => {
       window.removeListener('resize', layout);
@@ -119,7 +126,7 @@ export class StationBrowsers {
     return { page, reused: false };
   }
   private toolbar(page: EmbeddedPage): Promise<void> {
-    return page.controls.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><style>body{margin:0;background:#171614;color:#f4eee4;font:14px system-ui;display:flex;align-items:center;gap:20px;height:74px;padding:0 24px 0 96px;box-sizing:border-box}a{color:inherit;text-decoration:none;border:1px solid #666057;padding:8px 16px;border-radius:24px}strong{flex:1}small{color:#c0b7a9}</style><a href="https://onset.invalid/return">返回项目</a><strong>${escapeHTML(page.title)}</strong><small>请检查账号与内容，发布由你确认</small>`));
+    return page.controls.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><style>body{margin:0;background:#171614;color:#f4eee4;font:14px system-ui;display:flex;align-items:center;gap:20px;height:74px;padding:0 24px 0 96px;box-sizing:border-box}a{color:inherit;text-decoration:none;border:1px solid #666057;padding:8px 16px;border-radius:24px}strong{flex:1}small{color:#c0b7a9}</style><a href="https://onset.invalid/return">返回片场</a><strong>${escapeHTML(page.title)}</strong><small>${escapeHTML(page.hint)}</small>`));
   }
 
   async lease(request: StationBrowserRequest): Promise<StationBrowserLease> {
@@ -143,6 +150,22 @@ export class StationBrowsers {
           current = opened.page;
           if (!active) { current.owner = undefined; throw Error('网页连接已结束'); }
           result = { reused: opened.reused };
+        } else if (body.action === 'state') {
+          // 插件等用户登录时轮询：窗口被用户收起或关掉，就当用户不登了。
+          result = current ? { open: !current.closed && !current.contents.isDestroyed(), visible: !current.closed && !current.hidden, url: current.contents.isDestroyed() ? '' : current.contents.getURL() } : { open: false, visible: false, url: '' };
+        } else if (body.action === 'close') {
+          // 关掉本次操作的页面（登录完成后自动回到片场）；登录状态留在账号的存储目录里。
+          if (current) { this.closePage(current); current = undefined; }
+          result = {};
+        } else if (body.action === 'forget') {
+          // 移除账号前关掉那个账号开着的页面：只认本插件数据目录下的账号，别的操作正在用时拒绝。
+          const account = body.account;
+          if (typeof account !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(account)) throw Error('网页账号编号无效');
+          const page = this.pages.get(path.join(request.data_dir, 'web-sessions', account));
+          if (page && page.owner && page.owner !== owner) throw Error('这个账号正在由另一项操作使用，请稍后再试');
+          if (page) this.closePage(page);
+          if (current === page) current = undefined;
+          result = {};
         } else {
           if (!current || current.contents.isDestroyed()) throw Error('请先打开账号页面');
           if (body.action !== 'command' || typeof body.method !== 'string') throw Error('网页操作无效');
@@ -158,6 +181,7 @@ export class StationBrowsers {
             if (!allowed(wc.getURL(), current.origins)) throw Error('页面已经离开插件声明的来源');
             if (body.method === 'DOM.setFileInputFiles') {
               if (!Array.isArray(p.files) || p.files.length === 0 || p.files.length > 20) throw Error('上传文件列表无效');
+              if (!request.project_root) throw Error('没打开项目，不能上传文件');
               const root = fs.realpathSync(request.project_root);
               p.files = p.files.map(file => {
                 if (typeof file !== 'string' || !path.isAbsolute(file)) throw Error('上传文件必须在项目里');
@@ -194,6 +218,14 @@ export class StationBrowsers {
     };
     this.leases.add(dispose);
     return { connection: { endpoint: `http://127.0.0.1:${address.port}/`, token }, dispose };
+  }
+  private closePage(page: EmbeddedPage): void {
+    const wc = page.contents;
+    if (!wc.isDestroyed() && wc.debugger.isAttached()) wc.debugger.detach();
+    if (page.layout && !page.window.isDestroyed()) page.window.removeListener('resize', page.layout);
+    this.destroyPage(page);
+    this.pages.delete(page.key);
+    if (!page.window.isDestroyed()) page.window.webContents.focus();
   }
   private destroyPage(page: EmbeddedPage): void {
     // before-quit 和窗口 closed 都会走这里；销毁只能发生一次。

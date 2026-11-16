@@ -58,13 +58,16 @@ export interface Scene {
 
 /** 渲染器的一步（后端 studio/activity.ts 的 ActivityStep）。 */
 export interface ActivityStep {
-  kind: 'tool' | 'text' | 'error';
+  kind: 'tool' | 'thinking' | 'text' | 'error';
   tool?: string;
   input?: unknown;
   /** running / done / failed，只有工具调用有。 */
   state?: string;
   output?: string;
   text?: string;
+  /** 思考的全文字数（text 只是开头一段）。 */
+  chars?: number;
+  text_id?: string;
 }
 
 /** GET /api/scenes/{id}/activity：渲染器此刻在做什么，或最近一次渲染做了什么。 */
@@ -500,7 +503,7 @@ export interface ExamResult {
   questions: ExamQuestion[];
   cells: ExamCell[];
   verdict: { pass: boolean; invalid: boolean; needs_human: boolean; control_score: number; trial_score: number; reasons: string[] };
-  applied: 'promoted' | 'rejected' | 'none';
+  applied: 'promoted' | 'rejected' | 'retest-passed' | 'retest-failed' | 'none';
   snapshot?: number;
   evaluation_note?: string;
 }
@@ -1049,6 +1052,12 @@ export interface StationOp {
   summary: string;
   description: string;
   trigger: 'agent' | 'user';
+  /** false：不需要项目（登录、管理账号这类插件自己的配置），没打开项目也能点。 */
+  project: boolean;
+  /** 返回列表（账号卡片这类）：设置里自动执行、画成卡片。 */
+  list: boolean;
+  /** false：设置里不给它出按钮表单。 */
+  form: boolean;
   params: StationParam[];
   last_run?: StationRun;
 }

@@ -67,7 +67,14 @@ describe('parseManifest', () => {
       ['on_event', 'agent'],
       ['speak', 'agent'],
       ['scribble', 'user'],
+      ['login', 'user'],
+      ['accounts', 'user'],
+      ['logout', 'user'],
     ]);
+    expect(m.ops.find((o) => o.name === 'login')?.project).toBe(false);
+    expect(m.ops.find((o) => o.name === 'accounts')?.list).toBe(true);
+    expect(m.ops.find((o) => o.name === 'logout')?.form).toBe(false);
+    expect(m.ops.find((o) => o.name === 'send')?.project).toBeUndefined();
     expect(m.permissions).toEqual({ project: true, network: [], uses: ['review'] });
     expect(m.hooks.map((h) => h.on)).toEqual(['gate.confirmed', 'film.approved']);
     expect(m.slots).toEqual([{ at: 'publish', page: 'mini', height: 140 }]);
@@ -89,6 +96,11 @@ describe('parseManifest', () => {
       [{ produces: [{ path: '.env' }] }, '是 onset 自己的文件'],
       [{ ops: [{ name: 'go', summary: 's', command: ['../x'] }] }, '要是站目录里的相对路径'],
       [{ ops: [{ name: 'go', summary: 's', command: ['bin/x'], trigger: 'cron' }] }, 'trigger 要是 agent 或 user'],
+      [{ ops: [{ name: 'go', summary: 's', command: ['bin/x'], project: false }] }, '只有 trigger: user 的操作能不需要项目'],
+      [{ ops: [{ name: 'go', summary: 's', command: ['bin/x'], trigger: 'user', project: 'no' }] }, 'project 要是 true 或 false'],
+      [{ ops: [{ name: 'go', summary: 's', command: ['bin/x'], trigger: 'user', list: true }] }, '只有 trigger: user、project: false 的操作能返回列表'],
+      [{ ops: [{ name: 'go', summary: 's', command: ['bin/x'], trigger: 'user', project: false, list: true, params: { a: { type: 'string', description: 'a', required: true } } }] }, '不能有必填参数'],
+      [{ ops: [{ name: 'go', summary: 's', command: ['bin/x'], form: false }] }, '只有 trigger: user 的操作才有按钮表单'],
       [{ ops: [{ name: 'go', summary: 's', command: ['bin/x'], params: { a: { type: 'blob', description: 'd' } } }] }, 'params.a.type'],
       [{ pages: [{ id: 'p1', label: 'x', entry: 'ui/app.js' }] }, '要是 .html 文件'],
       [{ pages: [{ id: 'p1', label: 'x', entry: '../ui/index.html' }] }, '要是站目录里的相对路径'],
@@ -315,6 +327,22 @@ describe('runStationOp', () => {
     const status = await runStationOp(root, 'fake-publisher', 'status', {}, (t) => (out += t), undefined, env);
     expect(status.ok).toBe(true);
     expect(out).toContain('secret=none data=set');
+  });
+
+  it('runs an op that does not need a project without one, in the plugin data dir', async () => {
+    installStation(`link:${fake}`);
+    let out = '';
+    // 没打开项目：项目根为空，工作目录是插件的数据目录（login.cjs 自己核对）。
+    const r = await runStationOp('', 'fake-publisher', 'login', { name: '小号' }, (t) => (out += t), undefined, process.env);
+    expect(r).toEqual({ ok: true, data: { logged_in: '小号', in_project: false, message: '已登录：小号' }, exit_code: 0 });
+    expect(out).toContain('已登录：小号');
+    const data = path.join(stationsDir(process.env), 'fake-publisher', 'data');
+    expect(JSON.parse(fs.readFileSync(path.join(data, 'login.json'), 'utf8'))).toEqual({ name: '小号' });
+    // 打开了项目：照常在项目里跑（插件的页面靠它写进项目的文件）。
+    const root = project();
+    expect((await runStationOp(root, 'fake-publisher', 'login', {}, () => {}, undefined, process.env)).data).toEqual({ logged_in: '默认账号', in_project: true, message: '已登录：默认账号' });
+    // 要项目的操作不能在没有项目时跑。
+    await expect(runStationOp('', 'fake-publisher', 'send', { platform: 'douyin' }, () => {}, undefined, process.env)).rejects.toThrow('先打开一个项目');
   });
 
   it('checks params and reports failures', async () => {

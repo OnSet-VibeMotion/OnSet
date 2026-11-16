@@ -20,7 +20,7 @@ async function projectWithFake(): Promise<string> {
   expect(out.text).toContain('它的页面在沙箱里运行，只能做清单里申请过的事：\n  看项目：');
   expect(out.text).toContain('[自动执行] 你确认一个审核关卡后');
   expect(out.text).toContain('[做法] 新建项目时能选「快剪」');
-  expect(out.text).toContain('[实验性] 用到了实验性能力：hooks、schedules、slots、commands、inserts、flow、provides、renderer_skills、film_styles，以后的版本可能调整');
+  expect(out.text).toContain('[实验性] 用到了实验性能力：hooks、schedules、slots、commands、inserts、flow、provides、renderer_skills、film_styles、ops.project、ops.list、ops.form，以后的版本可能调整');
   expect(out.text).toContain('还没有装上');
   // 只看了没装：别的命令看不到它。
   const listed = new Buffer();
@@ -87,6 +87,33 @@ describe('station ops', () => {
     const gone = new Buffer();
     expect(await run(['station', 'run', 'fake-publisher', 'status', '--project-root', other], gone)).toBe(1);
     expect(gone.text).toContain('没有装插件 fake-publisher');
+  });
+});
+
+describe('station_run without a project', () => {
+  it('passes an empty project root through to the plugin, from whatever directory it runs in', async () => {
+    await projectWithFake();
+    const { runOpWorker } = await import('./ops/worker');
+    // 客户端的用户级任务在插件目录里起执行进程：空的项目根不能被解析成这个目录。
+    const cwd = tempDir();
+    const before = process.cwd();
+    process.chdir(cwd);
+    try {
+      const out = new Buffer();
+      const code = await runOpWorker('station_run', JSON.stringify({ station: 'fake-publisher', op: 'login', params: '{"name":"小号"}', project_root: '' }), out, new AbortController().signal, false);
+      expect(code, out.text).toBe(0);
+      expect(out.text).toContain('已登录：小号');
+      expect(out.text).toContain('"in_project":false');
+      // 没扫越界、没往工作目录写项目文件。
+      expect(out.text).not.toContain('没有声明会写');
+      expect(fs.readdirSync(cwd)).toEqual([]);
+    } finally {
+      process.chdir(before);
+    }
+    // 要项目的操作照样拒绝。
+    const send = new Buffer();
+    expect(await runOpWorker('station_run', JSON.stringify({ station: 'fake-publisher', op: 'send', params: '{"platform":"douyin"}', project_root: '' }), send, new AbortController().signal, false)).toBe(1);
+    expect(send.text).toContain('先打开一个项目');
   });
 });
 

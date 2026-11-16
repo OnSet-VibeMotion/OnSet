@@ -23,18 +23,17 @@ function writeScene(root: string, rel: string, id: string): void {
 }
 
 describe('discoverScenes', () => {
-  it('Windows excludes a whole-film QA copy unless the scene plan explicitly selects it', () => {
+  it('Discovery excludes a whole-film QA copy unless the scene plan explicitly selects it', () => {
     const root = project();
     writeScene(root, 'scenes/scene-001', 'scene-001');
     writeScene(root, 'production/visual-qc/candidate-source', 'candidate-qc');
     expect(discoverScenes(root, 'win32').map(s => s.id)).toEqual(['scene-001']);
-    // 其它平台保持原来的发现规则。
-    expect(discoverScenes(root, 'darwin').map(s => s.id)).toEqual(['candidate-qc','scene-001']);
+    expect(discoverScenes(root, 'darwin').map(s => s.id)).toEqual(['scene-001']);
     fs.writeFileSync(path.join(root, 'production/scene-plan.json'), JSON.stringify({scenes:[{id:'scene-001',dir:'scenes/scene-001'},{id:'candidate-qc',dir:'production/visual-qc/candidate-source'}]}));
     expect(discoverScenes(root, 'win32').map(s => s.id)).toEqual(['candidate-qc','scene-001']);
   });
 
-  it('Windows counts only planned directories, retaining other platforms and unplanned-project discovery', () => {
+  it('counts only planned directories on all platforms, retaining unplanned-project discovery', () => {
     const root = project();
     writeScene(root, 'scenes/scene-001', 'scene-001');
     writeScene(root, 'production/revisions/scene005-alignment-v03', 'candidate-qc-scene005-v03');
@@ -42,8 +41,8 @@ describe('discoverScenes', () => {
     const plan = path.join(root,'production/scene-plan.json');
     fs.writeFileSync(plan,JSON.stringify({scenes:[{id:'scene-001',dir:'scenes/scene-001'}]}));
     expect(discoverScenes(root,'win32').map(s=>s.id)).toEqual(['scene-001']);
-    expect(discoverScenes(root,'darwin')).toHaveLength(2);
-    expect(discoverScenes(root,'linux')).toHaveLength(2);
+    expect(discoverScenes(root,'darwin')).toHaveLength(1);
+    expect(discoverScenes(root,'linux')).toHaveLength(1);
     fs.writeFileSync(plan,JSON.stringify({scenes:[{id:'scene-001',dir:'SCENES/SCENE-001'}]}));
     expect(discoverScenes(root,'win32').map(s=>s.id)).toEqual(['scene-001']);
   });
@@ -59,6 +58,18 @@ describe('discoverScenes', () => {
       path.join('scenes', 'scene-001'),
       path.join('scenes', 'scene-002'),
     ]);
+  });
+
+  it('matches planned directories through a project path alias', () => {
+    const root = project();
+    writeScene(root, 'scenes/scene-001', 'scene-001');
+    writeScene(root, 'production/revisions/candidate', 'candidate');
+    const alias = path.join(project(), 'project-link');
+    fs.symlinkSync(root, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    fs.writeFileSync(path.join(root, 'production/scene-plan.json'), JSON.stringify({
+      scenes: [{ id: 'scene-001', dir: path.join(alias, 'scenes/scene-001') }],
+    }));
+    expect(discoverScenes(root).map(scene => scene.id)).toEqual(['scene-001']);
   });
 
   it('prefers the directory the scene plan points to', () => {

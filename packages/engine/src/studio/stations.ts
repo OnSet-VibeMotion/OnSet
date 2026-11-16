@@ -102,13 +102,22 @@ function stationJSON(root: string, s: flow.LoadedStation): Record<string, unknow
     pages: m.pages.map((pg) => ({ id: pg.id, label: pg.label, tab: flow.pageTab(m.id, pg.id), url: pageURL(m.id, pg.entry), reads: pg.reads, ...(petPages.includes(pg.id) ? { pet: true } : {}) })),
     skins: s.builtin ? [] : listSkins().skins.filter((e) => e.key.startsWith(m.id + '/')).map((e) => e.skin.name),
     ops: m.ops.map((o) => {
-      const last = lastRuns.get(`${root}\n${m.id}\n${o.name}`);
+      // 不需要项目的操作：这个项目里的与没打开项目时的，取较新的那次。
+      const inProject = lastRuns.get(`${root}\n${m.id}\n${o.name}`);
+      const outside = o.project === false && root !== '' ? lastRuns.get(`\n${m.id}\n${o.name}`) : undefined;
+      const last = outside && (!inProject || outside.at > inProject.at) ? outside : inProject;
       return {
         name: o.name,
         tool: o.trigger === 'agent' ? flow.toolName(m.id, o.name) : '',
         summary: o.summary,
         description: o.description ?? '',
         trigger: o.trigger,
+        /** false：不需要项目，设置页里没打开项目也能点。 */
+        project: o.project !== false,
+        /** 返回列表（账号卡片这类），设置里自动执行并画成卡片。 */
+        list: o.list === true,
+        /** false：设置里不给它出按钮表单。 */
+        form: o.form !== false,
         params: Object.entries(o.params).map(([key, p]) => ({ key, type: p.type, description: p.description, required: p.required === true, default: p.default })),
         last_run: last,
       };
@@ -211,12 +220,62 @@ async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: 
       { onText, ...(browser ? { env: { [flow.StationBrowserEnv]: JSON.stringify(browser.connection) } } : {}) },
     );
     lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: true, text: stripProgress(r.text).slice(-maxRunText), ...(r.data !== undefined ? { data: r.data } : {}), ...scopeFields(scope()) });
+    // 打开了项目时，不需要项目的操作（例如登录）也走这里：设置弹窗读 result 里插件的说明。
+    task.result = taskResult(station?.manifest.ops.find((o) => o.name === op), r.data);
   } catch (err) {
     lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: false, text: (err as Error).message.slice(-maxRunText), ...scopeFields(scope()) });
     throw err;
   } finally {
     browser?.dispose();
   }
+}
+
+/** 没打开项目时跑不需要项目的操作：不扫越界；结果记在 lastRuns 的空项目键下。 */
+async function runUserStationTask(s: Server, signal: AbortSignal, task: Task, station: flow.LoadedStation, op: string, params: Record<string, unknown>): Promise<void> {
+  const id = station.manifest.id;
+  const key = `\n${id}\n${op}`;
+  let pending = '';
+  const onText = (text: string) => {
+    pending += text;
+    const lines = pending.split('\n');
+    pending = lines.pop() ?? '';
+    for (const line of lines) {
+      const progress = flow.parseProgressLine(line);
+      if (progress) updateTask(s, task.task_id, 'running', progress.message || task.message, Math.max(0.1, Math.min(0.99, progress.progress)), null);
+    }
+  };
+  let browser: flow.StationBrowserLease | undefined;
+  try {
+    if (station.manifest.browser && s.config.stationBrowser) {
+      browser = await s.config.stationBrowser({ id, name: station.manifest.name, origins: station.manifest.browser.origins, project_root: '', data_dir: path.join(flow.stationsDir(envMap()), id, 'data') });
+    }
+    const r = await runUserOp(
+      s,
+      signal,
+      'station_run',
+      { station: id, op, params: JSON.stringify(params), event: '', project_root: '' },
+      { onText, ...(browser ? { env: { [flow.StationBrowserEnv]: JSON.stringify(browser.connection) } } : {}) },
+    );
+    lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: true, text: stripProgress(r.text).slice(-maxRunText), ...(r.data !== undefined ? { data: r.data } : {}) });
+    // 设置里的弹窗等任务跑完后读 result 里插件的说明（例如「已登录：昵称」）。
+    task.result = taskResult(station.manifest.ops.find((o) => o.name === op), r.data);
+  } catch (err) {
+    lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: false, text: (err as Error).message.slice(-maxRunText) });
+    throw err;
+  } finally {
+    browser?.dispose();
+  }
+}
+
+/**
+ * 插件操作交给任务的 result：只留插件的一句说明。任务连同 result 会写进打开着的项目的
+ * production/studio/tasks.json，插件的完整结果（账号列表的昵称、头像、按钮参数）不能跟着项目被拷走、分享出去；
+ * 列表操作（ops[].list）的结果设置弹窗从 /api/stations 的 last_run（只在内存里）读，任务里什么都不留。
+ */
+function taskResult(op: flow.ManifestOp | undefined, data: unknown): Record<string, string> | undefined {
+  if (op?.list) return undefined;
+  const message = (data as { message?: unknown } | undefined)?.message;
+  return typeof message === 'string' && message !== '' ? { message: message.slice(0, 500) } : undefined;
 }
 
 /** 越界写入：记在任务上；钩子、定时这类没人在看的触发，另在最近的对话里发一条 notice。 */
@@ -316,6 +375,26 @@ export async function stationsAPI(s: Server, request: Request, rest: string): Pr
       return writeError(400, 'invalid_setting', (err as Error).message);
     }
     return writeJSON(200, goMap(stationJSON(s.projectRoot(), station)));
+  }
+
+  // 不需要项目的操作（清单 ops[].project: false，登录、管理账号这类插件自己的配置）在没打开项目时：
+  // 不占项目写锁，与装、去掉插件一样是用户级的后台任务。打开了项目就照常在项目里跑（插件的页面靠它写进项目的文件）。
+  // 返回列表的操作（ops[].list）只读插件自己的数据、会被设置页自动执行：一律这样跑，打开了项目也不占写锁，
+  // 不然它跑着的时候用户点的项目操作会因为「项目正忙」被拒。
+  if (parts.length === 3 && parts[1] === 'ops') {
+    const op = station.manifest.ops.find((o) => o.name === decodeURIComponent(parts[2]));
+    if (op && (op.list === true || (op.project === false && s.projectRoot() === ''))) {
+      if (request.method !== 'POST') return methodNotAllowed('POST');
+      let params: Record<string, unknown>;
+      try {
+        params = flow.checkParams(op, await readParams(request));
+      } catch (err) {
+        return writeError(400, 'invalid_request', err instanceof DecodeError ? err.message : (err as Error).message);
+      }
+      const t = addTask(s, 'station.run', `${station.manifest.name}：${op.summary}`);
+      runTask(s, t, (signal) => runUserStationTask(s, signal, t, station, op.name, params));
+      return writeJSON(202, goMap({ task_id: t.task_id }));
+    }
   }
 
   // 下面几样针对当前项目。
@@ -573,6 +652,8 @@ export const pageSDK = `// 片场插件页面 SDK：页面在沙箱里，只能�
     open: (page) => call('open', { page }),
     /** 读一个项目文件（清单里声明过的）：{ path, size, text }，图片另有 data_url。 */
     read: (path) => call('read', { path }),
+    /** 跑本站的一条列表操作（清单 ops[].list，只读插件自己的数据，例如已登录的账号），不用用户确认；resolve 成它的结构化结果。 */
+    list: (op) => call('list', { op }),
     /** 请用户确认后执行本站的一条操作；用户拒绝时 reject。 */
     run: (op, params) => call('run', { op, params: params || {} }),
     /** 请用户确认后，把一段话作为一条消息直接发给 AI。 */

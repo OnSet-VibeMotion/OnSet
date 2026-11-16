@@ -15,7 +15,7 @@ import { DiffDialog } from './DiffDialog';
 import { Icon } from './Icon';
 import { Markdown } from './chat/Markdown';
 import { PolishCard, type PolishResult, type PolishState } from './chat/Polish';
-import { turnActivity } from './chat/activity';
+import { showProgressCard, turnActivity } from './chat/activity';
 import { ActivityStatus } from './chat/ActivityStatus';
 import {
   buildBlocks,
@@ -23,6 +23,7 @@ import {
   formatElapsed,
   parseChoices,
   parseStylePicks,
+  stylePickMessage,
   findMedia,
   type MediaRef,
   type StylePick,
@@ -168,6 +169,9 @@ export function Chat(props: Props) {
   const now = useNow(running);
   const activityEvents = useMemo(() => events.filter(event => event.turn_id === lastTurn?.id), [events, lastTurn?.id]);
   const activity = lastTurn && running ? turnActivity(lastTurn, activityEvents, asks, now) : null;
+  // 在等镜头制作时，「镜头制作」卡片已经逐个镜头报进度，不再叠一张「正在执行操作」。
+  const renderingScenes = props.scenes.filter((scene) => scene.rendering).length;
+  const showActivity = showProgressCard(activity, lastTurn, renderingScenes, reconnecting);
 
   // 这一轮进行中照样能发：消息排到这一轮之后。别的写任务占着项目时不能发。
   const blocked = sending || (props.busy !== '' && !running);
@@ -533,13 +537,27 @@ export function Chat(props: Props) {
     }
   };
 
+  // 桌宠上点的选项或说的一句：一轮刚结束时选项马上出现在桌宠上，项目占用状态却要等下一次刷新才清掉，
+  // 这时 deliver 会因为 blocked 静默丢掉这句话（CI 上实测撞到）。先记下，等不挡了再发。
+  // 记下是哪个会话里点的：Chat 切会话时不重建，暂存的话不能发到切过去的那个会话里。
+  const petSay = useRef<{ text: string; session: string } | null>(null);
+  useEffect(() => {
+    if (blocked || petSay.current === null) return;
+    const pending = petSay.current;
+    petSay.current = null;
+    if (pending.session === props.sessionId) void deliver(pending.text, []);
+    // deliver 每次渲染都是新函数；只在挡不挡变了时看一眼。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocked, props.sessionId]);
+
   // 桌宠上的动作：答批准、点选项或说一句、停下这一轮。
   usePetCommands((command) => {
     if (command.kind === 'answer') {
       const ask = asks.find((a) => a.id === command.id);
       if (ask) void answer(ask, command.decision);
     } else if (command.kind === 'say') {
-      void deliver(command.text, []);
+      if (blocked) petSay.current = { text: command.text, session: props.sessionId };
+      else void deliver(command.text, []);
     } else if (command.kind === 'stop') {
       if (running) void cancel();
     }
@@ -681,7 +699,7 @@ export function Chat(props: Props) {
       {queue.length > 0 && <QueuedStack queue={queue} onAction={queueAction} />}
       {polishing && <PolishCard state={polishing} draft={draft} onUse={applyPolish} onRetry={() => void polish(polishing.from)} onClose={closePolish} />}
 
-      {activity && lastTurn && <ActivityStatus activity={activity} turn={lastTurn} now={now} projectPath={props.projectPath} reconnecting={reconnecting} />}
+      {showActivity && activity && lastTurn && <ActivityStatus activity={activity} turn={lastTurn} now={now} projectPath={props.projectPath} reconnecting={reconnecting} />}
 
       <footer className="composer">
         <div
@@ -941,9 +959,10 @@ function useSessionEvents(
       pending = [];
       setEvents((current) => current.concat(batch));
     };
-    const notify = (event: SessionEvent) => {
+    // replay：打开会话时一次取回的历史。里面的「一轮结束」早就结束了，不算刚做完：不然每轮都弹一次「这一轮做完了」。
+    const notify = (event: SessionEvent, replay = false) => {
       if (event.kind === 'files-changed' && event.files) callbacks.current.onFilesChanged(event.files);
-      if (event.kind === 'turn-end') callbacks.current.onTurnEnd();
+      if (event.kind === 'turn-end' && !replay) callbacks.current.onTurnEnd();
       // 只执行刚发生的切页请求：打开会话时重放的历史不该把页面切来切去。
       if (event.kind === 'view' && event.view && Date.now() - Date.parse(event.time) < viewFreshMs) callbacks.current.onView(event.view);
     };
@@ -971,7 +990,7 @@ function useSessionEvents(
         const fresh = history.filter((event) => event.seq > last);
         if (fresh.length > 0) last = fresh[fresh.length - 1].seq;
         setEvents(fresh);
-        for (const event of fresh) notify(event);
+        for (const event of fresh) notify(event, true);
       } catch {
         // 取不到就退回原来的路子：整段历史从订阅里补发。
       }
@@ -1142,16 +1161,6 @@ function StylePicks(props: { picks: StylePick[]; styles: Map<string, FilmStyle>;
       })}
     </div>
   );
-}
-
-/**
- * 点风格卡片发出的那句话；收起已答的选项时按它认出选的是哪个。
- * 全片默认、只给一段、不知道是哪种（回复里没有 film-styles 代码块）各是一种说法，不能都说成「整片风格」。
- */
-function stylePickMessage(name: string, pick: StylePick): string {
-  if (!pick.explicit) return `选「${name}」（${pick.key}）这个风格`;
-  if (pick.scope) return `${pick.scope}用「${name}」风格（${pick.key}），其余镜头不变`;
-  return `整片风格用「${name}」（${pick.key}）`;
 }
 
 /** blocks[index] 这一轮之后用户发的第一条消息（去掉引用、附件说明）。 */

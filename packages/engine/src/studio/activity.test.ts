@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as scene from '../scene';
-import { resetActivityCache, sceneActivity, sniffStreamTool } from './activity';
+import { addThinking, resetActivityCache, sceneActivity, sniffStreamTool } from './activity';
 import { sceneRendering, type SceneSummary } from './scenes';
 import { tempDir } from './testsupport';
 
@@ -75,6 +75,38 @@ describe('scene activity', () => {
     expect(render.tool).toBe('mcp__onset__hyperframes');
     expect(render.state).toBe('running');
     expect((render.input.code as string).length).toBeLessThan(400);
+  });
+
+  // Qoder 一类的工具把一大段思考整条写出来（实测一次 3.6 万字、想了四分多钟）：记成一步，留开头一段与全文字数。
+  it('keeps a thinking step with its full length', () => {
+    const dir = tempDir();
+    const log = path.join(dir, 'render-s1.stream.jsonl');
+    const long = '先确认镜头时长与安全区，再决定画面怎么分层。' + '想'.repeat(36000);
+    const think = JSON.stringify({ type: 'assistant', message: { id: 'm1', content: [{ type: 'thinking', thinking: long }] }, session_id: 'x' });
+    fs.writeFileSync(log, [init, think, callRead].join('\n') + '\n');
+    const a = sceneActivity(summary(dir)) as Record<string, any>;
+    expect(a.steps.map((s: any) => s.kind)).toEqual(['thinking', 'tool']);
+    expect(a.steps[0].chars).toBe(long.length);
+    expect(a.steps[0].text.startsWith('先确认镜头时长与安全区')).toBe(true);
+    expect(a.steps[0].text.length).toBeLessThanOrEqual(1201);
+  });
+
+  // 流式思考分批到达（同一 text_id）：按原样接上，第一批末尾的空格不能丢，字数也算上空白。
+  it('joins streamed thinking batches without trimming their edges', () => {
+    const first = addThinking(undefined, 'Checking ', 'th1')!;
+    expect(first).toMatchObject({ kind: 'thinking', text: 'Checking ', chars: 9, text_id: 'th1' });
+    expect(addThinking(first, 'Code', 'th1')).toBeUndefined();
+    expect(first.text).toBe('Checking Code');
+    expect(first.chars).toBe(13);
+    // 另一段思考另起一步；整段到达的去掉首尾空白，只有空白的不算一步。
+    expect(addThinking(first, 'next', 'th2')).toMatchObject({ text: 'next', text_id: 'th2' });
+    expect(addThinking(undefined, '  整段想完  ')).toMatchObject({ text: '整段想完', chars: 4 });
+    expect(addThinking(undefined, '   ')).toBeUndefined();
+    // 字数按字符算：emoji 这类 BMP 之外的字符算一个，不是两个。
+    const emoji = addThinking(undefined, '想😀', 'th3')!;
+    expect(emoji.chars).toBe(2);
+    addThinking(emoji, '😀', 'th3');
+    expect(emoji.chars).toBe(3);
   });
 
   // 重渲染前旧日志被挪走、新日志从头写：不能接着旧的偏移读。

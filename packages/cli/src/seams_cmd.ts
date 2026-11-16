@@ -2,7 +2,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { windowsRenderWorkers, windowsSceneJobs } from '@onset/engine/windowsruntime';
 import * as config from '@onset/engine/config';
 import * as envutil from '@onset/engine/envutil';
 import { formatFixed } from '@onset/engine/gofmt';
@@ -76,13 +75,10 @@ defineOp({
     }
     for (const r of results) out.write(`${r.from} → ${r.to}：已经接上（差异 ${formatFixed(r.before, 1)}），不动\n`);
 
-    let workers = 0;
-    if (process.platform === 'win32') {
-      const cpus = os.availableParallelism(), total = os.totalmem(), available = os.freemem();
-      jobs = windowsSceneJobs(cpus, total, available, jobs);
-      workers = windowsRenderWorkers(cpus, total, available, Math.min(jobs, todo.length));
-      if (todo.length) out.write(`Windows 接缝渲染预算：最多 ${Math.min(jobs, todo.length)} 个镜头，每镜头 ${workers} 个浏览器 worker\n`);
-    }
+    const budget = schedule.renderBudget(os.availableParallelism(), schedule.systemMemory(), os.freemem(), jobs, todo.length);
+    jobs = budget.jobs;
+    const workers = budget.workers;
+    if (todo.length) out.write(`接缝渲染预算：最多 ${jobs} 个镜头，每镜头 ${workers} 个浏览器 worker\n`);
 
     const fix = async (job: (typeof todo)[number]): Promise<SeamResult> => {
       const { previous, next, before } = job;

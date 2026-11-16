@@ -111,10 +111,14 @@ export function discoverScenes(root: string, platform: NodeJS.Platform = process
   const exams = path.join(root, 'production', 'memory-exams');
   const studioState = path.join(root, 'production', 'studio');
   const qc = path.join(root, 'production', 'visual-qc');
-  const plannedQC = platform === 'win32' && [...plannedDirs(root)].some(dir => dir.toLowerCase() === qc.toLowerCase() || dir.toLowerCase().startsWith(qc.toLowerCase() + path.sep));
+  const qcKey = sceneDirectoryKey(qc, platform);
+  const plannedQC = [...plannedDirs(root)].some(dir => {
+    const key = sceneDirectoryKey(dir, platform);
+    return key === qcKey || key.startsWith(qcKey + path.sep);
+  });
   walkDir(root, (file, entry) => {
     if (!entry) return;
-    if (entry.isDirectory()) return file === exams || file === studioState || (platform === 'win32' && file === qc && !plannedQC) ? 'skip' : undefined;
+    if (entry.isDirectory()) return file === exams || file === studioState || (file === qc && !plannedQC) ? 'skip' : undefined;
     if (entry.name !== 'scene.json') return;
     let v: Record<string, unknown>;
     try {
@@ -183,10 +187,10 @@ export function discoverScenes(root: string, platform: NodeJS.Platform = process
  */
 function currentScenes(root: string, scenes: SceneSummary[], platform: NodeJS.Platform): SceneSummary[] {
   const planned = plannedDirs(root);
-  const comparable = (directory: string) => platform === 'win32' ? path.resolve(directory).toLowerCase() : path.resolve(directory);
+  const comparable = (directory: string) => sceneDirectoryKey(directory, platform);
   const plannedKeys = new Set([...planned].map(comparable));
-  // Windows 修订与复查会生成不同 id 的镜头副本；明确计划存在时，它们不能增加镜头数或触发返工。
-  if (platform === 'win32' && plannedKeys.size > 0) scenes = scenes.filter(sc => plannedKeys.has(comparable(sc.directory)));
+  // 修订与复查会生成不同 id 的镜头副本；明确计划存在时，它们不能增加镜头数或触发返工。
+  if (plannedKeys.size > 0) scenes = scenes.filter(sc => plannedKeys.has(comparable(sc.directory)));
   const top = path.join(root, 'scenes') + path.sep;
   const rank = (sc: SceneSummary): number[] => [
     plannedKeys.has(comparable(sc.directory)) ? 0 : 1,
@@ -221,4 +225,11 @@ function plannedDirs(root: string): Set<string> {
     // 没有计划（卡点项目、旧项目）就只按位置判断。
   }
   return out;
+}
+
+/** 已存在的目录按真实路径比对，兼容 macOS 的路径别名与不区分大小写的卷。 */
+function sceneDirectoryKey(directory: string, platform: NodeJS.Platform): string {
+  let resolved = path.resolve(directory);
+  try { resolved = fs.realpathSync(resolved); } catch { /* 计划可以先于镜头目录存在。 */ }
+  return platform === 'win32' ? resolved.toLowerCase() : resolved;
 }

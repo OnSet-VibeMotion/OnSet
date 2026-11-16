@@ -2,52 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { test, expect, openProject, api } from './fixtures.mjs';
 
-// 从 internal/studio/ui/e2e/studio.spec.mjs 迁来：对话、回退、停止、选项、排队、工具选择、镜头快捷指令。
-
-test('shows Claude background tasks, restores them on reload, and clears completed or stopped work', async ({ page, project }, testInfo) => {
-  await openProject(page, project);
-  await page.locator('#prompt').fill('后台任务测试');
-  await page.locator('#send').click();
-  const tasks = page.getByRole('region', { name: '正在执行的后台任务' });
-  await expect(tasks).toContainText('2 个后台任务正在执行');
-  await expect(tasks).toContainText('检查素材尺寸');
-  await expect(tasks).toContainText('生成配音');
-  await expect(page.locator('#messages')).not.toContainText('正在启动 AI');
-  const screenshot = testInfo.outputPath('background-tasks.png');
-  await page.screenshot({ path: screenshot });
-  await testInfo.attach('background-tasks', { path: screenshot, contentType: 'image/png' });
-  await page.reload();
-  await expect(tasks).toContainText('2 个后台任务正在执行');
-  await fs.writeFile(path.join(project.path, 'production/studio/bg-test-progress'), '');
-  await expect(tasks).toContainText('1 个后台任务正在执行');
-  await expect(tasks).toContainText('正在核对封面图片');
-  await expect(tasks).not.toContainText('生成配音');
-  await fs.writeFile(path.join(project.path, 'production/studio/bg-test-complete'), '');
-  await expect(tasks).toHaveCount(0);
-  await fs.writeFile(path.join(project.path, 'production/studio/bg-test-next'), '');
-  await expect(tasks).toContainText('整理检查报告');
-  await expect(tasks).not.toContainText('检查素材尺寸');
-  await page.locator('#cancel-turn').click();
-  await expect(tasks).toHaveCount(0);
-  await page.reload();
-  await expect(page.locator('.pause-line')).toBeVisible();
-  await expect(tasks).toHaveCount(0);
-});
-
-test('shows OpenCode child tasks and clears them when stopped', async ({ page, project }) => {
-  await openProject(page, project);
-  await page.locator('#agent-tool').selectOption('opencode');
-  await page.locator('#prompt').fill('后台子任务挂起');
-  await page.locator('#send').click();
-  const tasks = page.getByRole('region', { name: '正在执行的后台任务' });
-  await expect(tasks).toContainText('1 个后台任务正在执行');
-  await expect(tasks).toContainText('核对分镜');
-  await page.reload();
-  await expect(tasks).toContainText('核对分镜');
-  await page.locator('#cancel-turn').click();
-  await expect(tasks).toHaveCount(0);
-  await expect(page.locator('.pause-line')).toContainText('已停止');
-});
+// 对话的核心流程：改动、回退、停止、选项、排队、工具选择（真的起假 claude、真的写项目文件）。
+// 长对话的滚动、后台任务、镜头快捷指令、制作步骤标记在 src/renderer/components/Chat.test.tsx。
 
 test('asks for a change, reviews the diff, and reverts the turn', async ({ page, project }) => {
   await openProject(page, project);
@@ -118,7 +74,7 @@ test('picks the orchestrator and renderer per session', async ({ page, project }
   await expect(page.locator('#agent-tool')).toHaveValue('codex');
 });
 
-test('uploads a file, answers with a choice button, and queues a message mid-turn', async ({ page, project }) => {
+test('uploads and drops files, answers with a choice button, and queues a message mid-turn', async ({ page, project }) => {
   await openProject(page, project);
   await page.locator('.composer input[type="file"]').setInputFiles({
     name: '文章.md',
@@ -126,9 +82,27 @@ test('uploads a file, answers with a choice button, and queues a message mid-tur
     buffer: Buffer.from('# 标题\n正文'),
   });
   await expect(page.locator('#attachments')).toContainText('文章.md');
+  // 拖文件进输入框：与选文件走同一条上传。
+  await page.locator('.composer-shell').evaluate((el) => {
+    const data = new DataTransfer();
+    data.items.add(new File(['# 拖进来的文章\n正文'], '拖进来.md', { type: 'text/markdown' }));
+    el.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: data }));
+    el.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data }));
+  });
+  await expect(page.locator('#attachments')).toContainText('拖进来.md');
+  // 上传落在项目的 Studio 状态目录，不直接进项目。
+  const uploads = path.join(project.path, 'production', 'studio', 'uploads');
+  await expect
+    .poll(async () => (await fs.readdir(uploads, { recursive: true }).catch(() => [])).some((f) => String(f).endsWith('拖进来.md')))
+    .toBe(true);
 
   await page.locator('#prompt').fill('给我选项');
   await page.locator('#send').click();
+  // 发送时附件跟着这条消息走。
+  await expect(page.locator('.user-extra').last()).toContainText('用户上传的文件');
+  await expect(page.locator('.user-extra').last()).toContainText('文章.md');
+  await expect(page.locator('.user-extra').last()).toContainText('拖进来.md');
+  await expect(page.locator('#attachments')).toHaveCount(0);
   // 待办清单进了这一轮的过程：进行中的那一步插一行小标题。
   await expect(page.locator('.step-row')).toContainText('正在定风格');
   const choice = page.locator('.choice', { hasText: '白板手绘风' });
@@ -161,81 +135,4 @@ test('uploads a file, answers with a choice button, and queues a message mid-tur
   await expect(page.locator('.message.user', { hasText: '顺便检查一下' })).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('.queue-card')).toHaveCount(0);
   await expect(page.locator('.message.user', { hasText: '这条不要了' })).toHaveCount(0);
-});
-
-test('sends a scene quick action to the orchestrator', async ({ page, project }) => {
-  await openProject(page, project);
-  // 快捷指令收在镜头页的「⋯」菜单里；点步骤打开画面面板。
-  await page.locator('[data-tab="scene"]').click();
-  await page.locator('.scene-menu summary').click();
-  await page.locator('.quick-actions button', { hasText: '重做这个镜头' }).click();
-  await expect(page.locator('.message.user').last()).toContainText('重做镜头 scene-001');
-  await expect(page.locator('.done-line').last()).toContainText('已完成');
-});
-
-test('the orchestrator marks which production step the project is at', async ({ page, project }) => {
-  await openProject(page, project);
-  // 没标过时按产物推：项目里还没有任何制作产物，算在第一步。
-  await expect(page.locator('[data-tab="script"]')).toHaveClass(/current/);
-  await page.locator('#prompt').fill('标步骤');
-  await page.locator('#send').click();
-  await expect(page.locator('#messages')).toContainText('成片拼好了');
-  await expect(page.locator('[data-tab="final"]')).toHaveClass(/current/);
-  await expect(page.locator('[data-tab="final"]')).toHaveAttribute('title', 'AI 标记：现在在这一步');
-  await expect(page.locator('[data-tab="scene"]')).toHaveClass(/done/);
-  await expect(page.locator('[data-tab="scene"] .step-no')).toHaveText('✓');
-  // 只标步骤不切页，回复下面也不留「↗ 页面」链接；面板仍是收起的。
-  await expect(page.locator('#panel')).toHaveCount(0);
-  await expect(page.locator('.view-links')).toHaveCount(0);
-  // 标记跟着项目走：重新加载后还在。
-  await page.reload();
-  await expect(page.locator('[data-tab="final"]')).toHaveClass(/current/);
-});
-
-// 重新打开一段长对话：历史一次画完、直接落在最新一轮，不是从第一条起一帧帧往下长、往下滚。
-test('reopening a long conversation lands on the latest turn at once', async ({ page, project }) => {
-  await openProject(page, project);
-  const turns = 8;
-  for (let i = 1; i <= turns; i++) {
-    await page.locator('#prompt').fill(`第 ${i} 句话`);
-    await page.locator('#send').click();
-    await expect(page.locator('.assistant-flow')).toHaveCount(i);
-    await expect(page.locator('.done-line').last()).toBeVisible();
-  }
-  // 记下每一帧里对话有几轮：一帧帧补出来的话，这串数会从 1 慢慢涨到 8。
-  await page.addInitScript(() => {
-    const seen = [];
-    window.__turnCounts = seen;
-    const tick = () => {
-      const n = document.querySelectorAll('.assistant-flow').length;
-      if (n > 0 && seen[seen.length - 1] !== n) seen.push(n);
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  });
-  await page.reload();
-  await expect(page.locator('.assistant-flow')).toHaveCount(turns);
-  expect(await page.evaluate(() => window.__turnCounts)).toEqual([turns]);
-  const gap = await page.locator('#messages').evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
-  expect(gap).toBeLessThanOrEqual(8);
-  await expect(page.locator('.intro')).toHaveCount(0);
-
-  // 翻历史后，按钮与手动滚动都必须能回到最后一轮。
-  const messages = page.locator('#messages');
-  const jump = page.getByRole('button', { name: '回到最新' });
-  const bottomGap = () => messages.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
-  await messages.evaluate((el) => { el.scrollTop = 0; });
-  await expect(jump).toBeVisible();
-  await jump.click();
-  await expect.poll(bottomGap).toBeLessThanOrEqual(8);
-  await expect(jump).toBeHidden();
-  await expect(page.locator('.done-line').last()).toBeInViewport();
-
-  await messages.evaluate((el) => { el.scrollTop = 0; });
-  await expect(jump).toBeVisible();
-  await messages.hover();
-  await page.mouse.wheel(0, 10000);
-  await expect.poll(bottomGap).toBeLessThanOrEqual(8);
-  await expect(jump).toBeHidden();
-  await expect(page.locator('.done-line').last()).toBeInViewport();
 });
