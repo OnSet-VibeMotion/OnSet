@@ -996,7 +996,7 @@ async function projectSummary(): Promise<Record<string, unknown>> {
 interface PageRequest {
   onset: 'station';
   id: number;
-  type: 'theme' | 'info' | 'project' | 'read' | 'run' | 'call' | 'ask' | 'send' | 'open';
+  type: 'theme' | 'info' | 'project' | 'read' | 'list' | 'run' | 'call' | 'ask' | 'send' | 'open';
   path?: string;
   op?: string;
   page?: string;
@@ -1036,7 +1036,7 @@ interface FrameProps {
 
 /**
  * 沙箱 iframe（只给 allow-scripts，不透明源，CSP 只许它碰本站目录与申请过的地址）加宿主一侧的桥。
- * 页面要的东西都经这里：theme / info / project / read / run / call / ask / open。执行类（run、call）
+ * 页面要的东西都经这里：theme / info / project / read / list / run / call / ask / open。执行类（run、call）
  * 一律先在上方请用户确认——页面里的按钮可以被脚本自己点，不算用户同意。只认来自这个 iframe 的消息。
  */
 function StationFrame({ station, page, context, version, run, onQuick, onOpen, projectName, height }: FrameProps) {
@@ -1091,6 +1091,21 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
           case 'read':
             reply(m.id, true, await api(`/api/stations/${encodeURIComponent(station.id)}/read?path=${encodeURIComponent(String(m.path ?? ''))}`));
             return;
+          case 'list': {
+            // 列表操作只读插件自己的数据（清单 ops[].list），与设置里打开弹窗时自动跑的是同一条，不用用户确认。
+            const op = station.ops.find((o) => o.name === m.op && o.list);
+            if (!op) throw new Error(`没有列表操作 ${String(m.op)}（清单 ops[].list）`);
+            // 先说收到了：跑操作要几秒，别让页面按「没回应」报错。
+            frame.current?.contentWindow?.postMessage({ onset: 'host', id: m.id, ack: true }, '*');
+            const id = encodeURIComponent(station.id);
+            const t = await runAndWait(`/api/stations/${id}/ops/${encodeURIComponent(op.name)}`, { params: {} });
+            if (t.status !== 'succeeded') throw new Error(t.error || t.message || `${op.summary}没有成功`);
+            // 结果不进任务（任务会写进项目），从插件列表里这条操作的最近一次结果取。
+            const r = await api<StationsResponse>('/api/stations');
+            const last = r.stations.find((x) => x.id === station.id)?.ops.find((o) => o.name === op.name)?.last_run;
+            reply(m.id, true, last?.ok ? (last.data ?? {}) : {});
+            return;
+          }
           case 'run': {
             const op = station.ops.find((o) => o.name === m.op);
             if (!op) throw new Error(`没有操作 ${String(m.op)}`);

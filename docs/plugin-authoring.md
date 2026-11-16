@@ -256,6 +256,7 @@ echo 'onset-result {"url": "https://example.com/v/1"}'
 | `onset.project()` | 项目摘要：镜头、制作路线、发布信息、画幅、风格（要 `permissions.project`） |
 | `onset.read(path)` | 读一个项目文件：`{path, size, text}`，图片另有 `data_url`。只给 `reads`、`produces` 与站点 `outputs` 里的文件 |
 | `onset.mediaURL(path)` | 项目里视频、图片的地址，可以直接放进 `<video>`、`<img>`（同样只给能读的文件） |
+| `onset.list(op)` | 跑本插件的一条列表操作（`list: true`），不弹确认条，resolve 成它的结构化结果（`onset-result` 那一行的 JSON）。用来读插件自己数据目录里的东西，例如已登录的账号：在设置里没打开项目时登录的账号，项目里没有它的文件，页面经这里现读，不要往项目里写一份快照 |
 | `onset.run(op, params)` | 执行本插件的一条操作：宿主先在页面上方弹确认条，用户点「执行」才跑 |
 | `onset.call(op, params)` | 调一条片场自带的操作（要在 `permissions.uses` 里申请），同样先请用户确认 |
 | `onset.send(text)` | 把一段话作为一条消息发给 AI，先请用户确认 |

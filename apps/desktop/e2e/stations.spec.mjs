@@ -352,10 +352,16 @@ test('plugins get settings, a slot in the publish page, a slash command, hooks a
   // 插件不把顶栏撑出窗口（原来就有的 2px 是右上角的连接状态点）。
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(2);
 
+  // 没打开项目时在设置里登录过的账号（只在插件自己的数据目录里，项目里没有它的文件）。
+  fs.mkdirSync(path.join(sandbox.stations, 'fake-publisher', 'data'), { recursive: true });
+  fs.writeFileSync(path.join(sandbox.stations, 'fake-publisher', 'data', 'login.json'), JSON.stringify({ name: '小号' }));
   // 嵌进发布页的小窗：拿到嵌入位与设置（不含密钥）。
   await page.locator('[data-tab="publish"]').click();
   const slot = page.frameLocator('.station-slots[data-slot="publish"] .station-frame');
   await expect(slot.locator('#where')).toHaveText('嵌在 publish · 默认平台 bilibili');
+  // 小窗经 onset.list 现读插件的账号列表，不用用户确认，也不靠项目里的文件。
+  await expect(slot.locator('#accounts')).toHaveText('账号：小号');
+  await expect(page.locator('.station-confirm')).toHaveCount(0);
   // 小窗排在发布页下面，不盖住发布页的内容（发布页曾被压扁、内容溢出到小窗上）。
   const overlap = await page.evaluate(() => {
     const tab = document.querySelector('.publish-tab');

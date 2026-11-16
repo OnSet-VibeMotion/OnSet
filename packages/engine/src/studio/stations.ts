@@ -652,6 +652,8 @@ export const pageSDK = `// 片场插件页面 SDK：页面在沙箱里，只能�
     open: (page) => call('open', { page }),
     /** 读一个项目文件（清单里声明过的）：{ path, size, text }，图片另有 data_url。 */
     read: (path) => call('read', { path }),
+    /** 跑本站的一条列表操作（清单 ops[].list，只读插件自己的数据，例如已登录的账号），不用用户确认；resolve 成它的结构化结果。 */
+    list: (op) => call('list', { op }),
     /** 请用户确认后执行本站的一条操作；用户拒绝时 reject。 */
     run: (op, params) => call('run', { op, params: params || {} }),
     /** 请用户确认后，把一段话作为一条消息直接发给 AI。 */

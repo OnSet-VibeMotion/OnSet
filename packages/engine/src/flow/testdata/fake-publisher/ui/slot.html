@@ -3,11 +3,17 @@
 <head><meta charset="utf-8"><title>发布小窗</title><script src="/station-ui/_sdk.js"></script></head>
 <body>
   <p id="where">…</p>
+  <p id="accounts">…</p>
   <button id="open">打开发布看板</button>
   <script>
     onset.info().then((info) => {
       document.getElementById('where').textContent = '嵌在 ' + info.context.slot + ' · 默认平台 ' + info.settings.platform;
     });
+    // 账号在插件自己的数据目录里（可能是没打开项目时在设置里登录的），经列表操作现读。
+    onset.list('accounts').then((r) => {
+      const names = (r.items || []).map((it) => it.title);
+      document.getElementById('accounts').textContent = names.length ? '账号：' + names.join('、') : '还没有账号';
+    }, (err) => { document.getElementById('accounts').textContent = err.message; });
     document.getElementById('open').onclick = () => onset.open('dashboard');
   </script>
 </body>
