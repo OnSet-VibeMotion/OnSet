@@ -127,8 +127,14 @@ test('the evidence page proposes who should learn from whom, and the relation ca
         { slot: 'B', key: 'codex/student', renderer: 'codex', model: 'student', designer: '', outcome: 'succeeded', problems: 0, role: '' },
       ],
     });
-  fs.writeFileSync(path.join(sandbox.memory, 'auditions.jsonl'), [row(1, 'claude/teacher'), row(2, 'claude/teacher'), row(3, 'codex/student'), row(4, 'claude/teacher')].join('\n') + '\n');
+  // 还没有考过试时，进化页先说该做什么，按钮带去记忆页。
   await openProject(page, project);
+  await openPage(page, 'evidence');
+  await expect(page.locator('.evidence-empty')).toContainText('还没有考过试的经验');
+  await page.locator('.evidence-empty button').click();
+  await expect(page.locator('.memory-tab')).toBeVisible();
+  fs.writeFileSync(path.join(sandbox.memory, 'auditions.jsonl'), [row(1, 'claude/teacher'), row(2, 'claude/teacher'), row(3, 'codex/student'), row(4, 'claude/teacher')].join('\n') + '\n');
+  await page.reload();
   await openPage(page, 'evidence');
   const proposal = page.locator('.learning-proposal');
   await expect(proposal).toContainText('codex · student 在 4 场里输给 claude · teacher 3 场');

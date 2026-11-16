@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { test, expect, openProject } from './fixtures.mjs';
 
-// 首次使用引导与项目内的「接下来」。
+// 首次使用引导（项目内的「接下来」卡片在 progress.spec.mjs）。
 
 test('the first-run guide walks through tools, the orchestrator, voice and the first film', async ({ page, sandbox }) => {
   // 测试环境里工具都算装好、claude 也在：不会自动弹出，从首页左栏打开。
@@ -95,28 +95,3 @@ async function write(root, rel, body) {
   await fsp.mkdir(path.dirname(path.join(root, rel)), { recursive: true });
   await fsp.writeFile(path.join(root, rel), body);
 }
-
-test('inside a project the next-step card says what to do now', async ({ page, project }) => {
-  await write(project.path, 'production/script-final.md', '# 标题\n\n猫推开了门。\n');
-  await write(project.path, 'production/audio/voice.wav', 'RIFF');
-  await write(project.path, 'production/audio/voice.srt', '1\n00:00:00,000 --> 00:00:01,000\nhello\n');
-  await write(project.path, 'production/scene-plan.json', JSON.stringify({ schema: 1, scenes: [{ id: 'scene-001', dir: 'scenes/scene-001', chapter: '开场' }] }));
-  await openProject(page, project);
-
-  const card = page.locator('#next-step');
-  await expect(card).toContainText('分镜审核');
-  await expect(card).toContainText('渲染前先看一遍');
-  await page.screenshot({ path: test.info().outputPath('next-step.png') });
-
-  // 「看分镜」打开分镜页；「我要改」只是把一句话填进输入框。
-  await card.getByRole('button', { name: '看分镜' }).click();
-  await expect(page.locator('#storyboard')).toBeVisible();
-  await card.getByRole('button', { name: '我要改' }).click();
-  await expect(page.locator('#prompt')).toHaveValue(/分镜这几处要改/);
-
-  // 确认关卡：记下确认，把那句话发给 AI。
-  await card.getByRole('button', { name: '没问题，开始渲染' }).click();
-  await expect(page.locator('.message.user').last()).toContainText('分镜我看过了，没问题，开始渲染。');
-  const gates = JSON.parse(await fsp.readFile(path.join(project.path, 'production', 'studio', 'gates.json'), 'utf8'));
-  expect(Object.keys(gates.gates)).toEqual(['gate-storyboard']);
-});

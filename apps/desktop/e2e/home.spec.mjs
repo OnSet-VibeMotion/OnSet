@@ -67,9 +67,41 @@ async function dropPaths(page, files) {
   }
 }
 
+// 只建一次项目：先在首页把批量读取、.env 拦截、移除文件夹、普通上传都走一遍，再带着文件夹引用与上传的文件发送。
 test('home imports dropped folders as references, preserves nested files', async ({ page, project, sandbox }, testInfo) => {
   await openProject(page, project);
   await page.locator('.brand').click();
+
+  // 目录分批读取：105 个文件一个不少；拖进带 .env 的目录整批拒收，输入框照常可用。
+  const batch = path.join(sandbox.home, '批量素材');
+  await fs.mkdir(batch);
+  await Promise.all(Array.from({ length: 105 }, (_, index) => fs.writeFile(path.join(batch, `素材-${index}.txt`), 'text')));
+  await dropPaths(page, [batch]);
+  await expect(page.getByRole('list', { name: '引用素材' })).toContainText('105 个文件');
+  await expect(page.locator('#home-send')).toBeEnabled();
+  await fs.mkdir(path.join(batch, 'nested'));
+  for (const name of ['.env', '.ENV', '.Env.local', 'nested/.ENV.local']) {
+    const secret = path.join(batch, name);
+    await fs.writeFile(secret, 'SECRET=test');
+    await dropPaths(page, [batch]);
+    await expect(page.locator('.home')).toContainText('.env 不能上传');
+    await expect(page.locator('.home-tray li')).toHaveCount(1);
+    await expect(page.locator('#home-send')).toBeEnabled();
+    await fs.unlink(secret);
+  }
+  // 还没发送的文件夹引用可以移除（空文件夹同样算一个引用）。
+  await page.locator('.home-tray button[aria-label="移除"]').click();
+  await expect(page.locator('.home-tray')).toHaveCount(0);
+  const empty = path.join(sandbox.home, '空素材');
+  await fs.mkdir(empty);
+  await dropPaths(page, [empty]);
+  await expect(page.locator('.home-tray')).toContainText('文件夹');
+  await page.locator('.home-tray button[aria-label="移除"]').click();
+  await expect(page.locator('.home-tray')).toHaveCount(0);
+
+  // 普通文件上传与文件夹引用一起带上。
+  await page.locator('.home input[type="file"]').setInputFiles({ name: '文章.md', mimeType: 'text/markdown', buffer: Buffer.from('# 上传文章') });
+  await expect(page.locator('.home-tray')).toContainText('文章.md');
   const folder = path.join(sandbox.home, '参考 素材');
   await fs.mkdir(path.join(folder, '子目录'), { recursive: true });
   await fs.mkdir(path.join(folder, '空目录'));
@@ -81,62 +113,24 @@ test('home imports dropped folders as references, preserves nested files', async
   await expect(page.locator('.home-tray')).toContainText('文件夹');
   await expect(page.locator('.home-tray')).toContainText('参考 素材');
   await expect(page.locator('.home-tray')).toContainText('3 个文件');
+  await expect(page.locator('.home-tray')).toContainText('文章.md');
   await page.locator('.composer-card').screenshot({ path: testInfo.outputPath('home-folder-reference.png') });
   await page.locator('#home-prompt').fill('参考这些素材制作视频');
   await page.locator('#home-send').click();
   await expect(page.locator('.creation')).toHaveCount(0, { timeout: 20_000 });
   await expect(page.locator('.user-extra').first()).toContainText('文件夹「参考 素材」');
+  await expect(page.locator('.user-extra').first()).toContainText('文章.md');
   const projects = await api(page, '/api/projects');
   const created = projects.body.projects.find((p) => p.path !== project.path);
   expect(created).toBeTruthy();
   const uploads = path.join(created.path, 'production/studio/uploads');
-  const [imported] = await fs.readdir(uploads);
+  const entries = await fs.readdir(uploads, { withFileTypes: true });
+  expect(entries).toHaveLength(2);
+  const imported = entries.find((e) => e.isDirectory()).name;
+  const article = entries.find((e) => e.isFile()).name;
+  expect(await fs.readFile(path.join(uploads, article), 'utf8')).toBe('# 上传文章');
   expect(await fs.readFile(path.join(uploads, imported, '讲稿.md'), 'utf8')).toBe('# 根讲稿');
   expect(await fs.readFile(path.join(uploads, imported, '子目录/讲稿.md'), 'utf8')).toBe('# 子讲稿');
   expect((await fs.stat(path.join(uploads, imported, '空目录'))).isDirectory()).toBe(true);
   expect((await fs.stat(path.join(uploads, imported, 'empty.txt'))).size).toBe(0);
-});
-
-test('home keeps regular file uploads and removes pending folder references', async ({ page, project, sandbox }) => {
-  await openProject(page, project);
-  await page.locator('.brand').click();
-  const folder = path.join(sandbox.home, '空素材');
-  await fs.mkdir(folder);
-  await dropPaths(page, [folder]);
-  await expect(page.locator('.home-tray')).toContainText('文件夹');
-  await page.locator('.home-tray button[aria-label="移除"]').click();
-  await expect(page.locator('.home-tray')).toHaveCount(0);
-  await page.locator('.home input[type="file"]').setInputFiles({ name: '文章.md', mimeType: 'text/markdown', buffer: Buffer.from('# 上传文章') });
-  await expect(page.locator('.home-tray')).toContainText('文章.md');
-  await page.locator('#home-prompt').fill('做成视频');
-  await page.locator('#home-send').click();
-  await expect(page.locator('.creation')).toHaveCount(0, { timeout: 20_000 });
-  await expect(page.locator('.user-extra').first()).toContainText('文章.md');
-  const projects = await api(page, '/api/projects');
-  const created = projects.body.projects.find((p) => p.path !== project.path);
-  const uploads = path.join(created.path, 'production/studio/uploads');
-  const imported = await fs.readdir(uploads);
-  expect(imported).toHaveLength(1);
-  expect(await fs.readFile(path.join(uploads, imported[0]), 'utf8')).toBe('# 上传文章');
-});
-
-test('home reads every directory batch and keeps the composer usable after a failed drop', async ({ page, project, sandbox }) => {
-  await openProject(page, project);
-  await page.locator('.brand').click();
-  const folder = path.join(sandbox.home, '批量素材');
-  await fs.mkdir(folder);
-  await Promise.all(Array.from({ length: 105 }, (_, index) => fs.writeFile(path.join(folder, `素材-${index}.txt`), 'text')));
-  await dropPaths(page, [folder]);
-  await expect(page.getByRole('list', { name: '引用素材' })).toContainText('105 个文件');
-  await expect(page.locator('#home-send')).toBeEnabled();
-  await fs.mkdir(path.join(folder, 'nested'));
-  for (const name of ['.env', '.ENV', '.Env.local', 'nested/.ENV.local']) {
-    const secret = path.join(folder, name);
-    await fs.writeFile(secret, 'SECRET=test');
-    await dropPaths(page, [folder]);
-    await expect(page.locator('.home')).toContainText('.env 不能上传');
-    await expect(page.locator('.home-tray li')).toHaveCount(1);
-    await expect(page.locator('#home-send')).toBeEnabled();
-    await fs.unlink(secret);
-  }
 });

@@ -1,8 +1,7 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { test, expect, openProject } from './fixtures.mjs';
 
-// 客户端独有的部分：原生菜单、拖文件进输入框、完成通知与 Dock 角标。
+// 客户端独有的部分：原生菜单、完成通知与 Dock 角标（拖文件进输入框在 chat.spec.mjs 的上传用例里）。
 
 /** 按菜单路径点原生菜单项（走 menu.ts 里真实的 click）。 */
 async function clickMenu(electronApp, top, label) {
@@ -63,29 +62,6 @@ test('native menu opens a folder, switches steps and goes home', async ({ electr
   await expect(page.locator('#title')).toHaveText(project.name);
 });
 
-test('dropping a file on the composer attaches it', async ({ page, project }) => {
-  await openProject(page, project);
-  await page.locator('.composer-shell').evaluate((el) => {
-    const data = new DataTransfer();
-    data.items.add(new File(['# 拖进来的文章\n正文'], '拖进来.md', { type: 'text/markdown' }));
-    el.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: data }));
-    el.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data }));
-  });
-  await expect(page.locator('#attachments')).toContainText('拖进来.md');
-  // 上传落在项目的 Studio 状态目录，不直接进项目。
-  const uploads = path.join(project.path, 'production', 'studio', 'uploads');
-  await expect
-    .poll(() => (fs.existsSync(uploads) ? fs.readdirSync(uploads, { recursive: true }).some((f) => String(f).endsWith('拖进来.md')) : false))
-    .toBe(true);
-  // 发送时附件跟着这条消息走。
-  await page.locator('#prompt').fill('看看这篇');
-  await page.locator('#send').click();
-  await expect(page.locator('.message.user').last()).toContainText('看看这篇');
-  await expect(page.locator('.user-extra').last()).toContainText('用户上传的文件');
-  await expect(page.locator('.user-extra').last()).toContainText('拖进来.md');
-  await expect(page.locator('#attachments')).toHaveCount(0);
-});
-
 /** 记下主进程弹出的通知与设置的角标；focused 决定主进程看到的「前台窗口」。 */
 async function recordNativeCalls(electronApp, focused) {
   await electronApp.evaluate(({ app, BrowserWindow, Notification }, focused) => {
@@ -105,20 +81,19 @@ async function recordNativeCalls(electronApp, focused) {
 
 const nativeCalls = (electronApp) => electronApp.evaluate(() => globalThis.__amE2E);
 
-test('notifies when a turn ends while the window is in the background', async ({ electronApp, page, project }) => {
+test('notifies when a turn ends in the background, not when the window is in front', async ({ electronApp, page, project }) => {
   await openProject(page, project);
   await recordNativeCalls(electronApp, false);
   await page.locator('#prompt').fill('把镜头提示词改成 after');
   await page.locator('#send').click();
   await expect(page.locator('.done-line').last()).toContainText('已完成');
   await expect.poll(async () => (await nativeCalls(electronApp)).notes).toContainEqual({ title: '这一轮做完了', body: project.name });
-});
 
-test('does not notify when the window is in front', async ({ electronApp, page, project }) => {
-  await openProject(page, project);
+  // 窗口在前台时再做一轮：不弹通知。
   await recordNativeCalls(electronApp, true);
   await page.locator('#prompt').fill('把镜头提示词改成 after');
   await page.locator('#send').click();
+  await expect(page.locator('.done-line')).toHaveCount(2);
   await expect(page.locator('.done-line').last()).toContainText('已完成');
   // 给 IPC 一点时间到达主进程，再确认没弹。
   await page.waitForTimeout(500);

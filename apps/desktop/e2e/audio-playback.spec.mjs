@@ -39,7 +39,8 @@ async function seedAuditions(project) {
   const events = [
     { kind: 'user', text: '比较三段试听' },
     { kind: 'turn-start', status: 'running' },
-    { kind: 'text', text: files.map((file) => '`' + file + '`').join('\n\n') },
+    // 第一段只写文件名、目录在前文另说：界面要能按项目文件树找到它。
+    { kind: 'text', text: '试听在 `production/audio/auditions/` 里：\n\n' + files.map((file, index) => '`' + (index === 0 ? path.basename(file) : file) + '`').join('\n\n') },
     { kind: 'turn-end', status: 'succeeded' },
   ].map((event, index) => JSON.stringify({ seq: index + 1, turn_id: turn, time, ...event }));
   await fs.writeFile(path.join(sessions, session + '.events.jsonl'), events.join('\n') + '\n');
@@ -63,6 +64,10 @@ test.describe('Exclusive audio playback', () => {
     await openAuditions(page, project);
     const clips = page.locator('.media-strip audio');
     await expect(clips).toHaveCount(3);
+    await expect(page.locator('.media-strip .media-item.audio').first()).toContainText('try-A.wav');
+    await expect(clips.first()).toHaveAttribute('src', /production%2Faudio%2Fauditions%2Ftry-A\.wav/);
+    // 原生播放控件的「⋮」菜单里不出现「下载」与「投放」。
+    expect(await clips.first().evaluate((el) => [el.controls, el.controlsList.contains('nodownload'), el.controlsList.contains('noremoteplayback')])).toEqual([true, true, true]);
     await expect.poll(() => clips.first().evaluate((element) => element.duration)).toBe(20);
 
     await clips.nth(0).evaluate(async (element) => { element.currentTime = 2; await element.play(); });
@@ -90,6 +95,27 @@ test.describe('Exclusive audio playback', () => {
     await expect.poll(() => preview.evaluate((element) => element.paused)).toBe(true);
     await expect.poll(() => paused(clips)).toEqual([true, true, false]);
     await page.screenshot({ path: test.info().outputPath('exclusive-audio.png') });
+
+    // 静音的视频预览不打断试听；取消静音后接过声音，试听再播又把它停下。
+    const clip = clips.first();
+    await clip.evaluate((element) => element.play());
+    await expect.poll(() => paused(clips)).toEqual([false, true, true]);
+    // 使用同一条可解码的音轨，验证 HTMLVideoElement 的真实播放与静音事件。
+    await clip.evaluate(async (element) => {
+      const video = document.createElement('video');
+      video.id = 'muted-video-preview';
+      video.muted = true;
+      video.src = element.src;
+      document.body.append(video);
+      await video.play();
+    });
+    const video = page.locator('#muted-video-preview');
+    expect(await clip.evaluate((element) => element.paused)).toBe(false);
+    await video.evaluate((element) => { element.muted = false; });
+    await expect.poll(() => clip.evaluate((element) => element.paused)).toBe(true);
+    expect(await video.evaluate((element) => element.paused)).toBe(false);
+    await clip.evaluate((element) => element.play());
+    await expect.poll(() => video.evaluate((element) => element.paused)).toBe(true);
   });
 
   test('syncs hidden voice player buttons when a chat audition interrupts them', async ({ page, project, sandbox }) => {
@@ -130,27 +156,4 @@ test.describe('Exclusive audio playback', () => {
     await expect.poll(() => paused(clips)).toEqual([true, true, true]);
   });
 
-  test('lets muted video previews continue and takes over sound when unmuted', async ({ page, project }) => {
-    await seedAuditions(project);
-    await openAuditions(page, project);
-    const clip = page.locator('.media-strip audio').first();
-    await expect(clip).toBeVisible();
-    await clip.evaluate((element) => element.play());
-    // 使用同一条可解码的音轨，验证 HTMLVideoElement 的真实播放与静音事件。
-    await clip.evaluate(async (element) => {
-      const video = document.createElement('video');
-      video.id = 'muted-video-preview';
-      video.muted = true;
-      video.src = element.src;
-      document.body.append(video);
-      await video.play();
-    });
-    const video = page.locator('#muted-video-preview');
-    expect(await clip.evaluate((element) => element.paused)).toBe(false);
-    await video.evaluate((element) => { element.muted = false; });
-    await expect.poll(() => clip.evaluate((element) => element.paused)).toBe(true);
-    expect(await video.evaluate((element) => element.paused)).toBe(false);
-    await clip.evaluate((element) => element.play());
-    await expect.poll(() => video.evaluate((element) => element.paused)).toBe(true);
-  });
 });

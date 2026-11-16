@@ -37,8 +37,21 @@ test('keeps render cards collapsible when many scenes and long commands fill the
   await openProject(page, project);
   const watch = page.locator('.render-watch');
   await expect(watch.locator('.render-card')).toHaveCount(9);
+  await expect(watch.locator('.render-watch-count')).toHaveText('9 个进行中');
   const card = watch.locator('[data-render-scene="scene-001"]');
   const header = card.locator('.ra-head');
+  // 阶段与等待状态怎么说在 render-progress.test.mjs；这里只看卡片把它接上了。
+  await expect(card.locator('.ra-status')).toHaveText('等模型回复');
+  await expect(card.locator('.ra-elapsed')).toContainText('累计');
+  // 某个镜头渲染结束（进行中标记删掉）：它的卡片退场，计数跟着变。
+  for (const id of ['scene-008', 'scene-009']) fs.unlinkSync(path.join(project.path, 'scenes', id, `render-${id}.live.json`));
+  await expect(watch.locator('.render-watch-count')).toHaveText('7 个进行中');
+  await expect(watch.locator('.render-card')).toHaveCount(7);
+  // 整个列表能收起再展开。
+  await watch.getByRole('button', { name: '收起列表' }).click();
+  await expect(card).not.toBeVisible();
+  await watch.getByRole('button', { name: '展开列表' }).click();
+  await expect(card).toBeVisible();
   await header.click();
   await expect(header).toHaveAttribute('aria-expanded', 'true');
   await expect(card.locator('.ra-step')).toHaveCount(24);
@@ -59,7 +72,7 @@ test('keeps render cards collapsible when many scenes and long commands fill the
   fs.appendFileSync(stream, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: '收起后继续更新' }] } }) + '\n');
   await expect(header.locator('.ra-current')).toHaveText('收起后继续更新');
   await expect(header).toHaveAttribute('aria-expanded', 'false');
-  const last = watch.locator('[data-render-scene="scene-009"] .ra-head');
+  const last = watch.locator('[data-render-scene="scene-007"] .ra-head');
   await last.click();
   await expect(last).toHaveAttribute('aria-expanded', 'true');
   await last.click();
@@ -72,6 +85,8 @@ test('keeps render cards collapsible when many scenes and long commands fill the
   await expect(page.locator('#prompt')).toBeInViewport();
   await header.press('Space');
   await expect(header).toHaveAttribute('aria-expanded', 'false');
+  // 窄窗口里卡片不把列表撑出横向滚动。
+  expect(await watch.evaluate((el) => el.scrollWidth > el.clientWidth + 1)).toBe(false);
   await page.screenshot({ path: test.info().outputPath('render-cards-collapsed.png'), animations: 'disabled' });
 });
 
@@ -84,12 +99,17 @@ test('shows what the renderer is doing while a scene renders', async ({ page, pr
     path.join(sceneDir, 'render-scene-001.live.json'),
     JSON.stringify({ pid: process.pid, renderer: 'claude', started_at: new Date(Date.now() - 95_000).toISOString() }),
   );
+  // 日志一分多钟没写：卡片照实说多久没更新（后端按日志的修改时间给 updated_at）。
+  const old = new Date(Date.now() - 110_000);
+  fs.utimesSync(path.join(sceneDir, 'render-scene-001.stream.jsonl'), old, old);
   await openProject(page, project);
 
   const card = page.locator('.render-card[data-render-scene="scene-001"]');
   await expect(card).toBeVisible();
   await expect(card.locator('.ra-current')).toHaveText('正在渲染视频');
   await expect(card.locator('.ra-elapsed')).toContainText('1m');
+  await expect(card.locator('.ra-freshness')).toHaveClass(/is-quiet/);
+  await expect(card.locator('.ra-freshness')).toContainText('未更新');
   await card.locator('.ra-head').click();
   await expect(card.locator('.ra-step')).toHaveCount(3);
   await expect(card.locator('.ra-step').first()).toContainText('读取');
@@ -133,6 +153,24 @@ test('shows what the renderer is doing while a scene renders', async ({ page, pr
   // 渲染器每条命令前的 cd 不占那一行：看得见真正跑的命令。
   await expect(panel.locator('.ra-step').nth(3).locator('.ra-target')).toHaveText(/^shasum -a 256 /);
   expect(await box()).toEqual(before);
+  // 日志刚写过：不再标成很久没更新。
+  await expect(card.locator('.ra-freshness')).not.toHaveClass(/is-quiet/);
+
+  // 渲染器的思考也是过程的一步：Qoder 这类工具整段想完才写出来（实测一次 3.6 万字、四分多钟），
+  // 过程里要看得到它想了多少、想了什么，不能只剩前后两个工具调用。
+  const thought = '先确认镜头时长与安全区，再决定画面怎么分层。\n' + '想'.repeat(36000);
+  fs.appendFileSync(path.join(sceneDir, 'render-scene-001.stream.jsonl'), [
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't2', content: 'ok' }, { type: 'tool_result', tool_use_id: 't3', content: 'ok' }] }, session_id: 'r' },
+    { type: 'assistant', message: { content: [{ type: 'thinking', thinking: thought }] }, session_id: 'r' },
+  ].map((line) => JSON.stringify(line)).join('\n') + '\n');
+  await expect(panel.locator('.ra-step')).toHaveCount(6);
+  await expect(card.locator('.ra-current')).toHaveText('刚想完一段，等模型给出下一步');
+  const thinking = panel.locator('.ra-step').nth(5);
+  await expect(thinking).toContainText('思考 · 3.6 万字');
+  await expect(thinking).toContainText('先确认镜头时长与安全区');
+  await thinking.locator('summary').click();
+  await expect(thinking.locator('.ra-thought p')).toContainText('再决定画面怎么分层');
+  await expect(thinking.locator('.ra-thought-more')).toBeVisible();
 
   // 渲染结束（标记删掉、写下尝试记录）：卡片消失，镜头页改成「上次渲染的过程」。
   fs.rmSync(path.join(sceneDir, 'render-scene-001.live.json'));

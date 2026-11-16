@@ -32,6 +32,7 @@ jobs:
       - run: npm run test:packaging -w onset-desktop
       - run: npx vitest run --root packages/engine
       - run: npx vitest run --root packages/cli
+      - run: npx vitest run --root apps/desktop
       - run: npm run build -w @onset/cli
       - run: npm run build -w onset-desktop
 

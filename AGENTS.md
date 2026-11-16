@@ -18,6 +18,7 @@ npx tsc --noEmit -p packages/cli
 npm run typecheck -w onset-desktop
 npx vitest run --root packages/engine
 npx vitest run --root packages/cli
+npx vitest run --root apps/desktop     # 客户端界面里的纯函数
 npm run build -w @onset/cli          # → packages/cli/dist/onset.cjs
 npm run build -w onset-desktop       # → apps/desktop/out/
 npm run test:e2e -w onset-desktop    # Playwright 的 Electron 模式，会先构建命令行与客户端
@@ -25,7 +26,7 @@ npm run dist -w onset-desktop        # 本机出一份应用目录（apps/deskto
 npm run generate -w @onset/engine    # 由画幅表与模板重新生成 assets/presets/<画幅>/frame.md
 ```
 
-CI（`.github/workflows/ci.yml`）跑类型检查、两包的 Vitest、构建、生成器幂等与 e2e；发布（`.github/workflows/release.yml`）在推 `v*` tag 或发布 GitHub Release 时构建 macOS arm64 / x64 DMG 与 Windows x64 NSIS 安装程序；两平台成功后统一上传及生成 SHA-256 校验文件。打包脚本回归测试在两平台 CI 中必须通过，Windows 运行功能仍处于移植阶段。
+CI（`.github/workflows/ci.yml`）跑类型检查、引擎、命令行与客户端的 Vitest、构建、生成器幂等与 e2e；发布（`.github/workflows/release.yml`）在推 `v*` tag 或发布 GitHub Release 时构建 macOS arm64 / x64 DMG 与 Windows x64 NSIS 安装程序；两平台成功后统一上传及生成 SHA-256 校验文件。打包脚本回归测试在两平台 CI 中必须通过，Windows 运行功能仍处于移植阶段。
 
 ## 内置资产
 
@@ -534,7 +535,7 @@ opencode 默认模型不可用时加 `ONSET_TEST_OPENCODE_MODEL`。
 | 项目路径一律用 `Server.currentProject()` 返回的（登记时已 realpath） | macOS 的 `/var` 是 `/private/var` 的链接，两种写法会被当成两个项目，锁和会话都对不上 |
 | 上传的文件存进 `production/studio/uploads/`（`uploads.ts`），附件带 `upload: true`，提示词里只给路径和种类，由编排工具在这一轮里复制或转换到项目里；`.env` 拒收 | 客户端不写项目文件。上传落在不进快照的状态目录，文件真正进项目的那一步是某一轮的改动，照常能看差异、能回退 |
 | 一轮进行中发的消息排队（`enqueueTurn`，事件 `queued` 带 `queue_id`），这一轮结束后合并成下一轮（`drainQueue`）；`DELETE …/queue/{id}` 移除（事件 `unqueued`），`POST …/queue/{id}/steer` 把它提到最前并停掉当前这一轮；按停止会清掉排队 | 各家 CLI 在非交互模式下都不能中途注入输入，只能排到下一轮。按停止多半是不想让后面的要求接着跑 |
-| 渲染器此刻在做什么（`studio/activity.ts` 的 `/api/scenes/{id}/activity`，界面 `RenderActivity.tsx`）：把镜头目录的 `render-<id>.stream.jsonl` 用 `agentrun.Parser` 按偏移增量译成步骤（文件被换掉就从头读，半行留到下次）；对话里有镜头在渲染时输入框上方挂卡片，镜头页显示完整过程。「渲染中」以 `scene.run` 写的进行中标记 `render-<id>.live.json`（`scene/live.ts`，记 pid、渲染工具、开始时间，结束即删）为准、看进程在不在，没有标记就不算渲染中 | 编排工具调了渲染就只能等，聊天页只有一个转圈的工具调用；渲染器跑 `hyperframes render` 的几分钟里流日志不动，按静默判断会在最该显示进度时把镜头判成没在渲染 |
+| 渲染器此刻在做什么（`studio/activity.ts` 的 `/api/scenes/{id}/activity`，界面 `RenderActivity.tsx`）：把镜头目录的 `render-<id>.stream.jsonl` 用 `agentrun.Parser` 按偏移增量译成步骤（文件被换掉就从头读，半行留到下次），思考也是一步（留开头一段与全文字数 `chars`，同一 `text_id` 的分批接在一起）；对话里有镜头在渲染时输入框上方挂卡片，镜头页显示完整过程。「渲染中」以 `scene.run` 写的进行中标记 `render-<id>.live.json`（`scene/live.ts`，记 pid、渲染工具、开始时间，结束即删）为准、看进程在不在，没有标记就不算渲染中 | 编排工具调了渲染就只能等，聊天页只有一个转圈的工具调用。Qoder 一类的工具整段想完才写出来，Qwen4-Max 一次能想 7 万多字、九分多钟（2026-11 实测），不显示思考的话这几分钟看着像卡死；渲染器跑 `hyperframes render` 的几分钟里流日志不动，按静默判断会在最该显示进度时把镜头判成没在渲染 |
 | 待办清单统一成 `agentrun` 的 `KindPlan`（claude 的 TodoWrite、codex 的 `todo_list`、opencode 的 `todowrite`；qoder 与新版 claude 的 `TaskCreate` / `TaskUpdate` 逐条建、逐条改，编号只在结果里，由 `agentrun.TaskBoard` 攒成完整清单，计划项带 `id`，续接同一个 CLI 会话时 `runTurn` 经 `Spec.plan` 把上一轮的清单交给解析器），每条是完整清单；镜头的「渲染中」只看进行中标记（`sceneRendering`，`scenes.ts`） | 整片制作要跑几个小时，只看一串工具调用不知道做到哪了。新增一家 CLI 时它的待办工具也要译成 plan 事件 |
 | 建项目只走 `packages/engine/src/projectinit`：`onset init` 与客户端的新建（`Server.createAPI`）共用 `create`（讲解形式、叙事模式、cast 骨架）与 `installSkills`（HyperFrames 官方技能）。客户端新建后在后台从本机缓存拷技能（`studio/skills.ts`，不联网；缓存是 `onset setup` 准备的前置资源，缺了显示指向 `onset setup` 的错误），顶栏在缺技能时给「安装」，安装中显示进度条（`hyperframes.Options.progress`，拷贝按技能计数；`onset setup` 下载时克隆让 git `--progress` 并解析百分比，在终端里用一行回车刷新）；端到端测试用 `ONSET_STUDIO_SKIP_SKILL_INSTALL=1` 跳过 | 两边各写一份时界面漏了讲解形式、多角色对话，也不装官方技能，渲染器拿不到 hyperframes 入口技能 |
 | `/api/files` 与 `/preview/scenes/` 经 `containedPath`（`sessions.ts`）解析（含符号链接），`.env` 一律不读 | 这两个接口按路径读文件，而预览 iframe 里跑的是渲染器写出的合成页面、与界面同在 `onset://app/` 下；不限定在项目内的话，一段生成的 HTML 就能读到项目外的文件与 `.env` |
@@ -571,6 +572,8 @@ opencode 默认模型不可用时加 `ONSET_TEST_OPENCODE_MODEL`。
 | `src/renderer/types.ts` 与后端 JSON 字段一一对应 | 前后端之间没有生成代码，改字段两边一起改 |
 
 ### 端到端测试
+
+**什么写 e2e、什么不写**：e2e 每个用例都要新开一个 Electron 与一套临时目录（最快 2 秒、中位 5 秒，CI 上 138 个用例里四五分钟只花在开关客户端上），只用来测跨进程、跨页面的真实流程（新建项目、对话、渲染、插件、发布……）。界面里的纯函数（进度卡片怎么说、过程怎么整理、时间怎么估）写在 `apps/desktop/src/**/*.test.{ts,mjs}`，由 `npx vitest run --root apps/desktop` 跑，不开窗口；只验证一个组件的细节（某段提示文字、某个列表能滚动）也不另开一个 e2e 用例，能并进已有流程的就并进去。以前客户端没有单元测试，纯函数的测试只能写进 Playwright，e2e 因此越堆越多。
 
 `apps/desktop/e2e/` 用 Playwright 的 Electron 模式启动构建好的客户端（`playwright.config.mjs`、`e2e/fixtures.mjs`）。每个用例一套临时目录：HOME、userData（`ONSET_DESKTOP_USER_DATA`）、项目登记（`ONSET_STUDIO_CONFIG`）、记忆库（`ONSET_MEMORY_DIR`），并设 `ONSET_STUDIO_SKIP_SKILL_INSTALL=1` 与 `ONSET_DESKTOP_BACKGROUND=1`（客户端以辅助程序运行：不进 Dock、不激活、窗口不显示、系统通知默认不弹，见 `main.ts`；测通知的用例自己把 `Notification.prototype.show` 换成记录。否则每个用例都弹到最前面抢走开发者的焦点）——记忆默认打开，不设 `ONSET_MEMORY_DIR` 的话每次跑 e2e 都往用户真实记忆库写经历，记忆面板曾被几百条 `onset-studio-e2e-*` 淹没。用例并行跑（`fullyParallel`，本机 4 个，`ONSET_E2E_WORKERS` 可改，调试时设 1；CI 的 macOS 机器只有 3 个核，一台上同时开几个 Electron 每个用例慢 4 倍、音视频用例超时，所以 CI 一台一次一个、用 `--shard` 分到三台，分支保护要求的检查名留给汇总的那个 job）：新用例只用 fixtures 给的临时目录与自己的 Electron，不能依赖全局状态、固定路径、固定端口或别的用例的执行顺序。
 

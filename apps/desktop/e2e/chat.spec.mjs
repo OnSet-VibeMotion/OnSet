@@ -118,7 +118,7 @@ test('picks the orchestrator and renderer per session', async ({ page, project }
   await expect(page.locator('#agent-tool')).toHaveValue('codex');
 });
 
-test('uploads a file, answers with a choice button, and queues a message mid-turn', async ({ page, project }) => {
+test('uploads and drops files, answers with a choice button, and queues a message mid-turn', async ({ page, project }) => {
   await openProject(page, project);
   await page.locator('.composer input[type="file"]').setInputFiles({
     name: '文章.md',
@@ -126,9 +126,27 @@ test('uploads a file, answers with a choice button, and queues a message mid-tur
     buffer: Buffer.from('# 标题\n正文'),
   });
   await expect(page.locator('#attachments')).toContainText('文章.md');
+  // 拖文件进输入框：与选文件走同一条上传。
+  await page.locator('.composer-shell').evaluate((el) => {
+    const data = new DataTransfer();
+    data.items.add(new File(['# 拖进来的文章\n正文'], '拖进来.md', { type: 'text/markdown' }));
+    el.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: data }));
+    el.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data }));
+  });
+  await expect(page.locator('#attachments')).toContainText('拖进来.md');
+  // 上传落在项目的 Studio 状态目录，不直接进项目。
+  const uploads = path.join(project.path, 'production', 'studio', 'uploads');
+  await expect
+    .poll(async () => (await fs.readdir(uploads, { recursive: true }).catch(() => [])).some((f) => String(f).endsWith('拖进来.md')))
+    .toBe(true);
 
   await page.locator('#prompt').fill('给我选项');
   await page.locator('#send').click();
+  // 发送时附件跟着这条消息走。
+  await expect(page.locator('.user-extra').last()).toContainText('用户上传的文件');
+  await expect(page.locator('.user-extra').last()).toContainText('文章.md');
+  await expect(page.locator('.user-extra').last()).toContainText('拖进来.md');
+  await expect(page.locator('#attachments')).toHaveCount(0);
   // 待办清单进了这一轮的过程：进行中的那一步插一行小标题。
   await expect(page.locator('.step-row')).toContainText('正在定风格');
   const choice = page.locator('.choice', { hasText: '白板手绘风' });

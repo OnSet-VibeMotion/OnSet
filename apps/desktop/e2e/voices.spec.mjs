@@ -38,7 +38,7 @@ test('records my own voice from the microphone into the shared library', async (
   expect(fs.existsSync(path.join(sandbox.voices, '我的声音', 'reference.wav'))).toBe(true);
 });
 
-test('designing a voice offers to install Breeze when it is not on this Mac', async ({ page, project }) => {
+test('designing offers Breeze; an uploaded recording goes into the shared library, plays and deletes', async ({ page, project, sandbox }) => {
   await openProject(page, project);
   await openPage(page, 'voice');
   const tab = page.locator('.voices-tab');
@@ -46,16 +46,10 @@ test('designing a voice offers to install Breeze when it is not on this Mac', as
   // 测试的 HOME 是空的：Breeze 不在。Apple Silicon 上给安装按钮，别的机器说明原因。
   await expect(tab.locator('.voices-way-body')).toContainText(/Breeze TTS 2|Apple Silicon/);
   await page.screenshot({ path: test.info().outputPath('design.png') });
-});
 
-test('uploaded recording goes into the shared library, plays and deletes', async ({ page, project, sandbox }) => {
   test.skip(!hasFfmpeg, '要用 ffmpeg 把录音转成参考音频');
   const take = path.join(sandbox.root, 'me.m4a');
   expect(spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=180:duration=6', take]).status).toBe(0);
-
-  await openProject(page, project);
-  await openPage(page, 'voice');
-  const tab = page.locator('.voices-tab');
   await tab.getByRole('tab', { name: '上传录音' }).click();
 
   const upload = tab.locator('.voices-upload');

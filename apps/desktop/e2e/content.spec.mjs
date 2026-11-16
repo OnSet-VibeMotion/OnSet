@@ -2,15 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { test, expect, openProject, openPage } from './fixtures.mjs';
 
-// 从 internal/studio/ui/e2e/studio.spec.mjs 迁来：文件树、右键引用、@ 与 / 补全、回复里的风格海报、音频与 Markdown。
-
-test('opens a project file from the tree', async ({ page, project }) => {
-  await openProject(page, project);
-  // 文件树只在「文件」页里。
-  await openPage(page, 'file');
-  await page.locator('.tree-file', { hasText: 'notes.md' }).click();
-  await expect(page.locator('#file-content')).toContainText('项目笔记');
-});
+// 从 internal/studio/ui/e2e/studio.spec.mjs 迁来：文件树、右键引用、@ 与 / 补全、回复里的风格海报与 Markdown。
+// 回复里音频的播放器在 audio-playback.spec.mjs；风格推荐发出的话（全片 / 一段）在 chat/model.test.mjs。
 
 test('right-click quotes script text and files into the chat', async ({ page, project }) => {
   await fs.mkdir(path.join(project.path, 'production'), { recursive: true });
@@ -29,6 +22,9 @@ test('right-click quotes script text and files into the chat', async ({ page, pr
   await page.locator('.tree-file', { hasText: 'notes.md' }).click({ button: 'right' });
   await page.locator('.ctx-item', { hasText: '引用这个文件到对话' }).click();
   await expect(page.locator('#attachments .quote-card')).toHaveCount(2);
+  // 文件树上左键：打开文件。
+  await page.locator('.tree-file', { hasText: 'notes.md' }).click();
+  await expect(page.locator('#file-content')).toContainText('项目笔记');
   // 输入框里保留系统自己的菜单。
   await page.locator('#prompt').click({ button: 'right' });
   await expect(page.locator('.ctx-menu')).toHaveCount(0);
@@ -95,18 +91,6 @@ test('shows posters for film styles the orchestrator recommends', async ({ page,
   // 选过之后海报与其他选项收起，只留选中的风格名。
   await expect(page.locator('.choice-picked')).toContainText('油画厚涂');
   await expect(page.locator('.style-picks')).toHaveCount(0);
-});
-
-test('plays audio files a reply mentions', async ({ page, project }) => {
-  await openProject(page, project);
-  await page.locator('#prompt').fill('做几个试听');
-  await page.locator('#send').click();
-  const item = page.locator('.media-strip .media-item.audio');
-  await expect(item).toHaveCount(1);
-  await expect(item).toContainText('try-A.wav');
-  await expect(item.locator('audio')).toHaveAttribute('src', /production%2Faudio%2Fauditions%2Ftry-A\.wav/);
-  // 原生播放控件的「⋮」菜单里不出现「下载」与「投放」。
-  expect(await item.locator('audio').evaluate((el) => [el.controls, el.controlsList.contains('nodownload'), el.controlsList.contains('noremoteplayback')])).toEqual([true, true, true]);
 });
 
 test('renders GitHub-flavored markdown safely', async ({ page, project }) => {
@@ -176,11 +160,27 @@ test('scene "more" menu opens as a popover inside the window, above the timeline
   await expect(body).toBeHidden();
 });
 
-test('drags a region straight on the scene frame and asks about it', async ({ page, project }) => {
+test('steps scene frames with the arrow keys, drags a region on the frame and asks about it', async ({ page, project }) => {
   const { execFileSync } = await import('node:child_process');
   execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=1', '-pix_fmt', 'yuv420p', path.join(project.path, 'scenes', 'scene-001', 'out.mp4')]);
   await openProject(page, project);
   await page.locator('[data-tab="scene"]').click();
+  // 方向键逐帧，Shift 跳 10 帧。
+  const frame = page.locator('.transport', { hasText: '帧' });
+  await expect(frame).toContainText('帧 0 / 30');
+  await page.locator('.scene-title').click();
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
+  await expect(frame).toContainText('帧 3 / 30');
+  await page.keyboard.press('Shift+ArrowRight');
+  await expect(frame).toContainText('帧 13 / 30');
+  await page.keyboard.press('ArrowLeft');
+  await expect(frame).toContainText('帧 12 / 30');
+  // 输入框里的方向键照常移光标，不动画面。
+  await page.locator('#prompt').fill('abc');
+  await page.keyboard.press('ArrowLeft');
+  await expect(frame).toContainText('帧 12 / 30');
+  await page.locator('#prompt').fill('');
+
   const layer = page.locator('.select-layer');
   await expect(layer).toBeVisible();
   const box = await layer.boundingBox();
@@ -212,26 +212,6 @@ test('drags a region straight on the scene frame and asks about it', async ({ pa
   await expect(page.locator('.selection-bar')).toHaveCount(0);
   await expect(page.locator('#prompt')).toHaveValue(/圈出的这块/);
   await expect(page.locator('#attachments')).toContainText('圈选区域');
-});
-
-test('steps scene frames with the arrow keys', async ({ page, project }) => {
-  const { execFileSync } = await import('node:child_process');
-  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=1', '-pix_fmt', 'yuv420p', path.join(project.path, 'scenes', 'scene-001', 'out.mp4')]);
-  await openProject(page, project);
-  await page.locator('[data-tab="scene"]').click();
-  const frame = page.locator('.transport', { hasText: '帧' });
-  await expect(frame).toContainText('帧 0 / 30');
-  await page.locator('.scene-title').click();
-  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
-  await expect(frame).toContainText('帧 3 / 30');
-  await page.keyboard.press('Shift+ArrowRight');
-  await expect(frame).toContainText('帧 13 / 30');
-  await page.keyboard.press('ArrowLeft');
-  await expect(frame).toContainText('帧 12 / 30');
-  // 输入框里的方向键照常移光标，不动画面。
-  await page.locator('#prompt').fill('abc');
-  await page.keyboard.press('ArrowLeft');
-  await expect(frame).toContainText('帧 12 / 30');
 });
 
 test('memory page explains the loop in three steps and records a preference', async ({ page, project }) => {
@@ -289,6 +269,8 @@ test('storyboard lists the plan and each scene’s description before rendering'
   await openProject(page, project);
   // 分镜步骤排在口播稿与镜头之间。
   await expect(page.locator('.steps .step:not(.route-step)')).toHaveText([/口播稿/, /分镜/, /镜头/, /成片/, /发布/]);
+  // 口播项目没有卡点的节拍页。
+  await expect(page.locator('[data-tab="beat"]')).toHaveCount(0);
   await page.locator('[data-tab="storyboard"]').click();
   await expect(page.locator('#storyboard .sb-title')).toHaveText('1 个镜头');
   await expect(page.locator('#storyboard .sb-chapter')).toHaveText('开场');
@@ -309,15 +291,4 @@ test('storyboard lists the plan and each scene’s description before rendering'
   // 镜头页旁边有这个镜头的说明。
   await page.locator('[data-tab="scene"]').click();
   await expect(page.locator('#scene-brief')).toContainText('一只猫推开门');
-});
-
-test('a style recommended for one segment is sent as that segment’s style, not the whole film’s', async ({ page, project }) => {
-  await openProject(page, project);
-  await page.locator('#prompt').fill('挑几张海报');
-  await page.locator('#send').click();
-  await page.locator('.style-pick.scoped button', { hasText: '用在这一段' }).click();
-  const sent = page.locator('.message.user').last();
-  await expect(sent).toContainText(/回忆段，镜头 04–06用「.+」风格（lemo-opuscar\/ink-wash），其余镜头不变/);
-  await expect(sent).not.toContainText('整片风格');
-  await expect(page.locator('.choice-picked')).toContainText('回忆段，镜头 04–06：');
 });

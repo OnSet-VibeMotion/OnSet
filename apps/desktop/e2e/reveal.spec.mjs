@@ -19,7 +19,7 @@ async function stubShell(electronApp) {
 
 const revealed = (electronApp) => electronApp.evaluate(() => globalThis.__revealed.splice(0));
 
-test('shows the project, a scene and files in Finder', async ({ page, project, electronApp }) => {
+test('shows the project, a scene, files and a recent project in Finder', async ({ page, project, electronApp }) => {
   await stubShell(electronApp);
   await openProject(page, project);
   const sceneDir = path.join(project.path, 'scenes', 'scene-001');
@@ -49,14 +49,11 @@ test('shows the project, a scene and files in Finder', async ({ page, project, e
   await row.click();
   await page.locator('#reveal-file').click();
   await expect.poll(() => revealed(electronApp)).toEqual([['select', path.join(project.path, 'notes.md')]]);
-});
 
-test('opens a recent project folder from home', async ({ page, project, electronApp }) => {
-  await stubShell(electronApp);
-  await openProject(page, project);
+  // 首页最近项目：打开那个项目文件夹。
   await page.locator('.brand').click();
-  const row = page.locator('.rail-row', { hasText: project.name });
-  await row.hover();
-  await row.locator('.rail-reveal').click();
+  const recent = page.locator('.rail-row', { hasText: project.name });
+  await recent.hover();
+  await recent.locator('.rail-reveal').click();
   await expect.poll(() => revealed(electronApp)).toEqual([['open', project.path]]);
 });

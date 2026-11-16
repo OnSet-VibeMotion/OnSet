@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { test, expect, openProject, api, desktopDir, installPlugin, installedPlugins, openPage } from './fixtures.mjs';
 
@@ -210,6 +210,35 @@ test('a plugin is added in settings without a project, every project gets it, an
   await expect(page.locator('#settings-dialog')).toBeVisible();
   // 本机目录的站改动立即生效，没有「更新」。
   await expect(card.getByRole('button', { name: '更新' })).toHaveCount(0);
+
+  // 内置功能也是插件：同在设置里列出，常开、照实列出带了什么，没有开关。
+  const builtin = page.locator('#settings-dialog section[aria-label="内置功能"]');
+  const song = builtin.locator('li[data-builtin="song"]');
+  await expect(song).toContainText('歌曲讲解');
+  // 内置功能常开：没有开关，也不提醒重新渲染。
+  await expect(builtin.getByRole('switch')).toHaveCount(0);
+  await expect(builtin).not.toContainText('重新渲染');
+  // 内置的不算第三方，也不能去掉。
+  await expect(song).not.toContainText('第三方');
+  await expect(song.getByRole('button', { name: '去掉' })).toHaveCount(0);
+  await builtin.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: test.info().outputPath('builtin-features.png') });
+  await expect(builtin.locator('li[data-builtin]')).toHaveCount(10);
+  await expect(builtin.locator('li[data-builtin="lemo-styles"]')).toContainText('LemoLab 风格库');
+  await expect(builtin.locator('li[data-builtin="anidoodle-styles"]')).toContainText('anidoodle 代码绘画');
+  await expect(builtin.locator('li[data-builtin="huashu-styles"]')).toContainText('花叔艺术动画');
+  await expect(builtin.locator('li[data-builtin="cast"]')).toContainText('多角色对话');
+  // 「详情」照实列出这个功能在片场里登记了什么。
+  const cast = builtin.locator('li[data-builtin="cast"]');
+  await cast.getByRole('button', { name: '详情' }).click();
+  await expect(cast.locator('.builtin-detail')).toContainText('character-rig');
+  await expect(cast.locator('.builtin-detail')).toContainText('校验多角色项目');
+  await cast.getByRole('button', { name: '收起' }).click();
+  // 带风格库的功能，详情里写明它带了哪个库。
+  const lemo = builtin.locator('li[data-builtin="lemo-styles"]');
+  await lemo.getByRole('button', { name: '详情' }).click();
+  await expect(lemo.locator('.builtin-detail')).toContainText('整片风格库');
+  await lemo.getByRole('button', { name: '收起' }).click();
   await page.locator('#settings-dialog').getByRole('button', { name: '关闭' }).click();
 
   // 首页新建时能选到它带来的做法，标明来自哪个插件。
@@ -223,6 +252,8 @@ test('a plugin is added in settings without a project, every project gets it, an
   // 制作路线上多了一站，排在发布后面。
   const progress = await api(page, '/api/progress');
   expect(progress.body.stations.map((s) => s.id).slice(-2)).toEqual(['publish', 'auto-publish']);
+  // 口播项目的顶栏有发布这一步（内置的发布插件常开）。
+  await expect(page.locator('.steps [data-tab="publish"]')).toBeAttached();
 
   // 插件的配置不在发布页，在设置的「详情与设置」里：只有用户点了才发。
   await page.locator('[data-tab="publish"]').click();
@@ -460,66 +491,62 @@ test('a plugin brings a new kind of project, a voice and a style library, and se
   await expect(page.locator('#messages')).toContainText('帮我把发布标题改短一点');
 });
 
-test('builtin features are plugins too: always on, listed with what they bring, no switch', async ({ page, project }) => {
-  await openProject(page, project);
-  await page.locator('#settings-trigger').click();
-  const builtin = page.locator('#settings-dialog section[aria-label="内置功能"]');
-  const song = builtin.locator('li[data-builtin="song"]');
-  await expect(song).toContainText('歌曲讲解');
-  // 内置功能常开：没有开关，也不提醒重新渲染。
-  await expect(builtin.getByRole('switch')).toHaveCount(0);
-  await expect(builtin).not.toContainText('重新渲染');
-  // 内置的不算第三方，也不能去掉。
-  await expect(song).not.toContainText('第三方');
-  await expect(song.getByRole('button', { name: '去掉' })).toHaveCount(0);
-  await builtin.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: test.info().outputPath('builtin-features.png') });
-
-  await expect(builtin.locator('li[data-builtin]')).toHaveCount(10);
-  await expect(builtin.locator('li[data-builtin="lemo-styles"]')).toContainText('LemoLab 风格库');
-  await expect(builtin.locator('li[data-builtin="anidoodle-styles"]')).toContainText('anidoodle 代码绘画');
-  await expect(builtin.locator('li[data-builtin="huashu-styles"]')).toContainText('花叔艺术动画');
-  await expect(builtin.locator('li[data-builtin="cast"]')).toContainText('多角色对话');
-  // 「详情」照实列出这个功能在片场里登记了什么。
-  const cast = builtin.locator('li[data-builtin="cast"]');
-  await cast.getByRole('button', { name: '详情' }).click();
-  await expect(cast.locator('.builtin-detail')).toContainText('character-rig');
-  await expect(cast.locator('.builtin-detail')).toContainText('校验多角色项目');
-  await cast.getByRole('button', { name: '收起' }).click();
-  // 带风格库的功能，详情里写明它带了哪个库。
-  const lemo = builtin.locator('li[data-builtin="lemo-styles"]');
-  await lemo.getByRole('button', { name: '详情' }).click();
-  await expect(lemo.locator('.builtin-detail')).toContainText('整片风格库');
-  await lemo.getByRole('button', { name: '收起' }).click();
-  // 口播项目的顶栏有发布这一步。
-  await expect(page.locator('.steps [data-tab="publish"]')).toBeAttached();
-});
-
+// 顺带核对成片页的播放器地址只随成片文件自己变：插件操作写了别的文件、项目随之刷新，正在看的成片不能重新加载。
 test('files a plugin op writes outside what it declared are shown as a warning', async ({ page, project, sandbox }) => {
   fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: draft\n---\n');
+  const film = path.join(project.path, 'final.mp4');
+  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=1', '-pix_fmt', 'yuv420p', film]);
   installPlugin(sandbox, fake);
   await openProject(page, project);
+  await page.locator('[data-tab="final"]').click();
+  const video = page.locator('#panel .final-tab video');
+  await expect(video).toHaveCount(1);
+  const before = await video.getAttribute('src');
 
-  // 设置里的按钮：假发布顺手写了 notes/scribble.txt（清单只声明了 production/publish/）。
-  await page.locator('#settings-trigger').click();
-  const card = page.locator('#settings-dialog li[data-station="fake-publisher"]');
-  await card.getByRole('button', { name: '详情与设置' }).click();
-  const detail = page.getByRole('dialog', { name: '假发布 详情与设置' });
-  const action = detail.locator('.station-op[data-op="scribble"]');
-  await action.getByRole('button', { name: '顺手记一笔' }).click();
-  const warning = action.locator('.station-scope');
-  await expect(warning).toContainText('它改了 1 个没声明会写的文件');
-  await expect(warning).toContainText('notes/scribble.txt');
-  await expect(warning).not.toContainText('production/publish/scribble.json');
-  await expect(action.locator('.station-last')).toHaveText('上次执行成功');
-  await page.screenshot({ path: test.info().outputPath('station-scope-settings.png') });
-  await detail.getByRole('button', { name: '关闭' }).click();
-  await page.locator('#settings-dialog').getByRole('button', { name: '关闭' }).click();
+  // 在设置里点「顺手记一笔」：客户端等任务跑完后整个刷新项目（以前每次刷新都让成片重新加载）。
+  const scribble = async (check) => {
+    await page.locator('#settings-trigger').click();
+    await page.locator('#settings-dialog').getByText('功能与插件').first().click();
+    await page.locator('#settings-dialog li[data-station="fake-publisher"]').getByRole('button', { name: '详情与设置' }).click();
+    const detail = page.getByRole('dialog', { name: '假发布 详情与设置' });
+    await expect(detail.locator('.plugin-list[data-op="accounts"]')).toContainText('还没有。');
+    const done = (await api(page, '/api/tasks')).body.tasks.filter((t) => t.status === 'succeeded').length;
+    const action = detail.locator('.station-op[data-op="scribble"]');
+    await action.getByRole('button', { name: '顺手记一笔' }).click();
+    // 等全部任务跑完（打开弹窗时自动刷新的账号列表也算一个），且成功的比点之前多。
+    await expect.poll(async () => {
+      const tasks = (await api(page, '/api/tasks')).body.tasks;
+      return !tasks.some((t) => t.status === 'running' || t.status === 'queued') && tasks.filter((t) => t.status === 'succeeded').length > done;
+    }, { timeout: 15000 }).toBe(true);
+    if (check) await check(action);
+    await detail.getByRole('button', { name: '关闭' }).click();
+    await page.locator('#settings-dialog').getByRole('button', { name: '关闭' }).click();
+    // 任务结束后的那次刷新要先落下来：客户端每两秒查一次任务，看到结束就刷新项目。
+    await page.waitForTimeout(4000);
+  };
+
+  // 假发布顺手写了 notes/scribble.txt（清单只声明了 production/publish/）。
+  await scribble(async (action) => {
+    const warning = action.locator('.station-scope');
+    await expect(warning).toContainText('它改了 1 个没声明会写的文件');
+    await expect(warning).toContainText('notes/scribble.txt');
+    await expect(warning).not.toContainText('production/publish/scribble.json');
+    await expect(action.locator('.station-last')).toHaveText('上次执行成功');
+    await page.screenshot({ path: test.info().outputPath('station-scope-settings.png') });
+  });
+  expect(fs.existsSync(path.join(project.path, 'notes', 'scribble.txt'))).toBe(true);
+  expect(await video.getAttribute('src')).toBe(before);
   // 任务列表里同样标出来。
   await page.locator('#tasks-toggle').click();
   await expect(page.locator('#tasks .task-warning').first()).toContainText('插件「假发布」改了它没有声明会写的项目文件：notes/scribble.txt');
   await page.locator('#tasks-toggle').click();
   await page.screenshot({ path: test.info().outputPath('station-scope-publish.png') });
+
+  // 成片真的换了：地址跟着变。
+  const later = new Date(Date.now() + 60_000);
+  fs.utimesSync(film, later, later);
+  await scribble();
+  await expect.poll(() => video.getAttribute('src')).not.toBe(before);
 
   // 插件页面的 onset.run()：用户点「执行」后，回执处（宿主那一侧）标出越界的文件。
   fs.rmSync(path.join(project.path, 'notes'), { recursive: true, force: true });
@@ -585,21 +612,11 @@ test('a third-party station that declares its state says when it waits for you, 
   await expect.poll(async () => (await api(page, '/api/progress')).body.stations.find((s) => s.id === 'auto-publish').status).toBe('done');
 });
 
-test('opening a plugin page from settings leaves the home page', async ({ page, project, sandbox }) => {
+// 打开过项目再回到首页：连点两下只跑一次；随后从设置里打开插件的页面，页面要真的出来，不能还停在首页。
+test('a plugin action clicked twice in a row runs once', async ({ page, project, sandbox }) => {
   installPlugin(sandbox, fake);
   await openProject(page, project);
-  // 回到首页，再从设置里打开插件的页面：页面要真的出来，不能还停在首页。
   await page.locator('.brand').click();
-  await expect(page.locator('.home-hero h1')).toBeVisible();
-  await page.locator('#settings-trigger').click();
-  await page.locator('#settings-dialog li[data-station="fake-publisher"]').getByRole('button', { name: '详情与设置' }).click();
-  await page.getByRole('dialog', { name: '假发布 详情与设置' }).getByRole('button', { name: '打开「发布看板」' }).click();
-  await expect(page.locator('.home-hero h1')).toHaveCount(0);
-  await expect(page.locator('.station-page:not(.station-slot) .station-page-bar')).toContainText('发布看板');
-});
-
-test('a plugin action clicked twice in a row runs once', async ({ page, sandbox }) => {
-  installPlugin(sandbox, fake);
   await expect(page.locator('.home-hero h1')).toBeVisible();
   await page.locator('#settings-trigger').click();
   await page.locator('#settings-dialog li[data-station="fake-publisher"]').getByRole('button', { name: '详情与设置' }).click();
@@ -614,4 +631,8 @@ test('a plugin action clicked twice in a row runs once', async ({ page, sandbox 
   await idle();
   // 一次登录，加上登录完刷新一次账号列表。
   expect((await api(page, '/api/tasks')).body.tasks.length - before).toBe(2);
+
+  await detail.getByRole('button', { name: '打开「发布看板」' }).click();
+  await expect(page.locator('.home-hero h1')).toHaveCount(0);
+  await expect(page.locator('.station-page:not(.station-slot) .station-page-bar')).toContainText('发布看板');
 });

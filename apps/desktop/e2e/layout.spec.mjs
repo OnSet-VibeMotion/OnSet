@@ -1,6 +1,6 @@
 import { test, expect, openProject } from './fixtures.mjs';
 
-// 对话是主栏，画面面板按需打开：默认收起，步骤、收起栏、菜单都能打开，× 与 Esc 收起，拖动的宽度记住。
+// 对话是主栏，画面面板按需打开：默认收起，步骤、收起栏、菜单都能打开，× 与 Esc 收起，拖动的宽度记住；窄窗口里是抽屉。
 
 async function sendMenu(electronApp, action) {
   await electronApp.evaluate(({ BrowserWindow }, action) => BrowserWindow.getAllWindows().find((w) => w.isResizable()).webContents.send('onset:menu', action), action);
@@ -73,11 +73,11 @@ test('the chat is the main column and the picture panel opens on demand', async 
   )).toBeLessThan(4);
   await page.locator('.panel-resize').dblclick();
   await expect.poll(() => page.locator('#panel').evaluate((el) => el.getBoundingClientRect().width)).toBeLessThan(after - 80);
-});
 
-test('in a narrow window the panel is a drawer over the chat', async ({ page, project, electronApp }) => {
+  // 窗口变窄：面板变成盖在对话上的抽屉，收起栏不再显示。
+  await page.locator('#panel-close').click();
+  await expect(page.locator('#panel')).toHaveCount(0);
   await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.isResizable()).setSize(1024, 760));
-  await openProject(page, project);
   await expect(page.locator('.panel-rail')).toBeHidden();
   await page.locator('[data-tab="scene"]').click();
   await expect(page.locator('#panel')).toBeVisible();

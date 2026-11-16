@@ -100,23 +100,6 @@ test('the evidence page puts both arms of an exam side by side', async ({ page, 
   await expect(page.locator('.evidence-scope')).toContainText('画面是否更好，要看人的对照评价');
 });
 
-test('missing evidence is not presented as fewer video problems', async ({ page, project, sandbox }) => {
-  seedExam(sandbox, project);
-  const file=path.join(sandbox.memory,'exams','exam-0001','result.json');
-  const exam=JSON.parse(fs.readFileSync(file,'utf8'));
-  exam.cells[0].incomplete=true;
-  fs.writeFileSync(file,JSON.stringify(exam));
-  await openProject(page,project);
-  await openPage(page,'evidence');
-  await expect(page.locator('.evidence-figures')).toContainText('暂不能比较');
-  await expect(page.locator('.evidence-figures')).toContainText('检查依据不完整');
-  await expect(page.locator('.evidence-side.control')).not.toContainText('文字停留太短，读不完');
-  await openPage(page,'memory');
-  const recent=page.getByRole('region',{name:'最近考试结果'});
-  await expect(recent).toContainText('本题结果不完整，不能比较');
-  await expect(recent).not.toContainText('带上后少了');
-});
-
 test('human acceptance persists, shows evolution complete, and retains incomplete machine remarks', async ({ page, project, sandbox }) => {
   seedExam(sandbox, project);
   const file = path.join(sandbox.memory, 'exams', 'exam-0001', 'result.json');
@@ -179,14 +162,13 @@ test('long exam conclusions remain inside their columns and stack in a narrow pa
   await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(w => w.isResizable()).webContents.setZoomFactor(1));
   await evidence.evaluate(el => { el.style.width = '840px'; });
   await summary.screenshot({path: test.info().outputPath('exam-conclusions-no-overlap.png')});
-});
-
-test('the evidence page says what to do before any exam', async ({ page, project }) => {
-  await openProject(page, project);
-  await openPage(page, 'evidence');
-  await expect(page.locator('.evidence-empty')).toContainText('还没有考过试的经验');
-  await page.locator('.evidence-empty button').click();
-  await expect(page.locator('.memory-tab')).toBeVisible();
+  // 依据不完整时不当成「问题更少」：概要说暂不能比较，对照组也不列出问题。
+  await expect(summary).toContainText('暂不能比较');
+  await expect(page.locator('.evidence-side.control')).not.toContainText('文字停留太短，读不完');
+  await openPage(page, 'memory');
+  const recent = page.getByRole('region', {name: '最近考试结果'});
+  await expect(recent).toContainText('本题结果不完整，不能比较');
+  await expect(recent).not.toContainText('带上后少了');
 });
 
 test('a perfect tie explains the missing improvement evidence', async ({ page, project, sandbox }) => {
@@ -264,13 +246,9 @@ test('a stopped lesson finds applicable scenes and can request a retest without 
   await card.getByRole('button', { name: '用所选 1 个镜头重新考试', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.__examRequests)).toEqual([{ renderers: ['claude'], scenes: ['scene-001'], name: 'hold-readable' }]);
   expect(fs.readFileSync(file, 'utf8')).toContain('status: dormant');
-});
 
-test('migration testing excludes source scenes and submits only selected new scenes', async ({ page, project, sandbox }) => {
-  seedExam(sandbox, project);
-  const file = path.join(sandbox.memory, 'lessons', 'hold-readable.md');
-  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('status: active', 'status: dormant'));
-  await openProject(page, project);
+  // 迁移验证：来源镜头不能选，只交所选的新镜头。重新载入后换上假的适用镜头列表。
+  await page.reload();
   await page.evaluate(() => {
     const original = window.fetch;
     window.__migrationRequests = [];
@@ -290,13 +268,13 @@ test('migration testing excludes source scenes and submits only selected new sce
   });
   await openPage(page, 'memory');
   await page.getByRole('region', { name: '重考入口' }).getByRole('button', { name: '查看并重考', exact: true }).click();
-  const card = page.locator('.memory-retired .memory-card');
-  await card.getByRole('button', { name: '查找适用镜头', exact: true }).click();
-  await card.getByRole('checkbox', { name: '仅验证所选新镜头', exact: true }).check();
-  const rows = card.locator('.memory-application-results li');
+  const migration = page.locator('.memory-retired .memory-card');
+  await migration.getByRole('button', { name: '查找适用镜头', exact: true }).click();
+  await migration.getByRole('checkbox', { name: '仅验证所选新镜头', exact: true }).check();
+  const rows = migration.locator('.memory-application-results li');
   await expect(rows.nth(0).locator('input')).toBeDisabled();
   await expect(rows.nth(1).locator('input')).toBeChecked();
-  await card.getByRole('button', { name: '用所选 1 个镜头重新考试', exact: true }).click();
+  await migration.getByRole('button', { name: '用所选 1 个镜头重新考试', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.__migrationRequests)).toEqual([
     { renderers: ['claude'], scenes: ['scene-002'], holdout_only: true, name: 'hold-readable' },
   ]);
@@ -328,6 +306,23 @@ for (const status of ['rejected', 'trial']) {
     await button.click();
     await expect.poll(() => page.evaluate(() => window.__examRequests)).toEqual([{ renderers: ['claude'], ...(status === 'trial' ? { trial: 'hold-readable' } : { name: 'hold-readable' }) }]);
     expect(fs.readFileSync(file, 'utf8')).toContain(`status: ${status}`);
+    if (status !== 'trial') return;
+    // 试用经验在记忆页自己的卡片上也能单独考。onset:// 是 Electron 的自定义协议，不经过 Playwright 的 HTTP route 拦截。
+    await page.reload();
+    await openPage(page, 'memory');
+    await page.evaluate(() => {
+      const original = window.fetch;
+      window.__examRequests = [];
+      window.fetch = (input, init) => {
+        if (input === '/api/memory/actions/exam') {
+          window.__examRequests.push(JSON.parse(init.body));
+          return Promise.resolve(new Response('{"task_id":"selected-trial"}', { status: 202 }));
+        }
+        return original.call(window, input, init);
+      };
+    });
+    await page.getByRole('button', { name: '只考这条', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.__examRequests)).toEqual([{ renderers: ['claude'], trial: 'hold-readable' }]);
   });
 }
 
@@ -463,28 +458,6 @@ test('memory exam videos play historical source narration and share a seek contr
   const boxes = await recent.locator('video').evaluateAll((vs) => vs.map((v) => { const r = v.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width }; }));
   expect(boxes[1].y).toBeGreaterThan(boxes[0].y);
   expect(Math.abs(boxes[1].x - boxes[0].x)).toBeLessThan(2);
-});
-
-test('a trial lesson can be examined on its own from its memory card', async ({ page, project, sandbox }) => {
-  seedExam(sandbox, project);
-  const lessonFile = path.join(sandbox.memory, 'lessons', 'hold-readable.md');
-  fs.writeFileSync(lessonFile, fs.readFileSync(lessonFile, 'utf8').replace('status: active', 'status: trial'));
-  await openProject(page, project);
-  await openPage(page, 'memory');
-  // onset:// 是 Electron 的自定义协议，不经过 Playwright 的 HTTP route 拦截。
-  await page.evaluate(() => {
-    const original = window.fetch;
-    window.__examRequests = [];
-    window.fetch = (input, init) => {
-      if (input === '/api/memory/actions/exam') {
-        window.__examRequests.push(JSON.parse(init.body));
-        return Promise.resolve(new Response('{"task_id":"selected-trial"}', { status: 202 }));
-      }
-      return original.call(window, input, init);
-    };
-  });
-  await page.getByRole('button', { name: '只考这条', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => window.__examRequests)).toEqual([{ renderers: ['claude'], trial: 'hold-readable' }]);
 });
 
 test('live exam questions and both arms update without reopening memory or evolution', async ({ page, project, sandbox, electronApp }) => {

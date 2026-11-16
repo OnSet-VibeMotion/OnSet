@@ -45,26 +45,20 @@ test('checks a scene description on the storyboard and applies the rewrite only 
   await result.locator('.pc-diff-toggle').click();
   await expect(result.locator('.pc-diff .add')).toContainText('门在画面中央');
 
-  await result.locator('[data-apply="scene-001"]').click();
-  await expect.poll(() => fs.readFile(project.promptFile, 'utf8')).toBe('before\n门在画面中央，缓缓推开。\n');
-  // 采用后草稿删掉，卡片回到「检查画面描述」。
-  await expect(page.locator('#storyboard [data-check="scene-001"]')).toBeVisible();
-});
-
-test('refuses to apply a rewrite once prompt.md changed after the check', async ({ page, project }) => {
-  await openProject(page, project);
-  await page.locator('[data-tab="storyboard"]').click();
-  await page.locator('#storyboard [data-check="scene-001"]').click();
-  const result = page.locator('#storyboard [data-check-result="scene-001"]');
-  await expect(result).toContainText('建议小改');
-  // 检查之后有人改了 prompt.md：后端拒绝采用。
+  // 检查之后有人改了 prompt.md：重新读分镜后照实说结果过期了，不给「采用」（接口回 409 由 studio/promptchecks.test.ts 钉着）。
   await fs.writeFile(project.promptFile, '手改过\n');
-  const status = await page.evaluate(async () => (await fetch('/api/prompt-checks/scene-001/apply', { method: 'POST' })).status);
-  expect(status).toBe(409);
-  expect(await fs.readFile(project.promptFile, 'utf8')).toBe('手改过\n');
-  // 重新读分镜后照实说结果过期了，不给「采用」。
   await page.locator('[data-tab="scene"]').click();
   await page.locator('[data-tab="storyboard"]').click();
   await expect(result).toContainText('检查之后改过了');
   await expect(result.locator('[data-apply="scene-001"]')).toHaveCount(0);
+  // 改回检查时的样子，草稿又能采用。
+  await fs.writeFile(project.promptFile, 'before\n');
+  await page.locator('[data-tab="scene"]').click();
+  await page.locator('[data-tab="storyboard"]').click();
+  await expect(result).not.toContainText('检查之后改过了');
+
+  await result.locator('[data-apply="scene-001"]').click();
+  await expect.poll(() => fs.readFile(project.promptFile, 'utf8')).toBe('before\n门在画面中央，缓缓推开。\n');
+  // 采用后草稿删掉，卡片回到「检查画面描述」。
+  await expect(page.locator('#storyboard [data-check="scene-001"]')).toBeVisible();
 });

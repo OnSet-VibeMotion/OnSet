@@ -1,7 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { test, expect, openProject } from './fixtures.mjs';
-import { estimateScriptTiming } from '../src/renderer/scriptTiming.ts';
 
 function wav(seconds = 4) {
   const sampleRate = 24000, frames = sampleRate * seconds;
@@ -20,22 +19,6 @@ async function draft(project, text = '# 开场\n\n你好，@{year}<2025|二零�
   await fs.writeFile(path.join(project.path, 'production/script-final.md'), text);
   return dir;
 }
-
-test('estimated reading preserves nested markup, silent text and paragraph offsets', () => {
-  const input = [
-    { kind: 'heading', text: '不参与朗读' },
-    { kind: 'para', nodes: [{ kind: 'text', text: '你好，' }, { kind: 'phrase', id: 'year', children: [{ kind: 'alt', text: '2025', spoken: '二零二五' }] }, { kind: 'alt', text: '注', spoken: '' }] },
-    { kind: 'para', nodes: [{ kind: 'alt', spoken: '嗯' }, { kind: 'text', text: '世界。' }] },
-  ];
-  const out = estimateScriptTiming(input, 9);
-  expect(out[0]).toEqual(input[0]);
-  expect(out[1].nodes[0].timings).toEqual([{ start: 0, end: 1 }, { start: 1, end: 2 }, null]);
-  expect(out[1].nodes[1].children[0].timings).toHaveLength(4);
-  expect(out[1].nodes[2].timings).toEqual([null]);
-  expect(out[2].nodes[0].timings).toEqual([{ start: 6, end: 7 }]);
-  expect(out[2].nodes[1].timings).toEqual([{ start: 7, end: 8 }, { start: 8, end: 9 }, null]);
-  expect(input[1].nodes[0].timings).toBeUndefined();
-});
 
 test('plays actual script audio, follows word timing, seeks and switches takes', async ({ page, project }) => {
   const dir = await draft(project);
@@ -77,7 +60,7 @@ test('plays actual script audio, follows word timing, seeks and switches takes',
   await page.getByRole('button', { name: '暂停配音', exact: true }).click();
 });
 
-test('subtitles alone are not playable and versioned audio works without subtitles', async ({ page, project }) => {
+test('subtitles alone are not playable, unreadable audio says so, and versioned audio works without subtitles', async ({ page, project }) => {
   const dir = await draft(project, '你好世界');
   await fs.writeFile(path.join(dir, 'voice.srt'), '1\n00:00:00,000 --> 00:00:04,000\n你好世界\n');
   await openProject(page, project);
@@ -85,6 +68,12 @@ test('subtitles alone are not playable and versioned audio works without subtitl
   await expect(page.locator('.script-tab')).toContainText('还没有找到配音音频');
   await expect(page.getByRole('button', { name: '播放配音' })).toHaveCount(0);
   await fs.rm(path.join(dir, 'voice.srt'));
+  // 读不了的音频文件：照实说放不了，不当成没有配音。
+  await fs.writeFile(path.join(dir, 'voice.wav'), 'broken audio');
+  await page.reload();
+  await page.locator('[data-tab="script"]').click();
+  await expect(page.locator('.script-player [role="alert"]')).toContainText('音频无法播放');
+  await fs.rm(path.join(dir, 'voice.wav'));
   await fs.writeFile(path.join(dir, 'voice-v01.wav'), wav());
   await page.reload();
   await page.locator('[data-tab="script"]').click();
@@ -93,12 +82,4 @@ test('subtitles alone are not playable and versioned audio works without subtitl
   await page.getByRole('button', { name: '播放配音' }).click();
   await expect.poll(() => audio.evaluate(el => el.currentTime)).toBeGreaterThan(0.1);
   await expect(page.locator('.script-char.now')).toHaveText('你');
-});
-
-test('an unreadable audio file explains the playback failure', async ({ page, project }) => {
-  const dir = await draft(project);
-  await fs.writeFile(path.join(dir, 'voice.wav'), 'broken audio');
-  await openProject(page, project);
-  await page.locator('[data-tab="script"]').click();
-  await expect(page.locator('.script-player [role="alert"]')).toContainText('音频无法播放');
 });

@@ -5,12 +5,22 @@ import { test, expect, openProject, petPage } from './fixtures.mjs';
 // 编排工具（claude）在客户端里遇到白名单外的命令时，经 onset studio permission-mcp 在输入框上方弹卡片问用户。
 // 假 claude 的「要批准」真的启动 --mcp-config 里的审批服务，请求 npm install three。
 
-test('asks before running a command outside the allowlist and remembers "always"', async ({ page, project, electronApp }) => {
+test('asks before running a command outside the allowlist, reports a denial and remembers "always"', async ({ page, project, electronApp }) => {
   await openProject(page, project);
+  const card = page.locator('.permission-card');
+
+  // 先拒绝一次：拒绝原样交回编排工具，不记任何前缀。
+  await page.locator('#prompt').fill('要批准：装一下 three');
+  await page.locator('#prompt').press('Enter');
+  await expect(card).toBeVisible();
+  await card.locator('button', { hasText: '拒绝' }).click();
+  await expect(card).toHaveCount(0);
+  await expect(page.locator('.message.assistant').last()).toContainText('behavior:deny');
+  await expect(page.locator('.message.assistant').last()).toContainText('用户拒绝了');
+  expect(fs.existsSync(path.join(project.path, 'production', 'studio', 'permissions.json'))).toBe(false);
 
   await page.locator('#prompt').fill('要批准：装一下 three');
   await page.locator('#prompt').press('Enter');
-  const card = page.locator('.permission-card');
   await expect(card).toBeVisible();
   await expect(card.locator('.permission-command')).toHaveText('npm install three');
   await expect(card).toContainText('安装 three.js');
@@ -29,18 +39,6 @@ test('asks before running a command outside the allowlist and remembers "always"
   await page.locator('#prompt').press('Enter');
   await expect(page.locator('.message.assistant').last()).toContainText('behavior:allow', { timeout: 10_000 });
   await expect(page.locator('.permission-card')).toHaveCount(0);
-});
-
-test('a denied command is reported back to the orchestrator', async ({ page, project }) => {
-  await openProject(page, project);
-  await page.locator('#prompt').fill('要批准：装一下 three');
-  await page.locator('#prompt').press('Enter');
-  const card = page.locator('.permission-card');
-  await expect(card).toBeVisible();
-  await card.locator('button', { hasText: '拒绝' }).click();
-  await expect(card).toHaveCount(0);
-  await expect(page.locator('.message.assistant').last()).toContainText('behavior:deny');
-  await expect(page.locator('.message.assistant').last()).toContainText('用户拒绝了');
 });
 
 // opencode 在客户端里走 ACP：它的审批请求经同一条收件目录弹卡片。假 opencode 请求 npm install three。
