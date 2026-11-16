@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: zh-CN
+tone_instructions: >-
+  用简洁中文说明问题、触发条件和影响，给出可执行的修复建议。
+  优先报告真实缺陷、回归和安全问题；避免主观命名、格式和无关重构建议。
+
+reviews:
+  profile: chill
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  poem: false
+  auto_approvals:
+    enabled: false
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+  path_instructions:
+    - path: "**/*"
+      instructions: >-
+        按仓库根 AGENTS.md 审核工具本体。assets/shared/templates/project-rules.md
+        是下发到用户视频项目的规则，不约束本仓库开发。
+        只报告本次变更新引入或加剧的问题，结合调用方和现有测试核实，说明具体失败条件。
+        onset 是随 Electron 客户端内置的内部工具；不要建议给终端用户提供安装入口或命令教程。
+        对测试缺失的意见应指出具体未覆盖的回归场景。
+    - path: "packages/engine/**"
+      instructions: >-
+        遵守 packages/engine/CONVENTIONS.md，尤其是已有项目文件、记忆和指纹的字节兼容。
+        注意 gojson、gofmt、排序、正则、错误文案与同步 IO 的既有契约，
+        不要按一般 TypeScript 风格建议替换这些有兼容性用途的实现。
+        资源下载只能发生在 setup/安装页的前置资源准备阶段，init、渲染和菜单路径只检查资源。
+        外部工具与 Node 运行时应经已有 toolpath 等封装解析，不能假设用户安装了开发工具链。
+        文件路径、符号链接、共享资源摘要、归档实体化和失败回滚必须保持隔离与可迁移性。
+        临时文件及测试不得污染用户真实 HOME、模型、缓存或项目。
+    - path: "apps/desktop/**"
+      instructions: >-
+        检查 Electron 主进程、preload 与渲染进程边界，IPC 输入校验、路径包含检查及外链处理。
+        客户端必须支持未安装 Node、Python、Homebrew 或 Xcode 命令行工具的用户机器。
+        留意 macOS/Windows 路径、进程启动、取消清理与打包资源差异，结合平台条件判断问题。
+        涉及媒体预览或后台任务时检查竞态、资源释放和组件卸载后的异步回调。
+    - path: "packages/cli/**"
+      instructions: >-
+        制作操作通过 defineOp 操作表共享给 MCP 与客户端后端，避免增加只在 CLI 可用的重复实现。
+        检查输入校验、子进程退出与取消传播，保持现有工具名称、参数和错误契约。
+    - path: "assets/**"
+      instructions: >-
+        assets/presets 下的 frame.md 必须由画幅表和模板生成，不能只手改产物。
+        检查 shared 与 preset 的目标路径冲突、点开头资产的显式下发规则以及技能树门禁。
+        内置技能与按固定版本安装的上游技能来源不可混淆；通用提示词不应写入具体风格来源契约。
+    - path: ".github/workflows/**"
+      instructions: >-
+        检查外部 PR 输入、令牌权限和 secret 的信任边界，以及构建、打包、签名和发布条件。
+        现有 main 保护依赖 CI 的四个 job 显示名称；改名或改变触发条件时指出需同步分支保护。
+        Windows 单元测试目前允许失败并报告结果，类型检查、构建和打包回归检查仍须通过。
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "AGENTS.md"
+      - files: "packages/engine/CONVENTIONS.md"
+        applyTo: "packages/engine/**"
+
+chat:
+  auto_reply: true
