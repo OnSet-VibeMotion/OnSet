@@ -17,15 +17,19 @@ import { detectModel, ValidTools } from '../tools';
 import { goMap, goValue } from './http';
 import { sceneRendering, type SceneSummary } from './scenes';
 
-/** 一步：一次工具调用（带结果）、一段话或一条错误。 */
+/** 一步：一次工具调用（带结果）、一段思考、一段话或一条错误。 */
 export interface ActivityStep {
-  kind: 'tool' | 'text' | 'error';
+  kind: 'tool' | 'thinking' | 'text' | 'error';
   tool?: string;
   input?: unknown;
   /** running / done / failed，只有工具调用有。 */
   state?: string;
   output?: string;
   text?: string;
+  /** 思考的全文字数（text 只留开头一段）。有的模型一次能想几万字、几分钟，界面据此说清它想了多久。 */
+  chars?: number;
+  /** 流式思考的分批编号：同一编号的后续文本接在这一步上，不另起一步。 */
+  text_id?: string;
 }
 
 /** 返回给界面的步骤条数上限：更早的只计数。 */
@@ -147,6 +151,19 @@ function consume(state: StreamState, line: string): void {
           // 只有结果、没见过调用（codex 的 item.completed 一条里两样都有）。
           push(state, { kind: 'tool', tool: event.tool ?? '', input: trimInput(event.input), state: event.is_error ? 'failed' : 'done', output: event.text ? clipText(event.text) : undefined });
         }
+        break;
+      }
+      case agentrun.KindThinking: {
+        if (!event.text) break;
+        const last = state.steps.at(-1);
+        if (event.text_id && last?.kind === 'thinking' && last.text_id === event.text_id) {
+          // 同一段思考的后续分批：接上，字数累加。
+          last.chars = (last.chars ?? 0) + event.text.length;
+          if ((last.text ?? '').length < maxStepText) last.text = clipText((last.text ?? '') + event.text);
+          break;
+        }
+        const text = event.text.trim();
+        if (text) push(state, { kind: 'thinking', text: clipText(text), chars: text.length, ...(event.text_id ? { text_id: event.text_id } : {}) });
         break;
       }
       case agentrun.KindText:

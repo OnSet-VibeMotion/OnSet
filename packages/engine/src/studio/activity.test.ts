@@ -77,6 +77,20 @@ describe('scene activity', () => {
     expect((render.input.code as string).length).toBeLessThan(400);
   });
 
+  // Qoder 一类的工具把一大段思考整条写出来（实测一次 3.6 万字、想了四分多钟）：记成一步，留开头一段与全文字数。
+  it('keeps a thinking step with its full length', () => {
+    const dir = tempDir();
+    const log = path.join(dir, 'render-s1.stream.jsonl');
+    const long = '先确认镜头时长与安全区，再决定画面怎么分层。' + '想'.repeat(36000);
+    const think = JSON.stringify({ type: 'assistant', message: { id: 'm1', content: [{ type: 'thinking', thinking: long }] }, session_id: 'x' });
+    fs.writeFileSync(log, [init, think, callRead].join('\n') + '\n');
+    const a = sceneActivity(summary(dir)) as Record<string, any>;
+    expect(a.steps.map((s: any) => s.kind)).toEqual(['thinking', 'tool']);
+    expect(a.steps[0].chars).toBe(long.length);
+    expect(a.steps[0].text.startsWith('先确认镜头时长与安全区')).toBe(true);
+    expect(a.steps[0].text.length).toBeLessThanOrEqual(1201);
+  });
+
   // 重渲染前旧日志被挪走、新日志从头写：不能接着旧的偏移读。
   it('starts over when the log is replaced', () => {
     const dir = tempDir();

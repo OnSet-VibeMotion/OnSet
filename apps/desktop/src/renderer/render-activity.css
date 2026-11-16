@@ -279,6 +279,51 @@
   color: var(--accent-text);
 }
 
+/* 一段思考：默认只露第一行与字数，点开看开头一段。 */
+.render-watch .ra-dot.thought,
+.scene-activity .ra-dot.thought {
+  background: transparent;
+  border: 1px dashed var(--text-3);
+}
+.render-watch .ra-thought,
+.scene-activity .ra-thought {
+  min-width: 0;
+}
+.render-watch .ra-thought summary,
+.scene-activity .ra-thought summary {
+  display: flex;
+  gap: 0 8px;
+  min-width: 0;
+  cursor: pointer;
+  list-style: none;
+}
+.render-watch .ra-thought summary::-webkit-details-marker,
+.scene-activity .ra-thought summary::-webkit-details-marker {
+  display: none;
+}
+.render-watch .ra-thought .ra-target,
+.scene-activity .ra-thought .ra-target {
+  font-style: italic;
+}
+.render-watch .ra-thought p,
+.scene-activity .ra-thought p {
+  margin: 4px 0 0;
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.render-watch .ra-thought-more,
+.scene-activity .ra-thought-more {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
 /* 镜头页：信息栏里的一块。 */
 .scene-activity {
   min-width: 0;

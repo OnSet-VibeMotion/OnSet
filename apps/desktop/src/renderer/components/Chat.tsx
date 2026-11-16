@@ -23,6 +23,7 @@ import {
   formatElapsed,
   parseChoices,
   parseStylePicks,
+  stylePickMessage,
   findMedia,
   type MediaRef,
   type StylePick,
@@ -536,13 +537,26 @@ export function Chat(props: Props) {
     }
   };
 
+  // 桌宠上点的选项或说的一句：一轮刚结束时选项马上出现在桌宠上，项目占用状态却要等下一次刷新才清掉，
+  // 这时 deliver 会因为 blocked 静默丢掉这句话（CI 上实测撞到）。先记下，等不挡了再发。
+  const petSay = useRef<string | null>(null);
+  useEffect(() => {
+    if (blocked || petSay.current === null) return;
+    const text = petSay.current;
+    petSay.current = null;
+    void deliver(text, []);
+    // deliver 每次渲染都是新函数；只在挡不挡变了时看一眼。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocked]);
+
   // 桌宠上的动作：答批准、点选项或说一句、停下这一轮。
   usePetCommands((command) => {
     if (command.kind === 'answer') {
       const ask = asks.find((a) => a.id === command.id);
       if (ask) void answer(ask, command.decision);
     } else if (command.kind === 'say') {
-      void deliver(command.text, []);
+      if (blocked) petSay.current = command.text;
+      else void deliver(command.text, []);
     } else if (command.kind === 'stop') {
       if (running) void cancel();
     }
@@ -1145,16 +1159,6 @@ function StylePicks(props: { picks: StylePick[]; styles: Map<string, FilmStyle>;
       })}
     </div>
   );
-}
-
-/**
- * 点风格卡片发出的那句话；收起已答的选项时按它认出选的是哪个。
- * 全片默认、只给一段、不知道是哪种（回复里没有 film-styles 代码块）各是一种说法，不能都说成「整片风格」。
- */
-function stylePickMessage(name: string, pick: StylePick): string {
-  if (!pick.explicit) return `选「${name}」（${pick.key}）这个风格`;
-  if (pick.scope) return `${pick.scope}用「${name}」风格（${pick.key}），其余镜头不变`;
-  return `整片风格用「${name}」（${pick.key}）`;
 }
 
 /** blocks[index] 这一轮之后用户发的第一条消息（去掉引用、附件说明）。 */

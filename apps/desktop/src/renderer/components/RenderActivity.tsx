@@ -74,6 +74,7 @@ interface StepView {
 
 /** 一步说成「动词 + 对象」：文件路径去掉镜头目录前缀。 */
 export function describeStep(step: ActivityStep, sceneDir: string): StepView {
+  if (step.kind === 'thinking') return { verb: `思考 · ${thinkingSize(step)}`, target: step.text ?? '' };
   if (step.kind === 'text') {
     const toUser = (step.text ?? '').includes(userMark);
     return { verb: toUser ? '对你说' : '说', target: (step.text ?? '').replaceAll(userMark, '').trim(), toUser };
@@ -84,6 +85,12 @@ export function describeStep(step: ActivityStep, sceneDir: string): StepView {
   if (sceneDir && target.startsWith(sceneDir + '/')) target = target.slice(sceneDir.length + 1);
   target = target.replaceAll(sceneDir + '/', '');
   return { verb: info.verb, target };
+}
+
+/** 思考了多少字：几万字的思考要几分钟，说清楚比只写「思考」有用。 */
+export function thinkingSize(step: ActivityStep): string {
+  const n = step.chars ?? (step.text ?? '').length;
+  return n >= 10000 ? `${(n / 10000).toFixed(1)} 万字` : `${n} 字`;
 }
 
 /** 卡片上那一行「现在在做什么」。 */
@@ -99,6 +106,7 @@ function currentLine(steps: ActivityStep[], sceneDir: string): string {
     return `正在${view.verb}${target ? '：' + firstLine(target) : ''}`;
   }
   if (last.kind === 'text') return firstLine(view.target);
+  if (last.kind === 'thinking') return `想好了（${thinkingSize(last)}）：${firstLine(view.target)}`;
   return `${view.verb}${view.target ? '：' + firstLine(view.target) : ''}`;
 }
 
@@ -146,7 +154,7 @@ function StepList({ steps, sceneDir, offset }: { steps: ActivityStep[]; sceneDir
     >
       {steps.map((step, index) => {
         const view = describeStep(step, sceneDir);
-        const state = step.kind === 'error' ? 'failed' : step.kind === 'text' ? 'said' : (step.state ?? 'done');
+        const state = step.kind === 'error' ? 'failed' : step.kind === 'text' ? 'said' : step.kind === 'thinking' ? 'thought' : (step.state ?? 'done');
         const detail = step.kind === 'tool' && step.state === 'failed' ? step.output : '';
         return (
           <li key={offset + index} className={'ra-step ' + state + (view.toUser ? ' to-user' : '')}>
@@ -154,6 +162,15 @@ function StepList({ steps, sceneDir, offset }: { steps: ActivityStep[]; sceneDir
             <span className={'ra-dot ' + state} aria-hidden="true" />
             {step.kind === 'text' ? (
               <p className="ra-said">{view.target}</p>
+            ) : step.kind === 'thinking' ? (
+              <details className="ra-thought">
+                <summary>
+                  <span className="ra-verb">{view.verb}</span>
+                  <span className="ra-target">{firstLine(view.target)}</span>
+                </summary>
+                <p>{view.target}</p>
+                {(step.chars ?? 0) > (step.text ?? '').length && <small className="ra-thought-more">只显示开头一段，全文在镜头目录的渲染日志里</small>}
+              </details>
             ) : (
               <div className="ra-body">
                 <span className="ra-verb">{view.verb}</span>
@@ -229,7 +246,7 @@ function WatchCard({ scene, onView, onActivity }: { scene: Scene; onView: (view:
       </button>
       {quiet > 90 && open && (
         <p className="ra-quiet">
-          {progress.state === 'waiting' ? '暂未收到新的模型回复，任务仍在等待；累计用时不代表等待时长。' : progress.state === 'busy' ? '工具尚未返回新结果，取帧和检查可能需要几分钟。' : '暂未收到新的进展，请展开过程查看最近记录。'}
+          {progress.state === 'waiting' ? '模型还在想下一步或在写回复。有的工具（例如 Qoder）要等这一段整个想完才写出来，所以这几分钟里没有新步骤；想完后会在过程里显示它想了什么。' : progress.state === 'busy' ? '工具尚未返回新结果，取帧和检查可能需要几分钟。' : '暂未收到新的进展，请展开过程查看最近记录。'}
         </p>
       )}
       {open && (

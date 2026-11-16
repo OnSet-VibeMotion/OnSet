@@ -43,6 +43,7 @@ export function renderPresentation(steps: ActivityStep[], completeToolEvents = t
       : `${running ? '正在' : '最近已'}${verb}`;
     return {phase, state: running ? 'busy' : 'waiting', label: running ? '进行中' : completeToolEvents ? '等模型回复' : '等待更新', detail};
   }
+  if (current.kind === 'thinking') return {phase, state: 'waiting', label: '等模型回复', detail: '刚想完一段，等模型给出下一步'};
   const message = (current.text ?? '').replaceAll('[[USER_MESSAGE]]', '').trim().split('\n')[0];
   return {phase, state: 'waiting', label: progress.title === '收尾中' ? '收尾中' : '等后续进展', detail: message || '等待下一条制作日志'};
 }
@@ -68,7 +69,7 @@ export function windowsRenderProgress(steps:ActivityStep[],completeToolEvents=tr
     return {title:'工具运行中',quiet:'正在等待当前工具返回结果'};
   }
   if(last.kind==='text'&&(last.text??'').includes('视频已渲染完成'))return {title:'收尾中',quiet:'视频已报告生成，等待制作进程完成收尾'};
-  if(last.kind==='text')return {title:'制作中',quiet:'正在等待下一条制作日志'};
+  if(last.kind==='text'||last.kind==='thinking')return {title:'制作中',quiet:'正在等待下一条制作日志'};
   if(last.kind==='error')return {title:'处理错误中',line:last.text,quiet:'当前步骤发生错误，等待制作进程处理'};
   return completeToolEvents?{title:'等待模型响应',line:'上一项已结束，等待模型继续',quiet:'当前没有工具在执行，正在等待模型继续回复'}:{title:'等待状态更新',line:'上一项已结束，等待后续日志',quiet:'上一项已结束，等待后续日志'};
 }

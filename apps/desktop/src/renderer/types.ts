@@ -58,13 +58,16 @@ export interface Scene {
 
 /** 渲染器的一步（后端 studio/activity.ts 的 ActivityStep）。 */
 export interface ActivityStep {
-  kind: 'tool' | 'text' | 'error';
+  kind: 'tool' | 'thinking' | 'text' | 'error';
   tool?: string;
   input?: unknown;
   /** running / done / failed，只有工具调用有。 */
   state?: string;
   output?: string;
   text?: string;
+  /** 思考的全文字数（text 只是开头一段）。 */
+  chars?: number;
+  text_id?: string;
 }
 
 /** GET /api/scenes/{id}/activity：渲染器此刻在做什么，或最近一次渲染做了什么。 */
