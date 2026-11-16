@@ -15,7 +15,7 @@ import { DiffDialog } from './DiffDialog';
 import { Icon } from './Icon';
 import { Markdown } from './chat/Markdown';
 import { PolishCard, type PolishResult, type PolishState } from './chat/Polish';
-import { turnActivity } from './chat/activity';
+import { turnActivity, waitingOnRender } from './chat/activity';
 import { ActivityStatus } from './chat/ActivityStatus';
 import {
   buildBlocks,
@@ -168,6 +168,9 @@ export function Chat(props: Props) {
   const now = useNow(running);
   const activityEvents = useMemo(() => events.filter(event => event.turn_id === lastTurn?.id), [events, lastTurn?.id]);
   const activity = lastTurn && running ? turnActivity(lastTurn, activityEvents, asks, now) : null;
+  // 在等镜头制作时，「镜头制作」卡片已经逐个镜头报进度，不再叠一张「正在执行操作」。
+  const renderingScenes = props.scenes.filter((scene) => scene.rendering).length;
+  const showActivity = !!activity && !waitingOnRender(activity, lastTurn, renderingScenes);
 
   // 这一轮进行中照样能发：消息排到这一轮之后。别的写任务占着项目时不能发。
   const blocked = sending || (props.busy !== '' && !running);
@@ -681,7 +684,7 @@ export function Chat(props: Props) {
       {queue.length > 0 && <QueuedStack queue={queue} onAction={queueAction} />}
       {polishing && <PolishCard state={polishing} draft={draft} onUse={applyPolish} onRetry={() => void polish(polishing.from)} onClose={closePolish} />}
 
-      {activity && lastTurn && <ActivityStatus activity={activity} turn={lastTurn} now={now} projectPath={props.projectPath} reconnecting={reconnecting} />}
+      {showActivity && activity && lastTurn && <ActivityStatus activity={activity} turn={lastTurn} now={now} projectPath={props.projectPath} reconnecting={reconnecting} />}
 
       <footer className="composer">
         <div

@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { test, expect, openProject } from './fixtures.mjs';
 import { buildBlocks } from '../src/renderer/components/chat/model.ts';
-import { turnActivity } from '../src/renderer/components/chat/activity.ts';
+import { suggestStop, turnActivity, waitingOnRender } from '../src/renderer/components/chat/activity.ts';
 
 const start = Date.parse('2026-11-15T00:00:00Z');
 function activity(rows, now = start + 70000, asks = []) {
@@ -112,7 +112,8 @@ test('current progress stays above the composer while waiting, survives reload a
   await page.clock.install();
   await page.clock.setSystemTime(Date.now() + 90000);
   await expect(progress).toContainText('无新消息');
-  await expect(progress).toContainText('尚未收到新的模型输出');
+  // 这一轮已经执行过操作：安静是正常的，不劝用户停止。
+  await expect(progress).not.toContainText('点击输入框右下角停止');
   await page.screenshot({ path: testInfo.outputPath('waiting-progress.png') });
   await electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.isResizable()).setSize(1000, 700));
   await page.locator('#messages').evaluate(element => { element.scrollTop = 0; });
@@ -136,4 +137,40 @@ test('stopping a turn removes the persistent progress indicator', async ({ page,
   await expect(page.getByRole('region', { name: '当前 AI 进度' })).toBeVisible();
   await page.locator('#cancel-turn').click();
   await expect(page.getByRole('region', { name: '当前 AI 进度' })).toHaveCount(0);
+});
+
+test('waiting on scene rendering leaves progress to the render board', () => {
+  const turnOf = (rows) => {
+    const events = [{ kind: 'turn-start' }, ...rows].map((event, seq) => ({ seq, turn_id: 'current', time: new Date(start + seq * 1000).toISOString(), ...event }));
+    const turn = buildBlocks(events).find(block => block.kind === 'turn');
+    return { turn, state: turnActivity(turn, events, [], start + 70000) };
+  };
+  const call = (id, tool, input = {}) => ({ kind: 'tool-call', call_id: id, tool, input });
+  // 等渲染跑完：MCP 前缀、制作人的裸操作名、等渲染任务的 job_wait 都算；有镜头在渲染时不显示这张卡片。
+  for (const tool of ['mcp__onset__scene_run_all', 'scene_run', 'mcp__onset__job_wait', 'onset.scene_seams']) {
+    const { turn, state } = turnOf([call('r', tool)]);
+    expect(state.phase).toBe('tool');
+    expect(waitingOnRender(state, turn, 2)).toBe(true);
+    // 「镜头制作」卡片还没出来（还没有镜头在渲染）时照常显示。
+    expect(waitingOnRender(state, turn, 0)).toBe(false);
+  }
+  // 同时还有别的操作没跑完、或在等别的操作：照常显示。
+  const mixed = turnOf([call('r', 'mcp__onset__scene_run_all'), read]);
+  expect(waitingOnRender(mixed.state, mixed.turn, 2)).toBe(false);
+  const other = turnOf([call('c', 'mcp__onset__concat')]);
+  expect(waitingOnRender(other.state, other.turn, 2)).toBe(false);
+  // 等批准不是在等渲染。
+  const events = [{ kind: 'turn-start' }, call('r', 'scene_run')].map((event, seq) => ({ seq, turn_id: 'current', time: new Date(start + seq * 1000).toISOString(), ...event }));
+  const turn = buildBlocks(events).find(block => block.kind === 'turn');
+  expect(waitingOnRender(turnActivity(turn, events, [{ id: 'approval' }], start + 70000), turn, 2)).toBe(false);
+});
+
+test('quiet stretches during a running job never suggest stopping', () => {
+  // 操作跑完后模型还没回话、或操作还在跑：照实说多久无新消息，不劝用户停。
+  expect(suggestStop(activity([read, done], start + 180000))).toBe(false);
+  expect(suggestStop(activity([read], start + 180000))).toBe(false);
+  expect(suggestStop(activity([read, { ...done, is_error: true }], start + 180000))).toBe(false);
+  // 提交后一直没有任何输出、也没执行过操作：才提一句可以停止。
+  expect(suggestStop(activity([], start + 180000))).toBe(true);
+  expect(suggestStop(activity([], start + 2000))).toBe(false);
 });

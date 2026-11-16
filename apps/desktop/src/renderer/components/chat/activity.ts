@@ -68,3 +68,25 @@ export function turnActivity(turn: TurnBlock, events: SessionEvent[], asks: Perm
   }
   return state;
 }
+
+/** 渲染镜头、修接缝，以及等它们跑完的 job_wait：这几样在跑时，「镜头制作」卡片已经逐个镜头说清进度。 */
+const renderOps = new Set(['scene_run', 'scene_run_all', 'scene_seams', 'job_wait']);
+
+/**
+ * 这一轮只是在等镜头制作：有镜头正在渲染，而这一轮还没结果的操作全是渲染镜头（或等渲染任务跑完）。
+ * 这时输入框上方已经有「镜头制作」卡片，「正在执行操作」那张就不再重复；等批准、压缩上下文、别的操作照常显示。
+ */
+export function waitingOnRender(activity: TurnActivity | null, turn: TurnBlock | undefined, renderingScenes: number): boolean {
+  if (!activity || !turn || renderingScenes === 0 || activity.phase !== 'tool') return false;
+  const pending = turn.process.filter((item): item is Extract<ProcessItem, { type: 'tool' }> => item.type === 'tool' && !item.result);
+  return pending.length > 0 && pending.every((item) => renderOps.has((item.call.tool ?? '').toLowerCase().replace(/^mcp__onset__/, '').replace(/^onset[._]/, '')));
+}
+
+/**
+ * 没收到新消息时要不要提示「可以停止」：这一轮已经执行过或正在执行操作（制作任务动辄几分钟没有输出），
+ * 安静是正常的，不劝用户停；只在提交后一直没有任何输出、也还没执行过操作时才提一句。
+ */
+export function suggestStop(activity: TurnActivity): boolean {
+  const waiting = activity.phase === 'waiting' || activity.phase === 'starting';
+  return activity.quiet && waiting && activity.active + activity.completed + activity.failed === 0;
+}

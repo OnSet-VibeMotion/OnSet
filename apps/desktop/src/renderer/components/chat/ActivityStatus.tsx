@@ -1,4 +1,4 @@
-import type { TurnActivity } from './activity';
+import { suggestStop, type TurnActivity } from './activity';
 import { formatElapsed, seconds, type TurnBlock } from './model';
 
 export function ActivityStatus({ activity, turn, now, projectPath, reconnecting }: {
@@ -30,7 +30,7 @@ export function ActivityStatus({ activity, turn, now, projectPath, reconnecting 
         {waiting && !reconnecting && <span>等待 {formatElapsed(seconds(activity.since, now))}</span>}
         {quiet && <span>{formatElapsed(seconds(activity.lastUpdate, now))} 无新消息</span>}
       </div>
-      {reconnecting ? <p>连接恢复后会同步进度；当前任务的状态尚未确认。</p> : quiet && waiting && <p>尚未收到新的模型输出，你可以继续等待，或点击输入框右下角停止。</p>}
+      {reconnecting ? <p>连接恢复后会同步进度；当前任务的状态尚未确认。</p> : suggestStop(activity) && <p>尚未收到新的模型输出，你可以继续等待，或点击输入框右下角停止。</p>}
       {!reconnecting && quiet && phase === 'compacting' && <p>压缩尚未返回结果；收到后会自动更新进度。</p>}
     </section>
   );
