@@ -32,6 +32,20 @@ export interface ManifestOp {
   params: Record<string, ManifestParam>;
   /** agent：编排工具能调（登记成 x_<站>_<操作> 工具）；user：只有用户在界面上点按钮才执行（发布这类对外动作）。 */
   trigger: 'agent' | 'user';
+  /**
+   * false：不需要项目（实验性，只给 trigger: user）。登录账号、管理账号这类插件自己的配置用它：没打开项目时也能在设置页里点，
+   * 这时工作目录是插件的数据目录，stdin 的 project_root 为空，不扫项目、不占项目写锁；打开了项目时照常在项目里跑。
+   * 缺省要先打开项目。
+   */
+  project?: false;
+  /**
+   * true：这条操作返回一份列表（结果的 `items`，例如已登录的账号：头像、名字、每项的按钮），实验性。设置里打开插件的
+   * 「详情与设置」时与别的操作跑完后自动执行、把列表画出来，不出按钮表单。只能配 trigger: user、project: false、没有必填参数，
+   * 而且只该读插件自己的数据——宿主会不经用户点按就运行它。
+   */
+  list?: true;
+  /** false：设置里不给它出按钮表单（只给列表每项的按钮、插件页面调用），实验性。只能配 trigger: user。 */
+  form?: false;
 }
 
 export interface ManifestNode {
@@ -174,7 +188,7 @@ export type FieldTier = 'stable' | 'experimental';
  * 清单顶层字段的唯一来源：解析器只认这里列出的字段，作者文档（docs/plugin-authoring.md）也按它核对。
  * used 判断一份解析好的清单是否真的用到了这个字段（给实验性字段报告用）。
  */
-export const ManifestFields: readonly { name: string; tier: FieldTier; parent?: 'nodes'; used?: (m: Manifest) => boolean }[] = [
+export const ManifestFields: readonly { name: string; tier: FieldTier; parent?: 'nodes' | 'ops'; used?: (m: Manifest) => boolean }[] = [
   { name: 'manifest_version', tier: 'stable' },
   { name: 'requires', tier: 'stable' },
   { name: 'id', tier: 'stable' },
@@ -205,6 +219,11 @@ export const ManifestFields: readonly { name: string; tier: FieldTier; parent?: 
   ...['id', 'label', 'step', 'gate', 'page', 'outputs', 'stale_after', 'gate_files'].map((name) => ({ name: `nodes.${name}`, tier: 'stable' as const, parent: 'nodes' as const })),
   { name: 'nodes.state', tier: 'experimental', parent: 'nodes', used: (m) => m.nodes.some((n) => n.state !== undefined) },
   { name: 'nodes.guide', tier: 'experimental', parent: 'nodes', used: (m) => m.nodes.some((n) => n.guide !== undefined) },
+  // 操作（ops[]）里的字段：不需要项目（登录、管理账号这类插件自己的配置）是实验性的。
+  ...['name', 'summary', 'description', 'examples', 'command', 'params', 'trigger'].map((name) => ({ name: `ops.${name}`, tier: 'stable' as const, parent: 'ops' as const })),
+  { name: 'ops.project', tier: 'experimental', parent: 'ops', used: (m) => m.ops.some((o) => o.project === false) },
+  { name: 'ops.list', tier: 'experimental', parent: 'ops', used: (m) => m.ops.some((o) => o.list === true) },
+  { name: 'ops.form', tier: 'experimental', parent: 'ops', used: (m) => m.ops.some((o) => o.form === false) },
 ];
 
 /** 解析器认的顶层字段名。 */
@@ -215,6 +234,11 @@ export function manifestFieldNames(): string[] {
 /** 解析器认的站点（nodes[]）字段名，不带 `nodes.` 前缀。 */
 export function nodeFieldNames(): string[] {
   return ManifestFields.filter((f) => f.parent === 'nodes').map((f) => f.name.slice('nodes.'.length));
+}
+
+/** 解析器认的操作（ops[]）字段名，不带 `ops.` 前缀。 */
+export function opFieldNames(): string[] {
+  return ManifestFields.filter((f) => f.parent === 'ops').map((f) => f.name.slice('ops.'.length));
 }
 
 /** 这份清单用到了哪些实验性字段（按 ManifestFields 的顺序）。 */

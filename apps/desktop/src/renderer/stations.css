@@ -1,4 +1,4 @@
-/* 第三方站（流程插件）：设置页的列表与发布页的按钮。选择器挂在 .stations / .stations-actions 下，沿用 :root 的色板。 */
+/* 第三方站（流程插件）：设置页的列表、操作与页面入口。选择器挂在 .stations 下，沿用 :root 的色板。 */
 .stations {
   display: flex;
   flex-direction: column;
@@ -71,8 +71,7 @@
   gap: 12px;
   padding: 12px 14px;
 }
-.stations .station-icon,
-.stations-actions .station-icon {
+.stations .station-icon {
   display: inline-grid;
   place-items: center;
   width: 32px;
@@ -98,8 +97,7 @@
   font-size: 12px;
   color: var(--muted);
 }
-.stations .station-badge,
-.stations-actions .station-badge {
+.stations .station-badge {
   padding: 1px 8px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
@@ -179,18 +177,19 @@
   font: 12px var(--mono);
 }
 
-/* 发布页：第三方插件的动作。 */
-.stations-actions .station-actions-group {
+/* 设置页「详情与设置」：插件要你点的操作与它的页面入口。 */
+.stations .station-page-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.stations .station-actions-group {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
-.stations-actions h4 {
-  display: flex;
-  align-items: center;
   gap: 10px;
 }
-.stations-actions .station-op {
+.stations .station-op {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -199,28 +198,28 @@
   border-radius: var(--radius);
   background: var(--raised);
 }
-.stations-actions .station-op-head {
+.stations .station-op-head {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-.stations-actions .station-op-head strong {
+.stations .station-op-head strong {
   font-size: 13px;
   color: var(--text);
 }
-.stations-actions .station-op-head span {
+.stations .station-op-head span {
   font-size: 12px;
   color: var(--muted);
 }
-.stations-actions .station-param {
+.stations .station-param {
   display: flex;
   flex-direction: column;
   gap: 4px;
   font-size: 12px;
   color: var(--text-3);
 }
-.stations-actions .station-param input:not([type='checkbox']),
-.stations-actions .station-param textarea {
+.stations .station-param input:not([type='checkbox']),
+.stations .station-param textarea {
   height: 32px;
   padding: 0 10px;
   border: 1px solid var(--line-strong);
@@ -229,25 +228,25 @@
   color: var(--text);
   font: 13px var(--sans);
 }
-.stations-actions .station-param textarea {
+.stations .station-param textarea {
   height: auto;
   padding: 6px 10px;
 }
-.stations-actions .station-op-foot {
+.stations .station-op-foot {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-.stations-actions .station-last {
+.stations .station-last {
   font-size: 12px;
 }
-.stations-actions .station-last.ok {
+.stations .station-last.ok {
   color: var(--ok);
 }
-.stations-actions .station-last.bad {
+.stations .station-last.bad {
   color: var(--bad);
 }
-.stations-actions .station-output {
+.stations .station-output {
   margin: 0;
   max-height: 160px;
   overflow: auto;
@@ -409,6 +408,15 @@
 }
 
 /* 嵌进自带页面的插件小窗。 */
+/*
+ * .preview-body 是定高的纵向 flex，子元素 min-height: 0：只有一页时内容溢出照样能滚，
+ * 下面再接小窗的话，那一页被压到剩余高度、内容溢出盖在小窗上（发布页实测）。
+ * 有小窗时，前面那一页与小窗都按内容高度排，整列交给 .preview-body 滚动。
+ */
+.preview-body > :has(+ .station-slots),
+.station-slots {
+  flex: none;
+}
 .station-slots {
   display: flex;
   flex-direction: column;
@@ -610,4 +618,133 @@
   margin-top: 4px;
   color: var(--stale);
   font-weight: 500;
+}
+
+/* 设置里「详情与设置」的弹窗：盖在设置窗口（z-index 20）上面。 */
+.plugin-dialog-backdrop {
+  z-index: 30;
+}
+.modal.plugin-dialog {
+  width: min(720px, 100%);
+}
+.plugin-dialog .modal-head .station-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.plugin-dialog .modal-head .station-badge {
+  padding: 1px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font: 10px var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+.plugin-dialog .plugin-dialog-title {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.plugin-dialog .plugin-dialog-title h2 {
+  font: 600 16px var(--serif);
+}
+.plugin-dialog .plugin-dialog-title span {
+  font-size: 12px;
+  color: var(--muted);
+}
+/* 弹窗里沿用 .stations 下的表单样式，但不要列表区的分隔线与留白。 */
+.plugin-dialog .stations.plugin-dialog-body {
+  border-top: 0;
+  padding: 18px 20px 22px;
+}
+.plugin-dialog .plugin-dialog-body > .station-detail {
+  padding: 0;
+  gap: 14px;
+}
+
+/* 「详情与设置」里列表操作的卡片（例如已登录的账号：头像、昵称、打开、移除）。 */
+.stations .plugin-actions {
+  gap: 12px;
+}
+.stations .stations-result.bad {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 40%, var(--line-strong));
+}
+.stations .plugin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.stations .plugin-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.stations .plugin-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.stations .plugin-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--raised);
+}
+.stations .plugin-item img,
+.stations .plugin-item-blank {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--well);
+}
+.stations .plugin-item-blank {
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  font: 600 16px var(--serif);
+}
+.stations .plugin-item-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.stations .plugin-item-text strong {
+  font-size: 14px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stations .plugin-item-text span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.stations .plugin-item-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.stations .plugin-item button.danger {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 50%, var(--line-strong));
 }

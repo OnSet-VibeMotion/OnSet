@@ -62,7 +62,7 @@ echo '{"ok": true}' > production/my-publisher/receipt.json
 echo 'onset-result {"url": "https://example.com/v/1"}'
 ```
 
-`prompt.md` 是写给 AI 的说明，例如「成片确认后，请用户在发布页点『把成片发到平台』」。
+`prompt.md` 是写给 AI 的说明，例如「成片确认后，请用户在设置的「功能与插件」里点『把成片发到平台』」。`trigger: user` 的操作连同插件的设置都在客户端设置「功能与插件」里这个插件的「详情与设置」，不在发布页；要在发布页给用户一块界面，用 `slots` 嵌一个页面。
 
 本地使用或开发时，在设置页「我的插件」点「选择本地文件夹」，选中包含 `onset-station.json` 的目录，再点「添加」，查看详情后点「装上」。也可以直接填文件夹的绝对路径或 `link:/绝对路径`；无需 Git 仓库，改动立即生效。通过 Git 分发时，让用户用 `github:作者/仓库#v0.1.0` 添加。
 
@@ -187,7 +187,10 @@ echo 'onset-result {"url": "https://example.com/v/1"}'
 | `examples` | 调用例子，按工具写法：`x_my_publisher_status({})` |
 | `command` | 必填，命令与参数。第一个元素带 `/` 时是插件目录里的相对路径，否则按 PATH 找（`node`、`python3`）；参数里的 `{station_dir}` 换成插件目录 |
 | `params` | 参数：`{"名字": {"type": "string", "description": "…", "required": true, "default": …}}`，`type` 取 `string`、`boolean`、`integer`、`number`、`strings`（字符串数组） |
-| `trigger` | `agent`（缺省）：AI 能调，登记成工具 `x_<插件 id 的连字符换成下划线>_<操作名>`；`user`：只有用户在客户端里点按钮才执行，发布这类对外、不能撤回的动作用它 |
+| `trigger` | `agent`（缺省）：AI 能调，登记成工具 `x_<插件 id 的连字符换成下划线>_<操作名>`；`user`：只有用户在客户端设置「功能与插件」→「详情与设置」里点按钮才执行，发布这类对外、不能撤回的动作用它 |
+| `project` | **实验性**。写 `false` 表示这条操作不需要项目，只能配 `trigger: user`：登录、添加或管理账号这类插件自己的配置用它。没打开项目时也能在设置里点：这时工作目录是插件的数据目录，stdin 的 `project_root` 为空字符串，不扫项目越界、不占项目写锁，内嵌网页照常可用但不能上传文件；打开了项目时照常在项目里执行。插件要自己处理 `project_root` 为空的情况（例如不往项目里写文件）。缺省要先打开项目 |
+| `list` | **实验性**。写 `true` 表示这条操作返回一份列表，要同时写 `trigger: user`、`project: false`，且没有必填参数。设置里打开插件的「详情与设置」时、以及这个插件别的操作跑完后，片场会自动执行它（不经用户点按，所以它只该读插件自己的数据），把结果行（`onset-result`）里的 `items` 画成卡片，不出按钮表单。每一项写 `title`、可选的 `detail`、`image`（只认 `data:image/…` 的图片）与 `actions`（按钮：`label`、`op`、`params`，可选 `confirm` 是点了之后先问的一句话）。例如已登录的账号：头像、昵称、「打开」「移除」 |
+| `form` | **实验性**。写 `false` 表示设置里不给这条操作出按钮表单，只由列表项的按钮或插件页面调用；只能配 `trigger: user` |
 
 ### 页面（`pages`）
 

@@ -1049,6 +1049,12 @@ export interface StationOp {
   summary: string;
   description: string;
   trigger: 'agent' | 'user';
+  /** false：不需要项目（登录、管理账号这类插件自己的配置），没打开项目也能点。 */
+  project: boolean;
+  /** 返回列表（账号卡片这类）：设置里自动执行、画成卡片。 */
+  list: boolean;
+  /** false：设置里不给它出按钮表单。 */
+  form: boolean;
   params: StationParam[];
   last_run?: StationRun;
 }

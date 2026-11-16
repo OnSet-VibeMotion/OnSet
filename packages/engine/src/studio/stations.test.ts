@@ -43,7 +43,7 @@ describe('stations API', () => {
     expect(body.problems[0].message).toContain('第三方插件 gone');
     const station = body.stations.find((x: { id: string }) => x.id === 'fake-publisher');
     expect(station).toMatchObject({ id: 'fake-publisher', name: '假发布', linked: true, after: 'publish' });
-    expect(station.experimental).toEqual(['hooks', 'schedules', 'slots', 'commands', 'inserts', 'flow', 'provides', 'renderer_skills', 'film_styles']);
+    expect(station.experimental).toEqual(['hooks', 'schedules', 'slots', 'commands', 'inserts', 'flow', 'provides', 'renderer_skills', 'film_styles', 'ops.project', 'ops.list', 'ops.form']);
     // 内置插件不标实验性。
     for (const b of body.stations.filter((x: { builtin: boolean }) => x.builtin)) expect(b.experimental).toEqual([]);
     expect(station.prompt).toContain('请用户在发布页点');
@@ -54,7 +54,51 @@ describe('stations API', () => {
       ['on_event', 'agent', 'x_fake_publisher_on_event'],
       ['speak', 'agent', 'x_fake_publisher_speak'],
       ['scribble', 'user', ''],
+      ['login', 'user', ''],
+      ['accounts', 'user', ''],
+      ['logout', 'user', ''],
     ]);
+    // 登录这类插件自己的配置不针对项目，界面据此在没打开项目时也给按钮。
+    expect(station.ops.filter((o: { project: boolean }) => !o.project).map((o: { name: string }) => o.name)).toEqual(['login', 'accounts', 'logout']);
+    // 账号列表画成卡片，列表项上的按钮不出表单。
+    expect(station.ops.filter((o: { list: boolean }) => o.list).map((o: { name: string }) => o.name)).toEqual(['accounts']);
+    expect(station.ops.filter((o: { form: boolean }) => !o.form).map((o: { name: string }) => o.name)).toEqual(['logout']);
+  });
+
+  it('runs an op that does not target a project without any project open', async () => {
+    const s = startStudio({ configPath: path.join(tempDir(), 'projects.json') });
+    installStation(`link:${fake}`);
+    const bin = tempDir();
+    const log = path.join(bin, 'args.log');
+    s.config.executable = writeShellFixture(path.join(bin, 'onset'), `#!/bin/sh\npwd > '${log}.cwd'\nprintf '%s\\n' "$@" > '${log}'\nprintf '已登录\\n\\000am-result {"ok":true,"exit_code":0}\\n'\n`);
+    // 针对项目的操作仍要先打开项目。
+    expect((await studioRequest(s, 'POST', '/api/stations/fake-publisher/ops/send', '{"params":{"platform":"douyin"}}')).status).toBe(404);
+    const started = await studioRequest(s, 'POST', '/api/stations/fake-publisher/ops/login', '{"params":{"name":"小号"}}');
+    expect(started.status).toBe(202);
+    const task = await waitStudioTask(s, started.body.task_id);
+    expect(task).toMatchObject({ status: 'succeeded', type: 'station.run' });
+    // 交给执行进程的是空的项目根，工作目录在用户级的插件目录。
+    const args = fs.readFileSync(log, 'utf8');
+    expect(args).toContain('station_run');
+    expect(args).toContain('"project_root":""');
+    expect(args).toContain('"op":"login"');
+    // 结果不分项目：没打开项目时也看得到上一次执行。
+    const { body } = await studioRequest(s, 'GET', '/api/stations');
+    const op = body.stations.find((x: { id: string }) => x.id === 'fake-publisher').ops.find((o: { name: string }) => o.name === 'login');
+    expect(op.last_run).toMatchObject({ ok: true });
+  });
+
+  it('runs a list op outside the project even when a project is open', async () => {
+    const f = newSessionFixture();
+    installStation(`link:${fake}`);
+    const bin = tempDir();
+    const log = path.join(bin, 'args.log');
+    f.s.config.executable = writeShellFixture(path.join(bin, 'onset'), `#!/bin/sh\nprintf '%s\\n' "$@" > '${log}'\nprintf '\\000am-result {"ok":true,"exit_code":0}\\n'\n`);
+    const started = await studioRequest(f.s, 'POST', '/api/stations/fake-publisher/ops/accounts', '{"params":{}}');
+    expect(started.status).toBe(202);
+    expect(await waitStudioTask(f.s, started.body.task_id)).toMatchObject({ status: 'succeeded' });
+    // 不占项目写锁、不交项目根：设置页自动刷新列表时，用户点的项目操作不会被「项目正忙」挡住。
+    expect(fs.readFileSync(log, 'utf8')).toContain('"project_root":""');
   });
 
   it('validates requests before starting a write task', async () => {

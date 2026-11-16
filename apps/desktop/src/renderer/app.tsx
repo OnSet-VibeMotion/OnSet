@@ -989,7 +989,10 @@ export function App() {
               </button>
             </header>
             <div className="settings-frame">
-              <Settings version={version} run={run} onAgentsChanged={() => {
+              <Settings version={version} run={run} project={currentId !== ''} onOpenPage={(page) => {
+                setSettingsOpen(false);
+                showTab(page as Tab);
+              }} onAgentsChanged={() => {
                 api<AgentsResponse>('/api/agents').then((result) => {
                   setHomeAgents(result);
                   setAgents(result);

@@ -119,7 +119,7 @@ describe('field tiers', () => {
     // 写了空数组不算用到。
     expect(experimentalFields(parseManifest(manifest({ hooks: [], slots: [] })))).toEqual([]);
     const m = parseManifest(fs.readFileSync(path.join(fake, 'onset-station.json'), 'utf8'));
-    expect(experimentalFields(m)).toEqual(['hooks', 'schedules', 'slots', 'commands', 'inserts', 'flow', 'provides', 'renderer_skills', 'film_styles']);
+    expect(experimentalFields(m)).toEqual(['hooks', 'schedules', 'slots', 'commands', 'inserts', 'flow', 'provides', 'renderer_skills', 'film_styles', 'ops.project', 'ops.list', 'ops.form']);
   });
 });
 

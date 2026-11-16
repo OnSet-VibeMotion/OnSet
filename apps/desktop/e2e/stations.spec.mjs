@@ -128,7 +128,7 @@ async function clickInPage(target, reacted) {
   }).toPass({ timeout: 20_000 });
 }
 
-test('a plugin is added in settings without a project, every project gets it, and its publish action runs only when the user clicks', async ({ page, project, sandbox }) => {
+test('a plugin is added in settings without a project, every project gets it, and its action in settings runs only when the user clicks', async ({ page, project, sandbox }) => {
   fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: draft\ncopy:\n  primary_title: 测试标题\n---\n');
   // 还没打开任何项目：首页。
   await expect(page.locator('.home-hero h1')).toContainText('今天想做一条');
@@ -164,16 +164,52 @@ test('a plugin is added in settings without a project, every project gets it, an
   const card = stations.locator('li[data-station="fake-publisher"]');
   await expect(card).toContainText('假发布');
   await expect(card).toContainText('第三方');
+  // 「详情与设置」是盖在设置上的弹窗。
   await card.getByRole('button', { name: '详情与设置' }).click();
-  await expect(card.locator('.station-prompt')).toContainText('请用户在发布页点');
-  await expect(card).toContainText('要你点的');
-  await expect(card.locator('.station-trust')).toContainText('它的操作是在你电脑上运行的程序');
-  await expect(card.locator('.station-experimental')).toContainText('用到了实验性能力：hooks');
-  await expect(card.locator('.station-perms:not(.station-page-perms)')).toContainText('新建项目时在「做法」里选');
+  const detail = page.getByRole('dialog', { name: '假发布 详情与设置' });
+  await expect(detail).toBeVisible();
+  await expect(detail.locator('.station-prompt')).toContainText('请用户在发布页点');
+  // 没打开项目：登录这类插件自己的配置照样能点；针对项目的操作要先打开项目。
+  await expect(detail).toContainText('「把成片发到平台」「顺手记一笔」针对项目执行，打开一个项目后在这里点');
+  await expect(detail.locator('.station-op')).toHaveCount(1);
+  const login = detail.locator('.station-op[data-op="login"]');
+  await login.getByLabel('账号备注名').fill('小号');
+  await login.getByRole('button', { name: '登录平台账号' }).click();
+  await expect(login.locator('.station-last')).toHaveText('上次执行成功');
+  await expect(login.locator('.station-output')).toContainText('已登录：小号');
+  expect(JSON.parse(fs.readFileSync(path.join(sandbox.stations, 'fake-publisher', 'data', 'login.json'), 'utf8'))).toEqual({ name: '小号' });
+  // 插件收到的是「没有项目」，片场也没把插件目录当成项目去扫。
+  const loginRun = (await api(page, '/api/stations')).body.stations.find((x) => x.id === 'fake-publisher').ops.find((o) => o.name === 'login').last_run;
+  expect(loginRun.data).toMatchObject({ in_project: false });
+  expect(loginRun.out_of_scope).toBeUndefined();
+  expect(fs.existsSync(path.join(sandbox.stations, 'production'))).toBe(false);
+  // 登录完，账号列表（清单 list: true）自动刷新成卡片：头像、名字与卡片上的按钮。
+  await expect(detail.locator('.stations-result')).toHaveText('已登录：小号');
+  const account = detail.locator('.plugin-list[data-op="accounts"] .plugin-item');
+  await expect(account).toHaveCount(1);
+  await expect(account).toContainText('小号');
+  await expect(account.locator('img')).toHaveAttribute('src', /^data:image\/png;base64,/);
+  // 只在卡片上的按钮（form: false）不出表单；点了先问一句。
+  await expect(detail.locator('.station-op[data-op="logout"]')).toHaveCount(0);
+  await account.getByRole('button', { name: '退出' }).click();
+  await expect(account).toContainText('退出后要重新登录，确定吗？');
+  await account.getByRole('button', { name: '退出' }).click();
+  await expect(detail.locator('.plugin-list[data-op="accounts"] .plugin-item')).toHaveCount(0);
+  await expect(detail.locator('.plugin-list[data-op="accounts"]')).toContainText('还没有。');
+  await login.getByLabel('账号备注名').fill('小号');
+  await login.getByRole('button', { name: '登录平台账号' }).click();
+  await expect(account).toContainText('小号');
+  await expect(detail).toContainText('要你点的');
+  await expect(detail.locator('.station-trust')).toContainText('它的操作是在你电脑上运行的程序');
+  await expect(detail.locator('.station-experimental')).toContainText('用到了实验性能力：hooks');
+  await expect(detail.locator('.station-perms:not(.station-page-perms)')).toContainText('新建项目时在「做法」里选');
+  await page.screenshot({ path: test.info().outputPath('stations-settings.png') });
+  // Esc 只关这一层弹窗，设置还开着。
+  await page.keyboard.press('Escape');
+  await expect(detail).toHaveCount(0);
+  await expect(page.locator('#settings-dialog')).toBeVisible();
   // 本机目录的站改动立即生效，没有「更新」。
   await expect(card.getByRole('button', { name: '更新' })).toHaveCount(0);
-  await stations.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: test.info().outputPath('stations-settings.png') });
   await page.locator('#settings-dialog').getByRole('button', { name: '关闭' }).click();
 
   // 首页新建时能选到它带来的做法，标明来自哪个插件。
@@ -188,9 +224,15 @@ test('a plugin is added in settings without a project, every project gets it, an
   const progress = await api(page, '/api/progress');
   expect(progress.body.stations.map((s) => s.id).slice(-2)).toEqual(['publish', 'auto-publish']);
 
-  // 发布页：只有用户点了才发。
+  // 插件的配置不在发布页，在设置的「详情与设置」里：只有用户点了才发。
   await page.locator('[data-tab="publish"]').click();
-  const action = page.locator('.stations-actions .station-op[data-op="send"]');
+  await expect(page.locator('.publish-tab')).toBeVisible();
+  await expect(page.locator('.publish-tab .station-op')).toHaveCount(0);
+  await page.locator('#settings-trigger').click();
+  await page.locator('#settings-dialog li[data-station="fake-publisher"]').getByRole('button', { name: '详情与设置' }).click();
+  const pluginCard = page.getByRole('dialog', { name: '假发布 详情与设置' });
+  await expect(pluginCard.locator('[data-setting="token"]')).toContainText('未填写');
+  const action = pluginCard.locator('.station-op[data-op="send"]');
   await expect(action).toBeVisible();
   const send = action.getByRole('button', { name: '把成片发到平台' });
   await expect(send).toBeDisabled();
@@ -202,6 +244,11 @@ test('a plugin is added in settings without a project, every project gets it, an
   await expect.poll(async () => (await api(page, '/api/stations')).body.stations.find((x) => x.id === 'fake-publisher').ops[0].last_run?.ok).toBe(true);
   await expect.poll(async () => (await api(page, '/api/progress')).body.stations.find((s) => s.id === 'auto-publish').status).toBe('done');
   await page.screenshot({ path: test.info().outputPath('stations-publish.png') });
+  // 它的页面从这里打开：关掉弹窗与设置，在画面面板里打开。
+  await pluginCard.getByRole('button', { name: '打开「发布看板」' }).click();
+  await expect(page.locator('#settings-dialog')).toHaveCount(0);
+  await expect(pluginCard).toHaveCount(0);
+  await expect(page.locator('.station-page:not(.station-slot) .station-page-bar')).toContainText('发布看板');
 
   // 去掉：所有项目都不再有它；项目的锁文件始终只有新建时记下的流程。
   await page.locator('#settings-trigger').click();
@@ -288,17 +335,19 @@ test('plugins get settings, a slot in the publish page, a slash command, hooks a
   const card = page.locator('#settings-dialog li[data-station="fake-publisher"]');
   await expect(card).toContainText('还有设置没填');
   await card.getByRole('button', { name: '详情与设置' }).click();
+  const detail = page.getByRole('dialog', { name: '假发布 详情与设置' });
   // 页面的权限与插件接进来的地方分开列：页面在沙箱里，操作不在。
-  await expect(card.locator('.station-page-perms')).toContainText('镜头、制作进度、发布信息的概况');
-  await expect(card.locator('.station-page-perms')).toContainText('整片复查');
-  await expect(card.locator('.station-perms:not(.station-page-perms)')).toContainText('你确认一个审核关卡后');
-  await card.getByLabel('平台令牌').fill('tok-e2e-secret');
-  await card.locator('[data-setting="token"]').getByRole('button', { name: '保存' }).click();
-  await expect(card.locator('[data-setting="token"]')).toContainText('已填写');
-  await card.getByLabel('默认平台').selectOption('bilibili');
-  await card.scrollIntoViewIfNeeded();
+  await expect(detail.locator('.station-page-perms')).toContainText('镜头、制作进度、发布信息的概况');
+  await expect(detail.locator('.station-page-perms')).toContainText('整片复查');
+  await expect(detail.locator('.station-perms:not(.station-page-perms)')).toContainText('你确认一个审核关卡后');
+  await detail.getByLabel('平台令牌').fill('tok-e2e-secret');
+  await detail.locator('[data-setting="token"]').getByRole('button', { name: '保存' }).click();
+  await expect(detail.locator('[data-setting="token"]')).toContainText('已填写');
+  await detail.getByLabel('默认平台').selectOption('bilibili');
   await page.screenshot({ path: test.info().outputPath('station-settings.png') });
   expect(await page.content()).not.toContain('tok-e2e-secret');
+  await detail.getByRole('button', { name: '关闭' }).click();
+  await expect(card).toContainText('第三方');
   await page.locator('#settings-dialog').getByRole('button', { name: '关闭' }).click();
   // 插件不把顶栏撑出窗口（原来就有的 2px 是右上角的连接状态点）。
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(2);
@@ -307,6 +356,16 @@ test('plugins get settings, a slot in the publish page, a slash command, hooks a
   await page.locator('[data-tab="publish"]').click();
   const slot = page.frameLocator('.station-slots[data-slot="publish"] .station-frame');
   await expect(slot.locator('#where')).toHaveText('嵌在 publish · 默认平台 bilibili');
+  // 小窗排在发布页下面，不盖住发布页的内容（发布页曾被压扁、内容溢出到小窗上）。
+  const overlap = await page.evaluate(() => {
+    const tab = document.querySelector('.publish-tab');
+    const slots = document.querySelector('.station-slots[data-slot="publish"]');
+    if (!tab || !slots) return null;
+    const contentBottom = Math.max(...[...tab.querySelectorAll('*')].map((el) => el.getBoundingClientRect().bottom));
+    return contentBottom - slots.getBoundingClientRect().top;
+  });
+  expect(overlap).not.toBeNull();
+  expect(overlap).toBeLessThanOrEqual(0);
   // 小窗里打开插件的整页。
   await clickInPage(slot.locator('#open'), () => expect(page.locator('.station-page:not(.station-slot) .station-frame')).toBeVisible({ timeout: 2000 }));
   const frame = page.frameLocator('.station-page:not(.station-slot) .station-frame');
@@ -343,7 +402,8 @@ test('a plugin brings a new kind of project, a voice and a style library, and se
   const dialog = page.locator('#settings-dialog');
   const card = dialog.locator('li[data-station="fake-publisher"]');
   await card.getByRole('button', { name: '详情与设置' }).click();
-  const perms = card.locator('.station-perms:not(.station-page-perms)');
+  const detail = page.getByRole('dialog', { name: '假发布 详情与设置' });
+  const perms = detail.locator('.station-perms:not(.station-page-perms)');
   await expect(perms).toContainText('假配音');
   await expect(perms).toContainText('caption-kit');
   await expect(perms).toContainText('假风格库');
@@ -351,11 +411,11 @@ test('a plugin brings a new kind of project, a voice and a style library, and se
   await expect(perms).toContainText('客户端开着时每 30 分钟');
   await expect(perms).toContainText('快剪');
   // 流程只在新建时定：已有项目没有「改用」的入口。
-  await expect(card.getByRole('button', { name: '这个项目改用它' })).toHaveCount(0);
+  await expect(detail.getByRole('button', { name: '这个项目改用它' })).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath('station-flow.png') });
+  await detail.getByRole('button', { name: '关闭' }).click();
   // 插件的配音出现在「配音」的可选项里。
   await expect(dialog.locator('.settings-row[data-key="TTS_PROVIDER"]').getByLabel('全局配音').locator('option[value="x:fake-publisher"]')).toHaveCount(1);
-  await card.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: test.info().outputPath('station-flow.png') });
   await dialog.getByRole('button', { name: '关闭' }).click();
 
   // 首页：选它带来的做法新建一个项目。
@@ -434,15 +494,21 @@ test('files a plugin op writes outside what it declared are shown as a warning',
   installPlugin(sandbox, fake);
   await openProject(page, project);
 
-  // 发布页的按钮：假发布顺手写了 notes/scribble.txt（清单只声明了 production/publish/）。
-  await page.locator('[data-tab="publish"]').click();
-  const action = page.locator('.stations-actions .station-op[data-op="scribble"]');
+  // 设置里的按钮：假发布顺手写了 notes/scribble.txt（清单只声明了 production/publish/）。
+  await page.locator('#settings-trigger').click();
+  const card = page.locator('#settings-dialog li[data-station="fake-publisher"]');
+  await card.getByRole('button', { name: '详情与设置' }).click();
+  const detail = page.getByRole('dialog', { name: '假发布 详情与设置' });
+  const action = detail.locator('.station-op[data-op="scribble"]');
   await action.getByRole('button', { name: '顺手记一笔' }).click();
   const warning = action.locator('.station-scope');
   await expect(warning).toContainText('它改了 1 个没声明会写的文件');
   await expect(warning).toContainText('notes/scribble.txt');
   await expect(warning).not.toContainText('production/publish/scribble.json');
   await expect(action.locator('.station-last')).toHaveText('上次执行成功');
+  await page.screenshot({ path: test.info().outputPath('station-scope-settings.png') });
+  await detail.getByRole('button', { name: '关闭' }).click();
+  await page.locator('#settings-dialog').getByRole('button', { name: '关闭' }).click();
   // 任务列表里同样标出来。
   await page.locator('#tasks-toggle').click();
   await expect(page.locator('#tasks .task-warning').first()).toContainText('插件「假发布」改了它没有声明会写的项目文件：notes/scribble.txt');
