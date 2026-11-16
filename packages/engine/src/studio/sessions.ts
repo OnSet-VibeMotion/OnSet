@@ -469,7 +469,7 @@ export function attachmentText(attachments: Attachment[] | null | undefined): st
       } else if (a.scene_id) {
         b += `镜头 ${a.scene_id}`;
       } else if (a.source) {
-        b += `文件 ${a.source}`;
+        b += a.label ? `${a.label}（${a.source}）` : `文件 ${a.source}`;
       }
       if (a.note) b += '\n  备注：' + a.note;
     }

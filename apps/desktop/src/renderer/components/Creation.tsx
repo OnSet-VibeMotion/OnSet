@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, errorText, forUser, post } from '../api';
 import type { Attachment, CanvasOption, Project, Task } from '../types';
+import { materialFiles, uploadMaterials, type HomeMaterial } from './homeAttachments';
 import '../creation.css';
 
 /**
@@ -26,7 +27,7 @@ export interface CreationJob {
   tool: string;
   toolLabel: string;
   message: string;
-  files: File[];
+  materials: HomeMaterial[];
 }
 
 type StepID = 'name' | 'create' | 'upload' | 'skills' | 'style' | 'start';
@@ -81,7 +82,7 @@ export function Creation(props: { job: CreationJob; onDone: (projectId: string, 
   const { job } = props;
   const [states, setStates] = useState<Record<StepID, StepState>>({ name: 'running', create: 'waiting', upload: 'waiting', skills: 'waiting', style: 'waiting', start: 'waiting' });
   const [fractions, setFractions] = useState<Record<StepID, number>>({ name: 0, create: 0, upload: 0, skills: 0, style: 0, start: 0 });
-  const [caption, setCaption] = useState(job.files.length > 0 ? '正在读你的话和素材，给片子起个名字…' : '正在读你的话，给片子起个名字…');
+  const [caption, setCaption] = useState(job.materials.length > 0 ? '正在读你的话和素材，给片子起个名字…' : '正在读你的话，给片子起个名字…');
   const [error, setError] = useState('');
   const [skillsError, setSkillsError] = useState('');
   const [styleError, setStyleError] = useState('');
@@ -148,7 +149,7 @@ export function Creation(props: { job: CreationJob; onDone: (projectId: string, 
               const answer = await post<{ name: string; naming?: string; error?: string }>('/api/projects/name', {
                 tool: job.tool,
                 message: job.message,
-                files: await excerpts(job.files),
+                files: await excerpts(materialFiles(job.materials).slice(0, 10)),
               });
               if (done) return;
               token = answer.naming ?? '';
@@ -211,11 +212,9 @@ export function Creation(props: { job: CreationJob; onDone: (projectId: string, 
 
         // 3. 放入素材。
         mark('upload', 'running');
-        if (job.files.length) {
-          setCaption(`正在放入 ${job.files.length} 个素材…`);
-          const form = new FormData();
-          for (const file of job.files) form.append('file', file, file.name);
-          attachments.current = (await api<{ attachments: Attachment[] }>('/api/uploads', { method: 'POST', body: form })).attachments;
+        if (job.materials.length) {
+          setCaption(`正在放入 ${job.materials.length} 个素材…`);
+          attachments.current = await uploadMaterials(job.materials);
           mark('upload', 'done', 1);
         } else {
           setCaption('没有素材，跳过');
@@ -411,7 +410,7 @@ export function Creation(props: { job: CreationJob; onDone: (projectId: string, 
 
         <div className="monitor" style={{ aspectRatio: String(ratio) }}>
           {naming && !finale ? (
-            <TitleDraft draft={job.name} title={title} phase={naming} renamed={renamed} reading={job.files.length > 0 ? '正在读你的话和素材' : '正在读你的话'} />
+            <TitleDraft draft={job.name} title={title} phase={naming} renamed={renamed} reading={job.materials.length > 0 ? '正在读你的话和素材' : '正在读你的话'} />
           ) : finale ? (
             <div className="monitor-title">
               <span className="monitor-kicker">TAKE 1</span>
