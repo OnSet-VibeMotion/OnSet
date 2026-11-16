@@ -784,6 +784,9 @@ function FinalTab({ tree, version, run, onTab }: { tree: TreeFile[]; version: nu
     api<ReviewResponse>('/api/review').then(setReview, () => setReview({ available: false }));
   }, [version]);
   const current = present.includes(chosen) ? chosen : present[0];
+  // 地址按这个文件自己的修改时间变，不按整个项目的 version：项目里别的文件一改 version 就涨，
+  // 地址一变播放器就重新加载，成片没变也会一直闪、从头放。
+  const currentMtime = tree.find((f) => f.path === current)?.mtime;
   const report = review?.available ? review.report : undefined;
   const problems = reviewProblems(report);
   const seconds = report?.media?.duration_seconds;
@@ -794,7 +797,7 @@ function FinalTab({ tree, version, run, onTab }: { tree: TreeFile[]; version: nu
         <div className="scene-stage">
           {current ? (
             <div className="stage-frame">
-              <video {...playerProps} preload="metadata" src={rawURL(current, version)} />
+              <video {...playerProps} preload="metadata" src={rawURL(current, currentMtime ?? version)} />
             </div>
           ) : (
             <Empty>还没有成片。镜头都出片后，可以先拼接无声母版。</Empty>
@@ -1236,7 +1239,9 @@ interface FileResponse {
   content: string;
 }
 
-export function FileView({ path, version }: { path: string; version: number }) {
+/** mtime 是这个文件自己的修改时间（文件树里有就给）：内容与媒体地址只随它变，不随整个项目的 version 变。 */
+export function FileView({ path, version, mtime }: { path: string; version: number; mtime?: number }) {
+  const stamp = mtime ?? version;
   const [file, setFile] = useState<FileResponse | null>(null);
   const [error, setError] = useState('');
   const media = videoExt.test(path) || imageExt.test(path) || audioExt.test(path);
@@ -1245,7 +1250,7 @@ export function FileView({ path, version }: { path: string; version: number }) {
     setError('');
     if (!path || media) return;
     api<FileResponse>('/api/files?path=' + encodeURIComponent(path)).then(setFile, (err) => setError(errorText(err)));
-  }, [path, version]);
+  }, [path, stamp]);
 
   if (!path) return <Empty>在左边的文件树里选一个文件。</Empty>;
   return (
@@ -1258,17 +1263,17 @@ export function FileView({ path, version }: { path: string; version: number }) {
             {revealLabel}
           </button>
         )}
-        <a className="button" href={rawURL(path, version)} target="_blank" rel="noreferrer">
+        <a className="button" href={rawURL(path, stamp)} target="_blank" rel="noreferrer">
           新窗口打开
         </a>
       </div>
       {videoExt.test(path) && (
         <div className="stage-frame">
-          <video {...playerProps} preload="metadata" src={rawURL(path, version)} />
+          <video {...playerProps} preload="metadata" src={rawURL(path, stamp)} />
         </div>
       )}
-      {imageExt.test(path) && <img className="file-image" src={rawURL(path, version)} alt="" />}
-      {audioExt.test(path) && <audio {...playerProps} src={rawURL(path, version)} />}
+      {imageExt.test(path) && <img className="file-image" src={rawURL(path, stamp)} alt="" />}
+      {audioExt.test(path) && <audio {...playerProps} src={rawURL(path, stamp)} />}
       {error && <p className="error-line">{error}</p>}
       {file && (file.binary ? <Empty>二进制文件或超过 2 MB，不显示内容。</Empty> : <pre className="text" id="file-content" data-ctx-source={path} data-ctx-label={path.split('/').pop()}>
             {file.content}
@@ -1287,7 +1292,7 @@ function FilesTab(props: { tree: TreeFile[]; recent: Set<string>; path: string; 
         <FileTree files={props.tree} selected={props.path} recent={props.recent} onFile={props.onFile} />
       </aside>
       <div className="files-view">
-        <FileView path={props.path} version={props.version} />
+        <FileView path={props.path} version={props.version} mtime={props.tree.find((f) => f.path === props.path)?.mtime} />
       </div>
     </div>
   );
