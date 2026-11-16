@@ -23,8 +23,9 @@ jobs:
           node-version: 22
           cache: npm
       # 引擎的集成测试要真实的 ffmpeg / ffprobe；缺了会跳过，覆盖就成了假的。
+      # 下客户端安装页同一份钉死的静态构建（核对 sha256），比 brew install 快 30 秒左右。
       - name: Install media tools
-        run: brew install ffmpeg
+        run: node .github/scripts/install-ffmpeg.mjs "$RUNNER_TEMP/ffmpeg"
       - run: npm ci --no-audit --no-fund
       - run: npx tsc --noEmit -p packages/engine
       - run: npx tsc --noEmit -p packages/cli
@@ -109,7 +110,7 @@ jobs:
           node-version: 22
           cache: npm
       - name: Install media tools
-        run: brew install ffmpeg
+        run: node .github/scripts/install-ffmpeg.mjs "$RUNNER_TEMP/ffmpeg"
       - run: npm ci --no-audit --no-fund
       - run: npm run test:e2e -w onset-desktop -- --shard=${{ matrix.shard }}/3
       - name: Upload Playwright traces

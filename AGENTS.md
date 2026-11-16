@@ -322,7 +322,7 @@ huashu 来源（内置插件 `huashu-styles`）自己的约定。上游 huashu-a
 
 `onset validate reads`（`packages/engine/src/reads`）读 `visible-event-inventory.json` 检查每个可读元素的停留时长、短语绑定与顺序。阈值取 Netflix 简体中文字幕规范（每秒 9 字、每条至少 5/6 秒），那是固定位置字幕的下限；画面元素还要先被找到，所以只能放宽不能收紧——收紧会把合法的快节奏镜头判死。字数按阅读单位算（一个英文词算一个），同理是为了不高估。两个 JSON 的字段名写死在制作提示词第四阶段，改字段要同步改那里。
 
-`mediaprobe` / `concat` 的集成测试需要真实 ffmpeg，缺失时自行跳过。CI 装了 ffmpeg——不装的话测试仍然「通过」，真正跑外部命令的代码再没被验证过。
+`mediaprobe` / `concat` 的集成测试需要真实 ffmpeg，缺失时自行跳过。CI 装了 ffmpeg——不装的话测试仍然「通过」，真正跑外部命令的代码再没被验证过。CI 装的是客户端安装页同一份钉死的静态构建（`.github/scripts/install-ffmpeg.mjs` 从 `toolinstall` 的 `ffmpegAssets` 读地址与 sha256、核对后放进 PATH），不用 `brew install ffmpeg`：后者每台机器 30 多秒，e2e 分在三台上就是三遍。
 
 ## 镜头时长、局部数据与复用
 
