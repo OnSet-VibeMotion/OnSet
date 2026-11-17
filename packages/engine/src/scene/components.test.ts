@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import '../plugin';
+import { VerificationError } from './verification';
 import { componentSection, promoteComponent, verifyComponentNames } from './components';
 import { fingerprint } from './record';
 import { prepareResources, resourceFiles } from './resources';
@@ -69,7 +70,7 @@ describe('shared components', () => {
     const f = project('["cube-badge"]');
     const two = load(f.two);
     expect(two.components).toEqual(['cube-badge']);
-    expect(() => resourceFiles(two, {})).toThrow('还没有登记');
+    expect(() => resourceFiles(two, {})).toThrow(VerificationError);
     const one = load(f.one);
     const before = buildPrompt(one, {});
     exportBadge(f.one);
@@ -89,4 +90,14 @@ describe('shared components', () => {
     prepareResources(two, {});
     expect(fingerprint(two, 'claude', {}).parts!['asset:shared/cube-badge/badge.js'], '组件换了，引用它的镜头要变 Stale').not.toBe(parts['asset:shared/cube-badge/badge.js']);
   });
+});
+
+
+it.each(['production', 'production/shared', 'production/shared/cube-badge'])('rejects a linked promotion destination: %s', rel => {
+  const f = project(), outside = tempDir();
+  exportBadge(f.one);
+  fs.mkdirSync(path.dirname(path.join(f.root, rel)), { recursive: true });
+  fs.symlinkSync(outside, path.join(f.root, rel), process.platform === 'win32' ? 'junction' : 'dir');
+  expect(() => promoteComponent(f.root, f.one, 'cube-badge', '', false)).toThrow('符号链接');
+  expect(fs.readdirSync(outside)).toEqual([]);
 });

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { transcriptTimingWarning } from './timing';
 import fs from 'node:fs';
 import { atomicWrite } from '../fsutil';
 import { withWindowsInstructions } from '../windowsruntime';
@@ -116,6 +117,8 @@ async function runScene(
   userOutput: Writer, tolerance: number, signal?: AbortSignal,
 ): Promise<void> {
   if (!Number.isFinite(tolerance) || tolerance < 0) throw new Error('tolerance 必须是有限且非负的数字');
+  const warning = transcriptTimingWarning(s);
+  if (warning) userOutput.write(`[${s.id}] 提醒：${warning}\n`);
   const renderer = s.renderer !== '' ? s.renderer : cfg.renderer;
   // 上次渲染没收拾干净的 qoder 技能链接先清掉：resolveSkill 也会找镜头目录里的 .qoder/skills。
   unstageRendererSkills(s.directory);

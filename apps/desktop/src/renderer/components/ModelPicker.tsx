@@ -46,6 +46,7 @@ export function ModelPicker({ tool, model, defaultLabel, fallbackModel = '', spe
   const { models, error } = useModels(tool);
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
+  useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
   const effectiveModel = model || fallbackModel;
   const chosen = models.find((m) => m.id === effectiveModel) ?? (effectiveModel === '' ? models.find(m => m.isDefault) : undefined);
   const own = parseOptions(options);
@@ -83,7 +84,7 @@ export function ModelPicker({ tool, model, defaultLabel, fallbackModel = '', spe
         ))}
         <Icon name="chevron" size={9} />
       </button>
-      {open && button.current && (
+      {open && !disabled && button.current && (
         <Popover
           anchor={button.current}
           ariaLabel={ariaLabel}

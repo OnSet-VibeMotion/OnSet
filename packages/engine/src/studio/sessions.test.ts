@@ -1,7 +1,7 @@
 import './testsupport';
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as agentrun from '../agentrun';
 import * as ledger from '../ledger';
 import * as project from '../project';
@@ -515,4 +515,38 @@ describe('sessions', () => {
     ({ text } = await rawGet(f.s, `/api/sessions/${id}/events?follow=0`));
     expect(text, '移除要留下 unqueued 事件').toContain('event: unqueued');
   });
+});
+
+
+it('keeps an existing conversation usable when its usage ledger cannot be read', async () => {
+  const f = newSessionFixture();
+  const { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{}');
+  const id = body.session_id as string;
+  await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"first"}');
+  const first = await waitIdle(f, id);
+  const spy = vi.spyOn(ledger, 'read').mockImplementation(() => { throw Object.assign(new Error('denied'), { code: 'EACCES' }); });
+  try {
+    const response = await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"second"}');
+    expect(response.status).toBe(202);
+  } finally { spy.mockRestore(); }
+  const second = await waitIdle(f, id);
+  expect(lastTurn(second).status).toBe('succeeded');
+  expect(second.session.cli_session_id).toBe(first.session.cli_session_id);
+});
+it('hands off the last saved plan after restarting and rotating the CLI session', async () => {
+  const f = newSessionFixture();
+  const { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{}');
+  const id = body.session_id as string;
+  await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"first"}');
+  const first = await waitIdle(f, id);
+  const sess = getSession(f.s, f.root, id)!;
+  emit(sess, lastTurn(first).turn_id, { kind: agentrun.KindPlan, plan: [{ id: 'task-1', text: '尚未完成的精确任务', status: 'pending' }] });
+  ledger.append(ledger.projectFile(f.root), ledger.fromResult(ledger.SourceStudio, 'claude', '', first.session.cli_session_id as string, { input_tokens: 40 * 300_000, turns: 40, source: 'claude result', basis: 'total-input' }, null, false));
+  const restarted = new Server({ ...f.s.config, projectPath: f.root });
+  try {
+    expect(getSession(restarted, f.root, id)!.events.find(e => e.kind === agentrun.KindPlan)?.plan?.[0].id).toBeUndefined();
+    await studioRequest(restarted, 'POST', `/api/sessions/${id}/turns`, '{"message":"continue"}');
+    await waitIdle({ ...f, s: restarted }, id);
+    expect(args(f)[1]).toContain('尚未完成的精确任务');
+  } finally { restarted.shutdown(); }
 });

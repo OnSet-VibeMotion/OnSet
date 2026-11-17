@@ -82,6 +82,8 @@ export async function fetchArchive(url: string, digest: string, dest: string, en
       env,
       opts.signal,
     );
+    const size = fs.statSync(file).size;
+    if (size > MaxArchiveBytes) throw new Error(`插件压缩包太大（${size} 字节，上限 ${MaxArchiveBytes}）`);
     fs.mkdirSync(dest);
     // GitHub 的包里只有一个顶层目录 <仓库>-<commit>，去掉它。bsdtar（macOS、Windows）与 GNU tar 都认 --strip-components。
     await run(tar, ['-xzf', file, '-C', dest, '--strip-components', '1'], env, opts.signal);

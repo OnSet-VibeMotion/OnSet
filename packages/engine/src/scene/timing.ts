@@ -293,8 +293,6 @@ export function verifyTimingInputs(s: Scene): void {
       problems.push((err as Error).message);
     }
   }
-  const local = localTranscriptProblem(s, t);
-  if (local) problems.push(local);
   if (problems.length > 0) throw fail(...problems);
 }
 
@@ -306,9 +304,11 @@ const localTranscriptSlackSeconds = 0.5;
  * 写成本镜头的本地时间（从 0 秒起）的话，镜头不在片头时一条也裁不到，渲染器拿到「本镜头无字幕」，
  * 与 prompt.md 里的字幕要求互相矛盾，照着数据做就漏烧字幕。2026-11 Qwen4Max 一片：编排给每个镜头写了本地时间的
  * transcript.txt，除了从第 0 帧开始的 001，13 个镜头的字幕数据全是空的，9 个镜头因漏烧字幕返工，约占渲染额度的 30%。
- * 判据：本镜头不从片头开始，而字幕全部落在 [0, 镜头时长] 里——全片字幕不会这样。读不了的文件留给 scenedata 报错。
+ * 字幕较早结束也可能是全片后段没有旁白；这个启发式只提醒核对，不能证明时间来源或阻断验收。
  */
-function localTranscriptProblem(s: Scene, t: Timing): string {
+export function transcriptTimingWarning(s: Scene): string {
+  const t = s.timing;
+  if (!t) return '';
   if (t.fps <= 0 || t.end_frame_exclusive <= t.start_frame) return '';
   const startSeconds = t.start_frame / t.fps;
   if (startSeconds <= localTranscriptSlackSeconds) return '';
@@ -323,8 +323,8 @@ function localTranscriptProblem(s: Scene, t: Timing): string {
   const lastEnd = Math.max(...cues.map((c) => c.end_seconds));
   if (lastEnd > duration + localTranscriptSlackSeconds) return '';
   return (
-    `transcript ${s.transcript} 像是按本镜头的本地时间写的：字幕最晚在 ${formatFixed(lastEnd, 3)} 秒结束，没超出本镜头时长 ${formatFixed(duration, 3)} 秒，` +
-    `而本镜头从全片第 ${formatFixed(startSeconds, 3)} 秒开始，按全片时间一条字幕也对不上，渲染器会拿到「本镜头无字幕」。` +
+    `transcript ${s.transcript} 可能按本镜头的本地时间写了，请核对来源：字幕最晚在 ${formatFixed(lastEnd, 3)} 秒结束，没超出本镜头时长 ${formatFixed(duration, 3)} 秒，` +
+    `而本镜头从全片第 ${formatFixed(startSeconds, 3)} 秒开始，请确认这些是全片时间；全片后段没有旁白时可以保留。` +
     'transcript 要指向全片字幕（从 transcription-production.srt 复制成镜头目录里的 transcription.srt，时间是全片时间），onset 会按 timing 裁出本镜头的几条，不要自己按镜头切分或改成本地时间'
   );
 }

@@ -47,9 +47,10 @@ export interface InputDiff {
  * 算 roots（项目里的相对路径）下全部普通文件的摘要，按路径排好序。目录里名字以 . 开头的与 node_modules 跳过
  * （版本库、依赖不是原始输入）；符号链接不跟，记成错误，免得把项目外的东西算进来。
  */
-export function hashInputs(root: string, roots: readonly string[]): InputFile[] {
+export function hashInputs(root: string, roots: readonly string[], options: { exclude?: string; allowMissing?: boolean } = {}): InputFile[] {
   const files: InputFile[] = [];
   const visit = (rel: string): void => {
+    if (rel === options.exclude) return;
     const abs = path.join(root, rel);
     const info = fs.lstatSync(abs);
     if (info.isSymbolicLink()) throw new Error(`原始输入里有符号链接，不跟进去：${rel}`);
@@ -64,7 +65,10 @@ export function hashInputs(root: string, roots: readonly string[]): InputFile[] 
   };
   for (const r of roots) {
     const rel = normalize(root, r);
-    if (!fs.existsSync(path.join(root, rel))) throw new ParamError(`原始输入不存在：${r}`);
+    if (!fs.existsSync(path.join(root, rel))) {
+      if (options.allowMissing) continue;
+      throw new ParamError(`原始输入不存在：${r}`);
+    }
     visit(rel);
   }
   const seen = new Set<string>();
@@ -75,7 +79,12 @@ export function hashInputs(root: string, roots: readonly string[]): InputFile[] 
 function normalize(root: string, p: string): string {
   const abs = path.resolve(root, p);
   const rel = path.relative(root, abs);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) throw new ParamError(`原始输入要在项目里：${p}`);
+  if (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) throw new ParamError(`原始输入要在项目里：${p}`);
+  let current = root;
+  for (const part of rel.split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    if (fs.lstatSync(current, { throwIfNoEntry: false })?.isSymbolicLink()) throw new ParamError(`原始输入不能经过符号链接：${p}`);
+  }
   return rel.split(path.sep).join('/');
 }
 
@@ -141,7 +150,7 @@ defineOp({
     const existing = fs.existsSync(file) ? (JSON.parse(fs.readFileSync(file, 'utf8')) as InputManifest) : null;
     if (bool(p.check)) {
       if (!existing) throw new ParamError(`还没有输入清单：${path.relative(root, file)}。先用 paths 建一份`);
-      const now = hashInputs(root, existing.roots);
+      const now = hashInputs(root, existing.roots, { exclude: normalize(root, file), allowMissing: true });
       const diff = diffInputs(existing.files, now);
       const same = diff.added.length + diff.removed.length + diff.changed.length === 0;
       out.write(same
@@ -152,7 +161,7 @@ defineOp({
     const roots = strs(p.paths);
     if (roots.length === 0) throw new ParamError('建清单要给 paths：原始输入在项目里的文件或目录');
     if (existing && !bool(p.replace)) throw new ParamError(`已经有输入清单：${path.relative(root, file)}。核对用 check；输入确实换了、要重建时加 replace`);
-    const files = hashInputs(root, roots);
+    const files = hashInputs(root, roots, { exclude: normalize(root, file) });
     const manifest: InputManifest = {
       schema: 1,
       created: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),

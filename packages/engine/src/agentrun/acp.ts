@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
-import { BasisTotalInput, type McpServer, newUsage } from '../tools';
+import { BasisTotalInput, effectiveOptions, type McpServer, newUsage } from '../tools';
 import { runInteractive, type DriveContext, type PermissionAnswer } from './interactive';
 import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, clip, compactionEvent, type ContextCompaction, type Event, type PlanItem } from './parse';
 import type { Outcome, Spec } from './run';
@@ -461,7 +461,7 @@ export async function configureMcode(peer: { request(method: string, params: unk
       }
     }
   }
-  const effort = spec.options?.effort ?? '';
+  const effort = effectiveOptions('mcode', spec.options).effort ?? '';
   if (effort !== '' && str(configOption(opened, 'thinkingEffort')?.currentValue) !== effort) {
     try {
       await set('thinkingEffort', effort);

@@ -89,3 +89,24 @@ it('Standalone scenes without a project root still render; only an explicit queu
     expect(started).toHaveLength(2);
   } finally { mock.mockRestore(); budget.mockRestore(); }
 });
+
+
+it('does not charge the same attempt again when existing output is accepted', async () => {
+  const root = tempDir(), dir = path.join(root, 'scenes', 'one');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(root, 'onset.conf'), 'MEMORY=off\n');
+  fs.writeFileSync(path.join(root, 'frame.md'), '---\ncanvas:\n  width_px: 320\n  height_px: 240\n  fps: 30\n---\n');
+  fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\nhello\n');
+  fs.writeFileSync(path.join(dir, 'scene.json'), '{"id":"one","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}');
+  process.chdir(root);
+  const mock = vi.spyOn(scene, 'run').mockImplementation(async s => {
+    const attempt = scene.newAttempt({ scene_id: s.id, usage: { input_tokens: 100, output_tokens: 20, turns: 1, source: 'test', basis: 'total-input' } });
+    s.afterAttempt?.(attempt);
+    s.afterAttempt?.({ ...attempt, resumed: 'verify', outcome: scene.OutcomeSucceeded });
+  });
+  try {
+    const op = findOp('scene_run_all')!, out = new Buffer();
+    const result = (await op.run(normalizeParams(op, { scenes: 'scenes', jobs: 1, retries: 0 }), { out, err: out, signal: new AbortController().signal, unsafe: false }))?.data as any;
+    expect(result.usage).toMatchObject({ input_tokens: 100, output_tokens: 20, turns: 1 });
+  } finally { mock.mockRestore(); }
+});

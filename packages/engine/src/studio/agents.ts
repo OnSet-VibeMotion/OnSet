@@ -127,7 +127,8 @@ export async function switchSessionAgents(request: Request, sess: Session): Prom
     throw err;
   }
   try {
-    validateChoice(choice);
+    const cfg = config.load(sess.project, null);
+    validateChoice({ ...choice, tool: choice.tool || sess.meta.tool || cfg.orchestrator, renderer: choice.renderer || sess.meta.renderer || cfg.renderer });
   } catch (err) {
     return writeError(400, 'invalid_agent', (err as Error).message);
   }

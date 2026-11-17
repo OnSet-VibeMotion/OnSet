@@ -243,7 +243,8 @@ if (!app.requestSingleInstanceLock()) {
     }
     protocol.handle(SCHEME, handleRequest);
     // 自动更新（updater.ts）：重启装之前先问后端有没有正在跑的对话与渲染。
-    installUpdater({ activeWork: () => backend?.activeWork() ?? [] });
+    try { installUpdater({ activeWork: () => backend?.activeWork() ?? [] }); }
+    catch (err) { console.error('更新器初始化失败', err); }
     const menu = (visible: boolean) => installMenu({ visible, toggle: setPetVisible });
     installPetIPC();
     installDirectoryPicker();

@@ -15,7 +15,7 @@ describe('snapshot stills', () => {
 
   // 只认这次写出的单帧（frame-NN… 与 --keep 的 at-…），联系表、镜头目录外的文件、不存在的路径都不碰。
   it('finds the stills the output names inside the scene directory', () => {
-    const scene = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-snap-')));
+    const scene = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset snap with spaces-')));
     const shots = path.join(scene, '.hyperframes', 'artifacts', 'snapshots', 'abc');
     fs.mkdirSync(shots, { recursive: true });
     const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onset-snap-out-')));

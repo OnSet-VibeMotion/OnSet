@@ -70,6 +70,7 @@ export function AgentOptionsSelect({ tool, specs, value, inherited = '', inherit
               aria-label={aria}
               autoFocus
               inputMode="numeric"
+              disabled={disabled}
               placeholder="token 数，例如 200000"
               value={draft}
               onChange={(e) => setDraft(e.currentTarget.value)}

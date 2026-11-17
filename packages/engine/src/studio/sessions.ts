@@ -610,13 +610,17 @@ export function validateChoice(choice: AgentChoice): void {
   for (const value of [choice.model, choice.rendererModel]) {
     if (value && !config.validModel(value)) throw new Error(`不认识的模型名 ${value}：只能用字母、数字与 . _ - : / @ # [ ] +`);
   }
-  for (const value of [choice.options, choice.rendererOptions]) {
-    if (value && !tools.validOptionsText(value)) throw new Error(`选项写法不对：${value}（写成 effort=high,fast=on）`);
+  for (const [tool, value] of [[choice.tool, choice.options], [choice.renderer, choice.rendererOptions]]) {
+    if (!value) continue;
+    let error = '';
+    if (tool) error = tools.validateAgentOptions(tool, value);
+    else if (!tools.validOptionsText(value)) error = `选项写法不对：${value}`;
+    if (error) throw new Error(error);
   }
 }
 
 export function overrideAgents(cfg: config.Config, choice: AgentChoice): config.Config {
-  validateChoice(choice);
+  validateChoice({ ...choice, tool: choice.tool || cfg.orchestrator, renderer: choice.renderer || cfg.renderer });
   const out = { ...cfg };
   // 换了工具、又没选模型时，设置里的模型是给原来那家的，不能带过去。
   // 选项同理。
@@ -686,8 +690,12 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
   if (orchestratorCannotSee(cfg)) prompt += '\n\n---\n\n' + noVisionNote;
   // 会话太长就换一个新的 CLI 会话接着做（rotate.ts）：清掉会话号，runTurn 走带对话记录开新会话的路，偏好也会重发。
   const cliSession = sess.meta.cli_session_id ?? '';
-  const rotate = cliSession !== '' && (sess.meta.turns ?? []).length > 0 ? rotationReason(ledger.read(ledger.projectFile(p.path)), cliSession) : '';
-  const handoff = rotate !== '' ? handoffNote(rotate, lastTaskPlan(sess.events)) : '';
+  let rotate = '';
+  if (cliSession !== '' && (sess.meta.turns ?? []).length > 0) {
+    try { rotate = rotationReason(ledger.read(ledger.projectFile(p.path)), cliSession); }
+    catch { /* 账本不可读时保留原会话；计费记录故障不能阻断对话。 */ }
+  }
+  const handoff = rotate !== '' ? handoffNote(rotate, lastTaskPlan(sess.events, false)) : '';
   if (rotate !== '') updateMeta(sess, (meta) => (meta.cli_session_id = undefined));
   const [brief, digest] = preferenceBrief(p, cfg);
   const resend = brief !== '' && (digest !== (sess.meta.preference_digest ?? '') || !sess.meta.cli_session_id || (sess.meta.turns ?? []).length === 0);
@@ -1100,11 +1108,11 @@ export function replayGuard(events: readonly { kind?: string; text?: string; tur
   };
 }
 
-/** 会话里最后一份带编号的任务清单（逐条改的任务工具，agentrun.TaskBoard）；续接时交给解析器接上。 */
-export function lastTaskPlan(events: readonly { kind?: string; plan?: agentrun.PlanItem[] }[]): agentrun.PlanItem[] | undefined {
+/** 最后一份任务清单。解析器续接要求编号；交接提示词不要求，兼容旧事件文件只保存 text/status。 */
+export function lastTaskPlan(events: readonly { kind?: string; plan?: agentrun.PlanItem[] }[], requireIDs = true): agentrun.PlanItem[] | undefined {
   for (let i = events.length - 1; i >= 0; i--) {
     const plan = events[i].kind === agentrun.KindPlan ? events[i].plan : undefined;
-    if (plan && plan.length > 0) return plan.some((item) => item.id) ? plan : undefined;
+    if (plan && plan.length > 0) return !requireIDs || plan.some((item) => item.id) ? plan : undefined;
   }
   return undefined;
 }

@@ -12,6 +12,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { VerificationError } from './verification';
 import { goQuote } from '../gofmt';
 import type * as renderassets from '../renderassets';
 
@@ -52,7 +53,7 @@ export function componentMounts(root: string, names: readonly string[]): rendera
   return names.map((name) => {
     const from = componentDir(root, name);
     if (!fs.existsSync(path.join(from, ComponentReadme))) {
-      throw new Error(`共用组件 ${name} 还没有登记（${ComponentsDir}/${name}/ 不存在或缺 ${ComponentReadme}）：先让渲染器在代表镜头里做出来，再用 shared_component_promote() 登记`);
+      throw new VerificationError(from, [`共用组件 ${name} 还没有登记（${ComponentsDir}/${name}/ 不存在或缺 ${ComponentReadme}）：先让渲染器在代表镜头里做出来，再用 shared_component_promote() 登记`]);
     }
     return { from, to: `${ComponentMountDir}/${name}` };
   });
@@ -102,7 +103,13 @@ export function promoteComponent(root: string, sceneDir: string, name: string, f
   for (const file of files) bytes += fs.statSync(path.join(real, file)).size;
   if (bytes > MaxComponentBytes) throw new Error(`组件太大（${bytes} 字节，上限 ${MaxComponentBytes}）：大素材放进项目的 assets/，组件里只放代码与小图`);
 
+  root = fs.realpathSync(root);
   const target = componentDir(root, name);
+  let parent = root;
+  for (const part of path.relative(root, target).split(path.sep)) {
+    parent = path.join(parent, part);
+    if (fs.lstatSync(parent, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`组件目标目录不能经过符号链接：${parent}`);
+  }
   const existed = fs.existsSync(target);
   if (existed && sameTree(real, files, target)) return { name, dir: path.join(ComponentsDir, name), files: files.length, bytes, replaced: false, unchanged: true };
   if (existed && !replace) throw new Error(`共用组件 ${name} 已经登记过、内容不同；换掉它会让引用它的镜头都要重渲染，确认要换时加 "replace": true`);

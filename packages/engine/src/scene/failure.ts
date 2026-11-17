@@ -1,6 +1,6 @@
 /** 固定文案可用于盲评：不把供应商、模型、路径或日志正文透传给页面。 */
 export function rendererFailureAdvice(message: string): { code: string; label: string; hint: string } | null {
-  if (/OAuth token revoked|authentication_failed|authentication_error|failed to authenticate|unauthorized|未登录|登录.*失效/i.test(message)) {
+  if (/OAuth token revoked|authentication_failed|authentication_error|failed to authenticate|(login|auth|token|credential)[^\n]{0,80}unauthorized|unauthorized[^\n]{0,80}(login|auth|token|credential)|未登录|登录.*失效/i.test(message)) {
     return { code: 'authentication', label: '工具登录已失效', hint: '先恢复该工具的登录，再重试这位选手。' };
   }
   if (/balance is low|insufficient[_ ]?(quota|balance|credit)|quota.*(exceed|exhaust)|额度不足|余额不足/i.test(message)) {

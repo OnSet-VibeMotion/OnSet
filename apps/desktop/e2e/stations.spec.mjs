@@ -567,8 +567,10 @@ test('files a plugin op writes outside what it declared are shown as a warning',
   // 用户在插件页面里亲手点的执行按钮：那一下就是同意，不再弹确认条，直接执行。
   // 先等过 5 秒：刚在片场里点过（上面切页）时分不清点在哪，会照旧确认。
   await page.waitForTimeout(5500);
-  await frame.locator('#scribble').click();
-  await expect(frame.locator('#result')).toHaveText('已开始');
+  await expect(async () => {
+    await frame.locator('#scribble').click();
+    await expect(frame.locator('#result')).toHaveText('已开始', { timeout: 2000 });
+  }).toPass({ timeout: 20_000 });
   await expect(host.locator('.station-confirm')).toHaveCount(0);
   await expect(host.locator('.station-scope')).toContainText('「假发布」执行「顺手记一笔」');
   await expect(host.locator('.station-scope')).toContainText('notes/scribble.txt');

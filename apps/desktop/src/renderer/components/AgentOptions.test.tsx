@@ -3,7 +3,7 @@
  * 各家工具的调用选项（推理强度、快速模式、上下文长度）：输入框底部的工具选择与设置页共用的下拉框。
  * 可调的项来自后端（/api/agents 的 option_specs），codex 的推理档位按所选模型收窄（/api/agents/codex/models 的 efforts）。
  */
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { expect, test } from 'vitest';
@@ -277,4 +277,45 @@ test('inherited fast mode can be disabled and restored even on a model without f
   await userEvent.click(screen.getByRole('button', { name: '快速模式跟随设置' }));
   expect(screen.getByTestId('value').textContent).toBe('');
   expect(screen.getByRole('switch', { name: '快速模式' }).getAttribute('aria-checked')).toBe('true');
+});
+
+
+test('disabling an open model picker closes it and prevents further edits', async () => {
+  mockApi({ '/api/agents/claude/models': { tool: 'claude', models: [] } });
+  const props = { tool: 'claude', model: '', defaultLabel: '默认', specs: [fast], options: '', ariaLabel: '模型', onModel: () => {}, onOptions: () => {} };
+  const { rerender } = render(<ModelPicker {...props} />);
+  await userEvent.click(screen.getByRole('button', { name: '模型' }));
+  expect(screen.getByRole('switch')).toBeTruthy();
+  rerender(<ModelPicker {...props} disabled />);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  rerender(<ModelPicker {...props} />);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: '模型' }));
+  expect(screen.getByRole('switch')).toBeTruthy();
+});
+
+
+test('waits for session options to save before allowing the next change', async () => {
+  mockApi({ '/api/agents/claude/models': { tool: 'claude', models: [] } });
+  const agents: AgentsResponse = { agents: [{ id: 'claude', label: 'Claude', command: 'claude', installed: true, renderer: true, option_specs: [effort(['low', 'high']), fast] }], orchestrator: 'claude', renderer: 'claude', global_renderer: 'claude', orchestrator_model: '', renderer_model: '' };
+  let complete!: () => void;
+  const seen: AgentChoice[] = [];
+  function Picker() {
+    const [value, setValue] = useState<AgentChoice>({ tool: 'claude', renderer: 'claude' });
+    return <AgentPicker agents={agents} value={value} disabled={false} onChange={async next => {
+      seen.push(next);
+      await new Promise<void>(resolve => { complete = resolve; });
+      setValue(next);
+    }} />;
+  }
+  render(<Picker />);
+  await userEvent.click(document.getElementById('agent-model')!);
+  await userEvent.click(screen.getByRole('radio', { name: '高' }));
+  expect((document.getElementById('agent-model') as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  await act(async () => complete());
+  await userEvent.click(document.getElementById('agent-model')!);
+  await userEvent.click(screen.getByRole('switch', { name: '快速模式' }));
+  expect(seen.at(-1)?.options).toBe('effort=high,fast=on');
+  await act(async () => complete());
 });

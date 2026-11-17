@@ -104,6 +104,7 @@ describe('agents', () => {
   it('session options reach the orchestrator and its children', async () => {
     const f = newSessionFixture();
     expect((await studioRequest(f.s, 'POST', '/api/sessions', '{"options":"effort high"}')).status, '选项写法不对').toBe(400);
+    expect((await studioRequest(f.s, 'POST', '/api/sessions', '{"tool":"claude","options":"effort=ultra"}')).status).toBe(400);
     let { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{"options":"effort=high,fast=on","renderer":"qoder-intl","renderer_options":"context=200000"}');
     const id = body.session_id as string;
     expect([body.options, body.renderer_options]).toEqual(['effort=high,fast=on', 'context=200000']);
@@ -116,6 +117,8 @@ describe('agents', () => {
 
     const sess = getSession(f.s, f.root, id)!;
     updateMeta(sess, (meta) => (meta.cli_session_id = 'keep'));
+    expect((await studioRequest(f.s, 'POST', `/api/sessions/${id}/agents`, '{"options":"effort=ultra"}')).status).toBe(400);
+    expect((await studioRequest(f.s, 'POST', `/api/sessions/${id}/agents`, '{"renderer":"claude","renderer_options":"fast=maybe"}')).status).toBe(400);
     ({ body } = await studioRequest(f.s, 'POST', `/api/sessions/${id}/agents`, '{"options":"effort=low"}'));
     expect([body.options, body.cli_session_id], '同一家换选项照样续接').toEqual(['effort=low', 'keep']);
     expect(eventsAfter(sess, 0).events.at(-1)?.text).toContain('effort=low');

@@ -211,7 +211,7 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
         ...scenes[i],
         afterAttempt: (attempt) => {
           const total = usage.get(id) ?? newUsage();
-          usageAdd(total, attempt.usage ?? newUsage());
+          if (attempt.resumed !== 'verify') usageAdd(total, attempt.usage ?? newUsage());
           usage.set(id, total);
           next?.(attempt);
         },

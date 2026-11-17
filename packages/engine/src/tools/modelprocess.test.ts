@@ -75,3 +75,21 @@ it('probes the thinking variant when the current mcode model is not thinking', a
   expect(await fetchMcodeModels('fake', {})).toEqual([{ id: 'p/model', label: 'p/model', isDefault: true, efforts: ['high'] }]);
   expect(selected).toEqual(['m:p:model:v:thinking']);
 });
+
+
+it('rejects cancellation during a model switch rather than caching a partial model table', async () => {
+  const external = new AbortController();
+  const child = new EventEmitter() as ChildProcess;
+  child.stdout = new PassThrough();
+  child.stdin = new Writable({ write(chunk, _encoding, done) {
+    const request = JSON.parse(chunk.toString());
+    if (request.method === 'session/set_config_option') external.abort(new Error('cancelled during switch'));
+    else {
+      const result = request.method === 'session/new' ? { sessionId: 's', configOptions: [{ id: 'model', currentValue: 'm:p:a:v:thinking', options: [{ value: 'm:p:a:v:thinking' }, { value: 'm:p:b:v:thinking' }] }] } : {};
+      setImmediate(() => child.stdout!.emit('data', marshal({ id: request.id, result }) + '\n'));
+    }
+    done();
+  } });
+  vi.mocked(start).mockImplementationOnce(async (_binary, _args, options) => ({ child, wait: () => new Promise(resolve => options?.signal?.addEventListener('abort', () => { child.stdout!.emit('end'); resolve(); }, { once: true })) }));
+  await expect(fetchMcodeModels('fake', {}, external.signal)).rejects.toThrow('cancelled during switch');
+});

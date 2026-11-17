@@ -77,6 +77,7 @@ export async function fetchMcodeModels(binary: string, env: Record<string, strin
     exited = closed;
     closed.catch(() => {});
     controller.signal.throwIfAborted();
+    let transportFailed = false;
     let nextID = 0;
     const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
     const failed = new Promise<never>((_, reject) => {
@@ -87,7 +88,7 @@ export async function fetchMcodeModels(binary: string, env: Record<string, strin
         (err: Error) => reject(new Error(`mcode acp 提前退出了：${err.message}`)),
       );
     });
-    failed.catch(() => {});
+    failed.catch(() => { transportFailed = true; });
     readline.createInterface({ input: child.stdout! }).on('line', (line) => {
       let frame: Obj;
       try {
@@ -129,7 +130,8 @@ export async function fetchMcodeModels(binary: string, env: Record<string, strin
         try {
           const changed = await request('session/set_config_option', { sessionId, configId: 'model', value });
           byModel.set(parsed.model, efforts(changed.configOptions).efforts);
-        } catch {
+        } catch (err) {
+          if (controller.signal.aborted || transportFailed) throw err;
           // 切不过去的模型照样列出，推理档位不知道。
         }
       }

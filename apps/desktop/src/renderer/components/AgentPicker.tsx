@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import type { AgentChoice, AgentsResponse } from '../types';
 import { ModelPicker } from './ModelPicker';
 
@@ -5,7 +6,7 @@ interface Props {
   agents: AgentsResponse | null;
   value: AgentChoice;
   disabled: boolean;
-  onChange: (choice: AgentChoice) => void;
+  onChange: (choice: AgentChoice) => void | Promise<void>;
 }
 
 /**
@@ -14,6 +15,17 @@ interface Props {
  * 没装的工具可见但不可选，免得选了才在运行时报找不到命令。换工具时模型与选项回到「默认」：它们只对那一家有意义。
  */
 export function AgentPicker({ agents, value, disabled, onChange }: Props) {
+  const pending = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const change = async (next: AgentChoice) => {
+    if (disabled || pending.current) return;
+    pending.current = true;
+    try {
+      const result = onChange(next);
+      if (result) { setSaving(true); await result; }
+    }
+    finally { pending.current = false; setSaving(false); }
+  };
   if (!agents) return null;
   // 渲染一栏只列能当渲染工具的；已经选着的照样显示，免得下拉框空着。
   const options = (current: string, fallback: string, seat: 'orchestrator' | 'renderer') =>
@@ -34,7 +46,7 @@ export function AgentPicker({ agents, value, disabled, onChange }: Props) {
     <>
       <label className="agent-select" title="在项目目录里对话、改文件的工具">
         <span>编排</span>
-        <select id="agent-tool" value={value.tool} disabled={disabled} onChange={(e) => onChange({ ...value, tool: e.currentTarget.value, model: '', options: '' })}>
+        <select id="agent-tool" value={value.tool} disabled={disabled || saving} onChange={(e) => void change({ ...value, tool: e.currentTarget.value, model: '', options: '' })}>
           {options(value.tool, agents.orchestrator, 'orchestrator')}
         </select>
         {value.tool && (
@@ -48,9 +60,9 @@ export function AgentPicker({ agents, value, disabled, onChange }: Props) {
             specs={specsOf(value.tool)}
             options={value.options ?? ''}
             inheritedOptions={value.tool === agents.orchestrator ? (agents.orchestrator_options ?? '') : ''}
-            disabled={disabled}
-            onModel={(model) => onChange({ ...value, model })}
-            onOptions={(options) => onChange({ ...value, options })}
+            disabled={disabled || saving}
+            onModel={(model) => void change({ ...value, model })}
+            onOptions={(options) => void change({ ...value, options })}
           />
         )}
       </label>
@@ -59,8 +71,8 @@ export function AgentPicker({ agents, value, disabled, onChange }: Props) {
         <select
           id="agent-renderer"
           value={value.renderer}
-          disabled={disabled}
-          onChange={(e) => onChange({ ...value, renderer: e.currentTarget.value, renderer_model: '', renderer_options: '' })}
+          disabled={disabled || saving}
+          onChange={(e) => void change({ ...value, renderer: e.currentTarget.value, renderer_model: '', renderer_options: '' })}
         >
           {options(value.renderer, agents.renderer, 'renderer')}
         </select>
@@ -75,9 +87,9 @@ export function AgentPicker({ agents, value, disabled, onChange }: Props) {
             specs={specsOf(value.renderer)}
             options={value.renderer_options ?? ''}
             inheritedOptions={value.renderer === agents.renderer ? (agents.renderer_options ?? '') : ''}
-            disabled={disabled}
-            onModel={(renderer_model) => onChange({ ...value, renderer_model })}
-            onOptions={(renderer_options) => onChange({ ...value, renderer_options })}
+            disabled={disabled || saving}
+            onModel={(renderer_model) => void change({ ...value, renderer_model })}
+            onOptions={(renderer_options) => void change({ ...value, renderer_options })}
           />
         )}
       </label>

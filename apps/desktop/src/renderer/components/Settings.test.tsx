@@ -195,4 +195,18 @@ test('preserves a newer machine-setting draft while an earlier save finishes', a
   fireEvent.change(input, { target: { value: 'https://second.example' } });
   await act(async () => finish({ ok: true }));
   expect((input as HTMLInputElement).value).toBe('https://second.example');
+  expect(screen.queryByText('已保存')).toBeNull();
+});
+
+
+test('recovers settings options after the agents request fails', async () => {
+  const { api } = backend();
+  api.set('/api/agents', () => { throw new Error('offline'); });
+  render(<App />);
+  await userEvent.click(await screen.findByRole('button', { name: '设置' }));
+  expect(await screen.findByRole('button', { name: '重试读取工具' })).toBeTruthy();
+  api.set('/api/agents', { agents: [{ id: 'claude', label: 'Claude', installed: true, renderer: true, command: 'claude', option_specs: [{ key: 'fast', label: '快速模式', hint: '', kind: 'toggle' }] }], orchestrator: 'claude', renderer: 'claude', global_renderer: 'claude', orchestrator_model: '', renderer_model: '' });
+  await userEvent.click(screen.getByRole('button', { name: '重试读取工具' }));
+  expect(await screen.findByLabelText('全局快速模式')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '重试读取工具' })).toBeNull();
 });

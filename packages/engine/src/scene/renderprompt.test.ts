@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -25,6 +26,7 @@ describe('render prompt version', () => {
     const old = project(0, true);
     expect(renderPromptVersion(old)).toBe(1);
     const oldPrompt = buildPrompt(old, {});
+    expect(crypto.createHash('sha256').update(oldPrompt).digest('hex')).toBe(process.platform === 'win32' ? '39e14dc67ebc7c7f4cb5fbf09591a0be1acefc471b939e6115d75741a01becfa' : '1adb7e84c335973c091bb6ae3c86df5b75d8c2420b62c7dcaaa856d9bff9970b');
     expect(oldPrompt).not.toContain('开工须知');
     expect(oldPrompt).toContain('先阅读完整字幕并检查素材。');
 

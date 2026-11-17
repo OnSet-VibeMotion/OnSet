@@ -213,7 +213,7 @@ defineOp({
     const lineOf = (k: string) => new RegExp(`^(\\s*(?:export\\s+)?)${k}\\s*=(.*)$`, 'm');
     const line = lineOf(key);
     // 换了工具：这个项目里给原来那家写的模型与选项一起清掉，不然会交给新的那家（本来就没写时不加行）。
-    const previous = (line.exec(body)?.[2] ?? '').trim();
+    const previous = config.parseConfFile(file)[key] ?? '';
     for (const companion of config.ToolCompanionKeys[key] ?? []) {
       if (previous !== value && lineOf(companion).test(body)) body = body.replace(lineOf(companion), `$1${companion}=`);
     }

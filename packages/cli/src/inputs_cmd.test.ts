@@ -33,8 +33,7 @@ describe('inputs_manifest', () => {
     expect(hashInputs(root, ['src', 'article.md']).map((f) => f.path)).toEqual(['article.md', 'src/a.txt', 'src/deep/b.txt']);
     expect(() => hashInputs(root, ['../x'])).toThrow('要在项目里');
     expect(() => hashInputs(root, ['missing'])).toThrow('不存在');
-    fs.symlinkSync('/etc/hosts', path.join(root, 'src', 'link'));
-    expect(() => hashInputs(root, ['src'])).toThrow('符号链接');
+
   });
 
   // 一次调用建好、一次调用核对完；只报变动，不改清单；已有清单不覆盖。
@@ -66,4 +65,31 @@ describe('inputs_manifest', () => {
     const after = before.map((f) => ({ ...f, sha256: 'b' }));
     expect(diffInputs(before, after).changed).toHaveLength(30);
   });
+});
+
+
+it('rejects directory links in input ancestors and manifest destinations', async () => {
+  const root = project(), outside = tempDir();
+  fs.writeFileSync(path.join(outside, 'private.txt'), 'private');
+  fs.symlinkSync(outside, path.join(root, 'alias'), process.platform === 'win32' ? 'junction' : 'dir');
+  expect(() => hashInputs(root, ['alias/private.txt'])).toThrow('符号链接');
+  expect(() => hashInputs(root, ['alias'])).toThrow('符号链接');
+  await expect(run(root, { paths: ['article.md'], out: 'alias/new/manifest.json' })).rejects.toThrow('符号链接');
+  expect(fs.readdirSync(outside)).toEqual(['private.txt']);
+});
+it('excludes its own manifest when scanning the entire project', async () => {
+  const root = project();
+  await run(root, { paths: ['.'] });
+  expect((await run(root, { check: true })).data.ok).toBe(true);
+  await run(root, { paths: ['.'], replace: true });
+  expect((await run(root, { check: true })).data.ok).toBe(true);
+  fs.writeFileSync(path.join(root, 'added.txt'), 'new');
+  expect((await run(root, { check: true })).data.added).toEqual(['added.txt']);
+});
+it('reports a removed root file or directory during verification', async () => {
+  const root = project();
+  await run(root, { paths: ['article.md', 'src'] });
+  fs.rmSync(path.join(root, 'article.md'));
+  fs.rmSync(path.join(root, 'src'), { recursive: true });
+  expect((await run(root, { check: true })).data.removed).toEqual(['article.md', 'src/a.txt', 'src/deep/b.txt']);
 });

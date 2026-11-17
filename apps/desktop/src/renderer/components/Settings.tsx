@@ -54,20 +54,19 @@ export function MachineSettings({ rows, onSaved }: { rows: MachineSetting[]; onS
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState('');
+  const revisions = useRef<Record<string, number>>({});
   const save = async (row: MachineSetting) => {
+    const revision = revisions.current[row.key] ?? 0;
     const submitted = draft[row.key] ?? row.value;
     const value = submitted.trim();
     if (value === row.value) return;
     try {
       await post('/api/settings/global', { key: row.key, value });
       setErrors((e) => ({ ...e, [row.key]: '' }));
-      setDraft((d) => {
-        if (d[row.key] !== submitted) return d;
-        const next = { ...d };
-        delete next[row.key];
-        return next;
-      });
-      setSaved(row.key);
+      if ((revisions.current[row.key] ?? 0) === revision) {
+        setDraft((d) => { const next = { ...d }; delete next[row.key]; return next; });
+        setSaved(row.key);
+      }
       onSaved();
     } catch (err) {
       setErrors((e) => ({ ...e, [row.key]: errorText(err) }));
@@ -91,6 +90,7 @@ export function MachineSettings({ rows, onSaved }: { rows: MachineSetting[]; onS
               value={draft[row.key] ?? row.value}
               spellCheck={false}
               onChange={(e) => {
+                revisions.current[row.key] = (revisions.current[row.key] ?? 0) + 1;
                 setSaved('');
                 setDraft((d) => ({ ...d, [row.key]: e.target.value }));
               }}
@@ -111,6 +111,11 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
   const [data, setData] = useState<SettingsResponse | null>(null);
   // 每家工具能调哪些选项（推理强度、快速模式……）在 /api/agents 的 option_specs 里。
   const [agents, setAgents] = useState<AgentsResponse | null>(null);
+  const [agentsError, setAgentsError] = useState('');
+  const loadAgents = () => {
+    setAgentsError('');
+    return api<AgentsResponse>('/api/agents').then(setAgents, err => setAgentsError(errorText(err)));
+  };
   const [error, setError] = useState('');
   const [active, setActive] = useState(groups[0].id);
   // 哪几项点了「只给这个项目换」：没单独改过的项默认只露一个下拉框。
@@ -129,7 +134,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
     );
   useEffect(() => {
     void reload();
-    void api<AgentsResponse>('/api/agents').then(setAgents, () => setAgents(null));
+    void loadAgents();
   }, [version]);
 
   if (!data) return <div className="empty">{error || '正在读取设置…'}</div>;
@@ -203,6 +208,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
       </nav>
       <div className="settings-body" ref={body} onScroll={onScroll}>
         <div className="settings-scope">
+          {agentsError && <p role="alert">工具列表读取失败：{agentsError} <button type="button" onClick={() => void loadAgents()}>重试读取工具</button></p>}
           <span>
             这里的设置对<strong>所有项目</strong>生效。
             {data.has_project && '只想让当前打开的这个项目不一样，点那一项下面的「只给这个项目换」。'}
@@ -350,7 +356,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
     const tool = globalTool(row);
     if (tool === '') return noOptions(`全局${row.label}`, '跟随对话助手的选项');
     const specs = specsOf(tool);
-    if (specs.length === 0) return noOptions(`全局${row.label}`, agents ? '这家工具没有可调的选项' : '正在读取…');
+    if (specs.length === 0) return noOptions(`全局${row.label}`, agents ? '这家工具没有可调的选项' : agentsError ? '工具列表读取失败' : '正在读取…');
     return (
       <div className="settings-options">
         <AgentOptionsSelect
@@ -370,7 +376,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
     const tool = projectTool(row);
     if (tool === '') return noOptions(`这个项目的${row.label}`, '跟随对话助手的选项');
     const specs = specsOf(tool);
-    if (specs.length === 0) return noOptions(`这个项目的${row.label}`, agents ? '这家工具没有可调的选项' : '正在读取…');
+    if (specs.length === 0) return noOptions(`这个项目的${row.label}`, agents ? '这家工具没有可调的选项' : agentsError ? '工具列表读取失败' : '正在读取…');
     const model = modelRowOf(row);
     return (
       <div className={'settings-options' + (row.project !== '' ? ' overridden' : '')}>

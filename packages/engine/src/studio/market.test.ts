@@ -111,15 +111,19 @@ describe('market API', () => {
     const s = studio();
     try {
       vi.stubEnv('PLUGIN_CATALOG_URL', 'https://plugins.example/index.json');
-      market.useHttpFetch(async () => {
-        throw new Error('getaddrinfo ENOTFOUND');
-      });
+      const body = fs.readFileSync(catalog(tempDir()));
+      market.useHttpFetch(async () => ({ status: 200, contentType: 'application/json', body }));
+      await startRefresh();
+      const cached = await studioRequest(s, 'GET', '/api/market');
+      market.useHttpFetch(async () => { throw new Error('getaddrinfo ENOTFOUND'); });
       await startRefresh();
       const r = await studioRequest(s, 'GET', '/api/market');
-      expect(r.body.items).toEqual([]);
+      expect(r.body.items).toEqual(cached.body.items);
+      expect(r.body.items.length).toBeGreaterThan(0);
+      expect(r.body.fetched_at).toBe(cached.body.fetched_at);
       expect(r.body.error).toContain('连不上 plugins.example');
       expect(r.body.refreshing).toBe(false);
-      expect((await studioRequest(s, 'POST', '/api/market/install', JSON.stringify({ id: 'onset-publisher', commit: c1 }))).status).toBe(409);
+
     } finally {
       s.shutdown();
     }

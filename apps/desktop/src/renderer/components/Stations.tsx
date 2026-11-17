@@ -1174,7 +1174,7 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
             if (!op) throw new Error(`没有操作 ${String(m.op)}`);
             const req: PendingRun = { id: m.id, kind: 'run', op: op.name, label: op.summary, params: m.params && typeof m.params === 'object' ? m.params : {} };
             // 用户刚在插件页面里亲手点了按钮：那一下就是同意，不再弹确认条。脚本发起的、分不清是谁点的，照旧确认。
-            if (clickedInPluginPage(frame.current)) execute(req);
+            if (clickedInPluginPage(frame.current)) executeRef.current(req);
             else ask(req);
             return;
           }
@@ -1234,6 +1234,9 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
     if (req.kind === 'run') setRan((r) => ({ ...r, [req.op]: new Date().toISOString() }));
     reply(req.id, true, { started: true });
   };
+
+  const executeRef = useRef(execute);
+  useLayoutEffect(() => { executeRef.current = execute; });
 
   const decide = (allow: boolean) => {
     const req = pendingRef.current;

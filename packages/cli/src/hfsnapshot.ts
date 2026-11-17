@@ -28,7 +28,7 @@ export const SnapshotMaxWidth = 960;
 const stillName = /^(frame-\d+[^/\\]*|at-[^/\\]*)\.png$/;
 
 /** 输出里出现的 PNG 路径（绝对路径，POSIX 或 Windows 写法）。 */
-const pngPath = /(?:[A-Za-z]:)?[\\/][^\s"'<>|]*?\.png/g;
+const pngPath = /(?:[A-Za-z]:)?[\\/][^\r\n"'<>|]*?\.png/g;
 
 /** 这次调用要缩小吗：只有 snapshot，且不是 --zoom（那是专门取原始像素看细节的）。 */
 export function shouldShrinkSnapshot(argv: readonly string[]): boolean {
@@ -47,8 +47,14 @@ export function snapshotStills(output: string, dir: string): string[] {
     return [];
   }
   const seen = new Set<string>();
-  for (const match of output.matchAll(pngPath)) {
-    const file = match[0];
+  const candidates = [...output.matchAll(pngPath)].map(match => match[0]);
+  for (const match of output.matchAll(/"(?:[^"\\]|\\.)*"/g)) {
+    try {
+      const value: unknown = JSON.parse(match[0]);
+      if (typeof value === 'string' && path.isAbsolute(value) && value.endsWith('.png')) candidates.push(value);
+    } catch { /* 不是完整 JSON 字符串，仍按文本路径处理。 */ }
+  }
+  for (const file of candidates) {
     if (!stillName.test(path.basename(file))) continue;
     let real: string;
     try {
