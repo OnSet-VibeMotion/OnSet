@@ -162,7 +162,9 @@ async function runScene(
   const design = s.designOnly === true;
   const resume = design || s.fresh || s.seam || s.examNote !== '' ? null : resumeState(s, inputs.fingerprint);
   // 上一轮已经出片、只是进程异常结束：重试先做本机验收。保留原日志、用量与真实退出码。
-  if (resume && !signal?.aborted && fs.existsSync(outputPath(s))) {
+  // 只认还留在镜头目录里的那份记录：归档会把视频连同记录一起挪走，记录已经归档时，
+  // 目录里的视频出自之后某次没来得及写记录的运行，不能算到这次头上。
+  if (resume && resume.logDir === s.directory && !signal?.aborted && fs.existsSync(outputPath(s))) {
     let valid = false;
     try { verifyResources(s.directory); verifyOutput(s, baseEnv, tolerance); valid = true; } catch { /* 不合格才继续制作。 */ }
     if (valid) {

@@ -9,7 +9,7 @@ import { load, outputPath, stderrLog, streamLog, userLog } from './scene';
 import { executable, fakeFfprobe, Sink, tempDir, writeScene } from './testsupport';
 import { VerificationError } from './verification';
 import * as director from '../director';
-import { attemptLog, parseAttempt } from './attempt';
+import { archiveAttempt, attemptLog, parseAttempt } from './attempt';
 import { loadRecord } from './record';
 
 const plainScene = '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}';
@@ -55,6 +55,21 @@ describe('run', () => {
     await expect(run(s, cfg, false, { PATH: bin, HOME: tempDir() }, new Sink(), 0.15)).rejects.toThrow('总帧数不符');
     expect(parseAttempt(fs.readFileSync(attemptLog(s)))!.outcome).toBe('verification_failed');
     expect(loadRecord(s)).toBeNull();
+  });
+
+  it('does not credit an archived attempt with a video a later, unrecorded run left behind', async () => {
+    const s = load(writeScene(plainScene)), bin = tempDir();
+    executable(bin, 'codex', 'printf video > out.mp4; exit 3');
+    fakeFfprobe(bin, {});
+    const env = { PATH: bin, HOME: tempDir() };
+    await expect(run(s, cfg, false, env, new Sink(), 0.15)).rejects.toThrow('退出码 3');
+    // 后来又跑了一次：上一次的视频与记录随归档挪走，这一次出了视频但没来得及写记录就没了。
+    archiveAttempt(s);
+    fs.writeFileSync(outputPath(s), 'later');
+    executable(bin, 'codex', 'printf called > renderer-ran; printf video > out.mp4');
+    await run(s, cfg, false, env, new Sink(), 0.15);
+    expect(fs.existsSync(path.join(s.directory, 'renderer-ran'))).toBe(true);
+    expect(parseAttempt(fs.readFileSync(attemptLog(s)))!.resumed).not.toBe('verify');
   });
 
   it('verifies an existing artifact on retry without starting the renderer or replacing its logs', async () => {

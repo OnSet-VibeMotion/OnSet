@@ -178,7 +178,10 @@ export class StationBrowsers {
           if (page) this.closePage(page);
           if (current === page) current = undefined;
           // 移除账号：登录状态由片场保管，一并清掉（插件只删得到它自己 data_dir 里的东西）。
-          await session.fromPath(sessionDirectory(app.getPath('userData'), request.id, account)).clearStorageData();
+          // clearStorageData 不管 HTTP 缓存：登录后的个人页面可能被缓存，同一账号编号再开时还会显示旧内容。
+          const ses = session.fromPath(sessionDirectory(app.getPath('userData'), request.id, account));
+          await ses.clearStorageData();
+          await ses.clearCache();
           result = {};
         } else {
           if (!current || current.contents.isDestroyed()) throw Error('请先打开账号页面');

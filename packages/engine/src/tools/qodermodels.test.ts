@@ -105,4 +105,12 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
     fs.writeFileSync(bin, '#!/bin/sh\nexec sleep 30\n', { mode: 0o755 });
     await expect(fetchQoderModels('qoder-intl', bin, { PATH: process.env.PATH ?? '' }, undefined, 500)).rejects.toThrow('没有给出模型表');
   });
+
+  it.skipIf(process.platform === 'win32')('rejects instead of crashing when the daemon exits before reading', async () => {
+    const dir = tempDir();
+    const bin = path.join(dir, 'qodercli');
+    // 守护进程已经不读了（关掉 stdin）却还回了第一步：插件接着写第二步，写进已关闭的管道就是 EPIPE。
+    fs.writeFileSync(bin, '#!/bin/sh\nexec 0<&-\nsleep 0.2\necho \'{"type":"control_response","response":{"request_id":"onset-daemon"}}\'\nsleep 0.5\nexit 2\n', { mode: 0o755 });
+    await expect(fetchQoderModels('qoder-intl', bin, { PATH: process.env.PATH ?? '' }, undefined, 5000)).rejects.toThrow('提前退出');
+  });
 });

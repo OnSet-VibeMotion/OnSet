@@ -1020,7 +1020,10 @@ const maxAskChars = 4000;
  * 用户在 iframe 里真点一下，浏览器给整条祖先链记上「刚有用户操作」（navigator.userActivation，约 5 秒），
  * 脚本调 click() 不算（e2e 实测：脚本点的读到 false，真点的读到 true）。但这个标记不分点在哪：用户刚在片场自己的界面上
  * 点过（比如点开这一页），页面一加载就请求执行也会读到 true，所以片场自己最近 5 秒有点击或按键时不认；
- * 焦点也分不清（页面脚本能把焦点抢到 iframe 上，实测）。一次点击只放行一次，同一段时间里再来的请求照旧确认。
+ * 这个标记也不分是哪个 iframe：同时挂着几个插件页面时，用户点了 A，B 的脚本趁机发来的请求也读到 true，
+ * 所以还要求宿主的焦点就在发请求的那个 iframe 上（用户点进哪个 iframe，宿主的 activeElement 就是它）。
+ * 焦点单独靠不住（页面脚本能把焦点抢到自己的 iframe 上，实测），两样都满足才算。
+ * 一次点击只放行一次，同一段时间里再来的请求照旧确认。
  */
 const activationWindowMs = 5000;
 let lastHostInput = 0;
@@ -1031,8 +1034,9 @@ if (typeof window !== 'undefined') {
   window.addEventListener('keydown', mark, true);
 }
 
-export function clickedInPluginPage(now = Date.now()): boolean {
+export function clickedInPluginPage(frame: Element | null, now = Date.now()): boolean {
   if (typeof navigator === 'undefined' || !navigator.userActivation?.isActive) return false;
+  if (!frame || frame.ownerDocument.activeElement !== frame) return false;
   if (now - lastHostInput < activationWindowMs || now - lastDirectRun < activationWindowMs) return false;
   lastDirectRun = now;
   return true;
@@ -1147,7 +1151,7 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
             if (!op) throw new Error(`没有操作 ${String(m.op)}`);
             const req: PendingRun = { id: m.id, kind: 'run', op: op.name, label: op.summary, params: m.params && typeof m.params === 'object' ? m.params : {} };
             // 用户刚在插件页面里亲手点了按钮：那一下就是同意，不再弹确认条。脚本发起的、分不清是谁点的，照旧确认。
-            if (clickedInPluginPage()) execute(req);
+            if (clickedInPluginPage(frame.current)) execute(req);
             else ask(req);
             return;
           }

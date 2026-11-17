@@ -409,14 +409,20 @@ describe('插件页面与小窗', () => {
     try {
       resetPluginClicks();
       // 规则本身：没有用户操作不放行；片场自己刚有点击时分不清点在哪，不放行；一次点击只放行一次。
-      expect(clickedInPluginPage(100_000)).toBe(false);
+      const a = document.body.appendChild(document.createElement('iframe'));
+      const b = document.body.appendChild(document.createElement('iframe'));
+      a.focus();
+      expect(clickedInPluginPage(a, 100_000)).toBe(false);
       activation.isActive = true;
-      expect(clickedInPluginPage(100_000)).toBe(true);
-      expect(clickedInPluginPage(102_000)).toBe(false);
-      expect(clickedInPluginPage(106_000)).toBe(true);
+      // 用户点的是 A：B 的请求不算，焦点不在它那里。
+      expect(clickedInPluginPage(b, 100_000)).toBe(false);
+      expect(clickedInPluginPage(null, 100_000)).toBe(false);
+      expect(clickedInPluginPage(a, 100_000)).toBe(true);
+      expect(clickedInPluginPage(a, 102_000)).toBe(false);
+      expect(clickedInPluginPage(a, 106_000)).toBe(true);
       resetPluginClicks();
       window.dispatchEvent(new Event('pointerdown'));
-      expect(clickedInPluginPage()).toBe(false);
+      expect(clickedInPluginPage(a)).toBe(false);
 
       // 接进页面桥：执行请求直接执行，不弹确认条。
       resetPluginClicks();
@@ -425,7 +431,18 @@ describe('插件页面与小窗', () => {
       const runAction = vi.fn();
       const quick = vi.fn();
       render(<StationPage tab="x:fake-publisher:dashboard" version={0} run={runAction} onQuick={quick} projectName={project.name} />);
-      const page = pageBridge(document.querySelector<HTMLIFrameElement>('.station-frame')!);
+      const frame = document.querySelector<HTMLIFrameElement>('.station-frame')!;
+      const page = pageBridge(frame);
+      // 用户刚点的是另一个插件页面（A）：这一页（B）的脚本趁机发来的执行照旧确认。
+      a.focus();
+      const sneaky = await page.ask({ type: 'run', op: 'send', params: { platform: 'douyin' } });
+      expect(await screen.findByRole('alertdialog', { name: '插件请求执行' })).toBeTruthy();
+      expect(runAction).not.toHaveBeenCalled();
+      await userEvent.click(within(screen.getByRole('alertdialog', { name: '插件请求执行' })).getByRole('button', { name: '不执行' }));
+      await page.answer(sneaky).catch(() => {});
+      resetPluginClicks();
+      // 用户点的就是这一页：直接执行。
+      frame.focus();
       const send = await page.ask({ type: 'run', op: 'send', params: { platform: 'douyin' } });
       expect((await page.answer(send)).result).toEqual({ started: true });
       expect(runAction).toHaveBeenCalledWith('/api/stations/fake-publisher/ops/send', { params: { platform: 'douyin' } });
@@ -443,6 +460,7 @@ describe('插件页面与小窗', () => {
     } finally {
       delete (navigator as { userActivation?: unknown }).userActivation;
       resetPluginClicks();
+      for (const f of document.querySelectorAll('body > iframe')) f.remove();
     }
   });
 

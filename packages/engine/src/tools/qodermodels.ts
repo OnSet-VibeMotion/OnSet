@@ -142,6 +142,9 @@ export async function fetchQoderModels(tool: string, binary: string, env: Record
   signal?.addEventListener('abort', onAbort, { once: true });
   const started = await start(binary, ['--sdk'], { cwd, env, stdio: ['pipe', 'pipe', 'ignore'], signal: controller.signal });
   const child = started.child;
+  // 进程提前退出（不认 --sdk、没登录、崩了）时再写 stdin 会报 EPIPE；不接住就是未捕获异常，整个客户端跟着退出。
+  // 失败照样由下面的 started.wait() 报出来，走回退。
+  child.stdin?.on('error', () => {});
   const send = (frame: Record<string, unknown>) => child.stdin?.write(JSON.stringify(frame) + '\n');
   try {
     const models = await new Promise<unknown[]>((resolve, reject) => {
