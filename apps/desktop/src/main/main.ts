@@ -6,6 +6,7 @@ import { setHostVersion } from '@onset/engine/version';
 import { assetsDir, browserPath, browserScript, cliEntry, npmCLI, shimScript, writeScript } from './clishim';
 import { installKeyCodec } from './keycodec';
 import { installMenu } from './menu';
+import { installNetworkFetch } from './network';
 import { createPet, installPetIPC, mainWindow, petPreferred, setPetVisible } from './pet';
 import { loginShellPath } from './shellpath';
 import { StationBrowsers } from './station-browser';
@@ -230,6 +231,8 @@ if (!app.requestSingleInstanceLock()) {
       if (npm !== '') process.env.ONSET_NPM_CLI = npm;
       // 制作人的 API key 经 safeStorage 加密落盘、解密后经 stdin 交给制作人（见 keycodec.ts）。
       installKeyCodec();
+      // 插件中心的目录与图片走 Chromium 的网络栈（系统代理或设置里的代理），见 network.ts。
+      installNetworkFetch();
       backend = newServer({ executable, stationBrowser: request => stationBrowsers.lease(request), stationProxy: url => session.defaultSession.resolveProxy(url) });
       stopOperationBroker = startOperationBroker(backend);
     } catch (err) {

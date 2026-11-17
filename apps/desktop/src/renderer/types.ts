@@ -877,10 +877,68 @@ export interface SettingRow {
   source: 'env' | 'dotenv' | 'project' | 'global' | 'default';
 }
 
+/** 只属于这台电脑的一项（设置页「网络与更新」）：config.MachineKeys。 */
+export interface MachineSetting {
+  key: 'NETWORK_PROXY' | 'PLUGIN_CATALOG_URL' | 'UPDATE_FEED_URL';
+  label: string;
+  hint: string;
+  placeholder: string;
+  value: string;
+  /** 同名环境变量盖住了设置。 */
+  overridden: boolean;
+}
+
 export interface SettingsResponse {
   file: string;
   has_project: boolean;
+  machine: MachineSetting[];
   rows: SettingRow[];
+}
+
+/** 插件中心里一个插件与这台电脑的关系（flow/market.ts 的 MarketState）。 */
+export type MarketState = 'available' | 'incompatible' | 'installed' | 'update' | 'other_source' | 'builtin';
+
+export interface MarketVersion {
+  version: string;
+  ref: string;
+  commit: string;
+  requires_onset: string;
+}
+
+/** GET /api/market 的一项（studio/market.ts）。 */
+export interface MarketItem {
+  id: string;
+  name: string;
+  description: string;
+  author: { name: string; url: string };
+  license: string;
+  tags: string[];
+  homepage: string;
+  source: string;
+  /** 后端代取的图标地址（/api/market/images/…），没有为空。 */
+  icon: string;
+  screenshots: string[];
+  state: MarketState;
+  /** 能装的最新一版；每一版都要更新的片场时为 null。 */
+  latest: MarketVersion | null;
+  /** 装不上时，最新一版要的片场版本。 */
+  requires_onset: string;
+  installed_version: string;
+  installed_commit: string;
+}
+
+export interface MarketResponse {
+  catalog_url: string;
+  /** 设置里填了自己的目录地址。 */
+  custom_url: boolean;
+  /** 缓存的目录是什么时候取的；从没取到为空。 */
+  fetched_at: string;
+  refreshing: boolean;
+  /** 最近一次刷新失败的原因。 */
+  error: string;
+  installed_error: string;
+  onset_version: string;
+  items: MarketItem[];
 }
 
 /** 制作人的模型服务协议：OpenAI 兼容（Chat Completions）或 Anthropic（Messages）。 */

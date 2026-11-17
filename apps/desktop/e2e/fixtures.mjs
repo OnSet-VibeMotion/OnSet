@@ -2,7 +2,7 @@ import { test as base, expect, _electron as electron } from '@playwright/test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { writeShellFixture } from '../../../packages/engine/src/testsupport/windowsfixtures/index.ts';
 
 /*
@@ -37,9 +37,12 @@ export const test = base.extend({
       agent: path.join(root, 'agent'),
       stations: path.join(root, 'stations'),
       settings: path.join(root, 'settings.conf'),
+      // 插件中心的目录：本机文件，测试不连 GitHub；要插件的用例自己往里写。
+      catalog: path.join(root, 'catalog', 'index.json'),
       registry: path.join(root, 'config', 'projects.json'),
     };
-    for (const dir of [dirs.home, dirs.userData, dirs.memory, path.dirname(dirs.registry)]) fs.mkdirSync(dir, { recursive: true });
+    for (const dir of [dirs.home, dirs.userData, dirs.memory, path.dirname(dirs.registry), path.dirname(dirs.catalog)]) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(dirs.catalog, JSON.stringify({ schema: 1, plugins: [] }));
     await use(dirs);
     fs.rmSync(root, { recursive: true, force: true });
   },
@@ -102,6 +105,7 @@ export const test = base.extend({
       // 第三方插件（已装插件清单与插件的数据目录）：不碰开发者自己装的。
       ONSET_STATIONS_DIR: sandbox.stations,
       ONSET_SETTINGS_FILE: sandbox.settings,
+      PLUGIN_CATALOG_URL: pathToFileURL(sandbox.catalog).href,
       ONSET_STUDIO_SKIP_SKILL_INSTALL: '1',
       ORCHESTRATOR: 'claude',
       RENDERER: 'claude',

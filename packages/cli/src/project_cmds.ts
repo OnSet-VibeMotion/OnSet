@@ -205,6 +205,7 @@ defineOp({
   run: (p, { out }) => {
     const key = str(p.key);
     const value = str(p.value).trim();
+    if (config.isMachineKey(key)) throw new Error(`${key} 只属于这台电脑，在设置页「网络」里改，不能写进项目`);
     const problem = config.validateSetting(key, value);
     if (problem !== '') throw new Error(problem);
     const file = path.join(str(p.project_root), 'onset.conf');

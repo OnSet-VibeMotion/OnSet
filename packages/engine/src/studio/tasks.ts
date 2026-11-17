@@ -260,7 +260,7 @@ export async function runUserOp(s: Server, signal: AbortSignal, name: string, pa
   const dir = stationsDir(base);
   fs.mkdirSync(dir, { recursive: true });
   const source = name === 'station_add' ? String(params.source ?? '')
-    : name === 'station_update' ? installedEntry(String(params.id ?? ''), base)?.source ?? '' : '';
+    : name === 'station_update' ? String(params.source ?? '') || (installedEntry(String(params.id ?? ''), base)?.source ?? '') : '';
   const env = await stationDownloadEnv(source, base, s.config.stationProxy);
   return runOpIn(s, signal, dir, config.load(dir, null), name, params, { ...opts, env: { ...env, ...(opts.env ?? {}) } });
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon, type IconName } from './Icon';
 import { api, errorText, post } from '../api';
-import type { AgentsResponse, SettingRow, SettingsResponse } from '../types';
+import type { AgentsResponse, MachineSetting, SettingRow, SettingsResponse } from '../types';
 import { DirectorServices, DirectorVisionNote } from './DirectorServices';
 import { SkinPicker } from './Skins';
 import { ModelSelect } from './ModelSelect';
@@ -45,7 +45,64 @@ const groups: Group[] = [
   { id: 'voice', title: '配音与字幕', icon: 'mic', blurb: '口播稿用谁来读，字幕怎样和声音逐字对上。', keys: ['TTS_PROVIDER', 'ALIGN_PROVIDER'] },
   { id: 'look', title: '外观', icon: 'brush', blurb: '整个客户端与桌宠的配色。', keys: [] },
   { id: 'plugins', title: '功能与插件', icon: 'plug', blurb: '片场自带的功能，和你自己装的插件。', keys: [] },
+  { id: 'network', title: '网络与更新', icon: 'globe', blurb: '取插件中心、下载插件、检查新版本时怎样联网。只对这台电脑生效。', keys: [] },
 ];
+
+/** 只属于这台电脑的几项（代理、插件中心地址、更新地址）：一行一个输入框，回车或离开时保存。 */
+export function MachineSettings({ rows, onSaved }: { rows: MachineSetting[]; onSaved: () => void }) {
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saved, setSaved] = useState('');
+  const save = async (row: MachineSetting) => {
+    const value = (draft[row.key] ?? row.value).trim();
+    if (value === row.value) return;
+    try {
+      await post('/api/settings/global', { key: row.key, value });
+      setErrors((e) => ({ ...e, [row.key]: '' }));
+      setDraft((d) => {
+        const next = { ...d };
+        delete next[row.key];
+        return next;
+      });
+      setSaved(row.key);
+      onSaved();
+    } catch (err) {
+      setErrors((e) => ({ ...e, [row.key]: errorText(err) }));
+    }
+  };
+  return (
+    <div className="settings-card machine-settings">
+      {rows.map((row) => (
+        <div className="settings-row" key={row.key} data-key={row.key}>
+          <div className="settings-label">
+            <strong>{row.label}</strong>
+            <span>{row.hint}</span>
+            {row.overridden && <em>这一项被电脑上的环境变量 {row.key} 定死了，这里改了不生效</em>}
+            {errors[row.key] && <em>{errors[row.key]}</em>}
+          </div>
+          <div className="settings-controls">
+            <input
+              aria-label={row.label}
+              className="machine-input"
+              placeholder={row.placeholder}
+              value={draft[row.key] ?? row.value}
+              spellCheck={false}
+              onChange={(e) => {
+                setSaved('');
+                setDraft((d) => ({ ...d, [row.key]: e.target.value }));
+              }}
+              onBlur={() => void save(row)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void save(row);
+              }}
+            />
+            {saved === row.key && <span className="machine-saved">已保存</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function Settings({ version, run, onPluginsChanged, onAgentsChanged, project, onOpenPage }: { version: number; run: RunAction; onPluginsChanged?: () => void; onAgentsChanged?: () => void; project?: boolean; onOpenPage?: (tab: string) => void }) {
   const [data, setData] = useState<SettingsResponse | null>(null);
@@ -169,6 +226,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
             {g.keys.length > 0 && <div className="settings-card">{rowsOf(g).map(renderRow)}</div>}
             {g.id === 'ai' && <DirectorServices version={version} onChange={() => { void reload(); onAgentsChanged?.(); }} />}
             {g.id === 'look' && <SkinPicker version={version} />}
+            {g.id === 'network' && <MachineSettings rows={data.machine ?? []} onSaved={() => void reload()} />}
             {g.id === 'plugins' && <PluginSettings version={version} onChanged={onPluginsChanged} run={project ? run : undefined} onOpenPage={project ? onOpenPage : undefined} />}
           </section>
         ))}

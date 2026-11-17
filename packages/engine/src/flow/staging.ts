@@ -12,6 +12,7 @@ import { checkFiles, cloneSource, parseSource, placeCheckout, readManifest, stat
 import { treeDigest } from './digest';
 import { readInstalled, recordInstalled, roleOf, type InstalledEntry } from './installed';
 import { experimentalFields, type HookEvent, type Manifest } from './manifest';
+import { repoKey } from './market';
 import { toolName } from './pages';
 import { OpsTrustNotice, pagePermissionLines } from './trust';
 import { updateDiff, type StationUpdate } from './update';
@@ -194,23 +195,53 @@ function fetchToStaging(spec: string, env: Env, log: (line: string) => void): { 
   }
 }
 
-/** 第一步：把一个插件取到暂存处，给出它的实情。 */
-export function stageStation(spec: string, env: Env = process.env, log: (line: string) => void = () => {}): Staged {
+/**
+ * 取回之后要核对的：从插件中心装时，清单 id 与 commit 必须是目录里列的那一版。对不上就清掉暂存、报错，
+ * 不给用户看一个和插件中心说的不一样的东西。
+ */
+export interface StageExpect {
+  id?: string;
+  commit?: string;
+}
+
+function checkExpect(token: string, entry: InstalledEntry, expect: StageExpect | undefined, env: Env): void {
+  if (!expect) return;
+  let problem = '';
+  if (expect.id && entry.id !== expect.id) problem = `取回的插件 id 是 ${entry.id}，不是插件中心列的 ${expect.id}`;
+  else if (expect.commit && entry.commit !== expect.commit) problem = `取回的 commit 是 ${entry.commit.slice(0, 12) || '（本机目录）'}，不是插件中心列的 ${expect.commit.slice(0, 12)}`;
+  if (problem === '') return;
+  removeTree(stagingDir(token, env));
+  throw new Error(`${problem}；为安全起见不装`);
+}
+
+/** 第一步：把一个插件取到暂存处，给出它的实情。expect 给了就核对 id 与 commit（插件中心）。 */
+export function stageStation(spec: string, env: Env = process.env, log: (line: string) => void = () => {}, expect?: StageExpect): Staged {
   const { token, entry, manifest } = fetchToStaging(spec, env, log);
+  checkExpect(token, entry, expect, env);
   writeStaged(token, { entry }, env);
   return { token, entry, preview: previewOf(manifest, entry) };
 }
 
-/** 升级的第一步：按已装那一项记的来源重新取到暂存处，给出新一版的实情与差异。link 来源不用更新。 */
-export function stageUpdate(id: string, env: Env = process.env, log: (line: string) => void = () => {}): Staged {
+/**
+ * 升级的第一步：重新取到暂存处，给出新一版的实情与差异。link 来源不用更新。
+ * 缺省按已装那一项记的来源取；从插件中心升级时 source 是目录里新一版的来源（`<仓库>#<commit>`），
+ * 必须和已装的是同一个仓库（换仓库等于换作者，要先去掉再添加），expect 核对 commit。
+ */
+export function stageUpdate(id: string, env: Env = process.env, log: (line: string) => void = () => {}, opts: { source?: string; expect?: StageExpect } = {}): Staged {
   const before = readInstalled(stationsDir(env)).plugins.find((e) => e.id === id);
   if (!before) throw new Error(`没有装插件 ${id}`);
   if (parseSource(before.source).kind === 'link') throw new Error(`插件 ${id} 来自本机目录，改动立即生效，不需要更新`);
-  const { token, entry, manifest } = fetchToStaging(before.source, env, log);
+  const source = opts.source?.trim() || before.source;
+  if (source !== before.source) {
+    const next = parseSource(source);
+    if (next.kind !== 'git' || repoKey(source) !== repoKey(before.source)) throw new Error(`插件 ${id} 装的来源是 ${before.source}，不能换成 ${source}；要换来源请先去掉再添加`);
+  }
+  const { token, entry, manifest } = fetchToStaging(source, env, log);
   if (manifest.id !== id) {
     removeTree(stagingDir(token, env));
-    throw new Error(`来源 ${before.source} 现在的清单 id 是 ${manifest.id}，与这个插件（${id}）不符；要换插件请先去掉再添加`);
+    throw new Error(`来源 ${source} 现在的清单 id 是 ${manifest.id}，与这个插件（${id}）不符；要换插件请先去掉再添加`);
   }
+  checkExpect(token, entry, opts.expect, env);
   const d = updateDiff(before, entry, manifest, env);
   const update = {
     id,
