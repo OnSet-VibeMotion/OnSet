@@ -1,4 +1,5 @@
 import { qoderBinary } from './tools';
+import { CodexFastTier } from './options';
 
 /**
  * 各家工具能选哪些模型：客户端的模型下拉框用。列表来自工具自己（登录账号、配置的服务商决定能用什么），
@@ -18,6 +19,10 @@ export interface ModelOption {
   /** 显示名；与 id 相同时界面只显示一份。 */
   label: string;
   description?: string;
+  /** 这个模型能选的推理强度（codex 目录的 supported_reasoning_levels）；不给时界面按 tools.agentOptionSpecs 列。 */
+  efforts?: string[];
+  /** 这个模型有没有快速档位（codex 目录的 service_tiers 里有 Fast）；不给时不确定。 */
+  fast?: boolean;
 }
 
 /** 列模型要跑的命令；null 表示不用跑（claude 用内置别名，制作人直接问模型服务）。 */
@@ -68,10 +73,16 @@ export function parseModelList(tool: string, stdout: string): ModelOption[] {
         const r = m as Record<string, unknown>;
         if (typeof r.slug !== 'string' || r.slug === '') continue;
         if (r.visibility !== undefined && r.visibility !== 'list') continue;
+        const levels = Array.isArray(r.supported_reasoning_levels)
+          ? r.supported_reasoning_levels.map((l) => (l && typeof l === 'object' ? (l as Record<string, unknown>).effort : undefined)).filter((e): e is string => typeof e === 'string' && /^[a-z]+$/.test(e))
+          : [];
+        const tiers = Array.isArray(r.service_tiers) ? r.service_tiers.map((t) => (t && typeof t === 'object' ? (t as Record<string, unknown>).id : undefined)) : undefined;
         out.push({
           id: r.slug,
           label: typeof r.display_name === 'string' && r.display_name !== '' ? r.display_name : r.slug,
           ...(typeof r.description === 'string' && r.description !== '' ? { description: r.description } : {}),
+          ...(levels.length > 0 ? { efforts: levels } : {}),
+          ...(tiers ? { fast: tiers.includes(CodexFastTier) } : {}),
         });
       }
       return out;

@@ -186,6 +186,7 @@ export const fakeClaude = `#!/bin/sh
 printf '%s' "$*" | tr '\\n' ' ' >> "$FAKE_ARGS_LOG"; echo >> "$FAKE_ARGS_LOG"
 printf '%s\\n' "$RENDERER" > "$FAKE_ARGS_LOG.renderer"
 printf '%s\\n' "$RENDERER_MODEL" > "$FAKE_ARGS_LOG.renderer_model"
+printf '%s\\n' "$RENDERER_OPTIONS" > "$FAKE_ARGS_LOG.renderer_options"
 sid=""; prev=""; resume=""
 for a in "$@"; do
   if [ "$prev" = "--session-id" ]; then sid="$a"; fi
@@ -237,6 +238,7 @@ const fs = require('node:fs'), path = require('node:path');
   fs.appendFileSync(log, (input ? [...args, input] : args).join(' ').replace(/[\\r\\n]/g, ' ') + '\\n');
   fs.writeFileSync(log + '.renderer', (process.env.RENDERER || '') + '\\n');
   fs.writeFileSync(log + '.renderer_model', (process.env.RENDERER_MODEL || '') + '\\n');
+  fs.writeFileSync(log + '.renderer_options', (process.env.RENDERER_OPTIONS || '') + '\\n');
   const resume = args.includes('--resume');
   const sid = args[args.indexOf(resume ? '--resume' : '--session-id') + 1] || '';
   if (resume && process.env.FAKE_FAIL_RESUME) { console.error('No conversation found with session ID: ' + sid); process.exit(1); }

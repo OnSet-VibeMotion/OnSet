@@ -55,8 +55,9 @@ test('picks the orchestrator and renderer per session', async ({ page, project }
 
   // 新对话：选的渲染工具与编排模型在建会话时带上。claude 的模型是内置别名，不用跑命令。
   await page.locator('#agent-renderer').selectOption('codex');
-  await expect(page.locator('#agent-model option[value="opus"]')).toHaveCount(1);
-  await page.locator('#agent-model').selectOption('opus');
+  // 模型在弹出框里选：搜索、列表、底下的推理强度与快速模式。
+  await page.locator('#agent-model').click();
+  await page.getByRole('dialog', { name: '编排模型' }).getByRole('option', { name: /^Opus/ }).click();
   await page.locator('#prompt').fill('把镜头提示词改成 after');
   await page.locator('#send').click();
   await expect(page.locator('.done-line').last()).toContainText('已完成');
@@ -65,7 +66,9 @@ test('picks the orchestrator and renderer per session', async ({ page, project }
   expect(sessions.body.sessions[0]).toMatchObject({ tool: 'claude', renderer: 'codex', model: 'opus' });
 
   // 已有会话：同一家换模型从下一轮起生效。
-  await page.locator('#agent-model').selectOption('sonnet');
+  await page.locator('#agent-model').click();
+  await page.getByRole('dialog', { name: '编排模型' }).getByLabel('搜索模型').fill('son');
+  await page.keyboard.press('Enter');
   await expect(page.locator('#messages')).toContainText('编排模型改为 sonnet');
 
   // 已有会话：换编排工具从下一轮起生效，并在对话里留一条提示。

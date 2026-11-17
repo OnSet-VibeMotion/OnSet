@@ -211,10 +211,11 @@ defineOp({
     let body = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
     const lineOf = (k: string) => new RegExp(`^(\\s*(?:export\\s+)?)${k}\\s*=(.*)$`, 'm');
     const line = lineOf(key);
-    // 换了工具：这个项目里给原来那家写的模型一起清掉，不然会交给新的那家（模型项本来就没写时不加行）。
-    const modelKey = config.ToolModelKey[key];
+    // 换了工具：这个项目里给原来那家写的模型与选项一起清掉，不然会交给新的那家（本来就没写时不加行）。
     const previous = (line.exec(body)?.[2] ?? '').trim();
-    if (modelKey && previous !== value && lineOf(modelKey).test(body)) body = body.replace(lineOf(modelKey), `$1${modelKey}=`);
+    for (const companion of config.ToolCompanionKeys[key] ?? []) {
+      if (previous !== value && lineOf(companion).test(body)) body = body.replace(lineOf(companion), `$1${companion}=`);
+    }
     const next = line.test(body) ? body.replace(line, `$1${key}=${value}`) : body + (body === '' || body.endsWith('\n') ? '' : '\n') + `${key}=${value}\n`;
     fs.writeFileSync(file, next);
     out.write(value === '' ? `${key} 改为跟随全局设置\n` : `这个项目的 ${key} 改为 ${value}\n`);

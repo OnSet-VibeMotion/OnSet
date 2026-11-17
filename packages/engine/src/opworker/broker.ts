@@ -14,6 +14,8 @@ export interface BrokerOperation {
   cwd: string;
   renderer: string;
   rendererModel: string;
+  /** 渲染工具的调用选项（RENDERER_OPTIONS，见 tools/options.ts）。 */
+  rendererOptions?: string;
   orchestrator: string;
 }
 

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { windowsPromptInput, windowsOrchestratorEffort } from './windows';
+import { claudeOptionSettings, codexOptionOverrides, effectiveOptions, opencodeModel, optionArgs, type AgentOptions } from './options';
 import { marshal } from '../gojson';
 import { defaultDir as directorDir, resolveService as directorService, rendererDir, NoServiceMessage, Tool as DirectorToolName, type Request as DirectorRequest } from '../director';
 import { onsetCommand, WindowsBaseEnvKeys } from '../envutil';
@@ -100,7 +101,7 @@ export function onsetToolsServer(executable: string, profile: 'orchestrator' | '
   const pluginKeys = new Set(pluginChildEnvs().map((e) => e.value.key));
   for (const [key, value] of Object.entries(env)) {
     if (value === undefined) continue;
-    if (/^(ONSET_|HYPERFRAMES_|MEMORY|ORCHESTRATOR$|RENDERER$|ORCHESTRATOR_MODEL$|RENDERER_MODEL$|TTS_|ALIGN_|SCENE_JOBS$|PATH$|HOME$|USER$|LANG$|TMPDIR$|XDG_DATA_HOME$)/.test(key) || WindowsBaseEnvKeys.includes(key) || pluginKeys.has(key) || process.platform === 'win32' && ['PRODUCER_EXPERIMENTAL_FAST_CAPTURE', 'DO_NOT_TRACK'].includes(key)) picked[key] = value;
+    if (/^(ONSET_|HYPERFRAMES_|MEMORY|ORCHESTRATOR$|RENDERER$|ORCHESTRATOR_MODEL$|RENDERER_MODEL$|ORCHESTRATOR_OPTIONS$|RENDERER_OPTIONS$|TTS_|ALIGN_|SCENE_JOBS$|PATH$|HOME$|USER$|LANG$|TMPDIR$|XDG_DATA_HOME$)/.test(key) || WindowsBaseEnvKeys.includes(key) || pluginKeys.has(key) || process.platform === 'win32' && ['PRODUCER_EXPERIMENTAL_FAST_CAPTURE', 'DO_NOT_TRACK'].includes(key)) picked[key] = value;
   }
   // Windows 上 executable 是 onset.cjs，要用 Electron / Node 来跑（envutil.onsetCommand）。
   const onset = onsetCommand(executable);
@@ -170,7 +171,7 @@ export function opencodeMcpConfig(server: McpServer): Record<string, unknown> {
  * .env 的读取禁令与执行契约一致：渲染器不得读取或打印凭据。
  * Go 里是 map[string]any，json.Marshal 按键排序，这里照那个顺序写。
  */
-function claudeSettings(a: RendererAccess & { mcp?: string[] }): string {
+function claudeSettings(a: RendererAccess & { mcp?: string[] }, extra: Record<string, unknown> = {}): string {
   const allow: string[] = [];
   for (const command of a.commands ?? []) allow.push('Bash(' + command + ':*)');
   // 整个服务放行：mcp__<名字> 匹配它的全部工具。
@@ -181,6 +182,7 @@ function claudeSettings(a: RendererAccess & { mcp?: string[] }): string {
   }
   const dirs = [...(a.readDirs ?? [])];
   return marshal({
+    ...extra,
     permissions: {
       additionalDirectories: dirs,
       allow,
@@ -223,9 +225,11 @@ export interface RendererSession {
   resume: boolean;
 }
 
-export function rendererInvocation(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model = '', session: RendererSession | null = null): string[] {
+export function rendererInvocation(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model = '', session: RendererSession | null = null, options: AgentOptions = {}): string[] {
   const server = access.toolsServer;
-  const m = modelArgs(tool, model);
+  // 调用选项（推理强度、快速模式、上下文长度，见 options.ts）跟着模型参数一起放。
+  const m = [...modelArgs(tool, tool === 'opencode' ? opencodeModel(model, options) : model), ...(tool === 'codex' ? codexOptionOverrides(options) : optionArgs(tool, options))];
+  const claudeExtra = tool === 'claude' ? claudeOptionSettings(options) : {};
   if (session && session.id === '') session = null;
   if (session && !session.resume && !presetSessionID(tool)) throw new Error(`${tool} 不支持预先指定会话 id`);
   /** claude 系：新会话 --session-id，续接 --resume。 */
@@ -244,8 +248,8 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
       return ['codex', '--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...mcp, ...m, '--json', ...resume, prompt];
     }
     case 'claude': {
-      let mode = ['--dangerously-skip-permissions'];
-      if (!unsafe && !access.unfiltered) mode = ['--permission-mode', 'acceptEdits', '--settings', claudeSettings({ ...access, mcp: server ? [server.name] : [] })];
+      let mode = ['--dangerously-skip-permissions', ...(Object.keys(claudeExtra).length > 0 ? ['--settings', marshal(claudeExtra)] : [])];
+      if (!unsafe && !access.unfiltered) mode = ['--permission-mode', 'acceptEdits', '--settings', claudeSettings({ ...access, mcp: server ? [server.name] : [] }, claudeExtra)];
       // --mcp-config 吃多个值，后面必须紧跟一个选项（这里是 --verbose），不然会把提示词吞掉。
       const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
       return ['claude', '-p', ...mode, ...m, ...mcp, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', ...claudeSession, prompt];
@@ -292,14 +296,14 @@ function directorCommand(): Invocation {
 }
 
 /** 渲染的完整调用；自带制作人的提示词、模型和密钥只经 stdin，外部工具沿用各自的命令行。 */
-export function rendererLaunch(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model: string, session: RendererSession | null, workdir: string, env: Record<string, string | undefined>): Invocation {
-  if (tool !== DirectorTool) return windowsPromptInput(tool, rendererInvocation(tool, prompt, unsafe, access, model, session), prompt);
+export function rendererLaunch(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model: string, session: RendererSession | null, workdir: string, env: Record<string, string | undefined>, options: AgentOptions = {}): Invocation {
+  if (tool !== DirectorTool) return windowsPromptInput(tool, rendererInvocation(tool, prompt, unsafe, access, model, session, options), prompt);
   const agentDir = directorDir({ ...process.env, ...env });
   const service = directorService(agentDir);
   if (!service) throw new Error(NoServiceMessage);
   const request: DirectorRequest = {
     profile: 'renderer', workdir, prompt, agent_dir: rendererDir(agentDir), service,
-    model: model || undefined, session_id: session?.id, resume: session?.resume || undefined,
+    model: model || undefined, thinking: effectiveOptions(DirectorTool, options).effort, session_id: session?.id, resume: session?.resume || undefined,
     unsafe: unsafe || access.unfiltered || undefined, commands: access.commands, read_dirs: access.readDirs,
   };
   return { ...directorCommand(), stdin: JSON.stringify(request) + '\n' };
@@ -373,6 +377,8 @@ export interface OrchestratorOptions {
   toolsServer?: McpServer;
   /** 模型（config 的 orchestratorModel）；空用那家工具自己的默认，见 modelArgs。 */
   model?: string;
+  /** 调用选项（config 的 orchestratorOptions，见 options.ts）；空用那家工具自己的默认。 */
+  options?: AgentOptions;
   /** 制作人的数据目录（凭据）；只有 director 用，空时按环境算（director.defaultDir）。 */
   agentDir?: string;
 }
@@ -420,13 +426,13 @@ export interface InteractiveInvocation {
  *   用 2.1.0 实测会来问）；白名单由 agentrun 在收到请求时先过一遍，不写进 opencode 的规则。
  * - codex app-server：审批策略与沙箱在 thread/start 里给，见 agentrun/codexapp.ts。
  */
-export function interactiveInvocation(tool: string, o: Pick<OrchestratorOptions, 'unsafe' | 'access' | 'toolsServer' | 'model'>, env: Record<string, string | undefined> = {}): InteractiveInvocation | null {
+export function interactiveInvocation(tool: string, o: Pick<OrchestratorOptions, 'unsafe' | 'access' | 'toolsServer' | 'model' | 'options'>, env: Record<string, string | undefined> = {}): InteractiveInvocation | null {
   if (o.unsafe) return null;
   switch (tool) {
     case 'codebuddy':
       return {
         protocol: 'acp',
-        argv: ['codebuddy', '--acp', ...modelArgs('codebuddy', o.model ?? ''), '--permission-mode', 'acceptEdits', '--settings', claudeSettings({ commands: o.access?.commands, mcp: o.toolsServer ? [o.toolsServer.name] : [] })],
+        argv: ['codebuddy', '--acp', ...modelArgs('codebuddy', o.model ?? ''), ...optionArgs('codebuddy', o.options ?? {}), '--permission-mode', 'acceptEdits', '--settings', claudeSettings({ commands: o.access?.commands, mcp: o.toolsServer ? [o.toolsServer.name] : [] })],
         env: {},
       };
     case 'opencode': {
@@ -439,11 +445,11 @@ export function interactiveInvocation(tool: string, o: Pick<OrchestratorOptions,
       }
       const permission = config.permission && typeof config.permission === 'object' ? (config.permission as Record<string, unknown>) : {};
       // opencode acp 没有 -m：模型经同一份配置的 model 给；acp.ts 在 session/new 之后还会按 configOptions 再核对一次。
-      const model = o.model ? { model: o.model } : {};
+      const model = o.model ? { model: opencodeModel(o.model, o.options ?? {}) } : {};
       return { protocol: 'acp', argv: ['opencode', 'acp'], env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...config, ...model, permission: { ...permission, bash: 'ask' } }) } };
     }
     case 'codex':
-      // 模型在 thread/start、thread/resume 的 model 字段里给，见 agentrun/codexapp.ts。
+      // 模型、推理强度与服务档位在 thread/start、thread/resume、turn/start 里给，见 agentrun/codexapp.ts。
       return { protocol: 'codex-app', argv: ['codex', 'app-server'], env: {} };
   }
   return null;
@@ -482,7 +488,8 @@ function isDir(dir: string): boolean {
 export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env: Record<string, string | undefined> = {}): Invocation {
   const sessionID = o.sessionID ?? '';
   const workdir = o.workdir ?? '';
-  const m = modelArgs(tool, o.model ?? '');
+  const options = o.options ?? {};
+  const m = [...modelArgs(tool, tool === 'opencode' ? opencodeModel(o.model ?? '', options) : (o.model ?? '')), ...(tool === 'codex' ? [] : optionArgs(tool, options))];
   const access = o.access ?? {};
   if (o.resume && sessionID === '') throw new Error('续接会话需要 session id');
   if (sessionID !== '' && !o.resume && !presetSessionID(tool)) throw new Error(`${tool} 不支持预先指定会话 id`);
@@ -493,8 +500,9 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
   };
   switch (tool) {
     case 'codex': {
-      const effort = windowsOrchestratorEffort(env);
-      const args = ['codex', ...(o.toolsServer ? codexMcpOverrides(o.toolsServer) : []), ...m, ...(effort ? ['-c', 'model_reasoning_effort=' + marshal(effort)] : [])];
+      // 用户选的推理强度优先于 Windows 上的缺省（ONSET_WINDOWS_ORCHESTRATOR_EFFORT）。
+      const effort = effectiveOptions('codex', options).effort ? undefined : windowsOrchestratorEffort(env);
+      const args = ['codex', ...(o.toolsServer ? codexMcpOverrides(o.toolsServer) : []), ...m, ...codexOptionOverrides(options), ...(effort ? ['-c', 'model_reasoning_effort=' + marshal(effort)] : [])];
       if (o.unsafe) {
         args.push('exec', '--skip-git-repo-check', '--cd', workdir, '--dangerously-bypass-approvals-and-sandbox');
       } else {
@@ -516,9 +524,10 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
       // --mcp-config 吃多个值，后面必须紧跟一个选项，不然会把提示词吞掉：放在 --verbose 前面。
       const args = [tool, '-p', ...m, ...mcpArgs(permission, o.toolsServer), ...(permission ? ['--permission-prompts', 'host'] : []), '--verbose', '--output-format', 'stream-json'];
       if (tool === 'claude') args.push('--prompt-suggestions', 'false');
-      if (o.unsafe && tool === 'claude') args.push('--dangerously-skip-permissions');
+      const extra = tool === 'claude' ? claudeOptionSettings(options) : {};
+      if (o.unsafe && tool === 'claude') args.push('--dangerously-skip-permissions', ...(Object.keys(extra).length > 0 ? ['--settings', marshal(extra)] : []));
       else if (o.unsafe) args.push('-y');
-      else args.push('--permission-mode', 'acceptEdits', '--settings', claudeSettings({ commands: access.commands, mcp: o.toolsServer ? [o.toolsServer.name] : [] }));
+      else args.push('--permission-mode', 'acceptEdits', '--settings', claudeSettings({ commands: access.commands, mcp: o.toolsServer ? [o.toolsServer.name] : [] }, extra));
       args.push(...claudeSession());
       args.push(o.prompt);
       return windowsPromptInput(tool, args, o.prompt);
@@ -550,6 +559,7 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
         session_id: sessionID || undefined,
         resume: o.resume || undefined,
         model: o.model || undefined,
+        thinking: effectiveOptions(DirectorTool, options).effort,
         unsafe: o.unsafe || undefined,
         commands: access.commands && access.commands.length > 0 ? access.commands : undefined,
         writable_dirs: access.writableDirs && access.writableDirs.length > 0 ? access.writableDirs : undefined,

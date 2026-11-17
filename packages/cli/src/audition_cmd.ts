@@ -391,6 +391,7 @@ checked_by 是 audition.judged（人在试镜里判的）。经验进入试用�
           {
             tool: cfg.orchestrator,
             model: cfg.orchestratorModel,
+            options: tools.effectiveOptions(cfg.orchestrator, cfg.orchestratorOptions),
             workdir,
             prompt,
             unsafe: isUnsafe,

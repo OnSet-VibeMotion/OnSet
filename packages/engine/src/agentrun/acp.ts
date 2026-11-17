@@ -413,7 +413,9 @@ export function acpModel(created: Obj): string {
  * 切完把 opened 里记的当前模型改成新的，acpModel 读到的就是这一轮实际用的。对方什么都没报时不切（不知道它认不认）。
  */
 export async function ensureModel(peer: { request(method: string, params: unknown): Promise<unknown> }, sessionID: string, opened: Obj, model: string): Promise<void> {
-  if (model === '' || acpModel(opened) === model || acpModel(opened) === '') return;
+  // opencode 的推理档位附在模型名后（provider/model#high，见 tools/options.ts）：报回来的带不带变体都算同一个模型。
+  const current = acpModel(opened);
+  if (model === '' || current === model || current.split('#')[0] === model || current === '') return;
   const options = Array.isArray(opened.configOptions) ? opened.configOptions.map(obj) : [];
   const option = options.find((o) => o.id === 'model' || o.category === 'model');
   try {

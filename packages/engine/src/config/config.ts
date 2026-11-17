@@ -11,7 +11,7 @@ import { childEnvKeys as toolpathEnvKeys } from '../toolpath';
 import { pluginChildEnvs } from '../plugin/registry';
 import { DirEnv as VoicesDirEnv, defaultDir as defaultVoicesDir } from '../voice/dir';
 import { GlobalDefaults, GlobalKeys, ModelToolKey, SettingsFileEnv, isGlobalKey, settingsFile, validModel, type GlobalKey } from './global';
-import { ValidRenderers, ValidTools } from '../tools';
+import { ValidRenderers, ValidTools, validOptionsText } from '../tools';
 import { AlignAuto, alignerIDs, hostAligner, parseAllowCommands, ttsProviderIDs, validAligner, validTTSProvider } from './providers';
 
 export const DefaultSceneJobs = 3;
@@ -69,6 +69,13 @@ export interface Config {
   /** 渲染工具用的模型，规则同 orchestratorModel。镜头 scene.json 换了渲染工具时不用它（scene/run.ts）。 */
   rendererModel: string;
   /**
+   * 三项工具各自的调用选项（推理强度、快速模式、上下文长度……），一行 effort=high,fast=on，规则同模型：
+   * 只在写它的那一层、工具也是现在这一家时才算。用 tools.effectiveOptions 按工具挑出认识的项。
+   */
+  orchestratorOptions: string;
+  rendererOptions: string;
+  optimizerOptions: string;
+  /**
    * 润色与镜头画面描述检查用的工具（promptopt）；空是跟随 orchestrator。用 promptopt.optimizerOf 取实际的工具与模型，
    * 不要直接读这两项。
    */
@@ -106,6 +113,9 @@ export function newConfig(fields: Partial<Omit<Config, 'memory'>> & { memory?: P
     orchestratorModel: '',
     renderer: '',
     rendererModel: '',
+    orchestratorOptions: '',
+    rendererOptions: '',
+    optimizerOptions: '',
     optimizer: '',
     optimizerModel: '',
     ttsProvider: '',
@@ -212,6 +222,11 @@ export function rendererModelFor(config: Config, renderer: string): string {
   return renderer === config.renderer ? config.rendererModel : '';
 }
 
+/** 渲染工具 renderer 该用的调用选项，规则同 rendererModelFor。 */
+export function rendererOptionsFor(config: Config, renderer: string): string {
+  return renderer === config.renderer ? config.rendererOptions : '';
+}
+
 /** 读取项目配置。environ 不给（或为 null）时用当前进程环境。 */
 export function load(root: string, environ?: Record<string, string> | null): Config {
   const env = environ ?? envMap();
@@ -264,9 +279,12 @@ export function load(root: string, environ?: Record<string, string> | null): Con
     orchestratorModel: modelFor('ORCHESTRATOR_MODEL'),
     renderer: resolve('RENDERER', ''),
     rendererModel: modelFor('RENDERER_MODEL'),
+    orchestratorOptions: modelFor('ORCHESTRATOR_OPTIONS'),
+    rendererOptions: modelFor('RENDERER_OPTIONS'),
     optimizer: resolve('OPTIMIZER', ''),
-    // 没设优化工具时它跟随编排工具与编排模型，给它单写的模型没有对象。
+    // 没设优化工具时它跟随编排工具与编排模型（与选项），给它单写的没有对象。
     optimizerModel: resolve('OPTIMIZER', '') === '' ? '' : modelFor('OPTIMIZER_MODEL'),
+    optimizerOptions: resolve('OPTIMIZER', '') === '' ? '' : modelFor('OPTIMIZER_OPTIONS'),
     ttsProvider: resolve('TTS_PROVIDER', ''),
     overlay: dotenv,
   });
@@ -285,6 +303,9 @@ export function load(root: string, environ?: Record<string, string> | null): Con
   }
   for (const [key, value] of [['ORCHESTRATOR_MODEL', cfg.orchestratorModel], ['RENDERER_MODEL', cfg.rendererModel], ['OPTIMIZER_MODEL', cfg.optimizerModel]] as const) {
     if (value !== '' && !validModel(value)) throw new Error(`无效的 ${key}: ${value}（模型名只能用字母、数字与 . _ - : / @ # [ ] +）`);
+  }
+  for (const [key, value] of [['ORCHESTRATOR_OPTIONS', cfg.orchestratorOptions], ['RENDERER_OPTIONS', cfg.rendererOptions], ['OPTIMIZER_OPTIONS', cfg.optimizerOptions]] as const) {
+    if (!validOptionsText(value)) throw new Error(`无效的 ${key}: ${value}（写成 effort=high,fast=on）`);
   }
   if (!validTTSProvider(cfg.ttsProvider)) {
     throw new Error(`无效的 TTS_PROVIDER: ${cfg.ttsProvider}（可选：${ttsProviderIDs()}）`);
@@ -367,12 +388,12 @@ export function childEnvironment(
   out.RENDERER = config.renderer;
   // 模型与工具一起写进去（空就删掉 .env 里带进来的旧值）：子进程按 load 的规则，环境里只有工具、
   // 没有模型时不会捡起项目配置里给别的工具写的模型。编排工具调用的 onset scene run 因此用会话选的渲染模型。
-  for (const [key, value] of [['ORCHESTRATOR_MODEL', config.orchestratorModel], ['RENDERER_MODEL', config.rendererModel]] as const) {
+  for (const [key, value] of [['ORCHESTRATOR_MODEL', config.orchestratorModel], ['RENDERER_MODEL', config.rendererModel], ['ORCHESTRATOR_OPTIONS', config.orchestratorOptions], ['RENDERER_OPTIONS', config.rendererOptions]] as const) {
     if (value !== '') out[key] = value;
     else delete out[key];
   }
   // 优化工具同理：执行进程里的 scene_prompt_check 按同一份取值（空是跟随上面的编排工具）。
-  for (const [key, value] of [['OPTIMIZER', config.optimizer], ['OPTIMIZER_MODEL', config.optimizerModel]] as const) {
+  for (const [key, value] of [['OPTIMIZER', config.optimizer], ['OPTIMIZER_MODEL', config.optimizerModel], ['OPTIMIZER_OPTIONS', config.optimizerOptions]] as const) {
     if (value !== '') out[key] = value;
     else delete out[key];
   }

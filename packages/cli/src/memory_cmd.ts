@@ -324,6 +324,7 @@ drafts 跳过整理者，直接收录一个目录里现成的草稿（lessons/*.
             tool: cfg.orchestrator,
             // 用设置里给编排选的模型：制作人（director）靠它挑服务商，其他几家空着就用自己的默认。
             model: cfg.orchestratorModel,
+            options: tools.effectiveOptions(cfg.orchestrator, cfg.orchestratorOptions),
             workdir,
             prompt,
             unsafe: isUnsafe,

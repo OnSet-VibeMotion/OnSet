@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { interactiveInvocation } from '../tools';
-import { ACPTranslator, CodebuddyUsage, acpOutcome, acpPermissionTool, acpUsage, runACP } from './acp';
+import { ACPTranslator, CodebuddyUsage, acpOutcome, acpPermissionTool, acpUsage, ensureModel, runACP } from './acp';
 import { CodexTasks, codexDecision, codexItemEvents, runCodexApp } from './codexapp';
 import { commandAllowed, unwrapShell, type PermissionAnswer } from './interactive';
 import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, KindUsage, type Event } from './parse';
@@ -386,10 +386,35 @@ describe('interactive orchestrators', () => {
     expect(JSON.parse(start.slice(2)).params).toMatchObject({ approvalPolicy: 'untrusted', sandbox: 'workspace-write' });
   });
 
+  // codex app-server：快速模式是 thread/start 的 serviceTier，推理强度是 turn/start 的 effort（用户选的盖过 Windows 缺省）。
+  it('passes codex options through the app-server protocol', async () => {
+    const { outcome, raw } = await fakeRun('codex', '整理资料', { decision: 'allow' }, { options: { effort: 'xhigh', fast: 'on' }, env: { ONSET_WINDOWS_ORCHESTRATOR_EFFORT: 'low' } });
+    expect(outcome.error).toBeNull();
+    const start = raw.find((line) => line.includes('"thread/start"'))!;
+    expect(JSON.parse(start.slice(2)).params.serviceTier).toBe('priority');
+    const turn = raw.find((line) => line.includes('"turn/start"'))!;
+    expect(JSON.parse(turn.slice(2)).params.effort).toBe('xhigh');
+    const plain = await fakeRun('codex', '整理资料', { decision: 'allow' });
+    expect(JSON.parse(plain.raw.find((line) => line.includes('"thread/start"'))!.slice(2)).params.serviceTier).toBeUndefined();
+  });
+
   it.skipIf(process.platform !== 'win32')('preserves an actual Windows agent process failure', async () => {
     const { outcome } = await fakeRun('codex', '装一下', { decision: 'deny' }, {}, undefined, { FAKE_EXIT_BEFORE_TURN: '1' });
     expect(outcome.result.exitCode).toBe(23);
     expect(outcome.error?.message).toContain('编排工具退出码 23：');
     expect(outcome.error?.message).toContain('agent startup failed');
+  });
+});
+
+describe('ensureModel', () => {
+  // opencode 的推理档位附在模型名后（p/m#high）：对方报回带变体的模型名时不能当成没切过去，再切一次会把变体丢掉。
+  it('treats a reported model variant as the same model', async () => {
+    const calls: unknown[] = [];
+    const peer = { request: async (method: string, params: unknown) => void calls.push([method, params]) };
+    const opened = { configOptions: [{ id: 'model', category: 'model', currentValue: 'p/m#high' }] };
+    await ensureModel(peer, 's1', opened, 'p/m');
+    expect(calls).toEqual([]);
+    await ensureModel(peer, 's1', opened, 'p/other');
+    expect(calls).toEqual([['session/set_config_option', { sessionId: 's1', configId: 'model', value: 'p/other' }]]);
   });
 });

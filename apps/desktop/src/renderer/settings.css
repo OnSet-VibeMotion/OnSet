@@ -190,6 +190,17 @@
   border-color: var(--accent-line);
   color: var(--accent-text);
 }
+/* 调用选项：一家工具能调的几项（推理强度、快速模式、上下文长度）排成一列。 */
+.settings .settings-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.settings .settings-options.overridden select,
+.settings .settings-options.overridden .model-input {
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
 .settings .settings-own {
   align-self: flex-end;
   font-size: 12px;

@@ -37,7 +37,7 @@ interface Option {
 }
 
 /** 每一项在界面上的名字、一句说明与可选值。 */
-function describe(key: config.GlobalKey): { label: string; hint: string; options: Option[]; modelOf?: string } {
+function describe(key: config.GlobalKey): { label: string; hint: string; options: Option[]; modelOf?: string; optionsOf?: string } {
   const agents = agentOrder.map((a) => ({ value: a.id, label: a.label }));
   switch (key) {
     case 'ORCHESTRATOR':
@@ -45,10 +45,15 @@ function describe(key: config.GlobalKey): { label: string; hint: string; options
     case 'ORCHESTRATOR_MODEL':
       // 可选的模型跟着工具变，由界面按工具去 /api/agents/{工具}/models 取，这里不列。
       return { label: '对话助手的模型', hint: '不确定就选「默认」，由上面那家工具自己决定；换了工具会自动回到默认', options: [], modelOf: 'ORCHESTRATOR' };
+    case 'ORCHESTRATOR_OPTIONS':
+      // 有哪些选项跟着工具变，界面按工具取 /api/agents 里那家的 option_specs。
+      return { label: '对话助手的选项', hint: '推理强度、快速模式、上下文长度这类，每家能调的不一样；不选就用那家工具自己的默认，换了工具会自动清掉', options: [], optionsOf: 'ORCHESTRATOR' };
     case 'RENDERER':
       return { label: '画镜头的工具', hint: '把每个镜头的画面做出来的那位；制作人使用下方配置的模型服务，其他工具要先装在这台电脑上', options: agents.filter((a) => tools.ValidRenderers.has(a.value)) };
     case 'RENDERER_MODEL':
       return { label: '画镜头的模型', hint: '不确定就选「默认」，由上面那家工具自己决定；换了工具会自动回到默认', options: [], modelOf: 'RENDERER' };
+    case 'RENDERER_OPTIONS':
+      return { label: '画镜头的选项', hint: '推理强度、快速模式、上下文长度这类；调高更细致也更慢、更费额度，换了工具会自动清掉', options: [], optionsOf: 'RENDERER' };
     case 'OPTIMIZER':
       // 空是跟随对话助手（promptopt.optimizerOf），界面把空显示成「跟随对话助手」。
       return {
@@ -58,6 +63,8 @@ function describe(key: config.GlobalKey): { label: string; hint: string; options
       };
     case 'OPTIMIZER_MODEL':
       return { label: '润色与检查的模型', hint: '跟随对话助手时也跟随它的模型；换了工具会自动回到默认', options: [], modelOf: 'OPTIMIZER' };
+    case 'OPTIMIZER_OPTIONS':
+      return { label: '润色与检查的选项', hint: '跟随对话助手时也跟随它的选项；润色用不着想太久，可以把推理强度调低', options: [], optionsOf: 'OPTIMIZER' };
     case 'TTS_PROVIDER':
       return { label: '配音', hint: '用谁把口播稿读出来', options: config.TTSProviders.map((p) => ({ value: p.id, label: ttsNames[p.id] ?? p.name })) };
     case 'ALIGN_PROVIDER':
@@ -114,6 +121,7 @@ export function settingsAPI(s: Server, request: Request): Response {
           hint: d.hint,
           options: d.options,
           model_of: d.modelOf,
+          options_of: d.optionsOf,
           default: config.GlobalDefaults[r.key],
           global: r.global,
           project: r.project,

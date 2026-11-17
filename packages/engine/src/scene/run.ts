@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { withWindowsInstructions } from '../windowsruntime';
 import path from 'node:path';
-import { childEnvironment, rendererModelFor, type Config } from '../config';
+import { childEnvironment, rendererModelFor, rendererOptionsFor, type Config } from '../config';
 import * as determinism from '../determinism';
 import { addToolsLocation, onsetExecutable, lookPath, parsePassthrough } from '../envutil';
 import * as hyperframes from '../hyperframes';
@@ -12,6 +12,7 @@ import { ExitError, start, type Started } from '../procgroup';
 import {
   accumulateUsage,
   configuredModel,
+  effectiveOptions,
   detectModel,
   extractUserMessages,
   formatUsage,
@@ -119,6 +120,8 @@ async function runScene(
   access.skills = stagedSkills(resolvedSkills, prompt).map((x) => x.name);
   Object.assign(childEnv, rendererEnv(renderer, access, childEnv));
   const model = rendererModelFor(cfg, renderer);
+  // 调用选项（推理强度、快速模式、上下文长度）规则同模型：镜头换了渲染工具就不用设置里给另一家写的。
+  const options = effectiveOptions(renderer, rendererOptionsFor(cfg, renderer));
   // 渲染器套系统沙箱：只能写镜头目录、读本项目与工具自己的目录（见 sandbox.ts）。macOS 上五家都套，不安全模式不套。
   const projectRoot = findProjectRoot(s.directory);
   if (!unsafe && projectRoot !== '' && sandboxAvailable()) access.osSandbox = true;
@@ -126,7 +129,7 @@ async function runScene(
   access.unfiltered = rendererUnfiltered(access.osSandbox === true);
   /** 渲染器的命令行：给定提示词与会话；qoder 再套系统沙箱。 */
   const invocation = (text: string, session: RendererSession | null): Invocation => {
-    const command = rendererLaunch(renderer, text, unsafe, access, model, session, s.directory, { ...childEnv, [director.DirEnv]: director.defaultDir({ ...process.env, ...baseEnv }) });
+    const command = rendererLaunch(renderer, text, unsafe, access, model, session, s.directory, { ...childEnv, [director.DirEnv]: director.defaultDir({ ...process.env, ...baseEnv }) }, options);
     let argv = command.argv;
     argv[0] = lookPath(argv[0], baseEnv.PATH ?? '');
     if (!access.osSandbox) return { ...command, argv };

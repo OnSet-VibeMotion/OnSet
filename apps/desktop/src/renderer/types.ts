@@ -163,8 +163,11 @@ export interface SessionMeta {
   tool: string;
   /** 编排模型；没有是跟随设置。 */
   model?: string;
+  /** 编排工具的调用选项（effort=high,fast=on）；没有是跟随设置。 */
+  options?: string;
   renderer?: string;
   renderer_model?: string;
+  renderer_options?: string;
   cli_session_id?: string;
   created_at: string;
   updated_at: string;
@@ -367,6 +370,22 @@ export interface AgentInfo {
   hint?: string;
   /** 官方安装说明页（制作人没有）。 */
   install_url?: string;
+  /** 这家能调的选项（后端 tools/options.ts 的 AgentOptionSpec）。 */
+  option_specs?: AgentOptionSpec[];
+}
+
+/** 一家工具的一项调用选项：推理强度、快速模式、上下文长度……（后端 tools/options.ts）。 */
+export interface AgentOptionSpec {
+  key: string;
+  label: string;
+  hint: string;
+  kind: 'choice' | 'toggle' | 'number';
+  choices?: { value: string; label: string }[];
+  presets?: { value: string; label: string }[];
+  /** 要先选了模型才有用（opencode 的变体）。 */
+  requiresModel?: boolean;
+  /** 可选档位随模型变：按模型列表里那个模型的 efforts 收窄。 */
+  perModel?: boolean;
 }
 
 export interface AgentsResponse {
@@ -376,6 +395,9 @@ export interface AgentsResponse {
   /** 设置里给上面两家选的模型；空是那家工具自己的默认。 */
   orchestrator_model: string;
   renderer_model: string;
+  /** 设置里给上面两家选的调用选项（effort=high,fast=on）；空是那家工具自己的默认。 */
+  orchestrator_options?: string;
+  renderer_options?: string;
   /** 不看项目时的渲染工具（环境变量 > 全局设置 > 默认）：新建的项目跟着它。 */
   global_renderer: string;
   config_error?: string;
@@ -387,6 +409,9 @@ export interface AgentChoice {
   renderer: string;
   model?: string;
   renderer_model?: string;
+  /** 两家各自的调用选项，逐项盖在设置上；空串是跟随设置。 */
+  options?: string;
+  renderer_options?: string;
 }
 
 /** GET /api/agents/{工具}/models。 */
@@ -394,6 +419,10 @@ export interface ModelOption {
   id: string;
   label: string;
   description?: string;
+  /** 这个模型能选的推理强度（codex）；没有时按 option_specs 列。 */
+  efforts?: string[];
+  /** 这个模型有没有快速档位（codex）；没有时不确定。 */
+  fast?: boolean;
 }
 
 export interface ModelsResponse {
@@ -818,6 +847,8 @@ export interface SettingRow {
   options: { value: string; label: string }[];
   /** 模型项：跟着哪一项工具（ORCHESTRATOR / RENDERER），可选值按那家工具去取。 */
   model_of?: string;
+  /** 调用选项项：跟着哪一项工具，可调的项按那家工具的 option_specs 画。 */
+  options_of?: string;
   /** 全局也没设时用的内置默认。 */
   default: string;
   /** 全局设置里写的值；没写为空。 */

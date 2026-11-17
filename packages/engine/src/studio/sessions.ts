@@ -58,8 +58,11 @@ export interface SessionMeta {
   tool: string;
   /** 编排工具的模型；空跟随设置（同一家工具时）或用那家工具自己的默认。 */
   model?: string;
+  /** 编排工具的调用选项（effort=high,fast=on，见 tools/options.ts）；空跟随设置（同一家工具时）。 */
+  options?: string;
   renderer?: string;
   renderer_model?: string;
+  renderer_options?: string;
   cli_session_id?: string;
   created_at: string;
   updated_at: string;
@@ -78,8 +81,10 @@ export function sessionMetaJSON(meta: SessionMeta): Record<string, unknown> {
     kind: meta.kind,
     tool: meta.tool,
     model: meta.model || undefined,
+    options: meta.options || undefined,
     renderer: meta.renderer || undefined,
     renderer_model: meta.renderer_model || undefined,
+    renderer_options: meta.renderer_options || undefined,
     cli_session_id: meta.cli_session_id || undefined,
     created_at: meta.created_at,
     updated_at: meta.updated_at,
@@ -225,7 +230,7 @@ function decodeMeta(body: string): SessionMeta | undefined {
     if (v === undefined || v === null) return '';
     return typeof v === 'string' ? v : undefined;
   };
-  const fields = ['session_id', 'title', 'kind', 'tool', 'model', 'renderer', 'renderer_model', 'cli_session_id', 'created_at', 'updated_at', 'running_turn', 'preference_digest'];
+  const fields = ['session_id', 'title', 'kind', 'tool', 'model', 'options', 'renderer', 'renderer_model', 'renderer_options', 'cli_session_id', 'created_at', 'updated_at', 'running_turn', 'preference_digest'];
   const values: Record<string, string> = {};
   for (const key of fields) {
     const v = s(key);
@@ -244,8 +249,10 @@ function decodeMeta(body: string): SessionMeta | undefined {
     kind: values.kind,
     tool: values.tool,
     model: values.model || undefined,
+    options: values.options || undefined,
     renderer: values.renderer || undefined,
     renderer_model: values.renderer_model || undefined,
+    renderer_options: values.renderer_options || undefined,
     cli_session_id: values.cli_session_id || undefined,
     created_at: values.created_at || zero,
     updated_at: values.updated_at || zero,
@@ -366,6 +373,9 @@ export interface AgentChoice {
    */
   model?: string;
   rendererModel?: string;
+  /** 两家工具各自的调用选项（effort=high,fast=on），规则同模型：undefined 不改，空串跟随设置。 */
+  options?: string;
+  rendererOptions?: string;
 }
 
 export function createSession(s: Server, projectPath: string, kind: string, title: string, agents: AgentChoice): Session {
@@ -379,8 +389,10 @@ export function createSession(s: Server, projectPath: string, kind: string, titl
       kind,
       tool: agents.tool,
       model: agents.model || undefined,
+      options: agents.options || undefined,
       renderer: agents.renderer || undefined,
       renderer_model: agents.rendererModel || undefined,
+      renderer_options: agents.rendererOptions || undefined,
       created_at: now,
       updated_at: now,
       turns: [],
@@ -566,7 +578,7 @@ export interface TurnRequest {
 /** 读项目配置，再用会话选定的工具覆盖（agents.go 的 sessionConfig，放在这里免得循环导入）。 */
 export function sessionConfig(projectPath: string, meta: SessionMeta): config.Config {
   const cfg = config.load(projectPath, null);
-  return overrideAgents(cfg, { tool: meta.tool, renderer: meta.renderer ?? '', model: meta.model ?? '', rendererModel: meta.renderer_model ?? '' });
+  return overrideAgents(cfg, { tool: meta.tool, renderer: meta.renderer ?? '', model: meta.model ?? '', rendererModel: meta.renderer_model ?? '', options: meta.options ?? '', rendererOptions: meta.renderer_options ?? '' });
 }
 
 export function validateChoice(choice: AgentChoice): void {
@@ -575,18 +587,31 @@ export function validateChoice(choice: AgentChoice): void {
   for (const value of [choice.model, choice.rendererModel]) {
     if (value && !config.validModel(value)) throw new Error(`不认识的模型名 ${value}：只能用字母、数字与 . _ - : / @ # [ ] +`);
   }
+  for (const value of [choice.options, choice.rendererOptions]) {
+    if (value && !tools.validOptionsText(value)) throw new Error(`选项写法不对：${value}（写成 effort=high,fast=on）`);
+  }
 }
 
 export function overrideAgents(cfg: config.Config, choice: AgentChoice): config.Config {
   validateChoice(choice);
   const out = { ...cfg };
   // 换了工具、又没选模型时，设置里的模型是给原来那家的，不能带过去。
-  if (choice.tool !== '' && choice.tool !== cfg.orchestrator) out.orchestratorModel = '';
-  if (choice.renderer !== '' && choice.renderer !== cfg.renderer) out.rendererModel = '';
+  // 选项同理。
+  if (choice.tool !== '' && choice.tool !== cfg.orchestrator) {
+    out.orchestratorModel = '';
+    out.orchestratorOptions = '';
+  }
+  if (choice.renderer !== '' && choice.renderer !== cfg.renderer) {
+    out.rendererModel = '';
+    out.rendererOptions = '';
+  }
   if (choice.tool !== '') out.orchestrator = choice.tool;
   if (choice.renderer !== '') out.renderer = choice.renderer;
   if (choice.model) out.orchestratorModel = choice.model;
   if (choice.rendererModel) out.rendererModel = choice.rendererModel;
+  // 会话选的选项逐项盖在设置上（同一家工具时设置里的还在，换了工具上面已经清空）。
+  if (choice.options) out.orchestratorOptions = tools.mergeAgentOptions(out.orchestratorOptions, choice.options);
+  if (choice.rendererOptions) out.rendererOptions = tools.mergeAgentOptions(out.rendererOptions, choice.rendererOptions);
   return out;
 }
 
@@ -727,6 +752,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
       const spec: agentrun.Spec = {
         tool: cfg.orchestrator,
         model: cfg.orchestratorModel,
+        options: tools.effectiveOptions(cfg.orchestrator, cfg.orchestratorOptions),
         workdir: p.path,
         prompt,
         unsafe: s.config.unsafe,

@@ -19,6 +19,7 @@ export function startOperationBroker(s: Server): () => void {
       tool: typeof request.orchestrator === 'string' ? request.orchestrator : cfg.orchestrator,
       renderer: typeof request.renderer === 'string' ? request.renderer : cfg.renderer,
       rendererModel: typeof request.rendererModel === 'string' ? request.rendererModel : undefined,
+      rendererOptions: typeof request.rendererOptions === 'string' ? request.rendererOptions : undefined,
     }, request.name, request.params, { env: { [OpBrokerRelayedEnv]: '1' }, onText: write });
     void result; // 输出（包括执行进程的结果标记）已经流式交回。
     return 0;

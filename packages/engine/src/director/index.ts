@@ -402,6 +402,8 @@ export interface Request {
   resume?: boolean;
   /** 只换模型名（设置里的编排模型、对话里临时选的）；空时用服务自己的模型。 */
   model?: string;
+  /** 思考强度（pi 的 thinkingLevel：off minimal low medium high xhigh max）；空按模型默认。见 tools/options.ts。 */
+  thinking?: string;
   unsafe?: boolean;
   /** 安全模式下 bash 直接放行的命令前缀（与其他编排工具同一份白名单）。 */
   commands?: string[];

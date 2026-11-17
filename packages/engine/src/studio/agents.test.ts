@@ -34,6 +34,10 @@ describe('agents', () => {
     expect(claude.install_url).toMatch(/^https:\/\//);
     for (const a of body.agents) expect(a.id === 'director' || /^https:\/\//.test(a.install_url), `${a.id} 没有安装入口`).toBe(true);
     for (const a of body.agents) expect(a.command, '命令名为空').not.toBe('');
+    // 每家能调的选项随工具列表一起给，界面据此画控件。
+    for (const a of body.agents) expect(a.option_specs.length, `${a.id} 没有选项`).toBeGreaterThan(0);
+    expect(claude.option_specs.map((o: { key: string }) => o.key)).toEqual(['effort', 'fast']);
+    expect(body.orchestrator_options).toBe('');
     expect((await studioRequest(f.s, 'POST', '/api/agents', '{}')).status).toBe(405);
   });
 
@@ -96,6 +100,36 @@ describe('agents', () => {
     expect([body.model, body.renderer_model]).toEqual([undefined, undefined]);
   });
 
+  // 推理强度、快速模式这类选项与模型一样按会话选：交给编排工具、经子进程环境交给它调用的 scene_run。
+  it('session options reach the orchestrator and its children', async () => {
+    const f = newSessionFixture();
+    expect((await studioRequest(f.s, 'POST', '/api/sessions', '{"options":"effort high"}')).status, '选项写法不对').toBe(400);
+    let { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{"options":"effort=high,fast=on","renderer":"qoder-intl","renderer_options":"context=200000"}');
+    const id = body.session_id as string;
+    expect([body.options, body.renderer_options]).toEqual(['effort=high,fast=on', 'context=200000']);
+    await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"改一下"}');
+    await waitIdle(f, id);
+    const line = args(f).at(-1)!;
+    expect(line).toContain('--effort high');
+    expect(line).toContain('"fastMode":true');
+    expect(fs.readFileSync(f.argsLog + '.renderer_options', 'utf8').trim()).toBe('context=200000');
+
+    const sess = getSession(f.s, f.root, id)!;
+    updateMeta(sess, (meta) => (meta.cli_session_id = 'keep'));
+    ({ body } = await studioRequest(f.s, 'POST', `/api/sessions/${id}/agents`, '{"options":"effort=low"}'));
+    expect([body.options, body.cli_session_id], '同一家换选项照样续接').toEqual(['effort=low', 'keep']);
+    expect(eventsAfter(sess, 0).events.at(-1)?.text).toContain('effort=low');
+    ({ body } = await studioRequest(f.s, 'POST', `/api/sessions/${id}/agents`, '{"tool":"codex","renderer":"claude"}'));
+    expect([body.options, body.renderer_options], '换了工具回到跟随设置').toEqual([undefined, undefined]);
+  });
+
+  it('session options override the settings key by key, only for the same tool', () => {
+    const cfg = config.newConfig({ orchestrator: 'claude', orchestratorOptions: 'effort=high,fast=on', renderer: 'claude', rendererOptions: 'effort=max' });
+    expect(overrideAgents(cfg, { tool: '', renderer: '', options: 'fast=off' })).toMatchObject({ orchestratorOptions: 'effort=high,fast=off', rendererOptions: 'effort=max' });
+    expect(overrideAgents(cfg, { tool: 'codex', renderer: 'claude', options: '' })).toMatchObject({ orchestratorOptions: '', rendererOptions: 'effort=max' });
+    expect(overrideAgents(cfg, { tool: 'claude', renderer: 'codebuddy', rendererOptions: 'effort=minimal' })).toMatchObject({ rendererOptions: 'effort=minimal' });
+  });
+
   it('a configured model only follows the tool it was chosen for', () => {
     const cfg = config.newConfig({ orchestrator: 'claude', orchestratorModel: 'opus', renderer: 'claude', rendererModel: 'sonnet' });
     expect(overrideAgents(cfg, { tool: '', renderer: '' })).toMatchObject({ orchestratorModel: 'opus', rendererModel: 'sonnet' });
@@ -108,6 +142,9 @@ describe('agents', () => {
     let { status, body } = await studioRequest(f.s, 'GET', '/api/agents/claude/models');
     expect(status).toBe(200);
     expect(body.models.map((m: { id: string }) => m.id)).toEqual(['fable', 'opus', 'sonnet', 'haiku']);
+    // 带连字符的工具名（qoder-intl）也要认得。
+    ({ status } = await studioRequest(f.s, 'GET', '/api/agents/qoder-intl/models'));
+    expect(status).toBe(200);
     ({ status } = await studioRequest(f.s, 'GET', '/api/agents/nope/models'));
     expect(status).toBe(404);
     // 没装的工具：列表为空、附说明，界面仍能手填。

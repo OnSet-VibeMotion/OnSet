@@ -268,6 +268,8 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
     cwd: workdir,
     agentDir: req.agent_dir,
     model: selected,
+    // 设置里选的思考强度；pi 会按模型能力收窄（不支持思考的模型照常跑）。
+    ...(req.thinking ? { thinkingLevel: req.thinking as NonNullable<Parameters<typeof createAgentSession>[0]>["thinkingLevel"] } : {}),
     modelRuntime: runtime,
     resourceLoader: loader,
     settingsManager: settings,

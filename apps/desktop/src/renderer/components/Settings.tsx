@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon, type IconName } from './Icon';
 import { api, errorText, post } from '../api';
-import type { SettingRow, SettingsResponse } from '../types';
+import type { AgentsResponse, SettingRow, SettingsResponse } from '../types';
 import { DirectorServices, DirectorVisionNote } from './DirectorServices';
 import { SkinPicker } from './Skins';
 import { ModelSelect } from './ModelSelect';
+import { AgentOptionsSelect } from './AgentOptionsSelect';
 import type { RunAction } from './Preview';
 import '../settings.css';
 import { PluginSettings } from './Stations';
@@ -38,9 +39,9 @@ const groups: Group[] = [
     title: 'AI 助手',
     icon: 'brain',
     blurb: '和你对话、写稿、定分镜、安排渲染的那位，帮你润色、检查画面描述的那位，以及它能不能不问你直接跑命令。',
-    keys: ['ORCHESTRATOR', 'ORCHESTRATOR_MODEL', 'OPTIMIZER', 'OPTIMIZER_MODEL', 'AUTO_APPROVE'],
+    keys: ['ORCHESTRATOR', 'ORCHESTRATOR_MODEL', 'ORCHESTRATOR_OPTIONS', 'OPTIMIZER', 'OPTIMIZER_MODEL', 'OPTIMIZER_OPTIONS', 'AUTO_APPROVE'],
   },
-  { id: 'render', title: '画面渲染', icon: 'film', blurb: '把每个镜头画出来的工具、一次画几个，以及要不要记住画过的问题。', keys: ['RENDERER', 'RENDERER_MODEL', 'SCENE_JOBS', 'MEMORY'] },
+  { id: 'render', title: '画面渲染', icon: 'film', blurb: '把每个镜头画出来的工具、一次画几个，以及要不要记住画过的问题。', keys: ['RENDERER', 'RENDERER_MODEL', 'RENDERER_OPTIONS', 'SCENE_JOBS', 'MEMORY'] },
   { id: 'voice', title: '配音与字幕', icon: 'mic', blurb: '口播稿用谁来读，字幕怎样和声音逐字对上。', keys: ['TTS_PROVIDER', 'ALIGN_PROVIDER'] },
   { id: 'look', title: '外观', icon: 'brush', blurb: '整个客户端与桌宠的配色。', keys: [] },
   { id: 'plugins', title: '功能与插件', icon: 'plug', blurb: '片场自带的功能，和你自己装的插件。', keys: [] },
@@ -48,6 +49,8 @@ const groups: Group[] = [
 
 export function Settings({ version, run, onPluginsChanged, onAgentsChanged, project, onOpenPage }: { version: number; run: RunAction; onPluginsChanged?: () => void; onAgentsChanged?: () => void; project?: boolean; onOpenPage?: (tab: string) => void }) {
   const [data, setData] = useState<SettingsResponse | null>(null);
+  // 每家工具能调哪些选项（推理强度、快速模式……）在 /api/agents 的 option_specs 里。
+  const [agents, setAgents] = useState<AgentsResponse | null>(null);
   const [error, setError] = useState('');
   const [active, setActive] = useState(groups[0].id);
   // 哪几项点了「只给这个项目换」：没单独改过的项默认只露一个下拉框。
@@ -64,6 +67,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
     );
   useEffect(() => {
     void reload();
+    void api<AgentsResponse>('/api/agents').then(setAgents, () => setAgents(null));
   }, [version]);
 
   if (!data) return <div className="empty">{error || '正在读取设置…'}</div>;
@@ -80,8 +84,8 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
     }
   };
   const overrides = data.rows.filter((r) => r.project !== '');
-  // 模型项跟着哪家工具：全局一栏看全局的工具，「这个项目」一栏看这个项目实际用的工具。
-  const toolRow = (r: SettingRow) => data.rows.find((t) => t.key === r.model_of);
+  // 模型项与选项项跟着哪家工具：全局一栏看全局的工具，「这个项目」一栏看这个项目实际用的工具。
+  const toolRow = (r: SettingRow) => data.rows.find((t) => t.key === (r.model_of ?? r.options_of));
   const globalTool = (r: SettingRow) => {
     const t = toolRow(r);
     return t ? t.global || t.default : '';
@@ -184,7 +188,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
         return next;
       });
     return (
-      <div className={'settings-row' + (row.model_of ? ' sub' : '')} key={row.key} data-key={row.key}>
+      <div className={'settings-row' + (row.model_of || row.options_of ? ' sub' : '')} key={row.key} data-key={row.key}>
         <div className="settings-label">
           <strong>{row.label}</strong>
           <span>{row.hint}</span>
@@ -192,7 +196,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
           {row.model_of && globalTool(row) === 'director' && <DirectorVisionNote model={row.global} version={version} compact />}
         </div>
         <div className="settings-controls">
-          {row.model_of ? globalModel(row) : globalTool_(row)}
+          {row.model_of ? globalModel(row) : row.options_of ? globalOptions(row) : globalTool_(row)}
           {hasProject && !showProject && (
             <button className="link settings-own" onClick={() => setOpened((prev) => new Set(prev).add(row.key))}>
               只给这个项目换
@@ -212,7 +216,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
                   {own ? '改回和其他项目一样' : '算了'}
                 </button>
               </span>
-              {row.model_of ? projectModel(row) : projectTool_(row)}
+              {row.model_of ? projectModel(row) : row.options_of ? projectOptions(row) : projectTool_(row)}
             </div>
           )}
         </div>
@@ -254,6 +258,65 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
         defaultLabel={`和其他项目一样（${inherited || '默认'}）`}
         onChange={(value) => run('/api/settings/project', { key: row.key, value })}
       />
+    );
+  }
+
+  // 选项项的模型那一行（ORCHESTRATOR_OPTIONS → ORCHESTRATOR_MODEL）：codex 按模型收窄推理档位。
+  function modelRowOf(row: SettingRow) {
+    return data!.rows.find((r) => r.model_of === row.options_of);
+  }
+
+  function specsOf(tool: string) {
+    return agents?.agents.find((a) => a.id === tool)?.option_specs ?? [];
+  }
+
+  // 这家工具没有可调的选项（或还没读到工具列表）时照实说，不放一个空着的控件。
+  function noOptions(ariaLabel: string, text: string) {
+    return (
+      <select disabled aria-label={ariaLabel}>
+        <option>{text}</option>
+      </select>
+    );
+  }
+
+  function globalOptions(row: SettingRow) {
+    const tool = globalTool(row);
+    if (tool === '') return noOptions(`全局${row.label}`, '跟随对话助手的选项');
+    const specs = specsOf(tool);
+    if (specs.length === 0) return noOptions(`全局${row.label}`, agents ? '这家工具没有可调的选项' : '正在读取…');
+    return (
+      <div className="settings-options">
+        <AgentOptionsSelect
+          tool={tool}
+          specs={specs}
+          value={row.global}
+          model={modelRowOf(row)?.global ?? ''}
+          ariaPrefix="全局"
+          onChange={(value) => void setGlobal(row, value)}
+        />
+      </div>
+    );
+  }
+
+  function projectOptions(row: SettingRow) {
+    const tool = projectTool(row);
+    if (tool === '') return noOptions(`这个项目的${row.label}`, '跟随对话助手的选项');
+    const specs = specsOf(tool);
+    if (specs.length === 0) return noOptions(`这个项目的${row.label}`, agents ? '这家工具没有可调的选项' : '正在读取…');
+    const model = modelRowOf(row);
+    return (
+      <div className={'settings-options' + (row.project !== '' ? ' overridden' : '')}>
+        <AgentOptionsSelect
+          tool={tool}
+          specs={specs}
+          value={row.project}
+          inherited={tool === globalTool(row) ? row.global : ''}
+          inheritLabel="和其他项目一样"
+          model={model ? model.project || (tool === globalTool(row) ? model.global : '') : ''}
+          ariaPrefix="这个项目的"
+          onChange={(value) => run('/api/settings/project', { key: row.key, value })}
+        />
+      </div>
     );
   }
 

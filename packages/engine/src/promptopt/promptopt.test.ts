@@ -148,7 +148,10 @@ describe('optimizer prompts', () => {
 
   it('follow the orchestrator unless set', () => {
     const cfg = { orchestrator: 'codex', orchestratorModel: 'gpt', optimizer: '', optimizerModel: '' };
-    expect(optimizerOf(cfg)).toEqual({ tool: 'codex', model: 'gpt' });
-    expect(optimizerOf({ ...cfg, optimizer: 'claude', optimizerModel: 'haiku' })).toEqual({ tool: 'claude', model: 'haiku' });
+    expect(optimizerOf(cfg)).toEqual({ tool: 'codex', model: 'gpt', options: {} });
+    expect(optimizerOf({ ...cfg, optimizer: 'claude', optimizerModel: 'haiku' })).toEqual({ tool: 'claude', model: 'haiku', options: {} });
+    // 调用选项同理：跟随编排时用编排的，自己设了用自己的；只留那家工具认识的项。
+    expect(optimizerOf({ ...cfg, orchestratorOptions: 'effort=low,context=1' }).options).toEqual({ effort: 'low' });
+    expect(optimizerOf({ ...cfg, optimizer: 'claude', optimizerModel: 'haiku', optimizerOptions: 'effort=low,fast=on', orchestratorOptions: 'effort=max' }).options).toEqual({ effort: 'low', fast: 'on' });
   });
 });

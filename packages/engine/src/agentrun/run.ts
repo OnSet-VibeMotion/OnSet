@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { withWindowsInstructions } from '../windowsruntime';
 import { MissingToolError, lookPath as envLookPath } from '../envutil';
 import { DefaultGrace, ExitError as ProcessExitError, abortReason, start } from '../procgroup';
-import { detectModel, interactiveInvocation, type McpServer, newUsage, orchestratorInvocation, presetSessionID, usageEmpty, type OrchestratorAccess, type PermissionPrompt, type Usage } from '../tools';
+import { detectModel, interactiveInvocation, type McpServer, newUsage, orchestratorInvocation, presetSessionID, usageEmpty, type OrchestratorAccess, type PermissionPrompt, type Usage, type AgentOptions } from '../tools';
 import { runACP } from './acp';
 import { runCodexApp } from './codexapp';
 import type { AskPermission } from './interactive';
@@ -24,6 +24,8 @@ export interface Spec {
   toolsServer?: McpServer;
   /** 模型；空用那家工具自己的默认（tools.modelArgs）。 */
   model?: string;
+  /** 调用选项（推理强度、快速模式、上下文长度，tools/options.ts）；空用那家工具自己的默认。 */
+  options?: AgentOptions;
   /**
    * 请用户批准一次调用（客户端里给）。给了且是安全模式时，codebuddy、opencode、codex 改用双向协议
    * （tools.interactiveInvocation），白名单外的调用经它问用户；claude、qoder 经 permissionPrompt 的审批 MCP。
@@ -167,7 +169,7 @@ export async function run(spec: Spec, emit: (event: Event) => void, signal?: Abo
   if (process.platform === 'win32' && spec.toolsServer?.name === 'onset') spec = { ...spec, prompt: withWindowsInstructions(spec.prompt, 'orchestrator') };
   if (spec.ask) {
     const base = spec.env ?? (process.env as Record<string, string>);
-    const inter = interactiveInvocation(spec.tool, { unsafe: spec.unsafe, access: spec.access, toolsServer: spec.toolsServer, model: spec.model }, base);
+    const inter = interactiveInvocation(spec.tool, { unsafe: spec.unsafe, access: spec.access, toolsServer: spec.toolsServer, model: spec.model, options: spec.options }, base);
     if (inter) {
       const env = { ...base, ...inter.env };
       return inter.protocol === 'acp' ? runACP(spec, emit, signal, inter.argv, env) : runCodexApp(spec, emit, signal, inter.argv, env);
@@ -190,6 +192,7 @@ export async function run(spec: Spec, emit: (event: Event) => void, signal?: Abo
       permissionPrompt: spec.permissionPrompt,
       toolsServer: spec.toolsServer,
       model: spec.model,
+      options: spec.options,
     }, spec.env ?? (process.env as Record<string, string>)));
   } catch (err) {
     return { result: emptyResult(), error: asError(err) };
