@@ -12,12 +12,12 @@ describe('tools', () => {
   describe('renderer invocation safe by default', () => {
     const tests: [string, string[]][] = [
       ['codex', ['codex', '--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', 'prompt']],
-      ['claude', ['claude', '-p', '--permission-mode', 'acceptEdits', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]}}`, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', 'prompt']],
+      ['claude', ['claude', '-p', '--permission-mode', 'acceptEdits', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]}}`, '--strict-mcp-config', '--tools', 'Bash,Read,Write,Edit,Skill', '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', 'prompt']],
       // dont_ask 连镜头目录里写文件都拒（2026-11 实测渲染器一个 index.html 都写不出来）：与 claude 同一套放行规则。
-      ['qoder', ['qoderclicn', '-p', 'prompt', '--permission-mode', 'accept_edits', '--setting-sources', 'project,local', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]},"mcp":{"lazyLoad":false}}`, '--output-format', 'stream-json']],
+      ['qoder', ['qoderclicn', '-p', 'prompt', '--permission-mode', 'accept_edits', '--setting-sources', 'project,local', '--strict-mcp-config', '--tools', 'Bash,Read,Write,Edit,Skill', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]},"mcp":{"lazyLoad":false}}`, '--output-format', 'stream-json']],
       // 国际版只换命令名：参数、设置写法与国内版相同（1.1.89 实测）。
-      ['qoder-intl', ['qodercli', '-p', 'prompt', '--permission-mode', 'accept_edits', '--setting-sources', 'project,local', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]},"mcp":{"lazyLoad":false}}`, '--output-format', 'stream-json']],
-      ['codebuddy', ['codebuddy', '-p', '--verbose', '--output-format', 'stream-json', '--permission-mode', 'acceptEdits', 'prompt']],
+      ['qoder-intl', ['qodercli', '-p', 'prompt', '--permission-mode', 'accept_edits', '--setting-sources', 'project,local', '--strict-mcp-config', '--tools', 'Bash,Read,Write,Edit,Skill', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]},"mcp":{"lazyLoad":false}}`, '--output-format', 'stream-json']],
+      ['codebuddy', ['codebuddy', '-p', '--strict-mcp-config', '--verbose', '--output-format', 'stream-json', '--permission-mode', 'acceptEdits', 'prompt']],
       ['opencode', ['opencode', 'run', '--standalone', '--format', 'json', 'prompt']],
     ];
     for (const [tool, want] of tests) {
@@ -40,6 +40,23 @@ describe('tools', () => {
     expect(argv[argv.indexOf('--setting-sources') + 1]).toBe('project,local');
     const unsafe = rendererInvocation('qoder', 'prompt', true, {});
     expect(unsafe[unsafe.indexOf('--setting-sources') + 1]).toBe('project,local');
+  });
+
+  // 渲染器只拿几样内置工具、只挂 onset 的工具服务：不读用户自己装的 MCP 与 claude.ai 连接器（RendererBuiltinTools 的注释有实测数字）。
+  it('renderers only get the tools they use', () => {
+    const server = { name: 'onset', command: 'onset', args: ['studio', 'tools-mcp'] };
+    for (const unsafe of [false, true]) {
+      for (const tool of ['claude', 'qoder', 'qoder-intl']) {
+        const argv = rendererInvocation(tool, 'prompt', unsafe, { toolsServer: server });
+        expect(argv, tool).toContain('--strict-mcp-config');
+        // --tools 吃多个值：后面紧跟的必须是选项，不然会把提示词吞掉。
+        expect(argv.slice(argv.indexOf('--tools') + 1, argv.indexOf('--tools') + 3), tool).toEqual(['Bash,Read,Write,Edit,Skill', expect.stringMatching(/^--/)]);
+      }
+      // codebuddy 的 --tools 会连 MCP 工具一起藏掉：只限 MCP。
+      const codebuddy = rendererInvocation('codebuddy', 'prompt', unsafe, { toolsServer: server });
+      expect(codebuddy).toContain('--strict-mcp-config');
+      expect(codebuddy).not.toContain('--tools');
+    }
   });
 
   // macOS 上五家渲染器都套系统沙箱、Windows 上全放开：各家自己不再按命令白名单拦（拦了也没人能批准）。

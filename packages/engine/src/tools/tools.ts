@@ -142,6 +142,17 @@ function qoderOrchestratorSettings(workdir: string): string {
  */
 const qoderRendererSources = ['--setting-sources', 'project,local'];
 
+/**
+ * 渲染器只给这几样内置工具，只挂 onset 的工具服务（2026-11 实测，claude 2.1.325 用 haiku 跑一次空任务）：
+ * 不限的话 claude 带着 117 个工具（Cron、Workflow、RemoteTrigger、用户自己装的 chrome-devtools、open-design、
+ * claude.ai 的连接器……），第一次调用 47.6K token；限了之后 11 个、24.1K。渲染器每一步都要把这些定义重读一遍，
+ * 一个镜头二三十步。onset 的工具也从「先 ToolSearch 再调」变成直接可调。
+ * 默认工具集里本来就没有 Glob、Grep（渲染器一直用 Bash 搜），这里也不加。
+ * codebuddy 只加 --strict-mcp-config：它的 --tools 连 MCP 工具一起藏起来，写上 mcp__onset__* 也没用（实测）。
+ */
+export const RendererBuiltinTools = 'Bash,Read,Write,Edit,Skill';
+const rendererToolLimits = ['--strict-mcp-config', '--tools', RendererBuiltinTools];
+
 /** claude / qoder / codebuddy 的 --mcp-config：几个服务合在一份 JSON 里。 */
 function mcpConfigJSON(servers: McpServer[]): string {
   const mcpServers: Record<string, unknown> = {};
@@ -262,9 +273,9 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
     case 'claude': {
       let mode = ['--dangerously-skip-permissions', ...(Object.keys(claudeExtra).length > 0 ? ['--settings', marshal(claudeExtra)] : [])];
       if (!unsafe && !access.unfiltered) mode = ['--permission-mode', 'acceptEdits', '--settings', claudeSettings({ ...access, mcp: server ? [server.name] : [] }, claudeExtra)];
-      // --mcp-config 吃多个值，后面必须紧跟一个选项（这里是 --verbose），不然会把提示词吞掉。
+      // --mcp-config 与 --tools 都吃多个值，后面必须紧跟一个选项（这里是 --mcp-config / --verbose），不然会把提示词吞掉。
       const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
-      return ['claude', '-p', ...mode, ...m, ...mcp, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', ...claudeSession, prompt];
+      return ['claude', '-p', ...mode, ...m, ...rendererToolLimits, ...mcp, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', ...claudeSession, prompt];
     }
     case 'qoder':
     case 'qoder-intl': {
@@ -274,18 +285,18 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
       // 系统沙箱按目录管住了读写（或 Windows 上全放开），渲染器里不再按命令白名单拦（拦了也没人能批准，只会白耗几轮）。
       if (unsafe || access.unfiltered) {
         const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
-        return [qoderBinary(tool), '-p', prompt, ...qoderSession, '--dangerously-skip-permissions', ...m, ...qoderRendererSources, '--settings', JSON.stringify(qoderEagerSettings), ...mcp, '--output-format', 'stream-json'];
+        return [qoderBinary(tool), '-p', prompt, ...qoderSession, '--dangerously-skip-permissions', ...m, ...qoderRendererSources, ...rendererToolLimits, '--settings', JSON.stringify(qoderEagerSettings), ...mcp, '--output-format', 'stream-json'];
       }
       const settings = { ...(JSON.parse(claudeSettings({ ...access, mcp: server ? [server.name] : [] })) as Record<string, unknown>), ...qoderEagerSettings };
       const mcp = server ? ['--mcp-config', mcpConfigJSON([server]), '--allowed-tools', 'mcp__' + server.name] : [];
-      return [qoderBinary(tool), '-p', prompt, ...qoderSession, '--permission-mode', 'accept_edits', ...m, ...qoderRendererSources, '--settings', JSON.stringify(settings), ...mcp, '--output-format', 'stream-json'];
+      return [qoderBinary(tool), '-p', prompt, ...qoderSession, '--permission-mode', 'accept_edits', ...m, ...qoderRendererSources, ...rendererToolLimits, '--settings', JSON.stringify(settings), ...mcp, '--output-format', 'stream-json'];
     }
     case 'codebuddy': {
       let mode = ['--permission-mode', 'acceptEdits'];
       if (!unsafe && server) mode.push('--settings', claudeSettings({ ...access, commands: [], readDirs: access.readDirs, mcp: [server.name] }));
       if (unsafe || access.unfiltered) mode = ['-y'];
       const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
-      return ['codebuddy', '-p', ...m, ...mcp, '--verbose', '--output-format', 'stream-json', ...mode, ...claudeSession, prompt];
+      return ['codebuddy', '-p', ...m, '--strict-mcp-config', ...mcp, '--verbose', '--output-format', 'stream-json', ...mode, ...claudeSession, prompt];
     }
     case 'opencode': {
       // --standalone：opencode run 默认连到后台常驻的服务，配置（包括 OPENCODE_CONFIG_CONTENT 里的 MCP 与模型）
