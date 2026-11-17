@@ -3,7 +3,7 @@ import path from 'node:path';
 import { test, expect, openProject, api, installPlugin } from './fixtures.mjs';
 
 const origin = 'https://creator.example.test';
-const html = '<input type="file"><input id="title"><button onclick="window.published=true">发布</button>';
+const html = '<input type="file"><input id="title"><input id="typed"><button onclick="window.published=true">发布</button><button id="poke" style="position:fixed;left:10px;top:200px;width:80px;height:30px" onclick="window.poked=event.isTrusted">点我</button>';
 
 for (const shutdown of ['application', 'window', 'page-before-window']) test(`plugin fills an embedded page, leaves manual publishing available, isolates accounts and revokes automation (${shutdown})`, async ({ electronApp, page, project, sandbox }) => {
   const errors = [];
@@ -32,14 +32,19 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   const unauthorized=await fetch(b.endpoint,{method:'POST',headers:{authorization:'Bearer wrong'},body:'{}'});
   const fromPage=await fetch(b.endpoint,{method:'POST',headers:{authorization:'Bearer '+b.token,origin:'https://creator.example.test'},body:'{}'});
   const rejected=[];
-  for(const [method,params] of [['Page.navigate',{url:'file:///etc/passwd'}],['Page.navigate',{url:'https://outside.example/'}],['Network.getAllCookies',{}],['DOM.setFileInputFiles',{files:[r.data_dir+'/outside.mp4']}],['DOM.setFileInputFiles',{files:[r.project_root+'/escape.mp4']}],['DOM.setFileInputFiles',{files:[r.project_root+'/upload.mp4'],nodeId:1}]]) {
+  for(const [method,params] of [['Page.navigate',{url:'file:///etc/passwd'}],['Page.navigate',{url:'https://outside.example/'}],['Network.getAllCookies',{}],['DOM.setFileInputFiles',{files:[r.data_dir+'/outside.mp4']}],['DOM.setFileInputFiles',{files:[r.project_root+'/escape.mp4']}],['DOM.setFileInputFiles',{files:[r.project_root+'/upload.mp4'],nodeId:1}],['Input.dispatchKeyEvent',{type:'bogus'}],['Input.dispatchMouseEvent',{type:'mouseWheel',x:1,y:1}],['Input.dispatchMouseEvent',{type:'mousePressed'}]]) {
     try { await command(method,params); rejected.push(false); } catch { rejected.push(true); }
   }
   const object=await command('Runtime.evaluate',{expression:'document.querySelector(\"input[type=file]\")'});
   await command('DOM.setFileInputFiles',{objectId:object.result.objectId,files:[r.project_root+'/upload.mp4']});
   const result=await command('Runtime.evaluate',{expression:'document.cookie',returnByValue:true});
   await command('Runtime.evaluate',{expression:'document.querySelector("#title").value="自动填写"; document.cookie="account='+r.params.account+'; max-age=86400; path=/"',returnByValue:true});
-  console.log('onset-result '+JSON.stringify({previous:result.result.value,opened,bridge:b,rejected,unauthorized:unauthorized.status,fromPage:fromPage.status}));
+  // 键盘与鼠标：像人一样逐字输入、真的点一下（页面看到的是可信事件）。
+  await command('Runtime.evaluate',{expression:'document.querySelector("#typed").focus()'});
+  for(const key of ['#','话']){ await command('Input.dispatchKeyEvent',{type:'keyDown',key,text:key}); await command('Input.dispatchKeyEvent',{type:'keyUp',key}); }
+  for(const type of ['mouseMoved','mousePressed','mouseReleased']) await command('Input.dispatchMouseEvent',{type,x:50,y:215,button:'left',clickCount:1});
+  const typedResult=await command('Runtime.evaluate',{expression:'[document.querySelector("#typed").value, window.poked===true]',returnByValue:true});
+  console.log('onset-result '+JSON.stringify({previous:result.result.value,opened,bridge:b,rejected,unauthorized:unauthorized.status,fromPage:fromPage.status,input:typedResult.result.value}));
  }catch(e){console.error(e.message);process.exitCode=1;}
 });`);
   installPlugin(sandbox, dir, 'embedded-helper');
@@ -72,7 +77,8 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   expect(first.previous).toBe('');
   expect(first.unauthorized).toBe(403);
   expect(first.fromPage).toBe(403);
-  expect(first.rejected).toEqual([true, true, true, true, true, true]);
+  expect(first.rejected).toEqual([true, true, true, true, true, true, true, true, true]);
+  expect(first.input).toEqual(['#话', true]);
   const inspect = () => electronApp.evaluate(({ webContents, BrowserWindow }) => {
     const web = webContents.getAllWebContents().find(w => w.getURL().startsWith('https://creator.example.test'));
     return { windows: BrowserWindow.getAllWindows().length, native: !!web, preferences: web?.getLastWebPreferences() };

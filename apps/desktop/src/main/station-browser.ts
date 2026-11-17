@@ -5,7 +5,13 @@ import { randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage } from 'node:http';
 import type { StationBrowserLease, StationBrowserRequest } from '@onset/engine/flow';
 
-const methods = new Set(['Page.enable', 'Page.bringToFront', 'Runtime.evaluate', 'Runtime.releaseObject', 'DOM.setFileInputFiles', 'Input.insertText']);
+/**
+ * 插件能对自己的页面发的 CDP 命令。键盘与鼠标是为了像人一样操作网页：小红书的话题候选靠逐字输入「#」弹出、
+ * 要真的点一下才选得中，element.click() 与插入文字都不行。它们只作用于这个页面，能做的不超过 Runtime.evaluate。
+ */
+const methods = new Set(['Page.enable', 'Page.bringToFront', 'Runtime.evaluate', 'Runtime.releaseObject', 'DOM.setFileInputFiles', 'Input.insertText', 'Input.dispatchKeyEvent', 'Input.dispatchMouseEvent']);
+const keyTypes = new Set(['keyDown', 'keyUp', 'rawKeyDown', 'char']);
+const mouseTypes = new Set(['mouseMoved', 'mousePressed', 'mouseReleased']);
 const escapeHTML = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 type EmbeddedPage = { key: string; view: WebContentsView; bar: WebContentsView; contents: Electron.WebContents; controls: Electron.WebContents; closed: boolean; hidden: boolean; window: BrowserWindow; origins: string[]; owner?: symbol; title: string; hint: string; layout?: () => void };
 const defaultHint = '请检查账号与内容，发布由你确认';
@@ -198,6 +204,8 @@ export class StationBrowsers {
                 return real;
               });
             }
+            if (body.method === 'Input.dispatchKeyEvent' && !keyTypes.has(String(p.type))) throw Error('键盘事件无效');
+            if (body.method === 'Input.dispatchMouseEvent' && (!mouseTypes.has(String(p.type)) || typeof p.x !== 'number' || typeof p.y !== 'number')) throw Error('鼠标事件无效');
             if (body.method === 'Page.bringToFront') { this.show(current); result = {}; }
             else {
               if (!wc.debugger.isAttached()) wc.debugger.attach('1.3');

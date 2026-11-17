@@ -380,7 +380,7 @@ tell({ kind: 'hide' });                                    // 收起桌宠
 
 - `{action: "open", account: "稳定的账号编号", label: "账号备注", url: "https://creator.example.com/"}`：打开或恢复该账号的页面，返回 `{reused: boolean}`。编号为 1–80 位字母、数字、下划线或连字符，以字母数字开头。一次操作只控制一个账号。
 - `{action: "command", method: "Page.navigate", params: {url: "https://creator.example.com/editor"}}`：导航到声明过的来源。
-- 其余允许的 CDP 命令：`Page.enable`、`Page.bringToFront`、`Runtime.evaluate`、`Runtime.releaseObject`、`DOM.setFileInputFiles`、`Input.insertText`。上传文件必须是当前项目内的真实文件（校验符号链接后的路径）。命令返回 CDP 结果，错误返回非 2xx 与 `{error: "说明"}`。
+- 其余允许的 CDP 命令：`Page.enable`、`Page.bringToFront`、`Runtime.evaluate`、`Runtime.releaseObject`、`DOM.setFileInputFiles`、`Input.insertText`、`Input.dispatchKeyEvent`（`type` 只能是 keyDown / keyUp / rawKeyDown / char）、`Input.dispatchMouseEvent`（`type` 只能是 mouseMoved / mousePressed / mouseReleased，必须给 `x`、`y`）。键盘与鼠标用来像人一样逐字输入、真的点一下（有的网页只认可信事件），只作用于这个页面。上传文件必须是当前项目内的真实文件（校验符号链接后的路径）。命令返回 CDP 结果，错误返回非 2xx 与 `{error: "说明"}`。
 
 网页以 `WebContentsView` 显示在片场主窗口里，不拥有 Node、宿主 preload 或宿主会话。登录空间（cookie、本地存储）由片场保存在它自己的应用数据目录里（`station-sessions/<插件>/<account>/`），不同插件、账号独立，客户端重启后仍是登录状态；插件不要自己去读写或删除它，移除账号时调桥的 `forget`，片场会关掉那个账号的页面并清空它的登录空间；用户切回项目时页面保留，再次打开同一账号不自动导航，插件应在 `reused` 为 true 时避免覆盖用户编辑。账号仍在被某次操作填写时，另一项操作会明确失败。
 
