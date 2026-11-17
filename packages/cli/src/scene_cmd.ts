@@ -22,6 +22,7 @@ import { bool, num, str, strs } from './ops/common';
 import { defineOp } from './ops/op';
 import { reuseDecision } from './reuse';
 // 镜头组里的其余操作（frames、cues、lint、usage）在各自的模块里登记。
+import './components_cmd';
 import './media';
 import './review_cmd';
 import './scene_cues';

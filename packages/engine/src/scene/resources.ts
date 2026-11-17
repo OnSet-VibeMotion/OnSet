@@ -4,6 +4,7 @@ import path from 'node:path';
 import * as filmstyle from '../filmstyle';
 import * as renderassets from '../renderassets';
 import { compareBytes } from '../gojson';
+import { componentMounts } from './components';
 import { allSkills, FilmStyleOwnKey } from './skills';
 import { findProjectRoot, type Scene } from './scene';
 
@@ -13,6 +14,7 @@ export function resourceFiles(s: Scene, resolved: Record<string, string>): rende
   const mounts: renderassets.Mount[] = [
     { from: path.join(root, 'assets/fonts'), to: 'assets/fonts' },
     { from: path.join(root, 'assets/vendor'), to: 'vendor' },
+    ...componentMounts(root, s.components),
   ];
   for (const skill of allSkills()) {
     const dir = resolved[skill.name];

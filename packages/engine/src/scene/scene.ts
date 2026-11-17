@@ -18,6 +18,7 @@ import {
   skillPromptSections,
   styleShiftSection,
 } from './skills';
+import { componentSection, verifyComponentNames } from './components';
 import { lookIsZero, timingStructType, timingToJSON, verifyFilmStyleValue, verifyTimingInputs, type Timing } from './timing';
 import { verifyFrameAlignment } from './frames';
 import { timingSection } from './scenedata';
@@ -45,7 +46,7 @@ export const delimiterMatchAll = new RegExp(delimiterSource, 'g');
  * 都从这里派生，不再各写一份、彼此漂移。扩展块排在 plugin_skills 之后、timing 之前。
  */
 const requiredSceneFields = ['id', 'duration_seconds', 'output', 'transcript', 'text'];
-const optionalSceneFields = ['renderer', 'film_style', 'plugin_skills'];
+const optionalSceneFields = ['renderer', 'film_style', 'plugin_skills', 'components'];
 /** scene 自己的 timing 块，固定排在所有扩展块之后。 */
 const timingField = 'timing';
 
@@ -96,6 +97,11 @@ export interface Scene {
    * scenes 为 all 的技能所有镜头都带上。没有这个字段的镜头指纹不变。
    */
   plugin_skills: string[];
+  /**
+   * 本镜头要用的共用组件（components.ts）：项目 production/shared/<名字>/ 里登记过的组件，渲染前挂进镜头的
+   * shared/<名字>/，提示词要求直接引用、不要重画。没有这个字段的镜头提示词与指纹都不变。
+   */
+  components: string[];
   // 镜头扩展块由 scene/blocks/ 下各自的模块用 declare module 并进这个接口，
   // 值为 null 表示 scene.json 里没有这个块。
   /**
@@ -228,6 +234,7 @@ function sceneType(): StructType {
       ['renderer', 'string'],
       ['film_style', 'string'],
       ['plugin_skills', sliceOf('string')],
+      ['components', sliceOf('string')],
       ...blocks().map((b): [string, FieldType] => [b.key, ptrTo(b.type)]),
       [timingField, ptrTo(timingStructType)],
     ],
@@ -246,6 +253,7 @@ export function newScene(fields: Partial<Scene> = {}): Scene {
     renderer: '',
     film_style: '',
     plugin_skills: [],
+    components: [],
   };
   for (const b of blocks()) zero[b.key] = null;
   return {
@@ -274,6 +282,7 @@ export function sceneToJSON(s: Scene): unknown {
     renderer: s.renderer || undefined,
     film_style: s.film_style || undefined,
     plugin_skills: s.plugin_skills.length > 0 ? s.plugin_skills : undefined,
+    components: s.components.length > 0 ? s.components : undefined,
   };
   for (const b of blocks()) {
     const value = blockValue(s, b.key);
@@ -413,6 +422,8 @@ export function load(directory: string): Scene {
   for (const ref of result.plugin_skills) {
     if (!/^[a-z][a-z0-9-]{1,39}\/[a-z][a-z0-9-]*$/.test(ref)) throw new Error(`plugin_skills 的每一项要写成「插件 id/技能名」：${goQuote(ref)}`);
   }
+  result.components = result.components ?? [];
+  verifyComponentNames(result.components);
   for (const b of blocks()) {
     const value = blockValue(result, b.key);
     if (value !== null) b.validate?.(result, value);
@@ -708,6 +719,7 @@ function renderPrompt(s: Scene, resolvedSkills: Record<string, string> | null, w
     skillPromptSections(resolved, allSkills()) +
     pluginSkillSection(resolved) +
     resourceSection(s, resolved) +
+    componentSection(s.components) +
     determinismSection +
     memorySection(s) +
     exemplarSection(s) +
