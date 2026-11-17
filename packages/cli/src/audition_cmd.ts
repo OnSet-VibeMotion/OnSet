@@ -276,6 +276,10 @@ defineOp({
   name: 'scene_audition_retry',
   cli: ['scene', 'audition-retry'],
   summary: '重试一位失败或中断的试镜选手，保留原标号、模型与冻结输入',
+  description: `重新渲染一场试镜里失败或中断的一位选手：沿用原来的标号、渲染工具与模型、冻结的镜头输入，不续接旧的模型会话。
+只能重试还没评判、也还没有合格产物的选手；同一场试镜里还有别的选手在跑时会被拒绝，等它们跑完再试。
+冻结目录里已有指纹一致的产物时先在本机验收，合格就直接用，不再花一次渲染。`,
+  examples: ['scene_audition_retry({"audition": "audition-20261114-153012", "slot": "B"})'],
   params: {
     audition: { type: 'string', description: '试镜编号', required: true, positional: 0 },
     slot: { type: 'string', description: '要重试的选手标号', required: true },

@@ -14,6 +14,9 @@ if (typeof window !== 'undefined') {
   HTMLMediaElement.prototype.play = function () { return Promise.resolve(); };
   HTMLMediaElement.prototype.pause = function () {};
   HTMLMediaElement.prototype.load = function () {};
+  // waitFor / findBy* 缺省只等 1 秒：冷启动（CI 每次都是）时第一次渲染加上代码转换会超过它，偶尔失败（本地实测 1.2 秒）。
+  const { configure } = await import('@testing-library/react');
+  configure({ asyncUtilTimeout: 5000 });
 }
 
 afterEach(async () => {
