@@ -63,6 +63,18 @@ contextBridge.exposeInMainWorld('onset', {
     ipcRenderer.on('onset:skin', listener);
     return () => ipcRenderer.removeListener('onset:skin', listener);
   },
+  /** 客户端更新（main/updater.ts）：现在的状态、动作（检查、下载、重启安装、打开发布页），与状态变化。 */
+  updateState(): Promise<unknown> {
+    return ipcRenderer.invoke('onset:update-state');
+  },
+  updateAction(action: 'check' | 'download' | 'install' | 'open-release', force?: boolean): Promise<{ ok: boolean; busy?: string[] }> {
+    return ipcRenderer.invoke('onset:update-action', action, force);
+  },
+  onUpdate(callback: (state: unknown) => void): () => void {
+    const listener = (_event: unknown, state: unknown) => callback(state);
+    ipcRenderer.on('onset:update', listener);
+    return () => ipcRenderer.removeListener('onset:update', listener);
+  },
   /** 主窗口收桌宠转来的动作（切页、答批准、发话、停下）。 */
   onPetCommand(callback: (command: unknown) => void): () => void {
     const listener = (_event: unknown, command: unknown) => callback(command);

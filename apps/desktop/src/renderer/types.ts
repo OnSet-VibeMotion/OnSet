@@ -1431,3 +1431,22 @@ export interface LearningState {
   exemplars: number;
   thresholds: { matches: number; rate: number };
 }
+
+/** 客户端更新的状态（main/updatestate.ts 的 UpdateState，两边一起改）。 */
+export type UpdateStatus = 'disabled' | 'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'downloaded' | 'error';
+
+export interface UpdateState {
+  status: UpdateStatus;
+  current: string;
+  version: string;
+  notes: string;
+  released_at: string;
+  percent: number;
+  transferred: number;
+  total: number;
+  bytes_per_second: number;
+  error: string;
+  disabled_reason: string;
+  checked_at: string;
+  release_url: string;
+}

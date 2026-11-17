@@ -7,6 +7,7 @@ import { assetsDir, browserPath, browserScript, cliEntry, npmCLI, shimScript, wr
 import { installKeyCodec } from './keycodec';
 import { installMenu } from './menu';
 import { installNetworkFetch } from './network';
+import { installUpdater } from './updater';
 import { createPet, installPetIPC, mainWindow, petPreferred, setPetVisible } from './pet';
 import { loginShellPath } from './shellpath';
 import { StationBrowsers } from './station-browser';
@@ -241,6 +242,8 @@ if (!app.requestSingleInstanceLock()) {
       return;
     }
     protocol.handle(SCHEME, handleRequest);
+    // 自动更新（updater.ts）：重启装之前先问后端有没有正在跑的对话与渲染。
+    installUpdater({ activeWork: () => backend?.activeWork() ?? [] });
     const menu = (visible: boolean) => installMenu({ visible, toggle: setPetVisible });
     installPetIPC();
     installDirectoryPicker();

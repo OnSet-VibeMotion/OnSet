@@ -293,6 +293,11 @@ export class Server {
     return this.busy.get(projectPath) ?? '';
   }
 
+  /** 所有项目里正占着写锁的事（一轮对话、渲染、拼接……）：重启装更新之前要告诉用户会打断什么。 */
+  activeWork(): { project: string; holder: string }[] {
+    return [...this.busy.entries()].map(([project, holder]) => ({ project, holder }));
+  }
+
   // ---- 当前项目 ----
 
   /** 已登记的项目副本；历史考试可沿明确来源读取对应项目的口播，不切换当前工作区。 */

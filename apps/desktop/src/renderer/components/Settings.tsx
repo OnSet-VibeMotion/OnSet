@@ -9,6 +9,7 @@ import { AgentOptionsSelect } from './AgentOptionsSelect';
 import type { RunAction } from './Preview';
 import '../settings.css';
 import { PluginSettings } from './Stations';
+import { UpdatePanel, useUpdateState } from './Updates';
 
 /**
  * 设置页：左边按用途分块导航（AI 助手、画面渲染、配音与字幕、外观、功能与插件），右边一块一块往下排，滚到哪块左边亮哪块。
@@ -113,6 +114,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
   // 哪几项点了「只给这个项目换」：没单独改过的项默认只露一个下拉框。
   const [opened, setOpened] = useState<Set<string>>(new Set());
   const body = useRef<HTMLDivElement>(null);
+  const update = useUpdateState();
 
   const reload = () =>
     api<SettingsResponse>('/api/settings').then(
@@ -226,6 +228,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
             {g.keys.length > 0 && <div className="settings-card">{rowsOf(g).map(renderRow)}</div>}
             {g.id === 'ai' && <DirectorServices version={version} onChange={() => { void reload(); onAgentsChanged?.(); }} />}
             {g.id === 'look' && <SkinPicker version={version} />}
+            {g.id === 'network' && <UpdatePanel state={update} />}
             {g.id === 'network' && <MachineSettings rows={data.machine ?? []} onSaved={() => void reload()} />}
             {g.id === 'plugins' && <PluginSettings version={version} onChanged={onPluginsChanged} run={project ? run : undefined} onOpenPage={project ? onOpenPage : undefined} />}
           </section>

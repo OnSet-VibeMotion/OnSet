@@ -41,6 +41,7 @@ import { Tasks } from './components/Tasks';
 import { BrandMark } from './components/BrandMark';
 import { WindowsApplicationMenu, WindowsWindowControls } from './components/WindowsChrome';
 import { canReveal, revealInFinder, revealLabel, setRevealErrorHandler } from './reveal';
+import { updateNeedsAttention, useUpdateState } from './components/Updates';
 import type {
   AgentChoice,
   AgentsResponse,
@@ -104,6 +105,8 @@ function recall(projectId: string): string {
 
 export function App() {
   const [connected, setConnected] = useState(true);
+  // 客户端有新版本或已经下好：齿轮上点一个小点（设置页「网络与更新」里装）。
+  const updateDot = updateNeedsAttention(useUpdateState());
   const [projects, setProjects] = useState<Project[]>([]);
   const [summaries, setSummaries] = useState<Record<string, ProjectSummary>>({});
   const [defaultParent, setDefaultParent] = useState('');
@@ -784,8 +787,9 @@ export function App() {
         )}
         <WindowsApplicationMenu />
         <Tasks tasks={tasks} onCancel={(id) => run(`/api/tasks/${id}/cancel`)} onOpenMemory={() => { setPanelOpen(true); setTab('memory'); }} />
-        <button className="ghost icon settings-trigger" id="settings-trigger" title="设置（⌘,）" aria-label="设置" onClick={() => setSettingsOpen(true)}>
+        <button className="ghost icon settings-trigger" id="settings-trigger" title={updateDot ? '设置（⌘,）· 有新版本' : '设置（⌘,）'} aria-label="设置" onClick={() => setSettingsOpen(true)}>
           <Icon name="settings" size={14} />
+          {updateDot && <span className="update-dot" aria-label="有新版本" />}
         </button>
         {/* 连上了是常态，不占位置；只在断开时说一句。 */}
         {!connected && (
