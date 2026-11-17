@@ -55,6 +55,7 @@ function backend() {
   const settings = (): SettingsResponse => ({
     file: '/tmp/onset/settings.conf',
     has_project: false,
+    machine: [],
     rows: [
       row('ORCHESTRATOR', '对话助手', toolOptions, 'claude'),
       row('ORCHESTRATOR_MODEL', '对话助手的模型', [], '', 'ORCHESTRATOR'),

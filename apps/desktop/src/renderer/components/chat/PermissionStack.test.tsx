@@ -19,6 +19,7 @@ function settings(global: string): SettingsResponse {
   return {
     file: '/Users/me/.local/share/onset/settings.conf',
     has_project: true,
+    machine: [],
     rows: [
       {
         key: 'AUTO_APPROVE',

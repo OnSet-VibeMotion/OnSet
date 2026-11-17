@@ -28,12 +28,11 @@ jobs:
         include:
           - platform: macos
             runner: macos-latest
-            args: --mac dmg --arm64 --x64
-            extension: dmg
+            # zip 是给自动更新的（Squirrel.Mac 只认 zip），dmg 给第一次下载安装。
+            args: --mac dmg zip --arm64 --x64
           - platform: windows
             runner: windows-latest
             args: --win nsis --x64
-            extension: exe
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
@@ -107,6 +106,23 @@ jobs:
             spctl --assess --verbose --type execute "$app"
             xcrun stapler validate "$app"
           done
+      # 自动更新下载的是 zip：解开再验一遍，zip 里的应用没有公证票据时用户点更新会失败。
+      - name: Verify macOS update archives
+        if: matrix.platform == 'macos'
+        working-directory: apps/desktop/release
+        run: |
+          version="${RELEASE_TAG#v}"
+          for arch in arm64 x64; do
+            zip="OnSet-${version}-${arch}.zip"
+            test -s "$zip" || { echo "Missing update archive: $zip" >&2; exit 1; }
+            grep -q "$zip" latest-mac.yml || { echo "latest-mac.yml does not list $zip" >&2; exit 1; }
+            dir="$(mktemp -d)"
+            ditto -x -k "$zip" "$dir"
+            codesign --verify --deep --strict --verbose=2 "$dir/片场.app"
+            spctl --assess --verbose --type execute "$dir/片场.app"
+            xcrun stapler validate "$dir/片场.app"
+            rm -rf "$dir"
+          done
       # Windows signing uses a separate certificate and is not configured yet.
       - name: Package Windows desktop
         if: matrix.platform == 'windows'
@@ -115,7 +131,13 @@ jobs:
       - uses: actions/upload-artifact@v5
         with:
           name: release-${{ matrix.platform }}
-          path: apps/desktop/release/*.${{ matrix.extension }}
+          # 安装包、自动更新用的 zip、差分下载的 blockmap 与更新元数据（latest-mac.yml / latest.yml）。
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest*.yml
           if-no-files-found: error
           retention-days: 7
 
@@ -140,11 +162,18 @@ jobs:
         shell: bash
         run: |
           version="${RELEASE_TAG#v}"
-          files=("OnSet-${version}-arm64.dmg" "OnSet-${version}-x64.dmg" "OnSet-${version}-windows-x64-setup.exe")
-          for file in "${files[@]}"; do
-            test -s "$file" || { echo "Missing installer: $file" >&2; exit 1; }
+          installers=("OnSet-${version}-arm64.dmg" "OnSet-${version}-x64.dmg" "OnSet-${version}-windows-x64-setup.exe")
+          # 客户端自动更新读 latest-mac.yml / latest.yml，再按里面的文件名下载 zip / exe，blockmap 用来差分下载。
+          updates=("OnSet-${version}-arm64.zip" "OnSet-${version}-x64.zip" latest-mac.yml latest.yml)
+          for file in "${installers[@]}" "${updates[@]}"; do
+            test -s "$file" || { echo "Missing release file: $file" >&2; exit 1; }
           done
-          sha256sum "${files[@]}" > checksums.txt
+          grep -q "^version: ${version}$" latest-mac.yml || { echo "latest-mac.yml is not for ${version}" >&2; exit 1; }
+          grep -q "^version: ${version}$" latest.yml || { echo "latest.yml is not for ${version}" >&2; exit 1; }
+          shopt -s nullglob
+          blockmaps=(*.blockmap)
+          files=("${installers[@]}" "${updates[@]}" "${blockmaps[@]}")
+          sha256sum "${installers[@]}" "OnSet-${version}-arm64.zip" "OnSet-${version}-x64.zip" > checksums.txt
           if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${files[@]}" checksums.txt --clobber
           else

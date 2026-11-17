@@ -463,4 +463,3 @@ describe('configureMcode', () => {
     expect(acpModel(opened())).toBe('minimax/MiniMax-M3.1-Flash');
   });
 });
-

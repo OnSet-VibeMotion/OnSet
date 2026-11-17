@@ -23,6 +23,46 @@ export const GlobalKeys = ['ORCHESTRATOR', 'ORCHESTRATOR_MODEL', 'ORCHESTRATOR_O
 export type GlobalKey = (typeof GlobalKeys)[number];
 
 /**
+ * 只属于这台电脑的设置（也写在 settings.conf，不进 config.load、没有「这个项目」一栏）：
+ * - NETWORK_PROXY：取插件中心目录、取插件的 git、检查客户端更新走的代理（http://、https://、socks5://）
+ * - PLUGIN_CATALOG_URL：插件中心目录地址，空是官方插件中心（flow/market.ts 的 DefaultCatalogURLs）
+ * - UPDATE_FEED_URL：客户端更新的地址，空是 GitHub Releases；填了按 electron-updater 的 generic 地址用（镜像）
+ * 同名环境变量优先。
+ */
+export const MachineKeys = ['NETWORK_PROXY', 'PLUGIN_CATALOG_URL', 'UPDATE_FEED_URL'] as const;
+export type MachineKey = (typeof MachineKeys)[number];
+
+export function isMachineKey(key: string): key is MachineKey {
+  return (MachineKeys as readonly string[]).includes(key);
+}
+
+/** 这台电脑的一项设置：环境变量 > settings.conf > 空。read 是读 KEY=VALUE 文件的函数（config.parseConfFile）。 */
+export function machineSetting(env: Record<string, string | undefined>, key: MachineKey, read: (file: string) => Record<string, string>): string {
+  const fromEnv = env[key]?.trim();
+  if (fromEnv) return fromEnv;
+  const file = settingsFile(env);
+  if (file === '') return '';
+  try {
+    return read(file)[key]?.trim() ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function validateMachineSetting(key: MachineKey, value: string): string {
+  if (value === '') return '';
+  if (/['"\s]/.test(value)) return `${key} 里不能有引号或空白`;
+  switch (key) {
+    case 'NETWORK_PROXY':
+      return /^(https?|socks5h?|socks4):\/\/[^/]+\/?$/.test(value) ? '' : '代理写成 http://主机:端口、https://… 或 socks5://…';
+    case 'PLUGIN_CATALOG_URL':
+      return /^(https:\/\/|file:\/\/\/)\S+\.json$/.test(value) ? '' : '插件目录地址要是 https://…/index.json（或本机的 file:///…/index.json）';
+    case 'UPDATE_FEED_URL':
+      return /^https:\/\/\S+$/.test(value) ? '' : '更新地址要是 https:// 开头';
+  }
+}
+
+/**
  * 内置默认：全局设置也没写时用它。配音按平台选（defaultTTSProvider：Apple Silicon 用本机 Breeze），
  * 其余与以前项目模板里写死的值相同。
  */
@@ -89,6 +129,7 @@ export function settingsFile(env: Record<string, string | undefined>): string {
 
 /** 一项设置的值合不合法；不合法时返回原因，合法返回空串。空值表示「不设」，总是合法。 */
 export function validateSetting(key: string, value: string): string {
+  if (isMachineKey(key)) return validateMachineSetting(key, value);
   if (!isGlobalKey(key)) return `不认识的设置项 ${key}（可设：${GlobalKeys.join(' ')}）`;
   if (value === '') return '';
   switch (key) {
@@ -140,7 +181,7 @@ export function writeGlobal(env: Record<string, string | undefined>, values: Rec
     if (value.trim() === '') delete current[key];
     else current[key] = value.trim();
   }
-  const lines = GlobalKeys.filter((k) => current[k] !== undefined && current[k] !== '').map((k) => `${k}=${current[k]}`);
+  const lines = [...GlobalKeys, ...MachineKeys].filter((k) => current[k] !== undefined && current[k] !== '').map((k) => `${k}=${current[k]}`);
   atomicWrite(file, header + lines.join('\n') + (lines.length > 0 ? '\n' : ''));
   return current;
 }

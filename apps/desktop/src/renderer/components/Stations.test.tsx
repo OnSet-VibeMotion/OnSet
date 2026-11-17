@@ -117,6 +117,9 @@ function run(over: Partial<StationRun>): StationRun {
 
 const stations = (...list: StationInfo[]): StationsResponse => ({ stations: list, problems: [] });
 
+/** 插件中心还没有目录（插件中心自己的界面在 Market.test.tsx 里测）。 */
+const noMarket = { catalog_url: '', custom_url: false, fetched_at: '', refreshing: false, error: '', installed_error: '', onset_version: 'dev', items: [] };
+
 const myPlugins = () => document.querySelector<HTMLElement>('section.stations[aria-label="我的插件"]')!;
 
 /** 等假发布的卡片出现在「我的插件」里。 */
@@ -144,6 +147,7 @@ describe('添加插件', () => {
     let installed = false;
     const backend = mockApi({
       '/api/stations': () => stations(...(installed ? [fakePublisher()] : [])),
+      '/api/market': noMarket,
       'POST /api/stations': (req: MockRequest) => ({ task_id: (req.body as { source: string }).source === `link:${folder}` ? 'fetch-ok' : 'fetch-bad' }),
       // 选错目录：沿用清单校验，取回失败。
       '/api/tasks/fetch-bad': task('fetch-bad', 'failed', { error: '/Users/me/插件 里没有 onset-station.json' }),
@@ -218,6 +222,7 @@ describe('详情与设置', () => {
     let current = fakePublisher();
     const backend = mockApi({
       '/api/stations': () => stations(current),
+      '/api/market': noMarket,
       'POST /api/stations/fake-publisher/settings': (req: MockRequest) => {
         const { key, value } = req.body as { key: string; value: unknown };
         current = { ...current, settings: current.settings.map((st) => (st.key !== key ? st : st.type === 'secret' ? { ...st, set: value !== '' } : { ...st, value: value as string })) };
@@ -275,6 +280,7 @@ describe('详情与设置', () => {
     let n = 0;
     const backend = mockApi({
       '/api/stations': () => stations(fakePublisher({ ops: fakePublisher().ops.map((o) => (o.name === 'accounts' && accountsRun ? { ...o, last_run: accountsRun } : o)) })),
+      '/api/market': noMarket,
       'POST /api/stations/fake-publisher/ops/accounts': () => {
         accountsRun = run({ data: { items: accounts } });
         return { task_id: `acc-${++n}` };
@@ -354,6 +360,7 @@ describe('插件页面与小窗', () => {
     let accountsRun: StationRun | undefined;
     const backend = mockApi({
       '/api/stations': () => stations({ ...station, ops: station.ops.map((o) => (o.name === 'accounts' && accountsRun ? { ...o, last_run: accountsRun } : o)) }),
+      '/api/market': noMarket,
       'POST /api/stations/fake-publisher/ops/accounts': () => {
         accountsRun = run({ data: { items: [{ title: '小号' }] } });
         return { task_id: 'acc' };

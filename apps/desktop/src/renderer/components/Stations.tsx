@@ -2,8 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { createPortal } from 'react-dom';
 import { Icon, type IconName } from './Icon';
 import { NativeDirectoryPicker } from './NativeDirectoryPicker';
+import { PluginMarket, useMarket } from './Market';
 import { api, errorText, post } from '../api';
-import type { BuiltinContents, ProgressState, ProjectState, Scene, StationInfo, StationOp, StationPageInfo, StationParam, StationPreview, StationRun, StationSetting, StationsResponse, Task } from '../types';
+import type { BuiltinContents, MarketItem, ProgressState, ProjectState, Scene, StationInfo, StationOp, StationPageInfo, StationParam, StationPreview, StationRun, StationSetting, StationsResponse, Task } from '../types';
 import { setPluginCommands } from './chat/complete';
 import { pluginVerb } from './chat/model';
 import type { RunAction } from './Preview';
@@ -566,11 +567,25 @@ export function PluginSettings({ version, onChanged, run, onOpenPage }: { versio
   const [open, setOpen] = useState<string>('');
   // 先取回、看清，再装：取回的插件放在暂存处，用户看过它自己的实情点「装上」才对所有项目生效。
   const [pending, setPending] = useState<StagedPlugin | null>(null);
+  const market = useMarket(version);
   const task = usePluginTask(() => {
     reload();
+    market.reload();
     onChanged?.();
   });
   const show = (result: unknown) => setPending(result as StagedPlugin);
+  // 插件中心里的一版：同样只取到暂存给你看（/api/market 换成 station_add / station_update），点「装上」才装。
+  const fromMarket = (kind: 'install' | 'update', item: MarketItem) => {
+    if (!item.latest || pending !== null || task.busy !== '') return;
+    task.start(`/api/market/${kind}`, kind === 'install' ? `取回「${item.name}」` : `取回「${item.name}」的新版本`, { id: item.id, commit: item.latest.commit }, show);
+  };
+  const marketUpdates = new Map((market.data?.items ?? []).filter((it) => it.state === 'update').map((it) => [it.id, it]));
+  // 插件中心说装着的那一版撤回了、或插件不再维护：「我的插件」里也照实说一句。
+  const marketWarnings = new Map(
+    (market.data?.items ?? [])
+      .filter((it) => it.state !== 'other_source' && (it.installed_yanked || (it.deprecated && it.installed_version)))
+      .map((it) => [it.id, it.installed_yanked ? `这一版已被作者撤回：${it.installed_yanked}` : `作者已不再维护：${it.deprecated}`]),
+  );
   const fetchPlugin = () => {
     const value = source.trim();
     if (value === '' || pending !== null || task.busy !== '') return;
@@ -666,6 +681,7 @@ export function PluginSettings({ version, onChanged, run, onOpenPage }: { versio
                       {placement(s)} · {s.version}
                       {needsSetup && <em className="station-needs"> · 还有设置没填</em>}
                     </span>
+                    {marketWarnings.has(s.id) && <em className="station-warn">{marketWarnings.get(s.id)}</em>}
                   </div>
                   <span className="station-badge">第三方</span>
                   <button
@@ -675,10 +691,16 @@ export function PluginSettings({ version, onChanged, run, onOpenPage }: { versio
                   >
                     详情与设置
                   </button>
-                  {!s.linked && (
-                    <button className="link" disabled={task.busy !== ''} onClick={() => task.start(`/api/stations/${encodeURIComponent(s.id)}/update`, '取回新版本', {}, show)}>
-                      更新
+                  {marketUpdates.has(s.id) ? (
+                    <button className="link station-market-update" disabled={task.busy !== '' || pending !== null} onClick={() => fromMarket('update', marketUpdates.get(s.id)!)}>
+                      更新到 {marketUpdates.get(s.id)!.latest?.version}
                     </button>
+                  ) : (
+                    !s.linked && (
+                      <button className="link" disabled={task.busy !== ''} onClick={() => task.start(`/api/stations/${encodeURIComponent(s.id)}/update`, '取回新版本', {}, show)}>
+                        更新
+                      </button>
+                    )
                   )}
                   <button className="link danger" disabled={task.busy !== ''} onClick={() => task.start(`/api/stations/${encodeURIComponent(s.id)}/remove`, '去掉插件')}>
                     去掉
@@ -809,6 +831,7 @@ export function PluginSettings({ version, onChanged, run, onOpenPage }: { versio
       <p className="stations-source-help">支持 Git 地址或本地文件夹。本地文件夹需包含 onset-station.json，无需 Git；选好后点「添加」查看插件详情。</p>
       {pending && <StagedConfirm staged={pending} onInstall={install} onCancel={cancel} />}
     </section>
+    <PluginMarket market={market} busy={task.busy !== '' || pending !== null} onInstall={(it) => fromMarket('install', it)} onUpdate={(it) => fromMarket('update', it)} />
     </>
   );
 }

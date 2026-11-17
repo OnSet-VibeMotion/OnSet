@@ -6,11 +6,49 @@
  * 只能由用户触发的操作（发布这类对外动作）也只有界面上的按钮经 station_run 执行。
  * 编排工具能用的那些操作由工具服务登记成 x_<站>_<操作>，执行时同样落到 station_run（toolsmcp.ts）。
  */
+import fs from 'node:fs';
 import path from 'node:path';
+import { usableGit } from '@onset/engine/toolpath';
+import * as config from '@onset/engine/config';
 import * as flow from '@onset/engine/flow';
 import { defineGroup } from './ops/cli';
 import { defineOp, ParamError } from './ops/op';
 import { projectRoot, str } from './ops/common';
+
+/** 取插件用的环境：设置里的 NETWORK_PROXY 只给 git。 */
+function fetchEnv(): Record<string, string | undefined> {
+  return flow.withGitProxy(process.env, config.machineSetting(process.env, 'NETWORK_PROXY', config.parseConfFile));
+}
+
+/**
+ * 插件中心给了内容摘要、来源是 GitHub 上的某个 commit：先下压缩包（不用 git），摘要对上了交给暂存。
+ * 下不来或对不上时，有能用的 git 就退回克隆（克隆照旧核对 commit），没有就报两边的原因。返回取好的目录与要清掉的临时目录。
+ */
+async function prefetch(spec: string, digest: string, log: (line: string) => void, signal?: AbortSignal): Promise<{ dir?: string; cleanup: () => void }> {
+  const url = digest === '' ? '' : flow.githubArchiveURL(spec);
+  if (url === '') return { cleanup: () => {} };
+  const tmp = fs.mkdtempSync(path.join(flow.stationsDir(process.env), '.fetch-'));
+  const cleanup = () => fs.rmSync(tmp, { recursive: true, force: true });
+  const dir = path.join(tmp, 'src');
+  try {
+    await flow.fetchArchive(url, digest, dir, process.env, { proxy: config.machineSetting(process.env, 'NETWORK_PROXY', config.parseConfFile), log, signal });
+    return { dir, cleanup };
+  } catch (err) {
+    if (signal?.aborted) {
+      cleanup();
+      throw err;
+    }
+    if (usableGit(process.env) === '') {
+      cleanup();
+      throw new Error(`下载插件压缩包没有成功（${(err as Error).message}），这台电脑上也没有能用的 git，取不了这个插件。可以在设置「网络与更新」里填代理后再试`);
+    }
+    log(`下载插件压缩包没有成功（${(err as Error).message}），改用 git 克隆`);
+    return { cleanup };
+  }
+}
+
+const commitParam = { type: 'string' as const, description: '要求取回的 commit（从插件中心装时给，对不上就不装）' };
+const digestParam = { type: 'string' as const, description: '插件中心记的内容摘要（sha256:…）；给了且来源是 GitHub 上的 commit 时先下压缩包，不用 git' };
 
 defineGroup({
   path: ['station'],
@@ -53,13 +91,28 @@ defineOp({
   description: `来源可以是 link:/绝对路径（本机目录，开发用，不核对内容）、github:owner/repo#ref 或 git 地址#ref。
 只取回到用户级目录的暂存处（${flow.StationsDirEnv} 可覆盖）并校验清单，列出它的操作、页面权限、实验性能力、钩子、定时、渲染技能、带来的做法与风格库、
 在路线上的位置；不写 ${flow.InstalledFile}，不参与任何项目。看过之后用 station_install 装上，或 station_discard 取消。`,
-  examples: ['station_add({"source": "github:someone/onset-publisher#v0.1.0"})', 'station_add({"source": "link:/Users/me/dev/my-station"})'],
+  examples: [
+    'station_add({"source": "github:someone/onset-publisher#v0.1.0"})',
+    'station_add({"source": "link:/Users/me/dev/my-station"})',
+    'station_add({"source": "github:someone/onset-publisher#0123456789abcdef0123456789abcdef01234567", "expect_id": "onset-publisher", "expect_commit": "0123456789abcdef0123456789abcdef01234567"})',
+  ],
   scopes: ['cli'],
   params: {
     source: { type: 'string', description: '来源', required: true, positional: 0 },
+    expect_id: { type: 'string', description: '要求取回的插件 id（从插件中心装时给，对不上就不装）' },
+    expect_commit: commitParam,
+    expect_digest: digestParam,
   },
-  run: (p, { out }) => {
-    const staged = flow.stageStation(str(p.source), process.env, (line) => out.write(line + '\n'));
+  run: async (p, { out, signal }) => {
+    const expect = { id: str(p.expect_id), commit: str(p.expect_commit) };
+    const log = (line: string) => out.write(line + '\n');
+    const got = await prefetch(str(p.source), str(p.expect_digest), log, signal);
+    let staged: flow.Staged;
+    try {
+      staged = flow.stageStation(str(p.source), fetchEnv(), log, expect, got.dir);
+    } finally {
+      got.cleanup();
+    }
     writePreview(out, staged.preview);
     out.write(`还没有装上。确认装上：station_install({"staged": "${staged.token}"})；不装：station_discard({"staged": "${staged.token}"})\n`);
     return { data: { staged: staged.token, preview: staged.preview } };
@@ -70,16 +123,29 @@ defineOp({
   name: 'station_update',
   cli: ['station', 'update'],
   summary: '取回一个第三方插件的新版本给你看，确认后再换上（station_install）',
-  description: `按 ${flow.InstalledFile} 里记的来源重新取到暂存处：来源写的是分支时拿到它现在的 commit，写的是 tag 时 tag 被移动过才会变。
+  description: `按 ${flow.InstalledFile} 里记的来源（或给的 source，插件中心的新一版）重新取到暂存处：来源写的是分支时拿到它现在的 commit，写的是 tag 时 tag 被移动过才会变。
 列出版本、commit、新申请的权限与新用到的实验性能力；已装的那一版不动，用 station_install 换上，或 station_discard 取消。
 link: 来源是本机目录，改动立即生效，不需要更新。`,
-  examples: ['station_update({"id": "onset-publisher"})'],
+  examples: [
+    'station_update({"id": "onset-publisher"})',
+    'station_update({"id": "onset-publisher", "source": "github:someone/onset-publisher#0123456789abcdef0123456789abcdef01234567", "expect_commit": "0123456789abcdef0123456789abcdef01234567"})',
+  ],
   scopes: ['cli'],
   params: {
     id: { type: 'string', description: '插件的 id', required: true, positional: 0 },
+    source: { type: 'string', description: '新一版的来源（插件中心给的 <仓库>#<commit>）；必须与已装的是同一个仓库，不写按已装时记的来源' },
+    expect_commit: commitParam,
+    expect_digest: digestParam,
   },
-  run: (p, { out }) => {
-    const staged = flow.stageUpdate(str(p.id), process.env, (line) => out.write(line + '\n'));
+  run: async (p, { out, signal }) => {
+    const log = (line: string) => out.write(line + '\n');
+    const got = await prefetch(str(p.source), str(p.expect_digest), log, signal);
+    let staged: flow.Staged;
+    try {
+      staged = flow.stageUpdate(str(p.id), fetchEnv(), log, { source: str(p.source), expect: { commit: str(p.expect_commit) }, prepared: got.dir });
+    } finally {
+      got.cleanup();
+    }
     const d = staged.preview.update!;
     if (!d.changed) out.write(`第三方插件 ${d.id} 已是来源上的最新版本（${d.new_version}，commit ${d.commit_after.slice(0, 12)}）\n`);
     else {

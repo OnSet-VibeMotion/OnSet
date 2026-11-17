@@ -96,6 +96,44 @@ function describe(key: config.GlobalKey): { label: string; hint: string; options
   }
 }
 
+/** 只属于这台电脑的几项（设置页「网络」）：名字与说明。 */
+const machineRows: Record<config.MachineKey, { label: string; hint: string; placeholder: string }> = {
+  NETWORK_PROXY: {
+    label: '代理',
+    hint: '取插件中心、下载插件、检查客户端更新时走的代理；留空用系统代理',
+    placeholder: 'http://127.0.0.1:7890',
+  },
+  PLUGIN_CATALOG_URL: {
+    label: '插件中心地址',
+    hint: '留空用官方插件中心（GitHub 连不上时自动换 jsDelivr）；也可以填公司内部的镜像',
+    placeholder: 'https://…/index.json',
+  },
+  UPDATE_FEED_URL: {
+    label: '客户端更新地址',
+    hint: '留空从 GitHub 发布页检查更新；GitHub 连不上时可以填镜像地址',
+    placeholder: 'https://…/',
+  },
+};
+
+function machineJSON(env: Record<string, string | undefined>) {
+  let file: Record<string, string> = {};
+  try {
+    const f = config.settingsFile(env);
+    if (f !== '') file = config.parseConfFile(f);
+  } catch {
+    file = {};
+  }
+  return config.MachineKeys.map((key) =>
+    goMap({
+      key,
+      ...machineRows[key],
+      value: file[key] ?? '',
+      // 同名环境变量盖住了设置：页面照实说，不假装改了有用。
+      overridden: !!env[key]?.trim(),
+    }),
+  );
+}
+
 export function settingsAPI(s: Server, request: Request): Response {
   if (request.method !== 'GET') return methodNotAllowed('GET');
   const env = envMap();
@@ -111,6 +149,7 @@ export function settingsAPI(s: Server, request: Request): Response {
     goMap({
       file: config.settingsFile(env),
       has_project: root !== '',
+      machine: machineJSON(env),
       rows: rows.map((r) => {
         const d = describe(r.key);
         // 已装的第三方插件提供的配音、对齐，也列进可选项。
@@ -170,6 +209,7 @@ export async function settingsProjectAPI(s: Server, request: Request): Promise<R
       return writeTaskError(err);
     }
   }
+  if (config.isMachineKey(kv.key)) return writeError(400, 'invalid_setting', `${kv.key} 只属于这台电脑，不能按项目设`);
   const problem = config.validateSetting(kv.key, kv.value);
   if (problem !== '') return writeError(400, 'invalid_setting', problem);
   const label = config.isGlobalKey(kv.key) ? describe(kv.key).label : kv.key;

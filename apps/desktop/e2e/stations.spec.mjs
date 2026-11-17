@@ -69,6 +69,58 @@ test('a git plugin can be previewed, cancelled, installed and updated using the 
   expect(installedPlugins(sandbox)).toEqual(['fake-publisher']);
 });
 
+test('a plugin from the plugin center goes through the same preview, and so does its update', async ({ page, sandbox }) => {
+  test.skip(spawnSync('git', ['--version']).status !== 0, 'requires git');
+  const repo = path.join(sandbox.root, 'market-repo');
+  fs.cpSync(fake, repo, { recursive: true });
+  const git = (...args) => {
+    const result = spawnSync('git', ['-c', 'core.hooksPath=', '-c', 'commit.gpgsign=false', ...args], {
+      cwd: repo,
+      encoding: 'utf8',
+      env: { ...process.env, GIT_AUTHOR_NAME: 'test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'test', GIT_COMMITTER_EMAIL: 'test@example.invalid' },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    return result.stdout.trim();
+  };
+  git('init', '-q', '-b', 'main');
+  git('add', '.');
+  git('commit', '-qm', 'v1');
+  const v1 = git('rev-parse', 'HEAD');
+  const writeCatalog = (versions) =>
+    fs.writeFileSync(sandbox.catalog, JSON.stringify({ schema: 1, plugins: [{ id: 'fake-publisher', name: '假发布', description: '只写回执，不联网', tags: ['发布'], source: pathToFileURL(repo).href, versions }] }));
+  writeCatalog([{ version: '0.1.0', commit: v1 }]);
+
+  await page.locator('#settings-trigger').click();
+  const market = page.locator('#settings-dialog section.stations[aria-label="插件中心"]');
+  const mine = page.locator('#settings-dialog section.stations[aria-label="我的插件"]');
+  const confirm = mine.getByRole('alertdialog', { name: '确认添加插件' });
+  const card = market.locator('li[data-market="fake-publisher"]');
+  await expect(card).toContainText('假发布');
+  await card.getByRole('button', { name: '安装' }).click();
+  await expect(confirm).toContainText(v1.slice(0, 12));
+  // 看过之前不装。
+  expect(installedPlugins(sandbox)).toEqual([]);
+  await confirm.getByRole('button', { name: '装上', exact: true }).click();
+  await expect.poll(() => installedPlugins(sandbox)).toEqual(['fake-publisher']);
+  await expect(card).toContainText('已装 0.1.0');
+
+  const file = path.join(repo, 'onset-station.json');
+  const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  manifest.version = '0.2.0';
+  fs.writeFileSync(file, JSON.stringify(manifest));
+  git('commit', '-qam', 'v2');
+  const v2 = git('rev-parse', 'HEAD');
+  writeCatalog([{ version: '0.1.0', commit: v1 }, { version: '0.2.0', commit: v2 }]);
+  await market.getByRole('button', { name: '刷新' }).click();
+  const update = mine.locator('li[data-station="fake-publisher"]').getByRole('button', { name: '更新到 0.2.0' });
+  await update.click();
+  await expect(confirm).toContainText('0.2.0');
+  await confirm.getByRole('button', { name: '换上', exact: true }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect.poll(async () => (await api(page, '/api/stations')).body.stations.find((s) => s.id === 'fake-publisher')?.commit).toBe(v2);
+  await expect(card).toContainText('已装 0.2.0');
+});
+
 /**
  * 点插件页面里的按钮，直到宿主有反应。Chromium 按合成器的命中数据把点击转进进程外的 iframe，后台运行的测试窗口里
  * 这份数据会落后于布局：iframe 刚挂上、刚挪过位置（面板滑入）时，Playwright 在 iframe 里算好的坐标点下去，事件落在
