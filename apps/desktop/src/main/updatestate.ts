@@ -12,7 +12,7 @@ export const ReleasesURL = `https://github.com/${ReleaseOwner}/${ReleaseRepo}/re
 export const FirstCheckDelayMs = 30_000;
 export const CheckIntervalMs = 6 * 60 * 60 * 1000;
 
-export type UpdateStatus = 'disabled' | 'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'downloaded' | 'error';
+export type UpdateStatus = 'disabled' | 'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error';
 
 export interface UpdateState {
   status: UpdateStatus;

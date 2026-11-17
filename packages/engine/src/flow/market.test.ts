@@ -2,6 +2,8 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { envMap } from '../envutil';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fetchArchive, githubArchiveURL, installStaged, readInstalled, stageStation, stageUpdate, stationsDir, StagingDir, treeDigest, withGitProxy } from './index';
 import type { InstalledEntry } from './installed';
@@ -148,9 +150,9 @@ describe('fetching the catalog', () => {
     const dir = temp('onset-catalog-');
     fs.writeFileSync(path.join(dir, 'index.json'), catalogText());
     const env = { ONSET_STATIONS_DIR: temp('onset-stations-') };
-    const got = await market.refreshCatalog(env, [`file://${dir}/index.json`]);
+    const got = await market.refreshCatalog(env, [pathToFileURL(path.join(dir, 'index.json')).href]);
     expect(got.catalog.plugins).toHaveLength(1);
-    expect(market.assetURL(got.url, 'icons/a.png')).toBe(`file://${dir}/icons/a.png`);
+    expect(market.assetURL(got.url, 'icons/a.png')).toBe(pathToFileURL(path.join(dir, 'icons/a.png')).href);
   });
 
   it('only takes real images, by their bytes', async () => {
@@ -199,34 +201,34 @@ describe('installing from the catalog goes through staging', () => {
     const v1 = commit('v1');
     const env = { ...process.env, ONSET_STATIONS_DIR: temp('onset-stations-') };
     const staging = () => fs.readdirSync(path.join(stationsDir(env), StagingDir)).filter((n) => /^[0-9a-f]{16}$/.test(n));
-    expect(() => stageStation(`file://${repo}#${v1}`, env, () => {}, { id: 'something-else' })).toThrow(/不是插件中心列的 something-else/);
-    expect(() => stageStation(`file://${repo}#main`, env, () => {}, { commit: 'e'.repeat(40) })).toThrow(/不是插件中心列的/);
+    expect(() => stageStation(`${pathToFileURL(repo).href}#${v1}`, env, () => {}, { id: 'something-else' })).toThrow(/不是插件中心列的 something-else/);
+    expect(() => stageStation(`${pathToFileURL(repo).href}#main`, env, () => {}, { commit: 'e'.repeat(40) })).toThrow(/不是插件中心列的/);
     // 对不上的暂存已清掉。
     expect(staging()).toEqual([]);
-    const ok = stageStation(`file://${repo}#${v1}`, env, () => {}, { id: 'fake-publisher', commit: v1 });
+    const ok = stageStation(`${pathToFileURL(repo).href}#${v1}`, env, () => {}, { id: 'fake-publisher', commit: v1 });
     // 只是暂存，还没装。
     expect(readInstalled(stationsDir(env)).plugins).toEqual([]);
     installStaged(ok.token, env);
-    expect(readInstalled(stationsDir(env)).plugins[0]).toMatchObject({ id: 'fake-publisher', commit: v1, source: `file://${repo}#${v1}` });
+    expect(readInstalled(stationsDir(env)).plugins[0]).toMatchObject({ id: 'fake-publisher', commit: v1, source: `${pathToFileURL(repo).href}#${v1}` });
   });
 
   it.skipIf(!hasGit)('updates to the commit the catalog lists, from the same repository only', () => {
     const { repo, commit, edit } = gitRepo();
     const v1 = commit('v1');
     const env = { ...process.env, ONSET_STATIONS_DIR: temp('onset-stations-') };
-    installStaged(stageStation(`file://${repo}#${v1}`, env).token, env);
+    installStaged(stageStation(`${pathToFileURL(repo).href}#${v1}`, env).token, env);
     edit((m) => (m.version = '0.2.0'));
     const v2 = commit('v2');
     // 钉在 commit 上的来源，照旧按已装的来源取不到新版本。
     expect(stageUpdate('fake-publisher', env).preview.update?.changed).toBe(false);
     const other = gitRepo();
-    expect(() => stageUpdate('fake-publisher', env, () => {}, { source: `file://${other.repo}#main` })).toThrow(/不能换成/);
-    expect(() => stageUpdate('fake-publisher', env, () => {}, { source: `file://${repo}#${v2}`, expect: { commit: v1 } })).toThrow(/不是插件中心列的/);
-    const up = stageUpdate('fake-publisher', env, () => {}, { source: `file://${repo}#${v2}`, expect: { commit: v2 } });
+    expect(() => stageUpdate('fake-publisher', env, () => {}, { source: `${pathToFileURL(other.repo).href}#main` })).toThrow(/不能换成/);
+    expect(() => stageUpdate('fake-publisher', env, () => {}, { source: `${pathToFileURL(repo).href}#${v2}`, expect: { commit: v1 } })).toThrow(/不是插件中心列的/);
+    const up = stageUpdate('fake-publisher', env, () => {}, { source: `${pathToFileURL(repo).href}#${v2}`, expect: { commit: v2 } });
     expect(up.preview.update).toMatchObject({ changed: true, old_version: '0.1.0', new_version: '0.2.0', commit_after: v2 });
     expect(readInstalled(stationsDir(env)).plugins[0].commit).toBe(v1);
     installStaged(up.token, env);
-    expect(readInstalled(stationsDir(env)).plugins[0]).toMatchObject({ version: '0.2.0', commit: v2, source: `file://${repo}#${v2}` });
+    expect(readInstalled(stationsDir(env)).plugins[0]).toMatchObject({ version: '0.2.0', commit: v2, source: `${pathToFileURL(repo).href}#${v2}` });
   });
 });
 
@@ -294,11 +296,11 @@ describe('installing without git', () => {
     const file = path.join(root, 'plugin.tar.gz');
     const r = spawnSync('tar', ['-czf', file, '-C', root, path.basename(top)]);
     if (r.status !== 0) throw new Error(String(r.stderr));
-    return { url: `file://${file}`, digest: treeDigest(top) };
+    return { url: pathToFileURL(file).href, digest: treeDigest(top) };
   }
 
   it.skipIf(!hasTar)('downloads, checks the digest and stages without cloning', async () => {
-    const env = { ...process.env, ONSET_STATIONS_DIR: temp('onset-stations-'), PATH: '/usr/bin:/bin' };
+    const env = { ...envMap(), ONSET_STATIONS_DIR: temp('onset-stations-') };
     const { url, digest } = pack();
     const dest = path.join(temp('onset-fetch-'), 'src');
     await fetchArchive(url, digest, dest, env);

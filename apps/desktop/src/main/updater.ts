@@ -41,7 +41,7 @@ async function configure(): Promise<void> {
 }
 
 async function check(): Promise<void> {
-  if (downloading || ['checking', 'downloading', 'downloaded', 'disabled'].includes(state.status)) return;
+  if (downloading || ['checking', 'downloading', 'downloaded', 'installing', 'disabled'].includes(state.status)) return;
   publish({ status: 'checking', version: '', error: '' });
   try {
     await configure();
@@ -91,7 +91,11 @@ export function installUpdater(opts: UpdaterOptions): void {
         const busy = busyLines(opts.activeWork());
         if (busy.length > 0 && force !== true) return { ok: false, busy };
         // 关窗、走 before-quit / will-quit（停掉进行中的对话与任务、关插件网页），再由 Squirrel / NSIS 换上新版本并重新打开。
-        setImmediate(() => autoUpdater.quitAndInstall(false, true));
+        publish({ status: 'installing', error: '' });
+        setImmediate(() => {
+          try { autoUpdater.quitAndInstall(false, true); }
+          catch (err) { publish({ status: 'error', version: '', error: errorText(err) }); }
+        });
         return { ok: true };
       }
     }
@@ -119,6 +123,10 @@ export function installUpdater(opts: UpdaterOptions): void {
   });
   autoUpdater.on('error', (err: Error) => {
     // 下载中途出错：保留版本号，界面给「重试下载」；检查出错由 check() 的 catch 记。
+    if (state.status === 'installing') {
+      publish({ status: 'error', version: '', error: errorText(err) });
+      return;
+    }
     if (state.status === 'downloading' || state.status === 'checking') publish({ status: 'error', error: errorText(err) });
   });
 

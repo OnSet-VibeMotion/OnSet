@@ -42,7 +42,8 @@ export function UpdatePanel({ state }: { state: UpdateState | null }) {
   const act = (action: 'check' | 'download' | 'install' | 'open-release', force?: boolean) => window.onset?.updateAction?.(action, force);
   const install = async (force = false) => {
     const r = await act('install', force);
-    if (r && !r.ok && r.busy && r.busy.length > 0) setBusy(r.busy);
+    if (r?.ok) setBusy(null);
+    else if (r?.busy && r.busy.length > 0) setBusy(r.busy);
   };
   const releaseLink = (
     <button className="link" onClick={() => void act('open-release')}>
@@ -63,6 +64,7 @@ export function UpdatePanel({ state }: { state: UpdateState | null }) {
             {s.status === 'available' && `有新版本 ${s.version}`}
             {s.status === 'downloading' && `正在下载 ${s.version}…`}
             {s.status === 'downloaded' && `新版本 ${s.version} 已经下载好，重启后换上`}
+            {s.status === 'installing' && '正在准备安装，完成后重启…'}
             {s.status === 'error' && '没有成功'}
           </span>
         </div>
@@ -108,7 +110,7 @@ export function UpdatePanel({ state }: { state: UpdateState | null }) {
               <li key={b}>{b}</li>
             ))}
           </ul>
-          <span>打断的对话可以接着说，渲染了一半的镜头下次会接着做。也可以等它们做完再装；不装的话下次退出片场时会自动装上。</span>
+          <span>打断的对话可以接着说，渲染了一半的镜头下次会接着做。也可以等它们做完后，再点「重启并安装」。</span>
           <div className="update-actions">
             <button className="primary" onClick={() => void install(true)}>
               仍然重启

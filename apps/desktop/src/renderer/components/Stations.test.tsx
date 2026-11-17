@@ -425,6 +425,11 @@ describe('插件页面与小窗', () => {
       // 用户点的是 A：B 的请求不算，焦点不在它那里。
       expect(clickedInPluginPage(b, 100_000)).toBe(false);
       expect(clickedInPluginPage(null, 100_000)).toBe(false);
+      // B 抢焦点也不能借 A 的用户操作直接执行。多框架时无法证明归属。
+      b.focus();
+      expect(clickedInPluginPage(b, 100_000)).toBe(false);
+      b.remove();
+      a.focus();
       hostFocus.mockReturnValue(false);
       expect(clickedInPluginPage(a, 100_000)).toBe(false);
       hostFocus.mockReturnValue(true);
@@ -452,7 +457,8 @@ describe('插件页面与小窗', () => {
       await userEvent.click(within(screen.getByRole('alertdialog', { name: '插件请求执行' })).getByRole('button', { name: '不执行' }));
       await page.answer(sneaky).catch(() => {});
       resetPluginClicks();
-      // 用户点的就是这一页：直接执行。
+      // 另一个框架退出后，只剩这一页：亲手点击直接执行。
+      a.remove();
       frame.focus();
       const send = await page.ask({ type: 'run', op: 'send', params: { platform: 'douyin' } });
       expect((await page.answer(send)).result).toEqual({ started: true });

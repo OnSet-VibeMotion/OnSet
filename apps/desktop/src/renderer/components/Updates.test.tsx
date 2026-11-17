@@ -79,6 +79,11 @@ describe('版本更新', () => {
     b.push(base({ status: 'downloaded', version: '2.2.0', percent: 100 }));
     await user.click(screen.getByRole('button', { name: '重启并安装' }));
     expect(b.actions.at(-1)).toEqual(['install', false]);
+    b.push(base({ status: 'installing', version: '2.2.0' }));
+    expect(screen.getByRole('status').textContent).toContain('正在准备安装');
+    expect(screen.queryByRole('button', { name: '重启并安装' })).toBeNull();
+    b.push(base({ status: 'error', error: 'native preparation failed' }));
+    expect(screen.getByRole('button', { name: '检查更新' })).toBeTruthy();
   });
 
   it('重启会打断正在做的事时先列出来，用户说仍然重启才装', async () => {
@@ -92,6 +97,7 @@ describe('版本更新', () => {
     expect(screen.queryByRole('alertdialog')).toBeNull();
     await user.click(screen.getByRole('button', { name: '重启并安装' }));
     await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: '仍然重启' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(b.actions.filter(([a]) => a === 'install')).toEqual([
       ['install', false],
       ['install', false],

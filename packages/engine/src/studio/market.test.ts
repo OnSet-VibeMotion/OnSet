@@ -1,6 +1,7 @@
 import './testsupport';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { recordInstalled } from '../flow/installed';
 import * as market from '../flow/market';
@@ -51,7 +52,7 @@ afterEach(() => {
 describe('market API', () => {
   it('lists the catalog against what is installed and starts plugins through staging', async () => {
     const dir = tempDir();
-    vi.stubEnv('PLUGIN_CATALOG_URL', `file://${catalog(dir)}`);
+    vi.stubEnv('PLUGIN_CATALOG_URL', pathToFileURL(catalog(dir)).href);
     const s = studio();
     try {
       // 第一次没有缓存：立刻返回，后台去取。
@@ -132,9 +133,9 @@ describe('market API', () => {
 
 
 it('refreshes a changed catalog immediately despite the previous attempt throttle', async () => {
-  vi.stubEnv('PLUGIN_CATALOG_URL', `file://${catalog(tempDir())}`);
+  vi.stubEnv('PLUGIN_CATALOG_URL', pathToFileURL(catalog(tempDir())).href);
   await startRefresh();
-  const next = `file://${catalog(tempDir())}`;
+  const next = pathToFileURL(catalog(tempDir())).href;
   vi.stubEnv('PLUGIN_CATALOG_URL', next);
   expect(marketJSON().refreshing).toBe(true);
   await startRefresh();

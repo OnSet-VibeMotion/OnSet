@@ -341,9 +341,10 @@ describe('tools', () => {
         'ProgramFiles(x86)': 'C:\\Program Files (x86)',
         ONSET_SETTINGS_FILE: 'E:\\片场\\settings.conf',
       });
-      const expected = 'mcp_servers.onset.env={"ProgramFiles(x86)"="C:\\\\Program Files (x86)",ONSET_SETTINGS_FILE="E:\\\\片场\\\\settings.conf"}';
-      expect(rendererInvocation('codex', 'p', false, { toolsServer: server })).toContain(expected);
-      expect(orchestratorInvocation('codex', { prompt: 'p', workdir: '/p', toolsServer: server }).argv).toContain(expected);
+      const expected = '"ProgramFiles(x86)"="C:\\\\Program Files (x86)",ONSET_SETTINGS_FILE="E:\\\\片场\\\\settings.conf"';
+      for (const argv of [rendererInvocation('codex', 'p', false, { toolsServer: server }), orchestratorInvocation('codex', { prompt: 'p', workdir: '/p', toolsServer: server }).argv]) {
+        expect(argv.find(arg => arg.startsWith('mcp_servers.onset.env='))).toContain(expected);
+      }
     });
 
     it.skipIf(process.platform !== 'win32')('authorizes only built-in renderer MCP tools while retaining the Codex shell sandbox', () => {

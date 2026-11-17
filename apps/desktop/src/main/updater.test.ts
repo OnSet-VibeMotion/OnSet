@@ -59,3 +59,15 @@ it('checks the new feed before downloading and does not download when it has no 
   expect(autoUpdater.setFeedURL).toHaveBeenLastCalledWith({ provider: 'generic', url: fake.feed });
   expect(autoUpdater.downloadUpdate).not.toHaveBeenCalled();
 });
+
+it('reports native installation preparation errors and allows a fresh check', async () => {
+  autoUpdater.emit('update-downloaded', { ...update, downloadedFile: '/tmp/update.zip' });
+  expect((await action('install', true)).ok).toBe(true);
+  expect(state().status).toBe('installing');
+  expect((await action('install', true)).ok).toBe(false);
+  await vi.advanceTimersByTimeAsync(0);
+  autoUpdater.emit('error', new Error('native preparation failed'));
+  expect(state()).toMatchObject({ status: 'error', version: '', error: 'native preparation failed' });
+  await action('check');
+  expect(state().status).toBe('available');
+});

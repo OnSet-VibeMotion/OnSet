@@ -48,7 +48,7 @@ describe('shared components', () => {
     expect(() => promoteComponent(f.root, f.one, 'cube-badge', '', false)).toThrow('组件目录要在镜头目录里');
     const dir = exportBadge(f.one);
     const first = promoteComponent(f.root, f.one, 'cube-badge', '', false);
-    expect(first).toMatchObject({ dir: 'production/shared/cube-badge', files: 2, replaced: false, unchanged: false });
+    expect(first).toMatchObject({ dir: path.join('production', 'shared', 'cube-badge'), files: 2, replaced: false, unchanged: false });
     expect(fs.readFileSync(path.join(f.root, 'production/shared/cube-badge/badge.js'), 'utf8')).toBe('export function badge() {}');
     expect(promoteComponent(f.root, f.one, 'cube-badge', '', false).unchanged).toBe(true);
     fs.writeFileSync(path.join(dir, 'badge.js'), 'export function badge() { return 2 }');
@@ -60,7 +60,7 @@ describe('shared components', () => {
     fs.rmSync(path.join(dir, 'README.md'));
     expect(() => promoteComponent(f.root, f.one, 'cube-badge', '', true)).toThrow('README.md');
     fs.writeFileSync(path.join(dir, 'README.md'), 'x');
-    fs.symlinkSync('/etc/hosts', path.join(dir, 'link.js'));
+    fs.symlinkSync(f.two, path.join(dir, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
     expect(() => promoteComponent(f.root, f.one, 'cube-badge', '', true)).toThrow('符号链接');
     expect(() => promoteComponent(f.root, f.one, 'cube-badge', '../two', true)).toThrow('组件目录要在镜头目录里');
   });

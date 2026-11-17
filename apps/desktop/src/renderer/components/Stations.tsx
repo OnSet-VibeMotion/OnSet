@@ -1044,8 +1044,8 @@ const maxAskChars = 4000;
  * 脚本调 click() 不算（e2e 实测：脚本点的读到 false，真点的读到 true）。但这个标记不分点在哪：用户刚在片场自己的界面上
  * 点过（比如点开这一页），页面一加载就请求执行也会读到 true，所以片场自己最近 5 秒有点击或按键时不认；
  * 这个标记也不分是哪个 iframe：同时挂着几个插件页面时，用户点了 A，B 的脚本趁机发来的请求也读到 true，
- * 所以还要求宿主的焦点就在发请求的那个 iframe 上（用户点进哪个 iframe，宿主的 activeElement 就是它）。
- * 焦点单独靠不住（页面脚本能把焦点抢到自己的 iframe 上，实测），两样都满足才算。
+ * 页面脚本能抢焦点，所以多框架时即使焦点在请求方也无法证明归属，必须确认；只有文档里唯一的 iframe 才直接放行。
+ * 单框架仍要求宿主有焦点、activeElement 就是请求方，排除后台窗口与宿主自己的操作。
  * 一次点击只放行一次，同一段时间里再来的请求照旧确认。
  */
 const activationWindowMs = 5000;
@@ -1060,6 +1060,7 @@ if (typeof window !== 'undefined') {
 export function clickedInPluginPage(frame: Element | null, now = Date.now()): boolean {
   if (typeof navigator === 'undefined' || !navigator.userActivation?.isActive) return false;
   if (!frame || !frame.ownerDocument.hasFocus() || frame.ownerDocument.activeElement !== frame) return false;
+  if (frame.ownerDocument.querySelectorAll('iframe').length !== 1) return false;
   if (now - lastHostInput < activationWindowMs || now - lastDirectRun < activationWindowMs) return false;
   lastDirectRun = now;
   return true;
