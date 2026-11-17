@@ -27,7 +27,7 @@ describe('projectContaining', () => {
     const root = tmp();
     const outer = path.join(root, 'outer'), inner = path.join(outer, 'inner');
     fs.mkdirSync(inner, { recursive: true });
-    fs.symlinkSync(inner, path.join(root, 'link'));
+    fs.symlinkSync(inner, path.join(root, 'link'), process.platform === 'win32' ? 'junction' : 'dir');
     const projects = [project(outer, 'outer'), project(inner, 'inner')];
     expect(projectContaining(projects, inner)?.id).toBe('inner');
     expect(projectContaining(projects, path.join(root, 'link'))?.id).toBe('inner');

@@ -132,6 +132,26 @@ if /bin/cat "../$peer/scene.json" >/dev/null 2>&1; then printf peer > leaked-pee
     expect((await onset('scene', 'audition-retry', a.id, '--slot', failed.slot)).code).not.toBe(0);
   });
 
+  it('recovers a two-stage contestant video before invoking either model again', async () => {
+    const { root, scene: dir } = setup();
+    expect((await onset('scene', 'audition', dir, '--contestants', 'claude:good,claude:student<claude:teacher', '--with-memory=false')).code).toBe(0);
+    const [a] = audition.list(root);
+    const c = a.contestants.find(c => c.designer !== '')!;
+    const sc = audition.contestantScene(root, c);
+    const attempt = scene.parseAttempt(fs.readFileSync(scene.attemptLog(sc)))!;
+    scene.writeAttempt(sc, { ...attempt, outcome: 'interrupted', error: 'lost process', exit_code: 3 });
+    c.status = 'done'; c.outcome = 'interrupted';
+    audition.save(root, a);
+    const design = path.join(root, c.workdir, 'design.md');
+    const before = fs.readFileSync(design);
+    fs.writeFileSync(lookPath('claude'), '#!/bin/sh\nexit 99\n');
+    const retry = await onset('scene', 'audition-retry', a.id, '--slot', c.slot);
+    expect(retry.code, retry.out).toBe(0);
+    expect(fs.readFileSync(design)).toEqual(before);
+    expect(scene.parseAttempt(fs.readFileSync(scene.attemptLog(sc)))!).toMatchObject({ resumed: 'verify', exit_code: 3 });
+    expect(audition.load(root, a.id).contestants.find(x => x.slot === c.slot)?.outcome).toBe('succeeded');
+  });
+
   it('renders every contestant with its own model, then votes and adopts the winner', async () => {
     const { root, scene: dir } = setup();
     const ran = await onset('scene', 'audition', 'scenes/scene-001', '--contestants', 'claude:opus-x,claude:sonnet-y,claude:broken-z');

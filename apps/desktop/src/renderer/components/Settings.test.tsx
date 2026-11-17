@@ -4,9 +4,10 @@
  * 渲染整个 App（没有打开项目，落在首页），后端是一张按真实接口形状写的假表：
  * 存下的模型服务决定 /api/agents 里制作人能不能选（同 studio/agents.ts），全局设置的写入记在 POST 请求体里。
  */
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test } from 'vitest';
+import { MachineSettings } from './Settings';
 import { App } from '../app';
 import { mockApi, type MockRequest } from '../testing';
 import type { AgentInfo, AgentService, AgentServicePreset, AgentServicesResponse, AgentsResponse, SettingRow, SettingsResponse, SetupStatus } from '../types';
@@ -180,4 +181,18 @@ test('sets the orchestrator options for the chosen tool', async () => {
   // 换成没有可调选项的工具（这张假表里的 codex 没给 option_specs）时照实说。
   await user.selectOptions(within(dialog).getByLabelText('全局对话助手'), 'codex');
   await waitFor(() => expect((within(dialog).getByLabelText('全局对话助手的选项') as HTMLSelectElement).textContent).toContain('没有可调的选项'));
+});
+
+
+test('preserves a newer machine-setting draft while an earlier save finishes', async () => {
+  let finish!: (value: unknown) => void;
+  mockApi({ 'POST /api/settings/global': () => new Promise(resolve => { finish = resolve; }) });
+  render(<MachineSettings rows={[{ key: 'NETWORK_PROXY', label: '代理', hint: '', placeholder: '', value: '', overridden: false }]} onSaved={() => {}} />);
+  const input = screen.getByRole('textbox');
+  fireEvent.change(input, { target: { value: 'https://first.example' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  await waitFor(() => expect(finish).toBeTypeOf('function'));
+  fireEvent.change(input, { target: { value: 'https://second.example' } });
+  await act(async () => finish({ ok: true }));
+  expect((input as HTMLInputElement).value).toBe('https://second.example');
 });

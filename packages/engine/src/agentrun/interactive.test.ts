@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { interactiveInvocation } from '../tools';
-import { ACPTranslator, CodebuddyUsage, acpModel, acpOutcome, acpPermissionTool, acpUsage, configureMcode, ensureModel, mcodeModelValue, runACP } from './acp';
+import { ACPTranslator, CodebuddyUsage, acpModel, acpOutcome, acpPermissionTool, acpUsage, configureMcode, ensureModel, mcodeAskBash, mcodeModelValue, runACP } from './acp';
 import { CodexTasks, codexDecision, codexItemEvents, runCodexApp } from './codexapp';
 import { commandAllowed, unwrapShell, type PermissionAnswer } from './interactive';
 import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, KindUsage, type Event } from './parse';
@@ -396,6 +396,8 @@ describe('interactive orchestrators', () => {
     expect(JSON.parse(turn.slice(2)).params.effort).toBe('xhigh');
     const plain = await fakeRun('codex', '整理资料', { decision: 'allow' });
     expect(JSON.parse(plain.raw.find((line) => line.includes('"thread/start"'))!.slice(2)).params.serviceTier).toBeUndefined();
+    const off = await fakeRun('codex', '整理资料', { decision: 'allow' }, { options: { fast: 'off' } });
+    expect(JSON.parse(off.raw.find(line => line.includes('"thread/start"'))!.slice(2)).params.serviceTier).toBeNull();
   });
 
   it.skipIf(process.platform !== 'win32')('preserves an actual Windows agent process failure', async () => {
@@ -421,7 +423,24 @@ describe('ensureModel', () => {
 
 // MiniMax Code 0.6.12 实测：模型值 m:<服务商>:<模型>:v:<变体>；用户自己的配置常是 bypassPermissions，安全模式要切回 Ask。
 describe('configureMcode', () => {
-  const env = { MINIMAX_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'onset-mcode-data-')) };
+  let env: { MINIMAX_DATA_DIR: string };
+  beforeEach(() => { env = { MINIMAX_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'onset-mcode-data-')) }; });
+  afterEach(() => { fs.rmSync(env.MINIMAX_DATA_DIR, { recursive: true, force: true }); });
+  it('preserves existing permissions when a replacement write fails', () => {
+    const file = path.join(env.MINIMAX_DATA_DIR, 'sessions', 's', 'permission.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const content = '{"version":2,"allow":[],"deny":[{"tool_name":"bash"}],"ask":[]}';
+    fs.writeFileSync(file, content);
+    const write = fs.writeFileSync;
+    const spy = vi.spyOn(fs, 'writeFileSync').mockImplementation(((name: fs.PathOrFileDescriptor) => {
+      write(name, 'partial');
+      throw new Error('disk full');
+    }) as typeof fs.writeFileSync);
+    try { expect(() => mcodeAskBash(env.MINIMAX_DATA_DIR, 's', true)).toThrow('disk full'); }
+    finally { spy.mockRestore(); }
+    expect(fs.readFileSync(file, 'utf8')).toBe(content);
+    expect(fs.readdirSync(path.dirname(file))).toEqual(['permission.json']);
+  });
   const rules = (): unknown => JSON.parse(fs.readFileSync(path.join(env.MINIMAX_DATA_DIR, 'sessions', 's', 'permission.json'), 'utf8'));
   const opened = () => ({
     configOptions: [

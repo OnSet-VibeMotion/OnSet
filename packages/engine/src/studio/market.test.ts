@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { recordInstalled } from '../flow/installed';
 import * as market from '../flow/market';
-import { resetMarketState, startRefresh } from './market';
+import { marketJSON, resetMarketState, startRefresh } from './market';
 import { startStudio, studioRequest, tempDir, waitStudioTask } from './testsupport';
 
 const c1 = 'a'.repeat(40);
@@ -124,4 +124,15 @@ describe('market API', () => {
       s.shutdown();
     }
   });
+});
+
+
+it('refreshes a changed catalog immediately despite the previous attempt throttle', async () => {
+  vi.stubEnv('PLUGIN_CATALOG_URL', `file://${catalog(tempDir())}`);
+  await startRefresh();
+  const next = `file://${catalog(tempDir())}`;
+  vi.stubEnv('PLUGIN_CATALOG_URL', next);
+  expect(marketJSON().refreshing).toBe(true);
+  await startRefresh();
+  expect(marketJSON().catalog_url).toBe(next);
 });

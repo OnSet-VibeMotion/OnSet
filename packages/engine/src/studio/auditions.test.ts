@@ -169,7 +169,7 @@ describe('auditions API', () => {
     const r = await studioRequest(s, 'GET', `/api/auditions/${a.id}/activity`);
     expect(r.status).toBe(200);
     expect(r.body.contestants[0]).toMatchObject({ state: 'unavailable', steps: [] });
-    expect(r.body.contestants[1]).toMatchObject({ state: 'starting', current: '准备渲染', steps: [] });
+    expect(r.body.contestants[1]).toMatchObject({ state: 'interrupted', current: '试镜已中断', steps: [] });
     expect((await studioRequest(s, 'POST', `/api/auditions/${a.id}/activity`, '{}')).status).toBe(405);
   });
 

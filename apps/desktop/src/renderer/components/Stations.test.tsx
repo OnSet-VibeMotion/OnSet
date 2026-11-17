@@ -412,6 +412,7 @@ describe('插件页面与小窗', () => {
   // 用户在插件页面里亲手点了执行按钮：浏览器在片场窗口上也记下「刚有用户操作」，脚本点的不会（e2e 实测）。
   it('用户刚在页面里亲手点的执行不再确认；分不清是谁点的、一次点击连发、调片场的操作与发话照旧确认', async () => {
     const activation = { isActive: false };
+    const hostFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     Object.defineProperty(navigator, 'userActivation', { value: activation, configurable: true });
     try {
       resetPluginClicks();
@@ -424,6 +425,9 @@ describe('插件页面与小窗', () => {
       // 用户点的是 A：B 的请求不算，焦点不在它那里。
       expect(clickedInPluginPage(b, 100_000)).toBe(false);
       expect(clickedInPluginPage(null, 100_000)).toBe(false);
+      hostFocus.mockReturnValue(false);
+      expect(clickedInPluginPage(a, 100_000)).toBe(false);
+      hostFocus.mockReturnValue(true);
       expect(clickedInPluginPage(a, 100_000)).toBe(true);
       expect(clickedInPluginPage(a, 102_000)).toBe(false);
       expect(clickedInPluginPage(a, 106_000)).toBe(true);
@@ -465,6 +469,7 @@ describe('插件页面与小窗', () => {
       expect(await screen.findByRole('alertdialog', { name: '插件请求执行' })).toBeTruthy();
       expect(runAction).toHaveBeenCalledTimes(1);
     } finally {
+      hostFocus.mockRestore();
       delete (navigator as { userActivation?: unknown }).userActivation;
       resetPluginClicks();
       for (const f of document.querySelectorAll('body > iframe')) f.remove();

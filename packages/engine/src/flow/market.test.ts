@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fetchArchive, githubArchiveURL, installStaged, readInstalled, stageStation, stageUpdate, stationsDir, StagingDir, treeDigest, withGitProxy } from './index';
 import type { InstalledEntry } from './installed';
 import * as market from './market';
@@ -194,8 +194,7 @@ function gitRepo(): { repo: string; commit: (msg: string) => string; edit: (fn: 
 }
 
 describe('installing from the catalog goes through staging', () => {
-  it('stages the listed commit and refuses a different id or commit', () => {
-    if (!hasGit) return;
+  it.skipIf(!hasGit)('stages the listed commit and refuses a different id or commit', () => {
     const { repo, commit } = gitRepo();
     const v1 = commit('v1');
     const env = { ...process.env, ONSET_STATIONS_DIR: temp('onset-stations-') };
@@ -211,8 +210,7 @@ describe('installing from the catalog goes through staging', () => {
     expect(readInstalled(stationsDir(env)).plugins[0]).toMatchObject({ id: 'fake-publisher', commit: v1, source: `file://${repo}#${v1}` });
   });
 
-  it('updates to the commit the catalog lists, from the same repository only', () => {
-    if (!hasGit) return;
+  it.skipIf(!hasGit)('updates to the commit the catalog lists, from the same repository only', () => {
     const { repo, commit, edit } = gitRepo();
     const v1 = commit('v1');
     const env = { ...process.env, ONSET_STATIONS_DIR: temp('onset-stations-') };
@@ -299,8 +297,7 @@ describe('installing without git', () => {
     return { url: `file://${file}`, digest: treeDigest(top) };
   }
 
-  it('downloads, checks the digest and stages without cloning', async () => {
-    if (!hasTar) return;
+  it.skipIf(!hasTar)('downloads, checks the digest and stages without cloning', async () => {
     const env = { ...process.env, ONSET_STATIONS_DIR: temp('onset-stations-'), PATH: '/usr/bin:/bin' };
     const { url, digest } = pack();
     const dest = path.join(temp('onset-fetch-'), 'src');
@@ -311,12 +308,31 @@ describe('installing without git', () => {
     expect(readInstalled(stationsDir(env)).plugins[0].digest).toBe(digest);
   });
 
-  it('throws away an archive whose content does not match', async () => {
-    if (!hasTar) return;
+  it.skipIf(!hasTar)('throws away an archive whose content does not match', async () => {
     const { url } = pack();
     const dest = path.join(temp('onset-fetch-'), 'src');
     await expect(fetchArchive(url, 'sha256:' + '0'.repeat(64), dest, process.env)).rejects.toThrow(/插件中心记的是/);
     expect(fs.existsSync(dest)).toBe(false);
     expect(fs.existsSync(dest + '.tar.gz')).toBe(false);
+  });
+});
+
+
+describe('bounded HTTP bodies', () => {
+  it('cancels oversized streams without waiting for their end', async () => {
+    const cancel = vi.fn();
+    const response = new Response(new ReadableStream({ start(c) { c.enqueue(new Uint8Array(9)); }, cancel }));
+    await expect(market.readHttpResponse(response, 8)).rejects.toThrow(/太大/);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+  it('rejects an oversized content length before reading', async () => {
+    const cancel = vi.fn();
+    const response = new Response(new ReadableStream({ cancel }), { headers: { 'content-length': '9' } });
+    await expect(market.readHttpResponse(response, 8)).rejects.toThrow(/太大/);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+  it('joins a body within the limit and forwards its metadata', async () => {
+    const response = new Response(new ReadableStream({ start(c) { c.enqueue(new Uint8Array([1, 2])); c.enqueue(new Uint8Array([3])); c.close(); } }), { headers: { 'content-type': 'image/png' } });
+    expect(await market.readHttpResponse(response, 3)).toEqual({ status: 200, contentType: 'image/png', body: new Uint8Array([1, 2, 3]) });
   });
 });

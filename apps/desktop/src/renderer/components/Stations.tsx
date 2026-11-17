@@ -1059,7 +1059,7 @@ if (typeof window !== 'undefined') {
 
 export function clickedInPluginPage(frame: Element | null, now = Date.now()): boolean {
   if (typeof navigator === 'undefined' || !navigator.userActivation?.isActive) return false;
-  if (!frame || frame.ownerDocument.activeElement !== frame) return false;
+  if (!frame || !frame.ownerDocument.hasFocus() || frame.ownerDocument.activeElement !== frame) return false;
   if (now - lastHostInput < activationWindowMs || now - lastDirectRun < activationWindowMs) return false;
   lastDirectRun = now;
   return true;

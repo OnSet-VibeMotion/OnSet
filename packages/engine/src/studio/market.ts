@@ -23,9 +23,10 @@ interface MarketState {
   error: string;
   /** 最近一次试着刷新的时间：失败后不在每次 GET 时重试。 */
   attempted: number;
+  attemptedURL: string;
 }
 
-const state: MarketState = { refreshing: null, error: '', attempted: 0 };
+const state: MarketState = { refreshing: null, error: '', attempted: 0, attemptedURL: '' };
 
 /** 自动刷新失败后，至少隔这么久才在 GET 时再试（手动刷新不受限）。 */
 const retryAfterMs = 5 * 60 * 1000;
@@ -39,6 +40,7 @@ export function resetMarketState(): void {
   state.refreshing = null;
   state.error = '';
   state.attempted = 0;
+  state.attemptedURL = '';
 }
 
 /** 开始刷新（已经在刷新就沿用）。返回那次刷新。 */
@@ -46,6 +48,8 @@ export function startRefresh(): Promise<void> {
   if (state.refreshing) return state.refreshing;
   const env = envMap();
   state.attempted = Date.now();
+  state.attemptedURL = settingURL(env);
+  state.error = '';
   state.refreshing = market
     .refreshCatalog(env, market.catalogURLs(settingURL(env)))
     .then(() => {
@@ -76,7 +80,7 @@ export function marketJSON(): Record<string, unknown> {
   const env = envMap();
   const cached = cachedFor(env);
   const stale = !cached || Date.now() - Date.parse(cached.fetched_at) > market.CatalogMaxAgeMs;
-  if (stale && !state.refreshing && Date.now() - state.attempted > retryAfterMs) void startRefresh();
+  if (stale && !state.refreshing && (state.attemptedURL !== settingURL(env) || Date.now() - state.attempted > retryAfterMs)) void startRefresh();
   let installed: flow.InstalledEntry[] = [];
   let installedError = '';
   try {

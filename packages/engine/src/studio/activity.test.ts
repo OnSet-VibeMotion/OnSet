@@ -143,3 +143,12 @@ describe('scene activity', () => {
     expect(fs.existsSync(scene.liveFile(dir, 's1'))).toBe(false);
   });
 });
+
+
+it('detects the designer independently of the stored renderer', () => {
+  const dir = tempDir();
+  fs.writeFileSync(path.join(dir, 'render-s1.attempt.json'), JSON.stringify({ renderer: 'codex' }));
+  fs.writeFileSync(path.join(dir, 'design-s1.stream.jsonl'), [init, callRead, resultRead].join('\n') + '\n');
+  const activity = sceneActivity(summary(dir), 'design');
+  expect(activity.steps).toMatchObject([{ tool: 'Read', state: 'done' }]);
+});

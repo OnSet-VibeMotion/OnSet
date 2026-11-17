@@ -20,6 +20,8 @@
  * - director（制作人，pi）：thinkingLevel off|minimal|low|medium|high|xhigh|max，经 stdin 的请求给。
  */
 
+import { marshal } from '../gojson';
+
 export type AgentOptions = Record<string, string>;
 
 export interface OptionChoice {
@@ -208,8 +210,8 @@ export const CodexFastTier = 'priority';
 export function codexOptionOverrides(options: AgentOptions): string[] {
   const o = effectiveOptions('codex', options);
   const out: string[] = [];
-  if (o.effort) out.push('-c', 'model_reasoning_effort=' + JSON.stringify(o.effort));
-  if (o.fast === 'on') out.push('-c', 'service_tier=' + JSON.stringify(CodexFastTier));
+  if (o.effort) out.push('-c', 'model_reasoning_effort=' + marshal(o.effort));
+  if (o.fast === 'on') out.push('-c', 'service_tier=' + marshal(CodexFastTier));
   return out;
 }
 

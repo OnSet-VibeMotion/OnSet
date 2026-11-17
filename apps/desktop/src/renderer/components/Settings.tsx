@@ -55,12 +55,14 @@ export function MachineSettings({ rows, onSaved }: { rows: MachineSetting[]; onS
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState('');
   const save = async (row: MachineSetting) => {
-    const value = (draft[row.key] ?? row.value).trim();
+    const submitted = draft[row.key] ?? row.value;
+    const value = submitted.trim();
     if (value === row.value) return;
     try {
       await post('/api/settings/global', { key: row.key, value });
       setErrors((e) => ({ ...e, [row.key]: '' }));
       setDraft((d) => {
+        if (d[row.key] !== submitted) return d;
         const next = { ...d };
         delete next[row.key];
         return next;
@@ -113,6 +115,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
   const [active, setActive] = useState(groups[0].id);
   // 哪几项点了「只给这个项目换」：没单独改过的项默认只露一个下拉框。
   const [opened, setOpened] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState<Set<string>>(new Set());
   const body = useRef<HTMLDivElement>(null);
   const update = useUpdateState();
 
@@ -134,12 +137,15 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
   // 只有「润色与检查」的默认是空：跟随对话助手。
   const label = (row: SettingRow, value: string) => (value === '' ? '跟随对话助手' : (row.options.find((o) => o.value === value)?.label ?? value));
   const setGlobal = async (row: SettingRow, value: string) => {
+    setSaving(old => new Set(old).add(row.key));
     try {
       await post('/api/settings/global', { key: row.key, value });
       await reload();
       onAgentsChanged?.();
     } catch (err) {
       setError(errorText(err));
+    } finally {
+      setSaving(old => { const next = new Set(old); next.delete(row.key); return next; });
     }
   };
   const overrides = data.rows.filter((r) => r.project !== '');
@@ -351,6 +357,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
           tool={tool}
           specs={specs}
           value={row.global}
+          disabled={saving.has(row.key)}
           model={modelRowOf(row)?.global ?? ''}
           ariaPrefix="全局"
           onChange={(value) => void setGlobal(row, value)}

@@ -22,7 +22,11 @@ export function useMarket(version: number): { data: MarketResponse | null; error
         setData(value);
         setError('');
       },
-      (err) => alive && setError(errorText(err)),
+      (err) => {
+        if (!alive) return;
+        setError(errorText(err));
+        setData(d => d ? { ...d, refreshing: false } : d);
+      },
     );
     return () => {
       alive = false;
@@ -36,7 +40,10 @@ export function useMarket(version: number): { data: MarketResponse | null; error
   const reload = () => setNonce((n) => n + 1);
   const refresh = () => {
     setData((d) => (d ? { ...d, refreshing: true, error: '' } : d));
-    void post('/api/market/refresh', {}).then(reload, (err) => setError(errorText(err)));
+    void post('/api/market/refresh', {}).then(reload, (err) => {
+      setError(errorText(err));
+      setData(d => d ? { ...d, refreshing: false } : d);
+    });
   };
   return { data, error, reload, refresh };
 }

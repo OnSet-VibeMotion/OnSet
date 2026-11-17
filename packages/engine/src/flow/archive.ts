@@ -49,9 +49,11 @@ function run(file: string, args: string[], env: Env, signal?: AbortSignal): Prom
     const child = spawn(file, args, { env: env as NodeJS.ProcessEnv, stdio: ['ignore', 'ignore', 'pipe'], signal });
     let stderr = '';
     child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString('utf8')));
-    child.on('error', reject);
+    let failure: Error | undefined;
+    child.on('error', err => { failure = err; });
     child.on('close', (code) => {
-      if (code === 0) resolve();
+      if (failure) reject(failure);
+      else if (code === 0) resolve();
       else reject(new Error(`${path.basename(file)} 退出码 ${code}：${stderr.trim().split('\n').slice(-2).join(' ')}`));
     });
   });

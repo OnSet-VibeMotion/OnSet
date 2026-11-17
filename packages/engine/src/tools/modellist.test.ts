@@ -80,6 +80,10 @@ describe('model choice', () => {
       { id: 'gpt-6.1-sol', label: 'GPT-6.1-Sol' },
     ]);
     expect(parseModelList('codex', 'not json')).toEqual([]);
+    expect(parseModelList('codex', JSON.stringify({ models: [
+      { slug: 'no-reasoning', supported_reasoning_levels: [] },
+      { slug: 'unknown' },
+    ] }))).toEqual([{ id: 'no-reasoning', label: 'no-reasoning', efforts: [] }, { id: 'unknown', label: 'unknown' }]);
     expect(parseModelList('qoder', 'MODEL\nAuto\nQwen3.8-Max\n\n').map((m) => m.id)).toEqual(['Auto', 'Qwen3.8-Max']);
     expect(modelListCommand('qoder-intl')).toEqual(['qodercli', '--list-models']);
     expect(parseModelList('qoder-intl', 'MODEL\nAuto\nUltimate\n').map((m) => m.id)).toEqual(['Auto', 'Ultimate']);

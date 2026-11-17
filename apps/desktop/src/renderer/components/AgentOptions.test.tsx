@@ -242,3 +242,39 @@ test('qoder models show credits and narrow effort and context to the chosen mode
   expect(screen.queryByRole('radiogroup', { name: '推理强度' })).toBeNull();
   expect(within(screen.getByRole('radiogroup', { name: '上下文长度' })).getAllByRole('radio').map((b) => b.textContent)).toEqual(['默认', '200K']);
 });
+
+test('default model capabilities apply before an explicit model is chosen', async () => {
+  mockApi({ '/api/agents/mcode/models': { tool: 'mcode', models: [{ id: 'default', label: 'Default', isDefault: true, efforts: [], fast: false }] } });
+  await loadModels('mcode', true);
+  const specs = [effort(['low', 'high'], { perModel: true }), fast];
+  const { unmount } = render(<Harness tool="mcode" specs={specs} />);
+  await waitFor(() => expect(screen.queryByLabelText('编排推理强度')).toBeNull());
+  expect(screen.queryByLabelText('编排快速模式')).toBeNull();
+  unmount();
+  render(<ModelPicker tool="mcode" model="" defaultLabel="默认模型" specs={specs} options="" ariaLabel="模型" onModel={() => {}} onOptions={() => {}} />);
+  await userEvent.click(screen.getByRole('button', { name: '模型' }));
+  expect(screen.queryByRole('radiogroup', { name: '推理强度' })).toBeNull();
+  expect(screen.queryByRole('switch', { name: '快速模式' })).toBeNull();
+});
+
+test('inherited fast mode can be disabled and restored even on a model without fast mode', async () => {
+  mockApi({ '/api/agents/mcode/models': { tool: 'mcode', models: [{ id: 'default', label: 'Default', isDefault: true, fast: false }] } });
+  await loadModels('mcode', true);
+  const { unmount } = render(<Harness tool="mcode" specs={[fast]} inherited="fast=on" />);
+  await userEvent.selectOptions(screen.getByLabelText('编排快速模式'), 'off');
+  expect(screen.getByTestId('value').textContent).toBe('fast=off');
+  await userEvent.selectOptions(screen.getByLabelText('编排快速模式'), '');
+  expect(screen.getByTestId('value').textContent).toBe('');
+  unmount();
+  function Picker() {
+    const [options, setOptions] = useState('');
+    return <><ModelPicker tool="mcode" model="" defaultLabel="默认模型" specs={[fast]} options={options} inheritedOptions="fast=on" ariaLabel="模型" onModel={() => {}} onOptions={setOptions} /><output data-testid="value">{options}</output></>;
+  }
+  render(<Picker />);
+  await userEvent.click(screen.getByRole('button', { name: '模型' }));
+  await userEvent.click(screen.getByRole('switch', { name: '快速模式' }));
+  expect(screen.getByTestId('value').textContent).toBe('fast=off');
+  await userEvent.click(screen.getByRole('button', { name: '快速模式跟随设置' }));
+  expect(screen.getByTestId('value').textContent).toBe('');
+  expect(screen.getByRole('switch', { name: '快速模式' }).getAttribute('aria-checked')).toBe('true');
+});

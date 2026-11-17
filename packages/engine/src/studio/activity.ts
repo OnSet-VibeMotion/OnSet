@@ -207,7 +207,7 @@ function readStream(dir: string, id: string, prefix = 'render'): { state: Stream
   let state = streams.get(file);
   // 重渲染时旧日志挪进 attempts/、新日志以 'w' 打开：inode 或创建时间变了，或者文件变短了，都从头读。
   if (!state || state.ino !== info.ino || state.birth !== info.birthtimeMs || info.size < state.offset) {
-    state = freshState(file, info, renderedTool(dir, id));
+    state = freshState(file, info, prefix === 'render' ? renderedTool(dir, id) : '');
     streams.set(file, state);
   }
   if (info.size > state.offset) {

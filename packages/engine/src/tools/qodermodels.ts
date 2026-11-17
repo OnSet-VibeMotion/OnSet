@@ -20,7 +20,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
-import { killTree, start } from '../procgroup';
+import { start } from '../procgroup';
+import { marshal } from '../gojson';
 import type { ModelOption } from './modellist';
 import { qoderBinary } from './tools';
 
@@ -135,68 +136,79 @@ function sortEfforts(efforts: string[]): string[] {
  * cwd 用一个空的临时目录（open_session 要一个工作目录；不在项目里起，免得它扫项目、跑项目的钩子）。
  */
 export async function fetchQoderModels(tool: string, binary: string, env: Record<string, string>, signal?: AbortSignal, timeout = QoderSDKTimeout): Promise<ModelOption[]> {
+  signal?.throwIfAborted();
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-qoder-models-'));
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error(`${qoderBinary(tool)} 在 ${timeout / 1000} 秒内没有给出模型表`)), timeout);
   const onAbort = () => controller.abort(signal?.reason);
   signal?.addEventListener('abort', onAbort, { once: true });
-  const started = await start(binary, ['--sdk'], { cwd, env, stdio: ['pipe', 'pipe', 'ignore'], signal: controller.signal });
-  const child = started.child;
-  // 进程提前退出（不认 --sdk、没登录、崩了）时再写 stdin 会报 EPIPE；不接住就是未捕获异常，整个客户端跟着退出。
-  // 失败照样由下面的 started.wait() 报出来，走回退。
-  child.stdin?.on('error', () => {});
-  const send = (frame: Record<string, unknown>) => child.stdin?.write(JSON.stringify(frame) + '\n');
+  let exited: Promise<void> | undefined;
   try {
-    const models = await new Promise<unknown[]>((resolve, reject) => {
-      controller.signal.addEventListener('abort', () => reject(controller.signal.reason instanceof Error ? controller.signal.reason : new Error('已取消')), { once: true });
-      started.wait().then(
-        () => reject(new Error(`${qoderBinary(tool)} --sdk 提前退出了`)),
-        (err: Error) => reject(new Error(`${qoderBinary(tool)} --sdk 提前退出了：${err.message}`)),
-      );
-      const lines = readline.createInterface({ input: child.stdout! });
-      lines.on('line', (line) => {
-        let frame: Record<string, unknown>;
-        try {
-          frame = obj(JSON.parse(line));
-        } catch {
-          return;
-        }
-        if (frame.type !== 'control_response') return;
-        const response = obj(frame.response);
-        if (response.subtype === 'error') {
-          reject(new Error(`${str(response.error) || '握手失败'}${response.code ? `（${str(response.code)}）` : ''}`));
-          return;
-        }
-        switch (response.request_id) {
-          case 'onset-daemon':
-            send({ type: 'control_request', request_id: 'onset-open', request: { subtype: 'daemon.open_session', cwd, worker_args: ['--output-format', 'stream-json', '--input-format', 'stream-json'] } });
-            break;
-          case 'onset-open': {
-            const session = str(frame.session_id) || str(response.session_id);
-            if (session === '') reject(new Error('daemon.open_session 没有给会话号'));
-            else send({ type: 'control_request', request_id: 'onset-init', session_id: session, request: { subtype: 'initialize' } });
-            break;
+    const started = await start(binary, ['--sdk'], { cwd, env, stdio: ['pipe', 'pipe', 'ignore'], signal: controller.signal });
+    const child = started.child;
+    const closed = started.wait();
+    exited = closed;
+    closed.catch(() => {});
+    controller.signal.throwIfAborted();
+    // 进程提前退出（不认 --sdk、没登录、崩了）时再写 stdin 会报 EPIPE；不接住就是未捕获异常，整个客户端跟着退出。
+    // 失败照样由下面的 started.wait() 报出来，走回退。
+    const send = (frame: Record<string, unknown>) => child.stdin?.write(marshal(frame) + '\n');
+    try {
+      const models = await new Promise<unknown[]>((resolve, reject) => {
+        child.stdin?.on('error', err => reject(new Error(`${qoderBinary(tool)} --sdk 提前退出了：${err.message}`)));
+        controller.signal.addEventListener('abort', () => reject(controller.signal.reason instanceof Error ? controller.signal.reason : new Error('已取消')), { once: true });
+        closed.then(
+          () => reject(new Error(`${qoderBinary(tool)} --sdk 提前退出了`)),
+          (err: Error) => reject(new Error(`${qoderBinary(tool)} --sdk 提前退出了：${err.message}`)),
+        );
+        const lines = readline.createInterface({ input: child.stdout! });
+        lines.on('line', (line) => {
+          let frame: Record<string, unknown>;
+          try {
+            frame = obj(JSON.parse(line));
+          } catch {
+            return;
           }
-          case 'onset-init': {
-            const models = obj(response.response).models ?? response.models;
-            if (Array.isArray(models)) resolve(models);
-            else reject(new Error('initialize 的回应里没有模型表'));
-            break;
+          if (frame.type !== 'control_response') return;
+          const response = obj(frame.response);
+          if (response.subtype === 'error') {
+            reject(new Error(`${str(response.error) || '握手失败'}${response.code ? `（${str(response.code)}）` : ''}`));
+            return;
           }
-        }
+          switch (response.request_id) {
+            case 'onset-daemon':
+              send({ type: 'control_request', request_id: 'onset-open', request: { subtype: 'daemon.open_session', cwd, worker_args: ['--output-format', 'stream-json', '--input-format', 'stream-json'] } });
+              break;
+            case 'onset-open': {
+              const session = str(frame.session_id) || str(response.session_id);
+              if (session === '') reject(new Error('daemon.open_session 没有给会话号'));
+              else send({ type: 'control_request', request_id: 'onset-init', session_id: session, request: { subtype: 'initialize' } });
+              break;
+            }
+            case 'onset-init': {
+              const models = obj(response.response).models ?? response.models;
+              if (Array.isArray(models)) resolve(models);
+              else reject(new Error('initialize 的回应里没有模型表'));
+              break;
+            }
+          }
+        });
+        send({
+          type: 'control_request',
+          request_id: 'onset-daemon',
+          request: { subtype: 'daemon.initialize', daemon_protocol_version: 2, sdk_version: '1.0.0', capabilities: ['multi_session_v2'], auth: { type: 'qodercli' } },
+        });
       });
-      send({
-        type: 'control_request',
-        request_id: 'onset-daemon',
-        request: { subtype: 'daemon.initialize', daemon_protocol_version: 2, sdk_version: '1.0.0', capabilities: ['multi_session_v2'], auth: { type: 'qodercli' } },
-      });
-    });
-    return qoderModelOptions(models, readQoderDescriptions(qoderStateDir(tool, env.HOME || os.homedir())));
+      return qoderModelOptions(models, readQoderDescriptions(qoderStateDir(tool, env.HOME || os.homedir())));
+    } finally {
+      child.stdin?.end();
+    }
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', onAbort);
-    child.stdin?.end();
-    if (child.pid !== undefined && child.exitCode === null && !killTree(child.pid)) child.kill();
+    // 等进程和输出管道都关闭后再删工作目录；启动失败也走同一条清理路径。
+    controller.abort();
+    await exited?.catch(() => {});
     fs.rmSync(cwd, { recursive: true, force: true });
   }
 }

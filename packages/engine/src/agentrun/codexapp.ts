@@ -219,13 +219,14 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
   const writable = spec.access?.writableDirs ?? [];
   // 同 orchestratorInvocation：codex 能长时间等一次工具调用，放宽工具服务的等待上限并写上对应的超时。
   const server = longWaitServer(spec.toolsServer);
+  const options = effectiveOptions('codex', spec.options);
   const settings = {
     cwd,
     approvalPolicy: 'untrusted',
     sandbox: 'workspace-write',
     ...(spec.model ? { model: spec.model } : {}),
     // 快速模式是服务档位（tools/options.ts 的 CodexFastTier），thread/start 与 thread/resume 都认。
-    ...(effectiveOptions('codex', spec.options).fast === 'on' ? { serviceTier: CodexFastTier } : {}),
+    ...(options.fast ? { serviceTier: options.fast === 'on' ? CodexFastTier : null } : {}),
     config: {
       'sandbox_workspace_write.network_access': true,
       ...(writable.length > 0 ? { 'sandbox_workspace_write.writable_roots': writable } : {}),
@@ -244,7 +245,7 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
   ctx.emit({ kind: KindSession, session_id: threadID });
 
   // 推理强度只有 turn/start 认；用户选的优先于 Windows 上的缺省。
-  const effort = effectiveOptions('codex', spec.options).effort || windowsOrchestratorEffort(spec.env ?? {});
+  const effort = options.effort || windowsOrchestratorEffort(spec.env ?? {});
   const started = obj(await race(peer.request('turn/start', { threadId: threadID, input: [{ type: 'text', text: spec.prompt }], ...(effort ? { effort } : {}) })));
   turnID = str(obj(started.turn).id);
   const already = early.find((t) => str(t.id) === turnID);

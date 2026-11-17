@@ -97,3 +97,18 @@ describe('试镜画面对比', () => {
     expect(screen.queryByRole('button', { name: '选 C 为最佳' })).toBeNull();
   });
 });
+
+
+it('replays the remaining shorter videos after the longest one fails', async () => {
+  const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+  const { container } = setup(contestants.slice(1, 3));
+  const [long, short] = ready(container);
+  Object.defineProperty(long, 'duration', { configurable: true, value: 20 });
+  fireEvent.loadedMetadata(long);
+  fireEvent.error(long);
+  fireEvent.change(screen.getByRole('slider'), { target: { value: '8' } });
+  await userEvent.click(screen.getByRole('button', { name: '一起播放' }));
+  expect(short.currentTime).toBe(0);
+  expect(play).toHaveBeenCalledTimes(1);
+});

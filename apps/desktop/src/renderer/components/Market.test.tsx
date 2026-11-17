@@ -4,11 +4,11 @@
  * 搜索、安装与更新都只取回给你看（/api/market/install、/update 起 station_add / station_update 任务），
  * 点「装上」才走 /api/stations/staged/{编号}/install；取不到目录时说清原因、照旧显示上次的目录。
  */
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { mockApi, reply, type MockRequest } from '../testing';
-import { ago, matchesQuery } from './Market';
+import { ago, matchesQuery, useMarket } from './Market';
 import { PluginSettings } from './Stations';
 import { MachineSettings } from './Settings';
 import type { MachineSetting, MarketItem, MarketResponse, StationInfo, StationPreview, Task } from '../types';
@@ -319,4 +319,21 @@ describe('网络与更新', () => {
     rerender(<MachineSettings rows={rows({ overridden: true })} onSaved={() => {}} />);
     expect(document.body.textContent).toContain('被电脑上的环境变量 NETWORK_PROXY 定死了');
   });
+});
+
+
+it('lets the user refresh again after polling or refresh requests fail', async () => {
+  let fail = false;
+  mockApi({
+    '/api/market': () => { if (fail) throw new Error('offline'); return marketOf([], { refreshing: true }); },
+    'POST /api/market/refresh': () => { throw new Error('offline'); },
+  });
+  const { result } = renderHook(() => useMarket(0));
+  await waitFor(() => expect(result.current.data).not.toBeNull());
+  fail = true;
+  act(() => result.current.reload());
+  await waitFor(() => expect(result.current.error).toContain('offline'));
+  expect(result.current.data?.refreshing).toBe(false);
+  act(() => result.current.refresh());
+  await waitFor(() => expect(result.current.data?.refreshing).toBe(false));
 });

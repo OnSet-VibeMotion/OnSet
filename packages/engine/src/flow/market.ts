@@ -281,7 +281,7 @@ export function catalogVersion(c: Catalog, id: string, commit: string): { plugin
 // ---------- 取目录 ----------
 
 /** 取一个地址：返回状态码、类型与正文。抛错是没连上（超时、DNS、代理）。 */
-export type HttpFetch = (url: string, init: { signal: AbortSignal }) => Promise<{ status: number; contentType: string; body: Uint8Array }>;
+export type HttpFetch = (url: string, init: { signal: AbortSignal; maxBytes: number }) => Promise<{ status: number; contentType: string; body: Uint8Array }>;
 
 let injected: HttpFetch | null = null;
 
@@ -292,8 +292,40 @@ export function useHttpFetch(fn: HttpFetch | null): void {
 
 const globalFetch: HttpFetch = async (url, init) => {
   const r = await fetch(url, { signal: init.signal, redirect: 'follow' });
-  return { status: r.status, contentType: r.headers.get('content-type') ?? '', body: new Uint8Array(await r.arrayBuffer()) };
+  return readHttpResponse(r, init.maxBytes);
 };
+
+/** 在读取过程中限制大小；引擎 fetch 与客户端 Chromium fetch 共用。 */
+export async function readHttpResponse(response: Response, maxBytes: number): Promise<Awaited<ReturnType<HttpFetch>>> {
+  const tooLarge = () => new Error(`响应太大（上限 ${maxBytes} 字节）`);
+  if (Number(response.headers.get('content-length')) > maxBytes) {
+    await response.body?.cancel().catch(() => {});
+    throw tooLarge();
+  }
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  const reader = response.body?.getReader();
+  if (reader) {
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > maxBytes) throw tooLarge();
+        chunks.push(value);
+      }
+    } catch (err) {
+      await reader.cancel().catch(() => {});
+      throw err;
+    } finally {
+      reader.releaseLock();
+    }
+  }
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+  return { status: response.status, contentType: response.headers.get('content-type') ?? '', body };
+}
 
 async function readFileURL(url: string): Promise<{ status: number; contentType: string; body: Uint8Array }> {
   const file = decodeURIComponent(new URL(url).pathname);
@@ -310,7 +342,7 @@ export async function httpGet(url: string, maxBytes: number, signal?: AbortSigna
   const all = signal ? AbortSignal.any([signal, timeout]) : timeout;
   let r: Awaited<ReturnType<HttpFetch>>;
   try {
-    r = url.startsWith('file://') ? await readFileURL(url) : await (injected ?? globalFetch)(url, { signal: all });
+    r = url.startsWith('file://') ? await readFileURL(url) : await (injected ?? globalFetch)(url, { signal: all, maxBytes });
   } catch (err) {
     const host = url.startsWith('file://') ? url : new URL(url).host;
     if (timeout.aborted) throw new Error(`连不上 ${host}（${MarketTimeoutMs / 1000} 秒没有回应）`);

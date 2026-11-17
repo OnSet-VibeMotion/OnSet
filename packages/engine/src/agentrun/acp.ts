@@ -9,6 +9,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { atomicWrite } from '../fsutil';
+import { marshalIndent } from '../gojson';
 import { BasisTotalInput, type McpServer, newUsage } from '../tools';
 import { runInteractive, type DriveContext, type PermissionAnswer } from './interactive';
 import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, clip, compactionEvent, type ContextCompaction, type Event, type PlanItem } from './parse';
@@ -540,5 +542,5 @@ export function mcodeAskBash(dataDir: string, sessionID: string, ask: boolean): 
   doc.ask = ask ? [...rules, askBashRule] : rules.filter((r) => !isAskBash(r));
   for (const key of ['allow', 'deny']) if (!Array.isArray(doc[key])) doc[key] = [];
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  fs.writeFileSync(file, JSON.stringify(doc, null, 2) + '\n', { mode: 0o600 });
+  atomicWrite(file, marshalIndent(doc) + '\n', 0o600);
 }

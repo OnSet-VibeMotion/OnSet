@@ -2,7 +2,7 @@
  * 客户端自动更新：electron-updater 读 GitHub Releases 上的 latest-mac.yml / latest.yml（release.yml 生成）。
  * macOS 用 Squirrel.Mac，要求应用签名并公证（发布流程已经接上）；Windows 是未签名的 NSIS，不设 publisherName 就不校验签名。
  *
- * - 只检查、不自动下载：发现新版本先告诉用户，用户点「下载」才下，下完点「重启并安装」。下好了没点，下次退出时也会装上。
+ * - 只检查、不自动下载：发现新版本先告诉用户，用户点「下载」才下，下完点「重启并安装」。下载后等用户明确选择安装。
  * - 启动 30 秒后查一次，之后每 6 小时一次；下载中、下好了不再查。
  * - 联网：设置里的 NETWORK_PROXY 设在 electron-updater 自己的会话上，没填跟系统代理；UPDATE_FEED_URL 填了改用 generic 地址（镜像）。
  * - 重启前先看有没有正在跑的对话、渲染（Server.activeWork），有就把会打断的事交给界面问用户，用户确认了才装。
@@ -22,6 +22,7 @@ export interface UpdaterOptions {
 }
 
 let state: UpdateState;
+let downloading = false;
 
 function publish(next: Partial<UpdateState>): void {
   state = { ...state, ...next };
@@ -40,8 +41,8 @@ async function configure(): Promise<void> {
 }
 
 async function check(): Promise<void> {
-  if (['checking', 'downloading', 'downloaded', 'disabled'].includes(state.status)) return;
-  publish({ status: 'checking', error: '' });
+  if (downloading || ['checking', 'downloading', 'downloaded', 'disabled'].includes(state.status)) return;
+  publish({ status: 'checking', version: '', error: '' });
   try {
     await configure();
     await autoUpdater.checkForUpdates();
@@ -51,13 +52,21 @@ async function check(): Promise<void> {
 }
 
 async function download(): Promise<void> {
-  if (state.status !== 'available' && !(state.status === 'error' && state.version !== '')) return;
-  publish({ status: 'downloading', percent: 0, transferred: 0, total: 0, bytes_per_second: 0, error: '' });
+  if (downloading || (state.status !== 'available' && !(state.status === 'error' && state.version !== ''))) return;
+  downloading = true;
+  let verified = false;
+  publish({ status: 'checking', error: '' });
   try {
     await configure();
+    const result = await autoUpdater.checkForUpdates();
+    if (!result?.isUpdateAvailable) return;
+    verified = true;
+    publish({ status: 'downloading', percent: 0, transferred: 0, total: 0, bytes_per_second: 0, error: '' });
     await autoUpdater.downloadUpdate();
   } catch (err) {
-    publish({ status: 'error', error: errorText(err) });
+    publish({ status: 'error', version: verified ? state.version : '', error: errorText(err) });
+  } finally {
+    downloading = false;
   }
 }
 
@@ -91,7 +100,7 @@ export function installUpdater(opts: UpdaterOptions): void {
   if (reason !== '') return;
 
   autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowPrerelease = wantsPrerelease(app.getVersion());
   autoUpdater.allowDowngrade = false;
   autoUpdater.logger = null;
@@ -100,7 +109,7 @@ export function installUpdater(opts: UpdaterOptions): void {
     publish({ status: 'available', version: info.version, notes: notesText(info.releaseNotes), released_at: info.releaseDate ?? '', checked_at: new Date().toISOString(), error: '' });
   });
   autoUpdater.on('update-not-available', () => {
-    publish({ status: 'latest', checked_at: new Date().toISOString(), error: '' });
+    publish({ status: 'latest', version: '', checked_at: new Date().toISOString(), error: '' });
   });
   autoUpdater.on('download-progress', (p: ProgressInfo) => {
     publish({ status: 'downloading', percent: Math.round(p.percent), transferred: p.transferred, total: p.total, bytes_per_second: p.bytesPerSecond });

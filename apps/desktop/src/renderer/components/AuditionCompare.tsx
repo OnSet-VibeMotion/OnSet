@@ -111,7 +111,7 @@ function ComparisonPlayer({ available, initialTime, onTime, version, labelFor, o
   };
   const metadata = (video: HTMLVideoElement) => {
     if (Number.isFinite(video.duration)) video.currentTime = Math.min(initialTime, video.duration);
-    const max = Math.max(0, ...all().map(v => Number.isFinite(v.duration) ? v.duration : 0));
+    const max = Math.max(0, ...playable().map(v => Number.isFinite(v.duration) ? v.duration : 0));
     setDuration(max);
     const ratios = all().filter(v => v.videoWidth && v.videoHeight).map(v => v.videoWidth / v.videoHeight);
     if (ratios.length) setAspectRatio(Math.max(...ratios));
@@ -140,7 +140,12 @@ function ComparisonPlayer({ available, initialTime, onTime, version, labelFor, o
             onLoadedData={() => setReady(old => old.includes(side) ? old : [...old, side])}
             onTimeUpdate={e => update(e.currentTarget)}
             onEnded={e => { if (e.currentTarget === master.current) { remember(e.currentTarget.duration); pause(); } }}
-            onError={() => { pause(); setFailed(old => old.includes(side) ? old : [...old, side]); }} />
+            onError={() => {
+              pause();
+              const remaining = [...videos.current.entries()].filter(([i]) => i !== side && !failed.includes(i));
+              setDuration(Math.max(0, ...remaining.map(([, v]) => Number.isFinite(v.duration) ? v.duration : 0)));
+              setFailed(old => old.includes(side) ? old : [...old, side]);
+            }} />
           {failed.includes(side) && <p className="audition-media-error" role="alert">{c.slot} 的视频无法载入，请检查文件是否仍在或更换一份画面。</p>}
         </div>
         {c.outcome !== 'succeeded' && <span className="muted small">尚未通过验收</span>}

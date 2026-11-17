@@ -47,7 +47,7 @@ export function ModelPicker({ tool, model, defaultLabel, fallbackModel = '', spe
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const effectiveModel = model || fallbackModel;
-  const chosen = models.find((m) => m.id === effectiveModel);
+  const chosen = models.find((m) => m.id === effectiveModel) ?? (effectiveModel === '' ? models.find(m => m.isDefault) : undefined);
   const own = parseOptions(options);
   const from = parseOptions(inheritedOptions);
 
@@ -201,7 +201,7 @@ function Popover(props: {
     }
   };
 
-  const visibleSpecs = props.specs.filter((spec) => optionVisible(spec, props.chosen, props.own[spec.key] ?? ''));
+  const visibleSpecs = props.specs.filter((spec) => optionVisible(spec, props.chosen, props.own[spec.key] ?? props.from[spec.key] ?? ''));
 
   return createPortal(
     <div
@@ -292,9 +292,12 @@ function OptionRow({ spec, chosen, hasModel, current, inherited, onChange }: { s
   } else if (spec.kind === 'toggle') {
     const on = effective === 'on';
     control = (
-      <button type="button" role="switch" aria-checked={on} aria-label={spec.label} className={'model-picker-switch' + (on ? ' on' : '')} onClick={() => onChange(on ? 'off' : 'on')}>
-        <i />
-      </button>
+      <>
+        {current !== '' && <button type="button" aria-label={`${spec.label}跟随设置`} className="ghost small" onClick={() => onChange('')}>{inherited ? '跟随设置' : '默认'}</button>}
+        <button type="button" role="switch" aria-checked={on} aria-label={spec.label} className={'model-picker-switch' + (on ? ' on' : '')} onClick={() => onChange(on ? 'off' : 'on')}>
+          <i />
+        </button>
+      </>
     );
   } else if (editing) {
     const commit = () => {

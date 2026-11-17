@@ -1,11 +1,16 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { marshal } from '../gojson';
 import { fetchQoderModels, qoderModelOptions, qoderStateDir, readQoderDescriptions } from './qodermodels';
 
+const temps: string[] = [];
+afterEach(() => { for (const dir of temps.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
 function tempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-qoder-models-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-qoder-models-'));
+  temps.push(dir);
+  return dir;
 }
 
 // 1.1.89 的守护进程实际报回的几项（字段原样，删掉了没用到的）。
@@ -42,7 +47,7 @@ describe('qoder models', () => {
     fs.mkdirSync(path.join(state, '.auth'));
     fs.writeFileSync(
       path.join(state, '.auth', 'dynamic-texts.json'),
-      JSON.stringify({
+      marshal({
         locales: {
           en: { 'modelSelector.item.smodel.markdownDescription': 'Built for the hardest work.', 'modelSelector.item.fast.markdownDescription': 'Fast responses.' },
           'zh-CN': {
@@ -75,7 +80,7 @@ import readline from 'node:readline';
 const out = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
 for await (const line of readline.createInterface({ input: process.stdin })) {
   const f = JSON.parse(line);
-  fs.appendFileSync(${JSON.stringify(log)}, line + '\\n');
+  fs.appendFileSync(${marshal(log)}, line + '\\n');
   const r = f.request;
   if (r.subtype === 'daemon.initialize') out({ type: 'control_response', response: { subtype: 'success', request_id: f.request_id, response: {} } });
   else if (r.subtype === 'daemon.open_session') {
@@ -83,7 +88,7 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
     else out({ type: 'control_response', session_id: 'S1', response: { subtype: 'success', request_id: f.request_id } });
   } else if (r.subtype === 'initialize' && f.session_id === 'S1') {
     out({ type: 'system', subtype: 'init' });
-    out({ type: 'control_response', session_id: 'S1', response: { subtype: 'success', request_id: f.request_id, response: { models: ${JSON.stringify(reported)} } } });
+    out({ type: 'control_response', session_id: 'S1', response: { subtype: 'success', request_id: f.request_id, response: { models: ${marshal(reported)} } } });
   } else if (r.subtype === 'user') process.exit(9);
 }
 `,

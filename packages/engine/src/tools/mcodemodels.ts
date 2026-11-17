@@ -12,7 +12,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
-import { killTree, start } from '../procgroup';
+import { start } from '../procgroup';
+import { marshal } from '../gojson';
 import type { ModelOption } from './modellist';
 
 export const McodeACPTimeout = 30_000;
@@ -62,79 +63,94 @@ export function mcodeModelOptions(configOptions: unknown, effortsByModel: Map<st
  * binary 是已经找到的可执行文件（lookPath 之后）。
  */
 export async function fetchMcodeModels(binary: string, env: Record<string, string>, signal?: AbortSignal, timeout = McodeACPTimeout): Promise<ModelOption[]> {
+  signal?.throwIfAborted();
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-mcode-models-'));
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error(`mcode 在 ${timeout / 1000} 秒内没有给出模型表`)), timeout);
   const onAbort = () => controller.abort(signal?.reason);
   signal?.addEventListener('abort', onAbort, { once: true });
-  const started = await start(binary, ['acp'], { cwd, env, stdio: ['pipe', 'pipe', 'ignore'], signal: controller.signal });
-  const child = started.child;
-  let nextID = 0;
-  const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
-  const failed = new Promise<never>((_, reject) => {
-    controller.signal.addEventListener('abort', () => reject(controller.signal.reason instanceof Error ? controller.signal.reason : new Error('已取消')), { once: true });
-    started.wait().then(
-      () => reject(new Error('mcode acp 提前退出了')),
-      (err: Error) => reject(new Error(`mcode acp 提前退出了：${err.message}`)),
-    );
-  });
-  failed.catch(() => {});
-  readline.createInterface({ input: child.stdout! }).on('line', (line) => {
-    let frame: Obj;
-    try {
-      frame = obj(JSON.parse(line));
-    } catch {
-      return;
-    }
-    if (typeof frame.id !== 'number' || frame.method !== undefined) return;
-    const waiter = pending.get(frame.id);
-    if (!waiter) return;
-    pending.delete(frame.id);
-    if (frame.error) waiter.reject(new Error(str(obj(frame.error).message) || 'ACP 请求失败'));
-    else waiter.resolve(frame.result);
-  });
-  const request = (method: string, params: unknown): Promise<Obj> => {
-    const id = ++nextID;
-    const reply = new Promise<unknown>((resolve, reject) => pending.set(id, { resolve, reject }));
-    child.stdin?.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
-    return Promise.race([reply, failed]).then(obj);
-  };
-  let sessionId = '';
+  let exited: Promise<void> | undefined;
   try {
-    await request('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false }, clientInfo: { name: 'onset', version: '1' } });
-    const created = await request('session/new', { cwd, mcpServers: [] });
-    sessionId = str(created.sessionId);
-    if (sessionId === '') throw new Error('session/new 没有返回 sessionId');
-    const model = option(created.configOptions, 'model');
-    const byModel = new Map<string, string[]>();
-    const current = parseValue(str(model?.currentValue));
-    if (current) byModel.set(current.model, efforts(created.configOptions).efforts);
-    const values = (Array.isArray(model?.options) ? model!.options.map(obj) : []).map((o) => str(o.value));
-    // 推理档位只在思考变体上有：同一模型优先切到 thinking 那一项去读。
-    const ordered = [...values.filter((v) => parseValue(v)?.variant === 'thinking'), ...values];
-    for (const value of ordered) {
-      const parsed = parseValue(value);
-      if (!parsed || byModel.has(parsed.model)) continue;
+    const started = await start(binary, ['acp'], { cwd, env, stdio: ['pipe', 'pipe', 'ignore'], signal: controller.signal });
+    const child = started.child;
+    const closed = started.wait();
+    exited = closed;
+    closed.catch(() => {});
+    controller.signal.throwIfAborted();
+    let nextID = 0;
+    const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+    const failed = new Promise<never>((_, reject) => {
+      child.stdin?.on('error', reject);
+      controller.signal.addEventListener('abort', () => reject(controller.signal.reason instanceof Error ? controller.signal.reason : new Error('已取消')), { once: true });
+      closed.then(
+        () => reject(new Error('mcode acp 提前退出了')),
+        (err: Error) => reject(new Error(`mcode acp 提前退出了：${err.message}`)),
+      );
+    });
+    failed.catch(() => {});
+    readline.createInterface({ input: child.stdout! }).on('line', (line) => {
+      let frame: Obj;
       try {
-        const changed = await request('session/set_config_option', { sessionId, configId: 'model', value });
-        byModel.set(parsed.model, efforts(changed.configOptions).efforts);
+        frame = obj(JSON.parse(line));
       } catch {
-        // 切不过去的模型照样列出，推理档位不知道。
+        return;
       }
+      if (typeof frame.id !== 'number' || frame.method !== undefined) return;
+      const waiter = pending.get(frame.id);
+      if (!waiter) return;
+      pending.delete(frame.id);
+      if (frame.error) waiter.reject(new Error(str(obj(frame.error).message) || 'ACP 请求失败'));
+      else waiter.resolve(frame.result);
+    });
+    const request = (method: string, params: unknown): Promise<Obj> => {
+      const id = ++nextID;
+      const reply = new Promise<unknown>((resolve, reject) => pending.set(id, { resolve, reject }));
+      child.stdin?.write(marshal({ jsonrpc: '2.0', id, method, params }) + '\n');
+      return Promise.race([reply, failed]).then(obj);
+    };
+    let sessionId = '';
+    try {
+      await request('initialize', { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false }, clientInfo: { name: 'onset', version: '1' } });
+      const created = await request('session/new', { cwd, mcpServers: [] });
+      sessionId = str(created.sessionId);
+      if (sessionId === '') throw new Error('session/new 没有返回 sessionId');
+      const model = option(created.configOptions, 'model');
+      const byModel = new Map<string, string[]>();
+      const current = parseValue(str(model?.currentValue));
+      const values = (Array.isArray(model?.options) ? model!.options.map(obj) : []).map((o) => str(o.value));
+      // 推理档位只在思考变体上有：同一模型优先切到 thinking 那一项去读。
+      const ordered = [...values.filter((v) => parseValue(v)?.variant === 'thinking'), ...values];
+      if (current && (current.variant === 'thinking' || !values.some(v => { const parsed = parseValue(v); return parsed?.model === current.model && parsed.variant === 'thinking'; }))) {
+        byModel.set(current.model, efforts(created.configOptions).efforts);
+      }
+      for (const value of ordered) {
+        const parsed = parseValue(value);
+        if (!parsed || byModel.has(parsed.model)) continue;
+        try {
+          const changed = await request('session/set_config_option', { sessionId, configId: 'model', value });
+          byModel.set(parsed.model, efforts(changed.configOptions).efforts);
+        } catch {
+          // 切不过去的模型照样列出，推理档位不知道。
+        }
+      }
+      return mcodeModelOptions(created.configOptions, byModel);
+    } finally {
+      if (sessionId !== '' && !controller.signal.aborted) {
+        let closeTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([request('session/close', { sessionId }), new Promise((r) => { closeTimer = setTimeout(r, 2000); })]);
+        } catch {
+          // 关不掉也无妨：会话只是一条没有消息的记录。
+        } finally { clearTimeout(closeTimer); }
+      }
+      child.stdin?.end();
     }
-    return mcodeModelOptions(created.configOptions, byModel);
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', onAbort);
-    if (sessionId !== '') {
-      try {
-        await Promise.race([request('session/close', { sessionId }), new Promise((r) => setTimeout(r, 2000))]);
-      } catch {
-        // 关不掉也无妨：会话只是一条没有消息的记录。
-      }
-    }
-    child.stdin?.end();
-    if (child.pid !== undefined && child.exitCode === null && !killTree(child.pid)) child.kill();
+    // 等进程和输出管道都关闭后再删工作目录；启动失败也走同一条清理路径。
+    controller.abort();
+    await exited?.catch(() => {});
     fs.rmSync(cwd, { recursive: true, force: true });
   }
 }

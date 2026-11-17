@@ -76,7 +76,7 @@ export async function runDesign(
   signal?: AbortSignal,
 ): Promise<scene.Attempt | null> {
   let attempt: scene.Attempt | null = null;
-  const own: config.Config = { ...cfg, renderer: designer, rendererModel: model };
+  const own: config.Config = { ...cfg, renderer: designer, rendererModel: model, rendererOptions: config.rendererOptionsFor(cfg, designer) };
   let ds: scene.Scene = { ...s, renderer: designer, designOnly: true, afterAttempt: (x) => (attempt = x) };
   if (cfg.memory.enabled) ds = { ...attachMemory(ds, own, out, newRunID()), designOnly: true, afterAttempt: (x) => (attempt = x) };
   await scene.run(ds, own, unsafe, currentEnvironment(), out, 0.15, signal);
@@ -116,30 +116,35 @@ function contestantRunner(root: string, a: audition.Audition, cfg: config.Config
       let s = audition.contestantScene(root, c);
       s.renderer = c.renderer;
       // 选手的工具与模型盖掉项目配置：rendererModelFor 只在工具相同时用 rendererModel。
-      const own: config.Config = { ...cfg, renderer: c.renderer, rendererModel: c.model };
-      if (c.designer !== '') {
-        log.write(`先由 ${audition.entryLabel({ renderer: c.designer, model: c.designer_model })} 写设计稿\n`);
-        const designed = await runDesign(s, withMemory ? cfg : { ...cfg, memory: { ...cfg.memory, enabled: false } }, c.designer, c.designer_model, isUnsafe, log, signal);
-        if (designed?.usage) tools.usageAdd(extra, designed.usage);
-        extraSeconds += designed?.seconds ?? 0;
-        s = audition.contestantScene(root, c);
-        s.renderer = c.renderer;
+      const own: config.Config = { ...cfg, renderer: c.renderer, rendererModel: c.model, rendererOptions: config.rendererOptionsFor(cfg, c.renderer) };
+      const prepare = (s: scene.Scene): scene.Scene => {
+        if (store !== null && withMemory) {
+          const model = store.currentModel(c.renderer, env, c.model !== '' ? c.model : config.rendererModelFor(cfg, c.renderer));
+          const result = store.recallScene(s, {
+            snapshot: cfg.memory.snapshot,
+            budget: cfg.memory.recallBudget,
+            renderer: c.renderer,
+            model,
+            // 人评考试的带经验那份：再加上要考的试用经验，其余与不带的那份逐字相同。
+            ...(c.role === 'trial' ? { extra: trials } : {}),
+          });
+          const exemplars = audition.pickExemplars(cfg.memory.dir, { renderer: c.renderer, model, features: memory.features(s), project: memory.projectName(s.directory), sceneID: s.id });
+          s = { ...memory.attachRecall(result, s), ...(exemplars ? { exemplars } : {}) };
+        }
+        return scene.withRenderWorkers({ ...s, afterAttempt: (x) => (attempt = x) }, workers);
+      };
+      const recovered = c.designer !== '' && scene.recoverOutput(prepare(s), own, env, log, tolerance, signal);
+      if (!recovered) {
+        if (c.designer !== '') {
+          log.write(`先由 ${audition.entryLabel({ renderer: c.designer, model: c.designer_model })} 写设计稿\n`);
+          const designed = await runDesign(s, withMemory ? cfg : { ...cfg, memory: { ...cfg.memory, enabled: false } }, c.designer, c.designer_model, isUnsafe, log, signal);
+          if (designed?.usage) tools.usageAdd(extra, designed.usage);
+          extraSeconds += designed?.seconds ?? 0;
+          s = audition.contestantScene(root, c);
+          s.renderer = c.renderer;
+        }
+        await scene.run(prepare(s), own, isUnsafe, env, log, tolerance, signal);
       }
-      if (store !== null && withMemory) {
-        const model = store.currentModel(c.renderer, env, c.model !== '' ? c.model : config.rendererModelFor(cfg, c.renderer));
-        const result = store.recallScene(s, {
-          snapshot: cfg.memory.snapshot,
-          budget: cfg.memory.recallBudget,
-          renderer: c.renderer,
-          model,
-          // 人评考试的带经验那份：再加上要考的试用经验，其余与不带的那份逐字相同。
-          ...(c.role === 'trial' ? { extra: trials } : {}),
-        });
-        const exemplars = audition.pickExemplars(cfg.memory.dir, { renderer: c.renderer, model, features: memory.features(s), project: memory.projectName(s.directory), sceneID: s.id });
-        s = { ...memory.attachRecall(result, s), ...(exemplars ? { exemplars } : {}) };
-      }
-      s = scene.withRenderWorkers({ ...s, afterAttempt: (x) => (attempt = x) }, workers);
-      await scene.run(s, own, isUnsafe, env, log, tolerance, signal);
     } catch (e) {
       failure = errorText(e);
       log.write(`没跑成：${failure}\n`);

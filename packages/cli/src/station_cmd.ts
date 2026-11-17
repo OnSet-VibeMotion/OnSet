@@ -8,6 +8,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { envMap } from '@onset/engine/envutil';
 import { usableGit } from '@onset/engine/toolpath';
 import * as config from '@onset/engine/config';
 import * as flow from '@onset/engine/flow';
@@ -17,7 +18,7 @@ import { projectRoot, str } from './ops/common';
 
 /** 取插件用的环境：设置里的 NETWORK_PROXY 只给 git。 */
 function fetchEnv(): Record<string, string | undefined> {
-  return flow.withGitProxy(process.env, config.machineSetting(process.env, 'NETWORK_PROXY', config.parseConfFile));
+  return flow.withGitProxy(envMap(), config.machineSetting(process.env, 'NETWORK_PROXY', config.parseConfFile));
 }
 
 /**
@@ -27,7 +28,9 @@ function fetchEnv(): Record<string, string | undefined> {
 async function prefetch(spec: string, digest: string, log: (line: string) => void, signal?: AbortSignal): Promise<{ dir?: string; cleanup: () => void }> {
   const url = digest === '' ? '' : flow.githubArchiveURL(spec);
   if (url === '') return { cleanup: () => {} };
-  const tmp = fs.mkdtempSync(path.join(flow.stationsDir(process.env), '.fetch-'));
+  const stations = flow.stationsDir(process.env);
+  fs.mkdirSync(stations, { recursive: true });
+  const tmp = fs.mkdtempSync(path.join(stations, '.fetch-'));
   const cleanup = () => fs.rmSync(tmp, { recursive: true, force: true });
   const dir = path.join(tmp, 'src');
   try {

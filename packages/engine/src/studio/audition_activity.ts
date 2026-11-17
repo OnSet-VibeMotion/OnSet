@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Audition, Contestant } from '../audition';
-import { Dir, hasRunOwner, isRunning } from '../audition';
+import { Dir, hasRunOwner, contestantDirectory } from '../audition';
 import { marshal } from '../gojson';
 import { parseAttempt, processAlive, readLive, rendererFailureAdvice } from '../scene';
 import { sceneActivity, type ActivityStep } from './activity';
@@ -98,7 +98,13 @@ function contestantActivity(root: string, a: Audition, c: Contestant, running: b
 export function auditionActivity(root: string, a: Audition, projectBusy = false): Record<string, unknown> {
   let running = projectBusy;
   let owned = false;
-  try { owned = hasRunOwner(root, a); running ||= isRunning(root, a); } catch { running = true; }
+  try { owned = hasRunOwner(root, a); } catch { /* 每位选手在下面单独报告读取失败。 */ }
+  running ||= owned || a.contestants.some(c => {
+    try {
+      const live = readLive(contestantDirectory(root, a, c), a.scene_id);
+      return !!live && processAlive(live.pid);
+    } catch { return false; }
+  });
   return { contestants: a.contestants.map(c => {
     try {
       return contestantActivity(root, a, c, running, owned);

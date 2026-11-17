@@ -28,9 +28,9 @@ export async function networkSession(): Promise<Session> {
 }
 
 export function installNetworkFetch(): void {
-  market.useHttpFetch(async (url, { signal }) => {
+  market.useHttpFetch(async (url, { signal, maxBytes }) => {
     const s = await networkSession();
     const r = await s.fetch(url, { signal, redirect: 'follow' });
-    return { status: r.status, contentType: r.headers.get('content-type') ?? '', body: new Uint8Array(await r.arrayBuffer()) };
+    return market.readHttpResponse(r, maxBytes);
   });
 }

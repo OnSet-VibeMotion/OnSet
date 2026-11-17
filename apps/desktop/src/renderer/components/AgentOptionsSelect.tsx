@@ -39,13 +39,13 @@ export function AgentOptionsSelect({ tool, specs, value, inherited = '', inherit
   if (specs.length === 0) return null;
   const own = parseOptions(value);
   const from = parseOptions(inherited);
-  const chosen = models.find((m) => m.id === model);
+  const chosen = models.find((m) => m.id === model) ?? (model === '' ? models.find(m => m.isDefault) : undefined);
 
   return (
     <>
       {specs.map((spec) => {
         const current = own[spec.key] ?? '';
-        if (!optionVisible(spec, chosen, current)) return null;
+        if (!optionVisible(spec, chosen, own[spec.key] ?? from[spec.key] ?? '')) return null;
         const prefix = compact ? `${shortNames[spec.key] ?? spec.label}·` : `${spec.label}：`;
         const id = idPrefix ? `${idPrefix}-${spec.key}` : undefined;
         const aria = `${ariaPrefix}${spec.label}`;
@@ -111,7 +111,7 @@ export function AgentOptionsSelect({ tool, specs, value, inherited = '', inherit
                 {c.label}
               </option>
             ))}
-            {spec.kind === 'number' && <option value={custom}>{prefix}其他…</option>}
+            {spec.kind === 'number' && !(spec.perModel && chosen?.contextWindows) && <option value={custom}>{prefix}其他…</option>}
           </select>
         );
       })}

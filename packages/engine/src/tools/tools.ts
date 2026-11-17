@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { windowsPromptInput, windowsOrchestratorEffort } from './windows';
 import { claudeOptionSettings, codexOptionOverrides, effectiveOptions, opencodeModel, optionArgs, type AgentOptions } from './options';
-import { marshal } from '../gojson';
+import { marshal, marshalIndent } from '../gojson';
 import { defaultDir as directorDir, resolveService as directorService, rendererDir, NoServiceMessage, Tool as DirectorToolName, type Request as DirectorRequest } from '../director';
 import { onsetCommand, WindowsBaseEnvKeys } from '../envutil';
 import { pluginChildEnvs } from '../plugin/registry';
@@ -181,14 +181,18 @@ export const RendererBuiltinTools = 'Bash,Read,Write,Edit,Skill';
 const rendererToolLimits = ['--strict-mcp-config', '--tools', RendererBuiltinTools];
 
 /** claude / qoder / codebuddy 的 --mcp-config：几个服务合在一份 JSON 里。 */
-function mcpConfigJSON(servers: McpServer[]): string {
+function mcpConfig(servers: McpServer[]): { mcpServers: Record<string, unknown> } {
   const mcpServers: Record<string, unknown> = {};
   for (const s of servers) {
     const timeout = longWaitTimeoutSeconds(s);
     // claude 的 MCP 配置认每个服务自己的 timeout（毫秒，覆盖 MCP_TOOL_TIMEOUT）。
     mcpServers[s.name] = { command: s.command, args: s.args, ...(s.env && Object.keys(s.env).length > 0 ? { env: s.env } : {}), ...(timeout > 0 ? { timeout: timeout * 1000 } : {}) };
   }
-  return JSON.stringify({ mcpServers });
+  return { mcpServers };
+}
+
+function mcpConfigJSON(servers: McpServer[]): string {
+  return marshal(mcpConfig(servers));
 }
 
 /** codex 的 -c 覆盖项（TOML 值）：mcp_servers.<名字>.command / args / env。 */
@@ -219,7 +223,7 @@ export function opencodeMcpConfig(server: McpServer): Record<string, unknown> {
 export const McodeMcpFile = '.mcp.json';
 
 export function mcodeMcpJSON(server: McpServer): string {
-  return JSON.stringify(JSON.parse(mcpConfigJSON([server])), null, 2) + '\n';
+  return marshalIndent(mcpConfig([server])) + '\n';
 }
 
 /**

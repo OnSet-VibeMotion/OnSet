@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { atomicWrite } from '../fsutil';
 import { withWindowsInstructions } from '../windowsruntime';
 import path from 'node:path';
 import { childEnvironment, rendererModelFor, rendererOptionsFor, type Config } from '../config';
@@ -34,12 +35,12 @@ import { KindError, KindSession, KindText, KindToolCall, newParser } from '../ag
 import { formatFixed, goRound } from '../gofmt';
 import { newAttempt, OutcomeFailed, OutcomeInterrupted, OutcomeSucceeded, OutcomeVerificationFailed, timestamp, writeAttempt, archiveAttempt } from './attempt';
 import { CheckOutputFrames, classifyOutputProblem, DeterminismCheckPrefix } from './checks';
-import { fingerprint, removeRecord, writeRecord } from './record';
+import { fingerprint, removeRecord, writeRecord, type Inputs } from './record';
 import { buildPrompt, DesignFile, findProjectRoot, sceneCanvas, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
 import { removeLive, writeLive } from './live';
 import { rendererHome, rendererUnfiltered, sandboxAvailable, sandboxed, sandboxProfile } from './sandbox';
 import { verifySeam } from './seam';
-import { leftoverFiles, resumePrompt, resumeState } from './resume';
+import { leftoverFiles, resumePrompt, resumeState, type ResumeState } from './resume';
 import { writeSceneData } from './scenedata';
 import { prepareResources } from './resources';
 import { verify as verifyResources } from '../renderassets';
@@ -75,6 +76,39 @@ export async function run(
   const release = acquireSceneLease(s.directory, s.id);
   try { await runScene(s, cfg, unsafe, baseEnv, userOutput, tolerance, signal); }
   finally { release(); }
+}
+
+/** 两段式试镜重试先补验收，避免设计者覆盖仍能复用的 design.md；不调用模型。 */
+export function recoverOutput(s: Scene, cfg: Config, baseEnv: Record<string, string>, userOutput: Writer, tolerance: number, signal?: AbortSignal): boolean {
+  if (s.designOnly || s.fresh || s.seam || s.examNote !== '' || signal?.aborted) return false;
+  const release = acquireSceneLease(s.directory, s.id);
+  try {
+    const renderer = s.renderer || cfg.renderer;
+    unstageRendererSkills(s.directory);
+    const skills = resolveAllSkills(renderer, s.directory, skillsEnvironment(baseEnv, cfg.overlay), s);
+    prepareResources(s, skills);
+    const inputs = fingerprint(s, renderer, skills);
+    return acceptRecoveredOutput(s, inputs, resumeState(s, inputs.fingerprint), baseEnv, userOutput, tolerance, signal);
+  } finally { release(); }
+}
+
+function acceptRecoveredOutput(s: Scene, inputs: Inputs, resume: ResumeState | null, baseEnv: Record<string, string>, userOutput: Writer, tolerance: number, signal?: AbortSignal): boolean {
+  // 上一轮已经出片、只是进程异常结束：重试先做本机验收。保留原日志、用量与真实退出码。
+  // 只认还留在镜头目录里的那份记录：归档会把视频连同记录一起挪走，记录已经归档时，
+  // 目录里的视频出自之后某次没来得及写记录的运行，不能算到这次头上。
+  if (resume && resume.logDir === s.directory && !signal?.aborted && fs.existsSync(outputPath(s))) {
+    let valid = false;
+    try { verifyResources(s.directory); verifyOutput(s, baseEnv, tolerance); valid = true; } catch { /* 不合格才继续制作。 */ }
+    if (valid) {
+      writeRecord(s, inputs);
+      const recovered = { ...resume.previous, outcome: OutcomeSucceeded, error: '', warning: resume.previous.error, resumed: 'verify' };
+      writeAttempt(s, recovered);
+      s.afterAttempt?.(recovered);
+      userOutput.write(`[${s.id}] 已有视频通过本机验收，无需再次调用模型\n`);
+      return true;
+    }
+  }
+  return false;
 }
 
 async function runScene(
@@ -162,21 +196,7 @@ async function runScene(
   // 中途异常退出过、输入没变：接着上一次做，不从头重来（resume.ts）。要在归档上一次之前读。
   const design = s.designOnly === true;
   const resume = design || s.fresh || s.seam || s.examNote !== '' ? null : resumeState(s, inputs.fingerprint);
-  // 上一轮已经出片、只是进程异常结束：重试先做本机验收。保留原日志、用量与真实退出码。
-  // 只认还留在镜头目录里的那份记录：归档会把视频连同记录一起挪走，记录已经归档时，
-  // 目录里的视频出自之后某次没来得及写记录的运行，不能算到这次头上。
-  if (resume && resume.logDir === s.directory && !signal?.aborted && fs.existsSync(outputPath(s))) {
-    let valid = false;
-    try { verifyResources(s.directory); verifyOutput(s, baseEnv, tolerance); valid = true; } catch { /* 不合格才继续制作。 */ }
-    if (valid) {
-      writeRecord(s, inputs);
-      const recovered = { ...resume.previous, outcome: OutcomeSucceeded, error: '', warning: resume.previous.error, resumed: 'verify' };
-      writeAttempt(s, recovered);
-      s.afterAttempt?.(recovered);
-      userOutput.write(`[${s.id}] 已有视频通过本机验收，无需再次调用模型\n`);
-      return;
-    }
-  }
+  if (acceptRecoveredOutput(s, inputs, resume, baseEnv, userOutput, tolerance, signal)) return;
   // 补验收不启动模型或浏览器。只有确实需要制作时才检查这些运行依赖。
   if (renderer === director.Tool && !director.resolveService(director.defaultDir({ ...process.env, ...baseEnv }))) throw new Error(director.NoServiceMessage);
   hyperframes.requireCLI(cliEnv);
@@ -539,6 +559,7 @@ export function verifyOutput(s: Scene, baseEnv: Record<string, string>, toleranc
  */
 export function stageMcodeMcp(sceneDir: string, server: McpServer): () => void {
   const file = path.join(sceneDir, McodeMcpFile);
+  if (fs.lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`${McodeMcpFile} 不能是符号链接：${file}`);
   const ours = (text: string): boolean => {
     try {
       const servers = JSON.parse(text).mcpServers as Record<string, { args?: unknown }>;
@@ -551,12 +572,12 @@ export function stageMcodeMcp(sceneDir: string, server: McpServer): () => void {
   let existing: string | null = null;
   try {
     existing = fs.readFileSync(file, 'utf8');
-  } catch {
-    existing = null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
   }
   if (existing !== null && !ours(existing)) throw new Error(`镜头目录里已有 ${McodeMcpFile}，MiniMax Code 渲染要在这里放 onset 工具服务的配置；请先挪走它：${file}`);
   const content = mcodeMcpJSON(server);
-  fs.writeFileSync(file, content, { mode: 0o600 });
+  atomicWrite(file, content, 0o600);
   return () => {
     try {
       if (fs.readFileSync(file, 'utf8') === content) fs.rmSync(file, { force: true });

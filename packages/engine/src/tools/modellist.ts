@@ -103,7 +103,7 @@ export function parseModelList(tool: string, stdout: string): ModelOption[] {
           id: r.slug,
           label: typeof r.display_name === 'string' && r.display_name !== '' ? r.display_name : r.slug,
           ...(typeof r.description === 'string' && r.description !== '' ? { description: r.description } : {}),
-          ...(levels.length > 0 ? { efforts: levels } : {}),
+          ...(Array.isArray(r.supported_reasoning_levels) ? { efforts: levels } : {}),
           ...(tiers ? { fast: tiers.includes(CodexFastTier) } : {}),
         });
       }
