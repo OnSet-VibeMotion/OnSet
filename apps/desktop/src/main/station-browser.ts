@@ -1,4 +1,4 @@
-import { BrowserWindow, WebContentsView, session } from 'electron';
+import { BrowserWindow, WebContentsView, app, session } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -13,10 +13,16 @@ const defaultHint = '请检查账号与内容，发布由你确认';
 function allowed(url: string, origins: string[]): boolean {
   try { const parsed = new URL(url); return !parsed.username && !parsed.password && origins.includes(parsed.origin); } catch { return false; }
 }
-function directory(root: string, account: string): string {
-  fs.mkdirSync(root, { recursive: true, mode: 0o700 });
-  let dir = fs.realpathSync(root);
-  for (const name of ['web-sessions', account]) {
+/*
+ * 插件内嵌网页的登录存储（每个插件、每个账号一份）放在应用数据目录下：<userData>/station-sessions/<插件>/<账号>。
+ * session.fromPath 只有路径在 userData 里才把 cookie 写盘（Electron 45 实测）；以前放在插件的 data_dir 下，
+ * 只存下了 Local Storage，登录拿到的 cookie 只在内存里，客户端一重启「选了账号还要登录」。
+ */
+export function sessionDirectory(userData: string, station: string, account: string): string {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(station)) throw Error('插件编号无效');
+  fs.mkdirSync(userData, { recursive: true, mode: 0o700 });
+  let dir = fs.realpathSync(userData);
+  for (const name of ['station-sessions', station, account]) {
     dir = path.join(dir, name);
     try { fs.mkdirSync(dir, { mode: 0o700 }); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
     if (!fs.lstatSync(dir).isDirectory() || fs.lstatSync(dir).isSymbolicLink()) throw Error('账号存储目录无效');
@@ -81,7 +87,7 @@ export class StationBrowsers {
     }
     const window = this.getWindow();
     if (!window) throw Error('请先打开片场主窗口');
-    const storage = session.fromPath(directory(request.data_dir, account));
+    const storage = session.fromPath(sessionDirectory(app.getPath('userData'), request.id, account));
     storage.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
     storage.setPermissionCheckHandler(() => false);
     storage.on('will-download', event => event.preventDefault());
@@ -154,7 +160,7 @@ export class StationBrowsers {
           // 插件等用户登录时轮询：窗口被用户收起或关掉，就当用户不登了。
           result = current ? { open: !current.closed && !current.contents.isDestroyed(), visible: !current.closed && !current.hidden, url: current.contents.isDestroyed() ? '' : current.contents.getURL() } : { open: false, visible: false, url: '' };
         } else if (body.action === 'close') {
-          // 关掉本次操作的页面（登录完成后自动回到片场）；登录状态留在账号的存储目录里。
+          // 关掉本次操作的页面（登录完成后自动回到片场）；登录状态留在账号的存储目录里（sessionDirectory）。
           if (current) { this.closePage(current); current = undefined; }
           result = {};
         } else if (body.action === 'forget') {
@@ -165,6 +171,8 @@ export class StationBrowsers {
           if (page && page.owner && page.owner !== owner) throw Error('这个账号正在由另一项操作使用，请稍后再试');
           if (page) this.closePage(page);
           if (current === page) current = undefined;
+          // 移除账号：登录状态由片场保管，一并清掉（插件只删得到它自己 data_dir 里的东西）。
+          await session.fromPath(sessionDirectory(app.getPath('userData'), request.id, account)).clearStorageData();
           result = {};
         } else {
           if (!current || current.contents.isDestroyed()) throw Error('请先打开账号页面');
@@ -237,7 +245,9 @@ export class StationBrowsers {
     }
     for (const wc of [page.contents, page.controls]) if (!wc.isDestroyed()) {
       wc.stop();
+      // 登录状态马上落盘：cookie 平时攒一阵才写，客户端被强退时刚登录的就丢了。
       wc.session.flushStorageData();
+      void wc.session.cookies.flushStore().catch(() => {});
       wc.close({ waitForBeforeUnload: false });
     }
   }

@@ -382,6 +382,6 @@ tell({ kind: 'hide' });                                    // 收起桌宠
 - `{action: "command", method: "Page.navigate", params: {url: "https://creator.example.com/editor"}}`：导航到声明过的来源。
 - 其余允许的 CDP 命令：`Page.enable`、`Page.bringToFront`、`Runtime.evaluate`、`Runtime.releaseObject`、`DOM.setFileInputFiles`、`Input.insertText`。上传文件必须是当前项目内的真实文件（校验符号链接后的路径）。命令返回 CDP 结果，错误返回非 2xx 与 `{error: "说明"}`。
 
-网页以 `WebContentsView` 显示在片场主窗口里，不拥有 Node、宿主 preload 或宿主会话。登录空间保存在插件 `data_dir/web-sessions/<account>/`，不同插件、账号独立；用户切回项目时页面保留，再次打开同一账号不自动导航，插件应在 `reused` 为 true 时避免覆盖用户编辑。账号仍在被某次操作填写时，另一项操作会明确失败。
+网页以 `WebContentsView` 显示在片场主窗口里，不拥有 Node、宿主 preload 或宿主会话。登录空间（cookie、本地存储）由片场保存在它自己的应用数据目录里（`station-sessions/<插件>/<account>/`），不同插件、账号独立，客户端重启后仍是登录状态；插件不要自己去读写或删除它，移除账号时调桥的 `forget`，片场会关掉那个账号的页面并清空它的登录空间；用户切回项目时页面保留，再次打开同一账号不自动导航，插件应在 `reused` 为 true 时避免覆盖用户编辑。账号仍在被某次操作填写时，另一项操作会明确失败。
 
 操作完成或取消后连接撤销，网页保留给用户；客户端关闭时销毁网页，登录状态继续保存。不要把连接地址、口令、网页 Cookie 写到项目、日志或操作结果。插件只需要连接这一页，不需要启动调试端口、安装浏览器或把网站代码加载到片场进程中。

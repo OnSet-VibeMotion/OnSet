@@ -38,11 +38,13 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   const object=await command('Runtime.evaluate',{expression:'document.querySelector(\"input[type=file]\")'});
   await command('DOM.setFileInputFiles',{objectId:object.result.objectId,files:[r.project_root+'/upload.mp4']});
   const result=await command('Runtime.evaluate',{expression:'document.cookie',returnByValue:true});
-  await command('Runtime.evaluate',{expression:'document.querySelector("#title").value="自动填写"; document.cookie="account='+r.params.account+'; path=/"',returnByValue:true});
+  await command('Runtime.evaluate',{expression:'document.querySelector("#title").value="自动填写"; document.cookie="account='+r.params.account+'; max-age=86400; path=/"',returnByValue:true});
   console.log('onset-result '+JSON.stringify({previous:result.result.value,opened,bridge:b,rejected,unauthorized:unauthorized.status,fromPage:fromPage.status}));
  }catch(e){console.error(e.message);process.exitCode=1;}
 });`);
   installPlugin(sandbox, dir, 'embedded-helper');
+  // 插件内嵌网页的登录存储在片场的应用数据目录下（station-browser.ts 的 sessionDirectory），不在插件的 data_dir 里。
+  const sessionDir = (account) => path.join(sandbox.userData, 'station-sessions', 'embedded-helper', account);
   await openProject(page, project);
   fs.mkdirSync(path.join(sandbox.stations, 'embedded-helper', 'data'), { recursive: true });
   const outside = path.join(sandbox.stations, 'embedded-helper', 'data', 'outside.mp4');
@@ -53,7 +55,7 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
     for (const dir of directories) {
       session.fromPath(dir).protocol.handle('https', () => new Response(html, { headers: { 'content-type': 'text/html' } }));
     }
-  }, { directories: ['account-a', 'account-b'].map(account => path.join(sandbox.stations, 'embedded-helper', 'data', 'web-sessions', account)), html });
+  }, { directories: ['account-a', 'account-b'].map(account => sessionDir(account)), html });
   const run = async account => {
     const started = await api(page, '/api/stations/embedded-helper/ops/prepare', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ params: { account } }) });
     expect(started.status, JSON.stringify(started.body) + JSON.stringify((await api(page, '/api/stations')).body.problems)).toBe(202);
@@ -110,4 +112,11 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   }
   await electronApp.close();
   expect(errors).toEqual([]);
+  // 页面写的带有效期的 cookie（像登录状态那样）落到了磁盘上：客户端重启后选了账号不用再登录。
+  // 以前存储放在插件 data_dir 下，cookie 从不写盘（session.fromPath 只在 userData 里写）。
+  for (const account of ['account-a', 'account-b']) {
+    const cookies = path.join(sessionDir(account), 'Cookies');
+    expect(fs.existsSync(cookies), account).toBe(true);
+    expect(fs.readFileSync(cookies).includes(account), account).toBe(true);
+  }
 });
