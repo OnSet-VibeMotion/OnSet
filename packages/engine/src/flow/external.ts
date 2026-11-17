@@ -47,7 +47,7 @@ export {
 } from './manifest';
 export { parseManifest, type ParseOptions } from './parse';
 export { pageCallableOp, pageMayRead, pageTab, toExtra, toolName } from './pages';
-export { flowRecord, LockFile, readLock, recordFlow, type FlowRecord, type Lock } from './lock';
+export { flowRecord, LockFile, readLock, recordFlow, RenderPromptVersion, type FlowRecord, type Lock } from './lock';
 export { InstalledFile, readInstalled, roleOf, type Installed, type InstalledEntry, type InstalledRole, type LoadedStation } from './installed';
 export { treeDigest } from './digest';
 export { fetchStation, parseSource, StationsDirEnv, stationsDir, writeStationForTest } from './fetch';

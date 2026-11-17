@@ -26,6 +26,7 @@ export {
   type ManifestFlow,
   fetchStation,
   LockFile,
+  RenderPromptVersion,
   flowRecord,
   recordFlow,
   type FlowRecord,

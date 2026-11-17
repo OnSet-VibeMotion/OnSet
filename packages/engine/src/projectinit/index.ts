@@ -146,7 +146,7 @@ export function create(opts: Options): project.InitResult {
 
 /** 在锁文件里记下项目的流程与画幅（flow.FlowRecord）：项目用哪个流程、提示词怎么组合都只看它。 */
 export function recordProjectFlow(target: string, id: string, canvas: string): void {
-  flow.recordFlow(target, { id, canvas });
+  flow.recordFlow(target, { id, canvas, render_prompt: flow.RenderPromptVersion });
 }
 
 /**

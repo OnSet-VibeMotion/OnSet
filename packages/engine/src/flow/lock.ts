@@ -11,6 +11,13 @@ import { isObject } from './fields';
 export const LockFile = 'onset.flow.json';
 
 /**
+ * 新建项目记下的渲染提示词版本（FlowRecord.render_prompt）。改渲染提示词、又不想让已有项目的镜头变 Stale 时，
+ * 把新内容按版本挂上、递增这个数：只有新建的项目拿到新版。
+ *   2：开工须知（scene.ts 的 startSection），2026-11。
+ */
+export const RenderPromptVersion = 2;
+
+/**
  * 新建项目时记下的流程（片型）与画幅。制作提示词由运行期按它组合（compose.ts）；项目用哪个流程也只看它。
  * 没有它的目录不是这一版建的项目：detectFlow 直接报错，不按标记文件推断。流程只在新建时定。
  */
@@ -19,6 +26,11 @@ export interface FlowRecord {
   id: string;
   /** 画幅（预设 id），组合提示词时替换画幅占位符用。 */
   canvas: string;
+  /**
+   * 新建时用的渲染提示词版本（scene.RenderPromptVersion）。没有这一项的是更早建的项目，按 1 处理：
+   * 渲染提示词在镜头指纹里，给老项目换提示词会让它所有已渲染的镜头都变 Stale，编排还可能真去重渲染。
+   */
+  render_prompt?: number;
 }
 
 export interface Lock {
@@ -41,6 +53,7 @@ export function readLock(root: string): Lock {
   const rec = raw.production;
   if (isObject(rec) && typeof rec.id === 'string' && rec.id !== '') {
     out.production = { id: rec.id, canvas: typeof rec.canvas === 'string' ? rec.canvas : '' };
+    if (typeof rec.render_prompt === 'number' && Number.isInteger(rec.render_prompt) && rec.render_prompt > 0) out.production.render_prompt = rec.render_prompt;
   }
   return out;
 }
