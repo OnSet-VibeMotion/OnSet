@@ -196,3 +196,49 @@ test('qoder context window takes a preset or a typed number in the popover', asy
   expect(screen.getByTestId('value').textContent).toBe('context=384000');
   expect(screen.getByRole('radio', { name: '384K' }).getAttribute('aria-checked')).toBe('true');
 });
+
+// Qoder 的模型表带说明、额度倍率、每个模型的推理档位与上下文长度（后端 tools/qodermodels.ts）。
+test('qoder models show credits and narrow effort and context to the chosen model', async () => {
+  mockApi({
+    '/api/agents/qoder-intl/models': {
+      tool: 'qoder-intl',
+      models: [
+        { id: 'Auto', label: 'Auto', description: '智能选择最适合的模型', credit: 0.5, isDefault: true, contextWindows: [200000, 400000, 1000000], defaultContextWindow: 200000 },
+        { id: 'Sonus', label: 'Sonus', description: '专为最艰巨的端到端任务而生', credit: 8, efforts: ['none', 'low', 'high', 'max'], defaultEffort: 'high', contextWindows: [200000, 1000000], defaultContextWindow: 200000 },
+        { id: 'Efficient', label: 'Efficient', credit: 0, creditBefore: 0.3, free: true, efforts: [], contextWindows: [200000] },
+        { id: 'Ultimate', label: 'Ultimate', credit: 2, promotion: '错峰2折' },
+      ],
+    },
+  });
+  await loadModels('qoder-intl', true);
+  const specs: AgentOptionSpec[] = [
+    effort(['auto', 'none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultracode'], { perModel: true }),
+    { ...context, perModel: true },
+  ];
+  function Harness3({ model }: { model: string }) {
+    const [options, setOptions] = useState('');
+    return <ModelPicker tool="qoder-intl" model={model} defaultLabel="默认模型" specs={specs} options={options} ariaLabel="渲染模型" onModel={() => {}} onOptions={setOptions} />;
+  }
+  const user = userEvent.setup();
+  const { rerender } = render(<Harness3 model="Sonus" />);
+  await user.click(screen.getByRole('button', { name: '渲染模型' }));
+  const sonus = await screen.findByRole('option', { name: /Sonus/ });
+  expect(sonus.textContent).toContain('专为最艰巨的端到端任务而生');
+  expect(sonus.textContent).toContain('8.00x 额度');
+  const efficient = screen.getByRole('option', { name: /Efficient/ });
+  expect(efficient.textContent).toContain('免费');
+  expect(efficient.querySelector('s')?.textContent).toBe('0.30x');
+  expect(screen.getByRole('option', { name: /Ultimate/ }).textContent).toContain('错峰2折');
+  expect(screen.getByRole('option', { name: /默认模型/ }).textContent).toContain('工具默认 Auto');
+  // 推理强度只列 Sonus 有的档位，第一段写明它默认用哪一档。
+  const levels = within(screen.getByRole('radiogroup', { name: '推理强度' })).getAllByRole('radio').map((b) => b.textContent);
+  expect(levels).toEqual(['默认·高', '不推理', '低', '高', '最高']);
+  // 上下文长度只列它支持的，不给「自定义」。
+  const windows = screen.getByRole('radiogroup', { name: '上下文长度' });
+  expect(within(windows).getAllByRole('radio').map((b) => b.textContent)).toEqual(['默认·200K', '200K', '1M']);
+  expect(within(windows).queryByRole('button', { name: '自定义' })).toBeNull();
+  rerender(<Harness3 model="Efficient" />);
+  // Efficient 不推理：没有推理强度这一行；上下文只有一档。
+  expect(screen.queryByRole('radiogroup', { name: '推理强度' })).toBeNull();
+  expect(within(screen.getByRole('radiogroup', { name: '上下文长度' })).getAllByRole('radio').map((b) => b.textContent)).toEqual(['默认', '200K']);
+});

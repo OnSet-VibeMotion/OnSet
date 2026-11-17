@@ -419,10 +419,28 @@ export interface ModelOption {
   id: string;
   label: string;
   description?: string;
-  /** 这个模型能选的推理强度（codex）；没有时按 option_specs 列。 */
+  /** 这个模型能选的推理强度（codex、qoder）；没有时按 option_specs 列，空数组是这个模型不推理。 */
   efforts?: string[];
   /** 这个模型有没有快速档位（codex）；没有时不确定。 */
   fast?: boolean;
+  /** 工具内部的模型键（qoder 的 smodel 之类）。 */
+  key?: string;
+  /** 额度倍率（qoder，8 表示 8.00x）。 */
+  credit?: number;
+  /** 打折前的倍率，比 credit 高时划掉显示。 */
+  creditBefore?: number;
+  /** 免费（含限时免费）。 */
+  free?: boolean;
+  /** 正在进行的活动（「错峰2折」）。 */
+  promotion?: string;
+  /** 不指定模型时工具用的就是它。 */
+  isDefault?: boolean;
+  /** 不选推理强度时这个模型用哪一档。 */
+  defaultEffort?: string;
+  /** 这个模型能选的上下文长度（token），从小到大。 */
+  contextWindows?: number[];
+  /** 不选上下文长度时用多大。 */
+  defaultContextWindow?: number;
 }
 
 export interface ModelsResponse {

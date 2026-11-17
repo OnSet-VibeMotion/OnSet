@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { labelOf, optionChoices, optionVisible, parseOptions, shortLabel, withOption } from '../agentOptions';
+import { creditTag, labelOf, modelDefault, optionChoices, optionVisible, parseOptions, shortLabel, withOption } from '../agentOptions';
 import type { AgentOptionSpec, ModelOption } from '../types';
 import { Icon } from './Icon';
 import { useModels } from './ModelSelect';
@@ -33,6 +33,8 @@ interface Row {
   description?: string;
   /** 手填的模型名（列表里没有、按搜索框里的字用）。 */
   custom?: boolean;
+  /** 工具报的模型（带额度倍率等）；「默认」与手填的没有。 */
+  model?: ModelOption;
 }
 
 /**
@@ -137,10 +139,11 @@ function Popover(props: {
     const q = query.trim().toLowerCase();
     const match = (m: ModelOption) => q === '' || [m.id, m.label, m.description ?? ''].some((t) => t.toLowerCase().includes(q));
     const out: Row[] = [];
-    if (q === '') out.push({ id: '', label: props.defaultLabel, description: '不指定，由设置或这家工具自己决定' });
+    const builtin = props.models.find((m) => m.isDefault);
+    if (q === '') out.push({ id: '', label: props.defaultLabel, description: builtin ? `不指定，由设置或这家工具自己决定（工具默认 ${builtin.label}）` : '不指定，由设置或这家工具自己决定' });
     // 手填过、列表里没有的当前模型照样列出来，不被悄悄换掉。
     if (props.model !== '' && !props.models.some((m) => m.id === props.model) && (q === '' || props.model.toLowerCase().includes(q))) out.push({ id: props.model, label: props.model });
-    for (const m of props.models) if (match(m)) out.push({ id: m.id, label: m.label, ...(m.description ? { description: m.description } : {}) });
+    for (const m of props.models) if (match(m)) out.push({ id: m.id, label: m.label, ...(m.description ? { description: m.description } : {}), model: m });
     // 列表里没有的模型名：按搜索框里的字用。
     const typed = query.trim();
     if (typed !== '' && /^[A-Za-z0-9._:/@#\[\]+-]+$/.test(typed) && !out.some((r) => r.id === typed)) out.push({ id: typed, label: `使用「${typed}」`, description: '列表里没有的模型名，原样交给工具', custom: true });
@@ -229,8 +232,13 @@ function Popover(props: {
             >
               <span className="model-picker-text">
                 <span className="model-picker-label">{row.label}</span>
-                {row.description && <span className="model-picker-desc">{row.description}</span>}
+                {row.description && (
+                  <span className="model-picker-desc" title={row.description}>
+                    {row.description}
+                  </span>
+                )}
               </span>
+              {row.model && <ModelMeta model={row.model} />}
               {selected && <Icon name="check" size={14} />}
             </li>
           );
@@ -255,6 +263,19 @@ function Popover(props: {
       )}
     </div>,
     document.body,
+  );
+}
+
+/** 模型行右边的额度：「8.00x 额度」，打折时划掉原价，免费与活动单独标出。 */
+function ModelMeta({ model }: { model: ModelOption }) {
+  const tag = creditTag(model);
+  if (!tag) return null;
+  return (
+    <span className="model-picker-meta" title="每次请求消耗的额度倍率">
+      {tag.promotion && <span className="model-picker-promo">{tag.promotion}</span>}
+      {tag.before && <s className="model-picker-before">{tag.before}</s>}
+      <span className={'model-picker-credit' + (model.free ? ' free' : '')}>{model.free ? tag.text : `${tag.text} 额度`}</span>
+    </span>
   );
 }
 
@@ -308,17 +329,26 @@ function OptionRow({ spec, chosen, hasModel, current, inherited, onChange }: { s
     );
   } else {
     const choices = optionChoices(spec, chosen, current);
+    // 不选时这个模型实际用哪一档（qoder 的模型表给）；跟着设置时以设置为准。
+    const builtin = modelDefault(spec, chosen);
     control = (
       <div className="model-picker-segments" role="radiogroup" aria-label={spec.label}>
-        <button type="button" role="radio" aria-checked={current === ''} className={current === '' ? 'on' : ''} title={inherited !== '' ? `跟随设置（${labelOf(spec, inherited)}）` : '由工具自己决定'} onClick={() => onChange('')}>
-          {inherited !== '' ? `跟随·${shortLabel(spec, inherited)}` : '默认'}
+        <button
+          type="button"
+          role="radio"
+          aria-checked={current === ''}
+          className={current === '' ? 'on' : ''}
+          title={inherited !== '' ? `跟随设置（${labelOf(spec, inherited)}）` : builtin !== '' ? `这个模型默认用「${labelOf(spec, builtin)}」` : '由工具自己决定'}
+          onClick={() => onChange('')}
+        >
+          {inherited !== '' ? `跟随·${shortLabel(spec, inherited)}` : builtin !== '' ? `默认·${shortLabel(spec, builtin)}` : '默认'}
         </button>
         {choices.map((c) => (
           <button key={c.value} type="button" role="radio" aria-checked={current === c.value} className={current === c.value ? 'on' : ''} title={c.label} onClick={() => onChange(c.value)}>
             {shortLabel(spec, c.value)}
           </button>
         ))}
-        {spec.kind === 'number' && (
+        {spec.kind === 'number' && !(chosen?.contextWindows && chosen.contextWindows.length > 0) && (
           <button
             type="button"
             title="填一个 token 数，例如 384000"

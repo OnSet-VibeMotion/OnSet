@@ -19,10 +19,28 @@ export interface ModelOption {
   /** 显示名；与 id 相同时界面只显示一份。 */
   label: string;
   description?: string;
-  /** 这个模型能选的推理强度（codex 目录的 supported_reasoning_levels）；不给时界面按 tools.agentOptionSpecs 列。 */
+  /** 这个模型能选的推理强度（codex 目录的 supported_reasoning_levels、qoder 的模型表）；不给时界面按 tools.agentOptionSpecs 列，空数组是这个模型不推理。 */
   efforts?: string[];
   /** 这个模型有没有快速档位（codex 目录的 service_tiers 里有 Fast）；不给时不确定。 */
   fast?: boolean;
+  /** 工具内部的模型键（qoder 的 smodel 之类），与 id 不同时才给。 */
+  key?: string;
+  /** 额度倍率（qoder 的 priceFactor，例如 8 表示 8.00x）。 */
+  credit?: number;
+  /** 打折前的倍率：比 credit 高时界面划掉它。 */
+  creditBefore?: number;
+  /** 免费（含限时免费）。 */
+  free?: boolean;
+  /** 正在进行的活动（「错峰2折」）。 */
+  promotion?: string;
+  /** 这家工具不指定模型时用的就是它。 */
+  isDefault?: boolean;
+  /** 不选推理强度时这个模型用哪一档。 */
+  defaultEffort?: string;
+  /** 这个模型能选的上下文长度（token），从小到大。 */
+  contextWindows?: number[];
+  /** 不选上下文长度时用多大。 */
+  defaultContextWindow?: number;
 }
 
 /** 列模型要跑的命令；null 表示不用跑（claude 用内置别名，制作人直接问模型服务）。 */

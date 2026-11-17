@@ -59,7 +59,11 @@ export function shortLabel(spec: AgentOptionSpec, value: string): string {
 export function optionChoices(spec: AgentOptionSpec, model: ModelOption | undefined, current: string): { value: string; label: string }[] {
   let list: { value: string; label: string }[];
   if (spec.kind === 'toggle') list = [{ value: 'on', label: '开' }, { value: 'off', label: '关' }];
-  else if (spec.kind === 'number') list = [...(spec.presets ?? [])];
+  else if (spec.kind === 'number') {
+    // 模型报了能选的长度（qoder）就只列这几档，不然列常用的几档。
+    const windows = spec.perModel && model?.contextWindows && model.contextWindows.length > 0 ? model.contextWindows : null;
+    list = windows ? windows.map((n) => ({ value: String(n), label: labelOf(spec, String(n)) })) : [...(spec.presets ?? [])];
+  }
   else {
     list = [...(spec.choices ?? [])];
     if (spec.perModel && model?.efforts && model.efforts.length > 0) {
@@ -84,8 +88,25 @@ export function labelOf(spec: AgentOptionSpec, value: string): string {
   return spec.choices?.find((c) => c.value === value)?.label ?? effortNames[value] ?? value;
 }
 
+/** 不选这一项时这个模型实际用的值（qoder 的模型表给默认推理档位与上下文长度）；不知道时为空。 */
+export function modelDefault(spec: AgentOptionSpec, model: ModelOption | undefined): string {
+  if (!model) return '';
+  if (spec.key === 'effort') return model.defaultEffort ?? '';
+  if (spec.key === 'context') return model.defaultContextWindow ? String(model.defaultContextWindow) : '';
+  return '';
+}
+
+/** 模型列表里的额度标签：免费、「8.00x」、打折前的倍率与活动。 */
+export function creditTag(model: ModelOption): { text: string; before?: string; promotion?: string } | null {
+  if (model.free) return { text: '免费', ...(model.creditBefore ? { before: `${model.creditBefore.toFixed(2)}x` } : {}), ...(model.promotion ? { promotion: model.promotion } : {}) };
+  if (model.credit === undefined) return null;
+  return { text: `${model.credit.toFixed(2)}x`, ...(model.creditBefore ? { before: `${model.creditBefore.toFixed(2)}x` } : {}), ...(model.promotion ? { promotion: model.promotion } : {}) };
+}
+
 /** 这一项此时该不该出现：模型明确不支持快速档位时不列（已经开着的照样列，好关掉）。 */
 export function optionVisible(spec: AgentOptionSpec, model: ModelOption | undefined, current: string): boolean {
   if (spec.key === 'fast' && model?.fast === false && current === '') return false;
+  // 模型表说这个模型不推理（qoder 的 efforts 是空数组）：没有推理强度可选。
+  if (spec.key === 'effort' && spec.perModel && model?.efforts && model.efforts.length === 0 && current === '') return false;
   return true;
 }

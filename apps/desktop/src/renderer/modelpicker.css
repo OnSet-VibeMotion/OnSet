@@ -124,6 +124,36 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.model-picker-meta {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.model-picker-credit {
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.model-picker-credit.free {
+  color: var(--ok);
+  font-family: var(--sans);
+}
+.model-picker-before {
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.model-picker-promo {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 11px;
+  line-height: 17px;
+}
 .model-picker-item svg {
   flex: none;
   color: var(--text-2);

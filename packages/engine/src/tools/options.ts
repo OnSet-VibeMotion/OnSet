@@ -84,13 +84,15 @@ export function agentOptionSpecs(tool: string): AgentOptionSpec[] {
     case 'qoder':
     case 'qoder-intl':
       return [
-        effort(['auto', 'none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultracode'], '越高想得越久、越费额度；不选由 Qoder 按模型决定'),
+        effort(['auto', 'none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultracode'], '越高想得越久、越费额度；可选档位随模型变，不选用模型自己的默认', { perModel: true }),
         {
           key: 'context',
           label: '上下文长度',
           hint: '一次能带进去的内容（token）；只对支持的模型生效，不选用模型自己的默认',
           kind: 'number',
           presets: contextPresets,
+          // 每个模型能选的长度由 Qoder 的模型表给（ModelOption.contextWindows），界面按它收窄。
+          perModel: true,
         },
       ];
     case 'codebuddy':
@@ -154,6 +156,7 @@ export function validateAgentOptions(tool: string, text: string): string {
         break;
       case 'choice':
         // codex 的档位按模型变（新模型会多出新档位），只查写法。
+        // codex、qoder 的档位按模型变（新模型会多出新档位），只查写法。
         if (!spec.perModel && !spec.choices?.some((c) => c.value === value)) return `${spec.label}只能是 ${spec.choices?.map((c) => c.value).join(' ')}`;
         if (!/^[a-z]+$/.test(value)) return `${spec.label}写法不对：${value}`;
         break;

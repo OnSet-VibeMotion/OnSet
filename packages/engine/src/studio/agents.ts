@@ -209,6 +209,22 @@ export async function agentModelsAPI(request: Request, rest: string): Promise<Re
   }
   if (argv === null) {
     models = tools.parseModelList(tool, '');
+  } else if (tools.isQoder(tool)) {
+    // qoder 的完整模型表（说明、额度倍率、每个模型的推理档位与上下文长度）只在它的 SDK 协议里给，见 tools/qodermodels.ts；
+    // 读不出来（没登录、版本不认）时退回 --list-models，至少还有名字。
+    const env = envMap() as Record<string, string>;
+    let binary: string;
+    try {
+      binary = lookPath(argv[0]!, env.PATH ?? '');
+    } catch {
+      return writeJSON(200, goMap({ tool, models: [], error: `找不到 ${argv[0]}，可以直接填模型名` }));
+    }
+    try {
+      models = await tools.fetchQoderModels(tool, binary, env);
+    } catch (err) {
+      models = tools.parseModelList(tool, await captureOutput(binary, argv.slice(1), env).catch(() => ''));
+      if (models.length === 0) return writeJSON(200, goMap({ tool, models: [], error: '没能从 ' + argv[0] + ' 读出模型列表（' + (err as Error).message + '），可以直接填模型名' }));
+    }
   } else {
     const env = envMap() as Record<string, string>;
     let binary: string;
