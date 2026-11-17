@@ -147,7 +147,7 @@ describe('fetching the catalog', () => {
   });
 
   it('reads a local catalog from file://', async () => {
-    const dir = temp('onset-catalog-');
+    const dir = temp('onset-catalog 中文 #-');
     fs.writeFileSync(path.join(dir, 'index.json'), catalogText());
     const env = { ONSET_STATIONS_DIR: temp('onset-stations-') };
     const got = await market.refreshCatalog(env, [pathToFileURL(path.join(dir, 'index.json')).href]);

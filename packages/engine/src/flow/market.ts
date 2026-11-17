@@ -9,6 +9,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
 import { parseSource, stationsDir } from './fetch';
@@ -328,7 +329,7 @@ export async function readHttpResponse(response: Response, maxBytes: number): Pr
 }
 
 async function readFileURL(url: string): Promise<{ status: number; contentType: string; body: Uint8Array }> {
-  const file = decodeURIComponent(new URL(url).pathname);
+  const file = fileURLToPath(url);
   try {
     return { status: 200, contentType: '', body: new Uint8Array(fs.readFileSync(file)) };
   } catch {
