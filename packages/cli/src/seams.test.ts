@@ -41,7 +41,8 @@ function project(): { root: string; scenes: string; second: string } {
   for (const [index, id] of ['scene-001', 'scene-002'].entries()) {
     const dir = path.join(scenes, id);
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\nx\n');
+    // 全片字幕（全片时间）：只有片头一秒的字幕会被当成本地时间拒绝（scene/timing.ts 的 localTranscriptProblem）。
+    fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\nx\n\n2\n00:00:01,000 --> 00:00:02,000\ny\n');
     const scene: Record<string, unknown> = { id, duration_seconds: 1, output: 'out.mp4', transcript: 'transcript.srt', text: '内容' };
     if (index === 1) {
       scene.timing = { fps: 30, start_frame: 30, end_frame_exclusive: 60, plan: 'a'.repeat(64), phrases: '', chapter: 'c', enter: { peer: 'scene-001', device: 'match', bridge: '红色铺满画面' } };

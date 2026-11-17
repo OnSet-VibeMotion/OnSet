@@ -38,7 +38,8 @@ defineGroup({
 一个镜头是一个目录，至少包含：
   scene.json   执行契约，字段见下
   prompt.md    本镜头的创意方向（可选，缺失时使用内置的通用创意方向）
-  transcript   完整字幕，供渲染工具理解上下文
+  transcript   全片字幕（SRT，全片时间，例如复制进来的 transcription.srt），供渲染工具理解上下文；
+               有 timing 块时 onset 按它裁出本镜头的几条。不要按镜头切分或改成本地时间
 
 scene.json 只接受 ${required.length} 个必填字段 ${required.join('、')}，
 以及 ${optional.length} 个可选字段 ${optional.join('、')}（cast 是多角色叙事的角色配置，见 README「多角色叙事」一节）。
