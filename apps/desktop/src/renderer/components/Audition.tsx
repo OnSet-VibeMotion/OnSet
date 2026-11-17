@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
-import { api, errorText, post, rawURL } from '../api';
+import { useEffect, useState } from 'react';
+import { api, errorText, post } from '../api';
 import '../audition.css';
-import type { AgentInfo, AgentsResponse, Audition, AuditionContestant, AuditionRecommendation, Scene, Usage } from '../types';
+import type { AgentInfo, AgentsResponse, Audition, AuditionActivity, AuditionContestant, AuditionRecommendation, Scene, Usage } from '../types';
+import { AuditionProgress, useAuditionActivity } from './AuditionActivity';
+import { AuditionCompare } from './AuditionCompare';
 import { Icon } from './Icon';
 import { keyLabel } from './Learning';
 import { ModelSelect } from './ModelSelect';
@@ -79,8 +81,7 @@ export function AuditionTab({ scene, scenes, version, busy, run }: Props) {
         <span className="eyebrow">试镜 · {label}</span>
         <h2>同一个镜头，谁拍得最好</h2>
         <p>
-          同一份镜头说明交给几位选手各拍一遍。看的时候只有 A、B、C，选完才揭晓是谁；选中的那一份可以直接换进镜头。
-          你的每一次选择都会记下来，以后用来判断哪个模型该向哪个学。
+          所有已有画面同时比较，同步播放、暂停看细节。选完才揭晓是谁，选中的作品可以直接换进镜头。
         </p>
         {recommend.length > 0 && (
           <p className="audition-recommend">
@@ -274,37 +275,14 @@ function Compose({ busy, onStart, onCancel }: { busy: string; onStart: (picks: P
 
 /** 一场试镜：并排同步播放、评判、揭晓与采用。 */
 function Stage({ audition: a, version, busy, run, onChange }: { audition: Audition; version: number; busy: string; run: RunAction; onChange: () => void }) {
-  const videos = useRef(new Map<string, HTMLVideoElement>());
-  const [playing, setPlaying] = useState(false);
-  const [time, setTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const { activities, disconnected } = useAuditionActivity(a, version, busy);
+  const retryBusy = busy || (activities.some(c => ['pending', 'starting', 'running', 'waiting'].includes(c.state)) ? '其余选手仍在试镜' : '');
   const [note, setNote] = useState(a.verdict?.note ?? '');
   const [revoting, setRevoting] = useState(false);
   const [error, setError] = useState('');
 
-  const all = () => [...videos.current.values()];
-  const toggle = () => {
-    const list = all();
-    if (playing) {
-      for (const v of list) v.pause();
-      setPlaying(false);
-      return;
-    }
-    // 先对到同一时刻再一起放：一边先放完时另一边还在走。
-    const at = Math.min(...list.map((v) => (v.ended ? 0 : v.currentTime)));
-    for (const v of list) {
-      v.currentTime = at;
-      void v.play().catch(() => undefined);
-    }
-    setPlaying(true);
-  };
-  const seek = (t: number) => {
-    for (const v of all()) v.currentTime = Math.min(t, v.duration || t);
-    setTime(t);
-  };
-
   const done = a.contestants.every((c) => c.status === 'done');
-  const judging = done && (a.blind || revoting);
+  const judging = done && !busy && (a.blind || revoting);
 
   const vote = async (kind: 'winner' | 'tie' | 'none', winner = '') => {
     setError('');
@@ -329,58 +307,15 @@ function Stage({ audition: a, version, busy, run, onChange }: { audition: Auditi
           </span>
         </div>
       )}
-      {!done && <p className="audition-status">正在拍：{a.contestants.filter((c) => c.status === 'done').length} / {a.contestants.length} 位拍完。可以离开这一页，拍完会出现在这里。</p>
-      }
-      <div className={'audition-grid n' + a.contestants.length}>
-        {a.contestants.map((c) => (
-          <Card
-            key={c.slot}
-            c={c}
-            a={a}
-            version={version}
-            judging={judging}
-            register={(el) => {
-              if (el) videos.current.set(c.slot, el);
-              else videos.current.delete(c.slot);
-            }}
-            onTime={(t, d) => {
-              setTime(t);
-              if (d) setDuration(d);
-            }}
-            onEnded={() => setPlaying(false)}
-            onPick={() => vote('winner', c.slot)}
-            onAdopt={() => run(`/api/auditions/${a.id}/adopt`, { slot: c.slot })}
-            busy={busy}
-          />
-        ))}
-      </div>
-
-      {a.contestants.some((c) => c.output) && (
-        <div className="audition-transport">
-          <button className="play" onClick={toggle} aria-label={playing ? '暂停' : '一起播放'}>
-            <Icon name={playing ? 'pause' : 'play'} size={14} />
-          </button>
-          <input
-            className="scrub"
-            type="range"
-            min={0}
-            max={duration || 0}
-            step={1 / 30}
-            value={time}
-            aria-label="播放位置"
-            onChange={(e) => seek(Number(e.currentTarget.value))}
-          />
-          <span className="mono small muted">
-            {time.toFixed(1)} / {duration.toFixed(1)} 秒
-          </span>
-        </div>
-      )}
-
+      {!done && <p className="audition-status">{!retryBusy && activities.some(c => c.state === 'interrupted') ? '试镜已中断，可以重试未完成的选手。' : `正在拍：${a.contestants.filter(c => c.status === 'done').length} / ${a.contestants.length} 位拍完。可以离开这一页，拍完会出现在这里。`}</p>}
+      <AuditionCompare contestants={a.contestants} version={version}
+        labelFor={c => `选手 ${c.slot}${!a.blind || c.role === 'reference' ? ` · ${who(c)}` : ''}`}
+        onPick={judging ? slot => { void vote('winner', slot); } : undefined} />
       {judging && (
         <div className="audition-judge">
           <p>
             <strong>{a.blind ? (a.exam ? '看完了？A、B 哪份更好？' : '看完了？选出你觉得最好的一份。') : '改判'}</strong>
-            <span className="muted"> 点画面下面的「选它」，或者：</span>
+            <span className="muted"> 用画面旁的「选它」选出最佳，也可以：</span>
           </p>
           <input value={note} placeholder="一句话说说为什么（可选，会一起记下）" aria-label="评判说明" onChange={(e) => setNote(e.currentTarget.value)} />
           <div className="audition-actions">
@@ -410,6 +345,26 @@ function Stage({ audition: a, version, busy, run, onChange }: { audition: Auditi
         </div>
       )}
       {error && <p className="error-line">{error}</p>}
+      <div className="audition-roster-head"><h3>选手与制作过程</h3><span className="muted small">{a.blind ? '盲评只显示制作动作，评判后揭晓具体过程' : '查看进展、失败原因与重试'}</span></div>
+      <div className={'audition-grid n' + a.contestants.length}>
+        {a.contestants.map((c) => (
+          <Card
+            key={c.slot}
+            c={c}
+            activity={activities.find(activity => activity.slot === c.slot)}
+            disconnected={disconnected}
+            a={a}
+            judging={judging}
+            onPick={() => vote('winner', c.slot)}
+            onAdopt={() => run(`/api/auditions/${a.id}/adopt`, { slot: c.slot })}
+            onRetry={() => run(`/api/auditions/${a.id}/retry`, { slot: c.slot })}
+            retryBusy={retryBusy}
+            busy={busy}
+          />
+        ))}
+      </div>
+
+
     </section>
   );
 }
@@ -452,31 +407,32 @@ function tokens(u: Usage | null | undefined): string {
 
 function Card({
   c,
+  activity,
+  disconnected,
   a,
-  version,
   judging,
   busy,
-  register,
-  onTime,
-  onEnded,
   onPick,
   onAdopt,
+  onRetry,
+  retryBusy,
 }: {
   c: AuditionContestant;
+  activity?: AuditionActivity;
+  disconnected: boolean;
   a: Audition;
-  version: number;
   judging: boolean;
   busy: string;
-  register: (el: HTMLVideoElement | null) => void;
-  onTime: (t: number, duration: number) => void;
-  onEnded: () => void;
   onPick: () => void;
   onAdopt: () => void;
+  onRetry: () => void;
+  retryBusy: string;
 }) {
   const won = a.verdict?.kind === 'winner' && a.verdict.winner === c.slot;
   const adopted = a.adopted?.slot === c.slot;
   const ok = c.outcome === 'succeeded';
   const reference = c.role === 'reference';
+  const retryable = !a.verdict && !a.adopted && !ok && (c.status === 'done' || activity?.state === 'interrupted');
   return (
     <figure className={'audition-card' + (won && !a.blind ? ' won' : '') + (reference ? ' reference' : '')} data-slot={c.slot}>
       <figcaption>
@@ -486,28 +442,9 @@ function Card({
         {won && !a.blind && <span className="audition-chip on">你选的</span>}
         {adopted && <span className="audition-chip">已换进镜头</span>}
       </figcaption>
-      {c.output ? (
-        <video
-          ref={register}
-          src={rawURL(c.output, version)}
-          preload="metadata"
-          muted
-          playsInline
-          onTimeUpdate={(e) => onTime(e.currentTarget.currentTime, e.currentTarget.duration)}
-          onLoadedMetadata={(e) => onTime(e.currentTarget.currentTime, e.currentTarget.duration)}
-          onEnded={onEnded}
-        />
-      ) : (
-        <div className="audition-empty">
-          {c.status === 'pending' && '等着上场'}
-          {c.status === 'running' && (
-            <>
-              <span className="dot busy" /> 正在拍
-            </>
-          )}
-          {c.status === 'done' && '没拍出合格的画面'}
-        </div>
-      )}
+      {activity && <AuditionProgress activity={activity} disconnected={disconnected} />}
+      {disconnected && !activity && <p className="audition-progress-note" role="status">暂时无法读取制作过程，正在重试。</p>}
+      {!activity && <p className="audition-facts">{c.output ? '画面已就绪，可在上方选择比较' : c.status === 'done' ? '尚无可比较的画面' : c.status === 'running' ? '正在制作画面' : '等待上场'}</p>}
       {!a.blind && c.status === 'done' && (
         <p className="audition-facts">
           {ok ? '没有查出问题' : (c.problems?.length ?? 0) > 0 ? `查出 ${c.problems!.length} 处问题` : '没跑成'}
@@ -527,6 +464,11 @@ function Card({
         </details>
       )}
       <div className="audition-card-actions">
+        {retryable && (
+          <button className="ghost" aria-label={`重试 ${c.slot}`} disabled={!!retryBusy} title={retryBusy || '沿用这位选手的配置与试镜输入重新制作'} onClick={onRetry}>
+            重试
+          </button>
+        )}
         {judging && c.output && !reference && <button onClick={onPick}>选它</button>}
         {!a.blind && ok && !adopted && !c.role && (
           <button className={won ? 'primary' : 'ghost'} disabled={!!busy} title={busy || '把这一份换进镜头，原来的画面归档'} onClick={onAdopt}>
@@ -534,6 +476,7 @@ function Card({
           </button>
         )}
       </div>
+      {retryable && <p className="audition-progress-note">{retryBusy ? `任务结束后可重试：${retryBusy}` : '沿用原配置和试镜输入；先验收已有视频，需要时再调用模型。'}</p>}
     </figure>
   );
 }

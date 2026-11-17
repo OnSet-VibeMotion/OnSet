@@ -41,7 +41,7 @@ export function songScaffold(root: string): void {
   project.initializeWithFiles(root, extra);
   // 项目用哪个流程只看锁文件的记录：补了歌曲资产就把记录换成歌曲讲解（画幅不变），制作提示词随之按歌曲讲解组合。
   const rec = flowRecord(root);
-  if (rec && rec.id !== 'song') recordFlow(root, { id: 'song', canvas: rec.canvas });
+  if (rec && rec.id !== 'song') recordFlow(root, { ...rec, id: 'song' });
 }
 
 /** Go 的 %v 打印 []string：[a b c]。 */

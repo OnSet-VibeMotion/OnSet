@@ -12,7 +12,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockApi, reply, type MockRequest } from '../testing';
-import { PluginSettings, StationPage, StationSlots, setStationPages } from './Stations';
+import { PluginSettings, StationPage, StationSlots, clickedInPluginPage, resetPluginClicks, setStationPages } from './Stations';
 import { slashCommands } from './chat/complete';
 import { Chat } from './Chat';
 import type { ProgressState, StationInfo, StationOp, StationPreview, StationRun, StationsResponse, Task } from '../types';
@@ -117,6 +117,9 @@ function run(over: Partial<StationRun>): StationRun {
 
 const stations = (...list: StationInfo[]): StationsResponse => ({ stations: list, problems: [] });
 
+/** 插件中心还没有目录（插件中心自己的界面在 Market.test.tsx 里测）。 */
+const noMarket = { catalog_url: '', custom_url: false, fetched_at: '', refreshing: false, error: '', installed_error: '', onset_version: 'dev', items: [] };
+
 const myPlugins = () => document.querySelector<HTMLElement>('section.stations[aria-label="我的插件"]')!;
 
 /** 等假发布的卡片出现在「我的插件」里。 */
@@ -144,6 +147,7 @@ describe('添加插件', () => {
     let installed = false;
     const backend = mockApi({
       '/api/stations': () => stations(...(installed ? [fakePublisher()] : [])),
+      '/api/market': noMarket,
       'POST /api/stations': (req: MockRequest) => ({ task_id: (req.body as { source: string }).source === `link:${folder}` ? 'fetch-ok' : 'fetch-bad' }),
       // 选错目录：沿用清单校验，取回失败。
       '/api/tasks/fetch-bad': task('fetch-bad', 'failed', { error: '/Users/me/插件 里没有 onset-station.json' }),
@@ -218,6 +222,7 @@ describe('详情与设置', () => {
     let current = fakePublisher();
     const backend = mockApi({
       '/api/stations': () => stations(current),
+      '/api/market': noMarket,
       'POST /api/stations/fake-publisher/settings': (req: MockRequest) => {
         const { key, value } = req.body as { key: string; value: unknown };
         current = { ...current, settings: current.settings.map((st) => (st.key !== key ? st : st.type === 'secret' ? { ...st, set: value !== '' } : { ...st, value: value as string })) };
@@ -275,6 +280,7 @@ describe('详情与设置', () => {
     let n = 0;
     const backend = mockApi({
       '/api/stations': () => stations(fakePublisher({ ops: fakePublisher().ops.map((o) => (o.name === 'accounts' && accountsRun ? { ...o, last_run: accountsRun } : o)) })),
+      '/api/market': noMarket,
       'POST /api/stations/fake-publisher/ops/accounts': () => {
         accountsRun = run({ data: { items: accounts } });
         return { task_id: `acc-${++n}` };
@@ -354,6 +360,7 @@ describe('插件页面与小窗', () => {
     let accountsRun: StationRun | undefined;
     const backend = mockApi({
       '/api/stations': () => stations({ ...station, ops: station.ops.map((o) => (o.name === 'accounts' && accountsRun ? { ...o, last_run: accountsRun } : o)) }),
+      '/api/market': noMarket,
       'POST /api/stations/fake-publisher/ops/accounts': () => {
         accountsRun = run({ data: { items: [{ title: '小号' }] } });
         return { task_id: 'acc' };
@@ -400,6 +407,79 @@ describe('插件页面与小窗', () => {
     expect(page.answers.some((a) => a.id === 99)).toBe(false);
     expect(runAction).not.toHaveBeenCalled();
     expect(backend.unmatched).toEqual([]);
+  });
+
+  // 用户在插件页面里亲手点了执行按钮：浏览器在片场窗口上也记下「刚有用户操作」，脚本点的不会（e2e 实测）。
+  it('用户刚在页面里亲手点的执行不再确认；分不清是谁点的、一次点击连发、调片场的操作与发话照旧确认', async () => {
+    const activation = { isActive: false };
+    const hostFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    Object.defineProperty(navigator, 'userActivation', { value: activation, configurable: true });
+    try {
+      resetPluginClicks();
+      // 规则本身：没有用户操作不放行；片场自己刚有点击时分不清点在哪，不放行；一次点击只放行一次。
+      const a = document.body.appendChild(document.createElement('iframe'));
+      const b = document.body.appendChild(document.createElement('iframe'));
+      a.focus();
+      expect(clickedInPluginPage(a, 100_000)).toBe(false);
+      activation.isActive = true;
+      // 用户点的是 A：B 的请求不算，焦点不在它那里。
+      expect(clickedInPluginPage(b, 100_000)).toBe(false);
+      expect(clickedInPluginPage(null, 100_000)).toBe(false);
+      // B 抢焦点也不能借 A 的用户操作直接执行。多框架时无法证明归属。
+      b.focus();
+      expect(clickedInPluginPage(b, 100_000)).toBe(false);
+      b.remove();
+      a.focus();
+      hostFocus.mockReturnValue(false);
+      expect(clickedInPluginPage(a, 100_000)).toBe(false);
+      hostFocus.mockReturnValue(true);
+      expect(clickedInPluginPage(a, 100_000)).toBe(true);
+      expect(clickedInPluginPage(a, 102_000)).toBe(false);
+      expect(clickedInPluginPage(a, 106_000)).toBe(true);
+      resetPluginClicks();
+      window.dispatchEvent(new Event('pointerdown'));
+      expect(clickedInPluginPage(a)).toBe(false);
+
+      // 接进页面桥：执行请求直接执行，不弹确认条。
+      resetPluginClicks();
+      mockApi({ '/api/publish': { available: true, data: { platform: 'douyin' } } });
+      setStationPages([fakePublisher()]);
+      const runAction = vi.fn();
+      const quick = vi.fn();
+      render(<StationPage tab="x:fake-publisher:dashboard" version={0} run={runAction} onQuick={quick} projectName={project.name} />);
+      const frame = document.querySelector<HTMLIFrameElement>('.station-frame')!;
+      const page = pageBridge(frame);
+      // 用户刚点的是另一个插件页面（A）：这一页（B）的脚本趁机发来的执行照旧确认。
+      a.focus();
+      const sneaky = await page.ask({ type: 'run', op: 'send', params: { platform: 'douyin' } });
+      expect(await screen.findByRole('alertdialog', { name: '插件请求执行' })).toBeTruthy();
+      expect(runAction).not.toHaveBeenCalled();
+      await userEvent.click(within(screen.getByRole('alertdialog', { name: '插件请求执行' })).getByRole('button', { name: '不执行' }));
+      await page.answer(sneaky).catch(() => {});
+      resetPluginClicks();
+      // 另一个框架退出后，只剩这一页：亲手点击直接执行。
+      a.remove();
+      frame.focus();
+      const send = await page.ask({ type: 'run', op: 'send', params: { platform: 'douyin' } });
+      expect((await page.answer(send)).result).toEqual({ started: true });
+      expect(runAction).toHaveBeenCalledWith('/api/stations/fake-publisher/ops/send', { params: { platform: 'douyin' } });
+      expect(screen.queryByRole('alertdialog', { name: '插件请求执行' })).toBeNull();
+      // 同一下点击里页面又发来一个：照旧确认。
+      await page.ask({ type: 'run', op: 'scribble' });
+      expect(await screen.findByRole('alertdialog', { name: '插件请求执行' })).toBeTruthy();
+      expect(runAction).toHaveBeenCalledTimes(1);
+      await userEvent.click(within(screen.getByRole('alertdialog', { name: '插件请求执行' })).getByRole('button', { name: '不执行' }));
+      // 调片场自带的操作、替用户发话：刚点过也照旧确认。
+      resetPluginClicks();
+      await page.ask({ type: 'call', op: 'review', params: {} });
+      expect(await screen.findByRole('alertdialog', { name: '插件请求执行' })).toBeTruthy();
+      expect(runAction).toHaveBeenCalledTimes(1);
+    } finally {
+      hostFocus.mockRestore();
+      delete (navigator as { userActivation?: unknown }).userActivation;
+      resetPluginClicks();
+      for (const f of document.querySelectorAll('body > iframe')) f.remove();
+    }
   });
 
   it('整页：配色、项目概况、读文件经宿主；执行与调用片场的操作先请用户确认；斜杠命令登记上', async () => {

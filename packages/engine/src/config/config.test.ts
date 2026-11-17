@@ -183,6 +183,32 @@ describe('config', () => {
     expect(() => load(root, { ...env, RENDERER_MODEL: 'a;b' })).toThrow('RENDERER_MODEL');
   });
 
+  // 调用选项与模型同一条规则：effort=xhigh 是给 claude 选的，项目换成 codebuddy 就不带过去。
+  it('uses the options only with the tool they were chosen for', () => {
+    const root = tempDir();
+    const file = path.join(tempDir(), 'settings.conf');
+    const env = { [SettingsFileEnv]: file };
+    fs.writeFileSync(path.join(root, 'onset.conf'), '');
+    writeGlobal(env, { ORCHESTRATOR: 'claude', ORCHESTRATOR_OPTIONS: 'effort=xhigh,fast=on', RENDERER: 'qoder-intl', RENDERER_OPTIONS: 'context=200000' }, parseConfFile);
+    expect(load(root, env)).toMatchObject({ orchestratorOptions: 'effort=xhigh,fast=on', rendererOptions: 'context=200000', optimizerOptions: '' });
+    const child = childEnvironment(load(root, env), {}, false);
+    expect(child.ORCHESTRATOR_OPTIONS).toBe('effort=xhigh,fast=on');
+    expect(child.RENDERER_OPTIONS).toBe('context=200000');
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codebuddy\n');
+    expect(load(root, env).orchestratorOptions, '项目换了编排工具').toBe('');
+    expect(childEnvironment(load(root, env), { ORCHESTRATOR_OPTIONS: 'stale' }, true).ORCHESTRATOR_OPTIONS).toBeUndefined();
+    // 优化工具跟随编排时没有自己的选项。
+    writeGlobal(env, { OPTIMIZER_OPTIONS: 'effort=low' }, parseConfFile);
+    expect(load(root, env).optimizerOptions).toBe('');
+    writeGlobal(env, { OPTIMIZER: 'claude', OPTIMIZER_OPTIONS: 'effort=low' }, parseConfFile);
+    expect(load(root, env).optimizerOptions).toBe('effort=low');
+    // 在同一层换了工具，那一层的模型与选项一起清掉。
+    writeGlobal(env, { RENDERER: 'claude' }, parseConfFile);
+    expect(fs.readFileSync(file, 'utf8')).not.toContain('RENDERER_OPTIONS=');
+    expect(() => writeGlobal(env, { RENDERER_OPTIONS: 'effort high' }, parseConfFile)).toThrow('选项写法');
+    expect(() => load(root, { ...env, ORCHESTRATOR_OPTIONS: 'effort="x"' })).toThrow('ORCHESTRATOR_OPTIONS');
+  });
+
   it('defaults the voice to the local Breeze on Apple Silicon and MiniMax elsewhere', () => {
     expect(defaultTTSProvider('darwin', 'arm64')).toBe('breeze');
     expect(defaultTTSProvider('darwin', 'x64')).toBe('minimax');

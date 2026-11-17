@@ -1,8 +1,9 @@
 import './testsupport';
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as agentrun from '../agentrun';
+import * as ledger from '../ledger';
 import * as project from '../project';
 import { collect, prepare } from '../renderassets';
 import {
@@ -18,6 +19,7 @@ import {
   newID,
   replayGuard,
   reseedPrompt,
+  sessionEventJSON,
   transcript,
   transcriptLimit,
   updateMeta,
@@ -87,6 +89,8 @@ describe('sessions', () => {
     expect(a[1]).toContain('--resume ' + cliSession);
     expect(a[1]).not.toContain('动手前先读项目规则');
     expect(a[1]).toContain('不得创建、编辑或覆盖镜头实现代码');
+    expect(a[1]).toContain('结束本轮对话会终止仍在运行的任务');
+    expect(a[1]).toContain('不要调用 CronCreate');
 
     // 事件流：断线重放从 Last-Event-ID 之后开始。
     const events = await rawGet(f.s, `/api/sessions/${id}/events?follow=0`);
@@ -170,6 +174,32 @@ describe('sessions', () => {
     expect(text, '应提示续接失败').toContain('原会话无法续接');
   });
 
+  // 编排会话越续越长，每次调用都要重读整段上下文：最近一轮平均上下文到了阈值，下一轮换新会话、带上对话记录与交接说明（rotate.ts）。
+  it('starts a new CLI session once the conversation gets too long', async () => {
+    const f = newSessionFixture();
+    const { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{}');
+    const id = body.session_id as string;
+    await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"第一句"}');
+    const first = await waitIdle(f, id);
+    const old = first.session.cli_session_id as string;
+    ledger.append(ledger.projectFile(f.root), ledger.fromResult(ledger.SourceStudio, 'claude', '', old, { input_tokens: 40 * 300_000, turns: 40, source: 'claude result', basis: 'total-input' }, null, false));
+    await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"第二句"}');
+    const detail = await waitIdle(f, id);
+    expect(lastTurn(detail).status).toBe('succeeded');
+    const a = args(f);
+    expect(a).toHaveLength(2);
+    expect(a[1]).not.toContain('--resume');
+    expect(a[1]).toContain('--session-id');
+    expect(detail.session.cli_session_id).not.toBe(old);
+    for (const want of ['换了一个新会话接着做', '以文件为准', '之前的对话', '第一句', '第二句']) expect(a[1], want).toContain(want);
+    const { text } = await rawGet(f.s, `/api/sessions/${id}/events?follow=0`);
+    expect(text).toContain('这一轮换一个新会话接着做');
+    // 新会话还短：再下一轮照常续接。
+    await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"第三句"}');
+    await waitIdle(f, id);
+    expect(args(f)[2]).toContain('--resume ' + (detail.session.cli_session_id as string));
+  });
+
   // 整片制作换了 CLI 会话时，第一轮的制作说明不在对话记录里，要重发（2026-11：qoder 换会话后只剩对话记录）。
   it('a reseeded production session gets the production prompt again', async () => {
     const f = newSessionFixture();
@@ -248,9 +278,30 @@ describe('sessions', () => {
       meta.turns = [turn.turn_id];
       meta.running_turn = turn.turn_id;
     });
+    emit(sess, turn.turn_id, { kind: 'turn-start', status: 'running' });
     const s2 = new Server({ projectPath: f.root, configPath: f.s.config.configPath });
     expect(listSessions(s2, f.root)[0].running_turn).toBeUndefined();
     expect(loadTurn(f.root, turn.turn_id).status).toBe('interrupted');
+    expect(getSession(s2, f.root, sess.meta.session_id)!.events.at(-1)).toMatchObject({ kind: 'turn-end', turn_id: turn.turn_id, status: 'interrupted', text: 'Studio 在本轮进行中退出' });
+  });
+
+  it.each(['running', 'interrupted', 'succeeded', 'failed', 'missing'])('repairs a missing end event for a %s turn even after running_turn was cleared', async (status) => {
+    const f = newSessionFixture();
+    const sess = createSession(f.s, f.root, 'chat', 'x', { tool: 'qoder', renderer: 'qoder' });
+    const turn: Turn = { turn_id: newID('t'), session_id: sess.meta.session_id, kind: 'chat', message: '渲染所有镜头', status, started_at: new Date().toISOString(), changes: [], before: null };
+    if (status !== 'missing') saveTurn(f.root, turn);
+    updateMeta(sess, (meta) => { meta.turns = [turn.turn_id]; });
+    emit(sess, turn.turn_id, { kind: 'turn-start', status: 'running' });
+    emit(sess, turn.turn_id, { kind: 'tool-call', tool: 'mcp__onset__scene_run_all', call_id: 'render' });
+    const s2 = new Server({ projectPath: f.root, configPath: f.s.config.configPath });
+    const restored = getSession(s2, f.root, sess.meta.session_id)!;
+    const expected = status === 'missing' || status === 'running' ? 'interrupted' : status;
+    expect(restored.cancel).toBeNull();
+    expect(restored.events.at(-1)).toMatchObject({ seq: 3, kind: 'turn-end', turn_id: turn.turn_id, status: expected });
+    const response = await rawGet(s2, `/api/sessions/${sess.meta.session_id}/events?follow=0&after=2`);
+    expect(response.text).toContain('event: turn-end');
+    const s3 = new Server({ projectPath: f.root, configPath: f.s.config.configPath });
+    expect(getSession(s3, f.root, sess.meta.session_id)!.events.map(sessionEventJSON)).toEqual(restored.events.map(sessionEventJSON));
   });
 
   it('session request validation', async () => {
@@ -464,4 +515,38 @@ describe('sessions', () => {
     ({ text } = await rawGet(f.s, `/api/sessions/${id}/events?follow=0`));
     expect(text, '移除要留下 unqueued 事件').toContain('event: unqueued');
   });
+});
+
+
+it('keeps an existing conversation usable when its usage ledger cannot be read', async () => {
+  const f = newSessionFixture();
+  const { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{}');
+  const id = body.session_id as string;
+  await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"first"}');
+  const first = await waitIdle(f, id);
+  const spy = vi.spyOn(ledger, 'read').mockImplementation(() => { throw Object.assign(new Error('denied'), { code: 'EACCES' }); });
+  try {
+    const response = await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"second"}');
+    expect(response.status).toBe(202);
+  } finally { spy.mockRestore(); }
+  const second = await waitIdle(f, id);
+  expect(lastTurn(second).status).toBe('succeeded');
+  expect(second.session.cli_session_id).toBe(first.session.cli_session_id);
+});
+it('hands off the last saved plan after restarting and rotating the CLI session', async () => {
+  const f = newSessionFixture();
+  const { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{}');
+  const id = body.session_id as string;
+  await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"first"}');
+  const first = await waitIdle(f, id);
+  const sess = getSession(f.s, f.root, id)!;
+  emit(sess, lastTurn(first).turn_id, { kind: agentrun.KindPlan, plan: [{ id: 'task-1', text: '尚未完成的精确任务', status: 'pending' }] });
+  ledger.append(ledger.projectFile(f.root), ledger.fromResult(ledger.SourceStudio, 'claude', '', first.session.cli_session_id as string, { input_tokens: 40 * 300_000, turns: 40, source: 'claude result', basis: 'total-input' }, null, false));
+  const restarted = new Server({ ...f.s.config, projectPath: f.root });
+  try {
+    expect(getSession(restarted, f.root, id)!.events.find(e => e.kind === agentrun.KindPlan)?.plan?.[0].id).toBeUndefined();
+    await studioRequest(restarted, 'POST', `/api/sessions/${id}/turns`, '{"message":"continue"}');
+    await waitIdle({ ...f, s: restarted }, id);
+    expect(args(f)[1]).toContain('尚未完成的精确任务');
+  } finally { restarted.shutdown(); }
 });

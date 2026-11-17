@@ -42,6 +42,7 @@ function backend() {
   const settings = (): SettingsResponse => ({
     file: '/tmp/onset/settings.conf',
     has_project: false,
+    machine: [],
     rows: [row('ORCHESTRATOR', options, 'claude'), row('ORCHESTRATOR_MODEL', [], ''), row('RENDERER', options, 'claude'), row('TTS_PROVIDER', [{ value: 'edge', label: '微软 Edge' }], 'edge')],
   });
   const servicesResponse = (): AgentServicesResponse => ({ presets, services: [...services], active: services[0]?.id ?? '', storage: { encrypted: true } });

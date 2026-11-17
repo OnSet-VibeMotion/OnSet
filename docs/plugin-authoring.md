@@ -257,14 +257,14 @@ echo 'onset-result {"url": "https://example.com/v/1"}'
 | `onset.read(path)` | 读一个项目文件：`{path, size, text}`，图片另有 `data_url`。只给 `reads`、`produces` 与站点 `outputs` 里的文件 |
 | `onset.mediaURL(path)` | 项目里视频、图片的地址，可以直接放进 `<video>`、`<img>`（同样只给能读的文件） |
 | `onset.list(op)` | 跑本插件的一条列表操作（`list: true`），不弹确认条，resolve 成它的结构化结果（`onset-result` 那一行的 JSON）。用来读插件自己数据目录里的东西，例如已登录的账号：在设置里没打开项目时登录的账号，项目里没有它的文件，页面经这里现读，不要往项目里写一份快照 |
-| `onset.run(op, params)` | 执行本插件的一条操作：宿主先在页面上方弹确认条，用户点「执行」才跑 |
+| `onset.run(op, params)` | 执行本插件的一条操作。用户刚在这个页面里亲手点了按钮时直接执行；否则（页面脚本自己发起、用户点的是别的页面、或分不清是谁点的）宿主先在页面上方弹确认条，用户点「执行」才跑。一次点击只放行一个操作，所以一个按钮对应一次 `run` |
 | `onset.call(op, params)` | 调一条片场自带的操作（要在 `permissions.uses` 里申请），同样先请用户确认 |
 | `onset.send(text)` | 把一段话作为一条消息发给 AI，先请用户确认 |
 | `onset.ask(text)` | 把一段话填进对话输入框，不发送 |
 | `onset.open(page)` | 打开本插件的另一个页面 |
 | `onset.onRefresh(fn)` | 项目有变化（任务跑完、一轮对话结束）时回调，页面据此重读 |
 
-页面里的按钮可以被脚本自己点，所以凡是对外、花钱或改项目的动作，宿主都要用户在宿主界面上再点一次。
+页面里的按钮可以被脚本自己点，所以宿主要分清是不是用户亲手点的：用户刚在这个页面里亲手点了按钮时，那一次 `run` 直接执行；页面脚本自己发起的、用户点的是别的页面、或分不清是谁点的 `run`，以及所有 `call`、`send`，都要用户在宿主界面上再点一次。
 
 页面一加载就可以调这些方法，不用等任何「就绪」事件：宿主在插入 iframe 的同一次提交里就挂好了监听。宿主 15 秒内没有回应的请求以「片场没有回应这个请求」reject，不会一直挂着；`run`、`call`、`send` 一弹出确认条宿主就先回一声「收到了」，之后等用户多久都不算超时。确认条盖在页面顶部，不会把页面往下推。
 
@@ -300,7 +300,18 @@ echo 'onset-result {"url": "https://example.com/v/1"}'
 
 git 来源克隆后记下 commit 与整个目录的内容摘要，存进用户级目录 `<数据目录>/onset/stations/<插件 id>/<commit>`（`ONSET_STATIONS_DIR` 可覆盖）。之后内容与摘要对不上（被改过）就不再使用，设置页提示更新或重新添加。插件目录里不能有符号链接。
 
-更新：设置页的「更新」按钮（`station_update`）按已装插件清单里记的来源重新取到暂存处——来源写的是分支时拿到它现在的 commit，写的是 tag 时 tag 被移动过才会变——先列出版本、commit、新申请的权限与新用到的实验性能力，用户点「换上」才写回清单。所以发布新版本时，建议让用户用分支来源，或者让用户以新 tag 重新添加。
+更新：设置页的「更新」按钮（`station_update`）按已装插件清单里记的来源重新取到暂存处——来源写的是分支时拿到它现在的 commit，写的是 tag 时 tag 被移动过才会变——先列出版本、commit、新申请的权限与新用到的实验性能力，用户点「换上」才写回清单。所以发布新版本时，建议让用户用分支来源，或者让用户以新 tag 重新添加。登记在插件中心的插件不用这样做，见下一节。
+
+## 登记到插件中心
+
+插件中心是一个独立的目录仓库 [OnSet-VibeMotion/onset-plugins](https://github.com/OnSet-VibeMotion/onset-plugins)，里面的 `index.json` 列出插件的来源，以及每一版钉住的 commit 和要求的最低片场版本。客户端在「设置 → 功能与插件 → 插件中心」里浏览和搜索这份目录。要登记，就向那个仓库发 PR，写法见它的 `CONTRIBUTING.md`。
+
+- **装**：从插件中心装时，来源是 `<source>#<commit>`。取回后客户端核对清单的 `id` 和 commit 与目录里写的一致，对不上就不装。之后照常走两步：先给用户看插件的实情，用户点「装上」才装。
+- **更新**：发新版本时，在目录里追加一项。用户的片场版本满足 `requires_onset` 时，客户端会提示「更新到 x.y.z」。点了之后，按目录里新一版的 commit 取到暂存处，列出差异，用户点「换上」才换。只有和已装来源是同一个仓库时才提示更新。用户手动从别的来源装了同 id 的插件时，插件中心显示「装着同名插件，但不是从这里装的」。
+- **不用 git 也能装**：GitHub 上的插件，每一版在目录里都记了压缩包的内容摘要（`digest`）。用户电脑上没有 git 时，片场会下载 GitHub 给这个 commit 生成的压缩包，核对摘要后再装。所以别在 `.gitattributes` 里把插件要用的文件标成 `export-ignore`：压缩包里不会有这些文件。
+- **自动登记新版本**：在插件仓库里调用插件中心的 `bump.yml` 工作流，推 tag 时会自动向插件中心发「加一版」的 PR，写法见插件中心的 `CONTRIBUTING.md`。只有登记里 `maintainers` 列出的账号能改这条登记。
+- **撤回与停止维护**：在目录里给某一版加 `yanked`，或给插件加 `deprecated`，并写明原因。不要直接删掉登记，否则已经装了的用户收不到任何提示。
+- **地址**：目录地址可以在「设置 → 网络与更新」里改成镜像或公司内部的目录。取目录、取图标、克隆插件都走那里填的代理，没填就用系统代理。
 
 ## 兼容性
 
@@ -380,8 +391,8 @@ tell({ kind: 'hide' });                                    // 收起桌宠
 
 - `{action: "open", account: "稳定的账号编号", label: "账号备注", url: "https://creator.example.com/"}`：打开或恢复该账号的页面，返回 `{reused: boolean}`。编号为 1–80 位字母、数字、下划线或连字符，以字母数字开头。一次操作只控制一个账号。
 - `{action: "command", method: "Page.navigate", params: {url: "https://creator.example.com/editor"}}`：导航到声明过的来源。
-- 其余允许的 CDP 命令：`Page.enable`、`Page.bringToFront`、`Runtime.evaluate`、`Runtime.releaseObject`、`DOM.setFileInputFiles`、`Input.insertText`。上传文件必须是当前项目内的真实文件（校验符号链接后的路径）。命令返回 CDP 结果，错误返回非 2xx 与 `{error: "说明"}`。
+- 其余允许的 CDP 命令：`Page.enable`、`Page.bringToFront`、`Runtime.evaluate`、`Runtime.releaseObject`、`DOM.setFileInputFiles`、`Input.insertText`、`Input.dispatchKeyEvent`（`type` 只能是 keyDown / keyUp / rawKeyDown / char）、`Input.dispatchMouseEvent`（`type` 只能是 mouseMoved / mousePressed / mouseReleased，必须给 `x`、`y`）。键盘与鼠标用来像人一样逐字输入、真的点一下（有的网页只认可信事件），只作用于这个页面。上传文件必须是当前项目内的真实文件（校验符号链接后的路径）。命令返回 CDP 结果，错误返回非 2xx 与 `{error: "说明"}`。
 
-网页以 `WebContentsView` 显示在片场主窗口里，不拥有 Node、宿主 preload 或宿主会话。登录空间保存在插件 `data_dir/web-sessions/<account>/`，不同插件、账号独立；用户切回项目时页面保留，再次打开同一账号不自动导航，插件应在 `reused` 为 true 时避免覆盖用户编辑。账号仍在被某次操作填写时，另一项操作会明确失败。
+网页以 `WebContentsView` 显示在片场主窗口里，不拥有 Node、宿主 preload 或宿主会话。登录空间（cookie、本地存储）由片场保存在它自己的应用数据目录里（`station-sessions/<插件>/<account>/`），不同插件、账号独立，客户端重启后仍是登录状态；插件不要自己去读写或删除它，移除账号时调桥的 `forget`，片场会关掉那个账号的页面并清空它的登录空间；用户切回项目时页面保留，再次打开同一账号不自动导航，插件应在 `reused` 为 true 时避免覆盖用户编辑。账号仍在被某次操作填写时，另一项操作会明确失败。
 
 操作完成或取消后连接撤销，网页保留给用户；客户端关闭时销毁网页，登录状态继续保存。不要把连接地址、口令、网页 Cookie 写到项目、日志或操作结果。插件只需要连接这一页，不需要启动调试端口、安装浏览器或把网站代码加载到片场进程中。

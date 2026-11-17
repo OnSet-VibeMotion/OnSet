@@ -414,7 +414,7 @@ export function list(root: string): Audition[] {
 
 /** 选手目录里的镜头（读它渲染时的那份 scene.json）。 */
 export function contestantScene(root: string, c: Contestant): Scene {
-  return loadScene(path.join(root, c.workdir));
+  return { ...loadScene(path.join(root, c.workdir)), audition: true };
 }
 
 /** 一位选手渲染完：把尝试记录里的结果抄进来。 */

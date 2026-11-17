@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { interactiveInvocation } from '../tools';
-import { ACPTranslator, CodebuddyUsage, acpOutcome, acpPermissionTool, acpUsage, runACP } from './acp';
+import { ACPTranslator, CodebuddyUsage, acpModel, acpOutcome, acpPermissionTool, acpUsage, configureMcode, ensureModel, mcodeAskBash, mcodeModelValue, runACP } from './acp';
 import { CodexTasks, codexDecision, codexItemEvents, runCodexApp } from './codexapp';
 import { commandAllowed, unwrapShell, type PermissionAnswer } from './interactive';
 import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, KindUsage, type Event } from './parse';
@@ -386,10 +386,99 @@ describe('interactive orchestrators', () => {
     expect(JSON.parse(start.slice(2)).params).toMatchObject({ approvalPolicy: 'untrusted', sandbox: 'workspace-write' });
   });
 
+  // codex app-server：快速模式是 thread/start 的 serviceTier，推理强度是 turn/start 的 effort（用户选的盖过 Windows 缺省）。
+  it('passes codex options through the app-server protocol', async () => {
+    const { outcome, raw } = await fakeRun('codex', '整理资料', { decision: 'allow' }, { options: { effort: 'xhigh', fast: 'on' }, env: { ONSET_WINDOWS_ORCHESTRATOR_EFFORT: 'low' } });
+    expect(outcome.error).toBeNull();
+    const start = raw.find((line) => line.includes('"thread/start"'))!;
+    expect(JSON.parse(start.slice(2)).params.serviceTier).toBe('priority');
+    const turn = raw.find((line) => line.includes('"turn/start"'))!;
+    expect(JSON.parse(turn.slice(2)).params.effort).toBe('xhigh');
+    const plain = await fakeRun('codex', '整理资料', { decision: 'allow' });
+    expect(JSON.parse(plain.raw.find((line) => line.includes('"thread/start"'))!.slice(2)).params.serviceTier).toBeUndefined();
+    const off = await fakeRun('codex', '整理资料', { decision: 'allow' }, { options: { fast: 'off' } });
+    expect(JSON.parse(off.raw.find(line => line.includes('"thread/start"'))!.slice(2)).params.serviceTier).toBeNull();
+  });
+
   it.skipIf(process.platform !== 'win32')('preserves an actual Windows agent process failure', async () => {
     const { outcome } = await fakeRun('codex', '装一下', { decision: 'deny' }, {}, undefined, { FAKE_EXIT_BEFORE_TURN: '1' });
     expect(outcome.result.exitCode).toBe(23);
     expect(outcome.error?.message).toContain('编排工具退出码 23：');
     expect(outcome.error?.message).toContain('agent startup failed');
+  });
+});
+
+describe('ensureModel', () => {
+  // opencode 的推理档位附在模型名后（p/m#high）：对方报回带变体的模型名时不能当成没切过去，再切一次会把变体丢掉。
+  it('treats a reported model variant as the same model', async () => {
+    const calls: unknown[] = [];
+    const peer = { request: async (method: string, params: unknown) => void calls.push([method, params]) };
+    const opened = { configOptions: [{ id: 'model', category: 'model', currentValue: 'p/m#high' }] };
+    await ensureModel(peer, 's1', opened, 'p/m');
+    expect(calls).toEqual([]);
+    await ensureModel(peer, 's1', opened, 'p/other');
+    expect(calls).toEqual([['session/set_config_option', { sessionId: 's1', configId: 'model', value: 'p/other' }]]);
+  });
+});
+
+// MiniMax Code 0.6.12 实测：模型值 m:<服务商>:<模型>:v:<变体>；用户自己的配置常是 bypassPermissions，安全模式要切回 Ask。
+describe('configureMcode', () => {
+  let env: { MINIMAX_DATA_DIR: string };
+  beforeEach(() => { env = { MINIMAX_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'onset-mcode-data-')) }; });
+  afterEach(() => { fs.rmSync(env.MINIMAX_DATA_DIR, { recursive: true, force: true }); });
+  it('preserves existing permissions when a replacement write fails', () => {
+    const file = path.join(env.MINIMAX_DATA_DIR, 'sessions', 's', 'permission.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const content = '{"version":2,"allow":[],"deny":[{"tool_name":"bash"}],"ask":[]}';
+    fs.writeFileSync(file, content);
+    const write = fs.writeFileSync;
+    const spy = vi.spyOn(fs, 'writeFileSync').mockImplementation(((name: fs.PathOrFileDescriptor) => {
+      write(name, 'partial');
+      throw new Error('disk full');
+    }) as typeof fs.writeFileSync);
+    try { expect(() => mcodeAskBash(env.MINIMAX_DATA_DIR, 's', true)).toThrow('disk full'); }
+    finally { spy.mockRestore(); }
+    expect(fs.readFileSync(file, 'utf8')).toBe(content);
+    expect(fs.readdirSync(path.dirname(file))).toEqual(['permission.json']);
+  });
+  const rules = (): unknown => JSON.parse(fs.readFileSync(path.join(env.MINIMAX_DATA_DIR, 'sessions', 's', 'permission.json'), 'utf8'));
+  const opened = () => ({
+    configOptions: [
+      { id: 'permissionMode', currentValue: 'bypassPermissions' },
+      { id: 'model', currentValue: 'm:minimax:MiniMax-M3.1-Flash:v:thinking', options: [{ value: 'm:minimax:MiniMax-M3:v:' }, { value: 'm:minimax:MiniMax-M3:v:thinking' }, { value: 'm:minimax:MiniMax-M3.1-Flash:v:thinking' }] },
+      { id: 'thinkingEffort', currentValue: 'default' },
+    ] as Array<Record<string, unknown>>,
+  });
+  it('switches to Ask, keeps the variant and sets the effort', async () => {
+    const calls: unknown[] = [];
+    const peer = { request: async (_method: string, params: unknown) => (calls.push(params), {}) };
+    const o = opened();
+    await configureMcode(peer, 's', o, { unsafe: false, model: 'minimax/MiniMax-M3', options: { effort: 'high' }, env });
+    // mcode 自己的 Ask 不是闸门：这个会话的每条 bash 都要来问，白名单由 agentrun 答。
+    expect(rules()).toEqual({ version: 2, allow: [], deny: [], ask: [{ tool_name: 'bash', matcher: { kind: 'tool' } }] });
+    expect(calls).toEqual([
+      { sessionId: 's', configId: 'permissionMode', value: 'default' },
+      { sessionId: 's', configId: 'model', value: 'm:minimax:MiniMax-M3:v:thinking' },
+      { sessionId: 's', configId: 'thinkingEffort', value: 'high' },
+    ]);
+    // ensureModel 不再按 opencode / codebuddy 的写法去切一次。
+    await ensureModel(peer, 's', o, 'minimax/MiniMax-M3');
+    expect(calls).toHaveLength(3);
+  });
+  it('leaves full access alone when unsafe and rejects unknown models', async () => {
+    const calls: unknown[] = [];
+    const peer = { request: async (_method: string, params: unknown) => (calls.push(params), {}) };
+    fs.mkdirSync(path.join(env.MINIMAX_DATA_DIR, 'sessions', 's'), { recursive: true });
+    const allow = [{ tool_name: 'bash', matcher: { kind: 'command', pattern: 'ls:*' } }];
+    fs.writeFileSync(path.join(env.MINIMAX_DATA_DIR, 'sessions', 's', 'permission.json'), JSON.stringify({ version: 2, allow, deny: [], ask: [{ tool_name: 'bash', matcher: { kind: 'tool' } }] }));
+    await configureMcode(peer, 's', opened(), { unsafe: true, env });
+    expect(calls).toEqual([]);
+    // 不安全模式去掉那条规则，别的规则原样留着。
+    expect(rules()).toEqual({ version: 2, allow, deny: [], ask: [] });
+    await expect(configureMcode(peer, 's', opened(), { unsafe: true, model: 'minimax/NoSuch', env })).rejects.toThrow('没有模型 minimax/NoSuch');
+  });
+  it('reports the model in the exec form', () => {
+    expect(mcodeModelValue('m:minimax:MiniMax-M3:v:')).toEqual({ model: 'minimax/MiniMax-M3', variant: '' });
+    expect(acpModel(opened())).toBe('minimax/MiniMax-M3.1-Flash');
   });
 });

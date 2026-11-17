@@ -15,7 +15,7 @@ import { currentEnvironment } from './cli';
 import { requireSilentMaster } from './deliverables';
 import { type Finding, recordCheckFindings } from './memory_cmd';
 import { bool, num, str } from './ops/common';
-import { defineOp } from './ops/op';
+import { defineOp, ParamError } from './ops/op';
 
 /** strconv.ParseFloat 的常用子集：十进制、科学计数法、inf / infinity / nan（不区分大小写，可带正负号）。失败返回 null。 */
 function parseGoFloat(s: string): number | null {
@@ -130,6 +130,17 @@ export function parseStrip(spec: string, duration: number, fps: number): number[
 /** scene_frames 不给 at 时的抽帧点：首、四分位与末帧。 */
 const defaultFramePoints = '0,25%,50%,75%,end';
 
+/**
+ * scene_frames 写出的 PNG 缺省宽度。看图按像素计 token（Claude 每 28×28 一块）：1920×1080 一张约 2,700，
+ * 960×540 约 700。验收看构图、有没有画面、字幕在不在，用不着原尺寸；要看小字与对齐用 crop 取原始像素。
+ * 看过的图会一直留在看图一方的上下文里，之后每一步都重读。
+ */
+const defaultFrameWidth = 960;
+
+/** sheet 联系表每格的宽度与每行格数：五个点拼成 3+2 两行，约 1,440×540，一张图约 1,000 token。 */
+const sheetThumbWidth = 480;
+const sheetColumns = 3;
+
 defineOp({
   name: 'scene_frames',
   cli: ['scene', 'frames'],
@@ -160,6 +171,14 @@ strip 写成 开始:结束，把区间内的每一帧拼成一张条带图（str
 crop 写成 x,y,宽,高，只保留画面上这块区域的原始像素，用来在全分辨率下看小字
 是否清楚、线条是否对齐；对 at 的 PNG 与 strip 的条带都生效。
 
+sheet 为 true 时另把 at 的这些时间点拼成一张联系表（contact-sheet.png，每格宽 ${sheetThumbWidth}、每行
+最多 ${sheetColumns} 格）：验收先看这一张，看出问题或要确认细节时再打开单帧、用 crop 看局部。一张网格
+花的 token 远少于逐张打开每一帧。
+
+at 抽出的 PNG 缺省缩到宽 ${defaultFrameWidth}（看构图、有没有画面、字幕在不在足够，每张图
+花的 token 约为原尺寸的四分之一）；要看细节先用 crop 取那一块，确实要整帧原尺寸时
+传 width: 0。空白帧判定按原帧算，不受缩放影响。
+
 产物默认写到 <镜头目录>/visual-qc/，与制作提示词的 production/visual-qc/
 是同一用途。逐帧统计量在结构化结果与 report_json 里，判断结果请读它。`,
   examples: [
@@ -184,6 +203,8 @@ crop 写成 x,y,宽,高，只保留画面上这块区域的原始像素，用来
     crop: { type: 'string', description: 'x,y,宽,高（像素），只保留该区域的原始像素' },
     cols: { type: 'integer', description: '条带每行的帧数', default: 6 },
     thumb_width: { type: 'integer', description: '条带里每帧的宽度（像素）', default: 320 },
+    width: { type: 'integer', description: `at 抽出的 PNG 最大宽度（像素），0 为原尺寸；用了 crop 时不缩放`, default: defaultFrameWidth },
+    sheet: { type: 'boolean', description: '另把 at 的这些时间点拼成一张联系表 contact-sheet.png，验收先看它' },
   },
   run: (p, { out }) => {
     const s = scene.load(str(p.scene));
@@ -208,12 +229,20 @@ crop 写成 x,y,宽,高，只保留画面上这块区域的原始像素，用来
       return { data: { strip: image, frames: points.length, columns } };
     }
     const points = parseTimePoints(str(p.at) !== '' ? str(p.at) : defaultFramePoints, media.duration_seconds, canvas.fps);
-    const report = toolchain.extractFramesRegion(scene.outputPath(s), points, region, destination);
+    const width = num(p.width);
+    if (!Number.isInteger(width) || width < 0) throw new ParamError('width 要是不小于 0 的整数（0 为原尺寸）');
+    const report = toolchain.extractFramesRegion(scene.outputPath(s), points, region, destination, width);
     if (str(p.report_json) !== '') mediaprobe.writeFrameReportJSON(report, str(p.report_json));
     for (const frame of report.frames ?? []) {
       out.write(`${formatFixed(frame.at_seconds, 3)} 秒  ${frame.image}  灰度均值 ${formatFixed(frame.stats.mean, 1)}  标准差 ${formatFixed(frame.stats.stddev, 2)}\n`);
     }
     for (const hint of report.hints ?? []) out.write(`提示：${hint}\n`);
+    let sheet = '';
+    if (bool(p.sheet)) {
+      sheet = path.join(destination, 'contact-sheet.png');
+      toolchain.contactSheetRegion(scene.outputPath(s), points, region, Math.min(points.length, sheetColumns), sheetThumbWidth, sheet);
+      out.write(`联系表：${sheet}（${points.length} 个时间点，从左到右、从上到下；先看这一张，有疑问再开单帧）\n`);
+    }
     if (checkBlank && !report.ok) {
       const findings: Finding[] = (report.problems ?? []).map((problem) => ({ check: scene.CheckFramesBlank, problem }));
       recordCheckFindings(out, '.', [s], new Map([[s.id, findings]]));
@@ -225,6 +254,7 @@ crop 写成 x,y,宽,高，只保留画面上这块区域的原始像素，用来
         frames: (report.frames ?? []).map((f) => ({ at_seconds: f.at_seconds, image: f.image, mean: f.stats.mean, stddev: f.stats.stddev })),
         problems: report.problems ?? [],
         hints: report.hints ?? [],
+        ...(sheet !== '' ? { sheet } : {}),
       },
     };
   },

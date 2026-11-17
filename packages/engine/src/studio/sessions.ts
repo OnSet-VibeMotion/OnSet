@@ -15,6 +15,7 @@ import { atomicWrite } from '../fsutil';
 import { formatFixed, goClean, goTrimSpace } from '../gofmt';
 import { marshal, marshalIndent } from '../gojson';
 import * as ledger from '../ledger';
+import { handoffNote, rotationReason } from './rotate';
 import * as project from '../project';
 import { KindView, PermissionPollInterval, PermissionServerName, ViewInboxEnv, waitPermissionResponse, writePermissionRequest, ViewPollInterval, ViewProjectEnv, describeView, drainViewInbox, viewInbox, viewInteraction, type ViewRequest, type ViewState } from '../studioview';
 import * as tools from '../tools';
@@ -58,8 +59,11 @@ export interface SessionMeta {
   tool: string;
   /** 编排工具的模型；空跟随设置（同一家工具时）或用那家工具自己的默认。 */
   model?: string;
+  /** 编排工具的调用选项（effort=high,fast=on，见 tools/options.ts）；空跟随设置（同一家工具时）。 */
+  options?: string;
   renderer?: string;
   renderer_model?: string;
+  renderer_options?: string;
   cli_session_id?: string;
   created_at: string;
   updated_at: string;
@@ -78,8 +82,10 @@ export function sessionMetaJSON(meta: SessionMeta): Record<string, unknown> {
     kind: meta.kind,
     tool: meta.tool,
     model: meta.model || undefined,
+    options: meta.options || undefined,
     renderer: meta.renderer || undefined,
     renderer_model: meta.renderer_model || undefined,
+    renderer_options: meta.renderer_options || undefined,
     cli_session_id: meta.cli_session_id || undefined,
     created_at: meta.created_at,
     updated_at: meta.updated_at,
@@ -225,7 +231,7 @@ function decodeMeta(body: string): SessionMeta | undefined {
     if (v === undefined || v === null) return '';
     return typeof v === 'string' ? v : undefined;
   };
-  const fields = ['session_id', 'title', 'kind', 'tool', 'model', 'renderer', 'renderer_model', 'cli_session_id', 'created_at', 'updated_at', 'running_turn', 'preference_digest'];
+  const fields = ['session_id', 'title', 'kind', 'tool', 'model', 'options', 'renderer', 'renderer_model', 'renderer_options', 'cli_session_id', 'created_at', 'updated_at', 'running_turn', 'preference_digest'];
   const values: Record<string, string> = {};
   for (const key of fields) {
     const v = s(key);
@@ -244,8 +250,10 @@ function decodeMeta(body: string): SessionMeta | undefined {
     kind: values.kind,
     tool: values.tool,
     model: values.model || undefined,
+    options: values.options || undefined,
     renderer: values.renderer || undefined,
     renderer_model: values.renderer_model || undefined,
+    renderer_options: values.renderer_options || undefined,
     cli_session_id: values.cli_session_id || undefined,
     created_at: values.created_at || zero,
     updated_at: values.updated_at || zero,
@@ -299,18 +307,8 @@ export function loadSessions(s: Server, projectPath: string): void {
     if (!meta || !validID(meta.session_id)) continue;
     const sess: Session = { project: projectPath, meta, events: [], waiters: new Set(), cancel: null, queue: [], permissions: new Map() };
     sess.events = readEvents(path.join(sessionsDir(projectPath), meta.session_id + '.events.jsonl'));
+    restoreEndedTurns(sess);
     if (meta.running_turn) {
-      try {
-        const turn = loadTurn(projectPath, meta.running_turn);
-        if (turn.status === 'running') {
-          turn.status = 'interrupted';
-          turn.error = 'Studio 在本轮进行中退出';
-          turn.ended_at = nowTime();
-          saveTurn(projectPath, turn);
-        }
-      } catch {
-        // 轮次记录读不到就只清掉会话上的标记。
-      }
       sess.meta.running_turn = undefined;
       try {
         writeMeta(sess);
@@ -319,6 +317,38 @@ export function loadSessions(s: Server, projectPath: string): void {
       }
     }
     s.sessions.set(sessionKey(projectPath, meta.session_id), sess);
+  }
+}
+
+/** 重启后没有活的对话进程，事件流也必须收尾。旧版可能已清 running_turn，
+ * 却留下没有 turn-end 的 turn-start；只看元数据会让这些会话永久显示运行中。 */
+function restoreEndedTurns(sess: Session): void {
+  const pending = new Set<string>();
+  if (sess.meta.running_turn) pending.add(sess.meta.running_turn);
+  for (const event of sess.events) {
+    if (!event.turn_id || !validID(event.turn_id)) continue;
+    if (event.kind === kindTurnStart) pending.add(event.turn_id);
+    else if (event.kind === kindTurnEnd) pending.delete(event.turn_id);
+  }
+  for (const id of pending) {
+    let turn: Turn | undefined;
+    try {
+      turn = loadTurn(sess.project, id);
+      if (turn.status === 'running') {
+        turn.status = 'interrupted';
+        turn.error = 'Studio 在本轮进行中退出';
+        turn.ended_at = nowTime();
+        saveTurn(sess.project, turn);
+      }
+    } catch {
+      // 轮次记录缺失或写不了，也要让事件订阅方知道本轮已结束。
+    }
+    emit(sess, id, {
+      kind: kindTurnEnd,
+      status: turn?.status || 'interrupted',
+      text: turn ? turn.error : 'Studio 在本轮进行中退出，轮次记录无法读取',
+      changes: turn?.changes ?? undefined,
+    });
   }
 }
 
@@ -366,6 +396,9 @@ export interface AgentChoice {
    */
   model?: string;
   rendererModel?: string;
+  /** 两家工具各自的调用选项（effort=high,fast=on），规则同模型：undefined 不改，空串跟随设置。 */
+  options?: string;
+  rendererOptions?: string;
 }
 
 export function createSession(s: Server, projectPath: string, kind: string, title: string, agents: AgentChoice): Session {
@@ -379,8 +412,10 @@ export function createSession(s: Server, projectPath: string, kind: string, titl
       kind,
       tool: agents.tool,
       model: agents.model || undefined,
+      options: agents.options || undefined,
       renderer: agents.renderer || undefined,
       renderer_model: agents.rendererModel || undefined,
+      renderer_options: agents.rendererOptions || undefined,
       created_at: now,
       updated_at: now,
       turns: [],
@@ -566,7 +601,7 @@ export interface TurnRequest {
 /** 读项目配置，再用会话选定的工具覆盖（agents.go 的 sessionConfig，放在这里免得循环导入）。 */
 export function sessionConfig(projectPath: string, meta: SessionMeta): config.Config {
   const cfg = config.load(projectPath, null);
-  return overrideAgents(cfg, { tool: meta.tool, renderer: meta.renderer ?? '', model: meta.model ?? '', rendererModel: meta.renderer_model ?? '' });
+  return overrideAgents(cfg, { tool: meta.tool, renderer: meta.renderer ?? '', model: meta.model ?? '', rendererModel: meta.renderer_model ?? '', options: meta.options ?? '', rendererOptions: meta.renderer_options ?? '' });
 }
 
 export function validateChoice(choice: AgentChoice): void {
@@ -575,18 +610,35 @@ export function validateChoice(choice: AgentChoice): void {
   for (const value of [choice.model, choice.rendererModel]) {
     if (value && !config.validModel(value)) throw new Error(`不认识的模型名 ${value}：只能用字母、数字与 . _ - : / @ # [ ] +`);
   }
+  for (const [tool, value] of [[choice.tool, choice.options], [choice.renderer, choice.rendererOptions]]) {
+    if (!value) continue;
+    let error = '';
+    if (tool) error = tools.validateAgentOptions(tool, value);
+    else if (!tools.validOptionsText(value)) error = `选项写法不对：${value}`;
+    if (error) throw new Error(error);
+  }
 }
 
 export function overrideAgents(cfg: config.Config, choice: AgentChoice): config.Config {
-  validateChoice(choice);
+  validateChoice({ ...choice, tool: choice.tool || cfg.orchestrator, renderer: choice.renderer || cfg.renderer });
   const out = { ...cfg };
   // 换了工具、又没选模型时，设置里的模型是给原来那家的，不能带过去。
-  if (choice.tool !== '' && choice.tool !== cfg.orchestrator) out.orchestratorModel = '';
-  if (choice.renderer !== '' && choice.renderer !== cfg.renderer) out.rendererModel = '';
+  // 选项同理。
+  if (choice.tool !== '' && choice.tool !== cfg.orchestrator) {
+    out.orchestratorModel = '';
+    out.orchestratorOptions = '';
+  }
+  if (choice.renderer !== '' && choice.renderer !== cfg.renderer) {
+    out.rendererModel = '';
+    out.rendererOptions = '';
+  }
   if (choice.tool !== '') out.orchestrator = choice.tool;
   if (choice.renderer !== '') out.renderer = choice.renderer;
   if (choice.model) out.orchestratorModel = choice.model;
   if (choice.rendererModel) out.rendererModel = choice.rendererModel;
+  // 会话选的选项逐项盖在设置上（同一家工具时设置里的还在，换了工具上面已经清空）。
+  if (choice.options) out.orchestratorOptions = tools.mergeAgentOptions(out.orchestratorOptions, choice.options);
+  if (choice.rendererOptions) out.rendererOptions = tools.mergeAgentOptions(out.rendererOptions, choice.rendererOptions);
   return out;
 }
 
@@ -595,7 +647,7 @@ export function startTurn(s: Server, p: Project, sess: Session, req: TurnRequest
   validateAttachments(p.path, req.attachments);
   const cfg = sessionConfig(p.path, sess.meta);
   s.acquire(p.path, '会话「' + sess.meta.title + '」正在对话');
-  let prepared: { turn: Turn; prompt: string };
+  let prepared: { turn: Turn; prompt: string; handoff: string };
   try {
     prepared = prepareTurn(s, p, sess, cfg, req);
   } catch (err) {
@@ -604,11 +656,11 @@ export function startTurn(s: Server, p: Project, sess: Session, req: TurnRequest
   }
   const controller = new AbortController();
   sess.cancel = controller;
-  void runTurn(s, controller.signal, p, sess, cfg, prepared.turn, prepared.prompt);
+  void runTurn(s, controller.signal, p, sess, cfg, prepared.turn, prepared.prompt, prepared.handoff);
   return prepared.turn;
 }
 
-function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, req: TurnRequest): { turn: Turn; prompt: string } {
+function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, req: TurnRequest): { turn: Turn; prompt: string; handoff: string } {
   const rulesName = tools.projectRulesFilename(cfg.orchestrator);
   project.writeRules(p.path, rulesName);
   let before;
@@ -636,6 +688,15 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
   if (!prompt.includes(ownership)) prompt += '\n\n---\n\n' + ownership;
   // 制作人用的模型看不了图：每一轮都提醒，续接的会话里它也可能走到画面验收、复查。
   if (orchestratorCannotSee(cfg)) prompt += '\n\n---\n\n' + noVisionNote;
+  // 会话太长就换一个新的 CLI 会话接着做（rotate.ts）：清掉会话号，runTurn 走带对话记录开新会话的路，偏好也会重发。
+  const cliSession = sess.meta.cli_session_id ?? '';
+  let rotate = '';
+  if (cliSession !== '' && (sess.meta.turns ?? []).length > 0) {
+    try { rotate = rotationReason(ledger.read(ledger.projectFile(p.path)), cliSession); }
+    catch { /* 账本不可读时保留原会话；计费记录故障不能阻断对话。 */ }
+  }
+  const handoff = rotate !== '' ? handoffNote(rotate, lastTaskPlan(sess.events, false)) : '';
+  if (rotate !== '') updateMeta(sess, (meta) => (meta.cli_session_id = undefined));
   const [brief, digest] = preferenceBrief(p, cfg);
   const resend = brief !== '' && (digest !== (sess.meta.preference_digest ?? '') || !sess.meta.cli_session_id || (sess.meta.turns ?? []).length === 0);
   if (resend) prompt = brief + '\n---\n\n' + prompt;
@@ -659,14 +720,15 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
   });
   emit(sess, turn.turn_id, { kind: kindUser, text: display + attachmentText(req.attachments) });
   emit(sess, turn.turn_id, { kind: kindTurnStart, status: 'running' });
-  return { turn, prompt };
+  if (rotate !== '') emit(sess, turn.turn_id, { kind: kindNotice, text: `对话已经很长（${rotate}），这一轮换一个新会话接着做：带上制作说明与对话记录，进度按项目文件重新确认` });
+  return { turn, prompt, handoff };
 }
 
 /**
  * runTurn 在后台跑一轮。写权由 finishTurn 释放，这里不能再释放一次：
  * 释放之后下一轮可能已经拿到写权，重复释放会把它的锁也放掉。
  */
-async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, cfg: config.Config, turn: Turn, prompt: string): Promise<void> {
+async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, cfg: config.Config, turn: Turn, prompt: string, handoff = ''): Promise<void> {
   let runErr: Error | null = null;
   let stopViews: () => void = () => {};
   try {
@@ -727,6 +789,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
       const spec: agentrun.Spec = {
         tool: cfg.orchestrator,
         model: cfg.orchestratorModel,
+        options: tools.effectiveOptions(cfg.orchestrator, cfg.orchestratorOptions),
         workdir: p.path,
         prompt,
         unsafe: s.config.unsafe,
@@ -741,15 +804,17 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
         },
         env,
         lookPath: (name) => lookPath(name, env.PATH ?? ''),
+        longSession: true,
       };
       const resumed = previous !== '' && earlierTurns;
       if (resumed) {
         spec.sessionID = previous;
         spec.resume = true;
         spec.plan = lastTaskPlan(sess.events);
+        spec.baseline = ledger.lastSessionUsage(ledger.projectFile(p.path), previous);
       } else {
         spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
-        if (earlierTurns && history !== '') spec.prompt = reseedPrompt(history, spec.prompt, productionBrief(p, sess));
+        if (earlierTurns && history !== '') spec.prompt = reseedPrompt(history, spec.prompt, productionBrief(p, sess), handoff);
       }
       let outcome = await agentrun.run(spec, onEvent, signal);
       recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);
@@ -757,7 +822,8 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
         emit(sess, turn.turn_id, { kind: kindNotice, text: '原会话无法续接（' + outcome.error.message + '），已带上之前的对话记录开新会话' });
         spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
         spec.resume = false;
-        spec.prompt = reseedPrompt(history, prompt, productionBrief(p, sess));
+        spec.baseline = undefined;
+        spec.prompt = reseedPrompt(history, prompt, productionBrief(p, sess), handoff);
         outcome = await agentrun.run(spec, onEvent, signal);
         recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);
       }
@@ -802,12 +868,13 @@ function watchViews(sess: Session, turnID: string, inbox: string, projectPath: s
   };
 }
 
-export function reseedPrompt(history: string, prompt: string, production = ''): string {
+export function reseedPrompt(history: string, prompt: string, production = '', handoff = ''): string {
   return (
     (production !== '' ? production + '\n\n---\n\n' : '') +
     '下面是这个项目里你和用户之前的对话记录（较早的部分可能被截掉），供你接上上下文：\n\n' +
     history +
     '\n\n---\n\n' +
+    (handoff !== '' ? handoff + '\n\n---\n\n' : '') +
     studioInteraction +
     '\n\n---\n\n' +
     prompt
@@ -1041,11 +1108,11 @@ export function replayGuard(events: readonly { kind?: string; text?: string; tur
   };
 }
 
-/** 会话里最后一份带编号的任务清单（逐条改的任务工具，agentrun.TaskBoard）；续接时交给解析器接上。 */
-export function lastTaskPlan(events: readonly { kind?: string; plan?: agentrun.PlanItem[] }[]): agentrun.PlanItem[] | undefined {
+/** 最后一份任务清单。解析器续接要求编号；交接提示词不要求，兼容旧事件文件只保存 text/status。 */
+export function lastTaskPlan(events: readonly { kind?: string; plan?: agentrun.PlanItem[] }[], requireIDs = true): agentrun.PlanItem[] | undefined {
   for (let i = events.length - 1; i >= 0; i--) {
     const plan = events[i].kind === agentrun.KindPlan ? events[i].plan : undefined;
-    if (plan && plan.length > 0) return plan.some((item) => item.id) ? plan : undefined;
+    if (plan && plan.length > 0) return !requireIDs || plan.some((item) => item.id) ? plan : undefined;
   }
   return undefined;
 }

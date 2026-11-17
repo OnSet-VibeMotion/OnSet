@@ -11,12 +11,16 @@
  * job_cancel 停掉。
  */
 import { type ChildProcess, spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import * as director from '@onset/engine/director';
 import * as flow from '@onset/engine/flow';
 import { parseWorkerOutput, visibleText, workerArgs } from '@onset/engine/opworker';
 import { groupSpawnOptions, killTree } from '@onset/engine/procgroup';
 import { nodeCommand } from '@onset/engine/toolpath';
 import './cli';
+import { compactHyperFrames, hyperFramesProgress } from './hfoutput';
 import { allOps, normalizeToolParams, type Op, opScopes, type ParamSpec, type ParamValues } from './ops/op';
 
 /** 档位：编排工具拿全部工具，渲染器只拿 hyperframes。 */
@@ -32,7 +36,14 @@ const sceneDispatchNote = '镜头实现与 MP4 渲染交给渲染工具。单镜
 
 /** 一次调用最多等多久（秒）：codex 的 MCP 调用默认 60 秒超时，留出余量。 */
 export const DefaultWaitSeconds = 50;
-const maxWaitSeconds = 600;
+/**
+ * 一次调用最多真等多久（秒）。缺省 600；起服务的一方确认客户端能等更久时经 ONSET_TOOLS_MAX_WAIT 放宽
+ * （claude、codex 是 50 分钟，见 tools.LongToolWaitSeconds），编排等整批渲染时就不用每 10 分钟醒来轮询一次。
+ */
+export function maxWaitSeconds(env: NodeJS.ProcessEnv = process.env): number {
+  const wait = Number(env.ONSET_TOOLS_MAX_WAIT ?? '');
+  return Number.isFinite(wait) && wait >= 60 ? Math.min(wait, 3600) : 600;
+}
 
 /** 返回给 agent 的输出上限：过长时截掉开头、留结尾（错误与结论通常在最后）。 */
 const maxOutputChars = 24_000;
@@ -99,7 +110,7 @@ function paramSchema(op: Op, key: string, spec: ParamSpec, profile: Profile): JS
 
 function waitSchema(): JSONSchema {
   // 每个工具都带这一项，说明要短；没跑完怎么办写在服务说明与 job_wait 里。
-  return { type: 'number', description: `最多等几秒（缺省 ${DefaultWaitSeconds}）` };
+  return { type: 'number', description: `最多等几秒（缺省 ${DefaultWaitSeconds}，最多 ${maxWaitSeconds()}）` };
 }
 
 const visibleParams = (op: Op) => Object.entries(op.params).filter(([, s]) => !s.cliOnly);
@@ -288,6 +299,8 @@ export function spawnOpWithService(service: director.ResolvedService | null): Sp
 
 interface Job {
   id: string;
+  /** 操作名：hyperframes 的输出要精简（hfoutput.ts）。 */
+  name: string;
   child: ChildProcess;
   output: string;
   /** 已经交给 agent 的文字长度：job_wait 只给新的部分。 */
@@ -310,7 +323,7 @@ export class Jobs {
 
   start(name: string, params: ParamValues): Job {
     const child = this.spawner(name, params);
-    const job: Job = { id: `job-${this.next++}`, child, output: '', delivered: 0, code: null, done: Promise.resolve() };
+    const job: Job = { id: `job-${this.next++}`, name, child, output: '', delivered: 0, code: null, done: Promise.resolve() };
     const take = (chunk: Buffer | string) => {
       job.output += chunk.toString();
     };
@@ -337,7 +350,7 @@ export class Jobs {
 
   /** 等到任务结束或超时，返回给 agent 的回复。 */
   async wait(job: Job, seconds: number, signal?: AbortSignal): Promise<Reply> {
-    const ms = Math.min(Math.max(seconds, 0), maxWaitSeconds) * 1000;
+    const ms = Math.min(Math.max(seconds, 0), maxWaitSeconds()) * 1000;
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<void>((resolve) => {
       timer = setTimeout(resolve, ms);
@@ -345,12 +358,18 @@ export class Jobs {
     const aborted = new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve(), { once: true }));
     await Promise.race([job.done, timeout, aborted]);
     clearTimeout(timer);
-    const visible = visibleText(job.output);
+    const compact = job.name === 'hyperframes';
+    if (compact && job.code === null) {
+      // 半截日志不交出去：跑完再一次给精简后的结果，这里只说进度。
+      const progress = hyperFramesProgress(visibleText(job.output));
+      return { text: `${progress ? progress + '\n' : ''}[还在运行：任务 ${job.id}。用 job_wait 接着等，或 job_cancel 停掉。结束本轮对话会终止仍在运行的任务；不要用定时任务接管，必须在本轮持续 job_wait 直到完成或明确失败]`, isError: false };
+    }
+    const visible = compact ? compactedOutput(visibleText(job.output)) : visibleText(job.output);
     const fresh = visible.slice(job.delivered);
     job.delivered = visible.length;
     const body = clip(fresh);
     const sep = body.endsWith('\n') || body === '' ? '' : '\n';
-    if (job.code === null) return { text: `${body}${sep}[还在运行：任务 ${job.id}。用 job_wait 接着等，或 job_cancel 停掉]`, isError: false };
+    if (job.code === null) return { text: `${body}${sep}[还在运行：任务 ${job.id}。用 job_wait 接着等，或 job_cancel 停掉。结束本轮对话会终止仍在运行的任务；不要用定时任务接管，必须在本轮持续 job_wait 直到完成或明确失败]`, isError: false };
     this.jobs.delete(job.id);
     const { result } = parseWorkerOutput(job.output);
     if (!result) return { text: `${body}${sep}[执行进程意外退出，退出码 ${job.code}]`, isError: true };
@@ -379,6 +398,21 @@ export class Jobs {
 function killGroup(child: ChildProcess): void {
   if (child.pid === undefined) return;
   if (!killTree(child.pid, 'SIGTERM')) child.kill('SIGTERM');
+}
+
+/** 精简 hyperframes 的输出；删了东西时把原样输出写进临时文件，末尾给路径，要细看时去读。 */
+function compactedOutput(full: string): string {
+  const { text, trimmed } = compactHyperFrames(full);
+  if (!trimmed) return text;
+  try {
+    const dir = path.join(os.tmpdir(), 'onset-hyperframes');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}-${Math.random().toString(36).slice(2, 8)}.log`);
+    fs.writeFileSync(file, full);
+    return `${text}\n（已略去进度与调试日志；完整输出：${file}）\n`;
+  } catch {
+    return `${text}\n（已略去进度与调试日志）\n`;
+  }
 }
 
 function clip(text: string): string {

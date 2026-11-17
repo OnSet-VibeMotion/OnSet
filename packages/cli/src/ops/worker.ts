@@ -61,7 +61,7 @@ export async function runOpWorker(name: string, paramsJSON: string, out: Out, si
   try {
     const broker = process.env[OpBrokerEnv];
     if (broker && director.KeyOps.has(name) && !receivedKeys && process.env[OpBrokerRelayedEnv] !== '1') {
-      return await relayOperation(broker, { name, params, cwd: process.cwd(), renderer: process.env.RENDERER ?? '', rendererModel: process.env.RENDERER_MODEL ?? '', orchestrator: process.env.ORCHESTRATOR ?? '' }, text => out.write(text), signal);
+      return await relayOperation(broker, { name, params, cwd: process.cwd(), renderer: process.env.RENDERER ?? '', rendererModel: process.env.RENDERER_MODEL ?? '', rendererOptions: process.env.RENDERER_OPTIONS ?? '', orchestrator: process.env.ORCHESTRATOR ?? '' }, text => out.write(text), signal);
     }
     const result = await op.run(params, { out, err: out, signal, unsafe });
     return finish({ ok: true, data: result ? result.data : undefined, exit_code: 0 });

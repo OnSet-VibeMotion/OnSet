@@ -46,6 +46,8 @@ export interface SandboxPaths {
   hiddenDirs?: string[];
   /** 另外要能读的目录：渲染工具、onset 运行时、浏览器所在的地方。 */
   readDirs: string[];
+  /** 试镜仅能读自己的冻结输入、明确列出的技能/资源与运行配置。 */
+  isolatedProject?: { readDirs: string[]; readFiles: string[] };
 }
 
 /** 真实路径：/var 是 /private/var 的链接，Seatbelt 按真实路径匹配。不存在的照原样。 */
@@ -126,6 +128,13 @@ export function sandboxProfile(p: SandboxPaths): string {
   // 渲染工具的用户级技能与插件：读不到就不会出现在它的技能列表里，渲染器只看见镜头自己的那几个（stageRendererSkills）。
   const hidden = unique(p.hiddenDirs ?? []);
   if (hidden.length > 0) lines.push('(deny file-read-data', ...hidden.map((d) => `  (subpath ${quote(d)})`), ')');
+  if (p.isolatedProject) {
+    // 即使项目位于可写的临时目录、工具目录里，也要最后收紧；真实路径同时挡住绕向其他选手的软链接。
+    lines.push(`(deny file-read-data file-write* (subpath ${quote(real(p.projectRoot))}))`);
+    lines.push('(allow file-read-data', ...unique([p.sceneDir, ...p.isolatedProject.readDirs]).map(d => `  (subpath ${quote(d)})`),
+      ...unique(p.isolatedProject.readFiles).map(f => `  (literal ${quote(f)})`), ')');
+    lines.push(`(allow file-write* (subpath ${quote(real(p.sceneDir))}))`);
+  }
   // 凭据最后收回。读要写成 file-read-data：Seatbelt 里同一路径上更具体的操作压过 file-read*，
   // 写成 file-read* 的话前面放开项目目录的 allow file-read-data 照样让 .env 读得到（实测）。
   lines.push('(deny file-read-data file-write*', '  (regex #"/\\.env$")', '  (regex #"/\\.env\\.[^/]*$")', ...secrets.map((d) => `  (subpath ${quote(d)})`), ')');
@@ -142,7 +151,7 @@ export interface RendererHome {
 /**
  * 各家渲染工具在家目录里的落点（2026-11 实测）。技能的发现位置：claude 读 .claude/skills，codex 读 .agents/skills 与
  * .codex/skills，codebuddy 读 .codebuddy/skills，opencode 读 .agents/skills、.claude/skills、.opencode/skill(s)，qoder 读
- * .qoder-cn/skills 与 .agents/skills；家目录里的这些一律藏起来，镜头要用的技能由 stageRendererSkills 链进镜头目录。
+ * .qoder-cn/skills（国际版 .qoder/skills）与 .agents/skills；家目录里的这些一律藏起来，镜头要用的技能由 stageRendererSkills 链进镜头目录。
  */
 export function rendererHome(tool: string, home: string): RendererHome {
   const h = (...p: string[]) => path.join(home, ...p);
@@ -160,7 +169,13 @@ export function rendererHome(tool: string, home: string): RendererHome {
         files: [],
         hidden: [h('.config', 'opencode', 'skills'), h('.config', 'opencode', 'skill'), h('.claude', 'skills'), agents],
       };
+    // mcode 的数据目录 ~/.minimax 放登录态、会话、sqlite 与后台任务日志，要写；用户级技能与插件藏起来，.builtin-skills 是它自带的，
+    // 照常可读。启动时对数据目录本身加锁（同级的 ~/.minimax.lock），写不了就报 agent_name_conflict_migration_failed:lock（0.6.12 实测）。
+    case 'mcode':
+      return { state: [h('.minimax')], files: [h('.minimax.lock')], hidden: [h('.minimax', 'skills'), h('.minimax', 'plugins'), agents] };
+    // 国内版的状态在 ~/.qoder-cn，国际版在 ~/.qoder；两版共用 .qoder/skills 的写法，两边都放行、都藏技能。
     case 'qoder':
+    case 'qoder-intl':
       return { state: [h('.qoder-cn'), h('.qoder')], files: [], hidden: [h('.qoder-cn', 'skills'), h('.qoder', 'skills'), agents] };
     default:
       return { state: [], files: [], hidden: [] };

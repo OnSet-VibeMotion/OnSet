@@ -140,7 +140,8 @@ function writeScene(root: string, id: string, filmStyle: string): string {
   const dir = path.join(root, 'scenes', id);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
-  fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\ntest\n');
+  // 全片字幕（全片时间）：镜头不在片头时，只有片头一秒字幕的文件会被当成本地时间拒绝（timing.ts 的 localTranscriptProblem）。
+  fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\ntest\n\n2\n00:00:59,000 --> 00:01:00,000\nend\n');
   const scene: Record<string, unknown> = { id, duration_seconds: 1, output: 'out.mp4', transcript: 'transcript.srt', text: 'hello' };
   if (filmStyle !== '') scene.film_style = filmStyle;
   fs.writeFileSync(path.join(dir, 'scene.json'), JSON.stringify(scene));

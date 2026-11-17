@@ -1,13 +1,17 @@
+import { qoderBinary } from './tools';
+import { CodexFastTier } from './options';
+
 /**
  * 各家工具能选哪些模型：客户端的模型下拉框用。列表来自工具自己（登录账号、配置的服务商决定能用什么），
  * onset 不维护一份会过期的模型表；claude 没有列模型的命令，给它帮助里写的别名。
  *
  * 2026-11 实测：
  * - codex：`codex debug models` 打印 JSON 目录，visibility 为 list 的是选择器里列出的。
- * - qoder：`qoderclicn --list-models` 打印一列表格，首行是表头 MODEL。
+ * - qoder / qoder-intl：`qoderclicn --list-models`（国际版 `qodercli`）打印一列表格，首行是表头 MODEL。
  * - codebuddy：没有列模型的命令，`--help` 里 --model 的说明写着「Currently supported: (a, b, …)」。
  * - opencode：`opencode models` 每行一个「服务商/模型」。
  * - claude：`--model` 的说明只给别名（fable、opus、sonnet）或完整模型名。
+ * - mcode（MiniMax Code）：没有列模型的命令，模型表在 ACP 会话的选项里，由 tools/mcodemodels.ts 握手取（不花额度）。
  * - director（制作人）：不跑命令，由客户端后端直接问在用的模型服务（director.listServiceModels，studio/agents.ts）。
  */
 
@@ -16,6 +20,28 @@ export interface ModelOption {
   /** 显示名；与 id 相同时界面只显示一份。 */
   label: string;
   description?: string;
+  /** 这个模型能选的推理强度（codex 目录的 supported_reasoning_levels、qoder 的模型表）；不给时界面按 tools.agentOptionSpecs 列，空数组是这个模型不推理。 */
+  efforts?: string[];
+  /** 这个模型有没有快速档位（codex 目录的 service_tiers 里有 Fast）；不给时不确定。 */
+  fast?: boolean;
+  /** 工具内部的模型键（qoder 的 smodel 之类），与 id 不同时才给。 */
+  key?: string;
+  /** 额度倍率（qoder 的 priceFactor，例如 8 表示 8.00x）。 */
+  credit?: number;
+  /** 打折前的倍率：比 credit 高时界面划掉它。 */
+  creditBefore?: number;
+  /** 免费（含限时免费）。 */
+  free?: boolean;
+  /** 正在进行的活动（「错峰2折」）。 */
+  promotion?: string;
+  /** 这家工具不指定模型时用的就是它。 */
+  isDefault?: boolean;
+  /** 不选推理强度时这个模型用哪一档。 */
+  defaultEffort?: string;
+  /** 这个模型能选的上下文长度（token），从小到大。 */
+  contextWindows?: number[];
+  /** 不选上下文长度时用多大。 */
+  defaultContextWindow?: number;
 }
 
 /** 列模型要跑的命令；null 表示不用跑（claude 用内置别名，制作人直接问模型服务）。 */
@@ -24,11 +50,15 @@ export function modelListCommand(tool: string): string[] | null {
     case 'codex':
       return ['codex', 'debug', 'models'];
     case 'qoder':
-      return ['qoderclicn', '--list-models'];
+    case 'qoder-intl':
+      return [qoderBinary(tool), '--list-models'];
     case 'codebuddy':
       return ['codebuddy', '--help'];
     case 'opencode':
       return ['opencode', 'models'];
+    case 'mcode':
+      // 不直接解析输出：studio/agents.ts 按 fetchMcodeModels 走 ACP 握手。
+      return ['mcode', 'acp'];
     case 'claude':
     case 'director':
       return null;
@@ -65,15 +95,22 @@ export function parseModelList(tool: string, stdout: string): ModelOption[] {
         const r = m as Record<string, unknown>;
         if (typeof r.slug !== 'string' || r.slug === '') continue;
         if (r.visibility !== undefined && r.visibility !== 'list') continue;
+        const levels = Array.isArray(r.supported_reasoning_levels)
+          ? r.supported_reasoning_levels.map((l) => (l && typeof l === 'object' ? (l as Record<string, unknown>).effort : undefined)).filter((e): e is string => typeof e === 'string' && /^[a-z]+$/.test(e))
+          : [];
+        const tiers = Array.isArray(r.service_tiers) ? r.service_tiers.map((t) => (t && typeof t === 'object' ? (t as Record<string, unknown>).id : undefined)) : undefined;
         out.push({
           id: r.slug,
           label: typeof r.display_name === 'string' && r.display_name !== '' ? r.display_name : r.slug,
           ...(typeof r.description === 'string' && r.description !== '' ? { description: r.description } : {}),
+          ...(Array.isArray(r.supported_reasoning_levels) ? { efforts: levels } : {}),
+          ...(tiers ? { fast: tiers.includes(CodexFastTier) } : {}),
         });
       }
       return out;
     }
-    case 'qoder': {
+    case 'qoder':
+    case 'qoder-intl': {
       const out: ModelOption[] = [];
       for (const raw of stdout.split('\n')) {
         const id = raw.trim().split(/\s{2,}|\t/)[0] ?? '';
@@ -94,6 +131,7 @@ export function parseModelList(tool: string, stdout: string): ModelOption[] {
       );
     }
     case 'director':
+    case 'mcode':
       return [];
     case 'opencode':
       return dedupe(

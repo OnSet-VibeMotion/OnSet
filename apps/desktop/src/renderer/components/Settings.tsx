@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon, type IconName } from './Icon';
 import { api, errorText, post } from '../api';
-import type { SettingRow, SettingsResponse } from '../types';
+import type { AgentsResponse, MachineSetting, SettingRow, SettingsResponse } from '../types';
 import { DirectorServices, DirectorVisionNote } from './DirectorServices';
 import { SkinPicker } from './Skins';
 import { ModelSelect } from './ModelSelect';
+import { AgentOptionsSelect } from './AgentOptionsSelect';
 import type { RunAction } from './Preview';
 import '../settings.css';
 import { PluginSettings } from './Stations';
+import { UpdatePanel, useUpdateState } from './Updates';
 
 /**
  * 设置页：左边按用途分块导航（AI 助手、画面渲染、配音与字幕、外观、功能与插件），右边一块一块往下排，滚到哪块左边亮哪块。
@@ -38,21 +40,89 @@ const groups: Group[] = [
     title: 'AI 助手',
     icon: 'brain',
     blurb: '和你对话、写稿、定分镜、安排渲染的那位，帮你润色、检查画面描述的那位，以及它能不能不问你直接跑命令。',
-    keys: ['ORCHESTRATOR', 'ORCHESTRATOR_MODEL', 'OPTIMIZER', 'OPTIMIZER_MODEL', 'AUTO_APPROVE'],
+    keys: ['ORCHESTRATOR', 'ORCHESTRATOR_MODEL', 'ORCHESTRATOR_OPTIONS', 'OPTIMIZER', 'OPTIMIZER_MODEL', 'OPTIMIZER_OPTIONS', 'AUTO_APPROVE'],
   },
-  { id: 'render', title: '画面渲染', icon: 'film', blurb: '把每个镜头画出来的工具、一次画几个，以及要不要记住画过的问题。', keys: ['RENDERER', 'RENDERER_MODEL', 'SCENE_JOBS', 'MEMORY'] },
+  { id: 'render', title: '画面渲染', icon: 'film', blurb: '把每个镜头画出来的工具、一次画几个，以及要不要记住画过的问题。', keys: ['RENDERER', 'RENDERER_MODEL', 'RENDERER_OPTIONS', 'SCENE_JOBS', 'MEMORY'] },
   { id: 'voice', title: '配音与字幕', icon: 'mic', blurb: '口播稿用谁来读，字幕怎样和声音逐字对上。', keys: ['TTS_PROVIDER', 'ALIGN_PROVIDER'] },
   { id: 'look', title: '外观', icon: 'brush', blurb: '整个客户端与桌宠的配色。', keys: [] },
   { id: 'plugins', title: '功能与插件', icon: 'plug', blurb: '片场自带的功能，和你自己装的插件。', keys: [] },
+  { id: 'network', title: '网络与更新', icon: 'globe', blurb: '取插件中心、下载插件、检查新版本时怎样联网。只对这台电脑生效。', keys: [] },
 ];
+
+/** 只属于这台电脑的几项（代理、插件中心地址、更新地址）：一行一个输入框，回车或离开时保存。 */
+export function MachineSettings({ rows, onSaved }: { rows: MachineSetting[]; onSaved: () => void }) {
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saved, setSaved] = useState('');
+  const revisions = useRef<Record<string, number>>({});
+  const save = async (row: MachineSetting) => {
+    const revision = revisions.current[row.key] ?? 0;
+    const submitted = draft[row.key] ?? row.value;
+    const value = submitted.trim();
+    if (value === row.value) return;
+    try {
+      await post('/api/settings/global', { key: row.key, value });
+      setErrors((e) => ({ ...e, [row.key]: '' }));
+      if ((revisions.current[row.key] ?? 0) === revision) {
+        setDraft((d) => { const next = { ...d }; delete next[row.key]; return next; });
+        setSaved(row.key);
+      }
+      onSaved();
+    } catch (err) {
+      setErrors((e) => ({ ...e, [row.key]: errorText(err) }));
+    }
+  };
+  return (
+    <div className="settings-card machine-settings">
+      {rows.map((row) => (
+        <div className="settings-row" key={row.key} data-key={row.key}>
+          <div className="settings-label">
+            <strong>{row.label}</strong>
+            <span>{row.hint}</span>
+            {row.overridden && <em>这一项被电脑上的环境变量 {row.key} 定死了，这里改了不生效</em>}
+            {errors[row.key] && <em>{errors[row.key]}</em>}
+          </div>
+          <div className="settings-controls">
+            <input
+              aria-label={row.label}
+              className="machine-input"
+              placeholder={row.placeholder}
+              value={draft[row.key] ?? row.value}
+              spellCheck={false}
+              onChange={(e) => {
+                revisions.current[row.key] = (revisions.current[row.key] ?? 0) + 1;
+                setSaved('');
+                setDraft((d) => ({ ...d, [row.key]: e.target.value }));
+              }}
+              onBlur={() => void save(row)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void save(row);
+              }}
+            />
+            {saved === row.key && <span className="machine-saved">已保存</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function Settings({ version, run, onPluginsChanged, onAgentsChanged, project, onOpenPage }: { version: number; run: RunAction; onPluginsChanged?: () => void; onAgentsChanged?: () => void; project?: boolean; onOpenPage?: (tab: string) => void }) {
   const [data, setData] = useState<SettingsResponse | null>(null);
+  // 每家工具能调哪些选项（推理强度、快速模式……）在 /api/agents 的 option_specs 里。
+  const [agents, setAgents] = useState<AgentsResponse | null>(null);
+  const [agentsError, setAgentsError] = useState('');
+  const loadAgents = () => {
+    setAgentsError('');
+    return api<AgentsResponse>('/api/agents').then(setAgents, err => setAgentsError(errorText(err)));
+  };
   const [error, setError] = useState('');
   const [active, setActive] = useState(groups[0].id);
   // 哪几项点了「只给这个项目换」：没单独改过的项默认只露一个下拉框。
   const [opened, setOpened] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState<Set<string>>(new Set());
   const body = useRef<HTMLDivElement>(null);
+  const update = useUpdateState();
 
   const reload = () =>
     api<SettingsResponse>('/api/settings').then(
@@ -64,6 +134,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
     );
   useEffect(() => {
     void reload();
+    void loadAgents();
   }, [version]);
 
   if (!data) return <div className="empty">{error || '正在读取设置…'}</div>;
@@ -71,17 +142,20 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
   // 只有「润色与检查」的默认是空：跟随对话助手。
   const label = (row: SettingRow, value: string) => (value === '' ? '跟随对话助手' : (row.options.find((o) => o.value === value)?.label ?? value));
   const setGlobal = async (row: SettingRow, value: string) => {
+    setSaving(old => new Set(old).add(row.key));
     try {
       await post('/api/settings/global', { key: row.key, value });
       await reload();
       onAgentsChanged?.();
     } catch (err) {
       setError(errorText(err));
+    } finally {
+      setSaving(old => { const next = new Set(old); next.delete(row.key); return next; });
     }
   };
   const overrides = data.rows.filter((r) => r.project !== '');
-  // 模型项跟着哪家工具：全局一栏看全局的工具，「这个项目」一栏看这个项目实际用的工具。
-  const toolRow = (r: SettingRow) => data.rows.find((t) => t.key === r.model_of);
+  // 模型项与选项项跟着哪家工具：全局一栏看全局的工具，「这个项目」一栏看这个项目实际用的工具。
+  const toolRow = (r: SettingRow) => data.rows.find((t) => t.key === (r.model_of ?? r.options_of));
   const globalTool = (r: SettingRow) => {
     const t = toolRow(r);
     return t ? t.global || t.default : '';
@@ -134,6 +208,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
       </nav>
       <div className="settings-body" ref={body} onScroll={onScroll}>
         <div className="settings-scope">
+          {agentsError && <p role="alert">工具列表读取失败：{agentsError} <button type="button" onClick={() => void loadAgents()}>重试读取工具</button></p>}
           <span>
             这里的设置对<strong>所有项目</strong>生效。
             {data.has_project && '只想让当前打开的这个项目不一样，点那一项下面的「只给这个项目换」。'}
@@ -165,6 +240,8 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
             {g.keys.length > 0 && <div className="settings-card">{rowsOf(g).map(renderRow)}</div>}
             {g.id === 'ai' && <DirectorServices version={version} onChange={() => { void reload(); onAgentsChanged?.(); }} />}
             {g.id === 'look' && <SkinPicker version={version} />}
+            {g.id === 'network' && <UpdatePanel state={update} />}
+            {g.id === 'network' && <MachineSettings rows={data.machine ?? []} onSaved={() => void reload()} />}
             {g.id === 'plugins' && <PluginSettings version={version} onChanged={onPluginsChanged} run={project ? run : undefined} onOpenPage={project ? onOpenPage : undefined} />}
           </section>
         ))}
@@ -184,7 +261,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
         return next;
       });
     return (
-      <div className={'settings-row' + (row.model_of ? ' sub' : '')} key={row.key} data-key={row.key}>
+      <div className={'settings-row' + (row.model_of || row.options_of ? ' sub' : '')} key={row.key} data-key={row.key}>
         <div className="settings-label">
           <strong>{row.label}</strong>
           <span>{row.hint}</span>
@@ -192,7 +269,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
           {row.model_of && globalTool(row) === 'director' && <DirectorVisionNote model={row.global} version={version} compact />}
         </div>
         <div className="settings-controls">
-          {row.model_of ? globalModel(row) : globalTool_(row)}
+          {row.model_of ? globalModel(row) : row.options_of ? globalOptions(row) : globalTool_(row)}
           {hasProject && !showProject && (
             <button className="link settings-own" onClick={() => setOpened((prev) => new Set(prev).add(row.key))}>
               只给这个项目换
@@ -212,7 +289,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
                   {own ? '改回和其他项目一样' : '算了'}
                 </button>
               </span>
-              {row.model_of ? projectModel(row) : projectTool_(row)}
+              {row.model_of ? projectModel(row) : row.options_of ? projectOptions(row) : projectTool_(row)}
             </div>
           )}
         </div>
@@ -254,6 +331,66 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
         defaultLabel={`和其他项目一样（${inherited || '默认'}）`}
         onChange={(value) => run('/api/settings/project', { key: row.key, value })}
       />
+    );
+  }
+
+  // 选项项的模型那一行（ORCHESTRATOR_OPTIONS → ORCHESTRATOR_MODEL）：codex 按模型收窄推理档位。
+  function modelRowOf(row: SettingRow) {
+    return data!.rows.find((r) => r.model_of === row.options_of);
+  }
+
+  function specsOf(tool: string) {
+    return agents?.agents.find((a) => a.id === tool)?.option_specs ?? [];
+  }
+
+  // 这家工具没有可调的选项（或还没读到工具列表）时照实说，不放一个空着的控件。
+  function noOptions(ariaLabel: string, text: string) {
+    return (
+      <select disabled aria-label={ariaLabel}>
+        <option>{text}</option>
+      </select>
+    );
+  }
+
+  function globalOptions(row: SettingRow) {
+    const tool = globalTool(row);
+    if (tool === '') return noOptions(`全局${row.label}`, '跟随对话助手的选项');
+    const specs = specsOf(tool);
+    if (specs.length === 0) return noOptions(`全局${row.label}`, agents ? '这家工具没有可调的选项' : agentsError ? '工具列表读取失败' : '正在读取…');
+    return (
+      <div className="settings-options">
+        <AgentOptionsSelect
+          tool={tool}
+          specs={specs}
+          value={row.global}
+          disabled={saving.has(row.key)}
+          model={modelRowOf(row)?.global ?? ''}
+          ariaPrefix="全局"
+          onChange={(value) => void setGlobal(row, value)}
+        />
+      </div>
+    );
+  }
+
+  function projectOptions(row: SettingRow) {
+    const tool = projectTool(row);
+    if (tool === '') return noOptions(`这个项目的${row.label}`, '跟随对话助手的选项');
+    const specs = specsOf(tool);
+    if (specs.length === 0) return noOptions(`这个项目的${row.label}`, agents ? '这家工具没有可调的选项' : agentsError ? '工具列表读取失败' : '正在读取…');
+    const model = modelRowOf(row);
+    return (
+      <div className={'settings-options' + (row.project !== '' ? ' overridden' : '')}>
+        <AgentOptionsSelect
+          tool={tool}
+          specs={specs}
+          value={row.project}
+          inherited={tool === globalTool(row) ? row.global : ''}
+          inheritLabel="和其他项目一样"
+          model={model ? model.project || (tool === globalTool(row) ? model.global : '') : ''}
+          ariaPrefix="这个项目的"
+          onChange={(value) => run('/api/settings/project', { key: row.key, value })}
+        />
+      </div>
     );
   }
 

@@ -34,7 +34,7 @@ const ALNUM = 'a-zA-Z0-9\\u017F\\u212A';
 /** (?i) 下 \w 的等价类内容。 */
 const WORD = '0-9A-Za-z_\\u017F\\u212A';
 
-const toolWords = ['claude', 'codex', 'qoder', 'codebuddy', 'opencode', 'chatgpt'].map(ci);
+const toolWords = ['claude', 'codex', 'qoder', 'codebuddy', 'opencode', 'mcode', 'chatgpt'].map(ci);
 const modelWords = ['gemini', 'sonnet', 'opus', 'haiku', 'anthropic', 'openai', 'deepseek', 'qwen', 'kimi', 'glm'].map(ci);
 
 /**

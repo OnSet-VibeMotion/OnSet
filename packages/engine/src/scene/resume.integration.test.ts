@@ -1,7 +1,7 @@
 // 渲染器会话续接的真实 CLI 测试（scene/resume.ts 的第二层靠它）：每家用渲染时的同一份命令行（tools.rendererInvocation）
 // 开会话让它记一个词，再按会话号续接问它，答对且会话号不变才算续上了。每次都是真实模型调用，CI 不跑：
 //
-//   ONSET_TEST_RENDERER_RESUME=claude,codex,codebuddy,opencode npx vitest run --root packages/engine src/scene -t RealRendererResume
+//   ONSET_TEST_RENDERER_RESUME=claude,codex,codebuddy,opencode,mcode npx vitest run --root packages/engine src/scene -t RealRendererResume
 //
 // opencode 默认模型不可用时加 ONSET_TEST_OPENCODE_MODEL；qoder 渲染时套系统沙箱，见 sandbox.test.ts 与 AGENTS.md。
 import { spawnSync } from 'node:child_process';

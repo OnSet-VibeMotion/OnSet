@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { withWindowsInstructions } from '../windowsruntime';
 import { MissingToolError, lookPath as envLookPath } from '../envutil';
 import { DefaultGrace, ExitError as ProcessExitError, abortReason, start } from '../procgroup';
-import { detectModel, interactiveInvocation, type McpServer, newUsage, orchestratorInvocation, presetSessionID, usageEmpty, type OrchestratorAccess, type PermissionPrompt, type Usage } from '../tools';
+import { detectModel, interactiveInvocation, longSessionEnv, type McpServer, newUsage, orchestratorInvocation, presetSessionID, usageEmpty, type OrchestratorAccess, type PermissionPrompt, type Usage, type AgentOptions, type SessionTotal } from '../tools';
 import { runACP } from './acp';
 import { runCodexApp } from './codexapp';
 import type { AskPermission } from './interactive';
@@ -24,6 +24,8 @@ export interface Spec {
   toolsServer?: McpServer;
   /** 模型；空用那家工具自己的默认（tools.modelArgs）。 */
   model?: string;
+  /** 调用选项（推理强度、快速模式、上下文长度，tools/options.ts）；空用那家工具自己的默认。 */
+  options?: AgentOptions;
   /**
    * 请用户批准一次调用（客户端里给）。给了且是安全模式时，codebuddy、opencode、codex 改用双向协议
    * （tools.interactiveInvocation），白名单外的调用经它问用户；claude、qoder 经 permissionPrompt 的审批 MCP。
@@ -38,6 +40,16 @@ export interface Spec {
   lookPath?: (name: string) => string;
   /** 续接时上一轮最后的任务清单（带编号的项），逐条改的任务工具（TaskUpdate）才接得上。 */
   plan?: PlanItem[];
+  /**
+   * 这是会续接很多轮、轮与轮之间可能等很久的编排会话（客户端的整片制作与对话）：claude 的缓存改成 1 小时
+   * （tools.longSessionEnv）。一次性的调用（起名、润色、整理经验）不给。
+   */
+  longSession?: boolean;
+  /**
+   * 续接时同一会话上一次记下的累计用量（tools.sessionBaseline）；null 表示续接但不知道。
+   * claude 续接后报的费用、codebuddy 报的全部数字是整个会话的累计值，要减掉它。
+   */
+  baseline?: SessionTotal | null;
   /** 若给出，原样写入每一行输出（带换行），供排查格式变化。 */
   raw?: { write(chunk: string): unknown };
 }
@@ -167,7 +179,7 @@ export async function run(spec: Spec, emit: (event: Event) => void, signal?: Abo
   if (process.platform === 'win32' && spec.toolsServer?.name === 'onset') spec = { ...spec, prompt: withWindowsInstructions(spec.prompt, 'orchestrator') };
   if (spec.ask) {
     const base = spec.env ?? (process.env as Record<string, string>);
-    const inter = interactiveInvocation(spec.tool, { unsafe: spec.unsafe, access: spec.access, toolsServer: spec.toolsServer, model: spec.model }, base);
+    const inter = interactiveInvocation(spec.tool, { unsafe: spec.unsafe, access: spec.access, toolsServer: spec.toolsServer, model: spec.model, options: spec.options }, base);
     if (inter) {
       const env = { ...base, ...inter.env };
       return inter.protocol === 'acp' ? runACP(spec, emit, signal, inter.argv, env) : runCodexApp(spec, emit, signal, inter.argv, env);
@@ -180,6 +192,7 @@ export async function run(spec: Spec, emit: (event: Event) => void, signal?: Abo
   try {
     parser = newParser(spec.tool);
     if (spec.resume && spec.plan) parser.seedPlan(spec.plan);
+    if (spec.resume && spec.baseline !== undefined) parser.seedBaseline(spec.baseline);
     ({ argv, stdin, env: extraEnv = {} } = orchestratorInvocation(spec.tool, {
       workdir: spec.workdir,
       prompt: spec.prompt,
@@ -190,7 +203,9 @@ export async function run(spec: Spec, emit: (event: Event) => void, signal?: Abo
       permissionPrompt: spec.permissionPrompt,
       toolsServer: spec.toolsServer,
       model: spec.model,
+      options: spec.options,
     }, spec.env ?? (process.env as Record<string, string>)));
+    if (spec.longSession) extraEnv = { ...longSessionEnv(spec.tool, spec.env ?? process.env), ...extraEnv };
   } catch (err) {
     return { result: emptyResult(), error: asError(err) };
   }

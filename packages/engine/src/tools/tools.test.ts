@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { onsetToolsServer, extractUserMessages, orchestratorInvocation, presetSessionID, projectRulesFilename, rendererEnv, rendererInvocation } from './index';
+import { longSessionEnv, longWaitServer, onsetToolsServer, extractUserMessages, orchestratorInvocation, presetSessionID, projectRulesFilename, rendererEnv, rendererInvocation } from './index';
 
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-tools-'));
@@ -12,10 +12,12 @@ describe('tools', () => {
   describe('renderer invocation safe by default', () => {
     const tests: [string, string[]][] = [
       ['codex', ['codex', '--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', 'prompt']],
-      ['claude', ['claude', '-p', '--permission-mode', 'acceptEdits', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]}}`, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', 'prompt']],
+      ['claude', ['claude', '-p', '--permission-mode', 'acceptEdits', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]}}`, '--strict-mcp-config', '--tools', 'Bash,Read,Write,Edit,Skill', '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', 'prompt']],
       // dont_ask 连镜头目录里写文件都拒（2026-11 实测渲染器一个 index.html 都写不出来）：与 claude 同一套放行规则。
-      ['qoder', ['qoderclicn', '-p', 'prompt', '--permission-mode', 'accept_edits', '--setting-sources', 'project,local', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]},"mcp":{"lazyLoad":false}}`, '--output-format', 'stream-json']],
-      ['codebuddy', ['codebuddy', '-p', '--verbose', '--output-format', 'stream-json', '--permission-mode', 'acceptEdits', 'prompt']],
+      ['qoder', ['qoderclicn', '-p', 'prompt', '--permission-mode', 'accept_edits', '--setting-sources', 'project,local', '--strict-mcp-config', '--tools', 'Bash,Read,Write,Edit,Skill', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]},"mcp":{"lazyLoad":false}}`, '--output-format', 'stream-json']],
+      // 国际版只换命令名：参数、设置写法与国内版相同（1.1.89 实测）。
+      ['qoder-intl', ['qodercli', '-p', 'prompt', '--permission-mode', 'accept_edits', '--setting-sources', 'project,local', '--strict-mcp-config', '--tools', 'Bash,Read,Write,Edit,Skill', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]},"mcp":{"lazyLoad":false}}`, '--output-format', 'stream-json']],
+      ['codebuddy', ['codebuddy', '-p', '--strict-mcp-config', '--verbose', '--output-format', 'stream-json', '--permission-mode', 'acceptEdits', 'prompt']],
       ['opencode', ['opencode', 'run', '--standalone', '--format', 'json', 'prompt']],
     ];
     for (const [tool, want] of tests) {
@@ -38,6 +40,50 @@ describe('tools', () => {
     expect(argv[argv.indexOf('--setting-sources') + 1]).toBe('project,local');
     const unsafe = rendererInvocation('qoder', 'prompt', true, {});
     expect(unsafe[unsafe.indexOf('--setting-sources') + 1]).toBe('project,local');
+  });
+
+  // 等整批渲染时少醒来几次：能长时间等的 claude、codex 放宽工具服务的等待上限，并在各自的配置里写上对应的超时。
+  it('lets claude and codex wait longer on onset tools', () => {
+    const server = { name: 'onset', command: 'onset', args: ['studio', 'tools-mcp'], env: { HOME: '/h' } };
+    const claude = orchestratorInvocation('claude', { prompt: 'p', toolsServer: server }).argv;
+    const config = JSON.parse(claude[claude.indexOf('--mcp-config') + 1]);
+    expect(config.mcpServers.onset.env.ONSET_TOOLS_MAX_WAIT).toBe('3000');
+    expect(config.mcpServers.onset.timeout).toBe(3120 * 1000);
+    const codex = orchestratorInvocation('codex', { prompt: 'p', toolsServer: server }).argv.join(' ');
+    expect(codex).toContain('mcp_servers.onset.tool_timeout_sec=3120');
+    expect(codex).toContain('ONSET_TOOLS_MAX_WAIT="3000"');
+    const renderer = rendererInvocation('claude', 'p', false, { toolsServer: server });
+    expect(JSON.parse(renderer[renderer.indexOf('--mcp-config') + 1]).mcpServers.onset.timeout).toBe(3120 * 1000);
+    // 没核实过超时的几家照旧。
+    const qoder = orchestratorInvocation('qoder', { prompt: 'p', toolsServer: server }).argv.join(' ');
+    expect(qoder).not.toContain('ONSET_TOOLS_MAX_WAIT');
+    expect(qoder).not.toContain('"timeout"');
+    expect(longWaitServer(undefined)).toBeUndefined();
+  });
+
+  // 编排长会话等渲染常超过 5 分钟：claude 的主会话缓存改成 1 小时；用户自己设了不动，别家与渲染器不加。
+  it('long orchestrator sessions keep the claude cache for an hour', () => {
+    expect(longSessionEnv('claude', {})).toEqual({ CLAUDE_CODE_PROMPT_CACHE_TTL: '1h' });
+    expect(longSessionEnv('claude', { CLAUDE_CODE_PROMPT_CACHE_TTL: '5m' })).toEqual({});
+    expect(longSessionEnv('codex', {})).toEqual({});
+    expect(longSessionEnv('qoder', {})).toEqual({});
+  });
+
+  // 渲染器只拿几样内置工具、只挂 onset 的工具服务：不读用户自己装的 MCP 与 claude.ai 连接器（RendererBuiltinTools 的注释有实测数字）。
+  it('renderers only get the tools they use', () => {
+    const server = { name: 'onset', command: 'onset', args: ['studio', 'tools-mcp'] };
+    for (const unsafe of [false, true]) {
+      for (const tool of ['claude', 'qoder', 'qoder-intl']) {
+        const argv = rendererInvocation(tool, 'prompt', unsafe, { toolsServer: server });
+        expect(argv, tool).toContain('--strict-mcp-config');
+        // --tools 吃多个值：后面紧跟的必须是选项，不然会把提示词吞掉。
+        expect(argv.slice(argv.indexOf('--tools') + 1, argv.indexOf('--tools') + 3), tool).toEqual(['Bash,Read,Write,Edit,Skill', expect.stringMatching(/^--/)]);
+      }
+      // codebuddy 的 --tools 会连 MCP 工具一起藏掉：只限 MCP。
+      const codebuddy = rendererInvocation('codebuddy', 'prompt', unsafe, { toolsServer: server });
+      expect(codebuddy).toContain('--strict-mcp-config');
+      expect(codebuddy).not.toContain('--tools');
+    }
   });
 
   // macOS 上五家渲染器都套系统沙箱、Windows 上全放开：各家自己不再按命令白名单拦（拦了也没人能批准）。
@@ -107,7 +153,7 @@ describe('tools', () => {
   });
 
   describe('all orchestrator invocations', () => {
-    for (const tool of ['codex', 'claude', 'qoder', 'codebuddy', 'opencode']) {
+    for (const tool of ['codex', 'claude', 'qoder', 'qoder-intl', 'codebuddy', 'opencode']) {
       for (const unsafe of [false, true]) {
         it(`${tool}-${unsafe ? 'unsafe' : 'safe'}`, () => {
           const { argv, stdin } = orchestratorInvocation(tool, { workdir: '/work', prompt: 'prompt', unsafe });
@@ -187,10 +233,29 @@ describe('tools', () => {
     expect(settings.permissions.deny.join(' ')).not.toContain('/scenes/');
   });
 
+  // 国际版与国内版的编排调用只差命令名：审批、工具服务、会话与文件权限的写法一样。
+  it('qoder-intl orchestrates exactly like qoder apart from the binary', () => {
+    const server = { name: 'onset', command: 'onset', args: ['studio', 'tools-mcp'] };
+    const permissionPrompt = { command: 'onset', args: ['studio', 'permission-mcp'], server: 'onset_studio' };
+    for (const resume of [false, true]) {
+      const o = { prompt: 'p', workdir: '/project', sessionID: 's1', resume, toolsServer: server, permissionPrompt, access: { commands: ['ls'] } };
+      const cn = orchestratorInvocation('qoder', o).argv;
+      const intl = orchestratorInvocation('qoder-intl', o).argv;
+      expect(cn[0]).toBe('qoderclicn');
+      expect(intl[0]).toBe('qodercli');
+      expect(intl.slice(1)).toEqual(cn.slice(1));
+    }
+    expect(rendererInvocation('qoder-intl', 'p', false, { toolsServer: server }, 'Auto', { id: 's1', resume: true }).slice(1)).toEqual(
+      rendererInvocation('qoder', 'p', false, { toolsServer: server }, 'Auto', { id: 's1', resume: true }).slice(1),
+    );
+    expect(presetSessionID('qoder-intl')).toBe(true);
+  });
+
   it('extract messages for every stream shape', () => {
     const tests: Record<string, string> = {
       claude: `{"type":"assistant","message":{"content":[{"type":"text","text":"[[USER_MESSAGE]]claude"}]}}`,
       qoder: `{"type":"assistant","message":{"content":[{"type":"text","text":"[[USER_MESSAGE]]qoder"}]}}`,
+      'qoder-intl': `{"type":"assistant","message":{"content":[{"type":"text","text":"[[USER_MESSAGE]]qoder-intl"}]}}`,
       codebuddy: `{"type":"assistant","message":{"content":[{"type":"text","text":"[[USER_MESSAGE]]codebuddy"}]}}`,
       opencode: `{"type":"text","part":{"text":"[[USER_MESSAGE]]opencode"}}`,
     };
@@ -203,6 +268,7 @@ describe('tools', () => {
     const tests: Record<string, string> = {
       codex: 'AGENTS.md',
       qoder: 'AGENTS.md',
+      'qoder-intl': 'AGENTS.md',
       opencode: 'AGENTS.md',
       claude: 'CLAUDE.md',
       codebuddy: 'CODEBUDDY.md',
@@ -275,9 +341,10 @@ describe('tools', () => {
         'ProgramFiles(x86)': 'C:\\Program Files (x86)',
         ONSET_SETTINGS_FILE: 'E:\\片场\\settings.conf',
       });
-      const expected = 'mcp_servers.onset.env={"ProgramFiles(x86)"="C:\\\\Program Files (x86)",ONSET_SETTINGS_FILE="E:\\\\片场\\\\settings.conf"}';
-      expect(rendererInvocation('codex', 'p', false, { toolsServer: server })).toContain(expected);
-      expect(orchestratorInvocation('codex', { prompt: 'p', workdir: '/p', toolsServer: server }).argv).toContain(expected);
+      const expected = '"ProgramFiles(x86)"="C:\\\\Program Files (x86)",ONSET_SETTINGS_FILE="E:\\\\片场\\\\settings.conf"';
+      for (const argv of [rendererInvocation('codex', 'p', false, { toolsServer: server }), orchestratorInvocation('codex', { prompt: 'p', workdir: '/p', toolsServer: server }).argv]) {
+        expect(argv.find(arg => arg.startsWith('mcp_servers.onset.env='))).toContain(expected);
+      }
     });
 
     it.skipIf(process.platform !== 'win32')('authorizes only built-in renderer MCP tools while retaining the Codex shell sandbox', () => {

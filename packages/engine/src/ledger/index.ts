@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { compareBytes, marshal, sortedKeys as sortedRecord } from '../gojson';
-import { newUsage, usageAdd, usageEmpty, usageJSON, type Usage } from '../tools';
+import { newUsage, sessionBaseline, usageAdd, usageEmpty, usageJSON, type SessionTotal, type Usage } from '../tools';
 
 // 调用来源。
 export const SourceStudio = 'studio'; // Studio 的一轮对话或「开始制作」
@@ -103,9 +103,11 @@ function decodeEntry(line: string): Entry | undefined {
       if (typeof v !== 'number' || !Number.isInteger(v)) return undefined;
       out[key] = v;
     }
-    if (u.cost_usd !== undefined && u.cost_usd !== null) {
-      if (typeof u.cost_usd !== 'number') return undefined;
-      out.cost_usd = u.cost_usd;
+    for (const key of ['cost_usd', 'credits'] as const) {
+      const v = u[key];
+      if (v === undefined || v === null) continue;
+      if (typeof v !== 'number') return undefined;
+      out[key] = v;
     }
     if (u.partial !== undefined && u.partial !== null) {
       if (typeof u.partial !== 'boolean') return undefined;
@@ -116,6 +118,25 @@ function decodeEntry(line: string): Entry | undefined {
       if (v === undefined || v === null) continue;
       if (typeof v !== 'string') return undefined;
       out[key] = v;
+    }
+    const total = u.session_total;
+    if (total !== undefined && total !== null) {
+      if (typeof total !== 'object' || Array.isArray(total)) return undefined;
+      const t = total as Record<string, unknown>;
+      const st: SessionTotal = { input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cost_usd: null, turns: 0 };
+      for (const key of usageNumberKeys) {
+        const v = t[key];
+        if (v === undefined || v === null) continue;
+        if (typeof v !== 'number' || !Number.isInteger(v)) return undefined;
+        st[key] = v;
+      }
+      for (const key of ['cost_usd', 'credits'] as const) {
+        const v = t[key];
+        if (v === undefined || v === null) continue;
+        if (typeof v !== 'number') return undefined;
+        st[key] = v;
+      }
+      out.session_total = st;
     }
     entry.usage = out;
   }
@@ -161,12 +182,44 @@ export function summaryJSON(summary: Summary): Record<string, unknown> {
   };
 }
 
+/**
+ * file 里这个会话最后一条带用量的账留下的会话累计值，给下一次续接当基线（tools.sessionBaseline）。
+ * 找不到时返回 null：续接了却不知道之前累计到多少。
+ */
+export function lastSessionUsage(file: string, session: string): SessionTotal | null {
+  if (session === '') return null;
+  const entries = read(file) ?? [];
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (entry.session === session && entry.usage && !usageEmpty(entry.usage)) return sessionBaseline(entry.usage);
+  }
+  return null;
+}
+
+/**
+ * 修正修复前写下的 claude 账：那时续接后记的是 claude 报的会话累计费用（tools 的 cumulativeFields），
+ * 同一会话的后一条要减掉前一条才是这一次的。新写的账带 session_total，费用已经是这一次的，原样返回。
+ */
+function legacyCumulative(): (entry: Entry) => Usage {
+  const last = new Map<string, number>();
+  return (entry) => {
+    const usage = entry.usage ?? newUsage();
+    if (usage.session_total || usage.source !== 'claude result' || !entry.session || usage.cost_usd == null) return usage;
+    const reported = usage.cost_usd;
+    const before = last.get(entry.session);
+    last.set(entry.session, reported);
+    if (before === undefined || reported < before) return usage;
+    return { ...usage, cost_usd: reported - before };
+  };
+}
+
 /** 合计一组账。 */
 export function summarize(entries: Entry[] | null): Summary {
   const out: Summary = { calls: 0, total: newUsage(), by_source: {}, by_model: {} };
+  const own = legacyCumulative();
   for (const entry of entries ?? []) {
     out.calls++;
-    const usage = entry.usage ?? newUsage();
+    const usage = own(entry);
     let key = entry.tool;
     if (entry.model) key += '/' + entry.model;
     const bySource = Object.hasOwn(out.by_source, entry.source) ? out.by_source[entry.source] : newUsage();

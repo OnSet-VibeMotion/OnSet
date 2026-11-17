@@ -100,6 +100,7 @@ export function parseRequest(text: string): director.Request {
     session_id: typeof r.session_id === 'string' ? r.session_id : undefined,
     resume: r.resume === true,
     model: typeof r.model === 'string' ? r.model : '',
+    thinking: typeof r.thinking === 'string' && thinkingLevels.has(r.thinking) ? r.thinking : undefined,
     unsafe: r.unsafe === true,
     commands: Array.isArray(r.commands) ? r.commands.filter((c): c is string => typeof c === 'string') : [],
     writable_dirs: Array.isArray(r.writable_dirs) ? r.writable_dirs.filter((c): c is string => typeof c === 'string') : [],
@@ -107,6 +108,9 @@ export function parseRequest(text: string): director.Request {
     service: director.parseResolvedService(r.service) ?? undefined,
   };
 }
+
+/** pi 的 thinkingLevel 取值（pi-agent-core 的 ThinkingLevel）；别的值不交给 pi。 */
+const thinkingLevels: ReadonlySet<string> = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 
 /** 跑一轮；测试直接调它（换掉 spawner、gate，给假模型）。 */
 export async function runBuiltinAgent(

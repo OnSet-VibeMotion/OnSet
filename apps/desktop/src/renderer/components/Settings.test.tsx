@@ -4,9 +4,10 @@
  * 渲染整个 App（没有打开项目，落在首页），后端是一张按真实接口形状写的假表：
  * 存下的模型服务决定 /api/agents 里制作人能不能选（同 studio/agents.ts），全局设置的写入记在 POST 请求体里。
  */
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test } from 'vitest';
+import { MachineSettings } from './Settings';
 import { App } from '../app';
 import { mockApi, type MockRequest } from '../testing';
 import type { AgentInfo, AgentService, AgentServicePreset, AgentServicesResponse, AgentsResponse, SettingRow, SettingsResponse, SetupStatus } from '../types';
@@ -32,7 +33,13 @@ function backend() {
     const director: AgentInfo = { id: 'director', label: '制作人', command: 'onset studio agent', installed: ready, renderer: true, ...(ready ? {} : { hint: '先在设置里配置一个模型服务' }) };
     return {
       agents: [
-        { id: 'claude', label: 'Claude Code', command: 'claude', installed: true, renderer: true, install_url: 'https://code.claude.com/docs/en/setup' },
+        {
+          id: 'claude', label: 'Claude Code', command: 'claude', installed: true, renderer: true, install_url: 'https://code.claude.com/docs/en/setup',
+          option_specs: [
+            { key: 'effort', label: '推理强度', hint: '', kind: 'choice', choices: [{ value: 'low', label: '低' }, { value: 'high', label: '高' }] },
+            { key: 'fast', label: '快速模式', hint: '', kind: 'toggle' },
+          ],
+        },
         { id: 'codex', label: 'Codex', command: 'codex', installed: true, renderer: true, install_url: 'https://developers.openai.com/codex/cli' },
         director,
       ],
@@ -43,15 +50,17 @@ function backend() {
       global_renderer: global.RENDERER || 'claude',
     };
   };
-  const row = (key: string, label: string, options: SettingRow['options'], def: string, modelOf?: string): SettingRow => ({
-    key, label, hint: '', options, default: def, global: global[key] ?? '', project: '', effective: global[key] || def, source: global[key] ? 'global' : 'default', ...(modelOf ? { model_of: modelOf } : {}),
+  const row = (key: string, label: string, options: SettingRow['options'], def: string, modelOf?: string, optionsOf?: string): SettingRow => ({
+    key, label, hint: '', options, default: def, global: global[key] ?? '', project: '', effective: global[key] || def, source: global[key] ? 'global' : 'default', ...(modelOf ? { model_of: modelOf } : {}), ...(optionsOf ? { options_of: optionsOf } : {}),
   });
   const settings = (): SettingsResponse => ({
     file: '/tmp/onset/settings.conf',
     has_project: false,
+    machine: [],
     rows: [
       row('ORCHESTRATOR', '对话助手', toolOptions, 'claude'),
       row('ORCHESTRATOR_MODEL', '对话助手的模型', [], '', 'ORCHESTRATOR'),
+      row('ORCHESTRATOR_OPTIONS', '对话助手的选项', [], '', undefined, 'ORCHESTRATOR'),
       row('RENDERER', '画镜头的工具', toolOptions, 'claude'),
       row('RENDERER_MODEL', '画镜头的模型', [], '', 'RENDERER'),
     ],
@@ -154,4 +163,50 @@ test('selects the Producer, lists models from the custom service, and keeps the 
   await user.click(homeTool);
   await waitFor(() => expect((screen.getByRole('menuitemradio', { name: /^制作人/ }) as HTMLButtonElement).disabled).toBe(true));
   expect(homeTool.textContent).not.toContain('制作人');
+});
+
+// 调用选项跟着工具走：claude 有推理强度与快速模式，选了就写成一行 effort=high,fast=on 存进全局设置。
+test('sets the orchestrator options for the chosen tool', async () => {
+  const { global } = backend();
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole('button', { name: '设置' }));
+  const dialog = await screen.findByRole('dialog', { name: '设置' });
+  const level = (await within(dialog).findByLabelText('全局推理强度')) as HTMLSelectElement;
+  expect(level.options[0]!.textContent).toBe('推理强度：默认');
+  await user.selectOptions(level, 'high');
+  await waitFor(() => expect(global.ORCHESTRATOR_OPTIONS).toBe('effort=high'));
+  await user.selectOptions(await within(dialog).findByLabelText('全局快速模式'), 'on');
+  await waitFor(() => expect(global.ORCHESTRATOR_OPTIONS).toBe('effort=high,fast=on'));
+  // 换成没有可调选项的工具（这张假表里的 codex 没给 option_specs）时照实说。
+  await user.selectOptions(within(dialog).getByLabelText('全局对话助手'), 'codex');
+  await waitFor(() => expect((within(dialog).getByLabelText('全局对话助手的选项') as HTMLSelectElement).textContent).toContain('没有可调的选项'));
+});
+
+
+test('preserves a newer machine-setting draft while an earlier save finishes', async () => {
+  let finish!: (value: unknown) => void;
+  mockApi({ 'POST /api/settings/global': () => new Promise(resolve => { finish = resolve; }) });
+  render(<MachineSettings rows={[{ key: 'NETWORK_PROXY', label: '代理', hint: '', placeholder: '', value: '', overridden: false }]} onSaved={() => {}} />);
+  const input = screen.getByRole('textbox');
+  fireEvent.change(input, { target: { value: 'https://first.example' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  await waitFor(() => expect(finish).toBeTypeOf('function'));
+  fireEvent.change(input, { target: { value: 'https://second.example' } });
+  await act(async () => finish({ ok: true }));
+  expect((input as HTMLInputElement).value).toBe('https://second.example');
+  expect(screen.queryByText('已保存')).toBeNull();
+});
+
+
+test('recovers settings options after the agents request fails', async () => {
+  const { api } = backend();
+  api.set('/api/agents', () => { throw new Error('offline'); });
+  render(<App />);
+  await userEvent.click(await screen.findByRole('button', { name: '设置' }));
+  expect(await screen.findByRole('button', { name: '重试读取工具' })).toBeTruthy();
+  api.set('/api/agents', { agents: [{ id: 'claude', label: 'Claude', installed: true, renderer: true, command: 'claude', option_specs: [{ key: 'fast', label: '快速模式', hint: '', kind: 'toggle' }] }], orchestrator: 'claude', renderer: 'claude', global_renderer: 'claude', orchestrator_model: '', renderer_model: '' });
+  await userEvent.click(screen.getByRole('button', { name: '重试读取工具' }));
+  expect(await screen.findByLabelText('全局快速模式')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '重试读取工具' })).toBeNull();
 });

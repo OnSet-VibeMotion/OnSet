@@ -19,9 +19,11 @@ import type { Server } from './studio';
 export const agentOrder: readonly { id: string; label: string; installURL: string }[] = [
   { id: 'claude', label: 'Claude Code', installURL: 'https://code.claude.com/docs/en/setup' },
   { id: 'codex', label: 'Codex', installURL: 'https://developers.openai.com/codex/cli' },
-  { id: 'qoder', label: 'Qoder', installURL: 'https://help.aliyun.com/zh/lingma/qoder-cli-cn-get-started-quickly' },
+  { id: 'qoder', label: 'Qoder（国内版）', installURL: 'https://help.aliyun.com/zh/lingma/qoder-cli-cn-get-started-quickly' },
+  { id: 'qoder-intl', label: 'Qoder（国际版）', installURL: 'https://docs.qoder.com/cli/quick-start' },
   { id: 'codebuddy', label: 'CodeBuddy', installURL: 'https://www.codebuddy.cn/docs/cli/installation' },
   { id: 'opencode', label: 'OpenCode', installURL: 'https://opencode.ai/docs/' },
+  { id: 'mcode', label: 'MiniMax Code', installURL: 'https://www.npmjs.com/package/@minimax-ai/code' },
   { id: 'director', label: '制作人', installURL: '' },
 ];
 
@@ -33,6 +35,8 @@ export function decodeChoice(body: Record<string, unknown>): AgentChoice {
   const choice: AgentChoice = { tool: fieldString(body, 'tool'), renderer: fieldString(body, 'renderer') };
   if (Object.hasOwn(body, 'model')) choice.model = fieldString(body, 'model').trim();
   if (Object.hasOwn(body, 'renderer_model')) choice.rendererModel = fieldString(body, 'renderer_model').trim();
+  if (Object.hasOwn(body, 'options')) choice.options = fieldString(body, 'options').trim();
+  if (Object.hasOwn(body, 'renderer_options')) choice.rendererOptions = fieldString(body, 'renderer_options').trim();
   return choice;
 }
 
@@ -53,6 +57,8 @@ interface AgentInfo {
   hint?: string;
   /** 官方安装说明页；制作人随客户端下发，没有。 */
   install_url?: string;
+  /** 这家能调的选项（推理强度、快速模式、上下文长度……，tools/options.ts）；界面据此画控件。 */
+  option_specs: tools.AgentOptionSpec[];
 }
 
 /** executable 从调用矩阵取工具的命令名，不在这里另写一份。 */
@@ -74,9 +80,9 @@ export function agentsAPI(s: Server, request: Request): Response {
     if (a.id === director.Tool) {
       // 制作人随客户端下发，不用装；「装好」指配了一套在用的模型服务。
       const ready = director.hasService(director.defaultDir(envMap()));
-      return { id: a.id, label: a.label, command: 'onset studio agent', installed: ready, renderer, ...(ready ? {} : { hint: '先在设置里配置一个模型服务' }) };
+      return { id: a.id, label: a.label, command: 'onset studio agent', installed: ready, renderer, option_specs: tools.agentOptionSpecs(a.id), ...(ready ? {} : { hint: '先在设置里配置一个模型服务' }) };
     }
-    const info: AgentInfo = { id: a.id, label: a.label, command: executable(a.id), installed: false, renderer, install_url: a.installURL };
+    const info: AgentInfo = { id: a.id, label: a.label, command: executable(a.id), installed: false, renderer, install_url: a.installURL, option_specs: tools.agentOptionSpecs(a.id) };
     try {
       info.path = lookPath(info.command, pathValue);
       info.installed = true;
@@ -87,7 +93,7 @@ export function agentsAPI(s: Server, request: Request): Response {
   });
   // 不看项目时的渲染工具（环境变量 > 全局设置 > 默认）：新建的项目跟着它，首页与首次引导据此判断渲染工具装没装。
   const globalRenderer = config.describeSettings('', envMap()).find((r) => r.key === 'RENDERER')?.effective ?? '';
-  const result: Record<string, unknown> = { agents, orchestrator: '', renderer: '', orchestrator_model: '', renderer_model: '', global_renderer: globalRenderer };
+  const result: Record<string, unknown> = { agents, orchestrator: '', renderer: '', orchestrator_model: '', renderer_model: '', orchestrator_options: '', renderer_options: '', global_renderer: globalRenderer };
   try {
     const p = s.currentProject();
     try {
@@ -96,6 +102,8 @@ export function agentsAPI(s: Server, request: Request): Response {
       result.renderer = cfg.renderer;
       result.orchestrator_model = cfg.orchestratorModel;
       result.renderer_model = cfg.rendererModel;
+      result.orchestrator_options = cfg.orchestratorOptions;
+      result.renderer_options = cfg.rendererOptions;
     } catch (err) {
       result.config_error = (err as Error).message;
     }
@@ -119,7 +127,8 @@ export async function switchSessionAgents(request: Request, sess: Session): Prom
     throw err;
   }
   try {
-    validateChoice(choice);
+    const cfg = config.load(sess.project, null);
+    validateChoice({ ...choice, tool: choice.tool || sess.meta.tool || cfg.orchestrator, renderer: choice.renderer || sess.meta.renderer || cfg.renderer });
   } catch (err) {
     return writeError(400, 'invalid_agent', (err as Error).message);
   }
@@ -127,6 +136,7 @@ export async function switchSessionAgents(request: Request, sess: Session): Prom
   const switched = choice.tool !== '' && choice.tool !== sess.meta.tool;
   const rendererSwitched = choice.renderer !== '' && choice.renderer !== (sess.meta.renderer ?? '');
   const modelChanged = choice.model !== undefined && choice.model !== (sess.meta.model ?? '');
+  const optionsChanged = choice.options !== undefined && choice.options !== (sess.meta.options ?? '');
   updateMeta(sess, (meta) => {
     if (choice.tool !== '') meta.tool = choice.tool;
     if (choice.renderer !== '') meta.renderer = choice.renderer;
@@ -135,11 +145,18 @@ export async function switchSessionAgents(request: Request, sess: Session): Prom
     else if (switched) meta.model = undefined;
     if (choice.rendererModel !== undefined) meta.renderer_model = choice.rendererModel || undefined;
     else if (rendererSwitched) meta.renderer_model = undefined;
+    // 选项同理：只对选它时的那家工具有意义。
+    if (choice.options !== undefined) meta.options = choice.options || undefined;
+    else if (switched) meta.options = undefined;
+    if (choice.rendererOptions !== undefined) meta.renderer_options = choice.rendererOptions || undefined;
+    else if (rendererSwitched) meta.renderer_options = undefined;
     if (switched) meta.cli_session_id = undefined;
   });
   if (switched) emit(sess, '', { kind: kindNotice, text: '对话改用 ' + choice.tool + '，下一轮会带上之前的对话记录开新会话' });
   // 同一家工具换模型：CLI 会话照样续接，续接时带上新模型（各家的 --model / -c model 对 resume 同样生效）。
   else if (modelChanged) emit(sess, '', { kind: kindNotice, text: choice.model ? '编排模型改为 ' + choice.model + '，下一轮起生效' : '编排模型改为跟随设置，下一轮起生效' });
+  // 选项同理：codex、claude 续接时带上新的推理强度与快速模式照样生效。
+  else if (optionsChanged) emit(sess, '', { kind: kindNotice, text: choice.options ? '编排选项改为 ' + choice.options + '，下一轮起生效' : '编排选项改为跟随设置，下一轮起生效' });
   return writeJSON(200, sessionMetaJSON(sess.meta));
 }
 
@@ -169,7 +186,7 @@ async function captureOutput(binary: string, args: string[], env: Record<string,
  */
 export async function agentModelsAPI(request: Request, rest: string): Promise<Response> {
   if (request.method !== 'GET') return methodNotAllowed('GET');
-  const match = /^([a-z]+)\/models$/.exec(rest);
+  const match = /^([a-z-]+)\/models$/.exec(rest);
   if (!match || !tools.ValidTools.has(match[1]!)) return writeError(404, 'unknown_agent', '不认识的工具：' + rest);
   const tool = match[1]!;
   const refresh = new URL(request.url).searchParams.get('refresh') === '1';
@@ -194,6 +211,37 @@ export async function agentModelsAPI(request: Request, rest: string): Promise<Re
   }
   if (argv === null) {
     models = tools.parseModelList(tool, '');
+  } else if (tools.isQoder(tool)) {
+    // qoder 的完整模型表（说明、额度倍率、每个模型的推理档位与上下文长度）只在它的 SDK 协议里给，见 tools/qodermodels.ts；
+    // 读不出来（没登录、版本不认）时退回 --list-models，至少还有名字。
+    const env = envMap() as Record<string, string>;
+    let binary: string;
+    try {
+      binary = lookPath(argv[0]!, env.PATH ?? '');
+    } catch {
+      return writeJSON(200, goMap({ tool, models: [], error: `找不到 ${argv[0]}，可以直接填模型名` }));
+    }
+    try {
+      models = await tools.fetchQoderModels(tool, binary, env);
+    } catch (err) {
+      models = tools.parseModelList(tool, await captureOutput(binary, argv.slice(1), env).catch(() => ''));
+      if (models.length === 0) return writeJSON(200, goMap({ tool, models: [], error: '没能从 ' + argv[0] + ' 读出模型列表（' + (err as Error).message + '），可以直接填模型名' }));
+    }
+  } else if (tool === 'mcode') {
+    // mcode 的模型表只在 ACP 会话选项里给，见 tools/mcodemodels.ts。
+    const env = envMap() as Record<string, string>;
+    let binary: string;
+    try {
+      binary = lookPath(argv![0]!, env.PATH ?? '');
+    } catch {
+      return writeJSON(200, goMap({ tool, models: [], error: '找不到 mcode，可以直接填模型名' }));
+    }
+    try {
+      models = await tools.fetchMcodeModels(binary, env);
+    } catch (err) {
+      return writeJSON(200, goMap({ tool, models: [], error: '没能从 mcode 读出模型列表（' + (err as Error).message + '），可以直接填「服务商/模型」' }));
+    }
+    if (models.length === 0) return writeJSON(200, goMap({ tool, models: [], error: '没能从 mcode 读出模型列表，可以直接填「服务商/模型」' }));
   } else {
     const env = envMap() as Record<string, string>;
     let binary: string;

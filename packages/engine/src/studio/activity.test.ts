@@ -49,6 +49,8 @@ describe('scene activity', () => {
   it('sniffs which CLI wrote the stream', () => {
     expect(sniffStreamTool(init)).toBe('claude');
     expect(sniffStreamTool('{"type":"thread.started","thread_id":"a"}')).toBe('codex');
+    // mcode 也有 turn.* / item.*，靠 schemaVersion 与 runId 认出来。
+    expect(sniffStreamTool('{"schemaVersion":1,"runId":"r","sessionId":"mvs_1","type":"turn.started"}')).toBe('mcode');
     expect(sniffStreamTool('{"type":"step_start","sessionID":"s","part":{}}')).toBe('opencode');
     expect(sniffStreamTool('not json')).toBe('');
   });
@@ -140,4 +142,13 @@ describe('scene activity', () => {
     scene.removeLive(dir, 's1');
     expect(fs.existsSync(scene.liveFile(dir, 's1'))).toBe(false);
   });
+});
+
+
+it('detects the designer independently of the stored renderer', () => {
+  const dir = tempDir();
+  fs.writeFileSync(path.join(dir, 'render-s1.attempt.json'), JSON.stringify({ renderer: 'codex' }));
+  fs.writeFileSync(path.join(dir, 'design-s1.stream.jsonl'), [init, callRead, resultRead].join('\n') + '\n');
+  const activity = sceneActivity(summary(dir), 'design');
+  expect(activity.steps).toMatchObject([{ tool: 'Read', state: 'done' }]);
 });

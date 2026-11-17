@@ -161,7 +161,7 @@ export function listStations(root: string): Record<string, unknown> {
 }
 
 /** 装、去掉、更新插件：不占项目写锁（插件在用户级），没有打开项目也能做。操作的 data 放进任务的 result。 */
-function startUserTask(s: Server, type: string, message: string, name: string, params: Record<string, unknown>): Response {
+export function startUserTask(s: Server, type: string, message: string, name: string, params: Record<string, unknown>): Response {
   const t = addTask(s, type, message);
   runTask(s, t, async (signal) => {
     const r = await runUserOp(s, signal, name, params);

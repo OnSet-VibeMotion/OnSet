@@ -78,10 +78,10 @@ describe('new projects compose the prompt of their own flow', () => {
     expect(got).toEqual(JSON.parse(fs.readFileSync(goldenFile, 'utf8')));
   });
 
-  it('records only the flow and the canvas', () => {
+  it('records the flow, the canvas and the render prompt version', () => {
     for (const delivery of ['speech', 'beat', 'song']) {
       const root = created(delivery, 'vertical-9x16');
-      expect(flow.flowRecord(root)).toEqual({ id: delivery, canvas: 'vertical-9x16' });
+      expect(flow.flowRecord(root)).toEqual({ id: delivery, canvas: 'vertical-9x16', render_prompt: flow.RenderPromptVersion });
       expect(flow.detectFlow(root, flow.stationExtras())).toBe(delivery);
       // 项目里不放任何提示词文件。
       for (const file of ['PROMPT.md', 'PROMPT-PRODUCTION.md', 'PROMPT-SONG.md', 'PROMPT-CAST-ADDENDUM.md']) expect(fs.existsSync(path.join(root, file)), file).toBe(false);
@@ -376,7 +376,7 @@ describe('third-party flow reuses builtin station sections', () => {
     // 插件带来的流程是新建时的一个做法：项目的流程记录写 x:<插件 id>。
     flow.installStation(`link:${fake}`);
     const root = created('x:fake-publisher');
-    expect(flow.flowRecord(root)).toEqual({ id: 'x:fake-publisher', canvas: 'vertical-3x4' });
+    expect(flow.flowRecord(root)).toEqual({ id: 'x:fake-publisher', canvas: 'vertical-3x4', render_prompt: flow.RenderPromptVersion });
     const { text: body, flow: id } = composeProjectPrompt(root);
     expect(id).toBe('x:fake-publisher');
     // 假发布插件的流程：intake、render、assemble、review、本站。

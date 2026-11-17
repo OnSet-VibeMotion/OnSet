@@ -96,6 +96,8 @@ export interface Usage {
   output_tokens?: number;
   cached_input_tokens?: number;
   cost_usd?: number;
+  /** 按额度计费的工具（qoder）报的额度；这类工具不报 token。 */
+  credits?: number;
   turns?: number;
   partial?: boolean;
   source?: string;
@@ -163,8 +165,11 @@ export interface SessionMeta {
   tool: string;
   /** 编排模型；没有是跟随设置。 */
   model?: string;
+  /** 编排工具的调用选项（effort=high,fast=on）；没有是跟随设置。 */
+  options?: string;
   renderer?: string;
   renderer_model?: string;
+  renderer_options?: string;
   cli_session_id?: string;
   created_at: string;
   updated_at: string;
@@ -367,6 +372,22 @@ export interface AgentInfo {
   hint?: string;
   /** 官方安装说明页（制作人没有）。 */
   install_url?: string;
+  /** 这家能调的选项（后端 tools/options.ts 的 AgentOptionSpec）。 */
+  option_specs?: AgentOptionSpec[];
+}
+
+/** 一家工具的一项调用选项：推理强度、快速模式、上下文长度……（后端 tools/options.ts）。 */
+export interface AgentOptionSpec {
+  key: string;
+  label: string;
+  hint: string;
+  kind: 'choice' | 'toggle' | 'number';
+  choices?: { value: string; label: string }[];
+  presets?: { value: string; label: string }[];
+  /** 要先选了模型才有用（opencode 的变体）。 */
+  requiresModel?: boolean;
+  /** 可选档位随模型变：按模型列表里那个模型的 efforts 收窄。 */
+  perModel?: boolean;
 }
 
 export interface AgentsResponse {
@@ -376,6 +397,9 @@ export interface AgentsResponse {
   /** 设置里给上面两家选的模型；空是那家工具自己的默认。 */
   orchestrator_model: string;
   renderer_model: string;
+  /** 设置里给上面两家选的调用选项（effort=high,fast=on）；空是那家工具自己的默认。 */
+  orchestrator_options?: string;
+  renderer_options?: string;
   /** 不看项目时的渲染工具（环境变量 > 全局设置 > 默认）：新建的项目跟着它。 */
   global_renderer: string;
   config_error?: string;
@@ -387,6 +411,9 @@ export interface AgentChoice {
   renderer: string;
   model?: string;
   renderer_model?: string;
+  /** 两家各自的调用选项，逐项盖在设置上；空串是跟随设置。 */
+  options?: string;
+  renderer_options?: string;
 }
 
 /** GET /api/agents/{工具}/models。 */
@@ -394,6 +421,28 @@ export interface ModelOption {
   id: string;
   label: string;
   description?: string;
+  /** 这个模型能选的推理强度（codex、qoder）；没有时按 option_specs 列，空数组是这个模型不推理。 */
+  efforts?: string[];
+  /** 这个模型有没有快速档位（codex）；没有时不确定。 */
+  fast?: boolean;
+  /** 工具内部的模型键（qoder 的 smodel 之类）。 */
+  key?: string;
+  /** 额度倍率（qoder，8 表示 8.00x）。 */
+  credit?: number;
+  /** 打折前的倍率，比 credit 高时划掉显示。 */
+  creditBefore?: number;
+  /** 免费（含限时免费）。 */
+  free?: boolean;
+  /** 正在进行的活动（「错峰2折」）。 */
+  promotion?: string;
+  /** 不指定模型时工具用的就是它。 */
+  isDefault?: boolean;
+  /** 不选推理强度时这个模型用哪一档。 */
+  defaultEffort?: string;
+  /** 这个模型能选的上下文长度（token），从小到大。 */
+  contextWindows?: number[];
+  /** 不选上下文长度时用多大。 */
+  defaultContextWindow?: number;
 }
 
 export interface ModelsResponse {
@@ -818,6 +867,8 @@ export interface SettingRow {
   options: { value: string; label: string }[];
   /** 模型项：跟着哪一项工具（ORCHESTRATOR / RENDERER），可选值按那家工具去取。 */
   model_of?: string;
+  /** 调用选项项：跟着哪一项工具，可调的项按那家工具的 option_specs 画。 */
+  options_of?: string;
   /** 全局也没设时用的内置默认。 */
   default: string;
   /** 全局设置里写的值；没写为空。 */
@@ -828,10 +879,77 @@ export interface SettingRow {
   source: 'env' | 'dotenv' | 'project' | 'global' | 'default';
 }
 
+/** 只属于这台电脑的一项（设置页「网络与更新」）：config.MachineKeys。 */
+export interface MachineSetting {
+  key: 'NETWORK_PROXY' | 'PLUGIN_CATALOG_URL' | 'UPDATE_FEED_URL';
+  label: string;
+  hint: string;
+  placeholder: string;
+  value: string;
+  /** 同名环境变量盖住了设置。 */
+  overridden: boolean;
+}
+
 export interface SettingsResponse {
   file: string;
   has_project: boolean;
+  machine: MachineSetting[];
   rows: SettingRow[];
+}
+
+/** 插件中心里一个插件与这台电脑的关系（flow/market.ts 的 MarketState）。 */
+export type MarketState = 'available' | 'incompatible' | 'installed' | 'update' | 'other_source' | 'builtin' | 'unavailable';
+
+export interface MarketVersion {
+  version: string;
+  ref: string;
+  commit: string;
+  requires_onset: string;
+  /** 内容摘要：有它时不用 git 也能装。 */
+  digest: string;
+  /** 撤回的原因，空是没撤回。 */
+  yanked: string;
+}
+
+/** GET /api/market 的一项（studio/market.ts）。 */
+export interface MarketItem {
+  id: string;
+  name: string;
+  description: string;
+  author: { name: string; url: string };
+  license: string;
+  tags: string[];
+  homepage: string;
+  source: string;
+  /** 后端代取的图标地址（/api/market/images/…），没有为空。 */
+  icon: string;
+  screenshots: string[];
+  state: MarketState;
+  /** 能装的最新一版；每一版都要更新的片场时为 null。 */
+  latest: MarketVersion | null;
+  /** 装不上时，最新一版要的片场版本。 */
+  requires_onset: string;
+  installed_version: string;
+  installed_commit: string;
+  /** 装着的那一版被撤回了：原因。 */
+  installed_yanked: string;
+  /** 不再维护的原因，空是还在维护。 */
+  deprecated: string;
+  maintainers: string[];
+}
+
+export interface MarketResponse {
+  catalog_url: string;
+  /** 设置里填了自己的目录地址。 */
+  custom_url: boolean;
+  /** 缓存的目录是什么时候取的；从没取到为空。 */
+  fetched_at: string;
+  refreshing: boolean;
+  /** 最近一次刷新失败的原因。 */
+  error: string;
+  installed_error: string;
+  onset_version: string;
+  items: MarketItem[];
 }
 
 /** 制作人的模型服务协议：OpenAI 兼容（Chat Completions）或 Anthropic（Messages）。 */
@@ -1240,6 +1358,17 @@ export interface AuditionContestant {
   error?: string;
 }
 
+/** 盲评期间后端只给固定动作标签；评判后才附上日志正文。 */
+export interface AuditionActivity {
+  hint?: string;
+  slot: string;
+  state: 'pending' | 'starting' | 'running' | 'waiting' | 'done' | 'failed' | 'interrupted' | 'unavailable';
+  current: string;
+  phase?: 'design' | 'render';
+  step_count: number;
+  steps: { label: string; state: string; detail?: string }[];
+}
+
 export interface AuditionVerdict {
   kind: 'winner' | 'tie' | 'none';
   winner: string;
@@ -1312,4 +1441,23 @@ export interface LearningState {
   verdicts: number;
   exemplars: number;
   thresholds: { matches: number; rate: number };
+}
+
+/** 客户端更新的状态（main/updatestate.ts 的 UpdateState，两边一起改）。 */
+export type UpdateStatus = 'disabled' | 'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error';
+
+export interface UpdateState {
+  status: UpdateStatus;
+  current: string;
+  version: string;
+  notes: string;
+  released_at: string;
+  percent: number;
+  transferred: number;
+  total: number;
+  bytes_per_second: number;
+  error: string;
+  disabled_reason: string;
+  checked_at: string;
+  release_url: string;
 }

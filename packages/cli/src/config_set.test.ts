@@ -23,3 +23,14 @@ describe('config_set', () => {
     expect(bad.text).toContain('不认识的配音工具');
   });
 });
+
+
+it('preserves companion options when the existing tool is quoted', async () => {
+  const root = tempDir(), conf = path.join(root, 'onset.conf');
+  fs.writeFileSync(conf, 'RENDERER="claude"\nRENDERER_OPTIONS=effort=high\nRENDERER_MODEL=opus\n');
+  const out = new Buffer();
+  expect(await run(['config', 'set', 'RENDERER', 'claude', '--project-root', root], out)).toBe(0);
+  expect(fs.readFileSync(conf, 'utf8')).toContain('RENDERER_OPTIONS=effort=high');
+  expect(await run(['config', 'set', 'RENDERER', 'codex', '--project-root', root], out)).toBe(0);
+  expect(fs.readFileSync(conf, 'utf8')).not.toContain('effort=high');
+});

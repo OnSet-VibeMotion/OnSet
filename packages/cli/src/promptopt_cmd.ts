@@ -101,11 +101,11 @@ defineOp({
       targets = [i];
     }
     const cfg = config.load(root, null);
-    const { tool, model } = promptopt.optimizerOf(cfg);
+    const { tool, model, options } = promptopt.optimizerOf(cfg);
     const isUnsafe = envutil.isUnsafe(unsafe);
     const env = config.childEnvironment(cfg, currentEnvironment(), isUnsafe, envutil.parsePassthrough(process.env.ONSET_PASSTHROUGH_ENV ?? ''));
     out.write(`检查工具: ${tool}${model ? `（${model}）` : ''}\n`);
-    const call = (text: string) => promptopt.callOnce({ tool, model, prompt: text, env, unsafe: isUnsafe, signal, ledgerFile: ledger.projectFile(root), source: ledger.SourcePromptCheck });
+    const call = (text: string) => promptopt.callOnce({ tool, model, options, prompt: text, env, unsafe: isUnsafe, signal, ledgerFile: ledger.projectFile(root), source: ledger.SourcePromptCheck });
 
     const results: Record<string, unknown>[] = [];
     const failures: string[] = [];

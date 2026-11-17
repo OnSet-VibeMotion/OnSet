@@ -1,0 +1,259 @@
+/* 模型与调用选项的弹出框（components/ModelPicker.tsx）：挂在 body 上，所以不在 .chat 之下，变量自己算。 */
+
+.model-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  min-width: 0;
+  max-width: 260px;
+  padding: 0 8px 0 6px;
+  border: 0;
+  border-left: 1px solid color-mix(in srgb, var(--line-strong) 70%, transparent);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: 12px var(--sans);
+  cursor: pointer;
+}
+.model-picker-trigger:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.model-picker-trigger:hover:not(:disabled) {
+  color: var(--text);
+}
+.model-picker-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-picker-tag {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+.model-picker-trigger svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.model-picker {
+  position: fixed;
+  z-index: 200;
+  width: min(380px, calc(100vw - 16px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 70%, transparent);
+  background: var(--raised);
+  color: var(--text);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  font: 13px var(--sans);
+}
+
+.model-picker-search {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+.model-picker-search input {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: 14px var(--sans);
+}
+.model-picker-search input::placeholder {
+  color: var(--faint);
+}
+
+.model-picker-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 360px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+}
+.model-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.model-picker-item.active {
+  background: var(--chip);
+  border-color: color-mix(in srgb, var(--line-strong) 80%, transparent);
+}
+.model-picker-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.model-picker-label {
+  color: var(--text);
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-picker-desc {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-picker-meta {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.model-picker-credit {
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.model-picker-credit.free {
+  color: var(--ok);
+  font-family: var(--sans);
+}
+.model-picker-before {
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.model-picker-promo {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 11px;
+  line-height: 17px;
+}
+.model-picker-item svg {
+  flex: none;
+  color: var(--text-2);
+}
+.model-picker-empty {
+  padding: 14px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 底下一行一项选项：左边名字，右边分段按钮或开关。 */
+.model-picker-options {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--line);
+}
+.model-picker-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+}
+.model-picker-option-label {
+  flex: none;
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+.model-picker-note {
+  color: var(--muted);
+  font-size: 12px;
+}
+.model-picker-segments {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+.model-picker-segments button {
+  height: 24px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-2);
+  font: 12.5px var(--sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.model-picker-segments button:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+.model-picker-segments button.on {
+  background: var(--chip);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line-strong) 80%, transparent);
+}
+.model-picker-number {
+  width: 110px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--well);
+  color: var(--text);
+  font: 12.5px var(--sans);
+  outline: none;
+}
+
+.model-picker-switch {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 18%, var(--raised));
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.model-picker-switch i {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-2);
+  transition: transform 0.15s, background 0.15s;
+}
+.model-picker-switch.on {
+  background: var(--accent);
+}
+.model-picker-switch.on i {
+  transform: translateX(14px);
+  background: var(--accent-ink);
+}

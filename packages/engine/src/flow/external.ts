@@ -47,13 +47,15 @@ export {
 } from './manifest';
 export { parseManifest, type ParseOptions } from './parse';
 export { pageCallableOp, pageMayRead, pageTab, toExtra, toolName } from './pages';
-export { flowRecord, LockFile, readLock, recordFlow, type FlowRecord, type Lock } from './lock';
+export { flowRecord, LockFile, readLock, recordFlow, RenderPromptVersion, type FlowRecord, type Lock } from './lock';
 export { InstalledFile, readInstalled, roleOf, type Installed, type InstalledEntry, type InstalledRole, type LoadedStation } from './installed';
 export { treeDigest } from './digest';
-export { fetchStation, parseSource, StationsDirEnv, stationsDir, writeStationForTest } from './fetch';
+export { fetchStation, parseSource, StationsDirEnv, stationsDir, withGitProxy, writeStationForTest } from './fetch';
+export * as market from './market';
+export { fetchArchive, githubArchiveURL, MaxArchiveBytes } from './archive';
 export { brokenParticipants, loadStations, stationExtras, type LoadedStations, type StationProblem } from './load';
 export { installedEntry, installStation, permissionLines, removeStation, updateDiff, type StationUpdate } from './update';
-export { discardStaged, HookEventLabels, installStaged, previewOf, readStaged, stageStation, stageUpdate, StagingDir, type Staged, type StationPreview } from './staging';
+export { discardStaged, HookEventLabels, installStaged, previewOf, readStaged, stageStation, stageUpdate, StagingDir, type StageExpect, type Staged, type StationPreview } from './staging';
 export { builtinPluginIDs, builtinPlugins, builtinPluginsDir, stationOwners } from './builtinplugins';
 export { extraPrompt } from './promptparts';
 export { pluginSkillsFor } from './skills';

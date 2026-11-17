@@ -2,8 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { createPortal } from 'react-dom';
 import { Icon, type IconName } from './Icon';
 import { NativeDirectoryPicker } from './NativeDirectoryPicker';
+import { PluginMarket, useMarket } from './Market';
 import { api, errorText, post } from '../api';
-import type { BuiltinContents, ProgressState, ProjectState, Scene, StationInfo, StationOp, StationPageInfo, StationParam, StationPreview, StationRun, StationSetting, StationsResponse, Task } from '../types';
+import type { BuiltinContents, MarketItem, ProgressState, ProjectState, Scene, StationInfo, StationOp, StationPageInfo, StationParam, StationPreview, StationRun, StationSetting, StationsResponse, Task } from '../types';
 import { setPluginCommands } from './chat/complete';
 import { pluginVerb } from './chat/model';
 import type { RunAction } from './Preview';
@@ -566,11 +567,25 @@ export function PluginSettings({ version, onChanged, run, onOpenPage }: { versio
   const [open, setOpen] = useState<string>('');
   // 先取回、看清，再装：取回的插件放在暂存处，用户看过它自己的实情点「装上」才对所有项目生效。
   const [pending, setPending] = useState<StagedPlugin | null>(null);
+  const market = useMarket(version);
   const task = usePluginTask(() => {
     reload();
+    market.reload();
     onChanged?.();
   });
   const show = (result: unknown) => setPending(result as StagedPlugin);
+  // 插件中心里的一版：同样只取到暂存给你看（/api/market 换成 station_add / station_update），点「装上」才装。
+  const fromMarket = (kind: 'install' | 'update', item: MarketItem) => {
+    if (!item.latest || pending !== null || task.busy !== '') return;
+    task.start(`/api/market/${kind}`, kind === 'install' ? `取回「${item.name}」` : `取回「${item.name}」的新版本`, { id: item.id, commit: item.latest.commit }, show);
+  };
+  const marketUpdates = new Map((market.data?.items ?? []).filter((it) => it.state === 'update').map((it) => [it.id, it]));
+  // 插件中心说装着的那一版撤回了、或插件不再维护：「我的插件」里也照实说一句。
+  const marketWarnings = new Map(
+    (market.data?.items ?? [])
+      .filter((it) => it.state !== 'other_source' && (it.installed_yanked || (it.deprecated && it.installed_version)))
+      .map((it) => [it.id, it.installed_yanked ? `这一版已被作者撤回：${it.installed_yanked}` : `作者已不再维护：${it.deprecated}`]),
+  );
   const fetchPlugin = () => {
     const value = source.trim();
     if (value === '' || pending !== null || task.busy !== '') return;
@@ -666,6 +681,7 @@ export function PluginSettings({ version, onChanged, run, onOpenPage }: { versio
                       {placement(s)} · {s.version}
                       {needsSetup && <em className="station-needs"> · 还有设置没填</em>}
                     </span>
+                    {marketWarnings.has(s.id) && <em className="station-warn">{marketWarnings.get(s.id)}</em>}
                   </div>
                   <span className="station-badge">第三方</span>
                   <button
@@ -675,10 +691,16 @@ export function PluginSettings({ version, onChanged, run, onOpenPage }: { versio
                   >
                     详情与设置
                   </button>
-                  {!s.linked && (
-                    <button className="link" disabled={task.busy !== ''} onClick={() => task.start(`/api/stations/${encodeURIComponent(s.id)}/update`, '取回新版本', {}, show)}>
-                      更新
+                  {marketUpdates.has(s.id) ? (
+                    <button className="link station-market-update" disabled={task.busy !== '' || pending !== null} onClick={() => fromMarket('update', marketUpdates.get(s.id)!)}>
+                      更新到 {marketUpdates.get(s.id)!.latest?.version}
                     </button>
+                  ) : (
+                    !s.linked && (
+                      <button className="link" disabled={task.busy !== ''} onClick={() => task.start(`/api/stations/${encodeURIComponent(s.id)}/update`, '取回新版本', {}, show)}>
+                        更新
+                      </button>
+                    )
                   )}
                   <button className="link danger" disabled={task.busy !== ''} onClick={() => task.start(`/api/stations/${encodeURIComponent(s.id)}/remove`, '去掉插件')}>
                     去掉
@@ -809,6 +831,7 @@ export function PluginSettings({ version, onChanged, run, onOpenPage }: { versio
       <p className="stations-source-help">支持 Git 地址或本地文件夹。本地文件夹需包含 onset-station.json，无需 Git；选好后点「添加」查看插件详情。</p>
       {pending && <StagedConfirm staged={pending} onInstall={install} onCancel={cancel} />}
     </section>
+    <PluginMarket market={market} busy={task.busy !== '' || pending !== null} onInstall={(it) => fromMarket('install', it)} onUpdate={(it) => fromMarket('update', it)} />
     </>
   );
 }
@@ -1015,6 +1038,40 @@ interface PendingRun {
 
 const maxAskChars = 4000;
 
+/*
+ * 插件页面里的按钮是不是用户亲手点的（不是页面脚本自己点的）。
+ * 用户在 iframe 里真点一下，浏览器给整条祖先链记上「刚有用户操作」（navigator.userActivation，约 5 秒），
+ * 脚本调 click() 不算（e2e 实测：脚本点的读到 false，真点的读到 true）。但这个标记不分点在哪：用户刚在片场自己的界面上
+ * 点过（比如点开这一页），页面一加载就请求执行也会读到 true，所以片场自己最近 5 秒有点击或按键时不认；
+ * 这个标记也不分是哪个 iframe：同时挂着几个插件页面时，用户点了 A，B 的脚本趁机发来的请求也读到 true，
+ * 页面脚本能抢焦点，所以多框架时即使焦点在请求方也无法证明归属，必须确认；只有文档里唯一的 iframe 才直接放行。
+ * 单框架仍要求宿主有焦点、activeElement 就是请求方，排除后台窗口与宿主自己的操作。
+ * 一次点击只放行一次，同一段时间里再来的请求照旧确认。
+ */
+const activationWindowMs = 5000;
+let lastHostInput = 0;
+let lastDirectRun = 0;
+if (typeof window !== 'undefined') {
+  const mark = () => { lastHostInput = Date.now(); };
+  window.addEventListener('pointerdown', mark, true);
+  window.addEventListener('keydown', mark, true);
+}
+
+export function clickedInPluginPage(frame: Element | null, now = Date.now()): boolean {
+  if (typeof navigator === 'undefined' || !navigator.userActivation?.isActive) return false;
+  if (!frame || !frame.ownerDocument.hasFocus() || frame.ownerDocument.activeElement !== frame) return false;
+  if (frame.ownerDocument.querySelectorAll('iframe').length !== 1) return false;
+  if (now - lastHostInput < activationWindowMs || now - lastDirectRun < activationWindowMs) return false;
+  lastDirectRun = now;
+  return true;
+}
+
+/** 只给测试用：清掉「最近的点击」。 */
+export function resetPluginClicks(): void {
+  lastHostInput = 0;
+  lastDirectRun = 0;
+}
+
 function paramText(params: Record<string, unknown>): string {
   return Object.entries(params)
     .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
@@ -1036,8 +1093,9 @@ interface FrameProps {
 
 /**
  * 沙箱 iframe（只给 allow-scripts，不透明源，CSP 只许它碰本站目录与申请过的地址）加宿主一侧的桥。
- * 页面要的东西都经这里：theme / info / project / read / list / run / call / ask / open。执行类（run、call）
- * 一律先在上方请用户确认——页面里的按钮可以被脚本自己点，不算用户同意。只认来自这个 iframe 的消息。
+ * 页面要的东西都经这里：theme / info / project / read / list / run / call / ask / open。执行类先在上方请用户确认——
+ * 页面里的按钮可以被脚本自己点，不算用户同意；只有 run 在用户刚亲手点了页面里的按钮时直接执行（clickedInPluginPage）。
+ * call（片场自带的操作）与 send（替用户发话、会花钱）照旧确认。只认来自这个 iframe 的消息。
  */
 function StationFrame({ station, page, context, version, run, onQuick, onOpen, projectName, height }: FrameProps) {
   const frame = useRef<HTMLIFrameElement>(null);
@@ -1115,7 +1173,10 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
           case 'run': {
             const op = station.ops.find((o) => o.name === m.op);
             if (!op) throw new Error(`没有操作 ${String(m.op)}`);
-            ask({ id: m.id, kind: 'run', op: op.name, label: op.summary, params: m.params && typeof m.params === 'object' ? m.params : {} });
+            const req: PendingRun = { id: m.id, kind: 'run', op: op.name, label: op.summary, params: m.params && typeof m.params === 'object' ? m.params : {} };
+            // 用户刚在插件页面里亲手点了按钮：那一下就是同意，不再弹确认条。脚本发起的、分不清是谁点的，照旧确认。
+            if (clickedInPluginPage(frame.current)) executeRef.current(req);
+            else ask(req);
             return;
           }
           case 'call': {
@@ -1162,17 +1223,27 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
     frame.current?.contentWindow?.postMessage({ onset: 'host', type: 'refresh' }, '*');
   }, [version]);
 
+  // 执行一个请求（用户在确认条上点了「执行」，或在插件页面里亲手点了按钮）。
+  const execute = (req: PendingRun) => {
+    if (req.kind === 'send') {
+      onQuick(`（来自插件「${station.name}」的页面）\n${req.label}`, [], false);
+      reply(req.id, true, { sent: true });
+      return;
+    }
+    const base = `/api/stations/${encodeURIComponent(station.id)}`;
+    run(req.kind === 'run' ? `${base}/ops/${encodeURIComponent(req.op)}` : `${base}/call/${encodeURIComponent(req.op)}`, { params: req.params });
+    if (req.kind === 'run') setRan((r) => ({ ...r, [req.op]: new Date().toISOString() }));
+    reply(req.id, true, { started: true });
+  };
+
+  const executeRef = useRef(execute);
+  useLayoutEffect(() => { executeRef.current = execute; });
+
   const decide = (allow: boolean) => {
     const req = pendingRef.current;
     if (!req) return;
-    if (allow && req.kind === 'send') {
-      onQuick(`（来自插件「${station.name}」的页面）\n${req.label}`, [], false);
-      reply(req.id, true, { sent: true });
-    } else if (allow) {
-      const base = `/api/stations/${encodeURIComponent(station.id)}`;
-      run(req.kind === 'run' ? `${base}/ops/${encodeURIComponent(req.op)}` : `${base}/call/${encodeURIComponent(req.op)}`, { params: req.params });
-      if (req.kind === 'run') setRan((r) => ({ ...r, [req.op]: new Date().toISOString() }));
-      reply(req.id, true, { started: true });
+    if (allow) {
+      execute(req);
     } else {
       reply(req.id, false, undefined, '用户没有同意');
     }

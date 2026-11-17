@@ -205,16 +205,18 @@ defineOp({
   run: (p, { out }) => {
     const key = str(p.key);
     const value = str(p.value).trim();
+    if (config.isMachineKey(key)) throw new Error(`${key} 只属于这台电脑，在设置页「网络」里改，不能写进项目`);
     const problem = config.validateSetting(key, value);
     if (problem !== '') throw new Error(problem);
     const file = path.join(str(p.project_root), 'onset.conf');
     let body = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
     const lineOf = (k: string) => new RegExp(`^(\\s*(?:export\\s+)?)${k}\\s*=(.*)$`, 'm');
     const line = lineOf(key);
-    // 换了工具：这个项目里给原来那家写的模型一起清掉，不然会交给新的那家（模型项本来就没写时不加行）。
-    const modelKey = config.ToolModelKey[key];
-    const previous = (line.exec(body)?.[2] ?? '').trim();
-    if (modelKey && previous !== value && lineOf(modelKey).test(body)) body = body.replace(lineOf(modelKey), `$1${modelKey}=`);
+    // 换了工具：这个项目里给原来那家写的模型与选项一起清掉，不然会交给新的那家（本来就没写时不加行）。
+    const previous = config.parseConfFile(file)[key] ?? '';
+    for (const companion of config.ToolCompanionKeys[key] ?? []) {
+      if (previous !== value && lineOf(companion).test(body)) body = body.replace(lineOf(companion), `$1${companion}=`);
+    }
     const next = line.test(body) ? body.replace(line, `$1${key}=${value}`) : body + (body === '' || body.endsWith('\n') ? '' : '\n') + `${key}=${value}\n`;
     fs.writeFileSync(file, next);
     out.write(value === '' ? `${key} 改为跟随全局设置\n` : `这个项目的 ${key} 改为 ${value}\n`);
@@ -230,7 +232,7 @@ defineOp({
     `返回单个配置键的解析结果，只有值本身加一个换行。
 
 可用键：
-  ORCHESTRATOR   编排工具：codex | claude | qoder | codebuddy | opencode
+  ORCHESTRATOR   编排工具：codex | claude | qoder | qoder-intl | codebuddy | opencode | mcode | director
   RENDERER       渲染工具：同上取值范围
   TTS_PROVIDER   语音合成：` +
     config.ttsProviderIDs().split(' ').join(' | ') +

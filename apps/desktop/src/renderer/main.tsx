@@ -4,7 +4,7 @@ import { Pet } from './components/Pet';
 import type { CrewSignal, PetCommand } from './components/chat/crew';
 import { installSkin } from './skin';
 import { installExclusiveAudioPlayback } from './media';
-import type { SkinView } from './types';
+import type { SkinView, UpdateState } from './types';
 import './styles.css';
 
 /** 原生菜单发给界面的动作，与主进程 menu.ts 的 MenuAction 一致。 */
@@ -36,6 +36,10 @@ declare global {
       onSkin?: (callback: () => void) => () => void;
       /** 在 Finder 中显示；path 空是项目文件夹，project 空是当前项目。返回错误文字，成功为空。 */
       reveal?: (path: string, project?: string) => Promise<string>;
+      /** 客户端更新（main/updater.ts）。 */
+      updateState?: () => Promise<UpdateState>;
+      updateAction?: (action: 'check' | 'download' | 'install' | 'open-release', force?: boolean) => Promise<{ ok: boolean; busy?: string[] }>;
+      onUpdate?: (callback: (state: UpdateState) => void) => () => void;
     };
   }
 }

@@ -5,7 +5,7 @@
 // 各家的流格式在 2026-11 实测录下，见 testdata/；codebuddy 本机未登录，只录到
 // 401 的错误流，结构按与 claude 相同处理，未经完整实测。
 import { compareBytes } from '../gojson';
-import { ValidTools, accumulateUsage, newUsage, usageJSON, type Usage } from '../tools';
+import { ValidTools, accumulateUsage, newUsage, usageJSON, type SessionTotal, type Usage } from '../tools';
 
 /** 统一事件的种类。Studio 会在此之外再加自己的种类，所以是 string 而不是封闭的联合类型。 */
 export type Kind = string;
@@ -327,6 +327,7 @@ export class Parser {
   private readonly tasks = new TaskBoard();
   private readonly backgroundTasks = new BackgroundTasks();
   private readonly compaction = new CompactionStatus();
+  private readonly mcodeCalls = new Set<string>();
 
   /** 不校验工具名；外部一律经 newParser 创建。 */
   constructor(readonly tool: string) {}
@@ -341,9 +342,18 @@ export class Parser {
     this.tasks.seed(plan);
   }
 
+  /**
+   * 续接同一个 CLI 会话时，给上一次记下的会话累计值（tools.sessionBaseline）；null 表示续接但不知道。
+   * 有的工具续接后报的是整个会话的累计数（tools 的 cumulativeFields），减掉它才是这一次的。
+   */
+  seedBaseline(baseline: SessionTotal | null): void {
+    this.accumulated.baseline = baseline;
+  }
+
   /** 累计用量；一条用量事件都没读到时 usageEmpty() 为 true。 */
   usage(): Usage {
-    return { ...this.accumulated };
+    const { baseline: _baseline, ...usage } = this.accumulated;
+    return usage;
   }
 
   /** 译一行。认不出的行返回空数组，不报错：各家会在流里夹带限流、钩子之类的事件。 */
@@ -364,6 +374,9 @@ export class Parser {
         break;
       case 'opencode':
         events = parseOpencode(e);
+        break;
+      case 'mcode':
+        events = parseMcode(e, this.mcodeCalls);
         break;
       default:
         events = parseClaudeLike(e, this.tasks);
@@ -477,6 +490,8 @@ function parseClaudeLike(e: Obj, tasks: TaskBoard): Event[] {
     case 'result':
       if (e.is_error === true) {
         let text = str(e.result);
+        if (text === '') text = arr(e.errors).map(item => typeof item === 'string' ? item : str(obj(item).message)).filter(Boolean).join('\n');
+        if (text === '') text = arr(e.errors_info).map(item => str(obj(item).details)).filter(Boolean).join('\n');
         if (text === '') text = str(e.subtype);
         events.push({ kind: KindError, text });
       }
@@ -594,6 +609,72 @@ function parseOpencode(e: Obj): Event[] {
       events.push({ kind: KindError, text: message });
       break;
     }
+  }
+  return events;
+}
+
+/**
+ * MiniMax Code 的工具调用状态（toolCall.status，0.6.12 实测）：4 参数还在流式生成、5 参数生成完、1 执行中、2 成功、3 失败。
+ * 参数要到 1 才有，所以调用事件在第一次看到参数时发；失败看状态 3 或 details 里的错误。
+ */
+const McodeToolFailed = 3;
+
+/**
+ * 处理 mcode exec --output-format stream-json（0.6.12，schemaVersion 1）：每条带 sessionId；item.* 的 item.type 是
+ * reasoning、agent_message、tool_call。思考与正文在 item.updated 里一小段一小段推（contentDelta），完成时 item.completed
+ * 带全文（content），这里只认完成的那条：统一事件是消息级的。待办工具是 todowrite（与 opencode 同形）。
+ */
+function parseMcode(e: Obj, emitted: Set<string>): Event[] {
+  const events: Event[] = [];
+  const id = str(e.sessionId);
+  if (id !== '') events.push({ kind: KindSession, session_id: id });
+  const type = str(e.type);
+  const item = obj(e.item);
+  switch (type) {
+    case 'item.started':
+    case 'item.updated':
+    case 'item.completed': {
+      const itemType = str(item.type);
+      if (type === 'item.completed' && itemType === 'reasoning') {
+        const text = str(item.content);
+        if (text !== '') events.push({ kind: KindThinking, text });
+      } else if (type === 'item.completed' && itemType === 'agent_message') {
+        const text = str(item.content);
+        if (text !== '') events.push({ kind: KindText, text });
+      } else if (itemType === 'tool_call') {
+        const call = obj(item.toolCall);
+        const callID = str(call.id) || str(item.id);
+        const tool = str(call.name);
+        const hasInput = call.input !== undefined && call.input !== null;
+        if (hasInput && !emitted.has(callID)) {
+          emitted.add(callID);
+          events.push({ kind: KindToolCall, tool, call_id: callID, input: rawJSON(call.input) });
+          if (tool === 'todowrite') {
+            const plan = planFromTodos(call.input);
+            if (plan.length > 0) events.push({ kind: KindPlan, plan });
+          }
+        }
+        if (type === 'item.completed') {
+          const output = obj(call.output);
+          const details = obj(output.details);
+          const failed = call.status === McodeToolFailed || details.is_error === true || obj(details.execution).status === 'failed';
+          events.push({ kind: KindToolResult, tool, call_id: callID, text: clip(toolResultText(output.content)), is_error: failed });
+        }
+      } else if (type === 'item.completed' && itemType === 'error') {
+        events.push({ kind: KindError, text: str(item.message) || str(item.content) });
+      }
+      break;
+    }
+    case 'turn.failed': {
+      const error = obj(e.error);
+      const status = str(e.status);
+      const text = str(error.message) || str(e.message) || (status === 'timeout' ? 'MiniMax Code 这一轮超时了' : `MiniMax Code 这一轮没有完成（${status || 'failed'}）`);
+      events.push({ kind: KindError, text });
+      break;
+    }
+    case 'error':
+      events.push({ kind: KindError, text: str(e.message) || str(obj(e.error).message) });
+      break;
   }
   return events;
 }

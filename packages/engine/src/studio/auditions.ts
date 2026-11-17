@@ -6,8 +6,10 @@
  *   POST /api/auditions                  开一场：{scene_id, contestants: [{renderer, model, designer?: {renderer, model}}], with_memory}，
  *                                        或人评考试 {scene_id, exam: <学习关系编号>}；写任务跑 scene_audition
  *   GET  /api/auditions/{编号}            一场试镜
+ *   GET  /api/auditions/{编号}/activity   各选手的实时制作过程，盲评时只返回固定动作标签
  *   POST /api/auditions/{编号}/vote       评判：{kind, winner, note}
  *   POST /api/auditions/{编号}/adopt      采用：{slot}，写任务跑 scene_audition_adopt
+ *   POST /api/auditions/{编号}/retry      重试失败或中断的选手：{slot}
  *
  * 评判在进程里直接写（与关卡确认一样是 Studio 自己的状态，只碰 production/studio/），并追加进记忆库目录的
  * auditions.jsonl；渲染与采用会动镜头，走写任务、占项目写锁。
@@ -16,6 +18,7 @@ import path from 'node:path';
 import * as audition from '../audition';
 import * as config from '../config';
 import * as memory from '../memory';
+import { auditionActivity } from './audition_activity';
 import { load as loadScene } from '../scene';
 import { ValidRenderers } from '../tools';
 import { DecodeError, decodeJSON, fieldBool, fieldString, goMap, methodNotAllowed, writeError, writeJSON } from './http';
@@ -108,6 +111,10 @@ export async function auditionAPI(s: Server, request: Request, rest: string): Pr
     if (request.method !== 'GET') return methodNotAllowed('GET');
     return writeJSON(200, audition.blindJSON(a));
   }
+  if (action === 'activity') {
+    if (request.method !== 'GET') return methodNotAllowed('GET');
+    return writeJSON(200, auditionActivity(p.path, a, !!s.busyHolder(p.path)));
+  }
   if (request.method !== 'POST') return methodNotAllowed('POST');
   let body: Record<string, unknown>;
   try {
@@ -116,7 +123,27 @@ export async function auditionAPI(s: Server, request: Request, rest: string): Pr
     return writeError(400, 'invalid_request', (err as Error).message);
   }
   switch (action) {
+    case 'retry': {
+      let slot: string;
+      try {
+        slot = fieldString(body, 'slot');
+        audition.retryContestant(p.path, a, slot);
+      } catch (err) {
+        return writeError(400, 'invalid_retry', (err as Error).message);
+      }
+      if (s.busyHolder(p.path)) return writeError(409, 'project_busy', s.busyHolder(p.path));
+      try {
+        if (audition.isRunning(p.path, a)) return writeError(409, 'audition_busy', '本场试镜仍在运行，请等任务结束后重试');
+        const t = runWriteTask(s, p, 'scene.audition_retry', `重试 ${a.scene_id} 的选手 ${slot}`, async (signal) => {
+          await runStudioOp(s, signal, p, 'scene_audition_retry', { audition: a.id, slot, project_root: p.path });
+        });
+        return writeJSON(202, goMap({ task_id: t.task_id, scene_id: a.scene_id }));
+      } catch (err) {
+        return writeTaskError(err);
+      }
+    }
     case 'vote': {
+      if (s.busyHolder(p.path)) return writeError(409, 'project_busy', '请等当前任务结束后再评判');
       let voted: audition.Audition;
       try {
         voted = audition.vote(p.path, a.id, { kind: fieldString(body, 'kind'), winner: fieldString(body, 'winner'), note: fieldString(body, 'note') });

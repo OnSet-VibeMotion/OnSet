@@ -3,7 +3,7 @@ import path from 'node:path';
 import { test, expect, openProject, api, installPlugin } from './fixtures.mjs';
 
 const origin = 'https://creator.example.test';
-const html = '<input type="file"><input id="title"><button onclick="window.published=true">发布</button>';
+const html = '<input type="file"><input id="title"><input id="typed"><button onclick="window.published=true">发布</button><button id="poke" style="position:fixed;left:10px;top:200px;width:80px;height:30px" onclick="window.poked=event.isTrusted">点我</button>';
 
 for (const shutdown of ['application', 'window', 'page-before-window']) test(`plugin fills an embedded page, leaves manual publishing available, isolates accounts and revokes automation (${shutdown})`, async ({ electronApp, page, project, sandbox }) => {
   const errors = [];
@@ -32,17 +32,24 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   const unauthorized=await fetch(b.endpoint,{method:'POST',headers:{authorization:'Bearer wrong'},body:'{}'});
   const fromPage=await fetch(b.endpoint,{method:'POST',headers:{authorization:'Bearer '+b.token,origin:'https://creator.example.test'},body:'{}'});
   const rejected=[];
-  for(const [method,params] of [['Page.navigate',{url:'file:///etc/passwd'}],['Page.navigate',{url:'https://outside.example/'}],['Network.getAllCookies',{}],['DOM.setFileInputFiles',{files:[r.data_dir+'/outside.mp4']}],['DOM.setFileInputFiles',{files:[r.project_root+'/escape.mp4']}],['DOM.setFileInputFiles',{files:[r.project_root+'/upload.mp4'],nodeId:1}]]) {
+  for(const [method,params] of [['Page.navigate',{url:'file:///etc/passwd'}],['Page.navigate',{url:'https://outside.example/'}],['Network.getAllCookies',{}],['DOM.setFileInputFiles',{files:[r.data_dir+'/outside.mp4']}],['DOM.setFileInputFiles',{files:[r.project_root+'/escape.mp4']}],['DOM.setFileInputFiles',{files:[r.project_root+'/upload.mp4'],nodeId:1}],['Input.dispatchKeyEvent',{type:'bogus'}],['Input.dispatchMouseEvent',{type:'mouseWheel',x:1,y:1}],['Input.dispatchMouseEvent',{type:'mousePressed'}]]) {
     try { await command(method,params); rejected.push(false); } catch { rejected.push(true); }
   }
   const object=await command('Runtime.evaluate',{expression:'document.querySelector(\"input[type=file]\")'});
   await command('DOM.setFileInputFiles',{objectId:object.result.objectId,files:[r.project_root+'/upload.mp4']});
   const result=await command('Runtime.evaluate',{expression:'document.cookie',returnByValue:true});
-  await command('Runtime.evaluate',{expression:'document.querySelector("#title").value="自动填写"; document.cookie="account='+r.params.account+'; path=/"',returnByValue:true});
-  console.log('onset-result '+JSON.stringify({previous:result.result.value,opened,bridge:b,rejected,unauthorized:unauthorized.status,fromPage:fromPage.status}));
+  await command('Runtime.evaluate',{expression:'document.querySelector("#title").value="自动填写"; document.cookie="account='+r.params.account+'; max-age=86400; path=/"',returnByValue:true});
+  // 键盘与鼠标：像人一样逐字输入、真的点一下（页面看到的是可信事件）。
+  await command('Runtime.evaluate',{expression:'document.querySelector("#typed").focus()'});
+  for(const key of ['#','话']){ await command('Input.dispatchKeyEvent',{type:'keyDown',key,text:key}); await command('Input.dispatchKeyEvent',{type:'keyUp',key}); }
+  for(const type of ['mouseMoved','mousePressed','mouseReleased']) await command('Input.dispatchMouseEvent',{type,x:50,y:215,button:'left',clickCount:1});
+  const typedResult=await command('Runtime.evaluate',{expression:'[document.querySelector("#typed").value, window.poked===true]',returnByValue:true});
+  console.log('onset-result '+JSON.stringify({previous:result.result.value,opened,bridge:b,rejected,unauthorized:unauthorized.status,fromPage:fromPage.status,input:typedResult.result.value}));
  }catch(e){console.error(e.message);process.exitCode=1;}
 });`);
   installPlugin(sandbox, dir, 'embedded-helper');
+  // 插件内嵌网页的登录存储在片场的应用数据目录下（station-browser.ts 的 sessionDirectory），不在插件的 data_dir 里。
+  const sessionDir = (account) => path.join(sandbox.userData, 'station-sessions', 'embedded-helper', account);
   await openProject(page, project);
   fs.mkdirSync(path.join(sandbox.stations, 'embedded-helper', 'data'), { recursive: true });
   const outside = path.join(sandbox.stations, 'embedded-helper', 'data', 'outside.mp4');
@@ -53,7 +60,7 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
     for (const dir of directories) {
       session.fromPath(dir).protocol.handle('https', () => new Response(html, { headers: { 'content-type': 'text/html' } }));
     }
-  }, { directories: ['account-a', 'account-b'].map(account => path.join(sandbox.stations, 'embedded-helper', 'data', 'web-sessions', account)), html });
+  }, { directories: ['account-a', 'account-b'].map(account => sessionDir(account)), html });
   const run = async account => {
     const started = await api(page, '/api/stations/embedded-helper/ops/prepare', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ params: { account } }) });
     expect(started.status, JSON.stringify(started.body) + JSON.stringify((await api(page, '/api/stations')).body.problems)).toBe(202);
@@ -70,7 +77,8 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   expect(first.previous).toBe('');
   expect(first.unauthorized).toBe(403);
   expect(first.fromPage).toBe(403);
-  expect(first.rejected).toEqual([true, true, true, true, true, true]);
+  expect(first.rejected).toEqual([true, true, true, true, true, true, true, true, true]);
+  expect(first.input).toEqual(['#话', true]);
   const inspect = () => electronApp.evaluate(({ webContents, BrowserWindow }) => {
     const web = webContents.getAllWebContents().find(w => w.getURL().startsWith('https://creator.example.test'));
     return { windows: BrowserWindow.getAllWindows().length, native: !!web, preferences: web?.getLastWebPreferences() };
@@ -110,4 +118,11 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   }
   await electronApp.close();
   expect(errors).toEqual([]);
+  // 页面写的带有效期的 cookie（像登录状态那样）落到了磁盘上：客户端重启后选了账号不用再登录。
+  // 以前存储放在插件 data_dir 下，cookie 从不写盘（session.fromPath 只在 userData 里写）。
+  for (const account of ['account-a', 'account-b']) {
+    const cookies = path.join(sessionDir(account), 'Cookies');
+    expect(fs.existsSync(cookies), account).toBe(true);
+    expect(fs.readFileSync(cookies).includes(account), account).toBe(true);
+  }
 });

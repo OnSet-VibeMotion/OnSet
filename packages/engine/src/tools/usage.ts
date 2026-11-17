@@ -18,6 +18,11 @@ export interface Usage {
   cached_input_tokens?: number;
   /** null / undefined 表示不知道费用（Go 的 nil 指针）；0 是「知道且为 0」。 */
   cost_usd?: number | null;
+  /**
+   * 按额度计费的工具报的额度（qoder 的 total_credits；它不报 token 也不报费用，2026-11 实测 1.1.89）。
+   * null / undefined 表示没报；与 cost_usd 一样只在双方都有时相加。
+   */
+  credits?: number | null;
   turns?: number;
   /** 汇总里有的部分没读到用量或费用，数字只是下限。 */
   partial?: boolean;
@@ -25,6 +30,66 @@ export interface Usage {
   basis?: string;
   /** 记下数字来自哪种事件，方便日后核对格式是否变了。 */
   source?: string;
+  /**
+   * CLI 在 result 里报的整个会话的累计值（只有续接时数字会累计的工具才有，见 cumulativeFields）。
+   * 不参与汇总，只给同一会话下一次续接当基线（sessionBaseline）。
+   */
+  session_total?: SessionTotal;
+  /**
+   * 续接同一个 CLI 会话前由调用方给的基线：上一次记下的会话累计值（sessionBaseline）。
+   * 不给（undefined）表示新会话；null 表示续接了但不知道上一次累计到多少，累计的那几项就记成不知道。不写出。
+   */
+  baseline?: SessionTotal | null;
+}
+
+/** 会话累计值：按 Usage 的口径（输入含缓存）。 */
+export interface SessionTotal {
+  input_tokens: number;
+  output_tokens: number;
+  cached_input_tokens: number;
+  cost_usd: number | null;
+  credits?: number | null;
+  turns: number;
+}
+
+/**
+ * 哪些工具续接时 result 报的是整个会话的累计值，累计的是哪几项（2026-11 实测）：
+ *   - claude 2.1.325：total_cost_usd 与 modelUsage 从会话开头累计，usage 与 num_turns 只算这一次。
+ *     第一次 $0.000731、续接后报 $0.000921，后者正是两次之和。
+ *   - codebuddy：usage 与 num_turns 也累计（第一次 input 26942、续接后 53939，num_turns 3 → 6）。
+ *   - qoder 1.1.89：total_credits 累计（同一会话四轮依次报 0.0139、0.0213、0.0287、0.0349，后三轮都只回一句 ok）。
+ * 不在表里的（qoder 不报费用，director 是自己写的流，每个进程从零算）按「只算这一次」处理。
+ * 不处理的话每轮都把会话至今的花费再记一遍：一个整片会话 30 轮，账本加总是实际的 10 倍（片场宣传视频：$394 对 $38）。
+ */
+function cumulativeFields(tool: string): { cost: boolean; tokens: boolean; credits: boolean } {
+  switch (tool) {
+    case 'claude':
+      return { cost: true, tokens: false, credits: false };
+    case 'codebuddy':
+      return { cost: true, tokens: true, credits: false };
+    case 'qoder':
+    case 'qoder-intl':
+      return { cost: false, tokens: false, credits: true };
+    default:
+      return { cost: false, tokens: false, credits: false };
+  }
+}
+
+/**
+ * 同一会话下一次续接用的基线：上一次记下的用量里的 session_total；
+ * 旧记录没有它时，按旧的写法它记的就是 CLI 报的原值（费用是累计的），拿来当基线。没有上一次的记录返回 null。
+ */
+export function sessionBaseline(previous: Usage | null | undefined): SessionTotal | null {
+  if (!previous || usageEmpty(previous)) return null;
+  if (previous.session_total) return { ...previous.session_total };
+  return {
+    input_tokens: previous.input_tokens ?? 0,
+    output_tokens: previous.output_tokens ?? 0,
+    cached_input_tokens: previous.cached_input_tokens ?? 0,
+    cost_usd: previous.cost_usd ?? null,
+    credits: previous.credits ?? null,
+    turns: previous.turns ?? 0,
+  };
 }
 
 /** 统一后的口径：输入含缓存。 */
@@ -37,10 +102,21 @@ export function usageJSON(u: Usage): Record<string, unknown> {
     output_tokens: u.output_tokens ? u.output_tokens : undefined,
     cached_input_tokens: u.cached_input_tokens ? u.cached_input_tokens : undefined,
     cost_usd: u.cost_usd ?? undefined,
+    credits: u.credits ?? undefined,
     turns: u.turns ? u.turns : undefined,
     partial: u.partial ? true : undefined,
     basis: u.basis ? u.basis : undefined,
     source: u.source ? u.source : undefined,
+    session_total: u.session_total
+      ? {
+          input_tokens: u.session_total.input_tokens,
+          output_tokens: u.session_total.output_tokens,
+          cached_input_tokens: u.session_total.cached_input_tokens,
+          cost_usd: u.session_total.cost_usd ?? undefined,
+          credits: u.session_total.credits ?? undefined,
+          turns: u.session_total.turns,
+        }
+      : undefined,
   };
 }
 
@@ -51,6 +127,7 @@ function copyUsage(u: Usage): Usage {
     output_tokens: u.output_tokens ?? 0,
     cached_input_tokens: u.cached_input_tokens ?? 0,
     cost_usd: u.cost_usd ?? null,
+    credits: u.credits ?? null,
     turns: u.turns ?? 0,
     partial: u.partial ?? false,
     basis: u.basis ?? '',
@@ -91,6 +168,7 @@ export function usageAdd(u: Usage, other: Usage): void {
       output_tokens: other.output_tokens,
       cached_input_tokens: other.cached_input_tokens,
       cost_usd: other.cost_usd ?? null,
+      credits: other.credits ?? null,
       turns: other.turns,
       source: other.source,
       partial: other.partial || partial,
@@ -107,6 +185,8 @@ export function usageAdd(u: Usage, other: Usage): void {
   const theirs = other.cost_usd ?? null;
   if (mine !== null && theirs !== null) u.cost_usd = mine + theirs;
   else if (mine !== null || theirs !== null) u.partial = true;
+  // 额度只有按额度计费的工具才报：一方没有不算「不完整」（claude 本来就没有额度），有就加上。
+  if (other.credits != null) u.credits = (u.credits ?? 0) + other.credits;
   if (u.source !== other.source) u.source = 'mixed';
 }
 
@@ -165,6 +245,10 @@ function objectField(o: Record<string, unknown>, key: string): Record<string, un
  *   - opencode（run --format json）：每步结束的 {"type":"step_finish"} 在 part 里带
  *     该步的 tokens 与 cost，逐步相加（2026-11 用 v2.1.0 实测）。
  *
+ *   - mcode（exec --output-format stream-json）：每轮结束的 {"type":"turn.completed"} 带该轮 usage：
+ *     inputTokens 不含缓存（totalTokens = inputTokens + outputTokens），cacheReadTokens / cacheWriteTokens 另列，
+ *     要加回输入（2026-11 用 0.6.12 实测）。一次 exec 一轮；exec.completed 里是同一份，不再算。
+ *
  * 其他工具读不到就留空，尝试记录里照常写耗时。
  */
 export function accumulateUsage(tool: string, line: string, u: Usage): void {
@@ -172,13 +256,18 @@ export function accumulateUsage(tool: string, line: string, u: Usage): void {
     accumulateOpencodeUsage(line, u);
     return;
   }
+  if (tool === 'mcode') {
+    accumulateMcodeUsage(line, u);
+    return;
+  }
   const event = parseObject(line);
   if (!event) return;
-  let type: string, cost: number | null, turns: number;
+  let type: string, cost: number | null, credits: number | null, turns: number;
   let input: number, output: number, cached: number, cacheRead: number, cacheCreate: number;
   try {
     type = stringField(event, 'type');
     cost = floatPtrField(event, 'total_cost_usd');
+    credits = floatPtrField(event, 'total_credits');
     turns = intField(event, 'num_turns');
     const usage = objectField(event, 'usage');
     if (!usage) return;
@@ -198,15 +287,49 @@ export function accumulateUsage(tool: string, line: string, u: Usage): void {
     u.turns = (u.turns ?? 0) + 1;
     u.source = 'codex turn.completed';
     u.basis = BasisTotalInput;
-  } else if ((tool === 'claude' || tool === 'qoder' || tool === 'codebuddy' || tool === 'director') && type === 'result') {
-    u.input_tokens = input + cacheCreate + cacheRead;
-    u.output_tokens = output;
-    u.cached_input_tokens = cacheRead;
-    u.cost_usd = cost;
-    u.turns = turns;
+  } else if ((tool === 'claude' || tool === 'qoder' || tool === 'qoder-intl' || tool === 'codebuddy' || tool === 'director') && type === 'result') {
+    const reported: SessionTotal = { input_tokens: input + cacheCreate + cacheRead, output_tokens: output, cached_input_tokens: cacheRead, cost_usd: cost, credits, turns };
+    const cumulative = cumulativeFields(tool);
+    const baseline = u.baseline;
+    let mine = reported;
+    if (cumulative.cost || cumulative.tokens || cumulative.credits) {
+      u.session_total = { ...reported };
+      if (baseline === null) {
+        // 续接了却不知道上一次累计到多少：累计的几项报不出这一次的数，照实记成不知道。
+        mine = { ...reported };
+        if (cumulative.cost) mine.cost_usd = null;
+        if (cumulative.credits) mine.credits = null;
+        if (cumulative.tokens) mine = { ...mine, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, turns: 0 };
+        u.partial = true;
+      } else if (baseline !== undefined) {
+        mine = { ...reported };
+        if (cumulative.cost) mine.cost_usd = subtractCost(reported.cost_usd, baseline.cost_usd);
+        if (cumulative.credits) mine.credits = subtractCost(reported.credits ?? null, baseline.credits ?? null);
+        if (cumulative.tokens && reported.input_tokens >= baseline.input_tokens && reported.turns >= baseline.turns) {
+          mine.input_tokens = reported.input_tokens - baseline.input_tokens;
+          mine.output_tokens = Math.max(reported.output_tokens - baseline.output_tokens, 0);
+          mine.cached_input_tokens = Math.max(reported.cached_input_tokens - baseline.cached_input_tokens, 0);
+          mine.turns = reported.turns - baseline.turns;
+        }
+      }
+    }
+    u.input_tokens = mine.input_tokens;
+    u.output_tokens = mine.output_tokens;
+    u.cached_input_tokens = mine.cached_input_tokens;
+    u.cost_usd = mine.cost_usd;
+    u.credits = mine.credits ?? null;
+    u.turns = mine.turns;
     u.source = tool + ' result';
     u.basis = BasisTotalInput;
   }
+}
+
+/** 会话累计费用减去基线；累计值比基线小说明会话被换掉了（重开），这时报的就是这一次的。 */
+function subtractCost(reported: number | null, baseline: number | null): number | null {
+  if (reported === null) return null;
+  if (baseline === null) return null;
+  if (reported < baseline) return reported;
+  return reported - baseline;
 }
 
 function accumulateOpencodeUsage(line: string, u: Usage): void {
@@ -248,12 +371,37 @@ function accumulateOpencodeUsage(line: string, u: Usage): void {
   u.basis = BasisTotalInput;
 }
 
+function accumulateMcodeUsage(line: string, u: Usage): void {
+  const event = parseObject(line);
+  if (!event) return;
+  let input: number, output: number, read: number, write: number;
+  try {
+    if (stringField(event, 'type') !== 'turn.completed') return;
+    const usage = objectField(event, 'usage');
+    if (!usage) return;
+    input = intField(usage, 'inputTokens');
+    output = intField(usage, 'outputTokens');
+    read = intField(usage, 'cacheReadTokens');
+    write = intField(usage, 'cacheWriteTokens');
+  } catch (err) {
+    if (err instanceof BadEvent) return;
+    throw err;
+  }
+  u.input_tokens = (u.input_tokens ?? 0) + input + read + write;
+  u.output_tokens = (u.output_tokens ?? 0) + output;
+  u.cached_input_tokens = (u.cached_input_tokens ?? 0) + read;
+  u.turns = (u.turns ?? 0) + 1;
+  u.source = 'mcode turn.completed';
+  u.basis = BasisTotalInput;
+}
+
 /** 把用量写成一行给人看的文字；没读到时如实说没读到。 */
 export function formatUsage(u: Usage): string {
   u = copyUsage(u);
   if (usageEmpty(u)) return '未读到用量';
   let text = `输入 ${groupDigits(u.input_tokens!)}（其中缓存 ${groupDigits(u.cached_input_tokens!)}）· 输出 ${groupDigits(u.output_tokens!)} · 合计 ${groupDigits(usageTotal(u))} token`;
   if (u.cost_usd != null) text += ` · $${u.cost_usd.toFixed(4)}`;
+  if (u.credits != null) text += ` · 额度 ${u.credits.toFixed(2)}`;
   if (u.partial) text += '（有的尝试没读到用量，这是下限）';
   return text;
 }

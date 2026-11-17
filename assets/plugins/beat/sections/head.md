@@ -9,5 +9,5 @@
 - 开始前记录当前 Git 分支、提交号和工作区状态。不得修改或删除已有的用户文件。
 - 如果当前目录已经存在本次流程生成的 `scenes/`、`production/` 或 `final.mp4`，先确认它们是否属于当前项目。无法确认时停止，不得覆盖。
 - 为本次项目创建 `production/`，保存配置、输入快照、节拍网格与分镜计划、音频素材账本、检查报告和审批记录。
-- 对所有原始输入生成 SHA-256，并写入 `production/input-manifest.json`。后续不得静默替换输入。
+- 用 `inputs_manifest({"paths": [<原始输入的文件或目录>]})` 给所有原始输入建 SHA-256 清单（写到 `production/input-manifest.json`），之后要确认输入没被换掉时调用 `inputs_manifest({"check": true})`；不要自己写哈希脚本。后续不得静默替换输入。
 

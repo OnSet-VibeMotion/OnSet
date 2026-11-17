@@ -1303,29 +1303,38 @@ export function noSceneText(scenes: Scene[]): string {
   return scenes.length > 0 ? '在下方时间线里选一个镜头。' : '还没有镜头。点右上「开始制作」，分镜完成后镜头会出现在下方的时间线里。';
 }
 
-/** 紧凑写法：12.3M token · $4.17 · 2 次渲染。 */
+/** 紧凑写法：12.3M token · $4.17 · 2 次渲染；按额度计费的工具写「额度 43.0」。 */
 function usageLabel(scene: Scene): string {
   const u = scene.usage;
-  const total = (u?.input_tokens ?? 0) + (u?.output_tokens ?? 0);
   if (!u || !u.source) return `${scene.attempts} 次渲染 · 未读到用量`;
-  const parts = [`${compact(total)} token${u.partial ? '+' : ''}`];
-  if (u.cost_usd != null) parts.push(`$${u.cost_usd.toFixed(2)}`);
-  parts.push(`${scene.attempts} 次渲染`);
-  return parts.join(' · ');
+  return [...spendParts(u), `${scene.attempts} 次渲染`].join(' · ');
+}
+
+/**
+ * 用量的几段：token、费用、额度。qoder 这类按额度计费的工具不报 token（报 0），
+ * 这时不写「0 token」，只写额度；有的尝试没读到时数字后面加「+」（是下限）。
+ */
+export function spendParts(u: Usage): string[] {
+  const plus = u.partial ? '+' : '';
+  const total = (u.input_tokens ?? 0) + (u.output_tokens ?? 0);
+  const parts: string[] = [];
+  if (total > 0 || u.credits == null) parts.push(`${compact(total)} token${plus}`);
+  if (u.cost_usd != null && (u.cost_usd > 0 || u.credits == null)) parts.push(`$${u.cost_usd.toFixed(2)}`);
+  if (u.credits != null) parts.push(`额度 ${u.credits.toFixed(1)}${plus}`);
+  return parts;
 }
 
 function usageTitle(scene: Scene): string {
   const u = scene.usage;
   if (!u || !u.source) return '渲染工具没有报用量';
-  return `全部 ${scene.attempts} 次渲染合计：输入 ${(u.input_tokens ?? 0).toLocaleString()}（其中缓存 ${(u.cached_input_tokens ?? 0).toLocaleString()}）· 输出 ${(u.output_tokens ?? 0).toLocaleString()}${u.partial ? '；有的尝试没读到用量，这是下限' : ''}`;
+  const credits = u.credits != null ? ` · 额度 ${u.credits.toFixed(2)}` : '';
+  return `全部 ${scene.attempts} 次渲染合计：输入 ${(u.input_tokens ?? 0).toLocaleString()}（其中缓存 ${(u.cached_input_tokens ?? 0).toLocaleString()}）· 输出 ${(u.output_tokens ?? 0).toLocaleString()}${credits}${u.partial ? '；有的尝试没读到用量，这是下限' : ''}`;
 }
 
 /** 紧凑写法：12.3M token · $4.17；没读到用量时如实说。 */
 function tokenLabel(u: Usage): string {
   if (!u.source) return u.partial ? '未读到用量' : '0 token';
-  const parts = [`${compact((u.input_tokens ?? 0) + (u.output_tokens ?? 0))} token${u.partial ? '+' : ''}`];
-  if (u.cost_usd != null) parts.push(`$${u.cost_usd.toFixed(2)}`);
-  return parts.join(' · ');
+  return spendParts(u).join(' · ');
 }
 
 const usageSources: Record<string, string> = { studio: 'Studio 对话', consolidate: '整理记忆' };

@@ -11,7 +11,7 @@ import { KindError, KindText, KindToolCall, KindUsage, newSessionID, run, type P
  *
  * 每次都是真实的模型调用，只在设置 ONSET_TEST_INTERACTIVE_TOOLS 时运行，例如
  *
- *   ONSET_TEST_INTERACTIVE_TOOLS=codex,opencode,codebuddy npx vitest run src/agentrun -t RealInteractive
+ *   ONSET_TEST_INTERACTIVE_TOOLS=codex,opencode,codebuddy,mcode npx vitest run src/agentrun -t RealInteractive
  *
  * opencode 用的模型取用户自己的配置；默认模型不可用时用 ONSET_TEST_OPENCODE_MODEL 指定（例如 github-copilot/claude-haiku-4.5）。
  */
@@ -55,7 +55,8 @@ describe('RealInteractive approvals', () => {
       expect(first.sessionID, `${tool} 没有拿到会话 id`).not.toBe('');
       expect(asked.some((c) => c.includes('brew')), `${tool} 运行 brew 前没有来问`).toBe(true);
       expect(kinds).toContain(KindToolCall);
-      expect(kinds).toContain(KindUsage);
+      // mcode 0.6.12 的 ACP 只报上下文占用（usage_update 的 used / size）与费用，不报 token：读不到就留空，不估算。
+      if (tool !== 'mcode') expect(kinds).toContain(KindUsage);
       const [second, answer] = await turn('第一轮让你记住的单词是什么？只回复单词。', first.sessionID, true);
       expect(second.sessionID, `${tool} 续接后会话 id 变了`).toBe(first.sessionID);
       expect(answer.toUpperCase(), `${tool} 续接没有带上上下文`).toContain('PELICAN');

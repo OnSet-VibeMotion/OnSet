@@ -66,7 +66,7 @@ export function resetActivityCache(): void {
 /**
  * 按流的第一条认得出的事件判断是哪家 CLI 写的。尝试记录要等渲染结束才写，
  * 进行中标记是新版才有，所以兜底靠格式：codex 的事件是 thread.* / turn.* / item.*，
- * opencode 的每条带 sessionID 与 part，其余按 claude 系（claude、qoder、codebuddy 同一种 stream-json）。
+ * mcode 的每条带 schemaVersion 与 runId，opencode 的每条带 sessionID 与 part，其余按 claude 系（claude、qoder、codebuddy 同一种 stream-json）。
  */
 export function sniffStreamTool(line: string): string {
   let raw: unknown;
@@ -78,6 +78,8 @@ export function sniffStreamTool(line: string): string {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return '';
   const e = raw as Record<string, unknown>;
   const type = typeof e.type === 'string' ? e.type : '';
+  // mcode 也有 turn.* / item.*，但每条带 schemaVersion 与 runId，要先认。
+  if ('schemaVersion' in e && 'runId' in e) return 'mcode';
   if (/^(thread|turn|item)\./.test(type)) return 'codex';
   if ('sessionID' in e && 'part' in e) return 'opencode';
   if (type !== '') return 'claude';
@@ -193,8 +195,8 @@ function agentrunModel(tool: string, line: string): string {
 }
 
 /** 把流日志读到最新，返回这个镜头的解析状态；还没有流日志时返回 null。 */
-function readStream(dir: string, id: string): { state: StreamState; info: fs.Stats } | null {
-  const file = path.join(dir, 'render-' + id + '.stream.jsonl');
+function readStream(dir: string, id: string, prefix = 'render'): { state: StreamState; info: fs.Stats } | null {
+  const file = path.join(dir, prefix + '-' + id + '.stream.jsonl');
   let info: fs.Stats;
   try {
     info = fs.statSync(file);
@@ -205,7 +207,7 @@ function readStream(dir: string, id: string): { state: StreamState; info: fs.Sta
   let state = streams.get(file);
   // 重渲染时旧日志挪进 attempts/、新日志以 'w' 打开：inode 或创建时间变了，或者文件变短了，都从头读。
   if (!state || state.ino !== info.ino || state.birth !== info.birthtimeMs || info.size < state.offset) {
-    state = freshState(file, info, renderedTool(dir, id));
+    state = freshState(file, info, prefix === 'render' ? renderedTool(dir, id) : '');
     streams.set(file, state);
   }
   if (info.size > state.offset) {
@@ -237,13 +239,13 @@ function lastOutcome(dir: string, id: string): { outcome?: string; error?: strin
 }
 
 /** 镜头的渲染过程：进行中的，或者最近一次的。 */
-export function sceneActivity(sc: SceneSummary): Record<string, unknown> {
+export function sceneActivity(sc: Pick<SceneSummary, 'directory' | 'id'> & Partial<SceneSummary>, prefix: 'render' | 'design' = 'render'): Record<string, unknown> {
   const rendering = sceneRendering(sc.directory, sc.id);
   const live = scene.readLive(sc.directory, sc.id);
-  const read = readStream(sc.directory, sc.id);
+  const read = readStream(sc.directory, sc.id, prefix);
   const state = read?.state;
   const steps = state ? state.steps.slice(-maxActivitySteps) : [];
-  const ended = rendering ? {} : lastOutcome(sc.directory, sc.id);
+  const ended = rendering || prefix === 'design' ? {} : lastOutcome(sc.directory, sc.id);
   return goMap({
     scene_id: sc.id,
     rendering,

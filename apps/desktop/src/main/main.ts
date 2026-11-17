@@ -6,6 +6,8 @@ import { setHostVersion } from '@onset/engine/version';
 import { assetsDir, browserPath, browserScript, cliEntry, npmCLI, shimScript, writeScript } from './clishim';
 import { installKeyCodec } from './keycodec';
 import { installMenu } from './menu';
+import { installNetworkFetch } from './network';
+import { installUpdater } from './updater';
 import { createPet, installPetIPC, mainWindow, petPreferred, setPetVisible } from './pet';
 import { loginShellPath } from './shellpath';
 import { StationBrowsers } from './station-browser';
@@ -230,6 +232,8 @@ if (!app.requestSingleInstanceLock()) {
       if (npm !== '') process.env.ONSET_NPM_CLI = npm;
       // 制作人的 API key 经 safeStorage 加密落盘、解密后经 stdin 交给制作人（见 keycodec.ts）。
       installKeyCodec();
+      // 插件中心的目录与图片走 Chromium 的网络栈（系统代理或设置里的代理），见 network.ts。
+      installNetworkFetch();
       backend = newServer({ executable, stationBrowser: request => stationBrowsers.lease(request), stationProxy: url => session.defaultSession.resolveProxy(url) });
       stopOperationBroker = startOperationBroker(backend);
     } catch (err) {
@@ -238,6 +242,9 @@ if (!app.requestSingleInstanceLock()) {
       return;
     }
     protocol.handle(SCHEME, handleRequest);
+    // 自动更新（updater.ts）：重启装之前先问后端有没有正在跑的对话与渲染。
+    try { installUpdater({ activeWork: () => backend?.activeWork() ?? [] }); }
+    catch (err) { console.error('更新器初始化失败', err); }
     const menu = (visible: boolean) => installMenu({ visible, toggle: setPetVisible });
     installPetIPC();
     installDirectoryPicker();

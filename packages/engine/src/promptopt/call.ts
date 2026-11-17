@@ -13,15 +13,19 @@ import { addToolsLocation, lookPath } from '../envutil';
 import * as ledger from '../ledger';
 import * as tools from '../tools';
 
-/** 实际用的优化工具与模型：OPTIMIZER 为空时跟随（这一轮的）编排工具与编排模型。 */
-export function optimizerOf(cfg: Pick<Config, 'optimizer' | 'optimizerModel' | 'orchestrator' | 'orchestratorModel'>): { tool: string; model: string } {
-  if (cfg.optimizer !== '') return { tool: cfg.optimizer, model: cfg.optimizerModel };
-  return { tool: cfg.orchestrator, model: cfg.orchestratorModel };
+/** 实际用的优化工具、模型与调用选项：OPTIMIZER 为空时跟随（这一轮的）编排工具、编排模型与编排选项。 */
+export function optimizerOf(
+  cfg: Pick<Config, 'optimizer' | 'optimizerModel' | 'orchestrator' | 'orchestratorModel'> & Partial<Pick<Config, 'optimizerOptions' | 'orchestratorOptions'>>,
+): { tool: string; model: string; options: tools.AgentOptions } {
+  if (cfg.optimizer !== '') return { tool: cfg.optimizer, model: cfg.optimizerModel, options: tools.effectiveOptions(cfg.optimizer, cfg.optimizerOptions ?? '') };
+  return { tool: cfg.orchestrator, model: cfg.orchestratorModel, options: tools.effectiveOptions(cfg.orchestrator, cfg.orchestratorOptions ?? '') };
 }
 
 export interface CallOptions {
   tool: string;
   model: string;
+  /** 调用选项（推理强度等，tools/options.ts）；不给用那家工具自己的默认。 */
+  options?: tools.AgentOptions;
   prompt: string;
   /** 子进程环境，由调用方按安全模式白名单算好（config.childEnvironment）。 */
   env: Record<string, string>;
@@ -45,6 +49,7 @@ export async function callOnce(o: CallOptions): Promise<string> {
       {
         tool: o.tool,
         model: o.model,
+        options: o.options,
         workdir,
         prompt: o.prompt,
         unsafe: o.unsafe,

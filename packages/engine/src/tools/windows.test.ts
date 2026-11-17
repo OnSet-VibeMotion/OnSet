@@ -17,4 +17,7 @@ it('sends long Windows prompts intact through stdin without changing flags or re
   for (const platform of ['darwin', 'linux'] as const) expect(windowsPromptInput('claude', claude, prompt, platform).argv).toBe(claude);
   const short = ['claude', '-p', 'hello'];
   expect(windowsPromptInput('claude', short, 'hello', 'win32')).toEqual({ argv: short, stdin: '' });
+  const mcode = ['mcode', 'exec', '--session', 'previous', prompt];
+  expect(windowsPromptInput('mcode', mcode, prompt, 'win32')).toEqual({ argv: [...mcode.slice(0, -1), '--input', '-'], stdin: prompt });
+  expect(windowsPromptInput('mcode', ['mcode', 'exec', 'hello'], 'hello', 'win32')).toEqual({ argv: ['mcode', 'exec', 'hello'], stdin: '' });
 });

@@ -6,3 +6,4 @@ export * from './learn';
 export * from './learning';
 export * from './exam';
 export * from './aftervote';
+export * from './run';

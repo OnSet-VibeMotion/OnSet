@@ -1,6 +1,7 @@
 /**
  * 试镜与模型互学（引擎在 @onset/engine/audition）：
  *   scene_audition        同一镜头交给几位选手各渲染一遍（可两段式：先由一位写设计稿）；也用来开人评考试
+ *   scene_audition_retry  重试失败或中断的一位，沿用冻结输入与选手配置
  *   scene_audition_vote   盲评；人评考试的结论落到记忆上，胜者的代码进范例库
  *   scene_audition_adopt  采用胜者，换进项目的镜头
  *   scene_design          两段式的第一段：让某位只为镜头写设计稿
@@ -75,11 +76,91 @@ export async function runDesign(
   signal?: AbortSignal,
 ): Promise<scene.Attempt | null> {
   let attempt: scene.Attempt | null = null;
-  const own: config.Config = { ...cfg, renderer: designer, rendererModel: model };
+  const own: config.Config = { ...cfg, renderer: designer, rendererModel: model, rendererOptions: config.rendererOptionsFor(cfg, designer) };
   let ds: scene.Scene = { ...s, renderer: designer, designOnly: true, afterAttempt: (x) => (attempt = x) };
   if (cfg.memory.enabled) ds = { ...attachMemory(ds, own, out, newRunID()), designOnly: true, afterAttempt: (x) => (attempt = x) };
   await scene.run(ds, own, unsafe, currentEnvironment(), out, 0.15, signal);
   return attempt;
+}
+
+/** 初次试镜与单人重试共用配置、记忆、两段式制作与结果落盘。 */
+function contestantRunner(root: string, a: audition.Audition, cfg: config.Config, out: Out, unsafe: boolean, tolerance: number, jobs: number, signal?: AbortSignal) {
+  const store = cfg.memory.enabled ? memory.open(cfg.memory.dir) : null;
+  const withMemory = a.with_memory;
+  const exam = a.exam;
+  const env = currentEnvironment();
+  const isUnsafe = envutil.isUnsafe(unsafe);
+  const workers = schedule.renderWorkers(os.availableParallelism(), schedule.systemMemory(), jobs);
+  const trials = exam ? exam.lessons.map((name) => store?.find(name) ?? null).filter((m) => m !== null) : [];
+  // 选手的结果写回 audition.json：几位同时跑，按顺序落盘免得互相盖掉。
+  let saving = Promise.resolve();
+  const persist = () => {
+    saving = saving.then(() => audition.save(root, a));
+    return saving;
+  };
+
+  const runOne = async (c: audition.Contestant) => {
+    c.status = 'running';
+    c.outcome = '';
+    c.output = '';
+    c.error = '';
+    c.problems = null;
+    c.checks = null;
+    await persist();
+    const log = prefixed(out, c.slot);
+    let attempt: scene.Attempt | null = null;
+    let failure = '';
+    const extra = tools.newUsage();
+    let extraSeconds = 0;
+    try {
+      let s = audition.contestantScene(root, c);
+      s.renderer = c.renderer;
+      // 选手的工具与模型盖掉项目配置：rendererModelFor 只在工具相同时用 rendererModel。
+      const own: config.Config = { ...cfg, renderer: c.renderer, rendererModel: c.model, rendererOptions: config.rendererOptionsFor(cfg, c.renderer) };
+      const prepare = (s: scene.Scene): scene.Scene => {
+        if (store !== null && withMemory) {
+          const model = store.currentModel(c.renderer, env, c.model !== '' ? c.model : config.rendererModelFor(cfg, c.renderer));
+          const result = store.recallScene(s, {
+            snapshot: cfg.memory.snapshot,
+            budget: cfg.memory.recallBudget,
+            renderer: c.renderer,
+            model,
+            // 人评考试的带经验那份：再加上要考的试用经验，其余与不带的那份逐字相同。
+            ...(c.role === 'trial' ? { extra: trials } : {}),
+          });
+          const exemplars = audition.pickExemplars(cfg.memory.dir, { renderer: c.renderer, model, features: memory.features(s), project: memory.projectName(s.directory), sceneID: s.id });
+          s = { ...memory.attachRecall(result, s), ...(exemplars ? { exemplars } : {}) };
+        }
+        return scene.withRenderWorkers({ ...s, afterAttempt: (x) => (attempt = x) }, workers);
+      };
+      const recovered = c.designer !== '' && scene.recoverOutput(prepare(s), own, env, log, tolerance, signal);
+      if (!recovered) {
+        if (c.designer !== '') {
+          log.write(`先由 ${audition.entryLabel({ renderer: c.designer, model: c.designer_model })} 写设计稿\n`);
+          const designed = await runDesign(s, withMemory ? cfg : { ...cfg, memory: { ...cfg.memory, enabled: false } }, c.designer, c.designer_model, isUnsafe, log, signal);
+          if (designed?.usage) tools.usageAdd(extra, designed.usage);
+          extraSeconds += designed?.seconds ?? 0;
+          s = audition.contestantScene(root, c);
+          s.renderer = c.renderer;
+        }
+        await scene.run(prepare(s), own, isUnsafe, env, log, tolerance, signal);
+      }
+    } catch (e) {
+      failure = errorText(e);
+      log.write(`没跑成：${failure}\n`);
+    }
+    audition.applyAttempt(root, c, attempt, failure);
+    if (extraSeconds > 0 || !tools.usageEmpty(extra)) {
+      const total = tools.newUsage();
+      tools.usageAdd(total, extra);
+      if (c.usage) tools.usageAdd(total, c.usage);
+      c.usage = total;
+      c.seconds += extraSeconds;
+    }
+    await persist();
+    out.write(`[${c.slot}] ${c.outcome === 'succeeded' ? '完成' : '没有合格的产物'}\n`);
+  };
+  return { runOne, persist };
 }
 
 defineOp({
@@ -170,87 +251,69 @@ with_memory 为 true（缺省）时每位选手照常带上按自己召回的记
     jobs = Math.max(1, Math.min(jobs, entries.length));
     const a = audition.create(root, sc, entries, { withMemory, exam });
     out.write(`${exam ? '人评考试' : '试镜'} ${a.id}：镜头 ${sc.id}，${a.contestants.length} 份${withMemory ? '' : '（都不带记忆）'}\n`);
-    const env = currentEnvironment();
-    const isUnsafe = envutil.isUnsafe(unsafe);
-    const workers = schedule.renderWorkers(os.availableParallelism(), schedule.systemMemory(), jobs);
-    const trials = exam ? exam.lessons.map((name) => store!.find(name)!).filter((m) => m !== null) : [];
-    // 选手的结果写回 audition.json：几位同时跑，按顺序落盘免得互相盖掉。
-    let saving = Promise.resolve();
-    const persist = () => {
-      saving = saving.then(() => audition.save(root, a));
-      return saving;
-    };
+    const release = audition.acquireRun(root, a);
+    try {
+      const { runOne, persist } = contestantRunner(root, a, cfg, out, unsafe, tolerance, jobs, signal);
 
-    const runOne = async (c: audition.Contestant) => {
-      c.status = 'running';
-      await persist();
-      const log = prefixed(out, c.slot);
-      let attempt: scene.Attempt | null = null;
-      let failure = '';
-      const extra = tools.newUsage();
-      let extraSeconds = 0;
-      try {
-        let s = audition.contestantScene(root, c);
-        s.renderer = c.renderer;
-        // 选手的工具与模型盖掉项目配置：rendererModelFor 只在工具相同时用 rendererModel。
-        const own: config.Config = { ...cfg, renderer: c.renderer, rendererModel: c.model };
-        if (c.designer !== '') {
-          log.write(`先由 ${audition.entryLabel({ renderer: c.designer, model: c.designer_model })} 写设计稿\n`);
-          const designed = await runDesign(s, withMemory ? cfg : { ...cfg, memory: { ...cfg.memory, enabled: false } }, c.designer, c.designer_model, isUnsafe, log, signal);
-          if (designed?.usage) tools.usageAdd(extra, designed.usage);
-          extraSeconds += designed?.seconds ?? 0;
-          s = audition.contestantScene(root, c);
-          s.renderer = c.renderer;
-        }
-        if (store !== null && withMemory) {
-          const model = store.currentModel(c.renderer, env, c.model !== '' ? c.model : config.rendererModelFor(cfg, c.renderer));
-          const result = store.recallScene(s, {
-            snapshot: cfg.memory.snapshot,
-            budget: cfg.memory.recallBudget,
-            renderer: c.renderer,
-            model,
-            // 人评考试的带经验那份：再加上要考的试用经验，其余与不带的那份逐字相同。
-            ...(c.role === 'trial' ? { extra: trials } : {}),
-          });
-          const exemplars = audition.pickExemplars(cfg.memory.dir, { renderer: c.renderer, model, features: memory.features(s), project: memory.projectName(s.directory), sceneID: s.id });
-          s = { ...memory.attachRecall(result, s), ...(exemplars ? { exemplars } : {}) };
-        }
-        s = scene.withRenderWorkers({ ...s, afterAttempt: (x) => (attempt = x) }, workers);
-        await scene.run(s, own, isUnsafe, env, log, tolerance, signal);
-      } catch (e) {
-        failure = errorText(e);
-        log.write(`没跑成：${failure}\n`);
-      }
-      audition.applyAttempt(root, c, attempt, failure);
-      if (extraSeconds > 0 || !tools.usageEmpty(extra)) {
-        const total = tools.newUsage();
-        tools.usageAdd(total, extra);
-        if (c.usage) tools.usageAdd(total, c.usage);
-        c.usage = total;
-        c.seconds += extraSeconds;
-      }
-      await persist();
-      out.write(`[${c.slot}] ${c.outcome === 'succeeded' ? '完成' : '没有合格的产物'}\n`);
-    };
-
-    const queue = [...a.contestants];
-    await Promise.all(
-      Array.from({ length: jobs }, async () => {
-        for (let c = queue.shift(); c; c = queue.shift()) {
-          if (signal?.aborted) {
-            audition.applyAttempt(root, c, null, '已取消');
-            await persist();
-            continue;
+      const queue = [...a.contestants];
+      await Promise.all(
+        Array.from({ length: jobs }, async () => {
+          for (let c = queue.shift(); c; c = queue.shift()) {
+            if (signal?.aborted) {
+              audition.applyAttempt(root, c, null, '已取消');
+              await persist();
+              continue;
+            }
+            await runOne(c);
           }
-          await runOne(c);
+        }),
+      );
+      await persist();
+      const done = a.contestants.filter((c) => c.outcome === 'succeeded').length;
+      out.write(`${done}/${a.contestants.length} 份出了合格的产物。到「试镜」页并排看、选出最好的一份。\n`);
+      if (signal?.aborted) err.write('试镜被取消，没跑完的记为失败。\n');
+      return { data: { audition: a.id, scene: sc.id, succeeded: done } };
+    } finally { release(); }
+  },
+});
+
+defineOp({
+  name: 'scene_audition_retry',
+  cli: ['scene', 'audition-retry'],
+  summary: '重试一位失败或中断的试镜选手，保留原标号、模型与冻结输入',
+  description: `重新渲染一场试镜里失败或中断的一位选手：沿用原来的标号、渲染工具与模型、冻结的镜头输入，不续接旧的模型会话。
+只能重试还没评判、也还没有合格产物的选手；同一场试镜里还有别的选手在跑时会被拒绝，等它们跑完再试。
+冻结目录里已有指纹一致的产物时先在本机验收，合格就直接用，不再花一次渲染。`,
+  examples: ['scene_audition_retry({"audition": "audition-20261114-153012", "slot": "B"})'],
+  params: {
+    audition: { type: 'string', description: '试镜编号', required: true, positional: 0 },
+    slot: { type: 'string', description: '要重试的选手标号', required: true },
+    project_root: { type: 'string', description: '项目根目录；缺省为当前目录' },
+  },
+  scopes: ['cli'],
+  run: async (p, { out, signal, unsafe }) => {
+    const root = path.resolve(str(p.project_root) || '.');
+    const id = str(p.audition);
+    const release = audition.acquireRun(root, audition.load(root, id));
+    try {
+      // 拿到整场写权后重读，不能拿排队前的结果覆盖别人的完成记录。
+      const a = audition.load(root, id);
+      const c = audition.retryContestant(root, a, str(p.slot));
+      checkRenderer(c.renderer);
+      if (c.designer) checkRenderer(c.designer);
+      const cfg = config.load(root, null);
+      if (a.exam) {
+        const store = cfg.memory.enabled ? memory.open(cfg.memory.dir) : null;
+        if (!store || a.exam.lessons.some(name => store.find(name)?.status !== memory.StatusTrial)) {
+          throw new Error('本场考试的试用经验已不可用，请恢复记忆配置或新开一场考试');
         }
-      }),
-    );
-    await persist();
-    const done = a.contestants.filter((c) => c.outcome === 'succeeded').length;
-    out.write(`${done}/${a.contestants.length} 份出了合格的产物。到「试镜」页并排看、选出最好的一份。\n`);
-    if (signal?.aborted) err.write('试镜被取消，没跑完的记为失败。\n');
-    return { data: { audition: a.id, scene: sc.id, succeeded: done } };
+      }
+      const { runOne } = contestantRunner(root, a, cfg, out, unsafe, 0.15, 1, signal);
+      out.write(`重试 ${a.id} 的选手 ${c.slot}\n`);
+      await runOne(c);
+      if (c.outcome !== 'succeeded') throw new Error(`选手 ${c.slot} 未生成合格画面，可在试镜页重试`);
+      return { data: { audition: a.id, slot: c.slot, scene: a.scene_id } };
+    } finally { release(); }
   },
 });
 
@@ -391,6 +454,7 @@ checked_by 是 audition.judged（人在试镜里判的）。经验进入试用�
           {
             tool: cfg.orchestrator,
             model: cfg.orchestratorModel,
+            options: tools.effectiveOptions(cfg.orchestrator, cfg.orchestratorOptions),
             workdir,
             prompt,
             unsafe: isUnsafe,

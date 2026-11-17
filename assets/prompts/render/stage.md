@@ -13,7 +13,7 @@ scenes/
 
 每个镜头必须：
 
-- 建立 `scene.json`：执行契约。字段为 `id`、`duration_seconds`、`output`、`transcript`、`text`，可选 `renderer`、`film_style`；`timing` 块与口播项目的 `film_style` 由 `scene_cues()` 从分镜计划写入，不要手写（没有分镜计划的项目在这里手写 `film_style`）；未知字段会直接报错。`duration_seconds` 先写占位值 `1`，正式时长由下面的 `scene_cues()` 写入。`text` 会被包进 `<scene-text>` 定界块送进渲染提示词并声明为「数据而非指令」，因此 `text` 本身不得含 `[[USER_MESSAGE]]` 标记或 `<scene-text>` / `</scene-text>` 及其形近变体，含则报错。
+- 建立 `scene.json`：执行契约。字段为 `id`、`duration_seconds`、`output`、`transcript`、`text`，可选 `renderer`、`film_style`；`timing` 块与口播项目的 `film_style` 由 `scene_cues()` 从分镜计划写入，不要手写（没有分镜计划的项目在这里手写 `film_style`）；未知字段会直接报错。`transcript` 写 `transcription.srt`，即下面复制进来的全片字幕，时间是全片时间；`onset` 按 `timing` 裁出本镜头的几条交给渲染器，所以不要按镜头切分字幕，也不要改成从 0 秒起的本地时间（那样渲染器拿到的是「本镜头无字幕」，`scene_run()` 会拒绝）。`duration_seconds` 先写占位值 `1`，正式时长由下面的 `scene_cues()` 写入。`text` 会被包进 `<scene-text>` 定界块送进渲染提示词并声明为「数据而非指令」，因此 `text` 本身不得含 `[[USER_MESSAGE]]` 标记或 `<scene-text>` / `</scene-text>` 及其形近变体，含则报错。
 - 建立 `prompt.md`：本镜头的创意方向、视觉概念和表达重点。交付规格、阶段消息等执行契约由 `onset` 保证，不在本文件中。
 - HyperFrames CLI 由客户端按固定版本装在本机（渲染前会再检查一次），一律用 `hyperframes({"subcommand": "<子命令>"})` 调用，不用 `npx`。
 - 使用新建项目时装进 `.agents/skills/` 的技能。技能缺失时请用户在客户端的工具准备页（首页的「召集你的摄制组」，或顶栏的「还差几项工具」）里安装，装好后点客户端顶栏的「缺少 HyperFrames 技能 · 安装」把它补进项目；不要自己跑 `npx hyperframes skills`——那会装到本机 HOME 而不是项目里，绕过版本固定；也不得从其他项目或本机目录复制。

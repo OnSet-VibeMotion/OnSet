@@ -48,6 +48,7 @@ import { discoverScenes, fileExists, type SceneSummary } from './scenes';
 import { scriptAPI } from './script';
 import { computeStations, flowView, latestOutput, progressAPI } from './progress';
 import { stationMediaAPI, stationsAPI, stationUIAPI, tickStationSchedules } from './stations';
+import { marketAPI } from './market';
 import { storyboardAPI } from './storyboard';
 import { readStepMark, viewPages } from './view';
 import { BusyError, type Session } from './sessions';
@@ -292,6 +293,11 @@ export class Server {
     return this.busy.get(projectPath) ?? '';
   }
 
+  /** 所有项目里正占着写锁的事（一轮对话、渲染、拼接……）：重启装更新之前要告诉用户会打断什么。 */
+  activeWork(): { project: string; holder: string }[] {
+    return [...this.busy.entries()].map(([project, holder]) => ({ project, holder }));
+  }
+
   // ---- 当前项目 ----
 
   /** 已登记的项目副本；历史考试可沿明确来源读取对应项目的口播，不切换当前工作区。 */
@@ -367,6 +373,8 @@ export class Server {
       ['/api/prompt-checks/', (r, rest) => promptChecksAPI(this, r, rest)],
       ['/api/progress', (r) => progressAPI(this, r, '')],
       ['/api/progress/', (r, rest) => progressAPI(this, r, rest)],
+      ['/api/market', (r) => marketAPI(this, r, '')],
+      ['/api/market/', (r, rest) => marketAPI(this, r, rest)],
       ['/api/stations', (r) => stationsAPI(this, r, '')],
       ['/api/stations/', (r, rest) => stationsAPI(this, r, rest)],
       ['/station-ui/', (r, rest) => stationUIAPI(this, r, rest)],

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { transcriptTimingWarning } from './timing';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type * as beat from '../beat';
@@ -54,6 +55,8 @@ function timedScene(duration: string, timing: string): Scene {
   const dir = writeScene(
     '{"id":"scene-001","duration_seconds":' + duration + ',"output":"out.mp4","transcript":"transcript.srt","text":"hello","timing":' + timing + '}',
   );
+  // 全片字幕（全片时间）：只有片头一秒的字幕会被当成本地时间拒绝（localTranscriptProblem）。
+  fs.writeFileSync(path.join(dir, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\ntest\n\n2\n00:00:59,000 --> 00:01:00,000\nend\n');
   return load(dir);
 }
 
@@ -245,6 +248,21 @@ it('duration literal round-trips', () => {
 });
 
 describe('verifyTimingInputs', () => {
+  // 2026-11 Qwen4Max：编排给每个镜头写了本地时间的字幕，13 个镜头的字幕数据全空、9 个返工。提醒核对，但不能把合法的片尾静音判为错误。
+  it('warns without rejecting ambiguous transcript timestamps', () => {
+    const local = '1\n00:00:00,467 --> 00:00:04,227\n它还能直接看懂图片和视频。\n\n2\n00:00:04,707 --> 00:00:07,907\n门槛又低了一截。\n';
+    const later = timedScene('10.366667', '{"fps":30,"start_frame":120,"end_frame_exclusive":431,"plan":"' + testPlanSHA + '"}');
+    fs.writeFileSync(path.join(later.directory, 'transcript.srt'), local);
+    expect(() => verifyTimingInputs(later)).not.toThrow();
+    expect(transcriptTimingWarning(later)).toContain('本地时间');
+    fs.writeFileSync(path.join(later.directory, 'transcript.srt'), '1\n00:00:00,000 --> 00:00:01,000\n片头\n\n2\n00:00:05,000 --> 00:00:08,000\n全片最后一句\n');
+    expect(() => verifyTimingInputs(later)).not.toThrow();
+    // 从片头开始的镜头，本地时间就是全片时间，照常通过。
+    const first = timedScene('10.366667', '{"fps":30,"start_frame":0,"end_frame_exclusive":311,"plan":"' + testPlanSHA + '"}');
+    fs.writeFileSync(path.join(first.directory, 'transcript.srt'), local);
+    expect(() => verifyTimingInputs(first)).not.toThrow();
+  });
+
   it('checks the timing block', () => {
     const ok = '{"fps":30,"start_frame":120,"end_frame_exclusive":431,"plan":"' + testPlanSHA + '"}';
     expect(() => verifyTimingInputs(timedScene('10.366667', ok)), '一致的 timing 块应通过').not.toThrow();

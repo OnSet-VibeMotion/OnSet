@@ -82,7 +82,7 @@ export async function polishAPI(s: Server, request: Request, decode: PolishDecod
   running.get(p.path)?.abort();
   const controller = new AbortController();
   running.set(p.path, controller);
-  const { tool, model } = promptopt.optimizerOf(cfg);
+  const { tool, model, options } = promptopt.optimizerOf(cfg);
   const env = config.childEnvironment(cfg, envMap(), s.config.unsafe, parsePassthrough(process.env.ONSET_PASSTHROUGH_ENV ?? ''));
   const input: promptopt.PolishInput = {
     draft: message,
@@ -92,7 +92,7 @@ export async function polishAPI(s: Server, request: Request, decode: PolishDecod
   };
   try {
     const result = await promptopt.polish(input, (prompt) =>
-      promptopt.callOnce({ tool, model, prompt, env, unsafe: s.config.unsafe, signal: controller.signal, ledgerFile: ledger.projectFile(p.path), source: ledger.SourcePolish }),
+      promptopt.callOnce({ tool, model, options, prompt, env, unsafe: s.config.unsafe, signal: controller.signal, ledgerFile: ledger.projectFile(p.path), source: ledger.SourcePolish }),
     );
     return writeJSON(200, goMap({ decision: result.decision, text: result.text, notes: result.notes, tool, model: model || undefined }));
   } catch (err) {

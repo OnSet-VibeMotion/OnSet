@@ -7,7 +7,7 @@
  * （TTS 要连外网，理由同 exec 路径）。来问的命令先过白名单，白名单里的直接放行，其余交给用户。
  * 字段名按 codex-cli 0.163 的 app-server generate-json-schema 写。
  */
-import { BasisTotalInput, newUsage, windowsOrchestratorEffort, type Usage } from '../tools';
+import { BasisTotalInput, CodexFastTier, effectiveOptions, LongToolWaitSeconds, longWaitServer, newUsage, windowsOrchestratorEffort, type Usage } from '../tools';
 import { runInteractive, unwrapShell, type DriveContext, type PermissionAnswer } from './interactive';
 import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, clip, compactionEvent, type Event, type PlanItem } from './parse';
 import type { Outcome, Spec } from './run';
@@ -217,17 +217,22 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
   peer.notification('initialized', {});
   const cwd = spec.workdir || process.cwd();
   const writable = spec.access?.writableDirs ?? [];
+  // 同 orchestratorInvocation：codex 能长时间等一次工具调用，放宽工具服务的等待上限并写上对应的超时。
+  const server = longWaitServer(spec.toolsServer);
+  const options = effectiveOptions('codex', spec.options);
   const settings = {
     cwd,
     approvalPolicy: 'untrusted',
     sandbox: 'workspace-write',
     ...(spec.model ? { model: spec.model } : {}),
+    // 快速模式是服务档位（tools/options.ts 的 CodexFastTier），thread/start 与 thread/resume 都认。
+    ...(options.fast ? { serviceTier: options.fast === 'on' ? CodexFastTier : null } : {}),
     config: {
       'sandbox_workspace_write.network_access': true,
       ...(writable.length > 0 ? { 'sandbox_workspace_write.writable_roots': writable } : {}),
       // onset 的工具服务：编排工具只经它调用 onset（codex 的 config 键用点号路径，值按 TOML 的结构给）。
-      ...(spec.toolsServer
-        ? { [`mcp_servers.${spec.toolsServer.name}`]: { command: spec.toolsServer.command, args: spec.toolsServer.args, env: spec.toolsServer.env ?? {} } }
+      ...(server
+        ? { [`mcp_servers.${server.name}`]: { command: server.command, args: server.args, env: server.env ?? {}, tool_timeout_sec: LongToolWaitSeconds + 120 } }
         : {}),
     },
   };
@@ -239,7 +244,8 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
   ctx.result.model = str(opened.model);
   ctx.emit({ kind: KindSession, session_id: threadID });
 
-  const effort = windowsOrchestratorEffort(spec.env ?? {});
+  // 推理强度只有 turn/start 认；用户选的优先于 Windows 上的缺省。
+  const effort = options.effort || windowsOrchestratorEffort(spec.env ?? {});
   const started = obj(await race(peer.request('turn/start', { threadId: threadID, input: [{ type: 'text', text: spec.prompt }], ...(effort ? { effort } : {}) })));
   turnID = str(obj(started.turn).id);
   const already = early.find((t) => str(t.id) === turnID);

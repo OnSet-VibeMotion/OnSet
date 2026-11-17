@@ -24,6 +24,18 @@ export function stationsDir(env: Record<string, string | undefined>): string {
   return path.join(data, 'stations');
 }
 
+/**
+ * 给取插件的 git 加上代理（设置里的 NETWORK_PROXY）：与 onset setup --proxy 一样用 GIT_CONFIG_PARAMETERS，只给 git，
+ * 不设 HTTPS_PROXY（插件的操作与 npm 不该跟着走代理）。proxy 为空时原样返回。
+ */
+export function withGitProxy(env: Record<string, string | undefined>, proxy: string): Record<string, string | undefined> {
+  const p = proxy.trim();
+  if (p === '') return env;
+  if (/['"\s]/.test(p)) throw new Error(`代理地址里不能有引号或空白：${p}`);
+  const prev = env.GIT_CONFIG_PARAMETERS?.trim() ?? '';
+  return { ...env, GIT_CONFIG_PARAMETERS: `${prev === '' ? '' : prev + ' '}'http.proxy'='${p}'` };
+}
+
 /** 来源解析成 git 地址与 ref，或本地目录。 */
 export function parseSource(spec: string): { kind: 'link'; dir: string } | { kind: 'git'; url: string; ref: string } {
   const s = spec.trim();
@@ -89,7 +101,8 @@ export function cloneSource(url: string, ref: string, checkout: string, env: Rec
   if (git === '') throw new Error(`添加 git 来源的插件要用 git：${gitHint()}`);
   const run = (args: string[], cwd?: string) => {
     log(`git ${args.join(' ')}`);
-    const r = spawnSync(git, args, { cwd, env: { ...env, GIT_TERMINAL_PROMPT: '0' } as NodeJS.ProcessEnv, encoding: 'utf8' });
+    // 连接被掐断时 git 不报错只挂着：1 KB/s 持续 60 秒就放弃（与风格库下载同一个口径）。
+    const r = spawnSync(git, args, { cwd, env: { GIT_HTTP_LOW_SPEED_LIMIT: '1000', GIT_HTTP_LOW_SPEED_TIME: '60', ...env, GIT_TERMINAL_PROMPT: '0' } as NodeJS.ProcessEnv, encoding: 'utf8' });
     if (r.status !== 0) throw new Error(`git ${args[0]} 失败：${(r.stderr || r.stdout || '').trim().split('\n').slice(-3).join('\n')}`);
     return r.stdout.trim();
   };

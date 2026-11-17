@@ -9,6 +9,8 @@ import { load, outputPath, stderrLog, streamLog, userLog } from './scene';
 import { executable, fakeFfprobe, Sink, tempDir, writeScene } from './testsupport';
 import { VerificationError } from './verification';
 import * as director from '../director';
+import { archiveAttempt, attemptLog, parseAttempt } from './attempt';
+import { fingerprint, loadRecord, RecordFile, writeRecord } from './record';
 
 const plainScene = '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}';
 const cfg = newConfig({ orchestrator: 'claude', renderer: 'codex', ttsProvider: 'minimax' });
@@ -23,6 +25,97 @@ function catchError(fn: () => void): unknown {
 }
 
 describe('run', () => {
+  it.each([
+    ['claude', 'claude', 1, { result: 'Failed to authenticate: OAuth token revoked.' }, 'OAuth token revoked'],
+    ['qoder', 'qoderclicn', 1, { errors: ['inference.remoteChat.stream failed (403): Dedicated resource package balance is low'] }, 'balance is low'],
+    ['codebuddy', 'codebuddy', 0, { errors: ['Empty stream: upstream ended the turn with finish_reason=error'] }, 'Empty stream'],
+  ])('preserves %s service errors even when the process exits successfully', async (renderer, binary, code, fields, message) => {
+    const s = load(writeScene(plainScene)), bin = tempDir();
+    executable(bin, binary, `printf '%s\\n' '${JSON.stringify({ type: 'result', is_error: true, subtype: 'error_during_execution', ...fields })}'\nexit ${code}`);
+    await expect(run(s, newConfig({ renderer }), false, { PATH: bin, HOME: tempDir() }, new Sink(), 0.15)).rejects.toThrow(message);
+    const attempt = parseAttempt(fs.readFileSync(attemptLog(s)))!;
+    expect(attempt.error).toContain(message);
+    expect(attempt.exit_code).toBe(code);
+  });
+
+  it('accepts a completed artifact after a service failure and retains the warning and actual exit code', async () => {
+    const s = load(writeScene(plainScene)), bin = tempDir();
+    executable(bin, 'codex', `printf video > out.mp4\nprintf '%s\\n' '{"type":"turn.failed","error":{"message":"Dedicated resource package balance is low"}}'\nexit 1`);
+    fakeFfprobe(bin, {});
+    await run(s, cfg, false, { PATH: bin, HOME: tempDir() }, new Sink(), 0.15);
+    const attempt = parseAttempt(fs.readFileSync(attemptLog(s)))!;
+    expect(attempt).toMatchObject({ outcome: 'succeeded', exit_code: 1, error: '', warning: 'Dedicated resource package balance is low' });
+    expect(loadRecord(s)).not.toBeNull();
+  });
+
+  it('stops before rendering when the old video cannot be archived and preserves its record', async () => {
+    const s = load(writeScene(plainScene)), bin = tempDir();
+    fs.writeFileSync(outputPath(s), 'old video');
+    writeRecord(s, fingerprint(s, 'codex', {}));
+    const record = fs.readFileSync(path.join(s.directory, RecordFile));
+    s.text = 'different words, same video dimensions and duration';
+    // 普通文件挡住 attempts 目录：两平台都能稳定复现目录创建与旧视频移动失败。
+    fs.writeFileSync(path.join(s.directory, 'attempts'), 'blocked');
+    if (process.platform === 'win32') writeWindowsNodeFixture(path.join(bin, 'codex'), `require('node:fs').writeFileSync('renderer-ran','yes');console.log(JSON.stringify({type:'turn.failed',error:{message:'OAuth token revoked'}}));process.exit(1);`);
+    else {
+      executable(bin, 'codex', `printf called > renderer-ran\nprintf '%s\\n' '{"type":"turn.failed","error":{"message":"OAuth token revoked"}}'\nexit 1`);
+      fakeFfprobe(bin, {});
+    }
+    await expect(run(s, cfg, false, { PATH: bin, HOME: tempDir() }, new Sink(), 0.15)).rejects.toThrow('旧视频未能归档');
+    expect(fs.existsSync(path.join(s.directory, 'renderer-ran'))).toBe(false);
+    expect(fs.readFileSync(outputPath(s), 'utf8')).toBe('old video');
+    expect(fs.readFileSync(path.join(s.directory, RecordFile))).toEqual(record);
+    expect(fs.existsSync(attemptLog(s))).toBe(false);
+  });
+
+  it('does not accept an invalid artifact after a service failure', async () => {
+    const s = load(writeScene(plainScene)), bin = tempDir();
+    executable(bin, 'codex', `printf video > out.mp4\nprintf '%s\\n' '{"type":"turn.failed","error":{"message":"Dedicated resource package balance is low"}}'\nexit 1`);
+    fakeFfprobe(bin, { frames: 29 });
+    await expect(run(s, cfg, false, { PATH: bin, HOME: tempDir() }, new Sink(), 0.15)).rejects.toThrow('总帧数不符');
+    expect(parseAttempt(fs.readFileSync(attemptLog(s)))!.outcome).toBe('verification_failed');
+    expect(loadRecord(s)).toBeNull();
+  });
+
+  it('does not credit an archived attempt with a video a later, unrecorded run left behind', async () => {
+    const s = load(writeScene(plainScene)), bin = tempDir();
+    executable(bin, 'codex', 'printf video > out.mp4; exit 3');
+    fakeFfprobe(bin, {});
+    const env = { PATH: bin, HOME: tempDir() };
+    await expect(run(s, cfg, false, env, new Sink(), 0.15)).rejects.toThrow('退出码 3');
+    // 后来又跑了一次：上一次的视频与记录随归档挪走，这一次出了视频但没来得及写记录就没了。
+    archiveAttempt(s);
+    fs.writeFileSync(outputPath(s), 'later');
+    executable(bin, 'codex', 'printf called > renderer-ran; printf video > out.mp4');
+    await run(s, cfg, false, env, new Sink(), 0.15);
+    expect(fs.existsSync(path.join(s.directory, 'renderer-ran'))).toBe(true);
+    expect(parseAttempt(fs.readFileSync(attemptLog(s)))!.resumed).not.toBe('verify');
+  });
+
+  it('verifies an existing artifact on retry without starting the renderer or replacing its logs', async () => {
+    const s = load(writeScene(plainScene)), bin = tempDir();
+    executable(bin, 'codex', 'printf video > out.mp4; echo previous-log; exit 3');
+    fakeFfprobe(bin, {});
+    const env = { PATH: bin, HOME: tempDir() };
+    await expect(run(s, cfg, false, env, new Sink(), 0.15)).rejects.toThrow('退出码 3');
+    const log = fs.readFileSync(streamLog(s), 'utf8');
+    executable(bin, 'codex', 'printf called > should-not-run; exit 9');
+    // 验收已有视频不依赖再次启动 HyperFrames，也不要求渲染器仍可用。
+    await run(s, { ...cfg, hyperFramesCLI: path.join(bin, 'missing-cli') }, false, env, new Sink(), 0.15);
+    expect(fs.existsSync(path.join(s.directory, 'should-not-run'))).toBe(false);
+    expect(fs.readFileSync(streamLog(s), 'utf8')).toBe(log);
+    expect(parseAttempt(fs.readFileSync(attemptLog(s)))!).toMatchObject({ outcome: 'succeeded', resumed: 'verify', exit_code: 3 });
+    expect(loadRecord(s)).not.toBeNull();
+  });
+
+  it('does not retain a transient error after an explicit successful result', async () => {
+    const s = load(writeScene(plainScene)), bin = tempDir();
+    executable(bin, 'codex', `printf '%s\\n' '{"type":"error","message":"temporary overload"}' '{"type":"turn.completed","usage":{}}'\nprintf video > out.mp4`);
+    fakeFfprobe(bin, {});
+    await run(s, cfg, false, { PATH: bin, HOME: tempDir() }, new Sink(), 0.15);
+    expect(parseAttempt(fs.readFileSync(attemptLog(s)))!).toMatchObject({ outcome: 'succeeded', warning: '', exit_code: 0 });
+  });
+
   it('starts the built-in Producer with renderer stdin, verifies output and records its model', async () => {
     const s = load(writeScene(plainScene));
     const bin = tempDir();

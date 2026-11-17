@@ -126,6 +126,7 @@ export async function suggestName(tool: string, input: NamingInput, signal?: Abo
       {
         tool: cfg.orchestrator,
         model: cfg.orchestratorModel,
+        options: tools.effectiveOptions(cfg.orchestrator, cfg.orchestratorOptions),
         workdir,
         prompt: namingPrompt(input),
         access: { commands: [] },
