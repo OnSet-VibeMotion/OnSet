@@ -217,6 +217,7 @@ async function runScene(
   // 只写设计稿时不动镜头已有的产物、日志与渲染记录：设计稿只是给实现者的输入。
   if (!design) {
     archiveAttempt(s);
+    if (fs.existsSync(outputPath(s))) throw new Error(`旧视频未能归档，已停止渲染：${outputPath(s)}`);
     removeRecord(s);
   }
   // 局部时间数据在渲染器启动前写好：提示词让渲染器直接加载它，

@@ -10,7 +10,7 @@ import { executable, fakeFfprobe, Sink, tempDir, writeScene } from './testsuppor
 import { VerificationError } from './verification';
 import * as director from '../director';
 import { archiveAttempt, attemptLog, parseAttempt } from './attempt';
-import { loadRecord } from './record';
+import { fingerprint, loadRecord, RecordFile, writeRecord } from './record';
 
 const plainScene = '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"}';
 const cfg = newConfig({ orchestrator: 'claude', renderer: 'codex', ttsProvider: 'minimax' });
@@ -46,6 +46,26 @@ describe('run', () => {
     const attempt = parseAttempt(fs.readFileSync(attemptLog(s)))!;
     expect(attempt).toMatchObject({ outcome: 'succeeded', exit_code: 1, error: '', warning: 'Dedicated resource package balance is low' });
     expect(loadRecord(s)).not.toBeNull();
+  });
+
+  it('stops before rendering when the old video cannot be archived and preserves its record', async () => {
+    const s = load(writeScene(plainScene)), bin = tempDir();
+    fs.writeFileSync(outputPath(s), 'old video');
+    writeRecord(s, fingerprint(s, 'codex', {}));
+    const record = fs.readFileSync(path.join(s.directory, RecordFile));
+    s.text = 'different words, same video dimensions and duration';
+    // 普通文件挡住 attempts 目录：两平台都能稳定复现目录创建与旧视频移动失败。
+    fs.writeFileSync(path.join(s.directory, 'attempts'), 'blocked');
+    if (process.platform === 'win32') writeWindowsNodeFixture(path.join(bin, 'codex'), `require('node:fs').writeFileSync('renderer-ran','yes');console.log(JSON.stringify({type:'turn.failed',error:{message:'OAuth token revoked'}}));process.exit(1);`);
+    else {
+      executable(bin, 'codex', `printf called > renderer-ran\nprintf '%s\\n' '{"type":"turn.failed","error":{"message":"OAuth token revoked"}}'\nexit 1`);
+      fakeFfprobe(bin, {});
+    }
+    await expect(run(s, cfg, false, { PATH: bin, HOME: tempDir() }, new Sink(), 0.15)).rejects.toThrow('旧视频未能归档');
+    expect(fs.existsSync(path.join(s.directory, 'renderer-ran'))).toBe(false);
+    expect(fs.readFileSync(outputPath(s), 'utf8')).toBe('old video');
+    expect(fs.readFileSync(path.join(s.directory, RecordFile))).toEqual(record);
+    expect(fs.existsSync(attemptLog(s))).toBe(false);
   });
 
   it('does not accept an invalid artifact after a service failure', async () => {
