@@ -62,7 +62,6 @@ describe('parseCatalog', () => {
   });
 
   it.each([
-    ['unknown field', plugin({ extra: 1 }), /不认识的字段 extra/],
     ['bad id', plugin({ id: 'Bad_ID' }), /id 只能用/],
     ['ref in source', plugin({ source: 'github:someone/x#main' }), /不带 #ref/],
     ['link source', plugin({ source: 'link:/tmp/x' }), /source 要是/],
@@ -73,6 +72,11 @@ describe('parseCatalog', () => {
     ['http homepage', plugin({ homepage: 'http://example.com' }), /homepage 要是 https/],
   ])('rejects %s', (_name, p, err) => {
     expect(() => market.parseCatalog(catalogText([p]))).toThrow(err);
+  });
+
+  it('ignores fields it does not know, so a newer catalog still reads on an older client', () => {
+    const c = market.parseCatalog(catalogText([plugin({ extra: 1, versions: [{ version: '1.0.0', commit: c1, signature: 'x' }] })], { mirrors: [] }));
+    expect(c.plugins[0].versions[0].version).toBe('1.0.0');
   });
 
   it('rejects duplicate ids and versions', () => {

@@ -79,10 +79,6 @@ export interface Catalog {
 
 const commitPattern = /^[0-9a-f]{40}$/;
 
-function known(raw: Record<string, unknown>, keys: string[], where: string): void {
-  for (const k of Object.keys(raw)) if (!keys.includes(k)) throw new Error(`${where} 里有不认识的字段 ${k}`);
-}
-
 function text(raw: Record<string, unknown>, key: string, where: string, required: boolean): string {
   const v = raw[key];
   if (v === undefined && !required) return '';
@@ -106,7 +102,11 @@ function assetPath(p: string, where: string): string {
   return norm;
 }
 
-/** 严格解析 index.json。格式更新时（schema 更大）报「要更新的片场」，不列一串不认识的字段。 */
+/**
+ * 解析 index.json。所有已经装出去的客户端读的是同一份目录，所以这里**不拒绝不认识的字段**：目录加了新字段，
+ * 旧客户端照样能读，只是用不上它。认得的字段照样严格校验；改了已有字段意思的大改动递增 schema，
+ * 旧客户端报「要更新的片场」。拒收不认识的字段是插件中心 CI（scripts/validate.mjs）的事。
+ */
 export function parseCatalog(body: string): Catalog {
   let raw: unknown;
   try {
@@ -117,13 +117,11 @@ export function parseCatalog(body: string): Catalog {
   if (!isObject(raw)) throw new Error('插件目录要是 JSON 对象');
   if (typeof raw.schema !== 'number' || !Number.isInteger(raw.schema) || raw.schema < 1) throw new Error('插件目录缺 schema（格式版本）');
   if (raw.schema > CatalogSchema) throw new Error(`插件目录是第 ${raw.schema} 版格式，要更新的片场才能读（这一版只认到第 ${CatalogSchema} 版）`);
-  known(raw, ['$schema', 'schema', 'plugins'], '插件目录');
   if (!Array.isArray(raw.plugins)) throw new Error('插件目录的 plugins 要是数组');
   const seen = new Set<string>();
   const plugins = raw.plugins.map((p, i): CatalogPlugin => {
     const where = `plugins[${i}]`;
     if (!isObject(p)) throw new Error(`${where} 要是对象`);
-    known(p, ['id', 'name', 'description', 'author', 'license', 'tags', 'homepage', 'source', 'icon', 'screenshots', 'maintainers', 'deprecated', 'versions'], where);
     const id = text(p, 'id', where, true);
     if (!idPattern.test(id)) throw new Error(`${where}.id 只能用小写字母、数字与 -，以字母开头：${id}`);
     if (seen.has(id)) throw new Error(`插件目录里 ${id} 出现了两次`);
@@ -141,7 +139,6 @@ export function parseCatalog(body: string): Catalog {
     let author = { name: '', url: '' };
     if (p.author !== undefined) {
       if (!isObject(p.author)) throw new Error(`${where}.author 要是对象`);
-      known(p.author, ['name', 'url'], `${where}.author`);
       author = { name: text(p.author, 'name', `${where}.author`, true), url: text(p.author, 'url', `${where}.author`, false) };
     }
     const homepage = text(p, 'homepage', where, false);
@@ -151,7 +148,6 @@ export function parseCatalog(body: string): Catalog {
     const versions = p.versions.map((v, j): CatalogVersion => {
       const vw = `${where}.versions[${j}]`;
       if (!isObject(v)) throw new Error(`${vw} 要是对象`);
-      known(v, ['version', 'ref', 'commit', 'requires_onset', 'digest', 'yanked'], vw);
       const version = text(v, 'version', vw, true);
       if (!validSemver(version)) throw new Error(`${vw}.version 要是 x.y.z：${version}`);
       const commit = text(v, 'commit', vw, true);
