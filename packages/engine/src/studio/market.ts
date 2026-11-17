@@ -110,6 +110,9 @@ export function marketJSON(): Record<string, unknown> {
         requires_onset: it.requires_onset,
         installed_version: it.installed_version,
         installed_commit: it.installed_commit,
+        installed_yanked: it.installed_yanked,
+        deprecated: it.plugin.deprecated,
+        maintainers: it.plugin.maintainers,
       }),
     ),
   });
@@ -165,15 +168,19 @@ export async function marketAPI(s: Server, request: Request, rest: string): Prom
     if (found.version.requires_onset !== '' && flow.validSemver(flow.onsetVersion()) && flow.compareSemver(flow.onsetVersion(), found.version.requires_onset) < 0) {
       return writeError(409, 'incompatible', `这一版要片场 ${found.version.requires_onset} 或更新的版本，请先更新片场`);
     }
+    if (found.version.yanked !== '') return writeError(409, 'yanked', `这一版已经撤回：${found.version.yanked}`);
+    if (found.plugin.deprecated !== '') return writeError(409, 'deprecated', `这个插件不再维护：${found.plugin.deprecated}`);
     const source = market.versionSource(found.plugin, found.version);
+    // 有内容摘要时执行进程先试着下压缩包（不用 git），对不上或下不来再克隆。
+    const digest = found.version.digest !== '' ? { expect_digest: found.version.digest } : {};
     const label = `${found.plugin.name} ${found.version.version}`;
     if (parts[0] === 'install') {
       if (entry) return writeError(409, 'installed', `已经装了 ${pick.id}；要换版本请点「更新」`);
-      return startUserTask(s, 'station.stage', `从插件中心取回：${label}`, 'station_add', { source, expect_id: pick.id, expect_commit: pick.commit });
+      return startUserTask(s, 'station.stage', `从插件中心取回：${label}`, 'station_add', { source, expect_id: pick.id, expect_commit: pick.commit, ...digest });
     }
     if (!entry) return writeError(404, 'not_found', `没有装插件 ${pick.id}`);
     if (item.state === 'other_source') return writeError(409, 'other_source', `装着的 ${pick.id} 不是从插件中心的仓库装的（${entry.source}）；要换成插件中心的版本请先去掉再装`);
-    return startUserTask(s, 'station.stage', `从插件中心取回新版本：${label}`, 'station_update', { id: pick.id, source, expect_commit: pick.commit });
+    return startUserTask(s, 'station.stage', `从插件中心取回新版本：${label}`, 'station_update', { id: pick.id, source, expect_commit: pick.commit, ...digest });
   }
 
   if (parts.length === 3 && parts[0] === 'images') {

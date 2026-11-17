@@ -29,10 +29,13 @@ function item(over: Partial<MarketItem> = {}): MarketItem {
     icon: '',
     screenshots: [],
     state: 'available',
-    latest: { version: '0.3.6', ref: 'v0.3.6', commit: c1, requires_onset: '0.1.0' },
+    latest: { version: '0.3.6', ref: 'v0.3.6', commit: c1, requires_onset: '0.1.0', digest: '', yanked: '' },
     requires_onset: '',
     installed_version: '',
     installed_commit: '',
+    installed_yanked: '',
+    deprecated: '',
+    maintainers: [],
     ...over,
   };
 }
@@ -176,7 +179,7 @@ describe('插件中心', () => {
     const user = userEvent.setup();
     const backend = mockApi({
       '/api/stations': () => ({ stations: [installed('0.3.6', c1)], problems: [] }),
-      '/api/market': () => marketOf([item({ state: 'update', installed_version: '0.3.6', installed_commit: c1, latest: { version: '0.4.0', ref: 'v0.4.0', commit: c2, requires_onset: '' } })]),
+      '/api/market': () => marketOf([item({ state: 'update', installed_version: '0.3.6', installed_commit: c1, latest: { version: '0.4.0', ref: 'v0.4.0', commit: c2, requires_onset: '', digest: '', yanked: '' } })]),
       'POST /api/market/update': { task_id: 'up' },
       '/api/tasks/up': task('up', 'succeeded', {
         result: {
@@ -248,6 +251,30 @@ describe('插件中心', () => {
     });
     render(<PluginSettings version={0} />);
     await waitFor(() => expect(marketSection().textContent).toContain('正在取插件中心的目录'));
+  });
+});
+
+describe('撤回与不再维护', () => {
+  it('装着的版本被撤回、插件不再维护时，两处都照实说；不再维护的不给装', async () => {
+    mockApi({
+      '/api/stations': () => ({ stations: [installed('0.3.6', c1)], problems: [] }),
+      '/api/market': () =>
+        marketOf([
+          item({ state: 'update', installed_version: '0.3.6', installed_commit: c1, installed_yanked: '会删掉项目里的封面', latest: { version: '0.3.5', ref: 'v0.3.5', commit: c2, requires_onset: '', digest: '', yanked: '' } }),
+          item({ id: 'old-one', name: '旧插件', state: 'unavailable', latest: null, deprecated: '作者改做新插件了' }),
+        ]),
+    });
+    render(<PluginSettings version={0} />);
+    const mine = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('li[data-station="xiaohongshu-upload"]');
+      expect(el?.textContent).toContain('这一版已被作者撤回：会删掉项目里的封面');
+      return el!;
+    });
+    // 撤回时给换回能用的一版，哪怕版本号更低。
+    expect(within(mine).getByRole('button', { name: '更新到 0.3.5' })).toBeTruthy();
+    const old = marketSection().querySelector<HTMLElement>('li[data-market="old-one"]')!;
+    expect(old.textContent).toContain('作者已不再维护：作者改做新插件了');
+    expect(within(old).queryByRole('button', { name: '安装' })).toBeNull();
   });
 });
 

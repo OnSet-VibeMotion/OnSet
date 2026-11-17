@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { installStaged, readInstalled, stageStation, stageUpdate, stationsDir, StagingDir, withGitProxy } from './index';
+import { fetchArchive, githubArchiveURL, installStaged, readInstalled, stageStation, stageUpdate, stationsDir, StagingDir, treeDigest, withGitProxy } from './index';
 import type { InstalledEntry } from './installed';
 import * as market from './market';
 
@@ -235,5 +235,84 @@ describe('withGitProxy', () => {
     expect(withGitProxy({ GIT_CONFIG_PARAMETERS: "'a.b'='c'" }, 'socks5://h:1').GIT_CONFIG_PARAMETERS).toBe("'a.b'='c' 'http.proxy'='socks5://h:1'");
     expect(withGitProxy({}, 'http://h:1').HTTPS_PROXY).toBeUndefined();
     expect(() => withGitProxy({}, "http://h'x")).toThrow(/引号/);
+  });
+});
+
+describe('yanked and deprecated', () => {
+  const p = (over: Record<string, unknown> = {}) =>
+    market.parseCatalog(
+      catalogText([
+        plugin({
+          versions: [
+            { version: '0.1.0', commit: c1 },
+            { version: '0.2.0', commit: c2, yanked: '会删掉项目里的封面' },
+          ],
+          ...over,
+        }),
+      ]),
+    ).plugins[0];
+
+  it('never offers a yanked version and tells whoever has it', () => {
+    expect(market.pickVersion(p(), '2.0.0')?.version).toBe('0.1.0');
+    // 装着撤回的那一版：给换回能用的一版，哪怕版本号更低。
+    expect(market.marketItem(p(), entry({ commit: c2, version: '0.2.0' }), '2.0.0')).toMatchObject({ state: 'update', installed_yanked: '会删掉项目里的封面', latest: { version: '0.1.0' } });
+    // 从别的仓库装的同名插件不受这个仓库的撤回影响。
+    expect(market.marketItem(p(), entry({ commit: c2, source: `github:other/onset-publisher#${c2}` }), '2.0.0').installed_yanked).toBe('');
+    const all = market.parseCatalog(catalogText([plugin({ versions: [{ version: '0.1.0', commit: c1, yanked: '坏了' }] })])).plugins[0];
+    expect(market.marketItem(all, undefined, '2.0.0').state).toBe('unavailable');
+  });
+
+  it('stops offering a deprecated plugin but keeps it working for those who have it', () => {
+    const d = p({ deprecated: '作者改做 onset-publisher-2 了' });
+    expect(market.marketItem(d, undefined, '2.0.0')).toMatchObject({ state: 'unavailable', latest: null });
+    expect(market.marketItem(d, entry(), '2.0.0').state).toBe('installed');
+  });
+
+  it('reads maintainers and checks the digest format', () => {
+    expect(p({ maintainers: ['someone'] }).maintainers).toEqual(['someone']);
+    expect(() => market.parseCatalog(catalogText([plugin({ versions: [{ version: '1.0.0', commit: c1, digest: 'md5:x' }] })]))).toThrow(/digest/);
+  });
+});
+
+describe('installing without git', () => {
+  const hasTar = spawnSync('tar', ['--version']).status === 0 && spawnSync('curl', ['--version']).status === 0;
+
+  it('builds the codeload address only for a GitHub commit', () => {
+    expect(githubArchiveURL(`github:someone/onset-publisher#${c1}`)).toBe(`https://codeload.github.com/someone/onset-publisher/tar.gz/${c1}`);
+    expect(githubArchiveURL(`https://github.com/someone/onset-publisher.git#${c1}`)).toBe(`https://codeload.github.com/someone/onset-publisher/tar.gz/${c1}`);
+    expect(githubArchiveURL('github:someone/onset-publisher#v0.1.0')).toBe('');
+    expect(githubArchiveURL(`https://gitlab.com/someone/x.git#${c1}`)).toBe('');
+  });
+
+  /** 照 GitHub 的样子打一个包：顶层一个 <仓库>-<commit> 目录。 */
+  function pack(): { url: string; digest: string } {
+    const root = temp('onset-archive-');
+    const top = path.join(root, `onset-publisher-${c1}`);
+    fs.cpSync(fake, top, { recursive: true });
+    const file = path.join(root, 'plugin.tar.gz');
+    const r = spawnSync('tar', ['-czf', file, '-C', root, path.basename(top)]);
+    if (r.status !== 0) throw new Error(String(r.stderr));
+    return { url: `file://${file}`, digest: treeDigest(top) };
+  }
+
+  it('downloads, checks the digest and stages without cloning', async () => {
+    if (!hasTar) return;
+    const env = { ...process.env, ONSET_STATIONS_DIR: temp('onset-stations-'), PATH: '/usr/bin:/bin' };
+    const { url, digest } = pack();
+    const dest = path.join(temp('onset-fetch-'), 'src');
+    await fetchArchive(url, digest, dest, env);
+    const staged = stageStation(`github:someone/onset-publisher#${c1}`, env, () => {}, { id: 'fake-publisher', commit: c1 }, dest);
+    expect(staged.entry).toMatchObject({ id: 'fake-publisher', commit: c1, digest, source: `github:someone/onset-publisher#${c1}` });
+    installStaged(staged.token, env);
+    expect(readInstalled(stationsDir(env)).plugins[0].digest).toBe(digest);
+  });
+
+  it('throws away an archive whose content does not match', async () => {
+    if (!hasTar) return;
+    const { url } = pack();
+    const dest = path.join(temp('onset-fetch-'), 'src');
+    await expect(fetchArchive(url, 'sha256:' + '0'.repeat(64), dest, process.env)).rejects.toThrow(/插件中心记的是/);
+    expect(fs.existsSync(dest)).toBe(false);
+    expect(fs.existsSync(dest + '.tar.gz')).toBe(false);
   });
 });

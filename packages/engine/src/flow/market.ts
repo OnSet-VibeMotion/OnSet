@@ -46,6 +46,10 @@ export interface CatalogVersion {
   commit: string;
   /** 这一版要的最低片场版本，空是不限。 */
   requires_onset: string;
+  /** 这一版压缩包的内容摘要（treeDigest 的写法）；有它时 GitHub 来源不用 git 也能装（archive.ts）。 */
+  digest: string;
+  /** 撤回的原因；撤回的版本不再给人装，装着它的人会看到这句话。空是没撤回。 */
+  yanked: string;
 }
 
 export interface CatalogPlugin {
@@ -61,6 +65,10 @@ export interface CatalogPlugin {
   /** 图标：目录仓库里的相对路径或 https 地址，空是没有。 */
   icon: string;
   screenshots: string[];
+  /** 能改这一条登记的 GitHub 账号（插件中心的 CI 核对 PR 作者）；客户端只显示。 */
+  maintainers: string[];
+  /** 不再维护的原因；不再给人装，装着它的人会看到这句话。空是还在维护。 */
+  deprecated: string;
   versions: CatalogVersion[];
 }
 
@@ -115,7 +123,7 @@ export function parseCatalog(body: string): Catalog {
   const plugins = raw.plugins.map((p, i): CatalogPlugin => {
     const where = `plugins[${i}]`;
     if (!isObject(p)) throw new Error(`${where} 要是对象`);
-    known(p, ['id', 'name', 'description', 'author', 'license', 'tags', 'homepage', 'source', 'icon', 'screenshots', 'versions'], where);
+    known(p, ['id', 'name', 'description', 'author', 'license', 'tags', 'homepage', 'source', 'icon', 'screenshots', 'maintainers', 'deprecated', 'versions'], where);
     const id = text(p, 'id', where, true);
     if (!idPattern.test(id)) throw new Error(`${where}.id 只能用小写字母、数字与 -，以字母开头：${id}`);
     if (seen.has(id)) throw new Error(`插件目录里 ${id} 出现了两次`);
@@ -143,14 +151,16 @@ export function parseCatalog(body: string): Catalog {
     const versions = p.versions.map((v, j): CatalogVersion => {
       const vw = `${where}.versions[${j}]`;
       if (!isObject(v)) throw new Error(`${vw} 要是对象`);
-      known(v, ['version', 'ref', 'commit', 'requires_onset'], vw);
+      known(v, ['version', 'ref', 'commit', 'requires_onset', 'digest', 'yanked'], vw);
       const version = text(v, 'version', vw, true);
       if (!validSemver(version)) throw new Error(`${vw}.version 要是 x.y.z：${version}`);
       const commit = text(v, 'commit', vw, true);
       if (!commitPattern.test(commit)) throw new Error(`${vw}.commit 要是 40 位小写十六进制：${commit}`);
       const requires = text(v, 'requires_onset', vw, false);
       if (requires !== '' && !validSemver(requires)) throw new Error(`${vw}.requires_onset 要是 x.y.z：${requires}`);
-      return { version, ref: text(v, 'ref', vw, false), commit, requires_onset: requires };
+      const digest = text(v, 'digest', vw, false);
+      if (digest !== '' && !/^sha256:[0-9a-f]{64}$/.test(digest)) throw new Error(`${vw}.digest 要是 sha256:<64 位十六进制>`);
+      return { version, ref: text(v, 'ref', vw, false), commit, requires_onset: requires, digest, yanked: text(v, 'yanked', vw, false) };
     });
     const vs = new Set<string>();
     for (const v of versions) {
@@ -168,6 +178,8 @@ export function parseCatalog(body: string): Catalog {
       source,
       icon: assetPath(text(p, 'icon', where, false), `${where}.icon`),
       screenshots: texts(p, 'screenshots', where).map((s, k) => assetPath(s, `${where}.screenshots[${k}]`)),
+      maintainers: texts(p, 'maintainers', where),
+      deprecated: text(p, 'deprecated', where, false),
       versions,
     };
   });
@@ -176,14 +188,15 @@ export function parseCatalog(body: string): Catalog {
 
 /** 这台片场能装的最新一版：requires_onset 不高于 onset 的版本。onset 的版本不是 x.y.z（开发版）时不查。 */
 export function pickVersion(p: CatalogPlugin, onset: string): CatalogVersion | null {
-  const ok = p.versions.filter((v) => v.requires_onset === '' || !validSemver(onset) || compareSemver(onset, v.requires_onset) >= 0);
+  const ok = p.versions.filter((v) => v.yanked === '').filter((v) => v.requires_onset === '' || !validSemver(onset) || compareSemver(onset, v.requires_onset) >= 0);
   if (ok.length === 0) return null;
   return ok.reduce((a, b) => (compareSemver(b.version, a.version) > 0 ? b : a));
 }
 
-/** 所有版本里最新的一版（这台片场装不上时，告诉用户要更新到哪一版）。 */
-export function newestVersion(p: CatalogPlugin): CatalogVersion {
-  return p.versions.reduce((a, b) => (compareSemver(b.version, a.version) > 0 ? b : a));
+/** 没撤回的版本里最新的一版（这台片场装不上时，告诉用户要更新到哪一版）；全撤回了为 null。 */
+export function newestVersion(p: CatalogPlugin): CatalogVersion | null {
+  const live = p.versions.filter((v) => v.yanked === '');
+  return live.length === 0 ? null : live.reduce((a, b) => (compareSemver(b.version, a.version) > 0 ? b : a));
 }
 
 /** 装某一版用的来源：钉在 commit 上。 */
@@ -208,8 +221,9 @@ export function repoKey(source: string): string {
  * - installed：装的就是能装的最新一版（或更新）；update：有新版本
  * - other_source：装了同 id 的插件，但不是从这个仓库装的（不给升级，免得悄悄换了作者）
  * - builtin：和内置插件同名（目录写错了），不给装
+ * - unavailable：没装，但插件不再维护或每一版都撤回了，不给装
  */
-export type MarketState = 'available' | 'incompatible' | 'installed' | 'update' | 'other_source' | 'builtin';
+export type MarketState = 'available' | 'incompatible' | 'installed' | 'update' | 'other_source' | 'builtin' | 'unavailable';
 
 export interface MarketItem {
   plugin: CatalogPlugin;
@@ -223,24 +237,33 @@ export interface MarketItem {
   /** 已装的版本与 commit。 */
   installed_version: string;
   installed_commit: string;
+  /** 装着的那一版被撤回了：撤回的原因（只在从这个仓库装的时候看）。 */
+  installed_yanked: string;
 }
 
 export function marketItem(p: CatalogPlugin, installed: InstalledEntry | undefined, onset: string, builtinIDs: ReadonlySet<string> = new Set()): MarketItem {
-  const latest = pickVersion(p, onset);
+  // 不再维护的插件不给新装，也不提示升级；装着的照旧能用，界面把原因告诉用户。
+  const latest = p.deprecated === '' ? pickVersion(p, onset) : null;
+  const sameRepo = !!installed && repoKey(installed.source) === repoKey(p.source);
+  const yanked = sameRepo ? (p.versions.find((v) => v.commit === installed!.commit)?.yanked ?? '') : '';
   const base = {
     plugin: p,
     latest,
     latest_source: latest ? versionSource(p, latest) : '',
-    requires_onset: latest ? '' : newestVersion(p).requires_onset,
+    requires_onset: latest ? '' : (newestVersion(p)?.requires_onset ?? ''),
     installed_version: installed?.version ?? '',
     installed_commit: installed?.commit ?? '',
+    installed_yanked: yanked,
   };
   if (builtinIDs.has(p.id)) return { ...base, state: 'builtin' };
-  if (!installed) return { ...base, state: latest ? 'available' : 'incompatible' };
-  if (repoKey(installed.source) !== repoKey(p.source)) return { ...base, state: 'other_source' };
+  if (!installed) {
+    if (latest) return { ...base, state: 'available' };
+    return { ...base, state: p.deprecated !== '' || newestVersion(p) === null ? 'unavailable' : 'incompatible' };
+  }
+  if (!sameRepo) return { ...base, state: 'other_source' };
   if (!latest || installed.commit === latest.commit) return { ...base, state: 'installed' };
-  // 装着的版本号已经比目录里能装的新（例如从分支装的开发版），不提示「有新版本」。
-  const newer = !validSemver(installed.version) || compareSemver(latest.version, installed.version) > 0;
+  // 装着的版本号已经比目录里能装的新（例如从分支装的开发版），不提示「有新版本」；装着的那一版被撤回时照样给换。
+  const newer = yanked !== '' || !validSemver(installed.version) || compareSemver(latest.version, installed.version) > 0;
   return { ...base, state: newer ? 'update' : 'installed' };
 }
 

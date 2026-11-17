@@ -95,6 +95,9 @@ function MarketCard({ item, busy, onInstall, onUpdate }: { item: MarketItem; bus
           </em>
         )}
         {stateNotes[item.state] && item.state !== 'installed' && <em className="market-note">{stateNotes[item.state]}</em>}
+        {item.state === 'unavailable' && !item.deprecated && <em className="market-note">每一版都已撤回，暂时装不了</em>}
+        {item.deprecated && <em className="market-note market-warn">作者已不再维护：{item.deprecated}</em>}
+        {item.installed_yanked && <em className="market-note market-warn">你装着的 {item.installed_version} 已被撤回：{item.installed_yanked}</em>}
       </div>
       <div className="market-actions">
         {item.state === 'available' && (

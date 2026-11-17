@@ -580,6 +580,12 @@ export function PluginSettings({ version, onChanged, run, onOpenPage }: { versio
     task.start(`/api/market/${kind}`, kind === 'install' ? `取回「${item.name}」` : `取回「${item.name}」的新版本`, { id: item.id, commit: item.latest.commit }, show);
   };
   const marketUpdates = new Map((market.data?.items ?? []).filter((it) => it.state === 'update').map((it) => [it.id, it]));
+  // 插件中心说装着的那一版撤回了、或插件不再维护：「我的插件」里也照实说一句。
+  const marketWarnings = new Map(
+    (market.data?.items ?? [])
+      .filter((it) => it.state !== 'other_source' && (it.installed_yanked || (it.deprecated && it.installed_version)))
+      .map((it) => [it.id, it.installed_yanked ? `这一版已被作者撤回：${it.installed_yanked}` : `作者已不再维护：${it.deprecated}`]),
+  );
   const fetchPlugin = () => {
     const value = source.trim();
     if (value === '' || pending !== null || task.busy !== '') return;
@@ -675,6 +681,7 @@ export function PluginSettings({ version, onChanged, run, onOpenPage }: { versio
                       {placement(s)} · {s.version}
                       {needsSetup && <em className="station-needs"> · 还有设置没填</em>}
                     </span>
+                    {marketWarnings.has(s.id) && <em className="station-warn">{marketWarnings.get(s.id)}</em>}
                   </div>
                   <span className="station-badge">第三方</span>
                   <button

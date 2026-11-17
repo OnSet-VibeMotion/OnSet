@@ -52,6 +52,7 @@ export { InstalledFile, readInstalled, roleOf, type Installed, type InstalledEnt
 export { treeDigest } from './digest';
 export { fetchStation, parseSource, StationsDirEnv, stationsDir, withGitProxy, writeStationForTest } from './fetch';
 export * as market from './market';
+export { fetchArchive, githubArchiveURL, MaxArchiveBytes } from './archive';
 export { brokenParticipants, loadStations, stationExtras, type LoadedStations, type StationProblem } from './load';
 export { installedEntry, installStation, permissionLines, removeStation, updateDiff, type StationUpdate } from './update';
 export { discardStaged, HookEventLabels, installStaged, previewOf, readStaged, stageStation, stageUpdate, StagingDir, type StageExpect, type Staged, type StationPreview } from './staging';

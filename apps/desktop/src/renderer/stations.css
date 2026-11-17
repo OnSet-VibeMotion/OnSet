@@ -894,3 +894,10 @@
   font-size: 12px;
   color: var(--muted);
 }
+
+.stations.market .market-warn,
+.stations .station-warn {
+  font-size: 11px;
+  font-style: normal;
+  color: var(--bad);
+}

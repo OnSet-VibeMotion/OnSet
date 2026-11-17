@@ -171,7 +171,11 @@ function newStaging(env: Env): { token: string; dir: string } {
 }
 
 /** 按来源取到暂存处，校验清单。不写已装插件清单。 */
-function fetchToStaging(spec: string, env: Env, log: (line: string) => void): { token: string; entry: InstalledEntry; manifest: Manifest } {
+/**
+ * prepared：已经取好、核对过内容摘要的目录（archive.ts 的 fetchArchive，不用 git 的那条路）。给了就挪进暂存处，
+ * 不再克隆；commit 是来源里写的完整 commit。
+ */
+function fetchToStaging(spec: string, env: Env, log: (line: string) => void, prepared?: string): { token: string; entry: InstalledEntry; manifest: Manifest } {
   const src = parseSource(spec);
   const { token, dir } = newStaging(env);
   try {
@@ -179,6 +183,15 @@ function fetchToStaging(spec: string, env: Env, log: (line: string) => void): { 
       const manifest = readManifest(src.dir);
       checkFiles(src.dir, manifest);
       const entry: InstalledEntry = { id: manifest.id, version: manifest.version, source: `link:${src.dir}`, commit: '', digest: '', role: roleOf(manifest) };
+      return { token, entry, manifest };
+    }
+    if (prepared) {
+      if (!/^[0-9a-f]{40}$/.test(src.ref)) throw new Error(`用压缩包取插件时来源要钉在完整 commit 上：${spec}`);
+      const checkout = path.join(dir, 'src');
+      fs.renameSync(prepared, checkout);
+      const manifest = readManifest(checkout);
+      checkFiles(checkout, manifest);
+      const entry: InstalledEntry = { id: manifest.id, version: manifest.version, source: spec.trim(), commit: src.ref, digest: treeDigest(checkout), role: roleOf(manifest) };
       return { token, entry, manifest };
     }
     const got = cloneSource(src.url, src.ref, path.join(dir, 'src'), env, log);
@@ -215,8 +228,8 @@ function checkExpect(token: string, entry: InstalledEntry, expect: StageExpect |
 }
 
 /** 第一步：把一个插件取到暂存处，给出它的实情。expect 给了就核对 id 与 commit（插件中心）。 */
-export function stageStation(spec: string, env: Env = process.env, log: (line: string) => void = () => {}, expect?: StageExpect): Staged {
-  const { token, entry, manifest } = fetchToStaging(spec, env, log);
+export function stageStation(spec: string, env: Env = process.env, log: (line: string) => void = () => {}, expect?: StageExpect, prepared?: string): Staged {
+  const { token, entry, manifest } = fetchToStaging(spec, env, log, prepared);
   checkExpect(token, entry, expect, env);
   writeStaged(token, { entry }, env);
   return { token, entry, preview: previewOf(manifest, entry) };
@@ -227,7 +240,7 @@ export function stageStation(spec: string, env: Env = process.env, log: (line: s
  * 缺省按已装那一项记的来源取；从插件中心升级时 source 是目录里新一版的来源（`<仓库>#<commit>`），
  * 必须和已装的是同一个仓库（换仓库等于换作者，要先去掉再添加），expect 核对 commit。
  */
-export function stageUpdate(id: string, env: Env = process.env, log: (line: string) => void = () => {}, opts: { source?: string; expect?: StageExpect } = {}): Staged {
+export function stageUpdate(id: string, env: Env = process.env, log: (line: string) => void = () => {}, opts: { source?: string; expect?: StageExpect; prepared?: string } = {}): Staged {
   const before = readInstalled(stationsDir(env)).plugins.find((e) => e.id === id);
   if (!before) throw new Error(`没有装插件 ${id}`);
   if (parseSource(before.source).kind === 'link') throw new Error(`插件 ${id} 来自本机目录，改动立即生效，不需要更新`);
@@ -236,7 +249,7 @@ export function stageUpdate(id: string, env: Env = process.env, log: (line: stri
     const next = parseSource(source);
     if (next.kind !== 'git' || repoKey(source) !== repoKey(before.source)) throw new Error(`插件 ${id} 装的来源是 ${before.source}，不能换成 ${source}；要换来源请先去掉再添加`);
   }
-  const { token, entry, manifest } = fetchToStaging(source, env, log);
+  const { token, entry, manifest } = fetchToStaging(source, env, log, opts.prepared);
   if (manifest.id !== id) {
     removeTree(stagingDir(token, env));
     throw new Error(`来源 ${source} 现在的清单 id 是 ${manifest.id}，与这个插件（${id}）不符；要换插件请先去掉再添加`);

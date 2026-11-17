@@ -11,7 +11,7 @@ const c1 = 'a'.repeat(40);
 const c2 = 'b'.repeat(40);
 const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
 
-function catalog(dir: string, versions = [{ version: '0.1.0', ref: 'v0.1.0', commit: c1 }]): string {
+function catalog(dir: string, versions: Record<string, string>[] = [{ version: '0.1.0', ref: 'v0.1.0', commit: c1 }]): string {
   fs.mkdirSync(path.join(dir, 'icons'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'icons', 'p.png'), png);
   const file = path.join(dir, 'index.json');
@@ -84,7 +84,8 @@ describe('market API', () => {
 
       // 装上之后出了新版本：给「更新」，同样只取到暂存。
       recordInstalled(process.env.ONSET_STATIONS_DIR!, { id: 'onset-publisher', version: '0.1.0', source: `github:someone/onset-publisher#${c1}`, commit: c1, digest: 'x', role: { flow: false, replaces: '', after: '', nodes: false } });
-      catalog(dir, [{ version: '0.1.0', ref: 'v0.1.0', commit: c1 }, { version: '0.2.0', ref: 'v0.2.0', commit: c2 }]);
+      const digest = 'sha256:' + '1'.repeat(64);
+      catalog(dir, [{ version: '0.1.0', ref: 'v0.1.0', commit: c1 }, { version: '0.2.0', ref: 'v0.2.0', commit: c2, digest }, { version: '0.3.0', commit: 'c'.repeat(40), yanked: '会删掉封面' }]);
       expect((await studioRequest(s, 'POST', '/api/market/refresh', '{}')).status).toBe(202);
       await startRefresh();
       r = await studioRequest(s, 'GET', '/api/market');
@@ -94,8 +95,13 @@ describe('market API', () => {
       expect(r.status).toBe(202);
       expect(opOf(await waitStudioTask(s, r.body.task_id))).toEqual({
         name: 'station_update',
-        params: { id: 'onset-publisher', source: `github:someone/onset-publisher#${c2}`, expect_commit: c2 },
+        // 有内容摘要：执行进程先试压缩包。
+        params: { id: 'onset-publisher', source: `github:someone/onset-publisher#${c2}`, expect_commit: c2, expect_digest: digest },
       });
+      // 撤回的版本不给装。
+      r = await studioRequest(s, 'POST', '/api/market/update', JSON.stringify({ id: 'onset-publisher', commit: 'c'.repeat(40) }));
+      expect(r.status).toBe(409);
+      expect(r.body.message).toContain('会删掉封面');
     } finally {
       s.shutdown();
     }

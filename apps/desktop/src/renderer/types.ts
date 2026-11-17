@@ -896,13 +896,17 @@ export interface SettingsResponse {
 }
 
 /** 插件中心里一个插件与这台电脑的关系（flow/market.ts 的 MarketState）。 */
-export type MarketState = 'available' | 'incompatible' | 'installed' | 'update' | 'other_source' | 'builtin';
+export type MarketState = 'available' | 'incompatible' | 'installed' | 'update' | 'other_source' | 'builtin' | 'unavailable';
 
 export interface MarketVersion {
   version: string;
   ref: string;
   commit: string;
   requires_onset: string;
+  /** 内容摘要：有它时不用 git 也能装。 */
+  digest: string;
+  /** 撤回的原因，空是没撤回。 */
+  yanked: string;
 }
 
 /** GET /api/market 的一项（studio/market.ts）。 */
@@ -925,6 +929,11 @@ export interface MarketItem {
   requires_onset: string;
   installed_version: string;
   installed_commit: string;
+  /** 装着的那一版被撤回了：原因。 */
+  installed_yanked: string;
+  /** 不再维护的原因，空是还在维护。 */
+  deprecated: string;
+  maintainers: string[];
 }
 
 export interface MarketResponse {
