@@ -123,6 +123,7 @@ describe('agentrun parse', () => {
       { tool: 'codex', first: 'codex-1', second: 'codex-2', session: '01a19706-15cc-7c23-92b3-d0008785ee57', writeTool: 'shell' },
       { tool: 'qoder', first: 'qoder-1', second: 'qoder-2', session: 'c43bb3cd-ea41-495e-8fac-2517596a2fd5', writeTool: 'Write' },
       { tool: 'opencode', first: 'opencode-1', second: 'opencode-2', session: 'ses_e68f70edcffeGdFO8OOw9sCE5o', writeTool: 'patch' },
+      { tool: 'mcode', first: 'mcode-1', second: 'mcode-2', session: 'mvs_e6041444c58149c8935095ea8ade95fe', writeTool: 'write' },
     ];
     for (const test of tests) {
       it(test.tool, () => {
@@ -149,7 +150,7 @@ describe('agentrun parse', () => {
   });
 
   it('recorded streams carry usage', () => {
-    for (const [tool, name] of Object.entries({ claude: 'claude-1', codex: 'codex-1', qoder: 'qoder-1', opencode: 'opencode-1' })) {
+    for (const [tool, name] of Object.entries({ claude: 'claude-1', codex: 'codex-1', qoder: 'qoder-1', opencode: 'opencode-1', mcode: 'mcode-1' })) {
       const [, parser] = parseFixture(tool, name);
       const usage = parser.usage();
       // qoder 按积分计费，token 字段实测全为 0，只能确认读到了用量事件。
@@ -163,6 +164,30 @@ describe('agentrun parse', () => {
     const [events] = parseFixture('qoder', 'qoder-1');
     const failed = kinds(events, KindToolResult).filter((event) => event.is_error && (event.text ?? '').includes('approval'));
     expect(failed.length).toBeGreaterThan(0);
+  });
+
+  // mcode 0.6.12 实测的流：todowrite 译成待办，失败的命令（状态 3）带 is_error，整轮超时译成错误；只认完成的思考与正文。
+  it('mcode todos, failures and timeouts', () => {
+    const parser = newParser('mcode');
+    const base = { schemaVersion: 1, runId: 'r', sessionId: 'mvs_x', turnId: 't' };
+    const todos = { todos: [{ content: '写稿', status: 'in_progress', priority: 'high' }, { content: '配音', status: 'pending', priority: 'medium' }] };
+    const lines = [
+      { ...base, type: 'item.started', item: { id: 'call_1', type: 'tool_call', toolCall: { id: 'call_1', name: 'todowrite', status: 4 } } },
+      { ...base, type: 'item.updated', item: { id: 'call_1', type: 'tool_call', toolCall: { id: 'call_1', name: 'todowrite', status: 1, input: todos } } },
+      { ...base, type: 'item.completed', item: { id: 'call_1', type: 'tool_call', toolCall: { id: 'call_1', name: 'todowrite', status: 2, input: todos, output: { content: [{ type: 'text', text: 'success' }] } } } },
+      { ...base, type: 'item.updated', item: { id: 'r1', type: 'reasoning', contentDelta: '想' } },
+      { ...base, type: 'item.completed', item: { id: 'r1', type: 'reasoning', content: '想一想' } },
+      { ...base, type: 'item.completed', item: { id: 'call_2', type: 'tool_call', toolCall: { id: 'call_2', name: 'bash', status: 3, input: { command: 'nosuch' }, output: { content: [{ type: 'text', text: 'command not found' }], details: { execution: { status: 'failed', exitCode: 127 } } } } } },
+      { ...base, type: 'turn.failed', status: 'timeout', durationMs: 2058 },
+    ];
+    const events = lines.flatMap((line) => parser.parse(JSON.stringify(line)));
+    expect(kinds(events, KindSession)).toHaveLength(1);
+    expect(kinds(events, KindToolCall).map((e) => e.tool)).toEqual(['todowrite', 'bash']);
+    expect(kinds(events, KindPlan)[0].plan).toEqual([{ text: '写稿', status: 'in_progress' }, { text: '配音', status: 'pending' }]);
+    expect(kinds(events, KindThinking).map((e) => e.text)).toEqual(['想一想']);
+    const results = kinds(events, KindToolResult);
+    expect(results.map((e) => e.is_error ?? false)).toEqual([false, true]);
+    expect(kinds(events, KindError)[0].text).toContain('超时');
   });
 
   // qoder 经 mcp_call 调 MCP 工具（2026-11 实测的流）：要拆成真正的工具名与参数。

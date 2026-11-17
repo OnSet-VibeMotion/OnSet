@@ -169,6 +169,10 @@ export function rendererHome(tool: string, home: string): RendererHome {
         files: [],
         hidden: [h('.config', 'opencode', 'skills'), h('.config', 'opencode', 'skill'), h('.claude', 'skills'), agents],
       };
+    // mcode 的数据目录 ~/.minimax 放登录态、会话、sqlite 与后台任务日志，要写；用户级技能与插件藏起来，.builtin-skills 是它自带的，
+    // 照常可读。启动时对数据目录本身加锁（同级的 ~/.minimax.lock），写不了就报 agent_name_conflict_migration_failed:lock（0.6.12 实测）。
+    case 'mcode':
+      return { state: [h('.minimax')], files: [h('.minimax.lock')], hidden: [h('.minimax', 'skills'), h('.minimax', 'plugins'), agents] };
     // 国内版的状态在 ~/.qoder-cn，国际版在 ~/.qoder；两版共用 .qoder/skills 的写法，两边都放行、都藏技能。
     case 'qoder':
     case 'qoder-intl':

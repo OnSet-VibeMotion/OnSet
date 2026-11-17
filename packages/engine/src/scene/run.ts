@@ -18,6 +18,9 @@ import {
   formatUsage,
   newUsage,
   onsetToolsServer,
+  McodeMcpFile,
+  mcodeMcpJSON,
+  type McpServer,
   rendererEnv,
   presetSessionID,
   rendererLaunch,
@@ -212,7 +215,15 @@ async function runScene(
   let unstage = () => {};
   try {
     // qoder 用自己的 Skill 工具加载本镜头的技能（链接只在渲染期间存在，见 stageRendererSkills）。
-    unstage = stageRendererSkills(renderer, s.directory, resolvedSkills, prompt);
+    const unstageSkills = stageRendererSkills(renderer, s.directory, resolvedSkills, prompt);
+    unstage = unstageSkills;
+    if (renderer === 'mcode' && access.toolsServer) {
+      const unstageMcp = stageMcodeMcp(s.directory, access.toolsServer);
+      unstage = () => {
+        unstageMcp();
+        unstageSkills();
+      };
+    }
     await render();
   } catch (e) {
     err = e;
@@ -513,4 +524,38 @@ export function verifyOutput(s: Scene, baseEnv: Record<string, string>, toleranc
   problems.push(...determinism.problems(scan));
   for (const finding of scan.findings) checks.push(DeterminismCheckPrefix + finding.rule);
   if (problems.length > 0) throw new VerificationError(s.output, problems, checks);
+}
+
+/**
+ * mcode exec 只从工作目录的 .mcp.json 读 MCP（tools.mcodeMcpJSON），渲染期间在镜头目录里放一份 onset 工具服务的配置，
+ * 渲染完删掉。上次没删干净的（只有 onset 一个服务、跑的是 tools-mcp）直接换掉；镜头目录里原本就有别的 .mcp.json 时
+ * 不覆盖，照实报错——盖掉的话那份配置就丢了。
+ */
+export function stageMcodeMcp(sceneDir: string, server: McpServer): () => void {
+  const file = path.join(sceneDir, McodeMcpFile);
+  const ours = (text: string): boolean => {
+    try {
+      const servers = JSON.parse(text).mcpServers as Record<string, { args?: unknown }>;
+      const names = Object.keys(servers ?? {});
+      return names.length === 1 && names[0] === server.name && Array.isArray(servers[server.name]!.args) && (servers[server.name]!.args as unknown[]).includes('tools-mcp');
+    } catch {
+      return false;
+    }
+  };
+  let existing: string | null = null;
+  try {
+    existing = fs.readFileSync(file, 'utf8');
+  } catch {
+    existing = null;
+  }
+  if (existing !== null && !ours(existing)) throw new Error(`镜头目录里已有 ${McodeMcpFile}，MiniMax Code 渲染要在这里放 onset 工具服务的配置；请先挪走它：${file}`);
+  const content = mcodeMcpJSON(server);
+  fs.writeFileSync(file, content, { mode: 0o600 });
+  return () => {
+    try {
+      if (fs.readFileSync(file, 'utf8') === content) fs.rmSync(file, { force: true });
+    } catch {
+      // 已经不在了。
+    }
+  };
 }

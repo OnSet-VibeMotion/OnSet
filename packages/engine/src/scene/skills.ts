@@ -132,6 +132,8 @@ export const rendererSkillDirs: ReadonlyMap<string, SkillLocations> = new Map([
   ['qoder-intl', { home: '.qoder/skills', project: '.qoder/skills' }],
   ['codebuddy', { home: '.codebuddy/skills', project: '.codebuddy/skills' }],
   ['opencode', { home: '.config/opencode/skills', project: '.opencode/skills' }],
+  // mcode 0.6.12 实测：项目里认 .agents/skills、.minimax/skills、.claude/skills，并一直往上找到 git 根；家目录是数据目录 ~/.minimax/skills。
+  ['mcode', { home: '.minimax/skills', project: '.minimax/skills' }],
 ]);
 
 /** 校验候选目录里确实装了指定技能，并且必需文件全部存在。 */

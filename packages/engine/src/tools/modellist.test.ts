@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { saveService } from '../director';
-import { interactiveInvocation, modelArgs, modelListCommand, orchestratorInvocation, parseModelList, rendererInvocation, rendererLaunch, ValidRenderers, ValidTools } from './index';
+import { interactiveInvocation, mcodeModelOptions, modelArgs, modelListCommand, orchestratorInvocation, parseModelList, rendererInvocation, rendererLaunch, ValidRenderers, ValidTools } from './index';
 
 describe('model choice', () => {
   // 每家指定模型的参数不同，写错了不报错、只是悄悄用回默认模型（2026-11 各家 --help 实测）。
@@ -89,5 +89,40 @@ describe('model choice', () => {
     expect(parseModelList('claude', '').map((m) => m.id)).toContain('opus');
     // 制作人不跑命令：客户端后端直接问模型服务（studio/agents.ts）。
     expect(modelListCommand('director')).toBeNull();
+  });
+
+  // MiniMax Code 0.6.12 实测：exec 只有三档权限、没有 MCP 参数；客户端里编排一律走 ACP（安全与否在会话里切权限模式）。
+  it('runs MiniMax Code with exec and ACP', () => {
+    const access = { commands: [], readDirs: [] };
+    expect(rendererInvocation('mcode', 'p', false, access, 'minimax/MiniMax-M3', null, { effort: 'high' })).toEqual(['mcode', 'exec', '--cwd', '.', '--permission', 'smart', '--model', 'minimax/MiniMax-M3', '--effort', 'high', '--output-format', 'stream-json', 'p']);
+    expect(rendererInvocation('mcode', 'p', false, { ...access, unfiltered: true }, '', { id: 'mvs_1', resume: true })).toEqual(['mcode', 'exec', '--cwd', '.', '--permission', 'full', '--session', 'mvs_1', '--output-format', 'stream-json', 'p']);
+    const orchestrator = orchestratorInvocation('mcode', { workdir: '/w', prompt: 'long prompt', sessionID: 'mvs_2', resume: true, unsafe: true });
+    expect(orchestrator.argv).toEqual(['mcode', 'exec', '--cwd', '/w', '--permission', 'full', '--output-format', 'stream-json', '--session', 'mvs_2', '--input', '-']);
+    expect(orchestrator.stdin).toBe('long prompt');
+    expect(() => orchestratorInvocation('mcode', { workdir: '/w', prompt: 'p', sessionID: 'preset' })).toThrow('不支持预先指定会话 id');
+    expect(interactiveInvocation('mcode', { unsafe: false })).toEqual({ protocol: 'acp', argv: ['mcode', 'acp'], env: {} });
+    expect(interactiveInvocation('mcode', { unsafe: true })).toEqual({ protocol: 'acp', argv: ['mcode', 'acp'], env: {} });
+    expect(modelListCommand('mcode')).toEqual(['mcode', 'acp']);
+  });
+
+  it('reads the MiniMax Code models from the ACP session options', () => {
+    const configOptions = [
+      { id: 'permissionMode', currentValue: 'bypassPermissions', options: [] },
+      {
+        id: 'model',
+        currentValue: 'm:minimax:MiniMax-M3.1-Flash:v:thinking',
+        options: [
+          { value: 'm:minimax:MiniMax-M3.1-Flash:v:', name: 'M3.1-Flash' },
+          { value: 'm:minimax:MiniMax-M3.1-Flash:v:thinking', name: 'M3.1-Flash · thinking' },
+          { value: 'm:minimax:MiniMax-M3:v:', name: 'M3' },
+          { value: 'm:minimax:MiniMax-M3:v:thinking', name: 'M3 · thinking' },
+        ],
+      },
+    ];
+    const efforts = new Map([['minimax/MiniMax-M3.1-Flash', ['low', 'high']], ['minimax/MiniMax-M3', []]]);
+    expect(mcodeModelOptions(configOptions, efforts)).toEqual([
+      { id: 'minimax/MiniMax-M3.1-Flash', label: 'M3.1-Flash', isDefault: true, efforts: ['low', 'high'] },
+      { id: 'minimax/MiniMax-M3', label: 'M3', efforts: [] },
+    ]);
   });
 });

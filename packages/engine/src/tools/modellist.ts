@@ -11,6 +11,7 @@ import { CodexFastTier } from './options';
  * - codebuddy：没有列模型的命令，`--help` 里 --model 的说明写着「Currently supported: (a, b, …)」。
  * - opencode：`opencode models` 每行一个「服务商/模型」。
  * - claude：`--model` 的说明只给别名（fable、opus、sonnet）或完整模型名。
+ * - mcode（MiniMax Code）：没有列模型的命令，模型表在 ACP 会话的选项里，由 tools/mcodemodels.ts 握手取（不花额度）。
  * - director（制作人）：不跑命令，由客户端后端直接问在用的模型服务（director.listServiceModels，studio/agents.ts）。
  */
 
@@ -55,6 +56,9 @@ export function modelListCommand(tool: string): string[] | null {
       return ['codebuddy', '--help'];
     case 'opencode':
       return ['opencode', 'models'];
+    case 'mcode':
+      // 不直接解析输出：studio/agents.ts 按 fetchMcodeModels 走 ACP 握手。
+      return ['mcode', 'acp'];
     case 'claude':
     case 'director':
       return null;
@@ -127,6 +131,7 @@ export function parseModelList(tool: string, stdout: string): ModelOption[] {
       );
     }
     case 'director':
+    case 'mcode':
       return [];
     case 'opencode':
       return dedupe(

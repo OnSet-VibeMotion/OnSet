@@ -23,6 +23,7 @@ export const agentOrder: readonly { id: string; label: string; installURL: strin
   { id: 'qoder-intl', label: 'Qoder（国际版）', installURL: 'https://docs.qoder.com/cli/quick-start' },
   { id: 'codebuddy', label: 'CodeBuddy', installURL: 'https://www.codebuddy.cn/docs/cli/installation' },
   { id: 'opencode', label: 'OpenCode', installURL: 'https://opencode.ai/docs/' },
+  { id: 'mcode', label: 'MiniMax Code', installURL: 'https://www.npmjs.com/package/@minimax-ai/code' },
   { id: 'director', label: '制作人', installURL: '' },
 ];
 
@@ -225,6 +226,21 @@ export async function agentModelsAPI(request: Request, rest: string): Promise<Re
       models = tools.parseModelList(tool, await captureOutput(binary, argv.slice(1), env).catch(() => ''));
       if (models.length === 0) return writeJSON(200, goMap({ tool, models: [], error: '没能从 ' + argv[0] + ' 读出模型列表（' + (err as Error).message + '），可以直接填模型名' }));
     }
+  } else if (tool === 'mcode') {
+    // mcode 的模型表只在 ACP 会话选项里给，见 tools/mcodemodels.ts。
+    const env = envMap() as Record<string, string>;
+    let binary: string;
+    try {
+      binary = lookPath(argv![0]!, env.PATH ?? '');
+    } catch {
+      return writeJSON(200, goMap({ tool, models: [], error: '找不到 mcode，可以直接填模型名' }));
+    }
+    try {
+      models = await tools.fetchMcodeModels(binary, env);
+    } catch (err) {
+      return writeJSON(200, goMap({ tool, models: [], error: '没能从 mcode 读出模型列表（' + (err as Error).message + '），可以直接填「服务商/模型」' }));
+    }
+    if (models.length === 0) return writeJSON(200, goMap({ tool, models: [], error: '没能从 mcode 读出模型列表，可以直接填「服务商/模型」' }));
   } else {
     const env = envMap() as Record<string, string>;
     let binary: string;

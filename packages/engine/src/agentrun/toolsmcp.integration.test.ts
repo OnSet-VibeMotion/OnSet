@@ -12,7 +12,7 @@ import { KindError, KindText, KindToolCall, newSessionID, run } from './index';
  * 而且不用审批。每次都是真实的模型调用，只在设置 ONSET_TEST_TOOLS_MCP 时运行，例如
  *
  *   npm run build -w @onset/cli
- *   ONSET_TEST_TOOLS_MCP=claude,codex,qoder,qoder-intl,codebuddy,opencode npx vitest run --root packages/engine src/agentrun -t RealToolsMCP
+ *   ONSET_TEST_TOOLS_MCP=claude,codex,qoder,qoder-intl,codebuddy,opencode,mcode npx vitest run --root packages/engine src/agentrun -t RealToolsMCP
  *
  * 改了任何一家挂 MCP 的方式（tools.ts、acp.ts、codexapp.ts）之后，要在本机对它跑一遍。
  * opencode 默认模型不可用时用 ONSET_TEST_OPENCODE_MODEL 指定（例如 github-copilot/claude-haiku-4.5）。

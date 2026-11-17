@@ -26,6 +26,7 @@ describe('usage', () => {
       ['claude', `{"type":"result","usage":{"input_tokens":4,"cache_creation_input_tokens":18803,"cache_read_input_tokens":40437,"output_tokens":207}}`, 59244, 40437, 207],
       ['codex', `{"type":"turn.completed","usage":{"input_tokens":41579,"cached_input_tokens":32768,"output_tokens":55}}`, 41579, 32768, 55],
       ['opencode', `{"type":"step_finish","part":{"tokens":{"input":3410,"output":36,"reasoning":16,"cache":{"read":16976,"write":0}}}}`, 20386, 16976, 52],
+      ['mcode', `{"schemaVersion":1,"type":"turn.completed","model":{"providerId":"minimax","modelId":"MiniMax-M3.1-Flash"},"usage":{"inputTokens":29948,"outputTokens":751,"cacheReadTokens":33591,"totalTokens":30699}}`, 63539, 33591, 751],
     ];
     for (const [tool, line, input, cached, output] of cases) {
       const u = newUsage();

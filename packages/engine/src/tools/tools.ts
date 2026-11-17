@@ -15,12 +15,12 @@ export const UserMessageMarker = '[[USER_MESSAGE]]';
  * rendererInvocation、orchestratorInvocation、projectRulesFilename 的 switch）。
  * Go 里是 map[string]bool，这里用 Set：普通对象会让 "constructor" 之类的键查出真值。
  */
-export const ValidTools: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'qoder-intl', 'codebuddy', 'opencode', 'director']);
+export const ValidTools: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'qoder-intl', 'codebuddy', 'opencode', 'mcode', 'director']);
 
 /**
  * 能当渲染工具的工具；RENDERER、scene.json 的 renderer、记忆的 applies_when.renderers 按这张表校验。
  */
-export const ValidRenderers: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'qoder-intl', 'codebuddy', 'opencode', 'director']);
+export const ValidRenderers: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'qoder-intl', 'codebuddy', 'opencode', 'mcode', 'director']);
 
 /**
  * Qoder 有两个版本，账号与服务互不相通：国内版 `qoder`（命令 qoderclicn，状态在 ~/.qoder-cn）与国际版
@@ -167,6 +167,18 @@ export function opencodeMcpConfig(server: McpServer): Record<string, unknown> {
 }
 
 /**
+ * MiniMax Code（mcode）的 MCP：`mcode exec` 没有给 MCP 的参数，只读工作目录的 `.mcp.json`、数据目录的 `mcp.json`
+ * 与 ACP 会话里给的（0.6.12 实测）。数据目录（MINIMAX_DATA_DIR）里还有登录态，不能换；渲染器于是由 scene.run
+ * 在镜头目录里临时写一份 `.mcp.json`（stageMcodeMcp），编排工具在客户端里一律走 ACP（interactiveInvocation）。
+ * 格式与 claude 的 --mcp-config 相同，工具全名也是 mcp__<服务>__<工具>。
+ */
+export const McodeMcpFile = '.mcp.json';
+
+export function mcodeMcpJSON(server: McpServer): string {
+  return JSON.stringify(JSON.parse(mcpConfigJSON([server])), null, 2) + '\n';
+}
+
+/**
  * 把 RendererAccess 译成 claude --settings 的 JSON。
  * .env 的读取禁令与执行契约一致：渲染器不得读取或打印凭据。
  * Go 里是 map[string]any，json.Marshal 按键排序，这里照那个顺序写。
@@ -282,6 +294,14 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
       if (unsafe) args.push('--auto');
       if (session?.resume) args.push('-s', session.id);
       return [...args, '--format', 'json', prompt];
+    }
+    case 'mcode': {
+      // 工作目录由 scene.run 设成镜头目录，--cwd 再写一遍：mcode 按它定工作区（技能、.mcp.json 都从这里找）。
+      // exec 只有三档权限（smart / full / off），没有命令白名单：套了系统沙箱或 Windows 全放开时 full，否则 smart
+      // （自动批准它认为安全的，要批准的在 exec 里没人能答，直接拒绝）。工具服务经镜头目录里的 .mcp.json 给（mcodeMcpJSON）。
+      const mode = unsafe || access.unfiltered ? 'full' : 'smart';
+      const resume = session?.resume ? ['--session', session.id] : [];
+      return ['mcode', 'exec', '--cwd', '.', '--permission', mode, ...m, ...resume, '--output-format', 'stream-json', prompt];
     }
     case 'director':
       return directorCommand().argv;
@@ -427,6 +447,8 @@ export interface InteractiveInvocation {
  * - codex app-server：审批策略与沙箱在 thread/start 里给，见 agentrun/codexapp.ts。
  */
 export function interactiveInvocation(tool: string, o: Pick<OrchestratorOptions, 'unsafe' | 'access' | 'toolsServer' | 'model' | 'options'>, env: Record<string, string | undefined> = {}): InteractiveInvocation | null {
+  // mcode 的 exec 挂不上工具服务（见 mcodeMcpJSON），所以客户端里不安全模式也走 ACP，权限模式在会话里设（agentrun/acp.ts）。
+  if (tool === 'mcode') return { protocol: 'acp', argv: ['mcode', 'acp'], env: {} };
   if (o.unsafe) return null;
   switch (tool) {
     case 'codebuddy':
@@ -570,6 +592,14 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
       };
       return { argv: [onset.command, ...onset.args, 'studio', 'agent'], stdin: JSON.stringify(request) + '\n', env: onset.env };
     }
+    case 'mcode': {
+      // onset run 这类一次性调用：exec 没有命令白名单，安全模式用 smart（它自己判断哪些要批准，exec 里没人答就拒绝）。
+      // 工具服务挂不上（只认 .mcp.json，不往项目根写），客户端里编排一律走 ACP，见 interactiveInvocation。
+      const args = ['mcode', 'exec', '--cwd', workdir || '.', '--permission', o.unsafe ? 'full' : 'smart', ...m, '--output-format', 'stream-json'];
+      if (o.resume) args.push('--session', sessionID);
+      args.push('--input', '-');
+      return { argv: args, stdin: o.prompt };
+    }
     case 'opencode': {
       // opencode 只认项目目录里的 opencode.json，规则集写法实测拦不住命令，
       // 全拒时无头运行直接挂起；安全模式下因此不加限制，见 README。
@@ -598,6 +628,7 @@ export function projectRulesFilename(tool: string): string {
     case 'qoder':
     case 'qoder-intl':
     case 'opencode':
+    case 'mcode':
     case 'director':
       return 'AGENTS.md';
     case 'claude':
@@ -646,6 +677,11 @@ export function extractUserMessages(tool: string, line: string): string[] {
     case 'opencode': {
       const part = asObject(event.part);
       if (event.type === 'text' && typeof part?.text === 'string') texts.push(part.text);
+      break;
+    }
+    case 'mcode': {
+      const item = asObject(event.item);
+      if (event.type === 'item.completed' && item?.type === 'agent_message' && typeof item.content === 'string') texts.push(item.content);
       break;
     }
   }

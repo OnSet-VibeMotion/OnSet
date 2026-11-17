@@ -9,7 +9,7 @@ const testdata = path.join(import.meta.dirname, '..', 'agentrun', 'testdata');
 describe('model', () => {
   // 用真实录制的流核对模型名的读取位置。
   it('detect model from recorded streams', () => {
-    const cases: Record<string, string> = { claude: 'claude-opus-5-5', qoder: 'DeepSeek-Flash', codebuddy: 'hy3', codex: '', opencode: '' };
+    const cases: Record<string, string> = { claude: 'claude-opus-5-5', qoder: 'DeepSeek-Flash', codebuddy: 'hy3', codex: '', opencode: '', mcode: 'minimax/MiniMax-M3.1-Flash' };
     for (const [tool, want] of Object.entries(cases)) {
       let got = '';
       for (const line of fs.readFileSync(path.join(testdata, tool + '-1.jsonl'), 'utf8').split('\n')) {

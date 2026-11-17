@@ -66,7 +66,7 @@ export function resetActivityCache(): void {
 /**
  * 按流的第一条认得出的事件判断是哪家 CLI 写的。尝试记录要等渲染结束才写，
  * 进行中标记是新版才有，所以兜底靠格式：codex 的事件是 thread.* / turn.* / item.*，
- * opencode 的每条带 sessionID 与 part，其余按 claude 系（claude、qoder、codebuddy 同一种 stream-json）。
+ * mcode 的每条带 schemaVersion 与 runId，opencode 的每条带 sessionID 与 part，其余按 claude 系（claude、qoder、codebuddy 同一种 stream-json）。
  */
 export function sniffStreamTool(line: string): string {
   let raw: unknown;
@@ -78,6 +78,8 @@ export function sniffStreamTool(line: string): string {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return '';
   const e = raw as Record<string, unknown>;
   const type = typeof e.type === 'string' ? e.type : '';
+  // mcode 也有 turn.* / item.*，但每条带 schemaVersion 与 runId，要先认。
+  if ('schemaVersion' in e && 'runId' in e) return 'mcode';
   if (/^(thread|turn|item)\./.test(type)) return 'codex';
   if ('sessionID' in e && 'part' in e) return 'opencode';
   if (type !== '') return 'claude';

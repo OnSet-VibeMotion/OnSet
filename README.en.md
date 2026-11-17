@@ -10,7 +10,7 @@
 
 OnSet (片场, "film set") is a desktop client for macOS and Windows. You say what you want in a chat, and an agent works like a film crew: it writes the script, records the voice-over, times the subtitles, plans the shots, renders the motion-graphics scenes in parallel, cuts them together, makes covers and gets the film ready to publish, stopping to ask you whenever a decision is yours. Hand it an article or a narration script if you have one, or start from nothing. It can also make beat-synced films with no voice-over, where the picture follows the music, in vertical or landscape.
 
-An AI orchestrator of your choice does the production inside the client: Codex, Claude Code, Qoder (China or international edition), CodeBuddy, or OpenCode. You tell it what you want in the chat and make the calls at each checkpoint. Project prompts, publishing templates, and skills ship inside the client. The HyperFrames skills are installed into the project at a pinned official release, so a project is self-contained: copy the directory to another machine with the client installed and carry on.
+An AI orchestrator of your choice does the production inside the client: Codex, Claude Code, Qoder (China or international edition), CodeBuddy, OpenCode, or MiniMax Code. You tell it what you want in the chat and make the calls at each checkpoint. Project prompts, publishing templates, and skills ship inside the client. The HyperFrames skills are installed into the project at a pinned official release, so a project is self-contained: copy the directory to another machine with the client installed and carry on.
 
 ## Install
 
@@ -24,7 +24,7 @@ The new macOS release workflow requires code signing and Apple notarization. For
 Requirements:
 
 - macOS (Apple Silicon or Intel) or Windows x64
-- At least one logged-in CLI among Codex, Claude Code, Qoder (China or international edition), CodeBuddy, and OpenCode
+- At least one logged-in CLI among Codex, Claude Code, Qoder (China or international edition), CodeBuddy, OpenCode, and MiniMax Code (`mcode`)
 - Voice defaults to the local Breeze TTS 2 on Apple Silicon (offline, no account; the setup page downloads its ~4.6 GB model once). Intel Macs default to MiniMax, which needs an account. Either can be changed in Settings
 
 You do not need to install Node.js, Python, FFmpeg, Git, or Homebrew. The Chromium used for rendering and the runtime both ship with the client. Everything else is downloaded with one click on the first launch, from "Assemble your crew" on the home page. It comes in four groups (picture, editing, voice, subtitles), takes a few minutes, and is shared by every project afterwards. An existing FFmpeg on the machine is used as is.
@@ -207,10 +207,10 @@ A command outside the allowlist is not simply refused. A card appears above the 
 
 "Never ask again" turns on Auto-approve in Settings: later requests are allowed without a card, and the chat keeps a line saying what was auto-approved. Auto-approve can be on globally or for one project, and can be turned off in Settings at any time. Tool sandboxes (such as codex's workspace-write) still apply.
 
-All five orchestrators ask this way:
+Every orchestrator asks this way:
 
 - claude and qoder (both editions) go through an approval service.
-- codebuddy, opencode, and codex switch to a two-way protocol (`codebuddy --acp`, `opencode acp`, `codex app-server`).
+- codebuddy, opencode, codex, and MiniMax Code switch to a two-way protocol (`codebuddy --acp`, `opencode acp`, `codex app-server`, `mcode acp`). MiniMax Code reports no token counts over ACP, so its orchestrator turns are recorded with usage unknown.
 
 opencode and codebuddy end the turn after a denial. The chat says so, and you can tell it to try another way.
 

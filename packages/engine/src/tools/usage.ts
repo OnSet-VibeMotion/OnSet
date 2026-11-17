@@ -165,11 +165,19 @@ function objectField(o: Record<string, unknown>, key: string): Record<string, un
  *   - opencode（run --format json）：每步结束的 {"type":"step_finish"} 在 part 里带
  *     该步的 tokens 与 cost，逐步相加（2026-11 用 v2.1.0 实测）。
  *
+ *   - mcode（exec --output-format stream-json）：每轮结束的 {"type":"turn.completed"} 带该轮 usage：
+ *     inputTokens 不含缓存（totalTokens = inputTokens + outputTokens），cacheReadTokens / cacheWriteTokens 另列，
+ *     要加回输入（2026-11 用 0.6.12 实测）。一次 exec 一轮；exec.completed 里是同一份，不再算。
+ *
  * 其他工具读不到就留空，尝试记录里照常写耗时。
  */
 export function accumulateUsage(tool: string, line: string, u: Usage): void {
   if (tool === 'opencode') {
     accumulateOpencodeUsage(line, u);
+    return;
+  }
+  if (tool === 'mcode') {
+    accumulateMcodeUsage(line, u);
     return;
   }
   const event = parseObject(line);
@@ -245,6 +253,30 @@ function accumulateOpencodeUsage(line: string, u: Usage): void {
   }
   u.turns = (u.turns ?? 0) + 1;
   u.source = 'opencode step_finish';
+  u.basis = BasisTotalInput;
+}
+
+function accumulateMcodeUsage(line: string, u: Usage): void {
+  const event = parseObject(line);
+  if (!event) return;
+  let input: number, output: number, read: number, write: number;
+  try {
+    if (stringField(event, 'type') !== 'turn.completed') return;
+    const usage = objectField(event, 'usage');
+    if (!usage) return;
+    input = intField(usage, 'inputTokens');
+    output = intField(usage, 'outputTokens');
+    read = intField(usage, 'cacheReadTokens');
+    write = intField(usage, 'cacheWriteTokens');
+  } catch (err) {
+    if (err instanceof BadEvent) return;
+    throw err;
+  }
+  u.input_tokens = (u.input_tokens ?? 0) + input + read + write;
+  u.output_tokens = (u.output_tokens ?? 0) + output;
+  u.cached_input_tokens = (u.cached_input_tokens ?? 0) + read;
+  u.turns = (u.turns ?? 0) + 1;
+  u.source = 'mcode turn.completed';
   u.basis = BasisTotalInput;
 }
 

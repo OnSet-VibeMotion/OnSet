@@ -15,6 +15,8 @@
  *   （每个模型能用的上下文长度由服务端给，命令行列不出来，界面给常用的几档并可手填）。
  * - codebuddy 2.184：`--effort minimal|low|medium|high|xhigh|max`。
  * - opencode 2.1：推理档位是模型名后面的 `#变体`（`provider/model#high`），没有单独的参数；没选模型时无从附加。
+ * - mcode（MiniMax Code）0.6.12：exec 的 `--effort default|low|medium|high|xhigh|max`，ACP 里是会话选项 thinkingEffort；
+ *   只有模型表里报了档位的模型能调（M3 不能，M3.1-Flash 能），不支持时整轮报错，所以按模型收窄（perModel）。
  * - director（制作人，pi）：thinkingLevel off|minimal|low|medium|high|xhigh|max，经 stdin 的请求给。
  */
 
@@ -99,6 +101,9 @@ export function agentOptionSpecs(tool: string): AgentOptionSpec[] {
       return [effort(['minimal', 'low', 'medium', 'high', 'xhigh', 'max'], '越高想得越久、越费额度；不选由 CodeBuddy 按模型决定')];
     case 'opencode':
       return [effort(['minimal', 'low', 'medium', 'high', 'xhigh', 'max'], '附在模型名后（provider/model#high），要先选模型；不是每个模型都有这些档位', { requiresModel: true })];
+    case 'mcode':
+      // 只有部分模型能调（MiniMax-M3 不能，M3.1-Flash 能），不支持的档位 mcode 直接报错；模型表（tools/mcodemodels.ts）按模型收窄。
+      return [effort(['low', 'medium', 'high', 'xhigh', 'max'], '越高想得越久、越费额度；只有部分模型能调，不选用模型自己的默认', { perModel: true })];
     case 'director':
       return [{ ...effort(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'], '只对支持思考的模型生效；不选按模型默认'), label: '思考强度' }];
     default:
@@ -186,6 +191,7 @@ export function optionArgs(tool: string, options: AgentOptions): string[] {
   switch (tool) {
     case 'claude':
     case 'codebuddy':
+    case 'mcode':
       return o.effort ? ['--effort', o.effort] : [];
     case 'qoder':
     case 'qoder-intl':

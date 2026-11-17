@@ -74,7 +74,7 @@ describe('renderer sandbox', () => {
   });
 
   it('knows where each renderer keeps its state and skills', () => {
-    for (const tool of ['claude', 'codex', 'codebuddy', 'opencode', 'qoder', 'qoder-intl']) {
+    for (const tool of ['claude', 'codex', 'codebuddy', 'opencode', 'qoder', 'qoder-intl', 'mcode']) {
       const own = rendererHome(tool, '/h');
       expect(own.state.length, tool).toBeGreaterThan(0);
       expect(own.hidden, tool).toContain(path.join('/h', '.agents', 'skills'));

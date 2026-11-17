@@ -10,7 +10,7 @@
 
 片场是一个桌面客户端（macOS、Windows）：你在对话里说想做什么，智能体像一个剧组那样替你写稿、配音、对字幕、拆分镜、并发渲染动画镜头、拼接、出封面与发布，遇到要你拍板的地方停下来问你。手里有文章或口播稿可以直接丢给它，没有也行；也能做没有配音、画面踩着音乐节拍走的卡点片，竖屏、横屏都可以。
 
-制作由你选的 AI 编排工具（Codex、Claude Code、Qoder（国内版或国际版）、CodeBuddy、OpenCode）在客户端里完成，你通过对话告诉它要什么、在关卡上拍板。项目 Prompt、发布模板与技能随客户端内置，HyperFrames 技能按固定官方版本装进项目，项目因此自包含——整个目录拷到另一台装了客户端的机器上就能接着做。
+制作由你选的 AI 编排工具（Codex、Claude Code、Qoder（国内版或国际版）、CodeBuddy、OpenCode、MiniMax Code）在客户端里完成，你通过对话告诉它要什么、在关卡上拍板。项目 Prompt、发布模板与技能随客户端内置，HyperFrames 技能按固定官方版本装进项目，项目因此自包含——整个目录拷到另一台装了客户端的机器上就能接着做。
 
 ## 安装
 
@@ -24,7 +24,7 @@
 运行需要：
 
 - macOS（Apple Silicon 或 Intel）或 Windows x64
-- Codex、Claude Code、Qoder（国内版或国际版）、CodeBuddy、OpenCode 中至少一个已登录的 CLI
+- Codex、Claude Code、Qoder（国内版或国际版）、CodeBuddy、OpenCode、MiniMax Code（`mcode`）中至少一个已登录的 CLI
 - 配音默认用本机的 Breeze TTS 2（Apple Silicon，离线、不用账号，第一次在安装页下载约 4.6 GB 的模型）；Intel Mac 默认 MiniMax，要它的账号。都能在「设置」里换
 
 不需要另外装 Node.js、Python、FFmpeg、Git 或 Homebrew：渲染用的 Chromium 与运行时都是客户端自带的，其余工具在第一次打开时由首页的「召集你的摄制组」一键下载（画面、剪辑、配音、字幕四组，约几分钟），之后所有项目共用。机器上已经有 FFmpeg 的直接用现成的。GitHub 下载慢时在安装页的「网络」里填代理，断了重试会接着下。节拍分析环境、整片风格库这类动辄上 GB 的资源放在「以后可能用到」里，用到时再装。
@@ -114,7 +114,7 @@
 
 编排工具与渲染器限制在项目工作区：只被放行文件编辑、制作工具和一组常用命令（只读查看、文本处理、工作区内的复制移动、下载字体与授权素材的 `curl`、跑脚本的 `python3` / `node`，以及当前对齐工具的命令），`.env` 禁读。`sh` / `bash`、`rm`、改权限与安装命令不在其中。
 
-白名单外的命令不会直接被拒：对话框上方弹出卡片问你，可以允许这一次、以后都允许（记进这个项目的 `production/studio/permissions.json`）、以后都不用问，或拒绝。「以后都不用问」打开设置里的「自动批准」：之后不再弹卡片、直接允许，对话里留一行「已自动允许」记下跑了什么；自动批准可以全局开，也可以只给某个项目开，在设置里随时关掉。工具自己的沙箱（例如 codex 的 workspace-write）照旧生效。五家编排工具都会这样问：claude、qoder（国内版与国际版）经一个审批服务；codebuddy、opencode、codex 改用双向协议（`codebuddy --acp`、`opencode acp`、`codex app-server`）。opencode 与 codebuddy 被拒后会直接结束这一轮，对话里会说明，可以告诉它换个做法再继续。还要固定放行别的命令就写进项目配置的 `ORCHESTRATOR_ALLOW_COMMANDS`（逗号分隔的命令前缀，如 `uv run, pnpm, magick`）。放行解释器意味着脚本能做任何事，安全模式防的是误操作和越界命令，不可信的输入仍不要交给编排工具。
+白名单外的命令不会直接被拒：对话框上方弹出卡片问你，可以允许这一次、以后都允许（记进这个项目的 `production/studio/permissions.json`）、以后都不用问，或拒绝。「以后都不用问」打开设置里的「自动批准」：之后不再弹卡片、直接允许，对话里留一行「已自动允许」记下跑了什么；自动批准可以全局开，也可以只给某个项目开，在设置里随时关掉。工具自己的沙箱（例如 codex 的 workspace-write）照旧生效。这几家编排工具都会这样问：claude、qoder（国内版与国际版）经一个审批服务；codebuddy、opencode、codex、MiniMax Code 改用双向协议（`codebuddy --acp`、`opencode acp`、`codex app-server`、`mcode acp`）。MiniMax Code 的 ACP 不报 token，它编排的那几轮用量记为未读到。opencode 与 codebuddy 被拒后会直接结束这一轮，对话里会说明，可以告诉它换个做法再继续。还要固定放行别的命令就写进项目配置的 `ORCHESTRATOR_ALLOW_COMMANDS`（逗号分隔的命令前缀，如 `uv run, pnpm, magick`）。放行解释器意味着脚本能做任何事，安全模式防的是误操作和越界命令，不可信的输入仍不要交给编排工具。
 
 ## 用量
 

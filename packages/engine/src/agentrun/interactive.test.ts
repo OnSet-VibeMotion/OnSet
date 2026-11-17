@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { interactiveInvocation } from '../tools';
-import { ACPTranslator, CodebuddyUsage, acpOutcome, acpPermissionTool, acpUsage, ensureModel, runACP } from './acp';
+import { ACPTranslator, CodebuddyUsage, acpModel, acpOutcome, acpPermissionTool, acpUsage, configureMcode, ensureModel, mcodeModelValue, runACP } from './acp';
 import { CodexTasks, codexDecision, codexItemEvents, runCodexApp } from './codexapp';
 import { commandAllowed, unwrapShell, type PermissionAnswer } from './interactive';
 import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, KindUsage, type Event } from './parse';
@@ -418,3 +418,49 @@ describe('ensureModel', () => {
     expect(calls).toEqual([['session/set_config_option', { sessionId: 's1', configId: 'model', value: 'p/other' }]]);
   });
 });
+
+// MiniMax Code 0.6.12 实测：模型值 m:<服务商>:<模型>:v:<变体>；用户自己的配置常是 bypassPermissions，安全模式要切回 Ask。
+describe('configureMcode', () => {
+  const env = { MINIMAX_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'onset-mcode-data-')) };
+  const rules = (): unknown => JSON.parse(fs.readFileSync(path.join(env.MINIMAX_DATA_DIR, 'sessions', 's', 'permission.json'), 'utf8'));
+  const opened = () => ({
+    configOptions: [
+      { id: 'permissionMode', currentValue: 'bypassPermissions' },
+      { id: 'model', currentValue: 'm:minimax:MiniMax-M3.1-Flash:v:thinking', options: [{ value: 'm:minimax:MiniMax-M3:v:' }, { value: 'm:minimax:MiniMax-M3:v:thinking' }, { value: 'm:minimax:MiniMax-M3.1-Flash:v:thinking' }] },
+      { id: 'thinkingEffort', currentValue: 'default' },
+    ] as Array<Record<string, unknown>>,
+  });
+  it('switches to Ask, keeps the variant and sets the effort', async () => {
+    const calls: unknown[] = [];
+    const peer = { request: async (_method: string, params: unknown) => (calls.push(params), {}) };
+    const o = opened();
+    await configureMcode(peer, 's', o, { unsafe: false, model: 'minimax/MiniMax-M3', options: { effort: 'high' }, env });
+    // mcode 自己的 Ask 不是闸门：这个会话的每条 bash 都要来问，白名单由 agentrun 答。
+    expect(rules()).toEqual({ version: 2, allow: [], deny: [], ask: [{ tool_name: 'bash', matcher: { kind: 'tool' } }] });
+    expect(calls).toEqual([
+      { sessionId: 's', configId: 'permissionMode', value: 'default' },
+      { sessionId: 's', configId: 'model', value: 'm:minimax:MiniMax-M3:v:thinking' },
+      { sessionId: 's', configId: 'thinkingEffort', value: 'high' },
+    ]);
+    // ensureModel 不再按 opencode / codebuddy 的写法去切一次。
+    await ensureModel(peer, 's', o, 'minimax/MiniMax-M3');
+    expect(calls).toHaveLength(3);
+  });
+  it('leaves full access alone when unsafe and rejects unknown models', async () => {
+    const calls: unknown[] = [];
+    const peer = { request: async (_method: string, params: unknown) => (calls.push(params), {}) };
+    fs.mkdirSync(path.join(env.MINIMAX_DATA_DIR, 'sessions', 's'), { recursive: true });
+    const allow = [{ tool_name: 'bash', matcher: { kind: 'command', pattern: 'ls:*' } }];
+    fs.writeFileSync(path.join(env.MINIMAX_DATA_DIR, 'sessions', 's', 'permission.json'), JSON.stringify({ version: 2, allow, deny: [], ask: [{ tool_name: 'bash', matcher: { kind: 'tool' } }] }));
+    await configureMcode(peer, 's', opened(), { unsafe: true, env });
+    expect(calls).toEqual([]);
+    // 不安全模式去掉那条规则，别的规则原样留着。
+    expect(rules()).toEqual({ version: 2, allow, deny: [], ask: [] });
+    await expect(configureMcode(peer, 's', opened(), { unsafe: true, model: 'minimax/NoSuch', env })).rejects.toThrow('没有模型 minimax/NoSuch');
+  });
+  it('reports the model in the exec form', () => {
+    expect(mcodeModelValue('m:minimax:MiniMax-M3:v:')).toEqual({ model: 'minimax/MiniMax-M3', variant: '' });
+    expect(acpModel(opened())).toBe('minimax/MiniMax-M3.1-Flash');
+  });
+});
+

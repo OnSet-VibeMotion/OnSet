@@ -6,9 +6,11 @@ import path from 'node:path';
  *
  * claude、qoder、codebuddy 在 system/init 事件里带 model。codex 与 opencode 的流里
  * 没有模型名（2026-11 实测录制，见 agentrun/testdata），codex 改由
- * configuredModel 读配置文件，opencode 记为未知。
+ * configuredModel 读配置文件，opencode 记为未知。mcode 在每轮结束的 turn.completed 里带
+ * model.providerId / modelId，记成 exec 的 --model 写法「服务商/模型」。
  */
 export function detectModel(tool: string, line: string): string {
+  if (tool === 'mcode') return mcodeModel(line);
   // director（制作人，onset 自带的编排）照 claude 系的格式输出，见 director 包。
   if (tool !== 'claude' && tool !== 'qoder' && tool !== 'qoder-intl' && tool !== 'codebuddy' && tool !== 'director') return '';
   let event: unknown;
@@ -62,4 +64,22 @@ export function configuredModel(tool: string, env: Record<string, string | undef
     return value;
   }
   return '';
+}
+
+/** mcode exec 的 turn.completed：{"model": {"providerId": "minimax", "modelId": "MiniMax-M3.1-Flash", …}}。 */
+function mcodeModel(line: string): string {
+  let event: unknown;
+  try {
+    event = JSON.parse(line);
+  } catch {
+    return '';
+  }
+  if (event === null || typeof event !== 'object' || Array.isArray(event)) return '';
+  const e = event as Record<string, unknown>;
+  if (e.type !== 'turn.completed') return '';
+  const model = e.model;
+  if (model === null || typeof model !== 'object' || Array.isArray(model)) return '';
+  const { providerId, modelId } = model as Record<string, unknown>;
+  if (typeof modelId !== 'string' || modelId.trim() === '') return '';
+  return typeof providerId === 'string' && providerId !== '' ? `${providerId}/${modelId.trim()}` : modelId.trim();
 }
