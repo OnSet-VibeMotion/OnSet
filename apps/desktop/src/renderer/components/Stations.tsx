@@ -1015,6 +1015,35 @@ interface PendingRun {
 
 const maxAskChars = 4000;
 
+/*
+ * 插件页面里的按钮是不是用户亲手点的（不是页面脚本自己点的）。
+ * 用户在 iframe 里真点一下，浏览器给整条祖先链记上「刚有用户操作」（navigator.userActivation，约 5 秒），
+ * 脚本调 click() 不算（e2e 实测：脚本点的读到 false，真点的读到 true）。但这个标记不分点在哪：用户刚在片场自己的界面上
+ * 点过（比如点开这一页），页面一加载就请求执行也会读到 true，所以片场自己最近 5 秒有点击或按键时不认；
+ * 焦点也分不清（页面脚本能把焦点抢到 iframe 上，实测）。一次点击只放行一次，同一段时间里再来的请求照旧确认。
+ */
+const activationWindowMs = 5000;
+let lastHostInput = 0;
+let lastDirectRun = 0;
+if (typeof window !== 'undefined') {
+  const mark = () => { lastHostInput = Date.now(); };
+  window.addEventListener('pointerdown', mark, true);
+  window.addEventListener('keydown', mark, true);
+}
+
+export function clickedInPluginPage(now = Date.now()): boolean {
+  if (typeof navigator === 'undefined' || !navigator.userActivation?.isActive) return false;
+  if (now - lastHostInput < activationWindowMs || now - lastDirectRun < activationWindowMs) return false;
+  lastDirectRun = now;
+  return true;
+}
+
+/** 只给测试用：清掉「最近的点击」。 */
+export function resetPluginClicks(): void {
+  lastHostInput = 0;
+  lastDirectRun = 0;
+}
+
 function paramText(params: Record<string, unknown>): string {
   return Object.entries(params)
     .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
@@ -1036,8 +1065,9 @@ interface FrameProps {
 
 /**
  * 沙箱 iframe（只给 allow-scripts，不透明源，CSP 只许它碰本站目录与申请过的地址）加宿主一侧的桥。
- * 页面要的东西都经这里：theme / info / project / read / list / run / call / ask / open。执行类（run、call）
- * 一律先在上方请用户确认——页面里的按钮可以被脚本自己点，不算用户同意。只认来自这个 iframe 的消息。
+ * 页面要的东西都经这里：theme / info / project / read / list / run / call / ask / open。执行类先在上方请用户确认——
+ * 页面里的按钮可以被脚本自己点，不算用户同意；只有 run 在用户刚亲手点了页面里的按钮时直接执行（clickedInPluginPage）。
+ * call（片场自带的操作）与 send（替用户发话、会花钱）照旧确认。只认来自这个 iframe 的消息。
  */
 function StationFrame({ station, page, context, version, run, onQuick, onOpen, projectName, height }: FrameProps) {
   const frame = useRef<HTMLIFrameElement>(null);
@@ -1115,7 +1145,10 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
           case 'run': {
             const op = station.ops.find((o) => o.name === m.op);
             if (!op) throw new Error(`没有操作 ${String(m.op)}`);
-            ask({ id: m.id, kind: 'run', op: op.name, label: op.summary, params: m.params && typeof m.params === 'object' ? m.params : {} });
+            const req: PendingRun = { id: m.id, kind: 'run', op: op.name, label: op.summary, params: m.params && typeof m.params === 'object' ? m.params : {} };
+            // 用户刚在插件页面里亲手点了按钮：那一下就是同意，不再弹确认条。脚本发起的、分不清是谁点的，照旧确认。
+            if (clickedInPluginPage()) execute(req);
+            else ask(req);
             return;
           }
           case 'call': {
@@ -1162,17 +1195,24 @@ function StationFrame({ station, page, context, version, run, onQuick, onOpen, p
     frame.current?.contentWindow?.postMessage({ onset: 'host', type: 'refresh' }, '*');
   }, [version]);
 
+  // 执行一个请求（用户在确认条上点了「执行」，或在插件页面里亲手点了按钮）。
+  const execute = (req: PendingRun) => {
+    if (req.kind === 'send') {
+      onQuick(`（来自插件「${station.name}」的页面）\n${req.label}`, [], false);
+      reply(req.id, true, { sent: true });
+      return;
+    }
+    const base = `/api/stations/${encodeURIComponent(station.id)}`;
+    run(req.kind === 'run' ? `${base}/ops/${encodeURIComponent(req.op)}` : `${base}/call/${encodeURIComponent(req.op)}`, { params: req.params });
+    if (req.kind === 'run') setRan((r) => ({ ...r, [req.op]: new Date().toISOString() }));
+    reply(req.id, true, { started: true });
+  };
+
   const decide = (allow: boolean) => {
     const req = pendingRef.current;
     if (!req) return;
-    if (allow && req.kind === 'send') {
-      onQuick(`（来自插件「${station.name}」的页面）\n${req.label}`, [], false);
-      reply(req.id, true, { sent: true });
-    } else if (allow) {
-      const base = `/api/stations/${encodeURIComponent(station.id)}`;
-      run(req.kind === 'run' ? `${base}/ops/${encodeURIComponent(req.op)}` : `${base}/call/${encodeURIComponent(req.op)}`, { params: req.params });
-      if (req.kind === 'run') setRan((r) => ({ ...r, [req.op]: new Date().toISOString() }));
-      reply(req.id, true, { started: true });
+    if (allow) {
+      execute(req);
     } else {
       reply(req.id, false, undefined, '用户没有同意');
     }

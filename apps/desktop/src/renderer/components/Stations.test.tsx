@@ -12,7 +12,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockApi, reply, type MockRequest } from '../testing';
-import { PluginSettings, StationPage, StationSlots, setStationPages } from './Stations';
+import { PluginSettings, StationPage, StationSlots, clickedInPluginPage, resetPluginClicks, setStationPages } from './Stations';
 import { slashCommands } from './chat/complete';
 import { Chat } from './Chat';
 import type { ProgressState, StationInfo, StationOp, StationPreview, StationRun, StationsResponse, Task } from '../types';
@@ -400,6 +400,50 @@ describe('插件页面与小窗', () => {
     expect(page.answers.some((a) => a.id === 99)).toBe(false);
     expect(runAction).not.toHaveBeenCalled();
     expect(backend.unmatched).toEqual([]);
+  });
+
+  // 用户在插件页面里亲手点了执行按钮：浏览器在片场窗口上也记下「刚有用户操作」，脚本点的不会（e2e 实测）。
+  it('用户刚在页面里亲手点的执行不再确认；分不清是谁点的、一次点击连发、调片场的操作与发话照旧确认', async () => {
+    const activation = { isActive: false };
+    Object.defineProperty(navigator, 'userActivation', { value: activation, configurable: true });
+    try {
+      resetPluginClicks();
+      // 规则本身：没有用户操作不放行；片场自己刚有点击时分不清点在哪，不放行；一次点击只放行一次。
+      expect(clickedInPluginPage(100_000)).toBe(false);
+      activation.isActive = true;
+      expect(clickedInPluginPage(100_000)).toBe(true);
+      expect(clickedInPluginPage(102_000)).toBe(false);
+      expect(clickedInPluginPage(106_000)).toBe(true);
+      resetPluginClicks();
+      window.dispatchEvent(new Event('pointerdown'));
+      expect(clickedInPluginPage()).toBe(false);
+
+      // 接进页面桥：执行请求直接执行，不弹确认条。
+      resetPluginClicks();
+      mockApi({ '/api/publish': { available: true, data: { platform: 'douyin' } } });
+      setStationPages([fakePublisher()]);
+      const runAction = vi.fn();
+      const quick = vi.fn();
+      render(<StationPage tab="x:fake-publisher:dashboard" version={0} run={runAction} onQuick={quick} projectName={project.name} />);
+      const page = pageBridge(document.querySelector<HTMLIFrameElement>('.station-frame')!);
+      const send = await page.ask({ type: 'run', op: 'send', params: { platform: 'douyin' } });
+      expect((await page.answer(send)).result).toEqual({ started: true });
+      expect(runAction).toHaveBeenCalledWith('/api/stations/fake-publisher/ops/send', { params: { platform: 'douyin' } });
+      expect(screen.queryByRole('alertdialog', { name: '插件请求执行' })).toBeNull();
+      // 同一下点击里页面又发来一个：照旧确认。
+      await page.ask({ type: 'run', op: 'scribble' });
+      expect(await screen.findByRole('alertdialog', { name: '插件请求执行' })).toBeTruthy();
+      expect(runAction).toHaveBeenCalledTimes(1);
+      await userEvent.click(within(screen.getByRole('alertdialog', { name: '插件请求执行' })).getByRole('button', { name: '不执行' }));
+      // 调片场自带的操作、替用户发话：刚点过也照旧确认。
+      resetPluginClicks();
+      await page.ask({ type: 'call', op: 'review', params: {} });
+      expect(await screen.findByRole('alertdialog', { name: '插件请求执行' })).toBeTruthy();
+      expect(runAction).toHaveBeenCalledTimes(1);
+    } finally {
+      delete (navigator as { userActivation?: unknown }).userActivation;
+      resetPluginClicks();
+    }
   });
 
   it('整页：配色、项目概况、读文件经宿主；执行与调用片场的操作先请用户确认；斜杠命令登记上', async () => {
