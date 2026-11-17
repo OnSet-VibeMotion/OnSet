@@ -306,18 +306,8 @@ export function loadSessions(s: Server, projectPath: string): void {
     if (!meta || !validID(meta.session_id)) continue;
     const sess: Session = { project: projectPath, meta, events: [], waiters: new Set(), cancel: null, queue: [], permissions: new Map() };
     sess.events = readEvents(path.join(sessionsDir(projectPath), meta.session_id + '.events.jsonl'));
+    restoreEndedTurns(sess);
     if (meta.running_turn) {
-      try {
-        const turn = loadTurn(projectPath, meta.running_turn);
-        if (turn.status === 'running') {
-          turn.status = 'interrupted';
-          turn.error = 'Studio 在本轮进行中退出';
-          turn.ended_at = nowTime();
-          saveTurn(projectPath, turn);
-        }
-      } catch {
-        // 轮次记录读不到就只清掉会话上的标记。
-      }
       sess.meta.running_turn = undefined;
       try {
         writeMeta(sess);
@@ -326,6 +316,38 @@ export function loadSessions(s: Server, projectPath: string): void {
       }
     }
     s.sessions.set(sessionKey(projectPath, meta.session_id), sess);
+  }
+}
+
+/** 重启后没有活的对话进程，事件流也必须收尾。旧版可能已清 running_turn，
+ * 却留下没有 turn-end 的 turn-start；只看元数据会让这些会话永久显示运行中。 */
+function restoreEndedTurns(sess: Session): void {
+  const pending = new Set<string>();
+  if (sess.meta.running_turn) pending.add(sess.meta.running_turn);
+  for (const event of sess.events) {
+    if (!event.turn_id || !validID(event.turn_id)) continue;
+    if (event.kind === kindTurnStart) pending.add(event.turn_id);
+    else if (event.kind === kindTurnEnd) pending.delete(event.turn_id);
+  }
+  for (const id of pending) {
+    let turn: Turn | undefined;
+    try {
+      turn = loadTurn(sess.project, id);
+      if (turn.status === 'running') {
+        turn.status = 'interrupted';
+        turn.error = 'Studio 在本轮进行中退出';
+        turn.ended_at = nowTime();
+        saveTurn(sess.project, turn);
+      }
+    } catch {
+      // 轮次记录缺失或写不了，也要让事件订阅方知道本轮已结束。
+    }
+    emit(sess, id, {
+      kind: kindTurnEnd,
+      status: turn?.status || 'interrupted',
+      text: turn ? turn.error : 'Studio 在本轮进行中退出，轮次记录无法读取',
+      changes: turn?.changes ?? undefined,
+    });
   }
 }
 

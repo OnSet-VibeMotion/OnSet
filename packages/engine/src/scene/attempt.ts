@@ -39,6 +39,8 @@ export interface Attempt {
   outcome: string;
   exit_code: number | null;
   error: string;
+  /** 模型异常退出但产物通过本机验收时，保留服务错误，不伪装成正常退出。 */
+  warning?: string;
   problems: string[] | null;
   /** problems 对应的校验器 ID，见 VerificationError.checks。 */
   checks: string[] | null;
@@ -46,7 +48,7 @@ export interface Attempt {
   usage: Usage | null;
   /** 渲染工具这一次的会话号：中途异常退出时下一次靠它续接（resume.ts）。读不到为空。 */
   session_id: string;
-  /** 这一次是怎么接着上一次做的：render（onset 直接渲染）、session（续接会话）、files（新会话照上次的文件接着做）；从头做为空。 */
+  /** 这一次是怎么接着上一次做的：verify（验收已有视频）、render（onset 直接渲染）、session（续接会话）、files（照上次文件接着做）；从头做为空。 */
   resumed: string;
 }
 
@@ -64,6 +66,7 @@ export function newAttempt(fields: Partial<Attempt> = {}): Attempt {
     outcome: '',
     exit_code: null,
     error: '',
+    warning: '',
     problems: null,
     checks: null,
     retry: false,
@@ -94,6 +97,7 @@ export function attemptToJSON(a: Attempt): unknown {
     outcome: a.outcome,
     exit_code: a.exit_code ?? undefined,
     error: a.error || undefined,
+    warning: a.warning || undefined,
     problems: a.problems && a.problems.length > 0 ? a.problems : undefined,
     checks: a.checks && a.checks.length > 0 ? a.checks : undefined,
     retry: a.retry,
@@ -141,6 +145,7 @@ const attemptType: StructType = {
     ['usage', ptrTo(usageType)],
     ['session_id', 'string'],
     ['resumed', 'string'],
+    ['warning', 'string'],
   ],
 };
 

@@ -477,6 +477,8 @@ function parseClaudeLike(e: Obj, tasks: TaskBoard): Event[] {
     case 'result':
       if (e.is_error === true) {
         let text = str(e.result);
+        if (text === '') text = arr(e.errors).map(item => typeof item === 'string' ? item : str(obj(item).message)).filter(Boolean).join('\n');
+        if (text === '') text = arr(e.errors_info).map(item => str(obj(item).details)).filter(Boolean).join('\n');
         if (text === '') text = str(e.subtype);
         events.push({ kind: KindError, text });
       }

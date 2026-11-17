@@ -2,12 +2,12 @@
 .audition {
   flex: none;
   width: 100%;
-  max-width: 1180px;
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 36px 32px 72px;
+  padding: 18px 20px 40px;
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 18px;
 }
 .audition .audition-head {
   display: flex;
@@ -16,7 +16,7 @@
 }
 .audition .audition-head h2 {
   margin: 0;
-  font: 600 30px/1.3 var(--serif);
+  font: 600 26px/1.3 var(--serif);
   letter-spacing: 0.02em;
 }
 .audition .audition-head p {
@@ -117,10 +117,7 @@
 .audition .audition-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-}
-.audition .audition-grid.n2 {
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
 }
 .audition .audition-card {
   margin: 0;
@@ -128,6 +125,9 @@
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
 }
 .audition .audition-card figcaption {
   display: flex;
@@ -160,28 +160,6 @@
   background: var(--accent-soft);
   color: var(--accent-text);
 }
-.audition .audition-card video,
-.audition .audition-empty {
-  width: 100%;
-  max-height: 58vh;
-  object-fit: contain;
-  background: var(--well);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-.audition .audition-card.won video {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent-line);
-}
-.audition .audition-empty {
-  aspect-ratio: 3 / 4;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: var(--muted);
-  border-style: dashed;
-}
 .audition .audition-facts {
   margin: 0;
   font-size: 13px;
@@ -205,15 +183,124 @@
   min-height: 0;
 }
 
+/* 所有画面直接铺开，不叠卡片边框；只有间距区分选手。 */
+.audition .audition-compare {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  container-type: inline-size;
+}
+.audition .audition-compare-head,
+.audition .audition-roster-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.audition .audition-compare-head p { margin: 4px 0 0; font-size: 12px; color: var(--text-3); }
+.audition .audition-count { margin-left: 8px; font: 12px var(--mono); color: var(--muted); }
+.audition .audition-screens { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
+.audition .audition-screens.count-5,
+.audition .audition-screens.count-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.audition .audition-screens.single { grid-template-columns: minmax(0, 1fr); }
+.audition .audition-screen { margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.audition .audition-screen[hidden] { display: none; }
+.audition .audition-screen figcaption { display: flex; align-items: center; gap: 6px; min-height: 28px; }
+.audition .audition-screen-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.audition .audition-screen figcaption button { flex-shrink: 0; padding: 3px 6px; }
+.audition .audition-screen .audition-pick { color: var(--accent-text); }
+.audition .audition-screen-media {
+  aspect-ratio: 16 / 9;
+  max-height: 30vh;
+  position: relative;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+}
+.audition .audition-screen video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.audition .audition-screens.single .audition-screen-media { max-height: 58vh; }
+.audition .audition-media-error { position: absolute; inset: 0; margin: 0; padding: 12px; display: grid; place-content: center; color: var(--text-2); background: var(--well); font-size: 12px; line-height: 1.6; }
+.audition .audition-compare.expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  width: 100%;
+  height: 100%;
+  padding: 20px 24px;
+  background: var(--bg);
+  overflow: auto;
+  /* 覆盖标题栏后也要覆盖它的原生拖动区域；仅提高 z-index 不会恢复按钮点击。 */
+  -webkit-app-region: no-drag;
+}
+.audition .audition-compare.expanded .audition-screens { flex: 1; min-height: 0; grid-auto-rows: minmax(0, 1fr); }
+.audition .audition-compare.expanded .audition-screen { min-height: 0; }
+.audition .audition-compare.expanded .audition-screen-media { flex: 1; min-height: 0; max-height: none; }
+@container (max-width: 540px) {
+  .audition .audition-screens.count-5,
+  .audition .audition-screens.count-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .audition .audition-screens.single { grid-template-columns: minmax(0, 1fr); }
+}
+
+.audition .audition-progress {
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  min-width: 0;
+}
+.audition .audition-progress.running,
+.audition .audition-progress.waiting {
+  border-color: var(--accent-line);
+}
+.audition .audition-current {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+}
+.audition .audition-progress-note,
+.audition .audition-latest {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.audition .audition-process { margin-top: 12px; font-size: 12px; }
+.audition .audition-process summary { cursor: pointer; color: var(--text-2); }
+.audition .audition-process ol {
+  max-height: 260px;
+  overflow: auto;
+  margin: 10px 0 0;
+  padding-left: 28px;
+  scrollbar-gutter: stable;
+}
+.audition .audition-process li { padding: 6px 0; color: var(--text-3); }
+.audition .audition-process li > div { display: flex; gap: 10px; justify-content: space-between; }
+.audition .audition-process small { flex-shrink: 0; }
+.audition .audition-process .running { color: var(--accent-text); }
+.audition .audition-process pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 6px 0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .audition .audition-transport {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--panel);
+  padding: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
 }
+.audition .audition-transport button { flex-shrink: 0; }
+.audition .audition-transport .mono { white-space: nowrap; }
+.audition .audition-transport select { max-width: 120px; }
 .audition .audition-transport .scrub {
   flex: 1;
   min-width: 80px;
@@ -261,6 +348,9 @@
   .audition {
     padding: 24px 16px 56px;
   }
+  .audition .audition-screens { gap: 8px; }
+  .audition .audition-transport { flex-wrap: wrap; }
+  .audition .audition-transport .scrub { min-width: 120px; }
 }
 
 /* 推荐、两段式、人评考试 */
@@ -297,10 +387,6 @@
 .audition .audition-exam strong {
   color: var(--accent-text);
   white-space: nowrap;
-}
-.audition .audition-card.reference video {
-  opacity: 0.92;
-  border-style: dashed;
 }
 .audition .audition-card.reference .audition-slot {
   color: var(--muted);

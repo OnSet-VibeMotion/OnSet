@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { mockApi } from '../testing';
+import { mockApi, reply } from '../testing';
 import type { Audition, AuditionContestant, Scene } from '../types';
 import { AuditionTab } from './Audition';
+import { AuditionProgress } from './AuditionActivity';
 
 // 试镜页：评判之前只看得到 A、B（选手是谁由后端 audition.blindJSON 藏起来），选完才揭晓是谁。
 // 评判写进 audition.json 与记忆库的评判记录、人评考试让经验生效，由 packages/engine/src/studio/auditions.test.ts
@@ -47,6 +48,7 @@ function setup(full: Audition, judged: Audition) {
   const api = mockApi({
     '/api/auditions': { auditions: [blind(full)] },
     '/api/auditions/recommend': { recommendations: [] },
+    [`/api/auditions/${full.id}/activity`]: { contestants: [] },
     [`POST /api/auditions/${full.id}/vote`]: () => {
       api.set('/api/auditions', { auditions: [judged] });
       return judged;
@@ -61,6 +63,84 @@ const card = (container: HTMLElement, slot: string) => container.querySelector<H
 const buttons = (root: Element, text: string) => [...root.querySelectorAll('button')].filter((b) => b.textContent === text);
 
 describe('试镜页', () => {
+  it('显示可操作的服务错误与已保留视频说明', () => {
+    render(<AuditionProgress disconnected={false} activity={{ slot: 'C', state: 'failed', current: '模型额度不足', hint: '先补足该工具的可用额度。已有视频已保留，重试时先做本机验收。', step_count: 0, steps: [] }} />);
+    expect(screen.getByRole('status', { name: '选手 C 的制作进度' }).textContent).toBe('模型额度不足');
+    expect(screen.getByText(/已有视频已保留/)).toBeTruthy();
+  });
+
+  it('只重试失败或中断的选手，忙时说明原因，并在任务结束后重新读取过程', async () => {
+    const id = 'audition-20261117-085722';
+    const full: Audition = {
+      id, created_at: '', scene_id: scene.id, scene_dir: scene.directory, features: [], with_memory: true,
+      blind: true, verdict: null, adopted: null,
+      contestants: [{ ...contestant(id, 'A', 'claude', 'secret'), outcome: 'failed', output: '' }, contestant(id, 'B', 'codex', 'secret')],
+    };
+    const { api, run, container, rerender } = setup(full, full);
+    const retry = await screen.findByRole('button', { name: '重试 A' });
+    expect(card(container, 'B').querySelector('[aria-label="重试 B"]')).toBeNull();
+    rerender(<AuditionTab scene={scene} scenes={[scene]} version={1} busy="其余选手仍在试镜" run={run} />);
+    expect(retry.hasAttribute('disabled')).toBe(true);
+    expect(card(container, 'A').textContent).toContain('任务结束后可重试');
+    rerender(<AuditionTab scene={scene} scenes={[scene]} version={1} busy="" run={run} />);
+    await userEvent.click(retry);
+    expect(run).toHaveBeenCalledWith(`/api/auditions/${id}/retry`, { slot: 'A' });
+    api.set(`/api/auditions/${id}/activity`, { contestants: [{ slot: 'A', state: 'done', current: '已完成', steps: [], step_count: 0 }] });
+    api.set('/api/auditions', { auditions: [blind({ ...full, contestants: full.contestants.map(c => ({ ...c, outcome: 'succeeded' })) })] });
+    rerender(<AuditionTab scene={scene} scenes={[scene]} version={2} busy="" run={run} />);
+    await screen.findByText('已完成');
+    expect(screen.queryByRole('button', { name: '重试 A' })).toBeNull();
+    expect(api.unmatched).toEqual([]);
+  });
+
+  it('显示每位选手当前动作并刷新过程，结束后保留记录', async () => {
+    const id = 'audition-20261117-085722';
+    const full: Audition = {
+      id, created_at: '2026-11-17T00:00:00Z', scene_id: scene.id, scene_dir: scene.directory,
+      features: [], with_memory: true, blind: true, verdict: null, adopted: null,
+      contestants: [
+        { ...contestant(id, 'A', 'claude', 'secret'), status: 'running', output: '', outcome: '' },
+        { ...contestant(id, 'B', 'codex', 'secret'), status: 'pending', output: '', outcome: '' },
+      ],
+    };
+    const rows = [
+      { slot: 'A', state: 'running', current: '取帧与编码', phase: 'render', step_count: 2, steps: [{ label: '编写画面与动画', state: 'done' }, { label: '取帧与编码', state: 'running' }] },
+      { slot: 'B', state: 'pending', current: '等待上场', phase: 'render', step_count: 0, steps: [] },
+    ];
+    const api = mockApi({ '/api/auditions': { auditions: [blind(full)] }, '/api/auditions/recommend': { recommendations: [] }, [`/api/auditions/${id}/activity`]: { contestants: rows } });
+    vi.useFakeTimers();
+    try {
+      const { container, unmount } = render(<AuditionTab scene={scene} scenes={[scene]} version={1} busy="试镜中" run={vi.fn()} />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      expect(screen.getByRole('status', { name: '选手 A 的制作进度' })).toBeTruthy();
+      expect(card(container, 'A').textContent).toContain('取帧与编码');
+      expect(card(container, 'B').textContent).toContain('等待上场');
+      expect(container.textContent).not.toContain('secret');
+      fireEvent.click(screen.getByText('查看过程 · 2 步'));
+      expect(card(container, 'A').querySelector('details')?.open).toBe(true);
+      expect(card(container, 'A').textContent).toContain('编写画面与动画');
+      api.set(`/api/auditions/${id}/activity`, reply(500, { message: 'temporary' }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+      expect(card(container, 'A').textContent).toContain('进度连接中断');
+      expect(card(container, 'A').textContent).toContain('取帧与编码');
+      api.set(`/api/auditions/${id}/activity`, { contestants: [{ ...rows[0], state: 'waiting', current: '等待模型响应' }, rows[1]] });
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+      expect(card(container, 'A').textContent).toContain('等待模型响应');
+      expect(card(container, 'A').textContent).not.toContain('进度连接中断');
+      api.set(`/api/auditions/${id}/activity`, { contestants: rows.map(r => ({ ...r, state: 'done', current: '已完成', steps: r.steps.map(step => ({ ...step, state: 'done' })) })) });
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+      expect(card(container, 'A').textContent).toContain('已完成');
+      expect(card(container, 'A').querySelector('details')?.open).toBe(true);
+      const count = api.count(`/api/auditions/${id}/activity`);
+      await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+      expect(api.count(`/api/auditions/${id}/activity`)).toBe(count);
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(api.unmatched).toEqual([]);
+  });
+
   it('评判之前看不出是谁、不能采用；选完揭晓是谁，并能换进镜头', async () => {
     const id = 'audition-20261114-153012';
     const full: Audition = {

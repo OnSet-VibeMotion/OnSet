@@ -18,6 +18,7 @@ import {
   newID,
   replayGuard,
   reseedPrompt,
+  sessionEventJSON,
   transcript,
   transcriptLimit,
   updateMeta,
@@ -87,6 +88,8 @@ describe('sessions', () => {
     expect(a[1]).toContain('--resume ' + cliSession);
     expect(a[1]).not.toContain('动手前先读项目规则');
     expect(a[1]).toContain('不得创建、编辑或覆盖镜头实现代码');
+    expect(a[1]).toContain('结束本轮对话会终止仍在运行的任务');
+    expect(a[1]).toContain('不要调用 CronCreate');
 
     // 事件流：断线重放从 Last-Event-ID 之后开始。
     const events = await rawGet(f.s, `/api/sessions/${id}/events?follow=0`);
@@ -248,9 +251,30 @@ describe('sessions', () => {
       meta.turns = [turn.turn_id];
       meta.running_turn = turn.turn_id;
     });
+    emit(sess, turn.turn_id, { kind: 'turn-start', status: 'running' });
     const s2 = new Server({ projectPath: f.root, configPath: f.s.config.configPath });
     expect(listSessions(s2, f.root)[0].running_turn).toBeUndefined();
     expect(loadTurn(f.root, turn.turn_id).status).toBe('interrupted');
+    expect(getSession(s2, f.root, sess.meta.session_id)!.events.at(-1)).toMatchObject({ kind: 'turn-end', turn_id: turn.turn_id, status: 'interrupted', text: 'Studio 在本轮进行中退出' });
+  });
+
+  it.each(['running', 'interrupted', 'succeeded', 'failed', 'missing'])('repairs a missing end event for a %s turn even after running_turn was cleared', async (status) => {
+    const f = newSessionFixture();
+    const sess = createSession(f.s, f.root, 'chat', 'x', { tool: 'qoder', renderer: 'qoder' });
+    const turn: Turn = { turn_id: newID('t'), session_id: sess.meta.session_id, kind: 'chat', message: '渲染所有镜头', status, started_at: new Date().toISOString(), changes: [], before: null };
+    if (status !== 'missing') saveTurn(f.root, turn);
+    updateMeta(sess, (meta) => { meta.turns = [turn.turn_id]; });
+    emit(sess, turn.turn_id, { kind: 'turn-start', status: 'running' });
+    emit(sess, turn.turn_id, { kind: 'tool-call', tool: 'mcp__onset__scene_run_all', call_id: 'render' });
+    const s2 = new Server({ projectPath: f.root, configPath: f.s.config.configPath });
+    const restored = getSession(s2, f.root, sess.meta.session_id)!;
+    const expected = status === 'missing' || status === 'running' ? 'interrupted' : status;
+    expect(restored.cancel).toBeNull();
+    expect(restored.events.at(-1)).toMatchObject({ seq: 3, kind: 'turn-end', turn_id: turn.turn_id, status: expected });
+    const response = await rawGet(s2, `/api/sessions/${sess.meta.session_id}/events?follow=0&after=2`);
+    expect(response.text).toContain('event: turn-end');
+    const s3 = new Server({ projectPath: f.root, configPath: f.s.config.configPath });
+    expect(getSession(s3, f.root, sess.meta.session_id)!.events.map(sessionEventJSON)).toEqual(restored.events.map(sessionEventJSON));
   });
 
   it('session request validation', async () => {

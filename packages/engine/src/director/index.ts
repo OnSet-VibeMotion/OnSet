@@ -374,7 +374,7 @@ export function parseResolvedService(raw: unknown): ResolvedService | null {
 export const ServiceStdinEnv = 'ONSET_AGENT_SERVICE_STDIN';
 
 /** 会起制作人的操作：包括整理经验、检查画面描述与镜头渲染。 */
-export const KeyOps: ReadonlySet<string> = new Set(['memory_consolidate', 'audition_learn', 'scene_prompt_check', 'scene_run', 'scene_run_all', 'scene_seams', 'scene_design', 'scene_audition', 'memory_exam']);
+export const KeyOps: ReadonlySet<string> = new Set(['memory_consolidate', 'audition_learn', 'scene_prompt_check', 'scene_run', 'scene_run_all', 'scene_seams', 'scene_design', 'scene_audition', 'scene_audition_retry', 'memory_exam']);
 
 /** 检查画面描述用优化工具（OPTIMIZER，空则跟随编排）。 */
 export function keyTool(op: string, cfg: { orchestrator: string; optimizer: string }): string {

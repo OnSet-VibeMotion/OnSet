@@ -27,6 +27,27 @@ function home(): { home: string; project: string; scene: string; other: string }
 }
 
 describe('renderer sandbox', () => {
+  it.runIf(sandboxAvailable())('isolates audition files from sibling works, original scenes and symlink escapes', () => {
+    const h = home();
+    const own = path.join(h.project, 'production/studio/auditions/a/A');
+    const other = path.join(h.project, 'production/studio/auditions/a/B');
+    fs.mkdirSync(own, { recursive: true }); fs.mkdirSync(other, { recursive: true });
+    fs.writeFileSync(path.join(other, 'index.html'), 'competitor');
+    fs.writeFileSync(path.join(h.scene, 'index.html'), 'original');
+    fs.writeFileSync(path.join(h.project, 'onset.conf'), 'RENDERER=claude');
+    fs.symlinkSync(path.join(other, 'index.html'), path.join(own, 'escape.html'));
+    const skills = path.join(h.project, '.agents/skills');
+    const profile = sandboxProfile({ sceneDir: own, projectRoot: h.project, env: { HOME: h.home, PATH: '/usr/bin:/bin' }, toolStateDirs: [], readDirs: [], isolatedProject: { readDirs: [skills], readFiles: [path.join(h.project, 'onset.conf')] } });
+    const sh = (script: string) => spawnSync(SandboxExec, ['-p', profile, '/bin/sh', '-c', script], { cwd: own, encoding: 'utf8' }).status === 0;
+    expect(sh('echo own > index.html && cat index.html')).toBe(true);
+    expect(sh('cat ../B/index.html')).toBe(false);
+    expect(sh('cat escape.html')).toBe(false);
+    expect(sh(`cat "${h.scene}/index.html"`)).toBe(false);
+    expect(sh(`cat "${skills}/scene-kit/SKILL.md"`)).toBe(true);
+    expect(sh(`cat "${h.project}/onset.conf"`)).toBe(true);
+    expect(sh('echo changed > ../B/index.html')).toBe(false);
+  });
+
   it('writes the boundary as directories', () => {
     const h = home();
     const profile = sandboxProfile({ sceneDir: h.scene, projectRoot: h.project, env: { HOME: h.home, PATH: '/usr/bin' }, toolStateDirs: [path.join(h.home, '.qoder-cn')], readDirs: [] });

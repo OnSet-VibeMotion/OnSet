@@ -125,6 +125,8 @@ export interface Scene {
   continuation: Continuation | null;
   /** 不接着上一次做，一律从头渲染（scene_run 的 fresh），不来自 scene.json。 */
   fresh: boolean;
+  /** 试镜执行边界，不来自 scene.json、不参与输入指纹。 */
+  audition?: boolean;
   /**
    * 调度器按并发数分给本镜头的帧捕获 worker 数，不来自 scene.json；
    * 0 表示沿用 HyperFrames 的 auto。

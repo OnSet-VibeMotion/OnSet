@@ -1271,6 +1271,17 @@ export interface AuditionContestant {
   error?: string;
 }
 
+/** 盲评期间后端只给固定动作标签；评判后才附上日志正文。 */
+export interface AuditionActivity {
+  hint?: string;
+  slot: string;
+  state: 'pending' | 'starting' | 'running' | 'waiting' | 'done' | 'failed' | 'interrupted' | 'unavailable';
+  current: string;
+  phase?: 'design' | 'render';
+  step_count: number;
+  steps: { label: string; state: string; detail?: string }[];
+}
+
 export interface AuditionVerdict {
   kind: 'winner' | 'tie' | 'none';
   winner: string;

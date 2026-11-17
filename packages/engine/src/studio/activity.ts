@@ -193,8 +193,8 @@ function agentrunModel(tool: string, line: string): string {
 }
 
 /** 把流日志读到最新，返回这个镜头的解析状态；还没有流日志时返回 null。 */
-function readStream(dir: string, id: string): { state: StreamState; info: fs.Stats } | null {
-  const file = path.join(dir, 'render-' + id + '.stream.jsonl');
+function readStream(dir: string, id: string, prefix = 'render'): { state: StreamState; info: fs.Stats } | null {
+  const file = path.join(dir, prefix + '-' + id + '.stream.jsonl');
   let info: fs.Stats;
   try {
     info = fs.statSync(file);
@@ -237,13 +237,13 @@ function lastOutcome(dir: string, id: string): { outcome?: string; error?: strin
 }
 
 /** 镜头的渲染过程：进行中的，或者最近一次的。 */
-export function sceneActivity(sc: SceneSummary): Record<string, unknown> {
+export function sceneActivity(sc: Pick<SceneSummary, 'directory' | 'id'> & Partial<SceneSummary>, prefix: 'render' | 'design' = 'render'): Record<string, unknown> {
   const rendering = sceneRendering(sc.directory, sc.id);
   const live = scene.readLive(sc.directory, sc.id);
-  const read = readStream(sc.directory, sc.id);
+  const read = readStream(sc.directory, sc.id, prefix);
   const state = read?.state;
   const steps = state ? state.steps.slice(-maxActivitySteps) : [];
-  const ended = rendering ? {} : lastOutcome(sc.directory, sc.id);
+  const ended = rendering || prefix === 'design' ? {} : lastOutcome(sc.directory, sc.id);
   return goMap({
     scene_id: sc.id,
     rendering,

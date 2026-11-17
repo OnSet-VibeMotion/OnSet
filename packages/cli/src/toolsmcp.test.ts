@@ -139,6 +139,8 @@ describe('onset tools MCP', () => {
   it('hands back a job for long runs and lets the agent wait for it', async () => {
     const replies = await call([{ id: 1, method: 'tools/call', params: { name: 'beat_bars', arguments: { wait_seconds: 0 } } }], fakeWorker('sleep 0.3; echo done', undefined, 'await new Promise(r=>setTimeout(r,300));console.log("done")'));
     expect(text(replies.get(1))).toMatch(/还在运行：任务 job-1/);
+    expect(text(replies.get(1))).toContain('结束本轮对话会终止仍在运行的任务');
+    expect(text(replies.get(1))).toContain('不要用定时任务');
   });
 
   it('job_wait returns only the new output and the final result', async () => {

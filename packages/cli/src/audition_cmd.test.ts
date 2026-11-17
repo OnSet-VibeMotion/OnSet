@@ -62,13 +62,76 @@ async function onset(...args: string[]): Promise<{ code: number; out: string }> 
 
 describe('audition ops', () => {
   it('are for people only, not the orchestrator', () => {
-    for (const name of ['scene_audition', 'scene_audition_vote', 'scene_audition_adopt']) {
+    for (const name of ['scene_audition', 'scene_audition_retry', 'scene_audition_vote', 'scene_audition_adopt']) {
       expect(allOps().find((op) => op.name === name)?.scopes).toEqual(['cli']);
     }
   });
 });
 
 describe.skipIf(skip)('scene audition', () => {
+  it.runIf(scene.sandboxAvailable())('isolates contestants even with unsafe rendering enabled', async () => {
+    const { root, scene: dir } = setup();
+    const binary = lookPath('claude');
+    const probe = `
+if /bin/cat ../../../../../scenes/scene-001/scene.json >/dev/null 2>&1; then printf original > leaked-original; fi
+case "$PWD" in */A) peer=B ;; *) peer=A ;; esac
+if /bin/cat "../$peer/scene.json" >/dev/null 2>&1; then printf peer > leaked-peer; fi
+`;
+    fs.writeFileSync(binary, fs.readFileSync(binary, 'utf8').replace('model=""; prev="";', probe + '\nmodel=""; prev="";'));
+    const ran = await onset('--unsafe', 'scene', 'audition', dir, '--contestants', 'claude:one,claude:two');
+    expect(ran.code, ran.out).toBe(0);
+    const [a] = audition.list(root);
+    for (const c of a.contestants) {
+      expect(c.outcome, c.error).toBe('succeeded');
+      expect(fs.existsSync(path.join(root, c.workdir, 'leaked-original'))).toBe(false);
+      expect(fs.existsSync(path.join(root, c.workdir, 'leaked-peer'))).toBe(false);
+      expect(fs.readFileSync(path.join(root, c.workdir, 'argv.log'), 'utf8')).toContain('禁止读取其他选手');
+    }
+  });
+
+  it('recovers a dead contestant, rejects overlapping retries, and records another failure', async () => {
+    const { root, scene: dir } = setup();
+    const a = audition.create(root, scene.load(dir), [{ renderer: 'claude', model: 'good' }, { renderer: 'claude', model: 'broken' }], { withMemory: false, shuffle: entries => entries });
+    a.contestants[0].status = 'running';
+    audition.save(root, a);
+    scene.writeLive(path.join(root, a.contestants[0].workdir), a.scene_id, { pid: 2147483647, renderer: 'claude', started_at: '' });
+    const release = audition.acquireRun(root, a);
+    try {
+      expect((await onset('scene', 'audition-retry', a.id, '--slot', 'A')).code).not.toBe(0);
+    } finally { release(); }
+    const retry = await onset('scene', 'audition-retry', a.id, '--slot', 'A');
+    expect(retry.code, retry.out).toBe(0);
+    expect(audition.load(root, a.id).contestants.map(c => c.status)).toEqual(['done', 'pending']);
+    expect((await onset('scene', 'audition-retry', a.id, '--slot', 'B')).code).not.toBe(0);
+    expect(audition.load(root, a.id).contestants[1]).toMatchObject({ status: 'done', outcome: 'failed' });
+    expect(audition.isRunning(root, a)).toBe(false);
+  });
+
+  it('retries only the failed contestant using its frozen input and original two-stage configuration', async () => {
+    const { root, scene: dir } = setup();
+    expect((await onset('scene', 'audition', dir, '--contestants', 'claude:good,claude:broken<claude:teacher', '--with-memory=false')).code).toBe(0);
+    const [a] = audition.list(root);
+    const failed = a.contestants.find(c => c.model === 'broken')!;
+    const good = a.contestants.find(c => c.model === 'good')!;
+    const goodLog = path.join(root, good.workdir, 'argv.log');
+    const before = fs.statSync(goodLog).mtimeMs;
+    // 修复假的工具故障；项目镜头同时发生变化，重试仍要用原来冻结的输入。
+    const executable = lookPath('claude');
+    fs.writeFileSync(executable, fs.readFileSync(executable, 'utf8').replace('*broken*)', '*never-broken*)'));
+    fs.writeFileSync(path.join(dir, 'scene.json'), 'invalid newer source');
+    const retry = await onset('scene', 'audition-retry', a.id, '--slot', failed.slot);
+    expect(retry.code, retry.out).toBe(0);
+    const after = audition.load(root, a.id);
+    expect(after.contestants.find(c => c.slot === failed.slot)).toMatchObject({ model: 'broken', designer_model: 'teacher', outcome: 'succeeded', status: 'done' });
+    expect(after.contestants.find(c => c.slot === good.slot)).toEqual(good);
+    expect(fs.statSync(goodLog).mtimeMs).toBe(before);
+    expect(fs.readFileSync(path.join(root, failed.workdir, 'index.html'), 'utf8')).toBe('<html>broken+设计：teacher</html>');
+    expect(after.with_memory).toBe(false);
+    expect(after.verdict).toBeNull();
+    expect(fs.readdirSync(path.join(root, failed.workdir, 'attempts')).length).toBeGreaterThan(0);
+    expect((await onset('scene', 'audition-retry', a.id, '--slot', failed.slot)).code).not.toBe(0);
+  });
+
   it('renders every contestant with its own model, then votes and adopts the winner', async () => {
     const { root, scene: dir } = setup();
     const ran = await onset('scene', 'audition', 'scenes/scene-001', '--contestants', 'claude:opus-x,claude:sonnet-y,claude:broken-z');
@@ -148,6 +211,12 @@ describe.skipIf(skip)('scene audition', () => {
     expect(fs.readFileSync(path.join(root, control.workdir, 'argv.log'), 'utf8')).not.toContain('先把前景、中景、背景分开摆好');
     // 同一个镜头不给自己的范例（那等于抄答案）。
     expect(trialPrompt).not.toContain('参考范例');
+    audition.applyAttempt(root, trial, null, 'fixture: interrupted');
+    audition.save(root, a);
+    const retried = await onset('scene', 'audition-retry', a.id, '--slot', trial.slot);
+    expect(retried.code, retried.out).toBe(0);
+    expect(fs.readFileSync(path.join(root, trial.workdir, 'argv.log'), 'utf8')).toContain('先把前景、中景、背景分开摆好');
+    expect(audition.load(root, a.id).exam).toEqual(a.exam);
     const voted = await onset('scene', 'audition-vote', a.id, '--kind', 'winner', '--winner', trial.slot);
     expect(voted.out).toContain('layer-depth-first 生效');
     const p = audition.progress(audition.readVerdicts(mem), relation);

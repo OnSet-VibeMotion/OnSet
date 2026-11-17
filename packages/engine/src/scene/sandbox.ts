@@ -46,6 +46,8 @@ export interface SandboxPaths {
   hiddenDirs?: string[];
   /** 另外要能读的目录：渲染工具、onset 运行时、浏览器所在的地方。 */
   readDirs: string[];
+  /** 试镜仅能读自己的冻结输入、明确列出的技能/资源与运行配置。 */
+  isolatedProject?: { readDirs: string[]; readFiles: string[] };
 }
 
 /** 真实路径：/var 是 /private/var 的链接，Seatbelt 按真实路径匹配。不存在的照原样。 */
@@ -126,6 +128,13 @@ export function sandboxProfile(p: SandboxPaths): string {
   // 渲染工具的用户级技能与插件：读不到就不会出现在它的技能列表里，渲染器只看见镜头自己的那几个（stageRendererSkills）。
   const hidden = unique(p.hiddenDirs ?? []);
   if (hidden.length > 0) lines.push('(deny file-read-data', ...hidden.map((d) => `  (subpath ${quote(d)})`), ')');
+  if (p.isolatedProject) {
+    // 即使项目位于可写的临时目录、工具目录里，也要最后收紧；真实路径同时挡住绕向其他选手的软链接。
+    lines.push(`(deny file-read-data file-write* (subpath ${quote(real(p.projectRoot))}))`);
+    lines.push('(allow file-read-data', ...unique([p.sceneDir, ...p.isolatedProject.readDirs]).map(d => `  (subpath ${quote(d)})`),
+      ...unique(p.isolatedProject.readFiles).map(f => `  (literal ${quote(f)})`), ')');
+    lines.push(`(allow file-write* (subpath ${quote(real(p.sceneDir))}))`);
+  }
   // 凭据最后收回。读要写成 file-read-data：Seatbelt 里同一路径上更具体的操作压过 file-read*，
   // 写成 file-read* 的话前面放开项目目录的 allow file-read-data 照样让 .env 读得到（实测）。
   lines.push('(deny file-read-data file-write*', '  (regex #"/\\.env$")', '  (regex #"/\\.env\\.[^/]*$")', ...secrets.map((d) => `  (subpath ${quote(d)})`), ')');

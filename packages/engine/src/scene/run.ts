@@ -26,7 +26,7 @@ import {
   type RendererSession,
   type Usage,
 } from '../tools';
-import { KindSession, KindText, KindToolCall, newParser } from '../agentrun';
+import { KindError, KindSession, KindText, KindToolCall, newParser } from '../agentrun';
 import { formatFixed, goRound } from '../gofmt';
 import { newAttempt, OutcomeFailed, OutcomeInterrupted, OutcomeSucceeded, OutcomeVerificationFailed, timestamp, writeAttempt, archiveAttempt } from './attempt';
 import { CheckOutputFrames, classifyOutputProblem, DeterminismCheckPrefix } from './checks';
@@ -42,6 +42,7 @@ import { verify as verifyResources } from '../renderassets';
 import { HyperFramesSkillName, rendererAccess, resolveAllSkills, skillsEnvironment, SkillsDirEnv, stagedSkills, stageRendererSkills, unstageRendererSkills } from './skills';
 import { VerificationError } from './verification';
 import { acquireSceneLease } from './lease';
+import { rendererFailureAdvice } from './failure';
 
 /** SIGTERM 之后等渲染器进程组自行退出的时间（毫秒）。 */
 const terminateGrace = 500;
@@ -78,7 +79,6 @@ async function runScene(
 ): Promise<void> {
   if (!Number.isFinite(tolerance) || tolerance < 0) throw new Error('tolerance 必须是有限且非负的数字');
   const renderer = s.renderer !== '' ? s.renderer : cfg.renderer;
-  if (renderer === director.Tool && !director.resolveService(director.defaultDir({ ...process.env, ...baseEnv }))) throw new Error(director.NoServiceMessage);
   // 上次渲染没收拾干净的 qoder 技能链接先清掉：resolveSkill 也会找镜头目录里的 .qoder/skills。
   unstageRendererSkills(s.directory);
   const resolvedSkills = resolveAllSkills(renderer, s.directory, skillsEnvironment(baseEnv, cfg.overlay), s);
@@ -97,15 +97,14 @@ async function runScene(
     const dir = process.env[hyperframes.CLIDirEnv];
     if (dir) cliEnv[hyperframes.CLIDirEnv] = dir;
   }
-  hyperframes.requireCLI(cliEnv);
   for (const key of [hyperframes.BrowserEnv, hyperframes.HyperFramesBrowserEnv, hyperframes.BrowserHookEnv, hyperframes.BrowserAppArgEnv]) {
     if (!cliEnv[key] && process.env[key]) cliEnv[key] = process.env[key]!;
   }
   // 浏览器同理：客户端里是它自带的 Chromium，单独用命令行时是 onset setup 下载的 headless-shell。
-  hyperframes.requireBrowser(cliEnv);
   // 资源先落到项目内容池并链接进镜头；不联网，失败时不启动模型也不清掉上一次产物。
   const preparedResources = prepareResources(s, resolvedSkills);
-  const prompt = withWindowsInstructions(buildPrompt(s, resolvedSkills), 'renderer');
+  const auditionNote = s.audition ? '\n这是独立试镜。只使用本目录的冻结输入、明确提供的技能和参考素材；禁止读取其他选手、其他试镜、项目已有镜头的代码、日志、截图或视频。完成必要资料读取后立即制作本目录的合成，不要反复搜索或研究别人的作品。\n' : '';
+  const prompt = withWindowsInstructions(buildPrompt(s, resolvedSkills) + auditionNote, 'renderer');
   // 渲染器的环境：onset 不在它的 PATH 里，HyperFrames 经 onset 的工具服务（--profile renderer）调用。
   const childEnv = childEnvironment(cfg, baseEnv, unsafe, parsePassthrough(baseEnv.ONSET_PASSTHROUGH_ENV ?? ''));
   // 客户端操作转发只交给编排工具。镜头渲染器已经拿到本次服务，不给它请求整片写操作的入口。
@@ -122,14 +121,12 @@ async function runScene(
   const model = rendererModelFor(cfg, renderer);
   // 调用选项（推理强度、快速模式、上下文长度）规则同模型：镜头换了渲染工具就不用设置里给另一家写的。
   const options = effectiveOptions(renderer, rendererOptionsFor(cfg, renderer));
-  // 渲染器套系统沙箱：只能写镜头目录、读本项目与工具自己的目录（见 sandbox.ts）。macOS 上五家都套，不安全模式不套。
+  // macOS 的试镜始终保留目录边界；普通镜头沿用用户的不安全模式设置。
   const projectRoot = findProjectRoot(s.directory);
-  if (!unsafe && projectRoot !== '' && sandboxAvailable()) access.osSandbox = true;
+  if ((!unsafe || s.audition) && projectRoot !== '' && sandboxAvailable()) access.osSandbox = true;
   // 渲染器自己不拦命令：套了沙箱时由沙箱管边界；Windows 没有系统沙箱，用户定的是全放开（2026-11），安全先放下。
   access.unfiltered = rendererUnfiltered(access.osSandbox === true);
-  /** 渲染器的命令行：给定提示词与会话；qoder 再套系统沙箱。 */
-  const invocation = (text: string, session: RendererSession | null): Invocation => {
-    const command = rendererLaunch(renderer, text, unsafe, access, model, session, s.directory, { ...childEnv, [director.DirEnv]: director.defaultDir({ ...process.env, ...baseEnv }) }, options);
+  const confine = (command: Invocation): Invocation => {
     let argv = command.argv;
     argv[0] = lookPath(argv[0], baseEnv.PATH ?? '');
     if (!access.osSandbox) return { ...command, argv };
@@ -142,11 +139,17 @@ async function runScene(
       toolStateDirs: [...(home ? own.state : []), ...(renderer === director.Tool ? [director.rendererDir(director.defaultDir({ ...process.env, ...baseEnv }))] : [])],
       toolStateFiles: home ? own.files : [],
       hiddenDirs: home ? own.hidden : [],
+      ...(s.audition ? { isolatedProject: {
+        readDirs: [...Object.values(resolvedSkills).filter(Boolean), path.join(projectRoot, '.onset/resources'), ...(s.exemplars?.dirs ?? [])],
+        readFiles: [path.join(projectRoot, 'onset.conf'), path.join(projectRoot, 'onset.flow.json')],
+      } } : {}),
       // 渲染工具、onset 的运行时与资源、借来的浏览器所在的目录；资源目录的上一层是应用资源目录（开发时是仓库，浏览器模式从那里加载界面）。
       readDirs: [path.dirname(fs.realpathSync(argv[0])), path.dirname(process.execPath), ...(process.env.ONSET_ASSETS_DIR ? [path.dirname(process.env.ONSET_ASSETS_DIR)] : []), ...[process.env.ONSET_ASSETS_DIR, childEnv.ONSET_SELF, cliEnv[hyperframes.BrowserEnv], cliEnv[hyperframes.CLIDirEnv]].filter((v): v is string => !!v).map((v) => (fs.existsSync(v) && fs.statSync(v).isDirectory() ? v : path.dirname(v))), ...(s.exemplars?.dirs ?? [])],
     });
     return { ...command, argv: sandboxed(argv, profile) };
   };
+  const invocation = (text: string, session: RendererSession | null): Invocation =>
+    confine(rendererLaunch(renderer, text, unsafe, access, model, session, s.directory, { ...childEnv, [director.DirEnv]: director.defaultDir({ ...process.env, ...baseEnv }) }, options));
   const inputs = fingerprint(s, renderer, resolvedSkills);
   const resourceKeys = new Set([...Object.keys(preparedResources), ...Object.keys(inputs.parts ?? {}).filter((key) => key.startsWith('asset:'))]);
   if ([...resourceKeys].some((key) => preparedResources[key] !== inputs.parts?.[key])) {
@@ -155,13 +158,30 @@ async function runScene(
   // 中途异常退出过、输入没变：接着上一次做，不从头重来（resume.ts）。要在归档上一次之前读。
   const design = s.designOnly === true;
   const resume = design || s.fresh || s.seam || s.examNote !== '' ? null : resumeState(s, inputs.fingerprint);
+  // 上一轮已经出片、只是进程异常结束：重试先做本机验收。保留原日志、用量与真实退出码。
+  if (resume && !signal?.aborted && fs.existsSync(outputPath(s))) {
+    let valid = false;
+    try { verifyResources(s.directory); verifyOutput(s, baseEnv, tolerance); valid = true; } catch { /* 不合格才继续制作。 */ }
+    if (valid) {
+      writeRecord(s, inputs);
+      const recovered = { ...resume.previous, outcome: OutcomeSucceeded, error: '', warning: resume.previous.error, resumed: 'verify' };
+      writeAttempt(s, recovered);
+      s.afterAttempt?.(recovered);
+      userOutput.write(`[${s.id}] 已有视频通过本机验收，无需再次调用模型\n`);
+      return;
+    }
+  }
+  // 补验收不启动模型或浏览器。只有确实需要制作时才检查这些运行依赖。
+  if (renderer === director.Tool && !director.resolveService(director.defaultDir({ ...process.env, ...baseEnv }))) throw new Error(director.NoServiceMessage);
+  hyperframes.requireCLI(cliEnv);
+  hyperframes.requireBrowser(cliEnv);
   const frameCount = goRound(s.duration_seconds * sceneCanvas(s).fps);
   /** 新会话：能预先指定会话号的工具给一个，续接时就靠它。 */
   const newSession = (): RendererSession | null => (presetSessionID(renderer) ? { id: crypto.randomUUID(), resume: false } : null);
   /** 第三层的提示词：完整提示词加「接着上一次做」。 */
   const continuePrompt = (): string =>
-    withWindowsInstructions(buildPrompt({ ...s, continuation: { reason: resume?.previous.error ?? '', files: leftoverFiles(s), lastSteps: resume?.lastSteps ?? [], codeDone: resume?.codeDone ?? false } }, resolvedSkills), 'renderer');
-  const resumeSession = resume !== null && resume.previous.session_id !== '' && resume.previous.renderer === renderer;
+    withWindowsInstructions(buildPrompt({ ...s, continuation: { reason: resume?.previous.error ?? '', files: leftoverFiles(s), lastSteps: s.audition ? [] : resume?.lastSteps ?? [], codeDone: resume?.codeDone ?? false } }, resolvedSkills) + auditionNote, 'renderer');
+  const resumeSession = !s.audition && resume !== null && resume.previous.session_id !== '' && resume.previous.renderer === renderer;
   // 直接渲染要看的是归档前就在镜头目录里的合成入口（归档只挪产物与日志，合成代码留在原处）。
   const directRender = resume !== null && resume.codeDone && fs.existsSync(path.join(s.directory, 'index.html'));
   // 先挪走上一次的现场再截断日志；旧记录随即作废，本次通过校验后再写新的。
@@ -239,7 +259,17 @@ async function runScene(
       try {
         const userFile = fs.openSync(design ? designLog(s, 'user.log') : userLog(s), 'w');
         try {
-          await renderLayers(rawFile, stderrFile, userFile);
+          try {
+            await renderLayers(rawFile, stderrFile, userFile);
+          } catch (error) {
+            // 服务失败发生在出片之后：验收实际产物，不能因为最后一句模型响应失败就丢掉已经完成的画面。
+            // 取消、工具崩溃与设计稿阶段仍照常失败；旧视频已在本次运行前归档，不会误收旧产物。
+            if (design || signal?.aborted || !(error instanceof RendererFailure) || !rendererFailureAdvice(error.message) || !fs.existsSync(outputPath(s))) throw error;
+            attempt.warning = error.message;
+            finish();
+            userOutput.write(`[${s.id}] 模型异常结束，已有视频通过本机验收：${rendererFailureAdvice(error.message)!.label}\n`);
+            return;
+          }
         } finally {
           fs.closeSync(userFile);
         }
@@ -306,7 +336,10 @@ async function runScene(
   async function renderComposition(stderrFile: number): Promise<void> {
     const args = ['render', '--output', s.output, ...(s.renderWorkers > 0 ? ['--workers', String(s.renderWorkers)] : [])];
     const spec = hyperframes.cliCommandFor(hyperframes.requireCLI(cliEnv), cliEnv, args);
-    const started = await start(spec.file, spec.args, { cwd: s.directory, env: spec.env, stdio: ['ignore', stderrFile, stderrFile], signal }, terminateGrace);
+    // 直接渲染也是选手代码的执行，不能绕开试镜隔离去读取其他选手的文件。
+    const invocation: Invocation = { argv: [spec.file, ...spec.args], env: spec.env, stdin: '' };
+    const command = s.audition ? confine(invocation) : invocation;
+    const started = await start(command.argv[0], command.argv.slice(1), { cwd: s.directory, env: command.env, stdio: ['ignore', stderrFile, stderrFile], signal }, terminateGrace);
     try {
       await started.wait();
     } catch (e) {
@@ -318,6 +351,7 @@ async function runScene(
   /** 跑一次渲染器；返回它说了几句话、调了几次工具（0 表示根本没开始）。失败时抛出的错误也带着这个数（events）。 */
   async function spawnRenderer(command: Invocation, rawFile: number, stderrFile: number, userFile: number): Promise<number> {
     let events = 0;
+    let failure = '';
     const parser = newParser(renderer);
     const fail = (e: Error): Error => Object.assign(e, { events });
     let started: Started;
@@ -346,8 +380,16 @@ async function runScene(
         userOutput.write(message + '\n');
       }
       for (const e of parser.parse(line)) {
+        if (e.kind === KindError && e.text) failure = e.text.slice(0, 8000);
         if (e.kind === KindSession && e.session_id) attempt.session_id = e.session_id;
         if (e.kind === KindText || e.kind === KindToolCall) events++;
+      }
+      // 有的工具先报告一次可恢复的请求错误，随后明确完成本轮；不要把它误当最终失败。
+      if (failure) {
+        try {
+          const result = JSON.parse(line);
+          if (result.type === 'turn.completed' || (result.type === 'result' && result.is_error === false)) failure = '';
+        } catch { /* 普通文本不改变服务错误。 */ }
       }
     };
     started.child.stdout!.on('data', (chunk: Buffer) => {
@@ -372,13 +414,17 @@ async function runScene(
     if (waitErr !== null) {
       if (waitErr instanceof ExitError) {
         attempt.exit_code = waitErr.code;
-        throw fail(new Error(`渲染器退出码 ${waitErr.code}`));
+        throw fail(new RendererFailure(failure || `渲染器退出码 ${waitErr.code}`));
       }
       throw fail(waitErr as Error);
     }
+    attempt.exit_code = 0;
+    if (failure !== '') throw fail(new RendererFailure(failure));
     return events;
   }
 }
+
+class RendererFailure extends Error {}
 
 /** 只写设计稿那一次的日志：design-<镜头>.<后缀>，不盖掉渲染的日志。 */
 export function designLog(s: Pick<Scene, 'directory' | 'id'>, suffix: string): string {

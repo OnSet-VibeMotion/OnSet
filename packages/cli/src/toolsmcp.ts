@@ -350,7 +350,7 @@ export class Jobs {
     job.delivered = visible.length;
     const body = clip(fresh);
     const sep = body.endsWith('\n') || body === '' ? '' : '\n';
-    if (job.code === null) return { text: `${body}${sep}[还在运行：任务 ${job.id}。用 job_wait 接着等，或 job_cancel 停掉]`, isError: false };
+    if (job.code === null) return { text: `${body}${sep}[还在运行：任务 ${job.id}。用 job_wait 接着等，或 job_cancel 停掉。结束本轮对话会终止仍在运行的任务；不要用定时任务接管，必须在本轮持续 job_wait 直到完成或明确失败]`, isError: false };
     this.jobs.delete(job.id);
     const { result } = parseWorkerOutput(job.output);
     if (!result) return { text: `${body}${sep}[执行进程意外退出，退出码 ${job.code}]`, isError: true };
