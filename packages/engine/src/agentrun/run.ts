@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { withWindowsInstructions } from '../windowsruntime';
 import { MissingToolError, lookPath as envLookPath } from '../envutil';
 import { DefaultGrace, ExitError as ProcessExitError, abortReason, start } from '../procgroup';
-import { detectModel, interactiveInvocation, type McpServer, newUsage, orchestratorInvocation, presetSessionID, usageEmpty, type OrchestratorAccess, type PermissionPrompt, type Usage, type AgentOptions } from '../tools';
+import { detectModel, interactiveInvocation, type McpServer, newUsage, orchestratorInvocation, presetSessionID, usageEmpty, type OrchestratorAccess, type PermissionPrompt, type Usage, type AgentOptions, type SessionTotal } from '../tools';
 import { runACP } from './acp';
 import { runCodexApp } from './codexapp';
 import type { AskPermission } from './interactive';
@@ -40,6 +40,11 @@ export interface Spec {
   lookPath?: (name: string) => string;
   /** 续接时上一轮最后的任务清单（带编号的项），逐条改的任务工具（TaskUpdate）才接得上。 */
   plan?: PlanItem[];
+  /**
+   * 续接时同一会话上一次记下的累计用量（tools.sessionBaseline）；null 表示续接但不知道。
+   * claude 续接后报的费用、codebuddy 报的全部数字是整个会话的累计值，要减掉它。
+   */
+  baseline?: SessionTotal | null;
   /** 若给出，原样写入每一行输出（带换行），供排查格式变化。 */
   raw?: { write(chunk: string): unknown };
 }
@@ -182,6 +187,7 @@ export async function run(spec: Spec, emit: (event: Event) => void, signal?: Abo
   try {
     parser = newParser(spec.tool);
     if (spec.resume && spec.plan) parser.seedPlan(spec.plan);
+    if (spec.resume && spec.baseline !== undefined) parser.seedBaseline(spec.baseline);
     ({ argv, stdin, env: extraEnv = {} } = orchestratorInvocation(spec.tool, {
       workdir: spec.workdir,
       prompt: spec.prompt,

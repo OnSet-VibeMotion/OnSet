@@ -222,6 +222,7 @@ function parseUsage(v: unknown): Usage | null {
     output_tokens: int(o.output_tokens),
     cached_input_tokens: int(o.cached_input_tokens),
     cost_usd: o.cost_usd === undefined || o.cost_usd === null ? null : num(o.cost_usd),
+    credits: o.credits === undefined || o.credits === null ? null : num(o.credits),
     turns: int(o.turns),
     partial: bool(o.partial),
     basis: str(o.basis),

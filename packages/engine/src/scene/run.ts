@@ -25,6 +25,7 @@ import {
   presetSessionID,
   rendererLaunch,
   type Invocation,
+  sessionBaseline,
   usageEmpty,
   type RendererSession,
   type Usage,
@@ -330,6 +331,8 @@ async function runScene(
     if (resumeSession) {
       attempt.resumed = 'session';
       attempt.session_id = resume!.previous.session_id;
+      // 续接后有的工具报整个会话的累计用量，减掉上一次记下的才是这一次的（tools 的 cumulativeFields）。
+      usage.baseline = sessionBaseline(resume!.previous.usage);
       const text = resumePrompt(resume!.previous.error, s.output, frameCount);
       const events = await spawnRenderer(invocation(text, { id: resume!.previous.session_id, resume: true }), rawFile, stderrFile, userFile).catch((e: unknown) => {
         if (signal?.aborted || (e as { events?: number }).events !== 0) throw e;
@@ -339,6 +342,7 @@ async function runScene(
       // 续接的会话一句话都没说就退出了（会话过期、找不到）：退到第三层。
       userOutput.write(`[${s.id}] 原来的会话续不上，开新会话照上次的文件接着做\n`);
     }
+    usage.baseline = undefined;
     const session = newSession();
     attempt.session_id = session?.id ?? '';
     if (resume) attempt.resumed = 'files';

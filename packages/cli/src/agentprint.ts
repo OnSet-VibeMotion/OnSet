@@ -38,6 +38,7 @@ export class EventPrinter {
         const u = event.usage ?? {};
         let line = `用量: 输入 ${u.input_tokens ?? 0}（缓存 ${u.cached_input_tokens ?? 0}）/ 输出 ${u.output_tokens ?? 0}`;
         if (u.cost_usd !== undefined && u.cost_usd !== null) line += ` / $${formatFixed(u.cost_usd, 4)}`;
+        if (u.credits !== undefined && u.credits !== null) line += ` / 额度 ${formatFixed(u.credits, 2)}`;
         this.stdout.write(line + '\n');
         break;
       }

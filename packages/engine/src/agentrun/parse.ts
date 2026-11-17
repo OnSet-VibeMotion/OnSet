@@ -5,7 +5,7 @@
 // 各家的流格式在 2026-11 实测录下，见 testdata/；codebuddy 本机未登录，只录到
 // 401 的错误流，结构按与 claude 相同处理，未经完整实测。
 import { compareBytes } from '../gojson';
-import { ValidTools, accumulateUsage, newUsage, usageJSON, type Usage } from '../tools';
+import { ValidTools, accumulateUsage, newUsage, usageJSON, type SessionTotal, type Usage } from '../tools';
 
 /** 统一事件的种类。Studio 会在此之外再加自己的种类，所以是 string 而不是封闭的联合类型。 */
 export type Kind = string;
@@ -342,9 +342,18 @@ export class Parser {
     this.tasks.seed(plan);
   }
 
+  /**
+   * 续接同一个 CLI 会话时，给上一次记下的会话累计值（tools.sessionBaseline）；null 表示续接但不知道。
+   * 有的工具续接后报的是整个会话的累计数（tools 的 cumulativeFields），减掉它才是这一次的。
+   */
+  seedBaseline(baseline: SessionTotal | null): void {
+    this.accumulated.baseline = baseline;
+  }
+
   /** 累计用量；一条用量事件都没读到时 usageEmpty() 为 true。 */
   usage(): Usage {
-    return { ...this.accumulated };
+    const { baseline: _baseline, ...usage } = this.accumulated;
+    return usage;
   }
 
   /** 译一行。认不出的行返回空数组，不报错：各家会在流里夹带限流、钩子之类的事件。 */

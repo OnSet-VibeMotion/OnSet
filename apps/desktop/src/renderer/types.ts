@@ -96,6 +96,8 @@ export interface Usage {
   output_tokens?: number;
   cached_input_tokens?: number;
   cost_usd?: number;
+  /** 按额度计费的工具（qoder）报的额度；这类工具不报 token。 */
+  credits?: number;
   turns?: number;
   partial?: boolean;
   source?: string;

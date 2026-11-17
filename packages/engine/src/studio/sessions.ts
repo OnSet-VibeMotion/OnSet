@@ -795,6 +795,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
         spec.sessionID = previous;
         spec.resume = true;
         spec.plan = lastTaskPlan(sess.events);
+        spec.baseline = ledger.lastSessionUsage(ledger.projectFile(p.path), previous);
       } else {
         spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
         if (earlierTurns && history !== '') spec.prompt = reseedPrompt(history, spec.prompt, productionBrief(p, sess));
@@ -805,6 +806,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
         emit(sess, turn.turn_id, { kind: kindNotice, text: '原会话无法续接（' + outcome.error.message + '），已带上之前的对话记录开新会话' });
         spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
         spec.resume = false;
+        spec.baseline = undefined;
         spec.prompt = reseedPrompt(history, prompt, productionBrief(p, sess));
         outcome = await agentrun.run(spec, onEvent, signal);
         recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);

@@ -107,6 +107,20 @@ export function attemptToJSON(a: Attempt): unknown {
   };
 }
 
+const sessionTotalType: StructType = {
+  kind: 'struct',
+  goName: 'tools.SessionTotal',
+  name: 'SessionTotal',
+  fields: [
+    ['input_tokens', 'int64'],
+    ['output_tokens', 'int64'],
+    ['cached_input_tokens', 'int64'],
+    ['cost_usd', ptrTo('float')],
+    ['credits', ptrTo('float')],
+    ['turns', 'int'],
+  ],
+};
+
 const usageType: StructType = {
   kind: 'struct',
   goName: 'tools.Usage',
@@ -116,10 +130,12 @@ const usageType: StructType = {
     ['output_tokens', 'int64'],
     ['cached_input_tokens', 'int64'],
     ['cost_usd', ptrTo('float')],
+    ['credits', ptrTo('float')],
     ['turns', 'int'],
     ['partial', 'bool'],
     ['basis', 'string'],
     ['source', 'string'],
+    ['session_total', ptrTo(sessionTotalType)],
   ],
 };
 
