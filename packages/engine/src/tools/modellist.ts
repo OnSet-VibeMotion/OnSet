@@ -1,10 +1,12 @@
+import { qoderBinary } from './tools';
+
 /**
  * 各家工具能选哪些模型：客户端的模型下拉框用。列表来自工具自己（登录账号、配置的服务商决定能用什么），
  * onset 不维护一份会过期的模型表；claude 没有列模型的命令，给它帮助里写的别名。
  *
  * 2026-11 实测：
  * - codex：`codex debug models` 打印 JSON 目录，visibility 为 list 的是选择器里列出的。
- * - qoder：`qoderclicn --list-models` 打印一列表格，首行是表头 MODEL。
+ * - qoder / qoder-intl：`qoderclicn --list-models`（国际版 `qodercli`）打印一列表格，首行是表头 MODEL。
  * - codebuddy：没有列模型的命令，`--help` 里 --model 的说明写着「Currently supported: (a, b, …)」。
  * - opencode：`opencode models` 每行一个「服务商/模型」。
  * - claude：`--model` 的说明只给别名（fable、opus、sonnet）或完整模型名。
@@ -24,7 +26,8 @@ export function modelListCommand(tool: string): string[] | null {
     case 'codex':
       return ['codex', 'debug', 'models'];
     case 'qoder':
-      return ['qoderclicn', '--list-models'];
+    case 'qoder-intl':
+      return [qoderBinary(tool), '--list-models'];
     case 'codebuddy':
       return ['codebuddy', '--help'];
     case 'opencode':
@@ -73,7 +76,8 @@ export function parseModelList(tool: string, stdout: string): ModelOption[] {
       }
       return out;
     }
-    case 'qoder': {
+    case 'qoder':
+    case 'qoder-intl': {
       const out: ModelOption[] = [];
       for (const raw of stdout.split('\n')) {
         const id = raw.trim().split(/\s{2,}|\t/)[0] ?? '';

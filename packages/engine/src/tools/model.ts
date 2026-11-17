@@ -10,7 +10,7 @@ import path from 'node:path';
  */
 export function detectModel(tool: string, line: string): string {
   // director（制作人，onset 自带的编排）照 claude 系的格式输出，见 director 包。
-  if (tool !== 'claude' && tool !== 'qoder' && tool !== 'codebuddy' && tool !== 'director') return '';
+  if (tool !== 'claude' && tool !== 'qoder' && tool !== 'qoder-intl' && tool !== 'codebuddy' && tool !== 'director') return '';
   let event: unknown;
   try {
     event = JSON.parse(line);

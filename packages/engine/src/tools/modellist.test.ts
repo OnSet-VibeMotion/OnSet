@@ -81,6 +81,8 @@ describe('model choice', () => {
     ]);
     expect(parseModelList('codex', 'not json')).toEqual([]);
     expect(parseModelList('qoder', 'MODEL\nAuto\nQwen3.8-Max\n\n').map((m) => m.id)).toEqual(['Auto', 'Qwen3.8-Max']);
+    expect(modelListCommand('qoder-intl')).toEqual(['qodercli', '--list-models']);
+    expect(parseModelList('qoder-intl', 'MODEL\nAuto\nUltimate\n').map((m) => m.id)).toEqual(['Auto', 'Ultimate']);
     const help = '  --model <model>   Model for the current session. Please provide the model ID. Currently supported: (hy4free, glm-5.3,\n   kimi-k3.1-pro)\n';
     expect(parseModelList('codebuddy', help).map((m) => m.id)).toEqual(['hy4free', 'glm-5.3', 'kimi-k3.1-pro']);
     expect(parseModelList('opencode', 'a/b\nwarning: something\nc/d#high\n').map((m) => m.id)).toEqual(['a/b', 'c/d#high']);

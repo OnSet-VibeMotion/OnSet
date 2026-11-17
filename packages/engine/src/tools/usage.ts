@@ -198,7 +198,7 @@ export function accumulateUsage(tool: string, line: string, u: Usage): void {
     u.turns = (u.turns ?? 0) + 1;
     u.source = 'codex turn.completed';
     u.basis = BasisTotalInput;
-  } else if ((tool === 'claude' || tool === 'qoder' || tool === 'codebuddy' || tool === 'director') && type === 'result') {
+  } else if ((tool === 'claude' || tool === 'qoder' || tool === 'qoder-intl' || tool === 'codebuddy' || tool === 'director') && type === 'result') {
     u.input_tokens = input + cacheCreate + cacheRead;
     u.output_tokens = output;
     u.cached_input_tokens = cacheRead;

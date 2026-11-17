@@ -230,7 +230,7 @@ defineOp({
     `返回单个配置键的解析结果，只有值本身加一个换行。
 
 可用键：
-  ORCHESTRATOR   编排工具：codex | claude | qoder | codebuddy | opencode
+  ORCHESTRATOR   编排工具：codex | claude | qoder | qoder-intl | codebuddy | opencode | director
   RENDERER       渲染工具：同上取值范围
   TTS_PROVIDER   语音合成：` +
     config.ttsProviderIDs().split(' ').join(' | ') +

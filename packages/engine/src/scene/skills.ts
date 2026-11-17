@@ -129,6 +129,7 @@ export const rendererSkillDirs: ReadonlyMap<string, SkillLocations> = new Map([
   ['claude', { home: '.claude/skills', project: '.claude/skills' }],
   ['codex', { home: '.codex/skills', project: '.codex/skills' }],
   ['qoder', { home: '.qoder/skills', project: '.qoder/skills' }],
+  ['qoder-intl', { home: '.qoder/skills', project: '.qoder/skills' }],
   ['codebuddy', { home: '.codebuddy/skills', project: '.codebuddy/skills' }],
   ['opencode', { home: '.config/opencode/skills', project: '.opencode/skills' }],
 ]);

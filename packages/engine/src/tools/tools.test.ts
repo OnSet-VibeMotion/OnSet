@@ -15,6 +15,8 @@ describe('tools', () => {
       ['claude', ['claude', '-p', '--permission-mode', 'acceptEdits', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]}}`, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', 'prompt']],
       // dont_ask 连镜头目录里写文件都拒（2026-11 实测渲染器一个 index.html 都写不出来）：与 claude 同一套放行规则。
       ['qoder', ['qoderclicn', '-p', 'prompt', '--permission-mode', 'accept_edits', '--setting-sources', 'project,local', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]},"mcp":{"lazyLoad":false}}`, '--output-format', 'stream-json']],
+      // 国际版只换命令名：参数、设置写法与国内版相同（1.1.89 实测）。
+      ['qoder-intl', ['qodercli', '-p', 'prompt', '--permission-mode', 'accept_edits', '--setting-sources', 'project,local', '--settings', `{"permissions":{"additionalDirectories":[],"allow":[],"deny":["Bash(onset:*)","Read(**/.env)","Read(**/.env.*)"]},"mcp":{"lazyLoad":false}}`, '--output-format', 'stream-json']],
       ['codebuddy', ['codebuddy', '-p', '--verbose', '--output-format', 'stream-json', '--permission-mode', 'acceptEdits', 'prompt']],
       ['opencode', ['opencode', 'run', '--standalone', '--format', 'json', 'prompt']],
     ];
@@ -107,7 +109,7 @@ describe('tools', () => {
   });
 
   describe('all orchestrator invocations', () => {
-    for (const tool of ['codex', 'claude', 'qoder', 'codebuddy', 'opencode']) {
+    for (const tool of ['codex', 'claude', 'qoder', 'qoder-intl', 'codebuddy', 'opencode']) {
       for (const unsafe of [false, true]) {
         it(`${tool}-${unsafe ? 'unsafe' : 'safe'}`, () => {
           const { argv, stdin } = orchestratorInvocation(tool, { workdir: '/work', prompt: 'prompt', unsafe });
@@ -187,10 +189,29 @@ describe('tools', () => {
     expect(settings.permissions.deny.join(' ')).not.toContain('/scenes/');
   });
 
+  // 国际版与国内版的编排调用只差命令名：审批、工具服务、会话与文件权限的写法一样。
+  it('qoder-intl orchestrates exactly like qoder apart from the binary', () => {
+    const server = { name: 'onset', command: 'onset', args: ['studio', 'tools-mcp'] };
+    const permissionPrompt = { command: 'onset', args: ['studio', 'permission-mcp'], server: 'onset_studio' };
+    for (const resume of [false, true]) {
+      const o = { prompt: 'p', workdir: '/project', sessionID: 's1', resume, toolsServer: server, permissionPrompt, access: { commands: ['ls'] } };
+      const cn = orchestratorInvocation('qoder', o).argv;
+      const intl = orchestratorInvocation('qoder-intl', o).argv;
+      expect(cn[0]).toBe('qoderclicn');
+      expect(intl[0]).toBe('qodercli');
+      expect(intl.slice(1)).toEqual(cn.slice(1));
+    }
+    expect(rendererInvocation('qoder-intl', 'p', false, { toolsServer: server }, 'Auto', { id: 's1', resume: true }).slice(1)).toEqual(
+      rendererInvocation('qoder', 'p', false, { toolsServer: server }, 'Auto', { id: 's1', resume: true }).slice(1),
+    );
+    expect(presetSessionID('qoder-intl')).toBe(true);
+  });
+
   it('extract messages for every stream shape', () => {
     const tests: Record<string, string> = {
       claude: `{"type":"assistant","message":{"content":[{"type":"text","text":"[[USER_MESSAGE]]claude"}]}}`,
       qoder: `{"type":"assistant","message":{"content":[{"type":"text","text":"[[USER_MESSAGE]]qoder"}]}}`,
+      'qoder-intl': `{"type":"assistant","message":{"content":[{"type":"text","text":"[[USER_MESSAGE]]qoder-intl"}]}}`,
       codebuddy: `{"type":"assistant","message":{"content":[{"type":"text","text":"[[USER_MESSAGE]]codebuddy"}]}}`,
       opencode: `{"type":"text","part":{"text":"[[USER_MESSAGE]]opencode"}}`,
     };
@@ -203,6 +224,7 @@ describe('tools', () => {
     const tests: Record<string, string> = {
       codex: 'AGENTS.md',
       qoder: 'AGENTS.md',
+      'qoder-intl': 'AGENTS.md',
       opencode: 'AGENTS.md',
       claude: 'CLAUDE.md',
       codebuddy: 'CODEBUDDY.md',

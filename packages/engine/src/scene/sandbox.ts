@@ -142,7 +142,7 @@ export interface RendererHome {
 /**
  * 各家渲染工具在家目录里的落点（2026-11 实测）。技能的发现位置：claude 读 .claude/skills，codex 读 .agents/skills 与
  * .codex/skills，codebuddy 读 .codebuddy/skills，opencode 读 .agents/skills、.claude/skills、.opencode/skill(s)，qoder 读
- * .qoder-cn/skills 与 .agents/skills；家目录里的这些一律藏起来，镜头要用的技能由 stageRendererSkills 链进镜头目录。
+ * .qoder-cn/skills（国际版 .qoder/skills）与 .agents/skills；家目录里的这些一律藏起来，镜头要用的技能由 stageRendererSkills 链进镜头目录。
  */
 export function rendererHome(tool: string, home: string): RendererHome {
   const h = (...p: string[]) => path.join(home, ...p);
@@ -160,7 +160,9 @@ export function rendererHome(tool: string, home: string): RendererHome {
         files: [],
         hidden: [h('.config', 'opencode', 'skills'), h('.config', 'opencode', 'skill'), h('.claude', 'skills'), agents],
       };
+    // 国内版的状态在 ~/.qoder-cn，国际版在 ~/.qoder；两版共用 .qoder/skills 的写法，两边都放行、都藏技能。
     case 'qoder':
+    case 'qoder-intl':
       return { state: [h('.qoder-cn'), h('.qoder')], files: [], hidden: [h('.qoder-cn', 'skills'), h('.qoder', 'skills'), agents] };
     default:
       return { state: [], files: [], hidden: [] };

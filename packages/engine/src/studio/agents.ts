@@ -19,7 +19,8 @@ import type { Server } from './studio';
 export const agentOrder: readonly { id: string; label: string; installURL: string }[] = [
   { id: 'claude', label: 'Claude Code', installURL: 'https://code.claude.com/docs/en/setup' },
   { id: 'codex', label: 'Codex', installURL: 'https://developers.openai.com/codex/cli' },
-  { id: 'qoder', label: 'Qoder', installURL: 'https://help.aliyun.com/zh/lingma/qoder-cli-cn-get-started-quickly' },
+  { id: 'qoder', label: 'Qoder（国内版）', installURL: 'https://help.aliyun.com/zh/lingma/qoder-cli-cn-get-started-quickly' },
+  { id: 'qoder-intl', label: 'Qoder（国际版）', installURL: 'https://docs.qoder.com/cli/quick-start' },
   { id: 'codebuddy', label: 'CodeBuddy', installURL: 'https://www.codebuddy.cn/docs/cli/installation' },
   { id: 'opencode', label: 'OpenCode', installURL: 'https://opencode.ai/docs/' },
   { id: 'director', label: '制作人', installURL: '' },

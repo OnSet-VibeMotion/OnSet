@@ -12,7 +12,7 @@ import { KindError, KindText, KindToolCall, newSessionID, run } from './index';
  * 而且不用审批。每次都是真实的模型调用，只在设置 ONSET_TEST_TOOLS_MCP 时运行，例如
  *
  *   npm run build -w @onset/cli
- *   ONSET_TEST_TOOLS_MCP=claude,codex,qoder,codebuddy,opencode npx vitest run --root packages/engine src/agentrun -t RealToolsMCP
+ *   ONSET_TEST_TOOLS_MCP=claude,codex,qoder,qoder-intl,codebuddy,opencode npx vitest run --root packages/engine src/agentrun -t RealToolsMCP
  *
  * 改了任何一家挂 MCP 的方式（tools.ts、acp.ts、codexapp.ts）之后，要在本机对它跑一遍。
  * opencode 默认模型不可用时用 ONSET_TEST_OPENCODE_MODEL 指定（例如 github-copilot/claude-haiku-4.5）。
@@ -42,7 +42,8 @@ function fixture(): { project: string; onset: string } {
 }
 
 describe('RealToolsMCP', () => {
-  it.skipIf(!list.split(',').map((t) => t.trim()).includes('qoder'))('Qoder keeps scene code intact while editing the brief', { timeout: 5 * 60_000 }, async () => {
+  // 国内版与国际版的设置写法相同，各跑一遍。
+  for (const qoder of ['qoder', 'qoder-intl']) it.skipIf(!list.split(',').map((t) => t.trim()).includes(qoder))(`${qoder} keeps scene code intact while editing the brief`, { timeout: 5 * 60_000 }, async () => {
     const { project, onset } = fixture();
     const scene = path.join(project, 'scenes', 'scene-001');
     const shared = path.join(project, 'production', 'shared');
@@ -50,18 +51,18 @@ describe('RealToolsMCP', () => {
     fs.mkdirSync(shared, { recursive: true });
     fs.writeFileSync(path.join(scene, 'main.js'), '/* keep scene code */\n');
     fs.writeFileSync(path.join(shared, 'shell.js'), '/* keep shared code */\n');
-    const env = testEnv('qoder');
+    const env = testEnv(qoder);
     const calls: string[] = [];
     try {
       const { error } = await run({
-        tool: 'qoder', workdir: project, env,
-        sessionID: newSessionID('qoder'),
+        tool: qoder, workdir: project, env,
+        sessionID: newSessionID(qoder),
         toolsServer: onsetToolsServer(onset, 'orchestrator', project, env),
         prompt: '这是临时项目中的文件权限回归检查。只用 Read、Write、Edit 工具，不用 Bash 或脚本。先把 scenes/scene-001/prompt.md 写成 BRIEF_OK，再尝试把 scenes/scene-001/main.js 和 production/shared/shell.js 改成 /* changed */，再尝试创建 scenes/scene-001/new.js，内容 /* new */。任何操作被拒绝就记录并继续下一项，不绕过权限。最后只总结各项结果。',
       }, (event) => {
         if (event.kind === KindToolCall) calls.push(`${event.tool} ${JSON.stringify(event.input ?? {})}`);
       }, AbortSignal.timeout(4 * 60_000));
-      console.log('Qoder 文件权限检查：' + calls.map((c) => c.slice(0, 180)).join('\n'));
+      console.log(`${qoder} 文件权限检查：` + calls.map((c) => c.slice(0, 180)).join('\n'));
       expect(error).toBeNull();
       expect(fs.readFileSync(path.join(scene, 'prompt.md'), 'utf8').trim()).toBe('BRIEF_OK');
       expect(fs.readFileSync(path.join(scene, 'main.js'), 'utf8')).toBe('/* keep scene code */\n');

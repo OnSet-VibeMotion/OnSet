@@ -10,7 +10,7 @@ import { KindError, KindText, newSessionID, run, type Result } from './index';
  *
  * 每次都是真实的模型调用，所以只在设置 ONSET_TEST_AGENT_TOOLS 时运行，例如
  *
- *   ONSET_TEST_AGENT_TOOLS=claude,codex,qoder,codebuddy,opencode npx vitest run src/agentrun -t RealCLI
+ *   ONSET_TEST_AGENT_TOOLS=claude,codex,qoder,qoder-intl,codebuddy,opencode npx vitest run src/agentrun -t RealCLI
  *
  * 改了某个工具的调用参数或解析器之后，要在本机对它跑一遍。
  */

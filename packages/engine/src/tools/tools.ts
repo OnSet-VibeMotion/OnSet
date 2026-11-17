@@ -14,19 +14,33 @@ export const UserMessageMarker = '[[USER_MESSAGE]]';
  * rendererInvocation、orchestratorInvocation、projectRulesFilename 的 switch）。
  * Go 里是 map[string]bool，这里用 Set：普通对象会让 "constructor" 之类的键查出真值。
  */
-export const ValidTools: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'codebuddy', 'opencode', 'director']);
+export const ValidTools: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'qoder-intl', 'codebuddy', 'opencode', 'director']);
 
 /**
  * 能当渲染工具的工具；RENDERER、scene.json 的 renderer、记忆的 applies_when.renderers 按这张表校验。
  */
-export const ValidRenderers: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'codebuddy', 'opencode', 'director']);
+export const ValidRenderers: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'qoder-intl', 'codebuddy', 'opencode', 'director']);
+
+/**
+ * Qoder 有两个版本，账号与服务互不相通：国内版 `qoder`（命令 qoderclicn，状态在 ~/.qoder-cn）与国际版
+ * `qoder-intl`（命令 qodercli，状态在 ~/.qoder）。两者的参数、输出流、会话与设置写法逐项相同（1.1.89 实测
+ * --help 只差国内版多一个 config 子命令），所以除了命令名一律按同一家处理。
+ */
+export function isQoder(tool: string): boolean {
+  return tool === 'qoder' || tool === 'qoder-intl';
+}
+
+/** Qoder 两个版本各自的命令名。 */
+export function qoderBinary(tool: string): string {
+  return tool === 'qoder-intl' ? 'qodercli' : 'qoderclicn';
+}
 
 /** 制作人的工具名（director.Tool）。 */
 export const DirectorTool = DirectorToolName;
 
 /** 按 claude 系 stream-json 解析的工具：制作人照这个格式输出，见 director。 */
 export function claudeLikeStream(tool: string): boolean {
-  return tool === 'claude' || tool === 'qoder' || tool === 'codebuddy' || tool === DirectorTool;
+  return tool === 'claude' || isQoder(tool) || tool === 'codebuddy' || tool === DirectorTool;
 }
 
 /**
@@ -191,6 +205,7 @@ export function modelArgs(tool: string, model: string): string[] {
     case 'codex':
       return ['-c', 'model=' + JSON.stringify(model)];
     case 'qoder':
+    case 'qoder-intl':
     case 'opencode':
       return ['-m', model];
     default:
@@ -235,18 +250,19 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
       const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
       return ['claude', '-p', ...mode, ...m, ...mcp, '--verbose', '--output-format', 'stream-json', '--prompt-suggestions', 'false', ...claudeSession, prompt];
     }
-    case 'qoder': {
+    case 'qoder':
+    case 'qoder-intl': {
       const qoderSession = session ? (session.resume ? ['-r', session.id] : ['--session-id', session.id]) : [];
       // 与 claude 同一套放行规则（qoder 的 --settings 认 claude 的 permissions 写法），外加关掉懒加载 MCP。
       // 以前用 dont_ask：它连镜头目录里写文件都拒、技能目录读不了、ls 都跑不了，渲染器一个 index.html 都写不出来（2026-11 实测）。
       // 系统沙箱按目录管住了读写（或 Windows 上全放开），渲染器里不再按命令白名单拦（拦了也没人能批准，只会白耗几轮）。
       if (unsafe || access.unfiltered) {
         const mcp = server ? ['--mcp-config', mcpConfigJSON([server])] : [];
-        return ['qoderclicn', '-p', prompt, ...qoderSession, '--dangerously-skip-permissions', ...m, ...qoderRendererSources, '--settings', JSON.stringify(qoderEagerSettings), ...mcp, '--output-format', 'stream-json'];
+        return [qoderBinary(tool), '-p', prompt, ...qoderSession, '--dangerously-skip-permissions', ...m, ...qoderRendererSources, '--settings', JSON.stringify(qoderEagerSettings), ...mcp, '--output-format', 'stream-json'];
       }
       const settings = { ...(JSON.parse(claudeSettings({ ...access, mcp: server ? [server.name] : [] })) as Record<string, unknown>), ...qoderEagerSettings };
       const mcp = server ? ['--mcp-config', mcpConfigJSON([server]), '--allowed-tools', 'mcp__' + server.name] : [];
-      return ['qoderclicn', '-p', prompt, ...qoderSession, '--permission-mode', 'accept_edits', ...m, ...qoderRendererSources, '--settings', JSON.stringify(settings), ...mcp, '--output-format', 'stream-json'];
+      return [qoderBinary(tool), '-p', prompt, ...qoderSession, '--permission-mode', 'accept_edits', ...m, ...qoderRendererSources, '--settings', JSON.stringify(settings), ...mcp, '--output-format', 'stream-json'];
     }
     case 'codebuddy': {
       let mode = ['--permission-mode', 'acceptEdits'];
@@ -438,7 +454,7 @@ export function interactiveInvocation(tool: string, o: Pick<OrchestratorOptions,
  * codex 与 opencode 不能，它们的 id 要从输出流的第一条事件里读。
  */
 export function presetSessionID(tool: string): boolean {
-  return tool === 'claude' || tool === 'qoder' || tool === 'codebuddy';
+  return tool === 'claude' || isQoder(tool) || tool === 'codebuddy';
 }
 
 export interface Invocation {
@@ -507,8 +523,9 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
       args.push(o.prompt);
       return windowsPromptInput(tool, args, o.prompt);
     }
-    case 'qoder': {
-      const args = ['qoderclicn', '-p', o.prompt, ...m, '--output-format', 'stream-json'];
+    case 'qoder':
+    case 'qoder-intl': {
+      const args = [qoderBinary(tool), '-p', o.prompt, ...m, '--output-format', 'stream-json'];
       if (o.unsafe) {
         args.push('--dangerously-skip-permissions');
       } else {
@@ -569,6 +586,7 @@ export function projectRulesFilename(tool: string): string {
   switch (tool) {
     case 'codex':
     case 'qoder':
+    case 'qoder-intl':
     case 'opencode':
     case 'director':
       return 'AGENTS.md';
@@ -603,6 +621,7 @@ export function extractUserMessages(tool: string, line: string): string[] {
     }
     case 'claude':
     case 'qoder':
+    case 'qoder-intl':
     case 'codebuddy':
     case 'director': {
       const content = asObject(event.message)?.content;

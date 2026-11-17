@@ -275,10 +275,10 @@ export function load(root: string, environ?: Record<string, string> | null): Con
   if (autoApprove !== 'on' && autoApprove !== 'off') throw new Error(`无效的 AUTO_APPROVE: ${autoApprove}（可选：on off）`);
   cfg.autoApprove = autoApprove === 'on';
   if (!ValidTools.has(cfg.orchestrator)) {
-    throw new Error(`无效的 ORCHESTRATOR: ${cfg.orchestrator}（可选：codex claude qoder codebuddy opencode director）`);
+    throw new Error(`无效的 ORCHESTRATOR: ${cfg.orchestrator}（可选：${[...ValidTools].join(' ')}）`);
   }
   if (cfg.optimizer !== '' && !ValidTools.has(cfg.optimizer)) {
-    throw new Error(`无效的 OPTIMIZER: ${cfg.optimizer}（可选：留空跟随编排，或 codex claude qoder codebuddy opencode director）`);
+    throw new Error(`无效的 OPTIMIZER: ${cfg.optimizer}（可选：留空跟随编排，或 ${[...ValidTools].join(' ')}）`);
   }
   if (!ValidRenderers.has(cfg.renderer)) {
     throw new Error(`无效的 RENDERER: ${cfg.renderer}（可选：${[...ValidRenderers].join(' ')}）`);
