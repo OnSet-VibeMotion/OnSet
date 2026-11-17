@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { pngSize, shrinkPNG } from './image';
 import { isBlank, isDark } from './mediaprobe';
 import { ffmpeg, hasFfmpeg, sample, tempDir, toolchain } from './testutil';
 
@@ -28,6 +29,36 @@ describe.skipIf(!hasFfmpeg)('Single-decode frame extraction', () => {
         expect(frame.dark).toBe(isDark(frame.stats));
       }
     }
+  });
+
+  // 给看图的一方的 PNG 缩小（每张少花几倍 token），空白帧判定照旧按原帧；裁了区域就是要原始像素，不缩；本来就窄的不放大。
+  it('scales the written PNG down without touching the statistics', () => {
+    const tc = toolchain();
+    const file = sample('testsrc2=size=320x180:rate=30:duration=1');
+    const root = tempDir();
+    const size = (png: string) => { const b = fs.readFileSync(png); return [b.readUInt32BE(16), b.readUInt32BE(20)]; };
+    const small = tc.extractFramesRegion(file, [0.5], null, path.join(root, 'small'), 160).frames[0];
+    expect(size(small.image)).toEqual([160, 90]);
+    expect(small.stats).toEqual(tc.frameStats(file, 0.5));
+    const wide = tc.extractFramesRegion(file, [0.5], null, path.join(root, 'wide'), 960).frames[0];
+    expect(size(wide.image)).toEqual([320, 180]);
+    const cropped = tc.extractFramesRegion(file, [0.5], { x: 0, y: 0, w: 200, h: 100 }, path.join(root, 'crop'), 160).frames[0];
+    expect(size(cropped.image)).toEqual([200, 100]);
+  });
+
+  it('shrinks a wide PNG in place and leaves a narrow one alone', async () => {
+    const tc = toolchain();
+    const root = tempDir();
+    const wide = path.join(root, 'wide.png');
+    const narrow = path.join(root, 'narrow.png');
+    tc.extractFrame(sample('testsrc2=size=320x180:rate=30:duration=1'), 0.5, wide);
+    tc.extractFrame(sample('testsrc2=size=96x54:rate=30:duration=1'), 0.5, narrow);
+    const before = fs.readFileSync(narrow);
+    expect(await shrinkPNG(tc, wide, 160)).toBe(true);
+    expect(pngSize(wide)).toEqual({ width: 160, height: 90 });
+    expect(await shrinkPNG(tc, narrow, 160)).toBe(false);
+    expect(fs.readFileSync(narrow)).toEqual(before);
+    expect(fs.readdirSync(root).sort()).toEqual(['narrow.png', 'wide.png']);
   });
 
   it('still reports blank frames and rejects a time beyond the last frame even with a previous PNG there', () => {

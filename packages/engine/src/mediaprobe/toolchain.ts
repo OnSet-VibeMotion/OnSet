@@ -202,11 +202,12 @@ export class Toolchain {
   }
 
   /** 一次定位与解码同时写 PNG 和统计像素；统计仍取整帧，不能被裁剪区域改变。 */
-  private extractFrameAndStats(file: string, atSeconds: number, region: Region | null, dest: string): FrameStats {
+  private extractFrameAndStats(file: string, atSeconds: number, region: Region | null, dest: string, maxWidth = 0): FrameStats {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     // 沿用 extractFrameRegion / frameStats 的自动选流：多视频流文件未必以第一条为主画面。
     const argv = ['-v', 'error', '-y', '-ss', formatSeconds(atSeconds), '-i', file, '-frames:v', '1'];
-    const filter = regionFilter(region);
+    // 只缩写出去的 PNG（给看图的一方省 token）；灰度统计是另一路输出，照旧按原帧算。裁了区域就是要看原始像素，不缩。
+    const filter = region === null && maxWidth > 0 ? `scale='min(${maxWidth},iw)':-2` : regionFilter(region);
     if (filter !== '') argv.push('-vf', filter);
     const ran = run(this.ffmpegPath(), [
       ...argv, '-f', 'image2', '-c:v', 'png', dest,
@@ -307,12 +308,15 @@ export class Toolchain {
     return this.extractFramesRegion(file, atSeconds, null, destDir);
   }
 
-  /** 同 extractFrames，PNG 只保留 region 区域；空白帧判定仍按整帧。 */
-  extractFramesRegion(file: string, atSeconds: number[], region: Region | null, destDir: string): FrameReport {
+  /**
+   * 同 extractFrames，PNG 只保留 region 区域；空白帧判定仍按整帧。
+   * maxWidth 大于 0 且没有 region 时，PNG 缩到不超过这个宽度（等比，统计不受影响）。
+   */
+  extractFramesRegion(file: string, atSeconds: number[], region: Region | null, destDir: string, maxWidth = 0): FrameReport {
     const report: FrameReport = { schema_version: ReportSchemaVersion, path: file, ok: false, frames: [], problems: [] };
     for (const at of atSeconds) {
       const image = path.join(destDir, `frame-${formatSecondsShort(at).replaceAll('.', '_')}.png`);
-      const stats = this.extractFrameAndStats(file, at, region, image);
+      const stats = this.extractFrameAndStats(file, at, region, image, maxWidth);
       const frame: ExtractedFrame = { at_seconds: at, image, stats, blank: isBlank(stats), dark: isDark(stats) };
       report.frames.push(frame);
       if (frame.blank) {

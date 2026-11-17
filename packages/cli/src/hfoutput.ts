@@ -45,7 +45,15 @@ export function compactHyperFrames(output: string): Compacted {
   const lines = output.split('\n');
   const jsonStart = lines.findIndex((line) => line === '{' || line === '[');
   const head = jsonStart >= 0 ? lines.slice(0, jsonStart) : lines;
-  let tail = jsonStart >= 0 ? lines.slice(jsonStart).join('\n') : '';
+  // JSON 到最后一个顶格的 } / ] 为止；后面的是别处追加的话（onset 缩小截图后的提示），原样接在最后。
+  let jsonEnd = lines.length - 1;
+  if (jsonStart >= 0) {
+    const close = lines[jsonStart] === '{' ? '}' : ']';
+    while (jsonEnd > jsonStart && lines[jsonEnd] !== close) jsonEnd--;
+    if (jsonEnd === jsonStart) jsonEnd = lines.length - 1;
+  }
+  let tail = jsonStart >= 0 ? lines.slice(jsonStart, jsonEnd + 1).join('\n') : '';
+  const trailer = jsonStart >= 0 ? lines.slice(jsonEnd + 1).join('\n').trim() : '';
   let trimmed = false;
 
   const kept: string[] = [];
@@ -78,7 +86,7 @@ export function compactHyperFrames(output: string): Compacted {
 
   const body = collapseRepeats(kept);
   if (body.length !== kept.length) trimmed = true;
-  const text = [squeezeBlank(body).join('\n').trim(), tail.trim()].filter((part) => part !== '').join('\n');
+  const text = [squeezeBlank(body).join('\n').trim(), tail.trim(), trailer].filter((part) => part !== '').join('\n');
   return { text, trimmed };
 }
 

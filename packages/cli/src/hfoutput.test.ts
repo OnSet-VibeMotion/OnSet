@@ -110,6 +110,12 @@ describe('compactHyperFrames', () => {
     expect(report.frames).toEqual([{ path: 'frame-00-at-4.533s.png', time: 4.533 }, { path: 'frame-01-at-4.567s.png', time: 4.567 }]);
   });
 
+  // onset 缩小截图后在 JSON 后面接一句提示：JSON 照样精简，那句话留在最后。
+  it('keeps a note appended after the JSON', () => {
+    const { text } = compactHyperFrames('{\n  "ok": true,\n  "_meta": { "version": "0.8.225" }\n}\nonset 已把 3 张单帧截图缩到宽 960\n');
+    expect(text).toBe('{"ok":true}\nonset 已把 3 张单帧截图缩到宽 960');
+  });
+
   it('leaves short or unparsable output alone', () => {
     expect(compactHyperFrames('◇  0 errors, 0 warnings\n')).toEqual({ text: '◇  0 errors, 0 warnings', trimmed: false });
     expect(compactHyperFrames('{\n  "ok": tru').text).toBe('{\n  "ok": tru');

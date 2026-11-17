@@ -6,10 +6,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as hyperframes from '@onset/engine/hyperframes';
 import { marshal } from '@onset/engine/gojson';
+import * as mediaprobe from '@onset/engine/mediaprobe';
 import { windowsRenderMetrics } from '@onset/engine/windowsruntime';
 import { renderBudgetArgs } from '@onset/engine/schedule';
 import { currentEnvironment, hyperframesVersion } from './cli';
 import { ExitError } from './cobra';
+import { RenderAdvice, SnapshotAdvice, SnapshotMaxWidth, shouldShrinkSnapshot, snapshotStills } from './hfsnapshot';
 import { strs, str } from './ops/common';
 import { defineOp, ParamError } from './ops/op';
 
@@ -56,11 +58,26 @@ CLI 是前置资源，在客户端工具准备页装在用户级目录（默认 
     return new Promise<void>((resolve, reject) => {
       const child = spawn(spec.file, spec.args, { env: spec.env, stdio: ['inherit', 'pipe', 'pipe'], signal });
       let tail = '';
+      // snapshot 的输出里有它写出的截图路径，跑完按它缩小单帧（hfsnapshot.ts）；输出只有几十行。
+      const shrink = shouldShrinkSnapshot(argv);
+      let printed = '';
       if (process.platform === 'win32') { child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8'); }
-      child.stdout.on('data', (chunk) => { const text = String(chunk); if (process.platform === 'win32') tail = (tail + text).slice(-24000); out.write(text); });
+      child.stdout.on('data', (chunk) => { const text = String(chunk); if (process.platform === 'win32') tail = (tail + text).slice(-24000); if (shrink) printed += text; out.write(text); });
       child.stderr.on('data', (chunk) => err.write(String(chunk)));
       child.on('error', reject);
-      child.on('close', (code) => {
+      child.on('close', async (code) => {
+        if (code === 0 && shrink) {
+          const stills = snapshotStills(printed, process.cwd());
+          let shrunk = 0;
+          try {
+            const toolchain = mediaprobe.newToolchain(env);
+            for (const still of stills) if (await mediaprobe.shrinkPNG(toolchain, still, SnapshotMaxWidth, signal)) shrunk++;
+          } catch (e) {
+            err.write(`截图没能缩小（照常可用，只是看图更费 token）：${(e as Error).message}\n`);
+          }
+          if (shrunk > 0) out.write(`onset 已把 ${shrunk} 张单帧截图缩到宽 ${SnapshotMaxWidth}（省看图的 token）；${SnapshotAdvice}\n`);
+        }
+        if (code === 0 && argv[0] === 'render') out.write(RenderAdvice + '\n');
         if (code === 0) {
           if (process.platform === 'win32' && argv[0] === 'render') {
             const metrics = windowsRenderMetrics(tail);
