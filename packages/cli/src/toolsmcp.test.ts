@@ -4,7 +4,7 @@ import { groupSpawnOptions } from '@onset/engine/procgroup';
 import { describe, expect, it } from 'vitest';
 import { allOps, opScopes } from './ops/op';
 import fs from 'node:fs';
-import { Jobs, describeTools, opCommand, prepareCall, serveToolsMCP, type Spawner } from './toolsmcp';
+import { Jobs, describeTools, maxWaitSeconds, opCommand, prepareCall, serveToolsMCP, type Spawner } from './toolsmcp';
 
 /** 把一串 JSON-RPC 请求喂给服务，收齐回复（按 id）。 */
 async function call(requests: Record<string, unknown>[], spawner: Spawner, profile: 'orchestrator' | 'renderer' = 'orchestrator'): Promise<Map<unknown, any>> {
@@ -142,6 +142,13 @@ describe('onset tools MCP', () => {
     expect(text(replies.get(1))).toMatch(/还在运行：任务 job-1/);
     expect(text(replies.get(1))).toContain('结束本轮对话会终止仍在运行的任务');
     expect(text(replies.get(1))).toContain('不要用定时任务');
+  });
+
+  it('waits up to the limit the launcher set for its client', () => {
+    expect(maxWaitSeconds({})).toBe(600);
+    expect(maxWaitSeconds({ ONSET_TOOLS_MAX_WAIT: '3000' })).toBe(3000);
+    expect(maxWaitSeconds({ ONSET_TOOLS_MAX_WAIT: '99999' })).toBe(3600);
+    expect(maxWaitSeconds({ ONSET_TOOLS_MAX_WAIT: 'x' })).toBe(600);
   });
 
   // hyperframes 的输出是写给终端的：跑着时只报进度，跑完交精简后的结果，原样输出留在临时文件里（hfoutput.ts）。

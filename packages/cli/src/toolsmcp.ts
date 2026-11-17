@@ -36,7 +36,14 @@ const sceneDispatchNote = '镜头实现与 MP4 渲染交给渲染工具。单镜
 
 /** 一次调用最多等多久（秒）：codex 的 MCP 调用默认 60 秒超时，留出余量。 */
 export const DefaultWaitSeconds = 50;
-const maxWaitSeconds = 600;
+/**
+ * 一次调用最多真等多久（秒）。缺省 600；起服务的一方确认客户端能等更久时经 ONSET_TOOLS_MAX_WAIT 放宽
+ * （claude、codex 是 50 分钟，见 tools.LongToolWaitSeconds），编排等整批渲染时就不用每 10 分钟醒来轮询一次。
+ */
+export function maxWaitSeconds(env: NodeJS.ProcessEnv = process.env): number {
+  const wait = Number(env.ONSET_TOOLS_MAX_WAIT ?? '');
+  return Number.isFinite(wait) && wait >= 60 ? Math.min(wait, 3600) : 600;
+}
 
 /** 返回给 agent 的输出上限：过长时截掉开头、留结尾（错误与结论通常在最后）。 */
 const maxOutputChars = 24_000;
@@ -103,7 +110,7 @@ function paramSchema(op: Op, key: string, spec: ParamSpec, profile: Profile): JS
 
 function waitSchema(): JSONSchema {
   // 每个工具都带这一项，说明要短；没跑完怎么办写在服务说明与 job_wait 里。
-  return { type: 'number', description: `最多等几秒（缺省 ${DefaultWaitSeconds}）` };
+  return { type: 'number', description: `最多等几秒（缺省 ${DefaultWaitSeconds}，最多 ${maxWaitSeconds()}）` };
 }
 
 const visibleParams = (op: Op) => Object.entries(op.params).filter(([, s]) => !s.cliOnly);
@@ -343,7 +350,7 @@ export class Jobs {
 
   /** 等到任务结束或超时，返回给 agent 的回复。 */
   async wait(job: Job, seconds: number, signal?: AbortSignal): Promise<Reply> {
-    const ms = Math.min(Math.max(seconds, 0), maxWaitSeconds) * 1000;
+    const ms = Math.min(Math.max(seconds, 0), maxWaitSeconds()) * 1000;
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<void>((resolve) => {
       timer = setTimeout(resolve, ms);

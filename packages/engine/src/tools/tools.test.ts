@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { onsetToolsServer, extractUserMessages, orchestratorInvocation, presetSessionID, projectRulesFilename, rendererEnv, rendererInvocation } from './index';
+import { longSessionEnv, longWaitServer, onsetToolsServer, extractUserMessages, orchestratorInvocation, presetSessionID, projectRulesFilename, rendererEnv, rendererInvocation } from './index';
 
 function tempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-tools-'));
@@ -40,6 +40,33 @@ describe('tools', () => {
     expect(argv[argv.indexOf('--setting-sources') + 1]).toBe('project,local');
     const unsafe = rendererInvocation('qoder', 'prompt', true, {});
     expect(unsafe[unsafe.indexOf('--setting-sources') + 1]).toBe('project,local');
+  });
+
+  // 等整批渲染时少醒来几次：能长时间等的 claude、codex 放宽工具服务的等待上限，并在各自的配置里写上对应的超时。
+  it('lets claude and codex wait longer on onset tools', () => {
+    const server = { name: 'onset', command: 'onset', args: ['studio', 'tools-mcp'], env: { HOME: '/h' } };
+    const claude = orchestratorInvocation('claude', { prompt: 'p', toolsServer: server }).argv;
+    const config = JSON.parse(claude[claude.indexOf('--mcp-config') + 1]);
+    expect(config.mcpServers.onset.env.ONSET_TOOLS_MAX_WAIT).toBe('3000');
+    expect(config.mcpServers.onset.timeout).toBe(3120 * 1000);
+    const codex = orchestratorInvocation('codex', { prompt: 'p', toolsServer: server }).argv.join(' ');
+    expect(codex).toContain('mcp_servers.onset.tool_timeout_sec=3120');
+    expect(codex).toContain('ONSET_TOOLS_MAX_WAIT="3000"');
+    const renderer = rendererInvocation('claude', 'p', false, { toolsServer: server });
+    expect(JSON.parse(renderer[renderer.indexOf('--mcp-config') + 1]).mcpServers.onset.timeout).toBe(3120 * 1000);
+    // 没核实过超时的几家照旧。
+    const qoder = orchestratorInvocation('qoder', { prompt: 'p', toolsServer: server }).argv.join(' ');
+    expect(qoder).not.toContain('ONSET_TOOLS_MAX_WAIT');
+    expect(qoder).not.toContain('"timeout"');
+    expect(longWaitServer(undefined)).toBeUndefined();
+  });
+
+  // 编排长会话等渲染常超过 5 分钟：claude 的主会话缓存改成 1 小时；用户自己设了不动，别家与渲染器不加。
+  it('long orchestrator sessions keep the claude cache for an hour', () => {
+    expect(longSessionEnv('claude', {})).toEqual({ CLAUDE_CODE_PROMPT_CACHE_TTL: '1h' });
+    expect(longSessionEnv('claude', { CLAUDE_CODE_PROMPT_CACHE_TTL: '5m' })).toEqual({});
+    expect(longSessionEnv('codex', {})).toEqual({});
+    expect(longSessionEnv('qoder', {})).toEqual({});
   });
 
   // 渲染器只拿几样内置工具、只挂 onset 的工具服务：不读用户自己装的 MCP 与 claude.ai 连接器（RendererBuiltinTools 的注释有实测数字）。

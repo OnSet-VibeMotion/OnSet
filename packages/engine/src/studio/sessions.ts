@@ -15,6 +15,7 @@ import { atomicWrite } from '../fsutil';
 import { formatFixed, goClean, goTrimSpace } from '../gofmt';
 import { marshal, marshalIndent } from '../gojson';
 import * as ledger from '../ledger';
+import { handoffNote, rotationReason } from './rotate';
 import * as project from '../project';
 import { KindView, PermissionPollInterval, PermissionServerName, ViewInboxEnv, waitPermissionResponse, writePermissionRequest, ViewPollInterval, ViewProjectEnv, describeView, drainViewInbox, viewInbox, viewInteraction, type ViewRequest, type ViewState } from '../studioview';
 import * as tools from '../tools';
@@ -642,7 +643,7 @@ export function startTurn(s: Server, p: Project, sess: Session, req: TurnRequest
   validateAttachments(p.path, req.attachments);
   const cfg = sessionConfig(p.path, sess.meta);
   s.acquire(p.path, '会话「' + sess.meta.title + '」正在对话');
-  let prepared: { turn: Turn; prompt: string };
+  let prepared: { turn: Turn; prompt: string; handoff: string };
   try {
     prepared = prepareTurn(s, p, sess, cfg, req);
   } catch (err) {
@@ -651,11 +652,11 @@ export function startTurn(s: Server, p: Project, sess: Session, req: TurnRequest
   }
   const controller = new AbortController();
   sess.cancel = controller;
-  void runTurn(s, controller.signal, p, sess, cfg, prepared.turn, prepared.prompt);
+  void runTurn(s, controller.signal, p, sess, cfg, prepared.turn, prepared.prompt, prepared.handoff);
   return prepared.turn;
 }
 
-function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, req: TurnRequest): { turn: Turn; prompt: string } {
+function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, req: TurnRequest): { turn: Turn; prompt: string; handoff: string } {
   const rulesName = tools.projectRulesFilename(cfg.orchestrator);
   project.writeRules(p.path, rulesName);
   let before;
@@ -683,6 +684,11 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
   if (!prompt.includes(ownership)) prompt += '\n\n---\n\n' + ownership;
   // 制作人用的模型看不了图：每一轮都提醒，续接的会话里它也可能走到画面验收、复查。
   if (orchestratorCannotSee(cfg)) prompt += '\n\n---\n\n' + noVisionNote;
+  // 会话太长就换一个新的 CLI 会话接着做（rotate.ts）：清掉会话号，runTurn 走带对话记录开新会话的路，偏好也会重发。
+  const cliSession = sess.meta.cli_session_id ?? '';
+  const rotate = cliSession !== '' && (sess.meta.turns ?? []).length > 0 ? rotationReason(ledger.read(ledger.projectFile(p.path)), cliSession) : '';
+  const handoff = rotate !== '' ? handoffNote(rotate, lastTaskPlan(sess.events)) : '';
+  if (rotate !== '') updateMeta(sess, (meta) => (meta.cli_session_id = undefined));
   const [brief, digest] = preferenceBrief(p, cfg);
   const resend = brief !== '' && (digest !== (sess.meta.preference_digest ?? '') || !sess.meta.cli_session_id || (sess.meta.turns ?? []).length === 0);
   if (resend) prompt = brief + '\n---\n\n' + prompt;
@@ -706,14 +712,15 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
   });
   emit(sess, turn.turn_id, { kind: kindUser, text: display + attachmentText(req.attachments) });
   emit(sess, turn.turn_id, { kind: kindTurnStart, status: 'running' });
-  return { turn, prompt };
+  if (rotate !== '') emit(sess, turn.turn_id, { kind: kindNotice, text: `对话已经很长（${rotate}），这一轮换一个新会话接着做：带上制作说明与对话记录，进度按项目文件重新确认` });
+  return { turn, prompt, handoff };
 }
 
 /**
  * runTurn 在后台跑一轮。写权由 finishTurn 释放，这里不能再释放一次：
  * 释放之后下一轮可能已经拿到写权，重复释放会把它的锁也放掉。
  */
-async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, cfg: config.Config, turn: Turn, prompt: string): Promise<void> {
+async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, cfg: config.Config, turn: Turn, prompt: string, handoff = ''): Promise<void> {
   let runErr: Error | null = null;
   let stopViews: () => void = () => {};
   try {
@@ -789,6 +796,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
         },
         env,
         lookPath: (name) => lookPath(name, env.PATH ?? ''),
+        longSession: true,
       };
       const resumed = previous !== '' && earlierTurns;
       if (resumed) {
@@ -798,7 +806,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
         spec.baseline = ledger.lastSessionUsage(ledger.projectFile(p.path), previous);
       } else {
         spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
-        if (earlierTurns && history !== '') spec.prompt = reseedPrompt(history, spec.prompt, productionBrief(p, sess));
+        if (earlierTurns && history !== '') spec.prompt = reseedPrompt(history, spec.prompt, productionBrief(p, sess), handoff);
       }
       let outcome = await agentrun.run(spec, onEvent, signal);
       recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);
@@ -807,7 +815,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
         spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
         spec.resume = false;
         spec.baseline = undefined;
-        spec.prompt = reseedPrompt(history, prompt, productionBrief(p, sess));
+        spec.prompt = reseedPrompt(history, prompt, productionBrief(p, sess), handoff);
         outcome = await agentrun.run(spec, onEvent, signal);
         recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);
       }
@@ -852,12 +860,13 @@ function watchViews(sess: Session, turnID: string, inbox: string, projectPath: s
   };
 }
 
-export function reseedPrompt(history: string, prompt: string, production = ''): string {
+export function reseedPrompt(history: string, prompt: string, production = '', handoff = ''): string {
   return (
     (production !== '' ? production + '\n\n---\n\n' : '') +
     '下面是这个项目里你和用户之前的对话记录（较早的部分可能被截掉），供你接上上下文：\n\n' +
     history +
     '\n\n---\n\n' +
+    (handoff !== '' ? handoff + '\n\n---\n\n' : '') +
     studioInteraction +
     '\n\n---\n\n' +
     prompt

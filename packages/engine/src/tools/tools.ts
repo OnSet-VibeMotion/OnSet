@@ -88,6 +88,33 @@ export interface McpServer {
   env?: Record<string, string>;
 }
 
+/** 工具服务一次调用最多能等多久（秒），由起它的一方按客户端的超时定（toolsmcp 读它，缺省 600）。 */
+export const ToolsMaxWaitEnv = 'ONSET_TOOLS_MAX_WAIT';
+
+/**
+ * 给能长时间等一次工具调用的客户端（claude、codex）放宽的等待上限：50 分钟。
+ *
+ * 渲染、整批渲染要几十分钟到几小时，编排会要求等 2400–3600 秒；上限一直是 600 秒（按 codex 默认 60 秒的 MCP 超时
+ * 留余量定的），于是每 10 分钟醒来调一次 job_wait，每次都把四五十万 token 的上下文读一遍（2026-11：4 个项目里
+ * 等待类调用 40 次，占编排读入的 7%，平均上下文 45 万）。claude 的 MCP 工具超时缺省约 27 小时、codex 认
+ * mcp_servers.<名字>.tool_timeout_sec，两家都在配置里显式写上超时（longWaitTimeoutSeconds）。
+ * 取 50 分钟不取 60：编排的缓存是 1 小时（longSessionEnv），等满一小时醒来缓存刚好过期。
+ * qoder、codebuddy、opencode、mcode 的工具超时没有核实，照旧 600 秒。
+ */
+export const LongToolWaitSeconds = 3000;
+
+/** 客户端那边的超时比工具服务的等待上限多留两分钟：工具服务等满后还要收拾、回话。 */
+function longWaitTimeoutSeconds(server: McpServer): number {
+  const wait = Number(server.env?.[ToolsMaxWaitEnv] ?? '');
+  return Number.isFinite(wait) && wait > 0 ? wait + 120 : 0;
+}
+
+/** 工具服务给能长时间等的客户端：环境里写上放宽的等待上限。不是 onset 的工具服务原样返回。 */
+export function longWaitServer(server: McpServer | undefined): McpServer | undefined {
+  if (!server || server.name !== ToolsServerName) return server;
+  return { ...server, env: { ...(server.env ?? {}), [ToolsMaxWaitEnv]: String(LongToolWaitSeconds) } };
+}
+
 /** onset 工具服务在配置里的名字。 */
 export const ToolsServerName = 'onset';
 
@@ -156,7 +183,11 @@ const rendererToolLimits = ['--strict-mcp-config', '--tools', RendererBuiltinToo
 /** claude / qoder / codebuddy 的 --mcp-config：几个服务合在一份 JSON 里。 */
 function mcpConfigJSON(servers: McpServer[]): string {
   const mcpServers: Record<string, unknown> = {};
-  for (const s of servers) mcpServers[s.name] = { command: s.command, args: s.args, ...(s.env && Object.keys(s.env).length > 0 ? { env: s.env } : {}) };
+  for (const s of servers) {
+    const timeout = longWaitTimeoutSeconds(s);
+    // claude 的 MCP 配置认每个服务自己的 timeout（毫秒，覆盖 MCP_TOOL_TIMEOUT）。
+    mcpServers[s.name] = { command: s.command, args: s.args, ...(s.env && Object.keys(s.env).length > 0 ? { env: s.env } : {}), ...(timeout > 0 ? { timeout: timeout * 1000 } : {}) };
+  }
   return JSON.stringify({ mcpServers });
 }
 
@@ -169,6 +200,8 @@ export function codexMcpOverrides(server: McpServer): string[] {
   const out = ['-c', `mcp_servers.${server.name}.command=${toml(server.command)}`, '-c', `mcp_servers.${server.name}.args=[${server.args.map(toml).join(',')}]`];
   const env = server.env ?? {};
   if (Object.keys(env).length > 0) out.push('-c', `mcp_servers.${server.name}.env={${Object.entries(env).map(([k, v]) => `${envKey(k)}=${toml(v)}`).join(',')}}`);
+  const timeout = longWaitTimeoutSeconds(server);
+  if (timeout > 0) out.push('-c', `mcp_servers.${server.name}.tool_timeout_sec=${timeout}`);
   return out;
 }
 
@@ -249,7 +282,7 @@ export interface RendererSession {
 }
 
 export function rendererInvocation(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model = '', session: RendererSession | null = null, options: AgentOptions = {}): string[] {
-  const server = access.toolsServer;
+  const server = tool === 'claude' || tool === 'codex' ? longWaitServer(access.toolsServer) : access.toolsServer;
   // 调用选项（推理强度、快速模式、上下文长度，见 options.ts）跟着模型参数一起放。
   const m = [...modelArgs(tool, tool === 'opencode' ? opencodeModel(model, options) : model), ...(tool === 'codex' ? codexOptionOverrides(options) : optionArgs(tool, options))];
   const claudeExtra = tool === 'claude' ? claudeOptionSettings(options) : {};
@@ -414,6 +447,23 @@ export interface OrchestratorOptions {
   agentDir?: string;
 }
 
+/** Claude Code 主会话缓存时长的开关（v2.1.242 起认，旧版本忽略）。 */
+export const ClaudeCacheTTLEnv = 'CLAUDE_CODE_PROMPT_CACHE_TTL';
+
+/**
+ * 编排长会话要的额外环境：claude 的主会话缓存改成 1 小时。
+ *
+ * Claude Code 用 API key、云服务商或按量计费时，非交互（-p）的主会话缓存默认只活 5 分钟，订阅登录才默认 1 小时
+ * （code.claude.com/docs/en/prompt-caching）。编排一轮里常常等镜头渲染十几分钟，缓存一过期，下一次调用就按 1.25 倍
+ * 写入价把几十万 token 的整段上下文重写一遍；1 小时缓存写入是 2 倍、读两次就回本。2026-11 本机（订阅登录）实测
+ * 编排与渲染的缓存写入本来就全是 1 小时的，所以这只对按 API 计费的用户有影响。
+ * 只给编排：渲染器的调用一步接一步、很少空闲超过 5 分钟，写入价翻倍反而更贵。用户自己设了就不动。
+ */
+export function longSessionEnv(tool: string, env: Record<string, string | undefined>): Record<string, string> {
+  if (tool !== 'claude' || (env[ClaudeCacheTTLEnv] ?? '') !== '') return {};
+  return { [ClaudeCacheTTLEnv]: '1h' };
+}
+
 /** 审批服务的启动命令（MCP stdio）与工具名。 */
 export interface PermissionPrompt {
   command: string;
@@ -519,6 +569,8 @@ function isDir(dir: string): boolean {
  * 调用方负责把进程的工作目录设为 o.workdir：opencode 2.x 的 run 已经没有 --dir。
  */
 export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env: Record<string, string | undefined> = {}): Invocation {
+  // 能长时间等一次工具调用的两家放宽等待上限（LongToolWaitSeconds），少醒来轮询几次。
+  if (tool === 'claude' || tool === 'codex') o = { ...o, toolsServer: longWaitServer(o.toolsServer) };
   const sessionID = o.sessionID ?? '';
   const workdir = o.workdir ?? '';
   const options = o.options ?? {};

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as agentrun from '../agentrun';
+import * as ledger from '../ledger';
 import * as project from '../project';
 import { collect, prepare } from '../renderassets';
 import {
@@ -171,6 +172,32 @@ describe('sessions', () => {
     for (const want of ['之前的对话', '第一句', '改好了', '第二句']) expect(a[2], '补发的提示词没带上对话记录').toContain(want);
     const { text } = await rawGet(f.s, `/api/sessions/${id}/events?follow=0`);
     expect(text, '应提示续接失败').toContain('原会话无法续接');
+  });
+
+  // 编排会话越续越长，每次调用都要重读整段上下文：最近一轮平均上下文到了阈值，下一轮换新会话、带上对话记录与交接说明（rotate.ts）。
+  it('starts a new CLI session once the conversation gets too long', async () => {
+    const f = newSessionFixture();
+    const { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{}');
+    const id = body.session_id as string;
+    await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"第一句"}');
+    const first = await waitIdle(f, id);
+    const old = first.session.cli_session_id as string;
+    ledger.append(ledger.projectFile(f.root), ledger.fromResult(ledger.SourceStudio, 'claude', '', old, { input_tokens: 40 * 300_000, turns: 40, source: 'claude result', basis: 'total-input' }, null, false));
+    await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"第二句"}');
+    const detail = await waitIdle(f, id);
+    expect(lastTurn(detail).status).toBe('succeeded');
+    const a = args(f);
+    expect(a).toHaveLength(2);
+    expect(a[1]).not.toContain('--resume');
+    expect(a[1]).toContain('--session-id');
+    expect(detail.session.cli_session_id).not.toBe(old);
+    for (const want of ['换了一个新会话接着做', '以文件为准', '之前的对话', '第一句', '第二句']) expect(a[1], want).toContain(want);
+    const { text } = await rawGet(f.s, `/api/sessions/${id}/events?follow=0`);
+    expect(text).toContain('这一轮换一个新会话接着做');
+    // 新会话还短：再下一轮照常续接。
+    await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"第三句"}');
+    await waitIdle(f, id);
+    expect(args(f)[2]).toContain('--resume ' + (detail.session.cli_session_id as string));
   });
 
   // 整片制作换了 CLI 会话时，第一轮的制作说明不在对话记录里，要重发（2026-11：qoder 换会话后只剩对话记录）。

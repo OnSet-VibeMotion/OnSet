@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { withWindowsInstructions } from '../windowsruntime';
 import { MissingToolError, lookPath as envLookPath } from '../envutil';
 import { DefaultGrace, ExitError as ProcessExitError, abortReason, start } from '../procgroup';
-import { detectModel, interactiveInvocation, type McpServer, newUsage, orchestratorInvocation, presetSessionID, usageEmpty, type OrchestratorAccess, type PermissionPrompt, type Usage, type AgentOptions, type SessionTotal } from '../tools';
+import { detectModel, interactiveInvocation, longSessionEnv, type McpServer, newUsage, orchestratorInvocation, presetSessionID, usageEmpty, type OrchestratorAccess, type PermissionPrompt, type Usage, type AgentOptions, type SessionTotal } from '../tools';
 import { runACP } from './acp';
 import { runCodexApp } from './codexapp';
 import type { AskPermission } from './interactive';
@@ -40,6 +40,11 @@ export interface Spec {
   lookPath?: (name: string) => string;
   /** 续接时上一轮最后的任务清单（带编号的项），逐条改的任务工具（TaskUpdate）才接得上。 */
   plan?: PlanItem[];
+  /**
+   * 这是会续接很多轮、轮与轮之间可能等很久的编排会话（客户端的整片制作与对话）：claude 的缓存改成 1 小时
+   * （tools.longSessionEnv）。一次性的调用（起名、润色、整理经验）不给。
+   */
+  longSession?: boolean;
   /**
    * 续接时同一会话上一次记下的累计用量（tools.sessionBaseline）；null 表示续接但不知道。
    * claude 续接后报的费用、codebuddy 报的全部数字是整个会话的累计值，要减掉它。
@@ -200,6 +205,7 @@ export async function run(spec: Spec, emit: (event: Event) => void, signal?: Abo
       model: spec.model,
       options: spec.options,
     }, spec.env ?? (process.env as Record<string, string>)));
+    if (spec.longSession) extraEnv = { ...longSessionEnv(spec.tool, spec.env ?? process.env), ...extraEnv };
   } catch (err) {
     return { result: emptyResult(), error: asError(err) };
   }
