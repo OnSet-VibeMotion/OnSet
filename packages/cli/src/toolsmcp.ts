@@ -11,12 +11,16 @@
  * job_cancel 停掉。
  */
 import { type ChildProcess, spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import * as director from '@onset/engine/director';
 import * as flow from '@onset/engine/flow';
 import { parseWorkerOutput, visibleText, workerArgs } from '@onset/engine/opworker';
 import { groupSpawnOptions, killTree } from '@onset/engine/procgroup';
 import { nodeCommand } from '@onset/engine/toolpath';
 import './cli';
+import { compactHyperFrames, hyperFramesProgress } from './hfoutput';
 import { allOps, normalizeToolParams, type Op, opScopes, type ParamSpec, type ParamValues } from './ops/op';
 
 /** 档位：编排工具拿全部工具，渲染器只拿 hyperframes。 */
@@ -288,6 +292,8 @@ export function spawnOpWithService(service: director.ResolvedService | null): Sp
 
 interface Job {
   id: string;
+  /** 操作名：hyperframes 的输出要精简（hfoutput.ts）。 */
+  name: string;
   child: ChildProcess;
   output: string;
   /** 已经交给 agent 的文字长度：job_wait 只给新的部分。 */
@@ -310,7 +316,7 @@ export class Jobs {
 
   start(name: string, params: ParamValues): Job {
     const child = this.spawner(name, params);
-    const job: Job = { id: `job-${this.next++}`, child, output: '', delivered: 0, code: null, done: Promise.resolve() };
+    const job: Job = { id: `job-${this.next++}`, name, child, output: '', delivered: 0, code: null, done: Promise.resolve() };
     const take = (chunk: Buffer | string) => {
       job.output += chunk.toString();
     };
@@ -345,7 +351,13 @@ export class Jobs {
     const aborted = new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve(), { once: true }));
     await Promise.race([job.done, timeout, aborted]);
     clearTimeout(timer);
-    const visible = visibleText(job.output);
+    const compact = job.name === 'hyperframes';
+    if (compact && job.code === null) {
+      // 半截日志不交出去：跑完再一次给精简后的结果，这里只说进度。
+      const progress = hyperFramesProgress(visibleText(job.output));
+      return { text: `${progress ? progress + '\n' : ''}[还在运行：任务 ${job.id}。用 job_wait 接着等，或 job_cancel 停掉。结束本轮对话会终止仍在运行的任务；不要用定时任务接管，必须在本轮持续 job_wait 直到完成或明确失败]`, isError: false };
+    }
+    const visible = compact ? compactedOutput(visibleText(job.output)) : visibleText(job.output);
     const fresh = visible.slice(job.delivered);
     job.delivered = visible.length;
     const body = clip(fresh);
@@ -379,6 +391,21 @@ export class Jobs {
 function killGroup(child: ChildProcess): void {
   if (child.pid === undefined) return;
   if (!killTree(child.pid, 'SIGTERM')) child.kill('SIGTERM');
+}
+
+/** 精简 hyperframes 的输出；删了东西时把原样输出写进临时文件，末尾给路径，要细看时去读。 */
+function compactedOutput(full: string): string {
+  const { text, trimmed } = compactHyperFrames(full);
+  if (!trimmed) return text;
+  try {
+    const dir = path.join(os.tmpdir(), 'onset-hyperframes');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}-${Math.random().toString(36).slice(2, 8)}.log`);
+    fs.writeFileSync(file, full);
+    return `${text}\n（已略去进度与调试日志；完整输出：${file}）\n`;
+  } catch {
+    return `${text}\n（已略去进度与调试日志）\n`;
+  }
 }
 
 function clip(text: string): string {

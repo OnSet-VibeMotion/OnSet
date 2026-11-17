@@ -3,7 +3,8 @@ import { ResultMarker } from '@onset/engine/opworker';
 import { groupSpawnOptions } from '@onset/engine/procgroup';
 import { describe, expect, it } from 'vitest';
 import { allOps, opScopes } from './ops/op';
-import { describeTools, opCommand, prepareCall, serveToolsMCP, type Spawner } from './toolsmcp';
+import fs from 'node:fs';
+import { Jobs, describeTools, opCommand, prepareCall, serveToolsMCP, type Spawner } from './toolsmcp';
 
 /** 把一串 JSON-RPC 请求喂给服务，收齐回复（按 id）。 */
 async function call(requests: Record<string, unknown>[], spawner: Spawner, profile: 'orchestrator' | 'renderer' = 'orchestrator'): Promise<Map<unknown, any>> {
@@ -141,6 +142,22 @@ describe('onset tools MCP', () => {
     expect(text(replies.get(1))).toMatch(/还在运行：任务 job-1/);
     expect(text(replies.get(1))).toContain('结束本轮对话会终止仍在运行的任务');
     expect(text(replies.get(1))).toContain('不要用定时任务');
+  });
+
+  // hyperframes 的输出是写给终端的：跑着时只报进度，跑完交精简后的结果，原样输出留在临时文件里（hfoutput.ts）。
+  it.skipIf(process.platform === 'win32')('compacts hyperframes output', async () => {
+    const jobs = new Jobs(fakeWorker(`printf '%s\\n' '@hf-progress {"code":"capture","pct":40}' '[INFO] trace' '  ███░░  40%  Capturing'; sleep 0.4; printf '%s\\n' '◇  /p/scene-02.mp4' '   1.2 MB · 6.4s video'`));
+    const job = jobs.start('hyperframes', { subcommand: 'render', args: [] });
+    const running = await jobs.wait(job, 0.2);
+    expect(running.text).toMatch(/^进度 40%（capture）\n\[还在运行：任务 job-1/);
+    expect(running.text).not.toContain('[INFO]');
+    const done = await jobs.wait(job, 5);
+    expect(done.text).toContain('◇  /p/scene-02.mp4');
+    expect(done.text).not.toContain('[INFO]');
+    expect(done.text).not.toContain('@hf-progress');
+    const log = /完整输出：(\S+)）/.exec(done.text)?.[1];
+    expect(log && fs.readFileSync(log, 'utf8')).toContain('[INFO] trace');
+    if (log) fs.rmSync(log);
   });
 
   it('job_wait returns only the new output and the final result', async () => {
