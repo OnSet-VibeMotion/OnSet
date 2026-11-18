@@ -110,9 +110,13 @@ it('distinguishes same-named films and hides the approval during report refresh'
   await userEvent.click(await screen.findByRole('button', approve));
   expect(view.props.run).toHaveBeenCalledWith('/api/memory/actions/consolidate', { final: true, video: final, video_sha256 }, expect.any(Function));
   expect(view.props.onTab).not.toHaveBeenCalled();
-  view.props.run.mock.calls[0][2]();
+  const navigate = view.props.run.mock.calls[0][2];
+  navigate();
   expect(view.props.onTab).toHaveBeenCalledWith('publish');
+  view.props.onTab.mockClear();
   await userEvent.click(screen.getByRole('button', { name: '成片 · production/final.mp4' }));
+  navigate();
+  expect(view.props.onTab).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole('button', { name: '成片 · final.mp4' }));
   expect(screen.queryByRole('button', approve)).toBeNull();
   view.show('final', '', 2);

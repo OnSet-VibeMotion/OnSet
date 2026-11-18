@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as determinism from '@onset/engine/determinism';
-import { formatFixed, goRound } from '@onset/engine/gofmt';
+import { formatFixed } from '@onset/engine/gofmt';
 import * as mediaprobe from '@onset/engine/mediaprobe';
 import * as review from '@onset/engine/review';
 import * as scene from '@onset/engine/scene';
@@ -92,24 +92,14 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
       }
       rate = canvas.fps;
     }
-    let segments: review.Segment[] | null = null;
-    let planned: scene.Scene[] = [];
-    if (str(p.scenes) !== '') {
-      const scenes = schedule.plan(str(p.scenes));
-      planned = scenes;
-      segments = scenes.map((s) => {
-        const segment: review.Segment = { id: s.id, frames: Math.trunc(goRound(s.duration_seconds * rate)) };
-        if (s.timing) {
-          segment.handoff = s.timing.enter.device;
-          segment.crossChapter = s.timing.enter.cross_chapter;
-        }
-        return segment;
-      });
-    }
+    const project = inProject(rootDir);
+    const sceneDir = str(p.scenes);
+    const planned = sceneDir ? schedule.plan(sceneDir, project ? rootDir : undefined) : [];
+    const segments = review.reviewSegments(planned, rate);
     const loudness = reviewLoudnessTarget(rootDir, silent);
     const toolchain = mediaprobe.newToolchain(currentEnvironment());
     const target = str(p.report_json) || path.join(outDir, 'review.json');
-    const reportPath = inProject(rootDir) ? path.relative(rootDir, path.resolve(video)).split(path.sep).join('/') : video;
+    const reportPath = project ? path.relative(rootDir, path.resolve(video)).split(path.sep).join('/') : video;
     let report: review.Report;
     let videoChanged = false;
     let work = '';
@@ -123,10 +113,12 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
         const validationFile = resolveExisting(path.resolve(rootDir, validationPath));
         const reviewFile = resolveExisting(path.resolve(target));
         const original = fs.realpathSync(video);
-        if (validationFile === original || reviewFile === original || validationFile === reviewFile) {
+        const targets = [validationFile, reviewFile, original];
+        // 两份报告使用可移植的文件名，在 Windows 与 macOS 上也要区分。
+        if (new Set(targets.map((file) => file.normalize('NFC').toLowerCase())).size !== targets.length) {
           throw new Error('规格报告、复查报告和成片需要不同路径');
         }
-        const frames = num(p.expect_frames) || segments?.reduce((sum, segment) => sum + segment.frames, 0) || 0;
+        const frames = num(p.expect_frames) || segments.reduce((sum, segment) => sum + segment.frames, 0);
         if (frames <= 0) throw new Error('交付校验需要冻结总帧数或镜头目录');
         spec = review.deliverySpec(deliveryCanvas, frames, silent);
         work = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-film-review-'));
@@ -180,6 +172,7 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
         } else {
           report.video_sha256 = digest;
           report.delivery_spec = spec;
+          report.scene_plan_sha256 = review.scenePlanDigest(segments);
         }
       }
     } finally {

@@ -334,7 +334,7 @@ export function relPath(base: string, target: string): string {
 }
 
 function escapes(rel: string): boolean {
-  return rel === '..' || rel.startsWith('..' + path.sep);
+  return path.isAbsolute(rel) || rel === '..' || rel.startsWith('..' + path.sep);
 }
 
 export function contained(root: string, value: string, field: string): string {

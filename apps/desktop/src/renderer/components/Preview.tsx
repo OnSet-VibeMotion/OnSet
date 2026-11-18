@@ -1,7 +1,7 @@
 import { playerProps } from '../media';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { ReactNode } from 'react';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api, errorText, post, rawURL } from '../api';
 import type { Attachment, ProgressState, Box, ProjectFilmStyle, ProjectState, ProjectUsage, Scene, TreeFile, Usage } from '../types';
@@ -828,6 +828,11 @@ const silentMaster = 'production/silent-master.mp4';
 function FinalTab({ video: current, variants, onVideo, review, tree, version, run, onTab }: FilmReviewProps & {
   tree: TreeFile[]; version: number; run: RunAction; onTab?: (tab: Tab) => void;
 }) {
+  const selectedFilm = useRef<object | null>(null);
+  useLayoutEffect(() => {
+    selectedFilm.current = {};
+    return () => { selectedFilm.current = null; };
+  }, [current]);
   // 地址按这个文件自己的修改时间变，不按整个项目的 version：项目里别的文件一改 version 就涨，
   // 地址一变播放器就重新加载，成片没变也会一直闪、从头放。
   const currentMtime = tree.find((f) => f.path === current)?.mtime;
@@ -893,7 +898,10 @@ function FinalTab({ video: current, variants, onVideo, review, tree, version, ru
                 id="final-approve"
                 title="确认后会把这次制作里记下的问题整理成经验（调用一次 AI），然后去发布页"
                 onClick={() => {
-                  run('/api/memory/actions/consolidate', { final: true, video: current, video_sha256: report.video_sha256 }, () => onTab?.('publish'));
+                  const startedFrom = selectedFilm.current;
+                  run('/api/memory/actions/consolidate', { final: true, video: current, video_sha256: report.video_sha256 }, () => {
+                    if (selectedFilm.current === startedFrom) onTab?.('publish');
+                  });
                 }}
               >
                 确认可用，去发布

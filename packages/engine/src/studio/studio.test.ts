@@ -12,7 +12,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { sceneFeatureAPI } from './features';
 import * as flow from '../flow';
-import { deliverySpec } from '../review';
+import { deliverySpec, scenePlanDigest } from '../review';
 import { canvasOf } from '../scene';
 import * as studioview from '../studioview';
 import { computeStations } from './progress';
@@ -99,6 +99,23 @@ describe('studio', () => {
     expect((await read()).body.can_approve).toBe(false);
     expect((await approve()).status).toBe(409);
     writeStudioFile(path.join(root, 'production/timing-report.json'), '{"total_frames":30}');
+    const writeScene = (id: string, duration: number) => {
+      writeStudioFile(path.join(root, 'scenes', id, 'scene.json'), JSON.stringify({
+        id, duration_seconds: duration, output: 'out.mp4', transcript: 'voice.srt', text: '一句',
+      }));
+      writeStudioFile(path.join(root, 'scenes', id, 'voice.srt'), '1\n00:00:00,000 --> 00:00:00,300\n一句\n');
+    };
+    writeScene('scene-001', 0.5);
+    writeScene('scene-002', 0.5);
+    expect((await approve()).status).toBe(409);
+    const plan = scenePlanDigest([{ id: 'scene-001', frames: 15 }, { id: 'scene-002', frames: 15 }]);
+    writeStudioFile(report, JSON.stringify({ path: video, ok: true, problems: [], video_sha256: sha, delivery_spec: spec, scene_plan_sha256: plan }));
+    expect((await read()).body.can_approve).toBe(true);
+    writeScene('scene-001', 0.6);
+    writeScene('scene-002', 0.4);
+    expect((await approve()).status).toBe(409);
+    writeScene('scene-001', 0.5);
+    writeScene('scene-002', 0.5);
     writeStudioFile(file + '.next', 'edit');
     fs.renameSync(file + '.next', file);
     expect((await read()).body.can_approve).toBe(false);
@@ -126,6 +143,27 @@ describe('studio', () => {
     }
     const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
     expect((await studioRequest(s, 'GET', '/api/review?video=final.mp4')).body.available).toBe(false);
+  });
+
+  it.skipIf(process.platform === 'win32')('rejects review inputs linked outside the project', async () => {
+    const root = fs.realpathSync(tempDir());
+    const outside = tempDir();
+    writeStudioFile(path.join(root, 'frame.md'), '---\ncanvas: {width_px: 240, height_px: 320, fps: 30}\n---\n');
+    writeStudioFile(path.join(root, 'final.mp4'), 'film');
+    writeStudioFile(path.join(outside, 'scene.json'), '{"id":"scene-001","duration_seconds":1,"output":"out.mp4","transcript":"voice.srt"}');
+    writeStudioFile(path.join(outside, 'timing-report.json'), '{"total_frames":30}');
+    const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
+    const runReview = async () => {
+      const res = await studioRequest(s, 'POST', '/api/review/run', '{"video":"final.mp4"}');
+      expect(res.status).toBe(202);
+      return waitStudioTask(s, res.body.task_id);
+    };
+    fs.mkdirSync(path.join(root, 'production'));
+    fs.symlinkSync(path.join(outside, 'timing-report.json'), path.join(root, 'production/timing-report.json'));
+    expect(await runReview()).toMatchObject({ status: 'failed', error: expect.stringMatching(/timing-report.json.*不得逃出/) });
+    fs.mkdirSync(path.join(root, 'scenes/scene-001'), { recursive: true });
+    fs.symlinkSync(path.join(outside, 'scene.json'), path.join(root, 'scenes/scene-001/scene.json'));
+    expect(await runReview()).toMatchObject({ status: 'failed', error: expect.stringMatching(/scene.json.*不得逃出/) });
   });
 
   it('project and state API', async () => {

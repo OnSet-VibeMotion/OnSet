@@ -113,6 +113,7 @@ export interface Report {
   /** 核对交付规格时读到的影片字节。 */
   video_sha256?: string;
   delivery_spec?: DeliverySpec;
+  scene_plan_sha256?: string;
   ok: boolean;
   media: Media;
   expected_frames: number;
@@ -149,6 +150,7 @@ export function reportToJSON(r: Report): unknown {
     path: r.path,
     video_sha256: r.video_sha256,
     delivery_spec: r.delivery_spec,
+    scene_plan_sha256: r.scene_plan_sha256,
     ok: r.ok,
     media: mediaToJSON(r.media),
     expected_frames: r.expected_frames || undefined,

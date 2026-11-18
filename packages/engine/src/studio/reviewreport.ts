@@ -8,8 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { canvasOf, contained } from '../scene';
 import { compareBytes } from '../gojson';
-import { goRound } from '../gofmt';
-import { deliverySpec } from '../review';
+import { deliverySpec, reviewSegments, scenePlanDigest } from '../review';
 import { plan } from '../schedule';
 
 export interface ReviewReport {
@@ -72,19 +71,21 @@ export function latestReviewReport(root: string, video?: string, { exact = false
 }
 
 export function studioReviewInputs(root: string, silent: boolean) {
+  contained(root, 'frame.md', 'frame.md');
   const canvas = canvasOf(root, 'frame.md');
   const scenes = contained(root, 'scenes', 'scenes');
-  const planned = fs.existsSync(scenes) ? plan(scenes) : [];
+  const planned = fs.existsSync(scenes) ? plan(scenes, root) : [];
   if (planned.length) {
     // 镜头计划已冻结时以它为准，避免沿用上次混音遗留的时长。
-    const frames = planned.reduce((sum, scene) => sum + goRound(scene.duration_seconds * canvas.fps), 0);
-    return { scenes, spec: deliverySpec(canvas, frames, silent) };
+    const segments = reviewSegments(planned, canvas.fps);
+    const frames = segments.reduce((sum, segment) => sum + segment.frames, 0);
+    return { scenes, spec: deliverySpec(canvas, frames, silent), planDigest: scenePlanDigest(segments) };
   }
   const timing = contained(root, path.join('production', 'timing-report.json'), 'timing-report.json');
   try {
     const { total_frames: frames, fps } = JSON.parse(fs.readFileSync(timing, 'utf8')) ?? {};
     if (Number.isSafeInteger(frames) && frames > 0 && (fps === undefined || fps === canvas.fps)) {
-      return { scenes: undefined, spec: deliverySpec(canvas, frames, silent) };
+      return { scenes: undefined, spec: deliverySpec(canvas, frames, silent), planDigest: undefined };
     }
   } catch (err) {
     if (!(err instanceof SyntaxError) && (err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
@@ -98,13 +99,16 @@ export function reviewApprovalDigest(root: string, report: ReviewReport | null):
       typeof sha !== 'string' || !/^[0-9a-f]{64}$/.test(sha)) return '';
   const saved = report.data.delivery_spec;
   if (!saved || typeof saved !== 'object') return '';
-  try {
-    const { spec } = studioReviewInputs(root, false);
-    if (!Object.entries(spec).every(([field, value]) => (saved as Record<string, unknown>)[field] === value)) return '';
-  } catch {
-    return '';
-  }
-  return projectVideoDigest(root, report.video) === sha ? sha : '';
+  const matchesCurrentPlan = () => {
+    try {
+      const { spec, planDigest } = studioReviewInputs(root, false);
+      return report.data?.scene_plan_sha256 === planDigest &&
+        Object.entries(spec).every(([field, value]) => (saved as Record<string, unknown>)[field] === value);
+    } catch {
+      return false;
+    }
+  };
+  return matchesCurrentPlan() && projectVideoDigest(root, report.video) === sha && matchesCurrentPlan() ? sha : '';
 }
 
 /** 候选成片动辄上百 MB，路线每次刷新都要看。缓存须区分原地改写和原子替换。 */

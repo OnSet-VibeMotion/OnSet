@@ -149,8 +149,13 @@ export function sceneDirs(root: string): string[] {
   return dirs.sort((a, b) => compareBytes(path.basename(a), path.basename(b)));
 }
 
-export function plan(root: string): Scene[] {
-  return sceneDirs(root).map((dir) => scene.load(dir));
+export function plan(root: string, containmentRoot?: string): Scene[] {
+  return sceneDirs(root).map((dir) => {
+    if (containmentRoot !== undefined) {
+      scene.contained(containmentRoot, path.relative(containmentRoot, path.join(dir, 'scene.json')), 'scene.json');
+    }
+    return scene.load(dir);
+  });
 }
 
 /**

@@ -60,6 +60,10 @@ it.skipIf(!hasFfmpeg)('publishes and reuses a verified candidate, with explicit 
   expect(failed).toMatchObject({ ok: false, problems: [expect.stringContaining('分辨率不符')] });
   expect(failed.video_sha256).toBeUndefined();
   fs.writeFileSync(frameFile, frame);
+  await expect(review.run(normalizeParams(review, {
+    project_root: root, video, out: path.join(root, 'production/review'), expect_frames: 60,
+    report_json: path.join(root, 'production/review/CHECK.json'), validate_report: 'production/review/check.json',
+  }), { out, err: out, signal, unsafe: false })).rejects.toThrow(/需要不同路径/);
   if (process.platform !== 'win32') {
     fs.symlinkSync(path.join(root, 'production/review'), path.join(root, 'production/review-alias'));
     await expect(review.run(normalizeParams(review, {

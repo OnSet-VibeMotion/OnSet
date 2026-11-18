@@ -1,4 +1,8 @@
-import type { Canvas } from '../scene';
+import crypto from 'node:crypto';
+import { goRound } from '../gofmt';
+import { marshal } from '../gojson';
+import type { Canvas, Scene } from '../scene';
+import type { Segment } from './review';
 
 export function deliverySpec(canvas: Canvas, frames: number, silent: boolean) {
   return {
@@ -15,3 +19,20 @@ export function deliverySpec(canvas: Canvas, frames: number, silent: boolean) {
 }
 
 export type DeliverySpec = ReturnType<typeof deliverySpec>;
+
+export function reviewSegments(scenes: readonly Scene[], fps: number): Segment[] {
+  return scenes.map((scene) => ({
+    id: scene.id,
+    frames: goRound(scene.duration_seconds * fps),
+    handoff: scene.timing?.enter.device,
+    crossChapter: scene.timing?.enter.cross_chapter,
+  }));
+}
+
+/** 顺序、镜头边界和复查时采用的交接约定。 */
+export function scenePlanDigest(segments: readonly Segment[]): string | undefined {
+  if (!segments.length) return undefined;
+  return crypto.createHash('sha256').update(marshal(segments.map((s) => [
+    s.id, s.frames, s.handoff ?? '', s.crossChapter ?? false,
+  ]))).digest('hex');
+}

@@ -1,10 +1,27 @@
-import { Buffer, hasFfmpeg, makeFilm, makeSceneDir, run, tempDir } from './testutil';
+import { Buffer, hasFfmpeg, makeClip, makeFilm, makeSceneDir, run, tempDir } from './testutil';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseStrip } from './media';
 
 describe('review', () => {
+  it.skipIf(!hasFfmpeg)('writes failed delivery reports for an audio-only file', async () => {
+    const root = tempDir();
+    const video = path.join(root, 'final.mp4');
+    const out = path.join(root, 'review');
+    makeClip(video, 'sine=frequency=440:sample_rate=48000:duration=1', '-c:a', 'aac', '-ac', '2');
+    fs.writeFileSync(path.join(root, 'frame.md'),
+      '---\ncanvas: {width_px: 240, height_px: 320, fps: 30}\naudio: {final_integrated_lufs: -21, final_lufs_tolerance: 10, true_peak_max_dbtp: -1}\n---\n');
+    const err = new Buffer();
+    expect(await run(['review', video, '--project-root', root, '--out', out, '--expect-frames', '30', '--validate-report', 'review/validate.json'], new Buffer(), err)).toBe(1);
+    expect(err.text).toContain('没有视频流');
+    for (const name of ['validate.json', 'review.json']) {
+      expect(JSON.parse(fs.readFileSync(path.join(out, name), 'utf8'))).toMatchObject({
+        ok: false, problems: expect.arrayContaining([expect.stringContaining('没有视频流')]),
+      });
+    }
+  });
+
   it.skipIf(!hasFfmpeg)('review writes sheets and report', async () => {
     const root = tempDir();
     const scenes = path.join(root, 'scenes');

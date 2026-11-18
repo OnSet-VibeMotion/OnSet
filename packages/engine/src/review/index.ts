@@ -1,5 +1,5 @@
 // Package review：成片整片复查。
-export { deliverySpec, type DeliverySpec } from './delivery';
+export { deliverySpec, reviewSegments, scenePlanDigest, type DeliverySpec } from './delivery';
 export {
   DefaultEvery,
   DefaultSyncTolerance,
