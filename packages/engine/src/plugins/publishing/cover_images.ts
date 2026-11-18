@@ -12,11 +12,12 @@ import { get, GoFloat, isGoInt, isGoMap, type GoMap } from '../../validate/yamla
  */
 export const minCoverShortSide = 1080;
 
-/** 一个平台接受的封面比例，以及 ready 前必须备齐的比例。 */
+/** 一个平台接受的封面比例，以及 ready 前必须备齐的比例；横屏成片要的不一样时另写 landscapeRequired。 */
 export interface CoverSpec {
   name: string;
   allowed: string[];
   required: string[];
+  landscapeRequired?: string[];
 }
 
 /**
@@ -24,7 +25,8 @@ export interface CoverSpec {
  * 资料的检索（官方帮助页多需登录，按两个以上来源一致取值）：
  *
  *     抖音：网页端上传要横封面（有效区 4:3）与竖封面（3:4，个人主页与双列信息流）
- *     小红书：首页只透出 3:4、1:1、4:3，其他比例会被裁切；3:4 信息流占比最大
+ *     小红书：首页只透出 3:4、1:1、4:3，其他比例会被裁切；封面跟着成片的方向，
+ *             横屏成片的封面编辑器就是 4:3（与抖音的横版封面同一张，2026-11 作者实测），竖屏成片用 3:4
  *     视频号：竖版 3:4，横版 16:9；只有一个封面选择区域
  *     B 站：上传 16:10，各展示位再裁成 16:9 或 4:3，标题要放在中间安全区
  *     知乎：视频封面 16:10（来源单一，可信度低）
@@ -33,11 +35,24 @@ export interface CoverSpec {
  */
 export const coverSpecs: ReadonlyMap<string, CoverSpec> = new Map([
   ['douyin', { name: '抖音', allowed: ['4:3', '3:4'], required: ['4:3', '3:4'] }],
-  ['xiaohongshu', { name: '小红书', allowed: ['3:4', '1:1', '4:3'], required: ['3:4'] }],
+  ['xiaohongshu', { name: '小红书', allowed: ['3:4', '1:1', '4:3'], required: ['3:4'], landscapeRequired: ['4:3'] }],
   ['channels', { name: '微信视频号', allowed: ['3:4', '16:9'], required: ['3:4'] }],
   ['bilibili', { name: 'B 站', allowed: ['16:10'], required: ['16:10'] }],
   ['zhihu', { name: '知乎', allowed: ['16:10'], required: ['16:10'] }],
 ]);
+
+/** 成片是横屏吗：看 video.width_px / height_px，没写按竖屏。 */
+export function landscapeVideo(data: GoMap): boolean {
+  const video = get(data, 'video');
+  const w = isGoMap(video) ? Number(get(video, 'width_px')) : NaN;
+  const h = isGoMap(video) ? Number(get(video, 'height_px')) : NaN;
+  return Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0 && w > h;
+}
+
+/** 这个平台在 ready 前必须备齐的封面比例。 */
+export function requiredCovers(spec: CoverSpec, landscape: boolean): string[] {
+  return landscape && spec.landscapeRequired ? spec.landscapeRequired : spec.required;
+}
 
 const coverExtensions = new Set(['.png', '.jpg', '.jpeg']);
 
@@ -70,7 +85,7 @@ export function validateCoverImages(projectRoot: string, data: GoMap): void {
   const platform = typeof data.platform === 'string' ? data.platform : '';
   const spec = coverSpecs.get(platform);
   if (!spec) return;
-  const missing = spec.required.filter((ratio) => !have.get(platform)?.has(ratio));
+  const missing = requiredCovers(spec, landscapeVideo(data)).filter((ratio) => !have.get(platform)?.has(ratio));
   if (missing.length > 0) throw new Error(`${spec.name}发布还缺 ${missing.join('、')} 封面，cover.images 不全时不能是 ready`);
 }
 
