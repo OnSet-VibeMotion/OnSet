@@ -19,7 +19,7 @@ reviews:
   path_instructions:
     - path: "**/*"
       instructions: >-
-        按仓库根 AGENTS.md 审核工具本体。assets/shared/templates/project-rules.md
+        按仓库根 AGENTS.md 与它索引的 docs/dev/ 审核工具本体。assets/shared/templates/project-rules.md
         是下发到用户视频项目的规则，不约束本仓库开发。
         只报告本次变更新引入或加剧的问题，结合调用方和现有测试核实，说明具体失败条件。
         onset 是随 Electron 客户端内置的内部工具；不要建议给终端用户提供安装入口或命令教程。
@@ -59,6 +59,7 @@ knowledge_base:
     enabled: true
     filePatterns:
       - "AGENTS.md"
+      - "docs/dev/*.md"
       - files: "packages/engine/CONVENTIONS.md"
         applyTo: "packages/engine/**"
 

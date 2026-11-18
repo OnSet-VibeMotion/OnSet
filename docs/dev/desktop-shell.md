@@ -1,0 +1,19 @@
+# 桌面客户端 · 外壳
+
+> 从仓库根 `AGENTS.md` 拆出的开发约定。总则、命令与各份文件的索引见根 `AGENTS.md`；文中「见「某节」」指的节都能从那份索引找到。
+
+| 约定 | 原因 |
+|---|---|
+| 客户端在 `apps/desktop`（npm workspaces，根目录 `package.json`）：`src/main` 是 Electron 主进程，`src/renderer` 是 React 19 界面 | 一个 workspace 一个交付物，引擎与命令行各自独立构建 |
+| 界面从自定义协议 `onset://app/` 加载，界面里的 `/api/…`、`EventSource`、媒体 `src`、预览 iframe、上传都落到主进程的 `handleRequest`（`src/main/main.ts`） | 界面代码按普通网页写请求，不用为 Electron 改一行；接口名就是后端路由名 |
+| `/api`、`/preview` 由进程内的后端处理（`@onset/engine/studio` 的 `Server.handle(Request)`）；它的写任务与编排工具调用的 `onset` 是 `userData/bin/onset` 这份私有 shim（`ONSET_SELF` 同指它）；退出前 `Server.shutdown()` 取消进行中的轮次与任务 | 不依赖用户是否安装了命令行、也不会调到 `~/.local/bin` 里别的版本；编排工具与子命令各成进程组，不显式取消会在客户端退出后继续跑 |
+| onset 是打进资源目录的 `cli/onset.cjs`，由一段 shim（`src/main/clishim.ts` 的 `shimScript`，写在 `userData/bin/onset`）以 `ELECTRON_RUN_AS_NODE=1` 用客户端自带的 Electron 运行，同时设 `ONSET_ASSETS_DIR`、`ONSET_BROWSER`、`ONSET_NPM_CLI`。**没有「安装命令行工具」**：命令行不对外，以前装到 `~/.local/bin/onset` 的旧 shim 由 `envutil.addToolsLocation` 放在 PATH 最前面的 onset 遮住 | 用户不必另装 Node；agent 只经工具服务调用 onset，找不到也不会去翻它 |
+| 主进程启动时从登录 shell 读 PATH（`shellpath.ts`） | 从 Finder 启动的应用只有系统 PATH，编排工具、ffmpeg、asdf 的 node 全都找不到 |
+| Windows 本机使用独立数据目录时，在 exe 旁显式写 `onset-runtime.json`（`schema: 1`、`runtime_dir`，相对路径从该文件算起）。`localRuntime.ts` 在加载引擎、设置 userData、取得单实例锁之前接回已有的设置、项目登记与工具；没有此文件的安装仍用系统目录，显式环境变量优先。配置指向的目录必须已有 `settings.conf` 和 `studio/projects.json`。可选 `codex_dir` 指定包含 `codex.exe` 的目录，优先于 PATH 中的旧 npm 版；配置失效时报错，不静默换回旧版，Codex 升级并移除旧目录后需更新此值 | 仅在启动脚本里设环境会让开始菜单直接启动 exe 时看到空项目表和缺工具，还会因 userData 不同绕过单实例锁。开始菜单不继承 Codex 桌面端注入的 PATH，旧 CLI 的账号模型目录可能没有所选模型。目录丢失时应报错，不能静默创建另一套空记录 |
+| 顶栏就是标题栏：`.desktop .topbar` 可拖动窗口，按钮 `no-drag`；macOS 左侧留 88px 给红绿灯 | `titleBarStyle: hiddenInset` 去掉了系统标题栏 |
+| 在 Finder 中显示（`renderer/reveal.ts` → preload 的 `onset.reveal` → 主进程 `onset:reveal`）：后端 `Server.revealPath` 只认项目里的路径（含符号链接）、`.env` 不选中、还没生成的文件退到最近一层存在的目录；项目文件夹用 `shell.openPath` 打开，其余 `showItemInFolder` 选中。入口：顶栏项目名旁的文件夹按钮、菜单「文件 → 在 Finder 中显示项目」（⌥⌘R）、镜头与文件的右键菜单、镜头「⋯」菜单、文件页、成片页、首页最近项目。`AppShell.test.tsx` 核对交给 `window.onset.reveal` 的路径（主进程只认项目里的路径由 `studio/reveal.test.ts` 钉着） | 界面拿不到 Node 与 Electron 接口，只能经 IPC 请主进程做；不限定在项目里的话，界面里跑的合成页面就能让主进程去开任意路径。测试不能真的弹 Finder |
+| 静态文件（`serveStatic`）只把不带扩展名的路径回落到 `index.html`，带扩展名找不到直接 404；按扩展名设 MIME，一律 `no-cache` | 缺失的脚本拿到一份 HTML，浏览器只报模块 MIME 错误，看不出真正原因 |
+| 界面产物文件名固定（`assets/app.js`，见 `vite.config.mjs`），不带 hash；`apps/desktop/out/` 与 `packages/cli/dist/` 是构建产物，不提交 | 主进程按路径直接取文件；产物每次由 `npm run build` / `npm run dist` 现做，CI 与发布都从源码构建 |
+| 根目录 `package-lock.json` 的 `resolved` 必须是 `registry.npmjs.org` | 用镜像装完依赖要把 `resolved` 换回官方源再提交，CI 访问不到国内镜像 |
+| macOS 发布签名并公证（`release.yml` 用 `MAC_CSC_LINK` 等五个 Secrets，`forceCodeSigning` 加 `mac.notarize`，上传前对两个架构的 `.app` 与自动更新用的 zip 解开后都跑 `codesign` / `spctl` / `stapler validate`，见 `docs/macos-signing.md`）；本地 `npm run dist` 不强制签名。Windows 的 NSIS 还没有签名 | 自动更新的 Squirrel.Mac 只接受签名的应用；zip 里的应用没有公证票据时，用户点「重启并安装」会失败 |
+| 自动更新（`src/main/updater.ts`，纯逻辑与说法在 `updatestate.ts`，界面 `components/Updates.tsx`）：electron-updater（钉 `6.8.12`，随主进程打进 `out/main.js`）读 GitHub Releases（`build.publish` 指向 `OnSet-VibeMotion/OnSet`）上的 `latest-mac.yml` / `latest.yml`。macOS 的 target 多一个 `zip`（Squirrel.Mac 只认 zip，dmg 照旧给首次安装），`release.yml` 上传 zip、`*.blockmap` 与两份 yml 并核对版本号。只检查不自动下载（`autoDownload = false`）：启动 30 秒后与每 6 小时检查，有新版本时齿轮上点小点，设置页「网络与更新」里点「下载」才下，下好了点「重启并安装」；只有明确点击才安装（`autoInstallOnAppQuit = false`，普通退出不安装）。重启前经 `Server.activeWork()` 看各项目的写锁，有正在跑的对话、渲染就先列给用户，确认了才 `quitAndInstall`（经 `will-quit` 停掉后端）。代理与地址每次检查前现读：`NETWORK_PROXY` 设在 `autoUpdater.netSession` 上（没填跟系统代理），`UPDATE_FEED_URL` 填了用 generic 地址（镜像）。版本号带预发布标记的客户端才收预发布版。没打包、`ONSET_DESKTOP_BACKGROUND=1`（e2e）、`ONSET_DISABLE_UPDATE=1` 时不接 electron-updater，状态是 disabled。出错时 `errorText` 换成用户听得懂的话，并给「去发布页下载」这条退路 | 下载动辄一两百 MB，悄悄下会吃掉用户的流量和带宽；重启会打断几个小时的整片制作，必须让用户看见、自己决定。镜像与代理是国内用户连得上 GitHub 的前提 |

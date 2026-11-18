@@ -1,0 +1,42 @@
+# 渲染记忆
+
+> 从仓库根 `AGENTS.md` 拆出的开发约定。总则、命令与各份文件的索引见根 `AGENTS.md`；文中「见「某节」」指的节都能从那份索引找到。
+
+`packages/engine/src/memory` 实现 `docs/superpowers/specs/2026-11-02-渲染记忆-design.md`（本地设计稿，不进公开树）：经历 → 整理成试用经验 → 回放考试 → 生效并按镜头召回。记忆库在用户级目录（`MemorySettings.dir`，`config/config.ts`），不在项目里。
+
+| 约定 | 原因 |
+|---|---|
+| `scene` 不依赖 `memory`：召回结果经 `Scene.memory`（`MemoryRecall`，已渲染好的文本与摘要）挂进来，经历经 `Scene.afterAttempt` 回调写出；二者都不进 `scene.json`，`afterAttempt` 在 `fingerprint` 里清掉 | `memory` 要读 `scene` 抽特征、冻结输入；反过来依赖会成环。回调让经历拿到的正是 `scene.run` 写下的那份尝试记录，不靠事后读文件猜是不是本次的 |
+| 召回段放在 `determinismSection` 之后，开头声明「与上面的强制要求冲突时以上面为准」；段落里不写快照号 | 手写约束优先于学来的约束。不写快照号是为了回退到内容相同的快照时召回段逐字不变，镜头不被误判 Stale |
+| `MEMORY` 默认打开；没有召回条目时 `fingerprint` 不加 `memory` 项、提示词逐字不变 | 项目要随使用越来越懂用户，所以默认打开；空库时与关闭逐字相同，升级 onset 不会让老镜头变成 Stale |
+| 记忆打开时 `orchestratorAccess`（`config/providers.ts`）把记忆库放进 `OrchestratorAccess.writableDirs`，codex 安全模式据此加 `--add-dir`；`onset run` 与客户端每轮开工前先建好记忆库目录 | 编排工具调用的 `onset memory remember`、`onset scene run` 要写用户级记忆库，codex 的 workspace-write 沙箱默认只放行工作目录，写不进去也不报错，只是经历和偏好静默丢失 |
+| 命令行测试（`packages/cli/src/testutil.ts`）与客户端后端测试（`packages/engine/src/studio/testsupport.ts`）把 `ONSET_MEMORY_DIR` 指到临时目录；只读路径（偏好段）用 `memory.openReadOnly`，不建目录 | 记忆默认打开，测试不设它就会往开发者真实的 `~/.local/share/onset/memory` 写经历 |
+| 召回只读快照（`Snapshot.entries` 存完整文件内容），不读记忆文件；手改文件要经 `onset memory status` 记成标注「未经考试」的新快照 | 同一快照 + 同一镜头输入永远同一召回；回退只需把快照内容写回 |
+| 效果统计不写进记忆文件，由经历聚合（`computeStats`，`memory/stats.ts`），生成快照时冻结进 `Snapshot.stats` 供排序 | 并发镜头同时改一个文件会打架；统计写进文件会让规则摘要随每次渲染变化 |
+| 统计只算正式渲染的首次尝试；考试经历（`SourceExam`）不进统计、不进整理；渲染工具崩溃不算失败经历 | 重试带着失败说明、考试是人为安排的对照，混进来统计就失真；崩溃不是写法问题，记忆帮不上 |
+| 失败按校验器 ID 聚类：`VerificationError.checks` 与 `problems` 等长一一对应。产物校验的 ID 由 `scene.classifyOutputProblem`（`scene/checks.ts`）按 `mediaprobe` 的措辞前缀归类，确定性扫描的 ID 是 `determinism.` + 规则名 | 改了 `checkSpec` 的措辞要同步改归类，`scene/memory.test.ts` 的「verification checks align with problems」会抓住落进 `output.other` 的问题。新增确定性规则要登记进 `determinism.ruleIDs()`，`determinism/rules_ids.test.ts` 的「cover every emitted rule」守着——经验的 `checked_by` 只认这两处的 ID |
+| 不同模型犯的错不一样：经验可以用 `applies_when.renderers`（渲染工具 ID）/ `models`（模型名前缀）限定范围，召回按当前渲染工具与模型硬过滤，专属经验排在通用经验前；模型未知时不召回限定了模型的经验 | 只在某个模型上成立的经验注入给别的模型，只会白占预算甚至误导；没写范围的经验仍对所有渲染工具成立 |
+| 模型名只来自实测：claude / qoder / codebuddy 读输出流的 `system/init`（`tools.detectModel`），codex 读 `$CODEX_HOME/config.toml` 顶层 `model`（`tools.configuredModel`），opencode 记为未知。召回在渲染器启动前，用 `Store.currentModel`：配置声明的优先，否则取 `models.json` 里最近一次实测的 | 流里的模型名只有渲染开始后才有；换模型后的第一次渲染按旧模型召回，渲染完即更新 |
+| 格式校验（`memory.lint`）拒收正文 / 描述 / 关键词里的工具名与模型名（范围只能写进 `applies_when`）、镜头编号、素材文件名、照抄镜头文案连续 8 字以上、与已有经验同校验器同特征同范围却不写 `revises` 的草稿 | 正文保持中性才能在范围放宽时直接复用；「矛盾」无法语义判定，用「同一组校验器 + 特征 + 范围」近似，只拦并列新增 |
+| 偏好也交给编排工具：`Store.preferenceBrief` 的结果追加在 `onset run` 的提示词后、客户端每轮对话前（偏好摘要没变且 CLI 会话还在时不重发，见 `SessionMeta.preference_digest`）。段落里总写着怎样用 `onset memory remember` 记下新偏好；用户亲口说的偏好直接生效，不经人工确认或考试 | 用户随口一句话，是编排工具在理解、在定分镜和风格；渲染器只拿到展开后的镜头说明 |
+| 事后检查也是校验器：`onset validate reads`（`reads.<规则>`，来自 reads 报告的 `findings`）、`onset review`（`review.handoff`，`review.handoffBroken`）、`onset scene frames --check-blank`（`frames.blank`）查出的问题经 `Store.recordCheck` 记到镜头上，渲染工具 / 模型 / 召回继承该镜头最近一次渲染；同一份产物同一组问题不重复记。统计里，事后查出问题的产物不再算一次通过 | 产物校验与确定性扫描是渲染工具本来就很少犯的错（导入的 82 次真实渲染全部一次通过），决定观感的是阅读时间、交接与空白帧 |
+| 阅读时间在考试里按镜头判（`memory/examreads.ts`）：试用经验引用了 `reads.*` 时，考试经 `Scene.examNote` 要求对照组与试用组都交出本镜头的可读元素清单 `visible-events.json`（局部帧），作答后 `readsPostCheck` 用镜头自己的短语时间轴跑同一个 `reads.check`，没交清单按不合格算；`frames.blank` 由考试在作答后补查第 0 帧。补查（`ExamOptions.postCheck`）只跑试用经验引用的校验器。只由 `review.handoff` 判定的经验考不了，`memory.examinable`（`memory/features.ts`）把它排除在考试外，由人 `promote` | 导入的真实渲染里失败几乎全是阅读时间（`reads.binding`、`reads.duration`），它们考不了的话「考试通过才生效」用不到最常见的错上。正式制作的清单由编排在全片定稿后填，单镜头重放时没有，所以让作答者自己交；清单是申报的、不是从画面量的，两组拿到逐字相同的要求才可比。交接要看相邻镜头，仍然考不了。补查只看第 0 帧，是因为空白帧经验来自「第 0 帧当封面」，看末帧会把合法的淡出算进去 |
+| 偏好信号（`memory.preferenceSignals`，`memory/conversation.ts`）：客户端每轮对话的话与回退经 `recordUtterance` 记为 `conversation` 经历，在不同轮次反复提的同一要求（字二元组 Jaccard ≥ 0.5 或重合占短句 ≥ 0.6）、被回退的一轮、带说明的 👍 / 👎 汇成 `human` 组交给整理者起草偏好；起草的偏好要确认，偏好段会让编排工具在对话里问用户 | 单独一句话大多只对这一次成立，反复与回退才说明默认做法不合心意 |
+| 批次：每次 `onset scene run` / `run-all` 生成一个 `run-…` 编号写进经历，`onset memory report` 与客户端「运行对比」按批次、按渲染工具/模型比一次通过率、重试、问题数、耗时与 token | 评审要看到「第二次比第一次好」，混在一起的话换了渲染工具的变化会被算成记忆的功劳 |
+| 统计键是「渲染工具/模型」（`statKey`）；召回排序只把当前模型自己的样本当强证据，别的模型的样本向 0.5 收缩一半。`onset memory status` 报告的 `retest` 列出考试时用的模型与现在不同的生效经验，`onset memory exam --retest` 对照组去掉它重考，通过补记考试编号，不通过只报告不改状态 | 换了模型，旧结论不再可信，但也不能自动作废 |
+| `onset memory import` 导入已有项目：只读尝试记录（当前的与 `attempts/` 归档里的）、review.json 的交接与阅读时间清单；没有尝试记录的归档不导入 | 没有尝试记录就说不清当时用的是哪个渲染工具、为什么失败，按现在的镜头重判会凭空制造失败 |
+| 记忆设置经 `childEnvironment` 显式传给子进程（`ONSET_MEMORY_DIR`、`MEMORY`……） | 安全模式白名单里没有它们，编排工具调用的 `onset memory remember` 会落到默认目录，codex 沙箱里直接写失败（实测） |
+| 召回每个镜头最多注入 `DefaultMaxLessons`（3）条经验（`memory/recall.ts`），排在后面的记为 `limit`；偏好不占条数，只受字数预算 | SkillsBench（2026）里 1–3 条技能提升 18–19 个百分点，4 条以上只剩 10：条数多了指导互相冲突。字数预算拦不住「很多条短经验」。考试的试用组同样受这个上限，挤不进前 3 的试用经验就是在真实召回里也用不上 |
+| 经验的修订（`revises`）要保留旧版全部 `checked_by`，正文不得短于旧版的一半（`lintRevision`） | ACE（ICLR 2026）记录过整体重写把上下文从 1.8 万 token 压成 122 token、准确率跌破基线；LLM 改写还倾向为简洁丢细节。偏好不查：用户换说法替换旧偏好，短一点正常 |
+| 整理时没过格式校验的草稿交回整理者改一稿（`consolidate` 写 `revise.md`、再调一次 `drafter`，只重收被拒的那几份），只改一轮，改稿没跑成时第一轮结果照旧 | 2026-11-12 实测：一次整理 4 组失败只出了 2 份草稿，都因正文超过 600 字被拒（733、786 字），一次模型调用什么都没留下 |
+| 整理时每组失败最多附 `MaxContrasts` 组成败对照（`memory/consolidate.ts`；同一镜头后来改对的优先，其次同渲染工具、特征最接近的通过渲染）；通过那一版的源码在指纹仍一致时拷进整理工作目录的 `contrasts/` | 只看失败，整理者只能把报错改写成禁令；ExpeL、ReasoningBank 都从成败对比里提炼。拷进工作目录而不是给路径，是因为整理者在安全模式下未必能读工作目录之外 |
+| `suspectMemories`（`memory/stats.ts`）：召回后它 `checked_by` 里的校验器照样判失败，有害 ≥ 2 次且不少于召回次数的一半，记为「可疑」，按渲染工具/模型分开；只给候选，不改状态 | 「待沉睡」要攒够样本比基线；可疑是更直接的负证据（借鉴 ExpeL 的增减投票、ACE 的 helpful/harmful 计数）。改状态要经重考或人 |
+| `onset memory remember --inferred`：编排工具推测（用户没明说）的偏好进入试用，出现在偏好段的「待确认」里，用户认可后才生效 | 没经确认就写进记忆的内容会被照着做、错了被放大（Xiong et al. 2025）；用户亲口说的不在此列 |
+| 记忆探索（`MEMORY_EXPLORE`，默认 0.1）是一批渲染的决定，不是镜头的属性：`attachMemory`（`packages/cli/src/memory_cmd.ts`）按「批次编号 + 镜头目录」抽签，抽中就把注入的最后一条经验换成排在上限外、字数换得进去的第一条，倾向分数记进经历的 `explored`。`recallDigest` 仍返回不探索时的摘要，输入指纹不变；考试与 `onset memory recall` 不探索 | 召回排序只统计「当时被召回」的经验，排在上限外的永远攒不到样本，排序会固化（日志 bandit 的选择偏差，Kiyohara et al. 2025）。探索要放在 agent 的运行里而不是镜头里：指纹带上探索结果的话，抽中的镜头下次会被判 Stale，没抽中的又永远不会被探索 |
+| 镜头特征词表是 `FeatureDescriptions`（`memory/features.ts`），新增特征要同时改同文件 `features` 的抽取 | 整理说明与格式校验都只认这张表，抽不出来的特征写进经验永远匹配不上 |
+| 考试的作答者由调用方注入（`ExamRunner`，`memory/exam.ts`），考场建在项目的 `production/memory-exams/` | 渲染器从镜头目录向上找 `.agents/skills`，建在记忆库里就找不到项目技能 |
+| 整理的时机是用户确认成片可用：客户端成片页的「确认可用，去发布」发 `/api/memory/actions/consolidate`（`final: true`，已有整理任务在跑时复用它），对话里确认时由编排工具按制作提示词第十三阶段「整理这次制作的经验」运行 `onset memory consolidate`（`gen.test.ts` 的「consolidates memory after the user approves the film」钉着）。不按次数、不在每轮结束时自动整理；考试仍只在用户点了之后做 | 片子还在修改时问题没记全，中途整理出的经验只覆盖一半；用户点头的那一刻是一部片子的自然终点。考试每场是好几次真实渲染，面板在有试用经验时把「考试」放在经验列表顶上 |
+| 记忆面板（`apps/desktop/src/renderer/components/Memory.tsx`）页头用三步讲清记忆在做什么（记下的问题 → 整理成的提醒 → 渲染时用上，各带现在的数字），下面是等你确认的、还没整理的问题（`/api/memory` 的 `pending`，按校验器归组、带镜头，不是渲染日志）、你的要求、学到的经验、当前镜头会带上的几条；渲染记录、效果对比、考试、存档回退收进「高级」；校验器 ID、事件类型、镜头特征一律经 `/api/memory` 的 `labels` 换成大白话（`CheckerLabels` / `EventLabels` 在 `memory/labels.ts`，`FeatureDescriptions`），`memory/labels.test.ts` 的「TestEveryCheckerHasLabel」守着说法表与 `knownCheckers()` 一致 | 旧版把快照号、`reads.binding`、`episode` 和考试控件平铺在第一屏，用户看不懂记忆学到了什么；后来的版本库里只有失败经历时，整页是几段「还没有」加一串渲染日志，仍看不出记忆在干什么 |
+| 进化页（`apps/desktop/src/renderer/components/Evidence.tsx`、`evidence.css`，页面 id `evidence`，`studio_show` 能切）把一场考试排给人看：三个数字（带上经验前后查出的问题数、考试结论与样本量、考过试正在用的经验数）→ 同一个镜头对照组与试用组的两段画面并排、一个播放键两边同步 → 这条经验本身 → 两批渲染对比（主指标是每个镜头查出的问题数，缺省挑最近两批不少于 3 个镜头的）→ 存档与回退（点两下才退）。数据全部来自 `/api/memory`，页面不另算数：考试格子的产物取考场里 `scene.json` 的 `output`（`studio/exammedia.ts` 的 `resolveExamVideo`）、`problem_texts` 与题目的 `text` 取自格子的考试经历、`runs_all` 是所有项目最近 40 批。问题按 `labels` 的大白话归组显示，校验器原话收进折叠。组件测试 `Evidence.test.tsx`、`Memory.test.tsx`、`ExamPlayer.test.tsx` 钉着各种展示状态，`e2e/evidence.spec.mjs` 只留真实排版（长结论不溢出、窄面板竖排） | 评审要在两分钟里看到「学到了什么、好在哪、能不能退」，原来这些散在记忆页的「高级」里。产物名以前写死 `out.mp4`，真实镜头叫 `scene-001.mp4`，考试矩阵的画面在真实项目上从没显示过（2026-11-12 实测）。一次通过率在真实数据里是 97%，比不出差别，所以主指标换成问题数 |
+| 历史考试的 `preview_video` 经 `/api/memory/exams/{考试}/video`，按记录中的题目、工具、组别和轮次读取当前或已登记项目内的考场产物；`preview_audio` 读取与冻题匹配的来源配音。两者都校验真实路径边界，原始文件接口仍限当前项目；缺文件时说明来源不可用。统计区文字结论使用较小字号与换行，窄面板改成单列。`ExamPlayer` 按实际播放状态处理切换单侧时迟到的 play、pause 事件 | 考试结果在所有项目共用的记忆库里，切项目不能使仍然存在的视频消失，也不能播放错项目的配音。长结论不能盖住相邻统计列；拖动后旧一侧的暂停事件不能把新播放的一侧也停掉 |
+| 门槛 `judge`（`memory/exam.ts`）是纯函数，五条门槛各有单测；渲染工具自身故障让整场无效，不按 0 分算 | 一次认证失效不能让一条好经验被拒 |

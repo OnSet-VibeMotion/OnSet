@@ -1,0 +1,46 @@
+# 镜头时长、局部数据与复用
+
+> 从仓库根 `AGENTS.md` 拆出的开发约定。总则、命令与各份文件的索引见根 `AGENTS.md`；文中「见「某节」」指的节都能从那份索引找到。
+
+配音时间轴由 `onset align`（`packages/engine/src/align`）从终稿与对齐器输出算出：终稿用 `<显示|朗读>` 与 `@{id}…@{/id}` 标记，`build` 逐字匹配（标签 exact / split / merge / replacement / source-omission / evidence-insertion），写 `voice.srt` 与 `phrase-timeline.json`。匹配代价刻意不照搬 HYPIT：它按整词匹配，按单字匹配时原样的代价会把漏读的几个字合并成一次「替换」藏起来，见 `align/match.ts` 的注释。对齐器 JSON 的结构没有逐版本实测，加载器按「找到第一组带 text/start/end 的对象数组」宽松解析，认不出时报出顶层结构并给出标准结构 `[{"text","start","end"}]`。人工修正只走 `phrase-adjust.json`，不改测量数据。
+
+口播项目的镜头时长由 `onset scene cues`（`packages/cli/src/scene_cues.ts`）从分镜计划 `production/scene-plan.json` 推出，与卡点插件的 `beat_cues` 同一个思路：计划只写锚点（`first_subtitle` / `first_phrase`）与切点规则（`cut`），帧号由代码算，写进 `scene.json` 的 `duration_seconds` 与 `timing` 块，`scene.verifyTimingInputs` 做精确比对。秒换帧沿用 `frames.frameOf`（`packages/engine/src/frames`），不要另写取整。计划严格解析，新增字段要在 `scene.PlanEntry`（`scene/timing.ts`）里登记，否则提示词里让编排工具写的键会让命令直接失败。
+
+`scene.run` 在启动渲染器前写 `onset-scene.js`（`window.ONSET_SCENE`）。它的字段名是 `scene-kit` 技能的契约：`packages/engine/src/scene/scenedata.ts` 与 `assets/shared/.agents/skills/scene-kit/scene-kit.js` 两边改一处就要改另一处，`packages/engine/src/project/scenekit.test.ts` 用真实扫描器把示例镜头跑一遍。没有 `timing` 块的老镜头照样写这份文件（`cues` / `phrases` 为空），提示词里不出现时间合同表。
+
+镜头交接（`scene/timing.ts` 的 `PlanHandoff` / `Handoff`）是分镜计划里唯一跨镜头的约定。渲染器互相看不到，交界能接上只靠两侧拿到**同一份**约定，所以它由 `onset scene cues` 从计划抄进两侧的 `timing.enter` / `timing.exit`，不让编排工具在两份 `prompt.md` 里各写一遍。手法表 `HandoffDevices` 刻意只收「靠画面里的东西接过去」的写法，不收通用擦除——章节交界套固定转场正是要消除的生硬；「相邻章节交界不得同手法」也是同一个理由。`onset review` 用 `Toolchain.frameDifference`（32×32 RGB 均值绝对差）比对声明过交接的交界，阈值取得宽，只拦「两张不同的画面」：物件挪几像素就报的话，这道门很快没人信。改手法表要同步改制作提示词第五阶段「镜头交接」的表格，`gen.test.ts` 的「carries scene handoffs」钉着。
+
+文字约定接不住运动，所以镜头都渲染好以后、拼接之前还有一遍修接缝（`scene_seams`，`packages/cli/src/seams_cmd.ts`；引擎在 `scene/seam.ts`）：约定了交接却没接顺（差异到 `review.HandoffLooseDifference`，`all` 时不论）的交界，把前一镜的末帧（`seam/plate.png`）与最后 6 帧放进后一镜的 `seam/`、现产物留一份 `seam/before.mp4`，以 `Scene.seam`（不进 scene.json，`fingerprint` 清掉，渲染记录照旧按镜头本来的输入写，修完不会被判 Stale）重跑后一镜，提示词末尾的 `seamSection` 只许改开头约半秒（`SeamSeconds`）。`scene.run` 渲染后 `verifySeam` 按帧核对：第 0 帧对 plate（`SeamPlateTolerance`）、第 frames 帧以后与末帧对 before（`SeamKeepTolerance`），不合格抛 `VerificationError`（校验器 `seam.head` / `seam.keep`）。带原因重试一次，仍不合格就把产物与渲染记录恢复成修之前的，留给 `concat` 抹平。末帧不许变，所以下一道交界用的 plate 不变，各道接缝并行修（`SCENE_JOBS`）。修接缝不接记忆（不是正式渲染）。制作提示词的拼接阶段（口播与卡点）让编排先 `scene_seams()` 再 `concat()`；`seams.test.ts` 用假渲染器钉着修好、恢复与跳过。
+
+共用组件（`scene/components.ts`，`shared_component_promote` 在 `packages/cli/src/components_cmd.ts`）：跨镜头要长得一样的物件由代表镜头的渲染器做成 `export/<名字>/`（入口文件加 `README.md`），编排验收后用 `shared_component_promote` 登记，onset 复制到项目的 `production/shared/<名字>/`（只收普通文件、要有说明与 .js/.mjs/.css、上限 5 MB、内容不同要 `replace`）；其余镜头在 `scene.json` 写 `components`，渲染前经共享资源挂进镜头的 `shared/<名字>/`（内容按 `asset:` 摘要进指纹），提示词加 `componentSection`。没登记的组件在启动渲染器前报错。没有 `components` 的镜头提示词与指纹逐字不变。代码始终出自渲染器，编排自己仍不写 `production/shared/`（`host/scene-ownership.md`）。起因：Qwen4Max 一片的铭牌、立方体在 7 个镜头里各画各的，错了好几处、返工两三轮。
+
+scene.json 里功能自己的块（多角色对话的 `cast`、歌曲讲解的 `song`、卡点的 `beat`）是**镜头扩展块**：`scene/block.ts` 是注册表（`SceneBlock`：字段名 `key`、先后 `order`、解码描述 `type`、`toJSON`、load 时的 `validate`、互斥 `excludes`、渲染前与复用前的 `verifyInputs`、与 timing 互斥的 `timeline`、提示词段 `promptSection`、指纹项 `fingerprintParts`、记忆特征 `feature`、考试要拷的目录 `extraInputDirs`）。块一律由功能插件在 apply 里 `ctx.sceneBlock(...)` 登记（`plugins/cast/block.ts`、`plugins/song/block.ts`、`plugins/beat/block.ts`），用 `declare module` 把自己的字段并进 `Scene`；`registerBlock` 只给测试登记假块。`scene.ts`、`record.ts`、`timing.ts`、memory 的特征与考场、cli 的 `scene_cues` / `beat_cues` 只遍历注册表，不按名字读 `s.cast` / `s.song`。
+
+| 约定 | 原因 |
+|---|---|
+| 功能的块放在 `plugins/<id>/`，不放进 cast / song 包 | 块要用 scene 的 `contained`、`sceneCanvas`、`VerificationError`；放进功能包，功能包就反过来依赖 scene。`castbeats` 从 `plugins/cast/block.ts` 取 `Beat` 与重叠容差 |
+| scene 的包入口导入 `../plugin`（登记全部内置插件）；engine 的 `vitest.setup.ts` 另导入一次，因为 scene/ 自己的测试直接 import `./scene` | 登记靠 import 副作用，散在各处 import 就会漏。漏了不静默——含这个块的 scene.json 报「未知字段」 |
+| 字段、提示词段、校验、指纹项的先后都按 `order`（cast 10、song 20、beat 30），扩展块排在 `plugin_skills` 之后、`timing` 之前；timing 是 scene 自己的块，不进注册表 | 同一版本内 scene.json 写回、提示词与指纹要稳定，`scene/blocks.golden.test.ts` 用 `testdata/blocks-golden/` 钉着；`block.test.ts` 用只在测试里登记的假块证明加一种块不用改内核 |
+| 全片唯一的秒换帧公式与总帧数在 `frames/`（`frameOf`、`totalFrames`），Go `encoding/json` 与 yaml.v3 解码的复刻在 `gojson/decode.ts`、`goyaml/decode.ts`；卡点、对齐、镜头时间合同、角色包都从那里取，`beat` 包转出 `frameOf` / `totalFrames` | 它们不属于任何一个功能；放在 beat、cast 包里时内核就得 import 功能包 |
+
+渲染提示词按项目版本走：新建项目在流程记录里写 `render_prompt`（`flow.RenderPromptVersion`，`projectinit.recordProjectFlow`），`scene.renderPromptVersion` 读它，没有这一项的老项目按 1。改渲染提示词又不想让已有项目的镜头变 Stale 时，把新内容挂在版本判断后面、递增 `RenderPromptVersion`，只有新建的项目拿到新版（编排看到 Stale 可能真去重渲染，比提示词旧一点更费钱）。第 2 版是开工须知（`scene.ts` 的 `startSection`）：契约已在提示词里、不必再读 scene.json 与 prompt.md；有时间合同的镜头字幕看 `onset-scene.js`，不整份读全片 SRT；不先 ls 摸目录；技能文档每份只读一次。不能写目录清单这类会变的内容（提示词在指纹里）。`scene/renderprompt.test.ts` 钉着老项目逐字不变。`song_init` 换流程时保留这一项。
+
+镜头复用按输入指纹判定（`scene.fingerprint`，`scene/record.ts`，记录在镜头目录的 `.onset-render.json`）。指纹只算**声明过的输入**，不扫整个镜头目录——渲染器自己会往目录里写合成代码，算进去的话渲染一结束指纹就变了。镜头新增一类输入文件时，要把它加进 `fingerprint` 的文件清单，否则改了它也不会触发 Stale。指纹一致只表示「这份已验收产物出自当前输入」，不表示可复现；指纹不一致仍只标 Stale、要 `--force` 才覆盖，不要改成自动重渲染。指纹的摘要按字节算，所以写进 `.onset-render.json` 与提示词的文字要逐字稳定，见 `packages/engine/CONVENTIONS.md`。
+
+镜头自己的输入文件按内容记（渲染记录 `schema: 2`，`scene/record.ts` 的 `inputDigest`）：`scene.json` 解析后按键排序重新序列化，数字写法、键的先后、缩进都不算变化；字幕与短语时间轴只记渲染器实际拿到的那几条——有 `timing` 的镜头是 `onset-scene.js` 里裁到本镜头的字幕与短语（`scenedata.ts` 的 `localCues` / `localPhrases`，与渲染前写的局部数据同一份裁法；所以 `transcript` 必须是全片时间的全片字幕，镜头不在片头而字幕全落在 [0, 镜头时长] 里时，`verifyTimingInputs` 按「本地时间写法」在渲染前拒绝：2026-11 Qwen4Max 一片因此 13 个镜头的字幕数据全空，9 个镜头漏烧字幕返工），没有 `timing` 的记全部字幕；`prompt.md` 仍按字节。渲染器能看到的其余信息都在提示词里，由 `prompt` 那一项管。按字节记的话，编排工具用脚本重写 scene.json（`6.100000` 写成 `6.1`）、全片字幕里另一个镜头的一条改了时间，所有镜头都变 Stale（2026-11 实测：一个项目 24 个镜头里 18 个被判要重渲染，实际一个都没受影响）。旧记录（`schema: 1`，按字节）照旧按字节核对（`fingerprint` 的 `schema` 参数），对不上时到客户端的快照（`production/studio/blobs/<sha256>`，键正是旧记录里的摘要）找渲染时那份内容，找到就两份按内容比，找不到才算变了（`inputMatchesRecord`）。onset 判断复用（`cli/src/reuse.ts`）与客户端镜头列表（`studio/scenes.ts`，看 scene.json、字幕、短语时间轴三个文件）都经 `inputsMatchRecord` / `inputMatchesRecord`，同一种比法。`scene/record.content.test.ts` 钉着。
+
+渲染记录 `schema: 3` 把应用发行号与全片 `timing.plan` 摘要留作追溯，复用只比较镜头实际输入与渲染契约版本。`scene_cues` 改写计划之前会迁移能从旧记录核对的 schema 2 镜头输入，局部帧区间、配色、交接与实际提示词的变化继续触发 Stale。
+
+渲染记录 `schema: 4` 给每个技能单独算摘要。HyperFrames 入口只记单镜头用到的契约与动效文档；其他技能记自己的目录，运行资源仍走资源清单。批量复用先按旧记录原有算法验证，验证通过后可原地升级摘要并保留产物和渲染出处。已与旧树摘要不符的记录仍按原规则标为 Stale。
+
+提示词第 4 版用 `scene_preview_check()` 一次检查源码、布局、运动与对比度，按本镜头帧号生成一张联系表，完整日志落在镜头内。渲染器看图确认后输出交接信号并结束。引擎用同一渲染隔离与 worker 预算在临时目录里出片，完成验收后才换入正式路径。出片失败时优先续接原会话给它一次修复机会；收到取消时结束本次尝试。
+
+每次渲染写 `render-<id>.attempt.json`，重渲染前 `scene.archiveAttempt`（`scene/attempt.ts`）先把上一次的产物、日志与尝试记录挪进 `attempts/`。调度层的重试与单镜头重跑走同一个归档函数，不要各写一份编号逻辑。
+
+中途异常退出后接着做，不从头重来（`scene/resume.ts`，`scene.run` 归档前用 `resumeState` 读最近一次尝试）：只接结局是 `failed` / `interrupted`、指纹与现在一致的（产物校验不合格是写错了，照旧带重试说明；输入变了是真要重做；`fresh`、修接缝、记忆考试不接）。三层依次试：上一次的用户日志里有「代码已完成，开始渲染」（`CodeDoneMessage`）且 `index.html` 在，onset 自己 `hyperframes render --output` 再照常校验（`resumed: render`，不用模型）；同一渲染工具、尝试记录里有会话号（`session_id`：claude、qoder、codebuddy 预先 `--session-id`，codex、opencode 从输出流读）就续接那个会话，只发 `resumePrompt` 一句（`resumed: session`；各家写法见 `tools.rendererInvocation` 的 `RendererSession`）；续接的会话一句话没说就退出（会话过期）或续不上，开新会话、完整提示词末尾加 `continuationSection`（上次留下的文件 `leftoverFiles`、最后几步从旧输出流按 `agentrun` 解析出来，`resumed: files`）。`Scene.continuation` / `fresh` 不进 scene.json、指纹清掉。五家渲染工具的续接都实测过（2026-11：claude、codex、codebuddy、opencode 按渲染时的命令行续接后会话号不变、记得上一轮的话；qoder 在系统沙箱里同样可用，会话状态在 `~/.qoder-cn`，沙箱放行写）。改了任何一家的会话参数，用真实 CLI 跑一遍：`ONSET_TEST_RENDERER_RESUME=claude,codex,codebuddy,opencode npx vitest run --root packages/engine src/scene -t RealRendererResume`（`scene/resume.integration.test.ts`，opencode 默认模型不可用时加 `ONSET_TEST_OPENCODE_MODEL`）。`packages/cli/src/resume.test.ts` 用假 claude 与假 HyperFrames CLI 钉着三层与 `fresh`。token 用量按各工具流式事件尽力读取（`tools.accumulateUsage`），读不到就留空，不做估算。
+
+用量口径统一（`tools/usage.ts` 的 `Usage`）：输入含缓存命中与写入，缓存是输入里命中的部分，输出含推理。codex 原样就是这个口径，claude 系与 opencode 要把缓存加回输入——不统一的话 claude 显示「输入 4、缓存 40437」，跨工具既不能比也不能相加。记录带 `basis: total-input`；新增一家工具时要按这个口径填，并在 `tools/usage.test.ts` 的「usage is comparable across tools」里加一行真实流。汇总一律用 `usageAdd`：有一次没读到用量就标 `partial`，数字只是下限。按额度计费的工具（qoder）不报 token 与费用，只报 `total_credits`，记在 `Usage.credits`，汇总时相加，界面有额度时写额度、不写「0 token」。续接同一个 CLI 会话时，claude 报的费用、codebuddy 报的 token 与轮数、qoder 报的额度是整个会话的累计值（2026-11 实测，`tools/usage.ts` 的 `cumulativeFields`）：记录里另存 CLI 报的原值 `session_total`，下一次续接由调用方把它当基线交给解析器（`Spec.baseline`，Studio 取账本里同一会话的最后一条 `ledger.lastSessionUsage`，镜头续接取上一次的尝试记录），减掉才是这一次的；不知道基线时记成不知道，不估算。不减的话一个整片会话的账本加总是实际的 10 倍（片场宣传视频 $394 对 $38）。修复前写下的 claude 账由 `ledger.summarize` 按同一会话前后相减纠正。
+
+用量账以尝试记录为准：`scene.attemptHistory` 读当前记录加 `attempts/` 归档，失败与重试照样计入（`onset scene usage`、客户端镜头列表）。客户端后端把 `render-*.attempt.json` 当媒体只记 stat，回退一轮不会删掉它——那是已经花掉的钱。
+
+编排工具的用量记在账本里（`packages/engine/src/ledger`，只追加的 JSONL）：客户端每一轮记进项目的 `production/usage/orchestrator.jsonl`，整理记忆记进记忆库的 `orchestrator-usage.jsonl`。每次调用一行，失败、取消、续接失败后重开的会话都各记一行；进程没起来（`agentrun` 的 `Result.started` 为 false）的不记。模型名取 `Result.model`（流里的 `system/init`），读不到再按 `tools.configuredModel` 补。客户端后端的 `scanTree` / `statTree` 跳过 `production/usage/`：账在一轮结束前写下，不跳过的话会算成这一轮的改动，回退时连账一起抹掉。`onset usage` 合计渲染与编排两本账。
