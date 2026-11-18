@@ -62,7 +62,7 @@ describe('studio', () => {
         writeStudioFile(path.join(root, 'production/timing-report.json'), timing);
         const latest = await studioRequest(s, 'POST', '/api/review/run', JSON.stringify({ video: silent }));
         const task = await waitStudioTask(s, latest.body.task_id);
-        expect(task.status, task.error).toBe('succeeded');
+        expect(task.status, String(task.error ?? '')).toBe('succeeded');
         expect(worker).toHaveBeenLastCalledWith(s, expect.any(AbortSignal), expect.objectContaining({ path: root }), 'review',
           expect.objectContaining({ expect_frames: 33, scenes }));
       }
