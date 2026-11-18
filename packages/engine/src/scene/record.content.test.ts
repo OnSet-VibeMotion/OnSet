@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { changedInputs, fingerprint, inputMatchesRecord, inputsMatchRecord, RecordSchemaBytes, RenderRecordSchema, setToolVersion, getToolVersion, type RenderRecord } from './record';
+import { changedInputs, fingerprint, inputMatchesRecord, inputsMatchRecord, RecordSchemaBytes, RenderRecordSchema, resetDigestCache, setToolVersion, getToolVersion, type RenderRecord } from './record';
 import { load } from './scene';
 import { dataScene, tempDir } from './testsupport';
 
@@ -29,6 +29,39 @@ function record(dir: string, schema?: number): RenderRecord {
 }
 
 describe('render record compares input files by content', () => {
+  it('ignores unrelated skills and whole-film references while retaining the used contract', () => {
+    const { dir } = projectScene();
+    const skills = tempDir();
+    const docs = path.join(skills, 'hyperframes', 'references');
+    fs.mkdirSync(docs, { recursive: true });
+    fs.mkdirSync(path.join(skills, 'scene-kit'));
+    fs.mkdirSync(path.join(skills, 'character-rig'));
+    fs.mkdirSync(path.join(skills, 'song-explainer'));
+    fs.writeFileSync(path.join(docs, 'format.md'), 'format');
+    fs.writeFileSync(path.join(docs, 'story.md'), 'story');
+    fs.writeFileSync(path.join(skills, 'scene-kit', 'SKILL.md'), 'kit');
+    fs.writeFileSync(path.join(skills, 'character-rig', 'SKILL.md'), 'cast');
+    fs.writeFileSync(path.join(skills, 'song-explainer', 'SKILL.md'), 'song');
+    const resolved = { hyperframes: skills, 'scene-kit': skills, 'character-rig': skills, 'song-explainer': skills };
+    const compute = (schema?: number) => {
+      resetDigestCache();
+      return fingerprint(load(dir), 'claude', resolved, schema);
+    };
+    const current = compute();
+    const legacy = compute(3);
+    fs.writeFileSync(path.join(docs, 'story.md'), 'new story');
+    fs.mkdirSync(path.join(skills, 'unregistered'));
+    fs.writeFileSync(path.join(skills, 'unregistered', 'SKILL.md'), 'unrelated');
+    fs.writeFileSync(path.join(skills, 'character-rig', 'SKILL.md'), 'new cast');
+    fs.writeFileSync(path.join(skills, 'song-explainer', 'SKILL.md'), 'new song');
+    expect(compute()).toEqual(current);
+    expect(compute(3).fingerprint).not.toBe(legacy.fingerprint);
+    fs.writeFileSync(path.join(docs, 'format.md'), 'new format');
+    expect(changedInputs(compute(), current)).toEqual(['skill:hyperframes']);
+    fs.writeFileSync(path.join(skills, 'scene-kit', 'SKILL.md'), 'new kit');
+    expect(changedInputs(compute(), current)).toEqual(['skill:hyperframes', 'skill:scene-kit']);
+  });
+
   it('keeps the same render inputs across releases and plan-only edits', () => {
     const { dir } = projectScene();
     const original = getToolVersion();

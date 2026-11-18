@@ -28,6 +28,16 @@ const say = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'te
 describe('scene activity', () => {
   afterEach(() => resetActivityCache());
 
+  it('shows the engine encoding after the model handed off', () => {
+    const dir = tempDir();
+    scene.writeLive(dir, 's1', { pid: process.pid, renderer: 'claude', started_at: '', encoding: true });
+    expect(sceneActivity(summary(dir)).steps).toEqual([
+      expect.objectContaining({ tool: 'hyperframes', input: { subcommand: 'render' }, state: 'running' }),
+    ]);
+    scene.removeLive(dir, 's1');
+    expect(sceneActivity(summary(dir)).steps).toEqual([]);
+  });
+
   it('reports Codex MCP lifecycle and keeps parallel calls independent on every platform', () => {
     const dir = tempDir();
     const log = path.join(dir, 'render-s1.stream.jsonl');

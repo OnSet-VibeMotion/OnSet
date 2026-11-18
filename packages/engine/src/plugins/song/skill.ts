@@ -12,4 +12,9 @@ export function songExplainerPrompt(dir: string): string {
 }
 
 /** 描述符在 apply 时才造：scene/skills 与插件互相引用，模块加载期它的常量可能还没初始化。 */
-export const songExplainerSkill = (): SkillDescriptor => ({ name: SongExplainerSkillName, source: SourceEmbedded, requiredFiles: [SkillManifestFile] });
+export const songExplainerSkill = (): SkillDescriptor => ({
+  name: SongExplainerSkillName,
+  source: SourceEmbedded,
+  requiredFiles: [SkillManifestFile],
+  renderInput: scene => scene.song != null,
+});

@@ -13,6 +13,7 @@ import { parsePhraseTimeline } from './timing';
 import { getToolVersion } from '../version';
 import * as renderassets from '../renderassets';
 import { resourceFiles } from './resources';
+import { allSkills, HyperFramesSkillName, hyperFramesInputFiles, skillInputPath } from './skills';
 
 /**
  * 写进诊断记录的 onset 版本，由 cli 在启动时设为 cli 的版本号。
@@ -29,12 +30,14 @@ export const RecordFile = '.onset-render.json';
 /**
  * 渲染记录的结构版本。
  *
+ * 4：技能摘要收窄到各技能目录；HyperFrames 入口技能只记镜头可以读取的文档。
  * 3：发行版本与全片分镜摘要留作追溯。复用核对渲染契约和镜头自己的字段。
  * 2：镜头的输入文件按内容记（inputDigest）：scene.json 按解析后的数据，字幕与短语时间轴只记落在本镜头里的那几条。
  * 1：输入文件按字节记。旧记录照旧按字节核对（fingerprint 的 schema 参数），升级后没动过的镜头不会因为换了算法变成 Stale。
  */
-export const RenderRecordSchema = 3;
+export const RenderRecordSchema = 4;
 const contentSchema = 2;
+export const RecordSchemaRenderContract = 3;
 
 /** 只有改变既有镜头的渲染契约且其他指纹识别不到时才升级。 */
 const renderContract: string = '1';
@@ -103,18 +106,22 @@ export function fingerprint(s: Scene, renderer: string, resolvedSkills: Record<s
   let prompt = buildPrompt(s, resolved);
   const parts: Record<string, string> = {
     renderer: digestString(renderer),
-    ...(schema >= RenderRecordSchema ? { render_contract: digestString(renderContract) } : { onset: digestString(getToolVersion()) }),
+    ...(schema >= RecordSchemaRenderContract ? { render_contract: digestString(renderContract) } : { onset: digestString(getToolVersion()) }),
   };
   // 技能目录的绝对路径换成技能名：项目整体挪个位置不该让所有镜头变成 Stale，
   // 技能内容的变化由下面的 skill:<名字> 单独记录。
   const names = Object.keys(resolved).sort(compareBytes);
+  const unused = schema >= RenderRecordSchema
+    ? new Set(allSkills().filter(skill => skill.renderInput?.(s) === false).map(skill => skill.name))
+    : new Set<string>();
   for (const name of names) {
     const dir = resolved[name];
     if (dir === '') continue;
     prompt = prompt.replaceAll(dir, '<skill:' + name + '>');
+    if (unused.has(name)) continue;
     let digest: string;
     try {
-      digest = digestTreeCached(dir);
+      digest = schema < RenderRecordSchema ? digestTreeCached(dir) : digestSkill(name, dir);
     } catch (err) {
       throw new Error(`计算技能 ${name} 的内容摘要：${(err as Error).message}`, { cause: err });
     }
@@ -216,7 +223,7 @@ function inputDigest(
   try {
     if (rel === 'scene.json') {
       const value = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (schema >= RenderRecordSchema && value?.timing && typeof value.timing === 'object' && !Array.isArray(value.timing)) {
+      if (schema >= RecordSchemaRenderContract && value?.timing && typeof value.timing === 'object' && !Array.isArray(value.timing)) {
         delete value.timing.plan;
       }
       return digestString('json\n' + canonicalJSON(value));
@@ -290,7 +297,7 @@ export function inputMatchesRecord(s: Scene, rel: string, record: Pick<RenderRec
  * （inputMatchesRecord：内容没变，只是写法、别的镜头的字幕变了）。onset 判断复用与镜头列表都用它。
  */
 export function inputsMatchRecord(s: Scene, current: Inputs, record: RenderRecord): boolean {
-  if (record.schema < RenderRecordSchema && renderContract !== legacyRenderContract) return false;
+  if (record.schema < RecordSchemaRenderContract && renderContract !== legacyRenderContract) return false;
   if (current.fingerprint === record.fingerprint) return true;
   if (!record.parts?.renderer || !record.parts.prompt) return false;
   const changed = renderInputChanges(current, record);
@@ -301,7 +308,7 @@ export function inputsMatchRecord(s: Scene, current: Inputs, record: RenderRecor
 /** 旧记录里的发行号只用于追溯。已经升级渲染契约时不能沿用旧记录。 */
 export function renderInputChanges(current: Inputs, record: RenderRecord): string[] {
   const changed = changedInputs(current, record);
-  if (record.schema >= RenderRecordSchema) return changed;
+  if (record.schema >= RecordSchemaRenderContract) return changed;
   const renderChanges = changed.filter(name => name !== 'onset');
   if (renderContract !== legacyRenderContract) renderChanges.push('render_contract');
   return renderChanges;
@@ -317,7 +324,7 @@ export function migrateRecordBeforePlanRewrite(s: Scene): string | undefined {
   parts['file:scene.json'] = inputDigest(s, 'scene.json', windowOf(s), RenderRecordSchema);
   return marshalIndent(recordToJSON({
     ...record,
-    schema: RenderRecordSchema,
+    schema: RecordSchemaRenderContract,
     legacy_onset_sha256: onset,
     plan_sha256: s.timing?.plan,
     fingerprint: combine(parts),
@@ -361,13 +368,19 @@ export function recordToJSON(r: RenderRecord): unknown {
 /** 产物通过校验后写下渲染记录。 */
 export function writeRecord(s: Scene, inputs: Inputs): void {
   const [size, digest] = outputIdentity(s);
-  const body = marshalIndent(
-    recordToJSON({
-      schema: RenderRecordSchema, output: s.output, output_size: size, output_sha256: digest,
-      fingerprint: inputs.fingerprint, parts: inputs.parts, onset_version: getToolVersion(), plan_sha256: s.timing?.plan,
-    }),
-  );
-  atomicWrite(recordPath(s), body + '\n', 0o644);
+  saveRecord(s, {
+    schema: RenderRecordSchema, output: s.output, output_size: size, output_sha256: digest,
+    fingerprint: inputs.fingerprint, parts: inputs.parts, onset_version: getToolVersion(), plan_sha256: s.timing?.plan,
+  });
+}
+
+/** 调用方已用旧版算法核对产物和输入，升级摘要时保留原渲染出处。 */
+export function upgradeRenderRecord(s: Scene, old: RenderRecord, inputs: Inputs): void {
+  saveRecord(s, { ...old, ...inputs, schema: RenderRecordSchema });
+}
+
+function saveRecord(s: Scene, record: RenderRecord): void {
+  atomicWrite(recordPath(s), marshalIndent(recordToJSON(record)) + '\n', 0o644);
 }
 
 /**
@@ -388,7 +401,7 @@ export function loadRecord(s: Scene): RenderRecord | null {
   } catch {
     return null;
   }
-  if (![RecordSchemaBytes, contentSchema, RenderRecordSchema].includes(record.schema) || record.output !== s.output || record.fingerprint === '') return null;
+  if (![RecordSchemaBytes, contentSchema, RecordSchemaRenderContract, RenderRecordSchema].includes(record.schema) || record.output !== s.output || record.fingerprint === '') return null;
   try {
     const [size, digest] = outputIdentity(s);
     if (size !== record.output_size || digest !== record.output_sha256) return null;
@@ -504,6 +517,22 @@ function digestTreeCached(root: string): string {
   if (cached !== undefined) return cached;
   const digest = digestTree(root);
   treeDigests.set(root, digest);
+  return digest;
+}
+
+function digestSkill(name: string, dir: string): string {
+  const root = skillInputPath(name, dir);
+  if (name !== HyperFramesSkillName) return digestTreeCached(root);
+  const key = root + '\0scene-contract';
+  const cached = treeDigests.get(key);
+  if (cached !== undefined) return cached;
+  const parts: Record<string, string> = {};
+  for (const rel of hyperFramesInputFiles) {
+    const file = path.join(root, rel);
+    if (fs.existsSync(file)) parts[toSlash(rel)] = digestTree(file);
+  }
+  const digest = combine(parts);
+  treeDigests.set(key, digest);
   return digest;
 }
 

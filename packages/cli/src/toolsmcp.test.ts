@@ -59,7 +59,7 @@ describe('onset tools MCP', () => {
   });
 
   it('gives the Windows renderer its required source check, retaining the other platform tool lists', () => {
-    expect(describeTools('renderer').map((t) => t.name)).toEqual(['hyperframes', ...(process.platform==='win32'?['scene_lint']:[]), 'job_wait', 'job_cancel', 'tool_help']);
+    expect(describeTools('renderer').map((t) => t.name)).toEqual(['hyperframes', ...(process.platform==='win32'?['scene_lint']:[]), 'scene_preview_check', 'job_wait', 'job_cancel', 'tool_help']);
   });
 
   // 说明与例子是 agent 照着调的：写成命令行它就会去终端里找 onset；例子里的参数名必须真的存在。
@@ -155,6 +155,14 @@ describe('onset tools MCP', () => {
     expect(text(replies.get(1))).toMatch(/还在运行：任务 job-1/);
     expect(text(replies.get(1))).toContain('结束本轮对话会终止仍在运行的任务');
     expect(text(replies.get(1))).toContain('不要用定时任务');
+  });
+
+  it('lets a built-in agent wait for completion without an MCP timeout', async () => {
+    const jobs = new Jobs(fakeWorker('sleep 0.2; echo done', undefined, 'await new Promise(r=>setTimeout(r,200));console.log("done")'));
+    const reply = await jobs.wait(jobs.start('scene_run_all', {}), undefined);
+    expect(reply.text).toContain('done');
+    expect(reply.text).toContain('[完成]');
+    expect(reply.text).not.toContain('job_wait');
   });
 
   it('waits up to the limit the launcher set for its client', () => {

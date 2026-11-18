@@ -40,6 +40,7 @@ export const HyperFramesSkillName = 'hyperframes';
 export const hyperFramesFormatFile = path.join('references', 'format.md');
 export const hyperFramesMotionFile = path.join('references', 'motion.md');
 export const hyperFramesRuntimesFile = path.join('references', 'runtimes.md');
+const hyperFramesLookFile = path.join('references', 'look.md');
 
 /** HyperFrames CLI 用法技能目录名。 */
 export const HyperFramesCLISkillName = 'hyperframes-cli';
@@ -83,6 +84,8 @@ export interface SkillDescriptor {
    * 至少包含 SKILL.md；入口技能额外要求提示词里点名的参考文件。
    */
   requiredFiles: string[];
+  /** 技能只用于某类镜头时，声明它何时参与渲染输入摘要。 */
+  renderInput?: (scene: import('./scene').Scene) => boolean;
   /**
    * 该技能注入镜头提示词的片段（skillPromptSections 按登记顺序拼进每个镜头的提示词）。
    * skillsDir 为空时应退回按技能名引用，不写死本机路径。不写的技能只解析目录，提示词由别处
@@ -294,6 +297,16 @@ export function pluginSkillSection(resolved: Record<string, string>): string {
 /** 第三方插件技能在 resolveAllSkills 结果里的键前缀。 */
 export const PluginSkillPrefix = 'plugin:';
 
+/** 内置与默认风格的解析值是技能根；插件与点名风格直接给出技能目录。 */
+export function skillInputPath(name: string, dir: string): string {
+  return name.startsWith(PluginSkillPrefix) || name.startsWith('film-style:') ? dir : path.join(dir, name);
+}
+
+/** 上游入口技能还含整片制作流程，镜头只看这几份。其余技能可自由引用目录内的文件。 */
+export const hyperFramesInputFiles = [
+  skillManifestFile, hyperFramesFormatFile, hyperFramesMotionFile, hyperFramesRuntimesFile, hyperFramesLookFile,
+];
+
 /**
  * 镜头 film_style 取值对应的风格目录（含 STYLE.md 与 SKILL.md 的那一层）：
  * 空是默认风格，none 或项目没有默认风格时为空串，「来源/目录名」在项目里找默认或额外风格。
@@ -434,10 +447,11 @@ export function filmStyleSection(skillsDir: string, hasLook: boolean): string {
  * 为所有已注册技能生成提示词片段。
  * 已解析的技能注入本机路径；未解析的退回按技能名引用。
  */
-export function skillPromptSections(resolved: Record<string, string>, skills: readonly SkillDescriptor[]): string {
+export function skillPromptSections(resolved: Record<string, string>, skills: readonly SkillDescriptor[], engineRenders = false): string {
   let sections = '';
   for (const desc of skills) {
-    if (desc.promptSection) sections += desc.promptSection(resolved[desc.name] ?? '');
+    if (engineRenders && desc.name === HyperFramesCLISkillName) sections += hyperFramesCLIPrompt(resolved[desc.name] ?? '', true);
+    else if (desc.promptSection) sections += desc.promptSection(resolved[desc.name] ?? '');
   }
   return sections;
 }
@@ -525,7 +539,7 @@ export function hyperFramesPrompt(skillsDir: string): string {
  * timeline 只放行读取：它的 move / trim / split 等子命令会改写组合文件，
  * 与「时长由 scene.json 决定」的契约冲突。
  */
-export function hyperFramesCLIPrompt(skillsDir: string): string {
+export function hyperFramesCLIPrompt(skillsDir: string, engineRenders = false): string {
   let reference = `- CLI 的命令与排错方式见 ${HyperFramesCLISkillName} 技能。\n` + '  （本机未能定位该技能目录，请使用你自身的技能加载机制载入。）\n';
   if (skillsDir !== '') {
     reference = `- CLI 的命令与排错方式见 ${HyperFramesCLISkillName} 技能。本机该技能目录为：\n    ${path.join(skillsDir, HyperFramesCLISkillName)}\n`;
@@ -533,14 +547,20 @@ export function hyperFramesCLIPrompt(skillsDir: string): string {
   return (
     '渲染命令（强制）：\n' +
     reference +
-    '- HyperFrames CLI 只经 onset 工具服务里的 `hyperframes` 工具调用：`subcommand` 填子命令，其余参数照命令行写法放进 `args`。' +
-    '例如检查是 `{"subcommand": "lint"}`、`{"subcommand": "check", "args": ["--json"]}`，渲染是 `{"subcommand": "render"}`。' +
+    (engineRenders
+      ? '- 首轮检查用 scene_preview_check。按需补查时用 `hyperframes` 工具，`subcommand` 填子命令，其他参数放进 `args`。正式渲染由片场执行。'
+      : '- HyperFrames CLI 只经 onset 工具服务里的 `hyperframes` 工具调用：`subcommand` 填子命令，其余参数照命令行写法放进 `args`。' +
+        '例如检查是 `{"subcommand": "lint"}`、`{"subcommand": "check", "args": ["--json"]}`，渲染是 `{"subcommand": "render"}`。') +
     '技能里写成 `npx hyperframes <子命令>` 或 `hyperframes <子命令>` 的命令，一律照此换成工具调用。\n' +
     '- 不在 Bash 里跑 hyperframes、npx hyperframes 或 onset：它们不在本环境里，也不被放行。固定版本 ' +
     hyperframes.PinnedVersion +
     ' 的 CLI 已经装好，工具就在本镜头目录里执行，不需要 cd。\n' +
-    '- 渲染要几分钟：工具最多等 `wait_seconds` 秒（缺省 50），没跑完会返回任务号，用 `job_wait` 接着等到完成；不要重复发起同一次渲染。\n' +
-    '- 只放行本机渲染与检查：lint、check、validate、inspect、snapshot、keyframes、render、只读的 timeline --json、compositions、info、docs。' +
+    (engineRenders
+      ? '- 预览任务返回任务号时，用 `job_wait` 等结果，无需重复请求。\n'
+      : '- 渲染要几分钟：工具最多等 `wait_seconds` 秒（缺省 50），没跑完会返回任务号，用 `job_wait` 接着等到完成；不要重复发起同一次渲染。\n') +
+    (engineRenders
+      ? '- 需要单项补查时只用本机命令：lint、check、validate、inspect、snapshot、keyframes、只读的 timeline --json、compositions、info、docs。'
+      : '- 只放行本机渲染与检查：lint、check、validate、inspect、snapshot、keyframes、render、只读的 timeline --json、compositions、info、docs。') +
     'snapshot 会自动带上 --describe false（不把画面发给外部视觉服务），本镜头的自查由你自己看图完成。\n' +
     '- 远端渲染（cloud、cloudrun、lambda、publish）、改动已装技能（skills、upgrade）、交互与遥测（preview、present、open、catch-up、history、feedback、usage）都不放行：' +
     '本镜头必须在本机无头渲染，版本已固定，也没有人审批预览。\n'

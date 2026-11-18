@@ -25,6 +25,7 @@ import './memory_cmd';
 import './reads_cmd';
 import './review_cmd';
 import './scene_cmd';
+import './scene_preview';
 import './seams_cmd';
 import './scene_cues';
 import './station_cmd';

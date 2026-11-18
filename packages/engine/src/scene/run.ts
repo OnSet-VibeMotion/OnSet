@@ -28,6 +28,7 @@ import {
   rendererLaunch,
   type Invocation,
   sessionBaseline,
+  usageAdd,
   usageEmpty,
   type RendererSession,
   type Usage,
@@ -36,12 +37,12 @@ import { KindError, KindSession, KindText, KindToolCall, newParser } from '../ag
 import { formatFixed, goRound } from '../gofmt';
 import { newAttempt, OutcomeFailed, OutcomeInterrupted, OutcomeSucceeded, OutcomeVerificationFailed, timestamp, writeAttempt, archiveAttempt } from './attempt';
 import { CheckOutputFrames, classifyOutputProblem, DeterminismCheckPrefix } from './checks';
-import { fingerprint, removeRecord, writeRecord, type Inputs } from './record';
-import { buildPrompt, DesignFile, findProjectRoot, sceneCanvas, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
+import { fingerprint, RecordSchemaRenderContract, removeRecord, writeRecord, type Inputs } from './record';
+import { buildPrompt, contained, DesignFile, findProjectRoot, renderPromptVersion, sceneCanvas, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
 import { removeLive, writeLive } from './live';
 import { rendererHome, rendererUnfiltered, sandboxAvailable, sandboxed, sandboxProfile } from './sandbox';
 import { verifySeam } from './seam';
-import { leftoverFiles, resumePrompt, resumeState, type ResumeState } from './resume';
+import { CodeDoneMessage, leftoverFiles, RenderHandoffMessage, RenderRepairMessage, resumePrompt, resumeState, type ResumeState } from './resume';
 import { writeSceneData } from './scenedata';
 import { prepareResources } from './resources';
 import { verify as verifyResources } from '../renderassets';
@@ -89,7 +90,7 @@ export function recoverOutput(s: Scene, cfg: Config, baseEnv: Record<string, str
     const skills = resolveAllSkills(renderer, s.directory, skillsEnvironment(baseEnv, cfg.overlay), s);
     prepareResources(s, skills);
     const inputs = fingerprint(s, renderer, skills);
-    return acceptRecoveredOutput(s, inputs, resumeState(s, inputs.fingerprint), baseEnv, userOutput, tolerance, signal);
+    return acceptRecoveredOutput(s, inputs, resumeState(s, inputs.fingerprint, () => fingerprint(s, renderer, skills, RecordSchemaRenderContract).fingerprint), baseEnv, userOutput, tolerance, signal);
   } finally { release(); }
 }
 
@@ -198,7 +199,10 @@ async function runScene(
   }
   // 中途异常退出过、输入没变：接着上一次做，不从头重来（resume.ts）。要在归档上一次之前读。
   const design = s.designOnly === true;
-  const resume = design || s.fresh || s.seam || s.examNote !== '' ? null : resumeState(s, inputs.fingerprint);
+  const engineRenders = !design && renderPromptVersion(s) >= 4;
+  const resume = design || s.fresh || s.seam || s.examNote !== ''
+    ? null
+    : resumeState(s, inputs.fingerprint, () => fingerprint(s, renderer, resolvedSkills, RecordSchemaRenderContract).fingerprint);
   if (acceptRecoveredOutput(s, inputs, resume, baseEnv, userOutput, tolerance, signal)) return;
   // 补验收不启动模型或浏览器。只有确实需要制作时才检查这些运行依赖。
   if (renderer === director.Tool && !director.resolveService(director.defaultDir({ ...process.env, ...baseEnv }))) throw new Error(director.NoServiceMessage);
@@ -236,9 +240,11 @@ async function runScene(
   });
   if (resume) userOutput.write(`[${s.id}] 上一次中途中断了，接着做（不从头重来）\n`);
   const usage: Usage = newUsage();
+  let handoff = false;
   let err: unknown = null;
   // 客户端据此显示「渲染中」与渲染器此刻在做什么，见 live.ts。
-  writeLive(s.directory, s.id, { pid: process.pid, renderer, started_at: attempt.started_at });
+  const live = { pid: process.pid, renderer, started_at: attempt.started_at };
+  writeLive(s.directory, s.id, live);
   let unstage = () => {};
   try {
     // qoder 用自己的 Skill 工具加载本镜头的技能（链接只在渲染期间存在，见 stageRendererSkills）。
@@ -299,6 +305,11 @@ async function runScene(
         try {
           try {
             await renderLayers(rawFile, stderrFile, userFile);
+            if (engineRenders && handoff && !fs.existsSync(outputPath(s))) {
+              await renderHandoff(rawFile, stderrFile, userFile);
+              attempt.exit_code = 0;
+              return;
+            }
           } catch (error) {
             // 服务失败发生在出片之后：验收实际产物，不能因为最后一句模型响应失败就丢掉已经完成的画面。
             // 取消、工具崩溃与设计稿阶段仍照常失败；旧视频已在本次运行前归档，不会误收旧产物。
@@ -327,11 +338,73 @@ async function runScene(
       verifyDesign(s);
       return;
     }
-    verifyResources(s.directory);
-    verifyOutput(s, baseEnv, tolerance);
-    // 修接缝：第 0 帧要接上前一镜的末帧、后面的画面不许变（seam.ts）。
-    if (s.seam) verifySeam(s, s.seam, mediaprobe.newToolchain(baseEnv), sceneCanvas(s).fps);
+    verifyRendered(s);
     writeRecord(s, inputs);
+  }
+
+  function verifyRendered(candidate: Scene): void {
+    verifyResources(s.directory);
+    verifyOutput(candidate, baseEnv, tolerance);
+    // 修接缝：第 0 帧要接上前一镜的末帧、后面的画面不许变（seam.ts）。
+    if (s.seam) verifySeam(candidate, s.seam, mediaprobe.newToolchain(baseEnv), sceneCanvas(s).fps);
+  }
+
+  function show(message: string, userFile: number): void {
+    fs.writeSync(userFile, message + '\n');
+    userOutput.write(message + '\n');
+  }
+
+  /** 先在镜头内的独立目录渲染与验收，失败产物不会覆盖正式路径或被续接误收。 */
+  async function encodeHandoff(stderrFile: number, userFile: number): Promise<void> {
+    signal?.throwIfAborted();
+    show(CodeDoneMessage, userFile);
+    const stage = fs.mkdtempSync(path.join(s.directory, '.onset-encode-'));
+    try {
+      writeLive(s.directory, s.id, { ...live, encoding: true });
+      const candidate = { ...s, output: path.relative(s.directory, path.join(stage, path.basename(s.output))) };
+      await renderComposition(stderrFile, candidate.output, true);
+      verifyRendered(candidate);
+      signal?.throwIfAborted();
+      const destination = contained(s.directory, s.output, 'output');
+      fs.mkdirSync(path.dirname(destination), { recursive: true });
+      fs.renameSync(outputPath(candidate), contained(s.directory, s.output, 'output'));
+    } finally {
+      fs.rmSync(stage, { recursive: true, force: true });
+      writeLive(s.directory, s.id, live);
+    }
+  }
+
+  async function renderHandoff(rawFile: number, stderrFile: number, userFile: number): Promise<void> {
+    try {
+      await encodeHandoff(stderrFile, userFile);
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      const detail = (error as Error).message.slice(0, 4000);
+      show(RenderRepairMessage, userFile);
+      userOutput.write(`[${s.id}] ${detail.split('\n')[0]}\n`);
+      const next = `片场渲染或验收失败。按下面的错误修复现有合成，复查受影响的画面，然后按原约定交接：[[USER_MESSAGE]]${RenderHandoffMessage}。\n${detail}`;
+      const previousID = attempt.session_id;
+      let resumed = false;
+      if (previousID !== '') {
+        usage.baseline = sessionBaseline(usage);
+        try {
+          await spawnRenderer(invocation(next, { id: previousID, resume: true }), rawFile, stderrFile, userFile);
+          resumed = true;
+        } catch (retryError) {
+          if (signal?.aborted || (retryError as { events?: number }).events !== 0) throw retryError;
+        }
+      }
+      if (!resumed) {
+        usage.baseline = undefined;
+        const session = newSession();
+        attempt.session_id = session?.id ?? '';
+        await spawnRenderer(invocation(prompt + '\n\n' + next, session), rawFile, stderrFile, userFile);
+      }
+      if (handoff && !fs.existsSync(outputPath(s))) await encodeHandoff(stderrFile, userFile);
+      else verifyRendered(s);
+    }
+    writeRecord(s, inputs);
+    show(`视频已渲染完成：${s.output}`, userFile);
   }
 
   /**
@@ -341,14 +414,18 @@ async function runScene(
   async function renderLayers(rawFile: number, stderrFile: number, userFile: number): Promise<void> {
     if (directRender) {
       try {
-        await renderComposition(stderrFile);
-        verifyOutput(s, baseEnv, tolerance);
+        if (engineRenders) await encodeHandoff(stderrFile, userFile);
+        else {
+          await renderComposition(stderrFile);
+          verifyOutput(s, baseEnv, tolerance);
+        }
         attempt.resumed = 'render';
         fs.writeSync(userFile, `onset 直接渲染了上一次写好的合成：${s.output}\n`);
         userOutput.write(`[${s.id}] 上一次的合成已写完，直接渲染出片\n`);
         return;
       } catch (e) {
         if (signal?.aborted) throw e;
+        if (engineRenders) show(RenderRepairMessage, userFile);
         userOutput.write(`[${s.id}] 直接渲染没成（${(e as Error).message.split('\n')[0]}），交给渲染器接着做\n`);
       }
     }
@@ -357,7 +434,7 @@ async function runScene(
       attempt.session_id = resume!.previous.session_id;
       // 续接后有的工具报整个会话的累计用量，减掉上一次记下的才是这一次的（tools 的 cumulativeFields）。
       usage.baseline = sessionBaseline(resume!.previous.usage);
-      const text = resumePrompt(resume!.previous.error, s.output, frameCount);
+      const text = resumePrompt(resume!.previous.error, s.output, frameCount, engineRenders);
       const events = await spawnRenderer(invocation(text, { id: resume!.previous.session_id, resume: true }), rawFile, stderrFile, userFile).catch((e: unknown) => {
         if (signal?.aborted || (e as { events?: number }).events !== 0) throw e;
         return -1;
@@ -374,23 +451,35 @@ async function runScene(
   }
 
   /** 第一层：onset 自己用固定版本的 HyperFrames CLI 渲染镜头目录里的合成，不用模型。 */
-  async function renderComposition(stderrFile: number): Promise<void> {
-    const args = ['render', '--output', s.output, ...(s.renderWorkers > 0 ? ['--workers', String(s.renderWorkers)] : [])];
-    const spec = hyperframes.cliCommandFor(hyperframes.requireCLI(cliEnv), cliEnv, args);
+  async function renderComposition(stderrFile: number, output = s.output, normalHandoff = false): Promise<void> {
+    const args = ['render', '--output', output, ...(s.renderWorkers > 0 ? ['--workers', String(s.renderWorkers)] : [])];
+    const cli = hyperframes.requireCLI(cliEnv);
+    const renderEnv = normalHandoff ? { ...childEnv, [hyperframes.BrowserEnv]: hyperframes.requireBrowser(cliEnv) } : cliEnv;
+    const spec = hyperframes.cliCommandFor(cli, renderEnv, args);
     // 直接渲染也是选手代码的执行，不能绕开试镜隔离去读取其他选手的文件。
     const invocation: Invocation = { argv: [spec.file, ...spec.args], env: spec.env, stdin: '' };
-    const command = s.audition ? confine(invocation) : invocation;
-    const started = await start(command.argv[0], command.argv.slice(1), { cwd: s.directory, env: command.env, stdio: ['ignore', stderrFile, stderrFile], signal }, terminateGrace);
+    const command = s.audition || normalHandoff ? confine(invocation) : invocation;
+    const started = await start(command.argv[0], command.argv.slice(1), { cwd: s.directory, env: command.env, stdio: ['ignore', stderrFile, 'pipe'], signal }, terminateGrace);
+    let tail = '';
+    started.child.stderr!.setEncoding('utf8');
+    started.child.stderr!.on('data', (chunk: string) => {
+      fs.writeSync(stderrFile, chunk);
+      tail = (tail + chunk).slice(-4000);
+    });
     try {
       await started.wait();
     } catch (e) {
       if (signal?.aborted) throw new Error('已中断：渲染进程组已终止');
-      throw new Error(e instanceof ExitError ? `HyperFrames 渲染退出码 ${e.code}` : (e as Error).message);
+      const reason = e instanceof ExitError ? `HyperFrames 渲染退出码 ${e.code}` : (e as Error).message;
+      throw new Error(tail.trim() ? `${reason}\n${tail.trim()}` : reason, { cause: e });
     }
   }
 
   /** 跑一次渲染器；返回它说了几句话、调了几次工具（0 表示根本没开始）。失败时抛出的错误也带着这个数（events）。 */
   async function spawnRenderer(command: Invocation, rawFile: number, stderrFile: number, userFile: number): Promise<number> {
+    handoff = false;
+    const callUsage = newUsage();
+    callUsage.baseline = usage.baseline;
     let events = 0;
     let failure = '';
     const parser = newParser(renderer);
@@ -413,12 +502,12 @@ async function runScene(
       let line = raw.toString('utf8');
       if (line.endsWith('\r')) line = line.slice(0, -1);
       fs.writeSync(rawFile, line + '\n');
-      accumulateUsage(renderer, line, usage);
+      accumulateUsage(renderer, line, callUsage);
       const model = detectModel(renderer, line);
       if (model !== '') attempt.model = model;
       for (const message of extractUserMessages(renderer, line)) {
-        fs.writeSync(userFile, message + '\n');
-        userOutput.write(message + '\n');
+        if (message.trim() === RenderHandoffMessage) handoff = true;
+        show(message, userFile);
       }
       for (const e of parser.parse(line)) {
         if (e.kind === KindError && e.text) failure = e.text.slice(0, 8000);
@@ -450,6 +539,8 @@ async function runScene(
       waitErr = e;
     }
     if (pending.length > 0) handleLine(pending);
+    if (events > 0 || !usageEmpty(callUsage)) usageAdd(usage, callUsage);
+    if (callUsage.session_total) usage.session_total = callUsage.session_total;
     if (signal?.aborted) throw fail(new Error('已中断：渲染器进程组已终止'));
     if (scanError) throw fail(new Error(`读取渲染器输出：${(scanError as Error).message}`));
     if (waitErr !== null) {

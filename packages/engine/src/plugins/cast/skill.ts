@@ -53,5 +53,6 @@ export const characterRigSkill = (): SkillDescriptor => ({
   // 驱动库本身也是必需文件：只有 SKILL.md 而没有 cast.js 的技能目录，
   // 提示词里那条「把驱动库复制进镜头目录」的契约就无从执行。
   requiredFiles: [SkillManifestFile, castDriverFile],
+  renderInput: scene => (scene.cast?.on_stage?.length ?? 0) > 0,
   promptSection: characterRigPrompt,
 });

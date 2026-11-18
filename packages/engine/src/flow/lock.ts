@@ -15,8 +15,9 @@ export const LockFile = 'onset.flow.json';
  * 把新内容按版本挂上、递增这个数：只有新建的项目拿到新版。
  *   2：开工须知（scene.ts 的 startSection），2026-11。
  *   3：优先查看联系表，按发现的问题复检。
+ *   4：合并预览检查，正式渲染由引擎接管。
  */
-export const RenderPromptVersion = 3;
+export const RenderPromptVersion = 4;
 
 /**
  * 新建项目时记下的流程（片型）与画幅。制作提示词由运行期按它组合（compose.ts）；项目用哪个流程也只看它。

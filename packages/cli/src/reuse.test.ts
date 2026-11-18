@@ -48,4 +48,18 @@ describe('reuseDecision', () => {
     expect(status).toBe(schedule.Stale);
     expect(reason).toContain('渲染记录');
   });
+
+  it('upgrades a verifiably matching legacy record without rerendering the video', () => {
+    const s = reuseScene();
+    const cfg = config.newConfig({ renderer: 'codex' });
+    const env = { HOME: tempDir() };
+    const resolved = scene.resolveAllSkills('codex', s.directory, env, s);
+    scene.writeRecord(s, scene.fingerprint(s, 'codex', resolved, scene.RecordSchemaRenderContract));
+    const file = path.join(s.directory, scene.RecordFile);
+    const old = { ...JSON.parse(fs.readFileSync(file, 'utf8')), schema: scene.RecordSchemaRenderContract, onset_version: '2.0.0' };
+    fs.writeFileSync(file, JSON.stringify(old));
+    expect(reuseDecision(s, cfg, env)[0]).toBe(schedule.Skipped);
+    expect(scene.loadRecord(s)).toMatchObject({ schema: scene.RenderRecordSchema, onset_version: '2.0.0', output_sha256: old.output_sha256 });
+    expect(fs.readFileSync(scene.outputPath(s), 'utf8')).toBe('video');
+  });
 });

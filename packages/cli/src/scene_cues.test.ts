@@ -115,7 +115,7 @@ describe('onset scene cues', () => {
     const reuses = dirs.map(dir => {
       const s = scene.load(dir);
       const record = scene.loadRecord(s)!;
-      expect(record.schema).toBe(scene.RenderRecordSchema);
+      expect(record.schema).toBe(scene.RecordSchemaRenderContract);
       expect(record.plan_sha256).not.toBe(s.timing!.plan);
       return scene.inputsMatchRecord(s, scene.fingerprint(s, 'claude', {}, record.schema), record);
     });

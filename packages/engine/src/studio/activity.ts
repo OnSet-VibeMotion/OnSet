@@ -245,6 +245,8 @@ export function sceneActivity(sc: Pick<SceneSummary, 'directory' | 'id'> & Parti
   const read = readStream(sc.directory, sc.id, prefix);
   const state = read?.state;
   const steps = state ? state.steps.slice(-maxActivitySteps) : [];
+  const encoding = rendering && live?.encoding === true && prefix === 'render';
+  if (encoding) steps.push({ kind: 'tool', tool: 'hyperframes', input: { subcommand: 'render' }, state: 'running' });
   const ended = rendering || prefix === 'design' ? {} : lastOutcome(sc.directory, sc.id);
   return goMap({
     scene_id: sc.id,
@@ -254,7 +256,7 @@ export function sceneActivity(sc: Pick<SceneSummary, 'directory' | 'id'> & Parti
     model: state?.model || undefined,
     started_at: live?.started_at || (read ? new Date(read.info.birthtimeMs).toISOString() : undefined),
     updated_at: read ? new Date(read.info.mtimeMs).toISOString() : undefined,
-    step_count: state?.total ?? 0,
+    step_count: (state?.total ?? 0) + (encoding ? 1 : 0),
     steps: steps.map((step) => goMap({ ...step, input: step.input === undefined ? undefined : goValue(step.input) })),
     plan: state && state.plan.length > 0 ? state.plan.map((item) => goMap({ text: item.text, status: item.status })) : undefined,
     outcome: ended.outcome,

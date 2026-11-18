@@ -20,6 +20,9 @@ import type { Scene } from './scene';
 
 /** 渲染器在写完代码、开始渲染时报的那句话（提示词「阶段性汇报规则」里的原文）。 */
 export const CodeDoneMessage = '代码已完成，开始渲染';
+/** 第 4 版提示词的正常交接信号。 */
+export const RenderHandoffMessage = '画面自查通过，交给片场渲染';
+export const RenderRepairMessage = '片场渲染或验收失败，交给渲染器修复';
 
 export type ResumeLayer = 'render' | 'session' | 'files';
 
@@ -42,7 +45,7 @@ export interface Continuation {
 }
 
 /** 镜头目录里不算「上次留下的工作」的东西：日志、归档、修接缝材料、工具状态、onset 自己写的。 */
-const notWork = /^(render-.*\.(stream\.jsonl|stderr\.log|user\.log|attempt\.json|live\.json)|attempts|renders|seam|\.qoder|\.hyperframes|\.onset-render\.json|onset-scene\.js|scene\.json|prompt\.md|transcript\.srt|phrase-timeline\.json|AGENTS\.md|CLAUDE\.md)$/;
+const notWork = /^(render-.*\.(stream\.jsonl|stderr\.log|user\.log|attempt\.json|live\.json)|attempts|renders|seam|\.qoder|\.hyperframes|\.onset|\.onset-encode-.*|\.onset-render\.json|onset-scene\.js|scene\.json|prompt\.md|transcript\.srt|phrase-timeline\.json|AGENTS\.md|CLAUDE\.md)$/;
 
 function readAttempt(file: string): Attempt | null {
   try {
@@ -104,19 +107,21 @@ function lastSteps(renderer: string, streamFile: string, count = 8): string[] {
  * 上一次是不是中途异常退出、能不能接着做。要在 scene.run 归档上一次之前调用。
  * 同样的输入（fingerprint 一致）、结局是 failed / interrupted 才接；否则为 null。
  */
-export function resumeState(s: Pick<Scene, 'directory' | 'id'>, fingerprint: string): ResumeState | null {
+export function resumeState(s: Pick<Scene, 'directory' | 'id'>, fingerprint: string, legacyFingerprint?: () => string): ResumeState | null {
   const dir = latestAttemptDir(s);
   if (dir === '') return null;
   const previous = readAttempt(path.join(dir, attemptFileName(s.id)));
   if (!previous || (previous.outcome !== OutcomeFailed && previous.outcome !== OutcomeInterrupted)) return null;
-  if (previous.fingerprint === '' || previous.fingerprint !== fingerprint) return null;
+  if (previous.fingerprint === '' || (previous.fingerprint !== fingerprint && previous.fingerprint !== legacyFingerprint?.())) return null;
   let user = '';
   try {
     user = fs.readFileSync(path.join(dir, `render-${s.id}.user.log`), 'utf8');
   } catch {
     // 没有用户日志：当作没写完。
   }
-  return { previous, logDir: dir, codeDone: user.includes(CodeDoneMessage), lastSteps: lastSteps(previous.renderer, path.join(dir, `render-${s.id}.stream.jsonl`)) };
+  const stages = user.split('\n').map(line => line.trim());
+  const codeDone = stages.lastIndexOf(CodeDoneMessage) > stages.lastIndexOf(RenderRepairMessage);
+  return { previous, logDir: dir, codeDone, lastSteps: lastSteps(previous.renderer, path.join(dir, `render-${s.id}.stream.jsonl`)) };
 }
 
 /** 镜头目录里上一次留下的工作文件（合成代码、素材），给第三层的提示词列出来。 */
@@ -131,7 +136,10 @@ export function leftoverFiles(s: Pick<Scene, 'directory'>): string[] {
 }
 
 /** 第二层：续接会话时只说这一句。 */
-export function resumePrompt(reason: string, output: string, frames: number): string {
+export function resumePrompt(reason: string, output: string, frames: number, engineRenders = false): string {
+  if (engineRenders) {
+    return `上一次中断了（${reason || '原因不明'}）。接着完成当前合成，保留已完成的代码。画面自查通过后输出一行 [[USER_MESSAGE]]${RenderHandoffMessage} 并结束会话。\n`;
+  }
   return (
     `上一次渲染在中途中断了（${reason || '原因不明'}）。镜头目录里的文件就是你上次留下的，接着做完：先看已经写好的合成和你上一次最后在做的事，` +
     `补完没做完的部分，检查后渲染出 ${output}（必须正好 ${frames} 帧）。不要从头重写已经写好的部分。\n` +

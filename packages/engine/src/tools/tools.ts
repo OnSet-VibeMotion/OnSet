@@ -300,7 +300,7 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
       // Windows Codex 的 MCP 审批独立于 shell 策略。只逐项授权内置渲染工具，
       // 会话续接与上游的 unfiltered 模式继续使用同一组 MCP 配置。
       if (process.platform === 'win32' && server?.name === ToolsServerName && server.args.includes('tools-mcp') && server.args[server.args.indexOf('--profile') + 1] === 'renderer') {
-        for (const tool of ['hyperframes', 'job_wait', 'job_cancel', 'tool_help']) mcp.push('-c', `mcp_servers.${server.name}.tools.${tool}.approval_mode="approve"`);
+        for (const tool of ['hyperframes', 'scene_preview_check', 'job_wait', 'job_cancel', 'tool_help']) mcp.push('-c', `mcp_servers.${server.name}.tools.${tool}.approval_mode="approve"`);
       }
       const resume = session?.resume ? ['resume', session.id] : [];
       // 不拦命令时也不套 codex 自己的沙箱：macOS 上它也是 sandbox-exec，套在外面那层沙箱里起不来；Windows 上用户定的是全放开。

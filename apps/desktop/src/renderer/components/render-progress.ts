@@ -10,7 +10,7 @@ function stepPhase(step: ActivityStep): number | undefined {
     if (input.subcommand === 'render') return 3;
     if (['check', 'lint', 'inspect', 'snapshot', 'validate'].includes(String(input.subcommand))) return 2;
   }
-  if (['scene_lint', 'scene_frames', 'validate_video', 'validate_reads'].includes(name)) return 2;
+  if (['scene_lint', 'scene_frames', 'scene_preview_check', 'validate_video', 'validate_reads'].includes(name)) return 2;
   if (['file_change', 'write', 'edit', 'multiedit', 'notebookedit'].includes(name)) return 1;
   if (['read', 'glob', 'grep', 'find', 'ls', 'config_get', 'tool_help'].includes(name)) return 0;
   return undefined;

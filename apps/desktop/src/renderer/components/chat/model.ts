@@ -416,6 +416,7 @@ const onsetVerbs: Record<string, string> = {
   scene_run_all: '渲染全部镜头',
   scene_lint: '检查镜头',
   scene_frames: '抽帧查看',
+  scene_preview_check: '检查画面并生成联系表',
   scene_cues: '计算镜头时长',
   scene_prepare: '准备镜头目录',
   scene_usage: '查看渲染用量',

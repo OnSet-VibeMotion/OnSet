@@ -357,6 +357,10 @@ scene.json 里功能自己的块（多角色对话的 `cast`、歌曲讲解的 `
 
 渲染记录 `schema: 3` 把应用发行号与全片 `timing.plan` 摘要留作追溯，复用只比较镜头实际输入与渲染契约版本。`scene_cues` 改写计划之前会迁移能从旧记录核对的 schema 2 镜头输入，局部帧区间、配色、交接与实际提示词的变化继续触发 Stale。
 
+渲染记录 `schema: 4` 给每个技能单独算摘要。HyperFrames 入口只记单镜头用到的契约与动效文档；其他技能记自己的目录，运行资源仍走资源清单。批量复用先按旧记录原有算法验证，验证通过后可原地升级摘要并保留产物和渲染出处。已与旧树摘要不符的记录仍按原规则标为 Stale。
+
+提示词第 4 版用 `scene_preview_check()` 一次检查源码、布局、运动与对比度，按本镜头帧号生成一张联系表，完整日志落在镜头内。渲染器看图确认后输出交接信号并结束。引擎用同一渲染隔离与 worker 预算在临时目录里出片，完成验收后才换入正式路径。出片失败时优先续接原会话给它一次修复机会；收到取消时结束本次尝试。
+
 每次渲染写 `render-<id>.attempt.json`，重渲染前 `scene.archiveAttempt`（`scene/attempt.ts`）先把上一次的产物、日志与尝试记录挪进 `attempts/`。调度层的重试与单镜头重跑走同一个归档函数，不要各写一份编号逻辑。
 
 中途异常退出后接着做，不从头重来（`scene/resume.ts`，`scene.run` 归档前用 `resumeState` 读最近一次尝试）：只接结局是 `failed` / `interrupted`、指纹与现在一致的（产物校验不合格是写错了，照旧带重试说明；输入变了是真要重做；`fresh`、修接缝、记忆考试不接）。三层依次试：上一次的用户日志里有「代码已完成，开始渲染」（`CodeDoneMessage`）且 `index.html` 在，onset 自己 `hyperframes render --output` 再照常校验（`resumed: render`，不用模型）；同一渲染工具、尝试记录里有会话号（`session_id`：claude、qoder、codebuddy 预先 `--session-id`，codex、opencode 从输出流读）就续接那个会话，只发 `resumePrompt` 一句（`resumed: session`；各家写法见 `tools.rendererInvocation` 的 `RendererSession`）；续接的会话一句话没说就退出（会话过期）或续不上，开新会话、完整提示词末尾加 `continuationSection`（上次留下的文件 `leftoverFiles`、最后几步从旧输出流按 `agentrun` 解析出来，`resumed: files`）。`Scene.continuation` / `fresh` 不进 scene.json、指纹清掉。五家渲染工具的续接都实测过（2026-11：claude、codex、codebuddy、opencode 按渲染时的命令行续接后会话号不变、记得上一轮的话；qoder 在系统沙箱里同样可用，会话状态在 `~/.qoder-cn`，沙箱放行写）。改了任何一家的会话参数，用真实 CLI 跑一遍：`ONSET_TEST_RENDERER_RESUME=claude,codex,codebuddy,opencode npx vitest run --root packages/engine src/scene -t RealRendererResume`（`scene/resume.integration.test.ts`，opencode 默认模型不可用时加 `ONSET_TEST_OPENCODE_MODEL`）。`packages/cli/src/resume.test.ts` 用假 claude 与假 HyperFrames CLI 钉着三层与 `fresh`。token 用量按各工具流式事件尽力读取（`tools.accumulateUsage`），读不到就留空，不做估算。

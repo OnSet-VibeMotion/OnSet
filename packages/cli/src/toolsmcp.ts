@@ -23,7 +23,7 @@ import './cli';
 import { compactHyperFrames, hyperFramesProgress } from './hfoutput';
 import { allOps, normalizeToolParams, type Op, opScopes, type ParamSpec, type ParamValues } from './ops/op';
 
-/** 档位：编排工具拿全部工具，渲染器只拿 hyperframes。 */
+/** 档位：编排工具使用制作工具，渲染器只拿镜头内的工具。 */
 export type Profile = 'orchestrator' | 'renderer';
 
 /** MCP 配置里给这个服务起的名字；claude 系的工具全名是 mcp__onset__<工具名>。 */
@@ -49,7 +49,7 @@ export function maxWaitSeconds(env: NodeJS.ProcessEnv = process.env): number {
 export function defaultWaitSeconds(name: string, env: NodeJS.ProcessEnv = process.env): number {
   const configured = Number(env.ONSET_TOOLS_MAX_WAIT ?? '');
   if (!Number.isFinite(configured) || configured < 60) return DefaultWaitSeconds;
-  return name === 'job_wait' || name === 'align_run' || name === 'audio_mix' ? maxWaitSeconds(env) : DefaultWaitSeconds;
+  return name === 'job_wait' || name === 'align_run' || name === 'audio_mix' || name === 'scene_preview_check' ? maxWaitSeconds(env) : DefaultWaitSeconds;
 }
 
 /** 返回给 agent 的输出上限：过长时截掉开头、留结尾（错误与结论通常在最后）。 */
@@ -377,16 +377,25 @@ export class Jobs {
     return this.jobs.get(id);
   }
 
-  /** 等到任务结束或超时，返回给 agent 的回复。 */
-  async wait(job: Job, seconds: number, signal?: AbortSignal): Promise<Reply> {
-    const ms = Math.min(Math.max(seconds, 0), maxWaitSeconds()) * 1000;
+  /** 外部 MCP 有调用超时；内置制作人直接等到完成或取消。 */
+  async wait(job: Job, seconds: number | undefined, signal?: AbortSignal): Promise<Reply> {
     let timer: NodeJS.Timeout | undefined;
-    const timeout = new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, ms);
-    });
-    const aborted = new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve(), { once: true }));
-    await Promise.race([job.done, timeout, aborted]);
-    clearTimeout(timer);
+    const waiting = [job.done];
+    if (seconds !== undefined) {
+      const ms = Math.min(Math.max(seconds, 0), maxWaitSeconds()) * 1000;
+      waiting.push(new Promise<void>(resolve => { timer = setTimeout(resolve, ms); }));
+    }
+    let abort: (() => void) | undefined;
+    if (signal && !signal.aborted) waiting.push(new Promise<void>(resolve => {
+      abort = resolve;
+      signal.addEventListener('abort', abort, { once: true });
+    }));
+    try {
+      if (!signal?.aborted) await Promise.race(waiting);
+    } finally {
+      clearTimeout(timer);
+      if (abort) signal?.removeEventListener('abort', abort);
+    }
     const compact = job.name === 'hyperframes';
     if (compact && job.code === null) {
       // 半截日志不交出去：跑完再一次给精简后的结果，这里只说进度。
