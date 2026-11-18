@@ -10,5 +10,13 @@
     "desktop": "npm run start -w onset-desktop",
     "build": "npm run build -w onset-desktop",
     "typecheck": "npm run typecheck -w onset-desktop"
+  },
+  "overrides": {
+    "app-builder-lib": {
+      "minimatch@10": "11.0.9"
+    },
+    "@electron/universal": {
+      "minimatch@9": "11.0.9"
+    }
   }
 }

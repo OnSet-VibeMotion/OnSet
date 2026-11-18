@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const NpmVersion = '11.6.2';
+export const NpmVersion = '11.21.3';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const vendor = path.join(here, '..', 'vendor');

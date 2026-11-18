@@ -2,7 +2,7 @@
 
 > 从仓库根 `AGENTS.md` 拆出的开发约定。总则、命令与各份文件的索引见根 `AGENTS.md`；文中「见「某节」」指的节都能从那份索引找到。
 
-`ORCHESTRATOR=director`（界面上叫「制作人」）是客户端自带的编排工具：不要求用户另装 claude、codex 这类 CLI，在设置页配一套模型服务（base URL 加 API key）就能做片。agent 循环用 pi（`@earendil-works/pi-coding-agent`，MIT，**钉死 1.4.0**，升级前对照它的 CHANGELOG 重跑 `packages/cli/src/agent/agent.test.ts` 与 `catalog.test.ts`）。
+`ORCHESTRATOR=director`（界面上叫「制作人」）是客户端自带的编排工具：不要求用户另装 claude、codex 这类 CLI，在设置页配一套模型服务（base URL 加 API key）就能做片。agent 循环用 pi（`@earendil-works/pi-coding-agent`，MIT，**钉死 1.5.2**，升级前对照它的 CHANGELOG 重跑 `packages/cli/src/agent/agent.test.ts` 与 `catalog.test.ts`）。
 
 | 约定 | 原因 |
 |---|---|
