@@ -8,7 +8,7 @@
 import './testsupport';
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { sceneFeatureAPI } from './features';
 import * as flow from '../flow';
 import * as studioview from '../studioview';
@@ -16,9 +16,44 @@ import { computeStations } from './progress';
 import { projectMetadata, stageFor, stepOf } from './studio';
 import { writeStepMark } from './view';
 import { addTask, runTask, updateTask } from './tasks';
+import * as tasks from './tasks';
 import { rawGet, setEnv, sleep, startStudio, studioRequest, tempDir, waitStudioTask, writeStudioFile, writeStudioPNG } from './testsupport';
 
 describe('studio', () => {
+  it('identifies the reviewed video and prefers a report for the requested video', async () => {
+    const root = fs.realpathSync(tempDir());
+    const final = 'production/final.mp4';
+    const candidate = 'production/audio/candidate.mp4';
+    const older = path.join(root, 'production/review-old/review.json');
+    writeStudioFile(older, JSON.stringify({ path: candidate, problems: ['candidate'] }));
+    fs.utimesSync(older, 1, 1);
+    writeStudioFile(path.join(root, 'production/review/review.json'), JSON.stringify({ path: path.join(root, final), problems: [] }));
+    const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
+    const query = (video: string) => '/api/review?video=' + encodeURIComponent(video);
+    expect((await studioRequest(s, 'GET', '/api/review')).body).toMatchObject({ available: true, path: final });
+    expect((await studioRequest(s, 'GET', query(candidate))).body).toMatchObject({
+      available: true, path: candidate, report: { problems: ['candidate'] },
+    });
+    expect((await studioRequest(s, 'GET', query('final.mp4'))).body).toMatchObject({ available: true, path: final });
+    expect((await studioRequest(s, 'POST', '/api/review/run', '{"video":"../outside.mp4"}')).status).toBe(400);
+    expect((await studioRequest(s, 'POST', '/api/review/run', '{"video":"final.mp4"}')).status).toBe(404);
+    const silent = 'production/silent-master.mp4';
+    writeStudioFile(path.join(root, final), 'unselected final');
+    writeStudioFile(path.join(root, candidate), 'unselected candidate');
+    writeStudioFile(path.join(root, silent), 'selected silent master');
+    const worker = vi.spyOn(tasks, 'runStudioOp').mockResolvedValue({ text: '' });
+    try {
+      const started = await studioRequest(s, 'POST', '/api/review/run', JSON.stringify({ video: silent }));
+      expect(started.status).toBe(202);
+      expect((await waitStudioTask(s, started.body.task_id)).status).toBe('succeeded');
+      expect(worker).toHaveBeenCalledExactlyOnceWith(s, expect.any(AbortSignal), expect.objectContaining({ path: root }), 'review', {
+        video: path.join(root, silent), out: path.join(root, 'production/review-silent'), silent: true,
+      });
+    } finally {
+      worker.mockRestore();
+    }
+  });
+
   it('project and state API', async () => {
     const root = tempDir();
     fs.writeFileSync(path.join(root, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1920, fps: 30, orientation: vertical}\n---\n');

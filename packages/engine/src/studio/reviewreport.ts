@@ -13,19 +13,24 @@ export interface ReviewReport {
 
 /** 复查的是这几个文件才算整片复查。 */
 export const filmVideos = new Set(['production/audio/candidate.mp4', 'final.mp4', 'production/final.mp4']);
+export const silentMaster = 'production/silent-master.mp4';
+
+export function reviewVideoPath(root: string, value: unknown): string | null {
+  if (typeof value !== 'string' || value === '') return null;
+  const rel = path.relative(root, path.resolve(root, value)).split(path.sep).join('/');
+  return filmVideos.has(rel) || rel === silentMaster ? rel : null;
+}
 
 function reviewedVideo(root: string, file: string): string | null {
   try {
     const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
-    if (typeof raw.path !== 'string' || raw.path === '') return null;
-    const abs = path.isAbsolute(raw.path) ? raw.path : path.join(root, raw.path);
-    return path.relative(root, abs).split(path.sep).join('/');
+    return typeof raw?.path === 'string' && raw.path !== '' ? reviewVideoPath(root, raw.path) ?? '' : null;
   } catch {
     return null;
   }
 }
 
-export function latestReviewReport(root: string): ReviewReport | null {
+export function latestReviewReport(root: string, video?: string): ReviewReport | null {
   const production = path.join(root, 'production');
   let entries: fs.Dirent[];
   try {
@@ -34,6 +39,7 @@ export function latestReviewReport(root: string): ReviewReport | null {
     return null;
   }
   let best: ReviewReport | null = null;
+  let matching: ReviewReport | null = null;
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'studio') continue;
     const file = path.join(production, entry.name, 'review.json');
@@ -45,10 +51,11 @@ export function latestReviewReport(root: string): ReviewReport | null {
     } catch {
       continue;
     }
-    const video = reviewedVideo(root, file);
+    const target = reviewedVideo(root, file);
+    if (target === video && (!matching || mtime > matching.mtime)) matching = { file, mtime };
     // 老报告没写 path：只认缺省目录里的那份。
-    const counts = video === null ? entry.name === 'review' : filmVideos.has(video);
+    const counts = target === null ? entry.name === 'review' : filmVideos.has(target);
     if (counts && (!best || mtime > best.mtime)) best = { file, mtime };
   }
-  return best;
+  return matching ?? best;
 }

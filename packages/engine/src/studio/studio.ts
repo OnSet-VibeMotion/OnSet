@@ -29,6 +29,7 @@ import { previewAPI, renderAllAPI, sceneFeatureAPI, scenesAPI } from './features
 import { filmStylePosterAPI, filmStylesAPI, projectFilmStyleAPI, startFilmStyleTask } from './filmstyle';
 import {
   DecodeError,
+  decodeJSON,
   decodeJSONStrict,
   fieldString,
   formatRFC3339Nano,
@@ -61,7 +62,8 @@ import { settingsAPI, settingsGlobalAPI, settingsProjectAPI } from './settings';
 import { SkillsState, installSkills, skillsAPI, skillsInstallAPI } from './skills';
 import { TaskState, loadPersistedTasks, runStudioOp, runWriteTask, taskFeatureAPI, tasksAPI, writeTaskError } from './tasks';
 import { uploadsAPI } from './uploads';
-import { filmVideos, latestReviewReport } from './reviewreport';
+import { filmVideos, latestReviewReport, reviewVideoPath, silentMaster } from './reviewreport';
+import { contained } from '../scene';
 import * as flow from '../flow';
 import * as plugin from '../plugin';
 import * as studioview from '../studioview';
@@ -384,7 +386,7 @@ export class Server {
       ['/api/scenes/', (r, rest) => sceneFeatureAPI(this, r, rest)],
       ['/api/tasks', (r) => tasksAPI(this, r)],
       ['/api/tasks/', (r, rest) => taskFeatureAPI(this, r, rest)],
-      ['/api/review', () => this.reviewAPI()],
+      ['/api/review', (r) => this.reviewAPI(r)],
       ['/api/review/run', (r) => this.reviewRunAPI(r)],
       ['/api/render/all', (r) => renderAllAPI(this, r)],
       ['/api/sessions', (r) => sessionsAPI(this, r)],
@@ -721,10 +723,14 @@ export class Server {
     return writeJSON(200, goMap({ assets }));
   }
 
-  private reviewAPI(): Response {
+  private reviewAPI(request: Request): Response {
     const p = this.projectOr404();
     if (p instanceof Response) return p;
-    const file = latestReviewReport(p.path)?.file ?? path.join(p.path, 'production', 'review', 'review.json');
+    const video = new URL(request.url).searchParams.get('video') || undefined;
+    if (video && !filmVideos.has(video) && video !== silentMaster) {
+      return writeError(400, 'invalid_video', '请选择项目的成片、配音合成版或无声母版');
+    }
+    const file = latestReviewReport(p.path, video)?.file ?? path.join(p.path, 'production', 'review', 'review.json');
     let body: string;
     try {
       body = fs.readFileSync(file, 'utf8');
@@ -733,25 +739,45 @@ export class Server {
       return writeError(500, 'review_read_failed', goPathError('open', file, err));
     }
     let report: unknown;
+    let target: string | null = null;
     try {
-      report = goValue(JSON.parse(body));
+      const value = JSON.parse(body);
+      report = goValue(value);
+      target = reviewVideoPath(p.path, value?.path);
     } catch {
       report = goMap({ raw: body });
     }
-    return writeJSON(200, goMap({ available: true, report }));
+    return writeJSON(200, goMap({ available: true, path: target, report, report_dir: path.relative(p.path, path.dirname(file)).split(path.sep).join('/') }));
   }
 
-  private reviewRunAPI(request: Request): Response {
+  private async reviewRunAPI(request: Request): Promise<Response> {
     if (request.method !== 'POST') return methodNotAllowed('POST');
     const p = this.projectOr404();
     if (p instanceof Response) return p;
+    let selected: string;
+    try {
+      selected = fieldString(await decodeJSON(request), 'video');
+    } catch {
+      return writeError(400, 'invalid_request', '视频路径无效');
+    }
+    const silent = selected === silentMaster;
+    if (selected && !silent && !filmVideos.has(selected)) {
+      return writeError(400, 'invalid_video', '请选择项目的成片、配音合成版或无声母版');
+    }
+    if (selected && !fileExists(path.join(p.path, selected))) {
+      return writeError(404, 'video_missing', '找不到选中的视频');
+    }
     try {
       const t = runWriteTask(this, p, 'project.review', '运行成片审查', async (signal) => {
-        const dir = path.join(p.path, 'production', 'review');
+        const folder = selected === 'final.mp4' ? 'review-final'
+          : selected === 'production/final.mp4' ? 'review-production-final'
+          : silent ? 'review-silent' : 'review';
+        const dir = contained(p.path, path.join('production', folder), 'out');
         fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
-        const video = findProjectVideo(p.path);
+        const video = selected ? path.join(p.path, selected) : findProjectVideo(p.path);
         if (video === '') throw new Error('找不到可审查的成片，请先生成 candidate.mp4 或 final.mp4');
-        await runStudioOp(this, signal, p, 'review', { video, out: dir });
+        contained(p.path, path.relative(p.path, video), 'video');
+        await runStudioOp(this, signal, p, 'review', { video, out: dir, silent });
       });
       return writeJSON(202, goMap({ task_id: t.task_id }));
     } catch (err) {

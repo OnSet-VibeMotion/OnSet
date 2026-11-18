@@ -79,7 +79,7 @@ test('approving the final film starts consolidating memory and goes to publish',
   const { execFileSync } = await import('node:child_process');
   execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=1', '-pix_fmt', 'yuv420p', path.join(project.path, 'final.mp4')]);
   await fs.mkdir(path.join(project.path, 'production', 'review'), { recursive: true });
-  await fs.writeFile(path.join(project.path, 'production', 'review', 'review.json'), JSON.stringify({ ok: true, problems: [] }));
+  await fs.writeFile(path.join(project.path, 'production', 'review', 'review.json'), JSON.stringify({ path: 'final.mp4', ok: true, problems: [] }));
   await openProject(page, project);
   await page.locator('[data-tab="final"]').click();
   // 成片的播放器没有「下载」。

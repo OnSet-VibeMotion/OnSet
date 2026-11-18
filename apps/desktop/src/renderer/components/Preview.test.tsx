@@ -61,6 +61,39 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks());
 
+it('keeps the review and the review action tied to the selected film across tabs', async () => {
+  const final = 'production/final.mp4';
+  const candidate = 'production/audio/candidate.mp4';
+  const sheet = 'production/review-final/sheet-01.png';
+  const report = {
+    available: true, path: final, report_dir: 'production/review-final',
+    report: { problems: ['成片的检查结论'], sheets: [{ image: sheet }] },
+  };
+  const api = mockApi({ '/api/review': report });
+  const tree = [final, candidate, sheet].map((path) => ({ path, size: 1, mtime: 1 }));
+  const view = renderPreview('final', [], '', tree);
+  expect(await screen.findByRole('button', { name: '1 个问题，去看' })).toBeTruthy();
+
+  await userEvent.click(screen.getByRole('button', { name: '配音合成版' }));
+  expect(await screen.findByText('该报告不是针对当前文件。')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '1 个问题，去看' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '确认可用，去发布' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: '复查' }));
+  expect(view.props.run).toHaveBeenLastCalledWith('/api/review/run', { video: candidate });
+
+  view.show('review');
+  expect(await screen.findByText('该报告不是针对当前文件。')).toBeTruthy();
+  expect(screen.queryByText('成片的检查结论')).toBeNull();
+  expect(screen.queryByText('sheet-01.png')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: '运行复查' }));
+  expect(view.props.run).toHaveBeenLastCalledWith('/api/review/run', { video: candidate });
+
+  await userEvent.click(screen.getByRole('button', { name: '成片' }));
+  expect(await screen.findByText('成片的检查结论')).toBeTruthy();
+  expect(screen.getByText('sheet-01.png')).toBeTruthy();
+  expect(api.calls.filter((call) => call.path === '/api/review').map((call) => call.query.get('video'))).toEqual([final, candidate, final]);
+});
+
 describe('镜头页', () => {
   it('方向键逐帧，Shift 一次 10 帧；输入框里的方向键不动画面', async () => {
     const { container } = setup();
