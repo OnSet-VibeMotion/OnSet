@@ -41,3 +41,27 @@ describe('copy titles', () => {
     expect(errorOf(() => publish(file, path.dirname(file))).message).toContain('未知平台');
   });
 });
+
+describe('platform hashtags', () => {
+  it('accepts per-platform topics and an empty list', () => {
+    const file = publishWithCopy(
+      'xiaohongshu',
+      '  primary_title: "短标题"\n  platform_hashtags:\n    xiaohongshu: ["片场", "小红书创作活动"]\n    bilibili: []\n',
+    );
+    publish(file, path.dirname(file));
+  });
+
+  it('reports every malformed entry at once', () => {
+    const file = publishWithCopy(
+      'xiaohongshu',
+      '  primary_title: "短标题"\n  platform_hashtags:\n    tiktok: ["x"]\n    douyin: "片场"\n    xiaohongshu: ["片场", ""]\n',
+    );
+    const err = errorOf(() => publish(file, path.dirname(file))).message;
+    for (const want of ['未知平台 "tiktok"', 'copy.platform_hashtags.douyin 必须是话题列表', 'copy.platform_hashtags.xiaohongshu[1] 必须是非空的话题文字']) expect(err).toContain(want);
+  });
+
+  it('rejects a list instead of a platform map', () => {
+    const file = publishWithCopy('douyin', '  primary_title: "短标题"\n  platform_hashtags: ["片场"]\n');
+    expect(errorOf(() => publish(file, path.dirname(file))).message).toContain('copy.platform_hashtags 必须是');
+  });
+});

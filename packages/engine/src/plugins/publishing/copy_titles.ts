@@ -31,6 +31,11 @@ function titlePlatforms(): string {
   return [...titleLimits.keys()].sort(compareBytes).join(' / ');
 }
 
+/** 能在 copy.platform_titles / copy.platform_hashtags 里写的平台：查字数的加上有封面规格的。 */
+export function knownPlatforms(): string[] {
+  return [...new Set([...titleLimits.keys(), ...coverSpecs.keys()])].sort(compareBytes);
+}
+
 /**
  * 按平台字数上限校验发布标题。
  *
@@ -55,7 +60,7 @@ export function validateCopyTitles(data: GoMap): void {
   if (raw !== null) {
     if (!isGoMap(raw)) throw new Error('copy.platform_titles 必须是「平台: 标题」的对象');
     for (const k of Object.keys(raw).sort(compareBytes)) {
-      if (!titleLimits.has(k) && !coverSpecs.has(k)) {
+      if (!knownPlatforms().includes(k)) {
         problems.push(`copy.platform_titles 里有未知平台 ${goQuote(k)}（已知：${titlePlatforms()}）`);
         continue;
       }
@@ -68,4 +73,33 @@ export function validateCopyTitles(data: GoMap): void {
     }
   }
   if (problems.length > 0) throw new Error(`发布标题超出平台字数：\n- ${problems.join('\n- ')}`);
+}
+
+/**
+ * 可选的 copy.platform_hashtags：某个平台要用自己的话题（例如小红书正在办的活动话题）时，
+ * 按「平台: [话题…]」写这个平台完整的话题列表；没写的平台用 copy.hashtags。
+ * 只查形状：平台要认识，值是字符串列表、每条不为空。空列表是「这个平台不带话题」，放行。
+ */
+export function validatePlatformHashtags(data: GoMap): void {
+  const copyBlock = get(data, 'copy');
+  if (!isGoMap(copyBlock)) throw new Error('copy 必须是对象');
+  const raw = get(copyBlock, 'platform_hashtags');
+  if (raw === null) return;
+  if (!isGoMap(raw)) throw new Error('copy.platform_hashtags 必须是「平台: [话题…]」的对象');
+  const problems: string[] = [];
+  for (const k of Object.keys(raw).sort(compareBytes)) {
+    if (!knownPlatforms().includes(k)) {
+      problems.push(`copy.platform_hashtags 里有未知平台 ${goQuote(k)}（已知：${knownPlatforms().join(' / ')}）`);
+      continue;
+    }
+    const list = raw[k];
+    if (!Array.isArray(list)) {
+      problems.push(`copy.platform_hashtags.${k} 必须是话题列表`);
+      continue;
+    }
+    list.forEach((tag, i) => {
+      if (typeof tag !== 'string' || goTrimSpace(tag) === '') problems.push(`copy.platform_hashtags.${k}[${i}] 必须是非空的话题文字`);
+    });
+  }
+  if (problems.length > 0) throw new Error(`平台话题写法有误：\n- ${problems.join('\n- ')}`);
 }

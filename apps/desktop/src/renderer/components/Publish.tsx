@@ -23,6 +23,8 @@ interface PublishResponse {
   covers: PublishCover[];
   data?: Record<string, any>;
   platform_name?: string;
+  /** copy.platform_titles / platform_hashtags 里写到的平台的中文名；两项都没写时没有。 */
+  platform_names?: Record<string, string>;
   parse_error?: string;
 }
 
@@ -114,6 +116,11 @@ export function PublishTab({ version, run }: { version: number; run: RunAction }
   const remaining = open.filter(([, c]) => !['passed', 'done', 'confirmed'].includes(c?.status ?? ''));
   const hashtags: string[] = Array.isArray(copy.hashtags) ? copy.hashtags : [];
   const platformTitles = Object.entries((copy.platform_titles ?? {}) as Record<string, string>);
+  // 平台专属话题（可选）：写了的平台用自己的完整列表，其余平台用通用话题。
+  const platformHashtags = Object.entries((copy.platform_hashtags ?? {}) as Record<string, unknown>).filter(
+    (e): e is [string, string[]] => Array.isArray(e[1]),
+  );
+  const platformLabel = (id: string) => publish.platform_names?.[id] ?? id;
   const credits = (d.credits ?? {}) as Record<string, any>;
 
   // 登记过的封面带平台与比例；covers/ 下其余图片（如源文件）不在这里列。
@@ -180,10 +187,13 @@ export function PublishTab({ version, run }: { version: number; run: RunAction }
         <section className="publish-section" data-ctx-source="publish.md" data-ctx-label="发布文案">
           <CopyField label="标题" value={copy.primary_title} count display />
           {platformTitles.map(([platform, title]) => (
-            <CopyField key={platform} label={`${platform} 标题`} value={title} count />
+            <CopyField key={platform} label={`${platformLabel(platform)} 标题`} value={title} count />
           ))}
           <CopyField label="简介" value={copy.introduction} multiline />
-          <CopyField label="话题" value={hashtags.join(' ')} />
+          <CopyField label={platformHashtags.length > 0 ? '通用话题' : '话题'} value={hashtags.join(' ')} />
+          {platformHashtags.map(([platform, tags]) => (
+            <CopyField key={platform} label={`${platformLabel(platform)} 话题`} value={tags.join(' ')} />
+          ))}
           {credits.required && <CopyField label="署名" value={credits.text} multiline />}
         </section>
 
