@@ -266,6 +266,16 @@ describe('prompt content', () => {
     ]) has(body, ['### 整理这次制作的经验', '用户明确确认这一版成片可用之后', 'memory_consolidate()', '不要在用户确认之前整理'], what + '·整理经验');
   });
 
+  // 片场宣传视频（2026-11-18）：用户说「可以了」之后，编排才补做画面文字对账，查出问题就自己改镜头、重渲染。
+  it('finishes every check before approval and stops after it (speech, beat)', () => {
+    for (const [body, what] of [
+      [speech, '口播'],
+      [beat, '卡点'],
+    ]) {
+      has(body, ['不得把还没查完的候选交给用户批准', '用户批准后只做交付', '立即停下，不要自行修复', '之前的批准作废', '不得沿用上一版的 `onscreen-facts.json`'], what + '·审批');
+    }
+  });
+
   it('tells the beat story before the music (beat)', () => {
     has(beat, ['：故事、音乐与节拍', '这是一部没有配音、画面踩着音乐节拍走的片子。', 'production/beat/story.md', '画面里的字与字幕就是这部片子的文案', 'studio_show({"page": "beat"', '用户没有点头之前不进入分镜计划', '不得替用户确认', 'beat_cues({"scenes": "scenes/"})', '「音乐卡点」', '不要自己建 Python 环境、不要 pip install'], '卡点分支');
     expect(beat.indexOf('### 故事与文案')).toBeLessThan(beat.indexOf('### 音乐与节拍网格'));
