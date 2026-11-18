@@ -283,7 +283,7 @@ export class Toolchain {
         report.problems.push(err instanceof Error ? err.message : String(err));
       }
     }
-    if (opts.checkFrameZero) {
+    if (opts.checkFrameZero && media.video) {
       const stats = this.frameStats(file, 0);
       report.frame_zero = stats;
       if (isBlank(stats)) {

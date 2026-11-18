@@ -61,7 +61,7 @@ test('vendor uses npm’s JS entry with spaces in its path and keeps dependencie
   const npmEntry = path.join(root, 'fake npm.cjs');
   fs.writeFileSync(npmEntry, `
     const fs = require('node:fs');
-    require('node:assert/strict').deepEqual(process.argv.slice(2), ['pack', 'npm@11.6.2', '--silent']);
+    require('node:assert/strict').deepEqual(process.argv.slice(2), ['pack', 'npm@11.21.3', '--silent']);
     fs.copyFileSync(process.env.TEST_NPM_ARCHIVE, 'npm-fixture.tgz');
     console.log('npm-fixture.tgz');
   `);

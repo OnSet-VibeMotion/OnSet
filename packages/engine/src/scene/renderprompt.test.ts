@@ -21,6 +21,13 @@ function project(version: number, timing: boolean) {
 }
 
 describe('render prompt version', () => {
+  it('gives current projects one preview call and a handoff after visual checks', () => {
+    const prompt = buildPrompt(project(flow.RenderPromptVersion, true), {});
+    expect(prompt).toContain('scene_preview_check');
+    expect(prompt).toContain('[[USER_MESSAGE]]画面自查通过，交给片场渲染');
+    expect(buildPrompt(project(3, true), {})).not.toContain('scene_preview_check');
+  });
+
   // 渲染提示词在镜头指纹里：更早建的项目照旧用老提示词，已渲染的镜头不因升级变 Stale；新项目才带开工须知。
   it('keeps old projects byte for byte and gives new ones the start notes', () => {
     const old = project(0, true);
@@ -36,6 +43,9 @@ describe('render prompt version', () => {
     expect(prompt).toContain('开工须知（强制）');
     expect(prompt).toContain('onset-scene.js（window.ONSET_SCENE.cues');
     expect(prompt).not.toContain('先阅读完整字幕');
+    expect(prompt).toContain('先看联系表');
+    expect(prompt).not.toContain('至少完成一轮');
+    expect(buildPrompt(project(2, true), {})).toContain('至少完成一轮');
     expect(fingerprint(fresh, 'claude', {}).parts!.prompt).not.toBe(fingerprint(old, 'claude', {}).parts!.prompt);
 
     // 没有时间合同的镜头（卡点）没有裁好的字幕：开工须知不提字幕，开头那句照旧。

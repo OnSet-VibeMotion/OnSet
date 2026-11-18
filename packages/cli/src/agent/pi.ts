@@ -260,6 +260,8 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
   process.env.PI_TELEMETRY = '0';
   const settings = SettingsManager.inMemory({
     enableInstallTelemetry: false,
+    // 只在制作任务需要时调用模型，避免后台保温额外消耗 token。
+    cacheWarming: 'off',
     // 整片制作一轮能跑很久，上下文快满时自动压缩；完整记录仍在会话文件里。
     compaction: { enabled: true },
     retry: { enabled: true, maxRetries: 3 },

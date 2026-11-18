@@ -18,6 +18,7 @@ import * as filmstyle from '../filmstyle';
 import { goClean, goPathError, goTrimSpace } from '../gofmt';
 import { marshalIndent } from '../gojson';
 import * as preset from '../preset';
+import { ReviewWorkDirEnv } from '../review';
 import * as projectinit from '../projectinit';
 import { agentServiceAPI, agentServiceModelsAPI, agentServicesAPI, agentVisionAPI } from './agentservices';
 import { agentModelsAPI, agentsAPI } from './agents';
@@ -29,6 +30,7 @@ import { previewAPI, renderAllAPI, sceneFeatureAPI, scenesAPI } from './features
 import { filmStylePosterAPI, filmStylesAPI, projectFilmStyleAPI, startFilmStyleTask } from './filmstyle';
 import {
   DecodeError,
+  decodeJSON,
   decodeJSONStrict,
   fieldString,
   formatRFC3339Nano,
@@ -61,6 +63,8 @@ import { settingsAPI, settingsGlobalAPI, settingsProjectAPI } from './settings';
 import { SkillsState, installSkills, skillsAPI, skillsInstallAPI } from './skills';
 import { TaskState, loadPersistedTasks, runStudioOp, runWriteTask, taskFeatureAPI, tasksAPI, writeTaskError } from './tasks';
 import { uploadsAPI } from './uploads';
+import { filmVideos, latestReviewReport, readReviewReport, reviewApprovalDigest, silentMaster, studioReviewInputs } from './reviewreport';
+import { contained } from '../scene';
 import * as flow from '../flow';
 import * as plugin from '../plugin';
 import * as studioview from '../studioview';
@@ -383,7 +387,7 @@ export class Server {
       ['/api/scenes/', (r, rest) => sceneFeatureAPI(this, r, rest)],
       ['/api/tasks', (r) => tasksAPI(this, r)],
       ['/api/tasks/', (r, rest) => taskFeatureAPI(this, r, rest)],
-      ['/api/review', () => this.reviewAPI()],
+      ['/api/review', (r) => this.reviewAPI(r)],
       ['/api/review/run', (r) => this.reviewRunAPI(r)],
       ['/api/render/all', (r) => renderAllAPI(this, r)],
       ['/api/sessions', (r) => sessionsAPI(this, r)],
@@ -720,37 +724,67 @@ export class Server {
     return writeJSON(200, goMap({ assets }));
   }
 
-  private reviewAPI(): Response {
+  private reviewAPI(request: Request): Response {
     const p = this.projectOr404();
     if (p instanceof Response) return p;
-    const file = path.join(p.path, 'production', 'review', 'review.json');
-    let body: string;
-    try {
-      body = fs.readFileSync(file, 'utf8');
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return writeJSON(200, goMap({ available: false, issues: [] }));
-      return writeError(500, 'review_read_failed', goPathError('open', file, err));
+    const video = new URL(request.url).searchParams.get('video') || undefined;
+    if (video && !filmVideos.has(video) && video !== silentMaster) {
+      return writeError(400, 'invalid_video', '请选择项目的成片、配音合成版或无声母版');
     }
-    let report: unknown;
-    try {
-      report = goValue(JSON.parse(body));
-    } catch {
-      report = goMap({ raw: body });
-    }
-    return writeJSON(200, goMap({ available: true, report }));
+    const report = latestReviewReport(p.path, video) ?? readReviewReport(p.path, path.join(p.path, 'production', 'review', 'review.json'));
+    if (!report) return writeJSON(200, goMap({ available: false, issues: [] }));
+    const target = report.video;
+    const knownTarget = target && (filmVideos.has(target) || target === silentMaster) ? target : null;
+    return writeJSON(200, goMap({
+      available: true,
+      path: knownTarget,
+      unbound: report.video === null,
+      can_approve: (!video || video === knownTarget) && reviewApprovalDigest(p.path, report) !== '',
+      report: report.data ? goValue(report.data) : goMap({ raw: report.body }),
+      report_dir: path.relative(p.path, path.dirname(report.file)).split(path.sep).join('/'),
+    }));
   }
 
-  private reviewRunAPI(request: Request): Response {
+  private async reviewRunAPI(request: Request): Promise<Response> {
     if (request.method !== 'POST') return methodNotAllowed('POST');
     const p = this.projectOr404();
     if (p instanceof Response) return p;
+    let selected: string;
+    try {
+      selected = fieldString(await decodeJSON(request), 'video');
+    } catch {
+      return writeError(400, 'invalid_request', '视频路径无效');
+    }
+    const silent = selected === silentMaster;
+    if (selected && !silent && !filmVideos.has(selected)) {
+      return writeError(400, 'invalid_video', '请选择项目的成片、配音合成版或无声母版');
+    }
+    if (selected && !fileExists(path.join(p.path, selected))) {
+      return writeError(404, 'video_missing', '找不到选中的视频');
+    }
     try {
       const t = runWriteTask(this, p, 'project.review', '运行成片审查', async (signal) => {
-        const dir = path.join(p.path, 'production', 'review');
+        const folder = selected === 'final.mp4' ? 'review-final'
+          : selected === 'production/final.mp4' ? 'review-production-final'
+          : silent ? 'review-silent' : 'review';
+        const dir = contained(p.path, path.join('production', folder), 'out');
         fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
-        const video = findProjectVideo(p.path);
+        const video = selected ? path.join(p.path, selected) : findProjectVideo(p.path);
         if (video === '') throw new Error('找不到可审查的成片，请先生成 candidate.mp4 或 final.mp4');
-        await runStudioOp(this, signal, p, 'review', { video, out: dir });
+        contained(p.path, path.relative(p.path, video), 'video');
+        const { scenes, spec } = studioReviewInputs(p.path, silent);
+        const work = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-studio-review-'));
+        try {
+          await runStudioOp(this, signal, p, 'review', {
+            video, out: dir, silent,
+            validate_report: path.join('production', folder, 'validate.json').split(path.sep).join('/'),
+            expect_frames: spec.frames,
+            ...(scenes ? { scenes } : {}),
+          }, { env: { [ReviewWorkDirEnv]: work } });
+        } finally {
+          // 取消时执行进程可能被强制终止，等进程树退出后由宿主回收副本。
+          fs.rmSync(work, { recursive: true, force: true, maxRetries: 3 });
+        }
       });
       return writeJSON(202, goMap({ task_id: t.task_id }));
     } catch (err) {
@@ -849,7 +883,8 @@ function defaultParent(last: string, recent: Project[]): string {
 }
 
 function findProjectVideo(root: string): string {
-  for (const candidate of [path.join(root, 'production', 'audio', 'candidate.mp4'), path.join(root, 'final.mp4'), path.join(root, 'production', 'final.mp4')]) {
+  for (const file of filmVideos) {
+    const candidate = path.join(root, file);
     if (fileExists(candidate)) return candidate;
   }
   return '';

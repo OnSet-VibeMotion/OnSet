@@ -61,6 +61,97 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks());
 
+it('keeps the review and the review action tied to the selected film across tabs', async () => {
+  const final = 'production/final.mp4';
+  const candidate = 'production/audio/candidate.mp4';
+  const sheet = 'production/review-final/sheet-01.png';
+  const report = {
+    available: true, path: final, report_dir: 'production/review-final',
+    report: { problems: ['成片的检查结论'], sheets: [{ image: sheet }] },
+  };
+  const api = mockApi({ '/api/review': report });
+  const tree = [final, candidate, sheet].map((path) => ({ path, size: 1, mtime: 1 }));
+  const view = renderPreview('final', [], '', tree);
+  expect(await screen.findByRole('button', { name: '1 个问题，去看' })).toBeTruthy();
+
+  await userEvent.click(screen.getByRole('button', { name: '配音合成版' }));
+  expect(await screen.findByText('该报告不是针对当前文件。')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '1 个问题，去看' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '确认可用，去发布' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: '复查' }));
+  expect(view.props.run).toHaveBeenLastCalledWith('/api/review/run', { video: candidate });
+
+  view.show('review');
+  expect(await screen.findByText('该报告不是针对当前文件。')).toBeTruthy();
+  expect(screen.queryByText('成片的检查结论')).toBeNull();
+  expect(screen.queryByText('sheet-01.png')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: '运行复查' }));
+  expect(view.props.run).toHaveBeenLastCalledWith('/api/review/run', { video: candidate });
+
+  await userEvent.click(screen.getByRole('button', { name: '成片' }));
+  expect(await screen.findByText('成片的检查结论')).toBeTruthy();
+  expect(screen.getByText('sheet-01.png')).toBeTruthy();
+  expect(api.calls.filter((call) => call.path === '/api/review').map((call) => call.query.get('video'))).toEqual([final, candidate, final]);
+});
+
+it('distinguishes same-named films and hides the approval during report refresh', async () => {
+  const final = 'final.mp4';
+  const video_sha256 = 'a'.repeat(64);
+  const report = { available: true, path: final, can_approve: true, report: { ok: true, problems: [], video_sha256 } };
+  let deliver!: (value: unknown) => void;
+  const pending = new Promise((resolve) => { deliver = resolve; });
+  let requests = 0;
+  mockApi({ '/api/review': () => ++requests === 1 ? report : pending });
+  const tree = [final, 'production/final.mp4'].map((path) => ({ path, size: 1, mtime: 1 }));
+  const view = renderPreview('final', [], '', tree);
+  expect(screen.getByRole('button', { name: '成片 · final.mp4' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '成片 · production/final.mp4' })).toBeTruthy();
+  const approve = { name: '确认可用，去发布' };
+  await userEvent.click(await screen.findByRole('button', approve));
+  expect(view.props.run).toHaveBeenCalledWith('/api/memory/actions/consolidate', { final: true, video: final, video_sha256 }, expect.any(Function));
+  expect(view.props.onTab).not.toHaveBeenCalled();
+  const navigate = view.props.run.mock.calls[0][2];
+  navigate();
+  expect(view.props.onTab).toHaveBeenCalledWith('publish');
+  view.props.onTab.mockClear();
+  await userEvent.click(screen.getByRole('button', { name: '成片 · production/final.mp4' }));
+  navigate();
+  expect(view.props.onTab).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole('button', { name: '成片 · final.mp4' }));
+  expect(screen.queryByRole('button', approve)).toBeNull();
+  view.show('final', '', 2);
+  expect(screen.queryByRole('button', approve)).toBeNull();
+  await act(async () => deliver({ ...report, can_approve: false, report: { ok: false, problems: ['复查未通过'] } }));
+  expect(await screen.findByRole('button', { name: '1 个问题，去看' })).toBeTruthy();
+  expect(screen.queryByRole('button', approve)).toBeNull();
+});
+
+it('shows an unbound legacy report as read-only even when the video is absent', async () => {
+  mockApi({ '/api/review': { available: true, path: null, unbound: true, report: { problems: ['旧报告的问题'] } } });
+  renderPreview('review', []);
+  expect(await screen.findByText('旧报告的问题')).toBeTruthy();
+  expect(screen.getByText('这份旧报告未绑定影片，仅供查看。')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '确认可用，去发布' })).toBeNull();
+});
+
+it('drops the approval navigation when the selected file is replaced at the same path', async () => {
+  const final = 'final.mp4';
+  mockApi({ '/api/review': {
+    available: true, path: final, can_approve: true, report: { ok: true, problems: [], video_sha256: 'a'.repeat(64) },
+  } });
+  const film = { path: final, size: 1, mtime: 1 };
+  const view = renderPreview('final', [], '', [film]);
+  await userEvent.click(await screen.findByRole('button', { name: '确认可用，去发布' }));
+  const navigate = view.props.run.mock.calls[0][2];
+  view.show('final', '', 2, [film, { path: 'notes.md', size: 2, mtime: 2 }]);
+  navigate();
+  expect(view.props.onTab).toHaveBeenCalledWith('publish');
+  view.props.onTab.mockClear();
+  view.show('final', '', 3, [{ ...film, mtime: 3 }]);
+  navigate();
+  expect(view.props.onTab).not.toHaveBeenCalled();
+});
+
 describe('镜头页', () => {
   it('方向键逐帧，Shift 一次 10 帧；输入框里的方向键不动画面', async () => {
     const { container } = setup();

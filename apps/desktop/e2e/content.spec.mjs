@@ -77,15 +77,38 @@ test('scene "more" menu opens as a popover inside the window, above the timeline
 
 test('approving the final film starts consolidating memory and goes to publish', async ({ page, project }) => {
   const { execFileSync } = await import('node:child_process');
-  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=1', '-pix_fmt', 'yuv420p', path.join(project.path, 'final.mp4')]);
-  await fs.mkdir(path.join(project.path, 'production', 'review'), { recursive: true });
-  await fs.writeFile(path.join(project.path, 'production', 'review', 'review.json'), JSON.stringify({ ok: true, problems: [] }));
+  const video = path.join(project.path, 'final.mp4');
+  const makeFilm = (size, file) => execFileSync('ffmpeg', [
+    '-v', 'error', '-f', 'lavfi', '-i', `testsrc2=size=${size}:rate=30:duration=1`,
+    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=1',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ac', '2', file,
+  ]);
+  const reviewFile = path.join(project.path, 'production/review-final/review.json');
+  const readReview = async () => fs.readFile(reviewFile, 'utf8').then(JSON.parse, () => null);
+  await fs.writeFile(path.join(project.path, 'frame.md'),
+    '---\ncanvas: {width_px: 240, height_px: 320, fps: 30}\naudio: {final_integrated_lufs: -21, final_lufs_tolerance: 10, true_peak_max_dbtp: -1}\n---\n');
+  makeFilm('320x240', video);
   await openProject(page, project);
   await page.locator('[data-tab="final"]').click();
   // 成片的播放器没有「下载」。
   const film = page.locator('#panel video[controls]');
   await expect(film).toHaveCount(1);
   expect(await film.evaluate((el) => el.controlsList.contains('nodownload'))).toBe(true);
+  const review = page.getByRole('button', { name: /^(重新)?复查$/ });
+  const [failedResponse] = await Promise.all([
+    page.waitForResponse((response) => new URL(response.url()).pathname === '/api/review/run' && response.request().method() === 'POST'),
+    review.click(),
+  ]);
+  expect(failedResponse.status()).toBe(202);
+  const { task_id } = await failedResponse.json();
+  await expect.poll(() => page.evaluate(async (id) => (await (await fetch('/api/tasks/' + id)).json()).status, task_id)).toBe('failed');
+  await expect.poll(readReview).toMatchObject({ ok: false, problems: [expect.stringContaining('分辨率不符')] });
+  await expect(page.locator('#final-approve')).toHaveCount(0);
+  const replacement = path.join(project.path, 'corrected.mp4');
+  makeFilm('240x320', replacement);
+  await fs.rename(replacement, video);
+  await review.click();
+  await expect.poll(readReview).toMatchObject({ ok: true, video_sha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
   await page.locator('#final-approve').click();
   await expect(page.locator('[data-tab="publish"]')).toHaveClass(/on/);
   const tasks = await page.evaluate(async () => (await (await fetch('/api/tasks')).json()).tasks);

@@ -3,7 +3,7 @@
  */
 import { render } from '@testing-library/react';
 import { vi } from 'vitest';
-import type { Scene, SceneActivity } from '../types';
+import type { Scene, SceneActivity, TreeFile } from '../types';
 import { Preview, type Tab } from './Preview';
 
 export function sceneRow(id: string, over: Partial<Scene> = {}): Scene {
@@ -15,7 +15,7 @@ export function idleActivity(id: string): SceneActivity {
   return { scene_id: id, rendering: false, step_count: 0, steps: [] };
 }
 
-export function renderPreview(tab: Tab, scenes: Scene[], sceneId = scenes[0]?.id ?? '') {
+export function renderPreview(tab: Tab, scenes: Scene[], sceneId = scenes[0]?.id ?? '', tree: TreeFile[] = []) {
   const props = {
     tab,
     state: null,
@@ -23,7 +23,7 @@ export function renderPreview(tab: Tab, scenes: Scene[], sceneId = scenes[0]?.id
     usage: null,
     sceneId,
     filePath: '',
-    tree: [],
+    tree,
     recent: new Set<string>(),
     version: 1,
     pages: [],
@@ -38,5 +38,10 @@ export function renderPreview(tab: Tab, scenes: Scene[], sceneId = scenes[0]?.id
     run: vi.fn(),
   };
   const view = render(<Preview {...props} />);
-  return { ...view, props, show: (next: Tab, id = sceneId) => view.rerender(<Preview {...props} tab={next} sceneId={id} />) };
+  return {
+    ...view,
+    props,
+    show: (next: Tab, id = sceneId, version = props.version, files = tree) =>
+      view.rerender(<Preview {...props} tab={next} sceneId={id} version={version} tree={files} />),
+  };
 }

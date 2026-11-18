@@ -1,0 +1,32 @@
+# onset 的工具服务（MCP）
+
+> 从仓库根 `AGENTS.md` 拆出的开发约定。总则、命令与各份文件的索引见根 `AGENTS.md`；文中「见「某节」」指的节都能从那份索引找到。
+
+外部编排 CLI 与渲染 CLI **经 MCP 调用 onset**：`onset studio tools-mcp --profile orchestrator|renderer --workdir <目录>`（`packages/cli/src/toolsmcp.ts`，隐藏命令）。以前 onset 在它们的 PATH 里，缺信息时它们会 `which onset`、`strings "$(which onset)"` 反推格式（实测两次），每次都撞白名单、弹审批卡片打断用户。内置制作人的制作工具由 `packages/cli/src/agent/command.ts` 在进程内构建和执行。
+
+| 约定 | 原因 |
+|---|---|
+| 工具就是操作表（`ops/op.ts`）里 `scopes` 含这一档位的操作：工具名、具名参数（`params`，含类型、缺省值、必填）、一句话说明（`summary`）、完整说明与例子（`description` / `examples`，按工具写法写）都是操作自己定义的。`setup`、`init` 与两个 `*-mcp` 不是操作；`cliOnly` 的参数不进工具 | 以后加操作自动有工具，不会漏；参数按名字传，agent 不用记位置参数的顺序 |
+| 工具列表里只放一句话说明（工具 75 个，列表约 3.6 万字），完整说明、参数与例子由 `tool_help` 按需取；参数说明只留第一句 | 每次请求都要把工具定义塞进上下文。claude、codebuddy 会按需加载（ToolSearch / DeferExecuteTool），opencode 经它的代码执行工具调 |
+| `hyperframes` 的输出经 `hfoutput.ts` 精简后才交给 agent（只在工具服务里，开发用命令行照旧原样）：跑着时只报一句进度、不交半截日志；跑完删掉进度条、`[INFO]` 跟踪、浏览器启动日志与 Electron 的安全提示，`--json` 结果重写成一行并删掉 bbox、采样时刻数组这类字段，原样输出写进临时目录、末尾给路径。错误、警告与 JSON 里的问题一条不少 | CLI 的输出是写给终端的：render 一次两万多字、check 一万多字，2026-11 统计 101 个镜头，占渲染器上下文增长的四分之一，之后每一步都要重读 |
+| 看图的尺寸：`scene_frames` 的 `sheet` 另把这些时间点拼成一张 `contact-sheet.png`（每格宽 480、每行 3 格），制作提示词的视觉验收要求每个镜头先看它、有疑问再开单帧；`scene_frames` 的 PNG 缺省缩到宽 960（`width`，0 为原尺寸；用了 `crop` 不缩，空白帧统计照旧按原帧算）；`hyperframes snapshot`（不带 `--zoom`）跑完后，onset 把它写在镜头目录里的单帧（`frame-NN…png`、`at-…png`）原地缩到宽 960（`hfsnapshot.ts`），联系表不动，并在输出末尾提示先看联系表、看细节用 `--zoom` | 看图按像素计 token（Claude 每 28×28 一块）：1920×1080 一张约 2,700，960×540 约 700；渲染器一个镜头看 8–74 张，看过的图一直留在上下文里。渲染提示词不改：它在镜头指纹里，一改所有已渲染的镜头都变 Stale |
+| `hyperframes` 单独一个工具（子命令枚举 + `args`），只放行本机渲染与只读检查；`snapshot` 自动加 `--describe false`，`timeline` 只放行 `--json`。编排档位的 schema、帮助与调用校验均不开放 `render`，要求走 `scene_run` / `scene_run_all`；渲染档位照常开放 `render`，且只有它加 `job_wait` / `job_cancel` / `tool_help` | 与渲染提示词的禁令同一份：远端渲染、改动已装技能、交互与遥测命令一律不给 |
+| 每次调用先经 `normalizeParams` 校验参数（未知参数、类型不对、缺必填直接回给 agent，不起进程），再起一个执行进程 `onset.cjs __op <名字> <参数 JSON>`（`ops/worker.ts`，协议在 `@onset/engine/opworker`：先是操作写下的文字，最后一行是结果 JSON），最多等 `wait_seconds`（缺省 50）；没跑完返回任务号，`job_wait` 接着等，MCP 进程退出时整组结束子进程。onset 把 SIGTERM / SIGHUP 当成 Ctrl-C（`main.ts`：先取消，让操作收拾自己起的进程组）：客户端停掉一轮时编排工具那一整组收到 SIGTERM，工具服务据此立刻停掉任务（`serveToolsMCP` 的 `signal`），执行进程取消后再结束渲染器；执行进程每秒看一次父进程，被过继给 init（调用方被 SIGKILL）就自己取消。以前这几处都按 Node 缺省直接退出，镜头渲染器留在后台、界面上停不掉（2026-11 实测）。收到 SIGTERM / SIGHUP 后最多等 5 秒就退出：不看取消信号的命令（等 stdin 的 MCP 服务）不兜底会永远挂着，claude 结束时停掉审批服务、调用方等它退出也跟着卡住（e2e 的审批用例实测卡住过）；两个 MCP 服务另在取消时关掉 stdin，立刻退出。结果的 `data` 既附在文字后面（「结果：」一行），也放进 `structuredContent` | codex 的 MCP 调用默认 60 秒超时，而渲染、拼接动辄几分钟到几小时；单独的进程才能整组取消，崩了也不拖垮服务 |
+| 重复的数据处理用引擎操作：`align_run` 接管重采样、本地强制对齐、字幕映射和独立音频校验，已验证的候选按输入摘要复用；已有字级证据可跳过模型。`scene_prepare` 从镜头任务清单生成新镜头，`timing_report` 以已校验的语音字幕和已批准的尾留白计算总帧数与采样数 | 编排只提供创作判断与已批准的参数 |
+| 原始输入的 SHA-256 清单用 `inputs_manifest`（`packages/cli/src/inputs_cmd.ts`）：给 `paths` 建 `production/input-manifest.json`（目录递归，点开头与 node_modules 跳过、遇符号链接报错，已有清单要 `replace`），`check` 按清单里的 `roots` 重算、只报增删改、不改清单；输出只列最多 20 条变动。制作提示词开头（宿主与卡点的 `head`）让编排用它、不自己写哈希脚本 | 以前每个项目现写哈希脚本反复跑（片场宣传视频 34 次），连同输出一起留在四十多万 token 的上下文里 |
+| 等待上限：工具服务一次调用最多等 `maxWaitSeconds()`，缺省 600 秒；能长时间等一次工具调用的 claude 与 codex 由 `tools.longWaitServer` 放宽到 `LongToolWaitSeconds`（3000 秒，经服务环境的 `ONSET_TOOLS_MAX_WAIT`），并在各自的配置里写上比它多两分钟的超时（claude 的 MCP 配置 `timeout` 毫秒、codex 的 `mcp_servers.onset.tool_timeout_sec`，app-server 同一项）。qoder、codebuddy、opencode、mcode 的工具超时没核实，照旧 600 秒 | 编排等整批渲染时会要 2400–3600 秒，上限 600 让它每 10 分钟醒来 `job_wait` 一次，每次读四五十万 token 的上下文（2026-11：等待类调用占编排读入的 7%）。claude 的缺省工具超时约 27 小时（`MCP_TOOL_TIMEOUT`，2.1.325）。取 50 分钟是为了醒来时 1 小时的缓存还在 |
+| `hyperframes render` 成功后输出末尾加 `hfsnapshot.ts` 的 `RenderAdvice`（onset 渲染后自己核对规格、帧数、音轨与确定性，不必解码成片复查），缩小截图后加 `SnapshotAdvice`（先看联系表，细节用 `--zoom`，不要自己用 ffmpeg 裁剪放大）。只写在工具输出里 | 渲染器用 ffmpeg 自己裁图、放大、解码复查共 475 次，占它读入的 11%（101 个镜头）。改渲染提示词会让所有已渲染的镜头变 Stale |
+| 执行进程经 `toolsmcp.opCommand`（`toolpath.nodeCommand`）起，客户端里补回 `ELECTRON_RUN_AS_NODE=1`；不要直接 `spawn(process.execPath, …, { env: process.env })` | `main.ts` 一启动就删掉这个变量（不能漏给 agent），照抄 `process.env` 起的是一个完整的 Electron 应用：操作跑完、结果打印了，进程却永远不退出，工具服务每次都报「还在运行」直到超时。只在客户端里出现，CI 的 Node 下复现不了（2026-11 实测，当时被误当成稿子里 `\#` 让 `align_text` 卡死），`toolsmcp.test.ts` 的「op worker command」钉着 |
+| 挂法（`tools.ts`）：claude / qoder / codebuddy 用 `--mcp-config`（claude 与审批服务合在一份，放在 `--verbose` 前面免得吞掉提示词），claude 系 `--settings` 放行 `mcp__onset`、拒绝 `Bash(onset:*)`，qoder 加 `--allowed-tools mcp__onset`；ACP（codebuddy、opencode 在客户端里）走 `session/new` 的 `mcpServers`；codex app-server 走 `thread/start` 的 `config.mcp_servers`，exec 走 `-c mcp_servers.onset.*`；opencode run 走 `OPENCODE_CONFIG_CONTENT` 的 `mcp`，并且**必须** `--standalone`；qoder 另加 `--settings {"mcp":{"lazyLoad":false}}`（`tools.ts` 的 `qoderEagerSettings`），解析器把它的 `mcp_call({toolName, arguments})` 拆回真正的工具名 | opencode run 默认连后台常驻服务，这一次给的配置（MCP、模型）全被忽略（2.1.0 实测）。qoder 1.1.87 缺省懒加载 MCP：工具不进工具表、只能经 `mcp_list` / `mcp_call` 调，`--permission-prompt-tool` 于是找不到审批工具，白名单外的命令一律直接拒绝、不问用户（2026-11 实测）；只要有一处设置写了 `mcp.lazyLoad` 它就照设置来。懒不懒在建会话时就定死了：懒加载建的会话换成不懒加载续接，`mcp_list` 是空的、工具也不直接给，模型只会说 MCP 服务断开了（实测），所以这项设置不能只在续接时加或去掉。codex 在 untrusted 策略下给每次 MCP 调用发 `mcpServer/elicitation/request`，`codexapp.ts` 对 onset 服务直接同意，别的服务照常问用户 |
+| 服务的环境只挑 onset 自己要的变量（`tools.onsetToolsServer`：`ONSET_*`、`HYPERFRAMES_*`、记忆与配置键、PATH、HOME……），不整份传 | MCP 配置会出现在命令行里，不安全模式下子进程环境里还有凭据 |
+| agent 找不到能用的 onset：`envutil.addToolsLocation` 把 onset setup 的工具目录加在 PATH 末尾，最前面放一个只有 `onset` 的目录（`agentBinDir`，`<数据目录>/onset/agent-bin`，测试经 `ONSET_AGENT_BIN_DIR` 指到临时目录），那个 onset 只打一句「请用工具服务」并以 127 退出；`orchestratorBaseCommands` 与 `rendererAccess` 都不含 onset。**不要把有 onset 的目录从 PATH 里拿掉** | 两边都靠白名单的话，换一家 CLI 就漏。拿掉目录试过：以前装 onset 启动脚本的 `~/.local/bin` 里还有 claude，整个目录没了就报「缺少必需工具：claude」（实测） |
+| 提示词、操作的说明与输出、引擎报错里的下一步都按工具写法写（`请重新运行 beat_cues()`），`toolsmcp.test.ts` 的「writes every description and example as tool calls」查每条操作的说明里没有 `onset <命令>`、例子调的是它自己、参数名都存在。没有对应操作的 `onset setup`、`onset init`、`onset run` 不写进说明与提示，改说工具准备页、新建项目。客户端显示报错时经 `forUser`（`apps/desktop/src/renderer/api.ts`）去掉这些给 agent 的下一步 | agent 拿到什么就照着调什么：报错里写 `onset beat cues`，它就会去终端里找 onset；用户则不会去调工具 |
+
+改了任何一家挂 MCP 的方式，在本机用真实 CLI 跑一遍（答案放在 agent 读不到的 `.env` 里，答对说明真的调了工具）：
+
+```bash
+npm run build -w @onset/cli
+ONSET_TEST_TOOLS_MCP=claude,codex,qoder,codebuddy,opencode npx vitest run --root packages/engine src/agentrun -t RealToolsMCP
+```
+
+opencode 默认模型不可用时加 `ONSET_TEST_OPENCODE_MODEL`。

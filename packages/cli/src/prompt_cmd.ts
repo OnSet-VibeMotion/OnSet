@@ -34,3 +34,20 @@ defineOp({
     return { data: { flow: label, bytes: prompt.length, warnings } };
   },
 });
+
+defineOp({
+  name: 'flow_guide',
+  cli: ['prompt', 'guide'],
+  summary: '读取当前项目某个制作阶段的规则与关卡',
+  description: '沿用项目流程的原编号。stage 取制作路线列出的阶段 ID，例如 timeline、render 或 review。',
+  examples: ['flow_guide({"stage":"render"})'],
+  params: {
+    project_root: projectRoot,
+    stage: { type: 'string', description: '制作阶段 ID', required: true, positional: 0 },
+  },
+  run: (p, { out }) => {
+    const stage = str(p.stage);
+    if (!/^[a-z][a-z0-9-]*$/.test(stage)) throw new Error('stage 必须是制作路线中的阶段 ID');
+    out.write(project.composeProjectPrompt(path.resolve(str(p.project_root)), stage, true).text);
+  },
+});

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { pngSize, shrinkPNG } from './image';
+import { contactSheetImages } from './contact';
 import { isBlank, isDark } from './mediaprobe';
 import { ffmpeg, hasFfmpeg, sample, tempDir, toolchain } from './testutil';
 
@@ -59,6 +60,17 @@ describe.skipIf(!hasFfmpeg)('Single-decode frame extraction', () => {
     expect(await shrinkPNG(tc, narrow, 160)).toBe(false);
     expect(fs.readFileSync(narrow)).toEqual(before);
     expect(fs.readdirSync(root).sort()).toEqual(['narrow.png', 'wide.png']);
+  });
+
+  it('makes the preview contact sheet directly from stills', async () => {
+    const tc = toolchain();
+    const root = tempDir();
+    const file = sample('testsrc2=size=320x180:rate=30:duration=1');
+    const stills = tc.extractFramesRegion(file, [0, 0.4, 0.9], null, root).frames.map(frame => frame.image);
+    const sheet = path.join(root, 'sheet.png');
+    await contactSheetImages(tc, stills, sheet);
+    expect(pngSize(sheet)).toEqual({ width: 992, height: 196 });
+    expect(fs.readdirSync(root).some(name => name.startsWith('.contact-'))).toBe(false);
   });
 
   it('still reports blank frames and rejects a time beyond the last frame even with a previous PNG there', () => {

@@ -2,15 +2,18 @@
  * 本文件收拢整片复查（review）与合成源码扫描（scene_lint）两条操作。移植自 internal/cli/review.go。
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import * as determinism from '@onset/engine/determinism';
-import { formatFixed, goRound } from '@onset/engine/gofmt';
+import { formatFixed } from '@onset/engine/gofmt';
 import * as mediaprobe from '@onset/engine/mediaprobe';
 import * as review from '@onset/engine/review';
 import * as scene from '@onset/engine/scene';
 import * as schedule from '@onset/engine/schedule';
+import { sha256File } from '@onset/engine/toolinstall';
+import { resolveExisting, safeRelative } from '@onset/engine/validate';
 import { currentEnvironment } from './cli';
-import { requireReviewTarget } from './deliverables';
+import { inProject, requireReviewTarget } from './deliverables';
 import { type Finding, recordCheckFindings } from './memory_cmd';
 import { bool, num, str } from './ops/common';
 import { defineOp } from './ops/op';
@@ -44,8 +47,8 @@ defineOp({
 联系表不做判断。画面对不对要打开图逐页看：文字是否溢出或压在图形上、相邻
 镜头的风格与密度是否一致、交界是否跳变突兀、结尾是否停在合适的画面。
 
-机器检查有不符项或跑不起来时失败。判断结果读结构化结果或 report_json
-（缺省为 <out>/review.json），不要解析文字输出。
+机器检查有不符项或跑不起来时失败。逐帧数据在 report_json（缺省为 <out>/review.json），
+工具回复给出结论、联系表与报告路径。
 
 在项目里 video 只能是候选成片 production/audio/candidate.mp4 或 final.mp4（silent 时是
 production/silent-master.mp4）：客户端的成片页与制作路线只认这些位置。`,
@@ -61,21 +64,25 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
     scenes: { type: 'string', description: '镜头根目录；给了才做总帧数与交界检查，联系表按镜头排版' },
     out: { type: 'string', description: '联系表与报告的输出目录，必填' },
     report_json: { type: 'string', description: '报告路径，缺省为 <out>/review.json' },
-    fps: { type: 'integer', description: '帧率覆盖值；不传则读 frame.md 的 canvas.fps' },
+    validate_report: { type: 'string', description: '另做交付规格、完整解码和首帧校验，保存报告并共用精确帧数' },
+    expect_frames: { type: 'integer', description: '交付校验用的冻结总帧数' },
+    fps: { type: 'integer', description: '普通复查的帧率覆盖值；交付校验使用 frame.md 的 canvas.fps' },
     silent: { type: 'boolean', description: '断言成片没有音轨，用于只拼接未混音的交付；不做音画比对' },
     sync_tolerance: { type: 'number', description: '音视频流时长允许的差值（秒）', default: review.DefaultSyncTolerance },
     every: { type: 'number', description: '没给 scenes 时联系表的取帧间隔（秒）', default: review.DefaultEvery },
     per_sheet: { type: 'integer', description: '每张联系表的最大格数，超出分页', default: review.DefaultTilesPerSheet },
     thumb_width: { type: 'integer', description: '联系表缩略图宽度（像素）', default: review.DefaultThumbWidth },
   },
-  run: (p, { out }) => {
+  run: async (p, { out, signal }) => {
     const video = str(p.video);
     const rootDir = str(p.project_root) !== '' ? str(p.project_root) : '.';
     const outDir = str(p.out);
     const silent = bool(p.silent);
     if (outDir === '') throw new Error('必须用 out 指定复查产物目录');
     requireReviewTarget(rootDir, video, silent);
-    let rate = num(p.fps);
+    const validationPath = str(p.validate_report);
+    const deliveryCanvas = validationPath !== '' ? scene.canvasOf(rootDir, 'frame.md') : undefined;
+    let rate = deliveryCanvas?.fps ?? num(p.fps);
     if (rate <= 0) {
       let canvas: scene.Canvas;
       try {
@@ -85,35 +92,93 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
       }
       rate = canvas.fps;
     }
-    let segments: review.Segment[] | null = null;
-    let planned: scene.Scene[] = [];
-    if (str(p.scenes) !== '') {
-      const scenes = schedule.plan(str(p.scenes));
-      planned = scenes;
-      segments = scenes.map((s) => {
-        const segment: review.Segment = { id: s.id, frames: Math.trunc(goRound(s.duration_seconds * rate)) };
-        if (s.timing) {
-          segment.handoff = s.timing.enter.device;
-          segment.crossChapter = s.timing.enter.cross_chapter;
-        }
-        return segment;
-      });
-    }
+    const project = inProject(rootDir);
+    const sceneDir = str(p.scenes);
+    const planned = sceneDir ? schedule.plan(sceneDir, project ? rootDir : undefined) : [];
+    const segments = review.reviewSegments(planned, rate);
     const loudness = reviewLoudnessTarget(rootDir, silent);
     const toolchain = mediaprobe.newToolchain(currentEnvironment());
-    const report = review.run(toolchain, {
-      video,
-      fps: rate,
-      segments,
-      outDir,
-      silent,
-      loudness,
-      syncTolerance: num(p.sync_tolerance),
-      every: num(p.every),
-      tilesPerSheet: num(p.per_sheet),
-      thumbWidth: num(p.thumb_width),
-    });
-    const target = str(p.report_json) !== '' ? str(p.report_json) : path.join(outDir, 'review.json');
+    const target = str(p.report_json) || path.join(outDir, 'review.json');
+    const reportPath = project ? path.relative(rootDir, path.resolve(video)).split(path.sep).join('/') : video;
+    let report: review.Report;
+    let videoChanged = false;
+    let work = '';
+    try {
+      let source = video;
+      let verifiedMedia: mediaprobe.Media | undefined;
+      let spec: review.DeliverySpec | undefined;
+      let digest: string | undefined;
+      if (deliveryCanvas) {
+        safeRelative(rootDir, validationPath);
+        const validationFile = resolveExisting(path.resolve(rootDir, validationPath));
+        const reviewFile = resolveExisting(path.resolve(target));
+        const original = fs.realpathSync(video);
+        const targets = [validationFile, reviewFile, original];
+        // 两份报告使用可移植的文件名，在 Windows 与 macOS 上也要区分。
+        if (new Set(targets.map((file) => file.normalize('NFC').toLowerCase())).size !== targets.length) {
+          throw new Error('规格报告、复查报告和成片需要不同路径');
+        }
+        const frames = num(p.expect_frames) || segments.reduce((sum, segment) => sum + segment.frames, 0);
+        if (frames <= 0) throw new Error('交付校验需要冻结总帧数或镜头目录');
+        spec = review.deliverySpec(deliveryCanvas, frames, silent);
+        work = fs.mkdtempSync(path.join(process.env[review.ReviewWorkDirEnv] || os.tmpdir(), 'onset-film-review-'));
+        source = path.join(work, path.basename(video));
+        // 独立副本也隔开原路径上的覆盖和原地写入。支持时由文件系统写时复制。
+        fs.copyFileSync(video, source, fs.constants.COPYFILE_FICLONE);
+        digest = await sha256File(source);
+        signal.throwIfAborted();
+        const validation = toolchain.verify(source, {
+          spec: {
+            widthPx: spec.width_px, heightPx: spec.height_px, fps: spec.fps, frames: spec.frames,
+            codec: spec.codec, pixelFormat: spec.pixel_format,
+            audio: spec.audio_required ? mediaprobe.AudioPresent : mediaprobe.AudioAbsent,
+            sampleRate: spec.sample_rate, channels: spec.channels,
+          },
+          exactFrames: true, decode: true, checkFrameZero: true,
+        });
+        const media = { ...validation.media, path: reportPath };
+        mediaprobe.writeReportJSON({ ...validation, path: reportPath, media }, validationFile);
+        if (!validation.ok) {
+          review.writeReportJSON({
+            schema_version: review.ReportSchemaVersion, path: reportPath, ok: false, media,
+            expected_frames: frames, counted_frames: validation.media.video?.nb_frames ?? 0,
+            loudness: null, problems: validation.problems, hints: validation.hints ?? [], cuts: [], sheets: [], seams: [],
+          }, target);
+          throw new Error(`成片规格校验未通过：${validationPath}\n  - ${validation.problems.join('\n  - ')}`);
+        }
+        out.write(`规格与完整解码校验：${validationPath}\n`);
+        verifiedMedia = validation.media;
+      }
+      report = review.run(toolchain, {
+        video: source,
+        fps: rate,
+        segments,
+        outDir,
+        silent,
+        loudness,
+        verifiedMedia,
+        syncTolerance: num(p.sync_tolerance),
+        every: num(p.every),
+        tilesPerSheet: num(p.per_sheet),
+        thumbWidth: num(p.thumb_width),
+      });
+      report.path = reportPath;
+      report.media = { ...report.media, path: reportPath };
+      if (digest !== undefined) {
+        videoChanged = await sha256File(video).catch(() => '') !== digest;
+        if (videoChanged) {
+          report.ok = false;
+          report.problems.push('影片在复查期间发生变化，请重新复查');
+        } else {
+          report.video_sha256 = digest;
+          report.delivery_spec = spec;
+          report.scene_plan_sha256 = review.scenePlanDigest(segments);
+        }
+      }
+    } finally {
+      if (work) fs.rmSync(work, { recursive: true, force: true });
+    }
+    signal.throwIfAborted();
     review.writeReportJSON(report, target);
     for (const sheet of report.sheets ?? []) out.write(`联系表：${sheet.image}（${sheet.tiles?.length ?? 0} 格）\n`);
     if ((report.seams?.length ?? 0) > 0) out.write(`交界条带：${report.seams.length} 张（${report.seams[0].image} 起）\n`);
@@ -127,7 +192,7 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
         for (const id of [cut.from, cut.to]) broken.set(id, [...(broken.get(id) ?? []), { check: scene.CheckReviewHandoff, problem }]);
       }
     }
-    recordCheckFindings(out, rootDir, planned, broken);
+    if (!videoChanged) recordCheckFindings(out, rootDir, planned, broken);
     if (!report.ok) throw new Error(`整片复查未通过：${video}\n  - ${(report.problems ?? []).join('\n  - ')}`);
     out.write('机器检查通过；请逐页打开联系表做视觉复查\n');
     return { data: review.reportToJSON(report) };

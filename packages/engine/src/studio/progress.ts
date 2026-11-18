@@ -17,6 +17,7 @@ import { marshalIndent } from '../gojson';
 import * as plugin from '../plugin';
 import * as studioview from '../studioview';
 import { writeError, writeJSON } from './http';
+import { candidateFilm, latestReviewReport, projectVideoDigest, type ReviewReport } from './reviewreport';
 import { discoverScenes, type SceneSummary } from './scenes';
 import { readStoryboard } from './storyboard';
 import { localRFC3339 } from './script';
@@ -282,6 +283,18 @@ function gateChanged(root: string, record: GateRecord): boolean {
   return Object.entries(record.files).some(([rel, state]) => gateFileChanged(root, rel, state));
 }
 
+/** approval.json 记的候选摘要与现在的 candidate.mp4 相同。 */
+function candidateIsApproved(root: string, approvalFile: string): boolean {
+  try {
+    const raw = JSON.parse(fs.readFileSync(approvalFile, 'utf8')) as Record<string, unknown>;
+    const candidate = raw.candidate as Record<string, unknown> | undefined;
+    const want = typeof candidate?.sha256 === 'string' ? candidate.sha256.replace(/^sha256:/, '').toLowerCase() : '';
+    return want !== '' && projectVideoDigest(root, candidateFilm) === want;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 站的定义
 
@@ -289,6 +302,7 @@ interface Ctx {
   root: string;
   scenes: SceneSummary[];
   gates: Record<string, GateRecord>;
+  filmReview?: ReviewReport | null;
 }
 
 /**
@@ -331,6 +345,14 @@ function voiceAhead(c: Ctx, out: number): boolean {
   if (voice <= out) return false;
   if (c.scenes.length === 0) return true;
   return voice > Math.min(...c.scenes.map((sc) => mtime(path.join(sc.directory, 'scene.json'))));
+}
+
+function filmReviewForProgress(c: Ctx): ReviewReport | null {
+  if (c.filmReview === undefined) {
+    const candidate = f(c, candidateFilm) ? candidateFilm : undefined;
+    c.filmReview = latestReviewReport(c.root, candidate, { exact: true });
+  }
+  return c.filmReview;
 }
 
 /** 宿主自带的站的判断，键是「站:站点」。内置插件的判断随它登记（pluginJudges，例如卡点的 beat-plan:plan）。 */
@@ -415,16 +437,20 @@ const judges: Record<string, Judge> = {
     stale: (c, out) => f(c, 'production/silent-master.mp4') > out,
   },
   'review:review': {
-    output: (c) => f(c, 'production/review/review.json'),
-    stale: (c, out) => f(c, 'production/audio/candidate.mp4') > out,
+    output: (c) => filmReviewForProgress(c)?.mtime ?? 0,
+    stale: (c, out) => {
+      if (!f(c, candidateFilm)) return false;
+      const report = filmReviewForProgress(c);
+      const sha = report?.data?.video_sha256;
+      return typeof sha === 'string' && sha !== ''
+        ? projectVideoDigest(c.root, candidateFilm) !== sha
+        : f(c, candidateFilm) > out;
+    },
     detail: (c) => {
-      try {
-        const report = JSON.parse(fs.readFileSync(path.join(c.root, 'production', 'review', 'review.json'), 'utf8')) as Record<string, unknown>;
-        const problems = Array.isArray(report.problems) ? report.problems.length : 0;
-        return problems === 0 ? '机器检查没有问题' : `${problems} 个问题`;
-      } catch {
-        return undefined;
-      }
+      const data = filmReviewForProgress(c)?.data;
+      if (!data) return undefined;
+      const problems = Array.isArray(data.problems) ? data.problems.length : 0;
+      return problems === 0 ? '机器检查没有问题' : `${problems} 个问题`;
     },
   },
   'review:gate-final': {
@@ -439,7 +465,9 @@ const judges: Record<string, Judge> = {
       } catch {
         // 写坏的批准记录照样算有，时间取文件的。
       }
-      return { status: f(c, 'production/audio/candidate.mp4') > approved ? 'changed' : 'confirmed', at };
+      // 候选比批准记录新，但内容就是批准的那一份（重跑混音得到同样的字节）时不算改过。
+      const changed = f(c, 'production/audio/candidate.mp4') > approved && !candidateIsApproved(c.root, file);
+      return { status: changed ? 'changed' : 'confirmed', at };
     },
   },
 };
@@ -652,7 +680,7 @@ export function computeStations(root: string, scenes: SceneSummary[]): { mode: f
           if (note) station.stale_note = note;
         }
         station.at = localRFC3339(new Date(out));
-      } else if (d.id === 'render' && d.stale?.(ctx, 0)) {
+      } else if ((d.id === 'render' || d.id === 'review') && d.stale?.(ctx, 0)) {
         station.status = 'stale';
       } else if (laterDone && !d.optional && !d.inProgress?.(ctx)) station.status = 'skipped';
     }

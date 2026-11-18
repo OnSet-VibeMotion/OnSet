@@ -265,7 +265,7 @@ export function beatOps(ctx: PluginContext): void {
       `（镜头局部的每一拍：帧号、小节、拍序）。
 
   镜头 id 与顺序必须和计划完全一致；任何一处不合格都不写文件。改过网格或计划后
-  重跑，已渲染的镜头要 "force": true 重渲染。`,
+  重跑，确认要返修的镜头由 scene_run_all() 的 only_scenes 与 force 一起指定。`,
     examples: ['beat_cues({"scenes": "scenes/"})'],
     params: {
       scenes: { type: 'string', description: '镜头目录的上级目录', required: true, positional: 0 },

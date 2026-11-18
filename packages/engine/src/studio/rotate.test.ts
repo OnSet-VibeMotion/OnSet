@@ -44,3 +44,15 @@ describe('handoffNote', () => {
     expect(handoffNote('原因', undefined)).not.toContain('待办清单');
   });
 });
+
+it('rotates Codex app-server on request size rather than the whole Studio turn', () => {
+  const entry: Entry = {
+    time: '', source: 'studio', tool: 'codex', session: 's', status: 'succeeded',
+    usage: { source: 'codex app-server', turns: 1, input_tokens: 1_000_000 },
+  };
+  expect(rotationReason([entry], 's')).toBe('');
+  entry.usage!.last_request_input_tokens = 48_000;
+  expect(rotationReason([entry], 's')).toBe('');
+  entry.usage!.last_request_input_tokens = 250_000;
+  expect(rotationReason([entry], 's')).toContain('25 万');
+});

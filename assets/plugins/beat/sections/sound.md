@@ -28,3 +28,5 @@
 - 不允许 cue 越过节目终点。
 - 同一时间的音效数量应受控，避免高频叠加和听觉拥挤。
 
+
+`cue-sheet.json` 使用 `{"schema":1,"cues":[...]}`。每行 `kind` 写 `"sfx"`，填项目内 `asset`、`event_id`、`duration_frames`、`gain_db`、`fade_in_frames` 和 `fade_out_frames`。可用 `source_start_frame` 指定素材裁切起点。主音乐单独交给混音工具，无音效时用空 `cues`。

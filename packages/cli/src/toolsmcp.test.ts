@@ -4,7 +4,7 @@ import { groupSpawnOptions } from '@onset/engine/procgroup';
 import { describe, expect, it } from 'vitest';
 import { allOps, opScopes } from './ops/op';
 import fs from 'node:fs';
-import { Jobs, describeTools, maxWaitSeconds, opCommand, prepareCall, serveToolsMCP, type Spawner } from './toolsmcp';
+import { Jobs, defaultWaitSeconds, describeTools, maxWaitSeconds, opCommand, prepareCall, serveToolsMCP, type Spawner } from './toolsmcp';
 
 /** 把一串 JSON-RPC 请求喂给服务，收齐回复（按 id）。 */
 async function call(requests: Record<string, unknown>[], spawner: Spawner, profile: 'orchestrator' | 'renderer' = 'orchestrator'): Promise<Map<unknown, any>> {
@@ -36,7 +36,7 @@ describe('onset tools MCP', () => {
   it('makes one tool per operation, with named parameters', () => {
     const tools = describeTools('orchestrator');
     const names = tools.map((t) => t.name);
-    for (const want of ['scene_run', 'scene_run_all', 'beat_import', 'beat_cues', 'film_style_use', 'memory_remember', 'studio_show', 'hyperframes', 'job_wait', 'tool_help']) expect(names).toContain(want);
+    for (const want of ['align_run', 'scene_prepare', 'timing_report', 'scene_run', 'scene_run_all', 'beat_import', 'beat_cues', 'film_style_use', 'memory_remember', 'studio_show', 'hyperframes', 'job_wait', 'tool_help']) expect(names).toContain(want);
     // 建项目、准备前置资源、两个 MCP 服务是客户端自己的入口，不是工具。
     for (const absent of ['setup', 'init', 'run', 'studio_permission_mcp', 'studio_tools_mcp']) expect(names).not.toContain(absent);
     const importTool = tools.find((t) => t.name === 'beat_import')!;
@@ -45,8 +45,21 @@ describe('onset tools MCP', () => {
     expect(importTool.inputSchema.properties).not.toHaveProperty('args');
   });
 
+  it('keeps detailed audio samples in the requested report file', async () => {
+    const request = { id: 1, method: 'tools/call', params: {
+      name: 'audio_check', arguments: { audio: 'voice.wav', srt: 'voice.srt', report_json: 'production/check.json' },
+    } };
+    const result = { ok: true, speech: [{ start: 0, end: 1 }], cues: [{ index: 1 }], hints: ['hint'] };
+    const worker = fakeWorker('true', { ok: true, exit_code: 0, data: result });
+    const compact = (await call([request], worker)).get(1);
+    expect(compact.result.structuredContent).toEqual({ ok: true, report: 'production/check.json', hints: ['hint'] });
+    expect(text(compact)).not.toContain('"speech"');
+    const verbose = { ...request, params: { ...request.params, arguments: { audio: 'voice.wav', srt: 'voice.srt' } } };
+    expect((await call([verbose], worker)).get(1).result.structuredContent).toEqual(result);
+  });
+
   it('gives the Windows renderer its required source check, retaining the other platform tool lists', () => {
-    expect(describeTools('renderer').map((t) => t.name)).toEqual(['hyperframes', ...(process.platform==='win32'?['scene_lint']:[]), 'job_wait', 'job_cancel', 'tool_help']);
+    expect(describeTools('renderer').map((t) => t.name)).toEqual(['hyperframes', ...(process.platform==='win32'?['scene_lint']:[]), 'scene_preview_check', 'job_wait', 'job_cancel', 'tool_help']);
   });
 
   // 说明与例子是 agent 照着调的：写成命令行它就会去终端里找 onset；例子里的参数名必须真的存在。
@@ -144,11 +157,23 @@ describe('onset tools MCP', () => {
     expect(text(replies.get(1))).toContain('不要用定时任务');
   });
 
+  it('lets a built-in agent wait for completion without an MCP timeout', async () => {
+    const jobs = new Jobs(fakeWorker('sleep 0.2; echo done', undefined, 'await new Promise(r=>setTimeout(r,200));console.log("done")'));
+    const reply = await jobs.wait(jobs.start('scene_run_all', {}), undefined);
+    expect(reply.text).toContain('done');
+    expect(reply.text).toContain('[完成]');
+    expect(reply.text).not.toContain('job_wait');
+  });
+
   it('waits up to the limit the launcher set for its client', () => {
     expect(maxWaitSeconds({})).toBe(600);
     expect(maxWaitSeconds({ ONSET_TOOLS_MAX_WAIT: '3000' })).toBe(3000);
     expect(maxWaitSeconds({ ONSET_TOOLS_MAX_WAIT: '99999' })).toBe(3600);
     expect(maxWaitSeconds({ ONSET_TOOLS_MAX_WAIT: 'x' })).toBe(600);
+    expect(defaultWaitSeconds('job_wait', {})).toBe(50);
+    expect(defaultWaitSeconds('job_wait', { ONSET_TOOLS_MAX_WAIT: '3000' })).toBe(3000);
+    expect(defaultWaitSeconds('align_run', { ONSET_TOOLS_MAX_WAIT: '3000' })).toBe(3000);
+    expect(defaultWaitSeconds('scene_run_all', { ONSET_TOOLS_MAX_WAIT: '3000' })).toBe(50);
   });
 
   // hyperframes 的输出是写给终端的：跑着时只报进度，跑完交精简后的结果，原样输出留在临时文件里（hfoutput.ts）。

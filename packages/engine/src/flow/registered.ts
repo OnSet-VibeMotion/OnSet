@@ -26,7 +26,7 @@ export function allStations(): Station[] {
       id: s.id,
       name: s.name,
       nodes: s.nodes,
-      prompt: (s.sections ?? []).map((sec) => (sec.stage ? { id: sec.id, stage: sec.stage } : { id: sec.id })),
+      prompt: (s.sections ?? []).map(({ id, stage, focusIncludes }) => ({ id, stage, focusIncludes })),
     })),
   ];
 }

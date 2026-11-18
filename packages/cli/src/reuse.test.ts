@@ -1,7 +1,7 @@
 import { tempDir } from './testutil';
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as config from '@onset/engine/config';
 import * as scene from '@onset/engine/scene';
 import * as schedule from '@onset/engine/schedule';
@@ -47,5 +47,46 @@ describe('reuseDecision', () => {
     const [status, reason] = reuseDecision(s, cfg, env);
     expect(status).toBe(schedule.Stale);
     expect(reason).toContain('渲染记录');
+  });
+
+  it('upgrades a verifiably matching legacy record without rerendering the video', () => {
+    const s = reuseScene();
+    const cfg = config.newConfig({ renderer: 'codex' });
+    const env = { HOME: tempDir() };
+    const resolved = scene.resolveAllSkills('codex', s.directory, env, s);
+    scene.writeRecord(s, scene.fingerprint(s, 'codex', resolved, scene.RecordSchemaRenderContract));
+    const file = path.join(s.directory, scene.RecordFile);
+    const old = { ...JSON.parse(fs.readFileSync(file, 'utf8')), schema: scene.RecordSchemaRenderContract, onset_version: '2.0.0' };
+    fs.writeFileSync(file, JSON.stringify(old));
+    expect(reuseDecision(s, cfg, env)[0]).toBe(schedule.Skipped);
+    expect(scene.loadRecord(s)).toMatchObject({ schema: scene.RenderRecordSchema, onset_version: '2.0.0', output_sha256: old.output_sha256 });
+    expect(fs.readFileSync(scene.outputPath(s), 'utf8')).toBe('video');
+  });
+
+  it('does not upgrade a legacy record when the prompt changes after the first check', () => {
+    const s = reuseScene();
+    const cfg = config.newConfig({ renderer: 'codex' });
+    const env = { HOME: tempDir() };
+    const prompt = path.join(s.directory, 'prompt.md');
+    fs.writeFileSync(prompt, 'original');
+    const resolved = scene.resolveAllSkills('codex', s.directory, env, s);
+    const legacy = scene.RecordSchemaRenderContract;
+    scene.writeRecord(s, scene.fingerprint(s, 'codex', resolved, legacy));
+    const recordFile = path.join(s.directory, scene.RecordFile);
+    fs.writeFileSync(recordFile, JSON.stringify({ ...scene.loadRecord(s), schema: legacy }));
+    const read = fs.readFileSync;
+    let reads = 0;
+    const spy = vi.spyOn(fs, 'readFileSync').mockImplementation((file, options) => {
+      const result = read(file, options);
+      if (file === recordFile && ++reads === 2) fs.writeFileSync(prompt, 'changed');
+      return result;
+    });
+    try {
+      reuseDecision(s, cfg, env);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(scene.loadRecord(s)?.schema).toBe(legacy);
+    expect(reuseDecision(s, cfg, env)[0]).toBe(schedule.Stale);
   });
 });

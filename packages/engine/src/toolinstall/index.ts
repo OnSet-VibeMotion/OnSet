@@ -12,7 +12,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { lookPath } from '../envutil';
+import { lookPath, windowsPythonScript } from '../envutil';
 import { marshal } from '../gojson';
 import { watchSize, type Progress, type Writer } from '../hyperframes';
 import { abortReason } from '../procgroup';
@@ -460,11 +460,13 @@ async function installUVVenv(spec: Extract<ToolSpec, { kind: 'uv-venv' }>, uv: s
   await runCommandIn(uv, ['venv', '--python', ToolPythonVersion, venv], data, env, sink, opts.signal).finally(stop);
   const install = `安装 ${spec.packages.join(' ')}`;
   report({ stage: install, percent: 0, indeterminate: true });
-  const python = path.join(venv, 'bin', 'python');
+  const windows = process.platform === 'win32';
+  const python = windows ? path.join(venv, 'Scripts', 'python.exe') : path.join(venv, 'bin', 'python');
   // torch 这类包几百 MB：量环境目录长了多少，界面才看得出它在下载。
   stop = watchSize([venv], (bytes) => report({ stage: install, percent: 0, indeterminate: true, bytes }));
   await runCommandIn(uv, ['pip', 'install', '--python', python, ...spec.packages], data, env, sink, opts.signal).finally(stop);
-  writeExecutable(path.join(bin, spec.bin), `#!/bin/sh\n# 由 onset setup 写出：${spec.name} 专用的 Python 环境。\nexec ${q(python)} "$@"\n`);
+  if (windows) writeExecutable(path.join(bin, spec.bin + '.cmd'), windowsPythonScript(python));
+  else writeExecutable(path.join(bin, spec.bin), `#!/bin/sh\n# 由 onset setup 写出：${spec.name} 专用的 Python 环境。\nexec ${q(python)} "$@"\n`);
 }
 
 /**

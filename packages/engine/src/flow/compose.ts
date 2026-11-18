@@ -33,6 +33,7 @@ export interface PromptPart {
   text: string;
   /** 这一段开启的阶段。 */
   stage?: string;
+  focusIncludes?: readonly string[];
   /** 第三方站的文字：不换阶段占位符。 */
   raw?: boolean;
   /** 接在最后的一段：与前文空一行，正文去掉首尾空白，以换行结尾。 */
@@ -46,6 +47,8 @@ export interface ComposeOptions {
   aliases?: Readonly<Record<string, string>>;
   /** 仍然找不到时的写法；不给或返回 undefined 就报错。 */
   missing?: (stage: string) => string | undefined;
+  /** 只输出选中的段落，但仍按全流程编号。 */
+  include?: ReadonlySet<PromptPart>;
 }
 
 const stageRef = /\{\{STAGE(_N)?:([a-z][a-z0-9-]*)\}\}/g;
@@ -74,6 +77,7 @@ export function composeParts(parts: readonly PromptPart[], opts: ComposeOptions 
   let out = '';
   let afterInsert = false;
   for (const p of parts) {
+    if (opts.include && !opts.include.has(p)) continue;
     const text = p.raw ? p.text : substitute(p.text);
     if (p.append) out = out.replace(/\n*$/, '\n\n') + text.trim() + '\n';
     else if (p.insert) out = out.replace(/\n*$/, '\n\n') + text.trimEnd() + '\n';
@@ -88,12 +92,12 @@ export function composeParts(parts: readonly PromptPart[], opts: ComposeOptions 
 export type SectionReader = (station: string, section: string) => string;
 
 /** 段落声明：「站/段」→ 开启的阶段。没有这一段直接报错。 */
-function declared(ref: string): { station: string; section: string; stage?: string } {
+function declared(ref: string): { station: string; section: string; stage?: string; focusIncludes?: readonly string[] } {
   const slash = ref.indexOf('/');
   const station = ref.slice(0, slash);
   const sec = slash < 0 ? undefined : allStations().find((s) => s.id === station)?.prompt.find((x) => x.id === ref.slice(slash + 1));
   if (!sec) throw new Error(`没有这段提示词：${ref}`);
-  return { station, section: sec.id, stage: sec.stage };
+  return { station, section: sec.id, stage: sec.stage, focusIncludes: sec.focusIncludes };
 }
 
 /** 宿主段落读 assets/prompts，内置插件的读它目录里的文件。 */
@@ -122,6 +126,8 @@ export interface FlowComposeInput {
   /** 宿主与内置插件段落的画幅占位符替换（第三方站的文字不经过它）。 */
   canvas: (text: string) => string;
   read?: SectionReader;
+  focus?: string;
+  requireFocus?: boolean;
 }
 
 /** 第三方流程里一个内置站的段落：取路线里有这个站的第一个内置流程，按那个流程的提示词顺序。 */
@@ -145,7 +151,7 @@ export function composeFlowPrompt(input: FlowComposeInput): string {
   const opts: ComposeOptions = {};
   const builtinPart = (ref: string): PromptPart => {
     const d = declared(ref);
-    return { ref, text: input.canvas(read(d.station, d.section)), stage: d.stage };
+    return { ref, text: input.canvas(read(d.station, d.section)), stage: d.stage, focusIncludes: d.focusIncludes };
   };
   let appended: string[];
   if (input.flow.startsWith('x:')) {
@@ -203,5 +209,33 @@ export function composeFlowPrompt(input: FlowComposeInput): string {
   // 第三方站各自的说明接在最后。
   const extra = extraPrompt(joined);
   if (extra !== '') parts.push({ ref: '', raw: true, append: true, text: extra });
+  const focus = input.focus;
+  const anchor = focus ? parts.findIndex(part => part.stage === focus) : -1;
+  // 第三方自定义流程可能在未编号的段落里放关卡。它们继续走原组合逻辑。
+  if (anchor >= 0 && (input.requireFocus || (!input.flow.startsWith('x:') && joined.length === 0))) {
+    const first = parts.findIndex(part => part.stage);
+    const anchorStation = parts[anchor].ref.split('/')[0];
+    const sameStation = parts.filter(part => part.ref.startsWith(anchorStation + '/'));
+    const hasManyStages = sameStation.filter(part => part.stage).length > 2;
+    const include = new Set(parts.slice(0, first));
+    if (!hasManyStages) for (const part of sameStation) include.add(part);
+    include.add(parts[anchor]);
+    for (let i = anchor + 1; i < parts.length && !parts[i].stage; i++) include.add(parts[i]);
+    if (focus === 'beat-plan') {
+      for (const part of parts) if (part.ref.endsWith('/treatment')) include.add(part);
+    }
+    for (const part of parts) if (part.append && part.raw) include.add(part);
+    const byRef = new Map(parts.map(part => [part.ref, part]));
+    for (const part of include) {
+      for (const ref of part.focusIncludes ?? []) {
+        const linked = byRef.get(ref);
+        if (linked) include.add(linked);
+      }
+    }
+    const available = parts.flatMap(part => part.stage ? [part.stage] : []);
+    return composeParts(parts, { ...opts, include }).trimEnd() +
+      `\n\n当前说明只展开 ${focus}。处理其他阶段前用 flow_guide({"stage":"<阶段 ID>"}) 读取对应规则。阶段顺序：${available.join(' → ')}。\n`;
+  }
+  if (input.requireFocus) throw new Error('项目没有这个阶段。可用阶段：' + parts.flatMap(part => part.stage ? [part.stage] : []).join('、'));
   return composeParts(parts, opts);
 }

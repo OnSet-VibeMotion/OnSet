@@ -25,6 +25,14 @@ export function publishAPI(s: ApiHost): Response {
       result.data = data === null ? null : goValue(data);
       const platform = data !== null && typeof data.platform === 'string' ? data.platform : '';
       result.platform_name = platformName(platform);
+      // 平台标题、平台话题里写到的平台，给页面显示中文名（没写这两项时不出这个字段）。
+      const copy = data !== null && typeof data.copy === 'object' && data.copy !== null ? (data.copy as Record<string, unknown>) : {};
+      const named = new Set<string>();
+      for (const field of ['platform_titles', 'platform_hashtags']) {
+        const block = copy[field];
+        if (block && typeof block === 'object' && !Array.isArray(block)) for (const k of Object.keys(block)) named.add(k);
+      }
+      if (named.size > 0) result.platform_names = goValue(Object.fromEntries([...named].sort().map((k) => [k, platformName(k)])));
     } catch (err) {
       result.parse_error = (err as Error).message;
     }

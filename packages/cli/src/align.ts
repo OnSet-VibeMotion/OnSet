@@ -10,6 +10,7 @@ import { ExitError } from './cobra';
 import { defineGroup } from './ops/cli';
 import { num, projectRoot, str, strs } from './ops/common';
 import { defineOp } from './ops/op';
+import { alignRunOperation } from './align_run';
 
 defineGroup({
   path: ['align'],
@@ -36,6 +37,8 @@ defineGroup({
 });
 
 const alignRoot = { ...projectRoot, description: '项目根目录，用于定位 production/ 下的默认文件' };
+
+defineOp(alignRunOperation());
 
 /** 参数为空时取项目里的缺省路径。 */
 function inProject(root: string, value: unknown, fallback: string): string {

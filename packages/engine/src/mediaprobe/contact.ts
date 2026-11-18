@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { formatFixed } from './gofmt';
 import { formatSeconds, joinFilters, regionFilter, type Region } from './mediaprobe';
-import { combined, firstLine, run } from './run';
+import { combined, commandError, firstLine, run } from './run';
 import type { Toolchain } from './toolchain';
 
 /**
@@ -73,5 +73,25 @@ export function nonEmpty(file: string): boolean {
     return fs.statSync(file).size > 0;
   } catch {
     return false;
+  }
+}
+
+/** Snapshot 的原始 PNG 已经在磁盘上；上游无法拼表时，用相同的网格接着拼。 */
+export async function contactSheetImages(t: Toolchain, files: readonly string[], dest: string, signal?: AbortSignal): Promise<void> {
+  const columns = Math.min(files.length, 3);
+  if (columns === 0) throw new Error('联系表至少需要一张截图');
+  const rows = Math.ceil(files.length / columns);
+  const work = fs.mkdtempSync(path.join(path.dirname(dest), '.contact-'));
+  try {
+    files.forEach((file, i) => fs.copyFileSync(file, path.join(work, `frame-${i}.png`)));
+    const ran = await t.runAsync(t.ffmpegPath(), [
+      '-v', 'error', '-y', '-framerate', '1', '-start_number', '0', '-i', path.join(work, 'frame-%d.png'),
+      '-vf', `scale=320:-2,tile=${columns}x${rows}:padding=${contactSheetPadding}:margin=${contactSheetPadding}:color=${contactSheetBackground}`,
+      '-frames:v', '1', '-f', 'image2', '-c:v', 'png', dest,
+    ], { signal, captureStderr: true });
+    if (ran.error) throw new Error(`拼接截图联系表失败：${commandError(ran)}`);
+    if (!nonEmpty(dest)) throw new Error(`截图联系表没有产出内容：${dest}`);
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
   }
 }

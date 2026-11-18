@@ -8,12 +8,15 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { atomicWrite } from '../fsutil';
+import { marshal } from '../gojson';
 
 export interface LiveRender {
   /** 跑 scene.run 的进程（客户端里是 onset 的执行进程）。 */
   pid: number;
   renderer: string;
   started_at: string;
+  encoding?: boolean;
 }
 
 export function liveFile(dir: string, id: string): string {
@@ -21,7 +24,7 @@ export function liveFile(dir: string, id: string): string {
 }
 
 export function writeLive(dir: string, id: string, live: LiveRender): void {
-  fs.writeFileSync(liveFile(dir, id), JSON.stringify(live) + '\n');
+  atomicWrite(liveFile(dir, id), marshal(live) + '\n', 0o644);
 }
 
 export function removeLive(dir: string, id: string): void {
@@ -43,7 +46,12 @@ export function readLive(dir: string, id: string): LiveRender | null {
   try {
     const raw = JSON.parse(body) as Partial<LiveRender>;
     if (typeof raw.pid !== 'number' || !Number.isInteger(raw.pid) || raw.pid <= 0) return null;
-    return { pid: raw.pid, renderer: typeof raw.renderer === 'string' ? raw.renderer : '', started_at: typeof raw.started_at === 'string' ? raw.started_at : '' };
+    return {
+      pid: raw.pid,
+      renderer: typeof raw.renderer === 'string' ? raw.renderer : '',
+      started_at: typeof raw.started_at === 'string' ? raw.started_at : '',
+      ...(raw.encoding === true ? { encoding: true } : {}),
+    };
   } catch {
     return null;
   }

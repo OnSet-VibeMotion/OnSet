@@ -6,7 +6,7 @@ import * as mediaprobe from '../mediaprobe';
 import { parse as parseMedia } from '../mediaprobe/mediaprobe';
 import { newConfig } from '../config';
 import { attemptLog, OutcomeFailed, OutcomeSucceeded, OutcomeVerificationFailed, parseAttempt, type Attempt } from './attempt';
-import { changedInputs, fingerprint, loadRecord, writeRecord } from './record';
+import { changedInputs, fingerprint, getToolVersion, loadRecord, writeRecord } from './record';
 import { run } from './run';
 import { load, outputPath, streamLog, withRenderWorkers, withRetryNote, type Scene } from './scene';
 import { HyperFramesSkillName } from './skills';
@@ -112,7 +112,8 @@ describe('render record', () => {
     const dir = writeScene(plainScene);
     const s = load(dir);
     const skills = tempDir();
-    fs.writeFileSync(path.join(skills, 'SKILL.md'), 'v1');
+    fs.mkdirSync(path.join(skills, HyperFramesSkillName));
+    fs.writeFileSync(path.join(skills, HyperFramesSkillName, 'SKILL.md'), 'v1');
     const resolved = { [HyperFramesSkillName]: skills };
     const base = fingerprint(s, 'codex', resolved);
     // 重试说明与 worker 数是调度层临时填的，不算输入。
@@ -127,12 +128,14 @@ describe('render record', () => {
     expect(changedInputs(fingerprint(s, 'claude', resolved), base), '换渲染工具应改变指纹').toContain('renderer');
     // 挪动技能目录不算变化，改技能内容才算。
     const moved = tempDir();
-    fs.writeFileSync(path.join(moved, 'SKILL.md'), 'v1');
+    fs.mkdirSync(path.join(moved, HyperFramesSkillName));
+    fs.writeFileSync(path.join(moved, HyperFramesSkillName, 'SKILL.md'), 'v1');
     const relocated = fingerprint(s, 'codex', { [HyperFramesSkillName]: moved });
     expect(changedInputs(relocated, changed), '技能目录换位置不应改变指纹').not.toContain('prompt');
     expect(relocated.fingerprint).toBe(changed.fingerprint);
     const edited = tempDir();
-    fs.writeFileSync(path.join(edited, 'SKILL.md'), 'v2');
+    fs.mkdirSync(path.join(edited, HyperFramesSkillName));
+    fs.writeFileSync(path.join(edited, HyperFramesSkillName, 'SKILL.md'), 'v2');
     const updated = fingerprint(s, 'codex', { [HyperFramesSkillName]: edited });
     expect(changedInputs(updated, changed), '技能内容变化应单独报出').toEqual(['skill:' + HyperFramesSkillName]);
   });
@@ -154,9 +157,10 @@ describe('render record', () => {
     writeRecord(s, { fingerprint: 'abc', parts: { prompt: 'x', onset: 'y', 'file:<a>': 'z' } });
     const sha = crypto.createHash('sha256').update('video').digest('hex');
     expect(fs.readFileSync(path.join(s.directory, '.onset-render.json'), 'utf8')).toBe(
-      '{\n  "schema": 2,\n  "output": "out.mp4",\n  "output_size": 5,\n' +
+      '{\n  "schema": 4,\n  "output": "out.mp4",\n  "output_size": 5,\n' +
         `  "output_sha256": "${sha}",\n  "fingerprint": "abc",\n` +
-        '  "parts": {\n    "file:\\u003ca\\u003e": "z",\n    "onset": "y",\n    "prompt": "x"\n  }\n}\n',
+        '  "parts": {\n    "file:\\u003ca\\u003e": "z",\n    "onset": "y",\n    "prompt": "x"\n  },\n' +
+        `  "onset_version": "${getToolVersion()}"\n}\n`,
     );
   });
 });

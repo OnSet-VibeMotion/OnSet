@@ -12,13 +12,20 @@ import { Command, ExitError, type Out, type PositionalArgs, ref } from './cobra'
 import './align';
 import './audition_cmd';
 import './audio';
+import './audio_mix';
+
+import './timing_report';
+
 import './filmstyle';
 import './hyperframes';
 import './media';
+import './phrase_frames';
+
 import './memory_cmd';
 import './reads_cmd';
 import './review_cmd';
 import './scene_cmd';
+import './scene_preview';
 import './seams_cmd';
 import './scene_cues';
 import './station_cmd';

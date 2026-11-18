@@ -177,6 +177,8 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
         // total 是整条会话的累计；续接时要扣掉这一轮之前的部分。第一条更新之前的总数 = total - last。
         if (!baseline) baseline = subtract(usage.total, obj(usage.last));
         ctx.result.usage = codexUsage(subtract(usage.total, baseline), 1);
+        const lastInput = num(obj(usage.last).inputTokens);
+        if (lastInput > 0) ctx.result.usage.last_request_input_tokens = lastInput;
         return;
       }
       case 'error': {

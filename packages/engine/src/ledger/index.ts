@@ -97,7 +97,7 @@ function decodeEntry(line: string): Entry | undefined {
     if (typeof usage !== 'object' || Array.isArray(usage)) return undefined;
     const u = usage as Record<string, unknown>;
     const out = newUsage();
-    for (const key of usageNumberKeys) {
+    for (const key of [...usageNumberKeys, 'last_request_input_tokens'] as const) {
       const v = u[key];
       if (v === undefined || v === null) continue;
       if (typeof v !== 'number' || !Number.isInteger(v)) return undefined;

@@ -38,7 +38,7 @@ jobs:
       - run: npm run build -w onset-desktop
 
   windows:
-    # 客户端还没移植到 Windows（见 AGENTS.md「Windows」）。这一项先让问题暴露出来：类型检查与构建必须通过，
+    # 客户端还没移植到 Windows（见 docs/dev/windows.md）。这一项先让问题暴露出来：类型检查与构建必须通过，
     # 两包的单元测试照跑、失败不挡合并，等移植完再去掉 continue-on-error。
     name: Windows (typecheck, build; tests report only)
     runs-on: windows-latest
@@ -94,7 +94,7 @@ jobs:
             exit 1
           fi
 
-  # e2e 只测核心流程（AGENTS.md「端到端测试」），一台机器一次一个用例：这台 macOS 只有 3 个核，
+  # e2e 只测核心流程（docs/dev/desktop-e2e.md），一台机器一次一个用例：这台 macOS 只有 3 个核，
   # 同时开几个 Electron 每个用例慢好几倍、音视频用例超时（实测）。界面细节在组件测试里，随「类型检查和测试」跑。
   e2e:
     name: Desktop client end-to-end (Playwright, Electron)

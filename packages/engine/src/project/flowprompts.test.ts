@@ -78,6 +78,18 @@ describe('new projects compose the prompt of their own flow', () => {
     expect(got).toEqual(JSON.parse(fs.readFileSync(goldenFile, 'utf8')));
   });
 
+  it('keeps numbering and gates when loading only the requested production stage', () => {
+    const root = created('speech', 'vertical-3x4');
+    const full = composeProjectPrompt(root).text;
+    const focused = composeProjectPrompt(root, 'plan', true).text;
+    expect(focused).toContain(stageTitles(full).find(title => title.includes('拆分镜头'))!);
+    expect(focused).toContain('storyboard');
+    expect(focused).toContain('flow_guide(');
+    expect(focused.length).toBeLessThan(full.length / 2);
+    expect(focused).not.toContain('audio_mix()');
+    expect(() => composeProjectPrompt(root, 'missing', true)).toThrow(/可用阶段/);
+  });
+
   it('records the flow, the canvas and the render prompt version', () => {
     for (const delivery of ['speech', 'beat', 'song']) {
       const root = created(delivery, 'vertical-9x16');
@@ -86,6 +98,12 @@ describe('new projects compose the prompt of their own flow', () => {
       // 项目里不放任何提示词文件。
       for (const file of ['PROMPT.md', 'PROMPT-PRODUCTION.md', 'PROMPT-SONG.md', 'PROMPT-CAST-ADDENDUM.md']) expect(fs.existsSync(path.join(root, file)), file).toBe(false);
     }
+  });
+
+  it('keeps the cast instructions referenced by the focused script stage', () => {
+    const root = created('speech', 'vertical-3x4');
+    expect(composeProjectPrompt(root, 'script', true).text).toContain('## 附：多角色叙事作业规程');
+    expect(composeProjectPrompt(root, 'plan', true).text).not.toContain('## 附：多角色叙事作业规程');
   });
 
   it('labels the composed prompt with the flow name and reads an override as is', () => {
@@ -254,6 +272,16 @@ describe('prompt content', () => {
     ]) has(body, ['### 整理这次制作的经验', '用户明确确认这一版成片可用之后', 'memory_consolidate()', '不要在用户确认之前整理'], what + '·整理经验');
   });
 
+  // 片场宣传视频（2026-11-18）：用户说「可以了」之后，编排才补做画面文字对账，查出问题就自己改镜头、重渲染。
+  it('finishes every check before approval and stops after it (speech, beat)', () => {
+    for (const [body, what] of [
+      [speech, '口播'],
+      [beat, '卡点'],
+    ]) {
+      has(body, ['不得把还没查完的候选交给用户批准', '用户批准后只做交付', '立即停下，不要自行修复', '之前的批准作废', '不得沿用上一版的 `onscreen-facts.json`'], what + '·审批');
+    }
+  });
+
   it('tells the beat story before the music (beat)', () => {
     has(beat, ['：故事、音乐与节拍', '这是一部没有配音、画面踩着音乐节拍走的片子。', 'production/beat/story.md', '画面里的字与字幕就是这部片子的文案', 'studio_show({"page": "beat"', '用户没有点头之前不进入分镜计划', '不得替用户确认', 'beat_cues({"scenes": "scenes/"})', '「音乐卡点」', '不要自己建 Python 环境、不要 pip install'], '卡点分支');
     expect(beat.indexOf('### 故事与文案')).toBeLessThan(beat.indexOf('### 音乐与节拍网格'));
@@ -294,7 +322,8 @@ describe('prompt content', () => {
   });
 
   it('leaves voice tools to the tool page (speech)', () => {
-    has(speech, ['配音与对齐工具都是前置资源', '工具准备页', 'funasr-python', '--model <ALIGN_MODEL 的本地目录>', 'config_get({"key": "ALIGN_MODEL"})'], '口播·配音工具');
+    has(speech, ['配音与对齐工具都是前置资源', '工具准备页', 'align_run({"publish": true})'], '口播·配音工具');
+    expect(speech).not.toContain('funasr-python');
   });
 
   it('requires platform covers (speech, beat)', () => {

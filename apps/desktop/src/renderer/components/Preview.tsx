@@ -1,7 +1,7 @@
 import { playerProps } from '../media';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { ReactNode } from 'react';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api, errorText, post, rawURL } from '../api';
 import type { Attachment, ProgressState, Box, ProjectFilmStyle, ProjectState, ProjectUsage, Scene, TreeFile, Usage } from '../types';
@@ -67,7 +67,7 @@ export function visibleTabs(hidden: readonly string[], pages?: readonly { id: st
 }
 
 /** 按钮触发的写任务：返回 task_id 的接口。App 负责发请求、提示与刷新任务列表。 */
-export type RunAction = (path: string, payload?: Record<string, unknown>) => void;
+export type RunAction = (path: string, payload?: Record<string, unknown>, onAccepted?: () => void) => void;
 
 interface Props {
   tab: Tab;
@@ -98,6 +98,15 @@ interface Props {
 
 export function Preview(props: Props) {
   const scene = props.scenes.find((s) => s.id === props.sceneId) ?? null;
+  const project = props.state?.project.path;
+  const [filmChoice, setFilmChoice] = useState<{ project?: string; path: string }>();
+  const variants = finalCandidates.filter((path) => props.tree.some((file) => file.path === path));
+  const selected = filmChoice?.project === project ? filmChoice?.path : undefined;
+  const video = selected && variants.includes(selected) ? selected : variants[0];
+  const onVideo = (path: string) => setFilmChoice({ project, path });
+  const showingReview = props.tab === 'review' || (props.tab === 'final' && !!video);
+  const review = useFilmReview(showingReview, video, props.version, project);
+  const film = { video, variants, onVideo, review };
   return (
     <main className="pane center">
       {props.pages
@@ -130,10 +139,10 @@ export function Preview(props: Props) {
         )}
         {props.tab === 'scene' && <SceneTab {...props} scene={scene} />}
         {props.tab === 'compose' && <ComposeTab {...props} scene={scene} />}
-        {props.tab === 'final' && <FinalTab tree={props.tree} version={props.version} run={props.run} onTab={props.onTab} />}
+        {props.tab === 'final' && <FinalTab {...film} tree={props.tree} version={props.version} run={props.run} onTab={props.onTab} />}
         {props.tab === 'style' && <StyleTab version={props.version} run={props.run} scenes={props.scenes} onScene={props.onScene} />}
         {props.tab === 'voice' && <VoicesTab version={props.version} />}
-        {props.tab === 'review' && <ReviewTab tree={props.tree} version={props.version} run={props.run} />}
+        {props.tab === 'review' && <ReviewTab {...film} tree={props.tree} version={props.version} run={props.run} />}
         {props.tab === 'publish' && <PublishTab version={props.version} run={props.run} />}
         {isStationTab(props.tab) && (
           <StationPage
@@ -775,19 +784,60 @@ const finalLabels: Record<string, string> = {
   'production/silent-master.mp4': '无声母版',
 };
 
-/** 成片页：左边是片子，右边是复查摘要与下一步。复查的细节（交界帧、联系表）在「复查」页。 */
-function FinalTab({ tree, version, run, onTab }: { tree: TreeFile[]; version: number; run: RunAction; onTab?: (tab: Tab) => void }) {
-  const present = finalCandidates.filter((path) => tree.some((f) => f.path === path));
-  const [chosen, setChosen] = useState('');
-  const [review, setReview] = useState<ReviewResponse | null>(null);
+interface FilmReviewProps {
+  video: string | undefined;
+  variants: string[];
+  onVideo: (path: string) => void;
+  review: ReviewResponse | undefined;
+}
+
+function FilmVersions({ video, variants, onVideo }: Pick<FilmReviewProps, 'video' | 'variants' | 'onVideo'>) {
+  if (variants.length < 2) return null;
+  return (
+    <div className="final-versions" role="group" aria-label="版本">
+      {variants.map((path) => (
+        <button key={path} className={path === video ? 'on' : ''} aria-pressed={path === video} title={path} onClick={() => onVideo(path)}>
+          {variants.some((other) => other !== path && finalLabels[other] === finalLabels[path]) ? `${finalLabels[path]} · ${path}` : finalLabels[path]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function useFilmReview(enabled: boolean, video: string | undefined, version: number, project?: string): ReviewResponse | undefined {
+  const request = useMemo(() => ({ enabled, video, version, project }), [enabled, video, version, project]);
+  const [result, setResult] = useState<{ request: typeof request; review: ReviewResponse }>();
   useEffect(() => {
-    api<ReviewResponse>('/api/review').then(setReview, () => setReview({ available: false }));
-  }, [version]);
-  const current = present.includes(chosen) ? chosen : present[0];
-  // 地址按这个文件自己的修改时间变，不按整个项目的 version：项目里别的文件一改 version 就涨，
-  // 地址一变播放器就重新加载，成片没变也会一直闪、从头放。
-  const currentMtime = tree.find((f) => f.path === current)?.mtime;
-  const report = review?.available ? review.report : undefined;
+    if (!request.enabled) return;
+    const controller = new AbortController();
+    const update = (review: ReviewResponse) => {
+      if (!controller.signal.aborted) setResult({ request, review });
+    };
+    const url = request.video ? '/api/review?video=' + encodeURIComponent(request.video) : '/api/review';
+    api<ReviewResponse>(url, { signal: controller.signal })
+      .then(update, () => update({ available: false }));
+    return () => controller.abort();
+  }, [request]);
+  return result?.request === request ? result.review : undefined;
+}
+
+const reviewMismatch = '该报告不是针对当前文件。';
+const silentMaster = 'production/silent-master.mp4';
+
+/** 成片页：左边是片子，右边是复查摘要与下一步。复查的细节（交界帧、联系表）在「复查」页。 */
+function FinalTab({ video: current, variants, onVideo, review, tree, version, run, onTab }: FilmReviewProps & {
+  tree: TreeFile[]; version: number; run: RunAction; onTab?: (tab: Tab) => void;
+}) {
+  // 只跟随影片自身的文件版本。项目里其他文件更新时，播放器保持当前位置。
+  const currentFile = tree.find((file) => file.path === current);
+  const currentMtime = currentFile?.mtime;
+  const currentSize = currentFile?.size;
+  const selectedFilm = useRef<object | null>(null);
+  useLayoutEffect(() => {
+    selectedFilm.current = {};
+    return () => { selectedFilm.current = null; };
+  }, [current, currentMtime, currentSize]);
+  const report = review?.available && review.path === current ? review.report : undefined;
   const problems = reviewProblems(report);
   const seconds = report?.media?.duration_seconds;
   const num = (v?: number, digits = 1) => (v == null ? '—' : v.toFixed(digits).replace('-', '−'));
@@ -806,15 +856,7 @@ function FinalTab({ tree, version, run, onTab }: { tree: TreeFile[]; version: nu
         <aside className="scene-info">
           <span className="eyebrow">成片{seconds ? ` · ${clock(seconds).replace(/\.\d+$/, '')}` : ''}</span>
           <h1 className="scene-title">{current ? finalLabels[current] ?? current : '还没有成片'}</h1>
-          {present.length > 1 && (
-            <div className="final-versions" role="group" aria-label="版本">
-              {present.map((path) => (
-                <button key={path} className={path === current ? 'on' : ''} aria-pressed={path === current} title={path} onClick={() => setChosen(path)}>
-                  {finalLabels[path] ?? path}
-                </button>
-              ))}
-            </div>
-          )}
+          <FilmVersions video={current} variants={variants} onVideo={onVideo} />
           {report ? (
             <dl className="final-review">
               <dt>复查</dt>
@@ -845,23 +887,28 @@ function FinalTab({ tree, version, run, onTab }: { tree: TreeFile[]; version: nu
               )}
             </dl>
           ) : (
-            <p className="scene-meta">还没有复查。</p>
+            <p className="scene-meta">{review?.available ? reviewMismatch : current && !review ? '正在读取复查报告…' : '还没有复查。'}</p>
+          )}
+          {current !== silentMaster && report?.ok && !review?.can_approve && (
+            <p className="scene-meta">当前视频需要重新通过交付复查，才能确认发布。</p>
           )}
           <div className="scene-actions">
-            {current && problems.length === 0 && report && (
+            {current && review?.can_approve && report?.video_sha256 && (
               <button
                 className="primary"
                 id="final-approve"
                 title="确认后会把这次制作里记下的问题整理成经验（调用一次 AI），然后去发布页"
                 onClick={() => {
-                  run('/api/memory/actions/consolidate', { final: true });
-                  onTab?.('publish');
+                  const startedFrom = selectedFilm.current;
+                  run('/api/memory/actions/consolidate', { final: true, video: current, video_sha256: report.video_sha256 }, () => {
+                    if (selectedFilm.current === startedFrom) onTab?.('publish');
+                  });
                 }}
               >
                 确认可用，去发布
               </button>
             )}
-            <button onClick={() => run('/api/review/run')}>{report ? '重新复查' : '复查'}</button>
+            {current && <button onClick={() => run('/api/review/run', { video: current })}>{report ? '重新复查' : '复查'}</button>}
           </div>
           <div className="final-more">
             <button className="link" onClick={() => run('/api/commands/project.concat')}>
@@ -1168,25 +1215,37 @@ function StyleTab({ version, run, scenes, onScene }: { version: number; run: Run
 /** production/review/review.json（review.Report）。 */
 interface ReviewResponse {
   available: boolean;
+  path?: string | null;
+  unbound?: boolean;
+  can_approve?: boolean;
+  report_dir?: string;
   report?: {
     ok?: boolean;
+    video_sha256?: string;
+    raw?: string;
+    issues?: unknown[];
     problems?: string[];
     hints?: unknown[];
     expected_frames?: number;
     counted_frames?: number;
     media?: { duration_seconds?: number };
     loudness?: { integrated_lufs?: number; true_peak_dbtp?: number };
+    sheets?: { image: string }[];
+    seams?: { image: string }[];
   } & Record<string, unknown>;
 }
 
 const reviewProblems = (r?: ReviewResponse['report']) => r?.problems ?? [];
 
-function ReviewTab({ tree, version, run }: { tree: TreeFile[]; version: number; run: RunAction }) {
-  const [review, setReview] = useState<ReviewResponse | null>(null);
-  useEffect(() => {
-    api<ReviewResponse>('/api/review').then(setReview, () => setReview({ available: false }));
-  }, [version]);
-  const sheets = tree.filter((f) => /^production\/review\/.*\.png$/.test(f.path));
+function ReviewTab({ video, variants, onVideo, review, tree, version, run }: FilmReviewProps & { tree: TreeFile[]; version: number; run: RunAction }) {
+  const legacy = review?.available && review.unbound === true;
+  const report = review?.available && (legacy || review.path === video) ? review.report : undefined;
+  const images = new Set(
+    [report?.sheets, report?.seams].flatMap((items) => Array.isArray(items) ? items : [])
+      .filter(item => typeof item?.image === 'string')
+      .map(({ image }) => review?.report_dir + '/' + image.split(/[/\\]/).pop()),
+  );
+  const sheets = tree.filter((file) => images.has(file.path) && file.path.endsWith('.png'));
   const list = (title: string, items?: unknown[]) =>
     items && items.length > 0 ? (
       <section>
@@ -1201,19 +1260,22 @@ function ReviewTab({ tree, version, run }: { tree: TreeFile[]; version: number; 
   return (
     <div className="review-tab">
       <div className="toolbar">
-        <span className="small muted">onset review 的结果：音画时长、交界帧、联系表与响度。</span>
+        {video && variants.length === 1 && <span className="small muted" title={video}>{finalLabels[video]}</span>}
+        <FilmVersions video={video} variants={variants} onVideo={onVideo} />
         <span className="spacer" />
-        <button className="primary" onClick={() => run('/api/review/run')}>
+        <button className="primary" disabled={!video} onClick={() => run('/api/review/run', { video })}>
           运行复查
         </button>
       </div>
-      {!review?.available ? (
-        <Empty>还没有复查报告。</Empty>
+      {!report ? (
+        <Empty>{review?.available ? reviewMismatch : video && !review ? '正在读取复查报告…' : '还没有复查报告。'}</Empty>
       ) : (
         <>
-          {list('问题', reviewProblems(review.report))}
-          {list('提示', review.report?.hints)}
-          {!reviewProblems(review.report).length && !review.report?.hints?.length && <p className="ok-line">没有发现问题。</p>}
+          {legacy && <p className="scene-meta">这份旧报告未绑定影片，仅供查看。</p>}
+          {list('问题', report.problems ?? report.issues)}
+          {list('提示', report.hints)}
+          {report.raw && <pre>{report.raw}</pre>}
+          {!report.raw && !(report.problems ?? report.issues)?.length && !report.hints?.length && <p className="ok-line">没有发现问题。</p>}
         </>
       )}
       <div className="gallery wide">

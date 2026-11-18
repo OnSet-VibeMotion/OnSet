@@ -24,6 +24,8 @@ export interface Usage {
    */
   credits?: number | null;
   turns?: number;
+  /** 最近一次模型请求的输入量，仅用于判断上下文大小，不参与汇总。 */
+  last_request_input_tokens?: number;
   /** 汇总里有的部分没读到用量或费用，数字只是下限。 */
   partial?: boolean;
   /** 标明口径：都是 BasisTotalInput（输入含缓存）。 */
@@ -104,6 +106,7 @@ export function usageJSON(u: Usage): Record<string, unknown> {
     cost_usd: u.cost_usd ?? undefined,
     credits: u.credits ?? undefined,
     turns: u.turns ? u.turns : undefined,
+    last_request_input_tokens: u.last_request_input_tokens || undefined,
     partial: u.partial ? true : undefined,
     basis: u.basis ? u.basis : undefined,
     source: u.source ? u.source : undefined,

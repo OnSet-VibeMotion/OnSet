@@ -29,3 +29,5 @@
 - 不允许 cue 越过节目终点。
 - 同一时间的音效数量应受控，避免高频叠加和听觉拥挤。
 
+
+清单使用 `{"schema":1,"cues":[...]}`。音乐行填 `kind: "music"`、项目内 `asset`、`start_frame`、`duration_frames`、`gain_db`、`fade_in_frames`、`fade_out_frames`。音效用 `kind: "sfx"`，起点从绑定的事件或短语读取。素材可用 `source_start_frame` 指定从哪一帧开始取用。无音乐与音效时提交空 `cues`。

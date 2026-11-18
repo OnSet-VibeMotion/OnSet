@@ -31,9 +31,6 @@ export async function loadAgentModule(): Promise<AgentModule> {
   return (await import('./pi')) as AgentModule;
 }
 
-/** 一次调用最多等多久：比任何一步制作都长（整片渲染几个小时），真正的上限是用户按停止。 */
-const maxToolSeconds = 24 * 3600;
-
 /**
  * 把编排档位的操作做成 agent 的工具；job_wait、job_cancel 不要（这里直接等到跑完）。
  * 除了只读的 tool_help，都顺序执行：模型一次发出 scene_cues 与 scene_run 时，后者要等前者写完 scene.json。
@@ -65,7 +62,7 @@ export function onsetTools(spawner: Spawner = spawnOp, root = '', profile: 'orch
         }
         const target = callTarget(def, params);
         const job = jobs.start(target.name, target.params);
-        const reply = await jobs.wait(job, maxToolSeconds, signal);
+        const reply = await jobs.wait(job, undefined, signal);
         if (signal?.aborted) jobs.cancel(job.id);
         return { text: reply.text, isError: reply.isError };
       },

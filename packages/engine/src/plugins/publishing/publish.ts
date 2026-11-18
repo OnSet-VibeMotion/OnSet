@@ -7,7 +7,7 @@ import { goPathError } from '../../gofmt';
 import { compareBytes } from '../../gojson';
 import { frontmatter, safeRelative } from '../../validate/validate';
 import { formatV, get, hasKey, isGoMap, toPlain, type GoMap } from '../../validate/yamlany';
-import { validateCopyTitles } from './copy_titles';
+import { validateCopyTitles, validatePlatformHashtags } from './copy_titles';
 import { validateCoverImages } from './cover_images';
 
 // Go 的 (?i)(sk-[A-Za-z0-9_-]{12,}|api[_-]?key\s*[:=]\s*[^\s"']+|password\s*[:=]\s*[^\s"']+)。
@@ -60,6 +60,7 @@ export function publish(file: string, projectRoot: string): Record<string, unkno
   }
   validateCoverImages(projectRoot, d);
   validateCopyTitles(d);
+  validatePlatformHashtags(d);
   for (const heading of ['## 发布状态', '## 发布平台', '## 主标题', '## 发布介绍', '## 话题标签', '## 封面文字', '## 素材署名', '## 成片规格与 SHA-256', '## 证据索引', '## 发布前人工检查', '## 未完成事项']) {
     if (!body.includes(heading)) throw new Error(`markdown 缺少章节：${heading}`);
   }

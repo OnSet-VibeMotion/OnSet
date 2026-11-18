@@ -91,6 +91,7 @@ export interface PluginGuide {
 export interface PluginSection {
   id: string;
   file: string;
+  focusIncludes?: readonly string[];
   after?: string;
   append?: boolean;
   flows?: readonly string[];

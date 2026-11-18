@@ -10,7 +10,7 @@
 
 Windows 计算文件摘要使用 Get-FileHash -Algorithm SHA256 -LiteralPath '实际文件路径'，不用共享说明中的 shasum / sha256sum。镜头目录通常不是 Git 仓库，无 .git 时不调用 Git 查询，不自行初始化或修改系统目录、权限。
 
-镜头内只使用已提供的本地素材，经 onset 的 hyperframes 工具执行检查、截图和渲染。遵守原有沙箱、镜头边界和帧数，不更改任何批准、全局配音、分镜或相邻镜头。不因工具包装或平台变化重建已完成的镜头。
+镜头内只使用已提供的本地素材。镜头提示词有交接信号时，用 scene_preview_check() 完成首次检查与截图，按该信号交给片场正式渲染；其他检查与旧项目的渲染照镜头提示词调用 hyperframes。遵守原有沙箱、镜头边界和帧数，不更改任何批准、全局配音、分镜或相邻镜头。不因工具包装或平台变化重建已完成的镜头。
 
 visible-event-inventory.json 中无文字的 decorative / graphic 元素可将阅读区间记为 null，但必须有正确的 enter_frame 与 exit_end_frame。已批准的第零帧封面仍用 role=cover 和 exception=approved_theme_preview 标注；真实批准由编排侧核对，不能自称批准。可读文字照常记录、检查，不把文字伪装成装饰。
 
