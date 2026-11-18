@@ -109,6 +109,8 @@ export interface Cut {
 export interface Report {
   schema_version: number;
   path: string;
+  /** 核对交付规格时读到的影片字节。 */
+  video_sha256?: string;
   ok: boolean;
   media: Media;
   expected_frames: number;
@@ -143,6 +145,7 @@ export function reportToJSON(r: Report): unknown {
   return {
     schema_version: r.schema_version,
     path: r.path,
+    video_sha256: r.video_sha256,
     ok: r.ok,
     media: mediaToJSON(r.media),
     expected_frames: r.expected_frames || undefined,

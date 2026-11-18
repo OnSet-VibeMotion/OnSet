@@ -17,7 +17,7 @@ import { marshalIndent } from '../gojson';
 import * as plugin from '../plugin';
 import * as studioview from '../studioview';
 import { writeError, writeJSON } from './http';
-import { latestReviewReport } from './reviewreport';
+import { candidateFilm, latestReviewReport, projectVideoDigest, type ReviewReport } from './reviewreport';
 import { discoverScenes, type SceneSummary } from './scenes';
 import { readStoryboard } from './storyboard';
 import { localRFC3339 } from './script';
@@ -283,43 +283,13 @@ function gateChanged(root: string, record: GateRecord): boolean {
   return Object.entries(record.files).some(([rel, state]) => gateFileChanged(root, rel, state));
 }
 
-/** 候选成片动辄上百 MB，路线每次刷新都要看。缓存须区分原地改写和原子替换。 */
-const digestCache = new Map<string, { info: fs.BigIntStats; sha: string }>();
-
-function sameFileState(a: fs.BigIntStats, b: fs.BigIntStats): boolean {
-  return a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
-}
-
-function fileDigest(file: string): string {
-  try {
-    const info = fs.statSync(file, { bigint: true });
-    const hit = digestCache.get(file);
-    if (hit && sameFileState(hit.info, info)) return hit.sha;
-    const hash = crypto.createHash('sha256');
-    const fd = fs.openSync(file, 'r');
-    try {
-      const buf = Buffer.allocUnsafe(1 << 20);
-      for (let n; (n = fs.readSync(fd, buf, 0, buf.length, null)) > 0; ) hash.update(buf.subarray(0, n));
-      if (!sameFileState(info, fs.fstatSync(fd, { bigint: true })) ||
-          !sameFileState(info, fs.statSync(file, { bigint: true }))) return '';
-    } finally {
-      fs.closeSync(fd);
-    }
-    const sha = hash.digest('hex');
-    digestCache.set(file, { info, sha });
-    return sha;
-  } catch {
-    return '';
-  }
-}
-
 /** approval.json 记的候选摘要与现在的 candidate.mp4 相同。 */
 function candidateIsApproved(root: string, approvalFile: string): boolean {
   try {
     const raw = JSON.parse(fs.readFileSync(approvalFile, 'utf8')) as Record<string, unknown>;
     const candidate = raw.candidate as Record<string, unknown> | undefined;
     const want = typeof candidate?.sha256 === 'string' ? candidate.sha256.replace(/^sha256:/, '').toLowerCase() : '';
-    return want !== '' && fileDigest(path.join(root, 'production', 'audio', 'candidate.mp4')) === want;
+    return want !== '' && projectVideoDigest(root, candidateFilm) === want;
   } catch {
     return false;
   }
@@ -332,6 +302,7 @@ interface Ctx {
   root: string;
   scenes: SceneSummary[];
   gates: Record<string, GateRecord>;
+  filmReview?: ReviewReport | null;
 }
 
 /**
@@ -374,6 +345,14 @@ function voiceAhead(c: Ctx, out: number): boolean {
   if (voice <= out) return false;
   if (c.scenes.length === 0) return true;
   return voice > Math.min(...c.scenes.map((sc) => mtime(path.join(sc.directory, 'scene.json'))));
+}
+
+function filmReviewForProgress(c: Ctx): ReviewReport | null {
+  if (c.filmReview === undefined) {
+    const candidate = f(c, candidateFilm) ? candidateFilm : undefined;
+    c.filmReview = latestReviewReport(c.root, candidate, { exact: true });
+  }
+  return c.filmReview;
 }
 
 /** 宿主自带的站的判断，键是「站:站点」。内置插件的判断随它登记（pluginJudges，例如卡点的 beat-plan:plan）。 */
@@ -457,20 +436,21 @@ const judges: Record<string, Judge> = {
     output: (c) => f(c, 'production/audio/candidate.mp4'),
     stale: (c, out) => f(c, 'production/silent-master.mp4') > out,
   },
-  // 报告不一定在 production/review/（编排常按修订写到 review-v3/ 这类目录），取最新的整片复查报告。
   'review:review': {
-    output: (c) => latestReviewReport(c.root)?.mtime ?? 0,
-    stale: (c, out) => f(c, 'production/audio/candidate.mp4') > out,
+    output: (c) => filmReviewForProgress(c)?.mtime ?? 0,
+    stale: (c, out) => {
+      if (!f(c, candidateFilm)) return false;
+      const report = filmReviewForProgress(c);
+      const sha = report?.data?.video_sha256;
+      return typeof sha === 'string' && sha !== ''
+        ? projectVideoDigest(c.root, candidateFilm) !== sha
+        : f(c, candidateFilm) > out;
+    },
     detail: (c) => {
-      try {
-        const latest = latestReviewReport(c.root);
-        if (!latest) return undefined;
-        const report = JSON.parse(fs.readFileSync(latest.file, 'utf8')) as Record<string, unknown>;
-        const problems = Array.isArray(report.problems) ? report.problems.length : 0;
-        return problems === 0 ? '机器检查没有问题' : `${problems} 个问题`;
-      } catch {
-        return undefined;
-      }
+      const data = filmReviewForProgress(c)?.data;
+      if (!data) return undefined;
+      const problems = Array.isArray(data.problems) ? data.problems.length : 0;
+      return problems === 0 ? '机器检查没有问题' : `${problems} 个问题`;
     },
   },
   'review:gate-final': {
@@ -700,7 +680,7 @@ export function computeStations(root: string, scenes: SceneSummary[]): { mode: f
           if (note) station.stale_note = note;
         }
         station.at = localRFC3339(new Date(out));
-      } else if (d.id === 'render' && d.stale?.(ctx, 0)) {
+      } else if ((d.id === 'render' || d.id === 'review') && d.stale?.(ctx, 0)) {
         station.status = 'stale';
       } else if (laterDone && !d.optional && !d.inProgress?.(ctx)) station.status = 'skipped';
     }

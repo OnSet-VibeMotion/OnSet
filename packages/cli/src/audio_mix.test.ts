@@ -33,8 +33,14 @@ it.skipIf(!hasFfmpeg)('publishes and reuses a verified candidate, with explicit 
   const reviewed = await reviewCandidate();
   expect(reviewed?.data).toMatchObject({ ok: true, counted_frames: 60 });
   expect(JSON.parse(fs.readFileSync(path.join(root, 'production/final-check.json'), 'utf8')).ok).toBe(true);
+  expect(reviewed?.data).toMatchObject({ video_sha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
   fs.writeFileSync(frameFile, frame.replace('fps: 30', 'fps: 24'));
-  expect(() => reviewCandidate()).toThrow(/帧率不符/);
+  await expect(reviewCandidate()).rejects.toThrow(/帧率不符/);
+  fs.writeFileSync(frameFile, frame.replace('width_px: 320, height_px: 240', 'width_px: 240, height_px: 320'));
+  await expect(reviewCandidate()).rejects.toThrow(/分辨率不符/);
+  const failed = JSON.parse(fs.readFileSync(path.join(root, 'production/review/review.json'), 'utf8'));
+  expect(failed).toMatchObject({ ok: false, problems: [expect.stringContaining('分辨率不符')] });
+  expect(failed.video_sha256).toBeUndefined();
   fs.writeFileSync(frameFile, frame);
   fs.writeFileSync(sheet, JSON.stringify({ schema: 1, cues: [{ kind: 'music', asset: 'production/audio/voice.wav', duration_frames: 24 }] }));
   await expect(call()).rejects.toThrow(/replace=true/);

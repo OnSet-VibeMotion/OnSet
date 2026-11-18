@@ -132,7 +132,7 @@ describe('production map', () => {
     write(root, 'production/visual-qc/scene-001.json', '{}');
     write(root, 'production/silent-master.mp4', 'x');
     write(root, 'production/audio/candidate.mp4', 'x');
-    write(root, 'production/review/review.json', '{"problems":[]}');
+    write(root, 'production/review/review.json', '{"path":"production/audio/candidate.mp4","problems":[]}');
     expect(stations(root).current).toBe('gate-final');
     write(root, 'production/approval.json', '{"approved_at":"2026-11-10T03:18:43Z"}');
     write(root, 'publish.md', '---\n{"publish_status": "pending_manual_checks"}\n---\n');
@@ -237,6 +237,10 @@ describe('production map', () => {
     write(root, 'production/review-silent/review.json', '{"path":"production/silent-master.mp4","problems":[]}', 100);
     expect(status(root).review).toBe('stale');
     write(root, 'production/review-v3/review.json', '{"path":"production/final.mp4","problems":[{"x":1}]}', 200);
+    expect(status(root).review).toBe('stale');
+    fs.unlinkSync(path.join(root, 'production/review/review.json'));
+    expect(status(root).review).toBe('stale');
+    write(root, 'production/review-v3/review.json', '{"path":"production/audio/candidate.mp4","problems":[{"x":1}]}', 200);
     expect(status(root).review).toBe('done');
     expect(stations(root).stations.find((s) => s.id === 'review')?.detail).toBe('1 个问题');
   });

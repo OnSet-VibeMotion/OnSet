@@ -62,7 +62,7 @@ import { settingsAPI, settingsGlobalAPI, settingsProjectAPI } from './settings';
 import { SkillsState, installSkills, skillsAPI, skillsInstallAPI } from './skills';
 import { TaskState, loadPersistedTasks, runStudioOp, runWriteTask, taskFeatureAPI, tasksAPI, writeTaskError } from './tasks';
 import { uploadsAPI } from './uploads';
-import { filmVideos, latestReviewReport, reviewVideoPath, silentMaster } from './reviewreport';
+import { filmVideos, latestReviewReport, readReviewReport, reviewApprovalDigest, silentMaster } from './reviewreport';
 import { contained } from '../scene';
 import * as flow from '../flow';
 import * as plugin from '../plugin';
@@ -730,24 +730,17 @@ export class Server {
     if (video && !filmVideos.has(video) && video !== silentMaster) {
       return writeError(400, 'invalid_video', '请选择项目的成片、配音合成版或无声母版');
     }
-    const file = latestReviewReport(p.path, video)?.file ?? path.join(p.path, 'production', 'review', 'review.json');
-    let body: string;
-    try {
-      body = fs.readFileSync(file, 'utf8');
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return writeJSON(200, goMap({ available: false, issues: [] }));
-      return writeError(500, 'review_read_failed', goPathError('open', file, err));
-    }
-    let report: unknown;
-    let target: string | null = null;
-    try {
-      const value = JSON.parse(body);
-      report = goValue(value);
-      target = reviewVideoPath(p.path, value?.path);
-    } catch {
-      report = goMap({ raw: body });
-    }
-    return writeJSON(200, goMap({ available: true, path: target, report, report_dir: path.relative(p.path, path.dirname(file)).split(path.sep).join('/') }));
+    const report = latestReviewReport(p.path, video) ?? readReviewReport(p.path, path.join(p.path, 'production', 'review', 'review.json'));
+    if (!report) return writeJSON(200, goMap({ available: false, issues: [] }));
+    const target = report.video;
+    const knownTarget = target && (filmVideos.has(target) || target === silentMaster) ? target : null;
+    return writeJSON(200, goMap({
+      available: true,
+      path: knownTarget,
+      can_approve: (!video || video === knownTarget) && reviewApprovalDigest(p.path, report) !== '',
+      report: report.data ? goValue(report.data) : goMap({ raw: report.body }),
+      report_dir: path.relative(p.path, path.dirname(report.file)).split(path.sep).join('/'),
+    }));
   }
 
   private async reviewRunAPI(request: Request): Promise<Response> {
@@ -777,7 +770,18 @@ export class Server {
         const video = selected ? path.join(p.path, selected) : findProjectVideo(p.path);
         if (video === '') throw new Error('找不到可审查的成片，请先生成 candidate.mp4 或 final.mp4');
         contained(p.path, path.relative(p.path, video), 'video');
-        await runStudioOp(this, signal, p, 'review', { video, out: dir, silent });
+        const timing = path.join('production', 'timing-report.json');
+        let frames: unknown;
+        if (fileExists(path.join(p.path, timing))) {
+          frames = JSON.parse(fs.readFileSync(contained(p.path, timing, 'timing-report.json'), 'utf8'))?.total_frames;
+        }
+        const scenes = contained(p.path, 'scenes', 'scenes');
+        await runStudioOp(this, signal, p, 'review', {
+          video, out: dir, silent,
+          validate_report: path.join('production', folder, 'validate.json').split(path.sep).join('/'),
+          ...(typeof frames === 'number' && Number.isSafeInteger(frames) && frames > 0 ? { expect_frames: frames } : {}),
+          ...(dirExists(scenes) ? { scenes } : {}),
+        });
       });
       return writeJSON(202, goMap({ task_id: t.task_id }));
     } catch (err) {

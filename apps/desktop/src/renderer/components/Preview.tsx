@@ -67,7 +67,7 @@ export function visibleTabs(hidden: readonly string[], pages?: readonly { id: st
 }
 
 /** 按钮触发的写任务：返回 task_id 的接口。App 负责发请求、提示与刷新任务列表。 */
-export type RunAction = (path: string, payload?: Record<string, unknown>) => void;
+export type RunAction = (path: string, payload?: Record<string, unknown>, onAccepted?: () => void) => void;
 
 interface Props {
   tab: Tab;
@@ -797,7 +797,7 @@ function FilmVersions({ video, variants, onVideo }: Pick<FilmReviewProps, 'video
     <div className="final-versions" role="group" aria-label="版本">
       {variants.map((path) => (
         <button key={path} className={path === video ? 'on' : ''} aria-pressed={path === video} title={path} onClick={() => onVideo(path)}>
-          {finalLabels[path]}
+          {variants.some((other) => other !== path && finalLabels[other] === finalLabels[path]) ? `${finalLabels[path]} · ${path}` : finalLabels[path]}
         </button>
       ))}
     </div>
@@ -805,18 +805,18 @@ function FilmVersions({ video, variants, onVideo }: Pick<FilmReviewProps, 'video
 }
 
 function useFilmReview(video: string | undefined, version: number, project?: string): ReviewResponse | undefined {
-  const [result, setResult] = useState<{ video: string; project?: string; review: ReviewResponse }>();
+  const [result, setResult] = useState<{ video: string; version: number; project?: string; review: ReviewResponse }>();
   useEffect(() => {
     if (!video) return;
     const controller = new AbortController();
     const update = (review: ReviewResponse) => {
-      if (!controller.signal.aborted) setResult({ video, project, review });
+      if (!controller.signal.aborted) setResult({ video, version, project, review });
     };
     api<ReviewResponse>('/api/review?video=' + encodeURIComponent(video), { signal: controller.signal })
       .then(update, () => update({ available: false }));
     return () => controller.abort();
   }, [video, version, project]);
-  return result && result.video === video && result.project === project ? result.review : undefined;
+  return result && result.video === video && result.project === project && result.version === version ? result.review : undefined;
 }
 
 const reviewMismatch = '该报告不是针对当前文件。';
@@ -879,17 +879,19 @@ function FinalTab({ video: current, variants, onVideo, review, tree, version, ru
               )}
             </dl>
           ) : (
-            <p className="scene-meta">{review?.available ? reviewMismatch : '还没有复查。'}</p>
+            <p className="scene-meta">{review?.available ? reviewMismatch : current && !review ? '正在读取复查报告…' : '还没有复查。'}</p>
+          )}
+          {current !== silentMaster && report?.ok && !review?.can_approve && (
+            <p className="scene-meta">当前视频需要重新通过交付复查，才能确认发布。</p>
           )}
           <div className="scene-actions">
-            {current && current !== silentMaster && problems.length === 0 && report?.ok === true && (
+            {current && review?.can_approve && report?.video_sha256 && (
               <button
                 className="primary"
                 id="final-approve"
                 title="确认后会把这次制作里记下的问题整理成经验（调用一次 AI），然后去发布页"
                 onClick={() => {
-                  run('/api/memory/actions/consolidate', { final: true });
-                  onTab?.('publish');
+                  run('/api/memory/actions/consolidate', { final: true, video: current, video_sha256: report.video_sha256 }, () => onTab?.('publish'));
                 }}
               >
                 确认可用，去发布
@@ -1203,9 +1205,11 @@ function StyleTab({ version, run, scenes, onScene }: { version: number; run: Run
 interface ReviewResponse {
   available: boolean;
   path?: string | null;
+  can_approve?: boolean;
   report_dir?: string;
   report?: {
     ok?: boolean;
+    video_sha256?: string;
     problems?: string[];
     hints?: unknown[];
     expected_frames?: number;
@@ -1249,7 +1253,7 @@ function ReviewTab({ video, variants, onVideo, review, tree, version, run }: Fil
         </button>
       </div>
       {!report ? (
-        <Empty>{review?.available ? reviewMismatch : '还没有复查报告。'}</Empty>
+        <Empty>{review?.available ? reviewMismatch : video && !review ? '正在读取复查报告…' : '还没有复查报告。'}</Empty>
       ) : (
         <>
           {list('问题', reviewProblems(report))}

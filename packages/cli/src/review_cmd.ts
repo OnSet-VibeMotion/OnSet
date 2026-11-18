@@ -9,6 +9,7 @@ import * as mediaprobe from '@onset/engine/mediaprobe';
 import * as review from '@onset/engine/review';
 import * as scene from '@onset/engine/scene';
 import * as schedule from '@onset/engine/schedule';
+import { sha256File } from '@onset/engine/toolinstall';
 import { currentEnvironment } from './cli';
 import { requireReviewTarget } from './deliverables';
 import { type Finding, recordCheckFindings } from './memory_cmd';
@@ -70,7 +71,7 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
     per_sheet: { type: 'integer', description: '每张联系表的最大格数，超出分页', default: review.DefaultTilesPerSheet },
     thumb_width: { type: 'integer', description: '联系表缩略图宽度（像素）', default: review.DefaultThumbWidth },
   },
-  run: (p, { out }) => {
+  run: async (p, { out, signal }) => {
     const video = str(p.video);
     const rootDir = str(p.project_root) !== '' ? str(p.project_root) : '.';
     const outDir = str(p.out);
@@ -105,21 +106,32 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
     }
     const loudness = reviewLoudnessTarget(rootDir, silent);
     const toolchain = mediaprobe.newToolchain(currentEnvironment());
+    const target = str(p.report_json) || path.join(outDir, 'review.json');
     let verifiedMedia: mediaprobe.Media | undefined;
+    let digest: string | undefined;
     if (deliveryCanvas) {
       const validationFile = scene.contained(rootDir, validationPath, 'validate_report');
-      if (validationFile === fs.realpathSync(video) || validationFile === path.resolve(str(p.report_json) || path.join(outDir, 'review.json'))) {
+      if (validationFile === fs.realpathSync(video) || validationFile === path.resolve(target)) {
         throw new Error('规格报告、复查报告和成片需要不同路径');
       }
       const frames = num(p.expect_frames) || segments?.reduce((sum, segment) => sum + segment.frames, 0) || 0;
       if (frames <= 0) throw new Error('交付校验需要冻结总帧数或镜头目录');
+      digest = await sha256File(video);
+      signal.throwIfAborted();
       const validation = toolchain.verify(video, {
         spec: { widthPx: deliveryCanvas.widthPx, heightPx: deliveryCanvas.heightPx, fps: deliveryCanvas.fps, frames, codec: 'h264', pixelFormat: 'yuv420p',
           audio: silent ? mediaprobe.AudioAbsent : mediaprobe.AudioPresent, sampleRate: silent ? 0 : 48000, channels: silent ? 0 : 2 },
         exactFrames: true, decode: true, checkFrameZero: true,
       });
       mediaprobe.writeReportJSON(validation, validationFile);
-      if (!validation.ok) throw new Error(`成片规格校验未通过：${validationPath}\n  - ${validation.problems.join('\n  - ')}`);
+      if (!validation.ok) {
+        review.writeReportJSON({
+          schema_version: review.ReportSchemaVersion, path: video, ok: false, media: validation.media,
+          expected_frames: frames, counted_frames: validation.media.video?.nb_frames ?? 0,
+          loudness: null, problems: validation.problems, hints: validation.hints ?? [], cuts: [], sheets: [], seams: [],
+        }, target);
+        throw new Error(`成片规格校验未通过：${validationPath}\n  - ${validation.problems.join('\n  - ')}`);
+      }
       out.write(`规格与完整解码校验：${validationPath}\n`);
       verifiedMedia = validation.media;
     }
@@ -136,7 +148,15 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
       tilesPerSheet: num(p.per_sheet),
       thumbWidth: num(p.thumb_width),
     });
-    const target = str(p.report_json) !== '' ? str(p.report_json) : path.join(outDir, 'review.json');
+    if (digest !== undefined) {
+      if (await sha256File(video) !== digest) {
+        report.ok = false;
+        report.problems.push('影片在复查期间发生变化，请重新复查');
+      } else {
+        report.video_sha256 = digest;
+      }
+    }
+    signal.throwIfAborted();
     review.writeReportJSON(report, target);
     for (const sheet of report.sheets ?? []) out.write(`联系表：${sheet.image}（${sheet.tiles?.length ?? 0} 格）\n`);
     if ((report.seams?.length ?? 0) > 0) out.write(`交界条带：${report.seams.length} 张（${report.seams[0].image} 起）\n`);

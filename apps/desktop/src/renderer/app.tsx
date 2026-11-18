@@ -470,9 +470,10 @@ export function App() {
   const rendererModel = choice.renderer_model ?? '';
   const rendererOptions = choice.renderer_options ?? '';
   const run = useCallback(
-    async (path: string, payload: Record<string, unknown> = {}) => {
+    async (path: string, payload: Record<string, unknown> = {}, onAccepted?: () => void) => {
       try {
         await post(path, /\/render(\/all)?$/.test(path) ? { ...payload, renderer, renderer_model: rendererModel, renderer_options: rendererOptions } : payload);
+        onAccepted?.();
         notify('已开始，进度见右上角任务。');
         await loadTasks();
         await loadSessions();

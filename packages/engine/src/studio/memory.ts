@@ -22,6 +22,7 @@ import type { Turn } from './turns';
 import { emitStudioEvent } from './events';
 import { sceneActivity } from './activity';
 import { resolveExamAudio, resolveExamVideo } from './exammedia';
+import { filmVideos, latestReviewReport, reviewApprovalDigest } from './reviewreport';
 
 function memoryStore(s: Server): { p: Project; cfg: config.Config; store: memory.Store } | Response {
   const p = s.projectOr404();
@@ -330,7 +331,7 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
   const p = s.projectOr404();
   if (p instanceof Response) return p;
   const action = rest.replace(/^\/+|\/+$/g, '');
-  let req: { name: string; trial: string; scenes: string[]; holdoutOnly: boolean; to: number; renderers: string[]; scene_id: string; verdict: string; note: string; seconds: number | null; region: number[]; global: boolean; final: boolean };
+  let req: { name: string; trial: string; scenes: string[]; holdoutOnly: boolean; to: number; renderers: string[]; scene_id: string; verdict: string; note: string; seconds: number | null; region: number[]; global: boolean; final: boolean; video: string; videoSha256: string };
   try {
     const body = await decodeJSON(request);
     req = {
@@ -347,6 +348,8 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
       region: fieldNumbers(body, 'region'),
       global: fieldBool(body, 'global'),
       final: fieldBool(body, 'final'),
+      video: fieldString(body, 'video'),
+      videoSha256: fieldString(body, 'video_sha256'),
     };
   } catch (err) {
     if (err instanceof DecodeError) return writeError(400, 'invalid_json', '请求不是合法 JSON');
@@ -357,6 +360,12 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
   let label = '';
   switch (action) {
     case 'consolidate':
+      if (req.final) {
+        const report = filmVideos.has(req.video) ? latestReviewReport(p.path, req.video, { exact: true }) : null;
+        if (!req.videoSha256 || reviewApprovalDigest(p.path, report) !== req.videoSha256) {
+          return writeError(409, 'film_review_required', '当前视频需要重新通过交付复查，才能确认发布。');
+        }
+      }
       // final：用户在成片页确认这一版可用。这是整理的时机：一部片子做完，这次制作里的问题都齐了。
       // 已有整理在跑时不重复起（对话里确认时编排工具也会整理一次，第二次只会发现没有新问题）。
       for (const t of s.tasks.tasks.values()) {

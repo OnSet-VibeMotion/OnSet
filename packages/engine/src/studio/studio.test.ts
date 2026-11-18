@@ -6,6 +6,7 @@
 // - 「/api/scenes/scene-001/frames/../evil.jpg」那一条：Go 版绕过 ServeMux 直接调 sceneFeatureAPI，
 //   这里同样直接调 sceneFeatureAPI（handle 会先把不规整的路径 301 掉）。
 import './testsupport';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -41,6 +42,7 @@ describe('studio', () => {
     writeStudioFile(path.join(root, final), 'unselected final');
     writeStudioFile(path.join(root, candidate), 'unselected candidate');
     writeStudioFile(path.join(root, silent), 'selected silent master');
+    writeStudioFile(path.join(root, 'production/timing-report.json'), '{"total_frames":30}');
     const worker = vi.spyOn(tasks, 'runStudioOp').mockResolvedValue({ text: '' });
     try {
       const started = await studioRequest(s, 'POST', '/api/review/run', JSON.stringify({ video: silent }));
@@ -48,10 +50,55 @@ describe('studio', () => {
       expect((await waitStudioTask(s, started.body.task_id)).status).toBe('succeeded');
       expect(worker).toHaveBeenCalledExactlyOnceWith(s, expect.any(AbortSignal), expect.objectContaining({ path: root }), 'review', {
         video: path.join(root, silent), out: path.join(root, 'production/review-silent'), silent: true,
+        expect_frames: 30, validate_report: 'production/review-silent/validate.json',
       });
     } finally {
       worker.mockRestore();
     }
+  });
+
+  it('displays legacy reviews but approves only the exact film with a passing delivery review', async () => {
+    const root = fs.realpathSync(tempDir());
+    const video = 'final.mp4';
+    const file = path.join(root, video);
+    const report = path.join(root, 'production/review/review.json');
+    const sha = crypto.createHash('sha256').update('film').digest('hex');
+    const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
+    const read = () => studioRequest(s, 'GET', '/api/review?video=final.mp4');
+    const approve = () => studioRequest(s, 'POST', '/api/memory/actions/consolidate', JSON.stringify({ final: true, video, video_sha256: sha }));
+    writeStudioFile(file, 'film');
+    writeStudioFile(report, JSON.stringify({ path: video, ok: true, problems: [] }));
+    expect((await read()).body).toMatchObject({ available: true, can_approve: false });
+    expect((await approve()).status).toBe(409);
+    writeStudioFile(report, JSON.stringify({ path: video, ok: true, problems: [], video_sha256: sha }));
+    expect((await read()).body.can_approve).toBe(true);
+    writeStudioFile(file + '.next', 'edit');
+    fs.renameSync(file + '.next', file);
+    expect((await read()).body.can_approve).toBe(false);
+    expect((await approve()).status).toBe(409);
+    const worker = vi.spyOn(tasks, 'runStudioOp').mockResolvedValue({ text: '' });
+    try {
+      writeStudioFile(file + '.next', 'film');
+      fs.renameSync(file + '.next', file);
+      expect((await read()).body.can_approve).toBe(true);
+      const started = await approve();
+      expect(started.status).toBe(202);
+      expect((await waitStudioTask(s, started.body.task_id)).status).toBe('succeeded');
+    } finally {
+      worker.mockRestore();
+    }
+  });
+
+  it.skipIf(process.platform === 'win32')('ignores a review report linked outside the project, including the default report', async () => {
+    const root = tempDir();
+    const external = path.join(tempDir(), 'review.json');
+    writeStudioFile(external, '{"path":"final.mp4","problems":["outside the project"]}');
+    for (const dir of ['production/review', 'production/review-external']) {
+      fs.mkdirSync(path.join(root, dir), { recursive: true });
+      fs.symlinkSync(external, path.join(root, dir, 'review.json'));
+    }
+    const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
+    expect((await studioRequest(s, 'GET', '/api/review?video=final.mp4')).body.available).toBe(false);
   });
 
   it('project and state API', async () => {

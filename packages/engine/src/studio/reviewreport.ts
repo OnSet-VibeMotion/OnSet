@@ -3,59 +3,106 @@
  * （2026-11 片场宣传视频：复查明明做完了，路线还按 11 月 14 日的旧报告判「上游改过，要重做」，复查页也显示旧报告）。
  * 这里找 production/ 下一层目录里最新的、复查的是成片候选或成片的 review.json；复查静音母版的（production/review-silent/）不算。
  */
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { contained } from '../scene';
+import { compareBytes } from '../gojson';
 
 export interface ReviewReport {
   file: string;
   mtime: number;
+  body: string;
+  data: Record<string, unknown> | null;
+  video: string | null;
 }
 
-/** 复查的是这几个文件才算整片复查。 */
-export const filmVideos = new Set(['production/audio/candidate.mp4', 'final.mp4', 'production/final.mp4']);
+export const candidateFilm = 'production/audio/candidate.mp4';
 export const silentMaster = 'production/silent-master.mp4';
+/** 复查的是这几个文件才算整片复查。 */
+export const filmVideos = new Set([candidateFilm, 'final.mp4', 'production/final.mp4']);
 
-export function reviewVideoPath(root: string, value: unknown): string | null {
+function reviewVideoPath(root: string, value: unknown): string | null {
   if (typeof value !== 'string' || value === '') return null;
-  const rel = path.relative(root, path.resolve(root, value)).split(path.sep).join('/');
-  return filmVideos.has(rel) || rel === silentMaster ? rel : null;
+  return path.relative(root, path.resolve(root, value)).split(path.sep).join('/');
 }
 
-function reviewedVideo(root: string, file: string): string | null {
+export function readReviewReport(root: string, file: string): ReviewReport | null {
   try {
-    const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
-    return typeof raw?.path === 'string' && raw.path !== '' ? reviewVideoPath(root, raw.path) ?? '' : null;
+    const resolved = contained(root, path.relative(root, file), 'review.json');
+    const info = fs.statSync(resolved);
+    if (!info.isFile()) return null;
+    const body = fs.readFileSync(resolved, 'utf8');
+    let data: Record<string, unknown> | null = null;
+    try {
+      const value: unknown = JSON.parse(body);
+      if (value && typeof value === 'object' && !Array.isArray(value)) data = value as Record<string, unknown>;
+    } catch {
+      // 缺省目录下的旧报告仍可查看原文。
+    }
+    return { file, mtime: info.mtimeMs, body, data, video: reviewVideoPath(root, data?.path) };
   } catch {
     return null;
   }
 }
 
-export function latestReviewReport(root: string, video?: string): ReviewReport | null {
+export function latestReviewReport(root: string, video?: string, { exact = false } = {}): ReviewReport | null {
   const production = path.join(root, 'production');
   let entries: fs.Dirent[];
   try {
-    entries = fs.readdirSync(production, { withFileTypes: true });
+    entries = fs.readdirSync(contained(root, 'production', 'production'), { withFileTypes: true });
   } catch {
     return null;
   }
   let best: ReviewReport | null = null;
   let matching: ReviewReport | null = null;
-  for (const entry of entries) {
+  for (const entry of entries.sort((a, b) => compareBytes(a.name, b.name))) {
     if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'studio') continue;
-    const file = path.join(production, entry.name, 'review.json');
-    let mtime: number;
-    try {
-      const info = fs.statSync(file);
-      if (!info.isFile()) continue;
-      mtime = info.mtimeMs;
-    } catch {
-      continue;
-    }
-    const target = reviewedVideo(root, file);
-    if (target === video && (!matching || mtime > matching.mtime)) matching = { file, mtime };
+    const found = readReviewReport(root, path.join(production, entry.name, 'review.json'));
+    if (!found) continue;
+    if (found.video === video && (!matching || found.mtime > matching.mtime)) matching = found;
     // 老报告没写 path：只认缺省目录里的那份。
-    const counts = target === null ? entry.name === 'review' : filmVideos.has(target);
-    if (counts && (!best || mtime > best.mtime)) best = { file, mtime };
+    const counts = found.video === null ? entry.name === 'review' : filmVideos.has(found.video);
+    if (counts && (!best || found.mtime > best.mtime)) best = found;
   }
-  return matching ?? best;
+  return matching ?? (video && exact ? null : best);
+}
+
+export function reviewApprovalDigest(root: string, report: ReviewReport | null): string {
+  const sha = report?.data?.video_sha256;
+  if (!report?.video || !filmVideos.has(report.video) || report.data?.ok !== true ||
+      typeof sha !== 'string' || !/^[0-9a-f]{64}$/.test(sha)) return '';
+  return projectVideoDigest(root, report.video) === sha ? sha : '';
+}
+
+/** 候选成片动辄上百 MB，路线每次刷新都要看。缓存须区分原地改写和原子替换。 */
+const digestCache = new Map<string, { info: fs.BigIntStats; sha: string }>();
+
+function sameFileState(a: fs.BigIntStats, b: fs.BigIntStats): boolean {
+  return a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
+}
+
+export function projectVideoDigest(root: string, video: string): string {
+  try {
+    const file = contained(root, video, 'video');
+    const info = fs.statSync(file, { bigint: true });
+    if (!info.isFile()) return '';
+    const hit = digestCache.get(file);
+    if (hit && sameFileState(hit.info, info)) return hit.sha;
+    const hash = crypto.createHash('sha256');
+    const fd = fs.openSync(file, 'r');
+    try {
+      const buf = Buffer.allocUnsafe(1 << 20);
+      for (let n; (n = fs.readSync(fd, buf, 0, buf.length, null)) > 0; ) hash.update(buf.subarray(0, n));
+      if (!sameFileState(info, fs.fstatSync(fd, { bigint: true })) ||
+          !sameFileState(info, fs.statSync(file, { bigint: true }))) return '';
+    } finally {
+      fs.closeSync(fd);
+    }
+    const sha = hash.digest('hex');
+    digestCache.set(file, { info, sha });
+    return sha;
+  } catch {
+    return '';
+  }
 }
