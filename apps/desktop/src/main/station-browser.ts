@@ -98,6 +98,11 @@ export class StationBrowsers {
     storage.setPermissionCheckHandler(() => false);
     storage.on('will-download', event => event.preventDefault());
     const view = new WebContentsView({ webPreferences: { session: storage, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: false } });
+    const defaultUA = view.webContents.getUserAgent();
+    const chromiumUA = defaultUA
+      .replace(` ${app.getName()}/${app.getVersion()}`, '')
+      .replace(` Electron/${process.versions.electron}`, '');
+    if (chromiumUA !== defaultUA) view.webContents.setUserAgent(chromiumUA);
     const bar = new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, partition: `station-toolbar-${randomBytes(12).toString('hex')}` } });
     // 关闭后 View.webContents 可能变成 undefined；必须保存 WebContents 的稳定引用。
     const page: EmbeddedPage = { key, view, bar, contents: view.webContents, controls: bar.webContents, closed: false, hidden: false, window, origins: request.origins, owner, title: `${request.name} · ${label}`, hint };

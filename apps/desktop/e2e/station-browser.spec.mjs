@@ -58,7 +58,10 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   // Mock only HTTPS contents, in the same isolated session used by the production bridge.
   await electronApp.evaluate(({ session }, { directories, html }) => {
     for (const dir of directories) {
-      session.fromPath(dir).protocol.handle('https', () => new Response(html, { headers: { 'content-type': 'text/html' } }));
+      session.fromPath(dir).protocol.handle('https', request => {
+        const requestUA = JSON.stringify(request.headers.get('user-agent')).replaceAll('<', '\\u003c');
+        return new Response(`<script>window.requestUA=${requestUA}</script>${html}`, { headers: { 'content-type': 'text/html' } });
+      });
     }
   }, { directories: ['account-a', 'account-b'].map(account => sessionDir(account)), html });
   const run = async account => {
@@ -79,15 +82,20 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   expect(first.fromPage).toBe(403);
   expect(first.rejected).toEqual([true, true, true, true, true, true, true, true, true]);
   expect(first.input).toEqual(['#话', true]);
-  const inspect = () => electronApp.evaluate(({ webContents, BrowserWindow }) => {
+  const inspect = () => electronApp.evaluate(async ({ webContents, BrowserWindow }) => {
     const web = webContents.getAllWebContents().find(w => w.getURL().startsWith('https://creator.example.test'));
-    return { windows: BrowserWindow.getAllWindows().length, native: !!web, preferences: web?.getLastWebPreferences() };
+    const agents = await web?.executeJavaScript('[navigator.userAgent, window.requestUA]');
+    return { windows: BrowserWindow.getAllWindows().length, native: !!web, preferences: web?.getLastWebPreferences(), agents, chrome: process.versions.chrome };
   });
   const info = await inspect();
   expect(info.native).toBe(true);
   expect(info.windows).toBe(2); // main + existing pet; no browser window was launched.
   expect(info.preferences.nodeIntegration).toBe(false);
   expect(info.preferences.sandbox).toBe(true);
+  const [pageUA, requestUA] = info.agents;
+  expect(pageUA).toContain(` Chrome/${info.chrome} Safari/`);
+  expect(pageUA).not.toMatch(/片场\/|Electron\//);
+  expect(requestUA).toBe(pageUA);
   await electronApp.evaluate(async ({ webContents }) => {
     const web = webContents.getAllWebContents().find(w => w.getURL().startsWith('https://creator.example.test'));
     if (await web.executeJavaScript('document.querySelector("input[type=file]").files[0].name') !== 'upload.mp4') throw Error('没有上传');
