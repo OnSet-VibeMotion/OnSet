@@ -12,7 +12,7 @@ export interface ReviewReport {
 }
 
 /** 复查的是这几个文件才算整片复查。 */
-const filmVideos = new Set(['production/audio/candidate.mp4', 'final.mp4']);
+export const filmVideos = new Set(['production/audio/candidate.mp4', 'final.mp4', 'production/final.mp4']);
 
 function reviewedVideo(root: string, file: string): string | null {
   try {

@@ -63,7 +63,7 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
     report_json: { type: 'string', description: '报告路径，缺省为 <out>/review.json' },
     validate_report: { type: 'string', description: '另做交付规格、完整解码和首帧校验，保存报告并共用精确帧数' },
     expect_frames: { type: 'integer', description: '交付校验用的冻结总帧数' },
-    fps: { type: 'integer', description: '帧率覆盖值；不传则读 frame.md 的 canvas.fps' },
+    fps: { type: 'integer', description: '普通复查的帧率覆盖值；交付校验使用 frame.md 的 canvas.fps' },
     silent: { type: 'boolean', description: '断言成片没有音轨，用于只拼接未混音的交付；不做音画比对' },
     sync_tolerance: { type: 'number', description: '音视频流时长允许的差值（秒）', default: review.DefaultSyncTolerance },
     every: { type: 'number', description: '没给 scenes 时联系表的取帧间隔（秒）', default: review.DefaultEvery },
@@ -77,7 +77,9 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
     const silent = bool(p.silent);
     if (outDir === '') throw new Error('必须用 out 指定复查产物目录');
     requireReviewTarget(rootDir, video, silent);
-    let rate = num(p.fps);
+    const validationPath = str(p.validate_report);
+    const deliveryCanvas = validationPath !== '' ? scene.canvasOf(rootDir, 'frame.md') : undefined;
+    let rate = deliveryCanvas?.fps ?? num(p.fps);
     if (rate <= 0) {
       let canvas: scene.Canvas;
       try {
@@ -103,18 +105,16 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
     }
     const loudness = reviewLoudnessTarget(rootDir, silent);
     const toolchain = mediaprobe.newToolchain(currentEnvironment());
-    const validationPath = str(p.validate_report);
     let verifiedMedia: mediaprobe.Media | undefined;
-    if (validationPath !== '') {
+    if (deliveryCanvas) {
       const validationFile = scene.contained(rootDir, validationPath, 'validate_report');
       if (validationFile === fs.realpathSync(video) || validationFile === path.resolve(str(p.report_json) || path.join(outDir, 'review.json'))) {
         throw new Error('规格报告、复查报告和成片需要不同路径');
       }
-      const canvas = scene.canvasOf(rootDir, 'frame.md');
       const frames = num(p.expect_frames) || segments?.reduce((sum, segment) => sum + segment.frames, 0) || 0;
       if (frames <= 0) throw new Error('交付校验需要冻结总帧数或镜头目录');
       const validation = toolchain.verify(video, {
-        spec: { widthPx: canvas.widthPx, heightPx: canvas.heightPx, fps: rate, frames, codec: 'h264', pixelFormat: 'yuv420p',
+        spec: { widthPx: deliveryCanvas.widthPx, heightPx: deliveryCanvas.heightPx, fps: deliveryCanvas.fps, frames, codec: 'h264', pixelFormat: 'yuv420p',
           audio: silent ? mediaprobe.AudioAbsent : mediaprobe.AudioPresent, sampleRate: silent ? 0 : 48000, channels: silent ? 0 : 2 },
         exactFrames: true, decode: true, checkFrameZero: true,
       });

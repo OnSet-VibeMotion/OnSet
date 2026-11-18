@@ -2,7 +2,7 @@
 
 > 从仓库根 `AGENTS.md` 拆出的开发约定。总则、命令与各份文件的索引见根 `AGENTS.md`；文中「见「某节」」指的节都能从那份索引找到。
 
-客户端里的编排工具与渲染器**只经 MCP 调用 onset**：`onset studio tools-mcp --profile orchestrator|renderer --workdir <目录>`（`packages/cli/src/toolsmcp.ts`，隐藏命令）。以前 onset 在它们的 PATH 里，缺信息时它们会 `which onset`、`strings "$(which onset)"` 反推格式（实测两次），每次都撞白名单、弹审批卡片打断用户。
+外部编排 CLI 与渲染 CLI **经 MCP 调用 onset**：`onset studio tools-mcp --profile orchestrator|renderer --workdir <目录>`（`packages/cli/src/toolsmcp.ts`，隐藏命令）。以前 onset 在它们的 PATH 里，缺信息时它们会 `which onset`、`strings "$(which onset)"` 反推格式（实测两次），每次都撞白名单、弹审批卡片打断用户。内置制作人的制作工具由 `packages/cli/src/agent/command.ts` 在进程内构建和执行。
 
 | 约定 | 原因 |
 |---|---|

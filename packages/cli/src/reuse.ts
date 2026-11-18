@@ -27,7 +27,9 @@ export function reuseDecision(item: scene.Scene, cfg: Config, env: Record<string
     }
     if (current !== null) {
       if (scene.inputsMatchRecord(item, current, record)) {
-        if (record.schema < scene.RenderRecordSchema) upgrade(item, renderer, resolved, record);
+        if (record.schema < scene.RenderRecordSchema && !upgrade(item, renderer, resolved, record, current)) {
+          return [schedule.Stale, '核对期间渲染输入或记录已变化，请重新检查已有产物'];
+        }
         const reason = current.fingerprint === record.fingerprint ? '输入指纹一致' : '影响镜头画面的输入未变';
         return [schedule.Skipped, `已有合格产物（${reason}）`];
       }
@@ -39,17 +41,22 @@ export function reuseDecision(item: scene.Scene, cfg: Config, env: Record<string
 }
 
 /** 旧记录核对成功才升级，并在同一镜头的写租约内确认产物仍是刚验证的那份。 */
-function upgrade(item: scene.Scene, renderer: string, resolved: Record<string, string>, old: scene.RenderRecord): void {
+function upgrade(item: scene.Scene, renderer: string, resolved: Record<string, string>, old: scene.RenderRecord, verified: scene.Inputs): boolean {
   try {
     const release = scene.acquireSceneLease(item.directory, item.id);
     try {
       const current = scene.loadRecord(item);
-      if (current?.schema !== old.schema || current.fingerprint !== old.fingerprint || current.output_sha256 !== old.output_sha256) return;
-      scene.upgradeRenderRecord(item, current, scene.fingerprint(item, renderer, resolved));
+      if (current?.schema !== old.schema || current.fingerprint !== old.fingerprint || current.output_sha256 !== old.output_sha256) return false;
+      const upgraded = scene.fingerprint(item, renderer, resolved);
+      // prompt.md 在各版本都按字节记。直接核对待写的摘要，即使文件在两轮读取之间改了又改回也不会误升级。
+      if (upgraded.parts?.['file:prompt.md'] !== verified.parts?.['file:prompt.md'] ||
+          scene.fingerprint(item, renderer, resolved, old.schema).fingerprint !== verified.fingerprint) return false;
+      scene.upgradeRenderRecord(item, current, upgraded);
     } finally {
       release();
     }
   } catch {
     // 记录暂不可写时仍可沿用已经核对过的产物。
   }
+  return true;
 }

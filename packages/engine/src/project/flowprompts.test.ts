@@ -100,6 +100,12 @@ describe('new projects compose the prompt of their own flow', () => {
     }
   });
 
+  it('keeps the cast instructions referenced by the focused script stage', () => {
+    const root = created('speech', 'vertical-3x4');
+    expect(composeProjectPrompt(root, 'script', true).text).toContain('## 附：多角色叙事作业规程');
+    expect(composeProjectPrompt(root, 'plan', true).text).not.toContain('## 附：多角色叙事作业规程');
+  });
+
   it('labels the composed prompt with the flow name and reads an override as is', () => {
     const root = created('beat');
     expect(runPrompt(root, '').label).toBe('卡点流程');

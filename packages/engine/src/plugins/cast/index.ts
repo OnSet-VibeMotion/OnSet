@@ -57,7 +57,7 @@ export const castPlugin: BuiltinPlugin = {
       flows: ['speech'],
       after: '',
       sections: [
-        { id: 'pointer', file: 'sections/pointer.md', after: 'script/stage' },
+        { id: 'pointer', file: 'sections/pointer.md', after: 'script/stage', focusIncludes: ['cast-rules/addendum'] },
         { id: 'addendum', file: 'sections/addendum.md', after: 'wrapup/stage' },
       ],
     });

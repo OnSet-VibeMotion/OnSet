@@ -61,7 +61,7 @@ import { settingsAPI, settingsGlobalAPI, settingsProjectAPI } from './settings';
 import { SkillsState, installSkills, skillsAPI, skillsInstallAPI } from './skills';
 import { TaskState, loadPersistedTasks, runStudioOp, runWriteTask, taskFeatureAPI, tasksAPI, writeTaskError } from './tasks';
 import { uploadsAPI } from './uploads';
-import { latestReviewReport } from './reviewreport';
+import { filmVideos, latestReviewReport } from './reviewreport';
 import * as flow from '../flow';
 import * as plugin from '../plugin';
 import * as studioview from '../studioview';
@@ -850,7 +850,8 @@ function defaultParent(last: string, recent: Project[]): string {
 }
 
 function findProjectVideo(root: string): string {
-  for (const candidate of [path.join(root, 'production', 'audio', 'candidate.mp4'), path.join(root, 'final.mp4'), path.join(root, 'production', 'final.mp4')]) {
+  for (const file of filmVideos) {
+    const candidate = path.join(root, file);
     if (fileExists(candidate)) return candidate;
   }
   return '';

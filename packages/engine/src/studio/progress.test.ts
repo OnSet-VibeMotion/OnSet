@@ -236,7 +236,7 @@ describe('production map', () => {
     // 复查静音母版的报告不算整片复查。
     write(root, 'production/review-silent/review.json', '{"path":"production/silent-master.mp4","problems":[]}', 100);
     expect(status(root).review).toBe('stale');
-    write(root, 'production/review-v3/review.json', '{"path":"production/audio/candidate.mp4","problems":[{"x":1}]}', 200);
+    write(root, 'production/review-v3/review.json', '{"path":"production/final.mp4","problems":[{"x":1}]}', 200);
     expect(status(root).review).toBe('done');
     expect(stations(root).stations.find((s) => s.id === 'review')?.detail).toBe('1 个问题');
   });
@@ -249,6 +249,24 @@ describe('production map', () => {
     expect(status(root)['gate-final']).toBe('confirmed');
     write(root, 'production/audio/candidate.mp4', 'film v2');
     expect(status(root)['gate-final']).toBe('changed');
+  });
+
+  it('invalidates final approval after an atomic replacement with the same size and mtime', () => {
+    const root = project({});
+    const sha = crypto.createHash('sha256').update('film').digest('hex');
+    write(root, 'production/approval.json', JSON.stringify({ candidate: { sha256: sha } }), 300);
+    write(root, 'production/audio/candidate.mp4', 'film');
+    const file = path.join(root, 'production/audio/candidate.mp4');
+    const stamp = new Date(Math.floor(Date.now() / 1000) * 1000);
+    fs.utimesSync(file, stamp, stamp);
+    expect(status(root)['gate-final']).toBe('confirmed');
+    for (const [bytes, expected] of [['film', 'confirmed'], ['edit', 'changed']]) {
+      const next = file + '.next';
+      fs.writeFileSync(next, bytes);
+      fs.utimesSync(next, stamp, stamp);
+      fs.renameSync(next, file);
+      expect(status(root)['gate-final']).toBe(expected);
+    }
   });
 
   it('places and judges a third-party station from its declaration', () => {

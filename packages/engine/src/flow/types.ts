@@ -87,6 +87,8 @@ export interface DeclaredGuide {
 /** 站的一段制作提示词。宿主的段落正文在 assets/prompts/<站>/<id>.md（运行期也读得到），内置插件的在它的目录里。 */
 export interface PromptSection {
   id: string;
+  /** 聚焦输出保留这一段时，还要带上的「站/段」。 */
+  focusIncludes?: readonly string[];
   /**
    * 这一段开启一个「阶段」时写阶段名。正文里用 `{{STAGE:<阶段名>}}` 写「第六阶段」，
    * `{{STAGE_N:<阶段名>}}` 只写数字「六」，按阶段在提示词里的先后编号。

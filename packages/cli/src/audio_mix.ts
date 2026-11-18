@@ -166,6 +166,12 @@ cue sheet：{"schema":1,"cues":[{"kind":"music","asset":"assets/music.wav","star
         }
       }
       if (!bool(p.replace) && outputNames.some(name => fs.existsSync(path.join(audio, name)))) throw new Error('存在不同的混音产物，要生成新候选请传 replace=true');
+      // 只在持锁的新一轮混音开始时清理临时目录，保留本轮失败的工作文件和正式归档。
+      for (const entry of fs.readdirSync(audio, { withFileTypes: true })) {
+        if (entry.isDirectory() && /^\.mix-[A-Za-z0-9]{6}$/.test(entry.name)) {
+          fs.rmSync(path.join(audio, entry.name), { recursive: true, force: true });
+        }
+      }
       const work = fs.mkdtempSync(path.join(audio, '.mix-'));
       try {
         const report = await mixProgram(newToolchain(envMap()), { directory: work, voice, primaryMusic, video, fps, frames, cues, integratedLUFS, loudnessTolerance, truePeakMax, signal });

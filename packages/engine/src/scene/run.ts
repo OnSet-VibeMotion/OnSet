@@ -378,7 +378,7 @@ async function runScene(
     try {
       await encodeHandoff(stderrFile, userFile);
     } catch (error) {
-      if (signal?.aborted) throw error;
+      if (signal?.aborted || error instanceof RenderLogError) throw error;
       const detail = (error as Error).message.slice(0, 4000);
       show(RenderRepairMessage, userFile);
       userOutput.write(`[${s.id}] ${detail.split('\n')[0]}\n`);
@@ -424,7 +424,7 @@ async function runScene(
         userOutput.write(`[${s.id}] 上一次的合成已写完，直接渲染出片\n`);
         return;
       } catch (e) {
-        if (signal?.aborted) throw e;
+        if (signal?.aborted || e instanceof RenderLogError) throw e;
         if (engineRenders) show(RenderRepairMessage, userFile);
         userOutput.write(`[${s.id}] 直接渲染没成（${(e as Error).message.split('\n')[0]}），交给渲染器接着做\n`);
       }
@@ -459,20 +459,30 @@ async function runScene(
     // 直接渲染也是选手代码的执行，不能绕开试镜隔离去读取其他选手的文件。
     const invocation: Invocation = { argv: [spec.file, ...spec.args], env: spec.env, stdin: '' };
     const command = s.audition || normalHandoff ? confine(invocation) : invocation;
-    const started = await start(command.argv[0], command.argv.slice(1), { cwd: s.directory, env: command.env, stdio: ['ignore', stderrFile, 'pipe'], signal }, terminateGrace);
+    const logging = new AbortController();
+    const renderSignal = signal ? AbortSignal.any([signal, logging.signal]) : logging.signal;
+    const started = await start(command.argv[0], command.argv.slice(1), { cwd: s.directory, env: command.env, stdio: ['ignore', stderrFile, 'pipe'], signal: renderSignal }, terminateGrace);
     let tail = '';
     started.child.stderr!.setEncoding('utf8');
     started.child.stderr!.on('data', (chunk: string) => {
-      fs.writeSync(stderrFile, chunk);
+      if (logging.signal.aborted) return;
+      try {
+        fs.writeSync(stderrFile, chunk);
+      } catch (err) {
+        logging.abort(new RenderLogError(`写入 HyperFrames 渲染日志失败：${(err as Error).message}`, { cause: err }));
+        return;
+      }
       tail = (tail + chunk).slice(-4000);
     });
     try {
       await started.wait();
     } catch (e) {
+      logging.signal.throwIfAborted();
       if (signal?.aborted) throw new Error('已中断：渲染进程组已终止');
       const reason = e instanceof ExitError ? `HyperFrames 渲染退出码 ${e.code}` : (e as Error).message;
       throw new Error(tail.trim() ? `${reason}\n${tail.trim()}` : reason, { cause: e });
     }
+    logging.signal.throwIfAborted();
   }
 
   /** 跑一次渲染器；返回它说了几句话、调了几次工具（0 表示根本没开始）。失败时抛出的错误也带着这个数（events）。 */
@@ -557,6 +567,7 @@ async function runScene(
 }
 
 class RendererFailure extends Error {}
+class RenderLogError extends Error {}
 
 /** 只写设计稿那一次的日志：design-<镜头>.<后缀>，不盖掉渲染的日志。 */
 export function designLog(s: Pick<Scene, 'directory' | 'id'>, suffix: string): string {

@@ -2,7 +2,7 @@
 // 判断接哪一层、续接的命令行与提示词、尝试记录都是真的在跑。
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as hyperframes from '@onset/engine/hyperframes';
 import { fakeCLI } from '@onset/engine/hyperframes/hftest';
 import { Buffer, hasFfmpeg, lookPath, makeClip, run, setenv, tempDir } from './testutil';
@@ -175,6 +175,25 @@ describe.skipIf(skip)('resume an interrupted render', () => {
     fs.writeFileSync(mode, 'handoff-failed');
     expect((await render()).code).toBe(1);
     expect(fs.existsSync(path.join(scene, 'direct.log'))).toBe(false);
+  });
+
+  it('reports a render log write failure and cleans up without asking the model to repair', async () => {
+    const { scene } = handoffProject();
+    fs.writeFileSync(path.join(scene, 'fail-direct'), '');
+    const write = fs.writeSync;
+    const spy = vi.spyOn(fs, 'writeSync').mockImplementation((fd, value, ...args) => {
+      if (typeof value === 'string' && value.includes('test encoder failed')) throw new Error('ENOSPC');
+      return Reflect.apply(write, fs, [fd, value, ...args]);
+    });
+    try {
+      const result = await render();
+      expect(result.code, result.out).toBe(1);
+      expect(attempt(scene).error).toContain('写入 HyperFrames 渲染日志失败：ENOSPC');
+      expect(calls(scene)).toHaveLength(1);
+      expect(fs.readdirSync(scene).some(name => name.startsWith('.onset-encode-'))).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('does not publish an output or ask for model repair after cancellation', async () => {

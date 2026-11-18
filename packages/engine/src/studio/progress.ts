@@ -283,24 +283,30 @@ function gateChanged(root: string, record: GateRecord): boolean {
   return Object.entries(record.files).some(([rel, state]) => gateFileChanged(root, rel, state));
 }
 
-/** 文件内容摘要，按路径、大小与修改时间缓存（候选成片动辄上百 MB，路线每次刷新都要看）。 */
-const digestCache = new Map<string, { size: number; mtime: number; sha: string }>();
+/** 候选成片动辄上百 MB，路线每次刷新都要看。缓存须区分原地改写和原子替换。 */
+const digestCache = new Map<string, { info: fs.BigIntStats; sha: string }>();
+
+function sameFileState(a: fs.BigIntStats, b: fs.BigIntStats): boolean {
+  return a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
+}
 
 function fileDigest(file: string): string {
   try {
-    const info = fs.statSync(file);
+    const info = fs.statSync(file, { bigint: true });
     const hit = digestCache.get(file);
-    if (hit && hit.size === info.size && hit.mtime === info.mtimeMs) return hit.sha;
+    if (hit && sameFileState(hit.info, info)) return hit.sha;
     const hash = crypto.createHash('sha256');
     const fd = fs.openSync(file, 'r');
     try {
       const buf = Buffer.allocUnsafe(1 << 20);
       for (let n; (n = fs.readSync(fd, buf, 0, buf.length, null)) > 0; ) hash.update(buf.subarray(0, n));
+      if (!sameFileState(info, fs.fstatSync(fd, { bigint: true })) ||
+          !sameFileState(info, fs.statSync(file, { bigint: true }))) return '';
     } finally {
       fs.closeSync(fd);
     }
     const sha = hash.digest('hex');
-    digestCache.set(file, { size: info.size, mtime: info.mtimeMs, sha });
+    digestCache.set(file, { info, sha });
     return sha;
   } catch {
     return '';

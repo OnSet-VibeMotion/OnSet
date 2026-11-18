@@ -33,6 +33,7 @@ export interface PromptPart {
   text: string;
   /** 这一段开启的阶段。 */
   stage?: string;
+  focusIncludes?: readonly string[];
   /** 第三方站的文字：不换阶段占位符。 */
   raw?: boolean;
   /** 接在最后的一段：与前文空一行，正文去掉首尾空白，以换行结尾。 */
@@ -91,12 +92,12 @@ export function composeParts(parts: readonly PromptPart[], opts: ComposeOptions 
 export type SectionReader = (station: string, section: string) => string;
 
 /** 段落声明：「站/段」→ 开启的阶段。没有这一段直接报错。 */
-function declared(ref: string): { station: string; section: string; stage?: string } {
+function declared(ref: string): { station: string; section: string; stage?: string; focusIncludes?: readonly string[] } {
   const slash = ref.indexOf('/');
   const station = ref.slice(0, slash);
   const sec = slash < 0 ? undefined : allStations().find((s) => s.id === station)?.prompt.find((x) => x.id === ref.slice(slash + 1));
   if (!sec) throw new Error(`没有这段提示词：${ref}`);
-  return { station, section: sec.id, stage: sec.stage };
+  return { station, section: sec.id, stage: sec.stage, focusIncludes: sec.focusIncludes };
 }
 
 /** 宿主段落读 assets/prompts，内置插件的读它目录里的文件。 */
@@ -150,7 +151,7 @@ export function composeFlowPrompt(input: FlowComposeInput): string {
   const opts: ComposeOptions = {};
   const builtinPart = (ref: string): PromptPart => {
     const d = declared(ref);
-    return { ref, text: input.canvas(read(d.station, d.section)), stage: d.stage };
+    return { ref, text: input.canvas(read(d.station, d.section)), stage: d.stage, focusIncludes: d.focusIncludes };
   };
   let appended: string[];
   if (input.flow.startsWith('x:')) {
@@ -224,6 +225,13 @@ export function composeFlowPrompt(input: FlowComposeInput): string {
       for (const part of parts) if (part.ref.endsWith('/treatment')) include.add(part);
     }
     for (const part of parts) if (part.append && part.raw) include.add(part);
+    const byRef = new Map(parts.map(part => [part.ref, part]));
+    for (const part of include) {
+      for (const ref of part.focusIncludes ?? []) {
+        const linked = byRef.get(ref);
+        if (linked) include.add(linked);
+      }
+    }
     const available = parts.flatMap(part => part.stage ? [part.stage] : []);
     return composeParts(parts, { ...opts, include }).trimEnd() +
       `\n\n当前说明只展开 ${focus}。处理其他阶段前用 flow_guide({"stage":"<阶段 ID>"}) 读取对应规则。阶段顺序：${available.join(' → ')}。\n`;
