@@ -61,6 +61,7 @@ import { settingsAPI, settingsGlobalAPI, settingsProjectAPI } from './settings';
 import { SkillsState, installSkills, skillsAPI, skillsInstallAPI } from './skills';
 import { TaskState, loadPersistedTasks, runStudioOp, runWriteTask, taskFeatureAPI, tasksAPI, writeTaskError } from './tasks';
 import { uploadsAPI } from './uploads';
+import { latestReviewReport } from './reviewreport';
 import * as flow from '../flow';
 import * as plugin from '../plugin';
 import * as studioview from '../studioview';
@@ -723,7 +724,7 @@ export class Server {
   private reviewAPI(): Response {
     const p = this.projectOr404();
     if (p instanceof Response) return p;
-    const file = path.join(p.path, 'production', 'review', 'review.json');
+    const file = latestReviewReport(p.path)?.file ?? path.join(p.path, 'production', 'review', 'review.json');
     let body: string;
     try {
       body = fs.readFileSync(file, 'utf8');

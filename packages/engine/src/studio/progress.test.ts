@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -222,6 +223,32 @@ describe('production map', () => {
     expect(stationOfPath('covers/douyin.png', 'speech')).toBe('publish');
     expect(stationOfPath('production/beat/plan.json', 'beat')).toBe('plan');
     expect(stationOfPath('production/studio/step.json', 'speech')).toBe('');
+  });
+
+  // 片场宣传视频（2026-11-18）：复查写在 production/review-v3/，路线仍按 production/review/ 的旧报告判「上游改过，要重做」。
+  it('reads the latest film review wherever the revision put it', () => {
+    const root = project({ 'production/scene-plan.json': '{}', 'scenes/scene-001/scene.json': scene });
+    write(root, 'scenes/scene-001/out.mp4', 'x', 600);
+    write(root, 'production/silent-master.mp4', 'x', 500);
+    write(root, 'production/review/review.json', '{"path":"production/audio/candidate.mp4","problems":[]}', 400);
+    write(root, 'production/audio/candidate.mp4', 'x', 300);
+    expect(status(root).review).toBe('stale');
+    // 复查静音母版的报告不算整片复查。
+    write(root, 'production/review-silent/review.json', '{"path":"production/silent-master.mp4","problems":[]}', 100);
+    expect(status(root).review).toBe('stale');
+    write(root, 'production/review-v3/review.json', '{"path":"production/audio/candidate.mp4","problems":[{"x":1}]}', 200);
+    expect(status(root).review).toBe('done');
+    expect(stations(root).stations.find((s) => s.id === 'review')?.detail).toBe('1 个问题');
+  });
+
+  it('keeps the final approval when the candidate is rewritten with the same bytes', () => {
+    const root = project({ 'production/scene-plan.json': '{}', 'scenes/scene-001/scene.json': scene });
+    const sha = crypto.createHash('sha256').update('film').digest('hex');
+    write(root, 'production/approval.json', JSON.stringify({ approved_at: '2026-11-10T03:18:43Z', candidate: { sha256: sha } }), 300);
+    write(root, 'production/audio/candidate.mp4', 'film');
+    expect(status(root)['gate-final']).toBe('confirmed');
+    write(root, 'production/audio/candidate.mp4', 'film v2');
+    expect(status(root)['gate-final']).toBe('changed');
   });
 
   it('places and judges a third-party station from its declaration', () => {

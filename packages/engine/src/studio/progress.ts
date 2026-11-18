@@ -17,6 +17,7 @@ import { marshalIndent } from '../gojson';
 import * as plugin from '../plugin';
 import * as studioview from '../studioview';
 import { writeError, writeJSON } from './http';
+import { latestReviewReport } from './reviewreport';
 import { discoverScenes, type SceneSummary } from './scenes';
 import { readStoryboard } from './storyboard';
 import { localRFC3339 } from './script';
@@ -282,6 +283,42 @@ function gateChanged(root: string, record: GateRecord): boolean {
   return Object.entries(record.files).some(([rel, state]) => gateFileChanged(root, rel, state));
 }
 
+/** 文件内容摘要，按路径、大小与修改时间缓存（候选成片动辄上百 MB，路线每次刷新都要看）。 */
+const digestCache = new Map<string, { size: number; mtime: number; sha: string }>();
+
+function fileDigest(file: string): string {
+  try {
+    const info = fs.statSync(file);
+    const hit = digestCache.get(file);
+    if (hit && hit.size === info.size && hit.mtime === info.mtimeMs) return hit.sha;
+    const hash = crypto.createHash('sha256');
+    const fd = fs.openSync(file, 'r');
+    try {
+      const buf = Buffer.allocUnsafe(1 << 20);
+      for (let n; (n = fs.readSync(fd, buf, 0, buf.length, null)) > 0; ) hash.update(buf.subarray(0, n));
+    } finally {
+      fs.closeSync(fd);
+    }
+    const sha = hash.digest('hex');
+    digestCache.set(file, { size: info.size, mtime: info.mtimeMs, sha });
+    return sha;
+  } catch {
+    return '';
+  }
+}
+
+/** approval.json 记的候选摘要与现在的 candidate.mp4 相同。 */
+function candidateIsApproved(root: string, approvalFile: string): boolean {
+  try {
+    const raw = JSON.parse(fs.readFileSync(approvalFile, 'utf8')) as Record<string, unknown>;
+    const candidate = raw.candidate as Record<string, unknown> | undefined;
+    const want = typeof candidate?.sha256 === 'string' ? candidate.sha256.replace(/^sha256:/, '').toLowerCase() : '';
+    return want !== '' && fileDigest(path.join(root, 'production', 'audio', 'candidate.mp4')) === want;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 站的定义
 
@@ -414,12 +451,15 @@ const judges: Record<string, Judge> = {
     output: (c) => f(c, 'production/audio/candidate.mp4'),
     stale: (c, out) => f(c, 'production/silent-master.mp4') > out,
   },
+  // 报告不一定在 production/review/（编排常按修订写到 review-v3/ 这类目录），取最新的整片复查报告。
   'review:review': {
-    output: (c) => f(c, 'production/review/review.json'),
+    output: (c) => latestReviewReport(c.root)?.mtime ?? 0,
     stale: (c, out) => f(c, 'production/audio/candidate.mp4') > out,
     detail: (c) => {
       try {
-        const report = JSON.parse(fs.readFileSync(path.join(c.root, 'production', 'review', 'review.json'), 'utf8')) as Record<string, unknown>;
+        const latest = latestReviewReport(c.root);
+        if (!latest) return undefined;
+        const report = JSON.parse(fs.readFileSync(latest.file, 'utf8')) as Record<string, unknown>;
         const problems = Array.isArray(report.problems) ? report.problems.length : 0;
         return problems === 0 ? '机器检查没有问题' : `${problems} 个问题`;
       } catch {
@@ -439,7 +479,9 @@ const judges: Record<string, Judge> = {
       } catch {
         // 写坏的批准记录照样算有，时间取文件的。
       }
-      return { status: f(c, 'production/audio/candidate.mp4') > approved ? 'changed' : 'confirmed', at };
+      // 候选比批准记录新，但内容就是批准的那一份（重跑混音得到同样的字节）时不算改过。
+      const changed = f(c, 'production/audio/candidate.mp4') > approved && !candidateIsApproved(c.root, file);
+      return { status: changed ? 'changed' : 'confirmed', at };
     },
   },
 };
