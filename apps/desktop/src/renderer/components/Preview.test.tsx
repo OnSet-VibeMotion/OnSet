@@ -112,11 +112,22 @@ it('distinguishes same-named films and hides the approval during report refresh'
   expect(view.props.onTab).not.toHaveBeenCalled();
   view.props.run.mock.calls[0][2]();
   expect(view.props.onTab).toHaveBeenCalledWith('publish');
+  await userEvent.click(screen.getByRole('button', { name: '成片 · production/final.mp4' }));
+  await userEvent.click(screen.getByRole('button', { name: '成片 · final.mp4' }));
+  expect(screen.queryByRole('button', approve)).toBeNull();
   view.show('final', '', 2);
   expect(screen.queryByRole('button', approve)).toBeNull();
   await act(async () => deliver({ ...report, can_approve: false, report: { ok: false, problems: ['复查未通过'] } }));
   expect(await screen.findByRole('button', { name: '1 个问题，去看' })).toBeTruthy();
   expect(screen.queryByRole('button', approve)).toBeNull();
+});
+
+it('shows an unbound legacy report as read-only even when the video is absent', async () => {
+  mockApi({ '/api/review': { available: true, path: null, unbound: true, report: { problems: ['旧报告的问题'] } } });
+  renderPreview('review', []);
+  expect(await screen.findByText('旧报告的问题')).toBeTruthy();
+  expect(screen.getByText('这份旧报告未绑定影片，仅供查看。')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '确认可用，去发布' })).toBeNull();
 });
 
 describe('镜头页', () => {

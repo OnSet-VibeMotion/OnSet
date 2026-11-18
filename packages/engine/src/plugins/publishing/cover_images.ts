@@ -45,9 +45,11 @@ export const coverSpecs: ReadonlyMap<string, CoverSpec> = new Map([
 export function landscapeVideo(data: GoMap): boolean {
   const video = get(data, 'video');
   if (!isGoMap(video)) return false;
-  const w = intField(get(video, 'width_px'));
-  const h = intField(get(video, 'height_px'));
-  return Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0 && w > h;
+  const width = get(video, 'width_px');
+  const height = get(video, 'height_px');
+  const w = width instanceof GoFloat ? width.value : width;
+  const h = height instanceof GoFloat ? height.value : height;
+  return isGoInt(w) && isGoInt(h) && Number.isSafeInteger(w) && Number.isSafeInteger(h) && w > h && h > 0;
 }
 
 /** 这个平台在 ready 前必须备齐的封面比例。 */

@@ -12,6 +12,8 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { sceneFeatureAPI } from './features';
 import * as flow from '../flow';
+import { deliverySpec } from '../review';
+import { canvasOf } from '../scene';
 import * as studioview from '../studioview';
 import { computeStations } from './progress';
 import { projectMetadata, stageFor, stepOf } from './studio';
@@ -42,6 +44,7 @@ describe('studio', () => {
     writeStudioFile(path.join(root, final), 'unselected final');
     writeStudioFile(path.join(root, candidate), 'unselected candidate');
     writeStudioFile(path.join(root, silent), 'selected silent master');
+    writeStudioFile(path.join(root, 'frame.md'), '---\ncanvas: {width_px: 240, height_px: 320, fps: 30}\n---\n');
     writeStudioFile(path.join(root, 'production/timing-report.json'), '{"total_frames":30}');
     const worker = vi.spyOn(tasks, 'runStudioOp').mockResolvedValue({ text: '' });
     try {
@@ -52,6 +55,17 @@ describe('studio', () => {
         video: path.join(root, silent), out: path.join(root, 'production/review-silent'), silent: true,
         expect_frames: 30, validate_report: 'production/review-silent/validate.json',
       });
+      const scenes = path.join(root, 'scenes');
+      writeStudioFile(path.join(scenes, 'scene-001/scene.json'), '{"id":"scene-001","duration_seconds":1.1,"output":"out.mp4","transcript":"voice.srt","text":"一句"}');
+      writeStudioFile(path.join(scenes, 'scene-001/voice.srt'), '1\n00:00:00,000 --> 00:00:01,100\n一句\n');
+      for (const timing of ['{"total_frames":30}', '{']) {
+        writeStudioFile(path.join(root, 'production/timing-report.json'), timing);
+        const latest = await studioRequest(s, 'POST', '/api/review/run', JSON.stringify({ video: silent }));
+        const task = await waitStudioTask(s, latest.body.task_id);
+        expect(task.status, task.error).toBe('succeeded');
+        expect(worker).toHaveBeenLastCalledWith(s, expect.any(AbortSignal), expect.objectContaining({ path: root }), 'review',
+          expect.objectContaining({ expect_frames: 33, scenes }));
+      }
     } finally {
       worker.mockRestore();
     }
@@ -66,12 +80,25 @@ describe('studio', () => {
     const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
     const read = () => studioRequest(s, 'GET', '/api/review?video=final.mp4');
     const approve = () => studioRequest(s, 'POST', '/api/memory/actions/consolidate', JSON.stringify({ final: true, video, video_sha256: sha }));
+    const frameFile = path.join(root, 'frame.md');
+    const frame = '---\ncanvas: {width_px: 240, height_px: 320, fps: 30}\n---\n';
+    writeStudioFile(frameFile, frame);
+    writeStudioFile(path.join(root, 'production/timing-report.json'), '{"total_frames":30}');
+    const spec = deliverySpec(canvasOf(root, 'frame.md'), 30, false);
     writeStudioFile(file, 'film');
     writeStudioFile(report, JSON.stringify({ path: video, ok: true, problems: [] }));
     expect((await read()).body).toMatchObject({ available: true, can_approve: false });
     expect((await approve()).status).toBe(409);
-    writeStudioFile(report, JSON.stringify({ path: video, ok: true, problems: [], video_sha256: sha }));
+    writeStudioFile(report, JSON.stringify({ path: video, ok: true, problems: [], video_sha256: sha, delivery_spec: spec }));
     expect((await read()).body.can_approve).toBe(true);
+    writeStudioFile(frameFile, frame.replace('fps: 30', 'fps: 24'));
+    expect((await read()).body.can_approve).toBe(false);
+    expect((await approve()).status).toBe(409);
+    writeStudioFile(frameFile, frame);
+    writeStudioFile(path.join(root, 'production/timing-report.json'), '{"total_frames":33}');
+    expect((await read()).body.can_approve).toBe(false);
+    expect((await approve()).status).toBe(409);
+    writeStudioFile(path.join(root, 'production/timing-report.json'), '{"total_frames":30}');
     writeStudioFile(file + '.next', 'edit');
     fs.renameSync(file + '.next', file);
     expect((await read()).body.can_approve).toBe(false);

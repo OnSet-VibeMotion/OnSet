@@ -95,7 +95,13 @@ test('approving the final film starts consolidating memory and goes to publish',
   await expect(film).toHaveCount(1);
   expect(await film.evaluate((el) => el.controlsList.contains('nodownload'))).toBe(true);
   const review = page.getByRole('button', { name: /^(重新)?复查$/ });
-  await review.click();
+  const [failedResponse] = await Promise.all([
+    page.waitForResponse((response) => new URL(response.url()).pathname === '/api/review/run' && response.request().method() === 'POST'),
+    review.click(),
+  ]);
+  expect(failedResponse.status()).toBe(202);
+  const { task_id } = await failedResponse.json();
+  await expect.poll(() => page.evaluate(async (id) => (await (await fetch('/api/tasks/' + id)).json()).status, task_id)).toBe('failed');
   await expect.poll(readReview).toMatchObject({ ok: false, problems: [expect.stringContaining('分辨率不符')] });
   await expect(page.locator('#final-approve')).toHaveCount(0);
   const replacement = path.join(project.path, 'corrected.mp4');

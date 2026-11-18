@@ -9,6 +9,7 @@ import { atomicWrite } from '../fsutil';
 import { formatFixed, goRound } from '../gofmt';
 import { marshalIndent } from '../gojson';
 import { isBlank, mediaToJSON, type FrameStats, type Media, type ProgramLoudness } from '../mediaprobe';
+import type { DeliverySpec } from './delivery';
 
 /** Prober 是复查用到的全部媒体操作；mediaprobe.Toolchain 满足它。 */
 export interface Prober {
@@ -111,6 +112,7 @@ export interface Report {
   path: string;
   /** 核对交付规格时读到的影片字节。 */
   video_sha256?: string;
+  delivery_spec?: DeliverySpec;
   ok: boolean;
   media: Media;
   expected_frames: number;
@@ -146,6 +148,7 @@ export function reportToJSON(r: Report): unknown {
     schema_version: r.schema_version,
     path: r.path,
     video_sha256: r.video_sha256,
+    delivery_spec: r.delivery_spec,
     ok: r.ok,
     media: mediaToJSON(r.media),
     expected_frames: r.expected_frames || undefined,

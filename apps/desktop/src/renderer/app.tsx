@@ -1,5 +1,5 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, errorText, forUser, post } from './api';
 import { Chat, type Outbox } from './components/Chat';
 import { Home, type ProjectSummary } from './components/Home';
@@ -469,11 +469,15 @@ export function App() {
   const renderer = choice.renderer;
   const rendererModel = choice.renderer_model ?? '';
   const rendererOptions = choice.renderer_options ?? '';
+  const navigation = useMemo(() => ({ currentId, tab, panelOpen }), [currentId, tab, panelOpen]);
+  const activeNavigation = useRef(navigation);
+  useLayoutEffect(() => { activeNavigation.current = navigation; }, [navigation]);
   const run = useCallback(
     async (path: string, payload: Record<string, unknown> = {}, onAccepted?: () => void) => {
+      const startedFrom = activeNavigation.current;
       try {
         await post(path, /\/render(\/all)?$/.test(path) ? { ...payload, renderer, renderer_model: rendererModel, renderer_options: rendererOptions } : payload);
-        onAccepted?.();
+        if (activeNavigation.current === startedFrom) onAccepted?.();
         notify('已开始，进度见右上角任务。');
         await loadTasks();
         await loadSessions();

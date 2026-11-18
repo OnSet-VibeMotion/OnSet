@@ -6,8 +6,11 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { contained } from '../scene';
+import { canvasOf, contained } from '../scene';
 import { compareBytes } from '../gojson';
+import { goRound } from '../gofmt';
+import { deliverySpec } from '../review';
+import { plan } from '../schedule';
 
 export interface ReviewReport {
   file: string;
@@ -68,10 +71,39 @@ export function latestReviewReport(root: string, video?: string, { exact = false
   return matching ?? (video && exact ? null : best);
 }
 
+export function studioReviewInputs(root: string, silent: boolean) {
+  const canvas = canvasOf(root, 'frame.md');
+  const scenes = contained(root, 'scenes', 'scenes');
+  const planned = fs.existsSync(scenes) ? plan(scenes) : [];
+  if (planned.length) {
+    // 镜头计划已冻结时以它为准，避免沿用上次混音遗留的时长。
+    const frames = planned.reduce((sum, scene) => sum + goRound(scene.duration_seconds * canvas.fps), 0);
+    return { scenes, spec: deliverySpec(canvas, frames, silent) };
+  }
+  const timing = contained(root, path.join('production', 'timing-report.json'), 'timing-report.json');
+  try {
+    const { total_frames: frames, fps } = JSON.parse(fs.readFileSync(timing, 'utf8')) ?? {};
+    if (Number.isSafeInteger(frames) && frames > 0 && (fps === undefined || fps === canvas.fps)) {
+      return { scenes: undefined, spec: deliverySpec(canvas, frames, silent) };
+    }
+  } catch (err) {
+    if (!(err instanceof SyntaxError) && (err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+  throw new Error('没有可用的冻结镜头计划，请重新生成时长报告后再复查');
+}
+
 export function reviewApprovalDigest(root: string, report: ReviewReport | null): string {
   const sha = report?.data?.video_sha256;
   if (!report?.video || !filmVideos.has(report.video) || report.data?.ok !== true ||
       typeof sha !== 'string' || !/^[0-9a-f]{64}$/.test(sha)) return '';
+  const saved = report.data.delivery_spec;
+  if (!saved || typeof saved !== 'object') return '';
+  try {
+    const { spec } = studioReviewInputs(root, false);
+    if (!Object.entries(spec).every(([field, value]) => (saved as Record<string, unknown>)[field] === value)) return '';
+  } catch {
+    return '';
+  }
   return projectVideoDigest(root, report.video) === sha ? sha : '';
 }
 

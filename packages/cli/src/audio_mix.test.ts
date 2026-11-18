@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, it } from 'vitest';
-import { MixOutputs } from '@onset/engine/mediaprobe';
+import { expect, it, vi } from 'vitest';
+import { MixOutputs, Toolchain } from '@onset/engine/mediaprobe';
 import { findOp, normalizeParams } from './ops/op';
 import { Buffer, hasFfmpeg, makeClip, tempDir } from './testutil';
 import './audio_mix';
@@ -30,7 +30,25 @@ it.skipIf(!hasFfmpeg)('publishes and reuses a verified candidate, with explicit 
     project_root: root, video: path.join(audio, 'candidate.mp4'), out: path.join(root, 'production/review'),
     fps: 30, expect_frames: 60, validate_report: 'production/final-check.json',
   }), { out, err: out, signal, unsafe: false });
-  const reviewed = await reviewCandidate();
+  const video = path.join(audio, 'candidate.mp4');
+  const original = video + '.original';
+  const verify = Toolchain.prototype.verify;
+  const duringVerify = vi.spyOn(Toolchain.prototype, 'verify').mockImplementation(function (this: Toolchain, file, options) {
+    fs.renameSync(video, original);
+    fs.writeFileSync(video, 'the original path temporarily points to unreviewable bytes');
+    try {
+      return verify.call(this, file, options);
+    } finally {
+      fs.renameSync(original, video);
+    }
+  });
+  let reviewed;
+  try {
+    reviewed = await reviewCandidate();
+    expect(duringVerify).toHaveBeenCalledOnce();
+  } finally {
+    duringVerify.mockRestore();
+  }
   expect(reviewed?.data).toMatchObject({ ok: true, counted_frames: 60 });
   expect(JSON.parse(fs.readFileSync(path.join(root, 'production/final-check.json'), 'utf8')).ok).toBe(true);
   expect(reviewed?.data).toMatchObject({ video_sha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
@@ -42,6 +60,14 @@ it.skipIf(!hasFfmpeg)('publishes and reuses a verified candidate, with explicit 
   expect(failed).toMatchObject({ ok: false, problems: [expect.stringContaining('分辨率不符')] });
   expect(failed.video_sha256).toBeUndefined();
   fs.writeFileSync(frameFile, frame);
+  if (process.platform !== 'win32') {
+    fs.symlinkSync(path.join(root, 'production/review'), path.join(root, 'production/review-alias'));
+    await expect(review.run(normalizeParams(review, {
+      project_root: root, video, out: path.join(root, 'production/review'), expect_frames: 60,
+      report_json: path.join(root, 'production/review-alias/not-yet-written/reports.json'),
+      validate_report: 'production/review/not-yet-written/reports.json',
+    }), { out, err: out, signal, unsafe: false })).rejects.toThrow(/需要不同路径/);
+  }
   fs.writeFileSync(sheet, JSON.stringify({ schema: 1, cues: [{ kind: 'music', asset: 'production/audio/voice.wav', duration_frames: 24 }] }));
   await expect(call()).rejects.toThrow(/replace=true/);
   expect(fs.readFileSync(path.join(audio, 'candidate.mp4'))).toEqual(candidate);

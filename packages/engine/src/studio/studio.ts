@@ -62,7 +62,7 @@ import { settingsAPI, settingsGlobalAPI, settingsProjectAPI } from './settings';
 import { SkillsState, installSkills, skillsAPI, skillsInstallAPI } from './skills';
 import { TaskState, loadPersistedTasks, runStudioOp, runWriteTask, taskFeatureAPI, tasksAPI, writeTaskError } from './tasks';
 import { uploadsAPI } from './uploads';
-import { filmVideos, latestReviewReport, readReviewReport, reviewApprovalDigest, silentMaster } from './reviewreport';
+import { filmVideos, latestReviewReport, readReviewReport, reviewApprovalDigest, silentMaster, studioReviewInputs } from './reviewreport';
 import { contained } from '../scene';
 import * as flow from '../flow';
 import * as plugin from '../plugin';
@@ -737,6 +737,7 @@ export class Server {
     return writeJSON(200, goMap({
       available: true,
       path: knownTarget,
+      unbound: report.video === null,
       can_approve: (!video || video === knownTarget) && reviewApprovalDigest(p.path, report) !== '',
       report: report.data ? goValue(report.data) : goMap({ raw: report.body }),
       report_dir: path.relative(p.path, path.dirname(report.file)).split(path.sep).join('/'),
@@ -770,17 +771,12 @@ export class Server {
         const video = selected ? path.join(p.path, selected) : findProjectVideo(p.path);
         if (video === '') throw new Error('找不到可审查的成片，请先生成 candidate.mp4 或 final.mp4');
         contained(p.path, path.relative(p.path, video), 'video');
-        const timing = path.join('production', 'timing-report.json');
-        let frames: unknown;
-        if (fileExists(path.join(p.path, timing))) {
-          frames = JSON.parse(fs.readFileSync(contained(p.path, timing, 'timing-report.json'), 'utf8'))?.total_frames;
-        }
-        const scenes = contained(p.path, 'scenes', 'scenes');
+        const { scenes, spec } = studioReviewInputs(p.path, silent);
         await runStudioOp(this, signal, p, 'review', {
           video, out: dir, silent,
           validate_report: path.join('production', folder, 'validate.json').split(path.sep).join('/'),
-          ...(typeof frames === 'number' && Number.isSafeInteger(frames) && frames > 0 ? { expect_frames: frames } : {}),
-          ...(dirExists(scenes) ? { scenes } : {}),
+          expect_frames: spec.frames,
+          ...(scenes ? { scenes } : {}),
         });
       });
       return writeJSON(202, goMap({ task_id: t.task_id }));

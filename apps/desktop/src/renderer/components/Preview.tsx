@@ -1,7 +1,7 @@
 import { playerProps } from '../media';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { ReactNode } from 'react';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api, errorText, post, rawURL } from '../api';
 import type { Attachment, ProgressState, Box, ProjectFilmStyle, ProjectState, ProjectUsage, Scene, TreeFile, Usage } from '../types';
@@ -104,8 +104,8 @@ export function Preview(props: Props) {
   const selected = filmChoice?.project === project ? filmChoice?.path : undefined;
   const video = selected && variants.includes(selected) ? selected : variants[0];
   const onVideo = (path: string) => setFilmChoice({ project, path });
-  const showingReview = props.tab === 'final' || props.tab === 'review';
-  const review = useFilmReview(showingReview ? video : undefined, props.version, project);
+  const showingReview = props.tab === 'review' || (props.tab === 'final' && !!video);
+  const review = useFilmReview(showingReview, video, props.version, project);
   const film = { video, variants, onVideo, review };
   return (
     <main className="pane center">
@@ -804,19 +804,21 @@ function FilmVersions({ video, variants, onVideo }: Pick<FilmReviewProps, 'video
   );
 }
 
-function useFilmReview(video: string | undefined, version: number, project?: string): ReviewResponse | undefined {
-  const [result, setResult] = useState<{ video: string; version: number; project?: string; review: ReviewResponse }>();
+function useFilmReview(enabled: boolean, video: string | undefined, version: number, project?: string): ReviewResponse | undefined {
+  const request = useMemo(() => ({ enabled, video, version, project }), [enabled, video, version, project]);
+  const [result, setResult] = useState<{ request: typeof request; review: ReviewResponse }>();
   useEffect(() => {
-    if (!video) return;
+    if (!request.enabled) return;
     const controller = new AbortController();
     const update = (review: ReviewResponse) => {
-      if (!controller.signal.aborted) setResult({ video, version, project, review });
+      if (!controller.signal.aborted) setResult({ request, review });
     };
-    api<ReviewResponse>('/api/review?video=' + encodeURIComponent(video), { signal: controller.signal })
+    const url = request.video ? '/api/review?video=' + encodeURIComponent(request.video) : '/api/review';
+    api<ReviewResponse>(url, { signal: controller.signal })
       .then(update, () => update({ available: false }));
     return () => controller.abort();
-  }, [video, version, project]);
-  return result && result.video === video && result.project === project && result.version === version ? result.review : undefined;
+  }, [request]);
+  return result?.request === request ? result.review : undefined;
 }
 
 const reviewMismatch = '该报告不是针对当前文件。';
@@ -1205,11 +1207,14 @@ function StyleTab({ version, run, scenes, onScene }: { version: number; run: Run
 interface ReviewResponse {
   available: boolean;
   path?: string | null;
+  unbound?: boolean;
   can_approve?: boolean;
   report_dir?: string;
   report?: {
     ok?: boolean;
     video_sha256?: string;
+    raw?: string;
+    issues?: unknown[];
     problems?: string[];
     hints?: unknown[];
     expected_frames?: number;
@@ -1224,7 +1229,8 @@ interface ReviewResponse {
 const reviewProblems = (r?: ReviewResponse['report']) => r?.problems ?? [];
 
 function ReviewTab({ video, variants, onVideo, review, tree, version, run }: FilmReviewProps & { tree: TreeFile[]; version: number; run: RunAction }) {
-  const report = review?.available && review.path === video ? review.report : undefined;
+  const legacy = review?.available && review.unbound === true;
+  const report = review?.available && (legacy || review.path === video) ? review.report : undefined;
   const images = new Set(
     [report?.sheets, report?.seams].flatMap((items) => Array.isArray(items) ? items : [])
       .filter(item => typeof item?.image === 'string')
@@ -1256,9 +1262,11 @@ function ReviewTab({ video, variants, onVideo, review, tree, version, run }: Fil
         <Empty>{review?.available ? reviewMismatch : video && !review ? '正在读取复查报告…' : '还没有复查报告。'}</Empty>
       ) : (
         <>
-          {list('问题', reviewProblems(report))}
+          {legacy && <p className="scene-meta">这份旧报告未绑定影片，仅供查看。</p>}
+          {list('问题', report.problems ?? report.issues)}
           {list('提示', report.hints)}
-          {!reviewProblems(report).length && !report.hints?.length && <p className="ok-line">没有发现问题。</p>}
+          {report.raw && <pre>{report.raw}</pre>}
+          {!report.raw && !(report.problems ?? report.issues)?.length && !report.hints?.length && <p className="ok-line">没有发现问题。</p>}
         </>
       )}
       <div className="gallery wide">

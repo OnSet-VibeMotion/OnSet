@@ -2,6 +2,7 @@
  * 本文件收拢整片复查（review）与合成源码扫描（scene_lint）两条操作。移植自 internal/cli/review.go。
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import * as determinism from '@onset/engine/determinism';
 import { formatFixed, goRound } from '@onset/engine/gofmt';
@@ -10,8 +11,9 @@ import * as review from '@onset/engine/review';
 import * as scene from '@onset/engine/scene';
 import * as schedule from '@onset/engine/schedule';
 import { sha256File } from '@onset/engine/toolinstall';
+import { resolveExisting, safeRelative } from '@onset/engine/validate';
 import { currentEnvironment } from './cli';
-import { requireReviewTarget } from './deliverables';
+import { inProject, requireReviewTarget } from './deliverables';
 import { type Finding, recordCheckFindings } from './memory_cmd';
 import { bool, num, str } from './ops/common';
 import { defineOp } from './ops/op';
@@ -107,54 +109,81 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
     const loudness = reviewLoudnessTarget(rootDir, silent);
     const toolchain = mediaprobe.newToolchain(currentEnvironment());
     const target = str(p.report_json) || path.join(outDir, 'review.json');
-    let verifiedMedia: mediaprobe.Media | undefined;
-    let digest: string | undefined;
-    if (deliveryCanvas) {
-      const validationFile = scene.contained(rootDir, validationPath, 'validate_report');
-      if (validationFile === fs.realpathSync(video) || validationFile === path.resolve(target)) {
-        throw new Error('规格报告、复查报告和成片需要不同路径');
+    const reportPath = inProject(rootDir) ? path.relative(rootDir, path.resolve(video)).split(path.sep).join('/') : video;
+    let report: review.Report;
+    let videoChanged = false;
+    let work = '';
+    try {
+      let source = video;
+      let verifiedMedia: mediaprobe.Media | undefined;
+      let spec: review.DeliverySpec | undefined;
+      let digest: string | undefined;
+      if (deliveryCanvas) {
+        safeRelative(rootDir, validationPath);
+        const validationFile = resolveExisting(path.resolve(rootDir, validationPath));
+        const reviewFile = resolveExisting(path.resolve(target));
+        const original = fs.realpathSync(video);
+        if (validationFile === original || reviewFile === original || validationFile === reviewFile) {
+          throw new Error('规格报告、复查报告和成片需要不同路径');
+        }
+        const frames = num(p.expect_frames) || segments?.reduce((sum, segment) => sum + segment.frames, 0) || 0;
+        if (frames <= 0) throw new Error('交付校验需要冻结总帧数或镜头目录');
+        spec = review.deliverySpec(deliveryCanvas, frames, silent);
+        work = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-film-review-'));
+        source = path.join(work, path.basename(video));
+        // 独立副本也隔开原路径上的覆盖和原地写入。支持时由文件系统写时复制。
+        fs.copyFileSync(video, source, fs.constants.COPYFILE_FICLONE);
+        digest = await sha256File(source);
+        signal.throwIfAborted();
+        const validation = toolchain.verify(source, {
+          spec: {
+            widthPx: spec.width_px, heightPx: spec.height_px, fps: spec.fps, frames: spec.frames,
+            codec: spec.codec, pixelFormat: spec.pixel_format,
+            audio: spec.audio_required ? mediaprobe.AudioPresent : mediaprobe.AudioAbsent,
+            sampleRate: spec.sample_rate, channels: spec.channels,
+          },
+          exactFrames: true, decode: true, checkFrameZero: true,
+        });
+        const media = { ...validation.media, path: reportPath };
+        mediaprobe.writeReportJSON({ ...validation, path: reportPath, media }, validationFile);
+        if (!validation.ok) {
+          review.writeReportJSON({
+            schema_version: review.ReportSchemaVersion, path: reportPath, ok: false, media,
+            expected_frames: frames, counted_frames: validation.media.video?.nb_frames ?? 0,
+            loudness: null, problems: validation.problems, hints: validation.hints ?? [], cuts: [], sheets: [], seams: [],
+          }, target);
+          throw new Error(`成片规格校验未通过：${validationPath}\n  - ${validation.problems.join('\n  - ')}`);
+        }
+        out.write(`规格与完整解码校验：${validationPath}\n`);
+        verifiedMedia = validation.media;
       }
-      const frames = num(p.expect_frames) || segments?.reduce((sum, segment) => sum + segment.frames, 0) || 0;
-      if (frames <= 0) throw new Error('交付校验需要冻结总帧数或镜头目录');
-      digest = await sha256File(video);
-      signal.throwIfAborted();
-      const validation = toolchain.verify(video, {
-        spec: { widthPx: deliveryCanvas.widthPx, heightPx: deliveryCanvas.heightPx, fps: deliveryCanvas.fps, frames, codec: 'h264', pixelFormat: 'yuv420p',
-          audio: silent ? mediaprobe.AudioAbsent : mediaprobe.AudioPresent, sampleRate: silent ? 0 : 48000, channels: silent ? 0 : 2 },
-        exactFrames: true, decode: true, checkFrameZero: true,
+      report = review.run(toolchain, {
+        video: source,
+        fps: rate,
+        segments,
+        outDir,
+        silent,
+        loudness,
+        verifiedMedia,
+        syncTolerance: num(p.sync_tolerance),
+        every: num(p.every),
+        tilesPerSheet: num(p.per_sheet),
+        thumbWidth: num(p.thumb_width),
       });
-      mediaprobe.writeReportJSON(validation, validationFile);
-      if (!validation.ok) {
-        review.writeReportJSON({
-          schema_version: review.ReportSchemaVersion, path: video, ok: false, media: validation.media,
-          expected_frames: frames, counted_frames: validation.media.video?.nb_frames ?? 0,
-          loudness: null, problems: validation.problems, hints: validation.hints ?? [], cuts: [], sheets: [], seams: [],
-        }, target);
-        throw new Error(`成片规格校验未通过：${validationPath}\n  - ${validation.problems.join('\n  - ')}`);
+      report.path = reportPath;
+      report.media = { ...report.media, path: reportPath };
+      if (digest !== undefined) {
+        videoChanged = await sha256File(video).catch(() => '') !== digest;
+        if (videoChanged) {
+          report.ok = false;
+          report.problems.push('影片在复查期间发生变化，请重新复查');
+        } else {
+          report.video_sha256 = digest;
+          report.delivery_spec = spec;
+        }
       }
-      out.write(`规格与完整解码校验：${validationPath}\n`);
-      verifiedMedia = validation.media;
-    }
-    const report = review.run(toolchain, {
-      video,
-      fps: rate,
-      segments,
-      outDir,
-      silent,
-      loudness,
-      verifiedMedia,
-      syncTolerance: num(p.sync_tolerance),
-      every: num(p.every),
-      tilesPerSheet: num(p.per_sheet),
-      thumbWidth: num(p.thumb_width),
-    });
-    if (digest !== undefined) {
-      if (await sha256File(video) !== digest) {
-        report.ok = false;
-        report.problems.push('影片在复查期间发生变化，请重新复查');
-      } else {
-        report.video_sha256 = digest;
-      }
+    } finally {
+      if (work) fs.rmSync(work, { recursive: true, force: true });
     }
     signal.throwIfAborted();
     review.writeReportJSON(report, target);
@@ -170,7 +199,7 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
         for (const id of [cut.from, cut.to]) broken.set(id, [...(broken.get(id) ?? []), { check: scene.CheckReviewHandoff, problem }]);
       }
     }
-    recordCheckFindings(out, rootDir, planned, broken);
+    if (!videoChanged) recordCheckFindings(out, rootDir, planned, broken);
     if (!report.ok) throw new Error(`整片复查未通过：${video}\n  - ${(report.problems ?? []).join('\n  - ')}`);
     out.write('机器检查通过；请逐页打开联系表做视觉复查\n');
     return { data: review.reportToJSON(report) };

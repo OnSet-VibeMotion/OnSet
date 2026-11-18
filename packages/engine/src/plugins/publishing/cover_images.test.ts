@@ -126,7 +126,7 @@ describe('xiaohongshu covers follow the film orientation', () => {
     publish(file, root);
   });
 
-  it.each([null, '[1920]', '"1920"'])('defaults to 3:4 when the video width is %s', (width) => {
+  it.each([null, '[1920]', '"1920"', 1920.5])('defaults to 3:4 when the video width is %s', (width) => {
     for (const cover of [wide, tall]) {
       const [root, file] = publishWithCovers('ready', 'xiaohongshu', [cover], true);
       if (width !== null) withVideo(file, width, 1080);
