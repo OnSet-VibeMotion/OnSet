@@ -103,7 +103,7 @@ describe('cover images', () => {
 
 // 小红书的封面跟着成片方向：横屏成片的封面编辑器就是 4:3（与抖音的横版同一张），竖屏是 3:4。
 describe('xiaohongshu covers follow the film orientation', () => {
-  const withVideo = (file: string, w: number, h: number) =>
+  const withVideo = (file: string, w: number | string, h: number) =>
     fs.writeFileSync(file, replaceOnce(replaceOnce(fs.readFileSync(file, 'utf8'), '  width_px: null\n', `  width_px: ${w}\n`), '  height_px: null\n', `  height_px: ${h}\n`));
   const wide = img('xiaohongshu', '4:3', 'covers/xhs-1440x1080.png', 1440, 1080);
   const tall = img('xiaohongshu', '3:4', 'covers/xhs-1080x1440.png', 1080, 1440);
@@ -117,11 +117,21 @@ describe('xiaohongshu covers follow the film orientation', () => {
     expect(errorOf(() => publish(file, root)).message).toContain('小红书发布还缺 4:3 封面');
   });
 
-  it('a vertical film, or one without its size, still needs 3:4', () => {
+  it('a vertical film requires and accepts the 3:4 cover', () => {
     let [root, file] = publishWithCovers('ready', 'xiaohongshu', [wide], true);
     withVideo(file, 1080, 1920);
     expect(errorOf(() => publish(file, root)).message).toContain('小红书发布还缺 3:4 封面');
     [root, file] = publishWithCovers('ready', 'xiaohongshu', [tall], true);
+    withVideo(file, 1080, 1920);
     publish(file, root);
+  });
+
+  it.each([null, '[1920]', '"1920"'])('defaults to 3:4 when the video width is %s', (width) => {
+    for (const cover of [wide, tall]) {
+      const [root, file] = publishWithCovers('ready', 'xiaohongshu', [cover], true);
+      if (width !== null) withVideo(file, width, 1080);
+      if (cover === tall) publish(file, root);
+      else expect(errorOf(() => publish(file, root)).message).toContain('小红书发布还缺 3:4 封面');
+    }
   });
 });

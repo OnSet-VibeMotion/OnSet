@@ -44,8 +44,9 @@ export const coverSpecs: ReadonlyMap<string, CoverSpec> = new Map([
 /** 成片是横屏吗：看 video.width_px / height_px，没写按竖屏。 */
 export function landscapeVideo(data: GoMap): boolean {
   const video = get(data, 'video');
-  const w = isGoMap(video) ? Number(get(video, 'width_px')) : NaN;
-  const h = isGoMap(video) ? Number(get(video, 'height_px')) : NaN;
+  if (!isGoMap(video)) return false;
+  const w = intField(get(video, 'width_px'));
+  const h = intField(get(video, 'height_px'));
   return Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0 && w > h;
 }
 
