@@ -12,7 +12,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { sceneFeatureAPI } from './features';
 import * as flow from '../flow';
-import { deliverySpec, scenePlanDigest } from '../review';
+import { deliverySpec, ReviewWorkDirEnv, scenePlanDigest } from '../review';
 import { canvasOf } from '../scene';
 import * as studioview from '../studioview';
 import { computeStations } from './progress';
@@ -54,7 +54,7 @@ describe('studio', () => {
       expect(worker).toHaveBeenCalledExactlyOnceWith(s, expect.any(AbortSignal), expect.objectContaining({ path: root }), 'review', {
         video: path.join(root, silent), out: path.join(root, 'production/review-silent'), silent: true,
         expect_frames: 30, validate_report: 'production/review-silent/validate.json',
-      });
+      }, { env: { [ReviewWorkDirEnv]: expect.any(String) } });
       const scenes = path.join(root, 'scenes');
       writeStudioFile(path.join(scenes, 'scene-001/scene.json'), '{"id":"scene-001","duration_seconds":1.1,"output":"out.mp4","transcript":"voice.srt","text":"一句"}');
       writeStudioFile(path.join(scenes, 'scene-001/voice.srt'), '1\n00:00:00,000 --> 00:00:01,100\n一句\n');
@@ -64,9 +64,38 @@ describe('studio', () => {
         const task = await waitStudioTask(s, latest.body.task_id);
         expect(task.status, String(task.error ?? '')).toBe('succeeded');
         expect(worker).toHaveBeenLastCalledWith(s, expect.any(AbortSignal), expect.objectContaining({ path: root }), 'review',
-          expect.objectContaining({ expect_frames: 33, scenes }));
+          expect.objectContaining({ expect_frames: 33, scenes }), { env: { [ReviewWorkDirEnv]: expect.any(String) } });
       }
     } finally {
+      worker.mockRestore();
+    }
+  });
+
+  it('removes the review work directory after a cancelled worker finishes', async () => {
+    const root = fs.realpathSync(tempDir());
+    writeStudioFile(path.join(root, 'frame.md'), '---\ncanvas: {width_px: 240, height_px: 320, fps: 30}\n---\n');
+    writeStudioFile(path.join(root, 'production/timing-report.json'), '{"total_frames":30}');
+    writeStudioFile(path.join(root, 'final.mp4'), 'film');
+    const s = startStudio({ projectPath: root, configPath: path.join(tempDir(), 'projects.json') });
+    let work = '';
+    let finish = () => {};
+    const worker = vi.spyOn(tasks, 'runStudioOp').mockImplementation(async (_server, _signal, _project, _op, _params, opts) => {
+      work = opts?.env?.[ReviewWorkDirEnv] ?? '';
+      expect(work).not.toBe('');
+      writeStudioFile(path.join(work, 'snapshot/film.mp4'), 'snapshot');
+      await new Promise<void>((resolve) => { finish = resolve; });
+      return { text: '' };
+    });
+    try {
+      const response = await studioRequest(s, 'POST', '/api/review/run', '{"video":"final.mp4"}');
+      expect(response.status).toBe(202);
+      await vi.waitFor(() => expect(work).not.toBe(''));
+      expect((await studioRequest(s, 'POST', `/api/tasks/${response.body.task_id}/cancel`)).status).toBe(200);
+      expect(fs.existsSync(work)).toBe(true);
+      finish();
+      await vi.waitFor(() => expect(fs.existsSync(work)).toBe(false));
+    } finally {
+      finish();
       worker.mockRestore();
     }
   });
@@ -109,8 +138,25 @@ describe('studio', () => {
     writeScene('scene-002', 0.5);
     expect((await approve()).status).toBe(409);
     const plan = scenePlanDigest([{ id: 'scene-001', frames: 15 }, { id: 'scene-002', frames: 15 }]);
-    writeStudioFile(report, JSON.stringify({ path: video, ok: true, problems: [], video_sha256: sha, delivery_spec: spec, scene_plan_sha256: plan }));
+    const passing = JSON.stringify({ path: video, ok: true, problems: [], video_sha256: sha, delivery_spec: spec, scene_plan_sha256: plan });
+    writeStudioFile(report, passing);
     expect((await read()).body.can_approve).toBe(true);
+    const readFile = fs.readFileSync;
+    let frameReads = 0;
+    const readSpy = vi.spyOn(fs, 'readFileSync').mockImplementation((file, options) => {
+      const value = readFile(file, options);
+      if (file === frameFile && ++frameReads === 2) {
+        writeStudioFile(report, JSON.stringify({ path: video, ok: false, problems: ['新的检查未通过'] }));
+      }
+      return value;
+    });
+    try {
+      expect((await approve()).status).toBe(409);
+      expect(frameReads).toBe(2);
+    } finally {
+      readSpy.mockRestore();
+    }
+    writeStudioFile(report, passing);
     writeScene('scene-001', 0.6);
     writeScene('scene-002', 0.4);
     expect((await approve()).status).toBe(409);

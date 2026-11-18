@@ -134,6 +134,24 @@ it('shows an unbound legacy report as read-only even when the video is absent', 
   expect(screen.queryByRole('button', { name: '确认可用，去发布' })).toBeNull();
 });
 
+it('drops the approval navigation when the selected file is replaced at the same path', async () => {
+  const final = 'final.mp4';
+  mockApi({ '/api/review': {
+    available: true, path: final, can_approve: true, report: { ok: true, problems: [], video_sha256: 'a'.repeat(64) },
+  } });
+  const film = { path: final, size: 1, mtime: 1 };
+  const view = renderPreview('final', [], '', [film]);
+  await userEvent.click(await screen.findByRole('button', { name: '确认可用，去发布' }));
+  const navigate = view.props.run.mock.calls[0][2];
+  view.show('final', '', 2, [film, { path: 'notes.md', size: 2, mtime: 2 }]);
+  navigate();
+  expect(view.props.onTab).toHaveBeenCalledWith('publish');
+  view.props.onTab.mockClear();
+  view.show('final', '', 3, [{ ...film, mtime: 3 }]);
+  navigate();
+  expect(view.props.onTab).not.toHaveBeenCalled();
+});
+
 describe('镜头页', () => {
   it('方向键逐帧，Shift 一次 10 帧；输入框里的方向键不动画面', async () => {
     const { container } = setup();

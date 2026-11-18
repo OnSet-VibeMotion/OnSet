@@ -121,7 +121,7 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
         const frames = num(p.expect_frames) || segments.reduce((sum, segment) => sum + segment.frames, 0);
         if (frames <= 0) throw new Error('交付校验需要冻结总帧数或镜头目录');
         spec = review.deliverySpec(deliveryCanvas, frames, silent);
-        work = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-film-review-'));
+        work = fs.mkdtempSync(path.join(process.env[review.ReviewWorkDirEnv] || os.tmpdir(), 'onset-film-review-'));
         source = path.join(work, path.basename(video));
         // 独立副本也隔开原路径上的覆盖和原地写入。支持时由文件系统写时复制。
         fs.copyFileSync(video, source, fs.constants.COPYFILE_FICLONE);

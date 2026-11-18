@@ -111,6 +111,19 @@ export function reviewApprovalDigest(root: string, report: ReviewReport | null):
   return matchesCurrentPlan() && projectVideoDigest(root, report.video) === sha && matchesCurrentPlan() ? sha : '';
 }
 
+export function canApproveLatestReview(root: string, video: string, digest: string): boolean {
+  if (!filmVideos.has(video) || !digest) return false;
+  let selected = latestReviewReport(root, video, { exact: true });
+  // 允许重读一次刚写完的报告。连续有写入时请重新操作。
+  for (let attempt = 0; selected && attempt < 2; attempt++) {
+    if (reviewApprovalDigest(root, selected) !== digest) return false;
+    const latest = latestReviewReport(root, video, { exact: true });
+    if (latest?.file === selected.file && latest.body === selected.body) return true;
+    selected = latest;
+  }
+  return false;
+}
+
 /** 候选成片动辄上百 MB，路线每次刷新都要看。缓存须区分原地改写和原子替换。 */
 const digestCache = new Map<string, { info: fs.BigIntStats; sha: string }>();
 

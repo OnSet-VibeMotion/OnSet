@@ -22,7 +22,7 @@ import type { Turn } from './turns';
 import { emitStudioEvent } from './events';
 import { sceneActivity } from './activity';
 import { resolveExamAudio, resolveExamVideo } from './exammedia';
-import { filmVideos, latestReviewReport, reviewApprovalDigest } from './reviewreport';
+import { canApproveLatestReview } from './reviewreport';
 
 function memoryStore(s: Server): { p: Project; cfg: config.Config; store: memory.Store } | Response {
   const p = s.projectOr404();
@@ -360,11 +360,8 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
   let label = '';
   switch (action) {
     case 'consolidate':
-      if (req.final) {
-        const report = filmVideos.has(req.video) ? latestReviewReport(p.path, req.video, { exact: true }) : null;
-        if (!req.videoSha256 || reviewApprovalDigest(p.path, report) !== req.videoSha256) {
-          return writeError(409, 'film_review_required', '当前视频需要重新通过交付复查，才能确认发布。');
-        }
+      if (req.final && !canApproveLatestReview(p.path, req.video, req.videoSha256)) {
+        return writeError(409, 'film_review_required', '当前视频需要重新通过交付复查，才能确认发布。');
       }
       // final：用户在成片页确认这一版可用。这是整理的时机：一部片子做完，这次制作里的问题都齐了。
       // 已有整理在跑时不重复起（对话里确认时编排工具也会整理一次，第二次只会发现没有新问题）。

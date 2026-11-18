@@ -4,6 +4,9 @@ import { marshal } from '../gojson';
 import type { Canvas, Scene } from '../scene';
 import type { Segment } from './review';
 
+/** Studio 持有的任务临时目录，执行进程在其中建立自己的影片副本目录。 */
+export const ReviewWorkDirEnv = 'ONSET_REVIEW_WORK_DIR';
+
 export function deliverySpec(canvas: Canvas, frames: number, silent: boolean) {
   return {
     width_px: canvas.widthPx,

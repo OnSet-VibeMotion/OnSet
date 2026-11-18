@@ -38,5 +38,10 @@ export function renderPreview(tab: Tab, scenes: Scene[], sceneId = scenes[0]?.id
     run: vi.fn(),
   };
   const view = render(<Preview {...props} />);
-  return { ...view, props, show: (next: Tab, id = sceneId, version = props.version) => view.rerender(<Preview {...props} tab={next} sceneId={id} version={version} />) };
+  return {
+    ...view,
+    props,
+    show: (next: Tab, id = sceneId, version = props.version, files = tree) =>
+      view.rerender(<Preview {...props} tab={next} sceneId={id} version={version} tree={files} />),
+  };
 }

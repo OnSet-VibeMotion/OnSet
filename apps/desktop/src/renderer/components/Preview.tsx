@@ -828,14 +828,15 @@ const silentMaster = 'production/silent-master.mp4';
 function FinalTab({ video: current, variants, onVideo, review, tree, version, run, onTab }: FilmReviewProps & {
   tree: TreeFile[]; version: number; run: RunAction; onTab?: (tab: Tab) => void;
 }) {
+  // 只跟随影片自身的文件版本。项目里其他文件更新时，播放器保持当前位置。
+  const currentFile = tree.find((file) => file.path === current);
+  const currentMtime = currentFile?.mtime;
+  const currentSize = currentFile?.size;
   const selectedFilm = useRef<object | null>(null);
   useLayoutEffect(() => {
     selectedFilm.current = {};
     return () => { selectedFilm.current = null; };
-  }, [current]);
-  // 地址按这个文件自己的修改时间变，不按整个项目的 version：项目里别的文件一改 version 就涨，
-  // 地址一变播放器就重新加载，成片没变也会一直闪、从头放。
-  const currentMtime = tree.find((f) => f.path === current)?.mtime;
+  }, [current, currentMtime, currentSize]);
   const report = review?.available && review.path === current ? review.report : undefined;
   const problems = reviewProblems(report);
   const seconds = report?.media?.duration_seconds;

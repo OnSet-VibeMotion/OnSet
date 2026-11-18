@@ -18,6 +18,7 @@ import * as filmstyle from '../filmstyle';
 import { goClean, goPathError, goTrimSpace } from '../gofmt';
 import { marshalIndent } from '../gojson';
 import * as preset from '../preset';
+import { ReviewWorkDirEnv } from '../review';
 import * as projectinit from '../projectinit';
 import { agentServiceAPI, agentServiceModelsAPI, agentServicesAPI, agentVisionAPI } from './agentservices';
 import { agentModelsAPI, agentsAPI } from './agents';
@@ -772,12 +773,18 @@ export class Server {
         if (video === '') throw new Error('找不到可审查的成片，请先生成 candidate.mp4 或 final.mp4');
         contained(p.path, path.relative(p.path, video), 'video');
         const { scenes, spec } = studioReviewInputs(p.path, silent);
-        await runStudioOp(this, signal, p, 'review', {
-          video, out: dir, silent,
-          validate_report: path.join('production', folder, 'validate.json').split(path.sep).join('/'),
-          expect_frames: spec.frames,
-          ...(scenes ? { scenes } : {}),
-        });
+        const work = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-studio-review-'));
+        try {
+          await runStudioOp(this, signal, p, 'review', {
+            video, out: dir, silent,
+            validate_report: path.join('production', folder, 'validate.json').split(path.sep).join('/'),
+            expect_frames: spec.frames,
+            ...(scenes ? { scenes } : {}),
+          }, { env: { [ReviewWorkDirEnv]: work } });
+        } finally {
+          // 取消时执行进程可能被强制终止，等进程树退出后由宿主回收副本。
+          fs.rmSync(work, { recursive: true, force: true, maxRetries: 3 });
+        }
       });
       return writeJSON(202, goMap({ task_id: t.task_id }));
     } catch (err) {
