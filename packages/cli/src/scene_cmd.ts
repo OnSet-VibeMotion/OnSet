@@ -27,6 +27,8 @@ import './inputs_cmd';
 import './media';
 import './review_cmd';
 import './scene_cues';
+import './scene_prepare';
+
 import './usage_cmd';
 
 const required = scene.requiredFields();
@@ -113,7 +115,7 @@ defineOp({
 上一次中途异常退出的镜头（重试时也一样）接着上一次做，不从头来：合成写完了就直接渲染，否则续接原来的会话，
 续不上再开新会话照上次的文件接着做。fresh 为 true 时一律从头渲染。
 
-force 跳过全部上述判定，无条件重渲染每个镜头。
+force 跳过复用判定。返修一组指定镜头时同时传 only_scenes，只派发这些镜头；覆盖和制作前校验仍按全片执行。
 
 并发上限由用户配置 SCENE_JOBS 决定，工具调用不覆盖它。retries 取值 0..5，越界直接失败，不做截断。
 
@@ -136,8 +138,8 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     'scene_run_all({"scenes": "scenes/", "retries": 2, "report_json": "production/run-report.json"})',
     '# 渲染前先核对镜头拆分是否完整覆盖字幕，不通过就不开工',
     'scene_run_all({"scenes": "scenes/", "srt": "transcription.srt", "strict_coverage": true})',
-    '# 输入改过、镜头被判为 Stale 时，显式重渲染',
-    'scene_run_all({"scenes": "scenes/", "force": true})',
+    '# 显式重渲染已确认需要返修的镜头',
+    'scene_run_all({"scenes": "scenes/", "only_scenes": ["scene-001", "scene-004"], "force": true})',
   ],
   params: {
     scenes: { type: 'string', description: '镜头目录的上级目录', required: true, positional: 0 },
@@ -145,6 +147,7 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     retries: { type: 'integer', description: '单个镜头失败后的最大重试次数，取值 0..5', default: 2 },
     duration_tolerance: durationTolerance,
     force: { type: 'boolean', description: '跳过「已有合格产物」与 Stale 判定，无条件重渲染每个镜头' },
+    only_scenes: { type: 'strings', description: '只派发指定镜头 ID，留空为全片' },
     fresh: { type: 'boolean', description: '中途中断过的镜头也从头渲染，不接着上一次做' },
     report_json: { type: 'string', description: '把逐镜头结果写成 JSON 报告到该路径；镜头失败时应读它' },
     // 内置插件的整批检查要的参数（例如歌曲讲解的 song_timeline）。
@@ -166,7 +169,13 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     const cfg = config.load('.', null);
     if (jobs === 0) jobs = cfg.sceneJobs;
     if (jobs < 1 || jobs > 16 || retries < 0 || retries > 5) throw new Error('jobs 必须为 1..16，retries 必须为 0..5');
-    const scenes = schedule.plan(str(p.scenes));
+    const planned = schedule.plan(str(p.scenes));
+    const only = strs(p.only_scenes);
+    const selected = new Set(only);
+    if (selected.size !== only.length || only.some(id => !planned.some(s => s.id === id))) {
+      throw new Error('only_scenes 必须是计划中不重复的镜头 ID');
+    }
+    const scenes = only.length ? planned.filter(s => selected.has(s.id)) : planned;
     const priority = strs(p.priority_scenes);
     if (new Set(priority).size !== priority.length || priority.some(id => !scenes.some(s => s.id === id))) {
       throw new Error('priority_scenes 必须是本批中不重复的镜头 ID');
@@ -174,9 +183,9 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     // 覆盖校验在渲染之前跑：漏掉一镜或某镜时长写错，等全部渲染完
     // 拼接时才发现的话，每一镜都已经烧掉一次完整的 AI CLI 调用。
     let span = 0;
-    for (const check of plugin.pluginRenderChecks()) check.value.beforeRender?.('.', scenes, p);
+    for (const check of plugin.pluginRenderChecks()) check.value.beforeRender?.('.', planned, p);
     if (srtPath !== '') span = srt.readSpan(srtPath).seconds();
-    const problems = schedule.coverageProblems(scenes, span, num(p.coverage_tolerance));
+    const problems = schedule.coverageProblems(planned, span, num(p.coverage_tolerance));
     if (problems.length > 0) {
       const message = `镜头覆盖校验未通过：\n  - ${problems.join('\n  - ')}`;
       if (bool(p.strict_coverage)) throw new Error(message);

@@ -8,7 +8,7 @@ import { downloadSource, type SourceKind } from '@onset/engine/windowsruntime';
 import { currentEnvironment } from './cli';
 import { num, projectRoot, str, strs } from './ops/common';
 import { defineOp, type Op } from './ops/op';
-import { windowsAlignOperation } from './windows_align';
+import { windowsAlignOperation } from './align_run';
 import { defineGroup } from './ops/cli';
 
 if (process.platform === 'win32') defineGroup({ path: ['windows'], summary: 'Windows 本机制作辅助', description: 'Windows 专用的只读预检、本地字幕对齐和公开来源下载操作。只使用已准备好的工具，保持现有批准素材与产物。' });

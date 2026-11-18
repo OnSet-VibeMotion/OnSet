@@ -211,6 +211,10 @@ function runSceneCues(opts: SceneCuesOptions, stdout: Out): unknown {
     } catch (err) {
       throw new Error(`${sceneFile}：${(err as Error).message}`);
     }
+    if (r.scene.timing && r.scene.timing.plan !== planSHA) {
+      const migrated = scene.migrateRecordBeforePlanRewrite(r.scene);
+      if (migrated) writes.push({ path: path.join(r.scene.directory, scene.RecordFile), body: Buffer.from(migrated) });
+    }
     writes.push({ path: sceneFile, body: Buffer.from(body) });
     if (phraseBody !== null) writes.push({ path: path.join(r.scene.directory, scene.PhraseCopyFile), body: phraseBody });
   }

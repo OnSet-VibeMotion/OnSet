@@ -36,6 +36,9 @@ describe('render prompt version', () => {
     expect(prompt).toContain('开工须知（强制）');
     expect(prompt).toContain('onset-scene.js（window.ONSET_SCENE.cues');
     expect(prompt).not.toContain('先阅读完整字幕');
+    expect(prompt).toContain('先看联系表');
+    expect(prompt).not.toContain('至少完成一轮');
+    expect(buildPrompt(project(2, true), {})).toContain('至少完成一轮');
     expect(fingerprint(fresh, 'claude', {}).parts!.prompt).not.toBe(fingerprint(old, 'claude', {}).parts!.prompt);
 
     // 没有时间合同的镜头（卡点）没有裁好的字幕：开工须知不提字幕，开头那句照旧。

@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { changedInputs, fingerprint, inputMatchesRecord, inputsMatchRecord, RecordSchemaBytes, type RenderRecord } from './record';
+import { changedInputs, fingerprint, inputMatchesRecord, inputsMatchRecord, RecordSchemaBytes, RenderRecordSchema, setToolVersion, getToolVersion, type RenderRecord } from './record';
 import { load } from './scene';
 import { dataScene, tempDir } from './testsupport';
 
@@ -25,10 +25,31 @@ function edit(file: string, from: string, to: string): void {
 
 function record(dir: string, schema?: number): RenderRecord {
   const inputs = fingerprint(load(dir), 'claude', null, schema);
-  return { schema: schema ?? 2, output: 'out.mp4', output_size: 0, output_sha256: '', ...inputs };
+  return { schema: schema ?? RenderRecordSchema, output: 'out.mp4', output_size: 0, output_sha256: '', ...inputs };
 }
 
 describe('render record compares input files by content', () => {
+  it('keeps the same render inputs across releases and plan-only edits', () => {
+    const { dir } = projectScene();
+    const original = getToolVersion();
+    try {
+      setToolVersion('2.0.0');
+      const before = record(dir);
+      const older = record(dir, 2);
+      setToolVersion('2.0.1');
+      expect(inputsMatchRecord(load(dir), fingerprint(load(dir), 'claude', null, 2), older)).toBe(true);
+      const file = path.join(dir, 'scene.json');
+      const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+      value.timing.plan = '9'.repeat(64);
+      fs.writeFileSync(file, JSON.stringify(value));
+      expect(record(dir).fingerprint).toBe(before.fingerprint);
+      value.timing.look = { background: '#111111', ink: '#FFFFFF', accent: '#FF0000' };
+      fs.writeFileSync(file, JSON.stringify(value));
+      expect(record(dir).fingerprint).not.toBe(before.fingerprint);
+    } finally {
+      setToolVersion(original);
+    }
+  });
   it('does not count rewriting scene.json in another layout', () => {
     const { dir } = projectScene();
     const before = record(dir);

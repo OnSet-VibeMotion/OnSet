@@ -54,7 +54,7 @@ below_peak_db 分贝即视为静音，短于 min_gap 的静音并入发声。它
   - 全部字幕起点偏差的中位数超过容差的一半：多条同向偏移说明时间戳来源有系统
     误差，应整体校正而不是逐条修
 
-逐条的发声区间与偏差写在 report_json 里，判断结果请读它。`,
+指定 report_json 时，逐条发声区间与偏差留在报告文件，工具回复给出摘要与路径。`,
   examples: [
     '# 校验 TTS 产出的句级时间戳',
     'audio_check({"audio": "production/audio/voice.wav", "srt": "production/audio/voice.srt"})',

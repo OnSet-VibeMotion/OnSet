@@ -1,9 +1,8 @@
 /**
  * onset 的版本号。不依赖任何功能包，谁都能引用（scene 的渲染指纹、flow 的插件兼容检查）。
  *
- * - 工具版本（toolVersion）：由 onset 在启动时设为 cli 的版本号（Go 的 scene.ToolVersion = cli.Version），
- *   写进渲染输入指纹——换了 onset 版本，提示词措辞、技能清单和校验规则都可能变了，同一份 scene.json
- *   渲出的已不是同一件东西。
+ * - 工具版本（toolVersion）：由 onset 在启动时设为 cli 的版本号，写进渲染记录供追溯。
+ *   复用按实际提示词、技能、输入文件和渲染契约判断。
  * - 宿主版本（hostVersion）：只给兼容检查（插件清单的 requires.onset）用。客户端主进程用 app.getVersion() 设它；
  *   客户端**不**设工具版本，否则进程内算的渲染指纹会变。
  */

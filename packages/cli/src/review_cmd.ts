@@ -44,8 +44,8 @@ defineOp({
 联系表不做判断。画面对不对要打开图逐页看：文字是否溢出或压在图形上、相邻
 镜头的风格与密度是否一致、交界是否跳变突兀、结尾是否停在合适的画面。
 
-机器检查有不符项或跑不起来时失败。判断结果读结构化结果或 report_json
-（缺省为 <out>/review.json），不要解析文字输出。
+机器检查有不符项或跑不起来时失败。逐帧数据在 report_json（缺省为 <out>/review.json），
+工具回复给出结论、联系表与报告路径。
 
 在项目里 video 只能是候选成片 production/audio/candidate.mp4 或 final.mp4（silent 时是
 production/silent-master.mp4）：客户端的成片页与制作路线只认这些位置。`,
@@ -61,6 +61,8 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
     scenes: { type: 'string', description: '镜头根目录；给了才做总帧数与交界检查，联系表按镜头排版' },
     out: { type: 'string', description: '联系表与报告的输出目录，必填' },
     report_json: { type: 'string', description: '报告路径，缺省为 <out>/review.json' },
+    validate_report: { type: 'string', description: '另做交付规格、完整解码和首帧校验，保存报告并共用精确帧数' },
+    expect_frames: { type: 'integer', description: '交付校验用的冻结总帧数' },
     fps: { type: 'integer', description: '帧率覆盖值；不传则读 frame.md 的 canvas.fps' },
     silent: { type: 'boolean', description: '断言成片没有音轨，用于只拼接未混音的交付；不做音画比对' },
     sync_tolerance: { type: 'number', description: '音视频流时长允许的差值（秒）', default: review.DefaultSyncTolerance },
@@ -101,6 +103,26 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
     }
     const loudness = reviewLoudnessTarget(rootDir, silent);
     const toolchain = mediaprobe.newToolchain(currentEnvironment());
+    const validationPath = str(p.validate_report);
+    let verifiedMedia: mediaprobe.Media | undefined;
+    if (validationPath !== '') {
+      const validationFile = scene.contained(rootDir, validationPath, 'validate_report');
+      if (validationFile === fs.realpathSync(video) || validationFile === path.resolve(str(p.report_json) || path.join(outDir, 'review.json'))) {
+        throw new Error('规格报告、复查报告和成片需要不同路径');
+      }
+      const canvas = scene.canvasOf(rootDir, 'frame.md');
+      const frames = num(p.expect_frames) || segments?.reduce((sum, segment) => sum + segment.frames, 0) || 0;
+      if (frames <= 0) throw new Error('交付校验需要冻结总帧数或镜头目录');
+      const validation = toolchain.verify(video, {
+        spec: { widthPx: canvas.widthPx, heightPx: canvas.heightPx, fps: rate, frames, codec: 'h264', pixelFormat: 'yuv420p',
+          audio: silent ? mediaprobe.AudioAbsent : mediaprobe.AudioPresent, sampleRate: silent ? 0 : 48000, channels: silent ? 0 : 2 },
+        exactFrames: true, decode: true, checkFrameZero: true,
+      });
+      mediaprobe.writeReportJSON(validation, validationFile);
+      if (!validation.ok) throw new Error(`成片规格校验未通过：${validationPath}\n  - ${validation.problems.join('\n  - ')}`);
+      out.write(`规格与完整解码校验：${validationPath}\n`);
+      verifiedMedia = validation.media;
+    }
     const report = review.run(toolchain, {
       video,
       fps: rate,
@@ -108,6 +130,7 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
       outDir,
       silent,
       loudness,
+      verifiedMedia,
       syncTolerance: num(p.sync_tolerance),
       every: num(p.every),
       tilesPerSheet: num(p.per_sheet),

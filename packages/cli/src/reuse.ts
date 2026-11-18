@@ -25,10 +25,11 @@ export function reuseDecision(item: scene.Scene, cfg: Config, env: Record<string
       current = null;
     }
     if (current !== null) {
-      if (current.fingerprint === record.fingerprint) return [schedule.Skipped, '已有合格产物（输入指纹一致）'];
-      // 变了的只有镜头的输入文件、内容其实没变（写法变了、改的是别的镜头的字幕）：照样复用。
-      if (scene.inputsMatchRecord(item, current, record)) return [schedule.Skipped, '已有合格产物（输入内容未变，只是文件写法或别的镜头的字幕变了）'];
-      const changed = scene.changedInputs(current, record).map((name) => (name === 'memory' ? '召回的记忆变了' : name));
+      if (scene.inputsMatchRecord(item, current, record)) {
+        const reason = current.fingerprint === record.fingerprint ? '输入指纹一致' : '影响镜头画面的输入未变';
+        return [schedule.Skipped, `已有合格产物（${reason}）`];
+      }
+      const changed = scene.renderInputChanges(current, record).map((name) => (name === 'memory' ? '召回的记忆变了' : name));
       return [schedule.Stale, `输入已变化（${changed.join('、')}），需要显式 --force 重渲染`];
     }
   }

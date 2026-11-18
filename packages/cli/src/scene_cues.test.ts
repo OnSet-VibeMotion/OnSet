@@ -1,4 +1,5 @@
 import { Buffer, tempDir } from './testutil';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -95,6 +96,32 @@ async function runCues(root: string, ...extra: string[]): Promise<{ out: string;
 const mustRead = (file: string) => fs.readFileSync(file, 'utf8');
 
 describe('onset scene cues', () => {
+  it('keeps a legacy rendered mirror reusable when a different cut changes', async () => {
+    const root = cuesProject();
+    expect((await runCues(root)).err).toBeNull();
+    const dirs = [1, 2, 3].map(n => path.join(root, 'scenes', 'scene-00' + n));
+    for (const dir of dirs) {
+      const s = scene.load(dir);
+      fs.writeFileSync(scene.outputPath(s), 'video');
+      fs.writeFileSync(path.join(dir, scene.RecordFile), JSON.stringify({
+        schema: 2, output: 'out.mp4', output_size: 5,
+        output_sha256: crypto.createHash('sha256').update('video').digest('hex'),
+        ...scene.fingerprint(s, 'claude', {}, 2),
+      }));
+    }
+    const file = path.join(root, 'production', 'scene-plan.json');
+    fs.writeFileSync(file, mustRead(file).replace('"first_subtitle":2', '"first_subtitle":2,"cut":"prev_end"'));
+    expect((await runCues(root)).err).toBeNull();
+    const reuses = dirs.map(dir => {
+      const s = scene.load(dir);
+      const record = scene.loadRecord(s)!;
+      expect(record.schema).toBe(scene.RenderRecordSchema);
+      expect(record.plan_sha256).not.toBe(s.timing!.plan);
+      return scene.inputsMatchRecord(s, scene.fingerprint(s, 'claude', {}, record.schema), record);
+    });
+    expect(reuses).toEqual([false, false, true]);
+  });
+
   it('writes durations and timing', async () => {
     const root = cuesProject();
     const first = await runCues(root);

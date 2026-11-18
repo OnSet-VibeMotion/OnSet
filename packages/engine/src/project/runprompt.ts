@@ -21,7 +21,7 @@ export interface RunPromptResult {
  * 插件装在用户级：读不出来的插件只在它参与这个项目的制作时（流程是它带来的、它顶替或接进了这条路线，flow.brokenParticipants）让开工报错，
  * 其余的放进 warnings，由调用方让用户看见。
  */
-export function composeProjectPrompt(root: string): { text: string; flow: flow.FlowID; name: string; warnings: string[] } {
+export function composeProjectPrompt(root: string, focus?: string, requireFocus = false): { text: string; flow: flow.FlowID; name: string; warnings: string[] } {
   const rec = flow.flowRecord(root);
   const loaded = flow.loadStations();
   const extras = loaded.stations.map((s) => flow.toExtra(s.manifest));
@@ -37,7 +37,7 @@ export function composeProjectPrompt(root: string): { text: string; flow: flow.F
   // detectFlow 没报错就一定有记录；画幅不认得时说清楚是哪一段写错了。
   const p = preset.byID(rec?.canvas ?? '');
   if (!p) throw new flow.MissingFlowRecordError(`${flow.LockFile} 的 production.canvas 不是认得的画幅：${rec?.canvas ?? ''}（可选：${preset.ids().join('、')}）`);
-  const text = flow.composeFlowPrompt({ flow: id, stations: loaded.stations, canvas: (t) => substituteCanvas(p, t) });
+  const text = flow.composeFlowPrompt({ flow: id, stations: loaded.stations, canvas: (t) => substituteCanvas(p, t), focus, requireFocus });
   return { text, flow: id, name: def.name, warnings };
 }
 

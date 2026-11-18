@@ -6,7 +6,7 @@ import * as mediaprobe from '../mediaprobe';
 import { parse as parseMedia } from '../mediaprobe/mediaprobe';
 import { newConfig } from '../config';
 import { attemptLog, OutcomeFailed, OutcomeSucceeded, OutcomeVerificationFailed, parseAttempt, type Attempt } from './attempt';
-import { changedInputs, fingerprint, loadRecord, writeRecord } from './record';
+import { changedInputs, fingerprint, getToolVersion, loadRecord, writeRecord } from './record';
 import { run } from './run';
 import { load, outputPath, streamLog, withRenderWorkers, withRetryNote, type Scene } from './scene';
 import { HyperFramesSkillName } from './skills';
@@ -154,9 +154,10 @@ describe('render record', () => {
     writeRecord(s, { fingerprint: 'abc', parts: { prompt: 'x', onset: 'y', 'file:<a>': 'z' } });
     const sha = crypto.createHash('sha256').update('video').digest('hex');
     expect(fs.readFileSync(path.join(s.directory, '.onset-render.json'), 'utf8')).toBe(
-      '{\n  "schema": 2,\n  "output": "out.mp4",\n  "output_size": 5,\n' +
+      '{\n  "schema": 3,\n  "output": "out.mp4",\n  "output_size": 5,\n' +
         `  "output_sha256": "${sha}",\n  "fingerprint": "abc",\n` +
-        '  "parts": {\n    "file:\\u003ca\\u003e": "z",\n    "onset": "y",\n    "prompt": "x"\n  }\n}\n',
+        '  "parts": {\n    "file:\\u003ca\\u003e": "z",\n    "onset": "y",\n    "prompt": "x"\n  },\n' +
+        `  "onset_version": "${getToolVersion()}"\n}\n`,
     );
   });
 });

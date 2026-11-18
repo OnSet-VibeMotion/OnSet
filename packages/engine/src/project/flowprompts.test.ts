@@ -78,6 +78,18 @@ describe('new projects compose the prompt of their own flow', () => {
     expect(got).toEqual(JSON.parse(fs.readFileSync(goldenFile, 'utf8')));
   });
 
+  it('keeps numbering and gates when loading only the requested production stage', () => {
+    const root = created('speech', 'vertical-3x4');
+    const full = composeProjectPrompt(root).text;
+    const focused = composeProjectPrompt(root, 'plan', true).text;
+    expect(focused).toContain(stageTitles(full).find(title => title.includes('拆分镜头'))!);
+    expect(focused).toContain('storyboard');
+    expect(focused).toContain('flow_guide(');
+    expect(focused.length).toBeLessThan(full.length / 2);
+    expect(focused).not.toContain('audio_mix()');
+    expect(() => composeProjectPrompt(root, 'missing', true)).toThrow(/可用阶段/);
+  });
+
   it('records the flow, the canvas and the render prompt version', () => {
     for (const delivery of ['speech', 'beat', 'song']) {
       const root = created(delivery, 'vertical-9x16');
@@ -294,7 +306,8 @@ describe('prompt content', () => {
   });
 
   it('leaves voice tools to the tool page (speech)', () => {
-    has(speech, ['配音与对齐工具都是前置资源', '工具准备页', 'funasr-python', '--model <ALIGN_MODEL 的本地目录>', 'config_get({"key": "ALIGN_MODEL"})'], '口播·配音工具');
+    has(speech, ['配音与对齐工具都是前置资源', '工具准备页', 'align_run({"publish": true})'], '口播·配音工具');
+    expect(speech).not.toContain('funasr-python');
   });
 
   it('requires platform covers (speech, beat)', () => {

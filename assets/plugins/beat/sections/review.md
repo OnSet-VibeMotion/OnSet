@@ -2,27 +2,9 @@
 
 候选成片必须通过以下检查：
 
-### 机器检查
+用 `review({"video":"production/audio/candidate.mp4","scenes":"scenes/","out":"production/review","expect_frames":<冻结总帧数>,"validate_report":"production/final-check.json"})` 一次核对规格、完整解码、第 0 帧、音画时长、响度和镜头交界。查看两个报告里的 `problems` 和 `hints`。
 
-画幅、帧率、编码、像素格式、总帧数、音轨规格、可完整解码和第 0 帧封面这几项由一条命令完成，不要自己拼 FFprobe：
-
-```bash
-validate_video({"video": "production/audio/candidate.mp4", "audio": true, "expect_frames": "<冻结时间轴总帧数>", "decode": true, "check_frame_zero": true, "report_json": "production/final-check.json"})
-```
-
-不符项会一次全部列出。判断结果读 `report_json` 落盘的报告，`ok` 为 `false` 时 `problems` 数组里是全部不符项，`hints` 里是值得看一眼但不构成失败的观察（例如第 0 帧偏暗）。
-
-### 整片复查
-
-机器检查只看规格，拼接与混音之后才出现的问题要靠整片复查：
-
-```bash
-review({"video": "production/audio/candidate.mp4", "scenes": "scenes/", "out": "production/review"})
-```
-
-它比对音轨与视频流各自的时长，精确统计总帧数并与各镜头帧数之和比对（漏拼、重拼、掉帧都会被拦下），检查每个镜头交界两侧的帧，并把每个镜头的首帧、中间帧、末帧拼成联系表，每个交界再出一张前后各 6 帧的条带 `seam-NN.png`。判断结果读 `production/review/review.json`：`ok` 为 `false` 时 `problems` 里是全部不符项；交界处的纯色帧只进 `hints`，因为切黑、切白可能是有意的转场，要你看图确认。有音轨时它还会解码成片，测量积分响度、真峰与响度范围写进报告的 `loudness`，并与项目音频目标比对；偏离只进 `hints`，不影响退出码，但除非平台另有响度规范，出现了就回{{STAGE:beat-mix}}重新混音，不要在成片上再叠一次规范化。
-
-机器检查通过后逐页打开 `production/review/sheet-NN.png` 做视觉复查：相邻镜头的交接、可读性与画面密度是否合适，结尾是否停在合适的画面；再逐张看 `seam-NN.png`，确认每个交界的转场顺畅，没有一帧闪烁、跳变或停在入场中间态，并对照两侧镜头 `prompt.md` 声明的出场状态与入场状态：持续物件的位置、大小和状态是否真的接上了。发现问题只重渲染相关镜头，重新拼接、混音后再复查一次。复查报告与联系表纳入审批绑定的检查文件。
+机器检查通过后先看 `production/review/sheet-NN.png`，核对交接、可读性、画面密度和结尾。遇到重要转场或报告提示异常的交界，再打开 `seam-NN.png`，对照两侧镜头 `prompt.md` 声明的出场状态与入场状态，检查闪烁、跳变或物件是否接上。返修后重点看有变化的镜头及其两侧。复查报告与联系表纳入审批绑定的检查文件。
 
 整片看一遍时，对每一处画面变化问一句：它是在澄清、证明、控制节奏还是加强情绪？说不出作用的变化删掉。同时对照 `treatment.md` 检查钩子、揭示和收束是否落在了预定的位置。
 

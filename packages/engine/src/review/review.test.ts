@@ -63,6 +63,16 @@ const segments = (): Segment[] => [
 ];
 
 describe('review', () => {
+  it('reuses the precise count from the preceding validation and still checks loudness and cuts', () => {
+    const inspected = media(4, 4, true);
+    inspected.path = 'final.mp4';
+    inspected.video!.nb_frames = 120;
+    const p = new FakeProber(inspected, { countErr: new Error('重复统计帧数') });
+    const result = run(p, { video: 'final.mp4', fps: 30, segments: segments(), verifiedMedia: inspected });
+    expect(result.counted_frames).toBe(120);
+    expect(result.cuts).toHaveLength(2);
+    expect(p.measured).toBe(1);
+  });
   it('handoff seams are compared only where declared', () => {
     const segs: Segment[] = [{ id: 's1', frames: 30 }, { id: 's2', frames: 60, handoff: 'push_in', crossChapter: true }, { id: 's3', frames: 30 }];
     const p = new FakeProber(media(4, 4.02, true), { frames: 120, difference: new Map([[1, 3]]) });

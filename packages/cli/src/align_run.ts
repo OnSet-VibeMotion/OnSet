@@ -6,9 +6,12 @@ import * as voicecheck from '@onset/engine/voicecheck';
 import * as mediaprobe from '@onset/engine/mediaprobe';
 import { readCues } from '@onset/engine/srt';
 import { sceneCanvas, newScene } from '@onset/engine/scene';
-import { dataDir, windowsPython, envMap } from '@onset/engine/envutil';
+import { windowsPython, envMap } from '@onset/engine/envutil';
 import { marshalIndent } from '@onset/engine/gojson';
 import { start } from '@onset/engine/procgroup';
+import { FunASRTimestampModel, load as loadConfig, QwenForcedAligner } from '@onset/engine/config';
+import { modelDir, type ModelSpec } from '@onset/engine/toolinstall';
+import { findOptional } from '@onset/engine/toolpath';
 import { bool, str, num, projectRoot } from './ops/common';
 import type { Op } from './ops/op';
 import {loadWindowsAlignmentSegments,verifyWindowsAlignmentSegments,windowsSegmentPython} from './windows_alignment_segments';
@@ -52,43 +55,87 @@ function inputPath(root: string, relative: string): string {
   return real;
 }
 
-export function localAlignmentModel(env: Record<string, string>): string {
-  for (const model of [env.ALIGN_MODEL, path.join(dataDir(env), 'models/iic__speech_timestamp_prediction-v1-16k-offline')]) {
-    if (model && path.isAbsolute(model) && ['am.mvn','config.yaml','configuration.json','model.pt','seg_dict','tokens.json'].every(name => {
+export function localAlignmentModel(env: Record<string, string>, spec: ModelSpec = FunASRTimestampModel): string {
+  for (const model of [env.ALIGN_MODEL, modelDir(spec, env)]) {
+    if (model && path.isAbsolute(model) && spec.files.every(({ path: name }) => {
       try {return fs.statSync(path.join(model,name)).isFile();} catch {return false;}
     })) return fs.realpathSync(model);
   }
   throw Error('本地对齐模型不完整，请在工具准备页修复；本操作不会下载或访问个人缓存');
 }
 
+function alignmentRunner(provider: 'funasr' | 'mlx', env: Record<string, string>) {
+  if (provider === 'mlx') {
+    const command = findOptional('mlx_audio.stt.generate', env);
+    if (!command) throw Error('缺少已准备的 MLX 对齐工具，请在工具准备页修复');
+    return { command, fingerprint: sha(command) };
+  }
+  if (process.platform !== 'win32') {
+    const command = findOptional('funasr-python', env);
+    if (!command) throw Error('缺少已准备的 FunASR Python 环境，请在工具准备页修复');
+    return { command, fingerprint: sha(command) };
+  }
+  const command = windowsPython(env);
+  const init = path.resolve(path.dirname(command), '../Lib/site-packages/funasr/__init__.py');
+  if (!command || !fs.existsSync(init)) throw Error('缺少已准备的 FunASR Python 环境，请在工具准备页修复');
+  return { command, fingerprint: sha(init) };
+}
+
 /** 一次模型调用、一次映射、一次独立能量校验；所有新产物留在带输入指纹的候选目录。 */
-export function windowsAlignOperation(): Op {
+export function alignRunOperation(legacyWindows = false): Op {
   return {
-    name:'windows_align',cli:['windows','align'],summary:'使用本地模型一次生成并校验 Windows 字幕时间轴',
-    examples:['windows_align()', 'windows_align({"publish":true})', 'windows_align({"audio":"production/audio/voice-raw.wav","segments_manifest":"production/audio/alignment-segments.json"})'],
-    description:'规范标点但保留原稿朗读字符，使用已安装模型和 FunASR，不下载、不检查更新。一次生成、映射与独立 audio_check；按输入摘要复用已验证结果。失败保留日志并停止，同一失败输入默认不重试。所有结果写入独立候选目录，不覆盖配音、原稿、分镜、已有字幕或镜头。新项目可 publish=true，仅当规范输出全部不存在且没有已确认分镜/成片时发布。',
-    params:{project_root:projectRoot,audio:{type:'string',default:'production/audio/voice.wav',description:'已确认的配音，项目内相对路径'},script:{type:'string',default:'production/script-final.md',description:'已确认的终稿'},segments_manifest:{type:'string',description:'可选：原始TTS分段拼接清单（schema=1、audio_sha256、script_sha256、sample_rate、segments）。每段含audio相对路径、sha256、text原始朗读文本、start_sample、end_sample_exclusive。只接受完整配音中原样保留的PCM16分段及零静音间隔；单次加载模型逐段对齐，严格按采样边界合并，不推测切分或时间。'},retry:{type:'boolean',description:'诊断并修复原因后显式重试失败输入；不重复已验证的成功结果'},publish:{type:'boolean',description:'只向不存在的规范输出发布；已有文件及已确认的分镜/镜头始终保留'},timeout_seconds:{type:'number',default:180,description:'Python 对齐超时，10..600 秒；超时结束本操作的进程树'}},
+    name: legacyWindows ? 'windows_align' : 'align_run',
+    cli: legacyWindows ? ['windows', 'align'] : ['align', 'run'],
+    summary:'用本地模型生成并校验字幕和短语时间轴',
+    examples: legacyWindows ? ['windows_align()', 'windows_align({"publish":true})'] : ['align_run()', 'align_run({"publish":true})'],
+    description: `读取确认的配音与终稿，按项目配置使用已安装的 MLX 或 FunASR。已有可信字级结果时用 evidence，直接映射并独立校验。按输入摘要复用已验证候选。失败返回诊断，同一输入默认不重试。首次生成可用 publish=true 写入规范路径；已有规范输出或已确认分镜时生成候选。
+
+长配音的 MLX 单次对齐遇到长度限制时，可按实际静音和朗读文本切段。用工具准备页安装的 mlx_audio.stt.generate 对段音频执行本地对齐，传 --model 本地模型目录、--audio 16kHz 单声道 WAV、--text 对应朗读文本、--language Chinese、--output-path 不带扩展名的路径及 --format json。在 align_build() 里按段给出 JSON 与实测偏移，再独立校验整条配音。`,
+    params: {
+      project_root: projectRoot,
+      audio: { type: 'string', default: 'production/audio/voice.wav', description: '确认的配音，项目内相对路径' },
+      script: { type: 'string', default: 'production/script-final.md', description: '确认的终稿' },
+      ...(!legacyWindows ? { evidence: { type: 'string' as const, description: '现成的字级时间戳 JSON，例如 ElevenLabs 或第三方对齐器的产物' } } : {}),
+      segments_manifest: { type: 'string', description: 'FunASR 可用的原始 PCM16 TTS 分段清单。顶层包含 schema=1、audio_sha256、script_sha256、sample_rate、segments；每段给出 audio、sha256、text、start_sample、end_sample_exclusive。逐样本校验拼接后，按原采样边界合并结果。' },
+      retry: { type: 'boolean', description: '修复原因后显式重试失败输入' },
+      publish: { type: 'boolean', description: '首次生成时写入规范路径，已有文件保持原样' },
+      timeout_seconds: { type: 'number', default: 180, description: '模型超时（10–600 秒）' },
+    },
     run:async(p,ctx)=>{
       const operationStarted=performance.now();
-      if (process.platform !== 'win32') throw Error('此操作仅用于 Windows');
+      if (legacyWindows && process.platform !== 'win32') throw Error('此操作仅用于 Windows');
       const root=fs.realpathSync(str(p.project_root)),env=envMap();
       const audio=inputPath(root,str(p.audio)||'production/audio/voice.wav'),scriptFile=inputPath(root,str(p.script)||'production/script-final.md');
-      const model=localAlignmentModel(env),python=windowsPython(env);
-      if (!python || !fs.existsSync(path.resolve(path.dirname(python),'../Lib/site-packages/funasr/__init__.py'))) throw Error('缺少已准备的 FunASR Python 环境，请在工具准备页修复');
+      const evidence = str(p.evidence) ? inputPath(root, str(p.evidence)) : null;
+      const evidenceSHA = evidence ? sha(evidence) : null;
+      const provider = evidence ? 'evidence' : legacyWindows ? 'funasr' : loadConfig(root, env).alignProvider;
+      if (provider !== 'mlx' && provider !== 'funasr' && provider !== 'evidence') throw Error('请调用项目配置的第三方对齐工具，再把字级结果传给 align_run() 的 evidence');
+      const modelSpec = provider === 'mlx' ? QwenForcedAligner : FunASRTimestampModel;
+      const model = provider === 'evidence' ? '' : localAlignmentModel(env, modelSpec);
+      const runner = provider === 'evidence' ? null : alignmentRunner(provider, env);
       const fps=sceneCanvas(newScene({directory:root})).fps;
-      const script=align.loadScript(scriptFile),text=normalizeWindowsAlignmentText(script.alignText());
+      const script=align.loadScript(scriptFile),text=provider === 'funasr' ? normalizeWindowsAlignmentText(script.alignText()) : script.alignText();
+      if (!text.trim()) throw Error('终稿没有任何朗读内容');
       const segmentFile=str(p.segments_manifest)?inputPath(root,str(p.segments_manifest)):null;
+      if (segmentFile && provider !== 'funasr') throw Error('原始 TTS 分段清单仅用于 FunASR 模型对齐');
       const segments=segmentFile?loadWindowsAlignmentSegments(segmentFile,audio,scriptFile,text,relative=>inputPath(root,relative)):null;
+      const segmentsManifestSHA = segmentFile ? sha(segmentFile) : null;
       const source=segments?pythonSource.slice(0,pythonSource.indexOf('result=model.generate('))+windowsSegmentPython:pythonSource;
       const seconds=num(p.timeout_seconds)||180;
-      if(seconds<10||seconds>600)throw Error('timeout_seconds 必须在 10..600 秒之间');
-      const inputs={audio:sha(audio),script:sha(scriptFile),fps,model,modelFiles:['model.pt','config.yaml','tokens.json','am.mvn','seg_dict','configuration.json'].map(name=>{const s=fs.statSync(path.join(model,name));return [name,s.size,s.mtimeMs];}),python,runner:sha(path.resolve(path.dirname(python),'../Lib/site-packages/funasr/__init__.py')),pipeline:1};
+      if(!Number.isFinite(seconds)||seconds<10||seconds>600)throw Error('timeout_seconds 必须在 10..600 秒之间');
+      // 保留 Windows FunASR 的缓存键，旧版已经校验过的候选可直接取用。
+      const modelFiles = provider === 'funasr'
+        ? ['model.pt','config.yaml','tokens.json','am.mvn','seg_dict','configuration.json']
+        : modelSpec.files.map(file => file.path);
+      const inputs={audio:sha(audio),script:sha(scriptFile),fps,model,modelFiles:runner ? modelFiles.map(name=>{const s=fs.statSync(path.join(model,name));return [name,s.size,s.mtimeMs];}) : [],python:runner?.command,runner:runner?.fingerprint,pipeline:1};
       const existingTimeline=path.join(root,'production/phrase-timeline.json'),adjust=path.join(root,'production/phrase-adjust.json');
       if(fs.existsSync(existingTimeline))inputPath(root,path.relative(root,existingTimeline));
       if(fs.existsSync(adjust))inputPath(root,path.relative(root,adjust));
       const review=(align.loadExistingTimeline(existingTimeline)?.phrases??[]).filter(phrase=>phrase.reviewed||(phrase.visible_event_ids??[]).length).map(phrase=>({id:phrase.phrase_id,reviewed:phrase.reviewed,events:phrase.visible_event_ids}));
       Object.assign(inputs,{existingReview:review,adjust:fs.existsSync(adjust)?sha(adjust):null,checks:voicecheck.Defaults});
-      Object.assign(inputs,{pipeline:segments?4:3,pythonSource:crypto.createHash('sha256').update(source).digest('hex'),...(segments?{segmentsManifest:sha(segmentFile!),segments}: {})});
+      if (provider === 'evidence') Object.assign(inputs, { pipeline: 6, evidenceSHA });
+      else if (provider === 'mlx') Object.assign(inputs, { pipeline: 5, provider });
+      else Object.assign(inputs, { pipeline: segments ? 4 : 3, pythonSource: crypto.createHash('sha256').update(source).digest('hex'), ...(segments ? { segmentsManifest: segmentsManifestSHA, segments } : {}) });
       const digest=crypto.createHash('sha256').update(marshalIndent(inputs)).digest('hex');
       const base=path.join(root,'production/audio/alignment-runs',digest);
       // 不允许已有目录链接把输出引向项目外。
@@ -116,19 +163,35 @@ export function windowsAlignOperation(): Op {
           if(!stale)throw Error('同一输入已有任务或待诊断的锁，请等待原任务，勿重复提交：'+base);
           fs.unlinkSync(lock);fd=fs.openSync(lock,'wx');
         }
-        const attempt=path.join(base,'attempt-'+Date.now());
+        let attempt = '';
         const started=performance.now();let phase='prepare';
         try{
-          fs.writeFileSync(fd,marshalIndent({pid:process.pid,started_at:new Date().toISOString()}));fs.mkdirSync(attempt);
-          ctx.out.write(segments?'Windows 对齐：真实原始分段；逐样本校验拼接；模型只初始化一次\n':'Windows 对齐：本地模型；规范标点；单次对齐与独立校验\n');
-          const wav=path.join(attempt,'voice-16k.wav'),textFile=path.join(attempt,'normalized.txt'),runner=path.join(attempt,'align.py'),raw=path.join(attempt,'align.json');
-          fs.writeFileSync(textFile,text+'\n');fs.writeFileSync(runner,source);
-          const chain=mediaprobe.newToolchain(env);await chain.decodeAnalysisWAV(audio,wav,16000,ctx.signal);
-          const requests=path.join(attempt,'segments.json');if(segments)json(requests,segments);
-          phase='model';const controller=new AbortController();const abort=()=>controller.abort();ctx.signal.addEventListener('abort',abort,{once:true});if(ctx.signal.aborted)abort();
-          const timer=setTimeout(abort,seconds*1000),log=fs.openSync(path.join(attempt,'python.log'),'wx');
-          try{const child=await start(python,[runner,model,segments?audio:wav,textFile,raw,...(segments?[requests]:[])],{cwd:root,env:{...env,PYTHONUTF8:'1',PYTHONIOENCODING:'utf-8',HF_HUB_OFFLINE:'1'},stdio:['ignore',log,log],signal:controller.signal});await child.wait();}
-          finally{clearTimeout(timer);ctx.signal.removeEventListener('abort',abort);fs.closeSync(log);}
+          fs.writeFileSync(fd,marshalIndent({pid:process.pid,started_at:new Date().toISOString()}));
+          attempt = fs.mkdtempSync(path.join(base, 'attempt-'));
+          ctx.out.write(evidence ? '对齐：使用已有字级时间戳并做独立校验\n' : segments ? '对齐：核对原始分段拼接后逐段对齐\n' : `对齐：${provider} 本地模型，完成后独立校验\n`);
+          const wav=path.join(attempt,'voice-16k.wav'),textFile=path.join(attempt,'normalized.txt'),scriptPath=path.join(attempt,'align.py'),raw=path.join(attempt,'align.json');
+          const chain=mediaprobe.newToolchain(env);
+          const requests=path.join(attempt,'segments.json');
+          if (evidence) {
+            fs.copyFileSync(evidence, raw, fs.constants.COPYFILE_EXCL);
+            if (sha(raw) !== evidenceSHA) throw Error('字级证据在读取时发生变化');
+          }
+          if (runner) {
+            await chain.decodeAnalysisWAV(audio,wav,16000,ctx.signal);
+            if(segments)json(requests,segments);
+            let args: string[];
+            if (provider === 'mlx') {
+              args = ['--model', model, '--audio', wav, '--text', text, '--language', 'Chinese', '--output-path', raw.slice(0, -5), '--format', 'json'];
+            } else {
+              fs.writeFileSync(textFile,text+'\n');fs.writeFileSync(scriptPath,source);
+              args = [scriptPath,model,segments?audio:wav,textFile,raw,...(segments?[requests]:[])];
+            }
+            phase='model';
+            const signal = AbortSignal.any([ctx.signal, AbortSignal.timeout(Math.ceil(seconds * 1000))]);
+            const log=fs.openSync(path.join(attempt,'python.log'),'wx');
+            try{const child=await start(runner.command,args,{cwd:root,env:{...env,PYTHONUTF8:'1',PYTHONIOENCODING:'utf-8',HF_HUB_OFFLINE:'1'},stdio:['ignore',log,log],signal});await child.wait();}
+            finally{fs.closeSync(log);}
+          }
           phase='build';const result=align.build(script,align.loadEvidence(raw),{fps,existing:align.loadExistingTimeline(existingTimeline),adjust:fs.existsSync(adjust)?align.loadAdjust(adjust):null});
           const srt=path.join(attempt,'voice.srt'),phrases=path.join(attempt,'phrase-timeline.json'),report=path.join(attempt,'align-report.json'),checkFile=path.join(attempt,'audio-check.json');
           align.writeSRT(srt,result.cues);align.writeJSON(phrases,align.timelineToJSON(result.timeline));align.writeJSON(report,align.reportToJSON(result.report));
@@ -137,23 +200,26 @@ export function windowsAlignOperation(): Op {
           phase='audio_check';const options=voicecheck.Defaults,levels=chain.loudness(audio,options.window),[speech,threshold]=voicecheck.speech(levels,options);
           const check=voicecheck.check(readCues(srt),speech,threshold,options);voicecheck.writeReportJSON(check,checkFile);
           if(!check.ok)throw Error('独立音频校验未通过：'+(check.problems??[]).join('；')+'；诊断：'+checkFile);
-          if(sha(audio)!==inputs.audio||sha(scriptFile)!==inputs.script||segmentFile&&sha(segmentFile)!==(inputs as any).segmentsManifest)throw Error('对齐过程中输入发生变化，候选不能发布');
+          if(sha(audio)!==inputs.audio||sha(scriptFile)!==inputs.script||segmentFile&&sha(segmentFile)!==segmentsManifestSHA||evidence&&sha(evidence)!==evidenceSHA)throw Error('对齐过程中输入发生变化，候选不能发布');
           if(segments)verifyWindowsAlignmentSegments(segments);
           cached={digest,inputs,attempt,seconds:(performance.now()-started)/1000,summary:{tokens:result.report.tokens,cues:result.cues.length,total_frames:result.report.total_frames,match_rate:result.report.match_rate},paths:{align:raw,srt,phrases,report,audio_check:checkFile},hashes:Object.fromEntries([raw,srt,phrases,report,checkFile,...(segments?[requests,...segments.segments.map((_,index)=>path.join(attempt,'segment-'+index+'.json'))]:[])].map(file=>[file,sha(file)]))};
-          json(manifest,{...cached,attempt:path.relative(base,attempt),paths:Object.fromEntries(Object.entries(cached.paths as Record<string,string>).map(([key,file])=>[key,path.relative(base,file)])),hashes:Object.fromEntries(Object.entries(cached.hashes as Record<string,string>).map(([file,hash])=>[path.relative(base,file),hash]))});ctx.out.write(`Windows 对齐及校验完成：${cached.seconds.toFixed(2)} 秒，候选位于 ${attempt}\n`);
-        }catch(error){json(failure,{phase,attempt,seconds:(performance.now()-started)/1000,error:(error as Error).message});throw Error(`Windows 对齐失败（${phase}），保留原配音和字幕，不自动重跑。诊断：${failure}；${(error as Error).message}`);}
+          json(manifest,{...cached,attempt:path.relative(base,attempt),paths:Object.fromEntries(Object.entries(cached.paths as Record<string,string>).map(([key,file])=>[key,path.relative(base,file)])),hashes:Object.fromEntries(Object.entries(cached.hashes as Record<string,string>).map(([file,hash])=>[path.relative(base,file),hash]))});ctx.out.write(`对齐及校验完成：${cached.seconds.toFixed(2)} 秒，候选位于 ${attempt}\n`);
+        }catch(error){json(failure,{phase,attempt,seconds:(performance.now()-started)/1000,error:(error as Error).message});throw Error(`对齐失败（${phase}），保留原配音和字幕，不自动重跑。诊断：${failure}；${(error as Error).message}`);}
         finally{fs.closeSync(fd);fs.unlinkSync(lock);}
       }else ctx.out.write('输入与候选摘要一致，复用已通过独立校验的结果，不再启动模型\n');
-      if(sha(audio)!==inputs.audio||sha(scriptFile)!==inputs.script)throw Error('输入已变化，候选不能用于当前制作');
-      if(segments){if(sha(segmentFile!)!==(inputs as any).segmentsManifest)throw Error('分段清单已变化，候选不能用于当前制作');verifyWindowsAlignmentSegments(segments);}
+      if(sha(audio)!==inputs.audio||sha(scriptFile)!==inputs.script||evidence&&sha(evidence)!==evidenceSHA)throw Error('输入已变化，候选不能用于当前制作');
+      if(segments){if(sha(segmentFile!)!==segmentsManifestSHA)throw Error('分段清单已变化，候选不能用于当前制作');verifyWindowsAlignmentSegments(segments);}
+      ctx.signal.throwIfAborted();
       let published=false;
       if(bool(p.publish)){
         const production=path.join(root,'production');
         if(fs.readdirSync(production).some(name=>/(?:storyboard|scene|shot)[-_]approval.*\.json$/i.test(name)))throw Error('已有确认的分镜或镜头，保留规范输入，仅返回候选');
         const approvals=path.join(root,'production/approvals'),scenes=path.join(root,'scenes');
         if(fs.existsSync(approvals)&&fs.readdirSync(approvals).some(name=>/storyboard|scene|shot/i.test(name))||fs.existsSync(scenes)&&fs.readdirSync(scenes).some(id=>fs.existsSync(path.join(scenes,id,'.onset-render.json'))))throw Error('已有确认的分镜或镜头，保留规范输入，仅返回候选');
-        const targets: Array<[string,string]>=[[cached!.paths.align,'production/audio/align.json'],[cached!.paths.srt,'production/audio/voice.srt'],[cached!.paths.srt,'transcription-production.srt'],[cached!.paths.phrases,'production/phrase-timeline.json'],[cached!.paths.report,'production/audio/align-report.json']];
-        if(targets.some(([,rel])=>fs.existsSync(path.join(root,rel))))throw Error('已有规范输出，保留原文件，仅返回已验证候选：'+manifest);
+        const targets: Array<[string,string]>=[[cached!.paths.align,'production/audio/align.json'],[cached!.paths.srt,'production/audio/voice.srt'],[cached!.paths.phrases,'production/phrase-timeline.json'],[cached!.paths.report,'production/audio/align-report.json']];
+        if (legacyWindows) targets.push([cached!.paths.srt, 'transcription-production.srt']);
+        else targets.push([cached!.paths.audio_check, 'production/audio/voice-check.json']);
+        if(fs.existsSync(path.join(root,'transcription-production.srt')) || targets.some(([,rel])=>fs.existsSync(path.join(root,rel))))throw Error('已有规范输出，保留原文件，仅返回已验证候选：'+manifest);
         const created:string[]=[];
         try{for(const [source,relative]of targets){const target=path.join(root,relative);fs.copyFileSync(source,target,fs.constants.COPYFILE_EXCL);created.push(target);}published=true;}
         catch(error){for(const file of created)fs.unlinkSync(file);throw error;}
@@ -161,4 +227,8 @@ export function windowsAlignOperation(): Op {
       return {data:{verified:true,...cached!.summary,paths:cached!.paths,elapsed_seconds:(performance.now()-operationStarted)/1000,generation_seconds:cached!.seconds,reused,published,manifest}};
     }
   };
+}
+
+export function windowsAlignOperation(): Op {
+  return alignRunOperation(true);
 }

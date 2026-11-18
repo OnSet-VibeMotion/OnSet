@@ -110,9 +110,9 @@ const onset = '^(mcp__onset__|onset[._])?';
 /** 拍：渲染、等渲染任务，以及 HyperFrames 的 render 子命令。 */
 const filmingTools = new RegExp(onset + '(scene_run|scene_run_all|job_wait)$');
 /** 剪辑：拼接、复查、抽帧、各种校验与字幕时间轴。 */
-const editingTools = new RegExp(onset + '(concat|review|scene_frames|audio_check|align_build|align_text|validate_[a-z_]+)$');
+const editingTools = new RegExp(onset + '(concat|review|scene_frames|phrase_frames|audio_check|audio_mix|audio_patch_voice|align_run|align_build|align_text|timing_report|validate_[a-z_]+)$');
 /** 分镜：按分镜计划算镜头时长。 */
-const storyboardTools = new RegExp(onset + '(scene_cues|beat_cues)$');
+const storyboardTools = new RegExp(onset + '(scene_prepare|scene_cues|beat_cues)$');
 /** 分镜的几份文件：整片处理方案、分镜计划（与 studio/storyboard.ts 的路径对应）。 */
 const storyboardFiles = /(^|[\\/])(production[\\/])?(scene-plan\.(json|md)|treatment\.md)(\s|、|$)/;
 /** 配音：音色库。 */

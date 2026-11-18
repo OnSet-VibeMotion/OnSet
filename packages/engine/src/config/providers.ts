@@ -124,8 +124,7 @@ function mlxAudio(bins: string[]): ToolSpec {
  * 一个已知文本强制对齐工具：文稿是现成的，把它逐字对到配音上
  * 比识别更准，也不会把专有名词识别错。
  *
- * command 同 TTSProvider.command。funasr 没有命令行入口：onset setup 把它装进专用的 Python 环境，
- * 并写一个 funasr-python 调用那份 Python；提示词让编排工具用它跑 Python 脚本。安全模式因此不必放行系统的 python3。
+ * command 同 TTSProvider.command。FunASR 装进专用 Python 环境，由 align_run 调用。
  */
 export interface Aligner {
   id: string;
@@ -152,7 +151,7 @@ export const QwenForcedAligner: ModelSpec = {
   ],
 };
 
-/** Windows FunASR 时间戳模型；文件与摘要来自官方魔搭仓库（2026-11）。 */
+/** FunASR 时间戳模型；文件与摘要来自官方魔搭仓库（2026-11）。 */
 export const FunASRTimestampModel: ModelSpec = {
   repo: 'iic/speech_timestamp_prediction-v1-16k-offline',
   files: [
@@ -179,8 +178,7 @@ export const Aligners: readonly Aligner[] = [
     name: process.platform === 'win32' ? 'FunASR 时间戳预测（本机 CPU）' : 'FunASR 时间戳预测（CPU，macOS 与 Linux）',
     command: 'funasr-python',
     install: { kind: 'uv-venv', name: 'funasr', packages: ['funasr==1.4.16', 'torch', 'torchaudio'], bin: 'funasr-python' },
-    // Windows 的编排沙箱不能在首次对齐时写默认 HOME 缓存；由工具准备页先下载并返回本地目录。
-    ...(process.platform === 'win32' ? { model: FunASRTimestampModel } : {}),
+    model: FunASRTimestampModel,
   },
 ];
 

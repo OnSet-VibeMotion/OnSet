@@ -61,6 +61,8 @@ export const HandoffLooseDifference = handoffLooseDifference;
 export interface Options {
   video: string;
   fps: number;
+  /** 同一次操作已精确计数的媒体。只供宿主传入，工具参数不能声明校验结论。 */
+  verifiedMedia?: Media;
   segments?: Segment[] | null;
   outDir?: string;
   /** silent 断言成片没有音轨（只拼接未混音的交付），不做音画比对。 */
@@ -214,7 +216,9 @@ export function run(p: Prober, options: Options): Report {
   for (const segment of opts.segments) {
     if (segment.frames <= 0) throw new Error(`镜头 ${segment.id} 的帧数必须为正，收到 ${segment.frames}`);
   }
-  const media = p.probe(opts.video);
+  const verified = options.verifiedMedia;
+  const priorCount = verified?.path === opts.video ? verified.video?.nb_frames : undefined;
+  const media = priorCount && priorCount > 0 ? verified! : p.probe(opts.video);
   const report: Report = {
     schema_version: ReportSchemaVersion,
     path: opts.video,
@@ -241,7 +245,7 @@ export function run(p: Prober, options: Options): Report {
   }
   // 帧数总要实测：联系表的取帧上限只能信解码出的帧数。容器时长取的是最长
   // 的那条流，音轨比画面长时按它取帧会越过末帧，ffmpeg 返回成功却什么都不写。
-  report.counted_frames = p.countFrames(opts.video);
+  report.counted_frames = priorCount && priorCount > 0 ? priorCount : p.countFrames(opts.video);
   if (opts.segments.length > 0) {
     checkFrames(report, opts);
     checkCuts(p, report, opts);

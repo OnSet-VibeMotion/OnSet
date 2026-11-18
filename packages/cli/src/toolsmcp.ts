@@ -45,6 +45,13 @@ export function maxWaitSeconds(env: NodeJS.ProcessEnv = process.env): number {
   return Number.isFinite(wait) && wait >= 60 ? Math.min(wait, 3600) : 600;
 }
 
+/** 批量派发先回任务号，让编排能做并行工作。接着等时用已确认的客户端等待能力。 */
+export function defaultWaitSeconds(name: string, env: NodeJS.ProcessEnv = process.env): number {
+  const configured = Number(env.ONSET_TOOLS_MAX_WAIT ?? '');
+  if (!Number.isFinite(configured) || configured < 60) return DefaultWaitSeconds;
+  return name === 'job_wait' || name === 'align_run' || name === 'audio_mix' ? maxWaitSeconds(env) : DefaultWaitSeconds;
+}
+
 /** 返回给 agent 的输出上限：过长时截掉开头、留结尾（错误与结论通常在最后）。 */
 const maxOutputChars = 24_000;
 /** 结构化结果附在文字后面的上限；更大的只给 structuredContent。 */
@@ -108,9 +115,9 @@ function paramSchema(op: Op, key: string, spec: ParamSpec, profile: Profile): JS
   }
 }
 
-function waitSchema(): JSONSchema {
+function waitSchema(name: string): JSONSchema {
   // 每个工具都带这一项，说明要短；没跑完怎么办写在服务说明与 job_wait 里。
-  return { type: 'number', description: `最多等几秒（缺省 ${DefaultWaitSeconds}，最多 ${maxWaitSeconds()}）` };
+  return { type: 'number', description: `等待秒数（缺省 ${defaultWaitSeconds(name)}）` };
 }
 
 const visibleParams = (op: Op) => Object.entries(op.params).filter(([, s]) => !s.cliOnly);
@@ -190,12 +197,12 @@ export function describeTools(profile: Profile, root = ''): ToolDef[] {
       properties[key] = paramSchema(op, key, spec, profile);
       if (spec.required) required.push(key);
     }
-    properties.wait_seconds = waitSchema();
+    properties.wait_seconds = waitSchema(op.name);
     out.push({
       name: op.name,
       profile,
       // 列表里只放一句话：全部工具的完整说明有好几万字，每次请求都塞进 agent 的上下文太浪费。
-      description: `${shownOp.summary}（完整说明与例子用 tool_help 查）`,
+      description: shownOp.summary,
       inputSchema: { type: 'object', properties, ...(required.length > 0 ? { required } : {}), additionalProperties: false },
       op,
       help: helpText(shownOp),
@@ -206,7 +213,7 @@ export function describeTools(profile: Profile, root = ''): ToolDef[] {
   out.push({
     name: 'job_wait',
     description: '接着等一个还没跑完的任务（上一次调用返回的任务号），返回它的新输出；跑完时给出结果。',
-    inputSchema: { type: 'object', properties: { job: { type: 'string', description: '任务号' }, wait_seconds: waitSchema() }, required: ['job'], additionalProperties: false },
+    inputSchema: { type: 'object', properties: { job: { type: 'string', description: '任务号' }, wait_seconds: waitSchema('job_wait') }, required: ['job'], additionalProperties: false },
     help: '',
   });
   out.push({
@@ -301,6 +308,7 @@ interface Job {
   id: string;
   /** 操作名：hyperframes 的输出要精简（hfoutput.ts）。 */
   name: string;
+  report: string;
   child: ChildProcess;
   output: string;
   /** 已经交给 agent 的文字长度：job_wait 只给新的部分。 */
@@ -315,6 +323,26 @@ export interface Reply {
   data?: unknown;
 }
 
+/** 报告落盘时，工具回复只带结论、异常和验收入口。 */
+function resultForAgent(name: string, report: string, raw: unknown): unknown {
+  if (report === '' || !raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  const data = raw as Record<string, unknown>;
+  if (name === 'audio_check') {
+    const { speech: _speech, cues: _cues, ...summary } = data;
+    return { ...summary, report };
+  }
+  if (name === 'review') {
+    const { cuts: _cuts, sheets, seams, ...summary } = data;
+    const images = (items: unknown) => Array.isArray(items) ? items.map(item => ({ image: item.image })) : undefined;
+    return { ...summary, sheets: images(sheets), seams: images(seams), report };
+  }
+  if (name === 'scene_run_all' && Array.isArray(data.scenes)) {
+    const actionable = data.scenes.filter(item => item.status === 'stale' || item.status === 'failed');
+    return { ...data, scenes: actionable, report };
+  }
+  return raw;
+}
+
 export class Jobs {
   private readonly jobs = new Map<string, Job>();
   private next = 1;
@@ -323,7 +351,8 @@ export class Jobs {
 
   start(name: string, params: ParamValues): Job {
     const child = this.spawner(name, params);
-    const job: Job = { id: `job-${this.next++}`, name, child, output: '', delivered: 0, code: null, done: Promise.resolve() };
+    const report = String(params.report_json || (name === 'review' && params.out ? path.join(String(params.out), 'review.json') : ''));
+    const job: Job = { id: `job-${this.next++}`, name, report, child, output: '', delivered: 0, code: null, done: Promise.resolve() };
     const take = (chunk: Buffer | string) => {
       job.output += chunk.toString();
     };
@@ -375,11 +404,12 @@ export class Jobs {
     if (!result) return { text: `${body}${sep}[执行进程意外退出，退出码 ${job.code}]`, isError: true };
     if (!result.ok) return { text: `${body}${sep}[失败] ${result.error ?? ''}`.trimEnd(), isError: true };
     let text = `${body}${sep}[完成]`;
-    if (result.data !== undefined) {
-      const json = JSON.stringify(result.data);
+    const data = resultForAgent(job.name, job.report, result.data);
+    if (data !== undefined) {
+      const json = JSON.stringify(data);
       if (json.length <= maxInlineDataChars) text += `\n结果：${json}`;
     }
-    return { text, isError: false, data: result.data };
+    return { text, isError: false, data };
   }
 
   cancel(id: string): boolean {
@@ -463,7 +493,7 @@ export async function serveToolsMCP(
               serverInfo: { name: ToolsServerName, version: '1' },
               instructions:
                 '片场的制作工具，每个工具对应一条制作步骤。参数怎么填、产出什么用 tool_help 查。' +
-                `每次调用最多等 wait_seconds 秒（缺省 ${DefaultWaitSeconds}）；没跑完会返回任务号，用 job_wait 接着等，job_cancel 停掉。` +
+                '每次调用可指定 wait_seconds；没跑完时用返回的任务号调用 job_wait 接着等，job_cancel 停掉。' +
                 '结果里「结果：」那一行是结构化的 JSON。onset 不在终端里，不要去找它。',
             },
           });
@@ -484,7 +514,7 @@ export async function serveToolsMCP(
               },
             });
           const handle = async (): Promise<void> => {
-            const seconds = typeof input.wait_seconds === 'number' ? input.wait_seconds : DefaultWaitSeconds;
+            const seconds = typeof input.wait_seconds === 'number' ? input.wait_seconds : defaultWaitSeconds(name);
             if (name === 'job_wait' || name === 'job_cancel') {
               const job = jobs.get(String(input.job ?? ''));
               if (!job) return reply({ text: `没有这个任务：${String(input.job ?? '')}（可能已经结束并交过结果）`, isError: true });

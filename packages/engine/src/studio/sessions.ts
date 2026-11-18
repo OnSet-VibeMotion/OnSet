@@ -24,7 +24,8 @@ import type { Project, Server } from './studio';
 import { writeStepMark } from './view';
 import { changedPaths, diffTrees, loadTurn, revertTurn, saveTurn, scanTree, statTree, studioRoot, validID, type FileChange, type Turn } from './turns';
 import { emitStudioEvent } from './events';
-import { confirmGateFromChat } from './progress';
+import { computeStations, confirmGateFromChat } from './progress';
+import { discoverScenes } from './scenes';
 import { preferenceBrief, recordUtterance } from './memory';
 import { noVisionNote, orchestratorCannotSee } from './vision';
 import { uploadDir, uploadKind } from './uploads';
@@ -1060,13 +1061,24 @@ function recordUsage(signal: AbortSignal, p: Project, sess: Session, tool: strin
 /**
  * 整片制作的会话换了 CLI 会话（续接失败、换了编排工具）时，制作提示词要重发：对话记录只有双方说的话，
  * 第一轮发过的制作说明（各阶段怎么做、关卡在哪）不在里面，新会话拿不到就只能凭对话猜。
- * 按项目现在的流程重新组合，与「开始制作」同一份；组合不出来时照旧只带对话记录。
+ * 从项目产物重算进度，带公共规则、当前阶段和已通过的关卡。
  */
 function productionBrief(p: Project, sess: Session): string {
   if (sess.meta.kind !== 'production') return '';
   try {
-    const text = project.runPrompt(p.path, '').prompt.toString('utf8');
-    return '下面是这次整片制作的说明（与开工时给你的同一份，按项目现在的流程重新组合）：\n\n' + text;
+    const progress = computeStations(p.path, discoverScenes(p.path));
+    const aliases: Record<string, string> = {
+      'gate-script': 'script', 'gate-voice': 'voice', 'gate-storyboard': 'plan', 'gate-beat-storyboard': 'beat-plan',
+      'gate-final': 'review',
+    };
+    const beatStages: Record<string, string> = {
+      story: 'beat', 'gate-story': 'beat', music: 'beat', grid: 'beat', 'gate-grid': 'beat', plan: 'beat-plan', sound: 'beat-sound',
+    };
+    const focus = aliases[progress.current] ?? (progress.mode === 'beat' ? beatStages[progress.current] : undefined) ?? progress.current;
+    const text = project.composeProjectPrompt(p.path, focus).text;
+    const confirmed = progress.stations.filter(station => station.status === 'confirmed' || station.status === 'passed');
+    const gates = confirmed.map(station => station.label + (station.file ? `（${station.file}）` : '')).join('、');
+    return '下面是这次整片制作的说明。' + (gates ? `已通过的关卡有${gates}。\n\n` : '\n\n') + text;
   } catch {
     return '';
   }

@@ -369,6 +369,13 @@ function isRegularFile(file: string): boolean {
   }
 }
 
+export function verifySceneText(text: string): void {
+  if (goTrimSpace(text) === '') throw new Error('text 必须是非空字符串');
+  if (text.includes('[[USER_MESSAGE]]') || delimiterMatch.test(text)) {
+    throw new Error('text 含保留的阶段消息或 scene-text 定界标记');
+  }
+}
+
 export function load(directory: string): Scene {
   const file = path.join(directory, 'scene.json');
   let body: Buffer;
@@ -410,10 +417,7 @@ export function load(directory: string): Scene {
   if (!Number.isFinite(result.duration_seconds) || result.duration_seconds < 1.0 / 30.0) {
     throw new Error('duration_seconds 必须是至少一帧的有限正数');
   }
-  if (goTrimSpace(result.text) === '') throw new Error('text 必须是非空字符串');
-  if (result.text.includes('[[USER_MESSAGE]]') || delimiterMatch.test(result.text)) {
-    throw new Error('text 含保留的阶段消息或 scene-text 定界标记');
-  }
+  verifySceneText(result.text);
   contained(result.directory, result.output, 'output');
   const transcript = contained(result.directory, result.transcript, 'transcript');
   if (!isRegularFile(transcript)) throw new Error(`transcript 指向的文件不存在：${result.transcript}`);
@@ -731,7 +735,7 @@ function renderPrompt(s: Scene, resolvedSkills: Record<string, string> | null, w
     memorySection(s) +
     exemplarSection(s) +
     workersSection(s) +
-    selfReviewSection +
+    (version >= 3 ? contactSheetReview : selfReviewSection) +
     examSection(s) +
     retrySection(s) +
     (s.seam ? seamSection(s, s.seam, canvas.widthPx, canvas.heightPx) : '') +
@@ -822,6 +826,12 @@ export const selfReviewSection =
   '  11. 纯装饰的读数（HUD 刻度、时间码、坐标）可以保留，但不得带有会被读成事实的标签或单位（如「准确率 98.7%」）。\n' +
   '- 自查量下限：每个阶段的稳定期至少一张静帧，每个关键动作与切换至少一组连续帧。\n' +
   '- 发现问题就改代码，改完重新截图确认。至少完成一轮「截图 → 修改 → 再截图」；确认无问题后才正式 render。\n';
+
+const contactSheetReview =
+  '\n画面自查（正式渲染前）：\n' +
+  '- 代码写完先跑 check，处理报错和对比度问题。用 snapshot --at 覆盖开头、各阶段的稳定画面与结尾，带 --describe false，先看联系表。\n' +
+  '- 核对安全区、裁切或重叠、实际观看尺寸的可读性、焦点与画面密度。小字或局部问题用 --zoom；关键转场有闪烁、跳变或抢读疑问时，按 n ÷ fps 取相邻帧逐帧核对。\n' +
+  '- 数字、型号、引语和图表刻度须与本镜头文案及字幕相符；装饰读数不可暗示事实。发现问题就修正并重查受影响的时段，确认通过即可 render。\n';
 
 /**
  * workersSection 告诉渲染器本镜头可用的帧捕获 worker 数；单镜头渲染时为空。

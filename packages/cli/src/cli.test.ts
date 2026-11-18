@@ -6,6 +6,7 @@ import { Buffer, initProject, run, runCLI, setenv, tempDir } from './testutil';
 import { Version } from './cli';
 import { FunASRTimestampModel } from '@onset/engine/config';
 import { modelDir } from '@onset/engine/toolinstall';
+import { RenderPromptVersion } from '@onset/engine/flow';
 
 describe('cli', () => {
   it('help lists public commands', async () => {
@@ -20,7 +21,7 @@ describe('cli', () => {
     expect(await run(['init', target, '--canvas', 'vertical-3x4', '--skip-hyperframes'], out), out.text).toBe(0);
     // 不写提示词文件，只记下流程与画幅；提示词开工时组合，prompt show 能看全文。
     expect(fs.existsSync(path.join(target, 'PROMPT.md'))).toBe(false);
-    expect(JSON.parse(fs.readFileSync(path.join(target, 'onset.flow.json'), 'utf8')).production).toEqual({ id: 'speech', canvas: 'vertical-3x4', render_prompt: 2 });
+    expect(JSON.parse(fs.readFileSync(path.join(target, 'onset.flow.json'), 'utf8')).production).toEqual({ id: 'speech', canvas: 'vertical-3x4', render_prompt: RenderPromptVersion });
     const shown = new Buffer();
     expect(await run(['prompt', 'show', '--project-root', target], shown), shown.text).toBe(0);
     expect(shown.text).toContain('## 第一阶段：盘点输入和制作规格');

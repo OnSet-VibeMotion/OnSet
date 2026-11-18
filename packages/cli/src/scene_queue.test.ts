@@ -87,6 +87,10 @@ it('Standalone scenes without a project root still render; only an explicit queu
     expect(fs.existsSync(path.join(root, 'production'))).toBe(false);
     await expect(op.run(normalizeParams(op, { scenes: 'scenes', jobs: 2, retries: 0, queue_trace_json: 'production/queue.jsonl' }), context)).rejects.toThrow(/onset\.conf/);
     expect(started).toHaveLength(2);
+    await expect(op.run(normalizeParams(op, { scenes: 'scenes', only_scenes: ['unknown'], force: true }), context)).rejects.toThrow(/only_scenes/);
+    const selected = await op.run(normalizeParams(op, { scenes: 'scenes', only_scenes: ['scene-002'], force: true }), context);
+    expect(selected?.data).toMatchObject({ counts: { succeeded: 1 } });
+    expect(started.slice(2)).toEqual(['scene-002']);
   } finally { mock.mockRestore(); budget.mockRestore(); }
 });
 

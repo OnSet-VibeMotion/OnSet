@@ -26,3 +26,6 @@ export { Toolchain, newToolchain } from './toolchain';
 export type { VerifyOptions } from './toolchain';
 export { cropImages, pngSize, shrinkPNG } from './image';
 export type { CropRect } from './image';
+export { mixProgram, MixOutputs, MixSampleRate } from './mix';
+export type { MixCue } from './mix';
+export { patchVoice } from './voicepatch';
