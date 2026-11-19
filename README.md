@@ -187,7 +187,7 @@ npm run typecheck -w onset-desktop
 npx vitest run --root packages/engine        # 单元与集成测试（缺 ffmpeg、rsvg-convert 的用例会跳过）
 npx vitest run --root packages/cli
 npm run build -w @onset/cli                     # onset → packages/cli/dist/onset.cjs
-npm run desktop                              # 构建并启动客户端
+npm run desktop                              # 构建并启动客户端（开发版开调试端口 9333：agent-browser --cdp 9333 可连）
 npm run test:e2e -w onset-desktop               # 客户端端到端测试（Playwright，Electron 模式，窗口不弹出）
 npm run dist -w onset-desktop                   # 打出本机平台的应用目录（apps/desktop/release/）
 ```
