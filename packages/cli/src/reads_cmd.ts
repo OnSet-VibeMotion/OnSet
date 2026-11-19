@@ -76,7 +76,8 @@ role 为 decorative 的元素不检查阅读时间。
     }
     const opts: reads.Options = { charsPerSecond, minSeconds, crowdSeconds };
     const inventoryPath = str(p.inventory) !== '' ? str(p.inventory) : path.join(root, 'production', 'visible-event-inventory.json');
-    const inventory = reads.loadInventory(inventoryPath);
+    const inventory = reads.loadInventory(inventoryPath, { allowEmpty: true });
+    if (!inventory.events.length) checkEmptyInventory(root, inventory.fps);
     let timeline: reads.Timeline | null = null;
     const explicit = str(p.phrases) !== '';
     const phrasesPath = explicit ? str(p.phrases) : path.join(root, 'production', 'phrase-timeline.json');
@@ -100,6 +101,19 @@ role 为 decorative 的元素不检查阅读时间。
     return { data: report };
   },
 });
+
+/** 全片没有可读元素时，仍要求每个镜头提供同帧率的明确空清单。 */
+function checkEmptyInventory(root: string, fps: number): void {
+  const scenes = schedule.sceneDirs(path.join(root, 'scenes'));
+  if (!scenes.length) throw new Error('全片可读元素清单为空，缺少逐镜头验收证据');
+  for (const dir of scenes) {
+    const file = scene.contained(root, path.relative(root, path.join(dir, 'visible-events.json')), '镜头可读元素清单');
+    const evidence = reads.loadInventory(file, { allowEmpty: true });
+    if (evidence.events.length || evidence.fps !== fps) {
+      throw new Error(`全片清单为空，与镜头 ${path.basename(dir)} 的可读元素清单不一致`);
+    }
+  }
+}
 
 /**
  * recordReadsFindings 把阅读时间问题按镜头写进记忆库。镜头从 <root>/scenes 下找；

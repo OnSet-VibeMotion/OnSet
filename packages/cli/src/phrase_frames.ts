@@ -31,7 +31,7 @@ defineOp({
     const selected = timeline.phrases!.filter(phrase => ids.size === 0 || ids.has(phrase.phrase_id));
     if (ids.size !== 0 && selected.length !== ids.size) throw new Error('phrase_ids 中有不在时间轴上的短语');
     const inventoryPath = contained(root, 'production/visible-event-inventory.json', '可见事件清单');
-    const inventory = fs.existsSync(inventoryPath) ? loadInventory(inventoryPath) : null;
+    const inventory = fs.existsSync(inventoryPath) ? loadInventory(inventoryPath, { allowEmpty: true }) : null;
     if (inventory && inventory.fps !== fps) throw new Error('可见事件清单的帧率与画幅不符');
     const toolchain = newToolchain(envMap());
     const media = toolchain.probe(video);

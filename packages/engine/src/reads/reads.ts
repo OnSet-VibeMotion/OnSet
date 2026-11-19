@@ -219,7 +219,7 @@ const timelineType: StructType = {
 };
 
 /** LoadInventory 读取并做结构校验。 */
-export function loadInventory(path: string): Inventory {
+export function loadInventory(path: string, options: { allowEmpty?: boolean } = {}): Inventory {
   const raw = readJSON(path, inventoryType);
   const inv: Inventory = {
     schema: (raw.schema as number | undefined) ?? 0,
@@ -229,7 +229,7 @@ export function loadInventory(path: string): Inventory {
   if (inv.fps <= 0) {
     throw new Error(`${path} 缺少正整数 fps`);
   }
-  if (inv.events.length === 0) {
+  if (inv.events.length === 0 && !(options.allowEmpty && inv.schema === 1 && Array.isArray(raw.events))) {
     throw new Error(`${path} 的 events 为空`);
   }
   return attachApprovedCover(inv, path);
