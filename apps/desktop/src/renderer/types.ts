@@ -783,6 +783,8 @@ export interface ScriptBlock {
   level?: number;
   text?: string;
   nodes?: ScriptNode[];
+  speaker?: string;
+  time?: { start: number; end: number };
 }
 
 /** 一页上的「确认」按钮记到哪个关卡（后端按当前流程路线上这一页的审核关卡给出）。 */
@@ -803,8 +805,14 @@ export interface ScriptResponse {
   stats?: { units: number; paragraphs: number; phrases: number };
   parse_error?: string;
   estimate_seconds?: number;
-  voice?: { path: string; name: string; version: number; seconds: number; timing: 'aligned' | 'estimated' };
+  voice?: { path: string; name: string; version: number; seconds: number; timing: 'aligned' | 'estimated' | 'dialogue' };
   audio_options?: { path: string; name: string; version: number }[];
+  dialogue?: {
+    provider: string;
+    roles: { id: string; name: string; voice_id?: string }[];
+    warning?: string;
+  };
+  can_convert_to_dialogue?: boolean;
   change_log?: { path: string; content: string };
 }
 

@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import path from 'node:path';
+import { hasRoster } from '../cast/roster';
 import { goPathError, goQuote, goTrimSpace } from '../gofmt';
 import { isWordRune, normRune, normalizeRunes, runeString, runes, tokenizeRunes, type Token } from './token';
 
@@ -100,6 +102,8 @@ export class Script {
   pieceToken: number[] = [];
   /** headings 是标题行，只给 view 用：不进配音、不进字幕。 */
   headings: Heading[] = [];
+  /** 对话体终稿中每段的说话人。角色不占正文位置，也不进朗读文本。 */
+  speakers = new Map<number, string>();
 
   /** SpokenText 返回送进 TTS 与对齐工具的文本：标记取朗读侧，标题行丢掉，段与段之间换行，标点保留。 */
   spokenText(): string {
@@ -172,7 +176,7 @@ export function search(n: number, f: (i: number) => boolean): number {
 }
 
 /** LoadScript 读取并解析终稿文件。 */
-export function loadScript(file: string): Script {
+export function loadScript(file: string, dialogue = false): Script {
   let body: string;
   try {
     body = fs.readFileSync(file, 'utf8');
@@ -180,10 +184,15 @@ export function loadScript(file: string): Script {
     throw new Error(`无法读取终稿：${goPathError('open', file, err)}`, { cause: err });
   }
   try {
-    return parseScript(body);
+    return parseScript(body, dialogue);
   } catch (err) {
     throw new Error(`${file} ${(err as Error).message}`, { cause: err });
   }
+}
+
+/** 项目终稿跟随班底设置，单独传入的对齐稿仍按普通文本解析。 */
+export function loadProjectScript(root: string, file: string): Script {
+  return loadScript(file, path.resolve(file) === path.resolve(root, 'production/script-final.md') && hasRoster(root));
 }
 
 interface OpenPhrase {
@@ -211,7 +220,7 @@ export function trimRightSet(s: string, cutset: string): string {
 }
 
 /** ParseScript 解析终稿标记。 */
-export function parseScript(text: string): Script {
+export function parseScript(text: string, dialogue = false): Script {
   const s = new Script();
   if (text.startsWith('﻿')) text = text.slice(1);
   const lines = text.replaceAll('\r\n', '\n').split('\n');
@@ -221,7 +230,7 @@ export function parseScript(text: string): Script {
   let paraHasContent = false;
   lines.forEach((raw, index) => {
     const lineNo = index + 1;
-    const line = trimRightSet(raw, '\r');
+    let line = trimRightSet(raw, '\r');
     const trimmed = trimLeftSet(line, ' \t　');
     if (goTrimSpace(trimmed) === '' || trimmed.startsWith('#')) {
       if (trimmed.startsWith('#')) {
@@ -234,12 +243,28 @@ export function parseScript(text: string): Script {
       }
       return;
     }
+    let columnOffset = 0;
+    if (dialogue) {
+      const prefix = /^[ \t　]*([a-z][a-z0-9-]*)[ \t　]*[:：][ \t　]*/.exec(line);
+      if (!prefix || line.slice(prefix[0].length).trim() === '') {
+        throw new ParseError(lineNo, 1, '对白请写成「角色 id: 台词」，一行一轮发言');
+      }
+      const last = s.pieces.at(-1);
+      if (stack.length && last && s.speakers.get(last.para) !== prefix[1]) {
+        throw new ParseError(lineNo, 1, '受保护短语不能跨说话人');
+      }
+      if (paraHasContent) para++;
+      paraHasContent = false;
+      s.speakers.set(para, prefix[1]);
+      columnOffset = prefix[0].length;
+      line = line.slice(columnOffset);
+    }
     if (paraHasContent) s.pieces.push({ display: '', spoken: '', line: lineNo, col: 1, para, plain: false, softBreak: true });
     paraHasContent = true;
     const rs = runes(line);
     const add = (p: Omit<Piece, 'para' | 'softBreak'>) => s.pieces.push({ ...p, para, softBreak: false });
     for (let i = 0; i < rs.length; ) {
-      const col = i + 1;
+      const col = columnOffset + i + 1;
       const r = rs[i];
       if (r === 0x5c) {
         if (i + 1 >= rs.length || !isEscapable(rs[i + 1])) throw new ParseError(lineNo, col, badEscape);
@@ -247,7 +272,7 @@ export function parseScript(text: string): Script {
         add({ display: ch, spoken: ch, line: lineNo, col, plain: true });
         i += 2;
       } else if (r === 0x3c) {
-        const [display, spoken, next] = parseAlternative(rs, i, lineNo);
+        const [display, spoken, next] = parseAlternative(rs, i, lineNo, columnOffset);
         const event = display === '' && isVocalEvent(spoken);
         add({ display, spoken, line: lineNo, col, plain: false, ...(event ? { event } : {}) });
         i = next;
@@ -307,35 +332,35 @@ function indexRune(rs: number[], from: number, target: number): number {
 }
 
 /** parseAlternative 解析从 rs[start] == '<' 开始的 <显示|朗读>，返回下一个待读下标。 */
-function parseAlternative(rs: number[], start: number, lineNo: number): [string, string, number] {
+function parseAlternative(rs: number[], start: number, lineNo: number, columnOffset: number): [string, string, number] {
   const parts: [number[], number[]] = [[], []];
   let part = 0;
   for (let i = start + 1; i < rs.length; i++) {
     const r = rs[i];
     switch (r) {
       case 0x5c:
-        if (i + 1 >= rs.length || !isEscapable(rs[i + 1])) throw new ParseError(lineNo, i + 1, badEscape);
+        if (i + 1 >= rs.length || !isEscapable(rs[i + 1])) throw new ParseError(lineNo, columnOffset + i + 1, badEscape);
         parts[part].push(rs[i + 1]);
         i++;
         break;
       case 0x7c:
-        if (part === 1) throw new ParseError(lineNo, i + 1, '<显示|朗读> 里只能有一个 |，字面的 | 写成 \\|');
+        if (part === 1) throw new ParseError(lineNo, columnOffset + i + 1, '<显示|朗读> 里只能有一个 |，字面的 | 写成 \\|');
         part = 1;
         break;
       case 0x3c:
-        throw new ParseError(lineNo, i + 1, '<显示|朗读> 不能嵌套，字面的 < 写成 \\<');
+        throw new ParseError(lineNo, columnOffset + i + 1, '<显示|朗读> 不能嵌套，字面的 < 写成 \\<');
       case 0x3e: {
-        if (part === 0) throw new ParseError(lineNo, start + 1, '<显示|朗读> 缺少 |；字面的 < 写成 \\<');
+        if (part === 0) throw new ParseError(lineNo, columnOffset + start + 1, '<显示|朗读> 缺少 |；字面的 < 写成 \\<');
         const display = runeString(parts[0]);
         const spoken = runeString(parts[1]);
-        if (display === '' && spoken === '') throw new ParseError(lineNo, start + 1, '<|> 两侧都是空的');
+        if (display === '' && spoken === '') throw new ParseError(lineNo, columnOffset + start + 1, '<|> 两侧都是空的');
         return [display, spoken, i + 1];
       }
       default:
         parts[part].push(r);
     }
   }
-  throw new ParseError(lineNo, start + 1, '<显示|朗读> 没有在本行闭合');
+  throw new ParseError(lineNo, columnOffset + start + 1, '<显示|朗读> 没有在本行闭合');
 }
 
 /** resolveSoftBreaks 把段内换行变成空格或什么都不是：只有两侧都是字母数字时才需要空格。 */

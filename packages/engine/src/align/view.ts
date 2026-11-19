@@ -12,6 +12,8 @@ export interface ViewBlock {
   level?: number;
   text?: string;
   nodes?: ViewNode[];
+  speaker?: string;
+  time?: CharacterTime;
 }
 
 /**
@@ -90,6 +92,8 @@ export function view(s: Script, timed?: TimedToken[]): { blocks: ViewBlock[]; st
     flushHeadings(start);
     const nodes = viewNodes(s, start, end, times);
     const block: ViewBlock = { kind: 'para' };
+    const speaker = s.speakers.get(s.pieces[start].para);
+    if (speaker) block.speaker = speaker;
     if (nodes.length > 0) block.nodes = nodes;
     blocks.push(block);
     stats.paragraphs++;

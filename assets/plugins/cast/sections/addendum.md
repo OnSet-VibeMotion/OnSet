@@ -29,7 +29,8 @@ heiwa: 你先别急，我们从背景讲起。
 
 - 出现未登记的角色 id 是脚本错误，必须先 `cast_add()` / `cast_new()` 引入角色再继续，不得先写脚本再补角色。
 - 稿件审核关卡的检查项与单口播一致（预计朗读时长、开场全文、与原稿的主要变化、需要保护的专有名词和不可拆分短语），额外增加：各说话人的台词量是否严重失衡、每个角色的用词和语气是否符合人设。
-- 稿件未确认时，不进入正式分段 TTS。
+- 每行是口播稿页上可以单独引用的一轮发言。角色前缀只供分配音色与审稿，朗读与字幕使用去掉前缀后的台词。读法、声音事件和受保护短语沿用终稿标记。
+- 稿件未确认时，不进入正式分段 TTS。用户从口播稿页请求配置或更换某角色的音色时，先查 `voice_catalog()`，给出并试听合适的音色，用户确认后才写入该角色的配置。用户确认的是该角色的声音，同一轮里不替换其他角色。
 
 ### 二、按说话人连续段分段，不按字幕行
 
@@ -46,6 +47,7 @@ TTS 服务提供方仍由 `onset.conf`（或环境变量 `TTS_PROVIDER`）决定
 
 - 每个说话人使用其 `cast/<id>/character.yaml` 里 `voice.<TTS_PROVIDER>.voiceId`（例如 `voice.minimax.voiceId`、`voice.edge.voiceId`，取决于当前 `TTS_PROVIDER`）对应的音色；同一说话人从头到尾使用同一个 voiceId，不得中途切换。`TTS_PROVIDER=breeze` 时 `voice.breeze.voiceId` 写音色库里的音色名，合成该说话人的每一段时，将库名传给 `voice_synthesize` 的 `voice`，OnSet 自动读取参考音频与文字稿克隆；库里还没有这个角色的声音时，按{{STAGE:voice}}设计、试听，用户选定后 `voice_save` 存进音色库再填名字。
 - 逐段合成时依旧按{{STAGE:voice}}的方式取真实时间戳：通过 `voice_synthesize` 返回的 `sources` 查看原始时间戳；没有字级时间戳的段落继续强制对齐。这里拿到的时间戳是相对本段音频起点的段内时间，不是全局时间轴——全局时间轴由 `dialogue_assemble()` 统一计算，不要在这一步手工换算或累加偏移。
+- 将每段的台词标记单独写成对齐稿，调用 `align_text()` 传入该段文件以导出朗读文本和对齐文本。对白计划里的字幕行用终稿的显示文字，保留每个说话人台词的顺序。这样口播稿页能用装配产物下的真实字幕时间码定位台词。
 - 每段落盘为独立音频文件，建议命名 `production/audio/segments/<index>-<speaker>.wav`，`index` 从 0 开始，与后面 `plan.json` 里 `segments[].index` 一一对应。
 - 断句检查、发音控制覆盖范围的要求与单口播一致，只是逐段各自核对：产品名/模型名是否被拆开、数字、英文缩写和多音字是否读对、长句是否留出呼吸、段尾是否留出画面展示时间。
 
@@ -95,7 +97,7 @@ dialogue_assemble()
 - 默认读取 `production/audio/plan.json`，可用 `--plan` 指定别的路径。
 - 产出三个文件：`production/audio/voice.wav`（拼接后的完整配音）、`transcription-production.srt`（按全局时间轴生成的字幕）、`production/dialogue.json`（装配后的结构化时间线——里面的 `segments` 与 `lines` 都已经是全局时间，不再是段内相对时间）。
 - 命令内置两道漂移断言（逐段声明时长与实测时长的比对、总时长漂移比对），任一超出容差都会失败并点名具体是第几段——原样报告给用户，不要自己吞掉重试或手工拼凑时间轴掩盖问题。
-- 装配完成后，{{STAGE:timeline}}其余条款（短语级语义时间轴、`timing-report.json`、`closingHoldFrames` 等）照常执行，只是输入换成这里产出的 `production/dialogue.json` 与新的 `transcription-production.srt`。
+- 装配完成后，使用 `align_build()` 把段内字级证据按 `production/dialogue.json` 中各段的 `startSeconds` 传入，映射回终稿以生成短语时间轴及 `production/audio/voice.srt`。校验供成片使用的 `transcription-production.srt` 时沿用对白装配的字幕切分和时间码，它与 `production/dialogue.json` 共同驱动试听和镜头里的说话人。随后按{{STAGE:timeline}}生成 `timing-report.json`，核对 `closingHoldFrames` 等交付要求。
 
 ### 六、拆镜头时给 `scene.json` 填 `cast` 块
 

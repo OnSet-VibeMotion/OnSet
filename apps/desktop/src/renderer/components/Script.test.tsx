@@ -107,3 +107,28 @@ test('subtitles alone are not playable, unreadable audio says so, and versioned 
   await waitFor(() => expect(document.querySelector('.script-char.now')?.textContent).toBe('界'));
   expect(api.unmatched).toEqual([]);
 });
+
+test('reviews and seeks dialogue turns and opens role requests in the conversation', async () => {
+  const onQuick = vi.fn();
+  const api = mockApi({ '/api/script': { ...base, can_convert_to_dialogue: true } });
+  const props = { busy: '', onQuick, onFile: vi.fn(), onAttach: vi.fn() };
+  const { rerender } = render(<ScriptTab version={1} {...props} />);
+  fireEvent.click(await screen.findByRole('button', { name: '改为多人对话' }));
+  expect(onQuick).toHaveBeenLastCalledWith(expect.stringContaining('等我确认'), [], true);
+
+  api.set('/api/script', {
+    ...withAudio('production/audio/voice.wav'),
+    dialogue: { provider: 'edge', roles: [{ id: 'host', name: '主持人', voice_id: 'voice-a' }] },
+    blocks: [{ ...base.blocks![0], speaker: 'host', time: { start: 2, end: 3 } }],
+    voice: { ...withAudio('production/audio/voice.wav').voice!, timing: 'dialogue', seconds: 3 },
+  });
+  rerender(<ScriptTab version={2} {...props} />);
+  fireEvent.click(await screen.findByRole('button', { name: '为主持人换音色' }));
+  expect(onQuick).toHaveBeenLastCalledWith(expect.stringContaining('host'), [], true);
+  const audio = audioElement();
+  setMedia(audio, { readyState: 4 });
+  const turn = screen.getByRole('button', { name: '从主持人的这句开始播放' });
+  fireEvent.click(turn);
+  expect(audio.currentTime).toBe(2);
+  expect(turn.closest('p')?.getAttribute('aria-current')).toBe('true');
+});
