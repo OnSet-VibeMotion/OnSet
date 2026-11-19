@@ -47,7 +47,7 @@ describe('new projects compose the prompt of their own flow', () => {
   it('keeps scene implementation with the renderer in every flow', () => {
     for (const { text, name: label } of everyBuiltinPrompt()) {
       expect(text, label).toContain('## 镜头实现的归属');
-      for (const rule of ['不得创建、编辑或覆盖镜头实现代码', '共用模块', '修复自己引入的问题', 'prompt.md', 'scene_run', 'scene_run_all']) {
+      for (const rule of ['不得创建、编辑或覆盖镜头实现代码', '共用模块', '修复自己引入的问题', 'prompt.md', 'scene_run', 'scene_run_all', 'scene_frames()', '不得用 Chrome DevTools', 'visible-events.json']) {
         expect(text, label).toContain(rule);
       }
       for (const old of ['改完合成代码、重渲染前', '修改源工程时间轴并只重渲染', '再做最小源级修改']) expect(text, label).not.toContain(old);

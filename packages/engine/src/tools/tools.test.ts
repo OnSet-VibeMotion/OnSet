@@ -383,6 +383,16 @@ describe('tools', () => {
       expect(unsafe.at(-1)).toBe('hello');
       expect(orchestratorInvocation('codex', { prompt: 'p', workdir: '/p', toolsServer: server }).argv).toContain('mcp_servers.onset.command="/app/bin/onset"');
     });
+
+    it.each([false, true])('blocks the user Chrome DevTools MCP in managed Claude sessions (unsafe=%s)', (unsafe) => {
+      const { argv } = orchestratorInvocation('claude', { prompt: 'hello', toolsServer: server, unsafe, resume: true, sessionID: 'existing' });
+      const deny = argv.indexOf('--disallowed-tools');
+      expect(deny).toBeGreaterThan(0);
+      expect(argv[deny + 1]).toBe('mcp__chrome-devtools__*');
+      expect(argv).toContain('--resume');
+      expect(argv.at(-1)).toBe('hello');
+      expect(orchestratorInvocation('claude', { prompt: 'hello' }).argv).not.toContain('--disallowed-tools');
+    });
   });
 
   // 不安全模式已经跳过全部权限检查，不需要也不应该再叠一层 settings。

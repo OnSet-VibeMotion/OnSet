@@ -38,6 +38,8 @@ MiniMax Code（`mcode`，npm 包 `@minimax-ai/code`，0.6.12 实测）与别家�
 
 Qoder 编排在安全模式且挂有 onset 工具或审批服务时，额外通过 `permissions.deny` 拒绝文件工具修改项目 `scenes/` 与 `production/shared/` 下的 HTML/CSS/JS/TS 实现文件（`tools.ts` 的 `qoderOrchestratorSettings`）。Qoder 的路径写入规则用 `Edit`，同时覆盖 Write；模式以 `//` 开头写绝对路径，不能使用没有根目录的多段 glob（实测未拦住）。`prompt.md`、`scene.json` 和渲染器权限保持原样。此规则不限制 Bash/脚本，不能当作系统沙箱；复制、同步和补丁仍由每轮职责说明约束。`RealToolsMCP` 中的 Qoder 文件权限用例必须在本机通过。
 
+片场启动的 Claude 编排会话通过 `--disallowed-tools mcp__chrome-devtools__*` 禁用用户配置里的同名 MCP 工具。每轮启动都带这项限制，续接和不安全模式也一样。镜头质检用片场自己的抽帧工具，避免 DevTools 接入用户已有的浏览器标签页。
+
 改了任何一家的调用参数或解析器，都要在本机跑一遍真实 CLI 集成测试（`packages/engine/src/agentrun/integration.test.ts`）：
 
 ```bash
