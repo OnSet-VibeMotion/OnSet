@@ -657,7 +657,8 @@ export function startTurn(s: Server, p: Project, sess: Session, req: TurnRequest
   }
   const controller = new AbortController();
   sess.cancel = controller;
-  void runTurn(s, controller.signal, p, sess, cfg, prepared.turn, prepared.prompt, prepared.handoff);
+  const projectWrites = { epoch: s.writeEpoch(p.path), sharedAtStart: s.hasSharedWriter(p.path) };
+  void runTurn(s, controller.signal, p, sess, cfg, prepared.turn, prepared.prompt, prepared.handoff, projectWrites);
   return prepared.turn;
 }
 
@@ -729,7 +730,7 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
  * runTurn 在后台跑一轮。写权由 finishTurn 释放，这里不能再释放一次：
  * 释放之后下一轮可能已经拿到写权，重复释放会把它的锁也放掉。
  */
-async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, cfg: config.Config, turn: Turn, prompt: string, handoff = ''): Promise<void> {
+async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, cfg: config.Config, turn: Turn, prompt: string, handoff: string, projectWrites: { epoch: number; sharedAtStart: boolean }): Promise<void> {
   let runErr: Error | null = null;
   let stopViews: () => void = () => {};
   try {
@@ -836,7 +837,8 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
     runErr = err instanceof Error ? err : new Error(String(err));
   }
   stopViews();
-  finishTurn(s, signal, p, sess, turn, runErr);
+  const concurrentWrites = projectWrites.sharedAtStart || s.writeEpoch(p.path) !== projectWrites.epoch;
+  finishTurn(s, signal, p, sess, turn, runErr, concurrentWrites);
 }
 
 /**
@@ -882,12 +884,17 @@ export function reseedPrompt(history: string, prompt: string, production = '', h
   );
 }
 
-function finishTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, turn: Turn, runErr: Error | null): void {
+function finishTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, turn: Turn, runErr: Error | null, concurrentWrites: boolean): void {
   let scanErr: Error | null = null;
   try {
     const after = scanTree(p.path);
     turn.after = after;
     turn.changes = diffTrees(turn.before, after);
+    if (concurrentWrites && turn.changes.some((change) => change.revertable)) {
+      // 同一份快照差异里分不清哪一个进程写了文件。收起回退权，避免改写插件的结果。
+      for (const change of turn.changes) change.revertable = false;
+      emit(sess, turn.turn_id, { kind: kindNotice, text: '本轮与插件网页操作同时运行，项目文件的改动无法区分归属，不能通过本轮回退。' });
+    }
   } catch (err) {
     scanErr = err as Error;
   }
@@ -992,6 +999,7 @@ function drainQueue(s: Server, p: Project, sess: Session): void {
 /** revert 回退一轮，并在会话里记一条事件。 */
 export function revert(s: Server, p: Project, turnID: string): { turn: Turn; skipped: string[] } {
   const turn = loadTurn(p.path, turnID);
+  if (s.hasSharedWriter(p.path)) throw new BusyError('插件网页操作正在运行');
   s.acquire(p.path, '正在回退一轮对话');
   try {
     const skipped = revertTurn(p.path, turn);

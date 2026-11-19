@@ -312,9 +312,9 @@ export class Server {
     this.bumpWriteEpoch(projectPath);
   }
 
-  /** 这个项目里除 id 以外还有没有别的写入者在进行（写锁或不占写锁的操作）。 */
-  otherWriters(projectPath: string, id: string): boolean {
-    return this.busy.has(projectPath) || [...this.shared.entries()].some(([k, w]) => k !== id && w.project === projectPath);
+  /** 这个项目里是否有未结束的插件网页操作。 */
+  hasSharedWriter(projectPath: string, exceptID?: string): boolean {
+    return [...this.shared.entries()].some(([id, writer]) => id !== exceptID && writer.project === projectPath);
   }
 
   endShared(id: string): void {

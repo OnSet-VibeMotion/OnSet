@@ -248,7 +248,7 @@ defineOp({
     op: { type: 'string', description: '操作名', required: true, positional: 1 },
     params: { type: 'string', description: '操作的参数（JSON 对象）', default: '{}' },
     event: { type: 'string', description: '事件钩子触发时的事件（JSON 对象），交给插件', default: '' },
-    host_scope: { type: 'boolean', description: '越界检查由调用方做（客户端里不占写锁的插件网页操作），这里不扫项目', default: false },
+    host_scope: { type: 'boolean', description: '越界检查由调用方做，执行进程不重复扫描项目', default: false },
     project_root: projectRoot,
   },
   run: async (p, { out, signal }) => {

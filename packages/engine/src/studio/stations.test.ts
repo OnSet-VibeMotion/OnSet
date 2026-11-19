@@ -273,6 +273,9 @@ describe('stations API', () => {
     });
     installStation(`link:${writeStationForTest({ 'onset-station.json': manifest('upload-a', 'a'), 'x.cjs': '' })}`);
     installStation(`link:${writeStationForTest({ 'onset-station.json': manifest('upload-b', 'b'), 'x.cjs': '' })}`);
+    const ordinary = JSON.parse(manifest('ordinary', 'ordinary'));
+    delete ordinary.browser;
+    installStation(`link:${writeStationForTest({ 'onset-station.json': JSON.stringify(ordinary), 'x.cjs': '' })}`);
     const bin = fs.mkdtempSync(path.join(f.root, '..', 'onset-fake-'));
     const gate = path.join(bin, 'go');
     // 假的执行进程：记下参数，按站写文件，等测试放行再结束（像在等网站传完）。
@@ -293,9 +296,11 @@ printf '\\000am-result {"ok":true,"exit_code":0}\\n'
     // 两个插件同时在跑，项目写锁空着；重启装更新前照样知道有上传在进行。
     expect(f.s.busyHolder(f.root)).toBe('');
     expect(f.s.activeWork().map((w) => w.holder).sort()).toEqual(['upload-a：上传', 'upload-b：上传']);
+    const ordinaryTask = await start('ordinary');
     fs.writeFileSync(gate, '');
     expect(await waitStudioTask(f.s, a)).toMatchObject({ status: 'succeeded' });
     expect(await waitStudioTask(f.s, b)).toMatchObject({ status: 'succeeded' });
+    expect(await waitStudioTask(f.s, ordinaryTask)).toMatchObject({ status: 'succeeded' });
     expect(f.s.activeWork()).toEqual([]);
     expect(fs.readFileSync(path.join(bin, 'args.log'), 'utf8')).toContain('"host_scope":true');
     const runs = (await studioRequest(f.s, 'GET', '/api/stations')).body.stations;
@@ -303,6 +308,7 @@ printf '\\000am-result {"ok":true,"exit_code":0}\\n'
     // 两个同时在写：改动分不清是谁写的，都不报越界。
     expect(last('upload-a').out_of_scope).toBeUndefined();
     expect(last('upload-b').out_of_scope).toBeUndefined();
+    expect(last('ordinary').out_of_scope).toBeUndefined();
 
     const solo = async (during?: () => void) => {
       fs.rmSync(gate);

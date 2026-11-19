@@ -180,12 +180,8 @@ async function readParams(request: Request): Promise<Record<string, unknown>> {
 /**
  * 跑一条第三方操作：插件写的 onset-progress 行变成任务进度；结果记进 lastRuns。
  *
- * 越界检查在执行进程里（flow.runStationOp）已经做过一遍，结果写进了操作的文字，给编排工具看；这里在调用点
- * 外面再扫一遍项目，拿到结构化的列表给界面（任务、发布页的按钮、插件页面）。执行进程的协议只回传插件自己的 data，
- * 不为它另开字段；两遍都只 stat，代价很小。钩子与定时触发的（event 不为空）越界时另发一条 notice。
- *
- * shared：不占写锁的插件网页操作（见 sharedStationOp）。执行进程不扫，只在这里扫；期间还有别的写入者（一轮对话、渲染、
- * 另一个插件在同时上传……），改动分不清是谁写的，这次不报越界、也不按写了片场文件判失败。只有它一个在写时照常检查。
+ * 客户端启动的操作由宿主扫描项目改动，写入任务进度和结构化结果；钩子和定时操作还会在对话里发提示。
+ * shared 表示网页操作未占写锁。扫描期间另有写入者时无法判断归属，跳过本次范围报告。只有一个写入者时照常检查。
  */
 async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: Task, id: string, op: string, params: Record<string, unknown>, event?: Record<string, unknown>, shared = false): Promise<void> {
   const key = `${p.path}\n${id}\n${op}`;
@@ -202,10 +198,11 @@ async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: 
   const station = flow.loadStations().stations.find((x) => x.manifest.id === id);
   const before = station ? flow.statProject(p.path) : null;
   const epoch = s.writeEpoch(p.path);
-  const othersAtStart = shared && s.otherWriters(p.path, task.task_id);
+  const hasOtherWriter = () => s.hasSharedWriter(p.path, task.task_id) || (shared && s.busyHolder(p.path) !== '');
+  const othersAtStart = hasOtherWriter();
   const scope = () => {
     if (!station || !before) return null;
-    if (shared && (othersAtStart || s.otherWriters(p.path, task.task_id) || s.writeEpoch(p.path) !== epoch)) return null;
+    if (othersAtStart || hasOtherWriter() || s.writeEpoch(p.path) !== epoch) return null;
     const r = flow.scopeReport(station.manifest, before, flow.statProject(p.path));
     if (r) reportScope(s, p, task, station.manifest.name, r, event);
     return r;
@@ -222,11 +219,11 @@ async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: 
       signal,
       p,
       'station_run',
-      { station: id, op, params: JSON.stringify(params), event: event ? JSON.stringify(event) : '', project_root: p.path, ...(shared ? { host_scope: true } : {}) },
+      { station: id, op, params: JSON.stringify(params), event: event ? JSON.stringify(event) : '', project_root: p.path, host_scope: true },
       { onText, ...(browser ? { env: { [flow.StationBrowserEnv]: JSON.stringify(browser.connection) } } : {}) },
     );
     const report = scope();
-    if (shared && report && report.reserved.length > 0) {
+    if (report && report.reserved.length > 0) {
       const err = new Error(`第三方站 ${id} 的 ${op} 写了片场自己的文件（${report.reserved.join('、')}），按失败处理`);
       lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: false, text: err.message, ...scopeFields(report) });
       throw Object.assign(err, { scopeReported: true });
