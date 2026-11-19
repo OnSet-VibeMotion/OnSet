@@ -426,8 +426,11 @@ MotionPrompt.pack('camera2', function () {
       // テイク1とテイク2は姿勢が違う。モーフ中は同じ（補間した）位置に2つの姿勢を重ねて溶かす
       const pose = (k2, m) => world(k2, w, h, cam({ y: 1.45, z: 0 }), { person: { x: lerp(-0.4, 0.35, q), z: 3.3, walk: (m ? 0.55 : -0.45) + 0.12 * Math.sin(t * 3) }, trees: true, buildings: true });
       const bl = Math.sin(q * Math.PI) * 2.2;
-      kk.save(); kk.filter = bl > 0.05 ? `blur(${bl.toFixed(2)}px)` : 'none';
-      blend(kk, k2 => pose(k2, false), k2 => pose(k2, true), q);
+      clear(TK);
+      blend(TK, k2 => pose(k2, false), k2 => pose(k2, true), q);
+      kk.save();
+      kk.filter = bl > 0.05 ? `blur(${bl.toFixed(2)}px)` : 'none';
+      kk.drawImage(TMP, 0, 0);
       kk.restore();
       strip(kk, w, h, [[0, T0, 'テイク1', C.g2], [T0, T1, '', C.blue], [T1, CYC, 'テイク2', C.g2]], t);
     };

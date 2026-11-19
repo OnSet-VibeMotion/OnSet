@@ -326,9 +326,13 @@ MotionPrompt.pack('camera', function () {
 
   // @element 14
   // 14 スピードランプ: 速い→遅い（グラフで速さを表示）
-  function rampTime(u) {   // 再生速度 v(u): 2.4 → 0.25（u 1.2〜1.9 で切替）
-    const v = x => lerp(2.4, 0.25, eIOs(P(x, 1.2, 1.9)));
-    let s = 0; const N = 60; for (let i = 0; i < N; i++) { const x = u * (i + .5) / N; s += v(x) * u / N; } return { s, v: v(u) };
+  const rampSpeed = u => lerp(2.4, 0.25, eIOs(P(u, 1.2, 1.9)));
+  const rampGraph = Array.from({ length: 41 }, (_, i) => rampSpeed(i / 40 * (CYC - RESET)) / 2.4);
+  function rampTime(u) {
+    const samples = 60;
+    let s = 0;
+    for (let i = 0; i < samples; i++) s += rampSpeed(u * (i + .5) / samples) * u / samples;
+    return { s, v: rampSpeed(u) };
   }
   CELLS[13] = shot((k, w, h, u) => {
     const uu = Math.min(u, CYC - RESET);
@@ -342,7 +346,7 @@ MotionPrompt.pack('camera', function () {
           k2.fillStyle = 'rgba(255,255,255,.85)'; rr(k2, gx - 8, gy - gh - 10, gw + 16, gh + 18, 6); k2.fill();
           k2.strokeStyle = C.faint; k2.lineWidth = 1.5; k2.beginPath(); k2.moveTo(gx, gy); k2.lineTo(gx + gw, gy); k2.stroke();
           k2.strokeStyle = C.blue; k2.lineWidth = 2.5; k2.beginPath();
-          for (let i = 0; i <= 40; i++) { const xx = i / 40 * (CYC - RESET), vv = rampTime(xx).v; const X = gx + i / 40 * gw, Y = gy - vv / 2.4 * gh; i ? k2.lineTo(X, Y) : k2.moveTo(X, Y); }
+          rampGraph.forEach((v, i) => { const X = gx + i / (rampGraph.length - 1) * gw, Y = gy - v * gh; i ? k2.lineTo(X, Y) : k2.moveTo(X, Y); });
           k2.stroke();
           const X = gx + uu / (CYC - RESET) * gw, Y = gy - v / 2.4 * gh; k2.fillStyle = C.blue; k2.beginPath(); k2.arc(X, Y, 5, 0, 7); k2.fill();
         }
@@ -441,13 +445,14 @@ MotionPrompt.pack('camera', function () {
   CELLS[18] = shot(abCell((k, w, h, u, A, B) => {
     const t0 = 1.7, t1 = 2.5;
     const at = (kk, s) => {   // s: 0..1 の進み。前半 A を右へ振り、後半 B が左から止まる
-      if (s < .5) world(kk, w, h, cam({ y: 1.4, yaw: eIOs(s * 2) * 0.45 }), A === sceneA ? { person: { x: -0.6, z: 7 } } : SB);
-      else world(kk, w, h, cam({ y: 1.4, yaw: -(1 - eIOs((s - .5) * 2)) * 0.45 }), B === sceneA ? { person: { x: -0.6, z: 7 } } : SB);
+      if (s < .5) A(kk, w, h, { cam: { yaw: eIOs(s * 2) * 0.45 } });
+      else B(kk, w, h, { cam: { yaw: -(1 - eIOs((s - .5) * 2)) * 0.45 } });
     };
     if (u < t0) return A(k, w, h);
     if (u > t1) return B(k, w, h);
     const s = P(u, t0, t1), ds = 1 / FPS / (t1 - t0);
-    mblur(k, at, clamp(s - ds * 1.6), clamp(s + ds * 1.6), 9);
+    const radius = Math.min(ds * 1.6, s, 1 - s);
+    mblur(k, at, s - radius, s + radius, 9);
   }));
 
   // @element 20

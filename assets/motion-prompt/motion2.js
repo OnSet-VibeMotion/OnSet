@@ -123,8 +123,8 @@ MotionPrompt.pack('motion2', function () {
     const L = 58, top = cy - R + 4;
     k.save(); k.translate(x, top); k.rotate(a);
     k.strokeStyle = '#fff'; k.lineWidth = 5; k.beginPath(); k.moveTo(0, 0); k.lineTo(0, -L); k.stroke();
-    k.rotate(a * 0.6);
-    k.fillStyle = C.yel; k.beginPath(); k.moveTo(0, -L); k.quadraticCurveTo(-dir * 22, -L + 4 + 8 * a * dir, -dir * 44, -L + 12); k.lineTo(0, -L + 28); k.closePath(); k.fill();
+    k.translate(0, -L); k.rotate(a * 0.6);
+    k.fillStyle = C.yel; k.beginPath(); k.moveTo(0, 0); k.quadraticCurveTo(-dir * 22, 4 + 8 * a * dir, -dir * 44, 12); k.lineTo(0, 28); k.closePath(); k.fill();
     k.restore();
     k.fillStyle = '#fff'; k.beginPath(); k.arc(x + Math.sin(a) * L, top - Math.cos(a) * L, 6, 0, 7); k.fill();
   };
@@ -363,7 +363,7 @@ MotionPrompt.pack('motion2', function () {
     txt(TK, 'OCEAN', w / 2, Y, font, '#fff', 'center', 'middle', '2px');
     GK0.setTransform(1, 0, 0, 1, 0, 0); GK0.globalCompositeOperation = 'source-over'; GK0.clearRect(0, 0, w, h); seaPattern(GK0, w, h, u);
     TK.globalCompositeOperation = 'source-in'; TK.drawImage(G0, 0, 0); TK.globalCompositeOperation = 'source-over';
-    k.globalAlpha = 0.12 + 0.88 * open; seaPattern(k, w, h, u); k.globalAlpha = 1;
+    k.globalAlpha = 0.12 + 0.88 * open; k.drawImage(G0, 0, 0); k.globalAlpha = 1;
     k.drawImage(TMP, 0, 0);
     k.font = font; k.textAlign = 'center'; k.textBaseline = 'middle'; k.letterSpacing = '2px'; k.lineJoin = 'round';
     k.strokeStyle = '#fff'; k.lineWidth = 4; k.strokeText('OCEAN', w / 2, Y); k.letterSpacing = '0px';

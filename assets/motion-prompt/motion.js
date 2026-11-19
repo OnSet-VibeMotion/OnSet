@@ -88,7 +88,7 @@ MotionPrompt.pack('motion', function () {
   CELLS[1] = (k, w, h, u) => {
     stage(k);
     const N = 7, BW = 44, G = 20, x0 = (w - (N * BW + (N - 1) * G)) / 2, base = h - 30;
-    const HS = [52, 84, 68, 112, 92, 136, 158];
+    const HS = [42, 67, 54, 90, 74, 109, 126];
     k.fillStyle = C.navy3; rr(k, x0 - 18, base, N * BW + (N - 1) * G + 36, 5, 2.5); k.fill();
     const lu = mod(u, CYC / 2);
     for (let i = 0; i < N; i++) {

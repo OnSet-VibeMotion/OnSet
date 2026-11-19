@@ -3,7 +3,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, it } from 'vitest';
 import { mockApi, reply } from '../testing';
-import { visibleTabs } from './Preview';
+import { Preview, visibleTabs } from './Preview';
 import { renderPreview, sceneRow } from './previewTesting';
 
 it('finds identical local ids by source, previews and puts a qualified motion reference in the draft', async () => {
@@ -45,4 +45,25 @@ it('shows a recoverable catalog error and an empty search result', async () => {
   api.set('/api/motion-effects', { sources: [] });
   await userEvent.click(screen.getByRole('button', { name: '重试' }));
   await screen.findByText('没有找到匹配的动效。');
+});
+
+it('starts with the current project scene when switching projects that share scene ids', async () => {
+  mockApi({ '/api/motion-effects': {
+    sources: [{ id: 'motion-prompt', name: 'Motion Prompt', version: 'pinned',
+      effects: [{ id: '005', name: '遮罩显现', category: '动效', summary: '从遮罩后显现' }] }],
+  } });
+  const scenes = ['scene-001', 'scene-003'].map((id) => sceneRow(id));
+  const view = renderPreview('motion', scenes);
+  const withProject = (id: string) => ({
+    project: { id, name: id, path: '/' + id },
+    metadata: {},
+    scenes: { total: scenes.length, completed: 0, stale: 0 },
+  });
+  view.rerender(<Preview {...view.props} state={withProject('first')} />);
+  const user = userEvent.setup();
+  await user.selectOptions(await screen.findByLabelText('目标镜头'), 'scene-003');
+
+  view.rerender(<Preview {...view.props} state={withProject('second')} />);
+  await user.click(await screen.findByRole('button', { name: '写进对话' }));
+  expect(view.props.onQuick).toHaveBeenCalledWith(expect.stringContaining('镜头 scene-001'), [], true, true);
 });
