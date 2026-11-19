@@ -418,8 +418,12 @@ tell({ kind: 'hide' });                                    // 收起桌宠
 
 - `{action: "open", account: "稳定的账号编号", label: "账号备注", url: "https://creator.example.com/"}`：打开或恢复该账号的页面，返回 `{reused: boolean}`。编号为 1–80 位字母、数字、下划线或连字符，以字母数字开头。一次操作只控制一个账号。
 - `{action: "command", method: "Page.navigate", params: {url: "https://creator.example.com/editor"}}`：导航到声明过的来源。
+- `{action: "busy", message: "正在上传视频 57%", progress: 0.42}`：插件开始自动操作（上传、填写）时在页面上盖一层半透明遮罩，显示这句说明（1–80 字，不含控制字符）与进度条（`progress` 是 0–1 的整次进度，可省略或给 `null`，进度条就只循环滚动）。遮罩挡住用户的鼠标与键盘，插件自己的命令照常生效；重复发送会更新说明与进度，`{action: "busy", active: false}` 揭开。操作结束或取消、连接撤销时片场自动揭开。凡是要用户在页面上动手的时候都不能盖：登录阶段不盖；自动操作途中网站弹出验证码、短信或身份确认时，插件要先揭开遮罩、停下全部自动操作，等验证没了再盖上接着做（抖音上传插件的 `verificationGuard` 是个例子）。旧版片场不认这条命令，会返回错误，插件应忽略并照常进行。
+- `{action: "state"}`：返回 `{open, visible, busy, url}`。用户点工具栏的「返回片场」收起窗口时 `visible` 为 false，关掉窗口时 `open` 为 false。
 - 其余允许的 CDP 命令：`Page.enable`、`Page.bringToFront`、`Runtime.evaluate`、`Runtime.releaseObject`、`DOM.setFileInputFiles`、`Input.insertText`、`Input.dispatchKeyEvent`（`type` 只能是 keyDown / keyUp / rawKeyDown / char）、`Input.dispatchMouseEvent`（`type` 只能是 mouseMoved / mousePressed / mouseReleased，必须给 `x`、`y`）。键盘与鼠标用来像人一样逐字输入、真的点一下（有的网页只认可信事件），只作用于这个页面。上传文件必须是当前项目内的真实文件（校验符号链接后的路径）。命令返回 CDP 结果，错误返回非 2xx 与 `{error: "说明"}`。
 
-网页以 `WebContentsView` 显示在片场主窗口里，不拥有 Node、宿主 preload 或宿主会话。登录空间（cookie、本地存储）由片场保存在它自己的应用数据目录里（`station-sessions/<插件>/<account>/`），不同插件、账号独立，客户端重启后仍是登录状态；插件不要自己去读写或删除它，移除账号时调桥的 `forget`，片场会关掉那个账号的页面并清空它的登录空间；用户切回项目时页面保留，再次打开同一账号不自动导航，插件应在 `reused` 为 true 时避免覆盖用户编辑。账号仍在被某次操作填写时，另一项操作会明确失败。
+每个账号的网页单独一个窗口（顶上一条片场的工具栏：「返回片场」、插件与账号名、`hint`），不盖住片场主窗口：上传等网站的时候用户照常在片场工作。网页不拥有 Node、宿主 preload 或宿主会话。登录空间（cookie、本地存储）由片场保存在它自己的应用数据目录里（`station-sessions/<插件>/<account>/`），不同插件、账号独立，客户端重启后仍是登录状态；插件不要自己去读写或删除它，移除账号时调桥的 `forget`，片场会关掉那个账号的页面并清空它的登录空间；用户切回项目时页面保留，再次打开同一账号不自动导航，插件应在 `reused` 为 true 时避免覆盖用户编辑。账号仍在被某次操作填写时，另一项操作会明确失败。
+
+连接同一时间只处理一个请求，前一个还没回来时再发会得到 409：不等结果的请求（例如遮罩进度）也要排队发。用了网页的用户操作不占项目写锁：上传一个大视频可能要很久，这期间用户可以照常对话、渲染，几个插件、几个账号也可以同时上传；同一个账号的页面同一时间只归一项操作。这期间项目里还有别人在写时，片场分不清改动是谁写的，不报这次操作的越界写入。
 
 操作完成或取消后连接撤销，网页保留给用户；客户端关闭时销毁网页，登录状态继续保存。不要把连接地址、口令、网页 Cookie 写到项目、日志或操作结果。插件只需要连接这一页，不需要启动调试端口、安装浏览器或把网站代码加载到片场进程中。

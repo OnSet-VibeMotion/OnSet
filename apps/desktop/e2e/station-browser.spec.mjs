@@ -29,6 +29,11 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   const rpc=async(body)=>{ const response=await fetch(b.endpoint,{method:'POST',headers:{authorization:'Bearer '+b.token,'content-type':'application/json'},body:JSON.stringify(body)}); const result=await response.json(); if(!response.ok)throw Error(result.error); return result; };
   const opened=await rpc({action:'open',account:r.params.account,label:r.params.account,url:'${origin}/'});
   const command=(method,params)=>rpc({action:'command',method,params});
+  // 自动操作期间盖上遮罩：下面的上传、填写、键盘与鼠标都在遮罩下进行，照样要生效。
+  const badBusy=[];
+  for(const body of [{action:'busy',message:'x',progress:2},{action:'busy',message:''},{action:'busy',message:'a\\nb'}]){ try { await rpc(body); badBusy.push(false); } catch { badBusy.push(true); } }
+  await rpc({action:'busy',message:'正在上传视频 40%',progress:0.4});
+  const masked=(await rpc({action:'state'})).busy;
   const unauthorized=await fetch(b.endpoint,{method:'POST',headers:{authorization:'Bearer wrong'},body:'{}'});
   const fromPage=await fetch(b.endpoint,{method:'POST',headers:{authorization:'Bearer '+b.token,origin:'https://creator.example.test'},body:'{}'});
   const rejected=[];
@@ -44,7 +49,7 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   for(const key of ['#','话']){ await command('Input.dispatchKeyEvent',{type:'keyDown',key,text:key}); await command('Input.dispatchKeyEvent',{type:'keyUp',key}); }
   for(const type of ['mouseMoved','mousePressed','mouseReleased']) await command('Input.dispatchMouseEvent',{type,x:50,y:215,button:'left',clickCount:1});
   const typedResult=await command('Runtime.evaluate',{expression:'[document.querySelector("#typed").value, window.poked===true]',returnByValue:true});
-  console.log('onset-result '+JSON.stringify({previous:result.result.value,opened,bridge:b,rejected,unauthorized:unauthorized.status,fromPage:fromPage.status,input:typedResult.result.value}));
+  console.log('onset-result '+JSON.stringify({previous:result.result.value,opened,bridge:b,rejected,unauthorized:unauthorized.status,fromPage:fromPage.status,input:typedResult.result.value,masked,badBusy}));
  }catch(e){console.error(e.message);process.exitCode=1;}
 });`);
   installPlugin(sandbox, dir, 'embedded-helper');
@@ -82,14 +87,28 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   expect(first.fromPage).toBe(403);
   expect(first.rejected).toEqual([true, true, true, true, true, true, true, true, true]);
   expect(first.input).toEqual(['#话', true]);
+  expect(first.masked).toBe(true);
+  expect(first.badBusy).toEqual([true, true, true]);
   const inspect = () => electronApp.evaluate(async ({ webContents, BrowserWindow }) => {
     const web = webContents.getAllWebContents().find(w => w.getURL().startsWith('https://creator.example.test'));
     const agents = await web?.executeJavaScript('[navigator.userAgent, window.requestUA]');
-    return { windows: BrowserWindow.getAllWindows().length, native: !!web, preferences: web?.getLastWebPreferences(), agents, chrome: process.versions.chrome };
+    const windows = BrowserWindow.getAllWindows();
+    const main = windows.find(w => w.isResizable() && w.webContents.getURL().startsWith('onset://app'));
+    const own = windows.find(w => w.contentView.children.some(v => v.webContents === web));
+    return {
+      windows: windows.length, native: !!web, preferences: web?.getLastWebPreferences(), agents, chrome: process.versions.chrome,
+      separate: !!own && own !== main, mainViews: main?.contentView.children.length,
+      maskVisible: own?.contentView.children.at(-1)?.getVisible(),
+    };
   });
   const info = await inspect();
   expect(info.native).toBe(true);
-  expect(info.windows).toBe(2); // main + existing pet; no browser window was launched.
+  // 主窗口、桌宠，加上这个账号页面自己的窗口；不往主窗口里塞页面，也没有启动外部浏览器。
+  expect(info.windows).toBe(3);
+  expect(info.separate).toBe(true);
+  expect(info.mainViews).toBe(0);
+  // 操作结束（连接撤销）时遮罩自动揭开，页面留给用户手动发布。
+  expect(info.maskVisible).toBe(false);
   expect(info.preferences.nodeIntegration).toBe(false);
   expect(info.preferences.sandbox).toBe(true);
   const [pageUA, requestUA] = info.agents;
@@ -108,9 +127,13 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   const second = await run('account-b');
   expect(second.previous).toBe('');
   expect((await run('account-a')).previous).toContain('account=account-a');
+  // 插件网页操作不占项目写锁：两个账号可以同时上传。
+  const both = await Promise.all(['account-a', 'account-b'].map(account => api(page, '/api/stations/embedded-helper/ops/prepare', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ params: { account } }) })));
+  expect(both.map(r => r.status)).toEqual([202, 202]);
+  for (const r of both) await expect.poll(async () => (await api(page, '/api/tasks/' + r.body.task_id)).body.status).toBe('succeeded');
   if (shutdown !== 'application') {
     await electronApp.evaluate(async ({ BrowserWindow, webContents }, destroyPagesFirst) => {
-      const window = BrowserWindow.getAllWindows().find(w => w.isResizable());
+      const window = BrowserWindow.getAllWindows().find(w => w.isResizable() && w.webContents.getURL().startsWith('onset://app'));
       if (!window) throw Error('主窗口不存在');
       if (destroyPagesFirst) {
         const pages = webContents.getAllWebContents().filter(w => w.getURL().startsWith('https://creator.example.test'));

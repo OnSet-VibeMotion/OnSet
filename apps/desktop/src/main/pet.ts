@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, screen } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pluginWindows } from './pluginwindows';
 
 /*
  * 桌宠：一个透明、无边框、置顶的小窗口，里面是一间等距线稿工作室：制作人（编排工具）、摄影（渲染器）、剪辑、配音各在各的位置，
@@ -81,9 +82,9 @@ function placement(prefs: PetPrefs): { x: number; y: number } {
   return { x: area.x + area.width - width - 24, y: area.y + area.height - height - 24 };
 }
 
-/** 主窗口：除桌宠之外的那一个。 */
+/** 主窗口：除桌宠与插件网页窗口之外的那一个。 */
 export function mainWindow(): BrowserWindow | undefined {
-  return BrowserWindow.getAllWindows().find((win) => win !== pet && !win.isDestroyed());
+  return BrowserWindow.getAllWindows().find((win) => win !== pet && !pluginWindows.has(win) && !win.isDestroyed());
 }
 
 /** 用户选的是显示还是收起（菜单的勾）。 */

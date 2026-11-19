@@ -14,7 +14,7 @@ import * as config from '@onset/engine/config';
 import * as flow from '@onset/engine/flow';
 import { defineGroup } from './ops/cli';
 import { defineOp, ParamError } from './ops/op';
-import { projectRoot, str } from './ops/common';
+import { bool, projectRoot, str } from './ops/common';
 
 /** 取插件用的环境：设置里的 NETWORK_PROXY 只给 git。 */
 function fetchEnv(): Record<string, string | undefined> {
@@ -248,6 +248,7 @@ defineOp({
     op: { type: 'string', description: '操作名', required: true, positional: 1 },
     params: { type: 'string', description: '操作的参数（JSON 对象）', default: '{}' },
     event: { type: 'string', description: '事件钩子触发时的事件（JSON 对象），交给插件', default: '' },
+    host_scope: { type: 'boolean', description: '越界检查由调用方做（客户端里不占写锁的插件网页操作），这里不扫项目', default: false },
     project_root: projectRoot,
   },
   run: async (p, { out, signal }) => {
@@ -269,7 +270,7 @@ defineOp({
     // 空的项目根表示没打开项目（设置里点的、清单写了 project: false 的操作），原样交下去；
     // 不能按当前目录解析，不然执行进程的工作目录（插件目录）会被当成项目扫、插件也会往里写项目文件。
     const root = str(p.project_root) === '' ? '' : path.resolve(str(p.project_root));
-    const result = await flow.runStationOp(root, str(p.station), str(p.op), params as Record<string, unknown>, (t) => out.write(t), signal, process.env, event);
+    const result = await flow.runStationOp(root, str(p.station), str(p.op), params as Record<string, unknown>, (t) => out.write(t), signal, process.env, event, !bool(p.host_scope));
     if (!result.ok) throw new Error(result.error ?? '第三方插件的操作失败');
     return result.data === undefined ? undefined : { data: result.data };
   },

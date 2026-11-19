@@ -183,8 +183,11 @@ async function readParams(request: Request): Promise<Record<string, unknown>> {
  * 越界检查在执行进程里（flow.runStationOp）已经做过一遍，结果写进了操作的文字，给编排工具看；这里在调用点
  * 外面再扫一遍项目，拿到结构化的列表给界面（任务、发布页的按钮、插件页面）。执行进程的协议只回传插件自己的 data，
  * 不为它另开字段；两遍都只 stat，代价很小。钩子与定时触发的（event 不为空）越界时另发一条 notice。
+ *
+ * shared：不占写锁的插件网页操作（见 sharedStationOp）。执行进程不扫，只在这里扫；期间还有别的写入者（一轮对话、渲染、
+ * 另一个插件在同时上传……），改动分不清是谁写的，这次不报越界、也不按写了片场文件判失败。只有它一个在写时照常检查。
  */
-async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: Task, id: string, op: string, params: Record<string, unknown>, event?: Record<string, unknown>): Promise<void> {
+async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: Task, id: string, op: string, params: Record<string, unknown>, event?: Record<string, unknown>, shared = false): Promise<void> {
   const key = `${p.path}\n${id}\n${op}`;
   let pending = '';
   const onText = (text: string) => {
@@ -198,8 +201,11 @@ async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: 
   };
   const station = flow.loadStations().stations.find((x) => x.manifest.id === id);
   const before = station ? flow.statProject(p.path) : null;
+  const epoch = s.writeEpoch(p.path);
+  const othersAtStart = shared && s.otherWriters(p.path, task.task_id);
   const scope = () => {
     if (!station || !before) return null;
+    if (shared && (othersAtStart || s.otherWriters(p.path, task.task_id) || s.writeEpoch(p.path) !== epoch)) return null;
     const r = flow.scopeReport(station.manifest, before, flow.statProject(p.path));
     if (r) reportScope(s, p, task, station.manifest.name, r, event);
     return r;
@@ -216,18 +222,35 @@ async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: 
       signal,
       p,
       'station_run',
-      { station: id, op, params: JSON.stringify(params), event: event ? JSON.stringify(event) : '', project_root: p.path },
+      { station: id, op, params: JSON.stringify(params), event: event ? JSON.stringify(event) : '', project_root: p.path, ...(shared ? { host_scope: true } : {}) },
       { onText, ...(browser ? { env: { [flow.StationBrowserEnv]: JSON.stringify(browser.connection) } } : {}) },
     );
-    lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: true, text: stripProgress(r.text).slice(-maxRunText), ...(r.data !== undefined ? { data: r.data } : {}), ...scopeFields(scope()) });
+    const report = scope();
+    if (shared && report && report.reserved.length > 0) {
+      const err = new Error(`第三方站 ${id} 的 ${op} 写了片场自己的文件（${report.reserved.join('、')}），按失败处理`);
+      lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: false, text: err.message, ...scopeFields(report) });
+      throw Object.assign(err, { scopeReported: true });
+    }
+    lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: true, text: stripProgress(r.text).slice(-maxRunText), ...(r.data !== undefined ? { data: r.data } : {}), ...scopeFields(report) });
     // 打开了项目时，不需要项目的操作（例如登录）也走这里：设置弹窗读 result 里插件的说明。
     task.result = taskResult(station?.manifest.ops.find((o) => o.name === op), r.data);
   } catch (err) {
-    lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: false, text: (err as Error).message.slice(-maxRunText), ...scopeFields(scope()) });
+    if (!(err as { scopeReported?: boolean }).scopeReported) {
+      lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: false, text: (err as Error).message.slice(-maxRunText), ...scopeFields(scope()) });
+    }
     throw err;
   } finally {
     browser?.dispose();
   }
+}
+
+/**
+ * 用户点的、要用片场网页窗口的插件操作（清单有 browser、操作 trigger: user）：不占项目写锁。
+ * 它们大多在等网站（上传一个大视频要半小时），占着写锁会挡住对话、渲染，也挡住别的插件同时上传；
+ * 它们只写自己声明的目录。同一个账号的页面同一时间只归一项操作（宿主的网页容器拒绝第二个）。
+ */
+export function sharedStationOp(station: flow.LoadedStation, op: flow.ManifestOp): boolean {
+  return !!station.manifest.browser && op.trigger === 'user';
 }
 
 /** 没打开项目时跑不需要项目的操作：不扫越界；结果记在 lastRuns 的空项目键下。 */
@@ -417,8 +440,21 @@ export async function stationsAPI(s: Server, request: Request, rest: string): Pr
     } catch (err) {
       return writeError(400, 'invalid_request', err instanceof DecodeError ? err.message : (err as Error).message);
     }
+    const label = `${station.manifest.name}：${op.summary}`;
+    if (sharedStationOp(station, op)) {
+      const t = addTask(s, 'station.run', label);
+      s.beginShared(t.task_id, p.path, label);
+      runTask(s, t, async (signal) => {
+        try {
+          await runStationTask(s, signal, p, t, id, opName, params, undefined, true);
+        } finally {
+          s.endShared(t.task_id);
+        }
+      });
+      return writeJSON(202, goMap({ task_id: t.task_id }));
+    }
     try {
-      const t = runWriteTask(s, p, 'station.run', `${station.manifest.name}：${op.summary}`, (signal, task) => runStationTask(s, signal, p, task, id, opName, params));
+      const t = runWriteTask(s, p, 'station.run', label, (signal, task) => runStationTask(s, signal, p, task, id, opName, params));
       return writeJSON(202, goMap({ task_id: t.task_id }));
     } catch (err) {
       return writeTaskError(err);

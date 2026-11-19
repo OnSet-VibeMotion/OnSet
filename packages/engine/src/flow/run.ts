@@ -197,6 +197,8 @@ export async function runStationOp(
   env: Record<string, string | undefined> = process.env,
   /** 事件钩子触发时的事件（交给插件的 stdin）。 */
   event?: Record<string, unknown>,
+  /** false：越界检查由调用方做（客户端里不占写锁、可能与别的写入同时进行的插件网页操作），这里不扫。 */
+  scan = true,
 ): Promise<StationResult> {
   const { station, op } = findStationOp(stationID, opName, env);
   const checked = checkParams(op, params);
@@ -209,7 +211,7 @@ export async function runStationOp(
   const childEnv = stationEnv(env, dataDir, projectRoot, station.dir);
   const cmd = resolveCommand(op.command, station.dir, env, childEnv.PATH ?? '');
   write(`第三方站 ${station.manifest.name}（${station.manifest.id} ${station.manifest.version}）：${op.summary}\n`);
-  const before = projectless ? null : statProject(root);
+  const before = projectless || !scan ? null : statProject(root);
   const child = spawn(cmd.file, cmd.args, { cwd: projectless ? dataDir : root, env: { ...childEnv, ...cmd.env }, stdio: ['pipe', 'pipe', 'pipe'], ...groupSpawnOptions() });
   // 设置（含插件自己的密钥）只经 stdin 交给它，不进环境变量，也不进命令行。
   const input: Record<string, unknown> = { params: checked, settings: stationSettings(env, station.manifest), project_root: projectRoot, station_dir: station.dir, data_dir: dataDir };
