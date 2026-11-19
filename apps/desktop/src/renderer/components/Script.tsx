@@ -265,7 +265,7 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
               引用所选
             </button>
             <button onClick={() => onQuick('口播稿要改：', [], true)}>提修改意见</button>
-            {!voiced && script.gate && !script.parse_error && (
+            {script.final && !voiced && script.gate && !script.parse_error && (
               <button
                 className="primary"
                 disabled={!!busy}

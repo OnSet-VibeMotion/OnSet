@@ -132,3 +132,10 @@ test('reviews and seeks dialogue turns and opens role requests in the conversati
   expect(audio.currentTime).toBe(2);
   expect(turn.closest('p')?.getAttribute('aria-current')).toBe('true');
 });
+
+test('original drafts offer dialogue conversion without offering voice approval', async () => {
+  mockApi({ '/api/script': { ...base, final: false, gate: { id: 'script:approved' }, can_convert_to_dialogue: true } });
+  render(<ScriptTab version={1} busy="" onQuick={vi.fn()} onFile={vi.fn()} onAttach={vi.fn()} />);
+  await screen.findByRole('button', { name: '改为多人对话' });
+  expect(screen.queryByRole('button', { name: '确认，开始配音' })).toBeNull();
+});

@@ -143,7 +143,7 @@ export function Preview(props: Props) {
         {props.tab === 'compose' && <ComposeTab {...props} scene={scene} />}
         {props.tab === 'final' && <FinalTab {...film} tree={props.tree} version={props.version} run={props.run} onTab={props.onTab} />}
         {props.tab === 'style' && <StyleTab version={props.version} run={props.run} scenes={props.scenes} onScene={props.onScene} />}
-        {props.tab === 'motion' && <MotionEffects version={props.version} scenes={props.scenes} sceneId={props.sceneId} onQuick={props.onQuick} />}
+        {props.tab === 'motion' && <MotionEffects key={project} version={props.version} scenes={props.scenes} sceneId={props.sceneId} onQuick={props.onQuick} />}
         {props.tab === 'voice' && <VoicesTab version={props.version} />}
         {props.tab === 'review' && <ReviewTab {...film} tree={props.tree} version={props.version} run={props.run} />}
         {props.tab === 'publish' && <PublishTab version={props.version} run={props.run} />}

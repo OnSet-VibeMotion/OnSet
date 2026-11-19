@@ -58,7 +58,7 @@ export function dialogueAudio(
     const seconds = dialogue.totalSeconds(result);
     if (result.schema !== dialogue.SchemaVersion || !Number.isFinite(seconds) || seconds <= 0) return;
     const voices = new Map(roles.map((role) => [role.id, role.voice_id]));
-    if (result.segments?.some(({ speaker, voiceId }) => voices.get(speaker) && voices.get(speaker) !== voiceId)) return;
+    if (result.segments?.some(({ speaker, voiceId }) => !voices.get(speaker) || voices.get(speaker) !== voiceId)) return;
     const cues = readCues(subtitles);
     const lines = result.lines ?? [];
     if (cues.length !== lines.length) return;
@@ -103,6 +103,7 @@ export function dialogueAudio(
       return start === undefined ? block : { ...block, time: { start, end } };
     });
     if (!index || index !== parts.length) return;
+    if (fs.statSync(containedPath(root, option.path)).mtimeMs !== option.version) return;
     return { voice: { ...option, seconds, timing: 'dialogue' }, blocks: timed };
   } catch {
     // 正在装配或稿件已经变动时，等完整的新结果再给当前稿子试听。

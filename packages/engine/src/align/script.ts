@@ -192,7 +192,13 @@ export function loadScript(file: string, dialogue = false): Script {
 
 /** 项目终稿跟随班底设置，单独传入的对齐稿仍按普通文本解析。 */
 export function loadProjectScript(root: string, file: string): Script {
-  return loadScript(file, path.resolve(file) === path.resolve(root, 'production/script-final.md') && hasRoster(root));
+  let dialogue = false;
+  if (hasRoster(root)) {
+    try {
+      dialogue = fs.realpathSync(file) === fs.realpathSync(path.join(root, 'production/script-final.md'));
+    } catch { /* loadScript reports file errors using the original path. */ }
+  }
+  return loadScript(file, dialogue);
 }
 
 interface OpenPhrase {

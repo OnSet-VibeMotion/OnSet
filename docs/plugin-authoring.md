@@ -216,8 +216,7 @@ echo 'onset-result {"url": "https://example.com/v/1"}'
       "summary": "文字从裁切区下方升入。",
       "aliases": ["mask reveal"],
       "example": "标题从下方出现，约 0.6 秒。",
-      "spec": ["移动标题位置，保持裁切区不动。"],
-      "renderer_skill": "title-moves"
+      "spec": ["移动标题位置，保持裁切区不动。"]
     }
   ]
 }

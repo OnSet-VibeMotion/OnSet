@@ -53,6 +53,10 @@ describe('script', () => {
     fs.writeFileSync(host, originalHost.replace('v-1', 'v-new'));
     ({ body } = await studioRequest(s, 'GET', '/api/script'));
     expect(body.voice).toBeUndefined();
+    setEnv('TTS_PROVIDER', 'edge');
+    ({ body } = await studioRequest(s, 'GET', '/api/script'));
+    expect(body.voice).toBeUndefined();
+    setEnv('TTS_PROVIDER', 'minimax');
     fs.writeFileSync(host, originalHost);
 
     write('production/script-final.md', draft.replace('guest：你好', 'host：你好'));
@@ -61,6 +65,20 @@ describe('script', () => {
     write('production/script-final.md', draft + '\n这行没有角色');
     ({ body } = await studioRequest(s, 'GET', '/api/script'));
     expect(body.parse_error).toContain('第 6 行');
+  });
+
+  it.skipIf(process.platform === 'win32')('recognizes a linked dialogue script when alignment resolves the link first', () => {
+    const root = tempDir();
+    writeStudioFile(path.join(root, 'cast.yaml'), 'schema: cast/v1\n');
+    const draft = path.join(root, 'production/dialogue-draft.md');
+    writeStudioFile(draft, 'host: 你好。');
+    const link = path.join(root, 'production/script-final.md');
+    fs.symlinkSync('dialogue-draft.md', link);
+    expect(align.loadProjectScript(root, link).spokenText()).toBe('你好。\n');
+    expect(align.loadProjectScript(root, fs.realpathSync(link)).spokenText()).toBe('你好。\n');
+    const other = path.join(root, 'production/other.md');
+    writeStudioFile(other, 'note: 你好。');
+    expect(align.loadProjectScript(root, other).spokenText()).toBe('note: 你好。\n');
   });
 
   it('offers conversion on a recorded speech project and keeps colon-prefixed solo text', async () => {
