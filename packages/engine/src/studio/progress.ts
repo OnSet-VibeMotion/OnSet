@@ -10,6 +10,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as align from '../align';
+import { hasRoster } from '../cast';
+import { DialogueRelPath, SRTRelPath, VoiceRelPath } from '../dialogue';
 import * as filmstyle from '../filmstyle';
 import * as flow from '../flow';
 import { atomicWrite } from '../fsutil';
@@ -243,16 +245,17 @@ export function confirmGateFromChat(root: string, message: string, said: string,
 const displayOnlyGateFiles = new Set(['production/script-final.md']);
 
 /** 终稿显示出来的文字：标题与各段的显示侧。解析不了时返回 null（按改过算）。 */
-function reviewedText(body: string): string | null {
+function reviewedText(body: string, dialogue: boolean): string | null {
   try {
-    const s = align.parseScript(body);
+    const s = align.parseScript(body, dialogue);
     const lines = s.headings.map((h) => `${h.atPiece}#${h.level} ${h.text}`);
     let para = '';
     let last = -1;
     for (const p of s.pieces) {
-      if (p.para !== last && para !== '') {
-        lines.push(para);
-        para = '';
+      if (p.para !== last) {
+        if (para !== '') lines.push(para);
+        const speaker = s.speakers.get(p.para);
+        para = speaker ? `${speaker}: ` : '';
       }
       last = p.para;
       para += p.display;
@@ -271,8 +274,9 @@ function gateFileChanged(root: string, rel: string, state: string): boolean {
   try {
     const before = readBlob(root, state);
     if (!before) return true;
-    const was = reviewedText(before.toString('utf8'));
-    const now = reviewedText(fs.readFileSync(file, 'utf8'));
+    const dialogue = hasRoster(root);
+    const was = reviewedText(before.toString('utf8'), dialogue);
+    const now = reviewedText(fs.readFileSync(file, 'utf8'), dialogue);
     return was === null || now === null || was !== now;
   } catch {
     return true;
@@ -315,6 +319,12 @@ type Def = flow.RouteNode & Judge & { output: (c: Ctx) => number };
 
 const f = (c: Ctx, rel: string) => mtime(path.join(c.root, rel));
 const anyOf = (c: Ctx, ...rels: string[]) => Math.max(0, ...rels.map((rel) => f(c, rel)));
+
+function voiceOutput(c: Ctx): number {
+  const voice = f(c, VoiceRelPath);
+  if (!voice || !hasRoster(c.root)) return voice;
+  return f(c, DialogueRelPath) >= voice && f(c, SRTRelPath) >= voice ? voice : 0;
+}
 
 function sceneOutputs(c: Ctx): number[] {
   return c.scenes.filter((sc) => sc.exists && sc.output).map((sc) => mtime(path.join(sc.directory, sc.output!)));
@@ -376,13 +386,14 @@ const judges: Record<string, Judge> = {
     },
   },
   // 不按稿子比配音新判过期：编排常在配好音后再改稿里的读法、短语标记，朗读的字没变。
-  'voice:voice': { output: (c) => f(c, 'production/audio/voice.wav') },
+  'voice:voice': { output: voiceOutput },
   'timeline:timeline': {
-    output: (c) => f(c, 'production/audio/voice.srt'),
+    output: (c) => hasRoster(c.root) && !voiceOutput(c) ? 0 : f(c, 'production/audio/voice.srt'),
     stale: (c, out) => f(c, 'production/audio/voice.wav') > out,
     detail: (c) => {
       try {
-        const n = fs.readFileSync(path.join(c.root, 'production', 'audio', 'voice.srt'), 'utf8').split('-->').length - 1;
+        const subtitles = hasRoster(c.root) ? SRTRelPath : 'production/audio/voice.srt';
+        const n = fs.readFileSync(path.join(c.root, subtitles), 'utf8').split('-->').length - 1;
         return n > 0 ? `${n} 条字幕` : undefined;
       } catch {
         return undefined;

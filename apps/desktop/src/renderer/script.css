@@ -49,6 +49,24 @@
   border-color: var(--accent-line);
   color: var(--accent-text);
 }
+.script-tab .script-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.script-tab .script-roles button {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.script-tab .script-roles strong {
+  color: var(--text);
+}
 .script-tab .script-note {
   margin: 0;
   font-size: 12px;
@@ -108,6 +126,24 @@
 }
 .script-tab .script-body p:last-child {
   margin-bottom: 0;
+}
+.script-tab .script-turn[aria-current="true"] {
+  border-radius: 4px;
+  background: var(--accent-soft);
+}
+.script-tab .script-speaker {
+  all: unset;
+  margin-right: 0.7em;
+  color: var(--accent-text);
+  font: 600 13px var(--sans);
+  overflow-wrap: anywhere;
+}
+.script-tab button.script-speaker {
+  cursor: pointer;
+}
+.script-tab button.script-speaker:hover,
+.script-tab button.script-speaker:focus-visible {
+  text-decoration: underline;
 }
 /* 段落编号挂在页边，不占正文的位置；窄屏时收进行首。 */
 .script-tab .para-no {

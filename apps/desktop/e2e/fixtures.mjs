@@ -136,7 +136,8 @@ export { expect };
 /**
  * 桌宠窗口（main/pet.ts）：后台运行时不显示，但照样建、照样收状态。
  * 主进程里要找主窗口时用 `BrowserWindow.getAllWindows().find((w) => w.isResizable())`：桌宠窗口不能调大小，
- * 而它刚建好、还没载入时 URL 是空的，按 URL 认不出来。
+ * 而它刚建好、还没载入时 URL 是空的，按 URL 认不出来。插件网页各自的窗口（main/station-browser.ts）也能调大小，
+ * 开了插件网页的用例再加上 `w.webContents.getURL().startsWith('onset://app')`。
  */
 export async function petPage(electronApp) {
   const find = () => electronApp.windows().find((win) => win.url().endsWith('/pet'));

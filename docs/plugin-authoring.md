@@ -101,6 +101,7 @@ echo 'onset-result {"url": "https://example.com/v/1"}'
 | `flow` | 实验性 | 整套流程（新片型）：`{"name": "快剪", "stations": ["intake", "render", "my-publisher"], "first_page": "script", "prompt": "prompts/flow.md"}`。`stations` 写自带站的 id 与本插件的 id；`first_page` 取自带流程的第一步页（口播是 `script`，卡点是 `beat`）或本插件页面的 id；它是新建项目时的一个做法（首页的「做法」里标明来自你的插件），用它新建的项目流程记成 `x:<插件 id>`，制作路线、顶栏第一步与各阶段说明都是它的，公共约定照旧；已有项目不能中途换流程，插件去掉后用它新建的项目开不了工。`stations` 里写的自带站会带上自带站的那几段说明（引用了你的流程里没有的阶段时写成那一步的标题），你的 `prompt` 只需要写你自己那几站 |
 | `provides` | 实验性 | 提供配音或字幕对齐：`{"tts": {"name": "某配音", "op": "speak", "timestamps": "none"}, "align": {"name": "某对齐", "op": "align"}}`。`timestamps` 取 `none`、`sentence`、`word`；项目把 `TTS_PROVIDER` / `ALIGN_PROVIDER` 设成 `x:<插件 id>` 时 AI 用这条操作 |
 | `renderer_skills` | 实验性 | 给渲染镜头的技能：`[{"name": "caption-kit", "dir": "skills/caption-kit", "summary": "字幕卡片的写法", "scenes": "opt-in"}]`。`dir` 下必须有 `SKILL.md`；`scenes: all` 每个镜头都带（装上后所有项目里已渲染的镜头要重渲染），`opt-in`（缺省）只给 `scene.json` 的 `plugin_skills` 点名的镜头 |
+| `motion_effects` | 实验性 | 项目「动效」页里的参考条目。每项必填 `id`、`name`、`category`、`summary`，可选 `aliases`、`example`、`spec`、`example_url`、`renderer_skill`。见「动效目录」 |
 | `film_styles` | 实验性 | 整片风格库：`{"name": "我的风格库", "dir": "styles"}`。`dir` 下每个子目录是一种风格（`STYLE.md` 必需，`SKILL.md`、`poster.jpg`、`style.json` 可选），装进项目时整个子目录拷进去。加 `"only_referenced": true`（实验性）时只带用到的：风格目录与风格库根目录下的 `assets/` 只带风格的脚本与页面里出现过名字的文件（模型目录按目录名认），`node_modules/three/` 只带脚本 import 到的模块；风格库根的这两个目录给几种风格共用 |
 | `skins` | 实验性 | 界面皮肤：`["skins/mint.json"]`，每个文件一套皮肤，格式见下面「界面皮肤」。换的是这台电脑上客户端与桌宠的样子，用户在设置页「外观」里选 |
 
@@ -200,6 +201,28 @@ echo 'onset-result {"url": "https://example.com/v/1"}'
 | `label` | 必填，页面名字 |
 | `entry` | 必填，插件目录里的 `.html` 文件；页面只能加载 entry 所在目录里的文件 |
 | `reads` | 页面能读的项目文件：以 `/` 结尾是目录前缀，否则是整条路径 |
+
+### 动效目录（`motion_effects`）
+
+安装插件后，片场在项目顶栏的「动效」页展示这些条目。每项的 `id` 在同一插件里唯一，可用小写字母、数字和连字符，以字母或数字开头，最长 64 个字符。片场引用时用 `插件 id:动效 id`，同一个编号可以出现在不同插件里。`motion-prompt` 是内置目录使用的来源标识。
+
+```json
+{
+  "motion_effects": [
+    {
+      "id": "005",
+      "name": "遮罩显现",
+      "category": "标题入场",
+      "summary": "文字从裁切区下方升入。",
+      "aliases": ["mask reveal"],
+      "example": "标题从下方出现，约 0.6 秒。",
+      "spec": ["移动标题位置，保持裁切区不动。"]
+    }
+  ]
+}
+```
+
+`aliases` 和 `spec` 是字符串数组。`example` 用于展示参考用法，`spec` 会跟随引用写进对话草稿。`example_url` 接受没有凭据的 HTTPS 地址，由用户点开。`renderer_skill` 引用本站已登记的 `renderer_skills[].name`，选用时草稿会提示编排工具给目标镜头挂上这条技能。动效页通过现有对话入口交给编排工具修改镜头。
 
 ### 设置（`settings`）
 
@@ -394,8 +417,12 @@ tell({ kind: 'hide' });                                    // 收起桌宠
 
 - `{action: "open", account: "稳定的账号编号", label: "账号备注", url: "https://creator.example.com/"}`：打开或恢复该账号的页面，返回 `{reused: boolean}`。编号为 1–80 位字母、数字、下划线或连字符，以字母数字开头。一次操作只控制一个账号。
 - `{action: "command", method: "Page.navigate", params: {url: "https://creator.example.com/editor"}}`：导航到声明过的来源。
+- `{action: "busy", message: "正在上传视频 57%", progress: 0.42}`：插件开始自动操作（上传、填写）时在页面上盖一层半透明遮罩，显示这句说明（1–80 字，不含控制字符）与进度条（`progress` 是 0–1 的整次进度，可省略或给 `null`，进度条就只循环滚动）。遮罩挡住用户的鼠标与键盘，插件自己的命令照常生效；重复发送会更新说明与进度，`{action: "busy", active: false}` 揭开。操作结束或取消、连接撤销时片场自动揭开。凡是要用户在页面上动手的时候都不能盖：登录阶段不盖；自动操作途中网站弹出验证码、短信或身份确认时，插件要先揭开遮罩、停下全部自动操作，等验证没了再盖上接着做（抖音上传插件的 `verificationGuard` 是个例子）。旧版片场不认这条命令，会返回错误，插件应忽略并照常进行。
+- `{action: "state"}`：返回 `{open, visible, busy, url}`。用户点工具栏的「返回片场」收起窗口时 `visible` 为 false，关掉窗口时 `open` 为 false。
 - 其余允许的 CDP 命令：`Page.enable`、`Page.bringToFront`、`Runtime.evaluate`、`Runtime.releaseObject`、`DOM.setFileInputFiles`、`Input.insertText`、`Input.dispatchKeyEvent`（`type` 只能是 keyDown / keyUp / rawKeyDown / char）、`Input.dispatchMouseEvent`（`type` 只能是 mouseMoved / mousePressed / mouseReleased，必须给 `x`、`y`）。键盘与鼠标用来像人一样逐字输入、真的点一下（有的网页只认可信事件），只作用于这个页面。上传文件必须是当前项目内的真实文件（校验符号链接后的路径）。命令返回 CDP 结果，错误返回非 2xx 与 `{error: "说明"}`。
 
-网页以 `WebContentsView` 显示在片场主窗口里，不拥有 Node、宿主 preload 或宿主会话。登录空间（cookie、本地存储）由片场保存在它自己的应用数据目录里（`station-sessions/<插件>/<account>/`），不同插件、账号独立，客户端重启后仍是登录状态；插件不要自己去读写或删除它，移除账号时调桥的 `forget`，片场会关掉那个账号的页面并清空它的登录空间；用户切回项目时页面保留，再次打开同一账号不自动导航，插件应在 `reused` 为 true 时避免覆盖用户编辑。账号仍在被某次操作填写时，另一项操作会明确失败。
+每个账号的网页单独一个窗口（顶上一条片场的工具栏：「返回片场」、插件与账号名、`hint`），不盖住片场主窗口：上传等网站的时候用户照常在片场工作。网页不拥有 Node、宿主 preload 或宿主会话。登录空间（cookie、本地存储）由片场保存在它自己的应用数据目录里（`station-sessions/<插件>/<account>/`），不同插件、账号独立，客户端重启后仍是登录状态；插件不要自己去读写或删除它，移除账号时调桥的 `forget`，片场会关掉那个账号的页面并清空它的登录空间；用户切回项目时页面保留，再次打开同一账号不自动导航，插件应在 `reused` 为 true 时避免覆盖用户编辑。账号仍在被某次操作填写时，另一项操作会明确失败。
+
+连接同一时间只处理一个请求，前一个还没回来时再发会得到 409：不等结果的请求（例如遮罩进度）也要排队发。用了网页的用户操作不占项目写锁：上传一个大视频可能要很久，这期间用户可以照常对话、渲染，几个插件、几个账号也可以同时上传；同一个账号的页面同一时间只归一项操作。这期间项目里还有别人在写时，片场分不清改动是谁写的，不报这次操作的越界写入。
 
 操作完成或取消后连接撤销，网页保留给用户；客户端关闭时销毁网页，登录状态继续保存。不要把连接地址、口令、网页 Cookie 写到项目、日志或操作结果。插件只需要连接这一页，不需要启动调试端口、安装浏览器或把网站代码加载到片场进程中。

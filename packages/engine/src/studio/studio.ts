@@ -28,6 +28,7 @@ import { polishAPI } from './polish';
 import { promptChecksAPI } from './promptchecks';
 import { previewAPI, renderAllAPI, sceneFeatureAPI, scenesAPI } from './features';
 import { filmStylePosterAPI, filmStylesAPI, projectFilmStyleAPI, startFilmStyleTask } from './filmstyle';
+import { motionEffectsAPI, motionPreviewAPI } from './motion';
 import {
   DecodeError,
   decodeJSON,
@@ -154,6 +155,13 @@ export class Server {
   readonly sessions = new Map<string, Session>();
   readonly loadedProjects = new Set<string>();
   private readonly busy = new Map<string, string>();
+  /**
+   * 每个项目有过几个写入者（占写锁的、不占写锁的插件网页操作都算）：不占写锁的操作据此判断期间有没有别人在写，
+   * 越界写入还能不能归到它头上。
+   */
+  private readonly writeEpochs = new Map<string, number>();
+  /** 不占写锁、但重启会打断的事（插件网页操作，例如正在上传）：任务编号 → 项目与说明。 */
+  private readonly shared = new Map<string, { project: string; holder: string }>();
   readonly skills = new SkillsState();
   private readonly routes: [string, Handler][];
 
@@ -287,6 +295,30 @@ export class Server {
     const current = this.busy.get(projectPath);
     if (current !== undefined) throw new BusyError(current);
     this.busy.set(projectPath, holder);
+    this.bumpWriteEpoch(projectPath);
+  }
+
+  private bumpWriteEpoch(projectPath: string): void {
+    this.writeEpochs.set(projectPath, (this.writeEpochs.get(projectPath) ?? 0) + 1);
+  }
+
+  writeEpoch(projectPath: string): number {
+    return this.writeEpochs.get(projectPath) ?? 0;
+  }
+
+  /** 登记、撤销一件不占写锁的事（见 shared）。 */
+  beginShared(id: string, projectPath: string, holder: string): void {
+    this.shared.set(id, { project: projectPath, holder });
+    this.bumpWriteEpoch(projectPath);
+  }
+
+  /** 这个项目里是否有未结束的插件网页操作。 */
+  hasSharedWriter(projectPath: string, exceptID?: string): boolean {
+    return [...this.shared.entries()].some(([id, writer]) => id !== exceptID && writer.project === projectPath);
+  }
+
+  endShared(id: string): void {
+    this.shared.delete(id);
   }
 
   release(projectPath: string): void {
@@ -297,9 +329,9 @@ export class Server {
     return this.busy.get(projectPath) ?? '';
   }
 
-  /** 所有项目里正占着写锁的事（一轮对话、渲染、拼接……）：重启装更新之前要告诉用户会打断什么。 */
+  /** 所有项目里正占着写锁的事（一轮对话、渲染、拼接……）与不占写锁的插件网页操作（正在上传）：重启装更新之前要告诉用户会打断什么。 */
   activeWork(): { project: string; holder: string }[] {
-    return [...this.busy.entries()].map(([project, holder]) => ({ project, holder }));
+    return [...[...this.busy.entries()].map(([project, holder]) => ({ project, holder })), ...this.shared.values()];
   }
 
   // ---- 当前项目 ----
@@ -417,6 +449,8 @@ export class Server {
       // 先按当前项目换上第三方插件带来的风格库。
       ['/api/film-styles', (r) => filmStylesAPI(r)],
       ['/api/film-styles/', (r, rest) => filmStylePosterAPI(r, rest)],
+      ['/api/motion-effects', (r) => motionEffectsAPI(r)],
+      ['/preview/motion/', (r, rest) => motionPreviewAPI(r, rest)],
       ['/api/film-style', (r) => projectFilmStyleAPI(this, r)],
       ['/api/settings', (r) => settingsAPI(this, r)],
       ['/api/agent-services', (r) => agentServicesAPI(r)],

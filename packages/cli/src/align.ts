@@ -67,7 +67,7 @@ defineOp({
   },
   run: (p, { out: w }) => {
     const root = str(p.project_root);
-    const script = align.loadScript(inProject(root, p.script, 'production/script-final.md'));
+    const script = align.loadProjectScript(root, inProject(root, p.script, 'production/script-final.md'));
     const spoken = script.spokenText();
     if (spoken === '') throw new Error('终稿没有任何朗读内容');
     const out = inProject(root, p.out, 'production/audio/tts-text.txt');
@@ -146,7 +146,7 @@ defineOp({
     const root = str(p.project_root);
     const fps = num(p.fps);
     if (fps <= 0) throw new Error('fps 必须是正整数，与 frame.md 的 canvas.fps 一致');
-    const script = align.loadScript(inProject(root, p.script, 'production/script-final.md'));
+    const script = align.loadProjectScript(root, inProject(root, p.script, 'production/script-final.md'));
     const alignFlags = strs(p.align);
     const flags = alignFlags.length ? alignFlags : [path.join(root, 'production/audio/align.json')];
     const items = align.loadSegments(flags.map((value) => align.parseSegmentFlag(value)));

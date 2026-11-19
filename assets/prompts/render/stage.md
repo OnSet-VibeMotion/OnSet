@@ -11,5 +11,5 @@
 - 要求输出 {{CANVAS}}、30fps、静音、无音轨的 MP4。
 - 不要在 `prompt.md` 里手抄帧号：镜头的全局起止帧、本镜头的短语表与字幕（换算成镜头局部帧）、最小可读帧数由 `onset` 写进渲染提示词，并在渲染前写成镜头目录里的 `onset-scene.js`。`prompt.md` 只写结尾停留要求和哪些短语不得提前出现等创意层面的约束。
 - 画面内烧录字幕、按安全区排版时，用新建项目时下发的 `scene-kit` 技能（`SceneKit.captions`、`SceneKit.safeRect`），不要每个镜头各写一套字幕代码。
-- 要求渲染工具先盘点所有可读 DOM 元素，并确保它们全部登记到 `visible-event-inventory.json`；装饰元素可豁免，但必须明确标记为装饰。
+- 派发前在镜头任务书中写明 `visible-events.json` 的交付要求。每镜用 `{"schema": 1, "fps": 30, "events": [...]}`，事件字段与全片清单相同；`event_id` 加镜头编号前缀，四个帧号以本镜头第 0 帧为原点。纯装饰文字标记为 `decorative`。
 

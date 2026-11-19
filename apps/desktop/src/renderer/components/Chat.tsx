@@ -76,6 +76,8 @@ export interface Outbox {
   nonce: number;
   /** 为 true 时只填进输入框等用户补充，不直接发送。 */
   draftOnly?: boolean;
+  /** 在现有内容之后添加这段草稿。 */
+  appendDraft?: boolean;
 }
 
 interface Props {
@@ -570,7 +572,7 @@ export function Chat(props: Props) {
     if (!out || out.nonce === lastOutbox.current) return;
     lastOutbox.current = out.nonce;
     if (out.draftOnly) {
-      setDraft(out.text);
+      setDraft((current) => out.appendDraft && current.trim() ? current + '\n\n' + out.text : out.text);
       if (out.attachments.length) props.onAddAttachments(out.attachments);
       textarea.current?.focus();
       return;

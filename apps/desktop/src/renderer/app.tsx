@@ -63,7 +63,7 @@ const PANEL_WIDTH_KEY = 'onset-studio.panel-width:';
 
 /** 看画面的页面面板默认宽一些，读文字的页面窄一些；宽度按这两类分别记住。 */
 type PanelKind = 'media' | 'doc';
-const panelKind = (tab: Tab): PanelKind => (['scene', 'compose', 'final', 'review', 'style', 'audition'].includes(tab) || pageView(tab)?.media || isStationTab(tab) ? 'media' : 'doc');
+const panelKind = (tab: Tab): PanelKind => (['scene', 'compose', 'final', 'review', 'style', 'motion', 'audition'].includes(tab) || pageView(tab)?.media || isStationTab(tab) ? 'media' : 'doc');
 const panelDefault: Record<PanelKind, number> = { media: 0.58, doc: 0.45 };
 /** 对话栏最窄 420px，面板最窄 360px：拖动时两边都夹住。 */
 const minChat = 420;
@@ -514,8 +514,8 @@ export function App() {
     setAttachments((current) => [...current, attachment]);
     notify(attachment.quote || attachment.ref ? '已加进对话的引用，说说要怎么改。' : '已附到对话，发送消息时一起带上。');
   };
-  const quick = (text: string, quickAttachments: Attachment[], draftOnly?: boolean) => {
-    setOutbox({ text, attachments: quickAttachments, nonce: Date.now(), draftOnly });
+  const quick = (text: string, quickAttachments: Attachment[], draftOnly?: boolean, appendDraft?: boolean) => {
+    setOutbox({ text, attachments: quickAttachments, nonce: Date.now(), draftOnly, appendDraft });
     // 确认关卡的按钮先记下确认再发话：路线上的那一站马上变成「你确认了」。
     if (!draftOnly) void loadRoute();
     if (!draftOnly) notify('已发给 AI，进度看对话。');

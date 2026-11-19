@@ -114,7 +114,7 @@ export function alignRunOperation(legacyWindows = false): Op {
       const model = provider === 'evidence' ? '' : localAlignmentModel(env, modelSpec);
       const runner = provider === 'evidence' ? null : alignmentRunner(provider, env);
       const fps=sceneCanvas(newScene({directory:root})).fps;
-      const script=align.loadScript(scriptFile),text=provider === 'funasr' ? normalizeWindowsAlignmentText(script.alignText()) : script.alignText();
+      const script=align.loadProjectScript(root,scriptFile),text=provider === 'funasr' ? normalizeWindowsAlignmentText(script.alignText()) : script.alignText();
       if (!text.trim()) throw Error('终稿没有任何朗读内容');
       const segmentFile=str(p.segments_manifest)?inputPath(root,str(p.segments_manifest)):null;
       if (segmentFile && provider !== 'funasr') throw Error('原始 TTS 分段清单仅用于 FunASR 模型对齐');
@@ -128,6 +128,7 @@ export function alignRunOperation(legacyWindows = false): Op {
         ? ['model.pt','config.yaml','tokens.json','am.mvn','seg_dict','configuration.json']
         : modelSpec.files.map(file => file.path);
       const inputs={audio:sha(audio),script:sha(scriptFile),fps,model,modelFiles:runner ? modelFiles.map(name=>{const s=fs.statSync(path.join(model,name));return [name,s.size,s.mtimeMs];}) : [],python:runner?.command,runner:runner?.fingerprint,pipeline:1};
+      if (script.speakers.size) Object.assign(inputs, { dialogue: true });
       const existingTimeline=path.join(root,'production/phrase-timeline.json'),adjust=path.join(root,'production/phrase-adjust.json');
       if(fs.existsSync(existingTimeline))inputPath(root,path.relative(root,existingTimeline));
       if(fs.existsSync(adjust))inputPath(root,path.relative(root,adjust));

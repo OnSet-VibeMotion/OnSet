@@ -1,9 +1,10 @@
-import { BrowserWindow, WebContentsView, app, session } from 'electron';
+import { BrowserWindow, WebContentsView, app, dialog, session } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage } from 'node:http';
 import type { StationBrowserLease, StationBrowserRequest } from '@onset/engine/flow';
+import { pluginWindows } from './pluginwindows';
 
 /**
  * 插件能对自己的页面发的 CDP 命令。键盘与鼠标是为了像人一样操作网页：小红书的话题候选靠逐字输入「#」弹出、
@@ -13,8 +14,15 @@ const methods = new Set(['Page.enable', 'Page.bringToFront', 'Runtime.evaluate',
 const keyTypes = new Set(['keyDown', 'keyUp', 'rawKeyDown', 'char']);
 const mouseTypes = new Set(['mouseMoved', 'mousePressed', 'mouseReleased']);
 const escapeHTML = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
-type EmbeddedPage = { key: string; view: WebContentsView; bar: WebContentsView; contents: Electron.WebContents; controls: Electron.WebContents; closed: boolean; hidden: boolean; window: BrowserWindow; origins: string[]; owner?: symbol; title: string; hint: string; layout?: () => void };
+/** 插件正在自动操作页面（上传、填写）时盖在页面上的遮罩：一句说明与进度（0–1，没有就只转圈）。 */
+type Busy = { message: string; progress: number | null };
+type EmbeddedPage = {
+  key: string; window: BrowserWindow; view: WebContentsView; bar: WebContentsView; mask: WebContentsView;
+  contents: Electron.WebContents; controls: Electron.WebContents; cover: Electron.WebContents; coverReady: Promise<unknown>;
+  closed: boolean; hidden: boolean; closing: boolean; origins: string[]; owner?: symbol; title: string; hint: string; busy?: Busy;
+};
 const defaultHint = '请检查账号与内容，发布由你确认';
+const barHeight = 56;
 
 function allowed(url: string, origins: string[]): boolean {
   try { const parsed = new URL(url); return !parsed.username && !parsed.password && origins.includes(parsed.origin); } catch { return false; }
@@ -48,27 +56,51 @@ async function readBody(request: IncomingMessage): Promise<Record<string, unknow
   return value as Record<string, unknown>;
 }
 
-/** 通用网页容器：站点脚本在插件进程里，只能控制本次操作取得的那个账号页面。 */
+/**
+ * 通用网页容器：站点脚本在插件进程里，只能控制本次操作取得的那个账号页面。
+ * 每个账号页面单独一个窗口，不盖住片场主窗口：上传要等很久，用户照常在片场里工作，几个插件也能同时上传。
+ * 插件自动操作时（busy）页面上盖一层半透明遮罩显示进度，挡住鼠标与键盘，免得用户的点击打乱自动填写；操作结束（连接撤销）自动揭开。
+ */
 export class StationBrowsers {
   private pages = new Map<string, EmbeddedPage>();
   private leases = new Set<() => void>();
   constructor(private getWindow: () => BrowserWindow | undefined, private background = false) {}
 
+  /** 「返回片场」：收起这个窗口（页面与上传都保留），回到主窗口。 */
   private hide(page: EmbeddedPage): void {
     if (page.closed || page.window.isDestroyed()) return;
     page.hidden = true;
-    page.view.setVisible(false);
-    page.bar.setVisible(false);
-    if (!page.window.isDestroyed()) page.window.webContents.focus();
+    page.window.hide();
+    const main = this.getWindow();
+    if (main && !main.isDestroyed() && !this.background) { main.show(); main.focus(); }
   }
   private show(page: EmbeddedPage): void {
     if (page.closed || page.window.isDestroyed() || page.contents.isDestroyed()) throw Error('客户端网页已关闭');
-    for (const other of this.pages.values()) if (other.window === page.window) this.hide(other);
     page.hidden = false;
-    page.view.setVisible(true);
-    page.bar.setVisible(true);
-    if (!this.background) { page.window.show(); page.window.focus(); }
-    page.contents.focus();
+    if (!this.background) {
+      if (page.window.isMinimized()) page.window.restore();
+      page.window.show();
+      page.window.focus();
+    }
+    this.focusPage(page);
+  }
+  /** 有遮罩时焦点给遮罩：用户的按键不进页面。 */
+  private focusPage(page: EmbeddedPage): void {
+    if (page.closed) return;
+    const target = page.busy ? page.cover : page.contents;
+    if (!target.isDestroyed()) target.focus();
+  }
+  private async setBusy(page: EmbeddedPage, busy: Busy | undefined): Promise<void> {
+    if (page.closed) return;
+    page.busy = busy;
+    page.mask.setVisible(!!busy);
+    if (busy) {
+      await page.coverReady;
+      if (!page.closed && page.busy === busy && !page.cover.isDestroyed()) {
+        await page.cover.executeJavaScript(`update(${JSON.stringify(busy)})`).catch(() => {});
+      }
+    }
+    if (!page.window.isDestroyed() && page.window.isFocused()) this.focusPage(page);
   }
   private async open(request: StationBrowserRequest, raw: Record<string, unknown>, owner: symbol): Promise<{ page: EmbeddedPage; reused: boolean }> {
     const account = raw.account, label = raw.label, url = raw.url, hint = raw.hint ?? defaultHint;
@@ -79,43 +111,75 @@ export class StationBrowsers {
     if (typeof url !== 'string' || !allowed(url, request.origins)) throw Error('网页地址不在插件声明的来源里');
     const key = path.join(request.data_dir, 'web-sessions', account);
     const existing = this.pages.get(key);
-    if (existing && !existing.contents.isDestroyed()) {
+    if (existing && !existing.closed && !existing.contents.isDestroyed()) {
       if (existing.owner && existing.owner !== owner) throw Error('这个账号正在由另一项操作填写，请稍后再试');
       // 插件更新可能收窄来源，复用时不能保留旧的放行表。
       existing.origins = request.origins;
       existing.owner = owner;
       existing.title = `${request.name} · ${label}`;
       existing.hint = hint;
+      existing.window.setTitle(existing.title);
       await this.toolbar(existing);
       if (!allowed(existing.contents.getURL(), request.origins)) await existing.contents.loadURL(url);
       this.show(existing);
       return { page: existing, reused: true };
     }
-    const window = this.getWindow();
-    if (!window) throw Error('请先打开片场主窗口');
+    const title = `${request.name} · ${label}`;
+    const window = new BrowserWindow({
+      width: 1280, height: 860, minWidth: 820, minHeight: 560, title, show: false, backgroundColor: '#171614', autoHideMenuBar: true,
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, partition: `station-frame-${randomBytes(12).toString('hex')}` },
+    });
+    pluginWindows.add(window);
+    window.setMenuBarVisibility(false);
     const storage = session.fromPath(sessionDirectory(app.getPath('userData'), request.id, account));
     storage.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
     storage.setPermissionCheckHandler(() => false);
     storage.on('will-download', event => event.preventDefault());
     const view = new WebContentsView({ webPreferences: { session: storage, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: false } });
-    const bar = new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, partition: `station-toolbar-${randomBytes(12).toString('hex')}` } });
+    const defaultUA = view.webContents.getUserAgent();
+    const chromiumUA = defaultUA
+      .replace(` ${app.getName()}/${app.getVersion()}`, '')
+      .replace(` Electron/${process.versions.electron}`, '');
+    if (chromiumUA !== defaultUA) view.webContents.setUserAgent(chromiumUA);
+    const chrome = (prefix: string) => new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, partition: `${prefix}-${randomBytes(12).toString('hex')}` } });
+    const bar = chrome('station-toolbar');
+    const mask = chrome('station-mask');
+    mask.setBackgroundColor('#00000000');
+    mask.setVisible(false);
     // 关闭后 View.webContents 可能变成 undefined；必须保存 WebContents 的稳定引用。
-    const page: EmbeddedPage = { key, view, bar, contents: view.webContents, controls: bar.webContents, closed: false, hidden: false, window, origins: request.origins, owner, title: `${request.name} · ${label}`, hint };
+    const page: EmbeddedPage = {
+      key, window, view, bar, mask, contents: view.webContents, controls: bar.webContents, cover: mask.webContents, coverReady: Promise.resolve(),
+      closed: false, hidden: false, closing: false, origins: request.origins, owner, title, hint,
+    };
     this.pages.set(key, page);
     window.contentView.addChildView(view);
     window.contentView.addChildView(bar);
+    window.contentView.addChildView(mask);
     const layout = () => {
+      if (window.isDestroyed()) return;
       const [width, height] = window.getContentSize();
-      bar.setBounds({ x: 0, y: 0, width, height: 74 });
-      view.setBounds({ x: 0, y: 74, width, height: Math.max(0, height - 74) });
+      bar.setBounds({ x: 0, y: 0, width, height: barHeight });
+      const body = { x: 0, y: barHeight, width, height: Math.max(0, height - barHeight) };
+      view.setBounds(body);
+      mask.setBounds(body);
     };
-    page.layout = layout;
     window.on('resize', layout);
-    window.once('closed', () => {
-      window.removeListener('resize', layout);
-      this.destroyPage(page);
-      this.pages.delete(key);
+    window.on('focus', () => this.focusPage(page));
+    // 插件正在自动操作时关窗口会打断上传：先问一句（测试在后台跑，不弹框）。
+    window.on('close', event => {
+      if (!page.busy || page.closing || page.closed || this.background) return;
+      event.preventDefault();
+      void dialog.showMessageBox(window, {
+        type: 'warning', buttons: ['继续等待', '关闭窗口'], defaultId: 0, cancelId: 0,
+        message: '插件正在自动操作这个页面', detail: '关闭窗口会中断正在进行的上传与填写，已传的内容可能需要重新上传。',
+      }).then(({ response }) => {
+        if (response !== 1 || window.isDestroyed()) return;
+        page.closing = true;
+        window.close();
+      });
     });
+    window.once('closed', () => this.destroyPage(page));
+    page.contents.once('destroyed', () => this.destroyPage(page));
     const guardNavigation = (event: Electron.Event, url: string) => {
       if (!allowed(url, page.origins)) event.preventDefault();
     };
@@ -125,12 +189,16 @@ export class StationBrowsers {
       if (allowed(url, page.origins)) void page.contents.loadURL(url).catch(() => {});
       return { action: 'deny' };
     });
-    // 返回项目只隐藏页面，用户填到一半的内容不会因切页丢失。
+    // 返回片场只收起窗口，用户填到一半的内容、正在进行的上传都不会丢。
     page.controls.on('will-navigate', (event, url) => {
       event.preventDefault();
       if (url === 'https://onset.invalid/return') this.hide(page);
     });
-    page.controls.setWindowOpenHandler(() => ({ action: 'deny' }));
+    for (const wc of [page.controls, page.cover]) {
+      wc.setWindowOpenHandler(() => ({ action: 'deny' }));
+    }
+    page.cover.on('will-navigate', event => event.preventDefault());
+    page.coverReady = page.cover.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(coverHTML)).catch(() => {});
     layout();
     this.show(page);
     await this.toolbar(page);
@@ -138,7 +206,7 @@ export class StationBrowsers {
     return { page, reused: false };
   }
   private toolbar(page: EmbeddedPage): Promise<void> {
-    return page.controls.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><style>body{margin:0;background:#171614;color:#f4eee4;font:14px system-ui;display:flex;align-items:center;gap:20px;height:74px;padding:0 24px 0 96px;box-sizing:border-box}a{color:inherit;text-decoration:none;border:1px solid #666057;padding:8px 16px;border-radius:24px}strong{flex:1}small{color:#c0b7a9}</style><a href="https://onset.invalid/return">返回片场</a><strong>${escapeHTML(page.title)}</strong><small>${escapeHTML(page.hint)}</small>`));
+    return page.controls.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(`<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><style>body{margin:0;background:#171614;color:#f4eee4;font:14px system-ui;display:flex;align-items:center;gap:20px;height:${barHeight}px;padding:0 20px;box-sizing:border-box;user-select:none}a{color:inherit;text-decoration:none;border:1px solid #666057;padding:6px 14px;border-radius:20px;white-space:nowrap}strong{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}small{color:#c0b7a9;white-space:nowrap}</style><a href="https://onset.invalid/return">返回片场</a><strong>${escapeHTML(page.title)}</strong><small>${escapeHTML(page.hint)}</small>`));
   }
 
   async lease(request: StationBrowserRequest): Promise<StationBrowserLease> {
@@ -163,8 +231,19 @@ export class StationBrowsers {
           if (!active) { current.owner = undefined; throw Error('网页连接已结束'); }
           result = { reused: opened.reused };
         } else if (body.action === 'state') {
-          // 插件等用户登录时轮询：窗口被用户收起或关掉，就当用户不登了。
-          result = current ? { open: !current.closed && !current.contents.isDestroyed(), visible: !current.closed && !current.hidden, url: current.contents.isDestroyed() ? '' : current.contents.getURL() } : { open: false, visible: false, url: '' };
+          // 插件等用户登录时轮询：窗口被用户收起（「返回片场」）或关掉，就当用户不登了。
+          result = current ? { open: !current.closed && !current.contents.isDestroyed(), visible: !current.closed && !current.hidden, busy: !!current.busy, url: current.contents.isDestroyed() ? '' : current.contents.getURL() } : { open: false, visible: false, busy: false, url: '' };
+        } else if (body.action === 'busy') {
+          // 插件开始自动操作（上传、填写）：页面上盖半透明遮罩显示进度，用户点不到、按键也进不了页面；active: false 揭开。
+          if (!current || current.closed) throw Error('请先打开账号页面');
+          if (body.active === false) await this.setBusy(current, undefined);
+          else {
+            const message = body.message, progress = body.progress ?? null;
+            if (typeof message !== 'string' || !message.trim() || message.length > 80 || /[\x00-\x1f]/.test(message)) throw Error('遮罩说明无效');
+            if (progress !== null && (typeof progress !== 'number' || !Number.isFinite(progress) || progress < 0 || progress > 1)) throw Error('遮罩进度要在 0 到 1 之间');
+            await this.setBusy(current, { message, progress });
+          }
+          result = {};
         } else if (body.action === 'close') {
           // 关掉本次操作的页面（登录完成后自动回到片场）；登录状态留在账号的存储目录里（sessionDirectory）。
           if (current) { this.closePage(current); current = undefined; }
@@ -230,6 +309,8 @@ export class StationBrowsers {
       server.close(); server.closeAllConnections();
       for (const page of this.pages.values()) if (page.owner === owner) {
         page.owner = undefined;
+        // 操作结束、取消或插件崩了：遮罩一并揭开，页面留给用户。
+        void this.setBusy(page, undefined);
         const wc = page.contents;
         if (!wc.isDestroyed() && wc.debugger.isAttached()) wc.debugger.detach();
       }
@@ -241,30 +322,60 @@ export class StationBrowsers {
   private closePage(page: EmbeddedPage): void {
     const wc = page.contents;
     if (!wc.isDestroyed() && wc.debugger.isAttached()) wc.debugger.detach();
-    if (page.layout && !page.window.isDestroyed()) page.window.removeListener('resize', page.layout);
     this.destroyPage(page);
-    this.pages.delete(page.key);
-    if (!page.window.isDestroyed()) page.window.webContents.focus();
+    const main = this.getWindow();
+    if (main && !main.isDestroyed() && !this.background) main.focus();
   }
   private destroyPage(page: EmbeddedPage): void {
-    // before-quit 和窗口 closed 都会走这里；销毁只能发生一次。
+    // before-quit、窗口 closed、页面自己被关都会走这里；销毁只能发生一次。
     if (page.closed) return;
     page.closed = true;
-    if (!page.window.isDestroyed()) {
-      page.window.contentView.removeChildView(page.view);
-      page.window.contentView.removeChildView(page.bar);
-    }
-    for (const wc of [page.contents, page.controls]) if (!wc.isDestroyed()) {
+    page.busy = undefined;
+    if (this.pages.get(page.key) === page) this.pages.delete(page.key);
+    for (const wc of [page.contents, page.controls, page.cover]) if (!wc.isDestroyed()) {
       wc.stop();
       // 登录状态马上落盘：cookie 平时攒一阵才写，客户端被强退时刚登录的就丢了。
-      wc.session.flushStorageData();
-      void wc.session.cookies.flushStore().catch(() => {});
+      if (wc === page.contents) {
+        wc.session.flushStorageData();
+        void wc.session.cookies.flushStore().catch(() => {});
+      }
       wc.close({ waitForBeforeUnload: false });
     }
+    if (!page.window.isDestroyed()) page.window.destroy();
   }
   close(): void {
     for (const dispose of this.leases) dispose();
-    for (const page of this.pages.values()) this.destroyPage(page);
+    for (const page of [...this.pages.values()]) this.destroyPage(page);
     this.pages.clear();
   }
 }
+
+/** 遮罩页：只有宿主写的这一页，文字经 update() 用 textContent 填，不拼 HTML。 */
+const coverHTML = `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<style>
+html,body{margin:0;height:100%}
+body{background:rgba(12,11,10,.6);display:flex;align-items:center;justify-content:center;font:14px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;color:#f4eee4;cursor:progress;user-select:none}
+.card{width:min(440px,calc(100vw - 64px));box-sizing:border-box;background:rgba(26,24,22,.94);border:1px solid rgba(255,255,255,.09);border-radius:18px;padding:26px 28px 22px;box-shadow:0 24px 64px rgba(0,0,0,.5)}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.spin{flex:none;width:18px;height:18px;border:2px solid rgba(244,238,228,.2);border-top-color:#e8a24a;border-radius:50%;animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+h1{font-size:15px;font-weight:600;margin:0;letter-spacing:.02em}
+#message{color:#ddd5c8;margin:0 0 16px;line-height:1.55;min-height:22px;word-break:break-all}
+.track{height:6px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden}
+#bar{height:100%;width:0;border-radius:3px;background:linear-gradient(90deg,#e8a24a,#f3c784);transition:width .5s ease}
+.track.wait #bar{width:32%;animation:wait 1.4s ease-in-out infinite}
+@keyframes wait{from{transform:translateX(-100%)}to{transform:translateX(320%)}}
+.foot{margin:12px 0 0;color:#a49b8e;font-size:12px}
+</style>
+<div class="card" role="status" aria-live="polite"><div class="top"><div class="spin"></div><h1>插件正在自动操作，请勿操作此页面</h1></div>
+<p id="message"></p><div class="track wait" id="track"><div id="bar"></div></div>
+<p class="foot">完成后自动解开，可以先回片场继续工作</p></div>
+<script>
+window.update = function (state) {
+  document.getElementById('message').textContent = state.message;
+  // 进度条是整次操作的进度；这一步走到哪（例如上传百分比）写在说明里。
+  var track = document.getElementById('track');
+  track.className = typeof state.progress === 'number' ? 'track' : 'track wait';
+  document.getElementById('bar').style.width = typeof state.progress === 'number' ? Math.round(state.progress * 100) + '%' : '';
+};
+</script>`;

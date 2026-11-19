@@ -56,6 +56,25 @@ describe('sessions', () => {
       expect(response.text).toBe(body);
     }
   });
+  it('keeps overlapping plugin writes out of a turn rollback', async () => {
+    const f = newSessionFixture();
+    const { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{"title":"并发"}');
+    const sessionID = body.session_id as string;
+    f.s.beginShared('upload', f.root, '正在上传');
+    const started = await studioRequest(f.s, 'POST', `/api/sessions/${sessionID}/turns`, '{"message":"改开头"}');
+    expect(started.status).toBe(202);
+    const receipt = path.join(f.root, 'production/plugin/receipt.json');
+    writeStudioFile(receipt, '{"uploaded":true}');
+    f.s.endShared('upload');
+
+    const turn = lastTurn(await waitIdle(f, sessionID));
+    expect(turn.changes).toContainEqual({ path: 'production/plugin/receipt.json', change: 'added', revertable: false });
+    const reverted = await studioRequest(f.s, 'POST', `/api/turns/${turn.turn_id}/revert`);
+    expect(reverted.status).toBe(200);
+    expect(reverted.body.skipped).toContain('production/plugin/receipt.json');
+    expect(fs.readFileSync(receipt, 'utf8')).toBe('{"uploaded":true}');
+  });
+
   it('turn, resume and revert', async () => {
     const f = newSessionFixture();
     let { status, body } = await studioRequest(f.s, 'POST', '/api/sessions', '{"title":"改镜头"}');

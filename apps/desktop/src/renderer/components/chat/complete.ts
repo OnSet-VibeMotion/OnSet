@@ -70,6 +70,7 @@ export const pageNames: [string, string][] = [
   ['compose', '合成'],
   ['final', '成片'],
   ['style', '风格'],
+  ['motion', '动效'],
   ['review', '复查'],
   ['publish', '发布'],
   ['memory', '记忆'],

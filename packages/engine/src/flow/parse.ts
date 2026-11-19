@@ -4,6 +4,7 @@
 import { stepIDs } from '../studioview';
 import { allStageTitles, allStations, builtinFirstPages } from './registered';
 import { builtinPluginIDs } from './builtinplugins';
+import { MotionPromptID, parseMotionEffects } from './motion';
 import { pageCallableOp, pageMayRead, pageTab } from './pages';
 import { idPattern, isObject, knownFields, opPattern, projectPath, relativeInside, str, strings } from './fields';
 import {
@@ -292,6 +293,8 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
     return { name, dir, summary: str(rs, 'summary', where), scenes: scenes as 'all' | 'opt-in' };
   });
   if (new Set(rendererSkills.map((r) => r.name)).size !== rendererSkills.length) throw new Error('station.renderer_skills 里有重名的技能');
+  const motionEffects = parseMotionEffects(raw.motion_effects, rendererSkills);
+  if (id === MotionPromptID && motionEffects.length > 0) throw new Error(`station.id ${id} 与内置动效来源重名`);
   let filmStyles: Manifest['film_styles'] = null;
   if (raw.film_styles !== undefined) {
     if (!isObject(raw.film_styles)) throw new Error('station.film_styles 要是对象');
@@ -356,6 +359,7 @@ export function parseManifest(text: string, opts: ParseOptions = {}): Manifest {
     flow: flowDef,
     provides,
     renderer_skills: rendererSkills,
+    motion_effects: motionEffects,
     film_styles: filmStyles,
     skins,
     slots,

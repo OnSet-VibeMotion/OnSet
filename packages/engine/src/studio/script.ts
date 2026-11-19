@@ -4,7 +4,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as align from '../align';
+import { hasRoster } from '../cast';
+import { recordedFlow } from '../flow';
 import { scriptAudio, scriptAudioOptions, type ScriptAudio, type ScriptAudioOption } from './script_audio';
+import { dialogueAudio, scriptDialogue, type ScriptDialogue } from './script_dialogue';
 import { writeError, writeJSON } from './http';
 import { pageGate } from './progress';
 import type { Server } from './studio';
@@ -30,6 +33,8 @@ export interface ScriptResponse {
   estimate_seconds?: number;
   voice?: ScriptAudio;
   audio_options?: ScriptAudioOption[];
+  dialogue?: ScriptDialogue;
+  can_convert_to_dialogue?: boolean;
   change_log?: { path: string; content: string };
 }
 
@@ -56,6 +61,8 @@ export function scriptResponseJSON(out: ScriptResponse): Record<string, unknown>
     estimate_seconds: out.estimate_seconds || undefined,
     voice: out.voice,
     audio_options: out.audio_options,
+    dialogue: out.dialogue,
+    can_convert_to_dialogue: out.can_convert_to_dialogue,
     change_log: out.change_log ? { path: out.change_log.path, content: out.change_log.content } : undefined,
   };
 }
@@ -74,6 +81,7 @@ export function scriptAPI(s: Server, request: Request): Response {
 
 export function readScript(root: string, audio = ''): ScriptResponse {
   const out: ScriptResponse = { path: '', content: '', final: false };
+  if (hasRoster(root)) out.dialogue = scriptDialogue(root);
   let parsed: align.Script | undefined;
   for (const name of [scriptFinalPath, ...scriptFallbacks]) {
     const full = path.join(root, name);
@@ -95,7 +103,7 @@ export function readScript(root: string, audio = ''): ScriptResponse {
   }
   if (out.final) {
     try {
-      const script = align.parseScript(out.content);
+      const script = align.parseScript(out.content, !!out.dialogue);
       parsed = script;
       const { blocks, stats } = align.view(script);
       out.blocks = blocks;
@@ -110,6 +118,21 @@ export function readScript(root: string, audio = ''): ScriptResponse {
       // 没有修改记录。
     }
   }
+  if (out.dialogue) {
+    const option = scriptAudioOptions(root).find((option) => option.name === 'voice.wav');
+    if (option && out.blocks) {
+      const playback = dialogueAudio(root, option, out.blocks, out.dialogue.roles);
+      if (playback) {
+        out.voice = playback.voice;
+        out.blocks = playback.blocks;
+        out.audio_options = [option];
+      }
+    }
+    return out;
+  }
+  try {
+    if (recordedFlow(root) === 'speech') out.can_convert_to_dialogue = true;
+  } catch { /* 只有口播流程能切到对白。 */ }
   out.audio_options = scriptAudioOptions(root);
   const selected = out.audio_options.find((option) => option.path === audio) ?? out.audio_options[0];
   if (selected) {

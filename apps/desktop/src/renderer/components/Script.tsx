@@ -123,7 +123,7 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
   const [audioError, setAudioError] = useState('');
   const audioURL = script?.voice ? rawURL(script.voice.path, script.voice.version) : '';
   const timedBlocks = useMemo(() => {
-    if (!script?.blocks || script.voice?.timing === 'aligned') return script?.blocks;
+    if (!script?.blocks || script.dialogue || script.voice?.timing === 'aligned') return script?.blocks;
     return estimateScriptTiming(script.blocks, audioSeconds || script.voice?.seconds || 0);
   }, [script, audioSeconds]);
 
@@ -195,10 +195,23 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
 
   if (error) return <div className="empty">{error}</div>;
   if (!script) return <div className="empty">正在读取…</div>;
+  const dialogue = script.dialogue;
+  const dialogueAction = script.can_convert_to_dialogue ? (
+    <button disabled={!!busy} onClick={() => onQuick(
+      '我想把这个口播项目改成多人对话。请先给出角色、台词分配和音色方案，等我确认后再建角色、改稿。保留已有配音版本，改好的对白稿要重新确认后再正式配音。',
+      [],
+      true,
+    )}>改为多人对话</button>
+  ) : dialogue ? (
+    <button disabled={!!busy} onClick={() => onQuick('请为这个多人对话项目配置角色和配音音色，先给我角色和音色方案试听，等我确认后再正式配音。', [], true)}>
+      设置角色音色
+    </button>
+  ) : null;
   if (!script.path) {
     return (
       <div className="empty">
-        还没有口播稿。开始制作后，AI 会先把文章整理成口播终稿（{scriptFinalPath}），稿子整理好就显示在这里，你确认之后才会配音。
+        <p>还没有{dialogue ? '对白稿' : '口播稿'}。开始制作后，稿子会显示在这里，你确认之后才会配音。</p>
+        {dialogueAction}
       </div>
     );
   }
@@ -213,12 +226,13 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
   const titleIndex = timedBlocks?.findIndex((block) => block.kind === 'heading') ?? -1;
   const title = titleIndex >= 0 ? timedBlocks![titleIndex].text : '';
   const blocks = timedBlocks?.filter((_, index) => index !== titleIndex);
+  const speakerNames = new Map(dialogue?.roles.map((role) => [role.id, role.name]));
 
   return (
     <div className="script-tab">
       <header className="script-head">
         <span className="eyebrow">
-          {script.final ? '口播稿' : '原稿'}
+          {script.final ? (dialogue ? '多人对话稿' : '口播稿') : '原稿'}
           {script.final && (voiced ? ' · 已配音' : ' · 待确认')}
         </span>
         {title && <h1 className="script-title">{title}</h1>}
@@ -232,8 +246,9 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
             </button>
           </div>
         )}
-        {script.final && (
+        {(script.final || dialogueAction) && (
           <div className="script-actions">
+            {dialogueAction}
             {script.blocks && (
               <button className={marks ? 'on' : ''} aria-pressed={marks} onClick={toggleMarks} title="标出读法与受保护短语">
                 标记
@@ -250,7 +265,7 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
               引用所选
             </button>
             <button onClick={() => onQuick('口播稿要改：', [], true)}>提修改意见</button>
-            {!voiced && script.gate && (
+            {script.final && !voiced && script.gate && !script.parse_error && (
               <button
                 className="primary"
                 disabled={!!busy}
@@ -262,6 +277,19 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
             )}
           </div>
         )}
+        {dialogue && dialogue.roles.length > 0 && (
+          <ul className="script-roles" aria-label="角色音色">
+            {dialogue.roles.map((role) => (
+              <li key={role.id}>
+                <button className="link" disabled={!!busy} aria-label={`为${role.name}${role.voice_id ? '换' : '选'}音色`}
+                  onClick={() => onQuick(`请为角色 ${role.name}（${role.id}）${role.voice_id ? '换一个' : '选一个'}配音音色。请先给我试听选项，确认后再应用到该角色。`, [], true)}>
+                  <strong>{role.name}</strong><span>{role.voice_id || '选音色'}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {dialogue?.warning && <p className="script-note bad">{dialogue.warning}</p>}
         {script.voice ? (
           <div className="script-player">
             <div className="script-player-top">
@@ -283,13 +311,13 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
               onLoadedMetadata={(e) => setAudioSeconds(e.currentTarget.duration)}
               onError={() => { setPlaying(false); setAudioError('音频无法播放，请检查文件是否完整，或重新生成配音。'); }} />
             {audioError ? <p className="script-note bad" role="alert">{audioError}</p> : script.blocks && (
-              <p className="script-note">{script.voice.timing === 'aligned' ? '逐字跟读 · 点击文字可跳转试听' : '逐字跟读按时长估算，完成对齐后会更准确 · 点击文字可跳转试听'}</p>
+              <p className="script-note">{script.voice.timing === 'dialogue' ? '点击角色名，从这句开始试听' : script.voice.timing === 'aligned' ? '逐字跟读 · 点击文字可跳转试听' : '逐字跟读按时长估算，完成对齐后会更准确 · 点击文字可跳转试听'}</p>
             )}
           </div>
-        ) : script.final && <p className="script-note">还没有找到配音音频，生成后可在这里试听。</p>}
+        ) : script.final && <p className="script-note">{dialogue ? '当前对白稿的配音就绪后，可在这里试听。' : '还没有找到配音音频，生成后可在这里试听。'}</p>}
         {voiced && script.final && <p className="script-note">改稿之后要重新配音、对齐，已渲染的镜头可能要跟着改。</p>}
         {script.parse_error && (
-          <p className="script-note bad">终稿的标记写错了：{script.parse_error}。下面是原文；让 AI 修好标记再配音。</p>
+          <p className="script-note bad">终稿格式有误：{script.parse_error}。下面是原文，请让 AI 修好后再配音。</p>
         )}
       </header>
 
@@ -301,10 +329,18 @@ export function ScriptTab({ version, busy, onQuick, onFile, onAttach }: Props) {
                 {block.text}
               </h3>
             ) : (
-              <p key={index} data-ctx-para={para}>
+              <p key={index} data-ctx-para={para} className={block.speaker ? 'script-turn' : undefined}
+                aria-current={block.time && time >= block.time.start && time < block.time.end ? true : undefined}>
                 <span className="para-no" aria-hidden="true">
                   {String(para).padStart(2, '0')}
                 </span>
+                {block.speaker && (block.time ? (
+                  <button className="script-speaker" type="button"
+                    aria-label={`从${speakerNames.get(block.speaker) ?? block.speaker}的这句开始播放`}
+                    onClick={() => block.time && seek(block.time.start)}>
+                    {speakerNames.get(block.speaker) ?? block.speaker}：
+                  </button>
+                ) : <span className="script-speaker">{speakerNames.get(block.speaker) ?? block.speaker}：</span>)}
                 <Nodes nodes={block.nodes ?? []} time={time} onSeek={seek} />
               </p>
             ),

@@ -30,6 +30,34 @@ describe('validate reads', () => {
     expect(fs.existsSync(report)).toBe(true);
   });
 
+  it('accepts an explicitly empty film inventory only with evidence from every shot', async () => {
+    const root = tempDir();
+    const production = path.join(root, 'production');
+    const scene = path.join(root, 'scenes/scene-001');
+    fs.mkdirSync(production);
+    fs.mkdirSync(scene, { recursive: true });
+    fs.writeFileSync(path.join(scene, 'scene.json'), '{}');
+    const empty = '{"schema":1,"fps":30,"events":[]}';
+    fs.writeFileSync(path.join(production, 'visible-event-inventory.json'), empty);
+    const args = ['validate', 'reads', '--project-root', root];
+    expect(await run(args, new Buffer(), new Buffer())).toBe(1);
+    fs.writeFileSync(path.join(scene, 'visible-events.json'), '{"schema":1,"fps":30}');
+    expect(await run(args, new Buffer(), new Buffer())).toBe(1);
+    fs.writeFileSync(path.join(scene, 'visible-events.json'), empty);
+    const out = new Buffer();
+    const errOut = new Buffer();
+    expect(await run(args, out, errOut), errOut.text).toBe(0);
+    expect(out.text).toContain('0 个可读元素');
+
+    fs.writeFileSync(path.join(production, 'scene-plan.json'), '{"schema":1,"scenes":[{"id":"scene-001","dir":"production/v2/scenes/scene-001"}]}');
+    expect(await run(args, new Buffer(), new Buffer())).toBe(1);
+    const active = path.join(production, 'v2/scenes/scene-001');
+    fs.mkdirSync(active, { recursive: true });
+    fs.writeFileSync(path.join(active, 'visible-events.json'), empty);
+    const plannedError = new Buffer();
+    expect(await run(args, new Buffer(), plannedError), plannedError.text).toBe(0);
+  });
+
   it('rejects bad options and missing file', async () => {
     const out = new Buffer();
     let errOut = new Buffer();

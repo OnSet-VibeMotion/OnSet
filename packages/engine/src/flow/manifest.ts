@@ -6,6 +6,7 @@
  * （声明式判断）、会写的文件、子进程执行的操作。代码不进 onset 的进程，操作在子进程里跑（run.ts）。
  */
 import { compatVersion } from '../version';
+import type { MotionEffect } from './motion';
 import type { DeclaredGuide, DeclaredState, PathRule } from './types';
 
 export const ManifestFile = 'onset-station.json';
@@ -164,6 +165,7 @@ export interface Manifest {
    * 会标成要重渲染（渲染输入变了）；opt-in 时只有 scene.json 的 plugin_skills 点名的镜头带上。
    */
   renderer_skills: { name: string; dir: string; summary: string; scenes: 'all' | 'opt-in' }[];
+  motion_effects: MotionEffect[];
   /**
    * 整片风格库：dir 下每个子目录是一种风格（STYLE.md 必需，SKILL.md、poster.jpg、style.json 可选）。
    * only_referenced 为真时装进项目只带用到的素材与 three.js 模块（filmstyle.DirectorySource 的 onlyReferenced）。
@@ -213,6 +215,7 @@ export const ManifestFields: readonly { name: string; tier: FieldTier; parent?: 
   { name: 'flow', tier: 'experimental', used: (m) => m.flow !== null },
   { name: 'provides', tier: 'experimental', used: (m) => m.provides.tts !== undefined || m.provides.align !== undefined },
   { name: 'renderer_skills', tier: 'experimental', used: (m) => m.renderer_skills.length > 0 },
+  { name: 'motion_effects', tier: 'experimental', used: (m) => m.motion_effects.length > 0 },
   { name: 'film_styles', tier: 'experimental', used: (m) => m.film_styles !== null },
   { name: 'skins', tier: 'experimental', used: (m) => m.skins.length > 0 },
   // 站点（nodes[]）里的字段：基本的几项是稳定的，按文件内容定状态与「接下来」是实验性的。

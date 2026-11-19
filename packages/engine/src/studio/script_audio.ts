@@ -7,7 +7,7 @@ import { containedPath } from './sessions';
 export interface ScriptAudioOption { path: string; name: string; version: number }
 export interface ScriptAudio extends ScriptAudioOption {
   seconds: number;
-  timing: 'aligned' | 'estimated';
+  timing: 'aligned' | 'estimated' | 'dialogue';
 }
 
 function file(root: string, relative: string): string | undefined {

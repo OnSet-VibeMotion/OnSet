@@ -265,6 +265,90 @@ describe('stations API', () => {
     f.s.shutdown();
   });
 
+  it('runs browser ops without the project write lock, so uploads overlap each other and other work', async () => {
+    const f = newSessionFixture();
+    const manifest = (id: string, dir: string) => JSON.stringify({
+      id, version: '1', name: id, browser: { origins: ['https://creator.example.test'] }, produces: [{ prefix: `production/${dir}/` }],
+      ops: [{ name: 'prepare', summary: '上传', trigger: 'user', command: ['{node}', 'x.cjs'], params: {} }],
+    });
+    installStation(`link:${writeStationForTest({ 'onset-station.json': manifest('upload-a', 'a'), 'x.cjs': '' })}`);
+    installStation(`link:${writeStationForTest({ 'onset-station.json': manifest('upload-b', 'b'), 'x.cjs': '' })}`);
+    const ordinary = JSON.parse(manifest('ordinary', 'ordinary'));
+    delete ordinary.browser;
+    installStation(`link:${writeStationForTest({ 'onset-station.json': JSON.stringify(ordinary), 'x.cjs': '' })}`);
+    const bin = fs.mkdtempSync(path.join(f.root, '..', 'onset-fake-'));
+    const gate = path.join(bin, 'go');
+    // 假的执行进程：记下参数，按站写文件，等测试放行再结束（像在等网站传完）。
+    f.s.config.executable = writeShellFixture(path.join(bin, 'onset'), `#!/bin/sh
+printf '%s\\n' "$@" >> '${bin}/args.log'
+case "$*" in *upload-a*) mkdir -p production/b && echo x > production/b/from-a.json ;; esac
+case "$*" in *upload-b*) mkdir -p notes && echo x > notes/stray.txt ;; esac
+while [ ! -f '${gate}' ]; do sleep 0.05; done
+printf '\\000am-result {"ok":true,"exit_code":0}\\n'
+`);
+    const start = async (id: string) => {
+      const r = await studioRequest(f.s, 'POST', `/api/stations/${id}/ops/prepare`, '{"params":{}}');
+      expect(r.status).toBe(202);
+      return r.body.task_id as string;
+    };
+    const a = await start('upload-a');
+    const b = await start('upload-b');
+    // 两个插件同时在跑，项目写锁空着；重启装更新前照样知道有上传在进行。
+    expect(f.s.busyHolder(f.root)).toBe('');
+    expect(f.s.activeWork().map((w) => w.holder).sort()).toEqual(['upload-a：上传', 'upload-b：上传']);
+    const ordinaryTask = await start('ordinary');
+    fs.writeFileSync(gate, '');
+    expect(await waitStudioTask(f.s, a)).toMatchObject({ status: 'succeeded' });
+    expect(await waitStudioTask(f.s, b)).toMatchObject({ status: 'succeeded' });
+    expect(await waitStudioTask(f.s, ordinaryTask)).toMatchObject({ status: 'succeeded' });
+    expect(f.s.activeWork()).toEqual([]);
+    expect(fs.readFileSync(path.join(bin, 'args.log'), 'utf8')).toContain('"host_scope":true');
+    const runs = (await studioRequest(f.s, 'GET', '/api/stations')).body.stations;
+    const last = (id: string) => runs.find((x: { id: string }) => x.id === id).ops[0].last_run;
+    // 两个同时在写：改动分不清是谁写的，都不报越界。
+    expect(last('upload-a').out_of_scope).toBeUndefined();
+    expect(last('upload-b').out_of_scope).toBeUndefined();
+    expect(last('ordinary').out_of_scope).toBeUndefined();
+
+    const solo = async (during?: () => void) => {
+      fs.rmSync(gate);
+      fs.rmSync(path.join(f.root, 'notes'), { recursive: true, force: true });
+      const c = await start('upload-b');
+      during?.();
+      fs.writeFileSync(gate, '');
+      expect(await waitStudioTask(f.s, c)).toMatchObject({ status: 'succeeded' });
+      const run = (await studioRequest(f.s, 'GET', '/api/stations')).body.stations.find((x: { id: string }) => x.id === 'upload-b').ops[0].last_run;
+      expect(run.task_id).toBe(c);
+      return run.out_of_scope;
+    };
+    // 只有它一个在写：照常报。
+    expect(await solo()).toEqual(['notes/stray.txt']);
+    // 期间有人占过写锁（一轮对话、渲染……）：归不到插件头上，这次不报。
+    expect(await solo(() => { f.s.acquire(f.root, '一轮对话'); f.s.release(f.root); })).toBeUndefined();
+    f.s.shutdown();
+  });
+
+  it.each([false, true])('still fails a browser op that changed onset files (overlap=%s)', async (overlap) => {
+    const f = newSessionFixture();
+    installStation(`link:${writeStationForTest({ 'onset-station.json': JSON.stringify({
+      id: 'upload-c', version: '1', name: '上传', browser: { origins: ['https://creator.example.test'] }, produces: [{ prefix: 'production/c/' }],
+      ops: [{ name: 'prepare', summary: '上传', trigger: 'user', command: ['{node}', 'x.cjs'], params: {} }],
+    }), 'x.cjs': '' })}`);
+    const bin = fs.mkdtempSync(path.join(f.root, '..', 'onset-fake-'));
+    f.s.config.executable = writeShellFixture(path.join(bin, 'onset'), `#!/bin/sh\nmkdir -p .agents && echo x > .agents/evil.md\nprintf '\\000am-result {"ok":true,"exit_code":0}\\n'\n`);
+    if (overlap) f.s.acquire(f.root, '一轮对话');
+    const r = await studioRequest(f.s, 'POST', '/api/stations/upload-c/ops/prepare', '{"params":{}}');
+    const task = await waitStudioTask(f.s, r.body.task_id);
+    if (overlap) f.s.release(f.root);
+    expect(task.status).toBe('failed');
+    expect(task.message).toContain(overlap
+      ? '片场保留文件有改动（.agents/evil.md），并发写入无法判定归属'
+      : '写了片场自己的文件（.agents/evil.md）');
+    const run = (await studioRequest(f.s, 'GET', '/api/stations')).body.stations.find((x: { id: string }) => x.id === 'upload-c').ops[0].last_run;
+    expect(run).toMatchObject({ ok: false, reserved: ['.agents/evil.md'] });
+    f.s.shutdown();
+  });
+
   it('manages plugins without an open project, and keeps project things behind one', async () => {
     const s = startStudio({ configPath: path.join(tempDir(), 'projects.json') });
     installStation(`link:${fake}`);

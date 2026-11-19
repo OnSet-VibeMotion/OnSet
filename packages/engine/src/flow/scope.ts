@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ProjectSkippedDirs, walkDir } from '../fsutil';
 import { compareBytes } from '../gojson';
+import { projectFile as usageLedgerPath } from '../ledger';
 import type { Manifest } from './external';
 
 /** onset 自己的文件，第三方站不能写。清单校验（fields.ts）用的也是这一份。 */
@@ -31,6 +32,9 @@ const hostChurn: readonly string[] = [
   'production/studio/uploads/',
   'production/studio/attachments/',
 ];
+
+// 对话结束会追加项目用量。并发扫描把这一份主进程账本和任务状态一样当作宿主写入，单独运行仍照常检查。
+const concurrentUsageLedger = usageLedgerPath('').split(path.sep).join('/');
 
 /** 列出的越界文件最多这么多条，其余只给条数。 */
 export const MaxListedPaths = 20;
@@ -100,8 +104,13 @@ export interface ScopeReport {
 }
 
 /** 比对前后两次快照，得出越界情况；没有越界时返回 null。 */
-export function scopeReport(m: Manifest, before: StatSnapshot, after: StatSnapshot): ScopeReport | null {
-  const outside = changedFiles(before, after).filter((p) => !declaredPath(m, p));
+export function scopeReport(m: Manifest, before: StatSnapshot, after: StatSnapshot, options: { reservedOnly?: boolean } = {}): ScopeReport | null {
+  const changed = changedFiles(before, after);
+  if (options.reservedOnly) {
+    const reserved = changed.filter((file) => file !== concurrentUsageLedger && isReservedPath(file)).slice(0, MaxListedPaths);
+    return reserved.length ? { reserved, out_of_scope: [], out_of_scope_more: 0 } : null;
+  }
+  const outside = changed.filter((p) => !declaredPath(m, p));
   if (outside.length === 0) return null;
   const reserved = outside.filter(isReservedPath);
   const ordered = [...reserved, ...outside.filter((p) => !isReservedPath(p))];

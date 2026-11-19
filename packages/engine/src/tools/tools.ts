@@ -612,7 +612,11 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
       const permission = !o.unsafe && tool === 'claude' ? o.permissionPrompt : undefined;
       // --mcp-config 吃多个值，后面必须紧跟一个选项，不然会把提示词吞掉：放在 --verbose 前面。
       const args = [tool, '-p', ...m, ...mcpArgs(permission, o.toolsServer), ...(permission ? ['--permission-prompts', 'host'] : []), '--verbose', '--output-format', 'stream-json'];
-      if (tool === 'claude') args.push('--prompt-suggestions', 'false');
+      if (tool === 'claude') {
+        // 片场质检用自己的抽帧工具。用户级 Chrome DevTools MCP 可能连到已有的浏览器会话。
+        if (o.toolsServer || permission) args.push('--disallowed-tools', 'mcp__chrome-devtools__*');
+        args.push('--prompt-suggestions', 'false');
+      }
       const extra = tool === 'claude' ? claudeOptionSettings(options) : {};
       if (o.unsafe && tool === 'claude') args.push('--dangerously-skip-permissions', ...(Object.keys(extra).length > 0 ? ['--settings', marshal(extra)] : []));
       else if (o.unsafe) args.push('-y');
