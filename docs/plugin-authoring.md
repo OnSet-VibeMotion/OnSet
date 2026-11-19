@@ -416,7 +416,7 @@ tell({ kind: 'hide' });                                    // 收起桌宠
 插件向 `endpoint` POST JSON，头部带 `Authorization: Bearer <token>`：
 
 - `{action: "open", account: "稳定的账号编号", label: "账号备注", url: "https://creator.example.com/"}`：打开或恢复该账号的页面，返回 `{reused: boolean}`。编号为 1–80 位字母、数字、下划线或连字符，以字母数字开头。一次操作只控制一个账号。
-- `{action: "command", method: "Page.navigate", params: {url: "https://creator.example.com/editor"}}`：导航到声明过的来源。
+- `{action: "command", method: "Page.navigate", params: {url: "https://creator.example.com/editor"}}`：导航到声明过的来源。`open` 与 `Page.navigate` 在页面结构就绪（DOMContentLoaded）时就返回，不等图片、统计脚本全部加载完；要用的元素请自己等它出现。
 - `{action: "busy", message: "正在上传视频 57%", progress: 0.42}`：插件开始自动操作（上传、填写）时在页面上盖一层半透明遮罩，显示这句说明（1–80 字，不含控制字符）与进度条（`progress` 是 0–1 的整次进度，可省略或给 `null`，进度条就只循环滚动）。遮罩挡住用户的鼠标与键盘，插件自己的命令照常生效；重复发送会更新说明与进度，`{action: "busy", active: false}` 揭开。操作结束或取消、连接撤销时片场自动揭开。凡是要用户在页面上动手的时候都不能盖：登录阶段不盖；自动操作途中网站弹出验证码、短信或身份确认时，插件要先揭开遮罩、停下全部自动操作，等验证没了再盖上接着做（抖音上传插件的 `verificationGuard` 是个例子）。旧版片场不认这条命令，会返回错误，插件应忽略并照常进行。
 - `{action: "state"}`：返回 `{open, visible, busy, url}`。用户点工具栏的「返回片场」收起窗口时 `visible` 为 false，关掉窗口时 `open` 为 false。
 - 其余允许的 CDP 命令：`Page.enable`、`Page.bringToFront`、`Runtime.evaluate`、`Runtime.releaseObject`、`DOM.setFileInputFiles`、`Input.insertText`、`Input.dispatchKeyEvent`（`type` 只能是 keyDown / keyUp / rawKeyDown / char）、`Input.dispatchMouseEvent`（`type` 只能是 mouseMoved / mousePressed / mouseReleased，必须给 `x`、`y`）。键盘与鼠标用来像人一样逐字输入、真的点一下（有的网页只认可信事件），只作用于这个页面。上传文件必须是当前项目内的真实文件（校验符号链接后的路径）。命令返回 CDP 结果，错误返回非 2xx 与 `{error: "说明"}`。

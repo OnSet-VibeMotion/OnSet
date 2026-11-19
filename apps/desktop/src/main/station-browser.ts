@@ -58,6 +58,35 @@ export function sessionDirectory(userData: string, station: string, account: str
   }
   return dir;
 }
+/**
+ * 导航到地址，页面结构就绪（dom-ready）就返回，不等图片、统计脚本这些全部加载完：插件本来就会自己等要用的元素出现。
+ * 抖音创作者中心整页加载完要 3–4 秒，结构就绪不到 1 秒（2026-11-19 实测）。主框架加载失败照样报错；
+ * 被页面自己的跳转顶掉（ERR_ABORTED）不算失败，等新页面就绪（最多 10 秒）。
+ */
+export function loadUntilReady(wc: Electron.WebContents, url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      wc.removeListener('dom-ready', onReady);
+      wc.removeListener('did-fail-load', onFail);
+      if (error) reject(error); else resolve();
+    };
+    const onReady = () => finish();
+    const onFail = (_event: Electron.Event, code: number, description: string, _url: string, mainFrame: boolean) => {
+      if (mainFrame && code !== -3) finish(Error(`打开网页失败：${description}`));
+    };
+    wc.on('dom-ready', onReady);
+    wc.on('did-fail-load', onFail);
+    wc.loadURL(url).then(() => finish(), (error: Error) => {
+      if (!/ERR_ABORTED/.test(String(error))) { finish(error); return; }
+      // 被顶掉后没有新页面就绪也别一直挂着：交回插件，由它看页面上有没有要的东西。
+      setTimeout(() => finish(), 10_000).unref?.();
+    });
+  });
+}
+
 async function readBody(request: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -236,7 +265,7 @@ export class StationBrowsers {
     page.contents.on('will-navigate', guardNavigation);
     page.contents.on('will-redirect', guardNavigation);
     page.contents.setWindowOpenHandler(({ url }) => {
-      if (allowed(url, page.origins)) void page.contents.loadURL(url).catch(() => {});
+      if (allowed(url, page.origins)) void loadUntilReady(page.contents, url).catch(() => {});
       return { action: 'deny' };
     });
     // 返回片场只收起窗口，用户填到一半的内容、正在进行的上传都不会丢。
@@ -252,7 +281,7 @@ export class StationBrowsers {
     layout();
     this.show(page);
     await this.toolbar(page);
-    await page.contents.loadURL(url);
+    await loadUntilReady(page.contents, url);
     return { page, reused: false };
   }
   private toolbar(page: EmbeddedPage): Promise<void> {
@@ -372,7 +401,7 @@ export class StationBrowsers {
   /** 片场替插件跳转：网页的「确定要离开吗」放行（不然编辑页上的跳转会被拦下）。 */
   private async navigate(page: EmbeddedPage, url: string): Promise<void> {
     page.leaving++;
-    try { await page.contents.loadURL(url); } finally { page.leaving--; }
+    try { await loadUntilReady(page.contents, url); } finally { page.leaving--; }
   }
   private closePage(page: EmbeddedPage): void {
     const wc = page.contents;
