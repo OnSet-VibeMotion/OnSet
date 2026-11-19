@@ -54,11 +54,14 @@ if (devtoolsPort !== null) {
 
 const stationBrowsers = new StationBrowsers(mainWindow, background);
 // 退出前先关插件页面并等它们走完关闭流程（网站在 beforeunload 里存草稿，最多等 UnloadGraceMs），再真正退出。
+// 用户刚点关闭的页面也在销毁中（草稿还没写完）：close() 会一并等；完成前重复请求退出复用同一次等待，不放行。
 let pluginPagesClosed = false;
+let pluginPagesClosing = false;
 app.on('before-quit', event => {
   if (pluginPagesClosed) return;
-  if (stationBrowsers.openPages === 0) { pluginPagesClosed = true; void stationBrowsers.close(); return; }
   event.preventDefault();
+  if (pluginPagesClosing) return;
+  pluginPagesClosing = true;
   void stationBrowsers.close().finally(() => { pluginPagesClosed = true; app.quit(); });
 });
 

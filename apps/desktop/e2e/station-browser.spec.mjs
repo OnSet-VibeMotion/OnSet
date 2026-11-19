@@ -4,7 +4,8 @@ import { test, expect, openProject, api, installPlugin } from './fixtures.mjs';
 
 const origin = 'https://creator.example.test';
 // 像抖音的编辑页：只在 beforeunload 里把编辑中的内容存成草稿，存完还要求确认离开。
-const draftOnUnload = `<script>addEventListener('beforeunload', e => { localStorage.setItem('draft', 'saved-before-unload'); e.preventDefault(); e.returnValue = ''; })</script>`
+// 存草稿故意慢一点（同步忙等 800ms，仍在 UnloadGraceMs 内）：退出不等关闭流程的话，进程会在存完之前就结束了。
+const draftOnUnload = `<script>addEventListener('beforeunload', e => { const t=Date.now(); while(Date.now()-t<800){} localStorage.setItem('draft', 'saved-before-unload'); e.preventDefault(); e.returnValue = ''; })</script>`
   // 也像编辑中的网站那样随时往本地存储写：片场开着页面时几秒内就要落到磁盘上，不等关窗口。
   + `<script>localStorage.setItem('live', 'written-while-open')</script>`;
 const html = draftOnUnload + '<input type="file"><input id="title"><input id="typed"><button onclick="window.published=true">发布</button><button id="poke" style="position:fixed;left:10px;top:200px;width:80px;height:30px" onclick="window.poked=event.isTrusted">点我</button>';
@@ -24,7 +25,8 @@ for (const shutdown of ['application', 'window', 'page-before-window']) test(`pl
   fs.writeFileSync(path.join(dir, 'onset-station.json'), JSON.stringify({
     id: 'embedded-helper', name: '内嵌上传', version: '1', nodes: [{ id: 'embedded-step', label: '内嵌页面', step: 'publish', outputs: ['production/embedded/done.json'] }], browser: { origins: [origin] },
     produces: [{ prefix: 'production/embedded/' }],
-    ops: [{ name: 'prepare', summary: '准备网页', trigger: 'user', command: ['{node}', 'prepare.cjs'], params: { account: { type: 'string', required: true, description: '账号编号' } } }],
+    ops: [{ name: 'prepare', summary: '准备网页', trigger: 'user', command: ['{node}', 'prepare.cjs'], params: { account: { type: 'string', required: true, description: '账号编号' } } },
+      { name: 'forget', summary: '移除账号', trigger: 'user', command: ['{node}', 'forget.cjs'], params: { account: { type: 'string', required: true, description: '账号编号' } } }],
   }));
   fs.writeFileSync(path.join(dir, 'prepare.cjs'), `
 let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', async()=>{
@@ -56,6 +58,21 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   console.log('onset-result '+JSON.stringify({previous:result.result.value,opened,bridge:b,rejected,unauthorized:unauthorized.status,fromPage:fromPage.status,input:typedResult.result.value,masked,badBusy}));
  }catch(e){console.error(e.message);process.exitCode=1;}
 });`);
+  // 移除账号：先等页面销毁走完（网页在关闭流程里写草稿）再清存储，清完重开页面核对草稿没了。
+  // 旧写法（forget 不等销毁）草稿会在清掉之后被写回来，这里读到的就是复活的草稿。
+  fs.writeFileSync(path.join(dir, 'forget.cjs'), `
+let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', async()=>{
+ try {
+  const r=JSON.parse(input), b=r.browser;
+  const rpc=async(body)=>{ const response=await fetch(b.endpoint,{method:'POST',headers:{authorization:'Bearer '+b.token,'content-type':'application/json'},body:JSON.stringify(body)}); const result=await response.json(); if(!response.ok)throw Error(result.error); return result; };
+  await rpc({action:'open',account:r.params.account,label:r.params.account,url:'${origin}/'});
+  await rpc({action:'forget',account:r.params.account});
+  await rpc({action:'open',account:r.params.account,label:r.params.account,url:'${origin}/'});
+  const draft=await rpc({action:'command',method:'Runtime.evaluate',params:{expression:'localStorage.getItem("draft")',returnByValue:true}});
+  await rpc({action:'close'});
+  console.log('onset-result '+JSON.stringify({draft:draft.result.value}));
+ }catch(e){console.error(e.message);process.exitCode=1;}
+});`);
   installPlugin(sandbox, dir, 'embedded-helper');
   // 插件内嵌网页的登录存储在片场的应用数据目录下（station-browser.ts 的 sessionDirectory），不在插件的 data_dir 里。
   const sessionDir = (account) => path.join(sandbox.userData, 'station-sessions', 'embedded-helper', account);
@@ -72,7 +89,7 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
         return new Response(`<script>window.requestUA=${requestUA}</script>${html}`, { headers: { 'content-type': 'text/html' } });
       });
     }
-  }, { directories: ['account-a', 'account-b'].map(account => sessionDir(account)), html });
+  }, { directories: ['account-a', 'account-b', 'account-c'].map(account => sessionDir(account)), html });
   const run = async account => {
     const started = await api(page, '/api/stations/embedded-helper/ops/prepare', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ params: { account } }) });
     expect(started.status, JSON.stringify(started.body) + JSON.stringify((await api(page, '/api/stations')).body.problems)).toBe(202);
@@ -128,6 +145,17 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
     if (!await web.executeJavaScript('window.published')) throw Error('不能手动发布');
   });
   await expect(fetch(first.bridge.endpoint, { method: 'POST', headers: { authorization: 'Bearer '+first.bridge.token }, body: '{}' })).rejects.toThrow();
+  // 移除账号（forget）：等页面销毁完成后再清存储，关闭流程里写的草稿不会在清掉之后复活。
+  const forgotten = await api(page, '/api/stations/embedded-helper/ops/forget', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ params: { account: 'account-c' } }) });
+  expect(forgotten.status, JSON.stringify(forgotten.body)).toBe(202);
+  let forgetRun;
+  await expect.poll(async () => {
+    const s = (await api(page, '/api/stations')).body.stations.find(s => s.id === 'embedded-helper');
+    forgetRun = s.ops.find(o => o.name === 'forget').last_run;
+    return forgetRun?.task_id === forgotten.body.task_id;
+  }).toBe(true);
+  expect(forgetRun.ok, forgetRun.text).toBe(true);
+  expect(forgetRun.data.draft).toBeNull();
   const second = await run('account-b');
   expect(second.previous).toBe('');
   expect((await run('account-a')).previous).toContain('account=account-a');
@@ -149,7 +177,7 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
     return fs.existsSync(dir) && fs.readdirSync(dir).filter(f => /\.(log|ldb)$/.test(f)).some(f => fs.readFileSync(path.join(dir, f)).includes(text));
   };
   for (const account of ['account-a', 'account-b']) await expect.poll(() => onDisk(account, 'written-while-open'), { timeout: 15_000 }).toBe(true);
-  if (shutdown !== 'page-before-window') {
+  if (shutdown === 'window') {
     // 点了关闭，窗口先藏起来但还在：网页在后台存完、落完盘才真正销毁。
     const closing = await electronApp.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows().find(w => w.getTitle() === '内嵌上传 · account-b');
@@ -163,10 +191,18 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   }
   if (shutdown === 'application') {
     // 由片场自己退出（不经 Playwright 关页面，那样会替网页走关闭流程，测不出问题）：退出前等插件页面存完草稿。
+    // 关了窗口马上退出、还连退两次：account-b 已移出页面登记但销毁没完成，第一次退出要等它存完，
+    // 第二次退出不能绕过等待。旧写法（openPages === 0 就放行、close() 收不到正在关的页面）这里会丢草稿。
     const exited = new Promise(resolve => electronApp.process().once('exit', resolve));
-    await electronApp.evaluate(({ app }) => { setImmediate(() => app.quit()); });
+    await electronApp.evaluate(({ app, BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows().find(w => w.getTitle() === '内嵌上传 · account-b');
+      if (!window) throw Error('找不到 account-b 的窗口');
+      window.close();
+      setImmediate(() => { app.quit(); app.quit(); });
+    });
     await exited;
     expect(drafted('account-a')).toBe(true);
+    expect(drafted('account-b')).toBe(true);
   }
   if (shutdown !== 'application') {
     await electronApp.evaluate(async ({ BrowserWindow, webContents }, destroyPagesFirst) => {

@@ -15,6 +15,7 @@ export function debugPort(options: { packaged: boolean; background: boolean; env
   if (raw === '') return DefaultDebugPort;
   if (/^(0|off|false|no)$/i.test(raw)) return null;
   const port = Number(raw);
-  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error(`ONSET_DESKTOP_DEBUG_PORT 要是 1024–65535 的端口号，或 off：${raw}`);
+  // Electron 只接受小于 65535 的调试端口：填 65535 会静默换成随机端口，日志里的端口连不上。
+  if (!Number.isInteger(port) || port < 1024 || port > 65534) throw new Error(`ONSET_DESKTOP_DEBUG_PORT 要是 1024–65534 的端口号，或 off：${raw}`);
   return port;
 }

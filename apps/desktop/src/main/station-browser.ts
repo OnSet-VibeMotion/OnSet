@@ -107,6 +107,9 @@ async function readBody(request: IncomingMessage): Promise<Record<string, unknow
  */
 export class StationBrowsers {
   private pages = new Map<string, EmbeddedPage>();
+  /** 销毁已开始、还没完成的页面（草稿可能还在写）：页面虽已移出 pages，退出与移除账号仍要等它们。 */
+  private closingPages = new Map<string, Promise<void>>();
+  private closePromise?: Promise<void>;
   private leases = new Set<() => void>();
   private flushTimer?: NodeJS.Timeout;
   constructor(private getWindow: () => BrowserWindow | undefined, private background = false) {}
@@ -325,15 +328,18 @@ export class StationBrowsers {
           result = {};
         } else if (body.action === 'close') {
           // 关掉本次操作的页面（登录完成后自动回到片场）；登录状态留在账号的存储目录里（sessionDirectory）。
-          if (current) { this.closePage(current); current = undefined; }
+          if (current) { void this.closePage(current); current = undefined; }
           result = {};
         } else if (body.action === 'forget') {
           // 移除账号前关掉那个账号开着的页面：只认本插件数据目录下的账号，别的操作正在用时拒绝。
           const account = body.account;
           if (typeof account !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(account)) throw Error('网页账号编号无效');
-          const page = this.pages.get(path.join(request.data_dir, 'web-sessions', account));
+          const key = path.join(request.data_dir, 'web-sessions', account);
+          const page = this.pages.get(key);
           if (page && page.owner && page.owner !== owner) throw Error('这个账号正在由另一项操作使用，请稍后再试');
-          if (page) this.closePage(page);
+          // 等销毁走完再清存储：网页的关闭流程可能还在写草稿，先清掉会被它写回来（已经在关的页面也要等）。
+          if (page) await this.closePage(page);
+          await this.closingPages.get(key);
           if (current === page) current = undefined;
           // 移除账号：登录状态由片场保管，一并清掉（插件只删得到它自己 data_dir 里的东西）。
           // clearStorageData 不管 HTTP 缓存：登录后的个人页面可能被缓存，同一账号编号再开时还会显示旧内容。
@@ -403,12 +409,13 @@ export class StationBrowsers {
     page.leaving++;
     try { await loadUntilReady(page.contents, url); } finally { page.leaving--; }
   }
-  private closePage(page: EmbeddedPage): void {
+  private closePage(page: EmbeddedPage): Promise<void> {
     const wc = page.contents;
     if (!wc.isDestroyed() && wc.debugger.isAttached()) wc.debugger.detach();
-    void this.destroyPage(page);
+    const destroying = this.destroyPage(page);
     const main = this.getWindow();
     if (main && !main.isDestroyed() && !this.background) main.focus();
+    return destroying;
   }
   /**
    * 关掉一个页面：窗口先藏起来（用户看到的是马上关了），网页在后台正常走完关闭流程（beforeunload / pagehide，
@@ -439,17 +446,21 @@ export class StationBrowsers {
       await page.session.cookies.flushStore().catch(() => {});
       if (!page.window.isDestroyed()) page.window.destroy();
     })();
-    return page.destroying;
+    const done = page.destroying;
+    this.closingPages.set(page.key, done);
+    const settled = () => { if (this.closingPages.get(page.key) === done) this.closingPages.delete(page.key); };
+    done.then(settled, settled);
+    return done;
   }
-  /** 还开着的插件页面数：退出前要不要等它们走完关闭流程。 */
-  get openPages(): number { return this.pages.size; }
-  /** 退出时：撤销所有连接，关掉所有页面并等它们存完（每个最多 UnloadGraceMs）。 */
+  /** 退出时：撤销所有连接，关掉所有页面并等它们存完（每个最多 UnloadGraceMs）；已经在关的页面也一并等。重复调用拿同一个 Promise。 */
   close(): Promise<void> {
+    if (this.closePromise) return this.closePromise;
     for (const dispose of this.leases) dispose();
-    const closing = [...this.pages.values()].map(page => this.destroyPage(page));
+    for (const page of this.pages.values()) this.destroyPage(page);
     this.pages.clear();
     this.scheduleFlush();
-    return Promise.all(closing).then(() => {});
+    this.closePromise = Promise.all([...this.closingPages.values()]).then(() => {});
+    return this.closePromise;
   }
 }
 

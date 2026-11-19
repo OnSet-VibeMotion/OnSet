@@ -15,4 +15,8 @@ describe('开发时的调试端口', () => {
     for (const off of ['off', 'OFF', '0', 'false', 'no']) expect(debugPort({ packaged: false, background: false, env: { ONSET_DESKTOP_DEBUG_PORT: off } })).toBeNull();
     for (const bad of ['abc', '80', '70000', '9333.5']) expect(() => debugPort({ packaged: false, background: false, env: { ONSET_DESKTOP_DEBUG_PORT: bad } })).toThrow('ONSET_DESKTOP_DEBUG_PORT');
   });
+  it('上界是 65534：Electron 不接受 65535，填了会静默换随机端口', () => {
+    expect(debugPort({ packaged: false, background: false, env: { ONSET_DESKTOP_DEBUG_PORT: '65534' } })).toBe(65534);
+    expect(() => debugPort({ packaged: false, background: false, env: { ONSET_DESKTOP_DEBUG_PORT: '65535' } })).toThrow('ONSET_DESKTOP_DEBUG_PORT');
+  });
 });
