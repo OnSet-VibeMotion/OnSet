@@ -328,7 +328,7 @@ printf '\\000am-result {"ok":true,"exit_code":0}\\n'
     f.s.shutdown();
   });
 
-  it('still fails a browser op that wrote onset files', async () => {
+  it.each([false, true])('still fails a browser op that changed onset files (overlap=%s)', async (overlap) => {
     const f = newSessionFixture();
     installStation(`link:${writeStationForTest({ 'onset-station.json': JSON.stringify({
       id: 'upload-c', version: '1', name: '上传', browser: { origins: ['https://creator.example.test'] }, produces: [{ prefix: 'production/c/' }],
@@ -336,10 +336,14 @@ printf '\\000am-result {"ok":true,"exit_code":0}\\n'
     }), 'x.cjs': '' })}`);
     const bin = fs.mkdtempSync(path.join(f.root, '..', 'onset-fake-'));
     f.s.config.executable = writeShellFixture(path.join(bin, 'onset'), `#!/bin/sh\nmkdir -p .agents && echo x > .agents/evil.md\nprintf '\\000am-result {"ok":true,"exit_code":0}\\n'\n`);
+    if (overlap) f.s.acquire(f.root, '一轮对话');
     const r = await studioRequest(f.s, 'POST', '/api/stations/upload-c/ops/prepare', '{"params":{}}');
     const task = await waitStudioTask(f.s, r.body.task_id);
+    if (overlap) f.s.release(f.root);
     expect(task.status).toBe('failed');
-    expect(task.message).toContain('写了片场自己的文件（.agents/evil.md）');
+    expect(task.message).toContain(overlap
+      ? '片场保留文件有改动（.agents/evil.md），并发写入无法判定归属'
+      : '写了片场自己的文件（.agents/evil.md）');
     const run = (await studioRequest(f.s, 'GET', '/api/stations')).body.stations.find((x: { id: string }) => x.id === 'upload-c').ops[0].last_run;
     expect(run).toMatchObject({ ok: false, reserved: ['.agents/evil.md'] });
     f.s.shutdown();

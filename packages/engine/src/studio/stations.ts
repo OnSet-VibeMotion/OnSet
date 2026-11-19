@@ -181,7 +181,7 @@ async function readParams(request: Request): Promise<Record<string, unknown>> {
  * 跑一条第三方操作：插件写的 onset-progress 行变成任务进度；结果记进 lastRuns。
  *
  * 客户端启动的操作由宿主扫描项目改动，写入任务进度和结构化结果；钩子和定时操作还会在对话里发提示。
- * shared 表示网页操作未占写锁。扫描期间另有写入者时无法判断归属，跳过本次范围报告。只有一个写入者时照常检查。
+ * shared 表示网页操作未占写锁。扫描期间另有写入者时只检查片场保留路径，不归责普通改动。只有一个写入者时照常检查。
  */
 async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: Task, id: string, op: string, params: Record<string, unknown>, event?: Record<string, unknown>, shared = false): Promise<void> {
   const key = `${p.path}\n${id}\n${op}`;
@@ -202,8 +202,8 @@ async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: 
   const othersAtStart = hasOtherWriter();
   const scope = () => {
     if (!station || !before) return null;
-    if (othersAtStart || hasOtherWriter() || s.writeEpoch(p.path) !== epoch) return null;
-    const r = flow.scopeReport(station.manifest, before, flow.statProject(p.path));
+    const reservedOnly = othersAtStart || hasOtherWriter() || s.writeEpoch(p.path) !== epoch;
+    const r = flow.scopeReport(station.manifest, before, flow.statProject(p.path), { reservedOnly });
     if (r) reportScope(s, p, task, station.manifest.name, r, event);
     return r;
   };
@@ -224,7 +224,11 @@ async function runStationTask(s: Server, signal: AbortSignal, p: Project, task: 
     );
     const report = scope();
     if (report && report.reserved.length > 0) {
-      const err = new Error(`第三方站 ${id} 的 ${op} 写了片场自己的文件（${report.reserved.join('、')}），按失败处理`);
+      const files = report.reserved.join('、');
+      const reason = report.out_of_scope.length
+        ? `第三方站 ${id} 的 ${op} 写了片场自己的文件（${files}），按失败处理`
+        : `插件执行期间检测到片场保留文件有改动（${files}），并发写入无法判定归属，操作按失败处理`;
+      const err = new Error(reason);
       lastRuns.set(key, { task_id: task.task_id, at: new Date().toISOString(), ok: false, text: err.message, ...scopeFields(report) });
       throw Object.assign(err, { scopeReported: true });
     }
@@ -304,7 +308,9 @@ function reportScope(s: Server, p: Project, task: Task, name: string, r: flow.Sc
   const files = r.out_of_scope.join('、') + (r.out_of_scope_more > 0 ? ` 等 ${total} 个` : '');
   const text =
     r.reserved.length > 0
-      ? `插件「${name}」写了片场自己的文件（${files}），这次操作按失败处理。文件已经写了，没法自动撤销：可以回退那一轮对话，或者用 git 恢复。`
+      ? (r.out_of_scope.length
+        ? `插件「${name}」写了片场自己的文件（${files}），这次操作按失败处理。文件已经写了，没法自动撤销：可以回退那一轮对话，或者用 git 恢复。`
+        : `插件「${name}」执行期间片场保留文件有改动（${r.reserved.join('、')}），并发写入无法判定归属。`)
       : `插件「${name}」改了它没有声明会写的项目文件：${files}。`;
   warnTask(s, task.task_id, text);
   if (!event) return;

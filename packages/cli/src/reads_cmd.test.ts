@@ -48,6 +48,14 @@ describe('validate reads', () => {
     const errOut = new Buffer();
     expect(await run(args, out, errOut), errOut.text).toBe(0);
     expect(out.text).toContain('0 个可读元素');
+
+    fs.writeFileSync(path.join(production, 'scene-plan.json'), '{"schema":1,"scenes":[{"id":"scene-001","dir":"production/v2/scenes/scene-001"}]}');
+    expect(await run(args, new Buffer(), new Buffer())).toBe(1);
+    const active = path.join(production, 'v2/scenes/scene-001');
+    fs.mkdirSync(active, { recursive: true });
+    fs.writeFileSync(path.join(active, 'visible-events.json'), empty);
+    const plannedError = new Buffer();
+    expect(await run(args, new Buffer(), plannedError), plannedError.text).toBe(0);
   });
 
   it('rejects bad options and missing file', async () => {

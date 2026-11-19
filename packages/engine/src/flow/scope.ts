@@ -100,8 +100,13 @@ export interface ScopeReport {
 }
 
 /** 比对前后两次快照，得出越界情况；没有越界时返回 null。 */
-export function scopeReport(m: Manifest, before: StatSnapshot, after: StatSnapshot): ScopeReport | null {
-  const outside = changedFiles(before, after).filter((p) => !declaredPath(m, p));
+export function scopeReport(m: Manifest, before: StatSnapshot, after: StatSnapshot, options: { reservedOnly?: boolean } = {}): ScopeReport | null {
+  const changed = changedFiles(before, after);
+  if (options.reservedOnly) {
+    const reserved = changed.filter(isReservedPath).slice(0, MaxListedPaths);
+    return reserved.length ? { reserved, out_of_scope: [], out_of_scope_more: 0 } : null;
+  }
+  const outside = changed.filter((p) => !declaredPath(m, p));
   if (outside.length === 0) return null;
   const reserved = outside.filter(isReservedPath);
   const ordered = [...reserved, ...outside.filter((p) => !isReservedPath(p))];
