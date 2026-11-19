@@ -202,16 +202,19 @@ export class StationBrowsers {
     window.on('resize', layout);
     window.on('focus', () => this.focusPage(page));
     // 插件正在自动操作时关窗口会打断上传：先问一句（测试在后台跑，不弹框）。
+    // 用户点关闭：不让窗口当场关掉，交给 destroyPage 先藏起窗口、等网页存完再销毁。
+    // 插件正在自动操作时关窗口会打断上传：先问一句（测试在后台跑，不弹框）。
     window.on('close', event => {
-      if (!page.busy || page.closing || page.closed || this.background) return;
+      if (page.closed) return;
       event.preventDefault();
+      if (!page.busy || page.closing || this.background) { void this.destroyPage(page); return; }
+      page.closing = true;
       void dialog.showMessageBox(window, {
         type: 'warning', buttons: ['继续等待', '关闭窗口'], defaultId: 0, cancelId: 0,
         message: '插件正在自动操作这个页面', detail: '关闭窗口会中断正在进行的上传与填写，已传的内容可能需要重新上传。',
       }).then(({ response }) => {
-        if (response !== 1 || window.isDestroyed()) return;
-        page.closing = true;
-        window.close();
+        page.closing = false;
+        if (response === 1 && !window.isDestroyed()) void this.destroyPage(page);
       });
     });
     window.once('closed', () => void this.destroyPage(page));
@@ -379,8 +382,9 @@ export class StationBrowsers {
     if (main && !main.isDestroyed() && !this.background) main.focus();
   }
   /**
-   * 关掉一个页面：先让网页正常走完关闭流程（beforeunload / pagehide，最多 UnloadGraceMs），网站借此保存草稿；
-   * 再把本地存储与 cookie 写到磁盘，最后销毁窗口。before-quit、窗口 closed、页面自己被关都会走这里，只做一次。
+   * 关掉一个页面：窗口先藏起来（用户看到的是马上关了），网页在后台正常走完关闭流程（beforeunload / pagehide，
+   * 最多 UnloadGraceMs），网站借此保存草稿；再把本地存储与 cookie 写到磁盘，写完才真正销毁窗口。
+   * 用户点关闭、插件关页面、移除账号、退出都走这里，只做一次。
    */
   private destroyPage(page: EmbeddedPage): Promise<void> {
     if (page.destroying) return page.destroying;
@@ -389,6 +393,7 @@ export class StationBrowsers {
     page.leaving++;
     if (this.pages.get(page.key) === page) this.pages.delete(page.key);
     this.scheduleFlush();
+    if (!page.window.isDestroyed()) page.window.hide();
     page.destroying = (async () => {
       for (const wc of [page.controls, page.cover]) if (!wc.isDestroyed()) wc.close({ waitForBeforeUnload: false });
       const wc = page.contents;

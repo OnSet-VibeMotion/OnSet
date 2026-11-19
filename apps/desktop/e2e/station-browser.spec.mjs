@@ -150,12 +150,16 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   };
   for (const account of ['account-a', 'account-b']) await expect.poll(() => onDisk(account, 'written-while-open'), { timeout: 15_000 }).toBe(true);
   if (shutdown !== 'page-before-window') {
-    await electronApp.evaluate(({ BrowserWindow }) => {
+    // 点了关闭，窗口先藏起来但还在：网页在后台存完、落完盘才真正销毁。
+    const closing = await electronApp.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows().find(w => w.getTitle() === '内嵌上传 · account-b');
       if (!window) throw Error('找不到 account-b 的窗口');
       window.close();
+      return { destroyed: window.isDestroyed(), visible: window.isVisible() };
     });
+    expect(closing).toEqual({ destroyed: false, visible: false });
     await expect.poll(() => drafted('account-b'), { timeout: 10_000 }).toBe(true);
+    await expect.poll(() => electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some(w => w.getTitle() === '内嵌上传 · account-b'))).toBe(false);
   }
   if (shutdown === 'application') {
     // 由片场自己退出（不经 Playwright 关页面，那样会替网页走关闭流程，测不出问题）：退出前等插件页面存完草稿。
