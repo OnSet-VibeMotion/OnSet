@@ -96,6 +96,16 @@ describe('scope check', () => {
     expect(scopeReport(m, before, statProject(root))).toBeNull();
   });
 
+  it('keeps checking protected paths when the host writes its usage ledger concurrently', () => {
+    const manifest = parseManifest(fs.readFileSync(path.join(fake, 'onset-station.json'), 'utf8'));
+    const ledger = 'production/usage/orchestrator.jsonl';
+    const after = { [ledger]: '1:2', '.agents/custom.md': '1:2', 'notes/parallel.md': '1:2' };
+    expect(scopeReport(manifest, {}, after, { reservedOnly: true })).toEqual({
+      reserved: ['.agents/custom.md'], out_of_scope: [], out_of_scope_more: 0,
+    });
+    expect(scopeReport(manifest, {}, after)?.reserved).toContain(ledger);
+  });
+
   it('caps the list and counts the rest', () => {
     const root = project();
     const before = statProject(root);
