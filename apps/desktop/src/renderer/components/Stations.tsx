@@ -1351,6 +1351,7 @@ export function StationSlots({ at, context = {}, ...rest }: Omit<PageProps, 'tab
 const builtinPageIcons: Record<string, IconName> = {
   compose: 'layers',
   style: 'brush',
+  motion: 'play',
   voice: 'mic',
   review: 'check',
   memory: 'brain',

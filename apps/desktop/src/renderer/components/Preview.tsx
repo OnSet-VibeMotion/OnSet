@@ -9,6 +9,7 @@ import { cssSelector } from '../selector';
 import { Icon } from './Icon';
 import { MemoryTab } from './Memory';
 import { VoicesTab } from './Voices';
+import { MotionEffects } from './MotionEffects';
 import { FilmStyleDialog, FilmStylePicker, Poster, SceneStyleDialog, styleKey, useFilmStyles } from './FilmStyles';
 import { Markdown } from './chat/Markdown';
 import { SceneActivityPanel } from './RenderActivity';
@@ -24,7 +25,7 @@ import { ProgressTab } from './Progress';
 import { FileTree } from './Sidebar';
 import { canReveal, revealInFinder, revealLabel } from '../reveal';
 
-export type BuiltinTab = 'progress' | 'script' | 'storyboard' | 'scene' | 'compose' | 'final' | 'style' | 'voice' | 'review' | 'publish' | 'memory' | 'evidence' | 'audition' | 'file';
+export type BuiltinTab = 'progress' | 'script' | 'storyboard' | 'scene' | 'compose' | 'final' | 'style' | 'motion' | 'voice' | 'review' | 'publish' | 'memory' | 'evidence' | 'audition' | 'file';
 /** 内置插件登记的页面（组件在 pageViews.tsx）与第三方插件自己的页面：x:<站>:<页面>（Stations.tsx）。 */
 export type Tab = BuiltinTab | PageViewID | `x:${string}`;
 
@@ -37,6 +38,7 @@ const hostTabs: [Tab, string][] = [
   ['compose', '合成'],
   ['final', '成片'],
   ['style', '风格'],
+  ['motion', '动效'],
   ['voice', '音色'],
   ['review', '复查'],
   ['publish', '发布'],
@@ -88,7 +90,7 @@ interface Props {
   busy: string;
   onAttach: (attachment: Attachment) => void;
   /** 把一条消息交给对话：draftOnly 为 true 时只填进输入框。 */
-  onQuick: (text: string, attachments: Attachment[], draftOnly?: boolean) => void;
+  onQuick: (text: string, attachments: Attachment[], draftOnly?: boolean, appendDraft?: boolean) => void;
   onFile: (path: string) => void;
   onScene: (id: string) => void;
   /** 跳到对话里的某一轮（制作路线里点「做了什么」）。 */
@@ -141,6 +143,7 @@ export function Preview(props: Props) {
         {props.tab === 'compose' && <ComposeTab {...props} scene={scene} />}
         {props.tab === 'final' && <FinalTab {...film} tree={props.tree} version={props.version} run={props.run} onTab={props.onTab} />}
         {props.tab === 'style' && <StyleTab version={props.version} run={props.run} scenes={props.scenes} onScene={props.onScene} />}
+        {props.tab === 'motion' && <MotionEffects version={props.version} scenes={props.scenes} sceneId={props.sceneId} onQuick={props.onQuick} />}
         {props.tab === 'voice' && <VoicesTab version={props.version} />}
         {props.tab === 'review' && <ReviewTab {...film} tree={props.tree} version={props.version} run={props.run} />}
         {props.tab === 'publish' && <PublishTab version={props.version} run={props.run} />}

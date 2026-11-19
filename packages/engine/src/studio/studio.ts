@@ -28,6 +28,7 @@ import { polishAPI } from './polish';
 import { promptChecksAPI } from './promptchecks';
 import { previewAPI, renderAllAPI, sceneFeatureAPI, scenesAPI } from './features';
 import { filmStylePosterAPI, filmStylesAPI, projectFilmStyleAPI, startFilmStyleTask } from './filmstyle';
+import { motionEffectsAPI, motionPreviewAPI } from './motion';
 import {
   DecodeError,
   decodeJSON,
@@ -417,6 +418,8 @@ export class Server {
       // 先按当前项目换上第三方插件带来的风格库。
       ['/api/film-styles', (r) => filmStylesAPI(r)],
       ['/api/film-styles/', (r, rest) => filmStylePosterAPI(r, rest)],
+      ['/api/motion-effects', (r) => motionEffectsAPI(r)],
+      ['/preview/motion/', (r, rest) => motionPreviewAPI(r, rest)],
       ['/api/film-style', (r) => projectFilmStyleAPI(this, r)],
       ['/api/settings', (r) => settingsAPI(this, r)],
       ['/api/agent-services', (r) => agentServicesAPI(r)],

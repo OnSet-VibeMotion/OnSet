@@ -1,0 +1,2514 @@
+{
+  "version": "683ecca0548a1754ada141d10dc3a009d4c59bef",
+  "effects": [
+    {
+      "id": "001",
+      "name": "弹性入场",
+      "category": "动态图形",
+      "summary": "元素弹跳着出现",
+      "aliases": [
+        "Pop-in",
+        "pop",
+        "pop-in",
+        "spring",
+        "bounce",
+        "scale",
+        "icon",
+        "badge",
+        "entrance"
+      ],
+      "example": "让标志以弹性入场出现，时长约 0.4 s，略微超出目标尺寸后回弹。",
+      "spec": [
+        "One pop per 2.35 s (twice per 4.7 s cycle: a star on coral first, then a heart on blue).",
+        "Icon: 116 px rounded square (radius 30). From 0.28 s, scale 0→1 with a spring: 1 − e^(−6.5t)·cos(15t), peaking at about 1.26.",
+        "At the same time, rotation −0.35 rad (about −20°) → 0 with a spring: 1 − e^(−6t)·cos(11t).",
+        "Badge: yellow circle, radius 25, with \"1\", at the icon's top-right (+52, −52). Starts at 0.62 s with spring 1 − e^(−7t)·cos(17t).",
+        "Exit: 1.86–2.12 s. Scale is multiplied by (1 − backIn, s = 2.2), so it swells slightly and then shrinks to 0.",
+        "Floor shadow: 62 × 8 ellipse that scales with the icon (clamped to 0–1)."
+      ],
+      "pack": "motion",
+      "cell": 0
+    },
+    {
+      "id": "002",
+      "name": "交错动画",
+      "category": "动态图形",
+      "summary": "多个元素错开时间依次出现",
+      "aliases": [
+        "Stagger",
+        "stagger",
+        "sequence",
+        "delay",
+        "cascade",
+        "bar-chart",
+        "list",
+        "entrance"
+      ],
+      "example": "用交错动画让五张卡片从左到右依次入场，每张间隔 0.08 s。",
+      "spec": [
+        "One pass per 2.35 s. Seven bars (width 44, gap 20, heights 52, 84, 68, 112, 92, 136, 158), coloured blue, coral, yellow, mint in rotation.",
+        "Bar i (0-based) starts at 0.15 + 0.12·i s and grows from 0 to full height in 0.5 s with backOut (s = 2.6), anchored at the baseline, overshooting and settling.",
+        "White dot (radius 6.5, 16 px above the bar top): starts 0.34 s after its bar with spring 1 − e^(−7t)·cos(16t).",
+        "Exit: bars shrink with cubic ease-in over 0.26 s starting at 1.78 + 0.045·i s; dots vanish first, over 0.2 s from 1.70 + 0.045·i s."
+      ],
+      "pack": "motion",
+      "cell": 1
+    },
+    {
+      "id": "003",
+      "name": "放射爆发",
+      "category": "动态图形",
+      "summary": "元素出现时向外迸出线条和圆点",
+      "aliases": [
+        "Burst",
+        "burst",
+        "explosion",
+        "radial",
+        "like",
+        "heart",
+        "celebrate",
+        "accent",
+        "sparkle"
+      ],
+      "example": "爱心出现时加一次放射爆发：8 根短线在 0.3 s 内淡出。",
+      "spec": [
+        "One burst per 2.35 s. A heart (size 46, 7 px outline) sits in the centre.",
+        "Anticipation: 0.3–0.5 s, scale 1→0.7 (quadratic ease-in-out).",
+        "Trigger at 0.5 s: the heart fills with coral and scale returns 0.7→1 with spring 1 − e^(−6.5t)·cos(16t).",
+        "Ring: yellow, radius 44→90 while line width goes 16→0, over 0.6 s with quintic ease-out.",
+        "10 radial lines (yellow/mint alternating, width 9): outer end radius 64→130 (y scaled 0.82); length 36 shrinks to 0 between 0.22 and 0.7 s after the trigger.",
+        "10 dots (coral/blue alternating, radius 8→4.8): radius 58→150 on an ellipse (x ×1.45, y ×0.78), fading out 0.3–0.72 s after the trigger. The heart fill fades at 1.92–2.2 s."
+      ],
+      "pack": "motion",
+      "cell": 2
+    },
+    {
+      "id": "004",
+      "name": "线条描绘",
+      "category": "动态图形",
+      "summary": "线条像被画出来一样逐渐延伸",
+      "aliases": [
+        "Line draw",
+        "line-draw",
+        "trim-path",
+        "stroke",
+        "draw-on",
+        "chart",
+        "path",
+        "write-on"
+      ],
+      "example": "让图表曲线从左侧开始，在 1.2 s 内逐渐描绘出来。",
+      "spec": [
+        "One pass per 4.7 s. Drawn as a trim path: animate the visible range (start fraction to end fraction) of each stroke.",
+        "Axes (L shape, width 6) draw at 0.08–0.7 s; the line (mint, width 11, a smooth curve through 7 points, round caps) draws at 0.4–1.95 s. Both use cubic ease-in-out.",
+        "While drawing, a yellow dot (radius 12, white centre radius 5) rides the leading tip.",
+        "Arrowhead: opens at 1.9–2.2 s with backOut (s = 2.5); wings 26 long, 20 wide.",
+        "A coral circle (radius 26, width 7) is drawn around one peak at 2.2–2.8 s, clockwise from the top.",
+        "Erase: circle 3.5–4.0 s, line 3.65–4.45 s, axes 3.85–4.55 s, each shrinking from its starting end. The arrowhead fades at 4.3–4.45 s."
+      ],
+      "pack": "motion",
+      "cell": 3
+    },
+    {
+      "id": "005",
+      "name": "遮罩显现",
+      "category": "动态图形",
+      "summary": "文字从不可见的边界后移出",
+      "aliases": [
+        "Mask reveal",
+        "mask",
+        "reveal",
+        "clip",
+        "wipe",
+        "title",
+        "text",
+        "slide-up",
+        "headline"
+      ],
+      "example": "让标题从下方通过遮罩显现，时长 0.6 s，各行稍微错开。",
+      "spec": [
+        "One pass per 2.35 s. Divider line (coral, 380 × 6, y = 124): grows from the centre at 0.1–0.5 s (cubic ease-in-out), shrinks away at 2.05–2.3 s.",
+        "Top text (bold 98 px, white): clipped to the area above the line (y 8–119); moves up into place from 120 px below at 0.35–1.0 s, quintic ease-out.",
+        "Bottom text (32 px, yellow): clipped to the area below the line (y 129–181); moves down into place from 60 px above at 0.55–1.15 s, quintic ease-out.",
+        "Exit: top text moves 150 px up at 1.7–2.05 s (backIn, s = 1.2, dipping slightly first); bottom text moves 70 px down at 1.75–2.05 s (cubic ease-in).",
+        "Opacity never changes; the text is hidden only by leaving the clip area."
+      ],
+      "pack": "motion",
+      "cell": 4
+    },
+    {
+      "id": "006",
+      "name": "打字机效果",
+      "category": "动态图形",
+      "summary": "文字像打字一样逐字出现",
+      "aliases": [
+        "Typewriter",
+        "typewriter",
+        "typing",
+        "text",
+        "cursor",
+        "input",
+        "prompt",
+        "chat",
+        "type-on"
+      ],
+      "example": "给这句话添加打字机效果，每个字 0.05 s，末尾保留光标。",
+      "spec": [
+        "One pass per 4.7 s. Nine characters appear in a white input field (471 × 92, radius 30), one every 0.24 s starting at 0.3 s (typing ends at 2.46 s).",
+        "Each new character settles from scale 1.35 to 1: 1 + 0.35·e^(−16t).",
+        "Cursor (coral, 5 × 44) sits after the last character: solid while typing, otherwise blinking with a 0.94 s period (on for 0.5 s).",
+        "Send button (radius 30): grey, then a blue disc appears from 2.58 s with spring 1 − e^(−6.5t)·cos(15t).",
+        "Press: the button shrinks by up to 20% at 2.96–3.21 s (half sine). At 3.13–3.41 s the text moves 70 px up while fading out.",
+        "The cursor returns to the start once the text is half faded (about 3.27 s); at 3.51–3.81 s the blue fades."
+      ],
+      "pack": "motion",
+      "cell": 5
+    },
+    {
+      "id": "007",
+      "name": "数字递增",
+      "category": "动态图形",
+      "summary": "数字快速增长到目标值",
+      "aliases": [
+        "Count-up",
+        "count-up",
+        "counter",
+        "number",
+        "odometer",
+        "stats",
+        "kpi",
+        "progress"
+      ],
+      "example": "用数字递增让数字在 1.5 s 内从 0 增长到 1,280，末尾减速。",
+      "spec": [
+        "One pass per 4.7 s. Fades in at 0.1–0.4 s and out at 4.0–4.4 s.",
+        "Number (bold 104 px): 0→2,480 over 0.45–2.9 s. Value = round(target × (1 − (1 − p)^4)): fast at first, slow at the end.",
+        "Thousands separator included. Every digit has the same width and the number is right-aligned, so it does not jitter sideways.",
+        "Lands at 2.9 s: colour switches white→yellow and scale does a small bounce, 1 + 0.07·e^(−7t)·cos(15t).",
+        "Up-arrow chip on the left (mint circle, radius 34): appears from 0.35 s with spring 1 − e^(−7t)·cos(14t); while counting it shakes vertically by 6 px × (1 − p)^3 × sin(30u).",
+        "Bar below (330 × 12, blue→mint gradient): fills in proportion to value ÷ target."
+      ],
+      "pack": "motion",
+      "cell": 6
+    },
+    {
+      "id": "008",
+      "name": "动态排版",
+      "category": "动态图形",
+      "summary": "文字随含义和节奏移动、缩放与旋转",
+      "aliases": [
+        "Kinetic typography",
+        "kinetic-typography",
+        "text",
+        "typography",
+        "lyric",
+        "word",
+        "bounce",
+        "spin",
+        "slam"
+      ],
+      "example": "把旁白做成动态排版，重读词放大，并对齐节拍出现。",
+      "spec": [
+        "Four words, 1.175 s each (bold 88 px). Each exits in its last 0.2 s, fading out while moving 46 px up (cubic ease-in).",
+        "Stretch (blue): horizontal scale 0.3→1 with spring 1 − e^(−4.2t)·cos(12t); vertical scale is 1/√(horizontal).",
+        "Bounce (yellow): characters staggered by 0.1 s; height 78 px × |sin(πt/0.4)| × e^(−2.6t); squashed vertically by up to 16% at each contact.",
+        "Spin (mint): characters staggered by 0.12 s; rotation −360°→0° over 0.62 s with backOut (s = 1.3); scale 0→1 over 0.25 s, cubic ease-out.",
+        "Slam (coral, 100 px, slanted): scale 3.4→1 at 0.02–0.2 s with cubic ease-in.",
+        "After impact: horizontal shake 10 px × e^(−9t) × sin(38t), vertical squash 20% × e^(−11t), and 8 radial lines for 0.4 s."
+      ],
+      "pack": "motion",
+      "cell": 7
+    },
+    {
+      "id": "009",
+      "name": "缓动",
+      "category": "动态图形",
+      "summary": "动作通过加减速变化而非匀速移动",
+      "aliases": [
+        "Easing",
+        "easing",
+        "ease-in-out",
+        "cubic-bezier",
+        "linear",
+        "timing",
+        "curve",
+        "acceleration"
+      ],
+      "example": "为这段移动添加缓出，使其逐渐减速停下。",
+      "spec": [
+        "One round trip per 4.7 s. Two 62 px squares (radius 16) travel 316 px horizontally: out at 0.2–1.75 s (1.55 s), hold 0.8 s, back at 2.55–4.1 s.",
+        "Top (constant): linear motion; shape and colour never change.",
+        "Bottom (eased): cubic-bezier(.86, 0, .14, 1). Slow start, very fast middle, slow stop.",
+        "The bottom square stretches horizontally up to 1.5× and flattens to 0.8× in proportion to speed (speed ÷ 3.6, clamped to 0–1).",
+        "Behind it: 3 speed lines (up to 150 px × 0.8–1.25) and 4 ghost copies lagging 0.035 s each.",
+        "Each rail shows 12 dots marking positions at equal time intervals (evenly spaced on top, bunched at both ends below)."
+      ],
+      "pack": "motion",
+      "cell": 8
+    },
+    {
+      "id": "010",
+      "name": "过冲回弹",
+      "category": "动态图形",
+      "summary": "越过目标后回到目标位置并停稳",
+      "aliases": [
+        "Overshoot",
+        "overshoot",
+        "spring",
+        "bounce",
+        "settle",
+        "elastic",
+        "gauge",
+        "meter",
+        "needle"
+      ],
+      "example": "给仪表指针加上过冲回弹：先超出目标约 10%，再回弹到位。",
+      "spec": [
+        "One pass per 4.7 s. Semicircular gauge (radius 128, stroke 26). Target is 0.7 of the sweep (126° from the left end).",
+        "Starts at 0.25 s: value = 0.7 × (1 − e^(−4.6t)·cos(10.5t)). About 0.3 s later it is roughly 25% past the target, then it oscillates and settles on the target.",
+        "The part beyond the target is drawn in coral. A yellow tick marks the target.",
+        "The filled arc is a blue→mint gradient; the needle is white, width 9.",
+        "Return: from 3.7 s, value = 0.7 × e^(−7.5t)·cos(8.5t) back to 0 (dipping slightly below 0 before it stops)."
+      ],
+      "pack": "motion",
+      "cell": 9
+    },
+    {
+      "id": "011",
+      "name": "挤压与拉伸",
+      "category": "动态图形",
+      "summary": "通过压扁和拉长表现弹性",
+      "aliases": [
+        "Squash & stretch",
+        "squash",
+        "stretch",
+        "squash-and-stretch",
+        "bounce",
+        "character",
+        "ball",
+        "animation-principle"
+      ],
+      "example": "给球落地时加上轻微的挤压与拉伸。",
+      "spec": [
+        "A round character, radius 37. One bounce per 1.175 s (four per 4.7 s), a 92 px parabola. It drifts ±150 px sideways on a sine wave over the cycle.",
+        "On the ground (first and last 10% of each bounce): vertical scale goes between 0.52 (moment of impact) and 1.28 (moment of leaving) on a quadratic curve.",
+        "In the air: vertical scale = 1 + 0.28 × s^3, where s is the time offset from the apex (0 at the apex, 1 at take-off and touchdown), so it is stretched where it moves fast.",
+        "Horizontal scale is always 1 ÷ vertical (volume is preserved). The transform is anchored at the feet.",
+        "The shadow gets smaller and thinner with height. Short yellow lines flick out left and right at each landing (for about 18% of a bounce)."
+      ],
+      "pack": "motion",
+      "cell": 10
+    },
+    {
+      "id": "012",
+      "name": "形状变形",
+      "category": "动态图形",
+      "summary": "一种形状平滑变成另一种",
+      "aliases": [
+        "Shape morph",
+        "morph",
+        "morphing",
+        "shape",
+        "path",
+        "interpolate",
+        "transform",
+        "icon"
+      ],
+      "example": "用形状变形让圆形在 0.8 s 内变成星形，同时由蓝色变成黄色。",
+      "spec": [
+        "Four shapes, 1.175 s each: circle → square with rounded-off corners → star → heart → back to circle. Base radius 64.",
+        "Each segment holds first, then morphs to the next shape between 0.62 s and 0.04 s before its end (0.58 s).",
+        "Every outline is stored as 240 points; points with the same index are linearly interpolated. Progress uses backOut (s = 1.6), so it overshoots slightly.",
+        "Colour: blue → coral → yellow → mint, blended with quadratic ease-in-out.",
+        "During the morph the scale swells by 1 + 0.07 × sin(π × progress).",
+        "Four dots below; the dot for the current shape is larger and coloured."
+      ],
+      "pack": "motion",
+      "cell": 11
+    },
+    {
+      "id": "013",
+      "name": "液态动效",
+      "category": "动态图形",
+      "summary": "形状像液体一样流动和融合",
+      "aliases": [
+        "Liquid motion",
+        "liquid",
+        "blob",
+        "goo",
+        "gooey",
+        "metaball",
+        "fluid",
+        "organic",
+        "drip"
+      ],
+      "example": "让标志以液态动效入场，由液滴汇聚成形。",
+      "spec": [
+        "Lead circle (radius 44): moves 300 px right at 0.35–1.45 s with cubic-bezier(.7, 0, .2, 1), rising 34 px on a sine arc while moving; returns the same way at 2.7–3.8 s.",
+        "Seven circles follow the same path, each 0.065 s later, radius tapering 44→15, wobbling ±6 px vertically.",
+        "Even while it rests, three small circles (radius 15, 13, 11) move in and out between 34 and 64 px from it, twice per cycle.",
+        "Merged look: draw the circles in white → blur 9 px → threshold the alpha (soft only between 112 and 144) → fill what remains with colour.",
+        "Fill is a diagonal gradient mint → blue → violet (#7C5CFF), with a white elliptical highlight on the lead circle."
+      ],
+      "pack": "motion",
+      "cell": 12
+    },
+    {
+      "id": "014",
+      "name": "运动拖尾",
+      "category": "动态图形",
+      "summary": "运动物体身后留下逐渐淡去的轨迹",
+      "aliases": [
+        "Motion trail",
+        "trail",
+        "motion-trail",
+        "echo",
+        "afterimage",
+        "ghost",
+        "path",
+        "speed"
+      ],
+      "example": "给飞行圆球添加五层逐渐淡出的拖尾。",
+      "spec": [
+        "A ball (coral, radius 25, white centre radius 11) traces a figure eight once per 4.7 s: x = 196·sin(a), y = 62·sin(2a), with a advancing at constant speed.",
+        "15 copies, each placed 0.105 rad (about 0.079 s) further back along the path.",
+        "Copy radius goes 22→6 and opacity is 0.9 × (1 − i/15) + 0.05, so older copies are smaller and fainter.",
+        "Copy colour runs coral → yellow → blue from newest to oldest.",
+        "Draw the oldest copy first and the ball itself last."
+      ],
+      "pack": "motion",
+      "cell": 13
+    },
+    {
+      "id": "015",
+      "name": "粒子效果",
+      "category": "动态图形",
+      "summary": "大量小碎片喷出并散开",
+      "aliases": [
+        "Particles",
+        "particles",
+        "confetti",
+        "emitter",
+        "fountain",
+        "gravity",
+        "celebration",
+        "sparks"
+      ],
+      "example": "成功时从底部喷出四种颜色的粒子，在 1.5 s 内全部落下。",
+      "spec": [
+        "84 particles, emitted from the bottom centre (horizontal centre, 20 px above the bottom edge).",
+        "Initial velocity: ±190 px/s horizontally, 250–400 px/s upward. Gravity 470 px/s² (parabolic paths).",
+        "Each particle repeats with a period of 2.35 s or about 1.57 s, with a random start offset (fixed seed, so every run looks the same).",
+        "Lifetime up to 1.5 s: fade in over the first 0.06 s, fade out over the last 30%. Scale 1.15→0.7.",
+        "Shapes are circles, squares and triangles (size 5–11 px) in blue, coral, yellow and mint, spinning at up to ±4.5 rad/s."
+      ],
+      "pack": "motion",
+      "cell": 14
+    },
+    {
+      "id": "016",
+      "name": "视差",
+      "category": "动态图形",
+      "summary": "远近图层以不同速度移动形成纵深",
+      "aliases": [
+        "Parallax",
+        "parallax",
+        "depth",
+        "layers",
+        "pan",
+        "2.5d",
+        "background",
+        "landscape"
+      ],
+      "example": "把风景拆成三层，近层滚动更快，形成视差。",
+      "spec": [
+        "Camera pan: ±108 px on a sine wave, one round trip per 4.7 s.",
+        "Each layer is offset by pan × factor in the opposite direction. Factors from back to front: stars 0.05, moon 0.1, far ridge 0.28, middle ridge 0.6, front hill and trees 1.25, nearest dark shapes 2.1.",
+        "Far layers use darker colours close to the background, nearer layers brighter ones; the nearest layer is a large dark silhouette along the bottom.",
+        "Every layer is drawn at least 200 px beyond both sides of the frame so its ends never show."
+      ],
+      "pack": "motion",
+      "cell": 15
+    },
+    {
+      "id": "017",
+      "name": "遮罩转场",
+      "category": "动态图形",
+      "summary": "扩大的形状内部显现下一场景",
+      "aliases": [
+        "Mask transition",
+        "mask",
+        "transition",
+        "iris",
+        "wipe",
+        "shape-wipe",
+        "reveal",
+        "scene-change"
+      ],
+      "example": "用遮罩转场切换场景，让圆从中心在 0.7 s 内扩展开。",
+      "spec": [
+        "Day scene → night scene → day scene, 2.35 s each. The change runs at 0.45–1.6 s of each half (1.15 s), cubic ease-in-out.",
+        "The next scene is drawn on top of the current one, clipped to a shape; the shape grows until it covers the frame.",
+        "Day→night: a circle from the sun's centre (112, 104), radius 0→470.",
+        "Night→day: a five-point star from the moon's centre (427, 104), outer radius 0→1150, rotating 1.2 rad (about 69°) as it grows.",
+        "While it grows, the edge of the shape has a white outline (width 7)."
+      ],
+      "pack": "motion",
+      "cell": 16
+    },
+    {
+      "id": "018",
+      "name": "图形转场",
+      "category": "动态图形",
+      "summary": "图形覆盖画面后揭示下一场景",
+      "aliases": [
+        "Shape transition",
+        "shape-transition",
+        "transition",
+        "wipe",
+        "bands",
+        "stripes",
+        "cover",
+        "scene-change"
+      ],
+      "example": "用四条斜向色带从左侧扫入，完成图形转场。",
+      "spec": [
+        "Day → night → day, 2.35 s each. Four horizontal bands (height 52; blue, coral, yellow, mint) whose ends are slanted by 80 px.",
+        "Cover: 0.38–1.0 s. Each band's leading edge travels from one side of the frame to the other. Bands are delayed by 14% of the phase each, and each uses cubic ease-in-out over 58% of the phase.",
+        "At 1.0 s, when everything is covered, the scene underneath is swapped for the next one.",
+        "Uncover: 1.12–1.75 s. Each band's trailing edge follows with the same delays and curve, exposing the next scene.",
+        "Direction: left to right for day→night, mirrored for night→day."
+      ],
+      "pack": "motion",
+      "cell": 17
+    },
+    {
+      "id": "019",
+      "name": "液态转场",
+      "category": "动态图形",
+      "summary": "液体流入画面并替换场景",
+      "aliases": [
+        "Liquid transition",
+        "liquid",
+        "transition",
+        "drip",
+        "paint",
+        "goo",
+        "fluid",
+        "wipe",
+        "scene-change"
+      ],
+      "example": "用蓝色墨水从顶部滴落铺满画面，完成液态转场。",
+      "spec": [
+        "Day → night → day, 2.35 s each. Two liquid layers, both moving top to bottom with quadratic ease-in-out.",
+        "Layer 1 (flat colour: blue for day→night, coral for night→day): 0.35–1.5 s. Layer 2 (the next scene itself, clipped to the liquid shape): 0.7–1.8 s.",
+        "The liquid front moves from y = −110 to 130 px below the bottom edge. Its edge waves with two sine waves (amplitudes 13 px and 8 px), strongest midway.",
+        "Seven drips (30–54 px wide, round tips) hang from the front; length = base 30–110 px × (0.25 + 0.9 × wave strength), greatest midway.",
+        "Merged look: draw the shape in white → blur 7 px → threshold the alpha → fill with the colour (or the next scene)."
+      ],
+      "pack": "motion",
+      "cell": 18
+    },
+    {
+      "id": "020",
+      "name": "穿越缩放",
+      "category": "动态图形",
+      "summary": "放大并穿过物体进入下一场景",
+      "aliases": [
+        "Zoom through",
+        "zoom",
+        "zoom-through",
+        "transition",
+        "push-in",
+        "scale",
+        "tunnel",
+        "scene-change"
+      ],
+      "example": "用穿越缩放加速穿过标志中字母 O 的孔洞，进入下一场景，时长 0.6 s。",
+      "spec": [
+        "Scene X (ZOOM on yellow) → scene Y (GO! on blue) → scene X, 2.35 s each.",
+        "The current scene is scaled around the centre of an O's hole (radius 24.5). Maximum scale is 1.08× the value at which the hole covers the whole frame (about 14×).",
+        "Scale = maxScale^p (exponential zoom, which reads as constant speed).",
+        "p = 0.8 × cubic ease-in (0.25–1.2 s) + 0.2 × cubic ease-out (1.2–1.65 s): accelerate in, slow down at the end.",
+        "Inside the hole the next scene is placed at 1/maxScale. When the zoom ends it is exactly at full size, and the view switches to the next scene."
+      ],
+      "pack": "motion",
+      "cell": 19
+    },
+    {
+      "id": "021",
+      "name": "翻转",
+      "category": "动态图形",
+      "summary": "像卡片翻面一样展示另一侧",
+      "aliases": [
+        "Flip",
+        "flip",
+        "card",
+        "3d",
+        "rotate",
+        "turn",
+        "reveal",
+        "question-answer"
+      ],
+      "example": "让价格卡片在 0.5 s 内翻转，展示背面的详情。",
+      "spec": [
+        "A card (300 × 156, radius 22). Front (blue, Q) ⇄ back (yellow, A), 2.35 s each.",
+        "Rotates 180° at 0.45–1.5 s (1.05 s) with backOut (s = 1.5), going slightly past 180° and coming back.",
+        "Card width = original width × |cos θ|. The face artwork is swapped as it passes 90°.",
+        "Perspective: the card is drawn in thin vertical slices whose height varies by up to ±20% × sin θ from one side to the other (far side shorter, near side taller).",
+        "During the turn it scales up 8% and lifts 6 px on a sine curve; a dark overlay with opacity 0.34 × |sin θ| shades the face. An elliptical shadow sits on the floor."
+      ],
+      "pack": "motion",
+      "cell": 20
+    },
+    {
+      "id": "022",
+      "name": "扫光",
+      "category": "动态图形",
+      "summary": "光带扫过物体表面",
+      "aliases": [
+        "Light sweep",
+        "light-sweep",
+        "shine",
+        "sheen",
+        "glint",
+        "highlight",
+        "logo",
+        "badge",
+        "premium"
+      ],
+      "example": "标志停稳后，让一道柔和扫光从左上移到右下。",
+      "spec": [
+        "One sweep per 2.35 s. The light is drawn only inside a clip of the badge (400 × 112, radius 28, blue gradient).",
+        "Light band: a 116 px wide white gradient (opacity 0.72 in the middle, 0 at the edges) plus a thin 12 px band (opacity 0.5) 78 px away, rotated 0.42 rad (about 24°).",
+        "It moves from 130 px left of the badge to 130 px right of it (660 px) at 0.45–1.5 s, quadratic ease-in-out.",
+        "Sparkle: a four-point star at the top-right corner at 1.38–1.98 s; size 30 × sin(πq) × (1 + 0.2(1 − q)), rotating 0.9 rad.",
+        "The badge itself does not move."
+      ],
+      "pack": "motion",
+      "cell": 21
+    },
+    {
+      "id": "023",
+      "name": "故障效果",
+      "category": "动态图形",
+      "summary": "画面像发生故障一样错位和分色",
+      "aliases": [
+        "Glitch",
+        "glitch",
+        "rgb-split",
+        "chromatic-aberration",
+        "distortion",
+        "digital",
+        "error",
+        "slice"
+      ],
+      "example": "给标题添加 0.3 s 的轻微故障效果，少量分色，不要闪屏。",
+      "spec": [
+        "White bold text (104 px). It glitches twice per 4.7 s: 0.55–1.25 s (5 steps) and 2.9–3.74 s (6 steps); otherwise it is still.",
+        "Each step lasts 0.14 s and shows one fixed disturbance (stepped, not smoothly animated).",
+        "Colour split: a coral copy shifted 7–16 px left and 2 px down, a cyan (#22D3EE) copy shifted the same amount right and 2 px up, with the white text on top.",
+        "Slice shift: 2–4 horizontal strips (10–35 px tall, y 40–150) are displaced 18–64 px to the left or right.",
+        "Three small colour bars (coral, cyan, yellow; 30–120 wide × 5–12 tall) at random positions.",
+        "Background brightness never changes (no full-frame flashing). The random values use a fixed seed."
+      ],
+      "pack": "motion",
+      "cell": 22
+    },
+    {
+      "id": "024",
+      "name": "冲击震动",
+      "category": "动态图形",
+      "summary": "物体落下时带动整个画面震动",
+      "aliases": [
+        "Impact shake",
+        "shake",
+        "impact",
+        "camera-shake",
+        "slam",
+        "drop",
+        "thud",
+        "headline",
+        "emphasis"
+      ],
+      "example": "标题落地时添加冲击震动，在 0.4 s 内停稳。",
+      "spec": [
+        "One drop per 2.35 s (a yellow slab first, then a coral one). The slab is 250 × 100, radius 18.",
+        "Fall: 0.3–0.62 s from above the frame to the floor, cubic ease-in (accelerating). While falling it is stretched 1.12× vertically.",
+        "Lands at 0.62 s. The whole frame shakes for 1.1 s: x 15 px × e^(−5t) × sin(2π·5t), y 11 px × e^(−5t) × cos(2π·6.5t), rotation 0.02 rad × e^(−5t) × sin(2π·5t + 0.6).",
+        "For 0.3 s after landing the slab squashes vertically by up to 22% and recovers (it widens by the same amount; anchored at its base).",
+        "Four background blocks hop up to 24 px, 0.03–0.06 s late, over 0.5 s. Six white lines and six dust puffs spread from the floor and fade within 0.55 s.",
+        "Exit: the slab moves 300 px up at 1.85–2.2 s (backIn, s = 1.6)."
+      ],
+      "pack": "motion",
+      "cell": 23
+    },
+    {
+      "id": "025",
+      "name": "水平摇镜头",
+      "category": "运镜与转场",
+      "summary": "机位固定，向左或右转动镜头",
+      "aliases": [
+        "Pan",
+        "pan",
+        "panning",
+        "yaw",
+        "rotate",
+        "horizontal",
+        "camera move",
+        "reveal"
+      ],
+      "example": "固定机位，用 5 s 从左向右缓慢摇摄城市天际线。",
+      "spec": [
+        "Camera: position fixed (height 1.5 m); yaw only, -0.32 rad → +0.32 rad (-18° → +18°, about 37° in total)",
+        "Timing: rotate from 0.5 s to 3.4 s (2.9 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Subject: a person (about 1.8 m tall) stands still 8 m ahead and slides right-to-left in frame",
+        "No parallax: mountains, buildings, trees and the person all shift by the same angle (focal length 330 px on a 539×208 card)",
+        "Return: hold 3.4–4.2 s, then cross-fade back to the start over the last 0.5 s (one pass = 4.7 s)",
+        "Top-right readout shows the angle in whole degrees (-18° → +18°)"
+      ],
+      "pack": "camera",
+      "cell": 0
+    },
+    {
+      "id": "026",
+      "name": "垂直摇镜头",
+      "category": "运镜与转场",
+      "summary": "机位固定，向上或下转动镜头",
+      "aliases": [
+        "Tilt",
+        "tilt",
+        "tilt up",
+        "pitch",
+        "vertical",
+        "look up",
+        "camera move"
+      ],
+      "example": "从人物脚边缓慢向上摇镜头，直到塔顶。",
+      "spec": [
+        "Camera: position fixed (height 1.4 m); pitch only, -0.06 rad → +0.36 rad (-3° → +21°, about 24° in total)",
+        "Timing: 0.5 s to 3.4 s (2.9 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Subject: a person stands still 7 m ahead; a 9.5 m tower (antenna tip at 11.8 m) stands 26 m away behind",
+        "On screen everything slides downward: the person leaves at the bottom while the tower top and its antenna enter",
+        "Return: hold 3.4–4.2 s, then cross-fade back to the start over the last 0.5 s (one pass = 4.7 s)",
+        "Top-right readout shows the angle in whole degrees (-3° → +21°)"
+      ],
+      "pack": "camera",
+      "cell": 1
+    },
+    {
+      "id": "027",
+      "name": "推镜头",
+      "category": "运镜与转场",
+      "summary": "相机整体向主体靠近",
+      "aliases": [
+        "Dolly in",
+        "dolly",
+        "dolly in",
+        "push in",
+        "track in",
+        "move forward",
+        "parallax",
+        "camera move"
+      ],
+      "example": "缓慢推镜头靠近她的脸，移动相机，不要变焦。",
+      "spec": [
+        "Camera: moves forward (in depth) 0 m → 5.8 m; height 1.5 m, direction and focal length (330 px, shown as 24mm) fixed",
+        "Timing: 0.5 s to 3.4 s (2.9 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Subject: a person stands still 8 m ahead; distance goes 8 m → 2.2 m, so they appear about 3.6× larger",
+        "Parallax: a foreground post (1.5 m left, 3.6 m deep) and a rock (1.6 m right, 4.8 m deep) pass out of frame; mountains 120 m+ away stay almost the same size",
+        "Return: hold 3.4–4.2 s, then cross-fade back to the start over the last 0.5 s (one pass = 4.7 s)",
+        "The top-right readout stays at 24mm (the difference from 04 Zoom in)"
+      ],
+      "pack": "camera",
+      "cell": 2
+    },
+    {
+      "id": "028",
+      "name": "变焦推近",
+      "category": "运镜与转场",
+      "summary": "相机不动，通过镜头变焦放大",
+      "aliases": [
+        "Zoom in",
+        "zoom",
+        "zoom in",
+        "focal length",
+        "lens",
+        "magnify",
+        "telephoto",
+        "camera move"
+      ],
+      "example": "相机保持不动，用 3 s 变焦推近窗边的人物。",
+      "spec": [
+        "Camera: position and direction fixed (height 1.5 m); only the focal length changes, 330 px → 1200 px (shown as 24mm → 87mm, about 3.6×)",
+        "Exponential interpolation: f = 330 × (8/2.2)^p, where p is a cubic ease-in-out from 0.5 s to 3.4 s (2.9 s)",
+        "Subject: a person stands still 8 m ahead; the final size matches 03 Dolly in (about 3.6×)",
+        "No parallax: the foreground post and rock, the person, buildings and mountains all scale by the same ratio (overlaps do not change)",
+        "Return: hold 3.4–4.2 s, then cross-fade back to the start over the last 0.5 s (one pass = 4.7 s)",
+        "Top-right readout shows the focal length in mm (24mm → 87mm)"
+      ],
+      "pack": "camera",
+      "cell": 3
+    },
+    {
+      "id": "029",
+      "name": "跟拍",
+      "category": "运镜与转场",
+      "summary": "相机随主体一起移动",
+      "aliases": [
+        "Tracking shot",
+        "tracking",
+        "tracking shot",
+        "follow",
+        "truck",
+        "lateral",
+        "sideways",
+        "parallax",
+        "walk"
+      ],
+      "example": "从正侧方跟拍行走的人物，相机与人物同速移动。",
+      "spec": [
+        "Camera: moves right at a constant 1.7 m/s (x = -4.0 m → +4.0 m in 4.7 s); height 1.3 m, facing straight ahead; no easing",
+        "Subject: a person walks at the same x as the camera (7.5 m away) and stays in the centre of frame; legs and arms swing by sin(u×7)×0.42 rad",
+        "Parallax: posts every 1.6 m at 4 m depth sweep left fastest, then trees, then buildings (48 m away); mountains hardly move",
+        "Top-right readout shows \"→ 1.7m/s\"",
+        "Repeat: jumps back to the start every 4.7 s (posts and ground grid line up at the seam; background buildings and trees jump)"
+      ],
+      "pack": "camera",
+      "cell": 4
+    },
+    {
+      "id": "030",
+      "name": "环绕镜头",
+      "category": "运镜与转场",
+      "summary": "相机绕主体移动",
+      "aliases": [
+        "Orbit (Arc shot)",
+        "orbit",
+        "arc shot",
+        "circle",
+        "360",
+        "rotate around",
+        "revolve",
+        "camera move"
+      ],
+      "example": "用环绕镜头绕静立的人物拍摄半圈，始终保持人物居中。",
+      "spec": [
+        "Camera: travels on a circle of radius 6 m centred on the person (9 m ahead), from -0.95 rad → +0.95 rad (-54° → +54°, about 109° in total)",
+        "Direction: always faces the centre (yaw = -angle); height 1.7 m, pitch fixed at -0.07 rad (about 4° down)",
+        "Timing: 0.5 s to 3.6 s (3.1 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Subject: the person does not move; a white dot on the face shifts sideways with the angle; a dashed circle of radius 1.3 m marks the ground",
+        "Background: 12 trees evenly spaced on a 10 m radius cross behind the person as the camera moves round",
+        "Return: hold 3.6–4.2 s, then cross-fade back over the last 0.5 s; top-right readout shows the angle (-54° → +54°)"
+      ],
+      "pack": "camera",
+      "cell": 5
+    },
+    {
+      "id": "031",
+      "name": "升镜头",
+      "category": "运镜与转场",
+      "summary": "相机整体向上升起",
+      "aliases": [
+        "Crane up",
+        "crane",
+        "crane up",
+        "jib",
+        "boom up",
+        "rise",
+        "high angle",
+        "camera move"
+      ],
+      "example": "让相机从人物眼睛高度升起，直到看见整座城镇。",
+      "spec": [
+        "Camera: rises from 1.4 m to 9 m while moving forward 0 m → 1.5 m",
+        "Direction: tilts down to keep the person (8 m ahead) in frame; pitch = -0.86 × atan2(height - 1.0, 8 - forward), about -2.5° → -44°",
+        "Timing: 0.5 s to 3.4 s (2.9 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Subject: the person does not move; they get smaller as the camera rises, the ground grid fills the frame and the horizon leaves at the top",
+        "Return: hold 3.4–4.2 s, then cross-fade back to the start over the last 0.5 s (one pass = 4.7 s)",
+        "Top-right readout shows the height (↑ 1.4m → ↑ 9.0m)"
+      ],
+      "pack": "camera",
+      "cell": 6
+    },
+    {
+      "id": "032",
+      "name": "滑动变焦",
+      "category": "运镜与转场",
+      "summary": "主体大小不变，背景发生透视变化",
+      "aliases": [
+        "Dolly zoom (Vertigo)",
+        "dolly zoom",
+        "vertigo",
+        "zolly",
+        "push pull",
+        "background stretch",
+        "unease",
+        "camera move"
+      ],
+      "example": "在人物顿悟时做滑动变焦：保持脸的大小，让背景拉远。",
+      "spec": [
+        "Camera: distance d to the person (8 m ahead) widens from 3.2 m → 8 m (a 4.8 m pull-back); height 1.3 m",
+        "Focal length: f = 330 × d/8 px, i.e. 132 px → 330 px (shown as 10mm → 24mm), keeping distance ÷ focal length constant",
+        "Timing: 0.5 s to 3.4 s (2.9 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Subject: the person does not move and keeps the same height in frame; blue dashed lines 160 px wide at head (1.8 m) and feet show the size is constant",
+        "Background: buildings (48 m away) grow about 2.2× and mountains about 2.4×, closing in behind the person, while the ground in front of the person shrinks",
+        "Return: hold 3.4–4.2 s, then cross-fade back to the start over the last 0.5 s (one pass = 4.7 s)"
+      ],
+      "pack": "camera",
+      "cell": 7
+    },
+    {
+      "id": "033",
+      "name": "焦点转移",
+      "category": "运镜与转场",
+      "summary": "在近处与远处之间切换对焦",
+      "aliases": [
+        "Rack focus",
+        "rack focus",
+        "focus pull",
+        "pull focus",
+        "depth of field",
+        "blur",
+        "bokeh",
+        "foreground"
+      ],
+      "example": "用 1 s 将焦点从前景杯子转移到后方人物。",
+      "spec": [
+        "Camera: position, direction and focal length all fixed (height 1.1 m); only the blur amounts change",
+        "Blur: the foreground flower (0.75 m left, 2 m away) goes 0 px → 7 px; the person and background (person 0.9 m right, 9 m away) go 6 px → 0 px; the ground grid uses 0.6× the background blur",
+        "Timing: 1.0 s to 2.6 s (1.6 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Focus marker: blue corner brackets travel in a straight line from the flower to the person, half-width shrinking 46 px → 30 px",
+        "Subject: neither the flower nor the person moves",
+        "Return: hold 2.6–4.2 s, then cross-fade back over the last 0.5 s; top-right readout shows focus distance (◎ 2m → ◎ 9m)"
+      ],
+      "pack": "camera",
+      "cell": 8
+    },
+    {
+      "id": "034",
+      "name": "手持镜头",
+      "category": "运镜与转场",
+      "summary": "像手持相机一样轻微晃动",
+      "aliases": [
+        "Handheld",
+        "handheld",
+        "camera shake",
+        "shaky",
+        "documentary",
+        "wobble",
+        "noise",
+        "realism"
+      ],
+      "example": "从后方手持跟拍步行人物，只保留轻微晃动。",
+      "spec": [
+        "Camera: position almost fixed; yaw, pitch, roll and height each get a sum of sine waves with different periods (T = 2π×u/4.7)",
+        "Yaw (rad) = 0.016·sin(3T) + 0.008·sin(7T+1) + 0.004·sin(13T+2), at most about ±1.6°",
+        "Pitch (rad) = 0.012·sin(4T+2) + 0.006·sin(9T+0.5) + 0.003·sin(17T+1.2), at most about ±1.2°",
+        "Roll (rad) = 0.02·sin(5T+1) + 0.008·sin(11T+3), at most about ±1.6°; height = 1.5 + 0.03·sin(6T) m",
+        "Subject: a person stands still 6.5 m ahead; the shake runs continuously with no easing or hold",
+        "All multipliers are integers, so it loops seamlessly every 4.7 s; top-right readout shows \"HANDHELD\""
+      ],
+      "pack": "camera",
+      "cell": 9
+    },
+    {
+      "id": "035",
+      "name": "FPV 穿越机镜头",
+      "category": "运镜与转场",
+      "summary": "以第一人称快速穿越场景",
+      "aliases": [
+        "FPV drone shot",
+        "fpv",
+        "drone",
+        "fly through",
+        "first person",
+        "banking",
+        "speed",
+        "aerial"
+      ],
+      "example": "用 FPV 穿越机镜头从树林间穿过，飞向河面。",
+      "spec": [
+        "Camera: flies forward at a constant 14 m/s (shown as 50km/h) with no easing; pitch fixed at -0.05 rad",
+        "Weave (T = 2π×u/4.7, two swings per 4.7 s): sideways 0.6·sin(2T-0.4) m, height 1.4 + 0.5·sin(2T) m",
+        "Bank: roll 0.22·sin(2T+0.6) rad (about ±12.6°), yaw 0.05·sin(2T) rad (about ±2.9°)",
+        "No subject. Trees 4.2 m tall stand 3.6 m to each side, every 8 m, the two rows offset by 4 m, and rush toward the camera",
+        "Speed lines: 10 radial strokes about 32–76 px long (longer toward the sides) in translucent grey, flowing outward and recycling",
+        "No hold and no cross-fade reset (the tree rows shift phase when it restarts every 4.7 s)"
+      ],
+      "pack": "camera",
+      "cell": 10
+    },
+    {
+      "id": "036",
+      "name": "荷兰角",
+      "category": "运镜与转场",
+      "summary": "倾斜相机，使地平线呈对角线",
+      "aliases": [
+        "Dutch angle",
+        "dutch angle",
+        "dutch tilt",
+        "canted angle",
+        "oblique",
+        "roll",
+        "tension",
+        "tilted horizon"
+      ],
+      "example": "给这个不安的场景使用约 15° 的荷兰角。",
+      "spec": [
+        "Camera: position fixed (height 1.5 m); roll only, 0 → 0.36 rad (about 21°); the whole picture turns around the frame centre",
+        "Timing: 0.6 s to 2.2 s (1.6 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Subject: a person stands still 7 m ahead; horizon, buildings and person all tilt by the same angle",
+        "Hold: stays tilted from 2.2 s to 4.2 s (time to read the tilted composition itself)",
+        "Return: cross-fade back to the level start over the last 0.5 s (one pass = 4.7 s)",
+        "Top-right readout shows the angle (∠ 0° → ∠ 21°)"
+      ],
+      "pack": "camera",
+      "cell": 11
+    },
+    {
+      "id": "037",
+      "name": "慢动作",
+      "category": "运镜与转场",
+      "summary": "放慢动作的播放速度",
+      "aliases": [
+        "Slow motion",
+        "slow motion",
+        "slow-mo",
+        "slomo",
+        "high frame rate",
+        "120fps",
+        "time stretch",
+        "jump"
+      ],
+      "example": "用慢动作展示水花溅起的瞬间。",
+      "spec": [
+        "Camera: completely fixed (height 1.3 m); only the subject moves",
+        "Subject: a person 7 m away takes 3.8 s for one jump (0.5 s to 4.3 s); height = 4q(1-q)×1.1 m, a parabola peaking at 1.1 m, with q linear in time",
+        "Both arms are raised while airborne; the person stands still for 0.5 s before the jump and 0.4 s after landing",
+        "Leaves: 9 leaves fall from 3.4 m to the ground over 4.7 s while rotating, each offset by 1/9 of the cycle",
+        "Top-right readout shows \"120fps ×0.25\" (playback stretched 4×)",
+        "No hold and no cross-fade; loops seamlessly every 4.7 s"
+      ],
+      "pack": "camera",
+      "cell": 12
+    },
+    {
+      "id": "038",
+      "name": "速度渐变",
+      "category": "运镜与转场",
+      "summary": "在同一镜头中改变播放速度",
+      "aliases": [
+        "Speed ramp",
+        "speed ramp",
+        "time remap",
+        "ramping",
+        "fast to slow",
+        "variable speed",
+        "velocity"
+      ],
+      "example": "给跳跃加速度渐变：先正常速度，到最高点放慢，再恢复正常。",
+      "spec": [
+        "Camera: completely fixed (height 1.3 m); only the playback speed changes",
+        "Playback speed: 2.4× → 0.25×; the change takes 0.7 s (1.2 s to 1.9 s) with a quadratic ease-in-out (about cubic-bezier(0.45,0,0.55,1))",
+        "Subject: a person 8 m away runs from 6 m left toward the right; x = -6 + footage time × 2.0 m; they close in quickly during the fast section",
+        "Jump: a parabola while x is between -1.5 m and 2.5 m, peak 0.99 m, arms raised; take-off at about 0.94 s, most of the airtime plays in slow motion, landing at about 3.68 s",
+        "Graph: a 120×40 px speed curve at bottom left with a blue dot (radius 5 px) at the current time",
+        "Return: stops at 4.2 s, then cross-fades back over the last 0.5 s; top-right readout shows the rate (×2.4 → ×0.3)"
+      ],
+      "pack": "camera",
+      "cell": 13
+    },
+    {
+      "id": "039",
+      "name": "延时摄影",
+      "category": "运镜与转场",
+      "summary": "把数小时压缩成几秒",
+      "aliases": [
+        "Time-lapse",
+        "time-lapse",
+        "timelapse",
+        "fast forward",
+        "time compression",
+        "sun",
+        "clouds",
+        "day to night"
+      ],
+      "example": "用延时摄影展示城市从黄昏到夜晚亮灯的过程。",
+      "spec": [
+        "Camera: completely fixed (height 1.6 m, pitch +0.08 rad, about 5° up)",
+        "Timing: 12 hours pass in 3.7 s (0.4 s to 4.1 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Sun: travels left to right along an arc, angle a = -1.25 rad → +1.25 rad; position (sin a×120, cos a×60 - 8) m at 170 m depth",
+        "Three clouds drift 140 m to the right in total, wrapping every 80 m; seven small figures each cross an 18 m width 6 times (odd and even ones in opposite directions)",
+        "Building shadows fall away from the sun and swing as it moves (translucent grey)",
+        "Return: cross-fade back to the start over the last 0.5 s; the top-right clock runs 06:00 → 18:00 in 10-minute steps"
+      ],
+      "pack": "camera",
+      "cell": 14
+    },
+    {
+      "id": "040",
+      "name": "定格",
+      "category": "运镜与转场",
+      "summary": "让动作暂停片刻",
+      "aliases": [
+        "Freeze frame",
+        "freeze frame",
+        "still frame",
+        "pause",
+        "hold",
+        "stop motion",
+        "highlight"
+      ],
+      "example": "她转身时定格 1 s，并显示姓名。",
+      "spec": [
+        "Camera: completely fixed (height 1.3 m); what stops is the footage time",
+        "Freeze: stops at 1.6 s and resumes at 3.0 s (1.4 s); footage time runs normally for 0–1.6 s, stays at 1.6 s while frozen, then continues as u-1.4",
+        "Subject: the jump of a person 7 m away is a parabola over footage time 0.6–2.6 s, peak 1.1 m; the freeze lands exactly on the peak (50% through)",
+        "Nine falling leaves also stop during the freeze; they fall 1.5× as fast as in 13 Slow motion",
+        "Freeze markers: a 5 px blue border and a pause icon at bottom centre (two blue bars on a 68×40 px white rounded box), fading in and out over 0.12 s",
+        "Top-right readout shows \"FREEZE\" only while frozen; no cross-fade reset"
+      ],
+      "pack": "camera",
+      "cell": 15
+    },
+    {
+      "id": "041",
+      "name": "跳切",
+      "category": "运镜与转场",
+      "summary": "构图不变，跳过一段时间",
+      "aliases": [
+        "Jump cut",
+        "jump cut",
+        "cut",
+        "time skip",
+        "same framing",
+        "vlog",
+        "ellipsis",
+        "edit"
+      ],
+      "example": "用相同构图的跳切快速略过准备过程。",
+      "spec": [
+        "Join: a straight cut with no effect (0 frames); 5 shots of 0.94 s each (4.7 s ÷ 5)",
+        "Camera: identical position and framing in every shot (height 1.4 m, facing forward); the background does not move by a pixel",
+        "What changes: the person (7 m away) jumps in sideways position, -2.2 m → 1.4 m → -0.4 m → 2.4 m → 0.6 m; in shots 2 and 4 both arms are raised",
+        "Within each shot the person is still (the jump is shown only by the difference in position and pose)",
+        "Top-right clock: 10:02 → 10:17 → 10:41 → 11:06 → 11:30, showing that time was skipped in the same place",
+        "Shot 5 cuts straight back to shot 1"
+      ],
+      "pack": "camera",
+      "cell": 16
+    },
+    {
+      "id": "042",
+      "name": "匹配剪辑",
+      "category": "运镜与转场",
+      "summary": "利用相似形状或动作衔接镜头",
+      "aliases": [
+        "Match cut",
+        "match cut",
+        "graphic match",
+        "shape match",
+        "cut",
+        "transition",
+        "edit"
+      ],
+      "example": "从圆咖啡杯匹配剪辑到相同位置的满月。",
+      "spec": [
+        "Join: a straight cut at 2.3 s (0 frames); the blue circle has the same position (120 px right, 46 px above centre) and radius 17 px on both sides",
+        "Outgoing shot (0–2.3 s): fixed camera (height 1.4 m); a person (1.2 m left, 7 m away) throws a ball from 0.5 s, cubic ease-out (about cubic-bezier(0.33,1,0.68,1))",
+        "Ball: travels from above the person's head (2.3 m high) to the match point; radius 5 px → 17 px, on an arc bulging up to 30 px",
+        "Incoming shot (2.3–4.7 s): a different place (no buildings, height 1.2 m); the blue circle in the same spot is now the sun and sinks 14 px over 2.4 s",
+        "Marker: a blue dashed circle of radius 26 px fades in and out within 0.7 s either side of the cut",
+        "Top-right readout shows \"SHOT 1\" → \"SHOT 2\"; at 4.7 s it cuts straight back to SHOT 1"
+      ],
+      "pack": "camera",
+      "cell": 17
+    },
+    {
+      "id": "043",
+      "name": "甩镜头转场",
+      "category": "运镜与转场",
+      "summary": "快速横摇形成模糊并切入下一镜头",
+      "aliases": [
+        "Whip pan",
+        "whip pan",
+        "swish pan",
+        "motion blur",
+        "fast pan",
+        "transition",
+        "energy"
+      ],
+      "example": "向右甩镜头，落到下一个地点。",
+      "spec": [
+        "Join: 0.8 s, from 1.7 s to 2.5 s; in the first 0.4 s the outgoing shot swings away, in the last 0.4 s the incoming shot swings in and settles",
+        "First half: outgoing yaw 0 → +0.45 rad (about 26°), quadratic ease-in-out; second half: incoming yaw -0.45 rad → 0, same easing",
+        "Swap: a straight replacement at the 50% point, hidden because the blur is at its strongest",
+        "Blur: 9 renders spread over ±1.6 frames (at 30 fps) are averaged",
+        "Camera: height 1.4 m, fixed except during the swing; the subjects (a person in A, a car and city in B) do not move",
+        "Alternates A→B and B→A every 4.7 s (9.4 s for the round trip); top-right readout shows \"A → B\" / \"B → A\""
+      ],
+      "pack": "camera",
+      "cell": 18
+    },
+    {
+      "id": "044",
+      "name": "交叉溶解",
+      "category": "运镜与转场",
+      "summary": "两个镜头逐渐叠化切换",
+      "aliases": [
+        "Cross dissolve",
+        "cross dissolve",
+        "dissolve",
+        "crossfade",
+        "fade",
+        "opacity",
+        "blend",
+        "transition"
+      ],
+      "example": "用 1 s 的交叉溶解，从清晨房间切换到同一房间的夜景。",
+      "spec": [
+        "Join: 1.5 s, from 1.5 s to 3.0 s; the incoming picture's opacity goes 0 → 100%",
+        "Easing: quadratic ease-in-out (about cubic-bezier(0.45,0,0.55,1)); 50% at 2.25 s",
+        "The outgoing picture stays fully opaque underneath and the incoming one is drawn on top (the outgoing one is not faded out first)",
+        "Camera: fixed in both pictures (A at height 1.4 m; B at height 1.6 m, pitch +0.1 rad); the subjects do not move either",
+        "Only the outgoing picture shows for 0–1.5 s, only the incoming one for 3.0–4.7 s",
+        "Alternates A→B and B→A every 4.7 s (9.4 s for the round trip); top-right readout shows \"A → B\" / \"B → A\""
+      ],
+      "pack": "camera",
+      "cell": 19
+    },
+    {
+      "id": "045",
+      "name": "划像转场",
+      "category": "运镜与转场",
+      "summary": "移动的边界逐步替换画面",
+      "aliases": [
+        "Wipe",
+        "wipe",
+        "linear wipe",
+        "reveal",
+        "clip",
+        "edge",
+        "left to right",
+        "transition"
+      ],
+      "example": "从左向右划像，切换到下一场景。",
+      "spec": [
+        "Join: 1.1 s, from 1.7 s to 2.8 s; the edge travels from just outside the left side (x = -4 px) to just outside the right side (x = 543 px)",
+        "Easing: cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "The incoming picture shows left of the edge and the outgoing one right of it; neither picture moves (a reveal by clipping, not a push)",
+        "Edge: a 4 px blue vertical line, visible only while it is moving",
+        "Camera: fixed in both pictures; the subjects do not move either",
+        "Alternates A→B and B→A every 4.7 s (9.4 s for the round trip); top-right readout shows \"A → B\" / \"B → A\""
+      ],
+      "pack": "camera",
+      "cell": 20
+    },
+    {
+      "id": "046",
+      "name": "突切",
+      "category": "运镜与转场",
+      "summary": "突然切到反差强烈的场景",
+      "aliases": [
+        "Smash cut",
+        "smash cut",
+        "hard cut",
+        "abrupt",
+        "contrast",
+        "quiet to loud",
+        "comedy",
+        "transition"
+      ],
+      "example": "从安静的卧室突切到嘈杂的路口。",
+      "spec": [
+        "Join: a straight cut at 2.4 s (0 frames); no transition effect, the contrast does the work",
+        "Outgoing shot (0–2.4 s): fixed camera (height 1.2 m, focal length 330 px); a person lying down 7 m away, three \"z\" letters float up and fade; volume meter at about 0–1 of 8 bars (0.08±0.04)",
+        "Incoming shot (2.4–4.2 s): focal length 2.6× (858 px) for a tight framing, rolled -0.12 rad (about -7°); the person has both arms raised, with 18 radial blue lines",
+        "Shake in the incoming shot: roll ±0.03 rad (about 6 cycles per second) and yaw ±0.006 rad (about 8 per second); volume meter at 0.85±0.15, nearly full",
+        "Return: cross-fade back to the quiet shot over the last 0.5 s (quadratic ease-in-out)",
+        "Top-right readout shows \"♪ 静か\" (quiet) → \"♪ 大音量\" (loud)"
+      ],
+      "pack": "camera",
+      "cell": 21
+    },
+    {
+      "id": "047",
+      "name": "J 型剪辑",
+      "category": "运镜与转场",
+      "summary": "下一场景的声音先于画面进入",
+      "aliases": [
+        "J-cut",
+        "j-cut",
+        "j cut",
+        "split edit",
+        "audio lead",
+        "sound first",
+        "audio transition",
+        "edit"
+      ],
+      "example": "用 J 型剪辑先引入下一场景的海浪声，再切换到海面。",
+      "spec": [
+        "Join: the picture is a straight cut; only the audio switches to the next scene (B) before the picture does. The offset is 20% of the timeline (0.72 s)",
+        "Playhead: moves left to right at constant speed over 3.6 s (0.4 s to 4.0 s); audio switches at 35% (about 1.66 s), picture at 55% (about 2.38 s)",
+        "In the offset section (35–55%) the picture is still A while the audio is already B; the section is marked with a pale blue band and two blue dashed lines",
+        "Layout: the top 134 px is the picture (fixed camera, subjects do not move); the bottom 74 px holds two timeline rows, video and audio (A grey, B pale blue, waveform on the audio row)",
+        "Labels: \"映像A / 映像B\" (video A / B) at bottom left of the picture; the audio now playing at bottom right (\"♪ Aの音\" grey → \"♪ Bの音\" blue)",
+        "Return: cross-fade back to the start over the last 0.5 s (one pass = 4.7 s)"
+      ],
+      "pack": "camera",
+      "cell": 22
+    },
+    {
+      "id": "048",
+      "name": "L 型剪辑",
+      "category": "运镜与转场",
+      "summary": "前一场景的声音延续到下一画面",
+      "aliases": [
+        "L-cut",
+        "l-cut",
+        "l cut",
+        "split edit",
+        "audio lag",
+        "sound carries over",
+        "audio transition",
+        "edit"
+      ],
+      "example": "用 L 型剪辑保留她的说话声，同时切到听者的脸。",
+      "spec": [
+        "Join: the picture is a straight cut; only the audio switches to the next scene (B) after the picture does. The offset is 20% of the timeline (0.72 s)",
+        "Playhead: moves left to right at constant speed over 3.6 s (0.4 s to 4.0 s); picture switches at 55% (about 2.38 s), audio at 75% (about 3.10 s)",
+        "In the offset section (55–75%) the picture is already B while the audio is still A; the section is marked with a pale blue band and two blue dashed lines",
+        "Layout: the top 134 px is the picture (fixed camera, subjects do not move); the bottom 74 px holds two timeline rows, video and audio (A grey, B pale blue, waveform on the audio row)",
+        "Labels: \"映像A / 映像B\" (video A / B) at bottom left of the picture; the audio now playing at bottom right (\"♪ Aの音\" grey → \"♪ Bの音\" blue)",
+        "Return: cross-fade back to the start over the last 0.5 s (one pass = 4.7 s)"
+      ],
+      "pack": "camera",
+      "cell": 23
+    },
+    {
+      "id": "121",
+      "name": "预备动作",
+      "category": "动态图形",
+      "summary": "运动前先向反方向稍稍蓄力",
+      "aliases": [
+        "Anticipation",
+        "anticipation",
+        "wind-up",
+        "squash",
+        "character",
+        "jump",
+        "dash",
+        "animation-principle"
+      ],
+      "example": "按钮向右飞出前加上预备动作：先用 0.3 s 向反方向稍稍后拉并压扁，再飞出去。",
+      "spec": [
+        "One move per 2.35 s (twice per 4.7 s: left to right, then right to left). A coral rounded square (86 px, radius 24) with a white arrow. It starts 108 px from the edge; the floor is at y = 178.",
+        "Wind-up: 0.2–0.95 s, quadratic ease-in-out. It backs off 44 px against the direction of travel, squashes to 1.22 wide × 0.76 tall and leans back 0.18 rad.",
+        "Launch: 0.95–1.38 s (0.43 s). From the backed-off position to the far end with backOut (s = 1.1), a slight overshoot. In the first 60% of the move it stretches up to 1.55 wide × 0.72 tall (half sine) and leans forward 0.08 rad.",
+        "Landing: from 1.38 s, width and height wobble in opposite directions by 0.13·e^(−7t)·sin(17t).",
+        "At launch, three dust puffs at the start point (gone within the first 70% of the move) and three yellow speed lines (width 8) behind it."
+      ],
+      "pack": "motion2",
+      "cell": 0
+    },
+    {
+      "id": "122",
+      "name": "跟随动作",
+      "category": "动态图形",
+      "summary": "主体停下后，局部仍延迟摆动",
+      "aliases": [
+        "Follow-through",
+        "follow-through",
+        "overlapping-action",
+        "secondary-motion",
+        "spring",
+        "drag",
+        "character",
+        "animation-principle"
+      ],
+      "example": "角色停下后，给头发和旗子加上跟随动作：延迟约 0.5 s 继续摆动，然后停稳。",
+      "spec": [
+        "One move per 2.35 s (twice per 4.7 s, alternating direction). The body is a mint circle (radius 38). It travels 303 px at 0.15–0.85 s: it speeds up over the first 30%, then keeps a constant speed and stops abruptly at 0.85 s.",
+        "Flag (58 px white pole with a yellow flag): its angle is a spring pushed by the body's acceleration, a″ = −121a − 5.5a′ − 0.0175 × acceleration (natural frequency 11 rad/s). The cloth bends a further 0.6 × the pole angle.",
+        "Tail: seven 14 px segments (coral, width 14→6) on a slower spring, b″ = −56b − 2.8b′ − 0.012 × acceleration. Segment j uses the value from j × 22/600 s (about 0.037 s) earlier, scaled by (0.55 + 0.16j).",
+        "Both springs are precomputed in 1/600 s steps; drawing only looks values up.",
+        "In the last 0.3 s of each move the swing is faded to 0 with smoothstep, so the loop has no seam."
+      ],
+      "pack": "motion2",
+      "cell": 1
+    },
+    {
+      "id": "123",
+      "name": "弹跳",
+      "category": "动态图形",
+      "summary": "落下后越弹越低直至停下",
+      "aliases": [
+        "Bounce",
+        "bounce",
+        "drop",
+        "gravity",
+        "ball",
+        "physics",
+        "landing",
+        "easing"
+      ],
+      "example": "让球从上方落下并弹跳：弹 3 次，一次比一次低。",
+      "spec": [
+        "One drop per 2.35 s (twice per 4.7 s: yellow first, then coral). The ball has radius 26.",
+        "From 0.1 s it falls from 190 px above the floor. Gravity 1900 px/s²; each bounce keeps 56% of the speed (restitution 0.56); it stops when the rebound speed is below 35 px/s.",
+        "Sideways it moves x = 150→390 over 0.1–1.8 s with cubic ease-out.",
+        "Squash for 0.045 s either side of each impact: width 1 + sq, height 1 − sq, with sq up to 0.4 × min(1, impact speed ÷ 850). Impacts faster than 200 px/s flick short white lines left and right for 0.3 s.",
+        "The shadow gets smaller with height. Exit: 1.95–2.25 s, scale multiplied by (1 − backIn, s = 2)."
+      ],
+      "pack": "motion2",
+      "cell": 2
+    },
+    {
+      "id": "124",
+      "name": "随机抖动",
+      "category": "动态图形",
+      "summary": "小幅、随机地持续晃动",
+      "aliases": [
+        "Wiggle",
+        "wiggle",
+        "jitter",
+        "shake",
+        "random",
+        "noise",
+        "bell",
+        "notification"
+      ],
+      "example": "给通知铃铛加上轻微的随机抖动，角度最大约 10°，响铃期间一直持续。",
+      "spec": [
+        "A yellow bell pivoting at its top (centre, y = 34). It never stops moving.",
+        "Angle = the sum of four sine waves: 23, 31, 43 and 59 cycles per 4.7 s (about 4.9, 6.6, 9.1 and 12.6 Hz), amplitudes 0.085, 0.065, 0.05 and 0.035 rad (up to about 0.235 rad, 13.5°, when they line up).",
+        "Position also jitters: x with 29, 47 and 61 cycles (4, 3, 2 px), y with 37 and 53 cycles (2.4, 1.8 px).",
+        "Every frequency is a whole number of cycles per 4.7 s, so the loop joins up; the counts share no common factor, so it does not look regular.",
+        "The clapper (coral, radius 13) swings the other way (angle × 70 px). White vibration arcs (radius 86 and 110, width 6) flicker on both sides the whole time."
+      ],
+      "pack": "motion2",
+      "cell": 3
+    },
+    {
+      "id": "125",
+      "name": "脉冲动画",
+      "category": "动态图形",
+      "summary": "像心跳一样有节奏地缩放",
+      "aliases": [
+        "Pulse",
+        "pulse",
+        "heartbeat",
+        "throb",
+        "scale",
+        "loop",
+        "like",
+        "attention"
+      ],
+      "example": "给爱心图标加上脉冲动画：每 1.2 s 放大约 10% 再恢复原样。",
+      "spec": [
+        "A coral heart. One beat per 1.175 s (four per 4.7 s); each beat is a double \"lub-dub\".",
+        "Scale = 1 + 0.26·G(0.2 s, width 0.065) + 0.15·G(0.44 s, width 0.07), where G = e^(−((t − centre) ÷ width)²): a quick swell that drops straight back.",
+        "Two heart-shaped outlines spread from 0.16 s and 0.40 s: scale 1.2→2.4 over 0.8 s, cubic ease-out.",
+        "As they spread, their opacity goes 0.75→0 (the second at 60%) and the line width 8.5→1.5 px."
+      ],
+      "pack": "motion2",
+      "cell": 4
+    },
+    {
+      "id": "126",
+      "name": "运动路径",
+      "category": "动态图形",
+      "summary": "沿设定的曲线移动",
+      "aliases": [
+        "Motion path",
+        "motion-path",
+        "path",
+        "curve",
+        "trajectory",
+        "follow-path",
+        "orient-to-path",
+        "loop"
+      ],
+      "example": "让纸飞机沿这条曲线的运动路径在 4 s 内飞完，机头始终朝向前进方向。",
+      "spec": [
+        "One pass per 4.7 s, from off-screen left to off-screen right. The path is x = 270 + 112θ − 150·sinθ, y = 106 − 74·cosθ for θ = −π→π, which makes a loop at the top centre.",
+        "θ advances in proportion to time (so the speed along the path is not constant; the loop looks slower).",
+        "The plane turns to the path direction: angle = atan2(74·sinθ, 112 − 150·cosθ).",
+        "The path is shown in advance as a dotted line (width 6, dash 2/15). A mint trail of 24 segments (0.03 in θ each) follows, thinner and fainter towards the back."
+      ],
+      "pack": "motion2",
+      "cell": 5
+    },
+    {
+      "id": "127",
+      "name": "往返循环",
+      "category": "动态图形",
+      "summary": "正放后倒放，反复来回",
+      "aliases": [
+        "Ping-pong loop",
+        "ping-pong",
+        "loop",
+        "boomerang",
+        "yoyo",
+        "reverse",
+        "back-and-forth",
+        "loader"
+      ],
+      "example": "让加载圆点以往返循环左右来回移动，单程 1 s。",
+      "spec": [
+        "One round trip per 4.7 s: 2.35 s forward, then the same motion played backwards for 2.35 s (progress g goes 0→1→0, linear).",
+        "A mint rounded square (48 px, radius 13) hops from x = 92 to 447 along three arches of height 62·|sin(3πg)|, turning one full turn with g.",
+        "Four ghost copies, 0.045 s apart, opacity 0.1–0.4.",
+        "A playback bar below: blue with a play label while going forward, coral with a reverse label while going back. The progress bar and its knob follow g.",
+        "Vertical posts mark the two turning points."
+      ],
+      "pack": "motion2",
+      "cell": 6
+    },
+    {
+      "id": "128",
+      "name": "定格动画风格",
+      "category": "动态图形",
+      "summary": "抽帧后动作一顿一顿",
+      "aliases": [
+        "Stop-motion style",
+        "stop-motion",
+        "choppy",
+        "frame-rate",
+        "on-twos",
+        "jitter",
+        "handmade",
+        "claymation"
+      ],
+      "example": "把这段动作做成定格动画风格：每秒 8 帧，每帧位置都轻微错开。",
+      "spec": [
+        "38 frames per 4.7 s (about 8 per second, each held for about 0.124 s). Only those frames are drawn; nothing is drawn in between.",
+        "A yellow star (radius 38) hops from x = −44 to 583 along three arches of height 54·|sin(3πt)|, turning twice.",
+        "Each frame gets a fixed random jitter: position ±5 px across and ±4.5 px up and down, rotation ±0.15 rad, size ±5%.",
+        "The previous two frames stay faintly visible (opacity 0.28 and 0.12), like onion skin.",
+        "Black film-strip bands top and bottom (26 px each, with sprocket holes) and a frames-per-second label."
+      ],
+      "pack": "motion2",
+      "cell": 7
+    },
+    {
+      "id": "129",
+      "name": "文字乱码效果",
+      "category": "动态图形",
+      "summary": "字符随机变换后定格为正确文字",
+      "aliases": [
+        "Text scramble",
+        "text-scramble",
+        "scramble",
+        "decode",
+        "shuffle",
+        "random",
+        "text",
+        "hacker"
+      ],
+      "example": "让标题以文字乱码效果出现：随机字符变换约 1 s，再从左到右依次定格。",
+      "spec": [
+        "\"HELLO\" in the first 2.35 s, \"WORLD\" in the second. Five monospaced letters (92 px).",
+        "Unsettled slots show random characters from A–Z (without I and O), 0–9 and #$%&@?, changing 76 times per 4.7 s (about every 0.062 s), mint at 75% opacity.",
+        "Slots lock from left to right: slot i at 0.45 + 0.18i s (the last at 1.17 s). A newly locked letter is yellow for 0.22 s, then white, settling with scale 1 + 0.2·e^(−14t).",
+        "From 1.85 s the slots return to random from right to left (slot i at 1.85 + 0.08 × (4 − i) s).",
+        "A bar under each slot: blue when locked, yellow for the next one to lock, navy otherwise."
+      ],
+      "pack": "motion2",
+      "cell": 8
+    },
+    {
+      "id": "130",
+      "name": "波浪文字",
+      "category": "动态图形",
+      "summary": "文字像波浪一样依次上下起伏",
+      "aliases": [
+        "Wave text",
+        "wave-text",
+        "wave",
+        "text",
+        "letters",
+        "stagger",
+        "bounce",
+        "kinetic-type"
+      ],
+      "example": "让标志的文字做波浪文字动画：每个字依次错开，上下起伏约 20 px。",
+      "spec": [
+        "\"WAVE TEXT\" (70 px, bold, 4 px letter spacing). Three waves per 4.7 s (1.567 s per wave).",
+        "Vertical offset of letter i = −28·sin(φ − 0.62i), with φ = 2π × 3 × time ÷ 4.7 (each letter lags the previous by 0.62 rad).",
+        "Rising letters stretch vertically (1 + 0.06·s) and shift from white towards yellow (s is the sine value, clamped to 0–1 for the colour).",
+        "A shadow ellipse under each letter shrinks as the letter rises."
+      ],
+      "pack": "motion2",
+      "cell": 9
+    },
+    {
+      "id": "131",
+      "name": "路径文字",
+      "category": "动态图形",
+      "summary": "文字沿线条或曲线流动",
+      "aliases": [
+        "Text on a path",
+        "text-on-path",
+        "path-text",
+        "curved-text",
+        "text",
+        "marquee",
+        "wave",
+        "scroll"
+      ],
+      "example": "把宣传语做成路径文字，沿波浪线从左向右流动，每 5 s 走完一轮。",
+      "spec": [
+        "Path: y = 118 + 42·sin(2πx ÷ 330 + 0.6) for x = −70 to 609, shown 6 px below as a navy dashed line (14/10, width 5).",
+        "\"ALONG THE LINE • \" (42 px, bold, 2 px letter spacing) is repeated. Each character is placed at its arc-length position on the path and rotated to the path direction.",
+        "The text moves along the path by the length of one copy of the string every 4.7 s, so the loop joins up.",
+        "Letters are white; the bullet is yellow."
+      ],
+      "pack": "motion2",
+      "cell": 10
+    },
+    {
+      "id": "132",
+      "name": "可变字体动画",
+      "category": "动态图形",
+      "summary": "文字粗细平滑变化",
+      "aliases": [
+        "Variable font animation",
+        "variable-font",
+        "font-weight",
+        "typography",
+        "text",
+        "weight",
+        "kinetic-type"
+      ],
+      "example": "给标题加上可变字体动画：1 s 内从 Thin 变到 Black（字重 100 到 900）。",
+      "spec": [
+        "\"MOTION\" (112 px, system-ui, 2 px letter spacing). The weight goes back and forth twice per 4.7 s: v = 0.5 − 0.5·cos(2π × 2 × time ÷ 4.7), which eases at both ends.",
+        "Weight = round(100 + 800v), from 100 to 900, set directly as the font weight.",
+        "A slider below (x = 112→427, y = 180) labelled thin on the left and bold on the right. The knob (yellow, radius 14) follows v, with the current weight shown above it."
+      ],
+      "pack": "motion2",
+      "cell": 11
+    },
+    {
+      "id": "133",
+      "name": "文字遮罩",
+      "category": "动态图形",
+      "summary": "镂空成文字形状，透出内部画面",
+      "aliases": [
+        "Text mask",
+        "text-mask",
+        "mask",
+        "clipping-mask",
+        "knockout",
+        "text",
+        "typography",
+        "title"
+      ],
+      "example": "把“OCEAN”做成文字遮罩，里面透出海浪视频，最后 1 s 显示完整画面。",
+      "spec": [
+        "\"OCEAN\" (weight 900, system-ui, 2 px letter spacing). The font size starts at 172 px and drops 2 px at a time until the word is at most 500 px wide.",
+        "The scene inside keeps moving: coral sky, a yellow sun bobbing ±6 px, blue sea below y = 116 with four white wavy lines drifting 240 px per 4.7 s in alternating directions, a sailboat crossing once per 4.7 s, clouds drifting 60 px.",
+        "Method: draw the word on an offscreen canvas, then composite the scene onto it with source-in, so the scene remains only inside the letters. A white 4 px outline around the letters.",
+        "Outside the letters the scene shows at 12% opacity; it rises to 100% at 3.45–3.85 s and returns to 12% at 4.25–4.65 s (smoothstep)."
+      ],
+      "pack": "motion2",
+      "cell": 12
+    },
+    {
+      "id": "134",
+      "name": "中继器",
+      "category": "动态图形",
+      "summary": "复制图形并排列旋转",
+      "aliases": [
+        "Repeater",
+        "repeater",
+        "duplicate",
+        "radial",
+        "array",
+        "clone",
+        "pattern",
+        "loader"
+      ],
+      "example": "用中继器把这片花瓣复制成 12 片排成圆形，每 4 s 旋转一圈。",
+      "spec": [
+        "A rounded bar (24 × 60, radius 12) is copied up to 12 times around a circle of radius 58 at the centre, each turned to face outward (angle + 90°).",
+        "Count: 1→12 at 0.35–1.7 s and 12→1 at 3.6–4.45 s (quadratic ease-in-out). Each new copy slides from the previous slot to its own, 30° further on (cubic ease-out).",
+        "The whole ring turns once per 4.7 s. Each copy pulses in size by 1 ± 0.22 twice per 4.7 s, each one 0.55 rad later than the last, so a ripple runs round the ring.",
+        "Colours go blue, coral, yellow, mint. The original copy has a white outline. A \"×N\" counter at the top right."
+      ],
+      "pack": "motion2",
+      "cell": 13
+    },
+    {
+      "id": "135",
+      "name": "万花筒",
+      "category": "动态图形",
+      "summary": "像万花筒一样对称展开",
+      "aliases": [
+        "Kaleidoscope",
+        "kaleidoscope",
+        "symmetry",
+        "mirror",
+        "mandala",
+        "pattern",
+        "radial",
+        "psychedelic"
+      ],
+      "example": "在标志背后加入万花筒效果：8 等分镜像对称，一边缓慢旋转一边向外展开。",
+      "spec": [
+        "The area around the centre is split into eight 45° wedges; every other wedge is drawn mirrored, giving eight mirror-symmetric sections.",
+        "One wedge holds 13 shapes (circles, diamonds, triangles; four colours; fixed random seed). They travel outward from the centre to radius 300, one full radius per 4.7 s, wrapping back to the centre.",
+        "Shapes grow as they go out ((5 + 0.1r) × 0.7–1.4) and spin 0.02 rad per px. They fade in over the first 30 px and out over the last 70 px; each sways ±0.08 rad once per 4.7 s.",
+        "The whole pattern turns 90° per 4.7 s (two wedges, so the loop joins up).",
+        "A white eight-point star at the centre (radius 20 ± 4, pulsing twice per 4.7 s)."
+      ],
+      "pack": "motion2",
+      "cell": 14
+    },
+    {
+      "id": "136",
+      "name": "线条抖动",
+      "category": "动态图形",
+      "summary": "手绘线条逐帧轻微抖动",
+      "aliases": [
+        "Line boil",
+        "line-boil",
+        "boil",
+        "hand-drawn",
+        "wobble",
+        "jitter",
+        "sketch",
+        "frame-by-frame"
+      ],
+      "example": "给手绘插画加上线条抖动：每秒 10 帧，线条只偏移 2–3 px。",
+      "spec": [
+        "A still line drawing (a yellow star, a white cloud, mint sparkle strokes, a faint ground line). Line widths 6–8, round caps.",
+        "The drawing does not move. 47 times per 4.7 s (about every 0.1 s) every point is redrawn with a fixed random offset of up to ±3.5 px in x and in y.",
+        "Each line is first turned into a row of points (every 6–13 px; 96 points round the cloud) and drawn as quadratic curves through the midpoints between them, so it wobbles like hand-drawn frames.",
+        "The offsets are a hash of the frame number and the point number, so the same frame always looks the same."
+      ],
+      "pack": "motion2",
+      "cell": 15
+    },
+    {
+      "id": "137",
+      "name": "推入转场",
+      "category": "动态图形",
+      "summary": "下一画面把当前画面推出",
+      "aliases": [
+        "Push transition",
+        "push",
+        "push-transition",
+        "slide",
+        "transition",
+        "scene-change",
+        "carousel"
+      ],
+      "example": "用推入转场切到下一张幻灯片，从右侧在 0.8 s 内推入。",
+      "spec": [
+        "Sea scene → mountain scene → sea scene, 2.35 s each. The change runs at 0.45–1.6 s of each half (1.15 s), cubic ease-in-out.",
+        "The two scenes stay joined and move together by the full frame width (539 px); no overlap and no fade.",
+        "Direction: sea→mountain moves left (the next scene enters from the right); mountain→sea moves right.",
+        "A navy line (width 6) marks the seam between the two scenes."
+      ],
+      "pack": "motion2",
+      "cell": 16
+    },
+    {
+      "id": "138",
+      "name": "百叶窗转场",
+      "category": "动态图形",
+      "summary": "从细条缝隙中打开下一画面",
+      "aliases": [
+        "Blinds transition",
+        "blinds",
+        "venetian-blinds",
+        "stripes",
+        "transition",
+        "wipe",
+        "scene-change"
+      ],
+      "example": "用百叶窗转场切换场景：7 条横向条带，在 1 s 内打开。",
+      "spec": [
+        "Day scene → night scene → day, 2.35 s each. Seven horizontal strips (208 ÷ 7 ≈ 29.7 px each).",
+        "0.4–1.65 s (1.25 s), quadratic ease-in-out: in every strip at once, the next scene is revealed from the strip's top edge downward, opening from 0 to the full strip height.",
+        "The previous scene stays underneath. Neither picture moves."
+      ],
+      "pack": "motion2",
+      "cell": 17
+    },
+    {
+      "id": "139",
+      "name": "立方体转场",
+      "category": "动态图形",
+      "summary": "像立方体旋转一样切换画面",
+      "aliases": [
+        "Cube transition",
+        "cube",
+        "cube-transition",
+        "3d",
+        "rotate",
+        "transition",
+        "perspective"
+      ],
+      "example": "商品照片用立方体转场切换，向左转 90°，时长 0.8 s。",
+      "spec": [
+        "Face A (an \"A\" on coral) and face B (a \"B\" on mint), each 250 × 146. 2.35 s each, A→B→A.",
+        "Rotation 0→90° at 0.45–1.6 s (1.15 s), cubic ease-in-out, around a vertical axis through the centre of the cube (depth equal to the face width, 250).",
+        "Perspective: camera distance 820 px. Each face is drawn as 2 px vertical slices, each sized and placed by its perspective factor.",
+        "The face turning away darkens up to 55% (0.55·sinφ); the incoming face starts 55% dark and brightens (0.55·cosφ). The floor shadow follows the visible width."
+      ],
+      "pack": "motion2",
+      "cell": 18
+    },
+    {
+      "id": "140",
+      "name": "翻页转场",
+      "category": "动态图形",
+      "summary": "像纸张一样卷起，翻到下一页",
+      "aliases": [
+        "Page curl",
+        "page-curl",
+        "page-turn",
+        "page-peel",
+        "paper",
+        "book",
+        "transition"
+      ],
+      "example": "用翻页转场进入下一章，从右下角在 1.2 s 内翻起。",
+      "spec": [
+        "Page 1 (white) → page 2 (cream) → page 1, 2.35 s each. The curl starts at the bottom-right corner, 0.35–1.75 s (1.4 s), quadratic ease-in-out.",
+        "The fold line moves from the corner in the direction (−1, −0.42), normalised, by 0→600 px.",
+        "The part beyond the fold line is mirrored across it to form the flap, the back of the page (light grey or beige), with a drop shadow (blur 14, offset 4, 4) and a white 2 px edge.",
+        "The next page shows where the paper has lifted, with a 50 px shadow gradient along the fold."
+      ],
+      "pack": "motion2",
+      "cell": 19
+    },
+    {
+      "id": "141",
+      "name": "像素化转场",
+      "category": "动态图形",
+      "summary": "马赛克逐渐变粗后切换画面",
+      "aliases": [
+        "Pixelate",
+        "pixelate",
+        "mosaic",
+        "pixel",
+        "transition",
+        "retro",
+        "8-bit",
+        "scene-change"
+      ],
+      "example": "用像素化转场切换：0.6 s 内马赛克逐渐变粗，在最粗时切到下一画面。",
+      "spec": [
+        "Field scene → city scene → field, 2.35 s each. At 0.2–1.9 s (1.7 s) the block size steps up and back down through 1, 2, 3, 4, 6, 8, 11, 15, 20, 27 and 36 px (coarsest at the midpoint, 1.05 s).",
+        "The first half shows the old scene and the second half the new one; the swap happens at the coarsest step.",
+        "Method: shrink the frame to width ÷ block size with smoothing on, then scale it back up with smoothing off."
+      ],
+      "pack": "motion2",
+      "cell": 20
+    },
+    {
+      "id": "142",
+      "name": "玻璃碎裂",
+      "category": "动态图形",
+      "summary": "像玻璃一样碎裂，碎片飞散",
+      "aliases": [
+        "Shatter",
+        "shatter",
+        "glass-break",
+        "broken-glass",
+        "shards",
+        "crack",
+        "transition",
+        "impact"
+      ],
+      "example": "标题出现前，用玻璃碎裂打碎前一画面：先出现裂纹，碎片再在约 1 s 内落下。",
+      "spec": [
+        "Mountain scene → day scene → mountain, 2.35 s each. The impact point is (304, 92).",
+        "Cracks: 0.3–0.65 s. Thirteen radial lines and rings at radii of about 40, 98 and 175 (each ±15%) appear in order of distance from the centre (cubic ease-out, out to 420 px). A white flash star at the centre fades by 0.6 s.",
+        "The glass breaks at 0.82 s: 52 shards (13 × 4 rings) cut from the old scene fly outward at 220–480 px/s (vertical speed × 0.7, plus up to 120 upward), with gravity 1300 px/s², spinning ±4 rad/s and shrinking up to 35% over 1 s.",
+        "Outer rings leave later (0.035 s per ring plus up to 0.03 s at random). Each shard fades out 0.55–1.0 s after it starts moving.",
+        "Shards have a white 2.5 px edge; the next scene is underneath."
+      ],
+      "pack": "motion2",
+      "cell": 21
+    },
+    {
+      "id": "143",
+      "name": "爆炸图",
+      "category": "动态图形",
+      "summary": "零件分离，展示内部结构",
+      "aliases": [
+        "Exploded view",
+        "exploded-view",
+        "explode",
+        "layers",
+        "isometric",
+        "product",
+        "breakdown",
+        "explainer"
+      ],
+      "example": "展示产品的爆炸图：4 个零件在 1 s 内分开，并分别标上名称。",
+      "spec": [
+        "An isometric phone built from four layers (back cover, battery, circuit board, screen). Each layer is a flat rounded plate drawn on axes scaled by 0.85 and tilted 30° either way, with 6 px thick sides.",
+        "Separate: from 0.45 s, 0.75 s per layer, each layer 0.08 s after the one below, backOut (s = 1.3). Height of layer i (0–3 from the bottom) = 7i + 30i × progress, so the back cover stays put.",
+        "While apart, each layer bobs ±3 px twice per 4.7 s, dotted guide lines join the corners, and name labels with leader lines appear on the right (in Japanese in the demo).",
+        "Reassemble: from 3.25 s, 0.7 s per layer, starting with the top layer, 0.07 s apart, cubic ease-in-out."
+      ],
+      "pack": "motion2",
+      "cell": 22
+    },
+    {
+      "id": "144",
+      "name": "分屏",
+      "category": "动态图形",
+      "summary": "分割画面，同时展示多个场景",
+      "aliases": [
+        "Split screen",
+        "split-screen",
+        "multi-screen",
+        "panels",
+        "side-by-side",
+        "comparison",
+        "layout"
+      ],
+      "example": "用分屏同时展示三个场景：从一个画面分成两个，再分成三个，每步 0.5 s。",
+      "spec": [
+        "A full-frame sea scene splits into two panels at 0.45–0.95 s (divider 539→269.5), then into three at 1.4–1.9 s (dividers at 1/3 and 2/3), and merges back into one at 3.75–4.4 s, all cubic ease-in-out.",
+        "The three scenes (sea, city, field) are each centred in and clipped to their own panel and keep moving inside it (waves and a sailboat, city windows switching 8 times per 4.7 s, a windmill turning twice per 4.7 s).",
+        "White dividers (width 6) between the panels."
+      ],
+      "pack": "motion2",
+      "cell": 23
+    },
+    {
+      "id": "169",
+      "name": "垂直升降镜头",
+      "category": "运镜与转场",
+      "summary": "相机整体垂直上下平移",
+      "aliases": [
+        "Pedestal",
+        "pedestal",
+        "boom",
+        "vertical move",
+        "rise",
+        "elevate",
+        "camera move",
+        "no tilt"
+      ],
+      "example": "保持镜头朝向不变，用垂直升降镜头从眼睛高度直线上升到约 3 m。",
+      "spec": [
+        "Camera: moves straight up from 1.0 m to 3.2 m; direction (yaw, pitch) and focal length (330 px) stay fixed",
+        "Timing: 0.5 s to 3.4 s (2.9 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Subject: a person stands still 7 m ahead and slides down the frame, leaving at the bottom feet first; a tower stands 3.5 m right, 26 m away",
+        "Because the pitch does not change, the horizon stays at the centre of the frame (#031 Crane up tilts down while rising)",
+        "Return: hold 3.4–4.2 s, then cross-fade back to the start over the last 0.5 s (one pass = 4.7 s)",
+        "Top-right readout shows the height (↕ 1.0m → ↕ 3.2m)"
+      ],
+      "pack": "camera2",
+      "cell": 0
+    },
+    {
+      "id": "170",
+      "name": "横滚镜头",
+      "category": "运镜与转场",
+      "summary": "相机绕镜头光轴旋转一整圈",
+      "aliases": [
+        "Barrel roll",
+        "barrel roll",
+        "roll",
+        "360",
+        "rotate",
+        "spin",
+        "aerial",
+        "camera move"
+      ],
+      "example": "让无人机画面用横滚镜头旋转一整圈，用时 3 s。",
+      "spec": [
+        "Camera: position fixed (height 1.5 m); roll only, 0 → 2π rad (360°); the whole picture turns around the frame centre",
+        "Timing: 0.5 s to 3.6 s (3.1 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Subject: a person stands still 7 m ahead; horizon, buildings and person all turn by the same angle, and white shows in the corners while turning",
+        "Hold: 3.6–4.2 s. After a full turn the picture equals the start, so the final 0.5 s cross-fade is invisible (one pass = 4.7 s)",
+        "Top-right readout shows the angle (↻ 0° → ↻ 360°)"
+      ],
+      "pack": "camera2",
+      "cell": 1
+    },
+    {
+      "id": "171",
+      "name": "移动延时",
+      "category": "运镜与转场",
+      "summary": "相机边移动边拍的延时摄影",
+      "aliases": [
+        "Hyperlapse",
+        "hyperlapse",
+        "time-lapse",
+        "moving timelapse",
+        "fast forward",
+        "travel",
+        "city",
+        "camera move"
+      ],
+      "example": "拍一段从车站走到公园的移动延时：云朵流动，行人像快进一样移动。",
+      "spec": [
+        "Camera: moves forward 0 m → 22 m (height 1.6 m, pitch +0.05 rad) while the sun, clouds and figures fast-forward through 12 hours (#039 Time-lapse keeps the camera still)",
+        "Timing: 0.4 s to 4.1 s (3.7 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Street: 12 buildings at x = ±7.5 m (5–55 m deep, 8–16 m tall) approach the camera and leave the frame",
+        "Sun: travels left to right along an arc, angle -1.25 rad → +1.25 rad, always 170 m ahead of the camera; three clouds drift 140 m right in total, wrapping every 80 m; six small figures cross an 11 m wide street",
+        "Building shadows fall away from the sun and swing as it moves (translucent grey); the mountains move with the camera so they keep their size",
+        "Return: cross-fade back to the start over the last 0.5 s; top-right readout shows the clock and the distance travelled (06:00 · 0m → 18:00 · 22m)"
+      ],
+      "pack": "camera2",
+      "cell": 2
+    },
+    {
+      "id": "172",
+      "name": "长镜头",
+      "category": "运镜与转场",
+      "summary": "不切换，一个镜头连续拍到底",
+      "aliases": [
+        "Long take",
+        "long take",
+        "oner",
+        "one shot",
+        "continuous",
+        "no cut",
+        "sequence shot",
+        "camera move"
+      ],
+      "example": "从准备到出发用一个长镜头拍完，跟着人物，中间不切镜头。",
+      "spec": [
+        "Join: none; for 4.2 s one shot keeps following the person (#041 Jump cut splits it into five)",
+        "Subject: a person walks at constant speed from front left (x = -3.4 m, 5.2 m deep) to back right (x = 2.8 m, 9.6 m deep); legs and arms swing by sin(t×7)×0.42 rad",
+        "Camera: trucks right 0 m → 1.4 m after the person while turning, yaw = atan2(person x - camera x, depth)×0.8; height 1.4 m",
+        "Bottom strip: one blue bar labelled \"1ショット・カットなし\" (one shot, no cut) with a playhead, showing there is no break",
+        "Return: stops at 4.2 s, then cross-fades back to the start over the last 0.5 s (one pass = 4.7 s)",
+        "Top-right readout shows the elapsed time (NO CUT 0.0s → 4.2s)"
+      ],
+      "pack": "camera2",
+      "cell": 3
+    },
+    {
+      "id": "173",
+      "name": "斯坦尼康",
+      "category": "运镜与转场",
+      "summary": "消除抖动，平稳流畅地移动",
+      "aliases": [
+        "Steadicam",
+        "steadicam",
+        "gimbal",
+        "stabilizer",
+        "smooth",
+        "glide",
+        "floating",
+        "camera move"
+      ],
+      "example": "用斯坦尼康跟拍走廊里人物的背后，平稳无晃动。",
+      "spec": [
+        "Camera: moves forward at a constant 1.7 m/s (8 m per 4.7 s); height 1.45 m, pitch -0.02 rad; no easing",
+        "Sway: height ±3.5 cm (2 cycles per 4.7 s), sideways ±5 cm (1 cycle), yaw ±0.012 rad, roll ±0.006 rad, all sine waves with integer periods, slow and wide (#034 Handheld is fast and irregular)",
+        "Subject: a person walks 5 m ahead of the camera at the same speed; legs and arms take 5 strides per 4.7 s",
+        "Trees: 3.6 m tall at x = -5 m and 3.2 m tall at x = +5 m, every 8 m (the two rows offset by 4 m); the mountains and sun move with the camera",
+        "8 m is a multiple of the grid (2 m) and tree (8 m) spacing, so it loops seamlessly every 4.7 s; top-right readout shows \"STEADICAM\""
+      ],
+      "pack": "camera2",
+      "cell": 4
+    },
+    {
+      "id": "174",
+      "name": "背后跟拍",
+      "category": "运镜与转场",
+      "summary": "跟在主体身后移动",
+      "aliases": [
+        "Follow shot",
+        "follow shot",
+        "follow",
+        "behind",
+        "third person",
+        "trail",
+        "walk",
+        "camera move"
+      ],
+      "example": "用背后跟拍拍摄在林中行走的人物背影，稍微落后一点跟着。",
+      "spec": [
+        "Path: the person walks the curve x = 1.8·sin(2.2s), depth z = 4 + 9s (s from 0 to 1), from 4 m to 13 m away",
+        "Camera: follows on the same curve at s-0.4 (about 3.6–3.9 m behind) and always faces the person, yaw = atan2(person x - camera x, person z - camera z); height 1.5 m",
+        "Timing: 0.3 s to 4.2 s (3.9 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1)); legs and arms swing by sin(s×30)×0.42 rad",
+        "The person stays near the centre of frame, seen from behind; posts and a rock beside the path sweep past in the foreground (#029 Tracking shot runs alongside)",
+        "Return: cross-fade back to the start over the last 0.5 s (one pass = 4.7 s); top-right readout shows the distance to the person (FOLLOW 3.6–3.9m)"
+      ],
+      "pack": "camera2",
+      "cell": 5
+    },
+    {
+      "id": "175",
+      "name": "固定镜头",
+      "category": "运镜与转场",
+      "summary": "相机固定不动，只有主体移动",
+      "aliases": [
+        "Locked-off shot",
+        "locked-off",
+        "locked off",
+        "static shot",
+        "fixed camera",
+        "tripod",
+        "static",
+        "still camera"
+      ],
+      "example": "用固定镜头拍十字路口：相机固定在三脚架上，只有行人和车辆经过。",
+      "spec": [
+        "Camera: completely fixed (height 1.4 m, facing forward, focal length 330 px); only the subjects move",
+        "Subject: a person crosses left to right at constant speed 6.5 m ahead (x = -6.2 m → +6.2 m in 4.7 s); legs and arms swing by sin(u×7)×0.42 rad",
+        "A grey car crosses right to left 15 m away (x = +16 m → -16 m in 4.7 s)",
+        "Both start and end outside the frame, so it loops seamlessly every 4.7 s",
+        "A grey tripod mark at bottom left; top-right readout shows \"LOCKED\" (#040 Freeze frame stops the footage time; here time runs and only the camera is still)"
+      ],
+      "pack": "camera2",
+      "cell": 6
+    },
+    {
+      "id": "176",
+      "name": "穿越镜头",
+      "category": "运镜与转场",
+      "summary": "穿过窗户或门进入下一个空间",
+      "aliases": [
+        "Fly-through",
+        "fly-through",
+        "flythrough",
+        "through the window",
+        "pass through",
+        "drone",
+        "interior",
+        "camera move"
+      ],
+      "example": "用穿越镜头从窗户进入房间，一直推到桌子上方。",
+      "spec": [
+        "Camera: moves forward 0 m → 12.5 m (height 1.3 m, direction fixed); a wall with a window stands 8 m ahead and the camera passes through it",
+        "Timing: 0.5 s to 3.6 s (3.1 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Wall: a pale grey plane 80 m wide and 14 m tall with a window 2.4 m wide and 2.2 m tall (sill at 0.15 m); through it a person (0.3 m right, 14.5 m away), trees, buildings and mountains are visible",
+        "Pass-through: the wall stops being drawn 0.25 m in front of the camera; by then the window edge is outside the frame (half-width about 1580 px), so it vanishes unseen",
+        "After the pass the place beyond fills the frame and the camera closes to 2 m from the person (#035 FPV drone shot keeps weaving between trees)",
+        "Return: hold 3.6–4.2 s, then cross-fade back to the start over the last 0.5 s; top-right readout shows the distance to the window (\"窓まで 8.0m\" → \"通過\", passed)"
+      ],
+      "pack": "camera2",
+      "cell": 7
+    },
+    {
+      "id": "177",
+      "name": "低角度镜头",
+      "category": "运镜与转场",
+      "summary": "从低处向上拍",
+      "aliases": [
+        "Low angle",
+        "low angle",
+        "worm's eye",
+        "look up",
+        "from below",
+        "power",
+        "heroic",
+        "angle"
+      ],
+      "example": "英雄登场用低角度镜头，从贴近地面处向上拍。",
+      "spec": [
+        "Camera: lowers from 1.5 m to 0.35 m while the pitch goes 0 → +0.32 rad (about 18° up); no movement forward or back",
+        "Timing: 0.6 s to 2.2 s (1.6 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Subject: a person stands still 4.5 m ahead; an 11.8 m tower stands 3 m left, 22 m away. As the camera looks up, person and tower stretch upward and the horizon drops",
+        "Hold: stays at the low angle from 2.2 s to 4.2 s (time to read the composition itself)",
+        "Return: cross-fade back to eye level over the last 0.5 s (one pass = 4.7 s); top-right readout shows angle and height (↗ 0° · 1.5m → ↗ 18° · 0.4m)"
+      ],
+      "pack": "camera2",
+      "cell": 8
+    },
+    {
+      "id": "178",
+      "name": "高角度镜头",
+      "category": "运镜与转场",
+      "summary": "从高处向下拍",
+      "aliases": [
+        "High angle",
+        "high angle",
+        "look down",
+        "from above",
+        "overhead",
+        "vulnerable",
+        "angle"
+      ],
+      "example": "迷路孩子的场景用高角度镜头，从稍高处向下拍，让孩子显得很小。",
+      "spec": [
+        "Camera: rises from 1.5 m to 4.5 m while the pitch goes 0 → -0.5 rad (about 29° down); no movement forward or back",
+        "Timing: 0.6 s to 2.2 s (1.6 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Subject: a person stands still 5 m ahead; as the camera looks down they shrink and move lower, the ground grid fills most of the frame and the horizon leaves at the top",
+        "Hold: stays at the high angle from 2.2 s to 4.2 s (#031 Crane up keeps rising to 9 m; 13 Bird's-eye view looks straight down at 90°)",
+        "Return: cross-fade back to eye level over the last 0.5 s (one pass = 4.7 s); top-right readout shows angle and height (↘ 0° · 1.5m → ↘ 29° · 4.5m)"
+      ],
+      "pack": "camera2",
+      "cell": 9
+    },
+    {
+      "id": "179",
+      "name": "POV 镜头",
+      "category": "运镜与转场",
+      "summary": "以角色的视线观看",
+      "aliases": [
+        "POV shot",
+        "pov",
+        "point of view",
+        "first person",
+        "subjective",
+        "eyes",
+        "hands",
+        "angle"
+      ],
+      "example": "开门走进房间的那一刻用 POV 镜头，以角色本人的视线拍摄。",
+      "spec": [
+        "Camera: walks forward 0 m → 3.2 m at the character's eye height of 1.6 m; 0.3 s to 4.2 s (3.9 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Walking sway: height ±3 cm (6 cycles per 4.7 s), roll ±0.008 rad (3 cycles), added only while moving",
+        "Hands: blue rounded hands at both bottom corners (±178 px from centre), a white phone in the right one; they move with the body, so the hands stay still and the world sways",
+        "The other person, 7.5 m ahead, raises both arms and waves only from 1.6 s to 3.4 s (looking at you); two posts in the foreground",
+        "Return: cross-fade back to the start over the last 0.5 s (one pass = 4.7 s); top-right readout shows \"POV\""
+      ],
+      "pack": "camera2",
+      "cell": 10
+    },
+    {
+      "id": "180",
+      "name": "过肩镜头",
+      "category": "运镜与转场",
+      "summary": "越过一人的肩膀拍另一人",
+      "aliases": [
+        "Over-the-shoulder",
+        "over-the-shoulder",
+        "ots",
+        "dialogue",
+        "conversation",
+        "shoulder",
+        "two shot",
+        "angle"
+      ],
+      "example": "对话用过肩镜头拍摄，前景的肩膀稍微虚化。",
+      "spec": [
+        "Framing: the back of the foreground person's head and shoulder (grey, 0.62 m left, 1.15 m away) fill the left edge; the other person (blue, 0.32 m right, 3.1 m away) is seen past the shoulder",
+        "Focus: the foreground shoulder is blurred 2.6 px, the other person is sharp and framed from the chest up",
+        "Camera: height 1.55 m, yaw +0.05 rad; pushes in slowly 0 m → 0.35 m from 0.5 s to 3.4 s (cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1)))",
+        "The other person sways arms and legs by 0.35·sin(u×5) rad, as if talking",
+        "Return: hold 3.4–4.2 s, then cross-fade back to the start over the last 0.5 s; top-right readout shows \"OTS\""
+      ],
+      "pack": "camera2",
+      "cell": 11
+    },
+    {
+      "id": "181",
+      "name": "鸟瞰镜头",
+      "category": "运镜与转场",
+      "summary": "从正上方垂直向下拍",
+      "aliases": [
+        "Bird's-eye view",
+        "bird's-eye",
+        "birds eye",
+        "top-down",
+        "overhead",
+        "straight down",
+        "aerial",
+        "angle"
+      ],
+      "example": "从正上方用鸟瞰镜头拍十字路口，人和车以从上往下看的样子移动。",
+      "spec": [
+        "Camera: points straight down (pitch -π/2 = -90°) and rises from 9 m to 15 m, directly above the origin",
+        "Timing: 0.5 s to 3.4 s (2.9 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Ground: a 2 m grid and a 3.2 m wide road (white dashed centre line) drawn as one plane; six trees as circles and three buildings as squares, seen from above",
+        "Subjects: a person (head circle and shoulder ellipse) walks 5.2 m up the right side of the road, a car (1.8×4 m) drives 6.8 m down the left side; both move in proportion to the progress p",
+        "As the camera rises everything shrinks and more of the ground comes into view (10 High angle looks down at a slant)",
+        "Return: hold 3.4–4.2 s, then cross-fade back to the start over the last 0.5 s; top-right readout shows \"↓ 90° · 9m → 15m\""
+      ],
+      "pack": "camera2",
+      "cell": 12
+    },
+    {
+      "id": "182",
+      "name": "深焦镜头",
+      "category": "运镜与转场",
+      "summary": "从近处到远处全部清晰",
+      "aliases": [
+        "Deep focus",
+        "deep focus",
+        "depth of field",
+        "everything sharp",
+        "f/16",
+        "small aperture",
+        "pan focus",
+        "focus"
+      ],
+      "example": "前景的杯子和后方的人物都要清晰，所以用深焦镜头。",
+      "spec": [
+        "Camera: position, direction and focal length all fixed (height 1.1 m); only the blur amounts change",
+        "Blur: the foreground flower (0.75 m left, 2 m away) goes 5 px → 0 px and the background (person 0.9 m right, 9 m away; buildings; mountains) goes 6 px → 0 px, both sharpening together (#033 Rack focus blurs one side)",
+        "Timing: 0.5 s to 3.4 s (2.9 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Focus markers: blue corner brackets on both the flower (half-width 46 px) and the person (half-width 30 px), opacity 0 → 1 as focus arrives",
+        "Return: hold 3.4–4.2 s, then cross-fade back to the start over the last 0.5 s; top-right readout shows the aperture (f/1.8 → f/16)"
+      ],
+      "pack": "camera2",
+      "cell": 13
+    },
+    {
+      "id": "183",
+      "name": "定场镜头",
+      "category": "运镜与转场",
+      "summary": "开场交代地点的远景",
+      "aliases": [
+        "Establishing shot",
+        "establishing shot",
+        "wide shot",
+        "location",
+        "opening",
+        "scene setting",
+        "aerial",
+        "framing"
+      ],
+      "example": "开头先用能看到整个城镇的定场镜头，同时显示地名。",
+      "spec": [
+        "Camera: wide lens (focal length 220 px, shown as 16mm), height 4.5 m, pitch -0.06 rad; pushes in slowly from -5 m to -2.5 m",
+        "Timing: 0.3 s to 4.2 s (3.9 s), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1))",
+        "Scene: eight city buildings 30 m away, a tower 16 m right and 36 m away, three clouds and mountains; a small person 1 m left, 12 m away gives the scale",
+        "Location caption: from 0.9 s to 1.3 s a white card reading \"EXT. CITY – DAY\" (158×30 px, blue bar on its left) fades in at bottom left while moving up 8 px, then stays",
+        "Return: cross-fade back to the start over the last 0.5 s (one pass = 4.7 s); top-right readout shows \"16mm WIDE\""
+      ],
+      "pack": "camera2",
+      "cell": 14
+    },
+    {
+      "id": "184",
+      "name": "大特写",
+      "category": "运镜与转场",
+      "summary": "只放大眼睛或指尖等局部",
+      "aliases": [
+        "Extreme close-up",
+        "extreme close-up",
+        "ecu",
+        "close-up",
+        "eye",
+        "detail",
+        "macro",
+        "framing"
+      ],
+      "example": "眼泪落下的瞬间，用只拍眼睛的大特写。",
+      "spec": [
+        "Camera: the face's right eye (0.06 m left of centre, 1.66 m high) 1.3 m ahead is placed at the centre of frame; the camera does not move",
+        "Focal length: 610 px → 2040 px (shown as 44mm → 148mm, about 3.3×); f = 610 × (2040/610)^p, where p is a cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1)) from 0.5 s to 3.4 s",
+        "Face: a blue head (radius 0.16 m) with white eyes (ellipses 0.045×0.028 m), dark pupils (radius 0.016 m), highlights and white brows; it starts as a close-up of the whole face (head about 150 px across) and ends with only the eyes filling the frame",
+        "Background: trees and buildings blurred 3 px, leaving the frame as the lens closes in",
+        "Return: hold 3.4–4.2 s, then cross-fade back to the start over the last 0.5 s; top-right readout shows the focal length and the abbreviation (44mm CU → 148mm ECU)"
+      ],
+      "pack": "camera2",
+      "cell": 15
+    },
+    {
+      "id": "185",
+      "name": "插入镜头",
+      "category": "运镜与转场",
+      "summary": "插入同一场景中的细节",
+      "aliases": [
+        "Insert shot",
+        "insert shot",
+        "insert",
+        "detail",
+        "close-up",
+        "cut in",
+        "prop",
+        "edit"
+      ],
+      "example": "转动钥匙时用插入镜头拍手部特写，然后马上切回。",
+      "spec": [
+        "Join: two straight cuts (0 frames); to the detail at 1.6 s and back to the scene at 2.9 s (the detail lasts 1.3 s)",
+        "Main shot (A): fixed camera (height 1.4 m); a person stands 0.6 m left, 6 m away, with a watch (dark dot) on the wrist; a post 2.2 m right, 4 m away",
+        "Detail (INSERT): a big close-up of the wrist from the same scene; a blue sleeve (600×92 px, rotated -0.35 rad) on pale blue, a white dial (radius 58 px), dark hands and a blue second hand that makes one turn in 1.3 s",
+        "Bottom strip: three sections A (grey), detail (blue), A (grey) with a playhead; what is cut in belongs to the same scene (21 Cutaway shows a different subject)",
+        "Top-right readout shows \"SHOT A\" → \"INSERT\" → \"SHOT A\"; at 4.7 s it cuts straight back to the start"
+      ],
+      "pack": "camera2",
+      "cell": 16
+    },
+    {
+      "id": "186",
+      "name": "变形剪切",
+      "category": "运镜与转场",
+      "summary": "平滑衔接相同构图的两段画面",
+      "aliases": [
+        "Morph cut",
+        "morph cut",
+        "morph",
+        "seamless",
+        "interview",
+        "talking head",
+        "edit",
+        "transition"
+      ],
+      "example": "用变形剪切去掉采访中说错重来的部分，让接缝看不出来。",
+      "spec": [
+        "Take 1 (0–2.0 s): fixed camera (height 1.45 m); the person stands 0.4 m left, 3.3 m away, arms and legs at -0.45 rad. Take 2 (from 2.45 s): 0.35 m right, +0.55 rad. Both sway slightly by 0.12·sin(t×3) rad",
+        "Morph (2.0–2.45 s, 0.45 s): the position is interpolated with a quadratic ease-in-out (about cubic-bezier(0.45,0,0.55,1)), and the two poses are drawn at the same interpolated position and cross-faded",
+        "Only during the morph a blur of sin(q×π)×2.2 px is applied to the whole frame to soften the join (#041 Jump cut lets the position jump)",
+        "Bottom strip: take 1 (grey), morph (blue, narrow), take 2 (grey) with a playhead",
+        "Return: cross-fade back to the start of take 1 over the last 0.5 s; top-right readout shows \"TAKE 1\" → \"MORPH\" → \"TAKE 2\""
+      ],
+      "pack": "camera2",
+      "cell": 17
+    },
+    {
+      "id": "187",
+      "name": "淡出到黑场",
+      "category": "运镜与转场",
+      "summary": "画面逐渐变暗直至全黑",
+      "aliases": [
+        "Fade to black",
+        "fade to black",
+        "fade out",
+        "fade in",
+        "black",
+        "ending",
+        "transition"
+      ],
+      "example": "场景结尾用 1 s 淡出到黑场，下一场景再从黑场中淡入。",
+      "spec": [
+        "Fade out: from 1.4 s to 2.6 s (1.2 s) black (rgb(20,20,24)) is laid over the outgoing picture with opacity 0 → 100%, quadratic ease-in-out (about cubic-bezier(0.45,0,0.55,1))",
+        "Black: fully black from 2.6 s to 3.1 s; at 2.9 s the incoming picture is swapped in unseen, with a straight cut",
+        "Fade in: from 3.1 s to 4.3 s (1.2 s) the black goes from 100% → 0 with the same easing",
+        "Camera: fixed in both pictures (A at height 1.4 m; B at height 1.6 m, pitch +0.1 rad); the subjects do not move either",
+        "Alternates A→B and B→A every 4.7 s (9.4 s for the round trip); top-right readout shows \"FADE OUT\" / \"FADE IN\"; the viewfinder marks stay over the black"
+      ],
+      "pack": "camera2",
+      "cell": 18
+    },
+    {
+      "id": "188",
+      "name": "圈出",
+      "category": "运镜与转场",
+      "summary": "圆形窗口收拢，画面变黑",
+      "aliases": [
+        "Iris out",
+        "iris out",
+        "iris in",
+        "iris wipe",
+        "circle",
+        "old film",
+        "cartoon",
+        "transition"
+      ],
+      "example": "以老电影的风格，用圈出收拢到主角身上，结束这个场景。",
+      "spec": [
+        "Iris out: from 1.3 s to 2.7 s (1.4 s) the circular window shrinks from radius 340 px to 0 (quadratic ease-in-out (about cubic-bezier(0.45,0,0.55,1))); outside the circle is black (#141418)",
+        "Centre of the window: the current picture's subject, the person's head in A (0.6 m left, 1.63 m high, 7 m away) or the car in B (1.2 m right, 0.9 m high, 9 m away), projected to the screen",
+        "Black: 2.7–3.1 s; at 2.9 s the incoming picture is swapped in with a straight cut",
+        "Iris in: from 3.1 s to 4.4 s (1.3 s) the circle grows from 0 to 340 px around the incoming picture's subject",
+        "Edge: while the radius is at least 1 px, a 2 px blue circle marks the rim; the camera is fixed in both pictures",
+        "Alternates A→B and B→A every 4.7 s (9.4 s for the round trip); top-right readout shows \"IRIS OUT\" / \"IRIS IN\""
+      ],
+      "pack": "camera2",
+      "cell": 19
+    },
+    {
+      "id": "189",
+      "name": "切出镜头",
+      "category": "运镜与转场",
+      "summary": "切到其他对象后再切回",
+      "aliases": [
+        "Cutaway",
+        "cutaway",
+        "reaction shot",
+        "b-roll",
+        "cut away",
+        "audience",
+        "edit"
+      ],
+      "example": "讲话途中用切出镜头切到观众的反应，再切回来。",
+      "spec": [
+        "Join: two straight cuts (0 frames); to the other subject at 1.7 s and back to the scene at 3.0 s (1.3 s away)",
+        "Main shot (A): fixed camera (height 1.4 m); a person 5.5 m away talks, swinging arms and legs by 0.45·sin(u×6) rad, with a grey lectern 0.9 m to the right",
+        "Other subject (CUTAWAY): the listening audience, five people 3.1–4.6 m away in blue and pale blue with both arms up, bouncing by |sin(t×9+i)|×5 cm; no background (a different place)",
+        "Bottom strip: A (grey), other subject (blue), A (grey) with a playhead (17 Insert shot shows a detail of the same scene)",
+        "Top-right readout shows \"SHOT A\" → \"CUTAWAY\" → \"SHOT A\"; at 4.7 s it cuts straight back to the start"
+      ],
+      "pack": "camera2",
+      "cell": 20
+    },
+    {
+      "id": "190",
+      "name": "交叉剪辑",
+      "category": "运镜与转场",
+      "summary": "交替呈现同时发生的两个场景",
+      "aliases": [
+        "Cross-cutting",
+        "cross-cutting",
+        "parallel editing",
+        "intercut",
+        "parallel action",
+        "chase",
+        "edit"
+      ],
+      "example": "用交叉剪辑交替展示逃跑的人和追赶的车，镜头逐渐变短。",
+      "spec": [
+        "Two scenes share one clock: A is a runner (0.3 m left, depth 15 m → 4.5 m, legs at u×12), B is a car in the city (1 m right, depth 17 m → 4.5 m); both close in over 4.7 s",
+        "Cuts: straight cuts between A and B at 0 / 1.1 / 2.0 / 2.7 / 3.3 / 3.8 / 4.2 / 4.5 s; the shots shorten 1.1 → 0.9 → 0.7 → 0.6 → 0.5 → 0.4 → 0.3 s to raise the tension",
+        "Each scene keeps running while the other is on screen (when it comes back, its subject has moved on)",
+        "Camera: A at height 1.3 m, fixed, with four posts in the foreground; B at height 1.6 m, pitch +0.06 rad, fixed, with the city and sun",
+        "Bottom strip: eight alternating sections A (grey) and B (blue) with a playhead; the last 0.3 s cross-fades back to the start of A",
+        "Top-right readout shows \"SCENE A\" / \"SCENE B\""
+      ],
+      "pack": "camera2",
+      "cell": 21
+    },
+    {
+      "id": "191",
+      "name": "子弹时间",
+      "category": "运镜与转场",
+      "summary": "时间静止，相机绕主体旋转",
+      "aliases": [
+        "Bullet time",
+        "bullet time",
+        "time slice",
+        "frozen moment",
+        "orbit",
+        "slow motion",
+        "matrix",
+        "effect"
+      ],
+      "example": "在跳跃最高点用子弹时间：让时间停住，只有相机绕着人物转。",
+      "spec": [
+        "Footage time: runs normally for 0–1.5 s, at 0.1× from 1.5 s to 3.3 s (only 0.18 s of footage in 1.8 s), then normally again (footage time = u - 1.62)",
+        "Subject: a person 9 m away jumps on a parabola over footage time 0.6–2.6 s (peak 1.1 m, arms raised); during the slow part they seem to hang near the top (45–54% through); nine leaves fall on the same footage time",
+        "Camera: during the slow part it travels on a circle of radius 6 m around the person from -0.6 rad to +0.6 rad (about 69°), cubic ease-in-out (about cubic-bezier(0.65,0,0.35,1)); always facing the centre, height 1.6 m, pitch -0.05 rad",
+        "The next 4.7 s pass circles the other way (+0.6 → -0.6 rad), so the 9.4 s loop is seamless (#030 Orbit does not stop time)",
+        "A dashed circle of radius 1.3 m on the ground and a ring of trees at 10 m; top-right readout shows \"×1.0\" → \"BULLET ×0.1\" → \"×1.0\""
+      ],
+      "pack": "camera2",
+      "cell": 22
+    },
+    {
+      "id": "192",
+      "name": "蒙太奇",
+      "category": "运镜与转场",
+      "summary": "用一连串短镜头压缩时间",
+      "aliases": [
+        "Montage",
+        "montage",
+        "sequence",
+        "training montage",
+        "time passing",
+        "quick cuts",
+        "edit"
+      ],
+      "example": "用蒙太奇表现一个月的练习，连续排列约 7 个短镜头。",
+      "spec": [
+        "Seven shots joined by straight cuts (0 frames): 0.75 / 0.7 / 0.65 / 0.65 / 0.65 / 0.6 / 0.7 s (4.7 s in all); the date at top right jumps DAY 1 → 3 → 7 → 12 → 20 → 28 → 30",
+        "Shots: 1 tracking a runner (legs at t×14), 2 a jump in the park, 3 sunrise (sun rising from 4 m to 12 m), 4 arms raised from a low angle, 5 walking in the city (focal length 420 px), 6 circling the person from -0.3 to +0.3 rad, 7 arms raised in front of a flag",
+        "Thirty days of training condensed into 4.7 s; camera position, height and focal length change with every shot (#041 Jump cut keeps the same framing)",
+        "Bottom strip: seven sections, only the current shot in blue; the last 0.3 s cross-fades back to the start of the first shot"
+      ],
+      "pack": "camera2",
+      "cell": 23
+    }
+  ]
+}

@@ -44,6 +44,7 @@ export const ViewPages: readonly ViewPage[] = [
   { id: 'compose', label: '合成', target: 'scene?' },
   { id: 'final', slot: true, label: '成片', target: '' },
   { id: 'style', label: '风格', target: '' },
+  { id: 'motion', label: '动效', target: '' },
   { id: 'voice', label: '音色', target: '' },
   { id: 'review', label: '复查', target: '' },
   { id: 'memory', label: '记忆', target: '' },

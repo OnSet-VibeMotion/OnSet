@@ -101,6 +101,7 @@ echo 'onset-result {"url": "https://example.com/v/1"}'
 | `flow` | 实验性 | 整套流程（新片型）：`{"name": "快剪", "stations": ["intake", "render", "my-publisher"], "first_page": "script", "prompt": "prompts/flow.md"}`。`stations` 写自带站的 id 与本插件的 id；`first_page` 取自带流程的第一步页（口播是 `script`，卡点是 `beat`）或本插件页面的 id；它是新建项目时的一个做法（首页的「做法」里标明来自你的插件），用它新建的项目流程记成 `x:<插件 id>`，制作路线、顶栏第一步与各阶段说明都是它的，公共约定照旧；已有项目不能中途换流程，插件去掉后用它新建的项目开不了工。`stations` 里写的自带站会带上自带站的那几段说明（引用了你的流程里没有的阶段时写成那一步的标题），你的 `prompt` 只需要写你自己那几站 |
 | `provides` | 实验性 | 提供配音或字幕对齐：`{"tts": {"name": "某配音", "op": "speak", "timestamps": "none"}, "align": {"name": "某对齐", "op": "align"}}`。`timestamps` 取 `none`、`sentence`、`word`；项目把 `TTS_PROVIDER` / `ALIGN_PROVIDER` 设成 `x:<插件 id>` 时 AI 用这条操作 |
 | `renderer_skills` | 实验性 | 给渲染镜头的技能：`[{"name": "caption-kit", "dir": "skills/caption-kit", "summary": "字幕卡片的写法", "scenes": "opt-in"}]`。`dir` 下必须有 `SKILL.md`；`scenes: all` 每个镜头都带（装上后所有项目里已渲染的镜头要重渲染），`opt-in`（缺省）只给 `scene.json` 的 `plugin_skills` 点名的镜头 |
+| `motion_effects` | 实验性 | 项目「动效」页里的参考条目。每项必填 `id`、`name`、`category`、`summary`，可选 `aliases`、`example`、`spec`、`example_url`、`renderer_skill`。见「动效目录」 |
 | `film_styles` | 实验性 | 整片风格库：`{"name": "我的风格库", "dir": "styles"}`。`dir` 下每个子目录是一种风格（`STYLE.md` 必需，`SKILL.md`、`poster.jpg`、`style.json` 可选），装进项目时整个子目录拷进去。加 `"only_referenced": true`（实验性）时只带用到的：风格目录与风格库根目录下的 `assets/` 只带风格的脚本与页面里出现过名字的文件（模型目录按目录名认），`node_modules/three/` 只带脚本 import 到的模块；风格库根的这两个目录给几种风格共用 |
 | `skins` | 实验性 | 界面皮肤：`["skins/mint.json"]`，每个文件一套皮肤，格式见下面「界面皮肤」。换的是这台电脑上客户端与桌宠的样子，用户在设置页「外观」里选 |
 
@@ -200,6 +201,29 @@ echo 'onset-result {"url": "https://example.com/v/1"}'
 | `label` | 必填，页面名字 |
 | `entry` | 必填，插件目录里的 `.html` 文件；页面只能加载 entry 所在目录里的文件 |
 | `reads` | 页面能读的项目文件：以 `/` 结尾是目录前缀，否则是整条路径 |
+
+### 动效目录（`motion_effects`）
+
+安装插件后，片场在项目顶栏的「动效」页展示这些条目。每项的 `id` 在同一插件里唯一，可用小写字母、数字和连字符，以字母或数字开头，最长 64 个字符。片场引用时用 `插件 id:动效 id`，同一个编号可以出现在不同插件里。`motion-prompt` 是内置目录使用的来源标识。
+
+```json
+{
+  "motion_effects": [
+    {
+      "id": "005",
+      "name": "遮罩显现",
+      "category": "标题入场",
+      "summary": "文字从裁切区下方升入。",
+      "aliases": ["mask reveal"],
+      "example": "标题从下方出现，约 0.6 秒。",
+      "spec": ["移动标题位置，保持裁切区不动。"],
+      "renderer_skill": "title-moves"
+    }
+  ]
+}
+```
+
+`aliases` 和 `spec` 是字符串数组。`example` 用于展示参考用法，`spec` 会跟随引用写进对话草稿。`example_url` 接受没有凭据的 HTTPS 地址，由用户点开。`renderer_skill` 引用本站已登记的 `renderer_skills[].name`，选用时草稿会提示编排工具给目标镜头挂上这条技能。动效页通过现有对话入口交给编排工具修改镜头。
 
 ### 设置（`settings`）
 
