@@ -44,6 +44,13 @@ const stageTitles = (text: string) => [...text.matchAll(/^## (第[一二三四�
 const sha = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 
 describe('new projects compose the prompt of their own flow', () => {
+  it('requires self-review of the current candidate before user review in every flow', () => {
+    for (const { text, name: label } of everyBuiltinPrompt()) {
+      expect(text, label).toContain('先做完当前候选的内部验收，再请用户观看、试听或确认');
+      expect(text, label).toContain('候选已交给用户后才发现漏检的问题');
+    }
+  });
+
   it('keeps scene implementation with the renderer in every flow', () => {
     for (const { text, name: label } of everyBuiltinPrompt()) {
       expect(text, label).toContain('## 镜头实现的归属');
