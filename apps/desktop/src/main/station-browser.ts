@@ -20,9 +20,24 @@ type EmbeddedPage = {
   key: string; window: BrowserWindow; view: WebContentsView; bar: WebContentsView; mask: WebContentsView;
   contents: Electron.WebContents; controls: Electron.WebContents; cover: Electron.WebContents; coverReady: Promise<unknown>;
   closed: boolean; hidden: boolean; closing: boolean; origins: string[]; owner?: symbol; title: string; hint: string; busy?: Busy;
+  /** 片场自己发起的关闭或跳转（插件的 Page.navigate、关窗口、退出）：网页的「确定要离开吗」直接放行。 */
+  leaving: number;
+  /** 销毁进行中（等网页走完关闭流程）：重复调用拿同一个。 */
+  destroying?: Promise<void>;
+  session: Electron.Session;
 };
 const defaultHint = '请检查账号与内容，发布由你确认';
 const barHeight = 56;
+/**
+ * 关页面前给网页多久走完关闭流程（beforeunload、pagehide）。抖音的编辑页只在 beforeunload 里把编辑中的内容存成草稿
+ * （publish_form_cache，2026-11-19 在它的前端代码里核对过），直接销毁页面草稿就没了。
+ */
+export const UnloadGraceMs = 3000;
+/**
+ * 插件页面开着时多久把它们的本地存储与 cookie 写一次盘。Chromium 平时把网页写的本地存储攒在内存里，过一阵才落盘
+ * （实测抖音草稿在磁盘上能落后几分钟），客户端崩溃或被强退就丢了。网页往浏览器里写了什么，几秒内就该在磁盘上。
+ */
+export const FlushIntervalMs = 5000;
 
 function allowed(url: string, origins: string[]): boolean {
   try { const parsed = new URL(url); return !parsed.username && !parsed.password && origins.includes(parsed.origin); } catch { return false; }
@@ -64,7 +79,27 @@ async function readBody(request: IncomingMessage): Promise<Record<string, unknow
 export class StationBrowsers {
   private pages = new Map<string, EmbeddedPage>();
   private leases = new Set<() => void>();
+  private flushTimer?: NodeJS.Timeout;
   constructor(private getWindow: () => BrowserWindow | undefined, private background = false) {}
+
+  /** 有插件页面开着就定时落盘，没有了就停。 */
+  private scheduleFlush(): void {
+    if (this.pages.size === 0) {
+      if (this.flushTimer) { clearInterval(this.flushTimer); this.flushTimer = undefined; }
+      return;
+    }
+    if (this.flushTimer) return;
+    this.flushTimer = setInterval(() => this.flush(), FlushIntervalMs);
+    this.flushTimer.unref?.();
+  }
+  /** 把开着的插件页面的本地存储与 cookie 写到磁盘。 */
+  flush(): void {
+    const sessions = new Set([...this.pages.values()].filter(page => !page.closed).map(page => page.session));
+    for (const session of sessions) {
+      session.flushStorageData();
+      void session.cookies.flushStore().catch(() => {});
+    }
+  }
 
   /** 「返回片场」：收起这个窗口（页面与上传都保留），回到主窗口。 */
   private hide(page: EmbeddedPage): void {
@@ -120,7 +155,7 @@ export class StationBrowsers {
       existing.hint = hint;
       existing.window.setTitle(existing.title);
       await this.toolbar(existing);
-      if (!allowed(existing.contents.getURL(), request.origins)) await existing.contents.loadURL(url);
+      if (!allowed(existing.contents.getURL(), request.origins)) await this.navigate(existing, url);
       this.show(existing);
       return { page: existing, reused: true };
     }
@@ -149,9 +184,10 @@ export class StationBrowsers {
     // 关闭后 View.webContents 可能变成 undefined；必须保存 WebContents 的稳定引用。
     const page: EmbeddedPage = {
       key, window, view, bar, mask, contents: view.webContents, controls: bar.webContents, cover: mask.webContents, coverReady: Promise.resolve(),
-      closed: false, hidden: false, closing: false, origins: request.origins, owner, title, hint,
+      closed: false, hidden: false, closing: false, origins: request.origins, owner, title, hint, leaving: 0, session: storage,
     };
     this.pages.set(key, page);
+    this.scheduleFlush();
     window.contentView.addChildView(view);
     window.contentView.addChildView(bar);
     window.contentView.addChildView(mask);
@@ -178,8 +214,19 @@ export class StationBrowsers {
         window.close();
       });
     });
-    window.once('closed', () => this.destroyPage(page));
-    page.contents.once('destroyed', () => this.destroyPage(page));
+    window.once('closed', () => void this.destroyPage(page));
+    page.contents.once('destroyed', () => void this.destroyPage(page));
+    // 网页在 beforeunload 里要求确认离开（抖音存完草稿会这样做）。片场自己关、自己跳转时直接放行；
+    // 用户在网页里点的跳转照网页的意思问一句（后台运行的测试里不弹框，直接放行）。不处理的话 Electron 默认当作取消，
+    // 插件把编辑页跳回上传页、关窗口都会被拦住。
+    page.contents.on('will-prevent-unload', event => {
+      if (page.leaving > 0 || page.closed || this.background) { event.preventDefault(); return; }
+      const choice = dialog.showMessageBoxSync(page.window, {
+        type: 'question', buttons: ['离开', '留下'], defaultId: 1, cancelId: 1,
+        message: '离开这个页面吗？', detail: '网页提示离开后，正在编辑的内容可能不会保存。',
+      });
+      if (choice === 0) event.preventDefault();
+    });
     const guardNavigation = (event: Electron.Event, url: string) => {
       if (!allowed(url, page.origins)) event.preventDefault();
     };
@@ -271,7 +318,7 @@ export class StationBrowsers {
           const p = params as Record<string, unknown>;
           if (body.method === 'Page.navigate') {
             if (typeof p.url !== 'string' || !allowed(p.url, current.origins)) throw Error('网页地址不在插件声明的来源里');
-            await wc.loadURL(p.url); result = {};
+            await this.navigate(current, p.url); result = {};
           } else {
             if (!methods.has(body.method)) throw Error('不支持这个网页控制命令');
             if (!allowed(wc.getURL(), current.origins)) throw Error('页面已经离开插件声明的来源');
@@ -319,34 +366,56 @@ export class StationBrowsers {
     this.leases.add(dispose);
     return { connection: { endpoint: `http://127.0.0.1:${address.port}/`, token }, dispose };
   }
+  /** 片场替插件跳转：网页的「确定要离开吗」放行（不然编辑页上的跳转会被拦下）。 */
+  private async navigate(page: EmbeddedPage, url: string): Promise<void> {
+    page.leaving++;
+    try { await page.contents.loadURL(url); } finally { page.leaving--; }
+  }
   private closePage(page: EmbeddedPage): void {
     const wc = page.contents;
     if (!wc.isDestroyed() && wc.debugger.isAttached()) wc.debugger.detach();
-    this.destroyPage(page);
+    void this.destroyPage(page);
     const main = this.getWindow();
     if (main && !main.isDestroyed() && !this.background) main.focus();
   }
-  private destroyPage(page: EmbeddedPage): void {
-    // before-quit、窗口 closed、页面自己被关都会走这里；销毁只能发生一次。
-    if (page.closed) return;
+  /**
+   * 关掉一个页面：先让网页正常走完关闭流程（beforeunload / pagehide，最多 UnloadGraceMs），网站借此保存草稿；
+   * 再把本地存储与 cookie 写到磁盘，最后销毁窗口。before-quit、窗口 closed、页面自己被关都会走这里，只做一次。
+   */
+  private destroyPage(page: EmbeddedPage): Promise<void> {
+    if (page.destroying) return page.destroying;
     page.closed = true;
     page.busy = undefined;
+    page.leaving++;
     if (this.pages.get(page.key) === page) this.pages.delete(page.key);
-    for (const wc of [page.contents, page.controls, page.cover]) if (!wc.isDestroyed()) {
-      wc.stop();
-      // 登录状态马上落盘：cookie 平时攒一阵才写，客户端被强退时刚登录的就丢了。
-      if (wc === page.contents) {
-        wc.session.flushStorageData();
-        void wc.session.cookies.flushStore().catch(() => {});
+    this.scheduleFlush();
+    page.destroying = (async () => {
+      for (const wc of [page.controls, page.cover]) if (!wc.isDestroyed()) wc.close({ waitForBeforeUnload: false });
+      const wc = page.contents;
+      if (!wc.isDestroyed()) {
+        if (wc.debugger.isAttached()) { try { wc.debugger.detach(); } catch { /* 已经断开 */ } }
+        await new Promise<void>(resolve => {
+          const timer = setTimeout(() => { if (!wc.isDestroyed()) wc.close({ waitForBeforeUnload: false }); resolve(); }, UnloadGraceMs);
+          wc.once('destroyed', () => { clearTimeout(timer); resolve(); });
+          wc.close({ waitForBeforeUnload: true });
+        });
       }
-      wc.close({ waitForBeforeUnload: false });
-    }
-    if (!page.window.isDestroyed()) page.window.destroy();
+      // 网页刚在关闭时写的本地存储（草稿）与登录 cookie 马上落盘：平时攒一阵才写，客户端退出时就丢了。
+      page.session.flushStorageData();
+      await page.session.cookies.flushStore().catch(() => {});
+      if (!page.window.isDestroyed()) page.window.destroy();
+    })();
+    return page.destroying;
   }
-  close(): void {
+  /** 还开着的插件页面数：退出前要不要等它们走完关闭流程。 */
+  get openPages(): number { return this.pages.size; }
+  /** 退出时：撤销所有连接，关掉所有页面并等它们存完（每个最多 UnloadGraceMs）。 */
+  close(): Promise<void> {
     for (const dispose of this.leases) dispose();
-    for (const page of [...this.pages.values()]) this.destroyPage(page);
+    const closing = [...this.pages.values()].map(page => this.destroyPage(page));
     this.pages.clear();
+    this.scheduleFlush();
+    return Promise.all(closing).then(() => {});
   }
 }
 

@@ -53,7 +53,14 @@ if (devtoolsPort !== null) {
 }
 
 const stationBrowsers = new StationBrowsers(mainWindow, background);
-app.on('before-quit', () => stationBrowsers.close());
+// 退出前先关插件页面并等它们走完关闭流程（网站在 beforeunload 里存草稿，最多等 UnloadGraceMs），再真正退出。
+let pluginPagesClosed = false;
+app.on('before-quit', event => {
+  if (pluginPagesClosed) return;
+  if (stationBrowsers.openPages === 0) { pluginPagesClosed = true; void stationBrowsers.close(); return; }
+  event.preventDefault();
+  void stationBrowsers.close().finally(() => { pluginPagesClosed = true; app.quit(); });
+});
 
 const rendererDir = path.join(__dirname, 'renderer');
 let backend: Server | null = null;

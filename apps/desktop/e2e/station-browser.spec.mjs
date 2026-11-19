@@ -3,7 +3,11 @@ import path from 'node:path';
 import { test, expect, openProject, api, installPlugin } from './fixtures.mjs';
 
 const origin = 'https://creator.example.test';
-const html = '<input type="file"><input id="title"><input id="typed"><button onclick="window.published=true">发布</button><button id="poke" style="position:fixed;left:10px;top:200px;width:80px;height:30px" onclick="window.poked=event.isTrusted">点我</button>';
+// 像抖音的编辑页：只在 beforeunload 里把编辑中的内容存成草稿，存完还要求确认离开。
+const draftOnUnload = `<script>addEventListener('beforeunload', e => { localStorage.setItem('draft', 'saved-before-unload'); e.preventDefault(); e.returnValue = ''; })</script>`
+  // 也像编辑中的网站那样随时往本地存储写：片场开着页面时几秒内就要落到磁盘上，不等关窗口。
+  + `<script>localStorage.setItem('live', 'written-while-open')</script>`;
+const html = draftOnUnload + '<input type="file"><input id="title"><input id="typed"><button onclick="window.published=true">发布</button><button id="poke" style="position:fixed;left:10px;top:200px;width:80px;height:30px" onclick="window.poked=event.isTrusted">点我</button>';
 
 for (const shutdown of ['application', 'window', 'page-before-window']) test(`plugin fills an embedded page, leaves manual publishing available, isolates accounts and revokes automation (${shutdown})`, async ({ electronApp, page, project, sandbox }) => {
   const errors = [];
@@ -131,6 +135,35 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   const both = await Promise.all(['account-a', 'account-b'].map(account => api(page, '/api/stations/embedded-helper/ops/prepare', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ params: { account } }) })));
   expect(both.map(r => r.status)).toEqual([202, 202]);
   for (const r of both) await expect.poll(async () => (await api(page, '/api/tasks/' + r.body.task_id)).body.status).toBe('succeeded');
+  // 像用户那样点关闭按钮关掉 account-b 的窗口：网页走完关闭流程，它在 beforeunload 里存的草稿马上落盘。
+  // 以前片场用 close({ waitForBeforeUnload: false }) 直接销毁页面，抖音这类只在 beforeunload 里存草稿的网站，关了窗口草稿就没了。
+  // 换回旧写法时这里（关窗口、退出两种）会失败：草稿没存下来。
+  const drafted = account => {
+    const dir = path.join(sessionDir(account), 'Local Storage', 'leveldb');
+    return fs.existsSync(dir) && fs.readdirSync(dir).filter(f => /\.(log|ldb)$/.test(f)).some(f => fs.readFileSync(path.join(dir, f)).includes('saved-before-unload'));
+  };
+  // 页面开着、什么都没关：网页写进本地存储的东西几秒内已经在磁盘上（片场每 FlushIntervalMs 落一次盘）。
+  // 测试里 Chromium 自己也会很快写盘，这条拦不住去掉定时落盘；它保证的是开着页面时磁盘上一直是新的。
+  const onDisk = (account, text) => {
+    const dir = path.join(sessionDir(account), 'Local Storage', 'leveldb');
+    return fs.existsSync(dir) && fs.readdirSync(dir).filter(f => /\.(log|ldb)$/.test(f)).some(f => fs.readFileSync(path.join(dir, f)).includes(text));
+  };
+  for (const account of ['account-a', 'account-b']) await expect.poll(() => onDisk(account, 'written-while-open'), { timeout: 15_000 }).toBe(true);
+  if (shutdown !== 'page-before-window') {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows().find(w => w.getTitle() === '内嵌上传 · account-b');
+      if (!window) throw Error('找不到 account-b 的窗口');
+      window.close();
+    });
+    await expect.poll(() => drafted('account-b'), { timeout: 10_000 }).toBe(true);
+  }
+  if (shutdown === 'application') {
+    // 由片场自己退出（不经 Playwright 关页面，那样会替网页走关闭流程，测不出问题）：退出前等插件页面存完草稿。
+    const exited = new Promise(resolve => electronApp.process().once('exit', resolve));
+    await electronApp.evaluate(({ app }) => { setImmediate(() => app.quit()); });
+    await exited;
+    expect(drafted('account-a')).toBe(true);
+  }
   if (shutdown !== 'application') {
     await electronApp.evaluate(async ({ BrowserWindow, webContents }, destroyPagesFirst) => {
       const window = BrowserWindow.getAllWindows().find(w => w.isResizable() && w.webContents.getURL().startsWith('onset://app'));
@@ -156,4 +189,5 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
     expect(fs.existsSync(cookies), account).toBe(true);
     expect(fs.readFileSync(cookies).includes(account), account).toBe(true);
   }
+
 });
