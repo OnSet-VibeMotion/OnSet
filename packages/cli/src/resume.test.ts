@@ -156,6 +156,49 @@ describe.skipIf(skip)('resume an interrupted render', () => {
     expect(attempt(scene).outcome).toBe('succeeded');
   });
 
+  it.each(['within', 'outside', 'cancel'])('publishes or restores a local repair (%s)', async mode => {
+    const { root, scene } = handoffProject();
+    const video = path.join(scene, 'out.mp4');
+    const record = path.join(scene, '.onset-render.json');
+    const entry = path.join(scene, 'index.html');
+    const baseline = await render();
+    expect(baseline.code, baseline.out).toBe(0);
+    const before = fs.readFileSync(video);
+    const oldRecord = fs.readFileSync(record);
+    const source = '<html><!-- original composition --></html>';
+    fs.writeFileSync(entry, source);
+    const changedFrame = mode === 'outside' ? 3 : 8;
+    const candidate = path.join(root, 'candidate.mp4');
+    makeClip(candidate, 'testsrc=size=320x240:rate=30:duration=1', '-vf',
+      `drawbox=x=24:y=18:w=90:h=66:c=white:t=fill:enable='eq(n,${changedFrame})'`);
+    setenv(hyperframes.CLIDirEnv, fakeRenderCLI(candidate));
+    fs.writeFileSync('request.json', JSON.stringify({
+      issues: [{ start_frame: 7, end_frame_exclusive: 10, problem: '标题遮挡', acceptance: '标题完整可读' }],
+    }));
+    const out = new Buffer(), controller = new AbortController();
+    const code = await run(['scene', 'repair', 'scenes/scene-001', '--request', 'request.json'], {
+      write(message) {
+        out.write(message);
+        if (mode === 'cancel' && message === '代码已完成，开始渲染\n') controller.abort();
+      },
+    }, out, controller.signal);
+    if (mode === 'within') {
+      expect(code, out.text).toBe(0);
+      expect(fs.readFileSync(video)).toEqual(fs.readFileSync(candidate));
+      expect(fs.readFileSync(entry, 'utf8')).not.toEqual(source);
+      expect(fs.readFileSync(path.join(scene, 'prompt-2.txt'), 'utf8')).toContain('标题完整可读');
+      expect(attempt(scene).outcome).toBe('succeeded');
+    } else {
+      expect(code, out.text).not.toBe(0);
+      expect(fs.readFileSync(video)).toEqual(before);
+      expect(fs.readFileSync(record)).toEqual(oldRecord);
+      expect(fs.readFileSync(entry, 'utf8')).toEqual(source);
+      expect(attempt(scene).outcome).toBe(mode === 'cancel' ? 'interrupted' : 'verification_failed');
+      expect(attempt(scene).local_repair).toBe(true);
+      if (mode === 'outside') expect(out.text).toContain('第 3 帧不在返修区间');
+    }
+  });
+
   it('returns a direct-render error to the same session for one repair', async () => {
     const { scene } = handoffProject();
     fs.writeFileSync(path.join(scene, 'fail-direct'), '');

@@ -447,11 +447,14 @@ export function filmStyleSection(skillsDir: string, hasLook: boolean): string {
  * 为所有已注册技能生成提示词片段。
  * 已解析的技能注入本机路径；未解析的退回按技能名引用。
  */
-export function skillPromptSections(resolved: Record<string, string>, skills: readonly SkillDescriptor[], engineRenders = false): string {
+export function skillPromptSections(resolved: Record<string, string>, skills: readonly SkillDescriptor[], engineRenders = false, directorBrief = false): string {
   let sections = '';
   for (const desc of skills) {
-    if (engineRenders && desc.name === HyperFramesCLISkillName) sections += hyperFramesCLIPrompt(resolved[desc.name] ?? '', true);
-    else if (desc.promptSection) sections += desc.promptSection(resolved[desc.name] ?? '');
+    const dir = resolved[desc.name] ?? '';
+    if (directorBrief && desc.name === HyperFramesSkillName) sections += hyperFramesPrompt(dir, true);
+    else if (directorBrief && desc.name === SceneKitSkillName) sections += sceneKitPrompt(dir, true);
+    else if (engineRenders && desc.name === HyperFramesCLISkillName) sections += hyperFramesCLIPrompt(dir, true);
+    else if (desc.promptSection) sections += desc.promptSection(dir);
   }
   return sections;
 }
@@ -487,11 +490,20 @@ export function hyperFramesCommand(): string {
  * 这里只要求每个动效说得出理由。环境动效不设项目级配额；只要不影响阅读和确定性，
  * 就由镜头根据文案决定，语义元素仍应在到位后稳定停留。
  */
-export function hyperFramesPrompt(skillsDir: string): string {
+export function hyperFramesPrompt(skillsDir: string, brief = false): string {
   const files = `SKILL.md 的 Contract 一节、${hyperFramesFormatFile} 与 ${hyperFramesMotionFile}；用到 GSAP 以外的运行时（Lottie、Three.js、canvas 等）再读 ${hyperFramesRuntimesFile}`;
   let reference = `- 写组合 HTML 前必须读 ${HyperFramesSkillName} 技能的 ${files}。\n` + '  （本机未能定位该技能目录，请使用你自身的技能加载机制载入。）\n';
   if (skillsDir !== '') {
     reference = `- 写组合 HTML 前必须读 ${HyperFramesSkillName} 技能的 ${files}。本机该技能目录为：\n    ${path.join(skillsDir, HyperFramesSkillName)}\n`;
+  }
+  if (brief) {
+    const location = skillsDir ? `（${path.join(skillsDir, HyperFramesSkillName)}）` : '';
+    reference =
+      '- 开工摘要已经给出常用组合契约，可以直接实现；遇到特殊运行时、子组合、媒体或格式疑问，再查技能 ' +
+      `${HyperFramesSkillName}${location} 的 Contract、${hyperFramesFormatFile}、${hyperFramesMotionFile} 或 ${hyperFramesRuntimesFile} 对应小节。\n` +
+      '- index.html 的根节点声明 data-composition-id、data-start="0"、data-duration、data-width、data-height，画幅和时长取上文。整个合成建好后注册一个暂停的 GSAP 时间线到 window.__timelines[合成 ID]。\n' +
+      '- 有时间区间的元素用 class="clip"、data-start 和 data-duration（本组合内的秒），显示区间左闭右开。data-track-index 只表示轨道，靠 z-index 排叠层。入退场动画放在 clip 的子层，不对 clip 本身 tween display、visibility 或 autoAlpha。\n' +
+      '- 动画任意帧都可独立求值，GSAP 控制的元素避免同时写 CSS transform，画面状态以帧号驱动。媒体只用相对资产路径，视频静音并由时间线控制。背景用全幅子层。\n';
   }
   return (
     '组合规范（强制）：\n' +
@@ -578,18 +590,22 @@ export function hyperFramesCLIPrompt(skillsDir: string, engineRenders = false): 
  * 复制义务与 character-rig 同理：渲染只服务镜头目录内的文件，引用镜头目录外的
  * 路径会静默 404，字幕不出现、渲染照样退出码 0。
  */
-export function sceneKitPrompt(skillsDir: string): string {
+export function sceneKitPrompt(skillsDir: string, brief = false): string {
   let reference =
     `- 加载 ${SceneKitSkillName} 技能，用法以其中的 ${skillManifestFile} 为准。\n` + '  （本机未能定位该技能目录，请使用你自身的技能加载机制载入。）\n';
   if (skillsDir !== '') {
     reference = `- 加载 ${SceneKitSkillName} 技能，用法以其中的 ${skillManifestFile} 为准。本机该技能目录为：\n    ${path.join(skillsDir, SceneKitSkillName)}\n`;
   }
+  if (brief) {
+    const location = skillsDir ? path.join(skillsDir, SceneKitSkillName, skillManifestFile) : `${SceneKitSkillName}/${skillManifestFile}`;
+    reference = `- 直接用 SceneKit.attach(timeline, render) 把按帧更新接到暂停时间线上。SceneKit.progress(frame, start, end) 返回 0–1，SceneKit.ease(name) 取得缓动函数。需要其他接口时查 ${location}。\n`;
+  }
   return (
     '镜头工具库（强制）：\n' +
     reference +
-    '- 用到它时把技能目录里的 ' +
+    (brief ? '- 优先引用镜头目录里已准备好的 ' : '- 用到它时把技能目录里的 ') +
     sceneKitLibraryFile +
-    ' 复制进本镜头目录，用相对路径引入；不得引用镜头目录之外的文件。\n' +
+    (brief ? '；若未准备，按技能教材接入。用相对路径引入。\n' : ' 复制进本镜头目录，用相对路径引入；不得引用镜头目录之外的文件。\n') +
     '- 先加载镜头目录里的 ' +
     SceneDataFile +
     '（由上层在渲染前写好，不要自己写或改），再加载 ' +

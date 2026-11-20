@@ -116,6 +116,11 @@ describe('agent options', () => {
       saveService(agentDir, { name: 'custom', protocol: 'openai', base_url: 'https://relay.invalid/v1', model: 'm', vision: true, key: 'sk-x' });
       const launch = rendererLaunch('director', 'p', false, {}, '', null, '/w', { ONSET_AGENT_DIR: agentDir }, { effort: 'high' });
       expect(JSON.parse(launch.stdin).thinking).toBe('high');
+      const settings = { effort: 'high', repair_effort: 'medium', compact_at: '64000' };
+      const render = rendererLaunch('director', 'p', false, {}, '', null, '/w', { ONSET_AGENT_DIR: agentDir }, settings);
+      const repair = rendererLaunch('director', 'p', false, {}, '', null, '/w', { ONSET_AGENT_DIR: agentDir }, settings, 'repair');
+      expect(JSON.parse(render.stdin)).toMatchObject({ thinking: 'high', compact_at: 64000 });
+      expect(JSON.parse(repair.stdin)).toMatchObject({ thinking: 'medium', compact_at: 64000 });
     } finally {
       fs.rmSync(agentDir, { recursive: true, force: true });
     }

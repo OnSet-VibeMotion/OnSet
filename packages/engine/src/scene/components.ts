@@ -15,6 +15,8 @@ import path from 'node:path';
 import { VerificationError } from './verification';
 import { goQuote } from '../gofmt';
 import type * as renderassets from '../renderassets';
+import { scan } from '../determinism';
+import { loadComponentPlan } from './component-plan';
 
 /** 项目里放登记过的共用组件的目录。 */
 export const ComponentsDir = 'production/shared';
@@ -90,8 +92,13 @@ export interface PromoteResult {
  */
 export function promoteComponent(root: string, sceneDir: string, name: string, from: string, replace: boolean): PromoteResult {
   verifyComponentNames([name]);
+  root = fs.realpathSync(root);
+  const assignment = loadComponentPlan(root).find(row => row.name === name);
   const source = path.resolve(sceneDir, from || path.join(ComponentExportDir, name));
   const scene = fs.realpathSync(sceneDir);
+  if (assignment && scene !== path.join(root, 'scenes', assignment.source_scene)) {
+    throw new Error(`共用组件 ${name} 只能由计划指定的镜头 ${assignment.source_scene} 登记`);
+  }
   const real = fs.existsSync(source) ? fs.realpathSync(source) : '';
   const rel = real ? path.relative(scene, real) : '';
   if (!real || rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) throw new Error(`组件目录要在镜头目录里：${source}`);
@@ -99,11 +106,16 @@ export function promoteComponent(root: string, sceneDir: string, name: string, f
   const files = listFiles(real);
   if (!files.includes(ComponentReadme)) throw new Error(`组件目录里要有 ${ComponentReadme}，写清怎么引用、能传什么参数：${source}`);
   if (!files.some((file) => /\.(m?js|css)$/.test(file))) throw new Error(`组件目录里没有 .js / .mjs / .css 文件：${source}`);
+  if (assignment) {
+    const prefix = `${ComponentExportDir}/${name}/`;
+    if (rel.split(path.sep).join('/') + '/' !== prefix || !scan(scene).files.some(file => file.startsWith(prefix))) {
+      throw new Error(`产出镜头须从 ${prefix} 实际引用组件入口，再登记 ${name}`);
+    }
+  }
   let bytes = 0;
   for (const file of files) bytes += fs.statSync(path.join(real, file)).size;
   if (bytes > MaxComponentBytes) throw new Error(`组件太大（${bytes} 字节，上限 ${MaxComponentBytes}）：大素材放进项目的 assets/，组件里只放代码与小图`);
 
-  root = fs.realpathSync(root);
   const target = componentDir(root, name);
   let parent = root;
   for (const part of path.relative(root, target).split(path.sep)) {

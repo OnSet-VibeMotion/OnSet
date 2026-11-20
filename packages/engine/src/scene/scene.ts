@@ -20,6 +20,7 @@ import {
   styleShiftSection,
 } from './skills';
 import { componentSection, verifyComponentNames } from './components';
+import { componentExportSection, sceneComponentPlan } from './component-plan';
 import { lookIsZero, timingStructType, timingToJSON, verifyFilmStyleValue, verifyTimingInputs, type Timing } from './timing';
 import { verifyFrameAlignment } from './frames';
 import { SceneDataFile, timingSection } from './scenedata';
@@ -633,9 +634,9 @@ export function audioTargetsOf(directory: string, file: string): AudioTargets {
  * 拼装单镜头提示词。resolvedSkills 由 resolveAllSkills 解析；
  * 未出现在其中的技能退回按技能名引用，不写死任何本机路径。
  */
-export function buildPrompt(s: Scene, resolvedSkills: Record<string, string> | null): string {
+export function buildPrompt(s: Scene, resolvedSkills: Record<string, string> | null, directorBrief = false): string {
   if (s.designOnly) return designPrompt(s, resolvedSkills);
-  return renderPrompt(s, resolvedSkills, true);
+  return renderPrompt(s, resolvedSkills, true, directorBrief);
 }
 
 /**
@@ -667,7 +668,7 @@ export function designPrompt(s: Scene, resolvedSkills: Record<string, string> | 
   );
 }
 
-function renderPrompt(s: Scene, resolvedSkills: Record<string, string> | null, withDesign: boolean): string {
+function renderPrompt(s: Scene, resolvedSkills: Record<string, string> | null, withDesign: boolean, directorBrief = false): string {
   const resolved = resolvedSkills ?? {};
   verifyBlockInputs(s);
   verifyTimingInputs(s);
@@ -700,8 +701,11 @@ function renderPrompt(s: Scene, resolvedSkills: Record<string, string> | null, w
   const timing = timingSection(s);
   // 渲染提示词的版本按项目新建时记下的走（flow.RenderPromptVersion）：老项目逐字不变，已渲染的镜头不变 Stale。
   const version = renderPromptVersion(s);
+  const components = sceneComponentPlan(s);
   const engineRenders = version >= 4;
-  const readFirst = version >= 2 && s.timing !== null
+  const readFirst = directorBrief
+    ? '根据下文的镜头任务和资源直接设计并实现。需用到具体素材或时间数据时，按下文定位该文件。'
+    : version >= 2 && s.timing !== null
     ? '先检查素材（本镜头的字幕怎么取见下面的开工须知）。'
     : '先阅读完整字幕并检查素材。';
   return (
@@ -725,15 +729,16 @@ function renderPrompt(s: Scene, resolvedSkills: Record<string, string> | null, w
     body +
     (withDesign ? designSection(s) : '') +
     style +
-    blockPromptSections(s, resolved) +
+    blockPromptSections(s, resolved, directorBrief) +
     timing +
     styleShiftSection(s, resolved) +
     (version >= 2 ? startSection(s) : '') +
     '\n' +
-    skillPromptSections(resolved, allSkills(), engineRenders) +
+    skillPromptSections(resolved, allSkills(), engineRenders, directorBrief) +
     pluginSkillSection(resolved) +
-    resourceSection(s, resolved) +
-    componentSection(s.components) +
+    resourceSection(s, resolved, directorBrief) +
+    componentExportSection(components.exports) +
+    componentSection(components.names) +
     determinismSection +
     memorySection(s) +
     exemplarSection(s) +

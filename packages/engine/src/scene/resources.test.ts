@@ -46,6 +46,11 @@ describe('scene resource integration', () => {
     expect(prompt).toContain('共享渲染资源');
     expect(prompt).toContain('不要再次复制');
     expect(prompt).toContain('huashu/');
+    expect(prompt).not.toContain('assets/fonts/body.woff2');
+    const brief = buildPrompt(f.s, f.resolved, true);
+    expect(brief).toContain('assets/fonts/body.woff2');
+    expect(brief).toContain('vendor/lib.min.js');
+    expect(brief).not.toContain('sha256');
     const parts = fingerprint(f.s, 'claude', f.resolved).parts!;
     expect(parts['asset:scene-kit.js']).toBeTruthy();
     const hash = parts['asset:assets/fonts/body.woff2'];

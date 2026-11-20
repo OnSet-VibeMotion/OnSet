@@ -364,14 +364,18 @@ function directorCommand(): Invocation {
 }
 
 /** 渲染的完整调用；自带制作人的提示词、模型和密钥只经 stdin，外部工具沿用各自的命令行。 */
-export function rendererLaunch(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model: string, session: RendererSession | null, workdir: string, env: Record<string, string | undefined>, options: AgentOptions = {}): Invocation {
+export function rendererLaunch(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model: string, session: RendererSession | null, workdir: string, env: Record<string, string | undefined>, options: AgentOptions = {}, stage: 'full' | 'repair' = 'full'): Invocation {
   if (tool !== DirectorTool) return windowsPromptInput(tool, rendererInvocation(tool, prompt, unsafe, access, model, session, options), prompt);
   const agentDir = directorDir({ ...process.env, ...env });
   const service = directorService(agentDir);
   if (!service) throw new Error(NoServiceMessage);
+  const settings = effectiveOptions(DirectorTool, options);
   const request: DirectorRequest = {
     profile: 'renderer', workdir, prompt, agent_dir: rendererDir(agentDir), service,
-    model: model || undefined, thinking: effectiveOptions(DirectorTool, options).effort, session_id: session?.id, resume: session?.resume || undefined,
+    model: model || undefined,
+    thinking: stage === 'repair' ? settings.repair_effort ?? settings.effort : settings.effort,
+    compact_at: settings.compact_at ? Number(settings.compact_at) : undefined,
+    session_id: session?.id, resume: session?.resume || undefined,
     unsafe: unsafe || access.unfiltered || undefined, commands: access.commands, read_dirs: access.readDirs,
   };
   return { ...directorCommand(), stdin: JSON.stringify(request) + '\n' };

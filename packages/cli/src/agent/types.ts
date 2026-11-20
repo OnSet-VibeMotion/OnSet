@@ -19,7 +19,7 @@ export interface AgentTool {
    * 是顺序的，整批就逐个执行（pi-agent-core 的 executeToolCalls）。onset 的制作步骤都写项目文件，必须顺序。
    */
   sequential: boolean;
-  execute(input: Record<string, unknown>, signal: AbortSignal | undefined): Promise<{ text: string; isError: boolean }>;
+  execute(input: Record<string, unknown>, signal: AbortSignal | undefined): Promise<{ text: string; isError: boolean; imagePath?: string }>;
 }
 
 /**

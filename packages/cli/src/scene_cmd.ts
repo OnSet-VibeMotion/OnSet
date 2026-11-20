@@ -28,6 +28,7 @@ import './media';
 import './review_cmd';
 import './scene_cues';
 import './scene_prepare';
+import './scene_repair';
 
 import './usage_cmd';
 
@@ -100,7 +101,7 @@ defineOp({
   name: 'scene_run_all',
   cli: ['scene', 'run-all'],
   summary: '并行执行多个镜头',
-  description: `并发渲染 scenes 下的所有镜头。镜头之间无创作依赖，跨镜头关系由各镜头的交接状态和 prompt.md 保证。
+  description: `并发渲染 scenes 下的就绪镜头。共用组件未登记的使用镜头不派发，结果 component_waiting 列出依赖和产出镜头。先验收产出镜头并调用 shared_component_promote()，再派发等待镜头。
 
 每个镜头开跑前先判定状态，判定结果直接决定要不要重渲染：
   已有合格产物   产物存在、通过校验，且输入指纹与产物的渲染记录一致 → 跳过
@@ -205,9 +206,21 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
       scene.verifyBlockInputs(s);
       scene.verifyTimingInputs(s);
     }
+    const unstarted = new Map<string, schedule.SceneResult>();
+    const componentWaiting: NonNullable<schedule.Report['component_waiting']> = [];
+    for (const s of scenes) {
+      const components = scene.missingComponents(s).filter(component => component.source_scene !== '');
+      if (!components.length) continue;
+      componentWaiting.push({ scene_id: s.id, components });
+      const reasons = components.map(({ name, source_scene }) => source_scene ? `${name}（由 ${source_scene} 产出）` : name);
+      const reason = `等待登记共用组件：${reasons.join('、')}`;
+      out.write(`[${s.id}] ${reason}\n`);
+      unstarted.set(s.id, schedule.newSceneResult({ scene_id: s.id, status: schedule.Skipped, reason }));
+    }
     // 召回在判定复用之前做：召回的记忆是输入指纹的一项，记忆变了镜头要能被判成 Stale。
     const run = newRunID();
     for (let i = 0; i < scenes.length; i++) {
+      if (unstarted.has(scenes[i].id)) continue;
       scenes[i] = attachMemory(scenes[i], cfg, err, run);
       if (bool(p.fresh)) scenes[i] = { ...scenes[i], fresh: true };
     }
@@ -230,6 +243,7 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     if (!force) {
       const env = currentEnvironment();
       for (const item of scenes) {
+        if (unstarted.has(item.id)) continue;
         if (!fs.existsSync(scene.outputPath(item))) continue;
         try {
           scene.verifyOutput(item, env, tolerance);
@@ -243,7 +257,7 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
     // 已跳过的镜头不占渲染并发，worker 按真正要渲染的镜头数分。
     // 并发镜头往同一个 out 写阶段消息：Node 单线程，每次 write 是整行，不会互相切开。
     const cpus = os.availableParallelism(), total = schedule.systemMemory(), available = os.freemem();
-    const pending = scenes.length - initial.size;
+    const pending = scenes.length - initial.size - unstarted.size;
     const { jobs: runJobs, workers } = schedule.renderBudget(cpus, total, available, jobs, pending);
     const activeJobs = Math.min(runJobs, pending);
     out.write(`镜头调度：并发上限 ${runJobs}，本批待渲染 ${pending} 个，最多同时运行 ${activeJobs} 个\n`);
@@ -267,7 +281,7 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
       }
       fs.mkdirSync(path.dirname(trace), { recursive: true });
       traceFD = fs.openSync(trace, 'wx');
-      out.write(`连续队列：${scenes.length} 个镜头已入队；优先 ${priority.join('、') || '按长镜头优先'}；日志 ${trace}\n`);
+      out.write(`连续队列：${scenes.length - unstarted.size} 个镜头已入队；优先 ${priority.join('、') || '按长镜头优先'}；日志 ${trace}\n`);
     }
     let report: schedule.RunReport;
     let traceFailed = false;
@@ -286,6 +300,7 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
         }
       }, {
         priority,
+        unstarted,
         onEvent: event => {
           if (traceFD === undefined || traceFailed) return;
           try {
@@ -306,6 +321,10 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
       }
     }
     schedule.attachUsage(report, usage);
+    if (componentWaiting.length) {
+      report.component_waiting = componentWaiting;
+      out.write(`还有 ${componentWaiting.length} 个镜头等待共用组件。验收产出镜头、完成登记后，再派发等待的镜头。\n`);
+    }
     out.write(schedule.renderReport(report) + '\n');
     if (reportPath !== '') schedule.writeReportJSON(report, reportPath);
     const code = schedule.reportExitCode(report);

@@ -41,6 +41,7 @@ export interface AgentOptionSpec {
   requiresModel?: boolean;
   /** 可选档位按模型变：界面用模型列表里那个模型的 efforts 收窄 choices（codex）。 */
   perModel?: boolean;
+  rendererOnly?: boolean;
 }
 
 const effortLabels: Record<string, string> = {
@@ -107,7 +108,16 @@ export function agentOptionSpecs(tool: string): AgentOptionSpec[] {
       // 只有部分模型能调（MiniMax-M3 不能，M3.1-Flash 能），不支持的档位 mcode 直接报错；模型表（tools/mcodemodels.ts）按模型收窄。
       return [effort(['low', 'medium', 'high', 'xhigh', 'max'], '越高想得越久、越费额度；只有部分模型能调，不选用模型自己的默认', { perModel: true })];
     case 'director':
-      return [{ ...effort(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'], '只对支持思考的模型生效；不选按模型默认'), label: '思考强度' }];
+      return [
+        { ...effort(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'], '只对支持思考的模型生效；不选按模型默认'), label: '思考强度' },
+        effort(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'], '实验选项，仅局部返修的首次调用使用；留空沿用普通强度', { key: 'repair_effort', label: '局部返修思考强度', rendererOnly: true }),
+        {
+          key: 'compact_at', label: '旧预览整理阈值', kind: 'number',
+          rendererOnly: true,
+          hint: '实验选项，超过阈值时减少重新发送的旧预览图；留空关闭，最小 32,000 Token',
+          presets: [{ value: '64000', label: '64K' }, { value: '96000', label: '96K' }],
+        },
+      ];
     default:
       return [];
   }
@@ -160,6 +170,7 @@ export function validateAgentOptions(tool: string, text: string): string {
         break;
       case 'number':
         if (!/^[1-9][0-9]{0,8}$/.test(value)) return `${spec.label}要是正整数`;
+        if (key === 'compact_at' && Number(value) < 32_000) return `${spec.label}至少为 32,000 Token`;
         break;
       case 'choice':
         // codex 的档位按模型变（新模型会多出新档位），只查写法。

@@ -111,7 +111,7 @@ export function resumeState(s: Pick<Scene, 'directory' | 'id'>, fingerprint: str
   const dir = latestAttemptDir(s);
   if (dir === '') return null;
   const previous = readAttempt(path.join(dir, attemptFileName(s.id)));
-  if (!previous || (previous.outcome !== OutcomeFailed && previous.outcome !== OutcomeInterrupted)) return null;
+  if (!previous || previous.local_repair || (previous.outcome !== OutcomeFailed && previous.outcome !== OutcomeInterrupted)) return null;
   if (previous.fingerprint === '' || (previous.fingerprint !== fingerprint && previous.fingerprint !== legacyFingerprint?.())) return null;
   let user = '';
   try {

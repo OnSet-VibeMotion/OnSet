@@ -64,7 +64,12 @@ export function onsetTools(spawner: Spawner = spawnOp, root = '', profile: 'orch
         const job = jobs.start(target.name, target.params);
         const reply = await jobs.wait(job, undefined, signal);
         if (signal?.aborted) jobs.cancel(job.id);
-        return { text: reply.text, isError: reply.isError };
+        const sheet = (reply.data as { sheet?: unknown } | undefined)?.sheet;
+        return {
+          text: reply.text,
+          isError: reply.isError,
+          ...(def.name === 'scene_preview_check' && !reply.isError && typeof sheet === 'string' ? { imagePath: sheet } : {}),
+        };
       },
     };
   });
@@ -98,6 +103,7 @@ export function parseRequest(text: string): director.Request {
     resume: r.resume === true,
     model: typeof r.model === 'string' ? r.model : '',
     thinking: typeof r.thinking === 'string' && thinkingLevels.has(r.thinking) ? r.thinking : undefined,
+    compact_at: r.profile === 'renderer' && typeof r.compact_at === 'number' && Number.isSafeInteger(r.compact_at) && r.compact_at >= 32_000 ? r.compact_at : undefined,
     unsafe: r.unsafe === true,
     commands: Array.isArray(r.commands) ? r.commands.filter((c): c is string => typeof c === 'string') : [],
     writable_dirs: Array.isArray(r.writable_dirs) ? r.writable_dirs.filter((c): c is string => typeof c === 'string') : [],

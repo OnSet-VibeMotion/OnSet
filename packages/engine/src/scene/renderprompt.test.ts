@@ -21,6 +21,20 @@ function project(version: number, timing: boolean) {
 }
 
 describe('render prompt version', () => {
+  it('includes the short startup contract only in the live director prompt', () => {
+    const s = project(4, true);
+    const resolved = { hyperframes: '/installed/skills', 'scene-kit': '/installed/shared' };
+    const normal = buildPrompt(s, resolved);
+    const brief = buildPrompt(s, resolved, true);
+    expect(normal).toContain('写组合 HTML 前必须读');
+    expect(brief).not.toContain('写组合 HTML 前必须读');
+    expect(brief).toContain('window.__timelines');
+    expect(brief).toContain('data-track-index');
+    expect(brief).toContain('SceneKit.attach');
+    expect(brief).toContain('/installed/skills');
+    expect(brief).toContain('scene_preview_check');
+  });
+
   it('gives current projects one preview call and a handoff after visual checks', () => {
     const prompt = buildPrompt(project(flow.RenderPromptVersion, true), {});
     expect(prompt).toContain('scene_preview_check');
