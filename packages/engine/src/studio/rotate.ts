@@ -11,13 +11,16 @@
  */
 import type { Entry } from '../ledger';
 
-/** 平均每次调用的上下文到这么多 token 就换：几次实测的长会话都是在这之后才到 30–58 万。 */
-export const RotateContextTokens = 200_000;
+/** 单次模型请求或上一轮平均上下文到这么多 token 就自动换新会话：避免长会话继续滚到 30–58 万。 */
+export const RotateContextTokens = 150_000;
 
 /**
- * 不报 token 的工具（qoder 只报额度）按累计调用次数换：上面那个 392 次的会话，平均上下文在约 250 次时过了 20 万。
+ * 不报 token 的工具（qoder 只报额度）按累计调用次数换。
  */
-export const RotateCalls = 250;
+export const RotateCalls = 180;
+
+/** 带项目状态摘要换新会话时，只保留最近一段对话文字，减少重复注入早期脑暴。 */
+export const HandoffTranscriptLimit = 8000;
 
 /** 要换时给出原因（用户看得懂的一句话），不换返回空串。entries 是项目账本，cliSession 是现在续接的 CLI 会话。 */
 export function rotationReason(entries: readonly Entry[] | null, cliSession: string): string {
@@ -50,11 +53,18 @@ export function rotationReason(entries: readonly Entry[] | null, cliSession: str
  * 换新会话时接在对话记录后面的交接说明。进度以项目文件为准：旧会话里看过的工具输出、帧号、路径都不在了，
  * 摘要式的记忆最容易丢的正是这类精确细节。待办清单是上一个会话最后的清单，照着接着做。
  */
-export function handoffNote(reason: string, plan: readonly { text: string; status: string }[] | undefined): string {
+export function handoffNote(
+  reason: string,
+  plan: readonly { text: string; status: string }[] | undefined,
+  projectState = '',
+): string {
   let note =
     `这是同一件事换了一个新会话接着做（${reason}，再续接下去每一步都更贵）。上一个会话里的工具输出、看过的图都不在了：` +
-    '接着做之前先读项目文件确认做到哪一步（制作路线、分镜计划、各镜头的 scene.json 与产物），' +
+    '接着做之前以项目文件为准确认做到哪一步（制作路线、分镜计划、各镜头的 scene.json 与产物），' +
     '对话记录里提到的帧号、路径、数字一律以文件为准，不要凭记忆。';
+  if (projectState.trim() !== '') {
+    note += '\n\n当前项目文件快照（按磁盘实时扫描，直接作为接力起点，不必重复摸目录）：\n' + projectState.trim();
+  }
   const items = (plan ?? []).filter((item) => item.text.trim() !== '');
   if (items.length > 0) {
     note += '\n\n上一个会话最后的待办清单：\n' + items.map((item) => `- [${item.status === 'completed' ? 'x' : ' '}] ${item.text}${item.status === 'in_progress' ? '（进行中）' : ''}`).join('\n');

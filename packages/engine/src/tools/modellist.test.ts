@@ -48,6 +48,7 @@ describe('model choice', () => {
         session_id: 's',
         resume: true,
         model: 'deepseek-v4-flash',
+        compact_at: 96_000,
         commands: ['ls'],
         agent_dir: agentDir,
         service: { id, name: 'DeepSeek', protocol: 'openai', base_url: 'https://api.deepseek.com', model: 'deepseek-v4-pro', vision: false, key: 'sk-1' },

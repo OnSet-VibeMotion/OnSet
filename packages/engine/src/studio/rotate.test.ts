@@ -22,8 +22,8 @@ describe('rotationReason', () => {
   // qoder 只报额度、token 是 0：按这个会话累计的调用次数。
   it('falls back to the call count when the tool reports no tokens', () => {
     const qoder = (turns: number) => entry('q', 0, turns, 'qoder result');
-    expect(rotationReason([qoder(100), qoder(100)], 'q')).toBe('');
-    expect(rotationReason([qoder(100), qoder(100), qoder(RotateCalls - 200)], 'q')).toBe(`这个会话已经调用了 ${RotateCalls} 次`);
+    expect(rotationReason([qoder(80), qoder(80)], 'q')).toBe('');
+    expect(rotationReason([qoder(80), qoder(80), qoder(RotateCalls - 160)], 'q')).toBe(`这个会话已经调用了 ${RotateCalls} 次`);
     // 没读到用量的一轮不算。
     const blank: Entry = { ...qoder(0), usage: null };
     expect(rotationReason([blank], 'q')).toBe('');
@@ -42,6 +42,9 @@ describe('handoffNote', () => {
     expect(note).toContain('以文件为准');
     expect(note).toContain('- [x] 拆分镜头\n- [ ] 正在渲染镜头（进行中）\n- [ ] 拼接');
     expect(handoffNote('原因', undefined)).not.toContain('待办清单');
+    const withState = handoffNote('手动分段接力', undefined, '- 镜头进度：共 10 镜；已就绪 6；未渲染 4');
+    expect(withState).toContain('当前项目文件快照');
+    expect(withState).toContain('共 10 镜；已就绪 6；未渲染 4');
   });
 });
 

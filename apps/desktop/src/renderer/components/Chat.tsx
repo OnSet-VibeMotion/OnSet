@@ -342,6 +342,10 @@ export function Chat(props: Props) {
         fill('');
         props.onSession('');
         return;
+      case 'handoff':
+        fill('');
+        void handoff();
+        return;
       case 'stop':
         fill('');
         void cancel();
@@ -490,6 +494,20 @@ export function Chat(props: Props) {
     }
   };
 
+  const handoff = async () => {
+    if (!props.sessionId) {
+      setError('当前还没有会话记录，无需分段接力');
+      return;
+    }
+    setError('');
+    try {
+      await post(`/api/sessions/${props.sessionId}/handoff`, { reason: '手动分段接力' });
+      props.onSessionsChanged();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  };
+
   const upload = async (files: FileList | File[]) => {
     const list = Array.from(files);
     if (list.length === 0) return;
@@ -616,6 +634,18 @@ export function Chat(props: Props) {
           {session ? `${session.title}${session.kind === 'production' ? ' · 整片制作' : ''}` : '新对话'}
         </span>
         <span className="spacer" />
+        {props.sessionId && (session?.turns?.length ?? 0) > 0 && !running && (
+          <button
+            className="icon-button"
+            id="handoff-session"
+            disabled={blocked}
+            onClick={() => void handoff()}
+            aria-label="新会话接力"
+            title="新会话接力：清空旧上下文，保留项目进度继续（省 Token）"
+          >
+            <Icon name="handoff" size={13} />
+          </button>
+        )}
         {props.sessionId && (
           <button className="icon-button" onClick={() => props.onSession('')} aria-label="新对话" title="新对话">
             <Icon name="plus" size={13} />

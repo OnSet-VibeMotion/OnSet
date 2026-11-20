@@ -68,4 +68,41 @@ describe('render prompt version', () => {
     expect(beat).not.toContain('window.ONSET_SCENE.cues');
     expect(beat).toContain('先阅读完整字幕并检查素材。');
   });
+
+  it('v5 puts a shared cacheable static prefix before per-scene details and gives all renderers the concise brief', () => {
+    const root = tempDir();
+    fs.writeFileSync(path.join(root, 'onset.conf'), '');
+    flow.recordFlow(root, { id: 'speech', canvas: 'vertical-3x4', render_prompt: 5 });
+    fs.mkdirSync(path.join(root, 'scenes'));
+    const mk = (id: string, text: string, start: number, end: number) => {
+      const dir = path.join(root, 'scenes', id);
+      fs.renameSync(writeScene(JSON.stringify({
+        id,
+        duration_seconds: (end - start) / 30,
+        output: `${id}.mp4`,
+        transcript: 'transcript.srt',
+        text,
+        timing: { fps: 30, start_frame: start, end_frame_exclusive: end, plan: testPlanSHA },
+      })), dir);
+      return load(dir);
+    };
+    const resolved = { hyperframes: '/installed/skills', 'scene-kit': '/installed/shared', 'hyperframes-cli': '/installed/skills' };
+    const p1 = buildPrompt(mk('scene-001', '第一镜文案', 0, 30), resolved);
+    const p2 = buildPrompt(mk('scene-002', '第二镜文案，完全不同的内容', 30, 90), resolved);
+    const split1 = p1.indexOf('任务目标：\n');
+    const split2 = p2.indexOf('任务目标：\n');
+    expect(split1).toBeGreaterThan(1500);
+    expect(split2).toBe(split1);
+    expect(p1.slice(0, split1)).toBe(p2.slice(0, split2));
+    // 所有渲染器都拿到精简开工契约、单帧细节检查指引与反模式规则。
+    expect(p1).not.toContain('写组合 HTML 前必须读');
+    expect(p1).toContain('window.__timelines');
+    expect(p1).toContain('SceneKit.attach');
+    expect(p1).toContain('zoom_frame');
+    expect(p1).toContain('不要每条命令前都加 `cd <绝对路径> &&`');
+    expect(p1).toContain('不要用 `magick`、`python`、`ffmpeg`');
+    // 镜头差异只出现在后半段。
+    expect(p1.slice(split1)).toContain('scene-001');
+    expect(p2.slice(split2)).toContain('scene-002');
+  });
 });

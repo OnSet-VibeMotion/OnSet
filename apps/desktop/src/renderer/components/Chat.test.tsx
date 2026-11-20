@@ -293,4 +293,32 @@ describe('Chat', () => {
     await waitFor(() => expect(step('final').className).toMatch(/current/));
     expect(studio.api.unmatched).toEqual([]);
   });
+
+  test('triggers manual session handoff via header button and /handoff command', async () => {
+    const studio = createStudio({
+      open: 's1',
+      sessions: [
+        {
+          session_id: 's1',
+          title: '整片制作',
+          kind: 'production',
+          tool: 'claude',
+          created_at: '2026-11-20T00:00:00Z',
+          updated_at: '2026-11-20T00:00:00Z',
+          turns: ['t1'],
+        },
+      ],
+      routes: {
+        'POST /api/sessions/s1/handoff': { ok: true },
+      },
+    });
+    studio.render();
+    const btn = await findEl('#handoff-session');
+    const user = userEvent.setup();
+    await user.click(btn);
+    await waitFor(() => expect(studio.api.count('POST /api/sessions/s1/handoff')).toBe(1));
+    await send('/handoff');
+    await waitFor(() => expect(studio.api.count('POST /api/sessions/s1/handoff')).toBe(2));
+    expect(studio.api.unmatched).toEqual([]);
+  });
 });

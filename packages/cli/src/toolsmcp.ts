@@ -184,12 +184,16 @@ export function describeTools(profile: Profile, root = ''): ToolDef[] {
     if (!external && !opScopes(op).includes(profile)) continue;
     // 制作端仍需 inspect / snapshot 验收，但不能把 scene_run 降成单纯的出片工具。
     const inspecting = op.name === 'hyperframes' && profile === 'orchestrator';
+    const rendererHF = op.name === 'hyperframes' && profile === 'renderer';
     const shownOp = inspecting ? {
       ...op,
       summary: '检查镜头合成与预览帧；渲染请派发镜头任务',
       description: sceneDispatchNote,
       params: { ...op.params, subcommand: { ...op.params.subcommand, description: 'HyperFrames 检查子命令，例如 lint、check、snapshot' } },
       examples: (op.examples ?? []).filter((e) => !e.includes('"render"')),
+    } : rendererHF ? {
+      ...op,
+      summary: '运行本机 HyperFrames 文档与检查命令（画面检查与单帧细节优先用 scene_preview_check）',
     } : op;
     const properties: Record<string, JSONSchema> = {};
     const required: string[] = [];

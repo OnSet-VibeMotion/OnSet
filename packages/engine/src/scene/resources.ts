@@ -58,8 +58,9 @@ export function resourceSection(s: Scene, resolved: Record<string, string>, dire
   }))].sort(compareBytes);
   const readyFiles = directorBrief ? [...new Set(paths)].filter(rel =>
     /^assets\/fonts\/[^\r\n`]+\.(?:woff2?|ttf|otf)$/i.test(rel)
-    || /^vendor\/[^\r\n`]+\.(?:m?js|css)$/i.test(rel),
-  ).sort(compareBytes).slice(0, 8) : [];
+    || /^vendor\/[^\r\n`]+\.(?:m?js|css)$/i.test(rel)
+    || /^(?:[^/\r\n`]+\/)*[^/\r\n`]+\.(?:m?js|css)$/i.test(rel),
+  ).sort(compareBytes).slice(0, 12) : [];
   return '\n共享渲染资源（强制，优先于技能里的复制说明）：\n' +
     '- 引擎已在本镜头准备这些相对路径：' + locations.join('、') + '。文件清单见 ' + renderassets.ManifestFile + '。\n' +
     (readyFiles.length ? '- 已挂载的字体和库可直接引用：' + readyFiles.map(file => '`' + file + '`').join('、') + '。\n' : '') +

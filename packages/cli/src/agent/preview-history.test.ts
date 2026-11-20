@@ -29,3 +29,28 @@ it('retains recent pictures and all results when compacting previews at a previe
   expect(history.project(original, 64000)).toEqual({ messages: first.messages, trimmed: 0 });
   expect(original[2]).toMatchObject({ content: [{ type: 'text' }, { type: 'image' }] });
 });
+
+it('compacts older inspection images in orchestrator mode while preserving user attachments', () => {
+  const image: ImageContent = { type: 'image', data: 'aA==', mimeType: 'image/png' };
+  const userWithImage: Message = { role: 'user', content: [{ type: 'text', text: '参考图' }, image], timestamp: 0 };
+  const assistant = fauxAssistantMessage('');
+  assistant.usage = { ...assistant.usage, input: 10000, cacheRead: 90000 };
+  const qcRead = (i: number): Message => ({
+    role: 'toolResult', toolName: 'read', toolCallId: 'qc-' + i,
+    content: [{ type: 'text', text: 'Read image file [image/png] qc-' + i }, image], isError: false, timestamp: i,
+  });
+  const original = [userWithImage, qcRead(1), qcRead(2), qcRead(3), assistant, qcRead(4)];
+  const history = new PreviewHistory('orchestrator');
+  expect(history.project(original, 128000)).toMatchObject({ messages: original, trimmed: 0 });
+  const compacted = history.project(original, 96000);
+  expect(compacted.trimmed).toBe(2);
+  // 用户消息里附带的参考图始终原样保留。
+  expect(compacted.messages[0]).toBe(userWithImage);
+  // 较早的两张工具看图被移出，保留文字与路径提示；最新两张保留原图。
+  expect(compacted.messages[1]).toMatchObject({ content: [
+    { type: 'text', text: 'Read image file [image/png] qc-1' },
+    { type: 'text', text: expect.stringContaining('旧检查的附图已移出上下文') },
+  ] });
+  expect(compacted.messages[3]).toBe(original[3]);
+  expect(compacted.messages[5]).toBe(original[5]);
+});

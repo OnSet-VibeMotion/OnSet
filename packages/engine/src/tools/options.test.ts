@@ -90,6 +90,11 @@ describe('agent options', () => {
     expect(orchestratorInvocation('opencode', { prompt: 'p', model: 'p/m', options: { effort: 'high' } }).argv).toEqual(expect.arrayContaining(['-m', 'p/m#high']));
     const director = JSON.parse(orchestratorInvocation('director', { prompt: 'p', workdir: '/w', agentDir: '/a', options: { effort: 'low' } }).stdin);
     expect(director.thinking).toBe('low');
+    expect(director.compact_at).toBe(96_000);
+    const directorOff = JSON.parse(orchestratorInvocation('director', { prompt: 'p', workdir: '/w', agentDir: '/a', options: { compact_at: 'off' } }).stdin);
+    expect(directorOff.compact_at).toBeUndefined();
+    const directorCustom = JSON.parse(orchestratorInvocation('director', { prompt: 'p', workdir: '/w', agentDir: '/a', options: { compact_at: '128000' } }).stdin);
+    expect(directorCustom.compact_at).toBe(128_000);
   });
 
   // 用户选的推理强度盖过 Windows 上的缺省。
@@ -116,7 +121,11 @@ describe('agent options', () => {
     try {
       saveService(agentDir, { name: 'custom', protocol: 'openai', base_url: 'https://relay.invalid/v1', model: 'm', vision: true, key: 'sk-x' });
       const launch = rendererLaunch('director', 'p', false, {}, '', null, '/w', { ONSET_AGENT_DIR: agentDir }, { effort: 'high' });
-      expect(JSON.parse(launch.stdin).thinking).toBe('high');
+      expect(JSON.parse(launch.stdin)).toMatchObject({ thinking: 'high', compact_at: 64_000 });
+      const launchOff = rendererLaunch('director', 'p', false, {}, '', null, '/w', { ONSET_AGENT_DIR: agentDir }, { compact_at: 'off' });
+      expect(JSON.parse(launchOff.stdin).compact_at).toBeUndefined();
+      expect(validateAgentOptions('director', 'compact_at=off')).toBe('');
+      expect(agentOptionSpecs('director').find((s) => s.key === 'compact_at')?.rendererOnly).toBeFalsy();
       const settings = { effort: 'high', repair_effort: 'medium', compact_at: '64000' };
       const render = rendererLaunch('director', 'p', false, {}, '', null, '/w', { ONSET_AGENT_DIR: agentDir }, settings);
       const repair = rendererLaunch('director', 'p', false, {}, '', null, '/w', { ONSET_AGENT_DIR: agentDir }, settings, 'repair');

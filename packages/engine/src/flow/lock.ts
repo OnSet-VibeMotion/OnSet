@@ -17,7 +17,7 @@ export const LockFile = 'onset.flow.json';
  *   3：优先查看联系表，按发现的问题复检。
  *   4：合并预览检查，正式渲染由引擎接管。
  */
-export const RenderPromptVersion = 4;
+export const RenderPromptVersion = 5;
 
 /**
  * 新建项目时记下的流程（片型）与画幅。制作提示词由运行期按它组合（compose.ts）；项目用哪个流程也只看它。

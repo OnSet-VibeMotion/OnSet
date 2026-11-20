@@ -569,3 +569,44 @@ it('hands off the last saved plan after restarting and rotating the CLI session'
     expect(args(f)[1]).toContain('尚未完成的精确任务');
   } finally { restarted.shutdown(); }
 });
+
+it('supports manual stage-boundary session handoff with a fresh CLI session and project state snapshot', async () => {
+  const f = newSessionFixture();
+  const { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{}');
+  const id = body.session_id as string;
+
+  // 空会话不能分段接力。
+  const rejected = await studioRequest(f.s, 'POST', `/api/sessions/${id}/handoff`, '{}');
+  expect(rejected.status).toBe(400);
+
+  await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"先定分镜"}');
+  const first = await waitIdle(f, id);
+  expect(first.session.cli_session_id).toBeTruthy();
+
+  // 在项目里放一个未渲染镜头和一个已渲染镜头，验证项目快照准确写入交接提示词。
+  const s1 = path.join(f.root, 'scenes', 'scene-001');
+  const s2 = path.join(f.root, 'scenes', 'scene-002');
+  fs.mkdirSync(s1, { recursive: true });
+  fs.mkdirSync(s2, { recursive: true });
+  fs.writeFileSync(path.join(s1, 'scene.json'), '{"id":"scene-001","duration_seconds":3,"output":"scene-001.mp4"}');
+  fs.writeFileSync(path.join(s1, 'scene-001.mp4'), 'mp4');
+  fs.writeFileSync(path.join(s2, 'scene.json'), '{"id":"scene-002","duration_seconds":4,"output":"scene-002.mp4"}');
+
+  const handed = await studioRequest(f.s, 'POST', `/api/sessions/${id}/handoff`, '{"reason":"分镜已确认，切入渲染"}');
+  expect(handed.status).toBe(200);
+  expect(handed.body.session.cli_session_id).toBeUndefined();
+  expect(handed.body.session.handoff_reason).toBe('分镜已确认，切入渲染');
+  const eventsText = (await rawGet(f.s, `/api/sessions/${id}/events?follow=0`)).text;
+  expect(eventsText).toContain('已开启新会话接力');
+
+  await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"开始渲染剩余镜头"}');
+  const second = await waitIdle(f, id);
+  expect(lastTurn(second).status).toBe('succeeded');
+  expect(second.session.cli_session_id).not.toBe(first.session.cli_session_id);
+  expect(second.session.handoff_reason).toBeUndefined();
+  // 第二轮走了开新会话（没有 --resume），提示词里带了交接原因和实时项目快照。
+  expect(args(f)[1]).not.toContain('--resume');
+  expect(args(f)[1]).toContain('分镜已确认，切入渲染');
+  expect(args(f)[1]).toContain('当前项目文件快照');
+  expect(args(f)[1]).toContain('共 2 镜；已就绪 1；未渲染 1（scene-002）');
+});

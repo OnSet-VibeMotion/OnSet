@@ -449,13 +449,13 @@ export function filmStyleSection(skillsDir: string, hasLook: boolean): string {
  * 为所有已注册技能生成提示词片段。
  * 已解析的技能注入本机路径；未解析的退回按技能名引用。
  */
-export function skillPromptSections(resolved: Record<string, string>, skills: readonly SkillDescriptor[], engineRenders = false, directorBrief = false): string {
+export function skillPromptSections(resolved: Record<string, string>, skills: readonly SkillDescriptor[], engineRenders = false, directorBrief = false, v5 = false): string {
   let sections = '';
   for (const desc of skills) {
     const dir = resolved[desc.name] ?? '';
     if (directorBrief && desc.name === HyperFramesSkillName) sections += hyperFramesPrompt(dir, true);
     else if (directorBrief && desc.name === SceneKitSkillName) sections += sceneKitPrompt(dir, true);
-    else if (engineRenders && desc.name === HyperFramesCLISkillName) sections += hyperFramesCLIPrompt(dir, true);
+    else if (engineRenders && desc.name === HyperFramesCLISkillName) sections += hyperFramesCLIPrompt(dir, true, v5);
     else if (desc.promptSection) sections += desc.promptSection(dir);
   }
   return sections;
@@ -553,7 +553,7 @@ export function hyperFramesPrompt(skillsDir: string, brief = false): string {
  * timeline 只放行读取：它的 move / trim / split 等子命令会改写组合文件，
  * 与「时长由 scene.json 决定」的契约冲突。
  */
-export function hyperFramesCLIPrompt(skillsDir: string, engineRenders = false): string {
+export function hyperFramesCLIPrompt(skillsDir: string, engineRenders = false, v5 = false): string {
   let reference = `- CLI 的命令与排错方式见 ${HyperFramesCLISkillName} 技能。\n` + '  （本机未能定位该技能目录，请使用你自身的技能加载机制载入。）\n';
   if (skillsDir !== '') {
     reference = `- CLI 的命令与排错方式见 ${HyperFramesCLISkillName} 技能。本机该技能目录为：\n    ${path.join(skillsDir, HyperFramesCLISkillName)}\n`;
@@ -561,7 +561,9 @@ export function hyperFramesCLIPrompt(skillsDir: string, engineRenders = false): 
   return (
     '渲染命令（强制）：\n' +
     reference +
-    (engineRenders
+    (v5
+      ? '- 检查与视觉验收一律优先用 `scene_preview_check`（支持 `frames` 拼联系表，也支持 `zoom_frame` / `crop` 查单帧原分辨率或局部细节，内置缓存并直接回图）；不要单独重复调用 `hyperframes` 的 `lint`、`check`、`snapshot`。仅在查文档或排查组合元数据时用 `hyperframes` 工具（`subcommand` 填子命令，其他参数放进 `args`）。正式渲染由片场执行。'
+      : engineRenders
       ? '- 首轮检查用 scene_preview_check。按需补查时用 `hyperframes` 工具，`subcommand` 填子命令，其他参数放进 `args`。正式渲染由片场执行。'
       : '- HyperFrames CLI 只经 onset 工具服务里的 `hyperframes` 工具调用：`subcommand` 填子命令，其余参数照命令行写法放进 `args`。' +
         '例如检查是 `{"subcommand": "lint"}`、`{"subcommand": "check", "args": ["--json"]}`，渲染是 `{"subcommand": "render"}`。') +
@@ -572,7 +574,9 @@ export function hyperFramesCLIPrompt(skillsDir: string, engineRenders = false): 
     (engineRenders
       ? '- 预览任务返回任务号时，用 `job_wait` 等结果，无需重复请求。\n'
       : '- 渲染要几分钟：工具最多等 `wait_seconds` 秒（缺省 50），没跑完会返回任务号，用 `job_wait` 接着等到完成；不要重复发起同一次渲染。\n') +
-    (engineRenders
+    (v5
+      ? '- 仅在需要查文档或元数据时用本机只读命令：docs、inspect、validate、keyframes、只读的 timeline --json、compositions、info。'
+      : engineRenders
       ? '- 需要单项补查时只用本机命令：lint、check、validate、inspect、snapshot、keyframes、只读的 timeline --json、compositions、info、docs。'
       : '- 只放行本机渲染与检查：lint、check、validate、inspect、snapshot、keyframes、render、只读的 timeline --json、compositions、info、docs。') +
     'snapshot 会自动带上 --describe false（不把画面发给外部视觉服务），本镜头的自查由你自己看图完成。\n' +

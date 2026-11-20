@@ -37,7 +37,7 @@ import { completeToolArguments } from './arguments';
 import { PreviewHistory } from './preview-history';
 import { rendererFileTools, rendererFileWorkflow } from './renderer-files';
 import { StreamWriter } from './stream';
-import { compactToolError } from './tool-errors';
+import { compactToolResult } from './tool-errors';
 import type { AgentModule, AgentTool, RunOptions } from './types';
 
 /** pi 的内置工具里给编排用的这几个；powershell、codemode、tool_search 不要。 */
@@ -63,9 +63,10 @@ const preamble = `你在一个视频项目的目录里工作，帮用户把文�
 const rendererPreamble = `你是制作人，当前只负责一个镜头的实现与渲染。
 - 严格按本轮镜头提示词、scene.json、画幅与技能完成合成；不要规划整片、改口播稿或等待整片审批。
 - ${rendererFileWorkflow}
-- 用 read 按段查看源码，用 hyperframes 工具检查、截图和渲染。参数不确定时先用 tool_help 查询。
-- scene_preview_check 已直接附联系表时，直接看本次结果；小字或有疑问的局部再补查。其他截图用 read 打开。没有收到图片时报告阻塞，不用脚本或字符画代替视觉验收。
-- 制作工具会一直等到执行完；不要重复提交，没有 job_wait。onset 不在终端里，不要在 bash 里运行 onset。
+- 源码较长时拆成 index.html、style.css、scene.js 分文件编写，用 read 按段查看源码，优先用 read/write/edit/grep/find 处理文件。
+- 当前工作目录已是本镜头目录，bash 命令直接执行，不要每条命令前都加 cd。
+- 画面检查与细节放大优先用 scene_preview_check（支持 frames 联系表，也支持 zoom_frame / crop 查单帧细节并自动附图）；不要重复调用 hyperframes snapshot。其他截图用 read 打开。没有收到图片时报告阻塞，不用 magick/python/ffmpeg 写脚本或字符画代替视觉验收。
+- 参数不确定时先用 tool_help 查询。制作工具会一直等到执行完；不要重复提交，没有 job_wait。onset 不在终端里，不要在 bash 里运行 onset。
 - 只修改当前镜头目录，技能与共享素材只读；不要读取 .env 或模型服务凭据。
 - 出错先读返回原因再修复，最后核对镜头提示词要求的产物。`;
 
@@ -173,8 +174,8 @@ function toPiTool(tool: AgentTool, workdir: string, vision: boolean, sent: Set<s
       try {
         const file = fs.realpathSync(r.imagePath);
         const rel = path.relative(fs.realpathSync(workdir), file).split(path.sep).join('/');
-        if (!/^\.onset\/preview-[^/]+\/contact-sheet\.(?:png|jpe?g)$/i.test(rel)) {
-          return reply(r.text + '\n联系表位置异常，未附图。请重新生成预览。');
+        if (!/^\.onset\/preview-[^/]+\/(?:contact-sheet|frame-\d+|detail-[^/]+)\.(?:png|jpe?g)$/i.test(rel)) {
+          return reply(r.text + '\n预览图位置异常，未附图。请重新生成预览。');
         }
         const stat = fs.statSync(file, { bigint: true });
         if (!stat.isFile() || stat.size > 24n * 1024n * 1024n) return reply(r.text + '\n联系表无法直接附图。请核查预览文件或按需查看单帧。');
@@ -263,24 +264,24 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
   if (!selected) throw new Error(`制作人不认识模型 ${model}`);
 
   const sentPreviews = new Set<string>();
-  const history = new PreviewHistory();
-  const compactAt = req.profile === 'renderer' && Number.isSafeInteger(req.compact_at) && req.compact_at! >= 32_000 ? req.compact_at : undefined;
+  const history = new PreviewHistory(req.profile === 'renderer' ? 'renderer' : 'orchestrator');
+  const compactAt = Number.isSafeInteger(req.compact_at) && req.compact_at! >= 32_000 ? req.compact_at : undefined;
   let droppedPreviews = 0;
   const gate: ExtensionFactory = (pi: ExtensionAPI) => {
     pi.on('session_before_compact', async () => { sentPreviews.clear(); });
     // message_end 在参数校验与权限闸门之前，替换结果也会写入会话，续接时保持一致。
     pi.on('message_end', async (event) => {
       if (event.message.role === 'toolResult') {
-        const message = compactToolError(event.message, req.agent_dir);
+        const message = compactToolResult(event.message, req.agent_dir);
         return message === event.message ? undefined : { message };
       }
       if (event.message.role !== 'assistant') return;
       const message = completeToolArguments(event.message);
       return message ? { message } : undefined;
     });
-    // Old sessions keep their original records. Limit their errors on the way back to the model.
+    // Old sessions keep their original records. Limit their errors & oversized bash outputs on the way back to the model.
     pi.on('context', async ({ messages }) => {
-      const safe = messages.map(message => compactToolError(message, req.agent_dir));
+      const safe = messages.map(message => compactToolResult(message, req.agent_dir));
       if (!compactAt) return { messages: safe };
       const projected = history.project(safe, compactAt);
       if (projected.trimmed) {

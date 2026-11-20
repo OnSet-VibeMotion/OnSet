@@ -196,3 +196,46 @@ it('rejects a stale preview when the composition changes during capture', async 
   expect(fresh.code, fresh.out).toBe(0);
   expect(commands(dir).map(cmd => cmd[0])).toEqual(['check', 'snapshot', 'check', 'snapshot']);
 });
+
+it('zoom_frame reuses a cached frame with zero extra snapshot calls and supports cached local crop', async () => {
+  const dir = fixture();
+  const initial = await runIn(dir, ['scene', 'preview-check', '--frames', '0,15,29']);
+  expect(initial.code, initial.out).toBe(0);
+  expect(commands(dir).map(cmd => cmd[0])).toEqual(['check', 'snapshot']);
+
+  // 单帧原分辨率放大直接命中上一步缓存，不再调 check 或 snapshot。
+  const zoom = await runIn(dir, ['scene', 'preview-check', '--zoom-frame', '15']);
+  expect(zoom.code, zoom.out).toBe(0);
+  expect(zoom.out).toContain('细节图：');
+  expect(zoom.out).toContain('帧 15（原分辨率）');
+  expect(zoom.out).toContain('缓存命中：合成检查，1 张截图');
+  expect(commands(dir)).toHaveLength(2);
+
+  // 局部裁剪：fixture 里的 PNG 是 2x2，裁 0,0,2,2 验证裁剪与缓存复用。
+  const crop1 = await runIn(dir, ['scene', 'preview-check', '--zoom-frame', '15', '--crop', '0,0,2,2']);
+  expect(crop1.code, crop1.out).toBe(0);
+  expect(crop1.out).toContain('detail-f15-0-0-2-2.png');
+  expect(crop1.out).toContain('局部 0,0,2×2');
+  expect(commands(dir)).toHaveLength(2);
+
+  const crop2 = await runIn(dir, ['scene', 'preview-check', '--zoom-frame', '15', '--crop', '0,0,2,2']);
+  expect(crop2.code, crop2.out).toBe(0);
+  expect(crop2.out).toContain('细节图与上次完全相同');
+  expect(commands(dir)).toHaveLength(2);
+});
+
+it('rejects invalid zoom_frame or crop parameters before running CLI', async () => {
+  const dir = fixture();
+  const cropAlone = await runIn(dir, ['scene', 'preview-check', '--crop', '0,0,100,100']);
+  expect(cropAlone.code).toBe(1);
+  expect(cropAlone.out).toContain('crop 需要配合 zoom_frame 使用');
+
+  const outOfRange = await runIn(dir, ['scene', 'preview-check', '--zoom-frame', '30']);
+  expect(outOfRange.code).toBe(1);
+  expect(outOfRange.out).toContain('0–29');
+
+  const badCrop = await runIn(dir, ['scene', 'preview-check', '--zoom-frame', '0', '--crop', '0,0,999,999']);
+  expect(badCrop.code).toBe(1);
+  expect(badCrop.out).toContain('超出画布范围');
+  expect(fs.existsSync(path.join(dir, '.onset/commands.log'))).toBe(false);
+});

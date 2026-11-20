@@ -24,6 +24,10 @@ import { marshal } from '../gojson';
 
 export type AgentOptions = Record<string, string>;
 
+/** 自带制作人（director）缺省的旧图整理阈值（token）：未显式设置时默认开启，填 off 关闭。 */
+export const DefaultDirectorRendererCompactAt = 64_000;
+export const DefaultDirectorOrchestratorCompactAt = 96_000;
+
 export interface OptionChoice {
   value: string;
   label: string;
@@ -116,9 +120,8 @@ export function agentOptionSpecs(tool: string): AgentOptionSpec[] {
         effort(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'], '实验选项，仅局部返修的首次调用使用；留空沿用普通强度', { key: 'repair_effort', label: '局部返修思考强度', rendererOnly: true }),
         {
           key: 'compact_at', label: '旧预览整理阈值', kind: 'number',
-          rendererOnly: true,
-          hint: '实验选项，超过阈值时减少重新发送的旧预览图；留空关闭，最小 32,000 Token',
-          presets: [{ value: '64000', label: '64K' }, { value: '96000', label: '96K' }],
+          hint: '超过阈值时移出较早的预览与检查附图（保留结论与路径）；留空默认开启（渲染 64K / 编排 96K），选关闭则停用，最小 32,000 Token',
+          presets: [{ value: '64000', label: '64K' }, { value: '96000', label: '96K' }, { value: 'off', label: '关闭' }],
         },
       ];
     default:
@@ -172,6 +175,7 @@ export function validateAgentOptions(tool: string, text: string): string {
         if (value !== 'on' && value !== 'off') return `${spec.label}只能是 on 或 off`;
         break;
       case 'number':
+        if (key === 'compact_at' && value === 'off') break;
         if (!/^[1-9][0-9]{0,8}$/.test(value)) return `${spec.label}要是正整数`;
         if (key === 'compact_at' && Number(value) < 32_000) return `${spec.label}至少为 32,000 Token`;
         break;

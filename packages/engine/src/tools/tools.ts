@@ -1,7 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { windowsPromptInput, windowsOrchestratorEffort } from './windows';
-import { claudeOptionSettings, codexOptionOverrides, effectiveOptions, opencodeModel, optionArgs, type AgentOptions } from './options';
+import {
+  claudeOptionSettings,
+  codexOptionOverrides,
+  DefaultDirectorOrchestratorCompactAt,
+  DefaultDirectorRendererCompactAt,
+  effectiveOptions,
+  opencodeModel,
+  optionArgs,
+  type AgentOptions,
+} from './options';
 import { marshal, marshalIndent } from '../gojson';
 import { defaultDir as directorDir, resolveService as directorService, rendererDir, NoServiceMessage, Tool as DirectorToolName, type Request as DirectorRequest } from '../director';
 import { onsetCommand, WindowsBaseEnvKeys } from '../envutil';
@@ -411,6 +420,12 @@ function directorCommand(): Invocation {
   return { argv: [onset.command, ...onset.args, 'studio', 'agent'], stdin: '', env: onset.env };
 }
 
+function resolveDirectorCompactAt(value: string | undefined, fallback: number): number | undefined {
+  if (value === 'off') return undefined;
+  if (value) return Number(value);
+  return fallback;
+}
+
 /** 渲染的完整调用；自带制作人的提示词、模型和密钥只经 stdin，外部工具沿用各自的命令行。 */
 export function rendererLaunch(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model: string, session: RendererSession | null, workdir: string, env: Record<string, string | undefined>, options: AgentOptions = {}, stage: 'full' | 'repair' = 'full'): Invocation {
   if (tool !== DirectorTool) return windowsPromptInput(tool, rendererInvocation(tool, prompt, unsafe, access, model, session, options), prompt);
@@ -422,7 +437,7 @@ export function rendererLaunch(tool: string, prompt: string, unsafe: boolean, ac
     profile: 'renderer', workdir, prompt, agent_dir: rendererDir(agentDir), service,
     model: model || undefined,
     thinking: stage === 'repair' ? settings.repair_effort ?? settings.effort : settings.effort,
-    compact_at: settings.compact_at ? Number(settings.compact_at) : undefined,
+    compact_at: resolveDirectorCompactAt(settings.compact_at, DefaultDirectorRendererCompactAt),
     session_id: session?.id, resume: session?.resume || undefined,
     unsafe: unsafe || access.unfiltered || undefined, commands: access.commands, read_dirs: access.readDirs,
   };
@@ -700,13 +715,15 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
       // 不能按名字找 onset：编排工具的 PATH 最前面是只会报错的那个 onset（envutil.addToolsLocation）。
       const onset = onsetCommand();
       const agentDir = o.agentDir || directorDir({ ...process.env, ...env });
+      const directorSettings = effectiveOptions(DirectorTool, options);
       const request = {
         workdir,
         prompt: o.prompt,
         session_id: sessionID || undefined,
         resume: o.resume || undefined,
         model: o.model || undefined,
-        thinking: effectiveOptions(DirectorTool, options).effort,
+        thinking: directorSettings.effort,
+        compact_at: resolveDirectorCompactAt(directorSettings.compact_at, DefaultDirectorOrchestratorCompactAt),
         unsafe: o.unsafe || undefined,
         commands: access.commands && access.commands.length > 0 ? access.commands : undefined,
         writable_dirs: access.writableDirs && access.writableDirs.length > 0 ? access.writableDirs : undefined,

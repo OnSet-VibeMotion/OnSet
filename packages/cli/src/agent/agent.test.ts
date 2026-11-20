@@ -675,4 +675,85 @@ describe('runBuiltinAgent', () => {
     const req: director.Request = { workdir: tmp, prompt: 'x', agent_dir: agentDir };
     await expect(runBuiltinAgent(req, () => {}, undefined, { env: {} })).rejects.toThrow(director.NoServiceMessage);
   });
+
+  it('truncates oversized successful bash output and archives full content locally', async () => {
+    const headMark = 'HEAD_MARK_START';
+    const tailMark = 'TAIL_MARK_END';
+    const script = `process.stdout.write(${JSON.stringify(headMark)} + 'A'.repeat(10000) + ${JSON.stringify(tailMark)})`;
+    const faux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    let seenBashResult = '';
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall('bash', { command: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}` })], { stopReason: 'toolUse' }),
+      context => {
+        const res = context.messages.find(m => m.role === 'toolResult' && m.toolName === 'bash');
+        seenBashResult = res && res.role === 'toolResult'
+          ? res.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('\n')
+          : '';
+        return fauxAssistantMessage('已收到截短输出');
+      },
+    ]);
+    const agentDir = path.join(tmp, 'agent');
+    const req: director.Request = { workdir: tmp, prompt: '跑命令', unsafe: true, agent_dir: agentDir, service: fauxService };
+    expect(await runBuiltinAgent(req, () => {}, undefined, { setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
+    expect(seenBashResult.length).toBeLessThanOrEqual(4096);
+    expect(seenBashResult).toContain(headMark);
+    expect(seenBashResult).toContain(tailMark);
+    expect(seenBashResult).toContain('输出过长');
+    const archivedDir = path.join(agentDir, 'tool-outputs');
+    const logs = fs.readdirSync(archivedDir).map(f => fs.readFileSync(path.join(archivedDir, f), 'utf8'));
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toContain('A'.repeat(10000));
+  });
+
+  it('attaches single-frame detail images returned by scene_preview_check inline', async () => {
+    const detail = path.join(tmp, '.onset', 'preview-demo', 'detail-f15-0-0-2-2.png');
+    fs.mkdirSync(path.dirname(detail), { recursive: true });
+    fs.writeFileSync(detail, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAEElEQVR4nGP8wwACLGCSAQANBAECv1AVswAAAABJRU5ErkJggg==', 'base64'));
+    const worker = JSON.stringify({ ok: true, exit_code: 0, data: { sheet: detail, detail, zoom_frame: 15, frames: [15] } });
+    const spawner = () => spawn(process.execPath, ['-e', 'process.stdout.write(' + JSON.stringify('细节图通过\n' + opworker.ResultMarker + worker + '\n') + ')'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const faux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    let seenImages = 0;
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall('scene_preview_check', { zoom_frame: '15', crop: '0,0,2,2' })], { stopReason: 'toolUse' }),
+      context => {
+        for (const m of context.messages) if (m.role === 'toolResult') {
+          seenImages += m.content.filter(item => item.type === 'image').length;
+        }
+        return fauxAssistantMessage('细节图已看清');
+      },
+    ]);
+    const req: director.Request = { profile: 'renderer', workdir: tmp, prompt: '查细节', agent_dir: path.join(tmp, 'agent'), service: { ...fauxService, vision: true } };
+    expect(await runBuiltinAgent(req, () => {}, undefined, { spawner, setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
+    expect(seenImages).toBe(1);
+  });
+
+  it('compacts older inspection images in orchestrator sessions when compact_at is set', async () => {
+    const workdir = path.join(tmp, 'proj');
+    fs.mkdirSync(workdir, { recursive: true });
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAEElEQVR4nGP8wwACLGCSAQANBAECv1AVswAAAABJRU5ErkJggg==', 'base64');
+    const files = Array.from({ length: 4 }, (_, i) => {
+      const f = path.join(workdir, `qc-${i}.png`);
+      fs.writeFileSync(f, png);
+      return `qc-${i}.png`;
+    });
+    let remainingImages = 0;
+    const faux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    faux.setResponses([
+      ...files.map(file => fauxAssistantMessage([fauxToolCall('read', { path: file })], { stopReason: 'toolUse' })),
+      context => {
+        remainingImages = context.messages.flatMap(m => m.role === 'toolResult' ? m.content : []).filter(item => item.type === 'image').length;
+        return fauxAssistantMessage('整片检查完成');
+      },
+      fauxAssistantMessage('保留项目状态和检查结果。'),
+    ]);
+    const lines: string[] = [];
+    const req: director.Request = {
+      workdir, prompt: '编排检查 ' + '项目说明 '.repeat(60_000), compact_at: 64_000,
+      agent_dir: path.join(tmp, 'agent'), service: { ...fauxService, vision: true },
+    };
+    expect(await runBuiltinAgent(req, l => lines.push(l), undefined, { setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
+    expect(remainingImages).toBe(2);
+    const report = JSON.parse(lines.at(-1)!);
+    expect(report.dropped_preview_images).toBe(2);
+  });
 });

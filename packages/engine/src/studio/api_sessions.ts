@@ -26,6 +26,7 @@ import {
   enqueueTurn,
   eventsAfter,
   getSession,
+  handoffSession,
   kindNotice,
   listSessions,
   revert,
@@ -247,6 +248,27 @@ export async function sessionAPI(s: Server, request: Request, rest: string): Pro
         return writeError(409, 'not_running', (err as Error).message);
       }
       return writeJSON(200, goMap({ ok: true }));
+    }
+    case 'handoff': {
+      if (request.method !== 'POST') return methodNotAllowed('POST');
+      let reason = '';
+      try {
+        const text = await request.text();
+        if (text.trim() !== '') {
+          const parsed = JSON.parse(text) as Record<string, unknown>;
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) reason = fieldString(parsed, 'reason');
+        }
+      } catch (err) {
+        if (err instanceof DecodeError || err instanceof SyntaxError) return writeError(400, 'invalid_json', '请求不是合法 JSON');
+        throw err;
+      }
+      try {
+        handoffSession(sess, reason || '手动分段接力');
+      } catch (err) {
+        if (err instanceof BusyError) return writeError(409, 'project_busy', err.message);
+        return writeError(400, 'handoff_rejected', (err as Error).message);
+      }
+      return writeJSON(200, goMap({ ok: true, session: sessionMetaJSON(sess.meta) }));
     }
     default:
       return writeError(404, 'not_found', '会话接口不存在');

@@ -95,3 +95,15 @@ export async function contactSheetImages(t: Toolchain, files: readonly string[],
     fs.rmSync(work, { recursive: true, force: true });
   }
 }
+
+/** 从单张截图裁出指定画布像素区域，用于局部细节检查。 */
+export async function cropImage(t: Toolchain, file: string, region: Region, dest: string, signal?: AbortSignal): Promise<void> {
+  const filter = regionFilter(region);
+  if (!filter) throw new Error('裁剪区域无效');
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  const ran = await t.runAsync(t.ffmpegPath(), [
+    '-v', 'error', '-y', '-i', file, '-vf', filter, '-frames:v', '1', '-f', 'image2', '-c:v', 'png', dest,
+  ], { signal, captureStderr: true });
+  if (ran.error) throw new Error(`裁剪细节图失败：${commandError(ran)}`);
+  if (!nonEmpty(dest)) throw new Error(`细节图没有产出内容：${dest}`);
+}

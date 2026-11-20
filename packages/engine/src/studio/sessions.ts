@@ -15,7 +15,7 @@ import { atomicWrite } from '../fsutil';
 import { formatFixed, goClean, goTrimSpace } from '../gofmt';
 import { marshal, marshalIndent } from '../gojson';
 import * as ledger from '../ledger';
-import { handoffNote, rotationReason } from './rotate';
+import { HandoffTranscriptLimit, handoffNote, rotationReason } from './rotate';
 import * as project from '../project';
 import { KindView, PermissionPollInterval, PermissionServerName, ViewInboxEnv, waitPermissionResponse, writePermissionRequest, ViewPollInterval, ViewProjectEnv, describeView, drainViewInbox, viewInbox, viewInteraction, type ViewRequest, type ViewState } from '../studioview';
 import * as tools from '../tools';
@@ -74,6 +74,8 @@ export interface SessionMeta {
    * 上一次交给编排工具的用户偏好段的摘要：偏好没变、CLI 会话也还在时不再重复发送，续接的会话里已经有了。
    */
   preference_digest?: string;
+  /** 手动触发阶段分段接力时记下原因，下一轮消费并开启新 CLI 会话。 */
+  handoff_reason?: string;
 }
 
 export function sessionMetaJSON(meta: SessionMeta): Record<string, unknown> {
@@ -93,6 +95,7 @@ export function sessionMetaJSON(meta: SessionMeta): Record<string, unknown> {
     turns: meta.turns,
     running_turn: meta.running_turn || undefined,
     preference_digest: meta.preference_digest || undefined,
+    handoff_reason: meta.handoff_reason || undefined,
   };
 }
 
@@ -232,7 +235,7 @@ function decodeMeta(body: string): SessionMeta | undefined {
     if (v === undefined || v === null) return '';
     return typeof v === 'string' ? v : undefined;
   };
-  const fields = ['session_id', 'title', 'kind', 'tool', 'model', 'options', 'renderer', 'renderer_model', 'renderer_options', 'cli_session_id', 'created_at', 'updated_at', 'running_turn', 'preference_digest'];
+  const fields = ['session_id', 'title', 'kind', 'tool', 'model', 'options', 'renderer', 'renderer_model', 'renderer_options', 'cli_session_id', 'created_at', 'updated_at', 'running_turn', 'preference_digest', 'handoff_reason'];
   const values: Record<string, string> = {};
   for (const key of fields) {
     const v = s(key);
@@ -261,6 +264,7 @@ function decodeMeta(body: string): SessionMeta | undefined {
     turns,
     running_turn: values.running_turn || undefined,
     preference_digest: values.preference_digest || undefined,
+    handoff_reason: values.handoff_reason || undefined,
   };
 }
 
@@ -575,16 +579,66 @@ export const studioInteraction =
 ` +
   viewInteraction();
 
-/** transcript 把会话里已有的对话整理成文字，供续接失败时补发。只保留末尾 transcriptLimit 字。 */
-export function transcript(events: SessionEvent[]): string {
+/** transcript 把会话里已有的对话整理成文字，供续接失败或分段接力时补发。只保留末尾 limit 字。 */
+export function transcript(events: SessionEvent[], limit = transcriptLimit): string {
   let b = '';
   for (const event of events) {
     if (event.kind === kindUser) b += '\n用户：' + (event.text ?? '') + '\n';
     else if (event.kind === agentrun.KindText) b += '你：' + (event.text ?? '') + '\n';
   }
   let runes = [...b];
-  if (runes.length > transcriptLimit) runes = runes.slice(runes.length - transcriptLimit);
+  if (runes.length > limit) runes = runes.slice(runes.length - limit);
   return goTrimSpace(runes.join(''));
+}
+
+/** 按磁盘产物生成精简的项目状态快照，供分段接力的新会话快速对齐进度。 */
+export function projectStateBrief(projectPath: string): string {
+  try {
+    const scenes = discoverScenes(projectPath);
+    const progress = computeStations(projectPath, scenes);
+    const lines: string[] = [];
+    const current = progress.stations.find((st) => st.id === progress.current);
+    lines.push(`- 流程：${progress.mode}；当前站：${current ? `${current.label}（${current.id}）` : '全部完成'}`);
+    const done = progress.stations
+      .filter((st) => st.status === 'done' || st.status === 'confirmed' || st.status === 'passed')
+      .map((st) => st.label + (st.detail ? `（${st.detail}）` : st.file ? `（${st.file}）` : ''));
+    if (done.length > 0) lines.push(`- 已完成 / 已确认：${done.join('、')}`);
+    const attention = progress.stations
+      .filter((st) => st.status === 'stale' || st.status === 'changed')
+      .map((st) => st.label + (st.stale_note ? `（${st.stale_note}）` : ''));
+    if (attention.length > 0) lines.push(`- 需重做 / 重确认：${attention.join('、')}`);
+    if (scenes.length > 0) {
+      const ready = scenes.filter((sc) => sc.exists && !sc.stale);
+      const stale = scenes.filter((sc) => sc.exists && sc.stale).map((sc) => sc.id);
+      const missing = scenes.filter((sc) => !sc.exists).map((sc) => sc.id);
+      const formatList = (ids: string[]) => (ids.length <= 12 ? ids.join(', ') : `${ids.slice(0, 12).join(', ')} 等 ${ids.length} 个`);
+      const parts = [`共 ${scenes.length} 镜`, `已就绪 ${ready.length}`];
+      if (stale.length > 0) parts.push(`待重渲 ${stale.length}（${formatList(stale)}）`);
+      if (missing.length > 0) parts.push(`未渲染 ${missing.length}（${formatList(missing)}）`);
+      lines.push(`- 镜头进度：${parts.join('；')}`);
+    }
+    return lines.join('\n');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * 阶段边界手动接力：保留 Studio 对话界面与轮次历史，清空底层 CLI 会话号，
+ * 让下一轮自动用精简项目状态快照 + 近期对话记录开启新 CLI 会话（不再背负旧工具输出与看图历史）。
+ */
+export function handoffSession(sess: Session, reason = '手动分段接力'): void {
+  if (sess.cancel || sess.meta.running_turn) throw new BusyError('当前轮次正在进行，请等结束后再分段接力');
+  if ((sess.meta.turns ?? []).length === 0) throw new Error('这个会话还没有对话记录，无需分段接力');
+  updateMeta(sess, (meta) => {
+    meta.cli_session_id = undefined;
+    meta.preference_digest = undefined;
+    meta.handoff_reason = reason.trim() || '手动分段接力';
+  });
+  emit(sess, '', {
+    kind: kindNotice,
+    text: '已开启新会话接力：下一轮将清空旧工具输出与看图历史，只带项目文件快照与近期对话继续',
+  });
 }
 
 /** 发起一轮对话所需的全部输入。 */
@@ -690,15 +744,23 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
   if (!prompt.includes(ownership)) prompt += '\n\n---\n\n' + ownership;
   // 制作人用的模型看不了图：每一轮都提醒，续接的会话里它也可能走到画面验收、复查。
   if (orchestratorCannotSee(cfg)) prompt += '\n\n---\n\n' + noVisionNote;
-  // 会话太长就换一个新的 CLI 会话接着做（rotate.ts）：清掉会话号，runTurn 走带对话记录开新会话的路，偏好也会重发。
+  // 会话太长或用户手动触发分段接力时，换一个新的 CLI 会话接着做（rotate.ts）：
+  // 清掉会话号，runTurn 走带精简项目快照与近期对话记录开新会话的路，偏好也会重发。
   const cliSession = sess.meta.cli_session_id ?? '';
+  const manualHandoff = sess.meta.handoff_reason ?? '';
   let rotate = '';
-  if (cliSession !== '' && (sess.meta.turns ?? []).length > 0) {
+  if (manualHandoff === '' && cliSession !== '' && (sess.meta.turns ?? []).length > 0) {
     try { rotate = rotationReason(ledger.read(ledger.projectFile(p.path)), cliSession); }
     catch { /* 账本不可读时保留原会话；计费记录故障不能阻断对话。 */ }
   }
-  const handoff = rotate !== '' ? handoffNote(rotate, lastTaskPlan(sess.events, false)) : '';
-  if (rotate !== '') updateMeta(sess, (meta) => (meta.cli_session_id = undefined));
+  const handoffReason = manualHandoff || rotate;
+  const handoff = handoffReason !== '' ? handoffNote(handoffReason, lastTaskPlan(sess.events, false), projectStateBrief(p.path)) : '';
+  if (rotate !== '' || manualHandoff !== '') {
+    updateMeta(sess, (meta) => {
+      meta.cli_session_id = undefined;
+      meta.handoff_reason = undefined;
+    });
+  }
   const [brief, digest] = preferenceBrief(p, cfg);
   const resend = brief !== '' && (digest !== (sess.meta.preference_digest ?? '') || !sess.meta.cli_session_id || (sess.meta.turns ?? []).length === 0);
   if (resend) prompt = brief + '\n---\n\n' + prompt;
@@ -783,8 +845,8 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
       prompt = localStyleContext(sess.events, p.path) + prompt;
       const previous = sess.meta.cli_session_id ?? '';
       const earlierTurns = (sess.meta.turns ?? []).length > 1;
-      // 末尾两条是本轮刚发的 user 与 turn-start，不算进历史。
-      const history = transcript(sess.events.slice(0, Math.max(sess.events.length - 2, 0)));
+      // 末尾两条是本轮刚发的 user 与 turn-start，不算进历史。分段接力已有项目快照，只需保留近期结论。
+      const history = transcript(sess.events.slice(0, Math.max(sess.events.length - 2, 0)), handoff !== '' ? HandoffTranscriptLimit : transcriptLimit);
       // 「以后都允许」的前缀并进白名单；claude 遇到白名单外的调用时经 onset studio permission-mcp 问界面上的用户。
       const access = config.orchestratorAccess(cfg);
       access.commands = [...(access.commands ?? []), ...allowedCommands(p.path)];

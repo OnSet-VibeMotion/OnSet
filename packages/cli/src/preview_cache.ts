@@ -110,6 +110,7 @@ export interface PreviewCache {
   check?: CachedArtifact & { warnings: string[]; passed?: string[] };
   frames: Record<string, CachedArtifact>;
   sheets: Record<string, CachedArtifact>;
+  details?: Record<string, CachedArtifact>;
 }
 
 export function loadPreviewCache(file: string, key: string): PreviewCache {
@@ -117,10 +118,12 @@ export function loadPreviewCache(file: string, key: string): PreviewCache {
     try {
       const value = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (value?.key === key && value.frames && typeof value.frames === 'object'
-        && value.sheets && typeof value.sheets === 'object') return value;
+        && value.sheets && typeof value.sheets === 'object') {
+        return { ...value, details: value.details && typeof value.details === 'object' ? value.details : {} };
+      }
     } catch { /* A missing or damaged index is a cache miss. */ }
   }
-  return { frames: {}, sheets: {} };
+  return { frames: {}, sheets: {}, details: {} };
 }
 
 export function savePreviewCache(file: string, key: string, data: PreviewCache): void {
