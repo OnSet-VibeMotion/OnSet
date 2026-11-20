@@ -11,6 +11,7 @@ import { installUpdater } from './updater';
 import { createPet, installPetIPC, mainWindow, petPreferred, setPetVisible } from './pet';
 import { loginShellPath } from './shellpath';
 import { StationBrowsers } from './station-browser';
+import { debugPort } from './devtools';
 import { installDirectoryPicker } from './directory';
 import { installWindowsChrome } from './windowChrome';
 
@@ -44,8 +45,25 @@ if (background) app.setActivationPolicy?.('accessory');
 // 窗口不显示就永远不在前台，一轮结束、任务完成都会弹系统通知；测试里一律不弹（测通知的用例自己再换成记录）。
 if (background) Notification.prototype.show = function () {};
 
+// 开发时给 agent-browser 等调试工具开 CDP 端口（devtools.ts）；必须在 app ready 之前加开关。
+const devtoolsPort = debugPort({ packaged: app.isPackaged, background, env: process.env });
+if (devtoolsPort !== null) {
+  app.commandLine.appendSwitch('remote-debugging-port', String(devtoolsPort));
+  console.log(`[片场] 开发调试端口 127.0.0.1:${devtoolsPort}，可用 agent-browser --cdp ${devtoolsPort} 连接（ONSET_DESKTOP_DEBUG_PORT=off 关闭）`);
+}
+
 const stationBrowsers = new StationBrowsers(mainWindow, background);
-app.on('before-quit', () => stationBrowsers.close());
+// 退出前先关插件页面并等它们走完关闭流程（网站在 beforeunload 里存草稿，最多等 UnloadGraceMs），再真正退出。
+// 用户刚点关闭的页面也在销毁中（草稿还没写完）：close() 会一并等；完成前重复请求退出复用同一次等待，不放行。
+let pluginPagesClosed = false;
+let pluginPagesClosing = false;
+app.on('before-quit', event => {
+  if (pluginPagesClosed) return;
+  event.preventDefault();
+  if (pluginPagesClosing) return;
+  pluginPagesClosing = true;
+  void stationBrowsers.close().finally(() => { pluginPagesClosed = true; app.quit(); });
+});
 
 const rendererDir = path.join(__dirname, 'renderer');
 let backend: Server | null = null;
