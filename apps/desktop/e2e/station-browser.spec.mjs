@@ -77,8 +77,8 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   console.log('onset-result '+JSON.stringify({draft:draft.result.value}));
  }catch(e){console.error(e.message);process.exitCode=1;}
 });`);
-  // 移除期间试重开：等 forget 的标记出现（写在 forget 请求发出前，互斥随即登记）再停 100ms 才 open，
-  // 保证落进等待销毁的窗口，不受子进程启动快慢影响。没有互斥时这里会重开成功。
+  // 移除期间试重开：等 forget 的标记出现（写在 forget 请求发出前）再反复试 open——被「另一项操作填写」拒绝
+  // 说明互斥还没登记（forget 请求还在路上），接着等；被「正在移除」拒绝才是主进程确认了的同步点。不赌固定延迟。
   fs.writeFileSync(path.join(dir, 'reopen.cjs'), `
 let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', async()=>{
  try {
@@ -87,8 +87,12 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   const fs=require('fs'), marker=r.project_root+'/production/embedded/forgetting.json';
   const deadline=Date.now()+10000;
   while(!fs.existsSync(marker)){ if(Date.now()>deadline) throw Error('没等到移除标记'); await new Promise(s=>setTimeout(s,50)); }
-  await new Promise(s=>setTimeout(s,100));
-  await rpc({action:'open',account:r.params.account,label:r.params.account,url:'${origin}/'});
+  let opened=false;
+  while(Date.now()<deadline){
+    try { await rpc({action:'open',account:r.params.account,label:r.params.account,url:'${origin}/'}); opened=true; break; }
+    catch(e){ if(!String(e.message).includes('正在由另一项操作')) throw e; await new Promise(s=>setTimeout(s,100)); }
+  }
+  if(!opened) throw Error('没等到移除窗口');
   console.log('onset-result '+JSON.stringify({reopened:true}));
  }catch(e){console.error(e.message);process.exitCode=1;}
 });`);
