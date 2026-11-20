@@ -15,6 +15,7 @@ export const ProjectSkippedDirs: ReadonlySet<string> = new Set([
   'attempts',
   '.studio-frames',
   '.agents',
+  '.agent',
   '.onset',
   '.qoder',
   '.claude',

@@ -137,6 +137,8 @@ export const rendererSkillDirs: ReadonlyMap<string, SkillLocations> = new Map([
   ['opencode', { home: '.config/opencode/skills', project: '.opencode/skills' }],
   // mcode 0.6.12 实测：项目里认 .agents/skills、.minimax/skills、.claude/skills，并一直往上找到 git 根；家目录是数据目录 ~/.minimax/skills。
   ['mcode', { home: '.minimax/skills', project: '.minimax/skills' }],
+  // Antigravity CLI（agy）认项目级 .agents/skills 与 .agent/skills，家目录技能在 ~/.gemini/skills；链进 .agent/skills 避开镜头目录里的 .agents/mcp_config.json。
+  ['agy', { home: '.gemini/skills', project: '.agent/skills' }],
 ]);
 
 /** 校验候选目录里确实装了指定技能，并且必需文件全部存在。 */

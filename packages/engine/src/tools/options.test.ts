@@ -27,6 +27,7 @@ describe('agent options', () => {
     expect(agentOptionSpecs('qoder').map((s) => s.key)).toEqual(['effort', 'context']);
     expect(agentOptionSpecs('qoder-intl').map((s) => s.key)).toEqual(['effort', 'context']);
     expect(agentOptionSpecs('mcode').map((s) => s.key)).toEqual(['effort']);
+    expect(agentOptionSpecs('agy').map((s) => s.key)).toEqual(['effort']);
   });
 
   it('reads and writes one line', () => {

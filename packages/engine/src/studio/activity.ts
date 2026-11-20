@@ -80,6 +80,7 @@ export function sniffStreamTool(line: string): string {
   const type = typeof e.type === 'string' ? e.type : '';
   // mcode 也有 turn.* / item.*，但每条带 schemaVersion 与 runId，要先认。
   if ('schemaVersion' in e && 'runId' in e) return 'mcode';
+  if (typeof e.event === 'string' && ('conversation_id' in e || 'step_update' in e || 'result' in e)) return 'agy';
   if (/^(thread|turn|item)\./.test(type)) return 'codex';
   if ('sessionID' in e && 'part' in e) return 'opencode';
   if (type !== '') return 'claude';

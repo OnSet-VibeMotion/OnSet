@@ -107,6 +107,9 @@ export function agentOptionSpecs(tool: string): AgentOptionSpec[] {
     case 'mcode':
       // 只有部分模型能调（MiniMax-M3 不能，M3.1-Flash 能），不支持的档位 mcode 直接报错；模型表（tools/mcodemodels.ts）按模型收窄。
       return [effort(['low', 'medium', 'high', 'xhigh', 'max'], '越高想得越久、越费额度；只有部分模型能调，不选用模型自己的默认', { perModel: true })];
+    case 'agy':
+      // Antigravity CLI 1.5.13 实测：--effort low|medium|high|xhigh|max，ACP 里是 thought_level；可选档位按模型变。
+      return [effort(['low', 'medium', 'high', 'xhigh', 'max'], '越高想得越久、越费额度；可选档位随模型变，不选用模型自己的默认', { perModel: true })];
     case 'director':
       return [
         { ...effort(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'], '只对支持思考的模型生效；不选按模型默认'), label: '思考强度' },
@@ -205,6 +208,7 @@ export function optionArgs(tool: string, options: AgentOptions): string[] {
     case 'claude':
     case 'codebuddy':
     case 'mcode':
+    case 'agy':
       return o.effort ? ['--effort', o.effort] : [];
     case 'qoder':
     case 'qoder-intl':

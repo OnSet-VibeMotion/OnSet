@@ -177,6 +177,14 @@ export function rendererHome(tool: string, home: string): RendererHome {
     case 'qoder':
     case 'qoder-intl':
       return { state: [h('.qoder-cn'), h('.qoder')], files: [], hidden: [h('.qoder-cn', 'skills'), h('.qoder', 'skills'), agents] };
+    // Antigravity CLI（agy，1.5.13 实测）：状态、会话、日志与 MCP schema 缓存在 ~/.gemini/antigravity-cli，
+    // 全局配置在 ~/.gemini/config；隐藏用户级技能、插件与全局 mcp_config.json，避免渲染器带上用户的个人 MCP 与技能。
+    case 'agy':
+      return {
+        state: [h('.gemini', 'antigravity-cli')],
+        files: [],
+        hidden: [h('.gemini', 'skills'), h('.gemini', 'config', 'skills'), h('.gemini', 'config', 'plugins'), h('.gemini', 'config', 'mcp_config.json'), agents],
+      };
     default:
       return { state: [], files: [], hidden: [] };
   }

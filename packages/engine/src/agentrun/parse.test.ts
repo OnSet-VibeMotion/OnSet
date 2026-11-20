@@ -124,6 +124,7 @@ describe('agentrun parse', () => {
       { tool: 'qoder', first: 'qoder-1', second: 'qoder-2', session: 'c43bb3cd-ea41-495e-8fac-2517596a2fd5', writeTool: 'Write' },
       { tool: 'opencode', first: 'opencode-1', second: 'opencode-2', session: 'ses_e68f70edcffeGdFO8OOw9sCE5o', writeTool: 'patch' },
       { tool: 'mcode', first: 'mcode-1', second: 'mcode-2', session: 'mvs_e6041444c58149c8935095ea8ade95fe', writeTool: 'write' },
+      { tool: 'agy', first: 'agy-1', second: 'agy-2', session: '8f43dd59-0f73-4a85-acf0-37c2cb7c7aec', writeTool: 'write_file' },
     ];
     for (const test of tests) {
       it(test.tool, () => {
@@ -150,7 +151,7 @@ describe('agentrun parse', () => {
   });
 
   it('recorded streams carry usage', () => {
-    for (const [tool, name] of Object.entries({ claude: 'claude-1', codex: 'codex-1', qoder: 'qoder-1', opencode: 'opencode-1', mcode: 'mcode-1' })) {
+    for (const [tool, name] of Object.entries({ claude: 'claude-1', codex: 'codex-1', qoder: 'qoder-1', opencode: 'opencode-1', mcode: 'mcode-1', agy: 'agy-1' })) {
       const [, parser] = parseFixture(tool, name);
       const usage = parser.usage();
       // qoder 按积分计费，token 字段实测全为 0，只能确认读到了用量事件。
@@ -188,6 +189,32 @@ describe('agentrun parse', () => {
     const results = kinds(events, KindToolResult);
     expect(results.map((e) => e.is_error ?? false)).toEqual([false, true]);
     expect(kinds(events, KindError)[0].text).toContain('超时');
+  });
+
+  // agy v1.5.13 实测的流：mcp_onset_* 与 call_mcp_tool 统一成 mcp__onset__*，分块正文在 DONE 时合并，失败工具与非 SUCCESS 结果译成错误。
+  it('agy normalizes MCP tools, joins deltas and reports errors', () => {
+    const parser = newParser('agy');
+    const lines = [
+      { event: 'init', conversation_id: 'c1', init: { model: 'gemini-3.8-flash' } },
+      { event: 'step_update', step_update: { conversation_id: 'c1', step_index: 1, state: 'ACTIVE', step_type: 'tool', tool_name: 'mcp_onset_hyperframes', tool_info: { name: 'mcp_onset_hyperframes', parameters: { subcommand: 'lint' } } } },
+      { event: 'step_update', step_update: { conversation_id: 'c1', step_index: 1, state: 'DONE', step_type: 'tool', tool_name: 'mcp_onset_hyperframes', tool_info: { name: 'mcp_onset_hyperframes', parameters: { subcommand: 'lint' }, output: 'ok' } } },
+      { event: 'step_update', step_update: { conversation_id: 'c1', step_index: 2, state: 'DONE', step_type: 'tool', tool_name: 'call_mcp_tool', tool_info: { name: 'call_mcp_tool', parameters: { ServerName: 'onset', ToolName: 'tool_help', Arguments: { tool: 'hyperframes' } }, error: { type: 'denied', message: 'blocked' } } } },
+      { event: 'step_update', step_update: { conversation_id: 'c1', step_index: 3, state: 'ACTIVE', step_type: 'agent_response', text_delta: 'HEL' } },
+      { event: 'step_update', step_update: { conversation_id: 'c1', step_index: 3, state: 'DONE', step_type: 'agent_response', text_delta: 'LO\n' } },
+      { event: 'result', result: { conversation_id: 'c1', status: 'ERROR', error: 'quota exceeded' } },
+    ];
+    const events = lines.flatMap((l) => parser.parse(JSON.stringify(l)));
+    expect(kinds(events, KindSession)).toHaveLength(1);
+    expect(kinds(events, KindToolCall)).toEqual([
+      { kind: KindToolCall, tool: 'mcp__onset__hyperframes', call_id: 'step-1', input: { subcommand: 'lint' } },
+      { kind: KindToolCall, tool: 'mcp__onset__tool_help', call_id: 'step-2', input: { tool: 'hyperframes' } },
+    ]);
+    expect(kinds(events, KindToolResult).map((r) => [r.tool, r.is_error ?? false, r.text])).toEqual([
+      ['mcp__onset__hyperframes', false, 'ok'],
+      ['mcp__onset__tool_help', true, 'blocked'],
+    ]);
+    expect(kinds(events, KindText).map((t) => t.text)).toEqual(['HELLO\n']);
+    expect(kinds(events, KindError)[0].text).toBe('quota exceeded');
   });
 
   // qoder 经 mcp_call 调 MCP 工具（2026-11 实测的流）：要拆成真正的工具名与参数。

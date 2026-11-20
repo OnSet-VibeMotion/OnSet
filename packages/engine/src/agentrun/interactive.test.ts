@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { interactiveInvocation } from '../tools';
-import { ACPTranslator, CodebuddyUsage, acpModel, acpOutcome, acpPermissionTool, acpUsage, configureMcode, ensureModel, mcodeAskBash, mcodeModelValue, runACP } from './acp';
+import { ACPTranslator, CodebuddyUsage, acpModel, acpOutcome, acpPermissionTool, acpUsage, configureAgy, configureMcode, ensureModel, isAcpToolsServerCall, mcodeAskBash, mcodeModelValue, runACP } from './acp';
 import { CodexTasks, codexDecision, codexItemEvents, runCodexApp } from './codexapp';
 import { commandAllowed, unwrapShell, type PermissionAnswer } from './interactive';
 import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, KindUsage, type Event } from './parse';
@@ -480,5 +480,59 @@ describe('configureMcode', () => {
   it('reports the model in the exec form', () => {
     expect(mcodeModelValue('m:minimax:MiniMax-M3:v:')).toEqual({ model: 'minimax/MiniMax-M3', variant: '' });
     expect(acpModel(opened())).toBe('minimax/MiniMax-M3.1-Flash');
+  });
+});
+
+// Antigravity CLI 1.5.13 实测：ACP 命令在 rawInput.CommandLine，onset MCP 工具自动放行，outputTokens 已含 thoughtTokens。
+describe('configureAgy and ACP helpers', () => {
+  it('extracts agy CommandLine, auto-approves onset MCP and avoids double-counting thoughtTokens', () => {
+    expect(acpPermissionTool({ kind: 'execute', name: 'run_command', title: 'echo hi', rawInput: { CommandLine: 'echo hi', toolSummary: 'Echo greeting' } })).toEqual({
+      toolName: 'Bash',
+      input: { command: 'echo hi', description: 'Echo greeting' },
+    });
+    const server = { name: 'onset', command: 'onset', args: ['studio', 'tools-mcp'] };
+    expect(isAcpToolsServerCall({ name: 'mcp_onset_config_get' }, server)).toBe(true);
+    expect(isAcpToolsServerCall({ name: 'call_mcp_tool', rawInput: { ServerName: 'onset', ToolName: 'config_get' } }, server)).toBe(true);
+    expect(isAcpToolsServerCall({ name: 'mcp_other_tool' }, server)).toBe(false);
+    expect(isAcpToolsServerCall({ name: 'run_command' }, server)).toBe(false);
+    // agy 的 outputTokens 已含 thoughtTokens（totalTokens === input + outputTokens）。
+    expect(acpUsage({ inputTokens: 12026, outputTokens: 663, cachedReadTokens: 0, cachedWriteTokens: 0, thoughtTokens: 642, totalTokens: 12689 })).toMatchObject({
+      input_tokens: 12026,
+      output_tokens: 663,
+      cached_input_tokens: 0,
+    });
+  });
+
+  it('switches agy ACP mode, base or variant model, and thought_level', async () => {
+    const calls: unknown[] = [];
+    const peer = { request: async (method: string, params: unknown) => (calls.push([method, params]), {}) };
+    const opened = {
+      models: { currentModelId: 'gemini-4-neon-high', availableModels: [{ modelId: 'gemini-4-neon-high' }, { modelId: 'gemini-3.8-flash-low' }] },
+      configOptions: [
+        { id: 'mode', currentValue: 'default', options: [{ value: 'default' }, { value: 'accept-edits' }] },
+        { id: 'model', currentValue: 'gemini-4-neon', options: [{ value: 'gemini-4-neon' }, { value: 'gemini-3.8-flash' }] },
+        { id: 'thought_level', currentValue: 'high', options: [{ value: 'low' }, { value: 'medium' }, { value: 'high' }] },
+      ],
+    };
+    await configureAgy(peer, 's1', opened, { unsafe: false, model: 'gemini-3.8-flash', options: { effort: 'low' } });
+    expect(calls).toEqual([
+      ['session/set_config_option', { sessionId: 's1', configId: 'mode', value: 'accept-edits' }],
+      ['session/set_config_option', { sessionId: 's1', configId: 'model', value: 'gemini-3.8-flash' }],
+      ['session/set_config_option', { sessionId: 's1', configId: 'thought_level', value: 'low' }],
+    ]);
+    expect(acpModel(opened)).toBe('gemini-3.8-flash');
+
+    const calls2: unknown[] = [];
+    const peer2 = { request: async (method: string, params: unknown) => (calls2.push([method, params]), {}) };
+    const opened2 = {
+      models: { currentModelId: 'gemini-4-neon-high', availableModels: [{ modelId: 'gemini-4-neon-high' }, { modelId: 'gemini-3.8-flash-low' }] },
+      configOptions: [
+        { id: 'mode', currentValue: 'default' },
+        { id: 'model', currentValue: 'gemini-4-neon', options: [{ value: 'gemini-4-neon' }] },
+      ],
+    };
+    await configureAgy(peer2, 's2', opened2, { unsafe: true, model: 'gemini-3.8-flash-low' });
+    expect(calls2).toEqual([['session/set_model', { sessionId: 's2', modelId: 'gemini-3.8-flash-low' }]]);
+    expect(acpModel(opened2)).toBe('gemini-3.8-flash-low');
   });
 });

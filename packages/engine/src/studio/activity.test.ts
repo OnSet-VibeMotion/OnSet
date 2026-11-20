@@ -61,6 +61,7 @@ describe('scene activity', () => {
     expect(sniffStreamTool('{"type":"thread.started","thread_id":"a"}')).toBe('codex');
     // mcode 也有 turn.* / item.*，靠 schemaVersion 与 runId 认出来。
     expect(sniffStreamTool('{"schemaVersion":1,"runId":"r","sessionId":"mvs_1","type":"turn.started"}')).toBe('mcode');
+    expect(sniffStreamTool('{"event":"init","conversation_id":"c1","init":{"model":"gemini-3.8-flash"}}')).toBe('agy');
     expect(sniffStreamTool('{"type":"step_start","sessionID":"s","part":{}}')).toBe('opencode');
     expect(sniffStreamTool('not json')).toBe('');
   });

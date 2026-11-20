@@ -22,6 +22,8 @@ import {
   formatUsage,
   newUsage,
   onsetToolsServer,
+  AgyMcpFile,
+  agyMcpJSON,
   McodeMcpFile,
   mcodeMcpJSON,
   type McpServer,
@@ -274,6 +276,12 @@ async function runScene(
     unstage = unstageSkills;
     if (renderer === 'mcode' && access.toolsServer) {
       const unstageMcp = stageMcodeMcp(s.directory, access.toolsServer);
+      unstage = () => {
+        unstageMcp();
+        unstageSkills();
+      };
+    } else if (renderer === 'agy' && access.toolsServer) {
+      const unstageMcp = stageAgyMcp(s.directory, access.toolsServer);
       unstage = () => {
         unstageMcp();
         unstageSkills();
@@ -559,7 +567,7 @@ async function runScene(
       if (failure) {
         try {
           const result = JSON.parse(line);
-          if (result.type === 'turn.completed' || (result.type === 'result' && result.is_error === false)) failure = '';
+          if (result.type === 'turn.completed' || (result.type === 'result' && result.is_error === false) || (result.event === 'result' && result.result?.status === 'SUCCESS')) failure = '';
         } catch { /* 普通文本不改变服务错误。 */ }
       }
     };
@@ -721,6 +729,44 @@ export function stageMcodeMcp(sceneDir: string, server: McpServer): () => void {
       if (fs.readFileSync(file, 'utf8') === content) fs.rmSync(file, { force: true });
     } catch {
       // 已经不在了。
+    }
+  };
+}
+
+/**
+ * Antigravity CLI（agy）headless 模式从工作区 `.agents/mcp_config.json` 读 MCP（tools.agyMcpJSON），
+ * 渲染期间在镜头目录里放一份 onset 工具服务的配置，渲染完删掉；别人的配置不覆盖，报错退出。
+ */
+export function stageAgyMcp(sceneDir: string, server: McpServer): () => void {
+  const file = path.join(sceneDir, AgyMcpFile);
+  const dir = path.dirname(file);
+  if (fs.lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`${path.dirname(AgyMcpFile)} 不能是符号链接：${dir}`);
+  if (fs.lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`${AgyMcpFile} 不能是符号链接：${file}`);
+  const ours = (text: string): boolean => {
+    try {
+      const servers = JSON.parse(text).mcpServers as Record<string, { args?: unknown }>;
+      const names = Object.keys(servers ?? {});
+      return names.length === 1 && names[0] === server.name && Array.isArray(servers[server.name]!.args) && (servers[server.name]!.args as unknown[]).includes('tools-mcp');
+    } catch {
+      return false;
+    }
+  };
+  let existing: string | null = null;
+  try {
+    existing = fs.readFileSync(file, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+  if (existing !== null && !ours(existing)) throw new Error(`镜头目录里已有 ${AgyMcpFile}，Antigravity 渲染要在这里放 onset 工具服务的配置；请先挪走它：${file}`);
+  const createdDir = !fs.existsSync(dir);
+  const content = agyMcpJSON(server);
+  atomicWrite(file, content, 0o600);
+  return () => {
+    try {
+      if (fs.readFileSync(file, 'utf8') === content) fs.rmSync(file, { force: true });
+      if (createdDir) fs.rmdirSync(dir);
+    } catch {
+      // 已经不在了或目录非空。
     }
   };
 }

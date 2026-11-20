@@ -26,7 +26,7 @@
 
 ```bash
 npm run build -w @onset/cli
-ONSET_TEST_TOOLS_MCP=claude,codex,qoder,codebuddy,opencode npx vitest run --root packages/engine src/agentrun -t RealToolsMCP
+ONSET_TEST_TOOLS_MCP=claude,codex,qoder,codebuddy,opencode,mcode,agy npx vitest run --root packages/engine src/agentrun -t RealToolsMCP
 ```
 
 opencode 默认模型不可用时加 `ONSET_TEST_OPENCODE_MODEL`。

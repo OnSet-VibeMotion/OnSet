@@ -69,6 +69,8 @@ function cumulativeFields(tool: string): { cost: boolean; tokens: boolean; credi
       return { cost: true, tokens: false, credits: false };
     case 'codebuddy':
       return { cost: true, tokens: true, credits: false };
+    case 'agy':
+      return { cost: false, tokens: true, credits: false };
     case 'qoder':
     case 'qoder-intl':
       return { cost: false, tokens: false, credits: true };
@@ -263,6 +265,10 @@ export function accumulateUsage(tool: string, line: string, u: Usage): void {
     accumulateMcodeUsage(line, u);
     return;
   }
+  if (tool === 'agy') {
+    accumulateAgyUsage(line, u);
+    return;
+  }
   const event = parseObject(line);
   if (!event) return;
   let type: string, cost: number | null, credits: number | null, turns: number;
@@ -292,39 +298,43 @@ export function accumulateUsage(tool: string, line: string, u: Usage): void {
     u.basis = BasisTotalInput;
   } else if ((tool === 'claude' || tool === 'qoder' || tool === 'qoder-intl' || tool === 'codebuddy' || tool === 'director') && type === 'result') {
     const reported: SessionTotal = { input_tokens: input + cacheCreate + cacheRead, output_tokens: output, cached_input_tokens: cacheRead, cost_usd: cost, credits, turns };
-    const cumulative = cumulativeFields(tool);
-    const baseline = u.baseline;
-    let mine = reported;
-    if (cumulative.cost || cumulative.tokens || cumulative.credits) {
-      u.session_total = { ...reported };
-      if (baseline === null) {
-        // 续接了却不知道上一次累计到多少：累计的几项报不出这一次的数，照实记成不知道。
-        mine = { ...reported };
-        if (cumulative.cost) mine.cost_usd = null;
-        if (cumulative.credits) mine.credits = null;
-        if (cumulative.tokens) mine = { ...mine, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, turns: 0 };
-        u.partial = true;
-      } else if (baseline !== undefined) {
-        mine = { ...reported };
-        if (cumulative.cost) mine.cost_usd = subtractCost(reported.cost_usd, baseline.cost_usd);
-        if (cumulative.credits) mine.credits = subtractCost(reported.credits ?? null, baseline.credits ?? null);
-        if (cumulative.tokens && reported.input_tokens >= baseline.input_tokens && reported.turns >= baseline.turns) {
-          mine.input_tokens = reported.input_tokens - baseline.input_tokens;
-          mine.output_tokens = Math.max(reported.output_tokens - baseline.output_tokens, 0);
-          mine.cached_input_tokens = Math.max(reported.cached_input_tokens - baseline.cached_input_tokens, 0);
-          mine.turns = reported.turns - baseline.turns;
-        }
+    applyResultUsage(tool, reported, u);
+  }
+}
+
+function applyResultUsage(tool: string, reported: SessionTotal, u: Usage): void {
+  const cumulative = cumulativeFields(tool);
+  const baseline = u.baseline;
+  let mine = reported;
+  if (cumulative.cost || cumulative.tokens || cumulative.credits) {
+    u.session_total = { ...reported };
+    if (baseline === null) {
+      // 续接了却不知道上一次累计到多少：累计的几项报不出这一次的数，照实记成不知道。
+      mine = { ...reported };
+      if (cumulative.cost) mine.cost_usd = null;
+      if (cumulative.credits) mine.credits = null;
+      if (cumulative.tokens) mine = { ...mine, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, turns: 0 };
+      u.partial = true;
+    } else if (baseline !== undefined) {
+      mine = { ...reported };
+      if (cumulative.cost) mine.cost_usd = subtractCost(reported.cost_usd, baseline.cost_usd);
+      if (cumulative.credits) mine.credits = subtractCost(reported.credits ?? null, baseline.credits ?? null);
+      if (cumulative.tokens && reported.input_tokens >= baseline.input_tokens && reported.turns >= baseline.turns) {
+        mine.input_tokens = reported.input_tokens - baseline.input_tokens;
+        mine.output_tokens = Math.max(reported.output_tokens - baseline.output_tokens, 0);
+        mine.cached_input_tokens = Math.max(reported.cached_input_tokens - baseline.cached_input_tokens, 0);
+        mine.turns = reported.turns - baseline.turns;
       }
     }
-    u.input_tokens = mine.input_tokens;
-    u.output_tokens = mine.output_tokens;
-    u.cached_input_tokens = mine.cached_input_tokens;
-    u.cost_usd = mine.cost_usd;
-    u.credits = mine.credits ?? null;
-    u.turns = mine.turns;
-    u.source = tool + ' result';
-    u.basis = BasisTotalInput;
   }
+  u.input_tokens = mine.input_tokens;
+  u.output_tokens = mine.output_tokens;
+  u.cached_input_tokens = mine.cached_input_tokens;
+  u.cost_usd = mine.cost_usd;
+  u.credits = mine.credits ?? null;
+  u.turns = mine.turns;
+  u.source = tool + ' result';
+  u.basis = BasisTotalInput;
 }
 
 /** 会话累计费用减去基线；累计值比基线小说明会话被换掉了（重开），这时报的就是这一次的。 */
@@ -396,6 +406,32 @@ function accumulateMcodeUsage(line: string, u: Usage): void {
   u.turns = (u.turns ?? 0) + 1;
   u.source = 'mcode turn.completed';
   u.basis = BasisTotalInput;
+}
+
+/**
+ * Antigravity CLI（`agy --output-format stream-json`，v1.5.13 实测）：
+ * 收尾的 `{"event":"result","result":{"num_turns":…,"usage":{"input_tokens":…,"output_tokens":…,"thinking_tokens":…,"cache_read_tokens":…}}}`。
+ * input_tokens 不含 cache_read_tokens，output_tokens 已含 thinking_tokens；--conversation 续接后是整个会话的累计值。
+ */
+function accumulateAgyUsage(line: string, u: Usage): void {
+  const event = parseObject(line);
+  if (!event) return;
+  let input: number, output: number, cacheRead: number, turns: number;
+  try {
+    if (stringField(event, 'event') !== 'result') return;
+    const result = objectField(event, 'result');
+    if (!result) return;
+    const usage = objectField(result, 'usage');
+    if (!usage) return;
+    turns = intField(result, 'num_turns');
+    input = intField(usage, 'input_tokens');
+    output = intField(usage, 'output_tokens');
+    cacheRead = intField(usage, 'cache_read_tokens');
+  } catch (err) {
+    if (err instanceof BadEvent) return;
+    throw err;
+  }
+  applyResultUsage('agy', { input_tokens: input + cacheRead, output_tokens: output, cached_input_tokens: cacheRead, cost_usd: null, credits: null, turns }, u);
 }
 
 /** 把用量写成一行给人看的文字；没读到时如实说没读到。 */

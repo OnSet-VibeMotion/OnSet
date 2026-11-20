@@ -20,4 +20,10 @@ it('sends long Windows prompts intact through stdin without changing flags or re
   const mcode = ['mcode', 'exec', '--session', 'previous', prompt];
   expect(windowsPromptInput('mcode', mcode, prompt, 'win32')).toEqual({ argv: [...mcode.slice(0, -1), '--input', '-'], stdin: prompt });
   expect(windowsPromptInput('mcode', ['mcode', 'exec', 'hello'], 'hello', 'win32')).toEqual({ argv: ['mcode', 'exec', 'hello'], stdin: '' });
+  const agy = ['agy', '-p', prompt, '--dangerously-skip-permissions', '--output-format', 'stream-json'];
+  expect(windowsPromptInput('agy', agy, prompt, 'win32')).toEqual({
+    argv: ['agy', '--input-format', 'stream-json', '--dangerously-skip-permissions', '--output-format', 'stream-json'],
+    stdin: JSON.stringify({ event: 'user', message: { content: prompt } }) + '\n',
+  });
+  expect(windowsPromptInput('agy', ['agy', '-p', 'hello', '--output-format', 'stream-json'], 'hello', 'win32')).toEqual({ argv: ['agy', '-p', 'hello', '--output-format', 'stream-json'], stdin: '' });
 });

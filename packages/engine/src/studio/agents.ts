@@ -24,6 +24,7 @@ export const agentOrder: readonly { id: string; label: string; installURL: strin
   { id: 'codebuddy', label: 'CodeBuddy', installURL: 'https://www.codebuddy.cn/docs/cli/installation' },
   { id: 'opencode', label: 'OpenCode', installURL: 'https://opencode.ai/docs/' },
   { id: 'mcode', label: 'MiniMax Code', installURL: 'https://www.npmjs.com/package/@minimax-ai/code' },
+  { id: 'agy', label: 'Antigravity', installURL: 'https://antigravity.google/docs/getting-started' },
   { id: 'director', label: '制作人', installURL: '' },
 ];
 
@@ -165,7 +166,7 @@ const modelCache = new Map<string, { at: number; models: tools.ModelOption[] }>(
 const modelCacheTTL = 10 * 60 * 1000;
 /** 制作人的模型列表按服务缓存（键是服务 id、base URL 与模型）。 */
 const directorModelCache = new Map<string, { at: number; models: tools.ModelOption[] }>();
-const modelListTimeout = 20_000;
+const modelListTimeout = 30_000;
 
 /** 跑 argv 收 stdout；超时、非零退出照样返回已收到的输出（codebuddy --help 之类的命令退出码不可靠）。 */
 async function captureOutput(binary: string, args: string[], env: Record<string, string>): Promise<string> {

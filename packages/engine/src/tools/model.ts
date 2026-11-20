@@ -11,6 +11,7 @@ import path from 'node:path';
  */
 export function detectModel(tool: string, line: string): string {
   if (tool === 'mcode') return mcodeModel(line);
+  if (tool === 'agy') return agyModel(line);
   // director（制作人，onset 自带的编排）照 claude 系的格式输出，见 director 包。
   if (tool !== 'claude' && tool !== 'qoder' && tool !== 'qoder-intl' && tool !== 'codebuddy' && tool !== 'director') return '';
   let event: unknown;
@@ -82,4 +83,21 @@ function mcodeModel(line: string): string {
   const { providerId, modelId } = model as Record<string, unknown>;
   if (typeof modelId !== 'string' || modelId.trim() === '') return '';
   return typeof providerId === 'string' && providerId !== '' ? `${providerId}/${modelId.trim()}` : modelId.trim();
+}
+
+/** Antigravity CLI 的 init 事件：{"event":"init","init":{"model":"gemini-3.8-flash-low",…}}。 */
+function agyModel(line: string): string {
+  let event: unknown;
+  try {
+    event = JSON.parse(line);
+  } catch {
+    return '';
+  }
+  if (event === null || typeof event !== 'object' || Array.isArray(event)) return '';
+  const e = event as Record<string, unknown>;
+  if (e.event !== 'init') return '';
+  const init = e.init;
+  if (init === null || typeof init !== 'object' || Array.isArray(init)) return '';
+  const model = (init as Record<string, unknown>).model;
+  return typeof model === 'string' ? model.trim() : '';
 }

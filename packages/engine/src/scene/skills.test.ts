@@ -97,6 +97,7 @@ describe('resolveSkill', () => {
       qoder: '.qoder/skills',
       codebuddy: '.codebuddy/skills',
       opencode: '.config/opencode/skills',
+      agy: '.gemini/skills',
     };
     for (const [renderer, relative] of Object.entries(cases)) {
       const home = tempDir();

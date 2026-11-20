@@ -27,6 +27,7 @@ describe('usage', () => {
       ['codex', `{"type":"turn.completed","usage":{"input_tokens":41579,"cached_input_tokens":32768,"output_tokens":55}}`, 41579, 32768, 55],
       ['opencode', `{"type":"step_finish","part":{"tokens":{"input":3410,"output":36,"reasoning":16,"cache":{"read":16976,"write":0}}}}`, 20386, 16976, 52],
       ['mcode', `{"schemaVersion":1,"type":"turn.completed","model":{"providerId":"minimax","modelId":"MiniMax-M3.1-Flash"},"usage":{"inputTokens":29948,"outputTokens":751,"cacheReadTokens":33591,"totalTokens":30699}}`, 63539, 33591, 751],
+      ['agy', `{"event":"result","result":{"conversation_id":"c1","status":"SUCCESS","num_turns":1,"usage":{"input_tokens":14216,"output_tokens":74,"thinking_tokens":20,"cache_read_tokens":9973,"total_tokens":14290}}}`, 24189, 9973, 74],
     ];
     for (const [tool, line, input, cached, output] of cases) {
       const u = newUsage();
@@ -108,6 +109,16 @@ describe('usage', () => {
     expect(second.cached_input_tokens).toBe(29696 - 3072);
     expect(second.output_tokens).toBe(24);
     expect(second.turns).toBe(3);
+  });
+
+  // 2026-11 实测：agy --conversation 续接后 result.usage 与 num_turns 也是整个会话的累计值。
+  it('agy resume reports tokens and turns cumulatively', () => {
+    const first = newUsage();
+    accumulateUsage('agy', '{"event":"result","result":{"num_turns":1,"usage":{"input_tokens":14216,"output_tokens":74,"thinking_tokens":0,"cache_read_tokens":9973}}}', first);
+    expect(first).toMatchObject({ input_tokens: 24189, cached_input_tokens: 9973, output_tokens: 74, turns: 1 });
+    const second: typeof first = { ...newUsage(), baseline: sessionBaseline(first) };
+    accumulateUsage('agy', '{"event":"result","result":{"num_turns":2,"usage":{"input_tokens":16469,"output_tokens":76,"thinking_tokens":0,"cache_read_tokens":20101}}}', second);
+    expect(second).toMatchObject({ input_tokens: 2253 + 10128, cached_input_tokens: 10128, output_tokens: 2, turns: 1 });
   });
 
   // director 是自己写的流，每个进程从零算，不减基线。

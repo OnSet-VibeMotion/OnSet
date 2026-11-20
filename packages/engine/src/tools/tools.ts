@@ -15,12 +15,12 @@ export const UserMessageMarker = '[[USER_MESSAGE]]';
  * rendererInvocation、orchestratorInvocation、projectRulesFilename 的 switch）。
  * Go 里是 map[string]bool，这里用 Set：普通对象会让 "constructor" 之类的键查出真值。
  */
-export const ValidTools: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'qoder-intl', 'codebuddy', 'opencode', 'mcode', 'director']);
+export const ValidTools: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'qoder-intl', 'codebuddy', 'opencode', 'mcode', 'agy', 'director']);
 
 /**
  * 能当渲染工具的工具；RENDERER、scene.json 的 renderer、记忆的 applies_when.renderers 按这张表校验。
  */
-export const ValidRenderers: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'qoder-intl', 'codebuddy', 'opencode', 'mcode', 'director']);
+export const ValidRenderers: ReadonlySet<string> = new Set(['codex', 'claude', 'qoder', 'qoder-intl', 'codebuddy', 'opencode', 'mcode', 'agy', 'director']);
 
 /**
  * Qoder 有两个版本，账号与服务互不相通：国内版 `qoder`（命令 qoderclicn，状态在 ~/.qoder-cn）与国际版
@@ -227,6 +227,45 @@ export function mcodeMcpJSON(server: McpServer): string {
 }
 
 /**
+ * Antigravity CLI（agy）的 MCP：headless `-p` 模式没有 --mcp-config 参数，从工作区的 `.agents/mcp_config.json` 读。
+ * 渲染器由 scene.run 在镜头目录里临时写一份（stageAgyMcp），渲染完删掉；客户端里的编排一律走 `agy acp`（interactiveInvocation），
+ * MCP 服务经 session/new / session/load 的 mcpServers 传入。
+ * 默认 MCP 工具超时只有 180 秒，这里显式拉长到 720 秒（或按 longWaitTimeoutSeconds）；渲染档位的 5 个工具标为 eager，
+ * 直接注册成 mcp_onset_<工具>，不必每轮先读磁盘 schema 再 call_mcp_tool。
+ */
+export const AgyMcpFile = path.join('.agents', 'mcp_config.json');
+
+const agyRendererEagerTools = ['hyperframes', 'scene_preview_check', 'job_wait', 'job_cancel', 'tool_help'];
+
+export function agyMcpJSON(server: McpServer): string {
+  const timeout = longWaitTimeoutSeconds(server) || 720;
+  const isRenderer = server.args.includes('tools-mcp') && server.args[server.args.indexOf('--profile') + 1] === 'renderer';
+  const entry: Record<string, unknown> = {
+    command: server.command,
+    args: server.args,
+    ...(server.env && Object.keys(server.env).length > 0 ? { env: server.env } : {}),
+    timeoutSeconds: timeout,
+    ...(isRenderer ? { tools: Object.fromEntries(agyRendererEagerTools.map((t) => [t, { eager: true }])) } : {}),
+  };
+  return marshalIndent({ mcpServers: { [server.name]: entry } }) + '\n';
+}
+
+/**
+ * 把访问权限译成 Antigravity CLI `--settings` 的 JSON（v1.5.13 实测）。
+ * 规则格式为 action(target)：command(<前缀>)、mcp(<服务>/*)、read_file(<目录>)、write_file(<目录>)。
+ * 显式设 toolPermission 为 request-review，避免用户全局的 always-proceed 绕开安全模式。
+ */
+function agySettings(a: RendererAccess & { mcp?: string[] }): string {
+  const allow: string[] = [];
+  for (const command of a.commands ?? []) allow.push(`command(${command})`);
+  for (const server of a.mcp ?? []) allow.push(`mcp(${server}/*)`);
+  for (const dir of a.readDirs ?? []) allow.push(`read_file(${dir})`);
+  const deny: string[] = ['command(onset)', 'read_file(.env)'];
+  for (const dir of a.readDirs ?? []) deny.push(`write_file(${dir})`);
+  return marshal({ permissions: { allow, deny }, toolPermission: 'request-review' });
+}
+
+/**
  * 把 RendererAccess 译成 claude --settings 的 JSON。
  * .env 的读取禁令与执行契约一致：渲染器不得读取或打印凭据。
  * Go 里是 map[string]any，json.Marshal 按键排序，这里照那个顺序写。
@@ -350,6 +389,15 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
       const mode = unsafe || access.unfiltered ? 'full' : 'smart';
       const resume = session?.resume ? ['--session', session.id] : [];
       return ['mcode', 'exec', '--cwd', '.', '--permission', mode, ...m, ...resume, '--output-format', 'stream-json', prompt];
+    }
+    case 'agy': {
+      // Antigravity CLI（agy）headless 模式：套了系统沙箱或 Windows 全放开时 --dangerously-skip-permissions，
+      // 其余平台用 accept-edits 加 --settings 放行白名单与 MCP 工具；工具服务经镜头目录的 .agents/mcp_config.json 给（stageAgyMcp）。
+      const mode = unsafe || access.unfiltered
+        ? ['--dangerously-skip-permissions']
+        : ['--mode', 'accept-edits', '--settings', agySettings({ ...access, mcp: server ? [server.name] : [] })];
+      const resume = session?.resume ? ['--conversation', session.id] : [];
+      return ['agy', '-p', prompt, ...mode, ...m, ...resume, '--output-format', 'stream-json'];
     }
     case 'director':
       return directorCommand().argv;
@@ -518,6 +566,8 @@ export interface InteractiveInvocation {
 export function interactiveInvocation(tool: string, o: Pick<OrchestratorOptions, 'unsafe' | 'access' | 'toolsServer' | 'model' | 'options'>, env: Record<string, string | undefined> = {}): InteractiveInvocation | null {
   // mcode 的 exec 挂不上工具服务（见 mcodeMcpJSON），所以客户端里不安全模式也走 ACP，权限模式在会话里设（agentrun/acp.ts）。
   if (tool === 'mcode') return { protocol: 'acp', argv: ['mcode', 'acp'], env: {} };
+  // agy 的 -p 没有 --mcp-config 参数（只读工作区 .agents/mcp_config.json，不往项目根写），所以客户端里不论安全与否都走 ACP。
+  if (tool === 'agy') return { protocol: 'acp', argv: ['agy', 'acp', ...(o.unsafe ? ['--dangerously-skip-permissions'] : [])], env: {} };
   if (o.unsafe) return null;
   switch (tool) {
     case 'codebuddy':
@@ -675,6 +725,14 @@ export function orchestratorInvocation(tool: string, o: OrchestratorOptions, env
       args.push('--input', '-');
       return { argv: args, stdin: o.prompt };
     }
+    case 'agy': {
+      // onset run 这类一次性调用走 headless -p；客户端里编排一律走 ACP（interactiveInvocation）。
+      const mode = o.unsafe
+        ? ['--dangerously-skip-permissions']
+        : ['--mode', 'accept-edits', '--settings', agySettings({ commands: access.commands, mcp: o.toolsServer ? [o.toolsServer.name] : [] })];
+      const args = ['agy', '-p', o.prompt, ...mode, ...m, ...(o.resume ? ['--conversation', sessionID] : []), '--output-format', 'stream-json'];
+      return windowsPromptInput('agy', args, o.prompt);
+    }
     case 'opencode': {
       // opencode 只认项目目录里的 opencode.json，规则集写法实测拦不住命令，
       // 全拒时无头运行直接挂起；安全模式下因此不加限制，见 README。
@@ -704,6 +762,7 @@ export function projectRulesFilename(tool: string): string {
     case 'qoder-intl':
     case 'opencode':
     case 'mcode':
+    case 'agy':
     case 'director':
       return 'AGENTS.md';
     case 'claude':
@@ -757,6 +816,11 @@ export function extractUserMessages(tool: string, line: string): string[] {
     case 'mcode': {
       const item = asObject(event.item);
       if (event.type === 'item.completed' && item?.type === 'agent_message' && typeof item.content === 'string') texts.push(item.content);
+      break;
+    }
+    case 'agy': {
+      const res = asObject(event.result);
+      if (event.event === 'result' && typeof res?.response === 'string') texts.push(res.response);
       break;
     }
   }

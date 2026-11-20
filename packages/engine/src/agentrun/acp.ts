@@ -13,7 +13,7 @@ import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
 import { BasisTotalInput, effectiveOptions, type McpServer, newUsage } from '../tools';
 import { runInteractive, type DriveContext, type PermissionAnswer } from './interactive';
-import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, clip, compactionEvent, type ContextCompaction, type Event, type PlanItem } from './parse';
+import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, clip, compactionEvent, normalizeAgyTool, type ContextCompaction, type Event, type PlanItem } from './parse';
 import type { Outcome, Spec } from './run';
 import { ActiveTasks } from './activetasks';
 
@@ -38,12 +38,23 @@ export function acpText(content: unknown): string {
 export function acpPermissionTool(toolCall: unknown): { toolName: string; input: unknown } {
   const t = obj(toolCall);
   const raw = obj(t.rawInput);
-  const command = str(raw.command);
+  const command = str(raw.command) || str(raw.CommandLine);
   if (command !== '' || t.kind === 'execute') {
     const title = str(t.title);
-    return { toolName: 'Bash', input: { command: command || title, description: title !== '' && title !== command ? title : str(raw.description) || undefined } };
+    const desc = title !== '' && title !== command ? title : str(raw.description) || str(raw.toolSummary) || undefined;
+    return { toolName: 'Bash', input: { command: command || title, description: desc } };
   }
   return { toolName: str(t.name) || str(t.title) || str(t.kind) || 'tool', input: t.rawInput ?? { title: str(t.title) } };
+}
+
+/** 判断 ACP 审批请求是不是调用 onset 自己的工具服务（如 agy 的 mcp_onset_* 或 call_mcp_tool）。 */
+export function isAcpToolsServerCall(toolCall: unknown, server: McpServer | undefined): boolean {
+  if (!server) return false;
+  const t = obj(toolCall);
+  const name = str(t.name);
+  if (name.startsWith(`mcp_${server.name}_`) || name.startsWith(`mcp__${server.name}__`)) return true;
+  if (name === 'call_mcp_tool' && str(obj(t.rawInput).ServerName) === server.name) return true;
+  return false;
 }
 
 /** 用户的回答 → ACP 的选项。always 也只答「这一次」：「以后都允许」由客户端自己记，不写进对方的配置。 */
@@ -172,9 +183,11 @@ export class ACPTranslator {
         const raw = obj(u.rawInput);
         // kind 只是粗分类（read、edit、execute……），MCP 调用一律是 other：那时标题才说明调的是哪个工具。
         const kind = str(u.kind) === 'other' ? '' : str(u.kind);
-        const name = str(u.name) || (str(raw.command) !== '' || u.kind === 'execute' ? 'shell' : kind || str(u.title) || 'tool');
+        const rawName = str(u.name) || (str(raw.command) !== '' || str(raw.CommandLine) !== '' || u.kind === 'execute' ? 'shell' : kind || str(u.title) || 'tool');
+        const normalized = normalizeAgyTool(rawName, u.rawInput ?? { title: str(u.title) });
+        const name = normalized.tool;
         this.tools.set(id, name);
-        this.emit({ kind: KindToolCall, tool: name, call_id: id, input: u.rawInput ?? { title: str(u.title) } });
+        this.emit({ kind: KindToolCall, tool: name, call_id: id, input: normalized.input });
         this.toolDone(id, u);
         return;
       }
@@ -250,15 +263,21 @@ export class ACPTranslator {
   }
 }
 
-/** ACP 一轮结束时报的用量（opencode 2.1 实测：inputTokens 不含缓存，cachedRead/WriteTokens 另算）。 */
+/** ACP 一轮结束时报的用量（opencode 2.1 与 agy 1.5 实测：inputTokens 不含缓存，cachedRead/WriteTokens 另算；agy 的 outputTokens 已含 thoughtTokens）。 */
 export function acpUsage(usage: unknown): ReturnType<typeof newUsage> | null {
   const u = obj(usage);
   if (typeof u.inputTokens !== 'number' && typeof u.outputTokens !== 'number') return null;
   const n = (v: unknown) => (typeof v === 'number' ? v : 0);
+  const input = n(u.inputTokens) + n(u.cachedReadTokens) + n(u.cachedWriteTokens);
+  const output = n(u.outputTokens);
+  const thought = n(u.thoughtTokens);
+  const total = typeof u.totalTokens === 'number' ? u.totalTokens : 0;
+  // agy 的 outputTokens 已含 thoughtTokens（totalTokens === input + outputTokens），不要重复加。
+  const outputIncludesThought = thought > 0 && total > 0 && input + output === total;
   const out = newUsage();
-  out.input_tokens = n(u.inputTokens) + n(u.cachedReadTokens) + n(u.cachedWriteTokens);
+  out.input_tokens = input;
   out.cached_input_tokens = n(u.cachedReadTokens);
-  out.output_tokens = n(u.outputTokens) + n(u.thoughtTokens);
+  out.output_tokens = outputIncludesThought ? output : output + thought;
   out.turns = 1;
   out.source = 'acp usage';
   out.basis = BasisTotalInput;
@@ -327,6 +346,8 @@ async function driveACP(ctx: DriveContext): Promise<void> {
   peer.onRequest('session/request_permission', async (params) => {
     const p = obj(params);
     translator.flush();
+    // onset 自己的工具服务直接放行，不打断用户（与 codexapp.ts 同意 onset 的 elicitation 同一约定）。
+    if (isAcpToolsServerCall(p.toolCall, spec.toolsServer)) return acpOutcome(p.options, { decision: 'allow' });
     const { toolName, input } = acpPermissionTool(p.toolCall);
     const answer = await ctx.decide(toolName, input);
     if (answer.decision !== 'allow' && answer.decision !== 'always') denied = true;
@@ -359,14 +380,16 @@ async function driveACP(ctx: DriveContext): Promise<void> {
     }
     sessionID = spec.sessionID;
     if (spec.tool === 'mcode') await race(configureMcode(peer, sessionID, loaded, spec));
-    await race(ensureModel(peer, sessionID, loaded, spec.model ?? ''));
+    else if (spec.tool === 'agy') await race(configureAgy(peer, sessionID, loaded, spec));
+    else await race(ensureModel(peer, sessionID, loaded, spec.model ?? ''));
     ctx.result.model = acpModel(loaded);
   } else {
     const created = obj(await race(peer.request('session/new', { cwd, mcpServers: acpMcpServers(spec.toolsServer) })));
     sessionID = str(created.sessionId);
     if (sessionID === '') throw new Error('session/new 没有返回 sessionId');
     if (spec.tool === 'mcode') await race(configureMcode(peer, sessionID, created, spec));
-    await race(ensureModel(peer, sessionID, created, spec.model ?? ''));
+    else if (spec.tool === 'agy') await race(configureAgy(peer, sessionID, created, spec));
+    else await race(ensureModel(peer, sessionID, created, spec.model ?? ''));
     ctx.result.model = acpModel(created);
   }
   ctx.emit({ kind: KindSession, session_id: sessionID });
@@ -465,6 +488,55 @@ export async function configureMcode(peer: { request(method: string, params: unk
   if (effort !== '' && str(configOption(opened, 'thinkingEffort')?.currentValue) !== effort) {
     try {
       await set('thinkingEffort', effort);
+    } catch (err) {
+      throw new Error(`这个模型不支持推理强度「${effort}」：${(err as Error).message}`, { cause: err });
+    }
+  }
+}
+
+/**
+ * Antigravity CLI（agy acp，1.5.13 实测）会话开出来后：
+ * - 安全模式切到 accept-edits（自动批准工作区文件编辑，命令与 MCP 发 session/request_permission；不安全模式启动时已带 --dangerously-skip-permissions）。
+ * - 模型：configOptions.model 接受基础模型名（如 gemini-3.8-flash），models.availableModels 含带档位的完整名（如 gemini-3.8-flash-low），两种写法都认。
+ * - 推理强度（thought_level）：换完模型再设，不同模型的可选档位不一样。
+ */
+export async function configureAgy(peer: { request(method: string, params: unknown): Promise<unknown> }, sessionID: string, opened: Obj, spec: Pick<Spec, 'unsafe' | 'model' | 'options'>): Promise<void> {
+  const set = async (configId: string, value: string): Promise<void> => {
+    const result = obj(await peer.request('session/set_config_option', { sessionId: sessionID, configId, value }));
+    if (Array.isArray(result.configOptions)) opened.configOptions = result.configOptions;
+  };
+  if (!spec.unsafe && str(configOption(opened, 'mode')?.currentValue) !== 'accept-edits') {
+    await set('mode', 'accept-edits');
+  }
+  const wanted = spec.model ?? '';
+  if (wanted !== '') {
+    const modelOpt = configOption(opened, 'model');
+    const baseValues = (Array.isArray(modelOpt?.options) ? modelOpt.options.map(obj) : []).map((o) => str(o.value));
+    const available = (Array.isArray(obj(opened.models).availableModels) ? (obj(opened.models).availableModels as unknown[]).map(obj) : []).map((m) => str(m.modelId));
+    try {
+      if (baseValues.includes(wanted)) {
+        if (str(modelOpt?.currentValue) !== wanted) await set('model', wanted);
+        if (opened.models && typeof opened.models === 'object') obj(opened.models).currentModelId = wanted;
+      } else if (available.includes(wanted)) {
+        if (str(obj(opened.models).currentModelId) !== wanted) {
+          await peer.request('session/set_model', { sessionId: sessionID, modelId: wanted });
+          obj(opened.models).currentModelId = wanted;
+        }
+      } else if (modelOpt) {
+        await set('model', wanted);
+        if (opened.models && typeof opened.models === 'object') obj(opened.models).currentModelId = wanted;
+      } else {
+        await peer.request('session/set_model', { sessionId: sessionID, modelId: wanted });
+        if (opened.models && typeof opened.models === 'object') obj(opened.models).currentModelId = wanted;
+      }
+    } catch (err) {
+      throw new Error(`编排工具不接受模型 ${wanted}：${(err as Error).message}`, { cause: err });
+    }
+  }
+  const effort = effectiveOptions('agy', spec.options).effort ?? '';
+  if (effort !== '' && str(configOption(opened, 'thought_level')?.currentValue) !== effort) {
+    try {
+      await set('thought_level', effort);
     } catch (err) {
       throw new Error(`这个模型不支持推理强度「${effort}」：${(err as Error).message}`, { cause: err });
     }
