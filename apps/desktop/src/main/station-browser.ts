@@ -107,8 +107,10 @@ async function readBody(request: IncomingMessage): Promise<Record<string, unknow
  */
 export class StationBrowsers {
   private pages = new Map<string, EmbeddedPage>();
-  /** 销毁已开始、还没完成的页面（草稿可能还在写）：页面虽已移出 pages，退出与移除账号仍要等它们。 */
-  private closingPages = new Map<string, Promise<void>>();
+  /** 销毁已开始、还没完成的页面（草稿可能还在写）：页面虽已移出 pages，退出与移除账号仍要等它们。同一账号先后开过几个页面就记几个，互不覆盖。 */
+  private closingPages = new Map<string, Set<Promise<void>>>();
+  /** 正在移除的账号：存储与缓存清完前拒绝重开（同目录复用同一 Session，清掉会伤及新页面的数据）。 */
+  private forgetting = new Set<string>();
   private closePromise?: Promise<void>;
   private leases = new Set<() => void>();
   private flushTimer?: NodeJS.Timeout;
@@ -177,6 +179,7 @@ export class StationBrowsers {
     if (typeof label !== 'string' || !label.trim() || label.length > 100) throw Error('网页账号名称无效');
     if (typeof url !== 'string' || !allowed(url, request.origins)) throw Error('网页地址不在插件声明的来源里');
     const key = path.join(request.data_dir, 'web-sessions', account);
+    if (this.forgetting.has(key)) throw Error('这个账号正在移除，请稍后再试');
     const existing = this.pages.get(key);
     if (existing && !existing.closed && !existing.contents.isDestroyed()) {
       if (existing.owner && existing.owner !== owner) throw Error('这个账号正在由另一项操作填写，请稍后再试');
@@ -335,17 +338,24 @@ export class StationBrowsers {
           const account = body.account;
           if (typeof account !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(account)) throw Error('网页账号编号无效');
           const key = path.join(request.data_dir, 'web-sessions', account);
+          if (this.forgetting.has(key)) throw Error('这个账号正在移除，请稍后再试');
           const page = this.pages.get(key);
           if (page && page.owner && page.owner !== owner) throw Error('这个账号正在由另一项操作使用，请稍后再试');
-          // 等销毁走完再清存储：网页的关闭流程可能还在写草稿，先清掉会被它写回来（已经在关的页面也要等）。
-          if (page) await this.closePage(page);
-          await this.closingPages.get(key);
-          if (current === page) current = undefined;
-          // 移除账号：登录状态由片场保管，一并清掉（插件只删得到它自己 data_dir 里的东西）。
-          // clearStorageData 不管 HTTP 缓存：登录后的个人页面可能被缓存，同一账号编号再开时还会显示旧内容。
-          const ses = session.fromPath(sessionDirectory(app.getPath('userData'), request.id, account));
-          await ses.clearStorageData();
-          await ses.clearCache();
+          // 等销毁走完再清存储：网页的关闭流程可能还在写草稿，先清掉会被它写回来（已经在关的页面也要等，一个账号有几个都等）。
+          // 清理期间拒绝重开这个账号：同目录复用同一 Session，重开的新页面会被一并清掉。
+          this.forgetting.add(key);
+          try {
+            if (page) await this.closePage(page);
+            await Promise.all([...(this.closingPages.get(key) ?? [])]);
+            if (current === page) current = undefined;
+            // 移除账号：登录状态由片场保管，一并清掉（插件只删得到它自己 data_dir 里的东西）。
+            // clearStorageData 不管 HTTP 缓存：登录后的个人页面可能被缓存，同一账号编号再开时还会显示旧内容。
+            const ses = session.fromPath(sessionDirectory(app.getPath('userData'), request.id, account));
+            await ses.clearStorageData();
+            await ses.clearCache();
+          } finally {
+            this.forgetting.delete(key);
+          }
           result = {};
         } else {
           if (!current || current.contents.isDestroyed()) throw Error('请先打开账号页面');
@@ -447,8 +457,13 @@ export class StationBrowsers {
       if (!page.window.isDestroyed()) page.window.destroy();
     })();
     const done = page.destroying;
-    this.closingPages.set(page.key, done);
-    const settled = () => { if (this.closingPages.get(page.key) === done) this.closingPages.delete(page.key); };
+    const pending = this.closingPages.get(page.key) ?? new Set<Promise<void>>();
+    this.closingPages.set(page.key, pending);
+    pending.add(done);
+    const settled = () => {
+      pending.delete(done);
+      if (pending.size === 0 && this.closingPages.get(page.key) === pending) this.closingPages.delete(page.key);
+    };
     done.then(settled, settled);
     return done;
   }
@@ -459,7 +474,7 @@ export class StationBrowsers {
     for (const page of this.pages.values()) this.destroyPage(page);
     this.pages.clear();
     this.scheduleFlush();
-    this.closePromise = Promise.all([...this.closingPages.values()]).then(() => {});
+    this.closePromise = Promise.all([...this.closingPages.values()].flatMap(pending => [...pending])).then(() => {});
     return this.closePromise;
   }
 }

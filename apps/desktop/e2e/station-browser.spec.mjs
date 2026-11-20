@@ -4,13 +4,14 @@ import { test, expect, openProject, api, installPlugin } from './fixtures.mjs';
 
 const origin = 'https://creator.example.test';
 // 像抖音的编辑页：只在 beforeunload 里把编辑中的内容存成草稿，存完还要求确认离开。
-// 存草稿故意慢一点（同步忙等 800ms，仍在 UnloadGraceMs 内）：退出不等关闭流程的话，进程会在存完之前就结束了。
-const draftOnUnload = `<script>addEventListener('beforeunload', e => { const t=Date.now(); while(Date.now()-t<800){} localStorage.setItem('draft', 'saved-before-unload'); e.preventDefault(); e.returnValue = ''; })</script>`
+// 存草稿故意慢一点（同步忙等 1500ms，仍在 UnloadGraceMs 内）：退出不等关闭流程的话，进程会在存完之前就结束了；
+// 也给「移除期间另一连接重开」的用例留出落进销毁窗口的时间。
+const draftOnUnload = `<script>addEventListener('beforeunload', e => { const t=Date.now(); while(Date.now()-t<1500){} localStorage.setItem('draft', 'saved-before-unload'); e.preventDefault(); e.returnValue = ''; })</script>`
   // 也像编辑中的网站那样随时往本地存储写：片场开着页面时几秒内就要落到磁盘上，不等关窗口。
   + `<script>localStorage.setItem('live', 'written-while-open')</script>`;
 const html = draftOnUnload + '<input type="file"><input id="title"><input id="typed"><button onclick="window.published=true">发布</button><button id="poke" style="position:fixed;left:10px;top:200px;width:80px;height:30px" onclick="window.poked=event.isTrusted">点我</button>';
 
-for (const shutdown of ['application', 'window', 'page-before-window']) test(`plugin fills an embedded page, leaves manual publishing available, isolates accounts and revokes automation (${shutdown})`, async ({ electronApp, page, project, sandbox }) => {
+for (const shutdown of ['application', 'window', 'page-before-window', 'quit-with-all-closing']) test(`plugin fills an embedded page, leaves manual publishing available, isolates accounts and revokes automation (${shutdown})`, async ({ electronApp, page, project, sandbox }) => {
   const errors = [];
   electronApp.on('console', message => {
     if (message.text().startsWith('STATION_BROWSER_UNCAUGHT:')) errors.push(message.text());
@@ -26,7 +27,8 @@ for (const shutdown of ['application', 'window', 'page-before-window']) test(`pl
     id: 'embedded-helper', name: '内嵌上传', version: '1', nodes: [{ id: 'embedded-step', label: '内嵌页面', step: 'publish', outputs: ['production/embedded/done.json'] }], browser: { origins: [origin] },
     produces: [{ prefix: 'production/embedded/' }],
     ops: [{ name: 'prepare', summary: '准备网页', trigger: 'user', command: ['{node}', 'prepare.cjs'], params: { account: { type: 'string', required: true, description: '账号编号' } } },
-      { name: 'forget', summary: '移除账号', trigger: 'user', command: ['{node}', 'forget.cjs'], params: { account: { type: 'string', required: true, description: '账号编号' } } }],
+      { name: 'forget', summary: '移除账号', trigger: 'user', command: ['{node}', 'forget.cjs'], params: { account: { type: 'string', required: true, description: '账号编号' } } },
+      { name: 'reopen', summary: '重开账号', trigger: 'user', command: ['{node}', 'reopen.cjs'], params: { account: { type: 'string', required: true, description: '账号编号' } } }],
   }));
   fs.writeFileSync(path.join(dir, 'prepare.cjs'), `
 let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', async()=>{
@@ -66,11 +68,28 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   const r=JSON.parse(input), b=r.browser;
   const rpc=async(body)=>{ const response=await fetch(b.endpoint,{method:'POST',headers:{authorization:'Bearer '+b.token,'content-type':'application/json'},body:JSON.stringify(body)}); const result=await response.json(); if(!response.ok)throw Error(result.error); return result; };
   await rpc({action:'open',account:r.params.account,label:r.params.account,url:'${origin}/'});
+  // 发 forget 前留个标记：测试看到它就知道互斥即将登记，可以放另一连接进来试重开了。
+  const fs=require('fs'); fs.mkdirSync(r.project_root+'/production/embedded',{recursive:true}); fs.writeFileSync(r.project_root+'/production/embedded/forgetting.json','1');
   await rpc({action:'forget',account:r.params.account});
   await rpc({action:'open',account:r.params.account,label:r.params.account,url:'${origin}/'});
   const draft=await rpc({action:'command',method:'Runtime.evaluate',params:{expression:'localStorage.getItem("draft")',returnByValue:true}});
   await rpc({action:'close'});
   console.log('onset-result '+JSON.stringify({draft:draft.result.value}));
+ }catch(e){console.error(e.message);process.exitCode=1;}
+});`);
+  // 移除期间试重开：等 forget 的标记出现（写在 forget 请求发出前，互斥随即登记）再停 100ms 才 open，
+  // 保证落进等待销毁的窗口，不受子进程启动快慢影响。没有互斥时这里会重开成功。
+  fs.writeFileSync(path.join(dir, 'reopen.cjs'), `
+let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', async()=>{
+ try {
+  const r=JSON.parse(input), b=r.browser;
+  const rpc=async(body)=>{ const response=await fetch(b.endpoint,{method:'POST',headers:{authorization:'Bearer '+b.token,'content-type':'application/json'},body:JSON.stringify(body)}); const result=await response.json(); if(!response.ok)throw Error(result.error); return result; };
+  const fs=require('fs'), marker=r.project_root+'/production/embedded/forgetting.json';
+  const deadline=Date.now()+10000;
+  while(!fs.existsSync(marker)){ if(Date.now()>deadline) throw Error('没等到移除标记'); await new Promise(s=>setTimeout(s,50)); }
+  await new Promise(s=>setTimeout(s,100));
+  await rpc({action:'open',account:r.params.account,label:r.params.account,url:'${origin}/'});
+  console.log('onset-result '+JSON.stringify({reopened:true}));
  }catch(e){console.error(e.message);process.exitCode=1;}
 });`);
   installPlugin(sandbox, dir, 'embedded-helper');
@@ -156,6 +175,30 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
   }).toBe(true);
   expect(forgetRun.ok, forgetRun.text).toBe(true);
   expect(forgetRun.data.draft).toBeNull();
+  // 移除等待销毁期间，另一项操作重开同一账号要被拒绝：同目录复用同一 Session，放行后清存储会伤及新页面。
+  // reopen 自己等 forget 的标记出现再动手（见 reopen.cjs），两个任务先后脚发起即可，不依赖启动快慢。
+  const marker = path.join(project.path, 'production', 'embedded', 'forgetting.json');
+  fs.rmSync(marker, { force: true });
+  const forgetting = await api(page, '/api/stations/embedded-helper/ops/forget', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ params: { account: 'account-c' } }) });
+  expect(forgetting.status, JSON.stringify(forgetting.body)).toBe(202);
+  const intruder = await api(page, '/api/stations/embedded-helper/ops/reopen', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ params: { account: 'account-c' } }) });
+  expect(intruder.status, JSON.stringify(intruder.body)).toBe(202);
+  let intruderRun;
+  await expect.poll(async () => {
+    const s = (await api(page, '/api/stations')).body.stations.find(s => s.id === 'embedded-helper');
+    intruderRun = s.ops.find(o => o.name === 'reopen').last_run;
+    return intruderRun?.task_id === intruder.body.task_id;
+  }).toBe(true);
+  expect(intruderRun.ok).toBe(false);
+  expect(intruderRun.text).toContain('正在移除');
+  let forgetAgain;
+  await expect.poll(async () => {
+    const s = (await api(page, '/api/stations')).body.stations.find(s => s.id === 'embedded-helper');
+    forgetAgain = s.ops.find(o => o.name === 'forget').last_run;
+    return forgetAgain?.task_id === forgetting.body.task_id;
+  }).toBe(true);
+  expect(forgetAgain.ok, forgetAgain.text).toBe(true);
+  expect(forgetAgain.data.draft).toBeNull();
   const second = await run('account-b');
   expect(second.previous).toBe('');
   expect((await run('account-a')).previous).toContain('account=account-a');
@@ -204,7 +247,28 @@ let input=''; process.stdin.on('data', c=>input+=c); process.stdin.on('end', asy
     expect(drafted('account-a')).toBe(true);
     expect(drafted('account-b')).toBe(true);
   }
-  if (shutdown !== 'application') {
+  if (shutdown === 'quit-with-all-closing') {
+    // 先关 account-a 并等它销毁完，再关最后一个页面 account-b 马上连退两次：pages 已空、只剩销毁中的页面，
+    // 退出也要等它存完草稿（旧写法 openPages === 0 直接放行，这里会丢）。
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows().find(w => w.getTitle() === '内嵌上传 · account-a');
+      if (!window) throw Error('找不到 account-a 的窗口');
+      window.close();
+    });
+    await expect.poll(() => drafted('account-a'), { timeout: 10_000 }).toBe(true);
+    await expect.poll(() => electronApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some(w => w.getTitle() === '内嵌上传 · account-a'))).toBe(false);
+    const exited = new Promise(resolve => electronApp.process().once('exit', resolve));
+    await electronApp.evaluate(({ app, BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows().find(w => w.getTitle() === '内嵌上传 · account-b');
+      if (!window) throw Error('找不到 account-b 的窗口');
+      window.close();
+      setImmediate(() => { app.quit(); app.quit(); });
+    });
+    await exited;
+    expect(drafted('account-a')).toBe(true);
+    expect(drafted('account-b')).toBe(true);
+  }
+  if (shutdown !== 'application' && shutdown !== 'quit-with-all-closing') {
     await electronApp.evaluate(async ({ BrowserWindow, webContents }, destroyPagesFirst) => {
       const window = BrowserWindow.getAllWindows().find(w => w.isResizable() && w.webContents.getURL().startsWith('onset://app'));
       if (!window) throw Error('主窗口不存在');
