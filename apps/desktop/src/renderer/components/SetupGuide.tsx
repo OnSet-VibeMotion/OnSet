@@ -214,6 +214,7 @@ const purposes: Record<string, string> = {
   align: '安装字幕对齐工具',
   styles: '下载风格库',
   beat: '准备节拍分析环境',
+  song: '准备本机歌曲生成环境（ACE-Step 1.5）',
 };
 
 function purposeOf(item: PrereqStatus): string {

@@ -6,6 +6,7 @@ import { atomicWrite } from '../fsutil';
 import { goPathError, goTrimSpace } from '../gofmt';
 import { newToolchain } from '../mediaprobe';
 import { unmarshal } from './jsondecode';
+import { requireLocalAcestep } from './local';
 import { checkCredential, providerInfo, type Writer } from './platforms';
 import { output } from './proc';
 import { ACEClient } from './provider';
@@ -251,11 +252,25 @@ export async function doctor(root: string, env: Record<string, string>, out: Wri
       if (!b.toString('utf8').includes('--lyrics-file')) throw new Error('mmx 不支持 --lyrics-file');
     });
     check('MiniMax mmx（登录态以实际生成为准）', e);
+  } else if (c.provider === 'acestep-local') {
+    check('本机 ACE-Step 1.5（acestep.cpp + GGUF）', await attempt(() => requireLocalAcestep(env)));
+    if (c.source_audio !== '') {
+      check('翻唱原曲 source_audio', await attempt(() => {
+        const file = localPath(root, c.source_audio);
+        if (!fs.statSync(file).isFile()) throw new Error(`找不到原曲文件：${c.source_audio}`);
+      }));
+    }
+    if (c.reference_audio !== '') {
+      check('音色参考 reference_audio', await attempt(() => {
+        const file = localPath(root, c.reference_audio);
+        if (!fs.statSync(file).isFile()) throw new Error(`找不到参考音频文件：${c.reference_audio}`);
+      }));
+    }
   } else if (c.provider === 'acestep') {
     check('ACE-Step health', await attempt(() => new ACEClient({ endpoint: c.endpoint, key: env.ACESTEP_API_KEY ?? '' }).health(signal)));
   }
   if (c.provider === 'manual') out.write('OK 网页手动生成无需 API Key；handoff 不需要媒体/对齐环境，receive 和 prepare 才需要相应工具\n');
-  if (c.provider !== 'minimax' && c.provider !== 'acestep' && c.provider !== 'manual') {
+  if (c.provider !== 'minimax' && c.provider !== 'acestep' && c.provider !== 'acestep-local' && c.provider !== 'manual') {
     check(providerInfo(c.provider).key + '（仅本地存在性，不验证权限/额度）', await attempt(() => checkCredential(c, env)));
   }
   out.write(`平台接入说明：song_providers({"platform": "${c.provider}"})\n`);

@@ -1,6 +1,32 @@
 // Package song owns immutable song candidates and their derived timing contract.
 export { Platforms, checkCredential, configure, knownProvider, platformGuide, providerInfo, validateHostedConfig } from './platforms';
-export type { Platform, Writer } from './platforms';
+export type { ConfigureOptions, Platform, Writer } from './platforms';
+export {
+  AceStepGGUFModel,
+  AcestepBinDirEnv,
+  AcestepCppCommit,
+  AcestepCppRepo,
+  AcestepCppVersion,
+  AcestepModelsDirEnv,
+  AcestepSourceEnv,
+  DefaultLocalLMModel,
+  DefaultLocalSynthModel,
+  DefaultLocalVAEModel,
+  buildLocalRequest,
+  ensureLocalAcestep,
+  ensureLocalAcestepBinaries,
+  generateLocalAcestep,
+  isCoverTask,
+  localAcestepBinDir,
+  localAcestepBinariesReady,
+  localAcestepModelsDir,
+  localAcestepModelsReady,
+  localAcestepStatus,
+  requireLocalAcestep,
+  resolveLocalLMModel,
+  resolveLocalSynthModel,
+} from './local';
+export type { LocalAcestepInstallOptions, LocalAcestepRuntime, LocalAcestepStatus, LocalGenerateOptions } from './local';
 export {
   DefaultConfig,
   Store,

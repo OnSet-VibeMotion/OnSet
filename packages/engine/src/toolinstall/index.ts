@@ -530,10 +530,15 @@ export interface ModelSpec {
   /** Hugging Face 上的仓库，魔搭上同名。 */
   repo: string;
   files: Array<{ path: string; sha256: string; size: number }>;
+  /** 仅托管在单一来源的模型（例如只有 Hugging Face、魔搭没有同名仓库时）显式声明来源，不白探另一个源。 */
+  sources?: readonly ('huggingface' | 'modelscope')[];
 }
 
 /** 选模型来源：huggingface 或 modelscope；不设时先探一下 Hugging Face 通不通。 */
 export const ModelSourceEnv = 'ONSET_MODEL_SOURCE';
+
+/** 覆盖 Hugging Face 站点地址（例如国内镜像）；文件都核对 sha256，换源也安全。 */
+export const HFEndpointEnv = 'ONSET_HF_ENDPOINT';
 
 /** 模型的本地目录。 */
 export function modelDir(spec: ModelSpec, env: Record<string, string | undefined>): string {
@@ -554,16 +559,21 @@ export function modelReady(spec: ModelSpec, env: Record<string, string | undefin
   });
 }
 
-function modelURL(source: string, repo: string, file: string): string {
+function hfOrigin(env: Record<string, string | undefined>): string {
+  const custom = (env[HFEndpointEnv] ?? '').trim().replace(/\/+$/, '');
+  return custom !== '' ? custom : 'https://huggingface.co';
+}
+
+function modelURL(source: string, repo: string, file: string, env: Record<string, string | undefined>): string {
   if (source === 'modelscope') return `https://www.modelscope.cn/models/${repo}/resolve/master/${file}`;
-  return `https://huggingface.co/${repo}/resolve/main/${file}`;
+  return `${hfOrigin(env)}/${repo}/resolve/main/${file}`;
 }
 
 /** Hugging Face 在几秒内能不能连上：连不上就别让每个文件各自重试一轮再换来源。 */
 async function huggingFaceReachable(opts: InstallOptions): Promise<boolean> {
   const curl = process.platform === 'darwin' && fs.existsSync('/usr/bin/curl') ? '/usr/bin/curl' : lookPath('curl', opts.env.PATH ?? '');
   try {
-    await run(curl, ['--fail', '--silent', '--show-error', '--max-time', '10', '--output', process.platform === 'win32' ? 'NUL' : '/dev/null', 'https://huggingface.co/api/models/' + 'mlx-community'], { ...opts, output: undefined });
+    await run(curl, ['--fail', '--silent', '--show-error', '--max-time', '10', '--output', process.platform === 'win32' ? 'NUL' : '/dev/null', `${hfOrigin(opts.env)}/api/models/mlx-community`], { ...opts, output: undefined });
     return true;
   } catch {
     return false;
@@ -581,7 +591,7 @@ export async function ensureModel(spec: ModelSpec, opts: InstallOptions): Promis
   }
   fs.mkdirSync(dir, { recursive: true });
   const wanted = opts.env[ModelSourceEnv];
-  let sources = wanted === 'huggingface' || wanted === 'modelscope' ? [wanted] : [];
+  let sources = wanted === 'huggingface' || wanted === 'modelscope' ? [wanted] : spec.sources ? [...spec.sources] : [];
   if (sources.length === 0) {
     report({ stage: '选择模型下载源', percent: 0, indeterminate: true });
     sources = (await huggingFaceReachable(opts)) ? ['huggingface', 'modelscope'] : ['modelscope'];
@@ -597,7 +607,7 @@ export async function ensureModel(spec: ModelSpec, opts: InstallOptions): Promis
       for (const source of sources) {
         const offset = base;
         try {
-          const got = await download({ url: modelURL(source, spec.repo, file.path), sha256: file.sha256, size: file.size }, path.dirname(target), path.basename(target) + '.download', opts, (bytes) =>
+          const got = await download({ url: modelURL(source, spec.repo, file.path, opts.env), sha256: file.sha256, size: file.size }, path.dirname(target), path.basename(target) + '.download', opts, (bytes) =>
             report({ stage: `下载模型（${source === 'modelscope' ? '魔搭' : 'Hugging Face'}）`, percent: Math.min(99, (100 * (offset + bytes)) / total) }),
           );
           fs.renameSync(got, target);
