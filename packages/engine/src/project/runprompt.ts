@@ -46,7 +46,7 @@ export function composeProjectPrompt(root: string, focus?: string, requireFocus 
  *
  * override 非空时原样读那份文件（显式指定的提示词，不再组合、不接任何插件的说明）；否则按流程组合（composeProjectPrompt）。
  */
-export function runPrompt(root: string, override: string): RunPromptResult {
+export function runPrompt(root: string, override: string, focus?: string): RunPromptResult {
   if (override !== '') {
     const file = path.resolve(override);
     let prompt: Buffer;
@@ -57,6 +57,6 @@ export function runPrompt(root: string, override: string): RunPromptResult {
     }
     return { prompt, path: file, label: file, warnings: [] };
   }
-  const { text, name, warnings } = composeProjectPrompt(root);
+  const { text, name, warnings } = composeProjectPrompt(root, focus);
   return { prompt: Buffer.from(text), path: '', label: `${name}流程`, warnings };
 }

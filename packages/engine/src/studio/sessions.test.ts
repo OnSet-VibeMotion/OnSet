@@ -98,7 +98,7 @@ describe('sessions', () => {
     expect(a[0]).toContain('动手前先读项目规则');
     expect(a[0]).toContain('## 镜头实现的归属');
 
-    // 第二轮续接同一个 CLI 会话，不再带开场说明。
+    // 第二轮续接同一个 CLI 会话，不再重复发送开场说明与 5KB 镜头归属规则。
     setEnv('FAKE_CONTENT', 'edited twice');
     ({ status } = await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"再慢一点"}'));
     expect(status).toBe(202);
@@ -107,9 +107,7 @@ describe('sessions', () => {
     a = args(f);
     expect(a[1]).toContain('--resume ' + cliSession);
     expect(a[1]).not.toContain('动手前先读项目规则');
-    expect(a[1]).toContain('不得创建、编辑或覆盖镜头实现代码');
-    expect(a[1]).toContain('结束本轮对话会终止仍在运行的任务');
-    expect(a[1]).toContain('不要调用 CronCreate');
+    expect(a[1]).not.toContain('不得创建、编辑或覆盖镜头实现代码');
 
     // 事件流：断线重放从 Last-Event-ID 之后开始。
     const events = await rawGet(f.s, `/api/sessions/${id}/events?follow=0`);
@@ -231,10 +229,13 @@ describe('sessions', () => {
     await waitIdle(f, id);
     const a = args(f);
     expect(a).toHaveLength(3);
-    // 制作提示词的标题（第一轮原样发过），重开的会话里也要有。
+    // 制作提示词的标题（第一轮原样发过），重开的会话里也要有；续接尝试 a[1] 不重复发送 5KB 归属规则，重开新会话 a[2] 自动补回。
     const opening = project.runPrompt(f.root, '').prompt.toString('utf8').split('\n')[0];
     expect(a[0]).toContain(opening);
-    for (const invocation of a) expect(invocation).toContain('## 镜头实现的归属');
+    expect(a[0]).toContain('## 镜头实现的归属');
+    expect(a[0]).toContain('flow_guide(');
+    expect(a[1]).not.toContain('## 镜头实现的归属');
+    expect(a[2]).toContain('## 镜头实现的归属');
     expect(a[2], '重开的会话没带上制作说明').toContain(opening);
     for (const want of ['整片制作的说明', '之前的对话', '改好了', '第二句']) expect(a[2]).toContain(want);
     // 普通对话不带制作说明。
@@ -609,4 +610,30 @@ it('supports manual stage-boundary session handoff with a fresh CLI session and 
   expect(args(f)[1]).toContain('分镜已确认，切入渲染');
   expect(args(f)[1]).toContain('当前项目文件快照');
   expect(args(f)[1]).toContain('共 2 镜；已就绪 1；未渲染 1（scene-002）');
+});
+
+it('auto-hands off production sessions when a major stage gate is confirmed', async () => {
+  const f = newSessionFixture();
+  writeStudioFile(path.join(f.root, 'production', 'script-final.md'), '# 终稿\n\n第一句。\n');
+  const started = await studioRequest(f.s, 'POST', '/api/production/start', '{}');
+  expect(started.status).toBe(202);
+  const id = started.body.session_id as string;
+  await waitIdle(f, id);
+  await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"继续完善口播稿"}');
+  const second = await waitIdle(f, id);
+  const oldCliSession = second.session.cli_session_id as string;
+  expect(oldCliSession).toBeTruthy();
+
+  const confirmed = await studioRequest(f.s, 'POST', '/api/progress/gates/gate-script', '{}');
+  expect(confirmed.status).toBe(200);
+  const sess = getSession(f.s, f.root, id)!;
+  expect(sess.meta.handoff_reason).toContain('自动分段接力进入下一阶段');
+
+  await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"开始配音"}');
+  const third = await waitIdle(f, id);
+  expect(lastTurn(third).status).toBe('succeeded');
+  expect(third.session.cli_session_id).not.toBe(oldCliSession);
+  expect(third.session.handoff_reason).toBeUndefined();
+  expect(args(f)[2]).not.toContain('--resume');
+  expect(args(f)[2]).toContain('当前项目文件快照');
 });

@@ -22,12 +22,12 @@ import { parseModelList } from './modellist';
 describe('agent options', () => {
   it('every tool declares its options', () => {
     for (const tool of ValidTools) expect(agentOptionSpecs(tool).length, tool).toBeGreaterThan(0);
-    expect(agentOptionSpecs('claude').map((s) => s.key)).toEqual(['effort', 'fast']);
-    expect(agentOptionSpecs('codex').map((s) => s.key)).toEqual(['effort', 'fast']);
-    expect(agentOptionSpecs('qoder').map((s) => s.key)).toEqual(['effort', 'context']);
-    expect(agentOptionSpecs('qoder-intl').map((s) => s.key)).toEqual(['effort', 'context']);
-    expect(agentOptionSpecs('mcode').map((s) => s.key)).toEqual(['effort']);
-    expect(agentOptionSpecs('agy').map((s) => s.key)).toEqual(['effort']);
+    expect(agentOptionSpecs('claude').map((s) => s.key)).toEqual(['effort', 'repair_effort', 'simple_effort', 'fast']);
+    expect(agentOptionSpecs('codex').map((s) => s.key)).toEqual(['effort', 'repair_effort', 'simple_effort', 'fast']);
+    expect(agentOptionSpecs('qoder').map((s) => s.key)).toEqual(['effort', 'repair_effort', 'simple_effort', 'context']);
+    expect(agentOptionSpecs('qoder-intl').map((s) => s.key)).toEqual(['effort', 'repair_effort', 'simple_effort', 'context']);
+    expect(agentOptionSpecs('mcode').map((s) => s.key)).toEqual(['effort', 'repair_effort', 'simple_effort']);
+    expect(agentOptionSpecs('agy').map((s) => s.key)).toEqual(['effort', 'repair_effort', 'simple_effort']);
   });
 
   it('reads and writes one line', () => {
@@ -114,6 +114,11 @@ describe('agent options', () => {
     // 不给选项时命令行与以前逐字相同。
     expect(rendererInvocation('claude', 'p', false, {})).toEqual(rendererInvocation('claude', 'p', false, {}, '', null, {}));
     expect(rendererInvocation('claude', 'p', false, {}).join(' ')).not.toContain('fastMode');
+    // 全渲染器均支持 repair_effort 与 simple_effort 分级降档。
+    expect(rendererInvocation('claude', 'p', false, {}, '', null, { effort: 'high', repair_effort: 'low', simple_effort: 'medium' }, 'repair')).toEqual(expect.arrayContaining(['--effort', 'low']));
+    expect(rendererInvocation('claude', 'p', false, {}, '', null, { effort: 'high', repair_effort: 'low', simple_effort: 'medium' }, 'simple')).toEqual(expect.arrayContaining(['--effort', 'medium']));
+    expect(rendererInvocation('codex', 'p', false, {}, '', null, { effort: 'high', repair_effort: 'low' }, 'repair')).toEqual(expect.arrayContaining(['-c', 'model_reasoning_effort="low"']));
+    expect(rendererInvocation('qoder', 'p', false, {}, '', null, { effort: 'high', simple_effort: 'low' }, 'simple')).toEqual(expect.arrayContaining(['--reasoning-effort', 'low']));
   });
 
   it('the director renderer gets the thinking level through stdin', () => {

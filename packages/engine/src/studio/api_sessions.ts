@@ -25,6 +25,7 @@ import {
   emit,
   enqueueTurn,
   eventsAfter,
+  focusStageFor,
   getSession,
   handoffSession,
   kindNotice,
@@ -388,7 +389,9 @@ export async function productionStartAPI(s: Server, request: Request): Promise<R
   let promptLabel: string;
   let warnings: string[];
   try {
-    ({ prompt, path: promptPath, label: promptLabel, warnings } = project.runPrompt(p.path, override));
+    // 客户端整片开工首轮按当前进度聚焦展开（仅公共约定 + 当前阶段 + 阶段索引），避免首轮一次性灌入 100KB+ 全部阶段。
+    const focus = override === '' ? focusStageFor(p.path) : undefined;
+    ({ prompt, path: promptPath, label: promptLabel, warnings } = project.runPrompt(p.path, override, focus));
   } catch (err) {
     return writeError(400, 'prompt_missing', (err as Error).message);
   }
@@ -481,7 +484,9 @@ export function turnAPI(s: Server, request: Request, rest: string): Response {
  */
 export const studioCommands: Readonly<Record<string, string>> = {
   'scene.validate': '校验镜头',
+  'scene.qc_batch': '批量抽帧质检',
   'project.concat': '拼接无声母版',
+  'project.post_render': '修接缝、拼接与复查',
 };
 
 export async function commandAPI(s: Server, request: Request, rest: string): Promise<Response> {
@@ -503,14 +508,25 @@ export async function commandAPI(s: Server, request: Request, rest: string): Pro
     throw err;
   }
   let op: { name: string; params: Record<string, unknown> } | null = null;
+  let pipeline: Array<{ name: string; params: Record<string, unknown> }> | null = null;
   switch (name) {
     case 'scene.validate':
       for (const sc of discoverScenes(p.path)) if (sc.id === sceneID) op = { name: 'scene_lint', params: { scene: sc.directory } };
       if (!op) return writeError(404, 'scene_not_found', '镜头不存在');
       label += ' ' + sceneID;
       break;
+    case 'scene.qc_batch':
+      op = { name: 'scene_frames_batch', params: { scenes: path.join(p.path, 'scenes'), out: path.join(p.path, 'production', 'visual-qc', 'batch') } };
+      break;
     case 'project.concat':
       op = { name: 'concat', params: { scenes: path.join(p.path, 'scenes'), out: path.join(p.path, 'production', 'silent-master.mp4') } };
+      break;
+    case 'project.post_render':
+      pipeline = [
+        { name: 'scene_seams', params: { scenes: path.join(p.path, 'scenes') } },
+        { name: 'concat', params: { scenes: path.join(p.path, 'scenes'), out: path.join(p.path, 'production', 'silent-master.mp4') } },
+        { name: 'review', params: { video: path.join(p.path, 'production', 'silent-master.mp4'), scenes: path.join(p.path, 'scenes'), out: path.join(p.path, 'production', 'review-silent'), silent: true } },
+      ];
       break;
   }
   if (command) {
@@ -526,11 +542,13 @@ export async function commandAPI(s: Server, request: Request, rest: string): Pro
     if (!fileExists(file)) return writeError(400, `${validator.id}_missing`, `找不到 ${validator.file}`);
     op = { name: validator.op, params: { file, project_root: p.path } };
   }
-  const call = op!;
+  const steps = pipeline ?? [op!];
   try {
     const t = runWriteTask(s, p, name, label, async (signal) => {
-      if (name === 'project.concat') fs.mkdirSync(path.join(p.path, 'production'), { recursive: true, mode: 0o755 });
-      await runStudioOp(s, signal, p, call.name, call.params);
+      if (name === 'project.concat' || name === 'project.post_render' || name === 'scene.qc_batch') {
+        fs.mkdirSync(path.join(p.path, 'production'), { recursive: true, mode: 0o755 });
+      }
+      for (const step of steps) await runStudioOp(s, signal, p, step.name, step.params);
     });
     return writeJSON(202, goMap({ task_id: t.task_id, command: name }));
   } catch (err) {

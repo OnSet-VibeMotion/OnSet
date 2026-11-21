@@ -19,11 +19,14 @@ it('retains recent pictures and all results when compacting previews at a previe
   const history = new PreviewHistory();
   expect(history.project(original, 96000)).toMatchObject({ messages: original, trimmed: 0 });
   const first = history.project(original, 64000);
-  expect(first.trimmed).toBe(2);
+  expect(first.trimmed).toBe(3);
   expect(first.messages[1]).toBe(lookup);
   expect(first.messages[0]).toBe(request);
   expect(first.messages[2]).toMatchObject({ content: [
     { type: 'text', text: '联系表路径 1' }, { type: 'text', text: expect.stringContaining('旧预览') },
+  ] });
+  expect(first.messages[4]).toMatchObject({ content: [
+    { type: 'text', text: '联系表路径 3' }, { type: 'text', text: expect.stringContaining('旧预览') },
   ] });
   expect(first.messages[6]).toBe(original[6]);
   expect(history.project(original, 64000)).toEqual({ messages: first.messages, trimmed: 0 });
@@ -43,14 +46,17 @@ it('compacts older inspection images in orchestrator mode while preserving user 
   const history = new PreviewHistory('orchestrator');
   expect(history.project(original, 128000)).toMatchObject({ messages: original, trimmed: 0 });
   const compacted = history.project(original, 96000);
-  expect(compacted.trimmed).toBe(2);
+  expect(compacted.trimmed).toBe(3);
   // 用户消息里附带的参考图始终原样保留。
   expect(compacted.messages[0]).toBe(userWithImage);
-  // 较早的两张工具看图被移出，保留文字与路径提示；最新两张保留原图。
+  // 较早的三张工具看图被移出，保留文字与路径提示；最新一张保留原图。
   expect(compacted.messages[1]).toMatchObject({ content: [
     { type: 'text', text: 'Read image file [image/png] qc-1' },
     { type: 'text', text: expect.stringContaining('旧检查的附图已移出上下文') },
   ] });
-  expect(compacted.messages[3]).toBe(original[3]);
+  expect(compacted.messages[3]).toMatchObject({ content: [
+    { type: 'text', text: 'Read image file [image/png] qc-3' },
+    { type: 'text', text: expect.stringContaining('旧检查的附图已移出上下文') },
+  ] });
   expect(compacted.messages[5]).toBe(original[5]);
 });

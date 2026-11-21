@@ -104,6 +104,7 @@ export function parseRequest(text: string): director.Request {
     model: typeof r.model === 'string' ? r.model : '',
     thinking: typeof r.thinking === 'string' && thinkingLevels.has(r.thinking) ? r.thinking : undefined,
     compact_at: typeof r.compact_at === 'number' && Number.isSafeInteger(r.compact_at) && r.compact_at >= 32_000 ? r.compact_at : undefined,
+    cache_key: typeof r.cache_key === 'string' && r.cache_key !== '' ? r.cache_key : undefined,
     unsafe: r.unsafe === true,
     commands: Array.isArray(r.commands) ? r.commands.filter((c): c is string => typeof c === 'string') : [],
     writable_dirs: Array.isArray(r.writable_dirs) ? r.writable_dirs.filter((c): c is string => typeof c === 'string') : [],

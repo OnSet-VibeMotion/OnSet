@@ -406,6 +406,8 @@ export interface Request {
   thinking?: string;
   /** 可选的渲染上下文整理触发点，单位 Token。 */
   compact_at?: number;
+  /** 跨镜头共享前缀缓存的路由键（同项目同批镜头一致，不随单镜会话变化）。 */
+  cache_key?: string;
   unsafe?: boolean;
   /** 安全模式下 bash 直接放行的命令前缀（与其他编排工具同一份白名单）。 */
   commands?: string[];

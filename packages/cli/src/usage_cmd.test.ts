@@ -103,6 +103,95 @@ describe('usage', () => {
     for (const want of ['渲染：1 个镜头、1 次尝试', '编排：2 次调用', 'Studio', '本项目合计：输入 2,300']) expect(out.text).toContain(want);
   });
 
+  it('usage --breakdown reports cache hit rate, retry/repair waste and top scenes', async () => {
+    const root = tempDir();
+    fs.writeFileSync(path.join(root, 'onset.conf'), 'ORCHESTRATOR=codex\nRENDERER=claude\n');
+    process.chdir(root);
+    ledger.append(ledger.projectFile(root), {
+      time: '2026-11-09T00:00:00Z',
+      source: ledger.SourceStudio,
+      tool: 'codex',
+      model: 'gpt-test',
+      session: 'th-1',
+      status: 'succeeded',
+      usage: { input_tokens: 1000, cached_input_tokens: 750, output_tokens: 100, basis: 'total-input', source: 'codex turn.completed' },
+    });
+    const makeScene = (id: string) => {
+      const dir = path.join(root, 'scenes', id);
+      fs.mkdirSync(path.join(dir, 'attempts', 'attempt-01'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'transcription.srt'), '1\n00:00:00,000 --> 00:00:01,000\nx\n');
+      fs.writeFileSync(path.join(dir, 'frame.md'), '---\ncanvas:\n  width_px: 320\n  height_px: 240\n  fps: 30\n---\n正文\n');
+      fs.writeFileSync(
+        path.join(dir, 'scene.json'),
+        `{"id":"${id}","duration_seconds":1.0,"output":"out.mp4","transcript":"transcription.srt","text":"中文"}`,
+      );
+      return dir;
+    };
+    const s1 = makeScene('scene-001');
+    fs.writeFileSync(
+      path.join(s1, 'attempts', 'attempt-01', 'render-scene-001.attempt.json'),
+      JSON.stringify({
+        scene_id: 'scene-001',
+        renderer: 'claude',
+        outcome: 'failed',
+        usage: { input_tokens: 2000, cached_input_tokens: 1000, output_tokens: 200, turns: 4, basis: 'total-input', source: 'claude result' },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(s1, 'render-scene-001.attempt.json'),
+      JSON.stringify({
+        scene_id: 'scene-001',
+        renderer: 'claude',
+        outcome: 'succeeded',
+        retry: true,
+        usage: { input_tokens: 1000, cached_input_tokens: 800, output_tokens: 150, turns: 3, basis: 'total-input', source: 'claude result' },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(s1, 'render-scene-001.stream.jsonl'),
+      '{"tool":"scene_preview_check"}\n{"tool":"scene_preview_check"}\n',
+    );
+    const s2 = makeScene('scene-002');
+    fs.writeFileSync(
+      path.join(s2, 'render-scene-002.attempt.json'),
+      JSON.stringify({
+        scene_id: 'scene-002',
+        renderer: 'claude',
+        outcome: 'succeeded',
+        local_repair: true,
+        usage: { input_tokens: 500, cached_input_tokens: 200, output_tokens: 50, turns: 2, basis: 'total-input', source: 'claude result' },
+      }),
+    );
+
+    let out = new Buffer();
+    expect(await run(['usage', '--breakdown', '--json'], out, out), out.text).toBe(0);
+    const data = JSON.parse(out.text);
+    expect(data.breakdown.orchestrator_cache_hit_rate).toBe(75);
+    expect(data.breakdown.render_cache_hit_rate).toBe(57.1);
+    expect(data.breakdown.retry_and_repair_input_tokens).toBe(1500);
+    expect(data.breakdown.retry_and_repair_output_tokens).toBe(200);
+    expect(data.breakdown.top_scenes[0]).toMatchObject({
+      scene_id: 'scene-001',
+      attempts: 2,
+      retries: 1,
+      repairs: 0,
+      turns: 7,
+      preview_calls: 2,
+    });
+    expect(data.breakdown.top_scenes[1]).toMatchObject({
+      scene_id: 'scene-002',
+      attempts: 1,
+      retries: 0,
+      repairs: 1,
+    });
+
+    out = new Buffer();
+    expect(await run(['usage', '--breakdown'], out, out), out.text).toBe(0);
+    for (const want of ['降本诊断拆账', '缓存命中率：渲染 57.1%，编排 75.0%', '重试与返修消耗：输入 1500，输出 200', 'scene-001', '预览 2 次']) {
+      expect(out.text).toContain(want);
+    }
+  });
+
 
   it('skills progress printer refreshes one line', () => {
     const out = new Buffer();

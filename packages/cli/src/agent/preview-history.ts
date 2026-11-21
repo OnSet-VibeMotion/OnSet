@@ -31,8 +31,9 @@ export class PreviewHistory {
           && m.role === 'toolResult'
           && !this.omitted.has(m.toolCallId)
           && m.content.some(c => c.type === 'image'));
-        // Make a change only when there's a batch to drop. Each change can break a cached request prefix.
-        if (sheets.length >= 4) for (const sheet of sheets.slice(0, -2)) {
+        // Make a change only when there's a batch to drop. Retain only the newest 1 image on trigger
+        // so cache-invalidating compactions fire less frequently (every 3 images instead of every 2).
+        if (sheets.length >= 4) for (const sheet of sheets.slice(0, -1)) {
           if (sheet.role !== 'toolResult') continue;
           this.omitted.add(sheet.toolCallId);
           trimmed++;

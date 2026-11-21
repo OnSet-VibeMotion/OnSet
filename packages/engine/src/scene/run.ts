@@ -43,6 +43,7 @@ import { newAttempt, OutcomeFailed, OutcomeInterrupted, OutcomeSucceeded, Outcom
 import { CheckOutputFrames, classifyOutputProblem, DeterminismCheckPrefix } from './checks';
 import { fingerprint, RecordSchemaRenderContract, removeRecord, writeRecord, type Inputs } from './record';
 import { buildPrompt, contained, DesignFile, findProjectRoot, renderPromptVersion, sceneCanvas, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
+import { blockValue } from './block';
 import { removeLive, writeLive } from './live';
 import { rendererHome, rendererUnfiltered, sandboxAvailable, sandboxed, sandboxProfile } from './sandbox';
 import { verifySeam } from './seam';
@@ -64,6 +65,30 @@ const maxLineBytes = 4 * 1024 * 1024;
 /** 写给用户看的输出（Go 的 io.Writer）。 */
 export interface Writer {
   write(chunk: string): unknown;
+}
+
+const complexVisualRe = /\b(?:three\.?js|webgl|canvas|lottie|3d|shader|particle|character|rig)\b|多角色|粒子|三维|算法艺术|生成式/i;
+
+/** 判断单镜头是否属于低复杂度镜头（短标题/文字卡等），便于在用户配了 simple_effort 时自动降档省 token。 */
+export function isSimpleScene(s: Scene): boolean {
+  if (s.duration_seconds > 6 || s.text.length > 60) return false;
+  if (s.components.length > 0 || s.plugin_skills.length > 0) return false;
+  if (blockValue(s, 'cast') !== null || blockValue(s, 'song') !== null || blockValue(s, 'beat') !== null) return false;
+  try {
+    const promptPath = contained(s.directory, 'prompt.md', 'prompt.md');
+    if (fs.existsSync(promptPath)) {
+      const body = fs.readFileSync(promptPath, 'utf8');
+      if (body.length > 450 || complexVisualRe.test(body)) return false;
+    }
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+function renderStage(s: Scene, repair?: RepairContext): 'full' | 'repair' | 'simple' {
+  if (repair || s.seam) return 'repair';
+  return isSimpleScene(s) ? 'simple' : 'full';
 }
 
 /**
@@ -211,7 +236,7 @@ async function runScene(
     });
     return { ...command, argv: sandboxed(argv, profile) };
   };
-  const invocation = (text: string, session: RendererSession | null, stage: 'full' | 'repair' = 'full'): Invocation =>
+  const invocation = (text: string, session: RendererSession | null, stage: 'full' | 'repair' | 'simple' = 'full'): Invocation =>
     confine(rendererLaunch(renderer, text, unsafe, access, model, session, s.directory, { ...childEnv, [director.DirEnv]: director.defaultDir({ ...process.env, ...baseEnv }) }, options, stage));
   const inputs = fingerprint(s, renderer, resolvedSkills);
   const resourceKeys = new Set([...Object.keys(preparedResources), ...Object.keys(inputs.parts ?? {}).filter((key) => key.startsWith('asset:'))]);
@@ -486,7 +511,7 @@ async function runScene(
     const session = newSession();
     attempt.session_id = session?.id ?? '';
     if (resume) attempt.resumed = 'files';
-    await spawnRenderer(invocation(resume ? continuePrompt() : prompt, session, repair ? 'repair' : 'full'), rawFile, stderrFile, userFile);
+    await spawnRenderer(invocation(resume ? continuePrompt() : prompt, session, renderStage(s, repair)), rawFile, stderrFile, userFile);
   }
 
   /** 第一层：onset 自己用固定版本的 HyperFrames CLI 渲染镜头目录里的合成，不用模型。 */

@@ -278,6 +278,39 @@ describe('onset tools MCP', () => {
     expect(help).toContain('meter（整数）');
     expect(help).toContain('beat_regrid({"meter": 4, "anchor": 1})');
   });
+
+  it('prunes admin memory tools and irrelevant flow tools for project sessions', () => {
+    const allNames = describeTools('orchestrator').map((t) => t.name);
+    // 管理类 memory_* 仅留给 cli，编排端只保留制作期需要的记忆工具。
+    expect(allNames).toContain('memory_remember');
+    expect(allNames).toContain('memory_consolidate');
+    expect(allNames).not.toContain('memory_exam');
+    expect(allNames).not.toContain('memory_rollback');
+    expect(allNames).not.toContain('memory_timeline');
+    // 毫秒级只读工具省略 wait_seconds 参数。
+    const cfgTool = describeTools('orchestrator').find((t) => t.name === 'config_get')!;
+    expect(cfgTool.inputSchema.properties).not.toHaveProperty('wait_seconds');
+
+    const tmp = fs.mkdtempSync('/tmp/onset-mcp-flow-');
+    try {
+      fs.writeFileSync(`${tmp}/onset.flow.json`, JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } }));
+      const speechNames = describeTools('orchestrator', tmp).map((t) => t.name);
+      expect(speechNames).toContain('scene_frames_batch');
+      expect(speechNames).toContain('align_run');
+      expect(speechNames).not.toContain('beat_analyze');
+      expect(speechNames).not.toContain('song_generate');
+      expect(speechNames).not.toContain('dialogue_assemble');
+
+      fs.writeFileSync(`${tmp}/onset.flow.json`, JSON.stringify({ version: 1, production: { id: 'beat', canvas: 'vertical-9x16' } }));
+      const beatNames = describeTools('orchestrator', tmp).map((t) => t.name);
+      expect(beatNames).toContain('beat_cues');
+      expect(beatNames).not.toContain('voice_synthesize');
+      expect(beatNames).not.toContain('align_run');
+      expect(beatNames).not.toContain('song_generate');
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 // 客户端里 onset 由 Electron 当 Node 运行，main.ts 一启动就删掉 ELECTRON_RUN_AS_NODE（不能漏给 agent）。

@@ -518,9 +518,9 @@ describe('runBuiltinAgent', () => {
       agent_dir: path.join(tmp, 'agent'), service: { ...fauxService, vision: true },
     };
     expect(await runBuiltinAgent(req, line => lines.push(line), undefined, { spawner, setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
-    expect(previewImages).toBe(compact_at ? 2 : 4);
+    expect(previewImages).toBe(compact_at ? 1 : 4);
     const report = JSON.parse(lines.at(-1)!);
-    expect(report.dropped_preview_images ?? 0).toBe(compact_at ? 2 : 0);
+    expect(report.dropped_preview_images ?? 0).toBe(compact_at ? 3 : 0);
   });
 
   it('creates a renderer skeleton, rejects bulk writes and overwrites, then edits by anchor', async () => {
@@ -752,8 +752,31 @@ describe('runBuiltinAgent', () => {
       agent_dir: path.join(tmp, 'agent'), service: { ...fauxService, vision: true },
     };
     expect(await runBuiltinAgent(req, l => lines.push(l), undefined, { setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
-    expect(remainingImages).toBe(2);
+    expect(remainingImages).toBe(1);
     const report = JSON.parse(lines.at(-1)!);
-    expect(report.dropped_preview_images).toBe(2);
+    expect(report.dropped_preview_images).toBe(3);
+  });
+
+  it('normalizes renderer system prompt cwd so different scene directories share identical prefixes', async () => {
+    const dirA = path.join(tmp, 'scenes', 'scene-001');
+    const dirB = path.join(tmp, 'scenes', 'scene-002');
+    fs.mkdirSync(dirA, { recursive: true });
+    fs.mkdirSync(dirB, { recursive: true });
+    const captured: string[] = [];
+    for (const dir of [dirA, dirB]) {
+      const faux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+      faux.setResponses([context => {
+        const sys = context.messages.find((m) => m.role === 'system') as { content?: string; toolsAdded?: unknown } | undefined;
+        captured.push(JSON.stringify({ content: sys?.content ?? '', toolsAdded: sys?.toolsAdded ?? [] }));
+        return fauxAssistantMessage('ok');
+      }]);
+      const req: director.Request = { profile: 'renderer', workdir: dir, prompt: '渲染', agent_dir: path.join(tmp, 'agent'), cache_key: 'onset-render-demo', service: fauxService };
+      expect(await runBuiltinAgent(req, () => {}, undefined, { setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
+    }
+    expect(captured).toHaveLength(2);
+    expect(captured[0]).toBe(captured[1]);
+    expect(captured[0]).toContain('<cwd>.</cwd>');
+    expect(captured[0]).not.toContain('scene-001');
+    expect(captured[1]).not.toContain('scene-002');
   });
 });

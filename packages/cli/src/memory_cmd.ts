@@ -175,6 +175,7 @@ const validListStatus = new Set(['active', 'trial', 'rejected', 'dormant']);
 defineOp({
   name: 'memory_list',
   cli: ['memory', 'list'],
+  scopes: ['cli'],
   summary: '列出记忆',
   description: '列出记忆库里的经验与偏好，附按渲染工具分开的效果统计（召回次数 / 一次通过次数，只计正式渲染的首次尝试）。',
   examples: ['memory_list()', 'memory_list({"status": "trial", "json": true})'],
@@ -221,6 +222,7 @@ defineOp({
 defineOp({
   name: 'memory_show',
   cli: ['memory', 'show'],
+  scopes: ['cli'],
   summary: '显示一条记忆的全文',
   description: '按名字返回一条经验或偏好的完整文件内容（frontmatter 与正文），包括它的状态、来源经历与考试记录。',
   examples: ['memory_show({"name": "font-local-block"})'],
@@ -237,6 +239,7 @@ defineOp({
 defineOp({
   name: 'memory_recall',
   cli: ['memory', 'recall'],
+  scopes: ['cli'],
   summary: '预览一个镜头会召回哪些记忆，以及原因',
   description: `按项目配置（MEMORY_SNAPSHOT、MEMORY_RECALL_BUDGET）预览镜头渲染时会召回的记忆。
 不受 MEMORY=off 影响：关闭时渲染不召回，但仍可预览。`,
@@ -370,6 +373,7 @@ function orNone(list: readonly string[] | null): string {
 defineOp({
   name: 'memory_exam',
   cli: ['memory', 'exam'],
+  scopes: ['cli'],
   summary: '回放考试：试用经验能否转为生效',
   description: `考试矩阵：考题 × 渲染工具 × {对照组：当前生效记忆, 试用组：再加试用经验}。
 考题是试用经验来源的失败经历（冻结输入原样重放），加上 holdout 给的留出镜头。
@@ -508,6 +512,7 @@ export function renderExam(r: memory.ExamResult): string {
 defineOp({
   name: 'memory_accept_exam',
   cli: ['memory', 'accept-exam'],
+  scopes: ['cli'],
   summary: '记录用户对视频对照的人工验收，标记进化完成',
   description: '只在用户明确确认观看效果后调用。指定本场已生效经验及看过的题目，保留原话；独立保存人工验收，不改机器判卷、评分、适用范围或原考试文件。',
   examples: ['memory_accept_exam({"exam":"exam-0001","name":"hold-readable","questions":["q1"],"note":"已核对画面与阅读节奏","statement":"填写用户明确确认的原话"})'],
@@ -529,6 +534,7 @@ defineOp({
 defineOp({
   name: 'memory_promote',
   cli: ['memory', 'promote'],
+  scopes: ['cli'],
   summary: '人工确认一条试用记忆生效',
   description: '偏好不参加考试，只能由人确认生效。经验通常由 memory_exam 转为生效；人工确认的经验会让快照标为「未经考试」。',
   examples: ['memory_promote({"name": "no-neon-overload"})'],
@@ -544,6 +550,7 @@ defineOp({
 defineOp({
   name: 'memory_reject',
   cli: ['memory', 'reject'],
+  scopes: ['cli'],
   summary: '人工拒绝一条试用记忆',
   description: '把一条试用中的记忆记为被拒，原因写进它的 rejected_reason。被拒记忆保留文件、不再参加考试，也不会被召回。',
   examples: ['memory_reject({"name": "loop-forever", "reason": "无限循环会被确定性扫描判失败"})'],
@@ -562,6 +569,7 @@ defineOp({
 defineOp({
   name: 'memory_retire',
   cli: ['memory', 'retire'],
+  scopes: ['cli'],
   summary: '让一条生效记忆转为沉睡',
   description: 'memory_status() 会列出待沉睡候选（召回后一次通过率不高于基线）；确认后用它让一条记忆沉睡。用户收回一条偏好时也用它。',
   examples: ['memory_retire({"name": "font-local-block", "reason": "在两个渲染工具上都没有提升"})'],
@@ -580,6 +588,7 @@ defineOp({
 defineOp({
   name: 'memory_rollback',
   cli: ['memory', 'rollback'],
+  scopes: ['cli'],
   summary: '回退到某个快照',
   description: '把快照 to 的生效记忆集合恢复成一个新快照，不删除任何历史。缺省回到最新快照的上一个。',
   examples: ['memory_rollback()', 'memory_rollback({"to": 3})'],
@@ -597,6 +606,7 @@ defineOp({
 defineOp({
   name: 'memory_status',
   cli: ['memory', 'status'],
+  scopes: ['cli'],
   summary: '记忆库现状；发现人工编辑时记成新快照',
   description: `汇总记忆库：各状态的记忆数、最新快照、经历数、上次整理后新增的失败数，以及待沉睡候选。
 
@@ -693,6 +703,7 @@ defineOp({
 defineOp({
   name: 'memory_timeline',
   cli: ['memory', 'timeline'],
+  scopes: ['cli'],
   summary: '记忆库的事件时间线',
   description: '按发生顺序列出记忆库的事件：写经历、整理、试用、草稿被拒、考试、生效、被拒、沉睡、快照、人工编辑与回退。',
   examples: ['memory_timeline({"limit": 20})', 'memory_timeline({"json": true})'],
@@ -839,6 +850,7 @@ function snapshotsText(list: readonly number[] | null): string {
 defineOp({
   name: 'memory_report',
   cli: ['memory', 'report'],
+  scopes: ['cli'],
   summary: '按渲染批次对比：一次通过率、重试、问题数、耗时与 token',
   description: `一次 scene_run / scene_run_all 调用是一个批次。报告按批次汇总正式渲染：
   镜头数、首次尝试就通过的镜头数与比例（事后检查查出问题的不算通过）、
@@ -934,6 +946,7 @@ function tokensPerScene(s: memory.RunStats): string {
 defineOp({
   name: 'memory_import',
   cli: ['memory', 'import'],
+  scopes: ['cli'],
   summary: '把已有项目的渲染历史导入为种子经历',
   description: `从已有项目里导入渲染历史，作为记忆的种子：
   - 镜头目录里的尝试记录（render-<id>.attempt.json）与 attempts/ 下归档的尝试；

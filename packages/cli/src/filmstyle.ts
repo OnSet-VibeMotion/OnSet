@@ -84,11 +84,14 @@ defineOp({
   cli: ['film-style', 'list'],
   summary: '列出各风格来源里的全部风格',
   description: `按来源、再按分类列出全部风格：标识（来源/目录名）、中文名、英文名、适用题材与说明。
-不联网。source 只列一个来源；"json": true 输出机器可读的列表。`,
-  examples: ['film_style_list()', 'film_style_list({"source": "lemo-opuscar"})', 'film_style_list({"json": true})'],
+不联网。source 只列一个来源；compact 为精简目录（每行一条，推荐编排选风格用）；category 或 query 可按分类/关键词筛选；"json": true 输出机器可读的列表。`,
+  examples: ['film_style_list()', 'film_style_list({"compact": true})', 'film_style_list({"query": "水墨", "compact": true})', 'film_style_list({"source": "lemo-opuscar"})', 'film_style_list({"json": true})'],
   params: {
     json: { type: 'boolean', description: '以 JSON 输出' },
+    compact: { type: 'boolean', description: '精简目录（每行一种风格：标识、名称、适用题材与一句摘要）' },
     source: { type: 'string', description: '只列一个风格来源' },
+    category: { type: 'string', description: '按分类名筛选（子串匹配）' },
+    query: { type: 'string', description: '按关键词筛选（匹配标识、名称、标签、适用题材与说明）' },
     project_root: projectRootParam,
   },
   run: (p, { out }) => {
@@ -98,7 +101,34 @@ defineOp({
       if (!source) throw new Error(`没有风格来源 ${goQuote(str(p.source))}。已登记：\n${sourceSummary()}`);
       sources = [source];
     }
-    const styles = sources.flatMap((source) => source.catalog());
+    const categoryFilter = str(p.category).trim().toLowerCase();
+    const queryFilter = str(p.query).trim().toLowerCase();
+    const matches = (style: filmstyle.Style): boolean => {
+      if (categoryFilter !== '' && !`${style.category_cn} ${style.category_en}`.toLowerCase().includes(categoryFilter)) return false;
+      if (queryFilter !== '') {
+        const hay = [filmstyle.styleKey(style), style.cn, style.en, style.category_cn, ...(style.uses ?? []), ...(style.tags ?? []), style.summary].join(' ').toLowerCase();
+        if (!hay.includes(queryFilter)) return false;
+      }
+      return true;
+    };
+    const styles = sources.flatMap((source) => source.catalog()).filter(matches);
+    if (bool(p.compact)) {
+      let current = '';
+      try {
+        const dir = projectDir(p.project_root);
+        const { manifest, ok } = filmstyle.installed(dir);
+        if (ok) current = filmstyle.manifestKey(manifest);
+      } catch { /* 不在项目里时省略默认标记。 */ }
+      for (const style of styles) {
+        const key = filmstyle.styleKey(style);
+        const mark = key === current ? '*' : '';
+        const uses = (style.uses ?? []).slice(0, 3).join('/');
+        const brief = style.summary.length > 48 ? style.summary.slice(0, 48) + '…' : style.summary;
+        out.write(`${mark}${key} | ${style.cn} | ${uses ? uses + ' | ' : ''}${brief}\n`);
+      }
+      if (styles.length === 0) out.write('（没有匹配的风格）\n');
+      return { data: { count: styles.length, default: current || undefined, compact: true } };
+    }
     if (bool(p.json)) {
       out.write(encodeLine(styles.length ? styles : null, { indent: '  ' }));
       return { data: { styles } };
@@ -114,13 +144,15 @@ defineOp({
       // 不在项目里时照样列出，只是不标当前风格。
     }
     for (const source of sources) {
+      const catalog = source.catalog().filter(matches);
+      if (catalog.length === 0) continue;
       out.write(`== ${source.id()}  ${source.name()}\n`);
       if (source.gallery() !== '') out.write(`   图鉴：${source.gallery()}\n`);
-      const catalog = source.catalog();
       for (const category of filmstyle.categories(source.id())) {
+        const group = catalog.filter((style) => style.category_cn === category);
+        if (group.length === 0) continue;
         out.write(`${category}\n`);
-        for (const style of catalog) {
-          if (style.category_cn !== category) continue;
+        for (const style of group) {
           const key = filmstyle.styleKey(style);
           const mark = key === current ? '*' : extras.has(key) ? '+' : ' ';
           const extra = style.tags && style.tags.length > 0 ? '  [' + style.tags.join(', ') + ']' : '';

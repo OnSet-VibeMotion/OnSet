@@ -39,6 +39,8 @@ scene.json 里功能自己的块（多角色对话的 `cast`、歌曲讲解的 `
 
 提示词第 5 版把跨镜头完全一致的公共规范（画布规格、HyperFrames / SceneKit / CLI 精简开工契约、默认整片风格、确定性、预览自查、开工须知与反模式约束、交接汇报规则）提前到提示词最前段，把单镜头的编号、时长、文案、任务书与时间合同放在后半段，让同项目多镜头命中提示词缓存；同时向全部渲染器统一提供精简开工契约和已挂载资源清单，减少每镜重读上游大文档。`scene_preview_check()` 新增 `zoom_frame` 与可选 `crop="x,y,w,h"` 单帧细节模式，优先复用联系表阶段已缓存的单帧原图（局部裁剪结果一并缓存在 `.onset/preview-cache/`），减少单独调用 `hyperframes snapshot`。旧项目（`render_prompt < 5`）提示词保持逐字节不变。
 
+提示词第 6 版（当前默认 `flow.RenderPromptVersion = 6`）在保持 v5 公共前缀结构与 v1–v5 旧项目逐字节兼容的前提下进一步降低每镜开销：① 在静态前缀内联项目默认整片风格摘要（`filmStyleBriefSection`，截断上限 3,200 字），免去每个镜头各自 `read` `STYLE.md`；② `prepareResources` 自动在镜头目录生成 `onset-fonts.css`（`@font-face` 声明），渲染器直接 `<link rel="stylesheet" href="onset-fonts.css">` 而不必扫描 `fonts/` 手写规则；③ `character-rig`、`text-to-lottie`、`algorithmic-art` 三个重型可选技能从默认前缀移出，仅当镜头有 `cast` 块或 `prompt.md` 显式点名时作为单镜动态尾段注入（`optionalSkillTail`）。同时，`tools/options.ts` 向全部渲染器统一开放 `repair_effort` 与 `simple_effort` 两个仅渲染档位选项，`scene/run.ts` 将局部返修/修接缝路由到 `repair_effort`，将纯标题/短过渡等极简镜头（`isSimpleScene`）路由到 `simple_effort`。
+
 `scene_preview_check()` 在 `.onset/preview-cache/` 记录成功的检查、单帧及联系表。缓存依据实际合成源码、镜头素材、挂载内容、画幅和工具环境，而非正式产物的输入指纹。补查新帧只拍缺失帧，损坏的单帧按缺失处理。相同联系表在同一会话里已看过时可以沿用视觉判断。`refresh: true` 会重跑检查和全部请求帧。无法确定浏览器或外部素材身份时按普通预览运行。预览摘要去掉针对静音镜头的 `film_silent` 建议和 Electron 预览壳的 CSP 提示，重复提示只显示一次，完整检查日志保留所有原始发现。
 
 一次预览最多接收 12 个不同的本镜头帧号。成功摘要列出报告中明确通过的检查项，便于判断是否需要打开诊断日志。制作人的实时开工提示列出可直接引用的已挂载字体和库文件名。渲染记录继续使用原有指纹。预览缓存把与已安装 HyperFrames 分发文件逐字节相同的本地 GSAP 视为可缓存，库内的许可和诊断链接保留原样。

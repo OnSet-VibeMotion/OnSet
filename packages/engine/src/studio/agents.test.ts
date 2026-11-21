@@ -36,7 +36,7 @@ describe('agents', () => {
     for (const a of body.agents) expect(a.command, '命令名为空').not.toBe('');
     // 每家能调的选项随工具列表一起给，界面据此画控件。
     for (const a of body.agents) expect(a.option_specs.length, `${a.id} 没有选项`).toBeGreaterThan(0);
-    expect(claude.option_specs.map((o: { key: string }) => o.key)).toEqual(['effort', 'fast']);
+    expect(claude.option_specs.map((o: { key: string }) => o.key)).toEqual(['effort', 'repair_effort', 'simple_effort', 'fast']);
     expect(body.orchestrator_options).toBe('');
     expect((await studioRequest(f.s, 'POST', '/api/agents', '{}')).status).toBe(405);
   });

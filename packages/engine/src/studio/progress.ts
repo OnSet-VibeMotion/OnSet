@@ -25,6 +25,7 @@ import { readStoryboard } from './storyboard';
 import { localRFC3339 } from './script';
 import type { Server } from './studio';
 import { emitStudioEvent } from './events';
+import { scheduleGateHandoff } from './sessions';
 import { decodeTurn, readBlob, storeBlob, studioRoot } from './turns';
 
 /** 一站：普通站看产物，关卡看用户的确认。step 是它归在顶栏哪一步下（页面 id）。 */
@@ -777,6 +778,8 @@ export async function progressAPI(s: Server, request: Request, rest: string): Pr
   if (!gateFilesFor()[match[1]]) return writeError(404, 'not_found', `没有这个审核关卡：${match[1]}`);
   try {
     const record = recordGate(root, match[1]);
+    const label = flow.allStations().flatMap((st) => st.nodes).find((n) => n.id === match[1])?.label ?? match[1];
+    scheduleGateHandoff(s, root, match[1], label);
     emitStudioEvent(s, s.currentProject(), 'gate.confirmed', { gate: match[1] });
     return writeJSON(200, record);
   } catch (err) {

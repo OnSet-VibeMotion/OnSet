@@ -6,6 +6,9 @@ import '../plugin';
 import * as flow from '../flow';
 import { fingerprint } from './record';
 import { buildPrompt, load, renderPromptVersion } from './scene';
+import { prepareResources, FontsCSSFile } from './resources';
+import { isSimpleScene } from './run';
+import { stagedSkills } from './skills';
 import { tempDir, testPlanSHA, writeScene } from './testsupport';
 
 /** 项目根加一个镜头；version 为 0 时不写锁文件里的渲染提示词版本（更早建的项目）。 */
@@ -104,5 +107,61 @@ describe('render prompt version', () => {
     // 镜头差异只出现在后半段。
     expect(p1.slice(split1)).toContain('scene-001');
     expect(p2.slice(split2)).toContain('scene-002');
+  });
+
+  it('v6 inlines default style brief, omits unused optional skills, generates onset-fonts.css, and classifies simple scenes', () => {
+    const root = tempDir();
+    fs.writeFileSync(path.join(root, 'onset.conf'), '');
+    flow.recordFlow(root, { id: 'speech', canvas: 'vertical-3x4', render_prompt: 6 });
+    fs.mkdirSync(path.join(root, 'assets', 'fonts'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'assets', 'fonts', 'noto-sans-sc-700.woff2'), 'font');
+    const styleDir = path.join(root, '.agents', 'skills', 'onset-film-style');
+    fs.mkdirSync(styleDir, { recursive: true });
+    fs.writeFileSync(path.join(styleDir, 'SKILL.md'), '# style skill');
+    fs.writeFileSync(path.join(styleDir, 'STYLE.md'), '# 纸墨极简\n- 深墨底色，米白主文字');
+    for (const name of ['character-rig', 'text-to-lottie', 'algorithmic-art', 'hyperframes', 'hyperframes-cli', 'scene-kit']) {
+      fs.mkdirSync(path.join(root, '.agents', 'skills', name), { recursive: true });
+      fs.writeFileSync(path.join(root, '.agents', 'skills', name, 'SKILL.md'), `# ${name}`);
+    }
+    fs.mkdirSync(path.join(root, 'scenes'));
+    const mk = (id: string, text: string, promptMd = '') => {
+      const dir = path.join(root, 'scenes', id);
+      fs.renameSync(writeScene(JSON.stringify({
+        id, duration_seconds: 2, output: `${id}.mp4`, transcript: 'transcript.srt', text,
+        timing: { fps: 30, start_frame: 0, end_frame_exclusive: 60, plan: testPlanSHA },
+      })), dir);
+      if (promptMd) fs.writeFileSync(path.join(dir, 'prompt.md'), promptMd);
+      return load(dir);
+    };
+    const skillsRoot = path.join(root, '.agents', 'skills');
+    const resolved = {
+      hyperframes: skillsRoot, 'hyperframes-cli': skillsRoot, 'scene-kit': skillsRoot,
+      'character-rig': skillsRoot, 'text-to-lottie': skillsRoot, 'algorithmic-art': skillsRoot,
+      'onset-film-style': skillsRoot,
+    };
+    const plain = mk('scene-001', '短标题卡');
+    prepareResources(plain, resolved);
+    expect(fs.existsSync(path.join(plain.directory, FontsCSSFile))).toBe(true);
+    expect(fs.readFileSync(path.join(plain.directory, FontsCSSFile), 'utf8')).toContain("font-family: 'Noto Sans SC'");
+    expect(isSimpleScene(plain)).toBe(true);
+    const p1 = buildPrompt(plain, resolved);
+    expect(p1).toContain('<onset-film-style-brief>');
+    expect(p1).toContain('纸墨极简');
+    expect(p1).toContain('onset-fonts.css');
+    // 普通单人镜头不挂载重型可选技能。
+    const stagedPlain = stagedSkills(resolved, p1).map(s => s.name);
+    expect(stagedPlain).not.toContain('character-rig');
+    expect(stagedPlain).not.toContain('text-to-lottie');
+    expect(stagedPlain).not.toContain('algorithmic-art');
+
+    // 任务书显式点名 Lottie 时，按需在动态尾段补入技能并分类为非简单镜头。
+    const lottieScene = mk('scene-002', '图标动画', '本镜头使用 Lottie 做主徽标描边演绎。');
+    expect(isSimpleScene(lottieScene)).toBe(false);
+    const p2 = buildPrompt(lottieScene, resolved);
+    expect(stagedSkills(resolved, p2).map(s => s.name)).toContain('text-to-lottie');
+    // 跨镜头静态前缀保持完全一致。
+    const split1 = p1.indexOf('任务目标：\n');
+    const split2 = p2.indexOf('任务目标：\n');
+    expect(p1.slice(0, split1)).toBe(p2.slice(0, split2));
   });
 });

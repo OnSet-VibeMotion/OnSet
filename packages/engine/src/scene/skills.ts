@@ -445,20 +445,84 @@ export function filmStyleSection(skillsDir: string, hasLook: boolean): string {
   );
 }
 
+/** v6 内联进跨镜头公共前缀的默认整片风格 STYLE.md 摘要上限（字符），省去每镜重复读 20KB+ 风格文档。 */
+const styleInlineLimit = 3200;
+
+/**
+ * v6 整片风格段：把默认风格的 STYLE.md 核心内容直接内联进跨镜头静态前缀（同项目所有镜头共享一份前缀缓存），
+ * 减少每镜 1–2 轮 read(SKILL.md) + read(STYLE.md)；完整示例与引擎细节仍按需读取。
+ */
+export function filmStyleBriefSection(skillsDir: string, hasLook: boolean): string {
+  const dir = filmStyleDir(skillsDir);
+  if (dir === '') return filmStyleSection(skillsDir, hasLook);
+  let palette = '配色按下列 STYLE.md 规范为本镜头选定';
+  if (hasLook) palette = '配色遵守下文「全片配色」（在 STYLE.md 的配色逻辑里只用这几种颜色）';
+  let inline = '';
+  try {
+    const raw = fs.readFileSync(path.join(dir, filmstyle.StyleFile), 'utf8').trim();
+    if (raw !== '') {
+      const clipped = raw.length > styleInlineLimit ? raw.slice(0, styleInlineLimit).trimEnd() + '\n…（后文已省略，需查细节时按需读取 STYLE.md）' : raw;
+      inline = `\n<onset-film-style-brief>\n${clipped}\n</onset-film-style-brief>\n`;
+    }
+  } catch {
+    // 读不到时退回按目录读取。
+  }
+  return (
+    '\n整片风格（强制）：本片所有镜头画成同一种风格，本机该技能目录为：\n    ' +
+    dir +
+    '\n' +
+    '- 下方已内联该风格 STYLE.md 核心规范，可直接按此设计实现；仅在需要风格专用引擎或示例技法时，按需查阅该目录的 ' +
+    filmstyle.GuideFile +
+    ' 或完整 ' +
+    filmstyle.StyleFile +
+    '。' +
+    palette +
+    '。\n' +
+    '- 画什么只取本镜头的说明、字幕与素材，不照搬风格自带示例的文案与故事；不得引用镜头目录之外的路径；声音与配乐条款无效（产物静音无音轨）。\n' +
+    inline
+  );
+}
+
 /**
  * 为所有已注册技能生成提示词片段。
  * 已解析的技能注入本机路径；未解析的退回按技能名引用。
+ * v6：把重型可选技能（character-rig / text-to-lottie / algorithmic-art）从默认前缀收窄为极简按需提示，
+ * 不暴露目录路径以免 stagedSkills 把未用到的技能全部软链进每一个简单镜头；真需要时由 optionalSkillTail 在单镜动态段补入路径。
  */
-export function skillPromptSections(resolved: Record<string, string>, skills: readonly SkillDescriptor[], engineRenders = false, directorBrief = false, v5 = false): string {
+const optionalV6Skills: ReadonlySet<string> = new Set(['character-rig', 'text-to-lottie', 'algorithmic-art']);
+
+export function skillPromptSections(resolved: Record<string, string>, skills: readonly SkillDescriptor[], engineRenders = false, directorBrief = false, v5 = false, v6 = false): string {
   let sections = '';
   for (const desc of skills) {
+    if (v6 && optionalV6Skills.has(desc.name)) continue;
     const dir = resolved[desc.name] ?? '';
     if (directorBrief && desc.name === HyperFramesSkillName) sections += hyperFramesPrompt(dir, true);
     else if (directorBrief && desc.name === SceneKitSkillName) sections += sceneKitPrompt(dir, true);
     else if (engineRenders && desc.name === HyperFramesCLISkillName) sections += hyperFramesCLIPrompt(dir, true, v5);
     else if (desc.promptSection) sections += desc.promptSection(dir);
   }
+  if (v6) {
+    sections +=
+      '可选视觉技能（按需）：默认用纯 HTML/CSS/SVG/GSAP 实现，不加载未用到的技能；' +
+      '默认不用 Lottie（文字、数字、图表、转场严禁用 Lottie）；仅当本镜任务书或扩展块明确要求角色、Lottie 或算法艺术时，按文末给出的技能路径按需读取。\n';
+  }
   return sections;
+}
+
+/** v6 单镜动态尾段：仅当本镜头确实需要某项重型可选技能时才注入它的完整段落与路径（并触发 stagedSkills 挂载）。 */
+export function optionalSkillTail(resolved: Record<string, string>, skills: readonly SkillDescriptor[], hasCast: boolean, body: string): string {
+  const lower = body.toLowerCase();
+  const wanted = new Set<string>();
+  if (hasCast) wanted.add('character-rig');
+  if (/\blottie\b/.test(lower)) wanted.add('text-to-lottie');
+  if (/\balgorithmic[- ]?art\b|生成式艺术|算法艺术|oklab/.test(lower)) wanted.add('algorithmic-art');
+  if (wanted.size === 0) return '';
+  let out = '';
+  for (const desc of skills) {
+    if (!wanted.has(desc.name) || !desc.promptSection) continue;
+    out += '\n' + desc.promptSection(resolved[desc.name] ?? '');
+  }
+  return out;
 }
 
 /**

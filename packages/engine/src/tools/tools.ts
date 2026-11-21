@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { windowsPromptInput, windowsOrchestratorEffort } from './windows';
@@ -9,6 +10,7 @@ import {
   effectiveOptions,
   opencodeModel,
   optionArgs,
+  stageOptions,
   type AgentOptions,
 } from './options';
 import { marshal, marshalIndent } from '../gojson';
@@ -333,11 +335,12 @@ export interface RendererSession {
   resume: boolean;
 }
 
-export function rendererInvocation(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model = '', session: RendererSession | null = null, options: AgentOptions = {}): string[] {
+export function rendererInvocation(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model = '', session: RendererSession | null = null, options: AgentOptions = {}, stage: 'full' | 'repair' | 'simple' = 'full'): string[] {
   const server = tool === 'claude' || tool === 'codex' ? longWaitServer(access.toolsServer) : access.toolsServer;
+  const effective = stageOptions(effectiveOptions(tool, options), stage);
   // 调用选项（推理强度、快速模式、上下文长度，见 options.ts）跟着模型参数一起放。
-  const m = [...modelArgs(tool, tool === 'opencode' ? opencodeModel(model, options) : model), ...(tool === 'codex' ? codexOptionOverrides(options) : optionArgs(tool, options))];
-  const claudeExtra = tool === 'claude' ? claudeOptionSettings(options) : {};
+  const m = [...modelArgs(tool, tool === 'opencode' ? opencodeModel(model, effective) : model), ...(tool === 'codex' ? codexOptionOverrides(effective) : optionArgs(tool, effective))];
+  const claudeExtra = tool === 'claude' ? claudeOptionSettings(effective) : {};
   if (session && session.id === '') session = null;
   if (session && !session.resume && !presetSessionID(tool)) throw new Error(`${tool} 不支持预先指定会话 id`);
   /** claude 系：新会话 --session-id，续接 --resume。 */
@@ -426,18 +429,32 @@ function resolveDirectorCompactAt(value: string | undefined, fallback: number): 
   return fallback;
 }
 
+function rendererCacheKey(workdir: string): string {
+  // 同项目的镜头共用同一个缓存路由键，避免每个镜头随机 UUID 把 OpenAI/兼容服务的前缀缓存打散到不同节点。
+  let dir = path.resolve(workdir);
+  for (let i = 0; i < 8; i++) {
+    if (fs.existsSync(path.join(dir, 'onset.conf'))) break;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  const hash = crypto.createHash('sha256').update(dir).digest('hex').slice(0, 16);
+  return `onset-render-${hash}`;
+}
+
 /** 渲染的完整调用；自带制作人的提示词、模型和密钥只经 stdin，外部工具沿用各自的命令行。 */
-export function rendererLaunch(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model: string, session: RendererSession | null, workdir: string, env: Record<string, string | undefined>, options: AgentOptions = {}, stage: 'full' | 'repair' = 'full'): Invocation {
-  if (tool !== DirectorTool) return windowsPromptInput(tool, rendererInvocation(tool, prompt, unsafe, access, model, session, options), prompt);
+export function rendererLaunch(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model: string, session: RendererSession | null, workdir: string, env: Record<string, string | undefined>, options: AgentOptions = {}, stage: 'full' | 'repair' | 'simple' = 'full'): Invocation {
+  if (tool !== DirectorTool) return windowsPromptInput(tool, rendererInvocation(tool, prompt, unsafe, access, model, session, options, stage), prompt);
   const agentDir = directorDir({ ...process.env, ...env });
   const service = directorService(agentDir);
   if (!service) throw new Error(NoServiceMessage);
-  const settings = effectiveOptions(DirectorTool, options);
+  const settings = stageOptions(effectiveOptions(DirectorTool, options), stage);
   const request: DirectorRequest = {
     profile: 'renderer', workdir, prompt, agent_dir: rendererDir(agentDir), service,
     model: model || undefined,
-    thinking: stage === 'repair' ? settings.repair_effort ?? settings.effort : settings.effort,
+    thinking: settings.effort,
     compact_at: resolveDirectorCompactAt(settings.compact_at, DefaultDirectorRendererCompactAt),
+    cache_key: rendererCacheKey(workdir),
     session_id: session?.id, resume: session?.resume || undefined,
     unsafe: unsafe || access.unfiltered || undefined, commands: access.commands, read_dirs: access.readDirs,
   };

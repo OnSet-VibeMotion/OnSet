@@ -1,7 +1,7 @@
 {
   "speech/vertical-3x4": {
-    "sha256": "a367ee0f17362a10f3386e8ea072dae408591956def56ef708f43f7ac9c777ac",
-    "bytes": 103670,
+    "sha256": "84cdc282828940d0fc7011a821af7208d796e6d12b41fbab271b9707b77b6fd1",
+    "bytes": 104101,
     "stages": [
       "第一阶段：盘点输入和制作规格",
       "第二阶段：整理口播稿和开场",
@@ -19,8 +19,8 @@
     ]
   },
   "beat/vertical-9x16": {
-    "sha256": "9916300609ff3c4e9307ec67265b315615169bdacbbaaba0f623feb928595d2d",
-    "bytes": 57867,
+    "sha256": "3ce4e2acffd62ada79f2233ed46458371bdc293b183b69a2bdc43e65fc9eb6f5",
+    "bytes": 58298,
     "stages": [
       "第一阶段：盘点输入和制作规格",
       "第二阶段：故事、音乐与节拍",

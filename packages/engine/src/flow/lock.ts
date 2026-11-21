@@ -16,8 +16,10 @@ export const LockFile = 'onset.flow.json';
  *   2：开工须知（scene.ts 的 startSection），2026-11。
  *   3：优先查看联系表，按发现的问题复检。
  *   4：合并预览检查，正式渲染由引擎接管。
+ *   5：公共静态前缀前移支持跨镜缓存，全渲染器统一精简开工契约与细节图检查。
+ *   6：静态前缀内联默认风格核心规范、按需加载重型可选技能、引用自动生成的 onset-fonts.css。
  */
-export const RenderPromptVersion = 5;
+export const RenderPromptVersion = 6;
 
 /**
  * 新建项目时记下的流程（片型）与画幅。制作提示词由运行期按它组合（compose.ts）；项目用哪个流程也只看它。

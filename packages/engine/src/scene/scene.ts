@@ -14,7 +14,9 @@ import {
   allSkills,
   FilmStyleOwnKey,
   pluginSkillSection,
+  filmStyleBriefSection,
   filmStyleSection,
+  optionalSkillTail,
   sceneFilmStyleSection,
   skillPromptSections,
   styleShiftSection,
@@ -704,10 +706,14 @@ function renderPrompt(s: Scene, resolvedSkills: Record<string, string> | null, w
   const components = sceneComponentPlan(s);
   const engineRenders = version >= 4;
   if (version >= 5) {
-    // v5：把全片各镜头完全一致的公共规则放在提示词最前面（跨镜头命中提示词缓存），
+    const v6 = version >= 6;
+    // v5/v6：把全片各镜头完全一致的公共规则放在提示词最前面（跨镜头命中提示词缓存），
     // 并向所有渲染器统一提供精简开工契约（不再强制每镜重读 130KB+ 上游技能文档）；
+    // v6 进一步在公共前缀内联默认风格的 STYLE.md 摘要、按需挂载重型可选技能、引用自动生成的 onset-fonts.css。
     // 本镜头的动态字段（编号、时长、文案、prompt.md、时间合同、交接、返修）放在后半段。
-    const defaultFilmStyle = s.film_style === '' && filmStyleDir !== '' ? style : '';
+    const defaultFilmStyle = s.film_style === '' && filmStyleDir !== ''
+      ? (v6 ? filmStyleBriefSection(filmStyleDir, hasLook) : style)
+      : '';
     const sceneStyle = defaultFilmStyle !== '' ? '' : style;
     const readFirstV5 = s.timing !== null
       ? '根据下文的镜头任务和资源直接设计并实现；需用到具体素材或时间数据时按下文定位对应文件。'
@@ -715,13 +721,14 @@ function renderPrompt(s: Scene, resolvedSkills: Record<string, string> | null, w
     const cuesNote = s.timing !== null
       ? `\n- 字幕与短语：本镜头已裁好并换算为局部帧号，写在 ${SceneDataFile}（window.ONSET_SCENE.cues 与 phrases）；${s.transcript} 是全片字幕，仅需前后文时看相邻几条，不要整份读。\n`
       : '\n';
+    const hasCast = blockValue(s, 'cast') !== null;
     return (
       '当前只执行一个 MG 动画镜头，不进行交互提问。\n' +
       '\n' +
       '画布规格：\n' +
       `- 制作 ${canvasLabel(canvas)}（${canvas.fps}fps）、静音、无音轨的 HyperFrames 动画；动画必须确定性、可按任意帧独立求值，合成覆盖完整时长。\n` +
       '\n' +
-      skillPromptSections(resolved, allSkills(), true, true, true) +
+      skillPromptSections(resolved, allSkills(), true, true, true, v6) +
       pluginSkillSection(resolved) +
       defaultFilmStyle +
       determinismSection +
@@ -755,7 +762,8 @@ function renderPrompt(s: Scene, resolvedSkills: Record<string, string> | null, w
       blockPromptSections(s, resolved, true) +
       timing +
       styleShiftSection(s, resolved) +
-      resourceSection(s, resolved, true) +
+      resourceSection(s, resolved, true, v6) +
+      (v6 ? optionalSkillTail(resolved, allSkills(), hasCast, body) : '') +
       componentExportSection(components.exports) +
       componentSection(components.names) +
       memorySection(s) +

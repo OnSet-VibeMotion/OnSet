@@ -74,7 +74,13 @@ export interface SessionMeta {
    * 上一次交给编排工具的用户偏好段的摘要：偏好没变、CLI 会话也还在时不再重复发送，续接的会话里已经有了。
    */
   preference_digest?: string;
-  /** 手动触发阶段分段接力时记下原因，下一轮消费并开启新 CLI 会话。 */
+  /** 上一次交给编排工具的镜头归属规则（scene-ownership.md）摘要：同会话未修订时不每轮重复追加 5KB。 */
+  ownership_digest?: string;
+  /** 当前 CLI 会话是否已经发送过无视觉提醒（noVisionNote）。 */
+  vision_note_sent?: boolean;
+  /** 当前 CLI 会话最近一次发送过的本地风格操作回执，避免后续每轮重复前置。 */
+  local_style_receipt?: string;
+  /** 手动或关卡确认触发阶段分段接力时记下原因，下一轮消费并开启新 CLI 会话。 */
   handoff_reason?: string;
 }
 
@@ -95,6 +101,9 @@ export function sessionMetaJSON(meta: SessionMeta): Record<string, unknown> {
     turns: meta.turns,
     running_turn: meta.running_turn || undefined,
     preference_digest: meta.preference_digest || undefined,
+    ownership_digest: meta.ownership_digest || undefined,
+    vision_note_sent: meta.vision_note_sent || undefined,
+    local_style_receipt: meta.local_style_receipt || undefined,
     handoff_reason: meta.handoff_reason || undefined,
   };
 }
@@ -235,13 +244,14 @@ function decodeMeta(body: string): SessionMeta | undefined {
     if (v === undefined || v === null) return '';
     return typeof v === 'string' ? v : undefined;
   };
-  const fields = ['session_id', 'title', 'kind', 'tool', 'model', 'options', 'renderer', 'renderer_model', 'renderer_options', 'cli_session_id', 'created_at', 'updated_at', 'running_turn', 'preference_digest', 'handoff_reason'];
+  const fields = ['session_id', 'title', 'kind', 'tool', 'model', 'options', 'renderer', 'renderer_model', 'renderer_options', 'cli_session_id', 'created_at', 'updated_at', 'running_turn', 'preference_digest', 'ownership_digest', 'local_style_receipt', 'handoff_reason'];
   const values: Record<string, string> = {};
   for (const key of fields) {
     const v = s(key);
     if (v === undefined) return undefined;
     values[key] = v;
   }
+  if (r.vision_note_sent !== undefined && typeof r.vision_note_sent !== 'boolean') return undefined;
   let turns: string[] | null = null;
   if (Array.isArray(r.turns)) {
     if (!r.turns.every((t) => typeof t === 'string')) return undefined;
@@ -264,6 +274,9 @@ function decodeMeta(body: string): SessionMeta | undefined {
     turns,
     running_turn: values.running_turn || undefined,
     preference_digest: values.preference_digest || undefined,
+    ownership_digest: values.ownership_digest || undefined,
+    vision_note_sent: r.vision_note_sent === true ? true : undefined,
+    local_style_receipt: values.local_style_receipt || undefined,
     handoff_reason: values.handoff_reason || undefined,
   };
 }
@@ -570,7 +583,7 @@ export const studioInteraction =
   '```choices\n用方案 A：深色科技风\n用方案 B：白板手绘风\n```' +
   `
   用户会看到可点的按钮，点了就把那一行原样发给你。问完就结束这一轮等用户回复，不要替用户选。用户也可能直接打字回答。
-- 推荐风格时（用户没指定画风、要换风格，或某一段想换一种画法），先用 film_style_list({"json": true}) 挑出两三种贴合的，在回复里放一个语言标成 film-styles 的代码块，每行一种，写「来源/目录名」加一句为什么合适。推荐给全片当默认风格的直接写；只推荐给某一段的，在标识后面用方括号写清用在哪一段（段落名加镜头编号），例如：
+- 推荐风格时（用户没指定画风、要换风格，或某一段想换一种画法），先用 film_style_list({"compact": true}) 挑出两三种贴合的，在回复里放一个语言标成 film-styles 的代码块，每行一种，写「来源/目录名」加一句为什么合适。推荐给全片当默认风格的直接写；只推荐给某一段的，在标识后面用方括号写清用在哪一段（段落名加镜头编号），例如：
 ` +
   '```film-styles\nlemo-opuscar/impasto 厚涂笔触适合讲历史人物的分量\nlemo-opuscar/ink-wash [回忆段，镜头 04–06] 水墨的留白像记忆一样模糊\n```' +
   `
@@ -633,12 +646,33 @@ export function handoffSession(sess: Session, reason = '手动分段接力'): vo
   updateMeta(sess, (meta) => {
     meta.cli_session_id = undefined;
     meta.preference_digest = undefined;
+    meta.ownership_digest = undefined;
+    meta.vision_note_sent = undefined;
+    meta.local_style_receipt = undefined;
     meta.handoff_reason = reason.trim() || '手动分段接力';
   });
   emit(sess, '', {
     kind: kindNotice,
     text: '已开启新会话接力：下一轮将清空旧工具输出与看图历史，只带项目文件快照与近期对话继续',
   });
+}
+
+/** 冻结大阶段产物的硬审核关卡：确认后自动预约下一轮轻接力，避免把上一阶段的几十轮工具输出拖入下一阶段。 */
+const autoHandoffGates: ReadonlySet<string> = new Set([
+  'gate-script', 'gate-voice', 'gate-storyboard', 'gate-story', 'gate-grid', 'gate-beat-storyboard',
+]);
+
+/** 关卡确认后为该项目已有至少 2 轮历史的整片制作会话预约阶段边界接力（ONSET_AUTO_HANDOFF=off 可关闭）。 */
+export function scheduleGateHandoff(s: Server, projectPath: string, gate: string, label: string): void {
+  if (!autoHandoffGates.has(gate) || process.env.ONSET_AUTO_HANDOFF === 'off') return;
+  loadSessions(s, projectPath);
+  for (const sess of s.sessions.values()) {
+    if (sess.project !== projectPath || sess.meta.kind !== 'production') continue;
+    if (!sess.meta.cli_session_id || (sess.meta.turns ?? []).length < 2 || sess.meta.handoff_reason) continue;
+    updateMeta(sess, (meta) => {
+      meta.handoff_reason = `关卡「${label}」已确认，自动分段接力进入下一阶段`;
+    });
+  }
 }
 
 /** 发起一轮对话所需的全部输入。 */
@@ -738,18 +772,13 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
   } else {
     prompt = message;
   }
-  // 同一 CLI 会话续接不会重发制作说明；把短的职责边界每轮带上，旧项目也能收到修订。
-  // 不写进项目 AGENTS.md：渲染子进程也会读它，而这些限制只针对编排。
-  const ownership = readSection('host', 'scene-ownership').trim();
-  if (!prompt.includes(ownership)) prompt += '\n\n---\n\n' + ownership;
-  // 制作人用的模型看不了图：每一轮都提醒，续接的会话里它也可能走到画面验收、复查。
-  if (orchestratorCannotSee(cfg)) prompt += '\n\n---\n\n' + noVisionNote;
-  // 会话太长或用户手动触发分段接力时，换一个新的 CLI 会话接着做（rotate.ts）：
-  // 清掉会话号，runTurn 走带精简项目快照与近期对话记录开新会话的路，偏好也会重发。
+  // 会话太长、关卡确认自动接力或用户手动触发分段接力时，换一个新的 CLI 会话接着做（rotate.ts）：
+  // 先决定是否换新会话，再据此决定偏好、职责边界与无视觉提醒要不要发，避免续接同一 CLI 会话时每轮重复追加 5KB。
+  const firstTurn = (sess.meta.turns ?? []).length === 0;
   const cliSession = sess.meta.cli_session_id ?? '';
   const manualHandoff = sess.meta.handoff_reason ?? '';
   let rotate = '';
-  if (manualHandoff === '' && cliSession !== '' && (sess.meta.turns ?? []).length > 0) {
+  if (manualHandoff === '' && cliSession !== '' && !firstTurn) {
     try { rotate = rotationReason(ledger.read(ledger.projectFile(p.path)), cliSession); }
     catch { /* 账本不可读时保留原会话；计费记录故障不能阻断对话。 */ }
   }
@@ -758,11 +787,26 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
   if (rotate !== '' || manualHandoff !== '') {
     updateMeta(sess, (meta) => {
       meta.cli_session_id = undefined;
+      meta.ownership_digest = undefined;
+      meta.vision_note_sent = undefined;
+      meta.local_style_receipt = undefined;
       meta.handoff_reason = undefined;
     });
   }
+  const activeSession = sess.meta.cli_session_id ?? '';
+  // 同一 CLI 会话续接不再每轮重复追加 5KB 的 scene-ownership.md；首次、规则内容修订或换新会话时自动带上。
+  // 不写进项目 AGENTS.md：渲染子进程也会读它，而这些限制只针对编排。
+  const ownership = readSection('host', 'scene-ownership').trim();
+  const ownershipDigest = crypto.createHash('sha256').update(ownership).digest('hex').slice(0, 16);
+  const alreadyHasOwnership = prompt.includes(ownership);
+  const sendOwnership = !alreadyHasOwnership && (firstTurn || activeSession === '' || ownershipDigest !== (sess.meta.ownership_digest ?? ''));
+  if (sendOwnership) prompt += '\n\n---\n\n' + ownership;
+  // 制作人用的模型看不了图：首次或换新会话时提醒一次，同一 CLI 会话内不每轮重复追加。
+  const cannotSee = orchestratorCannotSee(cfg);
+  const sendVisionNote = cannotSee && (firstTurn || activeSession === '' || !sess.meta.vision_note_sent);
+  if (sendVisionNote) prompt += '\n\n---\n\n' + noVisionNote;
   const [brief, digest] = preferenceBrief(p, cfg);
-  const resend = brief !== '' && (digest !== (sess.meta.preference_digest ?? '') || !sess.meta.cli_session_id || (sess.meta.turns ?? []).length === 0);
+  const resend = brief !== '' && (digest !== (sess.meta.preference_digest ?? '') || !activeSession || firstTurn);
   if (resend) prompt = brief + '\n---\n\n' + prompt;
   const display = req.message || '开始整片制作';
   const turn: Turn = {
@@ -780,6 +824,8 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
     meta.turns = [...(meta.turns ?? []), turn.turn_id];
     meta.running_turn = turn.turn_id;
     if (resend) meta.preference_digest = digest || undefined;
+    if (alreadyHasOwnership || sendOwnership) meta.ownership_digest = ownershipDigest;
+    if (sendVisionNote) meta.vision_note_sent = true;
     if (!meta.tool) meta.tool = cfg.orchestrator;
   });
   emit(sess, turn.turn_id, { kind: kindUser, text: display + attachmentText(req.attachments) });
@@ -806,6 +852,7 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
     stopViews = watchViews(sess, turn.turn_id, inbox, p.path, (req) => {
       try {
         const { gate, label } = confirmGateFromChat(p.path, turn.message, req.said, req.gate ?? '');
+        scheduleGateHandoff(s, p.path, gate, label);
         emit(sess, turn.turn_id, { kind: kindNotice, text: '已记下你在对话里的确认：' + label });
         emitStudioEvent(s, p, 'gate.confirmed', { gate });
       } catch (err) {
@@ -838,13 +885,22 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
       const receipt = `${LocalStyleReceipt}${localStyle.cn}（${styleKey(localStyle)}）已设为整片默认风格。`;
       emit(sess, turn.turn_id, { kind: kindNotice, text: receipt });
       emit(sess, turn.turn_id, { kind: agentrun.KindText, text: receipt + ' 稿件、配音和分镜的确认状态保持原样。' });
-      // 这一轮没调模型：prepareTurn 记下的偏好摘要其实没发出去，清掉，下一轮把偏好重新带上。
-      updateMeta(sess, (meta) => (meta.preference_digest = undefined));
+      // 这一轮没调模型：prepareTurn 记下的摘要其实没发出去，清掉，下一轮重新带上。
+      updateMeta(sess, (meta) => {
+        meta.preference_digest = undefined;
+        meta.ownership_digest = undefined;
+        meta.vision_note_sent = undefined;
+      });
       checkFiles(true);
     } else {
-      prompt = localStyleContext(sess.events, p.path) + prompt;
       const previous = sess.meta.cli_session_id ?? '';
       const earlierTurns = (sess.meta.turns ?? []).length > 1;
+      const resumed = previous !== '' && earlierTurns;
+      const styleReceipt = localStyleContext(sess.events, p.path);
+      if (styleReceipt !== '' && (!resumed || styleReceipt !== (sess.meta.local_style_receipt ?? ''))) {
+        prompt = styleReceipt + prompt;
+        updateMeta(sess, (meta) => { meta.local_style_receipt = styleReceipt; });
+      }
       // 末尾两条是本轮刚发的 user 与 turn-start，不算进历史。分段接力已有项目快照，只需保留近期结论。
       const history = transcript(sess.events.slice(0, Math.max(sess.events.length - 2, 0)), handoff !== '' ? HandoffTranscriptLimit : transcriptLimit);
       // 「以后都允许」的前缀并进白名单；claude 遇到白名单外的调用时经 onset studio permission-mcp 问界面上的用户。
@@ -870,7 +926,6 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
         lookPath: (name) => lookPath(name, env.PATH ?? ''),
         longSession: true,
       };
-      const resumed = previous !== '' && earlierTurns;
       if (resumed) {
         spec.sessionID = previous;
         spec.resume = true;
@@ -887,7 +942,13 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
         spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
         spec.resume = false;
         spec.baseline = undefined;
-        spec.prompt = reseedPrompt(history, prompt, productionBrief(p, sess), handoff);
+        // 续接失败切新会话时，补回本轮因“原以为能续接”而省略的规则与提醒。
+        let fallbackPrompt = prompt;
+        const ownership = readSection('host', 'scene-ownership').trim();
+        const brief = productionBrief(p, sess);
+        if (!fallbackPrompt.includes(ownership) && !brief.includes(ownership)) fallbackPrompt += '\n\n---\n\n' + ownership;
+        if (orchestratorCannotSee(cfg) && !fallbackPrompt.includes(noVisionNote)) fallbackPrompt += '\n\n---\n\n' + noVisionNote;
+        spec.prompt = reseedPrompt(history, fallbackPrompt, brief, handoff);
         outcome = await agentrun.run(spec, onEvent, signal);
         recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);
       }
@@ -1128,6 +1189,24 @@ function recordUsage(signal: AbortSignal, p: Project, sess: Session, tool: strin
   }
 }
 
+/** 按当前项目进度解析应聚焦的制作阶段 ID（无对应分段或读不到进度时返回 undefined，退回全文）。 */
+export function focusStageFor(projectPath: string): string | undefined {
+  try {
+    const progress = computeStations(projectPath, discoverScenes(projectPath));
+    const aliases: Record<string, string> = {
+      'gate-script': 'script', 'gate-voice': 'voice', 'gate-storyboard': 'plan', 'gate-beat-storyboard': 'beat-plan',
+      'gate-final': 'review',
+    };
+    const beatStages: Record<string, string> = {
+      story: 'beat', 'gate-story': 'beat', music: 'beat', grid: 'beat', 'gate-grid': 'beat', plan: 'beat-plan', sound: 'beat-sound',
+    };
+    const focus = aliases[progress.current] ?? (progress.mode === 'beat' ? beatStages[progress.current] : undefined) ?? progress.current;
+    return focus || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * 整片制作的会话换了 CLI 会话（续接失败、换了编排工具）时，制作提示词要重发：对话记录只有双方说的话，
  * 第一轮发过的制作说明（各阶段怎么做、关卡在哪）不在里面，新会话拿不到就只能凭对话猜。
@@ -1137,14 +1216,7 @@ function productionBrief(p: Project, sess: Session): string {
   if (sess.meta.kind !== 'production') return '';
   try {
     const progress = computeStations(p.path, discoverScenes(p.path));
-    const aliases: Record<string, string> = {
-      'gate-script': 'script', 'gate-voice': 'voice', 'gate-storyboard': 'plan', 'gate-beat-storyboard': 'beat-plan',
-      'gate-final': 'review',
-    };
-    const beatStages: Record<string, string> = {
-      story: 'beat', 'gate-story': 'beat', music: 'beat', grid: 'beat', 'gate-grid': 'beat', plan: 'beat-plan', sound: 'beat-sound',
-    };
-    const focus = aliases[progress.current] ?? (progress.mode === 'beat' ? beatStages[progress.current] : undefined) ?? progress.current;
+    const focus = focusStageFor(p.path);
     const text = project.composeProjectPrompt(p.path, focus).text;
     const confirmed = progress.stations.filter(station => station.status === 'confirmed' || station.status === 'passed');
     const gates = confirmed.map(station => station.label + (station.file ? `（${station.file}）` : '')).join('、');

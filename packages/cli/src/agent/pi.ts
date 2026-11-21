@@ -63,7 +63,7 @@ const preamble = `你在一个视频项目的目录里工作，帮用户把文�
 const rendererPreamble = `你是制作人，当前只负责一个镜头的实现与渲染。
 - 严格按本轮镜头提示词、scene.json、画幅与技能完成合成；不要规划整片、改口播稿或等待整片审批。
 - ${rendererFileWorkflow}
-- 源码较长时拆成 index.html、style.css、scene.js 分文件编写，用 read 按段查看源码，优先用 read/write/edit/grep/find 处理文件。
+- 源码较长时拆成 index.html、style.css、scene.js 分文件编写，首次创建可在同一轮并行调用多次 write 一次建完，减少往返轮次；用 read 按段查看源码，优先用 read/write/edit/grep/find 处理文件。
 - 当前工作目录已是本镜头目录，bash 命令直接执行，不要每条命令前都加 cd。
 - 画面检查与细节放大优先用 scene_preview_check（支持 frames 联系表，也支持 zoom_frame / crop 查单帧细节并自动附图）；不要重复调用 hyperframes snapshot。其他截图用 read 打开。没有收到图片时报告阻塞，不用 magick/python/ffmpeg 写脚本或字符画代替视觉验收。
 - 参数不确定时先用 tool_help 查询。制作工具会一直等到执行完；不要重复提交，没有 job_wait。onset 不在终端里，不要在 bash 里运行 onset。
@@ -269,6 +269,27 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
   let droppedPreviews = 0;
   const gate: ExtensionFactory = (pi: ExtensionAPI) => {
     pi.on('session_before_compact', async () => { sentPreviews.clear(); });
+    // 跨镜头前缀缓存：每个镜头目录不同（scenes/scene-001 vs scene-002），pi 默认把绝对路径 cwd 写进 System Prompt，
+    // 导致所有镜头在 System Prompt 就发生字节分叉、v5/v6 跨镜头缓存完全击穿。渲染档把 System Prompt 里的 <cwd> 归一化为 `.`
+    // （文件与命令执行仍使用真实 workdir），并让同项目镜头共用同一个 prompt_cache_key。
+    if (req.profile === 'renderer') {
+      pi.on('before_agent_start', async (event) => {
+        event.systemPromptOptions.cwd = '.';
+        if (/<cwd>[\s\S]*?<\/cwd>/.test(event.systemPrompt)) {
+          return { systemPrompt: event.systemPrompt.replace(/<cwd>[\s\S]*?<\/cwd>/, '<cwd>.</cwd>') };
+        }
+        return undefined;
+      });
+      if (req.cache_key) {
+        const cacheKey = req.cache_key;
+        pi.on('before_provider_request', async (event) => {
+          const payload = event.payload;
+          if (payload && typeof payload === 'object' && !Array.isArray(payload) && 'prompt_cache_key' in payload) {
+            (payload as Record<string, unknown>).prompt_cache_key = cacheKey;
+          }
+        });
+      }
+    }
     // message_end 在参数校验与权限闸门之前，替换结果也会写入会话，续接时保持一致。
     pi.on('message_end', async (event) => {
       if (event.message.role === 'toolResult') {
@@ -331,6 +352,11 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
   // 环境变量 PI_TELEMETRY 优先于设置（pi-coding-agent 的 core/telemetry.js），所以两处都关：设置给 false，
   // 这个进程里的 PI_TELEMETRY 也写成 0（--unsafe 时子进程拿到的是用户的完整环境，里面可能有 PI_TELEMETRY=1）。
   process.env.PI_TELEMETRY = '0';
+  // 编排长会话常常等待镜头渲染十几到几十分钟：Anthropic 协议默认 5 分钟短缓存会频繁过期重写，
+  // 对齐 Claude CLI 的 1h 缓存策略（用户显式设了 PI_CACHE_RETENTION 时不覆盖）。
+  if (req.profile !== 'renderer' && service.protocol === 'anthropic' && !process.env.PI_CACHE_RETENTION) {
+    process.env.PI_CACHE_RETENTION = 'long';
+  }
   const settings = SettingsManager.inMemory({
     enableInstallTelemetry: false,
     // 只在制作任务需要时调用模型，避免后台保温额外消耗 token。
