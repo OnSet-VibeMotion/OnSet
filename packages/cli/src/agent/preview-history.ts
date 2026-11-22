@@ -23,20 +23,31 @@ export class PreviewHistory {
     const last = messages.at(-1);
     let trimmed = 0;
     if (this.isCompactable(last)) {
-      const response = messages.findLast(m => m.role === 'assistant');
-      const u = response?.usage;
+      const lastAssistantIndex = messages.findLastIndex(m => m.role === 'assistant');
+      const response = lastAssistantIndex >= 0 ? messages[lastAssistantIndex] : undefined;
+      const u = response?.role === 'assistant' ? response.usage : undefined;
       const used = u ? u.input + u.cacheRead + u.cacheWrite + u.output : 0;
       if (used >= threshold) {
-        const sheets = messages.filter(m => this.isCompactable(m)
-          && m.role === 'toolResult'
-          && !this.omitted.has(m.toolCallId)
-          && m.content.some(c => c.type === 'image'));
-        // Make a change only when there's a batch to drop. Retain only the newest 1 image on trigger
-        // so cache-invalidating compactions fire less frequently (every 3 images instead of every 2).
-        if (sheets.length >= 4) for (const sheet of sheets.slice(0, -1)) {
-          if (sheet.role !== 'toolResult') continue;
-          this.omitted.add(sheet.toolCallId);
-          trimmed++;
+        const sheets: Array<{ index: number; msg: Message }> = [];
+        for (let i = 0; i < messages.length; i++) {
+          const m = messages[i];
+          if (this.isCompactable(m)
+            && m.role === 'toolResult'
+            && !this.omitted.has(m.toolCallId)
+            && m.content.some(c => c.type === 'image')) {
+            sheets.push({ index: i, msg: m });
+          }
+        }
+        // 保留最后一条 assistant 回复之后产生的全部未送入模型的图片，只淘汰已经交付给模型的旧图片。
+        const older = lastAssistantIndex >= 0 ? sheets.filter(s => s.index < lastAssistantIndex) : sheets;
+        const unseenCount = sheets.length - older.length;
+        if (sheets.length >= 4 && older.length > 0) {
+          const toDrop = unseenCount > 0 ? older : older.slice(0, -1);
+          for (const { msg: sheet } of toDrop) {
+            if (sheet.role !== 'toolResult') continue;
+            this.omitted.add(sheet.toolCallId);
+            trimmed++;
+          }
         }
       }
     }

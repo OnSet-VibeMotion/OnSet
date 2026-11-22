@@ -156,6 +156,16 @@ describe('media', () => {
     expect(await run(['scene', 'frames-batch', '--scenes', scenes, '--out', outDir, '--only-scenes', 'scene-004', '--check-blank'], out, errOut)).toBe(1);
     expect(errOut.text).toContain('scene-004');
     expect(errOut.text).toContain('空白帧');
+
+    // 缺少 MP4 的镜头：写出报告并返回非零退出码。
+    fs.rmSync(path.join(scenes, 'scene-003', 'out.mp4'));
+    const missingReport = path.join(outDir, 'missing.json');
+    out = new Buffer();
+    errOut = new Buffer();
+    expect(await run(['scene', 'frames-batch', '--scenes', scenes, '--out', outDir, '--only-scenes', 'scene-001', '--only-scenes', 'scene-003', '--report-json', missingReport], out, errOut)).toBe(1);
+    expect(errOut.text).toContain('scene-003');
+    expect(errOut.text).toContain(missingReport);
+    expect(JSON.parse(fs.readFileSync(missingReport, 'utf8')).ok).toBe(false);
   });
 
   it.skipIf(!hasFfmpeg)('concat builds master and refuses mismatched scenes', async () => {

@@ -699,10 +699,26 @@ describe('runBuiltinAgent', () => {
     expect(seenBashResult).toContain(headMark);
     expect(seenBashResult).toContain(tailMark);
     expect(seenBashResult).toContain('输出过长');
-    const archivedDir = path.join(agentDir, 'tool-outputs');
-    const logs = fs.readdirSync(archivedDir).map(f => fs.readFileSync(path.join(archivedDir, f), 'utf8'));
-    expect(logs).toHaveLength(1);
-    expect(logs[0]).toContain('A'.repeat(10000));
+    const archivedPath = /完整输出保存在：(\S+)/.exec(seenBashResult)?.[1] ?? '';
+    expect(archivedPath).not.toBe('');
+    expect(archivedPath.startsWith(agentDir)).toBe(false);
+    expect(fs.readFileSync(archivedPath, 'utf8')).toContain('A'.repeat(10000));
+    // 安全模式下允许只读访问归档的长输出文件，同时继续禁止访问 agentDir 凭据目录。
+    const safeFaux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    let readArchiveResult = '';
+    safeFaux.setResponses([
+      fauxAssistantMessage([fauxToolCall('read', { path: archivedPath })], { stopReason: 'toolUse' }),
+      context => {
+        const res = context.messages.find(m => m.role === 'toolResult' && m.toolName === 'read');
+        readArchiveResult = res && res.role === 'toolResult'
+          ? res.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('\n')
+          : '';
+        return fauxAssistantMessage('安全模式已读到中段');
+      },
+    ]);
+    const safeReq: director.Request = { workdir: tmp, prompt: '读归档', unsafe: false, agent_dir: agentDir, service: fauxService };
+    expect(await runBuiltinAgent(safeReq, () => {}, undefined, { setupModels: fauxSetup(safeFaux), env: {} })).toEqual({ ok: true });
+    expect(readArchiveResult).toContain(headMark);
   });
 
   it('attaches single-frame detail images returned by scene_preview_check inline', async () => {

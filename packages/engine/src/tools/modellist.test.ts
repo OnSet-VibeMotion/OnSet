@@ -157,7 +157,7 @@ describe('model choice', () => {
       'gemini-4-neon-low              Gemini 4 Neon (Low)',
       'gemini-pro-orchestrator-neon   Orchestrator (Neon)',
       'gpt-oss-120b-medium            GPT-OSS 120B (Medium)',
-    ].join('\n');
+    ].join('\r\n');
     expect(parseModelList('agy', raw)).toEqual([
       { id: 'gemini-4-neon', label: 'Gemini 4 Neon', efforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'high' },
       { id: 'gemini-pro-orchestrator-neon', label: 'Orchestrator (Neon)', efforts: [] },

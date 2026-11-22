@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { find } from '../toolpath';
@@ -104,14 +105,26 @@ export async function generate(
   if (lyricLines(lyricsText).length === 0) throw new Error('歌词为空');
   checkCredential(c, environ);
   validateLyrics(c, lyricsText);
-  if (c.provider === 'acestep-local') requireLocalAcestep(environ);
-  const sourceAudio = c.source_audio !== '' ? localPath(root, c.source_audio) : undefined;
-  const referenceAudio = c.reference_audio !== '' ? localPath(root, c.reference_audio) : undefined;
-  const sourceAudioSHA = sourceAudio ? hashFile(sourceAudio) : undefined;
-  const referenceAudioSHA = referenceAudio ? hashFile(referenceAudio) : undefined;
-  const media = newToolchain(environ);
-  const audioName = c.provider === 'fal' ? 'audio.wav' : 'audio.mp3';
-  await withLock(root, async () => {
+  if (c.provider === 'acestep-local') requireLocalAcestep(environ, process.platform, c);
+  const sourceAudioOrig = c.source_audio !== '' ? localPath(root, c.source_audio) : undefined;
+  const referenceAudioOrig = c.reference_audio !== '' ? localPath(root, c.reference_audio) : undefined;
+  const snapshotDir = sourceAudioOrig || referenceAudioOrig ? fs.mkdtempSync(path.join(os.tmpdir(), 'onset-song-inputs-')) : '';
+  let sourceAudio = sourceAudioOrig;
+  let referenceAudio = referenceAudioOrig;
+  try {
+    if (sourceAudioOrig) {
+      sourceAudio = path.join(snapshotDir, 'source' + goExt(sourceAudioOrig));
+      copyFile(sourceAudioOrig, sourceAudio);
+    }
+    if (referenceAudioOrig) {
+      referenceAudio = path.join(snapshotDir, 'reference' + goExt(referenceAudioOrig));
+      copyFile(referenceAudioOrig, referenceAudio);
+    }
+    const sourceAudioSHA = sourceAudio ? hashFile(sourceAudio) : undefined;
+    const referenceAudioSHA = referenceAudio ? hashFile(referenceAudio) : undefined;
+    const media = newToolchain(environ);
+    const audioName = c.provider === 'fal' ? 'audio.wav' : 'audio.mp3';
+    await withLock(root, async () => {
     const requestInput: Record<string, unknown> = { Config: configToJSON(c), Lyrics: lyricsText };
     if (sourceAudioSHA) requestInput.SourceAudioSHA256 = sourceAudioSHA;
     if (referenceAudioSHA) requestInput.ReferenceAudioSHA256 = referenceAudioSHA;
@@ -262,4 +275,7 @@ export async function generate(
     }
     out.write('请试听后由用户运行 song_select({"candidate": "<candidate-id>"})。未自动选歌。\n');
   });
+  } finally {
+    if (snapshotDir !== '') fs.rmSync(snapshotDir, { recursive: true, force: true });
+  }
 }

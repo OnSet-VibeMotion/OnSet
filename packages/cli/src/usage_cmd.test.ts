@@ -159,6 +159,13 @@ describe('usage', () => {
     );
     const s2 = makeScene('scene-002');
     fs.writeFileSync(
+      path.join(s2, 'render-scene-002.stream.jsonl'),
+      [
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"call-bash-1","name":"Bash","input":{"command":"hyperframes snapshot --at 0.5"}}]}}',
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"scene_preview_check","input":{}}]}}',
+      ].join('\n') + '\n',
+    );
+    fs.writeFileSync(
       path.join(s2, 'render-scene-002.attempt.json'),
       JSON.stringify({
         scene_id: 'scene-002',
@@ -189,6 +196,7 @@ describe('usage', () => {
       attempts: 1,
       retries: 0,
       repairs: 1,
+      preview_calls: 2,
     });
 
     out = new Buffer();

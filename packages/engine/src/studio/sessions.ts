@@ -772,19 +772,22 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
   } else {
     prompt = message;
   }
+  const display = req.message || '开始整片制作';
+  const isLocalStyle = localStyleAction(display, p.path) !== null;
   // 会话太长、关卡确认自动接力或用户手动触发分段接力时，换一个新的 CLI 会话接着做（rotate.ts）：
   // 先决定是否换新会话，再据此决定偏好、职责边界与无视觉提醒要不要发，避免续接同一 CLI 会话时每轮重复追加 5KB。
+  // 本地换风格轮次不调模型，保留待消费的 handoff_reason 与现有 CLI 会话，留给下一轮普通消息接力。
   const firstTurn = (sess.meta.turns ?? []).length === 0;
   const cliSession = sess.meta.cli_session_id ?? '';
-  const manualHandoff = sess.meta.handoff_reason ?? '';
+  const manualHandoff = isLocalStyle ? '' : (sess.meta.handoff_reason ?? '');
   let rotate = '';
-  if (manualHandoff === '' && cliSession !== '' && !firstTurn) {
+  if (!isLocalStyle && manualHandoff === '' && cliSession !== '' && !firstTurn) {
     try { rotate = rotationReason(ledger.read(ledger.projectFile(p.path)), cliSession); }
     catch { /* 账本不可读时保留原会话；计费记录故障不能阻断对话。 */ }
   }
   const handoffReason = manualHandoff || rotate;
   const handoff = handoffReason !== '' ? handoffNote(handoffReason, lastTaskPlan(sess.events, false), projectStateBrief(p.path)) : '';
-  if (rotate !== '' || manualHandoff !== '') {
+  if (!isLocalStyle && (rotate !== '' || manualHandoff !== '')) {
     updateMeta(sess, (meta) => {
       meta.cli_session_id = undefined;
       meta.ownership_digest = undefined;
@@ -808,7 +811,6 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
   const [brief, digest] = preferenceBrief(p, cfg);
   const resend = brief !== '' && (digest !== (sess.meta.preference_digest ?? '') || !activeSession || firstTurn);
   if (resend) prompt = brief + '\n---\n\n' + prompt;
-  const display = req.message || '开始整片制作';
   const turn: Turn = {
     turn_id: newID('t'),
     session_id: sess.meta.session_id,

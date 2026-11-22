@@ -383,6 +383,10 @@ defineOp({
         recordCheckFindings(out, '.', selected, blankFindings);
         throw new Error(`批量抽帧发现空白帧：\n  - ${blankProblems.join('\n  - ')}`);
       }
+      if (!manifest.ok) {
+        const failed = perScene.filter((row) => !row.ok).map((row) => `${row.scene_id}（${row.problems.join('；') || '未通过'}）`);
+        throw new Error(`批量抽帧存在异常镜头：${failed.join('、')}；详见报告：${reportPath}`);
+      }
       return {
         data: {
           ok: manifest.ok,

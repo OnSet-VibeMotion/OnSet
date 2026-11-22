@@ -34,7 +34,7 @@ export const Platforms: Platform[] = [
   platform('elevenlabs', 'ElevenLabs Music', 'music_v2_5', 'ELEVENLABS_API_KEY', 'https://elevenlabs.io/app/developers/api-keys', 'https://elevenlabs.io/docs/api-reference/music/compose', '需有 Music API 权限及可用付费额度；使用固定歌词 composition_plan，曲风建议用英文。'),
   platform('fal', 'fal 托管 ACE-Step', 'fal-ai/ace-step', 'FAL_KEY', 'https://fal.ai/dashboard/keys', 'https://fal.ai/models/fal-ai/ace-step/api', '无需自建服务器；使用 fal 队列协议，不能填到自建 ACE-Step endpoint；不宣称该模型为 ACE-Step 1.5。'),
   platform('minimax', 'MiniMax（mmx）', 'music-3.0', '', 'https://www.minimax.io/audio', 'https://platform.minimax.io/docs/api-reference/music-generation', '复用 mmx 登录；已实测部分账户返回 HTTP 410（音乐 API 不再向新用户开放）。登录成功不等于音乐权限可用。'),
-  platform('acestep-local', '本机 ACE-Step 1.5（acestep.cpp / GGUF，离线免费）', DefaultLocalSynthModel, '', 'https://github.com/ServeurpersoCom/acestep.cpp', 'https://github.com/ServeurpersoCom/acestep.cpp/blob/master/docs/ARCHITECTURE.md', '零 Python 依赖（macOS Metal / Windows CUDA），离线免费；支持文生曲（text2music）与原曲改词翻唱（cover / cover-nofsq）。需先在客户端工具准备页安装「本机歌曲生成」或运行 onset setup --only song（约 5.6 GB）。'),
+  platform('acestep-local', '本机 ACE-Step 1.5（acestep.cpp / GGUF，离线免费）', DefaultLocalSynthModel, '', 'https://github.com/ServeurpersoCom/acestep.cpp', 'https://github.com/ServeurpersoCom/acestep.cpp/blob/master/docs/ARCHITECTURE.md', '零 Python 依赖（macOS Metal / Windows CUDA），离线免费；支持文生曲（text2music）与原曲改词翻唱（cover / cover-nofsq）。需先在客户端工具准备页安装「本机歌曲生成」（约 5.6 GB）。'),
   platform('acestep', '自建/远端 ACE-Step', 'acestep-v15-turbo', 'ACESTEP_API_KEY', 'https://github.com/ace-step/ACE-Step-1.5', 'https://github.com/ace-step/ACE-Step-1.5/blob/main/docs/en/API.md', '必须已有可访问服务地址；密钥按服务设置，可为空。不自动部署模型。'),
 ];
 
@@ -63,7 +63,7 @@ export function platformGuide(out: Writer, id: string, env: Record<string, strin
     } else if (p.id === 'manual') {
       out.write('  写好歌词后运行 song_handoff()；上传生成的音频或提供本机路径后继续。\n');
     } else if (p.id === 'acestep-local') {
-      out.write('  无需 API Key；先在客户端工具准备页安装「本机歌曲生成」或运行 onset setup --only song 准备程序与 GGUF 权重。\n');
+      out.write('  无需 API Key；先在客户端工具准备页安装「本机歌曲生成」准备程序与 GGUF 权重。\n');
       out.write('  翻唱（原曲换词）：song_configure({"provider": "acestep-local", "task_type": "cover", "source_audio": "source.mp3", "cover_strength": 0.5})\n');
     } else {
       out.write('  按 mmx auth --help 完成登录。\n');
@@ -198,12 +198,37 @@ export function configure(
     const doc = docs[0];
     if (doc.errors.length > 0 || !isMap(doc.contents)) throw new Error('song.yaml 格式无效');
     if (docs.length > 1) throw new Error('song.yaml 只能包含一份配置');
+    const node = doc.contents as unknown as { items: Pair[] };
+    const existing = new Map<string, unknown>();
+    for (const pair of node.items) {
+      const key = isScalar(pair.key) ? String(pair.key.value) : '';
+      if (key && isScalar(pair.value)) existing.set(key, pair.value.value);
+    }
+    const existingStr = (k: string): string => (typeof existing.get(k) === 'string' ? (existing.get(k) as string) : '');
+    const existingNum = (k: string): number => (typeof existing.get(k) === 'number' && Number.isFinite(existing.get(k)) ? (existing.get(k) as number) : 0);
+    const sameProvider = existingStr('provider') === provider;
     if (model === '') model = providerInfo(provider).model;
-    const sourceAudio = extra.sourceAudio ?? '';
-    const referenceAudio = extra.referenceAudio ?? '';
-    const taskType = extra.taskType || (sourceAudio !== '' ? 'cover' : '');
-    const coverStrength = extra.coverStrength && extra.coverStrength > 0 ? extra.coverStrength : 0;
-    const lmModel = extra.lmModel ?? '';
+    const prevTaskType = sameProvider ? existingStr('task_type') : '';
+    let sourceAudio = extra.sourceAudio !== undefined ? extra.sourceAudio : sameProvider ? existingStr('source_audio') : '';
+    const referenceAudio = extra.referenceAudio !== undefined ? extra.referenceAudio : sameProvider ? existingStr('reference_audio') : '';
+    let taskType = extra.taskType !== undefined ? extra.taskType : prevTaskType;
+    const modeChanged = extra.taskType !== undefined && extra.taskType !== prevTaskType;
+    let coverStrength = extra.coverStrength !== undefined
+      ? (extra.coverStrength > 0 ? extra.coverStrength : 0)
+      : sameProvider && !modeChanged
+        ? existingNum('cover_strength')
+        : 0;
+    const lmModel = extra.lmModel !== undefined ? extra.lmModel : sameProvider ? existingStr('lm_model') : '';
+    // 显式切回 text2music 时清理不再兼容的翻唱原曲与强度；显式清空 source_audio 时退出翻唱模式。
+    if (extra.taskType === 'text2music') {
+      if (extra.sourceAudio === undefined) sourceAudio = '';
+      if (extra.coverStrength === undefined) coverStrength = 0;
+    } else if (extra.sourceAudio === '' && extra.taskType === undefined && isCoverTask(taskType)) {
+      taskType = '';
+      if (extra.coverStrength === undefined) coverStrength = 0;
+    } else if (taskType === '' && sourceAudio !== '') {
+      taskType = 'cover';
+    }
     const replacements = new Map<string, string | number>([
       ['provider', provider],
       ['model', model],
@@ -216,7 +241,6 @@ export function configure(
       ['lm_model', lmModel],
     ]);
     const isEmpty = (v: string | number) => v === '' || v === 0;
-    const node = doc.contents as unknown as { items: Pair[] };
     const fields: Pair[] = [];
     for (const pair of node.items) {
       const key = isScalar(pair.key) ? String(pair.key.value) : '';

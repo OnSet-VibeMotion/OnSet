@@ -164,8 +164,8 @@ function parseAgyModels(stdout: string): ModelOption[] {
   const rows: Array<{ id: string; label: string; base: string; baseLabel: string; effort: string }> = [];
   const seen = new Set<string>();
   for (const rawLine of stdout.split('\n')) {
-    // 去掉 spinner 的 \r 前缀，只看最后一个 \r 后的文字。
-    const line = (rawLine.split('\r').at(-1) ?? '').trim();
+    // 先去掉 CRLF 的行尾 \r，再去掉行内 spinner 的 \r 前缀，避免 CRLF 输入被截成空串。
+    const line = (rawLine.replace(/\r+$/, '').split('\r').at(-1) ?? '').trim();
     const m = /^([A-Za-z0-9._-]+)\s{2,}(.+)$/.exec(line);
     if (!m) continue;
     const id = m[1]!;

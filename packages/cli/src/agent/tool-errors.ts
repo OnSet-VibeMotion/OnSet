@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { atomicWrite } from '@onset/engine/fsutil';
 import type { MessageEndEvent } from '@earendil-works/pi-coding-agent';
@@ -8,6 +9,11 @@ type AgentMessage = MessageEndEvent['message'];
 
 const maxErrorLength = 4096;
 const maxBashOutputLength = 4096;
+
+/** 超长成功 bash 输出的独立非凭据归档目录（安全模式下只读放行，避免开放 agentDir 凭据目录）。 */
+export function toolOutputArchiveDir(): string {
+  return path.join(os.tmpdir(), 'onset-tool-outputs', String(process.pid));
+}
 
 /** Preserve complete diagnostics locally without echoing entire tool inputs to the model. */
 export function compactToolError(message: AgentMessage, agentDir: string): AgentMessage {
@@ -35,7 +41,7 @@ export function compactToolError(message: AgentMessage, agentDir: string): Agent
  * 截短过长的工具返回：报错走 compactToolError，成功的超长 bash 输出落盘保留首尾。
  * 2026-11 实测：单镜成功 bash 输出累计超 1MB（含 22KB 字符画），整段留在上下文里每轮重复计费。
  */
-export function compactToolResult(message: AgentMessage, agentDir: string): AgentMessage {
+export function compactToolResult(message: AgentMessage, agentDir: string, outputDir = toolOutputArchiveDir()): AgentMessage {
   if (message.role !== 'toolResult') return message;
   if (message.isError) return compactToolError(message, agentDir);
   if (message.toolName !== 'bash') return message;
@@ -43,7 +49,7 @@ export function compactToolResult(message: AgentMessage, agentDir: string): Agen
   if (raw.length <= maxBashOutputLength) return message;
 
   const hash = createHash('sha256').update(message.toolCallId).update('\0').update(raw).digest('hex');
-  const dir = path.resolve(agentDir, 'tool-outputs');
+  const dir = path.resolve(outputDir);
   const file = path.join(dir, hash + '.log');
   let middle: string;
   try {

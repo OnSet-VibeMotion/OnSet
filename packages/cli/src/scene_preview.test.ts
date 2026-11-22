@@ -239,3 +239,16 @@ it('rejects invalid zoom_frame or crop parameters before running CLI', async () 
   expect(badCrop.out).toContain('超出画布范围');
   expect(fs.existsSync(path.join(dir, '.onset/commands.log'))).toBe(false);
 });
+
+it('disables preview cache when index.html references an ignored local asset like snapshots/cover.png', async () => {
+  const dir = fixture();
+  fs.mkdirSync(path.join(dir, 'snapshots'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'snapshots', 'cover.png'), 'v1');
+  fs.writeFileSync(path.join(dir, 'index.html'), '<div data-duration="1"><img src="snapshots/cover.png"></div>\n');
+  const first = await runIn(dir, ['scene', 'preview-check', '--frames', '0,15']);
+  expect(first.code, first.out).toBe(0);
+  fs.writeFileSync(path.join(dir, 'snapshots', 'cover.png'), 'v2');
+  const second = await runIn(dir, ['scene', 'preview-check', '--frames', '0,15']);
+  expect(second.code, second.out).toBe(0);
+  expect(commands(dir).map(cmd => cmd[0])).toEqual(['check', 'snapshot', 'check', 'snapshot']);
+});

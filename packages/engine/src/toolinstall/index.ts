@@ -86,6 +86,8 @@ function platformKey(): string {
 export interface InstallOptions {
   /** 当前环境：HOME 决定装到哪，https_proxy 给 curl。 */
   env: Record<string, string>;
+  /** 覆盖模型安装目标目录（例如 ONSET_ACESTEP_MODELS_DIR）。 */
+  targetDir?: string;
   output?: Writer;
   progress?: (p: Progress) => void;
   signal?: AbortSignal;
@@ -583,9 +585,15 @@ async function huggingFaceReachable(opts: InstallOptions): Promise<boolean> {
 /** 下好模型（已在就不动），返回本地目录。 */
 export async function ensureModel(spec: ModelSpec, opts: InstallOptions): Promise<string> {
   const report = opts.progress ?? (() => {});
-  const dir = modelDir(spec, opts.env);
+  const dir = opts.targetDir?.trim() || modelDir(spec, opts.env);
   if (dir === '') throw new Error('无法确定模型的存放目录：环境里没有 HOME');
-  if (modelReady(spec, opts.env)) {
+  const ready = opts.targetDir?.trim()
+    ? spec.files.every((f) => {
+      const target = path.join(dir, f.path);
+      return fs.existsSync(target) && fs.statSync(target).size === f.size;
+    })
+    : modelReady(spec, opts.env);
+  if (ready) {
     report({ stage: '模型已就绪', percent: 100 });
     return dir;
   }

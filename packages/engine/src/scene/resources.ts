@@ -8,7 +8,7 @@ import { componentMounts } from './components';
 import { missingComponents, sceneComponentPlan } from './component-plan';
 import { VerificationError } from './verification';
 import { allSkills, FilmStyleOwnKey } from './skills';
-import { findProjectRoot, type Scene } from './scene';
+import { contained, findProjectRoot, type Scene } from './scene';
 
 export function resourceFiles(s: Scene, resolved: Record<string, string>): renderassets.Resource[] {
   const root = findProjectRoot(s.directory);
@@ -48,6 +48,20 @@ function fontFormat(ext: string): string {
   }
 }
 
+const namedFontWeights: ReadonlyArray<[RegExp, string]> = [
+  [/(?:^|[-_])(?:thin|hairline)(?:$|[-_])/i, '100'],
+  [/(?:^|[-_])(?:extralight|ultralight)(?:$|[-_])/i, '200'],
+  [/(?:^|[-_])light(?:$|[-_])/i, '300'],
+  [/(?:^|[-_])(?:regular|normal|book)(?:$|[-_])/i, '400'],
+  [/(?:^|[-_])medium(?:$|[-_])/i, '500'],
+  [/(?:^|[-_])(?:semibold|demibold)(?:$|[-_])/i, '600'],
+  [/(?:^|[-_])bold(?:$|[-_])/i, '700'],
+  [/(?:^|[-_])(?:extrabold|ultrabold|heavy)(?:$|[-_])/i, '800'],
+  [/(?:^|[-_])black(?:$|[-_])/i, '900'],
+];
+
+const fontsCSSHeader = '/* 由 onset 按挂载字体自动生成，勿手改。 */';
+
 function parseFontFace(rel: string): { family: string; weight: string; style: string; format: string } | null {
   const m = fontExtRe.exec(rel);
   if (!m) return null;
@@ -55,9 +69,10 @@ function parseFontFace(rel: string): { family: string; weight: string; style: st
   const format = fontFormat(m[2]!);
   const weightMatch = /(?:^|[-_])([1-9]00)(?:$|[-_])/.exec(stem);
   const italic = /(?:^|[-_])italic(?:$|[-_])/i.test(stem);
-  const weight = weightMatch ? weightMatch[1]! : /bold/i.test(stem) ? '700' : /medium/i.test(stem) ? '500' : /light/i.test(stem) ? '300' : '400';
+  const namedWeight = namedFontWeights.find(([re]) => re.test(stem))?.[1];
+  const weight = weightMatch ? weightMatch[1]! : namedWeight ?? '400';
   const rawFamily = stem
-    .replace(/[-_](?:[1-9]00|regular|bold|medium|semibold|light|black|thin|extrabold|italic)\b/gi, '')
+    .replace(/[-_](?:[1-9]00|regular|normal|book|bold|medium|semibold|demibold|extralight|ultralight|light|black|thin|hairline|extrabold|ultrabold|heavy|italic)(?=$|[-_])/gi, '')
     .replace(/[-_]+/g, ' ')
     .trim();
   const family = (rawFamily || stem)
@@ -71,7 +86,7 @@ function parseFontFace(rel: string): { family: string; weight: string; style: st
 export function writeFontsCSS(sceneDir: string, paths: readonly string[]): boolean {
   const fonts = [...new Set(paths)].filter((p) => fontExtRe.test(p)).sort(compareBytes);
   if (fonts.length === 0) return false;
-  const blocks: string[] = ['/* 由 onset 按挂载字体自动生成，勿手改。 */'];
+  const blocks: string[] = [fontsCSSHeader];
   for (const rel of fonts) {
     const face = parseFontFace(rel);
     if (!face) continue;
@@ -87,11 +102,24 @@ export function writeFontsCSS(sceneDir: string, paths: readonly string[]): boole
   }
   if (blocks.length <= 1) return false;
   const body = blocks.join('\n\n') + '\n';
-  const target = path.join(sceneDir, FontsCSSFile);
+  const rawTarget = path.join(sceneDir, FontsCSSFile);
+  let stat: fs.Stats | null = null;
   try {
-    if (fs.readFileSync(target, 'utf8') === body) return true;
-  } catch {
-    // 不存在则写入。
+    stat = fs.lstatSync(rawTarget);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+  if (stat !== null) {
+    if (stat.isSymbolicLink()) throw new Error(`${FontsCSSFile} 不能是符号链接`);
+    if (!stat.isFile()) throw new Error(`${FontsCSSFile} 不是普通文件`);
+  }
+  const target = contained(sceneDir, FontsCSSFile, FontsCSSFile);
+  if (stat !== null) {
+    const existing = fs.readFileSync(target, 'utf8');
+    if (existing === body) return true;
+    if (!existing.startsWith(fontsCSSHeader)) {
+      throw new Error(`镜头目录已有手写的 ${FontsCSSFile}，拒绝覆盖；如需由片场自动生成，请移出或改名`);
+    }
   }
   fs.writeFileSync(target, body, 'utf8');
   return true;

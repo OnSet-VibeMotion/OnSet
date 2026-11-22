@@ -64,11 +64,8 @@ function allowedForProjectFlow(opName: string, root: string): boolean {
   if (!rec) return true;
   const id = rec.id;
   if (id === 'speech') {
-    if (opName.startsWith('beat_') || opName.startsWith('song_') || opName === 'validate_beat' || opName === 'validate_song') return false;
-    // 单人口播项目（无 cast.yaml）屏蔽除 cast_new 之外的 6 个多角色工具，保留 cast_new 以便用户随时开启多角色模式。
-    if (!fs.existsSync(path.join(root, 'cast.yaml'))) {
-      if (opName === 'cast_add' || opName === 'cast_preview' || opName === 'cast_validate' || opName.startsWith('dialogue_') || opName === 'validate_cast') return false;
-    }
+    // 保留 song_init（已有项目转歌曲讲解入口）与 cast_*/dialogue_*（同一会话里 cast_new 后可立即使用）。
+    if (opName.startsWith('beat_') || (opName.startsWith('song_') && opName !== 'song_init') || opName === 'validate_beat' || opName === 'validate_song') return false;
     return true;
   }
   if (id === 'beat') {
@@ -484,9 +481,17 @@ export class Jobs {
     const data = resultForAgent(job.name, job.report, result.data);
     if (data !== undefined) {
       const json = JSON.stringify(data);
-      // 正文已经原样打印了同一份 JSON（例如 --json 模式）时，不再追加重复的「结果：…」行。
+      // 正文可解析为 JSON 且与结构化结果相同时（例如 --json 模式），不再追加重复的「结果：…」行；
+      // 普通方括号日志（如 [scene-002] …）和截短提示（[前面 …]）照常追加。
       const bodyTrim = body.trim();
-      const alreadyJSON = bodyTrim.startsWith('{') || bodyTrim.startsWith('[');
+      let alreadyJSON = false;
+      if (bodyTrim.startsWith('{') || bodyTrim.startsWith('[')) {
+        try {
+          alreadyJSON = JSON.stringify(JSON.parse(bodyTrim)) === json;
+        } catch {
+          alreadyJSON = false;
+        }
+      }
       if (json.length <= maxInlineDataChars && !alreadyJSON) text += `\n结果：${json}`;
     }
     return { text, isError: false, data };

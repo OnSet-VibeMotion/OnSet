@@ -212,6 +212,7 @@ function countStreamPreviews(dir: string, id: string): number {
     return 0;
   }
   const seen = new Set<string>();
+  let anonSeq = 0;
   let fallback = 0;
   const isPreviewTool = (name: string, args: unknown): boolean => {
     if (name.includes('scene_preview_check')) return true;
@@ -223,6 +224,14 @@ function countStreamPreviews(dir: string, id: string): number {
     if (name.includes('hyperframes')) {
       const raw = typeof args === 'string' ? args : JSON.stringify(args ?? '');
       return raw.includes('snapshot');
+    }
+    if (/^(?:bash|shell|run_command)$/i.test(name)) {
+      const cmd = typeof args === 'string'
+        ? args
+        : args && typeof args === 'object'
+          ? String((args as Record<string, unknown>).command ?? (args as Record<string, unknown>).CommandLine ?? '')
+          : '';
+      return /\bhyperframes\b[^\n]*\bsnapshot\b/.test(cmd);
     }
     return false;
   };
@@ -247,7 +256,7 @@ function countStreamPreviews(dir: string, id: string): number {
         const name = typeof step.tool_name === 'string' ? step.tool_name : '';
         const info = step.tool_info && typeof step.tool_info === 'object' ? (step.tool_info as Record<string, unknown>) : undefined;
         if (isPreviewTool(name, info?.parameters)) {
-          const idx = step.step_index !== undefined ? String(step.step_index) : `line:${fallback++}`;
+          const idx = step.step_index !== undefined ? String(step.step_index) : `anon:${anonSeq++}`;
           seen.add(`agy:${idx}`);
         }
       }
@@ -261,7 +270,7 @@ function countStreamPreviews(dir: string, id: string): number {
           if (!block || typeof block !== 'object') continue;
           const b = block as Record<string, unknown>;
           if (b.type === 'tool_use' && typeof b.name === 'string' && isPreviewTool(b.name, b.input)) {
-            seen.add(`tu:${typeof b.id === 'string' && b.id ? b.id : `line:${fallback++}`}`);
+            seen.add(`tu:${typeof b.id === 'string' && b.id ? b.id : `anon:${anonSeq++}`}`);
           }
         }
       }
@@ -274,7 +283,7 @@ function countStreamPreviews(dir: string, id: string): number {
       const item = parsed.item as Record<string, unknown>;
       const name = typeof item.tool === 'string' ? item.tool : typeof item.name === 'string' ? item.name : '';
       if (name && isPreviewTool(name, item.arguments ?? item.input)) {
-        seen.add(`item:${typeof item.id === 'string' && item.id ? item.id : `line:${fallback++}`}`);
+        seen.add(`item:${typeof item.id === 'string' && item.id ? item.id : `anon:${anonSeq++}`}`);
       }
       continue;
     }

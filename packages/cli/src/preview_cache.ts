@@ -13,6 +13,23 @@ const hyperframesArtifacts = new Set([
   '.hyperframes/video-state.json', '.hyperframes/history-id',
 ]);
 const remoteRef = /(?:https?:\/\/|["'`]\/\/)(?!www\.w3\.org\/(?:1999\/(?:xhtml|xlink)|2000\/svg)\b)/i;
+const localAssetRef = /\b(?:src|href|poster|data-composition-src)\s*=\s*(?:"([^"]+)"|'([^']+)')|url\(\s*(?:"([^"]+)"|'([^']+)'|([^)\s'"]+))\s*\)/gi;
+
+function referencedLocalPaths(relative: string, body: string): string[] {
+  const baseDir = path.posix.dirname(relative);
+  const refs: string[] = [];
+  for (const m of body.matchAll(localAssetRef)) {
+    const raw = (m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5] ?? '').trim();
+    if (!raw || raw.startsWith('#') || raw.startsWith('data:') || raw.startsWith('blob:') || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw) || raw.startsWith('//')) continue;
+    const clean = raw.split(/[?#]/)[0]!.trim();
+    if (!clean) continue;
+    const resolved = clean.startsWith('/')
+      ? path.posix.normalize(clean.slice(1))
+      : path.posix.normalize(baseDir === '.' ? clean : path.posix.join(baseDir, clean));
+    if (resolved && resolved !== '.' && !resolved.startsWith('../') && resolved !== '..') refs.push(resolved);
+  }
+  return refs;
+}
 
 function digest(body: string | Buffer): string {
   return createHash('sha256').update(body).digest('hex');
@@ -77,8 +94,17 @@ export function previewKey(s: Scene, source: Report, cli: string, env: Record<st
           throw new Error('Unsupported preview input');
         }
         const body = fs.readFileSync(file);
-        if (active.has(relative) && remoteRef.test(body.toString('utf8')) && !matchesBundledGSAP(cli, relative, body)) {
-          throw new Error('Unpinned preview input');
+        if (active.has(relative)) {
+          const text = body.toString('utf8');
+          if (remoteRef.test(text) && !matchesBundledGSAP(cli, relative, body)) {
+            throw new Error('Unpinned preview input');
+          }
+          for (const ref of referencedLocalPaths(relative, text)) {
+            const top = ref.split('/')[0]!;
+            if (ref === s.output || ignored.test(top) || hyperframesArtifacts.has(ref)) {
+              throw new Error('Preview depends on a generated artifact');
+            }
+          }
         }
         files.push([relative, digest(body)]);
       }

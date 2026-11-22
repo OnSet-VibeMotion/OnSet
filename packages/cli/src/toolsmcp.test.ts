@@ -4,6 +4,8 @@ import { groupSpawnOptions } from '@onset/engine/procgroup';
 import { describe, expect, it } from 'vitest';
 import { allOps, opScopes } from './ops/op';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { Jobs, defaultWaitSeconds, describeTools, maxWaitSeconds, opCommand, prepareCall, serveToolsMCP, type Spawner } from './toolsmcp';
 
 /** 把一串 JSON-RPC 请求喂给服务，收齐回复（按 id）。 */
@@ -291,17 +293,19 @@ describe('onset tools MCP', () => {
     const cfgTool = describeTools('orchestrator').find((t) => t.name === 'config_get')!;
     expect(cfgTool.inputSchema.properties).not.toHaveProperty('wait_seconds');
 
-    const tmp = fs.mkdtempSync('/tmp/onset-mcp-flow-');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-mcp-flow-'));
     try {
-      fs.writeFileSync(`${tmp}/onset.flow.json`, JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } }));
+      fs.writeFileSync(path.join(tmp, 'onset.flow.json'), JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } }));
       const speechNames = describeTools('orchestrator', tmp).map((t) => t.name);
       expect(speechNames).toContain('scene_frames_batch');
       expect(speechNames).toContain('align_run');
+      expect(speechNames).toContain('song_init');
+      expect(speechNames).toContain('cast_new');
+      expect(speechNames).toContain('dialogue_assemble');
       expect(speechNames).not.toContain('beat_analyze');
       expect(speechNames).not.toContain('song_generate');
-      expect(speechNames).not.toContain('dialogue_assemble');
 
-      fs.writeFileSync(`${tmp}/onset.flow.json`, JSON.stringify({ version: 1, production: { id: 'beat', canvas: 'vertical-9x16' } }));
+      fs.writeFileSync(path.join(tmp, 'onset.flow.json'), JSON.stringify({ version: 1, production: { id: 'beat', canvas: 'vertical-9x16' } }));
       const beatNames = describeTools('orchestrator', tmp).map((t) => t.name);
       expect(beatNames).toContain('beat_cues');
       expect(beatNames).not.toContain('voice_synthesize');

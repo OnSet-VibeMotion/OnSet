@@ -232,11 +232,11 @@ export function songOps(ctx: PluginContext): void {
     },
     run: (p, { out }) => {
       song.configure(str(p.project_root), str(p.provider), str(p.model), str(p.workspace), str(p.endpoint), {
-        taskType: str(p.task_type),
-        sourceAudio: str(p.source_audio),
-        referenceAudio: str(p.reference_audio),
-        coverStrength: num(p.cover_strength),
-        lmModel: str(p.lm_model),
+        ...(p.task_type !== undefined ? { taskType: str(p.task_type) } : {}),
+        ...(p.source_audio !== undefined ? { sourceAudio: str(p.source_audio) } : {}),
+        ...(p.reference_audio !== undefined ? { referenceAudio: str(p.reference_audio) } : {}),
+        ...(p.cover_strength !== undefined ? { coverStrength: num(p.cover_strength) } : {}),
+        ...(p.lm_model !== undefined ? { lmModel: str(p.lm_model) } : {}),
       });
       out.write('已更新 song.yaml；原有候选保留，生成前请完成以下接入步骤。\n');
       song.platformGuide(out, str(p.provider), currentEnvironment());

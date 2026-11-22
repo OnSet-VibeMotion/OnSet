@@ -60,3 +60,18 @@ it('compacts older inspection images in orchestrator mode while preserving user 
   ] });
   expect(compacted.messages[5]).toBe(original[5]);
 });
+
+it('preserves all unseen images emitted after the last assistant message in the same tool batch', () => {
+  const image: ImageContent = { type: 'image', data: 'aA==', mimeType: 'image/png' };
+  const assistant = fauxAssistantMessage('');
+  assistant.usage = { ...assistant.usage, input: 10000, cacheRead: 90000 };
+  const qcRead = (i: number): Message => ({
+    role: 'toolResult', toolName: 'read', toolCallId: 'batch-' + i,
+    content: [{ type: 'text', text: 'Read image file [image/png] batch-' + i }, image], isError: false, timestamp: i,
+  });
+  const sameBatch = [assistant, qcRead(1), qcRead(2), qcRead(3), qcRead(4)];
+  const history = new PreviewHistory('orchestrator');
+  const result = history.project(sameBatch, 96000);
+  expect(result.trimmed).toBe(0);
+  expect(result.messages).toEqual(sameBatch);
+});

@@ -12,6 +12,7 @@ import {
   AcestepModelsDirEnv,
   DefaultLocalLMModel,
   DefaultLocalSynthModel,
+  DefaultLocalTextEncoderModel,
   DefaultLocalVAEModel,
   buildLocalRequest,
   localAcestepBinDir,
@@ -42,6 +43,7 @@ function fakeLocalRuntime(): { binDir: string; modelsDir: string; logFile: strin
   const modelsDir = tempDir();
   const logFile = path.join(tempDir(), 'calls.jsonl');
   fs.writeFileSync(path.join(modelsDir, DefaultLocalSynthModel), 'gguf');
+  fs.writeFileSync(path.join(modelsDir, DefaultLocalTextEncoderModel), 'gguf');
   fs.writeFileSync(path.join(modelsDir, DefaultLocalLMModel), 'gguf');
   fs.writeFileSync(path.join(modelsDir, DefaultLocalVAEModel), 'gguf');
 
@@ -127,10 +129,15 @@ describe('local ACE-Step 1.5 (acestep.cpp + GGUF)', () => {
     expect(localAcestepStatus(env).modelsReady).toBe(false);
     expect(localAcestepStatus(env).ok).toBe(false);
 
-    // 铺好自定义模型目录覆盖：整体就绪。
+    // 自定义模型目录只有单个 synth 文件时不算就绪，必须备齐整套必需 GGUF 权重。
     const modelsDir = tempDir();
-    fs.writeFileSync(path.join(modelsDir, 'acestep-v15-turbo-Q8_0.gguf'), 'x');
+    fs.writeFileSync(path.join(modelsDir, DefaultLocalSynthModel), 'x');
     const readyEnv = { ...env, [AcestepModelsDirEnv]: modelsDir };
+    expect(localAcestepStatus(readyEnv).modelsReady).toBe(false);
+    expect(() => requireLocalAcestep(readyEnv)).toThrow(MissingError);
+    fs.writeFileSync(path.join(modelsDir, DefaultLocalTextEncoderModel), 'x');
+    fs.writeFileSync(path.join(modelsDir, DefaultLocalLMModel), 'x');
+    fs.writeFileSync(path.join(modelsDir, DefaultLocalVAEModel), 'x');
     expect(localAcestepStatus(readyEnv).ok).toBe(true);
     expect(requireLocalAcestep(readyEnv).modelsDir).toBe(modelsDir);
 
@@ -235,10 +242,20 @@ describe('local ACE-Step 1.5 (acestep.cpp + GGUF)', () => {
     let calls = readCalls(logFile);
     expect(calls.map((c) => c.bin)).toEqual(['ace-synth']);
     expect(calls[0].args).toContain('--src-audio');
-    expect(calls[0].args).toContain(srcFile);
+    expect(calls[0].args[calls[0].args.indexOf('--src-audio') + 1]).toMatch(/source\.mp3$/);
     expect(calls[0].args).not.toContain('--ref-audio');
     expect(calls[0].req.task_type).toBe('cover');
     expect(calls[0].req.audio_cover_strength).toBe(0.6);
+
+    // 同平台仅修改 model 时，未提供的翻唱设置（source_audio / task_type / cover_strength）必须保留。
+    configure(root, 'acestep-local', 'acestep-v15-sft-Q8_0.gguf', '', '');
+    const kept = loadConfig(root);
+    expect(kept.model).toBe('acestep-v15-sft-Q8_0.gguf');
+    expect(kept.task_type).toBe('cover');
+    expect(kept.source_audio).toBe('source.mp3');
+    expect(kept.cover_strength).toBe(0.6);
+    // 还原模型继续后续验证。
+    configure(root, 'acestep-local', DefaultLocalSynthModel, '', '');
 
     // 替换原曲文件内容：摘要变化，应生成新候选而不是误复用旧翻唱。
     fs.writeFileSync(srcFile, 'original-song-v2');

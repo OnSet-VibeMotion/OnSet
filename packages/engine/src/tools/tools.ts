@@ -347,7 +347,7 @@ export function rendererInvocation(tool: string, prompt: string, unsafe: boolean
       : access.toolsServer;
   const effective = stageOptions(effectiveOptions(tool, options), stage);
   // 调用选项（推理强度、快速模式、上下文长度，见 options.ts）跟着模型参数一起放。
-  const m = [...modelArgs(tool, tool === 'opencode' ? opencodeModel(model, effective) : model), ...(tool === 'codex' ? codexOptionOverrides(effective) : optionArgs(tool, effective))];
+  const m = [...modelArgs(tool, tool === 'opencode' ? opencodeModel(model, effective, stage) : model), ...(tool === 'codex' ? codexOptionOverrides(effective) : optionArgs(tool, effective))];
   const claudeExtra = tool === 'claude' ? claudeOptionSettings(effective) : {};
   if (session && session.id === '') session = null;
   if (session && !session.resume && !presetSessionID(tool)) throw new Error(`${tool} 不支持预先指定会话 id`);

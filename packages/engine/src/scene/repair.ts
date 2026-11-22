@@ -72,6 +72,11 @@ export async function withRepairBackup<T>(s: Scene, fn: (baseline: string) => Pr
   const output = outputPath(s);
   const original = fs.lstatSync(output, { throwIfNoEntry: false });
   if (!original?.isFile()) throw new Error('局部返修需要已有的普通视频文件');
+  let parent = s.directory;
+  for (const part of path.relative(s.directory, path.dirname(output)).split(path.sep).filter(Boolean)) {
+    parent = path.join(parent, part);
+    if (fs.lstatSync(parent).isSymbolicLink()) throw new Error(`局部返修的输出路径不能经过符号链接：${parent}`);
+  }
   // Keep the backup outside the writable renderer workspace.
   const backup = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-repair-backup-'));
   const excluded = new Set(['.onset', '.hyperframes', '.onset-render-leases', 'attempts',

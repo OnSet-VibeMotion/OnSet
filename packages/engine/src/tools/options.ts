@@ -293,9 +293,17 @@ export function claudeOptionSettings(options: AgentOptions): Record<string, unkn
   return effectiveOptions('claude', options).fast === 'on' ? { fastMode: true } : {};
 }
 
-/** opencode 的模型名：推理档位写成 #变体 附在后面；没选模型、或模型名里已经带了变体时不加。 */
-export function opencodeModel(model: string, options: AgentOptions): string {
-  const variant = effectiveOptions('opencode', options).effort;
-  if (!variant || model === '' || model.includes('#')) return model;
+/**
+ * opencode 的模型名：推理档位写成 #变体 附在后面；没选模型时不加。
+ * 显式设置了阶段强度（repair_effort / simple_effort）时用阶段档位替换已有 #变体；
+ * 未显式设置阶段强度时保留模型名里已有 #变体优先于普通 effort 的规则。
+ */
+export function opencodeModel(model: string, options: AgentOptions, stage: 'full' | 'repair' | 'simple' = 'full'): string {
+  if (model === '') return model;
+  const o = effectiveOptions('opencode', options);
+  const explicitStage = stage === 'repair' ? o.repair_effort : stage === 'simple' ? o.simple_effort : undefined;
+  if (explicitStage) return model.split('#')[0] + '#' + explicitStage;
+  const variant = o.effort;
+  if (!variant || model.includes('#')) return model;
   return model + '#' + variant;
 }

@@ -119,6 +119,10 @@ describe('agent options', () => {
     expect(rendererInvocation('claude', 'p', false, {}, '', null, { effort: 'high', repair_effort: 'low', simple_effort: 'medium' }, 'simple')).toEqual(expect.arrayContaining(['--effort', 'medium']));
     expect(rendererInvocation('codex', 'p', false, {}, '', null, { effort: 'high', repair_effort: 'low' }, 'repair')).toEqual(expect.arrayContaining(['-c', 'model_reasoning_effort="low"']));
     expect(rendererInvocation('qoder', 'p', false, {}, '', null, { effort: 'high', simple_effort: 'low' }, 'simple')).toEqual(expect.arrayContaining(['--reasoning-effort', 'low']));
+    // opencode：模型名已含 #变体 时，普通 effort 不覆盖；显式 repair_effort / simple_effort 则替换变体。
+    expect(rendererInvocation('opencode', 'p', false, {}, 'p/m#high', null, { effort: 'low' }, 'full')).toEqual(expect.arrayContaining(['-m', 'p/m#high']));
+    expect(rendererInvocation('opencode', 'p', false, {}, 'p/m#high', null, { effort: 'high', repair_effort: 'low' }, 'repair')).toEqual(expect.arrayContaining(['-m', 'p/m#low']));
+    expect(rendererInvocation('opencode', 'p', false, {}, 'p/m#high', null, { effort: 'high', simple_effort: 'minimal' }, 'simple')).toEqual(expect.arrayContaining(['-m', 'p/m#minimal']));
   });
 
   it('the director renderer gets the thinking level through stdin', () => {

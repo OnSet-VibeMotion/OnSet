@@ -38,6 +38,7 @@ export const AcestepCppRepo = 'https://github.com/ServeurpersoCom/acestep.cpp.gi
 export const AcestepCppCommit = '973517be024ff8b6bbd50e0adc9e308ab2ed71b3';
 export const AcestepCppVersion = '1.5-gguf-' + AcestepCppCommit.slice(0, 7);
 
+export const DefaultLocalTextEncoderModel = 'Qwen3-Embedding-0.6B-Q8_0.gguf';
 export const DefaultLocalLMModel = 'acestep-5Hz-lm-1.7B-Q8_0.gguf';
 export const DefaultLocalSynthModel = 'acestep-v15-turbo-Q8_0.gguf';
 export const DefaultLocalVAEModel = 'vae-BF16.gguf';
@@ -105,17 +106,33 @@ export function localAcestepBinariesReady(env: Record<string, string | undefined
   }
 }
 
+/** 按生成模式与所选模型计算必需的 GGUF 权重文件清单。 */
+export function requiredLocalModelFiles(cfg?: Pick<Config, 'model' | 'lm_model' | 'task_type'>): string[] {
+  const files = [
+    resolveLocalSynthModel(cfg?.model ?? ''),
+    DefaultLocalTextEncoderModel,
+    DefaultLocalVAEModel,
+  ];
+  if (!isCoverTask(cfg?.task_type ?? '')) {
+    files.push(resolveLocalLMModel(cfg?.lm_model ?? ''));
+  }
+  return files;
+}
+
+/** 找出指定模型目录里缺失的必需 GGUF 文件。 */
+export function missingLocalModelFiles(modelsDir: string, cfg?: Pick<Config, 'model' | 'lm_model' | 'task_type'>): string[] {
+  if (modelsDir === '') return requiredLocalModelFiles(cfg);
+  return requiredLocalModelFiles(cfg).filter((file) => !isFile(path.join(modelsDir, file)));
+}
+
 /** GGUF 模型是否已就绪。 */
-export function localAcestepModelsReady(env: Record<string, string | undefined>): boolean {
+export function localAcestepModelsReady(env: Record<string, string | undefined>, cfg?: Pick<Config, 'model' | 'lm_model' | 'task_type'>): boolean {
   const custom = (env[AcestepModelsDirEnv] ?? '').trim();
   if (custom !== '') {
-    try {
-      return fs.readdirSync(custom).some((name) => name.endsWith('.gguf'));
-    } catch {
-      return false;
-    }
+    return missingLocalModelFiles(custom, cfg).length === 0;
   }
-  return modelReady(AceStepGGUFModel, env);
+  if (!cfg) return modelReady(AceStepGGUFModel, env);
+  return missingLocalModelFiles(modelDir(AceStepGGUFModel, env), cfg).length === 0;
 }
 
 export interface LocalAcestepStatus {
@@ -128,11 +145,15 @@ export interface LocalAcestepStatus {
 }
 
 /** 不联网检查本机 ACE-Step 1.5 的就绪状态。 */
-export function localAcestepStatus(env: Record<string, string | undefined>, platform: NodeJS.Platform = process.platform): LocalAcestepStatus {
+export function localAcestepStatus(
+  env: Record<string, string | undefined>,
+  platform: NodeJS.Platform = process.platform,
+  cfg?: Pick<Config, 'model' | 'lm_model' | 'task_type'>,
+): LocalAcestepStatus {
   const binDir = localAcestepBinDir(env);
   const modelsDir = localAcestepModelsDir(env);
   const binariesReady = localAcestepBinariesReady(env, platform);
-  const modelsReady = localAcestepModelsReady(env);
+  const modelsReady = localAcestepModelsReady(env, cfg);
   const ok = binariesReady && modelsReady;
   const where = !binariesReady ? binDir : !modelsReady ? modelsDir : binDir;
   return { ok, where, binDir, modelsDir, binariesReady, modelsReady };
@@ -145,8 +166,12 @@ export interface LocalAcestepRuntime {
 }
 
 /** 返回已就绪的本机二进制与模型路径；缺任意一项抛 prereq.MissingError，不联网。 */
-export function requireLocalAcestep(env: Record<string, string | undefined>, platform: NodeJS.Platform = process.platform): LocalAcestepRuntime {
-  const status = localAcestepStatus(env, platform);
+export function requireLocalAcestep(
+  env: Record<string, string | undefined>,
+  platform: NodeJS.Platform = process.platform,
+  cfg?: Pick<Config, 'model' | 'lm_model' | 'task_type'>,
+): LocalAcestepRuntime {
+  const status = localAcestepStatus(env, platform, cfg);
   const what = '本机歌曲生成 ACE-Step 1.5（acestep.cpp + GGUF）';
   if (!status.binariesReady) {
     if (status.binDir === '') throw missing(what, `环境里没有 HOME，也没有 ${AcestepBinDirEnv}`);
@@ -154,7 +179,9 @@ export function requireLocalAcestep(env: Record<string, string | undefined>, pla
   }
   if (!status.modelsReady) {
     if (status.modelsDir === '') throw missing(what, `环境里没有 HOME，也没有 ${AcestepModelsDirEnv}`);
-    throw missing(what, `缺少 GGUF 模型权重：${status.modelsDir}`);
+    const lacking = missingLocalModelFiles(status.modelsDir, cfg);
+    const detail = lacking.length > 0 ? `（缺少：${lacking.join('、')}）` : '';
+    throw missing(what, `缺少 GGUF 模型权重：${status.modelsDir}${detail}`);
   }
   return {
     aceLm: path.join(status.binDir, exeName('ace-lm', platform)),
@@ -287,8 +314,8 @@ export async function ensureLocalAcestepBinaries(opts: LocalAcestepInstallOption
       report({ stage: 'acestep.cpp 已就绪', percent: 100 });
       return dir;
     } finally {
-      if (opts.signal?.aborted) throw abortReason(opts.signal);
       fs.rmSync(work, { recursive: true, force: true });
+      if (opts.signal?.aborted) throw abortReason(opts.signal);
     }
   } finally {
     unlock();
@@ -302,8 +329,10 @@ export async function ensureLocalAcestep(opts: LocalAcestepInstallOptions): Prom
     ...opts,
     progress: (p) => report({ ...p, percent: Math.round(p.percent * 0.25) }),
   });
+  const targetDir = localAcestepModelsDir(opts.env);
   const modelsDir = await ensureModel(AceStepGGUFModel, {
     env: opts.downloadEnv ?? opts.env,
+    targetDir,
     output: opts.output,
     progress: (p) => report({ ...p, percent: 25 + Math.round(p.percent * 0.75) }),
     signal: opts.signal,
@@ -383,7 +412,7 @@ export interface LocalGenerateOptions {
  * - cover / cover-nofsq: 跳过 ace-lm，直接 ace-synth --src-audio [--ref-audio] (request.json -> request0.mp3)
  */
 export async function generateLocalAcestep(opts: LocalGenerateOptions): Promise<void> {
-  const runtime = requireLocalAcestep(opts.env);
+  const runtime = requireLocalAcestep(opts.env, process.platform, opts.config);
   const taskType = opts.config.task_type || 'text2music';
   const cover = isCoverTask(taskType);
   if (cover && !opts.sourceAudio) {

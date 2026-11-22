@@ -90,6 +90,11 @@ describe('renderer sandbox', () => {
     expect(sh(`cat "${path.join(h.home, '.gemini', 'config', 'mcp_config.json')}"`)).toBe(false);
     expect(sh(`cat "${path.join(h.home, '.gemini', 'config', 'hooks.json')}"`)).toBe(false);
     expect(sh(`cat "${path.join(h.home, '.gemini', 'config', 'skills', 'mine', 'SKILL.md')}"`)).toBe(false);
+    expect(sh(`echo tampered > "${path.join(h.home, '.gemini', 'config', 'hooks.json')}"`)).toBe(false);
+    expect(sh(`echo tampered > "${path.join(h.home, '.gemini', 'config', 'mcp_config.json')}"`)).toBe(false);
+    expect(sh(`echo tampered > "${path.join(h.home, '.gemini', 'config', 'skills', 'mine', 'SKILL.md')}"`)).toBe(false);
+    expect(fs.readFileSync(path.join(h.home, '.gemini', 'config', 'hooks.json'), 'utf8')).toBe('{}\n');
+    expect(fs.readFileSync(path.join(h.home, '.gemini', 'config', 'mcp_config.json'), 'utf8')).toBe('{"mcpServers":{}}\n');
   });
 
   it('knows where each renderer keeps its state and skills', () => {

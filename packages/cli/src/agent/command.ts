@@ -17,6 +17,7 @@ import { callTarget, describeTools, Jobs, prepareCall, spawnOp, spawnOpWithServi
 import type { ParamValues } from '../ops/op';
 import { newGate } from './gate';
 import { todoTool } from './todo';
+import { toolOutputArchiveDir } from './tool-errors';
 import type { AgentModule, AgentTool, Gate } from './types';
 
 /** 打包时由 esbuild 定义成 onset-agent.cjs 的文件名；开发与测试时没有定义，直接 import 源码。 */
@@ -129,6 +130,7 @@ export async function runBuiltinAgent(
   const jobs = onset.jobs;
   // 待办清单与 onset 的工具一样直接放行：它只把清单写进工具调用，什么也不做。
   const tools = [...onset.tools, todoTool()];
+  const readDirs = [...(req.profile === 'renderer' ? (req.read_dirs ?? []) : []), toolOutputArchiveDir()];
   const gate =
     options.gate ??
     newGate({
@@ -136,7 +138,7 @@ export async function runBuiltinAgent(
       unsafe: req.unsafe === true,
       commands: req.commands ?? [],
       writableDirs: req.writable_dirs ?? [],
-      readDirs: req.profile === 'renderer' ? req.read_dirs : undefined,
+      readDirs,
       agentDir: req.agent_dir,
       onsetTools: new Set(tools.map((t) => t.name)),
       inbox: req.profile === 'renderer' ? '' : env[studioview.ViewInboxEnv] ?? '',

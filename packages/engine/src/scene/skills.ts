@@ -474,12 +474,14 @@ export function filmStyleBriefSection(skillsDir: string, hasLook: boolean, v7 = 
   let palette = '配色按下列 STYLE.md 规范为本镜头选定';
   if (hasLook) palette = '配色遵守下文「全片配色」（在 STYLE.md 的配色逻辑里只用这几种颜色）';
   let inline = '';
+  let truncated = false;
   try {
     const raw = fs.readFileSync(path.join(dir, filmstyle.StyleFile), 'utf8').trim();
     if (raw !== '') {
       const prepared = v7 ? stripSoundSections(raw) : raw;
       const limit = v7 ? styleInlineLimitV7 : styleInlineLimit;
-      const clipped = prepared.length > limit
+      truncated = prepared.length > limit;
+      const clipped = truncated
         ? prepared.slice(0, limit).trimEnd() + '\n…（后文已省略，需查细节时按需读取 STYLE.md）'
         : prepared;
       inline = `\n<onset-film-style-brief>\n${clipped}\n</onset-film-style-brief>\n`;
@@ -488,20 +490,19 @@ export function filmStyleBriefSection(skillsDir: string, hasLook: boolean, v7 = 
     // 读不到时退回按目录读取。
   }
   if (v7) {
+    const fullInline = inline !== '' && !truncated;
+    const styleLead = fullInline
+      ? `- 下方已内联该风格 ${filmstyle.StyleFile} 的完整视觉规范（已略去与无音轨镜头无关的声音条款），直接按此设计实现；${palette}。\n` +
+        `- 禁止通读该目录的 ${filmstyle.GuideFile}、${filmstyle.StyleFile}、DEMO.md 或 demo/ 源码全文（共享的 core/ 已链接到本镜头目录，直接引用）；只有确实需要复用某个特定引擎函数时，才按需定位读取对应片段并拷入本镜头目录。\n`
+      : inline !== ''
+        ? `- 下方已内联该风格 ${filmstyle.StyleFile} 的前段视觉规范（已略去声音条款，后文有截断）；${palette}。如需查阅被截断的视觉规范，可按需读取 ${filmstyle.StyleFile} 的剩余小节。\n` +
+          `- 禁止通读该目录的 ${filmstyle.GuideFile}、DEMO.md 或 demo/ 源码全文（共享的 core/ 已链接到本镜头目录，直接引用）；只有确实需要复用某个特定引擎函数时，才按需定位读取对应片段并拷入本镜头目录。\n`
+        : `- 未能预读 ${filmstyle.StyleFile}，请先按需读取该目录的 ${filmstyle.StyleFile}（跳过声音条款）；${palette}。禁止通读 DEMO.md 或 demo/ 源码全文。\n`;
     return (
       '\n整片风格（强制）：本片所有镜头画成同一种风格，本机该技能目录为：\n    ' +
       dir +
       '\n' +
-      '- 下方已内联该风格 ' +
-      filmstyle.StyleFile +
-      ' 的完整视觉规范（已略去与无音轨镜头无关的声音条款），直接按此设计实现；' +
-      palette +
-      '。\n' +
-      '- 禁止通读该目录的 ' +
-      filmstyle.GuideFile +
-      '、' +
-      filmstyle.StyleFile +
-      '、DEMO.md 或 demo/ 源码全文（共享的 core/ 已链接到本镜头目录，直接引用）；只有确实需要复用某个特定引擎函数时，才按需定位读取对应片段并拷入本镜头目录。\n' +
+      styleLead +
       '- 画什么只取本镜头的说明、字幕与素材，不照搬风格自带示例的文案与故事；不得引用镜头目录之外的路径；声音与配乐条款无效（产物静音无音轨）。\n' +
       inline
     );

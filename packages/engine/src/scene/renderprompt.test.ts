@@ -188,7 +188,19 @@ describe('render prompt version', () => {
     expect(p7).not.toContain('后文已省略');
     expect(p7).toContain('禁止通读该目录的 SKILL.md、STYLE.md、DEMO.md 或 demo/');
     expect(p7).toContain('不要通读 SKILL.md、DEMO.md、demo/');
+    expect(p7).toContain('也不要整份读 transcription.srt');
     expect(p7).toContain('每轮最多 1–2 帧');
     expect(p7).toContain('常规单镜预览自查控制在 1–2 轮');
+
+    // 无 timing 的镜头（如卡点）不应出现禁止读完整字幕的冲突条款；STYLE.md 超过 8500 字截断时允许按需补读剩余视觉条款。
+    fs.writeFileSync(path.join(styleDir, 'STYLE.md'), '# 超长风格\n' + '超长规范段落。'.repeat(1500));
+    const beatDir = path.join(root, 'scenes', 'scene-002');
+    fs.renameSync(writeScene(JSON.stringify({
+      id: 'scene-002', duration_seconds: 3, output: 'scene-002.mp4', transcript: 'transcript.srt', text: '测试',
+    })), beatDir);
+    const p7Clipped = buildPrompt(load(beatDir), { 'onset-film-style': path.join(root, '.agents', 'skills') });
+    expect(p7Clipped).not.toContain('也不要整份读 transcription.srt');
+    expect(p7Clipped).toContain('可按需读取 STYLE.md 的剩余小节');
+    expect(p7Clipped).not.toContain('禁止通读该目录的 SKILL.md、STYLE.md');
   });
 });

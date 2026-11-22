@@ -1,3 +1,5 @@
+import { encodeLine } from '../gojson';
+
 /** 只控制 Windows 编排；镜头渲染保持原有推理设置。inherit/未设置时沿用 CLI 默认。 */
 export function windowsOrchestratorEffort(env: Record<string, string | undefined>, platform: NodeJS.Platform = process.platform): string | undefined {
   if (platform !== 'win32') return undefined;
@@ -21,7 +23,7 @@ export function windowsPromptInput(tool: string, argv: string[], prompt: string,
   else if (tool === 'agy') {
     const start = index > 0 && (args[index - 1] === '-p' || args[index - 1] === '--print' || args[index - 1] === '--prompt') ? index - 1 : index;
     args.splice(start, index - start + 1, '--input-format', 'stream-json');
-    return { argv: args, stdin: JSON.stringify({ event: 'user', message: { content: prompt } }) + '\n' };
+    return { argv: args, stdin: encodeLine({ event: 'user', message: { content: prompt } }) };
   }
   else args.splice(index, 1);
   return { argv: args, stdin: prompt };

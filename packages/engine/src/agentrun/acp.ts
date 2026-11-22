@@ -95,12 +95,18 @@ export class ACPTranslator {
   private compactionState: ContextCompaction['state'] | undefined;
   private stepCount = 0;
   private inStep = false;
+  private sawToolCall = false;
 
   constructor(private readonly emit: (event: Event) => void) {}
 
   /** 估算本轮内发出的模型请求步数（每次工具结果回来后重新开始思考/输出/调工具算新一步）。 */
   steps(): number {
     return Math.max(1, this.stepCount);
+  }
+
+  /** 本轮可确认为单次无工具调用的模型请求（此时 response.usage.inputTokens 即精确单次请求上下文）。 */
+  singleRequest(): boolean {
+    return this.stepCount === 1 && !this.sawToolCall;
   }
 
   flush(): void {
@@ -191,6 +197,7 @@ export class ACPTranslator {
         this.scheduleThought();
         return;
       case 'tool_call': {
+        this.sawToolCall = true;
         this.flush();
         const id = str(u.toolCallId);
         const raw = obj(u.rawInput);
@@ -278,7 +285,7 @@ export class ACPTranslator {
 }
 
 /** ACP 一轮结束时报的用量（opencode 2.1 与 agy 1.5 实测：inputTokens 不含缓存，cachedRead/WriteTokens 另算；agy 的 outputTokens 已含 thoughtTokens）。 */
-export function acpUsage(usage: unknown, turns = 1): ReturnType<typeof newUsage> | null {
+export function acpUsage(usage: unknown, turns = 1, singleRequest = false): ReturnType<typeof newUsage> | null {
   const u = obj(usage);
   if (typeof u.inputTokens !== 'number' && typeof u.outputTokens !== 'number') return null;
   const n = (v: unknown) => (typeof v === 'number' ? v : 0);
@@ -293,6 +300,7 @@ export function acpUsage(usage: unknown, turns = 1): ReturnType<typeof newUsage>
   out.cached_input_tokens = n(u.cachedReadTokens);
   out.output_tokens = outputIncludesThought ? output : output + thought;
   out.turns = Math.max(1, Math.trunc(turns));
+  if (singleRequest && input > 0) out.last_request_input_tokens = input;
   out.source = 'acp usage';
   out.basis = BasisTotalInput;
   return out;
@@ -417,7 +425,7 @@ async function driveACP(ctx: DriveContext): Promise<void> {
     signal?.removeEventListener('abort', onAbort);
     translator.flush();
   }
-  const usage = acpUsage(response.usage, translator.steps()) ?? requests.total();
+  const usage = acpUsage(response.usage, translator.steps(), translator.singleRequest()) ?? requests.total();
   if (usage) ctx.result.usage = usage;
   const stop = str(response.stopReason);
   if (stop === 'cancelled' && !signal?.aborted && denied) {
