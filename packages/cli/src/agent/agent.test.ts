@@ -709,10 +709,13 @@ describe('runBuiltinAgent', () => {
     // 安全模式下续接同一会话时允许只读访问归档的长输出文件，同时继续禁止访问 agentDir 凭据目录。
     const safeFaux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
     let readArchiveResult = '';
+    let readArchiveIsError: boolean | undefined;
+    const safeReadCall = fauxToolCall('read', { path: archivedPath });
     safeFaux.setResponses([
-      fauxAssistantMessage([fauxToolCall('read', { path: archivedPath })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage([safeReadCall], { stopReason: 'toolUse' }),
       context => {
-        const res = context.messages.find(m => m.role === 'toolResult' && m.toolName === 'read');
+        const res = context.messages.find(m => m.role === 'toolResult' && m.toolCallId === safeReadCall.id);
+        readArchiveIsError = res && res.role === 'toolResult' ? res.isError : undefined;
         readArchiveResult = res && res.role === 'toolResult'
           ? res.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('\n')
           : '';
@@ -721,6 +724,7 @@ describe('runBuiltinAgent', () => {
     ]);
     const safeReq: director.Request = { workdir: tmp, prompt: '读归档', unsafe: false, resume: true, session_id: bashSessionID, agent_dir: agentDir, service: fauxService };
     expect(await runBuiltinAgent(safeReq, () => {}, undefined, { setupModels: fauxSetup(safeFaux), env: {} })).toEqual({ ok: true });
+    expect(readArchiveIsError).not.toBe(true);
     expect(readArchiveResult).toContain(headMark);
 
     // 超长 onset 工具输出（> 8000 字符）经 Jobs.wait 的 clip 归档到真实会话目录：
@@ -765,15 +769,19 @@ describe('runBuiltinAgent', () => {
     fs.renameSync(projectOrig, projectMoved);
     const sameSessFaux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
     let resumedRead = '';
+    let resumedReadIsError: boolean | undefined;
+    const resumedReadCall = fauxToolCall('read', { path: opClipArchive });
     sameSessFaux.setResponses([
-      fauxAssistantMessage([fauxToolCall('read', { path: opClipArchive })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage([resumedReadCall], { stopReason: 'toolUse' }),
       context => {
-        const res = context.messages.find(m => m.role === 'toolResult' && m.toolName === 'read');
+        const res = context.messages.find(m => m.role === 'toolResult' && m.toolCallId === resumedReadCall.id);
+        resumedReadIsError = res && res.role === 'toolResult' ? res.isError : undefined;
         resumedRead = res && res.role === 'toolResult' ? res.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('\n') : '';
         return fauxAssistantMessage('移动目录续接可读');
       },
     ]);
     expect(await runBuiltinAgent({ workdir: projectMoved, prompt: '续读', unsafe: false, resume: true, session_id: createdSessionID, agent_dir: agentDir, service: fauxService }, () => {}, undefined, { setupModels: fauxSetup(sameSessFaux), env: {} })).toEqual({ ok: true });
+    expect(resumedReadIsError).not.toBe(true);
     expect(resumedRead).toContain(longOpHead);
 
     const otherSessFaux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
