@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
-import { BasisTotalInput, effectiveOptions, type McpServer, newUsage } from '../tools';
+import { BasisTotalInput, ToolsMaxWaitEnv, ToolsServerName, effectiveOptions, type McpServer, newUsage } from '../tools';
 import { runInteractive, type DriveContext, type PermissionAnswer } from './interactive';
 import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, clip, compactionEvent, normalizeAgyTool, type ContextCompaction, type Event, type PlanItem } from './parse';
 import type { Outcome, Spec } from './run';
@@ -93,8 +93,15 @@ export class ACPTranslator {
   private readonly tasks = new ActiveTasks();
   private readonly teams = new Map<string, Map<string, string>>();
   private compactionState: ContextCompaction['state'] | undefined;
+  private stepCount = 0;
+  private inStep = false;
 
   constructor(private readonly emit: (event: Event) => void) {}
+
+  /** 估算本轮内发出的模型请求步数（每次工具结果回来后重新开始思考/输出/调工具算新一步）。 */
+  steps(): number {
+    return Math.max(1, this.stepCount);
+  }
 
   flush(): void {
     if (this.thoughtTimer) clearTimeout(this.thoughtTimer);
@@ -166,7 +173,13 @@ export class ACPTranslator {
     }
     if (progress === null && this.compactionState === 'running') this.compaction('ended');
     if (meta['codebuddy.ai/isCompactInternal'] === true) return;
-    if (['agent_message_chunk', 'agent_thought_chunk', 'tool_call'].includes(str(u.sessionUpdate))) this.compactionState = undefined;
+    if (['agent_message_chunk', 'agent_thought_chunk', 'tool_call'].includes(str(u.sessionUpdate))) {
+      this.compactionState = undefined;
+      if (!this.inStep) {
+        this.stepCount++;
+        this.inStep = true;
+      }
+    }
     switch (str(u.sessionUpdate)) {
       case 'agent_message_chunk':
         if (this.thoughtBuf !== '' || this.thoughtID) this.flush();
@@ -253,6 +266,7 @@ export class ACPTranslator {
   private toolDone(id: string, u: Obj): void {
     const status = str(u.status);
     if (status !== 'completed' && status !== 'failed') return;
+    this.inStep = false;
     const tool = this.tools.get(id) ?? 'tool';
     let text = acpText(u.content);
     if (text === '' && u.rawOutput !== undefined) {
@@ -264,7 +278,7 @@ export class ACPTranslator {
 }
 
 /** ACP 一轮结束时报的用量（opencode 2.1 与 agy 1.5 实测：inputTokens 不含缓存，cachedRead/WriteTokens 另算；agy 的 outputTokens 已含 thoughtTokens）。 */
-export function acpUsage(usage: unknown): ReturnType<typeof newUsage> | null {
+export function acpUsage(usage: unknown, turns = 1): ReturnType<typeof newUsage> | null {
   const u = obj(usage);
   if (typeof u.inputTokens !== 'number' && typeof u.outputTokens !== 'number') return null;
   const n = (v: unknown) => (typeof v === 'number' ? v : 0);
@@ -278,7 +292,7 @@ export function acpUsage(usage: unknown): ReturnType<typeof newUsage> | null {
   out.input_tokens = input;
   out.cached_input_tokens = n(u.cachedReadTokens);
   out.output_tokens = outputIncludesThought ? output : output + thought;
-  out.turns = 1;
+  out.turns = Math.max(1, Math.trunc(turns));
   out.source = 'acp usage';
   out.basis = BasisTotalInput;
   return out;
@@ -374,7 +388,7 @@ async function driveACP(ctx: DriveContext): Promise<void> {
     loading = true;
     let loaded: Obj;
     try {
-      loaded = obj(await race(peer.request('session/load', { sessionId: spec.sessionID, cwd, mcpServers: acpMcpServers(spec.toolsServer) })));
+      loaded = obj(await race(peer.request('session/load', { sessionId: spec.sessionID, cwd, mcpServers: acpMcpServers(spec.toolsServer, spec.tool) })));
     } finally {
       loading = false;
     }
@@ -384,7 +398,7 @@ async function driveACP(ctx: DriveContext): Promise<void> {
     else await race(ensureModel(peer, sessionID, loaded, spec.model ?? ''));
     ctx.result.model = acpModel(loaded);
   } else {
-    const created = obj(await race(peer.request('session/new', { cwd, mcpServers: acpMcpServers(spec.toolsServer) })));
+    const created = obj(await race(peer.request('session/new', { cwd, mcpServers: acpMcpServers(spec.toolsServer, spec.tool) })));
     sessionID = str(created.sessionId);
     if (sessionID === '') throw new Error('session/new 没有返回 sessionId');
     if (spec.tool === 'mcode') await race(configureMcode(peer, sessionID, created, spec));
@@ -403,7 +417,7 @@ async function driveACP(ctx: DriveContext): Promise<void> {
     signal?.removeEventListener('abort', onAbort);
     translator.flush();
   }
-  const usage = acpUsage(response.usage) ?? requests.total();
+  const usage = acpUsage(response.usage, translator.steps()) ?? requests.total();
   if (usage) ctx.result.usage = usage;
   const stop = str(response.stopReason);
   if (stop === 'cancelled' && !signal?.aborted && denied) {
@@ -569,10 +583,14 @@ export async function ensureModel(peer: { request(method: string, params: unknow
   }
 }
 
-/** ACP 的 mcpServers：stdio 服务的 env 是 {name, value} 列表。 */
-function acpMcpServers(server: McpServer | undefined): Array<Record<string, unknown>> {
+/** ACP 的 mcpServers：stdio 服务的 env 是 {name, value} 列表。agy 默认 MCP 超时 180 秒，给 onset 设 150 秒上限减少短轮询。 */
+function acpMcpServers(server: McpServer | undefined, tool = ''): Array<Record<string, unknown>> {
   if (!server) return [];
-  return [{ name: server.name, command: server.command, args: server.args, env: Object.entries(server.env ?? {}).map(([name, value]) => ({ name, value })) }];
+  const env = { ...(server.env ?? {}) };
+  if (tool === 'agy' && server.name === ToolsServerName && !env[ToolsMaxWaitEnv]) {
+    env[ToolsMaxWaitEnv] = '150';
+  }
+  return [{ name: server.name, command: server.command, args: server.args, env: Object.entries(env).map(([name, value]) => ({ name, value })) }];
 }
 
 function configOptionValue(opened: Obj, id: string): unknown {

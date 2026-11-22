@@ -94,7 +94,7 @@ defineOp({
   cli: ['scene', 'preview-check'],
   scopes: ['renderer'],
   summary: '一次做合成检查、关键帧联系表或单帧细节图',
-  description: '在当前镜头检查布局、运动和对比度，再截取指定的本地帧。默认输出关键帧联系表；传 zoom_frame 时返回该帧原分辨率（或配合 crop 返回局部裁剪）细节图并优先复用已缓存的帧。合成检查报错时先修复。',
+  description: '在当前镜头检查布局、运动和对比度，再截取指定的本地帧。默认输出关键帧联系表；仅对联系表上发现具体疑点的 1–2 帧传 zoom_frame（优先配合 crop 局部裁剪，复用已缓存的帧，不要逐帧拉取多张全分辨率图）。正常修改源码会自动失效缓存，一般无需传 refresh。合成检查报错时先修复。',
   examples: [
     'scene_preview_check({"frames":"0,45,89"})',
     'scene_preview_check({"zoom_frame":"45"})',
@@ -102,9 +102,9 @@ defineOp({
   ],
   params: {
     frames: { type: 'string', description: `逗号分隔的本镜头整数帧号，最多 ${maxFrames} 个；默认首帧、四分位和末帧` },
-    zoom_frame: { type: 'string', description: '单帧细节检查的本镜头整数帧号；传入时返回该帧原分辨率或局部裁剪图，不拼联系表' },
+    zoom_frame: { type: 'string', description: '单帧细节检查的本镜头整数帧号；仅对联系表上发现疑点的 1–2 帧使用，优先配合 crop 局部裁剪，避免逐帧拉取多张全分辨率图' },
     crop: { type: 'string', description: '配合 zoom_frame 使用的局部裁剪区域 "x,y,w,h"（画布像素），省略时返回该帧原分辨率全图' },
-    refresh: { type: 'boolean', description: '重新检查并截图，跳过已缓存的结果' },
+    refresh: { type: 'boolean', description: '强制跳过缓存重新检查并截图（正常修改源码会自动失效缓存，一般无需传入）' },
   },
   run: async (p, { out, signal }) => {
     const s = scene.load('.');

@@ -80,9 +80,14 @@ describe('production map', () => {
     expect(confirmed?.status).toBe('confirmed');
     expect(confirmed?.said).toBe('就按这七种风格 开始渲染。');
     expect(readGates(root)['gate-storyboard'].said).toBe('就按这七种风格 开始渲染。');
-    // 路线上没有在等的关卡、或关卡写错，都照实拒绝。
+    // 路线上没有在等的关卡、或关卡写错，都照实拒绝；省略 gate- 前缀的短别名自动补全。
     expect(() => confirmGateFromChat(root, message, '开始渲染')).toThrow('没有在等用户确认的关卡');
     expect(() => confirmGateFromChat(root, message, '开始渲染', 'gate-nope')).toThrow('没有这个审核关卡');
+    expect(() => confirmGateFromChat(root, message, '开始渲染', 'nope')).toThrow('没有这个审核关卡');
+    const scriptRoot = project({ 'production/script-final.md': '# 稿\n\n正文\n' });
+    const shortConfirm = confirmGateFromChat(scriptRoot, '稿子没问题，开始配音', '稿子没问题', 'script');
+    expect(shortConfirm.gate).toBe('gate-script');
+    expect(status(scriptRoot)['gate-script']).toBe('confirmed');
   });
 
   it('does not reopen the script review when only readings change', () => {

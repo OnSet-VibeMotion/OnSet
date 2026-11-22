@@ -272,7 +272,7 @@ export function describeTools(profile: Profile, root = ''): ToolDef[] {
   out.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   out.push({
     name: 'job_wait',
-    description: '接着等一个还没跑完的任务（上一次调用返回的任务号），返回它的新输出；跑完时给出结果。',
+    description: '接着等一个还没跑完的任务（上一次调用返回的任务号），返回它的新输出；跑完时给出结果。等渲染等长任务时直接省略 wait_seconds（一次等满上限），不要每隔几十秒短轮询，也不要在等待期间反复读 render-*.user.log。',
     inputSchema: { type: 'object', properties: { job: { type: 'string', description: '任务号' }, wait_seconds: waitSchema('job_wait') }, required: ['job'], additionalProperties: false },
     help: '',
   });

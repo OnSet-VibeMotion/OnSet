@@ -447,12 +447,28 @@ export function filmStyleSection(skillsDir: string, hasLook: boolean): string {
 
 /** v6 内联进跨镜头公共前缀的默认整片风格 STYLE.md 摘要上限（字符），省去每镜重复读 20KB+ 风格文档。 */
 const styleInlineLimit = 3200;
+/** v7 去掉声音/配乐段落后的内联上限（字符），完整覆盖绝大多数 STYLE.md 的视觉规范，杜绝渲染器再去通读 STYLE.md / DEMO.md / demo/。 */
+const styleInlineLimitV7 = 8500;
+
+/** 去掉 STYLE.md 里仅与声音、配乐、音效有关的二级章节（单镜产物恒为静音无音轨）。 */
+export function stripSoundSections(md: string): string {
+  const lines = md.split('\n');
+  const out: string[] = [];
+  let skipping = false;
+  for (const line of lines) {
+    if (/^##\s+/.test(line)) {
+      skipping = /^##\s+.*(?:\b(?:sound|audio|music)\b|声音|配乐|音效)/i.test(line);
+    }
+    if (!skipping) out.push(line);
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
 
 /**
- * v6 整片风格段：把默认风格的 STYLE.md 核心内容直接内联进跨镜头静态前缀（同项目所有镜头共享一份前缀缓存），
- * 减少每镜 1–2 轮 read(SKILL.md) + read(STYLE.md)；完整示例与引擎细节仍按需读取。
+ * v6/v7 整片风格段：把默认风格的 STYLE.md 核心内容直接内联进跨镜头静态前缀（同项目所有镜头共享一份前缀缓存），
+ * 减少每镜 1–2 轮 read(SKILL.md) + read(STYLE.md)；v7 去掉声音段并放宽上限，同时明确禁止通读 DEMO.md / demo/ / SKILL.md 全文。
  */
-export function filmStyleBriefSection(skillsDir: string, hasLook: boolean): string {
+export function filmStyleBriefSection(skillsDir: string, hasLook: boolean, v7 = false): string {
   const dir = filmStyleDir(skillsDir);
   if (dir === '') return filmStyleSection(skillsDir, hasLook);
   let palette = '配色按下列 STYLE.md 规范为本镜头选定';
@@ -461,11 +477,34 @@ export function filmStyleBriefSection(skillsDir: string, hasLook: boolean): stri
   try {
     const raw = fs.readFileSync(path.join(dir, filmstyle.StyleFile), 'utf8').trim();
     if (raw !== '') {
-      const clipped = raw.length > styleInlineLimit ? raw.slice(0, styleInlineLimit).trimEnd() + '\n…（后文已省略，需查细节时按需读取 STYLE.md）' : raw;
+      const prepared = v7 ? stripSoundSections(raw) : raw;
+      const limit = v7 ? styleInlineLimitV7 : styleInlineLimit;
+      const clipped = prepared.length > limit
+        ? prepared.slice(0, limit).trimEnd() + '\n…（后文已省略，需查细节时按需读取 STYLE.md）'
+        : prepared;
       inline = `\n<onset-film-style-brief>\n${clipped}\n</onset-film-style-brief>\n`;
     }
   } catch {
     // 读不到时退回按目录读取。
+  }
+  if (v7) {
+    return (
+      '\n整片风格（强制）：本片所有镜头画成同一种风格，本机该技能目录为：\n    ' +
+      dir +
+      '\n' +
+      '- 下方已内联该风格 ' +
+      filmstyle.StyleFile +
+      ' 的完整视觉规范（已略去与无音轨镜头无关的声音条款），直接按此设计实现；' +
+      palette +
+      '。\n' +
+      '- 禁止通读该目录的 ' +
+      filmstyle.GuideFile +
+      '、' +
+      filmstyle.StyleFile +
+      '、DEMO.md 或 demo/ 源码全文（共享的 core/ 已链接到本镜头目录，直接引用）；只有确实需要复用某个特定引擎函数时，才按需定位读取对应片段并拷入本镜头目录。\n' +
+      '- 画什么只取本镜头的说明、字幕与素材，不照搬风格自带示例的文案与故事；不得引用镜头目录之外的路径；声音与配乐条款无效（产物静音无音轨）。\n' +
+      inline
+    );
   }
   return (
     '\n整片风格（强制）：本片所有镜头画成同一种风格，本机该技能目录为：\n    ' +

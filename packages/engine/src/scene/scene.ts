@@ -707,12 +707,14 @@ function renderPrompt(s: Scene, resolvedSkills: Record<string, string> | null, w
   const engineRenders = version >= 4;
   if (version >= 5) {
     const v6 = version >= 6;
-    // v5/v6：把全片各镜头完全一致的公共规则放在提示词最前面（跨镜头命中提示词缓存），
+    const v7 = version >= 7;
+    // v5/v6/v7：把全片各镜头完全一致的公共规则放在提示词最前面（跨镜头命中提示词缓存），
     // 并向所有渲染器统一提供精简开工契约（不再强制每镜重读 130KB+ 上游技能文档）；
-    // v6 进一步在公共前缀内联默认风格的 STYLE.md 摘要、按需挂载重型可选技能、引用自动生成的 onset-fonts.css。
+    // v6 进一步在公共前缀内联默认风格的 STYLE.md 摘要、按需挂载重型可选技能、引用自动生成的 onset-fonts.css；
+    // v7 完整内联去声音段的 STYLE.md、明确禁止通读 demo/SKILL/示例全文，并约束 zoom_frame 与预览轮次。
     // 本镜头的动态字段（编号、时长、文案、prompt.md、时间合同、交接、返修）放在后半段。
     const defaultFilmStyle = s.film_style === '' && filmStyleDir !== ''
-      ? (v6 ? filmStyleBriefSection(filmStyleDir, hasLook) : style)
+      ? (v6 ? filmStyleBriefSection(filmStyleDir, hasLook, v7) : style)
       : '';
     const sceneStyle = defaultFilmStyle !== '' ? '' : style;
     const readFirstV5 = s.timing !== null
@@ -732,8 +734,8 @@ function renderPrompt(s: Scene, resolvedSkills: Record<string, string> | null, w
       pluginSkillSection(resolved) +
       defaultFilmStyle +
       determinismSection +
-      previewReviewV5 +
-      startSectionV5 +
+      (v7 ? previewReviewV7 : previewReviewV5) +
+      (v7 ? startSectionV7 : startSectionV5) +
       '\n' +
       '阶段性汇报规则：仅在关键阶段输出以下原文：\n' +
       '[[USER_MESSAGE]]需求理解和素材检查已完成\n' +
@@ -935,6 +937,17 @@ const previewReviewV5 =
   '- 核对安全区、裁切与重叠、焦点和实际观看尺寸下的可读性。数字、型号、引语与图表刻度须能对回文案或字幕，装饰读数不可暗示事实。\n' +
   '- 发现问题就修正并复查对应画面。小字或局部细节直接调 scene_preview_check({"zoom_frame": "<帧号>"})（可加 "crop": "x,y,w,h" 裁局部，复用已缓存的帧，不必重跑 snapshot）；有闪烁、跳变或抢读疑问时用 frames 取相邻整数帧连续核实。\n' +
   '- 自查全部通过后输出上文的交接信号并结束会话。片场会正式渲染和校验 MP4，再报告完成状态。\n';
+
+const startSectionV7 =
+  startSectionV5 +
+  '- 开工前不要批量通读技能目录与示例源码（不要通读 SKILL.md、DEMO.md、demo/、scene-kit/example.html、hyperframes/SKILL.md、motion.md、runtimes.md，也不要整份读 transcription.srt）；只有确实遇到某个具体 API 疑问时才查阅对应小节。\n';
+
+const previewReviewV7 =
+  '\n画面自查与交接：\n' +
+  '- 合成写完后调用 scene_preview_check，一次检查源码、布局、运动与对比度，再截图。frames 给逗号分隔的整数帧号，覆盖开头、各阶段的稳定画面和结尾；默认取首、四分位与末帧。缓存会按源码变更自动失效，正常修改后无需传 refresh: true。先看联系表。\n' +
+  '- 核对安全区、裁切与重叠、焦点和实际观看尺寸下的可读性。数字、型号、引语与图表刻度须能对回文案或字幕，装饰读数不可暗示事实。\n' +
+  '- zoom_frame 仅用于联系表上已发现具体疑点的帧（每轮最多 1–2 帧，优先配合 "crop": "x,y,w,h" 裁局部，复用已缓存的帧），禁止逐帧拉取多张全分辨率原图（每张图都会留在后续每一步的上下文里）；有闪烁、跳变或抢读疑问时用 frames 取相邻整数帧连续核实。\n' +
+  '- 常规单镜预览自查控制在 1–2 轮：初检列出全部问题一次改完，复检确认通过后立即输出上文的交接信号并结束会话，不要为微小调参反复 3–4 轮全镜重拍。片场会正式渲染和校验 MP4，再报告完成状态。\n';
 
 /**
  * workersSection 告诉渲染器本镜头可用的帧捕获 worker 数；单镜头渲染时为空。

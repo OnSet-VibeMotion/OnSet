@@ -164,4 +164,31 @@ describe('render prompt version', () => {
     const split2 = p2.indexOf('任务目标：\n');
     expect(p1.slice(0, split1)).toBe(p2.slice(0, split2));
   });
+
+  it('v7 strips sound sections, inlines full STYLE.md up to 8500 chars, forbids reading demo/SKILL in full, and curbs zoom_frame', () => {
+    const root = tempDir();
+    fs.writeFileSync(path.join(root, 'onset.conf'), '');
+    flow.recordFlow(root, { id: 'speech', canvas: 'landscape-16x9', render_prompt: 7 });
+    const styleDir = path.join(root, '.agents', 'skills', 'onset-film-style');
+    fs.mkdirSync(styleDir, { recursive: true });
+    fs.writeFileSync(path.join(styleDir, 'SKILL.md'), '# style skill');
+    const visualBody = '# 电影视觉\n## 1. Visual\n' + '细节规则。'.repeat(700) + '\n## 7. Sound palette\n- 合成器低音铺底\n## 8. Type\n- 大字清晰\n';
+    fs.writeFileSync(path.join(styleDir, 'STYLE.md'), visualBody);
+    fs.mkdirSync(path.join(root, 'scenes'));
+    const dir = path.join(root, 'scenes', 'scene-001');
+    fs.renameSync(writeScene(JSON.stringify({
+      id: 'scene-001', duration_seconds: 3, output: 'scene-001.mp4', transcript: 'transcript.srt', text: '测试',
+      timing: { fps: 30, start_frame: 0, end_frame_exclusive: 90, plan: testPlanSHA },
+    })), dir);
+    const s = load(dir);
+    const p7 = buildPrompt(s, { 'onset-film-style': path.join(root, '.agents', 'skills') });
+    expect(p7).toContain('<onset-film-style-brief>');
+    expect(p7).toContain('## 8. Type');
+    expect(p7).not.toContain('合成器低音铺底');
+    expect(p7).not.toContain('后文已省略');
+    expect(p7).toContain('禁止通读该目录的 SKILL.md、STYLE.md、DEMO.md 或 demo/');
+    expect(p7).toContain('不要通读 SKILL.md、DEMO.md、demo/');
+    expect(p7).toContain('每轮最多 1–2 帧');
+    expect(p7).toContain('常规单镜预览自查控制在 1–2 轮');
+  });
 });

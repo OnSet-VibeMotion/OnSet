@@ -59,3 +59,21 @@ it('rotates Codex app-server on request size rather than the whole Studio turn',
   entry.usage!.last_request_input_tokens = 250_000;
   expect(rotationReason([entry], 's')).toContain('25 万');
 });
+
+it('does not false-rotate ACP turns=1 cumulative usage, and rotates when multi-step average crosses threshold', () => {
+  const legacyAcp: Entry = {
+    time: '', source: 'studio', tool: 'agy', session: 's1', status: 'succeeded',
+    usage: { source: 'acp usage', turns: 1, input_tokens: 434_000 },
+  };
+  expect(rotationReason([legacyAcp], 's1')).toBe('');
+  const normalMultiStep: Entry = {
+    time: '', source: 'studio', tool: 'agy', session: 's2', status: 'succeeded',
+    usage: { source: 'acp usage', turns: 10, input_tokens: 800_000 },
+  };
+  expect(rotationReason([normalMultiStep], 's2')).toBe('');
+  const heavyMultiStep: Entry = {
+    time: '', source: 'studio', tool: 'agy', session: 's3', status: 'succeeded',
+    usage: { source: 'acp usage', turns: 10, input_tokens: 2_000_000 },
+  };
+  expect(rotationReason([heavyMultiStep], 's3')).toContain('20 万');
+});

@@ -121,9 +121,9 @@ function longWaitTimeoutSeconds(server: McpServer): number {
 }
 
 /** 工具服务给能长时间等的客户端：环境里写上放宽的等待上限。不是 onset 的工具服务原样返回。 */
-export function longWaitServer(server: McpServer | undefined): McpServer | undefined {
+export function longWaitServer(server: McpServer | undefined, seconds = LongToolWaitSeconds): McpServer | undefined {
   if (!server || server.name !== ToolsServerName) return server;
-  return { ...server, env: { ...(server.env ?? {}), [ToolsMaxWaitEnv]: String(LongToolWaitSeconds) } };
+  return { ...server, env: { ...(server.env ?? {}), [ToolsMaxWaitEnv]: String(seconds) } };
 }
 
 /** onset 工具服务在配置里的名字。 */
@@ -249,12 +249,16 @@ export const AgyMcpFile = path.join('.agents', 'mcp_config.json');
 const agyRendererEagerTools = ['hyperframes', 'scene_preview_check', 'job_wait', 'job_cancel', 'tool_help'];
 
 export function agyMcpJSON(server: McpServer): string {
-  const timeout = longWaitTimeoutSeconds(server) || 720;
+  const env = { ...(server.env ?? {}) };
+  if (server.name === ToolsServerName && !env[ToolsMaxWaitEnv]) {
+    env[ToolsMaxWaitEnv] = '600';
+  }
+  const timeout = longWaitTimeoutSeconds({ ...server, env }) || 720;
   const isRenderer = server.args.includes('tools-mcp') && server.args[server.args.indexOf('--profile') + 1] === 'renderer';
   const entry: Record<string, unknown> = {
     command: server.command,
     args: server.args,
-    ...(server.env && Object.keys(server.env).length > 0 ? { env: server.env } : {}),
+    ...(Object.keys(env).length > 0 ? { env } : {}),
     timeoutSeconds: timeout,
     ...(isRenderer ? { tools: Object.fromEntries(agyRendererEagerTools.map((t) => [t, { eager: true }])) } : {}),
   };
@@ -336,7 +340,11 @@ export interface RendererSession {
 }
 
 export function rendererInvocation(tool: string, prompt: string, unsafe: boolean, access: RendererAccess, model = '', session: RendererSession | null = null, options: AgentOptions = {}, stage: 'full' | 'repair' | 'simple' = 'full'): string[] {
-  const server = tool === 'claude' || tool === 'codex' ? longWaitServer(access.toolsServer) : access.toolsServer;
+  const server = tool === 'claude' || tool === 'codex'
+    ? longWaitServer(access.toolsServer)
+    : tool === 'agy'
+      ? longWaitServer(access.toolsServer, 600)
+      : access.toolsServer;
   const effective = stageOptions(effectiveOptions(tool, options), stage);
   // 调用选项（推理强度、快速模式、上下文长度，见 options.ts）跟着模型参数一起放。
   const m = [...modelArgs(tool, tool === 'opencode' ? opencodeModel(model, effective) : model), ...(tool === 'codex' ? codexOptionOverrides(effective) : optionArgs(tool, effective))];

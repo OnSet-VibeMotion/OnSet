@@ -149,7 +149,13 @@ describe('usage', () => {
     );
     fs.writeFileSync(
       path.join(s1, 'render-scene-001.stream.jsonl'),
-      '{"tool":"scene_preview_check"}\n{"tool":"scene_preview_check"}\n',
+      [
+        '{"event":"step_update","step_update":{"step_index":10,"state":"ACTIVE","step_type":"tool","tool_name":"mcp_onset_scene_preview_check","tool_info":{"parameters":{"frames":"0,15,29"}}}}',
+        '{"event":"step_update","step_update":{"step_index":10,"state":"DONE","step_type":"tool","tool_name":"mcp_onset_scene_preview_check","tool_info":{"parameters":{"frames":"0,15,29"},"output":"ok scene_preview_check"}}}',
+        '{"event":"step_update","step_update":{"step_index":15,"state":"ACTIVE","step_type":"tool","tool_name":"mcp_onset_scene_preview_check","tool_info":{"parameters":{"zoom_frame":"0"}}}}',
+        '{"event":"step_update","step_update":{"step_index":15,"state":"DONE","step_type":"tool","tool_name":"mcp_onset_scene_preview_check","tool_info":{"parameters":{"zoom_frame":"0"}}}}',
+        '{"event":"result","result":{"response":"已通过 scene_preview_check 验收"}}',
+      ].join('\n') + '\n',
     );
     const s2 = makeScene('scene-002');
     fs.writeFileSync(

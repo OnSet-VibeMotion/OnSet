@@ -496,11 +496,28 @@ describe('configureAgy and ACP helpers', () => {
     expect(isAcpToolsServerCall({ name: 'mcp_other_tool' }, server)).toBe(false);
     expect(isAcpToolsServerCall({ name: 'run_command' }, server)).toBe(false);
     // agy 的 outputTokens 已含 thoughtTokens（totalTokens === input + outputTokens）。
-    expect(acpUsage({ inputTokens: 12026, outputTokens: 663, cachedReadTokens: 0, cachedWriteTokens: 0, thoughtTokens: 642, totalTokens: 12689 })).toMatchObject({
+    expect(acpUsage({ inputTokens: 12026, outputTokens: 663, cachedReadTokens: 0, cachedWriteTokens: 0, thoughtTokens: 642, totalTokens: 12689 }, 5)).toMatchObject({
       input_tokens: 12026,
       output_tokens: 663,
       cached_input_tokens: 0,
+      turns: 5,
     });
+
+    // ACPTranslator 按工具结果边界估算真实模型调用步数：同一步的并行工具只算 1 步，结果回来后的新一轮才 +1。
+    const t = new ACPTranslator(() => {});
+    expect(t.steps()).toBe(1);
+    t.update({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: '分析' } });
+    t.update({ sessionUpdate: 'tool_call', toolCallId: 'c1', title: 'r1', kind: 'read', status: 'pending' });
+    t.update({ sessionUpdate: 'tool_call', toolCallId: 'c2', title: 'r2', kind: 'read', status: 'pending' });
+    expect(t.steps()).toBe(1);
+    t.update({ sessionUpdate: 'tool_call_update', toolCallId: 'c1', status: 'completed', rawOutput: 'ok' });
+    t.update({ sessionUpdate: 'tool_call_update', toolCallId: 'c2', status: 'completed', rawOutput: 'ok' });
+    t.update({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: '继续' } });
+    t.update({ sessionUpdate: 'tool_call', toolCallId: 'c3', title: 'w1', kind: 'edit', status: 'pending' });
+    expect(t.steps()).toBe(2);
+    t.update({ sessionUpdate: 'tool_call_update', toolCallId: 'c3', status: 'completed', rawOutput: 'ok' });
+    t.update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '完成' } });
+    expect(t.steps()).toBe(3);
   });
 
   it('switches agy ACP mode, base or variant model, and thought_level', async () => {

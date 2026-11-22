@@ -93,7 +93,7 @@ gate 一般不写，记的是路线上此刻在等确认的那一关；要指定
   examples: ['studio_confirm({"said": "就按这七种风格，开始渲染"})', 'studio_confirm({"said": "稿子没问题，开始配音", "gate": "gate-script"})'],
   params: {
     said: { type: 'string', description: '用户确认时的原话', required: true, positional: 0 },
-    gate: { type: 'string', description: '关卡 id；不写时是路线上在等确认的那一关' },
+    gate: { type: 'string', description: '关卡 id（如 gate-script、gate-voice、gate-storyboard）；一般不写，自动匹配路线上在等确认的那一关' },
   },
   run: (p, { out }) => {
     const confirm: { said: string; gate?: string } = { said: str(p.said).trim() };

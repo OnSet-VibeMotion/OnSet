@@ -211,8 +211,76 @@ function countStreamPreviews(dir: string, id: string): number {
   } catch {
     return 0;
   }
-  const matches = text.match(/scene_preview_check|hyperframes[^}\n]*snapshot/g);
-  return matches ? matches.length : 0;
+  const seen = new Set<string>();
+  let fallback = 0;
+  const isPreviewTool = (name: string, args: unknown): boolean => {
+    if (name.includes('scene_preview_check')) return true;
+    if (name === 'call_mcp_tool' && args && typeof args === 'object') {
+      const a = args as Record<string, unknown>;
+      const nested = String(a.ToolName ?? a.tool_name ?? '');
+      return isPreviewTool(nested, a.Arguments ?? a.arguments);
+    }
+    if (name.includes('hyperframes')) {
+      const raw = typeof args === 'string' ? args : JSON.stringify(args ?? '');
+      return raw.includes('snapshot');
+    }
+    return false;
+  };
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || (!line.includes('scene_preview_check') && !line.includes('hyperframes'))) continue;
+    let parsed: Record<string, unknown> | null = null;
+    try {
+      const val = JSON.parse(line);
+      if (val && typeof val === 'object' && !Array.isArray(val)) parsed = val as Record<string, unknown>;
+    } catch {
+      // Fall through to line-level fallback.
+    }
+    if (!parsed) {
+      if (/scene_preview_check|hyperframes[^}\n]*snapshot/.test(line)) fallback++;
+      continue;
+    }
+    // agy stream-json：同一 tool 调用会发 ACTIVE 与 DONE 两条 step_update，按 step_index 去重。
+    if (parsed.event === 'step_update' && parsed.step_update && typeof parsed.step_update === 'object') {
+      const step = parsed.step_update as Record<string, unknown>;
+      if (step.step_type === 'tool') {
+        const name = typeof step.tool_name === 'string' ? step.tool_name : '';
+        const info = step.tool_info && typeof step.tool_info === 'object' ? (step.tool_info as Record<string, unknown>) : undefined;
+        if (isPreviewTool(name, info?.parameters)) {
+          const idx = step.step_index !== undefined ? String(step.step_index) : `line:${fallback++}`;
+          seen.add(`agy:${idx}`);
+        }
+      }
+      continue;
+    }
+    // claude / qoder / codebuddy / director：assistant 消息里的 tool_use 块，按 id 去重。
+    if (parsed.type === 'assistant' && parsed.message && typeof parsed.message === 'object') {
+      const content = (parsed.message as Record<string, unknown>).content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (!block || typeof block !== 'object') continue;
+          const b = block as Record<string, unknown>;
+          if (b.type === 'tool_use' && typeof b.name === 'string' && isPreviewTool(b.name, b.input)) {
+            seen.add(`tu:${typeof b.id === 'string' && b.id ? b.id : `line:${fallback++}`}`);
+          }
+        }
+      }
+      continue;
+    }
+    // 忽略 tool_result / user / result 汇总行，防止正文里提到工具名被重复计数。
+    if (parsed.event === 'result' || parsed.type === 'user' || parsed.type === 'result') continue;
+    // codex / mcode / opencode item 事件。
+    if (parsed.item && typeof parsed.item === 'object') {
+      const item = parsed.item as Record<string, unknown>;
+      const name = typeof item.tool === 'string' ? item.tool : typeof item.name === 'string' ? item.name : '';
+      if (name && isPreviewTool(name, item.arguments ?? item.input)) {
+        seen.add(`item:${typeof item.id === 'string' && item.id ? item.id : `line:${fallback++}`}`);
+      }
+      continue;
+    }
+    if (/scene_preview_check|hyperframes[^}\n]*snapshot/.test(line)) fallback++;
+  }
+  return seen.size + fallback;
 }
 
 function buildBreakdown(scenes: readonly scene.Scene[], report: ProjectUsage): UsageBreakdown {

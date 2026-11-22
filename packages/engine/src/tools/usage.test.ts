@@ -111,7 +111,8 @@ describe('usage', () => {
     expect(second.turns).toBe(3);
   });
 
-  // 2026-11 实测：agy --conversation 续接后 result.usage 与 num_turns 也是整个会话的累计值。
+  // 2026-11 实测：agy --conversation 续接后 result.usage 与 num_turns 也是整个会话的累计值；
+  // 同一轮内的多步模型调用体现在 step_update(DONE, agent_response) 里，要记入真实步数与最近一次上下文长度。
   it('agy resume reports tokens and turns cumulatively', () => {
     const first = newUsage();
     accumulateUsage('agy', '{"event":"result","result":{"num_turns":1,"usage":{"input_tokens":14216,"output_tokens":74,"thinking_tokens":0,"cache_read_tokens":9973}}}', first);
@@ -119,6 +120,19 @@ describe('usage', () => {
     const second: typeof first = { ...newUsage(), baseline: sessionBaseline(first) };
     accumulateUsage('agy', '{"event":"result","result":{"num_turns":2,"usage":{"input_tokens":16469,"output_tokens":76,"thinking_tokens":0,"cache_read_tokens":20101}}}', second);
     expect(second).toMatchObject({ input_tokens: 2253 + 10128, cached_input_tokens: 10128, output_tokens: 2, turns: 1 });
+
+    const multiStep = newUsage();
+    accumulateUsage('agy', '{"event":"step_update","step_update":{"step_index":1,"state":"DONE","step_type":"agent_response","usage":{"input_tokens":18000,"output_tokens":300,"cache_read_tokens":0}}}', multiStep);
+    accumulateUsage('agy', '{"event":"step_update","step_update":{"step_index":2,"state":"DONE","step_type":"tool","tool_name":"mcp_onset_scene_preview_check"}}', multiStep);
+    accumulateUsage('agy', '{"event":"step_update","step_update":{"step_index":3,"state":"DONE","step_type":"agent_response","usage":{"input_tokens":5000,"output_tokens":200,"cache_read_tokens":35000}}}', multiStep);
+    accumulateUsage('agy', '{"event":"result","result":{"num_turns":1,"usage":{"input_tokens":23000,"output_tokens":500,"cache_read_tokens":35000}}}', multiStep);
+    expect(multiStep).toMatchObject({
+      input_tokens: 58000,
+      cached_input_tokens: 35000,
+      output_tokens: 500,
+      turns: 2,
+      last_request_input_tokens: 40000,
+    });
   });
 
   // director 是自己写的流，每个进程从零算，不减基线。

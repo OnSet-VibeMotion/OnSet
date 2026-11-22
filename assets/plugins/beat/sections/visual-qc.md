@@ -9,7 +9,7 @@
 - 对第 0 帧、转场开始帧和转场进行中的代表帧截图检查。
 - 眼镜、连线、图标、人物或其他核心视觉隐喻必须检查几何形状、对齐和语义是否正确。
 
-批量视觉验收优先用 `scene_frames_batch({"scenes": "scenes/", "out": "production/visual-qc/batch", "check_blank": true})` 一次性完成全片空白帧检测，并把每 5 个镜头拼成一张总览联系表（每行一镜，含首、中、末帧）。**先看总览联系表**：只在总览表发现异常、需要核对第 0 帧封面细节或排查特定动作时，再对单个镜头调用 `scene_frames({"scene": "<镜头目录>", "out": "production/visual-qc/<镜头编号>", "report_json": "production/visual-qc/<镜头编号>.json"})`（不要自己拼 FFmpeg，也不要逐镜打开 20 张单镜联系表）。参数 `at` 接受秒数、百分比和 `end`，可混用；`end` 取时长减一帧，直接用时长会超出末帧，FFmpeg 会返回成功却什么都不输出。
+批量视觉验收优先用 `scene_frames_batch({"scenes": "scenes/", "out": "production/visual-qc/batch", "check_blank": true})` 一次性完成全片空白帧检测，并把每 5 个镜头拼成一张总览联系表（每行一镜，含首、中、末帧）。**先看总览联系表**：总览表已清晰无异常的常规镜头不要再逐一调用单镜 `scene_frames` 重复抽帧，只在总览表发现异常、需要核对第 0 帧封面细节或排查特定动作时，再对单个镜头调用 `scene_frames({"scene": "<镜头目录>", "out": "production/visual-qc/<镜头编号>", "report_json": "production/visual-qc/<镜头编号>.json"})`（不要自己拼 FFmpeg，也不要逐镜打开 20 张单镜联系表）。参数 `at` 接受秒数、百分比和 `end`，可混用；`end` 取时长减一帧，直接用时长会超出末帧，FFmpeg 会返回成功却什么都不输出。
 
 看图的顺序：先看 `scene_frames_batch` 的总览联系表；单镜补查时先加 `"sheet": true` 看单镜联系表，只在看出问题、或要确认某处细节时，再打开那一张单帧或用 `crop` 看局部，不要逐张打开每一帧。抽出的单帧缺省是缩小的（宽 960），够看构图、有没有画面、字幕在不在。渲染工具交付前已经自查过画面，这里看的是镜头之间、镜头与任务书之间对不对得上。看过的每张图都会一直留在你的上下文里，后面每一步都要重读。
 

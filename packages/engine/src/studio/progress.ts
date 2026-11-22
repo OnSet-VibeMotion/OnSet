@@ -226,12 +226,14 @@ export function confirmGateFromChat(root: string, message: string, said: string,
   if (bareWords(quote).length < 2) throw new Error('said 要写用户确认时的原话');
   if (!bareWords(message).includes(bareWords(quote))) throw new Error('这一轮用户的话里没有「' + quote + '」：只有用户在对话里明确确认了，才能记下关卡');
   const progress = readProgress(root);
+  const files = gateFilesFor();
   let id = gate.trim();
   if (id !== '') {
-    if (!gateFilesFor()[id]) throw new Error(`没有这个审核关卡：${id}（可选：${gateIDs().join('、')}）`);
+    if (!files[id] && files[`gate-${id}`]) id = `gate-${id}`;
+    if (!files[id]) throw new Error(`没有这个审核关卡：${id}（可选：${gateIDs().join('、')}）`);
   } else {
     const current = progress.stations.find((st) => st.id === progress.current);
-    if (!current?.gate || !gateFilesFor()[current.id]) throw new Error('路线上现在没有在等用户确认的关卡');
+    if (!current?.gate || !files[current.id]) throw new Error('路线上现在没有在等用户确认的关卡');
     id = current.id;
   }
   const label = progress.stations.find((st) => st.id === id)?.label ?? id;

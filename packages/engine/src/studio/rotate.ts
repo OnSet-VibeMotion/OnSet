@@ -40,7 +40,13 @@ export function rotationReason(entries: readonly Entry[] | null, cliSession: str
   const turns = last.usage.turns ?? 0;
   const input = last.usage.input_tokens ?? 0;
   // Codex app-server 的 turns 是 Studio 用户轮次，旧账没有单次模型请求量。
-  if (last.usage.source !== 'codex app-server' && turns > 0 && input > 0) {
+  // ACP（agy / opencode）旧账或极少事件下可能把多步累计 input 记成 turns=1，不能直接除以 1 触发误换会话。
+  if (
+    last.usage.source !== 'codex app-server' &&
+    !(last.usage.source === 'acp usage' && turns <= 1) &&
+    turns > 0 &&
+    input > 0
+  ) {
     const average = input / turns;
     if (average >= RotateContextTokens) return `上一轮平均每次调用要读约 ${Math.round(average / 10_000)} 万 token 的上下文`;
     return '';

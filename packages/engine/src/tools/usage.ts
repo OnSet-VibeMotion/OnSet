@@ -410,15 +410,39 @@ function accumulateMcodeUsage(line: string, u: Usage): void {
 
 /**
  * Antigravity CLI（`agy --output-format stream-json`，v1.5.13 实测）：
- * 收尾的 `{"event":"result","result":{"num_turns":…,"usage":{"input_tokens":…,"output_tokens":…,"thinking_tokens":…,"cache_read_tokens":…}}}`。
- * input_tokens 不含 cache_read_tokens，output_tokens 已含 thinking_tokens；--conversation 续接后是整个会话的累计值。
+ * - 每步完成有 `{"event":"step_update","step_update":{"state":"DONE","step_type":"agent_response","usage":{"input_tokens":…,"cache_read_tokens":…}}}`，
+ *   用来统计真实模型调用步数与最近一次请求的上下文大小；
+ * - 收尾的 `{"event":"result","result":{"num_turns":…,"usage":{"input_tokens":…,"output_tokens":…,"thinking_tokens":…,"cache_read_tokens":…}}}`。
+ * input_tokens 不含 cache_read_tokens，output_tokens 已含 thinking_tokens；--conversation 续接后 result 是整个会话的累计值。
  */
 function accumulateAgyUsage(line: string, u: Usage): void {
   const event = parseObject(line);
   if (!event) return;
+  let kind: string;
+  try {
+    kind = stringField(event, 'event');
+  } catch (err) {
+    if (err instanceof BadEvent) return;
+    throw err;
+  }
+  if (kind === 'step_update') {
+    try {
+      const step = objectField(event, 'step_update');
+      if (!step || stringField(step, 'state') !== 'DONE' || stringField(step, 'step_type') !== 'agent_response') return;
+      const usage = objectField(step, 'usage');
+      if (!usage) return;
+      const reqInput = intField(usage, 'input_tokens') + intField(usage, 'cache_read_tokens');
+      u.turns = (u.turns ?? 0) + 1;
+      if (reqInput > 0) u.last_request_input_tokens = reqInput;
+    } catch (err) {
+      if (err instanceof BadEvent) return;
+      throw err;
+    }
+    return;
+  }
+  if (kind !== 'result') return;
   let input: number, output: number, cacheRead: number, turns: number;
   try {
-    if (stringField(event, 'event') !== 'result') return;
     const result = objectField(event, 'result');
     if (!result) return;
     const usage = objectField(result, 'usage');
@@ -431,7 +455,9 @@ function accumulateAgyUsage(line: string, u: Usage): void {
     if (err instanceof BadEvent) return;
     throw err;
   }
+  const stepTurns = u.turns ?? 0;
   applyResultUsage('agy', { input_tokens: input + cacheRead, output_tokens: output, cached_input_tokens: cacheRead, cost_usd: null, credits: null, turns }, u);
+  if (stepTurns > (u.turns ?? 0)) u.turns = stepTurns;
 }
 
 /** 把用量写成一行给人看的文字；没读到时如实说没读到。 */
