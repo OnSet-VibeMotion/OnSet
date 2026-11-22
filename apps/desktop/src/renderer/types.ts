@@ -388,6 +388,7 @@ export interface AgentOptionSpec {
   requiresModel?: boolean;
   /** 可选档位随模型变：按模型列表里那个模型的 efforts 收窄。 */
   perModel?: boolean;
+  rendererOnly?: boolean;
 }
 
 export interface AgentsResponse {

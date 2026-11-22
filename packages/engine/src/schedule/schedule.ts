@@ -36,6 +36,8 @@ export interface Report {
   scenes: SceneResult[] | null;
   /** 这一批全部渲染的用量合计；null 表示没有。 */
   usage: Usage | null;
+  /** 未登记组件的镜头留给下一批，不占 worker。 */
+  component_waiting?: { scene_id: string; components: { name: string; source_scene: string }[] }[];
 }
 
 /** runAll 给出的报告：scenes 总是数组（按时间轴顺序）。 */
@@ -90,6 +92,7 @@ export function reportToJSON(r: Report): unknown {
     counts: r.counts == null ? null : countsJSON(r.counts),
     scenes: r.scenes == null ? null : r.scenes.map(sceneResultToJSON),
     usage: r.usage ? usageJSON(r.usage) : undefined,
+    component_waiting: r.component_waiting,
   };
 }
 
@@ -415,7 +418,11 @@ function seconds(begin: number): number {
 export interface QueueEvent {
   kind: 'started' | 'finished'; scene_id: string; worker: number; elapsed_seconds: number; active: number; pending: number; slot_idle_ms: number; status?: Status;
 }
-export interface RunOptions { priority?: readonly string[]; onEvent?: (event: QueueEvent) => void }
+export interface RunOptions {
+  priority?: readonly string[];
+  onEvent?: (event: QueueEvent) => void;
+  unstarted?: ReadonlyMap<string, SceneResult>;
+}
 
 export async function runAll(
   signal: AbortSignal,
@@ -427,7 +434,8 @@ export async function runAll(
 ): Promise<RunReport> {
   const started = performance.now();
   if (jobs < 1) jobs = 1;
-  const ranked = dispatchOrder(scenes);
+  const byID = new Map(options.unstarted);
+  const ranked = dispatchOrder(scenes.filter(s => !byID.has(s.id)));
   const priority = new Map((options.priority ?? []).map((id,index)=>[id,index]));
   const queue = priority.size ? ranked.sort((a,b)=>{
     const first=priority.get(a.id),second=priority.get(b.id);
@@ -438,7 +446,6 @@ export async function runAll(
   const notify = (event: QueueEvent) => { try {options.onEvent?.(event);} catch {/* 调用方负责报告监控故障。 */} };
   let next = 0;
   let active = 0;
-  const byID = new Map<string, SceneResult>();
 
   const runOne = async (s: Scene): Promise<SceneResult> => {
     const result = newSceneResult({ scene_id: s.id, status: Failed });

@@ -14,6 +14,8 @@
 
 共用组件（`scene/components.ts`，`shared_component_promote` 在 `packages/cli/src/components_cmd.ts`）：跨镜头要长得一样的物件由代表镜头的渲染器做成 `export/<名字>/`（入口文件加 `README.md`），编排验收后用 `shared_component_promote` 登记，onset 复制到项目的 `production/shared/<名字>/`（只收普通文件、要有说明与 .js/.mjs/.css、上限 5 MB、内容不同要 `replace`）；其余镜头在 `scene.json` 写 `components`，渲染前经共享资源挂进镜头的 `shared/<名字>/`（内容按 `asset:` 摘要进指纹），提示词加 `componentSection`。没登记的组件在启动渲染器前报错。没有 `components` 的镜头提示词与指纹逐字不变。代码始终出自渲染器，编排自己仍不写 `production/shared/`（`host/scene-ownership.md`）。起因：Qwen4Max 一片的铭牌、立方体在 7 个镜头里各画各的，错了好几处、返工两三轮。
 
+整片依赖在任务清单的 `shared_components` 声明，每项写 `name`、`source_scene` 和使用镜头 `scenes`。`scene_prepare` 检查未知镜头、自引用、重名和循环后，将计划写到 `production/component-plan.json`。旧的手写 `scene.json.components` 继续支持，计划引用按镜头生效；修改计划不重写已有镜头。批量渲染将未登记的使用镜头列入报告 `component_waiting`，其他镜头照常派发，等待项没有 renderer 尝试和队列事件。制作人验收产出镜头、登记组件后再派发等待镜头。计划中的组件只能从指定产出镜头登记，新产物校验利用确定性扫描的文件路径检查合成是否引用了组件入口。
+
 scene.json 里功能自己的块（多角色对话的 `cast`、歌曲讲解的 `song`、卡点的 `beat`）是**镜头扩展块**：`scene/block.ts` 是注册表（`SceneBlock`：字段名 `key`、先后 `order`、解码描述 `type`、`toJSON`、load 时的 `validate`、互斥 `excludes`、渲染前与复用前的 `verifyInputs`、与 timing 互斥的 `timeline`、提示词段 `promptSection`、指纹项 `fingerprintParts`、记忆特征 `feature`、考试要拷的目录 `extraInputDirs`）。块一律由功能插件在 apply 里 `ctx.sceneBlock(...)` 登记（`plugins/cast/block.ts`、`plugins/song/block.ts`、`plugins/beat/block.ts`），用 `declare module` 把自己的字段并进 `Scene`；`registerBlock` 只给测试登记假块。`scene.ts`、`record.ts`、`timing.ts`、memory 的特征与考场、cli 的 `scene_cues` / `beat_cues` 只遍历注册表，不按名字读 `s.cast` / `s.song`。
 
 | 约定 | 原因 |
@@ -34,6 +36,18 @@ scene.json 里功能自己的块（多角色对话的 `cast`、歌曲讲解的 `
 渲染记录 `schema: 4` 给每个技能单独算摘要。HyperFrames 入口只记单镜头用到的契约与动效文档；其他技能记自己的目录，运行资源仍走资源清单。批量复用先按旧记录原有算法验证，验证通过后可原地升级摘要并保留产物和渲染出处。已与旧树摘要不符的记录仍按原规则标为 Stale。
 
 提示词第 4 版用 `scene_preview_check()` 一次检查源码、布局、运动与对比度，按本镜头帧号生成一张联系表，完整日志落在镜头内。渲染器看图确认后输出交接信号并结束。引擎用同一渲染隔离与 worker 预算在临时目录里出片，完成验收后才换入正式路径。出片失败时优先续接原会话给它一次修复机会；收到取消时结束本次尝试。
+
+提示词第 5 版把跨镜头完全一致的公共规范（画布规格、HyperFrames / SceneKit / CLI 精简开工契约、默认整片风格、确定性、预览自查、开工须知与反模式约束、交接汇报规则）提前到提示词最前段，把单镜头的编号、时长、文案、任务书与时间合同放在后半段，让同项目多镜头命中提示词缓存；同时向全部渲染器统一提供精简开工契约和已挂载资源清单，减少每镜重读上游大文档。`scene_preview_check()` 新增 `zoom_frame` 与可选 `crop="x,y,w,h"` 单帧细节模式，优先复用联系表阶段已缓存的单帧原图（局部裁剪结果一并缓存在 `.onset/preview-cache/`），减少单独调用 `hyperframes snapshot`。旧项目（`render_prompt < 5`）提示词保持逐字节不变。
+
+提示词第 6 版在保持 v5 公共前缀结构与 v1–v5 旧项目逐字节兼容的前提下进一步降低每镜开销：① 在静态前缀内联项目默认整片风格摘要（`filmStyleBriefSection`，截断上限 3,200 字），免去每个镜头各自 `read` `STYLE.md`；② `prepareResources` 自动在镜头目录生成 `onset-fonts.css`（`@font-face` 声明），渲染器直接 `<link rel="stylesheet" href="onset-fonts.css">` 而不必扫描 `fonts/` 手写规则；③ `character-rig`、`text-to-lottie`、`algorithmic-art` 三个重型可选技能从默认前缀移出，仅当镜头有 `cast` 块或 `prompt.md` 显式点名时作为单镜动态尾段注入（`optionalSkillTail`）。同时，`tools/options.ts` 向全部渲染器统一开放 `repair_effort` 与 `simple_effort` 两个仅渲染档位选项，`scene/run.ts` 将局部返修/修接缝路由到 `repair_effort`，将纯标题/短过渡等极简镜头（`isSimpleScene`）路由到 `simple_effort`。
+
+提示词第 7 版（当前默认 `flow.RenderPromptVersion = 7`）继续保持 v1–v6 逐字节兼容，并针对实测中渲染器反复通读大文档与过度拉取全分辨率单帧的问题进一步收紧：① `filmStyleBriefSection` 剥离与无音轨镜头无关的 Sound/Audio/Music 章节后完整内联默认风格 `STYLE.md`（上限 8,500 字），明确禁止开工前通读 `SKILL.md`、`DEMO.md`、`demo/`、`scene-kit/example.html`、`hyperframes/SKILL.md` 与整份 `transcription.srt`；② 预览自查约束 `zoom_frame` 仅用于联系表上已发现疑点的 1–2 帧（优先配合 `crop` 局部裁剪），常规单镜控制在 1–2 轮且不必每次传 `refresh: true`。同时，`tools/usage.ts` 的 `accumulateAgyUsage` 解析 `step_update(DONE, agent_response)` 统计真实模型步数与单次上下文，`usage --breakdown` 按事件 id / `step_index` 去重统计 `preview_calls`。
+
+`scene_preview_check()` 在 `.onset/preview-cache/` 记录成功的检查、单帧及联系表。缓存依据实际合成源码、镜头素材、挂载内容、画幅和工具环境，而非正式产物的输入指纹。补查新帧只拍缺失帧，损坏的单帧按缺失处理。相同联系表在同一会话里已看过时可以沿用视觉判断。`refresh: true` 会重跑检查和全部请求帧。无法确定浏览器或外部素材身份时按普通预览运行。预览摘要去掉针对静音镜头的 `film_silent` 建议和 Electron 预览壳的 CSP 提示，重复提示只显示一次，完整检查日志保留所有原始发现。
+
+一次预览最多接收 12 个不同的本镜头帧号。成功摘要列出报告中明确通过的检查项，便于判断是否需要打开诊断日志。制作人的实时开工提示列出可直接引用的已挂载字体和库文件名。渲染记录继续使用原有指纹。预览缓存把与已安装 HyperFrames 分发文件逐字节相同的本地 GSAP 视为可缓存，库内的许可和诊断链接保留原样。
+
+`scene_repair()` 接收已有镜头和项目内的 JSON 问题单，`issues` 的每条含局部整数帧区间 `[start_frame, end_frame_exclusive)`、`problem`、`acceptance` 与可选证据帧 `evidence_frame`。持有镜头租约期间，从原片抽证据图，只发送返修任务。片场在暂存目录出片，核对输入契约、常规产物规格及区间外每一帧。逐帧比较使用缩图后的分区 RGB 平均绝对差，避免全画面取平均掩盖小范围改变。失败或取消恢复源文件、原片和渲染记录，保留日志和花掉的用量。
 
 每次渲染写 `render-<id>.attempt.json`，重渲染前 `scene.archiveAttempt`（`scene/attempt.ts`）先把上一次的产物、日志与尝试记录挪进 `attempts/`。调度层的重试与单镜头重跑走同一个归档函数，不要各写一份编号逻辑。
 

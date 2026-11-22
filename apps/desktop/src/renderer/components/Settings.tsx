@@ -339,8 +339,9 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
     return data!.rows.find((r) => r.model_of === row.options_of);
   }
 
-  function specsOf(tool: string) {
-    return agents?.agents.find((a) => a.id === tool)?.option_specs ?? [];
+  function specsOf(tool: string, row: SettingRow) {
+    const specs = agents?.agents.find((a) => a.id === tool)?.option_specs ?? [];
+    return specs.filter((spec) => !spec.rendererOnly || row.options_of === 'RENDERER');
   }
 
   // 这家工具没有可调的选项（或还没读到工具列表）时照实说，不放一个空着的控件。
@@ -355,7 +356,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
   function globalOptions(row: SettingRow) {
     const tool = globalTool(row);
     if (tool === '') return noOptions(`全局${row.label}`, '跟随对话助手的选项');
-    const specs = specsOf(tool);
+    const specs = specsOf(tool, row);
     if (specs.length === 0) return noOptions(`全局${row.label}`, agents ? '这家工具没有可调的选项' : agentsError ? '工具列表读取失败' : '正在读取…');
     return (
       <div className="settings-options">
@@ -375,7 +376,7 @@ export function Settings({ version, run, onPluginsChanged, onAgentsChanged, proj
   function projectOptions(row: SettingRow) {
     const tool = projectTool(row);
     if (tool === '') return noOptions(`这个项目的${row.label}`, '跟随对话助手的选项');
-    const specs = specsOf(tool);
+    const specs = specsOf(tool, row);
     if (specs.length === 0) return noOptions(`这个项目的${row.label}`, agents ? '这家工具没有可调的选项' : agentsError ? '工具列表读取失败' : '正在读取…');
     const model = modelRowOf(row);
     return (

@@ -59,6 +59,8 @@ export function modelListCommand(tool: string): string[] | null {
     case 'mcode':
       // 不直接解析输出：studio/agents.ts 按 fetchMcodeModels 走 ACP 握手。
       return ['mcode', 'acp'];
+    case 'agy':
+      return ['agy', 'models'];
     case 'claude':
     case 'director':
       return null;
@@ -141,9 +143,65 @@ export function parseModelList(tool: string, stdout: string): ModelOption[] {
           .filter((s) => /^[^\s/]+\/\S+$/.test(s))
           .map((id) => ({ id, label: id })),
       );
+    case 'agy':
+      return parseAgyModels(stdout);
     default:
       throw new Error(`未知工具：${tool}`);
   }
+}
+
+const agyEffortOrder = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+const agyEffortSuffix = /-(low|medium|high|xhigh|max)$/;
+const agyLabelEffort = /\s+\((Low|Medium|High|XHigh|Max)\)$/;
+
+/**
+ * 解析 `agy models` 输出：每行 `<slug>  <Display Name>`（前面可能有 `\r` 进度行）。
+ * 同一基础模型有多个推理档位变体（例如 gemini-4-neon-high / xhigh / medium / low）时合并成一条基础模型
+ * （与 `agy acp` 的 configOptions 一致），`efforts` 按 low→max 排序、`defaultEffort` 取最先列出的档位；
+ * 只有一个变体或无档位后缀的模型原样保留并设 `efforts: []`。
+ */
+function parseAgyModels(stdout: string): ModelOption[] {
+  const rows: Array<{ id: string; label: string; base: string; baseLabel: string; effort: string }> = [];
+  const seen = new Set<string>();
+  for (const rawLine of stdout.split('\n')) {
+    // 先去掉 CRLF 的行尾 \r，再去掉行内 spinner 的 \r 前缀，避免 CRLF 输入被截成空串。
+    const line = (rawLine.replace(/\r+$/, '').split('\r').at(-1) ?? '').trim();
+    const m = /^([A-Za-z0-9._-]+)\s{2,}(.+)$/.exec(line);
+    if (!m) continue;
+    const id = m[1]!;
+    const label = m[2]!.trim();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const suffix = agyEffortSuffix.exec(id);
+    const labelSuffix = agyLabelEffort.exec(label);
+    if (suffix && labelSuffix) {
+      rows.push({ id, label, base: id.slice(0, -suffix[0].length), baseLabel: label.slice(0, -labelSuffix[0].length), effort: suffix[1]! });
+    } else {
+      rows.push({ id, label, base: '', baseLabel: '', effort: '' });
+    }
+  }
+  const groups = new Map<string, typeof rows>();
+  for (const r of rows) {
+    if (!r.base) continue;
+    const list = groups.get(r.base) ?? [];
+    list.push(r);
+    groups.set(r.base, list);
+  }
+  const out: ModelOption[] = [];
+  const emittedBase = new Set<string>();
+  for (const r of rows) {
+    const group = r.base ? groups.get(r.base) : undefined;
+    if (group && group.length >= 2) {
+      if (emittedBase.has(r.base)) continue;
+      emittedBase.add(r.base);
+      const present = new Set(group.map((g) => g.effort));
+      const efforts = agyEffortOrder.filter((e) => present.has(e));
+      out.push({ id: r.base, label: r.baseLabel, efforts, defaultEffort: group[0]!.effort });
+    } else {
+      out.push({ id: r.id, label: r.label, efforts: [] });
+    }
+  }
+  return out;
 }
 
 function dedupe(options: ModelOption[]): ModelOption[] {

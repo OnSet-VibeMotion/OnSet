@@ -48,6 +48,7 @@ describe('model choice', () => {
         session_id: 's',
         resume: true,
         model: 'deepseek-v4-flash',
+        compact_at: 96_000,
         commands: ['ls'],
         agent_dir: agentDir,
         service: { id, name: 'DeepSeek', protocol: 'openai', base_url: 'https://api.deepseek.com', model: 'deepseek-v4-pro', vision: false, key: 'sk-1' },
@@ -127,6 +128,40 @@ describe('model choice', () => {
     expect(mcodeModelOptions(configOptions, efforts)).toEqual([
       { id: 'minimax/MiniMax-M3.1-Flash', label: 'M3.1-Flash', isDefault: true, efforts: ['low', 'high'] },
       { id: 'minimax/MiniMax-M3', label: 'M3', efforts: [] },
+    ]);
+  });
+
+  // Antigravity CLI 1.5.13 实测：headless 走 -p + --conversation，客户端走 agy acp，模型表跑 agy models。
+  it('runs Antigravity CLI with headless print, ACP and agy models', () => {
+    const access = { commands: ['ls'], readDirs: ['/skills'] };
+    const safe = rendererInvocation('agy', 'p', false, access, 'gemini-3.8-flash', null, { effort: 'low' });
+    expect(safe.slice(0, 5)).toEqual(['agy', '-p', 'p', '--mode', 'accept-edits']);
+    expect(safe).toEqual(expect.arrayContaining(['--model', 'gemini-3.8-flash', '--effort', 'low', '--output-format', 'stream-json']));
+    const settings = JSON.parse(safe[safe.indexOf('--settings') + 1]);
+    expect(settings.toolPermission).toBe('request-review');
+    expect(settings.permissions.allow).toEqual(['command(ls)', 'read_file(/skills)']);
+    expect(settings.permissions.deny).toEqual(['command(onset)', 'read_file(.env)', 'write_file(/skills)']);
+    expect(rendererInvocation('agy', 'p', false, { ...access, unfiltered: true }, '', { id: 'conv-1', resume: true })).toEqual([
+      'agy', '-p', 'p', '--dangerously-skip-permissions', '--conversation', 'conv-1', '--output-format', 'stream-json',
+    ]);
+    const orch = orchestratorInvocation('agy', { workdir: '/w', prompt: 'hello', sessionID: 'conv-2', resume: true, unsafe: true });
+    expect(orch.argv).toEqual(['agy', '-p', 'hello', '--dangerously-skip-permissions', '--conversation', 'conv-2', '--output-format', 'stream-json']);
+    expect(() => orchestratorInvocation('agy', { workdir: '/w', prompt: 'p', sessionID: 'preset' })).toThrow('不支持预先指定会话 id');
+    expect(interactiveInvocation('agy', { unsafe: false })).toEqual({ protocol: 'acp', argv: ['agy', 'acp'], env: {} });
+    expect(interactiveInvocation('agy', { unsafe: true })).toEqual({ protocol: 'acp', argv: ['agy', 'acp', '--dangerously-skip-permissions'], env: {} });
+    expect(modelListCommand('agy')).toEqual(['agy', 'models']);
+    const raw = [
+      '\r⠋ Fetching available models...\rgemini-4-neon-high             Gemini 4 Neon (High)',
+      'gemini-4-neon-xhigh            Gemini 4 Neon (XHigh)',
+      'gemini-4-neon-medium           Gemini 4 Neon (Medium)',
+      'gemini-4-neon-low              Gemini 4 Neon (Low)',
+      'gemini-pro-orchestrator-neon   Orchestrator (Neon)',
+      'gpt-oss-120b-medium            GPT-OSS 120B (Medium)',
+    ].join('\r\n');
+    expect(parseModelList('agy', raw)).toEqual([
+      { id: 'gemini-4-neon', label: 'Gemini 4 Neon', efforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'high' },
+      { id: 'gemini-pro-orchestrator-neon', label: 'Orchestrator (Neon)', efforts: [] },
+      { id: 'gpt-oss-120b-medium', label: 'GPT-OSS 120B (Medium)', efforts: [] },
     ]);
   });
 });

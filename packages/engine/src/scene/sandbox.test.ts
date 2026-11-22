@@ -73,8 +73,32 @@ describe('renderer sandbox', () => {
     expect(sh(`cat "${path.join(h.home, '.claude.json')}" && echo 1 > "${path.join(h.home, '.claude.json.tmp.1')}"`)).toBe(true);
   });
 
+  // agy 启动会话会原子写 ~/.gemini/config/projects/default-cli-project.json.*.tmp，同时必须继续藏住用户个人 MCP/hooks/技能。
+  it.runIf(sandboxAvailable())('allows agy config project writes while hiding user skills, mcp_config and hooks', () => {
+    const h = home();
+    fs.mkdirSync(path.join(h.home, '.gemini', 'antigravity-cli'), { recursive: true });
+    fs.mkdirSync(path.join(h.home, '.gemini', 'config', 'projects'), { recursive: true });
+    fs.mkdirSync(path.join(h.home, '.gemini', 'config', 'skills', 'mine'), { recursive: true });
+    fs.writeFileSync(path.join(h.home, '.gemini', 'config', 'skills', 'mine', 'SKILL.md'), 'x\n');
+    fs.writeFileSync(path.join(h.home, '.gemini', 'config', 'mcp_config.json'), '{"mcpServers":{}}\n');
+    fs.writeFileSync(path.join(h.home, '.gemini', 'config', 'hooks.json'), '{}\n');
+    const own = rendererHome('agy', h.home);
+    const profile = sandboxProfile({ sceneDir: h.scene, projectRoot: h.project, env: { HOME: h.home, PATH: '/usr/bin:/bin' }, toolStateDirs: own.state, toolStateFiles: own.files, hiddenDirs: own.hidden, readDirs: [] });
+    const sh = (script: string) => spawnSync(SandboxExec, ['-p', profile, '/bin/sh', '-c', script], { cwd: h.scene, encoding: 'utf8' }).status === 0;
+    expect(sh(`echo '{}' > "${path.join(h.home, '.gemini', 'config', 'projects', 'default-cli-project.json.tmp')}"`)).toBe(true);
+    expect(sh(`echo x > "${path.join(h.home, '.gemini', 'antigravity-cli', 'state.txt')}"`)).toBe(true);
+    expect(sh(`cat "${path.join(h.home, '.gemini', 'config', 'mcp_config.json')}"`)).toBe(false);
+    expect(sh(`cat "${path.join(h.home, '.gemini', 'config', 'hooks.json')}"`)).toBe(false);
+    expect(sh(`cat "${path.join(h.home, '.gemini', 'config', 'skills', 'mine', 'SKILL.md')}"`)).toBe(false);
+    expect(sh(`echo tampered > "${path.join(h.home, '.gemini', 'config', 'hooks.json')}"`)).toBe(false);
+    expect(sh(`echo tampered > "${path.join(h.home, '.gemini', 'config', 'mcp_config.json')}"`)).toBe(false);
+    expect(sh(`echo tampered > "${path.join(h.home, '.gemini', 'config', 'skills', 'mine', 'SKILL.md')}"`)).toBe(false);
+    expect(fs.readFileSync(path.join(h.home, '.gemini', 'config', 'hooks.json'), 'utf8')).toBe('{}\n');
+    expect(fs.readFileSync(path.join(h.home, '.gemini', 'config', 'mcp_config.json'), 'utf8')).toBe('{"mcpServers":{}}\n');
+  });
+
   it('knows where each renderer keeps its state and skills', () => {
-    for (const tool of ['claude', 'codex', 'codebuddy', 'opencode', 'qoder', 'qoder-intl', 'mcode']) {
+    for (const tool of ['claude', 'codex', 'codebuddy', 'opencode', 'qoder', 'qoder-intl', 'mcode', 'agy']) {
       const own = rendererHome(tool, '/h');
       expect(own.state.length, tool).toBeGreaterThan(0);
       expect(own.hidden, tool).toContain(path.join('/h', '.agents', 'skills'));

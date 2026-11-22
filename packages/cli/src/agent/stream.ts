@@ -34,6 +34,8 @@ export class StreamWriter {
   private output = 0;
   private cacheRead = 0;
   private cacheWrite = 0;
+  private reasoning?: number;
+  private compactions = 0;
   private cost = 0;
   private costKnown = true;
   private lastError = '';
@@ -59,6 +61,9 @@ export class StreamWriter {
     }
     if (e.type === 'compaction_end') {
       if (e.result && !e.aborted && !e.errorMessage) {
+        const usage = obj(obj(e.result).usage);
+        if (Object.keys(usage).length > 0) this.accumulate(usage);
+        this.compactions++;
         this.write(marshal({ type: 'system', subtype: 'compact_boundary', session_id: this.sessionID,
           compact_metadata: { pre_tokens: obj(e.result).tokensBefore } }));
       } else {
@@ -99,14 +104,7 @@ export class StreamWriter {
     const usage = obj(message.usage);
     if (Object.keys(usage).length > 0) {
       this.turns++;
-      // pi 的口径与 claude 相同：input 不含缓存，命中与写入分开记（totalTokens 是四项之和）。
-      this.input += num(usage.input);
-      this.output += num(usage.output);
-      this.cacheRead += num(usage.cacheRead);
-      this.cacheWrite += num(usage.cacheWrite);
-      const cost = obj(usage.cost);
-      if (typeof cost.total === 'number') this.cost += cost.total;
-      else this.costKnown = false;
+      this.accumulate(usage);
     }
     if (message.stopReason === 'error' || message.stopReason === 'aborted') {
       this.lastError = typeof message.errorMessage === 'string' && message.errorMessage !== '' ? message.errorMessage : String(message.stopReason);
@@ -116,13 +114,25 @@ export class StreamWriter {
     if (content.length > 0) this.write(JSON.stringify({ type: 'assistant', session_id: this.sessionID, message: { role: 'assistant', content } }));
   }
 
+  private accumulate(usage: Obj): void {
+    // 输入不含缓存，输出已含推理。整理上下文也会调用模型，必须计入同一次执行。
+    this.input += num(usage.input);
+    this.output += num(usage.output);
+    this.cacheRead += num(usage.cacheRead);
+    this.cacheWrite += num(usage.cacheWrite);
+    if (typeof usage.reasoning === 'number') this.reasoning = (this.reasoning ?? 0) + usage.reasoning;
+    const cost = obj(usage.cost);
+    if (typeof cost.total === 'number') this.cost += cost.total;
+    else this.costKnown = false;
+  }
+
   /** 这一轮里最后一条回复是不是出错收尾的（模型服务报错、被中止）。 */
   error(): string {
     return this.lastError;
   }
 
   /** 收尾：result 带累计用量；error 非空时标成失败。 */
-  result(error: string): void {
+  result(error: string, droppedPreviews = 0): void {
     this.write(
       JSON.stringify({
         type: 'result',
@@ -131,12 +141,15 @@ export class StreamWriter {
         ...(error !== '' ? { result: error } : {}),
         session_id: this.sessionID,
         num_turns: this.turns,
+        ...(this.compactions ? { compactions: this.compactions } : {}),
+        ...(droppedPreviews ? { dropped_preview_images: droppedPreviews } : {}),
         total_cost_usd: this.costKnown && this.turns > 0 ? this.cost : null,
         usage: {
           input_tokens: this.input,
           output_tokens: this.output,
           cache_read_input_tokens: this.cacheRead,
           cache_creation_input_tokens: this.cacheWrite,
+          reasoning_tokens: this.reasoning,
         },
       }),
     );

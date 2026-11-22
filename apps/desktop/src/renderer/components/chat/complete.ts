@@ -37,6 +37,7 @@ export interface SlashCommand {
 
 export const slashCommands: SlashCommand[] = [
   { name: 'new', label: '开一个新对话' },
+  { name: 'handoff', label: '新会话接力：清空旧上下文，保留项目进度继续（省 Token）' },
   { name: 'stop', label: '停止这一轮', whileRunning: true },
   { name: 'start', label: '开始整片制作' },
   { name: 'script', label: '打开口播稿' },

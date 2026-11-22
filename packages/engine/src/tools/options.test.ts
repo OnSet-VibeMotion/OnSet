@@ -22,11 +22,12 @@ import { parseModelList } from './modellist';
 describe('agent options', () => {
   it('every tool declares its options', () => {
     for (const tool of ValidTools) expect(agentOptionSpecs(tool).length, tool).toBeGreaterThan(0);
-    expect(agentOptionSpecs('claude').map((s) => s.key)).toEqual(['effort', 'fast']);
-    expect(agentOptionSpecs('codex').map((s) => s.key)).toEqual(['effort', 'fast']);
-    expect(agentOptionSpecs('qoder').map((s) => s.key)).toEqual(['effort', 'context']);
-    expect(agentOptionSpecs('qoder-intl').map((s) => s.key)).toEqual(['effort', 'context']);
-    expect(agentOptionSpecs('mcode').map((s) => s.key)).toEqual(['effort']);
+    expect(agentOptionSpecs('claude').map((s) => s.key)).toEqual(['effort', 'repair_effort', 'simple_effort', 'fast']);
+    expect(agentOptionSpecs('codex').map((s) => s.key)).toEqual(['effort', 'repair_effort', 'simple_effort', 'fast']);
+    expect(agentOptionSpecs('qoder').map((s) => s.key)).toEqual(['effort', 'repair_effort', 'simple_effort', 'context']);
+    expect(agentOptionSpecs('qoder-intl').map((s) => s.key)).toEqual(['effort', 'repair_effort', 'simple_effort', 'context']);
+    expect(agentOptionSpecs('mcode').map((s) => s.key)).toEqual(['effort', 'repair_effort', 'simple_effort']);
+    expect(agentOptionSpecs('agy').map((s) => s.key)).toEqual(['effort', 'repair_effort', 'simple_effort']);
   });
 
   it('reads and writes one line', () => {
@@ -89,6 +90,11 @@ describe('agent options', () => {
     expect(orchestratorInvocation('opencode', { prompt: 'p', model: 'p/m', options: { effort: 'high' } }).argv).toEqual(expect.arrayContaining(['-m', 'p/m#high']));
     const director = JSON.parse(orchestratorInvocation('director', { prompt: 'p', workdir: '/w', agentDir: '/a', options: { effort: 'low' } }).stdin);
     expect(director.thinking).toBe('low');
+    expect(director.compact_at).toBe(96_000);
+    const directorOff = JSON.parse(orchestratorInvocation('director', { prompt: 'p', workdir: '/w', agentDir: '/a', options: { compact_at: 'off' } }).stdin);
+    expect(directorOff.compact_at).toBeUndefined();
+    const directorCustom = JSON.parse(orchestratorInvocation('director', { prompt: 'p', workdir: '/w', agentDir: '/a', options: { compact_at: '128000' } }).stdin);
+    expect(directorCustom.compact_at).toBe(128_000);
   });
 
   // 用户选的推理强度盖过 Windows 上的缺省。
@@ -108,6 +114,15 @@ describe('agent options', () => {
     // 不给选项时命令行与以前逐字相同。
     expect(rendererInvocation('claude', 'p', false, {})).toEqual(rendererInvocation('claude', 'p', false, {}, '', null, {}));
     expect(rendererInvocation('claude', 'p', false, {}).join(' ')).not.toContain('fastMode');
+    // 全渲染器均支持 repair_effort 与 simple_effort 分级降档。
+    expect(rendererInvocation('claude', 'p', false, {}, '', null, { effort: 'high', repair_effort: 'low', simple_effort: 'medium' }, 'repair')).toEqual(expect.arrayContaining(['--effort', 'low']));
+    expect(rendererInvocation('claude', 'p', false, {}, '', null, { effort: 'high', repair_effort: 'low', simple_effort: 'medium' }, 'simple')).toEqual(expect.arrayContaining(['--effort', 'medium']));
+    expect(rendererInvocation('codex', 'p', false, {}, '', null, { effort: 'high', repair_effort: 'low' }, 'repair')).toEqual(expect.arrayContaining(['-c', 'model_reasoning_effort="low"']));
+    expect(rendererInvocation('qoder', 'p', false, {}, '', null, { effort: 'high', simple_effort: 'low' }, 'simple')).toEqual(expect.arrayContaining(['--reasoning-effort', 'low']));
+    // opencode：模型名已含 #变体 时，普通 effort 不覆盖；显式 repair_effort / simple_effort 则替换变体。
+    expect(rendererInvocation('opencode', 'p', false, {}, 'p/m#high', null, { effort: 'low' }, 'full')).toEqual(expect.arrayContaining(['-m', 'p/m#high']));
+    expect(rendererInvocation('opencode', 'p', false, {}, 'p/m#high', null, { effort: 'high', repair_effort: 'low' }, 'repair')).toEqual(expect.arrayContaining(['-m', 'p/m#low']));
+    expect(rendererInvocation('opencode', 'p', false, {}, 'p/m#high', null, { effort: 'high', simple_effort: 'minimal' }, 'simple')).toEqual(expect.arrayContaining(['-m', 'p/m#minimal']));
   });
 
   it('the director renderer gets the thinking level through stdin', () => {
@@ -115,7 +130,16 @@ describe('agent options', () => {
     try {
       saveService(agentDir, { name: 'custom', protocol: 'openai', base_url: 'https://relay.invalid/v1', model: 'm', vision: true, key: 'sk-x' });
       const launch = rendererLaunch('director', 'p', false, {}, '', null, '/w', { ONSET_AGENT_DIR: agentDir }, { effort: 'high' });
-      expect(JSON.parse(launch.stdin).thinking).toBe('high');
+      expect(JSON.parse(launch.stdin)).toMatchObject({ thinking: 'high', compact_at: 64_000 });
+      const launchOff = rendererLaunch('director', 'p', false, {}, '', null, '/w', { ONSET_AGENT_DIR: agentDir }, { compact_at: 'off' });
+      expect(JSON.parse(launchOff.stdin).compact_at).toBeUndefined();
+      expect(validateAgentOptions('director', 'compact_at=off')).toBe('');
+      expect(agentOptionSpecs('director').find((s) => s.key === 'compact_at')?.rendererOnly).toBeFalsy();
+      const settings = { effort: 'high', repair_effort: 'medium', compact_at: '64000' };
+      const render = rendererLaunch('director', 'p', false, {}, '', null, '/w', { ONSET_AGENT_DIR: agentDir }, settings);
+      const repair = rendererLaunch('director', 'p', false, {}, '', null, '/w', { ONSET_AGENT_DIR: agentDir }, settings, 'repair');
+      expect(JSON.parse(render.stdin)).toMatchObject({ thinking: 'high', compact_at: 64000 });
+      expect(JSON.parse(repair.stdin)).toMatchObject({ thinking: 'medium', compact_at: 64000 });
     } finally {
       fs.rmSync(agentDir, { recursive: true, force: true });
     }

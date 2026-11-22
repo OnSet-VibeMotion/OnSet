@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { load as loadConfig } from '@onset/engine/config';
+import { atomicWrite } from '@onset/engine/fsutil';
 import { marshalIndent } from '@onset/engine/gojson';
 import { lockFile, PinnedVersion } from '@onset/engine/hyperframes';
 import { initializeWithFiles, rejectSymlinkPath } from '@onset/engine/project';
-import { contained, load, newScene, sceneToJSON, verifyFilmStyleValue, verifySceneText } from '@onset/engine/scene';
+import { ComponentPlanFile, contained, load, newScene, parseComponentPlan, sceneToJSON, verifyFilmStyleValue, verifySceneText } from '@onset/engine/scene';
 import { projectRulesFilename, ValidRenderers } from '@onset/engine/tools';
 import { projectRoot, str } from './ops/common';
 import { defineOp } from './ops/op';
@@ -62,7 +63,17 @@ export function scenePrepare(root: string, manifest: string, srt: string): { cre
     files.set(`${directory}/transcription.srt`, subtitles);
     files.set(`${directory}/${projectRulesFilename(renderer || cfg.renderer)}`, Buffer.from(rules));
   }
+  const plan = document.shared_components === undefined
+    ? undefined
+    : parseComponentPlan(document.shared_components, new Set(document.scenes.map((entry: { id: string }) => entry.id)));
+  const planFile = path.join(root, ComponentPlanFile);
+  if (plan) rejectSymlinkPath(root, planFile);
+  // Scaffolds are created before publishing the plan so it never refers to half-created scenes.
   initializeWithFiles(root, files);
+  if (plan) {
+    const body = marshalIndent({ schema: 1, shared_components: plan }) + '\n';
+    if (!fs.existsSync(planFile) || fs.readFileSync(planFile, 'utf8') !== body) atomicWrite(planFile, body);
+  }
   return { created: ids.size - existing, existing };
 }
 
@@ -72,6 +83,7 @@ defineOp({
   summary: '从镜头任务清单批量创建契约、任务书、字幕副本与渲染规则',
   description: `清单为 JSON，例如 {"scenes":[{"id":"scene-001","text":"本镜头文案","prompt":"创意、交接和验收要求"}]}。
 每个条目还可指定 renderer、film_style。统一生成到 scenes/<id>。已有 scene.json 的镜头保持原样；要修订已有镜头，直接更新对应任务书。
+清单根部可加 shared_components，例如 [{"name":"dossier","source_scene":"scene-007","scenes":["scene-008"]}]。从同一份计划为产出镜头提示导出、为使用镜头自动挂载；省略此字段保留已有计划，传空数组清空计划。已有镜头也直接读取整片计划。
 字幕用全片时间，允许空 SRT。新镜头时长为占位，随后调用 scene_cues() 或 beat_cues() 写入正式时长。`,
   examples: ['scene_prepare()', 'scene_prepare({"srt":"transcription.srt"})'],
   params: {

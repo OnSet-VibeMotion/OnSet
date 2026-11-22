@@ -59,7 +59,7 @@ describe('qoder renderer skills', () => {
   it('stages into each renderer\'s own skill folder', () => {
     const { skills, scene } = project();
     const prompt = `${skills}/hyperframes`;
-    for (const [tool, rel] of [['claude', '.claude/skills'], ['codex', '.codex/skills'], ['codebuddy', '.codebuddy/skills'], ['opencode', '.opencode/skills']] as const) {
+    for (const [tool, rel] of [['claude', '.claude/skills'], ['codex', '.codex/skills'], ['codebuddy', '.codebuddy/skills'], ['opencode', '.opencode/skills'], ['agy', '.agent/skills']] as const) {
       const unstage = stageRendererSkills(tool, scene, { hyperframes: skills }, prompt);
       expect(fs.lstatSync(path.join(scene, rel, 'hyperframes')).isSymbolicLink(), tool).toBe(true);
       unstage();

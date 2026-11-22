@@ -123,6 +123,54 @@ describe('media', () => {
     expect(await run(['scene', 'frames', blank, '--at', '0'], out, errOut)).toBe(0);
   });
 
+  it.skipIf(!hasFfmpeg)('scene frames-batch packs overview contact sheets and flags blank scenes', async () => {
+    const root = tempDir();
+    const scenes = path.join(root, 'scenes');
+    makeSceneDir(scenes, 'scene-001', 1, 'testsrc=size=320x240:rate=30:duration=1');
+    makeSceneDir(scenes, 'scene-002', 1, 'testsrc2=size=320x240:rate=30:duration=1');
+    makeSceneDir(scenes, 'scene-003', 1, 'testsrc=size=320x240:rate=30:duration=1');
+    const outDir = path.join(root, 'batch-qc');
+
+    let out = new Buffer();
+    let errOut = new Buffer();
+    const code = await run(
+      ['scene', 'frames-batch', '--scenes', scenes, '--out', outDir, '--scenes-per-sheet', '2', '--thumb-width', '160', '--check-blank'],
+      out,
+      errOut,
+    );
+    expect(code, errOut.text).toBe(0);
+    expect(out.text).toContain('共 3 个镜头，生成 2 张总览联系表');
+    expect(fs.existsSync(path.join(outDir, 'overview-01.png'))).toBe(true);
+    expect(fs.existsSync(path.join(outDir, 'overview-02.png'))).toBe(true);
+    const report = JSON.parse(fs.readFileSync(path.join(outDir, 'batch-qc.json'), 'utf8'));
+    expect(report.ok).toBe(true);
+    expect(report.total_scenes).toBe(3);
+    expect(report.sheets).toHaveLength(2);
+    expect(report.sheets[0].scenes).toEqual(['scene-001', 'scene-002']);
+    expect(report.sheets[1].scenes).toEqual(['scene-003']);
+
+    // 加入空白帧镜头：不带 --check-blank 时只记 hints 不失败，带 --check-blank 必须报错并定位镜头 ID。
+    makeSceneDir(scenes, 'scene-004', 1, 'color=c=black:size=320x240:rate=30:duration=1');
+    out = new Buffer();
+    errOut = new Buffer();
+    expect(await run(['scene', 'frames-batch', '--scenes', scenes, '--out', outDir, '--only-scenes', 'scene-004'], out, errOut), errOut.text).toBe(0);
+    out = new Buffer();
+    errOut = new Buffer();
+    expect(await run(['scene', 'frames-batch', '--scenes', scenes, '--out', outDir, '--only-scenes', 'scene-004', '--check-blank'], out, errOut)).toBe(1);
+    expect(errOut.text).toContain('scene-004');
+    expect(errOut.text).toContain('空白帧');
+
+    // 缺少 MP4 的镜头：写出报告并返回非零退出码。
+    fs.rmSync(path.join(scenes, 'scene-003', 'out.mp4'));
+    const missingReport = path.join(outDir, 'missing.json');
+    out = new Buffer();
+    errOut = new Buffer();
+    expect(await run(['scene', 'frames-batch', '--scenes', scenes, '--out', outDir, '--only-scenes', 'scene-001', '--only-scenes', 'scene-003', '--report-json', missingReport], out, errOut)).toBe(1);
+    expect(errOut.text).toContain('scene-003');
+    expect(errOut.text).toContain(missingReport);
+    expect(JSON.parse(fs.readFileSync(missingReport, 'utf8')).ok).toBe(false);
+  });
+
   it.skipIf(!hasFfmpeg)('concat builds master and refuses mismatched scenes', async () => {
     const root = tempDir();
     const scenes = path.join(root, 'scenes');

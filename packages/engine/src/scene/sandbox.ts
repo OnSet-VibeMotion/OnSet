@@ -125,9 +125,9 @@ export function sandboxProfile(p: SandboxPaths): string {
   if (home) {
     lines.push(`(deny file-read-data (subpath ${quote(home)}))`, '(allow file-read-data', ...readable.map((d) => `  (subpath ${quote(d)})`), ...stateFiles, ')');
   }
-  // 渲染工具的用户级技能与插件：读不到就不会出现在它的技能列表里，渲染器只看见镜头自己的那几个（stageRendererSkills）。
+  // 渲染工具的用户级技能、插件与全局配置：同时禁止读写，既不进入技能列表，也防止渲染器篡改 hooks.json / mcp_config.json。
   const hidden = unique(p.hiddenDirs ?? []);
-  if (hidden.length > 0) lines.push('(deny file-read-data', ...hidden.map((d) => `  (subpath ${quote(d)})`), ')');
+  if (hidden.length > 0) lines.push('(deny file-read-data file-write*', ...hidden.map((d) => `  (subpath ${quote(d)})`), ')');
   if (p.isolatedProject) {
     // 即使项目位于可写的临时目录、工具目录里，也要最后收紧；真实路径同时挡住绕向其他选手的软链接。
     lines.push(`(deny file-read-data file-write* (subpath ${quote(real(p.projectRoot))}))`);
@@ -177,6 +177,22 @@ export function rendererHome(tool: string, home: string): RendererHome {
     case 'qoder':
     case 'qoder-intl':
       return { state: [h('.qoder-cn'), h('.qoder')], files: [], hidden: [h('.qoder-cn', 'skills'), h('.qoder', 'skills'), agents] };
+    // Antigravity CLI（agy，1.5.13 实测）：状态、会话、日志与 MCP schema 缓存在 ~/.gemini/antigravity-cli，
+    // 全局配置与默认项目注册在 ~/.gemini/config（启动会话会原子写 ~/.gemini/config/projects/default-cli-project.json.*.tmp）；
+    // 隐藏用户级技能、插件、全局 mcp_config.json 与 hooks.json，避免渲染器带上用户的个人 MCP、hooks 与技能。
+    case 'agy':
+      return {
+        state: [h('.gemini', 'antigravity-cli'), h('.gemini', 'config')],
+        files: [],
+        hidden: [
+          h('.gemini', 'skills'),
+          h('.gemini', 'config', 'skills'),
+          h('.gemini', 'config', 'plugins'),
+          h('.gemini', 'config', 'mcp_config.json'),
+          h('.gemini', 'config', 'hooks.json'),
+          agents,
+        ],
+      };
     default:
       return { state: [], files: [], hidden: [] };
   }

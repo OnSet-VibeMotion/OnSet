@@ -33,6 +33,8 @@ export interface SceneBlock<T = unknown> {
   readonly timeline?: { label: string };
   /** 渲染提示词段，块存在时才调用：接在「视觉自由度」段之后、「时间合同」段之前，按 order 依次拼接。 */
   promptSection?(s: Scene, resolved: Record<string, string>): string;
+  /** 只进入制作人本次启动的开工摘要，不影响已验收产物的指纹。 */
+  directorBrief?(s: Scene): string;
   /** 块存在时额外记进输入指纹的项（键是 parts 的项名）。 */
   fingerprintParts?(s: Scene, value: T): Record<string, string>;
   /** 块存在时镜头带的记忆特征（memory 的镜头特征词表）：特征名 → 说明。缺省没有。 */
@@ -109,10 +111,12 @@ export function blockExtraInputDirs(s: Scene): string[] {
 }
 
 /** 所有块的提示词段，按 order 拼接。 */
-export function blockPromptSections(s: Scene, resolved: Record<string, string>): string {
+export function blockPromptSections(s: Scene, resolved: Record<string, string>, directorBrief = false): string {
   let out = '';
   for (const block of sceneBlocks()) {
-    if (block.promptSection && blockValue(s, block.key) !== null) out += block.promptSection(s, resolved);
+    if (blockValue(s, block.key) === null) continue;
+    out += block.promptSection?.(s, resolved) ?? '';
+    if (directorBrief) out += block.directorBrief?.(s) ?? '';
   }
   return out;
 }

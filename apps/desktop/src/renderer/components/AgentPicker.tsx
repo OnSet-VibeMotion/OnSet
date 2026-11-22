@@ -57,7 +57,7 @@ export function AgentPicker({ agents, value, disabled, onChange }: Props) {
             model={value.model ?? ''}
             defaultLabel={defaultLabel(value.tool, agents.orchestrator, agents.orchestrator_model)}
             fallbackModel={value.tool === agents.orchestrator ? agents.orchestrator_model : ''}
-            specs={specsOf(value.tool)}
+            specs={specsOf(value.tool).filter((spec) => !spec.rendererOnly)}
             options={value.options ?? ''}
             inheritedOptions={value.tool === agents.orchestrator ? (agents.orchestrator_options ?? '') : ''}
             disabled={disabled || saving}

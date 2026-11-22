@@ -22,6 +22,9 @@ import { nodeCommand } from '@onset/engine/toolpath';
 import './cli';
 import { compactHyperFrames, hyperFramesProgress } from './hfoutput';
 import { allOps, normalizeToolParams, type Op, opScopes, type ParamSpec, type ParamValues } from './ops/op';
+import { toolOutputArchiveDir } from './output_archive';
+
+export { toolOutputArchiveDir };
 
 /** 档位：编排工具使用制作工具，渲染器只拿镜头内的工具。 */
 export type Profile = 'orchestrator' | 'renderer';
@@ -52,10 +55,62 @@ export function defaultWaitSeconds(name: string, env: NodeJS.ProcessEnv = proces
   return name === 'job_wait' || name === 'align_run' || name === 'audio_mix' || name === 'scene_preview_check' ? maxWaitSeconds(env) : DefaultWaitSeconds;
 }
 
-/** 返回给 agent 的输出上限：过长时截掉开头、留结尾（错误与结论通常在最后）。 */
-const maxOutputChars = 24_000;
+/** 返回给 agent 的输出上限：过长时落盘保存完整输出并保留结尾（错误与结论通常在最后）。 */
+const maxOutputChars = 8_000;
 /** 结构化结果附在文字后面的上限；更大的只给 structuredContent。 */
-const maxInlineDataChars = 12_000;
+const maxInlineDataChars = 4_000;
+
+/** 编排端按项目流程（onset.flow.json）过滤掉本项目完全用不到的工具，减少每轮请求携带的 schema token。 */
+function allowedForProjectFlow(opName: string, root: string): boolean {
+  if (root === '') return true;
+  const rec = flow.flowRecord(root);
+  if (!rec) return true;
+  const id = rec.id;
+  if (id === 'speech') {
+    // 保留 song_init（已有项目转歌曲讲解入口）与 cast_*/dialogue_*（同一会话里 cast_new 后可立即使用）。
+    if (opName.startsWith('beat_') || (opName.startsWith('song_') && opName !== 'song_init') || opName === 'validate_beat' || opName === 'validate_song') return false;
+    return true;
+  }
+  if (id === 'beat') {
+    if (
+      opName.startsWith('voice_') ||
+      opName.startsWith('align_') ||
+      opName.startsWith('song_') ||
+      opName.startsWith('cast_') ||
+      opName.startsWith('dialogue_') ||
+      opName === 'validate_song' ||
+      opName === 'validate_cast' ||
+      opName === 'phrase_frames' ||
+      opName === 'timing_report'
+    ) return false;
+    return true;
+  }
+  if (id === 'song') {
+    if (
+      opName.startsWith('beat_') ||
+      opName.startsWith('voice_') ||
+      opName.startsWith('align_') ||
+      opName.startsWith('cast_') ||
+      opName.startsWith('dialogue_') ||
+      opName === 'validate_beat' ||
+      opName === 'validate_cast' ||
+      opName === 'phrase_frames' ||
+      opName === 'timing_report'
+    ) return false;
+    return true;
+  }
+  return true;
+}
+
+/** 毫秒级纯查询/轻写操作不暴露 wait_seconds 参数，减少工具 schema 重复文字；调用时若传入仍由 prepareCall 兼容剥离。 */
+const instantOps: ReadonlySet<string> = new Set([
+  'config_get', 'flow_guide', 'usage', 'scene_usage', 'scene_lint',
+  'film_style_list', 'film_style_show', 'film_style_use', 'film_style_add', 'film_style_remove',
+  'studio_show', 'studio_step', 'studio_confirm',
+  'voice_catalog', 'voice_list', 'voice_get', 'voice_default', 'voice_save',
+  'memory_remember', 'memory_feedback',
+  'inputs_manifest', 'shared_component_promote', 'timing_report',
+]);
 
 interface JSONSchema {
   type: string;
@@ -182,14 +237,19 @@ export function describeTools(profile: Profile, root = ''): ToolDef[] {
   const extras = profile === 'orchestrator' && root !== '' ? externalOps() : [];
   for (const { op, external } of [...allOps().map((op) => ({ op, external: undefined as ToolDef['external'] })), ...extras]) {
     if (!external && !opScopes(op).includes(profile)) continue;
+    if (!external && profile === 'orchestrator' && !allowedForProjectFlow(op.name, root)) continue;
     // 制作端仍需 inspect / snapshot 验收，但不能把 scene_run 降成单纯的出片工具。
     const inspecting = op.name === 'hyperframes' && profile === 'orchestrator';
+    const rendererHF = op.name === 'hyperframes' && profile === 'renderer';
     const shownOp = inspecting ? {
       ...op,
       summary: '检查镜头合成与预览帧；渲染请派发镜头任务',
       description: sceneDispatchNote,
       params: { ...op.params, subcommand: { ...op.params.subcommand, description: 'HyperFrames 检查子命令，例如 lint、check、snapshot' } },
       examples: (op.examples ?? []).filter((e) => !e.includes('"render"')),
+    } : rendererHF ? {
+      ...op,
+      summary: '运行本机 HyperFrames 文档与检查命令（画面检查与单帧细节优先用 scene_preview_check）',
     } : op;
     const properties: Record<string, JSONSchema> = {};
     const required: string[] = [];
@@ -197,7 +257,7 @@ export function describeTools(profile: Profile, root = ''): ToolDef[] {
       properties[key] = paramSchema(op, key, spec, profile);
       if (spec.required) required.push(key);
     }
-    properties.wait_seconds = waitSchema(op.name);
+    if (external || !instantOps.has(op.name)) properties.wait_seconds = waitSchema(op.name);
     out.push({
       name: op.name,
       profile,
@@ -212,7 +272,7 @@ export function describeTools(profile: Profile, root = ''): ToolDef[] {
   out.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   out.push({
     name: 'job_wait',
-    description: '接着等一个还没跑完的任务（上一次调用返回的任务号），返回它的新输出；跑完时给出结果。',
+    description: '接着等一个还没跑完的任务（上一次调用返回的任务号），返回它的新输出；跑完时给出结果。等渲染等长任务时直接省略 wait_seconds（一次等满上限），不要每隔几十秒短轮询，也不要在等待期间反复读 render-*.user.log。',
     inputSchema: { type: 'object', properties: { job: { type: 'string', description: '任务号' }, wait_seconds: waitSchema('job_wait') }, required: ['job'], additionalProperties: false },
     help: '',
   });
@@ -323,10 +383,14 @@ export interface Reply {
   data?: unknown;
 }
 
-/** 报告落盘时，工具回复只带结论、异常和验收入口。 */
+/** 报告落盘或目录型输出时，工具回复只带结论、异常和验收入口，避免重复塞入大 JSON。 */
 function resultForAgent(name: string, report: string, raw: unknown): unknown {
-  if (report === '' || !raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
   const data = raw as Record<string, unknown>;
+  if (name === 'film_style_list' && Array.isArray(data.styles)) {
+    return { count: data.styles.length, ...(data.default ? { default: data.default } : {}), ...(Array.isArray(data.extras) && data.extras.length ? { extras: data.extras } : {}) };
+  }
+  if (report === '') return raw;
   if (name === 'audio_check') {
     const { speech: _speech, cues: _cues, ...summary } = data;
     return { ...summary, report };
@@ -340,6 +404,10 @@ function resultForAgent(name: string, report: string, raw: unknown): unknown {
     const actionable = data.scenes.filter(item => item.status === 'stale' || item.status === 'failed');
     return { ...data, scenes: actionable, report };
   }
+  if (name === 'scene_frames_batch' && Array.isArray(data.scenes)) {
+    const flagged = data.scenes.filter((item: { ok?: boolean }) => item.ok === false);
+    return { ...data, scenes: flagged, report };
+  }
   return raw;
 }
 
@@ -347,7 +415,7 @@ export class Jobs {
   private readonly jobs = new Map<string, Job>();
   private next = 1;
 
-  constructor(private readonly spawner: Spawner) {}
+  constructor(private readonly spawner: Spawner, private readonly archiveDir: string | (() => string) = toolOutputArchiveDir) {}
 
   start(name: string, params: ParamValues): Job {
     const child = this.spawner(name, params);
@@ -405,7 +473,7 @@ export class Jobs {
     const visible = compact ? compactedOutput(visibleText(job.output)) : visibleText(job.output);
     const fresh = visible.slice(job.delivered);
     job.delivered = visible.length;
-    const body = clip(fresh);
+    const body = clip(fresh, typeof this.archiveDir === 'function' ? this.archiveDir() : this.archiveDir);
     const sep = body.endsWith('\n') || body === '' ? '' : '\n';
     if (job.code === null) return { text: `${body}${sep}[还在运行：任务 ${job.id}。用 job_wait 接着等，或 job_cancel 停掉。结束本轮对话会终止仍在运行的任务；不要用定时任务接管，必须在本轮持续 job_wait 直到完成或明确失败]`, isError: false };
     this.jobs.delete(job.id);
@@ -416,7 +484,18 @@ export class Jobs {
     const data = resultForAgent(job.name, job.report, result.data);
     if (data !== undefined) {
       const json = JSON.stringify(data);
-      if (json.length <= maxInlineDataChars) text += `\n结果：${json}`;
+      // 正文可解析为 JSON 且与结构化结果相同时（例如 --json 模式），不再追加重复的「结果：…」行；
+      // 普通方括号日志（如 [scene-002] …）和截短提示（[前面 …]）照常追加。
+      const bodyTrim = body.trim();
+      let alreadyJSON = false;
+      if (bodyTrim.startsWith('{') || bodyTrim.startsWith('[')) {
+        try {
+          alreadyJSON = JSON.stringify(JSON.parse(bodyTrim)) === json;
+        } catch {
+          alreadyJSON = false;
+        }
+      }
+      if (json.length <= maxInlineDataChars && !alreadyJSON) text += `\n结果：${json}`;
     }
     return { text, isError: false, data };
   }
@@ -454,9 +533,18 @@ function compactedOutput(full: string): string {
   }
 }
 
-function clip(text: string): string {
+function clip(text: string, archiveDir = toolOutputArchiveDir()): string {
   if (text.length <= maxOutputChars) return text;
-  return `[前面 ${text.length - maxOutputChars} 个字符略去]\n` + text.slice(-maxOutputChars);
+  let saved = '';
+  try {
+    fs.mkdirSync(archiveDir, { recursive: true, mode: 0o700 });
+    const file = path.join(archiveDir, `${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}-${Math.random().toString(36).slice(2, 8)}.log`);
+    fs.writeFileSync(file, text, { mode: 0o600 });
+    saved = `；完整输出：${file}`;
+  } catch {
+    // 写临时文件失败时照常截短。
+  }
+  return `[前面 ${text.length - maxOutputChars} 个字符略去${saved}]\n` + text.slice(-maxOutputChars);
 }
 
 // ---------------------------------------------------------------- MCP

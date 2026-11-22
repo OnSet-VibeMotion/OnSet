@@ -4,6 +4,22 @@
 
 `ORCHESTRATOR=director`（界面上叫「制作人」）是客户端自带的编排工具：不要求用户另装 claude、codex 这类 CLI，在设置页配一套模型服务（base URL 加 API key）就能做片。agent 循环用 pi（`@earendil-works/pi-coding-agent`，MIT，**钉死 1.5.2**，升级前对照它的 CHANGELOG 重跑 `packages/cli/src/agent/agent.test.ts` 与 `catalog.test.ts`）。
 
+制作人的图像处理依赖 Photon 的 `photon_rs_bg.wasm`。`packages/cli/build.mjs` 将它与 `onset-agent.cjs` 放在同一输出目录，客户端将整个目录作为 `cli/` 资源下发；不能只复制 JS。`agent/bundle.test.ts` 在临时目录构建并迁移产物，通过真实的 `read` 工具验证 PNG、JPEG 和超尺寸图片能传进模型上下文，不只检查文件存在。缺 WASM 时 pi 连小图也会省略，却回报工具成功；制作人的 `tool_result` 钩子把这类省略改成明确的读图失败，保留原始原因，并要求报告阻塞，不用脚本、字符画或像素统计冒充视觉验收。列目录、读写文件和查找内容优先用内置文件工具，读取 JSON 字段可用 `jq`；项目特有的数据处理仍可写脚本。
+
+工具参数缺末尾大括号的兼容在 `agent/arguments.ts`：仅处理正常以 `toolUse` 结束的回复，从 pi 的 `argumentsError` 中取原始参数，只追加一个 `}`，且必须通过严格的 `JSON.parse` 并得到对象。字符串截断、错误转义、缺字段值、多层括号未闭合，以及 `length` / `aborted` / `error` 结束的回复均不补。`pi.ts` 在 `message_end` 扩展钩子中替换消息，之后仍由 pi 做工具参数校验，再过权限闸门；修正后的参数进入会话，原始错误留在 `onset_tool_arguments_completed` 诊断中。升级 pi 时同时跑 `arguments.test.ts` 和 `agent.test.ts`，确认原文标记格式与钩子的执行顺序没变。
+
+失败工具结果的文字超过 4,096 字符时，`agent/tool-errors.ts` 保留开头的原因和字段位置，把完整文字写进 `agent_dir/tool-errors/`，并在摘要末尾给出路径；成功的 `bash` 输出超过 4,096 字符时，`compactToolResult` 保留首尾并把完整输出写进 `agent_dir/tool-outputs/`。`message_end` 在会话持久化和界面事件之前应用这条规则，`context` 在续接旧会话时应用同样的规则，不改写历史记录。成功的源码读取（`read`）和图片结果仍按原样交付。
+
+制作人的 renderer 档位用 `agent/renderer-files.ts` 包装 pi 的文件工具。先用 `write` 新建带短锚点的可运行骨架（可同一轮并行 `write` 多个独立源文件如 `index.html`、`style.css`、`scene.js`），后续用 `edit` 补入独立代码块。常见合成源码只允许 `write` 新建。每次 `write` 的正文或每次 `edit` 的匹配加替换文本合计至多 8,192 字符（按 UTF-16 计），文件总长度照常由多个代码块累积。工具复用 pi 的参数校验、路径解析和文件写入队列，调用仍走原来的权限闸门。这项规则随制作人运行时下发，已有项目在下一次启动制作人渲染时得到新行为。
+
+跨镜头与长会话提示词缓存：`rendererLaunch` 给 `director` 传入按项目根哈希生成的共享 `cache_key`，`pi.ts` 在 `renderer` 档位经 `before_agent_start` 把系统提示词里的绝对 `<cwd>` 归一化为 `<cwd>.</cwd>`、经 `before_provider_request` 统一覆写 `prompt_cache_key`，使同项目不同镜头共享逐字节一致的系统提示词与前半段前缀缓存；`orchestrator` 档位在 `anthropic` 协议未显式配置 `PI_CACHE_RETENTION` 时默认设为 `long`（1 小时缓存）。
+
+制作人开工时收到常用 HyperFrames 契约和 SceneKit 入口，特定运行时、复杂媒体与进阶动效仍按需查完整技能。卡点插件从通过校验的局部数据补充节拍文件入口与少量重拍帧。开工摘要只在实际启动制作人时生成，原镜头提示词指纹保持兼容。
+
+制作人使用 `scene_preview_check` 时，`agent/command.ts` 从成功结果取联系表或单帧细节图路径，`agent/pi.ts` 只接受本镜头预览目录内的联系表（`contact-sheet.*`）与单帧/裁剪细节图（`frame-*`、`detail-*`），并用 pi 的图片处理路径把图附在同一工具结果中。同一上下文已有相同图片时只返回引用，整理上下文后可再次附图。无视觉或附图失败时仍返回路径和明确状态。MCP 的文字结果不依赖这项能力。
+
+渲染与编排效率选项共用 `RENDERER_OPTIONS` / `ORCHESTRATOR_OPTIONS`。例如 `effort=high,repair_effort=medium,simple_effort=low,compact_at=64000`：整镜保留原档位，局部返修/修接缝首次用 `repair_effort`，纯过渡/极简镜头（`scene.isSimpleScene`）用 `simple_effort`，需再修时回常规档位。`compact_at` 对制作人的渲染与编排两档均默认开启（渲染 64K、编排 96K，填 `compact_at=off` 可关闭）：上下文过阈值且有四张以上预览图（渲染档的 `scene_preview_check`，或编排档含图的工具结果如 `read` 打开的质检图）时，在看图边界保留最新一张，旧图保留文件路径与文字检查结果，减少反复改写消息前缀导致的缓存失效。源代码、用户消息附带的参考图和短语契约保留，原始会话仍完整。SDK 全文摘要沿用模型窗口的安全阈值，避免提前摘要导致缓存失效。用量包含自动整理摘要的模型调用，原始结果流另记已提供的推理 Token 与整理次数。
+
 | 约定 | 原因 |
 |---|---|
 | 引擎只有 `packages/engine/src/director`（工具名、请求格式、凭据文件、服务商表），pi 只在 `packages/cli/src/agent/pi.ts`，打成单独的 `dist/onset-agent.cjs`；`onset studio agent`（`agent/command.ts`）打包后 `require` 同目录的它，开发时 `import('./pi')`。构建在 `packages/cli/build.mjs`，发布流程用 `ONSET_VERSION=… npm run build -w @onset/cli` | pi 连依赖十几 MB，打进 onset.cjs 的话每次 `__op`、每个工具服务进程都要多解析一遍 |

@@ -165,8 +165,8 @@ export function songOps(ctx: PluginContext): void {
     cli: ['song', 'providers'],
     summary: '查看歌曲平台、申请入口和密钥配置步骤',
     description:
-      '列出可用歌曲平台；platform 可指定 bailian、elevenlabs、fal、minimax、acestep、mureka、lyria 或 manual 查看开通要求、环境变量和配置示例。只显示密钥是否设置，不读取展示其内容，不请求网络或生成歌曲，无需先初始化项目。',
-    examples: ['song_providers()', 'song_providers({"platform": "bailian"})'],
+      '列出可用歌曲平台；platform 可指定 acestep-local、bailian、elevenlabs、fal、minimax、acestep、mureka、lyria 或 manual 查看开通要求、环境变量和配置示例。只显示密钥是否设置，不读取展示其内容，不请求网络或生成歌曲，无需先初始化项目。',
+    examples: ['song_providers()', 'song_providers({"platform": "acestep-local"})', 'song_providers({"platform": "bailian"})'],
     params: {
       platform: {
         type: 'string',
@@ -186,6 +186,8 @@ export function songOps(ctx: PluginContext): void {
     description:
       '修改现有 song.yaml 的平台、模型及服务地址，保留歌词、曲风和其他设置；先运行 song_init()。切换平台清理旧 endpoint/workspace，默认采用新平台模型。密钥仅通过进程环境读取，这里不收集、不保存密钥，不登录或调用收费 API。未设置密钥仍可保存平台设置，随后按输出步骤配置。',
     examples: [
+      'song_configure({"provider": "acestep-local"})',
+      'song_configure({"provider": "acestep-local", "task_type": "cover", "source_audio": "source.mp3", "cover_strength": 0.5})',
       'song_configure({"provider": "bailian", "workspace": "YOUR_WORKSPACE_ID"})',
       'song_configure({"provider": "elevenlabs"})',
       'song_configure({"provider": "fal"})',
@@ -195,7 +197,7 @@ export function songOps(ctx: PluginContext): void {
     params: {
       provider: {
         type: 'string',
-        description: '平台：bailian|elevenlabs|fal|minimax|acestep|mureka|lyria|manual（必填）',
+        description: '平台：acestep-local|bailian|elevenlabs|fal|minimax|acestep|mureka|lyria|manual（必填）',
       },
       model: { type: 'string', description: '留空使用所选平台默认模型' },
       workspace: {
@@ -206,10 +208,36 @@ export function songOps(ctx: PluginContext): void {
         type: 'string',
         description: '仅自建 ACE-Step 的 HTTP(S) 服务地址（不含密钥）',
       },
+      task_type: {
+        type: 'string',
+        description: '可选生成模式（仅 acestep-local）：text2music（默认）| cover（自由改词翻唱）| cover-nofsq（高保真贴合原曲翻唱）',
+      },
+      source_audio: {
+        type: 'string',
+        description: '翻唱原曲相对路径（WAV/MP3，仅 cover / cover-nofsq 使用）',
+      },
+      reference_audio: {
+        type: 'string',
+        description: '可选音色参考音频相对路径（WAV/MP3，仅 acestep-local 使用）',
+      },
+      cover_strength: {
+        type: 'number',
+        description: '翻唱贴合原曲的强度（0..1；留空时 cover 默认 0.5，cover-nofsq 默认 0.35）',
+      },
+      lm_model: {
+        type: 'string',
+        description: '可选本机 LM 模型文件名（仅 acestep-local，默认 acestep-5Hz-lm-1.7B-Q8_0.gguf）',
+      },
       project_root: songRoot,
     },
     run: (p, { out }) => {
-      song.configure(str(p.project_root), str(p.provider), str(p.model), str(p.workspace), str(p.endpoint));
+      song.configure(str(p.project_root), str(p.provider), str(p.model), str(p.workspace), str(p.endpoint), {
+        ...(p.task_type !== undefined ? { taskType: str(p.task_type) } : {}),
+        ...(p.source_audio !== undefined ? { sourceAudio: str(p.source_audio) } : {}),
+        ...(p.reference_audio !== undefined ? { referenceAudio: str(p.reference_audio) } : {}),
+        ...(p.cover_strength !== undefined ? { coverStrength: num(p.cover_strength) } : {}),
+        ...(p.lm_model !== undefined ? { lmModel: str(p.lm_model) } : {}),
+      });
       out.write('已更新 song.yaml；原有候选保留，生成前请完成以下接入步骤。\n');
       song.platformGuide(out, str(p.provider), currentEnvironment());
     },
@@ -223,7 +251,7 @@ export function songOps(ctx: PluginContext): void {
     examples: ['song_init()'],
     run: (_p, { out }, _signal, root) => {
       songScaffold(root);
-      out.write('歌曲资产已初始化。运行 song_providers() 查看平台，再用 song_configure({"provider": "PLATFORM"}) 配置。\n');
+      out.write('歌曲资产已初始化。运行 song_providers() 查看平台，再用 song_configure({"provider": "PLATFORM"}) 配置（若刚从口播项目切换而来，下一轮对话会自动加载全部歌曲工具）。\n');
     },
   });
 

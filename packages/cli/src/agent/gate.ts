@@ -25,6 +25,8 @@ export interface GateOptions {
   writableDirs: readonly string[];
   /** 镜头技能、共享素材只允许读取。 */
   readDirs?: readonly string[];
+  /** 动态追加的只读目录（例如按真实会话 ID 确定的超长输出归档目录）。 */
+  extraReadDir?: () => string;
   /** 制作人的数据目录（API key、会话）：bash 与文件工具都碰不得。空表示没有。 */
   agentDir?: string;
   /** onset 的工具名：一律放行。 */
@@ -107,7 +109,11 @@ export function newGate(o: GateOptions): Gate {
       if (isEnvFile(target)) return EnvFileReason;
       if (agentDir !== '' && inside(target, agentDir)) return AgentDirReason;
       if (roots.some((root) => inside(target, root))) return null;
-      if (readTools.has(toolName) && readable.some((root) => inside(target, root))) return null;
+      if (readTools.has(toolName)) {
+        if (readable.some((root) => inside(target, root))) return null;
+        const extra = o.extraReadDir?.() ?? '';
+        if (extra !== '' && inside(target, realish(path.resolve(extra)))) return null;
+      }
       return ask(toolName, input, signal);
     }
     return ask(toolName, input, signal);

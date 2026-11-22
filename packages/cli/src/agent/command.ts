@@ -17,6 +17,7 @@ import { callTarget, describeTools, Jobs, prepareCall, spawnOp, spawnOpWithServi
 import type { ParamValues } from '../ops/op';
 import { newGate } from './gate';
 import { todoTool } from './todo';
+import { toolOutputArchiveDir } from './tool-errors';
 import type { AgentModule, AgentTool, Gate } from './types';
 
 /** 打包时由 esbuild 定义成 onset-agent.cjs 的文件名；开发与测试时没有定义，直接 import 源码。 */
@@ -35,8 +36,8 @@ export async function loadAgentModule(): Promise<AgentModule> {
  * 把编排档位的操作做成 agent 的工具；job_wait、job_cancel 不要（这里直接等到跑完）。
  * 除了只读的 tool_help，都顺序执行：模型一次发出 scene_cues 与 scene_run 时，后者要等前者写完 scene.json。
  */
-export function onsetTools(spawner: Spawner = spawnOp, root = '', profile: 'orchestrator' | 'renderer' = 'orchestrator'): { tools: AgentTool[]; jobs: Jobs } {
-  const jobs = new Jobs(spawner);
+export function onsetTools(spawner: Spawner = spawnOp, root = '', profile: 'orchestrator' | 'renderer' = 'orchestrator', archiveDir: string | (() => string) = toolOutputArchiveDir): { tools: AgentTool[]; jobs: Jobs } {
+  const jobs = new Jobs(spawner, archiveDir);
   const defs = describeTools(profile, root).filter((t) => t.name !== 'job_wait' && t.name !== 'job_cancel');
   const byName = new Map(defs.map((t) => [t.name, t]));
   const tools: AgentTool[] = defs.map((def) => {
@@ -64,7 +65,12 @@ export function onsetTools(spawner: Spawner = spawnOp, root = '', profile: 'orch
         const job = jobs.start(target.name, target.params);
         const reply = await jobs.wait(job, undefined, signal);
         if (signal?.aborted) jobs.cancel(job.id);
-        return { text: reply.text, isError: reply.isError };
+        const sheet = (reply.data as { sheet?: unknown } | undefined)?.sheet;
+        return {
+          text: reply.text,
+          isError: reply.isError,
+          ...(def.name === 'scene_preview_check' && !reply.isError && typeof sheet === 'string' ? { imagePath: sheet } : {}),
+        };
       },
     };
   });
@@ -98,6 +104,8 @@ export function parseRequest(text: string): director.Request {
     resume: r.resume === true,
     model: typeof r.model === 'string' ? r.model : '',
     thinking: typeof r.thinking === 'string' && thinkingLevels.has(r.thinking) ? r.thinking : undefined,
+    compact_at: typeof r.compact_at === 'number' && Number.isSafeInteger(r.compact_at) && r.compact_at >= 32_000 ? r.compact_at : undefined,
+    cache_key: typeof r.cache_key === 'string' && r.cache_key !== '' ? r.cache_key : undefined,
     unsafe: r.unsafe === true,
     commands: Array.isArray(r.commands) ? r.commands.filter((c): c is string => typeof c === 'string') : [],
     writable_dirs: Array.isArray(r.writable_dirs) ? r.writable_dirs.filter((c): c is string => typeof c === 'string') : [],
@@ -117,8 +125,9 @@ export async function runBuiltinAgent(
   options: { spawner?: Spawner; gate?: Gate; setupModels?: (runtime: unknown) => Promise<string> | string; env?: Record<string, string | undefined> } = {},
 ): Promise<{ ok: boolean; error?: string }> {
   const env = options.env ?? currentEnvironment();
+  let archiveDir = toolOutputArchiveDir(req.session_id ?? '');
   // 整理经验这类会再起制作人的操作要拿到模型服务与 key：经执行进程的 stdin 交下去（spawnOpWithService），不进环境。
-  const onset = onsetTools(options.spawner ?? spawnOpWithService(req.service ?? null), req.workdir, req.profile ?? 'orchestrator');
+  const onset = onsetTools(options.spawner ?? spawnOpWithService(req.service ?? null), req.workdir, req.profile ?? 'orchestrator', () => archiveDir);
   const jobs = onset.jobs;
   // 待办清单与 onset 的工具一样直接放行：它只把清单写进工具调用，什么也不做。
   const tools = [...onset.tools, todoTool()];
@@ -130,13 +139,24 @@ export async function runBuiltinAgent(
       commands: req.commands ?? [],
       writableDirs: req.writable_dirs ?? [],
       readDirs: req.profile === 'renderer' ? req.read_dirs : undefined,
+      extraReadDir: () => archiveDir,
       agentDir: req.agent_dir,
       onsetTools: new Set(tools.map((t) => t.name)),
       inbox: req.profile === 'renderer' ? '' : env[studioview.ViewInboxEnv] ?? '',
     });
   const agent = await loadAgentModule();
   try {
-    return await agent.runAgent({ request: req, tools, gate, write, signal, setupModels: options.setupModels });
+    return await agent.runAgent({
+      request: req,
+      tools,
+      gate,
+      write,
+      signal,
+      onSessionID: (id) => {
+        if (id) archiveDir = toolOutputArchiveDir(id);
+      },
+      setupModels: options.setupModels,
+    });
   } finally {
     jobs.stopAll();
   }

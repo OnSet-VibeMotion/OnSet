@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { find } from '../toolpath';
@@ -8,6 +9,7 @@ import { newToolchain, type Toolchain } from '../mediaprobe';
 import { DiagnosticBuffer, diagnosticToJSON, providerDiagnostic } from './diagnostic';
 import { handoff } from './handoff';
 import { newHosted, taskIDOf, validateLyrics } from './hosted';
+import { generateLocalAcestep, requireLocalAcestep } from './local';
 import { checkCredential, type Writer } from './platforms';
 import { runProcess } from './proc';
 import { ACEClient, type ResumableProvider } from './provider';
@@ -103,10 +105,30 @@ export async function generate(
   if (lyricLines(lyricsText).length === 0) throw new Error('歌词为空');
   checkCredential(c, environ);
   validateLyrics(c, lyricsText);
-  const media = newToolchain(environ);
-  const audioName = c.provider === 'fal' ? 'audio.wav' : 'audio.mp3';
-  await withLock(root, async () => {
-    const requestSHA = digest({ Config: configToJSON(c), Lyrics: lyricsText });
+  if (c.provider === 'acestep-local') requireLocalAcestep(environ, process.platform, c);
+  const sourceAudioOrig = c.source_audio !== '' ? localPath(root, c.source_audio) : undefined;
+  const referenceAudioOrig = c.reference_audio !== '' ? localPath(root, c.reference_audio) : undefined;
+  const snapshotDir = sourceAudioOrig || referenceAudioOrig ? fs.mkdtempSync(path.join(os.tmpdir(), 'onset-song-inputs-')) : '';
+  let sourceAudio = sourceAudioOrig;
+  let referenceAudio = referenceAudioOrig;
+  try {
+    if (sourceAudioOrig) {
+      sourceAudio = path.join(snapshotDir, 'source' + goExt(sourceAudioOrig));
+      copyFile(sourceAudioOrig, sourceAudio);
+    }
+    if (referenceAudioOrig) {
+      referenceAudio = path.join(snapshotDir, 'reference' + goExt(referenceAudioOrig));
+      copyFile(referenceAudioOrig, referenceAudio);
+    }
+    const sourceAudioSHA = sourceAudio ? hashFile(sourceAudio) : undefined;
+    const referenceAudioSHA = referenceAudio ? hashFile(referenceAudio) : undefined;
+    const media = newToolchain(environ);
+    const audioName = c.provider === 'fal' ? 'audio.wav' : 'audio.mp3';
+    await withLock(root, async () => {
+    const requestInput: Record<string, unknown> = { Config: configToJSON(c), Lyrics: lyricsText };
+    if (sourceAudioSHA) requestInput.SourceAudioSHA256 = sourceAudioSHA;
+    if (referenceAudioSHA) requestInput.ReferenceAudioSHA256 = referenceAudioSHA;
+    const requestSHA = digest(requestInput);
     for (let i = 0; i < count; i++) {
       const id = `${batch}-${requestSHA.slice(0, 16)}-${String(i + 1).padStart(2, '0')}`;
       const dir = candidateDir(root, id);
@@ -201,6 +223,15 @@ export async function generate(
           writeJSON(path.join(dir, 'provider-error.json'), diagnosticToJSON(detail));
           throw new Error(`MiniMax 生成未完成（候选 ${id}，退出码 ${candidate.provider_exit_code}）：${detail.message}；未自动重试`);
         }
+      } else if (c.provider === 'acestep-local') {
+        try {
+          await generateLocalAcestep({ config: c, lyrics: lyricsText, sourceAudio, referenceAudio, dest, env: environ, signal });
+        } catch (err) {
+          candidate.state = 'submission_unknown';
+          candidate.elapsed_seconds += seconds(attemptStart);
+          writeJSON(record, candidateToJSON(candidate));
+          throw err;
+        }
       } else if (c.provider === 'bailian' || c.provider === 'elevenlabs' || c.provider === 'lyria') {
         try {
           candidate.task_id = await newHosted(c, environ).generate(lyricsText, dest, signal);
@@ -244,4 +275,7 @@ export async function generate(
     }
     out.write('请试听后由用户运行 song_select({"candidate": "<candidate-id>"})。未自动选歌。\n');
   });
+  } finally {
+    if (snapshotDir !== '') fs.rmSync(snapshotDir, { recursive: true, force: true });
+  }
 }

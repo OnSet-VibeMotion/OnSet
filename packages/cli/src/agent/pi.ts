@@ -24,6 +24,7 @@ import type { Api, Model } from '@earendil-works/pi-ai';
 import type { CreateModelRuntimeOptions, ExtensionAPI, ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import {
   createAgentSession,
+  createReadToolDefinition,
   DefaultResourceLoader,
   defineTool,
   ModelRuntime,
@@ -32,7 +33,11 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 import * as director from '@onset/engine/director';
+import { completeToolArguments } from './arguments';
+import { PreviewHistory } from './preview-history';
+import { rendererFileTools, rendererFileWorkflow } from './renderer-files';
 import { StreamWriter } from './stream';
+import { compactToolResult, toolOutputArchiveDir } from './tool-errors';
 import type { AgentModule, AgentTool, RunOptions } from './types';
 
 /** pi 的内置工具里给编排用的这几个；powershell、codemode、tool_search 不要。 */
@@ -49,6 +54,7 @@ const preamble = `你在一个视频项目的目录里工作，帮用户把文�
 - 项目里的每一步制作都有对应的工具（scene_run、align_build……）。参数不确定时先 tool_help({"tool": "<工具名>"}) 查，不要猜。onset 不在终端里，不要在 bash 里找它或运行它。
 - 这里的制作工具会一直等到做完才返回，渲染、拼接可能要几十分钟：直接等结果，不要中途重复发起；没有任务号，也没有 job_wait。
 - 文件只在项目目录里读写，.env 里是凭据，不要读。改文件前先读它；大文件按段读，不要一次读全。
+- 列目录、读写文件和查找内容优先用 ls、read、write、edit、grep、find；读取 JSON 字段可用 jq，不为这些简单操作另写 Python 或 Node 脚本。制作步骤优先用现有制作工具，只有项目特有且工具无法完成的数据处理才写脚本。
 - 工具报错或命令失败时，先读报错弄清原因，再换一种做法；不要原样重试同一条调用。命令被拒绝了就换一种在白名单内的做法。
 - 有好几步的工作，开工时用 TodoWrite 列出步骤，每开始、做完一步就更新一次（每次传完整清单）。
 - 要用户拍板的事（选方案、确认稿件或分镜、几种做法里选一种）停下来问，不替用户决定。
@@ -56,8 +62,11 @@ const preamble = `你在一个视频项目的目录里工作，帮用户把文�
 
 const rendererPreamble = `你是制作人，当前只负责一个镜头的实现与渲染。
 - 严格按本轮镜头提示词、scene.json、画幅与技能完成合成；不要规划整片、改口播稿或等待整片审批。
-- 使用 read、write、edit、bash 等工具实现镜头，用 hyperframes 工具检查、截图和渲染。参数不确定时先用 tool_help 查询。
-- 制作工具会一直等到执行完；不要重复提交，没有 job_wait。onset 不在终端里，不要在 bash 里运行 onset。
+- ${rendererFileWorkflow}
+- 源码较长时拆成 index.html、style.css、scene.js 分文件编写，首次创建可在同一轮并行调用多次 write 一次建完，减少往返轮次；用 read 按段查看源码，优先用 read/write/edit/grep/find 处理文件。
+- 当前工作目录已是本镜头目录，bash 命令直接执行，不要每条命令前都加 cd。
+- 画面检查与细节放大优先用 scene_preview_check（支持 frames 联系表，也支持 zoom_frame / crop 查单帧细节并自动附图）；不要重复调用 hyperframes snapshot。其他截图用 read 打开。没有收到图片时报告阻塞，不用 magick/python/ffmpeg 写脚本或字符画代替视觉验收。
+- 参数不确定时先用 tool_help 查询。制作工具会一直等到执行完；不要重复提交，没有 job_wait。onset 不在终端里，不要在 bash 里运行 onset。
 - 只修改当前镜头目录，技能与共享素材只读；不要读取 .env 或模型服务凭据。
 - 出错先读返回原因再修复，最后核对镜头提示词要求的产物。`;
 
@@ -147,7 +156,8 @@ export async function serviceModel(runtime: ModelRuntime, service: director.Reso
   return model;
 }
 
-function toPiTool(tool: AgentTool) {
+function toPiTool(tool: AgentTool, workdir: string, vision: boolean, sent: Set<string>) {
+  const read = tool.name === 'scene_preview_check' && vision ? createReadToolDefinition(workdir) : null;
   return defineTool({
     name: tool.name,
     label: tool.label,
@@ -155,10 +165,33 @@ function toPiTool(tool: AgentTool) {
     parameters: Type.Unsafe<Record<string, unknown>>(tool.parameters),
     // pi 自带的 read、bash 这些保持 pi 的默认（并行）；onset 的写操作顺序执行，见 AgentTool.sequential。
     executionMode: tool.sequential ? 'sequential' : 'parallel',
-    async execute(_id, params, signal) {
+    async execute(id, params, signal, _update, ctx) {
       const r = await tool.execute((params ?? {}) as Record<string, unknown>, signal);
       if (r.isError) throw new Error(r.text);
-      return { content: [{ type: 'text', text: r.text }], details: undefined };
+      const reply = (text: string) => ({ content: [{ type: 'text' as const, text }], details: undefined });
+      if (!r.imagePath) return reply(r.text);
+      if (!read) return reply(r.text + '\n模型未开启视觉，联系表未送入模型；报告画面验收阻塞。');
+      try {
+        const file = fs.realpathSync(r.imagePath);
+        const rel = path.relative(fs.realpathSync(workdir), file).split(path.sep).join('/');
+        if (!/^\.onset\/preview-[^/]+\/(?:contact-sheet|frame-\d+|detail-[^/]+)\.(?:png|jpe?g)$/i.test(rel)) {
+          return reply(r.text + '\n预览图位置异常，未附图。请重新生成预览。');
+        }
+        const stat = fs.statSync(file, { bigint: true });
+        if (!stat.isFile() || stat.size > 24n * 1024n * 1024n) return reply(r.text + '\n联系表无法直接附图。请核查预览文件或按需查看单帧。');
+        const identity = JSON.stringify([file, stat.size.toString(), stat.ctimeNs.toString()]);
+        if (sent.has(identity)) return reply(r.text + '\n同一张联系表已在当前上下文中，可沿用上次看图结论。');
+        const result = await read.execute(id, { path: file }, signal, undefined, ctx);
+        const image = result.content.find(block => block.type === 'image');
+        if (image) {
+          if (sent.size >= 32) sent.clear();
+          sent.add(identity);
+          return { content: [...reply(r.text).content, image], details: undefined };
+        }
+      } catch (error) {
+        if (signal?.aborted) throw error;
+      }
+      return reply(r.text + '\n联系表附图失败，必要时用 read 查看以上路径；未收到图时不能完成视觉验收。');
     },
   });
 }
@@ -230,10 +263,75 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
   }
   if (!selected) throw new Error(`制作人不认识模型 ${model}`);
 
+  const sentPreviews = new Set<string>();
+  const history = new PreviewHistory(req.profile === 'renderer' ? 'renderer' : 'orchestrator');
+  const compactAt = Number.isSafeInteger(req.compact_at) && req.compact_at! >= 32_000 ? req.compact_at : undefined;
+  let droppedPreviews = 0;
+  const sessions = sessionManager(workdir, req.agent_dir, req.session_id ?? '', req.resume === true);
+  const realSessionID = sessions.getSessionId();
+  o.onSessionID?.(realSessionID);
+  const archiveDir = toolOutputArchiveDir(realSessionID);
   const gate: ExtensionFactory = (pi: ExtensionAPI) => {
+    pi.on('session_before_compact', async () => { sentPreviews.clear(); });
+    // 跨镜头前缀缓存：每个镜头目录不同（scenes/scene-001 vs scene-002），pi 默认把绝对路径 cwd 写进 System Prompt，
+    // 导致所有镜头在 System Prompt 就发生字节分叉、v5/v6 跨镜头缓存完全击穿。渲染档把 System Prompt 里的 <cwd> 归一化为 `.`
+    // （文件与命令执行仍使用真实 workdir），并让同项目镜头共用同一个 prompt_cache_key。
+    if (req.profile === 'renderer') {
+      pi.on('before_agent_start', async (event) => {
+        event.systemPromptOptions.cwd = '.';
+        if (/<cwd>[\s\S]*?<\/cwd>/.test(event.systemPrompt)) {
+          return { systemPrompt: event.systemPrompt.replace(/<cwd>[\s\S]*?<\/cwd>/, '<cwd>.</cwd>') };
+        }
+        return undefined;
+      });
+      if (req.cache_key) {
+        const cacheKey = req.cache_key;
+        pi.on('before_provider_request', async (event) => {
+          const payload = event.payload;
+          if (payload && typeof payload === 'object' && !Array.isArray(payload) && 'prompt_cache_key' in payload) {
+            (payload as Record<string, unknown>).prompt_cache_key = cacheKey;
+          }
+        });
+      }
+    }
+    // message_end 在参数校验与权限闸门之前，替换结果也会写入会话，续接时保持一致。
+    pi.on('message_end', async (event) => {
+      if (event.message.role === 'toolResult') {
+        const message = compactToolResult(event.message, req.agent_dir, archiveDir);
+        return message === event.message ? undefined : { message };
+      }
+      if (event.message.role !== 'assistant') return;
+      const message = completeToolArguments(event.message);
+      return message ? { message } : undefined;
+    });
+    // Old sessions keep their original records. Limit their errors & oversized bash outputs on the way back to the model.
+    pi.on('context', async ({ messages }) => {
+      const safe = messages.map(message => compactToolResult(message, req.agent_dir, archiveDir));
+      if (!compactAt) return { messages: safe };
+      const projected = history.project(safe, compactAt);
+      if (projected.trimmed) {
+        droppedPreviews += projected.trimmed;
+        sentPreviews.clear();
+      }
+      return { messages: projected.messages };
+    });
     pi.on('tool_call', async (event) => {
       const reason = await o.gate(event.toolName, (event.input ?? {}) as Record<string, unknown>, o.signal);
       return reason === null ? undefined : { block: true, reason };
+    });
+    pi.on('tool_result', async (event) => {
+      if (event.toolName !== 'read') return;
+      // pi 的 read 把解码/缩放失败当成功返回一句省略提示。明确报错，免得模型靠脚本猜画面。
+      const omitted = event.content.some(c => c.type === 'text'
+        && c.text.startsWith('Read image file [') && c.text.includes('[Image omitted:'));
+      if (!omitted) return;
+      return {
+        isError: true,
+        content: [...event.content, {
+          type: 'text' as const,
+          text: '读图失败：你没有收到图片，无法完成视觉验收。报告这个阻塞及图片路径；不要用 Python、字符画或像素统计代替看图，也不要据此修改镜头或宣称验收通过。',
+        }],
+      };
     });
   };
   const skillsDir = path.join(workdir, '.agents', 'skills');
@@ -258,11 +356,16 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
   // 环境变量 PI_TELEMETRY 优先于设置（pi-coding-agent 的 core/telemetry.js），所以两处都关：设置给 false，
   // 这个进程里的 PI_TELEMETRY 也写成 0（--unsafe 时子进程拿到的是用户的完整环境，里面可能有 PI_TELEMETRY=1）。
   process.env.PI_TELEMETRY = '0';
+  // 编排长会话常常等待镜头渲染十几到几十分钟：Anthropic 协议默认 5 分钟短缓存会频繁过期重写，
+  // 对齐 Claude CLI 的 1h 缓存策略（用户显式设了 PI_CACHE_RETENTION 时不覆盖）。
+  if (req.profile !== 'renderer' && service.protocol === 'anthropic' && !process.env.PI_CACHE_RETENTION) {
+    process.env.PI_CACHE_RETENTION = 'long';
+  }
   const settings = SettingsManager.inMemory({
     enableInstallTelemetry: false,
     // 只在制作任务需要时调用模型，避免后台保温额外消耗 token。
     cacheWarming: 'off',
-    // 整片制作一轮能跑很久，上下文快满时自动压缩；完整记录仍在会话文件里。
+    // 全文摘要沿用 SDK 的安全阈值，避免提前改写大量已缓存的输入。
     compaction: { enabled: true },
     retry: { enabled: true, maxRetries: 3 },
   });
@@ -275,10 +378,13 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
     modelRuntime: runtime,
     resourceLoader: loader,
     settingsManager: settings,
-    sessionManager: sessionManager(workdir, req.agent_dir, req.session_id ?? '', req.resume === true),
+    sessionManager: sessions,
     // tools 是这一会话启用的全部工具名：不把 onset 的工具列进去，它们就被藏起来（只登记不启用）。
     tools: [...builtinTools, ...o.tools.map((t) => t.name)],
-    customTools: o.tools.map(toPiTool),
+    customTools: [
+      ...o.tools.map(tool => toPiTool(tool, workdir, service.vision, sentPreviews)),
+      ...(req.profile === 'renderer' ? rendererFileTools(workdir) : []),
+    ],
   });
   const writer = new StreamWriter(o.write);
   const onAbort = () => void session.abort();
@@ -295,7 +401,7 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
     }
     if (error === '') error = writer.error();
     if (o.signal?.aborted) error = '已取消';
-    writer.result(error);
+    writer.result(error, droppedPreviews);
     return error === '' ? { ok: true } : { ok: false, error };
   } finally {
     o.signal?.removeEventListener('abort', onAbort);

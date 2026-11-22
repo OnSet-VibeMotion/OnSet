@@ -25,9 +25,9 @@ description: 本片的整片风格「{{.Style.CN}} {{.Style.EN}}」，来自 lem
 
 ## 规则（渲染镜头时）
 
-1. **先读 `STYLE.md` 全文再动手。** 它规定的外观、材质、配色逻辑、字体、动效质感、镜头语法、标志手法与禁忌全部遵守。本镜头提示词里的「全片配色」若与 STYLE.md 的配色逻辑冲突，以全片配色为准——它是在 STYLE.md 的配色逻辑里为本片选定的。
+1. **严格遵守 `STYLE.md`。** 若本镜头提示词已内联 `STYLE.md` 规范则直接按内联规范动手，不必重复通读 `STYLE.md` 全文；未内联时再读 `STYLE.md`。它规定的外观、材质、配色逻辑、字体、动效质感、镜头语法、标志手法与禁忌全部遵守。本镜头提示词里的「全片配色」若与 STYLE.md 的配色逻辑冲突，以全片配色为准——它是在 STYLE.md 的配色逻辑里为本片选定的。
 2. **内容来自本镜头，不来自 demo。** 画什么、讲什么、出现哪些物件，只取本镜头的 prompt.md、字幕与素材。不照搬 demo 的故事、镜头、道具、文案、时间线和角色，不把题材往 demo 上靠。
-3. **demo 是技法库。** 需要它的引擎时，读 `STYLE.md` 的 Engine 一节与 `DEMO.md`，再把用到的源码文件拷进本镜头目录、在拷贝上修改。不得在合成里引用本目录（镜头目录之外的路径渲染时会静默 404）。
+3. **demo 仅作按需技法参考。** 常规 2D/SVG/Canvas/GSAP 镜头按 `STYLE.md` 规范直接实现即可，不必通读 `DEMO.md` 或 `demo/` 全量源码；只有确实需要复用某个特定引擎函数时，再按需定位该片段并拷进本镜头目录修改。不得在合成里引用本目录（镜头目录之外的路径渲染时会静默 404）。
 4. **共用库保持原路径。** 片场在渲染前把 `core/`{{if .Style.ThreeJS}} 与 `node_modules/three/`{{end}} 的运行资源共享到镜头目录。提示词的「共享渲染资源」列出它们时直接用，不再复制；demo 用的 `/core/lib.js`、`/core/three/post.js` 路径不用改。共享库只读，要改时另存为镜头自己的新文件并改引用，不要通过软链接修改共用内容。只有独立使用本技能、上层未准备时，才把实际用到的库连同相对引用的依赖复制到镜头同一路径，不要整目录复制。{{if .Style.ThreeJS}}`node_modules/three/` 里只有 demo 用到的模块，importmap 不用改。demo 引用的 `.hdr` 环境贴图不随风格库下发，用 three 的 `RoomEnvironment` 代替。{{end}}
 5. **页面契约换成 HyperFrames 的。** demo 页面导出 `window.render(t)`，按秒逐帧绘制、可单独渲染任意一帧。在 HyperFrames 里改由 `hf-seek` 事件驱动：在监听器里调用同一个 `render(e.detail.time)`，根元素写 `data-duration`，加载完先画一次第 0 帧；引擎初始化（解码图片、编译 shader、生成笔触）这类异步准备登记成 `window.__hf.buildReady["<key>"]` promise。写法以 hyperframes 技能 `references/runtimes.md` 的「The seek protocol」为准。不要 `window.READY`，不要 `requestAnimationFrame`，不读真实时钟；随机数一律用 `core/lib.js` 的 `mulberry` / `hash` 加固定种子，任何一帧都不能依赖上一帧留下的状态。
 6. **画幅、帧率与时长以本镜头提示词为准。** demo 默认 1920×1080、24fps。从 `innerWidth` × `innerHeight` 排版，不写死 1920×1080；竖屏要按竖屏重新构图，不是把横屏画面缩小或裁一块。STYLE.md 要求「一拍两帧」之类的步进时，只步进画面里的物件，镜头与光照保持逐帧平滑。

@@ -50,6 +50,8 @@ export interface Attempt {
   session_id: string;
   /** 这一次是怎么接着上一次做的：verify（验收已有视频）、render（onset 直接渲染）、session（续接会话）、files（照上次文件接着做）；从头做为空。 */
   resumed: string;
+  /** 局部返修已回退时，不能续接成下一次正式渲染。 */
+  local_repair?: boolean;
 }
 
 /** 零值尝试记录，测试与调用方构造时用。 */
@@ -104,6 +106,7 @@ export function attemptToJSON(a: Attempt): unknown {
     usage: a.usage ? usageJSON(a.usage) : undefined,
     session_id: a.session_id || undefined,
     resumed: a.resumed || undefined,
+    local_repair: a.local_repair || undefined,
   };
 }
 
@@ -162,6 +165,7 @@ const attemptType: StructType = {
     ['session_id', 'string'],
     ['resumed', 'string'],
     ['warning', 'string'],
+    ['local_repair', 'bool'],
   ],
 };
 
@@ -196,8 +200,9 @@ function lexists(file: string): boolean {
  * 渲染开始前与调度层重试前都走这里：日志以截断方式重新打开，不先挪走的话，
  * 手动重跑一次镜头就抹掉了上一次的全部现场。
  */
-export function archiveAttempt(s: Scene): string {
-  const present = [outputPath(s), streamLog(s), stderrLog(s), userLog(s), attemptLog(s)].filter(lexists);
+export function archiveAttempt(s: Scene, keepOutput = false): string {
+  const output = outputPath(s);
+  const present = [output, streamLog(s), stderrLog(s), userLog(s), attemptLog(s)].filter(lexists);
   if (present.length === 0) return '';
   const attemptsRoot = path.join(s.directory, 'attempts');
   try {
@@ -225,7 +230,9 @@ export function archiveAttempt(s: Scene): string {
   }
   for (const file of present) {
     try {
-      fs.renameSync(file, path.join(destination, path.basename(file)));
+      const target = path.join(destination, path.basename(file));
+      if (keepOutput && file === output) fs.copyFileSync(file, target);
+      else fs.renameSync(file, target);
     } catch {
       // 忽略单个文件的失败。
     }

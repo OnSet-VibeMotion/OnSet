@@ -19,7 +19,7 @@ language: zh
 target_seconds: 120
 bpm: 100
 # Use the song_providers tool for platform access and API key setup.
-# Use song_configure (provider: bailian|elevenlabs|fal|minimax|acestep|mureka|lyria|manual) to switch.
+# Use song_configure (provider: acestep-local|bailian|elevenlabs|fal|minimax|acestep|mureka|lyria|manual) to switch.
 # endpoint: https://your-acestep-server.example
 python: python3
 `;
@@ -62,6 +62,11 @@ const configFields: Array<[string, keyof Config, FieldKind]> = [
   ['target_seconds', 'target_seconds', 'float'],
   ['bpm', 'bpm', 'int'],
   ['python', 'python', 'string'],
+  ['task_type', 'task_type', 'string'],
+  ['source_audio', 'source_audio', 'string'],
+  ['reference_audio', 'reference_audio', 'string'],
+  ['cover_strength', 'cover_strength', 'float'],
+  ['lm_model', 'lm_model', 'string'],
 ];
 
 /**
@@ -90,6 +95,11 @@ function decodeConfigYAML(body: string): { config: Config; documents: number } |
     target_seconds: 0,
     bpm: 0,
     python: '',
+    task_type: '',
+    source_audio: '',
+    reference_audio: '',
+    cover_strength: 0,
+    lm_model: '',
   };
   const contents = doc.contents as Node | null;
   if (contents === null) return null;
@@ -139,12 +149,14 @@ export function decodeConfig(root: string, b: Uint8Array): Config {
     c.bpm > 300
   ) {
     throw new Error(
-      'song.yaml: schema=1，provider=minimax|acestep|bailian|elevenlabs|fal|mureka|lyria|manual，style/language 必填，target_seconds=10..600，bpm=30..300',
+      'song.yaml: schema=1，provider=minimax|acestep-local|acestep|bailian|elevenlabs|fal|mureka|lyria|manual，style/language 必填，target_seconds=10..600，bpm=30..300',
     );
   }
   if (c.model === '') c.model = providerInfo(c.provider).model;
   if (c.python === '') c.python = 'python3';
   localPath(root, c.lyrics);
+  if (c.source_audio !== '') localPath(root, c.source_audio);
+  if (c.reference_audio !== '') localPath(root, c.reference_audio);
   if (c.provider === 'acestep') {
     const u = parseGoURL(c.endpoint);
     if (!u || u.host === '' || (u.scheme !== 'http' && u.scheme !== 'https') || u.hasUser || u.rawQuery !== '' || u.fragment !== '') {

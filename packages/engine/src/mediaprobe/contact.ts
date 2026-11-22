@@ -77,16 +77,24 @@ export function nonEmpty(file: string): boolean {
 }
 
 /** Snapshot 的原始 PNG 已经在磁盘上；上游无法拼表时，用相同的网格接着拼。 */
-export async function contactSheetImages(t: Toolchain, files: readonly string[], dest: string, signal?: AbortSignal): Promise<void> {
-  const columns = Math.min(files.length, 3);
-  if (columns === 0) throw new Error('联系表至少需要一张截图');
-  const rows = Math.ceil(files.length / columns);
+export async function contactSheetImages(
+  t: Toolchain,
+  files: readonly string[],
+  dest: string,
+  signal?: AbortSignal,
+  columns = Math.min(files.length, 3),
+  thumbWidth = 320,
+): Promise<void> {
+  const cols = Math.max(1, Math.min(files.length, columns));
+  if (files.length === 0) throw new Error('联系表至少需要一张截图');
+  const rows = Math.ceil(files.length / cols);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
   const work = fs.mkdtempSync(path.join(path.dirname(dest), '.contact-'));
   try {
     files.forEach((file, i) => fs.copyFileSync(file, path.join(work, `frame-${i}.png`)));
     const ran = await t.runAsync(t.ffmpegPath(), [
       '-v', 'error', '-y', '-framerate', '1', '-start_number', '0', '-i', path.join(work, 'frame-%d.png'),
-      '-vf', `scale=320:-2,tile=${columns}x${rows}:padding=${contactSheetPadding}:margin=${contactSheetPadding}:color=${contactSheetBackground}`,
+      '-vf', `scale=${thumbWidth}:-2,tile=${cols}x${rows}:padding=${contactSheetPadding}:margin=${contactSheetPadding}:color=${contactSheetBackground}`,
       '-frames:v', '1', '-f', 'image2', '-c:v', 'png', dest,
     ], { signal, captureStderr: true });
     if (ran.error) throw new Error(`拼接截图联系表失败：${commandError(ran)}`);
@@ -94,4 +102,16 @@ export async function contactSheetImages(t: Toolchain, files: readonly string[],
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }
+}
+
+/** 从单张截图裁出指定画布像素区域，用于局部细节检查。 */
+export async function cropImage(t: Toolchain, file: string, region: Region, dest: string, signal?: AbortSignal): Promise<void> {
+  const filter = regionFilter(region);
+  if (!filter) throw new Error('裁剪区域无效');
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  const ran = await t.runAsync(t.ffmpegPath(), [
+    '-v', 'error', '-y', '-i', file, '-vf', filter, '-frames:v', '1', '-f', 'image2', '-c:v', 'png', dest,
+  ], { signal, captureStderr: true });
+  if (ran.error) throw new Error(`裁剪细节图失败：${commandError(ran)}`);
+  if (!nonEmpty(dest)) throw new Error(`细节图没有产出内容：${dest}`);
 }

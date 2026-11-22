@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { BuiltinPlugin } from '../../plugin/types';
+import { hyperframesStage, withProxy } from '../../prereqs';
 import * as song from '../../song';
 import { DefaultConfig } from '../../song/store';
 import { songBlock } from './block';
@@ -59,6 +60,33 @@ export const songPlugin: BuiltinPlugin = {
       canvas: 'vertical-9x16',
       example: '把这篇文章写成一首歌，做成带歌词的 MV',
     });
+    ctx.prereq({
+      group: 'song',
+      id: 'song:acestep',
+      // 只有用本机离线生歌/翻唱时才要：不选不占 5.6 GB 磁盘。
+      required: false,
+      name: '本机歌曲生成 ACE-Step 1.5（acestep.cpp + GGUF）',
+      version: song.AcestepCppVersion,
+      later: { title: '本机歌曲生成', desc: '离线生成与原曲换词翻唱（ACE-Step 1.5 GGUF）· 约 5.6 GB', icon: 'music' },
+      ready: (env) => {
+        const status = song.localAcestepStatus(env);
+        return [status.ok, status.where];
+      },
+      prepare: async (run, signal) => {
+        await song.ensureLocalAcestep({
+          env: run.base,
+          gitEnv: run.git,
+          downloadEnv: withProxy(run),
+          output: run.log,
+          progress: (p) => run.stage(hyperframesStage(p), p.bytes),
+          signal,
+        });
+      },
+    });
+    // 本机 acestep.cpp 二进制与 GGUF 模型目录：默认由 XDG_DATA_HOME 推出，而它不在子进程白名单里；
+    // 显式透传给编排工具，确保 song_doctor / song_generate 找到客户端安装好的同一份环境。
+    ctx.childEnv({ key: song.AcestepBinDirEnv, value: (env) => song.localAcestepBinDir(env) });
+    ctx.childEnv({ key: song.AcestepModelsDirEnv, value: (env) => song.localAcestepModelsDir(env) });
     ctx.presentIn((root) => (fs.existsSync(path.join(root, 'song.yaml')) ? 'song.yaml' : ''));
     ctx.renderCheck({
       params: { [songTimelineParam]: { type: 'string', description: '歌曲覆盖基准，与 srt 互斥；包含前奏至尾奏' } },

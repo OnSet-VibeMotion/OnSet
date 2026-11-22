@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { envMap } from '../envutil';
+import { stageAgyMcp, stageMcodeMcp } from '../scene';
 import { onsetToolsServer, rendererEnv, rendererInvocation } from '../tools';
 import { KindError, KindText, KindToolCall, newSessionID, run } from './index';
 
@@ -123,7 +124,13 @@ describe('RealToolsMCP', () => {
         ? '调用 onset 工具服务里的 hyperframes 工具读取 GSAP 文档（参数 subcommand 填 "docs"，args 填 ["gsap"]），然后只回复 DONE。不要跑 shell。'
         : '调用 onset 工具服务里的 tool_help 工具查 hyperframes（参数 tool 填 "hyperframes"），然后只回复 DONE。';
       const argv = rendererInvocation(tool, prompt, false, access);
-      const ran = spawnSync(argv[0], argv.slice(1), { cwd: project, env: { ...env, ...rendererEnv(tool, access, env) }, encoding: 'utf8', timeout: 10 * 60_000 });
+      const unstage = tool === 'agy' ? stageAgyMcp(project, access.toolsServer) : tool === 'mcode' ? stageMcodeMcp(project, access.toolsServer) : () => {};
+      let ran;
+      try {
+        ran = spawnSync(argv[0], argv.slice(1), { cwd: project, env: { ...env, ...rendererEnv(tool, access, env) }, encoding: 'utf8', timeout: 10 * 60_000 });
+      } finally {
+        unstage();
+      }
       const out = `${ran.stdout}\n${ran.stderr}`;
       console.log(`${tool} 渲染器：退出码 ${ran.status}，调用了 tool_help：${out.includes('tool_help')}`);
       if (ran.status !== 0) console.log(`${tool} 渲染器输出：${out.slice(0, 3000)}`);

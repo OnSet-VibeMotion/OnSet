@@ -24,6 +24,10 @@ import { marshal } from '../gojson';
 
 export type AgentOptions = Record<string, string>;
 
+/** 自带制作人（director）缺省的旧图整理阈值（token）：未显式设置时默认开启，填 off 关闭。 */
+export const DefaultDirectorRendererCompactAt = 64_000;
+export const DefaultDirectorOrchestratorCompactAt = 96_000;
+
 export interface OptionChoice {
   value: string;
   label: string;
@@ -41,6 +45,7 @@ export interface AgentOptionSpec {
   requiresModel?: boolean;
   /** 可选档位按模型变：界面用模型列表里那个模型的 efforts 收窄 choices（codex）。 */
   perModel?: boolean;
+  rendererOnly?: boolean;
 }
 
 const effortLabels: Record<string, string> = {
@@ -61,6 +66,14 @@ function effort(values: string[], hint: string, extra: Partial<AgentOptionSpec> 
   return { key: 'effort', label: '推理强度', hint, kind: 'choice', choices: values.map((value) => ({ value, label: effortLabels[value] ?? value })), ...extra };
 }
 
+function repairEffort(values: string[], extra: Partial<AgentOptionSpec> = {}): AgentOptionSpec {
+  return effort(values, '局部返修与修接缝的首次调用使用；留空沿用普通强度', { key: 'repair_effort', label: '局部返修推理强度', rendererOnly: true, ...extra });
+}
+
+function simpleEffort(values: string[], extra: Partial<AgentOptionSpec> = {}): AgentOptionSpec {
+  return effort(values, '简单镜头（短文字/标题卡等低复杂度镜头）自动降档使用；留空沿用普通强度', { key: 'simple_effort', label: '简单镜头推理强度', rendererOnly: true, ...extra });
+}
+
 function fast(hint: string): AgentOptionSpec {
   return { key: 'fast', label: '快速模式', hint, kind: 'toggle' };
 }
@@ -75,20 +88,31 @@ const contextPresets: OptionChoice[] = [
 /** 一家工具支持哪些选项；不认识的工具没有。顺序就是界面上的顺序。 */
 export function agentOptionSpecs(tool: string): AgentOptionSpec[] {
   switch (tool) {
-    case 'claude':
+    case 'claude': {
+      const levels = ['low', 'medium', 'high', 'xhigh', 'max'];
       return [
-        effort(['low', 'medium', 'high', 'xhigh', 'max'], '越高想得越久、越费额度；不选由 Claude Code 按模型决定'),
+        effort(levels, '越高想得越久、越费额度；不选由 Claude Code 按模型决定'),
+        repairEffort(levels),
+        simpleEffort(levels),
         fast('同一模型输出更快，按更高的价格计费；账号没开通时不生效'),
       ];
-    case 'codex':
+    }
+    case 'codex': {
+      const levels = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
       return [
-        effort(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], '越高想得越久、越费额度；可选档位随模型变，不选用 Codex 自己的设置', { perModel: true }),
+        effort(levels, '越高想得越久、越费额度；可选档位随模型变，不选用 Codex 自己的设置', { perModel: true }),
+        repairEffort(levels, { perModel: true }),
+        simpleEffort(levels, { perModel: true }),
         fast('优先处理（Fast 档位），更快、更耗用量；模型不支持时自动忽略'),
       ];
+    }
     case 'qoder':
-    case 'qoder-intl':
+    case 'qoder-intl': {
+      const levels = ['auto', 'none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultracode'];
       return [
-        effort(['auto', 'none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultracode'], '越高想得越久、越费额度；可选档位随模型变，不选用模型自己的默认', { perModel: true }),
+        effort(levels, '越高想得越久、越费额度；可选档位随模型变，不选用模型自己的默认', { perModel: true }),
+        repairEffort(levels, { perModel: true }),
+        simpleEffort(levels, { perModel: true }),
         {
           key: 'context',
           label: '上下文长度',
@@ -99,18 +123,64 @@ export function agentOptionSpecs(tool: string): AgentOptionSpec[] {
           perModel: true,
         },
       ];
-    case 'codebuddy':
-      return [effort(['minimal', 'low', 'medium', 'high', 'xhigh', 'max'], '越高想得越久、越费额度；不选由 CodeBuddy 按模型决定')];
-    case 'opencode':
-      return [effort(['minimal', 'low', 'medium', 'high', 'xhigh', 'max'], '附在模型名后（provider/model#high），要先选模型；不是每个模型都有这些档位', { requiresModel: true })];
-    case 'mcode':
+    }
+    case 'codebuddy': {
+      const levels = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+      return [
+        effort(levels, '越高想得越久、越费额度；不选由 CodeBuddy 按模型决定'),
+        repairEffort(levels),
+        simpleEffort(levels),
+      ];
+    }
+    case 'opencode': {
+      const levels = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+      return [
+        effort(levels, '附在模型名后（provider/model#high），要先选模型；不是每个模型都有这些档位', { requiresModel: true }),
+        repairEffort(levels, { requiresModel: true }),
+        simpleEffort(levels, { requiresModel: true }),
+      ];
+    }
+    case 'mcode': {
       // 只有部分模型能调（MiniMax-M3 不能，M3.1-Flash 能），不支持的档位 mcode 直接报错；模型表（tools/mcodemodels.ts）按模型收窄。
-      return [effort(['low', 'medium', 'high', 'xhigh', 'max'], '越高想得越久、越费额度；只有部分模型能调，不选用模型自己的默认', { perModel: true })];
-    case 'director':
-      return [{ ...effort(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'], '只对支持思考的模型生效；不选按模型默认'), label: '思考强度' }];
+      const levels = ['low', 'medium', 'high', 'xhigh', 'max'];
+      return [
+        effort(levels, '越高想得越久、越费额度；只有部分模型能调，不选用模型自己的默认', { perModel: true }),
+        repairEffort(levels, { perModel: true }),
+        simpleEffort(levels, { perModel: true }),
+      ];
+    }
+    case 'agy': {
+      // Antigravity CLI 1.5.13 实测：--effort low|medium|high|xhigh|max，ACP 里是 thought_level；可选档位按模型变。
+      const levels = ['low', 'medium', 'high', 'xhigh', 'max'];
+      return [
+        effort(levels, '越高想得越久、越费额度；可选档位随模型变，不选用模型自己的默认', { perModel: true }),
+        repairEffort(levels, { perModel: true }),
+        simpleEffort(levels, { perModel: true }),
+      ];
+    }
+    case 'director': {
+      const levels = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+      return [
+        { ...effort(levels, '只对支持思考的模型生效；不选按模型默认'), label: '思考强度' },
+        { ...repairEffort(levels), label: '局部返修思考强度' },
+        { ...simpleEffort(levels), label: '简单镜头思考强度' },
+        {
+          key: 'compact_at', label: '旧预览整理阈值', kind: 'number',
+          hint: '超过阈值时移出较早的预览与检查附图（保留结论与路径）；留空默认开启（渲染 64K / 编排 96K），选关闭则停用，最小 32,000 Token',
+          presets: [{ value: '64000', label: '64K' }, { value: '96000', label: '96K' }, { value: 'off', label: '关闭' }],
+        },
+      ];
+    }
     default:
       return [];
   }
+}
+
+/** 按渲染场景（普通整镜 / 局部返修与修接缝 / 简单镜头）解析本次实际生效的选项（覆盖 effort）。 */
+export function stageOptions(options: AgentOptions, stage: 'full' | 'repair' | 'simple' = 'full'): AgentOptions {
+  if (stage === 'repair' && options.repair_effort) return { ...options, effort: options.repair_effort };
+  if (stage === 'simple' && options.simple_effort) return { ...options, effort: options.simple_effort };
+  return options;
 }
 
 const tokenRe = /^[A-Za-z0-9._-]+$/;
@@ -159,7 +229,9 @@ export function validateAgentOptions(tool: string, text: string): string {
         if (value !== 'on' && value !== 'off') return `${spec.label}只能是 on 或 off`;
         break;
       case 'number':
+        if (key === 'compact_at' && value === 'off') break;
         if (!/^[1-9][0-9]{0,8}$/.test(value)) return `${spec.label}要是正整数`;
+        if (key === 'compact_at' && Number(value) < 32_000) return `${spec.label}至少为 32,000 Token`;
         break;
       case 'choice':
         // codex 的档位按模型变（新模型会多出新档位），只查写法。
@@ -194,6 +266,7 @@ export function optionArgs(tool: string, options: AgentOptions): string[] {
     case 'claude':
     case 'codebuddy':
     case 'mcode':
+    case 'agy':
       return o.effort ? ['--effort', o.effort] : [];
     case 'qoder':
     case 'qoder-intl':
@@ -220,9 +293,17 @@ export function claudeOptionSettings(options: AgentOptions): Record<string, unkn
   return effectiveOptions('claude', options).fast === 'on' ? { fastMode: true } : {};
 }
 
-/** opencode 的模型名：推理档位写成 #变体 附在后面；没选模型、或模型名里已经带了变体时不加。 */
-export function opencodeModel(model: string, options: AgentOptions): string {
-  const variant = effectiveOptions('opencode', options).effort;
-  if (!variant || model === '' || model.includes('#')) return model;
+/**
+ * opencode 的模型名：推理档位写成 #变体 附在后面；没选模型时不加。
+ * 显式设置了阶段强度（repair_effort / simple_effort）时用阶段档位替换已有 #变体；
+ * 未显式设置阶段强度时保留模型名里已有 #变体优先于普通 effort 的规则。
+ */
+export function opencodeModel(model: string, options: AgentOptions, stage: 'full' | 'repair' | 'simple' = 'full'): string {
+  if (model === '') return model;
+  const o = effectiveOptions('opencode', options);
+  const explicitStage = stage === 'repair' ? o.repair_effort : stage === 'simple' ? o.simple_effort : undefined;
+  if (explicitStage) return model.split('#')[0] + '#' + explicitStage;
+  const variant = o.effort;
+  if (!variant || model.includes('#')) return model;
   return model + '#' + variant;
 }

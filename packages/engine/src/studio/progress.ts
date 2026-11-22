@@ -25,6 +25,7 @@ import { readStoryboard } from './storyboard';
 import { localRFC3339 } from './script';
 import type { Server } from './studio';
 import { emitStudioEvent } from './events';
+import { scheduleGateHandoff } from './sessions';
 import { decodeTurn, readBlob, storeBlob, studioRoot } from './turns';
 
 /** 一站：普通站看产物，关卡看用户的确认。step 是它归在顶栏哪一步下（页面 id）。 */
@@ -225,12 +226,14 @@ export function confirmGateFromChat(root: string, message: string, said: string,
   if (bareWords(quote).length < 2) throw new Error('said 要写用户确认时的原话');
   if (!bareWords(message).includes(bareWords(quote))) throw new Error('这一轮用户的话里没有「' + quote + '」：只有用户在对话里明确确认了，才能记下关卡');
   const progress = readProgress(root);
+  const files = gateFilesFor();
   let id = gate.trim();
   if (id !== '') {
-    if (!gateFilesFor()[id]) throw new Error(`没有这个审核关卡：${id}（可选：${gateIDs().join('、')}）`);
+    if (!files[id] && files[`gate-${id}`]) id = `gate-${id}`;
+    if (!files[id]) throw new Error(`没有这个审核关卡：${id}（可选：${gateIDs().join('、')}）`);
   } else {
     const current = progress.stations.find((st) => st.id === progress.current);
-    if (!current?.gate || !gateFilesFor()[current.id]) throw new Error('路线上现在没有在等用户确认的关卡');
+    if (!current?.gate || !files[current.id]) throw new Error('路线上现在没有在等用户确认的关卡');
     id = current.id;
   }
   const label = progress.stations.find((st) => st.id === id)?.label ?? id;
@@ -777,6 +780,8 @@ export async function progressAPI(s: Server, request: Request, rest: string): Pr
   if (!gateFilesFor()[match[1]]) return writeError(404, 'not_found', `没有这个审核关卡：${match[1]}`);
   try {
     const record = recordGate(root, match[1]);
+    const label = flow.allStations().flatMap((st) => st.nodes).find((n) => n.id === match[1])?.label ?? match[1];
+    scheduleGateHandoff(s, root, match[1], label);
     emitStudioEvent(s, s.currentProject(), 'gate.confirmed', { gate: match[1] });
     return writeJSON(200, record);
   } catch (err) {

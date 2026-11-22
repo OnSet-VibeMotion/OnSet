@@ -11,6 +11,7 @@ const paths = {
   check: <path d="M2.5 6.2l2.3 2.3 4.7-5" />,
   panel: <path d="M1.5 2.5h9v7h-9zM7 2.5v7" />,
   plus: <path d="M6 2v8M2 6h8" />,
+  handoff: <path d="M2 5.5A4 4 0 0 1 9.5 3.8M10 2v2.2H7.8M10 6.5A4 4 0 0 1 2.5 8.2M2 10V7.8h2.2" />,
   search: <path d="M5.2 9a3.8 3.8 0 1 0 0-7.6 3.8 3.8 0 0 0 0 7.6zM8 8l2.5 2.5" />,
   history: <path d="M2 6a4 4 0 1 0 1.2-2.85M2 1.8v1.7h1.7M6 3.8V6l1.6 1" />,
   down: <path d="M6 2.5v7M2.5 6L6 9.5 9.5 6" />,

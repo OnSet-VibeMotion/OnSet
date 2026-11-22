@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall, getAttributionHeaders, type ClientIdentity } from '@earendil-works/pi-ai';
+import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall, getAttributionHeaders, parseToolCallArguments, type ClientIdentity } from '@earendil-works/pi-ai';
 import * as agentrun from '@onset/engine/agentrun';
 import * as director from '@onset/engine/director';
 import * as opworker from '@onset/engine/opworker';
@@ -34,6 +34,17 @@ function parse(lines: string[]) {
 const fauxService: director.ResolvedService = { id: 's-faux', name: 'faux', protocol: 'openai', base_url: 'https://faux.invalid/v1', model: 'm1', vision: true, key: 'sk-faux' };
 
 describe('StreamWriter', () => {
+  it('charges input, cache and reasoning from a real compaction result alongside the conversation', () => {
+    const lines: string[] = [];
+    const w = new StreamWriter(line => lines.push(line));
+    w.event({ type: 'compaction_end', result: { tokensBefore: 70000, usage: { input: 100, output: 40, reasoning: 30, cacheRead: 500, cost: { total: 0.01 } } } });
+    w.event({ type: 'message_end', message: { role: 'assistant', content: [], usage: { input: 10, output: 5, reasoning: 3, cost: { total: 0.001 } } } });
+    w.result('');
+    expect(JSON.parse(lines.at(-1)!)).toMatchObject({
+      compactions: 1, num_turns: 1,
+      usage: { input_tokens: 110, output_tokens: 45, reasoning_tokens: 33, cache_read_input_tokens: 500 },
+    });
+  });
   it('forwards director compaction lifecycle including unsuccessful endings', () => {
     const lines: string[] = [];
     const w = new StreamWriter(l => lines.push(l));
@@ -455,10 +466,410 @@ describe('runBuiltinAgent', () => {
     await expect(runBuiltinAgent(req, () => {}, undefined, { env: {} })).rejects.toThrow(director.NoServiceMessage);
   });
 
+  it('feeds the preview contact sheet directly to the renderer and reuses it in the same context', async () => {
+    const sheet = path.join(tmp, '.onset', 'preview-demo', 'contact-sheet.png');
+    fs.mkdirSync(path.dirname(sheet), { recursive: true });
+    fs.writeFileSync(sheet, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAEElEQVR4nGP8wwACLGCSAQANBAECv1AVswAAAABJRU5ErkJggg==', 'base64'));
+    const worker = JSON.stringify({ ok: true, exit_code: 0, data: { sheet, frames: [0, 29] } });
+    const spawner = () => spawn(process.execPath, ['-e', 'process.stdout.write(' + JSON.stringify('通过\n' + opworker.ResultMarker + worker + '\n') + ')'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const faux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    let seen = 0;
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall('scene_preview_check', {})], { stopReason: 'toolUse' }),
+      fauxAssistantMessage([fauxToolCall('scene_preview_check', {})], { stopReason: 'toolUse' }),
+      context => {
+        for (const m of context.messages) if (m.role === 'toolResult') {
+          seen += m.content.filter(item => item.type === 'image').length;
+        }
+        return fauxAssistantMessage('检查完成');
+      },
+    ]);
+    const req: director.Request = { profile: 'renderer', workdir: tmp, prompt: '检查镜头', agent_dir: path.join(tmp, 'agent'), service: { ...fauxService, vision: true } };
+    expect(await runBuiltinAgent(req, () => {}, undefined, { spawner, setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
+    expect(seen).toBe(1);
+  });
+
+  it.each([undefined, 64_000])('compares the same long renderer context with compact_at=%s', async compact_at => {
+    const workdir = path.join(tmp, 'shot');
+    const sheets = Array.from({ length: 4 }, (_, i) => {
+      const file = path.join(workdir, '.onset', 'preview-' + i, 'contact-sheet.png');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAEElEQVR4nGP8wwACLGCSAQANBAECv1AVswAAAABJRU5ErkJggg==', 'base64'));
+      return file;
+    });
+    let index = 0, previewImages = 0;
+    const spawner = () => {
+      const reply = { ok: true, exit_code: 0, data: { sheet: sheets[index++]!, frames: [0] } };
+      return spawn(process.execPath, ['-e', 'process.stdout.write(' + JSON.stringify(opworker.ResultMarker + JSON.stringify(reply) + '\n') + ')'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    };
+    const faux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    faux.setResponses([
+      ...sheets.map(() => fauxAssistantMessage([fauxToolCall('scene_preview_check', {})], { stopReason: 'toolUse' })),
+      context => {
+        previewImages = context.messages.flatMap(m => m.role === 'toolResult' ? m.content : []).filter(item => item.type === 'image').length;
+        return fauxAssistantMessage('检查完成');
+      },
+      fauxAssistantMessage('保留镜头要求和检查结果。'),
+      fauxAssistantMessage('保留镜头要求和检查结果。'),
+    ]);
+    const lines: string[] = [];
+    const req: director.Request = {
+      profile: 'renderer', workdir, prompt: '相同的测试资料 ' + '素材说明 '.repeat(60_000), compact_at,
+      agent_dir: path.join(tmp, 'agent'), service: { ...fauxService, vision: true },
+    };
+    expect(await runBuiltinAgent(req, line => lines.push(line), undefined, { spawner, setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
+    expect(previewImages).toBe(compact_at ? 1 : 4);
+    const report = JSON.parse(lines.at(-1)!);
+    expect(report.dropped_preview_images ?? 0).toBe(compact_at ? 3 : 0);
+  });
+
+  it('creates a renderer skeleton, rejects bulk writes and overwrites, then edits by anchor', async () => {
+    const faux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    const giant = 'x'.repeat(9000);
+    faux.setResponses([
+      context => {
+        expect(JSON.stringify(context)).toContain('先用 write 建立可运行的骨架');
+        return fauxAssistantMessage([
+          fauxToolCall('write', { path: 'giant.html', content: giant }),
+          fauxToolCall('write', { path: 'index.html', content: '<main><!-- content --></main>' }),
+        ], { stopReason: 'toolUse' });
+      },
+      fauxAssistantMessage([
+        fauxToolCall('write', { path: 'index.html', content: '<main>覆盖</main>' }),
+        fauxToolCall('edit', { path: 'index.html', edits: [{ oldText: '<!-- content -->', newText: giant }] }),
+      ], { stopReason: 'toolUse' }),
+      ...['甲', '乙'].map(label => fauxAssistantMessage([fauxToolCall('edit', {
+        path: 'index.html', edits: [{ oldText: '<!-- content -->', newText: `<section>${label.repeat(4500)}</section><!-- content -->` }],
+      })], { stopReason: 'toolUse' })),
+      fauxAssistantMessage('完成'),
+    ]);
+    const lines: string[] = [];
+    const req: director.Request = { profile: 'renderer', workdir: tmp, prompt: '实现镜头', agent_dir: path.join(tmp, 'agent'), service: fauxService };
+    expect(await runBuiltinAgent(req, l => lines.push(l), undefined, { setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
+    expect(fs.existsSync(path.join(tmp, 'giant.html'))).toBe(false);
+    expect(fs.readFileSync(path.join(tmp, 'index.html'), 'utf8')).toBe(
+      `<main><section>${'甲'.repeat(4500)}</section><section>${'乙'.repeat(4500)}</section><!-- content --></main>`,
+    );
+    const failed = parse(lines).events.filter(e => e.kind === 'tool-result' && e.is_error);
+    expect(failed.map(e => e.text)).toEqual([
+      expect.stringContaining('8192'),
+      expect.stringContaining('改用 edit'),
+      expect.stringContaining('8192'),
+    ]);
+  });
+
+  it('completes a missing argument brace before validation, permissions, execution and session persistence', async () => {
+    const content = '中文 "引号" 与 C:\\tmp\n第二行';
+    const broken = (name: string, raw: string) => ({ ...fauxToolCall(name, {}), ...parseToolCallArguments(raw) });
+    const faux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    faux.setResponses([
+      fauxAssistantMessage([
+        broken('write', JSON.stringify({ path: 'fixed.txt', content }).slice(0, -1)),
+        broken('write', '{"path":"truncated.txt","content":"unfinished'),
+        broken('write', '{"path":"schema.txt"'),
+        broken('read', '{"path":".env"'),
+      ], { stopReason: 'toolUse' }),
+      fauxAssistantMessage('完成'),
+    ]);
+    const lines: string[] = [];
+    const agentDir = path.join(tmp, 'agent');
+    const req: director.Request = { workdir: tmp, prompt: '写文件', agent_dir: agentDir, service: fauxService };
+    await runBuiltinAgent(req, l => lines.push(l), undefined, { setupModels: fauxSetup(faux), env: {} });
+    expect(fs.readFileSync(path.join(tmp, 'fixed.txt'), 'utf8')).toBe(content);
+    expect(fs.existsSync(path.join(tmp, 'truncated.txt'))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, 'schema.txt'))).toBe(false);
+    const results = parse(lines).events.filter(e => e.kind === 'tool-result');
+    expect(results.filter(e => e.is_error)).toHaveLength(3);
+    expect(results.some(e => e.text?.includes('.env 里是凭据'))).toBe(true);
+    expect(results.some(e => e.text?.includes('Invalid arguments for tool'))).toBe(true);
+    const sessions = fs.readdirSync(agentDir, { recursive: true }).map(String).filter(f => f.endsWith('.jsonl'));
+    const messages = fs.readFileSync(path.join(agentDir, sessions[0]!), 'utf8').trim().split('\n').map(l => JSON.parse(l).message);
+    const repaired = messages.find(m => m?.diagnostics?.some((d: { type: string }) => d.type === 'onset_tool_arguments_completed'));
+    expect(repaired.content[0].arguments).toEqual({ path: 'fixed.txt', content });
+    expect(repaired.content[0].argumentsError).toBeUndefined();
+    expect(repaired.diagnostics[0].error.message).toContain('Received arguments:');
+  });
+
+  it('keeps long argument errors out of model context and preserves full local diagnostics', async () => {
+    const tail = '正文尾部标记';
+    const large = '字'.repeat(12000) + tail;
+    const raw = '{"path":"bad.txt","content":"' + large;
+    const faux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    let toolResults: string[] = [];
+    faux.setResponses([
+      fauxAssistantMessage([
+        { ...fauxToolCall('write', {}), ...parseToolCallArguments(raw) },
+        fauxToolCall('write', { path: 'bad.txt', content: { body: large } }),
+      ], { stopReason: 'toolUse' }),
+      context => {
+        toolResults = context.messages.filter(m => m.role === 'toolResult').map(m => JSON.stringify(m.content));
+        return fauxAssistantMessage('未写入');
+      },
+    ]);
+    const lines: string[] = [];
+    const agentDir = path.join(tmp, 'agent');
+    const req: director.Request = { workdir: tmp, prompt: '写文件', agent_dir: agentDir, service: fauxService };
+    expect(await runBuiltinAgent(req, l => lines.push(l), undefined, { setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
+    expect(toolResults).toHaveLength(2);
+    expect(toolResults[0]).toContain('Unterminated string');
+    expect(toolResults[1]).toContain('content: expected string');
+    for (const result of toolResults) {
+      expect(result).not.toContain(tail);
+      expect(result.length).toBeLessThan(4300);
+    }
+    const results = parse(lines).events.filter(e => e.kind === 'tool-result');
+    expect(results.every(e => e.is_error && (e.text?.length ?? Infinity) <= 4096)).toBe(true);
+    const diagnostics = path.join(agentDir, 'tool-errors');
+    const logs = fs.readdirSync(diagnostics).map(file => fs.readFileSync(path.join(diagnostics, file), 'utf8'));
+    expect(logs).toHaveLength(2);
+    expect(logs.every(log => log.includes(tail))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, 'bad.txt'))).toBe(false);
+
+    const sessionId = parse(lines).session;
+    const sessions = fs.readdirSync(agentDir, { recursive: true }).map(String).filter(file => file.endsWith('.jsonl'));
+    const sessionFile = path.join(agentDir, sessions[0]!);
+    const oldRecords = fs.readFileSync(sessionFile, 'utf8').trimEnd().split('\n').map(line => JSON.parse(line));
+    const oldResult = oldRecords.find(record => record.message?.role === 'toolResult');
+    oldResult.message.content = [{ type: 'text', text: '旧版参数错误：' + large }];
+    fs.writeFileSync(sessionFile, oldRecords.map(record => JSON.stringify(record)).join('\n') + '\n');
+    faux.setResponses([context => {
+      toolResults = context.messages.filter(m => m.role === 'toolResult').map(m => JSON.stringify(m.content));
+      return fauxAssistantMessage('已续接');
+    }]);
+    const resumed = await runBuiltinAgent({ ...req, resume: true, session_id: sessionId }, () => {}, undefined, { setupModels: fauxSetup(faux), env: {} });
+    expect(resumed).toEqual({ ok: true });
+    expect(toolResults[0]).toContain('旧版参数错误');
+    expect(toolResults[0]?.includes(tail)).toBe(false);
+    expect(fs.readFileSync(sessionFile, 'utf8')).toContain('旧版参数错误：' + large);
+  });
+
+  it('reports an omitted image as a failed read instead of encouraging scripted visual inspection', async () => {
+    // 有 PNG/IHDR 标记但没有像素数据：能识别格式，解码必然失败。
+    fs.writeFileSync(path.join(tmp, 'broken.png'), Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'));
+    fs.writeFileSync(path.join(tmp, 'notes.txt'), '[Image omitted: this is ordinary text.]');
+    const faux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    faux.setResponses([
+      fauxAssistantMessage([
+        fauxToolCall('read', { path: 'broken.png' }),
+        fauxToolCall('read', { path: 'notes.txt' }),
+      ], { stopReason: 'toolUse' }),
+      fauxAssistantMessage('无法完成视觉验收'),
+    ]);
+    const lines: string[] = [];
+    const req: director.Request = { workdir: tmp, profile: 'renderer', prompt: '检查图片', agent_dir: path.join(tmp, 'agent'), service: fauxService };
+    await runBuiltinAgent(req, l => lines.push(l), undefined, { setupModels: fauxSetup(faux), env: {} });
+    const results = parse(lines).events.filter(e => e.kind === 'tool-result');
+    const image = results.find(e => e.text?.includes('Read image file'));
+    expect(image?.is_error).toBe(true);
+    expect(image?.text).toContain('没有收到图片');
+    expect(image?.text).toContain('不要用 Python');
+    expect(image?.text).toContain('Image omitted:');
+    const notes = results.find(e => e.text === '[Image omitted: this is ordinary text.]');
+    expect(notes).toBeDefined();
+    expect(notes?.is_error === true).toBe(false);
+  });
+
   it('never reads services from the agent dir: a service file there without one in the request is ignored', async () => {
     const agentDir = path.join(tmp, 'agent');
     director.saveService(agentDir, { name: 'd', protocol: 'openai', base_url: 'https://api.deepseek.com', model: 'deepseek-v4-pro', vision: false, key: 'sk-on-disk' });
     const req: director.Request = { workdir: tmp, prompt: 'x', agent_dir: agentDir };
     await expect(runBuiltinAgent(req, () => {}, undefined, { env: {} })).rejects.toThrow(director.NoServiceMessage);
+  });
+
+  it('truncates oversized successful bash output and archives full content locally', async () => {
+    const headMark = 'HEAD_MARK_START';
+    const tailMark = 'TAIL_MARK_END';
+    const script = `process.stdout.write(${JSON.stringify(headMark)} + 'A'.repeat(10000) + ${JSON.stringify(tailMark)})`;
+    const faux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    let seenBashResult = '';
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall('bash', { command: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}` })], { stopReason: 'toolUse' }),
+      context => {
+        const res = context.messages.find(m => m.role === 'toolResult' && m.toolName === 'bash');
+        seenBashResult = res && res.role === 'toolResult'
+          ? res.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('\n')
+          : '';
+        return fauxAssistantMessage('已收到截短输出');
+      },
+    ]);
+    const agentDir = path.join(tmp, 'agent');
+    const bashLines: string[] = [];
+    const req: director.Request = { workdir: tmp, prompt: '跑命令', unsafe: true, agent_dir: agentDir, service: fauxService };
+    expect(await runBuiltinAgent(req, line => bashLines.push(line), undefined, { setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
+    const bashSessionID = bashLines.map(l => JSON.parse(l) as { type?: string; session_id?: string }).find(e => e.type === 'system')?.session_id ?? '';
+    expect(bashSessionID).not.toBe('');
+    expect(seenBashResult.length).toBeLessThanOrEqual(4096);
+    expect(seenBashResult).toContain(headMark);
+    expect(seenBashResult).toContain(tailMark);
+    expect(seenBashResult).toContain('输出过长');
+    const archivedPath = /完整输出保存在：(\S+)/.exec(seenBashResult)?.[1] ?? '';
+    expect(archivedPath).not.toBe('');
+    expect(archivedPath.startsWith(agentDir)).toBe(false);
+    expect(fs.readFileSync(archivedPath, 'utf8')).toContain('A'.repeat(10000));
+    // 安全模式下续接同一会话时允许只读访问归档的长输出文件，同时继续禁止访问 agentDir 凭据目录。
+    const safeFaux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    let readArchiveResult = '';
+    let readArchiveIsError: boolean | undefined;
+    const safeReadCall = fauxToolCall('read', { path: archivedPath });
+    safeFaux.setResponses([
+      fauxAssistantMessage([safeReadCall], { stopReason: 'toolUse' }),
+      context => {
+        const res = context.messages.find(m => m.role === 'toolResult' && m.toolCallId === safeReadCall.id);
+        readArchiveIsError = res && res.role === 'toolResult' ? res.isError : undefined;
+        readArchiveResult = res && res.role === 'toolResult'
+          ? res.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('\n')
+          : '';
+        return fauxAssistantMessage('安全模式已读到中段');
+      },
+    ]);
+    const safeReq: director.Request = { workdir: tmp, prompt: '读归档', unsafe: false, resume: true, session_id: bashSessionID, agent_dir: agentDir, service: fauxService };
+    expect(await runBuiltinAgent(safeReq, () => {}, undefined, { setupModels: fauxSetup(safeFaux), env: {} })).toEqual({ ok: true });
+    expect(readArchiveIsError).not.toBe(true);
+    expect(readArchiveResult).toContain(headMark);
+
+    // 超长 onset 工具输出（> 8000 字符）经 Jobs.wait 的 clip 归档到真实会话目录：
+    // 首次不传 session_id，取得返回的真实会话 ID 后，即使项目目录已移动，续接同一会话在安全模式下仍可读取原归档，而新会话被拒绝。
+    const longOpHead = 'LONG_ONSET_OP_HEAD_MARKER';
+    const longOpBody = longOpHead + 'B'.repeat(9500) + 'TAIL_END';
+    const workerPayload = JSON.stringify({ ok: true, exit_code: 0 });
+    const longSpawner = () => spawn(
+      process.execPath,
+      ['-e', `process.stdout.write(${JSON.stringify(longOpBody + '\n' + opworker.ResultMarker + workerPayload + '\n')})`],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    const projectOrig = path.join(tmp, 'proj-orig');
+    const projectMoved = path.join(tmp, 'proj-moved');
+    fs.mkdirSync(projectOrig, { recursive: true });
+    const opFaux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    let opClipArchive = '';
+    let opArchiveRead = '';
+    opFaux.setResponses([
+      fauxAssistantMessage([fauxToolCall('beat_bars', {})], { stopReason: 'toolUse' }),
+      context => {
+        const res = context.messages.find(m => m.role === 'toolResult' && m.toolName === 'beat_bars');
+        const txt = res && res.role === 'toolResult' ? res.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('\n') : '';
+        opClipArchive = /完整输出：([^\]]+)\]/.exec(txt)?.[1] ?? '';
+        return fauxAssistantMessage([fauxToolCall('read', { path: opClipArchive })], { stopReason: 'toolUse' });
+      },
+      context => {
+        const res = context.messages.find(m => m.role === 'toolResult' && m.toolName === 'read');
+        opArchiveRead = res && res.role === 'toolResult' ? res.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('\n') : '';
+        return fauxAssistantMessage('已读取超长 onset 输出');
+      },
+    ]);
+    const initLines: string[] = [];
+    const opReq: director.Request = { workdir: projectOrig, prompt: '查配置', unsafe: false, agent_dir: agentDir, service: fauxService };
+    expect(await runBuiltinAgent(opReq, line => initLines.push(line), undefined, { spawner: longSpawner, setupModels: fauxSetup(opFaux), env: {} })).toEqual({ ok: true });
+    const createdSessionID = initLines.map(l => JSON.parse(l) as { type?: string; session_id?: string }).find(e => e.type === 'system')?.session_id ?? '';
+    expect(createdSessionID).not.toBe('');
+    expect(opClipArchive).toContain('session-');
+    expect(opArchiveRead).toContain(longOpHead);
+
+    // 移动项目目录后，按真实会话 ID 续接仍可读取原归档；另开新会话则被安全模式拒绝。
+    fs.renameSync(projectOrig, projectMoved);
+    const sameSessFaux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    let resumedRead = '';
+    let resumedReadIsError: boolean | undefined;
+    const resumedReadCall = fauxToolCall('read', { path: opClipArchive });
+    sameSessFaux.setResponses([
+      fauxAssistantMessage([resumedReadCall], { stopReason: 'toolUse' }),
+      context => {
+        const res = context.messages.find(m => m.role === 'toolResult' && m.toolCallId === resumedReadCall.id);
+        resumedReadIsError = res && res.role === 'toolResult' ? res.isError : undefined;
+        resumedRead = res && res.role === 'toolResult' ? res.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('\n') : '';
+        return fauxAssistantMessage('移动目录续接可读');
+      },
+    ]);
+    expect(await runBuiltinAgent({ workdir: projectMoved, prompt: '续读', unsafe: false, resume: true, session_id: createdSessionID, agent_dir: agentDir, service: fauxService }, () => {}, undefined, { setupModels: fauxSetup(sameSessFaux), env: {} })).toEqual({ ok: true });
+    expect(resumedReadIsError).not.toBe(true);
+    expect(resumedRead).toContain(longOpHead);
+
+    const otherSessFaux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    let otherDenied = '';
+    otherSessFaux.setResponses([
+      fauxAssistantMessage([fauxToolCall('read', { path: opClipArchive })], { stopReason: 'toolUse' }),
+      context => {
+        const res = context.messages.find(m => m.role === 'toolResult' && m.toolName === 'read');
+        otherDenied = res && res.role === 'toolResult' ? res.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('\n') : '';
+        return fauxAssistantMessage('跨会话被拒');
+      },
+    ]);
+    expect(await runBuiltinAgent({ workdir: projectMoved, prompt: '跨会话读', unsafe: false, agent_dir: agentDir, service: fauxService }, () => {}, undefined, { setupModels: fauxSetup(otherSessFaux), env: {} })).toEqual({ ok: true });
+    expect(otherDenied).toContain('安全模式下不允许');
+  });
+
+  it('attaches single-frame detail images returned by scene_preview_check inline', async () => {
+    const detail = path.join(tmp, '.onset', 'preview-demo', 'detail-f15-0-0-2-2.png');
+    fs.mkdirSync(path.dirname(detail), { recursive: true });
+    fs.writeFileSync(detail, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAEElEQVR4nGP8wwACLGCSAQANBAECv1AVswAAAABJRU5ErkJggg==', 'base64'));
+    const worker = JSON.stringify({ ok: true, exit_code: 0, data: { sheet: detail, detail, zoom_frame: 15, frames: [15] } });
+    const spawner = () => spawn(process.execPath, ['-e', 'process.stdout.write(' + JSON.stringify('细节图通过\n' + opworker.ResultMarker + worker + '\n') + ')'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const faux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    let seenImages = 0;
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall('scene_preview_check', { zoom_frame: '15', crop: '0,0,2,2' })], { stopReason: 'toolUse' }),
+      context => {
+        for (const m of context.messages) if (m.role === 'toolResult') {
+          seenImages += m.content.filter(item => item.type === 'image').length;
+        }
+        return fauxAssistantMessage('细节图已看清');
+      },
+    ]);
+    const req: director.Request = { profile: 'renderer', workdir: tmp, prompt: '查细节', agent_dir: path.join(tmp, 'agent'), service: { ...fauxService, vision: true } };
+    expect(await runBuiltinAgent(req, () => {}, undefined, { spawner, setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
+    expect(seenImages).toBe(1);
+  });
+
+  it('compacts older inspection images in orchestrator sessions when compact_at is set', async () => {
+    const workdir = path.join(tmp, 'proj');
+    fs.mkdirSync(workdir, { recursive: true });
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAEElEQVR4nGP8wwACLGCSAQANBAECv1AVswAAAABJRU5ErkJggg==', 'base64');
+    const files = Array.from({ length: 4 }, (_, i) => {
+      const f = path.join(workdir, `qc-${i}.png`);
+      fs.writeFileSync(f, png);
+      return `qc-${i}.png`;
+    });
+    let remainingImages = 0;
+    const faux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    faux.setResponses([
+      ...files.map(file => fauxAssistantMessage([fauxToolCall('read', { path: file })], { stopReason: 'toolUse' })),
+      context => {
+        remainingImages = context.messages.flatMap(m => m.role === 'toolResult' ? m.content : []).filter(item => item.type === 'image').length;
+        return fauxAssistantMessage('整片检查完成');
+      },
+      fauxAssistantMessage('保留项目状态和检查结果。'),
+    ]);
+    const lines: string[] = [];
+    const req: director.Request = {
+      workdir, prompt: '编排检查 ' + '项目说明 '.repeat(60_000), compact_at: 64_000,
+      agent_dir: path.join(tmp, 'agent'), service: { ...fauxService, vision: true },
+    };
+    expect(await runBuiltinAgent(req, l => lines.push(l), undefined, { setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
+    expect(remainingImages).toBe(1);
+    const report = JSON.parse(lines.at(-1)!);
+    expect(report.dropped_preview_images).toBe(3);
+  });
+
+  it('normalizes renderer system prompt cwd so different scene directories share identical prefixes', async () => {
+    const dirA = path.join(tmp, 'scenes', 'scene-001');
+    const dirB = path.join(tmp, 'scenes', 'scene-002');
+    fs.mkdirSync(dirA, { recursive: true });
+    fs.mkdirSync(dirB, { recursive: true });
+    const captured: string[] = [];
+    for (const dir of [dirA, dirB]) {
+      const faux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+      faux.setResponses([context => {
+        const sys = context.messages.find((m) => m.role === 'system') as { content?: string; toolsAdded?: unknown } | undefined;
+        captured.push(JSON.stringify({ content: sys?.content ?? '', toolsAdded: sys?.toolsAdded ?? [] }));
+        return fauxAssistantMessage('ok');
+      }]);
+      const req: director.Request = { profile: 'renderer', workdir: dir, prompt: '渲染', agent_dir: path.join(tmp, 'agent'), cache_key: 'onset-render-demo', service: fauxService };
+      expect(await runBuiltinAgent(req, () => {}, undefined, { setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
+    }
+    expect(captured).toHaveLength(2);
+    expect(captured[0]).toBe(captured[1]);
+    expect(captured[0]).toContain('<cwd>.</cwd>');
+    expect(captured[0]).not.toContain('scene-001');
+    expect(captured[1]).not.toContain('scene-002');
   });
 });

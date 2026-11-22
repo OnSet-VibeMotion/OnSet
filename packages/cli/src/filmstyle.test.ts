@@ -118,4 +118,16 @@ describe('onset film-style', () => {
     expect(removed.err, removed.out).toBeNull();
     expect(removed.out).toContain('已去掉默认风格 像素 pixel');
   });
+
+  it('supports compact catalog and query filtering on film_style_list', async () => {
+    const root = project();
+    const compact = await onset(root, 'list', '--compact');
+    expect(compact.err).toBeNull();
+    expect(compact.out).toContain('fake/ink | 水墨');
+    expect(compact.out).toContain('fake/oil | 油画');
+    const filtered = await onset(root, 'list', '--compact', '--query', '水墨');
+    expect(filtered.err).toBeNull();
+    expect(filtered.out).toContain('fake/ink | 水墨');
+    expect(filtered.out).not.toContain('fake/oil');
+  });
 });

@@ -328,6 +328,8 @@ export class Parser {
   private readonly backgroundTasks = new BackgroundTasks();
   private readonly compaction = new CompactionStatus();
   private readonly mcodeCalls = new Set<string>();
+  private readonly agyCalls = new Set<string>();
+  private readonly agyText = new Map<number, string>();
 
   /** 不校验工具名；外部一律经 newParser 创建。 */
   constructor(readonly tool: string) {}
@@ -377,6 +379,9 @@ export class Parser {
         break;
       case 'mcode':
         events = parseMcode(e, this.mcodeCalls);
+        break;
+      case 'agy':
+        events = parseAgy(e, this.agyText, this.agyCalls);
         break;
       default:
         events = parseClaudeLike(e, this.tasks);
@@ -675,6 +680,78 @@ function parseMcode(e: Obj, emitted: Set<string>): Event[] {
     case 'error':
       events.push({ kind: KindError, text: str(e.message) || str(obj(e.error).message) });
       break;
+  }
+  return events;
+}
+
+/** 把 Antigravity CLI 的 MCP 工具名规范成全仓库统一的 mcp__<服务>__<工具> 写法。 */
+export function normalizeAgyTool(name: string, input: unknown): { tool: string; input: unknown } {
+  if (name === 'call_mcp_tool') {
+    const o = obj(input);
+    const server = str(o.ServerName);
+    const toolName = str(o.ToolName);
+    if (server !== '' && toolName !== '') return { tool: `mcp__${server}__${toolName}`, input: o.Arguments ?? {} };
+  }
+  const eager = /^mcp_onset_(.+)$/.exec(name);
+  if (eager) return { tool: `mcp__onset__${eager[1]}`, input };
+  return { tool: name, input };
+}
+
+/**
+ * 处理 Antigravity CLI（`agy --output-format stream-json`，v1.5.13 实测）：
+ * 每行以 `event` 区分：`init`、`step_update`、`result`。
+ * `agent_response` 的 `text_delta` 按 `step_index` 分块推送，攒到 `state === "DONE"` 发一条完整正文；
+ * 工具调用在 `ACTIVE` / `DONE` 时发 `KindToolCall`（按 step 去重），`DONE` 时发 `KindToolResult`。
+ */
+function parseAgy(e: Obj, textBuf: Map<number, string>, emittedCalls: Set<string>): Event[] {
+  const events: Event[] = [];
+  const su = obj(e.step_update);
+  const res = obj(e.result);
+  const id = str(e.conversation_id) || str(su.conversation_id) || str(res.conversation_id);
+  if (id !== '') events.push({ kind: KindSession, session_id: id });
+  switch (str(e.event)) {
+    case 'step_update': {
+      const idx = typeof su.step_index === 'number' ? su.step_index : -1;
+      const state = str(su.state);
+      const stepType = str(su.step_type);
+      if (stepType === 'agent_response') {
+        const delta = str(su.text_delta);
+        const key = idx >= 0 ? idx : 0;
+        if (delta !== '') textBuf.set(key, (textBuf.get(key) ?? '') + delta);
+        if (state === 'DONE') {
+          const text = textBuf.get(key) ?? '';
+          textBuf.delete(key);
+          if (text !== '') events.push({ kind: KindText, text });
+        }
+      } else if (stepType === 'thinking' || stepType === 'reasoning') {
+        const text = str(su.text_delta) || str(su.text);
+        if (state === 'DONE' && text !== '') events.push({ kind: KindThinking, text });
+      } else if (stepType === 'tool') {
+        const info = obj(su.tool_info);
+        const callID = idx >= 0 ? `step-${idx}` : str(info.id) || 'tool';
+        const rawName = str(info.name) || str(su.tool_name) || 'tool';
+        const { tool, input } = normalizeAgyTool(rawName, info.parameters);
+        if (!emittedCalls.has(callID)) {
+          emittedCalls.add(callID);
+          events.push({ kind: KindToolCall, tool, call_id: callID, input: rawJSON(input) });
+        }
+        if (state === 'DONE') {
+          const err = obj(info.error);
+          const failed = Object.keys(err).length > 0;
+          const text = str(info.output) || str(err.message) || str(err.type);
+          events.push({ kind: KindToolResult, tool, call_id: callID, text: clip(text), ...(failed ? { is_error: true } : {}) });
+        }
+      }
+      break;
+    }
+    case 'result': {
+      const status = str(res.status);
+      if (status !== '' && status !== 'SUCCESS') {
+        const text = str(res.error) || `Antigravity 这一轮没有完成（${status}）`;
+        events.push({ kind: KindError, text });
+      }
+      break;
+    }
   }
   return events;
 }

@@ -137,6 +137,8 @@ export const rendererSkillDirs: ReadonlyMap<string, SkillLocations> = new Map([
   ['opencode', { home: '.config/opencode/skills', project: '.opencode/skills' }],
   // mcode 0.6.12 实测：项目里认 .agents/skills、.minimax/skills、.claude/skills，并一直往上找到 git 根；家目录是数据目录 ~/.minimax/skills。
   ['mcode', { home: '.minimax/skills', project: '.minimax/skills' }],
+  // Antigravity CLI（agy）认项目级 .agents/skills 与 .agent/skills，家目录技能在 ~/.gemini/skills；链进 .agent/skills 避开镜头目录里的 .agents/mcp_config.json。
+  ['agy', { home: '.gemini/skills', project: '.agent/skills' }],
 ]);
 
 /** 校验候选目录里确实装了指定技能，并且必需文件全部存在。 */
@@ -443,17 +445,124 @@ export function filmStyleSection(skillsDir: string, hasLook: boolean): string {
   );
 }
 
+/** v6 内联进跨镜头公共前缀的默认整片风格 STYLE.md 摘要上限（字符），省去每镜重复读 20KB+ 风格文档。 */
+const styleInlineLimit = 3200;
+/** v7 去掉声音/配乐段落后的内联上限（字符），完整覆盖绝大多数 STYLE.md 的视觉规范，杜绝渲染器再去通读 STYLE.md / DEMO.md / demo/。 */
+const styleInlineLimitV7 = 8500;
+
+/** 去掉 STYLE.md 里仅与声音、配乐、音效有关的二级章节（单镜产物恒为静音无音轨）。 */
+export function stripSoundSections(md: string): string {
+  const lines = md.split('\n');
+  const out: string[] = [];
+  let skipping = false;
+  for (const line of lines) {
+    if (/^##\s+/.test(line)) {
+      skipping = /^##\s+.*(?:\b(?:sound|audio|music)\b|声音|配乐|音效)/i.test(line);
+    }
+    if (!skipping) out.push(line);
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * v6/v7 整片风格段：把默认风格的 STYLE.md 核心内容直接内联进跨镜头静态前缀（同项目所有镜头共享一份前缀缓存），
+ * 减少每镜 1–2 轮 read(SKILL.md) + read(STYLE.md)；v7 去掉声音段并放宽上限，同时明确禁止通读 DEMO.md / demo/ / SKILL.md 全文。
+ */
+export function filmStyleBriefSection(skillsDir: string, hasLook: boolean, v7 = false): string {
+  const dir = filmStyleDir(skillsDir);
+  if (dir === '') return filmStyleSection(skillsDir, hasLook);
+  let palette = '配色按下列 STYLE.md 规范为本镜头选定';
+  if (hasLook) palette = '配色遵守下文「全片配色」（在 STYLE.md 的配色逻辑里只用这几种颜色）';
+  let inline = '';
+  let truncated = false;
+  try {
+    const raw = fs.readFileSync(path.join(dir, filmstyle.StyleFile), 'utf8').trim();
+    if (raw !== '') {
+      const prepared = v7 ? stripSoundSections(raw) : raw;
+      const limit = v7 ? styleInlineLimitV7 : styleInlineLimit;
+      truncated = prepared.length > limit;
+      const clipped = truncated
+        ? prepared.slice(0, limit).trimEnd() + '\n…（后文已省略，需查细节时按需读取 STYLE.md）'
+        : prepared;
+      inline = `\n<onset-film-style-brief>\n${clipped}\n</onset-film-style-brief>\n`;
+    }
+  } catch {
+    // 读不到时退回按目录读取。
+  }
+  if (v7) {
+    const fullInline = inline !== '' && !truncated;
+    const styleLead = fullInline
+      ? `- 下方已内联该风格 ${filmstyle.StyleFile} 的完整视觉规范（已略去与无音轨镜头无关的声音条款），直接按此设计实现；${palette}。\n` +
+        `- 禁止通读该目录的 ${filmstyle.GuideFile}、${filmstyle.StyleFile}、DEMO.md 或 demo/ 源码全文（共享的 core/ 已链接到本镜头目录，直接引用）；只有确实需要复用某个特定引擎函数时，才按需定位读取对应片段并拷入本镜头目录。\n`
+      : inline !== ''
+        ? `- 下方已内联该风格 ${filmstyle.StyleFile} 的前段视觉规范（已略去声音条款，后文有截断）；${palette}。如需查阅被截断的视觉规范，可按需读取 ${filmstyle.StyleFile} 的剩余小节。\n` +
+          `- 禁止通读该目录的 ${filmstyle.GuideFile}、DEMO.md 或 demo/ 源码全文（共享的 core/ 已链接到本镜头目录，直接引用）；只有确实需要复用某个特定引擎函数时，才按需定位读取对应片段并拷入本镜头目录。\n`
+        : `- 未能预读 ${filmstyle.StyleFile}，请先按需读取该目录的 ${filmstyle.StyleFile}（跳过声音条款）；${palette}。禁止通读 DEMO.md 或 demo/ 源码全文。\n`;
+    return (
+      '\n整片风格（强制）：本片所有镜头画成同一种风格，本机该技能目录为：\n    ' +
+      dir +
+      '\n' +
+      styleLead +
+      '- 画什么只取本镜头的说明、字幕与素材，不照搬风格自带示例的文案与故事；不得引用镜头目录之外的路径；声音与配乐条款无效（产物静音无音轨）。\n' +
+      inline
+    );
+  }
+  return (
+    '\n整片风格（强制）：本片所有镜头画成同一种风格，本机该技能目录为：\n    ' +
+    dir +
+    '\n' +
+    '- 下方已内联该风格 STYLE.md 核心规范，可直接按此设计实现；仅在需要风格专用引擎或示例技法时，按需查阅该目录的 ' +
+    filmstyle.GuideFile +
+    ' 或完整 ' +
+    filmstyle.StyleFile +
+    '。' +
+    palette +
+    '。\n' +
+    '- 画什么只取本镜头的说明、字幕与素材，不照搬风格自带示例的文案与故事；不得引用镜头目录之外的路径；声音与配乐条款无效（产物静音无音轨）。\n' +
+    inline
+  );
+}
+
 /**
  * 为所有已注册技能生成提示词片段。
  * 已解析的技能注入本机路径；未解析的退回按技能名引用。
+ * v6：把重型可选技能（character-rig / text-to-lottie / algorithmic-art）从默认前缀收窄为极简按需提示，
+ * 不暴露目录路径以免 stagedSkills 把未用到的技能全部软链进每一个简单镜头；真需要时由 optionalSkillTail 在单镜动态段补入路径。
  */
-export function skillPromptSections(resolved: Record<string, string>, skills: readonly SkillDescriptor[], engineRenders = false): string {
+const optionalV6Skills: ReadonlySet<string> = new Set(['character-rig', 'text-to-lottie', 'algorithmic-art']);
+
+export function skillPromptSections(resolved: Record<string, string>, skills: readonly SkillDescriptor[], engineRenders = false, directorBrief = false, v5 = false, v6 = false): string {
   let sections = '';
   for (const desc of skills) {
-    if (engineRenders && desc.name === HyperFramesCLISkillName) sections += hyperFramesCLIPrompt(resolved[desc.name] ?? '', true);
-    else if (desc.promptSection) sections += desc.promptSection(resolved[desc.name] ?? '');
+    if (v6 && optionalV6Skills.has(desc.name)) continue;
+    const dir = resolved[desc.name] ?? '';
+    if (directorBrief && desc.name === HyperFramesSkillName) sections += hyperFramesPrompt(dir, true);
+    else if (directorBrief && desc.name === SceneKitSkillName) sections += sceneKitPrompt(dir, true);
+    else if (engineRenders && desc.name === HyperFramesCLISkillName) sections += hyperFramesCLIPrompt(dir, true, v5);
+    else if (desc.promptSection) sections += desc.promptSection(dir);
+  }
+  if (v6) {
+    sections +=
+      '可选视觉技能（按需）：默认用纯 HTML/CSS/SVG/GSAP 实现，不加载未用到的技能；' +
+      '默认不用 Lottie（文字、数字、图表、转场严禁用 Lottie）；仅当本镜任务书或扩展块明确要求角色、Lottie 或算法艺术时，按文末给出的技能路径按需读取。\n';
   }
   return sections;
+}
+
+/** v6 单镜动态尾段：仅当本镜头确实需要某项重型可选技能时才注入它的完整段落与路径（并触发 stagedSkills 挂载）。 */
+export function optionalSkillTail(resolved: Record<string, string>, skills: readonly SkillDescriptor[], hasCast: boolean, body: string): string {
+  const lower = body.toLowerCase();
+  const wanted = new Set<string>();
+  if (hasCast) wanted.add('character-rig');
+  if (/\blottie\b/.test(lower)) wanted.add('text-to-lottie');
+  if (/\balgorithmic[- ]?art\b|生成式艺术|算法艺术|oklab/.test(lower)) wanted.add('algorithmic-art');
+  if (wanted.size === 0) return '';
+  let out = '';
+  for (const desc of skills) {
+    if (!wanted.has(desc.name) || !desc.promptSection) continue;
+    out += '\n' + desc.promptSection(resolved[desc.name] ?? '');
+  }
+  return out;
 }
 
 /**
@@ -487,11 +596,20 @@ export function hyperFramesCommand(): string {
  * 这里只要求每个动效说得出理由。环境动效不设项目级配额；只要不影响阅读和确定性，
  * 就由镜头根据文案决定，语义元素仍应在到位后稳定停留。
  */
-export function hyperFramesPrompt(skillsDir: string): string {
+export function hyperFramesPrompt(skillsDir: string, brief = false): string {
   const files = `SKILL.md 的 Contract 一节、${hyperFramesFormatFile} 与 ${hyperFramesMotionFile}；用到 GSAP 以外的运行时（Lottie、Three.js、canvas 等）再读 ${hyperFramesRuntimesFile}`;
   let reference = `- 写组合 HTML 前必须读 ${HyperFramesSkillName} 技能的 ${files}。\n` + '  （本机未能定位该技能目录，请使用你自身的技能加载机制载入。）\n';
   if (skillsDir !== '') {
     reference = `- 写组合 HTML 前必须读 ${HyperFramesSkillName} 技能的 ${files}。本机该技能目录为：\n    ${path.join(skillsDir, HyperFramesSkillName)}\n`;
+  }
+  if (brief) {
+    const location = skillsDir ? `（${path.join(skillsDir, HyperFramesSkillName)}）` : '';
+    reference =
+      '- 开工摘要已经给出常用组合契约，可以直接实现；遇到特殊运行时、子组合、媒体或格式疑问，再查技能 ' +
+      `${HyperFramesSkillName}${location} 的 Contract、${hyperFramesFormatFile}、${hyperFramesMotionFile} 或 ${hyperFramesRuntimesFile} 对应小节。\n` +
+      '- index.html 的根节点声明 data-composition-id、data-start="0"、data-duration、data-width、data-height，画幅和时长取上文。整个合成建好后注册一个暂停的 GSAP 时间线到 window.__timelines[合成 ID]。\n' +
+      '- 有时间区间的元素用 class="clip"、data-start 和 data-duration（本组合内的秒），显示区间左闭右开。data-track-index 只表示轨道，靠 z-index 排叠层。入退场动画放在 clip 的子层，不对 clip 本身 tween display、visibility 或 autoAlpha。\n' +
+      '- 动画任意帧都可独立求值，GSAP 控制的元素避免同时写 CSS transform，画面状态以帧号驱动。媒体只用相对资产路径，视频静音并由时间线控制。背景用全幅子层。\n';
   }
   return (
     '组合规范（强制）：\n' +
@@ -539,7 +657,7 @@ export function hyperFramesPrompt(skillsDir: string): string {
  * timeline 只放行读取：它的 move / trim / split 等子命令会改写组合文件，
  * 与「时长由 scene.json 决定」的契约冲突。
  */
-export function hyperFramesCLIPrompt(skillsDir: string, engineRenders = false): string {
+export function hyperFramesCLIPrompt(skillsDir: string, engineRenders = false, v5 = false): string {
   let reference = `- CLI 的命令与排错方式见 ${HyperFramesCLISkillName} 技能。\n` + '  （本机未能定位该技能目录，请使用你自身的技能加载机制载入。）\n';
   if (skillsDir !== '') {
     reference = `- CLI 的命令与排错方式见 ${HyperFramesCLISkillName} 技能。本机该技能目录为：\n    ${path.join(skillsDir, HyperFramesCLISkillName)}\n`;
@@ -547,7 +665,9 @@ export function hyperFramesCLIPrompt(skillsDir: string, engineRenders = false): 
   return (
     '渲染命令（强制）：\n' +
     reference +
-    (engineRenders
+    (v5
+      ? '- 检查与视觉验收一律优先用 `scene_preview_check`（支持 `frames` 拼联系表，也支持 `zoom_frame` / `crop` 查单帧原分辨率或局部细节，内置缓存并直接回图）；不要单独重复调用 `hyperframes` 的 `lint`、`check`、`snapshot`。仅在查文档或排查组合元数据时用 `hyperframes` 工具（`subcommand` 填子命令，其他参数放进 `args`）。正式渲染由片场执行。'
+      : engineRenders
       ? '- 首轮检查用 scene_preview_check。按需补查时用 `hyperframes` 工具，`subcommand` 填子命令，其他参数放进 `args`。正式渲染由片场执行。'
       : '- HyperFrames CLI 只经 onset 工具服务里的 `hyperframes` 工具调用：`subcommand` 填子命令，其余参数照命令行写法放进 `args`。' +
         '例如检查是 `{"subcommand": "lint"}`、`{"subcommand": "check", "args": ["--json"]}`，渲染是 `{"subcommand": "render"}`。') +
@@ -558,7 +678,9 @@ export function hyperFramesCLIPrompt(skillsDir: string, engineRenders = false): 
     (engineRenders
       ? '- 预览任务返回任务号时，用 `job_wait` 等结果，无需重复请求。\n'
       : '- 渲染要几分钟：工具最多等 `wait_seconds` 秒（缺省 50），没跑完会返回任务号，用 `job_wait` 接着等到完成；不要重复发起同一次渲染。\n') +
-    (engineRenders
+    (v5
+      ? '- 仅在需要查文档或元数据时用本机只读命令：docs、inspect、validate、keyframes、只读的 timeline --json、compositions、info。'
+      : engineRenders
       ? '- 需要单项补查时只用本机命令：lint、check、validate、inspect、snapshot、keyframes、只读的 timeline --json、compositions、info、docs。'
       : '- 只放行本机渲染与检查：lint、check、validate、inspect、snapshot、keyframes、render、只读的 timeline --json、compositions、info、docs。') +
     'snapshot 会自动带上 --describe false（不把画面发给外部视觉服务），本镜头的自查由你自己看图完成。\n' +
@@ -578,18 +700,22 @@ export function hyperFramesCLIPrompt(skillsDir: string, engineRenders = false): 
  * 复制义务与 character-rig 同理：渲染只服务镜头目录内的文件，引用镜头目录外的
  * 路径会静默 404，字幕不出现、渲染照样退出码 0。
  */
-export function sceneKitPrompt(skillsDir: string): string {
+export function sceneKitPrompt(skillsDir: string, brief = false): string {
   let reference =
     `- 加载 ${SceneKitSkillName} 技能，用法以其中的 ${skillManifestFile} 为准。\n` + '  （本机未能定位该技能目录，请使用你自身的技能加载机制载入。）\n';
   if (skillsDir !== '') {
     reference = `- 加载 ${SceneKitSkillName} 技能，用法以其中的 ${skillManifestFile} 为准。本机该技能目录为：\n    ${path.join(skillsDir, SceneKitSkillName)}\n`;
   }
+  if (brief) {
+    const location = skillsDir ? path.join(skillsDir, SceneKitSkillName, skillManifestFile) : `${SceneKitSkillName}/${skillManifestFile}`;
+    reference = `- 直接用 SceneKit.attach(timeline, render) 把按帧更新接到暂停时间线上。SceneKit.progress(frame, start, end) 返回 0–1，SceneKit.ease(name) 取得缓动函数。需要其他接口时查 ${location}。\n`;
+  }
   return (
     '镜头工具库（强制）：\n' +
     reference +
-    '- 用到它时把技能目录里的 ' +
+    (brief ? '- 优先引用镜头目录里已准备好的 ' : '- 用到它时把技能目录里的 ') +
     sceneKitLibraryFile +
-    ' 复制进本镜头目录，用相对路径引入；不得引用镜头目录之外的文件。\n' +
+    (brief ? '；若未准备，按技能教材接入。用相对路径引入。\n' : ' 复制进本镜头目录，用相对路径引入；不得引用镜头目录之外的文件。\n') +
     '- 先加载镜头目录里的 ' +
     SceneDataFile +
     '（由上层在渲染前写好，不要自己写或改），再加载 ' +

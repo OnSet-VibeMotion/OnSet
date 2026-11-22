@@ -14,7 +14,8 @@
 
 1. 读取文章并核对知识，写 lyrics.txt，在 song.yaml 设置服务、曲风、语言、
    目标时长与 BPM。先用 `song_providers()` 查看平台申请入口、权限和密钥说明，
-   用户确定平台后用 `song_configure()` 配置。支持网页手动生成（manual）、MiniMax、百炼、ElevenLabs、fal、Mureka、Google Lyria 和远端 ACE-Step。
+   用户确定平台后用 `song_configure()` 配置。支持本机离线 ACE-Step 1.5（`acestep-local`，零 Python 依赖、支持文生曲及原曲改词翻唱 `cover` / `cover-nofsq`）、网页手动生成（manual）、MiniMax、百炼、ElevenLabs、fal、Mureka、Google Lyria 和远端 ACE-Step。
+   选择 `acestep-local` 时无需 API Key，需先在客户端工具准备页安装「本机歌曲生成」（前置资源，切勿在对话里手动编译或下载模型）；翻唱模式在 `song_configure()` 中传 `task_type`（`cover` 或 `cover-nofsq`）、`source_audio`（项目内 WAV/MP3 原曲）与可选 `cover_strength`。
    百炼需北京邀测及普通按量 Key，指定歌词时忽略曲风；不要承诺 Token Plan 覆盖。
    不把任何密钥写进项目。各平台凭据从对应环境变量读取；嵌套
    调用需要用户显式加入 ONSET_PASSTHROUGH_ENV。不得放宽全局环境白名单。

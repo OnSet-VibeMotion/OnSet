@@ -3,9 +3,12 @@
  *
  * 这里的操作共用一组辅助函数（时间点与画幅解析），放在一起也更好找。
  */
+import fs from 'node:fs';
 import path from 'node:path';
 import * as concat from '@onset/engine/concat';
+import { atomicWrite } from '@onset/engine/fsutil';
 import { formatFixed, goQuote, goRound, goTrimSpace } from '@onset/engine/gofmt';
+import { marshalIndent } from '@onset/engine/gojson';
 import * as mediaprobe from '@onset/engine/mediaprobe';
 import * as plugin from '@onset/engine/plugin';
 import * as review from '@onset/engine/review';
@@ -14,7 +17,7 @@ import * as schedule from '@onset/engine/schedule';
 import { currentEnvironment } from './cli';
 import { requireSilentMaster } from './deliverables';
 import { type Finding, recordCheckFindings } from './memory_cmd';
-import { bool, num, str } from './ops/common';
+import { bool, num, str, strs } from './ops/common';
 import { defineOp, ParamError } from './ops/op';
 
 /** strconv.ParseFloat 的常用子集：十进制、科学计数法、inf / infinity / nan（不区分大小写，可带正负号）。失败返回 null。 */
@@ -257,6 +260,147 @@ at 抽出的 PNG 缺省缩到宽 ${defaultFrameWidth}（看构图、有没有画
         ...(sheet !== '' ? { sheet } : {}),
       },
     };
+  },
+});
+
+const batchDefaultPoints = '0,50%,end';
+
+defineOp({
+  name: 'scene_frames_batch',
+  cli: ['scene', 'frames-batch'],
+  summary: '批量抽取全片镜头并拼成多镜总览联系表（大幅减少验收看图次数）',
+  description: `一次扫描 scenes/ 下的全部已渲染镜头（或 only_scenes 指定的子集），为每个镜头抽取代表帧并可选执行空白帧检测，
+再按每张联系表 scenes_per_sheet 个镜头（每行一镜，从左到右按时间点排列）拼成总览联系表。
+
+整片 20 个镜头只需 1 次工具调用与 4 张总览图，不必逐镜调用 20 次 scene_frames() 并把 20 张单镜联系表全部塞进上下文。
+发现某镜异常或需看第 0 帧封面细节时，再对该镜单独调用 scene_frames() 或 crop。`,
+  examples: [
+    'scene_frames_batch({"scenes": "scenes/"})',
+    'scene_frames_batch({"scenes": "scenes/", "out": "production/visual-qc/batch", "check_blank": true})',
+    'scene_frames_batch({"scenes": "scenes/", "only_scenes": ["scene-001", "scene-004"]})',
+  ],
+  params: {
+    scenes: { type: 'string', description: '镜头目录的上级目录', default: 'scenes' },
+    only_scenes: { type: 'strings', description: '只抽这些镜头 ID；留空为全片' },
+    at: { type: 'string', description: `每个镜头抽取的时间点（逗号分隔，缺省 ${batchDefaultPoints}）`, default: batchDefaultPoints },
+    out: { type: 'string', description: '总览联系表与报告输出目录', default: 'production/visual-qc/batch' },
+    check_blank: { type: 'boolean', description: '检查空白帧并在发现空白帧时报错' },
+    scenes_per_sheet: { type: 'integer', description: '每张总览联系表最多包含的镜头行数（1..10）', default: 5 },
+    thumb_width: { type: 'integer', description: '每格缩略图宽度（像素）', default: 360 },
+    report_json: { type: 'string', description: '报告路径，缺省为 <out>/batch-qc.json' },
+  },
+  run: async (p, { out, signal }) => {
+    const scenesDir = str(p.scenes) || 'scenes';
+    const planned = schedule.plan(scenesDir);
+    const only = strs(p.only_scenes);
+    const selected = only.length > 0 ? planned.filter((s) => only.includes(s.id)) : planned;
+    if (only.length > 0 && selected.length !== new Set(only).size) {
+      throw new ParamError('only_scenes 中包含不存在的镜头 ID');
+    }
+    const perSheet = num(p.scenes_per_sheet);
+    if (!Number.isInteger(perSheet) || perSheet < 1 || perSheet > 10) {
+      throw new ParamError('scenes_per_sheet 必须是 1..10 的整数');
+    }
+    const thumbWidth = num(p.thumb_width);
+    if (!Number.isInteger(thumbWidth) || thumbWidth < 64) {
+      throw new ParamError('thumb_width 必须是至少 64 的整数');
+    }
+    const atSpec = str(p.at) || batchDefaultPoints;
+    const outDir = str(p.out) || 'production/visual-qc/batch';
+    const reportPath = str(p.report_json) || path.join(outDir, 'batch-qc.json');
+    const checkBlank = bool(p.check_blank);
+    const toolchain = mediaprobe.newToolchain(currentEnvironment());
+    fs.mkdirSync(outDir, { recursive: true });
+    const work = fs.mkdtempSync(path.join(outDir, '.batch-'));
+    try {
+      const perScene: Array<{
+        scene_id: string;
+        ok: boolean;
+        missing?: boolean;
+        problems: string[];
+        hints: string[];
+        files: string[];
+      }> = [];
+      const blankFindings = new Map<string, Finding[]>();
+      const blankProblems: string[] = [];
+      for (const s of selected) {
+        signal.throwIfAborted();
+        const mp4 = scene.outputPath(s);
+        if (!fs.existsSync(mp4)) {
+          perScene.push({ scene_id: s.id, ok: false, missing: true, problems: [`缺少渲染产物：${s.output}`], hints: [], files: [] });
+          continue;
+        }
+        const canvas = scene.sceneCanvas(s);
+        const media = toolchain.probe(mp4);
+        const points = parseTimePoints(atSpec, media.duration_seconds, canvas.fps);
+        const sceneWork = path.join(work, s.id);
+        const report = toolchain.extractFramesRegion(mp4, points, null, sceneWork, thumbWidth);
+        const problems = report.problems ?? [];
+        const hints = [...(report.hints ?? [])];
+        if (checkBlank && !report.ok) {
+          blankFindings.set(s.id, problems.map((problem) => ({ check: scene.CheckFramesBlank, problem })));
+          for (const problem of problems) blankProblems.push(`${s.id}: ${problem}`);
+        } else if (!checkBlank && !report.ok) {
+          for (const problem of problems) hints.push(problem);
+        }
+        perScene.push({
+          scene_id: s.id,
+          ok: checkBlank ? report.ok : true,
+          problems: checkBlank ? problems : [],
+          hints,
+          files: (report.frames ?? []).map((f) => f.image),
+        });
+      }
+      const rendered = perScene.filter((row) => row.files.length > 0);
+      const cols = rendered[0]?.files.length ?? 0;
+      const sheets: Array<{ image: string; scenes: string[]; columns: number }> = [];
+      if (rendered.length > 0 && cols > 0) {
+        for (let i = 0; i < rendered.length; i += perSheet) {
+          signal.throwIfAborted();
+          const group = rendered.slice(i, i + perSheet);
+          const image = path.join(outDir, `overview-${String(sheets.length + 1).padStart(2, '0')}.png`);
+          const files = group.flatMap((row) => row.files);
+          await mediaprobe.contactSheetImages(toolchain, files, image, signal, cols, thumbWidth);
+          sheets.push({ image, scenes: group.map((row) => row.scene_id), columns: cols });
+        }
+      }
+      const manifest = {
+        scenes_dir: scenesDir,
+        at: atSpec,
+        ok: perScene.every((row) => row.ok),
+        total_scenes: perScene.length,
+        sheets,
+        scenes: perScene.map(({ files: _files, ...rest }) => rest),
+      };
+      atomicWrite(reportPath, marshalIndent(manifest) + '\n', 0o644);
+      out.write(`批量视觉抽帧完成：共 ${perScene.length} 个镜头，生成 ${sheets.length} 张总览联系表（每行一镜，时间点 ${atSpec}）\n`);
+      for (const sheet of sheets) out.write(`总览联系表：${sheet.image}（${sheet.scenes.join(', ')}）\n`);
+      const flagged = perScene.filter((row) => !row.ok || row.hints.length > 0);
+      for (const row of flagged) {
+        if (row.problems.length > 0) out.write(`异常 ${row.scene_id}：${row.problems.join('；')}\n`);
+        for (const hint of row.hints) out.write(`提示 ${row.scene_id}：${hint}\n`);
+      }
+      out.write(`报告：${reportPath}\n`);
+      if (checkBlank && blankProblems.length > 0) {
+        recordCheckFindings(out, '.', selected, blankFindings);
+        throw new Error(`批量抽帧发现空白帧：\n  - ${blankProblems.join('\n  - ')}`);
+      }
+      if (!manifest.ok) {
+        const failed = perScene.filter((row) => !row.ok).map((row) => `${row.scene_id}（${row.problems.join('；') || '未通过'}）`);
+        throw new Error(`批量抽帧存在异常镜头：${failed.join('、')}；详见报告：${reportPath}`);
+      }
+      return {
+        data: {
+          ok: manifest.ok,
+          total_scenes: perScene.length,
+          sheets: sheets.map((s) => ({ image: s.image, scenes: s.scenes })),
+          scenes: manifest.scenes,
+          report: reportPath,
+        },
+      };
+    } finally {
+      fs.rmSync(work, { recursive: true, force: true });
+    }
   },
 });
 

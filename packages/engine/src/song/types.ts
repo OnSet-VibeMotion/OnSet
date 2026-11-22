@@ -15,6 +15,16 @@ export interface Config {
   target_seconds: number;
   bpm: number;
   python: string;
+  /** 可选生成模式：text2music（默认）| cover | cover-nofsq。 */
+  task_type: string;
+  /** 翻唱原曲相对路径（WAV/MP3），仅 cover / cover-nofsq 使用。 */
+  source_audio: string;
+  /** 可选音色参考音频相对路径（WAV/MP3）。 */
+  reference_audio: string;
+  /** 翻唱贴合原曲的强度（0..1，0 表示使用模式默认值）。 */
+  cover_strength: number;
+  /** 本机 ACE-Step 可选 LM 模型文件名（留空用默认 1.7B Q8_0）。 */
+  lm_model: string;
 }
 
 /** Config 的 Go 零值；测试与调用方用它补齐字段，对应 Go 的 Config{...} 字面量。 */
@@ -31,6 +41,11 @@ export function config(fields: Partial<Config> = {}): Config {
     target_seconds: 0,
     bpm: 0,
     python: '',
+    task_type: '',
+    source_audio: '',
+    reference_audio: '',
+    cover_strength: 0,
+    lm_model: '',
     ...fields,
   };
 }
@@ -47,6 +62,11 @@ export function configToJSON(c: Config): unknown {
     language: c.language,
     target_seconds: c.target_seconds,
     bpm: c.bpm,
+    task_type: c.task_type || undefined,
+    source_audio: c.source_audio || undefined,
+    reference_audio: c.reference_audio || undefined,
+    cover_strength: c.cover_strength || undefined,
+    lm_model: c.lm_model || undefined,
   };
 }
 
