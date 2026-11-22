@@ -415,7 +415,7 @@ export class Jobs {
   private readonly jobs = new Map<string, Job>();
   private next = 1;
 
-  constructor(private readonly spawner: Spawner) {}
+  constructor(private readonly spawner: Spawner, private readonly archiveDir: string = toolOutputArchiveDir()) {}
 
   start(name: string, params: ParamValues): Job {
     const child = this.spawner(name, params);
@@ -473,7 +473,7 @@ export class Jobs {
     const visible = compact ? compactedOutput(visibleText(job.output)) : visibleText(job.output);
     const fresh = visible.slice(job.delivered);
     job.delivered = visible.length;
-    const body = clip(fresh);
+    const body = clip(fresh, this.archiveDir);
     const sep = body.endsWith('\n') || body === '' ? '' : '\n';
     if (job.code === null) return { text: `${body}${sep}[还在运行：任务 ${job.id}。用 job_wait 接着等，或 job_cancel 停掉。结束本轮对话会终止仍在运行的任务；不要用定时任务接管，必须在本轮持续 job_wait 直到完成或明确失败]`, isError: false };
     this.jobs.delete(job.id);
@@ -533,13 +533,12 @@ function compactedOutput(full: string): string {
   }
 }
 
-function clip(text: string): string {
+function clip(text: string, archiveDir = toolOutputArchiveDir()): string {
   if (text.length <= maxOutputChars) return text;
   let saved = '';
   try {
-    const dir = toolOutputArchiveDir();
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const file = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}-${Math.random().toString(36).slice(2, 8)}.log`);
+    fs.mkdirSync(archiveDir, { recursive: true, mode: 0o700 });
+    const file = path.join(archiveDir, `${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}-${Math.random().toString(36).slice(2, 8)}.log`);
     fs.writeFileSync(file, text, { mode: 0o600 });
     saved = `；完整输出：${file}`;
   } catch {

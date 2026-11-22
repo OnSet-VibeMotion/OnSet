@@ -35,6 +35,8 @@ export interface RunOptions {
   /** 写一行 stream-json（不带换行）。 */
   write: (line: string) => void;
   signal?: AbortSignal;
+  /** 本会话超长工具输出的隔离归档目录（同一会话跨进程复用）。 */
+  outputArchiveDir?: string;
   /**
    * 测试用：在模型运行时上登记假服务商，返回要用的「服务商/模型」（代替 request.service 的 base URL 与模型）。
    * 参数是 pi 的 ModelRuntime，这里不写它的类型，免得这份文件 import pi。

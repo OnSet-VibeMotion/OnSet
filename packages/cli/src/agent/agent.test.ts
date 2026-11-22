@@ -746,10 +746,38 @@ describe('runBuiltinAgent', () => {
         return fauxAssistantMessage('已读取超长 onset 输出');
       },
     ]);
-    const opReq: director.Request = { workdir: tmp, prompt: '查配置', unsafe: false, agent_dir: agentDir, service: fauxService };
+    const opReq: director.Request = { workdir: tmp, prompt: '查配置', unsafe: false, session_id: 'sess-archive-a', agent_dir: agentDir, service: fauxService };
     expect(await runBuiltinAgent(opReq, () => {}, undefined, { spawner: longSpawner, setupModels: fauxSetup(opFaux), env: {} })).toEqual({ ok: true });
     expect(opClipArchive).not.toBe('');
     expect(opArchiveRead).toContain(longOpHead);
+
+    // 同一会话跨进程续接（路径不含 PID，只绑定 workdir + session_id）仍可读，而不同会话被拒绝访问。
+    expect(opClipArchive).toContain('session-');
+    const sameSessFaux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    let resumedRead = '';
+    sameSessFaux.setResponses([
+      fauxAssistantMessage([fauxToolCall('read', { path: opClipArchive })], { stopReason: 'toolUse' }),
+      context => {
+        const res = context.messages.find(m => m.role === 'toolResult' && m.toolName === 'read');
+        resumedRead = res && res.role === 'toolResult' ? res.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('\n') : '';
+        return fauxAssistantMessage('续接可读');
+      },
+    ]);
+    expect(await runBuiltinAgent({ workdir: tmp, prompt: '续读', unsafe: false, session_id: 'sess-archive-a', agent_dir: agentDir, service: fauxService }, () => {}, undefined, { setupModels: fauxSetup(sameSessFaux), env: {} })).toEqual({ ok: true });
+    expect(resumedRead).toContain(longOpHead);
+
+    const otherSessFaux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    let otherDenied = '';
+    otherSessFaux.setResponses([
+      fauxAssistantMessage([fauxToolCall('read', { path: opClipArchive })], { stopReason: 'toolUse' }),
+      context => {
+        const res = context.messages.find(m => m.role === 'toolResult' && m.toolName === 'read');
+        otherDenied = res && res.role === 'toolResult' ? res.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('\n') : '';
+        return fauxAssistantMessage('跨会话被拒');
+      },
+    ]);
+    expect(await runBuiltinAgent({ workdir: tmp, prompt: '跨会话读', unsafe: false, session_id: 'sess-archive-b', agent_dir: agentDir, service: fauxService }, () => {}, undefined, { setupModels: fauxSetup(otherSessFaux), env: {} })).toEqual({ ok: true });
+    expect(otherDenied).toContain('安全模式下不允许');
   });
 
   it('attaches single-frame detail images returned by scene_preview_check inline', async () => {

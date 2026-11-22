@@ -37,7 +37,7 @@ import { completeToolArguments } from './arguments';
 import { PreviewHistory } from './preview-history';
 import { rendererFileTools, rendererFileWorkflow } from './renderer-files';
 import { StreamWriter } from './stream';
-import { compactToolResult } from './tool-errors';
+import { compactToolResult, toolOutputArchiveDir } from './tool-errors';
 import type { AgentModule, AgentTool, RunOptions } from './types';
 
 /** pi 的内置工具里给编排用的这几个；powershell、codemode、tool_search 不要。 */
@@ -267,6 +267,7 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
   const history = new PreviewHistory(req.profile === 'renderer' ? 'renderer' : 'orchestrator');
   const compactAt = Number.isSafeInteger(req.compact_at) && req.compact_at! >= 32_000 ? req.compact_at : undefined;
   let droppedPreviews = 0;
+  const archiveDir = o.outputArchiveDir ?? toolOutputArchiveDir(workdir, req.session_id ?? '');
   const gate: ExtensionFactory = (pi: ExtensionAPI) => {
     pi.on('session_before_compact', async () => { sentPreviews.clear(); });
     // 跨镜头前缀缓存：每个镜头目录不同（scenes/scene-001 vs scene-002），pi 默认把绝对路径 cwd 写进 System Prompt，
@@ -293,7 +294,7 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
     // message_end 在参数校验与权限闸门之前，替换结果也会写入会话，续接时保持一致。
     pi.on('message_end', async (event) => {
       if (event.message.role === 'toolResult') {
-        const message = compactToolResult(event.message, req.agent_dir);
+        const message = compactToolResult(event.message, req.agent_dir, archiveDir);
         return message === event.message ? undefined : { message };
       }
       if (event.message.role !== 'assistant') return;
@@ -302,7 +303,7 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
     });
     // Old sessions keep their original records. Limit their errors & oversized bash outputs on the way back to the model.
     pi.on('context', async ({ messages }) => {
-      const safe = messages.map(message => compactToolResult(message, req.agent_dir));
+      const safe = messages.map(message => compactToolResult(message, req.agent_dir, archiveDir));
       if (!compactAt) return { messages: safe };
       const projected = history.project(safe, compactAt);
       if (projected.trimmed) {

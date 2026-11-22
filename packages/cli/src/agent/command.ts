@@ -36,8 +36,8 @@ export async function loadAgentModule(): Promise<AgentModule> {
  * 把编排档位的操作做成 agent 的工具；job_wait、job_cancel 不要（这里直接等到跑完）。
  * 除了只读的 tool_help，都顺序执行：模型一次发出 scene_cues 与 scene_run 时，后者要等前者写完 scene.json。
  */
-export function onsetTools(spawner: Spawner = spawnOp, root = '', profile: 'orchestrator' | 'renderer' = 'orchestrator'): { tools: AgentTool[]; jobs: Jobs } {
-  const jobs = new Jobs(spawner);
+export function onsetTools(spawner: Spawner = spawnOp, root = '', profile: 'orchestrator' | 'renderer' = 'orchestrator', archiveDir = toolOutputArchiveDir(root)): { tools: AgentTool[]; jobs: Jobs } {
+  const jobs = new Jobs(spawner, archiveDir);
   const defs = describeTools(profile, root).filter((t) => t.name !== 'job_wait' && t.name !== 'job_cancel');
   const byName = new Map(defs.map((t) => [t.name, t]));
   const tools: AgentTool[] = defs.map((def) => {
@@ -125,12 +125,13 @@ export async function runBuiltinAgent(
   options: { spawner?: Spawner; gate?: Gate; setupModels?: (runtime: unknown) => Promise<string> | string; env?: Record<string, string | undefined> } = {},
 ): Promise<{ ok: boolean; error?: string }> {
   const env = options.env ?? currentEnvironment();
+  const archiveDir = toolOutputArchiveDir(req.workdir, req.session_id ?? '');
   // 整理经验这类会再起制作人的操作要拿到模型服务与 key：经执行进程的 stdin 交下去（spawnOpWithService），不进环境。
-  const onset = onsetTools(options.spawner ?? spawnOpWithService(req.service ?? null), req.workdir, req.profile ?? 'orchestrator');
+  const onset = onsetTools(options.spawner ?? spawnOpWithService(req.service ?? null), req.workdir, req.profile ?? 'orchestrator', archiveDir);
   const jobs = onset.jobs;
   // 待办清单与 onset 的工具一样直接放行：它只把清单写进工具调用，什么也不做。
   const tools = [...onset.tools, todoTool()];
-  const readDirs = [...(req.profile === 'renderer' ? (req.read_dirs ?? []) : []), toolOutputArchiveDir()];
+  const readDirs = [...(req.profile === 'renderer' ? (req.read_dirs ?? []) : []), archiveDir];
   const gate =
     options.gate ??
     newGate({
@@ -145,7 +146,7 @@ export async function runBuiltinAgent(
     });
   const agent = await loadAgentModule();
   try {
-    return await agent.runAgent({ request: req, tools, gate, write, signal, setupModels: options.setupModels });
+    return await agent.runAgent({ request: req, tools, gate, write, signal, outputArchiveDir: archiveDir, setupModels: options.setupModels });
   } finally {
     jobs.stopAll();
   }
