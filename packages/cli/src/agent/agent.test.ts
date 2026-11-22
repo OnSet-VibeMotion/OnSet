@@ -693,8 +693,11 @@ describe('runBuiltinAgent', () => {
       },
     ]);
     const agentDir = path.join(tmp, 'agent');
+    const bashLines: string[] = [];
     const req: director.Request = { workdir: tmp, prompt: '跑命令', unsafe: true, agent_dir: agentDir, service: fauxService };
-    expect(await runBuiltinAgent(req, () => {}, undefined, { setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
+    expect(await runBuiltinAgent(req, line => bashLines.push(line), undefined, { setupModels: fauxSetup(faux), env: {} })).toEqual({ ok: true });
+    const bashSessionID = bashLines.map(l => JSON.parse(l) as { type?: string; session_id?: string }).find(e => e.type === 'system')?.session_id ?? '';
+    expect(bashSessionID).not.toBe('');
     expect(seenBashResult.length).toBeLessThanOrEqual(4096);
     expect(seenBashResult).toContain(headMark);
     expect(seenBashResult).toContain(tailMark);
@@ -703,7 +706,7 @@ describe('runBuiltinAgent', () => {
     expect(archivedPath).not.toBe('');
     expect(archivedPath.startsWith(agentDir)).toBe(false);
     expect(fs.readFileSync(archivedPath, 'utf8')).toContain('A'.repeat(10000));
-    // 安全模式下允许只读访问归档的长输出文件，同时继续禁止访问 agentDir 凭据目录。
+    // 安全模式下续接同一会话时允许只读访问归档的长输出文件，同时继续禁止访问 agentDir 凭据目录。
     const safeFaux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
     let readArchiveResult = '';
     safeFaux.setResponses([
@@ -716,11 +719,12 @@ describe('runBuiltinAgent', () => {
         return fauxAssistantMessage('安全模式已读到中段');
       },
     ]);
-    const safeReq: director.Request = { workdir: tmp, prompt: '读归档', unsafe: false, agent_dir: agentDir, service: fauxService };
+    const safeReq: director.Request = { workdir: tmp, prompt: '读归档', unsafe: false, resume: true, session_id: bashSessionID, agent_dir: agentDir, service: fauxService };
     expect(await runBuiltinAgent(safeReq, () => {}, undefined, { setupModels: fauxSetup(safeFaux), env: {} })).toEqual({ ok: true });
     expect(readArchiveResult).toContain(headMark);
 
-    // 超长 onset 工具输出（> 8000 字符）经 Jobs.wait 的 clip 归档到同一 PID 专属目录，安全模式下同样可读。
+    // 超长 onset 工具输出（> 8000 字符）经 Jobs.wait 的 clip 归档到真实会话目录：
+    // 首次不传 session_id，取得返回的真实会话 ID 后，即使项目目录已移动，续接同一会话在安全模式下仍可读取原归档，而新会话被拒绝。
     const longOpHead = 'LONG_ONSET_OP_HEAD_MARKER';
     const longOpBody = longOpHead + 'B'.repeat(9500) + 'TAIL_END';
     const workerPayload = JSON.stringify({ ok: true, exit_code: 0 });
@@ -729,6 +733,9 @@ describe('runBuiltinAgent', () => {
       ['-e', `process.stdout.write(${JSON.stringify(longOpBody + '\n' + opworker.ResultMarker + workerPayload + '\n')})`],
       { stdio: ['ignore', 'pipe', 'pipe'] },
     );
+    const projectOrig = path.join(tmp, 'proj-orig');
+    const projectMoved = path.join(tmp, 'proj-moved');
+    fs.mkdirSync(projectOrig, { recursive: true });
     const opFaux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
     let opClipArchive = '';
     let opArchiveRead = '';
@@ -746,13 +753,16 @@ describe('runBuiltinAgent', () => {
         return fauxAssistantMessage('已读取超长 onset 输出');
       },
     ]);
-    const opReq: director.Request = { workdir: tmp, prompt: '查配置', unsafe: false, session_id: 'sess-archive-a', agent_dir: agentDir, service: fauxService };
-    expect(await runBuiltinAgent(opReq, () => {}, undefined, { spawner: longSpawner, setupModels: fauxSetup(opFaux), env: {} })).toEqual({ ok: true });
-    expect(opClipArchive).not.toBe('');
+    const initLines: string[] = [];
+    const opReq: director.Request = { workdir: projectOrig, prompt: '查配置', unsafe: false, agent_dir: agentDir, service: fauxService };
+    expect(await runBuiltinAgent(opReq, line => initLines.push(line), undefined, { spawner: longSpawner, setupModels: fauxSetup(opFaux), env: {} })).toEqual({ ok: true });
+    const createdSessionID = initLines.map(l => JSON.parse(l) as { type?: string; session_id?: string }).find(e => e.type === 'system')?.session_id ?? '';
+    expect(createdSessionID).not.toBe('');
+    expect(opClipArchive).toContain('session-');
     expect(opArchiveRead).toContain(longOpHead);
 
-    // 同一会话跨进程续接（路径不含 PID，只绑定 workdir + session_id）仍可读，而不同会话被拒绝访问。
-    expect(opClipArchive).toContain('session-');
+    // 移动项目目录后，按真实会话 ID 续接仍可读取原归档；另开新会话则被安全模式拒绝。
+    fs.renameSync(projectOrig, projectMoved);
     const sameSessFaux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
     let resumedRead = '';
     sameSessFaux.setResponses([
@@ -760,10 +770,10 @@ describe('runBuiltinAgent', () => {
       context => {
         const res = context.messages.find(m => m.role === 'toolResult' && m.toolName === 'read');
         resumedRead = res && res.role === 'toolResult' ? res.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('\n') : '';
-        return fauxAssistantMessage('续接可读');
+        return fauxAssistantMessage('移动目录续接可读');
       },
     ]);
-    expect(await runBuiltinAgent({ workdir: tmp, prompt: '续读', unsafe: false, session_id: 'sess-archive-a', agent_dir: agentDir, service: fauxService }, () => {}, undefined, { setupModels: fauxSetup(sameSessFaux), env: {} })).toEqual({ ok: true });
+    expect(await runBuiltinAgent({ workdir: projectMoved, prompt: '续读', unsafe: false, resume: true, session_id: createdSessionID, agent_dir: agentDir, service: fauxService }, () => {}, undefined, { setupModels: fauxSetup(sameSessFaux), env: {} })).toEqual({ ok: true });
     expect(resumedRead).toContain(longOpHead);
 
     const otherSessFaux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
@@ -776,7 +786,7 @@ describe('runBuiltinAgent', () => {
         return fauxAssistantMessage('跨会话被拒');
       },
     ]);
-    expect(await runBuiltinAgent({ workdir: tmp, prompt: '跨会话读', unsafe: false, session_id: 'sess-archive-b', agent_dir: agentDir, service: fauxService }, () => {}, undefined, { setupModels: fauxSetup(otherSessFaux), env: {} })).toEqual({ ok: true });
+    expect(await runBuiltinAgent({ workdir: projectMoved, prompt: '跨会话读', unsafe: false, agent_dir: agentDir, service: fauxService }, () => {}, undefined, { setupModels: fauxSetup(otherSessFaux), env: {} })).toEqual({ ok: true });
     expect(otherDenied).toContain('安全模式下不允许');
   });
 

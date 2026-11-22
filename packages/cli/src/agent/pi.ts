@@ -267,7 +267,10 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
   const history = new PreviewHistory(req.profile === 'renderer' ? 'renderer' : 'orchestrator');
   const compactAt = Number.isSafeInteger(req.compact_at) && req.compact_at! >= 32_000 ? req.compact_at : undefined;
   let droppedPreviews = 0;
-  const archiveDir = o.outputArchiveDir ?? toolOutputArchiveDir(workdir, req.session_id ?? '');
+  const sessions = sessionManager(workdir, req.agent_dir, req.session_id ?? '', req.resume === true);
+  const realSessionID = sessions.getSessionId();
+  o.onSessionID?.(realSessionID);
+  const archiveDir = toolOutputArchiveDir(realSessionID);
   const gate: ExtensionFactory = (pi: ExtensionAPI) => {
     pi.on('session_before_compact', async () => { sentPreviews.clear(); });
     // 跨镜头前缀缓存：每个镜头目录不同（scenes/scene-001 vs scene-002），pi 默认把绝对路径 cwd 写进 System Prompt，
@@ -375,7 +378,7 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
     modelRuntime: runtime,
     resourceLoader: loader,
     settingsManager: settings,
-    sessionManager: sessionManager(workdir, req.agent_dir, req.session_id ?? '', req.resume === true),
+    sessionManager: sessions,
     // tools 是这一会话启用的全部工具名：不把 onset 的工具列进去，它们就被藏起来（只登记不启用）。
     tools: [...builtinTools, ...o.tools.map((t) => t.name)],
     customTools: [

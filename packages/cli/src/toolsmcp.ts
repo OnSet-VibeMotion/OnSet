@@ -415,7 +415,7 @@ export class Jobs {
   private readonly jobs = new Map<string, Job>();
   private next = 1;
 
-  constructor(private readonly spawner: Spawner, private readonly archiveDir: string = toolOutputArchiveDir()) {}
+  constructor(private readonly spawner: Spawner, private readonly archiveDir: string | (() => string) = toolOutputArchiveDir) {}
 
   start(name: string, params: ParamValues): Job {
     const child = this.spawner(name, params);
@@ -473,7 +473,7 @@ export class Jobs {
     const visible = compact ? compactedOutput(visibleText(job.output)) : visibleText(job.output);
     const fresh = visible.slice(job.delivered);
     job.delivered = visible.length;
-    const body = clip(fresh, this.archiveDir);
+    const body = clip(fresh, typeof this.archiveDir === 'function' ? this.archiveDir() : this.archiveDir);
     const sep = body.endsWith('\n') || body === '' ? '' : '\n';
     if (job.code === null) return { text: `${body}${sep}[还在运行：任务 ${job.id}。用 job_wait 接着等，或 job_cancel 停掉。结束本轮对话会终止仍在运行的任务；不要用定时任务接管，必须在本轮持续 job_wait 直到完成或明确失败]`, isError: false };
     this.jobs.delete(job.id);
