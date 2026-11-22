@@ -251,7 +251,7 @@ export function songOps(ctx: PluginContext): void {
     examples: ['song_init()'],
     run: (_p, { out }, _signal, root) => {
       songScaffold(root);
-      out.write('歌曲资产已初始化。运行 song_providers() 查看平台，再用 song_configure({"provider": "PLATFORM"}) 配置。\n');
+      out.write('歌曲资产已初始化。运行 song_providers() 查看平台，再用 song_configure({"provider": "PLATFORM"}) 配置（若刚从口播项目切换而来，下一轮对话会自动加载全部歌曲工具）。\n');
     },
   });
 

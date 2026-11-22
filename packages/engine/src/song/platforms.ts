@@ -213,6 +213,9 @@ export function configure(
     const referenceAudio = extra.referenceAudio !== undefined ? extra.referenceAudio : sameProvider ? existingStr('reference_audio') : '';
     let taskType = extra.taskType !== undefined ? extra.taskType : prevTaskType;
     const modeChanged = extra.taskType !== undefined && extra.taskType !== prevTaskType;
+    if (extra.coverStrength !== undefined && (!Number.isFinite(extra.coverStrength) || extra.coverStrength < 0 || extra.coverStrength > 1)) {
+      throw new Error('song.yaml 的 cover_strength 必须在 (0, 1] 之间（传 0 表示使用默认强度）');
+    }
     let coverStrength = extra.coverStrength !== undefined
       ? (extra.coverStrength > 0 ? extra.coverStrength : 0)
       : sameProvider && !modeChanged

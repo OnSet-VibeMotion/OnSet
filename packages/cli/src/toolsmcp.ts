@@ -22,6 +22,9 @@ import { nodeCommand } from '@onset/engine/toolpath';
 import './cli';
 import { compactHyperFrames, hyperFramesProgress } from './hfoutput';
 import { allOps, normalizeToolParams, type Op, opScopes, type ParamSpec, type ParamValues } from './ops/op';
+import { toolOutputArchiveDir } from './output_archive';
+
+export { toolOutputArchiveDir };
 
 /** 档位：编排工具使用制作工具，渲染器只拿镜头内的工具。 */
 export type Profile = 'orchestrator' | 'renderer';
@@ -534,10 +537,10 @@ function clip(text: string): string {
   if (text.length <= maxOutputChars) return text;
   let saved = '';
   try {
-    const dir = path.join(os.tmpdir(), 'onset-tool-outputs');
-    fs.mkdirSync(dir, { recursive: true });
+    const dir = toolOutputArchiveDir();
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const file = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}-${Math.random().toString(36).slice(2, 8)}.log`);
-    fs.writeFileSync(file, text);
+    fs.writeFileSync(file, text, { mode: 0o600 });
     saved = `；完整输出：${file}`;
   } catch {
     // 写临时文件失败时照常截短。

@@ -735,7 +735,7 @@ function renderPrompt(s: Scene, resolvedSkills: Record<string, string> | null, w
       defaultFilmStyle +
       determinismSection +
       (v7 ? previewReviewV7 : previewReviewV5) +
-      (v7 ? startSectionV7(s.timing !== null) : startSectionV5) +
+      (v7 ? startSectionV7(s.timing !== null, s.film_style !== '' && ownStyleDir !== '') : startSectionV5) +
       '\n' +
       '阶段性汇报规则：仅在关键阶段输出以下原文：\n' +
       '[[USER_MESSAGE]]需求理解和素材检查已完成\n' +
@@ -938,11 +938,14 @@ const previewReviewV5 =
   '- 发现问题就修正并复查对应画面。小字或局部细节直接调 scene_preview_check({"zoom_frame": "<帧号>"})（可加 "crop": "x,y,w,h" 裁局部，复用已缓存的帧，不必重跑 snapshot）；有闪烁、跳变或抢读疑问时用 frames 取相邻整数帧连续核实。\n' +
   '- 自查全部通过后输出上文的交接信号并结束会话。片场会正式渲染和校验 MP4，再报告完成状态。\n';
 
-function startSectionV7(hasTiming: boolean): string {
+function startSectionV7(hasTiming: boolean, hasOwnFilmStyle = false): string {
   const srtClause = hasTiming ? '，也不要整份读 transcription.srt' : '';
+  const styleClause = hasOwnFilmStyle
+    ? '本镜头专属风格的 SKILL.md 与 STYLE.md 按下文读取，其余不要通读 DEMO.md、demo/、scene-kit/example.html、hyperframes/SKILL.md、motion.md、runtimes.md'
+    : '不要通读 SKILL.md、DEMO.md、demo/、scene-kit/example.html、hyperframes/SKILL.md、motion.md、runtimes.md';
   return (
     startSectionV5 +
-    `- 开工前不要批量通读技能目录与示例源码（不要通读 SKILL.md、DEMO.md、demo/、scene-kit/example.html、hyperframes/SKILL.md、motion.md、runtimes.md${srtClause}）；只有确实遇到某个具体 API 疑问时才查阅对应小节。\n`
+    `- 开工前不要批量通读技能目录与示例源码（${styleClause}${srtClause}）；只有确实遇到某个具体 API 疑问时才查阅对应小节。\n`
   );
 }
 

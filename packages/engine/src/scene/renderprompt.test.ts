@@ -202,5 +202,20 @@ describe('render prompt version', () => {
     expect(p7Clipped).not.toContain('也不要整份读 transcription.srt');
     expect(p7Clipped).toContain('可按需读取 STYLE.md 的剩余小节');
     expect(p7Clipped).not.toContain('禁止通读该目录的 SKILL.md、STYLE.md');
+
+    // 指定镜头专属 film_style 时，允许按需全文读取该专属风格的 SKILL.md 与 STYLE.md，不与 sceneFilmStyleSection 冲突。
+    const ownDir = path.join(root, '.agents', 'onset-film-styles', 'lemo', 'impasto');
+    fs.mkdirSync(ownDir, { recursive: true });
+    fs.writeFileSync(path.join(ownDir, 'SKILL.md'), '# impasto');
+    fs.writeFileSync(path.join(ownDir, 'STYLE.md'), '# impasto style');
+    const ownSceneDir = path.join(root, 'scenes', 'scene-003');
+    fs.renameSync(writeScene(JSON.stringify({
+      id: 'scene-003', duration_seconds: 3, output: 'scene-003.mp4', transcript: 'transcript.srt', text: '测试',
+      film_style: 'lemo/impasto',
+      timing: { fps: 30, start_frame: 0, end_frame_exclusive: 90, plan: testPlanSHA },
+    })), ownSceneDir);
+    const p7Own = buildPrompt(load(ownSceneDir), { 'onset-film-style': path.join(root, '.agents', 'skills'), 'film-style:own': ownDir });
+    expect(p7Own).toContain('本镜头专属风格的 SKILL.md 与 STYLE.md 按下文读取');
+    expect(p7Own).not.toContain('不要通读 SKILL.md');
   });
 });

@@ -336,15 +336,17 @@ defineOp({
         const sceneWork = path.join(work, s.id);
         const report = toolchain.extractFramesRegion(mp4, points, null, sceneWork, thumbWidth);
         const problems = report.problems ?? [];
-        const hints = report.hints ?? [];
+        const hints = [...(report.hints ?? [])];
         if (checkBlank && !report.ok) {
           blankFindings.set(s.id, problems.map((problem) => ({ check: scene.CheckFramesBlank, problem })));
           for (const problem of problems) blankProblems.push(`${s.id}: ${problem}`);
+        } else if (!checkBlank && !report.ok) {
+          for (const problem of problems) hints.push(problem);
         }
         perScene.push({
           scene_id: s.id,
-          ok: report.ok,
-          problems,
+          ok: checkBlank ? report.ok : true,
+          problems: checkBlank ? problems : [],
           hints,
           files: (report.frames ?? []).map((f) => f.image),
         });

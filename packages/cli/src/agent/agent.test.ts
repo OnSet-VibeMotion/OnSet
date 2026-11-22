@@ -719,6 +719,37 @@ describe('runBuiltinAgent', () => {
     const safeReq: director.Request = { workdir: tmp, prompt: '读归档', unsafe: false, agent_dir: agentDir, service: fauxService };
     expect(await runBuiltinAgent(safeReq, () => {}, undefined, { setupModels: fauxSetup(safeFaux), env: {} })).toEqual({ ok: true });
     expect(readArchiveResult).toContain(headMark);
+
+    // 超长 onset 工具输出（> 8000 字符）经 Jobs.wait 的 clip 归档到同一 PID 专属目录，安全模式下同样可读。
+    const longOpHead = 'LONG_ONSET_OP_HEAD_MARKER';
+    const longOpBody = longOpHead + 'B'.repeat(9500) + 'TAIL_END';
+    const workerPayload = JSON.stringify({ ok: true, exit_code: 0 });
+    const longSpawner = () => spawn(
+      process.execPath,
+      ['-e', `process.stdout.write(${JSON.stringify(longOpBody + '\n' + opworker.ResultMarker + workerPayload + '\n')})`],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    const opFaux = fauxProvider({ provider: 'faux', models: [{ id: 'm1' }] });
+    let opClipArchive = '';
+    let opArchiveRead = '';
+    opFaux.setResponses([
+      fauxAssistantMessage([fauxToolCall('beat_bars', {})], { stopReason: 'toolUse' }),
+      context => {
+        const res = context.messages.find(m => m.role === 'toolResult' && m.toolName === 'beat_bars');
+        const txt = res && res.role === 'toolResult' ? res.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('\n') : '';
+        opClipArchive = /完整输出：([^\]]+)\]/.exec(txt)?.[1] ?? '';
+        return fauxAssistantMessage([fauxToolCall('read', { path: opClipArchive })], { stopReason: 'toolUse' });
+      },
+      context => {
+        const res = context.messages.find(m => m.role === 'toolResult' && m.toolName === 'read');
+        opArchiveRead = res && res.role === 'toolResult' ? res.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('\n') : '';
+        return fauxAssistantMessage('已读取超长 onset 输出');
+      },
+    ]);
+    const opReq: director.Request = { workdir: tmp, prompt: '查配置', unsafe: false, agent_dir: agentDir, service: fauxService };
+    expect(await runBuiltinAgent(opReq, () => {}, undefined, { spawner: longSpawner, setupModels: fauxSetup(opFaux), env: {} })).toEqual({ ok: true });
+    expect(opClipArchive).not.toBe('');
+    expect(opArchiveRead).toContain(longOpHead);
   });
 
   it('attaches single-frame detail images returned by scene_preview_check inline', async () => {

@@ -141,10 +141,16 @@ describe('local ACE-Step 1.5 (acestep.cpp + GGUF)', () => {
     expect(localAcestepStatus(readyEnv).ok).toBe(true);
     expect(requireLocalAcestep(readyEnv).modelsDir).toBe(modelsDir);
 
-    // 默认托管目录需精确文件清单全部存在（检查第一项 LICENSE 元信息已钉死）。
+    // 默认托管目录需精确文件清单及文件大小均匹配：被截断为零字节时即使传入配置也不算就绪。
     expect(localAcestepModelsDir(env)).toContain('Serveurperso__ACE-Step-1.5-GGUF');
     expect(AceStepGGUFModel.files.length).toBe(5);
     expect(AceStepGGUFModel.sources).toEqual(['huggingface']);
+    const managedDir = localAcestepModelsDir(env);
+    fs.mkdirSync(managedDir, { recursive: true });
+    for (const f of AceStepGGUFModel.files) fs.writeFileSync(path.join(managedDir, f.path), '');
+    const cfg = config({ provider: 'acestep-local', model: DefaultLocalSynthModel });
+    expect(localAcestepStatus(env, process.platform, cfg).modelsReady).toBe(false);
+    expect(() => requireLocalAcestep(env, process.platform, cfg)).toThrow(MissingError);
   });
 
   it('normalizes model names and builds requests for text2music and cover modes', () => {
@@ -254,6 +260,10 @@ describe('local ACE-Step 1.5 (acestep.cpp + GGUF)', () => {
     expect(kept.task_type).toBe('cover');
     expect(kept.source_audio).toBe('source.mp3');
     expect(kept.cover_strength).toBe(0.6);
+    // 非法翻唱强度（负数、超过 1、NaN）必须拒绝，不能静默归零删除；合法 0 仍表示使用默认强度。
+    expect(() => configure(root, 'acestep-local', '', '', '', { coverStrength: -0.1 })).toThrow('cover_strength');
+    expect(() => configure(root, 'acestep-local', '', '', '', { coverStrength: 1.2 })).toThrow('cover_strength');
+    expect(() => configure(root, 'acestep-local', '', '', '', { coverStrength: Number.NaN })).toThrow('cover_strength');
     // 还原模型继续后续验证。
     configure(root, 'acestep-local', DefaultLocalSynthModel, '', '');
 

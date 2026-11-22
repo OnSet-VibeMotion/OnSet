@@ -1,19 +1,16 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { atomicWrite } from '@onset/engine/fsutil';
 import type { MessageEndEvent } from '@earendil-works/pi-coding-agent';
+import { toolOutputArchiveDir } from '../output_archive';
+
+export { toolOutputArchiveDir };
 
 type AgentMessage = MessageEndEvent['message'];
 
 const maxErrorLength = 4096;
 const maxBashOutputLength = 4096;
-
-/** 超长成功 bash 输出的独立非凭据归档目录（安全模式下只读放行，避免开放 agentDir 凭据目录）。 */
-export function toolOutputArchiveDir(): string {
-  return path.join(os.tmpdir(), 'onset-tool-outputs', String(process.pid));
-}
 
 /** Preserve complete diagnostics locally without echoing entire tool inputs to the model. */
 export function compactToolError(message: AgentMessage, agentDir: string): AgentMessage {

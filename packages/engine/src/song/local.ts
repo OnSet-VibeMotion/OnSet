@@ -119,20 +119,38 @@ export function requiredLocalModelFiles(cfg?: Pick<Config, 'model' | 'lm_model' 
   return files;
 }
 
-/** 找出指定模型目录里缺失的必需 GGUF 文件。 */
-export function missingLocalModelFiles(modelsDir: string, cfg?: Pick<Config, 'model' | 'lm_model' | 'task_type'>): string[] {
+const managedModelSizes = new Map(AceStepGGUFModel.files.map((f) => [f.path, f.size]));
+
+/** 找出指定模型目录里缺失或残缺的必需 GGUF 文件；托管目录同时核对清单里的精确文件大小。 */
+export function missingLocalModelFiles(
+  modelsDir: string,
+  cfg?: Pick<Config, 'model' | 'lm_model' | 'task_type'>,
+  managed = false,
+): string[] {
   if (modelsDir === '') return requiredLocalModelFiles(cfg);
-  return requiredLocalModelFiles(cfg).filter((file) => !isFile(path.join(modelsDir, file)));
+  return requiredLocalModelFiles(cfg).filter((file) => {
+    const full = path.join(modelsDir, file);
+    if (!isFile(full)) return true;
+    const expectedSize = managed ? managedModelSizes.get(file) : undefined;
+    if (expectedSize !== undefined) {
+      try {
+        return fs.statSync(full).size !== expectedSize;
+      } catch {
+        return true;
+      }
+    }
+    return false;
+  });
 }
 
 /** GGUF 模型是否已就绪。 */
 export function localAcestepModelsReady(env: Record<string, string | undefined>, cfg?: Pick<Config, 'model' | 'lm_model' | 'task_type'>): boolean {
   const custom = (env[AcestepModelsDirEnv] ?? '').trim();
   if (custom !== '') {
-    return missingLocalModelFiles(custom, cfg).length === 0;
+    return missingLocalModelFiles(custom, cfg, false).length === 0;
   }
   if (!cfg) return modelReady(AceStepGGUFModel, env);
-  return missingLocalModelFiles(modelDir(AceStepGGUFModel, env), cfg).length === 0;
+  return missingLocalModelFiles(modelDir(AceStepGGUFModel, env), cfg, true).length === 0;
 }
 
 export interface LocalAcestepStatus {
@@ -179,8 +197,9 @@ export function requireLocalAcestep(
   }
   if (!status.modelsReady) {
     if (status.modelsDir === '') throw missing(what, `环境里没有 HOME，也没有 ${AcestepModelsDirEnv}`);
-    const lacking = missingLocalModelFiles(status.modelsDir, cfg);
-    const detail = lacking.length > 0 ? `（缺少：${lacking.join('、')}）` : '';
+    const managed = (env[AcestepModelsDirEnv] ?? '').trim() === '';
+    const lacking = missingLocalModelFiles(status.modelsDir, cfg, managed);
+    const detail = lacking.length > 0 ? `（缺少或文件不完整：${lacking.join('、')}）` : '';
     throw missing(what, `缺少 GGUF 模型权重：${status.modelsDir}${detail}`);
   }
   return {

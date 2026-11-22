@@ -149,8 +149,11 @@ describe('media', () => {
     expect(report.sheets[0].scenes).toEqual(['scene-001', 'scene-002']);
     expect(report.sheets[1].scenes).toEqual(['scene-003']);
 
-    // 加入空白帧镜头，--check-blank 必须报错并定位镜头 ID。
+    // 加入空白帧镜头：不带 --check-blank 时只记 hints 不失败，带 --check-blank 必须报错并定位镜头 ID。
     makeSceneDir(scenes, 'scene-004', 1, 'color=c=black:size=320x240:rate=30:duration=1');
+    out = new Buffer();
+    errOut = new Buffer();
+    expect(await run(['scene', 'frames-batch', '--scenes', scenes, '--out', outDir, '--only-scenes', 'scene-004'], out, errOut), errOut.text).toBe(0);
     out = new Buffer();
     errOut = new Buffer();
     expect(await run(['scene', 'frames-batch', '--scenes', scenes, '--out', outDir, '--only-scenes', 'scene-004', '--check-blank'], out, errOut)).toBe(1);
