@@ -48,11 +48,18 @@ export function maxWaitSeconds(env: NodeJS.ProcessEnv = process.env): number {
   return Number.isFinite(wait) && wait >= 60 ? Math.min(wait, 3600) : 600;
 }
 
-/** 批量派发先回任务号，让编排能做并行工作。接着等时用已确认的客户端等待能力。 */
+/** 批量派发先回任务号，让编排能做并行工作。接着等或单次直跑类长任务用已确认的客户端等待能力，减少无谓 job_wait 轮询。 */
 export function defaultWaitSeconds(name: string, env: NodeJS.ProcessEnv = process.env): number {
   const configured = Number(env.ONSET_TOOLS_MAX_WAIT ?? '');
   if (!Number.isFinite(configured) || configured < 60) return DefaultWaitSeconds;
-  return name === 'job_wait' || name === 'align_run' || name === 'audio_mix' || name === 'scene_preview_check' ? maxWaitSeconds(env) : DefaultWaitSeconds;
+  return name === 'job_wait'
+    || name === 'align_run'
+    || name === 'audio_mix'
+    || name === 'voice_synthesize'
+    || name === 'concat'
+    || name === 'scene_preview_check'
+    ? maxWaitSeconds(env)
+    : DefaultWaitSeconds;
 }
 
 /** 返回给 agent 的输出上限：过长时落盘保存完整输出并保留结尾（错误与结论通常在最后）。 */
@@ -445,6 +452,14 @@ export class Jobs {
     return this.jobs.get(id);
   }
 
+  activeCount(name?: string): number {
+    let count = 0;
+    for (const job of this.jobs.values()) {
+      if (job.code === null && (!name || job.name === name)) count++;
+    }
+    return count;
+  }
+
   /** 外部 MCP 有调用超时；内置制作人直接等到完成或取消。 */
   async wait(job: Job, seconds: number | undefined, signal?: AbortSignal): Promise<Reply> {
     let timer: NodeJS.Timeout | undefined;
@@ -565,6 +580,9 @@ export async function serveToolsMCP(
   const tools = describeTools(profile, process.cwd());
   const byName = new Map(tools.map((t) => [t.name, t]));
   const jobs = new Jobs(spawner);
+  const recentSceneRuns: number[] = [];
+  const sceneRunWindowMs = 10 * 60 * 1000;
+  const longJobNames = new Set(['scene_run', 'scene_run_all', 'align_run', 'voice_synthesize', 'concat', 'audio_mix']);
   // 被取消（编排工具那一整组收到 SIGTERM）时立刻停掉还在跑的任务：等不到 stdin 关闭，进程可能随后就被 SIGKILL。
   signal?.addEventListener('abort', () => jobs.stopAll(), { once: true });
   const pending: Promise<void>[] = [];
@@ -611,12 +629,27 @@ export async function serveToolsMCP(
               },
             });
           const handle = async (): Promise<void> => {
-            const seconds = typeof input.wait_seconds === 'number' ? input.wait_seconds : defaultWaitSeconds(name);
+            const explicitWait = typeof input.wait_seconds === 'number';
+            const seconds = explicitWait ? (input.wait_seconds as number) : defaultWaitSeconds(name);
             if (name === 'job_wait' || name === 'job_cancel') {
               const job = jobs.get(String(input.job ?? ''));
               if (!job) return reply({ text: `没有这个任务：${String(input.job ?? '')}（可能已经结束并交过结果）`, isError: true });
               if (name === 'job_cancel') return reply({ text: jobs.cancel(job.id) ? `已停掉 ${job.id}` : `${job.id} 已经结束`, isError: false });
-              return reply(await jobs.wait(job, seconds, signal));
+              const result = await jobs.wait(job, seconds, signal);
+              if (
+                !result.isError &&
+                job.code === null &&
+                explicitWait &&
+                seconds > 0 &&
+                seconds < Math.min(60, maxWaitSeconds()) &&
+                longJobNames.has(job.name)
+              ) {
+                return reply({
+                  ...result,
+                  text: `${result.text}\n[等待提示] 等待长任务时请省略 wait_seconds（一次等满 ${maxWaitSeconds()} 秒上限），避免短轮询反复唤醒消耗上下文。`,
+                });
+              }
+              return reply(result);
             }
             if (name === 'tool_help') {
               const target = byName.get(String(input.tool ?? ''));
@@ -632,7 +665,18 @@ export async function serveToolsMCP(
               return reply({ text: (err as Error).message, isError: true });
             }
             const target = callTarget(tool, params);
-            reply(await jobs.wait(jobs.start(target.name, target.params), seconds, signal));
+            let batchNudge = '';
+            if (profile === 'orchestrator' && target.name === 'scene_run') {
+              const now = Date.now();
+              while (recentSceneRuns.length > 0 && now - recentSceneRuns[0]! > sceneRunWindowMs) recentSceneRuns.shift();
+              recentSceneRuns.push(now);
+              const active = jobs.activeCount('scene_run');
+              if (active >= 1 || recentSceneRuns.length >= 3) {
+                batchNudge = '\n[调度提示] 检测到短时间内多次单独调用 scene_run。多镜头批量渲染或返修请改用一次 scene_run_all({"scenes":"scenes/","only_scenes":[...],"force":true}) 由片场统一并发调度，可大幅减少 job_wait 轮询与 token 消耗。';
+              }
+            }
+            const result = await jobs.wait(jobs.start(target.name, target.params), seconds, signal);
+            reply(batchNudge ? { ...result, text: result.text + batchNudge } : result);
           };
           pending.push(handle());
           break;

@@ -657,9 +657,9 @@ export function handoffSession(sess: Session, reason = '手动分段接力'): vo
   });
 }
 
-/** 冻结大阶段产物的硬审核关卡：确认后自动预约下一轮轻接力，避免把上一阶段的几十轮工具输出拖入下一阶段。 */
+/** 冻结大阶段产物的硬审核关卡：确认后自动预约下一轮轻接力，避免把上一阶段的几十轮工具输出拖入下一阶段（含 gate-final 进入发布/封面制作）。 */
 const autoHandoffGates: ReadonlySet<string> = new Set([
-  'gate-script', 'gate-voice', 'gate-storyboard', 'gate-story', 'gate-grid', 'gate-beat-storyboard',
+  'gate-script', 'gate-voice', 'gate-storyboard', 'gate-final', 'gate-story', 'gate-grid', 'gate-beat-storyboard',
 ]);
 
 /** 关卡确认后为该项目已有至少 2 轮历史的整片制作会话预约阶段边界接力（ONSET_AUTO_HANDOFF=off 可关闭）。 */
@@ -1038,6 +1038,13 @@ function finishTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, t
     // 与 Go 版一样忽略。
   }
   if (turn.kind === 'chat' && turn.status !== 'cancelled') recordUtterance(p, turn, false);
+  // 试听确认（gate-final）由编排写 production/approval.json 完成，不走界面按钮接口；落盘后自动预约下一轮接力进入发布/封面阶段。
+  if (
+    turn.status === 'succeeded' &&
+    (turn.changes ?? []).some((c) => c.path === 'production/approval.json' && c.change !== 'deleted')
+  ) {
+    scheduleGateHandoff(s, p.path, 'gate-final', '试听确认');
+  }
   sess.cancel = null;
   updateMeta(sess, (meta) => (meta.running_turn = undefined));
   // 先放写权再发 turn-end：网页收到 turn-end 就可能立刻发下一轮。

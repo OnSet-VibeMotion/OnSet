@@ -218,4 +218,54 @@ describe('render prompt version', () => {
     expect(p7Own).toContain('本镜头专属风格的 SKILL.md 与 STYLE.md 按下文读取');
     expect(p7Own).not.toContain('不要通读 SKILL.md');
   });
+
+  it('v8 inlines full SceneKit API, zoom_frames guidance, font families, and mounted helper JS exports while preserving shared prefix', () => {
+    const root = tempDir();
+    fs.writeFileSync(path.join(root, 'onset.conf'), '');
+    flow.recordFlow(root, { id: 'speech', canvas: 'landscape-16x9', render_prompt: 8 });
+    fs.mkdirSync(path.join(root, 'assets', 'fonts'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'assets', 'fonts', 'noto-sans-sc-700.woff2'), 'font-bold');
+    fs.writeFileSync(path.join(root, 'assets', 'fonts', 'noto-sans-sc-400.woff2'), 'font-regular');
+    fs.mkdirSync(path.join(root, 'assets', 'vendor'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'assets', 'vendor', 'gsap.min.js'), 'window.gsap = {};');
+    fs.writeFileSync(path.join(root, 'assets', 'vendor', 'draw-helper.js'), [
+      'export const frameOf = (seconds, fps) => Math.round(seconds * fps);',
+      'export function mount(film, canvas, options = {}) { return { film, canvas, options }; }',
+      'export const palette = { ink: "#111" };',
+    ].join('\n'));
+    const skillsRoot = path.join(root, '.agents', 'skills');
+    for (const name of ['hyperframes', 'hyperframes-cli', 'scene-kit']) {
+      fs.mkdirSync(path.join(skillsRoot, name), { recursive: true });
+      fs.writeFileSync(path.join(skillsRoot, name, 'SKILL.md'), `# ${name}`);
+    }
+    fs.writeFileSync(path.join(skillsRoot, 'scene-kit', 'scene-kit.js'), 'window.SceneKit = {};');
+    fs.mkdirSync(path.join(root, 'scenes'));
+    const mk = (id: string, text: string) => {
+      const dir = path.join(root, 'scenes', id);
+      fs.renameSync(writeScene(JSON.stringify({
+        id, duration_seconds: 3, output: `${id}.mp4`, transcript: 'transcript.srt', text,
+        timing: { fps: 30, start_frame: 0, end_frame_exclusive: 90, plan: testPlanSHA },
+      })), dir);
+      return load(dir);
+    };
+    const resolved = { hyperframes: skillsRoot, 'hyperframes-cli': skillsRoot, 'scene-kit': skillsRoot };
+    const s1 = mk('scene-001', '第一镜');
+    const s2 = mk('scene-002', '第二镜');
+    prepareResources(s1, resolved);
+    prepareResources(s2, resolved);
+    const p1 = buildPrompt(s1, resolved);
+    const p2 = buildPrompt(s2, resolved);
+    const split1 = p1.indexOf('任务目标：\n');
+    const split2 = p2.indexOf('任务目标：\n');
+    expect(p1.slice(0, split1)).toBe(p2.slice(0, split2));
+    // 共享前缀包含 SceneKit 完整速查表和 zoom_frames 批量细节放大指引。
+    expect(p1.slice(0, split1)).toContain('window.SceneKit 完整接口速查');
+    expect(p1.slice(0, split1)).toContain('breakLines(text,opts)');
+    expect(p1.slice(0, split1)).toContain('zoom_frames');
+    // 资源段直接列出声明的字体族与非压缩辅助库导出，跳过 scene-kit.js 与 gsap.min.js。
+    expect(p1).toContain("已声明字体族：'Noto Sans SC' (400, 700)");
+    expect(p1).toContain('`vendor/draw-helper.js`：mount(film, canvas, options = {})、frameOf(seconds, fps)、palette');
+    expect(p1).not.toContain('`vendor/gsap.min.js`：');
+    expect(p1).not.toContain('`scene-kit.js`：');
+  });
 });

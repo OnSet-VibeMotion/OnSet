@@ -76,4 +76,17 @@ it('does not false-rotate ACP turns=1 cumulative usage, and rotates when multi-s
     usage: { source: 'acp usage', turns: 10, input_tokens: 2_000_000 },
   };
   expect(rotationReason([heavyMultiStep], 's3')).toContain('20 万');
+
+  // 单轮 80 步均读 8.7 万 token 时，末尾真实上下文往往已突破 20 万，应触发轮换。
+  const growingMultiStep: Entry = {
+    time: '', source: 'studio', tool: 'agy', session: 's4', status: 'succeeded',
+    usage: { source: 'acp usage', turns: 80, input_tokens: 6_950_000 },
+  };
+  expect(rotationReason([growingMultiStep], 's4')).toContain('连续调用了 80 次');
+
+  // 即使报 token 且单轮均值未越界，累计调用达到 RotateCalls 也应换会话（不能被均值分支提前 return 屏蔽）。
+  expect(rotationReason([
+    entry('s5', 90 * 60_000, 90, 'acp usage'),
+    entry('s5', 90 * 60_000, 90, 'acp usage'),
+  ], 's5')).toBe(`这个会话已经调用了 ${RotateCalls} 次`);
 });

@@ -636,4 +636,9 @@ it('auto-hands off production sessions when a major stage gate is confirmed', as
   expect(third.session.handoff_reason).toBeUndefined();
   expect(args(f)[2]).not.toContain('--resume');
   expect(args(f)[2]).toContain('当前项目文件快照');
+
+  // 终审关卡（gate-final，由编排落盘 production/approval.json）也能通过 scheduleGateHandoff 预约下一轮接力，避免把长渲染会话带进封面与发布阶段。
+  const { scheduleGateHandoff } = await import('./sessions');
+  scheduleGateHandoff(f.s, f.root, 'gate-final', '试听确认');
+  expect(getSession(f.s, f.root, id)!.meta.handoff_reason).toContain('试听确认');
 });

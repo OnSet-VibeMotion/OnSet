@@ -8,7 +8,7 @@
 
 已有可信字级时间戳时，直接用 `align_run({"evidence":"<字级时间戳 JSON>","publish":true})`，例如 `voice_synthesize()` 返回的 ElevenLabs `alignment` 路径。第三方对齐器按「第三方站」一节调用，输入用 `align_text()` 导出的对齐文本，输出也可作 `evidence`。只有句级时间戳时仍需强制对齐。
 
-长配音分段取得的对齐证据可用 `align_build()` 的 `align: ["production/audio/align-01.json", "production/audio/align-02.json@312.48"]`，偏移取实际音频，切点选发声之间的停顿。
+长配音（>180 秒）且由 `voice_synthesize()` 生成（带 `*.tts/report.json`）时，`align_run()` 会自动按段落静音边界切段、逐段对齐并合并整片时间轴，不要手写 Python 切分或合并脚本。非内置配音的超长录音若需分段对齐，可用 `align_build()` 的 `align: ["production/audio/align-01.json", "production/audio/align-02.json@312.48"]`，偏移取实际音频，切点选发声之间的停顿。
 
 缺省读 `production/script-final.md` 与 `production/audio/align.json`，写出 `production/audio/voice.srt`、`production/phrase-timeline.json` 和 `production/audio/align-report.json`。它把终稿的每个朗读单元与对齐结果逐字匹配，标出漏读、多读与读错的位置：
 

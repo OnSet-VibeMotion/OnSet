@@ -139,8 +139,105 @@ export function prepareResources(s: Scene, resolved: Record<string, string>): Re
   return renderassets.inputs(s.directory, []);
 }
 
+/** 汇总已挂载字体生成到 onset-fonts.css 的字体族与字重，避免每镜再 read_file("onset-fonts.css")。 */
+export function describeMountedFonts(paths: readonly string[]): string {
+  const fonts = [...new Set(paths)].filter((p) => fontExtRe.test(p)).sort(compareBytes);
+  const byFamily = new Map<string, Set<string>>();
+  for (const rel of fonts) {
+    const face = parseFontFace(rel);
+    if (!face) continue;
+    let weights = byFamily.get(face.family);
+    if (!weights) {
+      weights = new Set<string>();
+      byFamily.set(face.family, weights);
+    }
+    weights.add(face.style === 'italic' ? `${face.weight} italic` : face.weight);
+  }
+  return [...byFamily.entries()]
+    .sort(([a], [b]) => compareBytes(a, b))
+    .map(([family, weights]) => `'${family}' (${[...weights].sort(compareBytes).join(', ')})`)
+    .join('、');
+}
+
+const helperJsRe = /^(?:[^/\r\n`]+\/)*[^/\r\n`]+\.m?js$/i;
+const skipHelperJsRe = /(?:^|\/)(?:scene-kit\.js|onset-scene\.js|scene\.js|[^/]+\.min\.m?js)$/i;
+const maxHelperScanBytes = 64 * 1024;
+const maxExportsPerFile = 20;
+const maxDescribedHelpers = 8;
+
+/** 轻量级静态提取 JS/ESM 辅助库的公开导出符号（不依赖 AST 解析器），帮助渲染器直接调用而不整份通读库源码。 */
+export function extractJsExportSummary(filePath: string): string[] {
+  let text = '';
+  try {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile() || stat.size === 0 || stat.size > maxHelperScanBytes) return [];
+    text = fs.readFileSync(filePath, 'utf8');
+  } catch {
+    return [];
+  }
+  const byName = new Map<string, string>();
+  const add = (name: string, sig: string) => {
+    const prev = byName.get(name);
+    if (!prev || (!prev.includes('(') && sig.includes('('))) byName.set(name, sig);
+  };
+  const cleanArgs = (raw: string) => raw.replace(/\s+/g, ' ').trim();
+
+  for (const m of text.matchAll(/\bexport\s+(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(([^)\r\n]{0,80})\)/g)) {
+    add(m[1]!, `${m[1]!}(${cleanArgs(m[2]!)})`);
+  }
+  for (const m of text.matchAll(/\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\(([^)\r\n]{0,80})\)\s*=>/g)) {
+    add(m[1]!, `${m[1]!}(${cleanArgs(m[2]!)})`);
+  }
+  for (const m of text.matchAll(/\bexport\s+(?:const|let|var|class)\s+([A-Za-z_$][\w$]*)\b/g)) {
+    add(m[1]!, m[1]!);
+  }
+  for (const m of text.matchAll(/\bexport\s*\{([^}]{1,400})\}/g)) {
+    for (const part of m[1]!.split(',')) {
+      const cleaned = part.trim().replace(/\/\*[\s\S]*?\*\//g, '').trim();
+      if (!cleaned) continue;
+      const asMatch = /^(?:[A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)$/.exec(cleaned);
+      const ident = asMatch ? asMatch[1]! : /^[A-Za-z_$][\w$]*$/.test(cleaned) ? cleaned : '';
+      if (ident && ident !== 'default') add(ident, ident);
+    }
+  }
+  for (const m of text.matchAll(/(?:window|globalThis|global)\.([A-Za-z_$][\w$]*)\s*=/g)) {
+    const ident = m[1]!;
+    if (!ident.startsWith('__')) add(`window.${ident}`, `window.${ident}`);
+  }
+  const items = [...byName.values()];
+  if (items.length <= maxExportsPerFile) return items;
+  return [...items.slice(0, maxExportsPerFile), `…共 ${items.length} 项`];
+}
+
+/** 汇总镜头目录中已挂载的非压缩辅助 JS 库的公开导出接口。 */
+export function describeMountedLibraries(
+  sceneDir: string,
+  paths: readonly string[],
+  files: readonly renderassets.Resource[] = [],
+): string[] {
+  const sourceByPath = new Map(files.map((file) => [file.path, file.from]));
+  const candidates = [...new Set(paths)]
+    .filter((rel) => helperJsRe.test(rel) && !skipHelperJsRe.test(rel))
+    .sort(compareBytes)
+    .slice(0, maxDescribedHelpers);
+  const out: string[] = [];
+  for (const rel of candidates) {
+    let target = sourceByPath.get(rel) ?? '';
+    if (!target) {
+      try {
+        target = contained(sceneDir, rel, rel);
+      } catch {
+        continue;
+      }
+    }
+    const exports = extractJsExportSummary(target);
+    if (exports.length > 0) out.push(`\`${rel}\`：${exports.join('、')}`);
+  }
+  return out;
+}
+
 /** 未启用共享资源的旧镜头逐字不变，不因升级被判 Stale；run 准备后才注入。 */
-export function resourceSection(s: Scene, resolved: Record<string, string>, directorBrief = false, v6 = false): string {
+export function resourceSection(s: Scene, resolved: Record<string, string>, directorBrief = false, v6 = false, v8 = false): string {
   if (!fs.existsSync(path.join(s.directory, renderassets.ManifestFile))) return '';
   const files = resourceFiles(s, resolved);
   const paths = [...files.map((file) => file.path), ...renderassets.paths(s.directory)];
@@ -154,10 +251,22 @@ export function resourceSection(s: Scene, resolved: Record<string, string>, dire
     || /^(?:[^/\r\n`]+\/)*[^/\r\n`]+\.(?:m?js|css)$/i.test(rel),
   ).sort(compareBytes).slice(0, 12) : [];
   const hasFontsCSS = v6 && fs.existsSync(path.join(s.directory, FontsCSSFile));
+  const fontFamilies = v8 && hasFontsCSS ? describeMountedFonts(paths) : '';
+  const librarySummaries = v8 ? describeMountedLibraries(s.directory, paths, files) : [];
+  const fontsLine = hasFontsCSS
+    ? (v8 && fontFamilies
+      ? `- 已自动生成 \`${FontsCSSFile}\`（含 \`font-display: block\` 的 \`@font-face\`；已声明字体族：${fontFamilies}），HTML 中直接 \`<link rel="stylesheet" href="${FontsCSSFile}">\` 并按上述 \`font-family\` 引用即可，不必再 \`read_file\` \`${FontsCSSFile}\` 或手写 \`@font-face\`。\n`
+      : `- 已自动生成 \`${FontsCSSFile}\`（含 \`font-display: block\` 的 \`@font-face\`），HTML 中直接 \`<link rel="stylesheet" href="${FontsCSSFile}">\` 即可，不必重复手写 \`@font-face\`。\n`)
+    : '';
+  const libsBlock = librarySummaries.length > 0
+    ? '- 已挂载辅助库公开接口速查（直接 import/调用，无需先整份 read_file；仅对具体参数有疑问时按需看对应几行）：\n' +
+      librarySummaries.map((line) => `  - ${line}\n`).join('')
+    : '';
   return '\n共享渲染资源（强制，优先于技能里的复制说明）：\n' +
     '- 引擎已在本镜头准备这些相对路径：' + locations.join('、') + '。文件清单见 ' + renderassets.ManifestFile + '。\n' +
     (readyFiles.length ? '- 已挂载的字体和库可直接引用：' + readyFiles.map(file => '`' + file + '`').join('、') + '。\n' : '') +
-    (hasFontsCSS ? `- 已自动生成 \`${FontsCSSFile}\`（含 \`font-display: block\` 的 \`@font-face\`），HTML 中直接 \`<link rel="stylesheet" href="${FontsCSSFile}">\` 即可，不必重复手写 \`@font-face\`。\n` : '') +
+    fontsLine +
+    libsBlock +
     '- 这些文件通过相对链接共用项目内的固定内容（不支持链接时是副本），不要再次复制、下载或改写，也不要删除链接。HTML、CSS 与 import 仍引用上面的镜头内路径，不引用链接目标。\n' +
     '- 要改某个库时，另存为本镜头自己的新文件并改引用；模板可以读出来另写 index.html。镜头自己的 scene.js、onset-scene.js 与合成代码不共享。\n';
 }

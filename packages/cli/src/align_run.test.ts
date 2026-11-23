@@ -125,3 +125,81 @@ it.skipIf(!hasFfmpeg)('builds from trusted word timestamps without requiring an 
   expect((await alignRunOperation().run({ ...input, publish: true }, context))?.data).toMatchObject({ published: true, match_rate: 1 });
   expect((await alignRunOperation().run(input, context))?.data).toMatchObject({ reused: true });
 });
+
+it.skipIf(process.platform === 'win32' || !hasFfmpeg)('auto-chunks long MLX audio using matching TTS report (including copied WAV matched by SHA-256) and merges shifted timestamps', async () => {
+  const root = tempDir(), bin = tempDir(), model = tempDir();
+  const audioDir = path.join(root, 'production/audio');
+  fs.mkdirSync(audioDir, { recursive: true });
+  fs.writeFileSync(path.join(root, 'onset.conf'), 'ALIGN_PROVIDER=mlx\n');
+  writeFrameFor(root, 'size=320x240');
+  fs.writeFileSync(path.join(root, 'production/script-final.md'), '你好。\n\n再见。\n');
+
+  // 构造 2.0 秒音频（两段各 0.7s 发声，中间 0.6s 静音），并放在 voice-v05.tts/ 下再复制为 voice.wav 测试 SHA-256 匹配。
+  const sourceDir = path.join(audioDir, 'voice-v05.tts');
+  fs.mkdirSync(sourceDir, { recursive: true });
+  const seg1 = path.join(sourceDir, '001.wav');
+  const sil = path.join(sourceDir, 'sil.wav');
+  const seg2 = path.join(sourceDir, '002.wav');
+  makeClip(seg1, 'sine=frequency=440:sample_rate=16000:duration=0.7');
+  makeClip(sil, 'anullsrc=r=16000:cl=mono:d=0.6');
+  makeClip(seg2, 'sine=frequency=520:sample_rate=16000:duration=0.7');
+  const concatList = path.join(sourceDir, 'list.txt');
+  fs.writeFileSync(concatList, `file '${seg1}'\nfile '${sil}'\nfile '${seg2}'\n`);
+  const ttsWav = path.join(sourceDir, 'audio.wav');
+  const voiceWav = path.join(audioDir, 'voice.wav');
+  const concatRes = spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', concatList, '-c:a', 'pcm_s16le', ttsWav]);
+  expect(concatRes.status).toBe(0);
+  fs.copyFileSync(ttsWav, voiceWav);
+  fs.writeFileSync(path.join(sourceDir, 'report.json'), JSON.stringify({
+    schema: 1,
+    duration_seconds: 2.0,
+    segments: [
+      { audio: '001.wav', text: '你好。', start_seconds: 0, duration_seconds: 0.7, pause_after_ms: 600 },
+      { audio: '002.wav', text: '再见。', start_seconds: 1.3, duration_seconds: 0.7 },
+    ],
+  }));
+
+  const command = path.join(bin, 'mlx_audio.stt.generate');
+  fs.writeFileSync(command, 'fixture', { mode: 0o755 });
+  for (const file of QwenForcedAligner.files) fs.writeFileSync(path.join(model, file.path), 'fixture');
+  setenv('ONSET_BIN_DIR', bin);
+  setenv('ALIGN_MODEL', model);
+  setenv('ONSET_ALIGN_AUTO_CHUNK_THRESHOLD_SECONDS', '1');
+
+  const actualStart = procgroup.start;
+  const seenTexts: string[] = [];
+  const mock = vi.spyOn(procgroup, 'start').mockImplementation(async (file, args, options, ...rest) => {
+    if (file !== command) return actualStart(file, args, options, ...rest);
+    const chunkText = args[args.indexOf('--text') + 1]!;
+    seenTexts.push(chunkText);
+    const outPath = args[args.indexOf('--output-path') + 1]! + '.json';
+    const chars = chunkText.includes('你好') ? ['你', '好'] : ['再', '见'];
+    fs.writeFileSync(outPath, JSON.stringify([
+      { text: chars[0], start: 0.0, end: 0.35 },
+      { text: chars[1], start: 0.35, end: 0.7 },
+    ]));
+    return { wait: async () => {} } as Awaited<ReturnType<typeof procgroup.start>>;
+  });
+  try {
+    const out = new Buffer();
+    const result = await alignRunOperation().run(
+      { project_root: root, max_chunk_seconds: 1, publish: true },
+      { out, err: out, signal: new AbortController().signal, unsafe: false },
+    );
+    expect(seenTexts).toEqual(['你好。', '再见。']);
+    expect(result?.data).toMatchObject({ published: true, match_rate: 1, chunks: 2 });
+    const mergedAlign = JSON.parse(fs.readFileSync(path.join(root, 'production/audio/align.json'), 'utf8')) as Array<{ text: string; start: number; end: number }>;
+    expect(mergedAlign).toEqual([
+      { text: '你', start: 0, end: 0.35 },
+      { text: '好', start: 0.35, end: 0.7 },
+      { text: '再', start: 1.3, end: 1.65 },
+      { text: '见', start: 1.65, end: 2.0 },
+    ]);
+    const srt = fs.readFileSync(path.join(root, 'production/audio/voice.srt'), 'utf8');
+    expect(srt).toContain('你好。');
+    expect(srt).toContain('再见。');
+    expect(srt).toContain('00:00:01,300 --> 00:00:02,000');
+  } finally {
+    mock.mockRestore();
+  }
+});

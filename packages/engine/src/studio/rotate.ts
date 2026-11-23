@@ -15,7 +15,16 @@ import type { Entry } from '../ledger';
 export const RotateContextTokens = 150_000;
 
 /**
- * 不报 token 的工具（qoder 只报额度）按累计调用次数换。
+ * 不报单次请求峰值（last_request_input_tokens）的 ACP / 流式工具：
+ * 单轮跑了这么多步且整轮平均上下文已到 RotateGrowingAverageTokens 时，
+ * 末尾真实上下文通常已接近 2 倍均值（16–27 万），下一轮开始前直接换新会话，
+ * 避免像「80 步均值 8.7 万、末尾 27 万」那样把超大上下文带进下一轮。
+ */
+export const RotateGrowingTurnCalls = 30;
+export const RotateGrowingAverageTokens = 80_000;
+
+/**
+ * 累计调用次数上限：既用于不报 token 的工具（qoder 只报额度），也兜底报 token 的长会话防止上下文无限滚雪球。
  */
 export const RotateCalls = 180;
 
@@ -49,9 +58,11 @@ export function rotationReason(entries: readonly Entry[] | null, cliSession: str
   ) {
     const average = input / turns;
     if (average >= RotateContextTokens) return `上一轮平均每次调用要读约 ${Math.round(average / 10_000)} 万 token 的上下文`;
-    return '';
+    if (turns >= RotateGrowingTurnCalls && average >= RotateGrowingAverageTokens) {
+      return `上一轮连续调用了 ${turns} 次（平均每次约 ${Math.round(average / 10_000)} 万 token），末尾上下文已偏长`;
+    }
   }
-  if (calls >= RotateCalls) return `这个会话已经调用了 ${calls} 次`;
+  if (last.usage.source !== 'codex app-server' && calls >= RotateCalls) return `这个会话已经调用了 ${calls} 次`;
   return '';
 }
 
