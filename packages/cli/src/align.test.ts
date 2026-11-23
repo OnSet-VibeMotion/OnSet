@@ -112,4 +112,17 @@ describe('align', () => {
     expect(build?.description, 'align_build 的说明应写明规范形状与 funasr 形状').toContain('"start"');
     expect(build?.description).toContain('timestamp');
   });
+
+  it('emits non-blocking hints when a long script lacks protected phrases or has overly long phrases', async () => {
+    const root = tempDir();
+    writeAlignFile(path.join(root, 'production/script-final.md'), '这是一段没有任何受保护短语标记的长口播文稿内容，用于测试系统是否会在导出朗读文本时给出温和的提示信息，帮助编排工具在配音前及时补标专有名词与核心概念。\n');
+    const missing = await runAlign('text', '--project-root', root);
+    expect(missing.err).toBeUndefined();
+    expect(missing.out).toContain('还没有标注受保护短语');
+
+    writeAlignFile(path.join(root, 'production/script-final.md'), '@{too-long}这是一个超过十六个阅读单位非常非常非常长的受保护短语@{/too-long}。\n');
+    const long = await runAlign('text', '--project-root', root);
+    expect(long.err).toBeUndefined();
+    expect(long.out).toContain('受保护短语 too-long 偏长');
+  });
 });

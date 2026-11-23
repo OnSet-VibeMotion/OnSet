@@ -30,7 +30,15 @@ const isCloser = (s: string): boolean => containsAny(s, '”’」』）)】》"
 
 type Range = [number, number];
 
-/** sentences 按句末标点与分段切句。句末标点后紧跟的右引号、右括号归前一句。 */
+/** pieceIndex 是否严格落在某个受保护短语内部（起点/终点边界上允许切）。 */
+function insidePhrase(s: Script, pieceIndex: number): boolean {
+  for (const p of s.phrases) {
+    if (p.startPiece < pieceIndex && pieceIndex < p.endPiece) return true;
+  }
+  return false;
+}
+
+/** sentences 按句末标点与分段切句。句末标点后紧跟的右引号、右括号归前一句；不从受保护短语中间切断。 */
 function sentences(s: Script): Range[] {
   const out: Range[] = [];
   let start = 0;
@@ -41,7 +49,7 @@ function sentences(s: Script): Range[] {
       start = i;
       pending = false;
     }
-    if (pending && !(p.plain && isCloser(p.display))) {
+    if (pending && !(p.plain && isCloser(p.display)) && !insidePhrase(s, i)) {
       out.push([start, i]);
       start = i;
       pending = false;
@@ -52,13 +60,13 @@ function sentences(s: Script): Range[] {
   return out;
 }
 
-/** splitLong 把显示长度超限的句子在逗号、顿号处切开，尽量让每段贴近上限。 */
+/** splitLong 把显示长度超限的句子在逗号、顿号处切开，避开受保护短语内部，尽量让每段贴近上限。 */
 function splitLong(s: Script, sentence: Range): Range[] {
   if (units(s.displayText(sentence[0], sentence[1])) <= MaxCueUnits) return [sentence];
   const clauses: Range[] = [];
   let start = sentence[0];
   for (let i = sentence[0]; i < sentence[1]; i++) {
-    if (s.pieces[i].plain && isClauseEnd(s.pieces[i].display)) {
+    if (s.pieces[i].plain && isClauseEnd(s.pieces[i].display) && !insidePhrase(s, i + 1)) {
       clauses.push([start, i + 1]);
       start = i + 1;
     }

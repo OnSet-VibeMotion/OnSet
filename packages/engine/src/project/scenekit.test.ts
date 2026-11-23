@@ -81,6 +81,44 @@ describe('scene-kit', () => {
     expect(captions.events()[0].text).toBe('早\n一点');
   });
 
+  it('keeps protected Chinese keywords and multi-word English names unbroken across subtitle lines', () => {
+    const element = () => ({ style: {}, className: '', textContent: '', appendChild() {}, setAttribute() {} });
+    const win: Record<string, unknown> = {
+      ONSET_SCENE: {
+        schema: 1,
+        scene_id: 'fixture',
+        fps: 30,
+        frames: 90,
+        start_frame: 0,
+        width_px: 1080,
+        height_px: 1920,
+        safe_area: { subtitles: { left_px: 60, top_px: 1500, right_px: 60, bottom_px: 200 } },
+        subtitles: { font_size_px: { min: 48, max: 48 }, max_lines: 2, max_fullwidth_chars_per_line: 10 },
+        cues: [
+          { index: 1, text: '打开之后的提示词缓存效果非常明显', start_frame: 0, end_frame_exclusive: 45 },
+          { index: 2, text: '这次实测我们用 Claude Code 来跑完', start_frame: 45, end_frame_exclusive: 90 },
+        ],
+        phrases: [
+          { phrase_id: 'cache', text: '提示词缓存', start_frame: 10, end_frame_exclusive: 30 },
+          { phrase_id: 'cc', text: 'Claude Code', start_frame: 50, end_frame_exclusive: 75 },
+        ],
+      },
+      document: { createElement: element },
+    };
+    vm.runInNewContext(assets.shared().readText(`${skillTreeRoot}/scene-kit/scene-kit.js`), { window: win });
+    const kit = win.SceneKit as {
+      captions: (root: unknown, options?: unknown) => { layouts: { lines: string[] }[] };
+      breakLines: (text: string, cap: number, maxLines: number, protectedTerms?: string[]) => string[] | null;
+    };
+    const cap = kit.captions({ appendChild() {}, ownerDocument: win.document });
+    expect(cap.layouts[0].lines.some((line) => line.includes('提示词缓存'))).toBe(true);
+    expect(cap.layouts[1].lines.some((line) => line.includes('Claude Code'))).toBe(true);
+    // 超过单行宽度的长短语不强制锁死，仍可正常折行而不溢出。
+    const longLines = kit.breakLines('这是一句很长很长的测试，用来验证超长短语不会溢出', 12, 2, ['这是一句很长很长的测试，用来验证超长短语不会溢出']);
+    expect(longLines).not.toBeNull();
+    expect(longLines!.length).toBe(2);
+  });
+
   // HyperFrames lint 的 gsap_timeline_not_registered 逐个脚本按正则查（0.8.225 实测）：脚本里出现 gsap 紧跟 .timeline，
   // 又没有 window.__timelines 赋值，就判「建了时间线却没注册」。scene-kit.js 被复制进每个镜头目录、作为单独的
   // <script> 加载，它的注释或报错文案里只要写了这串字，所有用 scene-kit 的镜头都报这条错，渲染器自己修不掉，

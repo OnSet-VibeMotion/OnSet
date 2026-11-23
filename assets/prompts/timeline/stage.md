@@ -48,7 +48,7 @@ audio_check({"audio": "production/audio/voice.wav", "srt": "production/audio/voi
 
 ### {{STAGE:timeline}}补充：短语级语义时间轴
 
-句级 SRT 只能用于字幕和粗排，不能直接证明一句话内部的视觉顺序。凡一条字幕包含两个以上会分别显示的概念、动作、条件、结论或专有名词，必须把这些单位在终稿里标成受保护短语（`@{短语编号}…@{/短语编号}`），由 `align_build()` 依据真实音频生成 `production/phrase-timeline.json`，不要手写帧号；再生成 `production/visible-event-inventory.json`：
+句级 SRT 只能用于字幕和粗排，不能直接证明一句话内部的视觉顺序。凡一条字幕包含两个以上会分别显示的概念、动作、条件、结论或专有名词，或包含不能在字幕切条/换行时劈开的专有名词与核心词组，必须把这些单位在终稿里标成受保护短语（`@{短语编号}…@{/短语编号}`，单条控制在 2–12 字）：`align_build()` 会避开短语内部切分 `voice.srt`，`SceneKit.captions()` 会把短语锁成单行不可拆原子块，并依据真实音频生成 `production/phrase-timeline.json`（不要手写帧号）；再生成 `production/visible-event-inventory.json`：
 
 - `production/phrase-timeline.json`（`align_build()` 产出）
 - `production/visible-event-inventory.json`

@@ -2,6 +2,7 @@ import { totalFrames } from '../frames';
 import { atomicWrite } from '../fsutil';
 import { formatFixed } from '../gofmt';
 import { compareBytes, marshalIndent, sortedKeys } from '../gojson';
+import { units } from '../reads';
 import { buildCues, toMs, type Cue } from './cue';
 import type { Item } from './evidence';
 import { LabelExact, LabelInsertion, LabelMerge, LabelReplace, LabelSplit, matchTokens, type Group } from './match';
@@ -271,6 +272,10 @@ function judgePhrase(p: PhraseTiming, report: Report): void {
     report.problems.push(where + '全部时间都是插值得来，没有任何实测依据');
   } else if (p.confidence < HintConfidence) {
     report.hints.push(`${where}置信度 ${formatFixed(p.confidence, 2)}，低于 ${formatFixed(HintConfidence, 2)}，复核它的起止帧`);
+  }
+  const u = units(p.text);
+  if (u > 16) {
+    report.hints.push(`${where}偏长（${u} 阅读单位）：建议收窄到 2–12 字核心词或短语，否则单行字幕放不下仍会被拆行`);
   }
 }
 

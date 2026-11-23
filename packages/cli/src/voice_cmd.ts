@@ -8,7 +8,7 @@ import path from 'node:path';
 import { envMap } from '@onset/engine/envutil';
 import * as voice from '@onset/engine/voice';
 import * as config from '@onset/engine/config';
-import { bool, str, strs, projectRoot } from './ops/common';
+import { bool, num, str, strs, projectRoot } from './ops/common';
 import { defineGroup } from './ops/cli';
 import { ParamError, defineOp } from './ops/op';
 
@@ -61,6 +61,7 @@ ElevenLabs 返回 alignment 路径，可交给 align_build；其他服务需继�
     instruction: { type: 'string', description: 'Breeze、MLX 或百炼的语气指导，不用于更换 Breeze 音色' },
     pronunciation: { type: 'strings', description: 'MiniMax 发音替换，每项为 原文/读法，如 2025年/二零二五年' },
     ssml: { type: 'boolean', description: '仅百炼：文稿使用 SSML' },
+    paragraph_pause_ms: { type: 'integer', description: `多段文稿（按换行分段）在段落之间插入的静音停顿毫秒数，默认 ${voice.DefaultParagraphPauseMs}（范围 0..${voice.MaxParagraphPauseMs}，0 关闭分段补静音）`, default: voice.DefaultParagraphPauseMs },
   },
   run: async (p, { out, signal }) => {
     const root = fs.realpathSync(str(p.project_root));
@@ -69,6 +70,7 @@ ElevenLabs 返回 alignment 路径，可交给 align_build；其他服务需继�
     const text = str(p.text_file) ? fs.readFileSync(projectFile(root, str(p.text_file)), 'utf8') : str(p.text);
     const result = await voice.synthesize({ provider: cfg.ttsProvider, text, voice: str(p.voice), output: projectFile(root, str(p.output)),
       ...(str(p.speed) ? { speed: Number(str(p.speed)) } : {}), instruction: str(p.instruction), pronunciation: strs(p.pronunciation), ssml: bool(p.ssml),
+      paragraphPauseMs: num(p.paragraph_pause_ms),
       env: { ...envMap(), ...cfg.overlay }, signal, progress: (message) => out.write(message + '\n') });
     out.write(`配音已生成：${result.audio}\n生成报告：${result.report}\n`);
     return { data: result };
