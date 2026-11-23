@@ -224,12 +224,27 @@ it('planTTSAutoChunks requires SHA-256 match on primary <stem>.tts/audio.wav and
   const currentSHA = 'wrong';
   expect(planTTSAutoChunks(audio, currentSHA, '第一段。\n第二段。', 220, 'mlx', 150, 180)).toBeNull();
 
-  // audio.wav 与当前音频一致时，即使报告含 [笑] / (sigh) 声音事件也能正常匹配并切段。
+  // audio.wav 与当前音频一致时，即使报告含 [笑] / (sigh) 声音事件或独立声音事件段落，也能正常匹配并切段（FunASR 也不会因空段抛错）。
+  const reportWithSoloEvents = {
+    schema: 1,
+    duration_seconds: 310,
+    segments: [
+      { audio: '000.wav', text: '[笑]', start_seconds: 0, duration_seconds: 1, pause_after_ms: 650 },
+      { audio: '001.wav', text: '第一段。[笑]', start_seconds: 1.65, duration_seconds: 150, pause_after_ms: 650 },
+      { audio: '002.wav', text: '第二段。(sigh)', start_seconds: 152.3, duration_seconds: 150, pause_after_ms: 650 },
+      { audio: '003.wav', text: '(sigh)', start_seconds: 302.95, duration_seconds: 7.05 },
+    ],
+  };
+  fs.writeFileSync(path.join(ttsDir, 'report.json'), JSON.stringify(reportWithSoloEvents));
   fs.writeFileSync(path.join(ttsDir, 'audio.wav'), 'current-audio-bytes');
   const realSHA = require('node:crypto').createHash('sha256').update('current-audio-bytes').digest('hex') as string;
-  const planned = planTTSAutoChunks(audio, realSHA, '第一段。\n第二段。', 220, 'mlx', 150, 180);
-  expect(planned).not.toBeNull();
-  expect(planned!.chunks).toHaveLength(2);
-  expect(planned!.chunks[0]!.text).toBe('第一段。');
-  expect(planned!.chunks[1]!.text).toBe('第二段。');
+  for (const prov of ['mlx', 'funasr'] as const) {
+    const planned = planTTSAutoChunks(audio, realSHA, '第一段。\n第二段。', 310, prov, 150, 180);
+    expect(planned).not.toBeNull();
+    expect(planned!.chunks).toHaveLength(2);
+    expect(planned!.chunks[0]!.start).toBe(1.65);
+    expect(planned!.chunks[1]!.start).toBe(152.3);
+    expect(planned!.chunks[0]!.text).toContain('第一段');
+    expect(planned!.chunks[1]!.text).toContain('第二段');
+  }
 });

@@ -137,8 +137,10 @@ export function planTTSAutoChunks(
       }
       const pauseSec = typeof raw.pause_after_ms === 'number' && raw.pause_after_ms > 0 ? raw.pause_after_ms / 1000 : 0;
       const cleanText = align.stripVocalEvents(raw.text).trim();
-      segs.push({ text: cleanText, start: raw.start_seconds, end: Math.min(end, actualDuration), pauseSec });
       prevEnd = end;
+      // 仅含声音事件（如单独一段 [笑]）不含朗读文字，跳过不单独成块，保留其余段的真实起止时间。
+      if (!spokenSignature(cleanText)) continue;
+      segs.push({ text: cleanText, start: raw.start_seconds, end: Math.min(end, actualDuration), pauseSec });
     }
     if (!valid || segs.length < 2) continue;
     if (spokenSignature(segs.map((s) => s.text).join('\n')) !== wantSpoken) continue;

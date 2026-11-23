@@ -45,11 +45,13 @@ describe('scene edits', () => {
     expect(() => validateEdits({ elements: { '#x } body { color: red': { selector: '#x } body { color: red', dx: 1 } } })).toThrow(/选择器/);
     expect(() => validateEdits({ elements: { '#[': { selector: '#[', opacity: 0.5 } } })).toThrow(/选择器/);
     expect(() => validateEdits({ elements: { 'div(': { selector: 'div(', text: 'hi' } } })).toThrow(/选择器/);
+    // CSS.escape 生成的转义括号在引号外也应视为合法选择器。
+    expect(validateEdits({ elements: { '#part\\(one': { selector: '#part\\(one', dx: 4 } } }).elements['#part\\(one']?.dx).toBe(4);
     expect(() => validateEdits({ elements: { '#x': { selector: '#x', backgroundColor: 'url(javascript:alert(1))' } } })).toThrow(/背景颜色/);
     expect(() => validateEdits({ elements: { '#x': { selector: '#x', opacity: 2 } } })).toThrow(/范围/);
   });
 
-  it('keeps generated script opacity idempotent across repeated init events and isolates querySelector errors', () => {
+  it('keeps generated script opacity idempotent across repeated init events, respects page-written opacity, and isolates querySelector errors', () => {
     const script = buildEditsScript({
       schema: 1,
       elements: {
@@ -60,6 +62,8 @@ describe('scene edits', () => {
     const styleState: Record<string, string> = {};
     const titleEl = {
       textContent: '旧文案',
+      children: [] as unknown[],
+      firstChild: null as unknown,
       dataset: {} as Record<string, string>,
       style: {
         get opacity() {
@@ -102,13 +106,15 @@ describe('scene edits', () => {
     fn(fakeWin, fakeDoc, () => ({ opacity: frameOpacity }));
     expect(titleEl.textContent).toBe('新文案');
     expect(Number(titleEl.style.opacity)).toBeCloseTo(0.8, 5);
-    // DOMContentLoaded 与 load 重复初始化不叠乘（仍是 0.8，而不是 0.64 / 0.512）。
+    // DOMContentLoaded 重复初始化不叠乘（仍是 0.8，而不是 0.64）。
     expect(docListeners.DOMContentLoaded?.length).toBe(1);
     expect(winListeners.load?.length).toBe(1);
     docListeners.DOMContentLoaded![0]!();
     expect(Number(titleEl.style.opacity)).toBeCloseTo(0.8, 5);
+    // 若页面自己的逻辑在 load 前新写入了 0.5，load 时的 apply 应以 0.5 为基值得到 0.4，不回退到旧基值 1。
+    titleEl.style.opacity = '0.5';
     winListeners.load![0]!();
-    expect(Number(titleEl.style.opacity)).toBeCloseTo(0.8, 5);
+    expect(Number(titleEl.style.opacity)).toBeCloseTo(0.4, 5);
     // seek 到动画不透明度 0.5 的帧后，按当前帧基值乘以 0.8 = 0.4。
     hf.seek(1);
     expect(Number(titleEl.style.opacity)).toBeCloseTo(0.4, 5);
@@ -128,6 +134,16 @@ describe('scene edits', () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
       fs.rmSync(outside, { recursive: true, force: true });
+    }
+
+    // HTML 已写入后第二次提交（写 onset-edits.json）失败时，必须把 index.html 完整回滚到原始字节。
+    const rollbackDir = mkScene(sampleHtml);
+    try {
+      fs.mkdirSync(path.join(rollbackDir, EditsFile));
+      expect(() => writeEdits(rollbackDir, { schema: 1, elements: { '#title': { selector: '#title', dx: 12 } } })).toThrow();
+      expect(fs.readFileSync(path.join(rollbackDir, 'index.html'), 'utf8')).toBe(sampleHtml);
+    } finally {
+      fs.rmSync(rollbackDir, { recursive: true, force: true });
     }
   });
 

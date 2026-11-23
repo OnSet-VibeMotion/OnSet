@@ -239,6 +239,8 @@ export function SceneEditor(props: SceneEditorProps) {
   const draftRef = useRef(draftEdits);
   draftRef.current = draftEdits;
   const draftRevRef = useRef(0);
+  const savedWriteRef = useRef(0);
+  const exitTokenRef = useRef(0);
   const loadedSceneRef = useRef('');
 
   const dirty = useMemo(() => !editsEqual(savedEdits, draftEdits), [savedEdits, draftEdits]);
@@ -286,9 +288,12 @@ export function SceneEditor(props: SceneEditorProps) {
       setUndoStack([]);
     }
     const revAtStart = draftRevRef.current;
+    const savedWriteAtStart = savedWriteRef.current;
     api<SceneEditsResponse>(`/api/scenes/${encodeURIComponent(scene.id)}/edits`).then(
       (res) => {
         if (!active) return;
+        // 若 GET 在途期间发生了新的 PUT 保存，丢弃过期响应，不把 savedEdits / draftEdits 回退为旧值。
+        if (savedWriteRef.current !== savedWriteAtStart) return;
         const next = res.edits && res.edits.elements ? cloneEdits(res.edits) : emptyEdits();
         setSavedEdits(next);
         const userEditedMeanwhile = draftRevRef.current !== revAtStart;
@@ -374,7 +379,10 @@ export function SceneEditor(props: SceneEditorProps) {
       if (edit.text !== undefined) {
         if (!origTextRef.current.has(sel)) {
           origTextRef.current.set(sel, el.dataset.onsetOrigText ?? el.textContent ?? '');
-          if (el.children.length > 0 && !origNodesRef.current.has(sel)) {
+          const bakedNodes = (el as HTMLElement & { __onsetOrigNodes?: Node[] }).__onsetOrigNodes;
+          if (bakedNodes && bakedNodes.length > 0 && !origNodesRef.current.has(sel)) {
+            origNodesRef.current.set(sel, bakedNodes);
+          } else if (el.children.length > 0 && !origNodesRef.current.has(sel)) {
             const nodes: Node[] = [];
             while (el.firstChild) nodes.push(el.removeChild(el.firstChild));
             origNodesRef.current.set(sel, nodes);
@@ -616,6 +624,7 @@ export function SceneEditor(props: SceneEditorProps) {
       if (e.key === 'Escape') {
         e.preventDefault();
         if (exitConfirm) {
+          exitTokenRef.current += 1;
           pendingExitRef.current = null;
           setExitConfirm(false);
         } else if (selected) deselect();
@@ -755,13 +764,14 @@ export function SceneEditor(props: SceneEditorProps) {
     window.addEventListener('pointercancel', onUp);
   };
 
-  /** 保存属性覆盖并触发零 Token 直接出片：只确认提交那一刻的草稿版本，避免覆盖保存期间的后续编辑。 */
+  /** 保存属性覆盖并触发零 Token 直接出片：只确认提交那一刻的草稿版本，编码受理回调时再次核对版本与离开意图。 */
   const applyAndEncode = async (exitAfter = false) => {
     setError('');
     setSaving(true);
     const submitted = cloneEdits(draftRef.current);
     const submittedRev = draftRevRef.current;
     const afterExit = pendingExitRef.current;
+    const exitToken = exitTokenRef.current;
     try {
       const res = await api<{ edits: SceneEdits }>(`/api/scenes/${encodeURIComponent(scene.id)}/edits`, {
         method: 'PUT',
@@ -769,16 +779,19 @@ export function SceneEditor(props: SceneEditorProps) {
         body: JSON.stringify({ edits: submitted, encode: false }),
       });
       const saved = cloneEdits(res.edits);
+      savedWriteRef.current += 1;
       setSavedEdits(saved);
       const stillMatchesSubmitted = draftRevRef.current === submittedRev;
       if (stillMatchesSubmitted) {
+        dirtyRef.current = false;
         setDraftEdits(cloneEdits(saved));
         setUndoStack([]);
         setExitConfirm(false);
         pendingExitRef.current = null;
       }
       props.run(`/api/scenes/${encodeURIComponent(scene.id)}/encode`, {}, () => {
-        if (exitAfter && stillMatchesSubmitted) {
+        if (exitAfter && draftRevRef.current === submittedRev && exitTokenRef.current === exitToken) {
+          dirtyRef.current = false;
           if (afterExit) afterExit();
           else props.onExit();
         }
@@ -913,6 +926,7 @@ export function SceneEditor(props: SceneEditorProps) {
                 onClick={() => {
                   const after = pendingExitRef.current;
                   pendingExitRef.current = null;
+                  dirtyRef.current = false;
                   setDraftEdits(cloneEdits(savedEdits));
                   setExitConfirm(false);
                   if (after) after();
@@ -924,6 +938,7 @@ export function SceneEditor(props: SceneEditorProps) {
               <button
                 className="ghost"
                 onClick={() => {
+                  exitTokenRef.current += 1;
                   pendingExitRef.current = null;
                   setExitConfirm(false);
                 }}
