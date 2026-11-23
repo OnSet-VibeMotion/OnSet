@@ -7,15 +7,16 @@ import path from 'node:path';
 import { envMap } from '../envutil';
 import * as ledger from '../ledger';
 import * as mediaprobe from '../mediaprobe';
+import * as scene from '../scene';
 import { newUsage, usageAdd, usageJSON, type Usage } from '../tools';
 import { sceneActivity } from './activity';
 import { decodeChoice } from './agents';
 import { isEnvFile } from './api_ui';
-import { DecodeError, decodeJSON, fieldInt, fieldNumber, fieldObject, goMap, goValue, methodNotAllowed, notFound, serveFile, writeError, writeJSON } from './http';
-import { discoverScenes, sceneSummaryJSON, type SceneSummary } from './scenes';
+import { DecodeError, decodeJSON, fieldBool, fieldInt, fieldNumber, fieldObject, goMap, goValue, methodNotAllowed, notFound, serveFile, writeError, writeJSON } from './http';
+import { discoverScenes, fileExists, sceneSummaryJSON, type SceneSummary } from './scenes';
 import { attachmentJSON, containedPath, newID, validateChoice, type AgentChoice, type Box } from './sessions';
 import type { Project, Server } from './studio';
-import { addTask, runStudioOpWith, runTask, runWriteTask, updateTask, writeTaskError } from './tasks';
+import { addTask, runStudioOp, runStudioOpWith, runTask, runWriteTask, updateTask, writeTaskError } from './tasks';
 
 // ---- 镜头列表与详情 ----
 
@@ -149,6 +150,68 @@ export async function sceneFeatureAPI(s: Server, request: Request, rest: string)
           return writeTaskError(err);
         }
       }
+      case 'encode': {
+        if (request.method !== 'POST') return methodNotAllowed('POST');
+        const sceneDir = sc.directory;
+        if (!fileExists(path.join(sceneDir, 'index.html'))) return writeError(400, 'html_missing', '镜头目录里还没有 index.html 合成文件');
+        try {
+          const t = runWriteTask(s, p, 'scene.encode', '重新出片 ' + id, async (signal) => {
+            await runStudioOp(s, signal, p, 'scene_encode', { scene: sceneDir });
+          });
+          return writeJSON(202, goMap({ task_id: t.task_id, scene_id: id }));
+        } catch (err) {
+          return writeTaskError(err);
+        }
+      }
+      case 'edits': {
+        const sceneDir = sc.directory;
+        if (request.method === 'GET') {
+          try {
+            const edits = scene.readEdits(sceneDir);
+            return writeJSON(200, goMap({ has_html: fileExists(path.join(sceneDir, 'index.html')), edits }));
+          } catch (err) {
+            return writeError(400, 'invalid_edits', (err as Error).message);
+          }
+        }
+        if (request.method !== 'PUT') return methodNotAllowed('GET, PUT');
+        if (!fileExists(path.join(sceneDir, 'index.html'))) return writeError(400, 'html_missing', '镜头目录里还没有 index.html 合成文件');
+        let body: Record<string, unknown>;
+        let encode = false;
+        let validated: scene.SceneEdits;
+        try {
+          body = await decodeJSON(request);
+          encode = fieldBool(body, 'encode');
+          const rawEdits = fieldObject(body, 'edits') ?? body;
+          validated = scene.validateEdits(rawEdits);
+        } catch (err) {
+          if (err instanceof DecodeError) return writeError(400, 'invalid_json', '请求不是合法 JSON');
+          return writeError(400, 'invalid_edits', (err as Error).message);
+        }
+        if (encode) {
+          try {
+            const t = runWriteTask(s, p, 'scene.encode', '应用修改并出片 ' + id, async (signal) => {
+              scene.writeEdits(sceneDir, validated);
+              await runStudioOp(s, signal, p, 'scene_encode', { scene: sceneDir });
+            });
+            return writeJSON(202, goMap({ edits: validated, task_id: t.task_id, scene_id: id }));
+          } catch (err) {
+            return writeTaskError(err);
+          }
+        }
+        try {
+          s.acquire(p.path, '保存画面编辑 ' + id);
+        } catch (err) {
+          return writeTaskError(err);
+        }
+        try {
+          const saved = scene.writeEdits(sceneDir, validated);
+          return writeJSON(200, goMap({ edits: saved }));
+        } catch (err) {
+          return writeError(400, 'edits_failed', (err as Error).message);
+        } finally {
+          s.release(p.path);
+        }
+      }
       case 'activity':
         return writeJSON(200, sceneActivity(sc));
       case 'attachment':
@@ -258,7 +321,7 @@ export function previewAPI(s: Server, request: Request, rest: string): Response 
       return notFound();
     }
     if (!full.startsWith(sc.directory + path.sep) || isEnvFile(full)) return notFound();
-    return serveFile(request, full);
+    return serveFile(request, full, { 'Cache-Control': 'no-cache' });
   }
   return notFound();
 }

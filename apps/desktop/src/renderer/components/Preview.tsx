@@ -19,6 +19,7 @@ import { PublishTab } from './Publish';
 import { isStationTab, StationPage, StationSlots } from './Stations';
 
 import { SceneBrief, StoryboardTab } from './Storyboard';
+import { SceneEditor } from './SceneEditor';
 import { EvidenceTab } from './Evidence';
 import { AuditionTab } from './Audition';
 import { ProgressTab } from './Progress';
@@ -326,6 +327,8 @@ function SceneTab(props: Props & { scene: Scene | null }) {
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const resumeTimeRef = useRef<number | null>(null);
   const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   // 拖动中（还没松手）。按下没移动就松开算一次点击：有选区时清掉选区，没有就播放 / 暂停。
   const [dragging, setDragging] = useState(false);
@@ -380,6 +383,8 @@ function SceneTab(props: Props & { scene: Scene | null }) {
     if (menu.current) menu.current.open = false;
     setDrag(null);
     setDragging(false);
+    setEditing(false);
+    resumeTimeRef.current = null;
     setError('');
     setNote('');
     setFeedback('');
@@ -388,8 +393,9 @@ function SceneTab(props: Props & { scene: Scene | null }) {
   }, [scene?.id]);
 
   // 键盘：← / → 逐帧（按住 Shift 一次 10 帧），空格播放 / 暂停。焦点在输入框、下拉框里时不拦截；
-  // 空格落在按钮上时交给按钮自己。
+  // 空格落在按钮上时交给按钮自己。进入 HTML 编辑模式时由 SceneEditor 接管。
   useEffect(() => {
+    if (editing) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
       const target = e.target as HTMLElement | null;
@@ -409,7 +415,7 @@ function SceneTab(props: Props & { scene: Scene | null }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [editing]);
 
   if (!scene) return <Empty>{noSceneText(props.scenes)}</Empty>;
   const status = sceneStatus(scene);
@@ -502,24 +508,69 @@ function SceneTab(props: Props & { scene: Scene | null }) {
 
   const index = props.scenes.findIndex((s) => s.id === scene.id);
   const number = String(index + 1).padStart(2, '0');
+  const sceneRel = relativeScene(props.state, scene);
+  const hasHtml = props.tree.some((f) => f.path === sceneRel + '/index.html');
+  const enterEdit = () => {
+    video.current?.pause();
+    setPlaying(false);
+    setDrag(null);
+    setEditing(true);
+  };
+  const exitEdit = () => {
+    resumeTimeRef.current = time;
+    setEditing(false);
+  };
 
   // 镜头页只留画面、名字和「重新渲染」；圈选直接在画面上拖。附帧、快捷指令、反馈、校验与用量都收进「⋯」菜单。
   return (
     <div className="scene-tab" data-ctx-scene={scene?.id}>
       <div className="scene-layout">
-        {scene.exists ? (
+        {editing && hasHtml ? (
+          <div className="scene-stage">
+            <SceneEditor
+              scene={scene}
+              sceneRel={sceneRel}
+              initialTime={time}
+              duration={duration || scene.duration_seconds || 0}
+              version={props.version}
+              busy={props.busy}
+              onTimeChange={setTime}
+              onExit={exitEdit}
+              onQuick={props.onQuick}
+              run={props.run}
+            />
+          </div>
+        ) : scene.exists ? (
           <div className="scene-stage">
               <div className="stage-frame" ref={frame}>
                 <video
                   ref={video}
                   preload="metadata"
                   src={`/api/scenes/${encodeURIComponent(scene.id)}/asset?v=${scene.output_stamp ?? props.version}`}
-                  onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+                  onLoadedMetadata={(e) => {
+                    setDuration(e.currentTarget.duration || 0);
+                    if (resumeTimeRef.current !== null) {
+                      const target = Math.max(0, Math.min(e.currentTarget.duration || 0, resumeTimeRef.current));
+                      resumeTimeRef.current = null;
+                      e.currentTarget.currentTime = target;
+                    }
+                  }}
                   onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
                   onSeeked={(e) => setTime(e.currentTarget.currentTime)}
                   onPlay={() => setPlaying(true)}
                   onPause={() => setPlaying(false)}
                 />
+                {hasHtml && (
+                  <button
+                    type="button"
+                    className="stage-edit-btn"
+                    id="enter-html-edit"
+                    title="切换到实时 HTML 画面，直接拖拽调整元素或与 AI 局部修改"
+                    onClick={enterEdit}
+                  >
+                    <Icon name="edit" size={12} /> 编辑画面
+                  </button>
+                )}
                 {/* 画面上直接拖就是圈选（会先暂停），点一下是播放 / 暂停。 */}
                 <div
                   className="select-layer"
@@ -624,6 +675,11 @@ function SceneTab(props: Props & { scene: Scene | null }) {
           <SceneStyle scene={scene} label={`镜头 ${number}`} version={props.version} onQuick={props.onQuick} />
           <SceneActivityPanel scene={scene} />
           <div className="scene-actions">
+            {hasHtml && !editing && (
+              <button id="toggle-html-edit" onClick={enterEdit}>
+                编辑画面
+              </button>
+            )}
             <button id="render-scene" className={scene.exists ? '' : 'primary'} onClick={() => props.run(`/api/scenes/${encodeURIComponent(scene.id)}/render`)}>
               {scene.exists ? '重新渲染' : '渲染'}
             </button>

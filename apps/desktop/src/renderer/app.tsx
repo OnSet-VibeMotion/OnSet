@@ -690,7 +690,7 @@ export function App() {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       const target = e.target as HTMLElement | null;
       if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
-      if (document.querySelector('.selection-bar, [role="menu"], [role="dialog"], .modal-backdrop')) return;
+      if (document.querySelector('.selection-bar, .scene-editor, [role="menu"], [role="dialog"], .modal-backdrop')) return;
       setPanelOpen(false);
     };
     window.addEventListener('keydown', onKey);

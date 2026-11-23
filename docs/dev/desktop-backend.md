@@ -4,7 +4,7 @@
 
 | 约定 | 原因 |
 |---|---|
-| 客户端自己不写项目文件；改动只来自一轮对话，或 `studioCommands`（`api_sessions.ts`，含批量视觉抽帧 `scene.qc_batch` 与确定性后处理串行 `project.post_render`：`scene_seams` → `concat` → `review`）/ 镜头渲染这类直接跑 onset 操作的按钮：`runStudioOp`（`tasks.ts`）按名字与参数起执行进程，不拼命令行 | 旧版自造过一套 Operation 类型，镜头动作、相机写进 `production/studio/*.json` 再注入渲染提示词，等于绕开项目文件的第二条编辑通道。不要再加回来：要改什么就让编排工具改项目文件 |
+| 客户端自己不写项目文件；改动只来自一轮对话，或 `studioCommands`（`api_sessions.ts`，含批量视觉抽帧 `scene.qc_batch` 与确定性后处理串行 `project.post_render`：`scene_seams` → `concat` → `review`）/ 镜头渲染 / 镜头可视化覆盖（`GET/PUT /api/scenes/{id}/edits` 写 `onset-edits.json` 并同步确定性覆盖块到 `index.html`，`POST /api/scenes/{id}/encode` 跑 `scene_encode` 零模型直接出片，均占项目写锁）这类直接跑 onset 操作的按钮：`runStudioOp`（`tasks.ts`）按名字与参数起执行进程，不拼命令行 | 旧版自造过一套 Operation 类型，镜头动作、相机写进 `production/studio/*.json` 再注入渲染提示词，等于绕开项目文件的第二条编辑通道。不要再加回来：要改什么就让编排工具改项目文件；可视化覆盖仅限镜头已有 `index.html` 的非破坏性外观与位置微调，不提供原始 HTML 源码写入 |
 | 每轮前后各扫一遍项目（`scanTree`，`turns.ts`），差异用来展示项目改动、回退按快照恢复。与插件网页任务重叠的轮次只展示改动，全部跳过回退 | 编排工具改了哪些文件只有事后比对才知道，工具调用事件并不可靠（Bash 里也能写文件） |
 | 回退时任一文件在本轮之后又变过，整体拒绝（`ConflictError`），不做部分回退 | 部分回退会留下一半新一半旧的项目，比不回退更难收拾 |
 | 文本按 sha256 存进 `production/studio/blobs/`；媒体扩展名、含 NUL、超过 2 MB 的只记 stat，列出但不回退 | 渲染产物每轮存一份不现实，重渲染即可 |
