@@ -115,6 +115,18 @@ describe('scene edits', () => {
     titleEl.style.opacity = '0.5';
     winListeners.load![0]!();
     expect(Number(titleEl.style.opacity)).toBeCloseTo(0.4, 5);
+    // 模拟 CSSOM 将 0.7 * 0.8 = 0.5599999999999999 序列化为 "0.56"：再次触发 load/apply 不得继续衰减成 0.448。
+    const origSet = Object.getOwnPropertyDescriptor(titleEl.style, 'opacity')!.set!;
+    Object.defineProperty(titleEl.style, 'opacity', {
+      configurable: true,
+      get: () => styleState.opacity ?? '',
+      set: (v: string) => origSet(v === '0.5599999999999999' ? '0.56' : v),
+    });
+    titleEl.style.opacity = '0.7';
+    winListeners.load![0]!();
+    expect(titleEl.style.opacity).toBe('0.56');
+    winListeners.load![0]!();
+    expect(titleEl.style.opacity).toBe('0.56');
     // seek 到动画不透明度 0.5 的帧后，按当前帧基值乘以 0.8 = 0.4。
     hf.seek(1);
     expect(Number(titleEl.style.opacity)).toBeCloseTo(0.4, 5);
