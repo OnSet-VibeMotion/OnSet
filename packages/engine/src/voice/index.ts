@@ -17,6 +17,6 @@ export {
 export type { SaveOptions, Source, Voice, VoiceEntry } from './library';
 export { SampleText, design, designStatus, getDraft } from './design';
 export type { DesignOptions, DesignStatus, Draft } from './design';
-export { DefaultParagraphPauseMs, MaxParagraphPauseMs, synthesize } from './synthesis';
+export { DefaultChapterPauseMs, DefaultParagraphPauseMs, MaxChapterPauseMs, MaxParagraphPauseMs, synthesize } from './synthesis';
 export type { SynthesisOptions, SynthesisResult } from './synthesis';
 export { catalog } from './catalog';

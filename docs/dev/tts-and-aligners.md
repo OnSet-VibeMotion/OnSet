@@ -8,7 +8,7 @@
 |---|---|
 | `packages/engine/src/config/providers.ts` | 取值、名称、自带时间戳粒度、宿主内部使用的命令名（配音命令不加入编排工具白名单），以及 `install`：`onset setup` 怎么装它（npm 包 / uv 工具 / uv 专用环境，版本钉死，至少发布两周） |
 | `assets/prompts/voice/stage.md`、`timeline/stage.md`（第三、四阶段） | OnSet 操作的用法、各家支持的创作参数与时间戳来源（**不写安装命令**，`gen.test.ts` 的「leaves voice tools to onset setup」拦着），改完跑 `npm run generate -w @onset/engine` |
-| `packages/engine/src/voice/synthesis.ts` / `adapters.ts` / `catalog.ts` | 合成与音色查询适配、参数验证、多段文稿默认按段落合成并在段间插入 450ms（`paragraph_pause_ms`，0 关闭）48kHz 双声道零静音、统一 48kHz 双声道 WAV，保留原始音频与服务响应；不覆盖旧 take，不自动下载 |
+| `packages/engine/src/voice/synthesis.ts` / `adapters.ts` / `catalog.ts` | 合成与音色查询适配、参数验证、多段文稿默认按段落独立合成并在普通段间插入 650ms（`paragraph_pause_ms`）、`#` 章节空行间插入 1300ms（`chapter_pause_ms`）48kHz 双声道零静音、统一 48kHz 双声道 WAV，保留原始音频与服务响应；不覆盖旧 take，不自动下载 |
 | `apps/desktop/src/renderer/components/SetupGuide.tsx` 的 `voiceNames` | 安装页配音卡片上显示的服务名 |
 | `assets/shared/onset.conf`、`.env.example`、两份 README | 可选值注释 |
 

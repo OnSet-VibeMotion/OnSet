@@ -105,20 +105,36 @@ export class Script {
   /** 对话体终稿中每段的说话人。角色不占正文位置，也不进朗读文本。 */
   speakers = new Map<number, string>();
 
-  /** SpokenText 返回送进 TTS 与对齐工具的文本：标记取朗读侧，标题行丢掉，段与段之间换行，标点保留。 */
+  /**
+   * SpokenText 返回送进 TTS 的文本：标记取朗读侧，标题行丢掉，标点保留；
+   * 普通段间用单换行 `\n`，中间隔着 `#` 章节标题的段间留一个空行 `\n\n`，
+   * 供 voice_synthesize 自动区分段间停顿与更长的章间停顿。
+   */
   spokenText(): string {
-    let b = '';
+    const headingAt = new Set(this.headings.map((h) => h.atPiece));
+    const paras: { text: string; afterChapter: boolean }[] = [];
+    let current = '';
+    let pendingChapter = false;
+    const flush = () => {
+      const t = goTrimSpace(current);
+      if (t !== '') {
+        paras.push({ text: t, afterChapter: paras.length > 0 && pendingChapter });
+        pendingChapter = false;
+      }
+      current = '';
+    };
     this.pieces.forEach((p, i) => {
-      if (i > 0 && p.para !== this.pieces[i - 1].para) b += '\n';
-      b += p.spoken;
+      if (i > 0 && p.para !== this.pieces[i - 1].para) flush();
+      if (headingAt.has(i)) pendingChapter = true;
+      current += p.spoken;
     });
-    const out: string[] = [];
-    for (const para of b.split('\n')) {
-      const t = goTrimSpace(para);
-      if (t !== '') out.push(t);
+    flush();
+    if (paras.length === 0) return '';
+    let out = paras[0].text;
+    for (let i = 1; i < paras.length; i++) {
+      out += (paras[i].afterChapter ? '\n\n' : '\n') + paras[i].text;
     }
-    if (out.length === 0) return '';
-    return out.join('\n') + '\n';
+    return out + '\n';
   }
 
   /**

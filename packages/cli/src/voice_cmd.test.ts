@@ -76,7 +76,7 @@ describe.skipIf(!hasFfmpeg)('voice ops with real ffmpeg', () => {
     expect(report.segments.map((s: { start_seconds: number }) => s.start_seconds)).toEqual([0, 1, 2]);
   });
 
-  it.skipIf(process.platform === 'win32')('inserts exact 48kHz stereo silence between paragraphs in real WAV output', async () => {
+  it.skipIf(process.platform === 'win32')('inserts exact 48kHz stereo silence between paragraphs and chapters in real WAV output', async () => {
     const root = tempDir();
     const bin = tempDir();
     const original = path.join(root, 'original.wav');
@@ -86,13 +86,15 @@ describe.skipIf(!hasFfmpeg)('voice ops with real ffmpeg', () => {
     setenv('TTS_PROVIDER', 'edge');
     process.chdir(root);
     const out = new Buffer();
-    expect(await run(['voice', 'synthesize', '--text', '第一段。\n第二段。', '--voice', 'zh-CN-YunxiNeural', '--paragraph-pause-ms', '500'], out), out.text).toBe(0);
+    expect(await run(['voice', 'synthesize', '--text', '第一段。\n第二段。\n\n第三段。', '--voice', 'zh-CN-YunxiNeural', '--paragraph-pause-ms', '500', '--chapter-pause-ms', '1000'], out), out.text).toBe(0);
     const report = JSON.parse(fs.readFileSync(path.join(root, 'production/audio/voice.tts/report.json'), 'utf8'));
     expect(report.paragraph_pause_ms).toBe(500);
-    expect(report.duration_seconds).toBeCloseTo(2.5, 2);
+    expect(report.chapter_pause_ms).toBe(1000);
+    expect(report.duration_seconds).toBeCloseTo(4.5, 2);
     expect(report.segments.map((s: { start_seconds: number; pause_after_ms?: number }) => [s.start_seconds, s.pause_after_ms ?? 0])).toEqual([
       [0, 500],
-      [1.5, 0],
+      [1.5, 1000],
+      [3.5, 0],
     ]);
   });
 

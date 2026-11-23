@@ -11,10 +11,14 @@ import { defaultName, get } from './library';
 import { designStatus } from './design';
 import { generateTake } from './adapters';
 
-/** 多段配音（按换行分段）默认在段落之间插入的静音停顿（毫秒）。 */
-export const DefaultParagraphPauseMs = 450;
+/** 多段配音（单换行分段）默认在段落之间插入的静音停顿（毫秒）。 */
+export const DefaultParagraphPauseMs = 650;
+/** 章节（空行 `\n\n` 分隔）之间默认插入的静音停顿（毫秒）。 */
+export const DefaultChapterPauseMs = 1300;
 /** 段间静音停顿上限（毫秒）。 */
 export const MaxParagraphPauseMs = 3000;
+/** 章间静音停顿上限（毫秒）。 */
+export const MaxChapterPauseMs = 5000;
 
 export interface SynthesisOptions {
   provider: string;
@@ -27,8 +31,10 @@ export interface SynthesisOptions {
   instruction?: string;
   pronunciation?: string[];
   ssml?: boolean;
-  /** 段落（换行）之间插入的静音停顿毫秒数；缺省为 DefaultParagraphPauseMs，0 表示整篇一次合成不补段间停顿。 */
+  /** 段落（单换行）之间插入的静音停顿毫秒数；缺省为 DefaultParagraphPauseMs（650），0 表示关闭分段补静音。 */
   paragraphPauseMs?: number;
+  /** 章节（空行 `\n\n`）之间插入的静音停顿毫秒数；缺省为 DefaultChapterPauseMs（1300，paragraphPauseMs=0 且未显式指定时跟随关闭）。 */
+  chapterPauseMs?: number;
   env: Record<string, string>;
   signal?: AbortSignal;
   progress?: (message: string) => void;
@@ -64,21 +70,46 @@ function tencentParts(text: string): string[] {
   return parts;
 }
 
-/** 按段落拆成待合成片段：单段或关闭停顿时保持整块，腾讯在段内再按 150 字切。 */
-function buildChunks(providerId: string, text: string, pauseMs: number, ssml: boolean): { text: string; pauseAfterMs: number }[] {
-  if (!ssml && pauseMs > 0) {
-    const paragraphs = text.replaceAll('\r\n', '\n').split('\n').map((line) => line.trim()).filter((line) => line !== '');
+/** 按段落与章节空行拆成待合成片段：单换行插段间停顿，空行（# 章节边界）插章间停顿；腾讯在段内再按 150 字切。 */
+function buildChunks(
+  providerId: string,
+  text: string,
+  paragraphPauseMs: number,
+  chapterPauseMs: number,
+  ssml: boolean,
+): { text: string; pauseAfterMs: number; kind?: 'paragraph' | 'chapter' }[] {
+  if (!ssml && (paragraphPauseMs > 0 || chapterPauseMs > 0)) {
+    const lines = text.replaceAll('\r\n', '\n').split('\n');
+    const paragraphs: { text: string; afterBlank: boolean }[] = [];
+    let sawBlank = false;
+    for (const raw of lines) {
+      const trimmed = raw.trim();
+      if (trimmed === '') {
+        if (paragraphs.length > 0) sawBlank = true;
+        continue;
+      }
+      paragraphs.push({ text: trimmed, afterBlank: paragraphs.length > 0 && sawBlank });
+      sawBlank = false;
+    }
     if (paragraphs.length > 1) {
-      const chunks: { text: string; pauseAfterMs: number }[] = [];
+      const chunks: { text: string; pauseAfterMs: number; kind?: 'paragraph' | 'chapter' }[] = [];
+      let anyPause = false;
       paragraphs.forEach((para, idx) => {
-        const isLastPara = idx === paragraphs.length - 1;
-        const sub = providerId === 'tencent' ? tencentParts(para) : [para];
+        const next = paragraphs[idx + 1];
+        const boundaryKind = next ? (next.afterBlank ? 'chapter' : 'paragraph') : undefined;
+        const boundaryPause = boundaryKind === 'chapter' ? chapterPauseMs : boundaryKind === 'paragraph' ? paragraphPauseMs : 0;
+        if (boundaryPause > 0) anyPause = true;
+        const sub = providerId === 'tencent' ? tencentParts(para.text) : [para.text];
         sub.forEach((part, subIdx) => {
           const isLastSub = subIdx === sub.length - 1;
-          chunks.push({ text: part, pauseAfterMs: !isLastPara && isLastSub ? pauseMs : 0 });
+          chunks.push({
+            text: part,
+            pauseAfterMs: isLastSub ? boundaryPause : 0,
+            ...(isLastSub && boundaryPause > 0 && boundaryKind ? { kind: boundaryKind } : {}),
+          });
         });
       });
-      return chunks;
+      if (anyPause) return chunks;
     }
   }
   const parts = providerId === 'tencent' ? tencentParts(text) : [text];
@@ -100,6 +131,11 @@ function validate(opts: SynthesisOptions): void {
   if (opts.paragraphPauseMs !== undefined) {
     if (!Number.isFinite(opts.paragraphPauseMs) || opts.paragraphPauseMs < 0 || opts.paragraphPauseMs > MaxParagraphPauseMs) {
       throw new Error(`paragraph_pause_ms 必须在 0..${MaxParagraphPauseMs} 之间`);
+    }
+  }
+  if (opts.chapterPauseMs !== undefined) {
+    if (!Number.isFinite(opts.chapterPauseMs) || opts.chapterPauseMs < 0 || opts.chapterPauseMs > MaxChapterPauseMs) {
+      throw new Error(`chapter_pause_ms 必须在 0..${MaxChapterPauseMs} 之间`);
     }
   }
   if (opts.instruction && !['breeze', 'bailian', 'mlx'].includes(opts.provider)) throw new Error(`${opts.provider} 不支持 instruction`);
@@ -144,19 +180,22 @@ export async function synthesize(opts: SynthesisOptions): Promise<SynthesisResul
     fs.writeFileSync(path.join(work, 'text.txt'), opts.text);
     const env = { ...opts.env, HF_HUB_OFFLINE: '1', TRANSFORMERS_OFFLINE: '1' };
     const tc = newToolchain(env);
-    const pauseMs = Math.round(opts.paragraphPauseMs ?? DefaultParagraphPauseMs);
-    const chunks = buildChunks(provider.id, opts.text, pauseMs, opts.ssml === true);
-    const needsPause = chunks.some((c) => c.pauseAfterMs > 0);
-    const pauseFile = path.join(work, 'pause.wav');
-    let pauseDuration = 0;
-    if (needsPause) {
-      const pauseSamples = Math.max(1, Math.round((pauseMs / 1000) * 48000));
+    const paragraphPauseMs = Math.round(opts.paragraphPauseMs ?? DefaultParagraphPauseMs);
+    const chapterPauseMs = Math.round(
+      opts.chapterPauseMs !== undefined ? opts.chapterPauseMs : paragraphPauseMs === 0 ? 0 : DefaultChapterPauseMs,
+    );
+    const chunks = buildChunks(provider.id, opts.text, paragraphPauseMs, chapterPauseMs, opts.ssml === true);
+    const pauseCache = new Map<number, { rel: string; duration: number }>();
+    for (const chunk of chunks) {
+      if (chunk.pauseAfterMs <= 0 || pauseCache.has(chunk.pauseAfterMs)) continue;
+      const pauseSamples = Math.max(1, Math.round((chunk.pauseAfterMs / 1000) * 48000));
+      const rel = `pause-${chunk.pauseAfterMs}ms.wav`;
       await tc.transcode(
-        pauseFile,
+        path.join(work, rel),
         ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo', '-af', `atrim=end_sample=${pauseSamples}`, '-vn', '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le'],
         opts.signal,
       );
-      pauseDuration = pauseSamples / 48000;
+      pauseCache.set(chunk.pauseAfterMs, { rel, duration: pauseSamples / 48000 });
     }
     const segments: { audio: string; text: string; start_seconds: number; duration_seconds: number; pause_after_ms?: number }[] = [];
     const concatEntries: string[] = [];
@@ -192,8 +231,9 @@ export async function synthesize(opts: SynthesisOptions): Promise<SynthesisResul
       concatEntries.push(`file '${relAudio}'`);
       elapsed = roundSec(elapsed + duration);
       if (chunk.pauseAfterMs > 0) {
-        concatEntries.push(`file 'pause.wav'`);
-        elapsed = roundSec(elapsed + pauseDuration);
+        const pause = pauseCache.get(chunk.pauseAfterMs)!;
+        concatEntries.push(`file '${pause.rel}'`);
+        elapsed = roundSec(elapsed + pause.duration);
       }
     }
     if (hasAlignment) {
@@ -208,8 +248,22 @@ export async function synthesize(opts: SynthesisOptions): Promise<SynthesisResul
       await tc.transcode(final, ['-f', 'concat', '-safe', '1', '-i', path.join(work, 'concat.txt'), '-c:a', 'pcm_s16le'], opts.signal);
     }
     const duration = tc.probe(final).duration_seconds;
+    const hasParaPause = chunks.some((c) => c.kind === 'paragraph');
+    const hasChapterPause = chunks.some((c) => c.kind === 'chapter');
     const result: SynthesisResult = { provider: provider.id, voice, audio: output, report: path.join(sources, 'report.json'), sources, duration_seconds: duration, ...(alignment ? { alignment } : {}) };
-    json(path.join(work, 'report.json'), { ...result, schema: 1, sample_rate: 48000, channels: 2, speed: opts.speed, instruction: opts.instruction, pronunciation: opts.pronunciation, ssml: opts.ssml, paragraph_pause_ms: needsPause ? pauseMs : 0, segments });
+    json(path.join(work, 'report.json'), {
+      ...result,
+      schema: 1,
+      sample_rate: 48000,
+      channels: 2,
+      speed: opts.speed,
+      instruction: opts.instruction,
+      pronunciation: opts.pronunciation,
+      ssml: opts.ssml,
+      paragraph_pause_ms: hasParaPause ? paragraphPauseMs : 0,
+      chapter_pause_ms: hasChapterPause ? chapterPauseMs : 0,
+      segments,
+    });
     opts.signal?.throwIfAborted();
     // 再检查一次，保护并发调用期间出现的产物；WAV 用独占复制发布。
     if (fs.existsSync(sources)) throw new Error('配音产物已存在：' + sources);

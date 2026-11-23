@@ -431,6 +431,12 @@ describe('protected phrase boundaries', () => {
     expect(r.cues.some((c) => c.text.includes('提示词缓存，以及自动分段'))).toBe(true);
   });
 
+  it('preserves chapter headings between paragraphs as blank lines in spokenText while keeping alignText compact', () => {
+    const s = parseScript('# 开场\n\n第一段。\n\n第二段。\n\n# 第一章\n\n第三段。\n');
+    expect(s.spokenText()).toBe('第一段。\n第二段。\n\n第三段。\n');
+    expect(s.alignText()).toBe('第一段。\n第二段。\n第三段。\n');
+  });
+
   it('hints when a protected phrase is too long for single-line protection', () => {
     const text = '@{huge}这是一个超过十六个阅读单位非常非常非常长的受保护短语@{/huge}。\n';
     const s = parseScript(text);

@@ -108,34 +108,36 @@ describe('managed speech synthesis', () => {
     expect(calls).toHaveBeenCalledTimes(1);
   });
 
-  it('splits multi-paragraph text with a default silence pause and offsets character timestamps', async () => {
-    const result = await synthesize({ ...options('elevenlabs'), text: '第一段。\n第二段。\n第三段。' });
+  it('splits multi-paragraph and chapter text with default 650ms / 1300ms pauses and offsets character timestamps', async () => {
+    const result = await synthesize({ ...options('elevenlabs'), text: '第一段。\n第二段。\n\n第三段。' });
     expect(calls).toHaveBeenCalledTimes(3);
     const report = JSON.parse(fs.readFileSync(result.report, 'utf8'));
-    expect(report.paragraph_pause_ms).toBe(450);
+    expect(report.paragraph_pause_ms).toBe(650);
+    expect(report.chapter_pause_ms).toBe(1300);
     expect(report.segments.map((s: { start_seconds: number; pause_after_ms?: number }) => [s.start_seconds, s.pause_after_ms ?? 0])).toEqual([
-      [0, 450],
-      [1.45, 450],
-      [2.9, 0],
+      [0, 650],
+      [1.65, 1300],
+      [3.95, 0],
     ]);
     const concat = fs.readFileSync(path.join(result.sources, 'concat.txt'), 'utf8');
-    expect(concat).toBe("file '001/audio.wav'\nfile 'pause.wav'\nfile '002/audio.wav'\nfile 'pause.wav'\nfile '003/audio.wav'\n");
+    expect(concat).toBe("file '001/audio.wav'\nfile 'pause-650ms.wav'\nfile '002/audio.wav'\nfile 'pause-1300ms.wav'\nfile '003/audio.wav'\n");
     const alignment = JSON.parse(fs.readFileSync(result.alignment!, 'utf8')) as { text: string; start: number; end: number }[];
     expect(alignment.map((item) => [item.start, item.end])).toEqual([
       [0, 1],
-      [1.45, 2.45],
-      [2.9, 3.9],
+      [1.65, 2.65],
+      [3.95, 4.95],
     ]);
   });
 
   it('skips paragraph splitting when paragraphPauseMs is 0 or ssml is enabled, and rejects invalid pause values', async () => {
-    await synthesize({ ...options('edge'), text: '第一段。\n第二段。', paragraphPauseMs: 0 });
+    await synthesize({ ...options('edge'), text: '第一段。\n第二段。\n\n第三段。', paragraphPauseMs: 0 });
     expect(calls).toHaveBeenCalledTimes(1);
     calls.mockClear();
     await synthesize({ ...options('bailian'), output: path.join(root, 'ssml.wav'), text: '<speak>\n第一段。\n第二段。\n</speak>', ssml: true });
     expect(calls).toHaveBeenCalledTimes(1);
     await expect(synthesize({ ...options('edge'), output: path.join(root, 'bad-pause.wav'), paragraphPauseMs: -10 })).rejects.toThrow('paragraph_pause_ms');
     await expect(synthesize({ ...options('edge'), output: path.join(root, 'bad-pause2.wav'), paragraphPauseMs: 5000 })).rejects.toThrow('paragraph_pause_ms');
+    await expect(synthesize({ ...options('edge'), output: path.join(root, 'bad-chapter.wav'), chapterPauseMs: 6000 })).rejects.toThrow('chapter_pause_ms');
   });
 
   it('preserves existing takes and leaves no final output on failure or cancellation', async () => {
