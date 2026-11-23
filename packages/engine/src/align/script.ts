@@ -45,10 +45,16 @@ export interface Piece {
 export const VocalEvents: readonly string[] = ['[笑]', '[叹气]', '[咳嗽]', '[清嗓子]', '(laugh)', '(sigh)', '(cough)', '(clears throat)'];
 
 const vocalEventPattern = /^(\[[^\[\]\s]{1,10}\]|\([a-z][a-z ]{0,30}\))$/;
+const vocalEventGlobalPattern = /(\[[^\[\]\s]{1,10}\]|\([a-z][a-z ]{0,30}\))/g;
 
 /** 朗读侧整段是一个声音事件。 */
 export function isVocalEvent(spoken: string): boolean {
   return vocalEventPattern.test(spoken);
+}
+
+/** 去掉送入 TTS 文本中的声音事件标记（与 alignText() 的剔除规则保持一致）。 */
+export function stripVocalEvents(text: string): string {
+  return text.replace(vocalEventGlobalPattern, '');
 }
 
 /** ScriptToken 是终稿朗读侧的一个匹配单元，记着它落在哪几个 piece 上。 */

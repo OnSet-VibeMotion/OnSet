@@ -196,4 +196,130 @@ describe('镜头页 HTML 可视化编辑', () => {
     await userEvent.click(screen.getByRole('button', { name: '退出编辑' }));
     expect(view.container.querySelector('video:not(.thumb)')).toBeTruthy();
   });
+
+  it('切换镜头前拦截未保存改动、后台刷新保留草稿、取消混合内容文字编辑时恢复子节点、seek 后按当前帧动画透明度计算、且保存响应不覆盖后续输入', async () => {
+    const scene2 = sceneRow('scene-002', { exists: true, duration_seconds: 3 });
+    const twoTree = [
+      { path: 'scenes/scene-001/index.html', size: 1200, mtime: 100 },
+      { path: 'scenes/scene-002/index.html', size: 1200, mtime: 100 },
+    ];
+    let resolvePut: ((value: unknown) => void) | null = null;
+    mockApi({
+      '/api/storyboard': { gate: null, plan_path: '', installed_styles: [], scenes: [] },
+      '/api/film-style': { installed: false },
+      '/api/scenes/scene-001/activity': idleActivity('scene-001'),
+      '/api/scenes/scene-002/activity': idleActivity('scene-002'),
+      '/api/scenes/scene-001/edits': { has_html: true, edits: { schema: 1, elements: {} } },
+      '/api/scenes/scene-002/edits': { has_html: true, edits: { schema: 1, elements: {} } },
+      'PUT /api/scenes/scene-001/edits': () => new Promise((resolve) => {
+        resolvePut = resolve;
+      }),
+    });
+
+    const view = renderPreview('scene', [scene, scene2], 'scene-001', twoTree);
+    await userEvent.click(view.container.querySelector('#enter-html-edit')!);
+    const iframe = await vi.waitFor(() => {
+      const el = view.container.querySelector<HTMLIFrameElement>('iframe.se-iframe');
+      if (!el) throw new Error('iframe 还没挂载');
+      return el;
+    });
+    const stage = view.container.querySelector<HTMLDivElement>('.se-stage')!;
+    Object.defineProperties(stage, { clientWidth: { configurable: true, get: () => 640 }, clientHeight: { configurable: true, get: () => 360 } });
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ x: 0, y: 0, width: 640, height: 360 }));
+
+    // 构造混合内容与跨帧动画透明度的 iframe。
+    const doc = document.implementation.createHTMLDocument('scene');
+    doc.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080" data-duration="4">
+        <div id="mixed">标题 <span id="em">强调文字</span></div>
+        <div id="anim-box" style="opacity: 0.2; background-color: rgb(31, 155, 233);"></div>
+      </div>
+    `;
+    const mixedEl = doc.getElementById('mixed')!;
+    const emEl = doc.getElementById('em')!;
+    const animEl = doc.getElementById('anim-box')!;
+    vi.spyOn(mixedEl, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ x: 300, y: 120, width: 200, height: 60 }));
+    vi.spyOn(animEl, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ x: 100, y: 120, width: 80, height: 80 }));
+    const seek = vi.fn((t: number) => {
+      animEl.style.opacity = t >= 1 ? '0.8' : '0.2';
+    });
+    const fakeWin = {
+      __hf: { seek },
+      HTMLElement,
+      SVGElement,
+      getComputedStyle: (el: Element) => ({
+        color: 'rgb(20, 40, 60)',
+        backgroundColor: el === animEl ? 'rgb(31, 155, 233)' : 'rgba(0, 0, 0, 0)',
+        fontSize: '36px',
+        opacity: (el as HTMLElement).style?.opacity || '1',
+        visibility: 'visible',
+        display: 'block',
+      }) as CSSStyleDeclaration,
+    };
+    Object.defineProperty(doc, 'defaultView', { configurable: true, get: () => fakeWin });
+    (doc as Document & { elementsFromPoint: (x: number, y: number) => Element[] }).elementsFromPoint = (x: number) => {
+      if (x < 250) return [animEl, doc.getElementById('root')!, doc.body];
+      return [mixedEl, doc.getElementById('root')!, doc.body];
+    };
+    Object.defineProperty(iframe, 'contentDocument', { configurable: true, get: () => doc });
+    Object.defineProperty(iframe, 'contentWindow', { configurable: true, get: () => fakeWin });
+    fireEvent.load(iframe);
+
+    // 1. 修改混合内容元素文字后点「取消」，原始 <span> 子节点必须完整恢复。
+    const interact = view.container.querySelector('.se-interact')!;
+    fireEvent.pointerDown(interact, { button: 0, clientX: 120, clientY: 50 });
+    const mixedDialog = await screen.findByRole('dialog', { name: '元素编辑面板' });
+    await userEvent.click(within(mixedDialog).getByRole('tab', { name: /属性调整/ }));
+    const textInput = within(mixedDialog).getByLabelText('文字内容') as HTMLInputElement;
+    await userEvent.clear(textInput);
+    await userEvent.type(textInput, '临时文字');
+    expect(mixedEl.textContent).toBe('临时文字');
+    expect(doc.getElementById('em')).toBeNull();
+    await userEvent.click(within(mixedDialog).getByRole('button', { name: '取消' }));
+    expect(doc.getElementById('em')).toBe(emEl);
+    expect(mixedEl.textContent).toContain('强调文字');
+
+    // 2. 选中动画元素改透明度为 50%（原帧 0.2 → 0.1），seek 到 2s（新帧动画值 0.8 → 应为 0.4 而非 0.1）。
+    fireEvent.pointerDown(interact, { button: 0, clientX: 50, clientY: 50 });
+    const animDialog = await screen.findByRole('dialog', { name: '元素编辑面板' });
+    await userEvent.click(within(animDialog).getByRole('tab', { name: /属性调整/ }));
+    const opacityInput = within(animDialog).getByLabelText('不透明度') as HTMLInputElement;
+    fireEvent.change(opacityInput, { target: { value: '50' } });
+    expect(Number(animEl.style.opacity)).toBeCloseTo(0.1, 4);
+
+    const scrubber = view.container.querySelector<HTMLInputElement>('input[type="range"][aria-label="播放位置"]')!;
+    fireEvent.change(scrubber, { target: { value: '2' } });
+    expect(Number(animEl.style.opacity)).toBeCloseTo(0.4, 4);
+
+    // 3. 后台刷新（version 递增）时保留未应用草稿，不清空改动。
+    view.show('scene', 'scene-001', 2, twoTree);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(Number(animEl.style.opacity)).toBeCloseTo(0.4, 4);
+
+    // 4. 点时间线中的镜头 2 时弹出离开确认，不直接丢草稿；点「继续编辑」留下。
+    const timeline = screen.getByRole('region', { name: '时间线' });
+    const scene2Btn = within(timeline).getAllByRole('button')[1]!;
+    await userEvent.click(scene2Btn);
+    expect(view.props.onScene).not.toHaveBeenCalled();
+    expect(screen.getByText('有未应用的修改')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: '继续编辑' }));
+
+    // 5. PUT 等待期间继续修改为 B（背景色 #123456），响应 A 返回后不能覆盖 B。
+    await userEvent.click(within(animDialog).getByRole('button', { name: /应用修改/ }));
+    const bgInput = within(animDialog).getByLabelText('背景色值') as HTMLInputElement;
+    await userEvent.clear(bgInput);
+    await userEvent.type(bgInput, '#123456');
+    await act(async () => {
+      resolvePut?.({ edits: { schema: 1, elements: { '#anim-box': { selector: '#anim-box', opacity: 0.5 } } } });
+      await Promise.resolve();
+    });
+    expect(doc.getElementById('onset-edits-live')?.textContent).toContain('background-color: #123456 !important');
+    // 草稿仍有未保存修改，切镜确认后再点「放弃退出」才会真正切换镜头。
+    await userEvent.click(scene2Btn);
+    expect(screen.getByText('有未应用的修改')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: '放弃退出' }));
+    expect(view.props.onScene).toHaveBeenCalledWith('scene-002');
+  });
 });

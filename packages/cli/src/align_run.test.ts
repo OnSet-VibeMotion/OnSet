@@ -4,7 +4,7 @@ import {spawnSync} from 'node:child_process';
 import {expect,it,vi} from 'vitest';
 import * as procgroup from '@onset/engine/procgroup';
 import { QwenForcedAligner } from '@onset/engine/config';
-import {alignRunOperation,normalizeWindowsAlignmentText,localAlignmentModel,windowsAlignOperation} from './align_run';
+import {alignRunOperation,normalizeWindowsAlignmentText,localAlignmentModel,planTTSAutoChunks,windowsAlignOperation} from './align_run';
 import {tempDir,setenv,writeFrameFor,hasFfmpeg,Buffer,makeClip} from './testutil';
 
 it('normalizes punctuation without changing spoken letters, numbers or Chinese characters',()=>{
@@ -202,4 +202,34 @@ it.skipIf(process.platform === 'win32' || !hasFfmpeg)('auto-chunks long MLX audi
   } finally {
     mock.mockRestore();
   }
+});
+
+it('planTTSAutoChunks requires SHA-256 match on primary <stem>.tts/audio.wav and strips vocal events when matching', () => {
+  const dir = tempDir();
+  const audio = path.join(dir, 'voice.wav');
+  fs.writeFileSync(audio, 'current-audio-bytes');
+  const ttsDir = path.join(dir, 'voice.tts');
+  fs.mkdirSync(ttsDir, { recursive: true });
+  const report = {
+    schema: 1,
+    duration_seconds: 220,
+    segments: [
+      { audio: '001.wav', text: '第一段。[笑]', start_seconds: 0, duration_seconds: 100, pause_after_ms: 650 },
+      { audio: '002.wav', text: '第二段。(sigh)', start_seconds: 100.65, duration_seconds: 119.35 },
+    ],
+  };
+  fs.writeFileSync(path.join(ttsDir, 'report.json'), JSON.stringify(report));
+  // 缺少或 SHA-256 不匹配的同名 voice.tts/audio.wav 必须被跳过，防止错用旧 take 切点。
+  fs.writeFileSync(path.join(ttsDir, 'audio.wav'), 'stale-audio-bytes');
+  const currentSHA = 'wrong';
+  expect(planTTSAutoChunks(audio, currentSHA, '第一段。\n第二段。', 220, 'mlx', 150, 180)).toBeNull();
+
+  // audio.wav 与当前音频一致时，即使报告含 [笑] / (sigh) 声音事件也能正常匹配并切段。
+  fs.writeFileSync(path.join(ttsDir, 'audio.wav'), 'current-audio-bytes');
+  const realSHA = require('node:crypto').createHash('sha256').update('current-audio-bytes').digest('hex') as string;
+  const planned = planTTSAutoChunks(audio, realSHA, '第一段。\n第二段。', 220, 'mlx', 150, 180);
+  expect(planned).not.toBeNull();
+  expect(planned!.chunks).toHaveLength(2);
+  expect(planned!.chunks[0]!.text).toBe('第一段。');
+  expect(planned!.chunks[1]!.text).toBe('第二段。');
 });

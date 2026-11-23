@@ -636,17 +636,18 @@ export async function serveToolsMCP(
               if (!job) return reply({ text: `没有这个任务：${String(input.job ?? '')}（可能已经结束并交过结果）`, isError: true });
               if (name === 'job_cancel') return reply({ text: jobs.cancel(job.id) ? `已停掉 ${job.id}` : `${job.id} 已经结束`, isError: false });
               const result = await jobs.wait(job, seconds, signal);
+              const waitDefault = defaultWaitSeconds('job_wait');
               if (
                 !result.isError &&
                 job.code === null &&
                 explicitWait &&
                 seconds > 0 &&
-                seconds < Math.min(60, maxWaitSeconds()) &&
+                seconds < Math.min(60, waitDefault) &&
                 longJobNames.has(job.name)
               ) {
                 return reply({
                   ...result,
-                  text: `${result.text}\n[等待提示] 等待长任务时请省略 wait_seconds（一次等满 ${maxWaitSeconds()} 秒上限），避免短轮询反复唤醒消耗上下文。`,
+                  text: `${result.text}\n[等待提示] 等待长任务时请省略 wait_seconds（按当前默认 ${waitDefault} 秒等待），避免短轮询反复唤醒消耗上下文。`,
                 });
               }
               return reply(result);

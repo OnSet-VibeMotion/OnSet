@@ -36,6 +36,7 @@ function recordPreviewStats(artifacts: string, key: string, isZoom: boolean): Pr
   const now = Date.now();
   let stats: PreviewStats = { updated_at: now, last_key: '', total_calls: 0, zoom_calls: 0, rounds: 0 };
   try {
+    rejectSymlinkPath(artifacts, file);
     const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<PreviewStats>;
     if (typeof raw.updated_at === 'number' && now - raw.updated_at <= previewStatsWindowMs) {
       stats = {
@@ -47,7 +48,7 @@ function recordPreviewStats(artifacts: string, key: string, isZoom: boolean): Pr
       };
     }
   } catch {
-    // 缺失或损坏时重新计数。
+    // 缺失、符号链接或损坏时重新计数。
   }
   stats.total_calls += 1;
   if (isZoom) stats.zoom_calls += 1;
@@ -56,6 +57,7 @@ function recordPreviewStats(artifacts: string, key: string, isZoom: boolean): Pr
     stats.last_key = key;
   }
   try {
+    rejectSymlinkPath(artifacts, file);
     fs.writeFileSync(file, JSON.stringify(stats) + '\n');
   } catch {
     // 统计写入失败不影响主流程。

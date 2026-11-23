@@ -1,7 +1,7 @@
 import { playerProps } from '../media';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { ReactNode } from 'react';
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api, errorText, post, rawURL } from '../api';
 import type { Attachment, ProgressState, Box, ProjectFilmStyle, ProjectState, ProjectUsage, Scene, TreeFile, Usage } from '../types';
@@ -96,6 +96,8 @@ interface Props {
   onScene: (id: string) => void;
   /** 跳到对话里的某一轮（制作路线里点「做了什么」）。 */
   onTurn: (sessionId: string, turnId: string) => void;
+  /** 镜头可视化编辑器向父级注册未保存离开守卫（切换标签/收起面板前确认）。 */
+  onRegisterExitGuard?: (guard: ((proceed: () => void) => boolean) | null) => void;
   run: RunAction;
 }
 
@@ -103,6 +105,39 @@ export function Preview(props: Props) {
   const scene = props.scenes.find((s) => s.id === props.sceneId) ?? null;
   const project = props.state?.project.path;
   const [filmChoice, setFilmChoice] = useState<{ project?: string; path: string }>();
+  const localExitGuardRef = useRef<((proceed: () => void) => boolean) | null>(null);
+  const registerExitGuard = useCallback(
+    (guard: ((proceed: () => void) => boolean) | null) => {
+      localExitGuardRef.current = guard;
+      props.onRegisterExitGuard?.(guard);
+    },
+    [props.onRegisterExitGuard],
+  );
+  const guardedOnScene = useCallback(
+    (id: string) => {
+      if (id !== props.sceneId && localExitGuardRef.current && !localExitGuardRef.current(() => props.onScene(id))) return;
+      props.onScene(id);
+    },
+    [props.sceneId, props.onScene],
+  );
+  const guardedOnTab = useCallback(
+    (next: Tab) => {
+      if (next !== props.tab && localExitGuardRef.current && !localExitGuardRef.current(() => props.onTab?.(next))) return;
+      props.onTab?.(next);
+    },
+    [props.tab, props.onTab],
+  );
+  const guardedOnFile = useCallback(
+    (p: string) => {
+      if (localExitGuardRef.current && !localExitGuardRef.current(() => props.onFile(p))) return;
+      props.onFile(p);
+    },
+    [props.onFile],
+  );
+  const guardedProps = useMemo(
+    () => ({ ...props, onScene: guardedOnScene, onTab: props.onTab ? guardedOnTab : undefined, onFile: guardedOnFile }),
+    [props, guardedOnScene, guardedOnTab, guardedOnFile],
+  );
   const variants = finalCandidates.filter((path) => props.tree.some((file) => file.path === path));
   const selected = filmChoice?.project === project ? filmChoice?.path : undefined;
   const video = selected && variants.includes(selected) ? selected : variants[0];
@@ -116,7 +151,7 @@ export function Preview(props: Props) {
         .filter((id) => id !== props.tab)
         .map((id) => {
           const banner = pageView(id)?.banner;
-          return banner ? <Fragment key={id}>{banner(viewProps(props))}</Fragment> : null;
+          return banner ? <Fragment key={id}>{banner(viewProps(guardedProps))}</Fragment> : null;
         })}
       <div className="preview-body">
         {props.tab === 'progress' && (
@@ -126,24 +161,24 @@ export function Preview(props: Props) {
             busy={props.busy}
             onPage={(page) => {
               const tab = isStationTab(page) ? (page as Tab) : tabs.find(([id]) => id === page)?.[0];
-              if (tab) props.onTab?.(tab);
+              if (tab) guardedOnTab(tab);
             }}
-            onFile={props.onFile}
+            onFile={guardedOnFile}
             onQuick={props.onQuick}
             onTurn={props.onTurn}
           />
         )}
-        {pageView(props.tab)?.render(viewProps(props))}
+        {pageView(props.tab)?.render(viewProps(guardedProps))}
         {props.tab === 'script' && (
-          <ScriptTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} onAttach={props.onAttach} />
+          <ScriptTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={guardedOnFile} onAttach={props.onAttach} />
         )}
         {props.tab === 'storyboard' && (
-          <StoryboardTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} onScene={props.onScene} onStyles={() => props.onTab?.('style')} />
+          <StoryboardTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={guardedOnFile} onScene={guardedOnScene} onStyles={() => guardedOnTab('style')} />
         )}
-        {props.tab === 'scene' && <SceneTab {...props} scene={scene} />}
-        {props.tab === 'compose' && <ComposeTab {...props} scene={scene} />}
-        {props.tab === 'final' && <FinalTab {...film} tree={props.tree} version={props.version} run={props.run} onTab={props.onTab} />}
-        {props.tab === 'style' && <StyleTab version={props.version} run={props.run} scenes={props.scenes} onScene={props.onScene} />}
+        {props.tab === 'scene' && <SceneTab {...guardedProps} scene={scene} onRegisterExitGuard={registerExitGuard} />}
+        {props.tab === 'compose' && <ComposeTab {...guardedProps} scene={scene} />}
+        {props.tab === 'final' && <FinalTab {...film} tree={props.tree} version={props.version} run={props.run} onTab={guardedOnTab} />}
+        {props.tab === 'style' && <StyleTab version={props.version} run={props.run} scenes={props.scenes} onScene={guardedOnScene} />}
         {props.tab === 'motion' && <MotionEffects key={project} version={props.version} scenes={props.scenes} sceneId={props.sceneId} onQuick={props.onQuick} />}
         {props.tab === 'voice' && <VoicesTab version={props.version} />}
         {props.tab === 'review' && <ReviewTab {...film} tree={props.tree} version={props.version} run={props.run} />}
@@ -155,7 +190,7 @@ export function Preview(props: Props) {
             version={props.version}
             run={props.run}
             onQuick={props.onQuick}
-            onOpen={(t) => props.onTab?.(t as Tab)}
+            onOpen={(t) => guardedOnTab(t as Tab)}
             projectName={props.state?.project.name ?? ''}
           />
         )}
@@ -167,18 +202,18 @@ export function Preview(props: Props) {
             version={props.version}
             run={props.run}
             onQuick={props.onQuick}
-            onOpen={(t) => props.onTab?.(t as Tab)}
+            onOpen={(t) => guardedOnTab(t as Tab)}
             projectName={props.state?.project.name ?? ''}
           />
         )}
         {props.tab === 'memory' && <MemoryTab scene={scene} version={props.version} run={props.run} />}
         {props.tab === 'audition' && <AuditionTab scene={scene} scenes={props.scenes} version={props.version} busy={props.busy} run={props.run} />}
-        {props.tab === 'evidence' && <EvidenceTab version={props.version} run={props.run} onOpen={(t) => props.onTab?.(t)} scenes={props.scenes} sceneId={props.sceneId} />}
-        {props.tab === 'file' && <FilesTab tree={props.tree} recent={props.recent} path={props.filePath} version={props.version} onFile={props.onFile} />}
+        {props.tab === 'evidence' && <EvidenceTab version={props.version} run={props.run} onOpen={(t) => guardedOnTab(t)} scenes={props.scenes} sceneId={props.sceneId} />}
+        {props.tab === 'file' && <FilesTab tree={props.tree} recent={props.recent} path={props.filePath} version={props.version} onFile={guardedOnFile} />}
       </div>
       {/* 镜头条只在跟镜头有关的页面出现：口播稿、发布这些页面不需要它。 */}
       {(props.tab === 'scene' || props.tab === 'compose' || props.tab === 'final') && (
-        <Timeline scenes={props.scenes} usage={props.usage} sceneId={props.sceneId} version={props.version} onScene={props.onScene} />
+        <Timeline scenes={props.scenes} usage={props.usage} sceneId={props.sceneId} version={props.version} onScene={guardedOnScene} />
       )}
     </main>
   );
@@ -536,6 +571,7 @@ function SceneTab(props: Props & { scene: Scene | null }) {
               busy={props.busy}
               onTimeChange={setTime}
               onExit={exitEdit}
+              onRegisterExitGuard={props.onRegisterExitGuard}
               onQuick={props.onQuick}
               run={props.run}
             />

@@ -854,6 +854,7 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
 async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, cfg: config.Config, turn: Turn, prompt: string, handoff: string, projectWrites: { epoch: number; sharedAtStart: boolean }): Promise<void> {
   let runErr: Error | null = null;
   let stopViews: () => void = () => {};
+  const confirmedGates: Array<{ gate: string; label: string }> = [];
   try {
     const env = config.childEnvironment(cfg, envMap(), s.config.unsafe, parsePassthrough(process.env.ONSET_PASSTHROUGH_ENV ?? ''));
     // onset 不进编排工具的 PATH：它只经 onset 的工具服务（MCP）调用 onset，下面的 spec.toolsServer。
@@ -862,10 +863,11 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
     env[ViewInboxEnv] = inbox;
     env[ViewProjectEnv] = p.path;
     // 用户在对话里确认了关卡（studio_confirm）：原话要出自这一轮用户的话，记下后与界面按钮确认一样发 gate.confirmed。
+    // 接力判断延后到本轮 recordUsage 写入账本后再执行，避免读到上一轮过时的用量。
     stopViews = watchViews(sess, turn.turn_id, inbox, p.path, (req) => {
       try {
         const { gate, label } = confirmGateFromChat(p.path, turn.message, req.said, req.gate ?? '');
-        scheduleGateHandoff(s, p.path, gate, label);
+        confirmedGates.push({ gate, label });
         emit(sess, turn.turn_id, { kind: kindNotice, text: '已记下你在对话里的确认：' + label });
         emitStudioEvent(s, p, 'gate.confirmed', { gate });
       } catch (err) {
@@ -973,6 +975,9 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
     runErr = err instanceof Error ? err : new Error(String(err));
   }
   stopViews();
+  for (const confirmed of confirmedGates) {
+    scheduleGateHandoff(s, p.path, confirmed.gate, confirmed.label);
+  }
   const concurrentWrites = projectWrites.sharedAtStart || s.writeEpoch(p.path) !== projectWrites.epoch;
   finishTurn(s, signal, p, sess, turn, runErr, concurrentWrites);
 }

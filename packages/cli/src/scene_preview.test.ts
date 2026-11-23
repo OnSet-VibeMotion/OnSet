@@ -276,6 +276,18 @@ it('zoom_frames batches multiple frames into one cached detail sheet and emits a
   expect(commands(dir)).toHaveLength(2);
 });
 
+it.skipIf(process.platform === 'win32')('refuses to follow a symlinked preview-stats.json outside the scene directory', async () => {
+  const dir = fixture();
+  const outside = tempDir();
+  const target = path.join(outside, 'sentinel.txt');
+  fs.writeFileSync(target, 'untouched');
+  fs.mkdirSync(path.join(dir, '.onset'), { recursive: true });
+  fs.symlinkSync(target, path.join(dir, '.onset', 'preview-stats.json'));
+  const res = await runIn(dir, ['scene', 'preview-check', '--frames', '0']);
+  expect(res.code, res.out).toBe(0);
+  expect(fs.readFileSync(target, 'utf8')).toBe('untouched');
+});
+
 it('disables preview cache when index.html references an ignored local asset like snapshots/cover.png', async () => {
   const dir = fixture();
   fs.mkdirSync(path.join(dir, 'snapshots'), { recursive: true });

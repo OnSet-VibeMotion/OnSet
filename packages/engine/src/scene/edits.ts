@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { atomicWrite } from '../fsutil';
 import { compareBytes, marshalIndent } from '../gojson';
 import { contained } from './scene';
@@ -48,6 +47,34 @@ export function isValidSelector(selector: string): boolean {
   const s = selector.trim();
   if (!s || s.length > 512) return false;
   if (/[\0\r\n{};<]|\/\*|\*\/|@import/i.test(s)) return false;
+  // 校验括号、方括号与引号成对闭合，拦截 #[、div( 等语法残缺选择器。
+  let parens = 0;
+  let brackets = 0;
+  let quote: '' | '"' | "'" = '';
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!;
+    if (quote !== '') {
+      if (ch === '\\') {
+        i++;
+        continue;
+      }
+      if (ch === quote) quote = '';
+      continue;
+    }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === '(') parens++;
+    else if (ch === ')') {
+      if (--parens < 0) return false;
+    } else if (ch === '[') brackets++;
+    else if (ch === ']') {
+      if (--brackets < 0) return false;
+    }
+  }
+  if (quote !== '' || parens !== 0 || brackets !== 0) return false;
+  if (/^[#.\s>+~]|[#.\s>+~]$/.test(s.replace(/^[#.](?=[A-Za-z_\\-])/, ''))) {
+    // 裸 # / . 或悬挂组合符（如 "#[" 已在上面被拦，这里再拦 "# "、"div >"）
+    if (/(?:^|[\s>+~])[#.](?:$|[\s>+~,\[:])/.test(s) || /[>+~,]$/.test(s)) return false;
+  }
   return true;
 }
 
@@ -188,8 +215,10 @@ export function buildEditsScript(edits: SceneEdits): string {
   return [
     '(function(){',
     `var items=${payload};`,
-    'function clearOp(){if(window.__ONSET_EDITOR_ACTIVE__)return;for(var i=0;i<items.length;i++){var it=items[i];if(it.opacity===undefined)continue;var el=document.querySelector(it.selector);if(el&&el.dataset.onsetOpApplied==="1"){if(el.dataset.onsetOrigOp!==undefined){el.style.opacity=el.dataset.onsetOrigOp;}else{el.style.removeProperty("opacity");}delete el.dataset.onsetOpApplied;}}}',
-    'function apply(){if(window.__ONSET_EDITOR_ACTIVE__)return;for(var i=0;i<items.length;i++){var it=items[i];var el=document.querySelector(it.selector);if(!el)continue;if(it.text!==undefined){if(el.dataset.onsetOrigText===undefined){el.dataset.onsetOrigText=el.textContent||"";}el.textContent=it.text;}if(it.opacity!==undefined){if(el.dataset.onsetOrigOp===undefined){el.dataset.onsetOrigOp=el.style.opacity||"";}var cur=el.style.opacity;var base=cur!==""&&isFinite(Number(cur))?Number(cur):Number(getComputedStyle(el).opacity);if(!isFinite(base))base=1;el.style.opacity=String(Math.max(0,Math.min(1,base*it.opacity)));el.dataset.onsetOpApplied="1";}}}',
+    'function q(s){try{return document.querySelector(s);}catch(e){return null;}}',
+    'function restoreOp(el,val){if(val!==undefined&&val!==""){el.style.opacity=val;}else{el.style.removeProperty("opacity");}}',
+    'function clearOp(){if(window.__ONSET_EDITOR_ACTIVE__)return;for(var i=0;i<items.length;i++){var it=items[i];if(it.opacity===undefined)continue;var el=q(it.selector);if(el&&el.dataset.onsetOpApplied==="1"){restoreOp(el,el.dataset.onsetOrigOp);delete el.dataset.onsetOpApplied;delete el.dataset.onsetFrameOp;}}}',
+    'function apply(){if(window.__ONSET_EDITOR_ACTIVE__)return;for(var i=0;i<items.length;i++){var it=items[i];var el=q(it.selector);if(!el)continue;if(it.text!==undefined){if(el.dataset.onsetOrigText===undefined){el.dataset.onsetOrigText=el.textContent||"";}el.textContent=it.text;}if(it.opacity!==undefined){if(el.dataset.onsetOpApplied==="1"){restoreOp(el,el.dataset.onsetFrameOp);}if(el.dataset.onsetOrigOp===undefined){el.dataset.onsetOrigOp=el.style.opacity||"";}el.dataset.onsetFrameOp=el.style.opacity||"";var cur=el.style.opacity;var base=cur!==""&&isFinite(Number(cur))?Number(cur):Number(getComputedStyle(el).opacity);if(!isFinite(base))base=1;el.style.opacity=String(Math.max(0,Math.min(1,base*it.opacity)));el.dataset.onsetOpApplied="1";}}}',
     'function wrapMethod(obj,name){if(!obj||typeof obj[name]!=="function"||obj[name].__onsetEdits)return;var orig=obj[name];var fn=function(){clearOp();var r=orig.apply(this,arguments);apply();return r;};fn.__onsetEdits=true;obj[name]=fn;}',
     'function hookAll(){var tls=window.__timelines;if(tls&&typeof tls==="object"){var ks=Object.keys(tls);for(var i=0;i<ks.length;i++){wrapMethod(tls[ks[i]],"seek");wrapMethod(tls[ks[i]],"time");wrapMethod(tls[ks[i]],"progress");}}wrapMethod(window.__hf,"seek");wrapMethod(window.__player,"seek");}',
     'hookAll();apply();',
@@ -221,7 +250,7 @@ export function injectEditsHtml(html: string, edits: SceneEdits): string {
 
 /** 读取镜头目录的 onset-edits.json；不存在时返回空编辑集合。 */
 export function readEdits(sceneDir: string): SceneEdits {
-  const file = path.join(sceneDir, EditsFile);
+  const file = contained(sceneDir, EditsFile, EditsFile);
   let body: string;
   try {
     body = fs.readFileSync(file, 'utf8');
@@ -236,19 +265,31 @@ export function readEdits(sceneDir: string): SceneEdits {
 export function writeEdits(sceneDir: string, raw: unknown): SceneEdits {
   const edits = validateEdits(raw);
   const htmlFile = contained(sceneDir, 'index.html', 'index.html');
+  const editsPath = contained(sceneDir, EditsFile, EditsFile);
   if (!fs.existsSync(htmlFile)) throw new Error('镜头目录里还没有 index.html 合成文件');
   const html = fs.readFileSync(htmlFile, 'utf8');
   const nextHtml = injectEditsHtml(html, edits);
-  if (nextHtml !== html) atomicWrite(htmlFile, nextHtml, 0o644);
-  const editsPath = contained(sceneDir, EditsFile, EditsFile);
-  if (Object.keys(edits.elements).length === 0) {
-    try {
-      fs.unlinkSync(editsPath);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  const htmlChanged = nextHtml !== html;
+  if (htmlChanged) atomicWrite(htmlFile, nextHtml, 0o644);
+  try {
+    if (Object.keys(edits.elements).length === 0) {
+      try {
+        fs.unlinkSync(editsPath);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      }
+    } else {
+      atomicWrite(editsPath, marshalIndent(edits) + '\n', 0o644);
     }
-  } else {
-    atomicWrite(editsPath, marshalIndent(edits) + '\n', 0o644);
+  } catch (err) {
+    if (htmlChanged) {
+      try {
+        atomicWrite(htmlFile, html, 0o644);
+      } catch {
+        // 回滚失败时保留原始错误抛出。
+      }
+    }
+    throw err;
   }
   return edits;
 }

@@ -2,7 +2,7 @@
 
 把新镜头的文案和任务书写到 `production/scene-briefs.json`，格式为 `{"scenes":[{"id":"scene-001","text":"本镜头文案","prompt":"创意、交接和验收要求"}]}`，id 与分镜计划一致。调用 `scene_prepare()` 一次生成目录、`scene.json`、`prompt.md`、全片字幕副本和渲染器规则。已有镜头直接修改受影响的任务书；不要重建镜头或写批处理脚本。随后用 `scene_cues()` 写入正式时长。字幕始终使用全片时间。
 
-- 批量渲染或同时返修 2 个及以上镜头时，**必须**用一次 `scene_run_all({"scenes": "scenes/", "srt": "transcription.srt", "strict_coverage": true, "report_json": "production/run-report.json"})`（返修指定镜头传 `only_scenes` 与 `force: true`）由片场统一并发调度，禁止拆成多次 `scene_run()` 逐个派发和轮询；调用 `job_wait` 等待长任务时省略 `wait_seconds` 以一次等满上限。`scene_run()` 仅用于明确的单镜头试渲染或单镜头返修。
+- 批量渲染或同时返修 2 个及以上镜头时，**必须**用一次 `scene_run_all({"scenes": "scenes/", "srt": "transcription.srt", "strict_coverage": true, "report_json": "production/run-report.json"})`（返修指定镜头传 `only_scenes` 与 `force: true`）由片场统一并发调度，禁止拆成多次 `scene_run()` 逐个派发和轮询；调用 `job_wait` 等待长任务时省略 `wait_seconds`（按当前客户端默认等待时长等待，避免短轮询）。`scene_run()` 仅用于明确的单镜头试渲染或单镜头返修。
 
 - 渲染工具用项目中的技能，HyperFrames 版本固定为 `{{HYPERFRAMES_VERSION}}`，缺失时从客户端工具准备页补齐。检查用 `hyperframes({"subcommand": "<子命令>"})`，镜头执行由片场调度。
 - 如果项目提供 `frame.md`，只把它当作画布、帧率和安全区等技术信息的来源；不得把其中的配色、字体、版式、示例图或动效文字当作创作命令。

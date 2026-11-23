@@ -43,8 +43,92 @@ describe('scene edits', () => {
     });
 
     expect(() => validateEdits({ elements: { '#x } body { color: red': { selector: '#x } body { color: red', dx: 1 } } })).toThrow(/选择器/);
+    expect(() => validateEdits({ elements: { '#[': { selector: '#[', opacity: 0.5 } } })).toThrow(/选择器/);
+    expect(() => validateEdits({ elements: { 'div(': { selector: 'div(', text: 'hi' } } })).toThrow(/选择器/);
     expect(() => validateEdits({ elements: { '#x': { selector: '#x', backgroundColor: 'url(javascript:alert(1))' } } })).toThrow(/背景颜色/);
     expect(() => validateEdits({ elements: { '#x': { selector: '#x', opacity: 2 } } })).toThrow(/范围/);
+  });
+
+  it('keeps generated script opacity idempotent across repeated init events and isolates querySelector errors', () => {
+    const script = buildEditsScript({
+      schema: 1,
+      elements: {
+        '#[': { selector: '#[', opacity: 0.5 },
+        '#title': { selector: '#title', opacity: 0.8, text: '新文案' },
+      },
+    });
+    const styleState: Record<string, string> = {};
+    const titleEl = {
+      textContent: '旧文案',
+      dataset: {} as Record<string, string>,
+      style: {
+        get opacity() {
+          return styleState.opacity ?? '';
+        },
+        set opacity(v: string) {
+          styleState.opacity = v;
+        },
+        removeProperty(name: string) {
+          delete styleState[name];
+        },
+      },
+    };
+    const docListeners: Record<string, Array<() => void>> = {};
+    const winListeners: Record<string, Array<() => void>> = {};
+    let frameOpacity = '1';
+    const hf = {
+      seek(t: number) {
+        frameOpacity = t > 0 ? '0.5' : '1';
+        titleEl.style.opacity = frameOpacity;
+      },
+    };
+    const fakeDoc = {
+      readyState: 'loading',
+      querySelector(sel: string) {
+        if (sel === '#[') throw new SyntaxError('invalid selector');
+        return sel === '#title' ? titleEl : null;
+      },
+      addEventListener(name: string, fn: () => void) {
+        (docListeners[name] ??= []).push(fn);
+      },
+    };
+    const fakeWin = {
+      __hf: hf,
+      addEventListener(name: string, fn: () => void) {
+        (winListeners[name] ??= []).push(fn);
+      },
+    };
+    const fn = new Function('window', 'document', 'getComputedStyle', script);
+    fn(fakeWin, fakeDoc, () => ({ opacity: frameOpacity }));
+    expect(titleEl.textContent).toBe('新文案');
+    expect(Number(titleEl.style.opacity)).toBeCloseTo(0.8, 5);
+    // DOMContentLoaded 与 load 重复初始化不叠乘（仍是 0.8，而不是 0.64 / 0.512）。
+    expect(docListeners.DOMContentLoaded?.length).toBe(1);
+    expect(winListeners.load?.length).toBe(1);
+    docListeners.DOMContentLoaded![0]!();
+    expect(Number(titleEl.style.opacity)).toBeCloseTo(0.8, 5);
+    winListeners.load![0]!();
+    expect(Number(titleEl.style.opacity)).toBeCloseTo(0.8, 5);
+    // seek 到动画不透明度 0.5 的帧后，按当前帧基值乘以 0.8 = 0.4。
+    hf.seek(1);
+    expect(Number(titleEl.style.opacity)).toBeCloseTo(0.4, 5);
+  });
+
+  it('rejects symlinked onset-edits.json outside sceneDir on readEdits and rolls back index.html if JSON commit fails', () => {
+    const dir = mkScene(sampleHtml);
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-outside-'));
+    try {
+      const secret = path.join(outside, 'leak.json');
+      fs.writeFileSync(secret, JSON.stringify({ schema: 1, elements: { '#title': { selector: '#title', text: 'secret' } } }));
+      fs.symlinkSync(secret, path.join(dir, EditsFile));
+      expect(() => readEdits(dir)).toThrow(/超出|链接|目录/);
+      // writeEdits 也在写 HTML 前拒绝越界符号链接，不污染 index.html。
+      expect(() => writeEdits(dir, { schema: 1, elements: { '#title': { selector: '#title', dx: 10 } } })).toThrow(/超出|链接|目录/);
+      expect(fs.readFileSync(path.join(dir, 'index.html'), 'utf8')).toBe(sampleHtml);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it('writes deterministic CSS + JS into index.html that passes determinism.scan() cleanly', () => {

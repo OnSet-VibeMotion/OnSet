@@ -117,6 +117,10 @@ describe('scene-kit', () => {
     const longLines = kit.breakLines('这是一句很长很长的测试，用来验证超长短语不会溢出', 12, 2, ['这是一句很长很长的测试，用来验证超长短语不会溢出']);
     expect(longLines).not.toBeNull();
     expect(longLines!.length).toBe(2);
+
+    // 词组本身放得下但并入尾随标点后超出 cap 时，不得拆开受保护词组内部（返回 null 交给 layoutCue 缩字号/回退）。
+    expect(kit.breakLines('提示词缓存，继续', 5, 2, ['提示词缓存'])).toBeNull();
+    expect(kit.breakLines('提示词缓存，继续', 6, 2, ['提示词缓存'])).toEqual(['提示词缓存，', '继续']);
   });
 
   // HyperFrames lint 的 gsap_timeline_not_registered 逐个脚本按正则查（0.8.225 实测）：脚本里出现 gsap 紧跟 .timeline，

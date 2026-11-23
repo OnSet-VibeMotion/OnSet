@@ -1,5 +1,5 @@
 // Package align：把强制对齐结果映射回终稿，产出 voice.srt、phrase-timeline.json 与 align-report.json。
-export { Script, ParseError, VocalEvents, isVocalEvent, loadProjectScript, loadScript, parseScript } from './script';
+export { Script, ParseError, VocalEvents, isVocalEvent, stripVocalEvents, loadProjectScript, loadScript, parseScript } from './script';
 export type { PhraseSpan, ScriptToken } from './script';
 export { tokenize } from './token';
 export type { Token } from './token';

@@ -311,7 +311,7 @@
       }
       var locked = matchProtected(text, i, protectedTerms);
       if (locked) {
-        raw.push({ text: locked });
+        raw.push({ text: locked, protected: true });
         i += locked.length;
         continue;
       }
@@ -353,6 +353,7 @@
         continue;
       }
       var t = carry + tok.text;
+      var isProtected = Boolean(tok.protected);
       carry = '';
       if (t.length === 1 && NO_LINE_END.indexOf(t) >= 0) {
         carry = t;
@@ -361,9 +362,10 @@
       var prev = merged[merged.length - 1];
       if (NO_LINE_START.indexOf(t[0]) >= 0 && prev && !prev.space) {
         prev.text += t;
+        if (isProtected) prev.protected = true;
         continue;
       }
-      merged.push({ text: t });
+      merged.push({ text: t, protected: isProtected });
     }
     if (carry) merged.push({ text: carry });
 
@@ -381,6 +383,7 @@
         width: widthOf(cur.text),
         cost: STRONG_BREAK.indexOf(last) >= 0 ? 0 : 4,
         trailingSpace: false,
+        protected: Boolean(cur.protected),
       });
     }
     for (var n = 0; n < tokens.length; n++) {
@@ -389,12 +392,13 @@
     return tokens;
   }
 
-  // splitOversized：单个原子块比一行还宽时只能逐字拆开（宁可拆，也不溢出画面）。
+  // splitOversized：单个原子块比一行还宽时只能逐字拆开（宁可拆，也不溢出画面）；
+  // 受保护词组（含并入的尾随标点）不重开内部断点，交给上层缩字号或兜底布局处理。
   function splitOversized(tokens, cap) {
     var out = [];
     for (var i = 0; i < tokens.length; i++) {
       var tok = tokens[i];
-      if (tok.width <= cap) { out.push(tok); continue; }
+      if (tok.width <= cap || tok.protected) { out.push(tok); continue; }
       for (var j = 0; j < tok.text.length; j++) {
         var last = j === tok.text.length - 1;
         out.push({

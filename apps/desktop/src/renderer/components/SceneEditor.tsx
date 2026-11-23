@@ -1,5 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, errorText } from '../api';
 import { cssSelector } from '../selector';
 import type { Attachment, ElementEdit, Scene, SceneEdits, SceneEditsResponse } from '../types';
@@ -194,6 +194,8 @@ export interface SceneEditorProps {
   busy: string;
   onTimeChange: (seconds: number) => void;
   onExit: () => void;
+  /** 向父级注册离开确认守卫：返回 true 表示允许直接离开，false 表示已弹出未保存确认。 */
+  onRegisterExitGuard?: (guard: ((proceed: () => void) => boolean) | null) => void;
   onQuick: (text: string, attachments: Attachment[], draftOnly?: boolean) => void;
   run: RunAction;
 }
@@ -202,7 +204,9 @@ export function SceneEditor(props: SceneEditorProps) {
   const { scene, sceneRel, duration } = props;
   const stageRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ w: 640, h: 360 });
+  const [popoverHeight, setPopoverHeight] = useState(POPOVER_H);
   const [compSize, setCompSize] = useState({ w: 1920, h: 1080 });
   const [compDuration, setCompDuration] = useState(duration || scene.duration_seconds || 0);
   const [time, setTime] = useState(props.initialTime);
@@ -215,6 +219,7 @@ export function SceneEditor(props: SceneEditorProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [exitConfirm, setExitConfirm] = useState(false);
+  const pendingExitRef = useRef<(() => void) | null>(null);
 
   const [hoverBox, setHoverBox] = useState<{ rect: StageRect; selector: string } | null>(null);
   const [selected, setSelected] = useState<SelectedInfo | null>(null);
@@ -225,17 +230,37 @@ export function SceneEditor(props: SceneEditorProps) {
   /** 选中这个元素之前的状态：点「取消」时退回它。 */
   const beforeSelectRef = useRef<SceneEdits | null>(null);
 
-  /** 记录原始文案与原始行内透明度，取消或恢复默认时能还原。 */
+  /** 记录原始文案、原始子节点（保护混合内容里的 span/样式与动画目标）与原始行内透明度，取消或恢复默认时完整还原。 */
   const origTextRef = useRef<Map<string, string>>(new Map());
+  const origNodesRef = useRef<Map<string, Node[]>>(new Map());
   const origOpacityRef = useRef<Map<string, string>>(new Map());
   const timeRef = useRef(time);
   timeRef.current = time;
   const draftRef = useRef(draftEdits);
   draftRef.current = draftEdits;
+  const draftRevRef = useRef(0);
+  const loadedSceneRef = useRef('');
 
   const dirty = useMemo(() => !editsEqual(savedEdits, draftEdits), [savedEdits, draftEdits]);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
   const hasAnyEdits = Object.keys(draftEdits.elements).length > 0;
   const totalDuration = compDuration || duration || scene.duration_seconds || 0;
+
+  // 向父级导航（切换镜头 / 切换标签 / 收起面板）注册未保存离开守卫。
+  useEffect(() => {
+    const register = props.onRegisterExitGuard;
+    if (!register) return;
+    register((proceed: () => void) => {
+      if (!dirtyRef.current) return true;
+      pendingExitRef.current = proceed;
+      setExitConfirm(true);
+      return false;
+    });
+    return () => {
+      register(null);
+    };
+  }, [props.onRegisterExitGuard]);
 
   // 等比缩放画布铺进舞台，居中对齐，与 <video object-fit: contain> 逐像素一致。
   const fit = useMemo(() => {
@@ -245,21 +270,33 @@ export function SceneEditor(props: SceneEditorProps) {
     return { scale, offsetX: (stageSize.w - width) / 2, offsetY: (stageSize.h - height) / 2, width, height };
   }, [stageSize, compSize]);
 
-  // 加载已保存的属性覆盖。
+  // 加载已保存的属性覆盖：区分初次加载/切镜与后台项目刷新（props.version 变化）。
+  // 草稿已修改或首次 GET 返回前用户已经编辑时，只更新 savedEdits，保留未应用的草稿与撤销栈。
   useEffect(() => {
     let active = true;
-    setError('');
-    setSelected(null);
-    setSelectedRect(null);
-    setHoverBox(null);
-    setExitConfirm(false);
-    setUndoStack([]);
+    const sceneChanged = loadedSceneRef.current !== scene.id;
+    loadedSceneRef.current = scene.id;
+    if (sceneChanged) {
+      setError('');
+      setSelected(null);
+      setSelectedRect(null);
+      setHoverBox(null);
+      setExitConfirm(false);
+      pendingExitRef.current = null;
+      setUndoStack([]);
+    }
+    const revAtStart = draftRevRef.current;
     api<SceneEditsResponse>(`/api/scenes/${encodeURIComponent(scene.id)}/edits`).then(
       (res) => {
         if (!active) return;
         const next = res.edits && res.edits.elements ? cloneEdits(res.edits) : emptyEdits();
         setSavedEdits(next);
-        setDraftEdits(cloneEdits(next));
+        const userEditedMeanwhile = draftRevRef.current !== revAtStart;
+        if (sceneChanged) {
+          if (!userEditedMeanwhile) setDraftEdits(cloneEdits(next));
+        } else if (!dirtyRef.current && !userEditedMeanwhile) {
+          setDraftEdits(cloneEdits(next));
+        }
       },
       (err) => {
         if (active) setError(errorText(err));
@@ -312,17 +349,22 @@ export function SceneEditor(props: SceneEditorProps) {
     }
     styleEl.textContent = buildPreviewCSS(edits);
 
-    // 先把上次动态改过的文案和透明度复原，再按当前草稿叠上去。
+    // 先把上次动态改过的文案和子节点复原（透明度已在 seekIframe 的 seek 之前清掉，这里不再用旧帧的 origOpacityRef 覆盖动画值）。
     for (const [sel, orig] of origTextRef.current.entries()) {
       const el = safeQuery(doc, sel);
-      if (el && edits.elements[sel]?.text === undefined) el.textContent = orig;
-    }
-    for (const [sel, orig] of origOpacityRef.current.entries()) {
-      const el = safeQuery(doc, sel) as HTMLElement | null;
-      if (el) {
-        if (orig === '') el.style.removeProperty('opacity');
-        else el.style.opacity = orig;
+      if (el && edits.elements[sel]?.text === undefined) {
+        const savedNodes = origNodesRef.current.get(sel);
+        if (savedNodes) {
+          el.replaceChildren(...savedNodes);
+          origNodesRef.current.delete(sel);
+        } else {
+          el.textContent = orig;
+        }
+        origTextRef.current.delete(sel);
       }
+    }
+    for (const sel of [...origOpacityRef.current.keys()]) {
+      if (edits.elements[sel]?.opacity === undefined) origOpacityRef.current.delete(sel);
     }
 
     for (const [sel, edit] of Object.entries(edits.elements)) {
@@ -330,7 +372,14 @@ export function SceneEditor(props: SceneEditorProps) {
       const el = safeQuery(doc, sel) as HTMLElement | null;
       if (!el) continue;
       if (edit.text !== undefined) {
-        if (!origTextRef.current.has(sel)) origTextRef.current.set(sel, el.dataset.onsetOrigText ?? el.textContent ?? '');
+        if (!origTextRef.current.has(sel)) {
+          origTextRef.current.set(sel, el.dataset.onsetOrigText ?? el.textContent ?? '');
+          if (el.children.length > 0 && !origNodesRef.current.has(sel)) {
+            const nodes: Node[] = [];
+            while (el.firstChild) nodes.push(el.removeChild(el.firstChild));
+            origNodesRef.current.set(sel, nodes);
+          }
+        }
         el.textContent = edit.text;
       }
       if (edit.opacity !== undefined) {
@@ -402,6 +451,7 @@ export function SceneEditor(props: SceneEditorProps) {
     const win = iframeRef.current?.contentWindow as HFWindow | null;
     if (!doc || !win) return;
     origTextRef.current.clear();
+    origNodesRef.current.clear();
     origOpacityRef.current.clear();
     const root = doc.querySelector<HTMLElement>('[data-composition-id]') ?? doc.getElementById('root');
     const w = Number(root?.getAttribute('data-width')) || win.ONSET_SCENE?.width_px || 1920;
@@ -469,6 +519,7 @@ export function SceneEditor(props: SceneEditorProps) {
 
   const updateElement = useCallback(
     (selector: string, patch: Partial<ElementEdit>, recordUndo = false) => {
+      draftRevRef.current += 1;
       setDraftEdits((prev) => {
         if (recordUndo) pushUndo(prev);
         const next = cloneEdits(prev);
@@ -527,6 +578,7 @@ export function SceneEditor(props: SceneEditorProps) {
   const undo = useCallback(() => {
     setUndoStack((stack) => {
       if (stack.length === 0) return stack;
+      draftRevRef.current += 1;
       const prev = stack[stack.length - 1];
       setDraftEdits(prev);
       return stack.slice(0, -1);
@@ -540,6 +592,7 @@ export function SceneEditor(props: SceneEditorProps) {
   }, [selected, updateElement, deselect]);
 
   const requestExit = useCallback(() => {
+    pendingExitRef.current = null;
     if (dirty) {
       setExitConfirm(true);
       return;
@@ -562,8 +615,10 @@ export function SceneEditor(props: SceneEditorProps) {
       }
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (exitConfirm) setExitConfirm(false);
-        else if (selected) deselect();
+        if (exitConfirm) {
+          pendingExitRef.current = null;
+          setExitConfirm(false);
+        } else if (selected) deselect();
         else requestExit();
         return;
       }
@@ -700,23 +755,33 @@ export function SceneEditor(props: SceneEditorProps) {
     window.addEventListener('pointercancel', onUp);
   };
 
-  /** 保存属性覆盖并触发零 Token 直接出片。 */
+  /** 保存属性覆盖并触发零 Token 直接出片：只确认提交那一刻的草稿版本，避免覆盖保存期间的后续编辑。 */
   const applyAndEncode = async (exitAfter = false) => {
     setError('');
     setSaving(true);
+    const submitted = cloneEdits(draftRef.current);
+    const submittedRev = draftRevRef.current;
+    const afterExit = pendingExitRef.current;
     try {
       const res = await api<{ edits: SceneEdits }>(`/api/scenes/${encodeURIComponent(scene.id)}/edits`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ edits: draftRef.current, encode: false }),
+        body: JSON.stringify({ edits: submitted, encode: false }),
       });
       const saved = cloneEdits(res.edits);
       setSavedEdits(saved);
-      setDraftEdits(cloneEdits(saved));
-      setUndoStack([]);
-      setExitConfirm(false);
+      const stillMatchesSubmitted = draftRevRef.current === submittedRev;
+      if (stillMatchesSubmitted) {
+        setDraftEdits(cloneEdits(saved));
+        setUndoStack([]);
+        setExitConfirm(false);
+        pendingExitRef.current = null;
+      }
       props.run(`/api/scenes/${encodeURIComponent(scene.id)}/encode`, {}, () => {
-        if (exitAfter) props.onExit();
+        if (exitAfter && stillMatchesSubmitted) {
+          if (afterExit) afterExit();
+          else props.onExit();
+        }
       });
     } catch (err) {
       setError(errorText(err));
@@ -772,31 +837,52 @@ export function SceneEditor(props: SceneEditorProps) {
   };
 
   const cancelCurrentProps = () => {
-    if (beforeSelectRef.current) setDraftEdits(cloneEdits(beforeSelectRef.current));
+    if (beforeSelectRef.current) {
+      draftRevRef.current += 1;
+      setDraftEdits(cloneEdits(beforeSelectRef.current));
+    }
     deselect();
   };
 
   const resetAll = () => {
     if (!hasAnyEdits) return;
+    draftRevRef.current += 1;
     pushUndo(draftRef.current);
     setDraftEdits(emptyEdits());
     deselect();
   };
 
-  // 计算悬浮卡片在舞台内的安全定位。
+  // 测量悬浮卡片实际高度，用于窄舞台安全定位与防裁切。
+  useLayoutEffect(() => {
+    const el = popoverRef.current;
+    if (!el || !selected) return;
+    const measure = () => {
+      if (el.offsetHeight > 0) setPopoverHeight(el.offsetHeight);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [selected?.selector, editTab]);
+
+  // 计算悬浮卡片在舞台内的安全定位：按舞台可用高度限制 maxHeight 并使用实际高度定位。
   const popoverStyle = useMemo(() => {
     if (!selectedRect) return null;
     const pad = 10;
+    const topBarBottom = 48;
+    const availH = Math.max(120, stageSize.h - topBarBottom - pad);
+    const effectiveH = Math.min(popoverHeight || POPOVER_H, availH);
     const maxLeft = Math.max(pad, stageSize.w - POPOVER_W - pad);
     const rightSpace = stageSize.w - (selectedRect.left + selectedRect.width + 14);
     const left =
       rightSpace >= POPOVER_W
         ? Math.min(maxLeft, selectedRect.left + selectedRect.width + 14)
         : Math.max(pad, Math.min(maxLeft, selectedRect.left - POPOVER_W - 14));
-    const maxTop = Math.max(48, stageSize.h - POPOVER_H - pad);
-    const top = Math.max(48, Math.min(maxTop, selectedRect.top));
-    return { left, top };
-  }, [selectedRect, stageSize]);
+    const maxTop = Math.max(topBarBottom, stageSize.h - effectiveH - pad);
+    const top = Math.max(topBarBottom, Math.min(maxTop, selectedRect.top));
+    return { left, top, maxHeight: availH };
+  }, [selectedRect, stageSize, popoverHeight]);
 
   const currentEdit = selected ? draftEdits.elements[selected.selector] : undefined;
   const thinVertical = !!selectedRect && selectedRect.width < 14 && selectedRect.height >= 24;
@@ -825,14 +911,23 @@ export function SceneEditor(props: SceneEditorProps) {
               </button>
               <button
                 onClick={() => {
+                  const after = pendingExitRef.current;
+                  pendingExitRef.current = null;
                   setDraftEdits(cloneEdits(savedEdits));
                   setExitConfirm(false);
-                  props.onExit();
+                  if (after) after();
+                  else props.onExit();
                 }}
               >
                 放弃退出
               </button>
-              <button className="ghost" onClick={() => setExitConfirm(false)}>
+              <button
+                className="ghost"
+                onClick={() => {
+                  pendingExitRef.current = null;
+                  setExitConfirm(false);
+                }}
+              >
                 继续编辑
               </button>
             </>
@@ -935,7 +1030,7 @@ export function SceneEditor(props: SceneEditorProps) {
         )}
 
         {selected && popoverStyle && (
-          <div className="se-popover" role="dialog" aria-label="元素编辑面板" style={popoverStyle} onPointerDown={(e) => e.stopPropagation()}>
+          <div ref={popoverRef} className="se-popover" role="dialog" aria-label="元素编辑面板" style={popoverStyle} onPointerDown={(e) => e.stopPropagation()}>
             <div className="se-pop-head">
               <div className="se-tabs" role="tablist">
                 <button type="button" role="tab" aria-selected={editTab === 'ai'} className={editTab === 'ai' ? 'on' : ''} onClick={() => setEditTab('ai')}>
@@ -1161,6 +1256,7 @@ export function SceneEditor(props: SceneEditorProps) {
                         type="button"
                         className="se-reset-link"
                         onClick={() => {
+                          draftRevRef.current += 1;
                           pushUndo(draftRef.current);
                           setDraftEdits((prev) => {
                             const next = cloneEdits(prev);

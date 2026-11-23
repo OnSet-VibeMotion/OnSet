@@ -169,13 +169,31 @@ export function App() {
       return next;
     });
   }, []);
+  const sceneExitGuardRef = useRef<((proceed: () => void) => boolean) | null>(null);
+  const guardSceneLeave = useCallback((proceed: () => void) => {
+    if (sceneExitGuardRef.current && !sceneExitGuardRef.current(proceed)) return;
+    proceed();
+  }, []);
+  const setTabGuarded = useCallback(
+    (next: Tab) => {
+      if (next === tab) return;
+      guardSceneLeave(() => setTab(next));
+    },
+    [tab, guardSceneLeave],
+  );
   /** 切到某一页并打开面板：用户或编排工具要看什么时都走这里；自动切页（稿件审核、卡点）只换页不开面板。 */
   const showTab = useCallback(
     (next: Tab) => {
-      setTab(next);
+      if (next !== tab) {
+        guardSceneLeave(() => {
+          setTab(next);
+          setPanelOpen(true);
+        });
+        return;
+      }
       setPanelOpen(true);
     },
-    [setPanelOpen],
+    [tab, guardSceneLeave, setPanelOpen],
   );
   const kind = panelKind(tab);
   const [panelWidths, setPanelWidths] = useState<Record<PanelKind, number>>(() => ({
@@ -918,7 +936,7 @@ export function App() {
             />
             {panelOpen ? (
               <>
-                <div className="panel-scrim" aria-hidden="true" onClick={() => setPanelOpen(false)} />
+                <div className="panel-scrim" aria-hidden="true" onClick={() => guardSceneLeave(() => setPanelOpen(false))} />
                 <div
                   className="panel-resize"
                   role="separator"
@@ -936,13 +954,14 @@ export function App() {
                       {tab === 'file' && filePath && <span className="panel-sub ellipsis">{filePath}</span>}
                     </span>
                     <span className="spacer" />
-                    <button className="ghost icon" id="panel-close" aria-label="收起画面" title="收起画面（Esc）" onClick={() => setPanelOpen(false)}>
+                    <button className="ghost icon" id="panel-close" aria-label="收起画面" title="收起画面（Esc）" onClick={() => guardSceneLeave(() => setPanelOpen(false))}>
                       <Icon name="close" />
                     </button>
                   </header>
                   <Preview
                     tab={tab}
-                    onTab={setTab}
+                    onTab={setTabGuarded}
+                    onRegisterExitGuard={(guard) => { sceneExitGuardRef.current = guard; }}
                     state={state}
                     scenes={scenes}
                     usage={usage}
@@ -957,12 +976,16 @@ export function App() {
                     onAttach={addAttachment}
                     onQuick={quick}
                     onFile={(path) => {
-                      setFilePath(path);
-                      setTab('file');
+                      guardSceneLeave(() => {
+                        setFilePath(path);
+                        setTab('file');
+                      });
                     }}
                     onScene={(id) => {
-                      setSceneId(id);
-                      if (tab !== 'scene' && tab !== 'compose' && tab !== 'memory' && tab !== 'audition') setTab('scene');
+                      guardSceneLeave(() => {
+                        setSceneId(id);
+                        if (tab !== 'scene' && tab !== 'compose' && tab !== 'memory' && tab !== 'audition') setTab('scene');
+                      });
                     }}
                     onTurn={jumpToTurn}
                     run={run}

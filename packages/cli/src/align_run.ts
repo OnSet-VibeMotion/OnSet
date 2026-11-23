@@ -85,20 +85,23 @@ export function planTTSAutoChunks(
   const dir = path.dirname(audio);
   const stem = audio.slice(0, audio.length - path.extname(audio).length);
   const candidates: string[] = [];
-  const primary = path.join(stem + '.tts', 'report.json');
-  if (fs.existsSync(primary)) candidates.push(primary);
+  const tryCandidate = (reportPath: string, wavPath: string) => {
+    try {
+      if (!fs.lstatSync(reportPath).isFile() || !fs.lstatSync(wavPath).isFile()) return;
+      if (sha(wavPath) === audioSHA) candidates.push(reportPath);
+    } catch {
+      // 跳过不存在、符号链接或不可读的候选。
+    }
+  };
+  const primaryDir = stem + '.tts';
+  const primary = path.join(primaryDir, 'report.json');
+  tryCandidate(primary, path.join(primaryDir, 'audio.wav'));
   try {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       if (!entry.isDirectory() || !entry.name.endsWith('.tts')) continue;
       const reportPath = path.join(dir, entry.name, 'report.json');
-      if (reportPath === primary || !fs.existsSync(reportPath)) continue;
-      const wavPath = path.join(dir, entry.name, 'audio.wav');
-      try {
-        if (!fs.lstatSync(reportPath).isFile() || !fs.lstatSync(wavPath).isFile()) continue;
-        if (sha(wavPath) === audioSHA) candidates.push(reportPath);
-      } catch {
-        continue;
-      }
+      if (reportPath === primary) continue;
+      tryCandidate(reportPath, path.join(dir, entry.name, 'audio.wav'));
     }
   } catch {
     // 忽略目录枚举异常。
@@ -133,7 +136,8 @@ export function planTTSAutoChunks(
         break;
       }
       const pauseSec = typeof raw.pause_after_ms === 'number' && raw.pause_after_ms > 0 ? raw.pause_after_ms / 1000 : 0;
-      segs.push({ text: raw.text, start: raw.start_seconds, end: Math.min(end, actualDuration), pauseSec });
+      const cleanText = align.stripVocalEvents(raw.text).trim();
+      segs.push({ text: cleanText, start: raw.start_seconds, end: Math.min(end, actualDuration), pauseSec });
       prevEnd = end;
     }
     if (!valid || segs.length < 2) continue;
