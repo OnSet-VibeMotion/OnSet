@@ -15,7 +15,7 @@ import { atomicWrite } from '../fsutil';
 import { formatFixed, goClean, goTrimSpace } from '../gofmt';
 import { marshal, marshalIndent } from '../gojson';
 import * as ledger from '../ledger';
-import { HandoffTranscriptLimit, handoffNote, rotationReason } from './rotate';
+import { HandoffTranscriptLimit, handoffNote, rotationReason, shouldGateHandoff } from './rotate';
 import * as project from '../project';
 import { KindView, PermissionPollInterval, PermissionServerName, ViewInboxEnv, waitPermissionResponse, writePermissionRequest, ViewPollInterval, ViewProjectEnv, describeView, drainViewInbox, viewInbox, viewInteraction, type ViewRequest, type ViewState } from '../studioview';
 import * as tools from '../tools';
@@ -662,13 +662,24 @@ const autoHandoffGates: ReadonlySet<string> = new Set([
   'gate-script', 'gate-voice', 'gate-storyboard', 'gate-final', 'gate-story', 'gate-grid', 'gate-beat-storyboard',
 ]);
 
-/** 关卡确认后为该项目已有至少 2 轮历史的整片制作会话预约阶段边界接力（ONSET_AUTO_HANDOFF=off 可关闭）。 */
+/**
+ * 关卡确认后为该项目已有至少 2 轮历史的整片制作会话预约阶段边界接力（ONSET_AUTO_HANDOFF=off 可关闭）。
+ * 结合账本与空闲时长做缓存感知判断（shouldGateHandoff）：会话还很轻且热缓存未过期时继续复用，不白交冷启动写费。
+ */
 export function scheduleGateHandoff(s: Server, projectPath: string, gate: string, label: string): void {
   if (!autoHandoffGates.has(gate) || process.env.ONSET_AUTO_HANDOFF === 'off') return;
   loadSessions(s, projectPath);
+  let entries: ledger.Entry[] | null = null;
+  try {
+    entries = ledger.read(ledger.projectFile(projectPath));
+  } catch {
+    // 账本不可读时退回默认接力策略。
+  }
+  const nowMs = Date.now();
   for (const sess of s.sessions.values()) {
     if (sess.project !== projectPath || sess.meta.kind !== 'production') continue;
     if (!sess.meta.cli_session_id || (sess.meta.turns ?? []).length < 2 || sess.meta.handoff_reason) continue;
+    if (!shouldGateHandoff(entries, sess.meta.cli_session_id, sess.meta.updated_at, nowMs)) continue;
     updateMeta(sess, (meta) => {
       meta.handoff_reason = `关卡「${label}」已确认，自动分段接力进入下一阶段`;
     });

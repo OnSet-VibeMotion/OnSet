@@ -31,6 +31,57 @@ export const RotateCalls = 180;
 /** 带项目状态摘要换新会话时，只保留最近一段对话文字，减少重复注入早期脑暴。 */
 export const HandoffTranscriptLimit = 8000;
 
+/**
+ * 关卡确认后的缓存感知接力门槛：
+ * 现代模型缓存读仅为原价的 0.05×–0.1×，而新会话冷写需 1.0×–1.25×；
+ * 只有在「旧会话已经够重（上下文 ≥10 万或累计 ≥30 步）」或「距上一轮结束已超过 5 分钟（短期缓存大概率过期）」时才在关卡边界换新会话，
+ * 避免会话才 4–6 万 token 且缓存正热时白拆缓存。
+ */
+export const GateHandoffContextTokens = 100_000;
+export const GateHandoffCalls = 30;
+export const GateHandoffIdleMs = 5 * 60 * 1000;
+
+/** 关卡确认时判断是否值得换新会话：旧会话够重、缓存已冷（空闲 ≥5 分钟）或无账本数据时返回 true；轻会话且热缓存返回 false。 */
+export function shouldGateHandoff(
+  entries: readonly Entry[] | null,
+  cliSession: string,
+  lastActiveAt?: string,
+  nowMs = Date.now(),
+): boolean {
+  if (cliSession === '') return false;
+  let calls = 0;
+  let last: Entry | null = null;
+  for (const entry of entries ?? []) {
+    if (entry.session !== cliSession || !entry.usage || !entry.usage.source) continue;
+    calls += entry.usage.turns ?? 0;
+    last = entry;
+  }
+  const activeTime = (last?.time && !Number.isNaN(Date.parse(last.time)) ? Date.parse(last.time) : NaN);
+  const fallbackTime = lastActiveAt && !Number.isNaN(Date.parse(lastActiveAt)) ? Date.parse(lastActiveAt) : NaN;
+  const lastTs = !Number.isNaN(activeTime) ? activeTime : fallbackTime;
+  if (!Number.isNaN(lastTs) && nowMs - lastTs >= GateHandoffIdleMs) return true;
+  // 没有任何账本用量记录的工具或测试替身：无法判断体积时沿用原阶段边界接力行为。
+  if (!last?.usage) return true;
+
+  const context = last.usage.last_request_input_tokens;
+  if (context !== undefined && context > 0) {
+    return context >= GateHandoffContextTokens;
+  }
+  const turns = last.usage.turns ?? 0;
+  const input = last.usage.input_tokens ?? 0;
+  if (
+    last.usage.source !== 'codex app-server' &&
+    !(last.usage.source === 'acp usage' && turns <= 1) &&
+    turns > 0 &&
+    input > 0 &&
+    input / turns >= GateHandoffContextTokens
+  ) {
+    return true;
+  }
+  if (last.usage.source !== 'codex app-server' && calls >= GateHandoffCalls) return true;
+  return false;
+}
+
 /** 要换时给出原因（用户看得懂的一句话），不换返回空串。entries 是项目账本，cliSession 是现在续接的 CLI 会话。 */
 export function rotationReason(entries: readonly Entry[] | null, cliSession: string): string {
   if (cliSession === '' || !entries) return '';

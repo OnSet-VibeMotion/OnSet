@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Entry } from '../ledger';
-import { RotateCalls, handoffNote, rotationReason } from './rotate';
+import { GateHandoffCalls, GateHandoffContextTokens, GateHandoffIdleMs, RotateCalls, handoffNote, rotationReason, shouldGateHandoff } from './rotate';
 
 const entry = (session: string, input: number, turns: number, source = 'claude result'): Entry => ({
   time: '2026-11-17T00:00:00Z', source: 'studio', tool: 'claude', session, status: 'succeeded',
@@ -89,4 +89,49 @@ it('does not false-rotate ACP turns=1 cumulative usage, and rotates when multi-s
     entry('s5', 90 * 60_000, 90, 'acp usage'),
     entry('s5', 90 * 60_000, 90, 'acp usage'),
   ], 's5')).toBe(`这个会话已经调用了 ${RotateCalls} 次`);
+});
+
+describe('shouldGateHandoff', () => {
+  const now = Date.parse('2026-11-23T12:10:00Z');
+  const warmTime = '2026-11-23T12:08:00Z'; // 2 分钟前，缓存还热
+  const coldTime = '2026-11-23T12:04:00Z'; // 6 分钟前，短期缓存已冷
+
+  it('preserves warm cache when the session is still light and recently active', () => {
+    const light: Entry = {
+      time: warmTime, source: 'studio', tool: 'claude', session: 's1', status: 'succeeded',
+      usage: { input_tokens: 5 * 55_000, turns: 5, source: 'claude result', basis: 'total-input' },
+    };
+    expect(shouldGateHandoff([light], 's1', warmTime, now)).toBe(false);
+
+    const lightCodex: Entry = {
+      time: warmTime, source: 'studio', tool: 'codex', session: 's2', status: 'succeeded',
+      usage: { input_tokens: 500_000, turns: 1, last_request_input_tokens: 60_000, source: 'codex app-server', basis: 'total-input' },
+    };
+    expect(shouldGateHandoff([lightCodex], 's2', warmTime, now)).toBe(false);
+  });
+
+  it('hands off when context is heavy, call count is high, or idle time exceeds cache TTL', () => {
+    const heavyAvg: Entry = {
+      time: warmTime, source: 'studio', tool: 'agy', session: 's3', status: 'succeeded',
+      usage: { input_tokens: 10 * GateHandoffContextTokens, turns: 10, source: 'acp usage', basis: 'total-input' },
+    };
+    expect(shouldGateHandoff([heavyAvg], 's3', warmTime, now)).toBe(true);
+
+    const manyCalls: Entry = {
+      time: warmTime, source: 'studio', tool: 'qoder', session: 's4', status: 'succeeded',
+      usage: { input_tokens: 0, turns: GateHandoffCalls, source: 'qoder result', basis: 'total-input' },
+    };
+    expect(shouldGateHandoff([manyCalls], 's4', warmTime, now)).toBe(true);
+
+    const lightButCold: Entry = {
+      time: coldTime, source: 'studio', tool: 'claude', session: 's5', status: 'succeeded',
+      usage: { input_tokens: 4 * 45_000, turns: 4, source: 'claude result', basis: 'total-input' },
+    };
+    expect(now - Date.parse(coldTime)).toBeGreaterThanOrEqual(GateHandoffIdleMs);
+    expect(shouldGateHandoff([lightButCold], 's5', coldTime, now)).toBe(true);
+
+    // 无账本记录时沿用阶段边界接力，空 session ID 不接力。
+    expect(shouldGateHandoff(null, 's6', warmTime, now)).toBe(true);
+    expect(shouldGateHandoff([], '', coldTime, now)).toBe(false);
+  });
 });
