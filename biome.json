@@ -1,0 +1,143 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "packages/**",
+      "apps/**",
+      "scripts/**",
+      "package.json",
+      "biome.json",
+      "!**/dist",
+      "!**/out",
+      "!**/release",
+      "!**/testdata",
+      "!**/test-results",
+      "!**/vendor",
+      "!**/node_modules",
+      "!**/*.tmpl",
+      "!packages/cli/src/agent/import-meta-url.cjs"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineEnding": "lf",
+    "lineWidth": 120
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always"
+    }
+  },
+  "css": {
+    "formatter": {
+      "indentStyle": "space",
+      "indentWidth": 2
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "a11y": "off",
+      "complexity": {
+        "noCommaOperator": "off",
+        "noImportantStyles": "off",
+        "noUselessEscapeInRegex": "off",
+        "useArrowFunction": "off",
+        "useOptionalChain": "off"
+      },
+      "correctness": {
+        "noComponentHookFactories": "off",
+        "noSwitchDeclarations": "off",
+        "noUnsafeFinally": "off",
+        "noUnusedImports": "error",
+        "noUnusedVariables": "error",
+        "noVoidTypeReturn": "off",
+        "useExhaustiveDependencies": "off",
+        "useHookAtTopLevel": "off",
+        "useJsxKeyInIterable": "off",
+        "usePlaywrightValidDescribeCallback": "off"
+      },
+      "nursery": {
+        "noFloatingPromises": "error"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "off"
+      },
+      "style": {
+        "noDescendingSpecificity": "off",
+        "noNonNullAssertion": "off",
+        "useConst": "error",
+        "useImportType": "error",
+        "useTemplate": "off"
+      },
+      "suspicious": {
+        "noArrayIndexKey": "off",
+        "noAssignInExpressions": "off",
+        "noControlCharactersInRegex": "off",
+        "noDoubleEquals": "error",
+        "noExplicitAny": "off",
+        "noImplicitAnyLet": "off",
+        "noShadowRestrictedNames": "off",
+        "useIterableCallbackReturn": "off"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "apps/desktop/src/renderer/**/*.tsx",
+        "!apps/desktop/src/renderer/**/*.test.tsx",
+        "!apps/desktop/src/renderer/**/*Harness.tsx",
+        "!apps/desktop/src/renderer/testing.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "useHookAtTopLevel": "error"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/desktop/e2e/**"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noEmptyPattern": "off",
+            "usePlaywrightValidDescribeCallback": "error"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["**/*.test.*", "**/*.spec.*"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "useYield": "off"
+          }
+        }
+      }
+    }
+  ],
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  }
+}

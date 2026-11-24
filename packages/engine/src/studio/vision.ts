@@ -8,7 +8,7 @@
  * 能不能看图按在用的模型服务上用户写的那一项（预设帮着填好），不另查模型目录：自定义的 base URL 后面是什么模型，
  * 只有用户知道。
  */
-import * as config from '../config';
+import type * as config from '../config';
 import * as director from '../director';
 import { envMap } from '../envutil';
 

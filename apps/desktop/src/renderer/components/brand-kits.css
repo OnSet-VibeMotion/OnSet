@@ -1,0 +1,113 @@
+.brand-kits {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.brand-kits .brand-kits-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.brand-kits .brand-kits-head h4 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.brand-kits .brand-kits-applied {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  font-size: 13px;
+}
+
+.brand-kits .brand-kits-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex: none;
+}
+
+.brand-kits .brand-kits-extract {
+  display: flex;
+  gap: 8px;
+}
+
+.brand-kits .brand-kits-extract input {
+  flex: 1;
+  min-width: 0;
+}
+
+.brand-kits .brand-kits-manual {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.brand-kits .brand-kits-form {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.brand-kits .brand-kits-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.brand-kits .brand-kit-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  background: color-mix(in srgb, var(--text) 3%, var(--bg));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.brand-kits .brand-kit-card.active {
+  border-color: var(--accent);
+}
+
+.brand-kits .brand-kit-swatches {
+  display: flex;
+  height: 18px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.brand-kits .brand-kit-swatches span {
+  flex: 1;
+}
+
+.brand-kits .brand-kit-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.brand-kits .brand-kit-info strong {
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brand-kits .brand-kit-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}

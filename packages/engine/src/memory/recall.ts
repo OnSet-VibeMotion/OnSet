@@ -3,11 +3,25 @@ import { goTrimSpace } from '../gofmt';
 import { compareBytes } from '../gojson';
 import type { Scene } from '../scene';
 import { projectOf } from './episode';
-import { features as sceneFeatures, promptText } from './features';
+import { promptText, features as sceneFeatures } from './features';
 import { goToLower, runeCount } from './gostr';
-import { appliesEmpty, appliesInScope, KindLesson, KindPreference, ruleDigest, type Kind, type Memory, type Status } from './memory';
+import {
+  appliesEmpty,
+  appliesInScope,
+  type Kind,
+  KindLesson,
+  KindPreference,
+  type Memory,
+  ruleDigest,
+  type Status,
+} from './memory';
+import { preferenceMatches } from './preferences';
+import { explore as exploreWithDigest, withExtra } from './recall_explore';
 import { snapshotMemories } from './snapshot';
-import { smoothedRate, type Stat } from './stats';
+
+export { draw, withExtra } from './recall_explore';
+
+import { type Stat, smoothedRate } from './stats';
 import type { Store } from './store';
 import { contains, omitEmpty } from './util';
 
@@ -116,7 +130,9 @@ export function recallResultToJSON(r: RecallResult): Record<string, unknown> {
     max_lessons: r.max_lessons,
     items: r.items.map(recallItemToJSON),
     omitted: r.omitted.length > 0 ? r.omitted.map(recallItemToJSON) : undefined,
-    explored: r.explored ? { dropped: r.explored.dropped, added: r.explored.added, propensity: r.explored.propensity } : undefined,
+    explored: r.explored
+      ? { dropped: r.explored.dropped, added: r.explored.added, propensity: r.explored.propensity }
+      : undefined,
   };
 }
 
@@ -153,7 +169,10 @@ function itemsDigest(items: readonly RecallItem[]): string {
 /** 把召回结果挂到镜头上（返回副本），供 buildPrompt 注入、fingerprint 记录。 */
 export function attachRecall(r: RecallResult, s: Scene): Scene {
   if (r.items.length === 0) return { ...s, memory: null };
-  return { ...s, memory: { snapshot: r.snapshot, names: recallNames(r), section: recallSection(r), digest: recallDigest(r) } };
+  return {
+    ...s,
+    memory: { snapshot: r.snapshot, names: recallNames(r), section: recallSection(r), digest: recallDigest(r) },
+  };
 }
 
 /** 一次召回的全部输入。同样的输入永远得到同样的结果。 */
@@ -167,6 +186,7 @@ export interface RecallInput {
   /** 参与关键词匹配的文本（镜头文本与创意方向）。 */
   text?: string;
   project?: string;
+  series?: string;
   budget: number;
   /** 经验条数上限，0 表示 DefaultMaxLessons。 */
   maxLessons?: number;
@@ -209,7 +229,7 @@ export function recall(input: RecallInput): RecallResult {
   const text = goToLower(input.text ?? '');
   const candidates: RecallItem[] = [];
   for (const m of input.memories ?? []) {
-    if (m.kind === KindPreference && m.scope !== '' && m.scope !== (input.project ?? '')) continue;
+    if (m.kind === KindPreference && !preferenceMatches(m.scope, input.project ?? '', input.series ?? '')) continue;
     if (!appliesInScope(m.applies_when, input.renderer, model)) continue;
     const item: RecallItem = {
       name: m.name,
@@ -307,6 +327,7 @@ export interface RecallOptions {
    */
   explore?: number;
   exploreSeed?: string;
+  series?: string;
 }
 
 /** 对一个镜头做召回。记忆库还没有快照且没有 extra 时什么也不召回。 */
@@ -331,6 +352,7 @@ export function recallScene(s: Store, sc: Scene, opts: RecallOptions): RecallRes
     features,
     text: sc.text + '\n' + promptText(sc),
     project: projectOf(sc.directory),
+    series: opts.series ?? '',
     budget: opts.budget,
     maxLessons: opts.maxLessons ?? 0,
   });
@@ -340,58 +362,8 @@ export function recallScene(s: Store, sc: Scene, opts: RecallOptions): RecallRes
 }
 
 /**
- * 以 rate 的概率把注入的最后一条经验换成 omitted 里第一条换得进去的经验
- * （字数预算仍然成立）。抽签由 seed 的哈希决定，可复现。
+ * 以 rate 的概率把注入的最后一条经验换成 omitted 里第一条换得进去的经验（字数预算仍然成立）。
  */
 export function explore(r: RecallResult, rate: number, seed: string): RecallResult {
-  let last = -1;
-  r.items.forEach((item, i) => {
-    if (item.kind === KindLesson) last = i;
-  });
-  if (last < 0) return r;
-  const dropped = { ...r.items[last] };
-  let pick = -1;
-  for (let i = 0; i < r.omitted.length; i++) {
-    const item = r.omitted[i];
-    if (item.kind === KindLesson && r.used - dropped.chars + item.chars <= r.budget) {
-      pick = i;
-      break;
-    }
-  }
-  if (pick < 0 || draw(seed) >= rate) return r;
-  const out: RecallResult = { ...r };
-  const added = { ...r.omitted[pick] };
-  out.canonical = itemsDigest(r.items);
-  added.omit_reason = '';
-  const items = [...r.items];
-  items[last] = added;
-  const omitted = [...r.omitted.slice(0, pick), ...r.omitted.slice(pick + 1)];
-  dropped.omit_reason = 'explore';
-  out.items = items;
-  out.omitted = [...omitted, dropped];
-  out.used = r.used + added.chars - dropped.chars;
-  out.explored = { dropped: dropped.name, added: added.name, propensity: rate };
-  return out;
-}
-
-/**
- * 把 seed 映射到 [0, 1)：sha256 的前 8 字节按大端读成 uint64，右移 11 位留下 53 位，除以 2^53。
- * 与 Go 版逐位相同，同一个种子在两边抽到同一个结果。
- */
-export function draw(seed: string): number {
-  const sum = crypto.createHash('sha256').update(seed, 'utf8').digest();
-  const n = sum.readBigUInt64BE(0) >> 11n;
-  return Number(n) / 2 ** 53;
-}
-
-/**
- * 把试用记忆加进召回池；试用记忆是某条生效记忆的修订时，
- * 被修订的旧版本退出召回池——两版同时注入就等于并列新增。
- */
-export function withExtra(memories: readonly Memory[], extra: readonly Memory[]): Memory[] {
-  const replaced = new Set<string>();
-  for (const m of extra) {
-    if (m.revises !== '') replaced.add(m.revises);
-  }
-  return [...memories.filter((m) => !replaced.has(m.name)), ...extra];
+  return exploreWithDigest(r, rate, seed, itemsDigest);
 }

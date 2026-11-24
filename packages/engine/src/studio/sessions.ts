@@ -4,743 +4,81 @@
  * Go 版靠 sessions.mu 串行化；Node 是单线程，同步代码段天然不会被打断，所以这里没有锁，
  * 但保留 Go 版「先改内存、再落盘、再唤醒」的顺序。
  */
-import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
-import * as agentrun from '../agentrun';
-import * as config from '../config';
-import { addToolsLocation, onsetCommand, envMap, lookPath, parsePassthrough } from '../envutil';
-import { readSection } from '../flow';
-import { atomicWrite } from '../fsutil';
-import { formatFixed, goClean, goTrimSpace } from '../gofmt';
-import { marshal, marshalIndent } from '../gojson';
-import * as ledger from '../ledger';
-import { HandoffTranscriptLimit, handoffNote, rotationReason, shouldGateHandoff } from './rotate';
-import * as project from '../project';
-import { KindView, PermissionPollInterval, PermissionServerName, ViewInboxEnv, waitPermissionResponse, writePermissionRequest, ViewPollInterval, ViewProjectEnv, describeView, drainViewInbox, viewInbox, viewInteraction, type ViewRequest, type ViewState } from '../studioview';
-import * as tools from '../tools';
-import { compareTimes, nowTime } from './http';
-import type { Project, Server } from './studio';
-import { writeStepMark } from './view';
-import { changedPaths, diffTrees, loadTurn, revertTurn, saveTurn, scanTree, statTree, studioRoot, validID, type FileChange, type Turn } from './turns';
+import type * as config from '../config';
 import { emitStudioEvent } from './events';
-import { computeStations, confirmGateFromChat } from './progress';
-import { discoverScenes } from './scenes';
-import { preferenceBrief, recordUtterance } from './memory';
-import { noVisionNote, orchestratorCannotSee } from './vision';
-import { uploadDir, uploadKind } from './uploads';
-import { allowedCommands, expirePermissions, permissionEventJSON, pollPermissions, type PendingPermission, type PermissionEventData } from './permissions';
-import { LocalStyleReceipt, localStyleContext, localStyleAction, resumeFallbackAllowed } from './localactions';
-import { runStudioOp } from './tasks';
-import { styleKey } from '../filmstyle';
+import { nowTime } from './http';
+import { recordUtterance } from './memory';
+import { sessionConfig } from './sessions_agents';
+import { prepareTurn } from './sessions_prepare';
+import { attachmentText, scheduleGateHandoff, validateAttachments } from './sessions_prompt';
+import { emit, getSession, updateMeta } from './sessions_store';
+import { executeTurn } from './sessions_turn';
+import {
+  BusyError,
+  kindNotice,
+  kindQueued,
+  kindTurnEnd,
+  kindTurnReverted,
+  kindUnqueued,
+  newID,
+  type Session,
+  type TurnRequest,
+} from './sessions_types';
+import type { Project, Server } from './studio';
+import { diffTrees, loadTurn, revertTurn, saveTurn, scanTree, type Turn } from './turns';
 
-// Studio 在 agentrun 事件之外自己发的几种事件。
-export const kindUser = 'user';
-export const kindTurnStart = 'turn-start';
-export const kindTurnEnd = 'turn-end';
-export const kindFilesChanged = 'files-changed';
-export const kindNotice = 'notice';
-export const kindTurnReverted = 'turn-reverted';
-/** kindQueued 是这一轮进行中用户又发的消息：排队，这一轮结束后作为下一轮发出。 */
-export const kindQueued = 'queued';
-/** kindUnqueued 是用户移除了一条排队的消息。 */
-export const kindUnqueued = 'unqueued';
-
-/** transcriptLimit 是续接失败时补发的对话记录上限（字符）。 */
-export const transcriptLimit = 24000;
-/** changeCheckInterval 是对话进行中两次检查文件变化的最短间隔（毫秒）。 */
-const changeCheckInterval = 500;
-
-/** 会话的元数据，落在 production/studio/sessions/<id>.json。时间字段是 Go 写法的字符串。 */
-export interface SessionMeta {
-  session_id: string;
-  title: string;
-  /** chat | production */
-  kind: string;
-  tool: string;
-  /** 编排工具的模型；空跟随设置（同一家工具时）或用那家工具自己的默认。 */
-  model?: string;
-  /** 编排工具的调用选项（effort=high,fast=on，见 tools/options.ts）；空跟随设置（同一家工具时）。 */
-  options?: string;
-  renderer?: string;
-  renderer_model?: string;
-  renderer_options?: string;
-  cli_session_id?: string;
-  created_at: string;
-  updated_at: string;
-  turns: string[] | null;
-  running_turn?: string;
-  /**
-   * 上一次交给编排工具的用户偏好段的摘要：偏好没变、CLI 会话也还在时不再重复发送，续接的会话里已经有了。
-   */
-  preference_digest?: string;
-  /** 上一次交给编排工具的镜头归属规则（scene-ownership.md）摘要：同会话未修订时不每轮重复追加 5KB。 */
-  ownership_digest?: string;
-  /** 当前 CLI 会话是否已经发送过无视觉提醒（noVisionNote）。 */
-  vision_note_sent?: boolean;
-  /** 当前 CLI 会话最近一次发送过的本地风格操作回执，避免后续每轮重复前置。 */
-  local_style_receipt?: string;
-  /** 手动或关卡确认触发阶段分段接力时记下原因，下一轮消费并开启新 CLI 会话。 */
-  handoff_reason?: string;
-}
-
-export function sessionMetaJSON(meta: SessionMeta): Record<string, unknown> {
-  return {
-    session_id: meta.session_id,
-    title: meta.title,
-    kind: meta.kind,
-    tool: meta.tool,
-    model: meta.model || undefined,
-    options: meta.options || undefined,
-    renderer: meta.renderer || undefined,
-    renderer_model: meta.renderer_model || undefined,
-    renderer_options: meta.renderer_options || undefined,
-    cli_session_id: meta.cli_session_id || undefined,
-    created_at: meta.created_at,
-    updated_at: meta.updated_at,
-    turns: meta.turns,
-    running_turn: meta.running_turn || undefined,
-    preference_digest: meta.preference_digest || undefined,
-    ownership_digest: meta.ownership_digest || undefined,
-    vision_note_sent: meta.vision_note_sent || undefined,
-    local_style_receipt: meta.local_style_receipt || undefined,
-    handoff_reason: meta.handoff_reason || undefined,
-  };
-}
-
-/** 会话事件流里的一条，逐行追加到 <id>.events.jsonl。agentrun.Event 的字段内嵌在 time 之后。 */
-export interface SessionEvent extends agentrun.Event {
-  seq: number;
-  turn_id?: string;
-  time: string;
-  status?: string;
-  files?: string[];
-  changes?: FileChange[];
-  /** 标出 queued / unqueued 事件说的是哪一条排队的消息。 */
-  queue_id?: string;
-  /** 编排工具经 onset studio show 请网页切到的页面（view 事件）。 */
-  view?: ViewRequest;
-  /** 等用户批准的调用（permission 事件）与它的结果（permission-resolved 事件）。 */
-  permission?: PermissionEventData;
-}
-
-export function sessionEventJSON(e: SessionEvent): Record<string, unknown> {
-  return {
-    seq: e.seq,
-    turn_id: e.turn_id || undefined,
-    time: e.time,
-    ...agentrun.eventJSON(e),
-    status: e.status || undefined,
-    files: e.files && e.files.length > 0 ? e.files : undefined,
-    changes: e.changes && e.changes.length > 0 ? e.changes.map((c) => ({ path: c.path, change: c.change, revertable: c.revertable })) : undefined,
-    queue_id: e.queue_id || undefined,
-    view: e.view ? { page: e.view.page, target: e.view.target || undefined, note: e.view.note || undefined, step: e.view.step || undefined } : undefined,
-    permission: e.permission ? permissionEventJSON(e.permission) : undefined,
-  };
-}
-
-/** 画面上的一个区域，单位是视频像素。 */
-export interface Box {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-/** 随消息附上的画面上下文。 */
-export interface Attachment {
-  scene_id?: string;
-  path?: string;
-  seconds?: number;
-  region?: Box;
-  selector?: string;
-  source?: string;
-  note?: string;
-  /** 用户上传的文件（path 在 production/studio/uploads/ 下），name 是原文件名。 */
-  upload?: boolean;
-  name?: string;
-  size?: number;
-  /**
-   * 用户右键「引用到对话」的一段文字，source 是它所在的项目文件（可以为空，
-   * 例如引用的是编排工具的回复），label 是给人看的出处（「口播稿第 3 段」）。
-   */
-  quote?: string;
-  label?: string;
-  /** 只是指给编排工具看的一样东西（镜头 scene_id 或文件 source），不带截图。 */
-  ref?: boolean;
-}
-
-export function attachmentJSON(a: Attachment): Record<string, unknown> {
-  return {
-    scene_id: a.scene_id || undefined,
-    path: a.path || undefined,
-    seconds: a.seconds || undefined,
-    region: a.region ? { x: a.region.x, y: a.region.y, w: a.region.w, h: a.region.h } : undefined,
-    selector: a.selector || undefined,
-    source: a.source || undefined,
-    note: a.note || undefined,
-    upload: a.upload || undefined,
-    name: a.name || undefined,
-    size: a.size || undefined,
-    quote: a.quote || undefined,
-    label: a.label || undefined,
-    ref: a.ref || undefined,
-  };
-}
-
-/** maxQuoteRunes 是一条引用的上限：再长就该让编排工具自己去读文件。 */
-export const maxQuoteRunes = 4000;
-
-export interface Session {
-  project: string;
-  meta: SessionMeta;
-  events: SessionEvent[];
-  /** 等新事件的 SSE 连接（对应 Go 的 wake 通道）。 */
-  waiters: Set<() => void>;
-  /** 进行中这一轮的取消（对应 Go 的 cancel）。 */
-  cancel: AbortController | null;
-  /**
-   * 这一轮进行中排队的消息，结束后合并成下一轮。只在内存里：
-   * Studio 重启时进行中的轮次本来就会被标成 interrupted，排队的消息随之作废。
-   */
-  queue: TurnRequest[];
-  /** 编排工具在等用户批准的调用，按请求编号。只在内存里，理由同 queue。 */
-  permissions: Map<string, PendingPermission>;
-}
-
-/** BusyError 表示项目正被另一轮对话或一个写任务占用。 */
-export class BusyError extends Error {
-  constructor(readonly holder: string) {
-    super('项目正忙：' + holder + '，请等它结束或先取消');
-    this.name = 'BusyError';
-  }
-}
-
-function sessionKey(projectPath: string, id: string): string {
-  return projectPath + '\x00' + id;
-}
-
-/** newID 生成 <前缀>-<UTC 时间>-<8 位十六进制>，只含 validID 认的字符。 */
-export function newID(prefix: string): string {
-  const stamp = new Date().toISOString().replace(/\.\d+Z$/, '').replace(/[-:]/g, '').replace('T', '-');
-  return prefix + '-' + stamp + '-' + crypto.randomBytes(4).toString('hex');
-}
-
-export function sessionsDir(projectPath: string): string {
-  return path.join(studioRoot(projectPath), 'sessions');
-}
-
-function decodeMeta(body: string): SessionMeta | undefined {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(body);
-  } catch {
-    return undefined;
-  }
-  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
-  const r = raw as Record<string, unknown>;
-  const s = (key: string): string | undefined => {
-    const v = r[key];
-    if (v === undefined || v === null) return '';
-    return typeof v === 'string' ? v : undefined;
-  };
-  const fields = ['session_id', 'title', 'kind', 'tool', 'model', 'options', 'renderer', 'renderer_model', 'renderer_options', 'cli_session_id', 'created_at', 'updated_at', 'running_turn', 'preference_digest', 'ownership_digest', 'local_style_receipt', 'handoff_reason'];
-  const values: Record<string, string> = {};
-  for (const key of fields) {
-    const v = s(key);
-    if (v === undefined) return undefined;
-    values[key] = v;
-  }
-  if (r.vision_note_sent !== undefined && typeof r.vision_note_sent !== 'boolean') return undefined;
-  let turns: string[] | null = null;
-  if (Array.isArray(r.turns)) {
-    if (!r.turns.every((t) => typeof t === 'string')) return undefined;
-    turns = r.turns as string[];
-  } else if (r.turns !== undefined && r.turns !== null) return undefined;
-  const zero = '0001-01-01T00:00:00Z';
-  return {
-    session_id: values.session_id,
-    title: values.title,
-    kind: values.kind,
-    tool: values.tool,
-    model: values.model || undefined,
-    options: values.options || undefined,
-    renderer: values.renderer || undefined,
-    renderer_model: values.renderer_model || undefined,
-    renderer_options: values.renderer_options || undefined,
-    cli_session_id: values.cli_session_id || undefined,
-    created_at: values.created_at || zero,
-    updated_at: values.updated_at || zero,
-    turns,
-    running_turn: values.running_turn || undefined,
-    preference_digest: values.preference_digest || undefined,
-    ownership_digest: values.ownership_digest || undefined,
-    vision_note_sent: r.vision_note_sent === true ? true : undefined,
-    local_style_receipt: values.local_style_receipt || undefined,
-    handoff_reason: values.handoff_reason || undefined,
-  };
-}
-
-/** 读回一行事件；读不懂的行跳过。 */
-function decodeEvent(line: string): SessionEvent | undefined {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(line);
-  } catch {
-    return undefined;
-  }
-  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
-  const e = raw as SessionEvent;
-  if (typeof e.seq !== 'number') e.seq = 0;
-  if (typeof e.kind !== 'string') e.kind = '';
-  if (typeof e.time !== 'string') e.time = '0001-01-01T00:00:00Z';
-  return e;
-}
-
-/**
- * loadSessions 首次访问某个项目时从磁盘读出它的全部会话。
- * 上次 Studio 退出时还在进行的轮次标成 interrupted：进程已经不在了。
- */
-export function loadSessions(s: Server, projectPath: string): void {
-  if (s.loadedProjects.has(projectPath)) return;
-  s.loadedProjects.add(projectPath);
-  let names: string[];
-  try {
-    names = fs
-      .readdirSync(sessionsDir(projectPath), { withFileTypes: true })
-      .filter((entry) => !entry.isDirectory() && entry.name.endsWith('.json'))
-      .map((entry) => entry.name)
-      .sort();
-  } catch {
-    return;
-  }
-  for (const name of names) {
-    let body: string;
-    try {
-      body = fs.readFileSync(path.join(sessionsDir(projectPath), name), 'utf8');
-    } catch {
-      continue;
-    }
-    const meta = decodeMeta(body);
-    if (!meta || !validID(meta.session_id)) continue;
-    const sess: Session = { project: projectPath, meta, events: [], waiters: new Set(), cancel: null, queue: [], permissions: new Map() };
-    sess.events = readEvents(path.join(sessionsDir(projectPath), meta.session_id + '.events.jsonl'));
-    restoreEndedTurns(sess);
-    if (meta.running_turn) {
-      sess.meta.running_turn = undefined;
-      try {
-        writeMeta(sess);
-      } catch {
-        // 写不了下次再标。
-      }
-    }
-    s.sessions.set(sessionKey(projectPath, meta.session_id), sess);
-  }
-}
-
-/** 重启后没有活的对话进程，事件流也必须收尾。旧版可能已清 running_turn，
- * 却留下没有 turn-end 的 turn-start；只看元数据会让这些会话永久显示运行中。 */
-function restoreEndedTurns(sess: Session): void {
-  const pending = new Set<string>();
-  if (sess.meta.running_turn) pending.add(sess.meta.running_turn);
-  for (const event of sess.events) {
-    if (!event.turn_id || !validID(event.turn_id)) continue;
-    if (event.kind === kindTurnStart) pending.add(event.turn_id);
-    else if (event.kind === kindTurnEnd) pending.delete(event.turn_id);
-  }
-  for (const id of pending) {
-    let turn: Turn | undefined;
-    try {
-      turn = loadTurn(sess.project, id);
-      if (turn.status === 'running') {
-        turn.status = 'interrupted';
-        turn.error = 'Studio 在本轮进行中退出';
-        turn.ended_at = nowTime();
-        saveTurn(sess.project, turn);
-      }
-    } catch {
-      // 轮次记录缺失或写不了，也要让事件订阅方知道本轮已结束。
-    }
-    emit(sess, id, {
-      kind: kindTurnEnd,
-      status: turn?.status || 'interrupted',
-      text: turn ? turn.error : 'Studio 在本轮进行中退出，轮次记录无法读取',
-      changes: turn?.changes ?? undefined,
-    });
-  }
-}
-
-function readEvents(file: string): SessionEvent[] {
-  let body: string;
-  try {
-    body = fs.readFileSync(file, 'utf8');
-  } catch {
-    return [];
-  }
-  const events: SessionEvent[] = [];
-  for (const line of body.split('\n')) {
-    if (line === '') continue;
-    const event = decodeEvent(line);
-    if (event) events.push(event);
-  }
-  return events;
-}
-
-function writeMeta(sess: Session): void {
-  atomicWrite(path.join(sessionsDir(sess.project), sess.meta.session_id + '.json'), marshalIndent(sessionMetaJSON(sess.meta)) + '\n', 0o644);
-}
-
-export function listSessions(s: Server, projectPath: string): SessionMeta[] {
-  loadSessions(s, projectPath);
-  const out: SessionMeta[] = [];
-  for (const sess of s.sessions.values()) if (sess.project === projectPath) out.push({ ...sess.meta });
-  // Go 的 sort.Slice 不稳定；按更新时间倒序，相同时间的先后不作保证。
-  out.sort((a, b) => compareTimes(b.updated_at, a.updated_at));
-  return out;
-}
-
-export function getSession(s: Server, projectPath: string, id: string): Session | undefined {
-  loadSessions(s, projectPath);
-  return s.sessions.get(sessionKey(projectPath, id));
-}
-
-/** 会话选定的编排工具与渲染工具（agents.ts 的 agentChoice）。 */
-export interface AgentChoice {
-  tool: string;
-  renderer: string;
-  /**
-   * 两家工具各自的模型。undefined 是「没说」（不改）；空串是「跟随设置」：工具与设置里的相同时用设置里的模型，
-   * 不同时用那家工具自己的默认——设置里的模型是给设置里那家工具挑的。
-   */
-  model?: string;
-  rendererModel?: string;
-  /** 两家工具各自的调用选项（effort=high,fast=on），规则同模型：undefined 不改，空串跟随设置。 */
-  options?: string;
-  rendererOptions?: string;
-}
-
-export function createSession(s: Server, projectPath: string, kind: string, title: string, agents: AgentChoice): Session {
-  loadSessions(s, projectPath);
-  const now = nowTime();
-  const sess: Session = {
-    project: projectPath,
-    meta: {
-      session_id: newID('s'),
-      title,
-      kind,
-      tool: agents.tool,
-      model: agents.model || undefined,
-      options: agents.options || undefined,
-      renderer: agents.renderer || undefined,
-      renderer_model: agents.rendererModel || undefined,
-      renderer_options: agents.rendererOptions || undefined,
-      created_at: now,
-      updated_at: now,
-      turns: [],
-    },
-    events: [],
-    waiters: new Set(),
-    cancel: null,
-    queue: [],
-    permissions: new Map(),
-  };
-  writeMeta(sess);
-  s.sessions.set(sessionKey(projectPath, sess.meta.session_id), sess);
-  return sess;
-}
-
-/** 要追加的事件：seq、turn_id、time 由 emit 填。 */
-export type NewEvent = Omit<SessionEvent, 'seq' | 'time' | 'turn_id'>;
-
-/**
- * emit 追加一条事件：编号、落盘、唤醒等待中的 SSE 连接。
- *
- * 编号与落盘在同一段同步代码里：一轮对话与一次回退可能同时发事件，行序必须与 seq 一致，
- * 重启后按行读回来的事件才对得上 SSE 的 Last-Event-ID。
- */
-export function emit(sess: Session, turn: string, event: NewEvent): void {
-  const full: SessionEvent = { ...event, seq: sess.events.length + 1, turn_id: turn || undefined, time: nowTime() };
-  sess.events.push(full);
-  try {
-    const file = path.join(sessionsDir(sess.project), sess.meta.session_id + '.events.jsonl');
-    fs.appendFileSync(file, marshal(sessionEventJSON(full)) + '\n', { mode: 0o644 });
-  } catch {
-    // 写不了事件文件不影响这一轮：内存里还有，SSE 照常推送。
-  }
-  const waiters = [...sess.waiters];
-  sess.waiters.clear();
-  for (const wake of waiters) wake();
-}
-
-/** updateMeta 修改会话元数据并落盘。 */
-export function updateMeta(sess: Session, change: (meta: SessionMeta) => void): void {
-  change(sess.meta);
-  sess.meta.updated_at = nowTime();
-  try {
-    writeMeta(sess);
-  } catch {
-    // 与 Go 版一样忽略落盘错误。
-  }
-}
-
-/** eventsAfter 返回 seq 大于 after 的事件，以及会话此刻是否有进行中的一轮。 */
-export function eventsAfter(sess: Session, after: number): { events: SessionEvent[]; running: boolean } {
-  const events = after < sess.events.length ? sess.events.slice(Math.max(after, 0)) : [];
-  return { events, running: !!sess.meta.running_turn };
-}
-
-/** 等下一条事件（或被 signal 取消）。 */
-export function waitEvent(sess: Session): Promise<void> {
-  return new Promise((resolve) => sess.waiters.add(resolve));
-}
-
-/** attachmentText 把附件写成编排工具能读的说明。 */
-export function attachmentText(attachments: Attachment[] | null | undefined): string {
-  if (!attachments || attachments.length === 0) return '';
-  const uploads: Attachment[] = [];
-  const refs: Attachment[] = [];
-  const frames: Attachment[] = [];
-  for (const a of attachments) {
-    if (a.upload) uploads.push(a);
-    else if (a.quote || a.ref) refs.push(a);
-    else frames.push(a);
-  }
-  let b = '';
-  if (uploads.length > 0) {
-    b += '\n\n用户上传的文件（存在 Studio 的上传目录里，不属于项目；要用时先复制或转换到项目里合适的位置，例如文章放项目根或 docs/，素材放 assets/）：';
-    for (const a of uploads) b += `\n- ${uploadKind(a.name ?? '')}「${a.name ?? ''}」：${a.path ?? ''}`;
-  }
-  if (refs.length > 0) {
-    b += '\n\n用户引用的内容（这条消息说的就是这些）：';
-    for (const a of refs) {
-      b += '\n- ';
-      if (a.quote) {
-        b += a.label || '一段文字';
-        if (a.source) b += `（${a.source}）`;
-        b += '：';
-        for (const line of goTrimSpace(a.quote).split('\n')) b += '\n  > ' + line;
-      } else if (a.scene_id) {
-        b += `镜头 ${a.scene_id}`;
-      } else if (a.source) {
-        b += a.label ? `${a.label}（${a.source}）` : `文件 ${a.source}`;
-      }
-      if (a.note) b += '\n  备注：' + a.note;
-    }
-  }
-  if (frames.length === 0) return b;
-  b += '\n\n附带的画面上下文：';
-  for (const a of frames) {
-    b += '\n- ';
-    if (a.scene_id) b += `镜头 ${a.scene_id} `;
-    if (a.path) b += `${formatFixed(a.seconds ?? 0, 2)} 秒处的截图 ${a.path}（请打开查看）`;
-    if (a.region) b += `，用户圈出的区域：x=${a.region.x} y=${a.region.y} 宽 ${a.region.w} 高 ${a.region.h}（视频像素）`;
-    if (a.selector) {
-      b += `，合成里选中的元素 \`${a.selector}\``;
-      if (a.source) b += `（${a.source}）`;
-    }
-    if (a.note) b += '，备注：' + a.note;
-  }
-  return b;
-}
-
-/** validateAttachments 只接受 Studio 自己抽出的截图与项目内的合成文件。 */
-export function validateAttachments(projectPath: string, attachments: Attachment[] | null | undefined): void {
-  for (const a of attachments ?? []) {
-    if (a.path) {
-      const clean = goClean(a.path);
-      const prefix = a.upload ? uploadDir + '/' : 'production/studio/attachments/';
-      if (!clean.startsWith(prefix) || clean.includes('..')) throw new Error(`附件路径不在 ${prefix} 下：${a.path}`);
-      if (!fs.existsSync(path.join(projectPath, clean))) throw new Error(`附件不存在：${a.path}`);
-    }
-    if (a.source) containedPath(projectPath, a.source);
-    const n = [...(a.quote ?? '')].length;
-    if (n > maxQuoteRunes) throw new Error(`引用太长（${n} 字，上限 ${maxQuoteRunes}）：长内容请直接说文件名，让 AI 自己读`);
-    if (a.ref && !a.scene_id && !a.source) throw new Error('引用要指明镜头或文件');
-  }
-}
-
-/** chatPreamble 是聊天会话第一轮的开场说明。整片制作会话第一轮直接发制作提示词，末尾附 studioInteraction。 */
-export function chatPreamble(rulesName: string): string {
-  return (
-    '你正在协助用户修改当前目录下的片场视频项目。动手前先读项目规则 ' +
-    rulesName +
-    '。需要渲染、校验、复查时直接调用 onset 工具服务里的工具。改完用几句话说明改了哪些文件、为什么，以及接下来要不要重渲染哪些镜头。\n\n' +
-    studioInteraction +
-    '\n\n用户的请求：'
-  );
-}
-
-/**
- * studioInteraction 告诉编排工具怎样在 Studio 里和用户来回：多步任务先列待办清单
- * （网页据此显示进度），要用户拍板时用 choices 代码块（网页渲染成按钮，见 Chat.tsx 的 parseChoices）。
- */
-export const studioInteraction =
-  `你在 Studio 网页里和用户对话，下面几条约定让网页能把你的进度和问题显示好：
-- 工具都由你来调用。回复里用用户听得懂的话说做了什么、接下来做什么，不要写工具名、参数或命令让用户去运行；工具报错里「请重新运行 beat_cues()」这类话是给你的下一步，能做就直接做掉，要用户点头的先用一句话说明要做什么、为什么。
-- 多步骤的工作先用你的待办清单工具列出步骤，做的过程中及时更新状态，用户会在对话顶部看到进度。
-- 需要用户拍板时（选风格、确认分镜、确认一条推测的偏好、几种做法里选一种），先把问题和各选项的差别写清楚，再在回复的最后单独放一个语言标成 choices 的代码块，每行一个选项，例如：
-` +
-  '```choices\n用方案 A：深色科技风\n用方案 B：白板手绘风\n```' +
-  `
-  用户会看到可点的按钮，点了就把那一行原样发给你。问完就结束这一轮等用户回复，不要替用户选。用户也可能直接打字回答。
-- 推荐风格时（用户没指定画风、要换风格，或某一段想换一种画法），先用 film_style_list({"compact": true}) 挑出两三种贴合的，在回复里放一个语言标成 film-styles 的代码块，每行一种，写「来源/目录名」加一句为什么合适。推荐给全片当默认风格的直接写；只推荐给某一段的，在标识后面用方括号写清用在哪一段（段落名加镜头编号），例如：
-` +
-  '```film-styles\nlemo-opuscar/impasto 厚涂笔触适合讲历史人物的分量\nlemo-opuscar/ink-wash [回忆段，镜头 04–06] 水墨的留白像记忆一样模糊\n```' +
-  `
-  网页会显示每种风格的海报并标出是全片默认还是只用在哪一段。用户点了，全片默认的发来「整片风格用「中文名」（标识）」，你运行 film_style_use()；只给一段的发来「<那一段>用「中文名」风格（标识），其余镜头不变」，你按段落换风格的做法 film_style_add() 并改分镜里那几个镜头的 film_style，不要动默认风格。「不用整片风格，各镜头自主定视觉」写进同一条回复的 choices 代码块。
-- 要用户试听音频、看图片或视频时（音色试听、配音片段、封面候选、预览帧），在回复里写出每个文件在项目里的相对路径，例如 production/audio/auditions/try-A.wav，网页会在回复下面直接放播放器和缩略图；只写文件名、目录另说的话网页未必找得到。
-` +
-  viewInteraction();
-
-/** transcript 把会话里已有的对话整理成文字，供续接失败或分段接力时补发。只保留末尾 limit 字。 */
-export function transcript(events: SessionEvent[], limit = transcriptLimit): string {
-  let b = '';
-  for (const event of events) {
-    if (event.kind === kindUser) b += '\n用户：' + (event.text ?? '') + '\n';
-    else if (event.kind === agentrun.KindText) b += '你：' + (event.text ?? '') + '\n';
-  }
-  let runes = [...b];
-  if (runes.length > limit) runes = runes.slice(runes.length - limit);
-  return goTrimSpace(runes.join(''));
-}
-
-/** 按磁盘产物生成精简的项目状态快照，供分段接力的新会话快速对齐进度。 */
-export function projectStateBrief(projectPath: string): string {
-  try {
-    const scenes = discoverScenes(projectPath);
-    const progress = computeStations(projectPath, scenes);
-    const lines: string[] = [];
-    const current = progress.stations.find((st) => st.id === progress.current);
-    lines.push(`- 流程：${progress.mode}；当前站：${current ? `${current.label}（${current.id}）` : '全部完成'}`);
-    const done = progress.stations
-      .filter((st) => st.status === 'done' || st.status === 'confirmed' || st.status === 'passed')
-      .map((st) => st.label + (st.detail ? `（${st.detail}）` : st.file ? `（${st.file}）` : ''));
-    if (done.length > 0) lines.push(`- 已完成 / 已确认：${done.join('、')}`);
-    const attention = progress.stations
-      .filter((st) => st.status === 'stale' || st.status === 'changed')
-      .map((st) => st.label + (st.stale_note ? `（${st.stale_note}）` : ''));
-    if (attention.length > 0) lines.push(`- 需重做 / 重确认：${attention.join('、')}`);
-    if (scenes.length > 0) {
-      const ready = scenes.filter((sc) => sc.exists && !sc.stale);
-      const stale = scenes.filter((sc) => sc.exists && sc.stale).map((sc) => sc.id);
-      const missing = scenes.filter((sc) => !sc.exists).map((sc) => sc.id);
-      const formatList = (ids: string[]) => (ids.length <= 12 ? ids.join(', ') : `${ids.slice(0, 12).join(', ')} 等 ${ids.length} 个`);
-      const parts = [`共 ${scenes.length} 镜`, `已就绪 ${ready.length}`];
-      if (stale.length > 0) parts.push(`待重渲 ${stale.length}（${formatList(stale)}）`);
-      if (missing.length > 0) parts.push(`未渲染 ${missing.length}（${formatList(missing)}）`);
-      lines.push(`- 镜头进度：${parts.join('；')}`);
-    }
-    return lines.join('\n');
-  } catch {
-    return '';
-  }
-}
-
-/**
- * 阶段边界手动接力：保留 Studio 对话界面与轮次历史，清空底层 CLI 会话号，
- * 让下一轮自动用精简项目状态快照 + 近期对话记录开启新 CLI 会话（不再背负旧工具输出与看图历史）。
- */
-export function handoffSession(sess: Session, reason = '手动分段接力'): void {
-  if (sess.cancel || sess.meta.running_turn) throw new BusyError('当前轮次正在进行，请等结束后再分段接力');
-  if ((sess.meta.turns ?? []).length === 0) throw new Error('这个会话还没有对话记录，无需分段接力');
-  updateMeta(sess, (meta) => {
-    meta.cli_session_id = undefined;
-    meta.preference_digest = undefined;
-    meta.ownership_digest = undefined;
-    meta.vision_note_sent = undefined;
-    meta.local_style_receipt = undefined;
-    meta.handoff_reason = reason.trim() || '手动分段接力';
-  });
-  emit(sess, '', {
-    kind: kindNotice,
-    text: '已开启新会话接力：下一轮将清空旧工具输出与看图历史，只带项目文件快照与近期对话继续',
-  });
-}
-
-/** 冻结大阶段产物的硬审核关卡：确认后自动预约下一轮轻接力，避免把上一阶段的几十轮工具输出拖入下一阶段（含 gate-final 进入发布/封面制作）。 */
-const autoHandoffGates: ReadonlySet<string> = new Set([
-  'gate-script', 'gate-voice', 'gate-storyboard', 'gate-final', 'gate-story', 'gate-grid', 'gate-beat-storyboard',
-]);
-
-/**
- * 关卡确认后为该项目已有至少 2 轮历史的整片制作会话预约阶段边界接力（ONSET_AUTO_HANDOFF=off 可关闭）。
- * 结合账本与空闲时长做缓存感知判断（shouldGateHandoff）：会话还很轻且热缓存未过期时继续复用，不白交冷启动写费。
- */
-export function scheduleGateHandoff(s: Server, projectPath: string, gate: string, label: string): void {
-  if (!autoHandoffGates.has(gate) || process.env.ONSET_AUTO_HANDOFF === 'off') return;
-  loadSessions(s, projectPath);
-  let entries: ledger.Entry[] | null = null;
-  try {
-    entries = ledger.read(ledger.projectFile(projectPath));
-  } catch {
-    // 账本不可读时退回默认接力策略。
-  }
-  const nowMs = Date.now();
-  for (const sess of s.sessions.values()) {
-    if (sess.project !== projectPath || sess.meta.kind !== 'production') continue;
-    if (!sess.meta.cli_session_id || (sess.meta.turns ?? []).length < 2 || sess.meta.handoff_reason) continue;
-    if (!shouldGateHandoff(entries, sess.meta.cli_session_id, sess.meta.updated_at, nowMs)) continue;
-    updateMeta(sess, (meta) => {
-      meta.handoff_reason = `关卡「${label}」已确认，自动分段接力进入下一阶段`;
-    });
-  }
-}
-
-/** 发起一轮对话所需的全部输入。 */
-export interface TurnRequest {
-  /** 只对排队的消息有值，网页用它移除、引导某一条。 */
-  queueID?: string;
-  message: string;
-  /** 非空时直接作为发给编排工具的提示词（整片制作的第一轮）。 */
-  prompt?: string;
-  attachments?: Attachment[] | null;
-  /** 用户发消息时在看的页面。 */
-  view?: ViewState | null;
-}
-
-/** 读项目配置，再用会话选定的工具覆盖（agents.go 的 sessionConfig，放在这里免得循环导入）。 */
-export function sessionConfig(projectPath: string, meta: SessionMeta): config.Config {
-  const cfg = config.load(projectPath, null);
-  return overrideAgents(cfg, { tool: meta.tool, renderer: meta.renderer ?? '', model: meta.model ?? '', rendererModel: meta.renderer_model ?? '', options: meta.options ?? '', rendererOptions: meta.renderer_options ?? '' });
-}
-
-export function validateChoice(choice: AgentChoice): void {
-  if (choice.tool !== '' && !tools.ValidTools.has(choice.tool)) throw new Error(`未知的编排工具：${choice.tool}`);
-  if (choice.renderer !== '' && !tools.ValidRenderers.has(choice.renderer)) throw new Error(`未知的渲染工具：${choice.renderer}`);
-  for (const value of [choice.model, choice.rendererModel]) {
-    if (value && !config.validModel(value)) throw new Error(`不认识的模型名 ${value}：只能用字母、数字与 . _ - : / @ # [ ] +`);
-  }
-  for (const [tool, value] of [[choice.tool, choice.options], [choice.renderer, choice.rendererOptions]]) {
-    if (!value) continue;
-    let error = '';
-    if (tool) error = tools.validateAgentOptions(tool, value);
-    else if (!tools.validOptionsText(value)) error = `选项写法不对：${value}`;
-    if (error) throw new Error(error);
-  }
-}
-
-export function overrideAgents(cfg: config.Config, choice: AgentChoice): config.Config {
-  validateChoice({ ...choice, tool: choice.tool || cfg.orchestrator, renderer: choice.renderer || cfg.renderer });
-  const out = { ...cfg };
-  // 换了工具、又没选模型时，设置里的模型是给原来那家的，不能带过去。
-  // 选项同理。
-  if (choice.tool !== '' && choice.tool !== cfg.orchestrator) {
-    out.orchestratorModel = '';
-    out.orchestratorOptions = '';
-  }
-  if (choice.renderer !== '' && choice.renderer !== cfg.renderer) {
-    out.rendererModel = '';
-    out.rendererOptions = '';
-  }
-  if (choice.tool !== '') out.orchestrator = choice.tool;
-  if (choice.renderer !== '') out.renderer = choice.renderer;
-  if (choice.model) out.orchestratorModel = choice.model;
-  if (choice.rendererModel) out.rendererModel = choice.rendererModel;
-  // 会话选的选项逐项盖在设置上（同一家工具时设置里的还在，换了工具上面已经清空）。
-  if (choice.options) out.orchestratorOptions = tools.mergeAgentOptions(out.orchestratorOptions, choice.options);
-  if (choice.rendererOptions) out.rendererOptions = tools.mergeAgentOptions(out.rendererOptions, choice.rendererOptions);
-  return out;
-}
+export { lastTaskPlan, overrideAgents, replayGuard, sessionConfig, validateChoice } from './sessions_agents';
+export {
+  attachmentText,
+  chatPreamble,
+  focusStageFor,
+  handoffSession,
+  projectStateBrief,
+  reseedPrompt,
+  scheduleGateHandoff,
+  studioInteraction,
+  transcript,
+  validateAttachments,
+} from './sessions_prompt';
+export {
+  createSession,
+  emit,
+  eventsAfter,
+  getSession,
+  listSessions,
+  loadSessions,
+  updateMeta,
+  waitEvent,
+} from './sessions_store';
+export {
+  type AgentChoice,
+  type Attachment,
+  attachmentJSON,
+  type Box,
+  BusyError,
+  containedPath,
+  evalSymlinks,
+  kindFilesChanged,
+  kindNotice,
+  kindQueued,
+  kindTurnEnd,
+  kindTurnReverted,
+  kindTurnStart,
+  kindUnqueued,
+  kindUser,
+  maxQuoteRunes,
+  type NewEvent,
+  NotExistError,
+  newID,
+  type Session,
+  type SessionEvent,
+  type SessionMeta,
+  sessionEventJSON,
+  sessionMetaJSON,
+  sessionsDir,
+  type TurnRequest,
+  transcriptLimit,
+} from './sessions_types';
 
 /** startTurn 占用项目写权、打开始快照，然后在后台跑这一轮。返回时编排工具已经在启动。 */
 export function startTurn(s: Server, p: Project, sess: Session, req: TurnRequest): Turn {
@@ -761,220 +99,22 @@ export function startTurn(s: Server, p: Project, sess: Session, req: TurnRequest
   return prepared.turn;
 }
 
-function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, req: TurnRequest): { turn: Turn; prompt: string; handoff: string } {
-  const rulesName = tools.projectRulesFilename(cfg.orchestrator);
-  project.writeRules(p.path, rulesName);
-  let before;
-  try {
-    before = scanTree(p.path);
-  } catch (err) {
-    throw new Error(`扫描项目：${(err as Error).message}`, { cause: err });
-  }
-  let message = req.message + attachmentText(req.attachments);
-  const where = describeView(req.view);
-  if (where !== '') message += '\n\n' + where;
-  let prompt = req.prompt ?? '';
-  if (prompt !== '') {
-    prompt += '\n\n---\n\n' + studioInteraction;
-    // 只上传了文章、没写话时也要把附件交过去。
-    if (goTrimSpace(message) !== '') prompt += '\n\n用户补充：' + goTrimSpace(message);
-  } else if ((sess.meta.turns ?? []).length === 0 && sess.meta.kind === 'chat') {
-    prompt = chatPreamble(rulesName) + message;
-  } else {
-    prompt = message;
-  }
-  const display = req.message || '开始整片制作';
-  const isLocalStyle = localStyleAction(display, p.path) !== null;
-  // 会话太长、关卡确认自动接力或用户手动触发分段接力时，换一个新的 CLI 会话接着做（rotate.ts）：
-  // 先决定是否换新会话，再据此决定偏好、职责边界与无视觉提醒要不要发，避免续接同一 CLI 会话时每轮重复追加 5KB。
-  // 本地换风格轮次不调模型，保留待消费的 handoff_reason 与现有 CLI 会话，留给下一轮普通消息接力。
-  const firstTurn = (sess.meta.turns ?? []).length === 0;
-  const cliSession = sess.meta.cli_session_id ?? '';
-  const manualHandoff = isLocalStyle ? '' : (sess.meta.handoff_reason ?? '');
-  let rotate = '';
-  if (!isLocalStyle && manualHandoff === '' && cliSession !== '' && !firstTurn) {
-    try { rotate = rotationReason(ledger.read(ledger.projectFile(p.path)), cliSession); }
-    catch { /* 账本不可读时保留原会话；计费记录故障不能阻断对话。 */ }
-  }
-  const handoffReason = manualHandoff || rotate;
-  const handoff = handoffReason !== '' ? handoffNote(handoffReason, lastTaskPlan(sess.events, false), projectStateBrief(p.path)) : '';
-  if (!isLocalStyle && (rotate !== '' || manualHandoff !== '')) {
-    updateMeta(sess, (meta) => {
-      meta.cli_session_id = undefined;
-      meta.ownership_digest = undefined;
-      meta.vision_note_sent = undefined;
-      meta.local_style_receipt = undefined;
-      meta.handoff_reason = undefined;
-    });
-  }
-  const activeSession = sess.meta.cli_session_id ?? '';
-  // 同一 CLI 会话续接不再每轮重复追加 5KB 的 scene-ownership.md；首次、规则内容修订或换新会话时自动带上。
-  // 不写进项目 AGENTS.md：渲染子进程也会读它，而这些限制只针对编排。
-  const ownership = readSection('host', 'scene-ownership').trim();
-  const ownershipDigest = crypto.createHash('sha256').update(ownership).digest('hex').slice(0, 16);
-  const alreadyHasOwnership = prompt.includes(ownership);
-  const sendOwnership = !alreadyHasOwnership && (firstTurn || activeSession === '' || ownershipDigest !== (sess.meta.ownership_digest ?? ''));
-  if (sendOwnership) prompt += '\n\n---\n\n' + ownership;
-  // 制作人用的模型看不了图：首次或换新会话时提醒一次，同一 CLI 会话内不每轮重复追加。
-  const cannotSee = orchestratorCannotSee(cfg);
-  const sendVisionNote = cannotSee && (firstTurn || activeSession === '' || !sess.meta.vision_note_sent);
-  if (sendVisionNote) prompt += '\n\n---\n\n' + noVisionNote;
-  const [brief, digest] = preferenceBrief(p, cfg);
-  const resend = brief !== '' && (digest !== (sess.meta.preference_digest ?? '') || !activeSession || firstTurn);
-  if (resend) prompt = brief + '\n---\n\n' + prompt;
-  const turn: Turn = {
-    turn_id: newID('t'),
-    session_id: sess.meta.session_id,
-    kind: sess.meta.kind,
-    message: display,
-    status: 'running',
-    started_at: nowTime(),
-    before,
-    changes: [],
-  };
-  saveTurn(p.path, turn);
-  updateMeta(sess, (meta) => {
-    meta.turns = [...(meta.turns ?? []), turn.turn_id];
-    meta.running_turn = turn.turn_id;
-    if (resend) meta.preference_digest = digest || undefined;
-    if (alreadyHasOwnership || sendOwnership) meta.ownership_digest = ownershipDigest;
-    if (sendVisionNote) meta.vision_note_sent = true;
-    if (!meta.tool) meta.tool = cfg.orchestrator;
-  });
-  emit(sess, turn.turn_id, { kind: kindUser, text: display + attachmentText(req.attachments) });
-  emit(sess, turn.turn_id, { kind: kindTurnStart, status: 'running' });
-  if (rotate !== '') emit(sess, turn.turn_id, { kind: kindNotice, text: `对话已经很长（${rotate}），这一轮换一个新会话接着做：带上制作说明与对话记录，进度按项目文件重新确认` });
-  return { turn, prompt, handoff };
-}
-
 /**
  * runTurn 在后台跑一轮。写权由 finishTurn 释放，这里不能再释放一次：
  * 释放之后下一轮可能已经拿到写权，重复释放会把它的锁也放掉。
  */
-async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, cfg: config.Config, turn: Turn, prompt: string, handoff: string, projectWrites: { epoch: number; sharedAtStart: boolean }): Promise<void> {
-  let runErr: Error | null = null;
-  let stopViews: () => void = () => {};
-  const confirmedGates: Array<{ gate: string; label: string }> = [];
-  try {
-    const env = config.childEnvironment(cfg, envMap(), s.config.unsafe, parsePassthrough(process.env.ONSET_PASSTHROUGH_ENV ?? ''));
-    // onset 不进编排工具的 PATH：它只经 onset 的工具服务（MCP）调用 onset，下面的 spec.toolsServer。
-    addToolsLocation(env);
-    const inbox = viewInbox(studioRoot(p.path), turn.turn_id);
-    env[ViewInboxEnv] = inbox;
-    env[ViewProjectEnv] = p.path;
-    // 用户在对话里确认了关卡（studio_confirm）：原话要出自这一轮用户的话，记下后与界面按钮确认一样发 gate.confirmed。
-    // 接力判断延后到本轮 recordUsage 写入账本后再执行，避免读到上一轮过时的用量。
-    stopViews = watchViews(sess, turn.turn_id, inbox, p.path, (req) => {
-      try {
-        const { gate, label } = confirmGateFromChat(p.path, turn.message, req.said, req.gate ?? '');
-        confirmedGates.push({ gate, label });
-        emit(sess, turn.turn_id, { kind: kindNotice, text: '已记下你在对话里的确认：' + label });
-        emitStudioEvent(s, p, 'gate.confirmed', { gate });
-      } catch (err) {
-        emit(sess, turn.turn_id, { kind: kindNotice, text: '没有记下关卡确认：' + (err as Error).message });
-      }
-    });
-    let lastStat = statTree(p.path);
-    let lastCheck = Date.now();
-    const checkFiles = (force: boolean): void => {
-      if (!force && Date.now() - lastCheck < changeCheckInterval) return;
-      lastCheck = Date.now();
-      const current = statTree(p.path);
-      const changed = changedPaths(lastStat, current);
-      if (changed.length > 0) emit(sess, turn.turn_id, { kind: kindFilesChanged, files: changed });
-      lastStat = current;
-    };
-    // 续接时有的工具会把上一轮结尾的话原样再吐一遍（qoder 续接前压缩长对话后实测），不当成这一轮说的。
-    const replay = replayGuard(sess.events, turn.turn_id);
-    const onEvent = (event: agentrun.Event): void => {
-      if (event.kind === agentrun.KindDone) return;
-      if (event.kind === agentrun.KindSession) updateMeta(sess, (meta) => (meta.cli_session_id = event.session_id || undefined));
-      if (replay(event)) return;
-      emit(sess, turn.turn_id, { ...event });
-      if (event.kind === agentrun.KindToolResult) checkFiles(false);
-    };
-    const localStyle = localStyleAction(turn.message, p.path);
-    if (localStyle) {
-      // runTurn 已持有项目写权，沿用现有执行进程；不能另开 runWriteTask 再拿一次锁。
-      await runStudioOp(s, signal, p, 'film_style_use', { style: styleKey(localStyle), project_root: p.path, replace: false });
-      const receipt = `${LocalStyleReceipt}${localStyle.cn}（${styleKey(localStyle)}）已设为整片默认风格。`;
-      emit(sess, turn.turn_id, { kind: kindNotice, text: receipt });
-      emit(sess, turn.turn_id, { kind: agentrun.KindText, text: receipt + ' 稿件、配音和分镜的确认状态保持原样。' });
-      // 这一轮没调模型：prepareTurn 记下的摘要其实没发出去，清掉，下一轮重新带上。
-      updateMeta(sess, (meta) => {
-        meta.preference_digest = undefined;
-        meta.ownership_digest = undefined;
-        meta.vision_note_sent = undefined;
-      });
-      checkFiles(true);
-    } else {
-      const previous = sess.meta.cli_session_id ?? '';
-      const earlierTurns = (sess.meta.turns ?? []).length > 1;
-      const resumed = previous !== '' && earlierTurns;
-      const styleReceipt = localStyleContext(sess.events, p.path);
-      if (styleReceipt !== '' && (!resumed || styleReceipt !== (sess.meta.local_style_receipt ?? ''))) {
-        prompt = styleReceipt + prompt;
-        updateMeta(sess, (meta) => { meta.local_style_receipt = styleReceipt; });
-      }
-      // 末尾两条是本轮刚发的 user 与 turn-start，不算进历史。分段接力已有项目快照，只需保留近期结论。
-      const history = transcript(sess.events.slice(0, Math.max(sess.events.length - 2, 0)), handoff !== '' ? HandoffTranscriptLimit : transcriptLimit);
-      // 「以后都允许」的前缀并进白名单；claude 遇到白名单外的调用时经 onset studio permission-mcp 问界面上的用户。
-      const access = config.orchestratorAccess(cfg);
-      access.commands = [...(access.commands ?? []), ...allowedCommands(p.path)];
-      const spec: agentrun.Spec = {
-        tool: cfg.orchestrator,
-        model: cfg.orchestratorModel,
-        options: tools.effectiveOptions(cfg.orchestrator, cfg.orchestratorOptions),
-        workdir: p.path,
-        prompt,
-        unsafe: s.config.unsafe,
-        access,
-        permissionPrompt: permissionPrompt(s.executable()),
-        toolsServer: tools.onsetToolsServer(s.executable(), 'orchestrator', p.path, env),
-        // codebuddy、opencode、codex 走双向协议，审批请求由 agentrun 直接交到这里：写进同一个收件目录，
-        // 与审批 MCP 走同一条路（轮询、卡片、以后都允许），等用户回答。
-        ask: async (toolName, input) => {
-          const req = writePermissionRequest(inbox, toolName, input);
-          return (await waitPermissionResponse(inbox, req.id, PermissionPollInterval, signal)) ?? { decision: 'expired' };
-        },
-        env,
-        lookPath: (name) => lookPath(name, env.PATH ?? ''),
-        longSession: true,
-      };
-      if (resumed) {
-        spec.sessionID = previous;
-        spec.resume = true;
-        spec.plan = lastTaskPlan(sess.events);
-        spec.baseline = ledger.lastSessionUsage(ledger.projectFile(p.path), previous);
-      } else {
-        spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
-        if (earlierTurns && history !== '') spec.prompt = reseedPrompt(history, spec.prompt, productionBrief(p, sess), handoff);
-      }
-      let outcome = await agentrun.run(spec, onEvent, signal);
-      recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);
-      if (outcome.error && resumed && !outcome.result.produced && !signal.aborted && resumeFallbackAllowed(outcome.error)) {
-        emit(sess, turn.turn_id, { kind: kindNotice, text: '原会话无法续接（' + outcome.error.message + '），已带上之前的对话记录开新会话' });
-        spec.sessionID = agentrun.newSessionID(cfg.orchestrator);
-        spec.resume = false;
-        spec.baseline = undefined;
-        // 续接失败切新会话时，补回本轮因“原以为能续接”而省略的规则与提醒。
-        let fallbackPrompt = prompt;
-        const ownership = readSection('host', 'scene-ownership').trim();
-        const brief = productionBrief(p, sess);
-        if (!fallbackPrompt.includes(ownership) && !brief.includes(ownership)) fallbackPrompt += '\n\n---\n\n' + ownership;
-        if (orchestratorCannotSee(cfg) && !fallbackPrompt.includes(noVisionNote)) fallbackPrompt += '\n\n---\n\n' + noVisionNote;
-        spec.prompt = reseedPrompt(history, fallbackPrompt, brief, handoff);
-        outcome = await agentrun.run(spec, onEvent, signal);
-        recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);
-      }
-      runErr = outcome.error;
-      checkFiles(true);
-    }
-  } catch (err) {
-    // Go 版这里不会出错；TS 里任何意外都不能让写锁一直挂着。
-    runErr = err instanceof Error ? err : new Error(String(err));
-  }
-  stopViews();
+async function runTurn(
+  s: Server,
+  signal: AbortSignal,
+  p: Project,
+  sess: Session,
+  cfg: config.Config,
+  turn: Turn,
+  prompt: string,
+  handoff: string,
+  projectWrites: { epoch: number; sharedAtStart: boolean },
+): Promise<void> {
+  const { runErr, confirmedGates } = await executeTurn(s, signal, p, sess, cfg, turn, prompt, handoff);
   for (const confirmed of confirmedGates) {
     scheduleGateHandoff(s, p.path, confirmed.gate, confirmed.label);
   }
@@ -982,50 +122,15 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
   finishTurn(s, signal, p, sess, turn, runErr, concurrentWrites);
 }
 
-/**
- * watchViews 在这一轮进行中轮询收件目录，把 onset studio show 的请求译成 view 事件。
- * 返回的函数停止轮询、把剩下的请求处理完并删掉收件目录；可以调用多次。
- */
-function watchViews(sess: Session, turnID: string, inbox: string, projectPath: string, onConfirm: (req: NonNullable<ViewRequest['confirm']>) => void): () => void {
-  const seen = new Set<string>();
-  const emitPermission = (turn: string, event: NewEvent): void => emit(sess, turn, event);
-  const deliver = (): void => {
-    for (const req of drainViewInbox(inbox)) {
-      if (req.confirm) {
-        onConfirm(req.confirm);
-        continue;
-      }
-      if (req.step) writeStepMark(projectPath, req.step);
-      emit(sess, turnID, { kind: KindView, text: req.note || undefined, view: req });
-    }
-    pollPermissions(projectPath, inbox, turnID, sess.permissions, seen, emitPermission);
-  };
-  const timer = setInterval(deliver, ViewPollInterval);
-  let stopped = false;
-  return () => {
-    if (stopped) return;
-    stopped = true;
-    clearInterval(timer);
-    deliver();
-    expirePermissions(sess.permissions, turnID, emitPermission);
-    fs.rmSync(inbox, { recursive: true, force: true });
-  };
-}
-
-export function reseedPrompt(history: string, prompt: string, production = '', handoff = ''): string {
-  return (
-    (production !== '' ? production + '\n\n---\n\n' : '') +
-    '下面是这个项目里你和用户之前的对话记录（较早的部分可能被截掉），供你接上上下文：\n\n' +
-    history +
-    '\n\n---\n\n' +
-    (handoff !== '' ? handoff + '\n\n---\n\n' : '') +
-    studioInteraction +
-    '\n\n---\n\n' +
-    prompt
-  );
-}
-
-function finishTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, turn: Turn, runErr: Error | null, concurrentWrites: boolean): void {
+function finishTurn(
+  s: Server,
+  signal: AbortSignal,
+  p: Project,
+  sess: Session,
+  turn: Turn,
+  runErr: Error | null,
+  concurrentWrites: boolean,
+): void {
   let scanErr: Error | null = null;
   try {
     const after = scanTree(p.path);
@@ -1034,7 +139,10 @@ function finishTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, t
     if (concurrentWrites && turn.changes.some((change) => change.revertable)) {
       // 同一份快照差异里分不清哪一个进程写了文件。收起回退权，避免改写插件的结果。
       for (const change of turn.changes) change.revertable = false;
-      emit(sess, turn.turn_id, { kind: kindNotice, text: '本轮与插件网页操作同时运行，项目文件的改动无法区分归属，不能通过本轮回退。' });
+      emit(sess, turn.turn_id, {
+        kind: kindNotice,
+        text: '本轮与插件网页操作同时运行，项目文件的改动无法区分归属，不能通过本轮回退。',
+      });
     }
   } catch (err) {
     scanErr = err as Error;
@@ -1065,10 +173,20 @@ function finishTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, t
   updateMeta(sess, (meta) => (meta.running_turn = undefined));
   // 先放写权再发 turn-end：网页收到 turn-end 就可能立刻发下一轮。
   s.release(p.path);
-  emit(sess, turn.turn_id, { kind: kindTurnEnd, text: turn.error || undefined, status: turn.status, changes: turn.changes ?? undefined });
+  emit(sess, turn.turn_id, {
+    kind: kindTurnEnd,
+    text: turn.error || undefined,
+    status: turn.status,
+    changes: turn.changes ?? undefined,
+  });
   drainQueue(s, p, sess);
   // 排队的下一轮先开（它占了写权的话，钩子这次就不跑）：钩子不能挡住用户的下一句话。
-  if (turn.status === 'succeeded') emitStudioEvent(s, p, 'turn.finished', { turn_id: turn.turn_id, session_id: turn.session_id, changed: (turn.changes ?? []).map((c) => c.path) });
+  if (turn.status === 'succeeded')
+    emitStudioEvent(s, p, 'turn.finished', {
+      turn_id: turn.turn_id,
+      session_id: turn.session_id,
+      changed: (turn.changes ?? []).map((c) => c.path),
+    });
 }
 
 /**
@@ -1094,7 +212,11 @@ export function enqueueTurn(p: Project, sess: Session, req: TurnRequest): boolea
   if (!sess.cancel) return false;
   const queued = { ...req, queueID: newID('q') };
   sess.queue.push(queued);
-  emit(sess, sess.meta.running_turn ?? '', { kind: kindQueued, text: req.message + attachmentText(req.attachments), queue_id: queued.queueID });
+  emit(sess, sess.meta.running_turn ?? '', {
+    kind: kindQueued,
+    text: req.message + attachmentText(req.attachments),
+    queue_id: queued.queueID,
+  });
   return true;
 }
 
@@ -1132,7 +254,8 @@ function drainQueue(s: Server, p: Project, sess: Session): void {
   const messages: string[] = [];
   for (const req of queue) {
     messages.push(req.message);
-    if (req.attachments && req.attachments.length > 0) merged.attachments = [...(merged.attachments ?? []), ...req.attachments];
+    if (req.attachments && req.attachments.length > 0)
+      merged.attachments = [...(merged.attachments ?? []), ...req.attachments];
     if (req.view) merged.view = req.view;
   }
   merged.message = messages.join('\n\n');
@@ -1140,7 +263,10 @@ function drainQueue(s: Server, p: Project, sess: Session): void {
   try {
     startTurn(s, p, sess, merged);
   } catch (err) {
-    emit(sess, '', { kind: kindNotice, text: '排队的消息没能发出（' + (err as Error).message + '），请重新发送：' + merged.message });
+    emit(sess, '', {
+      kind: kindNotice,
+      text: '排队的消息没能发出（' + (err as Error).message + '），请重新发送：' + merged.message,
+    });
   }
 }
 
@@ -1160,144 +286,4 @@ export function revert(s: Server, p: Project, turnID: string): { turn: Turn; ski
   } finally {
     s.release(p.path);
   }
-}
-
-/** 解析路径失败、且原因是路径不存在（os.IsNotExist）时抛出。 */
-export class NotExistError extends Error {
-  readonly code = 'ENOENT';
-  constructor(message: string) {
-    super(message);
-    this.name = 'NotExistError';
-  }
-}
-
-/** filepath.EvalSymlinks：解析不了时按 Go 的 *PathError 文案抛错，不存在时抛 NotExistError。 */
-export function evalSymlinks(file: string): string {
-  try {
-    return fs.realpathSync(file);
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    const reason = code === 'ENOENT' ? 'no such file or directory' : code === 'ENOTDIR' ? 'not a directory' : (err as Error).message;
-    const message = `lstat ${file}: ${reason}`;
-    if (code === 'ENOENT') throw new NotExistError(message);
-    throw new Error(message, { cause: err });
-  }
-}
-
-/** containedPath 把相对项目根的路径解析成绝对路径，拒绝逃出项目（含符号链接）。 */
-export function containedPath(projectPath: string, rel: string): string {
-  if (rel === '' || path.isAbsolute(rel)) throw new Error(`路径必须是项目内的相对路径：${rel}`);
-  const clean = goClean(rel);
-  if (clean === '..' || clean.startsWith('../')) throw new Error(`路径逃出了项目：${rel}`);
-  const root = evalSymlinks(projectPath);
-  const full = path.join(projectPath, clean);
-  const resolved = evalSymlinks(full);
-  if (resolved !== root && !resolved.startsWith(root + path.sep)) throw new Error(`路径逃出了项目：${rel}`);
-  return full;
-}
-
-/**
- * recordUsage 把一次编排调用记进项目的用量账本。续接失败后重开的会话是两次调用，
- * 各记一行：第一次哪怕只打了一行错误，也可能已经读了一遍上下文。
- */
-function recordUsage(signal: AbortSignal, p: Project, sess: Session, tool: string, env: Record<string, string>, turnID: string, outcome: agentrun.Outcome): void {
-  const { result, error } = outcome;
-  if (!result.started) return;
-  const model = result.model || tools.configuredModel(tool, env);
-  const cancelled = signal.aborted || (error !== null && (error.name === 'AbortError' || error.message === 'context canceled'));
-  const entry = ledger.fromResult(ledger.SourceStudio, tool, model, result.sessionID, result.usage, error, cancelled);
-  entry.turn = turnID;
-  try {
-    ledger.append(ledger.projectFile(p.path), entry);
-  } catch (err) {
-    emit(sess, turnID, { kind: kindNotice, text: '编排用量没能记进账本：' + (err as Error).message });
-  }
-}
-
-/** 按当前项目进度解析应聚焦的制作阶段 ID（无对应分段或读不到进度时返回 undefined，退回全文）。 */
-export function focusStageFor(projectPath: string): string | undefined {
-  try {
-    const progress = computeStations(projectPath, discoverScenes(projectPath));
-    const aliases: Record<string, string> = {
-      'gate-script': 'script', 'gate-voice': 'voice', 'gate-storyboard': 'plan', 'gate-beat-storyboard': 'beat-plan',
-      'gate-final': 'review',
-    };
-    const beatStages: Record<string, string> = {
-      story: 'beat', 'gate-story': 'beat', music: 'beat', grid: 'beat', 'gate-grid': 'beat', plan: 'beat-plan', sound: 'beat-sound',
-    };
-    const focus = aliases[progress.current] ?? (progress.mode === 'beat' ? beatStages[progress.current] : undefined) ?? progress.current;
-    return focus || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * 整片制作的会话换了 CLI 会话（续接失败、换了编排工具）时，制作提示词要重发：对话记录只有双方说的话，
- * 第一轮发过的制作说明（各阶段怎么做、关卡在哪）不在里面，新会话拿不到就只能凭对话猜。
- * 从项目产物重算进度，带公共规则、当前阶段和已通过的关卡。
- */
-function productionBrief(p: Project, sess: Session): string {
-  if (sess.meta.kind !== 'production') return '';
-  try {
-    const progress = computeStations(p.path, discoverScenes(p.path));
-    const focus = focusStageFor(p.path);
-    const text = project.composeProjectPrompt(p.path, focus).text;
-    const confirmed = progress.stations.filter(station => station.status === 'confirmed' || station.status === 'passed');
-    const gates = confirmed.map(station => station.label + (station.file ? `（${station.file}）` : '')).join('、');
-    return '下面是这次整片制作的说明。' + (gates ? `已通过的关卡有${gates}。\n\n` : '\n\n') + text;
-  } catch {
-    return '';
-  }
-}
-
-/**
- * 认出续接时重放的上一轮结尾：这一轮开头、还没有任何新东西之前，与上一轮里某段思考或回复一字不差的，算重放、丢掉；
- * 一出现新的东西（工具调用、不一样的话）就不再拦。qoder 续接时若先压缩了长对话，会把上一轮最后的思考与回复
- * 原样再吐一遍（2026-11 实测：用户的新问题前面先出现一遍上一轮的总结），界面上看像是又回答了一次。
- */
-export function replayGuard(events: readonly { kind?: string; text?: string; turn_id?: string }[], turnID: string): (event: { kind: string; text?: string; text_id?: string }) => boolean {
-  let previousTurn = '';
-  for (let i = events.length - 1; i >= 0; i--) {
-    const id = events[i].turn_id ?? '';
-    if (id !== '' && id !== turnID) {
-      previousTurn = id;
-      break;
-    }
-  }
-  const said = new Set<string>();
-  for (const e of events) {
-    if (e.turn_id === previousTurn && (e.kind === agentrun.KindText || e.kind === agentrun.KindThinking) && (e.text ?? '').trim() !== '') said.add(e.kind + '\u0000' + (e.text ?? '').trim());
-  }
-  let guarding = said.size > 0;
-  return (event) => {
-    if (!guarding) return false;
-    // ACP 已在 session/load 时过滤历史；流式短片段相同不代表重放（例如两轮都以 Let me 开头）。
-    if (event.text_id) {
-      guarding = false;
-      return false;
-    }
-    if (event.kind === agentrun.KindText || event.kind === agentrun.KindThinking) {
-      if (said.has(event.kind + '\u0000' + (event.text ?? '').trim())) return true;
-      guarding = false;
-      return false;
-    }
-    if (event.kind === agentrun.KindToolCall || event.kind === agentrun.KindToolResult || event.kind === agentrun.KindPlan) guarding = false;
-    return false;
-  };
-}
-
-/** 最后一份任务清单。解析器续接要求编号；交接提示词不要求，兼容旧事件文件只保存 text/status。 */
-export function lastTaskPlan(events: readonly { kind?: string; plan?: agentrun.PlanItem[] }[], requireIDs = true): agentrun.PlanItem[] | undefined {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const plan = events[i].kind === agentrun.KindPlan ? events[i].plan : undefined;
-    if (plan && plan.length > 0) return !requireIDs || plan.some((item) => item.id) ? plan : undefined;
-  }
-  return undefined;
-}
-
-/** 审批服务（onset studio permission-mcp）的启动方式；Windows 上用 Electron / Node 跑 onset.cjs（envutil.onsetCommand）。 */
-function permissionPrompt(executable: string): tools.PermissionPrompt {
-  const onset = onsetCommand(executable);
-  return { command: onset.command, args: [...onset.args, 'studio', 'permission-mcp'], server: PermissionServerName, env: onset.env };
 }

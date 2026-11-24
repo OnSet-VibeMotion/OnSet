@@ -18,8 +18,8 @@ import * as preset from '../preset';
 import * as projectinit from '../projectinit';
 import * as scene from '../scene';
 import * as song from '../song';
-import { builtinFlowIDs, composeFor, everyBuiltinPrompt } from './testsupport';
 import { composeProjectPrompt, runPrompt } from './runprompt';
+import { builtinFlowIDs, composeFor, everyBuiltinPrompt } from './testsupport';
 
 const fake = path.join(__dirname, '..', 'flow', 'testdata', 'fake-publisher');
 const goldenFile = path.join(__dirname, 'testdata', 'flow-prompts.json');
@@ -54,10 +54,21 @@ describe('new projects compose the prompt of their own flow', () => {
   it('keeps scene implementation with the renderer in every flow', () => {
     for (const { text, name: label } of everyBuiltinPrompt()) {
       expect(text, label).toContain('## 镜头实现的归属');
-      for (const rule of ['不得创建、编辑或覆盖镜头实现代码', '共用模块', '修复自己引入的问题', 'prompt.md', 'scene_run', 'scene_run_all', 'scene_frames({"scene": "<镜头目录>"})', '不得用 Chrome DevTools', 'visible-events.json']) {
+      for (const rule of [
+        '不得创建、编辑或覆盖镜头实现代码',
+        '共用模块',
+        '修复自己引入的问题',
+        'prompt.md',
+        'scene_run',
+        'scene_run_all',
+        'scene_frames({"scene": "<镜头目录>"})',
+        '不得用 Chrome DevTools',
+        'visible-events.json',
+      ]) {
         expect(text, label).toContain(rule);
       }
-      for (const old of ['改完合成代码、重渲染前', '修改源工程时间轴并只重渲染', '再做最小源级修改']) expect(text, label).not.toContain(old);
+      for (const old of ['改完合成代码、重渲染前', '修改源工程时间轴并只重渲染', '再做最小源级修改'])
+        expect(text, label).not.toContain(old);
     }
   });
 
@@ -89,7 +100,7 @@ describe('new projects compose the prompt of their own flow', () => {
     const root = created('speech', 'vertical-3x4');
     const full = composeProjectPrompt(root).text;
     const focused = composeProjectPrompt(root, 'plan', true).text;
-    expect(focused).toContain(stageTitles(full).find(title => title.includes('拆分镜头'))!);
+    expect(focused).toContain(stageTitles(full).find((title) => title.includes('拆分镜头'))!);
     expect(focused).toContain('storyboard');
     expect(focused).toContain('flow_guide(');
     expect(focused.length).toBeLessThan(full.length / 2);
@@ -100,10 +111,15 @@ describe('new projects compose the prompt of their own flow', () => {
   it('records the flow, the canvas and the render prompt version', () => {
     for (const delivery of ['speech', 'beat', 'song']) {
       const root = created(delivery, 'vertical-9x16');
-      expect(flow.flowRecord(root)).toEqual({ id: delivery, canvas: 'vertical-9x16', render_prompt: flow.RenderPromptVersion });
+      expect(flow.flowRecord(root)).toEqual({
+        id: delivery,
+        canvas: 'vertical-9x16',
+        render_prompt: flow.RenderPromptVersion,
+      });
       expect(flow.detectFlow(root, flow.stationExtras())).toBe(delivery);
       // 项目里不放任何提示词文件。
-      for (const file of ['PROMPT.md', 'PROMPT-PRODUCTION.md', 'PROMPT-SONG.md', 'PROMPT-CAST-ADDENDUM.md']) expect(fs.existsSync(path.join(root, file)), file).toBe(false);
+      for (const file of ['PROMPT.md', 'PROMPT-PRODUCTION.md', 'PROMPT-SONG.md', 'PROMPT-CAST-ADDENDUM.md'])
+        expect(fs.existsSync(path.join(root, file)), file).toBe(false);
     }
   });
 
@@ -192,7 +208,8 @@ describe('every builtin prompt', () => {
       if (id === 'song') continue;
       const p = preset.byID(canvas)!;
       expect(text, name).toContain(preset.canvasLabel(p.canvas));
-      for (const other of preset.all()) if (other.id !== canvas) expect(text, name).not.toContain(preset.canvasLabel(other.canvas) + '、30fps');
+      for (const other of preset.all())
+        if (other.id !== canvas) expect(text, name).not.toContain(preset.canvasLabel(other.canvas) + '、30fps');
     }
   });
 
@@ -207,7 +224,17 @@ describe('every builtin prompt', () => {
 
   it('leaves the visual style free and names no style source', () => {
     for (const { name, text } of everyBuiltinPrompt()) {
-      for (const banned of ['定风格（仅自定义风格）', 'custom-draft', 'docs/style-brief.md', 'onset style add-font', 'onset validate style --regenerate-examples', 'docs/自定义-视频风格说明书.md', 'lemo', 'DEMO.md', 'core/fonts']) {
+      for (const banned of [
+        '定风格（仅自定义风格）',
+        'custom-draft',
+        'docs/style-brief.md',
+        'onset style add-font',
+        'onset validate style --regenerate-examples',
+        'docs/自定义-视频风格说明书.md',
+        'lemo',
+        'DEMO.md',
+        'core/fonts',
+      ]) {
         expect(text.includes(banned), `${name} 不应包含 ${banned}`).toBe(false);
       }
     }
@@ -216,7 +243,17 @@ describe('every builtin prompt', () => {
   // 配音与对齐工具是前置资源：提示词里写安装命令的话，编排工具会在对话里自己装一份全局的。onset 不在 PATH 里：$(onset …) 跑不起来。
   it('installs nothing and never tells to use a terminal', () => {
     for (const { name, text } of everyBuiltinPrompt()) {
-      for (const banned of ['$(onset ', '在终端运行', '在终端里运行', 'pipx install', 'npm install -g', 'brew install', 'uv tool install', 'pip install funasr', 'pip install tccli']) {
+      for (const banned of [
+        '$(onset ',
+        '在终端运行',
+        '在终端里运行',
+        'pipx install',
+        'npm install -g',
+        'brew install',
+        'uv tool install',
+        'pip install funasr',
+        'pip install tccli',
+      ]) {
         expect(text.includes(banned), `${name} 不应包含 ${banned}`).toBe(false);
       }
     }
@@ -237,36 +274,106 @@ describe('prompt content', () => {
 
   // TTS 会把「2025 年」读成「两千零二十五年」，只能在生成前逐个钉住。口播才有 TTS。
   it('pins year readings (speech)', () => {
-    has(speech, ['四位数年份一律逐位读', '不得读成「一千九百七十二年」「两千零二十五年」', '2025年/二零二五年', '直接写成逐位汉字', '每个四位年份是否逐位读出'], '口播·年份读法');
+    has(
+      speech,
+      [
+        '四位数年份一律逐位读',
+        '不得读成「一千九百七十二年」「两千零二十五年」',
+        '2025年/二零二五年',
+        '直接写成逐位汉字',
+        '每个四位年份是否逐位读出',
+      ],
+      '口播·年份读法',
+    );
   });
 
   it('leaves the visual style free (speech, beat)', () => {
     for (const [body, what] of [
       [speech, '口播'],
       [beat, '卡点'],
-    ]) has(body, ['视觉风格不由项目预设或字段锁定'], what + '·风格自由声明');
+    ])
+      has(body, ['视觉风格不由项目预设或字段锁定'], what + '·风格自由声明');
   });
 
   // 镜头交接经分镜计划的 handoff 由 scene_cues() 写进两侧：只有口播的分镜计划有它。卡点没有这套机制，交接写在两侧的 prompt.md 里。
   it('carries scene handoffs (speech) and states them in prompt.md (beat)', () => {
-    has(speech, ['### 镜头交接', '"look"', '"chapter"', '"handoff"', '`bridge`', '不要给章节交界套一个统一的擦除或闪白', '相邻两个章节交界不得用同一种手法', '`carry`', '`match`', '`push_in`', '`flood`', '`pan`', '`settle`', '前一镜末帧与后一镜首帧'], '口播·镜头交接');
-    has(beat, ['章节之间怎么接', '这份约定写进两侧镜头 `prompt.md` 的出场状态与入场状态', '相邻两个章节交界不要用同一种接法'], '卡点·镜头交接');
+    has(
+      speech,
+      [
+        '### 镜头交接',
+        '"look"',
+        '"chapter"',
+        '"handoff"',
+        '`bridge`',
+        '不要给章节交界套一个统一的擦除或闪白',
+        '相邻两个章节交界不得用同一种手法',
+        '`carry`',
+        '`match`',
+        '`push_in`',
+        '`flood`',
+        '`pan`',
+        '`settle`',
+        '前一镜末帧与后一镜首帧',
+      ],
+      '口播·镜头交接',
+    );
+    has(
+      beat,
+      ['章节之间怎么接', '这份约定写进两侧镜头 `prompt.md` 的出场状态与入场状态', '相邻两个章节交界不要用同一种接法'],
+      '卡点·镜头交接',
+    );
     lacks(beat, ['"handoff"', 'scene_cues(', 'scene-plan.json'], '卡点');
   });
 
   // 风格交界的手法表与 scene.StyleShifts 一一对应：改了代码里的表忘了改提示词（或反过来），编排工具就会写出 scene_cues 拒收的计划。
   it('carries style boundaries (speech table; beat in prose)', () => {
-    has(speech, ['### 风格交界', '`style_shift`', '"film_style"', '段落换风格', 'film_style_add({"style": "<来源/目录名>"})', '禁止整画面叠化'], '口播·风格交界');
+    has(
+      speech,
+      [
+        '### 风格交界',
+        '`style_shift`',
+        '"film_style"',
+        '段落换风格',
+        'film_style_add({"style": "<来源/目录名>"})',
+        '禁止整画面叠化',
+      ],
+      '口播·风格交界',
+    );
     for (const shift of scene.StyleShifts) {
       const row = speech.split('\n').find((line) => line.startsWith(`| \`${shift.id}\` ${shift.name} |`));
       expect(row, `风格交界表缺少 ${shift.id}`).toBeTruthy();
-      expect(row!.trimEnd().endsWith('| ' + shift.devices.map((d) => '`' + d + '`').join('、') + ' |'), `${shift.id} 那一行的 device 与 scene.StyleShifts 不一致`).toBe(true);
+      expect(
+        row!.trimEnd().endsWith('| ' + shift.devices.map((d) => '`' + d + '`').join('、') + ' |'),
+        `${shift.id} 那一行的 device 与 scene.StyleShifts 不一致`,
+      ).toBe(true);
     }
-    has(beat, ['段落换风格', 'film_style_add({"style": "<来源/目录名>"})', '就是风格交界', '禁止整画面叠化', '在这些镜头的 `scene.json` 里写 `film_style`'], '卡点·风格交界');
+    has(
+      beat,
+      [
+        '段落换风格',
+        'film_style_add({"style": "<来源/目录名>"})',
+        '就是风格交界',
+        '禁止整画面叠化',
+        '在这些镜头的 `scene.json` 里写 `film_style`',
+      ],
+      '卡点·风格交界',
+    );
   });
 
   it('carries the film style without naming a source (speech, beat)', () => {
-    const common = ['### 整片风格', 'film_style_list()', 'film_style_use({"style": "<来源/目录名>"})', 'film_style_show()', '"replace": true', '.agents/skills/onset-film-style/', 'SKILL.md', 'STYLE.md', '不用整片风格', '工具准备页', 'STYLE.md 里关于声音的内容只作为选曲和音效方向的参考'];
+    const common = [
+      '### 整片风格',
+      'film_style_list()',
+      'film_style_use({"style": "<来源/目录名>"})',
+      'film_style_show()',
+      '"replace": true',
+      '.agents/skills/onset-film-style/',
+      'SKILL.md',
+      'STYLE.md',
+      '不用整片风格',
+      '工具准备页',
+      'STYLE.md 里关于声音的内容只作为选曲和音效方向的参考',
+    ];
     has(speech, [...common, '稿件审核关卡', '第六阶段渲染镜头之前'], '口播·整片风格');
     has(beat, [...common, '在第二阶段的故事审核关卡', '第四阶段渲染镜头之前'], '卡点·整片风格');
   });
@@ -276,7 +383,12 @@ describe('prompt content', () => {
     for (const [body, what] of [
       [speech, '口播'],
       [beat, '卡点'],
-    ]) has(body, ['### 整理这次制作的经验', '用户明确确认这一版成片可用之后', 'memory_consolidate()', '不要在用户确认之前整理'], what + '·整理经验');
+    ])
+      has(
+        body,
+        ['### 整理这次制作的经验', '用户明确确认这一版成片可用之后', 'memory_consolidate()', '不要在用户确认之前整理'],
+        what + '·整理经验',
+      );
   });
 
   // 片场宣传视频（2026-11-18）：用户说「可以了」之后，编排才补做画面文字对账，查出问题就自己改镜头、重渲染。
@@ -285,12 +397,37 @@ describe('prompt content', () => {
       [speech, '口播'],
       [beat, '卡点'],
     ]) {
-      has(body, ['不得把还没查完的候选交给用户批准', '用户批准后只做交付', '立即停下，不要自行修复', '之前的批准作废', '不得沿用上一版的 `onscreen-facts.json`'], what + '·审批');
+      has(
+        body,
+        [
+          '不得把还没查完的候选交给用户批准',
+          '用户批准后只做交付',
+          '立即停下，不要自行修复',
+          '之前的批准作废',
+          '不得沿用上一版的 `onscreen-facts.json`',
+        ],
+        what + '·审批',
+      );
     }
   });
 
   it('tells the beat story before the music (beat)', () => {
-    has(beat, ['：故事、音乐与节拍', '这是一部没有配音、画面踩着音乐节拍走的片子。', 'production/beat/story.md', '画面里的字与字幕就是这部片子的文案', 'studio_show({"page": "beat"', '用户没有点头之前不进入分镜计划', '不得替用户确认', 'beat_cues({"scenes": "scenes/"})', '「音乐卡点」', '不要自己建 Python 环境、不要 pip install'], '卡点分支');
+    has(
+      beat,
+      [
+        '：故事、音乐与节拍',
+        '这是一部没有配音、画面踩着音乐节拍走的片子。',
+        'production/beat/story.md',
+        '画面里的字与字幕就是这部片子的文案',
+        'studio_show({"page": "beat"',
+        '用户没有点头之前不进入分镜计划',
+        '不得替用户确认',
+        'beat_cues({"scenes": "scenes/"})',
+        '「音乐卡点」',
+        '不要自己建 Python 环境、不要 pip install',
+      ],
+      '卡点分支',
+    );
     expect(beat.indexOf('### 故事与文案')).toBeLessThan(beat.indexOf('### 音乐与节拍网格'));
     expect(beat.indexOf('### 音乐与节拍网格')).toBeLessThan(beat.indexOf('### 分镜计划与镜头'));
     // 口播流程不再带卡点与歌曲的分支。
@@ -303,8 +440,14 @@ describe('prompt content', () => {
       [speech, '口播'],
       [beat, '卡点'],
     ]) {
-      has(body, ['### 分镜审核关卡', 'studio_show({"page": "storyboard"', '用户没有点头之前不渲染', '包括代表性镜头的试渲染'], what + '·分镜审核');
-      expect(body.indexOf('### 分镜审核关卡'), what).toBeLessThan(body.indexOf('用 `scene_run_all({"scenes": "scenes/", '));
+      has(
+        body,
+        ['### 分镜审核关卡', 'studio_show({"page": "storyboard"', '用户没有点头之前不渲染', '包括代表性镜头的试渲染'],
+        what + '·分镜审核',
+      );
+      expect(body.indexOf('### 分镜审核关卡'), what).toBeLessThan(
+        body.indexOf('用 `scene_run_all({"scenes": "scenes/", '),
+      );
     }
     has(beat, ['过第四阶段的「分镜审核关卡」'], '卡点·分镜审核');
   });
@@ -315,17 +458,32 @@ describe('prompt content', () => {
       [speech, '口播'],
       [beat, '卡点'],
       [sung, '歌曲'],
-    ]) has(body, ['onset 工具服务（MCP）里的工具', '`job_wait`', '`onset` 不在终端里'], what + '·格式约定');
+    ])
+      has(body, ['onset 工具服务（MCP）里的工具', '`job_wait`', '`onset` 不在终端里'], what + '·格式约定');
     for (const [body, what] of [
       [speech, '口播'],
       [beat, '卡点'],
-    ]) has(body, ['不要用 `which`、`strings`、`grep` 去找、去读 `onset` 程序本身'], what + '·格式约定');
+    ])
+      has(body, ['不要用 `which`、`strings`、`grep` 去找、去读 `onset` 程序本身'], what + '·格式约定');
     has(beat, ['节拍页把这个文件当普通 Markdown 原样显示'], '卡点·格式约定');
   });
 
   it('keeps all speech synthesis behind OnSet operations', () => {
     has(speech, ['voice_synthesize(', 'voice_catalog()', 'voice_design(', 'voice_save('], '配音托管');
-    lacks(speech, ['mlx_audio.tts.generate', 'mmx speech synthesize', 'bl speech synthesize', 'edge-tts -v', 'elevenlabs text-to-speech', 'tccli tts', '--ref_audio', '--ref_text'], '配音托管');
+    lacks(
+      speech,
+      [
+        'mlx_audio.tts.generate',
+        'mmx speech synthesize',
+        'bl speech synthesize',
+        'edge-tts -v',
+        'elevenlabs text-to-speech',
+        'tccli tts',
+        '--ref_audio',
+        '--ref_text',
+      ],
+      '配音托管',
+    );
   });
 
   it('leaves voice tools to the tool page (speech)', () => {
@@ -337,11 +495,36 @@ describe('prompt content', () => {
     for (const [body, what] of [
       [speech, '口播'],
       [beat, '卡点'],
-    ]) has(body, ['douyin', 'xiaohongshu', 'channels', 'bilibili', 'zhihu', '16:10', '安全区', 'covers/src/', 'cover.images', 'designed_image'], what + '·平台封面');
+    ])
+      has(
+        body,
+        [
+          'douyin',
+          'xiaohongshu',
+          'channels',
+          'bilibili',
+          'zhihu',
+          '16:10',
+          '安全区',
+          'covers/src/',
+          'cover.images',
+          'designed_image',
+        ],
+        what + '·平台封面',
+      );
   });
 
   it('carries the treatment before TTS (speech) and before the bar plan (beat)', () => {
-    const common = ['### 整片处理方案', 'production/treatment.md', '钩子—揭示—收束', '持续物件', '全片配色', '字体、版式和动效由各镜头根据文案自由决定', '章节之间怎么接', '先改 `treatment.md`'];
+    const common = [
+      '### 整片处理方案',
+      'production/treatment.md',
+      '钩子—揭示—收束',
+      '持续物件',
+      '全片配色',
+      '字体、版式和动效由各镜头根据文案自由决定',
+      '章节之间怎么接',
+      '先改 `treatment.md`',
+    ];
     has(speech, [...common, '- `production/treatment.md` 整片处理方案'], '口播·整片处理方案');
     expect(speech.indexOf('### 整片处理方案')).toBeLessThan(speech.indexOf('## 第三阶段'));
     has(beat, [...common, '- `production/treatment.md` 整片处理方案。'], '卡点·整片处理方案');
@@ -352,7 +535,24 @@ describe('prompt content', () => {
     for (const [body, what] of [
       [speech, '口播'],
       [beat, '卡点'],
-    ]) has(body, ['在 `prompt.md` 中写明镜头交接：入场状态', '出场状态（最后一帧留给下一镜头', '声明的出场状态与入场状态'], what + '·镜头交接约定');
+    ])
+      has(
+        body,
+        ['在 `prompt.md` 中写明镜头交接：入场状态', '出场状态（最后一帧留给下一镜头', '声明的出场状态与入场状态'],
+        what + '·镜头交接约定',
+      );
+  });
+
+  it('points the orchestrator to the motion effects catalog (speech, beat)', () => {
+    for (const [body, what] of [
+      [speech, '口播'],
+      [beat, '卡点'],
+    ])
+      has(
+        body,
+        ['motion_effect_list({"query": "<关键词>"})', 'motion_effect_show({"ref": "<标识>"})', 'plugin_skills'],
+        what + '·动效库',
+      );
   });
 
   it('mixes without amix normalization (speech, beat)', () => {
@@ -361,22 +561,66 @@ describe('prompt content', () => {
   });
 
   it('aligns with code (speech)', () => {
-    has(speech, ['`align_text()`', 'align_build(', '`<显示|朗读>`', '`@{短语编号}', 'phrase-adjust.json'], '口播·对齐流程');
+    has(
+      speech,
+      ['`align_text()`', 'align_build(', '`<显示|朗读>`', '`@{短语编号}', 'phrase-adjust.json'],
+      '口播·对齐流程',
+    );
     lacks(speech, ['按替换清单映射回终稿原文', '按顺序与原文逐字对回'], '口播·对齐流程');
   });
 
   it('derives scene durations (speech from subtitles, beat from bars)', () => {
-    has(speech, ['scene_cues({"scenes": "scenes/", "plan": "production/scene-plan.json"', '`first_subtitle`', '`first_phrase`', '"check": true', 'onset-scene.js', '`scene-kit`'], '口播·镜头时长');
-    has(beat, ['：按小节拆分镜头', 'production/beat/plan.json', 'beat_cues({"scenes": "scenes/"})', '不得手改 duration_seconds', '`scene-kit`'], '卡点·镜头时长');
+    has(
+      speech,
+      [
+        'scene_cues({"scenes": "scenes/", "plan": "production/scene-plan.json"',
+        '`first_subtitle`',
+        '`first_phrase`',
+        '"check": true',
+        'onset-scene.js',
+        '`scene-kit`',
+      ],
+      '口播·镜头时长',
+    );
+    has(
+      beat,
+      [
+        '：按小节拆分镜头',
+        'production/beat/plan.json',
+        'beat_cues({"scenes": "scenes/"})',
+        '不得手改 duration_seconds',
+        '`scene-kit`',
+      ],
+      '卡点·镜头时长',
+    );
     for (const [body, what] of [
       [speech, '口播'],
       [beat, '卡点'],
-    ]) lacks(body, ['每个镜头先定帧数，再写 `duration_seconds = 帧数 ÷ 帧率`'], what);
+    ])
+      lacks(body, ['每个镜头先定帧数，再写 `duration_seconds = 帧数 ÷ 帧率`'], what);
   });
 
   // 卡点片没有配音：口播稿、TTS、对齐、短语时间轴与「配音优先」的说法都不该出现在卡点的提示词里。
   it('says nothing about voice-over in the beat flow', () => {
-    lacks(beat, ['整理口播稿和开场', 'TTS 和断句校对', '依据实际语音重建 SRT', '配音优先', 'transcription-production.srt', 'phrase-timeline.json', 'timing-report.json', 'scene-plan', '人声', '没有配音时使用 TTS', '付费 TTS', 'voice.wav', '断句、发音'], '卡点');
+    lacks(
+      beat,
+      [
+        '整理口播稿和开场',
+        'TTS 和断句校对',
+        '依据实际语音重建 SRT',
+        '配音优先',
+        'transcription-production.srt',
+        'phrase-timeline.json',
+        'timing-report.json',
+        'scene-plan',
+        '人声',
+        '没有配音时使用 TTS',
+        '付费 TTS',
+        'voice.wav',
+        '断句、发音',
+      ],
+      '卡点',
+    );
     expect(stageTitles(beat).map((t) => t.slice(t.indexOf('：') + 1))).toEqual([
       '盘点输入和制作规格',
       '故事、音乐与节拍',
@@ -394,7 +638,11 @@ describe('prompt content', () => {
 
   // 多角色对话的作业规程是口播流程的附录（项目根有 cast.yaml 时生效），不再是项目里的一份文件。
   it('carries the cast rules as an appendix of the speech flow', () => {
-    has(speech, ['必须同时遵守文末的「附：多角色叙事作业规程」', '## 附：多角色叙事作业规程（cast 模式）', 'dialogue_assemble()'], '口播·多角色');
+    has(
+      speech,
+      ['必须同时遵守文末的「附：多角色叙事作业规程」', '## 附：多角色叙事作业规程（cast 模式）', 'dialogue_assemble()'],
+      '口播·多角色',
+    );
     lacks(speech, ['PROMPT-CAST-ADDENDUM.md', 'PROMPT-PRODUCTION.md'], '口播');
     lacks(beat, ['多角色叙事作业规程'], '卡点');
   });
@@ -412,12 +660,22 @@ describe('third-party flow reuses builtin station sections', () => {
     // 插件带来的流程是新建时的一个做法：项目的流程记录写 x:<插件 id>。
     flow.installStation(`link:${fake}`);
     const root = created('x:fake-publisher');
-    expect(flow.flowRecord(root)).toEqual({ id: 'x:fake-publisher', canvas: 'vertical-3x4', render_prompt: flow.RenderPromptVersion });
+    expect(flow.flowRecord(root)).toEqual({
+      id: 'x:fake-publisher',
+      canvas: 'vertical-3x4',
+      render_prompt: flow.RenderPromptVersion,
+    });
     const { text: body, flow: id } = composeProjectPrompt(root);
     expect(id).toBe('x:fake-publisher');
     // 假发布插件的流程：intake、render、assemble、review、本站。
     const stages = [...body.matchAll(/^## (第[一二三四五六七八九十]+阶段：.+|这部片子的流程：.+)$/gm)].map((m) => m[1]);
-    expect(stages).toEqual(['第一阶段：盘点输入和制作规格', '第二阶段：建立镜头目录、并发调度渲染工具', '第三阶段：规范化和拼接静音母版', '第四阶段：最终验收、试听与交付', '这部片子的流程：快剪']);
+    expect(stages).toEqual([
+      '第一阶段：盘点输入和制作规格',
+      '第二阶段：建立镜头目录、并发调度渲染工具',
+      '第三阶段：规范化和拼接静音母版',
+      '第四阶段：最终验收、试听与交付',
+      '这部片子的流程：快剪',
+    ]);
     expect(body.startsWith('# 完成一次从稿件到成片的竖屏 MG 视频制作')).toBe(true);
     expect(body).toContain('## 工作边界');
     // 内置站的段落引用了这套流程没有的阶段：写成那一步的标题（只有第三方流程有这条退路）。

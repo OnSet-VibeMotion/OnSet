@@ -34,6 +34,18 @@ export function post<T>(path: string, payload: unknown = {}): Promise<T> {
   });
 }
 
+export function put<T>(path: string, payload: unknown = {}): Promise<T> {
+  return api<T>(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function del<T>(path: string): Promise<T> {
+  return api<T>(path, { method: 'DELETE' });
+}
+
 /** 项目内文件的原始地址（视频、图片、音频）。v 用来在文件变化后绕过缓存。 */
 export function rawURL(path: string, version?: number): string {
   const query = new URLSearchParams({ path });
@@ -44,7 +56,10 @@ export function rawURL(path: string, version?: number): string {
 export function errorText(err: unknown): string {
   // fetch 连不上服务时浏览器只给一句英文（Chrome「Failed to fetch」、Firefox「NetworkError…」、
   // Safari「Load failed」），用户看不出是什么；多半是后台服务停了或正在重启。
-  if (err instanceof TypeError && /failed to fetch|networkerror|load failed|network request failed/i.test(err.message)) {
+  if (
+    err instanceof TypeError &&
+    /failed to fetch|networkerror|load failed|network request failed/i.test(err.message)
+  ) {
     return '连不上客户端的后台服务：可能正在重启，稍等一下再试，或者重启客户端';
   }
   return forUser(err instanceof Error ? err.message : String(err));
@@ -73,7 +88,14 @@ export function forUser(text: string): string {
           const hit = sentence.search(toolCall);
           if (hit < 0) return sentence;
           const head = sentence.slice(0, hit);
-          const cut = Math.max(head.lastIndexOf('，'), head.lastIndexOf('；'), head.lastIndexOf('：'), head.lastIndexOf('——'), head.lastIndexOf(','), head.lastIndexOf(';'));
+          const cut = Math.max(
+            head.lastIndexOf('，'),
+            head.lastIndexOf('；'),
+            head.lastIndexOf('：'),
+            head.lastIndexOf('——'),
+            head.lastIndexOf(','),
+            head.lastIndexOf(';'),
+          );
           if (cut < 0) return '';
           const end = /[。！？]$/.test(sentence) ? sentence.slice(-1) : '';
           return sentence.slice(0, cut) + end;

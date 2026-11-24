@@ -10,158 +10,28 @@
  * 全都只给命令行与客户端（scopes: cli）：一场试镜是好几次完整的渲染，谁来比、选谁、向谁学由人定，
  * 编排工具不能自己发起，也不能替人投票。
  */
-import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import * as agentrun from '@onset/engine/agentrun';
 import * as audition from '@onset/engine/audition';
 import * as config from '@onset/engine/config';
 import * as envutil from '@onset/engine/envutil';
-import * as fsutil from '@onset/engine/fsutil';
-import { marshal } from '@onset/engine/gojson';
-import * as ledger from '@onset/engine/ledger';
 import * as memory from '@onset/engine/memory';
-import { decodeRawMap, encodeRawMapIndent } from '@onset/engine/rawjson';
 import * as scene from '@onset/engine/scene';
-import * as schedule from '@onset/engine/schedule';
-import * as tools from '@onset/engine/tools';
-import { EventPrinter } from './agentprint';
-import { currentEnvironment, validateTolerance } from './cli';
-import type { Out } from './cobra';
-import { attachMemory, newRunID } from './memory_cmd';
+import {
+  adoptAuditionContestant,
+  checkRenderer,
+  contestantRunner,
+  makeLearnDrafter,
+  projectOf,
+  renderVerdict,
+  resolveAuditionEntries,
+  runDesign,
+} from './audition_runner';
+import { validateTolerance } from './cli';
 import { defineGroup } from './ops/cli';
 import { bool, num, str } from './ops/common';
 import { defineOp, ParamError } from './ops/op';
-import { recordOrchestratorUsage } from './usage_cmd';
 
-function errorText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
-/** 每行前面加上选手标号，几位选手同时渲染时分得清是谁说的。 */
-function prefixed(out: Out, label: string): Out {
-  let pending = '';
-  return {
-    write(text: string) {
-      pending += text;
-      const lines = pending.split('\n');
-      pending = lines.pop() ?? '';
-      for (const line of lines) out.write(`[${label}] ${line}\n`);
-    },
-  };
-}
-
-/** 按项目根找到项目（有 onset.conf 的那一层）；镜头不在项目里时报错。 */
-function projectOf(dir: string): string {
-  const root = scene.findProjectRoot(dir);
-  if (root === '') throw new Error(`${dir} 不在项目里（向上找不到 onset.conf）`);
-  return root;
-}
-
-function checkRenderer(renderer: string): void {
-  if (!tools.ValidRenderers.has(renderer)) throw new ParamError(`无效的渲染工具：${renderer}`);
-}
-
-/**
- * 两段式的第一段：让 designer 只写 design.md（scene.run 的 designOnly），返回这一次的尝试记录（用量、模型）。
- * 设计者与实现者拿到的镜头说明一样，所以召回记忆与参考范例按设计者自己的工具与模型算。
- */
-export async function runDesign(
-  s: scene.Scene,
-  cfg: config.Config,
-  designer: string,
-  model: string,
-  unsafe: boolean,
-  out: Out,
-  signal?: AbortSignal,
-): Promise<scene.Attempt | null> {
-  let attempt: scene.Attempt | null = null;
-  const own: config.Config = { ...cfg, renderer: designer, rendererModel: model, rendererOptions: config.rendererOptionsFor(cfg, designer) };
-  let ds: scene.Scene = { ...s, renderer: designer, designOnly: true, afterAttempt: (x) => (attempt = x) };
-  if (cfg.memory.enabled) ds = { ...attachMemory(ds, own, out, newRunID()), designOnly: true, afterAttempt: (x) => (attempt = x) };
-  await scene.run(ds, own, unsafe, currentEnvironment(), out, 0.15, signal);
-  return attempt;
-}
-
-/** 初次试镜与单人重试共用配置、记忆、两段式制作与结果落盘。 */
-function contestantRunner(root: string, a: audition.Audition, cfg: config.Config, out: Out, unsafe: boolean, tolerance: number, jobs: number, signal?: AbortSignal) {
-  const store = cfg.memory.enabled ? memory.open(cfg.memory.dir) : null;
-  const withMemory = a.with_memory;
-  const exam = a.exam;
-  const env = currentEnvironment();
-  const isUnsafe = envutil.isUnsafe(unsafe);
-  const workers = schedule.renderWorkers(os.availableParallelism(), schedule.systemMemory(), jobs);
-  const trials = exam ? exam.lessons.map((name) => store?.find(name) ?? null).filter((m) => m !== null) : [];
-  // 选手的结果写回 audition.json：几位同时跑，按顺序落盘免得互相盖掉。
-  let saving = Promise.resolve();
-  const persist = () => {
-    saving = saving.then(() => audition.save(root, a));
-    return saving;
-  };
-
-  const runOne = async (c: audition.Contestant) => {
-    c.status = 'running';
-    c.outcome = '';
-    c.output = '';
-    c.error = '';
-    c.problems = null;
-    c.checks = null;
-    await persist();
-    const log = prefixed(out, c.slot);
-    let attempt: scene.Attempt | null = null;
-    let failure = '';
-    const extra = tools.newUsage();
-    let extraSeconds = 0;
-    try {
-      let s = audition.contestantScene(root, c);
-      s.renderer = c.renderer;
-      // 选手的工具与模型盖掉项目配置：rendererModelFor 只在工具相同时用 rendererModel。
-      const own: config.Config = { ...cfg, renderer: c.renderer, rendererModel: c.model, rendererOptions: config.rendererOptionsFor(cfg, c.renderer) };
-      const prepare = (s: scene.Scene): scene.Scene => {
-        if (store !== null && withMemory) {
-          const model = store.currentModel(c.renderer, env, c.model !== '' ? c.model : config.rendererModelFor(cfg, c.renderer));
-          const result = store.recallScene(s, {
-            snapshot: cfg.memory.snapshot,
-            budget: cfg.memory.recallBudget,
-            renderer: c.renderer,
-            model,
-            // 人评考试的带经验那份：再加上要考的试用经验，其余与不带的那份逐字相同。
-            ...(c.role === 'trial' ? { extra: trials } : {}),
-          });
-          const exemplars = audition.pickExemplars(cfg.memory.dir, { renderer: c.renderer, model, features: memory.features(s), project: memory.projectName(s.directory), sceneID: s.id });
-          s = { ...memory.attachRecall(result, s), ...(exemplars ? { exemplars } : {}) };
-        }
-        return scene.withRenderWorkers({ ...s, afterAttempt: (x) => (attempt = x) }, workers);
-      };
-      const recovered = c.designer !== '' && scene.recoverOutput(prepare(s), own, env, log, tolerance, signal);
-      if (!recovered) {
-        if (c.designer !== '') {
-          log.write(`先由 ${audition.entryLabel({ renderer: c.designer, model: c.designer_model })} 写设计稿\n`);
-          const designed = await runDesign(s, withMemory ? cfg : { ...cfg, memory: { ...cfg.memory, enabled: false } }, c.designer, c.designer_model, isUnsafe, log, signal);
-          if (designed?.usage) tools.usageAdd(extra, designed.usage);
-          extraSeconds += designed?.seconds ?? 0;
-          s = audition.contestantScene(root, c);
-          s.renderer = c.renderer;
-        }
-        await scene.run(prepare(s), own, isUnsafe, env, log, tolerance, signal);
-      }
-    } catch (e) {
-      failure = errorText(e);
-      log.write(`没跑成：${failure}\n`);
-    }
-    audition.applyAttempt(root, c, attempt, failure);
-    if (extraSeconds > 0 || !tools.usageEmpty(extra)) {
-      const total = tools.newUsage();
-      tools.usageAdd(total, extra);
-      if (c.usage) tools.usageAdd(total, c.usage);
-      c.usage = total;
-      c.seconds += extraSeconds;
-    }
-    await persist();
-    out.write(`[${c.slot}] ${c.outcome === 'succeeded' ? '完成' : '没有合格的产物'}\n`);
-  };
-  return { runOne, persist };
-}
+export { renderVerdict, runDesign };
 
 defineOp({
   name: 'scene_audition',
@@ -191,7 +61,10 @@ with_memory 为 true（缺省）时每位选手照常带上按自己召回的记
   ],
   params: {
     scene: { type: 'string', description: '镜头目录', required: true, positional: 0 },
-    contestants: { type: 'string', description: '选手，逗号分隔，每位写「渲染工具[:模型]」，两段式写「实现者<设计者」' },
+    contestants: {
+      type: 'string',
+      description: '选手，逗号分隔，每位写「渲染工具[:模型]」，两段式写「实现者<设计者」',
+    },
     with_memory: { type: 'boolean', description: '每位选手带上按自己召回的记忆与参考范例', default: true },
     exam: { type: 'string', description: '人评考试：学习关系的编号' },
     lessons: { type: 'string', description: '人评考试要考的试用经验，逗号分隔；缺省是向这位老师学来、还在试用的全部' },
@@ -206,55 +79,24 @@ with_memory 为 true（缺省）时每位选手照常带上按自己召回的记
     const root = projectOf(sc.directory);
     const cfg = config.load(root, null);
     const store = cfg.memory.enabled ? memory.open(cfg.memory.dir) : null;
-    let entries: audition.Entry[];
-    let exam: Omit<audition.ExamInfo, 'applied'> | null = null;
-    let withMemory = bool(p.with_memory);
-    if (str(p.exam) !== '') {
-      if (store === null) throw new ParamError('人评考试要打开记忆（MEMORY=on）');
-      const relation = audition.findRelation(cfg.memory.dir, str(p.exam));
-      const student = audition.splitKey(relation.student);
-      const teacher = audition.splitKey(relation.teacher);
-      let lessons = str(p.lessons)
-        .split(',')
-        .map((x) => x.trim())
-        .filter((x) => x !== '');
-      if (lessons.length === 0) {
-        lessons = store
-          .memories()
-          .memories.filter((m) => m.kind === memory.KindLesson && m.status === memory.StatusTrial && (m.learned_from ?? []).includes(relation.teacher) && m.applies_when.renderers.includes(student.renderer))
-          .map((m) => m.name);
-      }
-      if (lessons.length === 0) throw new Error(`没有要考的经验：${relation.student} 向 ${relation.teacher} 学来、还在试用的经验一条都没有；先运行 audition_learn()`);
-      for (const name of lessons) {
-        const m = store.find(name);
-        if (m === null || m.status !== memory.StatusTrial) throw new ParamError(`${name} 不是试用中的经验`);
-      }
-      exam = { relation: relation.id, student: relation.student, teacher: relation.teacher, lessons };
-      withMemory = true;
-      entries = [
-        { ...student, role: 'control' },
-        { ...student, role: 'trial' },
-        { ...teacher, role: 'reference' },
-      ];
-    } else {
-      entries = str(p.contestants)
-        .split(',')
-        .filter((x) => x.trim() !== '')
-        .map(audition.parseEntry);
-    }
-    for (const e of entries) {
-      checkRenderer(e.renderer);
-      if (e.designer) checkRenderer(e.designer.renderer);
-    }
+    const { entries, exam, withMemory } = resolveAuditionEntries(
+      cfg,
+      store,
+      str(p.exam),
+      str(p.lessons),
+      str(p.contestants),
+      bool(p.with_memory),
+    );
     let jobs = num(p.jobs);
     if (jobs === 0) jobs = cfg.sceneJobs;
     jobs = Math.max(1, Math.min(jobs, entries.length));
     const a = audition.create(root, sc, entries, { withMemory, exam });
-    out.write(`${exam ? '人评考试' : '试镜'} ${a.id}：镜头 ${sc.id}，${a.contestants.length} 份${withMemory ? '' : '（都不带记忆）'}\n`);
+    out.write(
+      `${exam ? '人评考试' : '试镜'} ${a.id}：镜头 ${sc.id}，${a.contestants.length} 份${withMemory ? '' : '（都不带记忆）'}\n`,
+    );
     const release = audition.acquireRun(root, a);
     try {
       const { runOne, persist } = contestantRunner(root, a, cfg, out, unsafe, tolerance, jobs, signal);
-
       const queue = [...a.contestants];
       await Promise.all(
         Array.from({ length: jobs }, async () => {
@@ -273,7 +115,9 @@ with_memory 为 true（缺省）时每位选手照常带上按自己召回的记
       out.write(`${done}/${a.contestants.length} 份出了合格的产物。到「试镜」页并排看、选出最好的一份。\n`);
       if (signal?.aborted) err.write('试镜被取消，没跑完的记为失败。\n');
       return { data: { audition: a.id, scene: sc.id, succeeded: done } };
-    } finally { release(); }
+    } finally {
+      release();
+    }
   },
 });
 
@@ -304,7 +148,7 @@ defineOp({
       const cfg = config.load(root, null);
       if (a.exam) {
         const store = cfg.memory.enabled ? memory.open(cfg.memory.dir) : null;
-        if (!store || a.exam.lessons.some(name => store.find(name)?.status !== memory.StatusTrial)) {
+        if (!store || a.exam.lessons.some((name) => store.find(name)?.status !== memory.StatusTrial)) {
           throw new Error('本场考试的试用经验已不可用，请恢复记忆配置或新开一场考试');
         }
       }
@@ -313,7 +157,9 @@ defineOp({
       await runOne(c);
       if (c.outcome !== 'succeeded') throw new Error(`选手 ${c.slot} 未生成合格画面，可在试镜页重试`);
       return { data: { audition: a.id, slot: c.slot, scene: a.scene_id } };
-    } finally { release(); }
+    } finally {
+      release();
+    }
   },
 });
 
@@ -324,7 +170,9 @@ defineOp({
   description: `给一场试镜下评判。kind 是 winner（选出 winner 那一位）、tie（差不多）或 none（都不行）。
 可以改判，以最后一次为准（人评考试的结论一旦生效就不能改）。评判记进记忆库目录的 auditions.jsonl，
 跨项目累积谁在哪类镜头上赢了谁；胜者的合成代码进范例库。人评考试里选中带经验的那份，经验生效。`,
-  examples: ['scene_audition_vote({"audition": "audition-20261114-153012", "kind": "winner", "winner": "B", "note": "节奏更好"})'],
+  examples: [
+    'scene_audition_vote({"audition": "audition-20261114-153012", "kind": "winner", "winner": "B", "note": "节奏更好"})',
+  ],
   params: {
     audition: { type: 'string', description: '试镜编号', required: true, positional: 0 },
     kind: { type: 'string', description: 'winner、tie 或 none', required: true },
@@ -344,16 +192,6 @@ defineOp({
   },
 });
 
-export function renderVerdict(a: audition.Audition): string {
-  let b = '';
-  for (const c of a.contestants) {
-    const mark = a.verdict?.kind === 'winner' && a.verdict.winner === c.slot ? '★' : ' ';
-    const role = c.role === 'reference' ? '（参照）' : c.role === 'trial' ? '（带经验）' : c.role === 'control' ? '（不带经验）' : '';
-    b += `${mark} ${c.slot}  ${audition.contestantKey(c)}${role}  ${c.outcome === 'succeeded' ? '合格' : c.outcome || '没跑完'}\n`;
-  }
-  return b;
-}
-
 defineOp({
   name: 'scene_audition_adopt',
   cli: ['scene', 'audition-adopt'],
@@ -371,25 +209,7 @@ defineOp({
   scopes: ['cli'],
   run: (p, { out, err }) => {
     const root = path.resolve(str(p.project_root) || '.');
-    const a = audition.load(root, str(p.audition));
-    const target = scene.load(path.join(root, a.scene_dir));
-    const { contestant, files } = audition.adoptFiles(root, a, str(p.slot), target);
-    // 镜头以后归这位选手的渲染工具：渲染工具在指纹里，不改的话采用完马上就是 Stale。
-    const sceneFile = path.join(target.directory, 'scene.json');
-    const fields = decodeRawMap(fs.readFileSync(sceneFile, 'utf8'));
-    fields.set('renderer', marshal(contestant.renderer));
-    fsutil.atomicWrite(sceneFile, encodeRawMapIndent(fields) + '\n');
-    // 渲染记录与 scene_run_all 判断复用时同一种算法：同样召回记忆与范例再算指纹。
-    const cfg = config.load(root, null);
-    let s = scene.load(target.directory);
-    s = attachMemory(s, cfg, err, newRunID());
-    const resolved = scene.resolveAllSkills(contestant.renderer, s.directory, scene.skillsEnvironment(currentEnvironment(), cfg.overlay), s);
-    scene.writeRecord(s, scene.fingerprint(s, contestant.renderer, resolved));
-    out.write(`已采用 ${contestant.slot}（${audition.contestantKey(contestant)}），换进 ${a.scene_id}：${files.length} 个文件\n`);
-    out.write(`以后重渲染这个镜头用 ${contestant.renderer}`);
-    out.write(contestant.model !== '' && contestant.model !== config.rendererModelFor(cfg, contestant.renderer) ? `（模型按设置，不一定是 ${contestant.model}）\n` : '\n');
-    if (files.includes(scene.DesignFile)) out.write('设计稿 design.md 也一起换进去了：以后重渲染照它做。\n');
-    return { data: { audition: a.id, scene: a.scene_id, slot: contestant.slot, renderer: contestant.renderer, files } };
+    return { data: adoptAuditionContestant(root, str(p.audition), str(p.slot), out, err) };
   },
 });
 
@@ -412,7 +232,8 @@ defineOp({
     checkRenderer(who.renderer);
     const cfg = config.load(projectOf(sc.directory), null);
     const attempt = await runDesign(sc, cfg, who.renderer, who.model, envutil.isUnsafe(unsafe), out, signal);
-    out.write(`设计稿写好了：${path.join(sc.directory, scene.DesignFile)}（${audition.entryLabel(who)}${attempt?.model && attempt.model !== who.model ? `，实际模型 ${attempt.model}` : ''}）\n`);
+    const actual = attempt?.model && attempt.model !== who.model ? `，实际模型 ${attempt.model}` : '';
+    out.write(`设计稿写好了：${path.join(sc.directory, scene.DesignFile)}（${audition.entryLabel(who)}${actual}）\n`);
     return { data: { scene: sc.id, design: scene.DesignFile, designer: audition.toolKey(who.renderer, who.model) } };
   },
 });
@@ -420,7 +241,8 @@ defineOp({
 defineGroup({
   path: ['audition'],
   summary: '模型互学：按试镜里的评判向老师学',
-  description: '学习关系由人在客户端确认（试镜的评判累积出提议）；audition_learn 把老师赢了学生的试镜整理成学生的试用经验。',
+  description:
+    '学习关系由人在客户端确认（试镜的评判累积出提议）；audition_learn 把老师赢了学生的试镜整理成学生的试用经验。',
 });
 
 defineOp({
@@ -438,42 +260,34 @@ checked_by 是 audition.judged（人在试镜里判的）。经验进入试用�
   run: async (p, { out, err: stderr, signal, unsafe }) => {
     const cfg = config.load('.', null);
     if (!cfg.memory.enabled) throw new ParamError('向老师学要打开记忆（MEMORY=on）');
-    if (cfg.orchestrator === '') throw new Error('没有配置整理者：在项目里运行，或用环境变量 ORCHESTRATOR 指定编排工具');
+    if (cfg.orchestrator === '')
+      throw new Error('没有配置整理者：在项目里运行，或用环境变量 ORCHESTRATOR 指定编排工具');
     const store = memory.open(cfg.memory.dir);
     const relation = audition.findRelation(cfg.memory.dir, str(p.relation));
-    const isUnsafe = envutil.isUnsafe(unsafe);
     const result = await audition.learn(store, {
       relation,
       rows: audition.readVerdicts(cfg.memory.dir),
       signal,
-      drafter: async (workdir, prompt, drafterSignal) => {
-        const env = config.childEnvironment(cfg, currentEnvironment(), isUnsafe, envutil.parsePassthrough(process.env.ONSET_PASSTHROUGH_ENV ?? ''));
-        out.write(`整理者: ${cfg.orchestrator}\n工作目录: ${workdir}\n---\n`);
-        const printer = new EventPrinter(out, stderr);
-        const { result: ran, error } = await agentrun.run(
-          {
-            tool: cfg.orchestrator,
-            model: cfg.orchestratorModel,
-            options: tools.effectiveOptions(cfg.orchestrator, cfg.orchestratorOptions),
-            workdir,
-            prompt,
-            unsafe: isUnsafe,
-            sessionID: agentrun.newSessionID(cfg.orchestrator),
-            access: {},
-            env,
-            lookPath: (name) => envutil.lookPath(name, env.PATH ?? ''),
-          },
-          (event) => printer.print(event),
-          drafterSignal,
-        );
-        if (ran.started) recordOrchestratorUsage(drafterSignal, ledger.memoryFile(store.dir), ledger.SourceConsolidate, cfg.orchestrator, env, ran, error, stderr);
-        if (error) throw error;
-      },
+      drafter: makeLearnDrafter(cfg, store, envutil.isUnsafe(unsafe), out, stderr),
     });
-    out.write(`向 ${relation.teacher} 学，用了 ${result.pairs.length} 场试镜：${result.pairs.map((x) => x.audition).join('、')}\n`);
+    out.write(
+      `向 ${relation.teacher} 学，用了 ${result.pairs.length} 场试镜：${result.pairs.map((x) => x.audition).join('、')}\n`,
+    );
     out.write(`进入试用：${result.accepted.length > 0 ? result.accepted.join('、') : '（无）'}\n`);
-    for (const [label, problems] of Object.entries(result.rejected)) out.write(`被拒草稿 ${label}：\n  - ${problems.join('\n  - ')}\n`);
-    if (result.accepted.length > 0) out.write(`下一步：挑一个镜头做人评考试 scene_audition({"scene": "<镜头>", "exam": "${relation.id}"})\n`);
-    return { data: { run: result.run, workdir: result.workdir, pairs: result.pairs.map((x) => x.audition), accepted: result.accepted, rejected: result.rejected } };
+    for (const [label, problems] of Object.entries(result.rejected)) {
+      out.write(`被拒草稿 ${label}：\n  - ${problems.join('\n  - ')}\n`);
+    }
+    if (result.accepted.length > 0) {
+      out.write(`下一步：挑一个镜头做人评考试 scene_audition({"scene": "<镜头>", "exam": "${relation.id}"})\n`);
+    }
+    return {
+      data: {
+        run: result.run,
+        workdir: result.workdir,
+        pairs: result.pairs.map((x) => x.audition),
+        accepted: result.accepted,
+        rejected: result.rejected,
+      },
+    };
   },
 });

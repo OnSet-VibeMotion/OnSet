@@ -1,21 +1,60 @@
 //
 // 配置的解析顺序：环境变量 > 项目 .env > onset.conf > 缺省值。
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { dataDir, envMap, WindowsBaseEnvKeys } from '../envutil';
+import { envMap } from '../envutil';
 import { RootEnv, rootDir } from '../filmstyle';
 import { formatG, goPathError, goTrimSpace } from '../gofmt';
-import { BrowserAppArgEnv, BrowserEnv, BrowserHookEnv, CLIDirEnv, HyperFramesBrowserEnv, PinnedVersion, cliDir } from '../hyperframes';
-import { childEnvKeys as toolpathEnvKeys } from '../toolpath';
+import { CLIDirEnv, cliDir, PinnedVersion } from '../hyperframes';
 import { pluginChildEnvs } from '../plugin/registry';
-import { DirEnv as VoicesDirEnv, defaultDir as defaultVoicesDir } from '../voice/dir';
-import { GlobalDefaults, GlobalKeys, ModelToolKey, SettingsFileEnv, isGlobalKey, settingsFile, validModel, type GlobalKey } from './global';
+import { defaultDir as defaultSeriesDir } from '../series/dir';
 import { ValidRenderers, ValidTools, validOptionsText } from '../tools';
-import { AlignAuto, alignerIDs, hostAligner, parseAllowCommands, ttsProviderIDs, validAligner, validTTSProvider } from './providers';
+import { defaultDir as defaultVoicesDir, DirEnv as VoicesDirEnv } from '../voice/dir';
+import {
+  GlobalDefaults,
+  type GlobalKey,
+  GlobalKeys,
+  isGlobalKey,
+  ModelToolKey,
+  settingsFile,
+  validModel,
+} from './global';
+import {
+  AlignAuto,
+  alignerIDs,
+  hostAligner,
+  parseAllowCommands,
+  ttsProviderIDs,
+  validAligner,
+  validTTSProvider,
+} from './providers';
+import {
+  type Config,
+  DefaultMemoryExplore,
+  DefaultMemoryRecallBudget,
+  DefaultSceneJobs,
+  defaultMemoryDir,
+  formatFloatShortest,
+  MaxMemoryExplore,
+  MaxSceneJobs,
+  newConfig,
+} from './types';
 
-export const DefaultSceneJobs = 3;
-export const MaxSceneJobs = 16;
+export { childEnvironment } from './childenv';
+export {
+  type Config,
+  DefaultMemoryExplore,
+  DefaultMemoryRecallBudget,
+  DefaultSceneJobs,
+  defaultMemoryDir,
+  formatFloatShortest,
+  MaxMemoryExplore,
+  MaxSceneJobs,
+  type MemorySettings,
+  newConfig,
+  rendererModelFor,
+  rendererOptionsFor,
+} from './types';
 
 /**
  * (?i)(API_KEY|TOKEN|SECRET|PASSWORD)$。RE2 的 (?i) 让 s 还匹配 ſ（U+017F）、k 还匹配 K（U+212A），
@@ -37,117 +76,6 @@ const secretKey = (() => {
       .join('');
   return new RegExp('(' + ['API_KEY', 'TOKEN', 'SECRET', 'PASSWORD'].map(ci).join('|') + ')$');
 })();
-
-/**
- * 渲染记忆的项目侧设置。
- *
- * 默认打开：项目随使用积累经验与偏好。没有召回到任何记忆时提示词与输入指纹
- * 都与关闭时逐字相同，所以打开它不会让已有镜头变成 Stale。
- */
-export interface MemorySettings {
-  /** 为 false 时完全不召回、不写经历（对照组）。 */
-  enabled: boolean;
-  /** 记忆库目录，ONSET_MEMORY_DIR 可覆盖，默认 ~/.local/share/onset/memory。 */
-  dir: string;
-  /** 为 0 表示跟随最新快照，否则钉住该快照。 */
-  snapshot: number;
-  /** 每个镜头召回的记忆总字数上限。 */
-  recallBudget: number;
-  /**
-   * 正式渲染时探索的比例：这么多比例的镜头把召回里排最后的一条经验换成
-   * 排在上限外的第一条，给没机会被召回的经验攒样本。0 关闭。
-   */
-  explore: number;
-}
-
-/** Go 的 config.Config。没有 JSON 形式，字段用 camelCase。 */
-export interface Config {
-  orchestrator: string;
-  /** 编排工具用的模型；空是那家工具自己的默认。只在与 orchestrator 同一层（或更高层）写的才算，见 load。 */
-  orchestratorModel: string;
-  renderer: string;
-  /** 渲染工具用的模型，规则同 orchestratorModel。镜头 scene.json 换了渲染工具时不用它（scene/run.ts）。 */
-  rendererModel: string;
-  /**
-   * 三项工具各自的调用选项（推理强度、快速模式、上下文长度……），一行 effort=high,fast=on，规则同模型：
-   * 只在写它的那一层、工具也是现在这一家时才算。用 tools.effectiveOptions 按工具挑出认识的项。
-   */
-  orchestratorOptions: string;
-  rendererOptions: string;
-  optimizerOptions: string;
-  /**
-   * 润色与镜头画面描述检查用的工具（promptopt）；空是跟随 orchestrator。用 promptopt.optimizerOf 取实际的工具与模型，
-   * 不要直接读这两项。
-   */
-  optimizer: string;
-  /** 优化工具用的模型，规则同 orchestratorModel；optimizer 为空时也为空（跟随编排的模型）。 */
-  optimizerModel: string;
-  ttsProvider: string;
-  /** 已解析的对齐工具，auto 已落成具体取值。 */
-  alignProvider: string;
-  sceneJobs: number;
-  /** 项目 .env 的内容（Go 版 nil map 对应空对象）。 */
-  overlay: Record<string, string>;
-  /** 渲染记忆的项目侧设置，见 memory 包。 */
-  memory: MemorySettings;
-  /** 整片风格来源数据的根目录，见 filmstyle.rootDir。 */
-  filmStyleRoot: string;
-  /** onset 管理的固定版本 HyperFrames CLI 的安装目录，见 hyperframes.requireCLI（onset setup 用 ensureCLI 安装）。 */
-  hyperFramesCLI: string;
-  /** 内置插件登记的、要显式传给子进程的环境变量（plugin.PluginChildEnv），理由同 hyperFramesCLI。 */
-  pluginEnv: Record<string, string>;
-  /** 音色库目录（voice 包），所有项目共用；理由同 memory.dir，要显式传给子进程。 */
-  voicesDir: string;
-  /** 全局设置文件（config/global.ts），理由同 voicesDir，要显式传给子进程。 */
-  settingsFile: string;
-  /** 客户端里编排工具请求批准时直接允许，不弹卡片（AUTO_APPROVE，studio/permissions.ts）。 */
-  autoApprove: boolean;
-  /** 用户在 ORCHESTRATOR_ALLOW_COMMANDS 里补充放行的命令前缀，见 orchestratorAccess。 */
-  extraCommands: string[];
-}
-
-/** 构造一个 Config：没给的字段取 Go 的零值。对应 Go 里的 Config{...} 字面量。 */
-export function newConfig(fields: Partial<Omit<Config, 'memory'>> & { memory?: Partial<MemorySettings> } = {}): Config {
-  return {
-    orchestrator: '',
-    orchestratorModel: '',
-    renderer: '',
-    rendererModel: '',
-    orchestratorOptions: '',
-    rendererOptions: '',
-    optimizerOptions: '',
-    optimizer: '',
-    optimizerModel: '',
-    ttsProvider: '',
-    alignProvider: '',
-    sceneJobs: 0,
-    overlay: {},
-    filmStyleRoot: '',
-    hyperFramesCLI: '',
-    pluginEnv: {},
-    voicesDir: '',
-    settingsFile: '',
-    autoApprove: false,
-    extraCommands: [],
-    ...fields,
-    memory: { enabled: false, dir: '', snapshot: 0, recallBudget: 0, explore: 0, ...fields.memory },
-  };
-}
-
-/** 每个镜头召回记忆的默认总字数上限。 */
-export const DefaultMemoryRecallBudget = 1500;
-
-/** 默认的探索比例；MaxMemoryExplore 是上限。 */
-export const DefaultMemoryExplore = 0.1;
-export const MaxMemoryExplore = 0.5;
-
-/**
- * 默认记忆库目录：用户级，可跨项目复用。<数据目录>/memory（envutil.dataDir）；
- * 环境里什么都没有时按家目录推。
- */
-export function defaultMemoryDir(environ: Record<string, string | undefined>): string {
-  return path.join(dataDir(environ) || dataDir({ HOME: os.homedir() }), 'memory');
-}
 
 /** 读 KEY=VALUE 格式的配置文件（onset.conf、.env、全局设置）；不存在时为空。 */
 export function parseConfFile(file: string): Record<string, string> {
@@ -200,31 +128,6 @@ function goParseFloat(value: string): number | undefined {
   const n = Number(value);
   // 超出 float64 范围时 Go 报 ErrRange。
   return Number.isFinite(n) ? n : undefined;
-}
-
-/** strconv.FormatFloat(v, 'f', -1, 64)：最短的可往返十进制，不用指数写法。 */
-export function formatFloatShortest(value: number): string {
-  if (Number.isNaN(value)) return 'NaN';
-  if (!Number.isFinite(value)) return value > 0 ? '+Inf' : '-Inf';
-  const negative = value < 0 || Object.is(value, -0);
-  const [mantissa, expText] = Math.abs(value).toExponential().split('e');
-  const digits = mantissa!.replace('.', '');
-  const exp = Number(expText);
-  let out: string;
-  if (exp >= digits.length - 1) out = digits + '0'.repeat(exp - (digits.length - 1));
-  else if (exp >= 0) out = digits.slice(0, exp + 1) + '.' + digits.slice(exp + 1);
-  else out = '0.' + '0'.repeat(-exp - 1) + digits;
-  return (negative ? '-' : '') + out;
-}
-
-/** 渲染工具 renderer 该用的模型：与配置里的渲染工具是同一家时用 rendererModel，否则（镜头 scene.json 换了工具）用那家自己的默认。 */
-export function rendererModelFor(config: Config, renderer: string): string {
-  return renderer === config.renderer ? config.rendererModel : '';
-}
-
-/** 渲染工具 renderer 该用的调用选项，规则同 rendererModelFor。 */
-export function rendererOptionsFor(config: Config, renderer: string): string {
-  return renderer === config.renderer ? config.rendererOptions : '';
 }
 
 /** 读取项目配置。environ 不给（或为 null）时用当前进程环境。 */
@@ -290,7 +193,9 @@ export function load(root: string, environ?: Record<string, string> | null): Con
   });
   cfg.settingsFile = globalFile;
   const autoApprove = resolve('AUTO_APPROVE', 'off').toLowerCase();
-  if (autoApprove !== 'on' && autoApprove !== 'off') throw new Error(`无效的 AUTO_APPROVE: ${autoApprove}（可选：on off）`);
+  if (autoApprove !== 'on' && autoApprove !== 'off') {
+    throw new Error(`无效的 AUTO_APPROVE: ${autoApprove}（可选：on off）`);
+  }
   cfg.autoApprove = autoApprove === 'on';
   if (!ValidTools.has(cfg.orchestrator)) {
     throw new Error(`无效的 ORCHESTRATOR: ${cfg.orchestrator}（可选：${[...ValidTools].join(' ')}）`);
@@ -301,10 +206,20 @@ export function load(root: string, environ?: Record<string, string> | null): Con
   if (!ValidRenderers.has(cfg.renderer)) {
     throw new Error(`无效的 RENDERER: ${cfg.renderer}（可选：${[...ValidRenderers].join(' ')}）`);
   }
-  for (const [key, value] of [['ORCHESTRATOR_MODEL', cfg.orchestratorModel], ['RENDERER_MODEL', cfg.rendererModel], ['OPTIMIZER_MODEL', cfg.optimizerModel]] as const) {
-    if (value !== '' && !validModel(value)) throw new Error(`无效的 ${key}: ${value}（模型名只能用字母、数字与 . _ - : / @ # [ ] +）`);
+  for (const [key, value] of [
+    ['ORCHESTRATOR_MODEL', cfg.orchestratorModel],
+    ['RENDERER_MODEL', cfg.rendererModel],
+    ['OPTIMIZER_MODEL', cfg.optimizerModel],
+  ] as const) {
+    if (value !== '' && !validModel(value)) {
+      throw new Error(`无效的 ${key}: ${value}（模型名只能用字母、数字与 . _ - : / @ # [ ] +）`);
+    }
   }
-  for (const [key, value] of [['ORCHESTRATOR_OPTIONS', cfg.orchestratorOptions], ['RENDERER_OPTIONS', cfg.rendererOptions], ['OPTIMIZER_OPTIONS', cfg.optimizerOptions]] as const) {
+  for (const [key, value] of [
+    ['ORCHESTRATOR_OPTIONS', cfg.orchestratorOptions],
+    ['RENDERER_OPTIONS', cfg.rendererOptions],
+    ['OPTIMIZER_OPTIONS', cfg.optimizerOptions],
+  ] as const) {
     if (!validOptionsText(value)) throw new Error(`无效的 ${key}: ${value}（写成 effort=high,fast=on）`);
   }
   if (!validTTSProvider(cfg.ttsProvider)) {
@@ -316,7 +231,9 @@ export function load(root: string, environ?: Record<string, string> | null): Con
   }
   cfg.alignProvider = hostAligner(align);
   const jobs = goAtoi(resolve('SCENE_JOBS', String(DefaultSceneJobs)));
-  if (jobs === undefined || jobs < 1 || jobs > MaxSceneJobs) throw new Error(`SCENE_JOBS 必须在 1..${MaxSceneJobs} 之间`);
+  if (jobs === undefined || jobs < 1 || jobs > MaxSceneJobs) {
+    throw new Error(`SCENE_JOBS 必须在 1..${MaxSceneJobs} 之间`);
+  }
   cfg.sceneJobs = jobs;
   const memory = resolve('MEMORY', 'on').toLowerCase();
   if (memory === 'on') cfg.memory.enabled = true;
@@ -332,10 +249,14 @@ export function load(root: string, environ?: Record<string, string> | null): Con
     if (v !== '') cfg.pluginEnv[spec.key] = v;
   }
   cfg.voicesDir = resolve(VoicesDirEnv, defaultVoicesDir(env));
+  // 专栏库只从用户级环境解析，不读取项目 .env / onset.conf，防止项目文件改写全局专栏库与沙箱可写根目录。
+  cfg.seriesDir = defaultSeriesDir(env);
   const snapshotText = resolve('MEMORY_SNAPSHOT', '');
   if (snapshotText !== '') {
     const snapshot = goAtoi(snapshotText);
-    if (snapshot === undefined || snapshot < 1) throw new Error('MEMORY_SNAPSHOT 必须是正整数快照号，留空表示跟随最新快照');
+    if (snapshot === undefined || snapshot < 1) {
+      throw new Error('MEMORY_SNAPSHOT 必须是正整数快照号，留空表示跟随最新快照');
+    }
     cfg.memory.snapshot = snapshot;
   }
   const budget = goAtoi(resolve('MEMORY_RECALL_BUDGET', String(DefaultMemoryRecallBudget)));
@@ -348,95 +269,6 @@ export function load(root: string, environ?: Record<string, string> | null): Con
   }
   cfg.memory.explore = explore;
   return cfg;
-}
-
-/**
- * 子进程（编排工具、渲染器）的环境。对应 Go 的 Config.ChildEnvironment。
- * base 不给（或为 null）时用当前进程环境；unsafe 为 false 时只透传白名单与 passthrough 里的变量。
- */
-export function childEnvironment(
-  config: Config,
-  base?: Record<string, string> | null,
-  unsafe = false,
-  passthrough: string[] = [],
-): Record<string, string> {
-  const source = base ?? envMap();
-  const out: Record<string, string> = {};
-  if (unsafe) {
-    Object.assign(out, source);
-  } else {
-    // USER / LOGNAME / SHELL 不是凭据，但工具链要靠它们确定身份：
-    // macOS 上 claude CLI 缺 USER 就读不到 Keychain 里的登录态，
-    // 报的却是「Not logged in」，与权限隔离毫无关联，极难排查。
-    //
-    // CODEX_HOME 同理不是凭据，而是 Codex 的数据目录：用户改过它时，缺了这个
-    // 变量 Codex 回到 ~/.codex 找登录态，报未登录；内置生图的产物也落到
-    // 那里，自定义风格的定风格阶段拿不到氛围参照图。
-    const allowed = [
-      'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'LANG', 'LC_ALL',
-      'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'CODEX_HOME',
-      // Windows 的系统变量（缺了 SystemRoot 等子进程直接出错，见 envutil.WindowsBaseEnvKeys）；别的系统上没有它们。
-      ...WindowsBaseEnvKeys,
-      ...passthrough,
-    ];
-    for (const key of allowed) {
-      if (Object.hasOwn(source, key)) out[key] = source[key]!;
-    }
-  }
-  Object.assign(out, config.overlay);
-  out.ORCHESTRATOR = config.orchestrator;
-  out.RENDERER = config.renderer;
-  // 模型与工具一起写进去（空就删掉 .env 里带进来的旧值）：子进程按 load 的规则，环境里只有工具、
-  // 没有模型时不会捡起项目配置里给别的工具写的模型。编排工具调用的 onset scene run 因此用会话选的渲染模型。
-  for (const [key, value] of [['ORCHESTRATOR_MODEL', config.orchestratorModel], ['RENDERER_MODEL', config.rendererModel], ['ORCHESTRATOR_OPTIONS', config.orchestratorOptions], ['RENDERER_OPTIONS', config.rendererOptions]] as const) {
-    if (value !== '') out[key] = value;
-    else delete out[key];
-  }
-  // 优化工具同理：执行进程里的 scene_prompt_check 按同一份取值（空是跟随上面的编排工具）。
-  for (const [key, value] of [['OPTIMIZER', config.optimizer], ['OPTIMIZER_MODEL', config.optimizerModel], ['OPTIMIZER_OPTIONS', config.optimizerOptions]] as const) {
-    if (value !== '') out[key] = value;
-    else delete out[key];
-  }
-  out.TTS_PROVIDER = config.ttsProvider;
-  if (config.alignProvider !== '') out.ALIGN_PROVIDER = config.alignProvider;
-  // 记忆设置与 ORCHESTRATOR 一样显式写进去：编排工具调用的 onset memory remember、
-  // onset scene run 必须用同一个记忆库。安全模式的白名单里没有 ONSET_MEMORY_DIR，
-  // 不写的话子进程回落到默认目录——既不是这一个库，也不在 codex 沙箱放行的范围里
-  // （实测：偏好写入被拒，报「没有写入权限」）。
-  if (config.memory.dir !== '') {
-    out.ONSET_MEMORY_DIR = config.memory.dir;
-    out.MEMORY = config.memory.enabled ? 'on' : 'off';
-    out.MEMORY_RECALL_BUDGET = String(config.memory.recallBudget);
-    out.MEMORY_EXPLORE = formatFloatShortest(config.memory.explore);
-    if (config.memory.snapshot > 0) out.MEMORY_SNAPSHOT = String(config.memory.snapshot);
-  }
-  // 风格来源的数据目录同理显式写进去：默认根目录由 XDG_DATA_HOME 推出，而它不在白名单里，
-  // 编排工具调用的 onset film-style 会算出另一个目录，找不到 onset setup 准备好的数据。
-  // 各来源自己的覆盖变量由登记来源的内置插件经 ctx.childEnv 登记，随下面的 pluginEnv 一起写。
-  if (config.filmStyleRoot !== '') out[RootEnv] = config.filmStyleRoot;
-  // CLI 目录同理：子进程里的 onset hyperframes 要找到同一份已装好的 CLI，否则会按 HOME
-  // 另算一个目录，在渲染途中重新 npm install。
-  if (config.hyperFramesCLI !== '') out[CLIDirEnv] = config.hyperFramesCLI;
-  // 内置插件登记的变量同理（例如卡点的节拍分析环境：编排工具调用的 beat_analyze 要找到 onset setup 装好的那一套，
-  // 找不到就会想自己去建）。
-  Object.assign(out, config.pluginEnv);
-  // 音色库同理：编排工具调用的 voice_save、voice_get 与客户端的音色页要是同一个库，
-  // 默认目录由 XDG_DATA_HOME 推出而它不在白名单里。
-  if (config.voicesDir !== '') out[VoicesDirEnv] = config.voicesDir;
-  // 第三方站的存放目录同理：客户端的写任务（station_run）要找到设置页加进来的同一份站。只在子进程会算出
-  // 另一个目录时写（显式指定了，或默认目录由不在白名单里的 XDG_DATA_HOME 推出）。
-  // 名字与默认值同 flow.StationsDirEnv / flow.stationsDir；这里不 import flow，免得配置包依赖流程包。
-  if (source.ONSET_STATIONS_DIR) out.ONSET_STATIONS_DIR = source.ONSET_STATIONS_DIR;
-  else if (source.XDG_DATA_HOME && !unsafe) out.ONSET_STATIONS_DIR = path.join(dataDir(source), 'stations');
-  // 全局设置同理：子进程（编排工具调用的 onset、渲染）按同一份全局设置解析项目配置。
-  if (config.settingsFile !== '') out[SettingsFileEnv] = config.settingsFile;
-  if (source.ONSET_STUDIO_OP_PIPE) out.ONSET_STUDIO_OP_PIPE = source.ONSET_STUDIO_OP_PIPE;
-  // 客户端自带的浏览器与用户显式指定的浏览器同理：子进程里的 onset hyperframes 照样用它们，不去下载 headless-shell。
-  for (const key of [BrowserEnv, HyperFramesBrowserEnv, BrowserHookEnv, BrowserAppArgEnv]) if (source[key]) out[key] = source[key]!;
-  // 客户端自带的 npm、工具目录与 onset setup 的工具目录同理：子进程里的 onset 要找到同一套，而白名单里没有它们。
-  for (const key of toolpathEnvKeys) if (source[key]) out[key] = source[key]!;
-  if (unsafe) out.ONSET_UNSAFE = '1';
-  return out;
 }
 
 /** 设置页上的一项：它现在的值、值从哪来、全局与这个项目各自写的是什么。 */

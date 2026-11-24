@@ -68,7 +68,11 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
     expect_frames: { type: 'integer', description: '交付校验用的冻结总帧数' },
     fps: { type: 'integer', description: '普通复查的帧率覆盖值；交付校验使用 frame.md 的 canvas.fps' },
     silent: { type: 'boolean', description: '断言成片没有音轨，用于只拼接未混音的交付；不做音画比对' },
-    sync_tolerance: { type: 'number', description: '音视频流时长允许的差值（秒）', default: review.DefaultSyncTolerance },
+    sync_tolerance: {
+      type: 'number',
+      description: '音视频流时长允许的差值（秒）',
+      default: review.DefaultSyncTolerance,
+    },
     every: { type: 'number', description: '没给 scenes 时联系表的取帧间隔（秒）', default: review.DefaultEvery },
     per_sheet: { type: 'integer', description: '每张联系表的最大格数，超出分页', default: review.DefaultTilesPerSheet },
     thumb_width: { type: 'integer', description: '联系表缩略图宽度（像素）', default: review.DefaultThumbWidth },
@@ -88,7 +92,9 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
       try {
         canvas = scene.canvasOf(rootDir, 'frame.md');
       } catch (err) {
-        throw new Error(`无法从 ${rootDir} 的 frame.md 确定帧率：${(err as Error).message}；脱离项目使用时请显式传 fps`);
+        throw new Error(
+          `无法从 ${rootDir} 的 frame.md 确定帧率：${(err as Error).message}；脱离项目使用时请显式传 fps`,
+        );
       }
       rate = canvas.fps;
     }
@@ -129,21 +135,42 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
         signal.throwIfAborted();
         const validation = toolchain.verify(source, {
           spec: {
-            widthPx: spec.width_px, heightPx: spec.height_px, fps: spec.fps, frames: spec.frames,
-            codec: spec.codec, pixelFormat: spec.pixel_format,
+            widthPx: spec.width_px,
+            heightPx: spec.height_px,
+            fps: spec.fps,
+            frames: spec.frames,
+            codec: spec.codec,
+            pixelFormat: spec.pixel_format,
             audio: spec.audio_required ? mediaprobe.AudioPresent : mediaprobe.AudioAbsent,
-            sampleRate: spec.sample_rate, channels: spec.channels,
+            sampleRate: spec.sample_rate,
+            channels: spec.channels,
           },
-          exactFrames: true, decode: true, checkFrameZero: true,
+          exactFrames: true,
+          decode: true,
+          checkFrameZero: true,
+          checkSeek: true,
+          checkFileStable: true,
         });
         const media = { ...validation.media, path: reportPath };
         mediaprobe.writeReportJSON({ ...validation, path: reportPath, media }, validationFile);
         if (!validation.ok) {
-          review.writeReportJSON({
-            schema_version: review.ReportSchemaVersion, path: reportPath, ok: false, media,
-            expected_frames: frames, counted_frames: validation.media.video?.nb_frames ?? 0,
-            loudness: null, problems: validation.problems, hints: validation.hints ?? [], cuts: [], sheets: [], seams: [],
-          }, target);
+          review.writeReportJSON(
+            {
+              schema_version: review.ReportSchemaVersion,
+              path: reportPath,
+              ok: false,
+              media,
+              expected_frames: frames,
+              counted_frames: validation.media.video?.nb_frames ?? 0,
+              loudness: null,
+              problems: validation.problems,
+              hints: validation.hints ?? [],
+              cuts: [],
+              sheets: [],
+              seams: [],
+            },
+            target,
+          );
           throw new Error(`成片规格校验未通过：${validationPath}\n  - ${validation.problems.join('\n  - ')}`);
         }
         out.write(`规格与完整解码校验：${validationPath}\n`);
@@ -165,7 +192,7 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
       report.path = reportPath;
       report.media = { ...report.media, path: reportPath };
       if (digest !== undefined) {
-        videoChanged = await sha256File(video).catch(() => '') !== digest;
+        videoChanged = (await sha256File(video).catch(() => '')) !== digest;
         if (videoChanged) {
           report.ok = false;
           report.problems.push('影片在复查期间发生变化，请重新复查');
@@ -181,7 +208,8 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
     signal.throwIfAborted();
     review.writeReportJSON(report, target);
     for (const sheet of report.sheets ?? []) out.write(`联系表：${sheet.image}（${sheet.tiles?.length ?? 0} 格）\n`);
-    if ((report.seams?.length ?? 0) > 0) out.write(`交界条带：${report.seams.length} 张（${report.seams[0].image} 起）\n`);
+    if ((report.seams?.length ?? 0) > 0)
+      out.write(`交界条带：${report.seams.length} 张（${report.seams[0].image} 起）\n`);
     for (const hint of report.hints ?? []) out.write(`提示：${hint}\n`);
     out.write(`报告：${target}\n`);
     // 没接上的交接记到交界两侧的镜头上：哪一侧没按约定画，机器分不清。
@@ -189,7 +217,8 @@ production/silent-master.mp4）：客户端的成片页与制作路线只认这�
     for (const cut of report.cuts ?? []) {
       if (review.handoffBroken(cut)) {
         const problem = `${cut.from} → ${cut.to} 约定了 ${cut.handoff} 交接，但交界两帧差异 ${formatFixed(cut.difference as number, 1)}，没接上`;
-        for (const id of [cut.from, cut.to]) broken.set(id, [...(broken.get(id) ?? []), { check: scene.CheckReviewHandoff, problem }]);
+        for (const id of [cut.from, cut.to])
+          broken.set(id, [...(broken.get(id) ?? []), { check: scene.CheckReviewHandoff, problem }]);
       }
     }
     if (!videoChanged) recordCheckFindings(out, rootDir, planned, broken);
@@ -223,7 +252,9 @@ export function reviewLoudnessTarget(rootDir: string, silent: boolean): review.L
 defineOp({
   name: 'scene_lint',
   cli: ['scene', 'lint'],
-  ...(process.platform==='win32'?{scopes:['orchestrator','renderer'] as Array<'orchestrator'|'renderer'>}:{}),
+  ...(process.platform === 'win32'
+    ? { scopes: ['orchestrator', 'renderer'] as Array<'orchestrator' | 'renderer'> }
+    : {}),
   summary: '扫描镜头合成源码的确定性问题',
   description:
     `静态扫描镜头目录里渲染实际加载的合成源码，找出让渲染结果不可复现的写法。
@@ -254,7 +285,10 @@ defineOp({
     determinism.AllowMarker +
     `: 理由
 豁免，豁免项仍写进报告的 allowed。`,
-  examples: ['scene_lint({"scene": "scenes/scene-003"})', 'scene_lint({"scene": "scenes/scene-003", "report_json": "scenes/scene-003/lint.json"})'],
+  examples: [
+    'scene_lint({"scene": "scenes/scene-003"})',
+    'scene_lint({"scene": "scenes/scene-003", "report_json": "scenes/scene-003/lint.json"})',
+  ],
   params: {
     scene: { type: 'string', description: '镜头目录', required: true, positional: 0 },
     report_json: { type: 'string', description: '把扫描结果写成 JSON 报告到该路径' },
@@ -266,7 +300,8 @@ defineOp({
     for (const hint of report.hints ?? []) out.write(`提示：${hint}\n`);
     for (const skipped of report.skipped ?? []) out.write(`按第三方库跳过：${skipped}\n`);
     for (const allowed of report.allowed ?? []) out.write(`已豁免：${determinism.findingString(allowed)}\n`);
-    if (!report.ok) throw new Error(`合成源码存在确定性问题：${dir}\n  - ${determinism.problems(report).join('\n  - ')}`);
+    if (!report.ok)
+      throw new Error(`合成源码存在确定性问题：${dir}\n  - ${determinism.problems(report).join('\n  - ')}`);
     out.write(`合成源码扫描通过：${report.files?.length ?? 0} 个文件\n`);
     return {
       data: {

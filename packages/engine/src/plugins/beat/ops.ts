@@ -2,22 +2,18 @@
  * 卡点的操作：导入音乐、分析并确认节拍网格、按小节写镜头 cue、校验。由卡点插件在 apply 里登记（index.ts），
  * cli 的操作表经 plugin_ops.ts 订阅后照旧 defineOp。
  */
-import crypto from 'node:crypto';
-import fs from 'node:fs';
 import path from 'node:path';
 import * as beat from '../../beat';
 import { envMap } from '../../envutil';
-import { formatFixed, goPathError, goQuote } from '../../gofmt';
-import { marshal } from '../../gojson';
+import { formatFixed } from '../../gofmt';
 import { newToolchain } from '../../mediaprobe';
 import { bool, num, positiveDuration, projectRoot, str, timeout, withTimeoutSignal } from '../../opkit';
 import type { PluginContext } from '../../plugin/types';
 import * as project from '../../project';
-import { decodeRawMap, encodeRawMapIndent } from '../../rawjson';
-import * as scene from '../../scene';
-import type { Scene } from '../../scene';
 import * as schedule from '../../schedule';
-import { beatBlock, verifyBeatInputs } from './block';
+import { applyBeatCues, beatCoverage } from './cues';
+
+export { beatCoverage } from './cues';
 
 type Out = { write(text: string): void };
 type ParamValues = Record<string, unknown>;
@@ -49,46 +45,23 @@ export const beatGroup = {
     ` 下。`,
 };
 
-/** beatLayout 对齐分镜计划与镜头目录，返回每个镜头的帧区间。 */
-function beatLayout(root: string, scenes: readonly Scene[]): { grid: beat.Grid; segments: beat.Segment[]; fps: number } {
-  const grid = beat.loadGrid(root);
-  const plan = beat.loadPlan(root);
-  const canvas = scene.canvasOf(root, 'frame.md');
-  const segments = beat.layout(grid, plan, canvas.fps);
-  if (segments.length !== scenes.length) throw new Error(`${beat.PlanFile} 有 ${segments.length} 个镜头，镜头目录有 ${scenes.length} 个`);
-  const mismatched: string[] = [];
-  scenes.forEach((s, i) => {
-    if (s.id !== segments[i].id) mismatched.push(`第 ${i + 1} 个：计划 ${segments[i].id}，目录 ${s.id}`);
-    const others = scene.sceneBlocks().filter((b) => b.key !== beatBlock.key && scene.blockValue(s, b.key) !== null);
-    if (others.length > 0) throw new Error(`卡点镜头 ${s.id} 不能带 ${others.map((b) => b.key).join('、')} 块`);
-  });
-  if (mismatched.length > 0) throw new Error(`镜头顺序与 ${beat.PlanFile} 不一致（目录按字典序）：${mismatched.join('；')}`);
-  return { grid, segments, fps: canvas.fps };
+function readGridFile(root: string, file: string): beat.Grid {
+  return beat.readDraft(file === '' ? path.join(root, beat.DraftFile) : file);
 }
 
-/** beatCoverage 校验全部镜头都带着与网格、计划一致的 beat 块，且首尾相接覆盖整首音乐。 */
-export function beatCoverage(root: string, scenes: readonly Scene[]): void {
-  const { segments } = beatLayout(root, scenes);
-  const problems: string[] = [];
-  scenes.forEach((s, i) => {
-    const segment = segments[i];
-    if (s.beat === null) {
-      problems.push(`${s.id} 缺少 beat 块`);
-      return;
-    }
-    if (s.beat.start_frame !== segment.startFrame || s.beat.frames !== segment.frames) {
-      problems.push(`${s.id} 的帧区间与计划不符：beat 块 ${s.beat.start_frame}+${s.beat.frames}，计划 ${segment.startFrame}+${segment.frames}`);
-      return;
-    }
-    try {
-      verifyBeatInputs(s);
-    } catch (err) {
-      problems.push(`${s.id}：${(err as Error).message}`);
-    }
-  });
-  if (problems.length > 0) throw new Error(`卡点镜头校验未通过，改过网格或计划后请重新 beat_cues()：\n  - ${problems.join('\n  - ')}`);
+function reportDraft(out: Out, grid: beat.Grid): void {
+  out.write(`草稿网格：${beat.summaryString(beat.summarize(grid))}\n`);
+  for (const problem of beat.gridProblems(grid)) out.write(`问题：${problem}\n`);
+  out.write(`请试听 ${beat.ClickFile}：每拍一声，重拍更高。重拍错位用 beat_regrid()，确认无误后 beat_confirm()\n`);
 }
 
+function printBars(out: Out, grid: beat.Grid): void {
+  for (const bar of beat.gridBars(grid)) {
+    out.write(
+      `  第 ${String(bar.number).padStart(3)} 小节  ${formatFixed(bar.start_seconds, 3).padStart(8)} – ${formatFixed(bar.end_seconds, 3).padStart(8)} 秒  ${bar.beats} 拍\n`,
+    );
+  }
+}
 
 /** 登记卡点的全部操作。 */
 export function beatOps(ctx: PluginContext): void {
@@ -144,7 +117,10 @@ export function beatOps(ctx: PluginContext): void {
     name: 'beat_import',
     cli: ['beat', 'import'],
     summary: '导入音乐，记录摘要与实测时长',
-    description: '把音乐复制进 ' + beat.Store + '，完整解码一遍并记录 SHA-256 与时长。已导入另一首时默认拒绝：换歌会让网格与镜头全部失效，确认后加 "replace": true。授权来源记进素材账本，这里不判断授权。',
+    description:
+      '把音乐复制进 ' +
+      beat.Store +
+      '，完整解码一遍并记录 SHA-256 与时长。已导入另一首时默认拒绝：换歌会让网格与镜头全部失效，确认后加 "replace": true。授权来源记进素材账本，这里不判断授权。',
     examples: ['beat_import({"music": "~/Music/track.mp3"})', 'beat_import({"music": "new-cut.wav", "replace": true})'],
     params: {
       music: { type: 'string', description: '音乐文件', required: true, positional: 0 },
@@ -163,7 +139,12 @@ export function beatOps(ctx: PluginContext): void {
     name: 'beat_analyze',
     cli: ['beat', 'analyze'],
     summary: '分析节拍，写出草稿网格与试听轨',
-    description: '用 beat-this 分析普通拍与重拍，写出 ' + beat.DraftFile + ' 与 ' + beat.ClickFile + '。试听轨里每拍一声，重拍更高更响。草稿不会生效：必须让用户听完试听轨，再用 beat_confirm() 导入。',
+    description:
+      '用 beat-this 分析普通拍与重拍，写出 ' +
+      beat.DraftFile +
+      ' 与 ' +
+      beat.ClickFile +
+      '。试听轨里每拍一声，重拍更高更响。草稿不会生效：必须让用户听完试听轨，再用 beat_confirm() 导入。',
     examples: ['beat_analyze()'],
     params: { project_root: projectRoot, timeout: analysisTimeout },
     run: async (p, { out, signal }) => {
@@ -223,7 +204,10 @@ export function beatOps(ctx: PluginContext): void {
     // 确认网格要用户本人听过：插件页面不能替他点。
     noPageCall: true,
     summary: '把试听确认过的网格导入为正式网格',
-    description: '只在用户听完试听轨、确认每个重拍咔嗒都落在小节开头之后执行。正式网格写入 ' + beat.GridFile + '；之后再改网格，所有镜头 cue 失效，需重新 beat_cues() 并重渲染。',
+    description:
+      '只在用户听完试听轨、确认每个重拍咔嗒都落在小节开头之后执行。正式网格写入 ' +
+      beat.GridFile +
+      '；之后再改网格，所有镜头 cue 失效，需重新 beat_cues() 并重渲染。',
     examples: ['beat_confirm()', 'beat_confirm({"grid": "my-grid.json"})'],
     params: { grid: gridParam, project_root: projectRoot },
     run: (p, { out }) => {
@@ -240,7 +224,8 @@ export function beatOps(ctx: PluginContext): void {
     name: 'beat_bars',
     cli: ['beat', 'bars'],
     summary: '列出正式网格的每个小节',
-    description: '写分镜计划前用它查每个小节的起止时间与拍数。第一个重拍之前的弱起并进第一个镜头，最后一小节延伸到音乐结束。',
+    description:
+      '写分镜计划前用它查每个小节的起止时间与拍数。第一个重拍之前的弱起并进第一个镜头，最后一小节延伸到音乐结束。',
     examples: ['beat_bars()'],
     params: { project_root: projectRoot },
     run: (p, { out }) => {
@@ -278,129 +263,12 @@ export function beatOps(ctx: PluginContext): void {
     },
   });
 
-  function readGridFile(root: string, file: string): beat.Grid {
-    return beat.readDraft(file === '' ? path.join(root, beat.DraftFile) : file);
-  }
-
-  function reportDraft(out: Out, grid: beat.Grid): void {
-    out.write(`草稿网格：${beat.summaryString(beat.summarize(grid))}\n`);
-    for (const problem of beat.gridProblems(grid)) out.write(`问题：${problem}\n`);
-    out.write(`请试听 ${beat.ClickFile}：每拍一声，重拍更高。重拍错位用 beat_regrid()，确认无误后 beat_confirm()\n`);
-  }
-
-  function printBars(out: Out, grid: beat.Grid): void {
-    for (const bar of beat.gridBars(grid)) {
-      out.write(`  第 ${String(bar.number).padStart(3)} 小节  ${formatFixed(bar.start_seconds, 3).padStart(8)} – ${formatFixed(bar.end_seconds, 3).padStart(8)} 秒  ${bar.beats} 拍\n`);
-    }
-  }
-
-  interface PendingWrite {
-    path: string;
-    body: Buffer;
-  }
-
-  function applyBeatCues(root: string, scenesRoot: string): number {
-    const scenes = schedule.plan(scenesRoot);
-    const { grid, segments, fps } = beatLayout(root, scenes);
-    const absRoot = path.resolve(root);
-    const gridSHA = beat.gridSHA(root);
-    const writes: PendingWrite[] = [];
-    scenes.forEach((s, i) => {
-      // 镜头目录向上找到的项目根必须就是本次的 --project-root，否则写出的
-      // 引用在渲染时会指向另一个项目的网格。
-      let found = '';
-      let failed = false;
-      try {
-        found = beat.findRoot(s.directory);
-      } catch {
-        failed = true;
-      }
-      if (failed || found !== absRoot) {
-        throw new Error(`镜头 ${s.id} 不在项目 ${absRoot} 之内（向上找到的 ${beat.ConfigFile} 根是 ${goQuote(found)}）`);
-      }
-      const gridRef = beat.gridRef(s.directory, absRoot);
-      const segment = segments[i];
-      const { body: data, sha256: dataSHA } = beat.encodeLocal(beat.sliceGrid(grid, segment, fps));
-      const cue: beat.Cue = {
-        scene: s.id,
-        first_bar: segment.firstBar,
-        bars: segment.bars,
-        fps,
-        grid: gridRef,
-        sha256: gridSHA,
-        start_frame: segment.startFrame,
-        frames: segment.frames,
-        data: beat.CueDataFile,
-        data_sha256: dataSHA,
-      };
-      const sceneFile = path.join(s.directory, 'scene.json');
-      let raw: string;
-      try {
-        raw = fs.readFileSync(sceneFile, 'utf8');
-      } catch (err) {
-        throw new Error(goPathError('open', sceneFile, err), { cause: err });
-      }
-      let fields: Map<string, string>;
-      try {
-        fields = decodeRawMap(raw);
-      } catch (err) {
-        throw new Error(`${sceneFile} 不是合法 JSON：${(err as Error).message}`, { cause: err });
-      }
-      fields.set('beat', marshal(beat.cueToJSON(cue)));
-      fields.set('duration_seconds', marshal(segment.frames / fps));
-      const body = encodeRawMapIndent(fields);
-      writes.push({ path: path.join(s.directory, beat.CueDataFile), body: data }, { path: sceneFile, body: Buffer.from(body + '\n') });
-    });
-    commitWrites(writes);
-    return scenes.length;
-  }
-
-  /**
-   * commitWrites 分两轮落盘：先把每份新内容写成同目录的临时文件，全部成功后
-   * 再逐个改名替换。磁盘满、权限不足这类错误都发生在第一轮，此时一个目标文件
-   * 都还没动；第二轮只剩同文件系统内的 rename。rename 本身仍可能中途失败，
-   * 那时 onset validate beat 会按网格摘要把没换上的镜头报出来。
-   *
-   * 内容不变的文件不重写：run-all 靠 scene.json 的修改时间判断产物是否过期，
-   * 无变化的重跑不能把所有镜头都标成需要重渲染。
-   */
-  function commitWrites(writes: readonly PendingWrite[]): void {
-    const ready: { temp: string; path: string }[] = [];
-    const cleanup = () => {
-      for (const s of ready) fs.rmSync(s.temp, { force: true });
-    };
-    for (const w of writes) {
-      try {
-        if (fs.readFileSync(w.path).equals(w.body)) continue;
-      } catch {
-        // 不存在：照常写。
-      }
-      const temp = path.join(path.dirname(w.path), '.' + path.basename(w.path) + '.' + crypto.randomInt(1e9));
-      try {
-        fs.writeFileSync(temp, w.body, { flag: 'wx', mode: 0o600 });
-        fs.chmodSync(temp, 0o644);
-      } catch (err) {
-        fs.rmSync(temp, { force: true });
-        cleanup();
-        throw new Error(goPathError('open', temp, err), { cause: err });
-      }
-      ready.push({ temp, path: w.path });
-    }
-    for (let i = 0; i < ready.length; i++) {
-      try {
-        fs.renameSync(ready[i].temp, ready[i].path);
-      } catch (err) {
-        for (const rest of ready.slice(i)) fs.rmSync(rest.temp, { force: true });
-        throw new Error(`写入 ${ready[i].path} 失败，部分镜头可能仍是旧网格，请重跑 beat_cues()：${(err as Error).message}`, { cause: err });
-      }
-    }
-  }
-
   ctx.op({
     name: 'validate_beat',
     cli: ['validate', 'beat'],
     summary: '校验节拍网格、分镜计划与全部卡点镜头',
-    description: '检查正式网格已人工确认且属于当前音乐；分镜计划的小节合计等于网格小节数；镜头目录与计划逐一对应；每个镜头的 beat 块、时长与局部节拍文件都与网格一致，切点全部落在重拍上。不通过时报错。',
+    description:
+      '检查正式网格已人工确认且属于当前音乐；分镜计划的小节合计等于网格小节数；镜头目录与计划逐一对应；每个镜头的 beat 块、时长与局部节拍文件都与网格一致，切点全部落在重拍上。不通过时报错。',
     examples: ['validate_beat()'],
     params: {
       project_root: projectRoot,

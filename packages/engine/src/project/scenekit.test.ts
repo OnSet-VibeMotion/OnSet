@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
-import YAML from 'yaml';
 import { afterEach, describe, expect, it } from 'vitest';
+import YAML from 'yaml';
 import * as assets from '../assets';
 import { problems, scan } from '../determinism';
 import { skillTreeRoot } from './testsupport';
@@ -21,63 +21,138 @@ function exampleFontFiles(shared: assets.AssetTree, file: string): string[] {
 
 describe('scene-kit', () => {
   function textKit(start: number | null = 100) {
-    const win: Record<string, unknown> = { ONSET_SCENE: { schema: 1, scene_id: 'scene-001', fps: 30, frames: 90, start_frame: start,
-      phrases: [{ phrase_id: 'p1', text: '顺序', start_frame: 10, end_frame_exclusive: 45 }] } };
+    const win: Record<string, unknown> = {
+      ONSET_SCENE: {
+        schema: 1,
+        scene_id: 'scene-001',
+        fps: 30,
+        frames: 90,
+        start_frame: start,
+        phrases: [{ phrase_id: 'p1', text: '顺序', start_frame: 10, end_frame_exclusive: 45 }],
+      },
+    };
     vm.runInNewContext(assets.shared().readText(`${skillTreeRoot}/scene-kit/scene-kit.js`), { window: win });
-    return win.SceneKit as { phraseText: (element: unknown, id: string, options?: Record<string, unknown>) => {
-      render: (frame: number) => void; event: (coordinates?: {global: boolean}) => Record<string, unknown>;
-    } };
+    return win.SceneKit as {
+      phraseText: (
+        element: unknown,
+        id: string,
+        options?: Record<string, unknown>,
+      ) => {
+        render: (frame: number) => void;
+        event: (coordinates?: { global: boolean }) => Record<string, unknown>;
+      };
+    };
   }
 
   it('keeps every text layer hidden before its phrase, including backward seeks, and exports one coordinate conversion', () => {
     const kit = textKit();
-    const nodes = [0, 1].map((i) => ({ id: `line-${i}`, tagName: 'DIV', style: {} as Record<string,string>, textContent: '' }));
+    const nodes = [0, 1].map((i) => ({
+      id: `line-${i}`,
+      tagName: 'DIV',
+      style: {} as Record<string, string>,
+      textContent: '',
+    }));
     const labels = nodes.map((node) => kit.phraseText(node, 'p1', { readableStartFrame: 15, endFrame: 60 }));
-    expect(nodes.map(n => n.style.visibility)).toEqual(['hidden', 'hidden']);
+    expect(nodes.map((n) => n.style.visibility)).toEqual(['hidden', 'hidden']);
     for (const frame of [0, 9, 10, 59, 0, 60, 10]) {
-      labels.forEach(label => label.render(frame));
-      expect(nodes.map(n => n.style.visibility)).toEqual([frame >= 10 && frame < 60 ? 'visible' : 'hidden'].flatMap(v => [v,v]));
+      labels.forEach((label) => label.render(frame));
+      expect(nodes.map((n) => n.style.visibility)).toEqual(
+        [frame >= 10 && frame < 60 ? 'visible' : 'hidden'].flatMap((v) => [v, v]),
+      );
     }
-    expect(labels[0].event()).toMatchObject({ text: '顺序', phrase_id: 'p1', enter_frame: 10, readable_start_frame: 15, readable_end_frame_exclusive: 60 });
-    expect(labels[0].event({global:true})).toMatchObject({ enter_frame: 110, readable_start_frame: 115, exit_end_frame: 160 });
+    expect(labels[0].event()).toMatchObject({
+      text: '顺序',
+      phrase_id: 'p1',
+      enter_frame: 10,
+      readable_start_frame: 15,
+      readable_end_frame_exclusive: 60,
+    });
+    expect(labels[0].event({ global: true })).toMatchObject({
+      enter_frame: 110,
+      readable_start_frame: 115,
+      exit_end_frame: 160,
+    });
     expect(labels[0].event().enter_frame).toBe(10);
-    expect(() => textKit(null).phraseText(nodes[0], 'p1').event({global:true})).toThrow('缺少 start_frame');
+    expect(() => textKit(null).phraseText(nodes[0], 'p1').event({ global: true })).toThrow('缺少 start_frame');
   });
 
   it('clears a dedicated canvas even when seeking before the phrase and never draws outside its window', () => {
-    const drawn: number[] = [], cleared: unknown[][] = [];
-    const context = { save() {}, restore() {}, setTransform() {}, clearRect(...args: unknown[]) { cleared.push(args); } };
-    const node = { id: 'canvas-label', tagName: 'CANVAS', style: {} as Record<string,string>, width: 300, height: 100, getContext: () => context };
+    const drawn: number[] = [],
+      cleared: unknown[][] = [];
+    const context = {
+      save() {},
+      restore() {},
+      setTransform() {},
+      clearRect(...args: unknown[]) {
+        cleared.push(args);
+      },
+    };
+    const node = {
+      id: 'canvas-label',
+      tagName: 'CANVAS',
+      style: {} as Record<string, string>,
+      width: 300,
+      height: 100,
+      getContext: () => context,
+    };
     const label = textKit().phraseText(node, 'p1', { endFrame: 50, draw: (frame: number) => drawn.push(frame) });
     for (const frame of [0, 10, 49, 9, 50]) label.render(frame);
     expect(drawn).toEqual([10, 49]);
     expect(cleared).toHaveLength(5);
-    expect(cleared.every(args => args.join(',') === '0,0,300,100')).toBe(true);
+    expect(cleared.every((args) => args.join(',') === '0,0,300,100')).toBe(true);
     expect(node.style.visibility).toBe('hidden');
     expect(() => textKit().phraseText(node, 'p1')).toThrow('独占图层');
   });
 
   it('rejects invented bindings, decorative text and windows outside the frozen scene', () => {
-    const kit = textKit(), node = { id:'text', tagName:'DIV', style:{}, textContent:'' };
+    const kit = textKit(),
+      node = { id: 'text', tagName: 'DIV', style: {}, textContent: '' };
     expect(() => kit.phraseText(node, 'invented')).toThrow('没有短语');
-    expect(() => kit.phraseText(node, 'p1', {role:'decorative'})).toThrow('不能标为 decorative');
-    for (const options of [{enterFrame:9}, {endFrame:91}, {readableStartFrame:60,endFrame:60}]) {
+    expect(() => kit.phraseText(node, 'p1', { role: 'decorative' })).toThrow('不能标为 decorative');
+    for (const options of [{ enterFrame: 9 }, { endFrame: 91 }, { readableStartFrame: 60, endFrame: 60 }]) {
       expect(() => kit.phraseText(node, 'p1', options)).toThrow('须满足');
     }
   });
 
   it('exports captions from the actual layout windows and line text instead of another hand-copied timeline', () => {
     const element = () => ({ style: {}, className: '', textContent: '', appendChild() {}, setAttribute() {} });
-    const win: Record<string, unknown> = { ONSET_SCENE: { schema: 1, scene_id: 'fixture', fps: 30, frames: 90, start_frame: 100,
-      width_px: 800, height_px: 600, safe_area: {subtitles:{left_px:20,top_px:400,right_px:20,bottom_px:30}},
-      subtitles: {font_size_px:{min:24,max:24},max_lines:2}, cues:[{index:4,text:'早一点',start_frame:10,end_frame_exclusive:30}],phrases:[] },
-      document: {createElement:element} };
-    vm.runInNewContext(assets.shared().readText(`${skillTreeRoot}/scene-kit/scene-kit.js`), {window:win});
-    const kit=win.SceneKit as {captions:(root:unknown,options:unknown)=>{layouts:{lines:string[]}[];events:(coordinates?:{global:boolean})=>Record<string,unknown>[]}};
-    const captions=kit.captions({appendChild() {},ownerDocument:win.document},{leadFrames:3,tailFrames:4});
-    expect(captions.events()).toMatchObject([{event_id:'subtitle-4',role:'subtitle',text:'早一点',readable_start_frame:7,readable_end_frame_exclusive:34}]);
-    expect(captions.events({global:true})).toMatchObject([{readable_start_frame:107,readable_end_frame_exclusive:134}]);
-    captions.layouts[0].lines=['早','一点'];
+    const win: Record<string, unknown> = {
+      ONSET_SCENE: {
+        schema: 1,
+        scene_id: 'fixture',
+        fps: 30,
+        frames: 90,
+        start_frame: 100,
+        width_px: 800,
+        height_px: 600,
+        safe_area: { subtitles: { left_px: 20, top_px: 400, right_px: 20, bottom_px: 30 } },
+        subtitles: { font_size_px: { min: 24, max: 24 }, max_lines: 2 },
+        cues: [{ index: 4, text: '早一点', start_frame: 10, end_frame_exclusive: 30 }],
+        phrases: [],
+      },
+      document: { createElement: element },
+    };
+    vm.runInNewContext(assets.shared().readText(`${skillTreeRoot}/scene-kit/scene-kit.js`), { window: win });
+    const kit = win.SceneKit as {
+      captions: (
+        root: unknown,
+        options: unknown,
+      ) => { layouts: { lines: string[] }[]; events: (coordinates?: { global: boolean }) => Record<string, unknown>[] };
+    };
+    const captions = kit.captions({ appendChild() {}, ownerDocument: win.document }, { leadFrames: 3, tailFrames: 4 });
+    expect(captions.events()).toMatchObject([
+      {
+        event_id: 'subtitle-4',
+        role: 'subtitle',
+        text: '早一点',
+        readable_start_frame: 7,
+        readable_end_frame_exclusive: 34,
+      },
+    ]);
+    expect(captions.events({ global: true })).toMatchObject([
+      { readable_start_frame: 107, readable_end_frame_exclusive: 134 },
+    ]);
+    captions.layouts[0].lines = ['早', '一点'];
     expect(captions.events()[0].text).toBe('早\n一点');
   });
 
@@ -114,7 +189,9 @@ describe('scene-kit', () => {
     expect(cap.layouts[0].lines.some((line) => line.includes('提示词缓存'))).toBe(true);
     expect(cap.layouts[1].lines.some((line) => line.includes('Claude Code'))).toBe(true);
     // 超过单行宽度的长短语不强制锁死，仍可正常折行而不溢出。
-    const longLines = kit.breakLines('这是一句很长很长的测试，用来验证超长短语不会溢出', 12, 2, ['这是一句很长很长的测试，用来验证超长短语不会溢出']);
+    const longLines = kit.breakLines('这是一句很长很长的测试，用来验证超长短语不会溢出', 12, 2, [
+      '这是一句很长很长的测试，用来验证超长短语不会溢出',
+    ]);
     expect(longLines).not.toBeNull();
     expect(longLines!.length).toBe(2);
 
@@ -151,7 +228,8 @@ describe('scene-kit', () => {
     // 示例引用的字体按技能说明随镜头目录提供；缺了它，扫描会如实报字体文件缺失。
     const fonts = path.join(sceneDir, 'assets', 'fonts');
     fs.mkdirSync(fonts, { recursive: true });
-    for (const name of exampleFontFiles(shared, skill + 'example.html')) fs.writeFileSync(path.join(fonts, name), 'woff2');
+    for (const name of exampleFontFiles(shared, skill + 'example.html'))
+      fs.writeFileSync(path.join(fonts, name), 'woff2');
     // onset-scene.js 由 onset 在渲染前生成，这里只放一个占位，让引用能解析到本地文件。
     fs.writeFileSync(path.join(sceneDir, 'onset-scene.js'), 'window.ONSET_SCENE = {schema: 1};\n');
 
@@ -167,18 +245,39 @@ describe('scene-kit', () => {
   // frame.md 的字幕规范只有版式：配色由镜头自己定。没给配色时文字跟随整片配色的 ink，没有底框；镜头给了就用镜头的。
   it('captions take layout from frame.md and colours from the scene', () => {
     const frame = assets.canvas('vertical-9x16').readText('frame.md');
-    const front = YAML.parse(frame.split('\n---\n')[0].replace(/^---\n/, '')) as { safe_area: unknown; subtitles: Record<string, unknown> };
-    for (const key of ['background', 'text_color', 'padding_px', 'radius_px']) expect(front.subtitles, key).not.toHaveProperty(key);
+    const front = YAML.parse(frame.split('\n---\n')[0].replace(/^---\n/, '')) as {
+      safe_area: unknown;
+      subtitles: Record<string, unknown>;
+    };
+    for (const key of ['background', 'text_color', 'padding_px', 'radius_px'])
+      expect(front.subtitles, key).not.toHaveProperty(key);
     const safe = { left_px: 60, top_px: 1500, right_px: 60, bottom_px: 200 };
     const run = (look: unknown, options: Record<string, unknown> = {}) => {
       const made: { style: Record<string, string>; className: string }[] = [];
       const el = () => {
-        const node = { style: {} as Record<string, string>, className: '', textContent: '', appendChild: () => undefined, setAttribute: () => undefined };
+        const node = {
+          style: {} as Record<string, string>,
+          className: '',
+          textContent: '',
+          appendChild: () => undefined,
+          setAttribute: () => undefined,
+        };
         made.push(node);
         return node;
       };
       const win: Record<string, unknown> = {
-        ONSET_SCENE: { schema: 1, fps: 30, frames: 60, width_px: 1080, height_px: 1920, safe_area: { subtitles: safe }, subtitles: front.subtitles, cues: [{ index: 1, text: '你好', start_frame: 0, end_frame_exclusive: 30 }], phrases: [], ...(look ? { look } : {}) },
+        ONSET_SCENE: {
+          schema: 1,
+          fps: 30,
+          frames: 60,
+          width_px: 1080,
+          height_px: 1920,
+          safe_area: { subtitles: safe },
+          subtitles: front.subtitles,
+          cues: [{ index: 1, text: '你好', start_frame: 0, end_frame_exclusive: 30 }],
+          phrases: [],
+          ...(look ? { look } : {}),
+        },
       };
       win.document = { createElement: el };
       vm.runInNewContext(assets.shared().readText(`${skillTreeRoot}/scene-kit/scene-kit.js`), { window: win });
@@ -191,7 +290,82 @@ describe('scene-kit', () => {
     expect(plain.color).toBeUndefined();
     expect(plain.borderRadius).toBe('0px');
     expect(run({ background: '#000000', ink: '#F5F1E8', accent: '#F2B134' }).color).toBe('#F5F1E8');
-    const own = run({ ink: '#F5F1E8' }, { color: '#111111', background: 'rgba(255, 255, 255, 0.8)', padding: { vertical: 10, horizontal: 20 }, radius: 8 });
-    expect(own).toMatchObject({ color: '#111111', background: 'rgba(255, 255, 255, 0.8)', padding: '10px 20px', borderRadius: '8px' });
+    const own = run(
+      { ink: '#F5F1E8' },
+      {
+        color: '#111111',
+        background: 'rgba(255, 255, 255, 0.8)',
+        padding: { vertical: 10, horizontal: 20 },
+        radius: 8,
+      },
+    );
+    expect(own).toMatchObject({
+      color: '#111111',
+      background: 'rgba(255, 255, 255, 0.8)',
+      padding: '10px 20px',
+      borderRadius: '8px',
+    });
+  });
+
+  it('provides deterministic cubicBezier, strong easing presets, analytical spring, and non-uniform stagger', () => {
+    const win: Record<string, unknown> = { ONSET_SCENE: { schema: 1, fps: 30, frames: 90 } };
+    vm.runInNewContext(assets.shared().readText(`${skillTreeRoot}/scene-kit/scene-kit.js`), { window: win });
+    const kit = win.SceneKit as {
+      ease: (name: string, t?: number) => number | ((t: number) => number);
+      eases: string[];
+      cubicBezier: (x1: number, y1: number, x2: number, y2: number, t?: number) => number | ((t: number) => number);
+      spring: (frame: number, startFrame: number, opts?: Record<string, unknown>) => number;
+      stagger: (
+        index: number,
+        count: number,
+        totalFrames: number,
+        easeName?: string | ((u: number) => number),
+      ) => number;
+    };
+
+    // 三条强缓动预设已注册且比普通 cubicOut 更有起停张力。
+    for (const preset of ['snappyOut', 'smoothInOut', 'drawerOut']) {
+      expect(kit.eases).toContain(preset);
+      expect(kit.ease(preset, 0)).toBe(0);
+      expect(kit.ease(preset, 1)).toBe(1);
+    }
+    expect(kit.ease('snappyOut', 0.25) as number).toBeGreaterThan(kit.ease('cubicOut', 0.25) as number);
+    // smoothInOut (0.77, 0, 0.175, 1) 为强加减速非对称曲线：起停慢、中段快。
+    expect(kit.ease('smoothInOut', 0.25) as number).toBeLessThan(0.15);
+    expect(kit.ease('smoothInOut', 0.5) as number).toBeGreaterThan(0.5);
+    expect(kit.ease('smoothInOut', 0.75) as number).toBeGreaterThan(0.9);
+
+    // 通用 cubicBezier 既可返回函数也可直接求值，并拦截非法控制点。
+    const linear = kit.cubicBezier(0, 0, 1, 1) as (t: number) => number;
+    expect(linear(0.37)).toBeCloseTo(0.37, 4);
+    expect(kit.cubicBezier(0.23, 1, 0.32, 1, 0.5) as number).toBeCloseTo(kit.ease('snappyOut', 0.5) as number, 5);
+    expect(() => kit.cubicBezier(-0.1, 0, 1, 1)).toThrow(/\[0, 1\]/);
+
+    // 确定性物理弹簧：起点前为 0、正 bounce 会过冲、零 bounce 无过冲、负 bounce 更柔缓、远端收敛到 1 且与求值顺序无关。
+    expect(kit.spring(10, 10)).toBe(0);
+    expect(kit.spring(5, 10)).toBe(0);
+    const bouncyPeak = Math.max(
+      ...Array.from({ length: 30 }, (_, i) => kit.spring(10 + i, 10, { duration: 0.5, bounce: 0.4 })),
+    );
+    expect(bouncyPeak).toBeGreaterThan(1.05);
+    const critical = Array.from({ length: 45 }, (_, i) => kit.spring(10 + i, 10, { duration: 0.5, bounce: 0 }));
+    expect(Math.max(...critical)).toBeLessThanOrEqual(1);
+    expect(kit.spring(20, 10, { duration: 0.5, bounce: -0.4 })).toBeLessThan(
+      kit.spring(20, 10, { duration: 0.5, bounce: 0 }),
+    );
+    expect(kit.spring(90, 10, { duration: 0.5, bounce: 0.2 })).toBe(1);
+    // 任意乱序 seek 结果一致。
+    expect(kit.spring(17, 10, { duration: 0.5, bounce: 0.25 })).toBe(
+      kit.spring(17, 10, { duration: 0.5, bounce: 0.25 }),
+    );
+    expect(() => kit.spring(15, 10, { bounce: 1 })).toThrow(/bounce/);
+
+    // 非均匀交错：首项 0、末项 totalFrames、相邻间隔递减成波浪感。
+    const delays = [0, 1, 2, 3].map((i) => kit.stagger(i, 4, 12));
+    expect(delays[0]).toBe(0);
+    expect(delays[3]).toBe(12);
+    expect(delays[1] - delays[0]).toBeGreaterThan(delays[3] - delays[2]);
+    expect(kit.stagger(0, 1, 12)).toBe(0);
+    expect(kit.stagger(1, 3, 10, 'linear')).toBe(5);
   });
 });

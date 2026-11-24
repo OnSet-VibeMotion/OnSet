@@ -86,7 +86,45 @@ describe('skill tree', () => {
     expect(entries.length, '技能树是空的').toBeGreaterThan(0);
     for (const entry of entries) {
       if (!entry.isDir) continue;
-      expect(shared.exists(`${skillTreeRoot}/${entry.name}/${skillManifest}`), `技能 ${entry.name} 缺少 ${skillManifest}`).toBe(true);
+      expect(
+        shared.exists(`${skillTreeRoot}/${entry.name}/${skillManifest}`),
+        `技能 ${entry.name} 缺少 ${skillManifest}`,
+      ).toBe(true);
     }
+  });
+
+  // 严格 YAML frontmatter 门禁：部分外部 CLI 按标准 YAML 解析 SKILL.md frontmatter，
+  // 裸冒号（": "）或裸井号（" #"）会导致技能加载静默失败。
+  it('every skill manifest has strict YAML frontmatter', () => {
+    const shared = assets.shared();
+    const entries = shared.readDir(skillTreeRoot);
+    const problems: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isDir) continue;
+      const file = `${skillTreeRoot}/${entry.name}/${skillManifest}`;
+      const text = shared.readText(file);
+      const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+      if (!match) {
+        problems.push(`${file} 缺少 YAML frontmatter`);
+        continue;
+      }
+      const frontmatter = match[1];
+      if (!/^name:\s*[a-z0-9-]+$/m.test(frontmatter)) problems.push(`${file} frontmatter 缺少合法 name`);
+      if (!/^description:\s*.+$/m.test(frontmatter)) problems.push(`${file} frontmatter 缺少 description`);
+      for (const line of frontmatter.split(/\r?\n/)) {
+        if (!line.trim() || /^\s/.test(line)) continue;
+        const field = line.match(/^([A-Za-z_][\w-]*):(?: (.*))?$/);
+        if (!field) {
+          problems.push(`${file} frontmatter 行不是合法 YAML 键：${line}`);
+          continue;
+        }
+        const value = (field[2] ?? '').trim();
+        if (!value || /^[>|][+-]?$/.test(value) || /^'[^']*'$|^"(?:[^"\\]|\\.)*"$/.test(value)) continue;
+        if (/^[-?:,[\]{}#&*!|>'"%@`]/.test(value) || /: | #|:$/.test(value)) {
+          problems.push(`${file} frontmatter 字段 ${field[1]} 含裸特殊字符，需加引号或改用折叠块`);
+        }
+      }
+    }
+    expect(problems).toEqual([]);
   });
 });

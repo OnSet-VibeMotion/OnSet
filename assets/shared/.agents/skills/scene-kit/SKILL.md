@@ -66,7 +66,10 @@ window.__timelines['main'] = tl; // 键名与根节点 data-composition-id 一�
 |---|---|
 | `clamp(v, lo, hi)` | 钳位 |
 | `lerp(a, b, t)` | 线性插值 |
-| `ease(name, t)` / `ease(name)` | 求缓动值（t 先钳到 [0, 1]）/ 取缓动函数。可选：`linear`、`sineIn/Out/InOut`、`quadIn/Out/InOut`、`cubicIn/Out/InOut`、`expoIn/Out/InOut`、`backIn/Out/InOut`。未知名字抛错 |
+| `ease(name, t)` / `ease(name)` | 求缓动值（t 先钳到 [0, 1]）/ 取缓动函数。可选：`linear`、`sineIn/Out/InOut`、`quadIn/Out/InOut`、`cubicIn/Out/InOut`、`expoIn/Out/InOut`、`backIn/Out/InOut`，以及三条强张力曲线：`snappyOut`（入场/落定，`0.23,1,0.32,1`）、`smoothInOut`（画面内移动/形变，`0.77,0,0.175,1`）、`drawerOut`（大面板推入，`0.32,0.72,0,1`）。未知名字抛错 |
+| `cubicBezier(x1, y1, x2, y2, t?)` | 通用三次贝塞尔缓动；省略 `t` 返回缓动函数，传 `t` 直接求值（`x1`/`x2` 须在 `[0, 1]`） |
+| `spring(frame, startFrame, options?)` | 按帧确定性物理弹簧（0 → 1，可过冲）。`options` 支持 `{duration, bounce, durationFrames, fps}`：`duration` 为感知时长（秒，默认 `0.5`），`bounce` 在 `(-1, 1)`（默认 `0.2`；`0` 临界阻尼无回弹，`0.1–0.3` 轻弹，`<0` 过阻尼柔缓）；未传 `fps` 时自动读 `ONSET_SCENE.fps` |
+| `stagger(index, count, totalFrames, easeName?)` | 非均匀交错偏移帧（默认 `sineOut`，间隔逐项递减成波浪感而非等差排队）；返回整数帧偏移，可直接加到进场帧或 `phraseText` 的 `enterFrame` |
 | `progress(frame, start, end)` | frame 在区间里的进度，钳在 [0, 1] |
 | `fade(frame, inStart, inEnd, outStart?, outEnd?)` | 淡入淡出系数；省略后两个参数表示不淡出 |
 | `rng(seed)` | mulberry32 固定种子伪随机数，返回 `() => [0, 1)`。种子可以是数字或字符串 |

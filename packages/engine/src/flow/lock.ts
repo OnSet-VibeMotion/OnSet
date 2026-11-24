@@ -20,8 +20,9 @@ export const LockFile = 'onset.flow.json';
  *   6：静态前缀内联默认风格核心规范、按需加载重型可选技能、引用自动生成的 onset-fonts.css。
  *   7：完整内联去除声音段的默认风格规范并禁止通读 demo/SKILL 全文，约束 zoom_frame 与预览轮次。
  *   8：共享前缀内联 SceneKit 完整 API 速查表与 zoom_frames 批量细节放大指引；资源段列出 onset-fonts.css 字体族与挂载辅助库公开接口，避免每镜重复 read_file。
+ *   9：在公共静态前缀补齐编舞与微动效工艺准则（定角、单容器单入场、非均匀交错、模糊缝合与双层 clip-path 等），并同步 SceneKit 新增的黄金缓动、确定性弹簧与交错接口速查。
  */
-export const RenderPromptVersion = 8;
+export const RenderPromptVersion = 9;
 
 /**
  * 新建项目时记下的流程（片型）与画幅。制作提示词由运行期按它组合（compose.ts）；项目用哪个流程也只看它。
@@ -59,7 +60,8 @@ export function readLock(root: string): Lock {
   const rec = raw.production;
   if (isObject(rec) && typeof rec.id === 'string' && rec.id !== '') {
     out.production = { id: rec.id, canvas: typeof rec.canvas === 'string' ? rec.canvas : '' };
-    if (typeof rec.render_prompt === 'number' && Number.isInteger(rec.render_prompt) && rec.render_prompt > 0) out.production.render_prompt = rec.render_prompt;
+    if (typeof rec.render_prompt === 'number' && Number.isInteger(rec.render_prompt) && rec.render_prompt > 0)
+      out.production.render_prompt = rec.render_prompt;
   }
   return out;
 }

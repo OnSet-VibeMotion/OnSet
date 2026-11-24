@@ -2,83 +2,25 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { find } from '../toolpath';
-import { decodeAnalysisWAV, clickTrack } from './beat';
-import { contactSheetRegion, nonEmpty } from './contact';
-import { formatFixed } from './gofmt';
+import { clickTrack, decodeAnalysisWAV } from './beat';
+import { contactSheetRegion } from './contact';
+import { extractFrameRegion, extractFramesRegion, frameDifference, frameDifferenceBetween, frameStats } from './frames';
 import { loudness, measureProgramLoudness, type ProgramLoudness } from './loudness';
 import {
-  checkSpec,
-  isBlank,
-  isDark,
-  parse,
-  parseIntField,
-  regionFilter,
-  ReportSchemaVersion,
-  validateSpec,
-  meanAbsoluteDifference,
-  formatSeconds,
-  type ExtractedFrame,
   type FrameReport,
   type FrameStats,
   type Media,
+  parse,
+  parseIntField,
   type RawProbe,
   type Region,
   type Report,
-  type Spec,
 } from './mediaprobe';
-import { combined, commandError, firstLine, run, runAsync, type Ran } from './run';
+import { combined, commandError, firstLine, type Ran, run, runAsync } from './run';
 import { muxSong, prepareAlignment } from './song';
+import { type VerifyOptions, verifyMedia, verifySeekPoints } from './verify';
 
-/**
- * VerifyOptions 描述一次完整校验除规格比对外还要做哪些检查。
- *
- * 三项都默认关闭，因为它们的代价和 probe 不在一个量级：
- * exactFrames 与 decode 都要完整解码一遍文件，checkFrameZero 要解一帧。
- */
-export interface VerifyOptions {
-  spec?: Spec;
-  /**
-   * 用 countFrames 解码统计精确帧数，取代容器声明的 nb_frames。
-   * 需要断言「总帧数等于冻结时间轴」时必须打开：容器声明可能缺失或不准。
-   */
-  exactFrames?: boolean;
-  /** 完整解码一遍，确认文件没有截断或损坏。 */
-  decode?: boolean;
-  /**
-   * 检查第 0 帧是否是空白帧，对应 frame.md 的
-   * black_or_blank_frame_zero 禁令。
-   */
-  checkFrameZero?: boolean;
-}
-
-/** 计算统计量时的缩放边长。缩放到固定尺寸让阈值与画幅无关，也让代价与视频分辨率无关。 */
-const statsSampleSize = 128;
-
-function grayStats(atSeconds: number, pixels: Buffer): FrameStats {
-  let sum = 0;
-  for (const pixel of pixels) sum += pixel;
-  const mean = sum / pixels.length;
-  let variance = 0;
-  for (const pixel of pixels) {
-    const delta = pixel - mean;
-    variance += delta * delta;
-  }
-  return { at_seconds: atSeconds, mean, stddev: Math.sqrt(variance / pixels.length) };
-}
-
-/**
- * 比对两帧时的缩放边长。取得很小是刻意的：交接时物件
- * 在交界两侧挪动几像素、描边粗细差一点都属于接上了，缩到 32 像素后这类差异
- * 几乎消失，剩下的只有「两张不同的画面」这种量级的差别。
- */
-const differenceSampleSize = 32;
-
-/** 用于文件名的时间戳，去掉尾随零。 */
-function formatSecondsShort(value: number): string {
-  let text = formatFixed(value, 3).replace(/0+$/, '');
-  if (text.endsWith('.')) text = text.slice(0, -1);
-  return text;
-}
+export type { VerifyOptions } from './verify';
 
 /**
  * 从给定环境的 PATH 里解析 ffprobe（Go 的 mediaprobe.New）。
@@ -113,13 +55,21 @@ export class Toolchain {
   }
 
   /** 异步跑一条命令（Go 的 exec.CommandContext）。 */
-  runAsync(command: string, args: string[], options: { signal?: AbortSignal; captureStdout?: boolean; captureStderr?: boolean } = {}): Promise<Ran> {
+  runAsync(
+    command: string,
+    args: string[],
+    options: { signal?: AbortSignal; captureStdout?: boolean; captureStderr?: boolean } = {},
+  ): Promise<Ran> {
     return runAsync(command, args, this.env, options);
   }
 
   /** 读取媒体文件的实测规格。不解码，只读容器和流头，代价与文件长度无关。 */
   probe(file: string): Media {
-    const ran = run(this.ffprobe, ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', file], this.env);
+    const ran = run(
+      this.ffprobe,
+      ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', file],
+      this.env,
+    );
     if (ran.error) throw new Error(`无法读取媒体规格：${file}（${commandError(ran)}）`);
     return parse(ran.stdout.toString('utf8'), file);
   }
@@ -134,7 +84,18 @@ export class Toolchain {
   countFrames(file: string): number {
     const ran = run(
       this.ffprobe,
-      ['-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries', 'stream=nb_read_frames', '-print_format', 'json', file],
+      [
+        '-v',
+        'error',
+        '-count_frames',
+        '-select_streams',
+        'v:0',
+        '-show_entries',
+        'stream=nb_read_frames',
+        '-print_format',
+        'json',
+        file,
+      ],
       this.env,
     );
     if (ran.error) throw new Error(`无法统计帧数：${file}（${commandError(ran)}）`);
@@ -142,7 +103,9 @@ export class Toolchain {
     try {
       raw = JSON.parse(ran.stdout.toString('utf8')) as RawProbe;
     } catch (err) {
-      throw new Error(`ffprobe 帧数输出不是合法 JSON：${err instanceof Error ? err.message : String(err)}`, { cause: err });
+      throw new Error(`ffprobe 帧数输出不是合法 JSON：${err instanceof Error ? err.message : String(err)}`, {
+        cause: err,
+      });
     }
     for (const stream of raw?.streams ?? []) {
       const frames = parseIntField(typeof stream.nb_read_frames === 'string' ? stream.nb_read_frames : '');
@@ -172,129 +135,32 @@ export class Toolchain {
    * 用于在全分辨率下看小字、细线这类缩略图上看不清的细节。
    */
   extractFrameRegion(file: string, atSeconds: number, region: Region | null, dest: string): void {
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    // -ss 放在 -i 前面：转码时 ffmpeg 默认精确定位（accurate_seek），取到的就是
-    // 「第 N 秒那一帧」，与放在 -i 后面逐字节相同，但不必从片头解码过来。
-    const ffmpeg = this.ffmpegPath();
-    const argv = ['-v', 'error', '-y', '-ss', formatSeconds(atSeconds), '-i', file, '-frames:v', '1'];
-    const filter = regionFilter(region);
-    if (filter !== '') argv.push('-vf', filter);
-    const ran = run(ffmpeg, [...argv, '-f', 'image2', '-c:v', 'png', dest], this.env);
-    if (ran.error) throw new Error(`抽帧失败：${file} @ ${formatFixed(atSeconds, 3)} 秒（${firstLine(combined(ran))}）`);
-    if (!nonEmpty(dest)) {
-      // 时间点超出时长时 ffmpeg 会返回 0 但什么都不写。静默产出空文件
-      // 比报错更危险：调用方会以为抽到了帧。
-      fs.rmSync(dest, { force: true });
-      throw new Error(`抽帧没有产出内容：${file} @ ${formatFixed(atSeconds, 3)} 秒（时间点可能超出视频时长）`);
-    }
+    extractFrameRegion(this, file, atSeconds, region, dest);
   }
 
-  /**
-   * 抽取 atSeconds 处的一帧，缩放成灰度小图后在本进程里计算均值和标准差。
-   *
-   * 不用 ffmpeg 的 signalstats/blackdetect：它们把结果写进 stderr 的文本日志，
-   * 格式随版本变化，解析起来比自己算更脆。裸灰度像素是稳定接口。
-   */
+  /** 抽取 atSeconds 处的一帧，缩放成灰度小图后在本进程里计算均值和标准差。 */
   frameStats(file: string, atSeconds: number): FrameStats {
-    const ffmpeg = this.ffmpegPath();
-    const output = this.rawFrame(ffmpeg, file, atSeconds, statsSampleSize, 'gray');
-    return grayStats(atSeconds, output);
+    return frameStats(this, file, atSeconds);
   }
 
-  /** 一次定位与解码同时写 PNG 和统计像素；统计仍取整帧，不能被裁剪区域改变。 */
-  private extractFrameAndStats(file: string, atSeconds: number, region: Region | null, dest: string, maxWidth = 0): FrameStats {
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    // 沿用 extractFrameRegion / frameStats 的自动选流：多视频流文件未必以第一条为主画面。
-    const argv = ['-v', 'error', '-y', '-ss', formatSeconds(atSeconds), '-i', file, '-frames:v', '1'];
-    // 只缩写出去的 PNG（给看图的一方省 token）；灰度统计是另一路输出，照旧按原帧算。裁了区域就是要看原始像素，不缩。
-    const filter = region === null && maxWidth > 0 ? `scale='min(${maxWidth},iw)':-2` : regionFilter(region);
-    if (filter !== '') argv.push('-vf', filter);
-    const ran = run(this.ffmpegPath(), [
-      ...argv, '-f', 'image2', '-c:v', 'png', dest,
-      '-frames:v', '1', '-vf', `scale=${statsSampleSize}:${statsSampleSize},format=gray`, '-f', 'rawvideo', '-',
-    ], this.env);
-    if (ran.error) throw new Error(`抽帧失败：${file} @ ${formatFixed(atSeconds, 3)} 秒（${firstLine(ran.stderr.toString('utf8'))}）`);
-    if (!nonEmpty(dest) || ran.stdout.length === 0) {
-      fs.rmSync(dest, { force: true });
-      throw new Error(`抽帧没有产出内容：${file} @ ${formatFixed(atSeconds, 3)} 秒（时间点可能超出视频时长）`);
-    }
-    return grayStats(atSeconds, ran.stdout);
-  }
-
-  /** 抽取 atSeconds 处的一帧，缩放成 size×size 的指定像素格式后返回裸像素。 */
-  private rawFrame(ffmpeg: string, file: string, atSeconds: number, size: number, pixelFormat: string): Buffer {
-    // 输入端定位，理由同 contactSheet：整片复查要对每个镜头交界各取两帧。
-    const ran = run(
-      ffmpeg,
-      ['-v', 'error', '-ss', formatSeconds(atSeconds), '-i', file, '-frames:v', '1', '-vf', `scale=${size}:${size},format=${pixelFormat}`, '-f', 'rawvideo', '-'],
-      this.env,
-    );
-    if (ran.error) throw new Error(`读取帧像素失败：${file} @ ${formatFixed(atSeconds, 3)} 秒（${commandError(ran)}）`);
-    if (ran.stdout.length === 0) throw new Error(`该时间点没有帧：${file} @ ${formatFixed(atSeconds, 3)} 秒`);
-    return ran.stdout;
-  }
-
-  /**
-   * 抽取 a、b 两个时间点的帧，缩放成 32×32 的 RGB 小图，返回逐通道
-   * 绝对差的均值（0–255）。0 是完全相同，两张无关画面通常在 40 以上。
-   */
+  /** 抽取 a、b 两个时间点的帧，返回 32×32 RGB 逐通道绝对差的均值（0–255）。 */
   frameDifference(file: string, a: number, b: number): number {
-    const ffmpeg = this.ffmpegPath();
-    const first = this.rawFrame(ffmpeg, file, a, differenceSampleSize, 'rgb24');
-    const second = this.rawFrame(ffmpeg, file, b, differenceSampleSize, 'rgb24');
-    return meanAbsoluteDifference(first, second);
+    return frameDifference(this, file, a, b);
   }
 
-  /**
-   * 两个文件各取一帧比较，口径与 frameDifference 相同（32×32 RGB 逐通道绝对差的均值）。
-   * 镜头交界：前一镜的末帧对后一镜的首帧，拼接前就能量出哪道交界没接上。
-   */
+  /** 两个文件各取一帧比较，口径与 frameDifference 相同。 */
   frameDifferenceBetween(a: string, atA: number, b: string, atB: number): number {
-    const ffmpeg = this.ffmpegPath();
-    return meanAbsoluteDifference(this.rawFrame(ffmpeg, a, atA, differenceSampleSize, 'rgb24'), this.rawFrame(ffmpeg, b, atB, differenceSampleSize, 'rgb24'));
+    return frameDifferenceBetween(this, a, atA, b, atB);
   }
 
-  /**
-   * 跑完整的校验流程并返回机器可读报告。
-   *
-   * 抛出的错误只表示「检查没跑成」（文件读不了、工具缺失），
-   * 「检查跑了但不合格」体现为 report.ok 为 false 和 problems 非空——
-   * 两者对调用方的含义完全不同，混在一起会让退出码失去区分度。
-   */
+  /** 在首帧、中点、末帧三个代表时间点做 framemd5 seek 解码校验。 */
+  verifySeekPoints(file: string, durationSeconds: number, fps: number): string[] {
+    return verifySeekPoints(this, file, durationSeconds, fps);
+  }
+
+  /** 跑完整的校验流程并返回机器可读报告。 */
   verify(file: string, opts: VerifyOptions = {}): Report {
-    const spec = opts.spec ?? {};
-    validateSpec(spec);
-    const media = this.probe(file);
-    const report: Report = { schema_version: ReportSchemaVersion, path: file, ok: false, media, problems: [] };
-
-    // media.video 为 null 时（纯音频文件）跳过整个精确帧数统计：既没有视频流
-    // 可数，硬调用 countFrames 也只会拿到「未能统计出帧数」这种无意义的错误，
-    // 不如直接放行到下面的 checkSpec，由它给出「文件没有视频流」这条可读问题。
-    if (opts.exactFrames && media.video) {
-      // 用精确值覆盖容器声明，让 checkSpec 与报告读到的是同一个数。
-      media.video.nb_frames = this.countFrames(file);
-    }
-    report.problems = checkSpec(spec, media);
-
-    if (opts.decode) {
-      try {
-        this.decode(file);
-      } catch (err) {
-        report.problems.push(err instanceof Error ? err.message : String(err));
-      }
-    }
-    if (opts.checkFrameZero && media.video) {
-      const stats = this.frameStats(file, 0);
-      report.frame_zero = stats;
-      if (isBlank(stats)) {
-        report.problems.push(`第 0 帧是空白帧，不能作为封面：灰度均值 ${formatFixed(stats.mean, 1)}、标准差 ${formatFixed(stats.stddev, 2)}`);
-      } else if (isDark(stats)) {
-        // 只提示不判失败：深色背景配浅色标题是常见设计。
-        (report.hints ??= []).push(`第 0 帧整体偏暗（灰度均值 ${formatFixed(stats.mean, 1)}），确认标题在目标平台可读`);
-      }
-    }
-    report.ok = report.problems.length === 0;
-    return report;
+    return verifyMedia(this, file, opts);
   }
 
   /**
@@ -312,23 +178,14 @@ export class Toolchain {
    * 同 extractFrames，PNG 只保留 region 区域；空白帧判定仍按整帧。
    * maxWidth 大于 0 且没有 region 时，PNG 缩到不超过这个宽度（等比，统计不受影响）。
    */
-  extractFramesRegion(file: string, atSeconds: number[], region: Region | null, destDir: string, maxWidth = 0): FrameReport {
-    const report: FrameReport = { schema_version: ReportSchemaVersion, path: file, ok: false, frames: [], problems: [] };
-    for (const at of atSeconds) {
-      const image = path.join(destDir, `frame-${formatSecondsShort(at).replaceAll('.', '_')}.png`);
-      const stats = this.extractFrameAndStats(file, at, region, image, maxWidth);
-      const frame: ExtractedFrame = { at_seconds: at, image, stats, blank: isBlank(stats), dark: isDark(stats) };
-      report.frames.push(frame);
-      if (frame.blank) {
-        report.problems.push(
-          `${formatFixed(at, 3)} 秒处是空白帧：灰度均值 ${formatFixed(stats.mean, 1)}、标准差 ${formatFixed(stats.stddev, 2)}（${image}）`,
-        );
-      } else if (frame.dark) {
-        (report.hints ??= []).push(`${formatFixed(at, 3)} 秒处整体偏暗（灰度均值 ${formatFixed(stats.mean, 1)}），确认内容可读（${image}）`);
-      }
-    }
-    report.ok = report.problems.length === 0;
-    return report;
+  extractFramesRegion(
+    file: string,
+    atSeconds: number[],
+    region: Region | null,
+    destDir: string,
+    maxWidth = 0,
+  ): FrameReport {
+    return extractFramesRegion(this, file, atSeconds, region, destDir, maxWidth);
   }
 
   /** 见 contact.ts 的 contactSheetRegion。 */
@@ -336,7 +193,14 @@ export class Toolchain {
     contactSheetRegion(this, file, atSeconds, null, columns, thumbWidth, dest);
   }
 
-  contactSheetRegion(file: string, atSeconds: number[], region: Region | null, columns: number, thumbWidth: number, dest: string): void {
+  contactSheetRegion(
+    file: string,
+    atSeconds: number[],
+    region: Region | null,
+    columns: number,
+    thumbWidth: number,
+    dest: string,
+  ): void {
     contactSheetRegion(this, file, atSeconds, region, columns, thumbWidth, dest);
   }
 
@@ -363,7 +227,14 @@ export class Toolchain {
     return prepareAlignment(this, source, dest, signal);
   }
 
-  muxSong(video: string, audio: string, dest: string, duration: number, fps: number, signal?: AbortSignal): Promise<void> {
+  muxSong(
+    video: string,
+    audio: string,
+    dest: string,
+    duration: number,
+    fps: number,
+    signal?: AbortSignal,
+  ): Promise<void> {
     return muxSong(this, video, audio, dest, duration, fps, signal);
   }
 

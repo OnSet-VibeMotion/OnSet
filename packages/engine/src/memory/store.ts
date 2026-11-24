@@ -5,50 +5,60 @@ import path from 'node:path';
 import { atomicWrite } from '../fsutil';
 import { goQuote } from '../gofmt';
 import { compareBytes, marshal } from '../gojson';
-import { eventToJSON, type Event } from './events';
 import type { Attempt, Scene } from '../scene';
-import { recordCheck, type Finding } from './checks';
-import { consolidate, lastConsolidation, type ConsolidateOptions, type ConsolidateResult } from './consolidate';
+import { type Finding, recordCheck } from './checks';
+import { type ConsolidateOptions, type ConsolidateResult, consolidate, lastConsolidation } from './consolidate';
 import { recordUtterance, type Utterance } from './conversation';
 import {
-  episodeByID,
-  episodes,
-  recordAttempt,
-  recordFeedback,
   type AttemptSource,
   type Episode,
+  episodeByID,
+  episodes,
   type Feedback,
+  recordAttempt,
+  recordFeedback,
 } from './episode';
+import { type Event, eventToJSON } from './events';
 import {
+  type ExamOptions,
+  type ExamResult,
   exam,
   exams,
   promote,
+  type Retest,
   reject,
   retestNeeded,
   retire,
-  type ExamOptions,
-  type ExamResult,
-  type Retest,
 } from './exam';
-import { importProject, type ImportOptions, type ImportResult } from './importer';
-import { isNotExist, readDirSorted } from './io';
-import { format, kindDir, KindLesson, KindPreference, parse, StatusActive, validName, type Kind, type Memory } from './memory';
-import { currentModel, observeModel } from './models';
 import { rfc3339 } from './gostr';
-import { preferenceBrief, remember, type RememberInput } from './preferences';
-import { recallScene, type RecallOptions, type RecallResult } from './recall';
+import { type ImportOptions, type ImportResult, importProject } from './importer';
+import { isNotExist, readDirSorted } from './io';
+import {
+  format,
+  type Kind,
+  KindLesson,
+  KindPreference,
+  kindDir,
+  type Memory,
+  parse,
+  StatusActive,
+  validName,
+} from './memory';
+import { currentModel, observeModel } from './models';
+import { preferenceBrief, type RememberInput, remember, setPreferenceScope } from './preferences';
+import { type RecallOptions, type RecallResult, recallScene } from './recall';
 import {
   drift,
   latestSnapshot,
   loadSnapshot,
   resolveSnapshot,
   rollback,
+  type Snapshot,
   snapshotIDs,
   takeSnapshot,
-  type Snapshot,
 } from './snapshot';
-import { storeStats, type Stat } from './stats';
-import { status, type StatusReport } from './status';
+import { type Stat, storeStats } from './stats';
+import { type StatusReport, status } from './status';
 
 /**
  * Store 是一个记忆库目录。
@@ -125,7 +135,8 @@ export class Store {
   /** 重写 MEMORY.md：每条生效记忆一行「标题 — 一句话钩子」。它只给人读，召回不读它。 */
   writeIndex(): void {
     const all = this.memories().memories;
-    let b = '# 渲染记忆索引\n\n由 onset 维护，只列生效记忆。改记忆请改 lessons/ 与 preferences/ 下的文件，再运行 memory_status()。\n\n';
+    let b =
+      '# 渲染记忆索引\n\n由 onset 维护，只列生效记忆。改记忆请改 lessons/ 与 preferences/ 下的文件，再运行 memory_status()。\n\n';
     let count = 0;
     for (const m of all) {
       if (m.status !== StatusActive) continue;
@@ -238,11 +249,14 @@ export class Store {
   }
 
   // ---- preferences.ts ----
-  preferenceBrief(project: string, pinned: number): { text: string; digest: string } {
-    return preferenceBrief(this, project, pinned);
+  preferenceBrief(project: string, pinned: number, seriesId = ''): { text: string; digest: string } {
+    return preferenceBrief(this, project, pinned, seriesId);
   }
   remember(input: RememberInput): { memory: Memory; snapshot: Snapshot | null } {
     return remember(this, input);
+  }
+  setPreferenceScope(name: string, targetScope: string): { memory: Memory; snapshot: Snapshot | null } {
+    return setPreferenceScope(this, name, targetScope);
   }
 
   // ---- consolidate.ts ----
@@ -278,7 +292,6 @@ export class Store {
     return importProject(this, root, opts);
   }
 }
-
 
 /** 返回 dir 处的记忆库，按需建出子目录。 */
 export function open(dir: string): Store {
@@ -321,7 +334,8 @@ function parseEvent(line: string): Event | null {
   const str = (v: unknown) => v === undefined || v === null || typeof v === 'string';
   if (!str(r.time) || !str(r.type) || !str(r.summary) || !str(r.project)) return null;
   if (r.snapshot !== undefined && r.snapshot !== null && !Number.isInteger(r.snapshot)) return null;
-  if (r.detail !== undefined && r.detail !== null && (typeof r.detail !== 'object' || Array.isArray(r.detail))) return null;
+  if (r.detail !== undefined && r.detail !== null && (typeof r.detail !== 'object' || Array.isArray(r.detail)))
+    return null;
   const event: Event = {
     time: (r.time as string | null) ?? '',
     type: (r.type as string | null) ?? '',

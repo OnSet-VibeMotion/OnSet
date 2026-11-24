@@ -13,21 +13,30 @@ import './align';
 import './audition_cmd';
 import './audio';
 import './audio_mix';
+import './brandkit_cmd';
 
 import './timing_report';
 
 import './filmstyle';
+import './font_cmd';
 import './hyperframes';
 import './media';
+import './mediagen_cmd';
+import './motion_cmd';
 import './phrase_frames';
+import './presenter_cmd';
+import './projectzip_cmd';
+import './recreate_cmd';
 
 import './memory_cmd';
 import './reads_cmd';
 import './review_cmd';
+import './reviewcomments_cmd';
 import './scene_cmd';
 import './scene_preview';
 import './seams_cmd';
 import './scene_cues';
+import './series_cmd';
 import './station_cmd';
 import './usage_cmd';
 import './validate_cmd';
@@ -37,11 +46,11 @@ import './prompt_cmd';
 import './promptopt_cmd';
 import './voice_cmd';
 import './windows_cmd';
+import { setToolVersion } from '@onset/engine/scene';
 import { mountOps } from './ops/cli';
 import { newInitCommand } from './project_cmds';
 import { newSetupCommand } from './setup';
 import { newStudioCommand } from './studio';
-import { setToolVersion } from '@onset/engine/scene';
 
 /**
  * `onset --version` 的版本号。由发布流程在构建时注入（esbuild --define:ONSET_VERSION），本地构建是 dev。
@@ -101,12 +110,14 @@ export function newRoot(stdout: Out, stderr: Out): { root: Command; flags: RootF
   const root = new Command({ use: 'onset', short: '片场竖屏 MG 视频制作工具', long: rootLong, version: Version });
   root.setOut(stdout);
   root.setErr(stderr);
-  root.persistentFlags().boolVar(
-    unsafe,
-    'unsafe',
-    false,
-    '关闭 AI CLI 的权限隔离（危险）。只对会启动 AI CLI 的 run / studio / scene run / scene run-all 生效，对 init、config、validate、archive 无作用；会传递给嵌套镜头任务',
-  );
+  root
+    .persistentFlags()
+    .boolVar(
+      unsafe,
+      'unsafe',
+      false,
+      '关闭 AI CLI 的权限隔离（危险）。只对会启动 AI CLI 的 run / studio / scene run / scene run-all 生效，对 init、config、validate、archive 无作用；会传递给嵌套镜头任务',
+    );
   const flags: RootFlags = { unsafe };
   // 只给开发与客户端自己用的入口：准备前置资源、建项目、两个 MCP 服务。其余命令都来自操作表。
   root.addCommand(newSetupCommand(stdout, stderr), newInitCommand(stdout, stderr), newStudioCommand(stdout));
@@ -137,14 +148,20 @@ export async function execute(args: string[], stdout: Out, stderr: Out, signal?:
 /** cobra.ExactArgs 的中文版：调用方只读这一行就知道补什么。 */
 export function exactArgs(count: number, name: string): PositionalArgs {
   return (cmd, args) => {
-    if (args.length !== count) throw new Error(`${cmd.commandPath()} 需要 ${count} 个位置参数 ${name}，实际收到 ${args.length} 个；用法：${cmd.useLine()}`);
+    if (args.length !== count)
+      throw new Error(
+        `${cmd.commandPath()} 需要 ${count} 个位置参数 ${name}，实际收到 ${args.length} 个；用法：${cmd.useLine()}`,
+      );
   };
 }
 
 /** 可选位置参数。 */
 export function maxArgs(count: number, name: string): PositionalArgs {
   return (cmd, args) => {
-    if (args.length > count) throw new Error(`${cmd.commandPath()} 最多接受 ${count} 个位置参数 ${name}，实际收到 ${args.length} 个；用法：${cmd.useLine()}`);
+    if (args.length > count)
+      throw new Error(
+        `${cmd.commandPath()} 最多接受 ${count} 个位置参数 ${name}，实际收到 ${args.length} 个；用法：${cmd.useLine()}`,
+      );
   };
 }
 
@@ -152,14 +169,19 @@ export function maxArgs(count: number, name: string): PositionalArgs {
 export function rangeArgs(min: number, max: number, name: string): PositionalArgs {
   return (cmd, args) => {
     if (args.length < min || args.length > max) {
-      throw new Error(`${cmd.commandPath()} 需要 ${min} 到 ${max} 个位置参数 ${name}，实际收到 ${args.length} 个；用法：${cmd.useLine()}`);
+      throw new Error(
+        `${cmd.commandPath()} 需要 ${min} 到 ${max} 个位置参数 ${name}，实际收到 ${args.length} 个；用法：${cmd.useLine()}`,
+      );
     }
   };
 }
 
 /** 不接受位置参数。 */
 export const noArgs: PositionalArgs = (cmd, args) => {
-  if (args.length > 0) throw new Error(`${cmd.commandPath()} 不接受位置参数，实际收到 ${args.length} 个：${args.join(' ')}；用法：${cmd.useLine()}`);
+  if (args.length > 0)
+    throw new Error(
+      `${cmd.commandPath()} 不接受位置参数，实际收到 ${args.length} 个：${args.join(' ')}；用法：${cmd.useLine()}`,
+    );
 };
 
 export function validateTolerance(value: number): void {
@@ -174,7 +196,9 @@ export function rulesDisplay(path: string): string {
  * 在终端里用一行回车刷新的进度显示 HyperFrames 技能与 CLI 的安装：克隆要一分钟上下，不显示的话像是卡住了。
  * 只在整数百分比或步骤变化时刷新。
  */
-export function skillsProgressPrinter(w: Out): (p: { stage: string; percent: number; indeterminate?: boolean }) => void {
+export function skillsProgressPrinter(
+  w: Out,
+): (p: { stage: string; percent: number; indeterminate?: boolean }) => void {
   let last = '';
   return (p) => {
     let line = `HyperFrames：${p.stage}`;

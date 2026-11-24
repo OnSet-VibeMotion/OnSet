@@ -78,6 +78,7 @@ export interface Op {
 
 /** 参数校验或调用方式不对：工具服务把它原样交给 agent，不当成操作失败的堆栈（与内置插件的操作同一个类）。 */
 export { ParamError } from '@onset/engine/opkit';
+
 import { ParamError } from '@onset/engine/opkit';
 
 const registry = new Map<string, Op>();
@@ -88,7 +89,8 @@ export function defineOp(op: Op): Op {
   if (registry.has(op.name)) throw new Error(`操作 ${op.name} 登记了两次`);
   for (const [key, spec] of Object.entries(op.params)) {
     if (!/^[a-z][a-z0-9_]*$/.test(key)) throw new Error(`${op.name} 的参数名 ${key} 要是小写加下划线`);
-    if (spec.positional === 'rest' && spec.type !== 'strings') throw new Error(`${op.name} 的 ${key}：收剩余位置参数的只能是 strings`);
+    if (spec.positional === 'rest' && spec.type !== 'strings')
+      throw new Error(`${op.name} 的 ${key}：收剩余位置参数的只能是 strings`);
   }
   registry.set(op.name, op);
   return op;
@@ -127,15 +129,46 @@ export function defaultValue(spec: ParamSpec): unknown {
   }
 }
 
+const ProvidedParamsKey = Symbol('onset.providedParams');
+
+/** 判断某参数是否在本次调用里由调用方显式传入（用于区分“未传”与“显式传空串/空数组”）。 */
+export function isParamProvided(params: ParamValues, key: string): boolean {
+  const set = (params as Record<symbol, unknown>)[ProvidedParamsKey];
+  if (set instanceof Set) return set.has(key);
+  return Object.hasOwn(params, key) && params[key] !== undefined && params[key] !== null;
+}
+
+/** 将预处理阶段补写进 params 的字段标记为已提供，确保跨进程序列化时不会丢失。 */
+export function markParamProvided(params: ParamValues, key: string): void {
+  const set = (params as Record<symbol, unknown>)[ProvidedParamsKey];
+  if (set instanceof Set) set.add(key);
+}
+
+/**
+ * 序列化给执行进程（__op）的参数：若由 normalizeParams 构造，只发送显式传入（或预处理补写）的键，
+ * 避免未传字段的默认值跨进程后被执行端误判为显式输入。
+ */
+export function serializeWorkerParams(params: ParamValues): ParamValues {
+  const set = (params as Record<symbol, unknown>)[ProvidedParamsKey];
+  if (!(set instanceof Set)) return params;
+  const out: ParamValues = {};
+  for (const key of set) {
+    if (Object.hasOwn(params, key)) out[key] = params[key];
+  }
+  return out;
+}
+
 /**
  * 校验并补齐一次调用的参数：未知参数、类型不对、缺必填都抛 ParamError。
  * 工具服务与客户端后端都经这里，命令行适配已经按类型解析过，也再过一遍。
  */
 export function normalizeParams(op: Op, input: ParamValues): ParamValues {
   const out: ParamValues = {};
+  const provided = new Set<string>();
   for (const key of Object.keys(input)) {
     if (input[key] === undefined || input[key] === null) continue;
-    if (!op.params[key]) throw new ParamError(`${op.name} 没有参数 ${key}（参数怎么填用 tool_help({"tool": "${op.name}"}) 查）`);
+    if (!op.params[key])
+      throw new ParamError(`${op.name} 没有参数 ${key}（参数怎么填用 tool_help({"tool": "${op.name}"}) 查）`);
   }
   for (const [key, spec] of Object.entries(op.params)) {
     const raw = input[key];
@@ -144,8 +177,10 @@ export function normalizeParams(op: Op, input: ParamValues): ParamValues {
       out[key] = defaultValue(spec);
       continue;
     }
+    provided.add(key);
     out[key] = coerce(op, key, spec, raw);
   }
+  Object.defineProperty(out, ProvidedParamsKey, { value: provided, enumerable: false });
   return out;
 }
 
@@ -188,7 +223,8 @@ function coerce(op: Op, key: string, spec: ParamSpec, raw: unknown): unknown {
 export function callText(name: string, params: ParamValues = {}): string {
   const entries = Object.entries(params).filter(([, v]) => v !== undefined);
   if (entries.length === 0) return `${name}()`;
-  const value = (v: unknown): string => (Array.isArray(v) ? `[${v.map((x) => JSON.stringify(x)).join(', ')}]` : JSON.stringify(v));
+  const value = (v: unknown): string =>
+    Array.isArray(v) ? `[${v.map((x) => JSON.stringify(x)).join(', ')}]` : JSON.stringify(v);
   return `${name}({${entries.map(([k, v]) => `${JSON.stringify(k)}: ${value(v)}`).join(', ')}})`;
 }
 

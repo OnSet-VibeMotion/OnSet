@@ -1,95 +1,69 @@
 import crypto from 'node:crypto';
-import { transcriptTimingWarning } from './timing';
 import fs from 'node:fs';
-import { atomicWrite } from '../fsutil';
-import { withWindowsInstructions } from '../windowsruntime';
 import path from 'node:path';
-import { childEnvironment, rendererModelFor, rendererOptionsFor, type Config } from '../config';
-import * as determinism from '../determinism';
-import { verifyComponentReferences } from './component-plan';
-import { prepareRepairEvidence, repairPrompt, verifyRepair, withRepairBackup, type RepairContext, type RepairIssue } from './repair';
-import { addToolsLocation, onsetExecutable, lookPath, parsePassthrough } from '../envutil';
-import * as hyperframes from '../hyperframes';
+import { type Config, rendererModelFor, rendererOptionsFor } from '../config';
 import * as director from '../director';
+import { onsetExecutable } from '../envutil';
+import { goRound } from '../gofmt';
+import * as hyperframes from '../hyperframes';
 import * as mediaprobe from '../mediaprobe';
-import { ExitError, start, type Started } from '../procgroup';
 import {
-  accumulateUsage,
   configuredModel,
   effectiveOptions,
-  detectModel,
-  extractUserMessages,
-  formatUsage,
+  type Invocation,
   newUsage,
   onsetToolsServer,
-  AgyMcpFile,
-  agyMcpJSON,
-  McodeMcpFile,
-  mcodeMcpJSON,
-  type McpServer,
-  rendererEnv,
   presetSessionID,
-  rendererLaunch,
-  type Invocation,
-  sessionBaseline,
-  usageAdd,
-  usageEmpty,
   type RendererSession,
+  rendererEnv,
+  rendererLaunch,
   type Usage,
 } from '../tools';
-import { KindError, KindSession, KindText, KindToolCall, newParser } from '../agentrun';
-import { formatFixed, goRound } from '../gofmt';
-import { newAttempt, OutcomeFailed, OutcomeInterrupted, OutcomeSucceeded, OutcomeVerificationFailed, timestamp, writeAttempt, archiveAttempt } from './attempt';
-import { CheckOutputFrames, classifyOutputProblem, DeterminismCheckPrefix } from './checks';
-import { fingerprint, RecordSchemaRenderContract, refreshRecordOutput, removeRecord, writeRecord, type Inputs } from './record';
-import { buildPrompt, contained, DesignFile, findProjectRoot, renderPromptVersion, sceneCanvas, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
-import { blockValue } from './block';
-import { removeLive, writeLive } from './live';
-import { rendererHome, rendererUnfiltered, sandboxAvailable, sandboxed, sandboxProfile } from './sandbox';
-import { verifySeam } from './seam';
-import { CodeDoneMessage, leftoverFiles, RenderHandoffMessage, RenderRepairMessage, resumePrompt, resumeState, type ResumeState } from './resume';
-import { writeSceneData } from './scenedata';
-import { prepareResources } from './resources';
-import { verify as verifyResources } from '../renderassets';
-import { HyperFramesSkillName, rendererAccess, resolveAllSkills, skillsEnvironment, SkillsDirEnv, stagedSkills, stageRendererSkills, unstageRendererSkills } from './skills';
-import { VerificationError } from './verification';
+import { withWindowsInstructions } from '../windowsruntime';
+import { archiveAttempt, newAttempt, timestamp } from './attempt';
 import { acquireSceneLease } from './lease';
-import { rendererFailureAdvice } from './failure';
+import { removeLive, writeLive } from './live';
+import { fingerprint, RecordSchemaRenderContract, removeRecord } from './record';
+import { prepareRepairEvidence, type RepairContext, type RepairIssue, repairPrompt, withRepairBackup } from './repair';
+import { prepareResources } from './resources';
+import { leftoverFiles, resumeState } from './resume';
+import { buildChildEnv, buildHyperFramesEnv } from './run_encode';
+import { executeRender } from './run_layers';
+import { buildConfine } from './run_process';
+import { acceptRecoveredOutput, finalizeAttempt, stageRendererWorkspace } from './run_recover';
+import type { Writer } from './run_verify';
+import { rendererUnfiltered, sandboxAvailable } from './sandbox';
+import {
+  buildPrompt,
+  contained,
+  findProjectRoot,
+  outputPath,
+  renderPromptVersion,
+  type Scene,
+  sceneCanvas,
+} from './scene';
+import { writeSceneData } from './scenedata';
+import {
+  HyperFramesSkillName,
+  rendererAccess,
+  resolveAllSkills,
+  SkillsDirEnv,
+  skillsEnvironment,
+  stagedSkills,
+  unstageRendererSkills,
+} from './skills';
+import { transcriptTimingWarning } from './timing';
 
-/** SIGTERM 之后等渲染器进程组自行退出的时间（毫秒）。 */
-const terminateGrace = 500;
-
-/** bufio.Scanner 的最大单行长度：超过时 Go 报「token too long」。 */
-const maxLineBytes = 4 * 1024 * 1024;
-
-/** 写给用户看的输出（Go 的 io.Writer）。 */
-export interface Writer {
-  write(chunk: string): unknown;
-}
-
-const complexVisualRe = /\b(?:three\.?js|webgl|canvas|lottie|3d|shader|particle|character|rig)\b|多角色|粒子|三维|算法艺术|生成式/i;
-
-/** 判断单镜头是否属于低复杂度镜头（短标题/文字卡等），便于在用户配了 simple_effort 时自动降档省 token。 */
-export function isSimpleScene(s: Scene): boolean {
-  if (s.duration_seconds > 6 || s.text.length > 60) return false;
-  if (s.components.length > 0 || s.plugin_skills.length > 0) return false;
-  if (blockValue(s, 'cast') !== null || blockValue(s, 'song') !== null || blockValue(s, 'beat') !== null) return false;
-  try {
-    const promptPath = contained(s.directory, 'prompt.md', 'prompt.md');
-    if (fs.existsSync(promptPath)) {
-      const body = fs.readFileSync(promptPath, 'utf8');
-      if (body.length > 450 || complexVisualRe.test(body)) return false;
-    }
-  } catch {
-    return false;
-  }
-  return true;
-}
-
-function renderStage(s: Scene, repair?: RepairContext): 'full' | 'repair' | 'simple' {
-  if (repair || s.seam) return 'repair';
-  return isSimpleScene(s) ? 'simple' : 'full';
-}
+export { encodeScene } from './run_encode';
+export { recoverOutput } from './run_recover';
+export {
+  designLog,
+  isSimpleScene,
+  stageAgyMcp,
+  stageMcodeMcp,
+  verifyOutput,
+  type Writer,
+} from './run_verify';
 
 /**
  * 渲染一个镜头：解析技能、拼提示词、启动渲染器（独立进程组，signal 取消时整组终止）、
@@ -105,32 +79,40 @@ export async function run(
   signal?: AbortSignal,
 ): Promise<void> {
   const release = acquireSceneLease(s.directory, s.id);
-  try { await runScene(s, cfg, unsafe, baseEnv, userOutput, tolerance, signal); }
-  finally { release(); }
+  try {
+    await runScene(s, cfg, unsafe, baseEnv, userOutput, tolerance, signal);
+  } finally {
+    release();
+  }
 }
 
 /** Run an explicitly scoped repair under the same lease as a regular render. */
 export async function repairScene(
-  s: Scene, issues: RepairIssue[], cfg: Config, unsafe: boolean, baseEnv: Record<string, string>,
-  userOutput: Writer, tolerance: number, signal?: AbortSignal,
+  s: Scene,
+  issues: RepairIssue[],
+  cfg: Config,
+  unsafe: boolean,
+  baseEnv: Record<string, string>,
+  userOutput: Writer,
+  tolerance: number,
+  signal?: AbortSignal,
 ): Promise<{ evidence: string }> {
   const release = acquireSceneLease(s.directory, s.id);
   try {
     signal?.throwIfAborted();
-    if (!fs.existsSync(contained(s.directory, 'index.html', '合成入口'))) throw new Error('局部返修需要已有的 index.html 合成');
-    return await withRepairBackup(s, async baseline => {
+    if (!fs.existsSync(contained(s.directory, 'index.html', '合成入口')))
+      throw new Error('局部返修需要已有的 index.html 合成');
+    return await withRepairBackup(s, async (baseline) => {
       const evidence = await prepareRepairEvidence(s, issues, mediaprobe.newToolchain(baseEnv), signal);
       await runScene(s, cfg, unsafe, baseEnv, userOutput, tolerance, signal, { issues, evidence, baseline });
       return { evidence };
     });
-  } finally { release(); }
+  } finally {
+    release();
+  }
 }
 
-/**
- * 零模型直接出片：不启动 AI 渲染器，直接用固定版本 HyperFrames CLI 把镜头目录里现有的 index.html
- * 重新编码成 MP4，通过产物规格与确定性校验后原子替换正式产物，并刷新渲染记录。
- */
-export async function encodeScene(
+async function runScene(
   s: Scene,
   cfg: Config,
   unsafe: boolean,
@@ -138,143 +120,7 @@ export async function encodeScene(
   userOutput: Writer,
   tolerance: number,
   signal?: AbortSignal,
-): Promise<void> {
-  if (!Number.isFinite(tolerance) || tolerance < 0) throw new Error('tolerance 必须是有限且非负的数字');
-  const release = acquireSceneLease(s.directory, s.id);
-  try {
-    signal?.throwIfAborted();
-    const html = contained(s.directory, 'index.html', '合成入口');
-    if (!fs.existsSync(html)) throw new Error('直接出片需要已有的 index.html 合成');
-    const cliEnv: Record<string, string> = { ...baseEnv };
-    if (cfg.hyperFramesCLI !== '') {
-      cliEnv[hyperframes.CLIDirEnv] = cfg.hyperFramesCLI;
-    } else if (!cliEnv[hyperframes.CLIDirEnv] && process.env[hyperframes.CLIDirEnv]) {
-      cliEnv[hyperframes.CLIDirEnv] = process.env[hyperframes.CLIDirEnv]!;
-    }
-    for (const key of [hyperframes.BrowserEnv, hyperframes.HyperFramesBrowserEnv, hyperframes.BrowserHookEnv, hyperframes.BrowserAppArgEnv]) {
-      if (!cliEnv[key] && process.env[key]) cliEnv[key] = process.env[key]!;
-    }
-    const cli = hyperframes.requireCLI(cliEnv);
-    const browser = hyperframes.requireBrowser(cliEnv);
-    const childEnv = childEnvironment(cfg, baseEnv, unsafe, parsePassthrough(baseEnv.ONSET_PASSTHROUGH_ENV ?? ''));
-    delete childEnv.ONSET_STUDIO_OP_PIPE;
-    if (s.renderWorkers > 0) childEnv.ONSET_RENDER_WORKERS = String(s.renderWorkers);
-    addToolsLocation(childEnv);
-    childEnv.PWD = s.directory;
-    const renderEnv: Record<string, string> = { ...childEnv, [hyperframes.BrowserEnv]: browser };
-    if (cliEnv[hyperframes.HyperFramesBrowserEnv]) renderEnv[hyperframes.HyperFramesBrowserEnv] = cliEnv[hyperframes.HyperFramesBrowserEnv];
-    if (cliEnv[hyperframes.BrowserHookEnv]) renderEnv[hyperframes.BrowserHookEnv] = cliEnv[hyperframes.BrowserHookEnv];
-    if (cliEnv[hyperframes.BrowserAppArgEnv]) renderEnv[hyperframes.BrowserAppArgEnv] = cliEnv[hyperframes.BrowserAppArgEnv];
-    if (cliEnv[hyperframes.CLIDirEnv]) renderEnv[hyperframes.CLIDirEnv] = cliEnv[hyperframes.CLIDirEnv];
-
-    const live = { pid: process.pid, renderer: 'encode', started_at: timestamp(new Date()), encoding: true };
-    writeLive(s.directory, s.id, live);
-    const stage = fs.mkdtempSync(path.join(s.directory, '.onset-encode-'));
-    try {
-      const candidate = { ...s, output: path.relative(s.directory, path.join(stage, path.basename(s.output))) };
-      const args = ['render', '--output', candidate.output, ...(s.renderWorkers > 0 ? ['--workers', String(s.renderWorkers)] : [])];
-      const spec = hyperframes.cliCommandFor(cli, renderEnv, args);
-      let argv = [spec.file, ...spec.args];
-      argv[0] = lookPath(argv[0], baseEnv.PATH ?? '');
-      const projectRoot = findProjectRoot(s.directory);
-      if (!unsafe && projectRoot !== '' && sandboxAvailable()) {
-        const profile = sandboxProfile({
-          sceneDir: s.directory,
-          projectRoot,
-          env: { ...baseEnv, ...renderEnv },
-          toolStateDirs: [],
-          readDirs: [
-            path.dirname(fs.realpathSync(argv[0])),
-            path.dirname(process.execPath),
-            ...(process.env.ONSET_ASSETS_DIR ? [path.dirname(process.env.ONSET_ASSETS_DIR)] : []),
-            ...[process.env.ONSET_ASSETS_DIR, childEnv.ONSET_SELF, cliEnv[hyperframes.BrowserEnv], cliEnv[hyperframes.CLIDirEnv]]
-              .filter((v): v is string => !!v)
-              .map((v) => (fs.existsSync(v) && fs.statSync(v).isDirectory() ? v : path.dirname(v))),
-          ],
-        });
-        argv = sandboxed(argv, profile);
-      }
-      userOutput.write(`[${s.id}] 正在从当前 HTML 合成直接出片…\n`);
-      const started = await start(argv[0], argv.slice(1), { cwd: s.directory, env: spec.env, stdio: ['ignore', 'pipe', 'pipe'], signal }, terminateGrace);
-      let tail = '';
-      started.child.stderr!.setEncoding('utf8');
-      started.child.stderr!.on('data', (chunk: string) => {
-        tail = (tail + chunk).slice(-4000);
-      });
-      started.child.stdout!.setEncoding('utf8');
-      started.child.stdout!.on('data', (chunk: string) => {
-        tail = (tail + chunk).slice(-4000);
-      });
-      try {
-        await started.wait();
-      } catch (e) {
-        if (signal?.aborted) throw new Error('已中断：出片进程组已终止');
-        const reason = e instanceof ExitError ? `HyperFrames 出片退出码 ${e.code}` : (e as Error).message;
-        throw new Error(tail.trim() ? `${reason}\n${tail.trim()}` : reason, { cause: e });
-      }
-      verifyResources(s.directory);
-      verifyOutput(candidate, baseEnv, tolerance, false);
-      signal?.throwIfAborted();
-      const destination = contained(s.directory, s.output, 'output');
-      fs.mkdirSync(path.dirname(destination), { recursive: true });
-      fs.renameSync(outputPath(candidate), destination);
-      if (!refreshRecordOutput(s)) {
-        const renderer = s.renderer !== '' ? s.renderer : cfg.renderer;
-        if (renderer) {
-          try {
-            const resolvedSkills = resolveAllSkills(renderer, s.directory, skillsEnvironment(baseEnv, cfg.overlay), s);
-            writeRecord(s, fingerprint(s, renderer, resolvedSkills));
-          } catch {
-            // 没有旧记录且算不出技能指纹时保留新视频，不阻断直接出片。
-          }
-        }
-      }
-      userOutput.write(`[${s.id}] 已完成直接出片：${s.output}\n`);
-    } finally {
-      fs.rmSync(stage, { recursive: true, force: true });
-      removeLive(s.directory, s.id);
-    }
-  } finally {
-    release();
-  }
-}
-
-/** 两段式试镜重试先补验收，避免设计者覆盖仍能复用的 design.md；不调用模型。 */
-export function recoverOutput(s: Scene, cfg: Config, baseEnv: Record<string, string>, userOutput: Writer, tolerance: number, signal?: AbortSignal): boolean {
-  if (s.designOnly || s.fresh || s.seam || s.examNote !== '' || signal?.aborted) return false;
-  const release = acquireSceneLease(s.directory, s.id);
-  try {
-    const renderer = s.renderer || cfg.renderer;
-    unstageRendererSkills(s.directory);
-    const skills = resolveAllSkills(renderer, s.directory, skillsEnvironment(baseEnv, cfg.overlay), s);
-    prepareResources(s, skills);
-    const inputs = fingerprint(s, renderer, skills);
-    return acceptRecoveredOutput(s, inputs, resumeState(s, inputs.fingerprint, () => fingerprint(s, renderer, skills, RecordSchemaRenderContract).fingerprint), baseEnv, userOutput, tolerance, signal);
-  } finally { release(); }
-}
-
-function acceptRecoveredOutput(s: Scene, inputs: Inputs, resume: ResumeState | null, baseEnv: Record<string, string>, userOutput: Writer, tolerance: number, signal?: AbortSignal): boolean {
-  // 上一轮已经出片、只是进程异常结束：重试先做本机验收。保留原日志、用量与真实退出码。
-  // 只认还留在镜头目录里的那份记录：归档会把视频连同记录一起挪走，记录已经归档时，
-  // 目录里的视频出自之后某次没来得及写记录的运行，不能算到这次头上。
-  if (resume && resume.logDir === s.directory && !signal?.aborted && fs.existsSync(outputPath(s))) {
-    let valid = false;
-    try { verifyResources(s.directory); verifyOutput(s, baseEnv, tolerance, true); valid = true; } catch { /* 不合格才继续制作。 */ }
-    if (valid) {
-      writeRecord(s, inputs);
-      const recovered = { ...resume.previous, outcome: OutcomeSucceeded, error: '', warning: resume.previous.error, resumed: 'verify' };
-      writeAttempt(s, recovered);
-      s.afterAttempt?.(recovered);
-      userOutput.write(`[${s.id}] 已有视频通过本机验收，无需再次调用模型\n`);
-      return true;
-    }
-  }
-  return false;
-}
-
-async function runScene(
-  s: Scene, cfg: Config, unsafe: boolean, baseEnv: Record<string, string>,
-  userOutput: Writer, tolerance: number, signal?: AbortSignal, repair?: RepairContext,
+  repair?: RepairContext,
 ): Promise<void> {
   if (!Number.isFinite(tolerance) || tolerance < 0) throw new Error('tolerance 必须是有限且非负的数字');
   const warning = transcriptTimingWarning(s);
@@ -290,30 +136,19 @@ async function runScene(
   }
   // 渲染器要用的 CLI 是前置资源（onset setup 装）：在渲染途中现下载的话，网络一差渲染器
   // 就空等、白花一次模型调用，最后只剩「没有产物」。没装好就在这里停，不启动渲染器。
-  const cliEnv: Record<string, string> = { ...baseEnv };
-  if (cfg.hyperFramesCLI !== '') {
-    cliEnv[hyperframes.CLIDirEnv] = cfg.hyperFramesCLI;
-  } else if (!cliEnv[hyperframes.CLIDirEnv]) {
-    // 调用方给的环境里没有时，取进程自己的设置（例如手工指定的 CLI 目录）。
-    const dir = process.env[hyperframes.CLIDirEnv];
-    if (dir) cliEnv[hyperframes.CLIDirEnv] = dir;
-  }
-  for (const key of [hyperframes.BrowserEnv, hyperframes.HyperFramesBrowserEnv, hyperframes.BrowserHookEnv, hyperframes.BrowserAppArgEnv]) {
-    if (!cliEnv[key] && process.env[key]) cliEnv[key] = process.env[key]!;
-  }
+  const cliEnv = buildHyperFramesEnv(cfg, baseEnv);
   // 浏览器同理：客户端里是它自带的 Chromium，单独用命令行时是 onset setup 下载的 headless-shell。
   // 资源先落到项目内容池并链接进镜头；不联网，失败时不启动模型也不清掉上一次产物。
   const preparedResources = prepareResources(s, resolvedSkills);
-  const auditionNote = s.audition ? '\n这是独立试镜。只使用本目录的冻结输入、明确提供的技能和参考素材；禁止读取其他选手、其他试镜、项目已有镜头的代码、日志、截图或视频。完成必要资料读取后立即制作本目录的合成，不要反复搜索或研究别人的作品。\n' : '';
-  const prompt = withWindowsInstructions((repair ? repairPrompt(s, repair) : buildPrompt(s, resolvedSkills, renderer === director.Tool)) + auditionNote, 'renderer');
+  const auditionNote = s.audition
+    ? '\n这是独立试镜。只使用本目录的冻结输入、明确提供的技能和参考素材；禁止读取其他选手、其他试镜、项目已有镜头的代码、日志、截图或视频。完成必要资料读取后立即制作本目录的合成，不要反复搜索或研究别人的作品。\n'
+    : '';
+  const prompt = withWindowsInstructions(
+    (repair ? repairPrompt(s, repair) : buildPrompt(s, resolvedSkills, renderer === director.Tool)) + auditionNote,
+    'renderer',
+  );
   // 渲染器的环境：onset 不在它的 PATH 里，HyperFrames 经 onset 的工具服务（--profile renderer）调用。
-  const childEnv = childEnvironment(cfg, baseEnv, unsafe, parsePassthrough(baseEnv.ONSET_PASSTHROUGH_ENV ?? ''));
-  // 客户端操作转发只交给编排工具。镜头渲染器已经拿到本次服务，不给它请求整片写操作的入口。
-  delete childEnv.ONSET_STUDIO_OP_PIPE;
-  if (s.renderWorkers > 0) childEnv.ONSET_RENDER_WORKERS = String(s.renderWorkers);
-  addToolsLocation(childEnv);
-  // opencode 按 PWD 而不是进程的工作目录定项目目录：不安全模式下照搬过来的 PWD 是 onset 自己的目录，渲染器会写到镜头外面（2026-11 实测）。
-  childEnv.PWD = s.directory;
+  const childEnv = buildChildEnv(s, cfg, unsafe, baseEnv);
   const access = rendererAccess(resolvedSkills);
   access.toolsServer = onsetToolsServer(onsetExecutable(), 'renderer', s.directory, childEnv);
   // 镜头要用的技能链进镜头目录（stageRendererSkills），opencode 另按名字只放行这几个。
@@ -327,53 +162,84 @@ async function runScene(
   if ((!unsafe || s.audition) && projectRoot !== '' && sandboxAvailable()) access.osSandbox = true;
   // 渲染器自己不拦命令：套了沙箱时由沙箱管边界；Windows 没有系统沙箱，用户定的是全放开（2026-11），安全先放下。
   access.unfiltered = rendererUnfiltered(access.osSandbox === true);
-  const confine = (command: Invocation): Invocation => {
-    let argv = command.argv;
-    argv[0] = lookPath(argv[0], baseEnv.PATH ?? '');
-    if (!access.osSandbox) return { ...command, argv };
-    const home = childEnv.HOME ?? baseEnv.HOME ?? '';
-    const own = rendererHome(renderer, home);
-    const profile = sandboxProfile({
-      sceneDir: s.directory,
-      projectRoot,
-      env: { ...baseEnv, ...childEnv },
-      toolStateDirs: [...(home ? own.state : []), ...(renderer === director.Tool ? [director.rendererDir(director.defaultDir({ ...process.env, ...baseEnv }))] : [])],
-      toolStateFiles: home ? own.files : [],
-      hiddenDirs: home ? own.hidden : [],
-      ...(s.audition ? { isolatedProject: {
-        readDirs: [...Object.values(resolvedSkills).filter(Boolean), path.join(projectRoot, '.onset/resources'), ...(s.exemplars?.dirs ?? [])],
-        readFiles: [path.join(projectRoot, 'onset.conf'), path.join(projectRoot, 'onset.flow.json')],
-      } } : {}),
-      // 渲染工具、onset 的运行时与资源、借来的浏览器所在的目录；资源目录的上一层是应用资源目录（开发时是仓库，浏览器模式从那里加载界面）。
-      readDirs: [path.dirname(fs.realpathSync(argv[0])), path.dirname(process.execPath), ...(process.env.ONSET_ASSETS_DIR ? [path.dirname(process.env.ONSET_ASSETS_DIR)] : []), ...[process.env.ONSET_ASSETS_DIR, childEnv.ONSET_SELF, cliEnv[hyperframes.BrowserEnv], cliEnv[hyperframes.CLIDirEnv]].filter((v): v is string => !!v).map((v) => (fs.existsSync(v) && fs.statSync(v).isDirectory() ? v : path.dirname(v))), ...(s.exemplars?.dirs ?? [])],
-    });
-    return { ...command, argv: sandboxed(argv, profile) };
-  };
-  const invocation = (text: string, session: RendererSession | null, stage: 'full' | 'repair' | 'simple' = 'full'): Invocation =>
-    confine(rendererLaunch(renderer, text, unsafe, access, model, session, s.directory, { ...childEnv, [director.DirEnv]: director.defaultDir({ ...process.env, ...baseEnv }) }, options, stage));
+  const confine = buildConfine({
+    s,
+    renderer,
+    projectRoot,
+    osSandbox: access.osSandbox === true,
+    baseEnv,
+    childEnv,
+    cliEnv,
+    resolvedSkills,
+  });
+  const invocation = (
+    text: string,
+    session: RendererSession | null,
+    stage: 'full' | 'repair' | 'simple' = 'full',
+  ): Invocation =>
+    confine(
+      rendererLaunch(
+        renderer,
+        text,
+        unsafe,
+        access,
+        model,
+        session,
+        s.directory,
+        { ...childEnv, [director.DirEnv]: director.defaultDir({ ...process.env, ...baseEnv }) },
+        options,
+        stage,
+      ),
+    );
   const inputs = fingerprint(s, renderer, resolvedSkills);
-  const resourceKeys = new Set([...Object.keys(preparedResources), ...Object.keys(inputs.parts ?? {}).filter((key) => key.startsWith('asset:'))]);
+  const resourceKeys = new Set([
+    ...Object.keys(preparedResources),
+    ...Object.keys(inputs.parts ?? {}).filter((key) => key.startsWith('asset:')),
+  ]);
   if ([...resourceKeys].some((key) => preparedResources[key] !== inputs.parts?.[key])) {
     throw new Error('准备期间共享渲染资源发生变化，请重新渲染；本次尚未启动渲染器');
   }
   // 中途异常退出过、输入没变：接着上一次做，不从头重来（resume.ts）。要在归档上一次之前读。
   const design = s.designOnly === true;
   const engineRenders = !design && (repair !== undefined || renderPromptVersion(s) >= 4);
-  const resume = design || repair || s.fresh || s.seam || s.examNote !== ''
-    ? null
-    : resumeState(s, inputs.fingerprint, () => fingerprint(s, renderer, resolvedSkills, RecordSchemaRenderContract).fingerprint);
+  const resume =
+    design || repair || s.fresh || s.seam || s.examNote !== ''
+      ? null
+      : resumeState(
+          s,
+          inputs.fingerprint,
+          () => fingerprint(s, renderer, resolvedSkills, RecordSchemaRenderContract).fingerprint,
+        );
   if (acceptRecoveredOutput(s, inputs, resume, baseEnv, userOutput, tolerance, signal)) return;
   // 补验收不启动模型或浏览器。只有确实需要制作时才检查这些运行依赖。
-  if (renderer === director.Tool && !director.resolveService(director.defaultDir({ ...process.env, ...baseEnv }))) throw new Error(director.NoServiceMessage);
+  if (renderer === director.Tool && !director.resolveService(director.defaultDir({ ...process.env, ...baseEnv })))
+    throw new Error(director.NoServiceMessage);
   hyperframes.requireCLI(cliEnv);
   hyperframes.requireBrowser(cliEnv);
   const frameCount = goRound(s.duration_seconds * sceneCanvas(s).fps);
   /** 新会话：能预先指定会话号的工具给一个，续接时就靠它。 */
-  const newSession = (): RendererSession | null => (presetSessionID(renderer) ? { id: crypto.randomUUID(), resume: false } : null);
+  const newSession = (): RendererSession | null =>
+    presetSessionID(renderer) ? { id: crypto.randomUUID(), resume: false } : null;
   /** 第三层的提示词：完整提示词加「接着上一次做」。 */
   const continuePrompt = (): string =>
-    withWindowsInstructions(buildPrompt({ ...s, continuation: { reason: resume?.previous.error ?? '', files: leftoverFiles(s), lastSteps: s.audition ? [] : resume?.lastSteps ?? [], codeDone: resume?.codeDone ?? false } }, resolvedSkills, renderer === director.Tool) + auditionNote, 'renderer');
-  const resumeSession = !s.audition && resume !== null && resume.previous.session_id !== '' && resume.previous.renderer === renderer;
+    withWindowsInstructions(
+      buildPrompt(
+        {
+          ...s,
+          continuation: {
+            reason: resume?.previous.error ?? '',
+            files: leftoverFiles(s),
+            lastSteps: s.audition ? [] : (resume?.lastSteps ?? []),
+            codeDone: resume?.codeDone ?? false,
+          },
+        },
+        resolvedSkills,
+        renderer === director.Tool,
+      ) + auditionNote,
+      'renderer',
+    );
+  const resumeSession =
+    !s.audition && resume !== null && resume.previous.session_id !== '' && resume.previous.renderer === renderer;
   // 直接渲染要看的是归档前就在镜头目录里的合成入口（归档只挪产物与日志，合成代码留在原处）。
   const directRender = resume !== null && resume.codeDone && fs.existsSync(path.join(s.directory, 'index.html'));
   // 先挪走上一次的现场再截断日志；旧记录随即作废，本次通过校验后再写新的。
@@ -402,30 +268,41 @@ async function runScene(
   });
   if (resume) userOutput.write(`[${s.id}] 上一次中途中断了，接着做（不从头重来）\n`);
   const usage: Usage = newUsage();
-  let handoff = false;
   let err: unknown = null;
   // 客户端据此显示「渲染中」与渲染器此刻在做什么，见 live.ts。
   const live = { pid: process.pid, renderer, started_at: attempt.started_at };
   writeLive(s.directory, s.id, live);
   let unstage = () => {};
   try {
-    // qoder 用自己的 Skill 工具加载本镜头的技能（链接只在渲染期间存在，见 stageRendererSkills）。
-    const unstageSkills = stageRendererSkills(renderer, s.directory, resolvedSkills, prompt);
-    unstage = unstageSkills;
-    if (renderer === 'mcode' && access.toolsServer) {
-      const unstageMcp = stageMcodeMcp(s.directory, access.toolsServer);
-      unstage = () => {
-        unstageMcp();
-        unstageSkills();
-      };
-    } else if (renderer === 'agy' && access.toolsServer) {
-      const unstageMcp = stageAgyMcp(s.directory, access.toolsServer);
-      unstage = () => {
-        unstageMcp();
-        unstageSkills();
-      };
-    }
-    await render();
+    unstage = stageRendererWorkspace(renderer, s.directory, resolvedSkills, prompt, access.toolsServer);
+    await executeRender({
+      s,
+      renderer,
+      resolvedSkills,
+      baseEnv,
+      cliEnv,
+      childEnv,
+      userOutput,
+      tolerance,
+      signal,
+      repair,
+      options,
+      inputs,
+      design,
+      engineRenders,
+      resume,
+      resumeSession,
+      directRender,
+      frameCount,
+      prompt,
+      attempt,
+      usage,
+      live,
+      confine,
+      invocation,
+      newSession,
+      continuePrompt,
+    });
   } catch (e) {
     err = e;
   } finally {
@@ -436,475 +313,5 @@ async function runScene(
     }
     removeLive(s.directory, s.id);
   }
-  // Go 版的 defer：无论成败都写尝试记录、报一行用量、回调记忆经历。
-  attempt.ended_at = timestamp(new Date());
-  attempt.seconds = Number(process.hrtime.bigint() - startedNs) / 1e9;
-  if (!usageEmpty(usage)) attempt.usage = usage;
-  if (err === null) {
-    attempt.outcome = OutcomeSucceeded;
-  } else if (err instanceof VerificationError) {
-    attempt.outcome = OutcomeVerificationFailed;
-    attempt.problems = err.problems;
-    attempt.checks = err.checks;
-  } else if (signal?.aborted) {
-    attempt.outcome = OutcomeInterrupted;
-  } else {
-    attempt.outcome = OutcomeFailed;
-  }
-  if (err !== null) attempt.error = err instanceof Error ? err.message : String(err);
-  try {
-    // 设计稿那一次不写尝试记录：镜头的尝试记录只记渲染，用量经 afterAttempt 交给调用方。
-    if (!design) writeAttempt(s, attempt);
-  } catch (writeErr) {
-    if (err === null) err = writeErr;
-  }
-  // 每次渲染都报一行用量：失败的尝试一样花了 token。
-  userOutput.write(`[${s.id}] 用量：${formatUsage(usage)}\n`);
-  // Go 的 writeAttempt 只在自己的副本上置 schema，回调拿到的仍是 0。
-  s.afterAttempt?.({ ...attempt });
-  if (err !== null) throw err;
-
-  async function render(): Promise<void> {
-    const rawFile = fs.openSync(design ? designLog(s, 'stream.jsonl') : streamLog(s), 'w');
-    try {
-      const stderrFile = fs.openSync(design ? designLog(s, 'stderr.log') : stderrLog(s), 'w');
-      try {
-        const userFile = fs.openSync(design ? designLog(s, 'user.log') : userLog(s), 'w');
-        try {
-          try {
-            await renderLayers(rawFile, stderrFile, userFile);
-            if (engineRenders && handoff && (repair || !fs.existsSync(outputPath(s)))) {
-              await renderHandoff(rawFile, stderrFile, userFile);
-              attempt.exit_code = 0;
-              return;
-            }
-          } catch (error) {
-            // 服务失败发生在出片之后：验收实际产物，不能因为最后一句模型响应失败就丢掉已经完成的画面。
-            // 取消、工具崩溃与设计稿阶段仍照常失败；旧视频已在本次运行前归档，不会误收旧产物。
-            if (design || repair || signal?.aborted || !(error instanceof RendererFailure) || !rendererFailureAdvice(error.message) || !fs.existsSync(outputPath(s))) throw error;
-            attempt.warning = error.message;
-            await finish();
-            userOutput.write(`[${s.id}] 模型异常结束，已有视频通过本机验收：${rendererFailureAdvice(error.message)!.label}\n`);
-            return;
-          }
-        } finally {
-          fs.closeSync(userFile);
-        }
-      } finally {
-        fs.closeSync(stderrFile);
-      }
-    } finally {
-      fs.closeSync(rawFile);
-    }
-    attempt.exit_code = 0;
-    if (repair) throw new Error('局部返修尚未完成画面自查和交接');
-    await finish();
-  }
-
-  /** 渲染出来以后：校验产物（修接缝另核对开头与其余画面），写渲染记录。 */
-  async function finish(): Promise<void> {
-    if (design) {
-      verifyDesign(s);
-      return;
-    }
-    await verifyRendered(s);
-    writeRecord(s, inputs);
-  }
-
-  async function verifyRendered(candidate: Scene): Promise<void> {
-    verifyResources(s.directory);
-    verifyOutput(candidate, baseEnv, tolerance, true);
-    // 修接缝：第 0 帧要接上前一镜的末帧、后面的画面不许变（seam.ts）。
-    if (s.seam) verifySeam(candidate, s.seam, mediaprobe.newToolchain(baseEnv), sceneCanvas(s).fps);
-    if (repair) {
-      if (fingerprint(s, renderer, resolvedSkills).fingerprint !== inputs.fingerprint) {
-        throw new VerificationError(s.output, ['局部返修改变了镜头的执行契约或其他渲染输入'], ['repair.inputs']);
-      }
-      await verifyRepair(candidate, repair, mediaprobe.newToolchain(baseEnv), signal);
-    }
-  }
-
-  function show(message: string, userFile: number): void {
-    fs.writeSync(userFile, message + '\n');
-    userOutput.write(message + '\n');
-  }
-
-  /** 先在镜头内的独立目录渲染与验收，失败产物不会覆盖正式路径或被续接误收。 */
-  async function encodeHandoff(stderrFile: number, userFile: number): Promise<void> {
-    signal?.throwIfAborted();
-    show(CodeDoneMessage, userFile);
-    const stage = fs.mkdtempSync(path.join(s.directory, '.onset-encode-'));
-    try {
-      writeLive(s.directory, s.id, { ...live, encoding: true });
-      const candidate = { ...s, output: path.relative(s.directory, path.join(stage, path.basename(s.output))) };
-      await renderComposition(stderrFile, candidate.output, true);
-      await verifyRendered(candidate);
-      signal?.throwIfAborted();
-      const destination = contained(s.directory, s.output, 'output');
-      fs.mkdirSync(path.dirname(destination), { recursive: true });
-      fs.renameSync(outputPath(candidate), contained(s.directory, s.output, 'output'));
-    } finally {
-      fs.rmSync(stage, { recursive: true, force: true });
-      writeLive(s.directory, s.id, live);
-    }
-  }
-
-  async function renderHandoff(rawFile: number, stderrFile: number, userFile: number): Promise<void> {
-    try {
-      await encodeHandoff(stderrFile, userFile);
-    } catch (error) {
-      if (signal?.aborted || error instanceof RenderLogError) throw error;
-      const detail = (error as Error).message.slice(0, 4000);
-      show(RenderRepairMessage, userFile);
-      userOutput.write(`[${s.id}] ${detail.split('\n')[0]}\n`);
-      const next = `片场渲染或验收失败。按下面的错误修复现有合成，复查受影响的画面，然后按原约定交接：[[USER_MESSAGE]]${RenderHandoffMessage}。\n${detail}`;
-      // With no explicit regular setting, an empty option on resume would keep the local repair setting.
-      const previousID = repair && options.repair_effort && !options.effort ? '' : attempt.session_id;
-      let resumed = false;
-      if (previousID !== '') {
-        usage.baseline = sessionBaseline(usage);
-        try {
-          await spawnRenderer(invocation(next, { id: previousID, resume: true }), rawFile, stderrFile, userFile);
-          resumed = true;
-        } catch (retryError) {
-          if (signal?.aborted || (retryError as { events?: number }).events !== 0) throw retryError;
-        }
-      }
-      if (!resumed) {
-        usage.baseline = undefined;
-        const session = newSession();
-        attempt.session_id = session?.id ?? '';
-        await spawnRenderer(invocation(prompt + '\n\n' + next, session), rawFile, stderrFile, userFile);
-      }
-      if (handoff && (repair || !fs.existsSync(outputPath(s)))) await encodeHandoff(stderrFile, userFile);
-      else if (repair) throw new Error('局部返修未重新完成画面自查和交接');
-      else await verifyRendered(s);
-    }
-    writeRecord(s, inputs);
-    show(`视频已渲染完成：${s.output}`, userFile);
-  }
-
-  /**
-   * 按接续的三层依次试：onset 直接渲染（合成已写完）→ 续接原会话 → 新会话照上次的文件接着做；没有可接的就是一次普通渲染。
-   * 直接渲染出片且校验通过就到此为止（render() 里还会再校验一次，结果相同）。
-   */
-  async function renderLayers(rawFile: number, stderrFile: number, userFile: number): Promise<void> {
-    if (directRender) {
-      try {
-        if (engineRenders) await encodeHandoff(stderrFile, userFile);
-        else {
-          await renderComposition(stderrFile);
-          verifyOutput(s, baseEnv, tolerance, true);
-        }
-        attempt.resumed = 'render';
-        fs.writeSync(userFile, `onset 直接渲染了上一次写好的合成：${s.output}\n`);
-        userOutput.write(`[${s.id}] 上一次的合成已写完，直接渲染出片\n`);
-        return;
-      } catch (e) {
-        if (signal?.aborted || e instanceof RenderLogError) throw e;
-        if (engineRenders) show(RenderRepairMessage, userFile);
-        userOutput.write(`[${s.id}] 直接渲染没成（${(e as Error).message.split('\n')[0]}），交给渲染器接着做\n`);
-      }
-    }
-    if (resumeSession) {
-      attempt.resumed = 'session';
-      attempt.session_id = resume!.previous.session_id;
-      // 续接后有的工具报整个会话的累计用量，减掉上一次记下的才是这一次的（tools 的 cumulativeFields）。
-      usage.baseline = sessionBaseline(resume!.previous.usage);
-      const text = resumePrompt(resume!.previous.error, s.output, frameCount, engineRenders);
-      const events = await spawnRenderer(invocation(text, { id: resume!.previous.session_id, resume: true }), rawFile, stderrFile, userFile).catch((e: unknown) => {
-        if (signal?.aborted || (e as { events?: number }).events !== 0) throw e;
-        return -1;
-      });
-      if (events >= 0) return;
-      // 续接的会话一句话都没说就退出了（会话过期、找不到）：退到第三层。
-      userOutput.write(`[${s.id}] 原来的会话续不上，开新会话照上次的文件接着做\n`);
-    }
-    usage.baseline = undefined;
-    const session = newSession();
-    attempt.session_id = session?.id ?? '';
-    if (resume) attempt.resumed = 'files';
-    await spawnRenderer(invocation(resume ? continuePrompt() : prompt, session, renderStage(s, repair)), rawFile, stderrFile, userFile);
-  }
-
-  /** 第一层：onset 自己用固定版本的 HyperFrames CLI 渲染镜头目录里的合成，不用模型。 */
-  async function renderComposition(stderrFile: number, output = s.output, normalHandoff = false): Promise<void> {
-    const args = ['render', '--output', output, ...(s.renderWorkers > 0 ? ['--workers', String(s.renderWorkers)] : [])];
-    const cli = hyperframes.requireCLI(cliEnv);
-    const renderEnv = normalHandoff ? { ...childEnv, [hyperframes.BrowserEnv]: hyperframes.requireBrowser(cliEnv) } : cliEnv;
-    const spec = hyperframes.cliCommandFor(cli, renderEnv, args);
-    // 直接渲染也是选手代码的执行，不能绕开试镜隔离去读取其他选手的文件。
-    const invocation: Invocation = { argv: [spec.file, ...spec.args], env: spec.env, stdin: '' };
-    const command = s.audition || normalHandoff ? confine(invocation) : invocation;
-    const logging = new AbortController();
-    const renderSignal = signal ? AbortSignal.any([signal, logging.signal]) : logging.signal;
-    const started = await start(command.argv[0], command.argv.slice(1), { cwd: s.directory, env: command.env, stdio: ['ignore', stderrFile, 'pipe'], signal: renderSignal }, terminateGrace);
-    let tail = '';
-    started.child.stderr!.setEncoding('utf8');
-    started.child.stderr!.on('data', (chunk: string) => {
-      if (logging.signal.aborted) return;
-      try {
-        fs.writeSync(stderrFile, chunk);
-      } catch (err) {
-        logging.abort(new RenderLogError(`写入 HyperFrames 渲染日志失败：${(err as Error).message}`, { cause: err }));
-        return;
-      }
-      tail = (tail + chunk).slice(-4000);
-    });
-    try {
-      await started.wait();
-    } catch (e) {
-      logging.signal.throwIfAborted();
-      if (signal?.aborted) throw new Error('已中断：渲染进程组已终止');
-      const reason = e instanceof ExitError ? `HyperFrames 渲染退出码 ${e.code}` : (e as Error).message;
-      throw new Error(tail.trim() ? `${reason}\n${tail.trim()}` : reason, { cause: e });
-    }
-    logging.signal.throwIfAborted();
-  }
-
-  /** 跑一次渲染器；返回它说了几句话、调了几次工具（0 表示根本没开始）。失败时抛出的错误也带着这个数（events）。 */
-  async function spawnRenderer(command: Invocation, rawFile: number, stderrFile: number, userFile: number): Promise<number> {
-    handoff = false;
-    const callUsage = newUsage();
-    callUsage.baseline = usage.baseline;
-    let events = 0;
-    let failure = '';
-    const parser = newParser(renderer);
-    const fail = (e: Error): Error => Object.assign(e, { events });
-    let started: Started;
-    try {
-      started = await start(command.argv[0], command.argv.slice(1), { cwd: s.directory, env: { ...childEnv, ...command.env }, stdio: [command.stdin ? 'pipe' : 'ignore', 'pipe', stderrFile], signal }, terminateGrace);
-      if (command.stdin && started.child.stdin) {
-        started.child.stdin.on('error', () => {});
-        started.child.stdin.end(command.stdin);
-      }
-    } catch (e) {
-      throw new Error(`启动渲染器：${(e as Error).message}`, { cause: e });
-    }
-    let pending: Buffer = Buffer.alloc(0);
-    let scanError: Error | null = null;
-    const handleLine = (raw: Buffer) => {
-      if (scanError) return;
-      // bufio.ScanLines 去掉行尾的 \r。
-      let line = raw.toString('utf8');
-      if (line.endsWith('\r')) line = line.slice(0, -1);
-      fs.writeSync(rawFile, line + '\n');
-      accumulateUsage(renderer, line, callUsage);
-      const model = detectModel(renderer, line);
-      if (model !== '') attempt.model = model;
-      for (const message of extractUserMessages(renderer, line)) {
-        if (message.trim() === RenderHandoffMessage) handoff = true;
-        show(message, userFile);
-      }
-      for (const e of parser.parse(line)) {
-        if (e.kind === KindError && e.text) failure = e.text.slice(0, 8000);
-        if (e.kind === KindSession && e.session_id) attempt.session_id = e.session_id;
-        if (e.kind === KindText || e.kind === KindToolCall) events++;
-      }
-      // 有的工具先报告一次可恢复的请求错误，随后明确完成本轮；不要把它误当最终失败。
-      if (failure) {
-        try {
-          const result = JSON.parse(line);
-          if (result.type === 'turn.completed' || (result.type === 'result' && result.is_error === false) || (result.event === 'result' && result.result?.status === 'SUCCESS')) failure = '';
-        } catch { /* 普通文本不改变服务错误。 */ }
-      }
-    };
-    started.child.stdout!.on('data', (chunk: Buffer) => {
-      pending = pending.length === 0 ? chunk : Buffer.concat([pending, chunk]);
-      let index: number;
-      while ((index = pending.indexOf(0x0a)) >= 0) {
-        handleLine(pending.subarray(0, index));
-        pending = pending.subarray(index + 1);
-      }
-      if (pending.length > maxLineBytes && !scanError) scanError = new Error('bufio.Scanner: token too long');
-      if (scanError) pending = Buffer.alloc(0);
-    });
-    let waitErr: unknown = null;
-    try {
-      await started.wait();
-    } catch (e) {
-      waitErr = e;
-    }
-    if (pending.length > 0) handleLine(pending);
-    if (events > 0 || !usageEmpty(callUsage)) usageAdd(usage, callUsage);
-    if (callUsage.session_total) usage.session_total = callUsage.session_total;
-    if (signal?.aborted) throw fail(new Error('已中断：渲染器进程组已终止'));
-    if (scanError) throw fail(new Error(`读取渲染器输出：${(scanError as Error).message}`));
-    if (waitErr !== null) {
-      if (waitErr instanceof ExitError) {
-        attempt.exit_code = waitErr.code;
-        throw fail(new RendererFailure(failure || `渲染器退出码 ${waitErr.code}`));
-      }
-      throw fail(waitErr as Error);
-    }
-    attempt.exit_code = 0;
-    if (failure !== '') throw fail(new RendererFailure(failure));
-    return events;
-  }
-}
-
-class RendererFailure extends Error {}
-class RenderLogError extends Error {}
-
-/** 只写设计稿那一次的日志：design-<镜头>.<后缀>，不盖掉渲染的日志。 */
-export function designLog(s: Pick<Scene, 'directory' | 'id'>, suffix: string): string {
-  return path.join(s.directory, `design-${s.id}.${suffix}`);
-}
-
-/** 设计稿那一次的校验：design.md 写出来了、不是空的。 */
-function verifyDesign(s: Scene): void {
-  let text = '';
-  try {
-    text = fs.readFileSync(path.join(s.directory, DesignFile), 'utf8');
-  } catch {
-    throw new Error(`设计稿没写出来：镜头目录里没有 ${DesignFile}`);
-  }
-  if (text.trim() === '') throw new Error(`设计稿是空的：${DesignFile}`);
-}
-
-/**
- * 校验镜头产物是否符合执行契约。
- *
- * 检查画幅、帧率、时长和「必须静音无音轨」四项，缺一项都会让错误在成片阶段才暴露。
- * 另外静态扫描合成源码的确定性（determinism）：读时钟、未播种随机数、
- * requestAnimationFrame 这类写法渲染照样成功，要到重渲染对不上时才暴露。
- *
- *   - 画幅：就近的 frame.md 声明了画布，渲染成别的尺寸无法靠后期规范化补救——
- *     把 720p 拉伸到 1080 是画质损失而不是格式统一。
- *   - 静音：镜头产物按契约就该无音轨，混音在后面的阶段统一做。
- *
- * 刻意不查编码和像素格式：PROMPT 第八阶段明确允许镜头产物规格不一致，
- * 由拼接前的规范化副本统一，在这里拦下会和那条既定流程打架。
- */
-export function verifyOutput(s: Scene, baseEnv: Record<string, string>, tolerance: number, checkComponents = false): void {
-  if (!Number.isFinite(tolerance) || tolerance < 0) throw new Error('tolerance 必须是有限且非负的数字');
-  const file = outputPath(s);
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(file);
-  } catch {
-    throw new Error(`渲染结束但产物不存在：${s.output}`);
-  }
-  if (!stat.isFile() || stat.size === 0) throw new Error(`渲染产物不是非空普通文件：${s.output}`);
-  let root = '';
-  try {
-    root = evalSymlinks(s.directory);
-  } catch {
-    // Go 忽略这里的错误，下面的 Rel 会把它判成越界。
-  }
-  const resolved = evalSymlinks(file);
-  const rel = root === '' ? '..' : relPath(root, resolved);
-  if (rel === '..' || rel.startsWith('..' + path.sep)) throw new Error(`产物不得链接到镜头目录外：${s.output}`);
-  const canvas = sceneCanvas(s);
-  const toolchain = mediaprobe.newToolchain(baseEnv);
-  const media = toolchain.probe(file);
-  const spec: mediaprobe.Spec = {
-    widthPx: canvas.widthPx,
-    heightPx: canvas.heightPx,
-    fps: canvas.fps,
-    durationSeconds: s.duration_seconds,
-    tolerance,
-    audio: mediaprobe.AudioAbsent,
-  };
-  const problems = mediaprobe.checkSpec(spec, media);
-  const checks = problems.map(classifyOutputProblem);
-  // 帧数逐帧解码实测，不靠时长容差兜：默认 0.15 秒的容差在 30fps 下能放过
-  // 差 4 帧的产物，要等拼接后整片复查才暴露，那时整批镜头都已渲染完。
-  // verifyFrameAlignment 已保证时长是整数帧，这里的期望值没有取整歧义。
-  // 没有视频流时 checkSpec 已经报过，不再重复解码。
-  if (media.video !== null) {
-    const expected = goRound(s.duration_seconds * canvas.fps);
-    let counted: number | null = null;
-    try {
-      counted = toolchain.countFrames(file);
-    } catch (e) {
-      problems.push((e as Error).message);
-      checks.push(CheckOutputFrames);
-    }
-    if (counted !== null && counted !== expected) {
-      problems.push(
-        `总帧数不符：期望 ${expected} 帧（${formatFixed(s.duration_seconds, 6)} 秒 × ${canvas.fps}fps），逐帧解码实测 ${counted} 帧`,
-      );
-      checks.push(CheckOutputFrames);
-    }
-  }
-  // 源码扫描与规格检查一起报：两类问题常同时出现，分两轮发现就要多烧一次渲染。
-  const scan = determinism.scan(s.directory);
-  problems.push(...determinism.problems(scan));
-  for (const finding of scan.findings) checks.push(DeterminismCheckPrefix + finding.rule);
-  if (problems.length > 0) throw new VerificationError(s.output, problems, checks);
-  if (checkComponents) verifyComponentReferences(s, scan.files);
-}
-
-/**
- * mcode exec 只从工作目录的 .mcp.json 读 MCP（tools.mcodeMcpJSON），渲染期间在镜头目录里放一份 onset 工具服务的配置，
- * 渲染完删掉。上次没删干净的（只有 onset 一个服务、跑的是 tools-mcp）直接换掉；镜头目录里原本就有别的 .mcp.json 时
- * 不覆盖，照实报错——盖掉的话那份配置就丢了。
- */
-export function stageMcodeMcp(sceneDir: string, server: McpServer): () => void {
-  const file = path.join(sceneDir, McodeMcpFile);
-  if (fs.lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`${McodeMcpFile} 不能是符号链接：${file}`);
-  const ours = (text: string): boolean => {
-    try {
-      const servers = JSON.parse(text).mcpServers as Record<string, { args?: unknown }>;
-      const names = Object.keys(servers ?? {});
-      return names.length === 1 && names[0] === server.name && Array.isArray(servers[server.name]!.args) && (servers[server.name]!.args as unknown[]).includes('tools-mcp');
-    } catch {
-      return false;
-    }
-  };
-  let existing: string | null = null;
-  try {
-    existing = fs.readFileSync(file, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-  }
-  if (existing !== null && !ours(existing)) throw new Error(`镜头目录里已有 ${McodeMcpFile}，MiniMax Code 渲染要在这里放 onset 工具服务的配置；请先挪走它：${file}`);
-  const content = mcodeMcpJSON(server);
-  atomicWrite(file, content, 0o600);
-  return () => {
-    try {
-      if (fs.readFileSync(file, 'utf8') === content) fs.rmSync(file, { force: true });
-    } catch {
-      // 已经不在了。
-    }
-  };
-}
-
-/**
- * Antigravity CLI（agy）headless 模式从工作区 `.agents/mcp_config.json` 读 MCP（tools.agyMcpJSON），
- * 渲染期间在镜头目录里放一份 onset 工具服务的配置，渲染完删掉；别人的配置不覆盖，报错退出。
- */
-export function stageAgyMcp(sceneDir: string, server: McpServer): () => void {
-  const file = path.join(sceneDir, AgyMcpFile);
-  const dir = path.dirname(file);
-  if (fs.lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`${path.dirname(AgyMcpFile)} 不能是符号链接：${dir}`);
-  if (fs.lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`${AgyMcpFile} 不能是符号链接：${file}`);
-  const ours = (text: string): boolean => {
-    try {
-      const servers = JSON.parse(text).mcpServers as Record<string, { args?: unknown }>;
-      const names = Object.keys(servers ?? {});
-      return names.length === 1 && names[0] === server.name && Array.isArray(servers[server.name]!.args) && (servers[server.name]!.args as unknown[]).includes('tools-mcp');
-    } catch {
-      return false;
-    }
-  };
-  let existing: string | null = null;
-  try {
-    existing = fs.readFileSync(file, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-  }
-  if (existing !== null && !ours(existing)) throw new Error(`镜头目录里已有 ${AgyMcpFile}，Antigravity 渲染要在这里放 onset 工具服务的配置；请先挪走它：${file}`);
-  const createdDir = !fs.existsSync(dir);
-  const content = agyMcpJSON(server);
-  atomicWrite(file, content, 0o600);
-  return () => {
-    try {
-      if (fs.readFileSync(file, 'utf8') === content) fs.rmSync(file, { force: true });
-      if (createdDir) fs.rmdirSync(dir);
-    } catch {
-      // 已经不在了或目录非空。
-    }
-  };
+  finalizeAttempt(s, attempt, startedNs, usage, design, userOutput, err, signal);
 }

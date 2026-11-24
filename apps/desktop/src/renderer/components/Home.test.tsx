@@ -2,7 +2,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { mockApi, type MockRequest } from '../testing';
+import { type MockRequest, mockApi } from '../testing';
 import type { AgentsResponse, Attachment, StylesResponse } from '../types';
 import { Home } from './Home';
 
@@ -89,25 +89,44 @@ test('home imports dropped folders as references, preserves nested files', async
   ];
   const backend = mockApi({
     '/api/styles': styles,
+    '/api/series': { dir: '', series: [] },
     '/api/setup': { ready: true, items: [], command: '' },
     '/api/skills': { status: { installed: true, installing: false } },
     'POST /api/projects/name': { name: '参考素材的片子', naming: 'n1' },
-    'POST /api/projects/create': (req: MockRequest) => ({ project: { id: 'p2', name: (req.body as { name: string }).name, path: '/home/u/片场/参考素材的片子' } }),
+    'POST /api/projects/create': (req: MockRequest) => ({
+      project: { id: 'p2', name: (req.body as { name: string }).name, path: '/home/u/片场/参考素材的片子' },
+    }),
     'POST /api/uploads': () => ({ attachments: uploads.shift() }),
     'POST /api/production/start': { session_id: 's1' },
   });
   const onStarted = vi.fn(async () => {});
   const user = userEvent.setup();
   render(
-    <Home projects={[]} summaries={{}} defaultParent="/home/u/片场" currentId="" agents={agents} onOpen={async () => {}} onRemove={async () => {}} onBrowse={() => {}} onStarted={onStarted} />,
+    <Home
+      projects={[]}
+      summaries={{}}
+      defaultParent="/home/u/片场"
+      currentId=""
+      agents={agents}
+      onOpen={async () => {}}
+      onRemove={async () => {}}
+      onBrowse={() => {}}
+      onStarted={onStarted}
+    />,
   );
   const send = () => document.querySelector<HTMLButtonElement>('#home-send')!;
   const tray = () => document.querySelector('.home-tray');
 
   // 目录分批读取：105 个文件一个不少。
-  const batch: Node = { name: '批量素材', children: Array.from({ length: 105 }, (_, i) => ({ name: `素材-${i}.txt`, content: 'text' })) };
+  const batch: Node = {
+    name: '批量素材',
+    children: Array.from({ length: 105 }, (_, i) => ({ name: `素材-${i}.txt`, content: 'text' })),
+  };
   dropFolder(batch);
-  expect(await screen.findByRole('list', { name: '引用素材' })).toHaveProperty('textContent', expect.stringContaining('105 个文件'));
+  expect(await screen.findByRole('list', { name: '引用素材' })).toHaveProperty(
+    'textContent',
+    expect.stringContaining('105 个文件'),
+  );
   expect(send().disabled).toBe(false);
 
   // 拖进带 .env 的目录（各种大小写、嵌套）整批拒收，已有的引用不动，输入框照常可用。
@@ -116,7 +135,9 @@ test('home imports dropped folders as references, preserves nested files', async
       ...batch,
       children: [
         ...batch.children!,
-        secret.length === 1 ? { name: secret[0], content: 'SECRET=test' } : { name: secret[0], children: [{ name: secret[1], content: 'SECRET=test' }] },
+        secret.length === 1
+          ? { name: secret[0], content: 'SECRET=test' }
+          : { name: secret[0], children: [{ name: secret[1], content: 'SECRET=test' }] },
       ],
     };
     dropFolder(withSecret);
@@ -134,7 +155,10 @@ test('home imports dropped folders as references, preserves nested files', async
   expect(tray()).toBeNull();
 
   // 普通文件上传与文件夹引用一起带上。
-  await user.upload(document.querySelector<HTMLInputElement>('.home input[type="file"]')!, new File(['# 上传文章'], '文章.md', { type: 'text/markdown' }));
+  await user.upload(
+    document.querySelector<HTMLInputElement>('.home input[type="file"]')!,
+    new File(['# 上传文章'], '文章.md', { type: 'text/markdown' }),
+  );
   await waitFor(() => expect(tray()?.textContent).toContain('文章.md'));
   dropFolder({
     name: '参考 素材',
@@ -156,19 +180,38 @@ test('home imports dropped folders as references, preserves nested files', async
 
   // 先建项目，再按素材顺序上传：普通文件一个字段；文件夹带名字头，保留相对路径、空目录与空文件。
   const create = backend.calls.find((c) => c.path === '/api/projects/create')!;
-  expect(create.body).toMatchObject({ parent: '/home/u/片场', canvas: 'vertical-3x4', delivery: 'speech', naming: 'n1' });
+  expect(create.body).toMatchObject({
+    parent: '/home/u/片场',
+    canvas: 'vertical-3x4',
+    delivery: 'speech',
+    naming: 'n1',
+  });
   expect((create.body as { name: string }).name).toMatch(/^参考素材的片子-\d{4}$/);
   const order = backend.calls.map((c) => c.path).filter((p) => p !== '/api/styles' && p !== '/api/setup');
   expect(order.indexOf('/api/projects/create')).toBeLessThan(order.indexOf('/api/uploads'));
-  const uploadInits = vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/uploads').map(([, init]) => init!);
+  const uploadInits = vi
+    .mocked(fetch)
+    .mock.calls.filter(([url]) => String(url) === '/api/uploads')
+    .map(([, init]) => init!);
   expect(uploadInits).toHaveLength(2);
   const article = uploadInits[0].body as FormData;
   expect([...article.keys()]).toEqual(['file']);
   expect(await (article.get('file') as File).text()).toBe('# 上传文章');
-  expect((uploadInits[1].headers as Record<string, string>)['X-Onset-Upload-Directory']).toBe(encodeURIComponent('参考 素材'));
+  expect((uploadInits[1].headers as Record<string, string>)['X-Onset-Upload-Directory']).toBe(
+    encodeURIComponent('参考 素材'),
+  );
   const folder = uploadInits[1].body as FormData;
   const fields = Object.fromEntries([...folder.entries()].map(([key, value]) => [decodeURIComponent(key), value]));
-  expect(Object.keys(fields).sort()).toEqual(['directory:', 'directory:子目录', 'directory:空目录', 'file:empty.txt', 'file:子目录/讲稿.md', 'file:讲稿.md'].sort());
+  expect(Object.keys(fields).sort()).toEqual(
+    [
+      'directory:',
+      'directory:子目录',
+      'directory:空目录',
+      'file:empty.txt',
+      'file:子目录/讲稿.md',
+      'file:讲稿.md',
+    ].sort(),
+  );
   expect(await (fields['file:讲稿.md'] as File).text()).toBe('# 根讲稿');
   expect(await (fields['file:子目录/讲稿.md'] as File).text()).toBe('# 子讲稿');
   // 空文件与目录标记用空字符串字段（空 Blob 在 Electron 自定义协议里读不出来）。

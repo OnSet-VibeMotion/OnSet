@@ -18,7 +18,7 @@ import { afterAll, afterEach } from 'vitest';
 import { CLIDirEnv } from '../hyperframes';
 import { fakeBrowser, fakeCLI } from '../hyperframes/hftest';
 import { setInstallOfficialSkills } from './skills';
-import { Server, type Config } from './studio';
+import { type Config, Server } from './studio';
 
 const memoryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-memory-test-'));
 process.env.ONSET_MEMORY_DIR = memoryDir;
@@ -30,6 +30,8 @@ process.env.ONSET_BIN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-bin-tes
 process.env[CLIDirEnv] = cli;
 // 音色库同理：用户积累的声音不能被测试写进或删掉。
 process.env.ONSET_VOICES_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-voices-test-'));
+// 专栏库同理：用户建好的专栏配置与跨期资产不能被测试污染。
+process.env.ONSET_SERIES_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-series-test-'));
 setInstallOfficialSkills(async () => {});
 
 const temps: string[] = [];
@@ -110,7 +112,18 @@ export const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).
 /** 用 ffmpeg 造一张 width×height 的 JPEG（Go 测试用 image/jpeg 现编）。 */
 export function writeStudioJPEG(file: string, width: number, height: number): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const ran = spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', `testsrc=size=${width}x${height}:rate=1`, '-frames:v', '1', file]);
+  const ran = spawnSync('ffmpeg', [
+    '-v',
+    'error',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    `testsrc=size=${width}x${height}:rate=1`,
+    '-frames:v',
+    '1',
+    file,
+  ]);
   if (ran.status !== 0) throw new Error('ffmpeg 造 JPEG 失败：' + ran.stderr.toString());
 }
 
@@ -127,7 +140,13 @@ export interface JSONResult {
 }
 
 /** 发一个请求并跟随 301（Go 的 http.Client 会跟）。 */
-export async function send(s: Server, method: string, url: string, body?: string | FormData, headers: Record<string, string> = {}): Promise<Response> {
+export async function send(
+  s: Server,
+  method: string,
+  url: string,
+  body?: string | FormData,
+  headers: Record<string, string> = {},
+): Promise<Response> {
   let target = url;
   for (let i = 0; i < 5; i++) {
     const init: RequestInit = { method, headers: { ...headers } };
@@ -230,7 +249,9 @@ export function newSessionFixture(): SessionFixture {
   if (process.platform === 'win32') {
     // 使用真正的 npm 风格入口，避免找不到无扩展名脚本后误用开发机上的 claude.cmd。
     fs.writeFileSync(path.join(bin, 'claude.cmd'), '@echo off\r\nnode "%~dp0\\claude-fake.cjs" %*\r\n');
-    fs.writeFileSync(path.join(bin, 'claude-fake.cjs'), `
+    fs.writeFileSync(
+      path.join(bin, 'claude-fake.cjs'),
+      `
 const fs = require('node:fs'), path = require('node:path');
 (async () => {
   const args = process.argv.slice(2), log = process.env.FAKE_ARGS_LOG;
@@ -255,7 +276,8 @@ const fs = require('node:fs'), path = require('node:path');
   emit({type:'assistant',message:{content:[{type:'text',text:'改好了'}]}});
   emit({type:'result',subtype:'success',is_error:false,result:'改好了',usage:{input_tokens:3,output_tokens:4},total_cost_usd:0.01,num_turns:1});
 })().catch(error => { console.error(error); process.exit(1); });
-`);
+`,
+    );
   }
   const argsLog = path.join(tempDir(), 'args.log');
   setEnv('PATH', bin + path.delimiter + (process.env.PATH ?? ''));

@@ -30,6 +30,63 @@
     return a + (b - a) * t;
   }
 
+  // cubicBezier(x1, y1, x2, y2)：通用三次贝塞尔缓动，牛顿法 + 二分兜底，纯函数无状态。
+  // 传第 5 个参数 t 时直接求值（t 钳到 [0, 1]），省略则返回缓动函数。
+  function makeCubicBezier(x1, y1, x2, y2) {
+    if (
+      !Number.isFinite(x1) ||
+      !Number.isFinite(y1) ||
+      !Number.isFinite(x2) ||
+      !Number.isFinite(y2) ||
+      x1 < 0 ||
+      x1 > 1 ||
+      x2 < 0 ||
+      x2 > 1
+    ) {
+      throw new Error('SceneKit.cubicBezier：控制点须为有限数字，且 x1、x2 落在 [0, 1]');
+    }
+    var ax = 3 * x1 - 3 * x2 + 1;
+    var bx = 3 * x2 - 6 * x1;
+    var cx = 3 * x1;
+    var ay = 3 * y1 - 3 * y2 + 1;
+    var by = 3 * y2 - 6 * y1;
+    var cy = 3 * y1;
+    function sampleX(u) { return ((ax * u + bx) * u + cx) * u; }
+    function sampleY(u) { return ((ay * u + by) * u + cy) * u; }
+    function sampleDX(u) { return (3 * ax * u + 2 * bx) * u + cx; }
+    return function (t) {
+      var x = clamp(t, 0, 1);
+      if (x <= 0) return 0;
+      if (x >= 1) return 1;
+      var u = x;
+      for (var i = 0; i < 6; i++) {
+        var err = sampleX(u) - x;
+        if (Math.abs(err) < 1e-6) return sampleY(u);
+        var d = sampleDX(u);
+        if (Math.abs(d) < 1e-6) break;
+        u -= err / d;
+        if (u < 0 || u > 1) break;
+      }
+      var lo = 0;
+      var hi = 1;
+      u = x;
+      for (var j = 0; j < 20; j++) {
+        var val = sampleX(u);
+        if (Math.abs(val - x) < 1e-6) break;
+        if (val < x) lo = u;
+        else hi = u;
+        u = (lo + hi) * 0.5;
+      }
+      return sampleY(u);
+    };
+  }
+
+  function cubicBezier(x1, y1, x2, y2, t) {
+    var fn = makeCubicBezier(x1, y1, x2, y2);
+    if (t === undefined) return fn;
+    return fn(t);
+  }
+
   var BACK = 1.70158;
   var EASES = {
     linear: function (t) { return t; },
@@ -57,6 +114,10 @@
         ? (Math.pow(2 * t, 2) * ((c + 1) * 2 * t - c)) / 2
         : (Math.pow(2 * t - 2, 2) * ((c + 1) * (t * 2 - 2) + c) + 2) / 2;
     },
+    // 强缓动预设：比内置曲线更有起停张力（入场落定 / 画面内移动 / 大面板推入）。
+    snappyOut: makeCubicBezier(0.23, 1, 0.32, 1),
+    smoothInOut: makeCubicBezier(0.77, 0, 0.175, 1),
+    drawerOut: makeCubicBezier(0.32, 0.72, 0, 1),
   };
 
   // ease(name) 返回缓动函数；ease(name, t) 直接求值（t 先钳到 [0, 1]）。
@@ -68,6 +129,64 @@
     }
     if (t === undefined) return fn;
     return fn(clamp(t, 0, 1));
+  }
+
+  // spring(frame, startFrame, options?)：按帧确定性求值的解析物理弹簧（0 -> 1，可过冲）。
+  // 参数采用感知时长 + 弹跳度：duration（秒，默认 0.5）、bounce（[-0.95, 0.95]，默认 0.2，
+  // 0 为临界阻尼无回弹，>0 欠阻尼回弹，<0 过阻尼柔缓）；也可传 durationFrames 或 fps。
+  function spring(frame, startFrame, options) {
+    var elapsedFrames = frame - startFrame;
+    if (elapsedFrames <= 0) return 0;
+    var opts = options || {};
+    var fps = opts.fps;
+    if (fps === undefined || fps === null) {
+      fps = global.ONSET_SCENE && typeof global.ONSET_SCENE.fps === 'number' && global.ONSET_SCENE.fps > 0
+        ? global.ONSET_SCENE.fps
+        : 30;
+    }
+    if (!Number.isFinite(fps) || fps <= 0) throw new Error('SceneKit.spring：fps 须为正数');
+    var duration = opts.durationFrames !== undefined && opts.durationFrames !== null
+      ? opts.durationFrames / fps
+      : opts.duration === undefined || opts.duration === null
+        ? 0.5
+        : opts.duration;
+    if (!Number.isFinite(duration) || duration <= 0) throw new Error('SceneKit.spring：duration 须为正数');
+    var bounce = opts.bounce === undefined || opts.bounce === null ? 0.2 : opts.bounce;
+    if (!Number.isFinite(bounce) || bounce <= -1 || bounce >= 1) {
+      throw new Error('SceneKit.spring：bounce 须在 (-1, 1) 之间');
+    }
+    var t = elapsedFrames / fps;
+    var w0 = (2 * Math.PI) / duration;
+    var zeta = bounce >= 0 ? 1 - bounce : 1 / (1 + bounce);
+    var value;
+    if (Math.abs(zeta - 1) < 1e-6) {
+      var decay = Math.exp(-w0 * t);
+      if (decay < 1e-5) return 1;
+      value = 1 - decay * (1 + w0 * t);
+    } else if (zeta < 1) {
+      var wd = w0 * Math.sqrt(1 - zeta * zeta);
+      var env = Math.exp(-zeta * w0 * t);
+      if (env < 1e-5) return 1;
+      value = 1 - env * (Math.cos(wd * t) + ((zeta * w0) / wd) * Math.sin(wd * t));
+    } else {
+      var r = w0 * Math.sqrt(zeta * zeta - 1);
+      var r1 = -zeta * w0 + r;
+      var r2 = -zeta * w0 - r;
+      var e1 = Math.exp(r1 * t);
+      var e2 = Math.exp(r2 * t);
+      if (e1 < 1e-5 && e2 < 1e-5) return 1;
+      value = 1 - (r1 * e2 - r2 * e1) / (r1 - r2);
+    }
+    return value;
+  }
+
+  // stagger(index, count, totalFrames, easeName?)：非均匀交错偏移帧（默认 sineOut，间隔逐项递减成波浪感）。
+  // 返回整数帧偏移，可直接加到进场帧或传给 phraseText 的 enterFrame。
+  function stagger(index, count, totalFrames, easeName) {
+    if (!Number.isFinite(count) || count <= 1 || !Number.isFinite(totalFrames) || totalFrames <= 0) return 0;
+    var u = clamp(index, 0, count - 1) / (count - 1);
+    var fn = typeof easeName === 'function' ? easeName : ease(easeName || 'sineOut');
+    return Math.round(totalFrames * fn(u));
   }
 
   // progress：frame 在 [startFrame, endFrame] 区间里的进度，钳在 [0, 1]。
@@ -780,12 +899,15 @@
   }
 
   global.SceneKit = {
-    version: '1.0.0',
+    version: '1.1.0',
     schema: SCHEMA,
     clamp: clamp,
     lerp: lerp,
+    cubicBezier: cubicBezier,
     ease: ease,
     eases: Object.keys(EASES),
+    spring: spring,
+    stagger: stagger,
     progress: progress,
     fade: fade,
     rng: rng,

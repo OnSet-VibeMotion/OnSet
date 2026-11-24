@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, errorText, post } from '../api';
 import type { CanvasOption, DirectoryListing, Project, StylesResponse } from '../types';
-import { Icon } from './Icon';
 import { FilmStylePicker, styleKey, useFilmStyles } from './FilmStyles';
+import { Icon } from './Icon';
 import { NativeDirectoryPicker, usesNativeDirectoryPicker } from './NativeDirectoryPicker';
 
 interface Props {
@@ -23,7 +23,9 @@ export function ProjectDialog({ projects, currentId, onClose, onOpened }: Props)
 
   const browse = async (path = '') => {
     try {
-      const result = await api<DirectoryListing>('/api/directories' + (path ? '?path=' + encodeURIComponent(path) : ''));
+      const result = await api<DirectoryListing>(
+        '/api/directories' + (path ? '?path=' + encodeURIComponent(path) : ''),
+      );
       setListing(result);
       // 系统对话框可能先于初始目录请求返回，不能清掉用户刚选好的路径。
       if (!usesNativeDirectoryPicker()) setSelected('');
@@ -52,11 +54,20 @@ export function ProjectDialog({ projects, currentId, onClose, onOpened }: Props)
 
   return (
     <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <section className={'modal' + (mode === 'create' ? ' wide' : '')} role="dialog" aria-label="项目" id="project-dialog">
+      <section
+        className={'modal' + (mode === 'create' ? ' wide' : '')}
+        role="dialog"
+        aria-label="项目"
+        id="project-dialog"
+      >
         <header className="modal-head">
           <h2>项目</h2>
           <div className="segmented">
-            <button className={mode === 'recent' ? 'on' : ''} onClick={() => setMode('recent')} disabled={!projects.length}>
+            <button
+              className={mode === 'recent' ? 'on' : ''}
+              onClick={() => setMode('recent')}
+              disabled={!projects.length}
+            >
               最近
             </button>
             <button className={mode === 'open' ? 'on' : ''} onClick={() => setMode('open')} id="mode-open">
@@ -156,7 +167,12 @@ function DirectoryBrowser(props: {
     return (
       <div className="native-directory-browser">
         <span className="muted">{props.projectsOnly ? '选择已有项目文件夹' : '选择新项目的保存文件夹'}</span>
-        <NativeDirectoryPicker id={props.projectsOnly ? 'native-open-directory' : 'native-create-directory'} value={selected} label="选择文件夹…" onChange={props.onSelect} />
+        <NativeDirectoryPicker
+          id={props.projectsOnly ? 'native-open-directory' : 'native-create-directory'}
+          value={selected}
+          label="选择文件夹…"
+          onChange={props.onSelect}
+        />
         <code className="path">{selected || '尚未选择文件夹'}</code>
       </div>
     );
@@ -171,7 +187,9 @@ function DirectoryBrowser(props: {
         </button>
         <code className="path">{listing.path}</code>
         <span className="spacer" />
-        <span className="muted small">{props.projectsOnly ? '单击项目选中，单击文件夹进入' : '单击选为父目录，双击进入'}</span>
+        <span className="muted small">
+          {props.projectsOnly ? '单击项目选中，单击文件夹进入' : '单击选为父目录，双击进入'}
+        </span>
       </div>
       <ul className="list dirs">
         {listing.entries.length === 0 && <li className="muted pad">没有子目录</li>}
@@ -179,7 +197,9 @@ function DirectoryBrowser(props: {
           <li key={entry.path} className={entry.path === props.selected ? 'active' : ''}>
             <button
               className={'row directory-row' + (entry.is_project ? ' project-row' : '')}
-              onClick={() => (entry.is_project || !props.projectsOnly ? props.onSelect(entry.path) : props.onBrowse(entry.path))}
+              onClick={() =>
+                entry.is_project || !props.projectsOnly ? props.onSelect(entry.path) : props.onBrowse(entry.path)
+              }
               onDoubleClick={() => props.onBrowse(entry.path)}
             >
               <Icon name={entry.is_project ? 'film' : 'folder'} size={14} />
@@ -205,10 +225,12 @@ function CreateForm(props: {
   const films = useFilmStyles(true);
 
   useEffect(() => {
-    api<StylesResponse>('/api/styles').then((result) => {
-      setStyles(result);
-      setCanvas(result.default_canvas);
-    });
+    void api<StylesResponse>('/api/styles')
+      .then((result) => {
+        setStyles(result);
+        setCanvas(result.default_canvas);
+      })
+      .catch(() => {});
   }, []);
 
   if (!styles) return <p className="muted pad">正在读取画幅…</p>;

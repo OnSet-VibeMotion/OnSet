@@ -13,6 +13,8 @@
 
 ```bash
 npm ci
+npm run lint                         # 全仓 Biome 静态检查 + 仓库卫生门禁（U+2028/2029、单文件≤400行、lockfile registry）
+npm run format:check                 # 仅检查改动文件的 Biome 格式与 import 排序；npm run format 自动修复
 npx tsc --noEmit -p packages/engine
 npx tsc --noEmit -p packages/cli
 npm run typecheck -w onset-desktop
