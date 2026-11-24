@@ -22,6 +22,7 @@ import './font_cmd';
 import './hyperframes';
 import './media';
 import './mediagen_cmd';
+import './motion_cmd';
 import './phrase_frames';
 import './presenter_cmd';
 import './projectzip_cmd';

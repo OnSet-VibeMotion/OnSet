@@ -5,9 +5,9 @@ import { describe, expect, it } from 'vitest';
 import '../plugin';
 import * as flow from '../flow';
 import { fingerprint } from './record';
-import { buildPrompt, load, renderPromptVersion } from './scene';
-import { prepareResources, FontsCSSFile } from './resources';
+import { FontsCSSFile, prepareResources } from './resources';
 import { isSimpleScene } from './run';
+import { buildPrompt, load, renderPromptVersion } from './scene';
 import { stagedSkills } from './skills';
 import { tempDir, testPlanSHA, writeScene } from './testsupport';
 
@@ -19,7 +19,12 @@ function project(version: number, timing: boolean) {
   fs.mkdirSync(path.join(root, 'scenes'));
   const block = timing ? `,"timing":{"fps":30,"start_frame":0,"end_frame_exclusive":30,"plan":"${testPlanSHA}"}` : '';
   const dir = path.join(root, 'scenes', 'one');
-  fs.renameSync(writeScene(`{"id":"one","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"${block}}`), dir);
+  fs.renameSync(
+    writeScene(
+      `{"id":"one","duration_seconds":1,"output":"out.mp4","transcript":"transcript.srt","text":"hello"${block}}`,
+    ),
+    dir,
+  );
   return load(dir);
 }
 
@@ -50,7 +55,11 @@ describe('render prompt version', () => {
     const old = project(0, true);
     expect(renderPromptVersion(old)).toBe(1);
     const oldPrompt = buildPrompt(old, {});
-    expect(crypto.createHash('sha256').update(oldPrompt).digest('hex')).toBe(process.platform === 'win32' ? '152b186f0366780b54fd00eec71def018e1c69c40d30ebf61314d08d9e8cb3f0' : '1adb7e84c335973c091bb6ae3c86df5b75d8c2420b62c7dcaaa856d9bff9970b');
+    expect(crypto.createHash('sha256').update(oldPrompt).digest('hex')).toBe(
+      process.platform === 'win32'
+        ? '152b186f0366780b54fd00eec71def018e1c69c40d30ebf61314d08d9e8cb3f0'
+        : '1adb7e84c335973c091bb6ae3c86df5b75d8c2420b62c7dcaaa856d9bff9970b',
+    );
     expect(oldPrompt).not.toContain('开工须知');
     expect(oldPrompt).toContain('先阅读完整字幕并检查素材。');
 
@@ -79,17 +88,26 @@ describe('render prompt version', () => {
     fs.mkdirSync(path.join(root, 'scenes'));
     const mk = (id: string, text: string, start: number, end: number) => {
       const dir = path.join(root, 'scenes', id);
-      fs.renameSync(writeScene(JSON.stringify({
-        id,
-        duration_seconds: (end - start) / 30,
-        output: `${id}.mp4`,
-        transcript: 'transcript.srt',
-        text,
-        timing: { fps: 30, start_frame: start, end_frame_exclusive: end, plan: testPlanSHA },
-      })), dir);
+      fs.renameSync(
+        writeScene(
+          JSON.stringify({
+            id,
+            duration_seconds: (end - start) / 30,
+            output: `${id}.mp4`,
+            transcript: 'transcript.srt',
+            text,
+            timing: { fps: 30, start_frame: start, end_frame_exclusive: end, plan: testPlanSHA },
+          }),
+        ),
+        dir,
+      );
       return load(dir);
     };
-    const resolved = { hyperframes: '/installed/skills', 'scene-kit': '/installed/shared', 'hyperframes-cli': '/installed/skills' };
+    const resolved = {
+      hyperframes: '/installed/skills',
+      'scene-kit': '/installed/shared',
+      'hyperframes-cli': '/installed/skills',
+    };
     const p1 = buildPrompt(mk('scene-001', '第一镜文案', 0, 30), resolved);
     const p2 = buildPrompt(mk('scene-002', '第二镜文案，完全不同的内容', 30, 90), resolved);
     const split1 = p1.indexOf('任务目标：\n');
@@ -119,24 +137,44 @@ describe('render prompt version', () => {
     fs.mkdirSync(styleDir, { recursive: true });
     fs.writeFileSync(path.join(styleDir, 'SKILL.md'), '# style skill');
     fs.writeFileSync(path.join(styleDir, 'STYLE.md'), '# 纸墨极简\n- 深墨底色，米白主文字');
-    for (const name of ['character-rig', 'text-to-lottie', 'algorithmic-art', 'hyperframes', 'hyperframes-cli', 'scene-kit']) {
+    for (const name of [
+      'character-rig',
+      'text-to-lottie',
+      'algorithmic-art',
+      'hyperframes',
+      'hyperframes-cli',
+      'scene-kit',
+    ]) {
       fs.mkdirSync(path.join(root, '.agents', 'skills', name), { recursive: true });
       fs.writeFileSync(path.join(root, '.agents', 'skills', name, 'SKILL.md'), `# ${name}`);
     }
     fs.mkdirSync(path.join(root, 'scenes'));
     const mk = (id: string, text: string, promptMd = '') => {
       const dir = path.join(root, 'scenes', id);
-      fs.renameSync(writeScene(JSON.stringify({
-        id, duration_seconds: 2, output: `${id}.mp4`, transcript: 'transcript.srt', text,
-        timing: { fps: 30, start_frame: 0, end_frame_exclusive: 60, plan: testPlanSHA },
-      })), dir);
+      fs.renameSync(
+        writeScene(
+          JSON.stringify({
+            id,
+            duration_seconds: 2,
+            output: `${id}.mp4`,
+            transcript: 'transcript.srt',
+            text,
+            timing: { fps: 30, start_frame: 0, end_frame_exclusive: 60, plan: testPlanSHA },
+          }),
+        ),
+        dir,
+      );
       if (promptMd) fs.writeFileSync(path.join(dir, 'prompt.md'), promptMd);
       return load(dir);
     };
     const skillsRoot = path.join(root, '.agents', 'skills');
     const resolved = {
-      hyperframes: skillsRoot, 'hyperframes-cli': skillsRoot, 'scene-kit': skillsRoot,
-      'character-rig': skillsRoot, 'text-to-lottie': skillsRoot, 'algorithmic-art': skillsRoot,
+      hyperframes: skillsRoot,
+      'hyperframes-cli': skillsRoot,
+      'scene-kit': skillsRoot,
+      'character-rig': skillsRoot,
+      'text-to-lottie': skillsRoot,
+      'algorithmic-art': skillsRoot,
       'onset-film-style': skillsRoot,
     };
     const plain = mk('scene-001', '短标题卡');
@@ -149,7 +187,7 @@ describe('render prompt version', () => {
     expect(p1).toContain('纸墨极简');
     expect(p1).toContain('onset-fonts.css');
     // 普通单人镜头不挂载重型可选技能。
-    const stagedPlain = stagedSkills(resolved, p1).map(s => s.name);
+    const stagedPlain = stagedSkills(resolved, p1).map((s) => s.name);
     expect(stagedPlain).not.toContain('character-rig');
     expect(stagedPlain).not.toContain('text-to-lottie');
     expect(stagedPlain).not.toContain('algorithmic-art');
@@ -158,7 +196,7 @@ describe('render prompt version', () => {
     const lottieScene = mk('scene-002', '图标动画', '本镜头使用 Lottie 做主徽标描边演绎。');
     expect(isSimpleScene(lottieScene)).toBe(false);
     const p2 = buildPrompt(lottieScene, resolved);
-    expect(stagedSkills(resolved, p2).map(s => s.name)).toContain('text-to-lottie');
+    expect(stagedSkills(resolved, p2).map((s) => s.name)).toContain('text-to-lottie');
     // 跨镜头静态前缀保持完全一致。
     const split1 = p1.indexOf('任务目标：\n');
     const split2 = p2.indexOf('任务目标：\n');
@@ -172,14 +210,26 @@ describe('render prompt version', () => {
     const styleDir = path.join(root, '.agents', 'skills', 'onset-film-style');
     fs.mkdirSync(styleDir, { recursive: true });
     fs.writeFileSync(path.join(styleDir, 'SKILL.md'), '# style skill');
-    const visualBody = '# 电影视觉\n## 1. Visual\n' + '细节规则。'.repeat(700) + '\n## 7. Sound palette\n- 合成器低音铺底\n## 8. Type\n- 大字清晰\n';
+    const visualBody =
+      '# 电影视觉\n## 1. Visual\n' +
+      '细节规则。'.repeat(700) +
+      '\n## 7. Sound palette\n- 合成器低音铺底\n## 8. Type\n- 大字清晰\n';
     fs.writeFileSync(path.join(styleDir, 'STYLE.md'), visualBody);
     fs.mkdirSync(path.join(root, 'scenes'));
     const dir = path.join(root, 'scenes', 'scene-001');
-    fs.renameSync(writeScene(JSON.stringify({
-      id: 'scene-001', duration_seconds: 3, output: 'scene-001.mp4', transcript: 'transcript.srt', text: '测试',
-      timing: { fps: 30, start_frame: 0, end_frame_exclusive: 90, plan: testPlanSHA },
-    })), dir);
+    fs.renameSync(
+      writeScene(
+        JSON.stringify({
+          id: 'scene-001',
+          duration_seconds: 3,
+          output: 'scene-001.mp4',
+          transcript: 'transcript.srt',
+          text: '测试',
+          timing: { fps: 30, start_frame: 0, end_frame_exclusive: 90, plan: testPlanSHA },
+        }),
+      ),
+      dir,
+    );
     const s = load(dir);
     const p7 = buildPrompt(s, { 'onset-film-style': path.join(root, '.agents', 'skills') });
     expect(p7).toContain('<onset-film-style-brief>');
@@ -195,9 +245,18 @@ describe('render prompt version', () => {
     // 无 timing 的镜头（如卡点）不应出现禁止读完整字幕的冲突条款；STYLE.md 超过 8500 字截断时允许按需补读剩余视觉条款。
     fs.writeFileSync(path.join(styleDir, 'STYLE.md'), '# 超长风格\n' + '超长规范段落。'.repeat(1500));
     const beatDir = path.join(root, 'scenes', 'scene-002');
-    fs.renameSync(writeScene(JSON.stringify({
-      id: 'scene-002', duration_seconds: 3, output: 'scene-002.mp4', transcript: 'transcript.srt', text: '测试',
-    })), beatDir);
+    fs.renameSync(
+      writeScene(
+        JSON.stringify({
+          id: 'scene-002',
+          duration_seconds: 3,
+          output: 'scene-002.mp4',
+          transcript: 'transcript.srt',
+          text: '测试',
+        }),
+      ),
+      beatDir,
+    );
     const p7Clipped = buildPrompt(load(beatDir), { 'onset-film-style': path.join(root, '.agents', 'skills') });
     expect(p7Clipped).not.toContain('也不要整份读 transcription.srt');
     expect(p7Clipped).toContain('可按需读取 STYLE.md 的剩余小节');
@@ -209,12 +268,24 @@ describe('render prompt version', () => {
     fs.writeFileSync(path.join(ownDir, 'SKILL.md'), '# impasto');
     fs.writeFileSync(path.join(ownDir, 'STYLE.md'), '# impasto style');
     const ownSceneDir = path.join(root, 'scenes', 'scene-003');
-    fs.renameSync(writeScene(JSON.stringify({
-      id: 'scene-003', duration_seconds: 3, output: 'scene-003.mp4', transcript: 'transcript.srt', text: '测试',
-      film_style: 'lemo/impasto',
-      timing: { fps: 30, start_frame: 0, end_frame_exclusive: 90, plan: testPlanSHA },
-    })), ownSceneDir);
-    const p7Own = buildPrompt(load(ownSceneDir), { 'onset-film-style': path.join(root, '.agents', 'skills'), 'film-style:own': ownDir });
+    fs.renameSync(
+      writeScene(
+        JSON.stringify({
+          id: 'scene-003',
+          duration_seconds: 3,
+          output: 'scene-003.mp4',
+          transcript: 'transcript.srt',
+          text: '测试',
+          film_style: 'lemo/impasto',
+          timing: { fps: 30, start_frame: 0, end_frame_exclusive: 90, plan: testPlanSHA },
+        }),
+      ),
+      ownSceneDir,
+    );
+    const p7Own = buildPrompt(load(ownSceneDir), {
+      'onset-film-style': path.join(root, '.agents', 'skills'),
+      'film-style:own': ownDir,
+    });
     expect(p7Own).toContain('本镜头专属风格的 SKILL.md 与 STYLE.md 按下文读取');
     expect(p7Own).not.toContain('不要通读 SKILL.md');
   });
@@ -228,11 +299,14 @@ describe('render prompt version', () => {
     fs.writeFileSync(path.join(root, 'assets', 'fonts', 'noto-sans-sc-400.woff2'), 'font-regular');
     fs.mkdirSync(path.join(root, 'assets', 'vendor'), { recursive: true });
     fs.writeFileSync(path.join(root, 'assets', 'vendor', 'gsap.min.js'), 'window.gsap = {};');
-    fs.writeFileSync(path.join(root, 'assets', 'vendor', 'draw-helper.js'), [
-      'export const frameOf = (seconds, fps) => Math.round(seconds * fps);',
-      'export function mount(film, canvas, options = {}) { return { film, canvas, options }; }',
-      'export const palette = { ink: "#111" };',
-    ].join('\n'));
+    fs.writeFileSync(
+      path.join(root, 'assets', 'vendor', 'draw-helper.js'),
+      [
+        'export const frameOf = (seconds, fps) => Math.round(seconds * fps);',
+        'export function mount(film, canvas, options = {}) { return { film, canvas, options }; }',
+        'export const palette = { ink: "#111" };',
+      ].join('\n'),
+    );
     const skillsRoot = path.join(root, '.agents', 'skills');
     for (const name of ['hyperframes', 'hyperframes-cli', 'scene-kit']) {
       fs.mkdirSync(path.join(skillsRoot, name), { recursive: true });
@@ -242,10 +316,19 @@ describe('render prompt version', () => {
     fs.mkdirSync(path.join(root, 'scenes'));
     const mk = (id: string, text: string) => {
       const dir = path.join(root, 'scenes', id);
-      fs.renameSync(writeScene(JSON.stringify({
-        id, duration_seconds: 3, output: `${id}.mp4`, transcript: 'transcript.srt', text,
-        timing: { fps: 30, start_frame: 0, end_frame_exclusive: 90, plan: testPlanSHA },
-      })), dir);
+      fs.renameSync(
+        writeScene(
+          JSON.stringify({
+            id,
+            duration_seconds: 3,
+            output: `${id}.mp4`,
+            transcript: 'transcript.srt',
+            text,
+            timing: { fps: 30, start_frame: 0, end_frame_exclusive: 90, plan: testPlanSHA },
+          }),
+        ),
+        dir,
+      );
       return load(dir);
     };
     const resolved = { hyperframes: skillsRoot, 'hyperframes-cli': skillsRoot, 'scene-kit': skillsRoot };
@@ -267,5 +350,58 @@ describe('render prompt version', () => {
     expect(p1).toContain('`vendor/draw-helper.js`：mount(film, canvas, options = {})、frameOf(seconds, fps)、palette');
     expect(p1).not.toContain('`vendor/gsap.min.js`：');
     expect(p1).not.toContain('`scene-kit.js`：');
+    // v8 不含 v9 的编舞与新增 SceneKit 扩展接口，老项目保持逐字节兼容。
+    expect(p1).not.toContain('编舞先定角');
+    expect(p1).not.toContain('snappyOut');
+  });
+
+  it('v9 adds choreography and micro-motion craft rules plus expanded SceneKit API while preserving shared prefix', () => {
+    const root = tempDir();
+    fs.writeFileSync(path.join(root, 'onset.conf'), '');
+    flow.recordFlow(root, { id: 'speech', canvas: 'landscape-16x9', render_prompt: 9 });
+    const skillsRoot = path.join(root, '.agents', 'skills');
+    for (const name of ['hyperframes', 'hyperframes-cli', 'scene-kit']) {
+      fs.mkdirSync(path.join(skillsRoot, name), { recursive: true });
+      fs.writeFileSync(path.join(skillsRoot, name, 'SKILL.md'), `# ${name}`);
+    }
+    fs.writeFileSync(path.join(skillsRoot, 'scene-kit', 'scene-kit.js'), 'window.SceneKit = {};');
+    fs.mkdirSync(path.join(root, 'scenes'));
+    const mk = (id: string, text: string) => {
+      const dir = path.join(root, 'scenes', id);
+      fs.renameSync(
+        writeScene(
+          JSON.stringify({
+            id,
+            duration_seconds: 3,
+            output: `${id}.mp4`,
+            transcript: 'transcript.srt',
+            text,
+            timing: { fps: 30, start_frame: 0, end_frame_exclusive: 90, plan: testPlanSHA },
+          }),
+        ),
+        dir,
+      );
+      return load(dir);
+    };
+    const resolved = { hyperframes: skillsRoot, 'hyperframes-cli': skillsRoot, 'scene-kit': skillsRoot };
+    const p1 = buildPrompt(mk('scene-001', '第一镜'), resolved);
+    const p2 = buildPrompt(mk('scene-002', '第二镜'), resolved);
+    const split1 = p1.indexOf('任务目标：\n');
+    const split2 = p2.indexOf('任务目标：\n');
+    expect(p1.slice(0, split1)).toBe(p2.slice(0, split2));
+    for (const want of [
+      '编舞先定角',
+      '同一容器只做一次入场',
+      'SceneKit.stagger',
+      'scale(0.92–0.96)',
+      'filter: blur(2px–4px)',
+      'clip-path: inset(...)',
+      'tabular-nums',
+      'snappyOut',
+      'cubicBezier(x1,y1,x2,y2,t?)',
+      'spring(frame,start,{duration?,bounce?,durationFrames?,fps?})',
+    ]) {
+      expect(p1.slice(0, split1)).toContain(want);
+    }
   });
 });

@@ -90,7 +90,7 @@ export function designPrompt(s: Scene, resolvedSkills: Record<string, string> | 
     '设计稿要写清楚（按画布像素与秒 / 帧，具体到能照着做）：\n' +
     '- 画面构成：有哪些元素，各自的位置、大小、层次，留白与视觉重心。\n' +
     '- 时间线：每个元素何时出现、怎样运动、停多久、何时离开，与口播或字幕的哪一句对上。\n' +
-    '- 动效：缓动曲线、节奏的快慢变化、镜头运动；哪里是全镜的高潮。\n' +
+    '- 动效：先定元素角色（主角/配角/装饰/静态）、缓动家族、非均匀交错节奏与退场方式，标出全镜高潮与强调落点。\n' +
     '- 视觉：配色（有全片配色时遵守它）、字体、材质与质感。\n' +
     '- 开头与结尾：第 0 帧是什么画面，最后一帧停在哪里（有交接约定时照约定）。\n' +
     '- 容易做砸的地方：哪些细节决定这个镜头好不好看，实现时要注意什么。\n' +
@@ -149,11 +149,13 @@ function renderPrompt(
     const v6 = version >= 6;
     const v7 = version >= 7;
     const v8 = version >= 8;
-    // v5/v6/v7/v8：把全片各镜头完全一致的公共规则放在提示词最前面（跨镜头命中提示词缓存），
+    const v9 = version >= 9;
+    // v5/v6/v7/v8/v9：把全片各镜头完全一致的公共规则放在提示词最前面（跨镜头命中提示词缓存），
     // 并向所有渲染器统一提供精简开工契约（不再强制每镜重读 130KB+ 上游技能文档）；
     // v6 进一步在公共前缀内联默认风格的 STYLE.md 摘要、按需挂载重型可选技能、引用自动生成的 onset-fonts.css；
     // v7 完整内联去声音段的 STYLE.md、明确禁止通读 demo/SKILL/示例全文，并约束 zoom_frame 与预览轮次；
-    // v8 进一步在共享前缀内联 SceneKit 完整 API 速查表与 zoom_frames 批量放大指引，并在资源段汇总字体族与辅助库导出接口。
+    // v8 进一步在共享前缀内联 SceneKit 完整 API 速查表与 zoom_frames 批量放大指引，并在资源段汇总字体族与辅助库导出接口；
+    // v9 进一步在共享前缀补齐编舞与微动效工艺准则，并同步 SceneKit 黄金缓动、确定性弹簧与交错接口。
     // 本镜头的动态字段（编号、时长、文案、prompt.md、时间合同、交接、返修）放在后半段。
     const defaultFilmStyle =
       s.film_style === '' && filmStyleDir !== '' ? (v6 ? filmStyleBriefSection(filmStyleDir, hasLook, v7) : style) : '';
@@ -173,7 +175,7 @@ function renderPrompt(
       '画布规格：\n' +
       `- 制作 ${canvasLabel(canvas)}（${canvas.fps}fps）、静音、无音轨的 HyperFrames 动画；动画必须确定性、可按任意帧独立求值，合成覆盖完整时长。\n` +
       '\n' +
-      skillPromptSections(resolved, allSkills(), true, true, true, v6, v8) +
+      skillPromptSections(resolved, allSkills(), true, true, true, v6, v8, v9) +
       pluginSkillSection(resolved) +
       defaultFilmStyle +
       determinismSection +

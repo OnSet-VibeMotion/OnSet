@@ -30,13 +30,14 @@ export function skillPromptSections(
   v5 = false,
   v6 = false,
   v8 = false,
+  v9 = false,
 ): string {
   let sections = '';
   for (const desc of skills) {
     if (v6 && optionalV6Skills.has(desc.name)) continue;
     const dir = resolved[desc.name] ?? '';
-    if (directorBrief && desc.name === HyperFramesSkillName) sections += hyperFramesPrompt(dir, true);
-    else if (directorBrief && desc.name === SceneKitSkillName) sections += sceneKitPrompt(dir, true, v8);
+    if (directorBrief && desc.name === HyperFramesSkillName) sections += hyperFramesPrompt(dir, true, v9);
+    else if (directorBrief && desc.name === SceneKitSkillName) sections += sceneKitPrompt(dir, true, v8, v9);
     else if (engineRenders && desc.name === HyperFramesCLISkillName)
       sections += hyperFramesCLIPrompt(dir, true, v5, v8);
     else if (desc.promptSection) sections += desc.promptSection(dir);
@@ -101,7 +102,7 @@ export function hyperFramesCommand(): string {
  * 这里只要求每个动效说得出理由。环境动效不设项目级配额；只要不影响阅读和确定性，
  * 就由镜头根据文案决定，语义元素仍应在到位后稳定停留。
  */
-export function hyperFramesPrompt(skillsDir: string, brief = false): string {
+export function hyperFramesPrompt(skillsDir: string, brief = false, v9 = false): string {
   const files = `SKILL.md 的 Contract 一节、${hyperFramesFormatFile} 与 ${hyperFramesMotionFile}；用到 GSAP 以外的运行时（Lottie、Three.js、canvas 等）再读 ${hyperFramesRuntimesFile}`;
   let reference =
     `- 写组合 HTML 前必须读 ${HyperFramesSkillName} 技能的 ${files}。\n` +
@@ -148,7 +149,12 @@ export function hyperFramesPrompt(skillsDir: string, brief = false): string {
     '- 但整个画面不得完全冻结超过 3 秒（含结尾）：长停留期间用那条环境动效或极缓的镜头推移维持画面活性，' +
     '语义元素本身保持不动。\n' +
     '- 装饰性动效只能落在装饰层（显式标记 decorative）或语义元素的入场 / 退场窗口内，' +
-    '不得侵占任何元素的可读稳定区间，也不得改变已约定的短语帧。\n'
+    '不得侵占任何元素的可读稳定区间，也不得改变已约定的短语帧。\n' +
+    (v9
+      ? '- 编舞先定角：动效前把元素分清主角（先动、位移最大）、配角（紧随、位移更短）、装饰（仅淡入或不动）与静态容器；同一容器只做一次入场（面板滑入时内部内容直接到位，不要面板滑入再逐项交错）。\n' +
+        '- 交错与退场：多个元素依次入场时用递减间隔（波浪感，如 `SceneKit.stagger`），禁止等差间隔机械排队；同一视觉对象的子动画共用同一缓动家族，强调/装饰动作锚定在主角落定瞬间；退场时同步、更短、更干脆，不反序交错。\n' +
+        '- 质感微细节：非卡通弹跳的卡片/面板/标注入场用 `scale(0.92–0.96)` + 淡入起步（避免 `scale(0)` 凭空蹦出）；气泡/标注按指向锚点设置 `transform-origin`；两态切换若有重影，中段叠加轻度 `filter: blur(2px–4px)`（勿超 20px）缝合；同步扫色高亮或对比滑块优先用双层 `clip-path: inset(...)`；滚动数字加 `font-variant-numeric: tabular-nums`，模拟指针点击给控件 `scale(0.97)` 瞬时按压反馈。\n'
+      : '')
   );
 }
 
@@ -211,7 +217,7 @@ export function hyperFramesCLIPrompt(skillsDir: string, engineRenders = false, v
  * 复制义务与 character-rig 同理：渲染只服务镜头目录内的文件，引用镜头目录外的
  * 路径会静默 404，字幕不出现、渲染照样退出码 0。
  */
-export function sceneKitPrompt(skillsDir: string, brief = false, v8 = false): string {
+export function sceneKitPrompt(skillsDir: string, brief = false, v8 = false, v9 = false): string {
   let reference =
     `- 加载 ${SceneKitSkillName} 技能，用法以其中的 ${SkillManifestFile} 为准。\n` +
     '  （本机未能定位该技能目录，请使用你自身的技能加载机制载入。）\n';
@@ -222,10 +228,13 @@ export function sceneKitPrompt(skillsDir: string, brief = false, v8 = false): st
     const location = skillsDir
       ? path.join(skillsDir, SceneKitSkillName, SkillManifestFile)
       : `${SceneKitSkillName}/${SkillManifestFile}`;
+    const mathLine = v9
+      ? '  - 数学与缓动：`clamp(v,lo,hi)`、`lerp(a,b,t)`、`progress(frame,start,end)`、`fade(frame,inS,inE,outS?,outE?)`、`ease(name,t?)`（linear/sine/quad/cubic/expo/back + In/Out/InOut 及 `snappyOut`/`smoothInOut`/`drawerOut`）、`cubicBezier(x1,y1,x2,y2,t?)`、`spring(frame,start,{duration?,bounce?,durationFrames?,fps?})`、`stagger(index,count,totalFrames,easeName?)`、`rng(seed)`。\n'
+      : '  - 数学与缓动：`clamp(v,lo,hi)`、`lerp(a,b,t)`、`progress(frame,start,end)`、`fade(frame,inS,inE,outS?,outE?)`、`ease(name,t?)`（linear/sine/quad/cubic/expo/back + In/Out/InOut）、`rng(seed)`。\n';
     reference =
       `- window.SceneKit 完整接口速查（直接调用，无需 read_file 通读 scene-kit.js 或 ${location}）：\n` +
       '  - 驱动与元数据：`attach(timeline, frame => ...)`、`scene()`（返回 window.ONSET_SCENE）、`frameOf(sec)`。\n' +
-      '  - 数学与缓动：`clamp(v,lo,hi)`、`lerp(a,b,t)`、`progress(frame,start,end)`、`fade(frame,inS,inE,outS?,outE?)`、`ease(name,t?)`（linear/sine/quad/cubic/expo/back + In/Out/InOut）、`rng(seed)`。\n' +
+      mathLine +
       '  - 安全区/短语/字幕：`safeRect(name?)`（main_content/subtitles → `{left,top,right,bottom,width,height}`）、`phrase(id)`、`phraseActive(id,frame)`、`phraseText(id,el,opts?)`、`cueAt(frame)`、`breakLines(text,opts)`、`captions(container,opts?)`（返回 `{element,layouts,render(frame),activeAt(frame),events()}`）。\n';
   } else if (brief) {
     const location = skillsDir

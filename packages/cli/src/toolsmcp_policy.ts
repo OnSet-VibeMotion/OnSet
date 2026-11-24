@@ -89,6 +89,8 @@ export const instantOps: ReadonlySet<string> = new Set([
   'film_style_use',
   'film_style_add',
   'film_style_remove',
+  'motion_effect_list',
+  'motion_effect_show',
   'studio_show',
   'studio_step',
   'studio_confirm',
