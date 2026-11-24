@@ -41,7 +41,7 @@ import { KindError, KindSession, KindText, KindToolCall, newParser } from '../ag
 import { formatFixed, goRound } from '../gofmt';
 import { newAttempt, OutcomeFailed, OutcomeInterrupted, OutcomeSucceeded, OutcomeVerificationFailed, timestamp, writeAttempt, archiveAttempt } from './attempt';
 import { CheckOutputFrames, classifyOutputProblem, DeterminismCheckPrefix } from './checks';
-import { fingerprint, RecordSchemaRenderContract, removeRecord, writeRecord, type Inputs } from './record';
+import { fingerprint, RecordSchemaRenderContract, refreshRecordOutput, removeRecord, writeRecord, type Inputs } from './record';
 import { buildPrompt, contained, DesignFile, findProjectRoot, renderPromptVersion, sceneCanvas, evalSymlinks, outputPath, relPath, stderrLog, streamLog, userLog, type Scene } from './scene';
 import { blockValue } from './block';
 import { removeLive, writeLive } from './live';
@@ -124,6 +124,119 @@ export async function repairScene(
       return { evidence };
     });
   } finally { release(); }
+}
+
+/**
+ * 零模型直接出片：不启动 AI 渲染器，直接用固定版本 HyperFrames CLI 把镜头目录里现有的 index.html
+ * 重新编码成 MP4，通过产物规格与确定性校验后原子替换正式产物，并刷新渲染记录。
+ */
+export async function encodeScene(
+  s: Scene,
+  cfg: Config,
+  unsafe: boolean,
+  baseEnv: Record<string, string>,
+  userOutput: Writer,
+  tolerance: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (!Number.isFinite(tolerance) || tolerance < 0) throw new Error('tolerance 必须是有限且非负的数字');
+  const release = acquireSceneLease(s.directory, s.id);
+  try {
+    signal?.throwIfAborted();
+    const html = contained(s.directory, 'index.html', '合成入口');
+    if (!fs.existsSync(html)) throw new Error('直接出片需要已有的 index.html 合成');
+    const cliEnv: Record<string, string> = { ...baseEnv };
+    if (cfg.hyperFramesCLI !== '') {
+      cliEnv[hyperframes.CLIDirEnv] = cfg.hyperFramesCLI;
+    } else if (!cliEnv[hyperframes.CLIDirEnv] && process.env[hyperframes.CLIDirEnv]) {
+      cliEnv[hyperframes.CLIDirEnv] = process.env[hyperframes.CLIDirEnv]!;
+    }
+    for (const key of [hyperframes.BrowserEnv, hyperframes.HyperFramesBrowserEnv, hyperframes.BrowserHookEnv, hyperframes.BrowserAppArgEnv]) {
+      if (!cliEnv[key] && process.env[key]) cliEnv[key] = process.env[key]!;
+    }
+    const cli = hyperframes.requireCLI(cliEnv);
+    const browser = hyperframes.requireBrowser(cliEnv);
+    const childEnv = childEnvironment(cfg, baseEnv, unsafe, parsePassthrough(baseEnv.ONSET_PASSTHROUGH_ENV ?? ''));
+    delete childEnv.ONSET_STUDIO_OP_PIPE;
+    if (s.renderWorkers > 0) childEnv.ONSET_RENDER_WORKERS = String(s.renderWorkers);
+    addToolsLocation(childEnv);
+    childEnv.PWD = s.directory;
+    const renderEnv: Record<string, string> = { ...childEnv, [hyperframes.BrowserEnv]: browser };
+    if (cliEnv[hyperframes.HyperFramesBrowserEnv]) renderEnv[hyperframes.HyperFramesBrowserEnv] = cliEnv[hyperframes.HyperFramesBrowserEnv];
+    if (cliEnv[hyperframes.BrowserHookEnv]) renderEnv[hyperframes.BrowserHookEnv] = cliEnv[hyperframes.BrowserHookEnv];
+    if (cliEnv[hyperframes.BrowserAppArgEnv]) renderEnv[hyperframes.BrowserAppArgEnv] = cliEnv[hyperframes.BrowserAppArgEnv];
+    if (cliEnv[hyperframes.CLIDirEnv]) renderEnv[hyperframes.CLIDirEnv] = cliEnv[hyperframes.CLIDirEnv];
+
+    const live = { pid: process.pid, renderer: 'encode', started_at: timestamp(new Date()), encoding: true };
+    writeLive(s.directory, s.id, live);
+    const stage = fs.mkdtempSync(path.join(s.directory, '.onset-encode-'));
+    try {
+      const candidate = { ...s, output: path.relative(s.directory, path.join(stage, path.basename(s.output))) };
+      const args = ['render', '--output', candidate.output, ...(s.renderWorkers > 0 ? ['--workers', String(s.renderWorkers)] : [])];
+      const spec = hyperframes.cliCommandFor(cli, renderEnv, args);
+      let argv = [spec.file, ...spec.args];
+      argv[0] = lookPath(argv[0], baseEnv.PATH ?? '');
+      const projectRoot = findProjectRoot(s.directory);
+      if (!unsafe && projectRoot !== '' && sandboxAvailable()) {
+        const profile = sandboxProfile({
+          sceneDir: s.directory,
+          projectRoot,
+          env: { ...baseEnv, ...renderEnv },
+          toolStateDirs: [],
+          readDirs: [
+            path.dirname(fs.realpathSync(argv[0])),
+            path.dirname(process.execPath),
+            ...(process.env.ONSET_ASSETS_DIR ? [path.dirname(process.env.ONSET_ASSETS_DIR)] : []),
+            ...[process.env.ONSET_ASSETS_DIR, childEnv.ONSET_SELF, cliEnv[hyperframes.BrowserEnv], cliEnv[hyperframes.CLIDirEnv]]
+              .filter((v): v is string => !!v)
+              .map((v) => (fs.existsSync(v) && fs.statSync(v).isDirectory() ? v : path.dirname(v))),
+          ],
+        });
+        argv = sandboxed(argv, profile);
+      }
+      userOutput.write(`[${s.id}] 正在从当前 HTML 合成直接出片…\n`);
+      const started = await start(argv[0], argv.slice(1), { cwd: s.directory, env: spec.env, stdio: ['ignore', 'pipe', 'pipe'], signal }, terminateGrace);
+      let tail = '';
+      started.child.stderr!.setEncoding('utf8');
+      started.child.stderr!.on('data', (chunk: string) => {
+        tail = (tail + chunk).slice(-4000);
+      });
+      started.child.stdout!.setEncoding('utf8');
+      started.child.stdout!.on('data', (chunk: string) => {
+        tail = (tail + chunk).slice(-4000);
+      });
+      try {
+        await started.wait();
+      } catch (e) {
+        if (signal?.aborted) throw new Error('已中断：出片进程组已终止');
+        const reason = e instanceof ExitError ? `HyperFrames 出片退出码 ${e.code}` : (e as Error).message;
+        throw new Error(tail.trim() ? `${reason}\n${tail.trim()}` : reason, { cause: e });
+      }
+      verifyResources(s.directory);
+      verifyOutput(candidate, baseEnv, tolerance, false);
+      signal?.throwIfAborted();
+      const destination = contained(s.directory, s.output, 'output');
+      fs.mkdirSync(path.dirname(destination), { recursive: true });
+      fs.renameSync(outputPath(candidate), destination);
+      if (!refreshRecordOutput(s)) {
+        const renderer = s.renderer !== '' ? s.renderer : cfg.renderer;
+        if (renderer) {
+          try {
+            const resolvedSkills = resolveAllSkills(renderer, s.directory, skillsEnvironment(baseEnv, cfg.overlay), s);
+            writeRecord(s, fingerprint(s, renderer, resolvedSkills));
+          } catch {
+            // 没有旧记录且算不出技能指纹时保留新视频，不阻断直接出片。
+          }
+        }
+      }
+      userOutput.write(`[${s.id}] 已完成直接出片：${s.output}\n`);
+    } finally {
+      fs.rmSync(stage, { recursive: true, force: true });
+      removeLive(s.directory, s.id);
+    }
+  } finally {
+    release();
+  }
 }
 
 /** 两段式试镜重试先补验收，避免设计者覆盖仍能复用的 design.md；不调用模型。 */

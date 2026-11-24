@@ -175,7 +175,60 @@ describe('onset tools MCP', () => {
     expect(defaultWaitSeconds('job_wait', {})).toBe(50);
     expect(defaultWaitSeconds('job_wait', { ONSET_TOOLS_MAX_WAIT: '3000' })).toBe(3000);
     expect(defaultWaitSeconds('align_run', { ONSET_TOOLS_MAX_WAIT: '3000' })).toBe(3000);
+    expect(defaultWaitSeconds('voice_synthesize', { ONSET_TOOLS_MAX_WAIT: '3000' })).toBe(3000);
+    expect(defaultWaitSeconds('concat', { ONSET_TOOLS_MAX_WAIT: '3000' })).toBe(3000);
     expect(defaultWaitSeconds('scene_run_all', { ONSET_TOOLS_MAX_WAIT: '3000' })).toBe(50);
+  });
+
+  it('nudges orchestrator toward scene_run_all on repeated scene_run calls and warns on short job_wait polling', async () => {
+    const replies = await call(
+      [
+        { id: 1, method: 'tools/call', params: { name: 'scene_run', arguments: { scene: 'scenes/scene-001' } } },
+        { id: 2, method: 'tools/call', params: { name: 'scene_run', arguments: { scene: 'scenes/scene-002' } } },
+        { id: 3, method: 'tools/call', params: { name: 'scene_run', arguments: { scene: 'scenes/scene-003' } } },
+      ],
+      fakeWorker('true', { ok: true, data: { scene: 'x' }, exit_code: 0 }),
+    );
+    expect(text(replies.get(1))).not.toContain('[调度提示]');
+    expect(text(replies.get(3))).toContain('[调度提示]');
+    expect(text(replies.get(3))).toContain('scene_run_all');
+
+    const out = new Map<unknown, any>();
+    let push = null as ((line: string) => void) | null;
+    const queue: string[] = [];
+    async function* lines() {
+      while (true) {
+        if (queue.length > 0) {
+          const next = queue.shift()!;
+          if (next === 'END') return;
+          yield next;
+          continue;
+        }
+        await new Promise<void>((resolve) => {
+          push = (line) => {
+            queue.push(line);
+            resolve();
+          };
+        });
+      }
+    }
+    const send = (msg: Record<string, unknown>) => (push ? push(JSON.stringify({ jsonrpc: '2.0', ...msg })) : queue.push(JSON.stringify({ jsonrpc: '2.0', ...msg })));
+    const served = serveToolsMCP(
+      lines(),
+      (line) => {
+        const msg = JSON.parse(line);
+        out.set(msg.id, msg);
+      },
+      'orchestrator',
+      fakeWorker('sleep 1; echo done', { ok: true, exit_code: 0 }, 'await new Promise(r=>setTimeout(r,1000));console.log("done")'),
+    );
+    send({ id: 1, method: 'tools/call', params: { name: 'scene_run_all', arguments: { scenes: 'scenes/', wait_seconds: 0 } } });
+    while (!out.has(1)) await new Promise((r) => setTimeout(r, 20));
+    send({ id: 2, method: 'tools/call', params: { name: 'job_wait', arguments: { job: 'job-1', wait_seconds: 0.1 } } });
+    while (!out.has(2)) await new Promise((r) => setTimeout(r, 20));
+    expect(text(out.get(2))).toContain('[等待提示]');
+    push ? push('END') : queue.push('END');
+    await served;
   });
 
   // hyperframes 的输出是写给终端的：跑着时只报进度，跑完交精简后的结果，原样输出留在临时文件里（hfoutput.ts）。

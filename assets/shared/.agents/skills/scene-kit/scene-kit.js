@@ -257,9 +257,49 @@
     return w;
   }
 
+  function isAsciiWordChar(ch) {
+    return !!ch && /[A-Za-z0-9]/.test(ch);
+  }
+
+  // normalizeProtected：筛选单行放得下、长度至少 2 字符的受保护词组，按长度降序排列。
+  // 超过整行宽度 cap 的长短语不强制锁成一整块，让后续仍能按标点/空格自然断行。
+  function normalizeProtected(terms, cap) {
+    if (!terms || !terms.length) return [];
+    var seen = {};
+    var out = [];
+    for (var i = 0; i < terms.length; i++) {
+      var raw = terms[i];
+      var term = typeof raw === 'string' ? raw.trim() : '';
+      if (!term || term.length < 2 || seen[term]) continue;
+      if (cap !== undefined && widthOf(term) > cap) continue;
+      seen[term] = true;
+      out.push(term);
+    }
+    out.sort(function (a, b) {
+      return b.length - a.length;
+    });
+    return out;
+  }
+
+  // matchProtected：判断 text 从 pos 开始是否命中某个受保护词组。
+  // 英文词首尾做词边界校验，避免把 "API" 误锁在 "RAPID" 中间。
+  function matchProtected(text, pos, list) {
+    if (!list || !list.length) return '';
+    for (var i = 0; i < list.length; i++) {
+      var term = list[i];
+      if (text.slice(pos, pos + term.length) !== term) continue;
+      if (isAsciiWordChar(term[0]) && pos > 0 && isAsciiWordChar(text[pos - 1])) continue;
+      var end = pos + term.length;
+      if (isAsciiWordChar(term[term.length - 1]) && end < text.length && isAsciiWordChar(text[end])) continue;
+      return term;
+    }
+    return '';
+  }
+
   // tokenize：把一句字幕切成原子块 [{text, breakAfter}]。breakAfter 是在该块
   // 之后断行的代价：0 = 标点后，1.5 = 空格处（空格本身断行时丢弃），4 = 其余。
-  function tokenize(text) {
+  // protectedTerms 中的词组（例如来自 ONSET_SCENE.phrases 的受保护短语）优先作为完整原子块锁住。
+  function tokenize(text, protectedTerms) {
     var raw = [];
     var i = 0;
     while (i < text.length) {
@@ -267,6 +307,12 @@
       if (ch === ' ' || ch === '　') {
         raw.push({ text: ' ', space: true });
         while (i < text.length && (text[i] === ' ' || text[i] === '　')) i++;
+        continue;
+      }
+      var locked = matchProtected(text, i, protectedTerms);
+      if (locked) {
+        raw.push({ text: locked, protected: true });
+        i += locked.length;
         continue;
       }
       var close = OPEN_QUOTES[ch];
@@ -307,6 +353,7 @@
         continue;
       }
       var t = carry + tok.text;
+      var isProtected = Boolean(tok.protected);
       carry = '';
       if (t.length === 1 && NO_LINE_END.indexOf(t) >= 0) {
         carry = t;
@@ -315,9 +362,10 @@
       var prev = merged[merged.length - 1];
       if (NO_LINE_START.indexOf(t[0]) >= 0 && prev && !prev.space) {
         prev.text += t;
+        if (isProtected) prev.protected = true;
         continue;
       }
-      merged.push({ text: t });
+      merged.push({ text: t, protected: isProtected });
     }
     if (carry) merged.push({ text: carry });
 
@@ -335,6 +383,7 @@
         width: widthOf(cur.text),
         cost: STRONG_BREAK.indexOf(last) >= 0 ? 0 : 4,
         trailingSpace: false,
+        protected: Boolean(cur.protected),
       });
     }
     for (var n = 0; n < tokens.length; n++) {
@@ -343,12 +392,13 @@
     return tokens;
   }
 
-  // splitOversized：单个原子块比一行还宽时只能逐字拆开（宁可拆，也不溢出画面）。
+  // splitOversized：单个原子块比一行还宽时只能逐字拆开（宁可拆，也不溢出画面）；
+  // 受保护词组（含并入的尾随标点）不重开内部断点，交给上层缩字号或兜底布局处理。
   function splitOversized(tokens, cap) {
     var out = [];
     for (var i = 0; i < tokens.length; i++) {
       var tok = tokens[i];
-      if (tok.width <= cap) { out.push(tok); continue; }
+      if (tok.width <= cap || tok.protected) { out.push(tok); continue; }
       for (var j = 0; j < tok.text.length; j++) {
         var last = j === tok.text.length - 1;
         out.push({
@@ -383,8 +433,9 @@
   // breakLines：在 cap（每行全角字数上限）与 maxLines 之内求最均衡的断法。
   // 代价 = Σ(行宽 - 平均行宽)² + 各断点代价；行数越少越好（多一行加罚）。
   // 返回字符串数组；放不进 maxLines 时返回 null。
-  function breakLines(text, cap, maxLines) {
-    var tokens = splitOversized(tokenize(text), cap);
+  function breakLines(text, cap, maxLines, protectedTerms) {
+    var locked = normalizeProtected(protectedTerms, cap);
+    var tokens = splitOversized(tokenize(text, locked), cap);
     var n = tokens.length;
     if (n === 0) return [''];
     var total = lineWidth(tokens, 0, n);
@@ -431,8 +482,9 @@
   }
 
   // greedyLines：溢出兜底，按行塞满，不限行数。只在 breakLines 放不下时用。
-  function greedyLines(text, cap) {
-    var tokens = splitOversized(tokenize(text), cap);
+  function greedyLines(text, cap, protectedTerms) {
+    var locked = normalizeProtected(protectedTerms, cap);
+    var tokens = splitOversized(tokenize(text, locked), cap);
     var out = [];
     var start = 0;
     for (var i = 1; i <= tokens.length; i++) {
@@ -456,17 +508,17 @@
   //
   // 字号缩小时每行可容纳的字数按比例放宽（行的像素长度保持不变），同时不超过
   // 字幕框的物理宽度。
-  function layoutCue(text, cfg) {
+  function layoutCue(text, cfg, protectedTerms) {
     for (var size = cfg.fontSize; size >= cfg.minFontSize; size--) {
       var cap = Math.min(Math.floor((cfg.charsPerLine * cfg.fontSize) / size + 1e-9), Math.floor(cfg.innerWidth / size));
-      var lines = breakLines(text, cap, cfg.maxLines);
+      var lines = breakLines(text, cap, cfg.maxLines, protectedTerms);
       if (lines && lines.length * size * cfg.lineHeight + cfg.padV * 2 <= cfg.maxHeight + 1e-6) {
         return { fontSize: size, lines: lines, overflow: false };
       }
     }
     var minSize = cfg.minFontSize;
     var minCap = Math.max(1, Math.min(Math.floor((cfg.charsPerLine * cfg.fontSize) / minSize + 1e-9), Math.floor(cfg.innerWidth / minSize)));
-    return { fontSize: minSize, lines: greedyLines(text, minCap), overflow: true };
+    return { fontSize: minSize, lines: greedyLines(text, minCap, protectedTerms), overflow: true };
   }
 
   // captions：在 root 里建一层字幕，返回 { element, layouts, render(frame) }。
@@ -512,6 +564,17 @@
     var cues = sortedCues(opts.cues || s.cues || []);
     var lead = Math.max(0, opts.leadFrames || 0);
     var tail = Math.max(0, opts.tailFrames || 0);
+    // 汇总本镜头的受保护短语与调用方额外声明的词组，断行时锁为不可拆原子块。
+    var protectedTerms = [];
+    var scenePhrases = s.phrases || [];
+    for (var pi = 0; pi < scenePhrases.length; pi++) {
+      if (scenePhrases[pi] && typeof scenePhrases[pi].text === 'string') protectedTerms.push(scenePhrases[pi].text);
+    }
+    if (Array.isArray(opts.protectedTerms)) {
+      for (var ti = 0; ti < opts.protectedTerms.length; ti++) {
+        if (typeof opts.protectedTerms[ti] === 'string') protectedTerms.push(opts.protectedTerms[ti]);
+      }
+    }
 
     // 预先排好每条字幕。溢出告警在这里按字幕序号各发一次：发在 render 里会
     // 随 seek 次数重复，告警条数就取决于渲染顺序了。
@@ -519,7 +582,7 @@
     var maxLineCount = 1;
     for (var i = 0; i < cues.length; i++) {
       var cue = cues[i];
-      var layout = layoutCue(String(cue.text || ''), cfg);
+      var layout = layoutCue(String(cue.text || ''), cfg, protectedTerms);
       var prevEnd = i > 0 ? cues[i - 1].end_frame_exclusive : -Infinity;
       var nextStart = i < cues.length - 1 ? cues[i + 1].start_frame : Infinity;
       layouts.push({

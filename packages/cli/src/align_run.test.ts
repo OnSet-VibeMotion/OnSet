@@ -4,7 +4,7 @@ import {spawnSync} from 'node:child_process';
 import {expect,it,vi} from 'vitest';
 import * as procgroup from '@onset/engine/procgroup';
 import { QwenForcedAligner } from '@onset/engine/config';
-import {alignRunOperation,normalizeWindowsAlignmentText,localAlignmentModel,windowsAlignOperation} from './align_run';
+import {alignRunOperation,normalizeWindowsAlignmentText,localAlignmentModel,planTTSAutoChunks,windowsAlignOperation} from './align_run';
 import {tempDir,setenv,writeFrameFor,hasFfmpeg,Buffer,makeClip} from './testutil';
 
 it('normalizes punctuation without changing spoken letters, numbers or Chinese characters',()=>{
@@ -124,4 +124,127 @@ it.skipIf(!hasFfmpeg)('builds from trusted word timestamps without requiring an 
   const input = { project_root: root, evidence: 'evidence.json' };
   expect((await alignRunOperation().run({ ...input, publish: true }, context))?.data).toMatchObject({ published: true, match_rate: 1 });
   expect((await alignRunOperation().run(input, context))?.data).toMatchObject({ reused: true });
+});
+
+it.skipIf(process.platform === 'win32' || !hasFfmpeg)('auto-chunks long MLX audio using matching TTS report (including copied WAV matched by SHA-256) and merges shifted timestamps', async () => {
+  const root = tempDir(), bin = tempDir(), model = tempDir();
+  const audioDir = path.join(root, 'production/audio');
+  fs.mkdirSync(audioDir, { recursive: true });
+  fs.writeFileSync(path.join(root, 'onset.conf'), 'ALIGN_PROVIDER=mlx\n');
+  writeFrameFor(root, 'size=320x240');
+  fs.writeFileSync(path.join(root, 'production/script-final.md'), '你好。\n\n再见。\n');
+
+  // 构造 2.0 秒音频（两段各 0.7s 发声，中间 0.6s 静音），并放在 voice-v05.tts/ 下再复制为 voice.wav 测试 SHA-256 匹配。
+  const sourceDir = path.join(audioDir, 'voice-v05.tts');
+  fs.mkdirSync(sourceDir, { recursive: true });
+  const seg1 = path.join(sourceDir, '001.wav');
+  const sil = path.join(sourceDir, 'sil.wav');
+  const seg2 = path.join(sourceDir, '002.wav');
+  makeClip(seg1, 'sine=frequency=440:sample_rate=16000:duration=0.7');
+  makeClip(sil, 'anullsrc=r=16000:cl=mono:d=0.6');
+  makeClip(seg2, 'sine=frequency=520:sample_rate=16000:duration=0.7');
+  const concatList = path.join(sourceDir, 'list.txt');
+  fs.writeFileSync(concatList, `file '${seg1}'\nfile '${sil}'\nfile '${seg2}'\n`);
+  const ttsWav = path.join(sourceDir, 'audio.wav');
+  const voiceWav = path.join(audioDir, 'voice.wav');
+  const concatRes = spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', concatList, '-c:a', 'pcm_s16le', ttsWav]);
+  expect(concatRes.status).toBe(0);
+  fs.copyFileSync(ttsWav, voiceWav);
+  fs.writeFileSync(path.join(sourceDir, 'report.json'), JSON.stringify({
+    schema: 1,
+    duration_seconds: 2.0,
+    segments: [
+      { audio: '001.wav', text: '你好。', start_seconds: 0, duration_seconds: 0.7, pause_after_ms: 600 },
+      { audio: '002.wav', text: '再见。', start_seconds: 1.3, duration_seconds: 0.7 },
+    ],
+  }));
+
+  const command = path.join(bin, 'mlx_audio.stt.generate');
+  fs.writeFileSync(command, 'fixture', { mode: 0o755 });
+  for (const file of QwenForcedAligner.files) fs.writeFileSync(path.join(model, file.path), 'fixture');
+  setenv('ONSET_BIN_DIR', bin);
+  setenv('ALIGN_MODEL', model);
+  setenv('ONSET_ALIGN_AUTO_CHUNK_THRESHOLD_SECONDS', '1');
+
+  const actualStart = procgroup.start;
+  const seenTexts: string[] = [];
+  const mock = vi.spyOn(procgroup, 'start').mockImplementation(async (file, args, options, ...rest) => {
+    if (file !== command) return actualStart(file, args, options, ...rest);
+    const chunkText = args[args.indexOf('--text') + 1]!;
+    seenTexts.push(chunkText);
+    const outPath = args[args.indexOf('--output-path') + 1]! + '.json';
+    const chars = chunkText.includes('你好') ? ['你', '好'] : ['再', '见'];
+    fs.writeFileSync(outPath, JSON.stringify([
+      { text: chars[0], start: 0.0, end: 0.35 },
+      { text: chars[1], start: 0.35, end: 0.7 },
+    ]));
+    return { wait: async () => {} } as Awaited<ReturnType<typeof procgroup.start>>;
+  });
+  try {
+    const out = new Buffer();
+    const result = await alignRunOperation().run(
+      { project_root: root, max_chunk_seconds: 1, publish: true },
+      { out, err: out, signal: new AbortController().signal, unsafe: false },
+    );
+    expect(seenTexts).toEqual(['你好。', '再见。']);
+    expect(result?.data).toMatchObject({ published: true, match_rate: 1, chunks: 2 });
+    const mergedAlign = JSON.parse(fs.readFileSync(path.join(root, 'production/audio/align.json'), 'utf8')) as Array<{ text: string; start: number; end: number }>;
+    expect(mergedAlign).toEqual([
+      { text: '你', start: 0, end: 0.35 },
+      { text: '好', start: 0.35, end: 0.7 },
+      { text: '再', start: 1.3, end: 1.65 },
+      { text: '见', start: 1.65, end: 2.0 },
+    ]);
+    const srt = fs.readFileSync(path.join(root, 'production/audio/voice.srt'), 'utf8');
+    expect(srt).toContain('你好。');
+    expect(srt).toContain('再见。');
+    expect(srt).toContain('00:00:01,300 --> 00:00:02,000');
+  } finally {
+    mock.mockRestore();
+  }
+});
+
+it('planTTSAutoChunks requires SHA-256 match on primary <stem>.tts/audio.wav and strips vocal events when matching', () => {
+  const dir = tempDir();
+  const audio = path.join(dir, 'voice.wav');
+  fs.writeFileSync(audio, 'current-audio-bytes');
+  const ttsDir = path.join(dir, 'voice.tts');
+  fs.mkdirSync(ttsDir, { recursive: true });
+  const report = {
+    schema: 1,
+    duration_seconds: 220,
+    segments: [
+      { audio: '001.wav', text: '第一段。[笑]', start_seconds: 0, duration_seconds: 100, pause_after_ms: 650 },
+      { audio: '002.wav', text: '第二段。(sigh)', start_seconds: 100.65, duration_seconds: 119.35 },
+    ],
+  };
+  fs.writeFileSync(path.join(ttsDir, 'report.json'), JSON.stringify(report));
+  // 缺少或 SHA-256 不匹配的同名 voice.tts/audio.wav 必须被跳过，防止错用旧 take 切点。
+  fs.writeFileSync(path.join(ttsDir, 'audio.wav'), 'stale-audio-bytes');
+  const currentSHA = 'wrong';
+  expect(planTTSAutoChunks(audio, currentSHA, '第一段。\n第二段。', 220, 'mlx', 150, 180)).toBeNull();
+
+  // audio.wav 与当前音频一致时，即使报告含 [笑] / (sigh) 声音事件或独立声音事件段落，也能正常匹配并切段（FunASR 也不会因空段抛错）。
+  const reportWithSoloEvents = {
+    schema: 1,
+    duration_seconds: 310,
+    segments: [
+      { audio: '000.wav', text: '[笑]', start_seconds: 0, duration_seconds: 1, pause_after_ms: 650 },
+      { audio: '001.wav', text: '第一段。[笑]', start_seconds: 1.65, duration_seconds: 150, pause_after_ms: 650 },
+      { audio: '002.wav', text: '第二段。(sigh)', start_seconds: 152.3, duration_seconds: 150, pause_after_ms: 650 },
+      { audio: '003.wav', text: '(sigh)', start_seconds: 302.95, duration_seconds: 7.05 },
+    ],
+  };
+  fs.writeFileSync(path.join(ttsDir, 'report.json'), JSON.stringify(reportWithSoloEvents));
+  fs.writeFileSync(path.join(ttsDir, 'audio.wav'), 'current-audio-bytes');
+  const realSHA = require('node:crypto').createHash('sha256').update('current-audio-bytes').digest('hex') as string;
+  for (const prov of ['mlx', 'funasr'] as const) {
+    const planned = planTTSAutoChunks(audio, realSHA, '第一段。\n第二段。', 310, prov, 150, 180);
+    expect(planned).not.toBeNull();
+    expect(planned!.chunks).toHaveLength(2);
+    expect(planned!.chunks[0]!.start).toBe(1.65);
+    expect(planned!.chunks[1]!.start).toBe(152.3);
+    expect(planned!.chunks[0]!.text).toContain('第一段');
+    expect(planned!.chunks[1]!.text).toContain('第二段');
+  }
 });

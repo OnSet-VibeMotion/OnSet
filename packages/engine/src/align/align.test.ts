@@ -418,3 +418,31 @@ describe('vocal events', () => {
     expect(r.cues[0].startMs).toBe(1040);
   });
 });
+
+describe('protected phrase boundaries', () => {
+  it('never splits a subtitle cue inside a protected phrase across commas or sentence punctuation', () => {
+    const text =
+      '这一步非常重要，我们把@{combo}提示词缓存，以及自动分段@{/combo}一起打开，这样整个视频制作流程的稳定性会明显提升。\n';
+    const s = parseScript(text);
+    const items = s.tokens.map((tok, i) => ({ text: tok.text, start: i * 0.1, end: (i + 1) * 0.1, segment: 0 }));
+    const r = mustBuild(s, items);
+    expect(r.report.ok).toBe(true);
+    expect(r.cues.length).toBeGreaterThan(1);
+    expect(r.cues.some((c) => c.text.includes('提示词缓存，以及自动分段'))).toBe(true);
+  });
+
+  it('preserves chapter headings between paragraphs as blank lines in spokenText while keeping alignText compact', () => {
+    const s = parseScript('# 开场\n\n第一段。\n\n第二段。\n\n# 第一章\n\n第三段。\n');
+    expect(s.spokenText()).toBe('第一段。\n第二段。\n\n第三段。\n');
+    expect(s.alignText()).toBe('第一段。\n第二段。\n第三段。\n');
+  });
+
+  it('hints when a protected phrase is too long for single-line protection', () => {
+    const text = '@{huge}这是一个超过十六个阅读单位非常非常非常长的受保护短语@{/huge}。\n';
+    const s = parseScript(text);
+    const items = s.tokens.map((tok, i) => ({ text: tok.text, start: i * 0.1, end: (i + 1) * 0.1, segment: 0 }));
+    const r = mustBuild(s, items);
+    expect(r.report.ok).toBe(true);
+    expect(r.report.hints.some((h) => h.includes('短语 huge') && h.includes('偏长'))).toBe(true);
+  });
+});

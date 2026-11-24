@@ -15,7 +15,7 @@ import { atomicWrite } from '../fsutil';
 import { formatFixed, goClean, goTrimSpace } from '../gofmt';
 import { marshal, marshalIndent } from '../gojson';
 import * as ledger from '../ledger';
-import { HandoffTranscriptLimit, handoffNote, rotationReason } from './rotate';
+import { HandoffTranscriptLimit, handoffNote, rotationReason, shouldGateHandoff } from './rotate';
 import * as project from '../project';
 import { KindView, PermissionPollInterval, PermissionServerName, ViewInboxEnv, waitPermissionResponse, writePermissionRequest, ViewPollInterval, ViewProjectEnv, describeView, drainViewInbox, viewInbox, viewInteraction, type ViewRequest, type ViewState } from '../studioview';
 import * as tools from '../tools';
@@ -657,18 +657,29 @@ export function handoffSession(sess: Session, reason = '手动分段接力'): vo
   });
 }
 
-/** 冻结大阶段产物的硬审核关卡：确认后自动预约下一轮轻接力，避免把上一阶段的几十轮工具输出拖入下一阶段。 */
+/** 冻结大阶段产物的硬审核关卡：确认后自动预约下一轮轻接力，避免把上一阶段的几十轮工具输出拖入下一阶段（含 gate-final 进入发布/封面制作）。 */
 const autoHandoffGates: ReadonlySet<string> = new Set([
-  'gate-script', 'gate-voice', 'gate-storyboard', 'gate-story', 'gate-grid', 'gate-beat-storyboard',
+  'gate-script', 'gate-voice', 'gate-storyboard', 'gate-final', 'gate-story', 'gate-grid', 'gate-beat-storyboard',
 ]);
 
-/** 关卡确认后为该项目已有至少 2 轮历史的整片制作会话预约阶段边界接力（ONSET_AUTO_HANDOFF=off 可关闭）。 */
+/**
+ * 关卡确认后为该项目已有至少 2 轮历史的整片制作会话预约阶段边界接力（ONSET_AUTO_HANDOFF=off 可关闭）。
+ * 结合账本与空闲时长做缓存感知判断（shouldGateHandoff）：会话还很轻且热缓存未过期时继续复用，不白交冷启动写费。
+ */
 export function scheduleGateHandoff(s: Server, projectPath: string, gate: string, label: string): void {
   if (!autoHandoffGates.has(gate) || process.env.ONSET_AUTO_HANDOFF === 'off') return;
   loadSessions(s, projectPath);
+  let entries: ledger.Entry[] | null = null;
+  try {
+    entries = ledger.read(ledger.projectFile(projectPath));
+  } catch {
+    // 账本不可读时退回默认接力策略。
+  }
+  const nowMs = Date.now();
   for (const sess of s.sessions.values()) {
     if (sess.project !== projectPath || sess.meta.kind !== 'production') continue;
     if (!sess.meta.cli_session_id || (sess.meta.turns ?? []).length < 2 || sess.meta.handoff_reason) continue;
+    if (!shouldGateHandoff(entries, sess.meta.cli_session_id, sess.meta.updated_at, nowMs)) continue;
     updateMeta(sess, (meta) => {
       meta.handoff_reason = `关卡「${label}」已确认，自动分段接力进入下一阶段`;
     });
@@ -843,6 +854,7 @@ function prepareTurn(_s: Server, p: Project, sess: Session, cfg: config.Config, 
 async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, cfg: config.Config, turn: Turn, prompt: string, handoff: string, projectWrites: { epoch: number; sharedAtStart: boolean }): Promise<void> {
   let runErr: Error | null = null;
   let stopViews: () => void = () => {};
+  const confirmedGates: Array<{ gate: string; label: string }> = [];
   try {
     const env = config.childEnvironment(cfg, envMap(), s.config.unsafe, parsePassthrough(process.env.ONSET_PASSTHROUGH_ENV ?? ''));
     // onset 不进编排工具的 PATH：它只经 onset 的工具服务（MCP）调用 onset，下面的 spec.toolsServer。
@@ -851,10 +863,11 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
     env[ViewInboxEnv] = inbox;
     env[ViewProjectEnv] = p.path;
     // 用户在对话里确认了关卡（studio_confirm）：原话要出自这一轮用户的话，记下后与界面按钮确认一样发 gate.confirmed。
+    // 接力判断延后到本轮 recordUsage 写入账本后再执行，避免读到上一轮过时的用量。
     stopViews = watchViews(sess, turn.turn_id, inbox, p.path, (req) => {
       try {
         const { gate, label } = confirmGateFromChat(p.path, turn.message, req.said, req.gate ?? '');
-        scheduleGateHandoff(s, p.path, gate, label);
+        confirmedGates.push({ gate, label });
         emit(sess, turn.turn_id, { kind: kindNotice, text: '已记下你在对话里的确认：' + label });
         emitStudioEvent(s, p, 'gate.confirmed', { gate });
       } catch (err) {
@@ -962,6 +975,9 @@ async function runTurn(s: Server, signal: AbortSignal, p: Project, sess: Session
     runErr = err instanceof Error ? err : new Error(String(err));
   }
   stopViews();
+  for (const confirmed of confirmedGates) {
+    scheduleGateHandoff(s, p.path, confirmed.gate, confirmed.label);
+  }
   const concurrentWrites = projectWrites.sharedAtStart || s.writeEpoch(p.path) !== projectWrites.epoch;
   finishTurn(s, signal, p, sess, turn, runErr, concurrentWrites);
 }
@@ -1038,6 +1054,13 @@ function finishTurn(s: Server, signal: AbortSignal, p: Project, sess: Session, t
     // 与 Go 版一样忽略。
   }
   if (turn.kind === 'chat' && turn.status !== 'cancelled') recordUtterance(p, turn, false);
+  // 试听确认（gate-final）由编排写 production/approval.json 完成，不走界面按钮接口；落盘后自动预约下一轮接力进入发布/封面阶段。
+  if (
+    turn.status === 'succeeded' &&
+    (turn.changes ?? []).some((c) => c.path === 'production/approval.json' && c.change !== 'deleted')
+  ) {
+    scheduleGateHandoff(s, p.path, 'gate-final', '试听确认');
+  }
   sess.cancel = null;
   updateMeta(sess, (meta) => (meta.running_turn = undefined));
   // 先放写权再发 turn-end：网页收到 turn-end 就可能立刻发下一轮。

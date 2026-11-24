@@ -1,7 +1,7 @@
 import { playerProps } from '../media';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { ReactNode } from 'react';
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api, errorText, post, rawURL } from '../api';
 import type { Attachment, ProgressState, Box, ProjectFilmStyle, ProjectState, ProjectUsage, Scene, TreeFile, Usage } from '../types';
@@ -19,6 +19,7 @@ import { PublishTab } from './Publish';
 import { isStationTab, StationPage, StationSlots } from './Stations';
 
 import { SceneBrief, StoryboardTab } from './Storyboard';
+import { SceneEditor } from './SceneEditor';
 import { EvidenceTab } from './Evidence';
 import { AuditionTab } from './Audition';
 import { ProgressTab } from './Progress';
@@ -95,6 +96,8 @@ interface Props {
   onScene: (id: string) => void;
   /** 跳到对话里的某一轮（制作路线里点「做了什么」）。 */
   onTurn: (sessionId: string, turnId: string) => void;
+  /** 镜头可视化编辑器向父级注册未保存离开守卫（切换标签/收起面板前确认）。 */
+  onRegisterExitGuard?: (guard: ((proceed: () => void) => boolean) | null) => void;
   run: RunAction;
 }
 
@@ -102,6 +105,39 @@ export function Preview(props: Props) {
   const scene = props.scenes.find((s) => s.id === props.sceneId) ?? null;
   const project = props.state?.project.path;
   const [filmChoice, setFilmChoice] = useState<{ project?: string; path: string }>();
+  const localExitGuardRef = useRef<((proceed: () => void) => boolean) | null>(null);
+  const registerExitGuard = useCallback(
+    (guard: ((proceed: () => void) => boolean) | null) => {
+      localExitGuardRef.current = guard;
+      props.onRegisterExitGuard?.(guard);
+    },
+    [props.onRegisterExitGuard],
+  );
+  const guardedOnScene = useCallback(
+    (id: string) => {
+      if (id !== props.sceneId && localExitGuardRef.current && !localExitGuardRef.current(() => props.onScene(id))) return;
+      props.onScene(id);
+    },
+    [props.sceneId, props.onScene],
+  );
+  const guardedOnTab = useCallback(
+    (next: Tab) => {
+      if (next !== props.tab && localExitGuardRef.current && !localExitGuardRef.current(() => props.onTab?.(next))) return;
+      props.onTab?.(next);
+    },
+    [props.tab, props.onTab],
+  );
+  const guardedOnFile = useCallback(
+    (p: string) => {
+      if (localExitGuardRef.current && !localExitGuardRef.current(() => props.onFile(p))) return;
+      props.onFile(p);
+    },
+    [props.onFile],
+  );
+  const guardedProps = useMemo(
+    () => ({ ...props, onScene: guardedOnScene, onTab: props.onTab ? guardedOnTab : undefined, onFile: guardedOnFile }),
+    [props, guardedOnScene, guardedOnTab, guardedOnFile],
+  );
   const variants = finalCandidates.filter((path) => props.tree.some((file) => file.path === path));
   const selected = filmChoice?.project === project ? filmChoice?.path : undefined;
   const video = selected && variants.includes(selected) ? selected : variants[0];
@@ -115,7 +151,7 @@ export function Preview(props: Props) {
         .filter((id) => id !== props.tab)
         .map((id) => {
           const banner = pageView(id)?.banner;
-          return banner ? <Fragment key={id}>{banner(viewProps(props))}</Fragment> : null;
+          return banner ? <Fragment key={id}>{banner(viewProps(guardedProps))}</Fragment> : null;
         })}
       <div className="preview-body">
         {props.tab === 'progress' && (
@@ -125,24 +161,24 @@ export function Preview(props: Props) {
             busy={props.busy}
             onPage={(page) => {
               const tab = isStationTab(page) ? (page as Tab) : tabs.find(([id]) => id === page)?.[0];
-              if (tab) props.onTab?.(tab);
+              if (tab) guardedOnTab(tab);
             }}
-            onFile={props.onFile}
+            onFile={guardedOnFile}
             onQuick={props.onQuick}
             onTurn={props.onTurn}
           />
         )}
-        {pageView(props.tab)?.render(viewProps(props))}
+        {pageView(props.tab)?.render(viewProps(guardedProps))}
         {props.tab === 'script' && (
-          <ScriptTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} onAttach={props.onAttach} />
+          <ScriptTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={guardedOnFile} onAttach={props.onAttach} />
         )}
         {props.tab === 'storyboard' && (
-          <StoryboardTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={props.onFile} onScene={props.onScene} onStyles={() => props.onTab?.('style')} />
+          <StoryboardTab version={props.version} busy={props.busy} onQuick={props.onQuick} onFile={guardedOnFile} onScene={guardedOnScene} onStyles={() => guardedOnTab('style')} />
         )}
-        {props.tab === 'scene' && <SceneTab {...props} scene={scene} />}
-        {props.tab === 'compose' && <ComposeTab {...props} scene={scene} />}
-        {props.tab === 'final' && <FinalTab {...film} tree={props.tree} version={props.version} run={props.run} onTab={props.onTab} />}
-        {props.tab === 'style' && <StyleTab version={props.version} run={props.run} scenes={props.scenes} onScene={props.onScene} />}
+        {props.tab === 'scene' && <SceneTab {...guardedProps} scene={scene} onRegisterExitGuard={registerExitGuard} />}
+        {props.tab === 'compose' && <ComposeTab {...guardedProps} scene={scene} />}
+        {props.tab === 'final' && <FinalTab {...film} tree={props.tree} version={props.version} run={props.run} onTab={guardedOnTab} />}
+        {props.tab === 'style' && <StyleTab version={props.version} run={props.run} scenes={props.scenes} onScene={guardedOnScene} />}
         {props.tab === 'motion' && <MotionEffects key={project} version={props.version} scenes={props.scenes} sceneId={props.sceneId} onQuick={props.onQuick} />}
         {props.tab === 'voice' && <VoicesTab version={props.version} />}
         {props.tab === 'review' && <ReviewTab {...film} tree={props.tree} version={props.version} run={props.run} />}
@@ -154,7 +190,7 @@ export function Preview(props: Props) {
             version={props.version}
             run={props.run}
             onQuick={props.onQuick}
-            onOpen={(t) => props.onTab?.(t as Tab)}
+            onOpen={(t) => guardedOnTab(t as Tab)}
             projectName={props.state?.project.name ?? ''}
           />
         )}
@@ -166,18 +202,18 @@ export function Preview(props: Props) {
             version={props.version}
             run={props.run}
             onQuick={props.onQuick}
-            onOpen={(t) => props.onTab?.(t as Tab)}
+            onOpen={(t) => guardedOnTab(t as Tab)}
             projectName={props.state?.project.name ?? ''}
           />
         )}
         {props.tab === 'memory' && <MemoryTab scene={scene} version={props.version} run={props.run} />}
         {props.tab === 'audition' && <AuditionTab scene={scene} scenes={props.scenes} version={props.version} busy={props.busy} run={props.run} />}
-        {props.tab === 'evidence' && <EvidenceTab version={props.version} run={props.run} onOpen={(t) => props.onTab?.(t)} scenes={props.scenes} sceneId={props.sceneId} />}
-        {props.tab === 'file' && <FilesTab tree={props.tree} recent={props.recent} path={props.filePath} version={props.version} onFile={props.onFile} />}
+        {props.tab === 'evidence' && <EvidenceTab version={props.version} run={props.run} onOpen={(t) => guardedOnTab(t)} scenes={props.scenes} sceneId={props.sceneId} />}
+        {props.tab === 'file' && <FilesTab tree={props.tree} recent={props.recent} path={props.filePath} version={props.version} onFile={guardedOnFile} />}
       </div>
       {/* 镜头条只在跟镜头有关的页面出现：口播稿、发布这些页面不需要它。 */}
       {(props.tab === 'scene' || props.tab === 'compose' || props.tab === 'final') && (
-        <Timeline scenes={props.scenes} usage={props.usage} sceneId={props.sceneId} version={props.version} onScene={props.onScene} />
+        <Timeline scenes={props.scenes} usage={props.usage} sceneId={props.sceneId} version={props.version} onScene={guardedOnScene} />
       )}
     </main>
   );
@@ -326,6 +362,8 @@ function SceneTab(props: Props & { scene: Scene | null }) {
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const resumeTimeRef = useRef<number | null>(null);
   const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   // 拖动中（还没松手）。按下没移动就松开算一次点击：有选区时清掉选区，没有就播放 / 暂停。
   const [dragging, setDragging] = useState(false);
@@ -380,6 +418,8 @@ function SceneTab(props: Props & { scene: Scene | null }) {
     if (menu.current) menu.current.open = false;
     setDrag(null);
     setDragging(false);
+    setEditing(false);
+    resumeTimeRef.current = null;
     setError('');
     setNote('');
     setFeedback('');
@@ -388,8 +428,9 @@ function SceneTab(props: Props & { scene: Scene | null }) {
   }, [scene?.id]);
 
   // 键盘：← / → 逐帧（按住 Shift 一次 10 帧），空格播放 / 暂停。焦点在输入框、下拉框里时不拦截；
-  // 空格落在按钮上时交给按钮自己。
+  // 空格落在按钮上时交给按钮自己。进入 HTML 编辑模式时由 SceneEditor 接管。
   useEffect(() => {
+    if (editing) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
       const target = e.target as HTMLElement | null;
@@ -409,7 +450,7 @@ function SceneTab(props: Props & { scene: Scene | null }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [editing]);
 
   if (!scene) return <Empty>{noSceneText(props.scenes)}</Empty>;
   const status = sceneStatus(scene);
@@ -502,24 +543,70 @@ function SceneTab(props: Props & { scene: Scene | null }) {
 
   const index = props.scenes.findIndex((s) => s.id === scene.id);
   const number = String(index + 1).padStart(2, '0');
+  const sceneRel = relativeScene(props.state, scene);
+  const hasHtml = props.tree.some((f) => f.path === sceneRel + '/index.html');
+  const enterEdit = () => {
+    video.current?.pause();
+    setPlaying(false);
+    setDrag(null);
+    setEditing(true);
+  };
+  const exitEdit = () => {
+    resumeTimeRef.current = time;
+    setEditing(false);
+  };
 
   // 镜头页只留画面、名字和「重新渲染」；圈选直接在画面上拖。附帧、快捷指令、反馈、校验与用量都收进「⋯」菜单。
   return (
     <div className="scene-tab" data-ctx-scene={scene?.id}>
       <div className="scene-layout">
-        {scene.exists ? (
+        {editing && hasHtml ? (
+          <div className="scene-stage">
+            <SceneEditor
+              scene={scene}
+              sceneRel={sceneRel}
+              initialTime={time}
+              duration={duration || scene.duration_seconds || 0}
+              version={props.version}
+              busy={props.busy}
+              onTimeChange={setTime}
+              onExit={exitEdit}
+              onRegisterExitGuard={props.onRegisterExitGuard}
+              onQuick={props.onQuick}
+              run={props.run}
+            />
+          </div>
+        ) : scene.exists ? (
           <div className="scene-stage">
               <div className="stage-frame" ref={frame}>
                 <video
                   ref={video}
                   preload="metadata"
                   src={`/api/scenes/${encodeURIComponent(scene.id)}/asset?v=${scene.output_stamp ?? props.version}`}
-                  onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+                  onLoadedMetadata={(e) => {
+                    setDuration(e.currentTarget.duration || 0);
+                    if (resumeTimeRef.current !== null) {
+                      const target = Math.max(0, Math.min(e.currentTarget.duration || 0, resumeTimeRef.current));
+                      resumeTimeRef.current = null;
+                      e.currentTarget.currentTime = target;
+                    }
+                  }}
                   onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
                   onSeeked={(e) => setTime(e.currentTarget.currentTime)}
                   onPlay={() => setPlaying(true)}
                   onPause={() => setPlaying(false)}
                 />
+                {hasHtml && (
+                  <button
+                    type="button"
+                    className="stage-edit-btn"
+                    id="enter-html-edit"
+                    title="切换到实时 HTML 画面，直接拖拽调整元素或与 AI 局部修改"
+                    onClick={enterEdit}
+                  >
+                    <Icon name="edit" size={12} /> 编辑画面
+                  </button>
+                )}
                 {/* 画面上直接拖就是圈选（会先暂停），点一下是播放 / 暂停。 */}
                 <div
                   className="select-layer"
@@ -624,6 +711,11 @@ function SceneTab(props: Props & { scene: Scene | null }) {
           <SceneStyle scene={scene} label={`镜头 ${number}`} version={props.version} onQuick={props.onQuick} />
           <SceneActivityPanel scene={scene} />
           <div className="scene-actions">
+            {hasHtml && !editing && (
+              <button id="toggle-html-edit" onClick={enterEdit}>
+                编辑画面
+              </button>
+            )}
             <button id="render-scene" className={scene.exists ? '' : 'primary'} onClick={() => props.run(`/api/scenes/${encodeURIComponent(scene.id)}/render`)}>
               {scene.exists ? '重新渲染' : '渲染'}
             </button>

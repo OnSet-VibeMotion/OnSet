@@ -1,0 +1,521 @@
+/* 镜头页可视化 HTML 编辑器：全部走 :root 变量，兼容放映室 / 白昼 / 暗房皮肤。 */
+
+.scene-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.scene-editor .se-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: min(64vh, 720px);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  user-select: none;
+}
+
+.scene-editor .se-canvas-wrap {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.scene-editor .se-iframe {
+  display: block;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+/* 顶部居中悬浮条：退出编辑 + 撤销 / 应用修改 */
+.scene-editor .se-top-bar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--bg) 55%, transparent);
+}
+
+.scene-editor .se-top-bar button {
+  padding: 5px 12px;
+  font-size: 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.scene-editor .se-top-bar .se-exit-btn {
+  background: color-mix(in srgb, var(--raised) 88%, transparent);
+  border-color: color-mix(in srgb, var(--text) 14%, transparent);
+  color: var(--text);
+}
+
+.scene-editor .se-top-bar .se-exit-btn:hover {
+  border-color: color-mix(in srgb, var(--text) 28%, transparent);
+}
+
+.scene-editor .se-top-bar .se-dirty-tip {
+  font-size: 12px;
+  color: var(--text-2);
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+/* 透明交互覆盖层：接管悬停高亮、点击选中与变换拖拽 */
+.scene-editor .se-interact {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  cursor: default;
+}
+
+.scene-editor .se-hover-box {
+  position: absolute;
+  pointer-events: none;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 85%, var(--text));
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-radius: 2px;
+  z-index: 3;
+}
+
+.scene-editor .se-hover-tag {
+  position: absolute;
+  left: 0;
+  top: -22px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font: 11px var(--mono);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  color: var(--text);
+  border: 1px solid var(--line);
+  white-space: nowrap;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 选中框与 8 点缩放 + 底部旋转把手 */
+.scene-editor .se-select-box {
+  position: absolute;
+  z-index: 4;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 75%, var(--text));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg) 55%, transparent);
+  cursor: move;
+  box-sizing: border-box;
+}
+
+.scene-editor .se-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--text);
+  border: 1.5px solid color-mix(in srgb, var(--bg) 75%, var(--accent));
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--bg) 60%, transparent);
+  padding: 0;
+}
+
+.scene-editor .se-handle.nw { left: 0%; top: 0%; cursor: nwse-resize; }
+.scene-editor .se-handle.n  { left: 50%; top: 0%; cursor: ns-resize; }
+.scene-editor .se-handle.ne { left: 100%; top: 0%; cursor: nesw-resize; }
+.scene-editor .se-handle.e  { left: 100%; top: 50%; cursor: ew-resize; }
+.scene-editor .se-handle.se { left: 100%; top: 100%; cursor: nwse-resize; }
+.scene-editor .se-handle.s  { left: 50%; top: 100%; cursor: ns-resize; }
+.scene-editor .se-handle.sw { left: 0%; top: 100%; cursor: nesw-resize; }
+.scene-editor .se-handle.w  { left: 0%; top: 50%; cursor: ew-resize; }
+.scene-editor .se-handle.mid { left: 50%; top: 50%; cursor: move; }
+
+.scene-editor .se-rotate-handle {
+  position: absolute;
+  left: 50%;
+  bottom: -30px;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: var(--text);
+  color: var(--bg);
+  border: 1px solid color-mix(in srgb, var(--bg) 45%, transparent);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--bg) 55%, transparent);
+  cursor: grab;
+}
+
+.scene-editor .se-rotate-handle:active {
+  cursor: grabbing;
+}
+
+/* 选中元素旁的悬浮编辑卡片 */
+.scene-editor .se-popover {
+  position: absolute;
+  z-index: 7;
+  width: 344px;
+  max-width: calc(100% - 16px);
+  max-height: calc(100% - 58px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 92%, var(--raised));
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 14px 36px color-mix(in srgb, var(--bg) 65%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--text);
+}
+
+.scene-editor .se-pop-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scene-editor .se-tabs {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.scene-editor .se-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.scene-editor .se-tabs button.on {
+  background: color-mix(in srgb, var(--raised) 90%, var(--text) 10%);
+  color: var(--text);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--bg) 40%, transparent);
+}
+
+.scene-editor .se-help-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  font-size: 10px;
+  opacity: 0.72;
+}
+
+.scene-editor .se-trash-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text-2);
+}
+
+.scene-editor .se-trash-btn:hover {
+  color: var(--bad, var(--accent));
+  border-color: color-mix(in srgb, var(--bad, var(--accent)) 45%, transparent);
+}
+
+/* 选择器芯片 + 选父元素 */
+.scene-editor .se-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.scene-editor .se-selector-chip {
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font: 11.5px var(--mono);
+  background: color-mix(in srgb, var(--bg) 52%, transparent);
+  color: var(--text-2);
+  border: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.scene-editor .se-parent-btn {
+  padding: 2px 7px;
+  font-size: 11px;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.scene-editor .se-parent-btn:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--text) 24%, transparent);
+}
+
+/* AI 编辑表单 */
+.scene-editor .se-ai-input {
+  width: 100%;
+  min-height: 70px;
+  max-height: 140px;
+  resize: vertical;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.scene-editor .se-ai-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* 属性调整表单 */
+.scene-editor .se-props {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.scene-editor .se-prop-row {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.scene-editor .se-color-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 48%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.scene-editor .se-color-swatch {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--text) 25%, transparent);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.scene-editor .se-color-swatch input[type='color'] {
+  position: absolute;
+  inset: -4px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+}
+
+.scene-editor .se-color-text,
+.scene-editor .se-text-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: 12px var(--mono);
+  padding: 2px 0;
+}
+
+.scene-editor .se-text-input {
+  font-family: inherit;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 48%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.scene-editor .se-color-text:focus,
+.scene-editor .se-text-input:focus {
+  outline: none;
+}
+
+.scene-editor .se-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.scene-editor .se-num-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 48%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.scene-editor .se-num-chip input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: 12px var(--mono);
+  text-align: right;
+  padding: 0;
+}
+
+.scene-editor .se-num-chip input:focus {
+  outline: none;
+}
+
+.scene-editor .se-range-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scene-editor .se-range-row input[type='range'] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.scene-editor .se-range-row .mono {
+  min-width: 36px;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+
+/* 悬浮卡底栏 */
+.scene-editor .se-pop-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.scene-editor .se-cancel-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  background: color-mix(in srgb, var(--bg) 48%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text-2);
+}
+
+.scene-editor .se-send-btn {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scene-editor .se-apply-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+
+.scene-editor .se-reset-link {
+  font-size: 11.5px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  padding: 2px 4px;
+  margin-left: auto;
+}
+
+.scene-editor .se-reset-link:hover {
+  color: var(--text);
+}
+
+.scene-editor .se-hint-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* 视频舞台右上角的「编辑画面」快速切入胶囊 */
+.stage-frame .stage-edit-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  color: var(--text);
+  backdrop-filter: blur(10px);
+}
+
+.stage-frame .stage-edit-btn:hover {
+  border-color: var(--accent);
+}

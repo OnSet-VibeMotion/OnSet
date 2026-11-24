@@ -139,6 +139,31 @@ export interface Box {
   h: number;
 }
 
+export interface ElementEdit {
+  selector: string;
+  dx?: number;
+  dy?: number;
+  scaleX?: number;
+  scaleY?: number;
+  rotate?: number;
+  opacity?: number;
+  color?: string;
+  backgroundColor?: string;
+  fontSize?: number;
+  text?: string;
+  hidden?: boolean;
+}
+
+export interface SceneEdits {
+  schema: 1;
+  elements: Record<string, ElementEdit>;
+}
+
+export interface SceneEditsResponse {
+  has_html: boolean;
+  edits: SceneEdits;
+}
+
 export interface Attachment {
   /** 用户上传的文件（path 在 production/studio/uploads/ 下）。 */
   upload?: boolean;

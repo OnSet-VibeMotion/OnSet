@@ -8,7 +8,7 @@
 
 已有可信字级时间戳时，直接用 `align_run({"evidence":"<字级时间戳 JSON>","publish":true})`，例如 `voice_synthesize()` 返回的 ElevenLabs `alignment` 路径。第三方对齐器按「第三方站」一节调用，输入用 `align_text()` 导出的对齐文本，输出也可作 `evidence`。只有句级时间戳时仍需强制对齐。
 
-长配音分段取得的对齐证据可用 `align_build()` 的 `align: ["production/audio/align-01.json", "production/audio/align-02.json@312.48"]`，偏移取实际音频，切点选发声之间的停顿。
+长配音（>180 秒）且由 `voice_synthesize()` 生成（带 `*.tts/report.json`）时，`align_run()` 会自动按段落静音边界切段、逐段对齐并合并整片时间轴，不要手写 Python 切分或合并脚本。非内置配音的超长录音若需分段对齐，可用 `align_build()` 的 `align: ["production/audio/align-01.json", "production/audio/align-02.json@312.48"]`，偏移取实际音频，切点选发声之间的停顿。
 
 缺省读 `production/script-final.md` 与 `production/audio/align.json`，写出 `production/audio/voice.srt`、`production/phrase-timeline.json` 和 `production/audio/align-report.json`。它把终稿的每个朗读单元与对齐结果逐字匹配，标出漏读、多读与读错的位置：
 
@@ -48,7 +48,7 @@ audio_check({"audio": "production/audio/voice.wav", "srt": "production/audio/voi
 
 ### {{STAGE:timeline}}补充：短语级语义时间轴
 
-句级 SRT 只能用于字幕和粗排，不能直接证明一句话内部的视觉顺序。凡一条字幕包含两个以上会分别显示的概念、动作、条件、结论或专有名词，必须把这些单位在终稿里标成受保护短语（`@{短语编号}…@{/短语编号}`），由 `align_build()` 依据真实音频生成 `production/phrase-timeline.json`，不要手写帧号；再生成 `production/visible-event-inventory.json`：
+句级 SRT 只能用于字幕和粗排，不能直接证明一句话内部的视觉顺序。凡一条字幕包含两个以上会分别显示的概念、动作、条件、结论或专有名词，或包含不能在字幕切条/换行时劈开的专有名词与核心词组，必须把这些单位在终稿里标成受保护短语（`@{短语编号}…@{/短语编号}`，单条控制在 2–12 字）：`align_build()` 会避开短语内部切分 `voice.srt`，`SceneKit.captions()` 会把短语锁成单行不可拆原子块，并依据真实音频生成 `production/phrase-timeline.json`（不要手写帧号）；再生成 `production/visible-event-inventory.json`：
 
 - `production/phrase-timeline.json`（`align_build()` 产出）
 - `production/visible-event-inventory.json`

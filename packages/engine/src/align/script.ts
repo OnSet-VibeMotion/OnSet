@@ -45,10 +45,16 @@ export interface Piece {
 export const VocalEvents: readonly string[] = ['[笑]', '[叹气]', '[咳嗽]', '[清嗓子]', '(laugh)', '(sigh)', '(cough)', '(clears throat)'];
 
 const vocalEventPattern = /^(\[[^\[\]\s]{1,10}\]|\([a-z][a-z ]{0,30}\))$/;
+const vocalEventGlobalPattern = /(\[[^\[\]\s]{1,10}\]|\([a-z][a-z ]{0,30}\))/g;
 
 /** 朗读侧整段是一个声音事件。 */
 export function isVocalEvent(spoken: string): boolean {
   return vocalEventPattern.test(spoken);
+}
+
+/** 去掉送入 TTS 文本中的声音事件标记（与 alignText() 的剔除规则保持一致）。 */
+export function stripVocalEvents(text: string): string {
+  return text.replace(vocalEventGlobalPattern, '');
 }
 
 /** ScriptToken 是终稿朗读侧的一个匹配单元，记着它落在哪几个 piece 上。 */
@@ -105,20 +111,36 @@ export class Script {
   /** 对话体终稿中每段的说话人。角色不占正文位置，也不进朗读文本。 */
   speakers = new Map<number, string>();
 
-  /** SpokenText 返回送进 TTS 与对齐工具的文本：标记取朗读侧，标题行丢掉，段与段之间换行，标点保留。 */
+  /**
+   * SpokenText 返回送进 TTS 的文本：标记取朗读侧，标题行丢掉，标点保留；
+   * 普通段间用单换行 `\n`，中间隔着 `#` 章节标题的段间留一个空行 `\n\n`，
+   * 供 voice_synthesize 自动区分段间停顿与更长的章间停顿。
+   */
   spokenText(): string {
-    let b = '';
+    const headingAt = new Set(this.headings.map((h) => h.atPiece));
+    const paras: { text: string; afterChapter: boolean }[] = [];
+    let current = '';
+    let pendingChapter = false;
+    const flush = () => {
+      const t = goTrimSpace(current);
+      if (t !== '') {
+        paras.push({ text: t, afterChapter: paras.length > 0 && pendingChapter });
+        pendingChapter = false;
+      }
+      current = '';
+    };
     this.pieces.forEach((p, i) => {
-      if (i > 0 && p.para !== this.pieces[i - 1].para) b += '\n';
-      b += p.spoken;
+      if (i > 0 && p.para !== this.pieces[i - 1].para) flush();
+      if (headingAt.has(i)) pendingChapter = true;
+      current += p.spoken;
     });
-    const out: string[] = [];
-    for (const para of b.split('\n')) {
-      const t = goTrimSpace(para);
-      if (t !== '') out.push(t);
+    flush();
+    if (paras.length === 0) return '';
+    let out = paras[0].text;
+    for (let i = 1; i < paras.length; i++) {
+      out += (paras[i].afterChapter ? '\n\n' : '\n') + paras[i].text;
     }
-    if (out.length === 0) return '';
-    return out.join('\n') + '\n';
+    return out + '\n';
   }
 
   /**

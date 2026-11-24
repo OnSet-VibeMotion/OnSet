@@ -20,4 +20,6 @@
 | 新组件的样式放进各自的 css（`chat.css`、`home.css`、`creation.css` 等），选择器挂在组件根类下（`.chat …`、`.home …`） | 全局 `styles.css` 里已有 `.legend`、`.style-thumb` 这类通用名，同名类后写的覆盖先写的，撞过两次：时间线图例被挤成一条、风格缩略图撑满整个菜单 |
 | `src/renderer/types.ts` 与后端 JSON 字段一一对应 | 前后端之间没有生成代码，改字段两边一起改 |
 
+镜头页支持原地切入 HTML 可视化画面编辑（`SceneEditor.tsx`、`scene-editor.css`）：在有 `index.html` 的镜头上点「编辑画面」，舞台从 MP4 无缝切到按画幅等比缩放的同源合成 iframe 并同步到当前帧，底部走带与键盘快捷键照常控制时间轴。点击画面元素弹出带 8 点缩放、拖拽位移与底部旋转把手的控制框，以及贴旁悬浮卡片：**「AI 编辑」**把选中的元素选择器（支持「↑ 选父级」）、`index.html` 出处与当前帧发往主对话交给 AI 改动画；**「属性调整」**直接调文案、文字色、背景色、字号、偏移、缩放、旋转、透明度与隐藏删除，点「应用修改」写结构化覆盖并零 token 重新出片。界面不暴露直接编辑 HTML 源码的入口。
+
 项目顶栏的「动效」页（`MotionEffects.tsx`、`studio/motion.ts`）按来源、类别和关键词检索。Motion Prompt 的本地目录与四套 Canvas 预览随应用放在 `assets/motion-prompt/`，用 `catalog.json` 记录上游 commit 与原始条目编号。预览只执行随应用分发的代码，运行在无同源权限的 iframe 中。第三方插件通过 `motion_effects` 提供可搜索条目。选好动效和镜头后，经 `onQuick` 填进对话草稿，草稿带完整引用与来源版本，由编排工具更新镜头描述。

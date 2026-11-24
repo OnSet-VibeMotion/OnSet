@@ -423,6 +423,31 @@ export function removeRecord(s: Pick<Scene, 'directory'>): void {
   }
 }
 
+/**
+ * 直接从现有合成重新编码出片后，刷新渲染记录里的产物大小与摘要，保留原输入指纹。
+ * 没有有效旧记录时返回 false，由调用方按当前输入重新写一份。
+ */
+export function refreshRecordOutput(s: Scene): boolean {
+  let body: Buffer;
+  try {
+    body = fs.readFileSync(recordPath(s));
+  } catch {
+    return false;
+  }
+  let record: RenderRecord;
+  try {
+    record = unmarshal<RenderRecord>(body, recordType);
+  } catch {
+    return false;
+  }
+  if (![RecordSchemaBytes, contentSchema, RecordSchemaRenderContract, RenderRecordSchema].includes(record.schema) || record.output !== s.output || record.fingerprint === '') {
+    return false;
+  }
+  const [size, digest] = outputIdentity(s);
+  saveRecord(s, { ...record, output_size: size, output_sha256: digest });
+  return true;
+}
+
 function outputIdentity(s: Scene): [number, string] {
   const file = outputPath(s);
   let size: number;

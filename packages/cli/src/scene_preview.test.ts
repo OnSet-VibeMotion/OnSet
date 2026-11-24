@@ -228,7 +228,7 @@ it('rejects invalid zoom_frame or crop parameters before running CLI', async () 
   const dir = fixture();
   const cropAlone = await runIn(dir, ['scene', 'preview-check', '--crop', '0,0,100,100']);
   expect(cropAlone.code).toBe(1);
-  expect(cropAlone.out).toContain('crop 需要配合 zoom_frame 使用');
+  expect(cropAlone.out).toContain('crop 需要配合 zoom_frame 或 zoom_frames 使用');
 
   const outOfRange = await runIn(dir, ['scene', 'preview-check', '--zoom-frame', '30']);
   expect(outOfRange.code).toBe(1);
@@ -237,7 +237,55 @@ it('rejects invalid zoom_frame or crop parameters before running CLI', async () 
   const badCrop = await runIn(dir, ['scene', 'preview-check', '--zoom-frame', '0', '--crop', '0,0,999,999']);
   expect(badCrop.code).toBe(1);
   expect(badCrop.out).toContain('超出画布范围');
+
+  const bothZoom = await runIn(dir, ['scene', 'preview-check', '--zoom-frame', '0', '--zoom-frames', '0,15']);
+  expect(bothZoom.code).toBe(1);
+  expect(bothZoom.out).toContain('不要同时传入');
+
+  const tooManyZooms = await runIn(dir, ['scene', 'preview-check', '--zoom-frames', '0,5,10,15,20']);
+  expect(tooManyZooms.code).toBe(1);
+  expect(tooManyZooms.out).toContain('最多 4 个');
   expect(fs.existsSync(path.join(dir, '.onset/commands.log'))).toBe(false);
+});
+
+it('zoom_frames batches multiple frames into one cached detail sheet and emits a soft budget nudge after repeated checks', async () => {
+  const dir = fixture();
+  const initial = await runIn(dir, ['scene', 'preview-check', '--frames', '0,10,20,29']);
+  expect(initial.code, initial.out).toBe(0);
+  expect(commands(dir).map(cmd => cmd[0])).toEqual(['check', 'snapshot']);
+
+  const batch = await runIn(dir, ['scene', 'preview-check', '--zoom-frames', '10,20']);
+  expect(batch.code, batch.out).toBe(0);
+  expect(batch.out).toContain('细节拼图：');
+  expect(batch.out).toContain('detail-sheet-f10-20.png');
+  expect(batch.out).toContain('帧序 10, 20（每格 720px 高分细节）');
+  expect(batch.out).toContain('缓存命中：合成检查，2 张截图');
+  expect(commands(dir)).toHaveLength(2);
+
+  // 同一组 zoom_frames 再次调用直接命中拼图缓存。
+  const batchRepeat = await runIn(dir, ['scene', 'preview-check', '--zoom-frames', '10,20']);
+  expect(batchRepeat.code, batchRepeat.out).toBe(0);
+  expect(batchRepeat.out).toContain('细节图与上次完全相同');
+  expect(commands(dir)).toHaveLength(2);
+
+  // 带 crop 的批量细节图也能复用帧并触发软预算提示（累计第 4 次预览调用 / 第 3 次细节放大）。
+  const batchCrop = await runIn(dir, ['scene', 'preview-check', '--zoom-frames', '10,20', '--crop', '0,0,2,2']);
+  expect(batchCrop.code, batchCrop.out).toBe(0);
+  expect(batchCrop.out).toContain('detail-sheet-f10-20-0-0-2-2.png');
+  expect(batchCrop.out).toContain('本镜头已执行 4 次预览检查');
+  expect(commands(dir)).toHaveLength(2);
+});
+
+it.skipIf(process.platform === 'win32')('refuses to follow a symlinked preview-stats.json outside the scene directory', async () => {
+  const dir = fixture();
+  const outside = tempDir();
+  const target = path.join(outside, 'sentinel.txt');
+  fs.writeFileSync(target, 'untouched');
+  fs.mkdirSync(path.join(dir, '.onset'), { recursive: true });
+  fs.symlinkSync(target, path.join(dir, '.onset', 'preview-stats.json'));
+  const res = await runIn(dir, ['scene', 'preview-check', '--frames', '0']);
+  expect(res.code, res.out).toBe(0);
+  expect(fs.readFileSync(target, 'utf8')).toBe('untouched');
 });
 
 it('disables preview cache when index.html references an ignored local asset like snapshots/cover.png', async () => {

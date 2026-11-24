@@ -19,8 +19,9 @@ export const LockFile = 'onset.flow.json';
  *   5：公共静态前缀前移支持跨镜缓存，全渲染器统一精简开工契约与细节图检查。
  *   6：静态前缀内联默认风格核心规范、按需加载重型可选技能、引用自动生成的 onset-fonts.css。
  *   7：完整内联去除声音段的默认风格规范并禁止通读 demo/SKILL 全文，约束 zoom_frame 与预览轮次。
+ *   8：共享前缀内联 SceneKit 完整 API 速查表与 zoom_frames 批量细节放大指引；资源段列出 onset-fonts.css 字体族与挂载辅助库公开接口，避免每镜重复 read_file。
  */
-export const RenderPromptVersion = 7;
+export const RenderPromptVersion = 8;
 
 /**
  * 新建项目时记下的流程（片型）与画幅。制作提示词由运行期按它组合（compose.ts）；项目用哪个流程也只看它。

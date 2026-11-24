@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as align from '@onset/engine/align';
+import * as reads from '@onset/engine/reads';
 import { atomicWrite } from '@onset/engine/fsutil';
 import { formatFixed } from '@onset/engine/gofmt';
 import { ExitError } from './cobra';
@@ -75,8 +76,20 @@ defineOp({
     const alignOut = str(p.align_out) !== '' ? inProject(root, p.align_out, '') : path.join(path.dirname(out), 'align-text.txt');
     atomicWrite(alignOut, script.alignText(), 0o644);
     const events = script.hasVocalEvents() ? '，声音事件已从对齐文本里去掉' : '';
+    const hints: string[] = [];
+    if (script.tokens.length >= 60 && script.phrases.length === 0) {
+      hints.push('终稿里还没有标注受保护短语（@{id}…@{/id}）：专有名词、产品名、模型名与关键概念建议标上，字幕折行与时间轴才能保护它们不被拆分');
+    }
+    for (const span of script.phrases) {
+      const display = script.displayText(span.startPiece, span.endPiece);
+      const u = reads.units(display);
+      if (u > 16) {
+        hints.push(`受保护短语 ${span.id} 偏长（${u} 阅读单位：「${display.slice(0, 16)}…」）：建议收窄到 2–12 字核心词/短语，否则单行字幕放不下仍会被强拆`);
+      }
+    }
     w.write(`已写出朗读文本：${out}（${script.tokens.length} 个朗读单元，${script.phrases.length} 个受保护短语）\n已写出对齐文本：${alignOut}${events}\n`);
-    return { data: { out, align_out: alignOut, tokens: script.tokens.length, phrases: script.phrases.length, vocal_events: script.hasVocalEvents() } };
+    for (const hint of hints) w.write(`提示：${hint}\n`);
+    return { data: { out, align_out: alignOut, tokens: script.tokens.length, phrases: script.phrases.length, vocal_events: script.hasVocalEvents(), ...(hints.length > 0 ? { hints } : {}) } };
   },
 });
 

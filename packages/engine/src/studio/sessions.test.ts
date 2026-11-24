@@ -623,6 +623,15 @@ it('auto-hands off production sessions when a major stage gate is confirmed', as
   const second = await waitIdle(f, id);
   const oldCliSession = second.session.cli_session_id as string;
   expect(oldCliSession).toBeTruthy();
+  // 会话上下文已攒到 ≥10 万 token 时，关卡确认应自动分段接力。
+  ledger.append(ledger.projectFile(f.root), {
+    time: new Date().toISOString(),
+    source: 'studio',
+    tool: 'claude',
+    session: oldCliSession,
+    status: 'succeeded',
+    usage: { input_tokens: 10 * 110_000, turns: 10, source: 'claude result', basis: 'total-input' },
+  });
 
   const confirmed = await studioRequest(f.s, 'POST', '/api/progress/gates/gate-script', '{}');
   expect(confirmed.status).toBe(200);
@@ -636,4 +645,58 @@ it('auto-hands off production sessions when a major stage gate is confirmed', as
   expect(third.session.handoff_reason).toBeUndefined();
   expect(args(f)[2]).not.toContain('--resume');
   expect(args(f)[2]).toContain('当前项目文件快照');
+
+  // 终审关卡（gate-final，由编排落盘 production/approval.json）在会话够重或空闲超过缓存 TTL 时也能自动预约下一轮接力。
+  const finalCliSession = third.session.cli_session_id as string;
+  ledger.append(ledger.projectFile(f.root), {
+    time: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
+    source: 'studio',
+    tool: 'claude',
+    session: finalCliSession,
+    status: 'succeeded',
+    usage: { input_tokens: 4 * 50_000, turns: 4, source: 'claude result', basis: 'total-input' },
+  });
+  const { scheduleGateHandoff } = await import('./sessions');
+  scheduleGateHandoff(f.s, f.root, 'gate-final', '试听确认');
+  expect(getSession(f.s, f.root, id)!.meta.handoff_reason).toContain('试听确认');
+});
+
+it('skips gate auto-handoff when the CLI session is still light and warm in cache', async () => {
+  const f = newSessionFixture();
+  writeStudioFile(path.join(f.root, 'production', 'script-final.md'), '# 终稿\n\n第一句。\n');
+  const started = await studioRequest(f.s, 'POST', '/api/production/start', '{}');
+  const id = started.body.session_id as string;
+  await waitIdle(f, id);
+  await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"微调一句"}');
+  const second = await waitIdle(f, id);
+  const cliSession = second.session.cli_session_id as string;
+  expect(cliSession).toBeTruthy();
+
+  // 写入一条刚结束（热缓存）且上下文很轻（5 万 token、4 步）的账本记录。
+  ledger.append(ledger.projectFile(f.root), {
+    time: new Date().toISOString(),
+    source: 'studio',
+    tool: 'claude',
+    session: cliSession,
+    status: 'succeeded',
+    usage: { input_tokens: 4 * 50_000, turns: 4, source: 'claude result', basis: 'total-input' },
+  });
+
+  const confirmed = await studioRequest(f.s, 'POST', '/api/progress/gates/gate-script', '{}');
+  expect(confirmed.status).toBe(200);
+  // 轻会话 + 热缓存不拆缓存，保持原会话继续复用。
+  expect(getSession(f.s, f.root, id)!.meta.handoff_reason).toBeUndefined();
+
+  // 一旦上下文增长到 ≥10 万 token，关卡确认就会预约分段接力。
+  ledger.append(ledger.projectFile(f.root), {
+    time: new Date().toISOString(),
+    source: 'studio',
+    tool: 'claude',
+    session: cliSession,
+    status: 'succeeded',
+    usage: { input_tokens: 8 * 110_000, turns: 8, source: 'claude result', basis: 'total-input' },
+  });
+  const { scheduleGateHandoff } = await import('./sessions');
+  scheduleGateHandoff(f.s, f.root, 'gate-voice', '配音审核');
+  expect(getSession(f.s, f.root, id)!.meta.handoff_reason).toContain('配音审核');
 });

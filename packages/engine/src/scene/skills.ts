@@ -531,14 +531,14 @@ export function filmStyleBriefSection(skillsDir: string, hasLook: boolean, v7 = 
  */
 const optionalV6Skills: ReadonlySet<string> = new Set(['character-rig', 'text-to-lottie', 'algorithmic-art']);
 
-export function skillPromptSections(resolved: Record<string, string>, skills: readonly SkillDescriptor[], engineRenders = false, directorBrief = false, v5 = false, v6 = false): string {
+export function skillPromptSections(resolved: Record<string, string>, skills: readonly SkillDescriptor[], engineRenders = false, directorBrief = false, v5 = false, v6 = false, v8 = false): string {
   let sections = '';
   for (const desc of skills) {
     if (v6 && optionalV6Skills.has(desc.name)) continue;
     const dir = resolved[desc.name] ?? '';
     if (directorBrief && desc.name === HyperFramesSkillName) sections += hyperFramesPrompt(dir, true);
-    else if (directorBrief && desc.name === SceneKitSkillName) sections += sceneKitPrompt(dir, true);
-    else if (engineRenders && desc.name === HyperFramesCLISkillName) sections += hyperFramesCLIPrompt(dir, true, v5);
+    else if (directorBrief && desc.name === SceneKitSkillName) sections += sceneKitPrompt(dir, true, v8);
+    else if (engineRenders && desc.name === HyperFramesCLISkillName) sections += hyperFramesCLIPrompt(dir, true, v5, v8);
     else if (desc.promptSection) sections += desc.promptSection(dir);
   }
   if (v6) {
@@ -657,7 +657,7 @@ export function hyperFramesPrompt(skillsDir: string, brief = false): string {
  * timeline 只放行读取：它的 move / trim / split 等子命令会改写组合文件，
  * 与「时长由 scene.json 决定」的契约冲突。
  */
-export function hyperFramesCLIPrompt(skillsDir: string, engineRenders = false, v5 = false): string {
+export function hyperFramesCLIPrompt(skillsDir: string, engineRenders = false, v5 = false, v8 = false): string {
   let reference = `- CLI 的命令与排错方式见 ${HyperFramesCLISkillName} 技能。\n` + '  （本机未能定位该技能目录，请使用你自身的技能加载机制载入。）\n';
   if (skillsDir !== '') {
     reference = `- CLI 的命令与排错方式见 ${HyperFramesCLISkillName} 技能。本机该技能目录为：\n    ${path.join(skillsDir, HyperFramesCLISkillName)}\n`;
@@ -665,7 +665,9 @@ export function hyperFramesCLIPrompt(skillsDir: string, engineRenders = false, v
   return (
     '渲染命令（强制）：\n' +
     reference +
-    (v5
+    (v8
+      ? '- 检查与视觉验收一律优先用 `scene_preview_check`（支持 `frames` 拼联系表，`zoom_frames` 一次批量拼多帧高分细节图，也支持 `zoom_frame` / `crop` 查单帧原分辨率或局部细节，内置缓存并直接回图）；不要单独重复调用 `hyperframes` 的 `lint`、`check`、`snapshot`。仅在查文档或排查组合元数据时用 `hyperframes` 工具（`subcommand` 填子命令，其他参数放进 `args`）。正式渲染由片场执行。'
+      : v5
       ? '- 检查与视觉验收一律优先用 `scene_preview_check`（支持 `frames` 拼联系表，也支持 `zoom_frame` / `crop` 查单帧原分辨率或局部细节，内置缓存并直接回图）；不要单独重复调用 `hyperframes` 的 `lint`、`check`、`snapshot`。仅在查文档或排查组合元数据时用 `hyperframes` 工具（`subcommand` 填子命令，其他参数放进 `args`）。正式渲染由片场执行。'
       : engineRenders
       ? '- 首轮检查用 scene_preview_check。按需补查时用 `hyperframes` 工具，`subcommand` 填子命令，其他参数放进 `args`。正式渲染由片场执行。'
@@ -700,13 +702,20 @@ export function hyperFramesCLIPrompt(skillsDir: string, engineRenders = false, v
  * 复制义务与 character-rig 同理：渲染只服务镜头目录内的文件，引用镜头目录外的
  * 路径会静默 404，字幕不出现、渲染照样退出码 0。
  */
-export function sceneKitPrompt(skillsDir: string, brief = false): string {
+export function sceneKitPrompt(skillsDir: string, brief = false, v8 = false): string {
   let reference =
     `- 加载 ${SceneKitSkillName} 技能，用法以其中的 ${skillManifestFile} 为准。\n` + '  （本机未能定位该技能目录，请使用你自身的技能加载机制载入。）\n';
   if (skillsDir !== '') {
     reference = `- 加载 ${SceneKitSkillName} 技能，用法以其中的 ${skillManifestFile} 为准。本机该技能目录为：\n    ${path.join(skillsDir, SceneKitSkillName)}\n`;
   }
-  if (brief) {
+  if (brief && v8) {
+    const location = skillsDir ? path.join(skillsDir, SceneKitSkillName, skillManifestFile) : `${SceneKitSkillName}/${skillManifestFile}`;
+    reference =
+      `- window.SceneKit 完整接口速查（直接调用，无需 read_file 通读 scene-kit.js 或 ${location}）：\n` +
+      '  - 驱动与元数据：`attach(timeline, frame => ...)`、`scene()`（返回 window.ONSET_SCENE）、`frameOf(sec)`。\n' +
+      '  - 数学与缓动：`clamp(v,lo,hi)`、`lerp(a,b,t)`、`progress(frame,start,end)`、`fade(frame,inS,inE,outS?,outE?)`、`ease(name,t?)`（linear/sine/quad/cubic/expo/back + In/Out/InOut）、`rng(seed)`。\n' +
+      '  - 安全区/短语/字幕：`safeRect(name?)`（main_content/subtitles → `{left,top,right,bottom,width,height}`）、`phrase(id)`、`phraseActive(id,frame)`、`phraseText(id,el,opts?)`、`cueAt(frame)`、`breakLines(text,opts)`、`captions(container,opts?)`（返回 `{element,layouts,render(frame),activeAt(frame),events()}`）。\n';
+  } else if (brief) {
     const location = skillsDir ? path.join(skillsDir, SceneKitSkillName, skillManifestFile) : `${SceneKitSkillName}/${skillManifestFile}`;
     reference = `- 直接用 SceneKit.attach(timeline, render) 把按帧更新接到暂停时间线上。SceneKit.progress(frame, start, end) 返回 0–1，SceneKit.ease(name) 取得缓动函数。需要其他接口时查 ${location}。\n`;
   }
