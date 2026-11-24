@@ -1,6 +1,6 @@
-import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { app } from 'electron';
 
 /**
  * onset 程序。客户端自带 Node（Electron 以 ELECTRON_RUN_AS_NODE=1 运行即是 Node），所以 onset 是打包进资源目录的
@@ -16,7 +16,9 @@ export function resourcesDir(): string {
 
 /** 命令行入口文件。开发时用 packages/cli/dist。 */
 export function cliEntry(): string {
-  return app.isPackaged ? path.join(resourcesDir(), 'cli', 'onset.cjs') : path.join(resourcesDir(), 'packages', 'cli', 'dist', 'onset.cjs');
+  return app.isPackaged
+    ? path.join(resourcesDir(), 'cli', 'onset.cjs')
+    : path.join(resourcesDir(), 'packages', 'cli', 'dist', 'onset.cjs');
 }
 
 /** 内置资产目录。 */
@@ -31,7 +33,9 @@ const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
  * 没有时（开发时没跑过 npm run vendor）为空，onset 退回 PATH 里的 npm。
  */
 export function npmCLI(): string {
-  const file = app.isPackaged ? path.join(resourcesDir(), 'npm', 'bin', 'npm-cli.js') : path.join(resourcesDir(), 'apps', 'desktop', 'vendor', 'npm', 'bin', 'npm-cli.js');
+  const file = app.isPackaged
+    ? path.join(resourcesDir(), 'npm', 'bin', 'npm-cli.js')
+    : path.join(resourcesDir(), 'apps', 'desktop', 'vendor', 'npm', 'bin', 'npm-cli.js');
   return fs.existsSync(file) ? file : '';
 }
 
@@ -43,7 +47,9 @@ export function browserPath(): string {
 /** shim 里给 onset 的浏览器变量：与主进程（main.ts 的 lendBrowser）设的一致。 */
 function browserVars(): string {
   if (process.env.ONSET_BROWSER_HOOK === '1') {
-    const appArg = process.env.ONSET_BROWSER_APP_ARG ? ` ONSET_BROWSER_APP_ARG=${q(process.env.ONSET_BROWSER_APP_ARG)}` : '';
+    const appArg = process.env.ONSET_BROWSER_APP_ARG
+      ? ` ONSET_BROWSER_APP_ARG=${q(process.env.ONSET_BROWSER_APP_ARG)}`
+      : '';
     return `ONSET_BROWSER=${q(process.execPath)} ONSET_BROWSER_HOOK=1${appArg}`;
   }
   return `ONSET_BROWSER=${q(browserPath())}`;
@@ -70,6 +76,8 @@ export function shimScript(): string {
  */
 export function browserScript(): string {
   const appArg = app.isPackaged ? '' : ` ${q(app.getAppPath())}`;
+  // macOS 上无头/后台 Chromium 仍可能激活桌面搜索菜单栏图标，显式关闭 OmniboxEverywhere。
+  const platformFlags = process.platform === 'darwin' ? ' --disable-features=OmniboxEverywhere' : '';
   return [
     '#!/bin/sh',
     '# 由片场客户端写出：HyperFrames 渲染用的浏览器，借用客户端自带的 Chromium。',
@@ -82,7 +90,7 @@ export function browserScript(): string {
     '    *) set -- "$@" "$a" ;;',
     '  esac',
     'done',
-    `ONSET_BROWSER_MODE=1 exec ${q(process.execPath)}${appArg} "$@"`,
+    `ONSET_BROWSER_MODE=1 exec ${q(process.execPath)}${appArg}${platformFlags} "$@"`,
     '',
   ].join('\n');
 }
@@ -100,4 +108,3 @@ export function writeScript(file: string, body: string): void {
   fs.writeFileSync(file + '.tmp', body, { mode: 0o755 });
   fs.renameSync(file + '.tmp', file);
 }
-

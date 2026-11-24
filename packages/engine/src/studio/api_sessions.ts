@@ -3,98 +3,55 @@
  *
  * /preview/scenes/ 与 sceneAttachment（镜头抽帧附件）在 features.ts。
  */
-import fs from 'node:fs';
-import path from 'node:path';
 import * as config from '../config';
-import { goClean, goTrimSpace } from '../gofmt';
-import { marshal } from '../gojson';
-import * as plugin from '../plugin';
-import * as project from '../project';
+import { goTrimSpace } from '../gofmt';
 import type { ViewState } from '../studioview';
-import { decodeChoice, withDefaults } from './agents';
-import { switchSessionAgents } from './agents';
-import { isEnvFile } from './api_ui';
-import { DecodeError, decodeJSON, fieldArray, fieldBool, fieldInt, fieldNumber, fieldObject, fieldString, goMap, methodNotAllowed, writeError, writeJSON } from './http';
-import { discoverScenes, fileExists } from './scenes';
+import { decodeChoice, switchSessionAgents, withDefaults } from './agents';
+import { decodeAttachments, decodeView, sessionEvents, writeStartError } from './api_sessions_events';
 import {
+  DecodeError,
+  decodeJSON,
+  fieldArray,
+  fieldBool,
+  fieldObject,
+  fieldString,
+  goMap,
+  methodNotAllowed,
+  writeError,
+  writeJSON,
+} from './http';
+import { answerPermission } from './permissions';
+import {
+  type Attachment,
   BusyError,
-  NotExistError,
   cancelSession,
-  containedPath,
   createSession,
   emit,
   enqueueTurn,
-  eventsAfter,
-  focusStageFor,
   getSession,
   handoffSession,
-  kindNotice,
   listSessions,
-  revert,
-  sessionEventJSON,
   sessionMetaJSON,
   startTurn,
   steer,
   unqueue,
   validateChoice,
-  type Attachment,
-  type Session,
 } from './sessions';
 import type { Server } from './studio';
-import { answerPermission } from './permissions';
-import { runStudioOp, runWriteTask, writeTaskError } from './tasks';
-import { ConflictError, isContentState, loadTurn, readBlob, turnJSON, validID } from './turns';
+import { loadTurn, turnJSON, validID } from './turns';
 
-/** maxFileBytes 是 /api/files 返回正文的上限。 */
-const maxFileBytes = 2 << 20;
-
-/** sseHeartbeat 是 SSE 连接上没有事件时发注释行的间隔，防止代理与浏览器断开空闲连接。 */
-const sseHeartbeat = 15_000;
-
-/** writeStartError 把发起对话时的错误映射成状态码。 */
-function writeStartError(err: unknown): Response {
-  if (err instanceof BusyError) return writeError(409, 'project_busy', err.message);
-  return writeError(400, 'turn_rejected', (err as Error).message);
-}
-
-/** 从请求体解出附件列表（json.Unmarshal 进 []Attachment）。 */
-export function decodeAttachments(value: unknown[] | undefined): Attachment[] | null {
-  if (!value) return null;
-  return value.map((item) => {
-    if (item === null) return {};
-    if (typeof item !== 'object' || Array.isArray(item)) throw new DecodeError('json: cannot unmarshal into Go struct field of type studio.Attachment');
-    const raw = item as Record<string, unknown>;
-    const region = fieldObject(raw, 'region');
-    const a: Attachment = {
-      scene_id: fieldString(raw, 'scene_id') || undefined,
-      path: fieldString(raw, 'path') || undefined,
-      seconds: fieldNumber(raw, 'seconds') || undefined,
-      region: region ? { x: fieldInt(region, 'x'), y: fieldInt(region, 'y'), w: fieldInt(region, 'w'), h: fieldInt(region, 'h') } : undefined,
-      selector: fieldString(raw, 'selector') || undefined,
-      source: fieldString(raw, 'source') || undefined,
-      note: fieldString(raw, 'note') || undefined,
-      upload: fieldBool(raw, 'upload') || undefined,
-      name: fieldString(raw, 'name') || undefined,
-      size: fieldInt(raw, 'size') || undefined,
-      quote: fieldString(raw, 'quote') || undefined,
-      label: fieldString(raw, 'label') || undefined,
-      ref: fieldBool(raw, 'ref') || undefined,
-    };
-    return a;
-  });
-}
-
-export function decodeView(value: Record<string, unknown> | undefined): ViewState | null {
-  if (!value) return null;
-  return { page: fieldString(value, 'page') || undefined, scene: fieldString(value, 'scene') || undefined, file: fieldString(value, 'file') || undefined };
-}
+export { decodeAttachments, decodeView, sessionEvents } from './api_sessions_events';
+export { commandAPI, filesAPI, productionStartAPI, studioCommands, turnAPI } from './api_sessions_ops';
 
 export async function sessionsAPI(s: Server, request: Request): Promise<Response> {
   const p = s.projectOr404();
   if (p instanceof Response) return p;
   switch (request.method) {
     case 'GET':
-      return writeJSON(200, goMap({ sessions: listSessions(s, p.path).map(sessionMetaJSON), busy: s.busyHolder(p.path) }));
+      return writeJSON(
+        200,
+        goMap({ sessions: listSessions(s, p.path).map(sessionMetaJSON), busy: s.busyHolder(p.path) }),
+      );
     case 'POST': {
       let title: string;
       let choice;
@@ -220,7 +177,9 @@ export async function sessionAPI(s: Server, request: Request, rest: string): Pro
     case 'permissions': {
       // /api/sessions/{id}/permissions/{request_id}：POST {"decision":"allow"|"always"|"deny","message"}。
       if (request.method !== 'POST') return methodNotAllowed('POST');
-      if (parts.length !== 3 || !/^[a-z0-9-]{1,64}$/.test(parts[2])) return writeError(404, 'not_found', '审批请求不存在');
+      if (parts.length !== 3 || !/^[a-z0-9-]{1,64}$/.test(parts[2])) {
+        return writeError(404, 'not_found', '审批请求不存在');
+      }
       let decision = '';
       let message = '';
       try {
@@ -231,10 +190,14 @@ export async function sessionAPI(s: Server, request: Request, rest: string): Pro
         if (err instanceof DecodeError) return writeError(400, 'invalid_json', '请求不是合法 JSON');
         throw err;
       }
-      if (decision !== 'allow' && decision !== 'always' && decision !== 'deny') return writeError(400, 'invalid_decision', 'decision 只能是 allow、always 或 deny');
+      if (decision !== 'allow' && decision !== 'always' && decision !== 'deny') {
+        return writeError(400, 'invalid_decision', 'decision 只能是 allow、always 或 deny');
+      }
       let ok: boolean;
       try {
-        ok = answerPermission(p.path, sess.permissions, parts[2], decision, message.trim(), (turn, event) => emit(sess, turn, event));
+        ok = answerPermission(p.path, sess.permissions, parts[2], decision, message.trim(), (turn, event) =>
+          emit(sess, turn, event),
+        );
       } catch (err) {
         return writeError(400, 'invalid_decision', (err as Error).message);
       }
@@ -260,7 +223,9 @@ export async function sessionAPI(s: Server, request: Request, rest: string): Pro
           if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) reason = fieldString(parsed, 'reason');
         }
       } catch (err) {
-        if (err instanceof DecodeError || err instanceof SyntaxError) return writeError(400, 'invalid_json', '请求不是合法 JSON');
+        if (err instanceof DecodeError || err instanceof SyntaxError) {
+          return writeError(400, 'invalid_json', '请求不是合法 JSON');
+        }
         throw err;
       }
       try {
@@ -274,320 +239,4 @@ export async function sessionAPI(s: Server, request: Request, rest: string): Pro
     default:
       return writeError(404, 'not_found', '会话接口不存在');
   }
-}
-
-/** strconv.Atoi：不是十进制整数时为 0（Go 版忽略错误）。 */
-function atoi(value: string | null): number {
-  if (value === null || !/^[+-]?\d+$/.test(value)) return 0;
-  const n = Number(value);
-  return Number.isSafeInteger(n) ? n : 0;
-}
-
-/**
- * sessionEvents 用 SSE 推送会话事件。先补发 Last-Event-ID（或 ?after=）之后的全部事件，
- * 然后等新事件；连接一直保持到客户端断开，事件 id 就是 seq，断线重连不丢不重。
- */
-export function sessionEvents(request: Request, sess: Session): Response {
-  const url = new URL(request.url);
-  // 两个都有时取大的：客户端先取完历史再带 ?after= 订阅，断线重连时 EventSource 另带 Last-Event-ID，
-  // 那是它最后收到的一条，比 ?after= 新。
-  let after = atoi(request.headers.get('Last-Event-ID'));
-  const afterParam = url.searchParams.get('after');
-  if (afterParam !== null && afterParam !== '') after = Math.max(after, atoi(afterParam));
-  const follow = url.searchParams.get('follow') !== '0';
-  const encoder = new TextEncoder();
-  let closed = false;
-  let wake: (() => void) | null = null;
-  const stop = (): void => {
-    closed = true;
-    wake?.();
-  };
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      request.signal.addEventListener('abort', stop, { once: true });
-      void (async () => {
-        try {
-          while (!closed) {
-            const { events } = eventsAfter(sess, after);
-            for (const event of events) {
-              controller.enqueue(encoder.encode(`id: ${event.seq}\nevent: ${event.kind}\ndata: ${marshal(sessionEventJSON(event))}\n\n`));
-              after = event.seq;
-            }
-            if (!follow) break;
-            // 注册等待与上面的读取之间没有 await：不会漏掉这期间的事件。
-            let heartbeat = false;
-            await new Promise<void>((resolve) => {
-              const done = (): void => {
-                clearTimeout(timer);
-                sess.waiters.delete(done);
-                wake = null;
-                resolve();
-              };
-              const timer = setTimeout(() => {
-                heartbeat = true;
-                done();
-              }, sseHeartbeat);
-              wake = done;
-              sess.waiters.add(done);
-            });
-            if (heartbeat && !closed) controller.enqueue(encoder.encode(': keep-alive\n\n'));
-          }
-        } catch {
-          // 连接已经断开：enqueue 会抛错，结束即可。
-        }
-        try {
-          controller.close();
-        } catch {
-          // 已经关了。
-        }
-      })();
-    },
-    cancel() {
-      stop();
-    },
-  });
-  return new Response(stream, {
-    status: 200,
-    headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no' },
-  });
-}
-
-export async function productionStartAPI(s: Server, request: Request): Promise<Response> {
-  if (request.method !== 'POST') return methodNotAllowed('POST');
-  const p = s.projectOr404();
-  if (p instanceof Response) return p;
-  let message: string;
-  let promptOverride: string;
-  let attachments: Attachment[] | null;
-  let choice;
-  try {
-    const body = await decodeJSON(request);
-    message = fieldString(body, 'message');
-    promptOverride = fieldString(body, 'prompt');
-    // attachments 是首页一起交上来的文章、素材（已经上传到 production/studio/uploads/）。
-    attachments = decodeAttachments(fieldArray(body, 'attachments'));
-    choice = decodeChoice(body);
-  } catch (err) {
-    if (err instanceof DecodeError) return writeError(400, 'invalid_json', '请求不是合法 JSON');
-    throw err;
-  }
-  try {
-    validateChoice(choice);
-  } catch (err) {
-    return writeError(400, 'invalid_agent', (err as Error).message);
-  }
-  let override = '';
-  if (promptOverride !== '') {
-    try {
-      override = containedPath(p.path, promptOverride);
-    } catch (err) {
-      return writeError(400, 'invalid_prompt', (err as Error).message);
-    }
-  }
-  let prompt: Buffer;
-  let promptPath: string;
-  let promptLabel: string;
-  let warnings: string[];
-  try {
-    // 客户端整片开工首轮按当前进度聚焦展开（仅公共约定 + 当前阶段 + 阶段索引），避免首轮一次性灌入 100KB+ 全部阶段。
-    const focus = override === '' ? focusStageFor(p.path) : undefined;
-    ({ prompt, path: promptPath, label: promptLabel, warnings } = project.runPrompt(p.path, override, focus));
-  } catch (err) {
-    return writeError(400, 'prompt_missing', (err as Error).message);
-  }
-  let cfg: config.Config;
-  try {
-    cfg = config.load(p.path, null);
-  } catch (err) {
-    return writeError(400, 'invalid_config', (err as Error).message);
-  }
-  const holder = s.busyHolder(p.path);
-  if (holder !== '') return writeError(409, 'project_busy', new BusyError(holder).message);
-  const rel = promptPath === '' ? promptLabel : path.relative(p.path, promptPath).split(path.sep).join('/');
-  let sess: Session;
-  try {
-    sess = createSession(s, p.path, 'production', '整片制作（' + rel + '）', withDefaults(choice, cfg));
-  } catch (err) {
-    return writeError(500, 'session_failed', (err as Error).message);
-  }
-  try {
-    // 读不出来、但这个项目用不到的插件：照常开工，在对话里说一声。
-    for (const text of warnings) emit(sess, '', { kind: kindNotice, text });
-    const turn = startTurn(s, p, sess, { message: goTrimSpace(message), prompt: prompt.toString('utf8'), attachments });
-    return writeJSON(202, goMap({ session_id: sess.meta.session_id, turn_id: turn.turn_id, prompt: rel, warnings }));
-  } catch (err) {
-    return writeStartError(err);
-  }
-}
-
-/** turnAPI 处理 /api/turns/{id}、/api/turns/{id}/file?path=、/api/turns/{id}/revert。 */
-export function turnAPI(s: Server, request: Request, rest: string): Response {
-  const p = s.projectOr404();
-  if (p instanceof Response) return p;
-  const parts = rest.replace(/^\/+|\/+$/g, '').split('/');
-  let turn;
-  try {
-    turn = loadTurn(p.path, parts[0]);
-  } catch {
-    return writeError(404, 'turn_not_found', '这一轮不存在');
-  }
-  const action = parts.length > 1 ? parts[1] : '';
-  switch (action) {
-    case '':
-      turn.before = null;
-      turn.after = null;
-      return writeJSON(200, turnJSON(turn));
-    case 'file': {
-      const rel = new URL(request.url).searchParams.get('path') ?? '';
-      let change;
-      for (const c of turn.changes ?? []) if (c.path === rel) change = c;
-      if (!change) return writeError(404, 'file_not_changed', '这一轮没有改动这个文件');
-      let before: Buffer | null;
-      let after: Buffer | null;
-      try {
-        before = readBlob(p.path, turn.before?.[rel]);
-        after = readBlob(p.path, turn.after?.[rel]);
-      } catch (err) {
-        return writeError(500, 'blob_missing', (err as Error).message);
-      }
-      return writeJSON(
-        200,
-        goMap({
-          path: rel,
-          change: change.change,
-          text: change.revertable || isContentState(turn.before?.[rel]) || isContentState(turn.after?.[rel]),
-          before: (before ?? Buffer.alloc(0)).toString('utf8'),
-          after: (after ?? Buffer.alloc(0)).toString('utf8'),
-        }),
-      );
-    }
-    case 'revert': {
-      if (request.method !== 'POST') return methodNotAllowed('POST');
-      try {
-        const { turn: reverted, skipped } = revert(s, p, turn.turn_id);
-        return writeJSON(200, goMap({ turn_id: reverted.turn_id, status: reverted.status, skipped }));
-      } catch (err) {
-        if (err instanceof ConflictError) return writeJSON(409, goMap({ code: 'revert_conflict', message: err.message, paths: err.paths }));
-        if (err instanceof BusyError) return writeError(409, 'project_busy', err.message);
-        return writeError(409, 'revert_rejected', (err as Error).message);
-      }
-    }
-    default:
-      return writeError(404, 'not_found', '接口不存在');
-  }
-}
-
-/**
- * studioCommands 是可以从网页直接触发的确定性步骤。它们不经过编排工具，
- * 参数只有镜头 id，不接受任意命令行。内置插件登记的命令（ctx.command，例如卡点的 beat.regrid 收拍号与起始拍）
- * 由插件从请求体算出操作参数；登记的校验器另有 `<id>.check`（例如发布的 publish.check）。
- */
-export const studioCommands: Readonly<Record<string, string>> = {
-  'scene.validate': '校验镜头',
-  'scene.qc_batch': '批量抽帧质检',
-  'project.concat': '拼接无声母版',
-  'project.post_render': '修接缝、拼接与复查',
-};
-
-export async function commandAPI(s: Server, request: Request, rest: string): Promise<Response> {
-  if (request.method !== 'POST') return methodNotAllowed('POST');
-  const p = s.projectOr404();
-  if (p instanceof Response) return p;
-  const name = rest.replace(/^\/+|\/+$/g, '');
-  const validator = plugin.pluginValidators().find((v) => `${v.value.id}.check` === name)?.value;
-  const command = plugin.pluginCommands().find((c) => c.value.id === name)?.value;
-  if (!Object.hasOwn(studioCommands, name) && !validator && !command) return writeError(404, 'unknown_command', '不支持的命令：' + name);
-  let label = validator ? validator.label : command ? command.label : studioCommands[name];
-  let sceneID: string;
-  let body: Record<string, unknown>;
-  try {
-    body = await decodeJSON(request);
-    sceneID = fieldString(body, 'scene_id');
-  } catch (err) {
-    if (err instanceof DecodeError) return writeError(400, 'invalid_json', '请求不是合法 JSON');
-    throw err;
-  }
-  let op: { name: string; params: Record<string, unknown> } | null = null;
-  let pipeline: Array<{ name: string; params: Record<string, unknown> }> | null = null;
-  switch (name) {
-    case 'scene.validate':
-      for (const sc of discoverScenes(p.path)) if (sc.id === sceneID) op = { name: 'scene_lint', params: { scene: sc.directory } };
-      if (!op) return writeError(404, 'scene_not_found', '镜头不存在');
-      label += ' ' + sceneID;
-      break;
-    case 'scene.qc_batch':
-      op = { name: 'scene_frames_batch', params: { scenes: path.join(p.path, 'scenes'), out: path.join(p.path, 'production', 'visual-qc', 'batch') } };
-      break;
-    case 'project.concat':
-      op = { name: 'concat', params: { scenes: path.join(p.path, 'scenes'), out: path.join(p.path, 'production', 'silent-master.mp4') } };
-      break;
-    case 'project.post_render':
-      pipeline = [
-        { name: 'scene_seams', params: { scenes: path.join(p.path, 'scenes') } },
-        { name: 'concat', params: { scenes: path.join(p.path, 'scenes'), out: path.join(p.path, 'production', 'silent-master.mp4') } },
-        { name: 'review', params: { video: path.join(p.path, 'production', 'silent-master.mp4'), scenes: path.join(p.path, 'scenes'), out: path.join(p.path, 'production', 'review-silent'), silent: true } },
-      ];
-      break;
-  }
-  if (command) {
-    // 内置插件登记的命令：插件从请求体算出操作参数，请求不合格时照它说的回 400。
-    const r = command.params(body, p.path);
-    if ('error' in r) return writeError(400, r.error.code, r.error.message);
-    op = { name: command.op, params: r.params };
-    if (r.label) label += r.label;
-  }
-  if (validator) {
-    // 内置插件登记的校验器：校验项目里的一个文件。
-    const file = path.join(p.path, validator.file);
-    if (!fileExists(file)) return writeError(400, `${validator.id}_missing`, `找不到 ${validator.file}`);
-    op = { name: validator.op, params: { file, project_root: p.path } };
-  }
-  const steps = pipeline ?? [op!];
-  try {
-    const t = runWriteTask(s, p, name, label, async (signal) => {
-      if (name === 'project.concat' || name === 'project.post_render' || name === 'scene.qc_batch') {
-        fs.mkdirSync(path.join(p.path, 'production'), { recursive: true, mode: 0o755 });
-      }
-      for (const step of steps) await runStudioOp(s, signal, p, step.name, step.params);
-    });
-    return writeJSON(202, goMap({ task_id: t.task_id, command: name }));
-  } catch (err) {
-    return writeTaskError(err);
-  }
-}
-
-/** filesAPI 只读返回项目里的一个文件。超过上限或含 NUL 的按二进制处理，不返回正文。 */
-export function filesAPI(s: Server, request: Request): Response {
-  if (request.method !== 'GET') return methodNotAllowed('GET');
-  const p = s.projectOr404();
-  if (p instanceof Response) return p;
-  const rel = new URL(request.url).searchParams.get('path') ?? '';
-  let file: string;
-  try {
-    file = containedPath(p.path, rel);
-  } catch (err) {
-    if (err instanceof NotExistError) return writeError(404, 'file_not_found', '文件不存在');
-    return writeError(400, 'invalid_path', (err as Error).message);
-  }
-  if (isEnvFile(file)) return writeError(403, 'secret_file', 'Studio 不读取 .env');
-  let info: fs.Stats;
-  try {
-    info = fs.statSync(file);
-  } catch {
-    return writeError(404, 'file_not_found', '文件不存在');
-  }
-  if (info.isDirectory()) return writeError(404, 'file_not_found', '文件不存在');
-  const result: Record<string, unknown> = { path: goClean(rel), size: info.size, binary: true, content: '' };
-  if (info.size <= maxFileBytes) {
-    try {
-      const body = fs.readFileSync(file);
-      if (!body.subarray(0, 8192).includes(0)) {
-        result.binary = false;
-        result.content = body.toString('utf8');
-      }
-    } catch {
-      // 读不了就按二进制。
-    }
-  }
-  return writeJSON(200, goMap(result));
 }

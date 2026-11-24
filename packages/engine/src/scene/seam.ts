@@ -13,7 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { formatFixed } from '../gofmt';
-import * as mediaprobe from '../mediaprobe';
+import type * as mediaprobe from '../mediaprobe';
 import { outputPath, type Scene } from './scene';
 import { VerificationError } from './verification';
 
@@ -85,16 +85,22 @@ export function verifySeam(s: Scene, req: SeamRequest, toolchain: mediaprobe.Too
   const checks: string[] = [];
   const head = toolchain.frameDifferenceBetween(out, 0, path.join(dir, SeamPlate), 0);
   if (head >= SeamPlateTolerance) {
-    problems.push(`第 0 帧与 ${req.previous} 的末帧（${SeamDir}/${SeamPlate}）差异 ${formatFixed(head, 1)}，没有从它接过来`);
+    problems.push(
+      `第 0 帧与 ${req.previous} 的末帧（${SeamDir}/${SeamPlate}）差异 ${formatFixed(head, 1)}，没有从它接过来`,
+    );
     checks.push('seam.head');
   }
   const frames = toolchain.countFrames(out);
   const before = path.join(dir, SeamBefore);
-  const samples = [...new Set([req.frames, Math.floor((req.frames + frames - 1) / 2), frames - 1])].filter((f) => f >= req.frames && f < frames);
+  const samples = [...new Set([req.frames, Math.floor((req.frames + frames - 1) / 2), frames - 1])].filter(
+    (f) => f >= req.frames && f < frames,
+  );
   for (const frame of samples) {
     const difference = toolchain.frameDifferenceBetween(out, frame / fps, before, frame / fps);
     if (difference >= SeamKeepTolerance) {
-      problems.push(`第 ${frame} 帧与修之前差异 ${formatFixed(difference, 1)}：第 ${req.frames} 帧以后不该改${frame === frames - 1 ? '，最后一帧变了会让下一道交界接不上' : ''}`);
+      problems.push(
+        `第 ${frame} 帧与修之前差异 ${formatFixed(difference, 1)}：第 ${req.frames} 帧以后不该改${frame === frames - 1 ? '，最后一帧变了会让下一道交界接不上' : ''}`,
+      );
       checks.push('seam.keep');
     }
   }

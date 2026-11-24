@@ -57,5 +57,22 @@ export function atomicWrite(file: string, data: string | Uint8Array, mode = 0o64
   }
 }
 
+/**
+ * 写出版本化 JSONL 索引文件（`<prefix>.<sha256前12位>.index.jsonl`），
+ * 避免大目录直接塞进 MCP 工具返回值撑爆上下文。
+ */
+export function writeJsonlIndex(
+  dir: string,
+  prefix: string,
+  records: readonly unknown[],
+): { path: string; version: string; count: number } {
+  const safePrefix = prefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const body = records.map((row) => JSON.stringify(row)).join('\n') + (records.length > 0 ? '\n' : '');
+  const version = crypto.createHash('sha256').update(body, 'utf8').digest('hex').slice(0, 12);
+  const file = path.join(dir, `${safePrefix}.${version}.index.jsonl`);
+  if (!fs.existsSync(file)) atomicWrite(file, body, 0o644);
+  return { path: file, version, count: records.length };
+}
+
 export { goPathError } from '../gofmt';
 export { ProjectSkippedDirs, walkDir } from './walk';

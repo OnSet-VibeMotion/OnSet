@@ -18,6 +18,8 @@ jobs:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -27,6 +29,9 @@ jobs:
       - name: Install media tools
         run: node .github/scripts/install-ffmpeg.mjs "$RUNNER_TEMP/ffmpeg"
       - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run test:lint
       - run: npx tsc --noEmit -p packages/engine
       - run: npx tsc --noEmit -p packages/cli
       - run: npm run typecheck -w onset-desktop

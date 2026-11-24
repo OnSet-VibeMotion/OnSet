@@ -9,7 +9,12 @@
   "scripts": {
     "desktop": "npm run start -w onset-desktop",
     "build": "npm run build -w onset-desktop",
-    "typecheck": "npm run typecheck -w onset-desktop"
+    "typecheck": "npm run typecheck -w onset-desktop",
+    "lint": "node scripts/lint.mjs lint",
+    "lint:fix": "node scripts/lint.mjs lint:fix",
+    "format": "node scripts/lint.mjs format",
+    "format:check": "node scripts/lint.mjs format:check",
+    "test:lint": "node --test scripts/lint.test.mjs"
   },
   "overrides": {
     "app-builder-lib": {
@@ -18,5 +23,8 @@
     "@electron/universal": {
       "minimatch@9": "11.0.9"
     }
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.8"
   }
 }

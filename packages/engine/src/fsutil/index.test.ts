@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { atomicWrite, removeTree } from './index';
+import { atomicWrite, removeTree, writeJsonlIndex } from './index';
 
 const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'onset-fsutil-'));
 
@@ -52,16 +52,23 @@ describe('atomicWrite', () => {
     const rename = fs.renameSync.bind(fs);
     const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
     const wait = vi.spyOn(Atomics, 'wait').mockReturnValue('timed-out');
-    const call = vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
-      expect(fs.readFileSync(file, 'utf8')).toBe('old');
-      throw Object.assign(new Error('sharing violation'), { code: 'EPERM' });
-    }).mockImplementation(rename);
+    const call = vi
+      .spyOn(fs, 'renameSync')
+      .mockImplementationOnce(() => {
+        expect(fs.readFileSync(file, 'utf8')).toBe('old');
+        throw Object.assign(new Error('sharing violation'), { code: 'EPERM' });
+      })
+      .mockImplementation(rename);
     try {
       atomicWrite(file, 'new');
       expect(call).toHaveBeenCalledTimes(2);
       expect(fs.readFileSync(file, 'utf8')).toBe('new');
       expect(fs.readdirSync(dir)).toEqual(['progress.json']);
-    } finally { call.mockRestore(); wait.mockRestore(); platform.mockRestore(); }
+    } finally {
+      call.mockRestore();
+      wait.mockRestore();
+      platform.mockRestore();
+    }
   });
 
   it('bounds retries and preserves old content on a permanent sharing failure', () => {
@@ -70,13 +77,19 @@ describe('atomicWrite', () => {
     fs.writeFileSync(file, 'old');
     const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
     const wait = vi.spyOn(Atomics, 'wait').mockReturnValue('timed-out');
-    const call = vi.spyOn(fs, 'renameSync').mockImplementation(() => { throw Object.assign(new Error('denied'), { code: 'EACCES' }); });
+    const call = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw Object.assign(new Error('denied'), { code: 'EACCES' });
+    });
     try {
       expect(() => atomicWrite(file, 'new')).toThrow('denied');
       expect(call).toHaveBeenCalledTimes(7);
       expect(fs.readFileSync(file, 'utf8')).toBe('old');
       expect(fs.readdirSync(dir)).toEqual(['progress.json']);
-    } finally { call.mockRestore(); wait.mockRestore(); platform.mockRestore(); }
+    } finally {
+      call.mockRestore();
+      wait.mockRestore();
+      platform.mockRestore();
+    }
   });
 
   it('creates the file', () => {
@@ -116,5 +129,31 @@ describe('atomicWrite', () => {
     fs.mkdirSync(path.join(target, 'child'), { recursive: true });
     expect(() => atomicWrite(target, 'x')).toThrow(/写入/);
     expect(fs.readdirSync(dir)).toEqual(['taken']);
+  });
+});
+
+describe('writeJsonlIndex', () => {
+  it('writes a versioned deterministic JSONL index file', () => {
+    const dir = temp();
+    const first = writeJsonlIndex(dir, 'fonts', [
+      { id: 'a', name: 'A' },
+      { id: 'b', name: 'B' },
+    ]);
+    const second = writeJsonlIndex(dir, 'fonts', [
+      { id: 'a', name: 'A' },
+      { id: 'b', name: 'B' },
+    ]);
+    expect(first.path).toBe(second.path);
+    expect(first.version).toBe(second.version);
+    expect(first.count).toBe(2);
+    const lines = fs
+      .readFileSync(first.path, 'utf8')
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l));
+    expect(lines).toEqual([
+      { id: 'a', name: 'A' },
+      { id: 'b', name: 'B' },
+    ]);
   });
 });

@@ -1,10 +1,10 @@
 // lemo 的 source 类型：实现 filmstyle.Source，由插件的 apply 登记（index.ts）。
 import fs from 'node:fs';
+import type { PrepareOptions, Source, Style } from '../../filmstyle';
 import { goQuote } from '../../gofmt';
 import { missing } from '../../prereq';
-import { type PrepareOptions, type Source, type Style } from '../../filmstyle';
 import { fill } from './fill';
-import { Gallery, PinnedStyleCount, SourceID, catalog, entryStyle, find } from './lemo';
+import { catalog, entryStyle, find, Gallery, PinnedStyleCount, SourceID } from './lemo';
 import { libraryDir, openLibrary, posterPath } from './library';
 import { prepareLibrary, requireLibrary, requireStyle } from './prepare';
 
@@ -41,4 +41,3 @@ export const lemoSource: Source = {
     return lib.commit || 'unknown';
   },
 };
-

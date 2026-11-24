@@ -9,34 +9,24 @@ import '@onset/engine/plugin';
 import { goQuote } from '@onset/engine/gofmt';
 import { encodeLine } from '@onset/engine/gojson';
 import { currentEnvironment } from './cli';
-import { type Out } from './cobra';
-import { padRight } from './canvas';
+import {
+  collectSourceStatuses,
+  manifestJSON,
+  reportFilmStyle,
+  shortCommit,
+  sourceSummary,
+  styleMatcher,
+  writeCompactStyleList,
+  writeFilmStyleShow,
+  writeFullStyleList,
+} from './filmstyle_format';
 import { defineGroup } from './ops/cli';
 import { bool, str } from './ops/common';
 import { defineOp, type ParamSpec } from './ops/op';
 // 已装的第三方插件带来的风格来源由 flow 加载时交给 filmstyle（flow/styles.ts）。
 import '@onset/engine/flow';
 
-/** 帮助里列出的已登记来源。 */
-export function sourceSummary(): string {
-  return filmstyle
-    .sources()
-    .map((source) => {
-      let line = '  ' + source.id() + '  ' + source.name();
-      if (source.gallery() !== '') line += '，图鉴 ' + source.gallery();
-      return line;
-    })
-    .join('\n');
-}
-
-/** Manifest 按字段顺序写成 JSON。 */
-function manifestJSON(m: filmstyle.Manifest): Record<string, unknown> {
-  return { source: m.source, slug: m.slug, cn: m.cn, en: m.en, version: m.version, digest: m.digest, installed_at: m.installed_at };
-}
-
-export function shortCommit(commit: string): string {
-  return commit.length > 12 ? commit.slice(0, 12) : commit;
-}
+export { reportFilmStyle, shortCommit, sourceSummary };
 
 defineGroup({
   path: ['film-style'],
@@ -69,7 +59,12 @@ style_shift，说明画法怎么在画面里换过去。
 });
 
 const projectRootParam: ParamSpec = { type: 'string', description: '项目根目录，缺省为当前目录' };
-const styleParam = (description: string, required = true): ParamSpec => ({ type: 'string', description, required, positional: 0 });
+const styleParam = (description: string, required = true): ParamSpec => ({
+  type: 'string',
+  description,
+  required,
+  positional: 0,
+});
 
 function projectDir(value: unknown): string {
   const abs = path.resolve(str(value) || '.');
@@ -85,7 +80,13 @@ defineOp({
   summary: '列出各风格来源里的全部风格',
   description: `按来源、再按分类列出全部风格：标识（来源/目录名）、中文名、英文名、适用题材与说明。
 不联网。source 只列一个来源；compact 为精简目录（每行一条，推荐编排选风格用）；category 或 query 可按分类/关键词筛选；"json": true 输出机器可读的列表。`,
-  examples: ['film_style_list()', 'film_style_list({"compact": true})', 'film_style_list({"query": "水墨", "compact": true})', 'film_style_list({"source": "lemo-opuscar"})', 'film_style_list({"json": true})'],
+  examples: [
+    'film_style_list()',
+    'film_style_list({"compact": true})',
+    'film_style_list({"query": "水墨", "compact": true})',
+    'film_style_list({"source": "lemo-opuscar"})',
+    'film_style_list({"json": true})',
+  ],
   params: {
     json: { type: 'boolean', description: '以 JSON 输出' },
     compact: { type: 'boolean', description: '精简目录（每行一种风格：标识、名称、适用题材与一句摘要）' },
@@ -101,16 +102,7 @@ defineOp({
       if (!source) throw new Error(`没有风格来源 ${goQuote(str(p.source))}。已登记：\n${sourceSummary()}`);
       sources = [source];
     }
-    const categoryFilter = str(p.category).trim().toLowerCase();
-    const queryFilter = str(p.query).trim().toLowerCase();
-    const matches = (style: filmstyle.Style): boolean => {
-      if (categoryFilter !== '' && !`${style.category_cn} ${style.category_en}`.toLowerCase().includes(categoryFilter)) return false;
-      if (queryFilter !== '') {
-        const hay = [filmstyle.styleKey(style), style.cn, style.en, style.category_cn, ...(style.uses ?? []), ...(style.tags ?? []), style.summary].join(' ').toLowerCase();
-        if (!hay.includes(queryFilter)) return false;
-      }
-      return true;
-    };
+    const matches = styleMatcher(str(p.category).trim().toLowerCase(), str(p.query).trim().toLowerCase());
     const styles = sources.flatMap((source) => source.catalog()).filter(matches);
     if (bool(p.compact)) {
       let current = '';
@@ -118,15 +110,10 @@ defineOp({
         const dir = projectDir(p.project_root);
         const { manifest, ok } = filmstyle.installed(dir);
         if (ok) current = filmstyle.manifestKey(manifest);
-      } catch { /* 不在项目里时省略默认标记。 */ }
-      for (const style of styles) {
-        const key = filmstyle.styleKey(style);
-        const mark = key === current ? '*' : '';
-        const uses = (style.uses ?? []).slice(0, 3).join('/');
-        const brief = style.summary.length > 48 ? style.summary.slice(0, 48) + '…' : style.summary;
-        out.write(`${mark}${key} | ${style.cn} | ${uses ? uses + ' | ' : ''}${brief}\n`);
+      } catch {
+        /* 不在项目里时省略默认标记。 */
       }
-      if (styles.length === 0) out.write('（没有匹配的风格）\n');
+      writeCompactStyleList(out, styles, current);
       return { data: { count: styles.length, default: current || undefined, compact: true } };
     }
     if (bool(p.json)) {
@@ -143,27 +130,7 @@ defineOp({
     } catch {
       // 不在项目里时照样列出，只是不标当前风格。
     }
-    for (const source of sources) {
-      const catalog = source.catalog().filter(matches);
-      if (catalog.length === 0) continue;
-      out.write(`== ${source.id()}  ${source.name()}\n`);
-      if (source.gallery() !== '') out.write(`   图鉴：${source.gallery()}\n`);
-      for (const category of filmstyle.categories(source.id())) {
-        const group = catalog.filter((style) => style.category_cn === category);
-        if (group.length === 0) continue;
-        out.write(`${category}\n`);
-        for (const style of group) {
-          const key = filmstyle.styleKey(style);
-          const mark = key === current ? '*' : extras.has(key) ? '+' : ' ';
-          const extra = style.tags && style.tags.length > 0 ? '  [' + style.tags.join(', ') + ']' : '';
-          out.write(` ${mark} ${padRight(filmstyle.styleKey(style), 34)} ${style.cn} ${style.en}${extra}\n`);
-          out.write(`      适合：${(style.uses ?? []).join(', ')}；${style.summary}\n`);
-        }
-      }
-      out.write('\n');
-    }
-    if (current !== '') out.write('* 为本项目的默认风格\n');
-    if (extras.size > 0) out.write('+ 为本项目装的额外风格（镜头点名用）\n');
+    writeFullStyleList(out, sources, matches, current, extras);
     return { data: { styles, default: current, extras: [...extras] } };
   },
 });
@@ -193,10 +160,23 @@ defineOp({
     const style = filmstyle.lookup(str(p.style));
     const { manifest: current, ok } = filmstyle.installed(dir);
     const keepReplaced = ok && filmstyle.scenesNaming(dir, filmstyle.manifestKey(current)).length > 0;
-    const result = filmstyle.install({ projectDir: dir, style, env: currentEnvironment(), replace: bool(p.replace), keepReplaced });
+    const result = filmstyle.install({
+      projectDir: dir,
+      style,
+      env: currentEnvironment(),
+      replace: bool(p.replace),
+      keepReplaced,
+    });
     reportFilmStyle(out, style, result);
     if (result.replaced && keepReplaced) out.write(`${result.replaced} 还有镜头点名在用，已留作额外风格\n`);
-    return { data: { style: filmstyle.styleKey(style), unchanged: result.unchanged, replaced: result.replaced || undefined, version: result.manifest.version } };
+    return {
+      data: {
+        style: filmstyle.styleKey(style),
+        unchanged: result.unchanged,
+        replaced: result.replaced || undefined,
+        version: result.manifest.version,
+      },
+    };
   },
 });
 
@@ -241,58 +221,28 @@ defineOp({
   run: (p, { out }) => {
     const dir = projectDir(p.project_root);
     const { manifest, ok: isInstalled } = filmstyle.installed(dir);
-    const env = currentEnvironment();
     const skillDirPath = isInstalled ? filmstyle.installedDir(dir) : '';
-    const sources = filmstyle.sources().map((source) => {
-      let ready = true;
-      let problem = '';
-      try {
-        source.check(env);
-      } catch (err) {
-        ready = false;
-        problem = (err as Error).message;
-      }
-      return { id: source.id(), name: source.name(), location: source.location(env), ready, problem: problem || undefined };
-    });
+    const sources = collectSourceStatuses(currentEnvironment());
     const extras = filmstyle.installedExtras(dir);
     const scenes = filmstyle.sceneStyles(dir);
-    const usedBy = (value: string) => scenes.filter((s) => s.film_style === value).map((s) => s.id);
     const defaultKey = isInstalled ? filmstyle.manifestKey(manifest) : '';
     const data = {
       installed: isInstalled,
       style: isInstalled ? manifestJSON(manifest) : undefined,
       skill_dir: skillDirPath || undefined,
-      extras: extras.length ? extras.map((m) => ({ ...manifestJSON(m), dir: filmstyle.extraDir(dir, filmstyle.manifestKey(m)) })) : undefined,
-      scenes: scenes.length ? scenes.map((s) => ({ id: s.id, dir: s.dir, film_style: s.film_style || undefined })) : undefined,
+      extras: extras.length
+        ? extras.map((m) => ({ ...manifestJSON(m), dir: filmstyle.extraDir(dir, filmstyle.manifestKey(m)) }))
+        : undefined,
+      scenes: scenes.length
+        ? scenes.map((s) => ({ id: s.id, dir: s.dir, film_style: s.film_style || undefined }))
+        : undefined,
       sources: sources.length ? sources : null,
     };
     if (bool(p.json)) {
       out.write(encodeLine(data, { indent: '  ' }));
       return { data };
     }
-    const users = (ids: string[]) => (ids.length === 0 ? '没有镜头' : ids.join('、'));
-    if (isInstalled) {
-      out.write(`默认风格：${manifest.cn} ${manifest.en}（${defaultKey}），版本 ${shortCommit(manifest.version)}\n技能目录：${skillDirPath}\n`);
-      if (scenes.length > 0) out.write(`  使用：${users([...usedBy(''), ...usedBy(defaultKey)])}\n`);
-    } else {
-      out.write('默认风格：无（不写 film_style 的镜头自主定视觉）。用 film_style_list() 查看可选风格\n');
-    }
-    for (const m of extras) {
-      const key = filmstyle.manifestKey(m);
-      out.write(`额外风格：${m.cn} ${m.en}（${key}），版本 ${shortCommit(m.version)}\n  使用：${users(usedBy(key))}\n`);
-    }
-    const none = usedBy(filmstyle.NoFilmStyle);
-    if (none.length > 0) out.write(`不用整片风格的镜头：${none.join('、')}\n`);
-    const installedKeys = new Set([defaultKey, ...extras.map(filmstyle.manifestKey)]);
-    for (const s of scenes) {
-      if (s.film_style !== '' && s.film_style !== filmstyle.NoFilmStyle && !installedKeys.has(s.film_style)) {
-        out.write(`注意：镜头 ${s.id} 点名的 ${s.film_style} 没装进项目，渲染会失败；运行 film_style_add({"style": "${s.film_style}"})\n`);
-      }
-    }
-    for (const item of sources) {
-      const state = item.ready ? '已就绪' : '未准备（在客户端的工具准备页安装）';
-      out.write(`风格来源 ${item.id}：${state}，${item.location}\n`);
-    }
+    writeFilmStyleShow(out, { isInstalled, manifest, defaultKey, skillDirPath, extras, scenes, sources });
     return { data };
   },
 });
@@ -340,15 +290,12 @@ defineOp({
       return { data: { removed: false, style: key } };
     }
     const label = `${result.manifest.cn} ${result.manifest.en}`;
-    if (result.wasDefault) out.write(`已去掉默认风格 ${label}；不写 film_style 的镜头回到自主定视觉，已渲染的会被判为 Stale\n`);
-    else out.write(`已去掉 ${label}（${key}）\n`);
+    if (result.wasDefault) {
+      out.write(`已去掉默认风格 ${label}；不写 film_style 的镜头回到自主定视觉，已渲染的会被判为 Stale\n`);
+    } else {
+      out.write(`已去掉 ${label}（${key}）\n`);
+    }
     if (naming.length > 0) out.write(`注意：${naming.join('、')} 仍点名用它，渲染前要改掉它们的 film_style\n`);
     return { data: { removed: true, style: key, was_default: result.wasDefault, still_named_by: naming } };
   },
 });
-
-export function reportFilmStyle(stdout: Out, style: filmstyle.Style, result: filmstyle.InstallResult): void {
-  if (result.unchanged) stdout.write(`整片风格已是 ${filmstyle.styleLabel(style)}，未改动\n`);
-  else if (result.replaced) stdout.write(`整片风格已从 ${result.replaced} 换成 ${filmstyle.styleLabel(style)}；已渲染的镜头会被判为 Stale\n`);
-  else stdout.write(`整片风格已设为 ${filmstyle.styleLabel(style)}（版本 ${shortCommit(result.manifest.version)}）\n`);
-}

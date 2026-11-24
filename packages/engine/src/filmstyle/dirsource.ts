@@ -13,7 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { compareBytes } from '../gojson';
-import { type Source, type Style } from './filmstyle';
+import type { Source, Style } from './filmstyle';
 import { GuideFile, StyleFile } from './install';
 import { referencedAssets, specifiers, threeClosure } from './select';
 
@@ -97,7 +97,9 @@ function copyTree(from: string, to: string, skip: ReadonlySet<string> = new Set(
 }
 
 export class DirectorySource implements Source {
-  get runtimeAssets(): readonly string[] { return this.opts.runtimeAssets ?? []; }
+  get runtimeAssets(): readonly string[] {
+    return this.opts.runtimeAssets ?? [];
+  }
   constructor(private readonly opts: DirectorySourceOptions) {}
 
   id(): string {
@@ -185,10 +187,17 @@ export class DirectorySource implements Source {
       if (!isDir(root)) continue;
       for (const rel of referencedAssets(root, texts)) copyFile(path.join(root, rel), path.join(dir, 'assets', rel));
     }
-    const usesThree = [...texts.values()].some((t) => specifiers(t).some((sp) => sp === 'three' || sp.startsWith('three/') || sp.startsWith('/node_modules/three/')));
+    const usesThree = [...texts.values()].some((t) =>
+      specifiers(t).some((sp) => sp === 'three' || sp.startsWith('three/') || sp.startsWith('/node_modules/three/')),
+    );
     if (!usesThree) return;
-    const three = [path.join(from, 'node_modules', 'three'), path.join(this.opts.dir, 'node_modules', 'three')].find((d) => fs.existsSync(path.join(d, 'build', 'three.module.js')));
-    if (!three) throw new Error(`「${this.opts.name}」的风格 ${path.basename(from)} 要用 three.js，风格目录与风格库里都没有 node_modules/three`);
+    const three = [path.join(from, 'node_modules', 'three'), path.join(this.opts.dir, 'node_modules', 'three')].find(
+      (d) => fs.existsSync(path.join(d, 'build', 'three.module.js')),
+    );
+    if (!three)
+      throw new Error(
+        `「${this.opts.name}」的风格 ${path.basename(from)} 要用 three.js，风格目录与风格库里都没有 node_modules/three`,
+      );
     for (const rel of ['LICENSE', 'package.json', ...threeClosure(three, texts)]) {
       const file = path.join(three, rel);
       if (fs.existsSync(file)) copyFile(file, path.join(dir, 'node_modules', 'three', rel));
