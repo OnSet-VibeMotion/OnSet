@@ -125,6 +125,9 @@ export function saveBrandKit(root: string, input: SaveBrandKitInput): BrandKit {
 
   const id = slugId(name);
   const style = validateBrandStyle(input.style ?? {});
+  if (input.style_overrides && Object.keys(input.style_overrides).length > 0) {
+    validateBrandStyle({ ...style, ...input.style_overrides });
+  }
   const created: BrandKit = {
     schema: 1,
     id,
@@ -257,6 +260,30 @@ export interface AppliedProjectBrandKit {
   logos: string[];
 }
 
+function assertInsideProject(projectRoot: string, targetPath: string): void {
+  const rootReal = fs.realpathSync(path.resolve(projectRoot));
+  let cur = path.resolve(targetPath);
+  const tail: string[] = [];
+  while (true) {
+    const stat = fs.lstatSync(cur, { throwIfNoEntry: false });
+    if (stat?.isSymbolicLink()) {
+      throw new Error(`项目内目标路径不能经过符号链接：${cur}`);
+    }
+    if (stat) {
+      const resolved = path.join(fs.realpathSync(cur), ...tail.reverse());
+      const rel = path.relative(rootReal, resolved);
+      if (rel.startsWith('..') || path.isAbsolute(rel)) {
+        throw new Error(`品牌包目标路径超出项目目录：${targetPath}`);
+      }
+      return;
+    }
+    const parent = path.dirname(cur);
+    if (parent === cur) return;
+    tail.push(path.basename(cur));
+    cur = parent;
+  }
+}
+
 /**
  * 将品牌包以 Style-Only 契约挂载到指定项目：
  * 写出 production/brand-kit.json 并把 Logo 拷进项目 assets/brand/。
@@ -265,14 +292,21 @@ export function applyBrandKitToProject(root: string, kitId: string, projectRoot:
   const kit = getBrandKit(root, kitId);
   if (!kit) throw new Error(`找不到品牌包：${kitId}`);
   const style = effectiveBrandStyle(kit);
-  const copiedLogos: string[] = [];
-
+  const manifestDest = path.join(projectRoot, ProjectBrandKitRelPath);
+  assertInsideProject(projectRoot, manifestDest);
+  const pendingLogos: Array<{ src: string; relDest: string; dest: string }> = [];
   for (const logo of kit.logos) {
     const src = path.join(kitDir(root, kitId), ...logo.file.split('/'));
     if (!fs.existsSync(src)) continue;
     const relDest = `assets/brand/${path.basename(logo.file)}`;
-    atomicWrite(path.join(projectRoot, ...relDest.split('/')), fs.readFileSync(src), 0o644);
-    copiedLogos.push(relDest);
+    const dest = path.join(projectRoot, ...relDest.split('/'));
+    assertInsideProject(projectRoot, dest);
+    pendingLogos.push({ src, relDest, dest });
+  }
+  const copiedLogos: string[] = [];
+  for (const logo of pendingLogos) {
+    atomicWrite(logo.dest, fs.readFileSync(logo.src), 0o644);
+    copiedLogos.push(logo.relDest);
   }
 
   const applied: AppliedProjectBrandKit = {
@@ -285,7 +319,7 @@ export function applyBrandKitToProject(root: string, kitId: string, projectRoot:
     rules: kit.rules,
     logos: copiedLogos,
   };
-  atomicWrite(path.join(projectRoot, ProjectBrandKitRelPath), marshalIndent(applied) + '\n', 0o644);
+  atomicWrite(manifestDest, marshalIndent(applied) + '\n', 0o644);
   return applied;
 }
 

@@ -90,10 +90,17 @@ export async function brandKitsAPI(s: Server, request: Request, rest: string): P
     const p = s.projectOr404();
     if (p instanceof Response) return p;
     try {
+      s.acquire(p.path, '应用品牌包');
+    } catch (err) {
+      return writeError(409, 'project_busy', (err as Error).message);
+    }
+    try {
       const applied = brandkit.applyBrandKitToProject(dir, id, p.path);
       return writeJSON(200, goMap({ applied, prompt_section: brandkit.brandKitPromptSection(applied) }));
     } catch (err) {
       return writeError(400, 'brand_kit_apply_failed', (err as Error).message);
+    } finally {
+      s.release(p.path);
     }
   }
 

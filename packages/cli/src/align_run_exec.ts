@@ -59,7 +59,21 @@ export function acquireRunLock(base: string, retry: boolean): { fd: number; lock
     fs.unlinkSync(lock);
     fd = fs.openSync(lock, 'wx');
   }
-  fs.writeFileSync(fd, marshalIndent({ pid: process.pid, started_at: new Date().toISOString() }));
+  try {
+    fs.writeFileSync(fd, marshalIndent({ pid: process.pid, started_at: new Date().toISOString() }));
+  } catch (err) {
+    try {
+      fs.closeSync(fd);
+    } catch {
+      // ignore close failure
+    }
+    try {
+      fs.unlinkSync(lock);
+    } catch {
+      // ignore unlink failure
+    }
+    throw err;
+  }
   return { fd, lock };
 }
 

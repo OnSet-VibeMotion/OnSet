@@ -84,7 +84,9 @@ from_episodes: [ep-20261102-101500-a1b2c3]
   对照可能没运行本组的事后检查，不能把「未发现失败」当成「已验证修复」。
 - 「用户的反应」一组写成偏好：从回退、反复提的要求与 👍 / 👎 里归纳用户长期的取向（节奏、配色、
   信息密度、语气……），不是复述某一次的修改要求。只在一个项目里出现的写 scope: <项目名>，
-  几个项目都出现的不写 scope。偏好要用户确认后才生效，宁可少写。
+  仅属于某一专栏的写 scope: series:<专栏ID>，多个无关项目都出现的才省略 scope（全局）。
+  修订已有偏好时，默认沿用已有记忆里列出的原 scope；只有用户明确要求扩大到全局时才省略 scope。
+  偏好要用户确认后才生效，宁可少写。
 
 `;
   b += lessonWritingGuide();
@@ -101,9 +103,10 @@ from_episodes: [ep-20261102-101500-a1b2c3]
     const scope = appliesScoped(m.applies_when)
       ? [...m.applies_when.renderers, ...m.applies_when.models].join(', ')
       : '不限';
+    const prefScope = m.kind === KindPreference ? `；scope: ${m.scope || '全局'}` : '';
     b +=
       `### ${m.name}（${kindLabel(m.kind)}，${m.status}）\n\n${m.description}\n\n` +
-      `checked_by: ${(m.checked_by ?? []).join(', ')}；features: ${m.applies_when.features.join(', ')}；渲染工具/模型：${scope}\n\n${m.body}\n\n`;
+      `checked_by: ${(m.checked_by ?? []).join(', ')}；features: ${m.applies_when.features.join(', ')}；渲染工具/模型：${scope}${prefScope}\n\n${m.body}\n\n`;
   }
   if (count === 0) b += '（暂无）\n\n';
   b += '## 高频失败\n\n';

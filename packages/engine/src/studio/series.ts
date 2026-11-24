@@ -237,11 +237,25 @@ export async function seriesAPI(s: Server, request: Request, rest: string): Prom
 
   // DELETE /api/series/{id}
   if (request.method === 'DELETE') {
+    if (!series.getSeries(root, id)) {
+      return writeError(404, 'not_found', `找不到专栏：${id}`);
+    }
+    const boundProjects = s.registeredProjects().filter((p) => p.series_id === id);
+    const lockedPaths: string[] = [];
+    for (const p of boundProjects) {
+      try {
+        s.acquire(p.path, '删除专栏');
+        lockedPaths.push(p.path);
+      } catch (err) {
+        for (const locked of lockedPaths) s.release(locked);
+        return writeError(409, 'project_busy', (err as Error).message);
+      }
+    }
     try {
       series.deleteSeries(root, id);
       // 同步解除已登记项目对该专栏的绑定（绝不删除任何项目目录）。
-      for (const p of s.registeredProjects()) {
-        if (p.series_id === id && fs.existsSync(p.path)) {
+      for (const p of boundProjects) {
+        if (fs.existsSync(p.path)) {
           try {
             const binding = series.readBinding(p.path);
             if (binding?.series_id === id) series.unbindProject(p.path);
@@ -253,7 +267,9 @@ export async function seriesAPI(s: Server, request: Request, rest: string): Prom
       s.clearSeriesProjects(id);
       return writeJSON(200, goMap({ deleted_id: id }));
     } catch (err) {
-      return writeError(404, 'not_found', (err as Error).message);
+      return writeError(400, 'series_delete_failed', (err as Error).message);
+    } finally {
+      for (const locked of lockedPaths) s.release(locked);
     }
   }
 

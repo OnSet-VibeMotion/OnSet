@@ -119,7 +119,8 @@ export async function executeRender(ctx: RenderExecutionContext): Promise<void> 
       signal?.throwIfAborted();
       const destination = contained(s.directory, s.output, 'output');
       fs.mkdirSync(path.dirname(destination), { recursive: true });
-      fs.renameSync(outputPath(candidate), destination);
+      const finalDestination = contained(s.directory, s.output, 'output');
+      fs.renameSync(outputPath(candidate), finalDestination);
     } finally {
       fs.rmSync(stage, { recursive: true, force: true });
       writeLive(s.directory, s.id, live);

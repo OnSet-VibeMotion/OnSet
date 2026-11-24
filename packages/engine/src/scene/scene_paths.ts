@@ -61,10 +61,21 @@ export function contained(root: string, value: string, field: string): string {
   try {
     resolvedTarget = fs.realpathSync(target);
   } catch {
-    try {
-      resolvedTarget = path.join(fs.realpathSync(path.dirname(target)), path.basename(target));
-    } catch {
-      resolvedTarget = target;
+    let cur = path.dirname(target);
+    const tail: string[] = [path.basename(target)];
+    while (true) {
+      try {
+        resolvedTarget = path.join(fs.realpathSync(cur), ...tail.reverse());
+        break;
+      } catch {
+        const parent = path.dirname(cur);
+        if (parent === cur) {
+          resolvedTarget = target;
+          break;
+        }
+        tail.push(path.basename(cur));
+        cur = parent;
+      }
     }
   }
   const rel = relPath(resolvedRoot, resolvedTarget);

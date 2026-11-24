@@ -1,6 +1,6 @@
 /**
  * 跨项目不可变多版本资产库（Asset Library）：
- * - 存储目录：~/.local/share/onset/assets（ONSET_ASSETS_DIR 可覆盖）；
+ * - 存储目录：~/.local/share/onset/assets（ONSET_MEDIA_ASSETS_DIR 可覆盖）；
  * - 媒体字节存于 files/<assetId>/<versionId>/media.<ext>，不可变；
  * - 任何引用严格绑定 { asset_id, version_id }，切换 current_version_id 不破坏历史版本。
  */
@@ -13,7 +13,7 @@ import { compareBytes, marshalIndent } from '../gojson';
 import * as mediaprobe from '../mediaprobe';
 import type { AssetRef, AssetVersion, LibraryAsset, MediaProviderId, Modality } from './types';
 
-export const AssetsDirEnv = 'ONSET_ASSETS_DIR';
+export const AssetsDirEnv = 'ONSET_MEDIA_ASSETS_DIR';
 export const MaxAssetBytes = 500 * 1024 * 1024;
 export const MaxPreviewBytes = 4 * 1024 * 1024;
 

@@ -88,6 +88,11 @@ export async function mediaGenAPI(s: Server, request: Request, rest: string): Pr
       return writeError(400, 'invalid_json', err instanceof DecodeError ? err.message : (err as Error).message);
     }
     try {
+      s.acquire(p.path, '导入素材');
+    } catch (err) {
+      return writeError(409, 'project_busy', (err as Error).message);
+    }
+    try {
       const res = mediagen.importAssetToProject(
         assetsRoot,
         { asset_id: fieldString(body, 'asset_id'), version_id: fieldString(body, 'version_id') },
@@ -97,6 +102,8 @@ export async function mediaGenAPI(s: Server, request: Request, rest: string): Pr
       return writeJSON(200, goMap(res as unknown as Record<string, unknown>));
     } catch (err) {
       return writeError(400, 'asset_import_failed', (err as Error).message);
+    } finally {
+      s.release(p.path);
     }
   }
 
