@@ -11,6 +11,7 @@ import { marshalIndent } from '@onset/engine/gojson';
 import * as mediaprobe from '@onset/engine/mediaprobe';
 import * as memory from '@onset/engine/memory';
 import * as scene from '@onset/engine/scene';
+import * as series from '@onset/engine/series';
 import { currentEnvironment } from './cli';
 import type { Out } from './cobra';
 import type { ParamSpec } from './ops/op';
@@ -84,6 +85,23 @@ export function loadMemoryConfig(): { cfg: config.Config; store: memory.Store } 
   return { cfg, store: memory.open(cfg.memory.dir) };
 }
 
+function sceneSeriesId(sceneDir: string): string {
+  // 镜头目录通常是 <project>/scenes/<scene-id>，向上寻找 onset.series.json。
+  let cur = path.resolve(sceneDir);
+  for (let i = 0; i < 4; i++) {
+    try {
+      const b = series.readBinding(cur);
+      if (b) return b.series_id;
+    } catch {
+      return '';
+    }
+    const parent = path.dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+  return '';
+}
+
 /**
  * attachMemory 在渲染前为镜头召回记忆，并挂上把这次尝试写成经历的回调。
  * 记忆关闭时原样返回，不建记忆库目录。
@@ -92,6 +110,7 @@ export function attachMemory(s: scene.Scene, cfg: config.Config, warn: Out, run:
   if (!cfg.memory.enabled) return s;
   const store = memory.open(cfg.memory.dir);
   const renderer = s.renderer !== '' ? s.renderer : cfg.renderer;
+  const seriesId = sceneSeriesId(s.directory);
   // 探索是这一批渲染的决定：按批次编号加镜头抽签，同一批里的重试拿到同一份召回。
   let result: memory.RecallResult;
   try {
@@ -102,6 +121,7 @@ export function attachMemory(s: scene.Scene, cfg: config.Config, warn: Out, run:
       model: store.currentModel(renderer, currentEnvironment(), config.rendererModelFor(cfg, renderer)),
       explore: cfg.memory.explore,
       exploreSeed: run,
+      series: seriesId,
     });
   } catch (err) {
     throw new Error(`召回记忆：${errorText(err)}`, { cause: err });
@@ -140,7 +160,14 @@ export function attachMemory(s: scene.Scene, cfg: config.Config, warn: Out, run:
 export function preferenceBrief(cfg: config.Config, root: string, warn: Out): string {
   if (!cfg.memory.enabled) return '';
   try {
-    return memory.openReadOnly(cfg.memory.dir).preferenceBrief(memory.projectName(root), cfg.memory.snapshot).text;
+    let seriesId = '';
+    try {
+      seriesId = series.readBinding(root)?.series_id ?? '';
+    } catch {
+      seriesId = '';
+    }
+    return memory.openReadOnly(cfg.memory.dir).preferenceBrief(memory.projectName(root), cfg.memory.snapshot, seriesId)
+      .text;
   } catch (err) {
     warn.write(`警告：读取用户偏好失败，本次不带偏好：${errorText(err)}\n`);
     return '';

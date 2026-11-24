@@ -48,11 +48,15 @@ export function loadRegistryFile(configPath: string): Registry {
       registry.projects = r.projects.map((item) => {
         const p = (item ?? {}) as Record<string, unknown>;
         const str = (key: string) => (typeof p[key] === 'string' ? (p[key] as string) : '');
+        const ep =
+          typeof p.episode === 'number' && Number.isInteger(p.episode) && p.episode >= 1 ? p.episode : undefined;
         return {
           id: str('id'),
           path: str('path'),
           name: str('name'),
           last_opened_at: str('last_opened_at') || undefined,
+          series_id: str('series_id') || undefined,
+          episode: ep,
         };
       });
     }

@@ -36,6 +36,7 @@ import './scene_cmd';
 import './scene_preview';
 import './seams_cmd';
 import './scene_cues';
+import './series_cmd';
 import './station_cmd';
 import './usage_cmd';
 import './validate_cmd';

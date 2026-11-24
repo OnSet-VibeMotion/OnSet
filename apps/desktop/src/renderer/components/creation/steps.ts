@@ -74,6 +74,8 @@ export async function createProjectStep(
           narration: job.narration,
           film_style: job.filmStyle,
           naming: attempt === 1 ? token : '',
+          ...(job.seriesId ? { series_id: job.seriesId } : {}),
+          ...(job.episode ? { episode: job.episode } : {}),
         },
       );
       return {

@@ -346,6 +346,8 @@ export function orchestratorAccess(config: Config, ...extra: string[]): Orchestr
   if (config.memory.enabled && config.memory.dir !== '') writable.push(config.memory.dir);
   // 音色库同理：voice_save 写的是用户级目录，codex 的 workspace-write 沙箱默认只放行工作目录。
   if (config.voicesDir !== '') writable.push(config.voicesDir);
+  // 专栏库同理：series_* 写的是用户级目录，需要放行写入。
+  if (config.seriesDir !== '') writable.push(config.seriesDir);
   if (writable.length > 0) access.writableDirs = writable;
   // 风格来源的数据不放进可写范围：它是前置资源，只由用户在终端里跑的 onset setup 下载，
   // 编排工具调用的 onset film-style use 只读它、写项目。

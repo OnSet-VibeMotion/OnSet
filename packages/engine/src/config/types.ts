@@ -65,6 +65,8 @@ export interface Config {
   pluginEnv: Record<string, string>;
   /** 音色库目录（voice 包），所有项目共用；理由同 memory.dir，要显式传给子进程。 */
   voicesDir: string;
+  /** 专栏库目录（series 包），所有项目共用；理由同 voicesDir，要显式传给子进程。 */
+  seriesDir: string;
   /** 全局设置文件（config/global.ts），理由同 voicesDir，要显式传给子进程。 */
   settingsFile: string;
   /** 客户端里编排工具请求批准时直接允许，不弹卡片（AUTO_APPROVE，studio/permissions.ts）。 */
@@ -93,6 +95,7 @@ export function newConfig(fields: Partial<Omit<Config, 'memory'>> & { memory?: P
     hyperFramesCLI: '',
     pluginEnv: {},
     voicesDir: '',
+    seriesDir: '',
     settingsFile: '',
     autoApprove: false,
     extraCommands: [],

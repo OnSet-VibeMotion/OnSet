@@ -1,14 +1,27 @@
 import { useState } from 'react';
 import { errorText, post } from '../../api';
 
-export function RememberForm({ onDone }: { onDone: () => void }) {
+export function RememberForm({
+  seriesId,
+  seriesName,
+  onDone,
+}: {
+  seriesId?: string;
+  seriesName?: string;
+  onDone: () => void;
+}) {
   const [text, setText] = useState('');
+  const [scope, setScope] = useState<'project' | 'series' | 'global'>(seriesId ? 'series' : 'project');
   const [global, setGlobal] = useState(false);
   const [notice, setNotice] = useState('');
+
   const submit = async () => {
     setNotice('');
     try {
-      const result = await post<{ message: string }>('/api/memory/actions/remember', { note: text.trim(), global });
+      const payload = seriesId
+        ? { note: text.trim(), scope, global: scope === 'global' }
+        : { note: text.trim(), global };
+      const result = await post<{ message: string }>('/api/memory/actions/remember', payload);
       setNotice(result.message);
       setText('');
       onDone();
@@ -29,9 +42,21 @@ export function RememberForm({ onDone }: { onDone: () => void }) {
             if (e.key === 'Enter' && text.trim()) void submit();
           }}
         />
-        <label className="small">
-          <input type="checkbox" checked={global} onChange={(e) => setGlobal(e.currentTarget.checked)} /> 用于所有项目
-        </label>
+        {seriesId ? (
+          <select
+            aria-label="偏好作用范围"
+            value={scope}
+            onChange={(e) => setScope(e.currentTarget.value as 'project' | 'series' | 'global')}
+          >
+            <option value="project">仅本项目</option>
+            <option value="series">本专栏（{seriesName || seriesId}）</option>
+            <option value="global">所有项目</option>
+          </select>
+        ) : (
+          <label className="small">
+            <input type="checkbox" checked={global} onChange={(e) => setGlobal(e.currentTarget.checked)} /> 用于所有项目
+          </label>
+        )}
         <button disabled={!text.trim()} onClick={() => void submit()}>
           记住
         </button>

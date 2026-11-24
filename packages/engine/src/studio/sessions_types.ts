@@ -51,6 +51,8 @@ export interface SessionMeta {
    * 上一次交给编排工具的用户偏好段的摘要：偏好没变、CLI 会话也还在时不再重复发送，续接的会话里已经有了。
    */
   preference_digest?: string;
+  /** 上一次交给编排工具的专栏规范（seriesPromptBrief）摘要：同会话未修订时不重复追加。 */
+  series_brief_digest?: string;
   /** 上一次交给编排工具的镜头归属规则（scene-ownership.md）摘要：同会话未修订时不每轮重复追加 5KB。 */
   ownership_digest?: string;
   /** 当前 CLI 会话是否已经发送过无视觉提醒（noVisionNote）。 */
@@ -78,6 +80,7 @@ export function sessionMetaJSON(meta: SessionMeta): Record<string, unknown> {
     turns: meta.turns,
     running_turn: meta.running_turn || undefined,
     preference_digest: meta.preference_digest || undefined,
+    series_brief_digest: meta.series_brief_digest || undefined,
     ownership_digest: meta.ownership_digest || undefined,
     vision_note_sent: meta.vision_note_sent || undefined,
     local_style_receipt: meta.local_style_receipt || undefined,

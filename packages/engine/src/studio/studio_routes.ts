@@ -34,6 +34,7 @@ import { promptChecksAPI } from './promptchecks';
 import { renderCheckAPI } from './rendercheck';
 import { reviewCommentsAPI } from './reviewcomments';
 import { scriptAPI } from './script';
+import { seriesAPI } from './series';
 import { settingsAPI, settingsGlobalAPI, settingsProjectAPI } from './settings';
 import { setupAPI, setupCancelAPI, setupRunAPI } from './setup';
 import { skillsAPI, skillsInstallAPI } from './skills';
@@ -135,6 +136,8 @@ export function buildRouteTable(s: Server, host: ProjectAPIHost, health: () => R
     ['/api/voice-drafts/', (r, rest) => voiceDraftAPI(r, rest)],
     ['/api/brand-kits', (r) => brandKitsAPI(s, r, '')],
     ['/api/brand-kits/', (r, rest) => brandKitsAPI(s, r, rest)],
+    ['/api/series', (r) => seriesAPI(s, r, '')],
+    ['/api/series/', (r, rest) => seriesAPI(s, r, rest)],
     ['/api/media-gen/', (r, rest) => mediaGenAPI(s, r, rest)],
     ['/api/review-comments', (r) => reviewCommentsAPI(s, r, '')],
     ['/api/review-comments/', (r, rest) => reviewCommentsAPI(s, r, rest)],

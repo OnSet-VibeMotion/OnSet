@@ -7,6 +7,7 @@ import { envMap } from '../envutil';
 import { compareBytes } from '../gojson';
 import * as memory from '../memory';
 import * as scene from '../scene';
+import * as series from '../series';
 import { resolveExamAudio, resolveExamVideo } from './exammedia';
 import { goMap, methodNotAllowed, notFound, serveFile, writeError, writeJSON } from './http';
 import { discoverScenes } from './scenes';
@@ -80,6 +81,12 @@ export function memoryRecallAPI(s: Server, request: Request): Response {
       return writeError(400, 'invalid_scene', (err as Error).message);
     }
     const renderer = query.get('renderer') || sc.renderer || cfg.renderer;
+    let seriesId = '';
+    try {
+      seriesId = series.readBinding(p.path)?.series_id ?? '';
+    } catch {
+      seriesId = '';
+    }
     let result: memory.RecallResult;
     try {
       result = store.recallScene(sc, {
@@ -87,6 +94,7 @@ export function memoryRecallAPI(s: Server, request: Request): Response {
         budget: cfg.memory.recallBudget,
         renderer,
         model: store.currentModel(renderer, envMap(), config.rendererModelFor(cfg, renderer)),
+        series: seriesId,
       });
     } catch (err) {
       return writeError(400, 'recall_failed', (err as Error).message);

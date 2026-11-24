@@ -1,0 +1,475 @@
+/* 专栏管理弹窗、首页专栏上下文条与侧栏分组样式（全部沿用 :root 皮肤变量） */
+
+.series-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.series-modal {
+  width: min(620px, 100%);
+  max-height: min(84vh, 720px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.series-modal-sm {
+  width: min(440px, 100%);
+}
+
+.series-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px 12px;
+}
+
+.series-modal-head h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.series-modal-sub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.series-icon-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.series-icon-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.series-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 20px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.series-tabs button {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.series-tabs button.on {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent-text);
+}
+
+.series-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.series-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.series-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.series-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.series-field > span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.series-field input,
+.series-field select,
+.series-field textarea,
+.series-picker-btn {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+.series-field textarea {
+  resize: vertical;
+  line-height: 1.55;
+  font-family: inherit;
+}
+
+.series-picker-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  text-align: left;
+}
+
+.series-picker-btn:hover {
+  border-color: var(--accent);
+}
+
+.series-episodes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.series-ep-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.series-ep-hint,
+.series-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.series-ep-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.series-ep-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.series-ep-row:hover {
+  border-color: var(--accent);
+}
+
+.series-ep-badge {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent-text);
+  font-size: 11px;
+}
+
+.series-ep-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.series-ep-info strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.series-ep-info span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.series-project-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--chip);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.series-error {
+  margin: 0;
+  padding: 8px 20px;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.series-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.series-foot-left,
+.series-foot-right,
+.series-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.series-confirm span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 首页专栏上下文条 */
+.series-context-bar {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 12px;
+  margin-bottom: 4px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+  font-size: 12px;
+  color: var(--text);
+}
+
+.series-context-left,
+.series-context-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.series-context-ep {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.series-context-ep input {
+  width: 48px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.series-link-btn {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.series-link-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* 侧栏专栏分区 */
+.home-rail .rail-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.home-rail .rail-section-head .rail-head {
+  margin-top: 0;
+  flex: 1;
+}
+
+.home-rail .rail-add-series {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.home-rail .rail-add-series:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.home-rail .rail-series-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.home-rail .rail-series-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 10px;
+}
+
+.home-rail .rail-series-row.active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.home-rail .rail-series-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 8px 7px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-rail .rail-series-toggle:hover {
+  color: var(--text);
+}
+
+.home-rail .rail-series-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--faint);
+}
+
+.home-rail .rail-series-actions {
+  display: flex;
+  align-items: center;
+  padding-right: 4px;
+}
+
+.home-rail .rail-series-children {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.home-rail .rail-ep-tag {
+  margin-right: 5px;
+  font-size: 10px;
+  color: var(--accent-text);
+}
+
+.home .rail-bind {
+  right: 58px;
+}
+
+.home .rail-bind.no-reveal {
+  right: 32px;
+}
+
+.series-asset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.series-asset-mode {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.series-notice {
+  margin: 0;
+  padding: 8px 20px;
+  font-size: 12px;
+  color: var(--ok);
+}
+
+.topbar-series-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-text);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.topbar-series-pill:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+

@@ -4,6 +4,7 @@
 import * as config from '../config';
 import { formatFixed, goTrimSpace } from '../gofmt';
 import * as memory from '../memory';
+import * as series from '../series';
 import * as tools from '../tools';
 import { emitStudioEvent } from './events';
 import {
@@ -50,6 +51,7 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
     seconds: number | null;
     region: number[];
     global: boolean;
+    scope: string;
     final: boolean;
     video: string;
     videoSha256: string;
@@ -69,6 +71,7 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
       seconds: fieldNumberPtr(body, 'seconds'),
       region: fieldNumbers(body, 'region'),
       global: fieldBool(body, 'global'),
+      scope: fieldString(body, 'scope'),
       final: fieldBool(body, 'final'),
       video: fieldString(body, 'video'),
       videoSha256: fieldString(body, 'video_sha256'),
@@ -149,10 +152,46 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
     case 'remember': {
       if (goTrimSpace(req.note) === '') return writeError(400, 'empty_note', '偏好内容为空');
       try {
-        const out = await runStudioOp(s, request.signal, p, 'memory_remember', { text: req.note, global: req.global });
+        const params: Record<string, unknown> = { text: req.note, global: req.global };
+        if (req.scope !== '') params.scope = req.scope;
+        const out = await runStudioOp(s, request.signal, p, 'memory_remember', params);
         return writeJSON(200, goMap({ message: goTrimSpace(out.text) }));
       } catch (err) {
         return writeError(400, 'remember_failed', (err as Error).message);
+      }
+    }
+    case 'scope': {
+      if (!memory.validName(req.name)) return writeError(400, 'invalid_name', '记忆名不合法');
+      if (!['project', 'series', 'global'].includes(req.scope)) {
+        return writeError(400, 'invalid_scope', '作用范围必须是 project、series 或 global');
+      }
+      let cfg: config.Config;
+      try {
+        cfg = config.load(p.path, null);
+      } catch (err) {
+        return writeError(400, 'config_error', (err as Error).message);
+      }
+      let targetScope = '';
+      if (req.scope === 'project') {
+        targetScope = memory.projectName(p.path);
+      } else if (req.scope === 'series') {
+        const binding = series.readBinding(p.path);
+        if (!binding) return writeError(400, 'no_series', '当前项目没有归属任何专栏');
+        targetScope = memory.seriesScope(binding.series_id);
+      }
+      try {
+        const { memory: updated, snapshot } = memory.open(cfg.memory.dir).setPreferenceScope(req.name, targetScope);
+        return writeJSON(
+          200,
+          goMap({
+            name: updated.name,
+            scope: updated.scope,
+            snapshot: snapshot?.id ?? 0,
+            message: `已更新偏好作用范围`,
+          }),
+        );
+      } catch (err) {
+        return writeError(400, 'scope_failed', (err as Error).message);
       }
     }
     case 'feedback': {
@@ -203,9 +242,15 @@ export function preferenceBrief(p: Project, cfg: config.Config): [string, string
     // 与 Go 版一样忽略。
   }
   try {
+    let seriesId = '';
+    try {
+      seriesId = series.readBinding(p.path)?.series_id ?? '';
+    } catch {
+      seriesId = '';
+    }
     const { text, digest } = memory
       .openReadOnly(cfg.memory.dir)
-      .preferenceBrief(memory.projectName(p.path), cfg.memory.snapshot);
+      .preferenceBrief(memory.projectName(p.path), cfg.memory.snapshot, seriesId);
     return [text, digest];
   } catch {
     return ['', ''];

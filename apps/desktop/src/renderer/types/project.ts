@@ -5,6 +5,8 @@ export interface Project {
   path: string;
   name: string;
   last_opened_at?: string;
+  series_id?: string;
+  episode?: number;
 }
 
 export interface ProjectState {

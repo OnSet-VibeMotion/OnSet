@@ -8,4 +8,5 @@ export * from './types/memory';
 export * from './types/progress';
 export * from './types/project';
 export * from './types/scene';
+export * from './types/series';
 export * from './types/stations';

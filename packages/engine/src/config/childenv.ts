@@ -2,6 +2,7 @@ import path from 'node:path';
 import { dataDir, envMap, WindowsBaseEnvKeys } from '../envutil';
 import { RootEnv } from '../filmstyle';
 import { BrowserAppArgEnv, BrowserEnv, BrowserHookEnv, CLIDirEnv, HyperFramesBrowserEnv } from '../hyperframes';
+import { DirEnv as SeriesDirEnv } from '../series/dir';
 import { childEnvKeys as toolpathEnvKeys } from '../toolpath';
 import { DirEnv as VoicesDirEnv } from '../voice/dir';
 import { SettingsFileEnv } from './global';
@@ -101,6 +102,8 @@ export function childEnvironment(
   // 音色库同理：编排工具调用的 voice_save、voice_get 与客户端的音色页要是同一个库，
   // 默认目录由 XDG_DATA_HOME 推出而它不在白名单里。
   if (config.voicesDir !== '') out[VoicesDirEnv] = config.voicesDir;
+  // 专栏库同理：编排工具调用的 series_* 操作与客户端的专栏页要是同一个库。
+  if (config.seriesDir !== '') out[SeriesDirEnv] = config.seriesDir;
   // 第三方站的存放目录同理：客户端的写任务（station_run）要找到设置页加进来的同一份站。只在子进程会算出
   // 另一个目录时写（显式指定了，或默认目录由不在白名单里的 XDG_DATA_HOME 推出）。
   // 名字与默认值同 flow.StationsDirEnv / flow.stationsDir；这里不 import flow，免得配置包依赖流程包。

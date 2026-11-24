@@ -1,8 +1,8 @@
-import { test as base, expect, _electron as electron } from '@playwright/test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { test as base, _electron as electron, expect } from '@playwright/test';
 import { writeShellFixture } from '../../../packages/engine/src/testsupport/windowsfixtures/index.ts';
 
 /*
@@ -34,6 +34,7 @@ export const test = base.extend({
       userData: path.join(root, 'user-data'),
       memory: path.join(root, 'memory'),
       voices: path.join(root, 'voices'),
+      series: path.join(root, 'series'),
       agent: path.join(root, 'agent'),
       stations: path.join(root, 'stations'),
       settings: path.join(root, 'settings.conf'),
@@ -41,7 +42,8 @@ export const test = base.extend({
       catalog: path.join(root, 'catalog', 'index.json'),
       registry: path.join(root, 'config', 'projects.json'),
     };
-    for (const dir of [dirs.home, dirs.userData, dirs.memory, path.dirname(dirs.registry), path.dirname(dirs.catalog)]) fs.mkdirSync(dir, { recursive: true });
+    for (const dir of [dirs.home, dirs.userData, dirs.memory, path.dirname(dirs.registry), path.dirname(dirs.catalog)])
+      fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(dirs.catalog, JSON.stringify({ schema: 1, plugins: [] }));
     await use(dirs);
     fs.rmSync(root, { recursive: true, force: true });
@@ -65,7 +67,13 @@ export const test = base.extend({
     fs.writeFileSync(path.join(scene, 'prompt.md'), 'before\n');
     fs.writeFileSync(
       path.join(scene, 'scene.json'),
-      JSON.stringify({ id: 'scene-001', duration_seconds: 1, output: 'out.mp4', transcript: 'voice.srt', text: 'hello' }),
+      JSON.stringify({
+        id: 'scene-001',
+        duration_seconds: 1,
+        output: 'out.mp4',
+        transcript: 'voice.srt',
+        text: 'hello',
+      }),
     );
     if (process.platform === 'win32') {
       // Windows 的项目入口使用真正的 IPC，只替换系统对话框的返回值。
@@ -98,6 +106,7 @@ export const test = base.extend({
       ONSET_STUDIO_CONFIG: sandbox.registry,
       ONSET_MEMORY_DIR: sandbox.memory,
       ONSET_VOICES_DIR: sandbox.voices,
+      ONSET_SERIES_DIR: sandbox.series,
       // 制作人的模型服务密钥：不碰开发者自己填的。
       ONSET_AGENT_DIR: sandbox.agent,
       // 不用 safeStorage：测试不能碰开发者的钥匙串（第一次用会弹授权框），key 照旧写成 0600 的明文文件。
@@ -116,7 +125,11 @@ export const test = base.extend({
       else env[key] = value.replaceAll('{fakeBin}', clientFakeBin);
     }
     // 假麦克风：音色页「录我的声音」的用例不碰真麦克风，也不弹系统的麦克风授权。
-    const app = await electron.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '.'], cwd: desktopDir, env });
+    const app = await electron.launch({
+      args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '.'],
+      cwd: desktopDir,
+      env,
+    });
     await use(app);
     await app.close();
   },
@@ -170,7 +183,11 @@ export function installPlugin(sandbox, dir, id = 'fake-publisher') {
   const role = { flow: false, replaces: '', after: '', nodes: true };
   fs.writeFileSync(
     path.join(sandbox.stations, 'installed.json'),
-    JSON.stringify({ version: 1, plugins: [{ id, version: '0.1.0', source: `link:${dir}`, commit: '', digest: '', role }] }, null, 2) + '\n',
+    JSON.stringify(
+      { version: 1, plugins: [{ id, version: '0.1.0', source: `link:${dir}`, commit: '', digest: '', role }] },
+      null,
+      2,
+    ) + '\n',
   );
 }
 

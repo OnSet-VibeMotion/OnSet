@@ -12,6 +12,7 @@ import { envMap } from '../envutil';
 import { sortedKeys } from '../gojson';
 import * as memory from '../memory';
 import * as scene from '../scene';
+import * as series from '../series';
 import { sceneActivity } from './activity';
 import { resolveExamAudio, resolveExamVideo } from './exammedia';
 import { goMap, methodNotAllowed, writeError, writeJSON } from './http';
@@ -166,12 +167,19 @@ export function memoryAPI(s: Server, request: Request): Response {
     // 进化页挑两批来比：记忆库所有项目共用，第一次与第二次常常不在同一个项目里。
     if (allRuns.length > 40) allRuns = allRuns.slice(allRuns.length - 40);
     const snapshots = store.snapshotIDs() ?? [];
+    let binding: series.ProjectSeriesBinding | null = null;
+    try {
+      binding = series.readBinding(p.path);
+    } catch {
+      binding = null;
+    }
     return writeJSON(
       200,
       goMap({
         enabled: cfg.memory.enabled,
         dir: store.dir,
         project,
+        ...(binding ? { series_id: binding.series_id, series_name: binding.series_name } : {}),
         pinned: cfg.memory.snapshot,
         budget: cfg.memory.recallBudget,
         renderer: cfg.renderer,

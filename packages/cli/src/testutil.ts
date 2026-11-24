@@ -4,10 +4,10 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, onTestFinished } from 'vitest';
+import { lookPath as resolveToolPath } from '@onset/engine/envutil';
 import * as hyperframes from '@onset/engine/hyperframes';
 import { fakeBrowser, fakeCLI } from '@onset/engine/hyperframes/hftest';
-import { lookPath as resolveToolPath } from '@onset/engine/envutil';
+import { afterEach, onTestFinished } from 'vitest';
 import { execute } from './cli';
 import type { Out } from './cobra';
 
@@ -24,6 +24,8 @@ process.env.ONSET_BIN_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-bin-tes
 process.env[hyperframes.CLIDirEnv] = fakeCLIDir;
 // 音色库同理：用户积累的声音不能被测试写进或删掉。
 process.env.ONSET_VOICES_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-voices-test-'));
+// 专栏库同理：用户建好的专栏配置与跨期资产不能被测试污染。
+process.env.ONSET_SERIES_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-series-test-'));
 
 // 每个用例结束后恢复工作目录与环境变量（Go 的 t.Chdir / t.Setenv）。
 const startDir = process.cwd();
@@ -53,7 +55,12 @@ export class Buffer implements Out {
 }
 
 /** Execute(args, &out, &err)：返回退出码。out 与 err 可以是同一个 Buffer。 */
-export async function run(args: string[], out: Out = new Buffer(), err: Out = out, signal?: AbortSignal): Promise<number> {
+export async function run(
+  args: string[],
+  out: Out = new Buffer(),
+  err: Out = out,
+  signal?: AbortSignal,
+): Promise<number> {
   return execute(args, out, err, signal);
 }
 
@@ -85,7 +92,11 @@ export function setenv(key: string, value: string): void {
 /** 在 PATH 里找命令。 */
 export function lookPath(name: string): string {
   if (process.platform === 'win32') {
-    try { return resolveToolPath(name, process.env.PATH ?? ''); } catch { return ''; }
+    try {
+      return resolveToolPath(name, process.env.PATH ?? '');
+    } catch {
+      return '';
+    }
   }
   for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
     if (!dir) continue;
@@ -105,7 +116,21 @@ export const hasFfmpeg = lookPath('ffmpeg') !== '' && lookPath('ffprobe') !== ''
 /** media_test.go 的 makeClip：ffmpeg -f lavfi 合成一段素材。 */
 export function makeClip(file: string, filter: string, ...extra: string[]): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const args = ['-v', 'error', '-y', '-f', 'lavfi', '-i', filter, ...extra, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', file];
+  const args = [
+    '-v',
+    'error',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    filter,
+    ...extra,
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    file,
+  ];
   const result = spawnSync('ffmpeg', args, { encoding: 'utf8' });
   if (result.status !== 0) throw new Error(`生成素材失败：${result.stderr}`);
 }

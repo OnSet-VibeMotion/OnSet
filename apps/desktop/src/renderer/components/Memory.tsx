@@ -49,6 +49,9 @@ export function MemoryTab({ scene, version, run }: Props) {
       retest={state.status.retest.filter((r) => r.name === m.name)}
       suspect={(state.status.suspect ?? []).filter((x) => x.name === m.name)}
       renderer={state.renderer || 'claude'}
+      seriesId={state.series_id}
+      seriesName={state.series_name}
+      onRefresh={triggerRefresh}
       run={run}
     />
   );
@@ -198,7 +201,7 @@ export function MemoryTab({ scene, version, run }: Props) {
         <h4>你的要求 · {preferences.length}</h4>
         <p className="small muted">每次渲染、每轮对话都会照着做。在对话里说「以后都……」会自动记下，也可以在这里写。</p>
         {preferences.map(card)}
-        <RememberForm onDone={triggerRefresh} />
+        <RememberForm seriesId={state.series_id} seriesName={state.series_name} onDone={triggerRefresh} />
       </section>
 
       <section className="memory-section">

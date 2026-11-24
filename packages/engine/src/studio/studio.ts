@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { onsetExecutable } from '../envutil';
+import * as series from '../series';
 import * as skin from '../skin';
 import { formatRFC3339Nano, goMap, nowRFC3339, writeError, writeJSON } from './http';
 import { BusyError, type Session } from './sessions';
@@ -117,10 +118,18 @@ export class Server {
 
   openProject(file: string): Project {
     const canonical = canonicalProjectPath(file);
+    let binding: series.ProjectSeriesBinding | null = null;
+    try {
+      binding = series.readBinding(canonical);
+    } catch {
+      binding = null;
+    }
     const projects = this.registry.projects ?? [];
     for (const p of projects) {
       if (p.path === canonical) {
         p.last_opened_at = nowRFC3339();
+        p.series_id = binding?.series_id;
+        p.episode = binding?.episode;
         this.trySaveRegistry();
         return { ...p };
       }
@@ -130,10 +139,38 @@ export class Server {
       path: canonical,
       name: path.basename(canonical),
       last_opened_at: nowRFC3339(),
+      series_id: binding?.series_id,
+      episode: binding?.episode,
     };
     this.registry.projects = [...projects, p];
     this.saveRegistry();
     return { ...p };
+  }
+
+  /** 更新已登记项目的专栏归属缓存（写完 onset.series.json 后调用）。 */
+  updateProjectSeries(projectId: string, seriesId?: string, episode?: number): Project | null {
+    for (const p of this.registry.projects ?? []) {
+      if (p.id === projectId) {
+        p.series_id = seriesId || undefined;
+        p.episode = seriesId ? episode : undefined;
+        this.saveRegistry();
+        return { ...p };
+      }
+    }
+    return null;
+  }
+
+  /** 专栏被删除后，清理登记表里所有指向它的缓存（不删任何项目）。 */
+  clearSeriesProjects(seriesId: string): void {
+    let changed = false;
+    for (const p of this.registry.projects ?? []) {
+      if (p.series_id === seriesId) {
+        p.series_id = undefined;
+        p.episode = undefined;
+        changed = true;
+      }
+    }
+    if (changed) this.trySaveRegistry();
   }
 
   // ---- 写锁 ----

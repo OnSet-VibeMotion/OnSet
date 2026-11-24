@@ -171,6 +171,9 @@ export interface MemoryState {
   dir: string;
   /** 当前项目名，用来筛时间线。 */
   project?: string;
+  /** 当前项目所属专栏（如有），偏好支持设成专栏范围。 */
+  series_id?: string;
+  series_name?: string;
   pinned: number;
   budget: number;
   renderer: string;

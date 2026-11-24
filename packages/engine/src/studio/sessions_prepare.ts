@@ -7,6 +7,7 @@ import { readSection } from '../flow';
 import { goTrimSpace } from '../gofmt';
 import * as ledger from '../ledger';
 import * as project from '../project';
+import * as series from '../series';
 import { describeView } from '../studioview';
 import * as tools from '../tools';
 import { nowTime } from './http';
@@ -72,6 +73,7 @@ export function prepareTurn(
     updateMeta(sess, (meta) => {
       meta.cli_session_id = undefined;
       meta.ownership_digest = undefined;
+      meta.series_brief_digest = undefined;
       meta.vision_note_sent = undefined;
       meta.local_style_receipt = undefined;
       meta.handoff_reason = undefined;
@@ -91,6 +93,13 @@ export function prepareTurn(
   const cannotSee = orchestratorCannotSee(cfg);
   const sendVisionNote = cannotSee && (firstTurn || activeSession === '' || !sess.meta.vision_note_sent);
   if (sendVisionNote) prompt += '\n\n---\n\n' + noVisionNote;
+  const seriesBrief = series.seriesPromptBrief(cfg.seriesDir, p.path);
+  const alreadyHasSeriesBrief = seriesBrief.text !== '' && prompt.includes(seriesBrief.text.trim());
+  const sendSeriesBrief =
+    seriesBrief.text !== '' &&
+    !alreadyHasSeriesBrief &&
+    (firstTurn || activeSession === '' || seriesBrief.digest !== (sess.meta.series_brief_digest ?? ''));
+  if (sendSeriesBrief) prompt += '\n\n---\n\n' + seriesBrief.text.trim();
   const [brief, digest] = preferenceBrief(p, cfg);
   const resend = brief !== '' && (digest !== (sess.meta.preference_digest ?? '') || !activeSession || firstTurn);
   if (resend) prompt = brief + '\n---\n\n' + prompt;
@@ -109,6 +118,7 @@ export function prepareTurn(
     meta.turns = [...(meta.turns ?? []), turn.turn_id];
     meta.running_turn = turn.turn_id;
     if (resend) meta.preference_digest = digest || undefined;
+    if (alreadyHasSeriesBrief || sendSeriesBrief) meta.series_brief_digest = seriesBrief.digest || undefined;
     if (alreadyHasOwnership || sendOwnership) meta.ownership_digest = ownershipDigest;
     if (sendVisionNote) meta.vision_note_sent = true;
     if (!meta.tool) meta.tool = cfg.orchestrator;

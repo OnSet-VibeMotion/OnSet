@@ -6,6 +6,7 @@ import { projectOf } from './episode';
 import { features as sceneFeatures, promptText } from './features';
 import { goToLower, runeCount } from './gostr';
 import { appliesEmpty, appliesInScope, KindLesson, KindPreference, ruleDigest, type Kind, type Memory, type Status } from './memory';
+import { preferenceMatches } from './preferences';
 import { snapshotMemories } from './snapshot';
 import { smoothedRate, type Stat } from './stats';
 import type { Store } from './store';
@@ -167,6 +168,7 @@ export interface RecallInput {
   /** 参与关键词匹配的文本（镜头文本与创意方向）。 */
   text?: string;
   project?: string;
+  series?: string;
   budget: number;
   /** 经验条数上限，0 表示 DefaultMaxLessons。 */
   maxLessons?: number;
@@ -209,7 +211,7 @@ export function recall(input: RecallInput): RecallResult {
   const text = goToLower(input.text ?? '');
   const candidates: RecallItem[] = [];
   for (const m of input.memories ?? []) {
-    if (m.kind === KindPreference && m.scope !== '' && m.scope !== (input.project ?? '')) continue;
+    if (m.kind === KindPreference && !preferenceMatches(m.scope, input.project ?? '', input.series ?? '')) continue;
     if (!appliesInScope(m.applies_when, input.renderer, model)) continue;
     const item: RecallItem = {
       name: m.name,
@@ -307,6 +309,7 @@ export interface RecallOptions {
    */
   explore?: number;
   exploreSeed?: string;
+  series?: string;
 }
 
 /** 对一个镜头做召回。记忆库还没有快照且没有 extra 时什么也不召回。 */
@@ -324,15 +327,9 @@ export function recallScene(s: Store, sc: Scene, opts: RecallOptions): RecallRes
   memories = withExtra(memories, opts.extra ?? []);
   if (opts.exclude && opts.exclude.length > 0) memories = memories.filter((m) => !contains(opts.exclude, m.name));
   let result = recall({
-    memories,
-    stats,
-    renderer: opts.renderer ?? '',
-    model: opts.model ?? '',
-    features,
-    text: sc.text + '\n' + promptText(sc),
-    project: projectOf(sc.directory),
-    budget: opts.budget,
-    maxLessons: opts.maxLessons ?? 0,
+    memories, stats, renderer: opts.renderer ?? '', model: opts.model ?? '',
+    features, text: sc.text + '\n' + promptText(sc), project: projectOf(sc.directory),
+    series: opts.series ?? '', budget: opts.budget, maxLessons: opts.maxLessons ?? 0,
   });
   result.snapshot = snapshotID;
   if ((opts.explore ?? 0) > 0) result = explore(result, opts.explore!, (opts.exploreSeed ?? '') + '|' + sc.directory);

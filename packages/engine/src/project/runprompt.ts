@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { envMap } from '../envutil';
 import * as flow from '../flow';
 import * as preset from '../preset';
 import { substituteCanvas } from '../preset/gen/gen';
+import * as series from '../series';
 
 export interface RunPromptResult {
   prompt: Buffer;
@@ -58,5 +60,7 @@ export function runPrompt(root: string, override: string, focus?: string): RunPr
     return { prompt, path: file, label: file, warnings: [] };
   }
   const { text, name, warnings } = composeProjectPrompt(root, focus);
-  return { prompt: Buffer.from(text), path: '', label: `${name}流程`, warnings };
+  const seriesBrief = series.seriesPromptBrief(series.defaultDir(envMap()), root);
+  const full = seriesBrief.text !== '' ? `${text}\n\n---\n\n${seriesBrief.text}` : text;
+  return { prompt: Buffer.from(full), path: '', label: `${name}流程`, warnings };
 }

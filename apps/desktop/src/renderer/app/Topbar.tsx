@@ -42,6 +42,7 @@ export interface TopbarProps {
   onInstallSkills: () => void;
   onTogglePanel: () => void;
   onCancelTask: (id: string) => void;
+  onOpenSeries?: () => void;
   onOpenMemory: () => void;
   onOpenSettings: () => void;
 }
@@ -93,6 +94,19 @@ export function Topbar(props: TopbarProps) {
         </strong>
         {state?.metadata.canvas && <span className="project-meta">{canvasLabel(state.metadata.canvas)}</span>}
       </button>
+      {currentId && !homeOpen && state?.metadata.series_id && props.onOpenSeries && (
+        <button
+          className="topbar-series-pill"
+          title={`所属专栏：${state.metadata.series_name || state.metadata.series_id}（点击同步或沉淀跨期资产）`}
+          onClick={props.onOpenSeries}
+        >
+          <Icon name="layers" size={11} />
+          <span className="ellipsis">
+            {state.metadata.series_name || state.metadata.series_id}
+            {state.metadata.episode ? ` · EP${String(state.metadata.episode).padStart(2, '0')}` : ''}
+          </span>
+        </button>
+      )}
       {canReveal && currentId && !homeOpen && (
         <button
           className="ghost icon reveal-project"

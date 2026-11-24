@@ -1,8 +1,18 @@
 import { useState } from 'react';
+import { post } from '../../api';
 import type { MemoryRow, MemoryState, MemorySuspect } from '../../types';
 import { MemoryApplications } from '../MemoryApplications';
 import type { RunAction } from '../Preview';
 import { checkText, type Labels, label, statusText } from './helpers';
+
+function preferenceScopeLabel(scope: string | undefined, seriesId?: string, seriesName?: string): string {
+  if (!scope) return '用于所有项目';
+  if (scope.startsWith('series:')) {
+    const id = scope.slice('series:'.length);
+    return id === seriesId && seriesName ? `用于本专栏（${seriesName}）` : `用于专栏（${id}）`;
+  }
+  return '只用于本项目';
+}
 
 export function MemoryCard({
   memory,
@@ -11,6 +21,9 @@ export function MemoryCard({
   retest,
   suspect,
   renderer,
+  seriesId,
+  seriesName,
+  onRefresh,
   run,
 }: {
   memory: MemoryRow;
@@ -19,6 +32,9 @@ export function MemoryCard({
   retest: MemoryState['status']['retest'];
   suspect: MemorySuspect[];
   renderer: string;
+  seriesId?: string;
+  seriesName?: string;
+  onRefresh?: () => void;
   run: RunAction;
 }) {
   const [open, setOpen] = useState(false);
@@ -35,10 +51,23 @@ export function MemoryCard({
       `适用：${memory.applies_when.features.map((f) => label(labels?.features, f)).join('、')}`,
     (memory.applies_when.renderers?.length || memory.applies_when.models?.length) &&
       `只给 ${[...(memory.applies_when.renderers ?? []), ...(memory.applies_when.models ?? [])].join('、')}`,
-    memory.kind === 'preference' && (memory.scope ? '只用于本项目' : '用于所有项目'),
+    memory.kind === 'preference' && preferenceScopeLabel(memory.scope, seriesId, seriesName),
     memory.from_episodes?.length && `来自 ${memory.from_episodes.length} 次失败`,
     recalled > 0 && `用过 ${recalled} 次，${passed} 次一次通过`,
   ].filter(Boolean);
+  const currentScopeKind: 'project' | 'series' | 'global' = !memory.scope
+    ? 'global'
+    : memory.scope.startsWith('series:')
+      ? 'series'
+      : 'project';
+  const changeScope = async (nextScope: 'project' | 'series' | 'global') => {
+    try {
+      await post('/api/memory/actions/scope', { name: memory.name, scope: nextScope });
+      onRefresh?.();
+    } catch {
+      // 范围切换失败由下次刷新校正。
+    }
+  };
   return (
     <div className="memory-card">
       <div className="memory-card-head">
@@ -77,6 +106,17 @@ export function MemoryCard({
               )}
               <button onClick={() => run('/api/memory/actions/reject', { name: memory.name })}>不要</button>
             </>
+          )}
+          {memory.status === 'active' && memory.kind === 'preference' && seriesId && (
+            <select
+              aria-label={`调整 ${memory.description} 的作用范围`}
+              value={currentScopeKind}
+              onChange={(e) => void changeScope(e.currentTarget.value as 'project' | 'series' | 'global')}
+            >
+              <option value="project">仅本项目</option>
+              <option value="series">本专栏</option>
+              <option value="global">所有项目</option>
+            </select>
           )}
           {memory.status === 'active' && weak && (
             <button onClick={() => run('/api/memory/actions/retire', { name: memory.name })}>停用</button>

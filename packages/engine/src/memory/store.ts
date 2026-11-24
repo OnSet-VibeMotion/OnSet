@@ -35,7 +35,7 @@ import { isNotExist, readDirSorted } from './io';
 import { format, kindDir, KindLesson, KindPreference, parse, StatusActive, validName, type Kind, type Memory } from './memory';
 import { currentModel, observeModel } from './models';
 import { rfc3339 } from './gostr';
-import { preferenceBrief, remember, type RememberInput } from './preferences';
+import { preferenceBrief, remember, setPreferenceScope, type RememberInput } from './preferences';
 import { recallScene, type RecallOptions, type RecallResult } from './recall';
 import {
   drift,
@@ -238,11 +238,14 @@ export class Store {
   }
 
   // ---- preferences.ts ----
-  preferenceBrief(project: string, pinned: number): { text: string; digest: string } {
-    return preferenceBrief(this, project, pinned);
+  preferenceBrief(project: string, pinned: number, seriesId = ''): { text: string; digest: string } {
+    return preferenceBrief(this, project, pinned, seriesId);
   }
   remember(input: RememberInput): { memory: Memory; snapshot: Snapshot | null } {
     return remember(this, input);
+  }
+  setPreferenceScope(name: string, targetScope: string): { memory: Memory; snapshot: Snapshot | null } {
+    return setPreferenceScope(this, name, targetScope);
   }
 
   // ---- consolidate.ts ----

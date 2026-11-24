@@ -4,6 +4,7 @@
 import { formatFixed, goTrimSpace } from '@onset/engine/gofmt';
 import { compareBytes } from '@onset/engine/gojson';
 import * as memory from '@onset/engine/memory';
+import * as series from '@onset/engine/series';
 import * as scene from '@onset/engine/scene';
 import { currentEnvironment } from './cli';
 import { jsonParam, loadMemoryConfig, writeReport } from './memory_cmd_shared';
@@ -250,6 +251,7 @@ defineOp({
     name: { type: 'string', description: '偏好名，小写字母、数字与连字符；缺省按时间生成' },
     description: { type: 'string', description: '一句话概括；缺省取正文第一句' },
     global: { type: 'boolean', description: '对用户所有项目都成立' },
+    scope: { type: 'string', description: '作用范围：project（仅本项目，默认）/ series（本专栏所有期数）/ global（所有项目）' },
     revises: { type: 'string', description: '替换的旧偏好名，旧偏好转为沉睡' },
     inferred: { type: 'boolean', description: '用户没有明说、由编排工具推测的取向：先进入试用，用户确认后才生效' },
   },
@@ -257,16 +259,34 @@ defineOp({
     const { store } = loadMemoryConfig();
     const root = process.cwd();
     const inferred = bool(p.inferred);
+    const rawScope = str(p.scope);
+    let scopeKind: 'project' | 'series' | 'global' | undefined;
+    if (rawScope !== '') {
+      if (rawScope !== 'project' && rawScope !== 'series' && rawScope !== 'global') {
+        throw new Error(`无效的 scope：${rawScope}（可选：project、series、global）`);
+      }
+      scopeKind = rawScope;
+    }
+    let seriesId = '';
+    try {
+      seriesId = series.readBinding(root)?.series_id ?? '';
+    } catch {
+      seriesId = '';
+    }
     const { memory: m, snapshot } = store.remember({
       name: str(p.name),
       description: str(p.description),
       body: str(p.text),
       project: memory.projectName(root),
+      series: seriesId,
+      scope: scopeKind,
       global: bool(p.global),
       revises: str(p.revises),
       inferred,
     });
-    const scope = m.scope === '' ? '所有项目' : '本项目（' + m.scope + '）';
+    const seriesTag = memory.parseSeriesScope(m.scope);
+    const scope =
+      m.scope === '' ? '所有项目' : seriesTag !== '' ? `本专栏（${seriesTag}）` : '本项目（' + m.scope + '）';
     const data = {
       name: m.name,
       scope: m.scope,

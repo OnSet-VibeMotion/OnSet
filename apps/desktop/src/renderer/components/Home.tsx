@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorText } from '../api';
-import type { AgentsResponse, Project, StylesResponse } from '../types';
+import type { AgentsResponse, Project, SeriesItem, SeriesListResponse, StylesResponse } from '../types';
 import { rendererState } from './agentReady';
 import { Creation, type CreationJob } from './Creation';
 import { Composer } from './home/Composer';
@@ -19,12 +19,16 @@ import { TemplateArt } from './home/TemplateArt';
 import { droppedMaterials, fileMaterials, type HomeMaterial } from './homeAttachments';
 import { Icon } from './Icon';
 import { SetupGuide, useSetup } from './SetupGuide';
+import { BindSeriesModal } from './series/BindSeriesModal';
+import { SeriesContextBar } from './series/SeriesContextBar';
+import { SeriesModal } from './series/SeriesModal';
 import '../home.css';
+import '../series.css';
 
 export type { ProjectSummary } from './home/helpers';
 
 /**
- * 启动页。结构照 OpenDesign 的首页（EntryShell + HomeHero）：左侧栏放最近项目，
+ * 启动页。结构照 OpenDesign 的首页（EntryShell + HomeHero）：左侧栏放专栏与最近项目，
  * 中间是标题、一个大输入框和「从模板开始」。在这里说要做什么、拖进文章，
  * 发送就建项目、上传附件、开始整片制作，直接进到项目里看它做。
  */
@@ -39,6 +43,7 @@ interface Props {
   pluginsVersion?: number;
   onOpen: (id: string) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
+  onProjectsChanged?: () => Promise<unknown>;
   onBrowse: () => void;
   /** 新项目建好、制作已经开始：切到项目，打开这个会话。 */
   onStarted: (projectId: string, sessionId: string) => Promise<void>;
@@ -64,10 +69,32 @@ export function Home(props: Props) {
     }
   });
   const [template, setTemplate] = useState('');
+  // 专栏列表、当前开片归属专栏与弹窗状态。
+  const [seriesList, setSeriesList] = useState<SeriesItem[]>([]);
+  const [activeSeriesId, setActiveSeriesId] = useState('');
+  const [episodeInput, setEpisodeInput] = useState('');
+  const [seriesModal, setSeriesModal] = useState<{ open: boolean; item: SeriesItem | null }>({
+    open: false,
+    item: null,
+  });
+  const [bindTarget, setBindTarget] = useState<Project | null>(null);
   // 正在新建时的任务：交给开机画面（Creation）一步步做完。
   const [job, setJob] = useState<CreationJob | null>(null);
   const [error, setError] = useState('');
   const textarea = useRef<HTMLTextAreaElement>(null);
+
+  const loadSeries = useCallback(async () => {
+    try {
+      const res = await api<SeriesListResponse>('/api/series');
+      setSeriesList(res.series ?? []);
+    } catch {
+      setSeriesList([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSeries();
+  }, [loadSeries]);
 
   useEffect(() => {
     api<StylesResponse>('/api/styles').then(
@@ -107,6 +134,27 @@ export function Home(props: Props) {
   const current = templates.find((t) => t.id === template);
   const canvasInfo = styles?.canvases.find((c) => c.id === canvas);
   const modeInfo = modes.find((m) => m.id === mode) ?? modes[0];
+  const activeSeries = seriesList.find((s) => s.id === activeSeriesId) ?? null;
+
+  /** 选定某个专栏作为本次开片上下文：自动套用该专栏预设，单期仍可覆盖。 */
+  const applySeriesContext = (item: SeriesItem) => {
+    setActiveSeriesId(item.id);
+    setEpisodeInput(String(item.next_episode));
+    setTemplate('');
+    if (item.defaults.canvas) setCanvas(item.defaults.canvas);
+    if (item.defaults.delivery || item.defaults.narration) {
+      const targetDelivery = item.defaults.delivery || 'speech';
+      const targetNarration = item.defaults.narration || 'solo';
+      const matched = modes.find((m) => m.delivery === targetDelivery && m.narration === targetNarration);
+      if (matched) setMode(matched.id);
+    }
+    setFilmStyle(item.defaults.film_style ?? '');
+    if (item.parent_dir) setParent(item.parent_dir);
+    if (item.defaults.orchestrator && installed.some((a) => a.id === item.defaults.orchestrator)) {
+      setTool(item.defaults.orchestrator);
+    }
+    textarea.current?.focus();
+  };
 
   const addFiles = (list: FileList | File[]) => {
     const materials = fileMaterials(list);
@@ -145,6 +193,8 @@ export function Home(props: Props) {
     }
     const m = modes.find((item) => item.id === mode) ?? modes[0];
     const message = text.trim();
+    const parsedEp = activeSeries ? Number.parseInt(episodeInput, 10) : Number.NaN;
+    const episode = activeSeries && Number.isInteger(parsedEp) && parsedEp >= 1 ? parsedEp : activeSeries?.next_episode;
     setJob({
       parent,
       name: projectName(message, files),
@@ -158,6 +208,14 @@ export function Home(props: Props) {
       toolLabel: props.agents?.agents.find((a) => a.id === tool)?.label ?? tool,
       message,
       materials: files,
+      ...(activeSeries
+        ? {
+            seriesId: activeSeries.id,
+            seriesName: activeSeries.name,
+            episode,
+            namingPattern: activeSeries.naming_pattern,
+          }
+        : {}),
     });
   };
 
@@ -170,6 +228,7 @@ export function Home(props: Props) {
             setText('');
             setFiles([]);
             setJob(null);
+            void loadSeries();
             void props.onStarted(projectId, sessionId);
           }}
           onClose={(message) => {
@@ -178,10 +237,49 @@ export function Home(props: Props) {
           }}
         />
       )}
+      {seriesModal.open && (
+        <SeriesModal
+          initial={seriesModal.item}
+          styles={styles}
+          modes={modes}
+          defaultParent={parent || props.defaultParent}
+          projects={props.projects}
+          summaries={props.summaries}
+          onSaved={async (saved) => {
+            await loadSeries();
+            if (!seriesModal.item) applySeriesContext(saved);
+          }}
+          onDeleted={async (deletedId) => {
+            if (activeSeriesId === deletedId) setActiveSeriesId('');
+            await loadSeries();
+            await props.onProjectsChanged?.();
+          }}
+          onStartNext={(item) => applySeriesContext(item)}
+          onOpenProject={props.onOpen}
+          onClose={() => setSeriesModal({ open: false, item: null })}
+        />
+      )}
+      {bindTarget && (
+        <BindSeriesModal
+          project={bindTarget}
+          seriesList={seriesList}
+          onDone={async () => {
+            await loadSeries();
+            await props.onProjectsChanged?.();
+          }}
+          onClose={() => setBindTarget(null)}
+        />
+      )}
       <HomeRail
         projects={props.projects}
         summaries={props.summaries}
         currentId={props.currentId}
+        seriesList={seriesList}
+        activeSeriesId={activeSeriesId}
+        onSelectSeries={applySeriesContext}
+        onCreateSeries={() => setSeriesModal({ open: true, item: null })}
+        onManageSeries={(item) => setSeriesModal({ open: true, item })}
+        onBindProject={(p) => setBindTarget(p)}
         onOpen={props.onOpen}
         onRemove={props.onRemove}
         onBrowse={props.onBrowse}
@@ -202,20 +300,20 @@ export function Home(props: Props) {
           )}
 
           {!drawing.ok && (
-            <div className="home-renderer" role="alert" id="home-renderer">
-              <span className="home-renderer-icon">
-                <Icon name="brush" size={14} />
-              </span>
-              <span className="home-renderer-text">
-                <strong>还差一家画镜头的工具</strong>
-                <span>{drawing.reason}。</span>
-              </span>
-              {props.onGuide && (
-                <button className="pill" onClick={props.onGuide}>
-                  去选一个
-                </button>
-              )}
-            </div>
+            <p className="home-banner" role="alert">
+              <Icon name="alert" size={14} />
+              <span>{drawing.reason}</span>
+            </p>
+          )}
+
+          {activeSeries && (
+            <SeriesContextBar
+              series={activeSeries}
+              episode={episodeInput}
+              onEpisode={setEpisodeInput}
+              onManage={() => setSeriesModal({ open: true, item: activeSeries })}
+              onClear={() => setActiveSeriesId('')}
+            />
           )}
 
           <Composer

@@ -7,6 +7,7 @@ import { RootEnv, rootDir } from '../filmstyle';
 import { formatG, goPathError, goTrimSpace } from '../gofmt';
 import { CLIDirEnv, cliDir, PinnedVersion } from '../hyperframes';
 import { pluginChildEnvs } from '../plugin/registry';
+import { defaultDir as defaultSeriesDir, DirEnv as SeriesDirEnv } from '../series/dir';
 import { ValidRenderers, ValidTools, validOptionsText } from '../tools';
 import { defaultDir as defaultVoicesDir, DirEnv as VoicesDirEnv } from '../voice/dir';
 import {
@@ -248,6 +249,7 @@ export function load(root: string, environ?: Record<string, string> | null): Con
     if (v !== '') cfg.pluginEnv[spec.key] = v;
   }
   cfg.voicesDir = resolve(VoicesDirEnv, defaultVoicesDir(env));
+  cfg.seriesDir = resolve(SeriesDirEnv, defaultSeriesDir(env));
   const snapshotText = resolve('MEMORY_SNAPSHOT', '');
   if (snapshotText !== '') {
     const snapshot = goAtoi(snapshotText);

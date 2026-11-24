@@ -84,7 +84,15 @@ export {
 export type { Stat, Weak, Suspect } from './stats';
 export { MaxDescriptionChars, MaxBodyChars, MinRevisionRatio, lint } from './lint';
 export type { LintContext } from './lint';
-export { preferenceBrief, remember } from './preferences';
+export {
+  parseSeriesScope,
+  preferenceBrief,
+  preferenceMatches,
+  remember,
+  SeriesScopePrefix,
+  seriesScope,
+  setPreferenceScope,
+} from './preferences';
 export type { RememberInput } from './preferences';
 export * from './report';
 export { recordUtterance, signalToJSON, preferenceSignals, similar } from './conversation';

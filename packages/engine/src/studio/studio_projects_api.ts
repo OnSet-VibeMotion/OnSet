@@ -3,10 +3,13 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import * as brandkit from '../brandkit';
+import { envMap } from '../envutil';
 import * as filmstyle from '../filmstyle';
 import { goClean, goTrimSpace } from '../gofmt';
 import * as preset from '../preset';
 import * as projectinit from '../projectinit';
+import * as series from '../series';
 import { directoryBrowseRoot, directoryDrives } from './directories';
 import { startFilmStyleTask } from './filmstyle';
 import { DecodeError, decodeJSONStrict, fieldString, goMap, methodNotAllowed, writeError, writeJSON } from './http';
@@ -133,9 +136,18 @@ export async function createProjectAPI(host: ProjectAPIHost, request: Request): 
     narration: string;
     film_style: string;
     naming: string;
+    series_id: string;
+    episode?: number;
   };
   try {
     const body = await decodeJSONStrict(request);
+    let episode: number | undefined;
+    if (body.episode !== undefined && body.episode !== null && body.episode !== '') {
+      if (typeof body.episode !== 'number' || !Number.isInteger(body.episode) || body.episode < 1) {
+        throw new DecodeError('episode 必须是正整数');
+      }
+      episode = body.episode;
+    }
     req = {
       parent: fieldString(body, 'parent'),
       name: fieldString(body, 'name'),
@@ -148,9 +160,23 @@ export async function createProjectAPI(host: ProjectAPIHost, request: Request): 
       film_style: fieldString(body, 'film_style'),
       // naming 是起名那次调用的凭据（/api/projects/name 给的），建好后把那次的用量记进新项目。
       naming: fieldString(body, 'naming'),
+      // 可选：归属专栏 ID 与期号；未显式传入的画幅/做法/风格将回退至专栏默认预设。
+      series_id: fieldString(body, 'series_id'),
+      episode,
     };
   } catch {
     return writeError(400, 'invalid_request', '请填写项目名称');
+  }
+  const seriesRoot = series.defaultDir(envMap());
+  let seriesCfg: series.SeriesConfig | null = null;
+  if (req.series_id !== '') {
+    seriesCfg = series.getSeries(seriesRoot, req.series_id);
+    if (!seriesCfg) return writeError(400, 'unknown_series', `找不到专栏：${req.series_id}`);
+    if (req.canvas === '' && seriesCfg.defaults.canvas) req.canvas = seriesCfg.defaults.canvas;
+    if (req.delivery === '' && seriesCfg.defaults.delivery) req.delivery = seriesCfg.defaults.delivery;
+    if (req.narration === '' && seriesCfg.defaults.narration) req.narration = seriesCfg.defaults.narration;
+    if (req.film_style === '' && seriesCfg.defaults.film_style) req.film_style = seriesCfg.defaults.film_style;
+    if (req.parent === '' && seriesCfg.parent_dir) req.parent = seriesCfg.parent_dir;
   }
   if (goTrimSpace(req.name) === '') return writeError(400, 'invalid_request', '请填写项目名称');
   if (req.canvas === '') req.canvas = preset.defaultPreset().id;
@@ -185,6 +211,27 @@ export async function createProjectAPI(host: ProjectAPIHost, request: Request): 
     projectinit.create(opts);
   } catch (err) {
     return writeError(400, 'project_create_failed', (err as Error).message);
+  }
+  if (seriesCfg) {
+    try {
+      const ep = req.episode ?? seriesCfg.next_episode;
+      series.bindProject(seriesRoot, seriesCfg.id, target, { episode: ep });
+      series.applySeriesDefaultsToProject(target, seriesCfg);
+      series.materializeSeriesIntoProject(seriesRoot, target);
+      if (seriesCfg.defaults.brand_kit_id) {
+        try {
+          brandkit.applyBrandKitToProject(
+            brandkit.defaultBrandKitsDir(envMap()),
+            seriesCfg.defaults.brand_kit_id,
+            target,
+          );
+        } catch {
+          // 品牌包已删或不可用时不阻断建项目。
+        }
+      }
+    } catch (err) {
+      return writeError(500, 'series_bind_failed', (err as Error).message);
+    }
   }
   let p: Project;
   try {

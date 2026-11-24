@@ -16,6 +16,11 @@ export interface CreationJob {
   toolLabel: string;
   message: string;
   materials: HomeMaterial[];
+  /** 可选：新建为某个专栏的下一期。 */
+  seriesId?: string;
+  seriesName?: string;
+  episode?: number;
+  namingPattern?: string;
 }
 
 export type StepID = 'name' | 'create' | 'upload' | 'skills' | 'style' | 'start';
@@ -54,6 +59,20 @@ export const INK_STEP = 55;
 /** 项目名后面带上日期（月日），同一主题隔天再做也不撞名。 */
 export function datedName(base: string, at = new Date()): string {
   return `${base}-${String(at.getMonth() + 1).padStart(2, '0')}${String(at.getDate()).padStart(2, '0')}`;
+}
+
+/** 专栏期数命名：按命名模板（如 EP{nn}-{title}）拼出文件夹名，未指定期号回退到带日期名。 */
+export function episodeProjectName(job: CreationJob, base: string, at = new Date()): string {
+  if (!job.seriesId || !job.episode || job.episode < 1) return datedName(base, at);
+  const tpl = (job.namingPattern ?? '').trim() || 'EP{nn}-{title}';
+  const nn = String(job.episode).padStart(2, '0');
+  const n = String(job.episode);
+  const replaced = tpl.replaceAll('{nn}', nn).replaceAll('{n}', n);
+  const out = replaced.includes('{title}') ? replaced.replaceAll('{title}', base) : `${replaced}-${base}`;
+  return out
+    .replace(/[/\\:*?"<>|]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^[.-]+|[.-]+$/g, '');
 }
 
 export async function excerpts(files: File[]): Promise<{ name: string; text: string }[]> {

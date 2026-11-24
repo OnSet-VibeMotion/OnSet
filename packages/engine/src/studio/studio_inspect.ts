@@ -10,6 +10,7 @@ import * as filmstyle from '../filmstyle';
 import * as flow from '../flow';
 import { goPathError } from '../gofmt';
 import * as preset from '../preset';
+import * as series from '../series';
 import * as studioview from '../studioview';
 import { withinDirectoryBrowseRoot } from './directories';
 import { goMap } from './http';
@@ -40,10 +41,21 @@ export interface Project {
   path: string;
   name: string;
   last_opened_at?: string;
+  /** 所属专栏 ID（缓存自项目根目录的 onset.series.json，方便首页分组）。 */
+  series_id?: string;
+  /** 在专栏里的期号（可选）。 */
+  episode?: number;
 }
 
 export function projectJSON(p: Project): Record<string, unknown> {
-  return { id: p.id, path: p.path, name: p.name, last_opened_at: p.last_opened_at || undefined };
+  return {
+    id: p.id,
+    path: p.path,
+    name: p.name,
+    last_opened_at: p.last_opened_at || undefined,
+    series_id: p.series_id || undefined,
+    episode: p.episode,
+  };
 }
 
 export interface Registry {
@@ -177,6 +189,16 @@ export function inspectProject(p: Project): Record<string, unknown> {
     if (ok) meta.film_style = manifest.cn;
   } catch {
     // 读不了就不显示。
+  }
+  try {
+    const binding = series.readBinding(p.path);
+    if (binding) {
+      meta.series_id = binding.series_id;
+      meta.series_name = binding.series_name;
+      if (binding.episode !== undefined) meta.episode = String(binding.episode);
+    }
+  } catch {
+    // 绑定文件损坏时不阻断打开项目。
   }
   // 项目的流程：顶栏的步骤、第一步与用不上的页面都按它（界面不按片型写死）。没有流程记录的目录排不出路线：
   // 不给 flow 与 step，flow_error 照实说缺什么（界面据此提示，「开始制作」也会报同一句）。

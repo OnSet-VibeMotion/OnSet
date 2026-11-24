@@ -2,7 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { errorText, post } from '../../api';
 import type { Attachment, Project } from '../../types';
 import { uploadMaterials } from '../homeAttachments';
-import { type CreationJob, datedName, inkDuration, reducedMotion, type StepID, type StepState, steps } from './helpers';
+import {
+  type CreationJob,
+  episodeProjectName,
+  inkDuration,
+  reducedMotion,
+  type StepID,
+  type StepState,
+  steps,
+} from './helpers';
 import { createProjectStep, runNamingStep, waitForSkillsStep, waitForStyleStep } from './steps';
 
 export function useCreationRunner(job: CreationJob, onDone: (projectId: string, sessionId: string) => void) {
@@ -75,7 +83,7 @@ export function useCreationRunner(job: CreationJob, onDone: (projectId: string, 
         // 起不出来（工具没装、超时）或用户不等，就用第一句话截出来的名字。
         const { base, token } = await runNamingStep({ job, mark, setCaption, setRenamed, skipNaming });
         if (cancelled) return;
-        const dated = datedName(base);
+        const dated = episodeProjectName(job, base);
         setTitle(dated);
         // 定名：划掉原话、逐字写出片名，停一拍再回到倒计时。
         setNaming('reveal');

@@ -13,6 +13,7 @@ import { rendererState } from './components/agentReady';
 import type { Outbox } from './components/Chat';
 import { Home } from './components/Home';
 import { Onboarding, shouldOnboard } from './components/Onboarding';
+import { SeriesAssetsPanel } from './components/series/SeriesAssetsPanel';
 import { stepTabs, type Tab } from './components/Preview';
 import { currentSummary } from './components/Progress';
 import { pageView } from './components/pageViews';
@@ -28,6 +29,7 @@ export function App() {
   const setup = useSetup();
   const [setupOpen, setSetupOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [seriesPanelOpen, setSeriesPanelOpen] = useState(false);
   // 顶栏只数要一起装的（必需项与配音、对齐工具）；节拍环境、风格来源这些按需的另算。
   const setupCore =
     setup.status?.items.filter(
@@ -172,6 +174,7 @@ export function App() {
         onInstallSkills={() => void appTasks.installSkills()}
         onTogglePanel={() => setPanelOpen(!panelOpen)}
         onCancelTask={(id) => void appTasks.run(`/api/tasks/${id}/cancel`)}
+        onOpenSeries={() => setSeriesPanelOpen(true)}
         onOpenMemory={() => {
           setPanelOpen(true);
           setTab('memory');
@@ -214,6 +217,7 @@ export function App() {
               notify(errorText(err));
             }
           }}
+          onProjectsChanged={loadProjects}
           onBrowse={() => setDialog(true)}
           onStarted={async (projectId, startedSession) => {
             remember(projectId, startedSession);
@@ -280,6 +284,15 @@ export function App() {
         />
       )}
 
+      {seriesPanelOpen && state?.metadata.series_id && (
+        <SeriesAssetsPanel
+          seriesId={state.metadata.series_id}
+          seriesName={state.metadata.series_name || state.metadata.series_id}
+          episode={state.metadata.episode}
+          onSynced={() => void loadProject()}
+          onClose={() => setSeriesPanelOpen(false)}
+        />
+      )}
       <AppModals
         setup={setup}
         setupOpen={setupOpen}
