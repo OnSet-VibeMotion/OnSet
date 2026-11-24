@@ -73,6 +73,7 @@ export function Home(props: Props) {
   const [seriesList, setSeriesList] = useState<SeriesItem[]>([]);
   const [activeSeriesId, setActiveSeriesId] = useState('');
   const [episodeInput, setEpisodeInput] = useState('');
+  const pendingSeriesMode = useRef<{ delivery: string; narration: string } | null>(null);
   const [seriesModal, setSeriesModal] = useState<{ open: boolean; item: SeriesItem | null }>({
     open: false,
     item: null,
@@ -136,15 +137,19 @@ export function Home(props: Props) {
   const modeInfo = modes.find((m) => m.id === mode) ?? modes[0];
   const activeSeries = seriesList.find((s) => s.id === activeSeriesId) ?? null;
 
-  // 若用户在 /api/styles 返回前就选中了非口播专栏，目录就绪后重新匹配对应的 mode，避免静默落回 speech。
+  const chooseMode = (next: string) => {
+    pendingSeriesMode.current = null;
+    setMode(next);
+  };
+
+  // 若用户在 /api/styles 返回前选中了非口播专栏，目录就绪后仅补齐一次 mode，避免后续刷新覆盖单期修改。
   useEffect(() => {
-    if (!styles || !activeSeries) return;
-    if (!activeSeries.defaults.delivery && !activeSeries.defaults.narration) return;
-    const targetDelivery = activeSeries.defaults.delivery || 'speech';
-    const targetNarration = activeSeries.defaults.narration || 'solo';
-    const matched = styles.modes.find((m) => m.delivery === targetDelivery && m.narration === targetNarration);
+    const pending = pendingSeriesMode.current;
+    if (!styles || !pending) return;
+    const matched = styles.modes.find((m) => m.delivery === pending.delivery && m.narration === pending.narration);
     if (matched) setMode(matched.id);
-  }, [styles, activeSeries?.id]);
+    pendingSeriesMode.current = null;
+  }, [styles]);
 
   /** 选定某个专栏作为本次开片上下文：自动套用该专栏预设，单期仍可覆盖。 */
   const applySeriesContext = (item: SeriesItem) => {
@@ -152,11 +157,12 @@ export function Home(props: Props) {
     setEpisodeInput(String(item.next_episode));
     setTemplate('');
     if (item.defaults.canvas) setCanvas(item.defaults.canvas);
+    pendingSeriesMode.current = null;
     if (item.defaults.delivery || item.defaults.narration) {
-      const targetDelivery = item.defaults.delivery || 'speech';
-      const targetNarration = item.defaults.narration || 'solo';
-      const matched = modes.find((m) => m.delivery === targetDelivery && m.narration === targetNarration);
+      const target = { delivery: item.defaults.delivery || 'speech', narration: item.defaults.narration || 'solo' };
+      const matched = styles?.modes?.find((m) => m.delivery === target.delivery && m.narration === target.narration);
       if (matched) setMode(matched.id);
+      else if (!styles?.modes?.length) pendingSeriesMode.current = target;
     }
     setFilmStyle(item.defaults.film_style ?? '');
     if (item.parent_dir) setParent(item.parent_dir);
@@ -189,7 +195,7 @@ export function Home(props: Props) {
     if (!t) return;
     setTemplate(id);
     setCanvas(t.canvas);
-    setMode(t.mode);
+    chooseMode(t.mode);
     textarea.current?.focus();
   };
 
@@ -322,7 +328,7 @@ export function Home(props: Props) {
               episode={episodeInput}
               onEpisode={setEpisodeInput}
               onManage={() => setSeriesModal({ open: true, item: activeSeries })}
-              onClear={() => setActiveSeriesId('')}
+              onClear={() => ((pendingSeriesMode.current = null), setActiveSeriesId(''))}
             />
           )}
 
@@ -346,7 +352,7 @@ export function Home(props: Props) {
             modes={modes}
             mode={mode}
             modeInfo={modeInfo}
-            onMode={setMode}
+            onMode={chooseMode}
             currentTemplate={current}
             onClearTemplate={() => setTemplate('')}
             agents={props.agents}

@@ -10,7 +10,7 @@ import * as scene from '@onset/engine/scene';
 import { currentEnvironment } from './cli';
 import './memory_cmd_exam';
 import './memory_cmd_lifecycle';
-import { errorText, jsonParam, loadMemoryConfig, splitList } from './memory_cmd_shared';
+import { errorText, jsonParam, loadMemoryConfig, sceneSeriesId, splitList } from './memory_cmd_shared';
 import { defineGroup } from './ops/cli';
 import { bool, num, str, strs } from './ops/common';
 import { defineOp, ParamError } from './ops/op';
@@ -161,6 +161,7 @@ defineOp({
       budget: cfg.memory.recallBudget,
       renderer,
       model,
+      series: sceneSeriesId(s.directory),
     };
     if (bool(p.with_trial)) {
       const extra: memory.Memory[] = [];

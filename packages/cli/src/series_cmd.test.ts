@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as series from '@onset/engine/series';
 import { describe, expect, it } from 'vitest';
+import './cli';
+import { findOp, normalizeToolParams, TextSink } from './ops/op';
 import { runIn, tempDir } from './testutil';
 
 describe('CLI / MCP series operations', () => {
@@ -49,6 +51,36 @@ describe('CLI / MCP series operations', () => {
     const noopRes = await runIn(ep1, ['series', 'publish-template']);
     expect(noopRes.code).toBe(0);
     expect(series.readPublishTemplate(seriesRoot, s.id)?.title_pattern).toBe('【EP{nn}】{title}');
+
+    // 回归：显式传入 default_hashtags: [] 或空字符串应能局部清空对应字段，同时保留未指定的字段
+    const op = findOp('series_update_publish_template')!;
+    const prevCwd = process.cwd();
+    try {
+      process.chdir(ep1);
+      const out1 = new TextSink();
+      await op.run(normalizeToolParams(op, { default_hashtags: ['#硬核', '#动画'], description_footer: '订阅专栏' }), {
+        out: out1,
+        err: out1,
+        signal: new AbortController().signal,
+        unsafe: false,
+      });
+      expect(series.readPublishTemplate(seriesRoot, s.id)?.default_hashtags).toEqual(['#硬核', '#动画']);
+      expect(series.readPublishTemplate(seriesRoot, s.id)?.description_footer).toBe('订阅专栏');
+
+      const out2 = new TextSink();
+      await op.run(normalizeToolParams(op, { default_hashtags: [], description_footer: '' }), {
+        out: out2,
+        err: out2,
+        signal: new AbortController().signal,
+        unsafe: false,
+      });
+      const afterClear = series.readPublishTemplate(seriesRoot, s.id);
+      expect(afterClear?.title_pattern).toBe('【EP{nn}】{title}');
+      expect(afterClear?.default_hashtags).toBeUndefined();
+      expect(afterClear?.description_footer).toBeUndefined();
+    } finally {
+      process.chdir(prevCwd);
+    }
 
     // 在 EP2 里查状态并拉取组件
     const infoBefore = await runIn(ep2, ['series', 'info', '--json']);

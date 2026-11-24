@@ -85,10 +85,10 @@ export function loadMemoryConfig(): { cfg: config.Config; store: memory.Store } 
   return { cfg, store: memory.open(cfg.memory.dir) };
 }
 
-function sceneSeriesId(sceneDir: string): string {
-  // 镜头目录通常是 <project>/scenes/<scene-id>，向上寻找 onset.series.json。
+export function sceneSeriesId(sceneDir: string): string {
+  // 镜头目录通常是 <project>/scenes/<scene-id> 或试镜目录 <project>/production/auditions/<id>/<slot>，向上寻找 onset.series.json。
   let cur = path.resolve(sceneDir);
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 6; i++) {
     try {
       const b = series.readBinding(cur);
       if (b) return b.series_id;

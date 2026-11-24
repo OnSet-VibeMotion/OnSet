@@ -19,6 +19,7 @@ import * as tools from '@onset/engine/tools';
 import { EventPrinter } from './agentprint';
 import type { Out } from './cobra';
 import { attachMemory, newRunID } from './memory_cmd';
+import { sceneSeriesId } from './memory_cmd_shared';
 import { ParamError } from './ops/op';
 import { recordOrchestratorUsage } from './usage_cmd';
 
@@ -139,6 +140,7 @@ export function contestantRunner(
             budget: cfg.memory.recallBudget,
             renderer: c.renderer,
             model,
+            series: sceneSeriesId(root) || sceneSeriesId(prepared.directory),
             // 人评考试的带经验那份：再加上要考的试用经验，其余与不带的那份逐字相同。
             ...(c.role === 'trial' ? { extra: trials } : {}),
           });

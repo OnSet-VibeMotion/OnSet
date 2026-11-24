@@ -5,6 +5,22 @@ import { Aligners } from './providers';
 
 /**
  * 任何配置下编排工具都要用到的命令（安全模式下按前缀放行）。
+ *
+ * 早先只放行 onset、ffmpeg、ffprobe、ls、mkdir，编排工具连 cat、head、echo、shasum 都被拦，
+ * 一轮对话里大半工具调用是「需要批准」，而 -p 模式下没人批准（实测）。这里补上只读查看、
+ * 校验哈希、只读 git 与下载（制作提示词要求从 Google Fonts 下载字体）。之后又放了
+ * python3 / python / node：编排工具常要写小脚本处理数据，拦掉只会逼用户改用 --unsafe
+ * （用户反馈）。代价是脚本能做任何事，包括读 .env——这里防的是误操作与越界命令，
+ * 不是对抗性的编排工具。仍然不放：shell 本身（sh、bash，等于任意命令行）、删除与改权限
+ * （rm、chmod、chown）、安装（brew、pip、npm）、提权（sudo）。用户要补别的命令写进
+ * ORCHESTRATOR_ALLOW_COMMANDS。
+ * claude 的 acceptEdits 自己会放行工作区内的 touch、mkdir、rm、mv、cp 这类文件命令；
+ * .env 的读取由 Read 禁令拦着，cat .env 照样会被拒（实测）。
+ *
+ * 2026-11 再放宽一轮（用户反馈「安全方向的限制还可以放宽」）：文本处理（sed、awk、tr……）、
+ * 压缩解压、macOS 自带的看图与放音命令，都是编排工具整理素材时顺手要用、又碰不到项目外的。
+ * 仍然不放 xargs、env、sh 这类「能代为执行任意命令」的。白名单外的命令，编排工具是 claude 且在
+ * 客户端里时会弹卡片问用户（studio/permissions.ts），其余工具照旧直接拒绝。
  */
 export const orchestratorBaseCommands: readonly string[] = [
   'ffmpeg',

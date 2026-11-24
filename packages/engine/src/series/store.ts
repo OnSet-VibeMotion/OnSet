@@ -101,6 +101,18 @@ export function assertOutsideSeriesRoot(seriesRoot: string, candidateDir: string
   }
 }
 
+/** 校验默认保存父目录不位于专栏库内部（允许父目录位于用户主目录等祖先目录；最终项目目录仍由 bindProject 做严格重叠检查）。 */
+function assertNotInsideSeriesRoot(seriesRoot: string, candidateDir: string, label: string): void {
+  if (!seriesRoot || !candidateDir) return;
+  const rootReal = resolveRealOrAbs(seriesRoot);
+  const targetReal = resolveRealOrAbs(candidateDir);
+  const relToRoot = path.relative(rootReal, targetReal);
+  const insideRoot = relToRoot === '' || (!relToRoot.startsWith('..') && !path.isAbsolute(relToRoot));
+  if (insideRoot) {
+    throw new Error(`${label}不能位于专栏库目录内部：${candidateDir}`);
+  }
+}
+
 function containsNestedProject(dir: string): boolean {
   const markers = new Set(['onset.conf', 'onset.flow.json', 'onset.series.json']);
   const walk = (cur: string): boolean => {
@@ -216,7 +228,7 @@ export function createSeries(rootDir: string, input: CreateSeriesInput): SeriesC
   const target = path.join(rootDir, id);
   if (fs.existsSync(path.join(target, ConfigFile))) throw new Error(`专栏「${id}」已存在`);
   const parentDir = cleanOptionalString(input.parent_dir);
-  if (parentDir) assertOutsideSeriesRoot(rootDir, parentDir, '专栏默认保存目录');
+  if (parentDir) assertNotInsideSeriesRoot(rootDir, parentDir, '专栏默认保存目录');
   const nextEp =
     typeof input.next_episode === 'number' && Number.isInteger(input.next_episode) && input.next_episode >= 1
       ? input.next_episode
@@ -254,7 +266,7 @@ export function updateSeries(rootDir: string, id: string, patch: UpdateSeriesPat
     nextEpisode = patch.next_episode;
   }
   const nextParentDir = patch.parent_dir !== undefined ? cleanOptionalString(patch.parent_dir) : existing.parent_dir;
-  if (nextParentDir) assertOutsideSeriesRoot(rootDir, nextParentDir, '专栏默认保存目录');
+  if (nextParentDir) assertNotInsideSeriesRoot(rootDir, nextParentDir, '专栏默认保存目录');
   const updated: SeriesConfig = {
     ...existing,
     name: nextName,

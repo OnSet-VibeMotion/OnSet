@@ -119,13 +119,14 @@ function applySingleSyncItem(
   const dest = assertSafeTargetPath(projectRoot, item.target_path);
 
   if (item.status === 'synced') {
-    mergeSyncedRecord(projectRoot, seriesId, item);
+    const syncedDigest = item.local_digest || item.digest;
+    mergeSyncedRecord(projectRoot, seriesId, item, syncedDigest);
     return {
       key: item.key,
       kind: item.kind,
       name: item.name,
       target_path: item.target_path,
-      digest: item.digest,
+      digest: syncedDigest,
       unchanged: true,
     };
   }
@@ -148,26 +149,29 @@ function applySingleSyncItem(
     atomicWrite(dest, marshalIndent(tpl) + '\n', 0o644);
   }
 
-  mergeSyncedRecord(projectRoot, seriesId, item);
+  // 记录实际写入目标文件的摘要，避免并发更新专栏资产时 series_digest 与实际落盘字节失配。
+  const written = inspectLocalAsset(projectRoot, item);
+  const writtenDigest = written.state === 'ok' ? written.digest : item.digest;
+  mergeSyncedRecord(projectRoot, seriesId, item, writtenDigest);
   return {
     key: item.key,
     kind: item.kind,
     name: item.name,
     target_path: item.target_path,
-    digest: item.digest,
+    digest: writtenDigest,
     unchanged: false,
   };
 }
 
 /** 写入前重新读取最新 onset.series.json 再合并单条记录，降低并发同步丢写的风险。 */
-function mergeSyncedRecord(projectRoot: string, seriesId: string, item: AssetSyncStatus): void {
+function mergeSyncedRecord(projectRoot: string, seriesId: string, item: AssetSyncStatus, digest: string): void {
   const latest = readBinding(projectRoot);
   if (!latest || latest.series_id !== seriesId) return;
   latest.synced_assets[item.key] = {
     kind: item.kind,
     name: item.name,
     target_path: item.target_path,
-    series_digest: item.digest,
+    series_digest: digest,
     synced_at: new Date().toISOString(),
   };
   writeBinding(projectRoot, latest);

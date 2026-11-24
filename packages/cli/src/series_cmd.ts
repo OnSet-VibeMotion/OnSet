@@ -6,7 +6,7 @@ import * as series from '@onset/engine/series';
 import { currentEnvironment } from './cli';
 import { defineGroup } from './ops/cli';
 import { bool, str } from './ops/common';
-import { defineOp } from './ops/op';
+import { defineOp, isParamProvided } from './ops/op';
 
 defineGroup({
   path: ['series'],
@@ -184,13 +184,8 @@ defineOp({
       return { data: { series_id: binding.series_id, publish_template: null } };
     }
     const existing = series.readPublishTemplate(seriesRoot(), binding.series_id);
-    const has = (key: string) => {
-      const v = p[key];
-      if (Array.isArray(v)) return v.length > 0;
-      return typeof v === 'string' && v !== '';
-    };
-    const toStrings = (v: unknown) =>
-      Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined;
+    const has = (key: string) => isParamProvided(p, key);
+    const toStrings = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
     const merged: series.PublishTemplateInput = {
       title_pattern: has('title_pattern') ? str(p.title_pattern) : existing?.title_pattern,
       default_hashtags: has('default_hashtags') ? toStrings(p.default_hashtags) : existing?.default_hashtags,
