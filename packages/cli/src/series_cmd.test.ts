@@ -4,7 +4,9 @@ import * as series from '@onset/engine/series';
 import { describe, expect, it } from 'vitest';
 import './cli';
 import { findOp, normalizeToolParams, TextSink } from './ops/op';
+import { runOpWorker } from './ops/worker';
 import { runIn, tempDir } from './testutil';
+import { describeTools, opCommand, prepareCall } from './toolsmcp';
 
 describe('CLI / MCP series operations', () => {
   it('runs series_info, series_promote_asset, series_sync_asset, series_update_brief, and series_update_publish_template', async () => {
@@ -78,6 +80,31 @@ describe('CLI / MCP series operations', () => {
       expect(afterClear?.title_pattern).toBe('【EP{nn}】{title}');
       expect(afterClear?.default_hashtags).toBeUndefined();
       expect(afterClear?.description_footer).toBeUndefined();
+
+      // 回归（MCP 跨进程路径）：prepareCall -> opCommand -> runOpWorker 不得把未传字段的默认值误判为显式清空
+      const mcpTool = describeTools('orchestrator').find((t) => t.name === 'series_update_publish_template')!;
+      const runViaMCP = async (input: Record<string, unknown>) => {
+        const prepared = prepareCall(mcpTool, input);
+        const cmd = opCommand(mcpTool.name, prepared);
+        const paramsJSON = cmd.args[cmd.args.length - 1] ?? '{}';
+        const sink = new TextSink();
+        const code = await runOpWorker(mcpTool.name, paramsJSON, sink, new AbortController().signal, false);
+        expect(code).toBe(0);
+      };
+
+      await runViaMCP({ default_hashtags: ['#MCP标签'] });
+      const afterMcpPartial = series.readPublishTemplate(seriesRoot, s.id);
+      expect(afterMcpPartial?.title_pattern).toBe('【EP{nn}】{title}');
+      expect(afterMcpPartial?.cover_guidelines).toBe('左上角带 EP 徽章');
+      expect(afterMcpPartial?.default_hashtags).toEqual(['#MCP标签']);
+
+      await runViaMCP({ default_hashtags: [] });
+      const afterMcpClear = series.readPublishTemplate(seriesRoot, s.id);
+      expect(afterMcpClear?.title_pattern).toBe('【EP{nn}】{title}');
+      expect(afterMcpClear?.default_hashtags).toBeUndefined();
+
+      await runViaMCP({});
+      expect(series.readPublishTemplate(seriesRoot, s.id)?.title_pattern).toBe('【EP{nn}】{title}');
     } finally {
       process.chdir(prevCwd);
     }

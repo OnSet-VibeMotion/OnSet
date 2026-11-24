@@ -2,7 +2,15 @@
  * onset 工具服务的工具定义、schema 生成与调用前校验。
  */
 import * as flow from '@onset/engine/flow';
-import { allOps, normalizeToolParams, type Op, opScopes, type ParamSpec, type ParamValues } from './ops/op';
+import {
+  allOps,
+  markParamProvided,
+  normalizeToolParams,
+  type Op,
+  opScopes,
+  type ParamSpec,
+  type ParamValues,
+} from './ops/op';
 import { defaultWaitSeconds } from './toolsmcp_jobs';
 import {
   allowedForProjectFlow,
@@ -263,6 +271,9 @@ export function prepareCall(tool: ToolDef, input: ParamValues): ParamValues {
   const op = tool.op!;
   const { wait_seconds: _wait, ...rest } = input;
   const params = normalizeToolParams(op, rest);
-  if (op.name === 'hyperframes') normalizeHyperFramesParams(tool.profile, params);
+  if (op.name === 'hyperframes') {
+    normalizeHyperFramesParams(tool.profile, params);
+    if (Array.isArray(params.args) && params.args.length > 0) markParamProvided(params, 'args');
+  }
   return params;
 }

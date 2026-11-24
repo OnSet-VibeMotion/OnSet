@@ -138,6 +138,26 @@ export function isParamProvided(params: ParamValues, key: string): boolean {
   return Object.hasOwn(params, key) && params[key] !== undefined && params[key] !== null;
 }
 
+/** 将预处理阶段补写进 params 的字段标记为已提供，确保跨进程序列化时不会丢失。 */
+export function markParamProvided(params: ParamValues, key: string): void {
+  const set = (params as Record<symbol, unknown>)[ProvidedParamsKey];
+  if (set instanceof Set) set.add(key);
+}
+
+/**
+ * 序列化给执行进程（__op）的参数：若由 normalizeParams 构造，只发送显式传入（或预处理补写）的键，
+ * 避免未传字段的默认值跨进程后被执行端误判为显式输入。
+ */
+export function serializeWorkerParams(params: ParamValues): ParamValues {
+  const set = (params as Record<symbol, unknown>)[ProvidedParamsKey];
+  if (!(set instanceof Set)) return params;
+  const out: ParamValues = {};
+  for (const key of set) {
+    if (Object.hasOwn(params, key)) out[key] = params[key];
+  }
+  return out;
+}
+
 /**
  * 校验并补齐一次调用的参数：未知参数、类型不对、缺必填都抛 ParamError。
  * 工具服务与客户端后端都经这里，命令行适配已经按类型解析过，也再过一遍。

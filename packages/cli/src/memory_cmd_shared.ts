@@ -92,6 +92,7 @@ export function sceneSeriesId(sceneDir: string): string {
     try {
       const b = series.readBinding(cur);
       if (b) return b.series_id;
+      if (fs.existsSync(path.join(cur, 'onset.conf'))) return '';
     } catch {
       return '';
     }

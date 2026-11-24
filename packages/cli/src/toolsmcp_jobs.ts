@@ -10,7 +10,7 @@ import { parseWorkerOutput, visibleText, workerArgs } from '@onset/engine/opwork
 import { groupSpawnOptions, killTree } from '@onset/engine/procgroup';
 import { nodeCommand } from '@onset/engine/toolpath';
 import { compactHyperFrames, hyperFramesProgress } from './hfoutput';
-import type { ParamValues } from './ops/op';
+import { type ParamValues, serializeWorkerParams } from './ops/op';
 import { toolOutputArchiveDir } from './output_archive';
 
 /** 一次调用最多等多久（秒）：codex 的 MCP 调用默认 60 秒超时，留出余量。 */
@@ -49,7 +49,7 @@ export type Spawner = (name: string, params: ParamValues) => ChildProcess;
 
 /** 执行进程的命令行与环境（spawnOp 用；单独拿出来是为了测「客户端里要带 ELECTRON_RUN_AS_NODE」）。 */
 export function opCommand(name: string, params: ParamValues): { file: string; args: string[]; env: NodeJS.ProcessEnv } {
-  const command = nodeCommand(process.argv[1] ?? '', workerArgs(name, params));
+  const command = nodeCommand(process.argv[1] ?? '', workerArgs(name, serializeWorkerParams(params)));
   return { file: command.file, args: command.args, env: { ...process.env, ...command.env } };
 }
 
