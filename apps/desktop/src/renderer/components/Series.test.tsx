@@ -243,7 +243,7 @@ test('SeriesAssetsPanel syncs series updates, promotes candidates, and saves pub
     kind: 'shared',
     name: 'brand-badge',
     from: 'production/shared/brand-badge',
-    replace: true,
+    replace: false,
   });
 
   // 切到「发布模板」保存

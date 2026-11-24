@@ -88,7 +88,7 @@ export function Home(props: Props) {
       const res = await api<SeriesListResponse>('/api/series');
       setSeriesList(res.series ?? []);
     } catch {
-      setSeriesList([]);
+      // 刷新失败时保留已加载列表，避免已选中的专栏被静默清成独立视频。
     }
   }, []);
 
@@ -135,6 +135,16 @@ export function Home(props: Props) {
   const canvasInfo = styles?.canvases.find((c) => c.id === canvas);
   const modeInfo = modes.find((m) => m.id === mode) ?? modes[0];
   const activeSeries = seriesList.find((s) => s.id === activeSeriesId) ?? null;
+
+  // 若用户在 /api/styles 返回前就选中了非口播专栏，目录就绪后重新匹配对应的 mode，避免静默落回 speech。
+  useEffect(() => {
+    if (!styles || !activeSeries) return;
+    if (!activeSeries.defaults.delivery && !activeSeries.defaults.narration) return;
+    const targetDelivery = activeSeries.defaults.delivery || 'speech';
+    const targetNarration = activeSeries.defaults.narration || 'solo';
+    const matched = styles.modes.find((m) => m.delivery === targetDelivery && m.narration === targetNarration);
+    if (matched) setMode(matched.id);
+  }, [styles, activeSeries?.id]);
 
   /** 选定某个专栏作为本次开片上下文：自动套用该专栏预设，单期仍可覆盖。 */
   const applySeriesContext = (item: SeriesItem) => {

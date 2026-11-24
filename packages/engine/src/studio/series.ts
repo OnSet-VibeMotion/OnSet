@@ -117,9 +117,18 @@ export async function seriesAPI(s: Server, request: Request, rest: string): Prom
     }
     const target = s.registeredProjects().find((p) => p.id === projectId);
     if (!target) return writeError(404, 'project_not_found', '项目未登记');
-    if (fs.existsSync(target.path)) series.unbindProject(target.path);
-    const updated = s.updateProjectSeries(target.id, undefined, undefined) ?? target;
-    return writeJSON(200, goMap({ project: projectJSON(updated) }));
+    try {
+      s.acquire(target.path, '移出专栏');
+    } catch (err) {
+      return writeError(409, 'project_busy', (err as Error).message);
+    }
+    try {
+      if (fs.existsSync(target.path)) series.unbindProject(target.path);
+      const updated = s.updateProjectSeries(target.id, undefined, undefined) ?? target;
+      return writeJSON(200, goMap({ project: projectJSON(updated) }));
+    } finally {
+      s.release(target.path);
+    }
   }
 
   // POST /api/series/project/sync | POST /api/series/project/promote
@@ -155,6 +164,11 @@ export async function seriesAPI(s: Server, request: Request, rest: string): Prom
     const target = s.registeredProjects().find((p) => p.id === projectId);
     if (!target) return writeError(404, 'project_not_found', '项目未登记');
     try {
+      s.acquire(target.path, '归入专栏');
+    } catch (err) {
+      return writeError(409, 'project_busy', (err as Error).message);
+    }
+    try {
       const binding = series.bindProject(root, id, target.path, { episode });
       const updatedProject = s.updateProjectSeries(target.id, binding.series_id, binding.episode) ?? target;
       const latest = series.getSeries(root, id);
@@ -168,6 +182,8 @@ export async function seriesAPI(s: Server, request: Request, rest: string): Prom
       );
     } catch (err) {
       return writeError(400, 'series_bind_failed', (err as Error).message);
+    } finally {
+      s.release(target.path);
     }
   }
 

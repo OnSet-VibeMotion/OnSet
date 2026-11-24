@@ -50,10 +50,19 @@ export function seriesPromptBrief(seriesRoot: string, projectRoot: string): Seri
   }
   if (!binding) return { seriesId: '', seriesName: '', text: '', digest: '' };
 
-  const cfg = seriesRoot ? getSeries(seriesRoot, binding.series_id) : null;
-  const brief = cfg ? goTrimSpace(readBrief(seriesRoot, cfg.id)) : '';
+  let cfg = null;
+  let brief = '';
+  try {
+    cfg = seriesRoot ? getSeries(seriesRoot, binding.series_id) : null;
+    brief = cfg ? goTrimSpace(readBrief(seriesRoot, cfg.id)) : '';
+  } catch {
+    cfg = null;
+    brief = '';
+  }
   const name = cfg?.name ?? binding.series_name;
-  const epLabel = binding.episode ? `第 ${binding.episode} 期（EP${String(binding.episode).padStart(2, '0')}）` : '番外/未编号';
+  const epLabel = binding.episode
+    ? `第 ${binding.episode} 期（EP${String(binding.episode).padStart(2, '0')}）`
+    : '番外/未编号';
 
   const lines: string[] = [];
   lines.push(`专栏规范（本片属于专栏「${name}」，标识 ${binding.series_id}，${epLabel}）：`);
@@ -62,7 +71,9 @@ export function seriesPromptBrief(seriesRoot: string, projectRoot: string): Seri
   if (cfg?.defaults.film_style) lines.push(`- 专栏默认整片风格：${cfg.defaults.film_style}`);
   if (brief !== '') {
     lines.push('');
-    lines.push('本专栏视觉与口播固定约定（写口播稿、视觉处理方案与分镜任务书时必须遵守；与本轮用户明确要求冲突时以用户本次要求为准）：');
+    lines.push(
+      '本专栏视觉与口播固定约定（写口播稿、视觉处理方案与分镜任务书时必须遵守；与本轮用户明确要求冲突时以用户本次要求为准）：',
+    );
     lines.push(brief);
   }
 

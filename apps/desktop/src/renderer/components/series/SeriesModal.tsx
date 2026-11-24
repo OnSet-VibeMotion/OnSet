@@ -74,8 +74,9 @@ export function SeriesModal(props: {
       setError('请填写专栏名称');
       return;
     }
-    const parsedEp = Number.parseInt(nextEpisode, 10);
-    if (!Number.isInteger(parsedEp) || parsedEp < 1) {
+    const rawEp = nextEpisode.trim();
+    const parsedEp = /^[1-9]\d*$/.test(rawEp) ? Number(rawEp) : Number.NaN;
+    if (!Number.isSafeInteger(parsedEp) || parsedEp < 1) {
       setError('下一期期号必须是正整数');
       return;
     }

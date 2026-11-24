@@ -8,6 +8,7 @@ import { addToolsLocation, envMap, lookPath, parsePassthrough } from '../envutil
 import { styleKey } from '../filmstyle';
 import { readSection } from '../flow';
 import * as ledger from '../ledger';
+import * as series from '../series';
 import {
   drainViewInbox,
   KindView,
@@ -192,6 +193,14 @@ export async function executeTurn(
           fallbackPrompt += '\n\n---\n\n' + ownership;
         if (orchestratorCannotSee(cfg) && !fallbackPrompt.includes(noVisionNote))
           fallbackPrompt += '\n\n---\n\n' + noVisionNote;
+        try {
+          const sb = series.seriesPromptBrief(cfg.seriesDir, p.path);
+          if (sb.text !== '' && !fallbackPrompt.includes(sb.text.trim()) && !brief.includes(sb.text.trim())) {
+            fallbackPrompt += '\n\n---\n\n' + sb.text.trim();
+          }
+        } catch {
+          // 专栏配置损坏时不阻断续接回退。
+        }
         spec.prompt = reseedPrompt(history, fallbackPrompt, brief, handoff);
         outcome = await agentrun.run(spec, onEvent, signal);
         recordUsage(signal, p, sess, cfg.orchestrator, env, turn.turn_id, outcome);

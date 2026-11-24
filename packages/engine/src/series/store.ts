@@ -78,6 +78,49 @@ export function seriesDir(rootDir: string, id: string): string {
   return path.join(rootDir, validateSeriesId(id));
 }
 
+function resolveRealOrAbs(dir: string): string {
+  const abs = path.resolve(dir);
+  try {
+    return fs.realpathSync(abs);
+  } catch {
+    return abs;
+  }
+}
+
+/** 校验目标目录不与专栏库根目录重叠（防止删除专栏时误删任何项目文件夹）。 */
+export function assertOutsideSeriesRoot(seriesRoot: string, candidateDir: string, label: string): void {
+  if (!seriesRoot || !candidateDir) return;
+  const rootReal = resolveRealOrAbs(seriesRoot);
+  const targetReal = resolveRealOrAbs(candidateDir);
+  const relToRoot = path.relative(rootReal, targetReal);
+  const relToTarget = path.relative(targetReal, rootReal);
+  const insideRoot = relToRoot === '' || (!relToRoot.startsWith('..') && !path.isAbsolute(relToRoot));
+  const containsRoot = relToTarget === '' || (!relToTarget.startsWith('..') && !path.isAbsolute(relToTarget));
+  if (insideRoot || containsRoot) {
+    throw new Error(`${label}不能位于或包含专栏库目录：${candidateDir}`);
+  }
+}
+
+function containsNestedProject(dir: string): boolean {
+  const markers = new Set(['onset.conf', 'onset.flow.json', 'onset.series.json']);
+  const walk = (cur: string): boolean => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(cur, { withFileTypes: true });
+    } catch {
+      return false;
+    }
+    for (const entry of entries) {
+      if (entry.isFile() && markers.has(entry.name)) return true;
+      if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'assets') {
+        if (walk(path.join(cur, entry.name))) return true;
+      }
+    }
+    return false;
+  };
+  return walk(dir);
+}
+
 function writeConfig(rootDir: string, cfg: SeriesConfig): void {
   const dir = seriesDir(rootDir, cfg.id);
   fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
@@ -172,6 +215,8 @@ export function createSeries(rootDir: string, input: CreateSeriesInput): SeriesC
       : uniqueSlug(rootDir, slugifySeriesId(name));
   const target = path.join(rootDir, id);
   if (fs.existsSync(path.join(target, ConfigFile))) throw new Error(`专栏「${id}」已存在`);
+  const parentDir = cleanOptionalString(input.parent_dir);
+  if (parentDir) assertOutsideSeriesRoot(rootDir, parentDir, '专栏默认保存目录');
   const nextEp =
     typeof input.next_episode === 'number' && Number.isInteger(input.next_episode) && input.next_episode >= 1
       ? input.next_episode
@@ -208,12 +253,14 @@ export function updateSeries(rootDir: string, id: string, patch: UpdateSeriesPat
     }
     nextEpisode = patch.next_episode;
   }
+  const nextParentDir = patch.parent_dir !== undefined ? cleanOptionalString(patch.parent_dir) : existing.parent_dir;
+  if (nextParentDir) assertOutsideSeriesRoot(rootDir, nextParentDir, '专栏默认保存目录');
   const updated: SeriesConfig = {
     ...existing,
     name: nextName,
     description: patch.description !== undefined ? cleanOptionalString(patch.description) : existing.description,
     accent: patch.accent !== undefined ? cleanOptionalString(patch.accent) : existing.accent,
-    parent_dir: patch.parent_dir !== undefined ? cleanOptionalString(patch.parent_dir) : existing.parent_dir,
+    parent_dir: nextParentDir,
     naming_pattern:
       patch.naming_pattern !== undefined ? cleanOptionalString(patch.naming_pattern) : existing.naming_pattern,
     next_episode: nextEpisode,
@@ -239,5 +286,8 @@ export function deleteSeries(rootDir: string, id: string): void {
   const valid = validateSeriesId(id);
   const dir = path.join(rootDir, valid);
   if (!fs.existsSync(path.join(dir, ConfigFile))) throw new Error(`找不到专栏：${valid}`);
+  if (containsNestedProject(dir)) {
+    throw new Error(`专栏目录内检测到视频项目文件，为防误删已中止删除：${dir}`);
+  }
   fs.rmSync(dir, { recursive: true, force: true });
 }

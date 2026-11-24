@@ -134,6 +134,12 @@ export function memoryApplicationsAPI(s: Server, request: Request): Response {
   const matches: Record<string, unknown>[] = [];
   let unreadable = 0;
   const env = envMap();
+  let seriesId = '';
+  try {
+    seriesId = series.readBinding(p.path)?.series_id ?? '';
+  } catch {
+    seriesId = '';
+  }
   for (const summary of summaries) {
     try {
       const sc = scene.load(summary.directory);
@@ -144,6 +150,7 @@ export function memoryApplicationsAPI(s: Server, request: Request): Response {
         budget: cfg.memory.recallBudget,
         renderer,
         model,
+        series: seriesId,
         extra: m.status === memory.StatusActive ? [] : [m],
       });
       const selected = result.items.find((item) => item.name === name);

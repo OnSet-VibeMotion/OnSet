@@ -99,13 +99,11 @@ describe('series cross-episode assets, dual bumper modes, and 3-way sync', () =>
     expect(fs.existsSync(path.join(ep2, 'assets/series/publish-template.json'))).toBe(true);
 
     // 候选扫描与规范提示词自动包含跨期资产与发布模板
-    expect(listProjectAssetCandidates(ep2).map((c) => `${c.kind}:${c.name}`).sort()).toEqual([
-      'audio:main-bgm',
-      'bumper:intro',
-      'bumper:outro',
-      'cast:host',
-      'shared:brand-badge',
-    ]);
+    expect(
+      listProjectAssetCandidates(ep2)
+        .map((c) => `${c.kind}:${c.name}`)
+        .sort(),
+    ).toEqual(['audio:main-bgm', 'bumper:intro', 'bumper:outro', 'cast:host', 'shared:brand-badge']);
     const brief = seriesPromptBrief(seriesRoot, ep2).text;
     expect(brief).toContain('[shared] brand-badge');
     expect(brief).toContain('[bumper] intro → assets/series/bumpers/intro（固定成片视频');
@@ -114,7 +112,9 @@ describe('series cross-episode assets, dual bumper modes, and 3-way sync', () =>
 
     // 7. 三方摘要比对：EP1 更新组件并覆盖沉淀后，EP2 应识别为 update_available，拉取前不静默改 EP2
     writeFile(path.join(ep1, 'production/shared/brand-badge/badge.js'), 'export const v = 2;\n');
-    expect(() => promoteAssetToSeries(seriesRoot, s.id, ep1, { kind: 'shared', name: 'brand-badge' })).toThrow(/replace/);
+    expect(() => promoteAssetToSeries(seriesRoot, s.id, ep1, { kind: 'shared', name: 'brand-badge' })).toThrow(
+      /replace/,
+    );
     promoteAssetToSeries(seriesRoot, s.id, ep1, { kind: 'shared', name: 'brand-badge', replace: true });
 
     const beforePull = diffSeriesAssets(seriesRoot, ep2).find((x) => x.key === 'shared:brand-badge');
@@ -137,5 +137,17 @@ describe('series cross-episode assets, dual bumper modes, and 3-way sync', () =>
     deleteSeriesAsset(seriesRoot, s.id, 'shared', 'brand-badge');
     expect(listSeriesAssets(seriesRoot, s.id).some((x) => x.key === 'shared:brand-badge')).toBe(false);
     expect(fs.existsSync(path.join(ep2, 'production/shared/brand-badge/badge.js'))).toBe(true);
+
+    // 回归：发布模板同步后应保持 synced，不会被误判为 local_modified
+    expect(diffSeriesAssets(seriesRoot, ep2).find((x) => x.key === 'publish_template:default')?.status).toBe('synced');
+
+    // 回归：目标父目录为符号链接时拒绝同步写入，且 diff 标记为 conflict 而非 missing
+    const outside = tempDir();
+    fs.rmSync(path.join(ep2, 'assets/series/audio'), { recursive: true, force: true });
+    fs.symlinkSync(outside, path.join(ep2, 'assets/series/audio'));
+    expect(diffSeriesAssets(seriesRoot, ep2).find((x) => x.key === 'audio:main-bgm')?.status).toBe('conflict');
+    expect(() => syncAssetToProject(seriesRoot, ep2, { kind: 'audio', name: 'main-bgm', replace: true })).toThrow(
+      /符号链接/,
+    );
   });
 });

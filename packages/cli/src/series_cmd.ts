@@ -28,7 +28,8 @@ defineOp({
   name: 'series_info',
   cli: ['series', 'info'],
   summary: '查看当前项目所属专栏的规范、发布模板与跨期资产同步状态',
-  description: '只读查看本片所属专栏的配置、视觉与口播规范（brief.md）、发布模板，以及每项跨期资产与当前项目的同步状态。',
+  description:
+    '只读查看本片所属专栏的配置、视觉与口播规范（brief.md）、发布模板，以及每项跨期资产与当前项目的同步状态。',
   examples: ['series_info({})', 'series_info({"json": true})'],
   params: {
     json: { type: 'boolean', description: '以 JSON 格式输出' },
@@ -134,7 +135,10 @@ defineOp({
       replace: bool(p.replace),
     });
     if (result.unchanged) out.write(`专栏资产 ${result.key} 内容相同，无需更新。\n`);
-    else out.write(`${result.replaced ? '已更新' : '已沉淀'}专栏资产 ${result.key}（${result.files} 个文件，${result.bytes} 字节）。\n`);
+    else
+      out.write(
+        `${result.replaced ? '已更新' : '已沉淀'}专栏资产 ${result.key}（${result.files} 个文件，${result.bytes} 字节）。\n`,
+      );
     return { data: result };
   },
 });
@@ -170,17 +174,41 @@ defineOp({
     description_footer: { type: 'string', description: '发布简介固定尾注' },
     cover_guidelines: { type: 'string', description: '系列封面视觉与构图规范' },
     credits_lines: { type: 'strings', description: '固定片头/BGM 等素材署名行' },
+    clear: { type: 'boolean', description: '清空整个发布模板' },
   },
   run: (p, { out }) => {
     const binding = requireProjectBinding(process.cwd());
-    const toStrings = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined);
-    const saved = series.writePublishTemplate(seriesRoot(), binding.series_id, {
-      title_pattern: str(p.title_pattern) || undefined,
-      default_hashtags: toStrings(p.default_hashtags),
-      description_footer: str(p.description_footer) || undefined,
-      cover_guidelines: str(p.cover_guidelines) || undefined,
-      credits_lines: toStrings(p.credits_lines),
-    });
+    if (bool(p.clear)) {
+      series.writePublishTemplate(seriesRoot(), binding.series_id, {});
+      out.write(`已清空专栏「${binding.series_name}」的发布模板。\n`);
+      return { data: { series_id: binding.series_id, publish_template: null } };
+    }
+    const existing = series.readPublishTemplate(seriesRoot(), binding.series_id);
+    const has = (key: string) => {
+      const v = p[key];
+      if (Array.isArray(v)) return v.length > 0;
+      return typeof v === 'string' && v !== '';
+    };
+    const toStrings = (v: unknown) =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined;
+    const merged: series.PublishTemplateInput = {
+      title_pattern: has('title_pattern') ? str(p.title_pattern) : existing?.title_pattern,
+      default_hashtags: has('default_hashtags') ? toStrings(p.default_hashtags) : existing?.default_hashtags,
+      description_footer: has('description_footer') ? str(p.description_footer) : existing?.description_footer,
+      cover_guidelines: has('cover_guidelines') ? str(p.cover_guidelines) : existing?.cover_guidelines,
+      credits_lines: has('credits_lines') ? toStrings(p.credits_lines) : existing?.credits_lines,
+    };
+    if (
+      !has('title_pattern') &&
+      !has('default_hashtags') &&
+      !has('description_footer') &&
+      !has('cover_guidelines') &&
+      !has('credits_lines')
+    ) {
+      out.write(`未指定要更新的字段，已保留专栏「${binding.series_name}」现有发布模板。\n`);
+      return { data: { series_id: binding.series_id, publish_template: existing } };
+    }
+    const saved = series.writePublishTemplate(seriesRoot(), binding.series_id, merged);
     out.write(`已更新专栏「${binding.series_name}」的发布模板。\n`);
     return { data: { series_id: binding.series_id, publish_template: saved } };
   },

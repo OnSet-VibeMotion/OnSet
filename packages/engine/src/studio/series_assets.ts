@@ -7,7 +7,16 @@
  * - POST /api/series/project/promote
  */
 import * as series from '../series';
-import { DecodeError, decodeJSON, fieldBool, fieldString, goMap, methodNotAllowed, writeError, writeJSON } from './http';
+import {
+  DecodeError,
+  decodeJSON,
+  fieldBool,
+  fieldString,
+  goMap,
+  methodNotAllowed,
+  writeError,
+  writeJSON,
+} from './http';
 import type { Server } from './studio';
 
 function toStrings(val: unknown): string[] | undefined {
@@ -128,7 +137,11 @@ export async function handleProjectSeriesAssetAction(
         const statuses = series.diffSeriesAssets(root, p.path);
         const synced: series.SyncAssetResult[] = [];
         for (const item of statuses) {
-          if (item.status === 'missing' || item.status === 'update_available' || (replace && item.status !== 'synced')) {
+          if (
+            item.status === 'missing' ||
+            item.status === 'update_available' ||
+            (replace && item.status !== 'synced')
+          ) {
             synced.push(series.syncAssetToProject(root, p.path, { kind: item.kind, name: item.name, replace }));
           }
         }

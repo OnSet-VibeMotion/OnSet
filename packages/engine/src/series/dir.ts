@@ -5,9 +5,9 @@ import { dataDir } from '../envutil';
 /** 覆盖专栏库目录的环境变量。 */
 export const DirEnv = 'ONSET_SERIES_DIR';
 
-/** 专栏库目录：ONSET_SERIES_DIR，否则 <数据目录>/onset/series。环境里什么都没有时为空。 */
+/** 专栏库目录：ONSET_SERIES_DIR（统一转为绝对路径），否则 <数据目录>/onset/series。环境里什么都没有时为空。 */
 export function defaultDir(env: Record<string, string | undefined>): string {
-  if (env[DirEnv]) return env[DirEnv]!;
+  if (env[DirEnv]) return path.resolve(env[DirEnv]!);
   const data = dataDir(env);
-  return data === '' ? '' : path.join(data, 'series');
+  return data === '' ? '' : path.resolve(path.join(data, 'series'));
 }

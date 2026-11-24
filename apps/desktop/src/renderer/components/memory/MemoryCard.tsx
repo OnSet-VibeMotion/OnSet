@@ -55,11 +55,17 @@ export function MemoryCard({
     memory.from_episodes?.length && `来自 ${memory.from_episodes.length} 次失败`,
     recalled > 0 && `用过 ${recalled} 次，${passed} 次一次通过`,
   ].filter(Boolean);
-  const currentScopeKind: 'project' | 'series' | 'global' = !memory.scope
+  const otherSeriesId =
+    memory.scope?.startsWith('series:') && memory.scope !== `series:${seriesId ?? ''}`
+      ? memory.scope.slice('series:'.length)
+      : '';
+  const currentScopeKind: 'project' | 'series' | 'global' | 'other_series' = !memory.scope
     ? 'global'
-    : memory.scope.startsWith('series:')
-      ? 'series'
-      : 'project';
+    : otherSeriesId
+      ? 'other_series'
+      : memory.scope.startsWith('series:')
+        ? 'series'
+        : 'project';
   const changeScope = async (nextScope: 'project' | 'series' | 'global') => {
     try {
       await post('/api/memory/actions/scope', { name: memory.name, scope: nextScope });
@@ -111,8 +117,16 @@ export function MemoryCard({
             <select
               aria-label={`调整 ${memory.description} 的作用范围`}
               value={currentScopeKind}
-              onChange={(e) => void changeScope(e.currentTarget.value as 'project' | 'series' | 'global')}
+              onChange={(e) => {
+                const v = e.currentTarget.value;
+                if (v === 'project' || v === 'series' || v === 'global') void changeScope(v);
+              }}
             >
+              {otherSeriesId && (
+                <option value="other_series" disabled>
+                  其他专栏（{otherSeriesId}）
+                </option>
+              )}
               <option value="project">仅本项目</option>
               <option value="series">本专栏</option>
               <option value="global">所有项目</option>

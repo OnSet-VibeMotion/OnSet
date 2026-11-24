@@ -78,7 +78,9 @@ export function writePublishTemplate(
     title_pattern: cleanStr(input.title_pattern),
     default_hashtags: cleanList(input.default_hashtags),
     description_footer: cleanStr(input.description_footer),
-    cover_guidelines: cleanList(input.credits_lines) ? cleanStr(input.cover_guidelines) : cleanStr(input.cover_guidelines),
+    cover_guidelines: cleanList(input.credits_lines)
+      ? cleanStr(input.cover_guidelines)
+      : cleanStr(input.cover_guidelines),
     credits_lines: cleanList(input.credits_lines),
     updated_at: new Date().toISOString(),
   };

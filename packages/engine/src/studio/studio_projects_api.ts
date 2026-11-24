@@ -138,6 +138,7 @@ export async function createProjectAPI(host: ProjectAPIHost, request: Request): 
     naming: string;
     series_id: string;
     episode?: number;
+    has_film_style: boolean;
   };
   try {
     const body = await decodeJSONStrict(request);
@@ -158,6 +159,7 @@ export async function createProjectAPI(host: ProjectAPIHost, request: Request): 
       // film_style 是整片风格（风格库目录名、中文名或英文名），空表示不用。
       // 建好项目后在后台起一个 onset film-style use 任务，任务编号随响应返回。
       film_style: fieldString(body, 'film_style'),
+      has_film_style: Object.hasOwn(body, 'film_style'),
       // naming 是起名那次调用的凭据（/api/projects/name 给的），建好后把那次的用量记进新项目。
       naming: fieldString(body, 'naming'),
       // 可选：归属专栏 ID 与期号；未显式传入的画幅/做法/风格将回退至专栏默认预设。
@@ -175,7 +177,8 @@ export async function createProjectAPI(host: ProjectAPIHost, request: Request): 
     if (req.canvas === '' && seriesCfg.defaults.canvas) req.canvas = seriesCfg.defaults.canvas;
     if (req.delivery === '' && seriesCfg.defaults.delivery) req.delivery = seriesCfg.defaults.delivery;
     if (req.narration === '' && seriesCfg.defaults.narration) req.narration = seriesCfg.defaults.narration;
-    if (req.film_style === '' && seriesCfg.defaults.film_style) req.film_style = seriesCfg.defaults.film_style;
+    // 只有请求省略 film_style 时才继承专栏默认风格；显式传 "" 表示本期不用整片风格。
+    if (!req.has_film_style && seriesCfg.defaults.film_style) req.film_style = seriesCfg.defaults.film_style;
     if (req.parent === '' && seriesCfg.parent_dir) req.parent = seriesCfg.parent_dir;
   }
   if (goTrimSpace(req.name) === '') return writeError(400, 'invalid_request', '请填写项目名称');
@@ -215,7 +218,8 @@ export async function createProjectAPI(host: ProjectAPIHost, request: Request): 
   if (seriesCfg) {
     try {
       const ep = req.episode ?? seriesCfg.next_episode;
-      series.bindProject(seriesRoot, seriesCfg.id, target, { episode: ep });
+      // 先不推进 next_episode，待全部资产拷贝与默认配置应用成功后再推进；失败时清理刚建目录以便安全重试。
+      series.bindProject(seriesRoot, seriesCfg.id, target, { episode: ep, advanceEpisode: false });
       series.applySeriesDefaultsToProject(target, seriesCfg);
       series.materializeSeriesIntoProject(seriesRoot, target);
       if (seriesCfg.defaults.brand_kit_id) {
@@ -229,7 +233,9 @@ export async function createProjectAPI(host: ProjectAPIHost, request: Request): 
           // 品牌包已删或不可用时不阻断建项目。
         }
       }
+      series.advanceNextEpisode(seriesRoot, seriesCfg.id, ep);
     } catch (err) {
+      fs.rmSync(target, { recursive: true, force: true });
       return writeError(500, 'series_bind_failed', (err as Error).message);
     }
   }

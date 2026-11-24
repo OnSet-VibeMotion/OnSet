@@ -69,7 +69,14 @@ export function prepareTurn(
   const handoffReason = manualHandoff || rotate;
   const handoff =
     handoffReason !== '' ? handoffNote(handoffReason, lastTaskPlan(sess.events, false), projectStateBrief(p.path)) : '';
-  if (!isLocalStyle && (rotate !== '' || manualHandoff !== '')) {
+  let seriesBrief: series.SeriesPromptBrief = { seriesId: '', seriesName: '', text: '', digest: '' };
+  try {
+    seriesBrief = series.seriesPromptBrief(cfg.seriesDir, p.path);
+  } catch {
+    seriesBrief = { seriesId: '', seriesName: '', text: '', digest: '' };
+  }
+  const unboundFromSeries = !isLocalStyle && (sess.meta.series_brief_digest ?? '') !== '' && seriesBrief.text === '';
+  if (!isLocalStyle && (rotate !== '' || manualHandoff !== '' || unboundFromSeries)) {
     updateMeta(sess, (meta) => {
       meta.cli_session_id = undefined;
       meta.ownership_digest = undefined;
@@ -93,9 +100,9 @@ export function prepareTurn(
   const cannotSee = orchestratorCannotSee(cfg);
   const sendVisionNote = cannotSee && (firstTurn || activeSession === '' || !sess.meta.vision_note_sent);
   if (sendVisionNote) prompt += '\n\n---\n\n' + noVisionNote;
-  const seriesBrief = series.seriesPromptBrief(cfg.seriesDir, p.path);
   const alreadyHasSeriesBrief = seriesBrief.text !== '' && prompt.includes(seriesBrief.text.trim());
   const sendSeriesBrief =
+    !isLocalStyle &&
     seriesBrief.text !== '' &&
     !alreadyHasSeriesBrief &&
     (firstTurn || activeSession === '' || seriesBrief.digest !== (sess.meta.series_brief_digest ?? ''));
@@ -118,7 +125,9 @@ export function prepareTurn(
     meta.turns = [...(meta.turns ?? []), turn.turn_id];
     meta.running_turn = turn.turn_id;
     if (resend) meta.preference_digest = digest || undefined;
-    if (alreadyHasSeriesBrief || sendSeriesBrief) meta.series_brief_digest = seriesBrief.digest || undefined;
+    if (!isLocalStyle && (alreadyHasSeriesBrief || sendSeriesBrief)) {
+      meta.series_brief_digest = seriesBrief.digest || undefined;
+    }
     if (alreadyHasOwnership || sendOwnership) meta.ownership_digest = ownershipDigest;
     if (sendVisionNote) meta.vision_note_sent = true;
     if (!meta.tool) meta.tool = cfg.orchestrator;

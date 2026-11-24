@@ -22,9 +22,10 @@ export function BindSeriesModal(props: {
       return;
     }
     let ep: number | undefined;
-    if (episode.trim() !== '') {
-      const parsed = Number.parseInt(episode.trim(), 10);
-      if (!Number.isInteger(parsed) || parsed < 1) {
+    const rawEp = episode.trim();
+    if (rawEp !== '') {
+      const parsed = /^[1-9]\d*$/.test(rawEp) ? Number(rawEp) : Number.NaN;
+      if (!Number.isSafeInteger(parsed) || parsed < 1) {
         setError('期号必须是正整数，或者留空作为番外篇');
         return;
       }

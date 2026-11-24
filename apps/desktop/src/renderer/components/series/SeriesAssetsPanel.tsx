@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, del, errorText, post, put } from '../../api';
 import type { AssetSyncStatus, ProjectAssetCandidate, SeriesAssetsResponse } from '../../types';
 import { Icon } from '../Icon';
+import { SeriesPublishTemplateTab } from './SeriesPublishTemplateTab';
 import '../../series.css';
 
 const kindLabel: Record<string, string> = {
@@ -40,30 +41,37 @@ export function SeriesAssetsPanel(props: {
   const [promoteName, setPromoteName] = useState('intro');
   const [promoteFrom, setPromoteFrom] = useState('');
 
-  // 发布模板表单
+  // 发布模板表单（tplDirty 保护未保存输入，资产刷新时不覆盖用户正在编辑的草稿）
+  const [tplDirty, setTplDirty] = useState(false);
   const [titlePattern, setTitlePattern] = useState('');
   const [hashtags, setHashtags] = useState('');
   const [footer, setFooter] = useState('');
   const [coverGuide, setCoverGuide] = useState('');
   const [credits, setCredits] = useState('');
 
-  const load = useCallback(async () => {
-    try {
-      const res = await api<SeriesAssetsResponse>(`/api/series/${encodeURIComponent(props.seriesId)}/assets`);
-      setData(res);
-      const tpl = res.publish_template;
-      setTitlePattern(tpl?.title_pattern ?? '');
-      setHashtags((tpl?.default_hashtags ?? []).join(' '));
-      setFooter(tpl?.description_footer ?? '');
-      setCoverGuide(tpl?.cover_guidelines ?? '');
-      setCredits((tpl?.credits_lines ?? []).join('\n'));
-    } catch (err) {
-      setError(errorText(err));
-    }
-  }, [props.seriesId]);
+  const load = useCallback(
+    async (syncDraft = false) => {
+      try {
+        const res = await api<SeriesAssetsResponse>(`/api/series/${encodeURIComponent(props.seriesId)}/assets`);
+        setData(res);
+        if (syncDraft) {
+          const tpl = res.publish_template;
+          setTitlePattern(tpl?.title_pattern ?? '');
+          setHashtags((tpl?.default_hashtags ?? []).join(' '));
+          setFooter(tpl?.description_footer ?? '');
+          setCoverGuide(tpl?.cover_guidelines ?? '');
+          setCredits((tpl?.credits_lines ?? []).join('\n'));
+          setTplDirty(false);
+        }
+      } catch (err) {
+        setError(errorText(err));
+      }
+    },
+    [props.seriesId],
+  );
 
   useEffect(() => {
-    void load();
+    void load(true);
   }, [load]);
 
   const syncOne = async (item: AssetSyncStatus, replace = false) => {
@@ -123,7 +131,9 @@ export function SeriesAssetsPanel(props: {
     setBusy(true);
     setError('');
     try {
-      await del(`/api/series/${encodeURIComponent(props.seriesId)}/assets/${item.kind}/${encodeURIComponent(item.name)}`);
+      await del(
+        `/api/series/${encodeURIComponent(props.seriesId)}/assets/${item.kind}/${encodeURIComponent(item.name)}`,
+      );
       setNotice(`已从专栏库移除 ${item.key}（不影响已有项目）`);
       await load();
     } catch (err) {
@@ -149,7 +159,7 @@ export function SeriesAssetsPanel(props: {
           .filter(Boolean),
       });
       setNotice('已保存专栏发布模板');
-      await load();
+      await load(true);
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -178,13 +188,28 @@ export function SeriesAssetsPanel(props: {
         </header>
 
         <nav className="series-tabs" role="tablist">
-          <button role="tab" aria-selected={tab === 'sync'} className={tab === 'sync' ? 'on' : ''} onClick={() => setTab('sync')}>
+          <button
+            role="tab"
+            aria-selected={tab === 'sync'}
+            className={tab === 'sync' ? 'on' : ''}
+            onClick={() => setTab('sync')}
+          >
             专栏资产同步 ({statuses.length})
           </button>
-          <button role="tab" aria-selected={tab === 'promote'} className={tab === 'promote' ? 'on' : ''} onClick={() => setTab('promote')}>
+          <button
+            role="tab"
+            aria-selected={tab === 'promote'}
+            className={tab === 'promote' ? 'on' : ''}
+            onClick={() => setTab('promote')}
+          >
             沉淀回专栏
           </button>
-          <button role="tab" aria-selected={tab === 'publish'} className={tab === 'publish' ? 'on' : ''} onClick={() => setTab('publish')}>
+          <button
+            role="tab"
+            aria-selected={tab === 'publish'}
+            className={tab === 'publish' ? 'on' : ''}
+            onClick={() => setTab('publish')}
+          >
             发布模板
           </button>
         </nav>
@@ -201,7 +226,9 @@ export function SeriesAssetsPanel(props: {
                 )}
               </div>
               {statuses.length === 0 ? (
-                <p className="series-empty">这个专栏还没有跨期资产。可以在「沉淀回专栏」里把本期做好的组件、片头片尾或音频沉淀进来。</p>
+                <p className="series-empty">
+                  这个专栏还没有跨期资产。可以在「沉淀回专栏」里把本期做好的组件、片头片尾或音频沉淀进来。
+                </p>
               ) : (
                 <ul className="series-ep-list">
                   {statuses.map((item) => (
@@ -221,7 +248,11 @@ export function SeriesAssetsPanel(props: {
                       </div>
                       <div className="series-foot-right">
                         {(item.status === 'missing' || item.status === 'update_available') && (
-                          <button className="pill primary-pill" disabled={busy} onClick={() => void syncOne(item, false)}>
+                          <button
+                            className="pill primary-pill"
+                            disabled={busy}
+                            onClick={() => void syncOne(item, false)}
+                          >
                             拉取
                           </button>
                         )}
@@ -231,7 +262,12 @@ export function SeriesAssetsPanel(props: {
                           </button>
                         )}
                         {item.kind !== 'directions' && item.kind !== 'publish_template' && (
-                          <button className="series-icon-btn" title="从专栏库删除" disabled={busy} onClick={() => void removeAsset(item)}>
+                          <button
+                            className="series-icon-btn"
+                            title="从专栏库删除"
+                            disabled={busy}
+                            onClick={() => void removeAsset(item)}
+                          >
                             <Icon name="trash" size={12} />
                           </button>
                         )}
@@ -258,7 +294,11 @@ export function SeriesAssetsPanel(props: {
                           <span>{c.from}</span>
                         </div>
                         <div className="series-foot-right">
-                          <button className="pill" disabled={busy} onClick={() => void promote(c.kind, c.name, c.from, true)}>
+                          <button
+                            className="pill"
+                            disabled={busy}
+                            onClick={() => void promote(c.kind, c.name, c.from, false)}
+                          >
                             沉淀到专栏
                           </button>
                         </div>
@@ -270,7 +310,10 @@ export function SeriesAssetsPanel(props: {
               <div className="series-grid">
                 <label className="series-field">
                   <span>资产类型</span>
-                  <select value={promoteKind} onChange={(e) => setPromoteKind(e.currentTarget.value as typeof promoteKind)}>
+                  <select
+                    value={promoteKind}
+                    onChange={(e) => setPromoteKind(e.currentTarget.value as typeof promoteKind)}
+                  >
                     <option value="bumper">片头/片尾（成片 MP4 或 HTML 模板）</option>
                     <option value="shared">共用组件（production/shared）</option>
                     <option value="cast">常驻角色包（cast）</option>
@@ -280,7 +323,11 @@ export function SeriesAssetsPanel(props: {
                 </label>
                 <label className="series-field">
                   <span>专栏资产名（英文短横线）</span>
-                  <input value={promoteName} placeholder="如 intro / outro / brand-badge" onChange={(e) => setPromoteName(e.currentTarget.value)} />
+                  <input
+                    value={promoteName}
+                    placeholder="如 intro / outro / brand-badge"
+                    onChange={(e) => setPromoteName(e.currentTarget.value)}
+                  />
                 </label>
               </div>
               <label className="series-field">
@@ -311,33 +358,25 @@ export function SeriesAssetsPanel(props: {
           )}
 
           {tab === 'publish' && (
-            <div className="series-form">
-              <label className="series-field">
-                <span>标题模板</span>
-                <input value={titlePattern} placeholder="例如：【EP{nn}】{title}" onChange={(e) => setTitlePattern(e.currentTarget.value)} />
-              </label>
-              <label className="series-field">
-                <span>固定话题标签（空格分隔）</span>
-                <input value={hashtags} placeholder="例如：#AI硬核拆解 #科普动画" onChange={(e) => setHashtags(e.currentTarget.value)} />
-              </label>
-              <label className="series-field">
-                <span>系列封面视觉规范</span>
-                <textarea rows={3} value={coverGuide} placeholder="例如：左上角固定 EP 编号黄铜徽章，右下角留主题主视觉" onChange={(e) => setCoverGuide(e.currentTarget.value)} />
-              </label>
-              <label className="series-field">
-                <span>简介固定脚标</span>
-                <textarea rows={3} value={footer} placeholder="例如：订阅本专栏，每周更新底层技术拆解。" onChange={(e) => setFooter(e.currentTarget.value)} />
-              </label>
-              <label className="series-field">
-                <span>固定素材署名（每行一条）</span>
-                <textarea rows={2} value={credits} placeholder="例如：片头音乐：XXX（CC BY 4.0）" onChange={(e) => setCredits(e.currentTarget.value)} />
-              </label>
-              <div className="series-foot-right">
-                <button className="pill primary-pill" disabled={busy} onClick={() => void savePublishTemplate()}>
-                  保存发布模板
-                </button>
-              </div>
-            </div>
+            <SeriesPublishTemplateTab
+              loaded={data !== null}
+              busy={busy}
+              dirty={tplDirty}
+              titlePattern={titlePattern}
+              hashtags={hashtags}
+              coverGuide={coverGuide}
+              footer={footer}
+              credits={credits}
+              onChange={(field, value) => {
+                setTplDirty(true);
+                if (field === 'titlePattern') setTitlePattern(value);
+                else if (field === 'hashtags') setHashtags(value);
+                else if (field === 'coverGuide') setCoverGuide(value);
+                else if (field === 'footer') setFooter(value);
+                else setCredits(value);
+              }}
+              onSave={() => void savePublishTemplate()}
+            />
           )}
         </div>
 

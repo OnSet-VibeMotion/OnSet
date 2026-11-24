@@ -175,7 +175,12 @@ export async function memoryActionAPI(s: Server, request: Request, rest: string)
       if (req.scope === 'project') {
         targetScope = memory.projectName(p.path);
       } else if (req.scope === 'series') {
-        const binding = series.readBinding(p.path);
+        let binding: series.ProjectSeriesBinding | null;
+        try {
+          binding = series.readBinding(p.path);
+        } catch (err) {
+          return writeError(400, 'invalid_series_binding', (err as Error).message);
+        }
         if (!binding) return writeError(400, 'no_series', '当前项目没有归属任何专栏');
         targetScope = memory.seriesScope(binding.series_id);
       }

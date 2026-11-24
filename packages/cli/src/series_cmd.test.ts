@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
 import * as series from '@onset/engine/series';
+import { describe, expect, it } from 'vitest';
 import { runIn, tempDir } from './testutil';
 
 describe('CLI / MCP series operations', () => {
@@ -38,6 +38,16 @@ describe('CLI / MCP series operations', () => {
       '右下角放主图',
     ]);
     expect(tplRes.code).toBe(0);
+    expect(series.readPublishTemplate(seriesRoot, s.id)?.title_pattern).toBe('【EP{nn}】{title}');
+
+    // 回归：局部更新只改封面规范应保留原 title_pattern；无参数调用不清空现有模板
+    const partialRes = await runIn(ep1, ['series', 'publish-template', '--cover-guidelines', '左上角带 EP 徽章']);
+    expect(partialRes.code).toBe(0);
+    expect(series.readPublishTemplate(seriesRoot, s.id)?.title_pattern).toBe('【EP{nn}】{title}');
+    expect(series.readPublishTemplate(seriesRoot, s.id)?.cover_guidelines).toBe('左上角带 EP 徽章');
+
+    const noopRes = await runIn(ep1, ['series', 'publish-template']);
+    expect(noopRes.code).toBe(0);
     expect(series.readPublishTemplate(seriesRoot, s.id)?.title_pattern).toBe('【EP{nn}】{title}');
 
     // 在 EP2 里查状态并拉取组件

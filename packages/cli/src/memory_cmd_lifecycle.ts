@@ -4,8 +4,8 @@
 import { formatFixed, goTrimSpace } from '@onset/engine/gofmt';
 import { compareBytes } from '@onset/engine/gojson';
 import * as memory from '@onset/engine/memory';
-import * as series from '@onset/engine/series';
 import * as scene from '@onset/engine/scene';
+import * as series from '@onset/engine/series';
 import { currentEnvironment } from './cli';
 import { jsonParam, loadMemoryConfig, writeReport } from './memory_cmd_shared';
 import { bool, num, str } from './ops/common';
@@ -251,7 +251,10 @@ defineOp({
     name: { type: 'string', description: '偏好名，小写字母、数字与连字符；缺省按时间生成' },
     description: { type: 'string', description: '一句话概括；缺省取正文第一句' },
     global: { type: 'boolean', description: '对用户所有项目都成立' },
-    scope: { type: 'string', description: '作用范围：project（仅本项目，默认）/ series（本专栏所有期数）/ global（所有项目）' },
+    scope: {
+      type: 'string',
+      description: '作用范围：project（仅本项目，默认）/ series（本专栏所有期数）/ global（所有项目）',
+    },
     revises: { type: 'string', description: '替换的旧偏好名，旧偏好转为沉睡' },
     inferred: { type: 'boolean', description: '用户没有明说、由编排工具推测的取向：先进入试用，用户确认后才生效' },
   },
@@ -268,10 +271,14 @@ defineOp({
       scopeKind = rawScope;
     }
     let seriesId = '';
-    try {
+    if (scopeKind === 'series') {
       seriesId = series.readBinding(root)?.series_id ?? '';
-    } catch {
-      seriesId = '';
+    } else {
+      try {
+        seriesId = series.readBinding(root)?.series_id ?? '';
+      } catch {
+        seriesId = '';
+      }
     }
     const { memory: m, snapshot } = store.remember({
       name: str(p.name),

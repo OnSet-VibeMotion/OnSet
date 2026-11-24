@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { goTrimSpace } from '../gofmt';
+import { compareBytes } from '../gojson';
 import { readBinding, writeBinding } from './binding';
 import { readDirections } from './brief';
 import { publishTemplateDigest, readPublishTemplate } from './publish_template';
@@ -78,10 +79,10 @@ export function seriesAssetDir(rootDir: string, seriesId: string, kind: DirAsset
   return path.join(seriesDir(rootDir, seriesId), 'assets', dirSubpath[kind], validateAssetName(name));
 }
 
-/** 递归列出目录里的普通文件（按字典序）；跳过点开头；遇符号链接报错。 */
+/** 递归列出目录里的普通文件（按 UTF-8 字节序）；跳过点开头；遇符号链接报错。 */
 export function listRegularFiles(dir: string, prefix = ''): string[] {
   const out: string[] = [];
-  for (const name of fs.readdirSync(path.join(dir, prefix)).sort()) {
+  for (const name of fs.readdirSync(path.join(dir, prefix)).sort(compareBytes)) {
     if (name.startsWith('.')) continue;
     const rel = prefix ? `${prefix}/${name}` : name;
     const info = fs.lstatSync(path.join(dir, rel));
@@ -91,6 +92,28 @@ export function listRegularFiles(dir: string, prefix = ''): string[] {
     else throw new Error(`资产目录只能包含普通文件：${rel}`);
   }
   return out;
+}
+
+/** 校验项目内目标路径不经过任何符号链接，且严格落在 projectRoot 内部。 */
+export function assertSafeTargetPath(projectRoot: string, targetRel: string): string {
+  const rootReal = fs.realpathSync(projectRoot);
+  const segments = targetRel.split('/').filter(Boolean);
+  if (segments.length === 0 || segments.some((seg) => seg === '.' || seg === '..')) {
+    throw new Error(`目标路径不合法：${targetRel}`);
+  }
+  let cur = rootReal;
+  for (const seg of segments) {
+    cur = path.join(cur, seg);
+    const info = fs.lstatSync(cur, { throwIfNoEntry: false });
+    if (!info) break;
+    if (info.isSymbolicLink()) throw new Error(`目标路径不能经过符号链接：${targetRel}`);
+  }
+  const resolved = path.resolve(rootReal, targetRel);
+  const rel = path.relative(rootReal, resolved);
+  if (rel === '' || rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) {
+    throw new Error(`目标路径逃出项目目录：${targetRel}`);
+  }
+  return resolved;
 }
 
 /** 计算目录树的稳定内容摘要与总字节数。 */
@@ -171,7 +194,7 @@ export function listSeriesAssets(rootDir: string, seriesId: string): SeriesAsset
     } catch {
       continue;
     }
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const entry of entries.sort((a, b) => compareBytes(a.name, b.name))) {
       if (!entry.isDirectory() || !AssetNamePattern.test(entry.name)) continue;
       const full = path.join(kindDir, entry.name);
       try {
@@ -296,7 +319,17 @@ export function promoteAssetToSeries(
     const prev = inspectTree(target);
     if (prev.digest === digest) {
       updateSyncedRecord(projectRoot, seriesId, opts.kind, name, digest);
-      return { key: assetKey(opts.kind, name), kind: opts.kind, name, files: files.length, bytes, digest, bumper_mode: bumperMode, replaced: false, unchanged: true };
+      return {
+        key: assetKey(opts.kind, name),
+        kind: opts.kind,
+        name,
+        files: files.length,
+        bytes,
+        digest,
+        bumper_mode: bumperMode,
+        replaced: false,
+        unchanged: true,
+      };
     }
     if (!opts.replace) {
       throw new Error(`专栏里已有同名资产「${opts.kind}:${name}」且内容不同；确认覆盖请加 replace: true`);
@@ -305,10 +338,26 @@ export function promoteAssetToSeries(
 
   copyTreeAtomic(real, target, isFile);
   updateSyncedRecord(projectRoot, seriesId, opts.kind, name, digest);
-  return { key: assetKey(opts.kind, name), kind: opts.kind, name, files: files.length, bytes, digest, bumper_mode: bumperMode, replaced: existed, unchanged: false };
+  return {
+    key: assetKey(opts.kind, name),
+    kind: opts.kind,
+    name,
+    files: files.length,
+    bytes,
+    digest,
+    bumper_mode: bumperMode,
+    replaced: existed,
+    unchanged: false,
+  };
 }
 
-function updateSyncedRecord(projectRoot: string, seriesId: string, kind: AssetKind, name: string, digest: string): void {
+function updateSyncedRecord(
+  projectRoot: string,
+  seriesId: string,
+  kind: AssetKind,
+  name: string,
+  digest: string,
+): void {
   const binding = readBinding(projectRoot);
   if (!binding || binding.series_id !== seriesId) return;
   const key = assetKey(kind, name);

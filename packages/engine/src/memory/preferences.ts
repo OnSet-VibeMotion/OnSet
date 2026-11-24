@@ -1,12 +1,12 @@
 import crypto from 'node:crypto';
 import { goTrimSpace } from '../gofmt';
-import { CheckerHuman } from './features';
 import { EventRemember, EventTrial } from './events';
+import { setStatus } from './exam';
+import { CheckerHuman } from './features';
 import { compactStamp, rfc3339 } from './gostr';
 import { lint, MaxDescriptionChars } from './lint';
-import { KindPreference, newApplies, newMemory, StatusActive, StatusDormant, StatusTrial, type Memory } from './memory';
-import { setStatus } from './exam';
-import { snapshotMemories, type Snapshot } from './snapshot';
+import { KindPreference, type Memory, newApplies, newMemory, StatusActive, StatusDormant, StatusTrial } from './memory';
+import { type Snapshot, snapshotMemories } from './snapshot';
 import type { Store } from './store';
 
 /** 专栏级偏好在 scope 里的前缀：series:<专栏id>。 */
@@ -75,7 +75,8 @@ export function preferenceBrief(
   if (pending.length > 0) {
     b += '\n待确认的偏好（从用户以往的回退、反复提的要求和 👍 / 👎 里归纳的，或从对话里推测的，还没生效）：\n';
     for (const m of pending) b += `- 【${m.name}】${m.description}\n`;
-    b += '找合适的时机用一句话问用户认不认可；认可就调用 `memory_promote({"name": "<名字>"})`，不认可调用 `memory_reject({"name": "<名字>"})`。不要一次问完，也不要打断正在做的事。\n\n';
+    b +=
+      '找合适的时机用一句话问用户认不认可；认可就调用 `memory_promote({"name": "<名字>"})`，不认可调用 `memory_reject({"name": "<名字>"})`。不要一次问完，也不要打断正在做的事。\n\n';
   }
   const seriesHint = seriesId !== '' ? '对本专栏所有期数都成立时加 "scope": "series"；' : '';
   b += `用户这次的话说得简短或含糊时，先按这些偏好补全意图再动手；这次明说的要求与偏好冲突时以这次为准，并问一句要不要更新偏好。
@@ -194,7 +195,12 @@ export function setPreferenceScope(
   const problems = lint(next, { existing: others });
   if (problems.length > 0) throw new Error(`偏好不合格：\n  - ${problems.join('\n  - ')}`);
   s.write(next);
-  const label = targetScope === '' ? '所有项目' : parseSeriesScope(targetScope) ? `专栏 ${parseSeriesScope(targetScope)}` : `本项目 ${targetScope}`;
+  const label =
+    targetScope === ''
+      ? '所有项目'
+      : parseSeriesScope(targetScope)
+        ? `专栏 ${parseSeriesScope(targetScope)}`
+        : `本项目 ${targetScope}`;
   const summary = `调整偏好 ${name} 作用范围为 ${label}`;
   const snapshot = next.status === StatusActive ? s.takeSnapshot(EventRemember, summary, false) : null;
   s.log({

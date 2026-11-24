@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
-import { advanceNextEpisode, getSeries } from './store';
+import { advanceNextEpisode, assertOutsideSeriesRoot, getSeries } from './store';
 import {
   type AssetKind,
   BindingFile,
@@ -89,6 +89,7 @@ export function bindProject(
   if (!fs.statSync(projectRoot, { throwIfNoEntry: false })?.isDirectory()) {
     throw new Error(`项目目录不存在：${projectRoot}`);
   }
+  assertOutsideSeriesRoot(seriesRoot, projectRoot, '项目目录');
   if (opts.episode !== undefined && (!Number.isInteger(opts.episode) || opts.episode < 1)) {
     throw new Error('期号必须是正整数');
   }
