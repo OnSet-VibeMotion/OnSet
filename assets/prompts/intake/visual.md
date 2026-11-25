@@ -4,3 +4,5 @@
 
 可以使用用户提供的参考图、字体、品牌素材或 GSAP 动效方案。图片放进使用它的镜头目录；共用字体与固定版本的脚本库在准备阶段分别存进项目的 `assets/fonts/`、`assets/vendor/`，由引擎共享到镜头，以镜头内相对路径引用，并通过确定性校验。
 
+涉及官网、产品或品牌需求时，优先用 `asset_gather({"target": "<官网或品牌名>"})`、`asset_collect({"url": "<网页>"})`、`asset_fetch({"url": "<图片或SVG>"})` 或 `asset_page({"url": "<网页>"})`（也支持 `html` / `html_file`）采集真实矢量 Logo、品牌配色与 2× 高清页面或 HTML 截图入库（`assets/collected/`，按 SHA-256 去重），不要靠脑补画假 UI。
+

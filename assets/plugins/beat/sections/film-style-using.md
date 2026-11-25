@@ -6,4 +6,5 @@
 - 字体：STYLE.md 点名的字体若不在风格目录里，按名字从 https://github.com/google/fonts/tree/main/ofl/ 下载 woff2 或 ttf 与 `OFL.txt` 到 `assets/fonts/`，在执行日志里记下来源，再复制进用到它的镜头目录，并在镜头的 `prompt.md` 里写明文件名与用途。中文正文用项目自带或 `style_fonts()` 列出的中文字体。
 - 封面帧、字幕样式与画面文字同样按 STYLE.md 执行；可读性与安全区要求不变。
 - 配乐与音效仍按{{STAGE:sound}}选用授权素材；STYLE.md 里关于声音的内容只作为选曲和音效方向的参考。
+- 选用 `mg-styles/*` 整片风格时，可用 `film_style_refs({"style": "<来源/目录名>"})` 读取本地离线参考帧，并遵守该风格的渲染引擎契约（要求 `threejs` / `webgl2` 时不可退化成假 CSS 3D 或模糊，确需变更须写显式偏离声明）。
 

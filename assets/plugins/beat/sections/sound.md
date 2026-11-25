@@ -29,4 +29,6 @@
 - 同一时间的音效数量应受控，避免高频叠加和听觉拥挤。
 
 
-`cue-sheet.json` 使用 `{"schema":1,"cues":[...]}`。每行 `kind` 写 `"sfx"`，填项目内 `asset`、`event_id`、`duration_frames`、`gain_db`、`fade_in_frames` 和 `fade_out_frames`。可用 `source_start_frame` 指定素材裁切起点。主音乐单独交给混音工具，无音效时用空 `cues`。
+`cue-sheet.json` 使用 `{"schema":1,"cues":[...]}`。每行 `kind` 写 `"sfx"`，填项目内 `asset`、`event_id`、`duration_frames`、`gain_db`、`fade_in_frames` 和 `fade_out_frames`。可用 `source_start_frame` 指定素材裁切起点；也支持通过 `anchor_id` 或 `anchor_frame` 配合 `peak_seconds` 反推入点对齐撞击帧。主音乐单独交给混音工具，无音效时用空 `cues`。
+
+缺基础质感或常用转场音效时，可用 `assets_generate_base()` 一键生成零版权素材，或用 `sfx_search({"query": "<关键词>"})` / `sfx_download({"sound_id": <ID>})` 检索下载并参考防削波安全增益 `safe_gain_db`。
