@@ -158,6 +158,30 @@ export async function resolvePublicHost(
   return { address: first.address, family: first.family === 6 ? 6 : 4 };
 }
 
+/**
+ * 构造兼容 Node 20+/22+ Happy Eyeballs（options.all === true）与传统标量回调的 DNS-pinning lookup 函数。
+ */
+export function pinnedLookup(
+  address: string,
+  family: 4 | 6,
+): (
+  hostname: string,
+  options: { all?: boolean } | number | undefined,
+  cb: (
+    err: NodeJS.ErrnoException | null,
+    address: string | Array<{ address: string; family: number }>,
+    family?: number,
+  ) => void,
+) => void {
+  return (_host, options, cb) => {
+    if (typeof options === 'object' && options !== null && options.all) {
+      cb(null, [{ address, family }]);
+      return;
+    }
+    cb(null, address, family);
+  };
+}
+
 /** 使用 DNS-pinned HTTPS 安全抓取公开文本资源（带重定向与字节上限）。 */
 export async function fetchPublicText(
   rawUrl: string,
@@ -184,7 +208,7 @@ export async function fetchPublicText(
             },
             timeout: timeoutMs,
             signal: opts.signal,
-            lookup: (_host, _options, cb) => cb(null, resolved.address, resolved.family),
+            lookup: pinnedLookup(resolved.address, resolved.family),
           },
           (res) => {
             const status = res.statusCode ?? 0;

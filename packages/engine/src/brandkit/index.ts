@@ -23,6 +23,7 @@ export {
   isPublicIP,
   MaxBrandFetchBytes,
   MaxBrandRedirects,
+  pinnedLookup,
   resolvePublicHost,
 } from './network';
 export {

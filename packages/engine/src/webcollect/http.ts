@@ -13,6 +13,7 @@ import {
   type DnsResolverDeps,
   isPublicIP,
   MaxBrandRedirects,
+  pinnedLookup,
   resolvePublicHost,
 } from '../brandkit/network';
 import {
@@ -95,7 +96,7 @@ function defaultHttpTransport(req: SafeHttpRequest): Promise<SafeHttpRawResponse
         },
         timeout: req.timeoutMs,
         signal: req.signal,
-        lookup: (_host, _options, cb) => cb(null, req.address, req.family),
+        lookup: pinnedLookup(req.address, req.family),
       },
       (res) => {
         const status = res.statusCode ?? 0;
