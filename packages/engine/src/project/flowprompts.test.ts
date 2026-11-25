@@ -521,7 +521,7 @@ describe('prompt content', () => {
       '钩子—揭示—收束',
       '持续物件',
       '全片配色',
-      '字体、版式和动效由各镜头根据文案自由决定',
+      '微动效参数由各镜自主调优，核心表达所需的标志性动效手法在分镜阶段通过 `motion_effects` 显式选型',
       '章节之间怎么接',
       '先改 `treatment.md`',
     ];
@@ -553,6 +553,29 @@ describe('prompt content', () => {
         ['motion_effect_list({"query": "<关键词>"})', 'motion_effect_show({"ref": "<标识>"})', 'plugin_skills'],
         what + '·动效库',
       );
+  });
+
+  it('injects the compact motion menu only into planning stages', () => {
+    const speechRoot = created('speech', 'vertical-3x4');
+    const planFocused = composeProjectPrompt(speechRoot, 'plan', true).text;
+    expect(planFocused).toContain('文字与数据');
+    expect(planFocused).toContain('005 遮罩显现');
+    expect(planFocused).toContain('其余内置与插件动效可用 `motion_effect_list()` 检索');
+    expect(planFocused).not.toContain('{{MOTION_MENU}}');
+
+    for (const stage of ['script', 'voice', 'mix', 'publish']) {
+      const other = composeProjectPrompt(speechRoot, stage, true).text;
+      expect(other, `stage ${stage} should not carry compact motion menu`).not.toContain(
+        '其余内置与插件动效可用 `motion_effect_list()` 检索',
+      );
+    }
+
+    const beatRoot = created('beat', 'vertical-9x16');
+    const beatPlan = composeProjectPrompt(beatRoot, 'beat-plan', true).text;
+    expect(beatPlan).toContain('005 遮罩显现');
+    expect(beatPlan).toContain('其余内置与插件动效可用 `motion_effect_list()` 检索');
+    const beatMix = composeProjectPrompt(beatRoot, 'beat-mix', true).text;
+    expect(beatMix).not.toContain('其余内置与插件动效可用 `motion_effect_list()` 检索');
   });
 
   it('mixes without amix normalization (speech, beat)', () => {

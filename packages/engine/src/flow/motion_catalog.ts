@@ -29,6 +29,78 @@ export interface MotionEffectHit {
   effect: MotionEffect;
 }
 
+export const MotionMenuPlaceholder = '{{MOTION_MENU}}';
+
+const compactMenuGroups: readonly { title: string; ids: readonly string[] }[] = [
+  { title: '文字与数据', ids: ['005', '006', '007', '008', '129', '133'] },
+  {
+    title: '图形与组件入场/强调',
+    ids: ['001', '002', '003', '004', '010', '012', '021', '022', '023', '024', '143', '144'],
+  },
+  { title: '空间与运镜', ids: ['016', '025', '027', '028', '030', '032', '033'] },
+  { title: '画内转场', ids: ['017', '018', '019', '020', '043', '137', '138', '139', '140', '141'] },
+];
+
+/**
+ * 按制作意图分组的紧凑动效菜单（仅注入分镜规划阶段，控制极低 token 占用）。
+ * 所有条目的名称从内置 catalog.json 动态核对，不硬编码不存在的 ID。
+ */
+export function compactMotionMenu(): string {
+  const byId = new Map(bundledMotionCatalog().effects.map((e) => [e.id, e]));
+  const lines = compactMenuGroups.map(({ title, ids }) => {
+    const items = ids.map((id) => {
+      const effect = byId.get(id);
+      if (!effect) throw new Error(`内置动效目录缺少精选条目：${id}`);
+      return `${effect.id} ${effect.name}`;
+    });
+    return `- **${title}**：${items.join(' / ')}`;
+  });
+  lines.push('其余内置与插件动效可用 `motion_effect_list()` 检索。');
+  return lines.join('\n');
+}
+
+const motionSegmentRe = /^[a-z0-9][a-z0-9-]{0,63}$/i;
+
+/**
+ * 规范化动效引用：支持简写如 "005"（自动补全为 "motion-prompt:005"）或完整 "来源:id"，
+ * 统一小写并去空白。格式不合法时报错。
+ */
+export function normalizeMotionEffectRef(raw: string, where = ''): string {
+  const prefix = where ? `${where}：` : '';
+  const trimmed = raw.trim().replace(/^#/, '');
+  if (!trimmed) throw new Error(`${prefix}动效标识不能为空`);
+  const parts = trimmed.split(':');
+  if (parts.length === 1) {
+    if (!motionSegmentRe.test(parts[0])) {
+      throw new Error(`${prefix}动效标识格式不合法 "${raw}"，请写成如 "005" 或 "motion-prompt:005"`);
+    }
+    return `${MotionPromptID}:${parts[0].toLowerCase()}`;
+  }
+  if (parts.length === 2) {
+    const src = parts[0].trim();
+    const id = parts[1].trim().replace(/^#/, '');
+    if (!motionSegmentRe.test(src) || !motionSegmentRe.test(id)) {
+      throw new Error(`${prefix}动效标识格式不合法 "${raw}"，请写成 "来源:编号"（如 "motion-prompt:005"）`);
+    }
+    return `${src.toLowerCase()}:${id.toLowerCase()}`;
+  }
+  throw new Error(`${prefix}动效标识格式不合法 "${raw}"，请写成如 "005" 或 "motion-prompt:005"`);
+}
+
+/** 规范化动效引用列表并去重保序。 */
+export function normalizeMotionEffects(list: readonly string[] | null | undefined, where = ''): string[] {
+  if (!list || list.length === 0) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of list) {
+    const norm = normalizeMotionEffectRef(item, where);
+    if (seen.has(norm)) continue;
+    seen.add(norm);
+    out.push(norm);
+  }
+  return out;
+}
+
 export function bundledMotionCatalog(): BundledMotionCatalog {
   return JSON.parse(files().sub('motion-prompt').readText('catalog.json')) as BundledMotionCatalog;
 }

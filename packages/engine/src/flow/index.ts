@@ -122,11 +122,15 @@ export {
   type BundledMotionCatalog,
   type BundledMotionEffect,
   bundledMotionCatalog,
+  compactMotionMenu,
   filterMotionEffects,
   listMotionSources,
   lookupMotionEffect,
   type MotionEffectHit,
   type MotionEffectSource,
+  MotionMenuPlaceholder,
+  normalizeMotionEffectRef,
+  normalizeMotionEffects,
 } from './motion_catalog';
 export {
   allFlows,

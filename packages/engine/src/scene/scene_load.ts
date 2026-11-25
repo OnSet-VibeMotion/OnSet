@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { normalizeMotionEffects } from '../flow';
 import { goPathError, goQuote } from '../gofmt';
 import { ValidRenderers } from '../tools';
 import { blockValue, sceneBlocks } from './block';
@@ -17,7 +18,7 @@ const idPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
  * 都从这里派生，不再各写一份、彼此漂移。扩展块排在 plugin_skills 之后、timing 之前。
  */
 const requiredSceneFields = ['id', 'duration_seconds', 'output', 'transcript', 'text'];
-const optionalSceneFields = ['renderer', 'film_style', 'plugin_skills', 'components'];
+const optionalSceneFields = ['renderer', 'film_style', 'plugin_skills', 'components', 'motion_effects'];
 /** scene 自己的 timing 块，固定排在所有扩展块之后。 */
 const timingField = 'timing';
 
@@ -62,6 +63,7 @@ function sceneType(): StructType {
       ['film_style', 'string'],
       ['plugin_skills', sliceOf('string')],
       ['components', sliceOf('string')],
+      ['motion_effects', sliceOf('string')],
       ...blocks().map((b): [string, FieldType] => [b.key, ptrTo(b.type)]),
       [timingField, ptrTo(timingStructType)],
     ],
@@ -81,6 +83,7 @@ export function newScene(fields: Partial<Scene> = {}): Scene {
     film_style: '',
     plugin_skills: [],
     components: [],
+    motion_effects: [],
   };
   for (const b of blocks()) zero[b.key] = null;
   return {
@@ -110,6 +113,7 @@ export function sceneToJSON(s: Scene): unknown {
     film_style: s.film_style || undefined,
     plugin_skills: s.plugin_skills.length > 0 ? s.plugin_skills : undefined,
     components: s.components.length > 0 ? s.components : undefined,
+    motion_effects: s.motion_effects.length > 0 ? s.motion_effects : undefined,
   };
   for (const b of blocks()) {
     const value = blockValue(s, b.key);
@@ -185,6 +189,7 @@ export function load(directory: string): Scene {
   }
   result.components = result.components ?? [];
   verifyComponentNames(result.components);
+  result.motion_effects = normalizeMotionEffects(result.motion_effects, 'motion_effects');
   for (const b of blocks()) {
     const value = blockValue(result, b.key);
     if (value !== null) b.validate?.(result, value);

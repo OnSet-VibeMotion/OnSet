@@ -8,6 +8,7 @@ import * as filmstyle from '../filmstyle';
 import * as flow from '../flow';
 import { compareBytes } from '../gojson';
 import { pluginSkills } from '../plugin/registry';
+import { motionEffectPluginSkills } from './motion_prompt';
 import {
   FilmStyleEnterKey,
   FilmStyleExitKey,
@@ -216,7 +217,13 @@ export function resolveAllSkills(
   }
   // 第三方插件给渲染器的技能：键 plugin:<插件>/<技能>，指纹、读取放行与提示词都从这里来。
   // 插件装在用户级：装上一个 scenes: all 的技能，所有项目的镜头都带上它（输入确实变了，已渲染的标成要重渲染）。
-  Object.assign(result, flow.pluginSkillsFor(film?.plugin_skills ?? [], environ));
+  // 镜头通过 motion_effects 命中的第三方插件动效，其关联的 renderer_skill 也自动并入解析列表。
+  const motionSkills = film?.motion_effects?.length ? motionEffectPluginSkills(film.motion_effects, environ) : [];
+  const namedSkills =
+    motionSkills.length > 0
+      ? [...new Set([...(film?.plugin_skills ?? []), ...motionSkills])]
+      : (film?.plugin_skills ?? []);
+  Object.assign(result, flow.pluginSkillsFor(namedSkills, environ));
   return result;
 }
 

@@ -8,6 +8,7 @@ import { componentExportSection, sceneComponentPlan } from './component-plan';
 import { componentSection } from './components';
 import { verifyFrameAlignment } from './frames';
 import { formatGPrecision } from './gofmt';
+import { motionEffectsSection } from './motion_prompt';
 import { resourceSection } from './resources';
 import { continuationSection, RenderHandoffMessage } from './resume';
 import type { Scene } from './scene';
@@ -211,6 +212,7 @@ function renderPrompt(
       blockPromptSections(s, resolved, true) +
       timing +
       styleShiftSection(s, resolved) +
+      motionEffectsSection(s) +
       resourceSection(s, resolved, true, v6, v8) +
       (v6 ? optionalSkillTail(resolved, allSkills(), hasCast, body) : '') +
       componentExportSection(components.exports) +
@@ -254,6 +256,7 @@ function renderPrompt(
     blockPromptSections(s, resolved, directorBrief) +
     timing +
     styleShiftSection(s, resolved) +
+    motionEffectsSection(s) +
     (version >= 2 ? startSection(s) : '') +
     '\n' +
     skillPromptSections(resolved, allSkills(), engineRenders, directorBrief) +

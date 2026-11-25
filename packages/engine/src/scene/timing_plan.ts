@@ -1,4 +1,5 @@
 // 分镜计划（TimingPlan）的解析、章节与交接校验、风格交界校验与交接展开。
+import { normalizeMotionEffects } from '../flow';
 import { goQuote, goTrimSpace } from '../gofmt';
 import { decodeFirst, ptrTo, type StructType, sliceOf } from './jsondecode';
 import {
@@ -53,6 +54,8 @@ export interface PlanEntry {
   handoff: PlanHandoff | null;
   /** 本镜头的整片风格：空表示默认风格，「来源/目录名」表示另一种，none 表示不用。由 cues 抄进 scene.json。 */
   film_style: string;
+  /** 本镜头在分镜阶段选定的核心动效标识（如 "motion-prompt:005"），最多 3 条；由 cues 抄进 scene.json。 */
+  motion_effects?: string[];
 }
 
 /** 零值计划条目，测试与调用方构造时用。 */
@@ -68,6 +71,7 @@ export function newPlanEntry(fields: Partial<PlanEntry> = {}): PlanEntry {
     chapter: '',
     handoff: null,
     film_style: '',
+    motion_effects: [],
     ...fields,
   };
 }
@@ -99,6 +103,7 @@ const planEntryType: StructType = {
       }),
     ],
     ['film_style', 'string'],
+    ['motion_effects', sliceOf('string')],
   ],
 };
 
@@ -166,6 +171,7 @@ export function parseTimingPlan(body: string | Uint8Array): TimingPlan {
     } catch (err) {
       throw new Error(`${where}（${entry.id}）的${(err as Error).message}`);
     }
+    entry.motion_effects = normalizeMotionEffects(entry.motion_effects, `${where}（${entry.id}）的 motion_effects`);
   });
   verifyLook(plan.look);
   verifyHandoffs(entries);

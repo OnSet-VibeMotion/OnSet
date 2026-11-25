@@ -67,6 +67,12 @@ export interface Scene {
    * shared/<名字>/，提示词要求直接引用、不要重画。没有这个字段的镜头提示词与指纹都不变。
    */
   components: string[];
+  /**
+   * 本镜头显式选定的动效标识（如 "motion-prompt:005"），最多 3 条。
+   * 渲染前由宿主自动展开配方注入动态区提示词，并联动第三方插件动效的 renderer_skill；
+   * 未设置或为空数组时，老镜头序列化、提示词与指纹均逐字节不变。
+   */
+  motion_effects: string[];
   // 镜头扩展块由 scene/blocks/ 下各自的模块用 declare module 并进这个接口，
   // 值为 null 表示 scene.json 里没有这个块。
   /**

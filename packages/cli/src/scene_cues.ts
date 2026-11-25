@@ -65,6 +65,8 @@ defineOp({
   film_style      可选，本镜头的整片风格：不写用项目的默认风格，「来源/目录名」用项目里装的
                   另一种（先 film_style_add()），none 不用整片风格。抄进镜头 scene.json 的
                   film_style；相邻镜头实际用的风格不同即风格交界，必须写 handoff.style_shift
+  motion_effects  可选，本镜头选定的动效标识数组（支持简写 "005" 或完整 "来源:id"，
+                  单镜最多 3 条）。校验存在性后抄进镜头 scene.json，渲染时自动注入配方并联动技能
 
 first_subtitle 与 first_phrase 每个镜头恰好填一个；第一个镜头固定从第 0 帧开始，
 可以不填。最后一个镜头延伸到 total_frames。锚点必须严格递增，每个镜头至少一帧，
