@@ -2,9 +2,14 @@ import './testsupport';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import * as series from '../series';
+import { setSeriesAssistRunnerForTest } from './series_assist';
 import { setEnv, startStudio, tempDir } from './testsupport';
+
+afterEach(() => {
+  setSeriesAssistRunnerForTest(null);
+});
 
 async function jsonReq(method: string, url: string, body?: unknown): Promise<Request> {
   return new Request(`http://localhost${url}`, {
@@ -109,5 +114,99 @@ describe('studio /api/series & project creation with series defaults', () => {
     } finally {
       fs.rmSync(parent, { recursive: true, force: true });
     }
+  });
+
+  it('persists optional publish_template on POST /api/series and supports /api/series/assist + cancel', async () => {
+    const seriesRoot = tempDir();
+    setEnv(series.DirEnv, seriesRoot);
+    const registry = path.join(tempDir(), 'projects.json');
+    const server = startStudio({ configPath: registry, projectPath: '' });
+
+    // POST /api/series 带 publish_template 一并落盘
+    const createRes = await server.handle(
+      await jsonReq('POST', '/api/series', {
+        name: '带发布模板专栏',
+        brief: '语言利落，少废话。',
+        publish_template: {
+          title_pattern: '【EP{nn}】{title}',
+          default_hashtags: ['#原理拆解', '#硬核科普'],
+          description_footer: '关注专栏，每周更新。',
+          cover_guidelines: '暗色网格底 + 亮橙角标',
+        },
+      }),
+    );
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as {
+      id: string;
+      publish_template?: { title_pattern?: string; default_hashtags?: string[] };
+    };
+    expect(created.publish_template?.title_pattern).toBe('【EP{nn}】{title}');
+    expect(series.readPublishTemplate(seriesRoot, created.id)?.default_hashtags).toEqual(['#原理拆解', '#硬核科普']);
+
+    // POST /api/series/assist：校验缺失输入返回 400
+    const badRes = await server.handle(await jsonReq('POST', '/api/series/assist', { mode: 'draft', idea: '   ' }));
+    expect(badRes.status).toBe(400);
+
+    // POST /api/series/assist：成功返回过滤后的草案
+    setSeriesAssistRunnerForTest(async (prompt) => {
+      expect(prompt).toContain('landscape-16x9');
+      return JSON.stringify({
+        name: '架构拆解局',
+        description: '每周拆解一个系统设计原理',
+        naming_pattern: 'EP{nn}-{title}',
+        defaults: {
+          canvas: 'landscape-16x9',
+          delivery: 'speech',
+          narration: 'solo',
+          film_style: 'nonexistent/hallucinated-style',
+        },
+        brief: '## 口播\n- 直入主题',
+        publish_template: { title_pattern: '【EP{nn}】{title}', default_hashtags: ['#架构'] },
+        rationale: '横屏适合画架构图。',
+        followups: ['改竖屏短视频', '更口语轻松'],
+      });
+    });
+
+    const assistRes = await server.handle(
+      await jsonReq('POST', '/api/series/assist', {
+        mode: 'draft',
+        idea: '做一个 B 站系统架构原理拆解专栏',
+      }),
+    );
+    expect(assistRes.status).toBe(200);
+    const draft = (await assistRes.json()) as {
+      name: string;
+      defaults: { canvas?: string; film_style?: string };
+      warnings: string[];
+      followups: string[];
+    };
+    expect(draft.name).toBe('架构拆解局');
+    expect(draft.defaults.canvas).toBe('landscape-16x9');
+    expect(draft.defaults.film_style).toBeUndefined();
+    expect(draft.warnings.join('\n')).toContain('nonexistent/hallucinated-style');
+    expect(draft.followups).toEqual(['改竖屏短视频', '更口语轻松']);
+
+    // DELETE /api/series/assist：取消进行中的请求返回 409
+    let started!: () => void;
+    const waitStarted = new Promise<void>((r) => {
+      started = r;
+    });
+    setSeriesAssistRunnerForTest(
+      (_prompt, signal) =>
+        new Promise<string>((_resolve, reject) => {
+          started();
+          signal?.addEventListener('abort', () => {
+            const err = new Error('已取消');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        }),
+    );
+    const pending = server.handle(await jsonReq('POST', '/api/series/assist', { mode: 'draft', idea: '长时间运行' }));
+    await waitStarted;
+    const cancelRes = await server.handle(await jsonReq('DELETE', '/api/series/assist'));
+    expect(cancelRes.status).toBe(200);
+    const cancelled = await pending;
+    expect(cancelled.status).toBe(409);
   });
 });

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { atomicWrite } from '../fsutil';
 import { goTrimSpace } from '../gofmt';
 import { marshalIndent } from '../gojson';
+import { writePublishTemplate } from './publish_template';
 import {
   BriefFile,
   ConfigFile,
@@ -10,10 +11,13 @@ import {
   DefaultNamingPattern,
   type SeriesConfig,
   type SeriesDefaults,
+  seriesDir,
   slugifySeriesId,
   type UpdateSeriesPatch,
   validateSeriesId,
 } from './types';
+
+export { seriesDir };
 
 function nowISO(): string {
   return new Date().toISOString();
@@ -71,11 +75,6 @@ function parseSeriesConfig(raw: unknown, expectedId: string): SeriesConfig {
     created_at: cleanOptionalString(r.created_at) ?? now,
     updated_at: cleanOptionalString(r.updated_at) ?? now,
   };
-}
-
-/** 某个专栏在库里的目录路径。 */
-export function seriesDir(rootDir: string, id: string): string {
-  return path.join(rootDir, validateSeriesId(id));
 }
 
 function resolveRealOrAbs(dir: string): string {
@@ -249,6 +248,7 @@ export function createSeries(rootDir: string, input: CreateSeriesInput): SeriesC
   };
   writeConfig(rootDir, cfg);
   if (input.brief !== undefined && goTrimSpace(input.brief) !== '') writeBrief(rootDir, id, input.brief);
+  if (input.publish_template !== undefined) writePublishTemplate(rootDir, id, input.publish_template);
   return cfg;
 }
 
@@ -281,6 +281,7 @@ export function updateSeries(rootDir: string, id: string, patch: UpdateSeriesPat
   };
   writeConfig(rootDir, updated);
   if (patch.brief !== undefined) writeBrief(rootDir, existing.id, patch.brief);
+  if (patch.publish_template !== undefined) writePublishTemplate(rootDir, existing.id, patch.publish_template);
   return updated;
 }
 

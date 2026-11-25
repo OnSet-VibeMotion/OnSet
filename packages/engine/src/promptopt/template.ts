@@ -7,7 +7,7 @@ export function templateDir(): string {
   return path.join(assetsBase(), 'assets', 'optimizer');
 }
 
-export function readTemplate(name: 'polish.md' | 'scene-check.md'): string {
+export function readTemplate(name: 'polish.md' | 'scene-check.md' | 'series-assist.md'): string {
   return fs.readFileSync(path.join(templateDir(), name), 'utf8');
 }
 

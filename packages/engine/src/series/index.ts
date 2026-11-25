@@ -16,6 +16,26 @@ export {
   seriesAssetDir,
   validateAssetName,
 } from './assets';
+export {
+  assistSeries,
+  buildSeriesAssistPrompt,
+  parseSeriesAssist,
+  type RunSeriesAssistOptions,
+  type RunSeriesAssistResult,
+  runSeriesAssist,
+  type SeriesAssistBrandKitOption,
+  type SeriesAssistCanvasOption,
+  type SeriesAssistCatalog,
+  type SeriesAssistDraft,
+  type SeriesAssistFilmStyleOption,
+  type SeriesAssistInput,
+  type SeriesAssistMode,
+  type SeriesAssistModeOption,
+  SeriesAssistRejected,
+  type SeriesAssistResult,
+  type SeriesAssistVoiceOption,
+  ValidSeriesAssistModes,
+} from './assist';
 export { applySeriesDefaultsToProject, bindProject, readBinding, unbindProject, writeBinding } from './binding';
 export { readDirections, type SeriesPromptBrief, seriesPromptBrief, writeDirections } from './brief';
 export { DirEnv, defaultDir } from './dir';

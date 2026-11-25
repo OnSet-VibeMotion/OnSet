@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import path from 'node:path';
 import { goTrimSpace } from '../gofmt';
 
 /** 专栏目录内的配置文件与辅助文件。 */
@@ -56,6 +57,15 @@ export interface SeriesConfig {
   updated_at: string;
 }
 
+/** 专栏级发布模板的写入入参。 */
+export interface PublishTemplateInput {
+  title_pattern?: string;
+  default_hashtags?: string[];
+  description_footer?: string;
+  cover_guidelines?: string;
+  credits_lines?: string[];
+}
+
 /** 创建专栏的入参。 */
 export interface CreateSeriesInput {
   id?: string;
@@ -67,6 +77,7 @@ export interface CreateSeriesInput {
   next_episode?: number;
   defaults?: SeriesDefaults;
   brief?: string;
+  publish_template?: PublishTemplateInput;
 }
 
 /** 更新专栏的局部补丁。 */
@@ -79,6 +90,7 @@ export interface UpdateSeriesPatch {
   next_episode?: number;
   defaults?: SeriesDefaults;
   brief?: string;
+  publish_template?: PublishTemplateInput;
 }
 
 /** 项目已从专栏拉取的一条资产同步记录。 */
@@ -107,6 +119,11 @@ export function validateSeriesId(id: string): string {
     throw new Error('专栏标识须以小写字母开头，只含小写字母、数字与短横线，最长 40 位');
   }
   return clean;
+}
+
+/** 某个专栏在库里的目录路径。 */
+export function seriesDir(rootDir: string, id: string): string {
+  return path.join(rootDir, validateSeriesId(id));
 }
 
 /** 根据显示名生成安全 slug；纯非 ASCII 名称回退为 series-<8位短摘要>。 */
