@@ -23,6 +23,7 @@ import './filmstyle_refs_cmd';
 import './font_cmd';
 import './frame_qc_cmd';
 import './hyperframes';
+import './jianying_cmd';
 import './media';
 import './mediagen_cmd';
 import './motion_cmd';
