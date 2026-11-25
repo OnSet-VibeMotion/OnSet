@@ -4,8 +4,9 @@
 // 镜头级的检查（scene.VerifyOutput、onset scene frames）只看单镜头产物；拼接、
 // 混音之后才出现的问题它们一个都看不到：音轨比画面短半秒、某镜在拼接时掉了
 // 一帧、交界处闪一帧黑。这些要等成片发布后才被观众发现。
+import path from 'node:path';
 import { formatFixed } from '../gofmt';
-import { isBlank, type Media } from '../mediaprobe';
+import { isBlank, type Media, readFrameQCSummary } from '../mediaprobe';
 import { writeSeams, writeSheets } from './sheets';
 import {
   type Cut,
@@ -84,6 +85,18 @@ export function run(p: Prober, options: Options): Report {
   }
   writeSheets(p, report, opts);
   writeSeams(p, report, opts);
+  const qcPath = options.frameQCPath || (opts.outDir ? path.join(opts.outDir, 'frame-qc.json') : '');
+  if (qcPath) {
+    const summary = readFrameQCSummary(qcPath);
+    if (summary) {
+      report.frame_qc = summary;
+      if (summary.verdict === 'warn' || summary.verdict === 'fail') {
+        report.hints.push(
+          `全流帧检 verdict=${summary.verdict}（fail ${summary.fail_count} / warn ${summary.warn_count} / info ${summary.info_count}），详情见 ${path.basename(qcPath)}`,
+        );
+      }
+    }
+  }
   report.ok = report.problems.length === 0;
   return report;
 }
