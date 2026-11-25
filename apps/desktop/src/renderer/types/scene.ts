@@ -97,6 +97,14 @@ export interface StoryboardStyle {
   missing?: boolean;
 }
 
+export interface StoryboardMotionEffect {
+  ref: string;
+  name: string;
+  category: string;
+  summary?: string;
+  missing?: boolean;
+}
+
 export interface StoryboardScene {
   id: string;
   dir: string;
@@ -106,6 +114,8 @@ export interface StoryboardScene {
   /** 分镜计划里写的 film_style 原值：空是默认风格，none 是不用整片风格。 */
   film_style?: string;
   style: StoryboardStyle;
+  /** 本镜头选定的动效条目（优先读 scene-plan.json，无计划时回退读 scene.json）。 */
+  motion_effects?: StoryboardMotionEffect[];
   anchor?: string;
   handoff?: StoryboardHandoff;
   text?: string;

@@ -4,6 +4,7 @@ import type { Attachment, StoryboardResponse, StoryboardScene, StoryboardStyle }
 import { Markdown } from '../chat/Markdown';
 import { PromptCheckPanel } from '../PromptCheck';
 import { ranges, roleHints, StyleThumb, sameStyle, sceneNo } from './helpers';
+import { MotionBadges } from './MotionBadges';
 
 export type OnQuick = (text: string, attachments: Attachment[], draftOnly?: boolean) => void;
 
@@ -178,6 +179,7 @@ export function SceneCard(props: {
             换风格
           </button>
         </div>
+        <MotionBadges effects={scene.motion_effects} sceneLabel={`镜头 ${no}（${scene.id}）`} onQuick={props.onQuick} />
         {scene.text && (
           <blockquote
             className="sb-text"
@@ -239,10 +241,11 @@ export function SceneBrief({
       live = false;
     };
   }, [sceneId, version, reloads]);
-  if (!item || (!item.summary && !item.prompt)) return null;
+  if (!item || (!item.summary && !item.prompt && !item.motion_effects?.length)) return null;
   return (
     <div className="scene-brief" id="scene-brief">
       {item.summary && <p className="scene-brief-summary">{item.summary}</p>}
+      <MotionBadges effects={item.motion_effects} sceneLabel={`镜头 ${item.id}`} onQuick={onQuick} compact />
       <div className="scene-brief-links">
         {item.prompt && (
           <details

@@ -10,6 +10,7 @@ export interface SeriesFormState {
   canvas: string;
   modeId: string;
   filmStyle: string;
+  motionEffects: string[];
   ttsVoice: string;
   brief: string;
   publishForm: PublishTemplateFormState;
@@ -37,6 +38,7 @@ export function initSeriesForm(
     canvas: initial?.defaults.canvas ?? styles?.default_canvas ?? '',
     modeId,
     filmStyle: initial?.defaults.film_style ?? '',
+    motionEffects: initial?.defaults.motion_effects ?? [],
     ttsVoice: initial?.defaults.tts_voice ?? '',
     brief: initial?.brief ?? '',
     publishForm: publishTemplateToForm(initial?.publish_template),
@@ -55,6 +57,7 @@ export function buildAssistCurrent(form: SeriesFormState, modes: ModeOption[]): 
       delivery: currentMode?.delivery || undefined,
       narration: currentMode?.narration || undefined,
       film_style: form.filmStyle || undefined,
+      motion_effects: form.motionEffects.length > 0 ? form.motionEffects : undefined,
       tts_voice: form.ttsVoice.trim() || undefined,
     },
     brief: form.brief.trim() ? form.brief : undefined,
@@ -82,6 +85,7 @@ export function applyDraftToForm(
     canvas: draft.defaults.canvas || form.canvas,
     modeId: nextModeId,
     filmStyle: draft.defaults.film_style || form.filmStyle,
+    motionEffects: draft.defaults.motion_effects?.length ? draft.defaults.motion_effects : form.motionEffects,
     ttsVoice: draft.defaults.tts_voice || form.ttsVoice,
     brief: draft.brief || form.brief,
     publishForm: draft.publish_template ? publishTemplateToForm(draft.publish_template) : form.publishForm,
@@ -114,6 +118,7 @@ export function buildSeriesSavePayload(
       delivery: mode?.delivery || undefined,
       narration: mode?.narration || undefined,
       film_style: form.filmStyle || undefined,
+      motion_effects: form.motionEffects.length > 0 ? form.motionEffects : undefined,
       tts_voice: form.ttsVoice.trim() || undefined,
     },
     brief: form.brief,

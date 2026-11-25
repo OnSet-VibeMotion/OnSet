@@ -7,6 +7,9 @@ export function SeriesPresetTab(props: {
   canvas: string;
   modeId: string;
   styleLabel: string;
+  motionEffects: string[];
+  motionOptions: { ref: string; name: string }[];
+  motionPickerOpen: boolean;
   ttsVoice: string;
   voices: string[];
   parentDir: string;
@@ -19,6 +22,8 @@ export function SeriesPresetTab(props: {
   onCanvasChange: (v: string) => void;
   onModeChange: (v: string) => void;
   onOpenStylePicker: () => void;
+  onToggleMotionPicker: () => void;
+  onMotionEffectsChange: (v: string[]) => void;
   onVoiceChange: (v: string) => void;
   onParentDirChange: (v: string) => void;
   onNamingPatternChange: (v: string) => void;
@@ -92,6 +97,55 @@ export function SeriesPresetTab(props: {
             />
           )}
         </label>
+      </div>
+      <div className="series-field">
+        <div className="series-motion-head">
+          <span>常用动效（写分镜时优先复用，可选）</span>
+          <button type="button" className="series-link-btn" onClick={props.onToggleMotionPicker}>
+            {props.motionPickerOpen ? '收起选择' : '+ 添加常用动效'}
+          </button>
+        </div>
+        {props.motionEffects.length > 0 && (
+          <div className="series-motion-chips">
+            {props.motionEffects.map((ref) => {
+              const hit = props.motionOptions.find((m) => m.ref === ref);
+              const shortId = ref.includes(':') ? ref.slice(ref.indexOf(':') + 1) : ref;
+              return (
+                <span key={ref} className="series-motion-chip" title={ref}>
+                  <span>{hit ? `${shortId} ${hit.name}` : ref}</span>
+                  <button
+                    type="button"
+                    aria-label={`移除常用动效 ${ref}`}
+                    onClick={() => props.onMotionEffectsChange(props.motionEffects.filter((x) => x !== ref))}
+                  >
+                    ×
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
+        {props.motionPickerOpen && (
+          <select
+            aria-label="选择常用动效"
+            value=""
+            onChange={(e) => {
+              const picked = e.currentTarget.value;
+              if (picked && !props.motionEffects.includes(picked)) {
+                props.onMotionEffectsChange([...props.motionEffects, picked]);
+              }
+            }}
+          >
+            <option value="">选择一条动效加入专栏常用…</option>
+            {props.motionOptions
+              .filter((m) => !props.motionEffects.includes(m.ref))
+              .map((m) => (
+                <option key={m.ref} value={m.ref}>
+                  {m.ref} · {m.name}
+                </option>
+              ))}
+          </select>
+        )}
       </div>
       <label className="series-field">
         <span>默认保存父目录</span>

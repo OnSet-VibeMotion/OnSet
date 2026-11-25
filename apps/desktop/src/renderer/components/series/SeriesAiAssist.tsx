@@ -34,6 +34,9 @@ function presetSummaryItems(
   if (d.tts_voice) {
     items.push({ label: '音色', value: d.tts_voice });
   }
+  if (d.motion_effects?.length) {
+    items.push({ label: '常用动效', value: d.motion_effects.join('、') });
+  }
   return items;
 }
 

@@ -23,6 +23,11 @@ interface VoiceListEntry {
   name: string;
 }
 
+interface MotionCatalogSource {
+  id: string;
+  effects: { id: string; name: string }[];
+}
+
 export function SeriesModal(props: {
   /** null 表示新建专栏；传入已有对象表示编辑/管理。 */
   initial: SeriesItem | null;
@@ -44,6 +49,8 @@ export function SeriesModal(props: {
   );
   const [applySnapshot, setApplySnapshot] = useState<SeriesFormState | null>(null);
   const [voices, setVoices] = useState<string[]>([]);
+  const [motionOptions, setMotionOptions] = useState<{ ref: string; name: string }[]>([]);
+  const [motionPickerOpen, setMotionPickerOpen] = useState(false);
   const [styleOpen, setStyleOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -60,6 +67,18 @@ export function SeriesModal(props: {
       () => setVoices([]),
     );
   }, []);
+
+  useEffect(() => {
+    if (!motionPickerOpen && form.motionEffects.length === 0) return;
+    if (motionOptions.length > 0) return;
+    api<{ sources?: MotionCatalogSource[] }>('/api/motion-effects').then(
+      (res) =>
+        setMotionOptions(
+          (res.sources ?? []).flatMap((src) => src.effects.map((e) => ({ ref: `${src.id}:${e.id}`, name: e.name }))),
+        ),
+      () => {},
+    );
+  }, [motionPickerOpen, form.motionEffects.length, motionOptions.length]);
 
   const episodes = props.initial
     ? props.projects
@@ -211,6 +230,9 @@ export function SeriesModal(props: {
               canvas={form.canvas}
               modeId={form.modeId}
               styleLabel={styleLabel}
+              motionEffects={form.motionEffects}
+              motionOptions={motionOptions}
+              motionPickerOpen={motionPickerOpen}
               ttsVoice={form.ttsVoice}
               voices={voices}
               parentDir={form.parentDir}
@@ -223,6 +245,8 @@ export function SeriesModal(props: {
               onCanvasChange={(v) => updateForm('canvas', v)}
               onModeChange={(v) => updateForm('modeId', v)}
               onOpenStylePicker={() => setStyleOpen(true)}
+              onToggleMotionPicker={() => setMotionPickerOpen((v) => !v)}
+              onMotionEffectsChange={(v) => updateForm('motionEffects', v)}
               onVoiceChange={(v) => updateForm('ttsVoice', v)}
               onParentDirChange={(v) => updateForm('parentDir', v)}
               onNamingPatternChange={(v) => updateForm('namingPattern', v)}

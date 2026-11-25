@@ -485,3 +485,59 @@ test('SeriesModal AI assist handles cancel, errors without losing manual input, 
   expect(await screen.findByText('没有配置可用的 AI 工具')).toBeTruthy();
   expect(briefArea.value).toBe('开头别废话，不要营销词');
 });
+
+test('SeriesModal displays, adds, removes and saves defaults.motion_effects', async () => {
+  let savedPayload: Record<string, unknown> | null = null;
+  mockApi({
+    '/api/voices': { voices: [{ name: '主理人' }] },
+    '/api/motion-effects': {
+      sources: [
+        {
+          id: 'motion-prompt',
+          name: 'Motion Prompt',
+          version: 'pinned',
+          effects: [
+            { id: '005', name: '遮罩显现', category: '动态图形', summary: '遮罩显现' },
+            { id: '007', name: '数字递增', category: '动态图形', summary: '数字递增' },
+          ],
+        },
+      ],
+    },
+    'PUT /api/series/ai-explainer': (req: MockRequest) => {
+      savedPayload = req.body as Record<string, unknown>;
+      return { ...sampleSeries, defaults: { ...sampleSeries.defaults, motion_effects: ['motion-prompt:007'] } };
+    },
+  });
+
+  const user = userEvent.setup();
+  render(
+    <SeriesModal
+      initial={{
+        ...sampleSeries,
+        defaults: { ...sampleSeries.defaults, motion_effects: ['motion-prompt:005'] },
+      }}
+      styles={styles}
+      modes={styles.modes}
+      defaultParent="/home/u/Videos"
+      projects={[]}
+      summaries={{}}
+      onSaved={async () => {}}
+      onDeleted={async () => {}}
+      onClose={() => {}}
+    />,
+  );
+
+  await user.click(screen.getByRole('tab', { name: '开片预设' }));
+  expect(await screen.findByText('005 遮罩显现')).toBeTruthy();
+
+  await user.click(screen.getByRole('button', { name: '+ 添加常用动效' }));
+  await user.selectOptions(screen.getByLabelText('选择常用动效'), 'motion-prompt:007');
+  expect(screen.getByText('007 数字递增')).toBeTruthy();
+
+  await user.click(screen.getByRole('button', { name: '移除常用动效 motion-prompt:005' }));
+  await user.click(screen.getByRole('button', { name: '保存修改' }));
+  await waitFor(() => expect(savedPayload).not.toBeNull());
+  expect(savedPayload).toMatchObject({
+    defaults: { motion_effects: ['motion-prompt:007'] },
+  });
+});

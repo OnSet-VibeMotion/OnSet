@@ -26,7 +26,9 @@
   gap: 8px;
 }
 
-.motion-effects .motion-filters { margin-bottom: 16px; }
+.motion-effects .motion-filters {
+  margin-bottom: 16px;
+}
 
 .motion-effects .motion-search {
   display: flex;
@@ -40,7 +42,9 @@
   border-radius: var(--radius);
 }
 
-.motion-effects .motion-search:focus-within { border-color: var(--accent); }
+.motion-effects .motion-search:focus-within {
+  border-color: var(--accent);
+}
 
 .motion-effects .motion-search input {
   width: 100%;
@@ -106,7 +110,7 @@
   text-align: left;
 }
 
-.motion-effects li button[aria-pressed='true'] {
+.motion-effects li button[aria-pressed="true"] {
   background: var(--accent-soft);
   color: var(--accent-text);
   border-color: var(--accent-line);
@@ -119,8 +123,14 @@
   white-space: nowrap;
 }
 
-.motion-effects .motion-row-name { font-weight: 600; }
-.motion-effects .motion-row-source { grid-row: 2; color: var(--text-3); font-size: 11px; }
+.motion-effects .motion-row-name {
+  font-weight: 600;
+}
+.motion-effects .motion-row-source {
+  grid-row: 2;
+  color: var(--text-3);
+  font-size: 11px;
+}
 
 .motion-effects .motion-row-id {
   grid-column: 2;
@@ -141,17 +151,60 @@
   background: #191917;
 }
 
-.motion-effects .motion-description { padding: 15px; }
-.motion-effects .motion-reference { margin: 0 0 7px; color: var(--text-3); font-size: 12px; }
-.motion-effects .motion-description code { color: var(--accent-text); overflow-wrap: anywhere; }
-.motion-effects .motion-description a { display: inline-block; margin-inline-start: 10px; color: var(--accent-text); }
-.motion-effects .motion-example { margin: 12px 0 0; padding-inline-start: 9px; border-inline-start: 2px solid var(--accent-line); color: var(--text-2); }
-.motion-effects .motion-actions { margin-top: 16px; }
-.motion-effects .motion-actions button { min-height: 36px; }
-.motion-effects .motion-feedback { margin: 8px 0 0; color: var(--ok); }
-.motion-effects .motion-message { display: flex; gap: 12px; align-items: center; color: var(--text-2); }
+.motion-effects .motion-description {
+  padding: 15px;
+}
+.motion-effects .motion-reference {
+  margin: 0 0 7px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.motion-effects .motion-description code {
+  color: var(--accent-text);
+  overflow-wrap: anywhere;
+}
+.motion-effects .motion-description a {
+  display: inline-block;
+  margin-inline-start: 10px;
+  color: var(--accent-text);
+}
+.motion-effects .motion-example {
+  margin: 12px 0 0;
+  padding-inline-start: 9px;
+  border-inline-start: 2px solid var(--accent-line);
+  color: var(--text-2);
+}
+.motion-effects .motion-actions {
+  margin-top: 16px;
+}
+.motion-effects .motion-actions button {
+  min-height: 36px;
+}
+.motion-effects .motion-series-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-color: var(--accent-line);
+}
+.motion-effects .motion-feedback {
+  margin: 8px 0 0;
+  color: var(--ok);
+}
+.motion-effects .motion-error {
+  margin: 8px 0 0;
+  color: var(--bad);
+}
+.motion-effects .motion-message {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  color: var(--text-2);
+}
 
 @container (max-width: 430px) {
-  .motion-effects .motion-layout { grid-template-columns: minmax(0, 1fr); }
-  .motion-effects ul { max-height: 142px; }
+  .motion-effects .motion-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .motion-effects ul {
+    max-height: 142px;
+  }
 }
