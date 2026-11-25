@@ -14,6 +14,7 @@ import './audition_cmd';
 import './audio';
 import './audio_mix';
 import './brandkit_cmd';
+import './collect_cmd';
 
 import './timing_report';
 
