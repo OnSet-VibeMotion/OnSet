@@ -6,99 +6,16 @@ import { atomicWrite } from '@onset/engine/fsutil';
 import { goRound } from '@onset/engine/gofmt';
 import { marshal, marshalIndent } from '@onset/engine/gojson';
 import { lockFile } from '@onset/engine/hyperframes';
-import { type MixCue, MixOutputs, MixSampleRate, mixProgram, newToolchain, patchVoice } from '@onset/engine/mediaprobe';
+import { MixOutputs, MixSampleRate, mixProgram, newToolchain, patchVoice } from '@onset/engine/mediaprobe';
 import { rejectSymlinkPath } from '@onset/engine/project';
-import { loadInventory } from '@onset/engine/reads';
-import { audioTargetsOf, canvasOf, contained, parsePhraseTimeline } from '@onset/engine/scene';
+import { audioTargetsOf, canvasOf, contained } from '@onset/engine/scene';
 import { sha256File } from '@onset/engine/toolinstall';
+import { asObject, expectFrame, inputFile, readMixCues, readProjectJSON } from './audio_mix_cues';
 import { bool, projectRoot, str } from './ops/common';
 import { defineOp } from './ops/op';
 
 const outputNames = [...MixOutputs, 'machine-qc.json'] as const;
 const hash = (value: unknown) => crypto.createHash('sha256').update(marshal(value)).digest('hex');
-
-function inputFile(root: string, relative: string): string {
-  const file = contained(root, relative, '混音输入');
-  const parts = path.relative(root, file).split(path.sep);
-  if (parts.some((part) => part.startsWith('.')) || !fs.statSync(file).isFile())
-    throw new Error(`混音输入必须是项目内的非隐藏文件：${relative}`);
-  return file;
-}
-
-function readJSON(root: string, name: string): unknown {
-  return JSON.parse(fs.readFileSync(inputFile(root, name), 'utf8'));
-}
-
-function object(value: unknown, label: string): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} 必须是 JSON 对象`);
-  return value as Record<string, unknown>;
-}
-
-function frame(value: unknown, label: string, min = 0): number {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < min)
-    throw new Error(`${label} 必须是至少为 ${min} 的整数帧数`);
-  return value;
-}
-
-function readCues(root: string, file: string, fps: number, frames: number): MixCue[] {
-  const sheet = object(readJSON(root, file), 'cue sheet');
-  if (sheet.schema !== 1 || !Array.isArray(sheet.cues)) throw new Error('cue sheet 需要 schema: 1 和 cues 数组');
-  let events: Map<string, number> | undefined;
-  let phrases: Map<string, number> | undefined;
-  const parseStart = (cue: Record<string, unknown>, label: string): number => {
-    if (cue.kind === 'music') return frame(cue.start_frame ?? 0, label + ' start_frame');
-    if (typeof cue.event_id === 'string' && cue.event_id && !cue.phrase_id) {
-      if (!events) {
-        const inventory = loadInventory(inputFile(root, 'production/visible-event-inventory.json'));
-        if (inventory.fps !== fps) throw new Error('可见事件清单帧率与画幅不符');
-        events = new Map(inventory.events.map((event) => [event.event_id, event.enter_frame]));
-      }
-      return frame(events.get(cue.event_id), label + ' event_id 的起始帧');
-    }
-    if (typeof cue.phrase_id === 'string' && cue.phrase_id && !cue.event_id) {
-      phrases ??= new Map(
-        parsePhraseTimeline(fs.readFileSync(inputFile(root, 'production/phrase-timeline.json')), fps).phrases!.map(
-          (phrase) => [phrase.phrase_id, phrase.start_frame],
-        ),
-      );
-      return frame(phrases.get(cue.phrase_id), label + ' phrase_id 的起始帧');
-    }
-    throw new Error(label + ' 需要一个有效的 event_id 或 phrase_id');
-  };
-  const samples = (f: number) => goRound((f / fps) * MixSampleRate);
-  return sheet.cues.map((item, i) => {
-    const label = `cue ${i + 1}`,
-      cue = object(item, label);
-    if (cue.kind !== 'music' && cue.kind !== 'sfx') throw new Error(label + ' kind 必须是 music 或 sfx');
-    if (typeof cue.asset !== 'string' || !cue.asset) throw new Error(label + ' 缺少 asset');
-    const start = parseStart(cue, label);
-    if (cue.start_frame !== undefined && cue.start_frame !== start)
-      throw new Error(label + ' start_frame 与绑定的事件不一致');
-    const length = frame(cue.duration_frames, label + ' duration_frames', 1);
-    if (start + length > frames) throw new Error(label + ' 越过节目终点');
-    const sourceStart = frame(cue.source_start_frame ?? 0, label + ' source_start_frame');
-    const gain = cue.gain_db ?? (cue.kind === 'music' ? -18 : -12);
-    if (typeof gain !== 'number' || !Number.isFinite(gain) || gain < -90 || gain > 12)
-      throw new Error(label + ' gain_db 必须在 -90 到 12 之间');
-    const fadeIn = frame(cue.fade_in_frames ?? 0, label + ' fade_in_frames');
-    const fadeOut = frame(cue.fade_out_frames ?? 0, label + ' fade_out_frames');
-    if (fadeIn + fadeOut > length) throw new Error(label + ' 淡入淡出超过 cue 长度');
-    if (cue.allow_clip !== undefined && typeof cue.allow_clip !== 'boolean') {
-      throw new Error(label + ' allow_clip 必须是布尔值');
-    }
-    return {
-      kind: cue.kind,
-      file: inputFile(root, cue.asset),
-      start: samples(start),
-      length: samples(start + length) - samples(start),
-      sourceStart: samples(sourceStart),
-      gainDB: gain,
-      fadeIn: samples(fadeIn),
-      fadeOut: samples(fadeOut),
-      ...(cue.allow_clip ? { allowClip: true } : {}),
-    };
-  });
-}
 
 function publish(audio: string, work: string): void {
   const backup = fs.mkdtempSync(path.join(audio, 'mix-previous-'));
@@ -130,12 +47,16 @@ defineOp({
   summary: '按已确认的声音 cue 混音并校验候选成片',
   description: `读取静音母版、配音、时长报告与 cue-sheet.json，以 48kHz 双声道输出 music.wav、sfx.wav、premaster.wav 与 candidate.mp4。
 cue sheet：{"schema":1,"cues":[{"kind":"music","asset":"assets/music.wav","start_frame":0,"duration_frames":240,"gain_db":-18,"fade_in_frames":12,"fade_out_frames":24}]}。
-空 cues 只保留人声。音效 kind 用 sfx，以 event_id 或 phrase_id 为起点。可从 source_start_frame 开始剪取素材。
+空 cues 只保留人声。音效 kind 用 sfx，可以 event_id、phrase_id 或 anchor_id / anchor_frame + peak_seconds 绑定：按峰值时刻自动反推入点，负入点自动截断至 0 并换算起播位置。可从 source_start_frame 或 trim_start_seconds 开始剪取素材。
 自动压低人声下的音乐、单条 cue 入轨真峰值防削波夹取、两遍响度串联末端 alimiter 砖墙限幅、检查 AAC 解码真峰与采样数。相同输入复用校验通过的候选。不同输入要显式 replace=true，原候选会归档。`,
   examples: ['audio_mix()', 'audio_mix({"replace":true})'],
   params: {
     project_root: projectRoot,
     cue_sheet: { type: 'string', description: '当前确认的音频 cue sheet', default: 'production/audio/cue-sheet.json' },
+    anchors: {
+      type: 'string',
+      description: '可选命名锚点表（默认 production/beat/anchors.json，用于解析 SFX anchor_id）',
+    },
     primary_music: { type: 'string', description: '纯音乐项目用已确认的整首音乐，不剪接或变速' },
     expect_frames: { type: 'integer', description: '使用主音乐时传确认的总帧数' },
     allow_cue_clip: { type: 'boolean', description: '全局关闭入轨 cue 真峰值防削波夹取（仅用于兼容旧行为）' },
@@ -155,8 +76,10 @@ cue sheet：{"schema":1,"cues":[{"kind":"music","asset":"assets/music.wav","star
       signal.throwIfAborted();
       const { fps } = canvasOf(root, 'frame.md');
       const primaryMusic = str(p.primary_music) ? inputFile(root, str(p.primary_music)) : undefined;
-      const timing = primaryMusic ? undefined : object(readJSON(root, 'production/timing-report.json'), '时长报告');
-      const frames = frame(timing?.total_frames ?? p.expect_frames, '节目总帧数', 1);
+      const timing = primaryMusic
+        ? undefined
+        : asObject(readProjectJSON(root, 'production/timing-report.json'), '时长报告');
+      const frames = expectFrame(timing?.total_frames ?? p.expect_frames, '节目总帧数', 1);
       if (
         timing &&
         (timing.fps !== fps ||
@@ -169,7 +92,8 @@ cue sheet：{"schema":1,"cues":[{"kind":"music","asset":"assets/music.wav","star
       const voice = primaryMusic ? undefined : inputFile(root, 'production/audio/voice.wav');
       const video = inputFile(root, 'production/silent-master.mp4');
       const sheet = str(p.cue_sheet);
-      const cues = readCues(root, sheet, fps, frames);
+      const anchorsFile = str(p.anchors) || undefined;
+      const cues = readMixCues(root, sheet, fps, frames, { anchorsFile });
       const inputs = [...new Set([voice ?? primaryMusic!, video, ...cues.map((cue) => cue.file)])];
       if (outputNames.some((name) => inputs.includes(path.join(audio, name))))
         throw new Error('混音输出不能作为 cue 源素材');
@@ -253,7 +177,7 @@ cue sheet：{"schema":1,"cues":[{"kind":"music","asset":"assets/music.wav","star
         if (!report.ok) throw new Error(report.problems.join('；'));
         if (
           marshal(await hashes(inputs)) !== marshal(sourceHashes) ||
-          marshal(readCues(root, sheet, fps, frames)) !== marshal(cues)
+          marshal(readMixCues(root, sheet, fps, frames, { anchorsFile })) !== marshal(cues)
         ) {
           throw new Error('混音输入在执行期间发生变化');
         }
@@ -312,8 +236,8 @@ defineOp({
     const original = inputFile(root, str(p.original)),
       replacement = inputFile(root, str(p.replacement));
     const { fps } = canvasOf(root, 'frame.md');
-    const startSample = goRound((frame(p.start_frame, '补录开始帧') / fps) * MixSampleRate);
-    const endSample = goRound((frame(p.end_frame_exclusive, '补录结束帧', 1) / fps) * MixSampleRate);
+    const startSample = goRound((expectFrame(p.start_frame, '补录开始帧') / fps) * MixSampleRate);
+    const endSample = goRound((expectFrame(p.end_frame_exclusive, '补录结束帧', 1) / fps) * MixSampleRate);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     const work = fs.mkdtempSync(path.join(path.dirname(target), '.voice-patch-'));
     try {
