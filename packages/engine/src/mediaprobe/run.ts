@@ -1,5 +1,5 @@
 // 子进程的小工具：把 Go 的 cmd.Output() / CombinedOutput() / Run() 与 *exec.ExitError 的文案搬过来。只供本包内部使用。
-import { spawn, spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { type SpawnSyncReturns, spawn, spawnSync } from 'node:child_process';
 import { windowsCommand } from '../procgroup/windows';
 
 export interface Ran {
@@ -45,7 +45,16 @@ function fromSync(command: string, result: SpawnSyncReturns<Buffer>): Ran {
 export function run(command: string, args: string[], env: Record<string, string>): Ran {
   if (process.platform === 'win32') {
     const launch = windowsCommand(command, args, env);
-    return fromSync(command, spawnSync(launch.file, launch.args, { env: { ...env, ...launch.env }, windowsVerbatimArguments: launch.verbatim, windowsHide: true, maxBuffer: 1 << 30, stdio: ['ignore', 'pipe', 'pipe'] }));
+    return fromSync(
+      command,
+      spawnSync(launch.file, launch.args, {
+        env: { ...env, ...launch.env },
+        windowsVerbatimArguments: launch.verbatim,
+        windowsHide: true,
+        maxBuffer: 1 << 30,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }),
+    );
   }
   return fromSync(command, spawnSync(command, args, { env, maxBuffer: 1 << 30, stdio: ['ignore', 'pipe', 'pipe'] }));
 }
@@ -119,6 +128,60 @@ export function runAsync(
     child.on('close', (status, signal) => {
       const error = exitText(status, signal);
       settle({ stdout: Buffer.concat(out), stderr: Buffer.concat(err), error, exited: error !== null });
+    });
+  });
+}
+
+/**
+ * 流式运行子进程：把 stdout / stderr 分块交给回调，避免大体积帧流或日志在内存里累积。
+ * 只保留最后少量 stderr 文本用于报错摘要。
+ */
+export function runStream(
+  command: string,
+  args: string[],
+  env: Record<string, string>,
+  options: {
+    signal?: AbortSignal;
+    onStdout?: (chunk: Buffer) => void;
+    onStderr?: (chunk: Buffer) => void;
+  } = {},
+): Promise<{ error: string | null; exited: boolean; stderrTail: string }> {
+  return new Promise((resolve) => {
+    if (options.signal?.aborted) {
+      resolve({ error: 'context canceled', exited: false, stderrTail: '' });
+      return;
+    }
+    const launch = process.platform === 'win32' ? windowsCommand(command, args, env) : { file: command, args, env: {} };
+    const child = spawn(launch.file, launch.args, {
+      env: process.platform === 'win32' ? { ...env, ...launch.env } : env,
+      windowsVerbatimArguments: 'verbatim' in launch ? launch.verbatim : undefined,
+      windowsHide: process.platform === 'win32' ? true : undefined,
+      signal: options.signal,
+      killSignal: 'SIGKILL',
+      stdio: ['ignore', options.onStdout ? 'pipe' : 'ignore', options.onStderr ? 'pipe' : 'pipe'],
+    });
+    let stderrTail = '';
+    child.stdout?.on('data', (chunk: Buffer) => options.onStdout?.(chunk));
+    child.stderr?.on('data', (chunk: Buffer) => {
+      options.onStderr?.(chunk);
+      const text = chunk.toString('utf8');
+      stderrTail = (stderrTail + text).slice(-2048);
+    });
+    let settled = false;
+    const settle = (res: { error: string | null; exited: boolean; stderrTail: string }) => {
+      if (!settled) {
+        settled = true;
+        resolve(res);
+      }
+    };
+    child.on('error', (e) => {
+      if (child.pid === undefined && (e as NodeJS.ErrnoException).code !== 'ABORT_ERR') {
+        settle({ error: spawnErrorText(command, e), exited: false, stderrTail });
+      }
+    });
+    child.on('close', (status, signal) => {
+      const error = exitText(status, signal);
+      settle({ error, exited: error !== null, stderrTail });
     });
   });
 }

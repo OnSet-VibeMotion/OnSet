@@ -19,6 +19,7 @@ import './timing_report';
 
 import './filmstyle';
 import './font_cmd';
+import './frame_qc_cmd';
 import './hyperframes';
 import './media';
 import './mediagen_cmd';

@@ -1,6 +1,6 @@
 import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
-import { type FrameStats, type Media, mediaToJSON, type ProgramLoudness } from '../mediaprobe';
+import { type FrameQCSummary, type FrameStats, type Media, mediaToJSON, type ProgramLoudness } from '../mediaprobe';
 import type { DeliverySpec } from './delivery';
 
 /** Prober 是复查用到的全部媒体操作；mediaprobe.Toolchain 满足它。 */
@@ -69,6 +69,8 @@ export interface Options {
   /** tilesPerSheet 是每张联系表的格子数，超出就分页。 */
   tilesPerSheet?: number;
   thumbWidth?: number;
+  /** 可选：显式指定已生成的 frame-qc.json 路径；省略时若 outDir 下存在 frame-qc.json 会自动透出摘要。 */
+  frameQCPath?: string;
 }
 
 /** Tile 是联系表里的一格。position 是 start / middle / end / sample（交界条带里是 before / after）。scene_id 为空时不写出。 */
@@ -118,6 +120,8 @@ export interface Report {
   sheets: Sheet[];
   /** seams 是每个镜头交界的逐帧条带，切点在第 SeamFrames+1 格。 */
   seams: Sheet[];
+  /** 可选：由 frame-qc.json 透出的全流帧检摘要。 */
+  frame_qc?: FrameQCSummary;
 }
 
 /** ReportSchemaVersion 是 Report 的结构版本。 */
@@ -175,6 +179,7 @@ export function reportToJSON(r: Report): unknown {
         : undefined,
     sheets: r.sheets.map(sheetJSON),
     seams: r.seams.length > 0 ? r.seams.map(sheetJSON) : undefined,
+    frame_qc: r.frame_qc,
   };
 }
 
