@@ -38,6 +38,10 @@ export interface FlowRecord {
    * 渲染提示词在镜头指纹里，给老项目换提示词会让它所有已渲染的镜头都变 Stale，编排还可能真去重渲染。
    */
   render_prompt?: number;
+  /** 可选开关：开启后在分镜审核与全量渲染之间插入单镜真视频打样闸门（gate-pilot）。未设置或 false 与旧项目完全一致。 */
+  pilot_gate?: boolean;
+  /** 可选：开启单镜打样闸门时指定的代表镜头 ID（如 "scene-002"），留空默认第 1 镜。 */
+  pilot_scene?: string;
 }
 
 export interface Lock {
@@ -62,6 +66,9 @@ export function readLock(root: string): Lock {
     out.production = { id: rec.id, canvas: typeof rec.canvas === 'string' ? rec.canvas : '' };
     if (typeof rec.render_prompt === 'number' && Number.isInteger(rec.render_prompt) && rec.render_prompt > 0)
       out.production.render_prompt = rec.render_prompt;
+    if (typeof rec.pilot_gate === 'boolean') out.production.pilot_gate = rec.pilot_gate;
+    if (typeof rec.pilot_scene === 'string' && rec.pilot_scene.trim() !== '')
+      out.production.pilot_scene = rec.pilot_scene.trim();
   }
   return out;
 }
