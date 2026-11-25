@@ -1,10 +1,11 @@
 // 卡点的镜头块：scene.json 的 beat 字段，由卡点插件登记（index.ts）。
-import path from 'node:path';
+
 import fs from 'node:fs';
+import path from 'node:path';
 import * as beat from '../../beat';
-import { verifyBlock, type SceneBlock } from '../../scene/block';
+import { type SceneBlock, verifyBlock } from '../../scene/block';
 import { fromGoStruct } from '../../scene/jsondecode';
-import { contained, sceneCanvas, type Canvas, type Scene } from '../../scene/scene';
+import { type Canvas, contained, type Scene, sceneCanvas } from '../../scene/scene';
 import { VerificationError } from '../../scene/verification';
 
 declare module '../../scene/scene' {
@@ -50,14 +51,20 @@ export const beatBlock: SceneBlock<beat.Cue> = {
   toJSON: beat.cueToJSON,
   excludes: { keys: ['song', 'cast'], message: '卡点镜头不能同时带 song 或 cast 块' },
   verifyInputs: verifyBeat,
-  directorBrief: s => {
+  directorBrief: (s) => {
     const cue = s.beat;
     if (!cue) return '';
     const local = JSON.parse(fs.readFileSync(contained(s.directory, cue.data, '局部节拍'), 'utf8')) as beat.Local;
-    const downbeats = local.beats.filter(hit => hit.downbeat).map(hit => hit.frame);
-    return '\n本镜头节拍资料：\n' +
+    const downbeats = local.beats.filter((hit) => hit.downbeat).map((hit) => hit.frame);
+    const anchorEntries = local.anchors ? Object.entries(local.anchors) : [];
+    return (
+      '\n本镜头节拍资料：\n' +
       `- 占第 ${cue.first_bar} 小节起连续 ${cue.bars} 小节。使用 ${cue.data} 中的 beats.frame（局部整数帧）编排；不从秒数或 BPM 重算。\n` +
-      (downbeats.length > 0 && downbeats.length <= 16 ? `- 局部重拍帧：${downbeats.join('、')}。\n` : '');
+      (downbeats.length > 0 && downbeats.length <= 16 ? `- 局部重拍帧：${downbeats.join('、')}。\n` : '') +
+      (anchorEntries.length > 0
+        ? `- 命名锚点（局部整数帧）：${anchorEntries.map(([id, f]) => `${id}=${f}`).join('、')}，直接读 ${cue.data} 的 anchors 字段。\n`
+        : '')
+    );
   },
   timeline: { label: '卡点' },
   feature: { name: 'beat', description: '卡点模式' },

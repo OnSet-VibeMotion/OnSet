@@ -6,11 +6,12 @@ import path from 'node:path';
 import * as beat from '../../beat';
 import { envMap } from '../../envutil';
 import { formatFixed } from '../../gofmt';
-import { newToolchain } from '../../mediaprobe';
+import { DefaultAVToleranceFrames, DefaultAVVisualWindowFrames, newToolchain } from '../../mediaprobe';
 import { bool, num, positiveDuration, projectRoot, str, timeout, withTimeoutSignal } from '../../opkit';
 import type { PluginContext } from '../../plugin/types';
 import * as project from '../../project';
 import * as schedule from '../../schedule';
+import { formatAVBacktestSummary, runBeatAVBacktest } from './backtest';
 import { applyBeatCues, beatCoverage } from './cues';
 
 export { beatCoverage } from './cues';
@@ -257,9 +258,73 @@ export function beatOps(ctx: PluginContext): void {
       project_root: projectRoot,
     },
     run: (p, { out }) => {
-      const count = applyBeatCues(str(p.project_root), str(p.scenes));
-      out.write(`已写入 ${count} 个镜头的时长与节拍\n`);
-      return { data: { scenes: count } };
+      const result = applyBeatCues(str(p.project_root), str(p.scenes));
+      const anchorMsg = result.anchors ? `，同步写入 ${result.anchors.anchors.length} 个命名锚点` : '';
+      out.write(`已写入 ${result.scenes} 个镜头的时长与节拍${anchorMsg}\n`);
+      return {
+        data: {
+          scenes: result.scenes,
+          ...(result.anchors ? { anchors: result.anchors.anchors.length, sfx_cues: result.anchors.sfx_cues } : {}),
+        },
+      };
+    },
+  });
+
+  ctx.op({
+    name: 'beat_av_backtest',
+    cli: ['beat', 'av-backtest'],
+    summary: '对成片执行逐锚点音画回测并输出 av-backtest.json',
+    description:
+      '逐锚点对源音乐瞬态与成片混音音轨做局部归一化互相关定位，解码成片 ROI 画面在计划帧 ±6 帧内计算相邻帧变化峰或亮度峰，评估画面-音乐与音效-音乐真实帧误差（默认容差 ±2 帧，可配置 0–3 帧）。当存在 ≥ 3 个可靠音乐匹配且偏移散布 < 15ms 时自动估算 measured_output_offset_seconds，报告落盘 av-backtest.json。',
+    examples: [
+      'beat_av_backtest()',
+      'beat_av_backtest({"video": "production/audio/candidate.mp4", "tolerance_frames": 2, "out": "production/review/av-backtest.json"})',
+    ],
+    params: {
+      video: {
+        type: 'string',
+        description: '要回测的成片视频路径，缺省为 production/audio/candidate.mp4',
+        positional: 0,
+      },
+      source_music: { type: 'string', description: '源音乐文件路径，缺省从 track.json 读取' },
+      anchors: { type: 'string', description: '锚点表 JSON 路径，缺省为 ' + beat.AnchorsFile },
+      sfx_stem: { type: 'string', description: '可选独立 SFX 分轨（缺省存在 production/audio/sfx.wav 时自动使用）' },
+      cue_sheet: { type: 'string', description: '可选 cue-sheet.json 路径（用于按 cue_id 匹配音效素材）' },
+      out: { type: 'string', description: 'av-backtest.json 输出路径或目录，缺省写到视频同目录' },
+      fps: { type: 'number', description: '帧率覆盖值；缺省从 frame.md 或视频流探测' },
+      tolerance_frames: {
+        type: 'integer',
+        description: '音画误差容差（帧，0–3）',
+        default: DefaultAVToleranceFrames,
+      },
+      window_frames: {
+        type: 'integer',
+        description: '画面峰值搜索窗口（±帧）',
+        default: DefaultAVVisualWindowFrames,
+      },
+      strict: { type: 'boolean', description: 'verdict 非 pass 时以非零状态失败', default: false },
+      project_root: projectRoot,
+    },
+    run: async (p, { out, signal }) => {
+      const { report, reportPath } = await runBeatAVBacktest({
+        root: str(p.project_root),
+        video: str(p.video) || undefined,
+        sourceMusic: str(p.source_music) || undefined,
+        anchors: str(p.anchors) || undefined,
+        sfxStem: str(p.sfx_stem) || undefined,
+        cueSheet: str(p.cue_sheet) || undefined,
+        out: str(p.out) || undefined,
+        fps: num(p.fps) > 0 ? num(p.fps) : undefined,
+        toleranceFrames: p.tolerance_frames !== undefined ? num(p.tolerance_frames) : DefaultAVToleranceFrames,
+        windowFrames: p.window_frames !== undefined ? num(p.window_frames) : DefaultAVVisualWindowFrames,
+        env: currentEnvironment(),
+        signal,
+      });
+      out.write(formatAVBacktestSummary(report, reportPath));
+      if (bool(p.strict) && report.verdict !== 'pass') {
+        throw new Error(`成片音画回测未通过（verdict=${report.verdict}），详情见 ${reportPath}`);
+      }
+      return { data: { ...report, report_path: reportPath } };
     },
   });
 

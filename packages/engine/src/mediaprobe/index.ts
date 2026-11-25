@@ -1,3 +1,34 @@
+export type {
+  AVBacktestAnchor,
+  AVBacktestAnchorReport,
+  AVBacktestOptions,
+  AVBacktestReport,
+  AVBacktestROI,
+  AVBacktestSfxRef,
+  AVBacktestSfxResult,
+  AVBacktestSummary,
+  AVBacktestVerdict,
+} from './av_backtest';
+export {
+  AVBacktestSchemaVersion,
+  DefaultAVToleranceFrames,
+  DefaultAVVisualWindowFrames,
+  MaxAVToleranceFrames,
+  runAVBacktest,
+  writeAVBacktestReportJSON,
+} from './av_backtest';
+export {
+  computeMeasuredOutputOffset,
+  DefaultAudioSampleRate,
+  DefaultAudioSearchWindowSeconds,
+  DefaultMaxOffsetSpreadSeconds,
+  DefaultMinAudioCorrelation,
+  DefaultMinReliableMatchesForOffset,
+  DefaultMinVisualDelta,
+  detectVisualPeak,
+  locateEnergyPeakInStem,
+  matchAudioTemplate,
+} from './av_backtest_signal';
 export { contactSheetImages, cropImage } from './contact';
 export type {
   FrameQCAudioSummary,
