@@ -8,7 +8,15 @@ import { DialogueRelPath, SRTRelPath, VoiceRelPath } from '../dialogue';
 import * as filmstyle from '../filmstyle';
 import * as flow from '../flow';
 import * as plugin from '../plugin';
-import { candidateIsApproved, countFiles, dirMtime, type GateRecord, mtime } from './progress_gates';
+import {
+  candidateIsApproved,
+  countFiles,
+  dirMtime,
+  type GateRecord,
+  gateChanged,
+  mtime,
+  resolvePilotScene,
+} from './progress_gates';
 import { candidateFilm, latestReviewReport, projectVideoDigest, type ReviewReport } from './reviewreport';
 import type { SceneSummary } from './scenes';
 import { readStoryboard } from './storyboard';
@@ -130,6 +138,26 @@ const judges: Record<string, Judge> = {
     stale: (c, out) => planBehindStyle(c, out) || voiceAhead(c, out),
     staleNote: (c, out) => (planBehindStyle(c, out) ? filmstyle.PlanBehindStyleNote : undefined),
     detail: storyboardDetail,
+  },
+  // 可选单镜真视频打样闸门：未渲染出片前等 AI 渲染代表镜，出片后等用户审看确认，确认后才解锁全量渲染。
+  'render:gate-pilot': {
+    waiting: (c) => {
+      const pilot = resolvePilotScene(c.root, c.scenes);
+      return pilot.scene?.exists && !pilot.scene.stale ? 'user' : 'ai';
+    },
+    detail: (c) => {
+      const pilot = resolvePilotScene(c.root, c.scenes);
+      if (!pilot.id) return '等待分镜后渲染首镜打样';
+      if (!pilot.scene?.exists) return `待渲染打样镜头 ${pilot.id}`;
+      if (pilot.scene.stale) return `打样镜头 ${pilot.id} 需重渲染`;
+      const record = c.gates[flow.PilotGateID];
+      if (record && !gateChanged(c.root, record)) return `打样镜头 ${pilot.id} 已确认`;
+      return `打样镜头 ${pilot.id} 已出片，待审看确认`;
+    },
+    guide: {
+      ai: '先只渲染代表镜头真视频 MP4 供用户审看，确认方向后再解锁全量渲染。',
+      user: '请审看打样镜头的真视频效果，确认方向无误后即可解锁全量渲染。',
+    },
   },
   // 渲染：全部镜头出片才算做完，结果写几个出了片。
   'render:render': {
@@ -272,10 +300,14 @@ function toPluginGuide(g: flow.DeclaredGuide): plugin.PluginGuide {
 }
 
 /** 流程的站点连同判断。内置的普通站必须有判断函数，漏了直接报错，不让一站永远显示「没做」。 */
-export function stationDefs(id: flow.FlowID, extras: readonly flow.ExtraStation[] = []): Def[] {
+export function stationDefs(
+  id: flow.FlowID,
+  extras: readonly flow.ExtraStation[] = [],
+  opts: flow.RouteOptions = {},
+): Def[] {
   const byID = new Map<string, Def>();
   const registered = pluginJudges();
-  return flow.route(id, extras).map(({ station, node }) => {
+  return flow.route(id, extras, opts).map(({ station, node }) => {
     const key = `${station}:${node.id}`;
     const judge = node.declared ? declaredJudge(node, byID) : (judges[key] ?? registered[key] ?? {});
     if (!node.gate && !judge.output) throw new Error(`站点 ${station}:${node.id} 没有判断函数`);

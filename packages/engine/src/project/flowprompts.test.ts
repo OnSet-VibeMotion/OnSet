@@ -452,6 +452,10 @@ describe('prompt content', () => {
     has(beat, ['过第四阶段的「分镜审核关卡」'], '卡点·分镜审核');
   });
 
+  it('documents the optional single-scene pilot gate in storyboard and render prompts (speech)', () => {
+    has(speech, ['gate-pilot', 'pilot_gate: true', 'studio_confirm({"gate": "gate-pilot"'], '口播·单镜打样闸门');
+  });
+
   // 编排工具缺了信息时会 strings / grep 已装的 onset 程序反推格式（实测），每次都弹权限确认打断用户。
   it('keeps the orchestrator out of onset internals (all flows)', () => {
     for (const [body, what] of [

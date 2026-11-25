@@ -4,7 +4,19 @@ export {
   type StationBrowserLease,
   type StationBrowserRequest,
 } from './browser';
-export { builtinFlows, builtinStations, planRules, speechPrompt, stageTitles, tailStations } from './builtin';
+export {
+  builtinFlows,
+  builtinStations,
+  isPilotGateEnabled,
+  type PilotConfig,
+  PilotGateID,
+  pilotGateNode,
+  planRules,
+  readPilotConfig,
+  speechPrompt,
+  stageTitles,
+  tailStations,
+} from './builtin';
 export {
   type ComposeOptions,
   chineseNumber,
@@ -111,6 +123,7 @@ export {
   joinsFlow,
   MissingFlowRecordError,
   MissingPluginFlowError,
+  type RouteOptions,
   type RouteStop,
   recordedFlow,
   route,

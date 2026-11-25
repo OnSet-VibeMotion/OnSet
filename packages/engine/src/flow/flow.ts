@@ -1,6 +1,13 @@
-import { allFlows, allStations } from './registered';
+import { pilotGateNode } from './builtin';
 import { LockFile, readLock } from './lock';
+import { allFlows, allStations } from './registered';
 import type { ExtraStation, Flow, FlowID, PathRule, RouteNode, Station } from './types';
+
+/** 展开路线时的可选开关（缺省全关，保持与老项目 100% 兼容）。 */
+export interface RouteOptions {
+  /** 为 true 时在渲染镜头前插入可选单镜真视频打样闸门（gate-pilot）。 */
+  pilotGate?: boolean;
+}
 
 export function station(id: string, extra: readonly ExtraStation[] = []): Station {
   const found = allStations().find((s) => s.id === id) ?? extra.find((x) => x.station.id === id)?.station;
@@ -47,14 +54,17 @@ export function recordedFlow(root: string, extra: readonly ExtraStation[] = []):
     if (extra.some((x) => x.flow?.id === rec.id)) return rec.id;
     throw new MissingPluginFlowError(rec.id.slice(2));
   }
-  if (!ids.includes(rec.id)) throw new MissingFlowRecordError(`${LockFile} 记的流程 ${rec.id} 不是这一版认得的流程（可选：${ids.join('、')}）`);
+  if (!ids.includes(rec.id))
+    throw new MissingFlowRecordError(`${LockFile} 记的流程 ${rec.id} 不是这一版认得的流程（可选：${ids.join('、')}）`);
   return rec.id;
 }
 
 /** 项目的流程来自一个这台电脑上没装（或读不出来、没带流程）的第三方插件。 */
 export class MissingPluginFlowError extends MissingFlowRecordError {
   constructor(readonly plugin: string) {
-    super(`这个项目用的是插件「${plugin}」带来的做法，这台电脑上没有装这个插件（或者它读不出来了）：在设置的「我的插件」里添加或更新它`);
+    super(
+      `这个项目用的是插件「${plugin}」带来的做法，这台电脑上没有装这个插件（或者它读不出来了）：在设置的「我的插件」里添加或更新它`,
+    );
     this.name = 'MissingPluginFlowError';
   }
 }
@@ -68,7 +78,10 @@ export function detectFlow(root: string, extra: readonly ExtraStation[] = []): F
  * 插件的站进不进这个流程：带了整套流程（清单 flow）的插件，站点只属于它自己的流程，除非显式写了 replaces 或 after；
  * 没带流程的插件照旧进每个流程（after 为空就接在最后——「给所有片子加一步」）。路线、提示词、读不出来时的判断都按它。
  */
-export function joinsFlow(plugin: { id: string; hasFlow: boolean; replaces: string; after: string }, id: FlowID): boolean {
+export function joinsFlow(
+  plugin: { id: string; hasFlow: boolean; replaces: string; after: string },
+  id: FlowID,
+): boolean {
   if (!plugin.hasFlow || id === `x:${plugin.id}`) return true;
   return plugin.replaces !== '' || plugin.after !== '';
 }
@@ -87,7 +100,7 @@ export interface RouteStop {
 /**
  * 流程的路线：按站的先后展开站点，再放进插件的站（ExtraStation：内置插件与已装的第三方插件；只放进这个流程的，见 joinsFlow）。同一条路线里站点 id 重复直接报错。
  */
-export function route(id: FlowID, extra: readonly ExtraStation[] = []): RouteStop[] {
+export function route(id: FlowID, extra: readonly ExtraStation[] = [], opts: RouteOptions = {}): RouteStop[] {
   const out: RouteStop[] = [];
   const def = flow(id, extra);
   extra = extra.filter((x) => extraJoins(x, id));
@@ -105,6 +118,10 @@ export function route(id: FlowID, extra: readonly ExtraStation[] = []): RouteSto
       if (i >= 0) at = i + 1;
     }
     out.splice(at, 0, ...x.station.nodes.map((node) => ({ station: x.station.id, node })));
+  }
+  if (opts.pilotGate) {
+    const renderIndex = out.findIndex((r) => r.node.id === 'render');
+    if (renderIndex >= 0) out.splice(renderIndex, 0, { station: out[renderIndex].station, node: pilotGateNode });
   }
   const seen = new Set<string>();
   for (const r of out) {
