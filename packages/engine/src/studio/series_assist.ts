@@ -17,7 +17,7 @@ import { envMap, parsePassthrough } from '../envutil';
 import * as filmstyle from '../filmstyle';
 // 导入 plugin 与 flow 以确保内置及第三方插件登记的风格库与做法完整加载。
 import '../plugin';
-import '../flow';
+import * as flow from '../flow';
 import { goTrimSpace } from '../gofmt';
 import * as preset from '../preset';
 import * as projectinit from '../projectinit';
@@ -71,6 +71,7 @@ function parseCurrentDraft(raw: unknown): series.SeriesAssistDraft | undefined {
         delivery: asString(defaultsRaw.delivery) || undefined,
         narration: asString(defaultsRaw.narration) || undefined,
         film_style: asString(defaultsRaw.film_style) || undefined,
+        motion_effects: asStringArray(defaultsRaw.motion_effects),
         tts_voice: asString(defaultsRaw.tts_voice) || undefined,
         brand_kit_id: asString(defaultsRaw.brand_kit_id) || undefined,
       }
@@ -126,7 +127,15 @@ export function collectSeriesAssistCatalog(env: Record<string, string> = envMap(
   } catch {
     brand_kits = [];
   }
-  return { canvases, modes, film_styles, voices, brand_kits };
+  let motion_effects: { ref: string; name: string; category?: string }[] = [];
+  try {
+    motion_effects = flow
+      .listMotionSources(env)
+      .flatMap((src) => src.effects.map((e) => ({ ref: `${src.id}:${e.id}`, name: e.name, category: e.category })));
+  } catch {
+    motion_effects = [];
+  }
+  return { canvases, modes, film_styles, voices, brand_kits, motion_effects };
 }
 
 function loadGlobalConfig(): config.Config {

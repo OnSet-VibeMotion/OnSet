@@ -34,6 +34,7 @@
 - `catalog.film_styles`：可选整片风格，每个含 `key`、`cn`、`category`、`summary`。`defaults.film_style` **必须是列表里真实存在的 `key`**；目录为空或没有明显契合的风格时留空字符串 `""`。
 - `catalog.voices`：用户音色库里已有的音色，每个含 `name` 与可选 `instruction`。`defaults.tts_voice` **必须是列表里真实存在的 `name`**；音色库为空或没有合适声音时留空字符串 `""`。
 - `catalog.brand_kits`：已有品牌包（如有），`defaults.brand_kit_id` 必须是真实 `id`，否则留空字符串 `""`。
+- `catalog.motion_effects`：可用动效目录（如有），每个含 `ref`、`name`、`category`。`defaults.motion_effects` 可选推荐 2–5 个该专栏高频复用的 `ref`（必须真实存在于列表中），不确定时留空数组 `[]`。
 
 宁可留空，绝不杜撰目录之外的任何 ID 或音色名。
 
@@ -55,6 +56,7 @@
     "delivery": "",
     "narration": "",
     "film_style": "",
+    "motion_effects": [],
     "tts_voice": "",
     "brand_kit_id": ""
   },

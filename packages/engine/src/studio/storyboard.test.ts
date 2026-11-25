@@ -37,7 +37,14 @@ const plan = {
 };
 
 const sceneJSON = (id: string, extra: Record<string, unknown> = {}) =>
-  JSON.stringify({ id, duration_seconds: 1, output: `render-${id}.mp4`, transcript: 'transcription.srt', text: `${id} 的口播`, ...extra });
+  JSON.stringify({
+    id,
+    duration_seconds: 1,
+    output: `render-${id}.mp4`,
+    transcript: 'transcription.srt',
+    text: `${id} 的口播`,
+    ...extra,
+  });
 
 describe('readStoryboard', () => {
   it('lists the plan with each scene’s text, timing and prompt', () => {
@@ -59,7 +66,15 @@ describe('readStoryboard', () => {
     expect(out.scenes.map((s) => s.id)).toEqual(['scene-001', 'scene-002']);
 
     const [first, second] = out.scenes;
-    expect(first).toMatchObject({ chapter: '问题', visual_role: '语境', summary: '开场提出问题', text: 'scene-001 的口播', seconds: 4.5, created: true, rendered: true });
+    expect(first).toMatchObject({
+      chapter: '问题',
+      visual_role: '语境',
+      summary: '开场提出问题',
+      text: 'scene-001 的口播',
+      seconds: 4.5,
+      created: true,
+      rendered: true,
+    });
     expect(first.prompt).toEqual({ path: 'scenes/scene-001/prompt.md', content: '# 开场\n\n画一个问号。' });
     expect(first.anchor).toBeUndefined();
 
@@ -89,7 +104,12 @@ describe('readStoryboard', () => {
     const out = readStoryboard(root);
     expect(out.parse_error).toBeTruthy();
     expect(out.scenes).toHaveLength(1);
-    expect(out.scenes[0]).toMatchObject({ id: 'scene-001', dir: 'scenes/scene-001', text: 'scene-001 的口播', created: true });
+    expect(out.scenes[0]).toMatchObject({
+      id: 'scene-001',
+      dir: 'scenes/scene-001',
+      text: 'scene-001 的口播',
+      created: true,
+    });
     expect(out.scenes[0].prompt?.content).toBe('画面');
 
     const empty = readStoryboard(project({}));
@@ -99,7 +119,13 @@ describe('readStoryboard', () => {
   it('does not read outside the project when the plan points there', () => {
     const outside = project({ 'scenes/x/prompt.md': '项目外' });
     const root = project({
-      'production/scene-plan.json': JSON.stringify({ schema: 1, scenes: [{ id: 'scene-001', dir: path.relative('/', outside) + '/../../' + path.basename(outside) + '/scenes/x' }, { id: 'scene-002', dir: '../' + path.basename(outside) + '/scenes/x', first_subtitle: 2 }] }),
+      'production/scene-plan.json': JSON.stringify({
+        schema: 1,
+        scenes: [
+          { id: 'scene-001', dir: path.relative('/', outside) + '/../../' + path.basename(outside) + '/scenes/x' },
+          { id: 'scene-002', dir: '../' + path.basename(outside) + '/scenes/x', first_subtitle: 2 },
+        ],
+      }),
     });
     const out = readStoryboard(root);
     expect(out.parse_error).toBeUndefined();
@@ -107,15 +133,26 @@ describe('readStoryboard', () => {
   });
 
   it('resolves each scene’s film style and leaves boundaries visible', () => {
-    const manifest = (source: string, slug: string, cn: string) => JSON.stringify({ source, slug, cn, en: slug, version: '1', digest: 'x', installed_at: '' });
+    const manifest = (source: string, slug: string, cn: string) =>
+      JSON.stringify({ source, slug, cn, en: slug, version: '1', digest: 'x', installed_at: '' });
     const root = project({
       '.agents/skills/onset-film-style/onset-film-style.json': manifest('lemo-opuscar', 'watercolor', '水彩'),
-      '.agents/onset-film-styles/lemo-opuscar/ink-wash/onset-film-style.json': manifest('lemo-opuscar', 'ink-wash', '水墨'),
+      '.agents/onset-film-styles/lemo-opuscar/ink-wash/onset-film-style.json': manifest(
+        'lemo-opuscar',
+        'ink-wash',
+        '水墨',
+      ),
       'production/scene-plan.json': JSON.stringify({
         schema: 1,
         scenes: [
           { id: 'scene-001', dir: 'scenes/scene-001' },
-          { id: 'scene-002', dir: 'scenes/scene-002', first_subtitle: 2, film_style: 'lemo-opuscar/ink-wash', handoff: { device: 'carry', bridge: '墨滴', style_shift: 'morph' } },
+          {
+            id: 'scene-002',
+            dir: 'scenes/scene-002',
+            first_subtitle: 2,
+            film_style: 'lemo-opuscar/ink-wash',
+            handoff: { device: 'carry', bridge: '墨滴', style_shift: 'morph' },
+          },
           { id: 'scene-003', dir: 'scenes/scene-003', first_subtitle: 3, film_style: 'none' },
           { id: 'scene-004', dir: 'scenes/scene-004', first_subtitle: 4, film_style: 'lemo-opuscar/crayon-book' },
         ],
@@ -135,8 +172,46 @@ describe('readStoryboard', () => {
     expect(out.scenes[1].handoff?.style_shift).toBe('morph');
 
     // 没有默认风格时，不写风格的镜头自主定视觉；没有分镜计划时读镜头自己的 scene.json。
-    const bare = readStoryboard(project({ 'scenes/scene-001/scene.json': sceneJSON('scene-001', { film_style: 'none' }), 'scenes/scene-002/scene.json': sceneJSON('scene-002') }));
+    const bare = readStoryboard(
+      project({
+        'scenes/scene-001/scene.json': sceneJSON('scene-001', { film_style: 'none' }),
+        'scenes/scene-002/scene.json': sceneJSON('scene-002'),
+      }),
+    );
     expect(bare.default_style).toBeUndefined();
     expect(bare.scenes.map((s) => s.style.kind)).toEqual(['none', 'free']);
+  });
+
+  it('maps motion_effects from scene-plan.json and falls back to scene.json when plan is absent', () => {
+    const root = project({
+      'production/scene-plan.json': JSON.stringify({
+        schema: 1,
+        scenes: [
+          { id: 'scene-001', dir: 'scenes/scene-001', motion_effects: ['005', 'motion-prompt:999'] },
+          { id: 'scene-002', dir: 'scenes/scene-002', first_subtitle: 2 },
+        ],
+      }),
+      'scenes/scene-001/scene.json': sceneJSON('scene-001'),
+      'scenes/scene-002/scene.json': sceneJSON('scene-002', { motion_effects: ['007'] }),
+    });
+    const out = readStoryboard(root);
+    expect(out.parse_error).toBeUndefined();
+    expect(out.scenes[0].motion_effects).toEqual([
+      expect.objectContaining({ ref: 'motion-prompt:005', name: '遮罩显现', category: '动态图形' }),
+      { ref: 'motion-prompt:999', name: '999', category: '未找到', missing: true },
+    ]);
+    // 有计划时以计划为准（scene-002 在计划里未指定 motion_effects）。
+    expect(out.scenes[1].motion_effects).toBeUndefined();
+
+    // 无计划时回退读 scene.json 里的 motion_effects。
+    const fallback = readStoryboard(
+      project({
+        'scenes/scene-001/scene.json': sceneJSON('scene-001', { motion_effects: ['007', 'missing:fx'] }),
+      }),
+    );
+    expect(fallback.scenes[0].motion_effects).toEqual([
+      expect.objectContaining({ ref: 'motion-prompt:007', name: '数字递增' }),
+      { ref: 'missing:fx', name: 'fx', category: '未找到', missing: true },
+    ]);
   });
 });

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { normalizeMotionEffects } from '../flow';
 import { atomicWrite } from '../fsutil';
 import { goTrimSpace } from '../gofmt';
 import { marshalIndent } from '../gojson';
@@ -33,7 +34,7 @@ function normalizeDefaults(raw: unknown): SeriesDefaults {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const d = raw as Record<string, unknown>;
   const out: SeriesDefaults = {};
-  const set = (k: keyof Omit<SeriesDefaults, 'extra_film_styles'>) => {
+  const set = (k: keyof Omit<SeriesDefaults, 'extra_film_styles' | 'motion_effects'>) => {
     const v = cleanOptionalString(d[k]);
     if (v !== undefined) out[k] = v;
   };
@@ -48,6 +49,17 @@ function normalizeDefaults(raw: unknown): SeriesDefaults {
   if (Array.isArray(d.extra_film_styles)) {
     const extras = [...new Set(d.extra_film_styles.map(cleanOptionalString).filter((x): x is string => !!x))];
     if (extras.length > 0) out.extra_film_styles = extras;
+  }
+  if (d.motion_effects !== undefined) {
+    if (!Array.isArray(d.motion_effects)) throw new Error('defaults.motion_effects 必须是字符串数组');
+    const rawRefs: string[] = [];
+    for (const item of d.motion_effects) {
+      if (typeof item !== 'string') throw new Error('defaults.motion_effects 的每一项必须是字符串');
+      const clean = cleanOptionalString(item);
+      if (clean) rawRefs.push(clean);
+    }
+    const motions = normalizeMotionEffects(rawRefs, 'defaults.motion_effects');
+    if (motions.length > 0) out.motion_effects = motions;
   }
   return out;
 }

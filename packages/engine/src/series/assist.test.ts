@@ -33,6 +33,10 @@ const sampleCatalog: SeriesAssistCatalog = {
     { name: '轻快女声', instruction: '亲切自然' },
   ],
   brand_kits: [{ id: 'kit-tech', name: '硬核科技蓝' }],
+  motion_effects: [
+    { ref: 'motion-prompt:005', name: '遮罩显现', category: '动态图形' },
+    { ref: 'motion-prompt:007', name: '数字递增', category: '动态图形' },
+  ],
 };
 
 const temps: string[] = [];
@@ -286,6 +290,22 @@ describe('series assist engine', () => {
     expect(prompt).toContain('landscape-16x9');
     expect(prompt).toContain('lemo/cyber-grid');
     expect(prompt).toContain('沉稳男声');
+    expect(prompt).toContain('motion-prompt:005');
     expect(prompt).not.toContain('{{EVIDENCE}}');
+  });
+
+  it('whitelists defaults.motion_effects against catalog and warns on hallucinated refs', () => {
+    const raw = JSON.stringify({
+      name: '数据动效专栏',
+      description: '用数据动效讲清趋势',
+      defaults: { motion_effects: ['005', 'motion-prompt:007', 'motion-prompt:999'] },
+      brief: '数据卡统一使用数字递增。',
+      rationale: '精选两种高频文字与数据动效。',
+      followups: [],
+    });
+    const res = parseSeriesAssist(raw, { mode: 'draft', idea: '数据动效', catalog: sampleCatalog });
+    expect(res.defaults.motion_effects).toEqual(['motion-prompt:005', 'motion-prompt:007']);
+    expect(res.warnings).toHaveLength(1);
+    expect(res.warnings[0]).toContain('motion-prompt:999');
   });
 });

@@ -7,12 +7,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as filmstyle from '../filmstyle';
+import * as flow from '../flow';
 // 风格名来自风格来源，来源由内置插件登记；导入 plugin 包保证它们都登记了。
 import '../plugin';
 import * as scene from '../scene';
 import { writeError, writeJSON } from './http';
 import { pageGate } from './progress';
-import { promptCheckView, type PromptCheckView } from './promptchecks';
+import { type PromptCheckView, promptCheckView } from './promptchecks';
 import { discoverScenes } from './scenes';
 import { localRFC3339 } from './script';
 import type { Server } from './studio';
@@ -43,6 +44,14 @@ export interface StoryboardStyle {
   missing?: boolean;
 }
 
+export interface StoryboardMotionEffect {
+  ref: string;
+  name: string;
+  category: string;
+  summary?: string;
+  missing?: boolean;
+}
+
 export interface StoryboardScene {
   id: string;
   /** 镜头目录，相对项目根。 */
@@ -53,6 +62,8 @@ export interface StoryboardScene {
   /** 分镜计划（没有计划时是 scene.json）里写的 film_style 原值：空是默认风格。 */
   film_style?: string;
   style: StoryboardStyle;
+  /** 本镜头选定的动效条目（优先读 scene-plan.json，无计划时回退读 scene.json）。 */
+  motion_effects?: StoryboardMotionEffect[];
   /** 从哪里开始：第几条字幕或哪个短语。第一个镜头为空。 */
   anchor?: string;
   handoff?: StoryboardHandoff;
@@ -174,7 +185,8 @@ function styleResolver(root: string): StyleResolver {
     defaultStyle,
     installed: [...manifests.keys()],
     resolve(value) {
-      if (value === '') return defaultStyle ? { kind: 'default', ...defaultStyle } : { kind: 'free', key: '', cn: '自主定视觉' };
+      if (value === '')
+        return defaultStyle ? { kind: 'default', ...defaultStyle } : { kind: 'free', key: '', cn: '自主定视觉' };
       if (value === filmstyle.NoFilmStyle) return { kind: 'none', key: '', cn: '不用整片风格' };
       const out: StoryboardStyle = { kind: 'named', key: value, ...describe(value) };
       if (!manifests.has(value)) out.missing = true;
@@ -183,8 +195,54 @@ function styleResolver(root: string): StyleResolver {
   };
 }
 
+interface MotionResolver {
+  resolve(refs: readonly string[] | null | undefined): StoryboardMotionEffect[] | undefined;
+}
+
+function motionResolver(): MotionResolver {
+  let sources: flow.MotionEffectSource[] | null = null;
+  return {
+    resolve(refs) {
+      if (!refs || refs.length === 0) return undefined;
+      sources ??= flow.listMotionSources();
+      const seen = new Set<string>();
+      const out: StoryboardMotionEffect[] = [];
+      for (const raw of refs) {
+        if (typeof raw !== 'string' || !raw.trim()) continue;
+        let normalized = raw.trim();
+        try {
+          normalized = flow.normalizeMotionEffectRef(raw);
+        } catch {
+          // 保留原值作为 missing 展示。
+        }
+        if (seen.has(normalized)) continue;
+        seen.add(normalized);
+        try {
+          const hit = flow.lookupMotionEffect(normalized, sources);
+          out.push({
+            ref: hit.ref,
+            name: hit.effect.name,
+            category: hit.effect.category,
+            ...(hit.effect.summary ? { summary: hit.effect.summary } : {}),
+          });
+        } catch {
+          const fallbackName = normalized.includes(':') ? normalized.slice(normalized.indexOf(':') + 1) : normalized;
+          out.push({ ref: normalized, name: fallbackName, category: '未找到', missing: true });
+        }
+      }
+      return out.length > 0 ? out : undefined;
+    },
+  };
+}
+
 /** 镜头目录里能补上的：口播、算好的时长、画面描述。 */
-function fillFromDir(root: string, item: StoryboardScene, rendered: Map<string, boolean>, styles: StyleResolver | null) {
+function fillFromDir(
+  root: string,
+  item: StoryboardScene,
+  rendered: Map<string, boolean>,
+  styles: StyleResolver | null,
+  motions: MotionResolver | null,
+) {
   const dir = insideProject(root, item.dir);
   if (!dir) return;
   const body = readText(path.join(dir, 'scene.json'));
@@ -194,11 +252,16 @@ function fillFromDir(root: string, item: StoryboardScene, rendered: Map<string, 
       const v = JSON.parse(body) as Record<string, unknown>;
       if (typeof v.text === 'string' && v.text.trim() !== '') item.text = v.text.trim();
       // 占位时长是 1；只有 cues 写过 timing 块的时长才是真的。
-      if (typeof v.duration_seconds === 'number' && v.timing && typeof v.timing === 'object') item.seconds = v.duration_seconds;
-      // 没有分镜计划时风格只能看镜头自己写的；有计划时以计划为准（scene_cues 会照它写回）。
+      if (typeof v.duration_seconds === 'number' && v.timing && typeof v.timing === 'object')
+        item.seconds = v.duration_seconds;
+      // 没有分镜计划时风格与动效只能看镜头自己写的；有计划时以计划为准（scene_cues 会照它写回）。
       if (styles && typeof v.film_style === 'string' && v.film_style !== '') {
         item.film_style = v.film_style;
         item.style = styles.resolve(v.film_style);
+      }
+      if (motions && Array.isArray(v.motion_effects)) {
+        const resolved = motions.resolve(v.motion_effects.filter((x): x is string => typeof x === 'string'));
+        if (resolved) item.motion_effects = resolved;
       }
     } catch {
       // scene.json 坏了：镜头页与渲染会报，这里只是少几项。
@@ -213,6 +276,7 @@ function fillFromDir(root: string, item: StoryboardScene, rendered: Map<string, 
 
 export function readStoryboard(root: string): StoryboardResponse {
   const styles = styleResolver(root);
+  const motions = motionResolver();
   const out: StoryboardResponse = { plan_path: '', installed_styles: styles.installed, scenes: [] };
   if (styles.defaultStyle) out.default_style = styles.defaultStyle;
   const treatment = readText(path.join(root, treatmentPath));
@@ -242,22 +306,34 @@ export function readStoryboard(root: string): StoryboardResponse {
   if (plan) {
     out.look = compactLook(plan.look);
     for (const entry of plan.scenes ?? []) {
-      const item: StoryboardScene = { id: entry.id, dir: entry.dir, style: styles.resolve(entry.film_style), created: false, rendered: false };
+      const item: StoryboardScene = {
+        id: entry.id,
+        dir: entry.dir,
+        style: styles.resolve(entry.film_style),
+        created: false,
+        rendered: false,
+      };
       if (entry.chapter) item.chapter = entry.chapter;
       if (entry.visual_role) item.visual_role = entry.visual_role;
       if (entry.summary) item.summary = entry.summary;
       if (entry.film_style) item.film_style = entry.film_style;
+      const entryMotions = motions.resolve(entry.motion_effects);
+      if (entryMotions) item.motion_effects = entryMotions;
       if (entry.first_subtitle !== null) item.anchor = `第 ${entry.first_subtitle} 条字幕`;
       else if (entry.first_phrase) item.anchor = `短语 ${entry.first_phrase}`;
       if (entry.handoff) {
-        const h: StoryboardHandoff = { device: entry.handoff.device, device_label: deviceLabel(entry.handoff.device), bridge: entry.handoff.bridge };
+        const h: StoryboardHandoff = {
+          device: entry.handoff.device,
+          device_label: deviceLabel(entry.handoff.device),
+          bridge: entry.handoff.bridge,
+        };
         if (entry.handoff.style_shift) {
           h.style_shift = entry.handoff.style_shift;
           h.style_shift_label = scene.styleShiftOf(entry.handoff.style_shift)?.name ?? '';
         }
         item.handoff = h;
       }
-      fillFromDir(root, item, rendered, null);
+      fillFromDir(root, item, rendered, null, null);
       out.scenes.push(item);
     }
     return out;
@@ -267,7 +343,7 @@ export function readStoryboard(root: string): StoryboardResponse {
   for (const sc of discovered) {
     const dir = path.relative(root, sc.directory).split(path.sep).join('/');
     const item: StoryboardScene = { id: sc.id, dir, style: styles.resolve(''), created: true, rendered: false };
-    fillFromDir(root, item, rendered, styles);
+    fillFromDir(root, item, rendered, styles, motions);
     out.scenes.push(item);
   }
   return out;

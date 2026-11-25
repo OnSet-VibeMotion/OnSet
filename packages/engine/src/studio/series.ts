@@ -40,12 +40,16 @@ function parseDefaults(raw: unknown): series.SeriesDefaults | undefined {
   const extras = Array.isArray(d.extra_film_styles)
     ? d.extra_film_styles.filter((x): x is string => typeof x === 'string')
     : undefined;
+  const motions = Array.isArray(d.motion_effects)
+    ? d.motion_effects.filter((x): x is string => typeof x === 'string')
+    : undefined;
   return {
     canvas: str('canvas'),
     delivery: str('delivery'),
     narration: str('narration'),
     film_style: str('film_style'),
     extra_film_styles: extras,
+    motion_effects: motions,
     tts_voice: str('tts_voice'),
     brand_kit_id: str('brand_kit_id'),
     orchestrator: str('orchestrator'),

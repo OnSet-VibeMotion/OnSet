@@ -8,6 +8,7 @@
  * 零新增 API Key。所有目录类字段（画幅、做法、整片风格、音色、品牌包）一律强白名单校验，绝不输出幻觉 ID。
  */
 import type { Config } from '../config';
+import { normalizeMotionEffectRef } from '../flow';
 import { goTrimSpace } from '../gofmt';
 import * as promptopt from '../promptopt';
 import type { PublishTemplateInput, SeriesDefaults } from './types';
@@ -53,6 +54,7 @@ export interface SeriesAssistCatalog {
   film_styles: SeriesAssistFilmStyleOption[];
   voices: SeriesAssistVoiceOption[];
   brand_kits?: SeriesAssistBrandKitOption[];
+  motion_effects?: { ref: string; name: string; category?: string }[];
 }
 
 export interface SeriesAssistDraft {
@@ -163,6 +165,7 @@ function compactCatalog(catalog: SeriesAssistCatalog): Record<string, unknown> {
     ...(catalog.brand_kits && catalog.brand_kits.length > 0
       ? { brand_kits: catalog.brand_kits.map((k) => ({ id: k.id, name: k.name })) }
       : {}),
+    ...(catalog.motion_effects?.length ? { motion_effects: catalog.motion_effects.slice(0, 40) } : {}),
   };
 }
 
@@ -264,6 +267,22 @@ function filterDefaultsByCatalog(
   if (rawBrand) {
     if (brandKitIds.has(rawBrand)) defaults.brand_kit_id = rawBrand;
     else warnings.push(`推荐的品牌包「${rawBrand}」不在当前品牌包列表中，已自动忽略。`);
+  }
+
+  if (Array.isArray(d.motion_effects) && catalog.motion_effects?.length) {
+    const valid = new Set(catalog.motion_effects.map((m) => m.ref));
+    const kept: string[] = [];
+    for (const rawRef of cleanStrList(d.motion_effects, 8)) {
+      let ref = '';
+      try {
+        ref = normalizeMotionEffectRef(rawRef);
+      } catch {
+        /* ignore */
+      }
+      if (ref && valid.has(ref) && !kept.includes(ref)) kept.push(ref);
+      else if (!ref || !valid.has(ref)) warnings.push(`推荐的常用动效「${rawRef}」不在当前动效目录中，已自动忽略。`);
+    }
+    if (kept.length > 0) defaults.motion_effects = kept;
   }
 
   return { defaults, warnings };

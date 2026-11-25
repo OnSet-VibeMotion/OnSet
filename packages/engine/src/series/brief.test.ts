@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as memory from '../memory';
-import { bindProject, createSeries, seriesPromptBrief } from './index';
+import { bindProject, createSeries, getSeries, seriesPromptBrief, updateSeries } from './index';
 
 const temps: string[] = [];
 function tempDir(): string {
@@ -98,5 +98,30 @@ describe('series brief injection and series-scoped preferences', () => {
     store.setPreferenceScope('pref-ep1', memory.seriesScope('series-a'));
     const afterPromote = store.preferenceBrief('ep2', 0, 'series-a').text;
     expect(afterPromote).toContain('【pref-ep1】（本专栏）');
+  });
+
+  it('normalizes defaults.motion_effects and surfaces them in seriesPromptBrief', () => {
+    const seriesRoot = tempDir();
+    const s = createSeries(seriesRoot, {
+      id: 'motion-series',
+      name: '动效专栏',
+      defaults: { motion_effects: ['005', 'motion-prompt:005', '007'] },
+    });
+    expect(s.defaults.motion_effects).toEqual(['motion-prompt:005', 'motion-prompt:007']);
+    expect(getSeries(seriesRoot, s.id)?.defaults.motion_effects).toEqual(['motion-prompt:005', 'motion-prompt:007']);
+
+    const ep = tempDir();
+    bindProject(seriesRoot, s.id, ep, { episode: 1 });
+    const brief = seriesPromptBrief(seriesRoot, ep);
+    expect(brief.text).toContain('本专栏常用动效（写分镜时优先复用）');
+    expect(brief.text).toContain('motion-prompt:005（遮罩显现）');
+    expect(brief.text).toContain('motion-prompt:007（数字递增）');
+
+    // 清空后不再输出该行；非法格式或类型直接报错。
+    const cleared = updateSeries(seriesRoot, s.id, { defaults: { motion_effects: [] } });
+    expect(cleared.defaults.motion_effects).toBeUndefined();
+    expect(seriesPromptBrief(seriesRoot, ep).text).not.toContain('本专栏常用动效');
+
+    expect(() => updateSeries(seriesRoot, s.id, { defaults: { motion_effects: ['bad ref!!'] } })).toThrow('格式不合法');
   });
 });

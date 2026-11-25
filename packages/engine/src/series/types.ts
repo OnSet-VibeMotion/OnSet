@@ -36,6 +36,7 @@ export interface SeriesDefaults {
   narration?: string;
   film_style?: string;
   extra_film_styles?: string[];
+  motion_effects?: string[];
   tts_voice?: string;
   brand_kit_id?: string;
   orchestrator?: string;
