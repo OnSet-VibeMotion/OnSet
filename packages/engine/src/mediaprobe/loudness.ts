@@ -29,7 +29,26 @@ export function loudness(t: Toolchain, file: string, windowSeconds: number): num
   const window = goRound(windowSeconds * loudnessSampleRate);
   if (window < 1) throw new Error(`响度窗口太短：${formatG(windowSeconds)} 秒`);
   const ffmpeg = t.ffmpegPath();
-  const ran = run(ffmpeg, ['-v', 'error', '-i', file, '-vn', '-ac', '1', '-ar', String(loudnessSampleRate), '-f', 's16le', '-acodec', 'pcm_s16le', '-'], t.env);
+  const ran = run(
+    ffmpeg,
+    [
+      '-v',
+      'error',
+      '-i',
+      file,
+      '-vn',
+      '-ac',
+      '1',
+      '-ar',
+      String(loudnessSampleRate),
+      '-f',
+      's16le',
+      '-acodec',
+      'pcm_s16le',
+      '-',
+    ],
+    t.env,
+  );
   if (ran.error) throw new Error(`无法解码音频：${file}（${commandError(ran)}）`);
   const output = ran.stdout;
   const samples = Math.floor(output.length / 2);
@@ -52,6 +71,73 @@ export function rmsToDB(rms: number): number {
   return Math.max(SilenceFloorDB, 20 * Math.log10(rms));
 }
 
+/** 整段音频的 RMS 电平、样本峰值与真峰值实测值。 */
+export interface AudioLevels {
+  rms_db: number;
+  sample_peak_db: number;
+  true_peak_dbtp: number;
+  duration_seconds: number;
+}
+
+/**
+ * 借助 FFmpeg 解码整段音频为 48kHz 立体声 16 位 PCM，计算整段 RMS、样本峰值，
+ * 并经 loudnorm 量取 ITU-R BS.1770 过采样真峰值（dBTP）。
+ */
+export function measureAudioLevels(t: Toolchain, file: string): AudioLevels {
+  const sampleRate = 48_000;
+  const channels = 2;
+  const ffmpeg = t.ffmpegPath();
+  const ran = run(
+    ffmpeg,
+    [
+      '-v',
+      'error',
+      '-i',
+      file,
+      '-vn',
+      '-ac',
+      String(channels),
+      '-ar',
+      String(sampleRate),
+      '-f',
+      's16le',
+      '-acodec',
+      'pcm_s16le',
+      '-',
+    ],
+    t.env,
+  );
+  if (ran.error) throw new Error(`无法解码音频：${file}（${commandError(ran)}）`);
+  const output = ran.stdout;
+  const totalSamples = Math.floor(output.length / 2);
+  if (totalSamples === 0) throw new Error(`音频里没有可解码的采样：${file}`);
+  let sumSq = 0;
+  let maxAbs = 0;
+  for (let i = 0; i < totalSamples; i++) {
+    const value = output.readInt16LE(2 * i) / 32768;
+    const abs = Math.abs(value);
+    if (abs > maxAbs) maxAbs = abs;
+    sumSq += value * value;
+  }
+  const rmsDb = rmsToDB(Math.sqrt(sumSq / totalSamples));
+  const samplePeakDb = rmsToDB(maxAbs);
+  let truePeakDb = samplePeakDb;
+  try {
+    const prog = measureProgramLoudness(t, file);
+    if (Number.isFinite(prog.true_peak_dbtp) && prog.true_peak_dbtp > SilenceFloorDB + 1) {
+      truePeakDb = Math.max(samplePeakDb, prog.true_peak_dbtp);
+    }
+  } catch {
+    // 极短脉冲素材可能触发 loudnorm 窗口不足，退回样本峰值作为真峰值下界。
+  }
+  return {
+    rms_db: rmsDb,
+    sample_peak_db: samplePeakDb,
+    true_peak_dbtp: truePeakDb,
+    duration_seconds: totalSamples / (sampleRate * channels),
+  };
+}
+
 /** ProgramLoudness 是整段节目的 EBU R128 实测值，取自解码后的音频。 */
 export interface ProgramLoudness {
   integrated_lufs: number;
@@ -72,7 +158,11 @@ export interface ProgramLoudness {
  */
 export function measureProgramLoudness(t: Toolchain, file: string): ProgramLoudness {
   const ffmpeg = t.ffmpegPath();
-  const ran = run(ffmpeg, ['-hide_banner', '-nostats', '-nostdin', '-i', file, '-vn', '-af', 'loudnorm=print_format=json', '-f', 'null', '-'], t.env);
+  const ran = run(
+    ffmpeg,
+    ['-hide_banner', '-nostats', '-nostdin', '-i', file, '-vn', '-af', 'loudnorm=print_format=json', '-f', 'null', '-'],
+    t.env,
+  );
   // Go 里 stderr 接到了自己的缓冲区，ExitError 不带 stderr，错误只有「exit status N」。
   if (ran.error) throw new Error(`无法测量响度：${file}（${commandError(ran, false)}）`);
   return parseLoudnorm(ran.stderr.toString('utf8'));
@@ -100,7 +190,9 @@ export function parseLoudnorm(log: string): ProgramLoudness {
   const fields = ['input_i', 'input_tp', 'input_lra'].map((key) => {
     const value = raw?.[key];
     if (value !== undefined && value !== null && typeof value !== 'string') {
-      throw new Error(`loudnorm 测量结果无法解析：json: cannot unmarshal ${typeof value} into Go struct field .${key} of type string`);
+      throw new Error(
+        `loudnorm 测量结果无法解析：json: cannot unmarshal ${typeof value} into Go struct field .${key} of type string`,
+      );
     }
     return value ?? '';
   });

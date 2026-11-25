@@ -5,7 +5,13 @@ import { find } from '../toolpath';
 import { clickTrack, decodeAnalysisWAV } from './beat';
 import { contactSheetRegion } from './contact';
 import { extractFrameRegion, extractFramesRegion, frameDifference, frameDifferenceBetween, frameStats } from './frames';
-import { loudness, measureProgramLoudness, type ProgramLoudness } from './loudness';
+import {
+  type AudioLevels,
+  loudness,
+  measureAudioLevels,
+  measureProgramLoudness,
+  type ProgramLoudness,
+} from './loudness';
 import {
   type FrameReport,
   type FrameStats,
@@ -211,6 +217,10 @@ export class Toolchain {
 
   measureProgramLoudness(file: string): ProgramLoudness {
     return measureProgramLoudness(this, file);
+  }
+
+  measureAudioLevels(file: string): AudioLevels {
+    return measureAudioLevels(this, file);
   }
 
   /** 见 beat.ts。 */
