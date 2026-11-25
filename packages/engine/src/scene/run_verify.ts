@@ -6,7 +6,7 @@ import { formatFixed, goRound } from '../gofmt';
 import * as mediaprobe from '../mediaprobe';
 import { AgyMcpFile, agyMcpJSON, McodeMcpFile, type McpServer, mcodeMcpJSON } from '../tools';
 import { blockValue } from './block';
-import { CheckOutputFrames, classifyOutputProblem, DeterminismCheckPrefix } from './checks';
+import { CheckOutputFrames, CheckOutputOther, classifyOutputProblem, DeterminismCheckPrefix } from './checks';
 import { verifyComponentReferences } from './component-plan';
 import type { RepairContext } from './repair';
 import { contained, DesignFile, evalSymlinks, outputPath, relPath, type Scene, sceneCanvas } from './scene';
@@ -133,6 +133,14 @@ export function verifyOutput(
   const scan = determinism.scan(s.directory);
   problems.push(...determinism.problems(scan));
   for (const finding of scan.findings) checks.push(DeterminismCheckPrefix + finding.rule);
+  const engineContract = determinism.checkEngineContract(s.directory, {
+    filmStyle: s.film_style,
+    files: scan.files,
+  });
+  for (const issue of engineContract.errors) {
+    problems.push(determinism.formatEngineContractIssue(issue));
+    checks.push(CheckOutputOther);
+  }
   if (problems.length > 0) throw new VerificationError(s.output, problems, checks);
   if (checkComponents) verifyComponentReferences(s, scan.files);
 }
