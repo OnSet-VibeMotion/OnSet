@@ -19,6 +19,7 @@ import './collect_cmd';
 import './timing_report';
 
 import './filmstyle';
+import './filmstyle_refs_cmd';
 import './font_cmd';
 import './frame_qc_cmd';
 import './hyperframes';

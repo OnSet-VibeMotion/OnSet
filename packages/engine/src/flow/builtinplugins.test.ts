@@ -2,9 +2,18 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildPrompt, fingerprint, load, resolveAllSkills } from '../scene';
 import { runPrompt } from '../project/runprompt';
-import { stationExtras, recordFlow, route, stationOwners, builtinPlugins, loadStations, parseManifest, readLock } from './index';
+import { buildPrompt, fingerprint, load, resolveAllSkills } from '../scene';
+import {
+  builtinPlugins,
+  loadStations,
+  parseManifest,
+  readLock,
+  recordFlow,
+  route,
+  stationExtras,
+  stationOwners,
+} from './index';
 
 const temps: string[] = [];
 afterEach(() => {
@@ -31,13 +40,31 @@ describe('builtin plugins', () => {
 
   it('is always on, and a project lock file has no say in which plugins there are', () => {
     const root = project();
-    const all = ['algorithmic-art', 'anidoodle-styles', 'beat', 'cast', 'huashu-styles', 'lemo-styles', 'publishing', 'skins', 'song', 'text-to-lottie'];
+    const all = [
+      'algorithmic-art',
+      'anidoodle-styles',
+      'beat',
+      'cast',
+      'huashu-styles',
+      'lemo-styles',
+      'mg-styles',
+      'publishing',
+      'skins',
+      'song',
+      'text-to-lottie',
+    ];
     expect(loadStations().stations.map((s) => s.manifest.id)).toEqual(all);
     // 锁文件里写的 stations、flow、disabled 都不认，也不写回。
-    fs.writeFileSync(path.join(root, 'onset.flow.json'), JSON.stringify({ version: 1, stations: [{ id: 'x', source: 'link:/nope' }], flow: 'x', disabled: ['song'] }));
+    fs.writeFileSync(
+      path.join(root, 'onset.flow.json'),
+      JSON.stringify({ version: 1, stations: [{ id: 'x', source: 'link:/nope' }], flow: 'x', disabled: ['song'] }),
+    );
     expect(readLock(root)).toEqual({ version: 1 });
     recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
-    expect(JSON.parse(fs.readFileSync(path.join(root, 'onset.flow.json'), 'utf8'))).toEqual({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } });
+    expect(JSON.parse(fs.readFileSync(path.join(root, 'onset.flow.json'), 'utf8'))).toEqual({
+      version: 1,
+      production: { id: 'speech', canvas: 'vertical-3x4' },
+    });
   });
 });
 
@@ -48,7 +75,16 @@ describe('builtin plugins that register renderer skills', () => {
     fs.mkdirSync(sceneDir, { recursive: true });
     fs.writeFileSync(path.join(sceneDir, 'voice.srt'), '1\n00:00:00,000 --> 00:00:01,000\nhello\n');
     fs.writeFileSync(path.join(sceneDir, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
-    fs.writeFileSync(path.join(sceneDir, 'scene.json'), JSON.stringify({ id: 'scene-001', duration_seconds: 1, output: 'out.mp4', transcript: 'voice.srt', text: 'hello' }));
+    fs.writeFileSync(
+      path.join(sceneDir, 'scene.json'),
+      JSON.stringify({
+        id: 'scene-001',
+        duration_seconds: 1,
+        output: 'out.mp4',
+        transcript: 'voice.srt',
+        text: 'hello',
+      }),
+    );
     const s = load(sceneDir);
     const before = resolveAllSkills('claude', sceneDir, {}, s);
     const prompt = buildPrompt(s, before);
@@ -56,7 +92,10 @@ describe('builtin plugins that register renderer skills', () => {
     expect(prompt).toContain('生成式艺术参考');
     expect(prompt).toContain('Lottie 图层');
     // 锁文件在（连旧的 disabled 一起）：逐字不变。
-    fs.writeFileSync(path.join(root, 'onset.flow.json'), JSON.stringify({ version: 1, stations: [], disabled: ['algorithmic-art'] }));
+    fs.writeFileSync(
+      path.join(root, 'onset.flow.json'),
+      JSON.stringify({ version: 1, stations: [], disabled: ['algorithmic-art'] }),
+    );
     const same = resolveAllSkills('claude', sceneDir, {}, s);
     expect(buildPrompt(s, same)).toBe(prompt);
     expect(fingerprint(s, 'claude', same).fingerprint).toBe(print);
