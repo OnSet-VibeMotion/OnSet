@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as assets from '../assets';
+import * as baseassets from '../baseassets';
 import * as flow from '../flow';
 import * as hyperframes from '../hyperframes';
 import * as plugin from '../plugin';
@@ -33,7 +34,9 @@ export interface Narration {
 export function narrations(): Narration[] {
   return [
     { id: NarrationSolo, name: '单口播', hint: '一个人讲到底', owner: '' },
-    ...plugin.pluginNarrations().map((n) => ({ id: n.value.id, name: n.value.name, hint: n.value.hint, owner: n.owner })),
+    ...plugin
+      .pluginNarrations()
+      .map((n) => ({ id: n.value.id, name: n.value.name, hint: n.value.hint, owner: n.owner })),
   ];
 }
 
@@ -45,6 +48,8 @@ export interface Options {
   narration: string;
   /** 调用方另外要写进项目的文件。 */
   extra?: Record<string, Uint8Array | string>;
+  /** 是否自动写出程序化零版权基础质感与基础音效到 assets/builtin/（默认 true，不覆盖已有修改）。 */
+  includeBaseAssets?: boolean;
 }
 
 /** 新建对话框里的一种做法：讲解形式（流程）加叙事模式。canvas、example 给首页「从模板开始」。 */
@@ -61,14 +66,25 @@ export interface Preset {
 }
 
 /** 宿主自己的做法：口播。其余（卡点、歌曲讲解……）由内置插件登记。 */
-const hostPresets: Preset[] = [{ id: 'speech', label: '口播讲解', hint: '配音 + 动画，最常用', delivery: DeliverySpeech, narration: NarrationSolo }];
+const hostPresets: Preset[] = [
+  { id: 'speech', label: '口播讲解', hint: '配音 + 动画，最常用', delivery: DeliverySpeech, narration: NarrationSolo },
+];
 
 /** 新建对话框的全部做法：宿主的在前，其后是内置插件登记的（ctx.preset），最后是已装的第三方插件带来的流程。 */
 export function presets(): Preset[] {
   const third = flow
     .loadStations()
     .stations.filter((s) => !s.builtin && s.manifest.flow)
-    .map((s): Preset => ({ id: `x:${s.manifest.id}`, label: s.manifest.flow!.name, hint: `来自插件「${s.manifest.name}」`, delivery: `x:${s.manifest.id}`, narration: NarrationSolo, plugin: s.manifest.name }));
+    .map(
+      (s): Preset => ({
+        id: `x:${s.manifest.id}`,
+        label: s.manifest.flow!.name,
+        hint: `来自插件「${s.manifest.name}」`,
+        delivery: `x:${s.manifest.id}`,
+        narration: NarrationSolo,
+        plugin: s.manifest.name,
+      }),
+    );
   return [...hostPresets, ...plugin.pluginPresets().map((p) => ({ ...p.value })), ...third];
 }
 
@@ -102,7 +118,8 @@ export function validate(opts: Options): void {
   }
   const target = opts.target;
   // 选的叙事模式是哪个插件登记的，就算在用它；目标目录里已经有某个内置插件的文件（它登记的已有判断）也算。
-  const pluginUsed = (id: string) => mode.owner === id || (fs.existsSync(target) && plugin.pluginPresentIn(id, target) !== '');
+  const pluginUsed = (id: string) =>
+    mode.owner === id || (fs.existsSync(target) && plugin.pluginPresentIn(id, target) !== '');
   const markerThere = (id: string) => {
     const m = flows.find((f) => f.id === id)?.marker;
     return !!m && fileThere(path.join(target, m.file));
@@ -112,7 +129,8 @@ export function validate(opts: Options): void {
   // 目标目录里已有别的片型的标记文件：那个片型不许的叙事模式同样不许。
   for (const other of flows) {
     if (other.id === chosen.id || !other.excludes || !markerThere(other.id)) continue;
-    if (mode.owner !== '' && (other.excludes.plugins ?? []).includes(mode.owner)) throw new Error(other.excludes.message);
+    if (mode.owner !== '' && (other.excludes.plugins ?? []).includes(mode.owner))
+      throw new Error(other.excludes.message);
   }
 }
 
@@ -138,8 +156,13 @@ export function create(opts: Options): project.InitResult {
     try {
       mode.value.init(opts.target);
     } catch (err) {
-      throw new Error(`项目文件已写入，但写出「${mode.value.name}」的初始文件失败：${(err as Error).message}`, { cause: err });
+      throw new Error(`项目文件已写入，但写出「${mode.value.name}」的初始文件失败：${(err as Error).message}`, {
+        cause: err,
+      });
     }
+  }
+  if (opts.includeBaseAssets !== false) {
+    baseassets.generateBaseAssets(opts.target);
   }
   return result;
 }

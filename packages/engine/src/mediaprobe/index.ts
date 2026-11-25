@@ -35,8 +35,8 @@ export {
 } from './frame_qc';
 export type { CropRect } from './image';
 export { cropImages, pngSize, shrinkPNG } from './image';
-export type { ProgramLoudness } from './loudness';
-export { SilenceFloorDB } from './loudness';
+export type { AudioLevels, ProgramLoudness } from './loudness';
+export { measureAudioLevels, rmsToDB, SilenceFloorDB } from './loudness';
 export type {
   Audio,
   AudioStream,
