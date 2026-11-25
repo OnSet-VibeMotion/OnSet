@@ -18,6 +18,7 @@ import './brandkit_cmd';
 import './timing_report';
 
 import './filmstyle';
+import './filmstyle_refs_cmd';
 import './font_cmd';
 import './hyperframes';
 import './media';

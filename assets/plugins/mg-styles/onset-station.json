@@ -1,0 +1,6 @@
+{
+  "id": "mg-styles",
+  "version": "1",
+  "name": "MG 动效风格库（MIT）",
+  "description": "源自 MIT 许可项目 Vincentwei1021/mg-styles-15 的 15 套高完成度 MG 动态图形风格（含 Three.js 真 3D、WebGL2 着色器与 Canvas2D 逐帧绘制三类渲染契约，内置推荐动效配方与效果配方表，开箱即用不联网）"
+}

@@ -11,8 +11,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as config from '../config';
 import * as flow from '../flow';
 import * as memory from '../memory';
-import * as preset from '../preset';
 import * as prereqs from '../prereqs';
+import * as preset from '../preset';
 import * as projectinit from '../projectinit';
 import * as scene from '../scene';
 import { computeStations } from '../studio/progress';
@@ -20,7 +20,7 @@ import { discoverScenes } from '../studio/scenes';
 import { newSessionFixture, studioRequest } from '../studio/testsupport';
 import * as studioview from '../studioview';
 import * as plugin from './index';
-import { appliedPluginIDs, pluginStations, registerBuiltin, type BuiltinPlugin } from './index';
+import { appliedPluginIDs, type BuiltinPlugin, pluginStations, registerBuiltin } from './index';
 
 const cleanups: (() => void)[] = [];
 const temps: string[] = [];
@@ -38,7 +38,10 @@ function tempDir(): string {
 /** 假插件「字幕翻译」：在复查之后加一站，写 production/translate/，有一段提示词、一页、一个接口、一个校验器。 */
 function fakePlugin(dir: string): BuiltinPlugin {
   fs.mkdirSync(path.join(dir, 'sections'), { recursive: true });
-  fs.writeFileSync(path.join(dir, 'sections', 'stage.md'), '## {{STAGE:translate}}：翻译字幕\n\n在{{STAGE:review}}之后把字幕译成英文。\n\n');
+  fs.writeFileSync(
+    path.join(dir, 'sections', 'stage.md'),
+    '## {{STAGE:translate}}：翻译字幕\n\n在{{STAGE:review}}之后把字幕译成英文。\n\n',
+  );
   return {
     id: 'fake-translate',
     dir,
@@ -46,10 +49,20 @@ function fakePlugin(dir: string): BuiltinPlugin {
       ctx.station({
         id: 'translate',
         name: '翻译字幕',
-        nodes: [{ id: 'translate', label: '翻译字幕', step: 'final', page: 'translate', produces: [{ prefix: 'production/translate/' }] }],
+        nodes: [
+          {
+            id: 'translate',
+            label: '翻译字幕',
+            step: 'final',
+            page: 'translate',
+            produces: [{ prefix: 'production/translate/' }],
+          },
+        ],
         flows: ['speech'],
         after: 'review',
-        sections: [{ id: 'stage', file: 'sections/stage.md', after: 'review/stage', stage: 'translate', title: '翻译字幕' }],
+        sections: [
+          { id: 'stage', file: 'sections/stage.md', after: 'review/stage', stage: 'translate', title: '翻译字幕' },
+        ],
         judges: {
           translate: {
             output: (c) => {
@@ -65,12 +78,20 @@ function fakePlugin(dir: string): BuiltinPlugin {
         },
       });
       ctx.page({ id: 'translate', label: '翻译', target: '', after: 'review', files: ['production/translate/en.srt'] });
-      ctx.route({ pattern: '/api/translate', handle: (host) => {
-        const p = host.projectOr404();
-        if (p instanceof Response) return p;
-        return Response.json({ root: path.basename(p.path) });
-      } });
-      ctx.validator({ id: 'translate', label: '检查译文', file: 'production/translate/en.srt', op: 'validate_translate' });
+      ctx.route({
+        pattern: '/api/translate',
+        handle: (host) => {
+          const p = host.projectOr404();
+          if (p instanceof Response) return p;
+          return Response.json({ root: path.basename(p.path) });
+        },
+      });
+      ctx.validator({
+        id: 'translate',
+        label: '检查译文',
+        file: 'production/translate/en.srt',
+        op: 'validate_translate',
+      });
     },
   };
 }
@@ -81,7 +102,19 @@ function register(): void {
 
 describe('builtin plugin apply', () => {
   it('registers the shipped plugins once', () => {
-    expect(appliedPluginIDs()).toEqual(['publishing', 'beat', 'song', 'algorithmic-art', 'text-to-lottie', 'cast', 'lemo-styles', 'anidoodle-styles', 'huashu-styles', 'skins']);
+    expect(appliedPluginIDs()).toEqual([
+      'publishing',
+      'beat',
+      'song',
+      'algorithmic-art',
+      'text-to-lottie',
+      'cast',
+      'lemo-styles',
+      'anidoodle-styles',
+      'huashu-styles',
+      'mg-styles',
+      'skins',
+    ]);
     expect(() => registerBuiltin({ id: 'publishing', apply: () => {} })).toThrow('登记了两次');
   });
 
@@ -93,7 +126,11 @@ describe('builtin plugin apply', () => {
   it('puts the station on the route and its files under it', () => {
     register();
     const ids = flow.route('speech', flow.stationExtras()).map((r) => r.node.id);
-    expect(ids.slice(ids.indexOf('gate-final'), ids.indexOf('gate-final') + 3)).toEqual(['gate-final', 'translate', 'publish']);
+    expect(ids.slice(ids.indexOf('gate-final'), ids.indexOf('gate-final') + 3)).toEqual([
+      'gate-final',
+      'translate',
+      'publish',
+    ]);
     expect(flow.route('beat', flow.stationExtras()).some((r) => r.node.id === 'translate')).toBe(false);
     expect(flow.stationOfPath('production/translate/en.srt', 'speech')).toBe('translate');
   });
@@ -105,7 +142,12 @@ describe('builtin plugin apply', () => {
     fs.mkdirSync(path.join(root, 'production', 'translate'), { recursive: true });
     fs.writeFileSync(path.join(root, 'production', 'translate', 'en.srt'), '1\n');
     const got = computeStations(root, discoverScenes(root));
-    expect(got.stations.find((s) => s.id === 'translate')).toMatchObject({ status: 'done', detail: '英文', page: 'translate', step: 'final' });
+    expect(got.stations.find((s) => s.id === 'translate')).toMatchObject({
+      status: 'done',
+      detail: '英文',
+      page: 'translate',
+      step: 'final',
+    });
     expect(got.current).toBe('publish');
     expect(got.waiting_on).toBe('ai');
     // 站点自己的 waiting 在它是「现在」时起作用：试听确认过、还没翻译。
@@ -119,7 +161,11 @@ describe('builtin plugin apply', () => {
   it('composes its prompt section after its anchor and numbers the stages', () => {
     register();
     const order = flow.flowPrompt('speech');
-    expect(order.slice(order.indexOf('review/stage'), order.indexOf('review/stage') + 3)).toEqual(['review/stage', 'translate/stage', 'publish/stage']);
+    expect(order.slice(order.indexOf('review/stage'), order.indexOf('review/stage') + 3)).toEqual([
+      'review/stage',
+      'translate/stage',
+      'publish/stage',
+    ]);
     expect(flow.allStageTitles().translate).toBe('翻译字幕');
     const composed = flow.composeFlowPrompt({ flow: 'speech', stations: [], canvas: (t) => t });
     expect(composed).toContain('## 第十二阶段：翻译字幕\n\n在第十一阶段之后把字幕译成英文。');
@@ -142,7 +188,7 @@ describe('builtin plugin apply', () => {
     expect(r.body.message).toBe('找不到 production/translate/en.srt');
   });
 
-  it('is on every project\'s route and goes away with its registration', () => {
+  it("is on every project's route and goes away with its registration", () => {
     register();
     expect(flow.route('speech', flow.stationExtras()).some((r) => r.node.id === 'translate')).toBe(true);
     expect(flow.route('speech', flow.stationExtras()).some((r) => r.node.id === 'publish')).toBe(true);
@@ -153,15 +199,37 @@ describe('builtin plugin apply', () => {
 
   it('rejects a station without a judge, a duplicate station and an unknown anchor', () => {
     const base = { id: 'x', name: 'x', flows: ['speech'], after: 'review' } as const;
-    expect(() => registerBuiltin({ id: 'bad-judge', apply: (ctx) => ctx.station({ ...base, nodes: [{ id: 'x', label: 'x', step: 'final' }] }) })).toThrow('没有判断函数');
-    expect(() => registerBuiltin({ id: 'bad-dup', apply: (ctx) => ctx.station({ ...base, id: 'publish', nodes: [] }) })).toThrow('站 publish 已经有了');
-    const undo = registerBuiltin({ id: 'bad-anchor', apply: (ctx) => ctx.station({ ...base, nodes: [], sections: [{ id: 's', file: 's.md', after: 'nope/stage' }] }) });
+    expect(() =>
+      registerBuiltin({
+        id: 'bad-judge',
+        apply: (ctx) => ctx.station({ ...base, nodes: [{ id: 'x', label: 'x', step: 'final' }] }),
+      }),
+    ).toThrow('没有判断函数');
+    expect(() =>
+      registerBuiltin({ id: 'bad-dup', apply: (ctx) => ctx.station({ ...base, id: 'publish', nodes: [] }) }),
+    ).toThrow('站 publish 已经有了');
+    const undo = registerBuiltin({
+      id: 'bad-anchor',
+      apply: (ctx) => ctx.station({ ...base, nodes: [], sections: [{ id: 's', file: 's.md', after: 'nope/stage' }] }),
+    });
     try {
       expect(() => flow.flowPrompt('speech')).toThrow('要接在 nope/stage 后面');
     } finally {
       undo();
     }
-    expect(appliedPluginIDs()).toEqual(['publishing', 'beat', 'song', 'algorithmic-art', 'text-to-lottie', 'cast', 'lemo-styles', 'anidoodle-styles', 'huashu-styles', 'skins']);
+    expect(appliedPluginIDs()).toEqual([
+      'publishing',
+      'beat',
+      'song',
+      'algorithmic-art',
+      'text-to-lottie',
+      'cast',
+      'lemo-styles',
+      'anidoodle-styles',
+      'huashu-styles',
+      'mg-styles',
+      'skins',
+    ]);
   });
 });
 
@@ -176,7 +244,12 @@ describe('the shipped prompt sections of builtin plugins', () => {
         .flatMap((x) => x.value.sections ?? []);
       // 段落文件都放在 sections/ 里。
       const declared = [...new Set(sections.map((sec) => sec.file).filter((f) => f.startsWith('sections/')))].sort();
-      const files = fs.existsSync(path.join(dir, 'sections')) ? fs.readdirSync(path.join(dir, 'sections')).map((f) => 'sections/' + f).sort() : [];
+      const files = fs.existsSync(path.join(dir, 'sections'))
+        ? fs
+            .readdirSync(path.join(dir, 'sections'))
+            .map((f) => 'sections/' + f)
+            .sort()
+        : [];
       expect(files, owner).toEqual(declared);
       for (const sec of sections) {
         const body = fs.readFileSync(path.join(dir, sec.file), 'utf8');
@@ -206,11 +279,17 @@ function chorusPlugin(): BuiltinPlugin {
         order: 40,
         type: { kind: 'struct', goName: 'scene.Chorus', name: 'Chorus', fields: [['voices', 'int']] },
         toJSON: (v) => ({ voices: v.voices }),
-        promptSection: (s) => `\n合唱（强制）：${(s as unknown as { chorus: { voices: number } }).chorus.voices} 个声部。\n`,
+        promptSection: (s) =>
+          `\n合唱（强制）：${(s as unknown as { chorus: { voices: number } }).chorus.voices} 个声部。\n`,
         fingerprintParts: (_s, v) => ({ 'chorus:voices': String(v.voices) }),
         feature: { name: 'chorus', description: '合唱镜头' },
       });
-      ctx.narration({ id: 'chorus', name: '合唱', hint: '大家一起唱', init: (target) => fs.writeFileSync(path.join(target, 'chorus.yaml'), 'voices: 4\n') });
+      ctx.narration({
+        id: 'chorus',
+        name: '合唱',
+        hint: '大家一起唱',
+        init: (target) => fs.writeFileSync(path.join(target, 'chorus.yaml'), 'voices: 4\n'),
+      });
       ctx.preset({ id: 'chorus', label: '合唱', hint: '大家一起唱', delivery: 'speech', narration: 'chorus' });
       ctx.presentIn((root) => (fs.existsSync(path.join(root, 'chorus.yaml')) ? 'chorus.yaml' : ''));
     },
@@ -227,7 +306,17 @@ describe('a builtin plugin with a skill, a scene block and a narration', () => {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'voice.srt'), '1\n00:00:00,000 --> 00:00:01,000\nhello\n');
     fs.writeFileSync(path.join(dir, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
-    fs.writeFileSync(path.join(dir, 'scene.json'), JSON.stringify({ id: 'scene-001', duration_seconds: 1, output: 'out.mp4', transcript: 'voice.srt', text: 'hello', chorus: { voices: 4 } }));
+    fs.writeFileSync(
+      path.join(dir, 'scene.json'),
+      JSON.stringify({
+        id: 'scene-001',
+        duration_seconds: 1,
+        output: 'out.mp4',
+        transcript: 'voice.srt',
+        text: 'hello',
+        chorus: { voices: 4 },
+      }),
+    );
     const s = scene.load(dir);
     const resolved = scene.resolveAllSkills('claude', dir, {}, s);
     expect(resolved['chorus-kit']).toBe(path.join(root, '.agents', 'skills'));
@@ -260,16 +349,34 @@ describe('a builtin plugin with a prerequisite, a child variable, a step and a p
     const undo = registerBuiltin({
       id: 'fake-metronome',
       apply(ctx) {
-        ctx.prereq({ group: 'metronome', id: 'metronome', name: '节拍器', version: '1', required: false, later: { title: '节拍器', desc: '测试用' }, ready: () => [false, '/nowhere'], prepare: async () => {} });
+        ctx.prereq({
+          group: 'metronome',
+          id: 'metronome',
+          name: '节拍器',
+          version: '1',
+          required: false,
+          later: { title: '节拍器', desc: '测试用' },
+          ready: () => [false, '/nowhere'],
+          prepare: async () => {},
+        });
         ctx.childEnv({ key: 'METRONOME_DIR', value: (env) => (env.HOME ?? '') + '/metronome' });
         ctx.step({ id: 'tick', label: '节拍器', hint: '节拍器：数拍子', before: 'storyboard', flow: '节拍器' });
-        ctx.command({ id: 'metronome.tick', label: '数一拍', op: 'studio_step', params: () => ({ error: { code: 'not_now', message: '现在不数' } }) });
+        ctx.command({
+          id: 'metronome.tick',
+          label: '数一拍',
+          op: 'studio_step',
+          params: () => ({ error: { code: 'not_now', message: '现在不数' } }),
+        });
       },
     });
     cleanups.push(undo);
     const f = newSessionFixture();
     const env = { HOME: '/home/u' };
-    expect(prereqs.check(env, { tts: '', align: '' }).find((x) => x.id === 'metronome')).toMatchObject({ group: 'metronome', ready: false, later: { title: '节拍器' } });
+    expect(prereqs.check(env, { tts: '', align: '' }).find((x) => x.id === 'metronome')).toMatchObject({
+      group: 'metronome',
+      ready: false,
+      later: { title: '节拍器' },
+    });
     const cfg = config.load(f.root, env);
     expect(config.childEnvironment(cfg, env).METRONOME_DIR).toBe('/home/u/metronome');
     expect(studioview.stepIDs()).toContain('tick');
