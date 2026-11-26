@@ -258,5 +258,142 @@ describe.skipIf(!hasFfmpeg)('av_backtest (needs ffmpeg)', () => {
     expect(failReport.verdict).toBe('fail');
     expect(failReport.anchors[1].sfx[0].status).toBe('fail');
     expect(Math.round(failReport.anchors[1].sfx[0].sfx_error_frames!)).toBe(5);
+
+    // 同一锚点绑定多条无源素材的 cue 时，不得把同一个分轨峰判给两条 cue（必须标为 unverified）
+    const multiSfxAnchors: AVBacktestAnchor[] = [
+      {
+        id: 'hit_multi',
+        type: 'action',
+        music_seconds: 1.0,
+        planned_frame: 30,
+        visual: { metric: 'brightness', roi: centerROI },
+        sfx: [
+          { cue_id: 'cue_a', peak_seconds: 0.1 },
+          { cue_id: 'cue_b', peak_seconds: 0.1 },
+        ],
+      },
+    ];
+    const multiReport = await runAVBacktest(tc, {
+      video,
+      sourceMusic: music,
+      sfxStem: sfxOk,
+      anchors: multiSfxAnchors,
+    });
+    expect(multiReport.verdict).toBe('unverified');
+    expect(multiReport.anchors[0].sfx.every((s) => s.status === 'unverified')).toBe(true);
+  });
+
+  it('preserves delayed audio first-packet PTS, deduplicates music observations, handles mismatched fps, odd 1px ROI, and minVisualDelta=0', async () => {
+    const dir = tempDir();
+    const music = path.join(dir, 'source.wav');
+    writePulseWav(music, 4.0, [1.0, 2.0, 3.0]);
+    const tc = newToolchain(process.env as Record<string, string>);
+
+    // 1. 首包 PTS 延迟 +0.167s 且未预填静音：必须测出约 5 帧偏差（不能判 pass）
+    const delayedPtsVideo = path.join(dir, 'delayed-pts.mp4');
+    const rDelay = spawnSync(
+      'ffmpeg',
+      [
+        '-hide_banner',
+        '-v',
+        'error',
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        'color=c=black:s=320x240:r=30:d=4',
+        '-itsoffset',
+        '0.167',
+        '-i',
+        music,
+        '-vf',
+        "format=yuv420p,drawbox=x=80:y=60:w=160:h=120:color=white:t=fill:enable='eq(n,30)+eq(n,60)+eq(n,90)'",
+        '-map',
+        '0:v:0',
+        '-map',
+        '1:a:0',
+        '-c:v',
+        'libx264',
+        '-preset',
+        'ultrafast',
+        '-pix_fmt',
+        'yuv420p',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '256k',
+        '-ar',
+        '48000',
+        '-t',
+        '4',
+        delayedPtsVideo,
+      ],
+      { encoding: 'utf8' },
+    );
+    if (rDelay.status !== 0) throw new Error(rDelay.stderr);
+    const delayRep = await runAVBacktest(tc, {
+      video: delayedPtsVideo,
+      sourceMusic: music,
+      anchors: baseAnchors('brightness'),
+    });
+    expect(delayRep.verdict).toBe('fail');
+    expect(delayRep.measured_output_offset_seconds).not.toBeNull();
+    expect(delayRep.measured_output_offset_seconds!).toBeGreaterThan(0.1);
+
+    // 2. 三个锚点引用同一音乐时刻（不同 ROI）：reliable_music_matches 应去重为 1，不产出校准建议
+    const video0 = path.join(dir, 'ok0.mp4');
+    synthesizeFlashVideo(video0, music, 4.0, [30, 60, 90]);
+    const sameMoment = await runAVBacktest(tc, {
+      video: video0,
+      sourceMusic: music,
+      anchors: [
+        {
+          id: 'roi_1',
+          type: 'action',
+          music_seconds: 1.0,
+          planned_frame: 30,
+          visual: { metric: 'brightness', roi: { x: 81, y: 61, w: 1, h: 1 } },
+        },
+        {
+          id: 'roi_2',
+          type: 'action',
+          music_seconds: 1.0,
+          planned_frame: 30,
+          visual: { metric: 'brightness', roi: { x: 91, y: 71, w: 1, h: 1 } },
+        },
+        {
+          id: 'roi_3',
+          type: 'action',
+          music_seconds: 1.0,
+          planned_frame: 30,
+          visual: { metric: 'brightness', roi: { x: 101, y: 81, w: 1, h: 1 } },
+        },
+      ],
+    });
+    expect(sameMoment.verdict).toBe('pass');
+    expect(sameMoment.summary.reliable_music_matches).toBe(1);
+    expect(sameMoment.measured_output_offset_seconds).toBeNull();
+
+    // 3. 计划 30fps、成片 60fps 时窗口中心按成片帧率定位到第 60/120/180 帧
+    const video60 = path.join(dir, 'ok60.mp4');
+    synthesizeFlashVideo(video60, music, 4.0, [60, 120, 180], 60);
+    const mismatchRep = await runAVBacktest(tc, {
+      video: video60,
+      sourceMusic: music,
+      fps: 30,
+      anchors: baseAnchors('brightness'),
+    });
+    expect(mismatchRep.verdict).toBe('pass');
+
+    // 4. minVisualDelta=0 时静止画面仍必须判 unverified
+    const staticVideo = path.join(dir, 'static-zero.mp4');
+    synthesizeFlashVideo(staticVideo, music, 4.0, []);
+    const staticZero = await runAVBacktest(tc, {
+      video: staticVideo,
+      sourceMusic: music,
+      minVisualDelta: 0,
+      anchors: baseAnchors('change'),
+    });
+    expect(staticZero.verdict).toBe('unverified');
   });
 });

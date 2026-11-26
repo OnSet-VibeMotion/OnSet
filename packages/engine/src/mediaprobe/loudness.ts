@@ -76,6 +76,7 @@ export interface AudioLevels {
   rms_db: number;
   sample_peak_db: number;
   true_peak_dbtp: number;
+  true_peak_measured: boolean;
   duration_seconds: number;
 }
 
@@ -122,18 +123,21 @@ export function measureAudioLevels(t: Toolchain, file: string): AudioLevels {
   const rmsDb = rmsToDB(Math.sqrt(sumSq / totalSamples));
   const samplePeakDb = rmsToDB(maxAbs);
   let truePeakDb = samplePeakDb;
+  let truePeakMeasured = false;
   try {
     const prog = measureProgramLoudness(t, file);
     if (Number.isFinite(prog.true_peak_dbtp) && prog.true_peak_dbtp > SilenceFloorDB + 1) {
       truePeakDb = Math.max(samplePeakDb, prog.true_peak_dbtp);
+      truePeakMeasured = true;
     }
   } catch {
-    // 极短脉冲素材可能触发 loudnorm 窗口不足，退回样本峰值作为真峰值下界。
+    // 极短脉冲素材可能触发 loudnorm 窗口不足，标记 true_peak_measured=false 并退回样本峰值。
   }
   return {
     rms_db: rmsDb,
     sample_peak_db: samplePeakDb,
     true_peak_dbtp: truePeakDb,
+    true_peak_measured: truePeakMeasured,
     duration_seconds: totalSamples / (sampleRate * channels),
   };
 }

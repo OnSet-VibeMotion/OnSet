@@ -91,6 +91,8 @@ export interface FreesoundSearchResult {
 
 export interface AudioGainAnalysis {
   measured: boolean;
+  /** true 表示真峰值已实测（WAV 4× 过采样或 EBU R128）；false 表示仅回退到样本峰值，不保证满足压缩音频采样间真峰上限。 */
+  true_peak_measured?: boolean;
   method: 'wav-pcm' | 'mediaprobe-ffmpeg' | 'unavailable';
   rms_db: number;
   target_rms_db: number;

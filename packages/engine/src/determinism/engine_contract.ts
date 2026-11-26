@@ -258,10 +258,6 @@ export function checkEngineContract(sceneDir: string, opts: EngineContractOption
     deviations: [],
   };
   collectConfigDeviations(opts.deviation, 'options', signals.deviations);
-  const sceneJson = readJSONObject(path.join(root, 'scene.json'));
-  if (sceneJson?.engine_deviation !== undefined) {
-    collectConfigDeviations(sceneJson.engine_deviation, 'scene.json', signals.deviations);
-  }
   const sidecar = readJSONObject(path.join(root, 'engine-deviation.json'));
   if (sidecar) collectConfigDeviations(sidecar, 'engine-deviation.json', signals.deviations);
 

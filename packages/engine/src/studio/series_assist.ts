@@ -1,8 +1,8 @@
 /**
  * 专栏创建与润色的智能体辅助接口：
  *
- *   POST   /api/series/assist   {mode, idea?, instruction?, current?}
- *   DELETE /api/series/assist   取消进行中的请求
+ *   POST   /api/series/_assist   {mode, idea?, instruction?, current?}
+ *   DELETE /api/series/_assist   取消进行中的请求
  *
  * 在空临时目录读全局配置（复用 OPTIMIZER / ORCHESTRATOR，零新增 API Key），实时采集当前可用
  * 画幅、做法、整片风格、音色库与品牌包目录交给模型，强白名单防幻觉后返回草案。

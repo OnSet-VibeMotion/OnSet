@@ -165,8 +165,9 @@ export async function encodeScene(
         const renderer = s.renderer !== '' ? s.renderer : cfg.renderer;
         if (renderer) {
           try {
-            const resolvedSkills = resolveAllSkills(renderer, s.directory, skillsEnvironment(baseEnv, cfg.overlay), s);
-            writeRecord(s, fingerprint(s, renderer, resolvedSkills));
+            const skillEnv = skillsEnvironment(baseEnv, cfg.overlay);
+            const resolvedSkills = resolveAllSkills(renderer, s.directory, skillEnv, s);
+            writeRecord(s, fingerprint(s, renderer, resolvedSkills, undefined, skillEnv));
           } catch {
             // 没有旧记录且算不出技能指纹时保留新视频，不阻断直接出片。
           }

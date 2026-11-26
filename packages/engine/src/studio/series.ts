@@ -135,8 +135,8 @@ export async function seriesAPI(s: Server, request: Request, rest: string): Prom
     }
   }
 
-  // POST /api/series/assist | DELETE /api/series/assist
-  if (rest === 'assist') return seriesAssistAPI(s, request);
+  // POST /api/series/_assist | DELETE /api/series/_assist（前导下划线避免与 SeriesIdPattern 合法专栏 ID 冲突）
+  if (rest === '_assist') return seriesAssistAPI(s, request);
 
   // POST /api/series/unbind
   if (rest === 'unbind') {

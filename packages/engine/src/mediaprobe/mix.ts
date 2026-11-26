@@ -317,49 +317,42 @@ export async function mixProgram(t: Toolchain, opts: MixOptions) {
     if (typeof raw !== 'string' || !Number.isFinite(Number(raw))) throw new Error('混音没有可用的响度测量');
     return `${name}=${Math.min(max, Math.max(min, Number(raw)))}`;
   });
-  const normalize = `${target}:${values.join(':')}:linear=true,aresample=48000,${buildLimiterFilter(initialLimiterDB)},${pad(samples)}`;
+  const normalize = `${target}:${values.join(':')}:linear=true,aresample=48000,${format},${buildLimiterFilter(initialLimiterDB)},${pad(samples)}`;
   await t.transcode(master, ['-i', premix, '-af', normalize, ...pcm], signal);
 
-  const mux = (limiterDB?: number) =>
-    t.transcode(
+  const mux = (m: { limiterDB?: number; gainDB?: number } = {}) => {
+    const chain = [
+      ...(m.gainDB !== undefined ? [`volume=${m.gainDB}dB`] : []),
+      ...(m.limiterDB !== undefined ? [format, buildLimiterFilter(m.limiterDB)] : []),
+    ];
+    if (chain.length > 0) chain.push(pad(samples));
+    const af = chain.length > 0 ? ['-af', chain.join(',')] : [];
+    const args = ['-i', opts.video, '-i', master, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', ...af];
+    return t.transcode(
       candidate,
-      [
-        '-i',
-        opts.video,
-        '-i',
-        master,
-        '-map',
-        '0:v:0',
-        '-map',
-        '1:a:0',
-        '-c:v',
-        'copy',
-        ...(limiterDB !== undefined ? ['-af', `${buildLimiterFilter(limiterDB)},${pad(samples)}`] : []),
-        '-c:a',
-        'aac',
-        '-b:a',
-        '384k',
-        '-ar',
-        '48000',
-        '-ac',
-        '2',
-        '-movflags',
-        '+faststart',
-      ],
+      [...args, '-c:a', 'aac', '-b:a', '384k', '-ar', '48000', '-ac', '2', '-movflags', '+faststart'],
       signal,
     );
+  };
   await mux();
   let loudness = parseLoudnorm(await loudnessLog(t, candidate, 'loudnorm', signal));
   let limiter_limit_db = initialLimiterDB;
   let limiter_passes = 1;
-  const encoded_gain_db = 0;
-  // 若 AAC 编码后实测真峰值仍超目标，第二轮仅用更紧的砖墙限幅器收敛，不重跑 loudnorm、不整体拉低响度，视频保持 -c:v copy。
+  let encoded_gain_db = 0;
+  // 编码后真峰超标：先在限幅器有效范围（≥-24 dB）内收紧限幅；低于 -24 dB 或仍超标时回退整体衰减。
   if (loudness.true_peak_dbtp > truePeakMax) {
-    const overshoot = loudness.true_peak_dbtp - truePeakMax;
-    limiter_limit_db = Math.max(-24, Math.floor((initialLimiterDB - overshoot - 0.5) * 100) / 100);
-    limiter_passes = 2;
-    await mux(limiter_limit_db);
-    loudness = parseLoudnorm(await loudnessLog(t, candidate, 'loudnorm', signal));
+    const tighter = Math.floor((initialLimiterDB - (loudness.true_peak_dbtp - truePeakMax) - 0.5) * 100) / 100;
+    if (tighter >= -24) {
+      limiter_limit_db = tighter;
+      limiter_passes = 2;
+      await mux({ limiterDB: limiter_limit_db });
+      loudness = parseLoudnorm(await loudnessLog(t, candidate, 'loudnorm', signal));
+    }
+    if (loudness.true_peak_dbtp > truePeakMax) {
+      encoded_gain_db = Math.floor((truePeakMax - loudness.true_peak_dbtp - 0.5) * 100) / 100;
+      await mux({ gainDB: encoded_gain_db, ...(limiter_passes === 2 ? { limiterDB: limiter_limit_db } : {}) });
+      loudness = parseLoudnorm(await loudnessLog(t, candidate, 'loudnorm', signal));
+    }
   }
 
   const verified = t.verify(candidate, {

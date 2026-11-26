@@ -8,6 +8,8 @@
  * 不含任何脚本、外部引用或大体积位图二进制。
  */
 
+import { formatFixed } from '../gofmt';
+
 export interface BuiltinTextureSpec {
   readonly id: 'paper' | 'grain' | 'grid';
   readonly fileName: string;
@@ -28,7 +30,7 @@ function createPrng(seed: number): () => number {
   };
 }
 
-const fmt = (value: number, digits = 2): string => value.toFixed(digits);
+const fmt = (value: number, digits = 2): string => formatFixed(value, digits);
 
 /** 生成暖纸纹理 SVG（paper.svg，1280x720，MIT）。 */
 export function generatePaperSvg(): string {

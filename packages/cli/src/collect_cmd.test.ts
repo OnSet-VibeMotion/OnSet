@@ -40,6 +40,12 @@ describe('collect_cmd operations and MCP exposure', () => {
     await expect(op.run(normalizeParams(op, { project_root: project, html_file: outside }), ctx())).rejects.toThrow(
       /路径穿越/,
     );
+    // 项目目录内指向外部文件的符号链接同样被拒绝
+    const symlinkHtml = path.join(project, 'escape.html');
+    fs.symlinkSync(outside, symlinkHtml);
+    await expect(
+      op.run(normalizeParams(op, { project_root: project, html_file: 'escape.html' }), ctx()),
+    ).rejects.toThrow(/符号链接穿越/);
   });
 
   it('rejects SSRF addresses directly at op execution level', async () => {

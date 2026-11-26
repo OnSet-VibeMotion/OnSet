@@ -230,7 +230,14 @@ function gateFileChanged(root: string, rel: string, state: string): boolean {
   }
 }
 
-export function gateChanged(root: string, record: GateRecord): boolean {
+export function gateChanged(root: string, record: GateRecord, gateId?: string): boolean {
+  if (gateId === flow.PilotGateID) {
+    const currentFile = pilotGateFile(root);
+    if (!currentFile) return true;
+    const keys = Object.keys(record.files);
+    if (keys.length !== 1 || keys[0] !== currentFile) return true;
+    return gateFileChanged(root, currentFile, record.files[currentFile]);
+  }
   return Object.entries(record.files).some(([rel, state]) => gateFileChanged(root, rel, state));
 }
 
@@ -250,15 +257,11 @@ export function candidateIsApproved(root: string, approvalFile: string): boolean
  * 批量渲染（scene_run_all）的打样闸门校验：
  * - 未开启 pilot_gate 时直接放行（100% 向后兼容）；
  * - 开启 pilot_gate 且本次仅派发代表镜本身时放行；
- * - 否则必须先完成 gate-pilot 确认且打样 MP4 未改动，才解锁全量渲染。
+ * - 否则必须先完成 gate-pilot 确认且当前代表镜及其输出文件未改动，才解锁全量渲染。
  */
-export function assertPilotGateUnlocked(
-  root: string,
-  batchSceneIds: readonly string[],
-  plannedSceneIds: readonly string[],
-): void {
+export function assertPilotGateUnlocked(root: string, batchSceneIds: readonly string[]): void {
   if (!root || !flow.isPilotGateEnabled(root)) return;
-  const pilotId = flow.readPilotConfig(root).scene || plannedSceneIds[0] || 'scene-001';
+  const pilotId = resolvePilotScene(root).id || 'scene-001';
   if (batchSceneIds.length === 1 && batchSceneIds[0] === pilotId) return;
   const record = readGates(root)[flow.PilotGateID];
   if (!record) {
@@ -266,7 +269,7 @@ export function assertPilotGateUnlocked(
       `项目已开启单镜打样闸门（${flow.PilotGateID}）：请先仅渲染代表镜头 ${pilotId} 供用户审看，待用户通过 studio_confirm({"gate":"${flow.PilotGateID}","said":"<用户原话>"}) 确认方向后再解锁全量 scene_run_all 渲染`,
     );
   }
-  if (gateChanged(root, record)) {
+  if (gateChanged(root, record, flow.PilotGateID)) {
     throw new Error(
       `打样镜头 ${pilotId} 在确认后发生变化，请重新请用户审看并通过 studio_confirm({"gate":"${flow.PilotGateID}","said":"<用户原话>"}) 确认后再全量渲染`,
     );

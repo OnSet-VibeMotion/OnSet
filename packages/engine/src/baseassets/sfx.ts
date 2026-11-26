@@ -9,6 +9,7 @@
  * - 首尾余弦（Hann）平滑淡入淡出，首末采样精确归零，零爆音；
  * - 4× 加窗 Sinc 过采样真峰值限幅至 ≤ -1.5 dBTP（严格满足 ≤ -1.0 dBTP 与 ≤ -1.0 dBFS）。
  */
+import { formatFixed, goRound } from '../gofmt';
 import { rmsToDB, SilenceFloorDB } from '../mediaprobe';
 
 export const BaseSfxSampleRate = 48_000;
@@ -46,8 +47,8 @@ function createPrng(seed: number): () => number {
   };
 }
 
-const round2 = (n: number): number => Math.round(n * 100) / 100;
-const round4 = (n: number): number => Math.round(n * 10000) / 10000;
+const round2 = (n: number): number => Number(formatFixed(n, 2));
+const round4 = (n: number): number => Number(formatFixed(n, 4));
 
 /** 去除每个声道的直流偏移。 */
 export function removeDcOffset(channels: readonly Float64Array[]): void {
@@ -174,7 +175,7 @@ export function encodeWavPcm16(channels: readonly Float64Array[], sampleRate: nu
   for (let i = 0; i < numFrames; i++) {
     for (let c = 0; c < numChannels; c++) {
       const clamped = Math.max(-1, Math.min(1, channels[c][i]));
-      const quantized = Math.max(-32767, Math.min(32767, Math.round(clamped * 32767)));
+      const quantized = Math.max(-32767, Math.min(32767, goRound(clamped * 32767)));
       buf.writeInt16LE(quantized, offset);
       offset += 2;
     }
@@ -182,43 +183,64 @@ export function encodeWavPcm16(channels: readonly Float64Array[], sampleRate: nu
   return buf;
 }
 
-/** 测量 16-bit PCM WAV 缓冲的实测规格、RMS、样本峰值、4× 真峰值与直流偏移。 */
+/** 测量 16-bit PCM WAV 缓冲的实测规格、RMS、样本峰值、4× 真峰值与直流偏移（按 RIFF 块定位 fmt 与 data）。 */
 export function measurePcm16Metrics(wav: Buffer): SfxAudioMetrics {
   if (
-    wav.length < 44 ||
+    wav.length < 12 ||
     wav.subarray(0, 4).toString('ascii') !== 'RIFF' ||
     wav.subarray(8, 12).toString('ascii') !== 'WAVE'
   ) {
     throw new Error('无效的 WAV 文件头');
   }
-  const audioFormat = wav.readUInt16LE(20);
-  const numChannels = wav.readUInt16LE(22);
-  const sampleRate = wav.readUInt32LE(24);
-  const bitDepth = wav.readUInt16LE(34);
-  const dataBytes = wav.readUInt32LE(40);
-  if (audioFormat !== 1 || bitDepth !== 16 || numChannels < 1) {
+  let audioFormat = 0;
+  let numChannels = 0;
+  let sampleRate = 0;
+  let bitDepth = 0;
+  let hasFmt = false;
+  let dataStart = -1;
+  let dataBytes = 0;
+  for (let pos = 12; pos + 8 <= wav.length; ) {
+    const id = wav.subarray(pos, pos + 4).toString('ascii');
+    const size = wav.readUInt32LE(pos + 4);
+    const bodyStart = pos + 8;
+    const bodyEnd = Math.min(wav.length, bodyStart + size);
+    if (id === 'fmt ' && bodyEnd - bodyStart >= 16) {
+      audioFormat = wav.readUInt16LE(bodyStart);
+      numChannels = wav.readUInt16LE(bodyStart + 2);
+      sampleRate = wav.readUInt32LE(bodyStart + 4);
+      bitDepth = wav.readUInt16LE(bodyStart + 14);
+      hasFmt = true;
+    } else if (id === 'data') {
+      dataStart = bodyStart;
+      dataBytes = bodyEnd - bodyStart;
+      break;
+    }
+    pos = bodyStart + size + (size & 1);
+  }
+  if (!hasFmt || dataStart < 0) throw new Error('WAV 缺少 fmt 或 data 块');
+  if (audioFormat !== 1 || bitDepth !== 16 || numChannels < 1 || sampleRate < 1) {
     throw new Error(`仅支持 16-bit Linear PCM WAV，收到 format=${audioFormat} bitDepth=${bitDepth}`);
   }
-  const frames = Math.floor(Math.min(dataBytes, wav.length - 44) / (numChannels * 2));
+  const frames = Math.floor(dataBytes / (numChannels * 2));
   const channels = Array.from({ length: numChannels }, () => new Float64Array(frames));
+  const dcSums = new Float64Array(numChannels);
   let sumSq = 0;
   let maxAbs = 0;
-  let maxChannelDc = 0;
-  let offset = 44;
+  let offset = dataStart;
   for (let i = 0; i < frames; i++) {
     for (let c = 0; c < numChannels; c++) {
       const v = wav.readInt16LE(offset) / 32768;
       offset += 2;
       channels[c][i] = v;
+      dcSums[c] += v;
       sumSq += v * v;
       const abs = Math.abs(v);
       if (abs > maxAbs) maxAbs = abs;
     }
   }
+  let maxChannelDc = 0;
   for (let c = 0; c < numChannels; c++) {
-    let dcSum = 0;
-    for (let i = 0; i < frames; i++) dcSum += channels[c][i];
-    const dc = frames > 0 ? Math.abs(dcSum / frames) : 0;
+    const dc = frames > 0 ? Math.abs(dcSums[c] / frames) : 0;
     if (dc > maxChannelDc) maxChannelDc = dc;
   }
   const totalSamples = frames * numChannels;
@@ -238,101 +260,68 @@ export function measurePcm16Metrics(wav: Buffer): SfxAudioMetrics {
   };
 }
 
-/**
- * 合成丝滑扫风过渡音效（whoosh.wav，0.75s，48kHz 16-bit 立体声）：
- * 确定性双路白噪经频率钟形扫频二阶带通滤波器（220Hz → 2300Hz → 360Hz）+ 轻柔空气声底，
- * 辅以从左至右的微立体声声像移动，干净通透、无直流偏移、无爆音。
- */
+/** 合成丝滑扫风过渡音效（whoosh.wav，0.75s，48kHz 16-bit 立体声，双路扫频带通 + 空气声底）。 */
 export function generateWhooshWav(): Buffer {
   const sr = BaseSfxSampleRate;
-  const duration = 0.75;
-  const frames = Math.round(sr * duration);
+  const frames = goRound(sr * 0.75);
   const left = new Float64Array(frames);
   const right = new Float64Array(frames);
   const randL = createPrng(0x57484f31);
   const randR = createPrng(0x57484f32);
-
-  // 两路独立带通状态（biquad direct form I）
-  let lx1 = 0;
-  let lx2 = 0;
-  let ly1 = 0;
-  let ly2 = 0;
-  let rx1 = 0;
-  let rx2 = 0;
-  let ry1 = 0;
-  let ry2 = 0;
-  // 空气高频层单极点高通状态
-  let lAirPrev = 0;
-  let rAirPrev = 0;
+  // 两路独立带通状态（biquad direct form I）与空气高频层高通状态
+  const st = new Float64Array(10); // lx1, lx2, ly1, ly2, rx1, rx2, ry1, ry2, lAirPrev, rAirPrev
 
   for (let i = 0; i < frames; i++) {
     const t = i / (frames - 1);
-    // 钟形幅度包络：在 t ≈ 0.42 达到峰值后丝滑回落
     const bell = Math.sin(Math.PI * t ** 0.78) ** 1.65;
-    // 带通中心频率扫频：220Hz -> 2300Hz -> 360Hz
     const sweep = Math.sin(Math.PI * t ** 0.82);
     const freq = 220 + 2080 * sweep ** 1.35 + 140 * t;
-    const q = 1.65;
-
     const w0 = (2 * Math.PI * freq) / sr;
-    const cosW0 = Math.cos(w0);
-    const alpha = Math.sin(w0) / (2 * q);
+    const alpha = Math.sin(w0) / (2 * 1.65);
     const invA0 = 1 / (1 + alpha);
     const b0 = alpha * invA0;
     const b2 = -alpha * invA0;
-    const a1 = -2 * cosW0 * invA0;
+    const a1 = -2 * Math.cos(w0) * invA0;
     const a2 = (1 - alpha) * invA0;
 
-    // 柔和三角分布噪点（减少刺耳高频毛刺）
     const nL = randL() + randL() - 1;
     const nR = randR() + randR() - 1;
-    const bpL = b0 * nL + b2 * lx2 - a1 * ly1 - a2 * ly2;
-    lx2 = lx1;
-    lx1 = nL;
-    ly2 = ly1;
-    ly1 = bpL;
+    const bpL = b0 * nL + b2 * st[1] - a1 * st[2] - a2 * st[3];
+    st[1] = st[0];
+    st[0] = nL;
+    st[3] = st[2];
+    st[2] = bpL;
+    const bpR = b0 * nR + b2 * st[5] - a1 * st[6] - a2 * st[7];
+    st[5] = st[4];
+    st[4] = nR;
+    st[7] = st[6];
+    st[6] = bpR;
 
-    const bpR = b0 * nR + b2 * rx2 - a1 * ry1 - a2 * ry2;
-    rx2 = rx1;
-    rx1 = nR;
-    ry2 = ry1;
-    ry1 = bpR;
+    const airL = nL - st[8];
+    st[8] = nL;
+    const airR = nR - st[9];
+    st[9] = nR;
 
-    const airL = nL - lAirPrev;
-    lAirPrev = nL;
-    const airR = nR - rAirPrev;
-    rAirPrev = nR;
-
-    // 轻度左→右立体声声像摆动（保持高单声道兼容性）
     const panAngle = (0.36 + 0.28 * t) * (Math.PI / 2);
-    const panL = Math.cos(panAngle);
-    const panR = Math.sin(panAngle);
-
-    left[i] = (bpL * 0.88 + airL * 0.05) * bell * panL;
-    right[i] = (bpR * 0.88 + airR * 0.05) * bell * panR;
+    left[i] = (bpL * 0.88 + airL * 0.05) * bell * Math.cos(panAngle);
+    right[i] = (bpR * 0.88 + airR * 0.05) * bell * Math.sin(panAngle);
   }
 
   const channels = [left, right];
   removeDcOffset(channels);
-  applyFadeEnvelope(channels, Math.round(sr * 0.025), Math.round(sr * 0.05));
+  applyFadeEnvelope(channels, goRound(sr * 0.025), goRound(sr * 0.05));
   normalizeToTruePeakCeiling(channels, BaseSfxTargetTruePeakDB);
   return encodeWavPcm16(channels, sr);
 }
 
-/**
- * 合成干净低频落点冲击音效（impact.wav，0.65s，48kHz 16-bit 立体声）：
- * 指数下潜低频正弦核（165Hz → 46Hz）+ 二次谐波暖度 + 极短低通瞬态击打纹理，
- * 2.5ms 平滑起音与 50ms 自然收尾，无削波、无直流偏移、无点击声。
- */
+/** 合成干净低频落点冲击音效（impact.wav，0.65s，48kHz 16-bit 立体声，165Hz→46Hz 下潜 + 短瞬态纹理）。 */
 export function generateImpactWav(): Buffer {
   const sr = BaseSfxSampleRate;
-  const duration = 0.65;
-  const frames = Math.round(sr * duration);
+  const frames = goRound(sr * 0.65);
   const left = new Float64Array(frames);
   const right = new Float64Array(frames);
   const randL = createPrng(0x494d5031);
   const randR = createPrng(0x494d5032);
-
   let phase = 0;
   let phase2 = 0;
   let lpL = 0;
@@ -340,31 +329,22 @@ export function generateImpactWav(): Buffer {
 
   for (let i = 0; i < frames; i++) {
     const sec = i / sr;
-    // 主低频下潜：165Hz 迅速落至 46Hz
     const freq = 46 + 119 * Math.exp(-sec * 24);
     phase += (2 * Math.PI * freq) / sr;
     phase2 += (2 * Math.PI * (freq * 1.98)) / sr;
-
-    // 主体衰减包络 + 微饱和暖感
-    const subEnv = Math.exp(-sec * 6.2);
-    const punchEnv = Math.exp(-sec * 28);
-    const rawSub = Math.sin(phase) * subEnv * 0.92 + Math.sin(phase2) * punchEnv * 0.22;
-    const warmSub = Math.tanh(rawSub * 1.15);
-
-    // 极短受控瞬态低通冲击（增加落点质感，避免高频尖刺）
-    const transEnv = Math.exp(-sec * 52);
-    const alpha = 0.16;
-    lpL += alpha * (randL() * 2 - 1 - lpL);
-    lpR += alpha * (randR() * 2 - 1 - lpR);
-
-    const stereoAir = 0.24 * transEnv;
+    const warmSub = Math.tanh(
+      (Math.sin(phase) * Math.exp(-sec * 6.2) * 0.92 + Math.sin(phase2) * Math.exp(-sec * 28) * 0.22) * 1.15,
+    );
+    lpL += 0.16 * (randL() * 2 - 1 - lpL);
+    lpR += 0.16 * (randR() * 2 - 1 - lpR);
+    const stereoAir = 0.24 * Math.exp(-sec * 52);
     left[i] = warmSub + lpL * stereoAir;
     right[i] = warmSub + lpR * stereoAir;
   }
 
   const channels = [left, right];
   removeDcOffset(channels);
-  applyFadeEnvelope(channels, Math.round(sr * 0.0025), Math.round(sr * 0.05));
+  applyFadeEnvelope(channels, goRound(sr * 0.0025), goRound(sr * 0.05));
   normalizeToTruePeakCeiling(channels, BaseSfxTargetTruePeakDB);
   return encodeWavPcm16(channels, sr);
 }

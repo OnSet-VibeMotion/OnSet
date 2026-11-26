@@ -155,4 +155,21 @@ it('validates and normalizes motion_effects in scene_prepare and emits non-block
   const res5 = scenePrepare(root5, 'briefs.json', 'subtitles.srt');
   expect(res5.created).toBe(5);
   expect(res5.hint).toContain('motion_effects');
+
+  // 重试清单为已有无动效镜头新增动效时，已有镜头保持原样，仍应按最终状态返回未指定动效提醒。
+  fs.writeFileSync(
+    path.join(root5, 'briefs.json'),
+    JSON.stringify({
+      scenes: [1, 2, 3, 4, 5].map((n) => ({
+        id: `scene-00${n}`,
+        text: `第${n}镜`,
+        prompt: `画面${n}`,
+        ...(n === 1 ? { motion_effects: ['005'] } : {}),
+      })),
+    }),
+  );
+  const retry5 = scenePrepare(root5, 'briefs.json', 'subtitles.srt');
+  expect(retry5.existing).toBe(5);
+  expect(scene.load(path.join(root5, 'scenes/scene-001')).motion_effects).toEqual([]);
+  expect(retry5.hint).toContain('motion_effects');
 });

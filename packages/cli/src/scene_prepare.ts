@@ -78,7 +78,6 @@ export function scenePrepare(
     if (motion_effects.length > 0) {
       motionSources ??= flow.listMotionSources();
       verifySceneMotionEffects(motion_effects, motionSources, `镜头 ${id}`);
-      motionAssigned++;
     }
     const directory = `scenes/${id}`;
     const sceneFile = path.join(root, directory, 'scene.json');
@@ -86,10 +85,11 @@ export function scenePrepare(
     if (fs.existsSync(sceneFile)) {
       const existingScene = load(path.dirname(sceneFile));
       if (existingScene.id !== id) throw new Error(`已有镜头目录的 id 不符：${id}`);
-      if (existingScene.motion_effects.length > 0 && motion_effects.length === 0) motionAssigned++;
+      if (existingScene.motion_effects.length > 0) motionAssigned++;
       existing++;
       continue;
     }
+    if (motion_effects.length > 0) motionAssigned++;
     const scene = newScene({
       id,
       text,

@@ -20,16 +20,24 @@ defineGroup({
 });
 
 function resolveProjectHtmlFile(root: string, relOrAbs: string): string {
-  const base = path.resolve(root);
+  const base = fs.realpathSync(path.resolve(root));
   const target = path.isAbsolute(relOrAbs) ? path.resolve(relOrAbs) : path.resolve(base, relOrAbs);
   const rel = path.relative(base, target);
   if (rel.startsWith('..') || path.isAbsolute(rel)) {
     throw new ParamError(`html_file 必须位于项目目录内，已拒绝路径穿越：${relOrAbs}`);
   }
-  if (!fs.existsSync(target) || !fs.statSync(target).isFile()) {
+  if (!fs.existsSync(target)) {
     throw new ParamError(`找不到 HTML 文件：${relOrAbs}`);
   }
-  return fs.readFileSync(target, 'utf8');
+  const realTarget = fs.realpathSync(target);
+  const realRel = path.relative(base, realTarget);
+  if (realRel.startsWith('..') || path.isAbsolute(realRel)) {
+    throw new ParamError(`html_file 真实路径越出项目目录，已拒绝符号链接穿越：${relOrAbs}`);
+  }
+  if (!fs.statSync(realTarget).isFile()) {
+    throw new ParamError(`找不到 HTML 文件：${relOrAbs}`);
+  }
+  return fs.readFileSync(realTarget, 'utf8');
 }
 
 defineOp({

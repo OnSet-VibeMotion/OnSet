@@ -1,4 +1,5 @@
 // FFmpeg 降采样全流自动帧检：单遍扫描黑场、平场/空白帧、单帧闪烁、四边贴边、长静止段，并支持可选音轨削波/静音检测。
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
@@ -126,6 +127,25 @@ function buildVideoFilterGraph(opts: {
   ].join(';');
 }
 
+function hashFileSha256(file: string): string | null {
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(file, 'r');
+    const hash = crypto.createHash('sha256');
+    const buf = Buffer.allocUnsafe(1 << 20);
+    for (;;) {
+      const n = fs.readSync(fd, buf, 0, buf.length, null);
+      if (n <= 0) break;
+      hash.update(buf.subarray(0, n));
+    }
+    return hash.digest('hex');
+  } catch {
+    return null;
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+  }
+}
+
 /** 原子写出 frame-qc.json。 */
 export function writeFrameQCReportJSON(report: FrameQCReport, target: string): void {
   atomicWrite(target, Buffer.from(marshalIndent(report) + '\n', 'utf8'), 0o644);
@@ -143,6 +163,32 @@ export function readFrameQCSummary(file: string): FrameQCSummary | null {
   if (parsed.summary && typeof parsed.summary.verdict === 'string') return parsed.summary;
   if (Array.isArray(parsed.issues)) return summarizeFrameQC(parsed.issues);
   return null;
+}
+
+/** 读取 frame-qc.json 并按视频 SHA-256 核对是否与目标视频匹配；不匹配时标记 stale 并忽略旧摘要。 */
+export function readFrameQCForVideo(
+  file: string,
+  videoPath: string,
+): { summary: FrameQCSummary | null; stale: boolean } {
+  if (!fs.existsSync(file)) return { summary: null, stale: false };
+  let parsed: Partial<FrameQCReport>;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<FrameQCReport>;
+  } catch {
+    return { summary: null, stale: false };
+  }
+  const summary =
+    parsed.summary && typeof parsed.summary.verdict === 'string'
+      ? parsed.summary
+      : Array.isArray(parsed.issues)
+        ? summarizeFrameQC(parsed.issues)
+        : null;
+  if (!summary) return { summary: null, stale: false };
+  const actualSha = hashFileSha256(videoPath);
+  if (!parsed.video_sha256 || !actualSha || parsed.video_sha256 !== actualSha) {
+    return { summary: null, stale: true };
+  }
+  return { summary, stale: false };
 }
 
 /** 对视频执行降采样全流帧检与可选音轨检查，返回结构化报告。 */
@@ -279,9 +325,11 @@ export async function runFrameQC(t: Toolchain, opts: FrameQCOptions): Promise<Fr
 
   issues.sort((a, b) => a.start_frame - b.start_frame || a.end_frame - b.end_frame || a.kind.localeCompare(b.kind));
   const summary = summarizeFrameQC(issues);
+  const videoSha256 = hashFileSha256(opts.video);
   const report: FrameQCReport = {
     schema_version: FrameQCSchemaVersion,
     path: opts.video,
+    ...(videoSha256 ? { video_sha256: videoSha256 } : {}),
     fps,
     total_frames: totalFrames,
     duration_seconds: durationSeconds,

@@ -174,15 +174,11 @@ export function computeStations(
       };
     }
     // 第三方站的产物不算「后面已经做了」：宿主不凭插件写的文件推断自带流程走到了哪（插件一发布，前面全成了跳过）。
-    // 开启单镜打样闸门且项目只有 1 镜时，单镜出片本身不自动跳过 gate-pilot，仍须等待用户确认或后续站已产出。
-    const laterDone = outputs.some(
-      (t, j) =>
-        j > i &&
-        t > 0 &&
-        !defs[j].optional &&
-        !defs[j].declared &&
-        !(d.id === flow.PilotGateID && defs[j].id === 'render' && scenes.length <= 1),
-    );
+    // 开启单镜打样闸门后，gate-pilot 不参与 laterDone 推断，只能由有效确认完成，避免多镜已有产物时静默跳过打样审核。
+    const laterDone =
+      d.id === flow.PilotGateID
+        ? false
+        : outputs.some((t, j) => j > i && t > 0 && !defs[j].optional && !defs[j].declared);
     if (d.gate) {
       const own = d.gateState?.(ctx);
       const record = ctx.gates[d.id];
@@ -190,7 +186,7 @@ export function computeStations(
         station.status = own.status;
         if (own.at !== undefined) station.at = typeof own.at === 'string' ? own.at : localRFC3339(new Date(own.at));
       } else if (record) {
-        station.status = gateChanged(root, record) ? 'changed' : 'confirmed';
+        station.status = gateChanged(root, record, d.id) ? 'changed' : 'confirmed';
         station.at = record.at;
         if (record.said) station.said = record.said;
       } else if (laterDone) station.status = 'passed';

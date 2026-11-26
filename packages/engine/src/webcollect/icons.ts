@@ -28,10 +28,38 @@ export interface PageImageCandidate {
 
 const MaxInlineSvgChars = 256 * 1024;
 
+const NamedHtmlEntities: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: '\u00a0',
+};
+
+/** 单遍解码 HTML 属性中的常见命名实体与十进制/十六进制数字字符引用（不重复解码 &amp;amp;）。 */
+export function decodeHtmlEntities(raw: string): string {
+  return raw.replace(/&(?:#x([0-9a-fA-F]+)|#(\d+)|([a-zA-Z]+));/g, (full, hex, dec, name) => {
+    if (hex !== undefined) {
+      const cp = parseInt(hex, 16);
+      return cp >= 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : full;
+    }
+    if (dec !== undefined) {
+      const cp = parseInt(dec, 10);
+      return cp >= 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : full;
+    }
+    if (name !== undefined) {
+      const mapped = NamedHtmlEntities[name.toLowerCase()];
+      if (mapped !== undefined) return mapped;
+    }
+    return full;
+  });
+}
+
 function readAttr(tag: string, name: string): string | undefined {
   const re = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i');
   const m = tag.match(re);
-  return m ? (m[1] ?? m[2] ?? m[3] ?? '').trim() : undefined;
+  return m ? decodeHtmlEntities((m[1] ?? m[2] ?? m[3] ?? '').trim()) : undefined;
 }
 
 function resolveHttpUrl(rawHref: string | undefined, baseUrl: string): string | null {

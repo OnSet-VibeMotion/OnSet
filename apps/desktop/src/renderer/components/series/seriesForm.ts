@@ -77,6 +77,16 @@ export function applyDraftToForm(
     );
     if (hit) nextModeId = hit.id;
   }
+  const tpl = draft.publish_template;
+  const nextPublishForm = tpl
+    ? {
+        titlePattern: tpl.title_pattern !== undefined ? tpl.title_pattern : form.publishForm.titlePattern,
+        hashtags: tpl.default_hashtags !== undefined ? tpl.default_hashtags.join(' ') : form.publishForm.hashtags,
+        coverGuide: tpl.cover_guidelines !== undefined ? tpl.cover_guidelines : form.publishForm.coverGuide,
+        footer: tpl.description_footer !== undefined ? tpl.description_footer : form.publishForm.footer,
+        credits: tpl.credits_lines !== undefined ? tpl.credits_lines.join('\n') : form.publishForm.credits,
+      }
+    : form.publishForm;
   return {
     ...form,
     name: draft.name || form.name,
@@ -88,8 +98,8 @@ export function applyDraftToForm(
     motionEffects: draft.defaults.motion_effects?.length ? draft.defaults.motion_effects : form.motionEffects,
     ttsVoice: draft.defaults.tts_voice || form.ttsVoice,
     brief: draft.brief || form.brief,
-    publishForm: draft.publish_template ? publishTemplateToForm(draft.publish_template) : form.publishForm,
-    publishTouched: draft.publish_template ? true : form.publishTouched,
+    publishForm: nextPublishForm,
+    publishTouched: tpl ? true : form.publishTouched,
   };
 }
 

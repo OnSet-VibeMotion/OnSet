@@ -29,7 +29,6 @@ const threeImportRe =
   /(?:import\b[^;\n]*\bfrom\s*|import\s*\(\s*|require\s*\(\s*)['"](?:three(?:\/[^'"]*)?|[^'"]*\/three(?:\.module)?(?:\.min)?\.m?js)['"]/i;
 const threeGlobalRe = /\bTHREE\s*\.\s*[A-Za-z_]/;
 const threeScriptSrcRe = /(?:^|[/\\])three(?:\.module)?(?:\.min)?\.m?js(?:[?#]|$)/i;
-const threeImportMapRe = /"three"\s*:/;
 const webglContextRe = /\.getContext\s*\(\s*['"](?:webgl2|webgl|experimental-webgl)['"]/i;
 const canvas2dContextRe = /\.getContext\s*\(\s*['"]2d['"]/i;
 const cssFake3dRe =
@@ -92,12 +91,56 @@ function scanCSSSignals(css: string, signals: EngineSignals): void {
   for (const m of stripped.matchAll(cssFakeShaderRe)) signals.fakeShaderHits.add(m[1].trim());
 }
 
-function collectTopCommentDeviations(rel: string, raw: string, out: EngineDeviation[]): void {
-  const head = raw.split('\n').slice(0, 50);
-  for (let i = 0; i < head.length; i++) {
-    const line = head[i];
-    if (!line.toLowerCase().includes('onset-engine-deviation')) continue;
-    const parsed = parseDeviationString(line, `${rel}:${i + 1}`);
+function extractCommentsByLine(raw: string, stripped: string, maxLine = 50): Array<{ line: number; text: string }> {
+  const rawLines = raw.split('\n');
+  const strippedLines = stripped.split('\n');
+  const limit = Math.min(maxLine, rawLines.length);
+  const out: Array<{ line: number; text: string }> = [];
+  for (let i = 0; i < limit; i++) {
+    const r = rawLines[i];
+    const s = strippedLines[i] ?? '';
+    let comment = '';
+    for (let j = 0; j < r.length; j++) {
+      comment += r[j] !== s[j] ? r[j] : ' ';
+    }
+    if (comment.trim() !== '') out.push({ line: i + 1, text: comment });
+  }
+  return out;
+}
+
+function collectTopCommentDeviations(rel: string, ext: string, raw: string, out: EngineDeviation[]): void {
+  const chunks: Array<{ line: number; text: string }> = [];
+  if (ext === '.js' || ext === '.mjs' || ext === '.cjs') {
+    chunks.push(...extractCommentsByLine(raw, lexJS(raw).withStrings));
+  } else if (ext === '.css') {
+    chunks.push(...extractCommentsByLine(raw, stripCSSComments(raw)));
+  } else if (ext === '.html' || ext === '.htm') {
+    const noHtml = stripHTMLComments(raw);
+    chunks.push(...extractCommentsByLine(raw, noHtml));
+    // 同时提取前 50 行内 <script> 与 <style> 中的真实 JS/CSS 注释（忽略字符串字面量）。
+    for (const match of noHtml.matchAll(scriptBlock)) {
+      const loc = indicesOf(match);
+      const start = loc[2]![0];
+      const body = noHtml.slice(start, loc[2]![1]);
+      const baseLine = noHtml.slice(0, start).split('\n').length - 1;
+      if (baseLine >= 50) continue;
+      for (const c of extractCommentsByLine(body, lexJS(body).withStrings, 50 - baseLine)) {
+        chunks.push({ line: baseLine + c.line, text: c.text });
+      }
+    }
+    for (const match of noHtml.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) {
+      const start = (match.index ?? 0) + match[0].indexOf('>') + 1;
+      const body = match[1];
+      const baseLine = noHtml.slice(0, start).split('\n').length - 1;
+      if (baseLine >= 50) continue;
+      for (const c of extractCommentsByLine(body, stripCSSComments(body), 50 - baseLine)) {
+        chunks.push({ line: baseLine + c.line, text: c.text });
+      }
+    }
+  }
+  for (const chunk of chunks) {
+    if (!chunk.text.toLowerCase().includes('onset-engine-deviation')) continue;
+    const parsed = parseDeviationString(chunk.text, `${rel}:${chunk.line}`);
     if (parsed) out.push(parsed);
   }
 }
@@ -112,8 +155,8 @@ export function analyzeContractFiles(root: string, files: readonly string[], sig
     } catch {
       continue;
     }
-    collectTopCommentDeviations(rel, raw, signals.deviations);
     const ext = goExt(rel).toLowerCase();
+    collectTopCommentDeviations(rel, ext, raw, signals.deviations);
     if (ext === '.js' || ext === '.mjs' || ext === '.cjs') {
       if (vendored(rel, raw)) continue;
       scanScriptSignals(raw, signals);
@@ -133,14 +176,7 @@ export function analyzeContractFiles(root: string, files: readonly string[], sig
         }
         const typeMatch = attrType.exec(attrs);
         const kind = typeMatch ? typeMatch[1].toLowerCase() : '';
-        if (kind === 'importmap') {
-          if (threeImportMapRe.test(body)) signals.hasThree = true;
-        } else if (
-          kind === '' ||
-          kind === 'module' ||
-          kind === 'text/javascript' ||
-          kind === 'application/javascript'
-        ) {
+        if (kind === '' || kind === 'module' || kind === 'text/javascript' || kind === 'application/javascript') {
           scanScriptSignals(body, signals);
         }
       }

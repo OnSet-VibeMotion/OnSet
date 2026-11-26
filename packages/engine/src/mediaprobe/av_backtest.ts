@@ -59,12 +59,13 @@ export function writeAVBacktestReportJSON(report: AVBacktestReport, target: stri
   atomicWrite(target, Buffer.from(marshalIndent(report) + '\n', 'utf8'), 0o644);
 }
 
-/** 将媒体音轨从起点完整解码为单声道 float32 PCM（不走 -ss，确保时间戳零漂移）。 */
+/** 将媒体音轨完整解码为单声道 float32 PCM；alignTimeline=true 时按成片时间轴从 PTS=0 补齐起始偏移。 */
 async function decodeMonoFloat32(
   t: Toolchain,
   file: string,
   sampleRate: number,
   signal?: AbortSignal,
+  alignTimeline = false,
 ): Promise<Float32Array> {
   const ran = await t.runAsync(
     t.ffmpegPath(),
@@ -76,6 +77,7 @@ async function decodeMonoFloat32(
       '-i',
       file,
       '-vn',
+      ...(alignTimeline ? ['-af', 'aresample=async=1:first_pts=0'] : []),
       '-ac',
       '1',
       '-ar',
@@ -104,7 +106,7 @@ function roiToCropFilter(roi: AVBacktestROI | undefined, width: number, height: 
   const cy = Math.max(0, Math.min(height - 1, py));
   const cw = Math.max(1, Math.min(width - cx, pw));
   const ch = Math.max(1, Math.min(height - cy, ph));
-  return `crop=${cw}:${ch}:${cx}:${cy},`;
+  return `crop=${cw}:${ch}:${cx}:${cy}:exact=1,`;
 }
 
 /** 精确解码成片第 [decodeStart, winEnd] 帧的 ROI 灰度小图（64×64）。 */
@@ -167,8 +169,10 @@ export async function runAVBacktest(t: Toolchain, opts: AVBacktestOptions): Prom
   const videoMedia = t.probe(opts.video);
   if (!videoMedia.video) throw new Error(`成片音画回测失败：视频没有视频流（${opts.video}）`);
   if (!videoMedia.audio) throw new Error(`成片音画回测失败：视频没有音轨（${opts.video}）`);
-  const fps = opts.fps && opts.fps > 0 ? opts.fps : videoFPS(videoMedia.video);
+  const actualVideoFps = videoFPS(videoMedia.video);
+  const fps = opts.fps && opts.fps > 0 ? opts.fps : actualVideoFps;
   if (!(fps > 0)) throw new Error(`成片音画回测需要有效帧率，无法从 ${opts.video} 确定`);
+  const videoFps = actualVideoFps > 0 ? actualVideoFps : fps;
 
   const countedFrames = videoMedia.video.nb_frames > 0 ? videoMedia.video.nb_frames : t.countFrames(opts.video);
   const { width_px: width, height_px: height } = videoMedia.video;
@@ -179,10 +183,12 @@ export async function runAVBacktest(t: Toolchain, opts: AVBacktestOptions): Prom
 
   const [sourcePCM, videoPCM] = await Promise.all([
     decodeMonoFloat32(t, opts.sourceMusic, sampleRate, opts.signal),
-    decodeMonoFloat32(t, opts.video, sampleRate, opts.signal),
+    decodeMonoFloat32(t, opts.video, sampleRate, opts.signal, true),
   ]);
-  const sfxStemPCM = opts.sfxStem ? await decodeMonoFloat32(t, opts.sfxStem, sampleRate, opts.signal) : null;
+  const sfxStemPCM = opts.sfxStem ? await decodeMonoFloat32(t, opts.sfxStem, sampleRate, opts.signal, true) : null;
   const sfxAssetCache = new Map<string, Float32Array>();
+  const musicMatchCache = new Map<number, ReturnType<typeof matchAudioTemplate>>();
+  const allSfxMoments = opts.anchors.flatMap((a) => (a.sfx ?? []).map(() => round4(a.planned_frame / fps)));
 
   const anchorReports: AVBacktestAnchorReport[] = [];
   const reliableOffsets: number[] = [];
@@ -190,20 +196,27 @@ export async function runAVBacktest(t: Toolchain, opts: AVBacktestOptions): Prom
   for (const anchor of opts.anchors) {
     opts.signal?.throwIfAborted();
     const plannedSeconds = round4(anchor.planned_frame / fps);
-    const music = matchAudioTemplate(sourcePCM, videoPCM, {
-      sampleRate,
-      nominalSeconds: anchor.music_seconds,
-      expectedTargetSeconds: anchor.music_seconds,
-      templateHalfSeconds: DefaultTemplateHalfSeconds,
-      searchWindowSeconds,
-      minCorrelation: minAudioCorrelation,
-    });
-    if (music.verified && music.offset_seconds !== undefined) reliableOffsets.push(music.offset_seconds);
+    const musicKey = round4(anchor.music_seconds);
+    let music = musicMatchCache.get(musicKey);
+    if (!music) {
+      music = matchAudioTemplate(sourcePCM, videoPCM, {
+        sampleRate,
+        nominalSeconds: anchor.music_seconds,
+        expectedTargetSeconds: anchor.music_seconds,
+        templateHalfSeconds: DefaultTemplateHalfSeconds,
+        searchWindowSeconds,
+        minCorrelation: minAudioCorrelation,
+      });
+      musicMatchCache.set(musicKey, music);
+      if (music.verified && music.offset_seconds !== undefined) reliableOffsets.push(music.offset_seconds);
+    }
 
     const metric = anchor.visual?.metric ?? 'change';
     const roi = anchor.visual?.roi;
-    const winStart = Math.max(0, anchor.planned_frame - windowFrames);
-    const winEnd = Math.min(countedFrames - 1, anchor.planned_frame + windowFrames);
+    const centerVideoFrame = videoFps === fps ? anchor.planned_frame : goRound(plannedSeconds * videoFps);
+    const videoWindowFrames = videoFps === fps ? windowFrames : Math.max(1, goRound((windowFrames / fps) * videoFps));
+    const winStart = Math.max(0, centerVideoFrame - videoWindowFrames);
+    const winEnd = Math.min(countedFrames - 1, centerVideoFrame + videoWindowFrames);
     const decodeStart = Math.max(0, winStart - 1);
     const decodedFrames = await decodeROIWindowFrames(
       t,
@@ -220,7 +233,7 @@ export async function runAVBacktest(t: Toolchain, opts: AVBacktestOptions): Prom
       decodeStart,
       winStart,
       winEnd,
-      fps,
+      fps: videoFps,
       metric,
       minDelta: minVisualDelta,
     });
@@ -245,6 +258,7 @@ export async function runAVBacktest(t: Toolchain, opts: AVBacktestOptions): Prom
     }
 
     const sfxResults: AVBacktestSfxResult[] = [];
+    const sfxInWindow = allSfxMoments.filter((sec) => Math.abs(sec - plannedSeconds) <= searchWindowSeconds * 2).length;
     for (const ref of anchor.sfx ?? []) {
       let sfxActual: number | undefined;
       let sfxCorr: number | undefined;
@@ -268,11 +282,13 @@ export async function runAVBacktest(t: Toolchain, opts: AVBacktestOptions): Prom
         sfxActual = matched.actual_seconds;
         sfxCorr = matched.correlation;
         sfxReason = matched.reason;
-      } else if (sfxStemPCM) {
+      } else if (sfxStemPCM && sfxInWindow === 1) {
         const peak = locateEnergyPeakInStem(sfxStemPCM, sampleRate, plannedSeconds, searchWindowSeconds);
         sfxVerified = peak.verified;
         sfxActual = peak.actual_seconds;
         sfxReason = peak.reason;
+      } else if (sfxStemPCM) {
+        sfxReason = '窗口内存在多条音效 cue 且缺少源素材，分轨能量峰无法唯一归属';
       } else {
         sfxReason = '未提供 sfx.wav 或音效素材，无法独立定位音效峰值';
       }

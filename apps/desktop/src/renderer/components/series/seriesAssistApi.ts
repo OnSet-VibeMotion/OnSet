@@ -76,7 +76,7 @@ function makeAbortError(): Error {
   return err;
 }
 
-/** 请求 /api/series/assist，支持前端 AbortSignal 与后端进程联动取消。 */
+/** 请求 /api/series/_assist，支持前端 AbortSignal 与后端进程联动取消。 */
 export function requestSeriesAssist(
   payload: {
     mode: SeriesAssistMode;
@@ -90,7 +90,7 @@ export function requestSeriesAssist(
   return new Promise<SeriesAssistResponse>((resolve, reject) => {
     const onAbort = () => reject(makeAbortError());
     signal.addEventListener('abort', onAbort, { once: true });
-    api<SeriesAssistResponse>('/api/series/assist', {
+    api<SeriesAssistResponse>('/api/series/_assist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -111,5 +111,5 @@ export function requestSeriesAssist(
 
 /** 通知后端中止进行中的专栏辅助模型调用。 */
 export function cancelSeriesAssist(): void {
-  void del('/api/series/assist').catch(() => {});
+  void del('/api/series/_assist').catch(() => {});
 }

@@ -59,6 +59,7 @@ export {
   DefaultSilenceMinSeconds,
   FrameQCSchemaVersion,
   mapFrameRangeToScenes,
+  readFrameQCForVideo,
   readFrameQCSummary,
   runFrameQC,
   summarizeFrameQC,

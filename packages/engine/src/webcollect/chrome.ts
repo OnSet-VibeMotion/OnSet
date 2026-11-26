@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { lookPath } from '../envutil';
+import { lookPath, MissingToolError } from '../envutil';
 import { removeTree } from '../fsutil';
 import type { ScreenshotRunRequest } from './types';
 
@@ -120,14 +120,42 @@ export function findChromeExecutable(
 
   const pathEnv = env.PATH ?? process.env.PATH ?? '';
   for (const cmd of ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']) {
-    const resolved = lookPath(cmd, pathEnv);
-    if (resolved) return resolved;
+    try {
+      const resolved = lookPath(cmd, pathEnv);
+      if (resolved) return resolved;
+    } catch (err) {
+      if (err instanceof MissingToolError) continue;
+      throw err;
+    }
   }
   return findPlaywrightChromium(env);
 }
 
+function killProcessTree(pid: number | undefined, signal: NodeJS.Signals): void {
+  if (!pid) return;
+  if (process.platform === 'win32') {
+    const taskkillArgs = signal === 'SIGKILL' ? ['/PID', String(pid), '/T', '/F'] : ['/PID', String(pid), '/T'];
+    try {
+      spawn('taskkill', taskkillArgs, { stdio: 'ignore', windowsHide: true });
+    } catch {
+      // 回退单进程信号
+    }
+    return;
+  }
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      process.kill(pid, signal);
+    } catch {
+      // 进程已退出
+    }
+  }
+}
+
 /** 默认的无头 Chrome 截图执行器。 */
 export async function runChromeScreenshot(req: ScreenshotRunRequest): Promise<void> {
+  if (req.signal?.aborted) throw new Error('截图任务已取消');
   const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-chrome-profile-'));
   const args = [
     '--headless=new',
@@ -143,6 +171,10 @@ export async function runChromeScreenshot(req: ScreenshotRunRequest): Promise<vo
     `--force-device-scale-factor=${req.scale}`,
     `--screenshot=${req.outputPath}`,
   ];
+  if (req.proxyServer) {
+    args.push(`--proxy-server=${req.proxyServer}`);
+    if (req.proxyBypassList) args.push(`--proxy-bypass-list=${req.proxyBypassList}`);
+  }
   if (req.hostResolverRules) {
     args.push(`--host-resolver-rules=${req.hostResolverRules}`);
   }
@@ -153,37 +185,56 @@ export async function runChromeScreenshot(req: ScreenshotRunRequest): Promise<vo
 
   try {
     await new Promise<void>((resolve, reject) => {
-      const child = spawn(req.chromePath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(req.chromePath, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32',
+      });
       let stderr = '';
       child.stderr.on('data', (chunk: Buffer) => {
         if (stderr.length < 4096) stderr += chunk.toString('utf8');
       });
 
       let settled = false;
+      let cancelErr: Error | null = null;
+      let killEscalation: ReturnType<typeof setTimeout> | null = null;
+      let hardWaitTimer: ReturnType<typeof setTimeout> | null = null;
+
       const finish = (err?: Error) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        if (killEscalation) clearTimeout(killEscalation);
+        if (hardWaitTimer) clearTimeout(hardWaitTimer);
         req.signal?.removeEventListener('abort', onAbort);
         if (err) reject(err);
         else resolve();
       };
-      const onAbort = () => {
-        child.kill('SIGTERM');
-        finish(new Error('截图任务已取消'));
-      };
-      const timer = setTimeout(() => {
-        child.kill('SIGTERM');
-        finish(new Error(`无头浏览器截图超时（${req.timeoutMs}ms）`));
-      }, req.timeoutMs);
 
-      if (req.signal?.aborted) {
-        onAbort();
-        return;
-      }
-      req.signal?.addEventListener('abort', onAbort, { once: true });
-      child.on('error', (err) => finish(new Error(`启动无头浏览器失败：${err.message}`)));
+      const terminateAndWait = (err: Error) => {
+        if (cancelErr || settled) return;
+        cancelErr = err;
+        clearTimeout(timer);
+        killProcessTree(child.pid, 'SIGTERM');
+        killEscalation = setTimeout(() => {
+          killProcessTree(child.pid, 'SIGKILL');
+        }, 1500);
+        // 有限宽限期后强制结算，确保不会无限挂起；正常情况下在 close 时即刻结算。
+        hardWaitTimer = setTimeout(() => finish(cancelErr ?? err), 3500);
+      };
+
+      const onAbort = () => terminateAndWait(new Error('截图任务已取消'));
+      const timer = setTimeout(
+        () => terminateAndWait(new Error(`无头浏览器截图超时（${req.timeoutMs}ms）`)),
+        req.timeoutMs,
+      );
+
+      // 先注册子进程事件监听器，再检查 abort，避免遗漏异步 spawn error。
+      child.on('error', (err) => finish(cancelErr ?? new Error(`启动无头浏览器失败：${err.message}`)));
       child.on('close', (code) => {
+        if (cancelErr) {
+          finish(cancelErr);
+          return;
+        }
         if (code !== 0) {
           finish(new Error(`无头浏览器退出异常（code=${code}）：${stderr.trim().slice(0, 240)}`));
           return;
@@ -194,6 +245,12 @@ export async function runChromeScreenshot(req: ScreenshotRunRequest): Promise<vo
         }
         finish();
       });
+
+      if (req.signal?.aborted) {
+        onAbort();
+        return;
+      }
+      req.signal?.addEventListener('abort', onAbort, { once: true });
     });
   } finally {
     try {

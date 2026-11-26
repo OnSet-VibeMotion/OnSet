@@ -193,4 +193,26 @@ describe('baseassets procedural generation', () => {
     });
     expect(fs.existsSync(path.join(dirWithout, BuiltinAssetsRelDir, BuiltinManifestFile))).toBe(false);
   });
+
+  it('parses WAV with intermediate odd-sized JUNK chunk in measurePcm16Metrics', () => {
+    const dir = makeTempProject();
+    generateBaseAssets(dir);
+    const baseWav = fs.readFileSync(path.join(dir, BuiltinAssetsRelDir, 'whoosh.wav'));
+    const fmtChunk = baseWav.subarray(12, 36);
+    const dataChunk = baseWav.subarray(36);
+    // 插入奇数长度 JUNK 块（5 字节 + 1 字节偶对齐补零）
+    const junkHeader = Buffer.alloc(8);
+    junkHeader.write('JUNK', 0, 'ascii');
+    junkHeader.writeUInt32LE(5, 4);
+    const junkBody = Buffer.from([1, 2, 3, 4, 5, 0]);
+    const body = Buffer.concat([Buffer.from('WAVE', 'ascii'), fmtChunk, junkHeader, junkBody, dataChunk]);
+    const riff = Buffer.alloc(8);
+    riff.write('RIFF', 0, 'ascii');
+    riff.writeUInt32LE(body.length, 4);
+    const withJunk = Buffer.concat([riff, body]);
+
+    const expected = measurePcm16Metrics(baseWav);
+    const actual = measurePcm16Metrics(withJunk);
+    expect(actual).toEqual(expected);
+  });
 });

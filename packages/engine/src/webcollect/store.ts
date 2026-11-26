@@ -149,6 +149,29 @@ function probeSvgDimensions(svg: string): { width?: number; height?: number } {
   return {};
 }
 
+/** 校验采集目录及其已存在父目录均不为符号链接，并返回项目真实根下的采集目录路径。 */
+export function assertSafeCollectedDir(projectRoot: string): string {
+  const realRoot = fs.realpathSync(path.resolve(projectRoot));
+  let cur = realRoot;
+  for (const part of CollectedAssetsRelDir.split('/')) {
+    cur = path.join(cur, part);
+    if (fs.existsSync(cur)) {
+      const st = fs.lstatSync(cur);
+      if (st.isSymbolicLink() || !st.isDirectory()) {
+        throw new Error(`采集目录不允许是符号链接或非目录：${cur}`);
+      }
+    }
+  }
+  const manifestPath = path.join(cur, CollectedManifestFile);
+  if (fs.existsSync(manifestPath)) {
+    const st = fs.lstatSync(manifestPath);
+    if (st.isSymbolicLink() || !st.isFile()) {
+      throw new Error(`采集清单不允许是符号链接：${manifestPath}`);
+    }
+  }
+  return cur;
+}
+
 /** 采集目录的绝对路径：<projectRoot>/assets/collected。 */
 export function collectedDir(projectRoot: string): string {
   return path.resolve(projectRoot, CollectedAssetsRelDir);
@@ -187,7 +210,8 @@ function normalizeExt(rawExt: string): string {
 
 /** 读取项目已有的采集清单，若尚未创建则返回空清单。 */
 export function readCollectedManifest(projectRoot: string): CollectedManifest {
-  const file = collectedManifestAbsPath(projectRoot);
+  const dir = assertSafeCollectedDir(projectRoot);
+  const file = path.join(dir, CollectedManifestFile);
   if (!fs.existsSync(file)) {
     return { version: 1, updated_at: '', assets: [] };
   }
@@ -202,7 +226,8 @@ export function readCollectedManifest(projectRoot: string): CollectedManifest {
 
 /** 原子写出采集清单（权限 0644，使用 gojson 固定格式）。 */
 export function writeCollectedManifest(projectRoot: string, manifest: CollectedManifest): string {
-  const file = collectedManifestAbsPath(projectRoot);
+  const dir = assertSafeCollectedDir(projectRoot);
+  const file = path.join(dir, CollectedManifestFile);
   const normalized: CollectedManifest = {
     version: 1,
     updated_at: manifest.updated_at || new Date().toISOString(),
@@ -256,20 +281,41 @@ export function saveCollectedAsset(input: SaveCollectedAssetInput): SaveCollecte
   }
 
   const sha256 = crypto.createHash('sha256').update(finalBuf).digest('hex');
+  const dir = assertSafeCollectedDir(input.projectRoot);
+  const realRoot = fs.realpathSync(path.resolve(input.projectRoot));
   const manifest = readCollectedManifest(input.projectRoot);
   const existing = manifest.assets.find((item) => item.sha256 === sha256);
   if (existing) {
-    const existingAbs = path.resolve(input.projectRoot, existing.file);
-    if (input.dryRun || fs.existsSync(existingAbs)) {
-      return { entry: existing, deduplicated: true };
+    if (input.dryRun) return { entry: existing, deduplicated: true };
+    const existingAbs = path.resolve(realRoot, existing.file);
+    const existingRel = path.relative(dir, existingAbs);
+    if (!existingRel.startsWith('..') && !path.isAbsolute(existingRel) && fs.existsSync(existingAbs)) {
+      const st = fs.lstatSync(existingAbs);
+      if (!st.isSymbolicLink() && st.isFile()) {
+        const diskSha = crypto.createHash('sha256').update(fs.readFileSync(existingAbs)).digest('hex');
+        if (diskSha === sha256) return { entry: existing, deduplicated: true };
+      }
     }
   }
 
   const stem = input.name ? assertSafeAssetName(input.name) : input.kind;
   const shortHash = sha256.slice(0, 10);
-  const fileName = `${stem}-${shortHash}${ext}`;
-  const dir = collectedDir(input.projectRoot);
-  const absTarget = path.resolve(dir, fileName);
+  let suffix = '';
+  let fileName = `${stem}-${shortHash}${ext}`;
+  let absTarget = path.resolve(dir, fileName);
+  // 若目标文件已存在但内容与本次摘要不同（用户手工替换过），分配新名以保留用户修改过的文件。
+  if (!input.dryRun) {
+    for (let n = 2; fs.existsSync(absTarget); n++) {
+      const st = fs.lstatSync(absTarget);
+      if (!st.isSymbolicLink() && st.isFile()) {
+        const diskSha = crypto.createHash('sha256').update(fs.readFileSync(absTarget)).digest('hex');
+        if (diskSha === sha256) break;
+      }
+      suffix = `-${n}`;
+      fileName = `${stem}-${shortHash}${suffix}${ext}`;
+      absTarget = path.resolve(dir, fileName);
+    }
+  }
   const relCheck = path.relative(dir, absTarget);
   if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
     throw new Error(`目标路径越出采集目录：${fileName}`);
@@ -278,7 +324,7 @@ export function saveCollectedAsset(input: SaveCollectedAssetInput): SaveCollecte
   const dims = probeImageDimensions(finalBuf, ext);
   const now = new Date().toISOString();
   const entry: CollectedAssetEntry = {
-    id: `${stem}-${shortHash}`,
+    id: `${stem}-${shortHash}${suffix}`,
     file: `${CollectedAssetsRelDir}/${fileName}`,
     kind: input.kind,
     bytes: finalBuf.length,
@@ -292,14 +338,26 @@ export function saveCollectedAsset(input: SaveCollectedAssetInput): SaveCollecte
   };
 
   if (!input.dryRun) {
+    const existedBefore = fs.existsSync(absTarget);
     atomicWrite(absTarget, finalBuf, 0o644);
-    const nextAssets = manifest.assets.filter((item) => item.sha256 !== sha256 && item.id !== entry.id);
-    nextAssets.push(entry);
-    writeCollectedManifest(input.projectRoot, {
-      version: 1,
-      updated_at: now,
-      assets: nextAssets,
-    });
+    try {
+      const nextAssets = manifest.assets.filter((item) => item.sha256 !== sha256 && item.id !== entry.id);
+      nextAssets.push(entry);
+      writeCollectedManifest(input.projectRoot, {
+        version: 1,
+        updated_at: now,
+        assets: nextAssets,
+      });
+    } catch (err) {
+      if (!existedBefore) {
+        try {
+          fs.rmSync(absTarget, { force: true });
+        } catch {
+          // 忽略回滚删除失败
+        }
+      }
+      throw err;
+    }
   }
   return { entry, deduplicated: false };
 }

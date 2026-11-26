@@ -49,75 +49,7 @@ export interface ProjectSources {
   subtitles: srt.Cue[];
 }
 
-/** 清理素材包名称，拒绝路径穿越或空名。 */
-export function sanitizeBundleName(raw: string): string {
-  const trimmed = raw.trim();
-  if (
-    trimmed.includes('\0') ||
-    trimmed.includes('/') ||
-    trimmed.includes('\\') ||
-    trimmed === '.' ||
-    trimmed === '..'
-  ) {
-    throw new Error(`非法的导出包名称：${raw}`);
-  }
-  const clean = trimmed.replace(/[^a-zA-Z0-9\u4e00-\u9fff._-]/g, '_').replace(/^\.+/, '');
-  if (clean === '') throw new Error(`导出包名称不能为空：${raw}`);
-  return clean;
-}
-
-/**
- * 解析并校验剪映素材包输出目录：
- * - 留空时默认落到 <project>/exports/jianying-<name>/；
- * - 相对路径必须落在项目根目录内，拒绝 `..` 路径穿越；
- * - 拒绝指向项目根目录本身、其祖先目录，以及项目内的 `scenes/` 或 `.git/`；
- * - 拒绝非空目标目录（除非显式 overwrite=true）。
- */
-export function resolveExportDir(
-  projectRoot: string,
-  dest: string | undefined,
-  name: string,
-  overwrite: boolean,
-): string {
-  const resolvedRoot = fs.realpathSync(projectRoot);
-  const safeName = sanitizeBundleName(name);
-  let target: string;
-  if (!dest || dest.trim() === '') {
-    target = path.join(resolvedRoot, 'exports', `jianying-${safeName}`);
-  } else {
-    const raw = dest.trim();
-    if (raw.includes('\0')) throw new Error('输出目录路径包含非法空字节');
-    if (path.isAbsolute(raw)) {
-      target = path.resolve(raw);
-    } else {
-      target = path.resolve(resolvedRoot, raw);
-      const rel = path.relative(resolvedRoot, target);
-      if (rel === '' || rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) {
-        throw new Error(`输出目录不能越出项目根目录：${dest}`);
-      }
-    }
-  }
-  if (target === resolvedRoot || resolvedRoot.startsWith(target + path.sep)) {
-    throw new Error(`输出目录不能是项目根目录或其上级目录：${target}`);
-  }
-  const relToRoot = path.relative(resolvedRoot, target).split(path.sep).join('/');
-  if (
-    relToRoot === 'scenes' ||
-    relToRoot.startsWith('scenes/') ||
-    relToRoot === '.git' ||
-    relToRoot.startsWith('.git/')
-  ) {
-    throw new Error(`输出目录不能落在受保护的项目子目录下：${relToRoot}`);
-  }
-  if (fs.existsSync(target)) {
-    const st = fs.lstatSync(target);
-    if (st.isSymbolicLink() || !st.isDirectory()) throw new Error(`输出目标不是普通目录：${target}`);
-    if (!overwrite && fs.readdirSync(target).length > 0) {
-      throw new Error(`输出目录已存在且非空，拒绝覆盖：${target}（如需覆盖请设置 overwrite=true）`);
-    }
-  }
-  return target;
-}
+export { assertOwnedExportDir, resolveExportDir, sanitizeBundleName } from './paths';
 
 function isRegularFile(file: string): boolean {
   try {
@@ -216,6 +148,7 @@ function readCueSheet(root: string): DiscoveredAudioCue[] {
       if (typeof cue.asset !== 'string' || cue.asset.trim() === '') continue;
       const assetFile = safeInside(root, cue.asset.trim(), '音频 cue 素材');
       if (!assetFile) continue;
+      const nonNegInt = (v: unknown) => (typeof v === 'number' && v >= 0 ? Math.trunc(v) : 0);
       const startFrame =
         typeof cue.start_frame === 'number' && Number.isSafeInteger(cue.start_frame) && cue.start_frame >= 0
           ? cue.start_frame
@@ -231,20 +164,15 @@ function readCueSheet(root: string): DiscoveredAudioCue[] {
         file: assetFile,
         startFrame,
         durationFrames,
-        sourceStartFrame:
-          typeof cue.source_start_frame === 'number' && cue.source_start_frame >= 0
-            ? Math.trunc(cue.source_start_frame)
-            : 0,
+        sourceStartFrame: nonNegInt(cue.source_start_frame),
         gainDB:
           typeof cue.gain_db === 'number' && Number.isFinite(cue.gain_db)
             ? cue.gain_db
             : cue.kind === 'music'
               ? -18
               : -12,
-        fadeInFrames:
-          typeof cue.fade_in_frames === 'number' && cue.fade_in_frames >= 0 ? Math.trunc(cue.fade_in_frames) : 0,
-        fadeOutFrames:
-          typeof cue.fade_out_frames === 'number' && cue.fade_out_frames >= 0 ? Math.trunc(cue.fade_out_frames) : 0,
+        fadeInFrames: nonNegInt(cue.fade_in_frames),
+        fadeOutFrames: nonNegInt(cue.fade_out_frames),
       });
     }
     return out;
@@ -338,7 +266,9 @@ export function collectProjectSources(projectRoot: string): ProjectSources {
         cursor = endFrame;
       }
     } else if (sceneShots.length > 0) {
-      shots = sceneShots;
+      const have = new Set(sceneShots.map((s) => s.sceneId));
+      const missing = rawScenes.filter((s) => !have.has(s.id)).map((s) => s.id);
+      throw new Error(`部分镜头缺少视频产物且无母版可切镜：${missing.join(', ')}`);
     } else if (masterFile && masterRel) {
       shots = [{ sceneId: 'scene-001', sourceFile: masterFile, sourceRel: masterRel }];
     }
@@ -349,29 +279,39 @@ export function collectProjectSources(projectRoot: string): ProjectSources {
   }
 
   const cues = readCueSheet(root);
-  const musicCues = cues.filter((c) => c.kind === 'music');
-  const sfxCues = cues.filter((c) => c.kind === 'sfx');
-
   const audio: DiscoveredAudioStem[] = [];
-  const voiceRel = ['production/audio/voice.wav', 'audio/voice.wav'].find(
-    (r) => safeInside(root, r, '旁白音轨') !== null,
-  );
-  if (voiceRel) {
-    audio.push({ role: 'voice', file: safeInside(root, voiceRel, '旁白音轨')!, sourceRel: voiceRel, cues: [] });
-  }
-  const bgmRel = ['production/audio/music.wav', 'production/audio/bgm.wav', 'audio/bgm.wav'].find(
-    (r) => safeInside(root, r, 'BGM 音轨') !== null,
-  );
-  if (bgmRel) {
-    audio.push({ role: 'bgm', file: safeInside(root, bgmRel, 'BGM 音轨')!, sourceRel: bgmRel, cues: musicCues });
-  } else if (musicCues.length > 0) {
-    audio.push({ role: 'bgm', sourceRel: 'production/audio/cue-sheet.json', cues: musicCues });
-  }
-  const sfxRel = ['production/audio/sfx.wav', 'audio/sfx.wav'].find((r) => safeInside(root, r, '音效音轨') !== null);
-  if (sfxRel) {
-    audio.push({ role: 'sfx', file: safeInside(root, sfxRel, '音效音轨')!, sourceRel: sfxRel, cues: sfxCues });
-  } else if (sfxCues.length > 0) {
-    audio.push({ role: 'sfx', sourceRel: 'production/audio/cue-sheet.json', cues: sfxCues });
+  const stemSpecs: Array<{
+    role: 'voice' | 'bgm' | 'sfx';
+    label: string;
+    paths: string[];
+    cues: DiscoveredAudioCue[];
+  }> = [
+    { role: 'voice', label: '旁白音轨', paths: ['production/audio/voice.wav', 'audio/voice.wav'], cues: [] },
+    {
+      role: 'bgm',
+      label: 'BGM 音轨',
+      paths: ['production/audio/music.wav', 'production/audio/bgm.wav', 'audio/bgm.wav'],
+      cues: cues.filter((c) => c.kind === 'music'),
+    },
+    {
+      role: 'sfx',
+      label: '音效音轨',
+      paths: ['production/audio/sfx.wav', 'audio/sfx.wav'],
+      cues: cues.filter((c) => c.kind === 'sfx'),
+    },
+  ];
+  for (const spec of stemSpecs) {
+    const foundRel = spec.paths.find((r) => safeInside(root, r, spec.label) !== null);
+    if (foundRel) {
+      audio.push({
+        role: spec.role,
+        file: safeInside(root, foundRel, spec.label)!,
+        sourceRel: foundRel,
+        cues: spec.cues,
+      });
+    } else if (spec.cues.length > 0) {
+      audio.push({ role: spec.role, sourceRel: 'production/audio/cue-sheet.json', cues: spec.cues });
+    }
   }
 
   const subs = discoverSubtitles(root, rawScenes);

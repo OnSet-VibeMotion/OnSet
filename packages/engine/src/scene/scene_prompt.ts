@@ -71,17 +71,26 @@ function projectBrandKitSection(s: Scene): string {
  * 拼装单镜头提示词。resolvedSkills 由 resolveAllSkills 解析；
  * 未出现在其中的技能退回按技能名引用，不写死任何本机路径。
  */
-export function buildPrompt(s: Scene, resolvedSkills: Record<string, string> | null, directorBrief = false): string {
-  if (s.designOnly) return designPrompt(s, resolvedSkills);
-  return renderPrompt(s, resolvedSkills, true, directorBrief);
+export function buildPrompt(
+  s: Scene,
+  resolvedSkills: Record<string, string> | null,
+  directorBrief = false,
+  env?: Record<string, string | undefined>,
+): string {
+  if (s.designOnly) return designPrompt(s, resolvedSkills, env);
+  return renderPrompt(s, resolvedSkills, true, directorBrief, env);
 }
 
 /**
  * 两段式第一段的提示词：把实现者会拿到的完整镜头说明（不带旧的设计稿）原样给设计者，要它只写 design.md。
  * 设计者看到的约束与实现者完全一样，写出来的稿才做得出来。
  */
-export function designPrompt(s: Scene, resolvedSkills: Record<string, string> | null): string {
-  const brief = renderPrompt({ ...s, designOnly: false, exemplars: s.exemplars }, resolvedSkills, false);
+export function designPrompt(
+  s: Scene,
+  resolvedSkills: Record<string, string> | null,
+  env?: Record<string, string | undefined>,
+): string {
+  const brief = renderPrompt({ ...s, designOnly: false, exemplars: s.exemplars }, resolvedSkills, false, false, env);
   return (
     '当前只为一个 MG 动画镜头写设计稿，不写代码、不渲染、不进行交互提问。\n' +
     '\n' +
@@ -110,6 +119,7 @@ function renderPrompt(
   resolvedSkills: Record<string, string> | null,
   withDesign: boolean,
   directorBrief = false,
+  env?: Record<string, string | undefined>,
 ): string {
   const resolved = resolvedSkills ?? {};
   verifyBlockInputs(s);
@@ -212,7 +222,7 @@ function renderPrompt(
       blockPromptSections(s, resolved, true) +
       timing +
       styleShiftSection(s, resolved) +
-      motionEffectsSection(s) +
+      motionEffectsSection(s, env) +
       resourceSection(s, resolved, true, v6, v8) +
       (v6 ? optionalSkillTail(resolved, allSkills(), hasCast, body) : '') +
       componentExportSection(components.exports) +
@@ -256,7 +266,7 @@ function renderPrompt(
     blockPromptSections(s, resolved, directorBrief) +
     timing +
     styleShiftSection(s, resolved) +
-    motionEffectsSection(s) +
+    motionEffectsSection(s, env) +
     (version >= 2 ? startSection(s) : '') +
     '\n' +
     skillPromptSections(resolved, allSkills(), engineRenders, directorBrief) +

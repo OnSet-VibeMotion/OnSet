@@ -48,6 +48,7 @@ export function SeriesModal(props: {
     initSeriesForm(props.initial, props.styles, props.modes, props.defaultParent),
   );
   const [applySnapshot, setApplySnapshot] = useState<SeriesFormState | null>(null);
+  const [briefRevision, setBriefRevision] = useState(0);
   const [voices, setVoices] = useState<string[]>([]);
   const [motionOptions, setMotionOptions] = useState<{ ref: string; name: string }[]>([]);
   const [motionPickerOpen, setMotionPickerOpen] = useState(false);
@@ -88,17 +89,20 @@ export function SeriesModal(props: {
 
   const updateForm = <K extends keyof SeriesFormState>(key: K, value: SeriesFormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+    if (key === 'brief') setBriefRevision((v) => v + 1);
   };
 
   const handleApplyDraft = (draft: SeriesAssistResponse) => {
     setApplySnapshot({ ...form, publishForm: { ...form.publishForm } });
     setForm((prev) => applyDraftToForm(prev, draft, props.modes));
+    if (draft.brief) setBriefRevision((v) => v + 1);
     setError('');
   };
 
   const handleUndoApply = () => {
     if (!applySnapshot) return;
     setForm(applySnapshot);
+    setBriefRevision((v) => v + 1);
     setApplySnapshot(null);
   };
 
@@ -255,7 +259,12 @@ export function SeriesModal(props: {
           )}
 
           {tab === 'brief' && (
-            <SeriesBriefTab brief={form.brief} current={currentDraft} onChange={(v) => updateForm('brief', v)} />
+            <SeriesBriefTab
+              brief={form.brief}
+              briefRevision={briefRevision}
+              current={currentDraft}
+              onChange={(v) => updateForm('brief', v)}
+            />
           )}
 
           {tab === 'publish' && (

@@ -36,22 +36,77 @@ function resolveProjectPath(root: string, value: string): string {
   return path.isAbsolute(value) ? value : path.resolve(root, value);
 }
 
-function loadSfxAssetMap(root: string, cueSheetPath?: string): Map<string, string> {
+function loadSfxAssetMap(root: string, table: beat.ResolvedAnchorTable, cueSheetPath?: string): Map<string, string> {
   const map = new Map<string, string>();
+  const explicit = Boolean(cueSheetPath);
   const target = cueSheetPath
     ? resolveProjectPath(root, cueSheetPath)
     : path.join(root, 'production/audio/cue-sheet.json');
-  if (!fs.existsSync(target)) return map;
+  if (!fs.existsSync(target)) {
+    if (explicit) throw new Error(`找不到指定的 cue sheet：${target}`);
+    return map;
+  }
+  let parsed: { cues?: unknown };
   try {
-    const parsed = JSON.parse(fs.readFileSync(target, 'utf8')) as { cues?: Array<Record<string, unknown>> };
-    for (const cue of parsed.cues ?? []) {
-      if (cue.kind !== 'sfx' || typeof cue.asset !== 'string' || !cue.asset) continue;
-      const absAsset = resolveProjectPath(root, cue.asset);
-      if (!fs.existsSync(absAsset)) continue;
-      if (typeof cue.cue_id === 'string' && cue.cue_id) map.set(cue.cue_id, absAsset);
+    parsed = JSON.parse(fs.readFileSync(target, 'utf8')) as { cues?: unknown };
+  } catch (err) {
+    if (explicit) throw new Error(`cue sheet 解析失败：${target}（${(err as Error).message}）`);
+    return map;
+  }
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.cues)) {
+    if (explicit) throw new Error(`cue sheet 格式无效（缺少 cues 数组）：${target}`);
+    return map;
+  }
+  const bindCue = (cueId: string, absAsset: string, sourceDesc: string) => {
+    const prev = map.get(cueId);
+    if (prev && prev !== absAsset) {
+      throw new Error(`cue sheet 中音效 ${cueId}（${sourceDesc}）绑定了多个不同素材，无法唯一确定`);
     }
-  } catch {
-    // 非法或无关的默认 cue-sheet 不阻塞回测，显式传入时后续照常处理。
+    map.set(cueId, absAsset);
+  };
+  for (let i = 0; i < parsed.cues.length; i++) {
+    const raw = parsed.cues[i];
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      if (explicit) throw new Error(`cue sheet 第 ${i + 1} 条 cue 不是对象`);
+      continue;
+    }
+    const cue = raw as Record<string, unknown>;
+    if (cue.kind !== 'sfx' || typeof cue.asset !== 'string' || !cue.asset) continue;
+    const absAsset = resolveProjectPath(root, cue.asset);
+    if (!fs.existsSync(absAsset)) {
+      if (explicit) throw new Error(`cue sheet 第 ${i + 1} 条音效素材不存在：${absAsset}`);
+      continue;
+    }
+    if (typeof cue.cue_id === 'string' && cue.cue_id) {
+      bindCue(cue.cue_id, absAsset, `cue_id=${cue.cue_id}`);
+      continue;
+    }
+    if (typeof cue.anchor_id === 'string' && cue.anchor_id) {
+      const anchor = table.by_id[cue.anchor_id];
+      if (!anchor) {
+        if (explicit) throw new Error(`cue sheet 第 ${i + 1} 条引用了未知锚点：${cue.anchor_id}`);
+        continue;
+      }
+      if (anchor.sfx.length === 1) {
+        bindCue(anchor.sfx[0].cue_id, absAsset, `anchor_id=${cue.anchor_id}`);
+      } else if (anchor.sfx.length > 1) {
+        throw new Error(
+          `cue sheet 第 ${i + 1} 条通过 anchor_id=${cue.anchor_id} 绑定，但该锚点有 ${anchor.sfx.length} 条音效，请显式填写 cue_id`,
+        );
+      }
+      continue;
+    }
+    if (typeof cue.anchor_frame === 'number' && Number.isSafeInteger(cue.anchor_frame)) {
+      const matches = table.anchors.filter((a) => a.global_frame === cue.anchor_frame && a.sfx.length > 0);
+      const totalCues = matches.reduce((sum, a) => sum + a.sfx.length, 0);
+      if (totalCues === 1) {
+        bindCue(matches[0].sfx[0].cue_id, absAsset, `anchor_frame=${cue.anchor_frame}`);
+      } else if (totalCues > 1) {
+        throw new Error(
+          `cue sheet 第 ${i + 1} 条通过 anchor_frame=${cue.anchor_frame} 绑定，但该帧有 ${totalCues} 条音效，请显式填写 cue_id`,
+        );
+      }
+    }
   }
   return map;
 }
@@ -104,7 +159,7 @@ export async function runBeatAVBacktest(
     const defaultStem = path.join(root, 'production/audio/sfx.wav');
     if (fs.existsSync(defaultStem)) sfxStem = defaultStem;
   }
-  const sfxAssets = loadSfxAssetMap(root, params.cueSheet);
+  const sfxAssets = loadSfxAssetMap(root, resolvedTable, params.cueSheet);
 
   const backtestAnchors: AVBacktestAnchor[] = resolvedTable.anchors.map((a) => ({
     id: a.id,

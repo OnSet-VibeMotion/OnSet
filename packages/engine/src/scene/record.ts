@@ -78,6 +78,7 @@ export function fingerprint(
   renderer: string,
   resolvedSkills: Record<string, string> | null,
   schema = RenderRecordSchema,
+  env?: Record<string, string | undefined>,
 ): Inputs {
   // 重试说明与 worker 数是调度层每次临时填的，不是镜头的输入。
   s = {
@@ -91,7 +92,7 @@ export function fingerprint(
     designOnly: false,
   };
   const resolved = resolvedSkills ?? {};
-  let prompt = buildPrompt(s, resolved);
+  let prompt = buildPrompt(s, resolved, false, env);
   const parts: Record<string, string> = {
     renderer: digestString(renderer),
     ...(schema >= RecordSchemaRenderContract

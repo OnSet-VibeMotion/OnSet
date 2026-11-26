@@ -277,4 +277,17 @@ describe('beat anchors', () => {
     });
     expect(clamped.trim_start_seconds).toBeCloseTo(7 / 30, 5);
   });
+
+  it('preserves __proto__ anchor id across resolution and local JSON encoding', () => {
+    const grid = sampleGrid();
+    const segments = layout(grid, samplePlan(), 30);
+    const table = resolveAnchors(
+      { schema: 1, anchors: [{ id: '__proto__', type: 'action', beat: 5 }] },
+      { grid, segments, fps: 30 },
+    );
+    expect(Object.prototype.hasOwnProperty.call(table.by_scene['scene-002'], '__proto__')).toBe(true);
+    expect(table.by_scene['scene-002']['__proto__']).toBe(0);
+    const encoded = encodeLocal(sliceGrid(grid, segments[1], 30, table.by_scene['scene-002'])).body.toString('utf8');
+    expect(encoded).toContain('"__proto__": 0');
+  });
 });

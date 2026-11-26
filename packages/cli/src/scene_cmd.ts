@@ -205,7 +205,6 @@ strict_coverage 让它在渲染前直接失败——漏掉一镜要等全部渲�
       assertPilotGateUnlocked(
         batchProjectRoot,
         scenes.map((s) => s.id),
-        planned.map((s) => s.id),
       );
     const priority = strs(p.priority_scenes);
     if (new Set(priority).size !== priority.length || priority.some((id) => !scenes.some((s) => s.id === id))) {

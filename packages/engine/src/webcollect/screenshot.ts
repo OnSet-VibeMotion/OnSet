@@ -11,6 +11,7 @@ import path from 'node:path';
 import { removeTree } from '../fsutil';
 import { findChromeExecutable, runChromeScreenshot } from './chrome';
 import { preflightSafeUrl, stripIpv6Brackets } from './http';
+import { type EgressProxyHandle, startEgressProxy } from './proxy';
 import { saveCollectedAsset } from './store';
 import {
   type CollectedAssetEntry,
@@ -87,6 +88,7 @@ export async function renderHtmlPage(html: string, opts: ScreenshotOptions): Pro
     res.end('Not Found');
   });
 
+  let proxy: EgressProxyHandle | null = null;
   try {
     const port = await new Promise<number>((resolve, reject) => {
       server.once('error', reject);
@@ -97,6 +99,9 @@ export async function renderHtmlPage(html: string, opts: ScreenshotOptions): Pro
       });
     });
 
+    // 在连接层仅允许访问本次临时回环服务 127.0.0.1:<port>，阻断任意 IP 字面量与外部顶层导航。
+    proxy = await startEgressProxy({ mode: 'isolated', allowedPort: port });
+
     await runner({
       chromePath,
       targetUrl: `http://127.0.0.1:${port}/`,
@@ -105,6 +110,8 @@ export async function renderHtmlPage(html: string, opts: ScreenshotOptions): Pro
       height,
       scale,
       isolated: true,
+      proxyServer: proxy.url,
+      proxyBypassList: '<-loopback>',
       hostResolverRules: 'MAP * ~NOTFOUND, EXCLUDE 127.0.0.1',
       timeoutMs,
       signal: opts.signal,
@@ -123,6 +130,7 @@ export async function renderHtmlPage(html: string, opts: ScreenshotOptions): Pro
     });
     return saved.entry;
   } finally {
+    if (proxy) await proxy.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     try {
       removeTree(workDir);
@@ -154,6 +162,12 @@ export async function captureViewport(rawUrl: string, opts: ScreenshotOptions): 
     'MAP 127.0.0.1 ~NOTFOUND',
     'MAP 169.254.169.254 ~NOTFOUND',
   ].join(', ');
+  // 所有浏览器连接（含重定向、meta refresh、JS location 导航及私有 IP 字面量）统一经受控出口代理逐跳校验公网地址。
+  const proxy = await startEgressProxy({
+    mode: 'public',
+    pinned: { host: finalHost, address: preflight.address, family: preflight.family },
+    deps: opts.deps,
+  });
 
   try {
     await runner({
@@ -164,6 +178,8 @@ export async function captureViewport(rawUrl: string, opts: ScreenshotOptions): 
       height,
       scale,
       isolated: false,
+      proxyServer: proxy.url,
+      proxyBypassList: '<-loopback>',
       hostResolverRules,
       timeoutMs,
       signal: opts.signal,
@@ -181,6 +197,7 @@ export async function captureViewport(rawUrl: string, opts: ScreenshotOptions): 
     });
     return saved.entry;
   } finally {
+    await proxy.close();
     try {
       removeTree(workDir);
     } catch {

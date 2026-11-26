@@ -275,7 +275,7 @@ test('SeriesModal AI assist generates draft, refines, fills & undoes, and submit
         },
       ],
     },
-    'POST /api/series/assist': (req: MockRequest) => {
+    'POST /api/series/_assist': (req: MockRequest) => {
       const body = req.body as Record<string, unknown>;
       assistCalls.push(body);
       if (body.mode === 'draft') {
@@ -403,7 +403,7 @@ test('SeriesModal AI assist handles cancel, errors without losing manual input, 
   let failNext = false;
   mockApi({
     '/api/voices': { voices: [] },
-    'POST /api/series/assist': (req: MockRequest) => {
+    'POST /api/series/_assist': (req: MockRequest) => {
       const body = req.body as Record<string, unknown>;
       if (body.mode === 'polish_brief') {
         if (failNext) return reply(502, { code: 'series_assist_failed', message: '没有配置可用的 AI 工具' });
@@ -423,7 +423,7 @@ test('SeriesModal AI assist handles cancel, errors without losing manual input, 
         resolveSlow = resolve;
       });
     },
-    'DELETE /api/series/assist': () => {
+    'DELETE /api/series/_assist': () => {
       cancelCalled = true;
       return { ok: true };
     },
@@ -540,4 +540,73 @@ test('SeriesModal displays, adds, removes and saves defaults.motion_effects', as
   expect(savedPayload).toMatchObject({
     defaults: { motion_effects: ['motion-prompt:007'] },
   });
+});
+
+test('SeriesBriefTab keeps manual brief when AI fill is undone while polish is in flight', async () => {
+  let resolvePolish!: (v: unknown) => void;
+  mockApi({
+    '/api/voices': { voices: [] },
+    'POST /api/series/_assist': (req: MockRequest) => {
+      const body = req.body as Record<string, unknown>;
+      if (body.mode === 'draft') {
+        return {
+          mode: 'draft',
+          name: 'AI 草案',
+          defaults: {},
+          brief: 'AI 草案规范 X',
+          rationale: '已生成草案',
+          followups: [],
+          warnings: [],
+        };
+      }
+      return new Promise((resolve) => {
+        resolvePolish = resolve;
+      });
+    },
+  });
+
+  const user = userEvent.setup();
+  render(
+    <SeriesModal
+      initial={null}
+      styles={styles}
+      modes={styles.modes}
+      defaultParent="/home/u/Videos"
+      projects={[]}
+      summaries={{}}
+      onSaved={async () => {}}
+      onDeleted={async () => {}}
+      onClose={() => {}}
+    />,
+  );
+
+  // 1) 手填规范 Y
+  await user.click(screen.getByRole('tab', { name: '专栏规范' }));
+  const briefArea = screen.getByLabelText('专栏视觉与口播规范（brief.md）') as HTMLTextAreaElement;
+  await user.type(briefArea, '手填规范 Y');
+
+  // 2) 生成并应用 AI 草案 X
+  const ideaInput = screen.getByLabelText('用一句话描述你想做的专栏');
+  await user.type(ideaInput, '科普专栏');
+  await user.click(screen.getByRole('button', { name: 'AI 生成草案' }));
+  await user.click(await screen.findByRole('button', { name: '一键回填表单' }));
+  expect(briefArea.value).toBe('AI 草案规范 X');
+
+  // 3) 启动润色 X，期间点击「撤回 AI 填充」恢复手填规范 Y
+  await user.click(screen.getByRole('button', { name: 'AI 润色规范' }));
+  await screen.findByText('正在整理与润色专栏规范…');
+  await user.click(screen.getByRole('button', { name: '撤回 AI 填充' }));
+  expect(briefArea.value).toBe('手填规范 Y');
+
+  // 4) 迟到的润色结果 X' 返回时不得覆盖手填规范 Y，而是留作待确认
+  resolvePolish({
+    mode: 'polish_brief',
+    defaults: {},
+    brief: '润色结果 X-prime',
+    rationale: '已润色',
+    followups: [],
+    warnings: [],
+  });
+  expect(await screen.findByRole('button', { name: '采用润色结果' })).toBeTruthy();
+  expect(briefArea.value).toBe('手填规范 Y');
 });

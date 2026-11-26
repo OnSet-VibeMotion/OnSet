@@ -9,6 +9,29 @@ import { type AudioManifest, SfxAssetsRelDir, SfxManifestFile } from './types';
 
 export const AllowedAudioExts = new Set(['.wav', '.mp3', '.ogg', '.flac', '.aif', '.aiff', '.m4a']);
 
+/** 校验 <projectDir>/assets/sfx 及其已存在父目录均不为符号链接，并返回项目真实根下的音效目录路径。 */
+export function assertSafeSfxDir(projectDir: string): string {
+  const realRoot = fs.realpathSync(path.resolve(projectDir));
+  let cur = realRoot;
+  for (const part of SfxAssetsRelDir.split('/')) {
+    cur = path.join(cur, part);
+    if (fs.existsSync(cur)) {
+      const st = fs.lstatSync(cur);
+      if (st.isSymbolicLink() || !st.isDirectory()) {
+        throw new Error(`音效目录不允许是符号链接或非目录：${cur}`);
+      }
+    }
+  }
+  const manifestPath = path.join(cur, SfxManifestFile);
+  if (fs.existsSync(manifestPath)) {
+    const st = fs.lstatSync(manifestPath);
+    if (st.isSymbolicLink() || !st.isFile()) {
+      throw new Error(`音频清单不允许是符号链接：${manifestPath}`);
+    }
+  }
+  return cur;
+}
+
 /** 音频清单路径：<projectDir>/assets/sfx/audio-manifest.json。 */
 export function audioManifestPath(projectDir: string): string {
   return path.join(path.resolve(projectDir), SfxAssetsRelDir, SfxManifestFile);
@@ -16,7 +39,8 @@ export function audioManifestPath(projectDir: string): string {
 
 /** 读取项目音频清单；尚不存在时返回空清单。 */
 export function readAudioManifest(projectDir: string): AudioManifest {
-  const file = audioManifestPath(projectDir);
+  const dir = assertSafeSfxDir(projectDir);
+  const file = path.join(dir, SfxManifestFile);
   if (!fs.existsSync(file)) return { version: 1, entries: [] };
   const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<AudioManifest>;
   const entries = Array.isArray(parsed.entries) ? parsed.entries : [];
@@ -25,7 +49,8 @@ export function readAudioManifest(projectDir: string): AudioManifest {
 
 /** 原子写出音频清单（gojson 固定格式）。 */
 export function writeAudioManifest(projectDir: string, manifest: AudioManifest): string {
-  const file = audioManifestPath(projectDir);
+  const dir = assertSafeSfxDir(projectDir);
+  const file = path.join(dir, SfxManifestFile);
   const normalized: AudioManifest = {
     version: 1,
     entries: [...manifest.entries].sort((a, b) => compareBytes(a.id, b.id)),

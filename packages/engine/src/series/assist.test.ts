@@ -162,6 +162,18 @@ describe('series assist engine', () => {
     // delivery 只写了 speech 时自动配对 catalog 中的 solo 叙事模式。
     expect(res.defaults).toEqual({ canvas: 'vertical-9x16', delivery: 'speech', narration: 'solo' });
     expect(res.warnings).toEqual([]);
+
+    // 显式返回 default_hashtags: [] 应保留空数组（表示清空标签），省略该字段时为 undefined（表示不变更）。
+    const cleared = parseSeriesAssist(
+      JSON.stringify({ name: '专栏', brief: '规范', publish_template: { default_hashtags: [] } }),
+      { mode: 'refine', instruction: '清空固定标签', catalog: sampleCatalog },
+    );
+    expect(cleared.publish_template?.default_hashtags).toEqual([]);
+    const omitted = parseSeriesAssist(
+      JSON.stringify({ name: '专栏', brief: '规范', publish_template: { title_pattern: 'EP{nn}' } }),
+      { mode: 'refine', instruction: '只改标题模板', catalog: sampleCatalog },
+    );
+    expect(omitted.publish_template?.default_hashtags).toBeUndefined();
   });
 
   it('supports polish_brief mode and retries once on invalid JSON or empty brief', async () => {

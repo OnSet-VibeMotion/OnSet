@@ -86,6 +86,8 @@ describe('jianying export', () => {
     fs.mkdirSync(nonEmpty, { recursive: true });
     fs.writeFileSync(path.join(nonEmpty, 'keep.txt'), 'hi');
     expect(() => resolveExportDir(root, 'exports/existing', 'demo', false)).toThrow('已存在且非空');
+    expect(() => resolveExportDir(root, 'exports/existing', 'demo', true)).toThrow('不是剪映导出包且非空');
+    fs.writeFileSync(path.join(nonEmpty, 'shots.json'), JSON.stringify({ generator: 'onset-jianying-export' }));
     expect(resolveExportDir(root, 'exports/existing', 'demo', true)).toBe(nonEmpty);
   });
 
@@ -351,7 +353,15 @@ describe('jianying export', () => {
         '-f',
         'lavfi',
         '-i',
-        'testsrc=size=320x240:rate=30:duration=2',
+        'color=c=red:s=320x240:r=30:d=0.8',
+        '-f',
+        'lavfi',
+        '-i',
+        'color=c=blue:s=320x240:r=30:d=1.2',
+        '-filter_complex',
+        '[0:v][1:v]concat=n=2:v=1:a=0[v]',
+        '-map',
+        '[v]',
         '-frames:v',
         '60',
         '-c:v',
@@ -386,6 +396,61 @@ describe('jianying export', () => {
       const tc = newToolchain(envMap());
       expect(tc.countFrames(path.join(dest, 'clips', 'shot-01.mp4'))).toBe(24);
       expect(tc.countFrames(path.join(dest, 'clips', 'shot-02.mp4'))).toBe(36);
+
+      // 验证母版切片源区间位置：shot-01 为前 24 帧（红色），shot-02 为后 36 帧（蓝色）
+      const sampleRgb = (file: string): [number, number, number] => {
+        const r = spawnSync(
+          'ffmpeg',
+          [
+            '-v',
+            'error',
+            '-i',
+            file,
+            '-vf',
+            'scale=1:1',
+            '-frames:v',
+            '1',
+            '-f',
+            'rawvideo',
+            '-pix_fmt',
+            'rgb24',
+            'pipe:1',
+          ],
+          {},
+        );
+        if (r.status !== 0 || r.stdout.length < 3) throw new Error(`采样代表帧失败：${file}`);
+        return [r.stdout[0], r.stdout[1], r.stdout[2]];
+      };
+      const [r1, , b1] = sampleRgb(path.join(dest, 'clips', 'shot-01.mp4'));
+      const [r2, , b2] = sampleRgb(path.join(dest, 'clips', 'shot-02.mp4'));
+      expect(r1).toBeGreaterThan(200);
+      expect(b1).toBeLessThan(50);
+      expect(b2).toBeGreaterThan(200);
+      expect(r2).toBeLessThan(50);
+
+      // 已有剪映导出包允许 overwrite=true 覆盖，而未标记的非空目录与受保护目录（production/assets//）一律拒绝
+      await expect(
+        exportJianying(root, { dest, overwrite: true, includeDraft: false, env: envMap() }),
+      ).resolves.toMatchObject({
+        total_frames: 60,
+      });
+      const userDir = makeTempDir('onset-jy-user-');
+      fs.writeFileSync(path.join(userDir, 'important.txt'), 'keep');
+      await expect(exportJianying(root, { dest: userDir, overwrite: true, env: envMap() })).rejects.toThrow(/拒绝覆盖/);
+      await expect(exportJianying(root, { dest: 'production', overwrite: true, env: envMap() })).rejects.toThrow(
+        /受保护/,
+      );
+      await expect(exportJianying(root, { dest: 'assets', overwrite: true, env: envMap() })).rejects.toThrow(/受保护/);
+      await expect(
+        exportJianying(root, { dest: path.parse(root).root, overwrite: true, env: envMap() }),
+      ).rejects.toThrow(/上级目录/);
+
+      // 缺少部分镜头 MP4 且无母版时必须抛错并列出缺失镜头 ID，不能静默导出不完整时间轴
+      fs.rmSync(path.join(root, 'production', 'silent-master.mp4'));
+      fs.copyFileSync(path.join(dest, 'clips', 'shot-01.mp4'), path.join(root, 'scenes', 'scene-001', 'scene.mp4'));
+      await expect(
+        exportJianying(root, { dest: path.join(makeTempDir('onset-jy-part-'), 'p'), env: envMap() }),
+      ).rejects.toThrow(/scene-002/);
     },
     30_000,
   );

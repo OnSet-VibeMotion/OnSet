@@ -14,7 +14,13 @@ import { atomicWrite, removeTree } from '../fsutil';
 import { goRound } from '../gofmt';
 import { marshalIndent } from '../gojson';
 import { newToolchain, videoFPS } from '../mediaprobe';
-import { collectProjectSources, type DiscoveredAudioStem, resolveExportDir, sanitizeBundleName } from './collect';
+import {
+  assertOwnedExportDir,
+  collectProjectSources,
+  type DiscoveredAudioStem,
+  resolveExportDir,
+  sanitizeBundleName,
+} from './collect';
 import { buildJianyingDraft } from './draft';
 import {
   buildCueMetas,
@@ -139,7 +145,6 @@ export async function exportJianying(
         return;
       }
       const cueMetas = buildCueMetas(stem.cues, fps);
-      const firstCue = cueMetas[0];
       audioTracks.push({
         id: stem.role,
         role: stem.role,
@@ -149,9 +154,10 @@ export async function exportJianying(
         offset_us: 0,
         duration_seconds: totalDurationSeconds,
         duration_us: totalDurationUs,
-        gain_db: stem.file ? 0 : (firstCue?.gain_db ?? 0),
-        fade_in_seconds: stem.file ? 0 : (firstCue?.fade_in_seconds ?? 0),
-        fade_out_seconds: stem.file ? 0 : (firstCue?.fade_out_seconds ?? 0),
+        // 轨道文件已烘焙 cue 的增益与淡入淡出；逐 cue 数值仅在 cues 中留存，避免草稿或二次导入重复衰减。
+        gain_db: 0,
+        fade_in_seconds: 0,
+        fade_out_seconds: 0,
         ...(cueMetas.length > 0 ? { cues: cueMetas } : {}),
       });
       audioFiles.push(rel);
@@ -204,8 +210,25 @@ export async function exportJianying(
     atomicWrite(path.join(staging, 'README.md'), readmeBody, 0o644);
 
     opts.signal?.throwIfAborted();
-    if (fs.existsSync(finalDir)) removeTree(finalDir);
-    fs.renameSync(staging, finalDir);
+    let backup: string | null = null;
+    if (fs.existsSync(finalDir)) {
+      assertOwnedExportDir(finalDir);
+      backup = `${staging}.old`;
+      fs.renameSync(finalDir, backup);
+    }
+    try {
+      fs.renameSync(staging, finalDir);
+    } catch (renameErr) {
+      if (backup && fs.existsSync(backup)) {
+        try {
+          fs.renameSync(backup, finalDir);
+        } catch {
+          // 保留备份目录避免二次破坏。
+        }
+      }
+      throw renameErr;
+    }
+    if (backup) removeTree(backup);
 
     return {
       output_dir: finalDir,

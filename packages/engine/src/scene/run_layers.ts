@@ -99,7 +99,7 @@ export async function executeRender(ctx: RenderExecutionContext): Promise<void> 
     // 修接缝：第 0 帧要接上前一镜的末帧、后面的画面不许变（seam.ts）。
     if (s.seam) verifySeam(candidate, s.seam, mediaprobe.newToolchain(baseEnv), sceneCanvas(s).fps);
     if (repair) {
-      if (fingerprint(s, renderer, resolvedSkills).fingerprint !== inputs.fingerprint) {
+      if (fingerprint(s, renderer, resolvedSkills, undefined, baseEnv).fingerprint !== inputs.fingerprint) {
         throw new VerificationError(s.output, ['局部返修改变了镜头的执行契约或其他渲染输入'], ['repair.inputs']);
       }
       await verifyRepair(candidate, repair, mediaprobe.newToolchain(baseEnv), signal);

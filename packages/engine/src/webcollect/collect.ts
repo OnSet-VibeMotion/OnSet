@@ -198,8 +198,11 @@ export async function collectFetchedPage(
     }
   }
 
+  const maxAttempts = Math.min(32, maxAssets * 3);
+  let attempts = 0;
   for (const candidate of extractPageImageCandidates(html, finalUrl)) {
-    if (collected.length >= maxAssets) break;
+    if (collected.length >= maxAssets || attempts >= maxAttempts) break;
+    attempts++;
     try {
       const entry = await fetchAsset(candidate.url, {
         projectRoot: opts.projectRoot,

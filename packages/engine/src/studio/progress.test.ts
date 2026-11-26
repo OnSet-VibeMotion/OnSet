@@ -352,7 +352,7 @@ describe('production map', () => {
     expect(stations(root).current).toBe('render');
     expect(stations(root).waiting_on).toBe('ai');
     // 未开 pilot_gate 时批量渲染直接放行。
-    expect(() => assertPilotGateUnlocked(root, ['scene-001', 'scene-002'], ['scene-001', 'scene-002'])).not.toThrow();
+    expect(() => assertPilotGateUnlocked(root, ['scene-001', 'scene-002'])).not.toThrow();
   });
 
   it('enforces optional gate-pilot after storyboard approval and unlocks full render after studio_confirm', () => {
@@ -373,18 +373,18 @@ describe('production map', () => {
     expect(cur.waiting_on).toBe('ai');
     expect(cur.stations.find((s) => s.id === PilotGateID)?.detail).toContain('scene-001');
 
-    // 打样 MP4 尚未出片时拒绝确认，且全量 scene_run_all 被阻断（单跑第 1 镜放行）。
+    // 打样 MP4 尚未出片时拒绝确认，且全量 scene_run_all 被阻断（单跑第 1 镜放行，单跑第 2 镜被拒）。
     expect(() => recordGate(root, PilotGateID)).toThrow('尚未渲染出片');
-    expect(() => assertPilotGateUnlocked(root, ['scene-001'], ['scene-001', 'scene-002'])).not.toThrow();
-    expect(() => assertPilotGateUnlocked(root, ['scene-001', 'scene-002'], ['scene-001', 'scene-002'])).toThrow(
-      '单镜打样闸门',
-    );
+    expect(() => assertPilotGateUnlocked(root, ['scene-001'])).not.toThrow();
+    expect(() => assertPilotGateUnlocked(root, ['scene-002'])).toThrow('单镜打样闸门');
+    expect(() => assertPilotGateUnlocked(root, ['scene-001', 'scene-002'])).toThrow('单镜打样闸门');
 
     // 第 1 镜真视频 MP4 就绪后，仍停在 gate-pilot 但 waiting_on 切换为 user。
     write(root, 'scenes/scene-001/out.mp4', 'pilot-mp4-v1');
     cur = stations(root);
     expect(cur.current).toBe(PilotGateID);
     expect(cur.waiting_on).toBe('user');
+    expect(status(root)[PilotGateID]).toBe('todo');
     expect(cur.stations.find((s) => s.id === PilotGateID)?.detail).toContain('待审看确认');
 
     // 用户通过 studio_confirm（confirmGateFromChat）确认「方向对了」后解锁全量渲染。
@@ -394,15 +394,46 @@ describe('production map', () => {
     expect(status(root)[PilotGateID]).toBe('confirmed');
     expect(stations(root).current).toBe('render');
     expect(stations(root).waiting_on).toBe('ai');
-    expect(() => assertPilotGateUnlocked(root, ['scene-001', 'scene-002'], ['scene-001', 'scene-002'])).not.toThrow();
+    expect(() => assertPilotGateUnlocked(root, ['scene-001', 'scene-002'])).not.toThrow();
 
-    // 若确认后打样 MP4 发生改动，gate-pilot 自动回退为 changed 并重新拦截全量渲染。
+    // 切换代表镜头到 scene-002 时，旧的 scene-001 确认必须立即失效（路线与批量渲染一致）。
+    write(root, 'scenes/scene-002/out.mp4', 'scene2-mp4-v1');
+    write(root, 'project.json', JSON.stringify({ pilot_gate: true, pilot_scene: 'scene-002' }));
+    expect(status(root)[PilotGateID]).toBe('changed');
+    expect(stations(root).current).toBe(PilotGateID);
+    expect(() => assertPilotGateUnlocked(root, ['scene-001', 'scene-002'])).toThrow('发生变化');
+
+    // 重新确认 scene-002 后放行；随后修改 scene-002 的 output 路径同样使确认失效。
+    confirmGateFromChat(root, 'scene-002 方向对了', '方向对了');
+    expect(() => assertPilotGateUnlocked(root, ['scene-001', 'scene-002'])).not.toThrow();
+    write(root, 'scenes/scene-002/scene.json', '{"id":"scene-002","duration_seconds":1,"output":"alt.mp4"}');
+    write(root, 'scenes/scene-002/alt.mp4', 'scene2-alt-v1');
+    expect(status(root)[PilotGateID]).toBe('changed');
+    expect(() => assertPilotGateUnlocked(root, ['scene-001', 'scene-002'])).toThrow('发生变化');
+
+    // 切回 scene-001 并改写打样 MP4 内容同样触发 changed。
+    write(root, 'project.json', JSON.stringify({ pilot_gate: true, pilot_scene: 'scene-001' }));
+    confirmGateFromChat(root, '切回首镜，方向对了', '方向对了');
     write(root, 'scenes/scene-001/out.mp4', 'pilot-mp4-v2');
     expect(status(root)[PilotGateID]).toBe('changed');
     expect(stations(root).current).toBe(PilotGateID);
-    expect(() => assertPilotGateUnlocked(root, ['scene-001', 'scene-002'], ['scene-001', 'scene-002'])).toThrow(
-      '发生变化',
-    );
+    expect(() => assertPilotGateUnlocked(root, ['scene-001', 'scene-002'])).toThrow('发生变化');
+  });
+
+  it('does not auto-skip gate-pilot via laterDone when multiple scenes already have outputs', () => {
+    const root = project({
+      'project.json': JSON.stringify({ pilot_gate: true }),
+      'production/scene-plan.json': '{}',
+      'scenes/scene-001/scene.json': scene,
+      'scenes/scene-002/scene.json': '{"id":"scene-002","duration_seconds":1,"output":"out.mp4"}',
+    });
+    recordGate(root, 'gate-storyboard');
+    write(root, 'scenes/scene-001/out.mp4', 's1');
+    write(root, 'scenes/scene-002/out.mp4', 's2');
+    expect(status(root)[PilotGateID]).toBe('todo');
+    expect(stations(root).current).toBe(PilotGateID);
+    expect(stations(root).waiting_on).toBe('user');
+    expect(() => assertPilotGateUnlocked(root, ['scene-001', 'scene-002'])).toThrow('单镜打样闸门');
   });
 
   it('supports custom pilot_scene and does not auto-skip gate-pilot on single-scene projects', () => {

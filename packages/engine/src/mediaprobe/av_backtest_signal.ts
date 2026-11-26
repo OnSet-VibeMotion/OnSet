@@ -300,7 +300,12 @@ export function detectVisualPeak(params: {
     const baseline = median(scores.map((s) => s.value));
     let maxVal = 0;
     for (const s of scores) if (s.value > maxVal) maxVal = s.value;
-    if (maxVal < minDelta || maxVal - baseline < minDelta * 0.75 || (baseline > 0.5 && maxVal < baseline * 1.5)) {
+    if (
+      maxVal <= 0 ||
+      maxVal < minDelta ||
+      maxVal - baseline < minDelta * 0.75 ||
+      (baseline > 0.5 && maxVal < baseline * 1.5)
+    ) {
       return {
         verified: false,
         metric,
@@ -335,7 +340,7 @@ export function detectVisualPeak(params: {
     if (item.value > maxLuma) maxLuma = item.value;
   }
   const range = maxLuma - minLuma;
-  if (range < minDelta) {
+  if (range <= 0 || range < minDelta) {
     return {
       verified: false,
       metric,
@@ -347,7 +352,8 @@ export function detectVisualPeak(params: {
   const peak = lumas.find((item) => item.value >= maxLuma - Math.max(1.0, range * 0.05))!;
   if (peak.frame === winStart) {
     const prevFrame = getFrame(winStart - 1);
-    if (prevFrame && peak.value - meanGray(prevFrame) < minDelta) {
+    const jump = prevFrame ? peak.value - meanGray(prevFrame) : Infinity;
+    if (prevFrame && (jump <= 0 || jump < minDelta)) {
       return {
         verified: false,
         metric,

@@ -231,10 +231,12 @@ describe('resolveAllSkills plugin renderer_skill auto-linking', () => {
     });
     expect(resolveAllSkills('claude', dedup.directory, env, dedup)['plugin:spark-motion/spark-fx']).toBeTruthy();
 
-    // 动效配方展开也能读到第三方插件动效。
+    // 动效配方展开、buildPrompt 与 fingerprint 均使用调用方环境解析第三方插件动效。
     const section = motionEffectsSection(withPluginMotion, env);
     expect(section).toContain('火花迸发');
     expect(section).toContain('spark-motion:burst');
     expect(section).toContain('emit 24 particles');
+    expect(buildPrompt(withPluginMotion, resolved, false, env)).toContain('火花迸发');
+    expect(fingerprint(withPluginMotion, 'claude', resolved, undefined, env).fingerprint).toBeTruthy();
   });
 });

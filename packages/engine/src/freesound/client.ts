@@ -14,6 +14,7 @@ import { atomicWrite } from '../fsutil';
 import { analyzeAudioFile } from './gain';
 import {
   AllowedAudioExts,
+  assertSafeSfxDir,
   audioManifestPath,
   detectExtFromContent,
   readAudioManifest,
@@ -39,24 +40,8 @@ import {
   SfxAssetsRelDir,
 } from './types';
 
-const SearchFields = [
-  'id',
-  'name',
-  'tags',
-  'description',
-  'duration',
-  'username',
-  'license',
-  'url',
-  'previews',
-  'download',
-  'type',
-  'filesize',
-  'samplerate',
-  'channels',
-  'avg_rating',
-  'num_downloads',
-].join(',');
+const SearchFields =
+  'id,name,tags,description,duration,username,license,url,previews,download,type,filesize,samplerate,channels,avg_rating,num_downloads';
 
 /** 解析 FREESOUND_API_KEY；缺失时抛出含清晰配置说明的 FreesoundApiKeyError。 */
 export function resolveApiKey(opts: FreesoundClientOptions = {}): string {
@@ -257,6 +242,44 @@ function pickDownloadUrl(
   throw new Error(`音效 #${sound.id}（${sound.name}）没有可用的下载或预览地址`);
 }
 
+async function readResponseWithLimit(res: Response, soundId: number, maxBytes: number): Promise<Buffer> {
+  const contentLenRaw = res.headers?.get?.('content-length');
+  if (contentLenRaw) {
+    const contentLen = Number(contentLenRaw);
+    if (Number.isFinite(contentLen) && contentLen > maxBytes) {
+      await res.body?.cancel().catch(() => {});
+      throw new Error(`音效 #${soundId} 体积超过上限（${contentLen} > ${maxBytes} 字节）`);
+    }
+  }
+  if (res.body && typeof res.body.getReader === 'function') {
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value || value.byteLength === 0) continue;
+        total += value.byteLength;
+        if (total > maxBytes) {
+          await reader.cancel().catch(() => {});
+          throw new Error(`音效 #${soundId} 体积超过上限（>${maxBytes} 字节）`);
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const buf = Buffer.concat(chunks.map((c) => Buffer.from(c.buffer, c.byteOffset, c.byteLength)));
+    if (buf.length === 0) throw new Error(`下载到的音效 #${soundId} 内容为空`);
+    return buf;
+  }
+  const bytes = Buffer.from(await res.arrayBuffer());
+  if (bytes.length === 0) throw new Error(`下载到的音效 #${soundId} 内容为空`);
+  if (bytes.length > maxBytes) throw new Error(`音效 #${soundId} 体积超过上限（${bytes.length} > ${maxBytes} 字节）`);
+  return bytes;
+}
+
 /**
  * 下载指定 Freesound 音效到 <projectDir>/assets/sfx/，计算 RMS 与经真峰值夹取的 safe_gain_db，
  * 按 SHA-256 去重并登记来源 URL、作者与许可证归属到 <projectDir>/assets/sfx/audio-manifest.json。
@@ -284,20 +307,42 @@ export async function downloadSound(
   }
   if (!res.ok) throw new Error(`下载音效 #${soundId} 失败（HTTP ${res.status} ${res.statusText}）`);
 
-  const bytes = Buffer.from(await res.arrayBuffer());
-  if (bytes.length === 0) throw new Error(`下载到的音效 #${soundId} 内容为空`);
-  if (bytes.length > maxBytes) throw new Error(`音效 #${soundId} 体积超过上限（${bytes.length} > ${maxBytes} 字节）`);
+  const bytes = await readResponseWithLimit(res, soundId, maxBytes);
 
   const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
-  const root = path.resolve(projectDir);
+  const root = fs.realpathSync(path.resolve(projectDir));
+  const sfxDir = assertSafeSfxDir(root);
   const manifest = readAudioManifest(root);
   const manifestAbs = audioManifestPath(root);
 
   const existing = manifest.entries.find((item) => item.sha256 === sha256);
   if (existing) {
     const existingAbs = path.resolve(root, existing.file);
-    if (fs.existsSync(existingAbs)) {
-      return { entry: existing, file_path: existingAbs, manifest_path: manifestAbs, deduplicated: true };
+    const existingRel = path.relative(sfxDir, existingAbs);
+    const insideSfx = !existingRel.startsWith('..') && !path.isAbsolute(existingRel);
+    if (insideSfx && fs.existsSync(existingAbs)) {
+      const st = fs.lstatSync(existingAbs);
+      if (!st.isSymbolicLink() && st.isFile()) {
+        const diskSha = crypto.createHash('sha256').update(fs.readFileSync(existingAbs)).digest('hex');
+        const restored = diskSha !== sha256;
+        if (restored) atomicWrite(existingAbs, bytes, 0o644);
+        const gain = analyzeAudioFile(existingAbs, {
+          buffer: bytes,
+          targetRmsDb: opts.targetRmsDb,
+          ceilingDb: opts.ceilingDb,
+          toolchain: opts.toolchain,
+          env: opts.env as Record<string, string> | undefined,
+        });
+        const updatedEntry: AudioManifestEntry = { ...existing, gain };
+        const nextEntries = manifest.entries.map((item) => (item.id === existing.id ? updatedEntry : item));
+        writeAudioManifest(root, { version: 1, entries: nextEntries });
+        return {
+          entry: updatedEntry,
+          file_path: existingAbs,
+          manifest_path: manifestAbs,
+          deduplicated: !restored,
+        };
+      }
     }
   }
 
@@ -305,7 +350,6 @@ export async function downloadSound(
   const stem = safeSlug(opts.name ? opts.name : sound.name);
   const shortHash = sha256.slice(0, 8);
   const fileName = `${stem}-fs${sound.id}-${shortHash}${ext}`;
-  const sfxDir = path.join(root, SfxAssetsRelDir);
   const absTarget = path.resolve(sfxDir, fileName);
   const relCheck = path.relative(sfxDir, absTarget);
   if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {

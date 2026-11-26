@@ -268,5 +268,119 @@ describe('freesound RMS gain analysis and true-peak clipping guard', () => {
     expect(manifest.entries).toHaveLength(1);
     expect(manifest.entries[0].sha256).toBe(first.entry.sha256);
     expect(manifest.entries[0].gain.clamped).toBe(true);
+
+    // 磁盘文件完好但调整 ceilingDb=-6 时，命中去重并按新上限重算增益
+    const recomputed = await downloadSound(4242, project, {
+      env: { [FreesoundApiKeyEnv]: 'mock-key' },
+      fetch: mockFetch,
+      ceilingDb: -6,
+    });
+    expect(recomputed.deduplicated).toBe(true);
+    expect(recomputed.entry.gain.ceiling_db).toBe(-6);
+    expect(recomputed.entry.gain.sample_peak_db + recomputed.entry.gain.safe_gain_db).toBeLessThanOrEqual(-6);
+    expect(readAudioManifest(project).entries[0].gain.ceiling_db).toBe(-6);
+
+    // 磁盘文件被篡改后再次下载应恢复磁盘字节并标记 deduplicated=false
+    fs.writeFileSync(first.file_path, Buffer.from('corrupted'));
+    const restored = await downloadSound(4242, project, {
+      env: { [FreesoundApiKeyEnv]: 'mock-key' },
+      fetch: mockFetch,
+      ceilingDb: -6,
+    });
+    expect(restored.deduplicated).toBe(false);
+    expect(fs.readFileSync(first.file_path).equals(impulsiveWav)).toBe(true);
+  });
+
+  it('rejects oversized streaming downloads, symlink sfx dir, and marks unmeasured true peak honestly', async () => {
+    const unmeasured = computeSafeGain({
+      rms_db: -22,
+      sample_peak_db: -4,
+      true_peak_dbtp: -4,
+      true_peak_measured: false,
+    });
+    expect(unmeasured.measured).toBe(false);
+    expect(unmeasured.true_peak_measured).toBe(false);
+    expect(unmeasured.note).toContain('真峰值未能经 EBU R128 实测');
+
+    const project = makeTempProject();
+    let chunksPulled = 0;
+    const streamingFetch: FetchLike = async (input) => {
+      const url = String(input);
+      if (url.includes('/sounds/9999/')) {
+        return new Response(
+          JSON.stringify({
+            id: 9999,
+            name: 'Huge Stream',
+            duration: 10,
+            username: 'u',
+            license: 'https://creativecommons.org/publicdomain/zero/1.0/',
+            url: 'https://freesound.org/people/u/sounds/9999/',
+            tags: [],
+            description: '',
+            type: 'wav',
+            filesize: 100,
+            samplerate: 48000,
+            channels: 1,
+            avg_rating: 0,
+            num_downloads: 0,
+            previews: { 'preview-hq-mp3': 'https://cdn.freesound.org/previews/9/9999_hq.wav' },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          chunksPulled++;
+          controller.enqueue(new Uint8Array(64));
+        },
+      });
+      return new Response(stream, { status: 200, headers: { 'content-type': 'audio/wav' } });
+    };
+
+    await expect(
+      downloadSound(9999, project, {
+        env: { [FreesoundApiKeyEnv]: 'mock-key' },
+        fetch: streamingFetch,
+        maxBytes: 128,
+      }),
+    ).rejects.toThrow(/超过上限/);
+    expect(chunksPulled).toBeLessThanOrEqual(4);
+
+    // 符号链接 assets/sfx 目录被拒绝
+    const symProject = makeTempProject();
+    const outsideDir = makeTempProject();
+    fs.mkdirSync(path.join(symProject, 'assets'), { recursive: true });
+    fs.symlinkSync(outsideDir, path.join(symProject, 'assets', 'sfx'));
+    const steadyWav = synthesizeSteadyToneWav();
+    await expect(
+      downloadSound(1234, symProject, {
+        env: { [FreesoundApiKeyEnv]: 'mock-key' },
+        fetch: async (input) => {
+          if (String(input).includes('/sounds/1234/')) {
+            return new Response(
+              JSON.stringify({
+                id: 1234,
+                name: 'Tone',
+                duration: 0.5,
+                username: 'u',
+                license: 'https://creativecommons.org/publicdomain/zero/1.0/',
+                url: 'https://freesound.org/people/u/sounds/1234/',
+                tags: [],
+                description: '',
+                type: 'wav',
+                filesize: steadyWav.length,
+                samplerate: 48000,
+                channels: 1,
+                avg_rating: 0,
+                num_downloads: 0,
+                previews: { 'preview-hq-mp3': 'https://cdn.freesound.org/previews/1/1234_hq.wav' },
+              }),
+              { status: 200, headers: { 'content-type': 'application/json' } },
+            );
+          }
+          return new Response(new Uint8Array(steadyWav), { status: 200, headers: { 'content-type': 'audio/wav' } });
+        },
+      }),
+    ).rejects.toThrow(/符号链接/);
   });
 });

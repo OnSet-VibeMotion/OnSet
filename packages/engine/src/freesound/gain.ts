@@ -17,6 +17,8 @@ export interface RawAudioMetrics {
   rms_db: number;
   sample_peak_db: number;
   true_peak_dbtp?: number;
+  /** 若显式为 false，说明真峰值未能经 EBU R128 实测（仅回退到样本峰值）。 */
+  true_peak_measured?: boolean;
 }
 
 export interface SafeGainOptions {
@@ -161,12 +163,17 @@ export function computeSafeGain(
   const ceilingDb = opts.ceilingDb ?? DefaultPeakCeilingDB;
   const rmsDb = Math.max(SilenceFloorDB, metrics.rms_db);
   const samplePeakDb = Math.max(SilenceFloorDB, metrics.sample_peak_db);
+  const truePeakMeasured = metrics.true_peak_measured !== false;
   const truePeakDb = Math.max(samplePeakDb, metrics.true_peak_dbtp ?? samplePeakDb);
+  const unmeasuredNote = truePeakMeasured
+    ? undefined
+    : '真峰值未能经 EBU R128 实测（回退至样本峰值），不保证满足压缩音频采样间真峰上限。';
 
   // 全静音或近底噪素材不建议大幅拉升
   if (rmsDb <= SilenceFloorDB + 1 || samplePeakDb <= SilenceFloorDB + 1) {
     return {
-      measured: true,
+      measured: truePeakMeasured,
+      true_peak_measured: truePeakMeasured,
       method,
       rms_db: round2(rmsDb),
       target_rms_db: round2(targetRmsDb),
@@ -177,7 +184,7 @@ export function computeSafeGain(
       safe_gain_db: 0,
       projected_peak_db: round2(truePeakDb),
       clamped: false,
-      note: '音频接近全静音，建议保持 0 dB 增益。',
+      note: unmeasuredNote ?? '音频接近全静音，建议保持 0 dB 增益。',
     };
   }
 
@@ -198,7 +205,8 @@ export function computeSafeGain(
       `已自动夹取安全增益至 ${formatFixed(safeGainDb, 2)} dB（夹取后峰值 ${formatFixed(projectedPeakDb, 2)} dBFS）。`;
 
     return {
-      measured: true,
+      measured: truePeakMeasured,
+      true_peak_measured: truePeakMeasured,
       method,
       rms_db: round2(rmsDb),
       target_rms_db: round2(targetRmsDb),
@@ -210,12 +218,14 @@ export function computeSafeGain(
       projected_peak_db: projectedPeakDb,
       clamped: true,
       clipping_warning: clippingWarning,
+      ...(unmeasuredNote ? { note: unmeasuredNote } : {}),
     };
   }
 
   const safeGainDb = suggestedGainDb;
   return {
-    measured: true,
+    measured: truePeakMeasured,
+    true_peak_measured: truePeakMeasured,
     method,
     rms_db: round2(rmsDb),
     target_rms_db: round2(targetRmsDb),
@@ -226,6 +236,7 @@ export function computeSafeGain(
     safe_gain_db: safeGainDb,
     projected_peak_db: round2(governingPeak + safeGainDb),
     clamped: false,
+    ...(unmeasuredNote ? { note: unmeasuredNote } : {}),
   };
 }
 

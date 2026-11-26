@@ -141,9 +141,9 @@ export function resolveAnchors(data: AnchorsFileData, opts: ResolveAnchorsOption
   const seenSfxCueIds = new Set<string>();
   const seenCutFrames = new Map<number, string>();
   const resolved: ResolvedAnchor[] = [];
-  const byId: Record<string, ResolvedAnchor> = {};
+  const byId = Object.create(null) as Record<string, ResolvedAnchor>;
   const sfxCues: ResolvedSfxCue[] = [];
-  const sfxByCueId: Record<string, ResolvedSfxCue> = {};
+  const sfxByCueId = Object.create(null) as Record<string, ResolvedSfxCue>;
 
   for (const spec of validated.anchors) {
     if (seenIds.has(spec.id)) throw new Error(`锚点 id 重复绑定：${goQuote(spec.id)}`);
@@ -242,9 +242,9 @@ export function resolveAnchors(data: AnchorsFileData, opts: ResolveAnchorsOption
     byId[spec.id] = entry;
   }
 
-  const byScene: Record<string, Record<string, number>> = {};
+  const byScene = Object.create(null) as Record<string, Record<string, number>>;
   for (const [sceneId, map] of bySceneDraft.entries()) {
-    const sorted: Record<string, number> = {};
+    const sorted = Object.create(null) as Record<string, number>;
     for (const key of [...map.keys()].sort(compareBytes)) sorted[key] = map.get(key)!;
     byScene[sceneId] = sorted;
   }

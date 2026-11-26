@@ -302,6 +302,28 @@ describe.skipIf(!hasFfmpeg)('beat (needs ffmpeg)', () => {
     expect(saved.verdict).toBe('unverified');
     expect(saved.anchors[0].music.verified).toBe(true);
     expect(saved.anchors[0].visual.verified).toBe(false);
+
+    // 显式传入缺失的 --cue-sheet 应直接报错而非静默忽略
+    const errBadCue = new Buffer();
+    const badCueCode = await run(
+      [
+        'beat',
+        'av-backtest',
+        video,
+        '--source-music',
+        music,
+        '--anchors',
+        anchorsFile,
+        '--cue-sheet',
+        path.join(root, 'missing-cue-sheet.json'),
+        '--project-root',
+        root,
+      ],
+      new Buffer(),
+      errBadCue,
+    );
+    expect(badCueCode).toBe(1);
+    expect(errBadCue.text).toContain('找不到指定的 cue sheet');
   });
 });
 

@@ -67,11 +67,16 @@ describe('frame_qc pure helpers', () => {
     expect(mapFrameRangeToScenes(58, 61, halfOpen, 120)).toEqual(['s1', 's2']);
 
     const inclusive: FrameQCScene[] = [
-      { id: 's1', startFrame: 0, endFrame: 59 },
-      { id: 's2', startFrame: 60, endFrame: 119 },
+      { id: 's1', startFrame: 0, endFrame: 59, inclusive: true },
+      { id: 's2', startFrame: 60, endFrame: 119, inclusive: true },
     ];
     expect(mapFrameRangeToScenes(59, 59, inclusive, 120)).toEqual(['s1']);
     expect(mapFrameRangeToScenes(60, 119, inclusive, 120)).toEqual(['s2']);
+
+    // 部分/有间隔的时间表：默认半开区间 [0, 60) 不应把第 60 帧误归属到 s1。
+    const partial: FrameQCScene[] = [{ id: 's1', startFrame: 0, endFrame: 60 }];
+    expect(mapFrameRangeToScenes(59, 59, partial, 120)).toEqual(['s1']);
+    expect(mapFrameRangeToScenes(60, 60, partial, 120)).toEqual([]);
   });
 
   it('closes trailing freeze interval at EOF and summarizes severities', () => {

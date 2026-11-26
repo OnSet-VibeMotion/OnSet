@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import http from 'node:http';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -9,6 +10,7 @@ import {
   captureViewport,
   collectedDir,
   collectPage,
+  extractPageImageCandidates,
   fetchAsset,
   fetchSimpleIconSvg,
   findChromeExecutable,
@@ -24,6 +26,7 @@ import {
   saveCollectedAsset,
   type WebFetcher,
 } from './index';
+import { startEgressProxy } from './proxy';
 
 const dirs: string[] = [];
 function tempDir(): string {
@@ -484,4 +487,176 @@ describe('webcollect headless screenshots', () => {
     },
     30_000,
   );
+
+  it('enforces egress proxy policies in isolated and public modes', async () => {
+    // 1. isolated 模式：仅放行 127.0.0.1:<allowedPort>，拦截其它端口、外部 IP 与 CONNECT 隧道
+    const targetServer = http.createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('ok');
+    });
+    const allowedPort = await new Promise<number>((resolve) => {
+      targetServer.listen(0, '127.0.0.1', () => resolve((targetServer.address() as net.AddressInfo).port));
+    });
+    const isoProxy = await startEgressProxy({ mode: 'isolated', allowedPort });
+    try {
+      const allowedStatus = await new Promise<number>((resolve, reject) => {
+        http
+          .request(
+            {
+              host: '127.0.0.1',
+              port: isoProxy.port,
+              method: 'GET',
+              path: `http://127.0.0.1:${allowedPort}/`,
+            },
+            (res) => {
+              res.resume();
+              resolve(res.statusCode ?? 0);
+            },
+          )
+          .on('error', reject)
+          .end();
+      });
+      expect(allowedStatus).toBe(200);
+
+      for (const badPath of ['http://93.184.216.34/', `http://127.0.0.1:${allowedPort + 1}/`]) {
+        const status = await new Promise<number>((resolve, reject) => {
+          http
+            .request({ host: '127.0.0.1', port: isoProxy.port, method: 'GET', path: badPath }, (res) => {
+              res.resume();
+              resolve(res.statusCode ?? 0);
+            })
+            .on('error', reject)
+            .end();
+        });
+        expect(status, `isolated 模式应拦截 ${badPath}`).toBe(403);
+      }
+
+      const connectResp = await new Promise<string>((resolve, reject) => {
+        const sock = net.connect({ host: '127.0.0.1', port: isoProxy.port }, () => {
+          sock.write('CONNECT 93.184.216.34:443 HTTP/1.1\r\nHost: 93.184.216.34:443\r\n\r\n');
+        });
+        let data = '';
+        sock.on('data', (chunk) => {
+          data += chunk.toString('utf8');
+        });
+        sock.on('end', () => resolve(data));
+        sock.on('error', reject);
+      });
+      expect(connectResp).toContain('403 Forbidden');
+    } finally {
+      await isoProxy.close();
+      await new Promise<void>((r) => targetServer.close(() => r()));
+    }
+
+    // 2. public 模式：拦截对私有/回环/元数据 IP 以及 DNS 重绑定到内网的 HTTP 与 HTTPS CONNECT
+    const pubProxy = await startEgressProxy({
+      mode: 'public',
+      deps: { lookupAll: async () => [{ address: '10.0.0.5', family: 4 }] },
+    });
+    try {
+      for (const badPath of ['http://127.0.0.1/', 'http://169.254.169.254/latest', 'http://rebind.example/']) {
+        const status = await new Promise<number>((resolve, reject) => {
+          http
+            .request({ host: '127.0.0.1', port: pubProxy.port, method: 'GET', path: badPath }, (res) => {
+              res.resume();
+              resolve(res.statusCode ?? 0);
+            })
+            .on('error', reject)
+            .end();
+        });
+        expect(status, `public 模式 HTTP 应拦截 ${badPath}`).toBe(403);
+      }
+      for (const badAuthority of ['127.0.0.1:443', '10.0.0.1:443', '169.254.169.254:443', 'rebind.example:443']) {
+        const resp = await new Promise<string>((resolve, reject) => {
+          const sock = net.connect({ host: '127.0.0.1', port: pubProxy.port }, () => {
+            sock.write(`CONNECT ${badAuthority} HTTP/1.1\r\nHost: ${badAuthority}\r\n\r\n`);
+          });
+          let data = '';
+          sock.on('data', (chunk) => {
+            data += chunk.toString('utf8');
+          });
+          sock.on('end', () => resolve(data));
+          sock.on('error', reject);
+        });
+        expect(resp, `public 模式 CONNECT 应拦截 ${badAuthority}`).toContain('403 Forbidden');
+      }
+    } finally {
+      await pubProxy.close();
+    }
+  });
+
+  it('decodes HTML entities in extracted URLs in a single pass, caps failed download attempts, and protects collected dir integrity', async () => {
+    // 1. 单轮 HTML 实体解码
+    const html = `<html><head>
+      <meta property="og:image" content="https://cdn.example/a.png?token=t&amp;expires=9&amp;amp;raw=&#38;hex=&#x26;">
+    </head><body></body></html>`;
+    const candidates = extractPageImageCandidates(html, 'https://acme.example/');
+    expect(candidates[0]?.url).toBe('https://cdn.example/a.png?token=t&expires=9&amp;raw=&hex=&');
+
+    // 2. collectPage 失败尝试预算上限（maxAssets=1 时最多尝试 3 次而非拉爆 20 个死链）
+    const project = tempDir();
+    const brokenImgs = Array.from({ length: 20 }, (_, i) => `<img src="/broken-${i}.png">`).join('');
+    let assetFetches = 0;
+    const res = await collectPage('https://acme.example/', {
+      projectRoot: project,
+      maxAssets: 1,
+      fetcher: async (url) => {
+        if (url === 'https://acme.example/') {
+          return {
+            url,
+            status: 200,
+            contentType: 'text/html; charset=utf-8',
+            body: Buffer.from(`<html><body>${brokenImgs}</body></html>`),
+          };
+        }
+        assetFetches++;
+        throw new Error('404');
+      },
+    });
+    expect(res.assets).toHaveLength(0);
+    expect(assetFetches).toBeLessThanOrEqual(3);
+
+    // 3. saveCollectedAsset 去重校验磁盘 SHA-256（若原文件被用户修改，则新分配 -2 后缀并保留用户修改）
+    const png = makeSyntheticPng(64, 64, 3);
+    const first = saveCollectedAsset({
+      projectRoot: project,
+      buffer: png,
+      ext: '.png',
+      kind: 'image',
+      source: 'https://acme.example/a.png',
+      caption: 'first',
+      name: 'logo',
+    });
+    const firstAbs = path.join(project, first.entry.file);
+    fs.writeFileSync(firstAbs, Buffer.from('user-edited-png'));
+    const second = saveCollectedAsset({
+      projectRoot: project,
+      buffer: png,
+      ext: '.png',
+      kind: 'image',
+      source: 'https://acme.example/a.png',
+      caption: 'second',
+      name: 'logo',
+    });
+    expect(second.deduplicated).toBe(false);
+    expect(second.entry.file).not.toBe(first.entry.file);
+    expect(fs.readFileSync(firstAbs, 'utf8')).toBe('user-edited-png');
+
+    // 4. 拒绝符号链接的 assets/collected 目录
+    const symProject = tempDir();
+    const outsideDir = tempDir();
+    fs.mkdirSync(path.join(symProject, 'assets'), { recursive: true });
+    fs.symlinkSync(outsideDir, path.join(symProject, 'assets', 'collected'));
+    expect(() =>
+      saveCollectedAsset({
+        projectRoot: symProject,
+        buffer: png,
+        ext: '.png',
+        kind: 'image',
+        source: 'https://acme.example/b.png',
+        caption: 'symlink',
+        name: 'logo',
+      }),
+    ).toThrow(/符号链接/);
+  });
 });

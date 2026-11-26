@@ -33,8 +33,10 @@ export interface FrameQCScene {
   id: string;
   /** 镜头起始帧（0 基，含）。 */
   startFrame: number;
-  /** 镜头结束帧（半开 [startFrame, endFrame)，无衔接时亦兼容闭区间）。 */
+  /** 镜头结束帧（默认半开 [startFrame, endFrame)；仅在 inclusive=true 时按闭区间处理）。 */
   endFrame: number;
+  /** 显式标记 endFrame 为闭区间端点（含）；省略或 false 表示半开区间 [startFrame, endFrame)。 */
+  inclusive?: boolean;
 }
 
 export interface FrameQCIssue {
@@ -71,6 +73,8 @@ export interface FrameQCSummary {
 export interface FrameQCReport {
   schema_version: number;
   path: string;
+  /** 扫描目标视频文件的 SHA-256，用于在 review 附加摘要前核对报告与视频一致。 */
+  video_sha256?: string;
   fps: number;
   total_frames: number;
   duration_seconds: number;
@@ -149,19 +153,17 @@ export function analyzeEdgeFrame(buf: Buffer, offset = 0): EdgeFrameResult {
   };
 }
 
-/** 把 [startFrame, endFrame] 闭区间映射到镜头 ID 列表（同时兼容半开与闭区间时间表）。 */
+/** 把 [startFrame, endFrame] 闭区间映射到镜头 ID 列表（默认镜头为半开区间 [startFrame, endFrame)，除非显式 inclusive=true）。 */
 export function mapFrameRangeToScenes(
   startFrame: number,
   endFrame: number,
   scenes: readonly FrameQCScene[],
-  totalFrames: number,
+  _totalFrames: number,
 ): string[] {
   if (scenes.length === 0) return [];
-  const starts = new Set(scenes.map((s) => s.startFrame));
   const ids: string[] = [];
   for (const scene of scenes) {
-    const isHalfOpen = starts.has(scene.endFrame) || (totalFrames > 0 && scene.endFrame >= totalFrames);
-    const effectiveEnd = isHalfOpen ? scene.endFrame - 1 : scene.endFrame;
+    const effectiveEnd = scene.inclusive ? scene.endFrame : scene.endFrame - 1;
     if (effectiveEnd < scene.startFrame) continue;
     if (startFrame <= effectiveEnd && endFrame >= scene.startFrame) ids.push(scene.id);
   }

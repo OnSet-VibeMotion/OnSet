@@ -120,6 +120,8 @@ export interface ScreenshotRunRequest {
   scale: number;
   isolated: boolean;
   hostResolverRules?: string;
+  proxyServer?: string;
+  proxyBypassList?: string;
   timeoutMs: number;
   signal?: AbortSignal;
 }

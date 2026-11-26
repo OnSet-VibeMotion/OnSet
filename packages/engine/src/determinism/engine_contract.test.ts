@@ -153,7 +153,34 @@ const ctx = document.createElement('canvas').getContext('2d');
     });
     expect(checkEngineContract(noReason.sceneDir).ok).toBe(false);
 
-    // 镜头配置字段（engine-deviation.json / scene.json engine_deviation）豁免
+    // 普通字符串字面量里的偏离文本不得豁免
+    const fakeLiteral = setupProjectScene({
+      styleKey: 'mg-styles/03-isometric',
+      files: {
+        'index.html': `<script>const example = "onset-engine-deviation: threejs -> canvas2d | reason: 示例";</script>`,
+      },
+    });
+    expect(checkEngineContract(fakeLiteral.sceneDir).ok).toBe(false);
+
+    // 只有 importmap 而无实际 import / THREE 调用不得通过 threejs 强契约
+    const importMapOnly = setupProjectScene({
+      styleKey: 'mg-styles/03-isometric',
+      files: {
+        'index.html': `<script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script><style>.box { transform: rotateY(30deg); }</style>`,
+      },
+    });
+    expect(checkEngineContract(importMapOnly.sceneDir).ok).toBe(false);
+
+    // importmap + 实际 import three 正常通过
+    const importMapUsed = setupProjectScene({
+      styleKey: 'mg-styles/03-isometric',
+      files: {
+        'index.html': `<script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script><script type="module">import * as THREE from 'three'; new THREE.Scene();</script>`,
+      },
+    });
+    expect(checkEngineContract(importMapUsed.sceneDir).ok).toBe(true);
+
+    // 镜头独立侧车文件（engine-deviation.json）豁免，不污染 scene.json 契约
     const bySidecar = setupProjectScene({
       styleKey: 'mg-styles/20-pixel',
       files: {
@@ -169,16 +196,6 @@ const ctx = document.createElement('canvas').getContext('2d');
     expect(r2.ok).toBe(true);
     expect(r2.warnings).toHaveLength(1);
     expect(r2.warnings[0].deviation?.source).toBe('engine-deviation.json');
-
-    const bySceneField = setupProjectScene({
-      styleKey: 'mg-styles/07-liquid',
-      files: { 'index.html': `<div>title</div>` },
-      extraSceneJson: { engine_deviation: 'webgl2 -> canvas2d | reason: 纯黑底引语过渡镜' },
-    });
-    const r3 = checkEngineContract(bySceneField.sceneDir);
-    expect(r3.ok).toBe(true);
-    expect(r3.warnings).toHaveLength(1);
-    expect(r3.warnings[0].deviation?.source).toBe('scene.json');
   });
 
   it('emits non-blocking warning when canvas2d style omits getContext("2d")', () => {

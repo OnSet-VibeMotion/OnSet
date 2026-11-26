@@ -143,11 +143,11 @@ describe('studio /api/series & project creation with series defaults', () => {
     expect(created.publish_template?.title_pattern).toBe('【EP{nn}】{title}');
     expect(series.readPublishTemplate(seriesRoot, created.id)?.default_hashtags).toEqual(['#原理拆解', '#硬核科普']);
 
-    // POST /api/series/assist：校验缺失输入返回 400
-    const badRes = await server.handle(await jsonReq('POST', '/api/series/assist', { mode: 'draft', idea: '   ' }));
+    // POST /api/series/_assist：校验缺失输入返回 400
+    const badRes = await server.handle(await jsonReq('POST', '/api/series/_assist', { mode: 'draft', idea: '   ' }));
     expect(badRes.status).toBe(400);
 
-    // POST /api/series/assist：成功返回过滤后的草案
+    // POST /api/series/_assist：成功返回过滤后的草案
     setSeriesAssistRunnerForTest(async (prompt) => {
       expect(prompt).toContain('landscape-16x9');
       return JSON.stringify({
@@ -168,7 +168,7 @@ describe('studio /api/series & project creation with series defaults', () => {
     });
 
     const assistRes = await server.handle(
-      await jsonReq('POST', '/api/series/assist', {
+      await jsonReq('POST', '/api/series/_assist', {
         mode: 'draft',
         idea: '做一个 B 站系统架构原理拆解专栏',
       }),
@@ -186,7 +186,7 @@ describe('studio /api/series & project creation with series defaults', () => {
     expect(draft.warnings.join('\n')).toContain('nonexistent/hallucinated-style');
     expect(draft.followups).toEqual(['改竖屏短视频', '更口语轻松']);
 
-    // DELETE /api/series/assist：取消进行中的请求返回 409
+    // DELETE /api/series/_assist：取消进行中的请求返回 409
     let started!: () => void;
     const waitStarted = new Promise<void>((r) => {
       started = r;
@@ -202,11 +202,25 @@ describe('studio /api/series & project creation with series defaults', () => {
           });
         }),
     );
-    const pending = server.handle(await jsonReq('POST', '/api/series/assist', { mode: 'draft', idea: '长时间运行' }));
+    const pending = server.handle(await jsonReq('POST', '/api/series/_assist', { mode: 'draft', idea: '长时间运行' }));
     await waitStarted;
-    const cancelRes = await server.handle(await jsonReq('DELETE', '/api/series/assist'));
+    const cancelRes = await server.handle(await jsonReq('DELETE', '/api/series/_assist'));
     expect(cancelRes.status).toBe(200);
     const cancelled = await pending;
     expect(cancelled.status).toBe(409);
+
+    // 回归：已有 id='assist' 的合法专栏不受 /api/series/_assist 路由遮蔽，GET/PUT/DELETE 均正常工作。
+    const mkAssist = await server.handle(await jsonReq('POST', '/api/series', { id: 'assist', name: '辅助专栏' }));
+    expect(mkAssist.status).toBe(201);
+    const getAssist = await server.handle(await jsonReq('GET', '/api/series/assist'));
+    expect(getAssist.status).toBe(200);
+    expect(((await getAssist.json()) as { series: { id: string } }).series.id).toBe('assist');
+    const putAssist = await server.handle(await jsonReq('PUT', '/api/series/assist', { name: '辅助专栏改名' }));
+    expect(putAssist.status).toBe(200);
+    expect(((await putAssist.json()) as { name: string }).name).toBe('辅助专栏改名');
+    const delAssist = await server.handle(await jsonReq('DELETE', '/api/series/assist'));
+    expect(delAssist.status).toBe(200);
+    expect(((await delAssist.json()) as { deleted_id: string }).deleted_id).toBe('assist');
+    expect(series.getSeries(seriesRoot, 'assist')).toBeNull();
   });
 });

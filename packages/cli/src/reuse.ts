@@ -18,22 +18,25 @@ export function reuseDecision(item: scene.Scene, cfg: Config, env: Record<string
     const renderer = item.renderer !== '' ? item.renderer : cfg.renderer;
     let current: scene.Inputs | null = null;
     let resolved: Record<string, string>;
+    const skillEnv = scene.skillsEnvironment(env, cfg.overlay);
     try {
-      resolved = scene.resolveAllSkills(renderer, item.directory, scene.skillsEnvironment(env, cfg.overlay), item);
+      resolved = scene.resolveAllSkills(renderer, item.directory, skillEnv, item);
       // 按记录自己的版本算：旧记录（输入文件按字节记）照旧按字节比。
-      current = scene.fingerprint(item, renderer, resolved, record.schema);
+      current = scene.fingerprint(item, renderer, resolved, record.schema, skillEnv);
     } catch {
       return [schedule.Stale, '没有可用的渲染记录，说不清产物出自哪些输入，需要显式 --force 重渲染'];
     }
     if (current !== null) {
       if (scene.inputsMatchRecord(item, current, record)) {
-        if (record.schema < scene.RenderRecordSchema && !upgrade(item, renderer, resolved, record, current)) {
+        if (record.schema < scene.RenderRecordSchema && !upgrade(item, renderer, resolved, record, current, skillEnv)) {
           return [schedule.Stale, '核对期间渲染输入或记录已变化，请重新检查已有产物'];
         }
         const reason = current.fingerprint === record.fingerprint ? '输入指纹一致' : '影响镜头画面的输入未变';
         return [schedule.Skipped, `已有合格产物（${reason}）`];
       }
-      const changed = scene.renderInputChanges(current, record).map((name) => (name === 'memory' ? '召回的记忆变了' : name));
+      const changed = scene
+        .renderInputChanges(current, record)
+        .map((name) => (name === 'memory' ? '召回的记忆变了' : name));
       return [schedule.Stale, `输入已变化（${changed.join('、')}），需要显式 --force 重渲染`];
     }
   }
@@ -41,16 +44,32 @@ export function reuseDecision(item: scene.Scene, cfg: Config, env: Record<string
 }
 
 /** 旧记录核对成功才升级，并在同一镜头的写租约内确认产物仍是刚验证的那份。 */
-function upgrade(item: scene.Scene, renderer: string, resolved: Record<string, string>, old: scene.RenderRecord, verified: scene.Inputs): boolean {
+function upgrade(
+  item: scene.Scene,
+  renderer: string,
+  resolved: Record<string, string>,
+  old: scene.RenderRecord,
+  verified: scene.Inputs,
+  skillEnv: Record<string, string>,
+): boolean {
   try {
     const release = scene.acquireSceneLease(item.directory, item.id);
     try {
       const current = scene.loadRecord(item);
-      if (current?.schema !== old.schema || current.fingerprint !== old.fingerprint || current.output_sha256 !== old.output_sha256) return false;
-      const upgraded = scene.fingerprint(item, renderer, resolved);
+      if (
+        current?.schema !== old.schema ||
+        current.fingerprint !== old.fingerprint ||
+        current.output_sha256 !== old.output_sha256
+      )
+        return false;
+      const upgraded = scene.fingerprint(item, renderer, resolved, undefined, skillEnv);
       // prompt.md 在各版本都按字节记。直接核对待写的摘要，即使文件在两轮读取之间改了又改回也不会误升级。
-      if (upgraded.parts?.['file:prompt.md'] !== verified.parts?.['file:prompt.md'] ||
-          scene.fingerprint(item, renderer, resolved, old.schema).fingerprint !== verified.fingerprint) return false;
+      if (
+        upgraded.parts?.['file:prompt.md'] !== verified.parts?.['file:prompt.md'] ||
+        scene.fingerprint(item, renderer, resolved, old.schema, skillEnv).fingerprint !== verified.fingerprint
+      ) {
+        return false;
+      }
       scene.upgradeRenderRecord(item, current, upgraded);
     } finally {
       release();

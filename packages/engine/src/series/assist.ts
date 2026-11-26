@@ -189,22 +189,17 @@ function parsePublishTemplate(raw: unknown): PublishTemplateInput | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
   const r = raw as Record<string, unknown>;
   const title_pattern = cleanStr(r.title_pattern) || undefined;
-  const default_hashtags = cleanStrList(r.default_hashtags, 10);
+  const hasHashtags = Array.isArray(r.default_hashtags);
+  const default_hashtags = hasHashtags ? cleanStrList(r.default_hashtags, 10) : undefined;
   const description_footer = cleanStr(r.description_footer) || undefined;
   const cover_guidelines = cleanStr(r.cover_guidelines) || undefined;
   const credits_lines = cleanStrList(r.credits_lines, 10);
-  if (
-    !title_pattern &&
-    default_hashtags.length === 0 &&
-    !description_footer &&
-    !cover_guidelines &&
-    credits_lines.length === 0
-  ) {
+  if (!title_pattern && !hasHashtags && !description_footer && !cover_guidelines && credits_lines.length === 0) {
     return undefined;
   }
   return {
     ...(title_pattern ? { title_pattern } : {}),
-    ...(default_hashtags.length > 0 ? { default_hashtags } : {}),
+    ...(hasHashtags ? { default_hashtags } : {}),
     ...(description_footer ? { description_footer } : {}),
     ...(cover_guidelines ? { cover_guidelines } : {}),
     ...(credits_lines.length > 0 ? { credits_lines } : {}),

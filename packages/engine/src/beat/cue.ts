@@ -142,7 +142,7 @@ function localToJSON(local: Local): unknown {
     })),
   };
   if (local.anchors !== undefined) {
-    const sorted: Record<string, number> = {};
+    const sorted = Object.create(null) as Record<string, number>;
     for (const key of Object.keys(local.anchors).sort(compareBytes)) sorted[key] = local.anchors[key];
     out.anchors = sorted;
   }

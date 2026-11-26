@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, errorText, put } from '../api';
 import type { Attachment, Scene, SeriesItem } from '../types';
 import { Icon } from './Icon';
@@ -67,6 +67,8 @@ export function MotionEffects({
   const [seriesBusy, setSeriesBusy] = useState(false);
   const [seriesNote, setSeriesNote] = useState('');
   const [seriesErr, setSeriesErr] = useState('');
+  const seriesFetchCtrlRef = useRef<AbortController | null>(null);
+  const seriesWriteGenRef = useRef(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -84,25 +86,36 @@ export function MotionEffects({
   }, [version, reload]);
 
   useEffect(() => {
+    seriesFetchCtrlRef.current?.abort();
+    seriesFetchCtrlRef.current = null;
     if (!seriesId) {
       setBoundSeries(null);
       return;
     }
     const controller = new AbortController();
+    seriesFetchCtrlRef.current = controller;
+    const gen = seriesWriteGenRef.current;
     api<{ series: SeriesItem }>(`/api/series/${encodeURIComponent(seriesId)}`, { signal: controller.signal }).then(
       ({ series }) => {
-        if (!controller.signal.aborted) setBoundSeries(series);
+        if (!controller.signal.aborted && seriesWriteGenRef.current === gen) setBoundSeries(series);
       },
       () => {
-        if (!controller.signal.aborted) setBoundSeries(null);
+        if (!controller.signal.aborted && seriesWriteGenRef.current === gen) setBoundSeries(null);
       },
     );
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (seriesFetchCtrlRef.current === controller) seriesFetchCtrlRef.current = null;
+    };
   }, [seriesId, version]);
 
   const seriesMotions = boundSeries?.defaults.motion_effects ?? [];
   const toggleSeriesMotion = async (ref: string) => {
     if (!boundSeries) return;
+    // 保存开始时中止进行中的专栏读取并推进写入代次，防止旧读取晚到覆盖刚保存的常用动效。
+    seriesWriteGenRef.current += 1;
+    seriesFetchCtrlRef.current?.abort();
+    seriesFetchCtrlRef.current = null;
     setSeriesBusy(true);
     setSeriesErr('');
     setSeriesNote('');

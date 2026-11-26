@@ -180,6 +180,22 @@ it.skipIf(!hasFfmpeg)(
     expect(allowed.clamped_cues).toHaveLength(0);
     expect(allowed.true_peak_dbtp).toBeLessThanOrEqual(DefaultMixTruePeakMax);
     expect(videoStreamHash(chain.ffmpegPath(), path.join(unguardedDir, 'candidate.mp4'))).toBe(srcHash);
+
+    // 3. 极低真峰目标（-30 dBTP，低于 alimiter -24 dB 下限）时通过整体衰减回退收敛并通过校验
+    const lowTpDir = fs.mkdtempSync(path.join(dir, 'low-tp-'));
+    const lowTp = await mixProgram(chain, {
+      directory: lowTpDir,
+      voice,
+      video,
+      frames: 90,
+      fps: 30,
+      cues: [],
+      integratedLUFS: -14,
+      truePeakMax: -30,
+    });
+    expect(lowTp.ok, lowTp.problems.join('; ')).toBe(true);
+    expect(lowTp.true_peak_dbtp).toBeLessThanOrEqual(-30);
+    expect(lowTp.encoded_gain_db).toBeLessThan(0);
   },
   30_000,
 );

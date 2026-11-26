@@ -4,12 +4,20 @@ import type { SeriesAssistDraft } from '../../types';
 import { Icon } from '../Icon';
 import { cancelSeriesAssist, isAbortError, requestSeriesAssist } from './seriesAssistApi';
 
-export function SeriesBriefTab(props: { brief: string; current: SeriesAssistDraft; onChange: (next: string) => void }) {
+export function SeriesBriefTab(props: {
+  brief: string;
+  briefRevision?: number;
+  current: SeriesAssistDraft;
+  onChange: (next: string) => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [prevBrief, setPrevBrief] = useState<string | null>(null);
+  const [pendingPolish, setPendingPolish] = useState<{ brief: string; rationale: string } | null>(null);
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const ctrlRef = useRef<AbortController | null>(null);
+  const latestRevRef = useRef(props.briefRevision ?? 0);
+  latestRevRef.current = props.briefRevision ?? 0;
 
   useEffect(() => {
     return () => {
@@ -29,21 +37,29 @@ export function SeriesBriefTab(props: { brief: string; current: SeriesAssistDraf
     ctrlRef.current?.abort();
     const ctrl = new AbortController();
     ctrlRef.current = ctrl;
+    const startRev = latestRevRef.current;
+    const startBrief = props.brief;
     setBusy(true);
+    setPendingPolish(null);
     setError('');
     setNote('');
     try {
       const res = await requestSeriesAssist(
         {
           mode: 'polish_brief',
-          current: { ...props.current, brief: props.brief },
+          current: { ...props.current, brief: startBrief },
         },
         ctrl.signal,
       );
       if (res.brief.trim()) {
-        setPrevBrief(props.brief);
-        props.onChange(res.brief);
-        setNote(res.rationale ? `已润色规范：${res.rationale}` : '已润色专栏规范，不满意可随时撤回上版。');
+        if (latestRevRef.current === startRev) {
+          setPrevBrief(startBrief);
+          props.onChange(res.brief);
+          setNote(res.rationale ? `已润色规范：${res.rationale}` : '已润色专栏规范，不满意可随时撤回上版。');
+        } else {
+          setPendingPolish({ brief: res.brief, rationale: res.rationale });
+          setNote('润色期间规范已被其他操作修改，当前原文已保留；你可以选择是否采用新润色结果。');
+        }
       } else {
         setError('模型返回了空规范，已保留你的原文。');
       }
@@ -57,6 +73,14 @@ export function SeriesBriefTab(props: { brief: string; current: SeriesAssistDraf
       if (ctrlRef.current === ctrl) ctrlRef.current = null;
       setBusy(false);
     }
+  };
+
+  const handleApplyPending = () => {
+    if (!pendingPolish) return;
+    setPrevBrief(props.brief);
+    props.onChange(pendingPolish.brief);
+    setNote(pendingPolish.rationale ? `已采用润色规范：${pendingPolish.rationale}` : '已采用润色规范。');
+    setPendingPolish(null);
   };
 
   const handleCancel = () => {
@@ -105,6 +129,16 @@ export function SeriesBriefTab(props: { brief: string; current: SeriesAssistDraf
         </p>
       )}
       {note && !busy && <p className="series-ai-note">{note}</p>}
+      {pendingPolish && !busy && (
+        <div className="series-brief-actions">
+          <button type="button" className="pill series-mini-pill series-ai-pill" onClick={handleApplyPending}>
+            采用润色结果
+          </button>
+          <button type="button" className="pill series-mini-pill" onClick={() => setPendingPolish(null)}>
+            保留当前规范
+          </button>
+        </div>
+      )}
       {error && <p className="series-ai-error">{error}</p>}
       <label className="series-field">
         <span className="sr-only">专栏视觉与口播规范（brief.md）</span>
