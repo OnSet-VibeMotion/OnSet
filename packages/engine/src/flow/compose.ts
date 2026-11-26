@@ -10,10 +10,19 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import type { LoadedStation } from './installed';
-import { extraPrompt, insertBlock, orphanBlock } from './promptparts';
-import { allFlows, allStageTitles, allStations, appendedSections, flowPrompt, pluginSectionFile, sectionsDir } from './registered';
 import { joinsFlow } from './flow';
+import type { LoadedStation } from './installed';
+import { compactMotionMenu, MotionMenuPlaceholder } from './motion_catalog';
+import { extraPrompt, insertBlock, orphanBlock } from './promptparts';
+import {
+  allFlows,
+  allStageTitles,
+  allStations,
+  appendedSections,
+  flowPrompt,
+  pluginSectionFile,
+  sectionsDir,
+} from './registered';
 import type { FlowID } from './types';
 
 const numerals = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
@@ -92,17 +101,30 @@ export function composeParts(parts: readonly PromptPart[], opts: ComposeOptions 
 export type SectionReader = (station: string, section: string) => string;
 
 /** 段落声明：「站/段」→ 开启的阶段。没有这一段直接报错。 */
-function declared(ref: string): { station: string; section: string; stage?: string; focusIncludes?: readonly string[] } {
+function declared(ref: string): {
+  station: string;
+  section: string;
+  stage?: string;
+  focusIncludes?: readonly string[];
+} {
   const slash = ref.indexOf('/');
   const station = ref.slice(0, slash);
-  const sec = slash < 0 ? undefined : allStations().find((s) => s.id === station)?.prompt.find((x) => x.id === ref.slice(slash + 1));
+  const sec =
+    slash < 0
+      ? undefined
+      : allStations()
+          .find((s) => s.id === station)
+          ?.prompt.find((x) => x.id === ref.slice(slash + 1));
   if (!sec) throw new Error(`没有这段提示词：${ref}`);
   return { station, section: sec.id, stage: sec.stage, focusIncludes: sec.focusIncludes };
 }
 
 /** 宿主段落读 assets/prompts，内置插件的读它目录里的文件。 */
 export function readSection(station: string, section: string): string {
-  return fs.readFileSync(pluginSectionFile(station, section) ?? path.join(sectionsDir(), station, section + '.md'), 'utf8');
+  return fs.readFileSync(
+    pluginSectionFile(station, section) ?? path.join(sectionsDir(), station, section + '.md'),
+    'utf8',
+  );
 }
 
 /**
@@ -133,7 +155,9 @@ export interface FlowComposeInput {
 /** 第三方流程里一个内置站的段落：取路线里有这个站的第一个内置流程，按那个流程的提示词顺序。 */
 function stationSections(sid: string): string[] {
   const flows = allFlows().filter((f) => f.prompt);
-  const home = flows.find((f) => f.stations.includes(sid)) ?? flows.find((f) => flowPrompt(f.id).some((r) => r.startsWith(sid + '/')));
+  const home =
+    flows.find((f) => f.stations.includes(sid)) ??
+    flows.find((f) => flowPrompt(f.id).some((r) => r.startsWith(sid + '/')));
   return home ? flowPrompt(home.id).filter((r) => r.startsWith(sid + '/')) : [];
 }
 
@@ -151,7 +175,11 @@ export function composeFlowPrompt(input: FlowComposeInput): string {
   const opts: ComposeOptions = {};
   const builtinPart = (ref: string): PromptPart => {
     const d = declared(ref);
-    return { ref, text: input.canvas(read(d.station, d.section)), stage: d.stage, focusIncludes: d.focusIncludes };
+    let rawText = read(d.station, d.section);
+    if (rawText.includes(MotionMenuPlaceholder)) {
+      rawText = rawText.split(MotionMenuPlaceholder).join(compactMotionMenu());
+    }
+    return { ref, text: input.canvas(rawText), stage: d.stage, focusIncludes: d.focusIncludes };
   };
   let appended: string[];
   if (input.flow.startsWith('x:')) {
@@ -190,7 +218,14 @@ export function composeFlowPrompt(input: FlowComposeInput): string {
   const orphans: string[] = [];
   const titles = allStageTitles();
   // 带整套流程的插件只给自己的流程补说明（joinsFlow）。
-  const joined = input.stations.filter((s) => !s.builtin && joinsFlow({ id: s.manifest.id, hasFlow: !!s.manifest.flow, replaces: s.manifest.replaces, after: s.manifest.after }, input.flow));
+  const joined = input.stations.filter(
+    (s) =>
+      !s.builtin &&
+      joinsFlow(
+        { id: s.manifest.id, hasFlow: !!s.manifest.flow, replaces: s.manifest.replaces, after: s.manifest.after },
+        input.flow,
+      ),
+  );
   for (const s of joined) {
     for (const ins of s.manifest.inserts) {
       const body = fs.readFileSync(path.join(s.dir, ins.file), 'utf8').trim();
@@ -210,13 +245,13 @@ export function composeFlowPrompt(input: FlowComposeInput): string {
   const extra = extraPrompt(joined);
   if (extra !== '') parts.push({ ref: '', raw: true, append: true, text: extra });
   const focus = input.focus;
-  const anchor = focus ? parts.findIndex(part => part.stage === focus) : -1;
+  const anchor = focus ? parts.findIndex((part) => part.stage === focus) : -1;
   // 第三方自定义流程可能在未编号的段落里放关卡。它们继续走原组合逻辑。
   if (anchor >= 0 && (input.requireFocus || (!input.flow.startsWith('x:') && joined.length === 0))) {
-    const first = parts.findIndex(part => part.stage);
+    const first = parts.findIndex((part) => part.stage);
     const anchorStation = parts[anchor].ref.split('/')[0];
-    const sameStation = parts.filter(part => part.ref.startsWith(anchorStation + '/'));
-    const hasManyStages = sameStation.filter(part => part.stage).length > 2;
+    const sameStation = parts.filter((part) => part.ref.startsWith(anchorStation + '/'));
+    const hasManyStages = sameStation.filter((part) => part.stage).length > 2;
     const include = new Set(parts.slice(0, first));
     if (!hasManyStages) for (const part of sameStation) include.add(part);
     include.add(parts[anchor]);
@@ -225,17 +260,22 @@ export function composeFlowPrompt(input: FlowComposeInput): string {
       for (const part of parts) if (part.ref.endsWith('/treatment')) include.add(part);
     }
     for (const part of parts) if (part.append && part.raw) include.add(part);
-    const byRef = new Map(parts.map(part => [part.ref, part]));
+    const byRef = new Map(parts.map((part) => [part.ref, part]));
     for (const part of include) {
       for (const ref of part.focusIncludes ?? []) {
         const linked = byRef.get(ref);
         if (linked) include.add(linked);
       }
     }
-    const available = parts.flatMap(part => part.stage ? [part.stage] : []);
-    return composeParts(parts, { ...opts, include }).trimEnd() +
-      `\n\n当前说明只展开 ${focus}。处理其他阶段前用 flow_guide({"stage":"<阶段 ID>"}) 读取对应规则。阶段顺序：${available.join(' → ')}。\n`;
+    const available = parts.flatMap((part) => (part.stage ? [part.stage] : []));
+    return (
+      composeParts(parts, { ...opts, include }).trimEnd() +
+      `\n\n当前说明只展开 ${focus}。处理其他阶段前用 flow_guide({"stage":"<阶段 ID>"}) 读取对应规则。阶段顺序：${available.join(' → ')}。\n`
+    );
   }
-  if (input.requireFocus) throw new Error('项目没有这个阶段。可用阶段：' + parts.flatMap(part => part.stage ? [part.stage] : []).join('、'));
+  if (input.requireFocus)
+    throw new Error(
+      '项目没有这个阶段。可用阶段：' + parts.flatMap((part) => (part.stage ? [part.stage] : [])).join('、'),
+    );
   return composeParts(parts, opts);
 }

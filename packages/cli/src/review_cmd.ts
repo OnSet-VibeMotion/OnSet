@@ -5,7 +5,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as determinism from '@onset/engine/determinism';
+import { atomicWrite } from '@onset/engine/fsutil';
 import { formatFixed } from '@onset/engine/gofmt';
+import { marshalIndent } from '@onset/engine/gojson';
 import * as mediaprobe from '@onset/engine/mediaprobe';
 import * as review from '@onset/engine/review';
 import * as scene from '@onset/engine/scene';
@@ -296,20 +298,58 @@ defineOp({
   run: (p, { out }) => {
     const dir = str(p.scene);
     const report = determinism.scan(dir);
-    if (str(p.report_json) !== '') determinism.writeJSON(report, str(p.report_json));
+    const contract = determinism.checkEngineContract(dir, { files: report.files });
+    const ok = report.ok && contract.ok;
+    if (str(p.report_json) !== '') {
+      if (contract.contract) {
+        const target = str(p.report_json);
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        const body = marshalIndent({
+          schema_version: report.schema_version,
+          ok,
+          entries: report.entries ?? null,
+          files: report.files ?? null,
+          findings: report.findings
+            ? report.findings.map(({ file, line, rule, message, snippet }) => ({ file, line, rule, message, snippet }))
+            : null,
+          ...(report.allowed?.length ? { allowed: report.allowed } : {}),
+          ...(report.skipped?.length ? { skipped: report.skipped } : {}),
+          ...(report.hints?.length ? { hints: report.hints } : {}),
+          engine_contract: contract,
+        });
+        atomicWrite(target, body + '\n', 0o644);
+      } else {
+        determinism.writeJSON(report, str(p.report_json));
+      }
+    }
     for (const hint of report.hints ?? []) out.write(`提示：${hint}\n`);
     for (const skipped of report.skipped ?? []) out.write(`按第三方库跳过：${skipped}\n`);
     for (const allowed of report.allowed ?? []) out.write(`已豁免：${determinism.findingString(allowed)}\n`);
-    if (!report.ok)
-      throw new Error(`合成源码存在确定性问题：${dir}\n  - ${determinism.problems(report).join('\n  - ')}`);
+    for (const warn of contract.warnings) out.write(`警告：${determinism.formatEngineContractIssue(warn)}\n`);
+    const detProblems = determinism.problems(report);
+    const contractProblems = contract.errors.map(determinism.formatEngineContractIssue);
+    if (!ok) {
+      const heading = !report.ok ? '合成源码存在确定性问题' : '合成源码未通过引擎契约校验';
+      throw new Error(`${heading}：${dir}\n  - ${[...detProblems, ...contractProblems].join('\n  - ')}`);
+    }
     out.write(`合成源码扫描通过：${report.files?.length ?? 0} 个文件\n`);
     return {
       data: {
-        ok: report.ok,
+        ok: true,
         files: report.files ?? [],
         allowed: (report.allowed ?? []).map((f) => determinism.findingString(f)),
         skipped: report.skipped ?? [],
         hints: report.hints ?? [],
+        ...(contract.contract
+          ? {
+              engine_contract: {
+                style_key: contract.style_key,
+                ok: contract.ok,
+                warnings: contract.warnings.map(determinism.formatEngineContractIssue),
+                deviations: contract.deviations,
+              },
+            }
+          : {}),
       },
     };
   },

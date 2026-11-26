@@ -4,8 +4,9 @@ import path from 'node:path';
 import { atomicWrite } from '../fsutil';
 import { goTrimSpace } from '../gofmt';
 import { marshalIndent } from '../gojson';
-import { seriesDir } from './store';
-import { ConfigFile, PublishTemplateFile } from './types';
+import { ConfigFile, PublishTemplateFile, type PublishTemplateInput, seriesDir } from './types';
+
+export type { PublishTemplateInput };
 
 /** 专栏级发布模板：固定标题规则、常用话题、简介脚标、系列封面规范与固定署名。 */
 export interface SeriesPublishTemplate {
@@ -16,14 +17,6 @@ export interface SeriesPublishTemplate {
   cover_guidelines?: string;
   credits_lines?: string[];
   updated_at: string;
-}
-
-export interface PublishTemplateInput {
-  title_pattern?: string;
-  default_hashtags?: string[];
-  description_footer?: string;
-  cover_guidelines?: string;
-  credits_lines?: string[];
 }
 
 function cleanStr(v: unknown): string | undefined {

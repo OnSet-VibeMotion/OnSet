@@ -18,6 +18,7 @@
   "scenes": [
     {"id": "scene-001", "dir": "scenes/scene-001", "chapter": "问题", "visual_role": "语境", "summary": "开场提出问题"},
     {"id": "scene-002", "dir": "scenes/scene-002", "chapter": "问题", "first_subtitle": 5, "visual_role": "机制",
+     "motion_effects": ["motion-prompt:007"],
      "handoff": {"device": "carry", "bridge": "左上角的计数器，宽 160、高 64，停在 42"}},
     {"id": "scene-003", "dir": "scenes/scene-003", "chapter": "机制", "first_phrase": "p-07", "cut": "mid_gap", "visual_role": "证据",
      "handoff": {"device": "push_in", "bridge": "画面被计数器的琥珀色表面铺满，中心一个直径 24 的深色圆点"}},
@@ -34,6 +35,13 @@
 - `chapter` 照抄 `treatment.md` 的章节名，要写就每个镜头都写；相邻镜头 `chapter` 不同即章节交界。
 - `handoff` 写在交界后面那个镜头上，说明从上一镜头怎么接进来；章节交界与风格交界必填，章节内有持续物件跨过交界时也写上。
 - `film_style` 只在镜头不用默认风格时写（见{{STAGE:intake}}「段落换风格」）；风格交界的 `handoff` 还要写 `style_shift`，风格相同的交界不能写。
+- `motion_effects` 可选，本镜头核心表达所需的标志性动效数组（支持简写如 `"005"` 或完整 `"来源:id"`，单镜最多 3 条）；由 `scene_cues()` 校验后写入 `scene.json`，渲染时片场自动展开动效配方并联动配套插件技能。
+
+### 镜头动效选型
+
+需要特定动态图形、运镜或画内转场手法时，在对应镜头写 `motion_effects`（单镜最多 3 条，守住「一拍一个焦点」，无需为每镜强行堆砌）。高频精选速查：
+
+{{MOTION_MENU}}
 
 ### 镜头交接
 

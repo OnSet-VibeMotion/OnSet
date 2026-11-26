@@ -19,12 +19,22 @@ import {
   type StationTurn,
   stationOfPath,
 } from './progress_compute';
-import { bareWords, type GateRecord, gateFilesFor, gateIDs, gatesPath, readGates, recordGate } from './progress_gates';
+import {
+  assertPilotGateUnlocked,
+  bareWords,
+  type GateRecord,
+  gateFilesFor,
+  gateIDs,
+  gatesPath,
+  readGates,
+  recordGate,
+} from './progress_gates';
 import { stationDefs } from './progress_judges';
 import { scheduleGateHandoff } from './sessions';
 import type { Server } from './studio';
 
 export {
+  assertPilotGateUnlocked,
   computeStations,
   gateIDs,
   gatesPath,
@@ -57,11 +67,11 @@ export function confirmGateFromChat(
     throw new Error('这一轮用户的话里没有「' + quote + '」：只有用户在对话里明确确认了，才能记下关卡');
   }
   const progress = readProgress(root);
-  const files = gateFilesFor();
+  const files = gateFilesFor(root);
   let id = gate.trim();
   if (id !== '') {
     if (!files[id] && files[`gate-${id}`]) id = `gate-${id}`;
-    if (!files[id]) throw new Error(`没有这个审核关卡：${id}（可选：${gateIDs().join('、')}）`);
+    if (!files[id]) throw new Error(`没有这个审核关卡：${id}（可选：${gateIDs(root).join('、')}）`);
   } else {
     const current = progress.stations.find((st) => st.id === progress.current);
     if (!current?.gate || !files[current.id]) throw new Error('路线上现在没有在等用户确认的关卡');
@@ -89,7 +99,9 @@ export function pageGate(root: string, page: string): PageGate | null {
   } catch {
     return null;
   }
-  const def = stationDefs(id, extras).find((d) => d.gate && d.page === page);
+  const def = stationDefs(id, extras, { pilotGate: flow.isPilotGateEnabled(root) }).find(
+    (d) => d.gate && d.page === page,
+  );
   if (!def) return null;
   return def.guide?.confirm ? { id: def.id, confirm: def.guide.confirm } : { id: def.id };
 }
@@ -114,14 +126,16 @@ export async function progressAPI(s: Server, request: Request, rest: string): Pr
   const match = /^gates\/([a-z-]+)$/.exec(rest);
   if (!match) return writeError(404, 'not_found', 'Studio API 路径不存在');
   if (request.method !== 'POST') return writeError(405, 'method_not_allowed', '只支持 POST');
-  if (!gateFilesFor()[match[1]]) return writeError(404, 'not_found', `没有这个审核关卡：${match[1]}`);
+  if (!gateFilesFor(root)[match[1]]) return writeError(404, 'not_found', `没有这个审核关卡：${match[1]}`);
   try {
     const record = recordGate(root, match[1]);
     const label =
-      flow
-        .allStations()
-        .flatMap((st) => st.nodes)
-        .find((n) => n.id === match[1])?.label ?? match[1];
+      (match[1] === flow.PilotGateID
+        ? flow.pilotGateNode.label
+        : flow
+            .allStations()
+            .flatMap((st) => st.nodes)
+            .find((n) => n.id === match[1])?.label) ?? match[1];
     scheduleGateHandoff(s, root, match[1], label);
     emitStudioEvent(s, s.currentProject(), 'gate.confirmed', { gate: match[1] });
     return writeJSON(200, record);

@@ -20,10 +20,20 @@
 import os from 'node:os';
 import path from 'node:path';
 import { dataDir } from '../envutil';
-import { compareBytes } from '../gojson';
 import { goQuote, goTrimSpace } from '../gofmt';
+import { compareBytes } from '../gojson';
 import type { Writer } from '../hyperframes';
 import { pluginFilmStyleSources } from '../plugin/registry';
+
+/** 风格声明的渲染引擎类型。 */
+export type EngineKind = 'threejs' | 'webgl2' | 'canvas2d';
+
+/** 风格对渲染引擎的声明式契约（可选；老风格不写，渲染门禁 0 影响）。 */
+export interface EngineContract {
+  required: EngineKind[];
+  severity: 'error' | 'warn';
+  note?: string;
+}
 
 /** 某个来源风格目录里的一种风格。字段名照抄 Go 的 JSON tag。 */
 export interface Style {
@@ -41,6 +51,10 @@ export interface Style {
   summary: string;
   /** 附加标记，例如 three.js（omitempty）。 */
   tags?: string[];
+  /** 推荐搭配的内置动效标识（可选，与 motion-prompt 目录贯通）。 */
+  motion_effects?: string[];
+  /** 渲染引擎契约（可选；未声明的老风格不触发引擎门禁）。 */
+  engine_contract?: EngineContract;
 }
 
 /** 全局唯一的风格标识：<来源>/<目录名>（Go 的 Style.Key）。 */
@@ -116,7 +130,8 @@ export function usePluginSources(load: () => Source[]): void {
 export function sources(): Source[] {
   const extra = pluginSources();
   for (const source of extra) {
-    if (!source.id().startsWith(PluginSourcePrefix)) throw new Error('filmstyle: 插件来源的 ID 要以 x- 开头：' + source.id());
+    if (!source.id().startsWith(PluginSourcePrefix))
+      throw new Error('filmstyle: 插件来源的 ID 要以 x- 开头：' + source.id());
   }
   const all = [...pluginFilmStyleSources().map((o) => o.value), ...extra];
   const seen = new Set<string>();
@@ -187,7 +202,11 @@ export function suggest(name: string): Style[] {
   if (key === '') return [];
   const out: Style[] = [];
   for (const style of catalog()) {
-    if (styleKey(style).toLowerCase().includes(key) || style.en.toLowerCase().includes(key) || style.cn.includes(trimmed)) {
+    if (
+      styleKey(style).toLowerCase().includes(key) ||
+      style.en.toLowerCase().includes(key) ||
+      style.cn.includes(trimmed)
+    ) {
       out.push(style);
     }
   }

@@ -19,6 +19,8 @@ export interface SceneFilmInput {
   timing: Pick<Timing, 'enter' | 'exit'> | null;
   /** 点名的第三方插件技能（scene.json 的 plugin_skills）。 */
   plugin_skills?: string[];
+  /** 点名的动效标识（scene.json 的 motion_effects），命中的第三方插件动效自动联动其 renderer_skill。 */
+  motion_effects?: string[];
 }
 
 /**

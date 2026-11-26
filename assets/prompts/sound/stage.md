@@ -10,6 +10,7 @@
 - 只使用授权明确且来源可追溯的素材。
 - 下载前记录作品页、作者、素材 ID、授权页面和是否存在额外限制。
 - 保存原始下载文件和解码后的工作文件，并计算 SHA-256。
+- 缺基础质感或常用转场音效时，可用 `assets_generate_base()` 一键生成零版权基础质感（暖纸/颗粒/网格）与基础转场音效（`whoosh`/`impact`），也可用 `sfx_search({"query": "<关键词>"})`、`sfx_download({"sound_id": <ID>})` 检索并下载音效，参考返回的防削波安全增益 `safe_gain_db`；混音时 `audio_mix()` 会自动做单轨真峰值夹取与末端 `alimiter` 砖墙限幅。
 
 在 `production/audio/asset-ledger.json` 中记录：
 

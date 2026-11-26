@@ -4,6 +4,7 @@ export interface SeriesDefaults {
   narration?: string;
   film_style?: string;
   extra_film_styles?: string[];
+  motion_effects?: string[];
   tts_voice?: string;
   brand_kit_id?: string;
   orchestrator?: string;
@@ -21,9 +22,44 @@ export interface SeriesItem {
   next_episode: number;
   defaults: SeriesDefaults;
   brief: string;
+  publish_template?: SeriesPublishTemplate;
   project_count: number;
   created_at: string;
   updated_at: string;
+}
+
+export type SeriesAssistMode = 'draft' | 'refine' | 'polish_brief';
+
+export interface SeriesPublishTemplateDraft {
+  title_pattern?: string;
+  default_hashtags?: string[];
+  description_footer?: string;
+  cover_guidelines?: string;
+  credits_lines?: string[];
+}
+
+export interface SeriesAssistDraft {
+  name?: string;
+  description?: string;
+  naming_pattern?: string;
+  defaults?: SeriesDefaults;
+  brief?: string;
+  publish_template?: SeriesPublishTemplateDraft;
+}
+
+export interface SeriesAssistResponse {
+  mode: SeriesAssistMode;
+  name?: string;
+  description?: string;
+  naming_pattern?: string;
+  defaults: SeriesDefaults;
+  brief: string;
+  publish_template?: SeriesPublishTemplateDraft;
+  rationale: string;
+  followups: string[];
+  warnings: string[];
+  tool?: string;
+  model?: string;
 }
 
 export interface SeriesListResponse {

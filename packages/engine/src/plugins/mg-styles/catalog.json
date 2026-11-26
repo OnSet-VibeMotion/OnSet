@@ -1,0 +1,603 @@
+{
+  "source": "mg-styles",
+  "license": "MIT",
+  "upstream": "Vincentwei1021/mg-styles-15",
+  "version": "mg-styles-15@mit-1.0",
+  "styles": [
+    {
+      "slug": "01-flat-vector",
+      "order": "01",
+      "cn": "几何扁平矢量",
+      "en": "MG Flat Vector",
+      "category_cn": "现代动态图形",
+      "category_en": "Modern MG",
+      "uses": ["商业解说", "产品介绍", "科普动画"],
+      "summary": "干净几何色块与弹性缓动构成的现代矢量 MG，高对比色板与干脆的图形切页节奏。",
+      "tags": ["canvas2d", "mit"],
+      "engine_contract": {
+        "required": ["canvas2d"],
+        "severity": "warn",
+        "note": "推荐使用 Canvas2D 逐帧绘制几何矢量图形与弹性路径；避免退化为纯静态 DOM 卡片拼贴。"
+      },
+      "motion_effects": ["motion-prompt:001", "motion-prompt:002", "motion-prompt:018"],
+      "palette": {
+        "bg": "#F7F5EE",
+        "surface": "#FFFFFF",
+        "primary": "#1E5EFF",
+        "secondary": "#FF5C35",
+        "accent": "#FFC82C",
+        "ink": "#141824"
+      },
+      "typography": "几何无衬线粗体（如思源黑体 Bold / Inter ExtraBold），标题紧凑、数字等宽对齐，字号阶梯明确（3:1 主副比）。",
+      "composition": "三分法 + 12 栅格居中留白 ≥ 30%；每拍只放一个主视觉几何复合体，辅以 1–2 个节奏锚点。",
+      "texture": "纯平高饱和矢量面、零模糊阴影、允许 4px–8px 硬边偏移投影与微弱 2% 纸面颗粒。",
+      "motion_grammar": "Overshoot 弹性入场（0.32s–0.45s）+ 60ms 级联交错，动作干脆停稳，杜绝匀速漂浮。",
+      "recipes": {
+        "transition": "几何图形满屏覆盖擦除（圆扩 / 对角斜切块），0.35s 干净交接。",
+        "impact": "主元素落位瞬间伴随 3–5 条短放射爆发线 + 1.06→1.00 弹性微回弹。",
+        "camera": "轻量 2D 推拉与 4° 内快切偏转，镜头稳定不眩晕。",
+        "grain": "低频微纸纹（不透明度 0.03），保持边缘锐利。",
+        "secondary": "外围小几何徽章延迟 2–3 帧跟动（follow-through）与周期性微脉冲。"
+      },
+      "taboos": ["禁止使用柔和渐变投影或拟物高光", "禁止整屏元素同时淡入淡出", "禁止超过 4 种主色同时抢焦点"]
+    },
+    {
+      "slug": "02-line-art",
+      "order": "02",
+      "cn": "极简动态线稿",
+      "en": "MG Line Art",
+      "category_cn": "现代动态图形",
+      "category_en": "Modern MG",
+      "uses": ["思维导图", "原理拆解", "技术科普"],
+      "summary": "单色与点缀色双线宽矢量线稿，沿路径实时生长描绘，适合逻辑链与机制拆解。",
+      "tags": ["canvas2d", "mit"],
+      "engine_contract": {
+        "required": ["canvas2d"],
+        "severity": "warn",
+        "note": "推荐使用 Canvas2D 逐帧描边与路径修剪（trim path）控制笔锋生长。"
+      },
+      "motion_effects": ["motion-prompt:004", "motion-prompt:005", "motion-prompt:126"],
+      "palette": {
+        "bg": "#FAF9F5",
+        "surface": "#F0EDE4",
+        "primary": "#181A1F",
+        "secondary": "#2B6CB0",
+        "accent": "#E53E3E",
+        "ink": "#111317"
+      },
+      "typography": "纤细几何黑体配等宽编号字体（JetBrains Mono / 思源黑体 Medium），注解用引导线相连。",
+      "composition": "工程白板式大留白（≥ 40%），主图形沿视觉动线从左到右或自上而下展开。",
+      "texture": "恒定 2.5px 主轮廓 + 1.2px 辅助虚线，圆头端帽（lineCap: round），局部用单色斜线阴影填充。",
+      "motion_grammar": "Trim-path 描绘驱动叙事，先画骨架再补标注，节点到位时点亮高亮色。",
+      "recipes": {
+        "transition": "主轮廓线拉直成水平/垂直分割线，反向扫出下一镜线稿骨架。",
+        "impact": "关键节点处画双圈涟漪或荧光红下划线快速勾勒（0.18s）。",
+        "camera": "沿线稿生长前沿平稳跟拍（pan + 轻微 zoom 1.0→1.08）。",
+        "grain": "极浅网格点阵底纹（间距 32px，alpha 0.08），无重噪点。",
+        "secondary": "箭头尾羽、虚线流动偏置（lineDashOffset）持续驱动方向感。"
+      },
+      "taboos": ["禁止大面积重色块吞没线条层次", "禁止线宽杂乱无规范", "禁止无因果关系的随机飘动"]
+    },
+    {
+      "slug": "03-isometric",
+      "order": "03",
+      "cn": "等轴三维积木",
+      "en": "MG Isometric 3D",
+      "category_cn": "三维空间",
+      "category_en": "3D Spatial",
+      "uses": ["系统架构", "城市与物流", "商业模型"],
+      "summary": "正交等轴投影下的 Three.js 真实 3D 模块舞台，三面受光分明、支持层叠拆解与环绕运镜。",
+      "tags": ["three.js", "3d", "mit"],
+      "engine_contract": {
+        "required": ["threejs"],
+        "severity": "error",
+        "note": "必须使用 Three.js 真 3D 场景与正交/低 FOV 相机渲染；严禁用 CSS preserve-3d / perspective / rotateX / rotateY 伪造等轴 3D。"
+      },
+      "motion_effects": ["motion-prompt:030", "motion-prompt:143", "motion-prompt:016"],
+      "palette": {
+        "bg": "#0F172A",
+        "surface": "#1E293B",
+        "primary": "#38BDF8",
+        "secondary": "#818CF8",
+        "accent": "#F59E0B",
+        "ink": "#F8FAFC"
+      },
+      "typography": "现代无衬线粗体，3D 平台旁配干净平面 HUD 标牌，禁止扭曲透视文字导致不可读。",
+      "composition": "标准等轴视角（方位 45°、俯角 35.264°），主建筑/模块居画幅黄金分割点，四周留出视差纵深。",
+      "texture": "真实三点布光（主暖光 + 冷补光 + 轮廓光）、哑光 PBR 积木材质（roughness 0.55）与清晰接触阴影。",
+      "motion_grammar": "模块沿 Y 轴分层降落弹跳（stagger 80ms），拆解时沿法线爆炸展开再收拢。",
+      "recipes": {
+        "transition": "底板整体翻转 90° 或沿等轴网格滑入新区块，相机同步微幅横移。",
+        "impact": "核心模块落地触发底板 1.5% 下沉回弹 + 接触光环扩散。",
+        "camera": "OrthographicCamera 配合 12°–25° 舒缓环绕或分层俯冲。",
+        "grain": "极轻暗角 + 0.02 胶片颗粒抑制色带，保持 3D 棱边干净。",
+        "secondary": "连接管道上的数据光点匀速流动，悬浮子组件轻微正弦呼吸。"
+      },
+      "taboos": [
+        "严禁用 CSS rotateX/rotateY/preserve-3d 假装等轴 3D",
+        "禁止三面亮度相同失去立体体块感",
+        "禁止过度复杂模型导致遮挡主文案"
+      ]
+    },
+    {
+      "slug": "05-cel-boil",
+      "order": "05",
+      "cn": "赛璐珞抖动线条",
+      "en": "MG Cel Boil",
+      "category_cn": "手绘与质感",
+      "category_en": "Tactile & Cel",
+      "uses": ["趣味故事", "观点吐槽", "生活叙事"],
+      "summary": "8fps–12fps 拍二抽帧与手绘抖动线（line boil），搭配硬边赛璐珞二分阴影，生动有生命力。",
+      "tags": ["canvas2d", "hand-drawn", "mit"],
+      "engine_contract": {
+        "required": ["canvas2d"],
+        "severity": "warn",
+        "note": "推荐使用 Canvas2D 逐帧重绘抖动轮廓（基于确定性种子的周期位移）实现真实 line boil。"
+      },
+      "motion_effects": ["motion-prompt:136", "motion-prompt:128", "motion-prompt:011"],
+      "palette": {
+        "bg": "#FFF6E5",
+        "surface": "#FFE8C2",
+        "primary": "#E84A5F",
+        "secondary": "#2A9D8F",
+        "accent": "#F4A261",
+        "ink": "#231F20"
+      },
+      "typography": "粗圆手写体或厚重圆体，字轮廓同样带轻微 3 帧循环抖动，气泡框清晰包覆。",
+      "composition": "漫画分格或大中心主体构图，背景用简练手绘涂鸦元素衬托，不抢主体。",
+      "texture": "粗细微变炭墨轮廓（3.5px–5px）、手绘不完美闭合与硬边单层色块阴影，叠 4% 水彩纸肌理。",
+      "motion_grammar": "动作按 12fps（on twos）步进，含清晰预备动作（anticipation）与挤压拉伸（squash & stretch）。",
+      "recipes": {
+        "transition": "手绘涂抹笔刷斜向刷满全屏（4–5 帧粗旷笔触）切入下一镜。",
+        "impact": "撞击瞬间 2 帧撞击闪白 + 手绘放射惊叹线与夸张形变。",
+        "camera": "手绘分镜式硬切与小幅阶梯缩放，避免过于光滑的电子缓动。",
+        "grain": "固定周期（每 3 帧切换一次）的纸纹与抖动位移，确保完全确定性。",
+        "secondary": "静止物体每 3 帧触发 1.2px 确定性边缘抖动（line boil），画面永不僵死。"
+      },
+      "taboos": [
+        "禁止使用 Math.random() 做抖动（必须用帧号驱动的确定性伪随机）",
+        "禁止混入冰冷科技感线性渐变",
+        "禁止 60fps 丝滑直线移动破坏手绘拍二节奏"
+      ]
+    },
+    {
+      "slug": "06-collage",
+      "order": "06",
+      "cn": "杂志拼贴定格",
+      "en": "MG Magazine Collage",
+      "category_cn": "手绘与质感",
+      "category_en": "Tactile & Cel",
+      "uses": ["文化评论", "历史叙事", "潮流选题"],
+      "summary": "撕纸毛边、半调网点与胶带贴纸组合的定格杂志拼贴，10fps 阶梯位移带来手工剪报质感。",
+      "tags": ["canvas2d", "collage", "mit"],
+      "engine_contract": {
+        "required": ["canvas2d"],
+        "severity": "warn",
+        "note": "推荐使用 Canvas2D 程序化绘制锯齿撕纸遮罩、半调网点与定格层次阴影。"
+      },
+      "motion_effects": ["motion-prompt:128", "motion-prompt:140", "motion-prompt:021"],
+      "palette": {
+        "bg": "#EAE2D3",
+        "surface": "#D9CEBA",
+        "primary": "#C83E2B",
+        "secondary": "#1D4E89",
+        "accent": "#E8B931",
+        "ink": "#1C1A17"
+      },
+      "typography": "衬线大标题与粗黑剪报字混排，允许局部反白纸条底衬，字块带 ±2°–5° 自然倾斜。",
+      "composition": "层叠剪贴簿布局：底层报纸网点、中层撕边主图卡片、顶层胶带与手写红圈批注。",
+      "texture": "白色撕纸锯齿边缘（6px–10px）、半透明美纹纸胶带、纸张折痕与 6px 柔和投影。",
+      "motion_grammar": "8–12fps 定格阶梯动作：卡片啪嗒拍下、折纸翻转展开、红笔圈注一气呵成。",
+      "recipes": {
+        "transition": "整页撕纸卷起翻页或新剪报从边缘分 4 步拍入覆盖旧画面。",
+        "impact": "关键论点贴上红色印章或荧光胶带，伴随 2 帧微震。",
+        "camera": "桌面俯拍视角，分档微调缩放与角度（±3°）。",
+        "grain": "印刷纸纤维噪点 + 局部 45° 半调网点底纹。",
+        "secondary": "贴纸边角周期性微翘、回形针与邮戳元素逐拍入场。"
+      },
+      "taboos": ["禁止规整无毛边的普通圆角矩形卡片", "禁止过度堆叠导致字幕与主信息无法辨认", "禁止使用赛博霓虹发光元素"]
+    },
+    {
+      "slug": "07-liquid",
+      "order": "07",
+      "cn": "液态流体着色器",
+      "en": "MG Liquid Shader",
+      "category_cn": "着色器与光效",
+      "category_en": "WebGL Shader",
+      "uses": ["品牌概念", "音乐情绪", "前沿科技"],
+      "summary": "基于 WebGL2 片元着色器的 SDF 融球（metaball）与域扭曲流体，流动融合顺滑且具液态折射高光。",
+      "tags": ["webgl2", "shader", "mit"],
+      "engine_contract": {
+        "required": ["webgl2"],
+        "severity": "error",
+        "note": "必须使用真实 WebGL2 / WebGL GLSL 着色器渲染液态 SDF/流体场；严禁用纯 CSS filter: blur + contrast 或 backdrop-filter 冒充流体着色器。"
+      },
+      "motion_effects": ["motion-prompt:013", "motion-prompt:019", "motion-prompt:012"],
+      "palette": {
+        "bg": "#090B14",
+        "surface": "#12182B",
+        "primary": "#00E5FF",
+        "secondary": "#7B2CBF",
+        "accent": "#FF2E93",
+        "ink": "#F4F7FF"
+      },
+      "typography": "极简宽字距无衬线体（高反差纯白/深墨），与液态边缘形成刚柔对比。",
+      "composition": "中央有机流体雕塑占据 45%–60% 视觉重量，文字锚定在低扰动暗区确保清晰可读。",
+      "texture": "GLSL smoothMin 融球、法线估算菲涅尔高光、彩虹薄膜干涉边缘与细腻液体折射。",
+      "motion_grammar": "全部演化由时间 uniform `u_time` 确定性驱动，先粘连拉伸再丝滑合并。",
+      "recipes": {
+        "transition": "液态波浪由底向上涌满视口，回落时融出下一镜主体形状。",
+        "impact": "重拍时刻在流体场注入径向涟漪波函数，触发表面高光闪耀。",
+        "camera": "着色器内 UV 空间缓慢呼吸缩放与 5° 微旋。",
+        "grain": "着色器尾部加 0.015 蓝噪声抖动消除暗部色阶断层。",
+        "secondary": "周边悬浮微液滴沿轨道公转并在靠近主体时自动桥接融合。"
+      },
+      "taboos": [
+        "严禁用 CSS blur/backdrop-filter 叠 DOM 假装 WebGL 流体",
+        "禁止片元着色器依赖非确定性状态或外部时间",
+        "禁止文字淹没在高亮流动色带中降低对比度"
+      ]
+    },
+    {
+      "slug": "08-morph",
+      "order": "08",
+      "cn": "几何形态形变",
+      "en": "MG Shape Morph",
+      "category_cn": "现代动态图形",
+      "category_en": "Modern MG",
+      "uses": ["概念演变", "对比转折", "品牌叙事"],
+      "summary": "同一视觉主体在圆、方、符号与图标之间无缝贝塞尔拓扑形变，一镜到底式逻辑流转。",
+      "tags": ["canvas2d", "morph", "mit"],
+      "engine_contract": {
+        "required": ["canvas2d"],
+        "severity": "warn",
+        "note": "推荐使用 Canvas2D 统一控制点数的闭合贝塞尔路径插值实现平滑形变。"
+      },
+      "motion_effects": ["motion-prompt:012", "motion-prompt:010", "motion-prompt:042"],
+      "palette": {
+        "bg": "#111318",
+        "surface": "#1C2029",
+        "primary": "#4ADE80",
+        "secondary": "#60A5FA",
+        "accent": "#FB7185",
+        "ink": "#F9FAFB"
+      },
+      "typography": "现代无衬线中粗体，随形态切换同步做字重/色相呼应，保持基线稳定。",
+      "composition": "绝对中心对称舞台，让观众视线锁定中央单一连续形变体，减少周边干扰。",
+      "texture": "丝滑纯色矢量面 + 2px 内部高光描边，形变过程色彩沿 Lab/HSL 柔和过渡。",
+      "motion_grammar": "Cubic-bezier 急加急减（expoInOut / backOut），每次变形 0.45s–0.65s，随后留 0.4s 阅读停顿。",
+      "recipes": {
+        "transition": "主体缩成焦点圆点再瞬间绽放成下一镜的新轮廓（无缝匹配剪辑）。",
+        "impact": "形态定型瞬间伴随 8% 过冲回弹与外圈细环脉冲扩散。",
+        "camera": "随主体膨胀与收缩联动 ±6% 呼吸变焦。",
+        "grain": "极轻 0.02 细粒与柔和中心径向微光晕。",
+        "secondary": "形变拖影（2 帧低透明度残影）与伴随点状卫星重排。"
+      },
+      "taboos": [
+        "禁止直接用 opacity 淡入淡出冒充形状形变",
+        "禁止控制点错位导致路径拧麻花",
+        "禁止同一时刻多个无关物体各自形变分散视线"
+      ]
+    },
+    {
+      "slug": "09-bauhaus",
+      "order": "09",
+      "cn": "包豪斯印刷构成",
+      "en": "MG Bauhaus Print",
+      "category_cn": "现代动态图形",
+      "category_en": "Modern MG",
+      "uses": ["设计美学", "商业方法论", "议题拆解"],
+      "summary": "红黄蓝三原色与黑米纸底的现代主义印刷海报，强几何栅格、正片叠底套印与机械节奏。",
+      "tags": ["canvas2d", "editorial", "mit"],
+      "engine_contract": {
+        "required": ["canvas2d"],
+        "severity": "warn",
+        "note": "推荐使用 Canvas2D 的 multiply 套印混合模式与精确几何网格绘制印刷层次。"
+      },
+      "motion_effects": ["motion-prompt:008", "motion-prompt:018", "motion-prompt:144"],
+      "palette": {
+        "bg": "#F2ECE1",
+        "surface": "#E5DDD0",
+        "primary": "#D62828",
+        "secondary": "#1D4ED8",
+        "accent": "#F4B400",
+        "ink": "#141413"
+      },
+      "typography": "极粗无衬线大标题与垂直/45° 旋转编号并置，网格线贯穿版面建立秩序。",
+      "composition": "非对称黄金网格分屏：1px 黑色结构分割线把画布切分为 2–4 个功能区块。",
+      "texture": "圆、三角、矩形基础母题 + `globalCompositeOperation = 'multiply'` 叠印色差 + 3% 印刷油墨颗粒。",
+      "motion_grammar": "机械精准滑入、90° 步进旋转与分屏门扉式开合，干净利落零拖泥带水。",
+      "recipes": {
+        "transition": "三原色几何条带沿网格线分 3 拍擦除换页。",
+        "impact": "黑色粗网格线交叉锁定时触发色块反向撞色闪切（1 帧）。",
+        "camera": "平面印刷海报视角，仅做严格正交平移与整倍比例切镜。",
+        "grain": "温润哑光纸张肌理 + 轻微套印 1.5px 错版边缘。",
+        "secondary": "小圆点与弧形扇面按节拍做 90° 钟表式步进转动。"
+      },
+      "taboos": ["禁止使用渐变光晕或 3D 玻璃拟态", "禁止破坏红黄蓝黑米白五色纪律", "禁止圆润软萌的卡通缓动"]
+    },
+    {
+      "slug": "10-synthwave",
+      "order": "10",
+      "cn": "复古霓虹合成波",
+      "en": "MG Synthwave 3D",
+      "category_cn": "三维空间",
+      "category_en": "3D Spatial",
+      "uses": ["科技回顾", "游戏音乐", "赛博叙事"],
+      "summary": "Three.js 真 3D 透视发光网格、条纹落日与线框山脉，高速推进感与复古辉光色散。",
+      "tags": ["three.js", "3d", "retro", "mit"],
+      "engine_contract": {
+        "required": ["threejs"],
+        "severity": "error",
+        "note": "必须使用 Three.js 真 3D PerspectiveCamera、透视网格地形与 3D 几何体渲染；严禁用 CSS perspective / rotateX 平面贴图伪装 3D 公路网格。"
+      },
+      "motion_effects": ["motion-prompt:027", "motion-prompt:022", "motion-prompt:014"],
+      "palette": {
+        "bg": "#0B061A",
+        "surface": "#1A0B3B",
+        "primary": "#FF2A85",
+        "secondary": "#00F0FF",
+        "accent": "#FFB800",
+        "ink": "#FFFFFF"
+      },
+      "typography": "斜体金属感粗黑体与宽距霓虹描边副标，保持核心字幕高对比纯白无模糊。",
+      "composition": "强单点透视地平线（位于画面下 38% 处），两侧对称低多边形线框山脉引导视线直冲落日。",
+      "texture": "自发光霓虹线框、水平切片落日圆盘、地平线雾效（THREE.FogExp2）与轻度扫描线辉光。",
+      "motion_grammar": "相机沿 -Z 轴持续前推，网格按确定性时间取模无缝循环，重拍处触发光带扫屏。",
+      "recipes": {
+        "transition": "相机高速加速穿越霓虹门框并伴随水平色散闪切。",
+        "impact": "地平线光脉冲向外扩散 + 网格高度随节拍瞬间抬升 12%。",
+        "camera": "PerspectiveCamera（FOV 55°）低机位前推 + ±2° 轻量滚转。",
+        "grain": "2px 复古扫描线（alpha 0.08）+ 边缘轻度色差。",
+        "secondary": "空中悬浮发光菱形与星空粒子沿 Z 轴迎面掠过。"
+      },
+      "taboos": [
+        "严禁用 CSS rotateX 假透视网格替代 Three.js 场景",
+        "禁止高饱和霓虹互相叠字导致字幕发糊",
+        "禁止地面网格滚动出现明显跳帧断层"
+      ]
+    },
+    {
+      "slug": "12-aurora-glass",
+      "order": "12",
+      "cn": "极光毛玻璃着色器",
+      "en": "MG Aurora Glass",
+      "category_cn": "着色器与光效",
+      "category_en": "WebGL Shader",
+      "uses": ["高端发布", "AI 与软件", "年度总结"],
+      "summary": "WebGL2 噪声极光流光场叠加折射磨砂玻璃层，呈现克制优雅的高级科技发布质感。",
+      "tags": ["webgl2", "shader", "glass", "mit"],
+      "engine_contract": {
+        "required": ["webgl2"],
+        "severity": "error",
+        "note": "必须使用真实 WebGL2 / WebGL 片元着色器渲染流动极光场与折射/模糊采样；严禁用纯 CSS backdrop-filter / filter: blur 叠 div 伪装。"
+      },
+      "motion_effects": ["motion-prompt:022", "motion-prompt:016", "motion-prompt:033"],
+      "palette": {
+        "bg": "#060913",
+        "surface": "#111A2E",
+        "primary": "#38BDF8",
+        "secondary": "#A855F7",
+        "accent": "#34D399",
+        "ink": "#F8FAFC"
+      },
+      "typography": "精致纤细至中粗无衬线体（大字轻盈、数据清晰），字间距舒展，层级克制。",
+      "composition": "大尺度流动极光绸带做深景，前景 1–2 块半透明折射玻璃面板承载核心指标与论点。",
+      "texture": "GLSL Simplex/FBM 丝绸极光、菲涅尔细高光边框（1px）、多阶折射散射与极细微噪点。",
+      "motion_grammar": "丝绸般缓慢流动与顺滑减速阻尼（quartOut），扫光与焦点切换柔和有呼吸感。",
+      "recipes": {
+        "transition": "极光光幕横向掠过全屏并同步切换玻璃卡片景深焦点。",
+        "impact": "45° 高光扫光带（0.45s）滑过玻璃棱边并轻度提亮极光饱和度。",
+        "camera": "微距缓慢推进 + 前后景玻璃层 1:0.45 视差错动。",
+        "grain": "片元内 0.02 细粒抖动防止暗部极光产生 8-bit 色带。",
+        "secondary": "远景散景光斑（bokeh）与玻璃边缘反射光随视角缓慢游走。"
+      },
+      "taboos": [
+        "严禁用纯 CSS backdrop-filter + linear-gradient 伪装 WebGL2 极光玻璃",
+        "禁止玻璃面板超过 3 块挤爆画布",
+        "禁止刺眼高频闪烁破坏高级克制氛围"
+      ]
+    },
+    {
+      "slug": "18-hanazi",
+      "order": "18",
+      "cn": "汉字动力学排版",
+      "en": "MG Hanzi Kinetic",
+      "category_cn": "东方与排版",
+      "category_en": "Eastern & Kinetic",
+      "uses": ["金句宣讲", "国潮品牌", "观点爆发"],
+      "summary": "以超大尺度汉字笔画、横竖混排与印章红为核心视觉主体的高张力动态排版风格。",
+      "tags": ["canvas2d", "typography", "cjk", "mit"],
+      "engine_contract": {
+        "required": ["canvas2d"],
+        "severity": "warn",
+        "note": "推荐使用 Canvas2D 逐帧控制超大汉字剪切遮罩、笔画拆解与冲击震动。"
+      },
+      "motion_effects": ["motion-prompt:008", "motion-prompt:024", "motion-prompt:133"],
+      "palette": {
+        "bg": "#0E0E10",
+        "surface": "#1B1B1F",
+        "primary": "#F5F2EB",
+        "secondary": "#C82829",
+        "accent": "#D4AF37",
+        "ink": "#FFFFFF"
+      },
+      "typography": "特粗宋体/黑体超大主字（单字可占画面 40% 宽）配竖排小号注释与朱红方印。",
+      "composition": "强烈大小反差与横竖交错布局，大字充当结构骨架甚至背景遮罩窗口，留白张弛有度。",
+      "texture": "高反差宣纸白/玄墨黑、朱砂印章、微弱拓印飞白肌理与锐利几何标线。",
+      "motion_grammar": "紧扣口播重音拍点：重字锤击落位 + 短停顿，副字沿竖线滑出对齐。",
+      "recipes": {
+        "transition": "超大汉字笔画放大铺满画布并镂空透出下一镜（文字遮罩转场）。",
+        "impact": "关键主字砸落触发 4px 衰减冲击震动 + 朱红印章盖下。",
+        "camera": "紧跟关键词节拍快推（1.0→1.12）与稳态锁定。",
+        "grain": "2.5% 宣纸/拓印微颗粒，保持字体边缘刀刻般犀利。",
+        "secondary": "角落竖排批注逐字滑入，标线与印章光晕随重音微闪。"
+      },
+      "taboos": [
+        "禁止把整段长文塞进动态排版失去视觉主字",
+        "禁止中英文字体混用导致基线失衡",
+        "禁止无重音区分的平铺直叙滚动"
+      ]
+    },
+    {
+      "slug": "19-paperclip",
+      "order": "19",
+      "cn": "多层剪纸浮雕",
+      "en": "MG Layered Papercut",
+      "category_cn": "手绘与质感",
+      "category_en": "Tactile & Cel",
+      "uses": ["节日故事", "自然科普", "温情叙事"],
+      "summary": "5–7 层彩色卡纸叠加的深度剪纸剧场，层间软投影与视差平移营造立体光箱纵深。",
+      "tags": ["canvas2d", "papercut", "mit"],
+      "engine_contract": {
+        "required": ["canvas2d"],
+        "severity": "warn",
+        "note": "推荐使用 Canvas2D 分层裁切路径、定向偏移阴影与视差栈绘制多深度纸层。"
+      },
+      "motion_effects": ["motion-prompt:016", "motion-prompt:017", "motion-prompt:140"],
+      "palette": {
+        "bg": "#FFF8EE",
+        "surface": "#F7E7CE",
+        "primary": "#D95D39",
+        "secondary": "#2E6F6D",
+        "accent": "#F0A202",
+        "ink": "#2B2420"
+      },
+      "typography": "温润人文衬线或圆黑体，文字以纸片切字或压印感嵌入中景纸层。",
+      "composition": "舞台拱门式前景框 + 3–4 层阶梯中景山峦/建筑剪影 + 温暖背光远景。",
+      "texture": "每层 1px 亮白切纸受光棱边 + 柔和多层偏移阴影（shadowBlur 12–24）+ 细密卡纸纤维纹。",
+      "motion_grammar": "前景快、远景慢的深度视差（比例 1.0 / 0.65 / 0.35 / 0.15），纸层像舞台布景般滑入翻折。",
+      "recipes": {
+        "transition": "中央剪纸拱门/窗格逐层扩大揭开下一幕场景（遮罩转场）。",
+        "impact": "纸层到位时轻度弹性摆动（±2° 阻尼回正）像卡片插槽卡紧。",
+        "camera": "沿层深方向缓慢穿行，强化立体纸雕景深感。",
+        "grain": "统一 4% 手工特种纸纹路，高光处透出暖色背光。",
+        "secondary": "悬吊纸云、纸鸟与枝叶按低频正弦轻摆，层次投影同步偏移。"
+      },
+      "taboos": [
+        "禁止各层阴影方向不一致破坏真实光箱逻辑",
+        "禁止纯黑无层次死影",
+        "禁止细碎线条过多丧失剪纸大块面剪影美感"
+      ]
+    },
+    {
+      "slug": "20-pixel",
+      "order": "20",
+      "cn": "像素显像管着色器",
+      "en": "MG Pixel CRT",
+      "category_cn": "着色器与光效",
+      "category_en": "WebGL Shader",
+      "uses": ["游戏盘点", "极客科普", "复古数码"],
+      "summary": "WebGL2 像素化采样与 CRT 显像管后处理着色器（桶形畸变、磷光扫描线、RGB 亚像素色散）。",
+      "tags": ["webgl2", "shader", "pixel", "mit"],
+      "engine_contract": {
+        "required": ["webgl2"],
+        "severity": "error",
+        "note": "必须使用真实 WebGL2 / WebGL 着色器实现像素网格量化与 CRT 曲面/扫描线/色散后处理；严禁用纯 CSS filter/repeating-linear-gradient 假装 CRT 着色器。"
+      },
+      "motion_effects": ["motion-prompt:141", "motion-prompt:023", "motion-prompt:006"],
+      "palette": {
+        "bg": "#0B0F1A",
+        "surface": "#162038",
+        "primary": "#39FF14",
+        "secondary": "#00D9FF",
+        "accent": "#FF3864",
+        "ink": "#E8F5FF"
+      },
+      "typography": "等宽像素风或硬朗方块字体，在 CRT 着色器里保证可读像素高度（主标题 ≥ 32px 等效）。",
+      "composition": "经典街机/终端 4:3 或 16:9 显像框内嵌于画布，顶部状态栏 + 中央像素舞台 + 底部对话条。",
+      "texture": "GLSL 最近邻像素网格、3%–6% 桶形曲率、水平扫描线、轻微 RGB 通道水平错位与四角暗角。",
+      "motion_grammar": "整数像素步进移动、打字机字符跳出与短促 3 帧信号故障切换。",
+      "recipes": {
+        "transition": "像素块尺寸动态放大再收敛（像素化转场）或 CRT 水平关机亮线闪切。",
+        "impact": "触发 0.15s RGB 色散错位与水平同步抖动（glitch）。",
+        "camera": "固定显像管机位，主体在低分辨率逻辑画布内按像素网格平推。",
+        "grain": "着色器驱动的扫描线与微弱荧光余晖（phosphor glow）。",
+        "secondary": "光标以 2Hz 严格方波闪烁，血条/进度格逐格递增。"
+      },
+      "taboos": [
+        "严禁用 CSS repeating-linear-gradient + blur 冒充 WebGL2 CRT 着色器",
+        "禁止像素缩放非整数导致锯齿发虚",
+        "禁止过度畸变或故障撕裂导致文字不可读"
+      ]
+    },
+    {
+      "slug": "22-hud",
+      "order": "22",
+      "cn": "战术三维平视界面",
+      "en": "MG Tactical HUD 3D",
+      "category_cn": "三维空间",
+      "category_en": "3D Spatial",
+      "uses": ["硬核科技", "数据推演", "航空军事"],
+      "summary": "Three.js 真 3D 线框全息目标与空间准星，结合精密遥测刻度、数字跳动与解码排版。",
+      "tags": ["three.js", "3d", "hud", "mit"],
+      "engine_contract": {
+        "required": ["threejs"],
+        "severity": "error",
+        "note": "必须使用 Three.js 渲染 3D 线框模型/点云/空间雷达网格与相机追踪；严禁用 CSS perspective / rotateY 叠 SVG 假装三维全息 HUD。"
+      },
+      "motion_effects": ["motion-prompt:007", "motion-prompt:129", "motion-prompt:030"],
+      "palette": {
+        "bg": "#050A12",
+        "surface": "#0B1626",
+        "primary": "#00F5D4",
+        "secondary": "#38BDF8",
+        "accent": "#FF5A36",
+        "ink": "#E2F8FF"
+      },
+      "typography": "等宽技术字体（monospace）承载坐标、遥测数值与状态码，主标题用锐利科技无衬线体。",
+      "composition": "中央 3D 线框目标占 50% 视野，四角布置 L 形校准角标、水平方位标尺与精炼指标卡。",
+      "texture": "Three.js `EdgesGeometry` / `LineSegments` 发光线框、半透明全息扫描平面与 1px 精密刻度线。",
+      "motion_grammar": "数字乱码解码定格（0.3s）→ 数值平滑递增 → 准星锁定目标，节奏冷静精准。",
+      "recipes": {
+        "transition": "3D 扫描平面自上而下扫过模型，线框重组为下一镜目标几何体。",
+        "impact": "锁定瞬间准星四向收紧 + 告警橙色高亮脉冲 2 次。",
+        "camera": "Three.js 相机缓速环绕目标（18°–30°），同步投影 3D 锚点到 2D 引导线。",
+        "grain": "细密坐标微网格 + 极低透明度雷达扫描扇区。",
+        "secondary": "外环刻度盘反向慢旋，边缘遥测波形按确定性正弦叠加实时跳动。"
+      },
+      "taboos": [
+        "严禁用 CSS 3D transform 假装三维全息线框",
+        "禁止堆砌无意义的假乱码面板遮挡核心论点",
+        "禁止使用花哨彩虹色破坏战术冷峻感"
+      ]
+    },
+    {
+      "slug": "23-ink-wash",
+      "order": "23",
+      "cn": "东方水墨晕染",
+      "en": "MG Ink Wash",
+      "category_cn": "东方与排版",
+      "category_en": "Eastern & Kinetic",
+      "uses": ["人文历史", "诗意哲思", "东方美学"],
+      "summary": "宣纸留白、焦浓重淡清五色墨韵与朱红落款印章，Canvas2D 模拟墨滴在纤维纸上的扩散晕染。",
+      "tags": ["canvas2d", "ink", "cjk", "mit"],
+      "engine_contract": {
+        "required": ["canvas2d"],
+        "severity": "warn",
+        "note": "推荐使用 Canvas2D 多层羽化墨迹与宣纸纹理叠加实现有机水墨晕染笔意。"
+      },
+      "motion_effects": ["motion-prompt:004", "motion-prompt:013", "motion-prompt:044"],
+      "palette": {
+        "bg": "#F4EFE6",
+        "surface": "#E9E1D2",
+        "primary": "#1C1B1A",
+        "secondary": "#57534E",
+        "accent": "#B91C1C",
+        "ink": "#161514"
+      },
+      "typography": "优雅宋体/楷体配竖排诗意副题与朱红阳文印章，字距宽舒、气韵留白。",
+      "composition": "大面积计白当黑（留白 ≥ 45%），远山淡墨、中景浓墨主体、前景一抹枯笔或朱砂点睛。",
+      "texture": "生宣纸暖底肌理、飞白干笔触、多层半透明放射墨晕与温润朱砂印泥。",
+      "motion_grammar": "起笔利落、行笔舒缓、收笔悠长，墨迹由中心缓缓洇开，忌机械硬切。",
+      "recipes": {
+        "transition": "浓墨滴落宣纸晕开铺满画面，墨色褪淡处浮现下一镜山影（水墨溶解）。",
+        "impact": "枯笔飞白横扫破开留白，朱红印章沉稳盖落定调。",
+        "camera": "古画长卷式极缓横移或微幅推近，如展卷观画。",
+        "grain": "温润宣纸长纤维质感（alpha 0.06），整体低噪柔和。",
+        "secondary": "远山云气轻缓飘散，落叶或涟漪随时间徐徐扩散。"
+      },
+      "taboos": ["禁止高饱和霓虹色破坏五色墨韵", "禁止硬边几何矩形框打破留白气韵", "禁止高频率抖动或机械弹跳动效"]
+    }
+  ]
+}

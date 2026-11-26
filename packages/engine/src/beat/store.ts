@@ -25,6 +25,7 @@ export const DraftFile = Store + '/grid-draft.json';
 export const GridFile = Store + '/grid.json';
 export const ClickFile = Store + '/grid-click.wav';
 export const PlanFile = Store + '/plan.json';
+export const AnchorsFile = Store + '/anchors.json';
 export const AnalysisFile = Store + '/analysis.wav';
 
 /**
@@ -125,14 +126,22 @@ function decodeConfig(body: string): Config {
   if (doc.errors.length > 0) {
     const e = doc.errors[0];
     const line = e.linePos?.[0]?.line;
-    throw new Error(line ? `yaml: line ${line}: ${e.code === 'BAD_INDENT' ? 'bad indentation' : e.message.split('\n')[0]}` : `yaml: ${e.message}`);
+    throw new Error(
+      line
+        ? `yaml: line ${line}: ${e.code === 'BAD_INDENT' ? 'bad indentation' : e.message.split('\n')[0]}`
+        : `yaml: ${e.message}`,
+    );
   }
   const config: Config = { schema: 0, checkpoint: '', python: '' };
   const contents = doc.contents;
-  if (contents === null || (isScalar(contents) && (contents.value === null || contents.value === undefined) && !body.trim())) {
+  if (
+    contents === null ||
+    (isScalar(contents) && (contents.value === null || contents.value === undefined) && !body.trim())
+  ) {
     throw new Error('EOF');
   }
-  const lineOf = (node: { range?: [number, number, number] | null }): number => lineCounter.linePos(node.range?.[0] ?? 0).line;
+  const lineOf = (node: { range?: [number, number, number] | null }): number =>
+    lineCounter.linePos(node.range?.[0] ?? 0).line;
   const errors: string[] = [];
   if (!isMap(contents)) {
     const what = isScalar(contents) ? `!!str \`${String(contents.source ?? contents.value)}\`` : '!!seq';
@@ -150,7 +159,9 @@ function decodeConfig(body: string): Config {
     }
     if (valueNode === null || (isScalar(valueNode) && valueNode.value === null)) continue;
     if (!isScalar(valueNode)) {
-      errors.push(`line ${lineOf(valueNode as never)}: cannot unmarshal ${isMap(valueNode) ? '!!map' : '!!seq'} into ${key === 'schema' ? 'int' : 'string'}`);
+      errors.push(
+        `line ${lineOf(valueNode as never)}: cannot unmarshal ${isMap(valueNode) ? '!!map' : '!!seq'} into ${key === 'schema' ? 'int' : 'string'}`,
+      );
       continue;
     }
     const source = String(valueNode.source ?? valueNode.value);
@@ -158,7 +169,10 @@ function decodeConfig(body: string): Config {
       const v = valueNode.value;
       // yaml.v3 把浮点解进 int 字段时直接截断（1.5 → 1），不报错。
       if (typeof v === 'number' && Number.isFinite(v)) config.schema = Math.trunc(v) + 0;
-      else errors.push(`line ${lineOf(valueNode as never)}: cannot unmarshal ${typeof v === 'boolean' ? '!!bool' : '!!str'} \`${source}\` into int`);
+      else
+        errors.push(
+          `line ${lineOf(valueNode as never)}: cannot unmarshal ${typeof v === 'boolean' ? '!!bool' : '!!str'} \`${source}\` into int`,
+        );
     } else {
       config[key as 'checkpoint' | 'python'] = source;
     }

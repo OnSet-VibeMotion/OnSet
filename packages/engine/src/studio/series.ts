@@ -9,6 +9,7 @@ import { envMap } from '../envutil';
 import * as series from '../series';
 import { DecodeError, decodeJSON, fieldString, goMap, methodNotAllowed, writeError, writeJSON } from './http';
 import { handleProjectSeriesAssetAction, handleSeriesAssetsSubroute } from './series_assets';
+import { seriesAssistAPI } from './series_assist';
 import type { Server } from './studio';
 import { isWithinStudioBrowseRoot, projectJSON } from './studio_inspect';
 
@@ -39,12 +40,16 @@ function parseDefaults(raw: unknown): series.SeriesDefaults | undefined {
   const extras = Array.isArray(d.extra_film_styles)
     ? d.extra_film_styles.filter((x): x is string => typeof x === 'string')
     : undefined;
+  const motions = Array.isArray(d.motion_effects)
+    ? d.motion_effects.filter((x): x is string => typeof x === 'string')
+    : undefined;
   return {
     canvas: str('canvas'),
     delivery: str('delivery'),
     narration: str('narration'),
     film_style: str('film_style'),
     extra_film_styles: extras,
+    motion_effects: motions,
     tts_voice: str('tts_voice'),
     brand_kit_id: str('brand_kit_id'),
     orchestrator: str('orchestrator'),
@@ -52,11 +57,34 @@ function parseDefaults(raw: unknown): series.SeriesDefaults | undefined {
   };
 }
 
+function parsePublishTemplate(raw: unknown): series.PublishTemplateInput | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== 'object' || Array.isArray(raw)) throw new DecodeError('publish_template 必须是对象');
+  const r = raw as Record<string, unknown>;
+  const str = (key: string) => (typeof r[key] === 'string' ? (r[key] as string) : undefined);
+  const strList = (key: string) =>
+    Array.isArray(r[key]) ? r[key].filter((x): x is string => typeof x === 'string') : undefined;
+  return {
+    title_pattern: str('title_pattern'),
+    default_hashtags: strList('default_hashtags'),
+    description_footer: str('description_footer'),
+    cover_guidelines: str('cover_guidelines'),
+    credits_lines: strList('credits_lines'),
+  };
+}
+
 function formatSeriesItem(s: Server, root: string, cfg: series.SeriesConfig): Record<string, unknown> {
   const projects = s.registeredProjects().filter((p) => p.series_id === cfg.id);
+  let publishTemplate: series.SeriesPublishTemplate | null = null;
+  try {
+    publishTemplate = series.readPublishTemplate(root, cfg.id);
+  } catch {
+    publishTemplate = null;
+  }
   return goMap({
     ...cfg,
     brief: series.readBrief(root, cfg.id),
+    publish_template: publishTemplate ?? undefined,
     project_count: projects.length,
   });
 }
@@ -99,12 +127,16 @@ export async function seriesAPI(s: Server, request: Request, rest: string): Prom
         next_episode: optionalPositiveInt(body, 'next_episode'),
         defaults: parseDefaults(body.defaults),
         brief: optionalStringField(body, 'brief'),
+        publish_template: parsePublishTemplate(body.publish_template),
       });
       return writeJSON(201, formatSeriesItem(s, root, created));
     } catch (err) {
       return writeError(400, 'series_error', (err as Error).message);
     }
   }
+
+  // POST /api/series/_assist | DELETE /api/series/_assist（前导下划线避免与 SeriesIdPattern 合法专栏 ID 冲突）
+  if (rest === '_assist') return seriesAssistAPI(s, request);
 
   // POST /api/series/unbind
   if (rest === 'unbind') {
@@ -227,6 +259,7 @@ export async function seriesAPI(s: Server, request: Request, rest: string): Prom
         next_episode: optionalPositiveInt(body, 'next_episode'),
         defaults: parseDefaults(body.defaults),
         brief: optionalStringField(body, 'brief'),
+        publish_template: 'publish_template' in body ? parsePublishTemplate(body.publish_template) : undefined,
       });
       return writeJSON(200, formatSeriesItem(s, root, updated));
     } catch (err) {

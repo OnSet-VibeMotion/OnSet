@@ -1,13 +1,13 @@
-import { Buffer, tempDir } from './testutil';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
 import * as filmstyle from '@onset/engine/filmstyle';
 import * as scene from '@onset/engine/scene';
+import { describe, expect, it } from 'vitest';
 import { ref } from './cobra';
 import { opCommand } from './ops/cli';
 import { findOp } from './ops/op';
+import { Buffer, tempDir } from './testutil';
 import './scene_cues';
 
 // 四条字幕，30fps 下：[0,30) [45,90) [90,120) [150,180)。
@@ -99,20 +99,25 @@ describe('onset scene cues', () => {
   it('keeps a legacy rendered mirror reusable when a different cut changes', async () => {
     const root = cuesProject();
     expect((await runCues(root)).err).toBeNull();
-    const dirs = [1, 2, 3].map(n => path.join(root, 'scenes', 'scene-00' + n));
+    const dirs = [1, 2, 3].map((n) => path.join(root, 'scenes', 'scene-00' + n));
     for (const dir of dirs) {
       const s = scene.load(dir);
       fs.writeFileSync(scene.outputPath(s), 'video');
-      fs.writeFileSync(path.join(dir, scene.RecordFile), JSON.stringify({
-        schema: 2, output: 'out.mp4', output_size: 5,
-        output_sha256: crypto.createHash('sha256').update('video').digest('hex'),
-        ...scene.fingerprint(s, 'claude', {}, 2),
-      }));
+      fs.writeFileSync(
+        path.join(dir, scene.RecordFile),
+        JSON.stringify({
+          schema: 2,
+          output: 'out.mp4',
+          output_size: 5,
+          output_sha256: crypto.createHash('sha256').update('video').digest('hex'),
+          ...scene.fingerprint(s, 'claude', {}, 2),
+        }),
+      );
     }
     const file = path.join(root, 'production', 'scene-plan.json');
     fs.writeFileSync(file, mustRead(file).replace('"first_subtitle":2', '"first_subtitle":2,"cut":"prev_end"'));
     expect((await runCues(root)).err).toBeNull();
-    const reuses = dirs.map(dir => {
+    const reuses = dirs.map((dir) => {
       const s = scene.load(dir);
       const record = scene.loadRecord(s)!;
       expect(record.schema).toBe(scene.RecordSchemaRenderContract);
@@ -126,7 +131,11 @@ describe('onset scene cues', () => {
     const root = cuesProject();
     const first = await runCues(root);
     expect(first.err, first.out).toBeNull();
-    const want: Record<string, [number, number]> = { 'scene-001': [0, 45], 'scene-002': [45, 90], 'scene-003': [90, 240] };
+    const want: Record<string, [number, number]> = {
+      'scene-001': [0, 45],
+      'scene-002': [45, 90],
+      'scene-003': [90, 240],
+    };
     for (const [id, span] of Object.entries(want)) {
       const s = scene.load(path.join(root, 'scenes', id));
       expect(s.timing).not.toBeNull();
@@ -139,7 +148,15 @@ describe('onset scene cues', () => {
     expect(mustRead(path.join(root, 'scenes', 'scene-002', 'scene.json'))).toContain('"duration_seconds": 1.500000');
     const text = mustRead(path.join(root, 'scenes', 'scene-001', 'scene.json'));
     let last = -1;
-    for (const key of ['"text"', '"id"', '"renderer": "codex"', '"duration_seconds": 1.500000', '"output"', '"transcript"', '"timing"']) {
+    for (const key of [
+      '"text"',
+      '"id"',
+      '"renderer": "codex"',
+      '"duration_seconds": 1.500000',
+      '"output"',
+      '"transcript"',
+      '"timing"',
+    ]) {
       const at = text.indexOf(key);
       expect(at, `${key} 位置不对：\n${text}`).toBeGreaterThan(last);
       last = at;
@@ -168,7 +185,8 @@ describe('onset scene cues', () => {
 
     const { err } = await runCues(root, '--check');
     expect(err).not.toBeNull();
-    for (const want of ['scene-002', '46 帧', '45 帧', 'scene-003', scene.PhraseCopyFile]) expect(err!.message).toContain(want);
+    for (const want of ['scene-002', '46 帧', '45 帧', 'scene-003', scene.PhraseCopyFile])
+      expect(err!.message).toContain(want);
     expect(mustRead(file)).toBe(edited);
 
     // 计划改了而镜头没重跑：plan 摘要不再相符。
@@ -187,7 +205,8 @@ describe('onset scene cues', () => {
   it('rejects a plan that does not match the scenes', async () => {
     const root = cuesProject();
     const cases: Record<string, string> = {
-      '{"schema":1,"scenes":[{"id":"scene-001","dir":"scenes/scene-001"},{"id":"scene-002","dir":"scenes/scene-002","first_subtitle":2}]}': '3 个镜头目录',
+      '{"schema":1,"scenes":[{"id":"scene-001","dir":"scenes/scene-001"},{"id":"scene-002","dir":"scenes/scene-002","first_subtitle":2}]}':
+        '3 个镜头目录',
       '{"schema":1,"scenes":[{"id":"scene-001","dir":"scenes/scene-001"},{"id":"scene-003","dir":"scenes/scene-003","first_subtitle":2},{"id":"scene-002","dir":"scenes/scene-002","first_subtitle":4}]}':
         '字典序',
       '{"schema":1,"scenes":[{"id":"scene-001","dir":"scenes/scene-001"},{"id":"wrong","dir":"scenes/scene-002","first_subtitle":2},{"id":"scene-003","dir":"scenes/scene-003","first_subtitle":4}]}':
@@ -272,8 +291,16 @@ describe('onset scene cues', () => {
     const load = (id: string) => scene.load(path.join(root, 'scenes', id));
     expect(load('scene-001').film_style).toBe('');
     expect(load('scene-002').film_style).toBe('beta/oil');
-    expect(load('scene-001').timing!.exit).toMatchObject({ peer: 'scene-002', style_shift: 'window', peer_film_style: 'beta/oil' });
-    expect(load('scene-002').timing!.enter).toMatchObject({ peer: 'scene-001', style_shift: 'window', peer_film_style: '' });
+    expect(load('scene-001').timing!.exit).toMatchObject({
+      peer: 'scene-002',
+      style_shift: 'window',
+      peer_film_style: 'beta/oil',
+    });
+    expect(load('scene-002').timing!.enter).toMatchObject({
+      peer: 'scene-001',
+      style_shift: 'window',
+      peer_film_style: '',
+    });
     expect((await runCues(root, '--check')).err).toBeNull();
 
     // 手改了镜头的 film_style，--check 要指出来；重跑 cues 按计划改回去，计划不写时删掉这个字段。
@@ -284,6 +311,96 @@ describe('onset scene cues', () => {
     const back = await runCues(root);
     expect(back.err?.message, '撤掉 scene-003 的风格后 002→003 成了风格交界').toContain('风格交界必须写 handoff');
   });
+
+  it('validates, writes, checks motion_effects and emits soft hint when >=5 scenes have none', async () => {
+    const root = cuesProject();
+    // 超过 3 条拒绝
+    writePlan(
+      root,
+      `{"schema":1,"scenes":[
+        {"id":"scene-001","dir":"scenes/scene-001","motion_effects":["001","002","003","004"]},
+        {"id":"scene-002","dir":"scenes/scene-002","first_subtitle":2},
+        {"id":"scene-003","dir":"scenes/scene-003","first_phrase":"p-4","cut":"prev_end"}]}`,
+    );
+    expect((await runCues(root)).err?.message).toContain('单镜最多 3 条');
+
+    // 不存在的 ID 拒绝
+    writePlan(
+      root,
+      `{"schema":1,"scenes":[
+        {"id":"scene-001","dir":"scenes/scene-001","motion_effects":["motion-prompt:999"]},
+        {"id":"scene-002","dir":"scenes/scene-002","first_subtitle":2},
+        {"id":"scene-003","dir":"scenes/scene-003","first_phrase":"p-4","cut":"prev_end"}]}`,
+    );
+    expect((await runCues(root)).err?.message).toContain('找不到动效');
+
+    // 合法简写自动归一化、去重并写入 scene.json，且纳入 --check 校验
+    writePlan(
+      root,
+      `{"schema":1,"scenes":[
+        {"id":"scene-001","dir":"scenes/scene-001","motion_effects":["005","motion-prompt:005","007"]},
+        {"id":"scene-002","dir":"scenes/scene-002","first_subtitle":2},
+        {"id":"scene-003","dir":"scenes/scene-003","first_phrase":"p-4","cut":"prev_end"}]}`,
+    );
+    const ok = await runCues(root);
+    expect(ok.err, ok.out).toBeNull();
+    expect(scene.load(path.join(root, 'scenes', 'scene-001')).motion_effects).toEqual([
+      'motion-prompt:005',
+      'motion-prompt:007',
+    ]);
+    expect(scene.load(path.join(root, 'scenes', 'scene-002')).motion_effects).toEqual([]);
+    expect((await runCues(root, '--check')).err).toBeNull();
+
+    // 手改 scene.json 的 motion_effects，--check 必须报错
+    const file = path.join(root, 'scenes', 'scene-001', 'scene.json');
+    fs.writeFileSync(file, mustRead(file).replace('"motion-prompt:007"', '"motion-prompt:001"'));
+    expect((await runCues(root, '--check')).err?.message).toContain('motion_effects');
+
+    // >= 5 镜且全部未指定 motion_effects 时，输出非阻断柔性提醒
+    const root5 = tempDir();
+    const srt5 = [1, 2, 3, 4, 5].map((n) => `${n}\n00:00:0${n - 1},000 --> 00:00:0${n},000\n第${n}句\n`).join('\n');
+    for (let n = 1; n <= 5; n++) {
+      const id = `scene-00${n}`;
+      const dir = path.join(root5, 'scenes', id);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'transcript.srt'), srt5);
+      fs.writeFileSync(
+        path.join(dir, 'scene.json'),
+        JSON.stringify({ id, duration_seconds: 1, output: 'out.mp4', transcript: 'transcript.srt', text: `第${n}句` }),
+      );
+    }
+    fs.writeFileSync(path.join(root5, 'onset.conf'), '');
+    fs.writeFileSync(path.join(root5, 'frame.md'), '---\ncanvas: {width_px: 1080, height_px: 1440, fps: 30}\n---\n');
+    fs.mkdirSync(path.join(root5, 'production'), { recursive: true });
+    fs.writeFileSync(path.join(root5, 'transcription-production.srt'), srt5);
+    writePlan(
+      root5,
+      JSON.stringify({
+        schema: 1,
+        scenes: [1, 2, 3, 4, 5].map((n) => ({
+          id: `scene-00${n}`,
+          dir: `scenes/scene-00${n}`,
+          ...(n > 1 ? { first_subtitle: n } : {}),
+        })),
+      }),
+    );
+    const out5 = new Buffer();
+    const cmd5 = opCommand(findOp('scene_cues')!, out5, out5, ref(false));
+    cmd5.setOut(out5);
+    cmd5.setErr(out5);
+    await cmd5.execute([
+      '--project-root',
+      root5,
+      '--plan',
+      path.join(root5, 'production', 'scene-plan.json'),
+      '--srt',
+      path.join(root5, 'transcription-production.srt'),
+      '--total-frames',
+      '150',
+      path.join(root5, 'scenes'),
+    ]);
+    expect(out5.text).toContain('均未指定 motion_effects');
+  });
 });
 
 function writeStyle(dir: string, key: string): void {
@@ -291,5 +408,8 @@ function writeStyle(dir: string, key: string): void {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, filmstyle.StyleFile), '# ' + key + '\n');
   fs.writeFileSync(path.join(dir, filmstyle.GuideFile), '# guide\n');
-  fs.writeFileSync(path.join(dir, filmstyle.ManifestFile), JSON.stringify({ source, slug, cn: slug, en: slug, version: 'v1', digest: 'x', installed_at: '' }));
+  fs.writeFileSync(
+    path.join(dir, filmstyle.ManifestFile),
+    JSON.stringify({ source, slug, cn: slug, en: slug, version: 'v1', digest: 'x', installed_at: '' }),
+  );
 }

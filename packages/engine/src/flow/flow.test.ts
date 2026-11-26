@@ -4,7 +4,21 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as beat from '../beat';
 import { withWindowsInstructions } from '../windowsruntime';
-import { builtinFlows, builtinStations, chineseNumber, composePrompt, detectFlow, gateFiles, MissingFlowRecordError, recordFlow, route, stationOfPath } from './index';
+import {
+  builtinFlows,
+  builtinStations,
+  chineseNumber,
+  composePrompt,
+  detectFlow,
+  gateFiles,
+  isPilotGateEnabled,
+  MissingFlowRecordError,
+  PilotGateID,
+  readPilotConfig,
+  recordFlow,
+  route,
+  stationOfPath,
+} from './index';
 
 const templates = path.join(__dirname, '..', '..', '..', '..', 'assets', 'prompts');
 
@@ -18,17 +32,50 @@ describe('stations and flows', () => {
 
   it('keeps the route order of the production map', () => {
     expect(route('speech').map((r) => r.node.id)).toEqual([
-      'intake', 'script', 'gate-script', 'voice', 'gate-voice', 'timeline', 'style', 'plan', 'gate-storyboard',
-      'render', 'visual-qc', 'assemble', 'sound', 'review', 'gate-final', 'publish',
+      'intake',
+      'script',
+      'gate-script',
+      'voice',
+      'gate-voice',
+      'timeline',
+      'style',
+      'plan',
+      'gate-storyboard',
+      'render',
+      'visual-qc',
+      'assemble',
+      'sound',
+      'review',
+      'gate-final',
+      'publish',
     ]);
     expect(route('beat').map((r) => r.node.id)).toEqual([
-      'story', 'gate-story', 'music', 'grid', 'gate-grid', 'style', 'plan', 'gate-beat-storyboard',
-      'render', 'visual-qc', 'assemble', 'sound', 'review', 'gate-final', 'publish',
+      'story',
+      'gate-story',
+      'music',
+      'grid',
+      'gate-grid',
+      'style',
+      'plan',
+      'gate-beat-storyboard',
+      'render',
+      'visual-qc',
+      'assemble',
+      'sound',
+      'review',
+      'gate-final',
+      'publish',
     ]);
   });
 
   it('collects the gates confirmed from the client', () => {
-    expect(Object.keys(gateFiles()).sort()).toEqual(['gate-beat-storyboard', 'gate-script', 'gate-story', 'gate-storyboard', 'gate-voice']);
+    expect(Object.keys(gateFiles()).sort()).toEqual([
+      'gate-beat-storyboard',
+      'gate-script',
+      'gate-story',
+      'gate-storyboard',
+      'gate-voice',
+    ]);
   });
 
   // 流程只看锁文件里新建时记下的那一段；beat.yaml 这类功能自己的配置文件不再决定流程。
@@ -40,6 +87,43 @@ describe('stations and flows', () => {
     expect(detectFlow(root)).toBe('speech');
     recordFlow(root, { id: 'beat', canvas: 'vertical-3x4' });
     expect(detectFlow(root)).toBe('beat');
+  });
+
+  it('inserts optional gate-pilot right before render only when enabled', () => {
+    // 默认关闭时与老项目 100% 一致，不包含 gate-pilot。
+    expect(route('speech').map((r) => r.node.id)).not.toContain(PilotGateID);
+    expect(route('beat').map((r) => r.node.id)).not.toContain(PilotGateID);
+    // 开启 pilotGate 后插在分镜审核与渲染之间。
+    const speechWithPilot = route('speech', [], { pilotGate: true }).map((r) => r.node.id);
+    expect(
+      speechWithPilot.slice(speechWithPilot.indexOf('gate-storyboard'), speechWithPilot.indexOf('render') + 1),
+    ).toEqual(['gate-storyboard', PilotGateID, 'render']);
+    const beatWithPilot = route('beat', [], { pilotGate: true }).map((r) => r.node.id);
+    expect(
+      beatWithPilot.slice(beatWithPilot.indexOf('gate-beat-storyboard'), beatWithPilot.indexOf('render') + 1),
+    ).toEqual(['gate-beat-storyboard', PilotGateID, 'render']);
+  });
+
+  it('reads pilot_gate config with project.json > production-config.json > onset.flow.json priority', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-flow-pilot-'));
+    try {
+      recordFlow(root, { id: 'speech', canvas: 'vertical-3x4' });
+      expect(readPilotConfig(root)).toEqual({ enabled: false });
+      expect(isPilotGateEnabled(root)).toBe(false);
+
+      recordFlow(root, { id: 'speech', canvas: 'vertical-3x4', pilot_gate: true, pilot_scene: 'scene-002' });
+      expect(readPilotConfig(root)).toEqual({ enabled: true, scene: 'scene-002' });
+      expect(isPilotGateEnabled(root)).toBe(true);
+
+      fs.mkdirSync(path.join(root, 'production'), { recursive: true });
+      fs.writeFileSync(path.join(root, 'production', 'production-config.json'), JSON.stringify({ pilot_gate: false }));
+      expect(isPilotGateEnabled(root)).toBe(false);
+
+      fs.writeFileSync(path.join(root, 'project.json'), JSON.stringify({ pilot_gate: true, pilot_scene: 'scene-003' }));
+      expect(readPilotConfig(root)).toEqual({ enabled: true, scene: 'scene-003' });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
@@ -81,7 +165,9 @@ describe('composePrompt', () => {
   it('rejects unknown sections and stages', () => {
     expect(() => composePrompt(['host/nope'], () => '')).toThrow('没有这段提示词：host/nope');
     expect(() => composePrompt(['nope'], () => '')).toThrow('没有这段提示词：nope');
-    expect(() => composePrompt(['host/head'], () => '{{STAGE:render}}')).toThrow('提示词引用了没有的阶段：{{STAGE:render}}');
+    expect(() => composePrompt(['host/head'], () => '{{STAGE:render}}')).toThrow(
+      '提示词引用了没有的阶段：{{STAGE:render}}',
+    );
   });
 
   it('writes Chinese stage numbers', () => {

@@ -61,6 +61,7 @@ export function StoryboardTab({ version, busy, onQuick, onFile, onScene, onStyle
   const total =
     scenes.length > 0 && scenes.every((s) => s.seconds) ? scenes.reduce((sum, s) => sum + (s.seconds ?? 0), 0) : 0;
   const chapters = new Set(scenes.map((s) => s.chapter).filter(Boolean)).size;
+  const motionScenes = scenes.filter((s) => (s.motion_effects?.length ?? 0) > 0).length;
   const source = board.doc_path || board.plan_path;
   const look = lookNames.filter(([key]) => board.look?.[key]);
 
@@ -72,6 +73,11 @@ export function StoryboardTab({ version, busy, onQuick, onFile, onScene, onStyle
         <div className="sb-stats">
           {total > 0 && <span>{duration(total)}</span>}
           {chapters > 0 && <span>{chapters} 章</span>}
+          {scenes.length > 0 && (
+            <span>
+              已指定动效：{motionScenes} / {scenes.length} 镜
+            </span>
+          )}
           {look.length > 0 && (
             <span className="sb-look" title="全片配色">
               {look.map(([key, name]) => (

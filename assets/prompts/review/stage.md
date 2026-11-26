@@ -2,6 +2,8 @@
 
 用 `review({"video":"production/audio/candidate.mp4","scenes":"scenes/","out":"production/review","expect_frames":<时长报告的总帧数>,"validate_report":"production/final-check.json"})` 一次做交付规格、完整解码、首帧和整片复查，两个报告共用实测帧数。规格、损坏与封面问题看 `final-check.json`；音画时长、镜头交界、编码后响度和联系表见 `production/review/review.json`。处理 `problems` 后再批准，按 `hints` 看对应画面或试听。
 
+成片可另跑 `media_frame_qc({"video":"production/audio/candidate.mp4","scenes":"scenes/","out":"production/review/frame-qc.json"})` 执行 FFmpeg 全流帧检（黑场、闪烁、贴边与长静止）。
+
 有受保护短语时，用 `phrase_frames()` 生成前一帧、开始帧和稳定可读帧的联系表。局部修订只传受影响的 `phrase_ids`。优先核对报告标为待复核的短语和有提前露字疑问的画面。
 
 机器检查通过后先看 `production/review/sheet-NN.png`，核对镜头交接、可读性、画面密度和结尾。对重要转场或报告提示异常的交界，打开 `seam-NN.png`，从前一镜末帧与后一镜首帧入手，对照两侧任务书声明的出场状态与入场状态，核对闪烁、跳变和物件是否接上。返修后重点复查有变化的镜头及其两侧，保留完整报告与图表供审批复核。
@@ -40,6 +42,7 @@
 - 当前目录已有 `final.mp4` 时，先保留为带版本或时间标识的备份。
 - 使用同文件系统内的临时文件和原子重命名生成根目录 `final.mp4`。
 - 原子替换后再次检查 `final.mp4` 的哈希、规格和完整解码。
+- 用户需要去剪映二次精修时，用 `project_export_jianying({"project_root":"."})` 导出逐镜精确重编码纯画面 clips、对齐分轨音频、SRT 与可选通用草稿骨架（`"include_draft": true`）。
 
 ### 修订版与候选生命周期
 

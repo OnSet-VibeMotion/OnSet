@@ -149,7 +149,8 @@ export function computeStations(
 ): { mode: flow.FlowID; stations: Station[]; current: string; waiting_on: '' | 'user' | 'ai' } {
   const extras = flow.stationExtras();
   const mode = flow.detectFlow(root, extras);
-  const defs = stationDefs(mode, extras);
+  const pilotGate = flow.isPilotGateEnabled(root);
+  const defs = stationDefs(mode, extras, { pilotGate });
   const ctx: Ctx = { root, scenes, gates: readGates(root) };
   // 关卡有确认（批准记录、确认过的网格、gates.json）也算「后面已经做了」，前面没留产物的站因此算跳过。
   const outputs = defs.map((d) =>
@@ -173,7 +174,11 @@ export function computeStations(
       };
     }
     // 第三方站的产物不算「后面已经做了」：宿主不凭插件写的文件推断自带流程走到了哪（插件一发布，前面全成了跳过）。
-    const laterDone = outputs.some((t, j) => j > i && t > 0 && !defs[j].optional && !defs[j].declared);
+    // 开启单镜打样闸门后，gate-pilot 不参与 laterDone 推断，只能由有效确认完成，避免多镜已有产物时静默跳过打样审核。
+    const laterDone =
+      d.id === flow.PilotGateID
+        ? false
+        : outputs.some((t, j) => j > i && t > 0 && !defs[j].optional && !defs[j].declared);
     if (d.gate) {
       const own = d.gateState?.(ctx);
       const record = ctx.gates[d.id];
@@ -181,7 +186,7 @@ export function computeStations(
         station.status = own.status;
         if (own.at !== undefined) station.at = typeof own.at === 'string' ? own.at : localRFC3339(new Date(own.at));
       } else if (record) {
-        station.status = gateChanged(root, record) ? 'changed' : 'confirmed';
+        station.status = gateChanged(root, record, d.id) ? 'changed' : 'confirmed';
         station.at = record.at;
         if (record.said) station.said = record.said;
       } else if (laterDone) station.status = 'passed';
@@ -215,9 +220,10 @@ export function computeStations(
 export function latestOutput(root: string, scenes: SceneSummary[]): number {
   const ctx: Ctx = { root, scenes, gates: {} };
   const extras = flow.stationExtras();
+  const pilotGate = flow.isPilotGateEnabled(root);
   return Math.max(
     0,
-    ...stationDefs(flow.detectFlow(root, extras), extras)
+    ...stationDefs(flow.detectFlow(root, extras), extras, { pilotGate })
       .filter((d) => !d.gate)
       .map((d) => d.output(ctx)),
   );

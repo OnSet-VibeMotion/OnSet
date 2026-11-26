@@ -7,8 +7,9 @@ export function SeriesPublishTemplateTab(props: {
   coverGuide: string;
   footer: string;
   credits: string;
+  hideSave?: boolean;
   onChange: (field: 'titlePattern' | 'hashtags' | 'coverGuide' | 'footer' | 'credits', value: string) => void;
-  onSave: () => void;
+  onSave?: () => void;
 }) {
   return (
     <div className="series-form">
@@ -60,11 +61,13 @@ export function SeriesPublishTemplateTab(props: {
           onChange={(e) => props.onChange('credits', e.currentTarget.value)}
         />
       </label>
-      <div className="series-foot-right">
-        <button className="pill primary-pill" disabled={props.busy || !props.loaded} onClick={props.onSave}>
-          {props.dirty ? '保存发布模板 *' : '保存发布模板'}
-        </button>
-      </div>
+      {!props.hideSave && props.onSave && (
+        <div className="series-foot-right">
+          <button className="pill primary-pill" disabled={props.busy || !props.loaded} onClick={props.onSave}>
+            {props.dirty ? '保存发布模板 *' : '保存发布模板'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

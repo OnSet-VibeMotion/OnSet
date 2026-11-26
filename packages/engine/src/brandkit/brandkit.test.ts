@@ -15,6 +15,7 @@ import {
   isFakeIpV4,
   isPublicIP,
   listBrandKits,
+  pinnedLookup,
   readProjectBrandKit,
   resolvePublicHost,
   saveBrandKit,
@@ -64,6 +65,24 @@ describe('brandkit network safety', () => {
         dohResolve: async () => ['93.184.216.34'],
       }),
     ).rejects.toThrow(/非公网/);
+  });
+
+  it('pinnedLookup supports both Node 20+ {all:true} and legacy scalar callback', () => {
+    const fn = pinnedLookup('93.184.216.34', 4);
+    let allResult: unknown;
+    fn('example.com', { all: true }, (_err, addrs) => {
+      allResult = addrs;
+    });
+    expect(allResult).toEqual([{ address: '93.184.216.34', family: 4 }]);
+
+    let scalarAddr: unknown;
+    let scalarFamily: unknown;
+    fn('example.com', { all: false }, (_err, addr, fam) => {
+      scalarAddr = addr;
+      scalarFamily = fam;
+    });
+    expect(scalarAddr).toBe('93.184.216.34');
+    expect(scalarFamily).toBe(4);
   });
 });
 

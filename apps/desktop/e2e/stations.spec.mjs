@@ -1,13 +1,16 @@
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { test, expect, openProject, api, desktopDir, installPlugin, installedPlugins, openPage } from './fixtures.mjs';
+import { api, desktopDir, expect, installedPlugins, installPlugin, openPage, openProject, test } from './fixtures.mjs';
 
 // 测试用的假发布站：只写回执，不联网（packages/engine/src/flow/testdata/fake-publisher）。
 const fake = path.resolve(desktopDir, '..', '..', 'packages', 'engine', 'src', 'flow', 'testdata', 'fake-publisher');
 
-test('a git plugin can be previewed, cancelled, installed and updated using the client runtime', async ({ page, sandbox }) => {
+test('a git plugin can be previewed, cancelled, installed and updated using the client runtime', async ({
+  page,
+  sandbox,
+}) => {
   test.skip(spawnSync('git', ['--version']).status !== 0, 'requires git');
   const repo = path.join(sandbox.root, 'plugin-repo');
   fs.cpSync(fake, repo, { recursive: true });
@@ -15,7 +18,13 @@ test('a git plugin can be previewed, cancelled, installed and updated using the 
     const result = spawnSync('git', ['-c', 'core.hooksPath=', '-c', 'commit.gpgsign=false', ...args], {
       cwd: repo,
       encoding: 'utf8',
-      env: { ...process.env, GIT_AUTHOR_NAME: 'test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'test', GIT_COMMITTER_EMAIL: 'test@example.invalid' },
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'test',
+        GIT_AUTHOR_EMAIL: 'test@example.invalid',
+        GIT_COMMITTER_NAME: 'test',
+        GIT_COMMITTER_EMAIL: 'test@example.invalid',
+      },
     });
     expect(result.status, result.stderr).toBe(0);
   };
@@ -56,7 +65,9 @@ test('a git plugin can be previewed, cancelled, installed and updated using the 
   await expect(confirm).toContainText('0.2.0');
   await confirm.getByRole('button', { name: '换上', exact: true }).click();
   await expect(confirm).toHaveCount(0);
-  await expect.poll(async () => (await api(page, '/api/stations')).body.stations.find((s) => s.id === 'fake-publisher')?.version).toBe('0.2.0');
+  await expect
+    .poll(async () => (await api(page, '/api/stations')).body.stations.find((s) => s.id === 'fake-publisher')?.version)
+    .toBe('0.2.0');
   expect(fs.readdirSync(path.join(sandbox.stations, '.staging'))).toEqual([]);
 
   // 清单校验失败时 .git 还在：仍要清掉只读对象，并显示校验错误而不是清理错误。
@@ -69,7 +80,10 @@ test('a git plugin can be previewed, cancelled, installed and updated using the 
   expect(installedPlugins(sandbox)).toEqual(['fake-publisher']);
 });
 
-test('a plugin from the plugin center goes through the same preview, and so does its update', async ({ page, sandbox }) => {
+test('a plugin from the plugin center goes through the same preview, and so does its update', async ({
+  page,
+  sandbox,
+}) => {
   test.skip(spawnSync('git', ['--version']).status !== 0, 'requires git');
   const repo = path.join(sandbox.root, 'market-repo');
   fs.cpSync(fake, repo, { recursive: true });
@@ -77,7 +91,13 @@ test('a plugin from the plugin center goes through the same preview, and so does
     const result = spawnSync('git', ['-c', 'core.hooksPath=', '-c', 'commit.gpgsign=false', ...args], {
       cwd: repo,
       encoding: 'utf8',
-      env: { ...process.env, GIT_AUTHOR_NAME: 'test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'test', GIT_COMMITTER_EMAIL: 'test@example.invalid' },
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'test',
+        GIT_AUTHOR_EMAIL: 'test@example.invalid',
+        GIT_COMMITTER_NAME: 'test',
+        GIT_COMMITTER_EMAIL: 'test@example.invalid',
+      },
     });
     expect(result.status, result.stderr).toBe(0);
     return result.stdout.trim();
@@ -87,7 +107,22 @@ test('a plugin from the plugin center goes through the same preview, and so does
   git('commit', '-qm', 'v1');
   const v1 = git('rev-parse', 'HEAD');
   const writeCatalog = (versions) =>
-    fs.writeFileSync(sandbox.catalog, JSON.stringify({ schema: 1, plugins: [{ id: 'fake-publisher', name: '假发布', description: '只写回执，不联网', tags: ['发布'], source: pathToFileURL(repo).href, versions }] }));
+    fs.writeFileSync(
+      sandbox.catalog,
+      JSON.stringify({
+        schema: 1,
+        plugins: [
+          {
+            id: 'fake-publisher',
+            name: '假发布',
+            description: '只写回执，不联网',
+            tags: ['发布'],
+            source: pathToFileURL(repo).href,
+            versions,
+          },
+        ],
+      }),
+    );
   writeCatalog([{ version: '0.1.0', commit: v1 }]);
 
   await page.locator('#settings-trigger').click();
@@ -110,14 +145,19 @@ test('a plugin from the plugin center goes through the same preview, and so does
   fs.writeFileSync(file, JSON.stringify(manifest));
   git('commit', '-qam', 'v2');
   const v2 = git('rev-parse', 'HEAD');
-  writeCatalog([{ version: '0.1.0', commit: v1 }, { version: '0.2.0', commit: v2 }]);
+  writeCatalog([
+    { version: '0.1.0', commit: v1 },
+    { version: '0.2.0', commit: v2 },
+  ]);
   await market.getByRole('button', { name: '刷新' }).click();
   const update = mine.locator('li[data-station="fake-publisher"]').getByRole('button', { name: '更新到 0.2.0' });
   await update.click();
   await expect(confirm).toContainText('0.2.0');
   await confirm.getByRole('button', { name: '换上', exact: true }).click();
   await expect(confirm).toHaveCount(0);
-  await expect.poll(async () => (await api(page, '/api/stations')).body.stations.find((s) => s.id === 'fake-publisher')?.commit).toBe(v2);
+  await expect
+    .poll(async () => (await api(page, '/api/stations')).body.stations.find((s) => s.id === 'fake-publisher')?.commit)
+    .toBe(v2);
   await expect(card).toContainText('已装 0.2.0');
 });
 
@@ -149,8 +189,16 @@ async function clickInPage(target, reacted) {
   }).toPass({ timeout: 20_000 });
 }
 
-test('a plugin is added in settings without a project, every project gets it, and its action in settings runs only when the user clicks', async ({ page, project, sandbox, electronApp }) => {
-  fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: draft\ncopy:\n  primary_title: 测试标题\n---\n');
+test('a plugin is added in settings without a project, every project gets it, and its action in settings runs only when the user clicks', async ({
+  page,
+  project,
+  sandbox,
+  electronApp,
+}) => {
+  fs.writeFileSync(
+    path.join(project.path, 'publish.md'),
+    '---\nplatform: douyin\npublish_status: draft\ncopy:\n  primary_title: 测试标题\n---\n',
+  );
   // 还没打开任何项目：首页。
   await expect(page.locator('.home-hero h1')).toContainText('今天想做一条');
 
@@ -190,7 +238,10 @@ test('a plugin is added in settings without a project, every project gets it, an
   await expect.poll(() => installedPlugins(sandbox)).toEqual(['fake-publisher']);
   await expect(confirmAdd).toHaveCount(0);
   const lock = path.join(project.path, 'onset.flow.json');
-  expect(JSON.parse(fs.readFileSync(lock, 'utf8'))).toEqual({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } });
+  expect(JSON.parse(fs.readFileSync(lock, 'utf8'))).toEqual({
+    version: 1,
+    production: { id: 'speech', canvas: 'vertical-3x4' },
+  });
   const card = stations.locator('li[data-station="fake-publisher"]');
   await expect(card).toContainText('假发布');
   await expect(card).toContainText('第三方');
@@ -200,7 +251,9 @@ test('a plugin is added in settings without a project, every project gets it, an
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   manifest.description = '本地修改已经生效';
   fs.writeFileSync(manifestPath, JSON.stringify(manifest));
-  expect((await api(page, '/api/stations')).body.stations.find((s) => s.id === 'fake-publisher')?.description).toBe(manifest.description);
+  expect((await api(page, '/api/stations')).body.stations.find((s) => s.id === 'fake-publisher')?.description).toBe(
+    manifest.description,
+  );
   // 「详情与设置」是盖在设置上的弹窗。
   await card.getByRole('button', { name: '详情与设置' }).click();
   const detail = page.getByRole('dialog', { name: '假发布 详情与设置' });
@@ -214,9 +267,13 @@ test('a plugin is added in settings without a project, every project gets it, an
   await login.getByRole('button', { name: '登录平台账号' }).click();
   await expect(login.locator('.station-last')).toHaveText('上次执行成功');
   await expect(login.locator('.station-output')).toContainText('已登录：小号');
-  expect(JSON.parse(fs.readFileSync(path.join(sandbox.stations, 'fake-publisher', 'data', 'login.json'), 'utf8'))).toEqual({ name: '小号' });
+  expect(
+    JSON.parse(fs.readFileSync(path.join(sandbox.stations, 'fake-publisher', 'data', 'login.json'), 'utf8')),
+  ).toEqual({ name: '小号' });
   // 插件收到的是「没有项目」，片场也没把插件目录当成项目去扫。
-  const loginRun = (await api(page, '/api/stations')).body.stations.find((x) => x.id === 'fake-publisher').ops.find((o) => o.name === 'login').last_run;
+  const loginRun = (await api(page, '/api/stations')).body.stations
+    .find((x) => x.id === 'fake-publisher')
+    .ops.find((o) => o.name === 'login').last_run;
   expect(loginRun.data).toMatchObject({ in_project: false });
   expect(loginRun.out_of_scope).toBeUndefined();
   expect(fs.existsSync(path.join(sandbox.stations, 'production'))).toBe(false);
@@ -260,10 +317,11 @@ test('a plugin is added in settings without a project, every project gets it, an
   await expect(song.getByRole('button', { name: '去掉' })).toHaveCount(0);
   await builtin.scrollIntoViewIfNeeded();
   await page.screenshot({ path: test.info().outputPath('builtin-features.png') });
-  await expect(builtin.locator('li[data-builtin]')).toHaveCount(10);
+  await expect(builtin.locator('li[data-builtin]')).toHaveCount(11);
   await expect(builtin.locator('li[data-builtin="lemo-styles"]')).toContainText('LemoLab 风格库');
   await expect(builtin.locator('li[data-builtin="anidoodle-styles"]')).toContainText('anidoodle 代码绘画');
   await expect(builtin.locator('li[data-builtin="huashu-styles"]')).toContainText('花叔艺术动画');
+  await expect(builtin.locator('li[data-builtin="mg-styles"]')).toContainText('MG 动效风格库（MIT）');
   await expect(builtin.locator('li[data-builtin="cast"]')).toContainText('多角色对话');
   // 「详情」照实列出这个功能在片场里登记了什么。
   const cast = builtin.locator('li[data-builtin="cast"]');
@@ -297,7 +355,10 @@ test('a plugin is added in settings without a project, every project gets it, an
   await expect(page.locator('.publish-tab')).toBeVisible();
   await expect(page.locator('.publish-tab .station-op')).toHaveCount(0);
   await page.locator('#settings-trigger').click();
-  await page.locator('#settings-dialog li[data-station="fake-publisher"]').getByRole('button', { name: '详情与设置' }).click();
+  await page
+    .locator('#settings-dialog li[data-station="fake-publisher"]')
+    .getByRole('button', { name: '详情与设置' })
+    .click();
   const pluginCard = page.getByRole('dialog', { name: '假发布 详情与设置' });
   await expect(pluginCard.locator('[data-setting="token"]')).toContainText('未填写');
   const action = pluginCard.locator('.station-op[data-op="send"]');
@@ -309,8 +370,15 @@ test('a plugin is added in settings without a project, every project gets it, an
   const receipt = path.join(project.path, 'production', 'publish', 'receipts.json');
   await expect.poll(() => fs.existsSync(receipt)).toBe(true);
   expect(JSON.parse(fs.readFileSync(receipt, 'utf8')).platform).toBe('douyin');
-  await expect.poll(async () => (await api(page, '/api/stations')).body.stations.find((x) => x.id === 'fake-publisher').ops[0].last_run?.ok).toBe(true);
-  await expect.poll(async () => (await api(page, '/api/progress')).body.stations.find((s) => s.id === 'auto-publish').status).toBe('done');
+  await expect
+    .poll(
+      async () =>
+        (await api(page, '/api/stations')).body.stations.find((x) => x.id === 'fake-publisher').ops[0].last_run?.ok,
+    )
+    .toBe(true);
+  await expect
+    .poll(async () => (await api(page, '/api/progress')).body.stations.find((s) => s.id === 'auto-publish').status)
+    .toBe('done');
   await page.screenshot({ path: test.info().outputPath('stations-publish.png') });
   // 它的页面从这里打开：关掉弹窗与设置，在画面面板里打开。
   await pluginCard.getByRole('button', { name: '打开「发布看板」' }).click();
@@ -321,17 +389,31 @@ test('a plugin is added in settings without a project, every project gets it, an
   await page.locator('.brand').click();
   await expect(page.locator('.home-hero h1')).toBeVisible();
   await page.locator('#settings-trigger').click();
-  await page.locator('#settings-dialog li[data-station="fake-publisher"]').getByRole('button', { name: '详情与设置' }).click();
-  await page.getByRole('dialog', { name: '假发布 详情与设置' }).getByRole('button', { name: '打开「发布看板」' }).click();
+  await page
+    .locator('#settings-dialog li[data-station="fake-publisher"]')
+    .getByRole('button', { name: '详情与设置' })
+    .click();
+  await page
+    .getByRole('dialog', { name: '假发布 详情与设置' })
+    .getByRole('button', { name: '打开「发布看板」' })
+    .click();
   await expect(page.locator('.home-hero h1')).toHaveCount(0);
   await expect(page.locator('.station-page:not(.station-slot) .station-page-bar')).toContainText('发布看板');
 
   // 去掉：所有项目都不再有它；项目的锁文件始终只有新建时记下的流程。
   await page.locator('#settings-trigger').click();
-  await page.locator('#settings-dialog li[data-station="fake-publisher"]').getByRole('button', { name: '去掉' }).click();
+  await page
+    .locator('#settings-dialog li[data-station="fake-publisher"]')
+    .getByRole('button', { name: '去掉' })
+    .click();
   await expect.poll(() => installedPlugins(sandbox)).toEqual([]);
-  await expect.poll(async () => (await api(page, '/api/progress')).body.stations.some((s) => s.id === 'auto-publish')).toBe(false);
-  expect(JSON.parse(fs.readFileSync(lock, 'utf8'))).toEqual({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } });
+  await expect
+    .poll(async () => (await api(page, '/api/progress')).body.stations.some((s) => s.id === 'auto-publish'))
+    .toBe(false);
+  expect(JSON.parse(fs.readFileSync(lock, 'utf8'))).toEqual({
+    version: 1,
+    production: { id: 'speech', canvas: 'vertical-3x4' },
+  });
   // 去掉只是不用了，本地文件夹留着。
   expect(fs.existsSync(manifestPath)).toBe(true);
 });
@@ -342,7 +424,9 @@ test('a plugin page runs sandboxed and gets everything through the host', async 
   installPlugin(sandbox, fake);
   await openProject(page, project);
   // 插件不把顶栏撑出窗口（原来就有的 2px 是右上角的连接状态点）。
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(2);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
+  ).toBeLessThanOrEqual(2);
 
   // 插件页面收在顶栏「页面」菜单里自己的一组（只用来嵌小窗的页面不列）。
   await page.locator('#page-menu-trigger').click();
@@ -389,7 +473,9 @@ test('a plugin page runs sandboxed and gets everything through the host', async 
   await expect(frame.locator('#result')).toHaveText('没执行：用户没有同意');
 
   // 交给 AI：只填进对话框，不发送。
-  await clickInPage(frame.locator('#ask'), () => expect(page.locator('#prompt')).toHaveValue(/帮我写一句抖音的发布语/, { timeout: 2000 }));
+  await clickInPage(frame.locator('#ask'), () =>
+    expect(page.locator('#prompt')).toHaveValue(/帮我写一句抖音的发布语/, { timeout: 2000 }),
+  );
   await expect(page.locator('#prompt')).toHaveValue(/来自插件「假发布」的页面/);
   await page.screenshot({ path: test.info().outputPath('station-page.png') });
   expect(await page.content()).not.toContain('do-not-leak');
@@ -424,7 +510,11 @@ test('a plugin page runs sandboxed and gets everything through the host', async 
 
   // 事件钩子：确认稿件审核关卡后自动跑插件的操作，设置里的密钥经 stdin 交给它。
   const json = { 'Content-Type': 'application/json' };
-  await api(page, '/api/stations/fake-publisher/settings', { method: 'POST', body: JSON.stringify({ key: 'token', value: 'tok-e2e-secret' }), headers: json });
+  await api(page, '/api/stations/fake-publisher/settings', {
+    method: 'POST',
+    body: JSON.stringify({ key: 'token', value: 'tok-e2e-secret' }),
+    headers: json,
+  });
   fs.writeFileSync(path.join(project.path, 'production', 'script-final.md'), '# 稿\n正文\n');
   await api(page, '/api/progress/gates/gate-script', { method: 'POST', body: '{}', headers: json });
   const log = path.join(project.path, 'production', 'publish', 'hooks.log');
@@ -438,7 +528,11 @@ test('a plugin page runs sandboxed and gets everything through the host', async 
   await expect(page.locator('.station-page:not(.station-slot) .station-page-bar')).toContainText('发布看板');
 });
 
-test('a plugin brings a new kind of project, a voice and a style library, and sends a message for the user', async ({ page, project, sandbox }) => {
+test('a plugin brings a new kind of project, a voice and a style library, and sends a message for the user', async ({
+  page,
+  project,
+  sandbox,
+}) => {
   installPlugin(sandbox, fake);
   // 先打开一个项目，让「保存到」默认落在测试用的临时 HOME 里。
   await openProject(page, project);
@@ -461,7 +555,12 @@ test('a plugin brings a new kind of project, a voice and a style library, and se
   await page.screenshot({ path: test.info().outputPath('station-flow.png') });
   await detail.getByRole('button', { name: '关闭' }).click();
   // 插件的配音出现在「配音」的可选项里。
-  await expect(dialog.locator('.settings-row[data-key="TTS_PROVIDER"]').getByLabel('全局配音').locator('option[value="x:fake-publisher"]')).toHaveCount(1);
+  await expect(
+    dialog
+      .locator('.settings-row[data-key="TTS_PROVIDER"]')
+      .getByLabel('全局配音')
+      .locator('option[value="x:fake-publisher"]'),
+  ).toHaveCount(1);
   await dialog.getByRole('button', { name: '关闭' }).click();
 
   // 首页：选它带来的做法新建一个项目。
@@ -478,15 +577,26 @@ test('a plugin brings a new kind of project, a voice and a style library, and se
   await page.locator('#home-send').click();
   await expect(page.locator('.creation')).toHaveCount(0, { timeout: 15_000 });
   await expect(page.locator('#title')).toContainText('插件做法的端到端测试');
-  const created = (await api(page, '/api/projects')).body.projects.find((p) => p.name.startsWith('插件做法的端到端测试'));
-  expect(JSON.parse(fs.readFileSync(path.join(created.path, 'onset.flow.json'), 'utf8')).production.id).toBe('x:fake-publisher');
+  const created = (await api(page, '/api/projects')).body.projects.find((p) =>
+    p.name.startsWith('插件做法的端到端测试'),
+  );
+  expect(JSON.parse(fs.readFileSync(path.join(created.path, 'onset.flow.json'), 'utf8')).production.id).toBe(
+    'x:fake-publisher',
+  );
 
   // 顶栏第一步是它的页面，路线是它的。
   await expect(page.locator('.steps [data-tab="x:fake-publisher:dashboard"]')).toBeVisible();
   await expect(page.locator('.steps [data-tab="script"]')).toHaveCount(0);
   const progress = await api(page, '/api/progress');
   expect(progress.body.mode).toBe('x:fake-publisher');
-  expect(progress.body.stations.map((s) => s.id)).toEqual(['intake', 'render', 'assemble', 'review', 'gate-final', 'auto-publish']);
+  expect(progress.body.stations.map((s) => s.id)).toEqual([
+    'intake',
+    'render',
+    'assemble',
+    'review',
+    'gate-final',
+    'auto-publish',
+  ]);
 
   // 页面替用户发消息：先确认，确认后才进对话。
   await page.locator('.steps [data-tab="x:fake-publisher:dashboard"]').click();
@@ -504,7 +614,17 @@ test('a plugin brings a new kind of project, a voice and a style library, and se
 test('files a plugin op writes outside what it declared are shown as a warning', async ({ page, project, sandbox }) => {
   fs.writeFileSync(path.join(project.path, 'publish.md'), '---\nplatform: douyin\npublish_status: draft\n---\n');
   const film = path.join(project.path, 'final.mp4');
-  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=gray:s=320x180:r=30:d=1', '-pix_fmt', 'yuv420p', film]);
+  execFileSync('ffmpeg', [
+    '-v',
+    'error',
+    '-f',
+    'lavfi',
+    '-i',
+    'color=c=gray:s=320x180:r=30:d=1',
+    '-pix_fmt',
+    'yuv420p',
+    film,
+  ]);
   installPlugin(sandbox, fake);
   await openProject(page, project);
   await page.locator('[data-tab="final"]').click();
@@ -516,17 +636,28 @@ test('files a plugin op writes outside what it declared are shown as a warning',
   const scribble = async (check) => {
     await page.locator('#settings-trigger').click();
     await page.locator('#settings-dialog').getByText('功能与插件').first().click();
-    await page.locator('#settings-dialog li[data-station="fake-publisher"]').getByRole('button', { name: '详情与设置' }).click();
+    await page
+      .locator('#settings-dialog li[data-station="fake-publisher"]')
+      .getByRole('button', { name: '详情与设置' })
+      .click();
     const detail = page.getByRole('dialog', { name: '假发布 详情与设置' });
     await expect(detail.locator('.plugin-list[data-op="accounts"]')).toContainText('还没有。');
     const done = (await api(page, '/api/tasks')).body.tasks.filter((t) => t.status === 'succeeded').length;
     const action = detail.locator('.station-op[data-op="scribble"]');
     await action.getByRole('button', { name: '顺手记一笔' }).click();
     // 等全部任务跑完（打开弹窗时自动刷新的账号列表也算一个），且成功的比点之前多。
-    await expect.poll(async () => {
-      const tasks = (await api(page, '/api/tasks')).body.tasks;
-      return !tasks.some((t) => t.status === 'running' || t.status === 'queued') && tasks.filter((t) => t.status === 'succeeded').length > done;
-    }, { timeout: 15000 }).toBe(true);
+    await expect
+      .poll(
+        async () => {
+          const tasks = (await api(page, '/api/tasks')).body.tasks;
+          return (
+            !tasks.some((t) => t.status === 'running' || t.status === 'queued') &&
+            tasks.filter((t) => t.status === 'succeeded').length > done
+          );
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
     if (check) await check(action);
     await detail.getByRole('button', { name: '关闭' }).click();
     await page.locator('#settings-dialog').getByRole('button', { name: '关闭' }).click();
@@ -547,7 +678,9 @@ test('files a plugin op writes outside what it declared are shown as a warning',
   expect(await video.getAttribute('src')).toBe(before);
   // 任务列表里同样标出来。
   await page.locator('#tasks-toggle').click();
-  await expect(page.locator('#tasks .task-warning').first()).toContainText('插件「假发布」改了它没有声明会写的项目文件：notes/scribble.txt');
+  await expect(page.locator('#tasks .task-warning').first()).toContainText(
+    '插件「假发布」改了它没有声明会写的项目文件：notes/scribble.txt',
+  );
   await page.locator('#tasks-toggle').click();
   await page.screenshot({ path: test.info().outputPath('station-scope-publish.png') });
 

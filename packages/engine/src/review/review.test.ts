@@ -1,11 +1,19 @@
 import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { envMap, lookPath } from '../envutil';
-import { audioStream, newToolchain, videoStream, type FrameStats, type Media, type ProgramLoudness } from '../mediaprobe';
-import { run, writeReportJSON, type LoudnessTarget, type Prober, type Segment } from './review';
+import {
+  audioStream,
+  type FrameStats,
+  type Media,
+  newToolchain,
+  type ProgramLoudness,
+  videoStream,
+} from '../mediaprobe';
+import { type LoudnessTarget, type Prober, run, type Segment, writeReportJSON } from './review';
 
 class FakeProber implements Prober {
   frames = 0;
@@ -19,7 +27,10 @@ class FakeProber implements Prober {
   difference = new Map<number, number>();
   compared = 0;
 
-  constructor(readonly media: Media, fields: Partial<Pick<FakeProber, 'frames' | 'blankAt' | 'countErr' | 'loudness' | 'difference'>> = {}) {
+  constructor(
+    readonly media: Media,
+    fields: Partial<Pick<FakeProber, 'frames' | 'blankAt' | 'countErr' | 'loudness' | 'difference'>> = {},
+  ) {
     Object.assign(this, fields);
   }
   probe(): Media {
@@ -74,7 +85,11 @@ describe('review', () => {
     expect(p.measured).toBe(1);
   });
   it('handoff seams are compared only where declared', () => {
-    const segs: Segment[] = [{ id: 's1', frames: 30 }, { id: 's2', frames: 60, handoff: 'push_in', crossChapter: true }, { id: 's3', frames: 30 }];
+    const segs: Segment[] = [
+      { id: 's1', frames: 30 },
+      { id: 's2', frames: 60, handoff: 'push_in', crossChapter: true },
+      { id: 's3', frames: 30 },
+    ];
     const p = new FakeProber(media(4, 4.02, true), { frames: 120, difference: new Map([[1, 3]]) });
     const report = run(p, { video: 'final.mp4', fps: 30, segments: segs, outDir: 'out' });
     expect(p.compared, '只有声明了交接的交界才比对').toBe(1);
@@ -85,15 +100,36 @@ describe('review', () => {
   });
 
   it('broken handoff fails and loose handoff hints', () => {
-    const segs: Segment[] = [{ id: 's1', frames: 30 }, { id: 's2', frames: 60, handoff: 'flood', crossChapter: true }, { id: 's3', frames: 30, handoff: 'carry' }];
-    const p = new FakeProber(media(4, 4.02, true), { frames: 120, difference: new Map([[1, 70], [3, 25]]) });
+    const segs: Segment[] = [
+      { id: 's1', frames: 30 },
+      { id: 's2', frames: 60, handoff: 'flood', crossChapter: true },
+      { id: 's3', frames: 30, handoff: 'carry' },
+    ];
+    const p = new FakeProber(media(4, 4.02, true), {
+      frames: 120,
+      difference: new Map([
+        [1, 70],
+        [3, 25],
+      ]),
+    });
     const report = run(p, { video: 'final.mp4', fps: 30, segments: segs, outDir: 'out' });
-    expect(!report.ok && report.problems.length === 1 && report.problems[0].includes('s1 → s2 章节交界'), String(report.problems)).toBe(true);
-    expect(report.hints.some((h) => h.includes('s2 → s3 交界')), String(report.hints)).toBe(true);
+    expect(
+      !report.ok && report.problems.length === 1 && report.problems[0].includes('s1 → s2 章节交界'),
+      String(report.problems),
+    ).toBe(true);
+    expect(
+      report.hints.some((h) => h.includes('s2 → s3 交界')),
+      String(report.hints),
+    ).toBe(true);
   });
 
   it('healthy film passes', () => {
-    const report = run(new FakeProber(media(4, 4.02, true), { frames: 120 }), { video: 'final.mp4', fps: 30, segments: segments(), outDir: 'out' });
+    const report = run(new FakeProber(media(4, 4.02, true), { frames: 120 }), {
+      video: 'final.mp4',
+      fps: 30,
+      segments: segments(),
+      outDir: 'out',
+    });
     expect(report.ok).toBe(true);
     expect(report.problems).toEqual([]);
     expect(report.cuts.map((c) => c.frame)).toEqual([30, 90]);
@@ -107,7 +143,12 @@ describe('review', () => {
     const seam = report.seams[0];
     expect(report.seams.length).toBe(2);
     expect(seam.tiles.length).toBe(12);
-    expect([seam.tiles[5].frame, seam.tiles[6].frame, seam.tiles[6].scene_id, seam.tiles[5].position]).toEqual([29, 30, 's2', 'before']);
+    expect([seam.tiles[5].frame, seam.tiles[6].frame, seam.tiles[6].scene_id, seam.tiles[5].position]).toEqual([
+      29,
+      30,
+      's2',
+      'before',
+    ]);
   });
 
   const machineCases: [string, FakeProber, string][] = [
@@ -127,17 +168,30 @@ describe('review', () => {
   it('blank cut is only a hint', () => {
     const p = new FakeProber(media(4, 4, true), { frames: 120, blankAt: new Map([[1, true]]) });
     const report = run(p, { video: 'final.mp4', fps: 30, segments: segments(), outDir: 'out' });
-    expect(report.ok && report.hints.length === 1 && report.hints[0].includes('s1 → s2'), String(report.hints)).toBe(true);
+    expect(report.ok && report.hints.length === 1 && report.hints[0].includes('s1 → s2'), String(report.hints)).toBe(
+      true,
+    );
   });
 
   it('missing stream durations is a hint', () => {
-    const report = run(new FakeProber(media(0, 0, true), { frames: 120 }), { video: 'final.mp4', fps: 30, segments: segments(), outDir: 'out' });
+    const report = run(new FakeProber(media(0, 0, true), { frames: 120 }), {
+      video: 'final.mp4',
+      fps: 30,
+      segments: segments(),
+      outDir: 'out',
+    });
     expect(report.ok && report.hints.length > 0).toBe(true);
   });
 
   it('sheets are paginated', () => {
     const many: Segment[] = Array.from({ length: 7 }, () => ({ id: 's', frames: 30 }));
-    const report = run(new FakeProber(media(7, 7, true), { frames: 210 }), { video: 'final.mp4', fps: 30, segments: many, outDir: 'out', tilesPerSheet: 18 });
+    const report = run(new FakeProber(media(7, 7, true), { frames: 210 }), {
+      video: 'final.mp4',
+      fps: 30,
+      segments: many,
+      outDir: 'out',
+      tilesPerSheet: 18,
+    });
     expect(report.sheets.map((s) => s.tiles.length)).toEqual([18, 3]);
     expect(path.basename(report.sheets[1].image)).toBe('sheet-02.png');
   });
@@ -155,7 +209,10 @@ describe('review', () => {
 
   it('rejects bad options and propagates errors', () => {
     expect(() => run(new FakeProber(media(1, 1, true)), { video: 'x', fps: 0 }), '帧率为 0 应报错').toThrow();
-    expect(() => run(new FakeProber(media(1, 1, true)), { video: 'x', fps: 30, segments: [{ id: 's', frames: 0 }] }), '镜头帧数为 0 应报错').toThrow();
+    expect(
+      () => run(new FakeProber(media(1, 1, true)), { video: 'x', fps: 30, segments: [{ id: 's', frames: 0 }] }),
+      '镜头帧数为 0 应报错',
+    ).toThrow();
     const boom = new Error('boom');
     let caught: unknown;
     try {
@@ -164,13 +221,21 @@ describe('review', () => {
       caught = err;
     }
     expect(caught, '统计帧数失败应原样抛出').toBe(boom);
-    const report = run(new FakeProber({ path: '', duration_seconds: 0, video: null, audio: audioStream() }), { video: 'x', fps: 30 });
+    const report = run(new FakeProber({ path: '', duration_seconds: 0, video: null, audio: audioStream() }), {
+      video: 'x',
+      fps: 30,
+    });
     expect(report.ok, '没有视频流应判不合格').toBe(false);
   });
 
   // 成片比镜头合计短时，越过末尾的交界与格子没有帧可取；应报帧数问题并给出报告，而不是抽帧报错中断。
   it('short film skips out-of-range cuts and tiles', () => {
-    const report = run(new FakeProber(media(2, 2, true), { frames: 60 }), { video: 'final.mp4', fps: 30, segments: segments(), outDir: 'out' });
+    const report = run(new FakeProber(media(2, 2, true), { frames: 60 }), {
+      video: 'final.mp4',
+      fps: 30,
+      segments: segments(),
+      outDir: 'out',
+    });
     expect(report.ok).toBe(false);
     expect(report.cuts.length).toBe(1);
     for (const tile of report.sheets[0].tiles) expect(tile.frame).toBeLessThan(60);
@@ -178,15 +243,28 @@ describe('review', () => {
   });
 
   it('silent film', () => {
-    let report = run(new FakeProber(media(4, 0, false), { frames: 120 }), { video: 'x', fps: 30, segments: segments(), silent: true });
+    let report = run(new FakeProber(media(4, 0, false), { frames: 120 }), {
+      video: 'x',
+      fps: 30,
+      segments: segments(),
+      silent: true,
+    });
     expect(report.ok, '静音成片没有音轨是正常的').toBe(true);
-    report = run(new FakeProber(media(4, 4, true), { frames: 120 }), { video: 'x', fps: 30, segments: segments(), silent: true });
+    report = run(new FakeProber(media(4, 4, true), { frames: 120 }), {
+      video: 'x',
+      fps: 30,
+      segments: segments(),
+      silent: true,
+    });
     expect(report.ok, '按静音复查时出现音轨应判不合格').toBe(false);
   });
 
   // 响度只进 hints：偏离目标不改变 ok。
   it('loudness outside target is a hint only', () => {
-    const p = new FakeProber(media(4, 4, true), { frames: 120, loudness: { integrated_lufs: -11.2, true_peak_dbtp: 0.4, range_lu: 3 } });
+    const p = new FakeProber(media(4, 4, true), {
+      frames: 120,
+      loudness: { integrated_lufs: -11.2, true_peak_dbtp: 0.4, range_lu: 3 },
+    });
     const target: LoudnessTarget = { integratedLUFS: -16, tolerance: 1, truePeakMax: -1 };
     const report = run(p, { video: 'final.mp4', fps: 30, outDir: 'out', loudness: target });
     expect(report.ok).toBe(true);
@@ -198,8 +276,16 @@ describe('review', () => {
   });
 
   it('loudness within target adds no hint', () => {
-    const p = new FakeProber(media(4, 4, true), { frames: 120, loudness: { integrated_lufs: -16.6, true_peak_dbtp: -1.2, range_lu: 0 } });
-    const report = run(p, { video: 'final.mp4', fps: 30, outDir: 'out', loudness: { integratedLUFS: -16, tolerance: 1, truePeakMax: -1 } });
+    const p = new FakeProber(media(4, 4, true), {
+      frames: 120,
+      loudness: { integrated_lufs: -16.6, true_peak_dbtp: -1.2, range_lu: 0 },
+    });
+    const report = run(p, {
+      video: 'final.mp4',
+      fps: 30,
+      outDir: 'out',
+      loudness: { integratedLUFS: -16, tolerance: 1, truePeakMax: -1 },
+    });
     expect(report.hints).toEqual([]);
   });
 
@@ -209,7 +295,10 @@ describe('review', () => {
     let report = run(silent, { video: 'final.mp4', fps: 30, outDir: 'out', silent: true });
     expect(silent.measured).toBe(0);
     expect(report.loudness).toBeNull();
-    const loud = new FakeProber(media(4, 4, true), { frames: 120, loudness: { integrated_lufs: -8, true_peak_dbtp: 1, range_lu: 0 } });
+    const loud = new FakeProber(media(4, 4, true), {
+      frames: 120,
+      loudness: { integrated_lufs: -8, true_peak_dbtp: 1, range_lu: 0 },
+    });
     report = run(loud, { video: 'final.mp4', fps: 30, outDir: 'out' });
     expect(report.loudness).not.toBeNull();
     expect(report.hints).toEqual([]);
@@ -217,11 +306,52 @@ describe('review', () => {
 
   // 容差之内但超过一个 AAC 帧的音画差只提示。
   it('sync beyond one AAC frame is a hint', () => {
-    let report = run(new FakeProber(media(4, 4.05, true), { frames: 120 }), { video: 'final.mp4', fps: 30, segments: segments(), outDir: 'out' });
+    let report = run(new FakeProber(media(4, 4.05, true), { frames: 120 }), {
+      video: 'final.mp4',
+      fps: 30,
+      segments: segments(),
+      outDir: 'out',
+    });
     expect(report.ok).toBe(true);
     expect(report.hints.join('\n')).toContain('超过一个 AAC 帧');
-    report = run(new FakeProber(media(4, 4.02, true), { frames: 120 }), { video: 'final.mp4', fps: 30, segments: segments(), outDir: 'out' });
+    report = run(new FakeProber(media(4, 4.02, true), { frames: 120 }), {
+      video: 'final.mp4',
+      fps: 30,
+      segments: segments(),
+      outDir: 'out',
+    });
     expect(report.hints.join('\n'), '一个 AAC 帧以内不应提示').not.toContain('AAC');
+  });
+
+  it('reuses frame-qc.json only when video SHA-256 matches and warns when video changes', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-review-qc-'));
+    try {
+      const video = path.join(dir, 'candidate.mp4');
+      fs.writeFileSync(video, 'video-bytes-v1');
+      const sha1 = crypto.createHash('sha256').update('video-bytes-v1').digest('hex');
+      const qcFile = path.join(dir, 'frame-qc.json');
+      fs.writeFileSync(
+        qcFile,
+        JSON.stringify({
+          schema_version: 1,
+          path: video,
+          video_sha256: sha1,
+          verdict: 'pass',
+          summary: { verdict: 'pass', issue_count: 0, fail_count: 0, warn_count: 0, info_count: 0, by_kind: {} },
+          issues: [],
+        }),
+      );
+      const r1 = run(new FakeProber(media(4, 4, true), { frames: 120 }), { video, fps: 30, outDir: dir });
+      expect(r1.frame_qc?.verdict).toBe('pass');
+
+      // 替换视频内容后，不得继续附加旧的 pass 摘要，而应提示重新扫描。
+      fs.writeFileSync(video, 'video-bytes-v2');
+      const r2 = run(new FakeProber(media(4, 4, true), { frames: 120 }), { video, fps: 30, outDir: dir });
+      expect(r2.frame_qc).toBeUndefined();
+      expect(r2.hints.join('\n')).toContain('SHA-256 不一致');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -240,18 +370,43 @@ it.skipIf(which('ffmpeg') === null || which('ffprobe') === null)('runs against r
   const made = spawnSync(
     which('ffmpeg')!,
     [
-      '-v', 'error', '-y',
-      '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=30:duration=2',
-      '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=2',
-      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', film,
+      '-v',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc=size=320x240:rate=30:duration=2',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=440:sample_rate=48000:duration=2',
+      '-c:v',
+      'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      '-c:a',
+      'aac',
+      '-shortest',
+      film,
     ],
     { encoding: 'utf8' },
   );
   if (made.status !== 0) throw new Error(`生成成片失败：${made.stderr}`);
   const outDir = path.join(dir, 'review');
-  const report = run(newToolchain(envMap()), { video: film, fps: 30, segments: [{ id: 'a', frames: 30 }, { id: 'b', frames: 30 }], outDir, thumbWidth: 64 });
+  const report = run(newToolchain(envMap()), {
+    video: film,
+    fps: 30,
+    segments: [
+      { id: 'a', frames: 30 },
+      { id: 'b', frames: 30 },
+    ],
+    outDir,
+    thumbWidth: 64,
+  });
   expect(report.ok, JSON.stringify(report.problems)).toBe(true);
   expect(report.counted_frames).toBe(60);
   writeReportJSON(report, path.join(outDir, 'review.json'));
-  for (const name of ['sheet-01.png', 'review.json']) expect(fs.statSync(path.join(outDir, name)).size, name).toBeGreaterThan(0);
+  for (const name of ['sheet-01.png', 'review.json'])
+    expect(fs.statSync(path.join(outDir, name)).size, name).toBeGreaterThan(0);
 });

@@ -128,7 +128,8 @@ async function runScene(
   const renderer = s.renderer !== '' ? s.renderer : cfg.renderer;
   // 上次渲染没收拾干净的 qoder 技能链接先清掉：resolveSkill 也会找镜头目录里的 .qoder/skills。
   unstageRendererSkills(s.directory);
-  const resolvedSkills = resolveAllSkills(renderer, s.directory, skillsEnvironment(baseEnv, cfg.overlay), s);
+  const skillEnv = skillsEnvironment(baseEnv, cfg.overlay);
+  const resolvedSkills = resolveAllSkills(renderer, s.directory, skillEnv, s);
   if ((resolvedSkills[HyperFramesSkillName] ?? '') === '') {
     userOutput.write(
       `警告：未能为渲染工具 ${renderer} 定位 ${HyperFramesSkillName} 技能目录，组合规范与动效要求改用技能名兜底；请在客户端顶栏点「缺少 HyperFrames 技能 · 安装」，或用 ${SkillsDirEnv} 显式指定\n`,
@@ -144,7 +145,8 @@ async function runScene(
     ? '\n这是独立试镜。只使用本目录的冻结输入、明确提供的技能和参考素材；禁止读取其他选手、其他试镜、项目已有镜头的代码、日志、截图或视频。完成必要资料读取后立即制作本目录的合成，不要反复搜索或研究别人的作品。\n'
     : '';
   const prompt = withWindowsInstructions(
-    (repair ? repairPrompt(s, repair) : buildPrompt(s, resolvedSkills, renderer === director.Tool)) + auditionNote,
+    (repair ? repairPrompt(s, repair) : buildPrompt(s, resolvedSkills, renderer === director.Tool, skillEnv)) +
+      auditionNote,
     'renderer',
   );
   // 渲染器的环境：onset 不在它的 PATH 里，HyperFrames 经 onset 的工具服务（--profile renderer）调用。
@@ -191,7 +193,7 @@ async function runScene(
         stage,
       ),
     );
-  const inputs = fingerprint(s, renderer, resolvedSkills);
+  const inputs = fingerprint(s, renderer, resolvedSkills, undefined, skillEnv);
   const resourceKeys = new Set([
     ...Object.keys(preparedResources),
     ...Object.keys(inputs.parts ?? {}).filter((key) => key.startsWith('asset:')),
@@ -208,7 +210,7 @@ async function runScene(
       : resumeState(
           s,
           inputs.fingerprint,
-          () => fingerprint(s, renderer, resolvedSkills, RecordSchemaRenderContract).fingerprint,
+          () => fingerprint(s, renderer, resolvedSkills, RecordSchemaRenderContract, skillEnv).fingerprint,
         );
   if (acceptRecoveredOutput(s, inputs, resume, baseEnv, userOutput, tolerance, signal)) return;
   // 补验收不启动模型或浏览器。只有确实需要制作时才检查这些运行依赖。
@@ -235,6 +237,7 @@ async function runScene(
         },
         resolvedSkills,
         renderer === director.Tool,
+        skillEnv,
       ) + auditionNote,
       'renderer',
     );

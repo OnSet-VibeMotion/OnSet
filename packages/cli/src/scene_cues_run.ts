@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as filmstyle from '@onset/engine/filmstyle';
+import * as flow from '@onset/engine/flow';
 import { formatG, goPathError, goQuote, goRound } from '@onset/engine/gofmt';
 import { marshal } from '@onset/engine/gojson';
 import * as scene from '@onset/engine/scene';
@@ -31,6 +32,8 @@ interface SceneCue {
   timing: scene.Timing;
   /** 分镜计划里本镜头的 film_style，写进 scene.json。 */
   film_style: string;
+  /** 分镜计划里本镜头的 motion_effects，写进 scene.json。 */
+  motion_effects: string[];
 }
 
 function readFileOr(file: string, prefix: string): Buffer {
@@ -63,6 +66,7 @@ export function runSceneCues(opts: SceneCuesOptions, stdout: Out): unknown {
     }
   }
   verifyPlanFilmStyles(opts.projectRoot, plan);
+  verifyPlanMotionEffects(plan);
   const segments = scene.layoutTiming(plan, cues, phrases, fps, opts.totalFrames);
   const { enter, exit } = scene.planHandoffs(plan);
   const look = plan.look ?? scene.zeroLook();
@@ -85,8 +89,15 @@ export function runSceneCues(opts: SceneCuesOptions, stdout: Out): unknown {
       exit: exit[i],
     });
     if (phrases !== null) timing.phrases = scene.PhraseCopyFile;
-    return { scene: s, segment: segments[i], timing, film_style: planScenes[i].film_style };
+    return {
+      scene: s,
+      segment: segments[i],
+      timing,
+      film_style: planScenes[i].film_style,
+      motion_effects: planScenes[i].motion_effects ?? [],
+    };
   });
+  const hint = motionPlanningHint(results);
   if (opts.check) {
     const problems = checkSceneCues(results, phraseBody);
     if (problems.length > 0) {
@@ -96,7 +107,8 @@ export function runSceneCues(opts: SceneCuesOptions, stdout: Out): unknown {
     }
     printSceneCues(stdout, results);
     stdout.write(`核对通过：${results.length} 个镜头，合计 ${opts.totalFrames} 帧\n`);
-    return cuesData(results, opts.totalFrames, true);
+    if (hint) stdout.write(`${hint}\n`);
+    return cuesData(results, opts.totalFrames, true, hint);
   }
   const writes: PendingWrite[] = [];
   for (const r of results) {
@@ -111,6 +123,9 @@ export function runSceneCues(opts: SceneCuesOptions, stdout: Out): unknown {
         r.film_style === ''
           ? { key: 'film_style', value: '', remove: true }
           : { key: 'film_style', value: marshal(r.film_style) },
+        r.motion_effects.length === 0
+          ? { key: 'motion_effects', value: '', remove: true }
+          : { key: 'motion_effects', value: marshal(r.motion_effects) },
       ]);
     } catch (err) {
       throw new Error(`${sceneFile}：${(err as Error).message}`);
@@ -126,11 +141,12 @@ export function runSceneCues(opts: SceneCuesOptions, stdout: Out): unknown {
   commitWrites(writes);
   printSceneCues(stdout, results);
   stdout.write(`已写入 ${results.length} 个镜头的时长与 timing 块，合计 ${opts.totalFrames} 帧\n`);
-  return cuesData(results, opts.totalFrames, false);
+  if (hint) stdout.write(`${hint}\n`);
+  return cuesData(results, opts.totalFrames, false, hint);
 }
 
 /** 结构化结果：每个镜头的全局帧区间。 */
-function cuesData(results: readonly SceneCue[], totalFrames: number, checked: boolean): unknown {
+function cuesData(results: readonly SceneCue[], totalFrames: number, checked: boolean, hint = ''): unknown {
   return {
     checked,
     total_frames: totalFrames,
@@ -141,6 +157,7 @@ function cuesData(results: readonly SceneCue[], totalFrames: number, checked: bo
       frames: scene.segmentFrames(r.segment),
       duration_seconds: scene.durationLiteral(scene.segmentFrames(r.segment), r.timing.fps),
     })),
+    ...(hint ? { hint } : {}),
   };
 }
 
@@ -232,6 +249,10 @@ function checkSceneCues(results: readonly SceneCue[], phraseBody: Buffer | null)
       problems.push(`${s.id}：timing 块是 ${describeTiming(s.timing)}，应为 ${describeTiming(r.timing)}`);
     if (s.film_style !== r.film_style)
       problems.push(`${s.id}：film_style 是 ${goQuote(s.film_style)}，分镜计划写的是 ${goQuote(r.film_style)}`);
+    if (!sameStringList(s.motion_effects, r.motion_effects))
+      problems.push(
+        `${s.id}：motion_effects 是 ${JSON.stringify(s.motion_effects)}，分镜计划写的是 ${JSON.stringify(r.motion_effects)}`,
+      );
     if (phraseBody !== null) {
       const copyPath = path.join(s.directory, scene.PhraseCopyFile);
       let have: Buffer | null = null;
@@ -280,6 +301,34 @@ function verifyPlanFilmStyles(projectRoot: string, plan: scene.TimingPlan): void
   scene.verifyStyleBoundaries(plan, (value) =>
     value === '' ? defaultKey : value === filmstyle.NoFilmStyle ? '' : value,
   );
+}
+
+function sameStringList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((item, idx) => item === b[idx]);
+}
+
+/** 校验分镜计划里的 motion_effects：单镜最多 3 条，且每条都能在内置/已安装插件动效目录解析。 */
+function verifyPlanMotionEffects(plan: scene.TimingPlan): void {
+  const entries = plan.scenes ?? [];
+  if (entries.every((e) => (e.motion_effects ?? []).length === 0)) return;
+  const sources = flow.listMotionSources();
+  const problems: string[] = [];
+  for (const entry of entries) {
+    const refs = entry.motion_effects ?? [];
+    if (refs.length === 0) continue;
+    try {
+      scene.verifySceneMotionEffects(refs, sources, `镜头 ${entry.id}`);
+    } catch (err) {
+      problems.push((err as Error).message);
+    }
+  }
+  if (problems.length > 0) throw new Error(`分镜计划的动效不合格：\n  - ${problems.join('\n  - ')}`);
+}
+
+/** 柔性规划提醒：整片 >= 5 镜却未指定任何动效时，提醒编排与用户在分镜审核关卡确认（非阻断）。 */
+function motionPlanningHint(results: readonly SceneCue[]): string {
+  if (results.length < 5 || results.some((r) => r.motion_effects.length > 0)) return '';
+  return `提示：全片 ${results.length} 个镜头均未指定 motion_effects；如关键镜头需要标志性动效手法，请在分镜审核关卡与用户确认后再渲染。`;
 }
 
 /** Go fmt 的宽度按字符（rune）计。 */

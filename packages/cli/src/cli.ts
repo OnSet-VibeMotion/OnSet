@@ -14,12 +14,16 @@ import './audition_cmd';
 import './audio';
 import './audio_mix';
 import './brandkit_cmd';
+import './collect_cmd';
 
 import './timing_report';
 
 import './filmstyle';
+import './filmstyle_refs_cmd';
 import './font_cmd';
+import './frame_qc_cmd';
 import './hyperframes';
+import './jianying_cmd';
 import './media';
 import './mediagen_cmd';
 import './motion_cmd';
@@ -37,6 +41,7 @@ import './scene_preview';
 import './seams_cmd';
 import './scene_cues';
 import './series_cmd';
+import './sfx_cmd';
 import './station_cmd';
 import './usage_cmd';
 import './validate_cmd';

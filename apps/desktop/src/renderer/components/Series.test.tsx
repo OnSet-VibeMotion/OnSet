@@ -2,10 +2,11 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { type MockRequest, mockApi } from '../testing';
+import { type MockRequest, mockApi, reply } from '../testing';
 import type { AgentsResponse, Project, SeriesItem, StylesResponse } from '../types';
 import { Home } from './Home';
 import { SeriesAssetsPanel } from './series/SeriesAssetsPanel';
+import { SeriesModal } from './series/SeriesModal';
 
 const agents: AgentsResponse = {
   agents: [{ id: 'claude', label: 'Claude Code', command: 'claude', installed: true, renderer: true }],
@@ -251,4 +252,361 @@ test('SeriesAssetsPanel syncs series updates, promotes candidates, and saves pub
   await user.click(screen.getByRole('button', { name: '保存发布模板' }));
   await waitFor(() => expect(tplBody).not.toBeNull());
   expect(tplBody).toMatchObject({ title_pattern: '【EP{nn}】{title}', default_hashtags: ['#科普'] });
+});
+
+test('SeriesModal AI assist generates draft, refines, fills & undoes, and submits publish_template', async () => {
+  const assistCalls: Record<string, unknown>[] = [];
+  let createdPayload: Record<string, unknown> | null = null;
+  mockApi({
+    '/api/voices': { voices: [{ name: '沉稳男声' }, { name: '主理人' }] },
+    '/api/film-styles': {
+      sources: [],
+      styles: [
+        {
+          source: 'lemo',
+          slug: 'cyber-grid',
+          order: 1,
+          cn: '赛博网格',
+          en: 'Cyber Grid',
+          category_cn: '科技',
+          category_en: 'Tech',
+          uses: [],
+          summary: '暗色网格',
+        },
+      ],
+    },
+    'POST /api/series/_assist': (req: MockRequest) => {
+      const body = req.body as Record<string, unknown>;
+      assistCalls.push(body);
+      if (body.mode === 'draft') {
+        return {
+          mode: 'draft',
+          name: '架构硬核拆解',
+          description: '每周一条 3 分钟原理动画科普',
+          naming_pattern: 'EP{nn}-{title}',
+          defaults: {
+            canvas: 'landscape-16x9',
+            delivery: 'speech',
+            narration: 'solo',
+            film_style: 'lemo/cyber-grid',
+            tts_voice: '沉稳男声',
+          },
+          brief: '## 口播\n- 开头 3 秒抛结论',
+          publish_template: {
+            title_pattern: '【EP{nn}】{title}',
+            default_hashtags: ['#架构科普', '#硬核拆解'],
+            cover_guidelines: '暗色网格 + 左上角期号角标',
+            description_footer: '订阅专栏每周更新',
+          },
+          rationale: '16:9 横屏配合赛博网格适合展示技术原理图。',
+          followups: ['改竖屏短视频', '更口语轻松'],
+          warnings: [],
+          tool: 'claude',
+          model: 'haiku',
+        };
+      }
+      return {
+        mode: 'refine',
+        name: '轻松讲原理',
+        description: '更口语轻松的 B 站横屏科普',
+        naming_pattern: 'EP{nn}-{title}',
+        defaults: {
+          canvas: 'landscape-16x9',
+          delivery: 'speech',
+          narration: 'solo',
+          film_style: 'lemo/cyber-grid',
+          tts_voice: '主理人',
+        },
+        brief: '## 口播\n- 像聊天一样讲清技术原理',
+        publish_template: {
+          title_pattern: '【EP{nn}】{title}',
+          default_hashtags: ['#轻松科普'],
+          cover_guidelines: '大字主标题 + 柔和渐变底',
+          description_footer: '欢迎评论区点题',
+        },
+        rationale: '按要求调松口吻并换用主理人音色。',
+        followups: ['加结尾彩蛋'],
+        warnings: [],
+        tool: 'claude',
+        model: 'haiku',
+      };
+    },
+    'POST /api/series': (req: MockRequest) => {
+      createdPayload = req.body as Record<string, unknown>;
+      return { ...sampleSeries, id: 'new-series', name: String(createdPayload.name) };
+    },
+  });
+
+  const onSaved = vi.fn(async () => {});
+  const onClose = vi.fn();
+  const user = userEvent.setup();
+  render(
+    <SeriesModal
+      initial={null}
+      styles={styles}
+      modes={styles.modes}
+      defaultParent="/home/u/Videos"
+      projects={[]}
+      summaries={{}}
+      onSaved={onSaved}
+      onDeleted={async () => {}}
+      onClose={onClose}
+    />,
+  );
+
+  // 先手动输入一个原专栏名，验证后续「撤回 AI 填充」能完整恢复
+  const nameInput = screen.getByLabelText('专栏名称') as HTMLInputElement;
+  await user.type(nameInput, '手写原名');
+
+  // 输入一句话并点击「AI 生成草案」
+  await user.type(screen.getByLabelText('用一句话描述你想做的专栏'), 'B 站横屏技术原理科普');
+  await user.click(screen.getByRole('button', { name: 'AI 生成草案' }));
+
+  const preview = await screen.findByRole('region', { name: 'AI 草案预览' });
+  expect(preview.textContent).toContain('架构硬核拆解');
+  expect(preview.textContent).toContain('16:9 横屏配合赛博网格适合展示技术原理图。');
+  expect(assistCalls[0]).toMatchObject({ mode: 'draft', idea: 'B 站横屏技术原理科普' });
+
+  // 点击快捷建议 chip 触发第二轮润色
+  await user.click(within(preview).getByRole('button', { name: '更口语轻松' }));
+  await waitFor(() => expect(preview.textContent).toContain('轻松讲原理'));
+  expect(assistCalls[1]).toMatchObject({ mode: 'refine', instruction: '更口语轻松' });
+
+  // 点击「一键回填表单」：表单全部更新，且发布模板 Tab 标出「已填」
+  await user.click(within(preview).getByRole('button', { name: '一键回填表单' }));
+  expect(nameInput.value).toBe('轻松讲原理');
+  expect(screen.getByRole('tab', { name: '发布模板 · 已填' })).toBeTruthy();
+
+  // 点击「撤回 AI 填充」：完整恢复手写原名
+  await user.click(screen.getByRole('button', { name: '撤回 AI 填充' }));
+  expect(nameInput.value).toBe('手写原名');
+
+  // 再次回填并提交新建，验证 POST /api/series 带上 publish_template
+  await user.click(within(preview).getByRole('button', { name: '一键回填表单' }));
+  await user.click(screen.getByRole('button', { name: '创建专栏' }));
+  await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  expect(createdPayload).toMatchObject({
+    name: '轻松讲原理',
+    defaults: { canvas: 'landscape-16x9', film_style: 'lemo/cyber-grid', tts_voice: '主理人' },
+    publish_template: {
+      title_pattern: '【EP{nn}】{title}',
+      default_hashtags: ['#轻松科普'],
+      cover_guidelines: '大字主标题 + 柔和渐变底',
+      description_footer: '欢迎评论区点题',
+    },
+  });
+});
+
+test('SeriesModal AI assist handles cancel, errors without losing manual input, and independent brief polish', async () => {
+  let resolveSlow!: (v: unknown) => void;
+  let cancelCalled = false;
+  let failNext = false;
+  mockApi({
+    '/api/voices': { voices: [] },
+    'POST /api/series/_assist': (req: MockRequest) => {
+      const body = req.body as Record<string, unknown>;
+      if (body.mode === 'polish_brief') {
+        if (failNext) return reply(502, { code: 'series_assist_failed', message: '没有配置可用的 AI 工具' });
+        return {
+          mode: 'polish_brief',
+          defaults: {},
+          brief: '## 润色后的规范\n- 开头三秒直接给结论\n- 严禁营销话术',
+          rationale: '已整理为结构化条目并保留禁区。',
+          followups: [],
+          warnings: [],
+        };
+      }
+      if (body.idea === '触发错误') {
+        return reply(502, { code: 'series_assist_failed', message: '模型超时，请稍后再试' });
+      }
+      return new Promise((resolve) => {
+        resolveSlow = resolve;
+      });
+    },
+    'DELETE /api/series/_assist': () => {
+      cancelCalled = true;
+      return { ok: true };
+    },
+  });
+
+  const user = userEvent.setup();
+  render(
+    <SeriesModal
+      initial={null}
+      styles={styles}
+      modes={styles.modes}
+      defaultParent="/home/u/Videos"
+      projects={[]}
+      summaries={{}}
+      onSaved={async () => {}}
+      onDeleted={async () => {}}
+      onClose={() => {}}
+    />,
+  );
+
+  // 手动填写专栏名称
+  const nameInput = screen.getByLabelText('专栏名称') as HTMLInputElement;
+  await user.type(nameInput, '不要丢掉我的手填名称');
+
+  // 1) 触发取消：显示取消按钮，点击后调用 DELETE /api/series/assist，手填名称不变
+  const ideaInput = screen.getByLabelText('用一句话描述你想做的专栏');
+  await user.type(ideaInput, '慢请求测试');
+  await user.click(screen.getByRole('button', { name: 'AI 生成草案' }));
+  await screen.findByText('正在根据描述生成专栏草案…');
+  const aiBox = screen.getByRole('region', { name: 'AI 专栏助手' });
+  await user.click(within(aiBox).getByRole('button', { name: '取消' }));
+  await waitFor(() => expect(cancelCalled).toBe(true));
+  expect(nameInput.value).toBe('不要丢掉我的手填名称');
+  resolveSlow?.({});
+
+  // 2) 触发失败：弹出友好中文错误，手填名称不变
+  await user.clear(ideaInput);
+  await user.type(ideaInput, '触发错误');
+  await user.click(screen.getByRole('button', { name: 'AI 生成草案' }));
+  expect(await screen.findByText('模型超时，请稍后再试')).toBeTruthy();
+  expect(nameInput.value).toBe('不要丢掉我的手填名称');
+
+  // 3) 切到「专栏规范」Tab：独立润色 + 撤回上版 + 失败不丢原文
+  await user.click(screen.getByRole('tab', { name: '专栏规范' }));
+  const briefArea = screen.getByLabelText('专栏视觉与口播规范（brief.md）') as HTMLTextAreaElement;
+  await user.type(briefArea, '开头别废话，不要营销词');
+
+  await user.click(screen.getByRole('button', { name: 'AI 润色规范' }));
+  await waitFor(() => expect(briefArea.value).toContain('## 润色后的规范'));
+  expect(screen.getByText(/已润色规范：已整理为结构化条目/)).toBeTruthy();
+
+  // 撤回上版恢复原文
+  await user.click(screen.getByRole('button', { name: '撤回上版' }));
+  expect(briefArea.value).toBe('开头别废话，不要营销词');
+
+  // 润色失败时报错且绝不清空原文
+  failNext = true;
+  await user.click(screen.getByRole('button', { name: 'AI 润色规范' }));
+  expect(await screen.findByText('没有配置可用的 AI 工具')).toBeTruthy();
+  expect(briefArea.value).toBe('开头别废话，不要营销词');
+});
+
+test('SeriesModal displays, adds, removes and saves defaults.motion_effects', async () => {
+  let savedPayload: Record<string, unknown> | null = null;
+  mockApi({
+    '/api/voices': { voices: [{ name: '主理人' }] },
+    '/api/motion-effects': {
+      sources: [
+        {
+          id: 'motion-prompt',
+          name: 'Motion Prompt',
+          version: 'pinned',
+          effects: [
+            { id: '005', name: '遮罩显现', category: '动态图形', summary: '遮罩显现' },
+            { id: '007', name: '数字递增', category: '动态图形', summary: '数字递增' },
+          ],
+        },
+      ],
+    },
+    'PUT /api/series/ai-explainer': (req: MockRequest) => {
+      savedPayload = req.body as Record<string, unknown>;
+      return { ...sampleSeries, defaults: { ...sampleSeries.defaults, motion_effects: ['motion-prompt:007'] } };
+    },
+  });
+
+  const user = userEvent.setup();
+  render(
+    <SeriesModal
+      initial={{
+        ...sampleSeries,
+        defaults: { ...sampleSeries.defaults, motion_effects: ['motion-prompt:005'] },
+      }}
+      styles={styles}
+      modes={styles.modes}
+      defaultParent="/home/u/Videos"
+      projects={[]}
+      summaries={{}}
+      onSaved={async () => {}}
+      onDeleted={async () => {}}
+      onClose={() => {}}
+    />,
+  );
+
+  await user.click(screen.getByRole('tab', { name: '开片预设' }));
+  expect(await screen.findByText('005 遮罩显现')).toBeTruthy();
+
+  await user.click(screen.getByRole('button', { name: '+ 添加常用动效' }));
+  await user.selectOptions(screen.getByLabelText('选择常用动效'), 'motion-prompt:007');
+  expect(screen.getByText('007 数字递增')).toBeTruthy();
+
+  await user.click(screen.getByRole('button', { name: '移除常用动效 motion-prompt:005' }));
+  await user.click(screen.getByRole('button', { name: '保存修改' }));
+  await waitFor(() => expect(savedPayload).not.toBeNull());
+  expect(savedPayload).toMatchObject({
+    defaults: { motion_effects: ['motion-prompt:007'] },
+  });
+});
+
+test('SeriesBriefTab keeps manual brief when AI fill is undone while polish is in flight', async () => {
+  let resolvePolish!: (v: unknown) => void;
+  mockApi({
+    '/api/voices': { voices: [] },
+    'POST /api/series/_assist': (req: MockRequest) => {
+      const body = req.body as Record<string, unknown>;
+      if (body.mode === 'draft') {
+        return {
+          mode: 'draft',
+          name: 'AI 草案',
+          defaults: {},
+          brief: 'AI 草案规范 X',
+          rationale: '已生成草案',
+          followups: [],
+          warnings: [],
+        };
+      }
+      return new Promise((resolve) => {
+        resolvePolish = resolve;
+      });
+    },
+  });
+
+  const user = userEvent.setup();
+  render(
+    <SeriesModal
+      initial={null}
+      styles={styles}
+      modes={styles.modes}
+      defaultParent="/home/u/Videos"
+      projects={[]}
+      summaries={{}}
+      onSaved={async () => {}}
+      onDeleted={async () => {}}
+      onClose={() => {}}
+    />,
+  );
+
+  // 1) 手填规范 Y
+  await user.click(screen.getByRole('tab', { name: '专栏规范' }));
+  const briefArea = screen.getByLabelText('专栏视觉与口播规范（brief.md）') as HTMLTextAreaElement;
+  await user.type(briefArea, '手填规范 Y');
+
+  // 2) 生成并应用 AI 草案 X
+  const ideaInput = screen.getByLabelText('用一句话描述你想做的专栏');
+  await user.type(ideaInput, '科普专栏');
+  await user.click(screen.getByRole('button', { name: 'AI 生成草案' }));
+  await user.click(await screen.findByRole('button', { name: '一键回填表单' }));
+  expect(briefArea.value).toBe('AI 草案规范 X');
+
+  // 3) 启动润色 X，期间点击「撤回 AI 填充」恢复手填规范 Y
+  await user.click(screen.getByRole('button', { name: 'AI 润色规范' }));
+  await screen.findByText('正在整理与润色专栏规范…');
+  await user.click(screen.getByRole('button', { name: '撤回 AI 填充' }));
+  expect(briefArea.value).toBe('手填规范 Y');
+
+  // 4) 迟到的润色结果 X' 返回时不得覆盖手填规范 Y，而是留作待确认
+  resolvePolish({
+    mode: 'polish_brief',
+    defaults: {},
+    brief: '润色结果 X-prime',
+    rationale: '已润色',
+    followups: [],
+    warnings: [],
+  });
+  expect(await screen.findByRole('button', { name: '采用润色结果' })).toBeTruthy();
+  expect(briefArea.value).toBe('手填规范 Y');
 });

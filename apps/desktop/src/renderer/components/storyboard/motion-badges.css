@@ -1,0 +1,49 @@
+.sb-motions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.sb-motions-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.sb-motion-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font: 11px / 1.4 var(--sans);
+  cursor: pointer;
+}
+
+.sb-motion-badge:hover {
+  border-color: var(--accent);
+}
+
+.sb-motion-badge .sb-motion-code {
+  font-family: var(--mono);
+  opacity: 0.85;
+}
+
+.sb-motion-badge.missing {
+  border-color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+  color: var(--bad);
+}
+
+.sb-motions.compact {
+  gap: 4px;
+}
+
+.sb-motions.compact .sb-motion-badge {
+  padding: 1px 7px;
+  font-size: 11px;
+}

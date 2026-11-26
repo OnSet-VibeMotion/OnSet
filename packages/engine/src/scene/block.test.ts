@@ -5,12 +5,12 @@ import path from 'node:path';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { blockValue, registerBlock, type SceneBlock } from './block';
 import { optionalFields as indexOptionalFields } from './index';
+import type { StructType } from './jsondecode';
 import { fingerprint } from './record';
-import { buildPrompt, load, newScene, optionalFields, sceneToJSON, type Scene } from './scene';
+import { buildPrompt, load, newScene, optionalFields, type Scene, sceneToJSON } from './scene';
 import { frameWithCanvas, tempDir } from './testsupport';
 import { verifyTimingInputs } from './timing';
 import { VerificationError } from './verification';
-import type { StructType } from './jsondecode';
 
 interface Fake {
   note: string;
@@ -68,24 +68,63 @@ function sceneWith(extra: string): string {
 
 describe('scene block registry', () => {
   it('registers the builtin blocks through the package entry in their fixed order', () => {
-    expect(indexOptionalFields()).toEqual(['renderer', 'film_style', 'plugin_skills', 'components', 'cast', 'song', 'beat', 'timing']);
+    expect(indexOptionalFields()).toEqual([
+      'renderer',
+      'film_style',
+      'plugin_skills',
+      'components',
+      'motion_effects',
+      'cast',
+      'song',
+      'beat',
+      'timing',
+    ]);
   });
 
   it('a registered block goes through load, writeback, prompt and fingerprint', () => {
     const dir = sceneWith(',"fake":{"note":"hello","weight":3}');
     expect(() => load(dir), '未登记时应是未知字段').toThrow('scene.json 含未知字段：fake');
     register(fakeBlock());
-    expect(optionalFields()).toEqual(['renderer', 'film_style', 'plugin_skills', 'components', 'cast', 'song', 'fake', 'beat', 'timing']);
+    expect(optionalFields()).toEqual([
+      'renderer',
+      'film_style',
+      'plugin_skills',
+      'components',
+      'motion_effects',
+      'cast',
+      'song',
+      'fake',
+      'beat',
+      'timing',
+    ]);
     expect(fake(newScene()), '零值镜头上的块是 null').toBeNull();
 
     const s = load(dir);
     expect(fake(s)).toEqual({ note: 'hello', weight: 3 });
-    expect(Object.keys(sceneToJSON(s) as object)).toEqual(['id', 'duration_seconds', 'output', 'transcript', 'text', 'renderer', 'film_style', 'plugin_skills', 'components', 'cast', 'song', 'fake', 'beat', 'timing']);
+    expect(Object.keys(sceneToJSON(s) as object)).toEqual([
+      'id',
+      'duration_seconds',
+      'output',
+      'transcript',
+      'text',
+      'renderer',
+      'film_style',
+      'plugin_skills',
+      'components',
+      'motion_effects',
+      'cast',
+      'song',
+      'fake',
+      'beat',
+      'timing',
+    ]);
     expect((sceneToJSON(s) as Record<string, unknown>).fake).toEqual({ note: 'hello', weight: 3 });
 
     const prompt = buildPrompt(s, {});
     expect(prompt).toContain('\n假块（强制）：hello\n');
-    expect(prompt.indexOf('假块（强制）'), '块的段落接在视觉自由度段之后').toBeGreaterThan(prompt.indexOf('视觉自由度（强制）'));
+    expect(prompt.indexOf('假块（强制）'), '块的段落接在视觉自由度段之后').toBeGreaterThan(
+      prompt.indexOf('视觉自由度（强制）'),
+    );
 
     const inputs = fingerprint(s, 'claude', {});
     expect(inputs.parts!['fake:hello']).toBe('digest-3');
@@ -96,7 +135,9 @@ describe('scene block registry', () => {
   it('runs the block checks', () => {
     register(fakeBlock());
     expect(() => load(sceneWith(',"fake":{"note":""}'))).toThrow('fake.note 不能为空');
-    expect(() => load(sceneWith(',"fake":{"note":1}'))).toThrow('json: cannot unmarshal number into Go struct field Block.fake.note of type string');
+    expect(() => load(sceneWith(',"fake":{"note":1}'))).toThrow(
+      'json: cannot unmarshal number into Go struct field Block.fake.note of type string',
+    );
 
     const stale = load(sceneWith(',"fake":{"note":"stale"}'));
     expect(() => buildPrompt(stale, {})).toThrow('假块过期');
@@ -109,7 +150,9 @@ describe('scene block registry', () => {
   it('a block with its own timeline excludes the timing block', () => {
     register(fakeBlock({ order: 40, timeline: { label: '假时间轴' } }));
     const s = { ...load(sceneWith(',"fake":{"note":"ok"}')), timing: {} } as Scene;
-    expect(() => verifyTimingInputs(s)).toThrow('timing 块不能与 song 或 beat 或 fake 块同时出现：口播、歌曲、卡点、假时间轴的时间轴来源互斥');
+    expect(() => verifyTimingInputs(s)).toThrow(
+      'timing 块不能与 song 或 beat 或 fake 块同时出现：口播、歌曲、卡点、假时间轴的时间轴来源互斥',
+    );
   });
 
   it('rejects a block that clashes with another block or a core field', () => {

@@ -34,16 +34,17 @@ export function recoverOutput(
   try {
     const renderer = s.renderer || cfg.renderer;
     unstageRendererSkills(s.directory);
-    const skills = resolveAllSkills(renderer, s.directory, skillsEnvironment(baseEnv, cfg.overlay), s);
+    const skillEnv = skillsEnvironment(baseEnv, cfg.overlay);
+    const skills = resolveAllSkills(renderer, s.directory, skillEnv, s);
     prepareResources(s, skills);
-    const inputs = fingerprint(s, renderer, skills);
+    const inputs = fingerprint(s, renderer, skills, undefined, skillEnv);
     return acceptRecoveredOutput(
       s,
       inputs,
       resumeState(
         s,
         inputs.fingerprint,
-        () => fingerprint(s, renderer, skills, RecordSchemaRenderContract).fingerprint,
+        () => fingerprint(s, renderer, skills, RecordSchemaRenderContract, skillEnv).fingerprint,
       ),
       baseEnv,
       userOutput,

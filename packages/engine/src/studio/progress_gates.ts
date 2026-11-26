@@ -10,6 +10,7 @@ import * as flow from '../flow';
 import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
 import { candidateFilm, projectVideoDigest } from './reviewreport';
+import { discoverScenes, type SceneSummary } from './scenes';
 import { localRFC3339 } from './script';
 import { readBlob, storeBlob } from './turns';
 
@@ -23,18 +24,46 @@ export interface GateRecord {
   said?: string;
 }
 
-/** 关卡绑定的文件：确认后它们变了，确认就不算数。来自各站的声明，已装的第三方插件的关卡也算。 */
-export function gateFilesFor(): Record<string, string[]> {
+/** 解析项目的打样代表镜（未指定 pilot_scene 时取第 1 镜）。 */
+export function resolvePilotScene(
+  root: string,
+  scenes?: readonly SceneSummary[],
+): { id: string; scene?: SceneSummary } {
+  const list = scenes ?? discoverScenes(root);
+  const configured = flow.readPilotConfig(root).scene;
+  if (configured) {
+    const match = list.find((sc) => sc.id === configured);
+    return match ? { id: match.id, scene: match } : { id: configured };
+  }
+  const first = list[0];
+  return first ? { id: first.id, scene: first } : { id: '' };
+}
+
+/** 打样镜头 MP4 相对项目根的路径；镜头尚未建好或未声明 output 时返回 null。 */
+export function pilotGateFile(root: string, scenes?: readonly SceneSummary[]): string | null {
+  const { scene } = resolvePilotScene(root, scenes);
+  if (!scene?.output) return null;
+  const rel = path.relative(root, path.join(scene.directory, scene.output)).replaceAll('\\', '/');
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  return rel;
+}
+
+/** 关卡绑定的文件：确认后它们变了，确认就不算数。来自各站的声明，已装的第三方插件的关卡也算；开启 pilot_gate 的项目额外带上 gate-pilot。 */
+export function gateFilesFor(root?: string): Record<string, string[]> {
   const out = flow.gateFiles();
   for (const x of flow.stationExtras()) {
     for (const node of x.station.nodes) if (node.gateFiles && !out[node.id]) out[node.id] = node.gateFiles;
+  }
+  if (root && flow.isPilotGateEnabled(root)) {
+    const pilotFile = pilotGateFile(root);
+    out[flow.PilotGateID] = pilotFile ? [pilotFile] : [];
   }
   return out;
 }
 
 /** 可以经界面按钮记确认的关卡。试听确认（approval.json）与节拍确认（grid.json）由编排与 onset 写，不在这里。 */
-export function gateIDs(): string[] {
-  return Object.keys(gateFilesFor());
+export function gateIDs(root?: string): string[] {
+  return Object.keys(gateFilesFor(root));
 }
 
 // ---------------------------------------------------------------------------
@@ -120,7 +149,7 @@ export function readGates(root: string): Record<string, GateRecord> {
 
 /** 记下用户确认了某个关卡：绑定的文件一个都没有时拒绝（没东西可确认）。 */
 export function recordGate(root: string, id: string, now = new Date(), said = ''): GateRecord {
-  const bound = gateFilesFor()[id];
+  const bound = gateFilesFor(root)[id];
   if (!bound) throw new Error(`没有这个审核关卡：${id}`);
   const files: Record<string, string> = {};
   for (const rel of bound) {
@@ -136,7 +165,11 @@ export function recordGate(root: string, id: string, now = new Date(), said = ''
       }
     }
   }
-  if (Object.keys(files).length === 0) throw new Error('要确认的内容还没写出来');
+  if (Object.keys(files).length === 0) {
+    throw new Error(
+      id === flow.PilotGateID ? '打样镜头尚未渲染出片，要确认的内容还没写出来' : '要确认的内容还没写出来',
+    );
+  }
   const gates = readGates(root);
   const record: GateRecord = { at: localRFC3339(now), files, ...(said !== '' ? { said } : {}) };
   gates[id] = record;
@@ -197,7 +230,14 @@ function gateFileChanged(root: string, rel: string, state: string): boolean {
   }
 }
 
-export function gateChanged(root: string, record: GateRecord): boolean {
+export function gateChanged(root: string, record: GateRecord, gateId?: string): boolean {
+  if (gateId === flow.PilotGateID) {
+    const currentFile = pilotGateFile(root);
+    if (!currentFile) return true;
+    const keys = Object.keys(record.files);
+    if (keys.length !== 1 || keys[0] !== currentFile) return true;
+    return gateFileChanged(root, currentFile, record.files[currentFile]);
+  }
   return Object.entries(record.files).some(([rel, state]) => gateFileChanged(root, rel, state));
 }
 
@@ -210,5 +250,28 @@ export function candidateIsApproved(root: string, approvalFile: string): boolean
     return want !== '' && projectVideoDigest(root, candidateFilm) === want;
   } catch {
     return false;
+  }
+}
+
+/**
+ * 批量渲染（scene_run_all）的打样闸门校验：
+ * - 未开启 pilot_gate 时直接放行（100% 向后兼容）；
+ * - 开启 pilot_gate 且本次仅派发代表镜本身时放行；
+ * - 否则必须先完成 gate-pilot 确认且当前代表镜及其输出文件未改动，才解锁全量渲染。
+ */
+export function assertPilotGateUnlocked(root: string, batchSceneIds: readonly string[]): void {
+  if (!root || !flow.isPilotGateEnabled(root)) return;
+  const pilotId = resolvePilotScene(root).id || 'scene-001';
+  if (batchSceneIds.length === 1 && batchSceneIds[0] === pilotId) return;
+  const record = readGates(root)[flow.PilotGateID];
+  if (!record) {
+    throw new Error(
+      `项目已开启单镜打样闸门（${flow.PilotGateID}）：请先仅渲染代表镜头 ${pilotId} 供用户审看，待用户通过 studio_confirm({"gate":"${flow.PilotGateID}","said":"<用户原话>"}) 确认方向后再解锁全量 scene_run_all 渲染`,
+    );
+  }
+  if (gateChanged(root, record, flow.PilotGateID)) {
+    throw new Error(
+      `打样镜头 ${pilotId} 在确认后发生变化，请重新请用户审看并通过 studio_confirm({"gate":"${flow.PilotGateID}","said":"<用户原话>"}) 确认后再全量渲染`,
+    );
   }
 }

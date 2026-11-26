@@ -452,6 +452,10 @@ describe('prompt content', () => {
     has(beat, ['过第四阶段的「分镜审核关卡」'], '卡点·分镜审核');
   });
 
+  it('documents the optional single-scene pilot gate in storyboard and render prompts (speech)', () => {
+    has(speech, ['gate-pilot', 'pilot_gate: true', 'studio_confirm({"gate": "gate-pilot"'], '口播·单镜打样闸门');
+  });
+
   // 编排工具缺了信息时会 strings / grep 已装的 onset 程序反推格式（实测），每次都弹权限确认打断用户。
   it('keeps the orchestrator out of onset internals (all flows)', () => {
     for (const [body, what] of [
@@ -521,7 +525,7 @@ describe('prompt content', () => {
       '钩子—揭示—收束',
       '持续物件',
       '全片配色',
-      '字体、版式和动效由各镜头根据文案自由决定',
+      '微动效参数由各镜自主调优，核心表达所需的标志性动效手法在分镜阶段通过 `motion_effects` 显式选型',
       '章节之间怎么接',
       '先改 `treatment.md`',
     ];
@@ -553,6 +557,29 @@ describe('prompt content', () => {
         ['motion_effect_list({"query": "<关键词>"})', 'motion_effect_show({"ref": "<标识>"})', 'plugin_skills'],
         what + '·动效库',
       );
+  });
+
+  it('injects the compact motion menu only into planning stages', () => {
+    const speechRoot = created('speech', 'vertical-3x4');
+    const planFocused = composeProjectPrompt(speechRoot, 'plan', true).text;
+    expect(planFocused).toContain('文字与数据');
+    expect(planFocused).toContain('005 遮罩显现');
+    expect(planFocused).toContain('其余内置与插件动效可用 `motion_effect_list()` 检索');
+    expect(planFocused).not.toContain('{{MOTION_MENU}}');
+
+    for (const stage of ['script', 'voice', 'mix', 'publish']) {
+      const other = composeProjectPrompt(speechRoot, stage, true).text;
+      expect(other, `stage ${stage} should not carry compact motion menu`).not.toContain(
+        '其余内置与插件动效可用 `motion_effect_list()` 检索',
+      );
+    }
+
+    const beatRoot = created('beat', 'vertical-9x16');
+    const beatPlan = composeProjectPrompt(beatRoot, 'beat-plan', true).text;
+    expect(beatPlan).toContain('005 遮罩显现');
+    expect(beatPlan).toContain('其余内置与插件动效可用 `motion_effect_list()` 检索');
+    const beatMix = composeProjectPrompt(beatRoot, 'beat-mix', true).text;
+    expect(beatMix).not.toContain('其余内置与插件动效可用 `motion_effect_list()` 检索');
   });
 
   it('mixes without amix normalization (speech, beat)', () => {

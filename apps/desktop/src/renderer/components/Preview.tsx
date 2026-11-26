@@ -224,6 +224,7 @@ export function Preview(props: Props) {
             version={props.version}
             scenes={props.scenes}
             sceneId={props.sceneId}
+            seriesId={props.state?.project.series_id}
             onQuick={props.onQuick}
           />
         )}

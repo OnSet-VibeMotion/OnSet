@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import * as flow from '../flow';
 import { atomicWrite } from '../fsutil';
 import { goTrimSpace } from '../gofmt';
 import { listSeriesAssets } from './assets';
@@ -69,6 +70,18 @@ export function seriesPromptBrief(seriesRoot: string, projectRoot: string): Seri
   if (cfg?.description) lines.push(`- 专栏定位：${cfg.description}`);
   if (cfg?.defaults.tts_voice) lines.push(`- 专栏默认音色：${cfg.defaults.tts_voice}`);
   if (cfg?.defaults.film_style) lines.push(`- 专栏默认整片风格：${cfg.defaults.film_style}`);
+  if (cfg?.defaults.motion_effects?.length) {
+    const sources = flow.listMotionSources();
+    const labels = cfg.defaults.motion_effects.map((ref) => {
+      try {
+        const hit = flow.lookupMotionEffect(ref, sources);
+        return `${hit.ref}（${hit.effect.name}）`;
+      } catch {
+        return ref;
+      }
+    });
+    lines.push(`- 本专栏常用动效（写分镜时优先复用）：${labels.join('、')}`);
+  }
   if (brief !== '') {
     lines.push('');
     lines.push(

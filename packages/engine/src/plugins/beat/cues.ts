@@ -66,9 +66,15 @@ interface PendingWrite {
   body: Buffer;
 }
 
-export function applyBeatCues(root: string, scenesRoot: string): number {
+export interface ApplyBeatCuesResult {
+  scenes: number;
+  anchors?: beat.ResolvedAnchorTable;
+}
+
+export function applyBeatCues(root: string, scenesRoot: string): ApplyBeatCuesResult {
   const scenes = schedule.plan(scenesRoot);
   const { grid, segments, fps } = beatLayout(root, scenes);
+  const resolvedAnchors = beat.hasAnchors(root) ? beat.loadAndResolveAnchors(root, grid, segments, fps) : undefined;
   const absRoot = path.resolve(root);
   const gridSHA = beat.gridSHA(root);
   const writes: PendingWrite[] = [];
@@ -87,7 +93,8 @@ export function applyBeatCues(root: string, scenesRoot: string): number {
     }
     const gridRef = beat.gridRef(s.directory, absRoot);
     const segment = segments[i];
-    const { body: data, sha256: dataSHA } = beat.encodeLocal(beat.sliceGrid(grid, segment, fps));
+    const shotAnchors = resolvedAnchors ? (resolvedAnchors.by_scene[s.id] ?? {}) : undefined;
+    const { body: data, sha256: dataSHA } = beat.encodeLocal(beat.sliceGrid(grid, segment, fps, shotAnchors));
     const cue: beat.Cue = {
       scene: s.id,
       first_bar: segment.firstBar,
@@ -122,7 +129,7 @@ export function applyBeatCues(root: string, scenesRoot: string): number {
     );
   });
   commitWrites(writes);
-  return scenes.length;
+  return { scenes: scenes.length, ...(resolvedAnchors ? { anchors: resolvedAnchors } : {}) };
 }
 
 /**

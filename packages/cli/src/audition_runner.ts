@@ -289,13 +289,9 @@ export function adoptAuditionContestant(
   const cfg = config.load(root, null);
   let s = scene.load(target.directory);
   s = attachMemory(s, cfg, err, newRunID());
-  const resolved = scene.resolveAllSkills(
-    contestant.renderer,
-    s.directory,
-    scene.skillsEnvironment(envutil.envMap(), cfg.overlay),
-    s,
-  );
-  scene.writeRecord(s, scene.fingerprint(s, contestant.renderer, resolved));
+  const skillEnv = scene.skillsEnvironment(envutil.envMap(), cfg.overlay);
+  const resolved = scene.resolveAllSkills(contestant.renderer, s.directory, skillEnv, s);
+  scene.writeRecord(s, scene.fingerprint(s, contestant.renderer, resolved, undefined, skillEnv));
   out.write(
     `已采用 ${contestant.slot}（${audition.contestantKey(contestant)}），换进 ${a.scene_id}：${files.length} 个文件\n`,
   );

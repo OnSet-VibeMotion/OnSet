@@ -198,6 +198,7 @@ const autoHandoffGates: ReadonlySet<string> = new Set([
   'gate-script',
   'gate-voice',
   'gate-storyboard',
+  'gate-pilot',
   'gate-final',
   'gate-story',
   'gate-grid',
@@ -249,6 +250,7 @@ export function focusStageFor(projectPath: string): string | undefined {
       'gate-script': 'script',
       'gate-voice': 'voice',
       'gate-storyboard': 'plan',
+      'gate-pilot': 'render',
       'gate-beat-storyboard': 'beat-plan',
       'gate-final': 'review',
     };

@@ -8,7 +8,74 @@
  * 这里只有宿主自己的站与口播流程。内置插件在 apply 里登记的站与流程（例如发布、卡点、歌曲讲解）由 registered.ts 并进来：
  * 要「全部的站、流程、阶段、段落顺序」时用 allStations / allFlows / allStageTitles / flowPrompt。
  */
-import type { Flow, PathRule, Station } from './types';
+import fs from 'node:fs';
+import path from 'node:path';
+import { readLock } from './lock';
+import type { Flow, PathRule, RouteNode, Station } from './types';
+
+/** 可选的单镜真视频打样闸门 ID：开启 pilot_gate 时插在分镜审核之后、全量渲染之前。 */
+export const PilotGateID = 'gate-pilot';
+
+/** 可选的单镜真视频打样闸门节点（未开启 pilot_gate 时不进入路线，保持 100% 向后兼容）。 */
+export const pilotGateNode: RouteNode = {
+  id: PilotGateID,
+  label: '单镜打样审核',
+  step: 'scene',
+  gate: true,
+  page: 'scene',
+};
+
+/** 项目的单镜真视频打样闸门配置。 */
+export interface PilotConfig {
+  enabled: boolean;
+  /** 指定打样代表镜头 ID（例如 "scene-002"），未指定时默认取第 1 镜。 */
+  scene?: string;
+}
+
+function readJSONObject(file: string): Record<string, unknown> | null {
+  try {
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
+    return raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 读取项目的单镜打样闸门开关与代表镜配置。
+ * 优先级：project.json > production/production-config.json > onset.flow.json（production）。
+ * 均未配置时返回 { enabled: false }，老项目行为 100% 不变。
+ */
+export function readPilotConfig(root: string): PilotConfig {
+  let enabled: boolean | undefined;
+  let scene: string | undefined;
+  const apply = (obj: Record<string, unknown> | null) => {
+    if (!obj) return;
+    if (enabled === undefined && typeof obj.pilot_gate === 'boolean') enabled = obj.pilot_gate;
+    if (scene === undefined && typeof obj.pilot_scene === 'string' && obj.pilot_scene.trim() !== '') {
+      scene = obj.pilot_scene.trim();
+    }
+  };
+  apply(readJSONObject(path.join(root, 'project.json')));
+  apply(readJSONObject(path.join(root, 'production', 'production-config.json')));
+  try {
+    const prod = readLock(root).production;
+    if (prod) {
+      if (enabled === undefined && typeof prod.pilot_gate === 'boolean') enabled = prod.pilot_gate;
+      if (scene === undefined && typeof prod.pilot_scene === 'string' && prod.pilot_scene.trim() !== '') {
+        scene = prod.pilot_scene.trim();
+      }
+    }
+  } catch {
+    // 锁文件损坏或缺失时不阻塞读取，按默认关闭处理。
+  }
+  return scene ? { enabled: enabled === true, scene } : { enabled: enabled === true };
+}
+
+/** 项目是否开启了可选的单镜真视频打样闸门（pilot_gate: true）。 */
+export function isPilotGateEnabled(root: string): boolean {
+  return readPilotConfig(root).enabled;
+}
 
 /** 分镜计划与镜头说明：口播与卡点的「拆分镜头」都写这些（卡点插件复用它）。 */
 export const planRules: PathRule[] = [
@@ -60,9 +127,21 @@ export const builtinStations: readonly Station[] = [
         label: '整理口播稿',
         step: 'script',
         page: 'script',
-        produces: [{ path: 'production/script-final.md' }, { path: 'production/script-change-log.md' }, { path: 'script.md' }, { path: 'SCRIPT.md' }],
+        produces: [
+          { path: 'production/script-final.md' },
+          { path: 'production/script-change-log.md' },
+          { path: 'script.md' },
+          { path: 'SCRIPT.md' },
+        ],
       },
-      { id: 'gate-script', label: '稿件审核', step: 'script', gate: true, page: 'script', gateFiles: ['production/script-final.md'] },
+      {
+        id: 'gate-script',
+        label: '稿件审核',
+        step: 'script',
+        gate: true,
+        page: 'script',
+        gateFiles: ['production/script-final.md'],
+      },
     ],
     prompt: [{ id: 'stage', stage: 'script' }],
   },
@@ -70,8 +149,21 @@ export const builtinStations: readonly Station[] = [
     id: 'voice',
     name: '配音',
     nodes: [
-      { id: 'voice', label: '配音', step: 'script', file: 'production/audio/voice.wav', produces: [{ prefix: 'production/audio/' }] },
-      { id: 'gate-voice', label: '配音审核', step: 'script', gate: true, file: 'production/audio/voice.wav', gateFiles: ['production/audio/voice.wav'] },
+      {
+        id: 'voice',
+        label: '配音',
+        step: 'script',
+        file: 'production/audio/voice.wav',
+        produces: [{ prefix: 'production/audio/' }],
+      },
+      {
+        id: 'gate-voice',
+        label: '配音审核',
+        step: 'script',
+        gate: true,
+        file: 'production/audio/voice.wav',
+        gateFiles: ['production/audio/voice.wav'],
+      },
     ],
     prompt: [{ id: 'stage', stage: 'voice' }],
   },
@@ -106,10 +198,7 @@ export const builtinStations: readonly Station[] = [
         step: 'storyboard',
         optional: true,
         page: 'style',
-        produces: [
-          { prefix: '.agents/skills/onset-film-style/' },
-          { prefix: '.agents/onset-film-styles/' },
-        ],
+        produces: [{ prefix: '.agents/skills/onset-film-style/' }, { prefix: '.agents/onset-film-styles/' }],
       },
     ],
     prompt: [{ id: 'film-style' }, { id: 'film-style-using' }, { id: 'film-style-mix' }],
@@ -165,7 +254,12 @@ export const builtinStations: readonly Station[] = [
         label: '配乐、音效与混音',
         step: 'final',
         file: 'production/audio/candidate.mp4',
-        produces: [{ prefix: 'production/audio/', base: /^(music|sfx|premaster|premix|candidate|cue-sheet|asset-ledger|sound-checklist|machine-qc)/ }],
+        produces: [
+          {
+            prefix: 'production/audio/',
+            base: /^(music|sfx|premaster|premix|candidate|cue-sheet|asset-ledger|sound-checklist|machine-qc)/,
+          },
+        ],
       },
     ],
     prompt: [
@@ -177,7 +271,13 @@ export const builtinStations: readonly Station[] = [
     id: 'review',
     name: '复查与试听',
     nodes: [
-      { id: 'review', label: '整片复查', step: 'final', page: 'review', produces: [{ prefix: 'production/review/' }, { path: 'production/final-check.json' }] },
+      {
+        id: 'review',
+        label: '整片复查',
+        step: 'final',
+        page: 'review',
+        produces: [{ prefix: 'production/review/' }, { path: 'production/final-check.json' }],
+      },
       {
         id: 'gate-final',
         label: '试听确认',
@@ -232,7 +332,13 @@ export const speechPrompt: readonly string[] = [
 ];
 
 export const builtinFlows: readonly Flow[] = [
-  { id: 'speech', name: '口播', stations: ['intake', 'script', 'voice', 'timeline', 'style', 'plan', ...tailStations], prompt: [...speechPrompt], first_page: 'script' },
+  {
+    id: 'speech',
+    name: '口播',
+    stations: ['intake', 'script', 'voice', 'timeline', 'style', 'plan', ...tailStations],
+    prompt: [...speechPrompt],
+    first_page: 'script',
+  },
 ];
 
 /**

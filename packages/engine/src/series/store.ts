@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { normalizeMotionEffects } from '../flow';
 import { atomicWrite } from '../fsutil';
 import { goTrimSpace } from '../gofmt';
 import { marshalIndent } from '../gojson';
+import { writePublishTemplate } from './publish_template';
 import {
   BriefFile,
   ConfigFile,
@@ -10,10 +12,13 @@ import {
   DefaultNamingPattern,
   type SeriesConfig,
   type SeriesDefaults,
+  seriesDir,
   slugifySeriesId,
   type UpdateSeriesPatch,
   validateSeriesId,
 } from './types';
+
+export { seriesDir };
 
 function nowISO(): string {
   return new Date().toISOString();
@@ -29,7 +34,7 @@ function normalizeDefaults(raw: unknown): SeriesDefaults {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const d = raw as Record<string, unknown>;
   const out: SeriesDefaults = {};
-  const set = (k: keyof Omit<SeriesDefaults, 'extra_film_styles'>) => {
+  const set = (k: keyof Omit<SeriesDefaults, 'extra_film_styles' | 'motion_effects'>) => {
     const v = cleanOptionalString(d[k]);
     if (v !== undefined) out[k] = v;
   };
@@ -44,6 +49,17 @@ function normalizeDefaults(raw: unknown): SeriesDefaults {
   if (Array.isArray(d.extra_film_styles)) {
     const extras = [...new Set(d.extra_film_styles.map(cleanOptionalString).filter((x): x is string => !!x))];
     if (extras.length > 0) out.extra_film_styles = extras;
+  }
+  if (d.motion_effects !== undefined) {
+    if (!Array.isArray(d.motion_effects)) throw new Error('defaults.motion_effects 必须是字符串数组');
+    const rawRefs: string[] = [];
+    for (const item of d.motion_effects) {
+      if (typeof item !== 'string') throw new Error('defaults.motion_effects 的每一项必须是字符串');
+      const clean = cleanOptionalString(item);
+      if (clean) rawRefs.push(clean);
+    }
+    const motions = normalizeMotionEffects(rawRefs, 'defaults.motion_effects');
+    if (motions.length > 0) out.motion_effects = motions;
   }
   return out;
 }
@@ -71,11 +87,6 @@ function parseSeriesConfig(raw: unknown, expectedId: string): SeriesConfig {
     created_at: cleanOptionalString(r.created_at) ?? now,
     updated_at: cleanOptionalString(r.updated_at) ?? now,
   };
-}
-
-/** 某个专栏在库里的目录路径。 */
-export function seriesDir(rootDir: string, id: string): string {
-  return path.join(rootDir, validateSeriesId(id));
 }
 
 function resolveRealOrAbs(dir: string): string {
@@ -249,6 +260,7 @@ export function createSeries(rootDir: string, input: CreateSeriesInput): SeriesC
   };
   writeConfig(rootDir, cfg);
   if (input.brief !== undefined && goTrimSpace(input.brief) !== '') writeBrief(rootDir, id, input.brief);
+  if (input.publish_template !== undefined) writePublishTemplate(rootDir, id, input.publish_template);
   return cfg;
 }
 
@@ -281,6 +293,7 @@ export function updateSeries(rootDir: string, id: string, patch: UpdateSeriesPat
   };
   writeConfig(rootDir, updated);
   if (patch.brief !== undefined) writeBrief(rootDir, existing.id, patch.brief);
+  if (patch.publish_template !== undefined) writePublishTemplate(rootDir, existing.id, patch.publish_template);
   return updated;
 }
 
