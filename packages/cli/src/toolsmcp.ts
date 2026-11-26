@@ -11,6 +11,7 @@
  * job_cancel 停掉。
  */
 import './cli';
+import * as studioview from '@onset/engine/studioview';
 import type { ParamValues } from './ops/op';
 import { toolOutputArchiveDir } from './output_archive';
 import {
@@ -50,6 +51,12 @@ export {
 
 // ---------------------------------------------------------------- MCP
 
+export interface ServeToolsMCPOptions {
+  inbox?: string;
+  questionTimeoutMs?: number;
+  questionPollInterval?: number;
+}
+
 /**
  * onset studio tools-mcp 的服务循环：stdio 上按行收发 JSON-RPC（与 permission-mcp 同一套写法）。
  * tools/call 不阻塞读下一行：agent 可能并行发几条调用。
@@ -60,6 +67,7 @@ export async function serveToolsMCP(
   profile: Profile,
   spawner: Spawner = spawnOp,
   signal?: AbortSignal,
+  options: ServeToolsMCPOptions = {},
 ): Promise<void> {
   const send = (msg: Record<string, unknown>): void => write(JSON.stringify({ jsonrpc: '2.0', ...msg }) + '\n');
   // 工作目录就是项目根（编排档位）：已装的第三方插件各自的工具一起登记。
@@ -157,6 +165,51 @@ export async function serveToolsMCP(
               const target = byName.get(String(input.tool ?? ''));
               if (!target) return reply({ text: `没有这个工具：${String(input.tool ?? '')}`, isError: true });
               return reply({ text: target.help || target.description, isError: false });
+            }
+            if (name === studioview.StudioAskToolName && profile === 'orchestrator') {
+              try {
+                studioview.normalizeQuestionInput(input);
+              } catch (err) {
+                return reply({ text: (err as Error).message, isError: true });
+              }
+              const inbox = options.inbox ?? process.env[studioview.ViewInboxEnv] ?? '';
+              if (inbox === '') {
+                const data = { status: 'unavailable' };
+                return reply({
+                  text:
+                    '当前不在片场客户端中，无法弹出交互提问卡片。请直接在回复正文用文字与 ```questions 代码块列出问题并结束本轮，等待用户回复。\n结果：' +
+                    JSON.stringify(data),
+                  isError: false,
+                  data,
+                });
+              }
+              const req = studioview.writeQuestionRequest(inbox, input);
+              const budgetMs = options.questionTimeoutMs ?? Math.max(15, maxWaitSeconds() - 15) * 1000;
+              const pollMs = options.questionPollInterval ?? studioview.QuestionPollInterval;
+              const outcome = await studioview.waitQuestionResponse(inbox, req.id, pollMs, signal, budgetMs);
+              if (outcome.kind === 'aborted') {
+                return reply({
+                  text: '提问已取消。',
+                  isError: true,
+                  data: { status: 'cancelled', question_id: req.id },
+                });
+              }
+              if (outcome.kind === 'deferred') {
+                const data = { status: 'deferred', question_id: req.id };
+                return reply({
+                  text:
+                    '用户尚未提交问题卡片，卡片已保留在界面上等待用户填写。不要重复提问、不要替用户决定，请简短提示用户在问题卡片中提交选择后继续，然后结束本轮。\n结果：' +
+                    JSON.stringify(data),
+                  isError: false,
+                  data,
+                });
+              }
+              const summary = studioview.formatQuestionAnswers(req, outcome.response);
+              return reply({
+                text: `${summary}\n结果：${JSON.stringify(outcome.response)}`,
+                isError: false,
+                data: outcome.response,
+              });
             }
             const tool = byName.get(name);
             if (!tool?.op) return reply({ text: `没有这个工具：${name}`, isError: true });

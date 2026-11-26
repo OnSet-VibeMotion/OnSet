@@ -1,4 +1,6 @@
-const choicesBlock = /```choices\s*\n([\s\S]*?)```/;
+import { countChoicesBlocks, parseQuestionsBlock, stripValidQuestions } from './questionParse';
+
+const choicesBlock = /```choices\s*\n([\s\S]*?)```/g;
 
 /**
  * 推荐的整片风格：film-styles 代码块，每行「来源/目录名 理由」是全片的默认风格；
@@ -6,9 +8,9 @@ const choicesBlock = /```choices\s*\n([\s\S]*?)```/;
  */
 const filmStylesBlock = /```film-styles\s*\n([\s\S]*?)```/;
 
-/** 去掉回复里的 choices 代码块：选项另外显示成按钮。 */
+/** 去掉回复里的 choices / questions / film-styles 代码块：它们另外显示成交互卡片或按钮。 */
 export function stripChoices(text: string): string {
-  return text.replace(choicesBlock, '').replace(filmStylesBlock, '').trimEnd();
+  return stripValidQuestions(text).replace(choicesBlock, '').replace(filmStylesBlock, '').trimEnd();
 }
 
 export interface StylePick {
@@ -51,15 +53,19 @@ export function parseStylePicks(text: string, known: Set<string>): StylePick[] {
   return picks.slice(0, 6);
 }
 
-/** 解析 choices 代码块里的选项：每行一个，去掉列表符号。 */
+/**
+ * 解析单块 choices 代码块里的选项：每行一个，去掉列表符号（放宽上限至 16 项）。
+ * 若回复已含 ```questions 块或 2 个及以上 ```choices 块，由 parseQuestionsBlock 接管渲染多题卡片。
+ */
 export function parseChoices(text: string): string[] {
-  const match = choicesBlock.exec(text);
+  if (parseQuestionsBlock(text) !== null || countChoicesBlocks(text) >= 2) return [];
+  const match = /```choices\s*\n([\s\S]*?)```/.exec(text);
   if (!match) return [];
   return match[1]
     .split('\n')
     .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)、])\s*/, '').trim())
     .filter(Boolean)
-    .slice(0, 8);
+    .slice(0, 16);
 }
 
 /** 用户消息里服务端附上的附件说明，拆出来另外显示。 */

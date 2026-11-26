@@ -25,6 +25,9 @@ const kinds: EventKind[] = [
   'context-compaction',
   'permission',
   'permission-resolved',
+  'question',
+  'question-deferred',
+  'question-resolved',
 ];
 
 /** 切页请求在多久之内算刚发生（毫秒）。 */

@@ -21,6 +21,7 @@ import {
   writeJSON,
 } from './http';
 import { answerPermission } from './permissions';
+import { answerQuestion } from './questions';
 import {
   type Attachment,
   BusyError,
@@ -203,6 +204,41 @@ export async function sessionAPI(s: Server, request: Request, rest: string): Pro
       }
       if (!ok) return writeError(409, 'not_pending', '这条请求已经答过，或这一轮已经结束');
       return writeJSON(200, goMap({ ok: true }));
+    }
+    case 'questions': {
+      // /api/sessions/{id}/questions/{question_id}：POST {"status":"answered"|"skipped", "answers":[...], "note"?:""}。
+      if (request.method !== 'POST') return methodNotAllowed('POST');
+      if (parts.length !== 3 || !/^[a-z0-9-]{1,64}$/.test(parts[2])) {
+        return writeError(404, 'not_found', '提问请求不存在');
+      }
+      let body: Record<string, unknown>;
+      try {
+        body = await decodeJSON(request);
+      } catch (err) {
+        if (err instanceof DecodeError) return writeError(400, 'invalid_json', '请求不是合法 JSON');
+        throw err;
+      }
+      let answered;
+      try {
+        answered = answerQuestion(sess.questions, sess.events, parts[2], body, (turn, event) =>
+          emit(sess, turn, event),
+        );
+      } catch (err) {
+        return writeError(400, 'invalid_answer', (err as Error).message);
+      }
+      if (!answered.ok) return writeError(409, 'not_pending', '这组问题已经答过，或这一轮已经结束');
+      if (answered.mode === 'deferred' && answered.response.status === 'answered') {
+        const next = { message: answered.message, attachments: null, view: decodeView(fieldObject(body, 'view')) };
+        const queued = enqueueTurn(p, sess, next);
+        if (queued) return writeJSON(202, goMap({ ok: true, mode: 'deferred', queued: true }));
+        try {
+          const turn = startTurn(s, p, sess, next);
+          return writeJSON(202, goMap({ ok: true, mode: 'deferred', turn_id: turn.turn_id }));
+        } catch (err) {
+          return writeStartError(err);
+        }
+      }
+      return writeJSON(200, goMap({ ok: true, mode: answered.mode }));
     }
     case 'cancel': {
       if (request.method !== 'POST') return methodNotAllowed('POST');

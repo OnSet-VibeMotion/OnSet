@@ -26,6 +26,7 @@ import { emitStudioEvent } from './events';
 import { LocalStyleReceipt, localStyleAction, localStyleContext, resumeFallbackAllowed } from './localactions';
 import { allowedCommands, expirePermissions, pollPermissions } from './permissions';
 import { confirmGateFromChat } from './progress';
+import { expireQuestions, pollQuestions } from './questions';
 import { HandoffTranscriptLimit } from './rotate';
 import { lastTaskPlan, permissionPrompt, replayGuard } from './sessions_agents';
 import { productionBrief, reseedPrompt, transcript } from './sessions_prompt';
@@ -228,7 +229,9 @@ function watchViews(
   onConfirm: (req: NonNullable<ViewRequest['confirm']>) => void,
 ): () => void {
   const seen = new Set<string>();
-  const emitPermission = (turn: string, event: NewEvent): void => emit(sess, turn, event);
+  const questionSeen = new Set<string>();
+  const questionDeferred = new Set<string>();
+  const emitEvent = (turn: string, event: NewEvent): void => emit(sess, turn, event);
   const deliver = (): void => {
     for (const req of drainViewInbox(inbox)) {
       if (req.confirm) {
@@ -238,7 +241,8 @@ function watchViews(
       if (req.step) writeStepMark(projectPath, req.step);
       emit(sess, turnID, { kind: KindView, text: req.note || undefined, view: req });
     }
-    pollPermissions(projectPath, inbox, turnID, sess.permissions, seen, emitPermission);
+    pollPermissions(projectPath, inbox, turnID, sess.permissions, seen, emitEvent);
+    pollQuestions(inbox, turnID, sess.questions, questionSeen, questionDeferred, emitEvent);
   };
   const timer = setInterval(deliver, ViewPollInterval);
   let stopped = false;
@@ -247,7 +251,8 @@ function watchViews(
     stopped = true;
     clearInterval(timer);
     deliver();
-    expirePermissions(sess.permissions, turnID, emitPermission);
+    expirePermissions(sess.permissions, turnID, emitEvent);
+    expireQuestions(sess.questions, turnID, emitEvent);
     fs.rmSync(inbox, { recursive: true, force: true });
   };
 }

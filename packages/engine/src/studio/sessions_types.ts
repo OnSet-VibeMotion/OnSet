@@ -8,6 +8,7 @@ import * as agentrun from '../agentrun';
 import { goClean } from '../gofmt';
 import type { ViewRequest, ViewState } from '../studioview';
 import { type PendingPermission, type PermissionEventData, permissionEventJSON } from './permissions';
+import { type PendingQuestion, type QuestionEventData, questionEventJSON } from './questions';
 import { type FileChange, studioRoot } from './turns';
 
 // Studio 在 agentrun 事件之外自己发的几种事件。
@@ -102,6 +103,8 @@ export interface SessionEvent extends agentrun.Event {
   view?: ViewRequest;
   /** 等用户批准的调用（permission 事件）与它的结果（permission-resolved 事件）。 */
   permission?: PermissionEventData;
+  /** 编排工具发出的结构化提问（question / question-deferred / question-resolved 事件）。 */
+  question?: QuestionEventData;
 }
 
 export function sessionEventJSON(e: SessionEvent): Record<string, unknown> {
@@ -126,6 +129,7 @@ export function sessionEventJSON(e: SessionEvent): Record<string, unknown> {
         }
       : undefined,
     permission: e.permission ? permissionEventJSON(e.permission) : undefined,
+    question: e.question ? questionEventJSON(e.question) : undefined,
   };
 }
 
@@ -223,6 +227,8 @@ export interface Session {
   queue: TurnRequest[];
   /** 编排工具在等用户批准的调用，按请求编号。只在内存里，理由同 queue。 */
   permissions: Map<string, PendingPermission>;
+  /** 编排工具在等用户回答的结构化问题，按请求编号。deferred 问题重启后可从事件流还原。 */
+  questions: Map<string, PendingQuestion>;
 }
 
 /** BusyError 表示项目正被另一轮对话或一个写任务占用。 */

@@ -1,0 +1,410 @@
+/* ---- 结构化多题提问卡片（QuestionCard / QuestionSummary）：100% 复用 :root 皮肤变量 ---- */
+.chat .question-stack {
+  flex: none;
+  margin: 6px calc(var(--gutter) - 6px) 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat .question-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--accent-line);
+  border-left-width: 3px;
+  background: var(--raised);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--bg) 45%, transparent);
+  animation: pop-in 0.18s ease-out;
+}
+
+.chat .q-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chat .q-badge {
+  flex: none;
+  color: var(--accent-text);
+  font: 600 11px var(--mono);
+  letter-spacing: 0.06em;
+}
+
+.chat .q-title {
+  min-width: 0;
+  color: var(--text);
+  font: 600 13px var(--serif);
+}
+
+.chat .q-counter,
+.chat .q-progress {
+  flex: none;
+  color: var(--text-3);
+  font: 11px var(--mono);
+}
+
+.chat .q-mode {
+  flex: none;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--well);
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.chat .q-mode:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.chat .q-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chat .q-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--well);
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.chat .q-tab:hover {
+  border-color: var(--line-strong);
+  color: var(--text-2);
+}
+
+.chat .q-tab.active {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.chat .q-tab.done {
+  border-color: color-mix(in srgb, var(--ok) 40%, var(--line));
+  color: var(--text-2);
+}
+
+.chat .q-tab.done .q-tab-mark {
+  color: var(--ok);
+}
+
+.chat .q-tab-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 10px var(--mono);
+}
+
+.chat .q-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: min(44vh, 360px);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.chat .q-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat .q-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat .q-prompt {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.chat .q-kind {
+  flex: none;
+  color: var(--muted);
+  font: 11px var(--mono);
+}
+
+.chat .q-options {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.chat .q-opt,
+.chat .q-other-trigger {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  height: auto;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line-soft);
+  background: var(--well);
+  color: var(--text);
+  text-align: left;
+  white-space: normal;
+  transition:
+    border-color 0.14s ease,
+    background 0.14s ease;
+}
+
+.chat .q-opt:hover:not(:disabled),
+.chat .q-other-trigger:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--chip);
+}
+
+.chat .q-opt.selected,
+.chat .q-other.selected > .q-other-trigger {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.chat .q-mark {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-strong);
+  color: var(--accent-text);
+}
+
+.chat .q-mark.dot {
+  border-radius: 50%;
+}
+
+.chat .q-mark.dot i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.chat .q-mark.box {
+  border-radius: 4px;
+}
+
+.chat .q-opt.selected .q-mark,
+.chat .q-other.selected .q-mark {
+  border-color: var(--accent);
+}
+
+.chat .q-opt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.chat .q-opt-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chat .q-opt-label {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.chat .q-rec {
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font: 10px var(--mono);
+}
+
+.chat .q-opt-desc {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+
+.chat .q-other {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat .q-other-input,
+.chat .q-note-input {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+.chat .q-other-input:focus,
+.chat .q-note-input:focus {
+  border-color: var(--accent-line);
+}
+
+.chat .q-add-note {
+  align-self: flex-start;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.chat .q-add-note:hover {
+  color: var(--text-2);
+}
+
+.chat .q-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--bad);
+}
+
+.chat .q-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.chat .q-foot button {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+/* ---- 历史回显摘要卡 ---- */
+.chat .question-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--raised);
+  font-size: 12px;
+}
+
+.chat .question-summary.muted {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.chat .q-sum-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat .q-sum-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.chat .q-sum-toggle {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.chat .q-sum-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chat .q-sum-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+  background: var(--well);
+}
+
+.chat .q-sum-key {
+  color: var(--text-3);
+}
+
+.chat .q-sum-val {
+  color: var(--text);
+}
+
+.chat .q-sum-note {
+  margin: 0;
+  color: var(--text-3);
+}
+
+.chat .q-sum-detail {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.chat .q-sum-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chat .q-sum-q {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.chat .q-sum-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.chat .q-sum-opt {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--text-3);
+}
+
+.chat .q-sum-opt.picked {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}

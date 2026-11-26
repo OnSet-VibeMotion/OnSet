@@ -175,6 +175,27 @@ export function Desk(props: { signal: CrewSignal; composing: boolean; onCompose:
         </div>
       </div>
     );
+  } else if ((signal.questionsCount ?? 0) > 0) {
+    body = (
+      <div className="pet-desk" data-desk="questions">
+        <div className="pet-desk-head">
+          <span>等你回答问题</span>
+          {(signal.questionsCount ?? 0) > 1 ? (
+            <span className="pet-desk-more">共 {signal.questionsCount} 组</span>
+          ) : null}
+        </div>
+        {signal.questionTitle ? (
+          <div className="pet-desk-q" title={signal.questionTitle}>
+            {signal.questionTitle}
+          </div>
+        ) : null}
+        <div className="pet-desk-row">
+          <button className="pet-btn primary" onClick={() => sendPet({ kind: 'focus' })}>
+            回到片场作答
+          </button>
+        </div>
+      </div>
+    );
   } else if (composing) {
     body = (
       <form

@@ -2,6 +2,7 @@
  * onset 工具服务的工具定义、schema 生成与调用前校验。
  */
 import * as flow from '@onset/engine/flow';
+import { StudioAskToolName, studioAskDescription, studioAskHelp, studioAskInputSchema } from '@onset/engine/studioview';
 import {
   allOps,
   markParamProvided,
@@ -221,6 +222,15 @@ export function describeTools(profile: Profile, root = ''): ToolDef[] {
       op,
       help: helpText(shownOp),
       ...(external ? { external } : {}),
+    });
+  }
+  if (profile === 'orchestrator') {
+    out.push({
+      name: StudioAskToolName,
+      profile,
+      description: studioAskDescription,
+      inputSchema: studioAskInputSchema as unknown as JSONSchema,
+      help: studioAskHelp,
     });
   }
   out.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));

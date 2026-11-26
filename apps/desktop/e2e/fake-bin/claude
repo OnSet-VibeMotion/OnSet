@@ -120,6 +120,23 @@ case "$prompt" in *排版测试*)
   printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
   exit 0 ;;
 esac
+# 「弹一张多题问卷」（不用「多题提问」：每轮提示词的 studioInteraction 里就有这几个字，会把所有首轮对话都接到这里）：
+# 经客户端挂的 onset 工具服务（--mcp-config 里的 onset studio tools-mcp）调 studio_ask，
+# 等用户在过程中提交多题答案，在同一轮继续生成最终回复。
+case "$prompt" in *弹一张多题问卷*)
+  mcp=""; prev=""
+  for a in "$@"; do
+    if [ "$prev" = "--mcp-config" ]; then mcp="$a"; fi
+    prev="$a"
+  done
+  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"ask-1","name":"mcp__onset__studio_ask","input":{"title":"开工前确认 2 项规格"}}]}}\n'
+  if [ -z "$mcp" ]; then answer="没有工具服务"; else answer=$(node "$(dirname "$0")/../fake-question.mjs" "$mcp"); fi
+  printf '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"ask-1","content":"ok"}]}}\n'
+  encoded=$(node -e 'process.stdout.write(JSON.stringify("已收到你的选择，同轮继续完成：\n" + process.argv[1]))' "$answer")
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":%s}]}}\n' "$encoded"
+  printf '{"type":"result","subtype":"success","is_error":false,"result":"done","usage":{"input_tokens":1,"output_tokens":1},"num_turns":1}\n'
+  exit 0 ;;
+esac
 # 「要批准」：经客户端挂的审批服务（--mcp-config 里的 onset studio permission-mcp）请用户批准一条命令，
 # 把结果写进回复。没有 --mcp-config（安全模式外或不在客户端里）时如实说明。
 case "$prompt" in *要批准*)

@@ -19,8 +19,16 @@ import { ChatComposer } from './chat/ChatComposer';
 import { ChatHeader } from './chat/ChatHeader';
 import { BackgroundTaskStatus, PermissionStack, PlanPill, QueuedStack } from './chat/ChatStacks';
 import { choiceQuestion, useCrewBroadcast } from './chat/crew';
-import { buildBlocks, parseChoices, pendingPermissions, queuedMessages, type TurnBlock } from './chat/model';
+import {
+  buildBlocks,
+  parseChoices,
+  pendingPermissions,
+  pendingQuestions,
+  queuedMessages,
+  type TurnBlock,
+} from './chat/model';
 import { PolishCard } from './chat/Polish';
+import { QuestionCard } from './chat/QuestionCard';
 import { type Outbox, useChatActions } from './chat/useChatActions';
 import { useChatScroll } from './chat/useChatScroll';
 import { useNow, useSessionEvents } from './chat/useSessionEvents';
@@ -87,6 +95,7 @@ export function Chat(props: Props) {
   );
   const queue = useMemo(() => queuedMessages(events), [events]);
   const asks = useMemo(() => pendingPermissions(events), [events]);
+  const questions = useMemo(() => pendingQuestions(events), [events]);
   const lastTurn = [...blocks].reverse().find((b): b is TurnBlock => b.kind === 'turn');
   const running = !!lastTurn && !lastTurn.end;
   const plan = running ? (lastTurn?.plan ?? null) : null;
@@ -95,7 +104,7 @@ export function Chat(props: Props) {
     () => events.filter((event) => event.turn_id === lastTurn?.id),
     [events, lastTurn?.id],
   );
-  const activity = lastTurn && running ? turnActivity(lastTurn, activityEvents, asks, now) : null;
+  const activity = lastTurn && running ? turnActivity(lastTurn, activityEvents, asks, now, questions) : null;
   // 在等镜头制作时，「镜头制作」卡片已经逐个镜头报进度，不再叠一张「正在执行操作」。
   const renderingScenes = props.scenes.filter((scene) => scene.rendering).length;
   const showActivity = showProgressCard(activity, lastTurn, renderingScenes, reconnecting);
@@ -152,13 +161,22 @@ export function Chat(props: Props) {
     [blocks],
   );
   // 桌宠的场记小人跟着这一轮走（main/pet.ts），批准、选项、发话、停下也能在桌宠上做。
-  useCrewBroadcast(lastTurn, asks, props.scenes, props.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? '', {
-    choices: actions.blocked ? [] : deskChoices,
-    question: choiceQuestion(lastProse),
-    running,
-    canSend: !actions.blocked,
-    recent: recentResults,
-  });
+  useCrewBroadcast(
+    lastTurn,
+    asks,
+    props.scenes,
+    props.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? '',
+    {
+      choices: actions.blocked ? [] : deskChoices,
+      question: choiceQuestion(lastProse),
+      questionsCount: questions.length,
+      questionTitle: questions[0]?.title || questions[0]?.questions[0]?.question || '',
+      running,
+      canSend: !actions.blocked,
+      recent: recentResults,
+    },
+    questions,
+  );
 
   // 「接下来」卡片：按制作路线现在这一站说清该做什么（guide.ts），按钮只做界面本来就能做的事。
   const started = props.sessions.length > 0 || Object.keys(props.progress?.turns ?? {}).length > 0;
@@ -226,6 +244,7 @@ export function Chat(props: Props) {
               choicesEnabled={block.kind === 'turn' && block.id === choiceTurn && !actions.blocked}
               answer={block.kind === 'turn' ? answerAfter(blocks, index) : undefined}
               onChoice={(text) => void actions.deliver(text, [])}
+              onFocusComposer={() => actions.textarea.current?.focus()}
               onRetry={(text) => void actions.deliver(text, [])}
               onOpenFile={props.onOpenFile}
               onView={props.onView}
@@ -254,6 +273,18 @@ export function Chat(props: Props) {
       {running && !!lastTurn?.backgroundTasks.length && <BackgroundTaskStatus tasks={lastTurn.backgroundTasks} />}
       {asks.length > 0 && (
         <PermissionStack asks={asks} onAnswer={(ask, decision) => void actions.answer(ask, decision)} />
+      )}
+      {questions.length > 0 && (
+        <div className="question-stack">
+          <QuestionCard
+            ask={questions[0]}
+            queueIndex={0}
+            queueTotal={questions.length}
+            disabled={questions[0].deferred ? actions.blocked : false}
+            onSubmit={(payload) => actions.answerQuestion(questions[0], payload)}
+            onSkip={() => actions.answerQuestion(questions[0], { status: 'skipped' })}
+          />
+        </div>
       )}
       {queue.length > 0 && (
         <QueuedStack queue={queue} onAction={(item, action) => void actions.queueAction(item, action)} />

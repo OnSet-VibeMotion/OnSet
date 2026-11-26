@@ -13,8 +13,9 @@ import * as director from '@onset/engine/director';
 import * as studioview from '@onset/engine/studioview';
 import { currentEnvironment } from '../cli';
 import { Command } from '../cobra';
-import { callTarget, describeTools, Jobs, prepareCall, spawnOp, spawnOpWithService, type Spawner } from '../toolsmcp';
 import type { ParamValues } from '../ops/op';
+import { callTarget, describeTools, Jobs, prepareCall, type Spawner, spawnOp, spawnOpWithService } from '../toolsmcp';
+import { askTool } from './ask';
 import { newGate } from './gate';
 import { todoTool } from './todo';
 import { toolOutputArchiveDir } from './tool-errors';
@@ -36,9 +37,16 @@ export async function loadAgentModule(): Promise<AgentModule> {
  * 把编排档位的操作做成 agent 的工具；job_wait、job_cancel 不要（这里直接等到跑完）。
  * 除了只读的 tool_help，都顺序执行：模型一次发出 scene_cues 与 scene_run 时，后者要等前者写完 scene.json。
  */
-export function onsetTools(spawner: Spawner = spawnOp, root = '', profile: 'orchestrator' | 'renderer' = 'orchestrator', archiveDir: string | (() => string) = toolOutputArchiveDir): { tools: AgentTool[]; jobs: Jobs } {
+export function onsetTools(
+  spawner: Spawner = spawnOp,
+  root = '',
+  profile: 'orchestrator' | 'renderer' = 'orchestrator',
+  archiveDir: string | (() => string) = toolOutputArchiveDir,
+): { tools: AgentTool[]; jobs: Jobs } {
   const jobs = new Jobs(spawner, archiveDir);
-  const defs = describeTools(profile, root).filter((t) => t.name !== 'job_wait' && t.name !== 'job_cancel');
+  const defs = describeTools(profile, root).filter(
+    (t) => t.name !== 'job_wait' && t.name !== 'job_cancel' && t.name !== studioview.StudioAskToolName,
+  );
   const byName = new Map(defs.map((t) => [t.name, t]));
   const tools: AgentTool[] = defs.map((def) => {
     const schema = JSON.parse(JSON.stringify(def.inputSchema)) as { properties?: Record<string, unknown> };
@@ -51,8 +59,12 @@ export function onsetTools(spawner: Spawner = spawnOp, root = '', profile: 'orch
       sequential: def.name !== 'tool_help',
       async execute(input, signal) {
         if (def.name === 'tool_help') {
-          const target = byName.get(String(input.tool ?? ''));
-          if (!target) return { text: `没有这个工具：${String(input.tool ?? '')}`, isError: true };
+          const asked = String(input.tool ?? '');
+          if (asked === studioview.StudioAskToolName && profile === 'orchestrator') {
+            return { text: studioview.studioAskHelp, isError: false };
+          }
+          const target = byName.get(asked);
+          if (!target) return { text: `没有这个工具：${asked}`, isError: true };
           return { text: target.help || target.description, isError: false };
         }
         let params: ParamValues;
@@ -69,7 +81,9 @@ export function onsetTools(spawner: Spawner = spawnOp, root = '', profile: 'orch
         return {
           text: reply.text,
           isError: reply.isError,
-          ...(def.name === 'scene_preview_check' && !reply.isError && typeof sheet === 'string' ? { imagePath: sheet } : {}),
+          ...(def.name === 'scene_preview_check' && !reply.isError && typeof sheet === 'string'
+            ? { imagePath: sheet }
+            : {}),
         };
       },
     };
@@ -104,11 +118,16 @@ export function parseRequest(text: string): director.Request {
     resume: r.resume === true,
     model: typeof r.model === 'string' ? r.model : '',
     thinking: typeof r.thinking === 'string' && thinkingLevels.has(r.thinking) ? r.thinking : undefined,
-    compact_at: typeof r.compact_at === 'number' && Number.isSafeInteger(r.compact_at) && r.compact_at >= 32_000 ? r.compact_at : undefined,
+    compact_at:
+      typeof r.compact_at === 'number' && Number.isSafeInteger(r.compact_at) && r.compact_at >= 32_000
+        ? r.compact_at
+        : undefined,
     cache_key: typeof r.cache_key === 'string' && r.cache_key !== '' ? r.cache_key : undefined,
     unsafe: r.unsafe === true,
     commands: Array.isArray(r.commands) ? r.commands.filter((c): c is string => typeof c === 'string') : [],
-    writable_dirs: Array.isArray(r.writable_dirs) ? r.writable_dirs.filter((c): c is string => typeof c === 'string') : [],
+    writable_dirs: Array.isArray(r.writable_dirs)
+      ? r.writable_dirs.filter((c): c is string => typeof c === 'string')
+      : [],
     agent_dir: r.agent_dir,
     service: director.parseResolvedService(r.service) ?? undefined,
   };
@@ -122,15 +141,26 @@ export async function runBuiltinAgent(
   req: director.Request,
   write: (line: string) => void,
   signal: AbortSignal | undefined,
-  options: { spawner?: Spawner; gate?: Gate; setupModels?: (runtime: unknown) => Promise<string> | string; env?: Record<string, string | undefined> } = {},
+  options: {
+    spawner?: Spawner;
+    gate?: Gate;
+    setupModels?: (runtime: unknown) => Promise<string> | string;
+    env?: Record<string, string | undefined>;
+  } = {},
 ): Promise<{ ok: boolean; error?: string }> {
   const env = options.env ?? currentEnvironment();
   let archiveDir = toolOutputArchiveDir(req.session_id ?? '');
   // 整理经验这类会再起制作人的操作要拿到模型服务与 key：经执行进程的 stdin 交下去（spawnOpWithService），不进环境。
-  const onset = onsetTools(options.spawner ?? spawnOpWithService(req.service ?? null), req.workdir, req.profile ?? 'orchestrator', () => archiveDir);
+  const onset = onsetTools(
+    options.spawner ?? spawnOpWithService(req.service ?? null),
+    req.workdir,
+    req.profile ?? 'orchestrator',
+    () => archiveDir,
+  );
   const jobs = onset.jobs;
-  // 待办清单与 onset 的工具一样直接放行：它只把清单写进工具调用，什么也不做。
-  const tools = [...onset.tools, todoTool()];
+  const inbox = req.profile === 'renderer' ? '' : (env[studioview.ViewInboxEnv] ?? '');
+  // 待办清单与结构化提问工具和 onset 的工具一样直接放行。
+  const tools = [...onset.tools, todoTool(), ...(req.profile === 'renderer' ? [] : [askTool(inbox)])];
   const gate =
     options.gate ??
     newGate({
@@ -142,7 +172,7 @@ export async function runBuiltinAgent(
       extraReadDir: () => archiveDir,
       agentDir: req.agent_dir,
       onsetTools: new Set(tools.map((t) => t.name)),
-      inbox: req.profile === 'renderer' ? '' : env[studioview.ViewInboxEnv] ?? '',
+      inbox,
     });
   const agent = await loadAgentModule();
   try {
@@ -179,7 +209,9 @@ ORCHESTRATOR=director 启动，人不直接运行。请求经 stdin 一行 JSON�
       const parent = c.context();
       parent.addEventListener('abort', () => controller.abort(), { once: true });
       process.once('SIGTERM', () => controller.abort());
-      const result = await runBuiltinAgent(req, (line) => process.stdout.write(line + '\n'), controller.signal, { env });
+      const result = await runBuiltinAgent(req, (line) => process.stdout.write(line + '\n'), controller.signal, {
+        env,
+      });
       // 失败照常抛出：execute 打出原因、退出码 1，agentrun 据此判这一轮失败（原因同时在 result 事件里）。
       if (!result.ok) throw new Error(result.error ?? '制作人出错');
     },

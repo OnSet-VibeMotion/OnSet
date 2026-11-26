@@ -101,6 +101,9 @@ const onsetVerbs: Record<string, string> = {
   voice_list: '查看音色',
   voice_save: '存音色',
   studio_show: '打开页面',
+  studio_step: '标出步骤',
+  studio_confirm: '记录关卡确认',
+  studio_ask: '请用户确认',
   memory_remember: '记下偏好',
   config_get: '读取配置',
 };

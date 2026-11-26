@@ -1,7 +1,17 @@
 import type { MutableRefObject } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, api, errorText, post } from '../../api';
-import type { AgentChoice, Attachment, PermissionAsk, Scene, SessionMeta, ViewRequest, ViewState } from '../../types';
+import type {
+  AgentChoice,
+  Attachment,
+  PermissionAsk,
+  QuestionAsk,
+  QuestionSubmitPayload,
+  Scene,
+  SessionMeta,
+  ViewRequest,
+  ViewState,
+} from '../../types';
 import type { GuideAction } from '../guide';
 import { type CommandContext, executeGuideAction, executeSlashCommand } from './chatCommands';
 import { mentionAttachments, parseCommand, type SlashCommand } from './complete';
@@ -222,6 +232,26 @@ export function useChatActions(params: ChatActionsParams) {
     }
   };
 
+  const answerQuestion = async (ask: QuestionAsk, payload: QuestionSubmitPayload) => {
+    setError('');
+    try {
+      await post(`/api/sessions/${params.sessionId}/questions/${ask.id}`, {
+        ...payload,
+        view: params.view,
+      });
+      if (payload.status === 'skipped') {
+        textarea.current?.focus();
+      } else {
+        params.following.current = true;
+        params.onSessionsChanged();
+      }
+    } catch (err) {
+      const text = errorText(err);
+      setError(text);
+      throw new Error(text);
+    }
+  };
+
   const queueAction = async (item: QueuedMessage, action: 'steer' | 'remove' | 'edit') => {
     setError('');
     try {
@@ -304,6 +334,7 @@ export function useChatActions(params: ChatActionsParams) {
     handoff,
     upload,
     answer,
+    answerQuestion,
     queueAction,
   };
 }
