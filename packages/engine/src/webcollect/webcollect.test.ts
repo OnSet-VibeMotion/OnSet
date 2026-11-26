@@ -586,12 +586,12 @@ describe('webcollect headless screenshots', () => {
   });
 
   it('decodes HTML entities in extracted URLs in a single pass, caps failed download attempts, and protects collected dir integrity', async () => {
-    // 1. 单轮 HTML 实体解码
+    // 1. 单轮 HTML 实体解码（含原型键 &constructor; 不得被误解码）
     const html = `<html><head>
-      <meta property="og:image" content="https://cdn.example/a.png?token=t&amp;expires=9&amp;amp;raw=&#38;hex=&#x26;">
+      <meta property="og:image" content="https://cdn.example/a.png?token=t&amp;expires=9&amp;amp;raw=&#38;hex=&#x26;&constructor;">
     </head><body></body></html>`;
     const candidates = extractPageImageCandidates(html, 'https://acme.example/');
-    expect(candidates[0]?.url).toBe('https://cdn.example/a.png?token=t&expires=9&amp;raw=&hex=&');
+    expect(candidates[0]?.url).toBe('https://cdn.example/a.png?token=t&expires=9&amp;raw=&hex=&&constructor;');
 
     // 2. collectPage 失败尝试预算上限（maxAssets=1 时最多尝试 3 次而非拉爆 20 个死链）
     const project = tempDir();
@@ -642,11 +642,15 @@ describe('webcollect headless screenshots', () => {
     expect(second.entry.file).not.toBe(first.entry.file);
     expect(fs.readFileSync(firstAbs, 'utf8')).toBe('user-edited-png');
 
-    // 4. 拒绝符号链接的 assets/collected 目录
+    // 4. 拒绝符号链接的 assets/collected 目录（Windows 使用 junction 无需管理员权限）
     const symProject = tempDir();
     const outsideDir = tempDir();
     fs.mkdirSync(path.join(symProject, 'assets'), { recursive: true });
-    fs.symlinkSync(outsideDir, path.join(symProject, 'assets', 'collected'));
+    fs.symlinkSync(
+      outsideDir,
+      path.join(symProject, 'assets', 'collected'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
     expect(() =>
       saveCollectedAsset({
         projectRoot: symProject,

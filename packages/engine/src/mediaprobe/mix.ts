@@ -322,8 +322,8 @@ export async function mixProgram(t: Toolchain, opts: MixOptions) {
 
   const mux = (m: { limiterDB?: number; gainDB?: number } = {}) => {
     const chain = [
-      ...(m.gainDB !== undefined ? [`volume=${m.gainDB}dB`] : []),
       ...(m.limiterDB !== undefined ? [format, buildLimiterFilter(m.limiterDB)] : []),
+      ...(m.gainDB !== undefined ? [`volume=${m.gainDB}dB`] : []),
     ];
     if (chain.length > 0) chain.push(pad(samples));
     const af = chain.length > 0 ? ['-af', chain.join(',')] : [];

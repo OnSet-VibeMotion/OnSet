@@ -46,6 +46,19 @@ describe('collect_cmd operations and MCP exposure', () => {
     await expect(
       op.run(normalizeParams(op, { project_root: project, html_file: 'escape.html' }), ctx()),
     ).rejects.toThrow(/符号链接穿越/);
+
+    // 通过指向项目根目录的别名符号链接传入相对与绝对 HTML 路径均应通过边界校验（不报路径穿越）
+    const aliasParent = tempDir();
+    const projectAlias = path.join(aliasParent, 'proj-link');
+    fs.symlinkSync(project, projectAlias, process.platform === 'win32' ? 'junction' : 'dir');
+    fs.writeFileSync(path.join(project, 'card.html'), '<h1>ok</h1>');
+    for (const htmlInput of ['card.html', path.join(projectAlias, 'card.html')]) {
+      try {
+        await op.run(normalizeParams(op, { project_root: projectAlias, html_file: htmlInput }), ctx());
+      } catch (err) {
+        expect((err as Error).message).not.toMatch(/路径穿越|符号链接穿越|找不到 HTML/);
+      }
+    }
   });
 
   it('rejects SSRF addresses directly at op execution level', async () => {

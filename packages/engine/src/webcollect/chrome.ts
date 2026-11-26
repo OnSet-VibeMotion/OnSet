@@ -131,29 +131,51 @@ export function findChromeExecutable(
   return findPlaywrightChromium(env);
 }
 
+function fallbackKillSingle(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(pid, signal);
+  } catch {
+    // 进程已退出
+  }
+}
+
+function resolveTaskkill(): string | null {
+  try {
+    return lookPath('taskkill', process.env.PATH ?? '');
+  } catch {
+    const sysRoot = process.env.SystemRoot || process.env.WINDIR;
+    return sysRoot ? existingFile(path.join(sysRoot, 'System32', 'taskkill.exe')) : null;
+  }
+}
+
 function killProcessTree(pid: number | undefined, signal: NodeJS.Signals): void {
   if (!pid) return;
   if (process.platform === 'win32') {
+    const taskkillBin = resolveTaskkill();
+    if (!taskkillBin) {
+      fallbackKillSingle(pid, signal);
+      return;
+    }
     const taskkillArgs = signal === 'SIGKILL' ? ['/PID', String(pid), '/T', '/F'] : ['/PID', String(pid), '/T'];
     try {
-      spawn('taskkill', taskkillArgs, { stdio: 'ignore', windowsHide: true });
+      const killer = spawn(taskkillBin, taskkillArgs, { stdio: 'ignore', windowsHide: true });
+      killer.on('error', () => fallbackKillSingle(pid, signal));
+      killer.on('close', (code) => {
+        if (code !== 0) fallbackKillSingle(pid, signal);
+      });
     } catch {
-      // 回退单进程信号
+      fallbackKillSingle(pid, signal);
     }
     return;
   }
   try {
     process.kill(-pid, signal);
   } catch {
-    try {
-      process.kill(pid, signal);
-    } catch {
-      // 进程已退出
-    }
+    fallbackKillSingle(pid, signal);
   }
 }
 
-/** 默认的无头 Chrome 截图执行器。 */
+/** 默认的无头 Chrome 截图执行器（禁用非代理 UDP/WebRTC 与 QUIC，强制全部网络流量走受控代理）。 */
 export async function runChromeScreenshot(req: ScreenshotRunRequest): Promise<void> {
   if (req.signal?.aborted) throw new Error('截图任务已取消');
   const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-chrome-profile-'));
@@ -165,6 +187,9 @@ export async function runChromeScreenshot(req: ScreenshotRunRequest): Promise<vo
     '--disable-background-networking',
     '--disable-extensions',
     '--disable-sync',
+    '--disable-quic',
+    '--webrtc-ip-handling-policy=disable_non_proxied_udp',
+    '--force-webrtc-ip-handling-policy',
     '--hide-scrollbars',
     `--user-data-dir=${profileDir}`,
     `--window-size=${req.width},${req.height}`,

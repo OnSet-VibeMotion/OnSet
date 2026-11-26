@@ -212,7 +212,14 @@ export async function exportJianying(
     opts.signal?.throwIfAborted();
     let backup: string | null = null;
     if (fs.existsSync(finalDir)) {
-      assertOwnedExportDir(finalDir);
+      const st = fs.lstatSync(finalDir);
+      if (st.isSymbolicLink() || !st.isDirectory()) throw new Error(`输出目标不是普通目录：${finalDir}`);
+      if (fs.readdirSync(finalDir).length > 0) {
+        if (!opts.overwrite) {
+          throw new Error(`输出目录已存在且非空，拒绝覆盖：${finalDir}（如需覆盖请设置 overwrite=true）`);
+        }
+        assertOwnedExportDir(finalDir);
+      }
       backup = `${staging}.old`;
       fs.renameSync(finalDir, backup);
     }

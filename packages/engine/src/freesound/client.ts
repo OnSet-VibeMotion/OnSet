@@ -17,6 +17,7 @@ import {
   assertSafeSfxDir,
   audioManifestPath,
   detectExtFromContent,
+  isSafeSfxFileInside,
   readAudioManifest,
   safeSlug,
   writeAudioManifest,
@@ -318,31 +319,26 @@ export async function downloadSound(
   const existing = manifest.entries.find((item) => item.sha256 === sha256);
   if (existing) {
     const existingAbs = path.resolve(root, existing.file);
-    const existingRel = path.relative(sfxDir, existingAbs);
-    const insideSfx = !existingRel.startsWith('..') && !path.isAbsolute(existingRel);
-    if (insideSfx && fs.existsSync(existingAbs)) {
-      const st = fs.lstatSync(existingAbs);
-      if (!st.isSymbolicLink() && st.isFile()) {
-        const diskSha = crypto.createHash('sha256').update(fs.readFileSync(existingAbs)).digest('hex');
-        const restored = diskSha !== sha256;
-        if (restored) atomicWrite(existingAbs, bytes, 0o644);
-        const gain = analyzeAudioFile(existingAbs, {
-          buffer: bytes,
-          targetRmsDb: opts.targetRmsDb,
-          ceilingDb: opts.ceilingDb,
-          toolchain: opts.toolchain,
-          env: opts.env as Record<string, string> | undefined,
-        });
-        const updatedEntry: AudioManifestEntry = { ...existing, gain };
-        const nextEntries = manifest.entries.map((item) => (item.id === existing.id ? updatedEntry : item));
-        writeAudioManifest(root, { version: 1, entries: nextEntries });
-        return {
-          entry: updatedEntry,
-          file_path: existingAbs,
-          manifest_path: manifestAbs,
-          deduplicated: !restored,
-        };
-      }
+    if (isSafeSfxFileInside(sfxDir, existingAbs)) {
+      const diskSha = crypto.createHash('sha256').update(fs.readFileSync(existingAbs)).digest('hex');
+      const restored = diskSha !== sha256;
+      if (restored) atomicWrite(existingAbs, bytes, 0o644);
+      const gain = analyzeAudioFile(existingAbs, {
+        buffer: bytes,
+        targetRmsDb: opts.targetRmsDb,
+        ceilingDb: opts.ceilingDb,
+        toolchain: opts.toolchain,
+        env: opts.env as Record<string, string> | undefined,
+      });
+      const updatedEntry: AudioManifestEntry = { ...existing, gain };
+      const nextEntries = manifest.entries.map((item) => (item.id === existing.id ? updatedEntry : item));
+      writeAudioManifest(root, { version: 1, entries: nextEntries });
+      return {
+        entry: updatedEntry,
+        file_path: existingAbs,
+        manifest_path: manifestAbs,
+        deduplicated: !restored,
+      };
     }
   }
 

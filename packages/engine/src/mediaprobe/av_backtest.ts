@@ -1,5 +1,5 @@
-// 成片音画回测（FFmpeg 真实解码）：逐锚点做源音乐局部互相关定位、ROI 画面变化/亮度峰检测、
-// 画面-音乐与音效-音乐真实帧误差评估，以及可靠音乐匹配下的输出偏移自动校准估算。
+// 成片音画回测（FFmpeg 真实解码）：逐锚点定位音乐、画面与音效真实帧误差及输出偏移估算。
+import path from 'node:path';
 import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
 import {
@@ -259,29 +259,47 @@ export async function runAVBacktest(t: Toolchain, opts: AVBacktestOptions): Prom
 
     const sfxResults: AVBacktestSfxResult[] = [];
     const sfxInWindow = allSfxMoments.filter((sec) => Math.abs(sec - plannedSeconds) <= searchWindowSeconds * 2).length;
-    for (const ref of anchor.sfx ?? []) {
+    const anchorSfxList = anchor.sfx ?? [];
+    for (const ref of anchorSfxList) {
       let sfxActual: number | undefined;
       let sfxCorr: number | undefined;
       let sfxReason: string | undefined;
       let sfxVerified = false;
       if (ref.asset) {
-        let assetPCM = sfxAssetCache.get(ref.asset);
-        if (!assetPCM) {
-          assetPCM = await decodeMonoFloat32(t, ref.asset, sampleRate, opts.signal);
-          sfxAssetCache.set(ref.asset, assetPCM);
+        // 检查同一锚点或重叠搜索窗内是否存在同源素材且相同 peak_seconds 的多条不可区分 cue，防止单次音效被重复判通过。
+        const normAsset = path.resolve(ref.asset);
+        const indistinguishable = opts.anchors.some(
+          (other) =>
+            Math.abs(other.music_seconds - plannedSeconds) <= searchWindowSeconds * 2 &&
+            (other.sfx ?? []).some(
+              (o) =>
+                o !== ref &&
+                o.asset &&
+                path.resolve(o.asset) === normAsset &&
+                Math.abs(o.peak_seconds - ref.peak_seconds) < 1e-3,
+            ),
+        );
+        if (indistinguishable) {
+          sfxReason = '搜索窗口内存在多条同素材同峰值的音效 cue，无法独立归属单次匹配';
+        } else {
+          let assetPCM = sfxAssetCache.get(ref.asset);
+          if (!assetPCM) {
+            assetPCM = await decodeMonoFloat32(t, ref.asset, sampleRate, opts.signal);
+            sfxAssetCache.set(ref.asset, assetPCM);
+          }
+          const matched = matchAudioTemplate(assetPCM, sfxStemPCM ?? videoPCM, {
+            sampleRate,
+            nominalSeconds: ref.peak_seconds,
+            expectedTargetSeconds: plannedSeconds,
+            templateHalfSeconds: 0.08,
+            searchWindowSeconds,
+            minCorrelation: minAudioCorrelation,
+          });
+          sfxVerified = matched.verified;
+          sfxActual = matched.actual_seconds;
+          sfxCorr = matched.correlation;
+          sfxReason = matched.reason;
         }
-        const matched = matchAudioTemplate(assetPCM, sfxStemPCM ?? videoPCM, {
-          sampleRate,
-          nominalSeconds: ref.peak_seconds,
-          expectedTargetSeconds: plannedSeconds,
-          templateHalfSeconds: 0.08,
-          searchWindowSeconds,
-          minCorrelation: minAudioCorrelation,
-        });
-        sfxVerified = matched.verified;
-        sfxActual = matched.actual_seconds;
-        sfxCorr = matched.correlation;
-        sfxReason = matched.reason;
       } else if (sfxStemPCM && sfxInWindow === 1) {
         const peak = locateEnergyPeakInStem(sfxStemPCM, sampleRate, plannedSeconds, searchWindowSeconds);
         sfxVerified = peak.verified;

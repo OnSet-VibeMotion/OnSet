@@ -76,6 +76,14 @@ function makeAbortError(): Error {
   return err;
 }
 
+let assistSeq = 0;
+
+/** 生成本次辅助请求的唯一标识，用于取消时精准匹配对应后端控制器。 */
+export function nextSeriesAssistRequestId(): string {
+  assistSeq += 1;
+  return `sa-${Date.now()}-${assistSeq}`;
+}
+
 /** 请求 /api/series/_assist，支持前端 AbortSignal 与后端进程联动取消。 */
 export function requestSeriesAssist(
   payload: {
@@ -83,6 +91,7 @@ export function requestSeriesAssist(
     idea?: string;
     instruction?: string;
     current?: SeriesAssistDraft;
+    request_id?: string;
   },
   signal: AbortSignal,
 ): Promise<SeriesAssistResponse> {
@@ -109,7 +118,8 @@ export function requestSeriesAssist(
   });
 }
 
-/** 通知后端中止进行中的专栏辅助模型调用。 */
-export function cancelSeriesAssist(): void {
-  void del('/api/series/_assist').catch(() => {});
+/** 通知后端中止指定标识对应的专栏辅助模型调用（避免迟到的 DELETE 误杀后续新请求）。 */
+export function cancelSeriesAssist(requestId?: string): void {
+  const qs = requestId ? `?request_id=${encodeURIComponent(requestId)}` : '';
+  void del(`/api/series/_assist${qs}`).catch(() => {});
 }

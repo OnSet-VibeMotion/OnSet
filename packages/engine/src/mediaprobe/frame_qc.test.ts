@@ -256,4 +256,14 @@ describe('frame_qc FFmpeg integration', () => {
     const silentReport = await runFrameQC(chain, { video: silent, fps: 30 });
     expect(silentReport.issues.some((i) => i.kind === 'audio_silence' && i.severity === 'fail')).toBe(true);
   });
+
+  it('safely returns null summary when frame-qc.json contains JSON null', async () => {
+    const dir = makeTmpDir();
+    const qcFile = path.join(dir, 'frame-qc.json');
+    const dummyVideo = path.join(dir, 'v.mp4');
+    fs.writeFileSync(qcFile, 'null\n');
+    fs.writeFileSync(dummyVideo, 'video');
+    const { readFrameQCForVideo } = await import('./frame_qc');
+    expect(readFrameQCForVideo(qcFile, dummyVideo)).toEqual({ summary: null, stale: false });
+  });
 });

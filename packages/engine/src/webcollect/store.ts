@@ -149,25 +149,30 @@ function probeSvgDimensions(svg: string): { width?: number; height?: number } {
   return {};
 }
 
-/** 校验采集目录及其已存在父目录均不为符号链接，并返回项目真实根下的采集目录路径。 */
+function lstatIfPresent(target: string): fs.Stats | null {
+  try {
+    return fs.lstatSync(target);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+/** 校验采集目录及其已存在父目录均不为符号链接（含悬空符号链接），并返回项目真实根下的采集目录路径。 */
 export function assertSafeCollectedDir(projectRoot: string): string {
   const realRoot = fs.realpathSync(path.resolve(projectRoot));
   let cur = realRoot;
   for (const part of CollectedAssetsRelDir.split('/')) {
     cur = path.join(cur, part);
-    if (fs.existsSync(cur)) {
-      const st = fs.lstatSync(cur);
-      if (st.isSymbolicLink() || !st.isDirectory()) {
-        throw new Error(`采集目录不允许是符号链接或非目录：${cur}`);
-      }
+    const st = lstatIfPresent(cur);
+    if (st && (st.isSymbolicLink() || !st.isDirectory())) {
+      throw new Error(`采集目录不允许是符号链接或非目录：${cur}`);
     }
   }
   const manifestPath = path.join(cur, CollectedManifestFile);
-  if (fs.existsSync(manifestPath)) {
-    const st = fs.lstatSync(manifestPath);
-    if (st.isSymbolicLink() || !st.isFile()) {
-      throw new Error(`采集清单不允许是符号链接：${manifestPath}`);
-    }
+  const mst = lstatIfPresent(manifestPath);
+  if (mst && (mst.isSymbolicLink() || !mst.isFile())) {
+    throw new Error(`采集清单不允许是符号链接：${manifestPath}`);
   }
   return cur;
 }
@@ -289,9 +294,15 @@ export function saveCollectedAsset(input: SaveCollectedAssetInput): SaveCollecte
     if (input.dryRun) return { entry: existing, deduplicated: true };
     const existingAbs = path.resolve(realRoot, existing.file);
     const existingRel = path.relative(dir, existingAbs);
-    if (!existingRel.startsWith('..') && !path.isAbsolute(existingRel) && fs.existsSync(existingAbs)) {
-      const st = fs.lstatSync(existingAbs);
-      if (!st.isSymbolicLink() && st.isFile()) {
+    const isFlatInDir =
+      existingRel !== '' &&
+      !existingRel.startsWith('..') &&
+      !path.isAbsolute(existingRel) &&
+      !existingRel.includes('/') &&
+      !existingRel.includes('\\');
+    if (isFlatInDir) {
+      const st = lstatIfPresent(existingAbs);
+      if (st && !st.isSymbolicLink() && st.isFile()) {
         const diskSha = crypto.createHash('sha256').update(fs.readFileSync(existingAbs)).digest('hex');
         if (diskSha === sha256) return { entry: existing, deduplicated: true };
       }

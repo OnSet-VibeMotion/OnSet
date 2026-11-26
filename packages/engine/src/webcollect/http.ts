@@ -166,7 +166,12 @@ export async function resolveSafeHost(
   return resolved;
 }
 
-function withDeadline<T>(promise: Promise<T>, remainingMs: number, label: string, signal?: AbortSignal): Promise<T> {
+function withDeadline<T>(
+  start: () => Promise<T>,
+  remainingMs: number,
+  label: string,
+  signal?: AbortSignal,
+): Promise<T> {
   if (signal?.aborted) return Promise.reject(new Error(`抓取已取消：${label}`));
   if (remainingMs <= 0) return Promise.reject(new Error(`抓取超时：${label}`));
   return new Promise<T>((resolve, reject) => {
@@ -176,6 +181,15 @@ function withDeadline<T>(promise: Promise<T>, remainingMs: number, label: string
       reject(new Error(`抓取已取消：${label}`));
     };
     signal?.addEventListener('abort', onAbort, { once: true });
+    let promise: Promise<T>;
+    try {
+      promise = start();
+    } catch (err) {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      reject(err);
+      return;
+    }
     promise.then(
       (v) => {
         clearTimeout(timer);
@@ -202,7 +216,7 @@ export async function safeFetchBuffer(rawUrl: string, opts: SafeFetchOptions = {
 
   for (let hop = 0; hop <= MaxBrandRedirects; hop++) {
     const resolved = await withDeadline(
-      resolveSafeHost(current.hostname, opts.deps),
+      () => resolveSafeHost(current.hostname, opts.deps),
       deadline - Date.now(),
       current.href,
       opts.signal,
@@ -210,16 +224,17 @@ export async function safeFetchBuffer(rawUrl: string, opts: SafeFetchOptions = {
     const remaining = deadline - Date.now();
     if (remaining <= 0) throw new Error(`抓取超时（${timeoutMs}ms）：${current.href}`);
     const result = await withDeadline(
-      transport({
-        url: current,
-        method: 'GET',
-        address: resolved.address,
-        family: resolved.family,
-        timeoutMs: remaining,
-        maxBytes,
-        accept,
-        signal: opts.signal,
-      }),
+      () =>
+        transport({
+          url: current,
+          method: 'GET',
+          address: resolved.address,
+          family: resolved.family,
+          timeoutMs: remaining,
+          maxBytes,
+          accept,
+          signal: opts.signal,
+        }),
       remaining,
       current.href,
       opts.signal,
@@ -255,7 +270,7 @@ export async function preflightSafeUrl(
   const deadline = Date.now() + timeoutMs;
   let current = assertSafeCollectUrl(rawUrl);
   let resolved = await withDeadline(
-    resolveSafeHost(current.hostname, opts.deps),
+    () => resolveSafeHost(current.hostname, opts.deps),
     deadline - Date.now(),
     current.href,
     opts.signal,
@@ -266,7 +281,7 @@ export async function preflightSafeUrl(
   const transport = opts.transport ?? defaultHttpTransport;
   for (let hop = 0; hop <= MaxBrandRedirects; hop++) {
     resolved = await withDeadline(
-      resolveSafeHost(current.hostname, opts.deps),
+      () => resolveSafeHost(current.hostname, opts.deps),
       deadline - Date.now(),
       current.href,
       opts.signal,
@@ -276,23 +291,24 @@ export async function preflightSafeUrl(
     let result: SafeHttpRawResponse;
     try {
       result = await withDeadline(
-        transport({
-          url: current,
-          method: 'HEAD',
-          address: resolved.address,
-          family: resolved.family,
-          timeoutMs: remaining,
-          maxBytes: 64 * 1024,
-          accept: 'text/html,*/*;q=0.8',
-          signal: opts.signal,
-        }),
+        () =>
+          transport({
+            url: current,
+            method: 'HEAD',
+            address: resolved.address,
+            family: resolved.family,
+            timeoutMs: remaining,
+            maxBytes: 64 * 1024,
+            accept: 'text/html,*/*;q=0.8',
+            signal: opts.signal,
+          }),
         remaining,
         current.href,
         opts.signal,
       );
     } catch (err) {
-      // 若自定义 transport 明确抛错则直接抛出；真实站点拒收 HEAD 时已验证公网 IP，仍放行给后续流程。
-      if (opts.transport) throw err;
+      // 取消或自定义 transport 明确抛错时立即向上传播；真实站点拒收 HEAD 且未取消时已验证公网 IP，放行给后续流程。
+      if (opts.signal?.aborted || opts.transport) throw err;
       return { finalUrl: current, address: resolved.address, family: resolved.family };
     }
     if (result.status >= 300 && result.status < 400 && result.location) {

@@ -108,35 +108,127 @@ function extractCommentsByLine(raw: string, stripped: string, maxLine = 50): Arr
   return out;
 }
 
+/** 仅提取 CSS 中的真实块注释（跳过单/双引号字符串字面量与转义）。 */
+function extractCssComments(text: string, maxLine = 50): Array<{ line: number; text: string }> {
+  const out: Array<{ line: number; text: string }> = [];
+  let line = 1;
+  let quote = '';
+  for (let i = 0; i < text.length && line <= maxLine; i++) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === '\\' && i + 1 < text.length) {
+        if (text[i + 1] === '\n') line++;
+        i++;
+      } else if (ch === quote) {
+        quote = '';
+      } else if (ch === '\n') {
+        line++;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === '/' && text[i + 1] === '*') {
+      const startLine = line;
+      const end = text.indexOf('*/', i + 2);
+      const body = end < 0 ? text.slice(i + 2) : text.slice(i + 2, end);
+      for (const piece of body.split('\n')) {
+        if (line <= maxLine && piece.trim() !== '') out.push({ line, text: piece });
+        line++;
+      }
+      line = startLine + body.split('\n').length - 1;
+      if (end < 0) break;
+      i = end + 1;
+    } else if (ch === '\n') {
+      line++;
+    }
+  }
+  return out;
+}
+
+/**
+ * 仅提取 HTML 文档中的真实注释（`<!-- ... -->`）以及 `<script>` / `<style>` 内的真实 JS/CSS 注释；
+ * 跳过标签属性引号字符串、`<script>` 内字符串与 `<style>` 内字符串。
+ */
+function extractHtmlTopComments(raw: string, maxLine = 50): Array<{ line: number; text: string }> {
+  const out: Array<{ line: number; text: string }> = [];
+  let line = 1;
+  let i = 0;
+  const countLines = (s: string) => {
+    let n = 0;
+    for (let k = 0; k < s.length; k++) if (s[k] === '\n') n++;
+    return n;
+  };
+  while (i < raw.length && line <= maxLine) {
+    if (raw.startsWith('<!--', i)) {
+      const end = raw.indexOf('-->', i + 4);
+      const body = end < 0 ? raw.slice(i + 4) : raw.slice(i + 4, end);
+      const startLine = line;
+      for (const piece of body.split('\n')) {
+        if (line <= maxLine && piece.trim() !== '') out.push({ line, text: piece });
+        line++;
+      }
+      line = startLine + countLines(body);
+      if (end < 0) break;
+      i = end + 3;
+      continue;
+    }
+    if (raw[i] === '<') {
+      const openEnd = findTagEnd(raw, i);
+      const tagText = raw.slice(i, openEnd + 1);
+      const tagMatch = /^<\s*(script|style)\b/i.exec(tagText);
+      line += countLines(tagText);
+      i = openEnd + 1;
+      if (tagMatch) {
+        const tagName = tagMatch[1].toLowerCase();
+        const closeRe = tagName === 'script' ? /<\/script\s*>/i : /<\/style\s*>/i;
+        const rest = raw.slice(i);
+        const closeMatch = closeRe.exec(rest);
+        const body = closeMatch ? rest.slice(0, closeMatch.index) : rest;
+        const baseLine = line - 1;
+        if (baseLine < maxLine) {
+          const inner =
+            tagName === 'script'
+              ? extractCommentsByLine(body, lexJS(body).withStrings, maxLine - baseLine)
+              : extractCssComments(body, maxLine - baseLine);
+          for (const c of inner) out.push({ line: baseLine + c.line, text: c.text });
+        }
+        line += countLines(body);
+        if (!closeMatch) break;
+        line += countLines(closeMatch[0]);
+        i += closeMatch.index + closeMatch[0].length;
+      }
+      continue;
+    }
+    if (raw[i] === '\n') line++;
+    i++;
+  }
+  return out;
+}
+
+function findTagEnd(html: string, start: number): number {
+  let quote = '';
+  for (let i = start + 1; i < html.length; i++) {
+    const ch = html[i];
+    if (quote) {
+      if (ch === quote) quote = '';
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === '>') {
+      return i;
+    }
+  }
+  return html.length - 1;
+}
+
 function collectTopCommentDeviations(rel: string, ext: string, raw: string, out: EngineDeviation[]): void {
   const chunks: Array<{ line: number; text: string }> = [];
   if (ext === '.js' || ext === '.mjs' || ext === '.cjs') {
     chunks.push(...extractCommentsByLine(raw, lexJS(raw).withStrings));
   } else if (ext === '.css') {
-    chunks.push(...extractCommentsByLine(raw, stripCSSComments(raw)));
+    chunks.push(...extractCssComments(raw));
   } else if (ext === '.html' || ext === '.htm') {
-    const noHtml = stripHTMLComments(raw);
-    chunks.push(...extractCommentsByLine(raw, noHtml));
-    // 同时提取前 50 行内 <script> 与 <style> 中的真实 JS/CSS 注释（忽略字符串字面量）。
-    for (const match of noHtml.matchAll(scriptBlock)) {
-      const loc = indicesOf(match);
-      const start = loc[2]![0];
-      const body = noHtml.slice(start, loc[2]![1]);
-      const baseLine = noHtml.slice(0, start).split('\n').length - 1;
-      if (baseLine >= 50) continue;
-      for (const c of extractCommentsByLine(body, lexJS(body).withStrings, 50 - baseLine)) {
-        chunks.push({ line: baseLine + c.line, text: c.text });
-      }
-    }
-    for (const match of noHtml.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) {
-      const start = (match.index ?? 0) + match[0].indexOf('>') + 1;
-      const body = match[1];
-      const baseLine = noHtml.slice(0, start).split('\n').length - 1;
-      if (baseLine >= 50) continue;
-      for (const c of extractCommentsByLine(body, stripCSSComments(body), 50 - baseLine)) {
-        chunks.push({ line: baseLine + c.line, text: c.text });
-      }
-    }
+    chunks.push(...extractHtmlTopComments(raw));
   }
   for (const chunk of chunks) {
     if (!chunk.text.toLowerCase().includes('onset-engine-deviation')) continue;

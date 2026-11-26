@@ -201,6 +201,7 @@ export async function collectFetchedPage(
   const maxAttempts = Math.min(32, maxAssets * 3);
   let attempts = 0;
   for (const candidate of extractPageImageCandidates(html, finalUrl)) {
+    if (opts.signal?.aborted) throw new Error(`采集已取消：${finalUrl}`);
     if (collected.length >= maxAssets || attempts >= maxAttempts) break;
     attempts++;
     try {
@@ -218,10 +219,12 @@ export async function collectFetchedPage(
       });
       pushUnique(entry);
     } catch (err) {
+      if (opts.signal?.aborted) throw err;
       warnings.push(`跳过素材 ${candidate.url}：${(err as Error).message}`);
     }
   }
 
+  if (opts.signal?.aborted) throw new Error(`采集已取消：${finalUrl}`);
   let screenshot: CollectedAssetEntry | undefined;
   if (opts.includeScreenshot && !dryRun) {
     try {
@@ -238,9 +241,12 @@ export async function collectFetchedPage(
       });
       pushUnique(screenshot);
     } catch (err) {
+      if (opts.signal?.aborted) throw err;
       warnings.push(`页面截图失败：${(err as Error).message}`);
     }
   }
+
+  if (opts.signal?.aborted) throw new Error(`采集已取消：${finalUrl}`);
 
   return {
     url: finalUrl,

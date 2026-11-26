@@ -153,14 +153,32 @@ const ctx = document.createElement('canvas').getContext('2d');
     });
     expect(checkEngineContract(noReason.sceneDir).ok).toBe(false);
 
-    // 普通字符串字面量里的偏离文本不得豁免
+    // 普通字符串字面量里的偏离文本（含 JS、CSS content 字符串与 HTML 属性/脚本字符串）均不得豁免
     const fakeLiteral = setupProjectScene({
       styleKey: 'mg-styles/03-isometric',
       files: {
-        'index.html': `<script>const example = "onset-engine-deviation: threejs -> canvas2d | reason: 示例";</script>`,
+        'index.html': `<div title="<!-- onset-engine-deviation: threejs -> canvas2d | reason: 属性假注释 -->"></div><style>.a::after { content: "/* onset-engine-deviation: threejs -> canvas2d | reason: 内联CSS假注释 */"; }</style><script>const example = "<!-- onset-engine-deviation: threejs -> canvas2d | reason: JS假注释 -->";</script>`,
       },
     });
     expect(checkEngineContract(fakeLiteral.sceneDir).ok).toBe(false);
+
+    const fakeCssFile = setupProjectScene({
+      styleKey: 'mg-styles/03-isometric',
+      files: {
+        'index.html': `<link rel="stylesheet" href="./style.css"><div>ok</div>`,
+        'style.css': `.badge::before { content: "/* onset-engine-deviation: threejs -> canvas2d | reason: 外部CSS字符串假注释 */"; }`,
+      },
+    });
+    expect(checkEngineContract(fakeCssFile.sceneDir).ok).toBe(false);
+
+    const realCssComment = setupProjectScene({
+      styleKey: 'mg-styles/03-isometric',
+      files: {
+        'index.html': `<link rel="stylesheet" href="./style.css"><div>ok</div>`,
+        'style.css': `/* onset-engine-deviation: threejs -> canvas2d | reason: 真实CSS顶部注释应被识别 */\n.box { color: red; }`,
+      },
+    });
+    expect(checkEngineContract(realCssComment.sceneDir).ok).toBe(true);
 
     // 只有 importmap 而无实际 import / THREE 调用不得通过 threejs 强契约
     const importMapOnly = setupProjectScene({

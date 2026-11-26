@@ -9,27 +9,53 @@ import { type AudioManifest, SfxAssetsRelDir, SfxManifestFile } from './types';
 
 export const AllowedAudioExts = new Set(['.wav', '.mp3', '.ogg', '.flac', '.aif', '.aiff', '.m4a']);
 
-/** 校验 <projectDir>/assets/sfx 及其已存在父目录均不为符号链接，并返回项目真实根下的音效目录路径。 */
+function lstatIfPresent(target: string): fs.Stats | null {
+  try {
+    return fs.lstatSync(target);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+/** 校验 <projectDir>/assets/sfx 及其已存在父目录均不为符号链接（含悬空符号链接），并返回项目真实根下的音效目录路径。 */
 export function assertSafeSfxDir(projectDir: string): string {
   const realRoot = fs.realpathSync(path.resolve(projectDir));
   let cur = realRoot;
   for (const part of SfxAssetsRelDir.split('/')) {
     cur = path.join(cur, part);
-    if (fs.existsSync(cur)) {
-      const st = fs.lstatSync(cur);
-      if (st.isSymbolicLink() || !st.isDirectory()) {
-        throw new Error(`音效目录不允许是符号链接或非目录：${cur}`);
-      }
+    const st = lstatIfPresent(cur);
+    if (st && (st.isSymbolicLink() || !st.isDirectory())) {
+      throw new Error(`音效目录不允许是符号链接或非目录：${cur}`);
     }
   }
   const manifestPath = path.join(cur, SfxManifestFile);
-  if (fs.existsSync(manifestPath)) {
-    const st = fs.lstatSync(manifestPath);
-    if (st.isSymbolicLink() || !st.isFile()) {
-      throw new Error(`音频清单不允许是符号链接：${manifestPath}`);
-    }
+  const mst = lstatIfPresent(manifestPath);
+  if (mst && (mst.isSymbolicLink() || !mst.isFile())) {
+    throw new Error(`音频清单不允许是符号链接：${manifestPath}`);
   }
   return cur;
+}
+
+/** 确认目标文件位于 sfxDir 内且从 sfxDir 到目标的每一级路径段均不含符号链接（防止中间目录链接写穿项目边界）。 */
+export function isSafeSfxFileInside(sfxDir: string, candidateAbs: string): boolean {
+  const rel = path.relative(sfxDir, candidateAbs);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return false;
+  const parts = rel.split(path.sep).filter(Boolean);
+  let cur = sfxDir;
+  for (let i = 0; i < parts.length; i++) {
+    cur = path.join(cur, parts[i]);
+    const st = lstatIfPresent(cur);
+    if (!st || st.isSymbolicLink()) return false;
+    if (i < parts.length - 1 ? !st.isDirectory() : !st.isFile()) return false;
+  }
+  try {
+    const realParent = fs.realpathSync(path.dirname(candidateAbs));
+    const parentRel = path.relative(sfxDir, realParent);
+    return !parentRel.startsWith('..') && !path.isAbsolute(parentRel);
+  } catch {
+    return false;
+  }
 }
 
 /** 音频清单路径：<projectDir>/assets/sfx/audio-manifest.json。 */

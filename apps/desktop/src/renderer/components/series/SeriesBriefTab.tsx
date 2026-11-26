@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { errorText } from '../../api';
 import type { SeriesAssistDraft } from '../../types';
 import { Icon } from '../Icon';
-import { cancelSeriesAssist, isAbortError, requestSeriesAssist } from './seriesAssistApi';
+import { cancelSeriesAssist, isAbortError, nextSeriesAssistRequestId, requestSeriesAssist } from './seriesAssistApi';
 
 export function SeriesBriefTab(props: {
   brief: string;
@@ -16,6 +16,7 @@ export function SeriesBriefTab(props: {
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const ctrlRef = useRef<AbortController | null>(null);
+  const reqIdRef = useRef<string | null>(null);
   const latestRevRef = useRef(props.briefRevision ?? 0);
   latestRevRef.current = props.briefRevision ?? 0;
 
@@ -24,7 +25,8 @@ export function SeriesBriefTab(props: {
       if (ctrlRef.current) {
         ctrlRef.current.abort();
         ctrlRef.current = null;
-        cancelSeriesAssist();
+        cancelSeriesAssist(reqIdRef.current ?? undefined);
+        reqIdRef.current = null;
       }
     };
   }, []);
@@ -36,7 +38,9 @@ export function SeriesBriefTab(props: {
     }
     ctrlRef.current?.abort();
     const ctrl = new AbortController();
+    const reqId = nextSeriesAssistRequestId();
     ctrlRef.current = ctrl;
+    reqIdRef.current = reqId;
     const startRev = latestRevRef.current;
     const startBrief = props.brief;
     setBusy(true);
@@ -47,6 +51,7 @@ export function SeriesBriefTab(props: {
       const res = await requestSeriesAssist(
         {
           mode: 'polish_brief',
+          request_id: reqId,
           current: { ...props.current, brief: startBrief },
         },
         ctrl.signal,
@@ -70,7 +75,10 @@ export function SeriesBriefTab(props: {
         setError(errorText(err));
       }
     } finally {
-      if (ctrlRef.current === ctrl) ctrlRef.current = null;
+      if (ctrlRef.current === ctrl) {
+        ctrlRef.current = null;
+        reqIdRef.current = null;
+      }
       setBusy(false);
     }
   };
@@ -86,7 +94,8 @@ export function SeriesBriefTab(props: {
   const handleCancel = () => {
     ctrlRef.current?.abort();
     ctrlRef.current = null;
-    cancelSeriesAssist();
+    cancelSeriesAssist(reqIdRef.current ?? undefined);
+    reqIdRef.current = null;
     setBusy(false);
     setNote('已取消润色，原文未变动。');
   };

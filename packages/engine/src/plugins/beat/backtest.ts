@@ -71,7 +71,11 @@ function loadSfxAssetMap(root: string, table: beat.ResolvedAnchorTable, cueSheet
       continue;
     }
     const cue = raw as Record<string, unknown>;
-    if (cue.kind !== 'sfx' || typeof cue.asset !== 'string' || !cue.asset) continue;
+    if (cue.kind !== 'sfx') continue;
+    if (typeof cue.asset !== 'string' || !cue.asset.trim()) {
+      if (explicit) throw new Error(`cue sheet 第 ${i + 1} 条音效缺少有效的 asset 字段`);
+      continue;
+    }
     const absAsset = resolveProjectPath(root, cue.asset);
     if (!fs.existsSync(absAsset)) {
       if (explicit) throw new Error(`cue sheet 第 ${i + 1} 条音效素材不存在：${absAsset}`);

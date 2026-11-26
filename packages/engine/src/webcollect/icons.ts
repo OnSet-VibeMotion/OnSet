@@ -28,16 +28,16 @@ export interface PageImageCandidate {
 
 const MaxInlineSvgChars = 256 * 1024;
 
-const NamedHtmlEntities: Record<string, string> = {
-  amp: '&',
-  lt: '<',
-  gt: '>',
-  quot: '"',
-  apos: "'",
-  nbsp: '\u00a0',
-};
+const NamedHtmlEntities = new Map<string, string>([
+  ['amp', '&'],
+  ['lt', '<'],
+  ['gt', '>'],
+  ['quot', '"'],
+  ['apos', "'"],
+  ['nbsp', '\u00a0'],
+]);
 
-/** 单遍解码 HTML 属性中的常见命名实体与十进制/十六进制数字字符引用（不重复解码 &amp;amp;）。 */
+/** 单遍解码 HTML 属性中的常见命名实体与十进制/十六进制数字字符引用（不重复解码 &amp;amp;，仅匹配自身实体键）。 */
 export function decodeHtmlEntities(raw: string): string {
   return raw.replace(/&(?:#x([0-9a-fA-F]+)|#(\d+)|([a-zA-Z]+));/g, (full, hex, dec, name) => {
     if (hex !== undefined) {
@@ -49,7 +49,7 @@ export function decodeHtmlEntities(raw: string): string {
       return cp >= 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : full;
     }
     if (name !== undefined) {
-      const mapped = NamedHtmlEntities[name.toLowerCase()];
+      const mapped = NamedHtmlEntities.get(name.toLowerCase());
       if (mapped !== undefined) return mapped;
     }
     return full;

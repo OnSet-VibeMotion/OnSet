@@ -71,6 +71,7 @@ async function resolveTarget(
 export async function startEgressProxy(policy: EgressProxyPolicy): Promise<EgressProxyHandle> {
   const blockedTargets: string[] = [];
   const openSockets = new Set<net.Socket>();
+  let closing = false;
   const track = (sock: net.Socket) => {
     openSockets.add(sock);
     sock.once('close', () => openSockets.delete(sock));
@@ -102,6 +103,10 @@ export async function startEgressProxy(policy: EgressProxyPolicy): Promise<Egres
         res.end('Blocked by OnSet egress policy');
         return;
       }
+      if (closing) {
+        res.destroy();
+        return;
+      }
 
       const headers: http.OutgoingHttpHeaders = { ...req.headers };
       delete headers['proxy-connection'];
@@ -120,13 +125,25 @@ export async function startEgressProxy(policy: EgressProxyPolicy): Promise<Egres
         },
         (upRes) => {
           res.writeHead(upRes.statusCode ?? 502, upRes.headers);
+          const abortDownstream = () => {
+            if (!res.writableEnded) res.destroy();
+          };
+          upRes.on('error', abortDownstream);
+          upRes.on('aborted', abortDownstream);
+          upRes.on('close', () => {
+            if (!upRes.complete) abortDownstream();
+          });
           upRes.pipe(res);
         },
       );
       upstream.on('socket', track);
       upstream.on('error', () => {
-        if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' });
-        res.end('Bad Gateway');
+        if (!res.headersSent) {
+          res.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' });
+          res.end('Bad Gateway');
+        } else {
+          res.destroy();
+        }
       });
       req.pipe(upstream);
     })();
@@ -150,6 +167,10 @@ export async function startEgressProxy(policy: EgressProxyPolicy): Promise<Egres
       } catch {
         blockedTargets.push(`${parsed.host}:${parsed.port}`);
         clientSocket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+        clientSocket.destroy();
+        return;
+      }
+      if (closing) {
         clientSocket.destroy();
         return;
       }
@@ -191,6 +212,7 @@ export async function startEgressProxy(policy: EgressProxyPolicy): Promise<Egres
     blockedTargets,
     close: () =>
       new Promise<void>((resolve) => {
+        closing = true;
         for (const sock of openSockets) sock.destroy();
         server.close(() => resolve());
       }),

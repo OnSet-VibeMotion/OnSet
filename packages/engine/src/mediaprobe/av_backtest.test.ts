@@ -281,6 +281,48 @@ describe.skipIf(!hasFfmpeg)('av_backtest (needs ffmpeg)', () => {
     });
     expect(multiReport.verdict).toBe('unverified');
     expect(multiReport.anchors[0].sfx.every((s) => s.status === 'unverified')).toBe(true);
+
+    // 单条带源素材的 cue 应通过；两条同源同 peak_seconds 的 cue 即使带 asset 也无法从单次音效区分归属，必须标为 unverified
+    const sfxAsset = path.join(dir, 'hit-asset.wav');
+    writePulseWav(sfxAsset, 0.4, [0.1], { baseFreq: 900 });
+    const singleAssetReport = await runAVBacktest(tc, {
+      video,
+      sourceMusic: music,
+      sfxStem: sfxOk,
+      anchors: [
+        {
+          id: 'hit_single_asset',
+          type: 'action',
+          music_seconds: 1.0,
+          planned_frame: 30,
+          visual: { metric: 'brightness', roi: centerROI },
+          sfx: [{ cue_id: 'cue_unique', peak_seconds: 0.1, asset: sfxAsset }],
+        },
+      ],
+    });
+    expect(singleAssetReport.verdict).toBe('pass');
+    expect(singleAssetReport.anchors[0].sfx[0].status).toBe('pass');
+
+    const dupAssetReport = await runAVBacktest(tc, {
+      video,
+      sourceMusic: music,
+      sfxStem: sfxOk,
+      anchors: [
+        {
+          id: 'hit_dup_asset',
+          type: 'action',
+          music_seconds: 1.0,
+          planned_frame: 30,
+          visual: { metric: 'brightness', roi: centerROI },
+          sfx: [
+            { cue_id: 'cue_dup_1', peak_seconds: 0.1, asset: sfxAsset },
+            { cue_id: 'cue_dup_2', peak_seconds: 0.1, asset: sfxAsset },
+          ],
+        },
+      ],
+    });
+    expect(dupAssetReport.verdict).toBe('unverified');
+    expect(dupAssetReport.anchors[0].sfx.every((s) => s.status === 'unverified')).toBe(true);
   });
 
   it('preserves delayed audio first-packet PTS, deduplicates music observations, handles mismatched fps, odd 1px ROI, and minVisualDelta=0', async () => {

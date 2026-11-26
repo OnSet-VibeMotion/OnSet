@@ -162,14 +162,14 @@ export async function captureViewport(rawUrl: string, opts: ScreenshotOptions): 
     'MAP 127.0.0.1 ~NOTFOUND',
     'MAP 169.254.169.254 ~NOTFOUND',
   ].join(', ');
-  // 所有浏览器连接（含重定向、meta refresh、JS location 导航及私有 IP 字面量）统一经受控出口代理逐跳校验公网地址。
-  const proxy = await startEgressProxy({
-    mode: 'public',
-    pinned: { host: finalHost, address: preflight.address, family: preflight.family },
-    deps: opts.deps,
-  });
-
+  let proxy: EgressProxyHandle | null = null;
   try {
+    // 所有浏览器连接（含重定向、meta refresh、JS location 导航及私有 IP 字面量）统一经受控出口代理逐跳校验公网地址。
+    proxy = await startEgressProxy({
+      mode: 'public',
+      pinned: { host: finalHost, address: preflight.address, family: preflight.family },
+      deps: opts.deps,
+    });
     await runner({
       chromePath,
       targetUrl: preflight.finalUrl.href,
@@ -197,7 +197,7 @@ export async function captureViewport(rawUrl: string, opts: ScreenshotOptions): 
     });
     return saved.entry;
   } finally {
-    await proxy.close();
+    if (proxy) await proxy.close();
     try {
       removeTree(workDir);
     } catch {

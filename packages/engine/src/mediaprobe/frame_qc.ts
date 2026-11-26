@@ -171,21 +171,25 @@ export function readFrameQCForVideo(
   videoPath: string,
 ): { summary: FrameQCSummary | null; stale: boolean } {
   if (!fs.existsSync(file)) return { summary: null, stale: false };
-  let parsed: Partial<FrameQCReport>;
+  let parsed: unknown;
   try {
-    parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<FrameQCReport>;
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch {
     return { summary: null, stale: false };
   }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { summary: null, stale: false };
+  }
+  const report = parsed as Partial<FrameQCReport>;
   const summary =
-    parsed.summary && typeof parsed.summary.verdict === 'string'
-      ? parsed.summary
-      : Array.isArray(parsed.issues)
-        ? summarizeFrameQC(parsed.issues)
+    report.summary && typeof report.summary.verdict === 'string'
+      ? report.summary
+      : Array.isArray(report.issues)
+        ? summarizeFrameQC(report.issues)
         : null;
   if (!summary) return { summary: null, stale: false };
   const actualSha = hashFileSha256(videoPath);
-  if (!parsed.video_sha256 || !actualSha || parsed.video_sha256 !== actualSha) {
+  if (!report.video_sha256 || !actualSha || report.video_sha256 !== actualSha) {
     return { summary: null, stale: true };
   }
   return { summary, stale: false };

@@ -29,6 +29,7 @@ import type { Server } from './studio';
 type AssistRunner = (prompt: string, signal?: AbortSignal) => Promise<string>;
 
 let activeController: AbortController | null = null;
+let activeRequestId: string | null = null;
 let testRunner: AssistRunner | null = null;
 
 /** 供测试替换单次模型调用，避免在单测里启动真实外部 CLI。 */
@@ -149,8 +150,15 @@ function loadGlobalConfig(): config.Config {
 
 export async function seriesAssistAPI(s: Server, request: Request): Promise<Response> {
   if (request.method === 'DELETE') {
-    activeController?.abort();
-    activeController = null;
+    const reqUrl = new URL(request.url, 'http://localhost');
+    const targetId =
+      goTrimSpace(reqUrl.searchParams.get('request_id') ?? '') ||
+      goTrimSpace(request.headers.get('x-assist-request-id') ?? '');
+    if (!targetId || activeRequestId === targetId) {
+      activeController?.abort();
+      activeController = null;
+      activeRequestId = null;
+    }
     return writeJSON(200, goMap({ ok: true }));
   }
   if (request.method !== 'POST') return methodNotAllowed('POST, DELETE');
@@ -169,6 +177,7 @@ export async function seriesAssistAPI(s: Server, request: Request): Promise<Resp
   const mode = rawMode as series.SeriesAssistMode;
   const idea = goTrimSpace(asString(body.idea));
   const instruction = goTrimSpace(asString(body.instruction));
+  const requestId = goTrimSpace(asString(body.request_id)) || null;
   const current = parseCurrentDraft(body.current);
 
   if (mode === 'draft' && !idea && !goTrimSpace(current?.name ?? '') && !goTrimSpace(current?.description ?? '')) {
@@ -184,6 +193,7 @@ export async function seriesAssistAPI(s: Server, request: Request): Promise<Resp
   activeController?.abort();
   const controller = new AbortController();
   activeController = controller;
+  activeRequestId = requestId;
   const onReqAbort = () => controller.abort();
   if (request.signal.aborted) controller.abort();
   else request.signal.addEventListener('abort', onReqAbort, { once: true });
@@ -239,6 +249,9 @@ export async function seriesAssistAPI(s: Server, request: Request): Promise<Resp
     return writeError(502, 'series_assist_failed', `智能体润色没有成功：${(err as Error).message}`);
   } finally {
     request.signal.removeEventListener('abort', onReqAbort);
-    if (activeController === controller) activeController = null;
+    if (activeController === controller) {
+      activeController = null;
+      activeRequestId = null;
+    }
   }
 }

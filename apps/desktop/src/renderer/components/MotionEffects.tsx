@@ -69,6 +69,8 @@ export function MotionEffects({
   const [seriesErr, setSeriesErr] = useState('');
   const seriesFetchCtrlRef = useRef<AbortController | null>(null);
   const seriesWriteGenRef = useRef(0);
+  const seriesIdRef = useRef(seriesId);
+  seriesIdRef.current = seriesId;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -88,8 +90,8 @@ export function MotionEffects({
   useEffect(() => {
     seriesFetchCtrlRef.current?.abort();
     seriesFetchCtrlRef.current = null;
+    setBoundSeries(null);
     if (!seriesId) {
-      setBoundSeries(null);
       return;
     }
     const controller = new AbortController();
@@ -97,10 +99,14 @@ export function MotionEffects({
     const gen = seriesWriteGenRef.current;
     api<{ series: SeriesItem }>(`/api/series/${encodeURIComponent(seriesId)}`, { signal: controller.signal }).then(
       ({ series }) => {
-        if (!controller.signal.aborted && seriesWriteGenRef.current === gen) setBoundSeries(series);
+        if (!controller.signal.aborted && seriesWriteGenRef.current === gen && seriesIdRef.current === seriesId) {
+          setBoundSeries(series);
+        }
       },
       () => {
-        if (!controller.signal.aborted && seriesWriteGenRef.current === gen) setBoundSeries(null);
+        if (!controller.signal.aborted && seriesWriteGenRef.current === gen && seriesIdRef.current === seriesId) {
+          setBoundSeries(null);
+        }
       },
     );
     return () => {
@@ -111,7 +117,8 @@ export function MotionEffects({
 
   const seriesMotions = boundSeries?.defaults.motion_effects ?? [];
   const toggleSeriesMotion = async (ref: string) => {
-    if (!boundSeries) return;
+    if (!boundSeries || boundSeries.id !== seriesId) return;
+    const targetSeriesId = boundSeries.id;
     // 保存开始时中止进行中的专栏读取并推进写入代次，防止旧读取晚到覆盖刚保存的常用动效。
     seriesWriteGenRef.current += 1;
     seriesFetchCtrlRef.current?.abort();
@@ -122,13 +129,14 @@ export function MotionEffects({
     const inSeries = seriesMotions.includes(ref);
     const next = inSeries ? seriesMotions.filter((item) => item !== ref) : [...seriesMotions, ref];
     try {
-      const updated = await put<SeriesItem>(`/api/series/${encodeURIComponent(boundSeries.id)}`, {
+      const updated = await put<SeriesItem>(`/api/series/${encodeURIComponent(targetSeriesId)}`, {
         defaults: { ...boundSeries.defaults, motion_effects: next },
       });
+      if (seriesIdRef.current !== targetSeriesId) return;
       setBoundSeries(updated);
       setSeriesNote(inSeries ? `已从专栏「${updated.name}」常用动效移除。` : `已加入专栏「${updated.name}」常用动效。`);
     } catch (err) {
-      setSeriesErr(errorText(err));
+      if (seriesIdRef.current === targetSeriesId) setSeriesErr(errorText(err));
     } finally {
       setSeriesBusy(false);
     }

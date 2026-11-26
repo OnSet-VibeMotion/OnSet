@@ -9,7 +9,7 @@ import type {
 } from '../../types';
 import { styleKey } from '../FilmStyles';
 import { Icon } from '../Icon';
-import { cancelSeriesAssist, isAbortError, requestSeriesAssist } from './seriesAssistApi';
+import { cancelSeriesAssist, isAbortError, nextSeriesAssistRequestId, requestSeriesAssist } from './seriesAssistApi';
 
 function presetSummaryItems(
   draft: SeriesAssistResponse,
@@ -58,13 +58,15 @@ export function SeriesAiAssist(props: {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const ctrlRef = useRef<AbortController | null>(null);
+  const reqIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
       if (ctrlRef.current) {
         ctrlRef.current.abort();
         ctrlRef.current = null;
-        cancelSeriesAssist();
+        cancelSeriesAssist(reqIdRef.current ?? undefined);
+        reqIdRef.current = null;
       }
     };
   }, []);
@@ -82,7 +84,9 @@ export function SeriesAiAssist(props: {
     }
     ctrlRef.current?.abort();
     const ctrl = new AbortController();
+    const reqId = nextSeriesAssistRequestId();
     ctrlRef.current = ctrl;
+    reqIdRef.current = reqId;
     setBusyMode(mode);
     setError('');
     setNotice('');
@@ -100,6 +104,7 @@ export function SeriesAiAssist(props: {
       const res = await requestSeriesAssist(
         {
           mode,
+          request_id: reqId,
           ...(cleanIdea ? { idea: cleanIdea } : {}),
           ...(mode === 'refine' ? { instruction: cleanInst } : {}),
           current: baseCurrent,
@@ -115,7 +120,10 @@ export function SeriesAiAssist(props: {
         setError(errorText(err));
       }
     } finally {
-      if (ctrlRef.current === ctrl) ctrlRef.current = null;
+      if (ctrlRef.current === ctrl) {
+        ctrlRef.current = null;
+        reqIdRef.current = null;
+      }
       setBusyMode(null);
     }
   };
@@ -123,7 +131,8 @@ export function SeriesAiAssist(props: {
   const handleCancel = () => {
     ctrlRef.current?.abort();
     ctrlRef.current = null;
-    cancelSeriesAssist();
+    cancelSeriesAssist(reqIdRef.current ?? undefined);
+    reqIdRef.current = null;
     setBusyMode(null);
     setNotice('已取消生成，表单里已有内容未受影响。');
   };

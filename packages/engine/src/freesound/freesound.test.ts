@@ -291,7 +291,7 @@ describe('freesound RMS gain analysis and true-peak clipping guard', () => {
     expect(fs.readFileSync(first.file_path).equals(impulsiveWav)).toBe(true);
   });
 
-  it('rejects oversized streaming downloads, symlink sfx dir, and marks unmeasured true peak honestly', async () => {
+  it('rejects oversized streaming downloads, symlink sfx dir, intermediate symlink traversal, and marks unmeasured true peak honestly', async () => {
     const unmeasured = computeSafeGain({
       rms_db: -22,
       sample_peak_db: -4,
@@ -301,6 +301,12 @@ describe('freesound RMS gain analysis and true-peak clipping guard', () => {
     expect(unmeasured.measured).toBe(false);
     expect(unmeasured.true_peak_measured).toBe(false);
     expect(unmeasured.note).toContain('真峰值未能经 EBU R128 实测');
+
+    // 省略 true_peak_dbtp 与 true_peak_measured 时亦不得宣称真峰已测量
+    const omittedTp = computeSafeGain({ rms_db: -24, sample_peak_db: -2.7 });
+    expect(omittedTp.measured).toBe(false);
+    expect(omittedTp.true_peak_measured).toBe(false);
+    expect(omittedTp.note).toContain('真峰值未能经 EBU R128 实测');
 
     const project = makeTempProject();
     let chunksPulled = 0;
@@ -346,41 +352,64 @@ describe('freesound RMS gain analysis and true-peak clipping guard', () => {
     ).rejects.toThrow(/超过上限/);
     expect(chunksPulled).toBeLessThanOrEqual(4);
 
-    // 符号链接 assets/sfx 目录被拒绝
+    // 符号链接 assets/sfx 目录被拒绝（Windows 使用 junction 无需管理员权限）
+    const linkType = process.platform === 'win32' ? 'junction' : 'dir';
     const symProject = makeTempProject();
     const outsideDir = makeTempProject();
     fs.mkdirSync(path.join(symProject, 'assets'), { recursive: true });
-    fs.symlinkSync(outsideDir, path.join(symProject, 'assets', 'sfx'));
+    fs.symlinkSync(outsideDir, path.join(symProject, 'assets', 'sfx'), linkType);
     const steadyWav = synthesizeSteadyToneWav();
+    const steadyFetch: FetchLike = async (input) => {
+      if (String(input).includes('/sounds/1234/')) {
+        return new Response(
+          JSON.stringify({
+            id: 1234,
+            name: 'Tone',
+            duration: 0.5,
+            username: 'u',
+            license: 'https://creativecommons.org/publicdomain/zero/1.0/',
+            url: 'https://freesound.org/people/u/sounds/1234/',
+            tags: [],
+            description: '',
+            type: 'wav',
+            filesize: steadyWav.length,
+            samplerate: 48000,
+            channels: 1,
+            avg_rating: 0,
+            num_downloads: 0,
+            previews: { 'preview-hq-mp3': 'https://cdn.freesound.org/previews/1/1234_hq.wav' },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(new Uint8Array(steadyWav), { status: 200, headers: { 'content-type': 'audio/wav' } });
+    };
     await expect(
       downloadSound(1234, symProject, {
         env: { [FreesoundApiKeyEnv]: 'mock-key' },
-        fetch: async (input) => {
-          if (String(input).includes('/sounds/1234/')) {
-            return new Response(
-              JSON.stringify({
-                id: 1234,
-                name: 'Tone',
-                duration: 0.5,
-                username: 'u',
-                license: 'https://creativecommons.org/publicdomain/zero/1.0/',
-                url: 'https://freesound.org/people/u/sounds/1234/',
-                tags: [],
-                description: '',
-                type: 'wav',
-                filesize: steadyWav.length,
-                samplerate: 48000,
-                channels: 1,
-                avg_rating: 0,
-                num_downloads: 0,
-                previews: { 'preview-hq-mp3': 'https://cdn.freesound.org/previews/1/1234_hq.wav' },
-              }),
-              { status: 200, headers: { 'content-type': 'application/json' } },
-            );
-          }
-          return new Response(new Uint8Array(steadyWav), { status: 200, headers: { 'content-type': 'audio/wav' } });
-        },
+        fetch: steadyFetch,
       }),
     ).rejects.toThrow(/符号链接/);
+
+    // 中间目录符号链接（assets/sfx/link -> outsideDir）不得被去重恢复逻辑覆写项目外文件
+    const nestedProject = makeTempProject();
+    const victimDir = makeTempProject();
+    const victimFile = path.join(victimDir, 'victim.wav');
+    fs.writeFileSync(victimFile, 'DO-NOT-OVERWRITE');
+    const firstOk = await downloadSound(1234, nestedProject, {
+      env: { [FreesoundApiKeyEnv]: 'mock-key' },
+      fetch: steadyFetch,
+    });
+    fs.symlinkSync(victimDir, path.join(nestedProject, 'assets', 'sfx', 'link'), linkType);
+    const tampered = readAudioManifest(nestedProject);
+    tampered.entries[0].file = 'assets/sfx/link/victim.wav';
+    fs.writeFileSync(audioManifestPath(nestedProject), JSON.stringify(tampered, null, 2));
+    const reDownloaded = await downloadSound(1234, nestedProject, {
+      env: { [FreesoundApiKeyEnv]: 'mock-key' },
+      fetch: steadyFetch,
+    });
+    expect(reDownloaded.deduplicated).toBe(false);
+    expect(fs.readFileSync(victimFile, 'utf8')).toBe('DO-NOT-OVERWRITE');
+    expect(reDownloaded.file_path).toBe(firstOk.file_path);
   });
 });

@@ -163,8 +163,9 @@ export function computeSafeGain(
   const ceilingDb = opts.ceilingDb ?? DefaultPeakCeilingDB;
   const rmsDb = Math.max(SilenceFloorDB, metrics.rms_db);
   const samplePeakDb = Math.max(SilenceFloorDB, metrics.sample_peak_db);
-  const truePeakMeasured = metrics.true_peak_measured !== false;
-  const truePeakDb = Math.max(samplePeakDb, metrics.true_peak_dbtp ?? samplePeakDb);
+  const hasTruePeak = typeof metrics.true_peak_dbtp === 'number' && Number.isFinite(metrics.true_peak_dbtp);
+  const truePeakMeasured = hasTruePeak && metrics.true_peak_measured !== false;
+  const truePeakDb = Math.max(samplePeakDb, hasTruePeak ? metrics.true_peak_dbtp! : samplePeakDb);
   const unmeasuredNote = truePeakMeasured
     ? undefined
     : '真峰值未能经 EBU R128 实测（回退至样本峰值），不保证满足压缩音频采样间真峰上限。';

@@ -398,37 +398,33 @@ describe('jianying export', () => {
       expect(tc.countFrames(path.join(dest, 'clips', 'shot-02.mp4'))).toBe(36);
 
       // 验证母版切片源区间位置：shot-01 为前 24 帧（红色），shot-02 为后 36 帧（蓝色）
-      const sampleRgb = (file: string): [number, number, number] => {
-        const r = spawnSync(
-          'ffmpeg',
-          [
-            '-v',
-            'error',
-            '-i',
-            file,
-            '-vf',
-            'scale=1:1',
-            '-frames:v',
-            '1',
-            '-f',
-            'rawvideo',
-            '-pix_fmt',
-            'rgb24',
-            'pipe:1',
-          ],
-          {},
-        );
-        if (r.status !== 0 || r.stdout.length < 3) throw new Error(`采样代表帧失败：${file}`);
-        return [r.stdout[0], r.stdout[1], r.stdout[2]];
+      const rgbDir = makeTempDir('onset-jy-rgb-');
+      const sampleRgb = async (file: string, name: string): Promise<[number, number, number]> => {
+        const rawOut = path.join(rgbDir, `${name}.rgb`);
+        await tc.transcode(rawOut, [
+          '-i',
+          file,
+          '-vf',
+          'scale=1:1',
+          '-frames:v',
+          '1',
+          '-f',
+          'rawvideo',
+          '-pix_fmt',
+          'rgb24',
+        ]);
+        const buf = fs.readFileSync(rawOut);
+        if (buf.length < 3) throw new Error(`采样代表帧失败：${file}`);
+        return [buf[0], buf[1], buf[2]];
       };
-      const [r1, , b1] = sampleRgb(path.join(dest, 'clips', 'shot-01.mp4'));
-      const [r2, , b2] = sampleRgb(path.join(dest, 'clips', 'shot-02.mp4'));
+      const [r1, , b1] = await sampleRgb(path.join(dest, 'clips', 'shot-01.mp4'), 's1');
+      const [r2, , b2] = await sampleRgb(path.join(dest, 'clips', 'shot-02.mp4'), 's2');
       expect(r1).toBeGreaterThan(200);
       expect(b1).toBeLessThan(50);
       expect(b2).toBeGreaterThan(200);
       expect(r2).toBeLessThan(50);
 
-      // 已有剪映导出包允许 overwrite=true 覆盖，而未标记的非空目录与受保护目录（production/assets//）一律拒绝
+      // 已有剪映导出包允许 overwrite=true 覆盖，而未标记的非空目录与受保护目录（production/assets//）及符号链接别名一律拒绝
       await expect(
         exportJianying(root, { dest, overwrite: true, includeDraft: false, env: envMap() }),
       ).resolves.toMatchObject({
@@ -444,6 +440,17 @@ describe('jianying export', () => {
       await expect(
         exportJianying(root, { dest: path.parse(root).root, overwrite: true, env: envMap() }),
       ).rejects.toThrow(/上级目录/);
+      // 目录符号链接指向受保护目录或项目外目录时，经相对路径同样被拒绝
+      const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+      fs.symlinkSync(path.join(root, 'production'), path.join(root, 'alias-prod'), linkType);
+      await expect(
+        exportJianying(root, { dest: 'alias-prod/new-bundle', overwrite: false, env: envMap() }),
+      ).rejects.toThrow(/受保护/);
+      const outsideLinkTarget = makeTempDir('onset-jy-outside-');
+      fs.symlinkSync(outsideLinkTarget, path.join(root, 'alias-out'), linkType);
+      await expect(
+        exportJianying(root, { dest: 'alias-out/new-bundle', overwrite: false, env: envMap() }),
+      ).rejects.toThrow(/越出项目根目录/);
 
       // 缺少部分镜头 MP4 且无母版时必须抛错并列出缺失镜头 ID，不能静默导出不完整时间轴
       fs.rmSync(path.join(root, 'production', 'silent-master.mp4'));

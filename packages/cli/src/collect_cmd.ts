@@ -19,19 +19,23 @@ defineGroup({
     '通过公网防 SSRF 安全边界抓取公开网站或品牌的真实视觉素材，按 SHA-256 去重并净化 SVG 后落盘到项目的 assets/collected/ 及 manifest.json。',
 });
 
+function isInsideDir(baseDir: string, candidate: string): boolean {
+  const rel = path.relative(baseDir, candidate);
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
 function resolveProjectHtmlFile(root: string, relOrAbs: string): string {
-  const base = fs.realpathSync(path.resolve(root));
-  const target = path.isAbsolute(relOrAbs) ? path.resolve(relOrAbs) : path.resolve(base, relOrAbs);
-  const rel = path.relative(base, target);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+  const lexicalRoot = path.resolve(root);
+  const realRoot = fs.realpathSync(lexicalRoot);
+  const target = path.isAbsolute(relOrAbs) ? path.resolve(relOrAbs) : path.resolve(lexicalRoot, relOrAbs);
+  if (!isInsideDir(lexicalRoot, target) && !isInsideDir(realRoot, target)) {
     throw new ParamError(`html_file 必须位于项目目录内，已拒绝路径穿越：${relOrAbs}`);
   }
   if (!fs.existsSync(target)) {
     throw new ParamError(`找不到 HTML 文件：${relOrAbs}`);
   }
   const realTarget = fs.realpathSync(target);
-  const realRel = path.relative(base, realTarget);
-  if (realRel.startsWith('..') || path.isAbsolute(realRel)) {
+  if (!isInsideDir(realRoot, realTarget)) {
     throw new ParamError(`html_file 真实路径越出项目目录，已拒绝符号链接穿越：${relOrAbs}`);
   }
   if (!fs.statSync(realTarget).isFile()) {
