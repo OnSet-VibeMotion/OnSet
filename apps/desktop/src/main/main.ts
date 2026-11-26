@@ -1,18 +1,19 @@
-import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, session, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { currentSkin, newServer, skinJSON, startOperationBroker, type Server } from '@onset/engine/studio';
+import { currentSkin, newServer, type Server, skinJSON, startOperationBroker } from '@onset/engine/studio';
 import { setHostVersion } from '@onset/engine/version';
+import { app, BrowserWindow, dialog, ipcMain, Notification, protocol, session, shell } from 'electron';
 import { assetsDir, browserPath, browserScript, cliEntry, npmCLI, shimScript, writeScript } from './clishim';
+import { debugPort } from './devtools';
+import { installDirectoryPicker } from './directory';
 import { installKeyCodec } from './keycodec';
 import { installMenu } from './menu';
 import { installNetworkFetch } from './network';
-import { installUpdater } from './updater';
 import { createPet, installPetIPC, mainWindow, petPreferred, setPetVisible } from './pet';
 import { loginShellPath } from './shellpath';
+import { acquireSingleInstance, type SingleInstanceHandle } from './singleInstanceApp';
 import { StationBrowsers } from './station-browser';
-import { debugPort } from './devtools';
-import { installDirectoryPicker } from './directory';
+import { installUpdater } from './updater';
 import { installWindowsChrome } from './windowChrome';
 
 /*
@@ -29,7 +30,10 @@ const ORIGIN = `${SCHEME}://app`;
 
 // 必须在 ready 之前登记：standard + secure 才有正常的同源与相对路径；stream 让 SSE 与视频按流返回。
 protocol.registerSchemesAsPrivileged([
-  { scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
+  {
+    scheme: SCHEME,
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true },
+  },
 ]);
 
 app.setName('片场');
@@ -49,7 +53,9 @@ if (background) Notification.prototype.show = function () {};
 const devtoolsPort = debugPort({ packaged: app.isPackaged, background, env: process.env });
 if (devtoolsPort !== null) {
   app.commandLine.appendSwitch('remote-debugging-port', String(devtoolsPort));
-  console.log(`[片场] 开发调试端口 127.0.0.1:${devtoolsPort}，可用 agent-browser --cdp ${devtoolsPort} 连接（ONSET_DESKTOP_DEBUG_PORT=off 关闭）`);
+  console.log(
+    `[片场] 开发调试端口 127.0.0.1:${devtoolsPort}，可用 agent-browser --cdp ${devtoolsPort} 连接（ONSET_DESKTOP_DEBUG_PORT=off 关闭）`,
+  );
 }
 
 const stationBrowsers = new StationBrowsers(mainWindow, background);
@@ -57,16 +63,20 @@ const stationBrowsers = new StationBrowsers(mainWindow, background);
 // 用户刚点关闭的页面也在销毁中（草稿还没写完）：close() 会一并等；完成前重复请求退出复用同一次等待，不放行。
 let pluginPagesClosed = false;
 let pluginPagesClosing = false;
-app.on('before-quit', event => {
+app.on('before-quit', (event) => {
   if (pluginPagesClosed) return;
   event.preventDefault();
   if (pluginPagesClosing) return;
   pluginPagesClosing = true;
-  void stationBrowsers.close().finally(() => { pluginPagesClosed = true; app.quit(); });
+  void stationBrowsers.close().finally(() => {
+    pluginPagesClosed = true;
+    app.quit();
+  });
 });
 
 const rendererDir = path.join(__dirname, 'renderer');
 let backend: Server | null = null;
+let singleInstance: SingleInstanceHandle | null = null;
 let stopOperationBroker: (() => void) | undefined;
 
 const mime: Record<string, string> = {
@@ -83,11 +93,14 @@ const mime: Record<string, string> = {
 async function serveStatic(pathname: string): Promise<Response> {
   const rel = decodeURIComponent(pathname).replace(/^\/+/, '');
   const target = path.resolve(rendererDir, rel || 'index.html');
-  if (!target.startsWith(rendererDir + path.sep) && target !== rendererDir) return new Response('forbidden', { status: 403 });
+  if (!target.startsWith(rendererDir + path.sep) && target !== rendererDir)
+    return new Response('forbidden', { status: 403 });
   const ext = path.extname(target);
   try {
     const body = await fs.promises.readFile(target);
-    return new Response(body, { headers: { 'content-type': mime[ext] ?? 'application/octet-stream', 'cache-control': 'no-cache' } });
+    return new Response(body, {
+      headers: { 'content-type': mime[ext] ?? 'application/octet-stream', 'cache-control': 'no-cache' },
+    });
   } catch {
     if (ext) return new Response('not found', { status: 404 });
     const index = await fs.promises.readFile(path.join(rendererDir, 'index.html'));
@@ -132,9 +145,16 @@ function lendBrowser(): void {
 async function handleRequest(request: Request): Promise<Response> {
   const url = new URL(request.url);
   if (url.host !== 'app') return new Response('not found', { status: 404 });
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/preview/') || url.pathname.startsWith('/station-ui/') || url.pathname.startsWith('/station-media/')) {
-    if (!backend) return new Response(JSON.stringify({ code: 'backend_down', message: '后台服务没有启动' }), { status: 503 });
-    return backend.handle(request);
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/preview/') ||
+    url.pathname.startsWith('/station-ui/') ||
+    url.pathname.startsWith('/station-media/')
+  ) {
+    if (!backend)
+      return new Response(JSON.stringify({ code: 'backend_down', message: '后台服务没有启动' }), { status: 503 });
+    const response = await backend.handle(request);
+    return singleInstance ? singleInstance.wrapStartResponse(url.pathname, response) : response;
   }
   return serveStatic(url.pathname);
 }
@@ -170,7 +190,9 @@ function createWindow(): BrowserWindow {
       ? {
           frame: false,
           titleBarStyle: 'hidden' as const,
-          ...(fs.existsSync(path.join(__dirname, '..', 'build', 'icon.png')) ? { icon: path.join(__dirname, '..', 'build', 'icon.png') } : {}),
+          ...(fs.existsSync(path.join(__dirname, '..', 'build', 'icon.png'))
+            ? { icon: path.join(__dirname, '..', 'build', 'icon.png') }
+            : {}),
         }
       : { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 18, y: 22 } }),
     show: false,
@@ -201,7 +223,8 @@ function createWindow(): BrowserWindow {
   }
   // 外链交给系统浏览器；项目内的文件（封面原图、成片）开一个新的客户端窗口。
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith(`${ORIGIN}/`)) return { action: 'allow', overrideBrowserWindowOptions: { backgroundColor: skinBackground() } };
+    if (url.startsWith(`${ORIGIN}/`))
+      return { action: 'allow', overrideBrowserWindowOptions: { backgroundColor: skinBackground() } };
     if (/^https?:\/\//.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
@@ -215,17 +238,14 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
-if (!app.requestSingleInstanceLock()) {
-  app.quit();
-} else {
-  app.on('second-instance', () => {
-    const win = mainWindow();
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      win.focus();
-    }
-  });
+singleInstance = acquireSingleInstance({
+  mainFile: __filename,
+  background,
+  mainWindow,
+  activeWork: () => backend?.activeWork() ?? [],
+});
 
+if (singleInstance) {
   // 插件清单的 requires.onset 按客户端的版本号查（发布时取 tag）。只设宿主版本：工具版本进渲染指纹，客户端不改它。
   setHostVersion(app.getVersion());
   app.whenReady().then(async () => {
@@ -252,7 +272,11 @@ if (!app.requestSingleInstanceLock()) {
       installKeyCodec();
       // 插件中心的目录与图片走 Chromium 的网络栈（系统代理或设置里的代理），见 network.ts。
       installNetworkFetch();
-      backend = newServer({ executable, stationBrowser: request => stationBrowsers.lease(request), stationProxy: url => session.defaultSession.resolveProxy(url) });
+      backend = newServer({
+        executable,
+        stationBrowser: (request) => stationBrowsers.lease(request),
+        stationProxy: (url) => session.defaultSession.resolveProxy(url),
+      });
       stopOperationBroker = startOperationBroker(backend);
     } catch (err) {
       dialog.showErrorBox('后台服务起不来', err instanceof Error ? err.message : String(err));
@@ -261,8 +285,11 @@ if (!app.requestSingleInstanceLock()) {
     }
     protocol.handle(SCHEME, handleRequest);
     // 自动更新（updater.ts）：重启装之前先问后端有没有正在跑的对话与渲染。
-    try { installUpdater({ activeWork: () => backend?.activeWork() ?? [] }); }
-    catch (err) { console.error('更新器初始化失败', err); }
+    try {
+      installUpdater({ activeWork: () => backend?.activeWork() ?? [] });
+    } catch (err) {
+      console.error('更新器初始化失败', err);
+    }
     const menu = (visible: boolean) => installMenu({ visible, toggle: setPetVisible });
     installPetIPC();
     installDirectoryPicker();
@@ -275,7 +302,8 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.on('onset:skin', (event, background: unknown) => {
       for (const win of BrowserWindow.getAllWindows()) {
         if (win.isDestroyed()) continue;
-        if (typeof background === 'string' && /^#[0-9a-f]{6}$/i.test(background) && win.isResizable()) win.setBackgroundColor(background);
+        if (typeof background === 'string' && /^#[0-9a-f]{6}$/i.test(background) && win.isResizable())
+          win.setBackgroundColor(background);
         if (win.webContents !== event.sender) win.webContents.send('onset:skin');
       }
     });
@@ -302,8 +330,8 @@ if (!app.requestSingleInstanceLock()) {
     });
     ipcMain.on('onset:notify', (_event, message: { title?: string; body?: string }) => {
       // 桌宠窗口点了也会成为焦点窗口，但那不等于人在看客户端。
-    const focused = BrowserWindow.getFocusedWindow();
-    if ((focused && focused === mainWindow()) || !Notification.isSupported()) return;
+      const focused = BrowserWindow.getFocusedWindow();
+      if ((focused && focused === mainWindow()) || !Notification.isSupported()) return;
       const note = new Notification({ title: String(message?.title ?? '片场'), body: String(message?.body ?? '') });
       note.on('click', () => {
         const win = mainWindow();
@@ -320,6 +348,7 @@ if (!app.requestSingleInstanceLock()) {
     createPet({ url: `${ORIGIN}/pet`, preload: path.join(__dirname, 'preload.js'), background, onVisibility: menu });
     menu(petPreferred());
     app.on('activate', () => {
+      if (singleInstance?.checkStaleOnActivate()) return;
       // 桌宠窗口一直在，不能按「还有没有窗口」判断。
       if (!mainWindow()) createWindow();
     });
@@ -334,5 +363,8 @@ if (!app.requestSingleInstanceLock()) {
       if (process.platform !== 'darwin' && !mainWindow()) app.quit();
     });
   });
-  app.on('will-quit', () => { stopOperationBroker?.(); backend?.shutdown(); });
+  app.on('will-quit', () => {
+    stopOperationBroker?.();
+    backend?.shutdown();
+  });
 }
