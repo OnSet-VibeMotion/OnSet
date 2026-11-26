@@ -180,6 +180,15 @@ const ctx = document.createElement('canvas').getContext('2d');
     });
     expect(checkEngineContract(realCssComment.sceneDir).ok).toBe(true);
 
+    // 自定义元素 <style-preview> / <script-card> 不得被误判为 <style>/<script> 吞掉后续 HTML 注释
+    const customElemBeforeComment = setupProjectScene({
+      styleKey: 'mg-styles/03-isometric',
+      files: {
+        'index.html': `<style-preview></style-preview>\n<script-card></script-card>\n<!-- onset-engine-deviation: threejs -> canvas2d | reason: 自定义元素后真实注释应被识别 -->\n<div>ok</div>`,
+      },
+    });
+    expect(checkEngineContract(customElemBeforeComment.sceneDir).ok).toBe(true);
+
     // 只有 importmap 而无实际 import / THREE 调用不得通过 threejs 强契约
     const importMapOnly = setupProjectScene({
       styleKey: 'mg-styles/03-isometric',

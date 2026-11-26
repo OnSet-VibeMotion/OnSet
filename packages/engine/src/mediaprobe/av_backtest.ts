@@ -270,7 +270,7 @@ export async function runAVBacktest(t: Toolchain, opts: AVBacktestOptions): Prom
         const normAsset = path.resolve(ref.asset);
         const indistinguishable = opts.anchors.some(
           (other) =>
-            Math.abs(other.music_seconds - plannedSeconds) <= searchWindowSeconds * 2 &&
+            Math.abs(other.planned_frame / fps - plannedSeconds) <= searchWindowSeconds * 2 &&
             (other.sfx ?? []).some(
               (o) =>
                 o !== ref &&

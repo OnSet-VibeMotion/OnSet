@@ -73,6 +73,10 @@ export async function startEgressProxy(policy: EgressProxyPolicy): Promise<Egres
   const openSockets = new Set<net.Socket>();
   let closing = false;
   const track = (sock: net.Socket) => {
+    if (closing) {
+      sock.destroy();
+      return;
+    }
     openSockets.add(sock);
     sock.once('close', () => openSockets.delete(sock));
   };

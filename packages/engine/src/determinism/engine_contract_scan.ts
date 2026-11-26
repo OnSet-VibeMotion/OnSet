@@ -176,7 +176,7 @@ function extractHtmlTopComments(raw: string, maxLine = 50): Array<{ line: number
     if (raw[i] === '<') {
       const openEnd = findTagEnd(raw, i);
       const tagText = raw.slice(i, openEnd + 1);
-      const tagMatch = /^<\s*(script|style)\b/i.exec(tagText);
+      const tagMatch = /^<\s*(script|style)(?=[\t\n\f\r />])/i.exec(tagText);
       line += countLines(tagText);
       i = openEnd + 1;
       if (tagMatch) {
