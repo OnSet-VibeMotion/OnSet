@@ -216,6 +216,7 @@ if [ -n "$resume" ] && [ -n "$FAKE_FAIL_RESUME" ]; then echo "No conversation fo
 printf '{"type":"system","subtype":"init","session_id":"%s","model":"claude-fake"}\\n' "$sid"
 if [ -n "$FAKE_SLEEP" ]; then sleep "$FAKE_SLEEP"; fi
 if [ -n "$FAKE_VIEW" ] && [ -n "$ONSET_STUDIO_INBOX" ]; then mkdir -p "$ONSET_STUDIO_INBOX"; printf '%s' "$FAKE_VIEW" > "$ONSET_STUDIO_INBOX/1.json"; fi
+mkdir -p scenes/scene-001
 printf '%s\\n' "\${FAKE_CONTENT:-edited}" > scenes/scene-001/prompt.md
 printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Write","input":{"file_path":"scenes/scene-001/prompt.md"}}]}}\\n'
 printf '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}\\n'
@@ -270,6 +271,7 @@ const fs = require('node:fs'), path = require('node:path');
     fs.mkdirSync(process.env.ONSET_STUDIO_INBOX,{recursive:true});
     fs.writeFileSync(path.join(process.env.ONSET_STUDIO_INBOX,'1.json'),process.env.FAKE_VIEW);
   }
+  fs.mkdirSync('scenes/scene-001',{recursive:true});
   fs.writeFileSync('scenes/scene-001/prompt.md',(process.env.FAKE_CONTENT || 'edited') + '\\n');
   emit({type:'assistant',message:{content:[{type:'tool_use',id:'t1',name:'Write',input:{file_path:'scenes/scene-001/prompt.md'}}]}});
   emit({type:'user',message:{content:[{type:'tool_result',tool_use_id:'t1',content:'ok'}]}});

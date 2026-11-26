@@ -28,6 +28,31 @@ export type SecondInstanceDecision =
   | { kind: 'switch'; target: { execPath: string; args: string[] }; reason: string }
   | { kind: 'confirm_switch'; target: { execPath: string; args: string[] }; reason: string; busy: string[] };
 
+/** 主进程启动后按当前构建位置自动写入的环境变量；跨构建 relaunch 前需清掉非外部显式传入的项。 */
+export const RelaunchAutoEnvKeys = [
+  'ONSET_ASSETS_DIR',
+  'ONSET_SELF',
+  'ONSET_NPM_CLI',
+  'ONSET_BROWSER',
+  'ONSET_BROWSER_APP_ARG',
+] as const;
+
+/** 记录进程启动时由外部显式传入的环境变量键名（须在 main.ts 自动补写之前调用）。 */
+export function captureExplicitRelaunchEnv(env: Record<string, string | undefined>): ReadonlySet<string> {
+  const explicit = new Set<string>();
+  for (const key of RelaunchAutoEnvKeys) {
+    if (typeof env[key] === 'string' && env[key] !== '') explicit.add(key);
+  }
+  return explicit;
+}
+
+/** 跨构建 relaunch 前清理当前构建自动写入的路径变量，让新进程按自身目录重新计算，同时保留外部显式覆盖。 */
+export function sanitizeRelaunchEnv(env: Record<string, string | undefined>, explicitKeys: ReadonlySet<string>): void {
+  for (const key of RelaunchAutoEnvKeys) {
+    if (!explicitKeys.has(key)) delete env[key];
+  }
+}
+
 function canonicalPath(p: string): string {
   try {
     return fs.realpathSync(p);

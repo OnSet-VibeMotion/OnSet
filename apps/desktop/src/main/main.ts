@@ -348,6 +348,7 @@ if (singleInstance) {
     createPet({ url: `${ORIGIN}/pet`, preload: path.join(__dirname, 'preload.js'), background, onVisibility: menu });
     menu(petPreferred());
     app.on('activate', () => {
+      if (singleInstance?.checkStaleOnActivate()) return;
       // 桌宠窗口一直在，不能按「还有没有窗口」判断。
       if (!mainWindow()) createWindow();
     });

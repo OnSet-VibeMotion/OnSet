@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  captureExplicitRelaunchEnv,
   currentInstanceIdentity,
   decideSecondInstance,
   decorateStaleStartError,
@@ -11,6 +12,7 @@ import {
   isSameInstanceBuild,
   parseIncomingIdentity,
   readBundleSignature,
+  sanitizeRelaunchEnv,
 } from './singleInstance';
 
 const temps: string[] = [];
@@ -166,5 +168,72 @@ describe('singleInstance', () => {
     expect(decorated.code).toBe('prompt_missing');
     expect(decorated.message).toContain('旧进程');
     expect(decorated.message).toContain('{{MOTION_MENU}}');
+  });
+
+  it('clears auto-set build env vars on A->B relaunch while preserving explicit overrides', () => {
+    const envA: Record<string, string | undefined> = { PATH: '/usr/bin' };
+    const explicitA = captureExplicitRelaunchEnv(envA);
+    // 模拟 A.app 在 whenReady() 中自动写入的构建相关变量。
+    envA.ONSET_ASSETS_DIR = '/Users/dev/release/A.app/Contents/Resources/assets';
+    envA.ONSET_SELF = '/Users/dev/Library/Application Support/片场/bin/onset';
+    envA.ONSET_NPM_CLI = '/Users/dev/release/A.app/Contents/Resources/npm/bin/npm-cli.js';
+    envA.ONSET_BROWSER = '/Users/dev/Library/Application Support/片场/bin/onset-browser';
+    envA.ONSET_BROWSER_APP_ARG = '/Users/dev/release/A.app/Contents/Resources/app.asar';
+
+    sanitizeRelaunchEnv(envA, explicitA);
+    expect(envA.ONSET_ASSETS_DIR).toBeUndefined();
+    expect(envA.ONSET_SELF).toBeUndefined();
+    expect(envA.ONSET_NPM_CLI).toBeUndefined();
+    expect(envA.ONSET_BROWSER).toBeUndefined();
+    expect(envA.ONSET_BROWSER_APP_ARG).toBeUndefined();
+    expect(envA.PATH).toBe('/usr/bin');
+
+    // 模拟 B.app 继承清理后的环境并按自身资源目录回落。
+    envA.ONSET_ASSETS_DIR ??= '/Applications/B.app/Contents/Resources/assets';
+    expect(envA.ONSET_ASSETS_DIR).toBe('/Applications/B.app/Contents/Resources/assets');
+
+    // 外部显式覆盖 ONSET_ASSETS_DIR 时必须保留。
+    const envExplicit: Record<string, string | undefined> = { ONSET_ASSETS_DIR: '/custom/assets' };
+    const explicitOverride = captureExplicitRelaunchEnv(envExplicit);
+    envExplicit.ONSET_SELF = '/tmp/auto-self';
+    sanitizeRelaunchEnv(envExplicit, explicitOverride);
+    expect(envExplicit.ONSET_ASSETS_DIR).toBe('/custom/assets');
+    expect(envExplicit.ONSET_SELF).toBeUndefined();
+  });
+
+  it('supports macOS activate stale check with incoming=null for idle, busy, and background modes', () => {
+    const self = makeIdentity({ bundleSignature: 'old-sig' });
+    expect(
+      decideSecondInstance({
+        self,
+        incoming: null,
+        onDiskSignature: 'old-sig',
+        activeWork: [],
+        background: false,
+      }),
+    ).toEqual({ kind: 'focus' });
+    expect(
+      decideSecondInstance({
+        self,
+        incoming: null,
+        onDiskSignature: 'new-sig',
+        activeWork: [{ project: '/tmp/p', holder: '渲染中' }],
+        background: false,
+      }),
+    ).toEqual({
+      kind: 'confirm_switch',
+      target: { execPath: self.execPath, args: [] },
+      reason: '磁盘上的片场客户端文件已被替换，当前窗口仍停留在更新前的旧进程',
+      busy: ['p：渲染中'],
+    });
+    expect(
+      decideSecondInstance({
+        self,
+        incoming: null,
+        onDiskSignature: 'new-sig',
+        activeWork: [],
+        background: true,
+      }),
+    ).toEqual({ kind: 'focus' });
   });
 });
