@@ -582,6 +582,43 @@ describe('prompt content', () => {
     expect(beatMix).not.toContain('其余内置与插件动效可用 `motion_effect_list()` 检索');
   });
 
+  it('renders every builtin preset and flow on startup with zero unresolved placeholders', () => {
+    const allPresets = preset.all();
+    expect(allPresets.map((p) => p.id)).toContain('landscape-16x9');
+    for (const p of allPresets) {
+      for (const delivery of builtinFlowIDs()) {
+        const root = created(delivery, p.id);
+        const label = `${delivery}/${p.id}`;
+        const frameText = fs.readFileSync(path.join(root, 'frame.md'), 'utf8');
+        expect(frameText, `${label} frame.md`).not.toMatch(/\{\{[^}]+\}\}/);
+
+        const full = runPrompt(root, '').prompt.toString('utf8');
+        expect(full, `${label} full runPrompt`).not.toMatch(/\{\{[^}]+\}\}/);
+        expect(full, `${label} full runPrompt`).not.toContain('{{MOTION_MENU}}');
+        if (delivery === 'speech' || delivery === 'beat') {
+          expect(full, `${label} motion menu`).toContain('文字与数据');
+          expect(full, `${label} motion menu`).toContain('005 遮罩显现');
+          expect(full, `${label} motion menu`).toContain('其余内置与插件动效可用 `motion_effect_list()` 检索');
+        }
+
+        // 模拟客户端「新建项目 → 88% 开始制作」首轮聚焦启动，以及每个阶段的按需展开（flow_guide）。
+        const def = flow.allFlows().find((f) => f.id === delivery)!;
+        const firstStage = def.stations[0];
+        if (firstStage) {
+          const initialFocused = runPrompt(root, '', firstStage).prompt.toString('utf8');
+          expect(initialFocused, `${label} initial focus ${firstStage}`).not.toMatch(/\{\{[^}]+\}\}/);
+        }
+        const planStage = delivery === 'speech' ? 'plan' : delivery === 'beat' ? 'beat-plan' : '';
+        if (planStage) {
+          const planFocused = composeProjectPrompt(root, planStage, true).text;
+          expect(planFocused, `${label} ${planStage}`).not.toMatch(/\{\{[^}]+\}\}/);
+          expect(planFocused, `${label} ${planStage}`).toContain('005 遮罩显现');
+          expect(planFocused, `${label} ${planStage}`).toContain('其余内置与插件动效可用 `motion_effect_list()` 检索');
+        }
+      }
+    }
+  });
+
   it('mixes without amix normalization (speech, beat)', () => {
     has(speech, ['`amix`', '`normalize=0`', '`event_id`', '`phrase_id`', '：配音优先的声音混合'], '口播·声音设计');
     has(beat, ['`amix`', '`normalize=0`', '`event_id`', '：音乐与音效的混合'], '卡点·声音设计');

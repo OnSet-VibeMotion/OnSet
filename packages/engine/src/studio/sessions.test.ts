@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import * as agentrun from '../agentrun';
 import * as ledger from '../ledger';
+import * as preset from '../preset';
 import * as project from '../project';
 import { collect, prepare } from '../renderassets';
 import {
@@ -19,15 +20,28 @@ import {
   newID,
   replayGuard,
   reseedPrompt,
+  type SessionEvent,
   sessionEventJSON,
   transcript,
   transcriptLimit,
   updateMeta,
   validateAttachments,
-  type SessionEvent,
 } from './sessions';
 import { Server } from './studio';
-import { args, lastTurn, newSessionFixture, rawGet, readScenePrompt, send, setEnv, sleep, studioRequest, tempDir, waitIdle, writeStudioFile } from './testsupport';
+import {
+  args,
+  lastTurn,
+  newSessionFixture,
+  rawGet,
+  readScenePrompt,
+  send,
+  setEnv,
+  sleep,
+  studioRequest,
+  tempDir,
+  waitIdle,
+  writeStudioFile,
+} from './testsupport';
 import { loadTurn, saveTurn, type Turn } from './turns';
 
 function eventOf(kind: string, text: string): SessionEvent {
@@ -50,7 +64,10 @@ describe('sessions', () => {
     fs.writeFileSync(path.join(source, 'library.js'), 'window.shared = true;');
     const scene = path.join(f.root, 'scenes', 'scene-001');
     prepare(f.root, scene, collect([{ from: source, to: 'vendor' }]));
-    for (const [name, body] of [['font.woff2', 'font-bytes'], ['library.js', 'window.shared = true;']]) {
+    for (const [name, body] of [
+      ['font.woff2', 'font-bytes'],
+      ['library.js', 'window.shared = true;'],
+    ]) {
       const response = await rawGet(f.s, '/preview/scenes/scene-001/vendor/' + name);
       expect(response.status).toBe(200);
       expect(response.text).toBe(body);
@@ -112,7 +129,16 @@ describe('sessions', () => {
     // 事件流：断线重放从 Last-Event-ID 之后开始。
     const events = await rawGet(f.s, `/api/sessions/${id}/events?follow=0`);
     expect(events.status).toBe(200);
-    for (const want of ['event: user', 'event: turn-start', 'event: session', 'event: tool-call', 'event: text', 'event: files-changed', 'event: usage', 'event: turn-end']) {
+    for (const want of [
+      'event: user',
+      'event: turn-start',
+      'event: session',
+      'event: tool-call',
+      'event: text',
+      'event: files-changed',
+      'event: usage',
+      'event: turn-end',
+    ]) {
       expect(events.text, `缺少 ${want}`).toContain(want);
     }
     expect(events.text, 'done 是 agentrun 内部事件，不进会话流').not.toContain('event: done');
@@ -120,11 +146,17 @@ describe('sessions', () => {
     expect(tail.status).toBe(200);
     expect(tail.text).not.toContain('event:');
     // Last-Event-ID 与 ?after= 同义。
-    const resumed = await send(f.s, 'GET', `/api/sessions/${id}/events?follow=0`, undefined, { 'Last-Event-ID': '1000' });
+    const resumed = await send(f.s, 'GET', `/api/sessions/${id}/events?follow=0`, undefined, {
+      'Last-Event-ID': '1000',
+    });
     expect(await resumed.text()).not.toContain('event:');
 
     // 改动详情：前后内容都能取到。
-    ({ status, body } = await studioRequest(f.s, 'GET', `/api/turns/${second.turn_id}/file?path=scenes/scene-001/prompt.md`));
+    ({ status, body } = await studioRequest(
+      f.s,
+      'GET',
+      `/api/turns/${second.turn_id}/file?path=scenes/scene-001/prompt.md`,
+    ));
     expect(status).toBe(200);
     expect(body.before).toBe('edited\n');
     expect(body.after).toBe('edited twice\n');
@@ -186,7 +218,8 @@ describe('sessions', () => {
     expect(a).toHaveLength(3);
     expect(a[1]).toContain('--resume');
     expect(a[2]).toContain('--session-id');
-    for (const want of ['之前的对话', '第一句', '改好了', '第二句']) expect(a[2], '补发的提示词没带上对话记录').toContain(want);
+    for (const want of ['之前的对话', '第一句', '改好了', '第二句'])
+      expect(a[2], '补发的提示词没带上对话记录').toContain(want);
     const { text } = await rawGet(f.s, `/api/sessions/${id}/events?follow=0`);
     expect(text, '应提示续接失败').toContain('原会话无法续接');
   });
@@ -199,7 +232,18 @@ describe('sessions', () => {
     await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"第一句"}');
     const first = await waitIdle(f, id);
     const old = first.session.cli_session_id as string;
-    ledger.append(ledger.projectFile(f.root), ledger.fromResult(ledger.SourceStudio, 'claude', '', old, { input_tokens: 40 * 300_000, turns: 40, source: 'claude result', basis: 'total-input' }, null, false));
+    ledger.append(
+      ledger.projectFile(f.root),
+      ledger.fromResult(
+        ledger.SourceStudio,
+        'claude',
+        '',
+        old,
+        { input_tokens: 40 * 300_000, turns: 40, source: 'claude result', basis: 'total-input' },
+        null,
+        false,
+      ),
+    );
     await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"第二句"}');
     const detail = await waitIdle(f, id);
     expect(lastTurn(detail).status).toBe('succeeded');
@@ -208,7 +252,8 @@ describe('sessions', () => {
     expect(a[1]).not.toContain('--resume');
     expect(a[1]).toContain('--session-id');
     expect(detail.session.cli_session_id).not.toBe(old);
-    for (const want of ['换了一个新会话接着做', '以文件为准', '之前的对话', '第一句', '第二句']) expect(a[1], want).toContain(want);
+    for (const want of ['换了一个新会话接着做', '以文件为准', '之前的对话', '第一句', '第二句'])
+      expect(a[1], want).toContain(want);
     const { text } = await rawGet(f.s, `/api/sessions/${id}/events?follow=0`);
     expect(text).toContain('这一轮换一个新会话接着做');
     // 新会话还短：再下一轮照常续接。
@@ -252,7 +297,12 @@ describe('sessions', () => {
     const initial = await studioRequest(f.s, 'GET', `/api/sessions/${id}`);
     expect(initial.body.session.running_turn, JSON.stringify(lastTurn(initial.body))).toBeDefined();
     // 进行中：其他写入一律 409。
-    for (const p of ['/api/production/start', '/api/render/all', '/api/scenes/scene-001/render', '/api/commands/project.concat']) {
+    for (const p of [
+      '/api/production/start',
+      '/api/render/all',
+      '/api/scenes/scene-001/render',
+      '/api/commands/project.concat',
+    ]) {
       ({ status, body } = await studioRequest(f.s, 'POST', p, '{}'));
       expect(status, p).toBe(409);
     }
@@ -292,7 +342,16 @@ describe('sessions', () => {
   it('interrupted turn is marked on restart', () => {
     const f = newSessionFixture();
     const sess = createSession(f.s, f.root, 'chat', 'x', { tool: 'claude', renderer: 'claude' });
-    const turn: Turn = { turn_id: newID('t'), session_id: sess.meta.session_id, kind: '', message: '', status: 'running', started_at: new Date().toISOString(), changes: null, before: null };
+    const turn: Turn = {
+      turn_id: newID('t'),
+      session_id: sess.meta.session_id,
+      kind: '',
+      message: '',
+      status: 'running',
+      started_at: new Date().toISOString(),
+      changes: null,
+      before: null,
+    };
     saveTurn(f.root, turn);
     updateMeta(sess, (meta) => {
       meta.turns = [turn.turn_id];
@@ -302,27 +361,53 @@ describe('sessions', () => {
     const s2 = new Server({ projectPath: f.root, configPath: f.s.config.configPath });
     expect(listSessions(s2, f.root)[0].running_turn).toBeUndefined();
     expect(loadTurn(f.root, turn.turn_id).status).toBe('interrupted');
-    expect(getSession(s2, f.root, sess.meta.session_id)!.events.at(-1)).toMatchObject({ kind: 'turn-end', turn_id: turn.turn_id, status: 'interrupted', text: 'Studio 在本轮进行中退出' });
+    expect(getSession(s2, f.root, sess.meta.session_id)!.events.at(-1)).toMatchObject({
+      kind: 'turn-end',
+      turn_id: turn.turn_id,
+      status: 'interrupted',
+      text: 'Studio 在本轮进行中退出',
+    });
   });
 
-  it.each(['running', 'interrupted', 'succeeded', 'failed', 'missing'])('repairs a missing end event for a %s turn even after running_turn was cleared', async (status) => {
-    const f = newSessionFixture();
-    const sess = createSession(f.s, f.root, 'chat', 'x', { tool: 'qoder', renderer: 'qoder' });
-    const turn: Turn = { turn_id: newID('t'), session_id: sess.meta.session_id, kind: 'chat', message: '渲染所有镜头', status, started_at: new Date().toISOString(), changes: [], before: null };
-    if (status !== 'missing') saveTurn(f.root, turn);
-    updateMeta(sess, (meta) => { meta.turns = [turn.turn_id]; });
-    emit(sess, turn.turn_id, { kind: 'turn-start', status: 'running' });
-    emit(sess, turn.turn_id, { kind: 'tool-call', tool: 'mcp__onset__scene_run_all', call_id: 'render' });
-    const s2 = new Server({ projectPath: f.root, configPath: f.s.config.configPath });
-    const restored = getSession(s2, f.root, sess.meta.session_id)!;
-    const expected = status === 'missing' || status === 'running' ? 'interrupted' : status;
-    expect(restored.cancel).toBeNull();
-    expect(restored.events.at(-1)).toMatchObject({ seq: 3, kind: 'turn-end', turn_id: turn.turn_id, status: expected });
-    const response = await rawGet(s2, `/api/sessions/${sess.meta.session_id}/events?follow=0&after=2`);
-    expect(response.text).toContain('event: turn-end');
-    const s3 = new Server({ projectPath: f.root, configPath: f.s.config.configPath });
-    expect(getSession(s3, f.root, sess.meta.session_id)!.events.map(sessionEventJSON)).toEqual(restored.events.map(sessionEventJSON));
-  });
+  it.each(['running', 'interrupted', 'succeeded', 'failed', 'missing'])(
+    'repairs a missing end event for a %s turn even after running_turn was cleared',
+    async (status) => {
+      const f = newSessionFixture();
+      const sess = createSession(f.s, f.root, 'chat', 'x', { tool: 'qoder', renderer: 'qoder' });
+      const turn: Turn = {
+        turn_id: newID('t'),
+        session_id: sess.meta.session_id,
+        kind: 'chat',
+        message: '渲染所有镜头',
+        status,
+        started_at: new Date().toISOString(),
+        changes: [],
+        before: null,
+      };
+      if (status !== 'missing') saveTurn(f.root, turn);
+      updateMeta(sess, (meta) => {
+        meta.turns = [turn.turn_id];
+      });
+      emit(sess, turn.turn_id, { kind: 'turn-start', status: 'running' });
+      emit(sess, turn.turn_id, { kind: 'tool-call', tool: 'mcp__onset__scene_run_all', call_id: 'render' });
+      const s2 = new Server({ projectPath: f.root, configPath: f.s.config.configPath });
+      const restored = getSession(s2, f.root, sess.meta.session_id)!;
+      const expected = status === 'missing' || status === 'running' ? 'interrupted' : status;
+      expect(restored.cancel).toBeNull();
+      expect(restored.events.at(-1)).toMatchObject({
+        seq: 3,
+        kind: 'turn-end',
+        turn_id: turn.turn_id,
+        status: expected,
+      });
+      const response = await rawGet(s2, `/api/sessions/${sess.meta.session_id}/events?follow=0&after=2`);
+      expect(response.text).toContain('event: turn-end');
+      const s3 = new Server({ projectPath: f.root, configPath: f.s.config.configPath });
+      expect(getSession(s3, f.root, sess.meta.session_id)!.events.map(sessionEventJSON)).toEqual(
+        restored.events.map(sessionEventJSON),
+      );
+    },
+  );
 
   it('session request validation', async () => {
     const f = newSessionFixture();
@@ -337,7 +422,12 @@ describe('sessions', () => {
       ['GET', `/api/sessions/${id}/turns`, '', 405],
       ['POST', `/api/sessions/${id}/turns`, '{"message":"  "}', 400],
       ['POST', `/api/sessions/${id}/turns`, '{"message":"x","attachments":[{"path":"../../etc/passwd"}]}', 400],
-      ['POST', `/api/sessions/${id}/turns`, '{"message":"x","attachments":[{"path":"production/studio/attachments/missing.png"}]}', 400],
+      [
+        'POST',
+        `/api/sessions/${id}/turns`,
+        '{"message":"x","attachments":[{"path":"production/studio/attachments/missing.png"}]}',
+        400,
+      ],
       ['POST', `/api/sessions/${id}/turns`, '{"message":"x","attachments":[{"source":"../outside.html"}]}', 400],
       ['GET', `/api/sessions/${id}/cancel`, '', 405],
       ['GET', '/api/production/start', '', 405],
@@ -367,7 +457,13 @@ describe('sessions', () => {
     expect(status).toBe(200);
     expect(body.content).toBe('original');
     expect(body.binary).toBe(false);
-    for (const [p, want] of Object.entries({ '../etc/passwd': 400, '/etc/passwd': 400, '.env': 403, 'missing.md': 404, scenes: 404 })) {
+    for (const [p, want] of Object.entries({
+      '../etc/passwd': 400,
+      '/etc/passwd': 400,
+      '.env': 403,
+      'missing.md': 404,
+      scenes: 404,
+    })) {
       ({ status, body } = await studioRequest(f.s, 'GET', '/api/files?path=' + p));
       expect(status, `${p} → ${JSON.stringify(body)}`).toBe(want);
     }
@@ -384,7 +480,11 @@ describe('sessions', () => {
     const preview = await rawGet(f.s, '/preview/scenes/scene-001/');
     expect(preview.status).toBe(200);
     expect(preview.text).toContain('composition');
-    for (const p of ['/preview/scenes/scene-001/.env', '/preview/scenes/missing/index.html', '/preview/scenes/scene-001/%2e%2e/%2e%2e/onset.conf']) {
+    for (const p of [
+      '/preview/scenes/scene-001/.env',
+      '/preview/scenes/missing/index.html',
+      '/preview/scenes/scene-001/%2e%2e/%2e%2e/onset.conf',
+    ]) {
       const res = await rawGet(f.s, p);
       const leaked = res.status === 200 && (res.text.includes('NOTE=1') || res.text.includes('ORCHESTRATOR=claude'));
       expect(leaked, `${p} 不应可读：${res.text}`).toBe(false);
@@ -401,7 +501,9 @@ describe('sessions', () => {
     const f = newSessionFixture();
     const sess = createSession(f.s, f.root, 'chat', 'x', { tool: 'claude', renderer: 'claude' });
     const controller = new AbortController();
-    const res = await f.s.handle(new Request(`http://studio.test/api/sessions/${sess.meta.session_id}/events`, { signal: controller.signal }));
+    const res = await f.s.handle(
+      new Request(`http://studio.test/api/sessions/${sess.meta.session_id}/events`, { signal: controller.signal }),
+    );
     const timer = setTimeout(() => emit(sess, '', { kind: kindNotice, text: 'hello' }), 100);
     const reader = res.body!.getReader();
     const decoder = new TextDecoder();
@@ -425,22 +527,39 @@ describe('sessions', () => {
 
   it('attachment text', () => {
     const text = attachmentText([
-      { scene_id: 'scene-001', path: 'production/studio/attachments/a.png', seconds: 1.5, region: { x: 1, y: 2, w: 3, h: 4 }, selector: '#title', source: 'scenes/scene-001/index.html', note: '太挤' },
+      {
+        scene_id: 'scene-001',
+        path: 'production/studio/attachments/a.png',
+        seconds: 1.5,
+        region: { x: 1, y: 2, w: 3, h: 4 },
+        selector: '#title',
+        source: 'scenes/scene-001/index.html',
+        note: '太挤',
+      },
     ]);
-    for (const want of ['镜头 scene-001', '1.50 秒', 'a.png', 'x=1 y=2 宽 3 高 4', '`#title`', 'index.html', '太挤']) expect(text).toContain(want);
+    for (const want of ['镜头 scene-001', '1.50 秒', 'a.png', 'x=1 y=2 宽 3 高 4', '`#title`', 'index.html', '太挤'])
+      expect(text).toContain(want);
     expect(attachmentText(null), '没有附件时不加内容').toBe('');
     const quoted = attachmentText([
       { quote: '第一行\n第二行', label: '口播稿第 2 段', source: 'production/script-final.md' },
       { ref: true, scene_id: 'scene-003' },
       { ref: true, source: 'production/treatment.md', note: '看主旨' },
     ]);
-    for (const want of ['用户引用的内容', '口播稿第 2 段（production/script-final.md）：\n  > 第一行\n  > 第二行', '- 镜头 scene-003', '- 文件 production/treatment.md\n  备注：看主旨']) {
+    for (const want of [
+      '用户引用的内容',
+      '口播稿第 2 段（production/script-final.md）：\n  > 第一行\n  > 第二行',
+      '- 镜头 scene-003',
+      '- 文件 production/treatment.md\n  备注：看主旨',
+    ]) {
       expect(quoted).toContain(want);
     }
     const root = tempDir();
     expect(() => validateAttachments(root, [{ quote: '字'.repeat(maxQuoteRunes + 1) }]), '超长引用应当拒绝').toThrow();
     expect(() => validateAttachments(root, [{ ref: true }]), '空引用应当拒绝').toThrow();
-    expect(() => validateAttachments(root, [{ quote: 'x', source: '../outside.md' }]), '项目外的出处应当拒绝').toThrow();
+    expect(
+      () => validateAttachments(root, [{ quote: 'x', source: '../outside.md' }]),
+      '项目外的出处应当拒绝',
+    ).toThrow();
     const got = transcript([eventOf(kindUser, '长'.repeat(transcriptLimit + 10))]);
     expect([...got].length, '对话记录没有截断').toBeLessThanOrEqual(transcriptLimit);
     // agentrun 的正文事件算「你」说的话。
@@ -484,7 +603,12 @@ describe('sessions', () => {
       await sleep(20);
     }
     setEnv('FAKE_SLEEP', '');
-    ({ status } = await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"改主意了","interrupt":true}'));
+    ({ status } = await studioRequest(
+      f.s,
+      'POST',
+      `/api/sessions/${id}/turns`,
+      '{"message":"改主意了","interrupt":true}',
+    ));
     expect(status).toBe(202);
     deadline = Date.now() + 10_000;
     while (Date.now() < deadline) {
@@ -537,18 +661,21 @@ describe('sessions', () => {
   });
 });
 
-
 it('keeps an existing conversation usable when its usage ledger cannot be read', async () => {
   const f = newSessionFixture();
   const { body } = await studioRequest(f.s, 'POST', '/api/sessions', '{}');
   const id = body.session_id as string;
   await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"first"}');
   const first = await waitIdle(f, id);
-  const spy = vi.spyOn(ledger, 'read').mockImplementation(() => { throw Object.assign(new Error('denied'), { code: 'EACCES' }); });
+  const spy = vi.spyOn(ledger, 'read').mockImplementation(() => {
+    throw Object.assign(new Error('denied'), { code: 'EACCES' });
+  });
   try {
     const response = await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"second"}');
     expect(response.status).toBe(202);
-  } finally { spy.mockRestore(); }
+  } finally {
+    spy.mockRestore();
+  }
   const second = await waitIdle(f, id);
   expect(lastTurn(second).status).toBe('succeeded');
   expect(second.session.cli_session_id).toBe(first.session.cli_session_id);
@@ -560,15 +687,33 @@ it('hands off the last saved plan after restarting and rotating the CLI session'
   await studioRequest(f.s, 'POST', `/api/sessions/${id}/turns`, '{"message":"first"}');
   const first = await waitIdle(f, id);
   const sess = getSession(f.s, f.root, id)!;
-  emit(sess, lastTurn(first).turn_id, { kind: agentrun.KindPlan, plan: [{ id: 'task-1', text: '尚未完成的精确任务', status: 'pending' }] });
-  ledger.append(ledger.projectFile(f.root), ledger.fromResult(ledger.SourceStudio, 'claude', '', first.session.cli_session_id as string, { input_tokens: 40 * 300_000, turns: 40, source: 'claude result', basis: 'total-input' }, null, false));
+  emit(sess, lastTurn(first).turn_id, {
+    kind: agentrun.KindPlan,
+    plan: [{ id: 'task-1', text: '尚未完成的精确任务', status: 'pending' }],
+  });
+  ledger.append(
+    ledger.projectFile(f.root),
+    ledger.fromResult(
+      ledger.SourceStudio,
+      'claude',
+      '',
+      first.session.cli_session_id as string,
+      { input_tokens: 40 * 300_000, turns: 40, source: 'claude result', basis: 'total-input' },
+      null,
+      false,
+    ),
+  );
   const restarted = new Server({ ...f.s.config, projectPath: f.root });
   try {
-    expect(getSession(restarted, f.root, id)!.events.find(e => e.kind === agentrun.KindPlan)?.plan?.[0].id).toBeUndefined();
+    expect(
+      getSession(restarted, f.root, id)!.events.find((e) => e.kind === agentrun.KindPlan)?.plan?.[0].id,
+    ).toBeUndefined();
     await studioRequest(restarted, 'POST', `/api/sessions/${id}/turns`, '{"message":"continue"}');
     await waitIdle({ ...f, s: restarted }, id);
     expect(args(f)[1]).toContain('尚未完成的精确任务');
-  } finally { restarted.shutdown(); }
+  } finally {
+    restarted.shutdown();
+  }
 });
 
 it('supports manual stage-boundary session handoff with a fresh CLI session and project state snapshot', async () => {
@@ -699,4 +844,42 @@ it('skips gate auto-handoff when the CLI session is still light and warm in cach
   const { scheduleGateHandoff } = await import('./sessions');
   scheduleGateHandoff(f.s, f.root, 'gate-voice', '配音审核');
   expect(getSession(f.s, f.root, id)!.meta.handoff_reason).toContain('配音审核');
+});
+
+it('creates and starts production across every builtin canvas preset without placeholder errors', async () => {
+  const f = newSessionFixture();
+  const parent = tempDir();
+  setEnv('HOME', parent);
+  if (process.platform === 'win32') setEnv('USERPROFILE', parent);
+  for (const p of preset.all()) {
+    const created = await studioRequest(
+      f.s,
+      'POST',
+      '/api/projects/create',
+      JSON.stringify({
+        parent,
+        name: `startup-${p.id}`,
+        canvas: p.id,
+        delivery: 'speech',
+        narration: 'solo',
+      }),
+    );
+    expect(created.status, `create ${p.id}`).toBe(201);
+
+    const started = await studioRequest(
+      f.s,
+      'POST',
+      '/api/production/start',
+      JSON.stringify({ message: `启动 ${p.id} 测试` }),
+    );
+    expect(started.status, `start ${p.id}: ${JSON.stringify(started.body)}`).toBe(202);
+    const sid = started.body.session_id as string;
+    const detail = await waitIdle(f, sid);
+    expect(lastTurn(detail).status, `turn ${p.id}`).toBe('succeeded');
+  }
+  const calls = args(f);
+  expect(calls.length).toBeGreaterThanOrEqual(preset.all().length);
+  for (const call of calls) {
+    expect(call).not.toMatch(/\{\{[^}]+\}\}/);
+  }
 });
